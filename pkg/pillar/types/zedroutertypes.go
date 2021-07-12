@@ -1317,13 +1317,13 @@ func CountLocalAddrAnyNoLinkLocal(globalStatus DeviceNetworkStatus) int {
 // CountLocalAddrAnyNoLinkLocalIf return number of local IP addresses for
 // the interface excluding link-local addresses
 func CountLocalAddrAnyNoLinkLocalIf(globalStatus DeviceNetworkStatus,
-	phylabelOrIfname string) (int, error) {
+	ifname string) (int, error) {
 
-	if phylabelOrIfname == "" {
+	if ifname == "" {
 		return 0, fmt.Errorf("ifname not specified")
 	}
 	// Count the number of addresses which apply
-	addrs, err := getLocalAddrListImpl(globalStatus, phylabelOrIfname,
+	addrs, err := getLocalAddrListImpl(globalStatus, ifname,
 		PortCostMax, false, 0)
 	return len(addrs), err
 }
@@ -1352,15 +1352,9 @@ func CountLocalIPv4AddrAnyNoLinkLocal(globalStatus DeviceNetworkStatus) int {
 	return len(addrs)
 }
 
-// CountDNSServers returns the number of DNS servers; for phylabelOrIfname if set
-func CountDNSServers(globalStatus DeviceNetworkStatus, phylabelOrIfname string) int {
+// CountDNSServers returns the number of DNS servers; for ifname if set
+func CountDNSServers(globalStatus DeviceNetworkStatus, ifname string) int {
 
-	var ifname string
-	if phylabelOrIfname != "" {
-		ifname = PhylabelToIfName(&globalStatus, phylabelOrIfname)
-	} else {
-		ifname = phylabelOrIfname
-	}
 	count := 0
 	for _, us := range globalStatus.Ports {
 		if us.IfName != ifname && ifname != "" {
@@ -1407,28 +1401,28 @@ func GetNTPServers(globalStatus DeviceNetworkStatus, ifname string) []net.IP {
 // CountLocalIPv4AddrAnyNoLinkLocalIf is like CountLocalAddrAnyNoLinkLocalIf but
 // only IPv4 addresses are counted
 func CountLocalIPv4AddrAnyNoLinkLocalIf(globalStatus DeviceNetworkStatus,
-	phylabelOrIfname string) (int, error) {
+	ifname string) (int, error) {
 
-	if phylabelOrIfname == "" {
+	if ifname == "" {
 		return 0, fmt.Errorf("ifname not specified")
 	}
 	// Count the number of addresses which apply
-	addrs, err := getLocalAddrListImpl(globalStatus, phylabelOrIfname,
+	addrs, err := getLocalAddrListImpl(globalStatus, ifname,
 		PortCostMax, false, 4)
 	return len(addrs), err
 }
 
 // GetLocalAddrAnyNoLinkLocal is used to pick one address from:
-// - phylabelOrIfname if set.
+// - ifname if set.
 // - otherwise from all of the management ports
 // Excludes link-local addresses.
 // The addresses are sorted in cost order thus as the caller starts with
 // pickNum zero and increases it will use the ports in cost order.
 func GetLocalAddrAnyNoLinkLocal(globalStatus DeviceNetworkStatus, pickNum int,
-	phylabelOrIfname string) (net.IP, error) {
+	ifname string) (net.IP, error) {
 
 	includeLinkLocal := false
-	return getLocalAddrImpl(globalStatus, pickNum, phylabelOrIfname,
+	return getLocalAddrImpl(globalStatus, pickNum, ifname,
 		PortCostMax, includeLinkLocal, 0)
 }
 
@@ -1438,22 +1432,22 @@ func GetLocalAddrAnyNoLinkLocal(globalStatus DeviceNetworkStatus, pickNum int,
 // If 0 is specified it only considers local addresses on cost zero ports;
 // if 255 is specified it considers all the local addresses.
 func GetLocalAddrNoLinkLocalWithCost(globalStatus DeviceNetworkStatus, pickNum int,
-	phylabelOrIfname string, maxCost uint8) (net.IP, error) {
+	ifname string, maxCost uint8) (net.IP, error) {
 
 	includeLinkLocal := false
-	return getLocalAddrImpl(globalStatus, pickNum, phylabelOrIfname,
+	return getLocalAddrImpl(globalStatus, pickNum, ifname,
 		maxCost, includeLinkLocal, 0)
 }
 
 // getLocalAddrImpl returns an IP address based on interfaces sorted in
-// cost order. If phylabelOrIfname is set, the addresses are from that
+// cost order. If ifname is set, the addresses are from that
 // interface. Otherwise from all management interfaces up to and including maxCost.
 // af can be set to 0 (any), 4, IPv4), or 6 (IPv6) to select the family.
 func getLocalAddrImpl(globalStatus DeviceNetworkStatus, pickNum int,
-	phylabelOrIfname string, maxCost uint8, includeLinkLocal bool,
+	ifname string, maxCost uint8, includeLinkLocal bool,
 	af uint) (net.IP, error) {
 
-	addrs, err := getLocalAddrListImpl(globalStatus, phylabelOrIfname,
+	addrs, err := getLocalAddrListImpl(globalStatus, ifname,
 		maxCost, includeLinkLocal, af)
 	if err != nil {
 		return net.IP{}, err
@@ -1464,20 +1458,23 @@ func getLocalAddrImpl(globalStatus DeviceNetworkStatus, pickNum int,
 }
 
 // getLocalAddrListImpl returns a list IP addresses based on interfaces sorted
-// in cost order. If phylabelOrIfname is set, the addresses are from that
+// in cost order. If ifname is set, the addresses are from that
 // interface. Otherwise from all management interfaces up to and including maxCost
 // af can be set to 0 (any), 4, IPv4), or 6 (IPv6) to select a subset.
 func getLocalAddrListImpl(globalStatus DeviceNetworkStatus,
-	phylabelOrIfname string, maxCost uint8, includeLinkLocal bool,
+	ifname string, maxCost uint8, includeLinkLocal bool,
 	af uint) ([]net.IP, error) {
 
 	var ifnameList []string
-	if phylabelOrIfname == "" {
+	var ignoreErrors bool
+	if ifname == "" {
 		// Get interfaces in cost order
 		ifnameList = getMgmtPortsSortedCostImpl(globalStatus, 0,
 			maxCost, false)
+		// If we are looking across all interfaces, then We ignore errors
+		// since we get them if there are no addresses on a ports
+		ignoreErrors = true
 	} else {
-		ifname := PhylabelToIfName(&globalStatus, phylabelOrIfname)
 		us := GetPort(globalStatus, ifname)
 		if us == nil {
 			return []net.IP{}, fmt.Errorf("Unknown interface %s",
@@ -1493,9 +1490,7 @@ func getLocalAddrListImpl(globalStatus DeviceNetworkStatus,
 	for _, ifname := range ifnameList {
 		ifaddrs, err := getLocalAddrIf(globalStatus, ifname,
 			includeLinkLocal, af)
-		// If we are looking across all interfaces, then We ignore errors
-		// since we get them if there are no addresses on a ports
-		if err != nil && phylabelOrIfname != "" {
+		if !ignoreErrors && err != nil {
 			return addrs, err
 		}
 		addrs = append(addrs, ifaddrs...)
@@ -1532,9 +1527,9 @@ func IsPort(globalStatus DeviceNetworkStatus, ifname string) bool {
 }
 
 // Check if a physical label or ifname is a management port
-func IsMgmtPort(globalStatus DeviceNetworkStatus, phylabelOrIfname string) bool {
+func IsMgmtPort(globalStatus DeviceNetworkStatus, ifname string) bool {
 	for _, us := range globalStatus.Ports {
-		if us.Phylabel != phylabelOrIfname && us.IfName != phylabelOrIfname {
+		if us.IfName != ifname {
 			continue
 		}
 		if globalStatus.Version >= DPCIsMgmt &&
@@ -1548,9 +1543,9 @@ func IsMgmtPort(globalStatus DeviceNetworkStatus, phylabelOrIfname string) bool 
 
 // GetPortCost returns the port cost
 // Returns 0 if the ifname does not exist.
-func GetPortCost(globalStatus DeviceNetworkStatus, phylabelOrIfname string) uint8 {
+func GetPortCost(globalStatus DeviceNetworkStatus, ifname string) uint8 {
 	for _, us := range globalStatus.Ports {
-		if us.Phylabel != phylabelOrIfname && us.IfName != phylabelOrIfname {
+		if us.IfName != ifname {
 			continue
 		}
 		return us.Cost
@@ -1558,9 +1553,9 @@ func GetPortCost(globalStatus DeviceNetworkStatus, phylabelOrIfname string) uint
 	return 0
 }
 
-func GetPort(globalStatus DeviceNetworkStatus, phylabelOrIfname string) *NetworkPortStatus {
+func GetPort(globalStatus DeviceNetworkStatus, ifname string) *NetworkPortStatus {
 	for _, us := range globalStatus.Ports {
-		if us.Phylabel != phylabelOrIfname && us.IfName != phylabelOrIfname {
+		if us.IfName != ifname {
 			continue
 		}
 		if globalStatus.Version < DPCIsMgmt {
@@ -1587,15 +1582,14 @@ func GetMgmtPortFromAddr(globalStatus DeviceNetworkStatus, addr net.IP) string {
 	return ""
 }
 
-// GetLocalAddrList returns all IP addresses on the phylabelOrIfName except
+// GetLocalAddrList returns all IP addresses on the ifName except
 // the link local addresses.
 func GetLocalAddrList(globalStatus DeviceNetworkStatus,
-	phylabelOrIfname string) ([]net.IP, error) {
+	ifname string) ([]net.IP, error) {
 
-	if phylabelOrIfname == "" {
+	if ifname == "" {
 		return []net.IP{}, fmt.Errorf("ifname not specified")
 	}
-	ifname := PhylabelToIfName(&globalStatus, phylabelOrIfname)
 	return getLocalAddrIf(globalStatus, ifname, false, 0)
 }
 
@@ -1661,24 +1655,6 @@ func (status *DeviceNetworkStatus) UpdatePortStatusFromIntfStatusMap(
 		}
 		// Else - Port not tested hence no change
 	}
-}
-
-// PhylabelToIfName looks up a port Phylabel or IfName to find an existing IfName
-// If not found, return the phylabelOrIfname argument string
-func PhylabelToIfName(deviceNetworkStatus *DeviceNetworkStatus,
-	phylabelOrIfname string) string {
-
-	for _, p := range deviceNetworkStatus.Ports {
-		if p.Phylabel == phylabelOrIfname {
-			return p.IfName
-		}
-	}
-	for _, p := range deviceNetworkStatus.Ports {
-		if p.IfName == phylabelOrIfname {
-			return phylabelOrIfname
-		}
-	}
-	return phylabelOrIfname
 }
 
 // LogicallabelToIfName looks up a port Logical label to find an existing IfName
@@ -2374,7 +2350,7 @@ type AppNetworkACLArgs struct {
 	VifName    string
 	BridgeIP   string
 	AppIP      string
-	UpLinks    []string
+	UpLinks    []string // List of ifnames
 	NIType     NetworkInstanceType
 	// This is the same AppNum that comes from AppNetworkStatus
 	AppNum int32
