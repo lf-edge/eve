@@ -389,7 +389,7 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 				continue
 			}
 			reportAA.Members = append(reportAA.Members,
-				b.Phylabel)
+				b.Logicallabel)
 			if b.MacAddr != "" {
 				reportMac := new(info.IoAddresses)
 				reportMac.MacAddress = b.MacAddr

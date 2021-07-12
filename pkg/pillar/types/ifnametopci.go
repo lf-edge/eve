@@ -194,8 +194,8 @@ func IoBundleToPci(log *base.LogObject, ib *IoBundle) (string, error) {
 		return "", nil
 	}
 	if !pciLongExists(long) {
-		errStr := fmt.Sprintf("PCI device %s long %s does not exist",
-			ib.Phylabel, long)
+		errStr := fmt.Sprintf("PCI device %s/%s long %s does not exist",
+			ib.Phylabel, ib.Logicallabel, long)
 		return long, errors.New(errStr)
 	}
 	return long, nil
