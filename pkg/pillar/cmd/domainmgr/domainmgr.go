@@ -1723,8 +1723,19 @@ func reserveAdapters(ctx *domainContext, config types.DomainConfig) error {
 			}
 			if ibp.UsedByUUID != config.UUIDandVersion.UUID &&
 				ibp.UsedByUUID != nilUUID {
-				return fmt.Errorf("adapter %d %s used by %s",
-					adapter.Type, adapter.Name, ibp.UsedByUUID)
+				// Check if current user of ibp is halting
+				extraStr := ""
+				other := lookupDomainStatusByUUID(ctx, ibp.UsedByUUID)
+				if other == nil {
+					log.Warnf("UsedByUUID %s but no status",
+						ibp.UsedByUUID)
+					extraStr = "(which is missing)"
+				} else if other.State == types.HALTING {
+					extraStr = "(which is halting)"
+				}
+				return fmt.Errorf("adapter %d %s used by %s %s",
+					adapter.Type, adapter.Name,
+					ibp.UsedByUUID, extraStr)
 			}
 			if ibp.IsPort {
 				return fmt.Errorf("adapter %d %s member %s is (part of) a zedrouter port",
