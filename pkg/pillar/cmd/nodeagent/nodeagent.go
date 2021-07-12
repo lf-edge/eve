@@ -103,6 +103,8 @@ type nodeagentContext struct {
 	vaultTestStartTime          uint32                      // Time at which we should start waiting for vault to be operational
 	maintMode                   bool                        // whether Maintenance mode should be triggered
 	maintModeReason             types.MaintenanceModeReason //reason for entering Maintenance mode
+	configGetSuccess            bool                        // got config from controller success
+	vaultmgrReported            bool                        // got reports from vaultmgr
 
 	// Some contants.. Declared here as variables to enable unit tests
 	minRebootDelay          uint32
@@ -655,6 +657,7 @@ func handleVaultStatusImpl(ctxArg interface{}, key string,
 	ctx := ctxArg.(*nodeagentContext)
 	vault := statusArg.(types.VaultStatus)
 
+	ctx.vaultmgrReported = true
 	if ctx.vaultTestStartTime == 0 {
 		//First update from vaultmgr, record it as test start time
 		log.Notice("handleVaultStatusImpl: Recording vault test start time")

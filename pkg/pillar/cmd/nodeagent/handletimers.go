@@ -116,7 +116,10 @@ func handleRebootOnVaultLocked(ctxPtr *nodeagentContext) {
 	//This could be due to remote attestation taking time
 	//Check if we have crossed cut off time
 	vaultCutOffTime := ctxPtr.globalConfig.GlobalValueInt(types.VaultReadyCutOffTime)
-	timePassed := ctxPtr.timeTickCount - ctxPtr.vaultTestStartTime
+	var timePassed uint32
+	if ctxPtr.vaultmgrReported && ctxPtr.configGetSuccess {
+		timePassed = ctxPtr.timeTickCount - ctxPtr.vaultTestStartTime
+	}
 	if timePassed > vaultCutOffTime {
 		if ctxPtr.updateInprogress {
 			// fail the upgrade by rebooting now
@@ -132,9 +135,9 @@ func handleRebootOnVaultLocked(ctxPtr *nodeagentContext) {
 			publishNodeAgentStatus(ctxPtr)
 		}
 	} else {
-		log.Functionf("handleRebootOnVaultLocked: status(%s), (%d)seconds remaining",
+		log.Functionf("handleRebootOnVaultLocked: status(%s), (%d)seconds remaining or controller connection %v, vaultmgr report %v",
 			types.FormatTriState(ctxPtr.vaultOperational),
-			vaultCutOffTime-timePassed)
+			vaultCutOffTime-timePassed, ctxPtr.configGetSuccess, ctxPtr.vaultmgrReported)
 	}
 }
 
@@ -197,6 +200,11 @@ func updateZedagentCloudConnectStatus(ctxPtr *nodeagentContext,
 	case types.ConfigGetSuccess:
 		log.Functionf("Config get from controller, is successful")
 		ctxPtr.lastControllerReachableTime = ctxPtr.timeTickCount
+		if !ctxPtr.configGetSuccess && ctxPtr.vaultmgrReported {
+			// reset the tickCount if vaultMgr already reported and this is the first time get to controller
+			ctxPtr.vaultTestStartTime = ctxPtr.timeTickCount
+		}
+		ctxPtr.configGetSuccess = true
 		setTestStartTime(ctxPtr)
 
 	case types.ConfigGetTemporaryFail:
