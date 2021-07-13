@@ -21,7 +21,7 @@ jobs:
         env:
           PR_ID: ${{ github.event.pull_request.number  }}
         run: |
-          make V=1 pkgs
+          make V=1 FORCE_BUILD=--disable-cache pkgs
           COMMIT_ID=$(git describe --abbrev=8 --always)
           echo "VERSION=0.0.0-pr$PR_ID-$COMMIT_ID" >> $GITHUB_ENV
           echo "TAG=evebuild/danger:pr$PR_ID" >> $GITHUB_ENV
