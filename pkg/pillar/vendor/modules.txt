@@ -1,9 +1,11 @@
-# github.com/Azure/azure-sdk-for-go v48.2.0+incompatible
-github.com/Azure/azure-sdk-for-go/storage
-github.com/Azure/azure-sdk-for-go/version
+# github.com/Azure/azure-pipeline-go v0.2.3
+github.com/Azure/azure-pipeline-go/pipeline
+# github.com/Azure/azure-storage-blob-go v0.14.0
+github.com/Azure/azure-storage-blob-go/azblob
 # github.com/Azure/go-ansiterm v0.0.0-20170929234023-d6e3b3328b78
 github.com/Azure/go-ansiterm
 github.com/Azure/go-ansiterm/winterm
+<<<<<<< HEAD
 # github.com/Azure/go-autorest v14.2.0+incompatible
 github.com/Azure/go-autorest
 # github.com/Azure/go-autorest/autorest v0.11.1
@@ -18,6 +20,9 @@ github.com/Azure/go-autorest/logger
 # github.com/Azure/go-autorest/tracing v0.6.0
 github.com/Azure/go-autorest/tracing
 # github.com/Microsoft/go-winio v0.4.17
+=======
+# github.com/Microsoft/go-winio v0.4.16
+>>>>>>> 4a28047ef... double commit vendor files of azure blob to 6.6
 github.com/Microsoft/go-winio
 github.com/Microsoft/go-winio/backuptar
 github.com/Microsoft/go-winio/pkg/guid
@@ -266,8 +271,6 @@ github.com/eriknordmark/ipinfo
 # github.com/eriknordmark/netlink v0.0.0-20190912172510-3b6b45309321
 ## explicit
 github.com/eriknordmark/netlink
-# github.com/form3tech-oss/jwt-go v3.2.2+incompatible
-github.com/form3tech-oss/jwt-go
 # github.com/fsnotify/fsnotify v1.4.9
 ## explicit
 github.com/fsnotify/fsnotify
@@ -377,7 +380,16 @@ github.com/lf-edge/eve/libs/zedUpload/azureutil
 github.com/lf-edge/eve/libs/zedUpload/httputil
 github.com/lf-edge/eve/libs/zedUpload/ociutil
 github.com/lf-edge/eve/libs/zedUpload/sftputil
+<<<<<<< HEAD
 # github.com/matttproud/golang_protobuf_extensions v1.0.2-0.20181231171920-c182affec369
+=======
+# github.com/magefile/mage v1.11.0
+github.com/magefile/mage/mg
+github.com/magefile/mage/sh
+# github.com/mattn/go-ieproxy v0.0.1
+github.com/mattn/go-ieproxy
+# github.com/matttproud/golang_protobuf_extensions v1.0.1
+>>>>>>> 4a28047ef... double commit vendor files of azure blob to 6.6
 github.com/matttproud/golang_protobuf_extensions/pbutil
 # github.com/moby/locker v1.0.1
 github.com/moby/locker
@@ -516,8 +528,6 @@ golang.org/x/crypto/ed25519
 golang.org/x/crypto/ed25519/internal/edwards25519
 golang.org/x/crypto/internal/subtle
 golang.org/x/crypto/ocsp
-golang.org/x/crypto/pkcs12
-golang.org/x/crypto/pkcs12/internal/rc2
 golang.org/x/crypto/poly1305
 golang.org/x/crypto/ssh
 golang.org/x/crypto/ssh/internal/bcrypt_pbkdf
@@ -528,6 +538,7 @@ golang.org/x/net/html
 golang.org/x/net/html/atom
 golang.org/x/net/html/charset
 golang.org/x/net/http/httpguts
+golang.org/x/net/http/httpproxy
 golang.org/x/net/http2
 golang.org/x/net/http2/hpack
 golang.org/x/net/icmp
@@ -550,6 +561,7 @@ golang.org/x/sys/execabs
 golang.org/x/sys/internal/unsafeheader
 golang.org/x/sys/unix
 golang.org/x/sys/windows
+golang.org/x/sys/windows/registry
 # golang.org/x/text v0.3.5
 ## explicit
 golang.org/x/text/encoding
