@@ -39,8 +39,6 @@ import (
 const (
 	agentName  = "zedrouter"
 	runDirname = "/run/zedrouter"
-	// DropMarkValue :
-	DropMarkValue = 0xFFFFFF
 	// Time limits for event loop handlers
 	errorTime   = 3 * time.Minute
 	warningTime = 40 * time.Second
@@ -153,7 +151,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	pubUuidToNum.ClearRestarted()
 
 	// Create the dummy interface used to re-direct DROP/REJECT packets.
-	createFlowMonDummyInterface(DropMarkValue)
+	createFlowMonDummyInterface()
 
 	// Pick up (mostly static) AssignableAdapters before we process
 	// any Routes; Pbr needs to know which network adapters are assignable

@@ -1582,7 +1582,7 @@ func parseUnderlayNetworkConfigEntry(
 			actionCfg.LimitBurst = int(action.Limitburst)
 			actionCfg.PortMap = action.Portmap
 			actionCfg.TargetPort = int(action.AppPort)
-			// XXX:FIXME actionCfg.Drop = <TBD>
+			actionCfg.Drop = action.Drop
 			aclCfg.Actions[actionIdx] = *actionCfg
 		}
 		ulCfg.ACLs[aclIdx] = *aclCfg
