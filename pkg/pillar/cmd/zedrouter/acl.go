@@ -34,6 +34,38 @@ const MAXACEID = 65535
 // MINACEID : IDs till 100 are reserverd for internal usage.
 const MINACEID = 101
 
+// Connection mark is used to remember for a given flow to which application it belongs
+// and which ACE was applied.
+// The 32 bits of a connmark are used as follows:
+//  +------------------------+---------------+------------------+
+//  | Application ID (8bits) | Action (1bit) | ACE ID (23 bits) |
+//  +------------------------+---------------+------------------+
+// where: Drop action = 1; Allow action = 0
+const (
+	appIDMask     = 0xff << 24
+	aceActionMask = 0x1 << 23
+	aceDropAction = aceActionMask
+	aceIDMask     = 0x7fffff
+	// By default, traffic not matched by any ACE is dropped.
+	// For this default rule we use the maximum integer value available for ACE ID.
+	defaultDropAceID = aceIDMask
+)
+
+func getConnmark(appID uint8, aceID uint32, drop bool) uint32 {
+	mark := uint32(appID)<<24 | aceID
+	if drop {
+		mark |= aceDropAction
+	}
+	return mark
+}
+
+func parseConnmark(mark uint32) (appID uint8, aceID uint32, drop bool) {
+	appID = uint8(mark >> 24)
+	aceID = mark & aceIDMask
+	drop = (mark & aceActionMask) == aceDropAction
+	return
+}
+
 var lastAllocatedAceID int32 = -1
 var numFreeAceIDs int32 = MAXACEID - MINACEID + 1
 
@@ -736,13 +768,10 @@ func aclDropRules(aclArgs types.AppNetworkACLArgs) (types.IPTablesRuleList, erro
 		chainName := fmt.Sprintf("drop-all-%s-%s",
 			aclArgs.BridgeName, aclArgs.VifName)
 		aclRule3.ActionChainName = chainName
-		// XXX Passing 0xffffffff as int32 make golang give overflow error.
-		// Instead pass "-1" as the marking value and make createMarkAndAcceptChain
-		// handle this case separately.
-		marking := (aclArgs.AppNum << 24) | 0xffffff
+		marking := getConnmark(uint8(aclArgs.AppNum), defaultDropAceID, true)
 		createMarkAndAcceptChain(aclArgs, chainName, marking)
 		aclRule3.Action = []string{"-j", chainName}
-		aclRule3.RuleID = 0xffffff
+		aclRule3.RuleID = defaultDropAceID
 		aclRule3.IsDefaultDrop = true
 		rulesList = append(rulesList, aclRule1, aclRule2, aclRule3)
 	default:
@@ -790,8 +819,12 @@ func aceToRules(ctx *zedrouterContext, aclArgs types.AppNetworkACLArgs,
 	aclRule5.IPVer = aclArgs.IPVer
 	aclRule6.IPVer = aclArgs.IPVer
 
-	// Always match on interface. Note that rulePrefix adds physdev-in
+	// Always match on interface. Note that rulePrefix adds "-d AppIP".
 	inArgs := []string{"-o", aclArgs.BridgeName}
+	if aclArgs.NIType == types.NetworkInstanceTypeSwitch {
+		inArgs = append(inArgs, "-i", aclArgs.BridgeName)
+	}
+	// Note that rulePrefix adds physdev-in.
 	outArgs := []string{"-i", aclArgs.BridgeName}
 	inActions := []string{}
 	outActions := []string{}
@@ -1012,7 +1045,7 @@ func aceToRules(ctx *zedrouterContext, aclArgs types.AppNetworkACLArgs,
 						aclArgs.BridgeName, aclArgs.VifName, aclRule1.RuleID)
 
 					// Embed App id in marking value
-					markingValue := (aclArgs.AppNum << 24) | aclRule1.RuleID
+					markingValue := getConnmark(uint8(aclArgs.AppNum), uint32(aclRule1.RuleID), false)
 					createMarkAndAcceptChain(aclArgs, chainName, markingValue)
 					aclRule1.Action = []string{"-j", chainName}
 					aclRule1.ActionChainName = chainName
@@ -1047,7 +1080,7 @@ func aceToRules(ctx *zedrouterContext, aclArgs types.AppNetworkACLArgs,
 						aclArgs.BridgeName, aclArgs.VifName, aclRuleH.RuleID)
 
 					// Embed App id in marking value
-					markingValue := (aclArgs.AppNum << 24) | aclRuleH.RuleID
+					markingValue := getConnmark(uint8(aclArgs.AppNum), uint32(aclRuleH.RuleID), false)
 					createMarkAndAcceptChain(aclArgs, chainName, markingValue)
 					aclRuleH.Action = []string{"-j", chainName}
 					aclRuleH.ActionChainName = chainName
@@ -1108,27 +1141,47 @@ func aceToRules(ctx *zedrouterContext, aclArgs types.AppNetworkACLArgs,
 			return nil, nil, errors.New(errStr)
 		}
 	}
-	if foundDrop {
-		outActions = append(outActions, []string{"-j", "DROP"}...)
-		inActions = append(inActions, []string{"-j", "DROP"}...)
-	} else {
-		// Default
-		outActions = append(outActions, []string{"-j", "ACCEPT"}...)
-		inActions = append(inActions, []string{"-j", "ACCEPT"}...)
-	}
 
 	aclRule3.Rule = inArgs
-	aclRule3.Action = inActions
-	aclRule3.IsUserConfigured = true
 	aclRule3.RuleID = ace.RuleID
+	aclRule3.IsUserConfigured = true
 	if aclArgs.NIType == types.NetworkInstanceTypeSwitch {
-		aclRule3.Rule = append(aclRule3.Rule, "-i", aclArgs.BridgeName)
+		// Applied for filter/FORWARD (not for mangle/PREROUTING)
+		aclRule3.Rule = append(aclRule3.Rule, []string{"-m", "physdev",
+			"--physdev-out", aclArgs.VifName}...)
 	}
 
 	aclRule4.Rule = outArgs
-	aclRule4.Action = outActions
 	aclRule4.RuleID = ace.RuleID
 	aclRule4.IsUserConfigured = true
+
+	if foundDrop {
+		inLog := []string{"-j", "LOG", "--log-prefix",
+			"FORWARD:TO:", "--log-level", "3"}
+		outLog := []string{"-j", "LOG", "--log-prefix",
+			"FORWARD:FROM:", "--log-level", "3"}
+		if aclArgs.NIType == types.NetworkInstanceTypeSwitch {
+			// Log before dropping packets.
+			aclRule3.Action = append(inActions, inLog...)
+			aclRule4.Action = append(outActions, outLog...)
+			rulesList = append(rulesList, aclRule4, aclRule3)
+			// Drop without leaving conntrack (i.e. it will not be flow-logged).
+			outActions = append(outActions, []string{"-j", "DROP"}...)
+			inActions = append(inActions, []string{"-j", "DROP"}...)
+		} else {
+			// Local/VPN NI.
+			// Log but do not drop. Instead, it will be routed to a dummy
+			// interface to leave conntrack behind for flow-logging.
+			inActions = append(inActions, inLog...)
+			outActions = append(outActions, outLog...)
+		}
+	} else {
+		// Default ACE action
+		outActions = append(outActions, []string{"-j", "ACCEPT"}...)
+		inActions = append(inActions, []string{"-j", "ACCEPT"}...)
+	}
+	aclRule3.Action = inActions
+	aclRule4.Action = outActions
 	rulesList = append(rulesList, aclRule4, aclRule3)
 
 	switch aclArgs.NIType {
@@ -1141,7 +1194,7 @@ func aceToRules(ctx *zedrouterContext, aclArgs types.AppNetworkACLArgs,
 				aclArgs.BridgeName, aclArgs.VifName, aclRule4.RuleID)
 
 			// Embed App id in marking value
-			markingValue := (aclArgs.AppNum << 24) | aclRule4.RuleID
+			markingValue := getConnmark(uint8(aclArgs.AppNum), uint32(aclRule4.RuleID), foundDrop)
 			createMarkAndAcceptChain(aclArgs, chainName, markingValue)
 			aclRule4.Action = []string{"-j", chainName}
 			aclRule4.ActionChainName = chainName
@@ -1162,7 +1215,7 @@ func aceToRules(ctx *zedrouterContext, aclArgs types.AppNetworkACLArgs,
 				aclArgs.BridgeName, aclArgs.VifName, aclRule4.RuleID)
 
 			// Embed App id in marking value
-			markingValue := (aclArgs.AppNum << 24) | aclRule4.RuleID
+			markingValue := getConnmark(uint8(aclArgs.AppNum), uint32(aclRule4.RuleID), foundDrop)
 			createMarkAndAcceptChain(aclArgs, chainName, markingValue)
 			aclRule4.Action = []string{"-j", chainName}
 			aclRule4.ActionChainName = chainName
@@ -1176,12 +1229,13 @@ func aceToRules(ctx *zedrouterContext, aclArgs types.AppNetworkACLArgs,
 		if aclRule3.RuleID != -1 {
 			aclRule3.Table = "mangle"
 			aclRule3.Chain = "PREROUTING"
+			aclRule3.Rule = inArgs
 			aclRule3.IsMarkingRule = true
 			chainName := fmt.Sprintf("%s-%s-%d",
 				aclArgs.BridgeName, aclArgs.VifName, aclRule3.RuleID)
 
 			// Embed App id in marking value
-			markingValue := (aclArgs.AppNum << 24) | aclRule3.RuleID
+			markingValue := getConnmark(uint8(aclArgs.AppNum), uint32(aclRule3.RuleID), foundDrop)
 			createMarkAndAcceptChain(aclArgs, chainName, markingValue)
 			aclRule3.Action = []string{"-j", chainName}
 			aclRule3.ActionChainName = chainName
@@ -1417,10 +1471,9 @@ func updateACLConfiglet(ctx *zedrouterContext, aclArgs types.AppNetworkACLArgs, 
 	if srcIP == nil {
 		log.Errorf("updateACLConfiglet: App IP (%s) parse failed", aclArgs.AppIP)
 	} else {
-		mark := uint32(aclArgs.AppNum << 24)
-		mask := uint32(0xff << 24)
+		mark := getConnmark(uint8(aclArgs.AppNum), 0, false)
 		number, err := netlink.ConntrackDeleteIPSrc(netlink.ConntrackTable, family,
-			srcIP, 0, 0, mark, mask, false)
+			srcIP, 0, 0, mark, appIDMask, false)
 		if err != nil {
 			log.Errorf("updateACLConfiglet: Error clearing flows before update - %s", err)
 		} else {
@@ -1690,7 +1743,7 @@ func networkInstanceBridgeRules(aclArgs types.AppNetworkACLArgs) types.IPTablesR
 	return rulesList
 }
 
-func createFlowMonDummyInterface(fwmark uint32) {
+func createFlowMonDummyInterface() {
 	// Check if our dummy interface already exits.
 	dummyIntfName := "flow-mon-dummy"
 	link, err := netlink.LinkByName(dummyIntfName)
@@ -1729,7 +1782,7 @@ func createFlowMonDummyInterface(fwmark uint32) {
 	}
 
 	iifIndex := slink.Attrs().Index
-	err = AddFwMarkRuleToDummy(fwmark, iifIndex)
+	err = AddFwMarkRuleToDummy(iifIndex)
 	if err != nil {
 		log.Errorf("createFlowMonDummyInterface: FwMark rule for %s failed: %s",
 			dummyIntfName, err)
@@ -1766,9 +1819,9 @@ func createFlowMatchRules(aclArgs types.AppNetworkACLArgs) types.IPTablesRuleLis
 		aclRule.Table = "mangle"
 		aclRule.Chain = "PREROUTING"
 		aclRule.Rule = []string{"-i", uplink}
-		// XXX Use 0x00FFFFFF for DROP/REJECT? Might change later.
-		// These flows do not match any app instance
-		aclRule.Action = []string{"-j", "MARK", "--set-mark", "0x00FFFFFF"}
+		// For connections originating from outside we use App ID = 0.
+		mark := getConnmark(0, defaultDropAceID, true)
+		aclRule.Action = []string{"-j", "MARK", "--set-mark", strconv.FormatUint(uint64(mark), 10)}
 		rulesList = append(rulesList, aclRule)
 
 		aclRule.IPVer = 4
@@ -1783,11 +1836,11 @@ func createFlowMatchRules(aclArgs types.AppNetworkACLArgs) types.IPTablesRuleLis
 }
 
 func createMarkAndAcceptChain(aclArgs types.AppNetworkACLArgs,
-	name string, marking int32) error {
+	name string, marking uint32) error {
 
 	// not for dom0
 	if aclArgs.IsMgmt {
-		return errors.New("Invalid chain creation")
+		return errors.New("invalid chain creation")
 	}
 
 	chainFlush := []string{"-t", "mangle", "--flush", name}
@@ -1815,14 +1868,8 @@ func createMarkAndAcceptChain(aclArgs types.AppNetworkACLArgs,
 	rule2 := []string{"-A", name, "-t", "mangle", "-m", "mark", "!", "--mark", "0",
 		"-j", "ACCEPT"}
 
-	rule3 := []string{}
-	if marking == -1 {
-		rule3 = []string{"-A", name, "-t", "mangle", "-j", "CONNMARK", "--set-mark",
-			"0xffffffff"}
-	} else {
-		rule3 = []string{"-A", name, "-t", "mangle", "-j", "CONNMARK", "--set-mark",
-			strconv.FormatInt(int64(marking), 10)}
-	}
+	rule3 := []string{"-A", name, "-t", "mangle", "-j", "CONNMARK", "--set-mark",
+		strconv.FormatUint(uint64(marking), 10)}
 	rule4 := []string{"-A", name, "-t", "mangle", "-j", "CONNMARK", "--restore-mark"}
 	rule5 := []string{"-A", name, "-t", "mangle", "-j", "ACCEPT"}
 
@@ -1885,7 +1932,7 @@ func appConfigContainerStatsACL(appIPAddr net.IP, isRemove bool) {
 	//   forwarding through the 'OUTPUT' chain
 	// - this blocking does not seem to work if further matching to the '--physdev', so the drop action
 	//   needs to be at network layer3
-	// - XXX currently the 'drop' mark of 0xffffff on the flow of internal traffic on bridge does not work,
+	// - XXX currently the 'drop' mark (0x800000) on the flow of internal traffic on bridge does not work,
 	//   later it may be possible to change below '-j DROP' to '-j MARK' action
 	if isRemove {
 		action = "-D"

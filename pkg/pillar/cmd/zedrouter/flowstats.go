@@ -39,6 +39,7 @@ type flowStats struct {
 	TimeOut     uint32
 	aclNum      uint32
 	appNum      uint8
+	drop        bool
 	AppInitiate bool
 	IsTimeOut   bool
 	foundApp    bool
@@ -84,12 +85,10 @@ type dnsEntry struct {
 }
 
 const (
-	maxBridgeNumber int    = 256
-	timeoutSec      int32  = 150      // less than 150 sec, consider done (make sure to update 01-eve.conf in pkg/dom0-ztools)
-	markMask        uint32 = 0xffffff // get the Mark bits for ACL number
-	appShiftBits    uint32 = 24       // top 8 bits for App Number
-	maxFlowPack     int    = 125      // approximate 320 bytes per flow/dns, got an assert in zedagent when size was 241
-	flowStaleSec    int64  = 1800     // 30 min not touched, the publication will be removed
+	maxBridgeNumber int   = 256
+	timeoutSec      int32 = 150  // less than 150 sec, consider done (make sure to update 01-eve.conf in pkg/dom0-ztools)
+	maxFlowPack     int   = 125  // approximate 320 bytes per flow/dns, got an assert in zedagent when size was 241
+	flowStaleSec    int64 = 1800 // 30 min not touched, the publication will be removed
 )
 
 type dnsSys struct {
@@ -192,7 +191,7 @@ func FlowStatsCollect(ctx *zedrouterContext) {
 					continue
 				}
 
-				if tuple.aclNum != DropMarkValue {
+				if tuple.aclNum != defaultDropAceID {
 					tmpMap := instData.ipaclattr[int(appN)]
 					if tmpMap != nil {
 						if _, ok := tmpMap[int(tuple.aclNum)]; !ok {
@@ -217,10 +216,14 @@ func FlowStatsCollect(ctx *zedrouterContext) {
 						continue
 					}
 					scope.Intf = aclattr.intfname // App side DomU internal interface name
-					aclaction = types.ACLActionAccept
+					if tuple.drop {
+						aclaction = types.ACLActionDrop
+					} else {
+						aclaction = types.ACLActionAccept
+					}
 					aclNum = int(aclattr.aclNum)
-				} else { // conntrack mark aclNum field being 0xffffff
-					// special drop aclNum
+				} else {
+					// default drop ACE
 					appinfo := flowGetAppInfo(tuple, instData.appIPinfo[appIdx])
 					if appinfo.localintf != bnx {
 						continue
@@ -318,9 +321,7 @@ func flowMergeProcess(entry *netlink.ConntrackFlow, instData networkAttrs) flowS
 	if ipflowTimeOut > timeoutSec {
 		return ipFlow
 	}
-
-	ipFlow.aclNum = entry.Mark & markMask
-	ipFlow.appNum = uint8(entry.Mark >> appShiftBits)
+	ipFlow.appNum, ipFlow.aclNum, ipFlow.drop = parseConnmark(entry.Mark)
 	AppNum = int(ipFlow.appNum)
 	if AppNum == 0 { // only handle App related flow stats, Mark set needs to zero out the app field if not app related
 		return ipFlow

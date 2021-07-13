@@ -281,15 +281,15 @@ func AddOverlayRuleAndRoute(bridgeName string, iifIndex int,
 	return nil
 }
 
-// AddFwMarkRuleToDummy : Create a ip rule that sends packets marked with given mark
+// AddFwMarkRuleToDummy : Create an ip rule that sends packets marked by a Drop ACE
 // out of interface with given index.
-func AddFwMarkRuleToDummy(fwmark uint32, iifIndex int) error {
+func AddFwMarkRuleToDummy(iifIndex int) error {
 
 	r := netlink.NewRule()
 	myTable := baseTableIndex + iifIndex
 	r.Table = myTable
-	r.Mark = int(fwmark)
-	r.Mask = 0x00ffffff
+	r.Mark = aceDropAction
+	r.Mask = aceActionMask
 	// This rule gets added during the starting steps of service.
 	// Other ip rules corresponding to network instances get added after this
 	// and take higher priority. We want this ip rule to match before anything else.
