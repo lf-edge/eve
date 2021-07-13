@@ -46,3 +46,8 @@ jobs:
         with:
           name: eve-${{ env.ARCH }}
           path: eve.tar
+      - name: Clean
+        run: |
+          make clean
+          docker system prune -f -a
+          rm -rf ~/.linuxkit
