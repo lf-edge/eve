@@ -141,7 +141,7 @@ community feedback provided.
 
 ### Check your changes
 
-The EVE project uses CircleCI to verify changes do not negatively impact
+The EVE project uses GitHub Actions to verify changes do not negatively impact
 the style or functionality of the documentation and code.  Some of these
 tests can be run locally to verify your work, prior to pushing them to
 GitHub.
