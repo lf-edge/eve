@@ -20,6 +20,7 @@ EVE expects
 * VT-x
 * VT-d (if available)
 * hardware watchdog (if available)
+* TPM 2.0 (if available)
 
 options to be enabled by your BIOS/firmware. Most of the time this is a manual
 step that an operator has to perform sitting in from of the console. On a few
