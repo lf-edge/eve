@@ -62,9 +62,9 @@ cat <<__EOT__
     "memory": "${MEM}G",
     "storage": "${DISK}G",
     "Cpus": "${CPUS}",
-    "watchdog": ${WDT},
-    "hsm": ${HSM},
-    "leds": 0
+    "watchdog": "${WDT}",
+    "hsm": "${HSM}",
+    "leds": "0"
   },
   "logo": {
     "logo_back":"/workspace/spec/logo_back_.jpg",
