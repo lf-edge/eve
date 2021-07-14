@@ -88,10 +88,13 @@ WORKDIR /out/usr/lib/xen/bin/
 RUN strip * || :
 RUN if [ "$(uname -m)" = "x86_64" ]; then rm -f qemu-system-i386 && ln -s "qemu-system-$(uname -m)" qemu-system-i386 ;fi
 
+COPY --from=uefi-build / /uefi/
+RUN mkdir -p /out/usr/lib/xen/boot && cp /uefi/OVMF.fd /out/usr/lib/xen/boot/ovmf.bin && \
+  cp /uefi/OVMF_PVH.fd /out/usr/lib/xen/boot/ovmf-pvh.bin
+RUN if [ "$(uname -m)" = "x86_64" ]; then cp /uefi/*.rom /out/usr/lib/xen/boot/;fi
+
 FROM scratch
 COPY --from=build /out/ /
-COPY --from=uefi-build /OVMF.fd /usr/lib/xen/boot/ovmf.bin
-COPY --from=uefi-build /OVMF_PVH.fd /usr/lib/xen/boot/ovmf-pvh.bin
 COPY --from=runx-build /runx-initrd /usr/lib/xen/boot/runx-initrd
 COPY init.sh /
 COPY qemu-ifup xen-start /etc/xen/scripts/
