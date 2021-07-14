@@ -24,6 +24,8 @@ case $(uname -m) in
      x86_64) build -b RELEASE -t GCC5 -a X64 -p OvmfPkg/OvmfPkgX64.dsc
              cp Build/OvmfX64/RELEASE_*/FV/OVMF*.fd .
              build -b RELEASE -t GCC5 -a X64 -p OvmfPkg/OvmfXen.dsc
+             BaseTools/Source/C/bin/EfiRom -f 0x1F96 -i 0x0778 -e Build/OvmfX64/RELEASE_*/X64/IgdAssignmentDxe.efi
+             cp Build/OvmfX64/RELEASE_*/X64/IgdAssignmentDxe.rom IgdAssignmentDxe.rom
              cp Build/OvmfXen/RELEASE_*/FV/OVMF.fd OVMF_PVH.fd
              ;;
           *) echo "Unsupported architecture $(uname). Bailing."
