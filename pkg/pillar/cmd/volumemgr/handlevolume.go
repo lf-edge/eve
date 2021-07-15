@@ -8,6 +8,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/lf-edge/eve/pkg/pillar/tgt"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
 	"github.com/lf-edge/eve/pkg/pillar/zfs"
@@ -137,6 +138,23 @@ func handleDeferredVolumeCreate(ctx *volumemgrContext, key string, config *types
 			}
 			created = true
 			status.FileLocation = zVolDevice
+			if !tgt.CheckTargetIBlock(status.Key()) {
+				log.Functionf("generating target and vhost for %s", status.Key())
+				wwn, err := createTargetVhost(zVolDevice, status)
+				if err != nil {
+					log.Errorf("handleDeferredVolumeCreate(%s) name %s: createTargetVhost: %v",
+						status.Key(), status.DisplayName, err)
+					errStr := fmt.Sprintf("createTargetVhost volume %s: %v",
+						status.DisplayName, err)
+					status.SetError(errStr, time.Now())
+					publishVolumeStatus(ctx, status)
+					updateVolumeRefStatus(ctx, status)
+					if err := createOrUpdateAppDiskMetrics(ctx, status); err != nil {
+						log.Errorf("handleDeferredVolumeCreate(%s): exception while publishing diskmetric. %s", key, err.Error())
+					}
+				}
+				status.WWN = wwn
+			}
 		}
 	} else {
 		if _, err := os.Stat(status.PathName()); err == nil {

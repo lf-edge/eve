@@ -1630,6 +1630,7 @@ func configToStatus(ctx *domainContext, config types.DomainConfig,
 		ds.Format = dc.Format
 		ds.MountDir = dc.MountDir
 		ds.DisplayName = dc.DisplayName
+		ds.WWN = dc.WWN
 		// Generate Devtype for hypervisor package
 		// XXX can hypervisor look at something different?
 		if dc.Format == zconfig.Format_CONTAINER {

@@ -882,6 +882,7 @@ func TestCreateDomConfig(t *testing.T) {
 		{Format: zconfig.Format_RAW, FileLocation: "/foo/bar.raw", Devtype: "hdd"},
 		{Format: zconfig.Format_RAW, FileLocation: "/foo/cd.iso", Devtype: "cdrom"},
 		{Format: zconfig.Format_CONTAINER, FileLocation: "/foo/volume", Devtype: ""},
+		{Format: zconfig.Format_RAW, WWN: "naa.000000000000000a", Devtype: "hdd"},
 	}
 	disksLegacy := []types.DiskStatus{
 		{Format: zconfig.Format_QCOW2, FileLocation: "/foo/bar.qcow2", Devtype: "legacy"},
@@ -889,6 +890,7 @@ func TestCreateDomConfig(t *testing.T) {
 		{Format: zconfig.Format_RAW, FileLocation: "/foo/bar.raw", Devtype: "legacy"},
 		{Format: zconfig.Format_RAW, FileLocation: "/foo/cd.iso", Devtype: "cdrom"},
 		{Format: zconfig.Format_CONTAINER, FileLocation: "/foo/volume", Devtype: ""},
+		{Format: zconfig.Format_RAW, WWN: "naa.000000000000000a", Devtype: "legacy"},
 	}
 	aa := types.AssignableAdapters{
 		Initialized: true,
@@ -1130,13 +1132,27 @@ func TestCreateDomConfig(t *testing.T) {
   driver = "ide-cd"
   bus = "ide.0"
 
+
 [device "pci.7"]
   driver = "pcie-root-port"
   port = "17"
   chassis = "7"
   bus = "pcie.0"
-  multifunction = "on"
   addr = "0x7"
+
+[device "vhost-disk4"]
+  driver = "vhost-scsi-pci"
+  wwpn = "naa.000000000000000a"
+  bus = "pci.7"
+  addr = "0x0"
+
+[device "pci.8"]
+  driver = "pcie-root-port"
+  port = "18"
+  chassis = "8"
+  bus = "pcie.0"
+  multifunction = "on"
+  addr = "0x8"
 
 [netdev "hostnet0"]
   type = "tap"
@@ -1149,16 +1165,16 @@ func TestCreateDomConfig(t *testing.T) {
   driver = "virtio-net-pci"
   netdev = "hostnet0"
   mac = "6a:00:03:61:a6:90"
-  bus = "pci.7"
+  bus = "pci.8"
   addr = "0x0"
 
-[device "pci.8"]
+[device "pci.9"]
   driver = "pcie-root-port"
-  port = "18"
-  chassis = "8"
+  port = "19"
+  chassis = "9"
   bus = "pcie.0"
   multifunction = "on"
-  addr = "0x8"
+  addr = "0x9"
 
 [netdev "hostnet1"]
   type = "tap"
@@ -1171,21 +1187,21 @@ func TestCreateDomConfig(t *testing.T) {
   driver = "virtio-net-pci"
   netdev = "hostnet1"
   mac = "6a:00:03:61:a6:91"
-  bus = "pci.8"
+  bus = "pci.9"
   addr = "0x0"
 
-[device "pci.9"]
+[device "pci.10"]
   driver = "pcie-root-port"
-  port = "19"
-  chassis = "9"
+  port = "110"
+  chassis = "10"
   bus = "pcie.0"
   multifunction = "on"
-  addr = "0x9"
+  addr = "0xa"
 
 [device]
   driver = "vfio-pci"
   host = "03:00.0"
-  bus = "pci.9"
+  bus = "pci.10"
   addr = "0x0"
 [chardev "charserial-usr0"]
   backend = "tty"
@@ -1413,13 +1429,27 @@ func TestCreateDomConfig(t *testing.T) {
   driver = "ide-cd"
   bus = "ide.0"
 
+
 [device "pci.7"]
   driver = "pcie-root-port"
   port = "17"
   chassis = "7"
   bus = "pcie.0"
-  multifunction = "on"
   addr = "0x7"
+
+[device "vhost-disk4"]
+  driver = "vhost-scsi-pci"
+  wwpn = "naa.000000000000000a"
+  bus = "pci.7"
+  addr = "0x0"
+
+[device "pci.8"]
+  driver = "pcie-root-port"
+  port = "18"
+  chassis = "8"
+  bus = "pcie.0"
+  multifunction = "on"
+  addr = "0x8"
 
 [netdev "hostnet0"]
   type = "tap"
@@ -1432,16 +1462,16 @@ func TestCreateDomConfig(t *testing.T) {
   driver = "e1000"
   netdev = "hostnet0"
   mac = "6a:00:03:61:a6:90"
-  bus = "pci.7"
+  bus = "pci.8"
   addr = "0x0"
 
-[device "pci.8"]
+[device "pci.9"]
   driver = "pcie-root-port"
-  port = "18"
-  chassis = "8"
+  port = "19"
+  chassis = "9"
   bus = "pcie.0"
   multifunction = "on"
-  addr = "0x8"
+  addr = "0x9"
 
 [netdev "hostnet1"]
   type = "tap"
@@ -1454,21 +1484,21 @@ func TestCreateDomConfig(t *testing.T) {
   driver = "e1000"
   netdev = "hostnet1"
   mac = "6a:00:03:61:a6:91"
-  bus = "pci.8"
+  bus = "pci.9"
   addr = "0x0"
 
-[device "pci.9"]
+[device "pci.10"]
   driver = "pcie-root-port"
-  port = "19"
-  chassis = "9"
+  port = "110"
+  chassis = "10"
   bus = "pcie.0"
   multifunction = "on"
-  addr = "0x9"
+  addr = "0xa"
 
 [device]
   driver = "vfio-pci"
   host = "03:00.0"
-  bus = "pci.9"
+  bus = "pci.10"
   addr = "0x0"
 [chardev "charserial-usr0"]
   backend = "tty"
@@ -1707,13 +1737,27 @@ func TestCreateDomConfig(t *testing.T) {
   driver = "ide-cd"
   bus = "ide.0"
 
+
 [device "pci.7"]
   driver = "pcie-root-port"
   port = "17"
   chassis = "7"
   bus = "pcie.0"
-  multifunction = "on"
   addr = "0x7"
+
+[device "vhost-disk4"]
+  driver = "vhost-scsi-pci"
+  wwpn = "naa.000000000000000a"
+  bus = "pci.7"
+  addr = "0x0"
+
+[device "pci.8"]
+  driver = "pcie-root-port"
+  port = "18"
+  chassis = "8"
+  bus = "pcie.0"
+  multifunction = "on"
+  addr = "0x8"
 
 [netdev "hostnet0"]
   type = "tap"
@@ -1726,16 +1770,16 @@ func TestCreateDomConfig(t *testing.T) {
   driver = "virtio-net-pci"
   netdev = "hostnet0"
   mac = "6a:00:03:61:a6:90"
-  bus = "pci.7"
+  bus = "pci.8"
   addr = "0x0"
 
-[device "pci.8"]
+[device "pci.9"]
   driver = "pcie-root-port"
-  port = "18"
-  chassis = "8"
+  port = "19"
+  chassis = "9"
   bus = "pcie.0"
   multifunction = "on"
-  addr = "0x8"
+  addr = "0x9"
 
 [netdev "hostnet1"]
   type = "tap"
@@ -1748,22 +1792,9 @@ func TestCreateDomConfig(t *testing.T) {
   driver = "virtio-net-pci"
   netdev = "hostnet1"
   mac = "6a:00:03:61:a6:91"
-  bus = "pci.8"
-  addr = "0x0"
-
-[device "pci.9"]
-  driver = "pcie-root-port"
-  port = "19"
-  chassis = "9"
-  bus = "pcie.0"
-  multifunction = "on"
-  addr = "0x9"
-
-[device]
-  driver = "vfio-pci"
-  host = "03:00.0"
   bus = "pci.9"
   addr = "0x0"
+
 [device "pci.10"]
   driver = "pcie-root-port"
   port = "110"
@@ -1774,8 +1805,21 @@ func TestCreateDomConfig(t *testing.T) {
 
 [device]
   driver = "vfio-pci"
-  host = "04:00.0"
+  host = "03:00.0"
   bus = "pci.10"
+  addr = "0x0"
+[device "pci.11"]
+  driver = "pcie-root-port"
+  port = "111"
+  chassis = "11"
+  bus = "pcie.0"
+  multifunction = "on"
+  addr = "0xb"
+
+[device]
+  driver = "vfio-pci"
+  host = "04:00.0"
+  bus = "pci.11"
   addr = "0x0"
 [chardev "charserial-usr0"]
   backend = "tty"
@@ -1978,13 +2022,27 @@ func TestCreateDomConfig(t *testing.T) {
   driver = "usb-storage"
 
 
+
 [device "pci.7"]
   driver = "pcie-root-port"
   port = "17"
   chassis = "7"
   bus = "pcie.0"
-  multifunction = "on"
   addr = "0x7"
+
+[device "vhost-disk4"]
+  driver = "vhost-scsi-pci"
+  wwpn = "naa.000000000000000a"
+  bus = "pci.7"
+  addr = "0x0"
+
+[device "pci.8"]
+  driver = "pcie-root-port"
+  port = "18"
+  chassis = "8"
+  bus = "pcie.0"
+  multifunction = "on"
+  addr = "0x8"
 
 [netdev "hostnet0"]
   type = "tap"
@@ -1997,16 +2055,16 @@ func TestCreateDomConfig(t *testing.T) {
   driver = "virtio-net-pci"
   netdev = "hostnet0"
   mac = "6a:00:03:61:a6:90"
-  bus = "pci.7"
+  bus = "pci.8"
   addr = "0x0"
 
-[device "pci.8"]
+[device "pci.9"]
   driver = "pcie-root-port"
-  port = "18"
-  chassis = "8"
+  port = "19"
+  chassis = "9"
   bus = "pcie.0"
   multifunction = "on"
-  addr = "0x8"
+  addr = "0x9"
 
 [netdev "hostnet1"]
   type = "tap"
@@ -2019,21 +2077,21 @@ func TestCreateDomConfig(t *testing.T) {
   driver = "virtio-net-pci"
   netdev = "hostnet1"
   mac = "6a:00:03:61:a6:91"
-  bus = "pci.8"
+  bus = "pci.9"
   addr = "0x0"
 
-[device "pci.9"]
+[device "pci.10"]
   driver = "pcie-root-port"
-  port = "19"
-  chassis = "9"
+  port = "110"
+  chassis = "10"
   bus = "pcie.0"
   multifunction = "on"
-  addr = "0x9"
+  addr = "0xa"
 
 [device]
   driver = "vfio-pci"
   host = "03:00.0"
-  bus = "pci.9"
+  bus = "pci.10"
   addr = "0x0"
 [chardev "charserial-usr0"]
   backend = "tty"
