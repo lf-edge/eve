@@ -8,9 +8,6 @@ package devicenetwork
 
 import (
 	"fmt"
-	"github.com/lf-edge/eve/pkg/pillar/agentlog"
-	"github.com/lf-edge/eve/pkg/pillar/base"
-	"github.com/lf-edge/eve/pkg/pillar/types"
 	"io/ioutil"
 	"net"
 	"os"
@@ -20,6 +17,10 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/lf-edge/eve/pkg/pillar/agentlog"
+	"github.com/lf-edge/eve/pkg/pillar/base"
+	"github.com/lf-edge/eve/pkg/pillar/types"
 )
 
 // UpdateDhcpClient starts/modifies/deletes dhcpcd per interface
@@ -87,7 +88,7 @@ func doDhcpClientActivate(log *base.LogObject, nuc types.NetworkPortConfig) {
 	case types.DT_CLIENT:
 		for dhcpcdExists(log, nuc.IfName) {
 			log.Warnf("dhcpcd %s already exists", nuc.IfName)
-			time.Sleep(10 * time.Second)
+			time.Sleep(1 * time.Second)
 		}
 		log.Functionf("dhcpcd %s not running", nuc.IfName)
 		extras := []string{"-f", "/dhcpcd.conf", "--noipv4ll", "-b", "-t", "0"}
@@ -109,7 +110,7 @@ func doDhcpClientActivate(log *base.LogObject, nuc types.NetworkPortConfig) {
 				failed = true
 				break
 			}
-			time.Sleep(10 * time.Second)
+			time.Sleep(1 * time.Second)
 		}
 		if !failed {
 			log.Functionf("dhcpcd %s is running", nuc.IfName)
@@ -130,7 +131,7 @@ func doDhcpClientActivate(log *base.LogObject, nuc types.NetworkPortConfig) {
 		}
 		for dhcpcdExists(log, nuc.IfName) {
 			log.Warnf("dhcpcd %s already exists", nuc.IfName)
-			time.Sleep(10 * time.Second)
+			time.Sleep(1 * time.Second)
 		}
 		log.Functionf("dhcpcd %s not running", nuc.IfName)
 		args := []string{fmt.Sprintf("ip_address=%s", nuc.AddrSubnet)}
@@ -173,7 +174,7 @@ func doDhcpClientActivate(log *base.LogObject, nuc types.NetworkPortConfig) {
 				failed = true
 				break
 			}
-			time.Sleep(10 * time.Second)
+			time.Sleep(1 * time.Second)
 		}
 		if !failed {
 			log.Functionf("dhcpcd %s is running", nuc.IfName)
@@ -206,7 +207,7 @@ func doDhcpClientInactivate(log *base.LogObject, nuc types.NetworkPortConfig) {
 		}
 		for dhcpcdExists(log, nuc.IfName) {
 			log.Warnf("dhcpcd %s still running", nuc.IfName)
-			time.Sleep(10 * time.Second)
+			time.Sleep(1 * time.Second)
 		}
 		log.Functionf("dhcpcd %s gone", nuc.IfName)
 	default:

@@ -15,7 +15,7 @@ import (
 	"github.com/eriknordmark/ipinfo"
 	"github.com/google/go-cmp/cmp"
 	"github.com/lf-edge/eve/pkg/pillar/base"
-	"github.com/satori/go.uuid"
+	uuid "github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
 	"github.com/vishvananda/netlink"
 )
@@ -760,8 +760,10 @@ func (config DevicePortConfig) IsDPCTestable() bool {
 		return true
 	}
 	// convert time difference in nano seconds to seconds
+	// make this 5 minutes, have seen multiple intf/ipv6 addresses taking long time
+	// the the test table list
 	timeDiff := time.Since(config.LastFailed) / time.Second
-	return (timeDiff > 60)
+	return (timeDiff > 300)
 }
 
 // IsDPCUntested - returns true if this is something we might want to test now.
