@@ -362,6 +362,7 @@ type DiskConfig struct {
 	Format       zconfig.Format
 	MountDir     string
 	DisplayName  string
+	WWN          string
 }
 
 type DiskStatus struct {
@@ -373,6 +374,7 @@ type DiskStatus struct {
 	DisplayName  string
 	Devtype      string // XXX used internally by hypervisor; deprecate?
 	Vdev         string // Allocated
+	WWN          string
 }
 
 // DomainMetric carries CPU and memory usage. UUID=devUUID for the dom0/host metrics overhead

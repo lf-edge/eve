@@ -149,6 +149,7 @@ func updateVolumeRefStatus(ctx *volumemgrContext, vs *types.VolumeStatus) {
 				status.ReadOnly = vs.ReadOnly
 				status.DisplayName = vs.DisplayName
 				status.MaxVolSize = vs.MaxVolSize
+				status.WWN = vs.WWN
 				if vs.HasError() {
 					status.SetErrorWithSource(vs.Error, types.VolumeStatus{}, vs.ErrorTime)
 				} else if status.IsErrorSource(types.VolumeStatus{}) {
@@ -168,6 +169,7 @@ func updateVolumeRefStatus(ctx *volumemgrContext, vs *types.VolumeStatus) {
 				ReadOnly:           vs.ReadOnly,
 				DisplayName:        vs.DisplayName,
 				MaxVolSize:         vs.MaxVolSize,
+				WWN:                vs.WWN,
 			}
 			if vs.HasError() {
 				status.SetErrorWithSource(vs.Error, types.VolumeStatus{}, vs.ErrorTime)

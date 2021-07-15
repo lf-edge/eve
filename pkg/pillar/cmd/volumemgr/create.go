@@ -8,10 +8,12 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/lf-edge/edge-containers/pkg/registry"
 	"github.com/lf-edge/eve/pkg/pillar/cas"
 	"github.com/lf-edge/eve/pkg/pillar/diskmetrics"
+	"github.com/lf-edge/eve/pkg/pillar/tgt"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/zfs"
 )
@@ -202,6 +204,16 @@ func destroyVdiskVolume(ctx *volumemgrContext, status types.VolumeStatus) (bool,
 		return created, "", errors.New(errStr)
 	}
 	if info.Mode()&os.ModeDevice != 0 {
+		if err := tgt.VHostDeleteIBlock(status.Key(), status.WWN); err != nil {
+			errStr := fmt.Sprintf("Error deleting vhost for %s, error=%v",
+				status.Key(), err)
+			log.Error(errStr)
+		}
+		if err := tgt.TargetDeleteIBlock(status.Key()); err != nil {
+			errStr := fmt.Sprintf("Error deleting target for %s, error=%v",
+				status.Key(), err)
+			log.Error(errStr)
+		}
 		//Assume this is zfs device
 		zVolName := status.ZVolName(types.VolumeZFSPool)
 		if stdoutStderr, err := zfs.DestroyDataset(log, zVolName); err != nil {
@@ -269,4 +281,33 @@ func maybeResizeDisk(diskfile string, maxsizebytes uint64) error {
 		return diskmetrics.ResizeImg(log, diskfile, size)
 	}
 	return nil
+}
+
+//createTargetVhost creates target and vhost for device using information from VolumeStatus
+//and returns wwn to use for mounting
+func createTargetVhost(device string, status *types.VolumeStatus) (string, error) {
+	defer func(start time.Time) {
+		log.Functionf("createTargetVhost ended after %s", time.Since(start))
+	}(time.Now())
+	serial := tgt.GenerateNaaSerial()
+	wwn := fmt.Sprintf("naa.%s", serial)
+	err := tgt.TargetCreateIBlock(device, status.Key(), serial)
+	if err != nil {
+		return "", fmt.Errorf("TargetCreateFileIODev(%s, %s, %s): %v",
+			device, status.Key(), serial, err)
+	}
+	if !tgt.CheckVHostIBlock(status.Key()) {
+		err = tgt.VHostCreateIBlock(status.Key(), wwn)
+		if err != nil {
+			errString := fmt.Sprintf("VHostCreateIBlock: %v", err)
+			err = tgt.VHostDeleteIBlock(status.Key(), wwn)
+			if err != nil {
+				errString = fmt.Sprintf("%s; VHostDeleteIBlock: %v",
+					errString, err)
+			}
+			return "", fmt.Errorf("VHostCreateIBlock(%s, %s): %s",
+				status.Key(), wwn, errString)
+		}
+	}
+	return wwn, nil
 }

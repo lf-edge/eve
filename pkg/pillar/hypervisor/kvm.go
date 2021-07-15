@@ -244,7 +244,7 @@ const qemuDiskTemplate = `
   chassis = "{{.PCIId}}"
   bus = "pcie.0"
   addr = "{{printf "0x%x" .PCIId}}"
-
+{{if eq .WWN ""}}
 [drive "drive-virtio-disk{{.DiskID}}"]
   file = "{{.FileLocation}}"
   format = "{{.Format | Fmt}}"
@@ -268,6 +268,13 @@ const qemuDiskTemplate = `
   addr = "0x0"
 {{- end}}
   drive = "drive-virtio-disk{{.DiskID}}"
+{{- else}}
+[device "vhost-disk{{.DiskID}}"]
+  driver = "vhost-scsi-pci"
+  wwpn = "{{.WWN}}"
+  bus = "pci.{{.PCIId}}"
+  addr = "0x0"
+{{- end}}
 {{end}}`
 
 const qemuNetTemplate = `
