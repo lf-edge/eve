@@ -34,6 +34,9 @@ const MAXACEID = 65535
 // MINACEID : IDs till 100 are reserverd for internal usage.
 const MINACEID = 101
 
+// Dummy interface used as a blackhole for packets marked for dropping by ACLs.
+const dummyIntfName = "flow-mon-dummy"
+
 // Connection mark is used to remember for a given flow to which application it belongs
 // and which ACE was applied.
 // The 32 bits of a connmark are used as follows:
@@ -1745,7 +1748,6 @@ func networkInstanceBridgeRules(aclArgs types.AppNetworkACLArgs) types.IPTablesR
 
 func createFlowMonDummyInterface() {
 	// Check if our dummy interface already exits.
-	dummyIntfName := "flow-mon-dummy"
 	link, err := netlink.LinkByName(dummyIntfName)
 	if link != nil {
 		log.Functionf("createFlowMonDummyInterface: %s already present", dummyIntfName)
@@ -1946,5 +1948,19 @@ func appConfigContainerStatsACL(appIPAddr net.IP, isRemove bool) {
 		log.Errorf("appCheckContainerStatsACL: iptableCmd err %v", err)
 	} else {
 		log.Functionf("appCheckContainerStatsACL: iptableCmd %s for %s", action, appIPAddr.String())
+	}
+}
+
+// Install iptables rule to ensure that packets marked with the drop action are indeed dropped and never
+// sent out via downlink or uplink interfaces. Whereas routed packets marked by drop ACEs are blackholed into a dummy
+// interface using a high-priority IP rule, packets which are only bridged and not routed by EVE escape this IP rule
+// and would otherwise continue in their path even if marked for dropping.
+func dropEscapedFlows() {
+	err := iptables.IptableCmd(log, "-t", "mangle", "-I", "POSTROUTING",
+		"--match", "connmark", "--mark", fmt.Sprintf("%d/%d", aceDropAction, aceActionMask),
+		"!", "-o", dummyIntfName,
+		"-j", "DROP")
+	if err != nil {
+		log.Errorf("dropEscapedFlows: iptableCmd err %v", err)
 	}
 }
