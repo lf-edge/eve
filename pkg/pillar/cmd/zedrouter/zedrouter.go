@@ -718,6 +718,7 @@ func handleInit(runDirname string) {
 
 	// Setup initial iptables rules
 	iptables.IptablesInit(log)
+	dropEscapedFlows()
 
 	// ipsets which are independent of config
 	createDefaultIpset()
