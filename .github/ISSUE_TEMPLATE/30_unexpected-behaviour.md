@@ -1,0 +1,32 @@
+---
+name: Unexpected behaviour
+about: Some feature is working in non-obvious way
+title: ''
+labels: unexpected behaviour
+assignees: ''
+
+---
+
+(you don't have to strictly follow this form)
+
+#### Describe the unexpected behaviour
+
+A clear and concise description of what works not as it is supposed to.
+
+#### How to reproduce
+
+* Which eve version to use
+* Non-default settings, if any
+* Architecture[arm,x86], OS[Linux, MacOS]
+
+#### Expected behavior
+
+A clear and concise description of what you expected to happen.
+
+#### Error message and/or stacktrace
+
+If applicable, add screenshots to help explain your problem.
+
+#### Additional context
+
+Add any other context about the problem here.
