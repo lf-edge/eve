@@ -57,19 +57,22 @@ func getVolumeFilePath(ctx *volumemgrContext, status types.VolumeStatus) (string
 }
 
 func prepareZVol(ctx *volumemgrContext, status types.VolumeStatus) error {
-	pathToFile, err := getVolumeFilePath(ctx, status)
-	if err != nil {
-		errStr := fmt.Sprintf("Error obtaining file for zvol at volume %s, error=%v",
-			status.Key(), err)
-		log.Error(errStr)
-		return errors.New(errStr)
-	}
-	size, _, err := checkResizeDisk(pathToFile, status.MaxVolSize)
-	if err != nil {
-		errStr := fmt.Sprintf("Error creating zfs zvol at checkResizeDisk %s, error=%v",
-			pathToFile, err)
-		log.Error(errStr)
-		return errors.New(errStr)
+	size := status.MaxVolSize
+	if status.ReferenceName != "" {
+		pathToFile, err := getVolumeFilePath(ctx, status)
+		if err != nil {
+			errStr := fmt.Sprintf("Error obtaining file for zvol at volume %s, error=%v",
+				status.Key(), err)
+			log.Error(errStr)
+			return errors.New(errStr)
+		}
+		size, _, err = checkResizeDisk(pathToFile, status.MaxVolSize)
+		if err != nil {
+			errStr := fmt.Sprintf("Error creating zfs zvol at checkResizeDisk %s, error=%v",
+				pathToFile, err)
+			log.Error(errStr)
+			return errors.New(errStr)
+		}
 	}
 	zVolName := status.ZVolName(types.VolumeZFSPool)
 	if stdoutStderr, err := zfs.CreateVolumeDataset(log, zVolName, size, "on"); err != nil {
@@ -82,7 +85,7 @@ func prepareZVol(ctx *volumemgrContext, status types.VolumeStatus) error {
 }
 
 func prepareVolume(ctx *volumemgrContext, status types.VolumeStatus) error {
-	log.Errorf("prepareVolume: %s", status.Key())
+	log.Tracef("prepareVolume: %s", status.Key())
 	if ctx.persistType != types.PersistZFS || status.IsContainer() {
 		return nil
 	}
