@@ -116,6 +116,11 @@ func DeleteWorkCreate(ctx *volumemgrContext, status *types.VolumeStatus) {
 	ctx.worker.Cancel(status.Key())
 }
 
+// DeleteWorkPrepare is called by user when work is done
+func DeleteWorkPrepare(ctx *volumemgrContext, status *types.VolumeStatus) {
+	ctx.worker.Cancel(status.Key())
+}
+
 // DeleteWorkLoad is called by user when work is done
 func DeleteWorkLoad(ctx *volumemgrContext, key string) {
 	ctx.worker.Cancel(key)

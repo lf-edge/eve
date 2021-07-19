@@ -417,13 +417,27 @@ func doUpdateVol(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool)
 	changed := false
 	switch status.VolumeContentOriginType {
 	case zconfig.VolumeContentOriginType_VCOT_BLANK:
-		// XXX TBD
-		errStr := fmt.Sprintf("doUpdateVol(%s) name %s: Volume content origin type %v is not implemeted yet.",
-			status.Key(), status.DisplayName, status.VolumeContentOriginType)
-		status.SetErrorWithSource(errStr,
-			types.VolumeStatus{}, time.Now())
-		changed = true
-		return changed, false
+		if status.MaxVolSize == 0 {
+			errorStr := fmt.Sprintf("doUpdateVol (%s): Cannot create volume with 0 size",
+				status.Key())
+			log.Error(errorStr)
+			status.SetErrorWithSource(errorStr,
+				types.VolumeStatus{}, time.Now())
+			changed = true
+			return changed, false
+		}
+		if status.State < types.CREATING_VOLUME &&
+			status.SubState == types.VolumeSubStateInitial {
+			status.State = types.CREATING_VOLUME
+			status.ReferenceName = "" //set empty for blank volume
+			status.ContentFormat = blankVolumeFormat
+			status.TotalSize = int64(status.MaxVolSize)
+			status.CurrentSize = int64(status.MaxVolSize)
+			changed = true
+			// Asynch preparation; ensure we have requested it
+			AddWorkPrepare(ctx, status)
+			return changed, false
+		}
 	case zconfig.VolumeContentOriginType_VCOT_DOWNLOAD:
 		ctStatus := lookupContentTreeStatusAny(ctx, status.ContentID.String())
 		if ctStatus == nil {
@@ -486,108 +500,12 @@ func doUpdateVol(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool)
 			changed = true
 			// Asynch preparation; ensure we have requested it
 			AddWorkPrepare(ctx, status)
+			return changed, false
 		}
 		if status.IsErrorSource(types.ContentTreeStatus{}) {
 			log.Functionf("doUpdate: Clearing volume error %s", status.Error)
 			status.ClearErrorWithSource()
 			changed = true
-		}
-		if status.State == types.CREATING_VOLUME && status.SubState == types.VolumeSubStateInitial {
-			vr := popVolumePrepareResult(ctx, status.Key())
-			if vr != nil {
-				log.Functionf("doUpdateVol: VolumePrepareResult(%s)", status.Key())
-				if vr.Error != nil {
-					log.Errorf("doUpdateVol: Error received from the volume prepare worker %v",
-						vr.Error)
-					status.SetErrorWithSource(vr.Error.Error(),
-						types.VolumeStatus{}, vr.ErrorTime)
-					changed = true
-					return changed, false
-				} else if status.IsErrorSource(types.VolumeStatus{}) {
-					log.Functionf("doUpdateVol: Clearing volume error %s", status.Error)
-					status.ClearErrorWithSource()
-					changed = true
-				}
-				status.SubState = types.VolumeSubStatePreparing
-				changed = true
-			} else {
-				log.Functionf("doUpdateVol: VolumePrepareResult(%s) not found", status.Key())
-			}
-		}
-		if status.State == types.CREATING_VOLUME && status.SubState == types.VolumeSubStatePreparing {
-			if ctx.persistType == types.PersistZFS && !status.IsContainer() {
-				zVolStatus := lookupZVolStatusByDataset(ctx, status.ZVolName(types.VolumeZFSPool))
-				if zVolStatus != nil {
-					status.SubState = types.VolumeSubStatePrepareDone
-					changed = true
-				}
-			} else {
-				status.SubState = types.VolumeSubStatePrepareDone
-				changed = true
-			}
-			if status.SubState == types.VolumeSubStatePrepareDone {
-				// Asynch creation; ensure we have requested it
-				AddWorkCreate(ctx, status)
-			}
-		}
-		if status.State == types.CREATING_VOLUME && status.SubState == types.VolumeSubStatePrepareDone {
-			vr := popVolumeWorkResult(ctx, status.Key())
-			if vr != nil {
-				log.Functionf("doUpdateVol: VolumeWorkResult(%s) location %s, created %t",
-					status.Key(), vr.FileLocation, vr.VolumeCreated)
-				if vr.VolumeCreated && status.SubState == types.VolumeSubStatePrepareDone {
-					log.Functionf("From vr set VolumeCreated to %s for %s",
-						vr.FileLocation, status.VolumeID)
-					status.SubState = types.VolumeSubStateCreated
-					status.CreateTime = vr.CreateTime
-					changed = true
-				}
-				if status.FileLocation != vr.FileLocation && vr.Error == nil {
-					log.Functionf("doUpdateContentTree: From vr set FileLocation to %s for %s",
-						vr.FileLocation, status.VolumeID)
-					status.FileLocation = vr.FileLocation
-					changed = true
-				}
-				if vr.Error != nil {
-					log.Errorf("doUpdate: Error recieved from the volume worker %v",
-						vr.Error)
-					status.SetErrorWithSource(vr.Error.Error(),
-						types.VolumeStatus{}, vr.ErrorTime)
-					changed = true
-					return changed, false
-				} else if status.IsErrorSource(types.VolumeStatus{}) {
-					log.Functionf("doUpdateContentTree: Clearing volume error %s", status.Error)
-					status.ClearErrorWithSource()
-					changed = true
-				}
-			} else {
-				log.Functionf("doUpdateVol: VolumeWorkResult(%s) not found", status.Key())
-			}
-		}
-		if status.State == types.CREATING_VOLUME && status.SubState == types.VolumeSubStateCreated {
-			if !status.HasError() {
-				status.State = types.CREATED_VOLUME
-				status.CreateTime = time.Now()
-			}
-			changed = true
-			// Work is done
-			DeleteWorkCreate(ctx, status)
-			if status.MaxVolSize == 0 {
-				_, maxVolSize, _, _, err := utils.GetVolumeSize(log, status.FileLocation)
-				if err != nil {
-					log.Error(err)
-				} else if maxVolSize != status.MaxVolSize {
-					log.Functionf("doUpdateVol: MaxVolSize update from  %d to %d for %s",
-
-						status.MaxVolSize, maxVolSize,
-						status.FileLocation)
-					status.MaxVolSize = maxVolSize
-					changed = true
-				}
-			}
-			persistFsType := vault.ReadPersistType()
-			updateStatusByPersistType(status, persistFsType)
-			return changed, true
 		}
 	default:
 		// Unsupported volume content origin type
@@ -597,6 +515,105 @@ func doUpdateVol(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool)
 			types.VolumeStatus{}, time.Now())
 		changed = true
 		return changed, false
+	}
+	if status.State == types.CREATING_VOLUME && status.SubState == types.VolumeSubStateInitial {
+		vr := popVolumePrepareResult(ctx, status.Key())
+		if vr != nil {
+			log.Functionf("doUpdateVol: VolumePrepareResult(%s)", status.Key())
+			if vr.Error != nil {
+				log.Errorf("doUpdateVol: Error received from the volume prepare worker %v",
+					vr.Error)
+				status.SetErrorWithSource(vr.Error.Error(),
+					types.VolumeStatus{}, vr.ErrorTime)
+				changed = true
+				return changed, false
+			} else if status.IsErrorSource(types.VolumeStatus{}) {
+				log.Functionf("doUpdateVol: Clearing volume error %s", status.Error)
+				status.ClearErrorWithSource()
+				changed = true
+			}
+			status.SubState = types.VolumeSubStatePreparing
+			changed = true
+		} else {
+			log.Functionf("doUpdateVol: VolumePrepareResult(%s) not found", status.Key())
+		}
+	}
+	if status.State == types.CREATING_VOLUME && status.SubState == types.VolumeSubStatePreparing {
+		if ctx.persistType == types.PersistZFS && !status.IsContainer() {
+			zVolStatus := lookupZVolStatusByDataset(ctx, status.ZVolName(types.VolumeZFSPool))
+			if zVolStatus != nil {
+				status.SubState = types.VolumeSubStatePrepareDone
+				changed = true
+			}
+		} else {
+			status.SubState = types.VolumeSubStatePrepareDone
+			changed = true
+		}
+		if status.SubState == types.VolumeSubStatePrepareDone {
+			//prepare work done
+			DeleteWorkPrepare(ctx, status)
+			// Asynch creation; ensure we have requested it
+			AddWorkCreate(ctx, status)
+			return changed, false
+		}
+	}
+	if status.State == types.CREATING_VOLUME && status.SubState == types.VolumeSubStatePrepareDone {
+		vr := popVolumeWorkResult(ctx, status.Key())
+		if vr != nil {
+			log.Functionf("doUpdateVol: VolumeWorkResult(%s) location %s, created %t",
+				status.Key(), vr.FileLocation, vr.VolumeCreated)
+			if vr.VolumeCreated && status.SubState == types.VolumeSubStatePrepareDone {
+				log.Functionf("From vr set VolumeCreated to %s for %s",
+					vr.FileLocation, status.VolumeID)
+				status.SubState = types.VolumeSubStateCreated
+				status.CreateTime = vr.CreateTime
+				changed = true
+			}
+			if status.FileLocation != vr.FileLocation && vr.Error == nil {
+				log.Functionf("doUpdateContentTree: From vr set FileLocation to %s for %s",
+					vr.FileLocation, status.VolumeID)
+				status.FileLocation = vr.FileLocation
+				changed = true
+			}
+			if vr.Error != nil {
+				log.Errorf("doUpdate: Error recieved from the volume worker %v",
+					vr.Error)
+				status.SetErrorWithSource(vr.Error.Error(),
+					types.VolumeStatus{}, vr.ErrorTime)
+				changed = true
+				return changed, false
+			} else if status.IsErrorSource(types.VolumeStatus{}) {
+				log.Functionf("doUpdateContentTree: Clearing volume error %s", status.Error)
+				status.ClearErrorWithSource()
+				changed = true
+			}
+		} else {
+			log.Functionf("doUpdateVol: VolumeWorkResult(%s) not found", status.Key())
+		}
+	}
+	if status.State == types.CREATING_VOLUME && status.SubState == types.VolumeSubStateCreated {
+		if !status.HasError() {
+			status.State = types.CREATED_VOLUME
+			status.CreateTime = time.Now()
+		}
+		changed = true
+		// Work is done
+		DeleteWorkCreate(ctx, status)
+		if status.MaxVolSize == 0 {
+			_, maxVolSize, _, _, err := utils.GetVolumeSize(log, status.FileLocation)
+			if err != nil {
+				log.Error(err)
+			} else if maxVolSize != status.MaxVolSize {
+				log.Functionf("doUpdateVol: MaxVolSize update from  %d to %d for %s",
+
+					status.MaxVolSize, maxVolSize,
+					status.FileLocation)
+				status.MaxVolSize = maxVolSize
+				changed = true
+			}
+		}
+		persistFsType := vault.ReadPersistType()
+		updateStatusByPersistType(status, persistFsType)
 	}
 	return changed, false
 }
