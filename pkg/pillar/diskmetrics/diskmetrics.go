@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strconv"
 
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/types"
@@ -47,7 +48,19 @@ func ResizeImg(log *base.LogObject, diskfile string, newsize uint64) error {
 		return err
 	}
 	output, err := base.Exec(log, "/usr/bin/qemu-img", "resize", diskfile,
-		fmt.Sprintf("%d", newsize)).CombinedOutput()
+		strconv.FormatUint(newsize, 10)).CombinedOutput()
+	if err != nil {
+		errStr := fmt.Sprintf("qemu-img failed: %s, %s\n",
+			err, output)
+		return errors.New(errStr)
+	}
+	return nil
+}
+
+//CreateImg creates empty diskfile with defined format and size
+func CreateImg(log *base.LogObject, diskfile string, format string, size uint64) error {
+	output, err := base.Exec(log, "/usr/bin/qemu-img", "create", "-f", format, diskfile,
+		strconv.FormatUint(size, 10)).CombinedOutput()
 	if err != nil {
 		errStr := fmt.Sprintf("qemu-img failed: %s, %s\n",
 			err, output)

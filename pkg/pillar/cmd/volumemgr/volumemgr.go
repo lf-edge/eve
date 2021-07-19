@@ -36,6 +36,8 @@ const (
 	errorTime     = 3 * time.Minute
 	warningTime   = 40 * time.Second
 	casClientType = "containerd"
+
+	blankVolumeFormat = zconfig.Format_RAW // format of blank volume TODO: make configurable
 )
 
 // Set from Makefile
