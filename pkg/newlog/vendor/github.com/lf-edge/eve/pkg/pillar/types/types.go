@@ -267,3 +267,10 @@ func FormatTriState(state TriState) string {
 	}
 	return ""
 }
+
+//UEvent stores information about uevent comes from kernel
+type UEvent struct {
+	Action string
+	Obj    string
+	Env    map[string]string
+}

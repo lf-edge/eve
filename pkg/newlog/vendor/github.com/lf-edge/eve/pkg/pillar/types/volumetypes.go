@@ -95,6 +95,17 @@ func (config VolumeConfig) LogKey() string {
 	return string(base.VolumeConfigLogType) + "-" + config.Key()
 }
 
+//volumeSubState is type for defining additional statuses for VolumeStatus
+type volumeSubState uint8
+
+// Enum of volumeSubState variants
+const (
+	VolumeSubStateInitial volumeSubState = iota
+	VolumeSubStatePreparing
+	VolumeSubStatePrepareDone
+	VolumeSubStateCreated
+)
+
 // VolumeStatus is response from volumemgr about status of volumes
 type VolumeStatus struct {
 	VolumeID                uuid.UUID
@@ -106,13 +117,13 @@ type VolumeStatus struct {
 	VolumeDir               string
 	DisplayName             string
 	State                   SwState
+	SubState                volumeSubState
 	RefCount                uint
 	LastRefCountChangeTime  time.Time
 	Progress                uint   // In percent i.e., 0-100
 	TotalSize               int64  // expected size as reported by the downloader, if any
 	CurrentSize             int64  // current total downloaded size as reported by the downloader
 	FileLocation            string // Location of filestystem
-	VolumeCreated           bool   // Done aka Activated
 	CreateTime              time.Time
 	ContentFormat           zconfig.Format
 	LastUse                 time.Time
