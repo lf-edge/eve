@@ -109,7 +109,7 @@ if P3=$(findfs PARTLABEL=P3) && [ -n "$P3" ]; then
     fi
 
     if [ "$P3_FS_TYPE" = zfs_member ]; then
-        if ! chroot /hostfs zpool import -d "$P3" persist; then
+        if ! chroot /hostfs zpool import -f persist; then
             echo "$(date -Ins -u) Cannot import persist pool on P3 partition $P3 of type $P3_FS_TYPE, recreating it as $P3_FS_TYPE_DEFAULT"
             INIT_FS=1
             P3_FS_TYPE="$P3_FS_TYPE_DEFAULT"
@@ -157,7 +157,15 @@ if P3=$(findfs PARTLABEL=P3) && [ -n "$P3" ]; then
     # shellcheck disable=SC2046
     rmmod $(lsmod | grep zfs | awk '{print $1;}') || :
 else
+  #in case of no P3 we may have EVE persist on another disks
+  modprobe zfs
+  if chroot /hostfs zpool import -f persist; then
+    echo "zfs" > /run/eve.persist_type
+  else
+    # shellcheck disable=SC2046
+    rmmod $(lsmod | grep zfs | awk '{print $1;}') || :
     echo "$(date -Ins -u) No separate $PERSISTDIR partition"
+  fi
 fi
 
 UUID_SYMLINK_PATH="/dev/disk/by-uuid"
