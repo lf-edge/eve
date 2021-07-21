@@ -92,7 +92,6 @@ func (ep *AwsTransportMethod) WithSrcIPAndHTTPSCerts(localAddr net.IP, certs [][
 	return fmt.Errorf("not supported")
 }
 
-
 // bind to specific interface for this connection
 func (ep *AwsTransportMethod) WithBindIntf(intf string) error {
 	localAddr := getSrcIpFromInterface(intf)
