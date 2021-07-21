@@ -348,6 +348,7 @@ func handleUploadMetricsImp(ctxArg interface{}, key string, statusArg interface{
 	status := statusArg.(types.NewlogMetrics)
 	logmetrics.TotalBytesUpload = status.TotalBytesUpload
 	logmetrics.Num4xxResponses = status.Num4xxResponses
+	logmetrics.NumTooManyRequest = status.NumTooManyRequest
 	logmetrics.Latency.MinUploadMsec = status.Latency.MinUploadMsec
 	logmetrics.Latency.MaxUploadMsec = status.Latency.MaxUploadMsec
 	logmetrics.Latency.AvgUploadMsec = status.Latency.AvgUploadMsec
@@ -363,6 +364,7 @@ func handleUploadMetricsImp(ctxArg interface{}, key string, statusArg interface{
 	// loguplader signal to newlogd on upload fail status
 	logmetrics.FailedToSend = status.FailedToSend
 	logmetrics.FailSentStartTime = status.FailSentStartTime
+	logmetrics.LastTooManyReqTime = status.LastTooManyReqTime
 
 	logmetrics.DevMetrics.NumGZipFilesSent = status.DevMetrics.NumGZipFilesSent
 	logmetrics.DevMetrics.NumGzipFileInDir = status.DevMetrics.NumGzipFileInDir

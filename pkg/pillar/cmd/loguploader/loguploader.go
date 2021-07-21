@@ -42,6 +42,8 @@ const (
 
 	keepSentDir = types.NewlogKeepSentQueueDir
 
+	backoffMaxUploadIntv   = 300
+	backoffMaxTimeout      = 3600 // backoff timeout in one hour
 	defaultUploadIntv      = 90
 	metricsPublishInterval = 300 * time.Second
 	cloudMetricInterval    = 10 * time.Second
@@ -55,6 +57,7 @@ var (
 	deviceNetworkStatus = &types.DeviceNetworkStatus{}
 	debug               bool
 	debugOverride       bool
+	backoffMode         bool
 	logger              *logrus.Logger
 	log                 *base.LogObject
 	newlogsDevURL       string
@@ -82,6 +85,7 @@ type loguploaderContext struct {
 	metricsPub             pubsub.Publication
 	enableFastUpload       bool
 	scheduleTimer          *time.Timer
+	backoffExprTimer       *time.Timer
 }
 
 // Run - an loguploader run
@@ -234,6 +238,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	}
 	loguploaderCtx.scheduleTimer = time.NewTimer(initSched * time.Second)
 
+	loguploaderCtx.backoffExprTimer = time.NewTimer(backoffMaxTimeout * time.Second)
+	loguploaderCtx.backoffExprTimer.Stop()
+
 	// init the upload interface to 2 min
 	loguploaderCtx.metrics.CurrUploadIntvSec = defaultUploadIntv
 	uploadTimer := time.NewTimer(time.Duration(loguploaderCtx.metrics.CurrUploadIntvSec) * time.Second)
@@ -277,6 +284,15 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 			metricsPub.Publish("global", loguploaderCtx.metrics)
 			log.Tracef("Published newlog upload metrics at %s", time.Now().String())
 
+		case <-loguploaderCtx.backoffExprTimer.C:
+			// backoff timer expired. resume the normal upload schedule
+			backoffMode = false
+			if loguploaderCtx.scheduleTimer != nil {
+				loguploaderCtx.scheduleTimer.Stop()
+			}
+			log.Tracef("upload backoff expired. resume normal")
+			loguploaderCtx.scheduleTimer = time.NewTimer(1 * time.Second)
+
 		case <-loguploaderCtx.scheduleTimer.C:
 
 			// upload interval stays for 20 min once it calculates
@@ -289,7 +305,10 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 			// at device starts, more logging activities, and slower timer. will see longer delays,
 			// as the device moves on, the log upload should catchup quickly
 			var interval int
-			if loguploaderCtx.enableFastUpload {
+			prevBackoff := time.Since(loguploaderCtx.metrics.LastTooManyReqTime) / time.Second
+			if backoffMode {
+				// skip evaluation, it's now controlled by backoff
+			} else if loguploaderCtx.enableFastUpload {
 				loguploaderCtx.metrics.CurrUploadIntvSec = 3
 				uploadTimer.Stop()
 				uploadTimer = time.NewTimer(time.Duration(loguploaderCtx.metrics.CurrUploadIntvSec) * time.Second)
@@ -305,7 +324,8 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 					interval = 30
 				} else if numLeftFiles >= 50 && numLeftFiles < 200 {
 					interval = 15
-				} else if numLeftFiles >= 200 && numLeftFiles < 1000 {
+				} else if numLeftFiles >= 200 && numLeftFiles < 1000 || prevBackoff < 7200 {
+					// if recently had received code 429, keep minimum interval as 8 seconds
 					interval = 8
 				} else {
 					interval = 3
@@ -756,9 +776,28 @@ func sendToCloud(ctx *loguploaderContext, data []byte, iter int, fName string, f
 			log.Tracef("sendToCloud: sent ok, file time %v, latency %d, content %s",
 				filetime, latency, string(contents))
 		} else {
-			if resp.StatusCode == http.StatusServiceUnavailable {
+			if resp.StatusCode == http.StatusServiceUnavailable { // status code 503
 				serviceUnavailable = true
 			} else if isResp4xx(resp.StatusCode) {
+				// status code 429
+				if resp.StatusCode == http.StatusTooManyRequests {
+					ctx.metrics.LastTooManyReqTime = time.Now()
+					ctx.metrics.NumTooManyRequest++
+					backoffMode = true
+					if ctx.backoffExprTimer != nil {
+						ctx.backoffExprTimer.Stop()
+					}
+					ctx.backoffExprTimer = time.NewTimer(backoffMaxTimeout * time.Second)
+					// double the upload interval up to a max
+					currentIntv := ctx.metrics.CurrUploadIntvSec * 2
+					log.Tracef("sendToCloud: backoff num %d, uploadintv was %d sec",
+						ctx.metrics.NumTooManyRequest, ctx.metrics.CurrUploadIntvSec)
+					if currentIntv > backoffMaxUploadIntv {
+						ctx.metrics.CurrUploadIntvSec = backoffMaxUploadIntv
+					} else {
+						ctx.metrics.CurrUploadIntvSec = currentIntv
+					}
+				}
 				handle4xxlogfile(ctx, fName, isApp)
 			}
 			sentFailed = true
