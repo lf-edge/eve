@@ -47,11 +47,13 @@ type cloudDelay struct {
 // NewlogMetrics - Metrics from newlogd and loguploader
 type NewlogMetrics struct {
 	// logupload signal to newlogd
-	FailedToSend      bool      // loguploader failed to send to cloud
-	FailSentStartTime time.Time // failed to send start time
+	FailedToSend       bool      // loguploader failed to send to cloud
+	FailSentStartTime  time.Time // failed to send start time
+	LastTooManyReqTime time.Time // last response of status 429
 	// from loguploader
 	TotalBytesUpload  uint64 // total number of bytes uploaded to cloud
 	Num4xxResponses   uint32 // total 4xx response received
+	NumTooManyRequest uint32 // total 429 response received
 	CurrUploadIntvSec uint32 // current upload interval in second
 	LogfileTimeoutSec uint32 // logfile delay time in second
 	MaxGzipSize       uint32 // largest gzip file size created
