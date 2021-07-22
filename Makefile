@@ -467,7 +467,7 @@ rootfs: $(ROOTFS_IMG) current
 live: $(LIVE_IMG) $(BIOS_IMG) current	; $(QUIET): "$@: Succeeded, LIVE_IMG=$(LIVE_IMG)"
 live-%: $(LIVE).%		; $(QUIET): "$@: Succeeded, LIVE=$(LIVE)"
 installer: $(INSTALLER_IMG)
-installer-%: $(INSTALLER).% ;
+installer-%: $(INSTALLER).% current ; @echo "$@: Succeeded, INSTALLER_IMG=$<"
 
 $(SSH_KEY):
 	rm -f $@*
