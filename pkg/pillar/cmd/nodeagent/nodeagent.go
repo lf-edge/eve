@@ -33,6 +33,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
+	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
 	"github.com/lf-edge/eve/pkg/pillar/zboot"
 	"github.com/sirupsen/logrus"
 )
@@ -55,6 +56,7 @@ const (
 	minRebootDelay          uint32 = 30
 	maxDomainHaltTime       uint32 = 300
 	domainHaltWaitIncrement uint32 = 5
+	maxReadSize                    = 16384 // From files in /persist
 )
 
 var (
@@ -590,7 +592,8 @@ func incrementRestartCounter() uint32 {
 	var restartCounter uint32
 
 	if _, err := os.Stat(restartCounterFile); err == nil {
-		b, err := ioutil.ReadFile(restartCounterFile)
+		b, err := fileutils.ReadWithMaxSize(log, restartCounterFile,
+			maxReadSize)
 		if err != nil {
 			log.Errorf("incrementRestartCounter: %s", err)
 		} else {
@@ -679,7 +682,8 @@ func parseSMARTData() {
 	currentSMARTfilename := "/persist/SMART_details.json"
 	previousSMARTfilename := "/persist/SMART_details_previous.json"
 	parseData := func(filePath string, SMARTDataObj *types.SmartData) {
-		data, err := ioutil.ReadFile(filePath)
+		data, err := fileutils.ReadWithMaxSize(log, filePath,
+			maxReadSize)
 		if err != nil {
 			log.Errorf("parseSMARTData: exception while opening %s. %s", filePath, err.Error())
 			return
