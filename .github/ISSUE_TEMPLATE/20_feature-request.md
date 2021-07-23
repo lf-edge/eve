@@ -13,7 +13,7 @@ A clear and concise description of the intended usage scenario. (A brief story.)
 
 #### Describe the solution you'd like
 
-A clear and concise description of what does not work correctly.
+A clear and concise description of how you'd like the new feature to work.
 
 #### Additional context
 
