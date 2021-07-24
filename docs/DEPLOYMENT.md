@@ -154,16 +154,16 @@ Below is a screenshot of a portion of the Equinix Metal on-demand server web con
 ![ipxe-cfg](https://user-images.githubusercontent.com/9487286/126844400-54c57ba0-1874-4669-8d70-eefa9c8beb2b.png)
 
 You can copy and edit the file located in the above example IPXE Script URL and host it anywhere that it is
-publicly accessible (such as in a GitHub fork), then input the new url instead of the one above when you initiate the server. 
-The above URL will create an EVE-OS instance that is ready to be 
-onboarded by any commercial EVE controller hosted as part of the `https://zedcontrol.zededa.net` infrastructure. Just change the 
-`eve_install_server=` argument to onboard it with some other EVE controller. 
+publicly accessible (such as in a GitHub fork), then input the new url instead of the one above when you initiate the server.
+The above URL will create an EVE-OS instance that is ready to be
+onboarded by any commercial EVE controller hosted as part of the `https://zedcontrol.zededa.net` infrastructure. Just change the
+`eve_install_server=` argument to onboard it with some other EVE controller.
 Alternatively you can leave the IPXE Script URL blank, and copy the entire content of that file, modified as desired, into the
 "Optional Settings" => "Add User Data" text box input field. This alternative approach is shown in the screenshot below.
 
 ![ipxe-user-data](https://user-images.githubusercontent.com/9487286/126844768-44b00764-8990-40d8-bf55-a06f18b12c4d.png)
 
-An alternative to the web UI is to create and interact with Equinix Metal on-demand servers 
+An alternative to the web UI is to create and interact with Equinix Metal on-demand servers
 [using command line calls](https://metal.equinix.com/developers/docs/libraries/cli/).
 (Note that you must first download and install the Equinix Metal CLI tools.) The
 following command is equivalent to the web UI example above. It will install EVE-OS onto an Equinix Metal t1.small.x86 server in the sjc1
