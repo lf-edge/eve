@@ -11,7 +11,7 @@ require (
 	github.com/bugsnag/bugsnag-go v1.8.0 // indirect
 	github.com/bugsnag/panicwrap v1.2.1 // indirect
 	github.com/containerd/cgroups v1.0.1
-	github.com/containerd/containerd v1.5.2
+	github.com/containerd/containerd v1.5.4
 	github.com/containerd/typeurl v1.0.2
 	github.com/cshari-zededa/eve-tpm2-tools v0.0.4
 	github.com/digitalocean/go-libvirt v0.0.0-20190715144809-7b622097a793 // indirect
