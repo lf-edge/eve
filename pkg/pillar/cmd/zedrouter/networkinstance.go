@@ -1186,14 +1186,14 @@ func doNetworkInstanceActivate(ctx *zedrouterContext,
 		}
 	case types.NetworkInstanceTypeLocal:
 		err = natActivate(ctx, status)
-		if err == nil {
+		if err == nil && status.IpType == types.AddressTypeIPV4 {
 			err = createServer4(ctx, status.BridgeIPAddr,
 				status.BridgeName)
 		}
 
 	case types.NetworkInstanceTypeCloud:
 		err = vpnActivate(ctx, status)
-		if err == nil {
+		if err == nil && status.IpType == types.AddressTypeIPV4 {
 			err = createServer4(ctx, status.BridgeIPAddr,
 				status.BridgeName)
 		}
