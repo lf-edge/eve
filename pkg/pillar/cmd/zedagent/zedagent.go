@@ -26,13 +26,13 @@
 package zedagent
 
 import (
-	"container/list"
 	"flag"
 	"fmt"
 	"os"
 	"time"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/lf-edge/eve/api/go/flowlog"
 	"github.com/lf-edge/eve/api/go/info"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/base"
@@ -53,6 +53,8 @@ const (
 	// Time limits for event loop handlers
 	errorTime   = 3 * time.Minute
 	warningTime = 40 * time.Second
+	// Maximum allowed number of flow messages enqueued and waiting to be published.
+	flowlogQueueCap = 100
 )
 
 // Set from Makefile
@@ -91,6 +93,7 @@ type zedagentContext struct {
 	iteration                 int
 	subNetworkInstanceStatus  pubsub.Subscription
 	subCertObjConfig          pubsub.Subscription
+	FlowlogQueue              chan<- *flowlog.FlowMessage
 	TriggerDeviceInfo         chan<- struct{}
 	TriggerObjectInfo         chan<- infoForObjectKey
 	zbootRestarted            bool // published by baseosmgr
@@ -153,7 +156,6 @@ type zedagentContext struct {
 
 var debug = false
 var debugOverride bool // From command line arg
-var flowQ *list.List
 var logger *logrus.Logger
 var log *base.LogObject
 var zedcloudCtx *zedcloud.ZedCloudContext
@@ -217,10 +219,12 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 	log.Functionf("Starting %s", agentName)
 
+	flowlogQueue := make(chan *flowlog.FlowMessage, flowlogQueueCap)
 	triggerDeviceInfo := make(chan struct{}, 1)
 	triggerObjectInfo := make(chan infoForObjectKey, 1)
 	zedagentCtx := zedagentContext{
 		ps:                ps,
+		FlowlogQueue:      flowlogQueue,
 		TriggerDeviceInfo: triggerDeviceInfo,
 		TriggerObjectInfo: triggerObjectInfo,
 	}
@@ -561,7 +565,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		log.Fatal(err)
 	}
 	subAppFlowMonitor.Activate()
-	flowQ = list.New()
 	log.Functionf("FlowStats: create subFlowStatus")
 
 	// Look for AppInstanceStatus from zedmanager
@@ -1133,6 +1136,8 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	go deviceInfoTask(&zedagentCtx, triggerDeviceInfo)
 	log.Functionf("Creating %s at %s", "objectInfoTask", agentlog.GetMyStack())
 	go objectInfoTask(&zedagentCtx, triggerObjectInfo)
+	log.Functionf("Creating %s at %s", "flowLogTask", agentlog.GetMyStack())
+	go flowlogTask(&zedagentCtx, flowlogQueue)
 
 	// Publish initial device info.
 	triggerPublishDevInfo(&zedagentCtx)

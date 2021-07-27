@@ -7,6 +7,7 @@ package zedagent
 
 import (
 	"bytes"
+	"fmt"
 	"strings"
 	"time"
 
@@ -21,8 +22,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 )
-
-var flowIteration int
 
 func handleNetworkInstanceCreate(ctxArg interface{}, key string,
 	statusArg interface{}) {
@@ -449,13 +448,18 @@ func handleAppFlowMonitorImpl(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
 	log.Functionf("handleAppFlowMonitorImpl(%s)", key)
+	ctx := ctxArg.(*zedagentContext)
 	flows := statusArg.(types.IPFlow)
 
 	// encoding the flows with protobuf format
 	pflows := protoEncodeAppFlowMonitorProto(flows)
 
-	// send protobuf to zedcloud
-	sendFlowProtobuf(pflows)
+	// publish protobuf-encoded flowlog to zedcloud
+	select {
+	case ctx.FlowlogQueue <- pflows:
+	default:
+		log.Errorf("Flowlog queue is full, dropping flowlog entry: %+v", pflows.Scope)
+	}
 }
 
 func handleAppFlowMonitorDelete(ctxArg interface{}, key string,
@@ -535,42 +539,97 @@ func protoEncodeAppFlowMonitorProto(ipflow types.IPFlow) *flowlog.FlowMessage {
 	return pflows
 }
 
-func sendFlowProtobuf(protoflows *flowlog.FlowMessage) {
+func flowlogTask(ctx *zedagentContext, flowlogQueue <-chan *flowlog.FlowMessage) {
+	wdName := agentName + "flowlog"
 
-	flowQ.PushBack(protoflows)
+	// Run a periodic timer so we always update StillRunning
+	stillRunning := time.NewTicker(25 * time.Second)
+	ctx.ps.StillRunning(wdName, warningTime, errorTime)
+	ctx.ps.RegisterFileWatchdog(wdName)
 
-	for flowQ.Len() > 0 {
-		ent := flowQ.Front()
-		pflowsPtr := ent.Value.(*flowlog.FlowMessage)
-
-		data, err := proto.Marshal(pflowsPtr)
-		if err != nil {
-			log.Errorf("FlowStats: SendFlowProtobuf proto marshaling error %v", err) // XXX change to fatal
-		}
-
-		flowIteration++
-		buf := bytes.NewBuffer(data)
-		size := int64(proto.Size(pflowsPtr))
-		flowlogURL := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API, devUUID, "flowlog")
-		const bailOnHTTPErr = false
-		_, _, rtf, err := zedcloud.SendOnAllIntf(zedcloudCtx, flowlogURL,
-			size, buf, flowIteration, bailOnHTTPErr)
-		if err != nil {
-			log.Errorf("FlowStats: sendFlowProtobuf status %d failed: %s",
-				rtf, err)
-			flowIteration--
-			if flowQ.Len() > 100 { // if fail to send for too long, start to drop
-				flowQ.Remove(ent)
+	var (
+		iteration    int
+		retryMsg     *flowlog.FlowMessage
+		retryAttempt int
+		retryTimer   *time.Timer
+	)
+	publish := func(msg *flowlog.FlowMessage) {
+		start := time.Now()
+		log.Function("flowlogTask got message")
+		var retry bool
+		err := publishFlowMessage(msg, iteration)
+		if err == nil {
+			iteration++
+		} else {
+			log.Error(err)
+			if (100*len(flowlogQueue))/cap(flowlogQueue) > 90 {
+				// More than 90% of the queue is used, start dropping instead of retrying.
+				log.Warnf("flowlogTask: dropped flow message: %+v", msg.Scope)
+			} else {
+				retry = true
 			}
-			return
 		}
-
-		log.Tracef("Send Flow protobuf out on all intfs, message size %d, flowQ size %d",
-			size, flowQ.Len())
-		writeSentFlowProtoMessage(data)
-
-		flowQ.Remove(ent)
+		if retry {
+			// Keep retrying with a truncated exponential backoff.
+			retryMsg = msg
+			exp := retryAttempt
+			const maxExp = 7 // 128 (2^7) seconds is the maximum delay
+			if exp > maxExp {
+				exp = maxExp
+			}
+			retryTimer = time.NewTimer((1 << exp) * time.Second)
+			retryAttempt++
+		} else {
+			retryMsg = nil
+			retryAttempt = 0
+			if retryTimer != nil {
+				retryTimer.Stop()
+				retryTimer = nil
+			}
+		}
+		log.Function("flowlogTask is done with the message")
+		ctx.ps.CheckMaxTimeTopic(wdName, "PublishFlowMessage", start,
+			warningTime, errorTime)
 	}
+
+	for {
+		if retryMsg != nil {
+			select {
+			case <-retryTimer.C:
+				publish(retryMsg)
+			case <-stillRunning.C:
+			}
+		} else {
+			select {
+			case flowMsg := <-flowlogQueue:
+				publish(flowMsg)
+			case <-stillRunning.C:
+			}
+		}
+		ctx.ps.StillRunning(wdName, warningTime, errorTime)
+	}
+}
+
+func publishFlowMessage(flowMsg *flowlog.FlowMessage, iteration int) error {
+	data, err := proto.Marshal(flowMsg)
+	if err != nil {
+		err = fmt.Errorf("publishFlowMessage: proto marshaling error %w", err)
+		return err
+	}
+	buf := bytes.NewBuffer(data)
+	size := int64(proto.Size(flowMsg))
+
+	flowlogURL := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API, devUUID, "flowlog")
+	const bailOnHTTPErr = false
+	_, _, rtf, err := zedcloud.SendOnAllIntf(zedcloudCtx, flowlogURL,
+		size, buf, iteration, bailOnHTTPErr)
+	if err != nil {
+		err = fmt.Errorf("publishFlowMessage: SendOnAllIntf failed with %d: %s",
+			rtf, err)
+		return err
+	}
+	writeSentFlowProtoMessage(data)
+	return nil
 }
 
 func timeNanoToProto(timenum int64) *timestamp.Timestamp {
