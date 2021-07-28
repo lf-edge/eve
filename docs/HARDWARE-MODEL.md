@@ -2,7 +2,9 @@
 
 The initial steps of bringing up EVE-OS on a new hardware model are described in [HARDWARE-BRINGUP](./HARDWARE-BRINGUP.md), and the necessary BIOS support and setup in [BIOS-FIRMWARE](./BIOS-FIRMWARE.md).
 
-Once that is completed the next steps are to develop a model file, followed by validating/testing that model file and also testing other hardware aspects such as the hardware watchdog and LED/LCD.
+In order for the controller and EVE-OS to assign resources like memory and I/O devices each hardware device it needs a model file, hence such a file needs to be created and validated/tested that it corresponds to the hardware.
+
+Finally there is a need to test other hardware aspects such as the hardware watchdog timer and LED/LCD with EVE-OS.
 
 ## Model description files
 
@@ -25,7 +27,9 @@ The purposes of these images is to create a binding between the physical ports o
 
 The purpose of the I/O adapters section is to describe the networking ports which can be used by EVE-OS to reach the controller, and also to describe networking, other I/O ports, and GPUs which can potentially be assigned to application instances.
 
-Serial ports can be assigned to app instances without much restrictions; in some cases an IRQ might be shared between a COM3 and COM4 port. For security and stability reasons the Xen and KVM hypervisors restrict the assignment of PCI devices and controllers based on the capabilities of the IOMMU. This is to prevent one application instance to be able to program a DMA engine in an I/O device to use DMA to read and/or write from other parts of the physical memory in the device. (This is captured using a concept called IOMMU groups.)
+Serial ports can be assigned to app instances without much restrictions, but the details depend on the hypervisor being used. The model file supports both KVM and Xen and different virtualization modesl like PV and HVM by specifying the different phyaddr; both a Serial in the form of /dev/ttyS* and an IRQ and IOPort address. In some cases an IRQ might be shared between different COM ports which might require them to be in the same assignment group. Note that this requires manual validation.
+
+For security and stability reasons the Xen and KVM hypervisors restrict the assignment of PCI devices and controllers based on the capabilities of the IOMMU. This is to prevent one application instance to be able to program a DMA engine in an I/O device to use DMA to read and/or write from other parts of the physical memory in the device. (This is captured using a concept called IOMMU groups.)
 
 The model file describes these assignment constraints using the assigngrp field. If the assigngrp field is empty it means that the adapter can not be assigned to application instances (but if it is a networking adapter it can still be used by EVE-OS). Otherwise all of the adapters with the same assignment group can be assigned as a unit to the same application instance. An example of this is a GPU device which might have a graphics and a separate audio device, which are in the same group.
 
@@ -35,7 +39,7 @@ Last but not least, there are reports in industry that for some devices (in part
 
 ## Generating initial model file
 
-When EVE-OS is booted on a device one can run a script to get a partial and initial model file. That script is invoked as:
+If and only if you have a debug version of EVE-OS booted with the KVM hypervisor and no actual model being provided by the controller, then you can can run a script to get a partial and initial model file. That script is invoked as:
 
 ```shell
 # eve exec debug spec.sh
@@ -62,7 +66,7 @@ Starting from the generated model file and add or adjust:
 
 #### Check other functions
 
-All of the iommu groups can be determined as shown in this example:
+Assuming the device is running the KVM hypervisor, then all of the iommu groups can be determined as shown in this example:
 
 ```shell
 # find /sys/kernel/iommu_groups/ -type l
@@ -148,6 +152,8 @@ Prior to that one can verify that:
 ### Verifying the VT-x and VT-d
 
 This is reported in the EVE API and can be seen in the controller.
+
+If and only if you have a debug version of EVE-OS booted using the KVM hypervisor you can also verify that VT-d is enabled by checking that /sys/kernel/iommu_groups exists and is not empty.
 
 ### Verifying LED progress indication
 
