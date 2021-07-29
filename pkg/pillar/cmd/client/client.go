@@ -622,8 +622,14 @@ func fetchCertChain(zedcloudCtx *zedcloud.ZedCloudContext, tlsConfig *tls.Config
 
 	// certs API is always V2, and without UUID, use https
 	requrl := zedcloud.URLPathString(serverNameAndPort, true, nilUUID, "certs")
+	// Save and restore since we don't want the fetch of /certs to
+	// appear as if the device is onboarded.
+	savedNoLedManager := zedcloudCtx.NoLedManager
+	zedcloudCtx.NoLedManager = true
+
 	// currently there is no data included for the request, same as myGet()
 	done, resp, _, contents = myPost(zedcloudCtx, tlsConfig, requrl, retryCount, 0, nil)
+	zedcloudCtx.NoLedManager = savedNoLedManager
 	if resp != nil {
 		log.Functionf("client fetchCertChain done %v, resp-code %d, content len %d", done, resp.StatusCode, len(contents))
 		if resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusUnauthorized ||
