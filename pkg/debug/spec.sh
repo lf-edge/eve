@@ -213,7 +213,7 @@ for audio in $(lspci -D  | grep Audio | cut -f1 -d\ ); do
 cat <<__EOT__
     ${COMMA}
     {
-      "ztype": 2,
+      "ztype": 4,
       "phylabel": "Audio${ID}",
       "assigngrp": "${grp}",
       "phyaddrs": {
