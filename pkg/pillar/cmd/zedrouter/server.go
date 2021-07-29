@@ -71,11 +71,12 @@ func createServer4(ctx *zedrouterContext, bridgeIP string, bridgeName string) er
 		log.Errorf("failed to add DNAT: %s", err)
 	}
 	doneChan := make(chan struct{})
+	ackChan := make(chan struct{})
 	// Need one server per local IP address
 	// XXX once we have an IPv6 bridge IP address add:
 	// go runServer(mux, "tcp6", "["+bridgeIP6+"%"+bridgeName+"]")
-	go runServer(mux, "tcp4", bridgeIP, doneChan)
-	setDoneChan(bridgeName, bridgeIP, doneChan)
+	go runServer(mux, "tcp4", bridgeIP, doneChan, ackChan)
+	setDoneChan(bridgeName, bridgeIP, doneChan, ackChan)
 	log.Noticef("started http server on %s/%s", bridgeName, bridgeIP)
 	return nil
 }
@@ -91,46 +92,56 @@ func deleteServer4(ctx *zedrouterContext, bridgeIP string, bridgeName string) {
 		"-j", "DNAT", "--to-destination", target); err != nil {
 		log.Errorf("failed to delete DNAT: %s", err)
 	}
-	doneChan, ok := getDoneChan(bridgeName, bridgeIP)
+	doneChan, ackChan, ok := getDoneChan(bridgeName, bridgeIP)
 	if !ok {
 		log.Errorf("no doneChan to stop server on %s/%s",
 			bridgeName, bridgeIP)
 	} else {
+		log.Noticef("telling server on %s/%s to exit",
+			bridgeName, bridgeIP)
 		doneChan <- struct{}{}
-		// XXX should we wait for servers to exit?
+		log.Noticef("waiting for server on %s/%s to exit",
+			bridgeName, bridgeIP)
+		<-ackChan
 	}
 	log.Noticef("stopped http server on %s/%s", bridgeName, bridgeIP)
 }
 
-// map from bridgeName/bridgeIP to doneChan
+// map from bridgeName/bridgeIP to doneChanVal
 type doneChanKey struct {
 	bridgeName string
 	bridgeIP   string
 }
 
-var mapToDoneChan = make(map[doneChanKey]chan<- struct{})
+type doneChanVal struct {
+	doneChan chan<- struct{}
+	ackChan  <-chan struct{}
+}
 
-func setDoneChan(bridgeName string, bridgeIP string, doneChan chan<- struct{}) {
+var mapToDoneChan = make(map[doneChanKey]doneChanVal)
+
+func setDoneChan(bridgeName string, bridgeIP string, doneChan chan<- struct{},
+	ackChan <-chan struct{}) {
 	key := doneChanKey{bridgeName: bridgeName, bridgeIP: bridgeIP}
 	if _, exists := mapToDoneChan[key]; exists {
 		log.Fatalf("setDoneChan: key already exists %+v", key)
 	}
-	mapToDoneChan[key] = doneChan
+	mapToDoneChan[key] = doneChanVal{doneChan: doneChan, ackChan: ackChan}
 }
 
-func getDoneChan(bridgeName string, bridgeIP string) (chan<- struct{}, bool) {
+func getDoneChan(bridgeName string, bridgeIP string) (chan<- struct{}, <-chan struct{}, bool) {
 	key := doneChanKey{bridgeName: bridgeName, bridgeIP: bridgeIP}
-	doneChan, exists := mapToDoneChan[key]
+	val, exists := mapToDoneChan[key]
 	if !exists {
 		log.Errorf("getDoneChan: key does not exist %+v", key)
 	} else {
 		delete(mapToDoneChan, key)
 	}
-	return doneChan, exists
+	return val.doneChan, val.ackChan, exists
 }
 
 func runServer(mux http.Handler, network string, ipaddr string,
-	doneChan <-chan struct{}) {
+	doneChan <-chan struct{}, ackChan chan<- struct{}) {
 
 	// XXX no to place to specify network. Might be an issue when we
 	// add IPv6?
@@ -160,6 +171,8 @@ func runServer(mux http.Handler, network string, ipaddr string,
 	log.Noticef("Waiting for idleConnsClosed on %s", ipaddr)
 	<-idleConnsClosed
 	log.Noticef("Done waiting for idleConnsClosed on %s", ipaddr)
+	ackChan <- struct{}{}
+	log.Noticef("Server on %s done", ipaddr)
 }
 
 // ServeHTTP for networkHandler provides a json return
