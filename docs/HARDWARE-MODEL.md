@@ -27,7 +27,7 @@ The purposes of these images is to create a binding between the physical ports o
 
 The purpose of the I/O adapters section is to describe the networking ports which can be used by EVE-OS to reach the controller, and also to describe networking, other I/O ports, and GPUs which can potentially be assigned to application instances.
 
-Serial ports can be assigned to app instances without much restrictions, but the details depend on the hypervisor being used. The model file supports both KVM and Xen and different virtualization modesl like PV and HVM by specifying the different phyaddr; both a Serial in the form of /dev/ttyS* and an IRQ and IOPort address. In some cases an IRQ might be shared between different COM ports which might require them to be in the same assignment group. Note that this requires manual validation.
+Serial ports can be assigned to app instances without much restrictions, but the details depend on the hypervisor being used. The model file supports both KVM and Xen and different virtualization modes like PV and HVM by specifying the different phyaddr; both a Serial field in the form of /dev/ttyS* and an IRQ and IOPort address. In some cases an IRQ might be shared between different COM ports which might require them to be in the same assignment group. Note that this requires manual validation.
 
 For security and stability reasons the Xen and KVM hypervisors restrict the assignment of PCI devices and controllers based on the capabilities of the IOMMU. This is to prevent one application instance to be able to program a DMA engine in an I/O device to use DMA to read and/or write from other parts of the physical memory in the device. (This is captured using a concept called IOMMU groups.)
 
