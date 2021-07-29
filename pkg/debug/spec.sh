@@ -11,6 +11,28 @@
 # handles the different USB ports.
 # Also, the user needs to fill in the jpg links with the photos of the front
 # and back of the box.
+#
+# The script checks for conflicting iommu groups with unknown devices in
+# the lspci output; such devices could be memory controllers or anything else
+# which would prevent assignment of other devices in that iommu group.
+#
+# If the -v (verbose) flag is set, then it adds unknown devices in lspci
+# as "other" with additional class, vendor, device, and description.
+# Note that such output is informative since the resulting json might not be
+# accepted by the controller.
+#
+# Note that handling of wlan and other network interfaces sitting on USB buses
+# does not set the correct assignment group.
+
+verbose=
+while getopts v o
+do      case "$o" in
+        v)      verbose=1;;
+        [?])    echo "Usage: $0 [-v]"
+                exit 1;;
+        esac
+done
+shift $((OPTIND-1))
 
 if [ "$(uname -m)" = x86_64 ]; then
    ARCH=2
@@ -26,7 +48,7 @@ pci_iommu_group() {
     if [ -e /dev/xen ]; then
         echo "warning:no_group_determined_using_xen"
     else
-        readlink "/sys/bus/pci/devices/$pcilong/iommu_group" 2>/dev/null | sed 's,.*kernel/,,'
+        readlink "/sys/bus/pci/devices/$pcilong/iommu_group" 2>/dev/null | sed 's,.*kernel/iommu_groups/,,'
     fi
 }
 
@@ -37,9 +59,83 @@ pci_iommu_group() {
 # $1 is the name; $2 is the PciLong value
 get_assignmentgroup() {
     local pcilong=$2
-    pci_iommu_group "$pcilong"
+    local grp
+    grp=$(pci_iommu_group "$pcilong")
+    if pci_iommugroup_includes_unknown "${pcilong}" "${grp}"; then
+        echo ""
+    else
+        echo "group${grp}"
+    fi
 }
 
+# pci_iommugroup_includes_unknown($PCIID, $IOMMUGRPNUM)
+# returns whether or not there is some unknown to EVE-OS type of
+# device in the group
+pci_iommugroup_includes_unknown() {
+    local pcilong=$1
+    local iommugrpnum=$2
+    local grp
+    local pci
+    local ztype
+#shellcheck disable=SC2044
+    for a in $(find /sys/kernel/iommu_groups/ -type l); do
+        grp=$(echo "${a}" | awk -F/ '{print $5}')
+        pci=$(echo "${a}" | awk -F/ '{print $7}')
+        [ "${grp}" = "${iommugrpnum}" ] || continue
+        [ "${pci}" != "${pcilong}" ] || continue
+
+        # Check if $pci is of unknown type
+        ztype=$(pci_to_ztype "$pci")
+        if [ "$ztype" == 255 ]; then
+            return 0
+        fi
+    done
+    return 1
+}
+
+# pci_to_ztype($PCI_ID) returns a numeric ztype
+pci_to_ztype() {
+    local pci=$1
+    if [ -d "/sys/bus/pci/devices/${pci}/net" ]; then
+        local ifname
+        local ztype
+        ifname=$(ls "/sys/bus/pci/devices/${pci}/net")
+        ztype=1
+        if [ "${ifname:0:4}" = "wlan" ]; then
+            ztype=5
+        elif [ "${ifname:0:4}" = "wwan" ]; then
+            ztype=6
+        fi
+    elif lspci -D -s "${pci}" | grep -q USB; then
+        ztype=2
+    elif lspci -D -s "${pci}" | grep -q Audio; then
+        ztype=4
+    elif lspci -D -s "${pci}" | grep -q VGA; then
+        ztype=7
+    else
+        ztype=255
+    fi
+    echo "$ztype"
+}
+
+# add_pci_info($pci) adds information in the verbose case
+add_pci_info() {
+    local pci="$1"
+    info=$(lspci -Dnmm -s "$pci")
+    class=$(echo "$info" | cut -f2 -d\ )
+    vendor=$(echo "$info" | cut -f3 -d\ )
+    device=$(echo "$info" | cut -f4 -d\ )
+    desc=$(lspci -D -s "$pci" | sed "s/$pci //")
+    iommu_group=$(pci_iommu_group "$pci")
+    cat <<__EOT__
+      ,
+      "class": ${class},
+      "vendor": ${vendor},
+      "device": ${device},
+      "description": "${desc}",
+      "iommu_group": ${iommu_group}
+__EOT__
+}
 
 if [ -e /dev/xen ]; then
    CPUS=$(eve exec xen-tools xl info | grep nr_cpus | cut -f2 -d:)
@@ -77,7 +173,7 @@ __EOT__
 ID=""
 for VGA in $(lspci -D  | grep VGA | cut -f1 -d\ ); do
     grp=$(get_assignmentgroup "VGA${ID}" "$VGA")
-cat <<__EOT__
+    cat <<__EOT__
     {
       "ztype": 7,
       "phylabel": "VGA${ID}",
@@ -87,6 +183,11 @@ cat <<__EOT__
       },
       "logicallabel": "VGA${ID}",
       "usagePolicy": {}
+__EOT__
+    if [ -n "$verbose" ]; then
+        add_pci_info "${VGA}"
+    fi
+    cat <<__EOT__
     },
 __EOT__
     ID=$(( ${ID:-0} + 1 ))
@@ -96,7 +197,7 @@ done
 ID=""
 for USB in $(lspci -D  | grep USB | cut -f1 -d\ ); do
     grp=$(get_assignmentgroup "USB${ID}" "$USB")
-cat <<__EOT__
+    cat <<__EOT__
     {
       "ztype": 2,
       "phylabel": "USB${ID}",
@@ -106,6 +207,11 @@ cat <<__EOT__
       },
       "logicallabel": "USB${ID}",
       "usagePolicy": {}
+__EOT__
+    if [ -n "$verbose" ]; then
+        add_pci_info "${USB}"
+    fi
+    cat <<__EOT__
     },
 __EOT__
     ID=$(( ${ID:-0} + 1 ))
@@ -176,26 +282,29 @@ for ETH in /sys/class/net/*; do
    fi
    ETH=$(readlink "$ETH")
    if echo "$ETH" | grep -vq '/virtual/'; then
-cat <<__EOT__
+     cat <<__EOT__
     ${COMMA}
     {
       "ztype": ${ZTYPE},
       "usage": 1,
       "phylabel": "${LABEL}",
       "logicallabel": "${LABEL}",
+      "usagePolicy": {},
       "cost": ${COST},
-      },
 __EOT__
      BUS_ID=$(echo "$ETH" | sed -e 's#/net/.*'"${LABEL}"'##' -e 's#^.*/##')
      if echo "$BUS_ID" | grep -q '[0-9a-f][0-9a-f][0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f].[0-9a-f]'; then
          grp=$(get_assignmentgroup "$LABEL" "$BUS_ID")
-cat <<__EOT__
+         cat <<__EOT__
       "assigngrp": "${grp}",
       "phyaddrs": {
         "Ifname": "${LABEL}",
         "PciLong": "${BUS_ID}"
       }
 __EOT__
+         if [ -n "$verbose" ]; then
+             add_pci_info "${BUS_ID}"
+         fi
      else
 cat <<__EOT__
       "phyaddrs": {
@@ -210,7 +319,7 @@ done
 ID=""
 for audio in $(lspci -D  | grep Audio | cut -f1 -d\ ); do
     grp=$(get_assignmentgroup "Audio${ID}" "$audio")
-cat <<__EOT__
+    cat <<__EOT__
     ${COMMA}
     {
       "ztype": 4,
@@ -222,9 +331,36 @@ cat <<__EOT__
       "logicallabel": "Audio${ID}",
       "usagePolicy": {}
 __EOT__
+    if [ -n "$verbose" ]; then
+        add_pci_info "${audio}"
+    fi
     ID=$(( ${ID:-0} + 1 ))
     COMMA="},"
 done
+
+if [ -n "$verbose" ]; then
+    # look for type 255
+    ID=0
+    for pci in $(lspci -Dn  | cut -f1 -d\ ); do
+        ztype=$(pci_to_ztype "$pci")
+        [ "$ztype" == 255 ] || continue
+        cat <<__EOT__
+    ${COMMA}
+    {
+      "ztype": $ztype,
+      "phylabel": "Other${ID}",
+      "assigngrp": "",
+      "phyaddrs": {
+        "PciLong": "${pci}"
+      },
+      "logicallabel": "Other${ID}",
+      "usagePolicy": {}
+__EOT__
+        add_pci_info "${pci}"
+        ID=$(( ${ID:-0} + 1 ))
+        COMMA="},"
+    done
+fi
 
 cat <<__EOT__
     }
