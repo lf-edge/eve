@@ -213,7 +213,33 @@ message ZInfoSW {
 // Errors in response to the application of configuration
 message ErrorInfo {
   string description = 1;
-  google.protobuf.Timestamp timestamp = 2;
+  google.protobuf.Timestamp timestamp = 2;  // Timestamp at which error had occurred
+  Severity severity = 3;                    // Severity of the error
+  repeated DeviceEntity entities = 4;       // objects referenced by the description or retry_condition
+  string retry_condition = 5;               // condition to retry
+}
+
+// DeviceEntity contains the device entity details
+message DeviceEntity {
+  Entity entity = 1;           // entity type
+  string entity_id = 2;        // entity uuid
+}
+
+// Entity contains the entiry type
+enum Entity {
+  ENTITY_UNSPECIFIED = 0;      // entity unspecifed
+  ENTITY_APP_INSTANCE = 1;     // app instance entity
+  ENTITY_NETWORK_INSTANCE = 2; // network instance entity
+  ENTITY_VOLUME_INSTANCE = 3;  // volume instance entity
+  ENTITY_CONTENT_TREE = 4;     // content tree entity
+}
+
+// Severity tells the severity type
+enum Severity {
+  SEVERITY_UNSPECIFIED = 0; // severity unspecified
+  SEVERITY_NOTICE = 1;      // severity notice
+  SEVERITY_WARNING = 2;     // severity warning
+  SEVERITY_ERROR = 3;       // severity error
 }
 
 enum HwSecurityModuleStatus {
