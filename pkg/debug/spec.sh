@@ -292,6 +292,7 @@ for ETH in /sys/class/net/*; do
       "usagePolicy": {},
       "cost": ${COST},
 __EOT__
+     # XXX shouldn't we check if on USB and use the group for the USB controller?
      BUS_ID=$(echo "$ETH" | sed -e 's#/net/.*'"${LABEL}"'##' -e 's#^.*/##')
      if echo "$BUS_ID" | grep -q '[0-9a-f][0-9a-f][0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f].[0-9a-f]'; then
          grp=$(get_assignmentgroup "$LABEL" "$BUS_ID")
