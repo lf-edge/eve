@@ -494,7 +494,7 @@ func doNetworkInstanceCreate(ctx *zedrouterContext,
 		ntpServers := types.GetNTPServers(*ctx.deviceNetworkStatus,
 			status.CurrentUplinkIntf)
 		createDnsmasqConfiglet(ctx, bridgeName,
-			status.BridgeIPAddr, &status.NetworkInstanceConfig,
+			status.BridgeIPAddr, status,
 			hostsDirpath, status.BridgeIPSets,
 			status.CurrentUplinkIntf, dnsServers, ntpServers)
 		startDnsmasq(bridgeName)
@@ -797,7 +797,7 @@ func restartDnsmasq(ctx *zedrouterContext, status *types.NetworkInstanceStatus) 
 	ntpServers := types.GetNTPServers(*ctx.deviceNetworkStatus,
 		status.CurrentUplinkIntf)
 	createDnsmasqConfiglet(ctx, bridgeName, status.BridgeIPAddr,
-		&status.NetworkInstanceConfig, hostsDirpath, status.BridgeIPSets,
+		status, hostsDirpath, status.BridgeIPSets,
 		status.CurrentUplinkIntf, dnsServers, ntpServers)
 	createHostDnsmasqFile(ctx, bridgeName)
 	startDnsmasq(bridgeName)
@@ -1884,7 +1884,7 @@ func doNetworkInstanceFallback(
 			ntpServers := types.GetNTPServers(*ctx.deviceNetworkStatus,
 				status.CurrentUplinkIntf)
 			createDnsmasqConfiglet(ctx, bridgeName,
-				status.BridgeIPAddr, &status.NetworkInstanceConfig,
+				status.BridgeIPAddr, status,
 				hostsDirpath, status.BridgeIPSets,
 				status.CurrentUplinkIntf, dnsServers, ntpServers)
 			startDnsmasq(bridgeName)
@@ -1939,7 +1939,7 @@ func doNetworkInstanceFallback(
 			ntpServers := types.GetNTPServers(*ctx.deviceNetworkStatus,
 				status.CurrentUplinkIntf)
 			createDnsmasqConfiglet(ctx, bridgeName,
-				status.BridgeIPAddr, &status.NetworkInstanceConfig,
+				status.BridgeIPAddr, status,
 				hostsDirpath, status.BridgeIPSets,
 				status.CurrentUplinkIntf, dnsServers, ntpServers)
 			startDnsmasq(bridgeName)

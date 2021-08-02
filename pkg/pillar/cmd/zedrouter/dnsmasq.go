@@ -106,12 +106,12 @@ func dnsmasqDhcpHostDir(bridgeName string) string {
 func createDnsmasqConfiglet(
 	ctx *zedrouterContext,
 	bridgeName string, bridgeIPAddr string,
-	netconf *types.NetworkInstanceConfig, hostsDir string,
+	netstatus *types.NetworkInstanceStatus, hostsDir string,
 	ipsetHosts []string, uplink string,
 	dnsServers []net.IP, ntpServers []net.IP) {
 
-	log.Functionf("createDnsmasqConfiglet(%s, %s) netconf %v, ipsetHosts %v uplink %s dnsServers %v ntpServers %v",
-		bridgeName, bridgeIPAddr, netconf, ipsetHosts, uplink, dnsServers, ntpServers)
+	log.Functionf("createDnsmasqConfiglet(%s, %s) netstatus %v, ipsetHosts %v uplink %s dnsServers %v ntpServers %v",
+		bridgeName, bridgeIPAddr, netstatus, ipsetHosts, uplink, dnsServers, ntpServers)
 
 	cfgPathname := dnsmasqConfigPath(bridgeName)
 	// Delete if it exists
@@ -197,38 +197,38 @@ func createDnsmasqConfiglet(
 	advertizeRouter := true
 	var router string
 
-	if netconf.Logicallabel == "" {
+	if netstatus.Logicallabel == "" {
 		log.Functionf("Internal switch without external port case, dnsmasq suppress router advertize\n")
 		advertizeRouter = false
-	} else if netconf.Gateway != nil {
-		if netconf.Gateway.IsUnspecified() {
+	} else if netstatus.Gateway != nil {
+		if netstatus.Gateway.IsUnspecified() {
 			advertizeRouter = false
 		} else {
-			router = netconf.Gateway.String()
+			router = netstatus.Gateway.String()
 		}
 	} else if bridgeIPAddr != "" {
 		router = bridgeIPAddr
 	} else {
 		advertizeRouter = false
 	}
-	if netconf.DomainName != "" {
+	if netstatus.DomainName != "" {
 		if isIPv6 {
 			file.WriteString(fmt.Sprintf("dhcp-option=option:domain-search,%s\n",
-				netconf.DomainName))
+				netstatus.DomainName))
 		} else {
 			file.WriteString(fmt.Sprintf("dhcp-option=option:domain-name,%s\n",
-				netconf.DomainName))
+				netstatus.DomainName))
 		}
 	}
 	advertizeDns := false
-	for _, ns := range netconf.DnsServers {
+	for _, ns := range netstatus.DnsServers {
 		advertizeDns = true
 		file.WriteString(fmt.Sprintf("dhcp-option=option:dns-server,%s\n",
 			ns.String()))
 	}
-	if netconf.NtpServer != nil {
+	if netstatus.NtpServer != nil {
 		file.WriteString(fmt.Sprintf("dhcp-option=option:ntp-server,%s\n",
-			netconf.NtpServer.String()))
+			netstatus.NtpServer.String()))
 	} else {
 		ntpStr := ""
 		for _, s := range ntpServers {
@@ -238,10 +238,10 @@ func createDnsmasqConfiglet(
 			file.WriteString("dhcp-option=option:ntp-server" + ntpStr + "\n")
 		}
 	}
-	if netconf.Subnet.IP != nil {
-		ipv4Netmask = net.IP(netconf.Subnet.Mask).String()
+	if netstatus.Subnet.IP != nil {
+		ipv4Netmask = net.IP(netstatus.Subnet.Mask).String()
 	}
-	if netconf.Subnet.IP != nil {
+	if netstatus.Subnet.IP != nil {
 		if advertizeRouter && !ctx.disableDHCPAllOnesNetMask {
 			// Network prefix "255.255.255.255" will force packets to go through
 			// dom0 virtual router that makes the packets pass through ACLs and flow log.
@@ -261,7 +261,7 @@ func createDnsmasqConfiglet(
 				file.WriteString(fmt.Sprintf("dhcp-option=option:classless-static-route,%s/32,%s,%s,%s,%s,%s\n",
 					router, "0.0.0.0",
 					"0.0.0.0/0", router,
-					netconf.Subnet.String(), router))
+					netstatus.Subnet.String(), router))
 			}
 		}
 	} else {
@@ -277,8 +277,8 @@ func createDnsmasqConfiglet(
 			file.WriteString(fmt.Sprintf("dhcp-option=option:dns-server\n"))
 		}
 	}
-	if netconf.DhcpRange.Start != nil {
-		dhcpRange = netconf.DhcpRange.Start.String()
+	if netstatus.DhcpRange.Start != nil {
+		dhcpRange = netstatus.DhcpRange.Start.String()
 	}
 	if isIPv6 {
 		file.WriteString(fmt.Sprintf("dhcp-range=::,static,0,60m\n"))

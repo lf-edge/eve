@@ -1068,7 +1068,7 @@ func appNetworkDoActivateUnderlayNetwork(
 		ntpServers := types.GetNTPServers(*ctx.deviceNetworkStatus,
 			netInstStatus.CurrentUplinkIntf)
 		createDnsmasqConfiglet(ctx, bridgeName,
-			ulStatus.BridgeIPAddr, netInstConfig, hostsDirpath,
+			ulStatus.BridgeIPAddr, netInstStatus, hostsDirpath,
 			newIpsets, netInstStatus.CurrentUplinkIntf,
 			dnsServers, ntpServers)
 		startDnsmasq(bridgeName)
@@ -1477,7 +1477,6 @@ func doAppNetworkModifyUnderlayNetwork(
 	bridgeName := ulStatus.Bridge
 	appIPAddr := ulStatus.AllocatedIPAddr
 
-	netconfig := lookupNetworkInstanceConfig(ctx, ulConfig.Network.String())
 	netstatus := lookupNetworkInstanceStatus(ctx, ulConfig.Network.String())
 
 	aclArgs := types.AppNetworkACLArgs{IsMgmt: false, BridgeName: bridgeName,
@@ -1512,7 +1511,7 @@ func doAppNetworkModifyUnderlayNetwork(
 		ntpServers := types.GetNTPServers(*ctx.deviceNetworkStatus,
 			netstatus.CurrentUplinkIntf)
 		createDnsmasqConfiglet(ctx, bridgeName,
-			ulStatus.BridgeIPAddr, netconfig, hostsDirpath,
+			ulStatus.BridgeIPAddr, netstatus, hostsDirpath,
 			newIpsets, netstatus.CurrentUplinkIntf,
 			dnsServers, ntpServers)
 		startDnsmasq(bridgeName)
@@ -1610,19 +1609,9 @@ func appNetworkDoInactivateUnderlayNetwork(
 
 	bridgeName := ulStatus.Bridge
 
-	netconfig := lookupNetworkInstanceConfig(ctx,
-		ulStatus.Network.String())
-	if netconfig == nil {
-		errStr := fmt.Sprintf("no network config for %s",
-			ulStatus.Network.String())
-		err := errors.New(errStr)
-		addError(ctx, status, "lookupNetworkInstanceConfig", err)
-		return
-	}
 	netstatus := lookupNetworkInstanceStatus(ctx,
 		ulStatus.Network.String())
 	if netstatus == nil {
-		// We had a netconfig but no status!
 		errStr := fmt.Sprintf("no network status for %s",
 			ulStatus.Network.String())
 		err := errors.New(errStr)
@@ -1685,7 +1674,7 @@ func appNetworkDoInactivateUnderlayNetwork(
 		ntpServers := types.GetNTPServers(*ctx.deviceNetworkStatus,
 			netstatus.CurrentUplinkIntf)
 		createDnsmasqConfiglet(ctx, bridgeName,
-			ulStatus.BridgeIPAddr, netconfig, hostsDirpath,
+			ulStatus.BridgeIPAddr, netstatus, hostsDirpath,
 			newIpsets, netstatus.CurrentUplinkIntf,
 			dnsServers, ntpServers)
 		startDnsmasq(bridgeName)
