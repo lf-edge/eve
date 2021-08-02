@@ -1690,7 +1690,6 @@ func appNetworkDoInactivateUnderlayNetwork(
 			dnsServers, ntpServers)
 		startDnsmasq(bridgeName)
 	}
-	netstatus.RemoveVif(log, ulStatus.Vif)
 	if netstatus.Type == types.NetworkInstanceTypeSwitch {
 		if ulStatus.AccessVlanID <= 1 {
 			netstatus.NumTrunkPorts--
@@ -1708,8 +1707,13 @@ func appNetworkDoInactivateUnderlayNetwork(
 	log.Functionf("set BridgeIPSets to %v for %s", newIpsets, netstatus.Key())
 	maybeRemoveStaleIpsets(staleIpsets)
 
-	// publish the changes to network instance status
-	publishNetworkInstanceStatus(ctx, netstatus)
+	netstatus.RemoveVif(log, ulStatus.Vif)
+	if maybeNetworkInstanceDelete(ctx, netstatus) {
+		log.Noticef("deleted network instance %s", netstatus.Key())
+	} else {
+		// publish the changes to network instance status
+		publishNetworkInstanceStatus(ctx, netstatus)
+	}
 }
 
 func pkillUserArgs(userName string, match string, printOnError bool) {
