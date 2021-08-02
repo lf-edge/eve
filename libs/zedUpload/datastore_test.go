@@ -7,8 +7,11 @@ import (
 	"io"
 	"io/ioutil"
 	"math/rand"
+	"net"
 	"os"
 	"strconv"
+	"strings"
+	"sync"
 	"time"
 )
 
@@ -134,4 +137,149 @@ func md5sum(r io.ReadSeeker, start, length int64) ([]byte, error) {
 		return nil, err
 	}
 	return h.Sum(nil), nil
+}
+
+type unstableProxyCtx struct {
+	limited       bool
+	limit         bool
+	startFromByte uint64
+	delay         time.Duration
+	dropPercent   int
+	laddr, raddr  *net.TCPAddr
+}
+
+type unstableProxy struct {
+	receivedBytes, sentBytes, discardBytes uint64
+	lconn, rconn                           io.ReadWriteCloser
+	wg                                     sync.WaitGroup
+	ctx                                    *unstableProxyCtx
+}
+
+//newUnstableProxyStart creates proxy on :lport to connect to addr:rport with dropPercent of bytes
+//during delay time after startFromByte bytes received
+func newUnstableProxyStart(lport, rport int, addr string, startFromByte uint64, delay time.Duration, dropPercent int) error {
+	rand.Seed(time.Now().Unix())
+	laddr, err := net.ResolveTCPAddr("tcp", fmt.Sprintf(":%d", lport))
+	if err != nil {
+		return fmt.Errorf("failed to resolve local address: %s", err)
+	}
+	raddr, err := net.ResolveTCPAddr("tcp", fmt.Sprintf("%s:%d", addr, rport))
+	if err != nil {
+		return fmt.Errorf("failed to resolve remote address: %s", err)
+	}
+	listener, err := net.ListenTCP("tcp", laddr)
+	if err != nil {
+		return fmt.Errorf("failed to open local port to listen: %s", err)
+	}
+	uProxy := &unstableProxyCtx{
+		laddr:         laddr,
+		raddr:         raddr,
+		startFromByte: startFromByte,
+		delay:         delay,
+		dropPercent:   dropPercent,
+	}
+
+	go func() {
+		for {
+			conn, err := listener.AcceptTCP()
+			if err != nil {
+				fmt.Printf("Failed to accept connection '%s'", err)
+				continue
+			}
+
+			p := uProxy.newUnstableProxy(conn)
+
+			go p.start()
+		}
+	}()
+	return nil
+}
+
+func (ctx *unstableProxyCtx) newUnstableProxy(lconn *net.TCPConn) *unstableProxy {
+	return &unstableProxy{
+		lconn: lconn,
+		ctx:   ctx,
+	}
+}
+
+func (p *unstableProxy) start() {
+	defer p.lconn.Close()
+
+	var err error
+
+	p.rconn, err = net.DialTCP("tcp", nil, p.ctx.raddr)
+	if err != nil {
+		fmt.Printf("Remote connection failed: %s\n", err)
+		return
+	}
+	defer p.rconn.Close()
+
+	fmt.Printf("Opened %s >>> %s\n", p.ctx.laddr.String(), p.ctx.raddr.String())
+
+	p.wg.Add(2)
+
+	go p.pipe(p.lconn, p.rconn)
+	go p.pipe(p.rconn, p.lconn)
+
+	p.wg.Wait()
+
+	fmt.Printf("Closed (%d bytes sent, %d bytes received, %d bytes discard)\n", p.sentBytes, p.receivedBytes, p.discardBytes)
+}
+
+func (p *unstableProxy) pipe(src, dst io.ReadWriteCloser) {
+	defer p.wg.Done()
+	isSend := src == p.lconn
+
+	bufLen := 1024
+	buff := make([]byte, bufLen)
+	deferClose := false
+	for deferClose == false {
+		if !isSend {
+			if p.receivedBytes+uint64(bufLen) > p.ctx.startFromByte && !p.ctx.limited {
+				if !p.ctx.limited && !p.ctx.limit {
+					fmt.Println("Limit started at: ", time.Now().String())
+					p.ctx.limit = true
+					time.AfterFunc(p.ctx.delay, func() {
+						fmt.Println("Limit ended at: ", time.Now().String())
+						p.ctx.limited = true
+						p.ctx.limit = false
+					})
+				}
+			}
+		}
+		n, err := src.Read(buff)
+		if err != nil && err != io.EOF {
+			if !strings.Contains(err.Error(), "use of closed network connection") {
+				fmt.Printf("Read failed '%s'\n", err)
+			}
+			return
+		}
+		if err == io.EOF {
+			deferClose = true
+		}
+
+		discard := p.ctx.limit && rand.Intn(100) < p.ctx.dropPercent
+
+		if !discard {
+			n, err = dst.Write(buff[:n])
+		}
+
+		if err != nil {
+			if err != io.EOF && !strings.Contains(err.Error(), "use of closed network connection") {
+				fmt.Printf("Write failed '%s'\n", err)
+			}
+			return
+		}
+		if isSend {
+			p.sentBytes += uint64(n)
+		} else {
+			if discard {
+				p.discardBytes += uint64(n)
+			} else {
+				p.receivedBytes += uint64(n)
+			}
+		}
+	}
+	_ = src.Close()
+	_ = dst.Close()
 }
