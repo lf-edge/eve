@@ -132,7 +132,7 @@ func (ep *HttpTransportMethod) processHttpUpload(req *DronaRequest) (error, int)
 			}
 		}(req, prgChan)
 	}
-	resp := zedHttp.ExecCmd("post", postUrl, req.name, req.objloc, req.sizelimit, prgChan, ep.hClient)
+	resp := zedHttp.ExecCmd(req.cancelContext, "post", postUrl, req.name, req.objloc, req.sizelimit, prgChan, ep.hClient)
 	return resp.Error, resp.BodyLength
 }
 
@@ -161,7 +161,7 @@ func (ep *HttpTransportMethod) processHttpDownload(req *DronaRequest) (error, in
 			}
 		}(req, prgChan)
 	}
-	resp := zedHttp.ExecCmd("get", file, "", req.objloc, req.sizelimit, prgChan, ep.hClient)
+	resp := zedHttp.ExecCmd(req.cancelContext, "get", file, "", req.objloc, req.sizelimit, prgChan, ep.hClient)
 	if resp.Error != nil {
 		return resp.Error, resp.BodyLength
 	}
@@ -195,7 +195,7 @@ func (ep *HttpTransportMethod) processHttpList(req *DronaRequest) ([]string, err
 			}
 		}(req, prgChan)
 	}
-	resp := zedHttp.ExecCmd("ls", listUrl, "", "", req.sizelimit, prgChan, ep.hClient)
+	resp := zedHttp.ExecCmd(req.cancelContext, "ls", listUrl, "", "", req.sizelimit, prgChan, ep.hClient)
 	return resp.List, resp.Error
 }
 
@@ -224,7 +224,7 @@ func (ep *HttpTransportMethod) processHttpObjectMetaData(req *DronaRequest) (err
 			}
 		}(req, prgChan)
 	}
-	resp := zedHttp.ExecCmd("meta", file, "", req.objloc, req.sizelimit, prgChan, ep.hClient)
+	resp := zedHttp.ExecCmd(req.cancelContext, "meta", file, "", req.objloc, req.sizelimit, prgChan, ep.hClient)
 	if resp.Error != nil {
 		return resp.Error, resp.ContentLength
 	}
