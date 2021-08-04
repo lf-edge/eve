@@ -1203,7 +1203,7 @@ func checkAndRecreateAppNetwork(ctx *zedrouterContext, niStatus types.NetworkIns
 		}
 		// Any error to clear?
 		// XXX better to use ErrorWithSource and check for NetworkInstanceStatus?
-		if !status.AwaitNetworkInstance || !status.HasError() {
+		if !status.AwaitNetworkInstance && !status.HasError() {
 			continue
 		}
 
