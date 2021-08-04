@@ -495,9 +495,12 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 	// Add SecurityInfo
 	ReportDeviceInfo.SecInfo = getSecurityInfo(ctx)
 
-	// MaintenceMode
+	// EVE needs to fill deprecated MaintenanceMode until it is removed
 	ReportDeviceInfo.MaintenanceMode = ctx.maintenanceMode
 	ReportDeviceInfo.MaintenanceModeReason = info.MaintenanceModeReason(ctx.maintModeReason)
+	// For backward compatibility added new field
+	ReportDeviceInfo.MaintenanceModeReasons = append(ReportDeviceInfo.MaintenanceModeReasons,
+		info.MaintenanceModeReason(ctx.maintModeReason))
 
 	// Watchdog
 	ReportDeviceInfo.HardwareWatchdogPresent = getHarwareWatchdogPresent(ctx)
