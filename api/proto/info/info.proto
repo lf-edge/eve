@@ -432,7 +432,8 @@ message ZInfoDevice {
   repeated ZInfoDeviceTasks tasks = 37;
 
   bool maintenance_mode = 38;
-  repeated MaintenanceModeReason maintenance_mode_reason = 39;
+  // XXX to be deprecated in favor of maintenance_mode_reasons
+  MaintenanceModeReason maintenance_mode_reason = 39;
 
   // Is /dev/watchdog present in the system
   bool hardware_watchdog_present = 40;
@@ -457,6 +458,7 @@ message ZInfoDevice {
   // Is there a local_profile from a local_profile_server?
   // The global_profile from the controller is not echoed in this field.
   string local_profile = 45;
+  repeated MaintenanceModeReason maintenance_mode_reasons = 46;
 }
 
 // Different reasons for a boot/reboot
