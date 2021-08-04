@@ -226,13 +226,32 @@ message DeviceEntity {
   string entity_id = 2;        // entity uuid
 }
 
-// Entity contains the entiry type
+// Entity contains the entity type
 enum Entity {
-  ENTITY_UNSPECIFIED = 0;      // entity unspecifed
-  ENTITY_APP_INSTANCE = 1;     // app instance entity
-  ENTITY_NETWORK_INSTANCE = 2; // network instance entity
-  ENTITY_VOLUME_INSTANCE = 3;  // volume instance entity
-  ENTITY_CONTENT_TREE = 4;     // content tree entity
+  // Invalid Device Entity
+  ENTITY_UNSPECIFIED = 0;
+  // Base OS entity
+  ENTITY_BASE_OS = 1;
+  // System Adapter Entity
+  ENTITY_SYSTEM_ADAPTER = 2;
+  // Vault Entity
+  ENTITY_VAULT = 3;
+  // Attestation Entity
+  ENTITY_ATTESTATION = 4;
+  // App Instance Entity
+  ENTITY_APP_INSTANCE = 5;
+  // Port Entity
+  ENTITY_PORT = 6;
+  // Network Entity
+  ENTITY_NETWORK = 7;
+  // Network Instance Entity
+  ENTITY_NETWORK_INSTANCE = 8;
+  // ContentTree Entity
+  ENTITY_CONTENT_TREE = 9;
+  // Blob Entity
+  ENTITY_CONTENT_BLOB = 10;
+  // VOLUME Entity
+  ENTITY_VOLUME = 11;
 }
 
 // Severity tells the severity type
