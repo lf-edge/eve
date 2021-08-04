@@ -3,6 +3,10 @@ ENV BUILD_PKGS libc-dev git gcc linux-headers go
 ENV PKGS alpine-baselayout musl-utils
 RUN eve-alpine-deploy.sh
 
+# FIXME bump eve-alpine to alpine 3.14
+RUN echo 'http://dl-cdn.alpinelinux.org/alpine/v3.14/community' >> /etc/apk/repositories &&\
+  apk --no-cache add -U --upgrade go && go version
+
 COPY ./  /newlog/.
 WORKDIR /newlog
 
