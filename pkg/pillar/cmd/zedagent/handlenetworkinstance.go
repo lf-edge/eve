@@ -82,6 +82,13 @@ func prepareAndPublishNetworkInstanceInfoMsg(ctx *zedagentContext,
 		errTime, _ := ptypes.TimestampProto(status.ErrorTime)
 		errInfo.Timestamp = errTime
 		info.NetworkErr = append(info.NetworkErr, errInfo)
+		info.State = zinfo.ZNetworkInstanceState_ZNETINST_STATE_ERROR
+	} else {
+		if status.Activated {
+			info.State = zinfo.ZNetworkInstanceState_ZNETINST_STATE_ONLINE
+		} else {
+			info.State = zinfo.ZNetworkInstanceState_ZNETINST_STATE_INIT
+		}
 	}
 
 	if deleted {
