@@ -497,6 +497,8 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 
 	ReportDeviceInfo.Capabilities = getCapabilities(ctx)
 
+	ReportDeviceInfo.State = getState(ctx)
+
 	// Report if there is a local override of profile
 	if ctx.getconfigCtx.currentProfile != ctx.getconfigCtx.globalProfile {
 		ReportDeviceInfo.LocalProfile = ctx.getconfigCtx.currentProfile
@@ -824,4 +826,51 @@ func getBaseosUpdateCounter(ctx *zedagentContext) uint32 {
 	}
 	status := m.(types.BaseOSMgrStatus)
 	return status.CurrentRetryUpdateCounter
+}
+
+func getState(ctx *zedagentContext) info.ZDeviceState {
+	if ctx.maintenanceMode {
+		return info.ZDeviceState_ZDEVICE_STATE_MAINTENANCE_MODE
+	}
+	if isUpdating(ctx) {
+		return info.ZDeviceState_ZDEVICE_STATE_BASEOS_UPDATING
+	}
+	if ctx.rebootCmd || ctx.deviceReboot {
+		return info.ZDeviceState_ZDEVICE_STATE_REBOOTING
+	}
+	if ctx.getconfigCtx != nil && ctx.getconfigCtx.configReceived {
+		return info.ZDeviceState_ZDEVICE_STATE_ONLINE
+	}
+	return info.ZDeviceState_ZDEVICE_STATE_BOOTING
+}
+
+func lookupZbootStatus(ctx *zedagentContext, key string) *types.ZbootStatus {
+	sub := ctx.subZbootStatus
+	if sub == nil {
+		return nil
+	}
+	st, _ := sub.Get(key)
+	if st == nil {
+		log.Errorf("lookupZbootStatus(%s) not found", key)
+		return nil
+	}
+	status := st.(types.ZbootStatus)
+	return &status
+}
+
+// did we start baseos image update
+func isUpdating(ctx *zedagentContext) bool {
+	// check if inprogress state of current partition
+	if ctx.getconfigCtx != nil && ctx.getconfigCtx.updateInprogress {
+		return true
+	}
+	// check if updating state of other partition
+	partName := getZbootOtherPartition(ctx)
+	if status := lookupZbootStatus(ctx, partName); status != nil {
+		if status.PartitionState == "updating" {
+			return true
+		}
+		return false
+	}
+	return false
 }
