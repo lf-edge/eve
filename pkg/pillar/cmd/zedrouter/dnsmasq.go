@@ -489,12 +489,22 @@ func checkAndPublishDhcpLeases(ctx *zedrouterContext) {
 			ulStatus := &status.UnderlayNetworkList[i]
 			var assigned bool
 			var leasedIP net.IP
+			var snoopedIPs []net.IP
 			netconfig := lookupNetworkInstanceConfig(ctx,
 				ulStatus.Network.String())
 			if netconfig != nil && netconfig.Type == types.NetworkInstanceTypeSwitch {
-				leasedIP, assigned = lookupVifIPTrig(ctx, ulStatus.Mac)
+				snoopedIPs, assigned = lookupVifIPTrig(ctx, ulStatus.Mac)
 				log.Functionf("found %t IP %s for %s",
-					assigned, leasedIP.String(), ulStatus.Mac)
+					assigned, snoopedIPs, ulStatus.Mac)
+				if ipListChanged(snoopedIPs, ulStatus.AllocatedIPAddr) {
+					ipList := []string{}
+					for _, ip := range snoopedIPs {
+						ipList = append(ipList, ip.String())
+					}
+					ulStatus.AllocatedIPAddr = ipList
+					changed = true
+					continue
+				}
 			} else {
 				l := findLease(ctx, status.Key(), ulStatus.Mac, true)
 				assigned = (l != nil)
@@ -504,7 +514,10 @@ func checkAndPublishDhcpLeases(ctx *zedrouterContext) {
 				log.Functionf("found %t IP %s for %s",
 					assigned, leasedIP.String(), ulStatus.Mac)
 			}
-			assignedIP := net.ParseIP(ulStatus.AllocatedIPAddr)
+			assignedIP := net.IP{}
+			if len(ulStatus.AllocatedIPAddr) != 0 {
+				assignedIP = net.ParseIP(ulStatus.AllocatedIPAddr[0])
+			}
 			if ulStatus.Assigned != assigned || !assignedIP.Equal(leasedIP) {
 				log.Functionf("Changing(%s) %s mac %s to %t",
 					status.Key(), status.DisplayName,
@@ -516,9 +529,10 @@ func checkAndPublishDhcpLeases(ctx *zedrouterContext) {
 					continue
 				}
 				// Pick up from VIFIPTrig on change
-				if ulStatus.AllocatedIPAddr == "" {
+				if len(ulStatus.AllocatedIPAddr) == 0 {
 					ulStatus.IPAddrMisMatch = false
-					ulStatus.AllocatedIPAddr = leasedIP.String()
+					ulStatus.AllocatedIPAddr = make([]string, 1)
+					ulStatus.AllocatedIPAddr[0] = leasedIP.String()
 					changed = true
 					log.Noticef("Setting IP to %s",
 						leasedIP.String())
@@ -544,6 +558,18 @@ func checkAndPublishDhcpLeases(ctx *zedrouterContext) {
 			publishAppNetworkStatus(ctx, &status)
 		}
 	}
+}
+
+func ipListChanged(one []net.IP, two []string) bool {
+	if len(one) != len(two) {
+		return true
+	}
+	for i := 0; i < len(one); i++ {
+		if one[i].String() != two[i] {
+			return true
+		}
+	}
+	return false
 }
 
 // findLease returns a pointer so the caller can update the
@@ -732,14 +758,14 @@ func readLeases(bridgeName string) ([]dnsmasqLease, error) {
 // XXX Assumes MAC addresses unique. take bridgename as argument to
 // XXX No subscribers. Use local map from (bridgename, mac) to IP? Used by
 // flowstats goroutine hence  would need lock.
-func lookupVifIPTrig(ctx *zedrouterContext, mac string) (net.IP, bool) {
+func lookupVifIPTrig(ctx *zedrouterContext, mac string) ([]net.IP, bool) {
 	pub := ctx.pubAppVifIPTrig
 	st, _ := pub.Get(mac)
 	if st == nil {
-		return net.IP{}, false
+		return []net.IP{}, false
 	}
 	vifTrig := st.(types.VifIPTrig)
-	return vifTrig.IPAddr, true
+	return vifTrig.IPAddrs, true
 }
 
 // When we restart dnsmasq with smaller changes like chaging DNS server

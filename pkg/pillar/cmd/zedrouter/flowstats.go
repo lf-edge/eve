@@ -22,6 +22,7 @@ import (
 	pcap "github.com/packetcap/go-pcap"
 	uuid "github.com/satori/go.uuid"
 	"github.com/vishvananda/netlink"
+	"golang.org/x/net/bpf"
 )
 
 type flowStats struct {
@@ -489,13 +490,17 @@ func checkAppAndACL(ctx *zedrouterContext, instData *networkAttrs) {
 		status := st.(types.AppNetworkStatus)
 		appID := status.UUIDandVersion.UUID
 		for i, ulStatus := range status.UnderlayNetworkList {
+			allocatedIP := ""
+			if len(ulStatus.AllocatedIPAddr) != 0 {
+				allocatedIP = ulStatus.AllocatedIPAddr[0]
+			}
 			log.Tracef("===FlowStats: (index %d) AppNum %d, VifInfo %v, IP addr %v, Hostname %s\n",
-				i, status.AppNum, ulStatus.VifInfo, ulStatus.AllocatedIPAddr, ulStatus.HostName)
+				i, status.AppNum, ulStatus.VifInfo, allocatedIP, ulStatus.HostName)
 
 			ulconfig := ulStatus.UnderlayNetworkConfig
 			// build an App-IPaddress/intfs cache indexed by App-number
 			tmpAppInfo := appInfo{
-				ipaddr:    net.ParseIP(ulStatus.AllocatedIPAddr),
+				ipaddr:    net.ParseIP(allocatedIP),
 				intf:      ulStatus.Name,
 				localintf: ulStatus.Bridge,
 			}
@@ -503,7 +508,10 @@ func checkAppAndACL(ctx *zedrouterContext, instData *networkAttrs) {
 			if netstatus != nil {
 				if netstatus.Type == types.NetworkInstanceTypeSwitch {
 					if _, ok := netstatus.IPAssignments[ulStatus.Mac]; ok {
-						tmpAppInfo.ipaddr = netstatus.IPAssignments[ulStatus.Mac]
+						tmpAppInfo.ipaddr = net.IP{}
+						if len(netstatus.IPAssignments[ulStatus.Mac]) != 0 {
+							tmpAppInfo.ipaddr = netstatus.IPAssignments[ulStatus.Mac][0]
+						}
 						log.Tracef("===FlowStats: switchnet, get ip %v\n", tmpAppInfo.ipaddr)
 					}
 				}
@@ -595,7 +603,31 @@ func DNSMonitor(bn string, bnNum int, ctx *zedrouterContext, status *types.Netwo
 		promiscuous       = true             // mainly for switched network
 		timeout           = 10 * time.Second // collect enough packets in 10sec before processing
 		filter            = "udp and port 53"
-		switched    bool
+		// raw instructions below are the compiled instructions of the filter above.
+		// tcpdump -dd "udp and port 53"
+		rawInstructions = []bpf.RawInstruction{
+			{Op: 0x28, Jt: 0, Jf: 0, K: 0x0000000c},
+			{Op: 0x15, Jt: 0, Jf: 6, K: 0x000086dd},
+			{Op: 0x30, Jt: 0, Jf: 0, K: 0x00000014},
+			{Op: 0x15, Jt: 0, Jf: 15, K: 0x00000011},
+			{Op: 0x28, Jt: 0, Jf: 0, K: 0x00000036},
+			{Op: 0x15, Jt: 12, Jf: 0, K: 0x00000035},
+			{Op: 0x28, Jt: 0, Jf: 0, K: 0x00000038},
+			{Op: 0x15, Jt: 10, Jf: 11, K: 0x00000035},
+			{Op: 0x15, Jt: 0, Jf: 10, K: 0x00000800},
+			{Op: 0x30, Jt: 0, Jf: 0, K: 0x00000017},
+			{Op: 0x15, Jt: 0, Jf: 8, K: 0x00000011},
+			{Op: 0x28, Jt: 0, Jf: 0, K: 0x00000014},
+			{Op: 0x45, Jt: 6, Jf: 0, K: 0x00001fff},
+			{Op: 0xb1, Jt: 0, Jf: 0, K: 0x0000000e},
+			{Op: 0x48, Jt: 0, Jf: 0, K: 0x0000000e},
+			{Op: 0x15, Jt: 2, Jf: 0, K: 0x00000035},
+			{Op: 0x48, Jt: 0, Jf: 0, K: 0x00000010},
+			{Op: 0x15, Jt: 0, Jf: 1, K: 0x00000035},
+			{Op: 0x6, Jt: 0, Jf: 0, K: 0x00040000},
+			{Op: 0x6, Jt: 0, Jf: 0, K: 0x00000000},
+		}
+		switched bool
 		// XXX come back to handle TCP DNS snoop, more useful for zone transfer
 		// https://github.com/google/gopacket/issues/236
 	)
@@ -605,7 +637,44 @@ func DNSMonitor(bn string, bnNum int, ctx *zedrouterContext, status *types.Netwo
 	}
 	if status.Type == types.NetworkInstanceTypeSwitch {
 		switched = true
-		filter = "udp and (port 53 or port 67)"
+		filter = "icmp6 or (udp and (port 53 or port 67 or port 546 or port 547))"
+		// raw instructions below are the compiled instructions of the filter above.
+		// tcpdump -dd "(ip6 and icmp6) or (udp and (port 53 or port 67 or port 546 or port 547))"
+		rawInstructions = []bpf.RawInstruction{
+			{Op: 0x28, Jt: 0, Jf: 0, K: 0x0000000c},
+			{Op: 0x15, Jt: 0, Jf: 13, K: 0x000086dd},
+			{Op: 0x30, Jt: 0, Jf: 0, K: 0x00000014},
+			{Op: 0x15, Jt: 27, Jf: 0, K: 0x0000003a},
+			{Op: 0x15, Jt: 0, Jf: 2, K: 0x0000002c},
+			{Op: 0x30, Jt: 0, Jf: 0, K: 0x00000036},
+			{Op: 0x15, Jt: 24, Jf: 25, K: 0x0000003a},
+			{Op: 0x15, Jt: 0, Jf: 24, K: 0x00000011},
+			{Op: 0x28, Jt: 0, Jf: 0, K: 0x00000036},
+			{Op: 0x15, Jt: 21, Jf: 0, K: 0x00000035},
+			{Op: 0x15, Jt: 20, Jf: 0, K: 0x00000043},
+			{Op: 0x15, Jt: 19, Jf: 0, K: 0x00000222},
+			{Op: 0x15, Jt: 18, Jf: 0, K: 0x00000223},
+			{Op: 0x28, Jt: 0, Jf: 0, K: 0x00000038},
+			{Op: 0x15, Jt: 16, Jf: 13, K: 0x00000035},
+			{Op: 0x15, Jt: 0, Jf: 16, K: 0x00000800},
+			{Op: 0x30, Jt: 0, Jf: 0, K: 0x00000017},
+			{Op: 0x15, Jt: 0, Jf: 14, K: 0x00000011},
+			{Op: 0x28, Jt: 0, Jf: 0, K: 0x00000014},
+			{Op: 0x45, Jt: 12, Jf: 0, K: 0x00001fff},
+			{Op: 0xb1, Jt: 0, Jf: 0, K: 0x0000000e},
+			{Op: 0x48, Jt: 0, Jf: 0, K: 0x0000000e},
+			{Op: 0x15, Jt: 8, Jf: 0, K: 0x00000035},
+			{Op: 0x15, Jt: 7, Jf: 0, K: 0x00000043},
+			{Op: 0x15, Jt: 6, Jf: 0, K: 0x00000222},
+			{Op: 0x15, Jt: 5, Jf: 0, K: 0x00000223},
+			{Op: 0x48, Jt: 0, Jf: 0, K: 0x00000010},
+			{Op: 0x15, Jt: 3, Jf: 0, K: 0x00000035},
+			{Op: 0x15, Jt: 2, Jf: 0, K: 0x00000043},
+			{Op: 0x15, Jt: 1, Jf: 0, K: 0x00000222},
+			{Op: 0x15, Jt: 0, Jf: 1, K: 0x00000223},
+			{Op: 0x6, Jt: 0, Jf: 0, K: 0x00040000},
+			{Op: 0x6, Jt: 0, Jf: 0, K: 0x00000000},
+		}
 	}
 	log.Functionf("(FlowStats) DNS Monitor on %s(bridge-num %d) switched=%v, filter=%s", bn, bnNum, switched, filter)
 
@@ -616,9 +685,9 @@ func DNSMonitor(bn string, bnNum int, ctx *zedrouterContext, status *types.Netwo
 	}
 	defer handle.Close()
 
-	err = handle.SetBPFFilter(filter)
+	err = handle.SetRawBPFFilter(rawInstructions)
 	if err != nil {
-		log.Errorf("Can not install DNS filter on %s", bn)
+		log.Errorf("Can not install DNS filter [ %s ] on %s: %s", filter, bn, err)
 		return
 	}
 
@@ -652,6 +721,7 @@ func DNSMonitor(bn string, bnNum int, ctx *zedrouterContext, status *types.Netwo
 			if switched && dnslayer == nil {
 				dnssys[bnNum].Lock()
 				checkDHCPPacketInfo(bnNum, packet, ctx)
+				checkNeighorDiscoveryInfo(ctx, bnNum, packet)
 				dnssys[bnNum].Unlock()
 			} else {
 				dnssys[bnNum].Lock()
@@ -668,6 +738,104 @@ func DNSStopMonitor(bnNum int) {
 	if dnssys[bnNum].channelOpen {
 		dnssys[bnNum].Done <- true
 	}
+}
+
+func checkNeighorDiscoveryInfo(ctx *zedrouterContext, bnNum int, packet gopacket.Packet) {
+	var needUpdate, foundSrcMac bool
+	var vifInfo []types.VifNameMac
+	var netstatus types.NetworkInstanceStatus
+	var vifTrig types.VifIPTrig
+
+	// use the IPAssigments of the NetworkInstanceStatus, since this is switched net
+	// and the field will not be assigned or modified by others
+	pub := ctx.pubNetworkInstanceStatus
+	items := pub.GetAll()
+	for _, st := range items {
+		netstatus = st.(types.NetworkInstanceStatus)
+		if netstatus.Type != types.NetworkInstanceTypeSwitch || netstatus.BridgeNum != bnNum {
+			continue
+		}
+		vifInfo = netstatus.Vifs
+		break
+	}
+	if len(vifInfo) == 0 { // there is no Mac on the bridge
+		log.Tracef("checkNeighorDiscoveryInfo: no mac on the bridge")
+		return
+	}
+
+	var etherPkt *layers.Ethernet
+	etherLayer := packet.Layer(layers.LayerTypeEthernet)
+	if etherLayer != nil {
+		etherPkt, _ = etherLayer.(*layers.Ethernet)
+		for _, vif := range vifInfo {
+			if strings.Compare(etherPkt.SrcMAC.String(), vif.MacAddr) == 0 {
+				foundSrcMac = true
+				break
+			}
+		}
+	}
+	if !foundSrcMac {
+		log.Tracef("checkNeighorDiscoveryInfo: pkt no dst mac for us\n")
+		return
+	}
+
+	ip6Layer := packet.Layer(layers.LayerTypeIPv6)
+	isIPv6 := (ip6Layer != nil)
+	if !isIPv6 {
+		return
+	}
+	ip6 := ip6Layer.(*layers.IPv6)
+	// We are looking for ICMPv6 Neighbor solicitation packet that
+	// tries to find if the address calculated locally is a duplicate.
+	// Such packets have a source IP of all zeroes (::)
+	if ip6.SrcIP.String() != "::" {
+		return
+	}
+
+	icmp6Layer := packet.Layer(layers.LayerTypeICMPv6NeighborSolicitation)
+	if icmp6Layer == nil {
+		return
+	}
+	for _, vif := range vifInfo {
+		if strings.Compare(vif.MacAddr, etherPkt.SrcMAC.String()) == 0 {
+			icmp6, _ := icmp6Layer.(*layers.ICMPv6NeighborSolicitation)
+			log.Tracef("ICMPv6: TargetAddress %s", icmp6.TargetAddress.String())
+
+			if _, ok := netstatus.IPAssignments[vif.MacAddr]; !ok {
+				log.Functionf("checkNeighorDiscoveryInfo: mac %v assign new IPv6 address %v\n",
+					vif.MacAddr, icmp6.TargetAddress)
+				netstatus.IPAssignments[vif.MacAddr] = []net.IP{icmp6.TargetAddress}
+				needUpdate = true
+			} else {
+				if !isAddrPresent(netstatus.IPAssignments[vif.MacAddr], icmp6.TargetAddress) {
+					log.Functionf("checkNeighorDiscoveryInfo: update mac list %v, new IPv6 %v\n",
+						vif.MacAddr, icmp6.TargetAddress)
+					netstatus.IPAssignments[vif.MacAddr] = append(netstatus.IPAssignments[vif.MacAddr], icmp6.TargetAddress)
+					needUpdate = true
+				}
+			}
+			snoopedIPs, _ := lookupVifIPTrig(ctx, vif.MacAddr)
+			vifTrig.MacAddr = vif.MacAddr
+			vifTrig.IPAddrs = append(snoopedIPs, icmp6.TargetAddress)
+		}
+	}
+
+	if needUpdate {
+		log.Functionf("checkNeighorDiscoveryInfo: need update %v, %v\n", vifInfo, netstatus.IPAssignments)
+		pub := ctx.pubNetworkInstanceStatus
+		pub.Publish(netstatus.Key(), netstatus)
+		ctx.pubAppVifIPTrig.Publish(vifTrig.MacAddr, vifTrig)
+		checkAndPublishDhcpLeases(ctx)
+	}
+}
+
+func isAddrPresent(list []net.IP, addr net.IP) bool {
+	for i := 0; i < len(list); i++ {
+		if list[i].String() == addr.String() {
+			return true
+		}
+	}
+	return false
 }
 
 // Monitor the dhcp packets for switched network instance
@@ -739,18 +907,37 @@ func checkDHCPPacketInfo(bnNum int, packet gopacket.Packet, ctx *zedrouterContex
 					if strings.Compare(vif.MacAddr, dhcpv4.ClientHWAddr.String()) == 0 {
 						if _, ok := netstatus.IPAssignments[vif.MacAddr]; !ok {
 							log.Functionf("checkDHCPPacketInfo: mac %v assign new IP %v\n", vif.MacAddr, dhcpv4.YourClientIP)
-							netstatus.IPAssignments[vif.MacAddr] = dhcpv4.YourClientIP
+							netstatus.IPAssignments[vif.MacAddr] = []net.IP{dhcpv4.YourClientIP}
 							needUpdate = true
 						} else {
-							if netstatus.IPAssignments[vif.MacAddr].Equal(dhcpv4.YourClientIP) == false {
+							if len(netstatus.IPAssignments[vif.MacAddr]) != 0 {
+								addrs := netstatus.IPAssignments[vif.MacAddr]
+								// Check if there is an IPv4 address present in this list.
+								// If yes, overwrite that address with new address.
+								// If no, add this IPv4 address to list.
+								found := false
+								for index, addr := range addrs {
+									if addr.To16() == nil {
+										// This is an IPv4 address
+										found = true
+										addrs[index] = dhcpv4.YourClientIP
+										break
+									}
+								}
+								if !found {
+									addrs = append(addrs, dhcpv4.YourClientIP)
+								}
+								netstatus.IPAssignments[vif.MacAddr] = addrs
 								log.Functionf("checkDHCPPacketInfo: update mac %v, prev %v, now %v\n",
 									vif.MacAddr, netstatus.IPAssignments[vif.MacAddr], dhcpv4.YourClientIP)
-								netstatus.IPAssignments[vif.MacAddr] = dhcpv4.YourClientIP
 								needUpdate = true
 							}
 						}
 						vifTrig.MacAddr = vif.MacAddr
-						vifTrig.IPAddr = dhcpv4.YourClientIP
+						if len(vifTrig.IPAddrs) == 0 {
+							vifTrig.IPAddrs = make([]net.IP, 1)
+						}
+						vifTrig.IPAddrs[0] = dhcpv4.YourClientIP
 						break
 					}
 				}
@@ -769,6 +956,38 @@ func checkDHCPPacketInfo(bnNum int, packet gopacket.Packet, ctx *zedrouterContex
 			dhcpv6, _ := dhcpLayer.(*layers.DHCPv6)
 			log.Tracef("DHCPv6: Msgtype %v, LinkAddr %s, PeerAddr %s, Options %v\n",
 				dhcpv6.MsgType, dhcpv6.LinkAddr.String(), dhcpv6.PeerAddr.String(), dhcpv6.Options)
+
+			//  We are only interested in DHCPv6 Reply packets. Skip others.
+			if dhcpv6.MsgType != layers.DHCPv6MsgTypeReply {
+				return
+			}
+			for _, opt := range dhcpv6.Options {
+				if opt.Code != layers.DHCPv6OptClientID {
+					continue
+				}
+				clientOption := &layers.DHCPv6DUID{}
+				clientOption.DecodeFromBytes(opt.Data)
+				for _, vif := range vifInfo {
+					if strings.Compare(vif.MacAddr, clientOption.LinkLayerAddress.String()) == 0 {
+						if _, ok := netstatus.IPAssignments[vif.MacAddr]; !ok {
+							log.Functionf("checkDHCPPacketInfo: mac %v assign new IPv6 address %v\n", vif.MacAddr, dhcpv6.LinkAddr)
+							netstatus.IPAssignments[vif.MacAddr] = []net.IP{dhcpv6.LinkAddr}
+							needUpdate = true
+						} else {
+							if !isAddrPresent(netstatus.IPAssignments[vif.MacAddr], dhcpv6.LinkAddr) {
+								log.Functionf("checkDHCPPacketInfo: update mac %v, prev IPv6 %v, new IPv6 %v\n",
+									vif.MacAddr, netstatus.IPAssignments[vif.MacAddr], dhcpv6.LinkAddr)
+								netstatus.IPAssignments[vif.MacAddr] = append(netstatus.IPAssignments[vif.MacAddr], dhcpv6.LinkAddr)
+								needUpdate = true
+							}
+						}
+						snoopedIPs, _ := lookupVifIPTrig(ctx, vif.MacAddr)
+						vifTrig.MacAddr = vif.MacAddr
+						vifTrig.IPAddrs = append(snoopedIPs, dhcpv6.LinkAddr)
+						break
+					}
+				}
+			}
 		}
 	}
 

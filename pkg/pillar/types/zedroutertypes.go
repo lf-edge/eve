@@ -1817,9 +1817,9 @@ type UnderlayNetworkStatus struct {
 	ACLs int // drop ACLs field from UnderlayNetworkConfig
 	VifInfo
 	BridgeMac       net.HardwareAddr
-	BridgeIPAddr    string // The address for DNS/DHCP service in zedrouter
-	AllocatedIPAddr string // Assigned to domU
-	Assigned        bool   // Set to true once DHCP has assigned it to domU
+	BridgeIPAddr    string   // The address for DNS/DHCP service in zedrouter
+	AllocatedIPAddr []string // Assigned to domU
+	Assigned        bool     // Set to true once DHCP has assigned it to domU
 	IPAddrMisMatch  bool
 	HostName        string
 	ACLDependList   []ACLDepend
@@ -1927,7 +1927,7 @@ type NetworkInstanceInfo struct {
 	IfNameList []string // Recorded at time of activate
 
 	// Collection of address assignments; from MAC address to IP address
-	IPAssignments map[string]net.IP
+	IPAssignments map[string][]net.IP
 
 	// Union of all ipsets fed to dnsmasq for the linux bridge
 	BridgeIPSets []string
@@ -2461,7 +2461,10 @@ func (status *NetworkInstanceStatus) UpdateBridgeMetrics(log *base.LogObject,
 // Returns true if found
 func (status *NetworkInstanceStatus) IsIpAssigned(ip net.IP) bool {
 	for _, a := range status.IPAssignments {
-		if ip.Equal(a) {
+		if len(a) == 0 {
+			continue
+		}
+		if ip.Equal(a[0]) {
 			return true
 		}
 	}
@@ -2807,7 +2810,7 @@ func (flows IPFlow) LogKey() string {
 // VifIPTrig - structure contains Mac Address
 type VifIPTrig struct {
 	MacAddr string
-	IPAddr  net.IP
+	IPAddrs []net.IP
 }
 
 // Key - VifIPTrig key function
