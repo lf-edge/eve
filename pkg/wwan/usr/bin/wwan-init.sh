@@ -72,6 +72,7 @@ start_network() {
      echo Y > /sys/class/net/$IFACE/qmi/raw_ip
      ip link set $IFACE up
 
+     qmi --sync
      qmi --start-network --apn "$(get_apn)" --keep-client-id wds |\
          mbus_publish pdh_$IFACE
   fi
