@@ -380,30 +380,12 @@ func handleNetworkInstanceDelete(ctxArg interface{}, key string,
 	if status.Activated {
 		doNetworkInstanceInactivate(ctx, status)
 	}
-	done := maybeNetworkInstanceDelete(ctx, status)
-	log.Functionf("handleNetworkInstanceDelete(%s) done %t", key, done)
-}
-
-// maybeNetworkInstanceDelete checks if the Vifs are gone and if so delete
-func maybeNetworkInstanceDelete(ctx *zedrouterContext, status *types.NetworkInstanceStatus) bool {
-	if lookupNetworkInstanceConfig(ctx, status.Key()) != nil {
-		log.Functionf("maybeNetworkInstanceDelete(%s) still config",
-			status.Key())
-		return false
-	}
-
-	if len(status.Vifs) != 0 {
-		log.Noticef("maybeNetworkInstanceDelete(%s) still %d Vifs",
-			status.Key(), len(status.Vifs))
-		return false
-	}
 	doNetworkInstanceDelete(ctx, status)
 	ctx.networkInstanceStatusMap.Delete(status.UUID)
-	ctx.pubNetworkInstanceStatus.Unpublish(status.Key())
+	pub.Unpublish(status.Key())
 
 	deleteNetworkInstanceMetrics(ctx, status.Key())
-	log.Noticef("maybeNetworkInstanceDelete(%s) done", status.Key())
-	return true
+	log.Functionf("handleNetworkInstanceDelete(%s) done\n", key)
 }
 
 func doNetworkInstanceCreate(ctx *zedrouterContext,
@@ -1289,7 +1271,6 @@ func doNetworkInstanceInactivate(
 	switch status.Type {
 	case types.NetworkInstanceTypeLocal:
 		natInactivate(ctx, status, false)
-		// XXX wait until delete and delete waits until all users gone?
 		deleteServer4(ctx, status.BridgeIPAddr, status.BridgeName)
 	case types.NetworkInstanceTypeCloud:
 		vpnInactivate(ctx, status)
