@@ -626,8 +626,8 @@ func aclToRules(ctx *zedrouterContext, aclArgs types.AppNetworkACLArgs, ACLs []t
 
 			aclRule5.Table = "mangle"
 			aclRule5.Chain = "PREROUTING"
-			aclRule5.Rule = []string{"-i", aclArgs.BridgeName, "-d", aclArgs.BridgeIP,
-				"-p", "udp", "-m", "multiport", "--dports", "bootps,domain"}
+			aclRule5.Rule = []string{"-i", aclArgs.BridgeName,
+				"-p", "udp", "--dport", "bootps"}
 			chainName := fmt.Sprintf("proto-%s-%s-%d",
 				aclArgs.BridgeName, aclArgs.VifName, 6)
 			createMarkAndAcceptChain(aclArgs, chainName, 6)
@@ -636,10 +636,18 @@ func aclToRules(ctx *zedrouterContext, aclArgs types.AppNetworkACLArgs, ACLs []t
 			rulesList = append(rulesList, aclRule5)
 
 			aclRule5.Rule = []string{"-i", aclArgs.BridgeName, "-d", aclArgs.BridgeIP,
-				"-p", "tcp", "--dport", "domain"}
+				"-p", "udp", "--dport", "domain"}
 			chainName = fmt.Sprintf("proto-%s-%s-%d",
 				aclArgs.BridgeName, aclArgs.VifName, 7)
 			createMarkAndAcceptChain(aclArgs, chainName, 7)
+			aclRule5.Action = []string{"-j", chainName}
+			aclRule5.ActionChainName = chainName
+			rulesList = append(rulesList, aclRule5)
+
+			aclRule5.Rule = []string{"-i", aclArgs.BridgeName, "-d", aclArgs.BridgeIP,
+				"-p", "tcp", "--dport", "domain"}
+			chainName = fmt.Sprintf("proto-%s-%s-%d",
+				aclArgs.BridgeName, aclArgs.VifName, 7)
 			aclRule5.Action = []string{"-j", chainName}
 			aclRule5.ActionChainName = chainName
 			rulesList = append(rulesList, aclRule5)
@@ -684,11 +692,22 @@ func aclToRules(ctx *zedrouterContext, aclArgs types.AppNetworkACLArgs, ACLs []t
 
 			aclRule5.Table = "mangle"
 			aclRule5.Chain = "PREROUTING"
+			aclRule5.AnyPhysdev = true
 			aclRule5.Rule = []string{"-i", aclArgs.BridgeName,
-				"-p", "udp", "-m", "multiport", "--dports", "bootps,domain"}
+				"-p", "udp", "--dport", "bootps:bootpc"}
 			chainName := fmt.Sprintf("proto-%s-%s-%d",
 				aclArgs.BridgeName, aclArgs.VifName, 6)
 			createMarkAndAcceptChain(aclArgs, chainName, 6)
+			aclRule5.Action = []string{"-j", chainName}
+			aclRule5.ActionChainName = chainName
+			rulesList = append(rulesList, aclRule5)
+
+			aclRule5.AnyPhysdev = false
+			aclRule5.Rule = []string{"-i", aclArgs.BridgeName,
+				"-p", "udp", "--dport", "domain"}
+			chainName = fmt.Sprintf("proto-%s-%s-%d",
+				aclArgs.BridgeName, aclArgs.VifName, 7)
+			createMarkAndAcceptChain(aclArgs, chainName, 7)
 			aclRule5.Action = []string{"-j", chainName}
 			aclRule5.ActionChainName = chainName
 			rulesList = append(rulesList, aclRule5)
@@ -697,7 +716,6 @@ func aclToRules(ctx *zedrouterContext, aclArgs types.AppNetworkACLArgs, ACLs []t
 				"-p", "tcp", "--dport", "domain"}
 			chainName = fmt.Sprintf("proto-%s-%s-%d",
 				aclArgs.BridgeName, aclArgs.VifName, 7)
-			createMarkAndAcceptChain(aclArgs, chainName, 7)
 			aclRule5.Action = []string{"-j", chainName}
 			aclRule5.ActionChainName = chainName
 			rulesList = append(rulesList, aclRule5)
@@ -1321,7 +1339,9 @@ func rulePrefix(aclArgs types.AppNetworkACLArgs, rule *types.IPTablesRule) error
 		if rule.Rule[0] == "-i" {
 			rule.Table = "raw"
 			rule.Chain = "PREROUTING"
-			rule.Prefix = []string{"-m", "physdev", "--physdev-in", vifName}
+			if !rule.AnyPhysdev {
+				rule.Prefix = []string{"-m", "physdev", "--physdev-in", vifName}
+			}
 		} else if rule.Rule[0] == "-o" {
 			rule.Chain = "FORWARD"
 			if aclArgs.AppIP != "" {
@@ -1349,7 +1369,7 @@ func rulePrefix(aclArgs types.AppNetworkACLArgs, rule *types.IPTablesRule) error
 				if aclArgs.AppIP != "" {
 					rule.Prefix = []string{"-d", aclArgs.AppIP}
 				}
-			} else if rule.Rule[0] == "-i" && !rule.IsPortMapRule {
+			} else if rule.Rule[0] == "-i" && !rule.IsPortMapRule && !rule.AnyPhysdev {
 				rule.Prefix = []string{"-m", "physdev", "--physdev-in", vifName}
 			}
 		}
@@ -1361,7 +1381,9 @@ func rulePrefix(aclArgs types.AppNetworkACLArgs, rule *types.IPTablesRule) error
 	if rule.Rule[0] == "-i" {
 		rule.Table = "raw"
 		rule.Chain = "PREROUTING"
-		rule.Prefix = []string{"-m", "physdev", "--physdev-in", vifName}
+		if !rule.AnyPhysdev {
+			rule.Prefix = []string{"-m", "physdev", "--physdev-in", vifName}
+		}
 		return nil
 	}
 	if rule.Rule[0] == "-o" {

@@ -2380,6 +2380,7 @@ type IPTablesRule struct {
 	IsPortMapRule    bool // Is this a port map rule?
 	IsLimitDropRule  bool // Is this a policer limit drop rule?
 	IsDefaultDrop    bool // Is this a default drop rule that forwards to dummy?
+	AnyPhysdev       bool // Apply rule irrespective of the input/output physical device.
 }
 
 // IPTablesRuleList : list of iptables rules
