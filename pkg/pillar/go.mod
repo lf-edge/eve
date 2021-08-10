@@ -27,7 +27,7 @@ require (
 	github.com/google/go-cmp v0.5.4
 	github.com/google/go-containerregistry v0.1.4
 	github.com/google/go-tpm v0.3.0
-	github.com/google/gopacket v1.1.17
+	github.com/google/gopacket v1.1.19
 	github.com/gorilla/handlers v1.5.1 // indirect
 	github.com/gorilla/mux v1.8.0 // indirect
 	github.com/gorilla/websocket v1.4.2
@@ -43,7 +43,7 @@ require (
 	github.com/opencontainers/go-digest v1.0.0
 	github.com/opencontainers/image-spec v1.0.1
 	github.com/opencontainers/runtime-spec v1.0.3-0.20200929063507-e6143ca7d51d
-	github.com/packetcap/go-pcap v0.0.0-20200802095634-4c3b9511add7
+	github.com/packetcap/go-pcap v0.0.0-20210809221331-e2e6b14e1812
 	github.com/prometheus/client_golang v1.9.0 // indirect
 	github.com/prometheus/common v0.17.0 // indirect
 	github.com/rackn/gohai v0.0.0-20190321191141-5053e7f1fa36
@@ -59,8 +59,8 @@ require (
 	github.com/yvasiyarov/newrelic_platform_go v0.0.0-20160601141957-9c099fbc30e9 // indirect
 	go.opencensus.io v0.23.0 // indirect
 	golang.org/x/crypto v0.0.0-20210513164829-c07d793c2f9a
-	golang.org/x/sys v0.0.0-20210324051608-47abb6519492
-	golang.org/x/text v0.3.5 // indirect
+	golang.org/x/net v0.0.0-20210805182204-aaa1db679c0d
+	golang.org/x/sys v0.0.0-20210809222454-d867a43fc93e
 	google.golang.org/genproto v0.0.0-20210224155714-063164c882e6 // indirect
 	google.golang.org/grpc v1.36.0
 	gopkg.in/sourcemap.v1 v1.0.5 // indirect

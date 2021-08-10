@@ -1816,13 +1816,14 @@ type UnderlayNetworkStatus struct {
 	UnderlayNetworkConfig
 	ACLs int // drop ACLs field from UnderlayNetworkConfig
 	VifInfo
-	BridgeMac       net.HardwareAddr
-	BridgeIPAddr    string   // The address for DNS/DHCP service in zedrouter
-	AllocatedIPAddr []string // Assigned to domU
-	Assigned        bool     // Set to true once DHCP has assigned it to domU
-	IPAddrMisMatch  bool
-	HostName        string
-	ACLDependList   []ACLDepend
+	BridgeMac         net.HardwareAddr
+	BridgeIPAddr      string // The address for DNS/DHCP service in zedrouter
+	AllocatedIPv4Addr string
+	AllocatedIPv6List []string // Assigned to domU
+	Assigned          bool     // Set to true once DHCP has assigned it to domU
+	IPAddrMisMatch    bool
+	HostName          string
+	ACLDependList     []ACLDepend
 }
 
 // ACLDepend is used to track an external interface/port and optional IP addresses
@@ -2460,12 +2461,14 @@ func (status *NetworkInstanceStatus) UpdateBridgeMetrics(log *base.LogObject,
 
 // Returns true if found
 func (status *NetworkInstanceStatus) IsIpAssigned(ip net.IP) bool {
-	for _, a := range status.IPAssignments {
-		if len(a) == 0 {
+	for _, nips := range status.IPAssignments {
+		if len(nips) == 0 {
 			continue
 		}
-		if ip.Equal(a[0]) {
-			return true
+		for _, nip := range nips {
+			if ip.Equal(nip) {
+				return true
+			}
 		}
 	}
 	return false
@@ -2809,8 +2812,9 @@ func (flows IPFlow) LogKey() string {
 
 // VifIPTrig - structure contains Mac Address
 type VifIPTrig struct {
-	MacAddr string
-	IPAddrs []net.IP
+	MacAddr   string
+	IPv4Addr  net.IP
+	IPv6Addrs []net.IP
 }
 
 // Key - VifIPTrig key function

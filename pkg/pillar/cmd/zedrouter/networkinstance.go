@@ -218,10 +218,7 @@ func doBridgeAclsDelete(
 			}
 			log.Functionf("NetworkInstance - deleting Acls for UL Interface(%s)",
 				ulStatus.Name)
-			appIP := ""
-			if len(ulStatus.AllocatedIPAddr) != 0 {
-				appIP = ulStatus.AllocatedIPAddr[0]
-			}
+			appIP := ulStatus.AllocatedIPv4Addr
 			aclArgs := types.AppNetworkACLArgs{IsMgmt: false, BridgeName: ulStatus.Bridge,
 				VifName: ulStatus.Vif, BridgeIP: ulStatus.BridgeIPAddr, AppIP: appIP,
 				UpLinks: status.IfNameList}
@@ -816,12 +813,9 @@ func createHostDnsmasqFile(ctx *zedrouterContext, bridge string) {
 			if strings.Compare(bridge, ulStatus.Bridge) != 0 {
 				continue
 			}
-			if len(ulStatus.AllocatedIPAddr) == 0 {
-				continue
-			}
 			addhostDnsmasq(bridge, ulStatus.Mac,
-				ulStatus.AllocatedIPAddr[0], status.UUIDandVersion.UUID.String())
-			log.Functionf("createHostDnsmasqFile:(%s) mac=%s, IP=%s\n", bridge, ulStatus.Mac, ulStatus.AllocatedIPAddr)
+				ulStatus.AllocatedIPv4Addr, status.UUIDandVersion.UUID.String())
+			log.Functionf("createHostDnsmasqFile:(%s) mac=%s, IP=%s\n", bridge, ulStatus.Mac, ulStatus.AllocatedIPv4Addr)
 		}
 	}
 }

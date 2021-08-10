@@ -7,7 +7,6 @@ package zedagent
 
 import (
 	"bytes"
-	"net"
 	"strings"
 	"time"
 
@@ -109,13 +108,10 @@ func prepareAndPublishNetworkInstanceInfoMsg(ctx *zedagentContext,
 		for mac, ips := range status.IPAssignments {
 			assignment := new(zinfo.ZmetIPAssignmentEntry)
 			assignment.MacAddress = mac
-			ipAddr := net.IP{}
-			if len(ips) != 0 {
-				ipAddr = ips[0]
+			for _, ip := range ips {
+				assignment.IpAddress = append(assignment.IpAddress, ip.String())
 			}
-			assignment.IpAddress = append(assignment.IpAddress, ipAddr.String())
-			info.IpAssignments = append(info.IpAssignments,
-				assignment)
+			info.IpAssignments = append(info.IpAssignments, assignment)
 		}
 		for _, s := range status.BridgeIPSets {
 			info.BridgeIPSets = append(info.BridgeIPSets, s)

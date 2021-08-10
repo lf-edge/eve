@@ -158,10 +158,7 @@ func prepareLocalProfileServerMap(localServerURL string, getconfigCtx *getconfig
 			}
 			if localProfileServerIP != nil {
 				//check if defined IP of localServer is equals with allocated IP of app
-				if len(ulStatus.AllocatedIPAddr) == 0 {
-					continue
-				}
-				if ulStatus.AllocatedIPAddr[0] == localProfileServerIP.String() {
+				if ulStatus.AllocatedIPv4Addr == localProfileServerIP.String() {
 					appendURLAndSrcIPMap(res, ulStatus.Bridge,
 						&urlAndSrcIP{actualURL: localServerURL, srcIP: bridgeIP})
 				}
