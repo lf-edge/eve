@@ -1963,13 +1963,20 @@ func (instanceInfo *NetworkInstanceInfo) IsVifInBridge(
 
 func (instanceInfo *NetworkInstanceInfo) RemoveVif(log *base.LogObject,
 	vifName string) {
-	log.Functionf("DelVif(%s, %s)\n", instanceInfo.BridgeName, vifName)
+	log.Functionf("RemoveVif(%s, %s)", instanceInfo.BridgeName, vifName)
 
+	found := false
 	var vifs []VifNameMac
 	for _, vif := range instanceInfo.Vifs {
 		if vif.Name != vifName {
 			vifs = append(vifs, vif)
+		} else {
+			found = true
 		}
+	}
+	if !found {
+		log.Errorf("RemoveVif(%x, %x) not found",
+			instanceInfo.BridgeName, vifName)
 	}
 	instanceInfo.Vifs = vifs
 }
@@ -1977,12 +1984,12 @@ func (instanceInfo *NetworkInstanceInfo) RemoveVif(log *base.LogObject,
 func (instanceInfo *NetworkInstanceInfo) AddVif(log *base.LogObject,
 	vifName string, appMac string, appID uuid.UUID) {
 
-	log.Functionf("addVifToBridge(%s, %s, %s, %s)\n",
+	log.Functionf("AddVif(%s, %s, %s, %s)",
 		instanceInfo.BridgeName, vifName, appMac, appID.String())
 	// XXX Should we just overwrite it? There is a lookup function
 	//	anyways if the caller wants "check and add" semantics
 	if instanceInfo.IsVifInBridge(vifName) {
-		log.Errorf("addVifToBridge(%s, %s) exists\n",
+		log.Errorf("AddVif(%s, %s) exists",
 			instanceInfo.BridgeName, vifName)
 		return
 	}
