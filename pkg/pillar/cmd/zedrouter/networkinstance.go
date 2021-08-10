@@ -1204,23 +1204,27 @@ func doNetworkInstanceActivate(ctx *zedrouterContext,
 		}
 	case types.NetworkInstanceTypeLocal:
 		err = natActivate(ctx, status)
-		if err == nil && status.IpType == types.AddressTypeIPV4 {
-			err = createServer4(ctx, status.BridgeIPAddr,
-				status.BridgeName)
-		}
 
 	case types.NetworkInstanceTypeCloud:
 		err = vpnActivate(ctx, status)
-		if err == nil && status.IpType == types.AddressTypeIPV4 {
-			err = createServer4(ctx, status.BridgeIPAddr,
-				status.BridgeName)
-		}
 
 	default:
 		errStr := fmt.Sprintf("doNetworkInstanceActivate: NetworkInstance %d not yet supported",
 			status.Type)
 		err = errors.New(errStr)
 	}
+	if err == nil && status.Type != types.NetworkInstanceTypeSwitch &&
+		!status.Server4Running {
+		switch status.IpType {
+		case types.AddressTypeIPV4:
+			err = createServer4(ctx, status.BridgeIPAddr,
+				status.BridgeName)
+			if err == nil {
+				status.Server4Running = true
+			}
+		}
+	}
+
 	status.ProgUplinkIntf = status.CurrentUplinkIntf
 	// setup the ACLs for the bridge
 	// Here we explicitly adding the iptables rules, to the bottom of the
@@ -1289,11 +1293,8 @@ func doNetworkInstanceInactivate(
 	switch status.Type {
 	case types.NetworkInstanceTypeLocal:
 		natInactivate(ctx, status, false)
-		// XXX wait until delete and delete waits until all users gone?
-		deleteServer4(ctx, status.BridgeIPAddr, status.BridgeName)
 	case types.NetworkInstanceTypeCloud:
 		vpnInactivate(ctx, status)
-		deleteServer4(ctx, status.BridgeIPAddr, status.BridgeName)
 	}
 
 	return
@@ -1318,7 +1319,10 @@ func doNetworkInstanceDelete(
 		log.Errorf("NetworkInstance(%s-%s): Type %d not yet supported",
 			status.DisplayName, status.UUID, status.Type)
 	}
-
+	if status.Server4Running {
+		deleteServer4(ctx, status.BridgeIPAddr, status.BridgeName)
+		status.Server4Running = false
+	}
 	doBridgeAclsDelete(ctx, status)
 	if status.BridgeName != "" {
 		stopDnsmasq(status.BridgeName, false, false)

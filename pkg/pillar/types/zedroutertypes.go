@@ -2305,6 +2305,8 @@ type NetworkInstanceStatus struct {
 	//	Keeps track of current state of object - if it has been activated
 	Activated bool
 
+	Server4Running bool // Did we start the server?
+
 	NetworkInstanceInfo
 
 	OpaqueStatus string
