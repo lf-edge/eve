@@ -45,15 +45,25 @@ func getAndPublishMetrics(ctx *domainContext, hyper hypervisor.Hypervisor) {
 	dmList, _ := hyper.GetDomsCPUMem()
 	now := time.Now()
 	for domainName, dm := range dmList {
-		uuid, err := types.DomainnameToUUID(domainName)
+		uuid, version, _, err := types.DomainnameToUUID(domainName)
 		if err != nil {
 			log.Errorf("domainname %s: %s", domainName, err)
 			continue
 		}
 		dm.UUIDandVersion.UUID = uuid
+		dm.UUIDandVersion.Version = version
 		status := lookupDomainStatusByUUID(ctx, uuid)
+		if status == nil && dm.UUIDandVersion.UUID != nilUUID {
+			log.Warnf("Unknown metrics domainname %s",
+				domainName)
+			continue
+		}
 		if status != nil {
-			dm.UUIDandVersion.Version = status.UUIDandVersion.Version
+			if status.DomainName != domainName {
+				log.Warnf("Ignoring metrics with wrong version %s vs. %s",
+					domainName, status.DomainName)
+				continue
+			}
 			dm.Activated = status.Activated
 		}
 		if !dm.Activated {
