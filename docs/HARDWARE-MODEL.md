@@ -49,7 +49,7 @@ Note that the script does not take photos of the front and back, nor find the pr
 
 - The script looks for controllers on the PCI bus but has no visibility to which controllers are connected to which external physical ports. This is a an issue in particular for USB ports where one controller can be connected to multiple physical ports, but there can also be multiple USB controllers perhaps with some of them having no external physical ports. On a device with multiple USB controllers manual testing is needed to determine which controller is connected to which external USB ports.
 - A cellular modem (if available) is typically connected via a USB controller, but it might not be visible (not plugged in or software not yet initializing it) when you run the script. ```lsusb``` and ```lspci``` can help finding those.
-- There can be additional functions on the PCI bus which the script does not look for, and such functions can limit the ability to assign other adapters/functions to application instances. More about that below.
+- If there are unknown controllers/functions on the PCI bus which share an IOMMU group with a known controller/function, the script is conservative and will mark the known as not assignable by setting assigngrp to empty. More about that below.
 
 ### Completing the model file
 
@@ -62,47 +62,128 @@ Starting from the generated model file and add or adjust:
 - If the model file shows multiple USB controllers, then plug in e.g., a USB stick in each physical USB port and use ```lsusb``` and ```lspci``` to tell which controller to which port is connected.
 - If the device has multiple physical USB ports, please add a entry for each one of them in the json file (on the correct USB controller if there are multiple)
 - If you device has a cellular modem verify that there is one or two wwan interfaces in the generated file, and if not add one. If it is connected via a USB controller (```lsusb``` will tell you that) it needs to be in the same assignment group as the USB controller.
-- Check whether there are additional functions on the PCI controllers which might prevent assignment to an application instance. See below.
+- If some controllers have an empty assignment group there might be an issue with an unknown controller/function. The ```-v``` option to the script can be used to get more information about such unknown controllers/functions.
 
-#### Check other functions
+#### Check for unknown controllers/functions
 
-Assuming the device is running the KVM hypervisor, then all of the iommu groups can be determined as shown in this example:
+This example shows a device with two VGA controllers, where only one
+appears to be assignable. The script outputs
 
-```shell
-# find /sys/kernel/iommu_groups/ -type l
-
-/sys/kernel/iommu_groups/7/devices/0000:00:13.2
-/sys/kernel/iommu_groups/15/devices/0000:05:00.0
-/sys/kernel/iommu_groups/5/devices/0000:00:13.0
-/sys/kernel/iommu_groups/13/devices/0000:02:00.0
-/sys/kernel/iommu_groups/3/devices/0000:00:0f.0
-/sys/kernel/iommu_groups/11/devices/0000:00:19.2
-/sys/kernel/iommu_groups/11/devices/0000:00:19.0
-/sys/kernel/iommu_groups/11/devices/0000:00:19.1
-/sys/kernel/iommu_groups/1/devices/0000:00:02.0
-/sys/kernel/iommu_groups/8/devices/0000:00:13.3
-/sys/kernel/iommu_groups/6/devices/0000:00:13.1
-/sys/kernel/iommu_groups/14/devices/0000:03:00.0
-/sys/kernel/iommu_groups/4/devices/0000:00:12.0
-/sys/kernel/iommu_groups/12/devices/0000:00:1f.0
-/sys/kernel/iommu_groups/12/devices/0000:00:1f.1
-/sys/kernel/iommu_groups/2/devices/0000:00:0e.0
-/sys/kernel/iommu_groups/10/devices/0000:00:15.0
-/sys/kernel/iommu_groups/0/devices/0000:00:00.0
-/sys/kernel/iommu_groups/9/devices/0000:00:14.0
+```json
+    {
+      "ztype": 7,
+      "phylabel": "VGA",
+      "assigngrp": "group2",
+      "phyaddrs": {
+        "PciLong": "0000:00:13.0"
+      },
+      "logicallabel": "VGA",
+      "usagePolicy": {}
+    },
+    {
+      "ztype": 7,
+      "phylabel": "VGA1",
+      "assigngrp": "",
+      "phyaddrs": {
+        "PciLong": "0000:04:00.0"
+      },
+      "logicallabel": "VGA1",
+      "usagePolicy": {}
+    }
 ```
 
-In the example we have ```00:1f.0``` and ```00:1f.1``` and ```00:19.*``` are in the same iommu group, hence they have to either be placed in the same assignment group or be marked as not assignable by setting assigngrp to empty.
-The latter would be the only choice if one of them is something needed by the host (for instance, some controller to tune the memory timing) while some other is an Ethernet adapter.
+In this case one can invoke ```spec.sh -v``` which includes additional fields and information for all items in lspci. NOTE that this output is not a valid model file hence should not be submitted as a PR to lf-edge/eden; it is merely useful to determine whether the script was too conservative in disabling assignment.
+In the above example we got:
 
-In this particular case we can check that by seeing if ```00:1f``` or ```00:19``` are listed in the model file. If they are listed you can verify the type using
-
-```shell
-# lspci | grep 00:19
+```json
+    {
+      "ztype": 7,
+      "phylabel": "VGA",
+      "assigngrp": "group2",
+      "phyaddrs": {
+        "PciLong": "0000:00:13.0"
+      },
+      "logicallabel": "VGA",
+      "usagePolicy": {}
+      ,
+      "class": "0000",
+      "vendor": "8086",
+      "device": "a135",
+      "description": "Non-VGA unclassified device: Intel Corporation 100 Series/
+C230 Series Chipset Family Integrated Sensor Hub (rev 31)",
+      "iommu_group": 2
+    },
+    {
+      "ztype": 7,
+      "phylabel": "VGA1",
+      "assigngrp": "",
+      "phyaddrs": {
+        "PciLong": "0000:04:00.0"
+      },
+      "logicallabel": "VGA1",
+      "usagePolicy": {}
+      ,
+      "class": "0300",
+      "vendor": "1a03",
+      "device": "2000",
+      "description": "VGA compatible controller: ASPEED Technology, Inc. ASPEED Graphics Family (rev 30)",
+      "iommu_group": 11
+    },
+    {
+      "ztype": 255,
+      "phylabel": "Other11",
+      "assigngrp": "",
+      "phyaddrs": {
+        "PciLong": "0000:03:00.0"
+      },
+      "logicallabel": "Other11",
+      "usagePolicy": {}
+      ,
+      "class": "0604",
+      "vendor": "1a03",
+      "device": "1150",
+      "description": "PCI bridge: ASPEED Technology, Inc. AST1150 PCI-to-PCI Bri
+dge (rev 03)",
+      "iommu_group": 11
+    }
 ```
 
-and then make the entries for ```00:19.*``` have assigngrp be empty.
-(Note that this particular example is made up in that ```00:19.*``` was not an I/O adapter listed in the model file.)
+That second device, which is a PCI bridge in the VGA controller it seems, is in the same iommu_group as the VGA1 device hence the reason for disabling assignment of VGA1 by default. However, in this case that might be normal and they should be assigned as a unit. But in all such case it REQUIRES manual testing and verification that the controllers still work as expected when assigned to an app insgance.
+
+In this case it would make sense to try with:
+
+```json
+    {
+      "ztype": 7,
+      "phylabel": "VGA",
+      "assigngrp": "group2",
+      "phyaddrs": {
+        "PciLong": "0000:00:13.0"
+      },
+      "logicallabel": "VGA",
+      "usagePolicy": {}
+    },
+    {
+      "ztype": 7,
+      "phylabel": "VGA1",
+      "assigngrp": "group11",
+      "phyaddrs": {
+        "PciLong": "0000:04:00.0"
+      },
+      "logicallabel": "VGA1",
+      "usagePolicy": {}
+    },
+    {
+      "ztype": 255,
+      "phylabel": "Other11",
+      "assigngrp": "group11",
+      "phyaddrs": {
+        "PciLong": "0000:03:00.0"
+      },
+      "logicallabel": "Other11",
+      "usagePolicy": {}
+    }
+```
 
 ## Testing
 
