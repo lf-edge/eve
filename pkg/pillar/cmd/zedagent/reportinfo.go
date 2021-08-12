@@ -639,7 +639,7 @@ func encodeNetInfo(port types.NetworkPortStatus) *info.ZInfoNetwork {
 	for index, ai := range port.AddrInfoList {
 		networkInfo.IPAddrs[index] = *proto.String(ai.Addr.String())
 	}
-	networkInfo.Up = port.Up
+	networkInfo.Ipv4Up = port.Up
 	networkInfo.MacAddr = *proto.String(port.MacAddr)
 
 	// In case caller doesn't override

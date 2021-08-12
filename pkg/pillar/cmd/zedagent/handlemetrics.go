@@ -967,7 +967,7 @@ func PublishAppInfoToZedCloud(ctx *zedagentContext, uuid string,
 				ifname)
 			networkInfo.IPAddrs = append([]string{ipv4Addr}, ipv6Addrs...)
 			networkInfo.MacAddr = *proto.String(macAddr)
-			networkInfo.Up = allocated
+			networkInfo.Ipv4Up = allocated
 			networkInfo.IpAddrMisMatch = ipAddrMismatch
 			name := appIfnameToName(aiStatus, ifname)
 			log.Tracef("app %s/%s localName %s devName %s",
