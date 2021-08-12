@@ -15,7 +15,7 @@ exec chmod 600 {{EdenConfig "eden.tests"}}/eclient/image/cert/id_rsa
 
 message 'Resetting of EVE'
 eden eve reset
-exec sleep 20
+exec sleep 30
 
 message 'Creating networks'
 #exec sleep 5
@@ -26,9 +26,9 @@ eden network create 10.11.13.0/24 -n n2
 test eden.network.test -test.v -timewait 10m ACTIVATED n1 n2
 
 message 'Starting applications'
-eden pod deploy -v debug -n ping1 docker://itmoeve/eclient:0.4 -p 2223:22 --networks=n1 --memory=512MB
-eden pod deploy -v debug -n ping2 docker://itmoeve/eclient:0.4 -p 2224:22 --networks=n2 --memory=512MB
-eden pod deploy -v debug -n pong docker://itmoeve/eclient:0.4 --networks=n1 --memory=512MB
+eden pod deploy -v debug -n ping1 docker://lfedge/eden-eclient:83cfe07 -p 2223:22 --networks=n1 --memory=512MB
+eden pod deploy -v debug -n ping2 docker://lfedge/eden-eclient:83cfe07 -p 2224:22 --networks=n2 --memory=512MB
+eden pod deploy -v debug -n pong docker://lfedge/eden-eclient:83cfe07 --networks=n1 --memory=512MB
 
 message 'Waiting of running'
 test eden.app.test -test.v -timewait 20m RUNNING ping1 ping2 pong
@@ -50,8 +50,7 @@ stdout '100% packet loss'
 
 message 'Switching to 2st network'
 eden pod modify pong --networks n2
-test eden.app.test -test.v -timewait 5m PURGING pong
-test eden.app.test -test.v -timewait 10m RUNNING pong
+test eden.app.test -test.v -timewait 15m RUNNING pong
 eden pod ps
 cp stdout pod_ps
 exec bash pong_ip.sh
@@ -66,8 +65,7 @@ stdout '0% packet loss'
 
 message 'Switching back to 1st network'
 eden pod modify pong --networks n1
-test eden.app.test -test.v -timewait 5m PURGING pong
-test eden.app.test -test.v -timewait 10m RUNNING pong
+test eden.app.test -test.v -timewait 15m RUNNING pong
 eden pod ps
 cp stdout pod_ps
 exec bash pong_ip.sh

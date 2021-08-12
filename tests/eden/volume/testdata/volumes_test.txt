@@ -1,11 +1,11 @@
-eden -t 5s volume ls
+eden -t 10s volume ls
 
 # Starting of reboot detector with a 1 reboots limit
 ! test eden.reboot.test -test.v -timewait 10m -reboot=0 -count=1 &
 
 # Create v1 volume
-eden -t 1m volume create -n v-docker docker://itmoeve/eclient:0.4 --disk-size=200M
-stdout 'create volume v-docker with docker://itmoeve/eclient:0.4 request sent'
+eden -t 1m volume create -n v-docker docker://lfedge/eden-eclient:83cfe07 --disk-size=200M
+stdout 'create volume v-docker with docker://lfedge/eden-eclient:83cfe07 request sent'
 eden -t 1m volume create -n v-qcow2 file://{{EdenConfig "eden.root"}}/empty.qcow2 --format=qcow2 --disk-size=200M
 stdout 'create volume v-qcow2 with file://{{EdenConfig "eden.root"}}/empty.qcow2 request sent'
 eden -t 1m volume create -n v-qcow file://{{EdenConfig "eden.root"}}/empty.qcow --format=qcow --disk-size=560
@@ -14,10 +14,11 @@ eden -t 1m volume create -n v-vmdk file://{{EdenConfig "eden.root"}}/empty.vmdk 
 stdout 'create volume v-vmdk with file://{{EdenConfig "eden.root"}}/empty.vmdk request sent'
 eden -t 1m volume create -n v-vhdx file://{{EdenConfig "eden.root"}}/empty.vhdx --format=vhdx --disk-size=8388608
 stdout 'create volume v-vhdx with file://{{EdenConfig "eden.root"}}/empty.vhdx request sent'
+eden -t 1m volume create -n blank-vol blank --disk-size=10MB
 
 # Wait for run
 test eden.vol.test -test.v -timewait 10m DELIVERED v-qcow2 v-docker v-qcow v-vmdk v-vhdx
-#test eden.vol.test -test.v -timewait 10m DELIVERED v-qcow2 v-docker v-qcow v-vmdk v-vhdx
+test eden.vol.test -test.v -timewait 1m CREATED_VOLUME blank-vol
 
 # Volume detecting
 eden -t 1m volume ls
@@ -39,16 +40,18 @@ eden -t 1m volume delete v-vmdk
 stdout 'volume v-vmdk delete done'
 eden -t 1m volume delete v-vhdx
 stdout 'volume v-vhdx delete done'
+eden -t 1m volume delete blank-vol
+stdout 'volume blank-vol delete done'
 
 # Wait for delete
-test eden.vol.test -test.v -timewait 5m - v-qcow2 v-docker v-qcow v-vmdk v-vhdx
-#test eden.vol.test -test.v -timewait 5m - v-qcow2 v-docker v-qcow v-vmdk v-vhdx
+test eden.vol.test -test.v -timewait 5m - v-qcow2 v-docker v-qcow v-vmdk v-vhdx blank-vol
 cp stdout vol_ls
 grep 'o volume with v-docker found' vol_ls
 grep 'o volume with v-qcow2 found' vol_ls
 grep 'o volume with v-qcow found' vol_ls
 grep 'o volume with v-vmdk found' vol_ls
 grep 'o volume with v-vhdx found' vol_ls
+grep 'o volume with blank-vol found' vol_ls
 
 # Volumes detecting
 eden -t 1m volume ls
@@ -58,6 +61,7 @@ cp stdout vol_ls
 ! grep '^v-qcow\s*' vol_ls
 ! grep '^v-vmdk\s*' vol_ls
 ! grep '^v-vhdx\s*' vol_ls
+! grep '^blank-vol\s*' vol_ls
 
 # Test's config. file
 -- eden-config.yml --

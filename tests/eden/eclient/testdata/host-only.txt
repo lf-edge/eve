@@ -13,9 +13,9 @@ exec chmod 600 {{EdenConfig "eden.tests"}}/eclient/image/cert/id_rsa
 # Starting of reboot detector with a 1 reboot limit
 ! test eden.reboot.test -test.v -timewait 40m -reboot=0 -count=1 &
 
-eden pod deploy -n ping-nw --memory=512MB docker://itmoeve/eclient:0.4 -p 2223:22
-eden pod deploy -n ping-fw --memory=512MB docker://itmoeve/eclient:0.4 -p 2224:22 --only-host=true
-eden pod deploy -n pong --memory=512MB docker://itmoeve/eclient:0.4
+eden pod deploy -n ping-nw --memory=512MB docker://lfedge/eden-eclient:83cfe07 -p 2223:22
+eden pod deploy -n ping-fw --memory=512MB docker://lfedge/eden-eclient:83cfe07 -p 2224:22 --only-host=true
+eden pod deploy -n pong --memory=512MB docker://lfedge/eden-eclient:83cfe07
 
 test eden.app.test -test.v -timewait 25m RUNNING ping-nw ping-fw pong
 

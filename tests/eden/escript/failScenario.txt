@@ -1,0 +1,19 @@
+{{$reset := EdenGetEnv "EDEN_FAIL_RESET"}}
+
+/bin/echo Default test fail scenario
+
+/bin/echo eden status
+eden status
+/bin/echo eden pod ps
+eden pod ps
+/bin/echo eden network ls
+eden network ls
+/bin/echo eden volume ls
+eden volume ls
+/bin/echo check fatal_stacks in logs
+eden log --format=json content:fatal_stacks
+
+{{ if (ne $reset "") }}
+/bin/echo EDEN's reset
+eden.escript.test -test.run TestEdenScripts/eden_reset -testdata {{EdenConfig "eden.root"}}/../tests/workflow/testdata/
+{{end}}

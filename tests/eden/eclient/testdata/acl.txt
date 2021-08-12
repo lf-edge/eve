@@ -22,7 +22,7 @@ exec chmod 600 {{EdenConfig "eden.tests"}}/eclient/image/cert/id_rsa
 
 message 'Resetting of EVE'
 eden eve reset
-exec sleep 20
+exec sleep 30
 
 # use zededa.com IP address as a target for $fake_domain
 exec -t 10m bash dns_lookup.sh zededa.com
@@ -34,9 +34,9 @@ eden network create 10.11.12.0/24 -n {{$network_name}} -s {{$fake_domain}}:$host
 test eden.network.test -test.v -timewait 10m ACTIVATED {{$network_name}}
 
 # First app is only allowed to access github.com and $long_domain.
-eden pod deploy -n curl-acl1 --memory=512MB docker://itmoeve/eclient:0.4 -p 2223:22 --networks={{$network_name}} --acl={{$network_name}}:github.com --acl={{$network_name}}:{{$long_domain}}
+eden pod deploy -n curl-acl1 --memory=512MB docker://lfedge/eden-eclient:83cfe07 -p 2223:22 --networks={{$network_name}} --acl={{$network_name}}:github.com --acl={{$network_name}}:{{$long_domain}}:allow --acl={{$network_name}}:google.com:drop
 # Second app is only allowed to access $long_domain and $fake_domain.
-eden pod deploy -n curl-acl2 --memory=512MB docker://itmoeve/eclient:0.4 -p 2224:22 --networks={{$network_name}} --acl={{$network_name}}:{{$long_domain}} --acl={{$network_name}}:{{$fake_domain}}
+eden pod deploy -n curl-acl2 --memory=512MB docker://lfedge/eden-eclient:83cfe07 -p 2224:22 --networks={{$network_name}} --acl={{$network_name}}:{{$long_domain}} --acl={{$network_name}}:{{$fake_domain}}:allow --acl={{$network_name}}:ieee.org:drop
 
 test eden.app.test -test.v -timewait 10m RUNNING curl-acl1 curl-acl2
 
@@ -44,6 +44,12 @@ exec -t 10m bash wait_ssh.sh 2223
 exec -t 10m bash wait_ssh.sh 2224
 
 exec sleep 10
+
+# Check that the configured ACLs do not allow direct communication between the applications,
+# even if they are on the same local network.
+! exec -t 10m bash ping_between_apps.sh curl-acl1 curl-acl2
+stdout '100% packet loss'
+!  stdout '[1-5] received'
 
 # Try to curl hosts allowed by ACLs
 exec -t 1m bash curl.sh 2223 github.com
@@ -62,15 +68,24 @@ stderr 'Connected to {{$long_domain}}'
 #stderr 'Connected to {{$fake_domain}}'
 ! exec -t 1m bash curl.sh 2224 github.com
 ! stderr 'Connected'
+! exec -t 1m bash curl.sh 2224 ieee.org
+! stderr 'Connected'
 ! exec -t 1m bash curl.sh 2224 google.com
 ! stderr 'Connected'
 
 # Wait for network packets information
-exec -t 20m bash wait_netstat.sh {{$network_name}} google.com github.com {{$long_domain}} {{$fake_domain}}
+exec -t 10m bash wait_netstat.sh curl-acl1 google.com github.com {{$long_domain}} {{$fake_domain}}
 stdout 'google.com'
 stdout 'github.com'
 stdout '{{$long_domain}}'
 stdout '{{$fake_domain}}'
+! stdout 'ieee.org'
+exec -t 10m bash wait_netstat.sh curl-acl2 google.com github.com {{$long_domain}} ieee.org
+stdout 'google.com'
+stdout 'github.com'
+stdout '{{$long_domain}}'
+! stdout '{{$fake_domain}}'
+stdout 'ieee.org'
 
 # Cleanup - undeploy applications
 eden pod delete curl-acl1
@@ -101,10 +116,10 @@ done
 -- dns_lookup.sh --
 
 # Performs DNS lookup for a given hostname and adds host_ip=<ip> into the .env file
-# The script uses 'getent' command to avoid dependencies on tools like 'host', 'dig', etc.
+# Uses dig command which is already included by most modern Linux systems and also macOS.
 # Usage: dns_lookup.sh <hostname>
 
-IP=$(getent hosts $1 | head -n 1 | cut -d ' ' -f 1)
+IP=$(dig +short $1)
 echo host_ip=$IP>>.env
 
 -- curl.sh --
@@ -115,6 +130,44 @@ HOST=$($EDEN eve ip)
 echo {{template "ssh"}}$HOST -p $1 curl -v --max-time 30 "$2"
 {{template "ssh"}}$HOST -p $1 curl -v --max-time 30 "$2"
 
+-- ping_between_apps.sh --
+
+EDEN={{EdenConfig "eden.root"}}/{{EdenConfig "eden.bin-dist"}}/{{EdenConfig "eden.eden-bin"}}
+HOST=$($EDEN eve ip)
+
+app1=$1
+app2=$2
+app1_ssh_port=$($EDEN pod ps | grep $app1 | awk '{print $5}' | cut -d ":" -f 2)
+app2_ssh_port=$($EDEN pod ps | grep $app2 | awk '{print $5}' | cut -d ":" -f 2)
+app1_ip=$($EDEN pod ps | grep $app1 | awk '{print $4}' | cut -d ":" -f 1)
+app2_ip=$($EDEN pod ps | grep $app2 | awk '{print $4}' | cut -d ":" -f 1)
+
+echo {{template "ssh"}}$HOST -p $app1_ssh_port ping -c 5 $app2_ip
+{{template "ssh"}}$HOST -p $app1_ssh_port ping -c 5 $app2_ip      && exit
+echo {{template "ssh"}}$HOST -p $app2_ssh_port ping -c 5 $app1_ip
+{{template "ssh"}}$HOST -p $app2_ssh_port ping -c 5 $app1_ip      && exit
+
+# ping routed by EVE was blocked, but check if on the L2 layer it is blocked as well
+# (i.e. when only forwarded by EVE)...
+function configure_link_route {
+    from_ssh_port=$1
+    from_ip=$2
+    to_ip=$3
+    CMDS="
+    iface=\$(ifconfig | awk -v filter=\"inet $from_ip\" '\$0 ~ filter {print \$1}' RS=\"\n\n\" FS=\":\") &&
+    ip route add $to_ip dev \$iface
+    "
+    echo {{template "ssh"}}$HOST -p $from_ssh_port "$CMDS"
+    {{template "ssh"}}$HOST -p $from_ssh_port "$CMDS"
+}
+configure_link_route $app1_ssh_port $app1_ip $app2_ip
+configure_link_route $app2_ssh_port $app2_ip $app1_ip
+
+echo {{template "ssh"}}$HOST -p $app1_ssh_port ping -c 5 $app2_ip
+{{template "ssh"}}$HOST -p $app1_ssh_port ping -c 5 $app2_ip      && exit
+echo {{template "ssh"}}$HOST -p $app2_ssh_port ping -c 5 $app1_ip
+{{template "ssh"}}$HOST -p $app2_ssh_port ping -c 5 $app1_ip      && exit
+
 -- wait_netstat.sh --
 #!/bin/sh
 EDEN={{EdenConfig "eden.root"}}/{{EdenConfig "eden.bin-dist"}}/{{EdenConfig "eden.eden-bin"}}
@@ -122,9 +175,9 @@ EDEN={{EdenConfig "eden.root"}}/{{EdenConfig "eden.bin-dist"}}/{{EdenConfig "ede
 echo "Waiting for netstat results"
 for p in ${@: 2}
 do
-  until "$EDEN" network netstat $1 | grep $p; do sleep 30; done
+  until "$EDEN" pod logs --fields=netstat $1 | grep "$p"; do sleep 30; done
 done
-"$EDEN" network netstat $1
+"$EDEN" pod logs --fields=netstat $1
 
 -- eden-config.yml --
 {{/* Test's config file */}}

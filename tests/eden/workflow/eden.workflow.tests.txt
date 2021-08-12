@@ -10,6 +10,8 @@
 {{$usb_pt := EdenGetEnv "EDEN_TEST_USB_PT"}}
 # EDEN_TEST_AUDIO_PT -- "y" enables Audio Passthrough test (disabled by default).
 {{$audio_pt := EdenGetEnv "EDEN_TEST_AUDIO_PT"}}
+# EDEN_TEST_ETH_PT -- "y" enables Ethernet Passthrough test (disabled by default).
+{{$eth_pt := EdenGetEnv "EDEN_TEST_ETH_PT"}}
 # EDEN_TEST_REGISTRY env. var. -- "y"(default) performs the local EDEN registry test
 {{$registry := EdenGetEnv "EDEN_TEST_REGISTRY"}}
 
@@ -30,7 +32,7 @@ qemu+usb.sh
 qemu+audio.sh
 {{end}}
 {{if or (eq $devmodel "ZedVirtual-4G") (eq $devmodel "VBox") (eq $devmodel "parallels") }}
-eden+ports.sh 2223:2223 2224:2224 5912:5902 5911:5901 8027:8027
+eden+ports.sh 2223:2223 2224:2224 5912:5902 5911:5901 8027:8027 8028:8028 8029:8029 8030:8030 8031:8031
 {{end}}
 
 {{if (ne $setup "n")}}
@@ -77,6 +79,8 @@ eden.escript.test -testdata ../escript/testdata/ -test.run TestEdenScripts/fail_
 
 /bin/echo Eden basic network test (16/{{$tests}})
 eden.escript.test -testdata ../network/testdata/ -test.run TestEdenScripts/network_test
+/bin/echo Eden basic VLAN test (16.1/{{$tests}})
+eden.escript.test -testdata ../network/testdata/ -test.run TestEdenScripts/vlans
 /bin/echo Eden basic volumes test (17.1/{{$tests}})
 eden.escript.test -testdata ../volume/testdata/ -test.run TestEdenScripts/volumes_test
 /bin/echo Eden sftp volumes test (17.2/{{$tests}})
@@ -108,6 +112,10 @@ eden.escript.test -testdata ../hardware_reboot/testdata/ -test.run TestEdenScrip
 {{if (eq $audio_pt "y")}}
 /bin/echo Hardware reboot - Audio (22.1/{{$tests}})
 eden.escript.test -testdata ../hardware_reboot/testdata/ -test.run TestEdenScripts/hardware_audio_reboot
+{{end}}
+{{if (eq $eth_pt "y")}}
+/bin/echo Hardware reboot - Ethernet (22.2/{{$tests}})
+eden.escript.test -testdata ../hardware_reboot/testdata/ -test.run TestEdenScripts/hardware_eth_reboot
 {{end}}
 
 {{ if or (eq $workflow "large") (eq $workflow "gcp") }}

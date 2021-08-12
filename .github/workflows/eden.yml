@@ -24,15 +24,10 @@ jobs:
         run: |
           sudo add-apt-repository ppa:canonical-server/server-backports
           sudo apt install -y qemu-utils qemu-system-x86 jq
-      - name: get eden
-        uses: actions/checkout@v2
-        with:
-          repository: 'lf-edge/eden'
-      - name: build eden
+      - name: prepare eden
         run: |
-          make clean
-          make V=1 build
-          make V=1 build-tests
+          docker run -v $PWD:/out lfedge/eden:30c8b3f cp -a /eden/. /out/
+          sudo chown -R $(whoami) .
           ./eden config add default
       - name: get eve
         uses: actions/checkout@v2

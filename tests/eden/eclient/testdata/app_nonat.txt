@@ -15,7 +15,7 @@ exec chmod 600 {{EdenConfig "eden.tests"}}/eclient/image/cert/id_rsa
 
 message 'Resetting of EVE'
 eden eve reset
-exec sleep 20
+exec sleep 30
 
 message 'Creating networks'
 eden network create 10.11.12.0/24 -n indirect
@@ -24,7 +24,7 @@ eden network create --type switch --uplink eth0 -n direct
 test eden.network.test -test.v -timewait 10m ACTIVATED indirect direct
 
 message 'Starting applications'
-eden pod deploy -v debug -n eclient docker://itmoeve/eclient:0.4 -p {{template "port"}}:22 --networks=indirect --networks=direct --memory=512MB
+eden pod deploy -v debug -n eclient docker://lfedge/eden-eclient:83cfe07 -p {{template "port"}}:22 --networks=indirect --networks=direct --memory=512MB
 
 message 'Waiting of running'
 test eden.app.test -test.v -timewait 30m RUNNING eclient
