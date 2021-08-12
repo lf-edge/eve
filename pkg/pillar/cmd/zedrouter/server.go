@@ -1,4 +1,4 @@
-// Copyright (c) 2020 Zededa, Inc.
+// Copyright (c) 2020-2021 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
 // A http server providing meta-data information to application instances
@@ -12,12 +12,18 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	stdlog "log"
 	"net"
 	"net/http"
+	"os"
+	"os/exec"
 	"path"
 	"strconv"
 	"strings"
+	"syscall"
+	"time"
 
+	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/iptables"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 )
@@ -82,6 +88,7 @@ func createServer4(ctx *zedrouterContext, bridgeIP string, bridgeName string) er
 }
 
 func deleteServer4(ctx *zedrouterContext, bridgeIP string, bridgeName string) {
+	log.Noticef("deleteServer4(%s %s)", bridgeIP, bridgeName)
 	targetPort := 80
 	subnetStr := "169.254.169.254/32"
 	target := fmt.Sprintf("%s:%d", bridgeIP, targetPort)
@@ -140,43 +147,196 @@ func getDoneChan(bridgeName string, bridgeIP string) (chan<- struct{}, <-chan st
 	return val.doneChan, val.ackChan, exists
 }
 
+// getTCP is used to collect some debug output from netstat
+func getTCP(match string) string {
+	cmd := "netstat -antwp | grep " + match
+	output, err := exec.Command("bash", "-c", cmd).Output()
+	if err != nil {
+		// Normal if empty output
+		log.Functionf("exec netstat failed: %v", err)
+	}
+	return string(output)
+}
+
 func runServer(mux http.Handler, network string, ipaddr string,
 	doneChan <-chan struct{}, ackChan chan<- struct{}) {
 
-	// XXX no to place to specify network. Might be an issue when we
-	// add IPv6?
+	w := logger.Writer()
+	defer w.Close()
 	srv := http.Server{
-		Addr:    ipaddr + ":80",
-		Handler: mux,
+		Addr:         ipaddr + ":80",
+		Handler:      mux,
+		ReadTimeout:  5 * time.Second,
+		WriteTimeout: 5 * time.Second,
+		ErrorLog:     stdlog.New(w, "http server("+ipaddr+"): ", 0),
 	}
+	// No need for http keepalives for the cloud-init API endpoints
+	srv.SetKeepAlivesEnabled(false)
+
+	var listener net.Listener
+
+	// Try with sleep in case the listener isn't yet gone from the kernel
+	// (the golang net/http on Linux seems to sometimes have it remain
+	// for a long time after the Shutdown)
+	// Since we are running in a separate go routine we can keep on trying
+	// and poking forever, however we look at doneChan to bail if
+	// deleteServer4 is telling us to go away
+	startListen := time.Now()
+	first := true
+	for {
+		// check if doneChan is telling is us to exit
+		select {
+		case <-doneChan:
+			log.Noticef("Listener wait: read doneChan for %s",
+				srv.Addr)
+			ackChan <- struct{}{}
+			log.Noticef("Listener wait: server on %s done after %v",
+				srv.Addr, time.Since(startListen))
+			return
+		default:
+		}
+		var err error
+		listener, err = net.Listen("tcp", srv.Addr)
+		if err == nil {
+			break
+		}
+		log.Warnf("listen %s failed: %s", srv.Addr, err)
+		if listener != nil {
+			listener.Close()
+		}
+		// dump stacks for debug once
+		if first {
+			agentlog.DumpAllStacks(log, "zedrouter")
+			first = false
+		}
+		// Force any previous listener blocked in Accept() to unblock
+		// by connecting to it
+		unblockAccept(srv.Addr, "listen wait")
+		time.Sleep(2 * time.Second)
+
+		ubSockets := getTCP(srv.Addr)
+		if len(ubSockets) != 0 {
+			log.Warnf("Waiting for %d sockets: %s",
+				len(ubSockets), ubSockets)
+		}
+	}
+	if listener == nil {
+		// Will not happen due to loop above
+		log.Fatalf("listen %s failed", srv.Addr)
+	}
+	log.Noticef("Got listener for %s after %v",
+		srv.Addr, time.Since(startListen))
+
+	// Set up a handler for doneChan
 	idleConnsClosed := make(chan struct{})
 	go func() {
+		log.Noticef("Waiting to read doneChan for %s", srv.Addr)
 		<-doneChan
+		log.Noticef("Done read doneChan for %s", srv.Addr)
 
 		// We received an interrupt signal, shut down.
+
+		// Use short deadline make Accept() wake up after the Shutdown
+		// has marked the internal state as closing
+		tcpListener := listener.(*net.TCPListener)
+		if err := tcpListener.SetDeadline(time.Now().Add(time.Second)); err != nil {
+			log.Errorf("SetDeadline failed for %s: %s",
+				srv.Addr, err)
+		}
+
 		if err := srv.Shutdown(context.Background()); err != nil {
 			// Error from closing listeners, or context timeout:
-			log.Noticef("server on %s shutdown failed: %s", ipaddr, err)
+			log.Noticef("server on %s shutdown failed: %s",
+				srv.Addr, err)
 		}
+		// Wait for the above deadline to pass
+		time.Sleep(2 * time.Second)
+
+		// Force Accept() to unblock by connecting
+		unblockAccept(srv.Addr, "shutdown")
+
 		close(idleConnsClosed)
+		log.Noticef("Closed idleConnsClosed for %s", srv.Addr)
 	}()
 
-	if err := srv.ListenAndServe(); err != nil {
+	if err := srv.Serve(listener); err != nil {
 		if err == http.ErrServerClosed {
-			log.Noticef("server on %s closed", ipaddr)
+			log.Noticef("server on %s closed", srv.Addr)
 		} else {
-			log.Fatalf("server on %s failed: %s", ipaddr, err)
+			log.Fatalf("server on %s failed: %s", srv.Addr, err)
 		}
 	}
-	log.Noticef("Waiting for idleConnsClosed on %s", ipaddr)
+	log.Noticef("Waiting for idleConnsClosed on %s", srv.Addr)
 	<-idleConnsClosed
-	log.Noticef("Done waiting for idleConnsClosed on %s", ipaddr)
+	log.Noticef("Done waiting for idleConnsClosed on %s", srv.Addr)
 	ackChan <- struct{}{}
-	log.Noticef("Server on %s done", ipaddr)
+	// Just in case
+	if err := srv.Close(); err != nil {
+		log.Errorf("srv.Close failed: %s", err)
+	}
+	// Did all the sockets go away?
+	doneSockets := getTCP(srv.Addr)
+	if len(doneSockets) != 0 {
+		log.Noticef("doneSockets for %s: %d %s",
+			srv.Addr, len(doneSockets), doneSockets)
+
+		// Force accept to unblock by connecting
+		unblockAccept(srv.Addr, "post Close")
+		ubSockets := getTCP(srv.Addr)
+		if len(doneSockets) != 0 || len(ubSockets) != 0 {
+			log.Warnf("post unblock sockets for %s: %d %s",
+				srv.Addr, len(ubSockets), ubSockets)
+		}
+	}
+	log.Noticef("Server on %s done", srv.Addr)
+}
+
+// unblockAccept connects to ourselves in case the server is blocked in
+// the Accept call
+// Normally when this is called we get a "connection refused" since the
+// listener should have closed.
+func unblockAccept(addr string, where string) {
+	// Just want to send the SYN to unblock
+	d := net.Dialer{Timeout: 100 * time.Millisecond}
+	conn, err := d.Dial("tcp", addr)
+	if err != nil {
+		if isECONNREFUSED(err) {
+			log.Noticef("unblockAccept(%s tag %s) got expected connection refused",
+				addr, where)
+		} else {
+			log.Errorf("unblockAccept(%s tag %s) dial failed: %s",
+				addr, where, err)
+		}
+		return
+	}
+	if err := conn.Close(); err != nil {
+		log.Errorf("unblockAccept(%s tag %s) close failed: %s",
+			addr, where, err)
+		return
+	}
+	log.Warnf("unblockAccept(%s tag %s) unexpectedly succeeded and closed",
+		addr, where)
+}
+
+func isECONNREFUSED(e0 error) bool {
+	e1, ok := e0.(*net.OpError)
+	if !ok {
+		return false
+	}
+	e2, ok := e1.Err.(*os.SyscallError)
+	if !ok {
+		return false
+	}
+	errno, ok := e2.Err.(syscall.Errno)
+	if !ok {
+		return false
+	}
+	return errno == syscall.ECONNREFUSED
 }
 
 // ServeHTTP for networkHandler provides a json return
 func (hdl networkHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	log.Tracef("networkHandler.ServeHTTP")
 	remoteIP := net.ParseIP(strings.Split(r.RemoteAddr, ":")[0])
 	externalIP, code := getExternalIPForApp(hdl.ctx, remoteIP)
 	var ipStr string
@@ -202,6 +362,7 @@ func (hdl networkHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 // ServeHTTP for externalIPHandler provides a text IP address
 func (hdl externalIPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	log.Tracef("externalIPHandler.ServeHTTP")
 	remoteIP := net.ParseIP(strings.Split(r.RemoteAddr, ":")[0])
 	externalIP, code := getExternalIPForApp(hdl.ctx, remoteIP)
 	w.WriteHeader(code)
@@ -238,6 +399,7 @@ func getExternalIPForApp(ctx *zedrouterContext, remoteIP net.IP) (net.IP, int) {
 
 // ServeHTTP for hostnameHandler returns text
 func (hdl hostnameHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	log.Tracef("hostnameHandler.ServeHTTP")
 	remoteIP := net.ParseIP(strings.Split(r.RemoteAddr, ":")[0])
 	anStatus := lookupAppNetworkStatusByAppIP(hdl.ctx, remoteIP)
 	w.Header().Add("Content-Type", "text/plain")
