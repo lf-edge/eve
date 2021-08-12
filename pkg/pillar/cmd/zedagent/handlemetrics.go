@@ -1377,6 +1377,7 @@ func SendMetricsProtobuf(ReportMetrics *metrics.ZMetricMsg,
 
 // Use the ifname/vifname to find the underlay status
 // and from there the (ip, allocated, mac) addresses for the app
+// Returns one IPv4 address and a list of IPv6 addresses
 func getAppIP(ctx *zedagentContext, aiStatus *types.AppInstanceStatus,
 	vifname string) (string, []string, bool, string, bool) {
 

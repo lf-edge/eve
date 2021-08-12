@@ -832,8 +832,19 @@ func lookupOrAllocateIPv4(
 	if ips, ok := status.IPAssignments[mac.String()]; ok && len(ips) != 0 {
 		log.Functionf("found Ip addr ( %s) for mac(%s)\n",
 			ips, mac.String())
-		ipAddr := ips[0]
-		return ipAddr.String(), nil
+		found := false
+		ipAddr := net.IP{}
+		// Find the first IPv4 address if any
+		for _, ip := range status.IPAssignments[mac.String()] {
+			if ip.To4() != nil {
+				ipAddr = ip
+				found = true
+				break
+			}
+		}
+		if found {
+			return ipAddr.String(), nil
+		}
 	}
 
 	log.Functionf("bridgeName %s Subnet %v range %v-%v\n",

@@ -507,7 +507,7 @@ func checkAppAndACL(ctx *zedrouterContext, instData *networkAttrs) {
 						tmpAppInfo.ipaddr = net.IP{}
 						for _, ip := range netstatus.IPAssignments[ulStatus.Mac] {
 							// Find the first IPv4 address from this list
-							if ip.To16() == nil {
+							if ip.To4() != nil {
 								tmpAppInfo.ipaddr = ip
 								break
 							}
@@ -637,17 +637,20 @@ func DNSMonitor(bn string, bnNum int, ctx *zedrouterContext, status *types.Netwo
 	}
 	if status.Type == types.NetworkInstanceTypeSwitch {
 		switched = true
-		filter = "(ip6 and icmp6) or (udp and (port 53 or port 67 or port 546 or port 547))"
+		filter = "(ip6 and icmp6 and ip6[40] == 135) or (udp and (port 53 or port 67 or port 546 or port 547))"
 		// raw instructions below are the compiled instructions of the filter above.
-		// tcpdump -dd "(ip6 and icmp6) or (udp and (port 53 or port 67 or port 546 or port 547))"
+		// tcpdump -dd "(ip6 and icmp6 and ip6[40] == 135) or (udp and (port 53 or port 67 or port 546 or port 547))"
 		rawInstructions = []bpf.RawInstruction{
 			{Op: 0x28, Jt: 0, Jf: 0, K: 0x0000000c},
-			{Op: 0x15, Jt: 0, Jf: 13, K: 0x000086dd},
+			{Op: 0x15, Jt: 0, Jf: 16, K: 0x000086dd},
 			{Op: 0x30, Jt: 0, Jf: 0, K: 0x00000014},
-			{Op: 0x15, Jt: 27, Jf: 0, K: 0x0000003a},
-			{Op: 0x15, Jt: 0, Jf: 2, K: 0x0000002c},
+			{Op: 0x15, Jt: 3, Jf: 0, K: 0x0000003a},
+			{Op: 0x15, Jt: 0, Jf: 4, K: 0x0000002c},
 			{Op: 0x30, Jt: 0, Jf: 0, K: 0x00000036},
-			{Op: 0x15, Jt: 24, Jf: 25, K: 0x0000003a},
+			{Op: 0x15, Jt: 0, Jf: 28, K: 0x0000003a},
+			{Op: 0x30, Jt: 0, Jf: 0, K: 0x00000036},
+			{Op: 0x15, Jt: 25, Jf: 0, K: 0x00000087},
+			{Op: 0x30, Jt: 0, Jf: 0, K: 0x00000014},
 			{Op: 0x15, Jt: 0, Jf: 24, K: 0x00000011},
 			{Op: 0x28, Jt: 0, Jf: 0, K: 0x00000036},
 			{Op: 0x15, Jt: 21, Jf: 0, K: 0x00000035},
@@ -818,7 +821,11 @@ func checkDADProbe(ctx *zedrouterContext, bnNum int, packet gopacket.Packet) {
 			ipv4Addr, snoopedIPs, _ := lookupVifIPTrig(ctx, vif.MacAddr)
 			vifTrig.MacAddr = vif.MacAddr
 			vifTrig.IPv4Addr = ipv4Addr
-			vifTrig.IPv6Addrs = append(snoopedIPs, icmp6.TargetAddress)
+			if !isAddrPresent(snoopedIPs, icmp6.TargetAddress) {
+				vifTrig.IPv6Addrs = append(snoopedIPs, icmp6.TargetAddress)
+			} else {
+				vifTrig.IPv6Addrs = snoopedIPs
+			}
 		}
 	}
 
@@ -919,7 +926,7 @@ func checkDHCPPacketInfo(bnNum int, packet gopacket.Packet, ctx *zedrouterContex
 								// If no, add this IPv4 address to list.
 								found := false
 								for index, addr := range addrs {
-									if addr.To16() == nil {
+									if addr.To4() != nil {
 										// This is an IPv4 address
 										found = true
 										addrs[index] = dhcpv4.YourClientIP
