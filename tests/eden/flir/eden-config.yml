@@ -1,7 +1,5 @@
 ---
 eden:
-    # test binary
-    test-bin: "eden.flir.test"
 
     # test scenario
     test-scenario: "eden.flir.tests.txt"

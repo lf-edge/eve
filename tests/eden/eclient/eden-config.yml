@@ -1,7 +1,5 @@
 ---
 eden:
-    # test binary
-    test-bin: "eden.escript.test"
 
     # test scenario
     test-scenario: "eden.eclient.tests.txt"

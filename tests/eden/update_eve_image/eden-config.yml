@@ -1,7 +1,5 @@
 ---
 eden:
-    # test binary
-    test-bin: "eden.update_eve_image.test"
 
     # test scenario
     test-scenario: "eden.update_eve_image.tests.txt"

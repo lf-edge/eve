@@ -2,4 +2,4 @@
 
 message {{$env_net}}
 
-eden pod deploy {{EdenGetEnv "external_port"}} --memory=300M --metadata='url={{EdenGetEnv "metadata"}}' --name='{{EdenGetEnv "name"}}' --networks={{ $env_net }} --vnc-display={{ EdenGetEnv "vnc" }} --only-host={{ EdenGetEnv "firewall" }}  docker://itmoeve/docker-test:1.2
+eden pod deploy {{EdenGetEnv "external_port"}} --memory=300M --metadata='url={{EdenGetEnv "metadata"}}' --name='{{EdenGetEnv "name"}}' --networks={{ $env_net }} --vnc-display={{ EdenGetEnv "vnc" }} --only-host={{ EdenGetEnv "firewall" }}  docker://lfedge/eden-docker-test:83cfe07

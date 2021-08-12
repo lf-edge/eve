@@ -6,7 +6,7 @@
 # This test deploys fledge docker image into EVE to test Flir Camera data
 
 # deploy the application
-eden pod deploy -p 8027:80 -p 8028:8081  --name=fledge --memory=2GB --cpus=2  docker://itmoeve/fledgeeveflirdemo:1.8.2  -v debug
+eden pod deploy -p 8027:80 -p 8028:8081  --name=fledge --memory=2GB --cpus=2  docker://lfedge/eden-fledgeeveflirdemo:83cfe07  -v debug
 
 test eden.app.test -test.v -timewait 20m RUNNING fledge
 

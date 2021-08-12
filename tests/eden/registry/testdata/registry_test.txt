@@ -3,7 +3,7 @@
 [!exec:cut] stop
 [!exec:grep] stop
 
-eden -t 5s pod ps
+eden -t 10s pod ps
 
 # Starting of reboot detector with a 3 reboots limit
 ! test eden.reboot.test -test.v -timewait 10m -reboot=0 -count=1 &

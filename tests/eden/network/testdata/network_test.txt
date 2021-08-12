@@ -1,4 +1,4 @@
-eden -t 5s network ls
+eden -t 10s network ls
 
 # Starting of reboot detector with a 1 reboot limit
 ! test eden.reboot.test -test.v -timewait 20m -reboot=0 -count=1 &

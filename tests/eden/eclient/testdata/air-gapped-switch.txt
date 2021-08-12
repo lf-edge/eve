@@ -20,7 +20,7 @@ exec chmod 600 {{EdenConfig "eden.tests"}}/eclient/image/cert/id_rsa
 
 message 'Resetting of EVE'
 eden eve reset
-exec sleep 20
+exec sleep 30
 
 message 'Creating networks: local indirect and air-gapped switch direct'
 eden network create 10.11.12.0/24 -n indirect
@@ -29,8 +29,8 @@ eden network create --type switch --uplink none -n direct
 test eden.network.test -test.v -timewait 10m ACTIVATED indirect direct
 
 message 'Starting applications'
-eden pod deploy -v debug -n eclient1 docker://itmoeve/eclient:0.7 -p {{template "port1"}}:22 --networks=indirect --networks=direct:{{template "mac1"}} --memory=512MB
-eden pod deploy -v debug -n eclient2 docker://itmoeve/eclient:0.7 -p {{template "port2"}}:22 --networks=indirect --networks=direct:{{template "mac2"}} --memory=512MB
+eden pod deploy -v debug -n eclient1 docker://lfedge/eden-eclient:83cfe07 -p {{template "port1"}}:22 --networks=indirect --networks=direct:{{template "mac1"}} --memory=512MB
+eden pod deploy -v debug -n eclient2 docker://lfedge/eden-eclient:83cfe07 -p {{template "port2"}}:22 --networks=indirect --networks=direct:{{template "mac2"}} --memory=512MB
 
 message 'Waiting for running state'
 test eden.app.test -test.v -timewait 10m RUNNING eclient1 eclient2
