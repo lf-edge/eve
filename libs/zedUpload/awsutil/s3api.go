@@ -18,8 +18,9 @@ import (
 )
 
 const (
-	S3_PART_SIZE        = 5 * 1024 * 1024
-	S3_PART_LEAVE_ERROR = true
+	S3_PART_SIZE            = 5 * 1024 * 1024
+	S3_PART_LEAVE_ERROR     = true
+	S3_DOWNLOAD_CONCURRENCY = 1
 )
 
 type S3ctx struct {
@@ -71,6 +72,7 @@ func NewAwsCtx(id, secret, region string, hctx *http.Client) *S3ctx {
 	})
 	ctx.dn = s3manager.NewDownloaderWithClient(ctx.ss3, func(d *s3manager.Downloader) {
 		d.PartSize = S3_PART_SIZE
+		d.Concurrency = S3_DOWNLOAD_CONCURRENCY
 	})
 
 	return &ctx
