@@ -111,7 +111,7 @@ message ZInfoNetwork {
   repeated string IPAddrs = 5; // All IP addresses with /N for subnet
   repeated string defaultRouters = 6; // If DHCP assigned
   ZInfoDNS dns = 7; // If DHCP assigned
-  bool up = 8;      // operational up/down status.
+  bool ipv4_up = 8; // operational up/down status.
   GeoLoc location = 9;
   bool uplink = 10; // Uplink interface  // XXX rename to isMgmt
   ErrorInfo networkErr = 11; // For instance bad proxy config
