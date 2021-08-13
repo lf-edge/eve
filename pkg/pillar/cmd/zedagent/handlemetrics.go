@@ -94,7 +94,7 @@ func lookupAppDiskMetric(ctx *zedagentContext, diskPath string) *types.AppDiskMe
 	return &metric
 }
 
-func encodeErrorInfo(et types.ErrorAndTime) *info.ErrorInfo {
+func encodeErrorInfo(et types.ErrorDescription) *info.ErrorInfo {
 	if et.ErrorTime.IsZero() {
 		// No Success / Error to report
 		return nil
@@ -107,6 +107,12 @@ func encodeErrorInfo(et types.ErrorAndTime) *info.ErrorInfo {
 	} else {
 		log.Errorf("Failed to convert timestamp (%+v) for ErrorStr (%s) "+
 			"into TimestampProto. err: %s", et.ErrorTime, et.Error, err)
+	}
+	errInfo.Severity = info.Severity(et.ErrorSeverity)
+	errInfo.RetryCondition = et.ErrorRetryCondition
+	errInfo.Entities = make([]*info.DeviceEntity, len(et.ErrorEntities))
+	for i, el := range et.ErrorEntities {
+		errInfo.Entities[i] = &info.DeviceEntity{EntityId: el.EntityID, Entity: info.Entity(el.EntityType)}
 	}
 	return errInfo
 }
@@ -918,7 +924,7 @@ func PublishAppInfoToZedCloud(ctx *zedagentContext, uuid string,
 		objErr = aiStatus.HasError()
 		if !aiStatus.ErrorTime.IsZero() {
 			errInfo := encodeErrorInfo(
-				aiStatus.ErrorAndTimeWithSource.ErrorAndTime())
+				aiStatus.ErrorAndTimeWithSource.ErrorDescription)
 			ReportAppInfo.AppErr = append(ReportAppInfo.AppErr,
 				errInfo)
 		}
@@ -1073,7 +1079,7 @@ func PublishContentInfoToZedCloud(ctx *zedagentContext, uuid string,
 		objErr = ctStatus.HasError()
 		if !ctStatus.ErrorTime.IsZero() {
 			errInfo := encodeErrorInfo(
-				ctStatus.ErrorAndTimeWithSource.ErrorAndTime())
+				ctStatus.ErrorAndTimeWithSource.ErrorDescription)
 			ReportContentInfo.Err = errInfo
 		}
 
@@ -1158,7 +1164,7 @@ func PublishVolumeToZedCloud(ctx *zedagentContext, uuid string,
 		objErr = volStatus.HasError()
 		if !volStatus.ErrorTime.IsZero() {
 			errInfo := encodeErrorInfo(
-				volStatus.ErrorAndTimeWithSource.ErrorAndTime())
+				volStatus.ErrorAndTimeWithSource.ErrorDescription)
 			ReportVolumeInfo.VolumeErr = errInfo
 		}
 

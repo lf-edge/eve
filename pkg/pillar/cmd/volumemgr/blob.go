@@ -88,8 +88,7 @@ func downloadBlob(ctx *volumemgrContext, blob *types.BlobStatus) bool {
 	if ds.HasError() {
 		log.Errorf("Received error from downloader for blob %s: %s",
 			blob.Sha256, ds.Error)
-		blob.SetErrorWithSource(ds.Error, types.DownloaderStatus{},
-			ds.ErrorTime)
+		blob.SetErrorWithSourceAndDescription(ds.ErrorDescription, types.DownloaderStatus{})
 		changed = true
 		return changed
 	}

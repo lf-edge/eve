@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/google/go-cmp/cmp"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/uuidtonum"
 	"github.com/satori/go.uuid"
@@ -164,6 +165,9 @@ func doInstall(ctx *zedmanagerContext,
 	allErrors := ""
 	var errorSource interface{}
 	var errorTime time.Time
+	var entities []*types.ErrorEntity
+	var severity types.ErrorSeverity
+	var retryCondition string //propagate only one
 	changed := false
 
 	if len(config.VolumeRefConfigList) != len(status.VolumeRefStatusList) {
@@ -272,6 +276,13 @@ func doInstall(ctx *zedmanagerContext,
 			errorSource = vrs.ErrorSourceType
 			errorTime = vrs.ErrorTime
 			allErrors = appendError(allErrors, vrs.Error)
+			entities = append(entities, &types.ErrorEntity{EntityID: vrs.VolumeID.String(), EntityType: types.ErrorEntityVolume})
+			if vrs.ErrorSeverity > severity {
+				severity = vrs.ErrorSeverity
+			}
+			if vrs.ErrorRetryCondition != "" {
+				retryCondition = vrs.ErrorRetryCondition
+			}
 		}
 	}
 	if minState == types.MAXSTATE {
@@ -290,7 +301,18 @@ func doInstall(ctx *zedmanagerContext,
 	} else if errorSource == nil {
 		status.SetError(allErrors, errorTime)
 	} else {
-		status.SetErrorWithSource(allErrors, errorSource, errorTime)
+		if retryCondition == "" {
+			// if no retry condition it is an error
+			severity = types.ErrorSeverityError
+		}
+		description := types.ErrorDescription{
+			Error:               allErrors,
+			ErrorEntities:       entities,
+			ErrorSeverity:       severity,
+			ErrorRetryCondition: retryCondition,
+			ErrorTime:           errorTime,
+		}
+		status.SetErrorWithSourceAndDescription(description, errorSource)
 	}
 	if allErrors != "" {
 		log.Errorf("Volumemgr error for %s: %s", uuidStr, allErrors)
@@ -327,7 +349,7 @@ func doInstallVolumeRef(ctx *zedmanagerContext, config types.AppInstanceConfig,
 		log.Functionf("doInstallVolumeRef: Volumemgr VolumeRefStatus not found. key: %s", vrs.Key())
 		return changed
 	}
-	if *pubsubVrs != *vrs {
+	if !cmp.Equal(vrs, pubsubVrs) {
 		*vrs = *pubsubVrs
 		changed = true
 		log.Functionf("VolumeRefStatus updated for %s", vrs.Key())
@@ -412,17 +434,38 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 		need := uint64(config.FixedResources.Memory) << 10
 		if remaining < need {
 			var errStr string
+			var entities []*types.ErrorEntity
+			errSeverity := types.ErrorSeverityWarning
+			retryCondition := "Retry will be triggered when apps will shutdown: "
 			if remaining+halting < need {
 				errStr = fmt.Sprintf("Remaining memory bytes %d app instance needs %d",
 					remaining, need)
+				for _, st := range ctx.pubAppInstanceStatus.GetAll() {
+					status := st.(types.AppInstanceStatus)
+					entities = append(entities, &types.ErrorEntity{EntityID: status.UUIDandVersion.UUID.String(), EntityType: types.ErrorEntityAppInstance})
+					retryCondition = fmt.Sprintf("%s %s;", retryCondition, status.DisplayName)
+				}
 			} else {
 				errStr = fmt.Sprintf("App instance needs %d bytes but only have %d; waiting for halting app instances to free up %d bytes",
 					need, remaining, halting)
+				errSeverity = types.ErrorSeverityNotice
+				for _, st := range ctx.pubAppInstanceStatus.GetAll() {
+					status := st.(types.AppInstanceStatus)
+					if status.Activated || status.ActivateInprogress {
+						entities = append(entities, &types.ErrorEntity{EntityID: status.UUIDandVersion.UUID.String(), EntityType: types.ErrorEntityAppInstance})
+						retryCondition = fmt.Sprintf("%s %s;", retryCondition, status.DisplayName)
+					}
+				}
 			}
 			log.Errorf("doActivate(%s) failed: %s",
 				status.Key(), errStr)
-			status.SetErrorWithSource(errStr,
-				types.AppInstanceConfig{}, time.Now())
+			description := types.ErrorDescription{
+				Error:               errStr,
+				ErrorSeverity:       errSeverity,
+				ErrorRetryCondition: retryCondition,
+				ErrorEntities:       entities,
+			}
+			status.SetErrorWithSourceAndDescription(description, types.AppInstanceConfig{})
 			status.MissingMemory = true
 			publishAppInstanceStatus(ctx, status)
 			changed = true
@@ -542,8 +585,7 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 		if ds.HasError() {
 			log.Errorf("Received error from domainmgr for %s: %s",
 				uuidStr, ds.Error)
-			status.SetErrorWithSource(ds.Error, types.DomainStatus{},
-				ds.ErrorTime)
+			status.SetErrorWithSourceAndDescription(status.ErrorDescription, types.DomainStatus{})
 			changed = true
 		} else if status.IsErrorSource(types.DomainStatus{}) {
 			log.Functionf("Clearing domainmgr error %s", status.Error)

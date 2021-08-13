@@ -1166,11 +1166,11 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 	log.Functionf("doActivate(%v) for %s",
 		config.UUIDandVersion, config.DisplayName)
 
-	if err := reserveAdapters(ctx, config); err != nil {
+	if errDescription := reserveAdapters(ctx, config); errDescription != nil {
 		log.Errorf("Failed to reserve adapters for %s: %s",
-			config.Key(), err)
+			config.Key(), errDescription.Error)
 		status.PendingAdd = false
-		status.SetErrorNow(err.Error())
+		status.SetErrorDescription(*errDescription)
 		status.AdaptersFailed = true
 		publishDomainStatus(ctx, status)
 		releaseAdapters(ctx, config.IoAdapterList, config.UUIDandVersion.UUID,
@@ -1709,7 +1709,8 @@ func configToStatus(ctx *domainContext, config types.DomainConfig,
 }
 
 // Check for errors and reserve any assigned adapters by setting UsedByUUID
-func reserveAdapters(ctx *domainContext, config types.DomainConfig) error {
+func reserveAdapters(ctx *domainContext, config types.DomainConfig) *types.ErrorDescription {
+	description := types.ErrorDescription{}
 
 	log.Functionf("reserveAdapters(%v) for %s",
 		config.UUIDandVersion, config.DisplayName)
@@ -1730,8 +1731,9 @@ func reserveAdapters(ctx *domainContext, config types.DomainConfig) error {
 		// Lookup to make sure adapter exists on this device
 		list := ctx.assignableAdapters.LookupIoBundleAny(adapter.Name)
 		if len(list) == 0 {
-			return fmt.Errorf("unknown adapter %d %s",
+			description.Error = fmt.Sprintf("unknown adapter %d %s",
 				adapter.Type, adapter.Name)
+			return &description
 		}
 
 		for _, ibp := range list {
@@ -1741,8 +1743,9 @@ func reserveAdapters(ctx *domainContext, config types.DomainConfig) error {
 			log.Functionf("reserveAdapters processing adapter %d %s member %s",
 				adapter.Type, adapter.Name, ibp.Phylabel)
 			if ibp.AssignmentGroup == "" {
-				return fmt.Errorf("adapter %d %s member %s is not assignable",
+				description.Error = fmt.Sprintf("adapter %d %s member %s is not assignable",
 					adapter.Type, adapter.Name, ibp.Phylabel)
+				return &description
 			}
 			if ibp.UsedByUUID != config.UUIDandVersion.UUID &&
 				ibp.UsedByUUID != nilUUID {
@@ -1753,20 +1756,29 @@ func reserveAdapters(ctx *domainContext, config types.DomainConfig) error {
 					log.Warnf("UsedByUUID %s but no status",
 						ibp.UsedByUUID)
 					extraStr = "(which is missing)"
-				} else if other.State == types.HALTING {
-					extraStr = "(which is halting)"
+				} else {
+					description.ErrorSeverity = types.ErrorSeverityWarning
+					if other.State == types.HALTING {
+						extraStr = "(which is halting)"
+						description.ErrorSeverity = types.ErrorSeverityNotice
+					}
+					description.ErrorEntities = []*types.ErrorEntity{{EntityID: ibp.UsedByUUID.String(), EntityType: types.ErrorEntityAppInstance}}
+					description.ErrorRetryCondition = fmt.Sprintf("Will wait for adapter to release from app: %s", other.DisplayName)
 				}
-				return fmt.Errorf("adapter %d %s used by %s %s",
+				description.Error = fmt.Sprintf("adapter %d %s used by %s %s",
 					adapter.Type, adapter.Name,
 					ibp.UsedByUUID, extraStr)
+				return &description
 			}
 			if ibp.IsPort {
-				return fmt.Errorf("adapter %d %s member %s is (part of) a zedrouter port",
+				description.Error = fmt.Sprintf("adapter %d %s member %s is (part of) a zedrouter port",
 					adapter.Type, adapter.Name, ibp.Phylabel)
+				return &description
 			}
 			if ibp.Error != "" {
-				return fmt.Errorf("adapter %d %s member %s has error: %s",
+				description.Error = fmt.Sprintf("adapter %d %s member %s has error: %s",
 					adapter.Type, adapter.Name, ibp.Phylabel, ibp.Error)
+				return &description
 			}
 		}
 		for _, ibp := range list {
@@ -1774,8 +1786,9 @@ func reserveAdapters(ctx *domainContext, config types.DomainConfig) error {
 				continue
 			}
 			if ibp.PciLong != "" && !hasIOVirtualization {
-				return fmt.Errorf("no I/O virtualization support: adapter %d %s member %s cannot be assigned",
+				description.Error = fmt.Sprintf("no I/O virtualization support: adapter %d %s member %s cannot be assigned",
 					adapter.Type, adapter.Name, ibp.Phylabel)
+				return &description
 			}
 			log.Tracef("reserveAdapters setting uuid %s for adapter %d %s member %s",
 				config.Key(), adapter.Type, adapter.Name, ibp.Phylabel)
