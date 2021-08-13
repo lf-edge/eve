@@ -73,6 +73,10 @@ func (h *Handle) SetBPFFilter(expr string) error {
 	if err != nil {
 		return fmt.Errorf("bpf assembly failed: %v", err)
 	}
+	return h.SetRawBPFFilter(raw)
+}
+
+func (h *Handle) SetRawBPFFilter(raw []bpf.RawInstruction) error {
 	h.filter = raw
 	return h.setFilter()
 }
