@@ -138,11 +138,15 @@ func (status *DownloaderStatus) ClearPendingStatus() {
 
 // HandleDownloadFail : Do Failure specific tasks
 func (status *DownloaderStatus) HandleDownloadFail(errStr string, retryTime time.Duration, cancelled bool) {
-	if retryTime != 0 && !cancelled {
-		errStr = fmt.Sprintf("Will retry in %v: %s",
-			retryTime, errStr)
+	errDescription := ErrorDescription{
+		Error: errStr,
 	}
-	status.SetErrorNow(errStr)
+	if !cancelled && retryTime != 0 {
+		severity := GetErrorSeverity(status.RetryCount, time.Duration(status.RetryCount)*retryTime)
+		errDescription.ErrorSeverity = severity
+		errDescription.ErrorRetryCondition = fmt.Sprintf("Will retry in %s; have retried %d times", retryTime, status.RetryCount)
+	}
+	status.SetErrorDescription(errDescription)
 	status.ClearPendingStatus()
 }
 

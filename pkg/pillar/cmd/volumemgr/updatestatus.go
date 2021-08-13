@@ -131,7 +131,10 @@ func doUpdateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus)
 
 		var (
 			currentSize, totalSize, manifestTotalSize int64
-			blobErrors                                = []string{}
+			blobErrors                                []string
+			blobRetryCondition                        string //propagate only one
+			blobErrorEntities                         []*types.ErrorEntity
+			blobErrorSeverity                         types.ErrorSeverity
 			blobErrorTime                             time.Time
 		)
 		for _, blobSha := range status.Blobs {
@@ -197,6 +200,14 @@ func doUpdateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus)
 				if blob.ErrorTime.After(blobErrorTime) {
 					blobErrorTime = blob.ErrorTime
 				}
+				if blob.ErrorSeverity > blobErrorSeverity {
+					blobErrorSeverity = blob.ErrorSeverity
+				}
+				if blob.ErrorRetryCondition != "" {
+					blobRetryCondition = blob.ErrorRetryCondition
+				}
+				blobErrorEntities = append(blobErrorEntities, &types.ErrorEntity{EntityID: blob.Sha256, EntityType: types.ErrorEntityContentBlob})
+
 				leftToProcess = true
 			}
 		}
@@ -235,7 +246,18 @@ func doUpdateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus)
 
 		// update errors from blobs to status
 		if len(blobErrors) != 0 {
-			status.SetError(strings.Join(blobErrors, " / "), blobErrorTime)
+			if blobRetryCondition == "" {
+				// if we cannot find any retry condition, it is an error
+				blobErrorSeverity = types.ErrorSeverityError
+			}
+			errDescription := types.ErrorDescription{
+				Error:               strings.Join(blobErrors, " / "),
+				ErrorRetryCondition: blobRetryCondition,
+				ErrorSeverity:       blobErrorSeverity,
+				ErrorEntities:       blobErrorEntities,
+				ErrorTime:           blobErrorTime,
+			}
+			status.SetErrorDescription(errDescription)
 			log.Functionf("doUpdateContentTree(%s) had errors: %v", status.Key(), status.Error)
 			changed = true
 		} else if status.HasError() {
@@ -470,7 +492,10 @@ func doUpdateVol(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool)
 					status.Key(), status.DisplayName, ctStatus.Error)
 				errStr := fmt.Sprintf("Found error in content tree %s attached to volume %s: %v",
 					ctStatus.DisplayName, status.DisplayName, ctStatus.Error)
-				status.SetErrorWithSource(errStr, types.ContentTreeStatus{}, time.Now())
+				description := ctStatus.ErrorDescription
+				description.Error = errStr
+				description.ErrorEntities = []*types.ErrorEntity{{EntityID: ctStatus.ContentID.String(), EntityType: types.ErrorEntityContentTree}}
+				status.SetErrorWithSourceAndDescription(description, types.ContentTreeStatus{})
 				changed = true
 				return changed, false
 			}

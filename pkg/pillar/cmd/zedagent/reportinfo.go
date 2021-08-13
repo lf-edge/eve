@@ -266,7 +266,7 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 				log.Tracef("reportMetrics sending error time %v error %v for %s",
 					bos.ErrorTime, bos.Error,
 					bos.BaseOsVersion)
-				swInfo.SwErr = encodeErrorInfo(bos.ErrorAndTime)
+				swInfo.SwErr = encodeErrorInfo(bos.ErrorAndTime.ErrorDescription)
 			}
 			if swInfo.ShortVersion == "" {
 				swInfo.Status = info.ZSwState_INITIAL
@@ -319,7 +319,7 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 		if !bos.ErrorTime.IsZero() {
 			log.Tracef("reportMetrics sending error time %v error %v for %s",
 				bos.ErrorTime, bos.Error, bos.BaseOsVersion)
-			swInfo.SwErr = encodeErrorInfo(bos.ErrorAndTime)
+			swInfo.SwErr = encodeErrorInfo(bos.ErrorAndTime.ErrorDescription)
 		}
 		addUserSwInfo(ctx, swInfo, bos.TooEarly)
 		ReportDeviceInfo.SwList = append(ReportDeviceInfo.SwList,
@@ -738,7 +738,7 @@ func getDataSecAtRestInfo(ctx *zedagentContext) *info.DataSecAtRest {
 		vaultInfo.Name = vault.Name
 		vaultInfo.Status = vault.Status
 		if !vault.ErrorTime.IsZero() {
-			vaultInfo.VaultErr = encodeErrorInfo(vault.ErrorAndTime)
+			vaultInfo.VaultErr = encodeErrorInfo(vault.ErrorAndTime.ErrorDescription)
 		}
 		ReportDataSecAtRestInfo.VaultList = append(ReportDataSecAtRestInfo.VaultList, vaultInfo)
 	}

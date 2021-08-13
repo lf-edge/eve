@@ -86,10 +86,10 @@ func checkContentTreeStatus(ctx *baseOsMgrContext,
 			ret.Changed = true
 		}
 		if contentStatus.HasError() {
-			log.Errorf("checkContentTreeStatus %s, volumemgr error, %s",
-				uuidStr, contentStatus.Error)
-			cts.SetErrorWithSource(contentStatus.Error, types.ContentTreeStatus{},
-				contentStatus.ErrorTime)
+			log.Errorf("checkContentTreeStatus %s, volumemgr error, %s", uuidStr, contentStatus.Error)
+			description := contentStatus.ErrorDescription
+			description.ErrorEntities = []*types.ErrorEntity{{EntityID: contentStatus.ContentID.String(), EntityType: types.ErrorEntityContentTree}}
+			cts.SetErrorWithSourceAndDescription(description, types.ContentTreeStatus{})
 			ret.AllErrors = appendError(ret.AllErrors, "volumemgr", contentStatus.Error)
 			ret.ErrorTime = cts.ErrorTime
 			ret.Changed = true

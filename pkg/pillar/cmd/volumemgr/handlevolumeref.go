@@ -34,7 +34,9 @@ func handleVolumeRefCreate(ctxArg interface{}, key string,
 			MaxVolSize:         vs.MaxVolSize,
 		}
 		if vs.HasError() {
-			status.SetErrorWithSource(vs.Error, types.VolumeStatus{}, vs.ErrorTime)
+			description := vs.ErrorDescription
+			description.ErrorEntities = []*types.ErrorEntity{{EntityID: vs.VolumeID.String(), EntityType: types.ErrorEntityVolume}}
+			status.SetErrorWithSourceAndDescription(description, types.VolumeStatus{})
 		} else if status.IsErrorSource(types.VolumeStatus{}) {
 			status.ClearErrorWithSource()
 		}
@@ -151,7 +153,12 @@ func updateVolumeRefStatus(ctx *volumemgrContext, vs *types.VolumeStatus) {
 				status.MaxVolSize = vs.MaxVolSize
 				status.WWN = vs.WWN
 				if vs.HasError() {
-					status.SetErrorWithSource(vs.Error, types.VolumeStatus{}, vs.ErrorTime)
+					description := vs.ErrorDescription
+					description.ErrorEntities = []*types.ErrorEntity{{
+						EntityID:   vs.VolumeID.String(),
+						EntityType: types.ErrorEntityVolume,
+					}}
+					status.SetErrorWithSourceAndDescription(description, types.VolumeStatus{})
 				} else if status.IsErrorSource(types.VolumeStatus{}) {
 					status.ClearErrorWithSource()
 				}
@@ -172,7 +179,12 @@ func updateVolumeRefStatus(ctx *volumemgrContext, vs *types.VolumeStatus) {
 				WWN:                vs.WWN,
 			}
 			if vs.HasError() {
-				status.SetErrorWithSource(vs.Error, types.VolumeStatus{}, vs.ErrorTime)
+				description := vs.ErrorDescription
+				description.ErrorEntities = []*types.ErrorEntity{{
+					EntityID:   vs.VolumeID.String(),
+					EntityType: types.ErrorEntityVolume,
+				}}
+				status.SetErrorWithSourceAndDescription(description, types.VolumeStatus{})
 			} else if status.IsErrorSource(types.VolumeStatus{}) {
 				status.ClearErrorWithSource()
 			}
