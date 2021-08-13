@@ -651,7 +651,7 @@ func DNSMonitor(bn string, bnNum int, ctx *zedrouterContext, status *types.Netwo
 			dnslayer := packet.Layer(layers.LayerTypeDNS)
 			if switched && dnslayer == nil {
 				dnssys[bnNum].Lock()
-				checkDHCPPacketInfo(bnNum, packet, ctx)
+				_ = checkDHCPPacketInfo(bnNum, packet, ctx)
 				dnssys[bnNum].Unlock()
 			} else {
 				dnssys[bnNum].Lock()
@@ -671,8 +671,8 @@ func DNSStopMonitor(bnNum int) {
 }
 
 // Monitor the dhcp packets for switched network instance
-func checkDHCPPacketInfo(bnNum int, packet gopacket.Packet, ctx *zedrouterContext) {
-	var isReplyAck, needUpdate, foundDstMac, isBroadcast bool
+func checkDHCPPacketInfo(bnNum int, packet gopacket.Packet, ctx *zedrouterContext) bool {
+	var isReplyAck, foundDstMac, isBroadcast bool
 	var vifInfo []types.VifNameMac
 	var netstatus types.NetworkInstanceStatus
 	var vifTrig types.VifIPTrig
@@ -691,7 +691,7 @@ func checkDHCPPacketInfo(bnNum int, packet gopacket.Packet, ctx *zedrouterContex
 	}
 	if len(vifInfo) == 0 { // there is no Mac on the bridge
 		log.Tracef("checkDHCPPacketInfo: no mac on the bridge")
-		return
+		return false
 	}
 
 	etherLayer := packet.Layer(layers.LayerTypeEthernet)
@@ -712,7 +712,7 @@ func checkDHCPPacketInfo(bnNum int, packet gopacket.Packet, ctx *zedrouterContex
 	}
 	if !foundDstMac && !isBroadcast { // dhcp packet not for this bridge App ports
 		log.Tracef("checkDHCPPacketInfo: pkt no dst mac for us\n")
-		return
+		return false
 	}
 
 	ipLayer := packet.Layer(layers.LayerTypeIPv4)
@@ -721,43 +721,55 @@ func checkDHCPPacketInfo(bnNum int, packet gopacket.Packet, ctx *zedrouterContex
 		// dhcp client will send discovery or request, server will send offer and Ack
 		// in the code we wait for the Reply from server with Ack to confirm the client's IP address
 		dhcpLayer := packet.Layer(layers.LayerTypeDHCPv4)
-		if dhcpLayer != nil {
-			dhcpv4, _ := dhcpLayer.(*layers.DHCPv4)
-			if dhcpv4 != nil && dhcpv4.Operation == layers.DHCPOpReply {
-				opts := dhcpv4.Options
-				for _, opt := range opts {
-					if opt.Type == layers.DHCPOptMessageType && int(opt.Data[0]) == int(layers.DHCPMsgTypeAck) {
-						isReplyAck = true
-						break
-					}
-				}
-			}
-			if isReplyAck {
-				log.Tracef("checkDHCPPacketInfo: bn%d, Xid %d, clientip %s, yourclientip %s, clienthw %v, options %v\n",
-					bnNum, dhcpv4.Xid, dhcpv4.ClientIP.String(), dhcpv4.YourClientIP.String(), dhcpv4.ClientHWAddr, dhcpv4.Options)
-				for _, vif := range vifInfo {
-					if strings.Compare(vif.MacAddr, dhcpv4.ClientHWAddr.String()) == 0 {
-						if _, ok := netstatus.IPAssignments[vif.MacAddr]; !ok {
-							log.Functionf("checkDHCPPacketInfo: mac %v assign new IP %v\n", vif.MacAddr, dhcpv4.YourClientIP)
-							netstatus.IPAssignments[vif.MacAddr] = dhcpv4.YourClientIP
-							needUpdate = true
-						} else {
-							if netstatus.IPAssignments[vif.MacAddr].Equal(dhcpv4.YourClientIP) == false {
-								log.Functionf("checkDHCPPacketInfo: update mac %v, prev %v, now %v\n",
-									vif.MacAddr, netstatus.IPAssignments[vif.MacAddr], dhcpv4.YourClientIP)
-								netstatus.IPAssignments[vif.MacAddr] = dhcpv4.YourClientIP
-								needUpdate = true
-							}
-						}
-						vifTrig.MacAddr = vif.MacAddr
-						vifTrig.IPAddr = dhcpv4.YourClientIP
-						break
-					}
-				}
-			}
-		} else {
-			log.Tracef("checkDHCPPacketInfo: no dhcp layer\n")
+		if dhcpLayer == nil {
+			log.Tracef("checkDHCPPacketInfo: no dhcp layer")
+			return false
 		}
+		dhcpv4, _ := dhcpLayer.(*layers.DHCPv4)
+		if dhcpv4 != nil && dhcpv4.Operation == layers.DHCPOpReply {
+			opts := dhcpv4.Options
+			for _, opt := range opts {
+				if opt.Type == layers.DHCPOptMessageType && int(opt.Data[0]) == int(layers.DHCPMsgTypeAck) {
+					isReplyAck = true
+					break
+				}
+			}
+		}
+		if !isReplyAck {
+			return true
+		}
+		log.Tracef("checkDHCPPacketInfo: bn%d, Xid %d, clientip %s, yourclientip %s, clienthw %v, options %v\n",
+			bnNum, dhcpv4.Xid, dhcpv4.ClientIP.String(), dhcpv4.YourClientIP.String(), dhcpv4.ClientHWAddr, dhcpv4.Options)
+
+		var vif *types.VifNameMac
+		for index, v := range vifInfo {
+			if strings.Compare(v.MacAddr, dhcpv4.ClientHWAddr.String()) == 0 {
+				vif = &vifInfo[index]
+				break
+			}
+		}
+		if vif == nil {
+			return true
+		}
+		if _, ok := netstatus.IPAssignments[vif.MacAddr]; !ok {
+			log.Functionf("checkDHCPPacketInfo: mac %v assign new IP %v\n", vif.MacAddr, dhcpv4.YourClientIP)
+			netstatus.IPAssignments[vif.MacAddr] = dhcpv4.YourClientIP
+		} else {
+			if netstatus.IPAssignments[vif.MacAddr].Equal(dhcpv4.YourClientIP) {
+				// No changes done and hence no updates required
+				return true
+			}
+			log.Functionf("checkDHCPPacketInfo: update mac %v, prev %v, now %v\n",
+				vif.MacAddr, netstatus.IPAssignments[vif.MacAddr], dhcpv4.YourClientIP)
+			netstatus.IPAssignments[vif.MacAddr] = dhcpv4.YourClientIP
+		}
+		log.Functionf("checkDHCPPacketInfo: need update %v, %v\n", vifInfo, netstatus.IPAssignments)
+		vifTrig.MacAddr = vif.MacAddr
+		vifTrig.IPAddr = dhcpv4.YourClientIP
+		pub := ctx.pubNetworkInstanceStatus
+		pub.Publish(netstatus.Key(), netstatus)
+		ctx.pubAppVifIPTrig.Publish(vifTrig.MacAddr, vifTrig)
+		checkAndPublishDhcpLeases(ctx)
 	} else {
 		// XXX need to come back to handle ipv6 properly, including:
 		// each MAC can have both ipv4 and ipv6 addresses
@@ -765,25 +777,22 @@ func checkDHCPPacketInfo(bnNum int, packet gopacket.Packet, ctx *zedrouterContex
 		// ipv6 can be link-local, global scope and rfc 4941 with many temporary addresses
 		// which we don't know which one it will use and timeout
 		dhcpLayer := packet.Layer(layers.LayerTypeDHCPv6)
-		if dhcpLayer != nil {
-			dhcpv6, _ := dhcpLayer.(*layers.DHCPv6)
-			log.Tracef("DHCPv6: Msgtype %v, LinkAddr %s, PeerAddr %s, Options %v\n",
-				dhcpv6.MsgType, dhcpv6.LinkAddr.String(), dhcpv6.PeerAddr.String(), dhcpv6.Options)
+		if dhcpLayer == nil {
+			return false
 		}
+		dhcpv6, _ := dhcpLayer.(*layers.DHCPv6)
+		log.Tracef("DHCPv6: Msgtype %v, LinkAddr %s, PeerAddr %s, Options %v\n",
+			dhcpv6.MsgType, dhcpv6.LinkAddr.String(), dhcpv6.PeerAddr.String(), dhcpv6.Options)
 	}
-
-	if needUpdate {
-		log.Functionf("checkDHCPPacketInfo: need update %v, %v\n", vifInfo, netstatus.IPAssignments)
-		pub := ctx.pubNetworkInstanceStatus
-		pub.Publish(netstatus.Key(), netstatus)
-		ctx.pubAppVifIPTrig.Publish(vifTrig.MacAddr, vifTrig)
-		checkAndPublishDhcpLeases(ctx)
-	}
+	return true
 }
 
 func checkDNSPacketInfo(bnNum int, packet gopacket.Packet, dnsLayer gopacket.Layer) {
 	var DstIP net.IP
 	var dnsentry dnsEntry
+	if dnsLayer == nil {
+		return
+	}
 	ipLayer := packet.Layer(layers.LayerTypeIPv4)
 	if ipLayer != nil {
 		ip, _ := ipLayer.(*layers.IPv4)
@@ -797,34 +806,33 @@ func checkDNSPacketInfo(bnNum int, packet gopacket.Packet, dnsLayer gopacket.Lay
 		}
 	}
 
-	if dnsLayer != nil {
-		dns, _ := dnsLayer.(*layers.DNS)
-		if dns.ANCount > 0 {
-			dnsentry.AppIP = DstIP
-			for _, dnsQ := range dns.Questions {
-				var checkProto, haveAN bool
-				dnsentry.DomainName = string(dnsQ.Name)
-				dnsentry.TimeStamp = time.Now()
-				dnsentry.ANCount = dns.ANCount
-				for _, dnsA := range dns.Answers {
-					if dnsA.Type != layers.DNSTypeA && dnsA.Type != layers.DNSTypeAAAA { // only for A or AAAA
-						continue
-					}
-					if dnsA.IP.String() != "" {
-						if checkProto == false {
-							dnsentry.isIPv4 = dnsA.IP.To4() != nil
-							checkProto = true
-						}
-						dnsentry.Answers = append(dnsentry.Answers, dnsA.IP)
-						haveAN = true
-					}
-				}
-				if haveAN {
-					dnssys[bnNum].Snoop = append(dnssys[bnNum].Snoop, dnsentry)
-					log.Tracef("!!--FlowStats: DNS collected for %s, bridge Number %d", string(dnsQ.Name), bnNum)
-					break
-				}
+	dns, _ := dnsLayer.(*layers.DNS)
+	if dns.ANCount <= 0 {
+		return
+	}
+	dnsentry.AppIP = DstIP
+	for _, dnsQ := range dns.Questions {
+		var checkProto, haveAN bool
+		dnsentry.DomainName = string(dnsQ.Name)
+		dnsentry.TimeStamp = time.Now()
+		dnsentry.ANCount = dns.ANCount
+		for _, dnsA := range dns.Answers {
+			if dnsA.Type != layers.DNSTypeA && dnsA.Type != layers.DNSTypeAAAA { // only for A or AAAA
+				continue
 			}
+			if dnsA.IP.String() != "" {
+				if checkProto == false {
+					dnsentry.isIPv4 = dnsA.IP.To4() != nil
+					checkProto = true
+				}
+				dnsentry.Answers = append(dnsentry.Answers, dnsA.IP)
+				haveAN = true
+			}
+		}
+		if haveAN {
+			dnssys[bnNum].Snoop = append(dnssys[bnNum].Snoop, dnsentry)
+			log.Tracef("!!--FlowStats: DNS collected for %s, bridge Number %d", string(dnsQ.Name), bnNum)
+			break
 		}
 	}
 }
