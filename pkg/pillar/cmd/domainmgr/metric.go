@@ -95,7 +95,11 @@ func getAndPublishMetrics(ctx *domainContext, hyper hypervisor.Hypervisor) {
 		dm.UsedMemoryPercent = 0
 		ctx.pubDomainMetric.Publish(dm.Key(), dm)
 	}
-	hm, _ := hyper.GetHostCPUMem()
+	hm, err := hyper.GetHostCPUMem()
+	if err != nil {
+		log.Errorf("Cannot obtain HostCPUMem: %s", err)
+		return
+	}
 	if hyper.Name() != "xen" {
 		// the the hypervisor other than Xen, we don't have the Dom0 stats. Get the host
 		// cpu and memory for the device here

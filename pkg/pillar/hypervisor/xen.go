@@ -598,20 +598,19 @@ func (ctx xenContext) PCISameController(id1 string, id2 string) bool {
 }
 
 func (ctx xenContext) GetHostCPUMem() (types.HostMemory, error) {
+	hm := types.HostMemory{}
 	ctrdSystemCtx, done := ctx.ctrdClient.CtrNewSystemServicesCtx()
 	defer done()
 	xlInfo, stderr, err := ctx.ctrdClient.CtrSystemExec(ctrdSystemCtx, "xen-tools",
 		[]string{"xl", "info"})
 	if err != nil {
-		logrus.Errorf("xl info failed stdout: %s stderr: %s, err: %v falling back on Dom0 stats",
+		return hm, fmt.Errorf("xl info failed stdout: %s stderr: %s, err: %v falling back on Dom0 stats",
 			xlInfo, stderr, err)
-		return selfDomCPUMem()
 	}
 	// Seems like we can get empty output, or partial output, from xl info
 	if xlInfo == "" {
-		logrus.Errorf("xl info empty stderr: %s falling back on Dom0 stats",
+		return hm, fmt.Errorf("xl info empty stderr: %s falling back on Dom0 stats",
 			stderr)
-		return selfDomCPUMem()
 	}
 	splitXlInfo := strings.Split(xlInfo, "\n")
 
@@ -623,14 +622,10 @@ func (ctx xenContext) GetHostCPUMem() (types.HostMemory, error) {
 		}
 	}
 
-	// Handle subsets of attributes being filled in by xl info by starting
-	// with something reasonable
-	hm, _ := selfDomCPUMem()
-
 	if str, ok := dict["total_memory"]; ok {
 		res, err := strconv.ParseUint(str, 10, 64)
 		if err != nil {
-			logrus.Errorf("Failed parsing total_memory: %s", err)
+			return hm, fmt.Errorf("failed parsing total_memory: %s", err)
 		} else {
 			hm.TotalMemoryMB = res
 		}
@@ -638,7 +633,7 @@ func (ctx xenContext) GetHostCPUMem() (types.HostMemory, error) {
 	if str, ok := dict["free_memory"]; ok {
 		res, err := strconv.ParseUint(str, 10, 64)
 		if err != nil {
-			logrus.Errorf("Failed parsing free_memory: %s", err)
+			return hm, fmt.Errorf("failed parsing free_memory: %s", err)
 		} else {
 			hm.FreeMemoryMB = res
 		}
@@ -648,7 +643,7 @@ func (ctx xenContext) GetHostCPUMem() (types.HostMemory, error) {
 		// than the set of CPUs assigned to dom0
 		res, err := strconv.ParseUint(str, 10, 64)
 		if err != nil {
-			logrus.Errorf("Failed parsing nr_cpus: %s", err)
+			return hm, fmt.Errorf("failed parsing nr_cpus: %s", err)
 		} else {
 			hm.Ncpus = uint32(res)
 		}

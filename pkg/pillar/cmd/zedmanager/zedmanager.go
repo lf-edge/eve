@@ -51,6 +51,7 @@ type zedmanagerContext struct {
 	GCInitialized        bool
 	checkFreedResources  bool // Set when app instance has !Activated
 	currentProfile       string
+	currentTotalMemoryMB uint64
 }
 
 var debug = false
@@ -240,13 +241,15 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	subDomainStatus.Activate()
 
 	subHostMemory, err := ps.NewSubscription(pubsub.SubscriptionOptions{
-		AgentName:   "domainmgr",
-		MyAgentName: agentName,
-		TopicImpl:   types.HostMemory{},
-		Activate:    true,
-		Ctx:         &ctx,
-		WarningTime: warningTime,
-		ErrorTime:   errorTime,
+		AgentName:     "domainmgr",
+		MyAgentName:   agentName,
+		TopicImpl:     types.HostMemory{},
+		Activate:      true,
+		Ctx:           &ctx,
+		CreateHandler: handleHostMemoryCreate,
+		ModifyHandler: handleHostMemoryModify,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
 	})
 	if err != nil {
 		log.Fatal(err)
@@ -796,6 +799,32 @@ func handleZedAgentStatusImpl(ctxArg interface{}, key string,
 		updateBasedOnProfile(ctxPtr)
 	}
 	log.Functionf("handleZedAgentStatusImpl(%s) done", key)
+}
+
+func handleHostMemoryCreate(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	handleHostMemoryImpl(ctxArg, key, statusArg)
+}
+
+func handleHostMemoryModify(ctxArg interface{}, key string,
+	statusArg interface{}, oldStatusArg interface{}) {
+	handleHostMemoryImpl(ctxArg, key, statusArg)
+}
+
+func handleHostMemoryImpl(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	ctxPtr := ctxArg.(*zedmanagerContext)
+	status := statusArg.(types.HostMemory)
+	if ctxPtr.currentTotalMemoryMB != 0 && status.TotalMemoryMB > ctxPtr.currentTotalMemoryMB {
+		// re-check available resources again in case of TotalMemory changed from non-zero to larger values
+		ctxPtr.checkFreedResources = true
+	}
+	if ctxPtr.currentTotalMemoryMB != status.TotalMemoryMB {
+		ctxPtr.currentTotalMemoryMB = status.TotalMemoryMB
+		log.Functionf("handleHostMemoryImpl(%s) currentTotalMemoryMB changed from %d to %d",
+			key, ctxPtr.currentTotalMemoryMB, status.TotalMemoryMB)
+	}
+	log.Functionf("handleHostMemoryImpl(%s) done", key)
 }
 
 // updateBasedOnProfile check all app instances with currentProfile, set EffectiveActivate and update app instances

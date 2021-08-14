@@ -5,6 +5,7 @@ package zedmanager
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/lf-edge/eve/pkg/pillar/types"
 )
@@ -20,6 +21,7 @@ func getRemainingMemory(ctxPtr *zedmanagerContext) (uint64, uint64, uint64, erro
 	var usedMemorySize uint64    // Sum of Activated || ActivateInprogress
 	var latentMemorySize uint64  // For others
 	var haltingMemorySize uint64 // Subset of used which are halting
+	var accountedApps []string
 
 	pubAppInstanceStatus := ctxPtr.pubAppInstanceStatus
 	itemsAppInstanceStatus := pubAppInstanceStatus.GetAll()
@@ -28,6 +30,7 @@ func getRemainingMemory(ctxPtr *zedmanagerContext) (uint64, uint64, uint64, erro
 		mem := uint64(status.FixedResources.Memory) << 10
 		if status.Activated || status.ActivateInprogress {
 			usedMemorySize += mem
+			accountedApps = append(accountedApps, status.Key())
 			config := lookupAppInstanceConfig(ctxPtr, status.Key())
 			if config == nil || !config.Activate {
 				haltingMemorySize += mem
@@ -43,6 +46,8 @@ func getRemainingMemory(ctxPtr *zedmanagerContext) (uint64, uint64, uint64, erro
 		return 0, 0, 0, err
 	}
 	if usedMemorySize > deviceMemorySize {
+		log.Errorf("getRemainingMemory discrepancy: accounted apps: %s; usedMemorySize: %d; deviceMemorySize: %d",
+			strings.Join(accountedApps, ", "), usedMemorySize, deviceMemorySize)
 		return 0, latentMemorySize, haltingMemorySize, nil
 	} else {
 		return deviceMemorySize - usedMemorySize, latentMemorySize, haltingMemorySize, nil
