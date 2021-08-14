@@ -785,7 +785,7 @@ func lookupAppNetworkStatusByAppIP(ctx *zedrouterContext, ip net.IP) *types.AppN
 	for _, st := range items {
 		status := st.(types.AppNetworkStatus)
 		for _, ulStatus := range status.UnderlayNetworkList {
-			if ipStr == ulStatus.AllocatedIPAddr {
+			if ipStr == ulStatus.AllocatedIPv4Addr {
 				return &status
 			}
 		}
@@ -1022,8 +1022,8 @@ func appNetworkDoActivateUnderlayNetwork(
 	}
 	log.Functionf("bridgeIPAddr %s appIPAddr %s\n", bridgeIPAddr, appIPAddr)
 	ulStatus.BridgeIPAddr = bridgeIPAddr
-	// appIPAddr is "" for switch NI. DHCP snoop will set AllocatedIPAddr later
-	ulStatus.AllocatedIPAddr = appIPAddr
+	// appIPAddr is "" for switch NI. DHCP snoop will set AllocatedIPv4Addr later
+	ulStatus.AllocatedIPv4Addr = appIPAddr
 	hostsDirpath := runDirname + "/hosts." + bridgeName
 	if appIPAddr != "" {
 		addToHostsConfiglet(hostsDirpath, config.DisplayName,
@@ -1475,7 +1475,7 @@ func doAppNetworkModifyUnderlayNetwork(
 	ipsets []string, force bool) {
 
 	bridgeName := ulStatus.Bridge
-	appIPAddr := ulStatus.AllocatedIPAddr
+	appIPAddr := ulStatus.AllocatedIPv4Addr
 
 	netstatus := lookupNetworkInstanceStatus(ctx, ulConfig.Network.String())
 
@@ -1634,7 +1634,7 @@ func appNetworkDoInactivateUnderlayNetwork(
 		}
 	}
 
-	appIPAddr := ulStatus.AllocatedIPAddr
+	appIPAddr := ulStatus.AllocatedIPv4Addr
 	if appIPAddr != "" {
 		removehostDnsmasq(bridgeName, ulStatus.Mac,
 			appIPAddr)

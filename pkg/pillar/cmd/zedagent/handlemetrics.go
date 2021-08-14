@@ -963,10 +963,9 @@ func PublishAppInfoToZedCloud(ctx *zedagentContext, uuid string,
 		for _, ifname := range ifNames {
 			networkInfo := new(info.ZInfoNetwork)
 			networkInfo.LocalName = *proto.String(ifname)
-			ip, allocated, macAddr, ipAddrMismatch := getAppIP(ctx, aiStatus,
+			ipv4Addr, ipv6Addrs, allocated, macAddr, ipAddrMismatch := getAppIP(ctx, aiStatus,
 				ifname)
-			networkInfo.IPAddrs = make([]string, 1)
-			networkInfo.IPAddrs[0] = *proto.String(ip)
+			networkInfo.IPAddrs = append([]string{ipv4Addr}, ipv6Addrs...)
 			networkInfo.MacAddr = *proto.String(macAddr)
 			networkInfo.Ipv4Up = allocated
 			networkInfo.IpAddrMisMatch = ipAddrMismatch
@@ -1379,18 +1378,19 @@ func SendMetricsProtobuf(ReportMetrics *metrics.ZMetricMsg,
 // Use the ifname/vifname to find the underlay status
 // and from there the (ip, allocated, mac) addresses for the app
 func getAppIP(ctx *zedagentContext, aiStatus *types.AppInstanceStatus,
-	vifname string) (string, bool, string, bool) {
+	vifname string) (string, []string, bool, string, bool) {
 
 	log.Tracef("getAppIP(%s, %s)", aiStatus.Key(), vifname)
 	for _, ulStatus := range aiStatus.UnderlayNetworks {
 		if ulStatus.VifUsed != vifname {
 			continue
 		}
-		log.Tracef("getAppIP(%s, %s) found underlay %s assigned %v mac %s",
-			aiStatus.Key(), vifname, ulStatus.AllocatedIPAddr, ulStatus.Assigned, ulStatus.Mac)
-		return ulStatus.AllocatedIPAddr, ulStatus.Assigned, ulStatus.Mac, ulStatus.IPAddrMisMatch
+		log.Tracef("getAppIP(%s, %s) found underlay v4: %s, v6: %s, ipv4 assigned %v mac %s",
+			aiStatus.Key(), vifname, ulStatus.AllocatedIPv4Addr,
+			ulStatus.AllocatedIPv6List, ulStatus.IPv4Assigned, ulStatus.Mac)
+		return ulStatus.AllocatedIPv4Addr, ulStatus.AllocatedIPv6List, ulStatus.IPv4Assigned, ulStatus.Mac, ulStatus.IPAddrMisMatch
 	}
-	return "", false, "", false
+	return "", []string{}, false, "", false
 }
 
 func createVolumeInstanceMetrics(ctx *zedagentContext, reportMetrics *metrics.ZMetricMsg) {

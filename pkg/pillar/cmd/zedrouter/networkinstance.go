@@ -218,8 +218,9 @@ func doBridgeAclsDelete(
 			}
 			log.Functionf("NetworkInstance - deleting Acls for UL Interface(%s)",
 				ulStatus.Name)
+			appIP := ulStatus.AllocatedIPv4Addr
 			aclArgs := types.AppNetworkACLArgs{IsMgmt: false, BridgeName: ulStatus.Bridge,
-				VifName: ulStatus.Vif, BridgeIP: ulStatus.BridgeIPAddr, AppIP: ulStatus.AllocatedIPAddr,
+				VifName: ulStatus.Vif, BridgeIP: ulStatus.BridgeIPAddr, AppIP: appIP,
 				UpLinks: status.IfNameList}
 			rules := getNetworkACLRules(ctx, appID, ulStatus.Name)
 			ruleList, err := deleteACLConfiglet(aclArgs, rules.ACLRules)
@@ -308,7 +309,7 @@ func handleNetworkInstanceCreate(
 	status := types.NetworkInstanceStatus{
 		NetworkInstanceConfig: config,
 		NetworkInstanceInfo: types.NetworkInstanceInfo{
-			IPAssignments: make(map[string]net.IP),
+			IPAssignments: make(map[string]types.AssignedAddrs),
 			VifMetricMap:  make(map[string]types.NetworkMetric),
 			VlanMap:       make(map[uint32]uint32),
 		},
@@ -813,8 +814,8 @@ func createHostDnsmasqFile(ctx *zedrouterContext, bridge string) {
 				continue
 			}
 			addhostDnsmasq(bridge, ulStatus.Mac,
-				ulStatus.AllocatedIPAddr, status.UUIDandVersion.UUID.String())
-			log.Functionf("createHostDnsmasqFile:(%s) mac=%s, IP=%s\n", bridge, ulStatus.Mac, ulStatus.AllocatedIPAddr)
+				ulStatus.AllocatedIPv4Addr, status.UUIDandVersion.UUID.String())
+			log.Functionf("createHostDnsmasqFile:(%s) mac=%s, IP=%s\n", bridge, ulStatus.Mac, ulStatus.AllocatedIPv4Addr)
 		}
 	}
 }
@@ -828,10 +829,12 @@ func lookupOrAllocateIPv4(
 	log.Functionf("lookupOrAllocateIPv4(%s-%s): mac:%s\n",
 		status.DisplayName, status.Key(), mac.String())
 	// Lookup to see if it exists
-	if ip, ok := status.IPAssignments[mac.String()]; ok {
+	if addrs, ok := status.IPAssignments[mac.String()]; ok {
 		log.Functionf("found Ip addr ( %s) for mac(%s)\n",
-			ip.String(), mac.String())
-		return ip.String(), nil
+			addrs.IPv4Addr, mac.String())
+		if !isEmptyIP(addrs.IPv4Addr) {
+			return addrs.IPv4Addr.String(), nil
+		}
 	}
 
 	log.Functionf("bridgeName %s Subnet %v range %v-%v\n",
@@ -883,7 +886,8 @@ func lookupOrAllocateIPv4(
 func recordIPAssignment(ctx *zedrouterContext,
 	status *types.NetworkInstanceStatus, ip net.IP, mac string) {
 
-	status.IPAssignments[mac] = ip
+	addrs := types.AssignedAddrs{IPv4Addr: ip}
+	status.IPAssignments[mac] = addrs
 	// Publish the allocation
 	publishNetworkInstanceStatus(ctx, status)
 }
@@ -1001,7 +1005,8 @@ func setBridgeIPAddr(
 	}
 	if status.Gateway != nil {
 		ipAddr = status.Gateway.String()
-		status.IPAssignments[bridgeMac.String()] = status.Gateway
+		addrs := types.AssignedAddrs{IPv4Addr: status.Gateway}
+		status.IPAssignments[bridgeMac.String()] = addrs
 	}
 	log.Functionf("BridgeMac: %s, ipAddr: %s\n",
 		bridgeMac.String(), ipAddr)
@@ -1642,9 +1647,17 @@ func lookupNetworkInstanceStatusByAppIP(ctx *zedrouterContext,
 	items := pub.GetAll()
 	for _, st := range items {
 		status := st.(types.NetworkInstanceStatus)
-		for _, a := range status.IPAssignments {
-			if ip.Equal(a) {
+		for _, addrs := range status.IPAssignments {
+			if ip.Equal(addrs.IPv4Addr) {
 				return &status
+			}
+			if len(addrs.IPv6Addrs) == 0 {
+				continue
+			}
+			for _, nip := range addrs.IPv6Addrs {
+				if ip.Equal(nip) {
+					return &status
+				}
 			}
 		}
 	}
