@@ -1816,13 +1816,14 @@ type UnderlayNetworkStatus struct {
 	UnderlayNetworkConfig
 	ACLs int // drop ACLs field from UnderlayNetworkConfig
 	VifInfo
-	BridgeMac       net.HardwareAddr
-	BridgeIPAddr    string // The address for DNS/DHCP service in zedrouter
-	AllocatedIPAddr string // Assigned to domU
-	Assigned        bool   // Set to true once DHCP has assigned it to domU
-	IPAddrMisMatch  bool
-	HostName        string
-	ACLDependList   []ACLDepend
+	BridgeMac         net.HardwareAddr
+	BridgeIPAddr      string   // The address for DNS/DHCP service in zedrouter
+	AllocatedIPv4Addr string   // Assigned to domU
+	AllocatedIPv6List []string // IPv6 addresses assigned to domU
+	IPv4Assigned      bool     // Set to true once DHCP has assigned it to domU
+	IPAddrMisMatch    bool
+	HostName          string
+	ACLDependList     []ACLDepend
 }
 
 // ACLDepend is used to track an external interface/port and optional IP addresses
@@ -1916,6 +1917,12 @@ func (config NetworkXObjectConfig) LogKey() string {
 	return string(base.NetworkXObjectConfigLogType) + "-" + config.Key()
 }
 
+// AssignedAddrs :
+type AssignedAddrs struct {
+	IPv4Addr  net.IP
+	IPv6Addrs []net.IP
+}
+
 type NetworkInstanceInfo struct {
 	BridgeNum     int
 	BridgeName    string // bn<N>
@@ -1927,7 +1934,7 @@ type NetworkInstanceInfo struct {
 	IfNameList []string // Recorded at time of activate
 
 	// Collection of address assignments; from MAC address to IP address
-	IPAssignments map[string]net.IP
+	IPAssignments map[string]AssignedAddrs
 
 	// Union of all ipsets fed to dnsmasq for the linux bridge
 	BridgeIPSets []string
@@ -2460,9 +2467,17 @@ func (status *NetworkInstanceStatus) UpdateBridgeMetrics(log *base.LogObject,
 
 // Returns true if found
 func (status *NetworkInstanceStatus) IsIpAssigned(ip net.IP) bool {
-	for _, a := range status.IPAssignments {
-		if ip.Equal(a) {
+	for _, assignments := range status.IPAssignments {
+		if ip.Equal(assignments.IPv4Addr) {
 			return true
+		}
+		if len(assignments.IPv6Addrs) == 0 {
+			return false
+		}
+		for _, nip := range assignments.IPv6Addrs {
+			if ip.Equal(nip) {
+				return true
+			}
 		}
 	}
 	return false
@@ -2806,8 +2821,9 @@ func (flows IPFlow) LogKey() string {
 
 // VifIPTrig - structure contains Mac Address
 type VifIPTrig struct {
-	MacAddr string
-	IPAddr  net.IP
+	MacAddr   string
+	IPv4Addr  net.IP
+	IPv6Addrs []net.IP
 }
 
 // Key - VifIPTrig key function
