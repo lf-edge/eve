@@ -160,6 +160,11 @@ var mToF = []modelToFuncs{
 		isDisplay: true,
 	},
 	{
+		model:  "Red Hat.KVM",
+		regexp: true,
+		// No disk light blinking on Red Hat.KVM qemu
+	},
+	{
 		model:  "Parallels.*",
 		regexp: true,
 		// No disk light blinking on Parallels
