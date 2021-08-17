@@ -230,10 +230,10 @@ const (
 type Task interface {
 	Setup(DomainStatus, DomainConfig, *AssignableAdapters, *os.File) error
 	Create(string, string, *DomainConfig) (int, error)
-	Start(string, int) error
-	Stop(string, int, bool) error
-	Delete(string, int) error
-	Info(string, int) (int, SwState, error)
+	Start(string) error
+	Stop(string, bool) error
+	Delete(string) error
+	Info(string) (int, SwState, error)
 }
 
 type DomainStatus struct {

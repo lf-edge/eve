@@ -2227,15 +2227,15 @@ func TestCreateDom(t *testing.T) {
 		}
 	}
 
-	if err := kvmIntel.Task(testDom).Start("test", 0); err != nil {
+	if err := kvmIntel.Task(testDom).Start("test"); err != nil {
 		t.Errorf("Start domain failed %v", err)
 	}
 
-	if err := kvmIntel.Task(testDom).Stop("test", 0, true); err != nil {
+	if err := kvmIntel.Task(testDom).Stop("test", true); err != nil {
 		t.Errorf("Stop domain failed %v", err)
 	}
 
-	if err := kvmIntel.Task(testDom).Delete("test", 0); err != nil {
+	if err := kvmIntel.Task(testDom).Delete("test"); err != nil {
 		t.Errorf("Delete domain failed %v", err)
 	}
 
