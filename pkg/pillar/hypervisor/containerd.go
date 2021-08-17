@@ -164,6 +164,11 @@ func (ctx ctrdContext) Delete(domainName string) error {
 	return nil
 }
 
+//Cleanup is noop for containerd hypervisor
+func (ctx ctrdContext) Cleanup(_ string) error {
+	return nil
+}
+
 func (ctx ctrdContext) Annotations(domainName string) (map[string]string, error) {
 	ctrdCtx, done := ctx.ctrdClient.CtrNewUserServicesCtx()
 	defer done()
