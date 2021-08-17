@@ -112,6 +112,11 @@ func (ctx nullContext) Delete(domainName string) error {
 	return nil
 }
 
+//Cleanup is noop for null hypervisor
+func (ctx nullContext) Cleanup(_ string) error {
+	return nil
+}
+
 func (ctx nullContext) Info(domainName string) (int, types.SwState, error) {
 	if dom, found := ctx.doms[domainName]; found {
 		logrus.Infof("Null Domain %s is %v and has the following config %s\n", domainName, dom.state, dom.config)

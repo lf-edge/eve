@@ -234,6 +234,7 @@ type Task interface {
 	Stop(string, bool) error
 	Delete(string) error
 	Info(string) (int, SwState, error)
+	Cleanup(string) error
 }
 
 type DomainStatus struct {
