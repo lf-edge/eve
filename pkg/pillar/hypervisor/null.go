@@ -87,7 +87,7 @@ func (ctx nullContext) Create(domainName string, cfgFilename string, config *typ
 	return ctx.domCounter, nil
 }
 
-func (ctx nullContext) Start(domainName string, domainID int) error {
+func (ctx nullContext) Start(domainName string) error {
 	if dom, found := ctx.doms[domainName]; found && dom.state == types.HALTED {
 		dom.state = types.RUNNING
 		return nil
@@ -96,7 +96,7 @@ func (ctx nullContext) Start(domainName string, domainID int) error {
 	}
 }
 
-func (ctx nullContext) Stop(domainName string, domainID int, force bool) error {
+func (ctx nullContext) Stop(domainName string, force bool) error {
 	if dom, found := ctx.doms[domainName]; found && dom.state == types.RUNNING {
 		dom.state = types.HALTED
 		return nil
@@ -105,14 +105,14 @@ func (ctx nullContext) Stop(domainName string, domainID int, force bool) error {
 	}
 }
 
-func (ctx nullContext) Delete(domainName string, domainID int) error {
+func (ctx nullContext) Delete(domainName string) error {
 	// calls to Delete are serialized in the consumer: no need to worry about locking
 	os.RemoveAll(ctx.tempDir + "/" + domainName)
 	delete(ctx.doms, domainName)
 	return nil
 }
 
-func (ctx nullContext) Info(domainName string, domainID int) (int, types.SwState, error) {
+func (ctx nullContext) Info(domainName string) (int, types.SwState, error) {
 	if dom, found := ctx.doms[domainName]; found {
 		logrus.Infof("Null Domain %s is %v and has the following config %s\n", domainName, dom.state, dom.config)
 		return dom.id, dom.state, nil
