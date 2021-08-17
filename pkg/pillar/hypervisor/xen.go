@@ -511,6 +511,14 @@ func (ctx xenContext) Delete(domainName string) (result error) {
 	return nil
 }
 
+//Cleanup removes containerd-shim
+func (ctx xenContext) Cleanup(domainName string) error {
+	if err := ctx.ctrdContext.Delete(domainName); err != nil {
+		return fmt.Errorf("couldn't cleanup task %s: %v", domainName, err)
+	}
+	return nil
+}
+
 func (ctx xenContext) Info(domainName string) (int, types.SwState, error) {
 	// first we ask for the task status
 	effectiveDomainID, effectiveDomainState, err := ctx.ctrdContext.Info(domainName)
