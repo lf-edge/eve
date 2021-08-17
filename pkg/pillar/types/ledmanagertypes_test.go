@@ -8,35 +8,35 @@ import (
 func TestDeriveLedCounter(t *testing.T) {
 
 	testMatrix := map[string]struct {
-		ledCounter         int
+		ledBlinkCount      LedBlinkCount
 		usableAddressCount int
-		expectedValue      int
+		expectedValue      LedBlinkCount
 	}{
 		"usableAddressCount is 0": {
-			ledCounter:         0,
+			ledBlinkCount:      LedBlinkUndefined,
 			usableAddressCount: 0,
-			expectedValue:      1,
+			expectedValue:      LedBlinkWaitingForIP,
 		},
-		"ledCounter less than 2": {
-			ledCounter:         0,
+		"ledBlinkCount less than 2 (without IP)": {
+			ledBlinkCount:      LedBlinkUndefined,
 			usableAddressCount: 1,
-			expectedValue:      2,
+			expectedValue:      LedBlinkConnectingToController,
 		},
-		"ledCounter equals 2": {
-			ledCounter:         2,
+		"ledBlinkCount is 2 (has IP)": {
+			ledBlinkCount:      LedBlinkConnectingToController,
 			usableAddressCount: 1,
-			expectedValue:      2,
+			expectedValue:      LedBlinkConnectingToController,
 		},
-		"ledCounter greater than 2": {
-			ledCounter:         3,
+		"ledBlinkCount is greater than 2 (connected)": {
+			ledBlinkCount:      LedBlinkConnectedToController,
 			usableAddressCount: 1,
-			expectedValue:      3,
+			expectedValue:      LedBlinkConnectedToController,
 		},
 	}
 
 	for testname, test := range testMatrix {
 		t.Logf("Running test case %s", testname)
-		output := DeriveLedCounter(test.ledCounter, test.usableAddressCount)
+		output := DeriveLedCounter(test.ledBlinkCount, test.usableAddressCount)
 		assert.Equal(t, test.expectedValue, output)
 	}
 }

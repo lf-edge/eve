@@ -50,8 +50,8 @@ type diagContext struct {
 	DevicePortConfigList    *types.DevicePortConfigList
 	forever                 bool // Keep on reporting until ^C
 	pacContents             bool // Print PAC file contents
-	ledCounter              int
-	derivedLedCounter       int // Based on ledCounter + usableAddressCount
+	ledCounter              types.LedBlinkCount
+	derivedLedCounter       types.LedBlinkCount // Based on ledCounter + usableAddressCount
 	subGlobalConfig         pubsub.Subscription
 	globalConfig            *types.ConfigItemValueMap
 	GCInitialized           bool // Received initial GlobalConfig
@@ -528,25 +528,12 @@ func printOutput(ctx *diagContext) {
 	}
 
 	switch ctx.derivedLedCounter {
-	case 0:
-		fmt.Fprintf(outfile, "ERROR: Summary: Unknown LED counter 0\n")
-	case 1:
-		fmt.Fprintf(outfile, "ERROR: Summary: Waiting for DHCP IP address(es)\n")
-	case 2:
-		fmt.Fprintf(outfile, "ERROR: Summary: Trying to connect to EV Controller\n")
-	case 3:
-		fmt.Fprintf(outfile, "WARNING: Summary: Connected to EV Controller but not onboarded\n")
-	case 4:
-		fmt.Fprintf(outfile, "INFO: Summary: Connected to EV Controller and onboarded\n")
-	case 10:
-		fmt.Fprintf(outfile, "ERROR: Summary: Onboarding failure or conflict\n")
-	case 12:
-		fmt.Fprintf(outfile, "ERROR: Summary: Response without TLS - ignored\n")
-	case 13:
-		fmt.Fprintf(outfile, "ERROR: Summary: Response without OSCP or bad OSCP - ignored\n")
+	case types.LedBlinkOnboarded:
+		fmt.Fprintf(outfile, "INFO: Summary: %s\n", ctx.derivedLedCounter)
+	case types.LedBlinkConnectedToController:
+		fmt.Fprintf(outfile, "WARNING: Summary: %s\n", ctx.derivedLedCounter)
 	default:
-		fmt.Fprintf(outfile, "ERROR: Summary: Unsupported LED counter %d\n",
-			ctx.derivedLedCounter)
+		fmt.Fprintf(outfile, "ERROR: Summary: %s\n", ctx.derivedLedCounter)
 	}
 
 	testing := ctx.DeviceNetworkStatus.Testing

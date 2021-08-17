@@ -292,6 +292,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 			if !gotServerCerts {
 				log.Errorf("Failed to fetch certs from %s. Wrong URL?",
 					serverNameAndPort)
+				if !zedcloudCtx.NoLedManager {
+					utils.UpdateLedManagerConfig(log, types.LedBlinkInvalidControllerCert)
+				}
 				return 0 // Try again later
 			}
 			log.Noticef("Fetched certs from %s",
@@ -383,6 +386,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 				}
 				// Force a refresh
 				ok := fetchCertChain(&zedcloudCtx, devtlsConfig, retryCount, true)
+				if !ok && !zedcloudCtx.NoLedManager {
+					utils.UpdateLedManagerConfig(log, types.LedBlinkInvalidControllerCert)
+				}
 				log.Noticef("get cert chain result %t", ok)
 			}
 			ret := tryRegister()
@@ -409,6 +415,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		case <-clientCtx.getCertsTimer.C:
 			// triggered by cert miss error in doGetUUID, so the TLS is device TLSConfig
 			ok := fetchCertChain(&zedcloudCtx, devtlsConfig, retryCount, true)
+			if !ok && !zedcloudCtx.NoLedManager {
+				utils.UpdateLedManagerConfig(log, types.LedBlinkInvalidControllerCert)
+			}
 			log.Noticef("client timer get cert chain result %t", ok)
 
 		case <-stillRunning.C:
@@ -512,25 +521,25 @@ func myPost(zedcloudCtx *zedcloud.ZedCloudContext, tlsConfig *tls.Config,
 
 	if !zedcloudCtx.NoLedManager {
 		// Inform ledmanager about cloud connectivity
-		utils.UpdateLedManagerConfig(log, 3)
+		utils.UpdateLedManagerConfig(log, types.LedBlinkConnectedToController)
 	}
 	switch resp.StatusCode {
 	case http.StatusOK:
 		if !zedcloudCtx.NoLedManager {
 			// Inform ledmanager about existence in cloud
-			utils.UpdateLedManagerConfig(log, 4)
+			utils.UpdateLedManagerConfig(log, types.LedBlinkOnboarded)
 		}
 		log.Functionf("%s StatusOK", requrl)
 	case http.StatusCreated:
 		if !zedcloudCtx.NoLedManager {
 			// Inform ledmanager about existence in cloud
-			utils.UpdateLedManagerConfig(log, 4)
+			utils.UpdateLedManagerConfig(log, types.LedBlinkOnboarded)
 		}
 		log.Functionf("%s StatusCreated", requrl)
 	case http.StatusConflict:
 		if !zedcloudCtx.NoLedManager {
 			// Inform ledmanager about brokenness
-			utils.UpdateLedManagerConfig(log, 10)
+			utils.UpdateLedManagerConfig(log, types.LedBlinkOnboardingFailure)
 		}
 		log.Errorf("%s StatusConflict", requrl)
 		// Retry until fixed
@@ -595,7 +604,7 @@ func selfRegister(zedcloudCtx *zedcloud.ZedCloudContext, tlsConfig *tls.Config, 
 	if resp != nil && resp.StatusCode == http.StatusNotModified {
 		if !zedcloudCtx.NoLedManager {
 			// Inform ledmanager about brokenness
-			utils.UpdateLedManagerConfig(log, 10)
+			utils.UpdateLedManagerConfig(log, types.LedBlinkOnboardingFailure)
 		}
 		log.Errorf("%s StatusNotModified", requrl)
 		// Retry until fixed
@@ -710,7 +719,7 @@ func doGetUUIDNew(ctx *clientContext, tlsConfig *tls.Config,
 	if err == nil {
 		// Inform ledmanager about config received from cloud
 		if !zedcloudCtx.NoLedManager {
-			utils.UpdateLedManagerConfig(log, 4)
+			utils.UpdateLedManagerConfig(log, types.LedBlinkOnboarded)
 		}
 		// If successfully connected to the controller, log the peer certificates,
 		// can be used to detect if it's a MiTM proxy
@@ -764,7 +773,7 @@ func doGetUUIDLegacy(ctx *clientContext, tlsConfig *tls.Config,
 	if err == nil {
 		// Inform ledmanager about config received from cloud
 		if !zedcloudCtx.NoLedManager {
-			utils.UpdateLedManagerConfig(log, 4)
+			utils.UpdateLedManagerConfig(log, types.LedBlinkOnboarded)
 		}
 		return true, devUUID, hardwaremodel
 	}

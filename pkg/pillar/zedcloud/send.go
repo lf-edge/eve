@@ -514,7 +514,7 @@ func SendOnIntf(ctx *ZedCloudContext, destURL string, intf string, reqlen int64,
 				errorList = append(errorList, err)
 				// Inform ledmanager about broken cloud connectivity
 				if !ctx.NoLedManager {
-					utils.UpdateLedManagerConfig(log, 12)
+					utils.UpdateLedManagerConfig(log, types.LedBlinkRespWithoutTLS)
 				}
 				if ctx.FailureFunc != nil {
 					ctx.FailureFunc(log, intf, reqUrl, reqlen,
@@ -540,7 +540,7 @@ func SendOnIntf(ctx *ZedCloudContext, destURL string, intf string, reqlen int64,
 					log.Errorln(errStr)
 					// Inform ledmanager about broken cloud connectivity
 					if !ctx.NoLedManager {
-						utils.UpdateLedManagerConfig(log, 13)
+						utils.UpdateLedManagerConfig(log, types.LedBlinkRespWithoutOSCP)
 					}
 					if ctx.FailureFunc != nil {
 						ctx.FailureFunc(log, intf, reqUrl,

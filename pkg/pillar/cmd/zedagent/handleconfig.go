@@ -33,8 +33,8 @@ var serverNameAndPort string
 type Notify struct{}
 
 type getconfigContext struct {
-	zedagentCtx              *zedagentContext // Cross link
-	ledManagerCount          int              // Current count
+	zedagentCtx              *zedagentContext    // Cross link
+	ledBlinkCount            types.LedBlinkCount // Current count
 	configReceived           bool
 	configGetStatus          types.ConfigGetStatus
 	updateInprogress         bool
@@ -225,7 +225,7 @@ func getLatestConfig(url string, iteration int,
 	size := int64(proto.Size(cr))
 	resp, contents, rtf, err := zedcloud.SendOnAllIntf(zedcloudCtx, url, size, buf, iteration, bailOnHTTPErr)
 	if err != nil {
-		newCount := 2
+		newCount := types.LedBlinkConnectingToController
 		switch rtf {
 		case types.SenderStatusUpgrade:
 			log.Functionf("getLatestConfig : Controller upgrade in progress")
@@ -240,7 +240,7 @@ func getLatestConfig(url string, iteration int,
 		}
 		switch rtf {
 		case types.SenderStatusUpgrade, types.SenderStatusRefused, types.SenderStatusCertInvalid:
-			newCount = 3 // Almost connected to controller!
+			newCount = types.LedBlinkConnectedToController // Almost connected to controller!
 			// Don't treat as upgrade failure
 			if getconfigCtx.updateInprogress {
 				log.Warnf("remoteTemporaryFailure don't fail update")
@@ -250,10 +250,10 @@ func getLatestConfig(url string, iteration int,
 			// trigger to acquire new controller certs from cloud
 			triggerControllerCertEvent(ctx)
 		}
-		if getconfigCtx.ledManagerCount == 4 {
+		if getconfigCtx.ledBlinkCount == types.LedBlinkOnboarded {
 			// Inform ledmanager about loss of config from cloud
 			utils.UpdateLedManagerConfig(log, newCount)
-			getconfigCtx.ledManagerCount = newCount
+			getconfigCtx.ledBlinkCount = newCount
 		}
 		// If we didn't yet get a config, then look for a file
 		// XXX should we try a few times?
@@ -294,8 +294,8 @@ func getLatestConfig(url string, iteration int,
 	if resp.StatusCode == http.StatusNotModified {
 		log.Tracef("StatusNotModified len %d", len(contents))
 		// Inform ledmanager about config received from cloud
-		utils.UpdateLedManagerConfig(log, 4)
-		getconfigCtx.ledManagerCount = 4
+		utils.UpdateLedManagerConfig(log, types.LedBlinkOnboarded)
+		getconfigCtx.ledBlinkCount = types.LedBlinkOnboarded
 
 		if !getconfigCtx.configReceived {
 			getconfigCtx.configReceived = true
@@ -312,8 +312,8 @@ func getLatestConfig(url string, iteration int,
 	if err := validateProtoMessage(url, resp); err != nil {
 		log.Errorln("validateProtoMessage: ", err)
 		// Inform ledmanager about cloud connectivity
-		utils.UpdateLedManagerConfig(log, 3)
-		getconfigCtx.ledManagerCount = 3
+		utils.UpdateLedManagerConfig(log, types.LedBlinkConnectedToController)
+		getconfigCtx.ledBlinkCount = types.LedBlinkConnectedToController
 		publishZedAgentStatus(getconfigCtx)
 		return false
 	}
@@ -322,15 +322,15 @@ func getLatestConfig(url string, iteration int,
 	if err != nil {
 		log.Errorln("readConfigResponseProtoMessage: ", err)
 		// Inform ledmanager about cloud connectivity
-		utils.UpdateLedManagerConfig(log, 3)
-		getconfigCtx.ledManagerCount = 3
+		utils.UpdateLedManagerConfig(log, types.LedBlinkConnectedToController)
+		getconfigCtx.ledBlinkCount = types.LedBlinkConnectedToController
 		publishZedAgentStatus(getconfigCtx)
 		return false
 	}
 
 	// Inform ledmanager about config received from cloud
-	utils.UpdateLedManagerConfig(log, 4)
-	getconfigCtx.ledManagerCount = 4
+	utils.UpdateLedManagerConfig(log, types.LedBlinkOnboarded)
+	getconfigCtx.ledBlinkCount = types.LedBlinkOnboarded
 
 	if !getconfigCtx.configReceived {
 		getconfigCtx.configReceived = true

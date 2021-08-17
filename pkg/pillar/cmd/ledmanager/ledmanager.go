@@ -38,20 +38,20 @@ const (
 
 // State passed to handlers
 type ledManagerContext struct {
-	countChange            chan int
-	ledCounter             int // Supress work and logging if no change
+	countChange            chan types.LedBlinkCount
+	ledCounter             types.LedBlinkCount // Supress work and logging if no change
 	subGlobalConfig        pubsub.Subscription
 	subLedBlinkCounter     pubsub.Subscription
 	subDeviceNetworkStatus pubsub.Subscription
 	deviceNetworkStatus    types.DeviceNetworkStatus
 	usableAddressCount     int
-	derivedLedCounter      int // Based on ledCounter + usableAddressCount
+	derivedLedCounter      types.LedBlinkCount // Based on ledCounter + usableAddressCount
 	GCInitialized          bool
 }
 
 // DisplayFunc takes an argument which can be the name of a LED or display
 type DisplayFunc func(deviceNetworkStatus *types.DeviceNetworkStatus,
-	arg string, counter int)
+	arg string, blinkCount types.LedBlinkCount)
 
 // InitFunc takes an argument which can be the name of a LED or display
 type InitFunc func(arg string)
@@ -288,7 +288,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 	// Any state needed by handler functions
 	ctx := ledManagerContext{}
-	ctx.countChange = make(chan int)
+	ctx.countChange = make(chan types.LedBlinkCount)
 	log.Functionf("Creating %s at %s", "handleDisplayUpdate",
 		agentlog.GetMyStack())
 	go handleDisplayUpdate(&ctx, displayFunc, arg, isDisplay)
@@ -444,7 +444,7 @@ func handleLedBlinkDelete(ctxArg interface{}, key string,
 func handleDisplayUpdate(ctx *ledManagerContext, displayFunc DisplayFunc,
 	arg string, isDisplay bool) {
 
-	var counter int
+	var counter types.LedBlinkCount
 	for {
 		changed := false
 		select {
@@ -526,8 +526,8 @@ func InitForceDiskCmd(ledName string) {
 // ExecuteForceDiskCmd does counter number of 200ms blinks and returns
 // It assumes the init function has determined a diskRepeatCount and a disk.
 func ExecuteForceDiskCmd(deviceNetworkStatus *types.DeviceNetworkStatus,
-	arg string, counter int) {
-	for i := 0; i < counter; i++ {
+	arg string, blinkCount types.LedBlinkCount) {
+	for i := 0; i < int(blinkCount); i++ {
 		doForceDiskBlink()
 		time.Sleep(200 * time.Millisecond)
 	}
@@ -592,8 +592,8 @@ func InitLedCmd(ledName string) {
 
 // ExecuteLedCmd does counter number of 200ms blinks and returns
 func ExecuteLedCmd(deviceNetworkStatus *types.DeviceNetworkStatus,
-	ledName string, counter int) {
-	for i := 0; i < counter; i++ {
+	ledName string, blinkCount types.LedBlinkCount) {
+	for i := 0; i < int(blinkCount); i++ {
 		doLedBlink(ledName)
 		time.Sleep(200 * time.Millisecond)
 	}
@@ -634,28 +634,13 @@ func createLogfile(filename string) {
 
 // appendLogfile
 func appendLogfile(deviceNetworkStatus *types.DeviceNetworkStatus,
-	filename string, counter int) {
+	filename string, counter types.LedBlinkCount) {
 
 	if filename == "" {
 		// Disabled
 		return
 	}
-	str := ""
-	switch counter {
-	case 0:
-		str = "Linux booting"
-	case 1:
-		str = "EVE-OS booting"
-	case 2:
-		str = "acquiring IP address"
-	case 3:
-		str = "reached controller"
-	case 4:
-		str = "online"
-	default:
-		str = "error"
-	}
-	msg := fmt.Sprintf("Progress: %d %s\n", counter, str)
+	msg := fmt.Sprintf("Progress: %d (%s)\n", counter, counter)
 	for _, p := range deviceNetworkStatus.Ports {
 		if p.IsMgmt {
 			addrs := ""
