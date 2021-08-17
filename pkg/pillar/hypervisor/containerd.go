@@ -125,7 +125,7 @@ func (ctx ctrdContext) Create(domainName string, cfgFilename string, config *typ
 	return ctx.ctrdClient.CtrCreateTask(ctrdCtx, domainName)
 }
 
-func (ctx ctrdContext) Start(domainName string, domainID int) error {
+func (ctx ctrdContext) Start(domainName string) error {
 	ctrdCtx, done := ctx.ctrdClient.CtrNewUserServicesCtx()
 	defer done()
 	err := ctx.ctrdClient.CtrStartTask(ctrdCtx, domainName)
@@ -145,13 +145,13 @@ func (ctx ctrdContext) Start(domainName string, domainID int) error {
 	return fmt.Errorf("task %s couldn't reach a steady state in time", domainName)
 }
 
-func (ctx ctrdContext) Stop(domainName string, domainID int, force bool) error {
+func (ctx ctrdContext) Stop(domainName string, force bool) error {
 	ctrdCtx, done := ctx.ctrdClient.CtrNewUserServicesCtx()
 	defer done()
 	return ctx.ctrdClient.CtrStopContainer(ctrdCtx, domainName, force)
 }
 
-func (ctx ctrdContext) Delete(domainName string, domainID int) error {
+func (ctx ctrdContext) Delete(domainName string) error {
 	ctrdCtx, done := ctx.ctrdClient.CtrNewUserServicesCtx()
 	defer done()
 	if err := ctx.ctrdClient.CtrDeleteContainer(ctrdCtx, domainName); err != nil {
@@ -164,27 +164,22 @@ func (ctx ctrdContext) Delete(domainName string, domainID int) error {
 	return nil
 }
 
-func (ctx ctrdContext) Annotations(domainName string, domainID int) (map[string]string, error) {
+func (ctx ctrdContext) Annotations(domainName string) (map[string]string, error) {
 	ctrdCtx, done := ctx.ctrdClient.CtrNewUserServicesCtx()
 	defer done()
 	return ctx.ctrdClient.CtrGetAnnotations(ctrdCtx, domainName)
 }
 
-func (ctx ctrdContext) Info(domainName string, domainID int) (int, types.SwState, error) {
+func (ctx ctrdContext) Info(domainName string) (int, types.SwState, error) {
 	ctrdCtx, done := ctx.ctrdClient.CtrNewUserServicesCtx()
 	defer done()
 	effectiveDomainID, exit, status, err := ctx.ctrdClient.CtrContainerInfo(ctrdCtx, domainName)
 	if err != nil {
-		return domainID, types.UNKNOWN, logError("containerd looking up domain %s with PID %d resulted in %v", domainName, domainID, err)
+		return 0, types.UNKNOWN, logError("containerd looking up domain %s resulted in %v", domainName, err)
 	}
 
 	if status == "stopped" && exit != 0 {
-		return domainID, types.BROKEN, logError("task broke with exit status %d", exit)
-	}
-
-	if effectiveDomainID != domainID {
-		logrus.Warnf("containerd domain %s with PID %d (different from expected %d) is %s",
-			domainName, effectiveDomainID, domainID, status)
+		return 0, types.BROKEN, logError("task broke with exit status %d", exit)
 	}
 
 	stateMap := map[string]types.SwState{

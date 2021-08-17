@@ -678,9 +678,9 @@ func waitForQmp(domainName string) error {
 	}
 }
 
-func (ctx kvmContext) Start(domainName string, domainID int) error {
+func (ctx kvmContext) Start(domainName string) error {
 	logrus.Infof("starting KVM domain %s", domainName)
-	if err := ctx.ctrdContext.Start(domainName, domainID); err != nil {
+	if err := ctx.ctrdContext.Start(domainName); err != nil {
 		logrus.Errorf("couldn't start task for domain %s: %v", domainName, err)
 		return err
 	}
@@ -697,7 +697,7 @@ func (ctx kvmContext) Start(domainName string, domainID int) error {
 	logrus.Infof("Creating %s at %s", "qmpEventHandler", agentlog.GetMyStack())
 	go qmpEventHandler(getQmpListenerSocket(domainName), getQmpExecutorSocket(domainName))
 
-	annotations, err := ctx.ctrdContext.Annotations(domainName, domainID)
+	annotations, err := ctx.ctrdContext.Annotations(domainName)
 	if err != nil {
 		logrus.Warnf("Error in get annotations for domain %s: %v", domainName, err)
 		return err
@@ -719,17 +719,17 @@ func (ctx kvmContext) Start(domainName string, domainID int) error {
 	return nil
 }
 
-func (ctx kvmContext) Stop(domainName string, domainID int, force bool) error {
+func (ctx kvmContext) Stop(domainName string, force bool) error {
 	if err := execShutdown(getQmpExecutorSocket(domainName)); err != nil {
 		return logError("Stop: failed to execute shutdown command %v", err)
 	}
 	return nil
 }
 
-func (ctx kvmContext) Delete(domainName string, domainID int) (result error) {
+func (ctx kvmContext) Delete(domainName string) (result error) {
 	// regardless of happens to everything else, we have to try and delete the task
 	defer func() {
-		if err := ctx.ctrdContext.Delete(domainName, domainID); err != nil {
+		if err := ctx.ctrdContext.Delete(domainName); err != nil {
 			result = fmt.Errorf("%w; couldn't delete task %s: %v", result, domainName, err)
 		}
 	}()
@@ -747,9 +747,9 @@ func (ctx kvmContext) Delete(domainName string, domainID int) (result error) {
 	return nil
 }
 
-func (ctx kvmContext) Info(domainName string, domainID int) (int, types.SwState, error) {
+func (ctx kvmContext) Info(domainName string) (int, types.SwState, error) {
 	// first we ask for the task status
-	effectiveDomainID, effectiveDomainState, err := ctx.ctrdContext.Info(domainName, domainID)
+	effectiveDomainID, effectiveDomainState, err := ctx.ctrdContext.Info(domainName)
 	if err != nil || effectiveDomainState != types.RUNNING {
 		return effectiveDomainID, effectiveDomainState, err
 	}
