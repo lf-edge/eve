@@ -14,7 +14,7 @@ const (
 )
 
 // UpdateLedManagerConfig is used by callers to change the behavior or the LED
-func UpdateLedManagerConfig(log *base.LogObject, count int) {
+func UpdateLedManagerConfig(log *base.LogObject, count types.LedBlinkCount) {
 	blinkCount := types.LedBlinkCounter{
 		BlinkCounter: count,
 	}
