@@ -45,6 +45,9 @@ const (
 	runDirname = "/run/" + agentName
 	xenDirname = runDirname + "/xen"       // We store xen cfg files here
 	ciDirname  = runDirname + "/cloudinit" // For cloud-init images
+	//dir with runtime files of containerd for eve user apps
+	ctrdAppsRunDir = "/persist/containerd/io.containerd.runtime.v1.linux/eve-user-apps"
+
 	// Time limits for event loop handlers
 	errorTime           = 3 * time.Minute
 	warningTime         = 40 * time.Second
@@ -166,6 +169,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		if err := os.RemoveAll(ciDirname); err != nil {
 			log.Fatal(err)
 		}
+	}
+	if err := os.RemoveAll(ctrdAppsRunDir); err != nil {
+		log.Errorf("Failed cleanup %s: %v", ctrdAppsRunDir, err)
 	}
 	if _, err := os.Stat(xenDirname); err != nil {
 		if err := os.MkdirAll(xenDirname, 0700); err != nil {
@@ -835,6 +841,9 @@ func verifyStatus(ctx *domainContext, status *types.DomainStatus) {
 				if err := hyper.Task(status).Delete(status.DomainName); err != nil {
 					log.Errorf("failed to delete domain: %s (%v)", status.DomainName, err)
 				}
+				if err := hyper.Task(status).Cleanup(status.DomainName); err != nil {
+					log.Errorf("failed to cleanup domain: %s (%v)", status.DomainName, err)
+				}
 				status.State = types.BROKEN
 			}
 		}
@@ -1280,9 +1289,13 @@ func doActivateTail(ctx *domainContext, status *types.DomainStatus,
 		log.Errorf("domain start for %s: %s", status.DomainName, err)
 		status.SetErrorNow(err.Error())
 
-		// Cleanup
+		// Delete
 		if err := hyper.Task(status).Delete(status.DomainName); err != nil {
 			log.Errorf("failed to delete domain: %s (%v)", status.DomainName, err)
+		}
+		// Cleanup
+		if err := hyper.Task(status).Cleanup(status.DomainName); err != nil {
+			log.Errorf("failed to cleanup domain: %s (%v)", status.DomainName, err)
 		}
 
 		// Set BootFailed to cause retry
@@ -1305,9 +1318,13 @@ func doActivateTail(ctx *domainContext, status *types.DomainStatus,
 		status.SetErrorNow(err.Error())
 		log.Errorf("doActivateTail(%v) failed for %s: %s",
 			status.UUIDandVersion, status.DisplayName, err)
-		// Cleanup
+		// Delete
 		if err := hyper.Task(status).Delete(status.DomainName); err != nil {
 			log.Errorf("failed to delete domain: %s (%v)", status.DomainName, err)
+		}
+		// Cleanup
+		if err := hyper.Task(status).Cleanup(status.DomainName); err != nil {
+			log.Errorf("failed to cleanup domain: %s (%v)", status.DomainName, err)
 		}
 		return
 	}
@@ -1459,6 +1476,11 @@ func doInactivate(ctx *domainContext, status *types.DomainStatus, impatient bool
 		if gone {
 			status.DomainId = 0
 		}
+	}
+
+	// Cleanup
+	if err := hyper.Task(status).Cleanup(status.DomainName); err != nil {
+		log.Errorf("failed to cleanup domain: %s (%v)", status.DomainName, err)
 	}
 
 	// If everything failed we leave it marked as Activated

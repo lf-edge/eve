@@ -720,13 +720,6 @@ func (ctx kvmContext) Stop(domainName string, force bool) error {
 }
 
 func (ctx kvmContext) Delete(domainName string) (result error) {
-	// regardless of happens to everything else, we have to try and delete the task
-	defer func() {
-		if err := ctx.ctrdContext.Delete(domainName); err != nil {
-			result = fmt.Errorf("%w; couldn't delete task %s: %v", result, domainName, err)
-		}
-	}()
-
 	//Sending a stop signal to then domain before quitting. This is done to freeze the domain before quitting it.
 	execStop(getQmpExecutorSocket(domainName))
 	if err := execQuit(getQmpExecutorSocket(domainName)); err != nil {
@@ -774,6 +767,14 @@ func (ctx kvmContext) Info(domainName string) (int, types.SwState, error) {
 	} else {
 		return effectiveDomainID, effectiveDomainState, nil
 	}
+}
+
+func (ctx kvmContext) Cleanup(domainName string) error {
+	if err := ctx.ctrdContext.Delete(domainName); err != nil {
+		return fmt.Errorf("couldn't cleanup task %s: %v", domainName, err)
+	}
+
+	return nil
 }
 
 func (ctx kvmContext) PCIReserve(long string) error {

@@ -2181,6 +2181,10 @@ func TestCreateDom(t *testing.T) {
 		t.Errorf("Delete domain failed %v", err)
 	}
 
+	if err := kvmIntel.Task(testDom).Cleanup("test"); err != nil {
+		t.Errorf("Cleanup domain failed %v", err)
+	}
+
 	state, err = os.Open(kvmStateDir)
 	if err != nil {
 		t.Errorf("can't open stat dir for test domain %v", err)
