@@ -203,6 +203,30 @@ func handleSignals(log *base.LogObject, agentName string, agentPid int, sigs cha
 	}
 }
 
+// DumpAllStacks writes to file but does not log
+func DumpAllStacks(log *base.LogObject, agentName string) {
+	agentDebugDir := fmt.Sprintf("%s/%s/", types.PersistDebugDir, agentName)
+	sigUsr1FileName := agentDebugDir + "/sigusr1"
+
+	stacks := getStacks(true)
+	stackArray := strings.Split(stacks, "\n\n")
+
+	sigUsr1File, err := os.OpenFile(sigUsr1FileName,
+		os.O_WRONLY|os.O_CREATE|os.O_SYNC|os.O_TRUNC, 0755)
+	if err == nil {
+		for _, stack := range stackArray {
+			// This goes to /persist/agentdebug/<agentname>/sigusr1 file
+			sigUsr1File.WriteString(stack + "\n\n")
+		}
+		sigUsr1File.Close()
+		log.Noticef("DumpAllStacks: Wrote file %s",
+			sigUsr1FileName)
+	} else {
+		log.Errorf("DumpAllStacks: Error opening file %s with: %s",
+			sigUsr1FileName, err)
+	}
+}
+
 // PrintStacks - for newlogd log init
 func PrintStacks(log *base.LogObject) {
 	stacks := getStacks(false)
