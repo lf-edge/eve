@@ -815,7 +815,7 @@ func verifyStatus(ctx *domainContext, status *types.DomainStatus) {
 		configActivate = true
 	}
 
-	domainID, domainStatus, err := hyper.Task(status).Info(status.DomainName, status.DomainId)
+	domainID, domainStatus, err := hyper.Task(status).Info(status.DomainName)
 	if err != nil || domainStatus == types.HALTED {
 		if status.Activated && configActivate {
 			errStr := fmt.Sprintf("verifyStatus(%s) failed %s",
@@ -832,7 +832,7 @@ func verifyStatus(ctx *domainContext, status *types.DomainStatus) {
 				err := fmt.Errorf("one of the %s tasks has crashed (%v)", status.Key(), err)
 				log.Errorf(err.Error())
 				status.SetErrorNow("one of the application's tasks has crashed - please restart application instance")
-				if err := hyper.Task(status).Delete(status.DomainName, status.DomainId); err != nil {
+				if err := hyper.Task(status).Delete(status.DomainName); err != nil {
 					log.Errorf("failed to delete domain: %s (%v)", status.DomainName, err)
 				}
 				status.State = types.BROKEN
@@ -1275,13 +1275,13 @@ func doActivateTail(ctx *domainContext, status *types.DomainStatus,
 	status.State = types.BOOTING
 	publishDomainStatus(ctx, status)
 
-	err := hyper.Task(status).Start(status.DomainName, domainID)
+	err := hyper.Task(status).Start(status.DomainName)
 	if err != nil {
 		log.Errorf("domain start for %s: %s", status.DomainName, err)
 		status.SetErrorNow(err.Error())
 
 		// Cleanup
-		if err := hyper.Task(status).Delete(status.DomainName, status.DomainId); err != nil {
+		if err := hyper.Task(status).Delete(status.DomainName); err != nil {
 			log.Errorf("failed to delete domain: %s (%v)", status.DomainName, err)
 		}
 
@@ -1295,7 +1295,7 @@ func doActivateTail(ctx *domainContext, status *types.DomainStatus,
 	status.VifList = checkIfEmu(status.VifList)
 
 	status.State = types.RUNNING
-	domainID, state, err := hyper.Task(status).Info(status.DomainName, status.DomainId)
+	domainID, state, err := hyper.Task(status).Info(status.DomainName)
 
 	if err != nil {
 		// Immediate failure treat as above
@@ -1306,7 +1306,7 @@ func doActivateTail(ctx *domainContext, status *types.DomainStatus,
 		log.Errorf("doActivateTail(%v) failed for %s: %s",
 			status.UUIDandVersion, status.DisplayName, err)
 		// Cleanup
-		if err := hyper.Task(status).Delete(status.DomainName, status.DomainId); err != nil {
+		if err := hyper.Task(status).Delete(status.DomainName); err != nil {
 			log.Errorf("failed to delete domain: %s (%v)", status.DomainName, err)
 		}
 		return
@@ -1372,7 +1372,7 @@ func doInactivate(ctx *domainContext, status *types.DomainStatus, impatient bool
 
 	log.Functionf("doInactivate(%v) for %s domainId %d",
 		status.UUIDandVersion, status.DisplayName, status.DomainId)
-	domainID, _, err := hyper.Task(status).Info(status.DomainName, status.DomainId)
+	domainID, _, err := hyper.Task(status).Info(status.DomainName)
 	if err == nil && domainID != status.DomainId {
 		status.DomainId = domainID
 		status.BootTime = time.Now()
@@ -1446,7 +1446,7 @@ func doInactivate(ctx *domainContext, status *types.DomainStatus, impatient bool
 	}
 
 	if status.DomainId != 0 {
-		if err := hyper.Task(status).Delete(status.DomainName, status.DomainId); err != nil {
+		if err := hyper.Task(status).Delete(status.DomainName); err != nil {
 			log.Errorf("Failed to delete domain %s (%v)", status.DomainName, err)
 		} else {
 			log.Functionf("doInactivate(%v) for %s: Delete succeeded",
@@ -1837,7 +1837,7 @@ func waitForDomainGone(status types.DomainStatus, maxDelay time.Duration) bool {
 			time.Sleep(delay)
 			waited += delay
 		}
-		_, state, err := hyper.Task(&status).Info(status.DomainName, status.DomainId)
+		_, state, err := hyper.Task(&status).Info(status.DomainName)
 		if err != nil {
 			log.Errorf("waitForDomainGone(%v) for %s error %s state %s",
 				status.UUIDandVersion, status.DisplayName,
@@ -1934,7 +1934,7 @@ func DomainShutdown(status types.DomainStatus, force bool) error {
 
 	// Stop the domain
 	log.Functionf("Stopping domain - %s", status.DomainName)
-	err = hyper.Task(&status).Stop(status.DomainName, status.DomainId, force)
+	err = hyper.Task(&status).Stop(status.DomainName, force)
 
 	return err
 }
