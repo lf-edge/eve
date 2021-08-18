@@ -8,6 +8,7 @@
 [!exec:sleep] stop
 [!exec:ssh] stop
 [!exec:chmod] stop
+[!exec:timeout] stop
 
 exec chmod 600 {{EdenConfig "eden.tests"}}/eclient/image/cert/id_rsa
 
@@ -16,7 +17,7 @@ exec chmod 600 {{EdenConfig "eden.tests"}}/eclient/image/cert/id_rsa
 
 message 'Resetting of EVE'
 eden eve reset
-exec sleep 20
+exec sleep 30
 
 ############################## TEST SCENARIO 1 ################################
 # Hairpin connectivity test between two apps connected to the same network instance
@@ -25,6 +26,7 @@ message 'SCENARIO 1: Creating networks'
 eden network create 10.11.12.0/24 -n n1
 
 test eden.network.test -test.v -timewait 10m ACTIVATED n1
+exec sleep 10
 
 message 'SCENARIO 1: Starting with both application attached to same network instance'
 eden pod deploy -v debug -n app1 docker://itmoeve/eclient:0.6 -p 2223:22 --networks=n1 --memory=512MB
@@ -149,8 +151,8 @@ do
   do
     sleep 20
     # Test SSH-access to container
-    echo {{template "ssh"}}$HOST -p $p grep -q Ubuntu /etc/issue
-    {{template "ssh"}}$HOST -p $p grep -q Ubuntu /etc/issue && break
+    echo timeout 10s {{template "ssh"}}$HOST -p $p grep -q Ubuntu /etc/issue
+    timeout 10s {{template "ssh"}}$HOST -p $p grep -q Ubuntu /etc/issue && break
   done
 done
 
