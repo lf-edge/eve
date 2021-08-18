@@ -2471,9 +2471,6 @@ func (status *NetworkInstanceStatus) IsIpAssigned(ip net.IP) bool {
 		if ip.Equal(assignments.IPv4Addr) {
 			return true
 		}
-		if len(assignments.IPv6Addrs) == 0 {
-			return false
-		}
 		for _, nip := range assignments.IPv6Addrs {
 			if ip.Equal(nip) {
 				return true
