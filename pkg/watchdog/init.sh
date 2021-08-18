@@ -4,6 +4,13 @@ USE_HW_WATCHDOG=1
 DEFAULT_WATCHDOG_CHANGE_TIME=300
 WATCHDOG_CHANGE_TIME=$(</proc/cmdline grep -o '\bchange=[^ ]*' | cut -d = -f 2)
 
+adjust_parent_oom_score() {
+  OOM_SCORE_ADJ=$(cat /proc/$$/oom_score_adj)
+  if [ -n "$OOM_SCORE_ADJ" ]; then
+    log "Set oom_score_adj of $PPID to $OOM_SCORE_ADJ"
+    echo "$OOM_SCORE_ADJ">/proc/$PPID/oom_score_adj
+  fi
+}
 
 reload_watchdog() {
     # Firs thinsg first: kill it!
@@ -65,6 +72,9 @@ else
     log "Platform has no /dev/watchdog"
     USE_HW_WATCHDOG=0
 fi
+
+# set oom_score_adj for watchdog`s parent process, i.e. containerd-shim
+adjust_parent_oom_score
 
 # Create the watchdog(8) config files we will use
 # XXX should we enable realtime in the kernel?
