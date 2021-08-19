@@ -10,7 +10,13 @@ EVE supports both ARM and Intel architectures and requires hardware-assisted vir
 
 To get its job done, EVE leverages a lot of great open source projects: [Xen Project](https://xenproject.org/), [Linuxkit](https://github.com/linuxkit/linuxkit) and [Alpine Linux](https://alpinelinux.org/) just to name a few. All of that functionality is being orchestrated by the Go microservices available under [pkg/pillar](pkg/pillar). Why pillar? Well, because pillar is the kind of a monolith we need to break out into true, individual microservices under [pkg/](pkg/).
 
-## How to use
+## How to use EVE with a controller (recommended)
+
+EVE-OS can be used with the opensource [Adam controller](https://github.com/lf-edge/adam) by following the instructions at [Eden](https://github.com/lf-edge/eden).
+
+There are also ongoing development of [EVE-OS tutorials](https://github.com/shantanoo-desai/EVE-OS-tutorials).
+
+## How to use/build EVE-OS by itself
 
 You will need [QEMU 3.x+](https://www.qemu.org/), [Docker](https://www.docker.com), [Make](https://www.gnu.org/software/make/)
 and [go 1.13+](https://golang.org) installed in your system.
