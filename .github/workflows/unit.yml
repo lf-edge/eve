@@ -3,7 +3,8 @@ name: Unit tests
 on:
   pull_request:
     branches:
-      - master
+      - "master"
+      - "[0-9]+.[0-9]+"
 
 jobs:
   test:
