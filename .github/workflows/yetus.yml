@@ -9,7 +9,9 @@
 name: Apache Yetus
 on:  # yamllint disable-line rule:truthy
   pull_request:
-    branches: [master]
+    branches:
+      - "master"
+      - "[0-9]+.[0-9]+"
 
 jobs:
   yetus:
