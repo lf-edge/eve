@@ -5,15 +5,18 @@ RUN eve-alpine-deploy.sh
 
 ENV GUACD_VERSION=1.0.0
 
-ADD http://apache.org/dyn/closer.cgi?action=download&filename=guacamole/1.0.0/source/guacamole-server-${GUACD_VERSION}.tar.gz /${GUACD_VERSION}.tar.gz 
-ADD 0001-alpine-stacksize-fix.patch /
+ADD http://apache.org/dyn/closer.cgi?action=download&filename=guacamole/${GUACD_VERSION}/source/guacamole-server-${GUACD_VERSION}.tar.gz /${GUACD_VERSION}.tar.gz
 ADD uuid-1.6.2.tar.gz /
+COPY patches /patches
 
 RUN cd /uuid-1.6.2 ; ./configure --prefix=/usr/ && make && make install
 
 RUN tar xzvf ${GUACD_VERSION}.tar.gz ;\
-    patch -p0 < /0001-alpine-stacksize-fix.patch ;\
     cd /guacamole-server-${GUACD_VERSION} ;\
+    [ -d /patches/guacd-"${GUACD_VERSION}" ] && for patch in /patches/guacd-"${GUACD_VERSION}"/*.patch; do \
+            echo "Applying $patch"; \
+            patch -p1 < "$patch"; \
+        done;\
     ./configure --prefix=/usr/ --with-vnc --disable-guacenc --disable-dependency-tracking && \
      make && make install
 

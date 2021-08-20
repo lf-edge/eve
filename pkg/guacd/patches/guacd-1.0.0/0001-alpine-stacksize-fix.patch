@@ -1,5 +1,5 @@
---- guacamole-server-1.0.0/src/guacd/daemon.c.orig	2019-02-05 10:14:52.000000000 +0100
-+++ guacamole-server-1.0.0/src/guacd/daemon.c	2019-02-05 10:16:07.000000000 +0100
+--- a/src/guacd/daemon.c.orig	2019-02-05 10:14:52.000000000 +0100
++++ b/src/guacd/daemon.c	2019-02-05 10:16:07.000000000 +0100
 @@ -17,6 +17,8 @@
   * under the License.
   */
