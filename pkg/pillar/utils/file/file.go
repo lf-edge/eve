@@ -68,32 +68,46 @@ func StatAndRead(log *base.LogObject, filename string, maxReadSize int) (string,
 	if fi.Size() == 0 {
 		return "", fi.ModTime(), nil
 	}
-	f, err := os.Open(filename)
+	content, err := ReadWithMaxSize(log, filename, maxReadSize)
 	if err != nil {
 		err = fmt.Errorf("StatAndRead %s failed: %v", filename, err)
 		if log != nil {
 			log.Error(err)
 		}
 		return "", fi.ModTime(), err
+	}
+	return string(content), fi.ModTime(), err
+}
+
+// ReadWithMaxSize returns the content but limits the size to maxReadSize and
+// truncates if longer
+func ReadWithMaxSize(log *base.LogObject, filename string, maxReadSize int) ([]byte, error) {
+	f, err := os.Open(filename)
+	if err != nil {
+		err = fmt.Errorf("ReadWithMaxSize %s failed: %v", filename, err)
+		if log != nil {
+			log.Error(err)
+		}
+		return nil, err
 	}
 	defer f.Close()
 	r := bufio.NewReader(f)
 	content := make([]byte, maxReadSize)
 	n, err := r.Read(content)
 	if err != nil {
-		err = fmt.Errorf("StatAndRead %s failed: %v", filename, err)
+		err = fmt.Errorf("ReadWithMaxSize %s failed: %v", filename, err)
 		if log != nil {
 			log.Error(err)
 		}
-		return "", fi.ModTime(), err
+		return nil, err
 	}
 	if n == maxReadSize {
-		err = fmt.Errorf("StatAndRead %s truncated after %d bytes",
+		err = fmt.Errorf("ReadWithMaxSize %s truncated after %d bytes",
 			filename, maxReadSize)
 	} else {
 		err = nil
 	}
-	return string(content[0:n]), fi.ModTime(), err
+	return content[0:n], err
 }
 
 // ReadSavedCounter returns counter value from provided file
