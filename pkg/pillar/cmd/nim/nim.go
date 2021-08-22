@@ -1234,18 +1234,18 @@ func ingestDevicePortConfig(ctx *nimContext) {
 func ingestDevicePortConfigFile(ctx *nimContext, oldDirname string, newDirname string, name string) {
 	filename := path.Join(oldDirname, name)
 	log.Noticef("ingestDevicePortConfigFile(%s)", filename)
-	str, _, err := fileutils.StatAndRead(log, filename, maxReadSize)
+	b, err := fileutils.ReadWithMaxSize(log, filename, maxReadSize)
 	if err != nil {
 		log.Errorf("Failed to read file %s: %v", filename, err)
 		return
 	}
-	if str == "" {
+	if len(b) == 0 {
 		log.Errorf("Ignore empty file %s", filename)
 		return
 	}
 
 	var dpc types.DevicePortConfig
-	err = json.Unmarshal([]byte(str), &dpc)
+	err = json.Unmarshal(b, &dpc)
 	if err != nil {
 		log.Errorf("Could not parse json data in file %s: %s",
 			filename, err)
