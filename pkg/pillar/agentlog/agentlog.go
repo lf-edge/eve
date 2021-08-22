@@ -330,11 +330,11 @@ func RebootReason(reason string, bootReason types.BootReason, agentName string,
 	if bootReason != types.BootReasonNone {
 		filename = "/persist/" + bootReasonFile
 		brString := bootReason.String()
-		cur, _, _ := fileutils.StatAndRead(nil, filename, maxReadSize)
-		if cur != "" {
+		b, _ := fileutils.ReadWithMaxSize(nil, filename, maxReadSize)
+		if len(b) != 0 {
 			// Note: can not use log here since we are called from a log hook!
 			fmt.Printf("not replacing BootReason %s with %s\n",
-				cur, brString)
+				string(b), brString)
 		} else {
 			err = overWriteFile(filename, brString)
 			if err != nil {

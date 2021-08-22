@@ -62,7 +62,12 @@ func gatherProcessMetricList(ctx *domainContext) ([]types.ProcessMetric, map[int
 				// We limit the total memory used for stacks for
 				// all the processes.
 				filename := fmt.Sprintf("/proc/%d/stack", pi.Pid)
-				pi.Stack, _, _ = fileutils.StatAndRead(log, filename, maxStackStringLen)
+				b, err := fileutils.ReadWithMaxSize(log, filename, maxStackStringLen)
+				if err != nil {
+					log.Error(err)
+					continue
+				}
+				pi.Stack = string(b)
 				// Apply size limit
 				if pi.Stack != "" {
 					if totalStacks+len(pi.Stack) > totalMaxStackLen {

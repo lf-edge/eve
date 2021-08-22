@@ -225,7 +225,7 @@ func readAddTree(log *base.LogObject, tree jsonTree) (jsonTree, error) {
 				k, err)
 			return nil, err
 		}
-		str, _, err = fileutils.StatAndRead(log, filename, maxLargeLen+1)
+		b, err := fileutils.ReadWithMaxSize(log, filename, maxLargeLen+1)
 		if err != nil {
 			// XXX we handle not exists.
 			if !os.IsNotExist(err) && err != io.EOF {
@@ -235,12 +235,12 @@ func readAddTree(log *base.LogObject, tree jsonTree) (jsonTree, error) {
 			}
 		}
 		os.Remove(filename)
-		if len(str) == 0 {
+		if len(b) == 0 {
 			continue
 		}
 		log.Tracef("tag %s read %s content: %s", k, filename, str)
 		var val jsonTree
-		err = json.Unmarshal([]byte(str), &val)
+		err = json.Unmarshal(b, &val)
 		if err != nil {
 			err := fmt.Errorf("readAddLarge: file content Unmarshal failed for %s: %v",
 				filename, err)
