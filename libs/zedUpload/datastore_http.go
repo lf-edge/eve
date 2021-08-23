@@ -4,8 +4,6 @@
 package zedUpload
 
 import (
-	"crypto/tls"
-	"crypto/x509"
 	"fmt"
 	"net"
 	"net/http"
@@ -81,23 +79,14 @@ func (ep *HttpTransportMethod) WithSrcIPAndProxySelection(localAddr net.IP,
 	return nil
 }
 
-// WithSrcIPAndHTTPSCerts append certs for https datastore
+// WithSrcIPAndHTTPSCerts append certs for the datastore access
 func (ep *HttpTransportMethod) WithSrcIPAndHTTPSCerts(localAddr net.IP, certs [][]byte) error {
-	ep.hClient = httpClientSrcIP(localAddr, nil)
-	err := ep.httpClientAddCerts(certs)
-	return err
-}
-
-func (ep *HttpTransportMethod) httpClientAddCerts(certs [][]byte) error {
-	if ep.hClient != nil && len(certs) > 0 {
-		caCertPool := x509.NewCertPool()
-		for _, pem := range certs {
-			if !caCertPool.AppendCertsFromPEM(pem) {
-				return fmt.Errorf("Failed to append datastore certs")
-			}
-		}
-		ep.hClient.Transport.(*http.Transport).TLSClientConfig = &tls.Config{RootCAs: caCertPool}
+	client := httpClientSrcIP(localAddr, nil)
+	client, err := httpClientAddCerts(client, certs)
+	if err != nil {
+		return err
 	}
+	ep.hClient = client
 	return nil
 }
 

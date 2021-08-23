@@ -87,9 +87,15 @@ func (ep *AwsTransportMethod) WithSrcIPAndProxySelection(localAddr net.IP,
 	return nil
 }
 
-// WithSrcIPAndHTTPSCerts append certs for https datastore
+// WithSrcIPAndHTTPSCerts append certs for the datastore access
 func (ep *AwsTransportMethod) WithSrcIPAndHTTPSCerts(localAddr net.IP, certs [][]byte) error {
-	return fmt.Errorf("not supported")
+	client := httpClientSrcIP(localAddr, nil)
+	client, err := httpClientAddCerts(client, certs)
+	if err != nil {
+		return err
+	}
+	ep.hClient = client
+	return nil
 }
 
 // bind to specific interface for this connection
