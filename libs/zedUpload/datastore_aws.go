@@ -98,6 +98,17 @@ func (ep *AwsTransportMethod) WithSrcIPAndHTTPSCerts(localAddr net.IP, certs [][
 	return nil
 }
 
+// WithSrcIPAndProxyAndHTTPSCerts takes a proxy and proxy certs
+func (ep *AwsTransportMethod) WithSrcIPAndProxyAndHTTPSCerts(localAddr net.IP, proxy *url.URL, certs [][]byte) error {
+	client := httpClientSrcIP(localAddr, proxy)
+	client, err := httpClientAddCerts(client, certs)
+	if err != nil {
+		return err
+	}
+	ep.hClient = client
+	return nil
+}
+
 // bind to specific interface for this connection
 func (ep *AwsTransportMethod) WithBindIntf(intf string) error {
 	localAddr := getSrcIpFromInterface(intf)

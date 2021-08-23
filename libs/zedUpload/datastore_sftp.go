@@ -99,6 +99,11 @@ func (ep *SftpTransportMethod) WithSrcIPAndHTTPSCerts(localAddr net.IP, certs []
 	return fmt.Errorf("not supported")
 }
 
+// WithSrcIPAndProxyAndHTTPSCerts takes a proxy and proxy certs
+func (ep *SftpTransportMethod) WithSrcIPAndProxyAndHTTPSCerts(localAddr net.IP, proxy *url.URL, certs [][]byte) error {
+	return fmt.Errorf("not supported")
+}
+
 // bind to specific interface for this connection
 func (ep *SftpTransportMethod) WithBindIntf(intf string) error {
 	return fmt.Errorf("not supported")
