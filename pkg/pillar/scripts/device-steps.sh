@@ -350,7 +350,16 @@ mkfifo /run/diag.pipe
 (while true; do cat; done) < /run/diag.pipe >/dev/console 2>&1 &
 $BINDIR/diag -f -o /run/diag.pipe runAsService &
 
-if [ ! -s $CONFIGDIR/device.cert.pem ]; then
+# Need a special check (and slower booting) if the device has no hardware clock
+if [ -c /dev/rtc ] || [ -c /dev/rtc0 ]; then
+    RTC=1
+else
+    RTC=0
+fi
+if [ $RTC = 0 ]; then
+    echo "$(date -Ins -u) No real-time clock"
+fi
+if [ ! -s $CONFIGDIR/device.cert.pem ] || [ $RTC = 0 ]; then
     # Wait for having IP addresses for a few minutes
     # so that we are likely to have an address when we run ntp then create cert
     echo "$(date -Ins -u) Starting waitforaddr"
