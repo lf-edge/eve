@@ -294,8 +294,8 @@ func VerifyPending(ctx *DeviceNetworkContext, pending *DPCPending,
 	// Hard-coded at 1 for now; at least one interface needs to work
 	const successCount uint = 1
 	ctx.Iteration++
-	rtf, intfStatusMap, err := VerifyDeviceNetworkStatus(log, pending.PendDNS,
-		successCount, ctx.Iteration, timeout)
+	rtf, intfStatusMap, err := VerifyDeviceNetworkStatus(log, ctx.AgentName,
+		pending.PendDNS, successCount, ctx.Iteration, timeout)
 	// Use TestResults to update the DevicePortConfigList and DeviceNetworkStatus
 	// Note that the TestResults will at least have an updated timestamp
 	// for one of the ports.

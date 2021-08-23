@@ -342,7 +342,7 @@ func getDatastoreCredential(ctx *downloaderContext,
 	dst types.DatastoreConfig) (types.EncryptionBlock, error) {
 	if dst.CipherBlockStatus.IsCipher {
 		status, decBlock, err := cipher.GetCipherCredentials(&ctx.decryptCipherContext,
-			agentName, dst.CipherBlockStatus)
+			dst.CipherBlockStatus)
 		ctx.pubCipherBlockStatus.Publish(status.Key(), status)
 		if err != nil {
 			log.Errorf("%s, datastore config cipherblock decryption unsuccessful, falling back to cleartext: %v",
@@ -353,10 +353,10 @@ func getDatastoreCredential(ctx *downloaderContext,
 			// data. Hence this is a fallback if there is
 			// some cleartext.
 			if decBlock.DsAPIKey != "" || decBlock.DsPassword != "" {
-				cipher.RecordFailure(agentName,
+				cipher.RecordFailure(log, agentName,
 					types.CleartextFallback)
 			} else {
-				cipher.RecordFailure(agentName,
+				cipher.RecordFailure(log, agentName,
 					types.MissingFallback)
 			}
 			return decBlock, nil
@@ -369,9 +369,9 @@ func getDatastoreCredential(ctx *downloaderContext,
 	decBlock.DsAPIKey = dst.ApiKey
 	decBlock.DsPassword = dst.Password
 	if decBlock.DsAPIKey != "" || decBlock.DsPassword != "" {
-		cipher.RecordFailure(agentName, types.NoCipher)
+		cipher.RecordFailure(log, agentName, types.NoCipher)
 	} else {
-		cipher.RecordFailure(agentName, types.NoData)
+		cipher.RecordFailure(log, agentName, types.NoData)
 	}
 	return decBlock, nil
 }

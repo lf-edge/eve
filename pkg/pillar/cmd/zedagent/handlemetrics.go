@@ -428,9 +428,12 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 	ReportDeviceMetric.Newlog = nlm
 	log.Tracef("publishMetrics: newlog-metrics %+v", nlm)
 
-	// collect CipherMetric from agents and report
-	// Collect zedcloud metrics from ourselves and other agents
-	cipherMetrics := cipher.GetCipherMetrics()
+	// collect CipherMetric from ourselves and agents and report
+	cipherMetrics := types.CipherMetricsMap{}
+	cipherMetricsZA := cipher.GetCipherMetrics(log)
+	if cipherMetricsZA != nil {
+		cipherMetrics = cipher.Append(cipherMetrics, cipherMetricsZA)
+	}
 	if cipherMetricsDL != nil {
 		cipherMetrics = cipher.Append(cipherMetrics, cipherMetricsDL)
 	}
@@ -444,7 +447,7 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 		cipherMetrics = cipher.Append(cipherMetrics, cipherMetricsZR)
 	}
 	for agentName, cm := range cipherMetrics {
-		log.Tracef("Cipher metrics for %s: %+v", agentName, cm)
+		log.Functionf("Cipher metrics for %s: %+v", agentName, cm)
 		metric := metrics.CipherMetric{AgentName: agentName,
 			FailureCount: cm.FailureCount,
 			SuccessCount: cm.SuccessCount,
@@ -462,7 +465,9 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 				ErrorCode: metrics.CipherError(i),
 				Count:     cm.TypeCounters[i],
 			}
-			metric.Tc = append(metric.Tc, &tc)
+			if tc.Count != 0 {
+				metric.Tc = append(metric.Tc, &tc)
+			}
 		}
 		ReportDeviceMetric.Cipher = append(ReportDeviceMetric.Cipher,
 			&metric)

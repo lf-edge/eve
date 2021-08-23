@@ -25,6 +25,7 @@ import (
 // and cipher contexts for doing decryption
 type DecryptCipherContext struct {
 	Log               *base.LogObject
+	AgentName         string
 	SubControllerCert pubsub.Subscription
 	SubCipherContext  pubsub.Subscription
 	SubEdgeNodeCert   pubsub.Subscription

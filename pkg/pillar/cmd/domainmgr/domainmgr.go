@@ -298,6 +298,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		log.Fatal(err)
 	}
 	domainCtx.decryptCipherContext.Log = log
+	domainCtx.decryptCipherContext.AgentName = agentName
 	domainCtx.decryptCipherContext.SubControllerCert = subControllerCert
 	subControllerCert.Activate()
 
@@ -586,7 +587,11 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 		case <-publishTimer.C:
 			start := time.Now()
-			err = cipherMetricsPub.Publish("global", cipher.GetCipherMetrics())
+			// Transfer to a local copy in since updates are
+			// done concurrently
+			cmm := cipher.Append(types.CipherMetricsMap{},
+				cipher.GetCipherMetrics(log))
+			err = cipherMetricsPub.Publish("global", cmm)
 			if err != nil {
 				log.Errorln(err)
 			}
@@ -2184,7 +2189,7 @@ func getCloudInitUserData(ctx *domainContext,
 
 	if dc.CipherBlockStatus.IsCipher {
 		status, decBlock, err := cipher.GetCipherCredentials(&ctx.decryptCipherContext,
-			agentName, dc.CipherBlockStatus)
+			dc.CipherBlockStatus)
 		ctx.pubCipherBlockStatus.Publish(status.Key(), status)
 		if err != nil {
 			log.Errorf("%s, domain config cipherblock decryption unsuccessful, falling back to cleartext: %v",
@@ -2194,10 +2199,10 @@ func getCloudInitUserData(ctx *domainContext,
 			// data. Hence this is a fallback if there is
 			// some cleartext.
 			if decBlock.ProtectedUserData != "" {
-				cipher.RecordFailure(agentName,
+				cipher.RecordFailure(log, agentName,
 					types.CleartextFallback)
 			} else {
-				cipher.RecordFailure(agentName,
+				cipher.RecordFailure(log, agentName,
 					types.MissingFallback)
 			}
 			return decBlock, nil
@@ -2209,9 +2214,9 @@ func getCloudInitUserData(ctx *domainContext,
 	decBlock := types.EncryptionBlock{}
 	decBlock.ProtectedUserData = *dc.CloudInitUserData
 	if decBlock.ProtectedUserData != "" {
-		cipher.RecordFailure(agentName, types.NoCipher)
+		cipher.RecordFailure(log, agentName, types.NoCipher)
 	} else {
-		cipher.RecordFailure(agentName, types.NoData)
+		cipher.RecordFailure(log, agentName, types.NoData)
 	}
 	return decBlock, nil
 }

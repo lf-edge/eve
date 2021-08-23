@@ -81,7 +81,7 @@ func IsProxyConfigEmpty(proxyConfig types.ProxyConfig) bool {
 //    For each interface verified
 //      set Error ( If success, set to "")
 //      set ErrorTime to time of testing ( Even if verify Successful )
-func VerifyDeviceNetworkStatus(log *base.LogObject, status types.DeviceNetworkStatus,
+func VerifyDeviceNetworkStatus(log *base.LogObject, agentName string, status types.DeviceNetworkStatus,
 	successCount uint, iteration int, timeout uint32) (bool, types.IntfStatusMap, error) {
 
 	log.Tracef("VerifyDeviceNetworkStatus() successCount %d, iteration %d",
@@ -102,7 +102,7 @@ func VerifyDeviceNetworkStatus(log *base.LogObject, status types.DeviceNetworkSt
 		Timeout:          timeout,
 		Serial:           hardware.GetProductSerial(log),
 		SoftSerial:       hardware.GetSoftSerial(log),
-		AgentName:        "devicenetwork",
+		AgentName:        agentName,
 	})
 	log.Functionf("VerifyDeviceNetworkStatus: Use V2 API %v\n", zedcloud.UseV2API())
 	testURL := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API, nilUUID, "ping")
@@ -400,7 +400,7 @@ func getWifiCredential(ctx *DeviceNetworkContext,
 	log := ctx.Log
 	if wifi.CipherBlockStatus.IsCipher {
 		status, decBlock, err := cipher.GetCipherCredentials(&ctx.DecryptCipherContext,
-			"devicenetwork", wifi.CipherBlockStatus)
+			wifi.CipherBlockStatus)
 		ctx.PubCipherBlockStatus.Publish(status.Key(), status)
 		if err != nil {
 			log.Errorf("%s, wifi config cipherblock decryption unsuccessful, falling back to cleartext: %v\n",
@@ -411,10 +411,10 @@ func getWifiCredential(ctx *DeviceNetworkContext,
 			// data. Hence this is a fallback if there is
 			// some cleartext.
 			if decBlock.WifiUserName != "" || decBlock.WifiPassword != "" {
-				cipher.RecordFailure(ctx.AgentName,
+				cipher.RecordFailure(ctx.Log, ctx.AgentName,
 					types.CleartextFallback)
 			} else {
-				cipher.RecordFailure(ctx.AgentName,
+				cipher.RecordFailure(ctx.Log, ctx.AgentName,
 					types.MissingFallback)
 			}
 			return decBlock, nil
@@ -427,9 +427,9 @@ func getWifiCredential(ctx *DeviceNetworkContext,
 	decBlock.WifiUserName = wifi.Identity
 	decBlock.WifiPassword = wifi.Password
 	if decBlock.WifiUserName != "" || decBlock.WifiPassword != "" {
-		cipher.RecordFailure(ctx.AgentName, types.NoCipher)
+		cipher.RecordFailure(ctx.Log, ctx.AgentName, types.NoCipher)
 	} else {
-		cipher.RecordFailure(ctx.AgentName, types.NoData)
+		cipher.RecordFailure(ctx.Log, ctx.AgentName, types.NoData)
 	}
 	return decBlock, nil
 }

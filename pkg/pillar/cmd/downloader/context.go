@@ -43,6 +43,7 @@ func (ctx *downloaderContext) registerHandlers(ps *pubsub.PubSub) error {
 		log.Fatal(err)
 	}
 	ctx.decryptCipherContext.Log = log
+	ctx.decryptCipherContext.AgentName = agentName
 	ctx.decryptCipherContext.SubControllerCert = subControllerCert
 	subControllerCert.Activate()
 
