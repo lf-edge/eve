@@ -94,8 +94,13 @@ func (ep *SftpTransportMethod) WithSrcIPAndProxySelection(localAddr net.IP,
 	return fmt.Errorf("not supported")
 }
 
-// WithSrcIPAndHTTPSCerts append certs for https datastore
+// WithSrcIPAndHTTPSCerts append certs for the datastore access
 func (ep *SftpTransportMethod) WithSrcIPAndHTTPSCerts(localAddr net.IP, certs [][]byte) error {
+	return fmt.Errorf("not supported")
+}
+
+// WithSrcIPAndProxyAndHTTPSCerts takes a proxy and proxy certs
+func (ep *SftpTransportMethod) WithSrcIPAndProxyAndHTTPSCerts(localAddr net.IP, proxy *url.URL, certs [][]byte) error {
 	return fmt.Errorf("not supported")
 }
 
