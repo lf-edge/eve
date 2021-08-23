@@ -29,14 +29,14 @@ func getEncryptionBlock(
 }
 
 // GetCipherCredentials : decrypt encryption block
-func GetCipherCredentials(ctx *DecryptCipherContext, agentName string,
+func GetCipherCredentials(ctx *DecryptCipherContext,
 	status types.CipherBlockStatus) (types.CipherBlockStatus, types.EncryptionBlock, error) {
 	cipherBlock := new(types.CipherBlockStatus)
 	*cipherBlock = status
 	var decBlock types.EncryptionBlock
 	if !cipherBlock.IsCipher {
 		// Should not be called if IsCipher is not set
-		return handleCipherBlockCredError(agentName, cipherBlock,
+		return handleCipherBlockCredError(ctx, cipherBlock,
 			decBlock, nil, types.Invalid)
 	}
 	ctx.Log.Functionf("%s, cipherblock decryption, using cipher-context: %s\n",
@@ -46,14 +46,14 @@ func GetCipherCredentials(ctx *DecryptCipherContext, agentName string,
 			cipherBlock.Key(), cipherBlock.Error)
 		ctx.Log.Errorln(errStr)
 		err := errors.New(errStr)
-		return handleCipherBlockCredError(agentName, cipherBlock,
+		return handleCipherBlockCredError(ctx, cipherBlock,
 			decBlock, err, types.NotReady)
 	}
 	clearBytes, err := DecryptCipherBlock(ctx, *cipherBlock)
 	if err != nil {
 		ctx.Log.Errorf("%s, cipherblock decryption failed, %v\n",
 			cipherBlock.Key(), err)
-		return handleCipherBlockCredError(agentName, cipherBlock,
+		return handleCipherBlockCredError(ctx, cipherBlock,
 			decBlock, err, types.DecryptFailed)
 	}
 
@@ -62,22 +62,22 @@ func GetCipherCredentials(ctx *DecryptCipherContext, agentName string,
 	if err != nil {
 		ctx.Log.Errorf("%s, encryption block unmarshall failed, %v\n",
 			cipherBlock.Key(), err)
-		return handleCipherBlockCredError(agentName, cipherBlock,
+		return handleCipherBlockCredError(ctx, cipherBlock,
 			decBlock, err, types.UnmarshalFailed)
 	}
 	ctx.Log.Functionf("%s, cipherblock decryption successful", cipherBlock.Key())
 	decBlock = getEncryptionBlock(&zconfigDecBlock)
-	RecordSuccess(agentName)
+	RecordSuccess(ctx.Log, ctx.AgentName)
 	return *cipherBlock, decBlock, err
 }
 
 // GetCipherData : decrypt plain text
-func GetCipherData(ctx *DecryptCipherContext, agentName string, status types.CipherBlockStatus,
+func GetCipherData(ctx *DecryptCipherContext, status types.CipherBlockStatus,
 	data *string) (types.CipherBlockStatus, *string, error) {
 	cipherBlock := new(types.CipherBlockStatus)
 	*cipherBlock = status
 	if !cipherBlock.IsCipher {
-		return handleCipherBlockError(agentName, cipherBlock, data, nil)
+		return handleCipherBlockError(ctx.AgentName, cipherBlock, data, nil)
 	}
 	ctx.Log.Functionf("%s, cipherblock decryption, using cipher-context: %s\n",
 		cipherBlock.Key(), cipherBlock.CipherContextID)
@@ -86,13 +86,13 @@ func GetCipherData(ctx *DecryptCipherContext, agentName string, status types.Cip
 			cipherBlock.Key(), cipherBlock.Error)
 		ctx.Log.Errorln(errStr)
 		err := errors.New(errStr)
-		return handleCipherBlockError(agentName, cipherBlock, data, err)
+		return handleCipherBlockError(ctx.AgentName, cipherBlock, data, err)
 	}
 	clearBytes, err := DecryptCipherBlock(ctx, *cipherBlock)
 	if err != nil {
 		ctx.Log.Errorf("%s, cipherblock decryption failed, %v\n",
 			cipherBlock.Key(), err)
-		return handleCipherBlockError(agentName, cipherBlock, data, err)
+		return handleCipherBlockError(ctx.AgentName, cipherBlock, data, err)
 	}
 	clearText := base64.StdEncoding.EncodeToString(clearBytes)
 	return *cipherBlock, &clearText, err
@@ -101,10 +101,10 @@ func GetCipherData(ctx *DecryptCipherContext, agentName string, status types.Cip
 // incase, processing fails for cipher information received from controller,
 // try to return valid plain-text data for further processing
 // for encryption block
-func handleCipherBlockCredError(agentName string, status *types.CipherBlockStatus,
+func handleCipherBlockCredError(ctx *DecryptCipherContext, status *types.CipherBlockStatus,
 	decBlock types.EncryptionBlock, err error, errtype types.CipherError) (types.CipherBlockStatus, types.EncryptionBlock, error) {
 
-	RecordFailure(agentName, errtype)
+	RecordFailure(ctx.Log, ctx.AgentName, errtype)
 	if err != nil {
 		status.SetErrorNow(err.Error())
 		// we have already captured the error info above

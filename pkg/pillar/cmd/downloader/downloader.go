@@ -187,7 +187,11 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 			if err != nil {
 				log.Errorln(err)
 			}
-			err = cipherMetricsPub.Publish("global", cipher.GetCipherMetrics())
+			// Transfer to a local copy in since updates are
+			// done concurrently
+			cmm := cipher.Append(types.CipherMetricsMap{},
+				cipher.GetCipherMetrics(log))
+			err = cipherMetricsPub.Publish("global", cmm)
 			if err != nil {
 				log.Errorln(err)
 			}

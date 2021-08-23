@@ -6,54 +6,96 @@
 package cipher
 
 import (
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/sirupsen/logrus" // OK for logrus.Fatal
 	"sync"
 	"time"
 )
 
-// agentName is the key to this map hence can be used in zedbox
-var metrics = make(types.CipherMetricsMap)
+// agentMetrics has one entry per agentName aka LogObject
+// Makes it usable when multiple agents are running in the same process aka zedbox
+type agentMetrics struct {
+	metrics types.CipherMetricsMap
+}
+
+type allMetricsMap map[*base.LogObject]agentMetrics
+
+var allMetrics = make(allMetricsMap)
 var mutex = &sync.Mutex{}
 
 // RecordSuccess records that the decryption succeeded
-func RecordSuccess(agentName string) {
+func RecordSuccess(log *base.LogObject, agentName string) {
+	log.Functionf("RecordSuccess(%s)", agentName)
 	mutex.Lock()
 	defer mutex.Unlock()
-	maybeInit(agentName)
-	m := metrics[agentName]
+	m := getMetrics(log, agentName)
 	m.SuccessCount++
 	m.LastSuccess = time.Now()
-	metrics[agentName] = m
+	updateMetrics(log, agentName, m)
 }
 
 // RecordFailure records that the decryption failed or did something
 // unexpected like fall back to cleartext
-func RecordFailure(agentName string, errcode types.CipherError) {
+// If the errcode is NoData we just increment the NoData counter but
+// not record as a failure.
+func RecordFailure(log *base.LogObject, agentName string, errcode types.CipherError) {
+	log.Functionf("RecordFailure(%s, %v)", agentName, errcode)
 	mutex.Lock()
 	defer mutex.Unlock()
-	maybeInit(agentName)
-	m := metrics[agentName]
-	m.FailureCount++
-	m.LastFailure = time.Now()
+	m := getMetrics(log, agentName)
+	if errcode != types.NoData {
+		m.FailureCount++
+		m.LastFailure = time.Now()
+	}
 	m.TypeCounters[errcode]++
-	metrics[agentName] = m
+	updateMetrics(log, agentName, m)
 }
 
-func maybeInit(agentName string) {
-	if metrics == nil {
-		logrus.Fatal("no cipher map")
+func getMetrics(log *base.LogObject, agentName string) types.CipherMetrics {
+	if allMetrics == nil {
+		logrus.Fatal("no allMetrics")
 	}
+	if _, ok := allMetrics[log]; !ok {
+		allMetrics[log] = agentMetrics{metrics: make(types.CipherMetricsMap)}
+	}
+	metrics := allMetrics[log].metrics
 	if _, ok := metrics[agentName]; !ok {
+		log.Noticef("maybeInit(%s) allocate for agent", agentName)
 		metrics[agentName] = types.CipherMetrics{
 			TypeCounters: make([]uint64, types.MaxCipherError),
 		}
+		allMetrics[log] = agentMetrics{metrics: metrics}
 	}
+	return metrics[agentName]
 }
 
-// GetCipherMetrics returns the metrics for this agent
-func GetCipherMetrics() types.CipherMetricsMap {
-	return metrics
+func updateMetrics(log *base.LogObject, agentName string, m types.CipherMetrics) {
+	if allMetrics == nil {
+		logrus.Fatal("no allMetrics")
+	}
+	if _, ok := allMetrics[log]; !ok {
+		logrus.Fatal("allMetrics not initialized")
+	}
+	metrics := allMetrics[log].metrics
+	metrics[agentName] = m
+	allMetrics[log] = agentMetrics{metrics: metrics}
+}
+
+// GetCipherMetrics returns the metrics for this agent aka log pointer.
+// Note that the caller can not safely use this directly since the map
+// might be modified by other goroutines. But the output can be Append'ed to
+// a map owned by the caller.
+// Recommended usage:
+// cms := cipher.Append(types.CipherMetricsMap{}, cipher.GetCipherMetrics(log))
+func GetCipherMetrics(log *base.LogObject) types.CipherMetricsMap {
+	if allMetrics == nil {
+		logrus.Fatal("no allMetrics")
+	}
+	if _, ok := allMetrics[log]; !ok {
+		allMetrics[log] = agentMetrics{metrics: make(types.CipherMetricsMap)}
+	}
+	return allMetrics[log].metrics
 }
 
 // Append concatenates potentially overlappping CipherMetricsMaps to

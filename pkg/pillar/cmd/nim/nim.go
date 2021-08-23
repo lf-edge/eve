@@ -228,6 +228,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		log.Fatal(err)
 	}
 	nimCtx.deviceNetworkContext.DecryptCipherContext.Log = log
+	nimCtx.deviceNetworkContext.DecryptCipherContext.AgentName = agentName
 	nimCtx.deviceNetworkContext.DecryptCipherContext.SubControllerCert = subControllerCert
 	subControllerCert.Activate()
 
@@ -775,7 +776,11 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 		case <-publishTimer.C:
 			start := time.Now()
-			err = cipherMetricsPub.Publish("global", cipher.GetCipherMetrics())
+			// Transfer to a local copy in since updates are
+			// done concurrently
+			cmm := cipher.Append(types.CipherMetricsMap{},
+				cipher.GetCipherMetrics(log))
+			err = cipherMetricsPub.Publish("global", cmm)
 			if err != nil {
 				log.Errorln(err)
 			}
@@ -918,8 +923,8 @@ func tryDeviceConnectivityToCloud(ctx *devicenetwork.DeviceNetworkContext) bool 
 	// Start with a different port to cycle through them all over time
 	ctx.Iteration++
 	rtf, intfStatusMap, err := devicenetwork.VerifyDeviceNetworkStatus(
-		log, *ctx.DeviceNetworkStatus, successCount, ctx.Iteration,
-		ctx.TestSendTimeout)
+		log, agentName, *ctx.DeviceNetworkStatus, successCount,
+		ctx.Iteration, ctx.TestSendTimeout)
 	ctx.DevicePortConfig.UpdatePortStatusFromIntfStatusMap(intfStatusMap)
 	// Use TestResults to update the DevicePortConfigList and publish
 	// Note that the TestResults will at least have an updated timestamp
