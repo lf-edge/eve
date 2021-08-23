@@ -5,6 +5,8 @@ package zedUpload
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"fmt"
 	"net"
 	"net/http"
@@ -96,6 +98,20 @@ func httpClientSrcIP(localAddr net.IP, proxy *url.URL) *http.Client {
 	}
 
 	return webclient
+}
+
+func httpClientAddCerts(client *http.Client, certs [][]byte) (*http.Client, error) {
+	if client == nil || len(certs) == 0 {
+		return client, nil
+	}
+	caCertPool := x509.NewCertPool()
+	for _, pem := range certs {
+		if !caCertPool.AppendCertsFromPEM(pem) {
+			return client, fmt.Errorf("Failed to append datastore certs")
+		}
+	}
+	client.Transport.(*http.Transport).TLSClientConfig = &tls.Config{RootCAs: caCertPool}
+	return client, nil
 }
 
 // given interface get the ip
