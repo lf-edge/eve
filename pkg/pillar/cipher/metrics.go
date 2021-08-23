@@ -100,13 +100,17 @@ func GetCipherMetrics(log *base.LogObject) types.CipherMetricsMap {
 
 // Append concatenates potentially overlappping CipherMetricsMaps to
 // return a union/sum.
+// Append concatenates different interfaces and URLs into a union map
+// Assumes the caller has exclusive access to cms. Uses mutex to serialize
+// access to cms1
 func Append(cms types.CipherMetricsMap, cms1 types.CipherMetricsMap) types.CipherMetricsMap {
+	mutex.Lock()
+	defer mutex.Unlock()
 	for agentName, cm1 := range cms1 {
 		cm, ok := cms[agentName]
 		if !ok {
-			// New agentName; take all
-			cms[agentName] = cm1
-			continue
+			// New agentName; take all but need to deepcopy
+			cm = types.CipherMetrics{}
 		}
 		if cm.LastFailure.IsZero() {
 			// Don't care if cm1 is zero
