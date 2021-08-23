@@ -22,7 +22,7 @@ onboot:
         - /etc/sysctl.d:/etc/sysctl.d
    - name: modprobe
      image: linuxkit/modprobe:v0.5
-     command: ["/bin/sh", "-c", "modprobe -a nct6775 w83627hf_wdt wlcore_sdio wl18xx br_netfilter dwc3 rk808 rk808-regulator smsc75xx cp210x nicvf tpm_tis_spi rtc_rx8010 gpio_pca953x leds_siemens_ipc127 upboard-fpga pinctrl-upboard leds-upboard xhci_tegra 2>/dev/null || :"]
+     command: ["/bin/sh", "-c", "modprobe -a nct6775 w83627hf_wdt hpwdt wlcore_sdio wl18xx br_netfilter dwc3 rk808 rk808-regulator smsc75xx cp210x nicvf tpm_tis_spi rtc_rx8010 gpio_pca953x leds_siemens_ipc127 upboard-fpga pinctrl-upboard leds-upboard xhci_tegra 2>/dev/null || :"]
    - name: storage-init
      image: STORAGE_INIT_TAG
 services:
