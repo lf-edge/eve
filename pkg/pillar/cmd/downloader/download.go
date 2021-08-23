@@ -52,7 +52,12 @@ func download(ctx *downloaderContext, trType zedUpload.SyncTransportType,
 	if err == nil {
 		if proxyURL != nil {
 			log.Functionf("%s: Using proxy %s", trType, proxyURL.String())
-			err = dEndPoint.WithSrcIPAndProxySelection(ipSrc, proxyURL)
+			if len(certs) > 0 {
+				log.Functionf("%s: Set server certs", trType)
+				err = dEndPoint.WithSrcIPAndProxyAndHTTPSCerts(ipSrc, proxyURL, certs)
+			} else {
+				err = dEndPoint.WithSrcIPAndProxySelection(ipSrc, proxyURL)
+			}
 		} else {
 			if len(certs) > 0 {
 				log.Functionf("%s: Set server certs", trType)

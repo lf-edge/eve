@@ -103,6 +103,17 @@ func (ep *OCITransportMethod) WithSrcIPAndHTTPSCerts(localAddr net.IP, certs [][
 	return nil
 }
 
+// WithSrcIPAndProxyAndHTTPSCerts append certs for the datastore access
+func (ep *OCITransportMethod) WithSrcIPAndProxyAndHTTPSCerts(localAddr net.IP, proxy *url.URL, certs [][]byte) error {
+	client := httpClientSrcIP(localAddr, proxy)
+	client, err := httpClientAddCerts(client, certs)
+	if err != nil {
+		return err
+	}
+	ep.hClient = client
+	return nil
+}
+
 // WithBindIntf bind to specific interface for this connection
 func (ep *OCITransportMethod) WithBindIntf(intf string) error {
 	localAddr := getSrcIpFromInterface(intf)
