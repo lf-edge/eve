@@ -309,7 +309,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 	cipherMetricsPub, err := ps.NewPublication(pubsub.PublicationOptions{
 		AgentName: agentName,
-		TopicType: types.CipherMetricsMap{},
+		TopicType: types.CipherMetrics{},
 	})
 	if err != nil {
 		log.Fatal(err)
@@ -615,7 +615,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 			// XXX can we trigger it as part of boot? Or watch file?
 			// XXX add file watch...
 			checkAndPublishDhcpLeases(&zedrouterCtx)
-			err = cipherMetricsPub.Publish("global", cipher.GetCipherMetrics())
+			err = cipherMetricsPub.Publish(agentName, cipher.GetCipherMetrics(agentName))
 			if err != nil {
 				log.Errorln(err)
 			}

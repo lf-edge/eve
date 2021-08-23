@@ -70,10 +70,10 @@ var loguploaderMetrics types.MetricsMap
 var newlogMetrics types.NewlogMetrics
 var downloaderMetrics types.MetricsMap
 var networkMetrics types.NetworkMetrics
-var cipherMetricsDL types.CipherMetricsMap
-var cipherMetricsDM types.CipherMetricsMap
-var cipherMetricsNim types.CipherMetricsMap
-var cipherMetricsZR types.CipherMetricsMap
+var cipherMetricsDL types.CipherMetrics
+var cipherMetricsDM types.CipherMetrics
+var cipherMetricsNim types.CipherMetrics
+var cipherMetricsZR types.CipherMetrics
 
 // Context for handleDNSModify
 type DNSContext struct {
@@ -1089,7 +1089,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	subCipherMetricsDL, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:   "downloader",
 		MyAgentName: agentName,
-		TopicImpl:   types.CipherMetricsMap{},
+		TopicImpl:   types.CipherMetrics{},
 		Activate:    true,
 		Ctx:         &zedagentCtx,
 	})
@@ -1099,7 +1099,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	subCipherMetricsDM, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:   "domainmgr",
 		MyAgentName: agentName,
-		TopicImpl:   types.CipherMetricsMap{},
+		TopicImpl:   types.CipherMetrics{},
 		Activate:    true,
 		Ctx:         &zedagentCtx,
 	})
@@ -1109,7 +1109,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	subCipherMetricsNim, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:   "nim",
 		MyAgentName: agentName,
-		TopicImpl:   types.CipherMetricsMap{},
+		TopicImpl:   types.CipherMetrics{},
 		Activate:    true,
 		Ctx:         &zedagentCtx,
 	})
@@ -1119,7 +1119,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	subCipherMetricsZR, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:   "zedrouter",
 		MyAgentName: agentName,
-		TopicImpl:   types.CipherMetricsMap{},
+		TopicImpl:   types.CipherMetrics{},
 		Activate:    true,
 		Ctx:         &zedagentCtx,
 	})
@@ -1285,42 +1285,42 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 		case change := <-subCipherMetricsDL.MsgChan():
 			subCipherMetricsDL.ProcessChange(change)
-			m, err := subCipherMetricsDL.Get("global")
+			m, err := subCipherMetricsDL.Get("downloader")
 			if err != nil {
 				log.Errorf("subCipherMetricsDL.Get failed: %s",
 					err)
 			} else {
-				cipherMetricsDL = m.(types.CipherMetricsMap)
+				cipherMetricsDL = m.(types.CipherMetrics)
 			}
 
 		case change := <-subCipherMetricsDM.MsgChan():
 			subCipherMetricsDM.ProcessChange(change)
-			m, err := subCipherMetricsDM.Get("global")
+			m, err := subCipherMetricsDM.Get("domainmgr")
 			if err != nil {
 				log.Errorf("subCipherMetricsDM.Get failed: %s",
 					err)
 			} else {
-				cipherMetricsDM = m.(types.CipherMetricsMap)
+				cipherMetricsDM = m.(types.CipherMetrics)
 			}
 
 		case change := <-subCipherMetricsNim.MsgChan():
 			subCipherMetricsNim.ProcessChange(change)
-			m, err := subCipherMetricsNim.Get("global")
+			m, err := subCipherMetricsNim.Get("nim")
 			if err != nil {
 				log.Errorf("subCipherMetricsNim.Get failed: %s",
 					err)
 			} else {
-				cipherMetricsNim = m.(types.CipherMetricsMap)
+				cipherMetricsNim = m.(types.CipherMetrics)
 			}
 
 		case change := <-subCipherMetricsZR.MsgChan():
 			subCipherMetricsZR.ProcessChange(change)
-			m, err := subCipherMetricsZR.Get("global")
+			m, err := subCipherMetricsZR.Get("zedrouter")
 			if err != nil {
 				log.Errorf("subCipherMetricsZR.Get failed: %s",
 					err)
 			} else {
-				cipherMetricsZR = m.(types.CipherMetricsMap)
+				cipherMetricsZR = m.(types.CipherMetrics)
 			}
 
 		case change := <-subNetworkInstanceStatus.MsgChan():

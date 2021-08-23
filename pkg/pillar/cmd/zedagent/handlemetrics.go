@@ -424,21 +424,25 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 
 	// collect CipherMetric from agents and report
 	// Collect zedcloud metrics from ourselves and other agents
-	cipherMetrics := cipher.GetCipherMetrics()
-	if cipherMetricsDL != nil {
-		cipherMetrics = cipher.Append(cipherMetrics, cipherMetricsDL)
+	cipherMetrics := make(types.CipherMetricsMap)
+	appendCipherMetrics := func(m types.CipherMetrics) {
+		if m.AgentName == "" {
+			log.Errorf("empty AgentName provided for CipherMetrics")
+			return
+		}
+		cipherMetrics[m.AgentName] = m
 	}
-	if cipherMetricsDM != nil {
-		cipherMetrics = cipher.Append(cipherMetrics, cipherMetricsDM)
-	}
-	if cipherMetricsNim != nil {
-		cipherMetrics = cipher.Append(cipherMetrics, cipherMetricsNim)
-	}
-	if cipherMetricsZR != nil {
-		cipherMetrics = cipher.Append(cipherMetrics, cipherMetricsZR)
-	}
+	appendCipherMetrics(cipher.GetCipherMetrics(agentName))
+	appendCipherMetrics(cipherMetricsDL)
+	appendCipherMetrics(cipherMetricsDM)
+	appendCipherMetrics(cipherMetricsNim)
+	appendCipherMetrics(cipherMetricsZR)
 	for agentName, cm := range cipherMetrics {
 		log.Tracef("Cipher metrics for %s: %+v", agentName, cm)
+		if cm.FailureCount == 0 && cm.SuccessCount == 0 {
+			// no information for this agent
+			continue
+		}
 		metric := metrics.CipherMetric{AgentName: agentName,
 			FailureCount: cm.FailureCount,
 			SuccessCount: cm.SuccessCount,
@@ -452,11 +456,13 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 			metric.LastSuccess = ls
 		}
 		for i := range cm.TypeCounters {
-			tc := metrics.TypeCounter{
-				ErrorCode: metrics.CipherError(i),
-				Count:     cm.TypeCounters[i],
+			if cm.TypeCounters[i] > 0 {
+				tc := metrics.TypeCounter{
+					ErrorCode: metrics.CipherError(i),
+					Count:     cm.TypeCounters[i],
+				}
+				metric.Tc = append(metric.Tc, &tc)
 			}
-			metric.Tc = append(metric.Tc, &tc)
 		}
 		ReportDeviceMetric.Cipher = append(ReportDeviceMetric.Cipher,
 			&metric)

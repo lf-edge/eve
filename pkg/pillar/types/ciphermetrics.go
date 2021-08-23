@@ -15,6 +15,7 @@ type CipherMetricsMap map[string]CipherMetrics
 
 // CipherMetrics are metrics from one agent
 type CipherMetrics struct {
+	AgentName    string
 	FailureCount uint64
 	SuccessCount uint64
 	LastFailure  time.Time
@@ -44,7 +45,7 @@ const (
 
 // Key - key for pubsub
 func (cipherMetric CipherMetrics) Key() string {
-	return "global"
+	return cipherMetric.AgentName
 }
 
 // LogCreate :

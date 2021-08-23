@@ -269,7 +269,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 	cipherMetricsPub, err := ps.NewPublication(pubsub.PublicationOptions{
 		AgentName: agentName,
-		TopicType: types.CipherMetricsMap{},
+		TopicType: types.CipherMetrics{},
 	})
 	if err != nil {
 		log.Fatal(err)
@@ -586,7 +586,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 		case <-publishTimer.C:
 			start := time.Now()
-			err = cipherMetricsPub.Publish("global", cipher.GetCipherMetrics())
+			err = cipherMetricsPub.Publish(agentName, cipher.GetCipherMetrics(agentName))
 			if err != nil {
 				log.Errorln(err)
 			}
