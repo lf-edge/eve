@@ -92,9 +92,26 @@ func (ep *OCITransportMethod) WithSrcIPAndProxySelection(localAddr net.IP,
 	return nil
 }
 
-// WithSrcIPAndHTTPSCerts append certs for https datastore
+// WithSrcIPAndHTTPSCerts append certs for the datastore access
 func (ep *OCITransportMethod) WithSrcIPAndHTTPSCerts(localAddr net.IP, certs [][]byte) error {
-	return fmt.Errorf("not supported")
+	client := httpClientSrcIP(localAddr, nil)
+	client, err := httpClientAddCerts(client, certs)
+	if err != nil {
+		return err
+	}
+	ep.hClient = client
+	return nil
+}
+
+// WithSrcIPAndProxyAndHTTPSCerts append certs for the datastore access
+func (ep *OCITransportMethod) WithSrcIPAndProxyAndHTTPSCerts(localAddr net.IP, proxy *url.URL, certs [][]byte) error {
+	client := httpClientSrcIP(localAddr, proxy)
+	client, err := httpClientAddCerts(client, certs)
+	if err != nil {
+		return err
+	}
+	ep.hClient = client
+	return nil
 }
 
 // WithBindIntf bind to specific interface for this connection
