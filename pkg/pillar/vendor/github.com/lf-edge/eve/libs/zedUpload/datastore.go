@@ -184,7 +184,6 @@ func (ctx *DronaCtx) handleQuit() error {
 // postSize:
 //  post the progress report we haven't completed the download/upload yet
 func (ctx *DronaCtx) postSize(req *DronaRequest, size, asize int64) {
-	req.setInprogress()
 	req.updateOsize(size)
 	req.updateAsize(asize)
 	req.result <- req
@@ -201,8 +200,8 @@ func (ctx *DronaCtx) postChunk(req *DronaRequest, chunkDetail ChunkData) {
 //   make sure the reply is always sent back
 //
 func (ctx *DronaCtx) postResponse(req *DronaRequest, status error) {
-	// status is already set up by action, we just have to clear inprogress flag
-	req.clearInprogress()
+	// status is already set up by action, we just have to set processed flag
+	req.setProcessed()
 	req.result <- req
 }
 
