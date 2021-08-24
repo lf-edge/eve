@@ -41,8 +41,8 @@ type DronaRequest struct {
 	// need size acknowledgement
 	ackback bool
 
-	// request is still in progress, this is just update
-	inprogress bool
+	// request is processed, this is just update
+	processed bool
 
 	// if size exceed this don't download
 	sizelimit int64
@@ -121,19 +121,13 @@ func (req *DronaRequest) GetUpStatus() (string, error) {
 func (req *DronaRequest) IsDnUpdate() bool {
 	req.Lock()
 	defer req.Unlock()
-	return req.inprogress
+	return !req.processed
 }
 
-func (req *DronaRequest) setInprogress() {
+func (req *DronaRequest) setProcessed() {
 	req.Lock()
 	defer req.Unlock()
-	req.inprogress = true
-}
-
-func (req *DronaRequest) clearInprogress() {
-	req.Lock()
-	defer req.Unlock()
-	req.inprogress = false
+	req.processed = true
 }
 
 // Return object actual synced down size
