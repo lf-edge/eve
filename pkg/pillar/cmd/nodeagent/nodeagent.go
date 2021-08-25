@@ -673,6 +673,15 @@ func handleVaultStatusImpl(ctxArg interface{}, key string,
 	}
 	if vault.ConversionComplete && vault.Status != info.DataSecAtRestStatus_DATASEC_AT_REST_ERROR {
 		ctx.vaultOperational = types.TS_ENABLED
+		// Do we need to clear maintenance?
+		if ctx.maintMode &&
+			ctx.maintModeReason == types.MaintenanceModeReasonVaultLockedUp {
+			log.Noticef("Clearing %s",
+				types.MaintenanceModeReasonVaultLockedUp)
+			ctx.maintMode = false
+			ctx.maintModeReason = types.MaintenanceModeReasonNone
+			publishNodeAgentStatus(ctx)
+		}
 	} else {
 		ctx.vaultOperational = types.TS_DISABLED
 	}
