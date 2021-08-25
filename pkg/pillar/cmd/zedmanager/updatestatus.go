@@ -585,7 +585,7 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 		if ds.HasError() {
 			log.Errorf("Received error from domainmgr for %s: %s",
 				uuidStr, ds.Error)
-			status.SetErrorWithSourceAndDescription(status.ErrorDescription, types.DomainStatus{})
+			status.SetErrorWithSourceAndDescription(ds.ErrorDescription, types.DomainStatus{})
 			changed = true
 		} else if status.IsErrorSource(types.DomainStatus{}) {
 			log.Functionf("Clearing domainmgr error %s", status.Error)
