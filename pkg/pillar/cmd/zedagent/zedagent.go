@@ -1828,15 +1828,12 @@ func handleNodeAgentStatusImpl(ctxArg interface{}, key string,
 	if status.DeviceReboot {
 		handleDeviceReboot(ctx)
 	}
-	triggerPublishDevInfo(ctx)
-	if !ctx.localMaintenanceMode && status.LocalMaintenanceMode {
-		// localMaintenanceMode can only be set, and can be reset only through reboot
-		// after reboot, localMaintenanceMode will be set or reset depending on the
-		// latest failures.
+	if ctx.localMaintenanceMode != status.LocalMaintenanceMode {
 		ctx.localMaintenanceMode = status.LocalMaintenanceMode
 		ctx.localMaintModeReason = status.LocalMaintenanceModeReason
 		mergeMaintenanceMode(ctx)
 	}
+	triggerPublishDevInfo(ctx)
 	log.Functionf("handleNodeAgentStatusImpl: done.")
 }
 

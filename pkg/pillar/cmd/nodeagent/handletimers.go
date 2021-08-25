@@ -128,6 +128,8 @@ func handleRebootOnVaultLocked(ctxPtr *nodeagentContext) {
 			log.Errorf(errStr)
 			scheduleNodeReboot(ctxPtr, errStr, types.BootReasonVaultFailure)
 		} else {
+			log.Noticef("Setting %s",
+				types.MaintenanceModeReasonVaultLockedUp)
 			// there is no image update in progress, this happened after a normal
 			// reboot. enter maintenance mode
 			ctxPtr.maintMode = true
