@@ -9,6 +9,7 @@ package zedrouter
 import (
 	"errors"
 	"fmt"
+	"golang.org/x/sys/unix"
 	"net"
 	"syscall"
 
@@ -88,6 +89,14 @@ func PbrRouteAddAll(bridgeName string, port string) error {
 			return errors.New(errStr)
 		}
 	}
+	// Add the lowest-prio default-drop route.
+	// The route is used to drop all packets otherwise not matched by any route
+	// and prevent them from escaping the NI-specific routing table.
+	err = AddDefaultDropRoute(ifindex, true)
+	if err != nil {
+		errStr := fmt.Sprintf("Failed to add default-drop route: %s", err)
+		log.Errorln(errStr)
+	}
 	return nil
 }
 
@@ -141,6 +150,12 @@ func PbrRouteDeleteAll(bridgeName string, port string) error {
 			log.Errorln(errStr)
 			// We continue to try to delete all
 		}
+	}
+	// Delete the lowest-prio default-drop route.
+	err = DelDefaultDropRoute(ifindex, true)
+	if err != nil {
+		errStr := fmt.Sprintf("Failed to delete default-drop route: %s", err)
+		log.Errorln(errStr)
 	}
 	return nil
 }
@@ -307,20 +322,64 @@ func AddFwMarkRuleToDummy(iifIndex int) error {
 	}
 
 	// Add default route that points to dummy interface.
-	_, ipnet, err := net.ParseCIDR("0.0.0.0/0")
+	err := AddDefaultDropRoute(iifIndex, false)
 	if err != nil {
-		errStr := fmt.Sprintf("AddFwMarkRuleToDummy: ParseCIDR of %s failed",
-			"0.0.0.0/0")
-		return errors.New(errStr)
-	}
-
-	// Setup a route for the current network's subnet to point out of the given oifIndex
-	rt := netlink.Route{Dst: ipnet, LinkIndex: iifIndex, Table: myTable, Flags: 0}
-	if err := netlink.RouteAdd(&rt); err != nil {
-		errStr := fmt.Sprintf("AddFwMarkRuleToDummy: RouteAdd %s failed: %s",
-			ipnet.String(), err)
+		errStr := fmt.Sprintf("AddFwMarkRuleToDummy: AddDefaultDropRoute failed: %s", err)
 		log.Errorln(errStr)
 		return errors.New(errStr)
 	}
 	return nil
+}
+
+// AddDefaultDropRoute : Add default route dropping packets either by sending them
+// into the dummy interface or by using an unreachable destination.
+func AddDefaultDropRoute(ifIndex int, unreachable bool) error {
+	route, err := makeDefaultDropRoute(ifIndex, unreachable)
+	if err != nil {
+		return err
+	}
+	return netlink.RouteAdd(route)
+}
+
+// DelDefaultDropRoute : Delete previously added default route dropping packets.
+func DelDefaultDropRoute(ifIndex int, unreachable bool) error {
+	route, err := makeDefaultDropRoute(ifIndex, unreachable)
+	if err != nil {
+		return err
+	}
+	return netlink.RouteDel(route)
+}
+
+func makeDefaultDropRoute(ifIndex int, unreachable bool) (*netlink.Route, error) {
+	var (
+		routeType    int
+		outLinkIndex int
+	)
+	if unreachable {
+		routeType = unix.RTN_UNREACHABLE
+	} else {
+		link, err := netlink.LinkByName(dummyIntfName)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get dummy interface: %w", err)
+		}
+		outLinkIndex = link.Attrs().Index
+	}
+
+	_, dst, err := net.ParseCIDR("0.0.0.0/0")
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse dst for default route: %w", err)
+	}
+
+	var prio int
+	if unreachable {
+		// Do not override any actual default route.
+		prio = int(^uint32(0))
+	}
+	return &netlink.Route{
+		LinkIndex: outLinkIndex,
+		Dst:       dst,
+		Priority:  prio,
+		Table:     baseTableIndex + ifIndex,
+		Type:      routeType,
+	}, nil
 }
