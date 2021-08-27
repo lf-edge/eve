@@ -41,6 +41,33 @@ func metricsTimerTask(ctx *domainContext, hyper hypervisor.Hypervisor) {
 	}
 }
 
+func logWatermarks(ctx *domainContext, status *types.DomainStatus, dm *types.DomainMetric) {
+	if status == nil {
+		return
+	}
+
+	config := lookupDomainConfig(ctx, status.Key())
+	if config == nil {
+		return
+	}
+
+	var CurrMaxUsedMemory uint32
+	st, _ := ctx.pubDomainMetric.Get(dm.Key())
+	if st != nil {
+		previousMetric := st.(types.DomainMetric)
+		CurrMaxUsedMemory = previousMetric.MaxUsedMemory
+	}
+
+	if CurrMaxUsedMemory < dm.MaxUsedMemory && config.Memory != 0 {
+		usedPercents := dm.MaxUsedMemory * 100 * 1024 / uint32(config.Memory)
+		log.Noticef("Memory watermark for %s increased: %d MiB,"+
+			" app-memory %d MiB (%d%%), %.2f%% of cgroup limit",
+			status.DomainName,
+			dm.MaxUsedMemory, config.Memory>>10,
+			usedPercents, dm.UsedMemoryPercent)
+	}
+}
+
 func getAndPublishMetrics(ctx *domainContext, hyper hypervisor.Hypervisor) {
 	dmList, _ := hyper.GetDomsCPUMem()
 	now := time.Now()
@@ -70,8 +97,12 @@ func getAndPublishMetrics(ctx *domainContext, hyper hypervisor.Hypervisor) {
 			// We clear the memory so it doesn't accidentally get
 			// reported.  We keep the CPUTotal and AvailableMemory
 			dm.UsedMemory = 0
+			dm.MaxUsedMemory = 0
 			dm.UsedMemoryPercent = 0
 		}
+
+		logWatermarks(ctx, status, &dm)
+
 		dm.LastHeard = now
 		ctx.pubDomainMetric.Publish(dm.Key(), dm)
 	}

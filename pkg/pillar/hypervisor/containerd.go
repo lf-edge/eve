@@ -244,7 +244,7 @@ func (ctx ctrdContext) GetDomsCPUMem() (map[string]types.DomainMetric, error) {
 	}
 
 	for _, id := range ids {
-		var usedMem, availMem, totalMem uint32
+		var usedMem, maxUsedMem, availMem, totalMem uint32
 		var usedMemPerc float64
 		var cpuTotal uint64
 
@@ -253,6 +253,7 @@ func (ctx ctrdContext) GetDomsCPUMem() (map[string]types.DomainMetric, error) {
 				logrus.Errorf("GetDomsCPUMem nil returned in metric.Memory: %v", metric)
 			} else {
 				usedMem = uint32(roundFromBytesToMbytes(metric.Memory.Usage.Usage))
+				maxUsedMem = uint32(roundFromBytesToMbytes(metric.Memory.Usage.Max))
 				totalMem = uint32(roundFromBytesToMbytes(metric.Memory.HierarchicalMemoryLimit))
 				availMem = 0
 				if totalMem > usedMem {
@@ -277,6 +278,7 @@ func (ctx ctrdContext) GetDomsCPUMem() (map[string]types.DomainMetric, error) {
 			UUIDandVersion:    types.UUIDandVersion{},
 			CPUTotal:          cpuTotal,
 			UsedMemory:        usedMem,
+			MaxUsedMemory:     maxUsedMem,
 			AvailableMemory:   availMem,
 			UsedMemoryPercent: usedMemPerc,
 		}
