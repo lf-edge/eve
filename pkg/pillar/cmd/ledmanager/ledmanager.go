@@ -194,13 +194,13 @@ var mToF = []modelToFuncs{
 		model:       "raspberrypi.rpi.raspberrypi,4-model-b.brcm,bcm2711",
 		initFunc:    InitLedCmd,
 		displayFunc: ExecuteLedCmd,
-		arg:         "led0",
+		arg:         "ACT",
 	},
 	{
 		model:       "RaspberryPi.RPi4",
 		initFunc:    InitLedCmd,
 		displayFunc: ExecuteLedCmd,
-		arg:         "led0",
+		arg:         "ACT",
 	},
 	{
 		model:       "raspberrypi.uno-220.raspberrypi,4-model-b.brcm,bcm2711",
