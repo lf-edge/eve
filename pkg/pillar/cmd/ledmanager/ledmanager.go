@@ -58,7 +58,9 @@ type DisplayFunc func(deviceNetworkStatus *types.DeviceNetworkStatus,
 	arg string, blinkCount types.LedBlinkCount)
 
 // InitFunc takes an argument which can be the name of a LED or display
-type InitFunc func(arg string)
+// The argument could be a comma-sparated list.
+// Returns the one which works
+type InitFunc func(arg string) string
 
 // AppStatusDisplayFunc takes an argument to list of leds
 type AppStatusDisplayFunc func(ctx *ledManagerContext, arg []string, blink bool, color string)
@@ -194,13 +196,15 @@ var mToF = []modelToFuncs{
 		model:       "raspberrypi.rpi.raspberrypi,4-model-b.brcm,bcm2711",
 		initFunc:    InitLedCmd,
 		displayFunc: ExecuteLedCmd,
-		arg:         "ACT",
+		// Try led0 first and if not found, ACT
+		arg: "led0,ACT",
 	},
 	{
 		model:       "RaspberryPi.RPi4",
 		initFunc:    InitLedCmd,
 		displayFunc: ExecuteLedCmd,
-		arg:         "ACT",
+		// Try led0 first and if not found, ACT
+		arg: "led0,ACT",
 	},
 	{
 		model:       "raspberrypi.uno-220.raspberrypi,4-model-b.brcm,bcm2711",
@@ -311,7 +315,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	}
 
 	if initFunc != nil {
-		initFunc(arg)
+		arg = initFunc(arg)
 	}
 
 	// Any state needed by handler functions
@@ -524,19 +528,19 @@ func DummyCmd() {
 }
 
 var printOnce = true
-var diskDevice string   // Based on largest disk
 var diskRepeatCount int // Based on time for 200ms
 
 // InitDellCmd prepares "Cloud LED" on Dell IoT gateways by enabling GPIO endpoint
-func InitDellCmd(ledName string) {
+func InitDellCmd(ledName string) string {
 	err := ioutil.WriteFile("/sys/class/gpio/export", []byte("346"), 0644)
 	if err == nil {
 		if err = ioutil.WriteFile("/sys/class/gpio/gpio346/direction", []byte("out"), 0644); err == nil {
 			log.Functionf("Enabled Dell Cloud LED")
-			return
+			return ledName
 		}
 	}
 	log.Warnf("Failed to enable Dell Cloud LED: %v", err)
+	return ""
 }
 
 // Keep avoid allocation and GC by keeping one buffer
@@ -547,24 +551,24 @@ var (
 
 // InitForceDiskCmd determines the disk (using the largest disk) and measures
 // the repetition count to get to 200ms dd time.
-func InitForceDiskCmd(ledName string) {
+func InitForceDiskCmd(ledName string) string {
 	disk := diskmetrics.FindLargestDisk(log)
 	if disk == "" {
-		return
+		return ""
 	}
 	log.Functionf("InitForceDiskCmd using disk %s", disk)
 	readBuffer = make([]byte, bufferLength)
-	diskDevice = "/dev/" + disk
+	diskDevice := "/dev/" + disk
 	count := 100 * 16
 	// Prime before measuring
-	uncachedDiskRead(count)
-	uncachedDiskRead(count)
+	uncachedDiskRead(count, diskDevice)
+	uncachedDiskRead(count, diskDevice)
 	start := time.Now()
-	uncachedDiskRead(count)
+	uncachedDiskRead(count, diskDevice)
 	elapsed := time.Since(start)
 	if elapsed == 0 {
 		log.Errorf("Measured 0 nanoseconds!")
-		return
+		return ""
 	}
 	// Adjust count but at least one
 	fl := time.Duration(count) * (200 * time.Millisecond) / elapsed
@@ -574,14 +578,15 @@ func InitForceDiskCmd(ledName string) {
 	}
 	log.Noticef("Measured %v; count %d", elapsed, count)
 	diskRepeatCount = count
+	return diskDevice
 }
 
 // ExecuteForceDiskCmd does counter number of 200ms blinks and returns
 // It assumes the init function has determined a diskRepeatCount and a disk.
 func ExecuteForceDiskCmd(deviceNetworkStatus *types.DeviceNetworkStatus,
-	arg string, blinkCount types.LedBlinkCount) {
+	diskDevice string, blinkCount types.LedBlinkCount) {
 	for i := 0; i < int(blinkCount); i++ {
-		doForceDiskBlink()
+		doForceDiskBlink(diskDevice)
 		time.Sleep(200 * time.Millisecond)
 	}
 }
@@ -590,15 +595,15 @@ func ExecuteForceDiskCmd(deviceNetworkStatus *types.DeviceNetworkStatus,
 // which makes the disk LED light up for 200ms
 // We do this with caching disabled since there might be a filesystem on the
 // device in which case the disk LED would otherwise not light up.
-func doForceDiskBlink() {
+func doForceDiskBlink(diskDevice string) {
 	if diskDevice == "" || diskRepeatCount == 0 {
 		DummyCmd()
 		return
 	}
-	uncachedDiskRead(diskRepeatCount)
+	uncachedDiskRead(diskRepeatCount, diskDevice)
 }
 
-func uncachedDiskRead(count int) {
+func uncachedDiskRead(count int, diskDevice string) {
 	offset := int64(0)
 	handler, err := os.Open(diskDevice)
 	if err != nil {
@@ -633,14 +638,24 @@ const (
 // InitLedCmd can use different LEDs in /sys/class/leds
 // Disable existing trigger
 // Write "none" to /sys/class/leds/<ledName>/trigger
-func InitLedCmd(ledName string) {
+// If comma-separated list try until one is found.
+// Returns the led which worked.
+func InitLedCmd(ledName string) string {
 	log.Functionf("InitLedCmd(%s)", ledName)
-	triggerFilename := fmt.Sprintf("/sys/class/leds/%s/trigger", ledName)
-	b := []byte("none")
-	err := ioutil.WriteFile(triggerFilename, b, 0644)
-	if err != nil {
-		log.Error(err, triggerFilename)
+	// If there are multiple, comma-separated ones, find one which works
+	leds := strings.Split(ledName, ",")
+	for _, led := range leds {
+		triggerFilename := fmt.Sprintf("/sys/class/leds/%s/trigger", led)
+		b := []byte("none")
+		err := ioutil.WriteFile(triggerFilename, b, 0644)
+		if err != nil {
+			log.Error(err, triggerFilename)
+			continue
+		}
+		return led
 	}
+	log.Errorf("No exsting led among <%s", ledName)
+	return ""
 }
 
 // ExecuteLedCmd does counter number of 200ms blinks and returns
@@ -754,6 +769,10 @@ func doLedAction(ledName string, turnon bool) {
 // doLedBlink can use different LEDs in /sys/class/leds
 // Enable the led for 200ms
 func doLedBlink(ledName string) {
+	if ledName == "" {
+		time.Sleep(200 * time.Millisecond)
+		return
+	}
 	var brightnessFilename string
 	b := []byte("1")
 	if strings.HasPrefix(ledName, "/") {
@@ -780,8 +799,9 @@ func doLedBlink(ledName string) {
 }
 
 // createLogfile will use the arg to create a file
-func createLogfile(filename string) {
+func createLogfile(filename string) string {
 	log.Functionf("createLogfile(%s)", filename)
+	return filename
 }
 
 // appendLogfile
