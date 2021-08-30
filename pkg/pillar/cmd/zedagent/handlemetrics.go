@@ -728,7 +728,9 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 
 	// publish the cloud MetricsMap for zedagent for device debugging purpose
 	if zedagentMetrics != nil {
-		ctx.pubMetricsMap.Publish("global", zedagentMetrics)
+		cms = types.MetricsMap{}
+		cms = zedcloud.Append(cms, zedagentMetrics)
+		ctx.pubMetricsMap.Publish("global", cms)
 	}
 }
 
