@@ -51,8 +51,7 @@ func doUpdateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus)
 					errStr := fmt.Sprintf("Received error from resolver for %s, SHA (%s): %s",
 						status.ResolveKey(), rs.ImageSha256, rs.Error)
 					log.Error(errStr)
-					status.SetErrorWithSource(errStr, types.ResolveStatus{},
-						rs.ErrorTime)
+					status.SetErrorWithSourceAndDescription(rs.ErrorDescription, types.ResolveStatus{})
 					changed = true
 					return changed, false
 				} else if rs.ImageSha256 == "" {
