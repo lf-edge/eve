@@ -83,9 +83,13 @@ func maybeRetryResolve(ctx *downloaderContext, status *types.ResolveStatus,
 	// Increment count; we defer clearing error until success
 	// to avoid confusing the user.
 	status.RetryCount++
-	errStr := fmt.Sprintf("Retry attempt %d after %s",
-		status.RetryCount, status.OrigError)
-	status.SetErrorNow(errStr)
+	severity := types.GetErrorSeverity(status.RetryCount, time.Duration(status.RetryCount)*retryTime)
+	errDescription := types.ErrorDescription{
+		Error:               status.OrigError,
+		ErrorRetryCondition: fmt.Sprintf("Retrying; attempt %d", status.RetryCount),
+		ErrorSeverity:       severity,
+	}
+	status.SetErrorDescription(errDescription)
 	publishResolveStatus(ctx, status)
 
 	resolveTagsToHash(ctx, *config, receiveChan)
@@ -166,9 +170,13 @@ func resolveTagsToHash(ctx *downloaderContext, rc types.ResolveConfig,
 
 	dst, err := utils.LookupDatastoreConfig(ctx.subDatastoreConfig, rc.DatastoreID)
 	if err != nil {
-		errStr := fmt.Sprintf("Will retry when datastore available: %s",
-			err.Error())
-		rs.SetErrorNow(errStr)
+		severity := types.GetErrorSeverity(rs.RetryCount, time.Duration(rs.RetryCount)*retryTime)
+		errDescription := types.ErrorDescription{
+			Error:               err.Error(),
+			ErrorRetryCondition: fmt.Sprintf("Will retry when datastore available"),
+			ErrorSeverity:       severity,
+		}
+		rs.SetErrorDescription(errDescription)
 		publishResolveStatus(ctx, rs)
 		return
 	}
@@ -177,9 +185,13 @@ func resolveTagsToHash(ctx *downloaderContext, rc types.ResolveConfig,
 	// construct the datastore context
 	dsCtx, err := constructDatastoreContext(ctx, rc.Name, false, *dst)
 	if err != nil {
-		errStr := fmt.Sprintf("Will retry in %v: %s failed: %s",
-			retryTime, rc.Name, err)
-		rs.SetErrorNow(errStr)
+		severity := types.GetErrorSeverity(rs.RetryCount, time.Duration(rs.RetryCount)*retryTime)
+		errDescription := types.ErrorDescription{
+			Error:               err.Error(),
+			ErrorRetryCondition: fmt.Sprintf("Will retry in %s; have retried %d times", retryTime, rs.RetryCount),
+			ErrorSeverity:       severity,
+		}
+		rs.SetErrorDescription(errDescription)
 		publishResolveStatus(ctx, rs)
 		return
 	}
@@ -196,9 +208,13 @@ func resolveTagsToHash(ctx *downloaderContext, rc types.ResolveConfig,
 		err := fmt.Errorf("No IP management port addresses with cost <= %d",
 			downloadMaxPortCost)
 		log.Error(err.Error())
-		errStr := fmt.Sprintf("Will retry in %v: %s",
-			retryTime, err)
-		rs.SetErrorNow(errStr)
+		severity := types.GetErrorSeverity(rs.RetryCount, time.Duration(rs.RetryCount)*retryTime)
+		errDescription := types.ErrorDescription{
+			Error:               err.Error(),
+			ErrorRetryCondition: fmt.Sprintf("Will retry in %s; have retried %d times", retryTime, rs.RetryCount),
+			ErrorSeverity:       severity,
+		}
+		rs.SetErrorDescription(errDescription)
 		publishResolveStatus(ctx, rs)
 		return
 	}
@@ -227,9 +243,13 @@ func resolveTagsToHash(ctx *downloaderContext, rc types.ResolveConfig,
 	// and return, but we will get to it later
 	if errStr != "" {
 		log.Errorf("Error preparing to download. All errors:%s", errStr)
-		errStr := fmt.Sprintf("Will retry in %v: %s",
-			retryTime, errStr)
-		rs.SetErrorNow(errStr)
+		severity := types.GetErrorSeverity(rs.RetryCount, time.Duration(rs.RetryCount)*retryTime)
+		errDescription := types.ErrorDescription{
+			Error:               errStr,
+			ErrorRetryCondition: fmt.Sprintf("Will retry in %s; have retried %d times", retryTime, rs.RetryCount),
+			ErrorSeverity:       severity,
+		}
+		rs.SetErrorDescription(errDescription)
 		publishResolveStatus(ctx, rs)
 		return
 	}
@@ -267,10 +287,18 @@ func resolveTagsToHash(ctx *downloaderContext, rc types.ResolveConfig,
 	if !cancelled {
 		log.Errorf("All source IP addresses failed. All errors:%s",
 			errStr)
-		errStr = fmt.Sprintf("Will retry in %v: %s",
-			retryTime, errStr)
+		severity := types.GetErrorSeverity(rs.RetryCount, time.Duration(rs.RetryCount)*retryTime)
+		errDescription := types.ErrorDescription{
+			Error:               errStr,
+			ErrorRetryCondition: fmt.Sprintf("Will retry in %s; have retried %d times", retryTime, rs.RetryCount),
+			ErrorSeverity:       severity,
+		}
+		rs.SetErrorDescription(errDescription)
+	} else {
+		rs.SetErrorDescription(types.ErrorDescription{
+			Error: errStr,
+		})
 	}
-	rs.SetErrorNow(errStr)
 	publishResolveStatus(ctx, rs)
 }
 

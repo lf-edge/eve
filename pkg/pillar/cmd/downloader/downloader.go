@@ -331,9 +331,13 @@ func maybeRetryDownload(ctx *downloaderContext,
 	// Increment count; we defer clearing error until success
 	// to avoid confusing the user.
 	status.RetryCount++
-	errStr := fmt.Sprintf("Retry attempt %d after %s",
-		status.RetryCount, status.OrigError)
-	status.SetErrorNow(errStr)
+	severity := types.GetErrorSeverity(status.RetryCount, time.Duration(status.RetryCount)*retryTime)
+	errDescription := types.ErrorDescription{
+		Error:               status.OrigError,
+		ErrorRetryCondition: fmt.Sprintf("Retrying; attempt %d", status.RetryCount),
+		ErrorSeverity:       severity,
+	}
+	status.SetErrorDescription(errDescription)
 	publishDownloaderStatus(ctx, status)
 
 	doDownload(ctx, *config, status, receiveChan)
