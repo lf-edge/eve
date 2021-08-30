@@ -23,6 +23,7 @@ const (
 	SingleMB       int64 = 1024 * 1024
 	blobURLPattern       = "https://%s.blob.core.windows.net/%s"
 	maxRetries           = 20
+	parallelism          = 128
 )
 
 // UpdateStats contains the information for the progress of an update
@@ -133,12 +134,6 @@ func DownloadAzureBlob(accountName, accountKey, containerName, remoteFile, local
 	containerURL := azblob.NewContainerURL(*URL, p)
 	blobURL := containerURL.NewBlockBlobURL(remoteFile)
 	ctx := context.Background()
-	downloadResponse, err := blobURL.Download(ctx, 0, azblob.CountToEnd, azblob.BlobAccessConditions{}, false, azblob.ClientProvidedKeyOptions{})
-	if err != nil {
-		return fmt.Errorf("could not start download: %v", err)
-	}
-
-	readCloser := downloadResponse.Body(azblob.RetryReaderOptions{MaxRetryRequests: maxRetries})
 
 	tempLocalFile := localFile
 	index := strings.LastIndex(tempLocalFile, "/")
@@ -152,26 +147,32 @@ func DownloadAzureBlob(accountName, accountKey, containerName, remoteFile, local
 		return err
 	}
 	defer file.Close()
-	defer readCloser.Close()
-	chunkSize := SingleMB
-	var written, copiedSize int64
-	var copyErr error
+
 	stats.Size = objSize
-	for {
-		if written, copyErr = io.CopyN(file, readCloser, chunkSize); copyErr != nil && copyErr != io.EOF {
-			return copyErr
-		}
-		copiedSize += written
-		if written != chunkSize {
-			break
-		}
-		stats.Asize = copiedSize
-		if prgNotify != nil {
+	var progressReceiver pipeline.ProgressReceiver
+	if prgNotify != nil {
+		progressReceiver = func(bytesTransferred int64) {
+			stats.Asize = bytesTransferred
 			select {
 			case prgNotify <- stats:
 			default: //ignore we cannot write
 			}
 		}
+	}
+	// we could just return the error that comes from this function, but in the case of
+	// a nil error, we want to be sure we sent the total
+	if err := azblob.DownloadBlobToFile(ctx, blobURL.BlobURL, 0, 0, file, azblob.DownloadFromBlobOptions{
+		BlockSize:                  SingleMB,
+		Parallelism:                uint16(parallelism),
+		RetryReaderOptionsPerBlock: azblob.RetryReaderOptions{MaxRetryRequests: maxRetries},
+		Progress:                   progressReceiver,
+	}); err != nil {
+		return err
+	}
+	// ensure we send the total; it is theoretically possible that it downloaded without error
+	// but the progress receiver did not get invoked at the end
+	if stats.Asize < stats.Size {
+		progressReceiver(stats.Size)
 	}
 	return nil
 }
