@@ -79,7 +79,21 @@ type CustomWriter struct {
 }
 
 func (r *CustomWriter) Write(p []byte) (int, error) {
-	return r.fp.Write(p)
+	n, err := r.fp.Write(p)
+	if err != nil {
+		return n, err
+	}
+	// Got the length have read( or means has uploaded), and you can construct your message
+	atomic.AddInt64(&r.upSize.Asize, int64(n))
+
+	if r.prgNotify != nil {
+		select {
+		case r.prgNotify <- r.upSize:
+		default: //ignore we cannot write
+		}
+	}
+
+	return n, err
 }
 func (r *CustomWriter) WriteAt(p []byte, off int64) (int, error) {
 	n, err := r.fp.WriteAt(p, off)
