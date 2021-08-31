@@ -11,6 +11,7 @@ RUN git clone https://git.openwrt.org/project/libubox.git
 RUN git clone https://github.com/json-c/json-c.git
 RUN git clone https://gitlab.freedesktop.org/mobile-broadband/libqmi
 RUN git clone https://gitlab.freedesktop.org/mobile-broadband/libmbim
+RUN git clone https://github.com/inotify-tools/inotify-tools
 
 WORKDIR /json-c
 RUN git checkout ed54353d && ./autogen.sh && ./configure && make install
@@ -30,7 +31,10 @@ RUN ./autogen.sh && ./configure --prefix=/usr && make && make install
 WORKDIR /libqmi
 RUN git checkout 1.26.2 && ./autogen.sh --without-udev && ./configure --prefix=/usr --without-udev --enable-mbim-qmux && make && make install
 
-RUN strip /usr/bin/*cli /usr/libexec/*proxy /usr/lib/libmbim*.so.* /usr/lib/libqmi*.so.*
+WORKDIR /inotify-tools
+RUN git checkout 3.20.11.0 && ./autogen.sh && ./configure --prefix=/usr && make && make install
+
+RUN strip /usr/bin/*cli /usr/libexec/*proxy /usr/lib/libmbim*.so.* /usr/lib/libqmi*.so.* /usr/lib/libinotifytools*.so.*
 
 # second stage (new-ish Docker feature) for smaller image
 FROM scratch
@@ -38,8 +42,9 @@ FROM scratch
 ENTRYPOINT []
 WORKDIR /
 COPY --from=build /out/ /
-COPY --from=build /uqmi/uqmi /usr/bin/qmicli /usr/bin/mbimcli /bin/
+COPY --from=build /uqmi/uqmi /usr/bin/qmicli /usr/bin/mbimcli /usr/bin/inotify* /bin/
 COPY --from=build /usr/lib/libmbim*.so.[0-9] /usr/lib/libqmi*.so.[0-9] /usr/lib/
+COPY --from=build /usr/lib/libinotifytools*.so.[0-9] /usr/lib/
 COPY --from=build /usr/libexec/*proxy /usr/libexec/
 COPY usr/ /usr/
 COPY etc/ /etc/
