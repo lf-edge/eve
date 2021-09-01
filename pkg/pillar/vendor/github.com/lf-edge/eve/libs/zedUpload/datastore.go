@@ -13,6 +13,8 @@ import (
 	"net/url"
 	"sync"
 	"time"
+
+	log "github.com/sirupsen/logrus"
 )
 
 //
@@ -36,6 +38,9 @@ const (
 
 	StatsUpdateTicker = 5 * time.Second // timer for updating client for stats
 	FailPostTimeout   = 2 * time.Minute
+
+	localResolverAddress = "127.0.0.1:53"
+	localResolverProto   = "udp"
 )
 
 //
@@ -75,9 +80,20 @@ func httpClientSrcIP(localAddr net.IP, proxy *url.URL) *http.Client {
 	// say what SRC port number to use.
 	localTCPAddr := net.TCPAddr{IP: localAddr}
 	localUDPAddr := net.UDPAddr{IP: localAddr}
+	//try it first than fallback to another options
+	localDNSResolver := true
 	resolverDial := func(ctx context.Context, network, address string) (net.Conn, error) {
 		// XXX can DNS fallback to TCP? Would get a mismatched address if we do
-		d := net.Dialer{LocalAddr: &localUDPAddr}
+		d := net.Dialer{LocalAddr: &localUDPAddr, Timeout: 10 * time.Second}
+		if localDNSResolver {
+			c, err := d.Dial(localResolverProto, localResolverAddress)
+			if err != nil {
+				localDNSResolver = false
+				log.Warnf("localDNSResolver failed: %v", err)
+			} else {
+				return c, nil
+			}
+		}
 		return d.Dial(network, address)
 	}
 	r := net.Resolver{Dial: resolverDial, PreferGo: true, StrictErrors: false}

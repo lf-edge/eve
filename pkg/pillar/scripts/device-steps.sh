@@ -141,6 +141,12 @@ fi
 
 CONFIGDEV=$(zboot partdev CONFIG)
 
+mkdir -p "$WATCHDOG_PID" "$WATCHDOG_FILE"
+
+# run dnsmasq caching dns
+/opt/zededa/bin/dnsmasq
+touch "$WATCHDOG_PID/dnsmasq.pid"
+
 # If zedbox is already running we don't have to start it.
 if ! pgrep zedbox >/dev/null; then
     echo "$(date -Ins -u) Starting zedbox"
@@ -148,7 +154,6 @@ if ! pgrep zedbox >/dev/null; then
     wait_for_touch zedbox
 fi
 
-mkdir -p "$WATCHDOG_PID" "$WATCHDOG_FILE"
 touch "$WATCHDOG_PID/zedbox.pid" "$WATCHDOG_FILE/zedbox.touch"
 
 if [ -c $TPM_DEVICE_PATH ] && ! [ -f $CONFIGDIR/disable-tpm ]; then

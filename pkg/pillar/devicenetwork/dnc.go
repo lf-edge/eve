@@ -20,6 +20,7 @@ import (
 const (
 	MaxDPCRetestCount  = 5
 	MaxDPCCheckIfCount = 2
+	FallbackNameserver = "8.8.8.8"
 )
 
 type DPCPending struct {
@@ -1043,6 +1044,13 @@ func generateResolvConf(log *base.LogObject, globalStatus types.DeviceNetworkSta
 				written = append(written, server)
 			}
 		}
+	}
+	if len(written) == 0 {
+		log.Warningf("No nameservers found, fallback to default")
+		destfile.WriteString(fmt.Sprintf("# Fallback nameserver\n"))
+		destfile.WriteString(fmt.Sprintf("nameserver %s\n",
+			FallbackNameserver))
+		return 1
 	}
 	destfile.WriteString("options rotate\n")
 	destfile.WriteString("options attempts:5\n")
