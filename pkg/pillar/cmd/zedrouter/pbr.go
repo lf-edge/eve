@@ -44,6 +44,22 @@ func PbrRouteAddAll(bridgeName string, port string) error {
 		log.Errorln(errStr)
 		return errors.New(errStr)
 	}
+	link, err := netlink.LinkByName(bridgeName)
+	if err != nil {
+		errStr := fmt.Sprintf("LinkByName(%s) failed: %s",
+			bridgeName, err)
+		log.Errorln(errStr)
+		return errors.New(errStr)
+	}
+	index := link.Attrs().Index
+	// Add the lowest-prio default-drop route.
+	// The route is used to drop all packets otherwise not matched by any route
+	// and prevent them from escaping the NI-specific routing table.
+	err = AddDefaultDropRoute(index, true)
+	if err != nil {
+		errStr := fmt.Sprintf("Failed to add default-drop route: %s", err)
+		log.Errorln(errStr)
+	}
 	routes := getAllIPv4Routes(ifindex)
 	if routes == nil {
 		log.Warnf("PbrRouteAddAll(%s, %s) no routes",
@@ -59,14 +75,6 @@ func PbrRouteAddAll(bridgeName string, port string) error {
 		return errors.New(errStr)
 	}
 	// XXX do they differ? Yes
-	link, err := netlink.LinkByName(bridgeName)
-	if err != nil {
-		errStr := fmt.Sprintf("LinkByName(%s) failed: %s",
-			bridgeName, err)
-		log.Errorln(errStr)
-		return errors.New(errStr)
-	}
-	index := link.Attrs().Index
 	if index != ifindex {
 		log.Warnf("XXX Different ifindex vs index %d vs %x",
 			ifindex, index)
@@ -88,14 +96,6 @@ func PbrRouteAddAll(bridgeName string, port string) error {
 			log.Errorln(errStr)
 			return errors.New(errStr)
 		}
-	}
-	// Add the lowest-prio default-drop route.
-	// The route is used to drop all packets otherwise not matched by any route
-	// and prevent them from escaping the NI-specific routing table.
-	err = AddDefaultDropRoute(ifindex, true)
-	if err != nil {
-		errStr := fmt.Sprintf("Failed to add default-drop route: %s", err)
-		log.Errorln(errStr)
 	}
 	return nil
 }
