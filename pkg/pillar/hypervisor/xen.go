@@ -785,7 +785,7 @@ func parseCPUMemoryStat(cpuMemoryStat [][]string, dmList map[string]types.Domain
 		availableMemory := float64(totalMemory) - usedMemory
 
 		dm := types.DomainMetric{
-			CPUTotal:          cpuTotal,
+			CPUTotalNs:        cpuTotal * nanoSecToSec,
 			UsedMemory:        uint32(usedMemory),
 			AvailableMemory:   uint32(availableMemory),
 			UsedMemoryPercent: float64(usedMemoryPercent),
@@ -821,7 +821,7 @@ func fallbackDomainMetric() map[string]types.DomainMetric {
 		return dmList
 	}
 	for _, cpu := range cpuStat {
-		dm.CPUTotal = uint64(cpu.Total())
+		dm.CPUTotalNs = uint64(cpu.Total() * float64(nanoSecToSec))
 		break
 	}
 	dmList[dom0Name] = dm

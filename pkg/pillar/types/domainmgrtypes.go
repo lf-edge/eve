@@ -263,6 +263,7 @@ type DomainStatus struct {
 	AdaptersFailed bool
 	OCIConfigDir   string            // folder holding an OCI Image config for this domain (empty string means no config)
 	EnvVariables   map[string]string // List of environment variables to be set in container
+	VmConfig                         // From DomainConfig
 }
 
 func (status DomainStatus) Key() string {
@@ -391,7 +392,7 @@ type DiskStatus struct {
 // DomainMetric carries CPU and memory usage. UUID=devUUID for the dom0/host metrics overhead
 type DomainMetric struct {
 	UUIDandVersion    UUIDandVersion
-	CPUTotal          uint64 // Seconds since Domain boot
+	CPUTotalNs        uint64 // Nanoseconds since Domain boot scaled by #CPUs
 	UsedMemory        uint32
 	MaxUsedMemory     uint32
 	AvailableMemory   uint32
