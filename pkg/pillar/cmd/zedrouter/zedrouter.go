@@ -89,6 +89,7 @@ type zedrouterContext struct {
 	aclog                     *logrus.Logger // App Container logger
 	disableDHCPAllOnesNetMask bool
 	flowPublishMap            map[string]time.Time
+	metricInterval            uint32 // In seconds
 
 	// cipher context
 	pubCipherBlockStatus pubsub.Publication
@@ -489,9 +490,10 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	routeChanges := devicenetwork.RouteChangeInit(log)
 	linkChanges := devicenetwork.LinkChangeInit(log)
 
-	// Publish network metrics for zedagent every 10 seconds
-	interval := time.Duration(10 * time.Second)
-	max := float64(interval)
+	// Publish 20X more often than zedagent publishes to controller
+	// to reduce effect of quantization errors
+	interval := time.Duration(zedrouterCtx.metricInterval) * time.Second
+	max := float64(interval) / 20
 	min := max * 0.3
 	publishTimer := flextimer.NewRangeTicker(time.Duration(min),
 		time.Duration(max))
@@ -1777,6 +1779,9 @@ func handleGlobalConfigImpl(ctxArg interface{}, key string,
 		ctx.GCInitialized = true
 		ctx.appStatsInterval = gcp.GlobalValueInt(types.AppContainerStatsInterval)
 		ctx.disableDHCPAllOnesNetMask = gcp.GlobalValueBool(types.DisableDHCPAllOnesNetMask)
+		if gcp.GlobalValueInt(types.MetricInterval) != 0 {
+			ctx.metricInterval = gcp.GlobalValueInt(types.MetricInterval)
+		}
 	}
 	log.Functionf("handleGlobalConfigImpl done for %s\n", key)
 }
