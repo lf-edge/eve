@@ -164,17 +164,8 @@ func formatAndPublishHostCPUMem(ctx *domainContext, hm types.HostMemory, now tim
 		busy += t.User + t.System + t.Nice + t.Irq + t.Softirq
 	}
 
-	CPUnum, err := cpu.Counts(false)
-	if err != nil {
-		log.Errorf("getAndPublishMetrics: cpu.Counts failed: %v", err)
-		return
-	}
-	if CPUnum == 0 {
-		// Assume 1 i.e. don't scale busy
-		log.Warnf("getAndPublishMetrics: cpu count zero")
-	} else {
-		busy /= float64(CPUnum)
-	}
+	// Scale based on the CPUs seen by the hypervisor
+	busy /= float64(hm.Ncpus)
 
 	const nanoSecToSec uint64 = 1000000000
 	dm := types.DomainMetric{
@@ -186,6 +177,6 @@ func formatAndPublishHostCPUMem(ctx *domainContext, hm types.HostMemory, now tim
 		LastHeard:         now,
 		Activated:         true,
 	}
-	log.Tracef("formatAndPublishHostCPUMem: hostcpu, dm %+v, CPU num %d", dm, CPUnum)
+	log.Tracef("formatAndPublishHostCPUMem: hostcpu, dm %+v, CPU num %d busy %f", dm, hm.Ncpus, busy)
 	ctx.pubDomainMetric.Publish(dm.Key(), dm)
 }
