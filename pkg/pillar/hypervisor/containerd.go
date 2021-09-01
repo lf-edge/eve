@@ -230,7 +230,6 @@ func (ctx ctrdContext) GetHostCPUMem() (types.HostMemory, error) {
 	return selfDomCPUMem()
 }
 
-const clockTicks uint64 = 100 // github.com/containerd/cgroups/ticks.go hardcoded as 100 also
 const nanoSecToSec uint64 = 1000000000
 
 func (ctx ctrdContext) GetDomsCPUMem() (map[string]types.DomainMetric, error) {
@@ -268,7 +267,7 @@ func (ctx ctrdContext) GetDomsCPUMem() (map[string]types.DomainMetric, error) {
 			if metric.CPU == nil || metric.CPU.Usage == nil {
 				logrus.Errorf("GetDomsCPUMem nil returned in metric.CPU: %v", metric)
 			} else {
-				cpuTotal = metric.CPU.Usage.Total / nanoSecToSec / clockTicks
+				cpuTotal = metric.CPU.Usage.Total
 			}
 		} else {
 			logrus.Errorf("GetDomsCPUMem failed with error %v", err)
@@ -276,7 +275,7 @@ func (ctx ctrdContext) GetDomsCPUMem() (map[string]types.DomainMetric, error) {
 
 		res[id] = types.DomainMetric{
 			UUIDandVersion:    types.UUIDandVersion{},
-			CPUTotal:          cpuTotal,
+			CPUTotalNs:        cpuTotal, // Caller will scale
 			UsedMemory:        usedMem,
 			MaxUsedMemory:     maxUsedMem,
 			AvailableMemory:   availMem,

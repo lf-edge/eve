@@ -16,7 +16,7 @@ func TestGetDomsCPUMem(t *testing.T) {
 	}
 
 	for k, v := range res {
-		if v.UsedMemoryPercent < 0 || v.UsedMemoryPercent > 100 || v.CPUTotal != 0 || v.AvailableMemory < v.UsedMemory {
+		if v.UsedMemoryPercent < 0 || v.UsedMemoryPercent > 100 || v.CPUTotalNs != 0 || v.AvailableMemory < v.UsedMemory {
 			t.Errorf("result from get domain statistics doesn't make sense %s: %+v", k, v)
 		}
 	}

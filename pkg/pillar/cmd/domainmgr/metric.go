@@ -92,10 +92,14 @@ func getAndPublishMetrics(ctx *domainContext, hyper hypervisor.Hypervisor) {
 				continue
 			}
 			dm.Activated = status.Activated
+			// Scale the CPU nanoseconds based on the number of VCpus
+			if status.VCpus != 0 {
+				dm.CPUTotalNs /= uint64(status.VCpus)
+			}
 		}
 		if !dm.Activated {
 			// We clear the memory so it doesn't accidentally get
-			// reported.  We keep the CPUTotal and AvailableMemory
+			// reported.  We keep the CPUTotalNs and AvailableMemory
 			dm.UsedMemory = 0
 			dm.MaxUsedMemory = 0
 			dm.UsedMemoryPercent = 0
@@ -121,7 +125,7 @@ func getAndPublishMetrics(ctx *domainContext, hyper hypervisor.Hypervisor) {
 		}
 		dm.Activated = false
 		// We clear the memory so it doesn't accidentally get reported
-		// We keep the CPUTotal and AvailableMemory
+		// We keep the CPUTotalNs and AvailableMemory
 		dm.UsedMemory = 0
 		dm.UsedMemoryPercent = 0
 		ctx.pubDomainMetric.Publish(dm.Key(), dm)
@@ -170,9 +174,10 @@ func formatAndPublishHostCPUMem(ctx *domainContext, hm types.HostMemory, now tim
 		busy /= float64(CPUnum)
 	}
 
+	const nanoSecToSec uint64 = 1000000000
 	dm := types.DomainMetric{
 		UUIDandVersion:    hostUUID,
-		CPUTotal:          uint64(busy),
+		CPUTotalNs:        uint64(busy * float64(nanoSecToSec)),
 		UsedMemory:        uint32(used),
 		AvailableMemory:   uint32(hm.FreeMemoryMB),
 		UsedMemoryPercent: usedPerc,
