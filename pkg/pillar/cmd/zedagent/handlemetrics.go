@@ -230,6 +230,8 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 	ReportZmetric := new(metrics.ZmetricTypes)
 	*ReportZmetric = metrics.ZmetricTypes_ZmDevice
 
+	// This will be overridden with the timestamp for the CPU metrics
+	// below to make CPU usage calculations more accurate
 	ReportMetrics.AtTimeStamp = ptypes.TimestampNow()
 
 	info, err := host.Info()
@@ -535,8 +537,15 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 	// Get device info using nil UUID
 	dm := lookupDomainMetric(ctx, nilUUID.String())
 	if dm != nil {
-		log.Tracef("host CPU: %d, percent used %d",
-			dm.CPUTotalNs, (100*dm.CPUTotalNs)/uint64(info.Uptime))
+		log.Tracef("host CPU: %d, at %v, percent used %d",
+			dm.CPUTotalNs, dm.LastHeard, (100*dm.CPUTotalNs)/uint64(info.Uptime))
+		// Override the time of the report with the time from
+		// domainmgr
+		if !dm.LastHeard.IsZero() {
+			lh, _ := ptypes.TimestampProto(dm.LastHeard)
+			ReportMetrics.AtTimeStamp = lh
+		}
+
 		// XXX add field in CpuMetric so we can report with better
 		// granularity than one second
 		ReportDeviceMetric.CpuMetric.Total = *proto.Uint64(dm.CPUTotalNs / nanoSecToSec)
