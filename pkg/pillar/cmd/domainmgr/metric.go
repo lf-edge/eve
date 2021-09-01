@@ -17,9 +17,10 @@ func metricsTimerTask(ctx *domainContext, hyper hypervisor.Hypervisor) {
 	log.Functionln("starting metrics timer task")
 	getAndPublishMetrics(ctx, hyper)
 
-	// Publish 4X more often than zedagent publishes to controller
+	// Publish 20X more often than zedagent publishes to controller
+	// to reduce effect of quantization errors
 	interval := time.Duration(ctx.metricInterval) * time.Second
-	max := float64(interval) / 4
+	max := float64(interval) / 20
 	min := max * 0.3
 	ticker := flextimer.NewRangeTicker(time.Duration(min), time.Duration(max))
 
@@ -97,6 +98,7 @@ func getAndPublishMetrics(ctx *domainContext, hyper hypervisor.Hypervisor) {
 				dm.CPUTotalNs /= uint64(status.VCpus)
 			}
 		}
+		// XXX xen nilUUID also need to be scaled?
 		if !dm.Activated {
 			// We clear the memory so it doesn't accidentally get
 			// reported.  We keep the CPUTotalNs and AvailableMemory
