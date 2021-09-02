@@ -105,6 +105,7 @@ func getAndPublishMetrics(ctx *domainContext, hyper hypervisor.Hypervisor) {
 		} else if dm.UUIDandVersion.UUID == nilUUID {
 			// Scale Xen Dom0 based CPUs seen by hypervisor
 			dm.CPUTotalNs /= uint64(hm.Ncpus)
+			dm.Activated = true
 		}
 		if !dm.Activated {
 			// We clear the memory so it doesn't accidentally get
