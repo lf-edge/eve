@@ -393,6 +393,7 @@ type DiskStatus struct {
 type DomainMetric struct {
 	UUIDandVersion    UUIDandVersion
 	CPUTotalNs        uint64 // Nanoseconds since Domain boot scaled by #CPUs
+	CPUScaled         uint32 // The scale factor which was applied
 	UsedMemory        uint32
 	MaxUsedMemory     uint32
 	AvailableMemory   uint32
