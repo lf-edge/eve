@@ -318,8 +318,8 @@ func SendOnIntf(ctx *ZedCloudContext, destURL string, intf string, reqlen int64,
 		log.Traceln(errStr)
 		return nil, nil, senderStatus, errors.New(errStr)
 	}
-	numDNSServers := types.CountDNSServers(*ctx.DeviceNetworkStatus, intf)
-	if numDNSServers == 0 {
+	dnsServers := types.GetDNSServers(*ctx.DeviceNetworkStatus, intf)
+	if len(dnsServers) == 0 {
 		if ctx.FailureFunc != nil {
 			ctx.FailureFunc(log, intf, reqUrl, 0, 0, false)
 		}
@@ -366,9 +366,16 @@ func SendOnIntf(ctx *ZedCloudContext, destURL string, intf string, reqlen int64,
 			reqUrl, intf, localTCPAddr)
 		resolverDial := func(ctx context.Context, network, address string) (net.Conn, error) {
 			log.Tracef("resolverDial %v %v", network, address)
-			// XXX can we fallback to TCP? Would get a mismatched address if we do
-			d := net.Dialer{LocalAddr: &localUDPAddr}
-			return d.Dial(network, address)
+			ip := net.ParseIP(strings.Split(address, ":")[0])
+			for _, dnsServer := range dnsServers {
+				if dnsServer != nil && dnsServer.Equal(ip) {
+					// XXX can we fallback to TCP? Would get a mismatched address if we do
+					d := net.Dialer{LocalAddr: &localUDPAddr}
+					return d.Dial(network, address)
+				}
+			}
+			return nil, fmt.Errorf("DNS server %s is from a different network, skipping",
+				ip.String())
 		}
 		r := net.Resolver{Dial: resolverDial, PreferGo: true,
 			StrictErrors: false}
