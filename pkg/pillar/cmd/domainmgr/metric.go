@@ -71,6 +71,11 @@ func logWatermarks(ctx *domainContext, status *types.DomainStatus, dm *types.Dom
 
 func getAndPublishMetrics(ctx *domainContext, hyper hypervisor.Hypervisor) {
 	dmList, _ := hyper.GetDomsCPUMem()
+	hm, err := hyper.GetHostCPUMem()
+	if err != nil {
+		log.Errorf("Cannot obtain HostCPUMem: %s", err)
+		return
+	}
 	now := time.Now()
 	for domainName, dm := range dmList {
 		uuid, version, _, err := types.DomainnameToUUID(domainName)
@@ -97,8 +102,10 @@ func getAndPublishMetrics(ctx *domainContext, hyper hypervisor.Hypervisor) {
 			if status.VCpus != 0 {
 				dm.CPUTotalNs /= uint64(status.VCpus)
 			}
+		} else if dm.UUIDandVersion.UUID == nilUUID {
+			// Scale Xen Dom0 based CPUs seen by hypervisor
+			dm.CPUTotalNs /= uint64(hm.Ncpus)
 		}
-		// XXX xen nilUUID also need to be scaled?
 		if !dm.Activated {
 			// We clear the memory so it doesn't accidentally get
 			// reported.  We keep the CPUTotalNs and AvailableMemory
@@ -132,13 +139,8 @@ func getAndPublishMetrics(ctx *domainContext, hyper hypervisor.Hypervisor) {
 		dm.UsedMemoryPercent = 0
 		ctx.pubDomainMetric.Publish(dm.Key(), dm)
 	}
-	hm, err := hyper.GetHostCPUMem()
-	if err != nil {
-		log.Errorf("Cannot obtain HostCPUMem: %s", err)
-		return
-	}
 	if hyper.Name() != "xen" {
-		// the the hypervisor other than Xen, we don't have the Dom0 stats. Get the host
+		// the the hypervisor other than Xen, we don't have the Dom0 stats in dmList. Get the host
 		// cpu and memory for the device here
 		formatAndPublishHostCPUMem(ctx, hm, now)
 	}
