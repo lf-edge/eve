@@ -741,6 +741,21 @@ func (ctx xenContext) GetDomsCPUMem() (map[string]types.DomainMetric, error) {
 		logrus.Errorf("Calling fallbackDomainMetric")
 		dmList = fallbackDomainMetric()
 	}
+	// Need to add all of the others CPU nanoseconds into the Domain-0 entry
+	// since it represents all of the device
+	// XXX what about adding memory?
+	dom0, ok := dmList[dom0Name]
+	if !ok {
+		logrus.Errorf("No Domain-0 in CPUMemoryStat")
+	} else {
+		for d, dm := range dmList {
+			if d == dom0Name {
+				continue
+			}
+			dom0.CPUTotalNs += dm.CPUTotalNs
+		}
+		dmList[dom0Name] = dom0
+	}
 	return dmList, nil
 }
 
