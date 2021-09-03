@@ -445,7 +445,7 @@ type ZAttestReq struct {
 	ReqType     ZAttestReqType     `protobuf:"varint,1,opt,name=reqType,proto3,enum=org.lfedge.eve.attest.ZAttestReqType" json:"reqType,omitempty"` //type of the request
 	Quote       *ZAttestQuote      `protobuf:"bytes,2,opt,name=quote,proto3" json:"quote,omitempty"`                                                //attestation quote msg
 	Certs       []*certs.ZCert     `protobuf:"bytes,3,rep,name=certs,proto3" json:"certs,omitempty"`                                                //X509 certs in .PEM format, signed by device certificate
-	StorageKeys *AttestStorageKeys `protobuf:"bytes,4,opt,name=storage_keys,json=storageKeys,proto3" json:"storage_keys,omitempty"`                 //secrets to be ESCROW'ed with Controller, like keys for the volume storage vaults
+	StorageKeys *AttestStorageKeys `protobuf:"bytes,4,opt,name=storage_keys,json=storageKeys,proto3" json:"storage_keys,omitempty"`                 //encrypted secrets to be saved by the Controller, like encrypted keys for the volume storage vaults
 }
 
 func (x *ZAttestReq) Reset() {
@@ -1166,7 +1166,7 @@ func (x *ZAttestQuoteResp) GetKeys() []*AttestVolumeKey {
 	return nil
 }
 
-//Data to ESCROW against software updates
+//Encrypted data to save and retrievable post successful attestation
 type AttestStorageKeys struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
