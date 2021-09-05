@@ -103,7 +103,7 @@ func getAndPublishMetrics(ctx *domainContext, hyper hypervisor.Hypervisor) {
 				dm.CPUTotalNs /= uint64(status.VCpus)
 				dm.CPUScaled = uint32(status.VCpus)
 			}
-		} else if dm.UUIDandVersion.UUID == nilUUID {
+		} else if dm.UUIDandVersion.UUID == nilUUID && hm.Ncpus != 0 {
 			// Scale Xen Dom0 based CPUs seen by hypervisor
 			dm.CPUTotalNs /= uint64(hm.Ncpus)
 			dm.CPUScaled = hm.Ncpus
@@ -169,8 +169,10 @@ func formatAndPublishHostCPUMem(ctx *domainContext, hm types.HostMemory, now tim
 		busy += t.User + t.System + t.Nice + t.Irq + t.Softirq
 	}
 
-	// Scale based on the CPUs seen by the hypervisor
-	busy /= float64(hm.Ncpus)
+	if hm.Ncpus != 0 {
+		// Scale based on the CPUs seen by the hypervisor
+		busy /= float64(hm.Ncpus)
+	}
 
 	const nanoSecToSec uint64 = 1000000000
 	dm := types.DomainMetric{
