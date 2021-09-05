@@ -637,6 +637,8 @@ func (ctx xenContext) GetHostCPUMem() (types.HostMemory, error) {
 		} else {
 			hm.TotalMemoryMB = res
 		}
+	} else {
+		logrus.Warnf("Missing total_memory in %+v", dict)
 	}
 	if str, ok := dict["free_memory"]; ok {
 		res, err := strconv.ParseUint(str, 10, 64)
@@ -645,6 +647,8 @@ func (ctx xenContext) GetHostCPUMem() (types.HostMemory, error) {
 		} else {
 			hm.FreeMemoryMB = res
 		}
+	} else {
+		logrus.Warnf("Missing free_memory in %+v", dict)
 	}
 	if str, ok := dict["nr_cpus"]; ok {
 		// Note that this is the set of physical CPUs which is different
@@ -655,6 +659,8 @@ func (ctx xenContext) GetHostCPUMem() (types.HostMemory, error) {
 		} else {
 			hm.Ncpus = uint32(res)
 		}
+	} else {
+		logrus.Warnf("Missing nr_cpus in %+v", dict)
 	}
 	return hm, nil
 }
