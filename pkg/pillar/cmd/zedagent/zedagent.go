@@ -37,6 +37,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
+	"github.com/lf-edge/eve/pkg/pillar/priorityQueue"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
@@ -153,6 +154,7 @@ type zedagentContext struct {
 
 	// Track the counter from force.fallback.counter to detect changes
 	forceFallbackCounter int
+	infoQueue            *priorityQueue.PriorityQueue
 }
 
 var debug = false
@@ -229,6 +231,13 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		TriggerDeviceInfo: triggerDeviceInfo,
 		TriggerObjectInfo: triggerObjectInfo,
 	}
+	priorityCheckFunction := func(objType interface{}) bool {
+		if el, ok := objType.(info.ZInfoTypes); ok && el == info.ZInfoTypes_ZiApp {
+			return true
+		}
+		return false
+	}
+	zedagentCtx.infoQueue = priorityQueue.InitQueue(priorityCheckFunction)
 	zedagentCtx.specMap = types.NewConfigItemSpecMap()
 	zedagentCtx.globalConfig = *types.DefaultConfigItemValueMap()
 	zedagentCtx.globalStatus.ConfigItems = make(
@@ -1152,6 +1161,8 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 	// Use go routines to make sure we have wait/timeout without
 	// blocking the main select loop
+	log.Functionf("Creating %s at %s", "infoProcessingTask", agentlog.GetMyStack())
+	go infoProcessingTask(getconfigCtx.zedagentCtx)
 	log.Functionf("Creating %s at %s", "deviceInfoTask", agentlog.GetMyStack())
 	go deviceInfoTask(&zedagentCtx, triggerDeviceInfo)
 	log.Functionf("Creating %s at %s", "objectInfoTask", agentlog.GetMyStack())

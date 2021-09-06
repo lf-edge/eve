@@ -166,9 +166,8 @@ func prepareAndPublishNetworkInstanceInfoMsg(ctx *zedagentContext,
 	if x, ok := infoMsg.GetInfoContent().(*zinfo.ZInfoMsg_Niinfo); ok {
 		x.Niinfo = info
 	}
-	log.Tracef("Publish NetworkInstance Info message to zedcloud: %v",
-		infoMsg)
-	publishInfo(ctx, uuid, infoMsg)
+
+	schedulePublishMessageToZedCloud(ctx, infoMsg, uuid)
 }
 
 func fillVpnInfo(info *zinfo.ZInfoNetworkInstance, vpnStatus *types.VpnStatus) {
@@ -403,41 +402,6 @@ func publishVpnConnection(vpnInfo *zinfo.ZInfoVpn,
 	}
 
 	return vpnConnInfo
-}
-
-func publishInfo(ctx *zedagentContext, UUID string, infoMsg *zinfo.ZInfoMsg) {
-	publishInfoToZedCloud(UUID, infoMsg, ctx.iteration)
-	ctx.iteration += 1
-}
-
-func publishInfoToZedCloud(UUID string, infoMsg *zinfo.ZInfoMsg, iteration int) {
-
-	log.Functionf("publishInfoToZedCloud sending %v", infoMsg)
-	data, err := proto.Marshal(infoMsg)
-	if err != nil {
-		log.Fatal("publishInfoToZedCloud proto marshaling error: ", err)
-	}
-	statusURL := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API, devUUID, "info")
-	zedcloud.RemoveDeferred(zedcloudCtx, UUID)
-	buf := bytes.NewBuffer(data)
-	if buf == nil {
-		log.Fatal("malloc error")
-	}
-	size := int64(proto.Size(infoMsg))
-	err = SendProtobuf(statusURL, buf, size, iteration)
-	if err != nil {
-		log.Errorf("publishInfoToZedCloud failed: %s", err)
-		// Try sending later
-		// The buf might have been consumed
-		buf := bytes.NewBuffer(data)
-		if buf == nil {
-			log.Fatal("malloc error")
-		}
-		zedcloud.SetDeferred(zedcloudCtx, UUID, buf, size, statusURL,
-			true)
-	} else {
-		writeSentDeviceInfoProtoMessage(data)
-	}
 }
 
 func handleAppFlowMonitorCreate(ctxArg interface{}, key string,

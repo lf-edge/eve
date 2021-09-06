@@ -21,6 +21,7 @@ import (
 	"github.com/lf-edge/eve/api/go/info"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	etpm "github.com/lf-edge/eve/pkg/pillar/evetpm"
+	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	"github.com/lf-edge/eve/pkg/pillar/hardware"
 	"github.com/lf-edge/eve/pkg/pillar/netclone"
 	"github.com/lf-edge/eve/pkg/pillar/types"
@@ -154,7 +155,6 @@ func objectInfoTask(ctxPtr *zedagentContext, triggerInfo <-chan infoForObjectKey
 // PublishDeviceInfoToZedCloud This function is called per change, hence needs to try over all management ports
 func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 	aa := ctx.assignableAdapters
-	iteration := ctx.iteration
 	subBaseOsStatus := ctx.subBaseOsStatus
 
 	var ReportInfo = &info.ZInfoMsg{}
@@ -527,37 +527,7 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 	// is deleted.
 	createAppInstances(ctx, ReportDeviceInfo)
 
-	log.Tracef("PublishDeviceInfoToZedCloud sending %v", ReportInfo)
-	data, err := proto.Marshal(ReportInfo)
-	if err != nil {
-		log.Fatal("PublishDeviceInfoToZedCloud proto marshaling error: ", err)
-	}
-
-	statusUrl := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API, devUUID, "info")
-	zedcloud.RemoveDeferred(zedcloudCtx, deviceUUID)
-	buf := bytes.NewBuffer(data)
-	if buf == nil {
-		log.Fatal("malloc error")
-	}
-	size := int64(proto.Size(ReportInfo))
-	start := time.Now()
-	err = SendProtobuf(statusUrl, buf, size, iteration)
-	if err != nil {
-		log.Errorf("PublishDeviceInfoToZedCloud failed: %s", err)
-		// Try sending later
-		// The buf might have been consumed
-		buf := bytes.NewBuffer(data)
-		if buf == nil {
-			log.Fatal("malloc error")
-		}
-		zedcloud.SetDeferred(zedcloudCtx, deviceUUID, buf, size,
-			statusUrl, true)
-	} else {
-		writeSentDeviceInfoProtoMessage(data)
-
-		log.Functionf("sent device info %s took %v", deviceUUID,
-			time.Since(start))
-	}
+	schedulePublishMessageToZedCloud(ctx, ReportInfo, deviceUUID)
 }
 
 // PublishAppInstMetaDataToZedCloud is called when an appInst reports its Metadata to EVE.
@@ -588,36 +558,7 @@ func PublishAppInstMetaDataToZedCloud(ctx *zedagentContext, appInstID string, ap
 		reportAppInstMetadata.Amdinfo = ReportAppInstMetaData
 	}
 
-	log.Functionf("PublishAppInstMetaDataToZedCloud sending %v", ReportInfo)
-
-	data, err := proto.Marshal(ReportInfo)
-	if err != nil {
-		log.Fatal("PublishAppInstMetaDataToZedCloud proto marshaling error: ", err)
-	}
-	statusURL := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API, devUUID, "info")
-
-	deferKey := "appInstMetadataInfo:" + appInstID
-	zedcloud.RemoveDeferred(zedcloudCtx, deferKey)
-
-	buf := bytes.NewBuffer(data)
-	if buf == nil {
-		log.Fatal("malloc error")
-	}
-	size := int64(proto.Size(ReportInfo))
-	start := time.Now()
-	err = SendProtobuf(statusURL, buf, size, iteration)
-	if err != nil {
-		log.Errorf("PublishAppInstMetaDataToZedCloud failed: %s", err)
-		// Try sending later
-		// The buf might have been consumed
-		buf := bytes.NewBuffer(data)
-		if buf == nil {
-			log.Fatal("malloc error")
-		}
-		zedcloud.SetDeferred(zedcloudCtx, deferKey, buf, size, statusURL, true)
-	} else {
-		log.Functionf("sent appInstMetadata for appInstID: %v, took: %v", appInstID, time.Since(start))
-	}
+	schedulePublishMessageToZedCloud(ctx, ReportInfo, appInstID)
 }
 
 // Convert the implementation details to the user-friendly userStatus and subStatus*
@@ -943,4 +884,88 @@ func isUpdating(ctx *zedagentContext) bool {
 		return false
 	}
 	return false
+}
+
+//schedulePublishMessageToZedCloud put message into queue
+func schedulePublishMessageToZedCloud(ctx *zedagentContext, ReportInfo *info.ZInfoMsg, uuid string) {
+	data, err := proto.Marshal(ReportInfo)
+	if err != nil {
+		log.Fatal("sendInfoMessageToZedCloud proto marshaling error: ", err)
+	}
+	ctx.infoQueue.Put(ReportInfo.GetZtype(), uuid, data, true)
+}
+
+//infoProcessingTask process infoQueue and send scheduled messages to the controller
+func infoProcessingTask(ctx *zedagentContext) {
+	// in case of 10 errors in row sleep before next send
+	errorsWatermark := 10
+	// sleep before next send duration in case of errors
+	sleepOnErrors := 10 * time.Second
+	// Publish info every 90-300 Millisecond if scheduled
+	interval := 300 * time.Millisecond
+	max := float64(interval)
+	min := max * 0.3
+	infoTicker := flextimer.NewRangeTicker(time.Duration(min),
+		time.Duration(max))
+	gcTicker := flextimer.NewRangeTicker(time.Hour, 2*time.Hour)
+	errors := 0
+	for {
+		select {
+		case <-infoTicker.C:
+			count := ctx.infoQueue.GetCount()
+			if count > 0 {
+				if errors > errorsWatermark {
+					log.Functionf("infoProcessing: too many errors (%d) sleep for %s", errors, sleepOnErrors)
+					time.Sleep(sleepOnErrors)
+				}
+				start := time.Now()
+				objType, id, msgInterface := ctx.infoQueue.Get()
+				if msgInterface != nil {
+					msg := msgInterface.([]byte)
+					infoType := objType.(info.ZInfoTypes)
+					if err := sendInfoMessageToZedCloud(infoType, msg, id, ctx.iteration); err != nil {
+						log.Errorf("sendInfoMessageToZedCloud failed: %s", err)
+						// schedule it to re-send with override false, new objects may come async, we want to have the latest values
+						ctx.infoQueue.Put(infoType, id, msg, false)
+						errors++
+					} else {
+						errors = 0
+					}
+					ctx.iteration++
+				}
+				ctx.ps.CheckMaxTimeTopic(agentName, "infoProcessing", start,
+					warningTime, errorTime)
+			}
+		case <-gcTicker.C:
+			//clean all objects that sits inside for more than day
+			ctx.infoQueue.Cleanup(time.Now().Add(-24 * time.Hour))
+		}
+	}
+}
+
+func sendInfoMessageToZedCloud(ReportInfoType info.ZInfoTypes, ReportInfoData []byte, uuid string, iteration int) error {
+
+	log.Functionf("sendInfoMessageToZedCloud: %v for %s", ReportInfoType, uuid)
+
+	statusUrl := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API, devUUID, "info")
+
+	buf := bytes.NewBuffer(ReportInfoData)
+	if buf == nil {
+		log.Fatal("malloc error")
+	}
+	size := int64(len(ReportInfoData))
+	start := time.Now()
+	if err := SendProtobuf(statusUrl, buf, size, iteration); err != nil {
+		return err
+	}
+	switch ReportInfoType {
+	case info.ZInfoTypes_ZiApp:
+		writeSentAppInfoProtoMessage(ReportInfoData)
+	case info.ZInfoTypes_ZiDevice:
+		writeSentDeviceInfoProtoMessage(ReportInfoData)
+	}
+
+	log.Functionf("sent info %s took %v",
+		uuid, time.Since(start))
+	return nil
 }
