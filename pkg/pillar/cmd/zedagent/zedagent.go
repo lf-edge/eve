@@ -116,6 +116,7 @@ type zedagentContext struct {
 	subDiskMetric             pubsub.Subscription
 	subAppDiskMetric          pubsub.Subscription
 	subCapabilities           pubsub.Subscription
+	subAppInstMetaData        pubsub.Subscription
 	rebootCmd                 bool
 	rebootCmdDeferred         bool
 	deviceReboot              bool
@@ -944,6 +945,25 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	zedagentCtx.subBaseOsMgrStatus = subBaseOsMgrStatus
 	subBaseOsMgrStatus.Activate()
 
+	subAppInstMetaData, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "zedrouter",
+		MyAgentName:   agentName,
+		TopicImpl:     types.AppInstMetaData{},
+		Activate:      false,
+		Persistent:    true,
+		Ctx:           &zedagentCtx,
+		CreateHandler: handleAppInstMetaDataCreate,
+		ModifyHandler: handleAppInstMetaDataModify,
+		DeleteHandler: handleAppInstMetaDataDelete,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	zedagentCtx.subAppInstMetaData = subAppInstMetaData
+	subAppInstMetaData.Activate()
+
 	//initialize cipher processing block
 	cipherModuleInitialize(&zedagentCtx, ps)
 
@@ -1363,6 +1383,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		case change := <-subBaseOsMgrStatus.MsgChan():
 			subBaseOsMgrStatus.ProcessChange(change)
 
+		case change := <-subAppInstMetaData.MsgChan():
+			subAppInstMetaData.ProcessChange(change)
+
 		case <-stillRunning.C:
 			// Fault injection
 			if fatalFlag {
@@ -1432,6 +1455,13 @@ func triggerPublishAllInfo(ctxPtr *zedagentContext) {
 			ctxPtr.TriggerObjectInfo <- infoForObjectKey{
 				info.ZInfoTypes_ZiBlobList,
 				c.(types.BlobStatus).Key(),
+			}
+		}
+		// trigger publish appInst metadata infos
+		for _, c := range ctxPtr.subAppInstMetaData.GetAll() {
+			ctxPtr.TriggerObjectInfo <- infoForObjectKey{
+				info.ZInfoTypes_ZiAppInstMetaData,
+				c.(types.AppInstMetaData).Key(),
 			}
 		}
 	}()
