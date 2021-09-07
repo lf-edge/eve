@@ -56,6 +56,7 @@ type zedrouterContext struct {
 	triggerNumGC          bool // For appNum and bridgeNum
 	subAppNetworkConfig   pubsub.Subscription
 	subAppNetworkConfigAg pubsub.Subscription // From zedagent for dom0
+	subAppInstanceConfig  pubsub.Subscription // From zedagent to cleanup appInstMetadata
 
 	pubAppNetworkStatus pubsub.Publication
 
@@ -485,6 +486,23 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	zedrouterCtx.subAppNetworkConfigAg = subAppNetworkConfigAg
 	subAppNetworkConfigAg.Activate()
 
+	// Subscribe to AppInstConfig from zedagent
+	subAppInstanceConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "zedagent",
+		MyAgentName:   agentName,
+		TopicImpl:     types.AppInstanceConfig{},
+		Activate:      false,
+		Ctx:           &zedrouterCtx,
+		DeleteHandler: handleAppInstConfigDelete,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	zedrouterCtx.subAppInstanceConfig = subAppInstanceConfig
+	subAppInstanceConfig.Activate()
+
 	PbrInit(&zedrouterCtx)
 	routeChanges := devicenetwork.RouteChangeInit(log)
 	linkChanges := devicenetwork.LinkChangeInit(log)
@@ -573,6 +591,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 		case change := <-subAppNetworkConfigAg.MsgChan():
 			subAppNetworkConfigAg.ProcessChange(change)
+
+		case change := <-subAppInstanceConfig.MsgChan():
+			subAppInstanceConfig.ProcessChange(change)
 
 		case change := <-subDeviceNetworkStatus.MsgChan():
 			subDeviceNetworkStatus.ProcessChange(change)
@@ -869,6 +890,63 @@ func handleAppNetworkCreate(ctxArg interface{}, key string, configArg interface{
 	// on resource release, check whether any one else
 	// needs it
 	checkAppNetworkErrorAndStartTimer(ctx)
+}
+
+func publishAppInstMetadata(ctx *zedrouterContext,
+	appInstMetadata *types.AppInstMetaData) {
+	if appInstMetadata == nil {
+		log.Errorf("publishAppInstMetadata: nil appInst metadata")
+		return
+	}
+	key := appInstMetadata.Key()
+	log.Functionf("publishAppInstMetadata(%s)", key)
+
+	pub := ctx.pubAppInstMetaData
+	pub.Publish(appInstMetadata.Key(), *appInstMetadata)
+}
+
+func unpublishAppInstMetadata(ctx *zedrouterContext,
+	appInstMetadata *types.AppInstMetaData) {
+	if appInstMetadata == nil {
+		log.Errorf("unpublishAppInstMetadata: nil appInst metadata")
+		return
+	}
+	key := appInstMetadata.Key()
+	log.Tracef("unpublishAppInstMetadata(%s)\n", key)
+
+	pub := ctx.pubAppInstMetaData
+	if exists, _ := pub.Get(key); exists == nil {
+		log.Errorf("unpublishAppInstMetadata(%s) not found\n", key)
+		return
+	}
+	pub.Unpublish(key)
+}
+
+func lookupAppInstMetadata(ctx *zedrouterContext, key string) *types.AppInstMetaData {
+
+	pub := ctx.pubAppInstMetaData
+	st, _ := pub.Get(key)
+	if st == nil {
+		log.Tracef("lookupAppInstMetadata(%s) not found\n", key)
+		return nil
+	}
+	appInstMetadata := st.(types.AppInstMetaData)
+	return &appInstMetadata
+}
+
+func handleAppInstConfigDelete(ctxArg interface{}, key string, configArg interface{}) {
+
+	log.Functionf("handleAppInstConfigDelete(%s)\n", key)
+	ctx := ctxArg.(*zedrouterContext)
+	appInstMetadata := lookupAppInstMetadata(ctx, key)
+	if appInstMetadata == nil {
+		log.Functionf("handleAppInstConfigDelete: unknown %s\n", key)
+		return
+	}
+
+	// Clean up appInst Metadata
+	unpublishAppInstMetadata(ctx, appInstMetadata)
+	log.Functionf("handleAppNetworkConfigDelete(%s) done\n", key)
 }
 
 func doActivate(ctx *zedrouterContext, config types.AppNetworkConfig,

@@ -10,8 +10,10 @@ package zedrouter
 import (
 	"context"
 	"encoding/base64"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/ioutil"
 	stdlog "log"
 	"net"
@@ -53,6 +55,14 @@ type openstackHandler struct {
 type kubeConfigHandler struct {
 	ctx *zedrouterContext
 }
+
+// KubeconfigFileSizeLimitInBytes holds the maximum expected size of Kubeconfig file received from k3s server appInst.
+// Note: KubeconfigFileSizeLimitInBytes should always be < AppInstMetadataResponseSizeLimitInBytes.
+const KubeconfigFileSizeLimitInBytes = 32768 // 32KB
+
+// AppInstMetadataResponseSizeLimitInBytes holds the maximum expected size of appInst metadata received in the response.
+// Note: KubeconfigFileSizeLimitInBytes should always be < AppInstMetadataResponseSizeLimitInBytes.
+const AppInstMetadataResponseSizeLimitInBytes = 35840 // 35KB
 
 func createServer4(ctx *zedrouterContext, bridgeIP string, bridgeName string) error {
 	if bridgeIP == "" {
@@ -535,9 +545,18 @@ func (hdl kubeConfigHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, msg, http.StatusUnsupportedMediaType)
 		return
 	}
-	kubeConfig, err := ioutil.ReadAll(r.Body)
+
+	kubeConfig, err := ioutil.ReadAll(io.LimitReader(r.Body, AppInstMetadataResponseSizeLimitInBytes))
 	if err != nil {
 		msg := fmt.Sprintf("kube config handler: ioutil read failed: %v", err)
+		log.Errorf(msg)
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+
+	if binary.Size(kubeConfig) > KubeconfigFileSizeLimitInBytes {
+		msg := fmt.Sprintf("kube config handler: kubeconfig size exceeds limit. Expected <= %v, actual size: %v",
+			KubeconfigFileSizeLimitInBytes, binary.Size(kubeConfig))
 		log.Errorf(msg)
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
@@ -550,11 +569,13 @@ func (hdl kubeConfigHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, http.StatusText(http.StatusNoContent), http.StatusNoContent)
 		return
 	}
-	var appInstMetaData types.AppInstMetaData
-	appInstMetaData.AppInstUUID = anStatus.UUIDandVersion.UUID
-	appInstMetaData.Type = types.AppInstMetaDataTypeKubeConfig
-	appInstMetaData.Data = kubeConfig
-	pub := hdl.ctx.pubAppInstMetaData
-	pub.Publish(appInstMetaData.Key(), appInstMetaData)
+
+	var appInstMetaData = &types.AppInstMetaData{
+		AppInstUUID: anStatus.UUIDandVersion.UUID,
+		Data:        kubeConfig,
+		Type:        types.AppInstMetaDataTypeKubeConfig,
+	}
+
+	publishAppInstMetadata(hdl.ctx, appInstMetaData)
 	return
 }

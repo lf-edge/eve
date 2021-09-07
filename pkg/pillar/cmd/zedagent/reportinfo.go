@@ -127,6 +127,16 @@ func objectInfoTask(ctxPtr *zedagentContext, triggerInfo <-chan infoForObjectKey
 					PublishBlobInfoToZedCloud(ctxPtr, uuidStr, &blobStatus, ctxPtr.iteration)
 					ctxPtr.iteration++
 				}
+			case info.ZInfoTypes_ZiAppInstMetaData:
+				// publish appInst metadata info
+				sub := ctxPtr.subAppInstMetaData
+				if c, err = sub.Get(infoForKeyMessage.objectKey); err == nil {
+					appInstMetaData := c.(types.AppInstMetaData)
+					uuidStr := appInstMetaData.Key()
+					PublishAppInstMetaDataToZedCloud(ctxPtr, uuidStr, &appInstMetaData, appInstMetaData.Type,
+						ctxPtr.iteration)
+					ctxPtr.iteration++
+				}
 			}
 			if err != nil {
 				log.Functionf("objectInfoTask not found %s for key %s: %s",
@@ -547,6 +557,66 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 
 		log.Functionf("sent device info %s took %v", deviceUUID,
 			time.Since(start))
+	}
+}
+
+// PublishAppInstMetaDataToZedCloud is called when an appInst reports its Metadata to EVE.
+// AppInst metadata is relayed to the controller to be processed further.
+func PublishAppInstMetaDataToZedCloud(ctx *zedagentContext, appInstID string, appInstMetadata *types.AppInstMetaData,
+	metadataType types.AppInstMetaDataType, iteration int) {
+	log.Functionf("PublishAppInstMetaDataToZedCloud: appInstID: %v", appInstID)
+	var ReportInfo = &info.ZInfoMsg{}
+
+	contentType := new(info.ZInfoTypes)
+	*contentType = info.ZInfoTypes_ZiAppInstMetaData
+	ReportInfo.Ztype = *contentType
+	ReportInfo.DevId = *proto.String(zcdevUUID.String())
+	ReportInfo.AtTimeStamp = ptypes.TimestampNow()
+
+	ReportAppInstMetaData := new(info.ZInfoAppInstMetaData)
+	ReportAppInstMetaData.Uuid = appInstID
+	ReportAppInstMetaData.Type = info.AppInstMetaDataType(metadataType)
+
+	// if appInstMetadata == nil, then it denotes that the appInstMetadata is deleted.
+	if appInstMetadata != nil {
+		// The Data size is expected to be <= 32KB. We have a check for that in zedrouter.
+		ReportAppInstMetaData.Data = appInstMetadata.Data
+	}
+
+	ReportInfo.InfoContent = new(info.ZInfoMsg_Amdinfo)
+	if reportAppInstMetadata, ok := ReportInfo.GetInfoContent().(*info.ZInfoMsg_Amdinfo); ok {
+		reportAppInstMetadata.Amdinfo = ReportAppInstMetaData
+	}
+
+	log.Functionf("PublishAppInstMetaDataToZedCloud sending %v", ReportInfo)
+
+	data, err := proto.Marshal(ReportInfo)
+	if err != nil {
+		log.Fatal("PublishAppInstMetaDataToZedCloud proto marshaling error: ", err)
+	}
+	statusURL := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API, devUUID, "info")
+
+	deferKey := "appInstMetadataInfo:" + appInstID
+	zedcloud.RemoveDeferred(zedcloudCtx, deferKey)
+
+	buf := bytes.NewBuffer(data)
+	if buf == nil {
+		log.Fatal("malloc error")
+	}
+	size := int64(proto.Size(ReportInfo))
+	start := time.Now()
+	err = SendProtobuf(statusURL, buf, size, iteration)
+	if err != nil {
+		log.Errorf("PublishAppInstMetaDataToZedCloud failed: %s", err)
+		// Try sending later
+		// The buf might have been consumed
+		buf := bytes.NewBuffer(data)
+		if buf == nil {
+			log.Fatal("malloc error")
+		}
+		zedcloud.SetDeferred(zedcloudCtx, deferKey, buf, size, statusURL, true)
+	} else {
+		log.Functionf("sent appInstMetadata for appInstID: %v, took: %v", appInstID, time.Since(start))
 	}
 }
 
