@@ -1789,8 +1789,8 @@ func reserveAdapters(ctx *domainContext, config types.DomainConfig) *types.Error
 						extraStr = "(which is halting)"
 						description.ErrorSeverity = types.ErrorSeverityNotice
 					}
-					description.ErrorEntities = []*types.ErrorEntity{{EntityID: ibp.UsedByUUID.String(), EntityType: types.ErrorEntityAppInstance}}
-					description.ErrorRetryCondition = fmt.Sprintf("Will wait for adapter to release from app: %s", other.DisplayName)
+					description.ErrorEntities = []*types.ErrorEntity{{EntityID: other.UUIDandVersion.UUID.String(), EntityType: types.ErrorEntityAppInstance}}
+					description.ErrorRetryCondition = "Will wait for adapter to release from app"
 				}
 				description.Error = fmt.Sprintf("adapter %d %s used by %s %s",
 					adapter.Type, adapter.Name,

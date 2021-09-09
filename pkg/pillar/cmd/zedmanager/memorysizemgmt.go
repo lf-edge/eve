@@ -43,11 +43,13 @@ func getRemainingMemory(ctxPtr *zedmanagerContext) (uint64, uint64, uint64, erro
 	usedMemorySize += uint64(memoryReservedForEve)
 	deviceMemorySize, err := sysTotalMemory(ctxPtr)
 	if err != nil {
-		return 0, 0, 0, err
+		ctxPtr.checkFreedResources = true
+		return 0, 0, 0, fmt.Errorf("sysTotalMemory failed: %v. Scheduling of checkRetry", err)
 	}
 	if usedMemorySize > deviceMemorySize {
-		log.Errorf("getRemainingMemory discrepancy: accounted apps: %s; usedMemorySize: %d; deviceMemorySize: %d",
+		log.Errorf("getRemainingMemory discrepancy: accounted apps: %s; usedMemorySize: %d; deviceMemorySize: %d. Scheduling of checkRetry",
 			strings.Join(accountedApps, ", "), usedMemorySize, deviceMemorySize)
+		ctxPtr.checkFreedResources = true
 		return 0, latentMemorySize, haltingMemorySize, nil
 	} else {
 		return deviceMemorySize - usedMemorySize, latentMemorySize, haltingMemorySize, nil

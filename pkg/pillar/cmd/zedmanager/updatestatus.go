@@ -425,8 +425,13 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 				err)
 			log.Errorf("doActivate(%s) failed: %s",
 				status.Key(), errStr)
-			status.SetErrorWithSource(errStr,
-				types.AppInstanceConfig{}, time.Now())
+			description := types.ErrorDescription{
+				Error:               errStr,
+				ErrorSeverity:       types.ErrorSeverityNotice,
+				ErrorRetryCondition: "Will retry when information about memory will be available in zedmanager",
+			}
+			status.SetErrorWithSourceAndDescription(description,
+				types.AppInstanceConfig{})
 			status.MissingMemory = true
 			changed = true
 			return changed
@@ -435,27 +440,28 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 		if remaining < need {
 			var errStr string
 			var entities []*types.ErrorEntity
-			errSeverity := types.ErrorSeverityWarning
-			retryCondition := "Retry will be triggered when apps will shutdown: "
+			errSeverity := types.ErrorSeverityError
 			if remaining+halting < need {
 				errStr = fmt.Sprintf("Remaining memory bytes %d app instance needs %d",
 					remaining, need)
-				for _, st := range ctx.pubAppInstanceStatus.GetAll() {
-					status := st.(types.AppInstanceStatus)
-					entities = append(entities, &types.ErrorEntity{EntityID: status.UUIDandVersion.UUID.String(), EntityType: types.ErrorEntityAppInstance})
-					retryCondition = fmt.Sprintf("%s %s;", retryCondition, status.DisplayName)
-				}
 			} else {
-				errStr = fmt.Sprintf("App instance needs %d bytes but only have %d; waiting for halting app instances to free up %d bytes",
+				errStr = fmt.Sprintf("App instance needs %d bytes but only have %d; waiting for one or more halting app instances to free up %d bytes",
 					need, remaining, halting)
 				errSeverity = types.ErrorSeverityNotice
-				for _, st := range ctx.pubAppInstanceStatus.GetAll() {
-					status := st.(types.AppInstanceStatus)
-					if status.Activated || status.ActivateInprogress {
-						entities = append(entities, &types.ErrorEntity{EntityID: status.UUIDandVersion.UUID.String(), EntityType: types.ErrorEntityAppInstance})
-						retryCondition = fmt.Sprintf("%s %s;", retryCondition, status.DisplayName)
-					}
+			}
+			for _, st := range ctx.pubAppInstanceStatus.GetAll() {
+				status := st.(types.AppInstanceStatus)
+				if status.Activated || status.ActivateInprogress {
+					entities = append(entities, &types.ErrorEntity{EntityID: status.UUIDandVersion.UUID.String(), EntityType: types.ErrorEntityAppInstance})
 				}
+			}
+			retryCondition := ""
+			if len(entities) > 0 {
+				if errSeverity == types.ErrorSeverityError {
+					//reduce error severity due to domains with status.Activated || status.ActivateInprogress
+					errSeverity = types.ErrorSeverityWarning
+				}
+				retryCondition = "Retry will be triggered when one or more apps will shutdown"
 			}
 			log.Errorf("doActivate(%s) failed: %s",
 				status.Key(), errStr)
@@ -467,7 +473,6 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 			}
 			status.SetErrorWithSourceAndDescription(description, types.AppInstanceConfig{})
 			status.MissingMemory = true
-			publishAppInstanceStatus(ctx, status)
 			changed = true
 			return changed
 		}

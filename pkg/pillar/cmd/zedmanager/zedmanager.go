@@ -16,6 +16,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/base"
+	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
@@ -284,6 +285,10 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		}
 		ps.StillRunning(agentName, warningTime, errorTime)
 	}
+
+	//use timer for free resource checker to run it after stabilising of other changes
+	freeResourceChecker := flextimer.NewRangeTicker(5*time.Second, 10*time.Second)
+
 	log.Functionf("Handling all inputs")
 	for {
 		select {
@@ -308,18 +313,19 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		case change := <-subZedAgentStatus.MsgChan():
 			subZedAgentStatus.ProcessChange(change)
 
+		case <-freeResourceChecker.C:
+			// Did any update above make more resources available for
+			// other app instances?
+			if ctx.checkFreedResources {
+				start := time.Now()
+				checkRetry(&ctx)
+				ps.CheckMaxTimeTopic(agentName, "checkRetry", start,
+					warningTime, errorTime)
+				ctx.checkFreedResources = false
+			}
 		case <-stillRunning.C:
 		}
 		ps.StillRunning(agentName, warningTime, errorTime)
-		// Did any update above make more resources available for
-		// other app instances?
-		if ctx.checkFreedResources {
-			start := time.Now()
-			checkRetry(&ctx)
-			ps.CheckMaxTimeTopic(agentName, "checkRetry", start,
-				warningTime, errorTime)
-			ctx.checkFreedResources = false
-		}
 	}
 }
 
