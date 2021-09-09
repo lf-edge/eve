@@ -124,7 +124,7 @@ The encryption key is sealed into TPM using PCR values. This means that the key 
 
 However, in the above mechanism, it is desired that, the key is not sent in clear text, but instead be encrypted using a TPM based key, so that, the key is protected from being exposed in Controller. To this effect, the vault key itself is encrypted using a TPM based key. To decrypt the key, one has to be on the same device with access to the same TPM.
 
-For more details, please refer to [Measured Boot and Remote Attestation](https://wiki.lfedge.org/display/EVE/Measured+Boot+and+Remote+Attestation) design proposal.
+For more details, please refer to [Measured Boot and Remote Attestation](https://wiki.lfedge.org/display/EVE/Measured+Boot+and+Remote+Attestation) design specification.
 
 ## Secure Overlay Network
 
@@ -135,3 +135,7 @@ Each ECO has a unique certificate and private key generated when the ECO is depl
 Two ECOs communicating using the overlay will get an secure channel since LISP will perform a key exchange using the pair of public keys (which are bound to the EIDs per above).
 
 In addition, the LISP map server can provide ability to limit access to the mappings for certain EIDs based on the EID which is trying to look them up.
+
+## Details on keys and certificates
+
+These details are specified in [KEYS-AND-CERTS](KEYS-AND-CERTS.md).
