@@ -20,6 +20,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"net"
 	"os"
 	"strconv"
 	"strings"
@@ -416,6 +417,7 @@ func handleGlobalConfigImpl(ctxArg interface{}, key string,
 		ctxPtr.globalConfig = gcp
 		ctxPtr.GCInitialized = true
 	}
+	handleEdgeviewToken(gcp)
 	log.Functionf("handleGlobalConfigImpl(%s): done", key)
 }
 
@@ -432,6 +434,90 @@ func handleGlobalConfigDelete(ctxArg interface{},
 		debugOverride, ctxPtr.agentBaseContext.Logger)
 	ctxPtr.globalConfig = types.DefaultConfigItemValueMap()
 	log.Functionf("handleGlobalConfigDelete done for %s", key)
+}
+
+// XXX
+// temp solution to enter EdgeView IP, port and session token
+func handleEdgeviewToken(gcp *types.ConfigItemValueMap) {
+	var edgeviewpath = "/run/edgeview"
+	edgeviewParam := gcp.GlobalValueString(types.EdgeViewToken)
+	if _, err := os.Stat(edgeviewpath); os.IsNotExist(err) {
+		if err := os.MkdirAll(edgeviewpath, 0755); err != nil {
+			log.Error(err)
+			return
+		}
+	}
+	startedgeviewFile := edgeviewpath + "/" + "edge-view-token"
+	wsAddrFile := edgeviewpath + "/" + "edge-view-wss-addr"
+	if edgeviewParam != "" {
+		params := strings.SplitN(edgeviewParam, ",", 3)
+		if len(params) != 3 {
+			log.Errorf("edgeview.authen.endpoint.token not in 'ip,port,token' format")
+			return
+		}
+		host := params[0]
+		port := params[1]
+		token := params[2]
+		if !isHostValid(host) || !isPortValid(port) ||
+			len(token) == 0 || strings.Contains(token, " ") {
+			log.Errorf("edgeview.authen.endpoint.token not valid address, port or token")
+			return
+		}
+		ipaddrAndPort := host + ":" + port
+		f0, err := os.Create(wsAddrFile)
+		if err != nil {
+			log.Error(err)
+			return
+		}
+		_, err = f0.WriteString(ipaddrAndPort)
+		if err != nil {
+			log.Error(err)
+			return
+		}
+		f0.Close()
+		f, err := os.Create(startedgeviewFile)
+		if err != nil {
+			log.Error(err)
+			return
+		}
+		_, err = f.WriteString(token)
+		if err != nil {
+			log.Error(err)
+			return
+		}
+		log.Noticef("handleEdgeviewToken: created edgeview endpoint and token files")
+		f.Close()
+	} else { // default
+		if _, err := os.Stat(startedgeviewFile); err == nil {
+			os.Remove(startedgeviewFile)
+			os.Remove(wsAddrFile)
+			log.Noticef("handleEdgeviewToken: removed edgeview endpoing and token files")
+		}
+	}
+}
+
+func isHostValid(host string) bool {
+	addr := net.ParseIP(host)
+	if addr != nil {
+		return true
+	} else {
+		_, err := net.LookupHost(host)
+		if err != nil {
+			return false
+		}
+	}
+	return true
+}
+
+func isPortValid(port string) bool {
+	portNum, err := strconv.Atoi(port)
+	if err != nil {
+		return false
+	}
+	if portNum > 1023 && portNum < 65535 {
+		return true
+	}
+	return false
 }
 
 // handle zedagent status events, for cloud connectivity

@@ -188,6 +188,7 @@ func TestNewConfigItemSpecMap(t *testing.T) {
 		DefaultRemoteLogLevel,
 		DisableDHCPAllOnesNetMask,
 		ProcessCloudInitMultiPart,
+		EdgeViewToken,
 	}
 	if len(specMap.GlobalSettings) != len(gsKeys) {
 		t.Errorf("GlobalSettings has more (%d) than expected keys (%d)",

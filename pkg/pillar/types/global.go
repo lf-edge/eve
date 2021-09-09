@@ -216,6 +216,9 @@ const (
 
 	// ProcessCloudInitMultiPart to help VMs which do not handle mime multi-part themselves
 	ProcessCloudInitMultiPart GlobalSettingKey = "process.cloud-init.multipart"
+
+	// temp, Edgeview setting
+	EdgeViewToken GlobalSettingKey = "edgeview.authen.endpoint.token"
 )
 
 // AgentSettingKey - keys for per-agent settings
@@ -782,6 +785,9 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	configItemSpecMap.AddStringItem(SSHAuthorizedKeys, "", blankValidator)
 	configItemSpecMap.AddStringItem(DefaultLogLevel, "info", parseLevel)
 	configItemSpecMap.AddStringItem(DefaultRemoteLogLevel, "info", parseLevel)
+
+	// temp edgeview setting
+	configItemSpecMap.AddStringItem(EdgeViewToken, "", blankValidator)
 
 	// Add Agent Settings
 	configItemSpecMap.AddAgentSettingStringItem(LogLevel, "info", parseLevel)
