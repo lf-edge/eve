@@ -931,6 +931,21 @@ func maybeRetryBoot(ctx *domainContext, status *types.DomainStatus) {
 			status.Key(), status.Error)
 		status.ClearError()
 	}
+
+	filename := xenCfgFilename(config.AppNum)
+	file, err := os.Create(filename)
+	if err != nil {
+		//it is retry, so omit error
+		log.Error("os.Create for ", filename, err)
+	}
+	defer file.Close()
+
+	if err := hyper.Task(status).Setup(*status, *config, ctx.assignableAdapters, file); err != nil {
+		//it is retry, so omit error
+		log.Errorf("Failed to create DomainStatus from %v: %s",
+			config, err)
+	}
+
 	status.TriedCount += 1
 
 	ctx.createSema.V(1)
