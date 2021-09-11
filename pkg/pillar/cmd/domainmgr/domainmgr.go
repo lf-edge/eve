@@ -458,11 +458,14 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	log.Functionf("Creating %s at %s", "metricsTimerTask", agentlog.GetMyStack())
 	go metricsTimerTask(&domainCtx, hyper)
 
-	// Wait for DeviceNetworkStatus to be init so we know the management
-	// ports and then wait for assignableAdapters.
-	for !domainCtx.DNSinitialized {
-
-		log.Functionf("Waiting for DeviceNetworkStatus init")
+	// Wait for DeviceNetworkStatus to have ports and done with testing
+	// so we know the management ports and the other ports are assigned to
+	// "pciback", then we wait for assignableAdapters.
+	for len(domainCtx.deviceNetworkStatus.Ports) == 0 ||
+		domainCtx.deviceNetworkStatus.Testing {
+		log.Functionf("Waiting for DeviceNetworkStatus ports %d Testing %t",
+			len(domainCtx.deviceNetworkStatus.Ports),
+			domainCtx.deviceNetworkStatus.Testing)
 		select {
 		case change := <-subGlobalConfig.MsgChan():
 			subGlobalConfig.ProcessChange(change)
