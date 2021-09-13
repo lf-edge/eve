@@ -386,7 +386,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	// Parse any existing ConfigIntemValueMap but continue if there
 	// is none
 	for !domainCtx.GCComplete {
-		log.Functionf("waiting for GCComplete")
+		log.Noticef("waiting for GCComplete")
 		select {
 		case change := <-subGlobalConfig.MsgChan():
 			subGlobalConfig.ProcessChange(change)
@@ -406,7 +406,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		}
 		ps.StillRunning(agentName, warningTime, errorTime)
 	}
-	log.Functionf("processed GCComplete")
+	log.Noticef("processed GCComplete")
 
 	if !domainCtx.setInitialUsbAccess {
 		log.Functionf("GCComplete but not setInitialUsbAccess => first boot")
@@ -418,7 +418,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 	// Pick up debug aka log level before we start real work
 	for !domainCtx.GCInitialized {
-		log.Functionf("waiting for GCInitialized")
+		log.Noticef("waiting for GCInitialized")
 		select {
 		case change := <-subGlobalConfig.MsgChan():
 			subGlobalConfig.ProcessChange(change)
@@ -438,7 +438,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		}
 		ps.StillRunning(agentName, warningTime, errorTime)
 	}
-	log.Functionf("processed GlobalConfig")
+	log.Noticef("processed GlobalConfig")
 
 	capabilitiesSended := false
 	if err := getAndPublishCapabilities(capabilitiesInfoPub); err != nil {
@@ -451,7 +451,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	if _, err := utils.WaitForOnboarded(ps, log, agentName, warningTime, errorTime); err != nil {
 		log.Fatal(err)
 	}
-	log.Functionf("processed onboarded")
+	log.Noticef("processed onboarded")
 
 	log.Functionf("Creating %s at %s", "metricsTimerTask", agentlog.GetMyStack())
 	go metricsTimerTask(&domainCtx, hyper)
@@ -461,7 +461,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	// "pciback", then we wait for assignableAdapters.
 	for len(domainCtx.deviceNetworkStatus.Ports) == 0 ||
 		domainCtx.deviceNetworkStatus.Testing {
-		log.Functionf("Waiting for DeviceNetworkStatus ports %d Testing %t",
+		log.Noticef("Waiting for DeviceNetworkStatus ports %d Testing %t",
 			len(domainCtx.deviceNetworkStatus.Ports),
 			domainCtx.deviceNetworkStatus.Testing)
 		select {
@@ -486,6 +486,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		}
 		ps.StillRunning(agentName, warningTime, errorTime)
 	}
+	log.Noticef("Got DeviceNetworkStatus ports %d Testing %t",
+		len(domainCtx.deviceNetworkStatus.Ports),
+		domainCtx.deviceNetworkStatus.Testing)
 
 	// Subscribe to PhysicalIOAdapterList from zedagent
 	subPhysicalIOAdapter, err := ps.NewSubscription(
@@ -509,7 +512,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 	// Wait for PhysicalIOAdapters to be initialized.
 	for !domainCtx.assignableAdapters.Initialized {
-		log.Functionf("Waiting for AssignableAdapters")
+		log.Noticef("Waiting for AssignableAdapters")
 		select {
 		case change := <-subGlobalConfig.MsgChan():
 			subGlobalConfig.ProcessChange(change)
@@ -540,7 +543,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		}
 		ps.StillRunning(agentName, warningTime, errorTime)
 	}
-	log.Functionf("Have %d assignable adapters", len(aa.IoBundleList))
+	log.Noticef("Have %d assignable adapters", len(aa.IoBundleList))
 
 	// Subscribe to DomainConfig from zedmanager
 	subDomainConfig, err := ps.NewSubscription(
@@ -2529,13 +2532,13 @@ func updatePortAndPciBackIoMember(ctx *domainContext, ib *types.IoBundle, isPort
 			log.Warningf("Not assigning %s (%s) to pciback due to error: %s at %s",
 				ib.Phylabel, ib.PciLong, ib.Error, ib.ErrorTime)
 		} else if ctx.deviceNetworkStatus.Testing && ib.Type.IsNet() {
-			log.Functionf("Not assigning %s (%s) to pciback due to Testing",
+			log.Noticef("Not assigning %s (%s) to pciback due to Testing",
 				ib.Phylabel, ib.PciLong)
 		} else if ctx.usbAccess && isInUsbGroup(*aa, *ib) {
-			log.Functionf("Not assigning %s (%s) to pciback due to usbAccess",
+			log.Noticef("Not assigning %s (%s) to pciback due to usbAccess",
 				ib.Phylabel, ib.PciLong)
 		} else if ib.PciLong != "" {
-			log.Functionf("Assigning %s (%s) to pciback",
+			log.Noticef("Assigning %s (%s) to pciback",
 				ib.Phylabel, ib.PciLong)
 			err := hyper.PCIReserve(ib.PciLong)
 			if err != nil {
