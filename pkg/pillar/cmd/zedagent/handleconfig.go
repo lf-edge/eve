@@ -260,10 +260,12 @@ func getLatestConfig(url string, iteration int,
 		// If we crashed we wait until we connect to zedcloud so that
 		// keyboard can be enabled and things can be debugged and not
 		// have e.g., an OOM reboot loop
-		if ctx.bootReason.StartWithSavedConfig() &&
-			!getconfigCtx.readSavedConfig && !getconfigCtx.configReceived {
+		if !ctx.bootReason.StartWithSavedConfig() {
+			log.Warnf("Ignore any saved config due to boot reason %s",
+				ctx.bootReason)
+		} else if !getconfigCtx.readSavedConfig && !getconfigCtx.configReceived {
 
-			config, err := readSavedProtoMessageConfig(
+			config, ts, err := readSavedProtoMessageConfig(
 				ctx.globalConfig.GlobalValueInt(types.StaleConfigTime),
 				checkpointDirname+"/lastconfig", false)
 			if err != nil {
@@ -271,7 +273,8 @@ func getLatestConfig(url string, iteration int,
 				return false
 			}
 			if config != nil {
-				log.Function("Using saved config")
+				log.Noticef("Using saved config dated %s",
+					ts.Format(time.RFC3339Nano))
 				getconfigCtx.readSavedConfig = true
 				getconfigCtx.configGetStatus = types.ConfigGetReadSaved
 				return inhaleDeviceConfig(config, getconfigCtx,
@@ -432,36 +435,36 @@ func touchProtoMessage(filename string) {
 	}
 }
 
-// If the file exists then read the config
+// If the file exists then read the config, and return is modify time
 // Ignore if if older than StaleConfigTime seconds
 func readSavedProtoMessageConfig(staleConfigTime uint32,
-	filename string, force bool) (*zconfig.EdgeDevConfig, error) {
-	contents, err := readSavedProtoMessage(staleConfigTime, filename, force)
+	filename string, force bool) (*zconfig.EdgeDevConfig, time.Time, error) {
+	contents, ts, err := readSavedProtoMessage(staleConfigTime, filename, force)
 	if err != nil {
 		log.Errorln("readSavedProtoMessageConfig", err)
-		return nil, err
+		return nil, ts, err
 	}
 	var configResponse = &zconfig.ConfigResponse{}
 	err = proto.Unmarshal(contents, configResponse)
 	if err != nil {
 		log.Errorf("readSavedProtoMessageConfig Unmarshalling failed: %v",
 			err)
-		return nil, err
+		return nil, ts, err
 	}
 	config := configResponse.GetConfig()
-	return config, nil
+	return config, ts, nil
 }
 
-// If the file exists then read the proto message from it
+// If the file exists then read the proto message from it, and return its modify time
 // Ignore if if older than staleTime seconds
 func readSavedProtoMessage(staleTime uint32,
-	filename string, force bool) ([]byte, error) {
+	filename string, force bool) ([]byte, time.Time, error) {
 	info, err := os.Stat(filename)
 	if err != nil {
 		if os.IsNotExist(err) && !force {
-			return nil, nil
+			return nil, time.Time{}, nil
 		} else {
-			return nil, err
+			return nil, time.Time{}, err
 		}
 	}
 	age := time.Since(info.ModTime())
@@ -470,14 +473,14 @@ func readSavedProtoMessage(staleTime uint32,
 		errStr := fmt.Sprintf("savedProto too old: age %v limit %d\n",
 			age, staleLimit)
 		log.Errorln(errStr)
-		return nil, nil
+		return nil, info.ModTime(), nil
 	}
 	contents, err := ioutil.ReadFile(filename)
 	if err != nil {
 		log.Errorln("readSavedProtoMessage", err)
-		return nil, err
+		return nil, info.ModTime(), err
 	}
-	return contents, nil
+	return contents, info.ModTime(), nil
 }
 
 // The most recent config hash we received. Starts empty

@@ -113,14 +113,15 @@ func parseAndValidateLocalProfile(localProfileBytes []byte, getconfigCtx *getcon
 
 // read saved local profile in case of particular reboot reason
 func readSavedLocalProfile(getconfigCtx *getconfigContext, validate bool) (*profile.LocalProfile, error) {
-	localProfileMessage, err := readSavedProtoMessage(
+	localProfileMessage, ts, err := readSavedProtoMessage(
 		getconfigCtx.zedagentCtx.globalConfig.GlobalValueInt(types.StaleConfigTime),
 		filepath.Join(checkpointDirname, savedLocalProfileFile), false)
 	if err != nil {
 		return nil, fmt.Errorf("readSavedLocalProfile: %v", err)
 	}
 	if localProfileMessage != nil {
-		log.Function("Using saved local profile")
+		log.Noticef("Using saved local profile dated %s",
+			ts.Format(time.RFC3339Nano))
 		if validate {
 			return parseAndValidateLocalProfile(localProfileMessage, getconfigCtx)
 		}
