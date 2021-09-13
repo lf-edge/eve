@@ -521,6 +521,7 @@ func handleLastRebootReason(ctx *nodeagentContext) {
 	bootReason, ts := agentlog.GetBootReason(log)
 	if bootReason != types.BootReasonNone {
 		rebootTime = ts
+		log.Noticef("found bootReason %s", bootReason)
 	}
 
 	agentlog.DiscardBootReason(log)
@@ -537,6 +538,9 @@ func handleLastRebootReason(ctx *nodeagentContext) {
 			}
 		} else if previousSmartData.PowerCycleCount > -1 && smartData.PowerCycleCount > -1 &&
 			bootReason == types.BootReasonNone {
+			log.Noticef("previous power cycle count %d current %d",
+				previousSmartData.PowerCycleCount,
+				smartData.PowerCycleCount)
 			if previousSmartData.PowerCycleCount < smartData.PowerCycleCount {
 				reason = fmt.Sprintf("Reboot reason - device powered off. Restarted at %s",
 					dateStr)
