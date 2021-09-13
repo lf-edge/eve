@@ -332,7 +332,7 @@ func (br BootReason) StartWithSavedConfig() bool {
 	case BootReasonWatchdogPid:
 		return false
 	case BootReasonKernel:
-		return false
+		return true // XXX get false Kernel for power cycle events?
 	case BootReasonPowerFail:
 		return true
 	case BootReasonUnknown:
