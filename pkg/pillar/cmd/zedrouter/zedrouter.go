@@ -2052,6 +2052,11 @@ func updateACLIPAddr(ctx *zedrouterContext, changedDepend []types.ACLDepend) {
 		}
 		for i := range config.UnderlayNetworkList {
 			ulConfig := &config.UnderlayNetworkList[i]
+			if len(status.UnderlayNetworkList) <= i {
+				log.Noticef("updateACLIPAddr skipping ul %d %s: no status",
+					i, config.Key())
+				continue
+			}
 			ulStatus := &status.UnderlayNetworkList[i]
 			if ulStatus.ACLDependList == nil {
 				log.Tracef("updateACLIPAddr skipping ul %d %s: ACLDependList",
