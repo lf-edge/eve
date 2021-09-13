@@ -26,7 +26,8 @@ const pciPath = "/sys/bus/pci/devices"
 func ifNameToPci(log *base.LogObject, ifName string) (string, error) {
 	// Match for PCI IDs
 	re := regexp.MustCompile("([0-9a-f]){4}:([0-9a-f]){2}:([0-9a-f]){2}.[ls0-9a-f]")
-	devPath := basePath + "/" + ifName + "/device"
+	ifPath := basePath + "/" + ifName
+	devPath := ifPath + "/device"
 	info, err := os.Lstat(devPath)
 	if err != nil {
 		if !strings.HasPrefix(ifName, "eth") {
@@ -38,7 +39,8 @@ func ifNameToPci(log *base.LogObject, ifName string) (string, error) {
 		// Try alternate since the PCI device can be kethN
 		// if ifName is ethN
 		ifName = "k" + ifName
-		devPath = basePath + "/" + ifName + "/device"
+		ifPath = basePath + "/" + ifName
+		devPath = ifPath + "/device"
 		info, err = os.Lstat(devPath)
 		if err != nil {
 			if !os.IsNotExist(err) {
@@ -59,9 +61,32 @@ func ifNameToPci(log *base.LogObject, ifName string) (string, error) {
 	target := path.Base(link)
 	if re.MatchString(target) {
 		return target, nil
-	} else {
+	}
+	log.Noticef("Not PCI %s - try fallback for %s", target, ifName)
+	// Try fallback to handle nested virtualization
+	info, err = os.Lstat(ifPath)
+	if err != nil {
+		log.Noticef("Fallback failed: %s", err)
 		return target, fmt.Errorf("Not PCI %s", target)
 	}
+	if (info.Mode() & os.ModeSymlink) == 0 {
+		log.Noticef("Fallback not symlink")
+		return target, fmt.Errorf("Not PCI %s", target)
+	}
+	link, err = os.Readlink(ifPath)
+	if err != nil {
+		log.Noticef("Fallback readlink failed: %s", err)
+		return target, fmt.Errorf("Not PCI %s", target)
+	}
+	link = path.Clean(link)
+	components := strings.Split(link, "/")
+	for _, c := range components {
+		if re.MatchString(c) {
+			log.Noticef("Fallback found %s", c)
+			return c, nil
+		}
+	}
+	return target, fmt.Errorf("Not PCI %s", target)
 }
 
 // PCILongToShort returns the PCI ID without the domain id
