@@ -2365,10 +2365,6 @@ type AppNetworkACLArgs struct {
 	NIType     NetworkInstanceType
 	// This is the same AppNum that comes from AppNetworkStatus
 	AppNum int32
-	// On change, collect this information
-	OldAppIP      string
-	OldBridgeIP   string
-	OldBridgeName string
 }
 
 // IPTablesRule : iptables rule detail
@@ -3005,10 +3001,3 @@ const (
 	MinSubnetSize   = 8   // minimum Subnet Size
 	LargeSubnetSize = 16  // for determining default Dhcp Range
 )
-
-// AppNetworkUNetModifyData :
-type AppNetworkUNetModifyData struct {
-	OldAppIP      string
-	OldBridgeIP   string
-	OldBridgeName string
-}
