@@ -1465,23 +1465,16 @@ func updateACLConfiglet(ctx *zedrouterContext, aclArgs types.AppNetworkACLArgs, 
 		aclArgs.BridgeName, aclArgs.VifName, aclArgs.AppIP)
 
 	aclArgs.IPVer = determineIPVer(aclArgs.IsMgmt, aclArgs.BridgeIP)
-	// check if IP Addresses etc. have changed
-	nameChange := false
-	if aclArgs.AppIP != aclArgs.OldAppIP ||
-		aclArgs.BridgeName != aclArgs.OldBridgeName ||
-		aclArgs.BridgeIP != aclArgs.OldBridgeIP {
-		nameChange = true
-	}
-	if compareACLs(oldACLs, ACLs) == true && !force && !nameChange {
+	if !force && compareACLs(oldACLs, ACLs) {
 		log.Functionf("updateACLConfiglet: bridgeName %s, vifName %s, appIP %s: no change\n",
-			aclArgs.OldBridgeName, aclArgs.VifName, aclArgs.OldAppIP)
+			aclArgs.BridgeName, aclArgs.VifName, aclArgs.AppIP)
 		return oldRules, oldDepend, nil
 	}
 
 	rules, err := deleteACLConfiglet(aclArgs, oldRules)
 	if err != nil {
 		log.Functionf("updateACLConfiglet: bridgeName %s, vifName %s, appIP %s: delete fail\n",
-			aclArgs.OldBridgeName, aclArgs.VifName, aclArgs.OldAppIP)
+			aclArgs.BridgeName, aclArgs.VifName, aclArgs.AppIP)
 		return rules, nil, err
 	}
 
@@ -1495,14 +1488,13 @@ func updateACLConfiglet(ctx *zedrouterContext, aclArgs types.AppNetworkACLArgs, 
 		family = syscall.AF_INET6
 	}
 	var srcIP net.IP
-	if aclArgs.OldAppIP == "0.0.0.0" || aclArgs.OldAppIP == "" {
+	if aclArgs.AppIP == "0.0.0.0" || aclArgs.AppIP == "" {
 		srcIP = net.ParseIP("0.0.0.0")
 	} else {
-		srcIP = net.ParseIP(aclArgs.OldAppIP)
+		srcIP = net.ParseIP(aclArgs.AppIP)
 	}
 	if srcIP == nil {
-		log.Errorf("updateACLConfiglet: App IP (%s) parse failed",
-			aclArgs.OldAppIP)
+		log.Errorf("updateACLConfiglet: App IP (%s) parse failed", aclArgs.AppIP)
 	} else {
 		mark := getConnmark(uint8(aclArgs.AppNum), 0, false)
 		number, err := netlink.ConntrackDeleteIPSrc(netlink.ConntrackTable, family,

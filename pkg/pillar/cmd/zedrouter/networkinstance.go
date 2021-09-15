@@ -1922,13 +1922,8 @@ func doNetworkInstanceFallback(
 					// use input match on uplinks.
 					// XXX no change in config
 					// XXX forcing a change
-					modData := types.AppNetworkUNetModifyData{
-						OldAppIP:      ulStatus.AllocatedIPv4Addr,
-						OldBridgeIP:   ulStatus.BridgeIPAddr,
-						OldBridgeName: bridgeName,
-					}
 					doAppNetworkModifyUNetAcls(ctx, &appNetworkStatus,
-						ulConfig, ulConfig, ulStatus, modData, ipsets, true)
+						ulConfig, ulConfig, ulStatus, ipsets, true)
 				}
 			}
 			publishAppNetworkStatus(ctx, &appNetworkStatus)
@@ -1981,13 +1976,8 @@ func doNetworkInstanceFallback(
 					// This should take care of re-programming any ACL rules that
 					// use input match on uplinks.
 					// XXX no change in config
-					modData := types.AppNetworkUNetModifyData{
-						OldAppIP:      ulStatus.AllocatedIPv4Addr,
-						OldBridgeIP:   ulStatus.BridgeIPAddr,
-						OldBridgeName: bridgeName,
-					}
 					doAppNetworkModifyUNetAcls(ctx, &appNetworkStatus,
-						ulConfig, ulConfig, ulStatus, modData, ipsets, true)
+						ulConfig, ulConfig, ulStatus, ipsets, true)
 				}
 			}
 			publishAppNetworkStatus(ctx, &appNetworkStatus)
