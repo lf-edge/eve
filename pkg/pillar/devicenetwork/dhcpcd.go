@@ -92,6 +92,17 @@ func doDhcpClientActivate(log *base.LogObject, nuc types.NetworkPortConfig) {
 		}
 		log.Functionf("dhcpcd %s not running", nuc.IfName)
 		extras := []string{"-f", "/dhcpcd.conf", "--noipv4ll", "-b", "-t", "0"}
+		switch nuc.Type {
+		case types.NtIpv4Only:
+			extras = []string{"-f", "/dhcpcd.conf", "--noipv4ll", "--ipv4only", "-b", "-t", "0"}
+		case types.NtIpv6Only:
+			extras = []string{"-f", "/dhcpcd.conf", "--ipv6only", "-b", "-t", "0"}
+		case types.NT_NOOP:
+		case types.NT_IPV4:
+		case types.NT_IPV6:
+		case types.NtDualStack:
+		default:
+		}
 		if nuc.Gateway != nil && nuc.Gateway.String() == "0.0.0.0" {
 			extras = append(extras, "--nogateway")
 		}

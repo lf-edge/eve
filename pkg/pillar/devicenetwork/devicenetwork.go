@@ -188,6 +188,7 @@ func MakeDeviceNetworkStatus(log *base.LogObject, globalConfig types.DevicePortC
 		globalStatus.Ports[ix].ProxyConfig = u.ProxyConfig
 		// Set fields from the config...
 		globalStatus.Ports[ix].Dhcp = u.Dhcp
+		globalStatus.Ports[ix].Type = u.Type
 		_, subnet, _ := net.ParseCIDR(u.AddrSubnet)
 		if subnet != nil {
 			globalStatus.Ports[ix].Subnet = *subnet
