@@ -93,11 +93,14 @@ message ipspec {
 
 enum NetworkType {
   NETWORKTYPENOOP = 0;
-  V4 = 4;
-  V6 = 6;
+  V4 = 4; // Legacy - interpreted same as Dual stack
+  V6 = 6; // Legacy - interpreted same as Dual stack
   CryptoV4 = 24;
   CryptoV6 = 26;
   CryptoEID = 14;
+  V4Only = 7;
+  V6Only = 8;
+  DualV4V6 = 9;
 }
 
 enum WirelessType {

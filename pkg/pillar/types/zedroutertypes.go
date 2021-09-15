@@ -869,7 +869,8 @@ type DhcpConfig struct {
 	Gateway    net.IP
 	DomainName string
 	NtpServer  net.IP
-	DnsServers []net.IP // If not set we use Gateway as DNS server
+	DnsServers []net.IP    // If not set we use Gateway as DNS server
+	Type       NetworkType // IPv4 or IPv6 or Dual stack
 }
 
 // WifiConfig - Wifi structure
@@ -936,6 +937,7 @@ type NetworkPortStatus struct {
 	IsMgmt         bool   // Used to talk to controller
 	Cost           uint8
 	Dhcp           DhcpType
+	Type           NetworkType // IPv4 or IPv6 or Dual stack
 	Subnet         net.IPNet
 	NtpServer      net.IP // This comes from network instance configuration
 	DomainName     string
@@ -1823,8 +1825,19 @@ const (
 	NT_NOOP NetworkType = 0
 	NT_IPV4             = 4
 	NT_IPV6             = 6
-	// XXX Do we need a NT_DUAL/NT_IPV46? Implies two subnets/dhcp ranges?
-	// XXX how do we represent a bridge? NT_L2??
+
+	// EVE has been running with Dual stack DHCP behavior with both IPv4 & IPv6 specific networks.
+	// There can be users who are currently benefitting from this behavior.
+	// It makes sense to introduce two new types IPv4_ONLY & IPv6_ONLY and allow
+	// the same family selection from UI for the use cases where only one of the IP families
+	// is required on management/app-shared adapters.
+
+	// NtIpv4Only : IPv4 addresses only
+	NtIpv4Only = 5
+	// NtIpv6Only : IPv6 addresses only
+	NtIpv6Only = 7
+	// NtDualStack : Run with dual stack
+	NtDualStack = 8
 )
 
 // Extracted from the protobuf NetworkConfig. Used by parseSystemAdapter
