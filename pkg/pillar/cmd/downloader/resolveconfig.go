@@ -13,6 +13,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
+	logutils "github.com/lf-edge/eve/pkg/pillar/utils/logging"
 	uuid "github.com/satori/go.uuid"
 )
 
@@ -275,7 +276,10 @@ func resolveTagsToHash(ctx *downloaderContext, rc types.ResolveConfig,
 				errStr = "tag resolution cancelled by user"
 				break
 			}
-			errStr = errStr + "\n" + err.Error()
+			// to catch and skip the oci manifest error with the suffix of "no suitable address found"
+			if !strings.HasSuffix(err.Error(), logutils.NoSuitableAddrStr) {
+				errStr = errStr + "\n" + err.Error()
+			}
 			continue
 		}
 		rs.ClearError()

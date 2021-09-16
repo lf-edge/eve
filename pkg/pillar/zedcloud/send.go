@@ -25,7 +25,8 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
-	"github.com/satori/go.uuid"
+	logutils "github.com/lf-edge/eve/pkg/pillar/utils/logging"
+	uuid "github.com/satori/go.uuid"
 	"github.com/vishvananda/netlink"
 )
 
@@ -486,7 +487,7 @@ func SendOnIntf(ctx *ZedCloudContext, destURL string, intf string, reqlen int64,
 					senderStatus = types.SenderStatusRefused
 				}
 				errorList = append(errorList, err)
-			} else if isNoSuitableAddress(err) {
+			} else if logutils.IsNoSuitableAddrErr(err) {
 				// We get lots of these due to IPv6 link-local
 				// only address on some interfaces.
 				// Do not return as errors
@@ -784,22 +785,6 @@ func isECONNREFUSED(err error) bool {
 		return false
 	}
 	return errno == syscall.ECONNREFUSED
-}
-
-func isNoSuitableAddress(err error) bool {
-	e0, ok := err.(*url.Error)
-	if !ok {
-		return false
-	}
-	e1, ok := e0.Err.(*net.OpError)
-	if !ok {
-		return false
-	}
-	e2, ok := e1.Err.(*net.AddrError)
-	if !ok {
-		return false
-	}
-	return e2.Err == "no suitable address found"
 }
 
 // NewContext - return initialized cloud context
