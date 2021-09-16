@@ -18,6 +18,7 @@ import (
 	"strings"
 	"time"
 
+	logutils "github.com/lf-edge/eve/pkg/pillar/utils/logging"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/net/html"
 )
@@ -148,6 +149,7 @@ func ExecCmd(ctx context.Context, cmd, host, remoteFile, localFile string, objSi
 		done := false
 		supportRange := false //is server supports ranges requests, false for the first request
 		forceRestart := false
+		NoSuitableAddrFound := false
 		delay := time.Second
 		lastModified := ""
 		appendToErrorList := func(attempt int, err error) {
@@ -205,7 +207,16 @@ func ExecCmd(ctx context.Context, cmd, host, remoteFile, localFile string, objSi
 			}
 			resp, err := client.Do(req)
 			if err != nil {
-				appendToErrorList(attempt, fmt.Errorf("client.Do failed: %s", err))
+				// skip the error from http *net.DNSError has the suffix of "no suitable address found"
+				// for a cleaner error string output for http download failure
+				if !logutils.IsNoSuitableAddrErr(err) {
+					appendToErrorList(attempt, fmt.Errorf("client.Do failed: %s", err))
+				} else {
+					if !NoSuitableAddrFound {
+						NoSuitableAddrFound = true
+						appendToErrorList(attempt, fmt.Errorf(logutils.NoSuitableAddrStr))
+					}
+				}
 				continue
 			}
 

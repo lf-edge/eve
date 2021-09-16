@@ -16,6 +16,7 @@ import (
 	"github.com/lf-edge/eve/libs/zedUpload"
 	"github.com/lf-edge/eve/pkg/pillar/cipher"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	logutils "github.com/lf-edge/eve/pkg/pillar/utils/logging"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 )
 
@@ -215,7 +216,14 @@ func handleSyncOp(ctx *downloaderContext, key string,
 				break
 			}
 			sourceFailureError(ipSrc.String(), ifname, metricsURL, err)
-			errStr = errStr + "\n" + err.Error()
+			// the error with "no suitable address found" for http schemes
+			// are suppressed inside httputil library.
+			// the S3 and Azure similar error have their own private error structure
+			// and can only be handled with string search here.
+			dnError := strings.Trim(err.Error(), "\n")
+			if !strings.HasSuffix(dnError, logutils.NoSuitableAddrStr) {
+				errStr = errStr + "\n" + err.Error()
+			}
 			continue
 		}
 		// Record how much we downloaded
