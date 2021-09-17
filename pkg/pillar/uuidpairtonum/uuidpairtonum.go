@@ -127,7 +127,8 @@ func NumGetOldestUnused(log *base.LogObject, pub pubsub.Publication,
 		if item.NumType != numType || item.InUse || item.BaseID != baseID {
 			continue
 		}
-		if oldest.LastUseTime.Before(item.LastUseTime) {
+		if oldest.LastUseTime.IsZero() ||
+			oldest.LastUseTime.After(item.LastUseTime) {
 			log.Functionf("NumGetOldestUnused(%s) found older %v",
 				numType, item)
 			oldest = &item
