@@ -129,7 +129,8 @@ func UuidToNumGetOldestUnused(log *base.LogObject, pub pubsub.Publication,
 		if status.NumType != numType || status.InUse {
 			continue
 		}
-		if oldest.LastUseTime.Before(status.LastUseTime) {
+		if oldest.LastUseTime.IsZero() ||
+			oldest.LastUseTime.After(status.LastUseTime) {
 			log.Functionf("UuidToNumGetOldestUnused(%s) found older %v\n",
 				numType, status)
 			oldest = &status
