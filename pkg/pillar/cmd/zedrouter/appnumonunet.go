@@ -270,9 +270,35 @@ func appNumOnUNetBaseDelete(ctx *zedrouterContext, baseID uuid.UUID) {
 			continue
 		}
 		if appNumMap.BaseID == baseID {
-			log.Fatalf("appNumOnUNetBaseDelete(): active persistent app nums")
+			log.Fatalf("appNumOnUNetBaseDelete(%s): remaining: %v",
+				baseID, appNumMap)
 		}
 	}
 	log.Functionf("appNumOnUNetBaseDelete (%s)", baseID.String())
 	delete(appNumBase, baseID.String())
+}
+
+// appNumOnUNetRefCount returns the number of (remaining) references to the network
+func appNumOnUNetRefCount(ctx *zedrouterContext, networkID uuid.UUID) int {
+	appNumMap := appNumOnUNetBaseGet(networkID)
+	if appNumMap == nil {
+		log.Fatalf("appNumOnUNetRefCount: non map")
+	}
+	pub := ctx.pubUUIDPairToNum
+	numType := appNumOnUNetType
+	items := pub.GetAll()
+	count := 0
+	for _, item := range items {
+		appNumMap := item.(types.UUIDPairToNum)
+		if appNumMap.NumType != numType {
+			continue
+		}
+		if appNumMap.BaseID == networkID {
+			log.Functionf("appNumOnUNetRefCount(%s): found: %v",
+				networkID, appNumMap)
+			count++
+		}
+	}
+	log.Functionf("appNumOnUNetRefCount(%s) found %d", networkID, count)
+	return count
 }

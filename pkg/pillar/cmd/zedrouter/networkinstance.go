@@ -378,6 +378,8 @@ func handleNetworkInstanceDelete(ctxArg interface{}, key string,
 	pub.Publish(status.Key(), *status)
 	if status.Activated {
 		doNetworkInstanceInactivate(ctx, status)
+		status.Activated = false
+		publishNetworkInstanceStatus(ctx, status)
 	}
 	done := maybeNetworkInstanceDelete(ctx, status)
 	log.Functionf("handleNetworkInstanceDelete(%s) done %t", key, done)
@@ -391,9 +393,11 @@ func maybeNetworkInstanceDelete(ctx *zedrouterContext, status *types.NetworkInst
 		return false
 	}
 
-	if len(status.Vifs) != 0 {
-		log.Noticef("maybeNetworkInstanceDelete(%s) still %d Vifs",
-			status.Key(), len(status.Vifs))
+	// Any remaining appNumOnUNet references?
+	count := appNumOnUNetRefCount(ctx, status.UUID)
+	log.Noticef("maybeNetworkInstanceDelete(%s) refcount %d Vifs: %+v",
+		status.Key(), count, status.Vifs)
+	if count != 0 {
 		return false
 	}
 	doNetworkInstanceDelete(ctx, status)

@@ -1767,6 +1767,19 @@ func handleDelete(ctx *zedrouterContext, key string,
 
 	appNumFree(ctx, status.UUIDandVersion.UUID)
 	appNumsOnUNetFree(ctx, status)
+	// Did this free up any last references against any Network Instance Status?
+	for ulNum := 0; ulNum < len(status.UnderlayNetworkList); ulNum++ {
+		ulStatus := &status.UnderlayNetworkList[ulNum]
+		netstatus := lookupNetworkInstanceStatus(ctx, ulStatus.Network.String())
+		if netstatus != nil {
+			if maybeNetworkInstanceDelete(ctx, netstatus) {
+				log.Functionf("post appNumsOnUNetFree(%v) for %s deleted %s",
+					status.UUIDandVersion, status.DisplayName,
+					netstatus.Key())
+			}
+		}
+	}
+
 	log.Functionf("handleDelete done for %s\n", status.DisplayName)
 }
 
@@ -1904,6 +1917,7 @@ func appNetworkDoInactivateUnderlayNetwork(
 	maybeRemoveStaleIpsets(staleIpsets)
 
 	netstatus.RemoveVif(log, ulStatus.Vif)
+	publishNetworkInstanceStatus(ctx, netstatus)
 	if maybeNetworkInstanceDelete(ctx, netstatus) {
 		log.Noticef("deleted network instance %s", netstatus.Key())
 	} else {
