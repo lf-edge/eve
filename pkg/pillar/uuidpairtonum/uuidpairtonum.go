@@ -110,6 +110,7 @@ func NumDelete(log *base.LogObject, pub pubsub.Publication,
 	if err != nil {
 		log.Fatalf("NumDelete(%s) does not exist", key)
 	}
+	log.Functionf("NumDelete(%s) unpublishing", key)
 	if err := pub.Unpublish(key); err != nil {
 		log.Fatalf("NumDelete(%s) unpublish failed %v", key, err)
 	}

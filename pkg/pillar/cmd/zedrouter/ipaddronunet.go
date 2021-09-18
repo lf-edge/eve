@@ -13,6 +13,9 @@ import (
 
 func appNumsOnUNetAllocate(ctx *zedrouterContext,
 	config *types.AppNetworkConfig) error {
+
+	log.Functionf("appNumsOnUNetAllocate(%v) for %s",
+		config.UUIDandVersion, config.DisplayName)
 	for _, ulConfig := range config.UnderlayNetworkList {
 		isStatic := (ulConfig.AppIPAddr != nil)
 		appID := config.UUIDandVersion.UUID
@@ -33,6 +36,9 @@ func appNumsOnUNetAllocate(ctx *zedrouterContext,
 
 func appNumsOnUNetFree(ctx *zedrouterContext,
 	status *types.AppNetworkStatus) {
+
+	log.Functionf("appNumsOnUNetFree(%v) for %s",
+		status.UUIDandVersion, status.DisplayName)
 	appID := status.UUIDandVersion.UUID
 	for ulNum := 0; ulNum < len(status.UnderlayNetworkList); ulNum++ {
 		ulStatus := &status.UnderlayNetworkList[ulNum]

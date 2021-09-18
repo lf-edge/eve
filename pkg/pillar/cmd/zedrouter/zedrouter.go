@@ -1077,10 +1077,8 @@ func appNetworkDoActivateUnderlayNetwork(
 		addError(ctx, status, "error from network instance", err)
 		return err
 	}
-	networkInstanceInfo := &netInstStatus.NetworkInstanceInfo
-
 	// Fetch the network that this underlay is attached to
-	bridgeName := networkInstanceInfo.BridgeName
+	bridgeName := netInstStatus.BridgeName
 	vifName := "nbu" + strconv.Itoa(ulNum) + "x" +
 		strconv.Itoa(status.AppNum)
 	uLink, err := findBridge(bridgeName)
@@ -1179,7 +1177,7 @@ func appNetworkDoActivateUnderlayNetwork(
 
 	// Look for added or deleted ipsets
 	newIpsets, staleIpsets, restartDnsmasq := diffIpsets(ipsets,
-		networkInstanceInfo.BridgeIPSets)
+		netInstStatus.BridgeIPSets)
 
 	if restartDnsmasq && ulStatus.BridgeIPAddr != "" {
 		stopDnsmasq(bridgeName, true, false)
@@ -1193,11 +1191,11 @@ func appNetworkDoActivateUnderlayNetwork(
 			dnsServers, ntpServers)
 		startDnsmasq(bridgeName)
 	}
-	networkInstanceInfo.AddVif(log, vifName, appMac,
+	netInstStatus.AddVif(log, vifName, appMac,
 		config.UUIDandVersion.UUID)
-	networkInstanceInfo.BridgeIPSets = newIpsets
+	netInstStatus.BridgeIPSets = newIpsets
 	log.Functionf("set BridgeIPSets to %v for %s", newIpsets,
-		networkInstanceInfo.BridgeName)
+		netInstStatus.Key())
 
 	// Check App Container Stats ACL need to be reinstalled
 	appStatsMayNeedReinstallACL(ctx, config)
@@ -1457,7 +1455,7 @@ func handleAppNetworkModify(ctxArg interface{}, key string,
 	config := configArg.(types.AppNetworkConfig)
 	oldConfig := oldConfigArg.(types.AppNetworkConfig)
 	status := lookupAppNetworkStatus(ctx, key)
-	log.Functionf("handleAppNetworkModify(%v) for %s\n",
+	log.Functionf("handleAppNetworkModify(%v) for %s",
 		config.UUIDandVersion, config.DisplayName)
 	// reset error status and mark pending modify as true
 	status.ClearError()
@@ -1526,6 +1524,9 @@ func handleAppNetworkModify(ctxArg interface{}, key string,
 				ulStatus, ipsets)
 
 			if ulConfig.Network != ulStatus.Network {
+				log.Functionf("checkAppNetworkModifyUNetAppNum(%v) for %s: change from %s to %s",
+					config.UUIDandVersion, config.DisplayName,
+					ulStatus.Network, ulConfig.Network)
 				// update the reference to the network instance
 				err := doAppNetworkModifyUNetAppNum(ctx,
 					status.UUIDandVersion.UUID,
@@ -1692,6 +1693,9 @@ func checkAppNetworkModifyUNetAppNum(ctx *zedrouterContext,
 		if ulConfig.Network == ulStatus.Network {
 			continue
 		}
+		log.Functionf("checkAppNetworkModifyUNetAppNum(%v) for %s: change from %s to %s",
+			config.UUIDandVersion, config.DisplayName,
+			ulStatus.Network, ulConfig.Network)
 		// update the reference to the network instance
 		err := doAppNetworkModifyUNetAppNum(ctx,
 			status.UUIDandVersion.UUID, ulConfig, ulStatus)
