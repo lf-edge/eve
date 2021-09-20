@@ -58,6 +58,13 @@ func handleNetworkInstanceDelete(ctxArg interface{}, key string,
 	log.Functionf("handleNetworkInstanceDelete(%s) done", key)
 }
 
+// prepareAndPublishNetworkInstanceInfoMsg sends a message
+// which is mostly empty if deleted is set as a delete indication.
+// XXX When a network instance is deleted it is ideal to
+// send a flag such as deleted/gone inside
+// ZInfoNetworkInstance message. Having a separate flag
+// (indicating deletion) would make is explicit
+// and easy for the cloud process.
 func prepareAndPublishNetworkInstanceInfoMsg(ctx *zedagentContext,
 	status types.NetworkInstanceStatus, deleted bool) {
 
@@ -72,33 +79,23 @@ func prepareAndPublishNetworkInstanceInfoMsg(ctx *zedagentContext,
 	info := new(zinfo.ZInfoNetworkInstance)
 	info.NetworkID = uuid
 	info.NetworkVersion = status.UUIDandVersion.Version
-	info.Displayname = status.DisplayName
-	info.InstType = uint32(status.Type)
-	info.CurrentUplinkIntf = status.CurrentUplinkIntf
+	if !deleted {
+		info.Displayname = status.DisplayName
+		info.InstType = uint32(status.Type)
+		info.CurrentUplinkIntf = status.CurrentUplinkIntf
 
-	if !status.ErrorTime.IsZero() {
-		errInfo := new(zinfo.ErrorInfo)
-		errInfo.Description = status.Error
-		errTime, _ := ptypes.TimestampProto(status.ErrorTime)
-		errInfo.Timestamp = errTime
-		info.NetworkErr = append(info.NetworkErr, errInfo)
-		info.State = zinfo.ZNetworkInstanceState_ZNETINST_STATE_ERROR
-	} else {
-		if status.Activated {
+		if !status.ErrorTime.IsZero() {
+			errInfo := new(zinfo.ErrorInfo)
+			errInfo.Description = status.Error
+			errTime, _ := ptypes.TimestampProto(status.ErrorTime)
+			errInfo.Timestamp = errTime
+			info.NetworkErr = append(info.NetworkErr, errInfo)
+			info.State = zinfo.ZNetworkInstanceState_ZNETINST_STATE_ERROR
+		} else if status.Activated {
 			info.State = zinfo.ZNetworkInstanceState_ZNETINST_STATE_ONLINE
 		} else {
 			info.State = zinfo.ZNetworkInstanceState_ZNETINST_STATE_INIT
 		}
-	}
-
-	if deleted {
-		// XXX When a network instance is deleted it is ideal to
-		// send a flag such as deleted/gone inside
-		// ZInfoNetworkInstance message. Having a separate flag
-		// (indicating deletion) would make is explicit
-		// and easy for the cloud process.
-		info.Activated = false
-	} else {
 		info.Activated = status.Activated
 
 		info.BridgeNum = uint32(status.BridgeNum)
