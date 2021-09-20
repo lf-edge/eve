@@ -936,7 +936,6 @@ func PublishAppInfoToZedCloud(ctx *zedagentContext, uuid string,
 
 	ReportAppInfo.AppID = uuid
 	ReportAppInfo.SystemApp = false
-	ReportAppInfo.State = info.ZSwState_HALTED
 	if aiStatus != nil {
 		ReportAppInfo.AppName = aiStatus.DisplayName
 		ReportAppInfo.State = aiStatus.State.ZSwState()
@@ -1075,7 +1074,6 @@ func PublishContentInfoToZedCloud(ctx *zedagentContext, uuid string,
 	ReportContentInfo := new(info.ZInfoContentTree)
 
 	ReportContentInfo.Uuid = uuid
-	ReportContentInfo.State = info.ZSwState_HALTED
 	if ctStatus != nil {
 		ReportContentInfo.DisplayName = ctStatus.DisplayName
 		ReportContentInfo.State = ctStatus.State.ZSwState()
@@ -1146,7 +1144,6 @@ func PublishVolumeToZedCloud(ctx *zedagentContext, uuid string,
 	ReportVolumeInfo := new(info.ZInfoVolume)
 
 	ReportVolumeInfo.Uuid = uuid
-	ReportVolumeInfo.State = info.ZSwState_INITIAL
 	if volStatus != nil {
 		ReportVolumeInfo.DisplayName = volStatus.DisplayName
 		ReportVolumeInfo.State = volStatus.State.ZSwState()
