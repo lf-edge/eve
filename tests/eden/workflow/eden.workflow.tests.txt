@@ -3,7 +3,9 @@
 # EDEN_TEST env. var. -- flavour of test set: "small", "medium"(default) and "large"
 {{$workflow := EdenGetEnv "EDEN_TEST"}}
 # EDEN_TEST_SETUP env. var. -- "y"(default) performs the EDEN setup steps
-{{$setup := EdenGetEnv "EDEN_TEST_SETUP"}}
+{{$setup := "y"}}
+{{$setup_env := EdenGetEnv "EDEN_TEST_SETUP"}}
+{{if $setup_env}}{{$setup = $setup_env}}{{end}}
 # EDEN_TEST_STOP -- "y" stops EDEN after tests ("n" by default)
 {{$stop := EdenGetEnv "EDEN_TEST_STOP"}}
 # EDEN_TEST_USB_PT -- "y" enables USB Passthrough test (disabled by default).
@@ -85,6 +87,8 @@ eden.escript.test -testdata ../network/testdata/ -test.run TestEdenScripts/vlans
 eden.escript.test -testdata ../volume/testdata/ -test.run TestEdenScripts/volumes_test
 /bin/echo Eden sftp volumes test (17.2/{{$tests}})
 eden.escript.test -testdata ../volume/testdata/ -test.run TestEdenScripts/volume_sftp
+/bin/echo Eden test for local datastore volume (17.3/{{$tests}})
+eden.escript.test -testdata ../volume/testdata/ -test.run TestEdenScripts/local_datastore
 {{if (ne $registry "n")}}
 /bin/echo Eden eclient with mounted volume (17.3/{{$tests}})
 eden.escript.test -testdata ../eclient/testdata/ -test.run TestEdenScripts/mount
@@ -96,6 +100,8 @@ eden.escript.test -testdata ../eclient/testdata/ -test.run TestEdenScripts/host-
 eden.escript.test -testdata ../eclient/testdata/ -test.run TestEdenScripts/acl
 /bin/echo Eden profile test (18.3/{{$tests}})
 eden.escript.test -testdata ../eclient/testdata/ -test.run TestEdenScripts/profile
+/bin/echo Eden app metadata test (18.4/{{$tests}})
+eden.escript.test -testdata ../eclient/testdata/ -test.run TestEdenScripts/metadata
 /bin/echo Eden Network light (19/{{$tests}})
 eden.escript.test -testdata ../eclient/testdata/ -test.run TestEdenScripts/networking_light
 /bin/echo Eden Networks switch (20/{{$tests}})
