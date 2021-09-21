@@ -276,10 +276,17 @@ enum DataSecAtRestStatus {
   DATASEC_AT_REST_ERROR = 4;    // Enabled, but encountered an error
 }
 
+enum PCRStatus {
+  PCR_UNKNOWN = 0;  // Status is unknown
+  PCR_ENABLED = 1;  // Enabled PCR
+  PCR_DISABLED = 2; // Disabled PCR
+}
+
 message VaultInfo {
   string name = 1;                //Name of the vault
   DataSecAtRestStatus status = 2; //Status of the vault
   ErrorInfo vaultErr = 3;         //Additional info in case of failure
+  PCRStatus pcrStatus = 4;        //Status of the PCR
 }
 
 message DataSecAtRest {
