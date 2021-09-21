@@ -154,7 +154,6 @@ func objectInfoTask(ctxPtr *zedagentContext, triggerInfo <-chan infoForObjectKey
 // PublishDeviceInfoToZedCloud This function is called per change, hence needs to try over all management ports
 func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 	aa := ctx.assignableAdapters
-	iteration := ctx.iteration
 	subBaseOsStatus := ctx.subBaseOsStatus
 
 	var ReportInfo = &info.ZInfoMsg{}
@@ -534,30 +533,19 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 	}
 
 	statusUrl := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API, devUUID, "info")
-	zedcloud.RemoveDeferred(zedcloudCtx, deviceUUID)
+
 	buf := bytes.NewBuffer(data)
 	if buf == nil {
 		log.Fatal("malloc error")
 	}
 	size := int64(proto.Size(ReportInfo))
-	start := time.Now()
-	err = SendProtobuf(statusUrl, buf, size, iteration)
-	if err != nil {
-		log.Errorf("PublishDeviceInfoToZedCloud failed: %s", err)
-		// Try sending later
-		// The buf might have been consumed
-		buf := bytes.NewBuffer(data)
-		if buf == nil {
-			log.Fatal("malloc error")
-		}
-		zedcloud.SetDeferred(zedcloudCtx, deviceUUID, buf, size,
-			statusUrl, true)
-	} else {
-		writeSentDeviceInfoProtoMessage(data)
 
-		log.Functionf("sent device info %s took %v", deviceUUID,
-			time.Since(start))
-	}
+	//We queue the message and then get the highest priority message to send.
+	//If there are no failures and defers we'll send this message,
+	//but if there is a queue we'll retry sending the highest priority message.
+	zedcloud.SetDeferred(zedcloudCtx, deviceUUID, buf, size,
+		statusUrl, true, info.ZInfoTypes_ZiDevice)
+	zedcloud.HandleDeferred(zedcloudCtx, time.Now(), 0, true)
 }
 
 // PublishAppInstMetaDataToZedCloud is called when an appInst reports its Metadata to EVE.
@@ -597,27 +585,18 @@ func PublishAppInstMetaDataToZedCloud(ctx *zedagentContext, appInstID string, ap
 	statusURL := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API, devUUID, "info")
 
 	deferKey := "appInstMetadataInfo:" + appInstID
-	zedcloud.RemoveDeferred(zedcloudCtx, deferKey)
 
 	buf := bytes.NewBuffer(data)
 	if buf == nil {
 		log.Fatal("malloc error")
 	}
 	size := int64(proto.Size(ReportInfo))
-	start := time.Now()
-	err = SendProtobuf(statusURL, buf, size, iteration)
-	if err != nil {
-		log.Errorf("PublishAppInstMetaDataToZedCloud failed: %s", err)
-		// Try sending later
-		// The buf might have been consumed
-		buf := bytes.NewBuffer(data)
-		if buf == nil {
-			log.Fatal("malloc error")
-		}
-		zedcloud.SetDeferred(zedcloudCtx, deferKey, buf, size, statusURL, true)
-	} else {
-		log.Functionf("sent appInstMetadata for appInstID: %v, took: %v", appInstID, time.Since(start))
-	}
+
+	//We queue the message and then get the highest priority message to send.
+	//If there are no failures and defers we'll send this message,
+	//but if there is a queue we'll retry sending the highest priority message.
+	zedcloud.SetDeferred(zedcloudCtx, deferKey, buf, size, statusURL, true, info.ZInfoTypes_ZiAppInstMetaData)
+	zedcloud.HandleDeferred(zedcloudCtx, time.Now(), 0, true)
 }
 
 // Convert the implementation details to the user-friendly userStatus and subStatus*
