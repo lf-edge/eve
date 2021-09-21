@@ -497,6 +497,12 @@ func publishFscryptVaultStatus(ctx *vaultMgrContext,
 	status.Name = vaultName
 	status.ConversionComplete = ctx.vaultUCDone
 
+	if etpm.PCRBankSHA256Enabled() {
+		status.PCRStatus = info.PCRStatus_PCR_ENABLED
+	} else {
+		status.PCRStatus = info.PCRStatus_PCR_DISABLED
+	}
+
 	if fscryptStatus != info.DataSecAtRestStatus_DATASEC_AT_REST_ENABLED {
 		status.Status = fscryptStatus
 		status.SetErrorNow(fscryptError)
