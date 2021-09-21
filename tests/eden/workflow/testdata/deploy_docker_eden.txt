@@ -3,7 +3,7 @@
 [!exec:grep] stop
 
 # Fail if reboot
-! test eden.reboot.test -test.v -timewait 10m -reboot=0 -count=1 &
+! test eden.reboot.test -test.v -timewait=0 -reboot=0 -count=1 &
 
 eden pod deploy -p 8028:80 docker://nginx
 stdout 'deploy pod .* with docker://nginx request sent'

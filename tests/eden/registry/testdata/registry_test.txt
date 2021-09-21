@@ -5,8 +5,8 @@
 
 eden -t 10s pod ps
 
-# Starting of reboot detector with a 3 reboots limit
-! test eden.reboot.test -test.v -timewait 10m -reboot=0 -count=1 &
+# Starting of reboot detector with a 1 reboot limit
+! test eden.reboot.test -test.v -timewait=0 -reboot=0 -count=1 &
 
 # Upload image to registry
 eden -t 5m registry load nginx

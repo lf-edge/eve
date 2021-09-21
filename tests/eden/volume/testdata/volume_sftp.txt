@@ -1,7 +1,7 @@
 eden -t 5s volume ls
 
 # Starting of reboot detector with a 1 reboots limit
-! test eden.reboot.test -test.v -timewait 10m -reboot=0 -count=1 &
+! test eden.reboot.test -test.v -timewait=0 -reboot=0 -count=1 &
 
 # Create volume and force EVE to load it via SFTP
 eden -t 1m volume create -n v-qcow2-sftp file://{{EdenConfig "eden.root"}}/empty.qcow2 --format=qcow2 --disk-size=200M --sftp=true

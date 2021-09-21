@@ -18,7 +18,7 @@
 exec chmod 600 {{EdenConfig "eden.tests"}}/eclient/image/cert/id_rsa
 
 # Starting of reboot detector with a 1 reboot limit
-! test eden.reboot.test -test.v -timewait 40m -reboot=0 -count=1 &
+! test eden.reboot.test -test.v -timewait=0 -reboot=0 -count=1 &
 
 message 'Resetting of EVE'
 eden eve reset
@@ -38,7 +38,7 @@ eden pod deploy -n curl-acl1 --memory=512MB docker://lfedge/eden-eclient:83cfe07
 # Second app is only allowed to access $long_domain and $fake_domain.
 eden pod deploy -n curl-acl2 --memory=512MB docker://lfedge/eden-eclient:83cfe07 -p 2224:22 --networks={{$network_name}} --acl={{$network_name}}:{{$long_domain}} --acl={{$network_name}}:{{$fake_domain}}:allow --acl={{$network_name}}:ieee.org:drop
 
-test eden.app.test -test.v -timewait 10m RUNNING curl-acl1 curl-acl2
+test eden.app.test -test.v -timewait 15m RUNNING curl-acl1 curl-acl2
 
 exec -t 10m bash wait_ssh.sh 2223
 exec -t 10m bash wait_ssh.sh 2224

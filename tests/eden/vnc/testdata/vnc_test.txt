@@ -1,7 +1,7 @@
 {{$test_opts := "-test.v -name vnc-app"}}
 
 # Starting of reboot detector with a 1 reboot limit
-! test eden.reboot.test -test.v -timewait 45m -reboot=0 -count=1 &
+! test eden.reboot.test -test.v -timewait=0 -reboot=0 -count=1 &
 
 #TestVNCVMStart checks if app processed by EVE, app in RUNNING state
 test eden.vnc.test {{$test_opts}} -timewait 15m -test.run TestVNCVMStart
