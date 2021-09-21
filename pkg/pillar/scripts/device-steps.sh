@@ -390,7 +390,8 @@ if [ ! -s $CONFIGDIR/device.cert.pem ] || [ $RTC = 0 ]; then
         sleep 10
         YEAR=$(date +%Y)
     done
-
+fi
+if [ ! -s $CONFIGDIR/device.cert.pem ]; then
     echo "$(date -Ins -u) Generating a device key pair and self-signed cert (using TPM/TEE if available)"
     if [ -c $TPM_DEVICE_PATH ] && ! [ -f $CONFIGDIR/disable-tpm ]; then
         echo "$(date -Ins -u) TPM device is present and allowed, creating TPM based device key"
