@@ -255,9 +255,8 @@ func appNumOnUNetBaseCreate(baseID uuid.UUID) *types.Bitmap {
 
 // Delete the application number Base for a given UUID
 func appNumOnUNetBaseDelete(ctx *zedrouterContext, baseID uuid.UUID) {
-	appNumMap := appNumOnUNetBaseGet(baseID)
-	if appNumMap == nil {
-		log.Fatalf("appNumOnUNetBaseDelete: non-existent")
+	if baseMap := appNumOnUNetBaseGet(baseID); baseMap == nil {
+		log.Fatalf("appNumOnUNetBaseDelete: non-existent map")
 	}
 	// check whether there are still some apps on
 	// this network
@@ -279,10 +278,9 @@ func appNumOnUNetBaseDelete(ctx *zedrouterContext, baseID uuid.UUID) {
 }
 
 // appNumOnUNetRefCount returns the number of (remaining) references to the network
-func appNumOnUNetRefCount(ctx *zedrouterContext, networkID uuid.UUID) int {
-	appNumMap := appNumOnUNetBaseGet(networkID)
-	if appNumMap == nil {
-		log.Fatalf("appNumOnUNetRefCount: non map")
+func appNumOnUNetRefCount(ctx *zedrouterContext, baseID uuid.UUID) int {
+	if baseMap := appNumOnUNetBaseGet(baseID); baseMap == nil {
+		log.Fatalf("appNumOnUNetRefCount: non-existent map")
 	}
 	pub := ctx.pubUUIDPairToNum
 	numType := appNumOnUNetType
@@ -293,12 +291,12 @@ func appNumOnUNetRefCount(ctx *zedrouterContext, networkID uuid.UUID) int {
 		if appNumMap.NumType != numType {
 			continue
 		}
-		if appNumMap.BaseID == networkID {
+		if appNumMap.BaseID == baseID {
 			log.Functionf("appNumOnUNetRefCount(%s): found: %v",
-				networkID, appNumMap)
+				baseID, appNumMap)
 			count++
 		}
 	}
-	log.Functionf("appNumOnUNetRefCount(%s) found %d", networkID, count)
+	log.Functionf("appNumOnUNetRefCount(%s) found %d", baseID, count)
 	return count
 }

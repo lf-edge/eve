@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	uuid "github.com/satori/go.uuid"
 )
 
 func appNumsOnUNetAllocate(ctx *zedrouterContext,
@@ -44,9 +45,21 @@ func appNumsOnUNetFree(ctx *zedrouterContext,
 		ulStatus := &status.UnderlayNetworkList[ulNum]
 		networkID := ulStatus.Network
 		// release the app number
-		_, err := appNumOnUNetGet(ctx, networkID, appID)
-		if err == nil {
-			appNumOnUNetFree(ctx, networkID, appID)
+		appNumOnNetworkInstanceRelease(ctx, networkID, appID)
+	}
+}
+
+// frees an app number for network instance/ application number pair
+// also tries to delete the referred network instance
+func appNumOnNetworkInstanceRelease(ctx *zedrouterContext,
+	networkID uuid.UUID, appID uuid.UUID) {
+	if _, err := appNumOnUNetGet(ctx, networkID, appID); err == nil {
+		appNumOnUNetFree(ctx, networkID, appID)
+	}
+	netstatus := lookupNetworkInstanceStatus(ctx, networkID.String())
+	if netstatus != nil {
+		if maybeNetworkInstanceDelete(ctx, netstatus) {
+			log.Noticef("deleted network instance %s", netstatus.Key())
 		}
 	}
 }

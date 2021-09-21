@@ -896,6 +896,7 @@ func handleAppNetworkCreate(ctxArg interface{}, key string, configArg interface{
 
 	// allocate application numbers on underlay network
 	if err := appNumsOnUNetAllocate(ctx, &config); err != nil {
+		status.PendingAdd = false
 		addError(ctx, &status, "handleAppNetworkCreate", err)
 		return
 	}
@@ -1486,67 +1487,30 @@ func handleAppNetworkModify(ctxArg interface{}, key string,
 	// We need to make sure we update any network instance references which
 	// have changed, but we need to do that when the status is not Activated,
 	// hence the order depends on the state.
-	if !config.Activate && status.Activated {
-		doInactivateAppNetwork(ctx, status)
-		checkAppNetworkModifyUNetAppNum(ctx, config, status)
-		appNetworkDoCopyNetworksToStatus(ctx, config, status)
-	} else if config.Activate && !status.Activated {
-		checkAppNetworkModifyUNetAppNum(ctx, config, status)
-		appNetworkDoCopyNetworksToStatus(ctx, config, status)
-		doActivate(ctx, config, status) // We check any error below
-	} else if !status.Activated {
+	if !status.Activated {
+		// need not handle ACL changes in deactivated state
 		checkAppNetworkModifyUNetAppNum(ctx, config, status)
 		// Just copy in config
 		appNetworkDoCopyNetworksToStatus(ctx, config, status)
-	} else {
-		// during modify, copy the collect stats IP to status and
-		// check to see if need to launch the process
-		appCheckStatsCollect(ctx, &config, status)
+		if config.Activate {
+			doActivate(ctx, config, status) // We check any error below
+		}
+	} else { // activated
+		if config.Activate {
+			// during modify, copy the collect stats IP to status and
+			// check to see if need to launch the process
+			appCheckStatsCollect(ctx, &config, status)
 
-		// Check which underlays have changes while active
-		// that require bringing them down and up
-		for i := range config.UnderlayNetworkList {
-			ulNum := i + 1
-			log.Tracef("handleModify ulNum %d\n", ulNum)
-			ulConfig := &config.UnderlayNetworkList[i]
-			oldulConfig := &oldConfig.UnderlayNetworkList[i]
-			ulStatus := &status.UnderlayNetworkList[i]
-			if ulConfig.Network == ulStatus.Network &&
-				ulConfig.AppIPAddr.Equal(ulStatus.AppIPAddr) &&
-				ulConfig.AppMacAddr.String() == ulStatus.AppMacAddr.String() {
-				// Save new config then process any ACL changes
-				ulStatus.UnderlayNetworkConfig = *ulConfig
-				doAppNetworkModifyUNetAcls(ctx, status, ulConfig,
-					oldulConfig, ulStatus, ipsets, false)
-				continue
-			}
-			appNetworkDoInactivateUnderlayNetwork(ctx, status,
-				ulStatus, ipsets)
-
-			if ulConfig.Network != ulStatus.Network {
-				log.Functionf("checkAppNetworkModifyUNetAppNum(%v) for %s: change from %s to %s",
-					config.UUIDandVersion, config.DisplayName,
-					ulStatus.Network, ulConfig.Network)
-				// update the reference to the network instance
-				err := doAppNetworkModifyUNetAppNum(ctx,
-					status.UUIDandVersion.UUID,
-					ulConfig, ulStatus)
-				if err != nil {
-					log.Errorf("handleAppNetworkModify: AppNum failed for %s: %v",
-						config.DisplayName, err)
-					addError(ctx, status, "handleModify", err)
-				}
-			}
-			// Save new config
-			ulStatus.UnderlayNetworkConfig = *ulConfig
-
-			err := appNetworkDoActivateUnderlayNetwork(
-				ctx, config, status, ipsets, ulConfig, ulNum)
-			if err != nil {
-				// addError already done
-				log.Errorf("handleAppNetworkModify: Underlay Network activation failed for %s: %v",
-					config.DisplayName, err)
-			}
+			// handle any underlay specific change, may need to
+			// deactivate/activate a specific underlay network for
+			// network/addr changes
+			doAppNetworkModifyUnderlayNetworks(ctx, status,
+				config, oldConfig, ipsets, false)
+		} else {
+			// deactivate will clear ACLs also
+			doInactivateAppNetwork(ctx, status)
+			checkAppNetworkModifyUNetAppNum(ctx, config, status)
+			appNetworkDoCopyNetworksToStatus(ctx, config, status)
 		}
 	}
 
@@ -1619,6 +1583,59 @@ func doAppNetworkSanityCheckForModify(ctx *zedrouterContext,
 		return err
 	}
 	return nil
+}
+
+// for activated/active case
+func doAppNetworkModifyUnderlayNetworks(
+	ctx *zedrouterContext,
+	status *types.AppNetworkStatus,
+	config types.AppNetworkConfig,
+	oldConfig types.AppNetworkConfig,
+	ipsets []string, force bool) {
+	for i := range config.UnderlayNetworkList {
+		ulNum := i + 1
+		log.Tracef("handleModify(%s), ulNum %d\n", config.DisplayName, ulNum)
+		ulConfig := &config.UnderlayNetworkList[i]
+		oldulConfig := &oldConfig.UnderlayNetworkList[i]
+		ulStatus := &status.UnderlayNetworkList[i]
+		if uuid.Equal(ulConfig.Network, ulStatus.Network) &&
+			ulConfig.AppIPAddr.Equal(ulStatus.AppIPAddr) &&
+			ulConfig.AppMacAddr.String() == ulStatus.AppMacAddr.String() {
+			// Save new config then process any ACL changes
+			ulStatus.UnderlayNetworkConfig = *ulConfig
+			doAppNetworkModifyUNetAcls(ctx, status, ulConfig,
+				oldulConfig, ulStatus, ipsets, false)
+			continue
+		}
+		appNetworkDoInactivateUnderlayNetwork(ctx, status,
+			ulStatus, ipsets)
+
+		//TBD:XXX may be also trigger app num changes for static/dynamic ipAddr
+		if !uuid.Equal(ulConfig.Network, ulStatus.Network) {
+			log.Functionf("doAppNetworkModifyUnderlayNetworks(%v) for %s: change from %s to %s",
+				config.UUIDandVersion, config.DisplayName,
+				ulStatus.Network, ulConfig.Network)
+			// update the reference to the network instance
+			err := doAppNetworkModifyUNetAppNum(ctx,
+				status.UUIDandVersion.UUID,
+				ulConfig, ulStatus)
+			if err != nil {
+				log.Errorf("handleAppNetworkModify: AppNum failed for %s: %v",
+					config.DisplayName, err)
+				addError(ctx, status, "handleModify", err)
+			}
+		}
+		// Save new config
+		ulStatus.UnderlayNetworkConfig = *ulConfig
+
+		err := appNetworkDoActivateUnderlayNetwork(
+			ctx, config, status, ipsets, ulConfig, ulNum)
+		if err != nil {
+			// addError already done
+			log.Errorf("handleAppNetworkModify: Underlay Network activation failed for %s: %v",
+				config.DisplayName, err)
+		}
+	}
 }
 
 func doAppNetworkModifyUNetAcls(
@@ -1719,9 +1736,7 @@ func doAppNetworkModifyUNetAppNum(
 	networkID := ulConfig.Network
 	oldNetworkID := ulStatus.Network
 	// release the app number on old network
-	if _, err := appNumOnUNetGet(ctx, oldNetworkID, appID); err == nil {
-		appNumOnUNetFree(ctx, oldNetworkID, appID)
-	}
+	appNumOnNetworkInstanceRelease(ctx, oldNetworkID, appID)
 	// allocate an app number on new network
 	isStatic := (ulConfig.AppIPAddr != nil)
 	if _, err := appNumOnUNetAllocate(ctx, networkID, appID,
@@ -1771,19 +1786,6 @@ func handleDelete(ctx *zedrouterContext, key string,
 
 	appNumFree(ctx, status.UUIDandVersion.UUID)
 	appNumsOnUNetFree(ctx, status)
-	// Did this free up any last references against any Network Instance Status?
-	for ulNum := 0; ulNum < len(status.UnderlayNetworkList); ulNum++ {
-		ulStatus := &status.UnderlayNetworkList[ulNum]
-		netstatus := lookupNetworkInstanceStatus(ctx, ulStatus.Network.String())
-		if netstatus != nil {
-			if maybeNetworkInstanceDelete(ctx, netstatus) {
-				log.Functionf("post appNumsOnUNetFree(%v) for %s deleted %s",
-					status.UUIDandVersion, status.DisplayName,
-					netstatus.Key())
-			}
-		}
-	}
-
 	log.Functionf("handleDelete done for %s\n", status.DisplayName)
 }
 
@@ -1922,12 +1924,6 @@ func appNetworkDoInactivateUnderlayNetwork(
 
 	netstatus.RemoveVif(log, ulStatus.Vif)
 	publishNetworkInstanceStatus(ctx, netstatus)
-	if maybeNetworkInstanceDelete(ctx, netstatus) {
-		log.Noticef("deleted network instance %s", netstatus.Key())
-	} else {
-		// publish the changes to network instance status
-		publishNetworkInstanceStatus(ctx, netstatus)
-	}
 }
 
 func pkillUserArgs(userName string, match string, printOnError bool) {
@@ -2358,6 +2354,9 @@ func checkAppNetworkErrorAndStartTimer(ctx *zedrouterContext) {
 		// When hit error while creating, set a timer for 60 sec and come back to retry
 		log.Functionf("checkAppNetworkErrorAndStartTimer: set timer\n")
 		ctx.appNetCreateTimer = time.NewTimer(60 * time.Second)
+		// may be multiple config entries, need not try scheduling again
+		// just return
+		return
 	}
 }
 
