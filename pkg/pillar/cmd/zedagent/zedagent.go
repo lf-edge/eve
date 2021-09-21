@@ -26,12 +26,14 @@
 package zedagent
 
 import (
+	"bytes"
 	"flag"
 	"fmt"
 	"os"
 	"time"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/lf-edge/eve/api/go/attest"
 	"github.com/lf-edge/eve/api/go/flowlog"
 	"github.com/lf-edge/eve/api/go/info"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
@@ -311,9 +313,8 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 	// We know our own UUID; prepare for communication with controller
 	zedcloudCtx = handleConfigInit(zedagentCtx.globalConfig.GlobalValueInt(types.NetworkSendTimeout))
-
 	// Timer for deferred sends of info messages
-	deferredChan := zedcloud.GetDeferredChan(zedcloudCtx)
+	deferredChan := zedcloud.GetDeferredChan(zedcloudCtx, getDeferredSentHandlerFunction(), getDeferredPriorityFunctions()...)
 
 	subAssignableAdapters, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "domainmgr",
@@ -1046,7 +1047,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 		case change := <-deferredChan:
 			start := time.Now()
-			zedcloud.HandleDeferred(zedcloudCtx, change, 100*time.Millisecond)
+			zedcloud.HandleDeferred(zedcloudCtx, change, 100*time.Millisecond, false)
 			ps.CheckMaxTimeTopic(agentName, "deferredChan", start,
 				warningTime, errorTime)
 
@@ -1299,7 +1300,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 		case change := <-deferredChan:
 			start := time.Now()
-			zedcloud.HandleDeferred(zedcloudCtx, change, 100*time.Millisecond)
+			zedcloud.HandleDeferred(zedcloudCtx, change, 100*time.Millisecond, false)
 			ps.CheckMaxTimeTopic(agentName, "deferredChan", start,
 				warningTime, errorTime)
 
@@ -1873,4 +1874,53 @@ func handleNodeAgentStatusDelete(ctxArg interface{}, key string,
 	log.Functionf("handleNodeAgentStatusDelete: for %s", key)
 	// Nothing to do
 	triggerPublishDevInfo(ctx)
+}
+
+func getDeferredSentHandlerFunction() *zedcloud.SentHandlerFunction {
+	var function zedcloud.SentHandlerFunction
+	function = func(itemType interface{}, data *bytes.Buffer, result types.SenderResult) {
+		if result == types.SenderStatusNone {
+			if data == nil {
+				return
+			}
+			if el, ok := itemType.(info.ZInfoTypes); ok && el == info.ZInfoTypes_ZiDevice {
+				writeSentDeviceInfoProtoMessage(data.Bytes())
+			}
+			if el, ok := itemType.(info.ZInfoTypes); ok && el == info.ZInfoTypes_ZiApp {
+				writeSentAppInfoProtoMessage(data.Bytes())
+			}
+		} else {
+			if _, ok := itemType.(attest.ZAttestReqType); ok {
+				switch result {
+				case types.SenderStatusUpgrade:
+					log.Functionf("sendAttestReqProtobuf: Controller upgrade in progress")
+				case types.SenderStatusRefused:
+					log.Functionf("sendAttestReqProtobuf: Controller returned ECONNREFUSED")
+				case types.SenderStatusCertInvalid:
+					log.Warnf("sendAttestReqProtobuf: Controller certificate invalid time")
+				case types.SenderStatusCertMiss:
+					log.Functionf("sendAttestReqProtobuf: Controller certificate miss")
+				}
+			}
+		}
+	}
+	return &function
+}
+
+func getDeferredPriorityFunctions() []zedcloud.TypePriorityCheckFunction {
+	var functions []zedcloud.TypePriorityCheckFunction
+	functions = append(functions, func(itemType interface{}) bool {
+		if _, ok := itemType.(attest.ZAttestReqType); ok {
+			return true
+		}
+		return false
+	})
+
+	functions = append(functions, func(itemType interface{}) bool {
+		if el, ok := itemType.(info.ZInfoTypes); ok && el == info.ZInfoTypes_ZiApp {
+			return true
+		}
+		return false
+	})
+	return functions
 }

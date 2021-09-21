@@ -339,32 +339,21 @@ func sendAttestReqProtobuf(attestReq *attest.ZAttestReq, iteration int) {
 	}
 
 	deferKey := "attest:" + zcdevUUID.String()
-	zedcloud.RemoveDeferred(zedcloudCtx, deferKey)
 
-	buf := bytes.NewBuffer(data)
-	size := int64(proto.Size(attestReq))
 	attestURL := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API,
 		devUUID, "attest")
-	const bailOnHTTPErr = false
-	_, _, rtf, err := zedcloud.SendOnAllIntf(zedcloudCtx, attestURL,
-		size, buf, iteration, bailOnHTTPErr)
-	if err != nil {
-		// Hopefully next timeout will be more successful
-		switch rtf {
-		case types.SenderStatusUpgrade:
-			log.Functionf("sendAttestReqProtobuf: Controller upgrade in progress")
-		case types.SenderStatusRefused:
-			log.Functionf("sendAttestReqProtobuf: Controller returned ECONNREFUSED")
-		case types.SenderStatusCertInvalid:
-			log.Warnf("sendAttestReqProtobuf: Controller certificate invalid time")
-		case types.SenderStatusCertMiss:
-			log.Functionf("sendAttestReqProtobuf: Controller certificate miss")
-		default:
-			log.Errorf("sendAttestReqProtobuf failed: %s", err)
-		}
-		zedcloud.SetDeferred(zedcloudCtx, deferKey, buf, size, attestURL,
-			true)
+	buf := bytes.NewBuffer(data)
+	if buf == nil {
+		log.Fatal("malloc error")
 	}
+	size := int64(proto.Size(attestReq))
+
+	//We queue the message and then get the highest priority message to send.
+	//If there are no failures and defers we'll send this message,
+	//but if there is a queue we'll retry sending the highest priority message.
+	zedcloud.SetDeferred(zedcloudCtx, deferKey, buf, size, attestURL,
+		false, attestReq.ReqType)
+	zedcloud.HandleDeferred(zedcloudCtx, time.Now(), 0, true)
 }
 
 // initialize cipher pubsub trigger handlers and channels
