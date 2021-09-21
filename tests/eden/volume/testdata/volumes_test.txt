@@ -1,7 +1,7 @@
 eden -t 10s volume ls
 
 # Starting of reboot detector with a 1 reboots limit
-! test eden.reboot.test -test.v -timewait 10m -reboot=0 -count=1 &
+! test eden.reboot.test -test.v -timewait=0 -reboot=0 -count=1 &
 
 # Create v1 volume
 eden -t 1m volume create -n v-docker docker://lfedge/eden-eclient:83cfe07 --disk-size=200M

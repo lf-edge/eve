@@ -1,12 +1,15 @@
-# Escrips
+# escript
 
-Escripts provides support for defining filesystem-based tests by creating
-scripts in a directory.
+`escript` is a custom
+[Domain-Specific Language (DSL)](https://en.wikipedia.org/wiki/Domain-specific_language)
+which provides support for defining filesystem-based tests by creating
+compliant scripts in a directory.
 
-The `eden.escript.test` test-binary is an adaptation to
-[github.com/lf-edge/eden](https://github.com/lf-edge/eden) of original Go
-testscript machinery from
-[github.com/rogpeppe/go-internal/testscript](https://pkg.go.dev/github.com/rogpeppe/go-internal/testscript).
+`escript` is implemented by a single binary, `eden.escript.test`, which is an
+adaptation to `eden` of the original
+[Go testscript machinery](https://pkg.go.dev/github.com/rogpeppe/go-internal/testscript).
+
+## Running an escript
 
 The easiest way to run a script from the test's `testdata` directory is to use the '-e' option:
 
@@ -32,10 +35,24 @@ allowable commands in a script are defined by the parameters passed to the
 Run function. To run a specific script foo.txt
 
 ```console
-    eden test tests/escript/ --run=TestEdenScripts/^foo$
+eden test tests/escript/ --run=TestEdenScripts/^foo$
 ```
 
-where TestEdenScripts is the name of the test that Run is called from.
+where `TestEdenScripts` is the name of the test that Run is called from.
+
+The rest of this section is a nearly (not not quite) identical copy of
+the
+[testscript overview](https://pkg.go.dev/github.com/rogpeppe/go-internal/testscript#pkg-overview).
+
+The primary differences are:
+
+* creation of a new predefined command called `eden`, which is nearly identical to `exec`, except with modified `PATH`
+* automatic creation of scripts for each `.txt` file in `test/dir/testdata/` as `TestEdenScript/<filename-without-txt-extension>`
+
+The goal eventually is to make this all 100% compatible and remove duplicated
+documentation.
+
+## escript Commands
 
 In general script files should have short names: a few words, not whole
 sentences. The first word should be the general category of behavior being
@@ -48,33 +65,52 @@ with an actual command script to run followed by the content of zero or more
 supporting files to create in the script's temporary file system before it
 starts executing.
 
-As an example:
+For example:
 
-```console
-    # hello world
-    exec cat hello.text
-    stdout 'hello world\n'
-    ! stderr .
+```code
+# hello world
+exec cat hello.text
+stdout 'hello world\n'
+! stderr .
 
-    -- hello.text --
-    hello world
+-- hello.text --
+hello world
+
+-- world.sh --
+#!/bin/sh
+echo "hello world"
 ```
+
+The above has one comment line:
+
+```code
+# hello world
+```
+
+followed by three escript command lines:
+
+```code
+exec cat hello.text
+stdout 'hello world\n'
+! stderr .
+```
+
+Followed by two files to create: `hello.text` and `world.sh`.
 
 Each script runs in a fresh temporary work directory tree, available to
-scripts as $WORK. Scripts also have access to these other environment
-variables:
+scripts as $WORK. Scripts have access to these environment variables:
 
 ```console
-    HOME=/no-home
-    PATH=<actual PATH>
-    TMPDIR=$WORK/tmp
-    devnull=<value of os.DevNull>
+HOME=/no-home
+PATH=<actual PATH>
+TMPDIR=$WORK/tmp
+devnull=<value of os.DevNull>
 ```
 
-The environment variable $exe (lowercase) is an empty string on most
-systems, ".exe" on Windows.
+The environment variable `$exe` (lowercase) is an empty string on most
+systems, `".exe"` on Windows.
 
-The script's supporting files are unpacked relative to $WORK and then the
+The script's supporting files are unpacked relative to `$WORK` and then the
 script begins execution in that directory as well. Thus the example above
 runs in $WORK with $WORK/hello.txt containing the listed contents.
 

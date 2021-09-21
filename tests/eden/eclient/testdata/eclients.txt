@@ -21,9 +21,9 @@
 
 exec chmod 600 {{EdenConfig "eden.tests"}}/eclient/image/cert/id_rsa
 
-# Starting of reboot detector with a 2 reboot limit
-# Default time -- 30m
-! test eden.reboot.test -test.v -timewait {{if $time}}{{$time}}{{else}}30m{{end}} -reboot=0 -count=2 &
+# Starting of reboot detector with a 1 reboot limit
+# Default time -- infinite
+! test eden.reboot.test -test.v -timewait {{if $time}}{{$time}}{{else}}0{{end}} -reboot=0 -count=1 &
 
 # Default time -- 30m
 exec -t {{if $time}}{{$time}}{{else}}30m{{end}} bash ssh.sh

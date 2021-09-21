@@ -1,7 +1,7 @@
 eden -t 10s network ls
 
 # Starting of reboot detector with a 1 reboot limit
-! test eden.reboot.test -test.v -timewait 20m -reboot=0 -count=1 &
+! test eden.reboot.test -test.v -timewait=0 -reboot=0 -count=1 &
 
 # Create n1 network
 eden -t 1m network create 10.11.12.0/24 -n n1

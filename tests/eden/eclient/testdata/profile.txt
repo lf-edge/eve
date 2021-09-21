@@ -12,7 +12,7 @@
 exec chmod 600 {{EdenConfig "eden.tests"}}/eclient/image/cert/id_rsa
 
 # Starting of reboot detector with a 1 reboot limit
-! test eden.reboot.test -test.v -timewait 100m -reboot=0 -count=1 &
+! test eden.reboot.test -test.v -timewait=0 -reboot=0 -count=1 &
 
 message 'Resetting of EVE'
 eden eve reset
@@ -22,7 +22,7 @@ exec sleep 30
 # TBD: static ip in pod deploy
 eden pod deploy -n local-manager --memory=512MB docker://lfedge/eden-eclient:83cfe07 -p 2223:22
 
-test eden.app.test -test.v -timewait 10m RUNNING local-manager
+test eden.app.test -test.v -timewait 15m RUNNING local-manager
 
 eden pod deploy -n app-profile-1 --memory=512MB docker://lfedge/eden-eclient:83cfe07 --profile=profile-1
 eden pod deploy -n app-profile-2 --memory=512MB docker://lfedge/eden-eclient:83cfe07 --profile=profile-2

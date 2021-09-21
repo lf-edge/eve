@@ -9,7 +9,7 @@
 [!exec:ssh] stop
 
 # Starting of reboot detector with a 2 reboot limit
-! test eden.reboot.test -test.v -timewait 10m -reboot=0 -count=2 &
+! test eden.reboot.test -test.v -timewait=0 -reboot=0 -count=2 &
 
 eden pod deploy -n eclient --memory=512MB docker://lfedge/eden-eclient:83cfe07 -p {{template "port"}}:22 --adapters USB2:2 --adapters USB2:3
 

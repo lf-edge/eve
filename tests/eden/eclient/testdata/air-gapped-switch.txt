@@ -15,8 +15,8 @@
 
 exec chmod 600 {{EdenConfig "eden.tests"}}/eclient/image/cert/id_rsa
 
-# Starting of reboot detector with 2 reboots limit
-! test eden.reboot.test -test.v -timewait 10m -reboot=0 -count=2 &
+# Starting of reboot detector with 1 reboot limit
+! test eden.reboot.test -test.v -timewait=0 -reboot=0 -count=1 &
 
 message 'Resetting of EVE'
 eden eve reset
@@ -33,7 +33,7 @@ eden pod deploy -v debug -n eclient1 docker://lfedge/eden-eclient:83cfe07 -p {{t
 eden pod deploy -v debug -n eclient2 docker://lfedge/eden-eclient:83cfe07 -p {{template "port2"}}:22 --networks=indirect --networks=direct:{{template "mac2"}} --memory=512MB
 
 message 'Waiting for running state'
-test eden.app.test -test.v -timewait 10m RUNNING eclient1 eclient2
+test eden.app.test -test.v -timewait 15m RUNNING eclient1 eclient2
 
 message 'Checking accessibility'
 exec -t 5m bash wait_ssh.sh {{template "port1"}} {{template "port2"}}
