@@ -803,12 +803,13 @@ func getDataSecAtRestInfo(ctx *zedagentContext) *info.DataSecAtRest {
 	ReportDataSecAtRestInfo.VaultList = make([]*info.VaultInfo, 0)
 	vaultList := subVaultStatus.GetAll()
 	for _, vaultItem := range vaultList {
-		vault := vaultItem.(types.VaultStatus)
+		v := vaultItem.(types.VaultStatus)
 		vaultInfo := new(info.VaultInfo)
-		vaultInfo.Name = vault.Name
-		vaultInfo.Status = vault.Status
-		if !vault.ErrorTime.IsZero() {
-			vaultInfo.VaultErr = encodeErrorInfo(vault.ErrorAndTime.ErrorDescription)
+		vaultInfo.Name = v.Name
+		vaultInfo.Status = v.Status
+		vaultInfo.PcrStatus = v.PCRStatus
+		if !v.ErrorTime.IsZero() {
+			vaultInfo.VaultErr = encodeErrorInfo(v.ErrorAndTime.ErrorDescription)
 		}
 		ReportDataSecAtRestInfo.VaultList = append(ReportDataSecAtRestInfo.VaultList, vaultInfo)
 	}
