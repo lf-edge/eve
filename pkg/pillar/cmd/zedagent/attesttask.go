@@ -25,7 +25,9 @@ import (
 )
 
 const (
-	attestWdName = agentName + "attest"
+	attestWdName            = agentName + "attest"
+	eventLogBinarySizeLimit = 2048  // 2KB
+	maxQuotePayloadSize     = 63488 // 62KB
 )
 
 //TpmAgentImpl implements zattest.TpmAgent interface
@@ -244,14 +246,19 @@ func (server *VerifierImpl) SendAttestQuote(ctx *zattest.Context) error {
 		return zattest.ErrControllerReqFailed
 	}
 
+	attestReq.Quote = quote
+
 	if attestCtx.EventLogParseErr == nil {
 		//On some platforms, either the kernel does not export TPM Eventlog
 		//or the TPM does not have SHA256 bank enabled for PCRs. We populate
 		//eventlog if we are able to parse eventlog successfully
-		encodeEventLog(attestCtx, quote)
-	}
+		encodeEventLog(attestCtx, attestReq.Quote)
 
-	attestReq.Quote = quote
+		if len(attestReq.Quote.EventLog) > 0 && proto.Size(attestReq) > maxQuotePayloadSize {
+			log.Errorf("[ATTEST] attestReq size too much (%d) will remove large binaries", proto.Size(attestReq))
+			cleanupEventLog(attestReq.Quote)
+		}
+	}
 
 	//Increment Iteration for interface rotation
 	attestCtx.Iteration++
@@ -441,17 +448,22 @@ func encodeEventLog(attestCtx *attestContext, quoteMsg *attest.ZAttestQuote) err
 		tpmEventLog.Digest.HashAlgo = attest.TpmHashAlgo_TPM_HASH_ALGO_SHA256
 		tpmEventLog.Digest.Digest = event.Sha256Digest()
 		tpmEventLog.EventDataBinary = event.Data
+		tpmEventLog.EventBinarySize = uint32(len(event.Data))
+		tpmEventLog.EventType = uint32(event.Typ)
+		//Do not populate EventDataString for now because of possible size exceed
 
-		//Populate EventDataString for PCRs 8 and 9
-		//they are human readable
-		if event.Index == 8 || event.Index == 9 {
-			tpmEventLog.EventDataString = string(event.Data)
-		} else {
-			tpmEventLog.EventDataString = "Not Applicable"
-		}
 		quoteMsg.EventLog = append(quoteMsg.EventLog, tpmEventLog)
 	}
 	return nil
+}
+
+//cleanupEventLog removes event binary data from EventLog which exceed size limit
+func cleanupEventLog(quoteMsg *attest.ZAttestQuote) {
+	for _, el := range quoteMsg.EventLog {
+		if el.EventBinarySize > eventLogBinarySizeLimit {
+			el.EventDataBinary = nil
+		}
+	}
 }
 
 // initialize attest pubsub trigger handlers and channels
