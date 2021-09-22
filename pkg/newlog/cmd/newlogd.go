@@ -980,20 +980,8 @@ func checkKeepQuota() {
 }
 
 func doMoveCompressFile(tmplogfileInfo fileChanInfo) {
-	var isApp bool
-	var dirName, appuuid string
-	if tmplogfileInfo.isApp {
-		isApp = true
-		dirName = uploadAppDir
-		appuuid = getAppuuidFromLogfile(tmplogfileInfo)
-	} else {
-		if _, err := os.Stat(uploadDevDir); os.IsNotExist(err) {
-			if err := os.Mkdir(uploadDevDir, 0755); err != nil {
-				log.Fatal(err)
-			}
-		}
-		dirName = uploadDevDir
-	}
+	isApp := tmplogfileInfo.isApp
+	dirName, appuuid := getFileInfo(tmplogfileInfo)
 
 	now := time.Now()
 	timenowNum := int(now.UnixNano() / int64(time.Millisecond)) // in msec
@@ -1025,20 +1013,14 @@ func doMoveCompressFile(tmplogfileInfo fileChanInfo) {
 	newSize := gzipToOutFile(content, outfile, tmplogfileInfo, now)
 	ifile.Close()
 
-	// if the newSize exceeding the limit, split it and redo the gzip on them
-	if newSize > maxGzipFileSize && newSize/2 < maxGzipFileSize {
+	// if the newSize exceeding the limit, split into multiple segments and redo the gzip on them
+	if newSize > maxGzipFileSize {
 		// remove this new oversied gzip file
 		os.Remove(outfile)
 
-		content1, content2 := breakGzipfiles(content)
-		newSize1 := gzipToOutFile(content1, outfile, tmplogfileInfo, now)
-		outfile2 := gzipFileNameGet(isApp, timenowNum+1, dirName, appuuid) // add one msec for filename
-		newSize2 := gzipToOutFile(content2, outfile2, tmplogfileInfo, now.Add(1*time.Second))
-		logmetrics.NumBreakGZipFile++
-		newSize = newSize1 + newSize2
-
-		calculateGzipSizes(newSize1)
-		calculateGzipSizes(newSize2)
+		ratio := int(newSize / maxGzipFileSize + 2) // minimum to 3 segments
+		newSize = doGzipSplitContent(content, ratio, now, tmplogfileInfo)
+		logmetrics.NumBreakGZipFile += uint32(ratio)
 	} else {
 		calculateGzipSizes(newSize)
 	}
@@ -1063,6 +1045,20 @@ func calculateGzipSizes(size int64) {
 	oldtotal := int64(logmetrics.AvgGzipSize) * gzipFilesCnt
 	gzipFilesCnt++
 	logmetrics.AvgGzipSize = uint32((oldtotal + size) / gzipFilesCnt)
+}
+
+func doGzipSplitContent(content []byte, ratio int, now time.Time, info fileChanInfo) int64 {
+	segments := breakGzipSegments(content, ratio)
+	timenowNum := int(now.UnixNano() / int64(time.Millisecond)) // in msec
+	dirName, appuuid := getFileInfo(info)
+	var totalNewSize int64
+	for idx, seg := range segments {
+		outfile := gzipFileNameGet(info.isApp, timenowNum + idx, dirName, appuuid)
+		newSize := gzipToOutFile(seg, outfile, info, now)
+		calculateGzipSizes(newSize)
+		totalNewSize += newSize
+	}
+	return totalNewSize
 }
 
 func gzipToOutFile(content []byte, fName string, fHdr fileChanInfo, now time.Time) int64 {
@@ -1116,27 +1112,51 @@ func gzipToOutFile(content []byte, fName string, fHdr fileChanInfo, now time.Tim
 	return newSize
 }
 
-// break a large file into two in the middle
-func breakGzipfiles(content []byte) ([]byte, []byte) {
-	var c1, c2 []byte
+func breakGzipSegments(content []byte, ratio int) [][]byte {
+	contents := make([][]byte, ratio)
 	fsize := len(content)
-	hsize := fsize / 2
-	i := 0
+	blocksize := fsize / ratio
+	s := 0
+	presize := 0
 	for {
-		size := hsize + i
-		i++
-		if size > fsize {
-			err := fmt.Errorf("can't break the log file")
-			log.Fatal(err)
+		pos := 0
+		for {
+			size := blocksize * (s + 1) + pos
+			pos++
+			if size > fsize {
+				err := fmt.Errorf("can't break the log file")
+				log.Fatal(err)
+			}
+			if content[size] == '\n' { // find the newline to break
+				size++
+				contents[s] = content[presize:size]
+				presize = size
+				break
+			}
 		}
-		if content[size] == '\n' {
-			size++
-			c1 = content[0:size]
-			c2 = content[size:fsize]
+		s++
+		if s + 1 == ratio { // done, assign the last segment
+			contents[s] = content[presize:fsize]
 			break
 		}
 	}
-	return c1, c2
+	return contents
+}
+
+func getFileInfo(tmplogfileInfo fileChanInfo) (string, string) {
+	var dirName, appuuid string
+	if tmplogfileInfo.isApp {
+		dirName = uploadAppDir
+		appuuid = getAppuuidFromLogfile(tmplogfileInfo)
+	} else {
+		if _, err := os.Stat(uploadDevDir); os.IsNotExist(err) {
+			if err := os.Mkdir(uploadDevDir, 0755); err != nil {
+				log.Fatal(err)
+			}
+		}
+		dirName = uploadDevDir
+	}
+	return dirName, appuuid
 }
 
 func gzipFileNameGet(isApp bool, timeNum int, dirName, appUUID string) string {
