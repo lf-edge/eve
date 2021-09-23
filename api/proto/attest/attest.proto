@@ -70,6 +70,7 @@ message TpmEventLogEntry {
    TpmEventDigest digest = 4;    // The digest corresponding to this event
    bytes  event_data_binary = 5; // The raw event data bytes
    string event_data_string = 6; // Textual representation of the event data
+   uint32 event_binary_size = 7; // Size of binary data in bytes. We keep the size value when we omit the data
 }
 
 enum AttestGPSInput {
