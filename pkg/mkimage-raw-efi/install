@@ -8,6 +8,7 @@
 # in /bits, some will be constructed on the fly depending
 # on settings that were passed via kernel command line:
 #   eve_blackbox
+#   eve_nuke_disks
 #   eve_nuke_all_disks
 #   eve_install_disk
 #   eve_persist_disk
@@ -121,6 +122,18 @@ adjust_zfs_mounts_and_umount() {
 
 # do this just in case
 modprobe usbhid && modprobe usbkbd
+
+# clean partition tables on disks defined to nuke
+if grep -q eve_nuke_disks /proc/cmdline; then
+  NUKE_DISKS=$(</proc/cmdline tr ' ' '\012' | sed -ne '/^eve_nuke_disks=/s#^.*=##p')
+  printf '%s' "Nuking partition tables on:"
+  IFS=',' ;for dev in $NUKE_DISKS; do
+      printf ' %s' "$dev"
+      dd if=/dev/zero of="/dev/$dev" bs=512 count=34 >/dev/null 2>&1
+  done
+  sync; sleep 5; sync
+  echo " done!"
+fi
 
 # measure of last resort: we nuke all partition tables
 # so that we can get to a blank state. NOTE that this
