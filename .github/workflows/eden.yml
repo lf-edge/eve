@@ -6,7 +6,6 @@ on:
       - "master"
       - "[0-9]+.[0-9]+"
   pull_request_review:
-    branches: [master]
     types: [submitted]
 
 jobs:
@@ -24,22 +23,22 @@ jobs:
           done
       - name: setup
         run: |
-          sudo apt update
+          sudo add-apt-repository ppa:canonical-server/server-backports
           sudo apt install -y qemu-utils qemu-system-x86 jq
-      - name: get eden
-        uses: actions/checkout@v2
-        with:
-          repository: 'lf-edge/eden'
-      - name: build eden
-        run: |
-          make clean
-          make V=1 build
-          make V=1 build-tests
-          ./eden config add default
       - name: get eve
         uses: actions/checkout@v2
         with:
           path: 'eve'
+      - name: prepare eden
+        run: |
+          if [ -f ${{ github.workspace }}/eve/tests/eden/eden-version ]; then
+            EDEN_VERSION=$(cat ${{ github.workspace }}/eve/tests/eden/eden-version)
+          else
+            EDEN_VERSION=lfedge/eden:30c8b3f
+          fi
+          docker run -v $PWD:/out $EDEN_VERSION cp -a /eden/. /out/
+          sudo chown -R $(whoami) .
+          ./eden config add default
       - name: fetch or build eve
         env:
           TAG: pr${{ github.event.pull_request.number }}

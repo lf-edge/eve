@@ -6,7 +6,7 @@
 {{$apps := EdenGetEnv "EDEN_TEST_APPS"}}
 # Time of app waiting (default -- 30 min)
 {{$time := EdenGetEnv "EDEN_TEST_TIME"}}
-# Image for app (default -- docker://itmoeve/eclient:0.4)
+# Image for app (default -- docker://lfedge/eden-eclient:83cfe07)
 {{$img := EdenGetEnv "EDEN_TEST_IMG"}}
 
 {{$devmodel := EdenConfig "eve.devmodel"}}
@@ -21,9 +21,9 @@
 
 exec chmod 600 {{EdenConfig "eden.tests"}}/eclient/image/cert/id_rsa
 
-# Starting of reboot detector with a 2 reboot limit
-# Default time -- 30m
-! test eden.reboot.test -test.v -timewait {{if $time}}{{$time}}{{else}}30m{{end}} -reboot=0 -count=2 &
+# Starting of reboot detector with a 1 reboot limit
+# Default time -- infinite
+! test eden.reboot.test -test.v -timewait {{if $time}}{{$time}}{{else}}0{{end}} -reboot=0 -count=1 &
 
 # Default time -- 30m
 exec -t {{if $time}}{{$time}}{{else}}30m{{end}} bash ssh.sh
@@ -49,8 +49,8 @@ TAPP={{EdenConfig "eden.root"}}/{{EdenConfig "eden.bin-dist"}}/eden.app.test
 HOST=$($EDEN eve ip)
 
 APPS="{{$apps}}"
-# Default image -- docker://itmoeve/eclient:0.4
-IMG="{{if $img}}{{$img}}{{else}}docker://itmoeve/eclient:0.4{{end}}"
+# Default image -- docker://lfedge/eden-eclient:83cfe07
+IMG="{{if $img}}{{$img}}{{else}}docker://lfedge/eden-eclient:83cfe07{{end}}"
 
 PORTS=""
 for i in `seq $APPS`
@@ -109,9 +109,9 @@ TAPP={{EdenConfig "eden.root"}}/{{EdenConfig "eden.bin-dist"}}/eden.app.test
 HOST=$($EDEN eve ip)
 
 APPS="{{$apps}}"
-# Default image -- docker://itmoeve/eclient:0.4
-#IMG="{{if $img}}{{$img}}{{else}}docker://itmoeve/eclient:0.4{{end}}"
-IMG="{{if $img}}{{$img}}{{else}}docker://itmoeve/eclient:0.4{{end}}"
+# Default image -- docker://lfedge/eden-eclient:83cfe07
+#IMG="{{if $img}}{{$img}}{{else}}docker://lfedge/eden-eclient:83cfe07{{end}}"
+IMG="{{if $img}}{{$img}}{{else}}docker://lfedge/eden-eclient:83cfe07{{end}}"
 
 PODS=""
 for i in `seq $APPS`
