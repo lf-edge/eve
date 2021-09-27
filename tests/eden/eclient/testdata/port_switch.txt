@@ -4,7 +4,7 @@
 [!exec:sleep] stop
 
 # Starting of reboot detector with 2 reboots limit
-! test eden.reboot.test -test.v -timewait 10m -reboot=0 -count=2 &
+! test eden.reboot.test -test.v -timewait=0 -reboot=0 -count=2 &
 
 eden pod deploy -p 8027:80 docker://nginx -v debug -n nginx --memory=512MB
 

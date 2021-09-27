@@ -8,7 +8,7 @@
 [!exec:ssh] stop
 
 # Starting of eve reboot detector with a 1 reboot limit
-! test eden.reboot.test -test.v -timewait 60m -reboot=0 -count=1 &
+! test eden.reboot.test -test.v -timewait=0 -reboot=0 -count=1 &
 
 exec -t 20m bash deploy.sh {{template "port"}}
 test eden.app.test -test.v -timewait 30m RUNNING eclient
