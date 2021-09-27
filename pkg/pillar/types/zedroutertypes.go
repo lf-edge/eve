@@ -574,6 +574,18 @@ func (config DevicePortConfig) LogKey() string {
 	return string(base.DevicePortConfigLogType) + "-" + config.PubKey()
 }
 
+// LookupPortByIfName returns port configuration for the given interface.
+func (config *DevicePortConfig) LookupPortByIfName(ifName string) *NetworkPortConfig {
+	if config != nil {
+		for _, port := range config.Ports {
+			if port.IfName == ifName {
+				return &port
+			}
+		}
+	}
+	return nil
+}
+
 // TestResults is used to record when some test Failed or Succeeded.
 // All zeros timestamps means it was never tested.
 type TestResults struct {
@@ -910,7 +922,9 @@ type WifiConfig struct {
 
 // CellConfig - Cellular part of the configure
 type CellConfig struct {
-	APN string // LTE APN
+	APN          string // LTE APN
+	ProbeAddr    string
+	DisableProbe bool
 }
 
 // WirelessConfig - wireless structure
@@ -918,6 +932,13 @@ type WirelessConfig struct {
 	WType    WirelessType // Wireless Type
 	Cellular []CellConfig // LTE APN
 	Wifi     []WifiConfig // Wifi Config params
+}
+
+// WirelessStatus : state information for a single wireless device
+type WirelessStatus struct {
+	WType    WirelessType
+	Cellular WwanNetworkStatus
+	// TODO: Wifi status
 }
 
 const (
@@ -966,6 +987,7 @@ type NetworkPortStatus struct {
 	Up             bool
 	MacAddr        string
 	DefaultRouters []net.IP
+	WirelessStatus WirelessStatus
 	ProxyConfig
 	// TestResults provides recording of failure and success
 	TestResults
@@ -1001,6 +1023,7 @@ type DeviceNetworkStatus struct {
 	Testing      bool                    // Ignore since it is not yet verified
 	State        PendDPCStatus           // Details about testing state
 	CurrentIndex int                     // For logs
+	RadioSilence RadioSilence            // The actual state of the radio-silence mode
 	Ports        []NetworkPortStatus
 }
 
@@ -1171,9 +1194,13 @@ func (status DeviceNetworkStatus) MostlyEqual(status2 DeviceNetworkStatus) bool 
 			}
 		}
 
-		if !reflect.DeepEqual(p1.ProxyConfig, p2.ProxyConfig) {
+		if !reflect.DeepEqual(p1.ProxyConfig, p2.ProxyConfig) ||
+			!reflect.DeepEqual(p1.WirelessStatus, p2.WirelessStatus) {
 			return false
 		}
+	}
+	if !reflect.DeepEqual(status.RadioSilence, status2.RadioSilence) {
+		return false
 	}
 	return true
 }
@@ -3048,3 +3075,303 @@ const (
 	MinSubnetSize   = 8   // minimum Subnet Size
 	LargeSubnetSize = 16  // for determining default Dhcp Range
 )
+
+// WwanConfig is published by nim and consumed by the wwan service.
+type WwanConfig struct {
+	RadioSilence bool                `json:"radio-silence"`
+	Networks     []WwanNetworkConfig `json:"networks"`
+}
+
+// Equal compares two instances of WwanConfig for equality.
+func (wc WwanConfig) Equal(wc2 WwanConfig) bool {
+	if wc.RadioSilence != wc2.RadioSilence {
+		return false
+	}
+	if len(wc.Networks) != len(wc2.Networks) {
+		return false
+	}
+	for _, m1 := range wc.Networks {
+		var found bool
+		for _, m2 := range wc2.Networks {
+			if m1.Equal(m2) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return false
+		}
+	}
+	return true
+}
+
+// WwanNetworkConfig contains configuration for a single cellular network.
+type WwanNetworkConfig struct {
+	// Logical label in PhysicalIO.
+	LogicalLabel string        `json:"logical-label"`
+	PhysAddrs    WwanPhysAddrs `json:"physical-addrs"`
+	// XXX Multiple APNs are not yet supported.
+	Apns  []string  `json:"apns"`
+	Probe WwanProbe `json:"probe"`
+}
+
+// WwanProbe : cellular connectivity verification probe.
+type WwanProbe struct {
+	Disable bool `json:"disable"`
+	// IP/FQDN address to periodically probe to determine connection status.
+	Address string `json:"address"`
+}
+
+// Equal compares two instances of WwanNetworkConfig for equality.
+func (wnc WwanNetworkConfig) Equal(wnc2 WwanNetworkConfig) bool {
+	if wnc.LogicalLabel != wnc2.LogicalLabel ||
+		wnc.PhysAddrs.PCI != wnc2.PhysAddrs.PCI ||
+		wnc.PhysAddrs.USB != wnc2.PhysAddrs.USB ||
+		wnc.PhysAddrs.Interface != wnc2.PhysAddrs.Interface {
+		return false
+	}
+	if wnc.Probe.Address != wnc2.Probe.Address ||
+		wnc.Probe.Disable != wnc2.Probe.Disable {
+		return false
+	}
+	if len(wnc.Apns) != len(wnc2.Apns) {
+		return false
+	}
+	for _, apn1 := range wnc.Apns {
+		var found bool
+		for _, apn2 := range wnc2.Apns {
+			if apn1 == apn2 {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return false
+		}
+	}
+	return true
+}
+
+// WwanPhysAddrs is a physical address of a cellular modem.
+// Not all fields have to be defined. Empty WwanPhysAddrs will match the first modem found in sysfs.
+// With multiple LTE modems the USB address is the most unambiguous and reliable.
+type WwanPhysAddrs struct {
+	// Interface name.
+	// For example: wwan0
+	Interface string `json:"interface"`
+	// USB address in the format "<BUS>:[<PORT>]", with nested ports separated by dots.
+	// For example: 1:2.3
+	USB string `json:"usb"`
+	// PCI address in the long format.
+	// For example: 0000:00:15.0
+	PCI string `json:"pci"`
+}
+
+// WwanStatus is published by the wwan service and consumed by nim.
+type WwanStatus struct {
+	Networks []WwanNetworkStatus `json:"networks"`
+	// MD5 checksum of the corresponding WwanConfig (as config.json).
+	ConfigChecksum string `json:"config-checksum"`
+}
+
+// LookupNetworkStatus returns status corresponding to the given cellular network.
+func (ws WwanStatus) LookupNetworkStatus(logicalLabel string) (WwanNetworkStatus, bool) {
+	for _, status := range ws.Networks {
+		if logicalLabel == status.LogicalLabel {
+			return status, true
+		}
+	}
+	return WwanNetworkStatus{}, false
+}
+
+// DoSanitize fills in logical names for cellular modules and SIM cards.
+func (ws WwanStatus) DoSanitize() {
+	uniqueModel := func(model string) bool {
+		var counter int
+		for i := range ws.Networks {
+			if ws.Networks[i].Module.Model == model {
+				counter++
+			}
+		}
+		return counter == 1
+	}
+	for i := range ws.Networks {
+		network := &ws.Networks[i]
+		if network.Module.Name == "" {
+			if network.Module.IMEI != "" {
+				network.Module.Name = network.Module.IMEI
+			} else if uniqueModel(network.Module.Model) {
+				network.Module.Name = network.Module.Model
+			} else {
+				network.Module.Name = network.PhysAddrs.USB
+			}
+		}
+		for j := range network.SimCards {
+			simCard := &network.SimCards[j]
+			if simCard.Name == "" {
+				if simCard.ICCID != "" {
+					simCard.Name = simCard.ICCID
+				} else {
+					simCard.Name = fmt.Sprintf("%s - SIM%d", network.Module.Name, j)
+				}
+			}
+		}
+	}
+}
+
+// WwanNetworkStatus contains status information for a single cellular network.
+type WwanNetworkStatus struct {
+	// Logical label of the cellular modem in PhysicalIO.
+	// Can be empty if this device is not configured by the controller
+	// (and hence logical label does not exist).
+	LogicalLabel string         `json:"logical-label"`
+	PhysAddrs    WwanPhysAddrs  `json:"physical-addrs"`
+	Module       WwanCellModule `json:"cellular-module"`
+	SimCards     []WwanSimCard  `json:"sim-cards"`
+	ConfigError  string         `json:"config-error"`
+	ProbeError   string         `json:"probe-error"`
+	Providers    []WwanProvider `json:"providers"`
+}
+
+// WwanCellModule contains cellular module specs.
+type WwanCellModule struct {
+	Name            string       `json:"name"`
+	IMEI            string       `json:"imei"`
+	Model           string       `json:"model"`
+	Revision        string       `json:"revision"`
+	ControlProtocol WwanCtrlProt `json:"control-protocol"`
+	OpMode          WwanOpMode   `json:"operating-mode"`
+}
+
+// WwanSimCard contains SIM card information.
+type WwanSimCard struct {
+	Name  string `json:"name"`
+	ICCID string `json:"iccid"`
+	IMSI  string `json:"imsi"`
+}
+
+// WwanProvider contains information about a cellular connectivity provider.
+type WwanProvider struct {
+	PLMN           string `json:"plmn"`
+	Description    string `json:"description"`
+	CurrentServing bool   `json:"current-serving"`
+	Roaming        bool   `json:"roaming"`
+}
+
+// WwanOpMode : wwan operating mode
+type WwanOpMode string
+
+const (
+	// WwanOpModeUnspecified : operating mode is not specified
+	WwanOpModeUnspecified WwanOpMode = ""
+	// WwanOpModeOnline : modem is online but not connected
+	WwanOpModeOnline WwanOpMode = "online"
+	// WwanOpModeConnected : modem is online and connected
+	WwanOpModeConnected WwanOpMode = "online-and-connected"
+	// WwanOpModeRadioOff : modem has disabled radio transmission
+	WwanOpModeRadioOff WwanOpMode = "radio-off"
+	// WwanOpModeOffline : modem is offline
+	WwanOpModeOffline WwanOpMode = "offline"
+	// WwanOpModeUnrecognized : unrecongized operating mode
+	WwanOpModeUnrecognized WwanOpMode = "unrecognized"
+)
+
+// WwanCtrlProt : wwan control protocol
+type WwanCtrlProt string
+
+const (
+	// WwanCtrlProtUnspecified : control protocol is not specified
+	WwanCtrlProtUnspecified WwanCtrlProt = ""
+	// WwanCtrlProtQMI : modem is controlled using the QMI protocol
+	WwanCtrlProtQMI WwanCtrlProt = "qmi"
+	// WwanCtrlProtMBIM : modem is controlled using the MBIM protocol
+	WwanCtrlProtMBIM WwanCtrlProt = "mbim"
+)
+
+// WwanMetrics is published by the wwan service.
+type WwanMetrics struct {
+	Networks []WwanNetworkMetrics `json:"networks"`
+}
+
+// LookupNetworkMetrics returns metrics corresponding to the given cellular network.
+func (wm WwanMetrics) LookupNetworkMetrics(logicalLabel string) (WwanNetworkMetrics, bool) {
+	for _, metrics := range wm.Networks {
+		if logicalLabel == metrics.LogicalLabel {
+			return metrics, true
+		}
+	}
+	return WwanNetworkMetrics{}, false
+}
+
+// Key is used for pubsub
+func (wm WwanMetrics) Key() string {
+	return "global"
+}
+
+// LogCreate :
+func (wm WwanMetrics) LogCreate(logBase *base.LogObject) {
+	logObject := base.NewLogObject(logBase, base.WwanMetricsLogType, "",
+		nilUUID, wm.LogKey())
+	if logObject == nil {
+		return
+	}
+	logObject.Metricf("Wwan metrics create")
+}
+
+// LogModify :
+func (wm WwanMetrics) LogModify(logBase *base.LogObject, old interface{}) {
+	logObject := base.EnsureLogObject(logBase, base.WwanMetricsLogType, "",
+		nilUUID, wm.LogKey())
+
+	oldWm, ok := old.(WwanMetrics)
+	if !ok {
+		logObject.Clone().Fatalf("LogModify: Old object passed is not of WwanMetrics type")
+	}
+	// XXX remove?
+	logObject.CloneAndAddField("diff", cmp.Diff(oldWm, wm)).
+		Metricf("Wwan metrics modify")
+}
+
+// LogDelete :
+func (wm WwanMetrics) LogDelete(logBase *base.LogObject) {
+	logObject := base.EnsureLogObject(logBase, base.WwanMetricsLogType, "",
+		nilUUID, wm.LogKey())
+	logObject.Metricf("Wwan metrics delete")
+
+	base.DeleteLogObject(logBase, wm.LogKey())
+}
+
+// LogKey :
+func (wm WwanMetrics) LogKey() string {
+	return string(base.WwanMetricsLogType) + "-" + wm.Key()
+}
+
+// WwanNetworkMetrics contains metrics for a single cellular network.
+type WwanNetworkMetrics struct {
+	// Logical label of the cellular modem in PhysicalIO.
+	// Can be empty if this device is not configured by the controller
+	// (and hence logical label does not exist).
+	LogicalLabel string          `json:"logical-label"`
+	PhysAddrs    WwanPhysAddrs   `json:"physical-addrs"`
+	PacketStats  WwanPacketStats `json:"packet-stats"`
+	SignalInfo   WwanSignalInfo  `json:"signal-info"`
+}
+
+// WwanPacketStats contains packet statistics recorded by a cellular modem.
+type WwanPacketStats struct {
+	RxBytes   uint64 `json:"rx-bytes"`
+	RxPackets uint64 `json:"rx-packets"`
+	RxDrops   uint64 `json:"rx-drops"`
+	TxBytes   uint64 `json:"tx-bytes"`
+	TxPackets uint64 `json:"tx-packets"`
+	TxDrops   uint64 `json:"tx-drops"`
+}
+
+// WwanSignalInfo contains cellular signal strength information.
+// The maximum value of int32 (0x7FFFFFFF) represents unspecified/unavailable metric.
+type WwanSignalInfo struct {
+	RSSI int32 `json:"rssi"`
+	RSRQ int32 `json:"rsrq"`
+	RSRP int32 `json:"rsrp"`
+	SNR  int32 `json:"snr"`
+}

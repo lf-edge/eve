@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"mime"
 	"net"
 	"net/http"
 	"net/http/httptrace"
@@ -22,6 +23,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/golang/protobuf/proto"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
@@ -29,6 +31,9 @@ import (
 	uuid "github.com/satori/go.uuid"
 	"github.com/vishvananda/netlink"
 )
+
+// ContentTypeProto : binary-encoded Protobuf content type
+const ContentTypeProto = "application/x-proto-binary"
 
 // ZedCloudContent is set up by NewContext() below
 type ZedCloudContext struct {
@@ -419,7 +424,7 @@ func SendOnIntf(ctx *ZedCloudContext, destURL string, intf string, reqlen int64,
 		}
 
 		if b2 != nil {
-			req.Header.Add("Content-Type", "application/x-proto-binary")
+			req.Header.Add("Content-Type", ContentTypeProto)
 		}
 		// Add a per-request UUID to the HTTP Header
 		// for tracability in the controller
@@ -632,7 +637,8 @@ func SendOnIntf(ctx *ZedCloudContext, destURL string, intf string, reqlen int64,
 }
 
 //SendLocal uses local routes to request the data
-func SendLocal(ctx *ZedCloudContext, destURL string, intf string, ipSrc net.IP, reqlen int64, b *bytes.Buffer) (*http.Response, []byte, error) {
+func SendLocal(ctx *ZedCloudContext, destURL string, intf string, ipSrc net.IP,
+	reqlen int64, b *bytes.Buffer, reqContentType string) (*http.Response, []byte, error) {
 
 	log := ctx.log
 	var reqURL string
@@ -694,6 +700,10 @@ func SendLocal(ctx *ZedCloudContext, destURL string, intf string, ipSrc net.IP, 
 	// for tracability in the receiver
 	req.Header.Add("X-Request-Id", uuid.NewV4().String())
 
+	if reqContentType != "" {
+		req.Header.Add("Content-Type", reqContentType)
+	}
+
 	trace := &httptrace.ClientTrace{
 		GotConn: func(connInfo httptrace.GotConnInfo) {
 			log.Tracef("Got RemoteAddr: %+v, LocalAddr: %+v\n",
@@ -736,7 +746,7 @@ func SendLocal(ctx *ZedCloudContext, destURL string, intf string, ipSrc net.IP, 
 	resp.Body = nil
 
 	switch resp.StatusCode {
-	case http.StatusOK, http.StatusCreated, http.StatusNotModified:
+	case http.StatusOK, http.StatusCreated, http.StatusNotModified, http.StatusNoContent:
 		totalTimeMillis := int64(time.Since(callStartTime) / time.Millisecond)
 		if ctx.SuccessFunc != nil {
 			ctx.SuccessFunc(log, intf, reqURL, reqlen, resplen, totalTimeMillis, false)
@@ -750,6 +760,64 @@ func SendLocal(ctx *ZedCloudContext, destURL string, intf string, ipSrc net.IP, 
 	return resp, nil, fmt.Errorf("SendLocal to %s reqlen %d statuscode %d %s",
 		reqURL, reqlen, resp.StatusCode,
 		http.StatusText(resp.StatusCode))
+}
+
+// SendLocalProto is a variant of SendLocal which sends and receives proto messages.
+func SendLocalProto(ctx *ZedCloudContext, destURL string, intf string, ipSrc net.IP,
+	req proto.Message, resp proto.Message) (*http.Response, error) {
+	var (
+		reqBuf      *bytes.Buffer
+		reqLen      int64
+		contentType string
+	)
+	if req != nil {
+		reqBytes, err := proto.Marshal(req)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal request message: %v", err)
+		}
+		reqBuf = bytes.NewBuffer(reqBytes)
+		reqLen = int64(len(reqBytes))
+		contentType = ContentTypeProto
+	}
+	httpResp, respBytes, err := SendLocal(ctx, destURL, intf, ipSrc, reqLen, reqBuf, contentType)
+	if err != nil {
+		return httpResp, err
+	}
+	if resp != nil && httpResp.StatusCode != http.StatusNoContent {
+		if err := ValidateProtoContentType(destURL, httpResp); err != nil {
+			return nil, fmt.Errorf("response header error: %s", err)
+		}
+		err := proto.Unmarshal(respBytes, resp)
+		if err != nil {
+			return nil, fmt.Errorf("response message unmarshalling failed: %v", err)
+		}
+	}
+	return httpResp, nil
+}
+
+// ValidateProtoContentType checks content-type of what is supposed to be binary encoded proto message.
+func ValidateProtoContentType(url string, r *http.Response) error {
+	// No check Content-Type for empty response
+	if r.ContentLength == 0 {
+		return nil
+	}
+	var ctTypeStr = "Content-Type"
+
+	ct := r.Header.Get(ctTypeStr)
+	if ct == "" {
+		return fmt.Errorf("no content-type")
+	}
+	mimeType, _, err := mime.ParseMediaType(ct)
+	if err != nil {
+		return fmt.Errorf("get Content-type error")
+	}
+	switch mimeType {
+	case ContentTypeProto:
+		return nil
+	default:
+		return fmt.Errorf("content-type %s not supported",
+			mimeType)
+	}
 }
 
 func isCertFailure(err error) (bool, *x509.Certificate) {
