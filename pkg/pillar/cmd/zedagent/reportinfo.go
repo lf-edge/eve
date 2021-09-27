@@ -347,6 +347,16 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 		ReportDeviceNetworkInfo.DevName = *proto.String(label)
 		ReportDeviceInfo.Network = append(ReportDeviceInfo.Network,
 			ReportDeviceNetworkInfo)
+		// Report all SIM cards and cellular modules
+		if p.WirelessStatus.WType == types.WirelessTypeCellular {
+			wwanStatus := p.WirelessStatus.Cellular
+			ReportDeviceInfo.CellRadios = append(
+				ReportDeviceInfo.CellRadios,
+				encodeCellModuleInfo(wwanStatus.Module))
+			ReportDeviceInfo.Sims = append(
+				ReportDeviceInfo.Sims,
+				encodeSimCards(wwanStatus.Module.Name, wwanStatus.SimCards)...)
+		}
 	}
 	// Fill in global ZInfoDNS dns from /etc/resolv.conf
 	// Note that "domain" is returned in search, hence DNSdomain is
@@ -444,21 +454,6 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 		log.Errorf("HostName failed: %s", err)
 	} else {
 		ReportDeviceInfo.HostName = hostname
-	}
-
-	// Note that these are associated with the device and not with a
-	// device name like ppp0 or wwan0
-	lte := readLTEInfo()
-	lteNets := readLTENetworks()
-	if lteNets != nil {
-		lte = append(lte, lteNets...)
-	}
-	for _, i := range lte {
-		item := new(info.DeprecatedMetricItem)
-		item.Key = i.Key
-		item.Type = info.DepMetricItemType(i.Type)
-		// setDeprecatedMetricAnyValue(item, i.Value)
-		ReportDeviceInfo.MetricItems = append(ReportDeviceInfo.MetricItems, item)
 	}
 
 	ReportDeviceInfo.LastRebootReason = ctx.rebootReason
@@ -743,6 +738,71 @@ func encodeNetInfo(port types.NetworkPortStatus) *info.ZInfoNetwork {
 	return networkInfo
 }
 
+func encodeCellModuleInfo(wwanModule types.WwanCellModule) *info.ZCellularModuleInfo {
+	var opState info.ZCellularOperatingState
+	switch wwanModule.OpMode {
+	case types.WwanOpModeUnspecified:
+		opState = info.ZCellularOperatingState_Z_CELLULAR_OPERATING_STATE_UNSPECIFIED
+	case types.WwanOpModeOnline:
+		opState = info.ZCellularOperatingState_Z_CELLULAR_OPERATING_STATE_ONLINE
+	case types.WwanOpModeConnected:
+		opState = info.ZCellularOperatingState_Z_CELLULAR_OPERATING_STATE_ONLINE_AND_CONNECTED
+	case types.WwanOpModeRadioOff:
+		opState = info.ZCellularOperatingState_Z_CELLULAR_OPERATING_STATE_RADIO_OFF
+	case types.WwanOpModeOffline:
+		opState = info.ZCellularOperatingState_Z_CELLULAR_OPERATING_STATE_OFFLINE
+	case types.WwanOpModeUnrecognized:
+		opState = info.ZCellularOperatingState_Z_CELLULAR_OPERATING_STATE_UNRECOGNIZED
+	default:
+		log.Errorf("Invalid wwan module operating state: %v", wwanModule.OpMode)
+	}
+
+	var ctrlProto info.ZCellularControlProtocol
+	switch wwanModule.ControlProtocol {
+	case types.WwanCtrlProtUnspecified:
+		ctrlProto = info.ZCellularControlProtocol_Z_CELLULAR_CONTROL_PROTOCOL_UNSPECIFIED
+	case types.WwanCtrlProtQMI:
+		ctrlProto = info.ZCellularControlProtocol_Z_CELLULAR_CONTROL_PROTOCOL_QMI
+	case types.WwanCtrlProtMBIM:
+		ctrlProto = info.ZCellularControlProtocol_Z_CELLULAR_CONTROL_PROTOCOL_MBIM
+	default:
+		log.Errorf("Invalid wwan module control protocol: %v", wwanModule.ControlProtocol)
+	}
+	return &info.ZCellularModuleInfo{
+		Name:            wwanModule.Name,
+		Imei:            wwanModule.IMEI,
+		FirmwareVersion: wwanModule.Revision,
+		Model:           wwanModule.Model,
+		OperatingState:  opState,
+		ControlProtocol: ctrlProto,
+	}
+}
+
+func encodeSimCards(cellModule string, wwanSimCards []types.WwanSimCard) (simCards []*info.ZSimcardInfo) {
+	for _, simCard := range wwanSimCards {
+		simCards = append(simCards, &info.ZSimcardInfo{
+			Name:           simCard.Name,
+			CellModuleName: cellModule,
+			Imsi:           simCard.IMSI,
+			Iccid:          simCard.ICCID,
+			// TODO SIM card state
+		})
+	}
+	return simCards
+}
+
+func encodeCellProviders(wwanProviders []types.WwanProvider) (providers []*info.ZCellularProvider) {
+	for _, provider := range wwanProviders {
+		providers = append(providers, &info.ZCellularProvider{
+			Plmn:           provider.PLMN,
+			Description:    provider.Description,
+			CurrentServing: provider.CurrentServing,
+			Roaming:        provider.Roaming,
+		})
+	}
+	return providers
+}
+
 func encodeSystemAdapterInfo(ctx *zedagentContext) *info.SystemAdapterInfo {
 	dpcl := types.DevicePortConfigList{}
 	item, err := ctx.subDevicePortConfigList.Get("global")
@@ -771,6 +831,27 @@ func encodeSystemAdapterInfo(ctx *zedagentContext) *info.SystemAdapterInfo {
 		dps.Ports = make([]*info.DevicePort, len(dpc.Ports))
 		for j, p := range dpc.Ports {
 			dps.Ports[j] = encodeNetworkPortConfig(ctx, &p)
+			if i == dpcl.CurrentIndex && p.WirelessCfg.WType == types.WirelessTypeCellular {
+				portStatus := deviceNetworkStatus.GetPortByLogicallabel(p.Logicallabel)
+				if portStatus == nil {
+					continue
+				}
+				wwanStatus := portStatus.WirelessStatus.Cellular
+				var simCards []string
+				for _, simCard := range wwanStatus.SimCards {
+					simCards = append(simCards, simCard.Name)
+				}
+				dps.Ports[j].WirelessStatus = &info.WirelessStatus{
+					Type: info.WirelessType_WIRELESS_TYPE_CELLULAR,
+					Cellular: &info.ZCellularStatus{
+						CellularModule: wwanStatus.Module.Name,
+						SimCards:       simCards,
+						Providers:      encodeCellProviders(wwanStatus.Providers),
+						ConfigError:    wwanStatus.ConfigError,
+						ProbeError:     wwanStatus.ProbeError,
+					},
+				}
+			}
 		}
 		sainfo.Status[i] = dps
 	}

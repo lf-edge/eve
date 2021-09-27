@@ -1,4 +1,7 @@
 #!/bin/sh
+# shellcheck disable=SC2039
+# shellcheck disable=SC2155
+# shellcheck disable=SC2034 # Constants defined here are used by sourced wwan-mbim.sh and wwan-mbim.sh
 # set -x
 
 # Currently our message bus is files in /run
@@ -27,8 +30,10 @@ DEFAULT_PROBE_ADDR="8.8.8.8"
 
 IPV4_REGEXP='[0-9]\+\.[0-9]\+\.[0-9]\+\.[0-9]\+'
 
-SRC=$(cd $(dirname "$0"); pwd)
+SRC="$(cd "$(dirname "$0")" || exit 1; pwd)"
+# shellcheck source=./pkg/wwan/usr/bin/wwan-qmi.sh
 . "${SRC}/wwan-qmi.sh"
+# shellcheck source=./pkg/wwan/usr/bin/wwan-mbim.sh
 . "${SRC}/wwan-mbim.sh"
 
 json_attr() {
@@ -45,32 +50,32 @@ json_struct() {
 }
 
 json_array() {
-  local ITEMS="$(while read LINE; do [ ! -z "${LINE}" ] && printf ",%s" "${LINE}"; done | cut -c2-)"
+  local ITEMS="$(while read -r LINE; do [ -n "${LINE}" ] && printf ",%s" "${LINE}"; done | cut -c2-)"
   printf "[%s]" "$ITEMS"
 }
 
 parse_json_attr() {
   local JSON="$1"
   local JSON_PATH="$2"
-  echo $JSON | jq -rc ".$JSON_PATH | select (.!=null)"
+  echo "$JSON" | jq -rc ".$JSON_PATH | select (.!=null)"
 }
 
 mod_reload() {
   local RLIST
-  for mod in $* ; do
+  for mod in "$@" ; do
     RLIST="$mod $RLIST"
-    rmmod -f $mod
+    rmmod -f "$mod"
   done
   for mod in $RLIST ; do
     RLIST="$mod $RLIST"
-    modprobe $mod
+    modprobe "$mod"
   done
 }
 
 wait_for() {
   local EXPECT="$1"
   shift
-  for i in `seq 1 10`; do
+  for i in $(seq 1 10); do
      eval RES='"$('"$*"')"'
      [ "$RES" = "$EXPECT" ] && return 0
      sleep 6
@@ -126,7 +131,7 @@ sys_get_modem_usbaddr() {
       DEV_PATH="$(dirname "$DEV_PATH")"
       continue
     fi
-    echo "$(basename $DEV_PATH | cut -d ":" -f 1 | tr '-' ':')"
+    basename "$DEV_PATH" | cut -d ":" -f 1 | tr '-' ':'
     return
   done
 }
@@ -139,7 +144,7 @@ sys_get_modem_pciaddr() {
       DEV_PATH="$(dirname "$DEV_PATH")"
     continue
     fi
-    echo "$(basename $DEV_PATH)"
+    basename "$DEV_PATH"
     return
   done
 }
@@ -155,15 +160,15 @@ lookup_modem() {
 
     # check interface name
     DEV_IF="$(sys_get_modem_interface "$DEV")"
-    [ ! -z "$ARG_IF" ] && [ "$ARG_IF" != "$DEV_IF" ] && continue
+    [ -n "$ARG_IF" ] && [ "$ARG_IF" != "$DEV_IF" ] && continue
 
     # check USB address
     DEV_USB="$(sys_get_modem_usbaddr "$DEV")"
-    [ ! -z "$ARG_USB" ] && [ "$ARG_USB" != "$DEV_USB" ] && continue
+    [ -n "$ARG_USB" ] && [ "$ARG_USB" != "$DEV_USB" ] && continue
 
     # check PCI address
     DEV_PCI="$(sys_get_modem_pciaddr "$DEV")"
-    [ ! -z "$ARG_PCI" ] && [ "$ARG_PCI" != "$DEV_PCI" ] && continue
+    [ -n "$ARG_PCI" ] && [ "$ARG_PCI" != "$DEV_PCI" ] && continue
 
     PROTOCOL="$DEV_PROT"
     IFACE="$DEV_IF"
@@ -188,16 +193,16 @@ bringup_iface() {
      local DNS0="dns1"
      local DNS1="dns2"
   fi
-  ifconfig $IFACE `echo "$JSON" | jq -r .ipv4.ip` \
-                   netmask `echo "$JSON" | jq -r .ipv4.subnet` \
-                   pointopoint `echo "$JSON" | jq -r .ipv4.gateway`
+  ifconfig "$IFACE" "$(echo "$JSON" | jq -r .ipv4.ip)" \
+                   netmask "$(echo "$JSON" | jq -r .ipv4.subnet)" \
+                   pointopoint "$(echo "$JSON" | jq -r .ipv4.gateway)"
   # NOTE we may want to disable /proc/sys/net/ipv4/conf/default/rp_filter instead
   #      Verify it by cat /proc/net/netstat | awk '{print $80}'
-  ip route add default via `echo "$JSON" | jq -r .ipv4.gateway` dev $IFACE metric 65000
-  mkdir $BBS/resolv.conf || :
-  cat > $BBS/resolv.conf/${IFACE}.dhcp <<__EOT__
-nameserver `echo "$JSON" | jq -r .ipv4.$DNS0`
-nameserver `echo "$JSON" | jq -r .ipv4.$DNS1`
+  ip route add default via "$(echo "$JSON" | jq -r .ipv4.gateway)" dev "$IFACE" metric 65000
+  mkdir "$BBS/resolv.conf" || :
+  cat > "$BBS/resolv.conf/${IFACE}.dhcp" <<__EOT__
+nameserver $(echo "$JSON" | jq -r .ipv4.$DNS0)
+nameserver $(echo "$JSON" | jq -r .ipv4.$DNS1)
 __EOT__
 }
 
@@ -209,8 +214,7 @@ probe() {
   fi
   # ping is supposed to return 0 even if just a single packet out of 3 gets through
   local PROBE_OUTPUT
-  PROBE_OUTPUT="$(ping -W 20 -w 20 -c 3 -I $IFACE $PROBE_ADDR 2>&1)"
-  if [ $? -eq 0 ]; then
+  if PROBE_OUTPUT="$(ping -W 20 -w 20 -c 3 -I "$IFACE" "$PROBE_ADDR" 2>&1)"; then
     unset PROBE_ERROR
     return 0
   else
@@ -231,19 +235,19 @@ collect_network_status() {
     # It is done only during PROBING events and skipped when config is changed
     # (e.g. radio-silence mode is switched ON/OFF) so that the updated status is promptly
     # published for better user experience.
-    PROVIDERS="$(${PROTOCOL}_get_providers)"
+    PROVIDERS="$("${PROTOCOL}_get_providers")"
   fi
   local MODULE="$(json_struct \
-    "$(json_str_attr imei     "$(${PROTOCOL}_get_imei)")" \
-    "$(json_str_attr model    "$(${PROTOCOL}_get_modem_model)")" \
-    "$(json_str_attr revision "$(${PROTOCOL}_get_modem_revision)")" \
+    "$(json_str_attr imei     "$("${PROTOCOL}_get_imei")")" \
+    "$(json_str_attr model    "$("${PROTOCOL}_get_modem_model")")" \
+    "$(json_str_attr revision "$("${PROTOCOL}_get_modem_revision")")" \
     "$(json_str_attr control-protocol "$PROTOCOL")" \
-    "$(json_str_attr operating-mode   "$(${PROTOCOL}_get_op_mode)")")"
+    "$(json_str_attr operating-mode   "$("${PROTOCOL}_get_op_mode")")")"
   local NETWORK_STATUS="$(json_struct \
     "$(json_str_attr logical-label    "$LOGICAL_LABEL")" \
     "$(json_attr     physical-addrs   "$ADDRS")" \
     "$(json_attr     cellular-module  "$MODULE")" \
-    "$(json_attr     sim-cards        "$(${PROTOCOL}_get_sim_cards)")" \
+    "$(json_attr     sim-cards        "$("${PROTOCOL}_get_sim_cards")")" \
     "$(json_str_attr config-error     "$CONFIG_ERROR")" \
     "$(json_str_attr probe-error      "$PROBE_ERROR")" \
     "$(json_attr     providers        "$PROVIDERS")")"
@@ -254,33 +258,33 @@ collect_network_metrics() {
   local NETWORK_METRICS="$(json_struct \
     "$(json_str_attr logical-label  "$LOGICAL_LABEL")" \
     "$(json_attr     physical-addrs "$ADDRS")" \
-    "$(json_attr     packet-stats   "$(${PROTOCOL}_get_packet_stats)")" \
-    "$(json_attr     signal-info    "$(${PROTOCOL}_get_signal_info)")")"
+    "$(json_attr     packet-stats   "$("${PROTOCOL}_get_packet_stats")")" \
+    "$(json_attr     signal-info    "$("${PROTOCOL}_get_signal_info")")")"
   METRICS="${METRICS}${NETWORK_METRICS}\n"
 }
 
 event_stream() {
-  inotifywait -qm ${BBS} -e create -e modify -e delete &
+  inotifywait -qm "${BBS}" -e create -e modify -e delete &
   while true; do
     echo "PROBE"
-    sleep $PROBE_INTERVAL
+    sleep "$PROBE_INTERVAL"
   done &
   while true; do
     echo "METRICS"
-    sleep $METRICS_INTERVAL
+    sleep "$METRICS_INTERVAL"
   done
 }
 
 echo "Starting wwan manager"
-mkdir -p ${BBS}
+mkdir -p "${BBS}"
 modprobe -a qcserial usb_wwan qmi_wwan cdc_wdm cdc_mbim cdc_acm
 
 # For cellular modems we do not rely on rfkill to enable/disable radio transmission.
 # This is because rfkill driver for wwan is often not available.
 # Instead, the operational state and RF of cellular modems is managed via QMI or MBIM.
 # But should rfkill driver for wwan be provided and because by default RF is blocked
-# for all wireless devices (rfkill.default_state=0), we need to preventively unblock rfkill
-# for wwan to ensure that it doesn't override wwan RF state as configured from here.
+# for all wireless devices (rfkill.default_state=0; used for WiFi), we need to preventively
+# unblock rfkill for wwan to ensure that it doesn't override wwan RF state as configured from here.
 rfkill unblock wwan
 
 # Main event loop
@@ -311,7 +315,7 @@ event_stream | while read -r EVENT; do
   RADIO_SILENCE="$(parse_json_attr "$CONFIG" "\"radio-silence\"")"
 
   # iterate over each configured cellular network
-  while read NETWORK; do
+  while read -r NETWORK; do
     [ -z "$NETWORK" ] && continue
     unset CONFIG_ERROR
     unset PROBE_ERROR
@@ -329,8 +333,7 @@ event_stream | while read -r EVENT; do
     APN="$(parse_json_attr "$NETWORK" "apns[0]")" # FIXME XXX limited to a single APN for now
     APN="${APN:-$DEFAULT_APN}"
 
-    lookup_modem "${IFACE}" "${USB_ADDR}" "${PCI_ADDR}" 2>/tmp/wwan.stderr
-    if [ $? -ne 0 ]; then
+    if ! lookup_modem "${IFACE}" "${USB_ADDR}" "${PCI_ADDR}" 2>/tmp/wwan.stderr; then
       CONFIG_ERROR="$(cat /tmp/wwan.stderr)"
       NETWORK_STATUS="$(json_struct \
         "$(json_str_attr logical-label  "$LOGICAL_LABEL")" \
@@ -359,19 +362,19 @@ event_stream | while read -r EVENT; do
       if [ "$CONFIG_CHANGE" = "y" ] || ! probe; then
         echo "[$CDC_DEV] Restarting connection (APN=${APN}, interface=${IFACE})"
         {
-          ${PROTOCOL}_reset_modem       &&\
-          ${PROTOCOL}_toggle_rf on      &&\
-          ${PROTOCOL}_wait_for_sim      &&\
-          ${PROTOCOL}_wait_for_register &&\
-          ${PROTOCOL}_start_network     &&\
-          ${PROTOCOL}_wait_for_wds      &&\
-          ${PROTOCOL}_wait_for_settings &&\
-          bringup_iface                 &&\
+          "${PROTOCOL}_reset_modem"       &&\
+          "${PROTOCOL}_toggle_rf" on      &&\
+          "${PROTOCOL}_wait_for_sim"      &&\
+          "${PROTOCOL}_wait_for_register" &&\
+          "${PROTOCOL}_start_network"     &&\
+          "${PROTOCOL}_wait_for_wds"      &&\
+          "${PROTOCOL}_wait_for_settings" &&\
+          bringup_iface                   &&\
           echo "[$CDC_DEV] Connection successfully restarted"
         } 2>/tmp/wwan.stderr
         RV=$?
         if [ $RV -ne 0 ]; then
-          CONFIG_ERROR="$(cat /tmp/wwan.stderr | sort -u)"
+          CONFIG_ERROR="$(sort -u < /tmp/wwan.stderr)"
           CONFIG_ERROR="${CONFIG_ERROR:-(Re)Connection attempt failed with rv=$RV}"
         fi
         # retry probe to update PROBE_ERROR
@@ -379,10 +382,9 @@ event_stream | while read -r EVENT; do
         probe
       fi
     else # Radio-silence is ON
-      if [ "$(${PROTOCOL}_get_op_mode)" != "radio-off" ]; then
+      if [ "$("${PROTOCOL}_get_op_mode")" != "radio-off" ]; then
         echo "[$CDC_DEV] Trying to disable radio (APN=${APN}, interface=${IFACE})"
-        ${PROTOCOL}_toggle_rf off 2>/tmp/wwan.stderr
-        if [ $? -ne 0 ]; then
+        if ! "${PROTOCOL}_toggle_rf" off 2>/tmp/wwan.stderr; then
           CONFIG_ERROR="$(cat /tmp/wwan.stderr)"
         else
           if ! wait_for radio-off "${PROTOCOL}_get_op_mode"; then
@@ -403,7 +405,7 @@ __EOT__
     unset PROBE_ERROR
     unset LOGICAL_LABEL # unmanaged modems do not have logical name
 
-    PROTOCOL=$(sys_get_modem_protocol "$DEV") || continue
+    PROTOCOL="$(sys_get_modem_protocol "$DEV")" || continue
     CDC_DEV="$(basename "${DEV}")"
     if printf "%b" "$MODEMS" | grep -q "^$CDC_DEV$"; then
       # this modem has configuration and was already processed
@@ -423,10 +425,9 @@ __EOT__
       continue
     fi
 
-    if [ "$(${PROTOCOL}_get_op_mode)" != "radio-off" ]; then
+    if [ "$("${PROTOCOL}_get_op_mode")" != "radio-off" ]; then
       echo "[$CDC_DEV] Trying to disable radio (interface=${IFACE})"
-      ${PROTOCOL}_toggle_rf off 2>/tmp/wwan.stderr
-      if [ $? -ne 0 ]; then
+      if ! "${PROTOCOL}_toggle_rf" off 2>/tmp/wwan.stderr; then
         CONFIG_ERROR="$(cat /tmp/wwan.stderr)"
       else
         if ! wait_for radio-off "${PROTOCOL}_get_op_mode"; then
