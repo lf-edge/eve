@@ -1,3 +1,7 @@
+#!/bin/sh
+# shellcheck disable=SC2039
+# shellcheck disable=SC2155
+
 mbim() {
   timeout -s KILL "$LTESTAT_TIMEOUT" mbimcli -p -d "/dev/$CDC_DEV" "$@"
 }
@@ -13,24 +17,24 @@ mbim_get_packet_stats() {
   local RXD=$(parse_modem_attr "$STATS" "Discards (in)")
   local RXE=$(parse_modem_attr "$STATS" "Errors (in)")
   json_struct \
-    "$(json_attr tx-bytes ${TXB:-0})" "$(json_attr tx-packets ${TXP:-0})" "$(json_attr tx-drops $(expr ${TXD:-0} \+ ${TXE:-0}))" \
-    "$(json_attr rx-bytes ${RXB:-0})" "$(json_attr rx-packets ${RXP:-0})" "$(json_attr rx-drops $(expr ${RXD:-0} \+ ${RXE:-0}))"
+    "$(json_attr tx-bytes "${TXB:-0}")" "$(json_attr tx-packets "${TXP:-0}")" "$(json_attr tx-drops "$(( TXD + TXE ))")" \
+    "$(json_attr rx-bytes "${RXB:-0}")" "$(json_attr rx-packets "${RXP:-0}")" "$(json_attr rx-drops "$(( RXD + RXE ))")"
 }
 
 mbim_get_signal_info() {
   local INFO="$(mbim --query-signal-state)"
   local RSSI=$(parse_modem_attr "$INFO" "RSSI \[0-31,99\]")
-  if [ ${RSSI:-99} -eq 99 ]; then
-    local RSSI=$UNAVAIL_SIGNAL_METRIC
+  if [ "${RSSI:-99}" -eq 99 ]; then
+    RSSI="$UNAVAIL_SIGNAL_METRIC"
   else
     # See table 10-58 (MBIM_SIGNAL_STATE_INFO) in MBIM_v1_0_USBIF_FINAL.pdf
-    local RSSI=$(expr -113 + $(expr 2 \* ${RSSI:-0}))
+    RSSI="$(( -113 + (2 * RSSI) ))"
   fi
   json_struct \
-    "$(json_attr rssi $RSSI)" \
-    "$(json_attr rsrq $UNAVAIL_SIGNAL_METRIC)" \
-    "$(json_attr rsrp $UNAVAIL_SIGNAL_METRIC)" \
-    "$(json_attr snr  $UNAVAIL_SIGNAL_METRIC)"
+    "$(json_attr rssi "$RSSI")" \
+    "$(json_attr rsrq "$UNAVAIL_SIGNAL_METRIC")" \
+    "$(json_attr rsrp "$UNAVAIL_SIGNAL_METRIC")" \
+    "$(json_attr snr  "$UNAVAIL_SIGNAL_METRIC")"
 }
 
 # mbim_get_op_mode returns one of: "" (aka unspecified), "online", "online-and-connected", "radio-off", "offline", "unrecognized"
@@ -64,8 +68,7 @@ mbim_get_modem_revision() {
 
 mbim_get_providers() {
   local PROVIDERS
-  PROVIDERS="$(mbim --query-visible-providers)"
-  if [ $? -ne 0 ]; then
+  if ! PROVIDERS="$(mbim --query-visible-providers)"; then
     echo "[]"
     return 1
   fi
@@ -104,15 +107,15 @@ mbim_get_providers() {
 
 mbim_get_sim_cards() {
   # FIXME XXX Limited to a single SIM card
-  local SUBSCRIBER="$(mbim --query-subscriber-ready-status)"
-  if [ $? -ne 0 ]; then
+  local SUBSCRIBER
+  if ! SUBSCRIBER="$(mbim --query-subscriber-ready-status)"; then
     echo "[]"
     return 1
   fi
   local ICCID=$(parse_modem_attr "$SUBSCRIBER" "SIM ICCID")
   local IMSI=$(parse_modem_attr "$SUBSCRIBER" "Subscriber ID")
   SIM="$(json_struct "$(json_str_attr "iccid" "$ICCID")" "$(json_str_attr "imsi" "$IMSI")")\n"
-  printf "%b" $SIM | json_array
+  printf "%b" "$SIM" | json_array
 }
 
 mbim_start_network() {

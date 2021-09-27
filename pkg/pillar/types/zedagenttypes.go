@@ -483,11 +483,12 @@ type ZedAgentStatus struct {
 	Name                 string
 	ConfigGetStatus      ConfigGetStatus
 	RebootCmd            bool
-	RebootReason         string     // Current reason to reboot
-	BootReason           BootReason // Current reason to reboot
-	MaintenanceMode      bool       // Don't run apps etc
-	ForceFallbackCounter int        // Try image fallback when counter changes
-	CurrentProfile       string     // Current profile
+	RebootReason         string       // Current reason to reboot
+	BootReason           BootReason   // Current reason to reboot
+	MaintenanceMode      bool         // Don't run apps etc
+	ForceFallbackCounter int          // Try image fallback when counter changes
+	CurrentProfile       string       // Current profile
+	RadioSilence         RadioSilence // Currently requested state of radio devices
 }
 
 // Key :
@@ -549,4 +550,49 @@ type BaseOSMgrStatus struct {
 type BaseOs struct {
 	ContentTreeUUID          string
 	ConfigRetryUpdateCounter uint32
+}
+
+// RadioSilence : used in ZedAgentStatus to record the *requested* state of radio devices.
+// Also used in DeviceNetworkStatus to publish the *actual* state of radios.
+// InProgress is used to wait for the operation changing the radio state
+// to finalize before publishing the status update.
+// RequestedAt is used to match the request published by zedagent with the response
+// published by nim.
+//
+// When zedagent receives new radio configuration from the local profile server,
+// it publishes new ZedAgentStatus with RadioSilence.ChangeRequestedAt set to time.Now(),
+// RadioSilence.ChangeInProgress set to true and RadioSilence.Imposed copying RadioConfig.RadioSilence
+// (true or false).
+// When nim receives ZedAgentStatus, it checks if ChangeRequestedAt is greater than
+// the timestamp of the last seen radio configuration change. If it is the case, it copies
+// ChangeRequestedAt and ChangeInProgress (=true) from ZedAgentStatus.RadioSilence to
+// DeviceNetworkStatus.RadioSilence and starts switching radios of wireless devices ON/OFF
+// (in cooperation with wwan service).
+// Once nim is done with all radio devices, it updates RadioSilence of DeviceNetworkStatus and sets
+// ChangeInProgress to false and Imposed to reflect the actual radio state (could be different
+// from the intended state if operation failed).
+// When zedagent sees DeviceNetworkStatus with RadioSilence where CHangeRequestedAt equals
+// the last configuration request time and ChangeInProgress has changed to false, it knows
+// that the operation has finalized and it can publish the status up to the local profile server.
+// Note that while ChangeInProgress is true, zedagent is neither publishing radio status
+// nor obtaining configuration updates from the local profile server.
+type RadioSilence struct {
+	// If true, all radio devices are switched off.
+	Imposed bool
+	// ChangeInProgress is true if change in the radio state is still in-progress.
+	ChangeInProgress bool
+	// Time when the last change in the radio state was requested (by a local profile server).
+	ChangeRequestedAt time.Time
+	// If the last radio configuration change failed, error message is reported here.
+	ConfigError string
+}
+
+// String prints the currently imposed state for radio transmitting.
+// Note: to print the whole structure (including Change* and ConfigError fields), use %#v
+// as the formatting directive.
+func (am RadioSilence) String() string {
+	if am.Imposed {
+		return "Radio transmitters OFF"
+	}
+	return "Radio transmitters ON"
 }
