@@ -168,7 +168,7 @@ func HandleAddressChange(ctx *DeviceNetworkContext) {
 		ctx.Pending.Inprogress)
 	if !ctx.Pending.Inprogress {
 		dnStatus = *ctx.DeviceNetworkStatus
-		status := MakeDeviceNetworkStatus(log, *ctx.DevicePortConfig,
+		status := MakeDeviceNetworkStatus(ctx, *ctx.DevicePortConfig,
 			dnStatus)
 
 		if !reflect.DeepEqual(*ctx.DeviceNetworkStatus, status) {
@@ -180,7 +180,7 @@ func HandleAddressChange(ctx *DeviceNetworkContext) {
 			log.Functionf("HandleAddressChange: No change\n")
 		}
 	} else {
-		dnStatus = MakeDeviceNetworkStatus(log, *ctx.DevicePortConfig,
+		dnStatus = MakeDeviceNetworkStatus(ctx, *ctx.DevicePortConfig,
 			ctx.Pending.PendDNS)
 
 		if !reflect.DeepEqual(ctx.Pending.PendDNS, dnStatus) {

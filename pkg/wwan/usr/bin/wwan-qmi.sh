@@ -1,9 +1,14 @@
+#!/bin/sh
+# shellcheck disable=SC2039
+# shellcheck disable=SC2155
+
 uqmi() {
   local JSON
-  JSON=`timeout -s KILL "$LTESTAT_TIMEOUT" uqmi -d "/dev/$CDC_DEV" "$@"`
-  if [ $? -eq 0 ] && (echo "$JSON" | jq -ea . > /dev/null 2>&1) ; then
-    echo "$JSON"
-    return 0
+  if JSON="$(timeout -s KILL "$LTESTAT_TIMEOUT" uqmi -d "/dev/$CDC_DEV" "$@")"; then
+    if echo "$JSON" | jq -ea . > /dev/null 2>&1; then
+      echo "$JSON"
+      return 0
+    fi
   fi
   return 1
 }
@@ -23,8 +28,8 @@ qmi_get_packet_stats() {
   local RXB=$(parse_modem_attr "$STATS" "RX bytes OK")
   local RXD=$(parse_modem_attr "$STATS" "RX packets dropped")
   json_struct \
-    "$(json_attr tx-bytes ${TXB:-0})" "$(json_attr tx-packets ${TXP:-0})" "$(json_attr tx-drops ${TXD:-0})" \
-    "$(json_attr rx-bytes ${RXB:-0})" "$(json_attr rx-packets ${RXP:-0})" "$(json_attr rx-drops ${RXD:-0})"
+    "$(json_attr tx-bytes "${TXB:-0}")" "$(json_attr tx-packets "${TXP:-0}")" "$(json_attr tx-drops "${TXD:-0}")" \
+    "$(json_attr rx-bytes "${RXB:-0}")" "$(json_attr rx-packets "${RXP:-0}")" "$(json_attr rx-drops "${RXD:-0}")"
 }
 
 qmi_get_signal_info() {
@@ -71,8 +76,7 @@ qmi_get_modem_revision() {
 
 qmi_get_providers() {
   local PROVIDERS
-  PROVIDERS="$(uqmi --network-scan)"
-  if [ $? -ne 0 ]; then
+  if ! PROVIDERS="$(uqmi --network-scan)"; then
     echo "[]"
     return 1
   fi
@@ -88,8 +92,7 @@ get_get_sim_iccid() {
   local OUTPUT
   # Get ICCID from User Identity Module (UIM).
   # Please refer to ETSI/3GPP "TS 102 221" section 13.2 for the coding of this EF.
-  OUTPUT="$(qmicli --uim-read-transparent=0x3F00,0x2FE2)"
-  if [ $? -ne 0 ]; then
+  if ! OUTPUT="$(qmicli --uim-read-transparent=0x3F00,0x2FE2)"; then
     return 1
   fi
   printf "%s" "$OUTPUT" | awk '
@@ -111,8 +114,7 @@ get_get_sim_imsi() {
   local OUTPUT
   # Get IMSI from User Identity Module (UIM).
   # Please refer to ETSI/3GPP "TS 31.102" section 4.2.2 for the coding of this EF.
-  OUTPUT="$(qmicli --uim-read-transparent=0x3F00,0x7FFF,0x6F07)"
-  if [ $? -ne 0 ]; then
+  if ! OUTPUT="$(qmicli --uim-read-transparent=0x3F00,0x7FFF,0x6F07)"; then
     return 1
   fi
   printf "%s" "$OUTPUT" | awk '
@@ -134,29 +136,27 @@ get_get_sim_imsi() {
 
 qmi_get_sim_cards() {
   # FIXME XXX Limited to a single SIM card
-  ICCID="$(get_get_sim_iccid)"
-  if [ $? -ne 0 ]; then
+  if ! ICCID="$(get_get_sim_iccid)"; then
     echo "[]"
     return 1
   fi
-  IMSI="$(get_get_sim_imsi)"
-  if [ $? -ne 0 ]; then
+  if ! IMSI="$(get_get_sim_imsi)"; then
     echo "[]"
     return 1
   fi
   SIM="$(json_struct "$(json_str_attr "iccid" "$ICCID")" "$(json_str_attr "imsi" "$IMSI")")\n"
-  printf "%b" $SIM | json_array
+  printf "%b" "$SIM" | json_array
 }
 
 qmi_start_network() {
   echo "[$CDC_DEV] Starting network for APN ${APN}"
-  ip link set $IFACE down
-  echo Y > /sys/class/net/$IFACE/qmi/raw_ip
-  ip link set $IFACE up
+  ip link set "$IFACE" down
+  echo Y > "/sys/class/net/$IFACE/qmi/raw_ip"
+  ip link set "$IFACE" up
 
   uqmi --sync
   uqmi --start-network --apn "${APN}" --keep-client-id wds |\
-      mbus_publish pdh_$IFACE
+      mbus_publish "pdh_$IFACE"
 }
 
 qmi_wait_for_sim() {
@@ -196,16 +196,16 @@ qmi_wait_for_settings() {
 
 qmi_reset_modem() {
   # last ditch attempt to reset our modem -- not sure how effective :-(
-  local PDH=`cat ${BBS}/pdh_${IFACE}.json 2>/dev/null`
+  local PDH="$(cat "${BBS}/pdh_${IFACE}.json" 2>/dev/null)"
 
-  for i in $PDH 0xFFFFFFFF ; do
-    uqmi --stop-network $i --autoconnect || continue
+  for i in "$PDH" 0xFFFFFFFF ; do
+    uqmi --stop-network "$i" --autoconnect || continue
   done
 
   qmicli --dms-reset
 
-  for i in $PDH 0xFFFFFFFF ; do
-    uqmi --stop-network $i --autoconnect || continue
+  for i in "$PDH" 0xFFFFFFFF ; do
+    uqmi --stop-network "$i" --autoconnect || continue
   done
 }
 

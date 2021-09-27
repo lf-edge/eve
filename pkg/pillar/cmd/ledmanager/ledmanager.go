@@ -45,7 +45,8 @@ type ledManagerContext struct {
 	subDeviceNetworkStatus pubsub.Subscription
 	deviceNetworkStatus    types.DeviceNetworkStatus
 	usableAddressCount     int
-	derivedLedCounter      types.LedBlinkCount // Based on ledCounter + usableAddressCount
+	radioSilence           bool
+	derivedLedCounter      types.LedBlinkCount // Based on ledCounter, usableAddressCount and radioSilence
 	GCInitialized          bool
 }
 
@@ -417,9 +418,9 @@ func handleLedBlinkImpl(ctxArg interface{}, key string,
 	}
 	ctx.ledCounter = config.BlinkCounter
 	ctx.derivedLedCounter = types.DeriveLedCounter(ctx.ledCounter,
-		ctx.usableAddressCount)
-	log.Functionf("counter %d usableAddr %d, derived %d",
-		ctx.ledCounter, ctx.usableAddressCount, ctx.derivedLedCounter)
+		ctx.usableAddressCount, ctx.radioSilence)
+	log.Functionf("counter %d usableAddr %d, radioSilence %t, derived %d",
+		ctx.ledCounter, ctx.usableAddressCount, ctx.radioSilence, ctx.derivedLedCounter)
 	ctx.countChange <- ctx.derivedLedCounter
 	log.Functionf("handleLedBlinkImpl done for %s", key)
 }
@@ -437,9 +438,9 @@ func handleLedBlinkDelete(ctxArg interface{}, key string,
 	// XXX or should we tell the blink go routine to exit?
 	ctx.ledCounter = 0
 	ctx.derivedLedCounter = types.DeriveLedCounter(ctx.ledCounter,
-		ctx.usableAddressCount)
-	log.Functionf("counter %d usableAddr %d, derived %d",
-		ctx.ledCounter, ctx.usableAddressCount, ctx.derivedLedCounter)
+		ctx.usableAddressCount, ctx.radioSilence)
+	log.Functionf("counter %d usableAddr %d, radioSilence %t, derived %d",
+		ctx.ledCounter, ctx.usableAddressCount, ctx.radioSilence, ctx.derivedLedCounter)
 	ctx.countChange <- ctx.derivedLedCounter
 	log.Functionf("handleLedBlinkDelete done for %s", key)
 }
@@ -698,12 +699,13 @@ func handleDNSImpl(ctxArg interface{}, key string,
 	newAddrCount := types.CountLocalAddrAnyNoLinkLocal(ctx.deviceNetworkStatus)
 	log.Functionf("handleDNSImpl %d usable addresses", newAddrCount)
 	if (ctx.usableAddressCount == 0 && newAddrCount != 0) ||
-		(ctx.usableAddressCount != 0 && newAddrCount == 0) {
+		(ctx.usableAddressCount != 0 && newAddrCount == 0) ||
+		updateRadioSilence(ctx, &ctx.deviceNetworkStatus) {
 		ctx.usableAddressCount = newAddrCount
 		ctx.derivedLedCounter = types.DeriveLedCounter(ctx.ledCounter,
-			ctx.usableAddressCount)
-		log.Functionf("counter %d usableAddr %d, derived %d",
-			ctx.ledCounter, ctx.usableAddressCount, ctx.derivedLedCounter)
+			ctx.usableAddressCount, ctx.radioSilence)
+		log.Functionf("counter %d, usableAddr %d, radioSilence %t, derived %d",
+			ctx.ledCounter, ctx.usableAddressCount, ctx.radioSilence, ctx.derivedLedCounter)
 		ctx.countChange <- ctx.derivedLedCounter
 	}
 	log.Functionf("handleDNSImpl done for %s", key)
@@ -721,15 +723,28 @@ func handleDNSDelete(ctxArg interface{}, key string, statusArg interface{}) {
 	newAddrCount := types.CountLocalAddrAnyNoLinkLocal(ctx.deviceNetworkStatus)
 	log.Functionf("handleDNSDelete %d usable addresses", newAddrCount)
 	if (ctx.usableAddressCount == 0 && newAddrCount != 0) ||
-		(ctx.usableAddressCount != 0 && newAddrCount == 0) {
+		(ctx.usableAddressCount != 0 && newAddrCount == 0) ||
+		updateRadioSilence(ctx, &ctx.deviceNetworkStatus) {
 		ctx.usableAddressCount = newAddrCount
 		ctx.derivedLedCounter = types.DeriveLedCounter(ctx.ledCounter,
-			ctx.usableAddressCount)
-		log.Functionf("counter %d usableAddr %d, derived %d",
-			ctx.ledCounter, ctx.usableAddressCount, ctx.derivedLedCounter)
+			ctx.usableAddressCount, ctx.radioSilence)
+		log.Functionf("counter %d, usableAddr %d, radioSilence %t, derived %d",
+			ctx.ledCounter, ctx.usableAddressCount, ctx.radioSilence, ctx.derivedLedCounter)
 		ctx.countChange <- ctx.derivedLedCounter
 	}
 	log.Functionf("handleDNSDelete done for %s", key)
+}
+
+func updateRadioSilence(ctx *ledManagerContext, status *types.DeviceNetworkStatus) (update bool) {
+	if status == nil {
+		// by default radio-silence is turned off
+		update = ctx.radioSilence != false
+		ctx.radioSilence = false
+	} else if !status.RadioSilence.ChangeInProgress {
+		update = ctx.radioSilence != status.RadioSilence.Imposed
+		ctx.radioSilence = status.RadioSilence.Imposed
+	}
+	return
 }
 
 func handleGlobalConfigCreate(ctxArg interface{}, key string,

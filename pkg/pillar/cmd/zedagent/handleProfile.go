@@ -5,7 +5,6 @@ package zedagent
 
 import (
 	"fmt"
-	"net"
 	"net/http"
 	"net/url"
 	"path/filepath"
@@ -21,26 +20,22 @@ import (
 )
 
 const (
-	defaultLocalProfileServerPort = "8888"
-	savedLocalProfileFile         = "lastlocalprofile"
+	defaultLocalServerPort = "8888"
+	profileURLPath         = "/api/v1/local_profile"
+	savedLocalProfileFile  = "lastlocalprofile"
 )
 
-// urlAndSrcIP structure for mapping source IP and url of local server
-type urlAndSrcIP struct {
-	srcIP     net.IP
-	actualURL string
-}
-
-func getLocalProfileURL(localProfileServer string) (string, error) {
-	localProfileURL := fmt.Sprintf("http://%s", localProfileServer)
-	u, err := url.Parse(localProfileURL)
+// makeLocalServerBaseURL constructs local server URL without path.
+func makeLocalServerBaseURL(localServerAddr string) (string, error) {
+	localServerURL := fmt.Sprintf("http://%s", localServerAddr)
+	u, err := url.Parse(localServerURL)
 	if err != nil {
 		return "", fmt.Errorf("url.Parse: %s", err)
 	}
 	if u.Port() == "" {
-		localProfileURL = fmt.Sprintf("%s:%s", localProfileURL, defaultLocalProfileServerPort)
+		localServerURL = fmt.Sprintf("%s:%s", localServerURL, defaultLocalServerPort)
 	}
-	return fmt.Sprintf("%s/api/v1/local_profile", localProfileURL), nil
+	return localServerURL, nil
 }
 
 // Run a periodic fetch of the currentProfile from localServer
@@ -99,20 +94,8 @@ func parseLocalProfile(localProfileBytes []byte) (*profile.LocalProfile, error) 
 	return localProfile, nil
 }
 
-func parseAndValidateLocalProfile(localProfileBytes []byte, getconfigCtx *getconfigContext) (*profile.LocalProfile, error) {
-	localProfile, err := parseLocalProfile(localProfileBytes)
-	if err != nil {
-		return nil, fmt.Errorf("parseAndValidateLocalProfile: parseLocalProfile: %v", err)
-	}
-	if localProfile.GetServerToken() != getconfigCtx.profileServerToken {
-		// send something to ledmanager ??
-		return nil, fmt.Errorf("parseAndValidateLocalProfile: missamtch ServerToken for local profile server")
-	}
-	return localProfile, nil
-}
-
 // read saved local profile in case of particular reboot reason
-func readSavedLocalProfile(getconfigCtx *getconfigContext, validate bool) (*profile.LocalProfile, error) {
+func readSavedLocalProfile(getconfigCtx *getconfigContext) (*profile.LocalProfile, error) {
 	localProfileMessage, ts, err := readSavedProtoMessage(
 		getconfigCtx.zedagentCtx.globalConfig.GlobalValueInt(types.StaleConfigTime),
 		filepath.Join(checkpointDirname, savedLocalProfileFile), false)
@@ -122,109 +105,49 @@ func readSavedLocalProfile(getconfigCtx *getconfigContext, validate bool) (*prof
 	if localProfileMessage != nil {
 		log.Noticef("Using saved local profile dated %s",
 			ts.Format(time.RFC3339Nano))
-		if validate {
-			return parseAndValidateLocalProfile(localProfileMessage, getconfigCtx)
-		}
 		return parseLocalProfile(localProfileMessage)
 	}
 	return nil, nil
 }
 
-//prepareLocalProfileServerMap process configuration of network instances to find match with defined localServerURL
-//returns the srcIP and processed url for the zero or more network instances on which the localProfileServer might be hosted
-//based on a IP or hostname in dns records match apps
-//in form bridge name -> slice of urlAndSrcIP
-func prepareLocalProfileServerMap(localServerURL string, getconfigCtx *getconfigContext) (map[string][]*urlAndSrcIP, error) {
-	u, err := url.Parse(localServerURL)
-	if err != nil {
-		return nil, fmt.Errorf("checkAndPrepareLocalIP: url.Parse: %s", err)
-	}
-	res := make(map[string][]*urlAndSrcIP)
-	appendURLAndSrcIPMap := func(resMap map[string][]*urlAndSrcIP, intf string, obj *urlAndSrcIP) {
-		if _, ok := resMap[intf]; !ok {
-			resMap[intf] = []*urlAndSrcIP{}
-		}
-		resMap[intf] = append(resMap[intf], obj)
-	}
-	appNetworkStatuses := getconfigCtx.subAppNetworkStatus.GetAll()
-	networkInstanceConfigs := getconfigCtx.pubNetworkInstanceConfig.GetAll()
-	localProfileServerHostname := u.Hostname()
-	localProfileServerIP := net.ParseIP(localProfileServerHostname)
-	for _, entry := range appNetworkStatuses {
-		appNetworkStatus := entry.(types.AppNetworkStatus)
-		for _, ulStatus := range appNetworkStatus.UnderlayNetworkList {
-			bridgeIP := net.ParseIP(ulStatus.BridgeIPAddr)
-			if bridgeIP == nil {
-				continue
-			}
-			if localProfileServerIP != nil {
-				//check if defined IP of localServer is equals with allocated IP of app
-				if ulStatus.AllocatedIPv4Addr == localProfileServerIP.String() {
-					appendURLAndSrcIPMap(res, ulStatus.Bridge,
-						&urlAndSrcIP{actualURL: localServerURL, srcIP: bridgeIP})
-				}
-				continue
-			}
-			//check if defined hostname of localServer is in DNS records
-			for _, ni := range networkInstanceConfigs {
-				networkInstanceConfig := ni.(types.NetworkInstanceConfig)
-				for _, dnsNameToIPList := range networkInstanceConfig.DnsNameToIPList {
-					if dnsNameToIPList.HostName != localProfileServerHostname {
-						continue
-					}
-					for _, ip := range dnsNameToIPList.IPs {
-						localServerURLReplaced := strings.Replace(localServerURL, localProfileServerHostname,
-							ip.String(), 1)
-						log.Functionf(
-							"prepareLocalProfileServerMap: will use %s for bridge %s",
-							localServerURLReplaced, ulStatus.Bridge)
-						appendURLAndSrcIPMap(res, ulStatus.Bridge,
-							&urlAndSrcIP{actualURL: localServerURLReplaced, srcIP: bridgeIP})
-					}
-				}
-			}
-		}
-	}
-	return res, nil
-}
-
-// getLocalProfileConfig connects to local profile server to fetch current profile
-func getLocalProfileConfig(localServerURL string, getconfigCtx *getconfigContext) (*profile.LocalProfile, error) {
+// getLocalProfileConfig connects to local profile server to fetch the current profile
+func getLocalProfileConfig(getconfigCtx *getconfigContext, localServerURL string) (*profile.LocalProfile, error) {
 
 	log.Functionf("getLocalProfileConfig(%s)", localServerURL)
 
-	localServerMap, err := prepareLocalProfileServerMap(localServerURL, getconfigCtx)
-	if err != nil {
-		return nil, fmt.Errorf("getLocalProfileConfig: prepareLocalProfileServerMap: %s", err)
+	if !getconfigCtx.localServerMap.upToDate {
+		err := updateLocalServerMap(getconfigCtx, localServerURL)
+		if err != nil {
+			return nil, fmt.Errorf("getLocalProfileConfig: updateLocalServerMap: %v", err)
+		}
 	}
 
-	if len(localServerMap) == 0 {
+	srvMap := getconfigCtx.localServerMap.servers
+	if len(srvMap) == 0 {
 		return nil, fmt.Errorf(
 			"getLocalProfileConfig: cannot find any configured apps for localServerURL: %s",
 			localServerURL)
 	}
 
 	var errList []string
-	for bridgeName, urlAndSrcIPs := range localServerMap {
-		for _, el := range urlAndSrcIPs {
-			resp, contents, err := zedcloud.SendLocal(zedcloudCtx, el.actualURL, bridgeName, el.srcIP, 0, nil)
+	for bridgeName, servers := range srvMap {
+		for _, srv := range servers {
+			fullURL := srv.localServerAddr + profileURLPath
+			localProfile := &profile.LocalProfile{}
+			resp, err := zedcloud.SendLocalProto(
+				zedcloudCtx, fullURL, bridgeName, srv.bridgeIP, nil, localProfile)
 			if err != nil {
 				errList = append(errList, fmt.Sprintf("SendLocal: %s", err))
 				continue
 			}
 			if resp.StatusCode != http.StatusOK {
-				errList = append(errList, fmt.Sprintf("SendLocal: wrong response status code: %d",
+				errList = append(errList, fmt.Sprintf("SendLocalProto: wrong response status code: %d",
 					resp.StatusCode))
 				continue
 			}
-			if err := validateProtoMessage(el.actualURL, resp); err != nil {
-				// send something to ledmanager ???
-				errList = append(errList, fmt.Sprintf("validateProtoMessage: resp header error: %s", err))
-				continue
-			}
-			localProfile, err := parseAndValidateLocalProfile(contents, getconfigCtx)
-			if err != nil {
-				errList = append(errList, fmt.Sprintf("parseAndValidateLocalProfile: %s", err))
+			if localProfile.GetServerToken() != getconfigCtx.profileServerToken {
+				errList = append(errList,
+					fmt.Sprintf("invalid token submitted by local server (%s)", localProfile.GetServerToken()))
 				continue
 			}
 			return localProfile, nil
@@ -260,13 +183,14 @@ func parseProfile(ctx *getconfigContext, config *zconfig.EdgeDevConfig) {
 			ctx.globalProfile, config.GlobalProfile)
 		ctx.globalProfile = config.GlobalProfile
 	}
+	ctx.profileServerToken = config.ProfileServerToken
 	if ctx.localProfileServer != config.LocalProfileServer {
 		log.Noticef("parseProfile: LocalProfileServer changed from %s to %s",
 			ctx.localProfileServer, config.LocalProfileServer)
 		ctx.localProfileServer = config.LocalProfileServer
 		triggerGetLocalProfile(ctx)
+		triggerRadioPOST(ctx)
 	}
-	ctx.profileServerToken = config.ProfileServerToken
 	profileStateMachine(ctx, true)
 	log.Functionf("parseProfile done globalProfile: %s currentProfile: %s",
 		ctx.globalProfile, ctx.currentProfile)
@@ -326,14 +250,14 @@ func getLocalProfile(ctx *getconfigContext, skipFetch bool) string {
 	if skipFetch {
 		return ctx.localProfile
 	}
-	localProfileURL, err := getLocalProfileURL(localProfileServer)
+	localServerURL, err := makeLocalServerBaseURL(localProfileServer)
 	if err != nil {
-		log.Errorf("getLocalProfile getLocalProfileURL: %s", err)
+		log.Errorf("getLocalProfile: makeLocalServerBaseURL: %s", err)
 		return ""
 	}
-	localProfileConfig, err := getLocalProfileConfig(localProfileURL, ctx)
+	localProfileConfig, err := getLocalProfileConfig(ctx, localServerURL)
 	if err != nil {
-		log.Errorf("getLocalProfile getLocalProfileConfig: %s", err)
+		log.Errorf("getLocalProfile: getLocalProfileConfig: %s", err)
 		// Return last known value
 		return ctx.localProfile
 	}
@@ -344,7 +268,7 @@ func getLocalProfile(ctx *getconfigContext, skipFetch bool) string {
 
 //processSavedProfile reads saved local profile and set it
 func processSavedProfile(ctx *getconfigContext) {
-	localProfile, err := readSavedLocalProfile(ctx, false)
+	localProfile, err := readSavedLocalProfile(ctx)
 	if err != nil {
 		log.Functionf("processSavedProfile: readSavedLocalProfile %s", err)
 		return

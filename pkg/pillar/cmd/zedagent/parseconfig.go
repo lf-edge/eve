@@ -1287,6 +1287,8 @@ func parseNetworkWirelessConfig(ctx *getconfigContext, key string, netEnt *zconf
 		for _, cellular := range cellulars {
 			var wcell types.CellConfig
 			wcell.APN = cellular.GetAPN()
+			wcell.ProbeAddr = cellular.GetProbe().GetProbeAddress()
+			wcell.DisableProbe = cellular.GetProbe().GetDisable()
 			wconfig.Cellular = append(wconfig.Cellular, wcell)
 		}
 		log.Functionf("parseNetworkWirelessConfig: Wireless of network Cellular, %v", wconfig.Cellular)

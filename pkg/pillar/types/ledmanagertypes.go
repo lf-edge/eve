@@ -19,6 +19,8 @@ const (
 	LedBlinkConnectedToController
 	// LedBlinkOnboarded - LED indication of device being connected to the controller and onboarded.
 	LedBlinkOnboarded
+	// LedBlinkRadioSilence - LED indication of radio-silence being enabled
+	LedBlinkRadioSilence
 )
 const (
 	// LedBlinkOnboardingFailure - LED indication of device failing to onboard.
@@ -45,6 +47,8 @@ func (c LedBlinkCount) String() string {
 		return "Connected to EV Controller but not onboarded"
 	case LedBlinkOnboarded:
 		return "Connected to EV Controller and onboarded"
+	case LedBlinkRadioSilence:
+		return "Radio silence is imposed"
 	case LedBlinkOnboardingFailure:
 		return "Onboarding failure or conflict"
 	case LedBlinkRespWithoutTLS:
@@ -64,8 +68,10 @@ type LedBlinkCounter struct {
 
 // Merge the 1/2 values based on having usable addresses or not, with
 // the value we get based on access to zedcloud or errors.
-func DeriveLedCounter(ledCounter LedBlinkCount, usableAddressCount int) LedBlinkCount {
-	if usableAddressCount == 0 {
+func DeriveLedCounter(ledCounter LedBlinkCount, usableAddressCount int, radioSilence bool) LedBlinkCount {
+	if radioSilence {
+		return LedBlinkRadioSilence
+	} else if usableAddressCount == 0 {
 		return LedBlinkWaitingForIP
 	} else if ledCounter < LedBlinkConnectingToController {
 		return LedBlinkConnectingToController

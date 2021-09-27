@@ -231,7 +231,7 @@ func getCertsFromController(ctx *zedagentContext) bool {
 		return false
 	}
 
-	if err := validateProtoMessage(certURL, resp); err != nil {
+	if err := zedcloud.ValidateProtoContentType(certURL, resp); err != nil {
 		log.Errorf("getCertsFromController: resp header error")
 		return false
 	}
