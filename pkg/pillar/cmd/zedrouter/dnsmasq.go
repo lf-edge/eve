@@ -527,7 +527,7 @@ func checkAndPublishDhcpLeases(ctx *zedrouterContext) {
 				}
 				// Pick up from VIFIPTrig on change
 				if ulStatus.AllocatedIPv4Addr == "" || assignedIP == nil ||
-					(netconfig.Type == types.NetworkInstanceTypeSwitch && !assignedIP.Equal(leasedIPv4)) {
+					(netconfig != nil && netconfig.Type == types.NetworkInstanceTypeSwitch && !assignedIP.Equal(leasedIPv4)) {
 					ulStatus.IPAddrMisMatch = false
 					if !isEmptyIP(leasedIPv4) {
 						ulStatus.AllocatedIPv4Addr = leasedIPv4.String()
