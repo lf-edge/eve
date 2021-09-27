@@ -211,16 +211,42 @@ func doDhcpClientInactivate(log *base.LogObject, nuc types.NetworkPortConfig) {
 		log.Functionf("doDhcpClientInactivate(%s) DT_NONE is a no-op\n",
 			nuc.IfName)
 	case types.DT_STATIC, types.DT_CLIENT:
-		extras := []string{}
-		if !dhcpcdCmd(log, "--release", extras, nuc.IfName, false) {
-			log.Errorf("doDhcpClientInactivate: release failed for %s\n",
-				nuc.IfName)
-		}
-		for dhcpcdExists(log, nuc.IfName) {
-			log.Warnf("dhcpcd %s still running", nuc.IfName)
+		startTime := time.Now()
+		var extras []string
+		// run release, wait for a bit, then exit and give up
+		waitCount := 0
+		failed := false
+		for {
+			//it waits up to 10 seconds https://github.com/NetworkConfiguration/dhcpcd/blob/dhcpcd-8.1.6/src/dhcpcd.c#L1950-L1957
+			if !dhcpcdCmd(log, "--release", extras, nuc.IfName, false) {
+				log.Errorf("doDhcpClientInactivate: release failed for %s, elapsed time %v", nuc.IfName, time.Since(startTime))
+			}
+			if !dhcpcdExists(log, nuc.IfName) {
+				break
+			}
+			waitCount++
+			if waitCount >= 3 {
+				log.Errorf("doDhcpClientInactivate: dhcpcd %s still running, will exit it, elapsed time %v", nuc.IfName, time.Since(startTime))
+				failed = true
+				break
+			}
+			log.Warnf("doDhcpClientInactivate: dhcpcd %s still running, elapsed time %v", nuc.IfName, time.Since(startTime))
 			time.Sleep(1 * time.Second)
 		}
-		log.Functionf("dhcpcd %s gone", nuc.IfName)
+		if !failed {
+			log.Functionf("dhcpcd %s gone, elapsed time %v", nuc.IfName, time.Since(startTime))
+			return
+		}
+		//exit dhcpcd on interface
+		//it waits up to 10 seconds https://github.com/NetworkConfiguration/dhcpcd/blob/dhcpcd-8.1.6/src/dhcpcd.c#L1950-L1957
+		if !dhcpcdCmd(log, "--exit", extras, nuc.IfName, false) {
+			log.Errorf("doDhcpClientInactivate: exit failed for %s, elapsed time %v", nuc.IfName, time.Since(startTime))
+		}
+		if !dhcpcdExists(log, nuc.IfName) {
+			log.Noticef("dhcpcd %s gone after exit, elapsed time %v", nuc.IfName, time.Since(startTime))
+			return
+		}
+		log.Errorf("doDhcpClientInactivate: exiting dhcpcd %s still running, elapsed time %v", nuc.IfName, time.Since(startTime))
 	default:
 		log.Errorf("doDhcpClientInactivate: unsupported dhcp %v\n",
 			nuc.Dhcp)
