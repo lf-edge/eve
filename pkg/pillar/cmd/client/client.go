@@ -440,6 +440,17 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		} else {
 			log.Functionf("Got config with UUID %s", devUUID)
 		}
+		if doWrite {
+			// Set the kernel hostname
+			cmd := "/bin/hostname"
+			cmdArgs := []string{devUUID.String()}
+			log.Noticef("Calling command %s %v", cmd, cmdArgs)
+			out, err := base.Exec(log, cmd, cmdArgs...).CombinedOutput()
+			if err != nil {
+				log.Errorf("hostname command %s failed %s output %s",
+					cmdArgs, err, out)
+			}
+		}
 		_, err := os.Stat(uuidFileName)
 		if err != nil {
 			doWrite = true
