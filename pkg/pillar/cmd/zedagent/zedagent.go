@@ -83,6 +83,7 @@ type DNSContext struct {
 	subDeviceNetworkStatus pubsub.Subscription
 	triggerGetConfig       bool
 	triggerDeviceInfo      bool
+	triggerHandleDeferred  bool
 }
 
 type zedagentContext struct {
@@ -1023,6 +1024,12 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 		case change := <-subDeviceNetworkStatus.MsgChan():
 			subDeviceNetworkStatus.ProcessChange(change)
+			if DNSctx.triggerHandleDeferred {
+				start := time.Now()
+				zedcloud.HandleDeferred(zedcloudCtx, start, 100*time.Millisecond, false)
+				ps.CheckMaxTimeTopic(agentName, "deferredChan", start, warningTime, errorTime)
+				DNSctx.triggerHandleDeferred = false
+			}
 
 		case change := <-subAssignableAdapters.MsgChan():
 			subAssignableAdapters.ProcessChange(change)
@@ -1243,6 +1250,12 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 				log.Functionf("NetworkStatus triggered PublishDeviceInfo")
 				triggerPublishDevInfo(&zedagentCtx)
 				DNSctx.triggerDeviceInfo = false
+			}
+			if DNSctx.triggerHandleDeferred {
+				start := time.Now()
+				zedcloud.HandleDeferred(zedcloudCtx, start, 100*time.Millisecond, false)
+				ps.CheckMaxTimeTopic(agentName, "deferredChan", start, warningTime, errorTime)
+				DNSctx.triggerHandleDeferred = false
 			}
 
 		case change := <-subAssignableAdapters.MsgChan():
@@ -1580,6 +1593,10 @@ func handleDNSImpl(ctxArg interface{}, key string,
 		log.Functionf("handleDNSImpl no change")
 		ctx.DNSinitialized = true
 		return
+	}
+	// if status changed to DPC_SUCCESS try to send deferred objects
+	if status.State == types.DPC_SUCCESS && deviceNetworkStatus.State != types.DPC_SUCCESS {
+		ctx.triggerHandleDeferred = true
 	}
 	log.Functionf("handleDNSImpl: changed %v",
 		cmp.Diff(*deviceNetworkStatus, status))
