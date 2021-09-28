@@ -551,7 +551,6 @@ func inhaleDeviceConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigCo
 				devUUID.String(), id.String())
 			potentialUUIDUpdate(getconfigCtx)
 			return false
-			// XXX set the hostname in client.go instead of device-steps.sh
 		}
 		newControllerEpoch := config.GetControllerEpoch()
 		if controllerEpoch != newControllerEpoch {
