@@ -338,7 +338,7 @@ func sendAttestReqProtobuf(attestReq *attest.ZAttestReq, iteration int) {
 		log.Fatal("SendInfoProtobufStr proto marshaling error: ", err)
 	}
 
-	deferKey := "attest:" + zcdevUUID.String()
+	deferKey := "attest:" + devUUID.String()
 
 	attestURL := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API,
 		devUUID, "attest")

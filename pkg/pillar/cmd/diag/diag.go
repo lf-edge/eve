@@ -908,7 +908,6 @@ func tryPostUUID(ctx *diagContext, ifname string) bool {
 	}
 	zedcloudCtx := ctx.zedcloudCtx
 
-	reqURL := zedcloud.URLPathString(ctx.serverNameAndPort, zedcloudCtx.V2API, ctx.devUUID, "config")
 	// Set the TLS config on each attempt in case it has changed due to proxies etc
 	err = zedcloud.UpdateTLSConfig(zedcloudCtx, ctx.serverName, ctx.cert)
 	if err != nil {
@@ -926,6 +925,8 @@ func tryPostUUID(ctx *diagContext, ifname string) bool {
 		time.Sleep(delay)
 		var resp *http.Response
 		var buf []byte
+		reqURL := zedcloud.URLPathString(ctx.serverNameAndPort, zedcloudCtx.V2API,
+			ctx.devUUID, "config")
 		done, resp, rtf, buf = myPost(ctx, reqURL, ifname, retryCount,
 			int64(len(b)), bytes.NewBuffer(b))
 		if done {
@@ -1056,6 +1057,9 @@ func myGet(ctx *diagContext, reqURL string, ifname string,
 				ifname, reqURL)
 		case types.SenderStatusCertMiss:
 			fmt.Fprintf(outfile, "ERROR: %s: get %s Controller certificate miss\n",
+				ifname, reqURL)
+		case types.SenderStatusNotFound:
+			fmt.Fprintf(outfile, "ERROR: %s: get %s Did controller delete the device?\n",
 				ifname, reqURL)
 		default:
 			fmt.Fprintf(outfile, "ERROR: %s: get %s failed: %s\n",

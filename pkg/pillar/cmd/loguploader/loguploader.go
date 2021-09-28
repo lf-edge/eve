@@ -26,7 +26,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	"github.com/lf-edge/eve/pkg/pillar/utils"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 	uuid "github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
@@ -53,14 +52,12 @@ const (
 )
 
 var (
-	devUUID             uuid.UUID
 	deviceNetworkStatus = &types.DeviceNetworkStatus{}
 	debug               bool
 	debugOverride       bool
 	backoffEnabled      bool // when received 429 code, before backoffTimeout expires, not use the normal upload scheduling
 	logger              *logrus.Logger
 	log                 *base.LogObject
-	newlogsDevURL       string
 	contSentSuccess     int64
 	contSentFailure     int64
 	dev4xxfile          resp4xxlogfile
@@ -74,6 +71,7 @@ type resp4xxlogfile struct {
 }
 
 type loguploaderContext struct {
+	devUUID                uuid.UUID
 	globalConfig           *types.ConfigItemValueMap
 	zedcloudCtx            *zedcloud.ZedCloudContext
 	subDeviceNetworkStatus pubsub.Subscription
@@ -115,12 +113,32 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	}
 
 	// Wait until we have been onboarded aka know our own UUID
-	onboard, err := utils.WaitForOnboarded(ps, log, agentName, warningTime, errorTime)
+	subOnboardStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "zedclient",
+		MyAgentName:   agentName,
+		TopicImpl:     types.OnboardingStatus{},
+		Activate:      true,
+		Persistent:    true,
+		Ctx:           &loguploaderCtx,
+		CreateHandler: handleOnboardStatusCreate,
+		ModifyHandler: handleOnboardStatusModify,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
-	log.Functionf("processed onboarded")
-	devUUID = onboard.DeviceUUID
+	// Wait for Onboarding to be done by client
+	nilUUID := uuid.UUID{}
+	for loguploaderCtx.devUUID == nilUUID {
+		log.Functionf("Waiting for OnboardStatus UUID")
+		select {
+		case change := <-subOnboardStatus.MsgChan():
+			subOnboardStatus.ProcessChange(change)
+		case <-stillRunning.C:
+		}
+		ps.StillRunning(agentName, warningTime, errorTime)
+	}
 
 	subDeviceNetworkStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "nim",
@@ -183,6 +201,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 		case change := <-subDeviceNetworkStatus.MsgChan():
 			subDeviceNetworkStatus.ProcessChange(change)
+
+		case change := <-subOnboardStatus.MsgChan():
+			subOnboardStatus.ProcessChange(change)
 
 		// This wait can take an unbounded time since we wait for IP
 		// addresses. Punch StillRunning
@@ -259,6 +280,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 		case change := <-subGlobalConfig.MsgChan():
 			subGlobalConfig.ProcessChange(change)
+
+		case change := <-subOnboardStatus.MsgChan():
+			subOnboardStatus.ProcessChange(change)
 
 		case change := <-subAppInstConfig.MsgChan():
 			subAppInstConfig.ProcessChange(change)
@@ -399,7 +423,7 @@ func sendCtxInit(ctx *loguploaderContext) {
 		SoftSerial:       hardware.GetSoftSerial(log),
 		AgentName:        agentName,
 	})
-	zedcloudCtx.DevUUID = devUUID
+	zedcloudCtx.DevUUID = ctx.devUUID
 
 	ctx.zedcloudCtx = &zedcloudCtx
 	log.Functionf("sendCtxInit: Get Device Serial %s, Soft Serial %s", zedcloudCtx.DevSerial,
@@ -410,12 +434,7 @@ func sendCtxInit(ctx *loguploaderContext) {
 	if err != nil {
 		log.Fatal(err)
 	}
-
-	zedcloudCtx.DevUUID = devUUID
-
-	// wait for uuid of logs V2 URL string
-	newlogsDevURL = zedcloud.URLPathString(ctx.serverNameAndPort, zedcloudCtx.V2API, devUUID, "newlogs")
-	log.Functionf("sendCtxInit: Read UUID %s", devUUID)
+	log.Functionf("sendCtxInit: Using UUID %s", ctx.devUUID)
 }
 
 func handleDNSCreate(ctxArg interface{}, key string, statusArg interface{}) {
@@ -743,9 +762,11 @@ func sendToCloud(ctx *loguploaderContext, data []byte, iter int, fName string, f
 			// XXX temp support for adam controller
 			appLogURL = fmt.Sprintf("apps/instanceid/id/%s/newlogs", appUUID)
 		}
-		logsURL = zedcloud.URLPathString(ctx.serverNameAndPort, ctx.zedcloudCtx.V2API, devUUID, appLogURL)
+		logsURL = zedcloud.URLPathString(ctx.serverNameAndPort, ctx.zedcloudCtx.V2API,
+			ctx.devUUID, appLogURL)
 	} else {
-		logsURL = newlogsDevURL
+		logsURL = zedcloud.URLPathString(ctx.serverNameAndPort, ctx.zedcloudCtx.V2API,
+			ctx.devUUID, "newlogs")
 	}
 	startTime := time.Now()
 
@@ -931,5 +952,28 @@ func handle4xxlogfile(ctx *loguploaderContext, fName string, isApp bool) {
 
 		log.Functionf("handle4xxlogfile: relocate src %s to dst %s", srcFile, dstFile)
 		os.Rename(srcFile, dstFile)
+	}
+}
+
+// Track the DeviceUUID
+func handleOnboardStatusCreate(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	handleOnboardStatusImpl(ctxArg, key, statusArg)
+}
+
+func handleOnboardStatusModify(ctxArg interface{}, key string,
+	statusArg interface{}, oldStatusArg interface{}) {
+	handleOnboardStatusImpl(ctxArg, key, statusArg)
+}
+
+func handleOnboardStatusImpl(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
+	status := statusArg.(types.OnboardingStatus)
+	ctx := ctxArg.(*loguploaderContext)
+
+	ctx.devUUID = status.DeviceUUID
+	if ctx.zedcloudCtx != nil {
+		sendCtxInit(ctx)
 	}
 }

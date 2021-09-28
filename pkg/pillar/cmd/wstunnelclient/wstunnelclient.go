@@ -18,7 +18,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	"github.com/lf-edge/eve/pkg/pillar/utils"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 	"github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
@@ -158,21 +157,41 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	subAppInstanceConfig.Activate()
 
 	// Wait until we have been onboarded aka know our own UUID
-	onboard, err := utils.WaitForOnboarded(ps, log, agentName, warningTime, errorTime)
+	subOnboardStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "zedclient",
+		MyAgentName:   agentName,
+		TopicImpl:     types.OnboardingStatus{},
+		Activate:      true,
+		Persistent:    true,
+		Ctx:           &wscCtx,
+		CreateHandler: handleOnboardStatusCreate,
+		ModifyHandler: handleOnboardStatusModify,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
-	log.Functionf("processed onboarded")
-	devUUID := onboard.DeviceUUID
-
-	if zedcloud.UseV2API() {
-		wscCtx.devUUID = devUUID
+	// Wait for Onboarding to be done by client
+	nilUUID := uuid.UUID{}
+	for wscCtx.devUUID == nilUUID {
+		log.Functionf("Waiting for OnboardStatus UUID")
+		select {
+		case change := <-subOnboardStatus.MsgChan():
+			subOnboardStatus.ProcessChange(change)
+		case <-stillRunning.C:
+		}
+		ps.StillRunning(agentName, warningTime, errorTime)
 	}
+	log.Functionf("processed onboarded")
 
 	// Pick up debug aka log level before we start real work
 	for !wscCtx.GCInitialized {
 		log.Functionf("waiting for GCInitialized")
 		select {
+		case change := <-subOnboardStatus.MsgChan():
+			subOnboardStatus.ProcessChange(change)
+
 		case change := <-subGlobalConfig.MsgChan():
 			subGlobalConfig.ProcessChange(change)
 		case <-stillRunning.C:
@@ -186,6 +205,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	for !DNSctx.DNSinitialized {
 		log.Functionf("Waiting for DeviceNetworkStatus\n")
 		select {
+		case change := <-subOnboardStatus.MsgChan():
+			subOnboardStatus.ProcessChange(change)
+
 		case change := <-subGlobalConfig.MsgChan():
 			subGlobalConfig.ProcessChange(change)
 
@@ -196,6 +218,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 	for {
 		select {
+		case change := <-subOnboardStatus.MsgChan():
+			subOnboardStatus.ProcessChange(change)
+
 		case change := <-subGlobalConfig.MsgChan():
 			subGlobalConfig.ProcessChange(change)
 
@@ -418,4 +443,23 @@ func scanAIConfigs(ctx *wstunnelclientContext) {
 		}
 		log.Functionf("Could not connect to %s using intf %s\n", destURL, ifname)
 	}
+}
+
+// Track the DeviceUUID
+func handleOnboardStatusCreate(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	handleOnboardStatusImpl(ctxArg, key, statusArg)
+}
+
+func handleOnboardStatusModify(ctxArg interface{}, key string,
+	statusArg interface{}, oldStatusArg interface{}) {
+	handleOnboardStatusImpl(ctxArg, key, statusArg)
+}
+
+func handleOnboardStatusImpl(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
+	status := statusArg.(types.OnboardingStatus)
+	ctx := ctxArg.(*wstunnelclientContext)
+	ctx.devUUID = status.DeviceUUID
 }

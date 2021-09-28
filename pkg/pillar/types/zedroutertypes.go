@@ -2767,7 +2767,6 @@ type DNSReq struct {
 
 // IPFlow :
 type IPFlow struct {
-	DevID   uuid.UUID
 	Scope   FlowScope
 	Flows   []FlowRec
 	DNSReqs []DNSReq
@@ -2781,7 +2780,7 @@ func (flows IPFlow) Key() string {
 // LogCreate : we treat IPFlow as Metrics for logging
 func (flows IPFlow) LogCreate(logBase *base.LogObject) {
 	logObject := base.NewLogObject(logBase, base.IPFlowLogType, "",
-		flows.DevID, flows.LogKey())
+		nilUUID, flows.LogKey())
 	if logObject == nil {
 		return
 	}
@@ -2791,7 +2790,7 @@ func (flows IPFlow) LogCreate(logBase *base.LogObject) {
 // LogModify :
 func (flows IPFlow) LogModify(logBase *base.LogObject, old interface{}) {
 	logObject := base.EnsureLogObject(logBase, base.IPFlowLogType, "",
-		flows.DevID, flows.LogKey())
+		nilUUID, flows.LogKey())
 
 	oldFlows, ok := old.(IPFlow)
 	if !ok {
@@ -2805,7 +2804,7 @@ func (flows IPFlow) LogModify(logBase *base.LogObject, old interface{}) {
 // LogDelete :
 func (flows IPFlow) LogDelete(logBase *base.LogObject) {
 	logObject := base.EnsureLogObject(logBase, base.IPFlowLogType, "",
-		flows.DevID, flows.LogKey())
+		nilUUID, flows.LogKey())
 	logObject.Metricf("IP flow delete")
 
 	base.DeleteLogObject(logBase, flows.LogKey())
