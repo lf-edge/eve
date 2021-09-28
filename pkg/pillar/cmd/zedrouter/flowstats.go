@@ -134,7 +134,7 @@ func FlowStatsCollect(ctx *zedrouterContext) {
 			return
 		}
 
-		log.Tracef("***FlowStats(%d): device=%v, size of the flows %d\n", proto, devUUID, len(connT))
+		log.Tracef("***FlowStats(%d): size of the flows %d", proto, len(connT))
 
 		for _, entry := range connT { // loop through and process current timedout flow collection
 			flowTuple := flowMergeProcess(entry, instData)
@@ -175,7 +175,6 @@ func FlowStatsCollect(ctx *zedrouterContext) {
 				NetUUID:   instData.bnNet[bnx].netUUID,
 			}
 			flowdata := types.IPFlow{
-				DevID: devUUID,
 				Scope: scope,
 			}
 

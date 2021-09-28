@@ -64,7 +64,7 @@ func prepareAndPublishNetworkInstanceInfoMsg(ctx *zedagentContext,
 	infoMsg := &zinfo.ZInfoMsg{}
 	infoType := new(zinfo.ZInfoTypes)
 	*infoType = zinfo.ZInfoTypes_ZiNetworkInstance
-	infoMsg.DevId = *proto.String(zcdevUUID.String())
+	infoMsg.DevId = *proto.String(devUUID.String())
 	infoMsg.Ztype = *infoType
 	infoMsg.AtTimeStamp = ptypes.TimestampNow()
 
@@ -136,7 +136,7 @@ func prepareAndPublishNetworkInstanceInfoMsg(ctx *zedagentContext,
 			reportAA.Type = zcommon.PhyIoType(ia.Type)
 			reportAA.Name = ia.Logicallabel
 			// XXX Add Phylabel in protobuf message?
-			reportAA.UsedByAppUUID = zcdevUUID.String()
+			reportAA.UsedByAppUUID = devUUID.String()
 			list := ctx.assignableAdapters.LookupIoBundleAny(ia.Phylabel)
 			for _, ib := range list {
 				if ib == nil {
@@ -488,7 +488,7 @@ func aclActionToProtoAction(action types.ACLActionType) flowlog.ACLAction {
 func protoEncodeAppFlowMonitorProto(ipflow types.IPFlow) *flowlog.FlowMessage {
 
 	pflows := new(flowlog.FlowMessage)
-	pflows.DevId = ipflow.DevID.String()
+	pflows.DevId = *proto.String(devUUID.String())
 
 	// ScopeInfo fill in
 	pScope := new(flowlog.ScopeInfo)

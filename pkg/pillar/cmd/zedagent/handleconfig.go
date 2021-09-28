@@ -15,6 +15,7 @@ import (
 
 	"github.com/golang/protobuf/proto"
 	zconfig "github.com/lf-edge/eve/api/go/config"
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	"github.com/lf-edge/eve/pkg/pillar/hardware"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
@@ -80,11 +81,8 @@ type getconfigContext struct {
 	configRetryUpdateCounter uint32 // received from config
 }
 
-// devUUID is set in Run and never changed
+// current devUUID from OnboardingStatus
 var devUUID uuid.UUID
-
-// XXX need to support recreating devices. Remove when zedcloud preserves state
-var zcdevUUID uuid.UUID
 
 // Really a constant
 var nilUUID uuid.UUID
@@ -121,7 +119,6 @@ func handleConfigInit(networkSendTimeout uint32) *zedcloud.ZedCloudContext {
 	}
 
 	zedcloudCtx.DevUUID = devUUID
-	zcdevUUID = devUUID
 	return &zedcloudCtx
 }
 
@@ -161,6 +158,9 @@ func configTimerTask(handleChannel chan interface{},
 		case <-ticker.C:
 			start := time.Now()
 			iteration += 1
+			// In case devUUID changed we re-generate
+			configUrl = zedcloud.URLPathString(serverNameAndPort,
+				zedcloudCtx.V2API, devUUID, "config")
 			rebootFlag := getLatestConfig(configUrl, iteration, getconfigCtx)
 			if rebootFlag != getconfigCtx.rebootFlag {
 				getconfigCtx.rebootFlag = rebootFlag
@@ -223,10 +223,10 @@ func getLatestConfig(url string, iteration int,
 	}
 	buf := bytes.NewBuffer(b)
 	size := int64(proto.Size(cr))
-	resp, contents, rtf, err := zedcloud.SendOnAllIntf(zedcloudCtx, url, size, buf, iteration, bailOnHTTPErr)
+	resp, contents, senderStatus, err := zedcloud.SendOnAllIntf(zedcloudCtx, url, size, buf, iteration, bailOnHTTPErr)
 	if err != nil {
 		newCount := types.LedBlinkConnectingToController
-		switch rtf {
+		switch senderStatus {
 		case types.SenderStatusUpgrade:
 			log.Functionf("getLatestConfig : Controller upgrade in progress")
 		case types.SenderStatusRefused:
@@ -235,11 +235,13 @@ func getLatestConfig(url string, iteration int,
 			log.Warnf("getLatestConfig : Controller certificate invalid time")
 		case types.SenderStatusCertMiss:
 			log.Functionf("getLatestConfig : Controller certificate miss")
+		case types.SenderStatusNotFound:
+			log.Functionf("getLatestConfig : Device deleted in controller?")
 		default:
 			log.Errorf("getLatestConfig  failed: %s", err)
 		}
-		switch rtf {
-		case types.SenderStatusUpgrade, types.SenderStatusRefused, types.SenderStatusCertInvalid:
+		switch senderStatus {
+		case types.SenderStatusUpgrade, types.SenderStatusRefused, types.SenderStatusCertInvalid, types.SenderStatusNotFound:
 			newCount = types.LedBlinkConnectedToController // Almost connected to controller!
 			// Don't treat as upgrade failure
 			if getconfigCtx.updateInprogress {
@@ -255,6 +257,10 @@ func getLatestConfig(url string, iteration int,
 			utils.UpdateLedManagerConfig(log, newCount)
 			getconfigCtx.ledBlinkCount = newCount
 		}
+		if senderStatus == types.SenderStatusNotFound {
+			potentialUUIDUpdate(getconfigCtx)
+		}
+
 		// If we didn't yet get a config, then look for a file
 		// XXX should we try a few times?
 		// If we crashed we wait until we connect to zedcloud so that
@@ -541,18 +547,11 @@ func inhaleDeviceConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigCo
 			return false
 		}
 		if id != devUUID {
-			// XXX logic to handle re-registering a device private
-			// key with zedcloud. We accept a new UUID from the
-			// cloud and use that in our reports, but we do
-			// not update the hostname nor LISP.
-			// XXX remove once zedcloud preserves state.
-			if id != zcdevUUID {
-				log.Functionf("XXX Device UUID changed from %s to %s",
-					zcdevUUID.String(), id.String())
-				zcdevUUID = id
-				ctx := getconfigCtx.zedagentCtx
-				triggerPublishDevInfo(ctx)
-			}
+			log.Warnf("Device UUID changed from %s to %s",
+				devUUID.String(), id.String())
+			potentialUUIDUpdate(getconfigCtx)
+			return false
+			// XXX set the hostname in client.go instead of device-steps.sh
 		}
 		newControllerEpoch := config.GetControllerEpoch()
 		if controllerEpoch != newControllerEpoch {
@@ -564,6 +563,30 @@ func inhaleDeviceConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigCo
 
 	// add new BaseOS/App instances; returns rebootFlag
 	return parseConfig(config, getconfigCtx, usingSaved)
+}
+
+var lastDevUUIDChange time.Time
+
+// When we think (due to 404) or know that the controller has changed our UUID,
+// ask client to get it so OnboardingStatus can be updated and notified to all agents
+// The controller might do this due to a delete and re-onboard with the same device
+// certificate.
+// We ask client at most every 10 minutes.
+func potentialUUIDUpdate(getconfigCtx *getconfigContext) {
+	if time.Since(lastDevUUIDChange) < 10*time.Minute {
+		log.Warnf("Device UUID last changed %v ago",
+			time.Since(lastDevUUIDChange))
+		return
+	}
+	lastDevUUIDChange = time.Now()
+	cmd := "/opt/zededa/bin/client"
+	cmdArgs := []string{"getUuid"}
+	log.Noticef("Calling command %s %v", cmd, cmdArgs)
+	out, err := base.Exec(log, cmd, cmdArgs...).CombinedOutput()
+	if err != nil {
+		log.Errorf("client command %s failed %s output %s",
+			cmdArgs, err, out)
+	}
 }
 
 func publishZedAgentStatus(getconfigCtx *getconfigContext) {

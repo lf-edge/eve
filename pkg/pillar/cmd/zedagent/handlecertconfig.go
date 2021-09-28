@@ -338,7 +338,7 @@ func sendAttestReqProtobuf(attestReq *attest.ZAttestReq, iteration int) {
 		log.Fatal("SendInfoProtobufStr proto marshaling error: ", err)
 	}
 
-	deferKey := "attest:" + zcdevUUID.String()
+	deferKey := "attest:" + devUUID.String()
 	zedcloud.RemoveDeferred(zedcloudCtx, deferKey)
 
 	buf := bytes.NewBuffer(data)
