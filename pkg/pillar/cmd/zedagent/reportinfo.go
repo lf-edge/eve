@@ -152,7 +152,7 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 	deviceType := new(info.ZInfoTypes)
 	*deviceType = info.ZInfoTypes_ZiDevice
 	ReportInfo.Ztype = *deviceType
-	deviceUUID := zcdevUUID.String()
+	deviceUUID := devUUID.String()
 	ReportInfo.DevId = *proto.String(deviceUUID)
 	ReportInfo.AtTimeStamp = ptypes.TimestampNow()
 	log.Functionf("PublishDeviceInfoToZedCloud uuid %s", deviceUUID)
