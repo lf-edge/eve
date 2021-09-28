@@ -226,7 +226,7 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 	ReportDeviceMetric.Memory = new(metrics.MemoryMetric)
 	ReportDeviceMetric.CpuMetric = new(metrics.AppCpuMetric)
 
-	ReportMetrics.DevID = *proto.String(zcdevUUID.String())
+	ReportMetrics.DevID = *proto.String(devUUID.String())
 	ReportZmetric := new(metrics.ZmetricTypes)
 	*ReportZmetric = metrics.ZmetricTypes_ZmDevice
 
@@ -929,7 +929,7 @@ func PublishAppInfoToZedCloud(ctx *zedagentContext, uuid string,
 	appType := new(info.ZInfoTypes)
 	*appType = info.ZInfoTypes_ZiApp
 	ReportInfo.Ztype = *appType
-	ReportInfo.DevId = *proto.String(zcdevUUID.String())
+	ReportInfo.DevId = *proto.String(devUUID.String())
 	ReportInfo.AtTimeStamp = ptypes.TimestampNow()
 
 	ReportAppInfo := new(info.ZInfoApp)
@@ -1068,7 +1068,7 @@ func PublishContentInfoToZedCloud(ctx *zedagentContext, uuid string,
 	contentType := new(info.ZInfoTypes)
 	*contentType = info.ZInfoTypes_ZiContentTree
 	ReportInfo.Ztype = *contentType
-	ReportInfo.DevId = *proto.String(zcdevUUID.String())
+	ReportInfo.DevId = *proto.String(devUUID.String())
 	ReportInfo.AtTimeStamp = ptypes.TimestampNow()
 
 	ReportContentInfo := new(info.ZInfoContentTree)
@@ -1138,7 +1138,7 @@ func PublishVolumeToZedCloud(ctx *zedagentContext, uuid string,
 	volumeType := new(info.ZInfoTypes)
 	*volumeType = info.ZInfoTypes_ZiVolume
 	ReportInfo.Ztype = *volumeType
-	ReportInfo.DevId = *proto.String(zcdevUUID.String())
+	ReportInfo.DevId = *proto.String(devUUID.String())
 	ReportInfo.AtTimeStamp = ptypes.TimestampNow()
 
 	ReportVolumeInfo := new(info.ZInfoVolume)
@@ -1214,7 +1214,7 @@ func PublishBlobInfoToZedCloud(ctx *zedagentContext, blobSha string, blobStatus 
 	contentType := new(info.ZInfoTypes)
 	*contentType = info.ZInfoTypes_ZiBlobList
 	ReportInfo.Ztype = *contentType
-	ReportInfo.DevId = *proto.String(zcdevUUID.String())
+	ReportInfo.DevId = *proto.String(devUUID.String())
 	ReportInfo.AtTimeStamp = ptypes.TimestampNow()
 
 	ReportBlobInfoList := new(info.ZInfoBlobList)

@@ -78,15 +78,14 @@ var nilUUID = uuid.UUID{}
 // http.StatusForbidden is a special case i.e. even if bailOnHTTPErr is not set
 // we bail out, since caller needs to be notified immediately for triggering any
 // reaction based on this.
-// We return a bool remoteTemporaryFailure for the cases when we reached
-// the controller but it is overloaded, or has certificate issues.
+// We return a SenderResult enum for various error cases.
 func SendOnAllIntf(ctx *ZedCloudContext, url string, reqlen int64, b *bytes.Buffer, iteration int, bailOnHTTPErr bool) (*http.Response, []byte, types.SenderResult, error) {
 
 	log := ctx.log
 	// If failed then try the non-free
 	const allowProxy = true
 	var errorList []error
-	remoteTemporaryFailure := types.SenderStatusNone
+	senderStatus := types.SenderStatusNone
 
 	intfs := types.GetMgmtPortsSortedCostWithoutFailed(*ctx.DeviceNetworkStatus, iteration)
 	if len(intfs) == 0 {
@@ -99,39 +98,44 @@ func SendOnAllIntf(ctx *ZedCloudContext, url string, reqlen int64, b *bytes.Buff
 		err := fmt.Errorf("Can not connect to %s: No management interfaces",
 			url)
 		log.Error(err.Error())
-		return nil, nil, remoteTemporaryFailure, err
+		return nil, nil, senderStatus, err
 	}
 	for _, intf := range intfs {
 		const useOnboard = false
-		resp, contents, rtf, err := SendOnIntf(ctx, url, intf, reqlen, b, allowProxy, useOnboard)
-		// this changes original boolean logic a little in V2 API, basically the last rtf non-zero enum would
+		resp, contents, status, err := SendOnIntf(ctx, url, intf, reqlen, b, allowProxy, useOnboard)
+		// this changes original boolean logic a little in V2 API, basically the last status non-zero enum would
 		// overwrite the previous one in the loop if they are differ
-		if rtf != types.SenderStatusNone {
-			remoteTemporaryFailure = rtf
+		if status != types.SenderStatusNone {
+			senderStatus = status
 		}
-		if resp != nil && resp.StatusCode == http.StatusServiceUnavailable {
-			remoteTemporaryFailure = types.SenderStatusUpgrade
+		if resp != nil {
+			switch resp.StatusCode {
+			case http.StatusServiceUnavailable:
+				senderStatus = types.SenderStatusUpgrade
+			case http.StatusNotFound:
+				senderStatus = types.SenderStatusNotFound
+			}
 		}
 
 		if bailOnHTTPErr && resp != nil &&
 			resp.StatusCode >= 400 && resp.StatusCode < 600 {
 			log.Functionf("sendOnAllIntf: for %s reqlen %d ignore code %d\n",
 				url, reqlen, resp.StatusCode)
-			return resp, nil, remoteTemporaryFailure, err
+			return resp, nil, senderStatus, err
 		}
 		if resp != nil && resp.StatusCode == http.StatusForbidden {
-			return resp, nil, remoteTemporaryFailure, err
+			return resp, nil, senderStatus, err
 		}
 		if err != nil {
 			errorList = append(errorList, err)
 			continue
 		}
-		return resp, contents, remoteTemporaryFailure, nil
+		return resp, contents, senderStatus, nil
 	}
 	errStr := fmt.Sprintf("All attempts to connect to %s failed: %v",
 		url, errorList)
 	log.Errorln(errStr)
-	return nil, nil, remoteTemporaryFailure, errors.New(errStr)
+	return nil, nil, senderStatus, errors.New(errStr)
 }
 
 // VerifyAllIntf
@@ -198,10 +202,10 @@ func VerifyAllIntf(ctx *ZedCloudContext,
 			break
 		}
 		// This VerifyAllIntf() is called for "ping" url only, it does not have
-		// return envelope verifying check. Thus below does not check other values of rtf.
+		// return envelope verifying check. Thus below does not check other values of status.
 		const useOnboard = false
-		resp, _, rtf, err := SendOnIntf(ctx, url, intf, 0, nil, allowProxy, useOnboard)
-		switch rtf {
+		resp, _, status, err := SendOnIntf(ctx, url, intf, 0, nil, allowProxy, useOnboard)
+		switch status {
 		case types.SenderStatusRefused, types.SenderStatusCertInvalid:
 			remoteTemporaryFailure = true
 		}
@@ -255,7 +259,7 @@ func VerifyAllIntf(ctx *ZedCloudContext,
 // use []byte contents return.
 // If we get a http response, we return that even if it was an error
 // to allow the caller to look at StatusCode
-// We return a bool remoteTemporaryFailure for the cases when we reached
+// We return a SenderResult enum for various error cases.
 // the controller but it is overloaded, or has certificate issues.
 func SendOnIntf(ctx *ZedCloudContext, destURL string, intf string, reqlen int64, b *bytes.Buffer, allowProxy bool, useOnboard bool) (*http.Response, []byte, types.SenderResult, error) {
 
@@ -574,22 +578,22 @@ func SendOnIntf(ctx *ZedCloudContext, destURL string, intf string, reqlen int64,
 
 			var contents2 []byte
 			var err error
-			rtf := types.SenderStatusNone
+			status := types.SenderStatusNone
 			if ctx.V2API || isCerts { // /certs may not have set the V2API yet
 				if resplen > 0 && checkMimeProtoType(resp) {
-					contents2, rtf, err = verifyAuthentication(ctx, contents, isCerts)
+					contents2, status, err = verifyAuthentication(ctx, contents, isCerts)
 					if err != nil {
 						var envelopeErr bool
-						if rtf == types.SenderStatusHashSizeError || rtf == types.SenderStatusAlgoFail {
+						if status == types.SenderStatusHashSizeError || status == types.SenderStatusAlgoFail {
 							// server may not support V2 envelope
 							envelopeErr = true
 						}
 						log.Errorf("SendOnIntf verify auth error %v, V2 %v, content len %d, url %s, extraStatus %v\n",
-							err, !envelopeErr, len(contents), reqUrl, rtf) // XXX change to debug later
+							err, !envelopeErr, len(contents), reqUrl, status) // XXX change to debug later
 						if ctx.FailureFunc != nil {
 							ctx.FailureFunc(log, intf, reqUrl, 0, 0, true)
 						}
-						return nil, nil, rtf, err
+						return nil, nil, status, err
 					}
 					log.Tracef("SendOnIntf verify auth ok, len content/content2 %d/%d, url %s",
 						len(contents), len(contents2), reqUrl)
@@ -599,7 +603,7 @@ func SendOnIntf(ctx *ZedCloudContext, destURL string, intf string, reqlen int64,
 			} else {
 				contents2 = contents
 			}
-			return resp, contents2, rtf, nil
+			return resp, contents2, status, nil
 		default:
 			errStr := fmt.Sprintf("SendOnIntf to %s reqlen %d statuscode %d %s",
 				reqUrl, reqlen, resp.StatusCode,

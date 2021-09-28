@@ -15,8 +15,7 @@ import (
 
 //Context is a helper struct used to pass around in pubsub handlers
 type Context struct {
-	Initialized      bool
-	OnboardingStatus types.OnboardingStatus
+	Initialized bool
 }
 
 // WaitForVault waits until it receives a types.VaultStatus msg, for types.DefaultVaultName
@@ -83,7 +82,7 @@ func handleVaultStatusImpl(ctxArg interface{}, key string,
 
 // WaitForOnboarded waits until it receives a types.OnboardingStatus msg with
 // a non-zero UUID
-func WaitForOnboarded(ps *pubsub.PubSub, log *base.LogObject, agentName string, warningTime, errorTime time.Duration) (types.OnboardingStatus, error) {
+func WaitForOnboarded(ps *pubsub.PubSub, log *base.LogObject, agentName string, warningTime, errorTime time.Duration) error {
 	// Look for vault status
 	Ctx := &Context{}
 	subOnboardStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
@@ -99,7 +98,7 @@ func WaitForOnboarded(ps *pubsub.PubSub, log *base.LogObject, agentName string, 
 		ErrorTime:     errorTime,
 	})
 	if err != nil {
-		return types.OnboardingStatus{}, err
+		return err
 	}
 
 	// Run a periodic timer so we always update StillRunning
@@ -118,7 +117,7 @@ func WaitForOnboarded(ps *pubsub.PubSub, log *base.LogObject, agentName string, 
 	}
 	stillRunning.Stop()
 	subOnboardStatus.Close()
-	return Ctx.OnboardingStatus, nil
+	return nil
 }
 
 // Really a constant
@@ -144,6 +143,5 @@ func handleOnboardStatusImpl(ctxArg interface{}, key string,
 	if status.DeviceUUID == nilUUID {
 		return
 	}
-	ctx.OnboardingStatus = status
 	ctx.Initialized = true
 }

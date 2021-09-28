@@ -41,9 +41,9 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	"github.com/lf-edge/eve/pkg/pillar/utils"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 
+	uuid "github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
 )
 
@@ -304,12 +304,32 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	zedagentCtx.attestCtx = &attestCtx
 
 	// Wait until we have been onboarded aka know our own UUID
-	onboard, err := utils.WaitForOnboarded(ps, log, agentName, warningTime, errorTime)
+	subOnboardStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "zedclient",
+		MyAgentName:   agentName,
+		TopicImpl:     types.OnboardingStatus{},
+		Activate:      true,
+		Persistent:    true,
+		Ctx:           &zedagentCtx,
+		CreateHandler: handleOnboardStatusCreate,
+		ModifyHandler: handleOnboardStatusModify,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
-	log.Functionf("processed onboarded")
-	devUUID = onboard.DeviceUUID
+	// Wait for Onboarding to be done by client
+	nilUUID := uuid.UUID{}
+	for devUUID == nilUUID {
+		log.Functionf("Waiting for OnboardStatus UUID")
+		select {
+		case change := <-subOnboardStatus.MsgChan():
+			subOnboardStatus.ProcessChange(change)
+		case <-stillRunning.C:
+		}
+		ps.StillRunning(agentName, warningTime, errorTime)
+	}
 
 	// We know our own UUID; prepare for communication with controller
 	zedcloudCtx = handleConfigInit(zedagentCtx.globalConfig.GlobalValueInt(types.NetworkSendTimeout))
@@ -978,6 +998,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	for !zedagentCtx.GCInitialized {
 		log.Functionf("Waiting for GCInitialized")
 		select {
+		case change := <-subOnboardStatus.MsgChan():
+			subOnboardStatus.ProcessChange(change)
+
 		case change := <-subGlobalConfig.MsgChan():
 			subGlobalConfig.ProcessChange(change)
 
@@ -990,6 +1013,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	// wait till, zboot status is ready
 	for !zedagentCtx.zbootRestarted {
 		select {
+		case change := <-subOnboardStatus.MsgChan():
+			subOnboardStatus.ProcessChange(change)
+
 		case change := <-subZbootStatus.MsgChan():
 			subZbootStatus.ProcessChange(change)
 			if zedagentCtx.zbootRestarted {
@@ -1018,6 +1044,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 			DNSctx.DNSinitialized)
 
 		select {
+		case change := <-subOnboardStatus.MsgChan():
+			subOnboardStatus.ProcessChange(change)
+
 		case change := <-subGlobalConfig.MsgChan():
 			subGlobalConfig.ProcessChange(change)
 
@@ -1196,6 +1225,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 	for {
 		select {
+		case change := <-subOnboardStatus.MsgChan():
+			subOnboardStatus.ProcessChange(change)
+
 		case change := <-subZbootStatus.MsgChan():
 			subZbootStatus.ProcessChange(change)
 
@@ -1923,4 +1955,37 @@ func getDeferredPriorityFunctions() []zedcloud.TypePriorityCheckFunction {
 		return false
 	})
 	return functions
+}
+
+// Track the DeviceUUID
+func handleOnboardStatusCreate(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	handleOnboardStatusImpl(ctxArg, key, statusArg)
+}
+
+func handleOnboardStatusModify(ctxArg interface{}, key string,
+	statusArg interface{}, oldStatusArg interface{}) {
+	handleOnboardStatusImpl(ctxArg, key, statusArg)
+}
+
+func handleOnboardStatusImpl(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
+	status := statusArg.(types.OnboardingStatus)
+	ctx := ctxArg.(*zedagentContext)
+	if devUUID == status.DeviceUUID {
+		return
+	}
+	log.Noticef("Device UUID changed from %s to %s", devUUID, status.DeviceUUID)
+	devUUID = status.DeviceUUID
+	if zedcloudCtx != nil {
+		zedcloudCtx.DevUUID = devUUID
+	}
+	// Make sure trigger function isn't going to trip on a nil pointer
+	if ctx.getconfigCtx != nil && ctx.getconfigCtx.zedagentCtx != nil &&
+		ctx.getconfigCtx.subAppInstanceStatus != nil {
+
+		// Re-publish all objects with new device UUID
+		triggerPublishAllInfo(ctx.getconfigCtx.zedagentCtx)
+	}
 }

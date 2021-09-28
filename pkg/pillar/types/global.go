@@ -28,6 +28,7 @@ const (
 	SenderStatusHashSizeError                          // senderCertHash length error
 	SenderStatusCertUnknownAuthority                   // device may miss proxy certificate for MiTM
 	SenderStatusCertUnknownAuthorityProxy              // device configed proxy, may miss proxy certificate for MiTM
+	SenderStatusNotFound                               // 404 indicating device might have been deleted in controller
 )
 
 const (

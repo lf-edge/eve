@@ -291,8 +291,8 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	ctxPtr.subDomainStatus = subDomainStatus
 	subDomainStatus.Activate()
 
-	// Wait until we have been onboarded aka know our own UUID
-	if _, err := utils.WaitForOnboarded(ps, log, agentName, warningTime, errorTime); err != nil {
+	// Wait until we have been onboarded aka know our own UUID however we do not use the UUID
+	if err := utils.WaitForOnboarded(ps, log, agentName, warningTime, errorTime); err != nil {
 		log.Fatal(err)
 	}
 	log.Functionf("Device is onboarded")
