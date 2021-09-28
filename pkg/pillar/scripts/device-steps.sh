@@ -459,7 +459,6 @@ fi
 rm "$WATCHDOG_PID/zedclient.pid"
 
 uuid=$(cat $PERSISTDIR/status/uuid)
-/bin/hostname "$uuid"
 /bin/hostname >/etc/hostname
 
 if ! grep -q "$uuid" /etc/hosts; then
