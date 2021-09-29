@@ -79,8 +79,55 @@ Second stage GRUB is expected to do all the [heavy lifting](../pkg/grub/rootfs.c
 an EVE instance and because it resides in IMGA or IMGB partitions it can easily be upgraded and patched.
 Behavior of this stage of boot process is controlled by a read-only grub.cfg under {IMGA,IMGB}/EFI/BOOT/
 but it can further be tweaked by the grub.cfg overrides on the CONFIG partition. Note that an override
-grub.cfg is expected to be a [complete override](../pkg/grub/rootfs.cfg#L132) and anyone constructing
+grub.cfg is expected to be a [complete override](../pkg/grub/rootfs.cfg#L143) and anyone constructing
 its content is expected to be familiar with the overall flow of read-only grub.cfg.
+
+Options to use in grub.cfg on the CONFIG partition are defined below. Most options may be defined in the format
+`set_global GRUB_VARIABLE "OPTION1=VAL1 OPTION2"` or appended to the value of variable with
+`set_global GRUB_VARIABLE "$GRUB_VARIABLE OPTION1=VAL1 OPTION2"`. Please make sure that you understand the effect
+of these options, they may affect the device operability. Adding/editing options in grub.cfg might make the device
+fail to boot where the only possible recovery is to have a keyboard and screen to manually override incorrect settings
+in grub.cfg with graphical GRUB menu to get the device to boot again.
+
+1. Cgroup related options. Please follow the [example](README.md#eve-cgroups) to write
+   these values in the correct GRUB variables:
+    1. `dom0_mem` option of `hv_dom0_mem_settings` variable - memory limit for eve cgroup
+       (default is `set_global hv_dom0_mem_settings "dom0_mem=750M,max:750M"`)
+    2. `dom0_max_vcpus` option of `hv_dom0_cpu_settings` variable - cpu limit for eve cgroup
+       (default is `set_global hv_dom0_cpu_settings "dom0_max_vcpus=1"`)
+    3. `eve_mem` - memory limit for cgroups with services of EVE
+       (default is `set_global hv_eve_mem_settings "eve_mem=600M,max:600M"`)
+    4. `eve_max_vcpus` option of `hv_eve_mem_settings` variable - cpu limit for cgroups with services of EVE
+       (default is `set_global hv_eve_cpu_settings "eve_max_vcpus=1""`)
+    5. `ctrd_mem` option of `hv_ctrd_mem_settings` variable - memory limit for cgroups with containerd-shims of EVE
+       (default is `set_global hv_ctrd_mem_settings "ctrd_mem=350M,max:350M"`)
+    6. `ctrd_max_vcpus` option of `hv_ctrd_cpu_settings` variable - cpu limit for cgroups with containerd-shims of EVE
+       (default is `set_global hv_ctrd_cpu_settings "ctrd_max_vcpus=1"`)
+2. Installer options. These options are used during [the installation](DEPLOYMENT.md) process and may be set by adding
+   them to `dom0_extra_args` grub variable with line
+   `set_global dom0_extra_args "$dom0_extra_args OPTION1=VAL1 OPTION2 "`, where OPTION fields described below
+   (`DISK` below is e.g. `sda`):
+    1. `eve_blackbox` - if set, installer will collect [information](../pkg/mkimage-raw-efi/install#L93)
+       from EVE to INVENTORY partition on installation media (it must be writable, i.e. USB flash drive)
+       and exit without installation. It is disabled by default because this action may take a lot of time.
+       May be selected from graphical GRUB menu.
+    2. `eve_nuke_disks=DISK` - clean partition table on the defined disks before install.
+       You can use multiple disks separated by comma. Please use this option if you know that other
+       disks contain old EVE installations to clean them out.
+    3. `eve_install_disk=DISK` - set particular disk to install EVE. Default behavior is to use any free disk found.
+    4. `eve_persist_disk=DISK` - set particular disk to use for persistent data (volumes, logs, etc.).
+       Default behavior is to use partition on the disk selected or defined for EVE installation.
+    5. `eve_install_server=SERVER` - override `/config/server` with value defined in `SERVER`. Default behavior is to
+       use server defined during building of installer media (e.g. `zedcloud.zededa.net` for releases).
+    6. `eve_pause_before_install` - return to shell before installation and wait for `exit`. May be selected from graphical GRUB menu.
+    7. `eve_pause_after_install` - return to shell after installation and wait for `exit`. May be selected from graphical GRUB menu.
+    8. `eve_reboot_after_install` - reboot after installation complete, default behavior for IPXE.
+       If not set, will poweroff device after installation. May be selected from graphical GRUB menu.
+    9. `eve_install_skip_config` - do not install config partition onto device. May be selected from graphical GRUB menu.
+    10. `eve_install_skip_persist` - do not install persist partition onto device. May be selected from graphical GRUB menu.
+    11. `eve_install_skip_rootfs` - do not install rootfs partition onto device. May be selected from graphical GRUB menu.
+3. General kernel parameters may be adjusted with `set_global dom0_extra_args "$dom0_extra_args OPTION1=VAL1 OPTION2 "`.
+   They will be added to kernel cmdline.
 
 ## Booting under legacy PC BIOS (including virtualized environments using legacy PC BIOS)
 
