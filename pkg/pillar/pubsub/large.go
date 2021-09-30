@@ -71,7 +71,7 @@ func writeRemoveTree(log *base.LogObject,
 	for k, v := range tree {
 		if !strings.HasPrefix(k, tagLarge) {
 			// descend into subtree if map
-			tree1, ok := v.(jsonTree)
+			tree1, ok := v.(map[string]interface{})
 			if !ok {
 				out[k] = v
 				continue
@@ -195,7 +195,7 @@ func readAddTree(log *base.LogObject, tree jsonTree) (jsonTree, error) {
 	for k, v := range tree {
 		if !strings.HasPrefix(k, tagFile) {
 			// descend into subtree if map
-			tree1, ok := v.(jsonTree)
+			tree1, ok := v.(map[string]interface{})
 			if !ok {
 				out[k] = v
 				continue
