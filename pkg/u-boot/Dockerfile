@@ -39,6 +39,7 @@ COPY rpi /tmp/rpi
 RUN if [ "$(uname -m)" = aarch64 ]; then \
        curl -fsSLo /tmp/rpi/fixup4.dat "${RAPBERRY_FIRMWARE_BLOBS}/boot/fixup4.dat" ;\
        curl -fsSLo /tmp/rpi/start4.elf "${RAPBERRY_FIRMWARE_BLOBS}/boot/start4.elf" ;\
+       curl -fsSLo /tmp/rpi/bcm2711-rpi-4-b.dtb "${RAPBERRY_FIRMWARE_BLOBS}/boot/bcm2711-rpi-4-b.dtb" ;\
        for i in /tmp/rpi/overlays/*.dts ; do                                         \
           scripts/dtc/dtc -@ -I dts -O dtb -o "${i/.dts/.dtbo}" "$i" && rm "$i"     ;\
        done                                                                         ;\
