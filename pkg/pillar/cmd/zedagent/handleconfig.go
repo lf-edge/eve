@@ -261,30 +261,31 @@ func getLatestConfig(url string, iteration int,
 			potentialUUIDUpdate(getconfigCtx)
 		}
 
-		// If we didn't yet get a config, then look for a file
-		// XXX should we try a few times?
-		// If we crashed we wait until we connect to zedcloud so that
-		// keyboard can be enabled and things can be debugged and not
-		// have e.g., an OOM reboot loop
-		if !ctx.bootReason.StartWithSavedConfig() {
-			log.Warnf("Ignore any saved config due to boot reason %s",
-				ctx.bootReason)
-		} else if !getconfigCtx.readSavedConfig && !getconfigCtx.configReceived {
-
-			config, ts, err := readSavedProtoMessageConfig(
-				ctx.globalConfig.GlobalValueInt(types.StaleConfigTime),
-				checkpointDirname+"/lastconfig", false)
-			if err != nil {
-				log.Errorf("getconfig: %v", err)
-				return false
-			}
-			if config != nil {
-				log.Noticef("Using saved config dated %s",
-					ts.Format(time.RFC3339Nano))
-				getconfigCtx.readSavedConfig = true
-				getconfigCtx.configGetStatus = types.ConfigGetReadSaved
-				return inhaleDeviceConfig(config, getconfigCtx,
-					true)
+		if !getconfigCtx.readSavedConfig && !getconfigCtx.configReceived {
+			// If we didn't yet get a config, then look for a file
+			// XXX should we try a few times?
+			// If we crashed we wait until we connect to zedcloud so that
+			// keyboard can be enabled and things can be debugged and not
+			// have e.g., an OOM reboot loop
+			if !ctx.bootReason.StartWithSavedConfig() {
+				log.Warnf("Ignore any saved config due to boot reason %s",
+					ctx.bootReason)
+			} else {
+				config, ts, err := readSavedProtoMessageConfig(
+					ctx.globalConfig.GlobalValueInt(types.StaleConfigTime),
+					checkpointDirname+"/lastconfig", false)
+				if err != nil {
+					log.Errorf("getconfig: %v", err)
+					return false
+				}
+				if config != nil {
+					log.Noticef("Using saved config dated %s",
+						ts.Format(time.RFC3339Nano))
+					getconfigCtx.readSavedConfig = true
+					getconfigCtx.configGetStatus = types.ConfigGetReadSaved
+					return inhaleDeviceConfig(config, getconfigCtx,
+						true)
+				}
 			}
 		}
 		publishZedAgentStatus(getconfigCtx)
