@@ -63,7 +63,24 @@ message WirelessConfig {
 }
 
 message CellularConfig {
-  string APN = 1;                 // APN string
+  // APN string - by default it is "internet"
+  string APN = 1;
+  // Optional cellular connectivity probing.
+  // By default it is enabled.
+  CellularConnectivityProbe probe = 2;
+}
+
+// CellularConnectivityProbe is used to periodically check the connectivity status of a cellular network
+// by probing a remote endpoint.
+// Whenever the probe fails, the cellular connection is automatically restarted. If the probe keeps failing
+// even after the restart, the failure is reported in ZCellularStatus.probeError.
+// The connectivity probing interval is 5 minutes and currently it is not configurable.
+message CellularConnectivityProbe {
+  // If true, then probing is disabled.
+  bool disable = 1;
+  // IP/FQDN to periodically probe using 3 pings per iteration to determine connectivity status.
+  // Default address is "8.8.8.8" (Google Public DNS).
+  string probe_address = 2;
 }
 
 message WifiConfig {

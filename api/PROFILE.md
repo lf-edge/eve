@@ -50,6 +50,37 @@ A non-empty profile will override the global_profile specified in
 profile will be used to determine which app instances are started and
 stopped by matching against the [profile_list in AppInstanceConfig](./proto/config/appconfig.proto).
 
-Security:
+### Radio
 
-In addition to using a server_token it is recommended that ACLs/firewall rules are deployed so that the traffic to/from the local profile server can not be directed to non-local destinations.
+Publish the current state of all wireless network adapters and optionally obtain airplane-mode configuration in the response:
+
+   POST /api/v1/radio
+
+Return codes:
+
+* Success; with new radio configuration in the response: `200`
+* Success; without radio configuration in the response: `204`
+* Not implemented: `404`
+
+Request:
+
+The request mime type MUST be "application/x-proto-binary".
+The request MUST have the body of a single protobuf message of type [RadioStatus](./proto/profile/local_profile.proto).
+
+Response:
+
+The response MAY contain the body of a single protobuf message of type [RadioConfig](./proto/profile/local_profile.proto)
+encoded as "application/x-proto-binary".
+
+The requester MUST verify that the response payload (if provided) has the correct server_token.
+If the verification succeeds, it will apply the received radio configuration.
+
+Device MUST stop publishing radio status until all changes in the received radio configuration are fully applied,
+without any ongoing or pending operations left behind.
+When device fails to apply the configuration, it SHOULD eventually stop retrying and publish the new radio status afterwards,
+indicating the error condition inside the `RadioStatus.config_error` field.
+
+## Security
+
+In addition to using a server_token it is recommended that ACLs/firewall rules are deployed so that the traffic
+to/from the local profile server can not be directed to non-local destinations.
