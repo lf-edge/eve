@@ -27,7 +27,7 @@ jobs:
         uses: apache/yetus-test-patch-action@0.13.0
         with:
           basedir: ./src
-          bufbasedir: api/proto
+          bufbasedir: ./src/api/proto
           buildtool: nobuild
           continuousimprovement: true
           githubtoken: ${{ secrets.GITHUB_TOKEN }}

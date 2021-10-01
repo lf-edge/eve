@@ -85,6 +85,28 @@ message networkMetric {
   string localName = 16; // local vif name e.g., nbu*
 }
 
+message CellularMetric {
+  // Logical label assigned to the physical cellular modem.
+  string logicallabel = 1;
+  CellularSignalStrength signal_strength = 2;
+  CellularPacketStats packet_stats = 3;
+}
+
+// CellularSignalStrength contains cellular signal strength information.
+// The maximum value of int32 (0x7FFFFFFF) represents unspecified/unavailable metric.
+message CellularSignalStrength {
+  int32 rssi = 1;
+  int32 rsrq = 2;
+  int32 rsrp = 3;
+  int32 snr = 4;
+}
+
+// Stats collected by the cellular modem itself.
+message CellularPacketStats {
+  NetworkStats rx = 1;
+  NetworkStats tx = 2;
+}
+
 // Failures and successes for commuication to zedcloud
 // for each management port
 message zedcloudMetric {
@@ -180,6 +202,8 @@ message deviceMetric {
 
   // Last change to EdgeDevConfig processed by device
   google.protobuf.Timestamp last_processed_config = 19;
+
+  repeated CellularMetric cellular = 20;
 }
 
 message AclMetric {
