@@ -1,0 +1,35 @@
+From 33166054c72716e46d492a0588f00900a9684a97 Mon Sep 17 00:00:00 2001
+From: Marek Szyprowski <m.szyprowski@samsung.com>
+Date: Fri, 17 Sep 2021 10:19:43 +0200
+Subject: [PATCH] arm: rpi: perform XHCI firmware upload only once
+
+XHCI firmware upload must be performed only once after initializing the
+PCI bridge. This fixes USB stack initialization after calling "usb stop;
+usb start" on Raspberry Pi 4B.
+
+Signed-off-by: Marek Szyprowski <m.szyprowski@samsung.com>
+Reviewed-by: Nicolas Saenz Julienne <nsaenz@kernel.org>
+Signed-off-by: Matthias Brugger <mbrugger@suse.com>
+---
+ arch/arm/mach-bcm283x/msg.c | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/arch/arm/mach-bcm283x/msg.c b/arch/arm/mach-bcm283x/msg.c
+index 347aece3cd8..345f7fe2b77 100644
+--- a/arch/arm/mach-bcm283x/msg.c
++++ b/arch/arm/mach-bcm283x/msg.c
+@@ -170,6 +170,12 @@ int bcm2711_notify_vl805_reset(void)
+ 	ALLOC_CACHE_ALIGN_BUFFER(struct msg_notify_vl805_reset,
+ 				 msg_notify_vl805_reset, 1);
+ 	int ret;
++	static int done = false;
++
++	if (done)
++		return 0;
++
++	done = true;
+ 
+ 	BCM2835_MBOX_INIT_HDR(msg_notify_vl805_reset);
+ 	BCM2835_MBOX_INIT_TAG(&msg_notify_vl805_reset->dev_addr,
+-- 
+2.25.1
