@@ -60,8 +60,8 @@ require (
 	go.opencensus.io v0.23.0 // indirect
 	golang.org/x/crypto v0.0.0-20210513164829-c07d793c2f9a
 	golang.org/x/net v0.0.0-20210805182204-aaa1db679c0d
-	golang.org/x/sys v0.0.0-20210809222454-d867a43fc93e
-	google.golang.org/grpc v1.38.0
+	golang.org/x/sys v0.0.0-20210908233432-aa78b53d3365
+	google.golang.org/grpc v1.40.0
 	gopkg.in/sourcemap.v1 v1.0.5 // indirect
 )
 

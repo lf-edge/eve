@@ -45,6 +45,7 @@ type SyncTransportType string
 const (
 	SyncAwsTr         SyncTransportType = "s3"
 	SyncAzureTr       SyncTransportType = "azure"
+	SyncGSTr          SyncTransportType = "google"
 	SyncHttpTr        SyncTransportType = "http"
 	SyncSftpTr        SyncTransportType = "sftp"
 	SyncOCIRegistryTr SyncTransportType = "oci"
@@ -261,6 +262,14 @@ func (ctx *DronaCtx) NewSyncerDest(tr SyncTransportType, UrlOrRegion, PathOrBkt 
 		syncEp := &OCITransportMethod{transport: tr, registry: UrlOrRegion, path: PathOrBkt, ctx: ctx}
 		if auth != nil {
 			syncEp.uname = auth.Uname
+			syncEp.apiKey = auth.Password
+		}
+		syncEp.failPostTime = time.Now()
+		return syncEp, nil
+	case SyncGSTr:
+		syncEp := &GsTransportMethod{transport: tr, bucket: PathOrBkt, ctx: ctx}
+		if auth != nil {
+			syncEp.projectID = auth.Uname
 			syncEp.apiKey = auth.Password
 		}
 		syncEp.failPostTime = time.Now()
