@@ -3,9 +3,11 @@
 
 syntax = "proto3";
 
-package org.lfedge.eve.profile;
-option go_package  = "github.com/lf-edge/eve/api/go/profile";
+import "info/info.proto";
 
+package org.lfedge.eve.profile;
+
+option go_package  = "github.com/lf-edge/eve/api/go/profile";
 option java_package = "org.lfedge.eve.profile";
 
 // LocalProfile message is sent in response to a GET to
@@ -14,3 +16,40 @@ message LocalProfile {
    string local_profile = 1;
    string server_token = 2;
 }
+
+// RadioStatus message is sent in the POST request to the api/v1/radio API.
+message RadioStatus {
+   // airplaneMode is True if the airplane mode is enabled by config AND successfully
+   // applied for all radio devices.
+   // If the airplane mode was requested but this field is still returned as False,
+   // expect non-empty configError attached.
+   bool airplane_mode = 1;
+   // If the last radio configuration change failed, error message is reported here.
+   // Please note that there is also a per-modem configuration error reported under CellularStatus.
+   string config_error = 2;
+   // Status of every LTE network.
+   repeated CellularStatus cellular_status = 3;
+   // XXX Later we can add status for every WiFi network adapter.
+}
+
+// CellularStatus contains status information for a single LTE network.
+message CellularStatus {
+   // Logical label assigned to the physical cellular modem.
+   string logicallabel = 1;
+   org.lfedge.eve.info.ZCellularModuleInfo module = 2;
+   repeated org.lfedge.eve.info.ZSimcardInfo sim_cards = 3;
+   repeated org.lfedge.eve.info.ZCellularProvider providers = 4;
+   string config_error = 10;
+   string probe_error = 11;
+}
+
+// RadioConfig message may be returned in the response from a POST request
+// sent to the api/v1/radio API.
+message RadioConfig {
+   // Security token. EVE will verify that serverToken matches the profile server
+   // token received from the controller.
+   string server_token = 1;
+   // Enable or disable airplane mode.
+   bool airplane_mode = 2;
+}
+
