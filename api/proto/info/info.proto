@@ -12,7 +12,7 @@ option go_package  = "github.com/lf-edge/eve/api/go/info";
 option java_package = "org.lfedge.eve.info";
 
 
-// Remove Me
+// Deprecated: see deprecatedMetricItem below
 enum DepMetricItemType {
   DepMetricItemOther = 0;          // E.g., a string like an ESSID
   DepMetricItemGauge = 1;          // Goes up and down over time
@@ -20,10 +20,10 @@ enum DepMetricItemType {
   DepMetricItemState = 3;          // Toggles on and off; count transitions
 }
 
-// Open-ended metrics from different part of the device such as LTE modem
-// metrics.
+// A generic metric item.
+// Deprecated: Prefer to use dedicated proto message definitions for all metrics.
 message deprecatedMetricItem {
-  string key = 1;         // E.g., "lte-signal-strength"
+  string key = 1;
   DepMetricItemType type = 2;
   oneof metricItemValue {
     bool boolValue = 3;
@@ -338,17 +338,49 @@ enum ZSimcardState {
 }
 
 message ZSimcardInfo {
-    string          name = 1;
-    string          cell_module_name = 2;
-    string          imsi = 3;
-    string          iccid = 4;
-    ZSimcardState   state = 5;
+  // Name is a SIM card identifier. For example ICCID if available.
+  // Guaranteed to be unique only in the scope of the edge node.
+  string name = 1;
+  // Reference to ZCellularModuleInfo.name
+  string cell_module_name = 2;
+  string imsi = 3;
+  string iccid = 4;
+  ZSimcardState state = 5;
 }
 
 message ZCellularModuleInfo {
-    string name = 1;
-    string imei = 2;
-    string firmware_version = 3;
+  // Name is a module identifier. For example IMEI if available.
+  // Guaranteed to be unique only in the scope of the edge node.
+  string name = 1;
+  string imei = 2;
+  string firmware_version = 3;
+  string model = 4;
+  ZCellularOperatingState operating_state = 5;
+  ZCellularControlProtocol control_protocol = 6;
+}
+
+enum ZCellularOperatingState {
+  Z_CELLULAR_OPERATING_STATE_UNSPECIFIED = 0;
+  Z_CELLULAR_OPERATING_STATE_OFFLINE = 1;
+  Z_CELLULAR_OPERATING_STATE_RADIO_OFF = 2; // AKA airplane mode
+  Z_CELLULAR_OPERATING_STATE_ONLINE = 3;
+  Z_CELLULAR_OPERATING_STATE_ONLINE_AND_CONNECTED = 4;
+  Z_CELLULAR_OPERATING_STATE_UNRECOGNIZED = 5;
+}
+
+enum ZCellularControlProtocol {
+  Z_CELLULAR_CONTROL_PROTOCOL_UNSPECIFIED = 0;
+  Z_CELLULAR_CONTROL_PROTOCOL_QMI = 1;
+  Z_CELLULAR_CONTROL_PROTOCOL_MBIM = 2;
+}
+
+message ZCellularProvider {
+  // Public land mobile network code.
+  string plmn = 1;
+  string description = 2;
+  // True if this is the provider currently being used.
+  bool current_serving = 3;
+  bool roaming = 4;
 }
 
 // Device Run State
@@ -542,6 +574,7 @@ message DevicePort {
   org.lfedge.eve.common.PhyIoMemberUsage usage = 30; // Usage of the Device port
   string networkUUID = 31; // Network UUID configured for the port.
   uint32 cost = 32; // Zero is free. Max is 255.
+  WirelessStatus wireless_status = 33; // defined for cellular/WiFi ports only
 }
 
 message ProxyStatus {
@@ -559,6 +592,34 @@ message ProxyEntry {
   uint32 type = 1; // From NPT_ types aka proxyProto
   string server = 2;
   uint32 port = 3;
+}
+
+message WirelessStatus {
+  WirelessType type = 1;
+  ZCellularStatus cellular = 2;
+  // later we may add status for WiFi
+}
+
+enum WirelessType {
+  WIRELESS_TYPE_UNSPECIFIED = 0;
+  WIRELESS_TYPE_WIFI = 1;
+  WIRELESS_TYPE_CELLULAR = 2;
+}
+
+message ZCellularStatus {
+  // Name reference (ZCellularModuleInfo.name) to the corresponding cellular module
+  // from the list ZInfoDevice.cell_radios.
+  string cellular_module = 1;
+  // Each item is a name reference (ZSimcardInfo.name) to a SIM card from the list ZInfoDevice.sims.
+  // Ordered by slot numbers.
+  repeated string sim_cards = 2;
+  // List of available cellular service providers.
+  repeated ZCellularProvider providers = 3;
+  // If EVE failed to configure the cellular connection, the error is published here.
+  string config_error = 10;
+  // if the connectivity probing is failing, error is reported here
+  // (see CellularConnectivityProbe).
+  string probe_error = 11;
 }
 
 // SW Info for the device base OS
