@@ -39,6 +39,9 @@ func download(ctx *downloaderContext, trType zedUpload.SyncTransportType,
 		dEndPoint, err = ctx.dCtx.NewSyncerDest(trType, region, dpath, auth)
 	case zedUpload.SyncOCIRegistryTr:
 		dEndPoint, err = ctx.dCtx.NewSyncerDest(trType, downloadURL, filename, auth)
+	case zedUpload.SyncGSTr:
+		dEndPoint, err = ctx.dCtx.NewSyncerDest(trType, "", dpath, auth)
+
 	default:
 		err = fmt.Errorf("unknown transfer type: %s", trType)
 	}
