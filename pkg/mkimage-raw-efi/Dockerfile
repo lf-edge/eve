@@ -13,7 +13,7 @@ RUN eve-alpine-deploy.sh
 
 WORKDIR /out
 RUN echo "mtools_skip_check=1" >> etc/mtools.conf
-RUN mkdir -p efifs parts root bits config persist opt/zededa lib/modules run sys
+RUN mkdir -p efifs parts root bits config persist opt/zededa opt/debug lib/modules run sys
 COPY make-raw install grub.cfg.in UsbInvocationScript.txt ./
 COPY grub.stage1 ./usr/lib/grub/i386-pc/boot.img
 
