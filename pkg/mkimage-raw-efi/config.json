@@ -228,6 +228,16 @@
             ]
         },
         {
+            "destination": "/opt/debug",
+            "type": "bind",
+            "source": "/containers/services/debug/lower",
+            "options": [
+                "rw",
+                "rbind",
+                "rshared"
+            ]
+        },
+        {
             "destination": "/lib/modules",
             "type": "bind",
             "source": "/lib/modules",
