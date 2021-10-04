@@ -250,13 +250,14 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 	ReportDeviceMetric.CpuMetric.UpTime = uptime
 
 	// Memory related info for the device
-	var totalMemory, freeMemory uint64
+	var totalMemory, freeMemory, usedEveMB uint64
 	sub := ctx.getconfigCtx.subHostMemory
 	m, _ := sub.Get("global")
 	if m != nil {
 		metric := m.(types.HostMemory)
 		totalMemory = metric.TotalMemoryMB
 		freeMemory = metric.FreeMemoryMB
+		usedEveMB = metric.UsedEveMB + metric.KmemUsedEveMB
 	}
 	// total_memory and free_memory is in MBytes
 	used := totalMemory - freeMemory
@@ -550,6 +551,32 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 		// granularity than one second
 		ReportDeviceMetric.CpuMetric.Total = *proto.Uint64(dm.CPUTotalNs / nanoSecToSec)
 
+		// Report new DeviceMemoryMetric
+		ReportDeviceMetric.DeviceMemory = new(metrics.DeviceMemoryMetric)
+		ReportDeviceMetric.DeviceMemory.MemoryMB = uint32(totalMemory)
+		// Loop over AppInstanceConfig to get sum for AllocatedAppsMB
+		// independent of status
+		var sumKB uint64
+		pub := ctx.getconfigCtx.pubAppInstanceConfig
+		items := pub.GetAll()
+		for _, c := range items {
+			aiConfig := c.(types.AppInstanceConfig)
+
+			sumKB += uint64(aiConfig.FixedResources.Memory)
+		}
+		ReportDeviceMetric.DeviceMemory.AllocatedAppsMB = uint32((sumKB + 1023) / 1024)
+
+		allocatedEve, err := types.GetEveMemoryLimitInBytes()
+		if err != nil {
+			log.Errorf("GetEveMemoryLimitInBytes failed: %v", err)
+		} else {
+			ReportDeviceMetric.DeviceMemory.AllocatedEveMB =
+				uint32((allocatedEve + 1024*1024 - 1) / (1024 * 1024))
+		}
+		ReportDeviceMetric.DeviceMemory.UsedEveMB = uint32(usedEveMB)
+
+		// SystemServicesMemoryMB is deprecated and replaced by DeviceMemoryMetric.
+		// Report to support there are old controllers
 		ReportDeviceMetric.SystemServicesMemoryMB = new(metrics.MemoryMetric)
 		ReportDeviceMetric.SystemServicesMemoryMB.UsedMem = dm.UsedMemory
 		ReportDeviceMetric.SystemServicesMemoryMB.AvailMem = dm.AvailableMemory

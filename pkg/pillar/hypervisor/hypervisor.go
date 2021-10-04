@@ -73,7 +73,21 @@ func selfDomCPUMem() (types.HostMemory, error) {
 	}
 	hm.TotalMemoryMB = roundFromBytesToMbytes(vm.Total)
 	hm.FreeMemoryMB = roundFromBytesToMbytes(vm.Available)
-
+	usage, err := types.GetEveMemoryUsageInBytes()
+	if err != nil {
+		logrus.Error(err)
+	} else {
+		hm.UsedEveMB = roundFromBytesToMbytes(usage)
+	}
+	kmemUsage, err := types.GetEveKmemUsageInBytes()
+	if err != nil {
+		logrus.Error(err)
+	} else {
+		hm.KmemUsedEveMB = roundFromBytesToMbytes(kmemUsage)
+	}
+	hm.UsedEveMB = roundFromBytesToMbytes(usage + kmemUsage)
+	// /hostfs/sys/fs/cgroup/memory/eve/memory.kmem.usage_in_bytes
+	// /hostfs/sys/fs/cgroup/memory/eve/memory.usage_in_bytes
 	info, err := cpu.Info()
 	if err != nil {
 		return hm, err

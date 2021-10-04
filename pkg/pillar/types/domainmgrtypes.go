@@ -451,6 +451,8 @@ func (metric DomainMetric) LogKey() string {
 type HostMemory struct {
 	TotalMemoryMB uint64
 	FreeMemoryMB  uint64
+	UsedEveMB     uint64
+	KmemUsedEveMB uint64
 	Ncpus         uint32
 }
 
