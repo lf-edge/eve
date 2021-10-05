@@ -45,6 +45,9 @@ BUILD_VM_SRC_arm64=https://cloud-images.ubuntu.com/focal/current/focal-server-cl
 BUILD_VM_SRC_amd64=https://cloud-images.ubuntu.com/focal/current/focal-server-cloudimg-amd64.img
 BUILD_VM_SRC=$(BUILD_VM_SRC_$(ZARCH))
 
+# packages to skip for bulk build (make pkgs)
+PKGS_SKIP=eve|test-microsvcs
+
 UNAME_S := $(shell uname -s)
 
 USER         = $(shell id -u -n)
@@ -259,7 +262,7 @@ endif
 
 # We are currently filtering out a few packages from bulk builds
 # since they are not getting published in Docker HUB
-PKGS_$(ZARCH)=$(shell ls -d pkg/* | grep -Ev "eve|test-microsvcs")
+PKGS_$(ZARCH)=$(shell ls -d pkg/* | grep -Ev "$(PKGS_SKIP)")
 PKGS_riscv64=pkg/alpine pkg/ipxe pkg/mkconf pkg/mkimage-iso-efi pkg/grub     \
              pkg/mkimage-raw-efi pkg/uefi pkg/u-boot pkg/grub pkg/new-kernel \
 	     pkg/debug pkg/dom0-ztools pkg/gpt-tools pkg/storage-init
