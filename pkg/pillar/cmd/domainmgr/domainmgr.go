@@ -839,7 +839,6 @@ func verifyStatus(ctx *domainContext, status *types.DomainStatus) {
 			errStr := fmt.Sprintf("verifyStatus(%s) failed %s",
 				status.Key(), err)
 			log.Warnln(errStr)
-			status.Activated = false
 			status.State = types.HALTED
 
 			// check if task is in the BROKEN state and kill it (later on we may do some
