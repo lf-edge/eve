@@ -192,7 +192,7 @@ func processAppContainerStats(stats apitypes.ContainerStats, container apitypes.
 
 	// Container memory stats, convert bytes to Mbytes
 	acStats.UsedMem = uint32(utils.RoundToMbytes(v.MemoryStats.Usage))
-	acStats.AvailMem = uint32(utils.RoundToMbytes(v.MemoryStats.Limit))
+	acStats.AllocatedMem = uint32(utils.RoundToMbytes(v.MemoryStats.Limit))
 
 	// Container network stats, in bytes
 	networks := v.Networks

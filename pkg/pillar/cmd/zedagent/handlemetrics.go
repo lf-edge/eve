@@ -555,14 +555,20 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 		ReportDeviceMetric.DeviceMemory = new(metrics.DeviceMemoryMetric)
 		ReportDeviceMetric.DeviceMemory.MemoryMB = uint32(totalMemory)
 		// Loop over AppInstanceConfig to get sum for AllocatedAppsMB
-		// independent of status
+		// independent of status; use DomainMetric if it exists since
+		// it has the number which includes the qemu overhead.
 		var sumKB uint64
 		pub := ctx.getconfigCtx.pubAppInstanceConfig
 		items := pub.GetAll()
 		for _, c := range items {
 			aiConfig := c.(types.AppInstanceConfig)
 
-			sumKB += uint64(aiConfig.FixedResources.Memory)
+			dm := lookupDomainMetric(ctx, aiConfig.Key())
+			if dm != nil {
+				sumKB += 1024 * uint64(dm.AllocatedMB)
+			} else {
+				sumKB += uint64(aiConfig.FixedResources.Memory)
+			}
 		}
 		ReportDeviceMetric.DeviceMemory.AllocatedAppsMB = uint32((sumKB + 1023) / 1024)
 
@@ -621,6 +627,9 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 
 		ReportAppMetric := new(metrics.AppMetric)
 		ReportAppMetric.Cpu = new(metrics.AppCpuMetric)
+		// New AppMemoryMetric
+		ReportAppMetric.AppMemory = new(metrics.AppMemoryMetric)
+		// MemoryMetric is deprecated; keep for old controllers for now
 		ReportAppMetric.Memory = new(metrics.MemoryMetric)
 		ReportAppMetric.AppName = aiStatus.DisplayName
 		ReportAppMetric.AppID = aiStatus.Key()
@@ -639,6 +648,12 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 			// XXX add field in CpuMetric so we can report with better
 			// granularity than one second
 			ReportAppMetric.Cpu.Total = *proto.Uint64(dm.CPUTotalNs / nanoSecToSec)
+
+			// New AppMemoryMetric fields
+			ReportAppMetric.AppMemory.AllocatedMB = dm.AllocatedMB
+			ReportAppMetric.AppMemory.UsedMB = dm.UsedMemory
+
+			// Deprecated MemoryMetric fields
 			ReportAppMetric.Memory.UsedMem = dm.UsedMemory
 			ReportAppMetric.Memory.AvailMem = dm.AvailableMemory
 			ReportAppMetric.Memory.UsedPercentage = dm.UsedMemoryPercent
@@ -739,9 +754,19 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 					appContainerMetric.Cpu.Total = stats.CPUTotal
 					appContainerMetric.Cpu.SystemTotal = stats.SystemCPUTotal
 
+					// New AppMemoryMetric
+					appContainerMetric.AppContainerMemory = new(metrics.AppMemoryMetric)
+					appContainerMetric.AppContainerMemory.AllocatedMB = stats.AllocatedMem
+					appContainerMetric.AppContainerMemory.UsedMB = stats.UsedMem
+
+					// MemoryMetric is deprecated; keep for old controllers for now
+
 					appContainerMetric.Memory = new(metrics.MemoryMetric)
 					appContainerMetric.Memory.UsedMem = stats.UsedMem
-					appContainerMetric.Memory.AvailMem = stats.AvailMem
+					// We report the Allocated aka Limit
+					// in the AvailMem field, which is confusing
+					// but this MemoryMetric is deprecated.
+					appContainerMetric.Memory.AvailMem = stats.AllocatedMem
 
 					appContainerMetric.Network = new(metrics.NetworkMetric)
 					appContainerMetric.Network.TxBytes = stats.TxBytes

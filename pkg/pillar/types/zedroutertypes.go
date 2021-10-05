@@ -208,8 +208,8 @@ type AppContainerStats struct {
 	CPUTotal       uint64 // container CPU since starts in sec
 	SystemCPUTotal uint64 // total system, user, idle in sec
 	// Memory stats
-	UsedMem  uint32 // in MBytes
-	AvailMem uint32 // in MBytes
+	UsedMem      uint32 // in MBytes
+	AllocatedMem uint32 // in MBytes
 	// Network stats
 	TxBytes uint64 // in Bytes
 	RxBytes uint64 // in Bytes

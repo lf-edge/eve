@@ -277,6 +277,7 @@ func (ctx ctrdContext) GetDomsCPUMem() (map[string]types.DomainMetric, error) {
 			UUIDandVersion:    types.UUIDandVersion{},
 			CPUTotalNs:        cpuTotal, // Caller will scale
 			CPUScaled:         1,
+			AllocatedMB:       totalMem,
 			UsedMemory:        usedMem,
 			MaxUsedMemory:     maxUsedMem,
 			AvailableMemory:   availMem,
