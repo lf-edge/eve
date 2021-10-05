@@ -103,6 +103,8 @@ func getAndPublishMetrics(ctx *domainContext, hyper hypervisor.Hypervisor) {
 				dm.CPUTotalNs /= uint64(status.VCpus)
 				dm.CPUScaled = uint32(status.VCpus)
 			}
+			// XXX remove - this does not include qemu overhead
+			// dm.AllocatedMB = uint32((status.Memory + 1023) / 1024)
 		} else if dm.UUIDandVersion.UUID == nilUUID && hm.Ncpus != 0 {
 			// Scale Xen Dom0 based CPUs seen by hypervisor
 			dm.CPUTotalNs /= uint64(hm.Ncpus)
@@ -111,7 +113,8 @@ func getAndPublishMetrics(ctx *domainContext, hyper hypervisor.Hypervisor) {
 		}
 		if !dm.Activated {
 			// We clear the memory so it doesn't accidentally get
-			// reported.  We keep the CPUTotalNs and AvailableMemory
+			// reported.  We keep the CPUTotalNs, AvailableMemory, and
+			// AllocatedMB
 			dm.UsedMemory = 0
 			dm.MaxUsedMemory = 0
 			dm.UsedMemoryPercent = 0

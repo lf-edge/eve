@@ -818,6 +818,7 @@ func parseCPUMemoryStat(cpuMemoryStat [][]string, dmList map[string]types.Domain
 		dm := types.DomainMetric{
 			CPUTotalNs:        cpuTotal * nanoSecToSec,
 			CPUScaled:         1, // Caller will scale
+			AllocatedMB:       uint32(totalMemory),
 			UsedMemory:        uint32(usedMemory),
 			AvailableMemory:   uint32(availableMemory),
 			UsedMemoryPercent: float64(usedMemoryPercent),
