@@ -94,21 +94,23 @@ eden.escript.test -testdata ../volume/testdata/ -test.run TestEdenScripts/local_
 eden.escript.test -testdata ../eclient/testdata/ -test.run TestEdenScripts/mount
 {{end}}
 
-/bin/echo Eden Host only ACL (18.1/{{$tests}})
-eden.escript.test -testdata ../eclient/testdata/ -test.run TestEdenScripts/host-only
-/bin/echo Eden ACL to particular host (18.2/{{$tests}})
-eden.escript.test -testdata ../eclient/testdata/ -test.run TestEdenScripts/acl
-/bin/echo Eden profile test (18.3/{{$tests}})
+/bin/echo Eden profile test (18/{{$tests}})
 eden.escript.test -testdata ../eclient/testdata/ -test.run TestEdenScripts/profile
-/bin/echo Eden app metadata test (18.4/{{$tests}})
+
+/bin/echo Eden app metadata test (19.1/{{$tests}})
 eden.escript.test -testdata ../eclient/testdata/ -test.run TestEdenScripts/metadata
-/bin/echo Eden Network light (19/{{$tests}})
+/bin/echo Eden app userdata test (19.2/{{$tests}})
+eden.escript.test -testdata ../eclient/testdata/ -test.run TestEdenScripts/userdata
+
+/bin/echo Eden ACL to particular host (20.1/{{$tests}})
+eden.escript.test -testdata ../eclient/testdata/ -test.run TestEdenScripts/acl
+/bin/echo Eden Network light (20.2/{{$tests}})
 eden.escript.test -testdata ../eclient/testdata/ -test.run TestEdenScripts/networking_light
-/bin/echo Eden Networks switch (20/{{$tests}})
+/bin/echo Eden Networks switch (21.1/{{$tests}})
 eden.escript.test -testdata ../eclient/testdata/ -test.run TestEdenScripts/nw_switch
-/bin/echo Eden Network Ports switch (21/{{$tests}})
+/bin/echo Eden Network Ports switch (21.2/{{$tests}})
 eden.escript.test -testdata ../eclient/testdata/ -test.run TestEdenScripts/port_switch
-/bin/echo Eden Network portmap test (21.1/{{$tests}})
+/bin/echo Eden Network portmap test (21.3/{{$tests}})
 eden.escript.test -testdata ../eclient/testdata/ -test.run TestEdenScripts/port_forward
 
 {{if (eq $usb_pt "y")}}
@@ -156,7 +158,8 @@ eden.escript.test -testdata ../eclient/testdata/ -test.run TestEdenScripts/eclie
 {{end}}
 
 /bin/echo Eden Reboot test (34/{{$tests}})
-eden.escript.test -test.run TestEdenScripts/reboot_test
+eden.escript.test -testdata ../eclient/testdata/ -test.run TestEdenScripts/reboot_test
+
 {{ if ne $workflow "small" }}
 /bin/echo Eden base OS update http (35/{{$tests}})
 eden.escript.test -testdata ../update_eve_image/testdata/ -test.run TestEdenScripts/update_eve_image_http

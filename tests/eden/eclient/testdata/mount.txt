@@ -27,7 +27,7 @@ stdout '/tst'
 
 eden volume detach eclient-mount_1_m_0
 
-test eden.app.test -test.v -timewait 15m RUNNING eclient-mount
+test eden.app.test -test.v -timewait 15m -check-new RUNNING eclient-mount
 
 # check old mount point
 exec -t 5m bash ssh.sh /tst
@@ -36,7 +36,7 @@ exec -t 5m bash ssh.sh /tst
 # mount onto another mount point
 eden volume attach eclient-mount_1_m_0 eclient-mount /dst
 
-test eden.app.test -test.v -timewait 15m RUNNING eclient-mount
+test eden.app.test -test.v -timewait 15m -check-new RUNNING eclient-mount
 
 # check new mount point
 exec -t 5m bash ssh.sh /dst
