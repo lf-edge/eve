@@ -436,7 +436,7 @@ func stopDnsmasq(bridgeName string, printOnError bool, delConfiglet bool) {
 	}
 
 	cfgFilename := dnsmasqConfigFile(bridgeName)
-	pkillUserArgs("root", cfgFilename, printOnError)
+	pkillArgs(cfgFilename, printOnError)
 
 	startCheckTime := time.Now()
 	// check and wait until the process is gone or maximum of 60 seconds is reached

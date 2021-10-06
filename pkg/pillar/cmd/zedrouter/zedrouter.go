@@ -1928,12 +1928,9 @@ func appNetworkDoInactivateUnderlayNetwork(
 	}
 }
 
-func pkillUserArgs(userName string, match string, printOnError bool) {
+func pkillArgs(match string, printOnError bool) {
 	cmd := "pkill"
 	args := []string{
-		// XXX note that alpine does not support -u
-		// XXX		"-u",
-		// XXX		userName,
 		"-f",
 		match,
 	}
