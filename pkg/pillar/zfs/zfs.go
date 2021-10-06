@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/types"
@@ -21,13 +22,25 @@ var (
 )
 
 //DestroyDataset removes dataset from zfs
+//it runs 3 times in case of errors (we can hit dataset is busy)
 func DestroyDataset(log *base.LogObject, dataset string) (string, error) {
 	args := append(zfsPath, "destroy", dataset)
-	stdoutStderr, err := base.Exec(log, vault.ZfsPath, args...).CombinedOutput()
-	if err != nil {
-		return string(stdoutStderr), err
+	var err error
+	var stdoutStderr []byte
+	tries := 0
+	maxTries := 3
+	for {
+		stdoutStderr, err = base.Exec(log, vault.ZfsPath, args...).CombinedOutput()
+		if err == nil {
+			return string(stdoutStderr), nil
+		}
+		tries++
+		if tries > maxTries {
+			break
+		}
+		time.Sleep(time.Second)
 	}
-	return string(stdoutStderr), nil
+	return string(stdoutStderr), err
 }
 
 //GetDatasetOptions get dataset options from zfs

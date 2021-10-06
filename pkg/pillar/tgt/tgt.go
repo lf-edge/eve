@@ -117,15 +117,24 @@ func VHostCreateIBlock(tgtName, wwn string) error {
 	return nil
 }
 
-func getSerialTarget(tgtName string) (string, error) {
+//GetSerialTarget returns serial from target
+func GetSerialTarget(tgtName string) (string, error) {
 	targetRoot := filepath.Join(iBlockPath, tgtName)
+	//it returns something like "T10 VPD Unit Serial Number: 5001405043a8fbf4"
 	serial, err := ioutil.ReadFile(filepath.Join(targetRoot, "wwn", "vpd_unit_serial"))
-	return strings.TrimSpace(string(serial)), err
+	if err != nil {
+		return "", fmt.Errorf("GetSerialTarget for %s: %s", targetRoot, err)
+	}
+	parts := strings.Fields(strings.TrimSpace(string(serial)))
+	if len(parts) == 0 {
+		return "", fmt.Errorf("GetSerialTarget for %s: empty line", targetRoot)
+	}
+	return parts[len(parts)-1], nil
 }
 
 //CheckVHostIBlock check target vhost exists
 func CheckVHostIBlock(tgtName string) bool {
-	serial, err := getSerialTarget(tgtName)
+	serial, err := GetSerialTarget(tgtName)
 	if err != nil {
 		logrus.Errorf("CheckVHostIBlock (%s): %v", tgtName, err)
 		return false
@@ -139,11 +148,11 @@ func CheckVHostIBlock(tgtName string) bool {
 }
 
 // VHostDeleteIBlock - delete
-func VHostDeleteIBlock(tgtName, wwn string) error {
+func VHostDeleteIBlock(wwn string) error {
 	vhostRoot := filepath.Join(tgtPath, "vhost", wwn, "tpgt_1")
 	vhostLun := filepath.Join(vhostRoot, "lun", "lun_0")
 	if _, err := os.Stat(vhostLun); os.IsNotExist(err) {
-		return fmt.Errorf("vHost do not exists for tgtName %s: %s", tgtName, err)
+		return fmt.Errorf("vHost do not exists for wwn %s: %s", wwn, err)
 	}
 	if err := os.Remove(filepath.Join(vhostLun, "iblock")); err != nil {
 		return fmt.Errorf("error delete symlink: %v", err)

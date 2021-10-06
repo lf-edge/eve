@@ -248,7 +248,15 @@ func volumePrepareWorker(ctxPtr interface{}, w worker.Work) worker.WorkResult {
 func processVolumeWorkResult(ctxPtr interface{}, res worker.WorkResult) error {
 	ctx := ctxPtr.(*volumemgrContext)
 	d := res.Description.(volumeWorkDescription)
-	updateVolumeStatus(ctx, d.status.VolumeID)
+	if !updateVolumeStatus(ctx, d.status.VolumeID) {
+		//if it ends up after deleting of status we must do cleanup
+		if d.create {
+			log.Warnf("processVolumeWorkResult: no status for %s after create, will delete", d.status.VolumeID)
+			DeleteWorkCreate(ctx, &d.status)
+			d.status.FileLocation = d.FileLocation
+			AddWorkDestroy(ctx, &d.status)
+		}
+	}
 	return nil
 }
 
