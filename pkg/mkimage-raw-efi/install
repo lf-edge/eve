@@ -167,7 +167,8 @@ INSTALL_DEV=`cat /proc/cmdline | tr ' ' '\012' | sed -ne '/^eve_install_disk=/s#
 if [ -z "$INSTALL_DEV" ] ; then
    # now lets see what sources of installation material are there
    ROOT_DEV=$(root_dev)
-   FREE_DISKS_ALL=$(lsblk -anlb -o "TYPE,NAME,SIZE" | grep "^disk" | awk '$3 { print $2;}' | grep -v "${ROOT_DEV:-$^}")
+   # we sort disks by transport, so it will be sorted with order nvme->sata->usb
+   FREE_DISKS_ALL=$(lsblk -anlb -o "TYPE,NAME,SIZE,TRAN" | grep "^disk"| sort -k4 | awk '$3 { print $2;}' | grep -v "${ROOT_DEV:-$^}")
    for d in $FREE_DISKS_ALL; do
       [ -e "/sys/devices/virtual/block/$d" ] || FREE_DISKS="$FREE_DISKS $d"
    done
