@@ -217,6 +217,8 @@ On a test system, ideally connected to a monitor and keyboard, suspend the softw
 # pkill -SUSP watchdog
 ```
 
+Alternatively one can use [/opt/zededa/bin/faultinjection -W](./FAULT-INJECTION.md) to cause the hardware watchdog to fire.
+
 ### Verifying the TPM support
 
 The existence of the TPM is determined by the spec.sh script and it puts this in the hsm attribute. Since EVE only supports TPM 2.0 this does not detect TPM 1.2 devices.

@@ -10,11 +10,20 @@ import (
 )
 
 // PkillArgs does a pkill
-func PkillArgs(log *base.LogObject, match string, printOnError bool) {
+func PkillArgs(log *base.LogObject, match string, printOnError bool, kill bool) {
 	cmd := "pkill"
-	args := []string{
-		"-f",
-		match,
+	var args []string
+	if kill {
+		args = []string{
+			"-kill",
+			"-f",
+			match,
+		}
+	} else {
+		args = []string{
+			"-f",
+			match,
+		}
 	}
 	var err error
 	var out []byte

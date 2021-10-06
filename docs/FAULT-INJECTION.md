@@ -20,3 +20,4 @@ The options for faultinjection are:
 - F: cause a log.Fatal which will make zedbox exit after logging the error
 - P: cause a golang runtime panic which will make zedbox exit (the watchdog-report.sh script tries to extract the panic info and save it)
 - H: cause the faultinjection service, after registering its touch file with the Linux watchdog daemon, to never touch that file. This will result in the Linux watchdog daemon rebooting the system after recording the stack traces in /persist/agentdebug/.
+- W: cause the faultinjection service to check and kill the software watchdog with the intent that the hardware watchdog will fire.

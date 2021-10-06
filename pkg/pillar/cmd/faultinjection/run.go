@@ -7,6 +7,7 @@ package faultinjection
 
 import (
 	"flag"
+	"os"
 	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
@@ -14,6 +15,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/utils"
 	"github.com/sirupsen/logrus"
 )
 
@@ -47,10 +49,12 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	fatalPtr := flag.Bool("F", false, "Cause log.Fatal fault injection")
 	panicPtr := flag.Bool("P", false, "Cause golang panic fault injection")
 	hangPtr := flag.Bool("H", false, "Cause watchdog .touch fault injection")
+	hwPtr := flag.Bool("W", false, "Cause hardware watchdog fault injection")
 	flag.Parse()
 	fatalFlag := *fatalPtr
 	panicFlag := *panicPtr
 	hangFlag := *hangPtr
+	hwFlag := *hwPtr
 	ctx.debug = *debugPtr
 	ctx.debugOverride = *debugPtr
 	if ctx.debugOverride {
@@ -63,6 +67,12 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	}
 	log.Functionf("Starting %s", agentName)
 
+	// Sanity checks
+	if hwFlag {
+		if _, err := os.Stat("/dev/watchdog"); os.IsNotExist(err) {
+			log.Fatal("Asked for hardware watchdog but no /dev/watchdog")
+		}
+	}
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)
 	ps.StillRunning(agentName, warningTime, errorTime)
@@ -121,6 +131,12 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 			log.Warnf("Requested to not touch to cause watchdog")
 		} else {
 			ps.StillRunning(agentName, warningTime, errorTime)
+		}
+		// Repeat each time in case it was restarted during boot
+		if hwFlag {
+			procName := "/usr/sbin/watchdog"
+			log.Noticef("Killing %s", procName)
+			utils.PkillArgs(log, procName, true, true)
 		}
 	}
 }

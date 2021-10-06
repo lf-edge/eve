@@ -87,7 +87,7 @@ func stopRadvd(bridgeName string, printOnError bool) {
 
 	log.Tracef("stopRadvd: cfgFileName:%s, cfgPathName:%s\n",
 		cfgFilename, cfgPathname)
-	utils.PkillArgs(log, cfgFilename, printOnError)
+	utils.PkillArgs(log, cfgFilename, printOnError, false)
 	deleteRadvdConfiglet(cfgPathname)
 }
 
