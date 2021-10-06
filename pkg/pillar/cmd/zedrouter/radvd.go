@@ -11,6 +11,7 @@ import (
 	"os/exec"
 
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
+	"github.com/lf-edge/eve/pkg/pillar/utils"
 )
 
 // Need to fill in the overlay inteface name
@@ -81,13 +82,12 @@ func getBridgeRadvdCfgFileName(bridgeName string) (string, string) {
 	return cfgFilename, cfgPathname
 }
 
-//    pkill -u radvd -f radvd.${OLIFNAME}.conf
 func stopRadvd(bridgeName string, printOnError bool) {
 	cfgFilename, cfgPathname := getBridgeRadvdCfgFileName(bridgeName)
 
 	log.Tracef("stopRadvd: cfgFileName:%s, cfgPathName:%s\n",
 		cfgFilename, cfgPathname)
-	pkillArgs(cfgFilename, printOnError)
+	utils.PkillArgs(log, cfgFilename, printOnError)
 	deleteRadvdConfiglet(cfgPathname)
 }
 

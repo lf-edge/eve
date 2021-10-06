@@ -20,6 +20,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/utils"
 	"github.com/sirupsen/logrus"
 )
 
@@ -416,7 +417,6 @@ func startDnsmasq(bridgeName string) {
 	}
 }
 
-//    pkill -u nobody -f dnsmasq.${BRIDGENAME}.conf
 func stopDnsmasq(bridgeName string, printOnError bool, delConfiglet bool) {
 
 	log.Functionf("stopDnsmasq(%s)\n", bridgeName)
@@ -436,7 +436,7 @@ func stopDnsmasq(bridgeName string, printOnError bool, delConfiglet bool) {
 	}
 
 	cfgFilename := dnsmasqConfigFile(bridgeName)
-	pkillArgs(cfgFilename, printOnError)
+	utils.PkillArgs(log, cfgFilename, printOnError)
 
 	startCheckTime := time.Now()
 	// check and wait until the process is gone or maximum of 60 seconds is reached
