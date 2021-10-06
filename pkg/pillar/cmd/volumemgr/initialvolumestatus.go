@@ -16,6 +16,7 @@ import (
 	"strings"
 
 	zconfig "github.com/lf-edge/eve/api/go/config"
+	"github.com/lf-edge/eve/pkg/pillar/tgt"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/zfs"
 )
@@ -92,6 +93,20 @@ func gcDatasets(ctx *volumemgrContext, dataset string) {
 		if vs == nil {
 			log.Functionf("gcDatasets: Found unused volume %s. Deleting it.",
 				location)
+			serial, err := tgt.GetSerialTarget(key)
+			if err != nil {
+				log.Warnf("gcDatasets: Error obtaining serial from target for %s, error=%v",
+					key, err)
+			} else {
+				if err := tgt.VHostDeleteIBlock(fmt.Sprintf("naa.%s", serial)); err != nil {
+					log.Warnf("gcDatasets: Error deleting vhost for %s, error=%v",
+						key, err)
+				}
+			}
+			if err := tgt.TargetDeleteIBlock(key); err != nil {
+				log.Warnf("gcDatasets: Error deleting target for %s, error=%v",
+					key, err)
+			}
 			output, err := zfs.DestroyDataset(log, location)
 			if err != nil {
 				log.Errorf("gcDatasets: DestroyDataset '%s' failed: %v output:%s",

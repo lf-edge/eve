@@ -752,7 +752,8 @@ func updateContentTreeStatus(ctx *volumemgrContext, contentSha256 string, conten
 }
 
 // Find all the VolumeStatus which refer to this volume uuid
-func updateVolumeStatus(ctx *volumemgrContext, volumeID uuid.UUID) {
+// returns false if not found any
+func updateVolumeStatus(ctx *volumemgrContext, volumeID uuid.UUID) bool {
 
 	log.Functionf("updateVolumeStatus for %s", volumeID)
 	found := false
@@ -778,6 +779,7 @@ func updateVolumeStatus(ctx *volumemgrContext, volumeID uuid.UUID) {
 	if !found {
 		log.Warnf("XXX updateVolumeStatus(%s) NOT FOUND", volumeID)
 	}
+	return found
 }
 
 // Find all the VolumeStatus which refer to this content uuid

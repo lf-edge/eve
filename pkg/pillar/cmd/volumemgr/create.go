@@ -72,7 +72,7 @@ func createVdiskVolume(ctx *volumemgrContext, status types.VolumeStatus,
 				errStr := fmt.Sprintf("Error converting %s to zfs zvol %s: %v",
 					pathToFile, zVolDevice, err)
 				log.Error(errStr)
-				return created, "", errors.New(errStr)
+				return created, zVolDevice, errors.New(errStr)
 			}
 		}
 		filelocation = zVolDevice
@@ -109,17 +109,17 @@ func createVdiskVolume(ctx *volumemgrContext, status types.VolumeStatus,
 			if _, _, err := puller.Pull(&registry.FilesTarget{Root: f, AcceptHash: true}, 0, false, os.Stderr, resolver); err != nil {
 				errStr := fmt.Sprintf("error pulling %s from containerd: %v", ref, err)
 				log.Error(errStr)
-				return created, "", errors.New(errStr)
+				return created, filelocation, errors.New(errStr)
 			}
 			// Do we need to expand disk?
 			if err := maybeResizeDisk(filelocation, status.MaxVolSize); err != nil {
 				log.Error(err)
-				return created, "", err
+				return created, filelocation, err
 			}
 		} else {
 			if err := diskmetrics.CreateImg(log, filelocation, strings.ToLower(status.ContentFormat.String()), status.MaxVolSize); err != nil {
 				log.Error(err)
-				return created, "", err
+				return created, filelocation, err
 			}
 		}
 	}
@@ -204,7 +204,7 @@ func destroyVdiskVolume(ctx *volumemgrContext, status types.VolumeStatus) (bool,
 		return created, "", errors.New(errStr)
 	}
 	if info.Mode()&os.ModeDevice != 0 {
-		if err := tgt.VHostDeleteIBlock(status.Key(), status.WWN); err != nil {
+		if err := tgt.VHostDeleteIBlock(status.WWN); err != nil {
 			errStr := fmt.Sprintf("Error deleting vhost for %s, error=%v",
 				status.Key(), err)
 			log.Error(errStr)
@@ -300,7 +300,7 @@ func createTargetVhost(device string, status *types.VolumeStatus) (string, error
 		err = tgt.VHostCreateIBlock(status.Key(), wwn)
 		if err != nil {
 			errString := fmt.Sprintf("VHostCreateIBlock: %v", err)
-			err = tgt.VHostDeleteIBlock(status.Key(), wwn)
+			err = tgt.VHostDeleteIBlock(wwn)
 			if err != nil {
 				errString = fmt.Sprintf("%s; VHostDeleteIBlock: %v",
 					errString, err)
