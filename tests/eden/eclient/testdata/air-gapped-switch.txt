@@ -26,7 +26,7 @@ message 'Creating networks: local indirect and air-gapped switch direct'
 eden network create 10.11.12.0/24 -n indirect
 eden network create --type switch --uplink none -n direct
 
-test eden.network.test -test.v -timewait 10m ACTIVATED indirect direct
+test eden.network.test -test.v -timewait 20m ACTIVATED indirect direct
 
 message 'Starting applications'
 eden pod deploy -v debug -n eclient1 docker://lfedge/eden-eclient:83cfe07 -p {{template "port1"}}:22 --networks=indirect --networks=direct:{{template "mac1"}} --memory=512MB
