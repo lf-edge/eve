@@ -4,6 +4,7 @@
 package diskmetrics
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -42,13 +43,13 @@ func GetDiskVirtualSize(log *base.LogObject, diskfile string) (uint64, error) {
 	return imgInfo.VirtualSize, nil
 }
 
-func ResizeImg(log *base.LogObject, diskfile string, newsize uint64) error {
-
+//ResizeImg calls qemu-img to resize disk file to new size
+func ResizeImg(ctx context.Context, log *base.LogObject, diskfile string, newsize uint64) error {
 	if _, err := os.Stat(diskfile); err != nil {
 		return err
 	}
 	output, err := base.Exec(log, "/usr/bin/qemu-img", "resize", diskfile,
-		strconv.FormatUint(newsize, 10)).CombinedOutput()
+		strconv.FormatUint(newsize, 10)).WithContext(ctx).CombinedOutput()
 	if err != nil {
 		errStr := fmt.Sprintf("qemu-img failed: %s, %s\n",
 			err, output)
@@ -58,9 +59,9 @@ func ResizeImg(log *base.LogObject, diskfile string, newsize uint64) error {
 }
 
 //CreateImg creates empty diskfile with defined format and size
-func CreateImg(log *base.LogObject, diskfile string, format string, size uint64) error {
+func CreateImg(ctx context.Context, log *base.LogObject, diskfile string, format string, size uint64) error {
 	output, err := base.Exec(log, "/usr/bin/qemu-img", "create", "-f", format, diskfile,
-		strconv.FormatUint(size, 10)).CombinedOutput()
+		strconv.FormatUint(size, 10)).WithContext(ctx).CombinedOutput()
 	if err != nil {
 		errStr := fmt.Sprintf("qemu-img failed: %s, %s\n",
 			err, output)
@@ -70,12 +71,12 @@ func CreateImg(log *base.LogObject, diskfile string, format string, size uint64)
 }
 
 //ConvertImg do conversion of diskfile to outputFile with defined format
-func ConvertImg(log *base.LogObject, diskfile, outputFile, outputFormat string) error {
+func ConvertImg(ctx context.Context, log *base.LogObject, diskfile, outputFile, outputFormat string) error {
 	if _, err := os.Stat(diskfile); err != nil {
 		return err
 	}
 	args := []string{"convert", "-O", outputFormat, diskfile, outputFile}
-	output, err := base.Exec(log, "/usr/bin/qemu-img", args...).CombinedOutput()
+	output, err := base.Exec(log, "/usr/bin/qemu-img", args...).WithContext(ctx).CombinedOutput()
 	if err != nil {
 		errStr := fmt.Sprintf("qemu-img failed: %s, %s\n",
 			err, output)

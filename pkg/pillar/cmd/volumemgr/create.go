@@ -4,6 +4,7 @@
 package volumemgr
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -42,6 +43,38 @@ func createVdiskVolume(ctx *volumemgrContext, status types.VolumeStatus,
 	// this is the target location, where we expect the volume to be
 	filelocation := status.PathName()
 
+	createContext := context.Background()
+
+	//we call createCancel to break volume creation process
+	//removing of partially created objects must be done inside caller
+	createContext, createCancel := context.WithCancel(createContext)
+
+	done := make(chan bool, 1)
+
+	defer func() {
+		done <- true
+	}()
+
+	go func() {
+		timer := time.NewTicker(time.Second)
+		defer timer.Stop()
+		for {
+			select {
+			case <-timer.C:
+				st := lookupVolumeStatus(ctx, status.Key())
+				//it disappears in case of deleting of volume config
+				if st == nil {
+					log.Warnf("createVdiskVolume: VolumeStatus(%s) disappear during creation", status.Key())
+					createCancel()
+					return
+				}
+			case <-done:
+				createCancel()
+				return
+			}
+		}
+	}()
+
 	if persistFsType != types.PersistZFS {
 		if _, err := os.Stat(filelocation); err == nil {
 			errStr := fmt.Sprintf("Can not create %s for %s: exists",
@@ -68,7 +101,7 @@ func createVdiskVolume(ctx *volumemgrContext, status types.VolumeStatus,
 				log.Error(errStr)
 				return created, "", errors.New(errStr)
 			}
-			if err := diskmetrics.ConvertImg(log, pathToFile, zVolDevice, "raw"); err != nil {
+			if err := diskmetrics.ConvertImg(createContext, log, pathToFile, zVolDevice, "raw"); err != nil {
 				errStr := fmt.Sprintf("Error converting %s to zfs zvol %s: %v",
 					pathToFile, zVolDevice, err)
 				log.Error(errStr)
@@ -89,10 +122,12 @@ func createVdiskVolume(ctx *volumemgrContext, status types.VolumeStatus,
 				return created, "", err
 			}
 			defer casClient.CloseClient()
-			ctrdCtx, done := casClient.CtrNewUserServicesCtx()
-			defer done()
 
-			resolver, err := casClient.Resolver(ctrdCtx)
+			//redefine createContext and createCancel with values received from cas
+			//we call createCancel to cancel creating process
+			createContext, createCancel = casClient.CtrNewUserServicesCtx()
+
+			resolver, err := casClient.Resolver(createContext)
 			if err != nil {
 				errStr := fmt.Sprintf("error getting CAS resolver: %v", err)
 				log.Error(errStr)
@@ -112,12 +147,12 @@ func createVdiskVolume(ctx *volumemgrContext, status types.VolumeStatus,
 				return created, filelocation, errors.New(errStr)
 			}
 			// Do we need to expand disk?
-			if err := maybeResizeDisk(filelocation, status.MaxVolSize); err != nil {
+			if err := maybeResizeDisk(createContext, filelocation, status.MaxVolSize); err != nil {
 				log.Error(err)
 				return created, filelocation, err
 			}
 		} else {
-			if err := diskmetrics.CreateImg(log, filelocation, strings.ToLower(status.ContentFormat.String()), status.MaxVolSize); err != nil {
+			if err := diskmetrics.CreateImg(createContext, log, filelocation, strings.ToLower(status.ContentFormat.String()), status.MaxVolSize); err != nil {
 				log.Error(err)
 				return created, filelocation, err
 			}
@@ -265,7 +300,7 @@ func checkResizeDisk(diskfile string, maxsizebytes uint64) (uint64, bool, error)
 }
 
 // Make sure the (virtual) size of the disk is at least maxsizebytes
-func maybeResizeDisk(diskfile string, maxsizebytes uint64) error {
+func maybeResizeDisk(ctx context.Context, diskfile string, maxsizebytes uint64) error {
 	if maxsizebytes == 0 {
 		return nil
 	}
@@ -278,7 +313,7 @@ func maybeResizeDisk(diskfile string, maxsizebytes uint64) error {
 	if resize {
 		log.Functionf("maybeResizeDisk(%s) resize to %d",
 			diskfile, size)
-		return diskmetrics.ResizeImg(log, diskfile, size)
+		return diskmetrics.ResizeImg(ctx, log, diskfile, size)
 	}
 	return nil
 }
