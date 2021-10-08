@@ -499,6 +499,10 @@ message newlogMetric {
   map <string, uint32> top10_input_sources = 19;
   // counter for not uploaded gzip files removed due to exceeding user defined or default quota
   uint32 gzipFilesRemoved = 20;
+  // counter for 429 returned status code for uploading
+  uint32 tooManyRequest = 21;
+  // counter for gzip files bypassing the uploading to cloud
+  uint32 skipUploadAppFile = 22;
 }
 
 // logfileMetrics - is shared for both device log and application log

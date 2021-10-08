@@ -82,6 +82,10 @@ The already uploaded gzip files are moved to /persist/newlog/keepSentQueue direc
 
 To prevent the log messages grow without bounds over time, the 'failedUpload' directory will only keep up to 1000 gzip files, each with maximum of 50K, to be under 50M in the directory. The '/persist' partition space is monitored, and if the available space is under 100M, the 'newlogd' will kick in the gzip file recycle operation just as the controller uplink is unreachable.
 
+## Policy for Application Logging Export to cloud or Stay on device
+
+The API of AppInstanceConfig has a VmConfig.disableLogs boolean value to control a particular application's log to be exported to the cloud or to stay on the device. If this boolean is set, the application's log after being compressed into gzip file is directly moved to /persist/newlog/keepSentQueue directory and bypassing the uploading process. The gzip files bypassing the upload will have the 'skipTX.' string in the file name, e.g. 'app.skipTx.521645ca-3d2e-4818-a14e-6a586b03d1a7.log.1633582285249.gz'.
+
 ## Upload log files faster
 
 There are cases, for example during EVE code testing, the default timers for logfile and uploading to controller are too slow. The runtime configuration-property "newlog.allow.fastupload" boolean can be set to speed it up. By setting this item to 'true', the maximum logfile duration is 10 seconds and the upload to controller is in 3 seconds interval. This newlog fastupload schedule is similar to the original logging operation.

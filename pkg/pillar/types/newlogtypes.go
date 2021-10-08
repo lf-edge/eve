@@ -61,6 +61,7 @@ type NewlogMetrics struct {
 	// from newlogd
 	NumGZipFileRemoved    uint32            // number of gzip file removed due to exceeding quota
 	NumBreakGZipFile      uint32            // total number of gzip file too large needs breakup
+	NumSkipUploadAppFile  uint32            // total number of gzip app file skipped upload
 	NumKmessages          uint64            // total input kmessages
 	NumSyslogMessages     uint64            // total input syslog message
 	DevTop10InputBytesPCT map[string]uint32 // top 10 sources device log input in percentage

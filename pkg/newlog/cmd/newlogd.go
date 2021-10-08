@@ -56,6 +56,7 @@ const (
 	devPrefix    = types.DevPrefix
 	appPrefix    = types.AppPrefix
 	tmpPrefix    = "TempFile"
+	skipUpload   = "skipTx."
 
 	maxLogFileSize   int32 = 550000 // maximum collect file size in bytes
 	maxGzipFileSize  int64 = 50000  // maximum gzipped file size for upload in bytes
@@ -104,8 +105,9 @@ var (
 type appDomain struct {
 	appUUID     string
 	appName     string
-	domainName  string
 	msgIDAppCnt uint64
+	disableLogs bool
+	trigMove    bool
 }
 
 type inputEntry struct {
@@ -127,7 +129,7 @@ type statsLogFile struct {
 	file       *os.File
 	size       int32
 	starttime  time.Time
-	domainName string
+	notUpload  bool
 }
 
 // file info passing from collection to compression threads
@@ -136,6 +138,7 @@ type fileChanInfo struct {
 	header    string
 	inputSize int32
 	isApp     bool
+	notUpload bool   // app log is configured not to upload
 }
 
 // device Meta Data
@@ -425,10 +428,20 @@ func handleDomainStatusImp(ctxArg interface{}, key string, statusArg interface{}
 	appD := appDomain{
 		appUUID:     status.UUIDandVersion.UUID.String(),
 		appName:     status.DisplayName,
-		domainName:  status.DomainName,
+		disableLogs: status.DisableLogs,
 		msgIDAppCnt: 1,
 	}
-	domainUUID[status.DomainName] = appD
+
+	// close the app log file if already opened due to app log policy change
+	if d, ok := domainUUID[appD.appUUID]; ok {
+		if d.disableLogs != appD.disableLogs {
+			appD.trigMove = true
+		} else {
+			appD.trigMove = d.trigMove
+		}
+		appD.msgIDAppCnt = d.msgIDAppCnt // inherit the counter for the app
+	}
+	domainUUID[appD.appUUID] = appD
 	log.Tracef("handleDomainStatusModify: done for %s", key)
 }
 
@@ -436,11 +449,11 @@ func handleDomainStatusDelete(ctxArg interface{}, key string, statusArg interfac
 
 	log.Tracef("handleDomainStatusDelete: for %s", key)
 	status := statusArg.(types.DomainStatus)
-	if _, ok := domainUUID[status.DomainName]; !ok {
+	if _, ok := domainUUID[status.UUIDandVersion.UUID.String()]; !ok {
 		return
 	}
-	log.Tracef("handleDomainStatusDelete: remove %s", status.DomainName)
-	delete(domainUUID, status.DomainName)
+	log.Tracef("handleDomainStatusDelete: remove %s", status.DisplayName)
+	delete(domainUUID, status.DisplayName)
 	log.Tracef("handleDomainStatusDelete: done for %s", key)
 }
 
@@ -748,7 +761,7 @@ func writelogFile(logChan <-chan inputEntry, moveChan chan fileChanInfo) {
 				Content:   entry.content,
 				Iid:       entry.pid,
 				Filename:  entry.filename,
-				Msgid:     updateLogMsgID(appM.domainName),
+				Msgid:     updateLogMsgID(appuuid),
 				Function:  entry.function,
 				Timestamp: timeS,
 			}
@@ -789,9 +802,14 @@ func checkAppEntry(entry *inputEntry) string {
 	if appVMlog {
 		if len(appSplitArr) == 2 {
 			if appSplitArr[0] == "" && appSplitArr[1] != "" {
+				// entry.source is the 'domainName' in the format
+				// of app-uuid.restart-num.app-num
 				entry.source = appSplitArr[1]
-				if du, ok := domainUUID[entry.source]; ok {
+				appsource := strings.Split(entry.source, ".")
+				if du, ok := domainUUID[appsource[0]]; ok {
 					appuuid = du.appUUID
+				} else {
+					log.Tracef("entry.source not in right format %s", entry.source)
 				}
 			}
 		}
@@ -801,17 +819,17 @@ func checkAppEntry(entry *inputEntry) string {
 
 // updateLogMsgID - handles the msgID for log for both dev and apps
 // dev log does not have app-uuid, thus domainName passed in is ""
-func updateLogMsgID(domainName string) uint64 {
+func updateLogMsgID(appUUID string) uint64 {
 	var msgid uint64
-	if domainName == "" {
+	if appUUID == "" {
 		msgid = msgIDDevCnt
 		msgIDDevCnt++
 	} else {
-		if _, ok := domainUUID[domainName]; ok {
-			appD := domainUUID[domainName]
+		if _, ok := domainUUID[appUUID]; ok {
+			appD := domainUUID[appUUID]
 			msgid = appD.msgIDAppCnt
 			appD.msgIDAppCnt++
-			domainUUID[domainName] = appD
+			domainUUID[appUUID] = appD
 		}
 	}
 
@@ -823,10 +841,14 @@ func getAppStatsMap(appuuid string) statsLogFile {
 		applogname := appPrefix + appuuid + ".log"
 		applogfile := startTmpfile(collectDir, applogname, true)
 
-		var domainName string
+		var notUpload bool
 		for _, appD := range domainUUID {
 			if appD.appUUID == appuuid {
-				domainName = appD.domainName
+				notUpload = appD.disableLogs
+				if appD.trigMove {
+					appD.trigMove = false // reset this since we start a new file
+					domainUUID[appuuid] = appD
+				}
 				break
 			}
 		}
@@ -834,7 +856,7 @@ func getAppStatsMap(appuuid string) statsLogFile {
 		appM := statsLogFile{
 			file:       applogfile,
 			starttime:  time.Now(),
-			domainName: domainName,
+			notUpload:  notUpload,
 		}
 		appStatsMap[appuuid] = appM
 
@@ -985,7 +1007,7 @@ func doMoveCompressFile(tmplogfileInfo fileChanInfo) {
 
 	now := time.Now()
 	timenowNum := int(now.UnixNano() / int64(time.Millisecond)) // in msec
-	outfile := gzipFileNameGet(isApp, timenowNum, dirName, appuuid)
+	outfile := gzipFileNameGet(isApp, timenowNum, dirName, appuuid, tmplogfileInfo.notUpload)
 
 	// read input file
 	ifile, err := os.Open(tmplogfileInfo.tmpfile)
@@ -1014,11 +1036,12 @@ func doMoveCompressFile(tmplogfileInfo fileChanInfo) {
 	ifile.Close()
 
 	// if the newSize exceeding the limit, split into multiple segments and redo the gzip on them
+	var ratio int
 	if newSize > maxGzipFileSize {
 		// remove this new oversied gzip file
 		os.Remove(outfile)
 
-		ratio := int(newSize / maxGzipFileSize + 2) // minimum to 3 segments
+		ratio = int(newSize / maxGzipFileSize + 2) // minimum to 3 segments
 		newSize = doGzipSplitContent(content, ratio, now, tmplogfileInfo)
 		logmetrics.NumBreakGZipFile += uint32(ratio)
 	} else {
@@ -1027,6 +1050,13 @@ func doMoveCompressFile(tmplogfileInfo fileChanInfo) {
 
 	if isApp {
 		logmetrics.AppMetrics.NumGZipBytesWrite += uint64(newSize)
+		if tmplogfileInfo.notUpload {
+			if ratio > 0 {
+				logmetrics.NumSkipUploadAppFile += uint32(ratio)
+			} else {
+				logmetrics.NumSkipUploadAppFile++
+			}
+		}
 	} else {
 		logmetrics.DevMetrics.NumGZipBytesWrite += uint64(newSize)
 	}
@@ -1053,7 +1083,7 @@ func doGzipSplitContent(content []byte, ratio int, now time.Time, info fileChanI
 	dirName, appuuid := getFileInfo(info)
 	var totalNewSize int64
 	for idx, seg := range segments {
-		outfile := gzipFileNameGet(info.isApp, timenowNum + idx, dirName, appuuid)
+		outfile := gzipFileNameGet(info.isApp, timenowNum + idx, dirName, appuuid, info.notUpload)
 		newSize := gzipToOutFile(seg, outfile, info, now)
 		calculateGzipSizes(newSize)
 		totalNewSize += newSize
@@ -1146,7 +1176,11 @@ func breakGzipSegments(content []byte, ratio int) [][]byte {
 func getFileInfo(tmplogfileInfo fileChanInfo) (string, string) {
 	var dirName, appuuid string
 	if tmplogfileInfo.isApp {
-		dirName = uploadAppDir
+		if tmplogfileInfo.notUpload {
+			dirName = types.NewlogKeepSentQueueDir
+		} else {
+			dirName = uploadAppDir
+		}
 		appuuid = getAppuuidFromLogfile(tmplogfileInfo)
 	} else {
 		if _, err := os.Stat(uploadDevDir); os.IsNotExist(err) {
@@ -1159,10 +1193,14 @@ func getFileInfo(tmplogfileInfo fileChanInfo) (string, string) {
 	return dirName, appuuid
 }
 
-func gzipFileNameGet(isApp bool, timeNum int, dirName, appUUID string) string {
+func gzipFileNameGet(isApp bool, timeNum int, dirName, appUUID string, notUpload bool) string {
 	var outfileName string
 	if isApp {
-		outfileName = appPrefix + appUUID + types.AppSuffix + strconv.Itoa(timeNum) + ".gz"
+		appPref := appPrefix
+		if notUpload {
+			appPref = appPref + skipUpload
+		}
+		outfileName = appPref + appUUID + types.AppSuffix + strconv.Itoa(timeNum) + ".gz"
 	} else {
 		outfileName = devPrefix + strconv.Itoa(timeNum) + ".gz"
 	}
@@ -1227,6 +1265,7 @@ func trigMoveToGzip(fileinfo fileChanInfo, stats *statsLogFile, appUUID string, 
 	fileinfo.isApp = isApp
 	fileinfo.inputSize = stats.size
 	fileinfo.tmpfile = stats.file.Name()
+	fileinfo.notUpload = stats.notUpload
 
 	moveChan <- fileinfo
 
@@ -1254,6 +1293,14 @@ func checkLogTimeExpire(fileinfo fileChanInfo, devStats *statsLogFile, moveChan 
 
 	// check app log files
 	for appuuid, appM := range appStatsMap {
+		if d, ok := domainUUID[appuuid]; ok { // if app disable-upload status changes, move file to gzip now
+			if d.trigMove && appM.file != nil {
+				d.trigMove = false
+				domainUUID[appuuid] = d
+				trigMoveToGzip(fileinfo, &appM, appuuid, moveChan, true)
+				continue
+			}
+		}
 		if appM.file != nil && appM.size > 0 && uint32(time.Since(appM.starttime).Seconds()) > logmetrics.LogfileTimeoutSec {
 			trigMoveToGzip(fileinfo, &appM, appuuid, moveChan, true)
 		}

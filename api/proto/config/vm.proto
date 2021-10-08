@@ -40,4 +40,5 @@ message VmConfig {
   bool enableVnc = 16;
   uint32 vncDisplay = 17;
   string vncPasswd = 18;
+  bool disableLogs = 19;
 }
