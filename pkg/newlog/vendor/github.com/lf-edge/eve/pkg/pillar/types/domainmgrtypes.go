@@ -5,11 +5,12 @@ package types
 
 import (
 	"fmt"
-	uuid "github.com/satori/go.uuid"
 	"os"
 	"strconv"
 	"strings"
 	"time"
+
+	uuid "github.com/satori/go.uuid"
 
 	"github.com/google/go-cmp/cmp"
 	zconfig "github.com/lf-edge/eve/api/go/config"
@@ -95,18 +96,28 @@ func (config DomainConfig) GetTaskName() string {
 }
 
 // DomainnameToUUID does the reverse of GetTaskName
-func DomainnameToUUID(name string) (uuid.UUID, error) {
+func DomainnameToUUID(name string) (uuid.UUID, string, int, error) {
 	// FIXME: we can likely drop this altogether
 	if name == "Domain-0" {
-		return uuid.UUID{}, nil
+		return uuid.UUID{}, "", 0, nil
 	}
 
 	res := strings.Split(name, ".")
-	if len(res) == 3 {
-		return uuid.FromString(res[0])
-	} else {
-		return uuid.UUID{}, fmt.Errorf("Unknown domainname %s", name)
+	if len(res) != 3 {
+		return uuid.UUID{}, "", 0, fmt.Errorf("Unknown domainname format %s",
+			name)
 	}
+	id, err := uuid.FromString(res[0])
+	if err != nil {
+		return uuid.UUID{}, "", 0, fmt.Errorf("Bad UUID %s: %w",
+			res[0], err)
+	}
+	appNum, err := strconv.Atoi(res[2])
+	if err != nil {
+		return uuid.UUID{}, "", 0, fmt.Errorf("Bad appNum %s: %w",
+			res[2], err)
+	}
+	return id, res[1], appNum, nil
 }
 
 func (config DomainConfig) Key() string {
@@ -203,6 +214,7 @@ type VmConfig struct {
 	EnableVnc          bool
 	VncDisplay         uint32
 	VncPasswd          string
+	DisableLogs        bool
 }
 
 type VmMode uint8
@@ -220,10 +232,11 @@ const (
 type Task interface {
 	Setup(DomainStatus, DomainConfig, *AssignableAdapters, *os.File) error
 	Create(string, string, *DomainConfig) (int, error)
-	Start(string, int) error
-	Stop(string, int, bool) error
-	Delete(string, int) error
-	Info(string, int) (int, SwState, error)
+	Start(string) error
+	Stop(string, bool) error
+	Delete(string) error
+	Info(string) (int, SwState, error)
+	Cleanup(string) error
 }
 
 type DomainStatus struct {
@@ -245,6 +258,7 @@ type DomainStatus struct {
 	EnableVnc          bool
 	VncDisplay         uint32
 	VncPasswd          string
+	DisableLogs        bool
 	TriedCount         int
 	// ErrorAndTime provides SetErrorNow() and ClearError()
 	ErrorAndTime
@@ -252,6 +266,7 @@ type DomainStatus struct {
 	AdaptersFailed bool
 	OCIConfigDir   string            // folder holding an OCI Image config for this domain (empty string means no config)
 	EnvVariables   map[string]string // List of environment variables to be set in container
+	VmConfig                         // From DomainConfig
 }
 
 func (status DomainStatus) Key() string {
@@ -362,6 +377,7 @@ type DiskConfig struct {
 	Format       zconfig.Format
 	MountDir     string
 	DisplayName  string
+	WWN          string
 }
 
 type DiskStatus struct {
@@ -373,13 +389,16 @@ type DiskStatus struct {
 	DisplayName  string
 	Devtype      string // XXX used internally by hypervisor; deprecate?
 	Vdev         string // Allocated
+	WWN          string
 }
 
 // DomainMetric carries CPU and memory usage. UUID=devUUID for the dom0/host metrics overhead
 type DomainMetric struct {
 	UUIDandVersion    UUIDandVersion
-	CPUTotal          uint64 // Seconds since Domain boot
+	CPUTotalNs        uint64 // Nanoseconds since Domain boot scaled by #CPUs
+	CPUScaled         uint32 // The scale factor which was applied
 	UsedMemory        uint32
+	MaxUsedMemory     uint32
 	AvailableMemory   uint32
 	UsedMemoryPercent float64
 	LastHeard         time.Time
