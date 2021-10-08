@@ -5,11 +5,12 @@ package types
 
 import (
 	"fmt"
-	uuid "github.com/satori/go.uuid"
 	"os"
 	"strconv"
 	"strings"
 	"time"
+
+	uuid "github.com/satori/go.uuid"
 
 	"github.com/google/go-cmp/cmp"
 	zconfig "github.com/lf-edge/eve/api/go/config"
@@ -213,6 +214,7 @@ type VmConfig struct {
 	EnableVnc          bool
 	VncDisplay         uint32
 	VncPasswd          string
+	DisableLogs        bool
 }
 
 type VmMode uint8
@@ -256,6 +258,7 @@ type DomainStatus struct {
 	EnableVnc          bool
 	VncDisplay         uint32
 	VncPasswd          string
+	DisableLogs        bool
 	TriedCount         int
 	// ErrorAndTime provides SetErrorNow() and ClearError()
 	ErrorAndTime

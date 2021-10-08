@@ -1074,6 +1074,7 @@ func handleCreate(ctx *domainContext, key string, config *types.DomainConfig) {
 		EnableVnc:          config.EnableVnc,
 		VncDisplay:         config.VncDisplay,
 		VncPasswd:          config.VncPasswd,
+		DisableLogs:        config.DisableLogs,
 		State:              types.INSTALLED,
 		VmConfig:           config.VmConfig,
 	}
@@ -1948,6 +1949,7 @@ func updateStatusFromConfig(status *types.DomainStatus, config types.DomainConfi
 	status.EnableVnc = config.EnableVnc
 	status.VncDisplay = config.VncDisplay
 	status.VncPasswd = config.VncPasswd
+	status.DisableLogs = config.DisableLogs
 }
 
 // If we have a -emu named interface we assume it is being used
