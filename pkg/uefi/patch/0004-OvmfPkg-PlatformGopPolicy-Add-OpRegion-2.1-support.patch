@@ -1,0 +1,87 @@
+From 4247fe457ea18f2d4c7467d431dc048b3451cb04 Mon Sep 17 00:00:00 2001
+From: Colin Xu <colin.xu@intel.com>
+Date: Thu, 27 May 2021 09:08:25 +0800
+Subject: [PATCH] OvmfPkg/PlatformGopPolicy: Add OpRegion 2.1 support.
+
+Signed-off-by: Colin Xu <colin.xu@intel.com>
+---
+ OvmfPkg/PlatformGopPolicy/PlatformGopPolicy.c | 39 ++++++++++++++-----
+ 1 file changed, 30 insertions(+), 9 deletions(-)
+
+diff --git a/OvmfPkg/PlatformGopPolicy/PlatformGopPolicy.c b/OvmfPkg/PlatformGopPolicy/PlatformGopPolicy.c
+index d94f154c0279..2df8def8e20d 100644
+--- a/OvmfPkg/PlatformGopPolicy/PlatformGopPolicy.c
++++ b/OvmfPkg/PlatformGopPolicy/PlatformGopPolicy.c
+@@ -93,7 +93,21 @@ GetVbtData (
+     } else {
+       VerMajor = OpRegion->Header.OVER >> 24;
+       VerMinor = OpRegion->Header.OVER >> 16 & 0xff;
+-      if (VerMajor < 2 || OpRegion->MBox3.RVDA == 0) {
++      /* 
++       * OpRegion version and VBT size:
++       * Before 2.0: VBT is stored in OpRegion Mailbox 4 and the size won't exceed 6K.
++       * For 2.0 and 2.0+:
++       *   If VBT raw data size doesn't exceeds 6K, VBT is stored in Mailbox 4.
++       *   If exceeds 6K, VBT is stored in extended VBT region, the address and
++       *     size are stored in OpRegion head RVDA and RVDS.
++       *   - 2.0, RVDA holds the absolute physical address.
++       *   - 2.0+, RVDA holds the relative address OpRegion base, >= OpRegion size
++       * vfio-pci allocates a contigious memory to hold both OpRegion and VBT for
++       *   OpRegion 2.0 with >6K VBT and fake it to 2.1. So from OVMF perspective,
++       *   it shouldn't see OpRegion 2.0 with valid RVDA/RVDS. Otherwise the
++       *   vfio-pci driver needs updated.
++       */
++      if (VerMajor < 2) {
+         VbtSizeMax = IGD_OPREGION_VBT_SIZE_6K;
+         if (((VBT_HEADER*)&OpRegion->MBox4)->Table_Size > IGD_OPREGION_VBT_SIZE_6K) {
+           DEBUG ((EFI_D_ERROR, "%a: VBT Header reports larger size (0x%x) than OpRegion VBT Mailbox (0x%x)\n",
+@@ -102,10 +116,16 @@ GetVbtData (
+           VbtSizeMax = 0;
+           return EFI_INVALID_PARAMETER;
+         }
+-      } else {
+-        DEBUG ((EFI_D_ERROR, "%a: Unsupported OpRegion version %d.%d\n",
+-          __FUNCTION__, VerMajor, VerMinor));
++      } else if (VerMajor == 2 && VerMinor == 0 && OpRegion->MBox3.RVDA && OpRegion->MBox3.RVDS){
++        DEBUG ((EFI_D_ERROR, "%a: Unsupported OpRegion version %d.%d with VBT larger than 0x%x\n",
++          __FUNCTION__, VerMajor, VerMinor, IGD_OPREGION_VBT_SIZE_6K));
++        VbtSizeMax = 0;
+         return EFI_UNSUPPORTED;
++      } else {
++        VbtSizeMax = IGD_OPREGION_VBT_SIZE_6K;
++        if (OpRegion->MBox3.RVDA && OpRegion->MBox3.RVDS) {
++          VbtSizeMax = OpRegion->MBox3.RVDS;
++        }
+       }
+     }
+   }
+@@ -117,12 +137,9 @@ GetVbtData (
+                     );
+   }
+ 
+-  if (VbtSizeMax == IGD_OPREGION_VBT_SIZE_6K) {
+-    mVbt = SIZE_4GB - 1;
+-  }
+-
+   /* Only operates VBT on support OpRegion */
+   if (VbtSizeMax) {
++    mVbt = SIZE_4GB - 1;
+     Status = gBS->AllocatePages (
+                     AllocateMaxAddress,
+                     EfiReservedMemoryType,
+@@ -139,7 +156,11 @@ GetVbtData (
+       /* Zero-out first*/
+       ZeroMem ((VOID*)mVbt, VbtSizeMax);
+       /* Only copy with size as specified in VBT table */
+-      CopyMem((VOID*)mVbt, (VOID*)OpRegion->MBox4.RVBT, ((VBT_HEADER*)&OpRegion->MBox4)->Table_Size);
++      if (VerMajor < 2 || !OpRegion->MBox3.RVDA || !OpRegion->MBox3.RVDS) {
++        CopyMem((VOID*)mVbt, (VOID*)OpRegion->MBox4.RVBT, ((VBT_HEADER*)&OpRegion->MBox4)->Table_Size);
++      } else {
++        CopyMem((VOID*)mVbt, (VOID*)OpRegion + OpRegion->MBox3.RVDA, OpRegion->MBox3.RVDS);
++      }
+ 
+       /* Fix the checksum */
+       for (UINT32 i = 0; i < ((VBT_HEADER*)mVbt)->Table_Size; i++) {
+-- 
+2.31.1
+
