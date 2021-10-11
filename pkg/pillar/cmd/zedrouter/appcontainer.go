@@ -185,9 +185,9 @@ func processAppContainerStats(stats apitypes.ContainerStats, container apitypes.
 
 	acStats.Pids = uint32(v.PidsStats.Current)
 
-	// Container CPU stats, convert from nano-seconds to seconds
-	acStats.CPUTotal = v.CPUStats.CPUUsage.TotalUsage / nanoSecToSec
-	acStats.SystemCPUTotal = v.CPUStats.SystemUsage / nanoSecToSec
+	// Container CPU stats
+	acStats.CPUTotal = v.CPUStats.CPUUsage.TotalUsage
+	acStats.SystemCPUTotal = v.CPUStats.SystemUsage
 	acStats.Uptime = startTime.UnixNano()
 
 	// Container memory stats, convert bytes to Mbytes

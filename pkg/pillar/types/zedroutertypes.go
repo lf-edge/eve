@@ -205,8 +205,8 @@ type AppContainerStats struct {
 	Pids          uint32 // number of PIDs within the container
 	// CPU stats
 	Uptime         int64  // unix.nano, time since container starts
-	CPUTotal       uint64 // container CPU since starts in sec
-	SystemCPUTotal uint64 // total system, user, idle in sec
+	CPUTotal       uint64 // container CPU since starts in nanosec
+	SystemCPUTotal uint64 // total system, user, idle in nanosec
 	// Memory stats
 	UsedMem      uint32 // in MBytes
 	AllocatedMem uint32 // in MBytes
