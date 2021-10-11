@@ -549,9 +549,8 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 			ReportMetrics.AtTimeStamp = lh
 		}
 
-		// XXX add field in CpuMetric so we can report with better
-		// granularity than one second
 		ReportDeviceMetric.CpuMetric.Total = *proto.Uint64(dm.CPUTotalNs / nanoSecToSec)
+		ReportDeviceMetric.CpuMetric.TotalNs = dm.CPUTotalNs
 
 		// Report new DeviceMemoryMetric
 		ReportDeviceMetric.DeviceMemory = new(metrics.DeviceMemoryMetric)
@@ -647,9 +646,11 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 			log.Tracef("metrics for %s CPU %d, usedMem %v, availMem %v, availMemPercent %v",
 				aiStatus.DomainName, dm.CPUTotalNs, dm.UsedMemory,
 				dm.AvailableMemory, dm.UsedMemoryPercent)
-			// XXX add field in CpuMetric so we can report with better
-			// granularity than one second
+
+			// Deprecated filed in seconds
 			ReportAppMetric.Cpu.Total = *proto.Uint64(dm.CPUTotalNs / nanoSecToSec)
+			// New field in nanosec.
+			ReportAppMetric.Cpu.TotalNs = dm.CPUTotalNs
 
 			// New AppMemoryMetric fields
 			ReportAppMetric.AppMemory.AllocatedMB = dm.AllocatedMB
@@ -753,8 +754,10 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 					appContainerMetric.Cpu = new(metrics.AppCpuMetric)
 					uptime, _ := ptypes.TimestampProto(time.Unix(0, stats.Uptime).UTC())
 					appContainerMetric.Cpu.UpTime = uptime
-					appContainerMetric.Cpu.Total = stats.CPUTotal
-					appContainerMetric.Cpu.SystemTotal = stats.SystemCPUTotal
+					// convert to seconds
+					appContainerMetric.Cpu.Total = stats.CPUTotal / nanoSecToSec
+					appContainerMetric.Cpu.SystemTotal = stats.SystemCPUTotal / nanoSecToSec
+					appContainerMetric.Cpu.TotalNs = stats.CPUTotal
 
 					// New AppMemoryMetric
 					appContainerMetric.AppContainerMemory = new(metrics.AppMemoryMetric)
