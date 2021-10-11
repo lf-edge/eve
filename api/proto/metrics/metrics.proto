@@ -166,8 +166,10 @@ message appCpuMetric {
   // deprecated = 2;
   // deprecated = 3;
   google.protobuf.Timestamp upTime = 4;
+  // should be deprecated
   uint64 total = 5;                   // cpu total in secs. In docker stats, it's the container user usage
   uint64 systemTotal = 6;             // docker host system cpu total in secs. inc user, system and idle
+  uint64 total_ns = 7;                 // like 'total' but in nanoseconds. Overflow may happen after ~40 years without EVE restart
 }
 
 message deviceMetric {
