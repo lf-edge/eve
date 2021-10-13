@@ -110,54 +110,6 @@ func (h *Handle) ConntrackDeleteFilter(table ConntrackTableType, family InetFami
 	return matched, nil
 }
 
-// conntrack -D
-func ConntrackDeleteIPSrc(table ConntrackTableType, family InetFamily, addr net.IP,
-	proto uint8, port uint16, mark uint32, markMask uint32, debugShow bool) (uint, error) {
-	return pkgHandle.ConntrackDeleteIPSrc(table, family, addr, proto, port,
-			mark, markMask, debugShow)
-}
-
-// conntrack -D -s address -p protocol -P port -m Mark  Delete conntrack flows matching the source IP and/or proto/port
-// the source IP address has to be specified, others are optional
-// the -s address will match either 'orig' or 'reply' addresses, can't be zero
-// protocol ID zero will match all flow protocols for flow deletion
-// port value zero will match all flow source port
-// mark value zero will match all flow marks
-func (h *Handle) ConntrackDeleteIPSrc(table ConntrackTableType,
-	family InetFamily, addr net.IP, proto uint8, port uint16,
-	mark uint32, markMask uint32, debugShow bool) (uint, error) {
-	res, err := h.dumpConntrackTable(table, family)
-	if err != nil {
-		return 0, err
-	}
-
-	var matched uint
-	var flownum int
-	for _, dataRaw := range res {
-		flow := parseRawData(dataRaw)
-		if (addr.IsUnspecified() ||
-			addr.Equal(flow.Forward.SrcIP) ||
-			addr.Equal(flow.Reverse.SrcIP)) &&
-			(proto == 0 || flow.Forward.Protocol == proto) &&
-			(mark & markMask == 0 || flow.Mark & markMask == mark & markMask) &&
-			(port == 0 || flow.Forward.SrcPort == port || flow.Reverse.SrcPort == port) {
-			req2 := h.newConntrackRequest(table, family, nl.IPCTNL_MSG_CT_DELETE, unix.NLM_F_ACK)
-			// skip the first 4 byte that are the netfilter header, the newConntrackRequest is adding it already
-			req2.AddRawData(dataRaw[4:])
-			req2.Execute(unix.NETLINK_NETFILTER, 0)
-			matched++
-			if debugShow {
-				fmt.Printf("[%d] flow deleted: %s\n", matched, flow.String())
-			}
-		}
-		flownum++
-	}
-	if debugShow {
-		fmt.Printf("total flow number: %d\n", flownum)
-	}
-	return matched, nil
-}
-
 func (h *Handle) newConntrackRequest(table ConntrackTableType, family InetFamily, operation, flags int) *nl.NetlinkRequest {
 	// Create the Netlink request object
 	req := h.newNetlinkRequest((int(table)<<8)|operation, flags)
@@ -230,22 +182,22 @@ func parseIpTuple(reader *bytes.Reader, tpl *ipTuple) uint8 {
 			tpl.DstIP = v
 		}
 	}
+	// Get total length of nested protocol-specific info.
 	_, _, protoInfoTotalLen := parseNfAttrTL(reader)
-	// Track the number of bytes read.
-	protoInfoBytesRead := uint16(nl.SizeofNfattr)
-
 	_, t, l, v := parseNfAttrTLV(reader)
-	protoInfoBytesRead += uint16(nl.SizeofNfattr) + l
+	// Track the number of bytes read.
+	protoInfoBytesRead := uint16(nl.SizeofNfattr) + l
 	if t == nl.CTA_PROTO_NUM {
 		tpl.Protocol = uint8(v[0])
 	}
 	// We only parse TCP & UDP headers. Skip the others.
 	if tpl.Protocol != 6 && tpl.Protocol != 17 {
 		// skip the rest
-		reader.Seek(int64(protoInfoTotalLen - protoInfoBytesRead), seekCurrent)
+		bytesRemaining := protoInfoTotalLen - protoInfoBytesRead
+		reader.Seek(int64(bytesRemaining), seekCurrent)
 		return tpl.Protocol
 	}
-	// Skip some padding 3 bytes
+	// Skip 3 bytes of padding
 	reader.Seek(3, seekCurrent)
 	protoInfoBytesRead += 3
 	for i := 0; i < 2; i++ {
@@ -259,7 +211,7 @@ func parseIpTuple(reader *bytes.Reader, tpl *ipTuple) uint8 {
 			parseBERaw16(reader, &tpl.DstPort)
 			protoInfoBytesRead += 2
 		}
-		// Skip some padding 2 byte
+		// Skip 2 bytes of padding
 		reader.Seek(2, seekCurrent)
 		protoInfoBytesRead += 2
 	}
@@ -270,23 +222,27 @@ func parseIpTuple(reader *bytes.Reader, tpl *ipTuple) uint8 {
 	return tpl.Protocol
 }
 
-func parseNfAttrTLV(r *bytes.Reader) (isNested bool, attrType, length uint16, value []byte) {
-	isNested, attrType, length = parseNfAttrTL(r)
-	length -= nl.SizeofNfattr
+func parseNfAttrTLV(r *bytes.Reader) (isNested bool, attrType, len uint16, value []byte) {
+	isNested, attrType, len = parseNfAttrTL(r)
 
-	value = make([]byte, length)
+	value = make([]byte, len)
 	binary.Read(r, binary.BigEndian, &value)
-	return isNested, attrType, length, value
+	return isNested, attrType, len, value
 }
 
-func parseNfAttrTL(r *bytes.Reader) (isNested bool, attrType, length uint16) {
-	binary.Read(r, nl.NativeEndian(), &length)
+func parseNfAttrTL(r *bytes.Reader) (isNested bool, attrType, len uint16) {
+	binary.Read(r, nl.NativeEndian(), &len)
+	len -= nl.SizeofNfattr
 
 	binary.Read(r, nl.NativeEndian(), &attrType)
 	isNested = (attrType & nl.NLA_F_NESTED) == nl.NLA_F_NESTED
 	attrType = attrType & (nl.NLA_F_NESTED - 1)
+	return isNested, attrType, len
+}
 
-	return isNested, attrType, length
+func skipNfAttrValue(r *bytes.Reader, len uint16) {
+	len = (len + nl.NLA_ALIGNTO - 1) & ^(nl.NLA_ALIGNTO - 1)
+	r.Seek(int64(len), seekCurrent)
 }
 
 func parseBERaw16(r *bytes.Reader, v *uint16) {
@@ -378,28 +334,18 @@ func parseRawData(data []byte) *ConntrackFlow {
 					parseIpTuple(reader, &s.Reverse)
 				} else {
 					// Header not recognized skip it
-					reader.Seek(int64(l - nl.SizeofNfattr), seekCurrent)
+					skipNfAttrValue(reader, l)
 				}
 			case nl.CTA_COUNTERS_ORIG:
 				s.Forward.Bytes, s.Forward.Packets = parseByteAndPacketCounters(reader)
 			case nl.CTA_COUNTERS_REPLY:
 				s.Reverse.Bytes, s.Reverse.Packets = parseByteAndPacketCounters(reader)
 			case nl.CTA_TIMESTAMP:
-				s.TimeStart, s.TimeStop = parseTimeStamp(reader, l - nl.SizeofNfattr)
+				s.TimeStart, s.TimeStop = parseTimeStamp(reader, l)
 			case nl.CTA_PROTOINFO:
-				seekLen := l - nl.SizeofNfattr
-				if remainder := (seekLen % 4); remainder != 0 {
-					pad := 4 - remainder
-					seekLen += pad
-				}
-				reader.Seek(int64(seekLen), seekCurrent)
+				skipNfAttrValue(reader, l)
 			default:
-				seekLen := l - nl.SizeofNfattr
-				if remainder := (seekLen % 4); remainder != 0 {
-					pad := 4 - remainder
-					seekLen += pad
-				}
-				reader.Seek(int64(seekLen), seekCurrent)
+				skipNfAttrValue(reader, l)
 			}
 		} else {
 			switch t {
@@ -408,19 +354,9 @@ func parseRawData(data []byte) *ConntrackFlow {
 			case nl.CTA_TIMEOUT:
 				s.TimeOut = parseTimeOut(reader)
 			case nl.CTA_STATUS, nl.CTA_USE, nl.CTA_ID:
-				seekLen := l - nl.SizeofNfattr
-				if remainder := (seekLen % 4); remainder != 0 {
-					pad := 4 - remainder
-					seekLen += pad
-				}
-				reader.Seek(int64(seekLen), seekCurrent)
+				skipNfAttrValue(reader, l)
 			default:
-				seekLen := l - nl.SizeofNfattr
-				if remainder := (seekLen % 4); remainder != 0 {
-					pad := 4 - remainder
-					seekLen += pad
-				}
-				reader.Seek(int64(seekLen), seekCurrent)
+				skipNfAttrValue(reader, l)
 			}
 		}
 	}

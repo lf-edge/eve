@@ -53,7 +53,7 @@ require (
 	github.com/sirupsen/logrus v1.8.1
 	github.com/stretchr/testify v1.7.0
 	github.com/tatsushid/go-fastping v0.0.0-20160109021039-d7bb493dee3e
-	github.com/vishvananda/netlink v1.1.1-0.20201029203352-d40f9887b852
+	github.com/vishvananda/netlink v1.1.1-0.20210924202909-187053b97868
 	github.com/yvasiyarov/go-metrics v0.0.0-20150112132944-c25f46c4b940 // indirect
 	github.com/yvasiyarov/gorelic v0.0.7 // indirect
 	github.com/yvasiyarov/newrelic_platform_go v0.0.0-20160601141957-9c099fbc30e9 // indirect
@@ -69,10 +69,6 @@ require (
 replace github.com/lf-edge/eve/api/go => ../../api/go
 
 replace github.com/lf-edge/eve/libs/zedUpload => ../../libs/zedUpload
-
-replace github.com/vishvananda/netlink/nl => github.com/eriknordmark/netlink/nl v0.0.0-20210521210133-6f4f9eb80eb3
-
-replace github.com/vishvananda/netlink => github.com/eriknordmark/netlink v0.0.0-20210521210133-6f4f9eb80eb3
 
 replace git.apache.org/thrift.git => github.com/apache/thrift v0.12.0
 

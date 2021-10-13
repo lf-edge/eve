@@ -274,3 +274,62 @@ type UEvent struct {
 	Obj    string
 	Env    map[string]string
 }
+
+// UUIDPairToNum used for appNum on network instance
+type UUIDPairToNum struct {
+	BaseID      uuid.UUID
+	AppID       uuid.UUID
+	Number      int
+	NumType     string
+	CreateTime  time.Time
+	LastUseTime time.Time
+	InUse       bool
+}
+
+// Key is the key in pubsub
+func (info UUIDPairToNum) Key() string {
+	return UUIDPairToNumKey(info.BaseID, info.AppID)
+}
+
+// UUIDPairToNumKey is the index key
+func UUIDPairToNumKey(baseID, appID uuid.UUID) string {
+	return baseID.String() + "-" + appID.String()
+}
+
+// LogCreate :
+func (info UUIDPairToNum) LogCreate(logBase *base.LogObject) {
+	logObject := base.NewLogObject(logBase, base.UUIDPairToNumLogType, "",
+		info.BaseID, info.LogKey())
+	if logObject == nil {
+		return
+	}
+	logObject.Noticef("UUIDPairToNum info create")
+}
+
+// LogModify :
+func (info UUIDPairToNum) LogModify(logBase *base.LogObject, old interface{}) {
+	logObject := base.EnsureLogObject(logBase, base.UUIDPairToNumLogType, "",
+		info.BaseID, info.LogKey())
+
+	oldInfo, ok := old.(UUIDPairToNum)
+	if !ok {
+		logObject.Clone().Fatalf("LogModify: Old object interface passed is not of UUIDPairToNum type")
+	}
+	// XXX remove?
+	logObject.CloneAndAddField("diff", cmp.Diff(oldInfo, info)).
+		Noticef("UUIDPairToNum info modify")
+}
+
+// LogDelete :
+func (info UUIDPairToNum) LogDelete(logBase *base.LogObject) {
+	logObject := base.EnsureLogObject(logBase, base.UUIDPairToNumLogType, "",
+		info.BaseID, info.LogKey())
+	logObject.Noticef("UUIDPairToNum info delete")
+
+	base.DeleteLogObject(logBase, info.LogKey())
+}
+
+// LogKey :
+func (info UUIDPairToNum) LogKey() string {
+	return string(base.UUIDPairToNumLogType) + "-" + info.Key()
+}

@@ -37,9 +37,9 @@ type PhyIOUsagePolicy struct {
 // from controller for each Adapter.
 type PhysicalIOAdapter struct {
 	Ptype        zcommon.PhyIoType // Type of IO Device
-	Phylabel     string            // Label put on the box
+	Phylabel     string            // Label printed on the enclosure
 	Phyaddr      PhysicalAddress
-	Logicallabel string
+	Logicallabel string // Label assigned by model creator
 	Assigngrp    string
 	Usage        zcommon.PhyIoMemberUsage
 	UsagePolicy  PhyIOUsagePolicy
@@ -99,12 +99,12 @@ func (ioAdapterList PhysicalIOAdapterList) LogKey() string {
 	return string(base.PhysicalIOAdapterListLogType) + "-" + ioAdapterList.Key()
 }
 
-// LookupAdapter - look up an Adapter by its name ( phylabel )
+// LookupAdapter - look up an Adapter by its phylabel
 func (ioAdapterList *PhysicalIOAdapterList) LookupAdapter(
-	name string) *PhysicalIOAdapter {
+	phylabel string) *PhysicalIOAdapter {
 	for indx := range ioAdapterList.AdapterList {
 		adapter := &ioAdapterList.AdapterList[indx]
-		if adapter.Phylabel == name {
+		if adapter.Phylabel == phylabel {
 			return adapter
 		}
 	}

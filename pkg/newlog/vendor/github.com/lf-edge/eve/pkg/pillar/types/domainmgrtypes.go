@@ -397,9 +397,10 @@ type DomainMetric struct {
 	UUIDandVersion    UUIDandVersion
 	CPUTotalNs        uint64 // Nanoseconds since Domain boot scaled by #CPUs
 	CPUScaled         uint32 // The scale factor which was applied
-	UsedMemory        uint32
-	MaxUsedMemory     uint32
-	AvailableMemory   uint32
+	AllocatedMB       uint32
+	UsedMemory        uint32 // in MB
+	MaxUsedMemory     uint32 // in MB
+	AvailableMemory   uint32 // in MB
 	UsedMemoryPercent float64
 	LastHeard         time.Time
 	Activated         bool
@@ -454,6 +455,8 @@ func (metric DomainMetric) LogKey() string {
 type HostMemory struct {
 	TotalMemoryMB uint64
 	FreeMemoryMB  uint64
+	UsedEveMB     uint64
+	KmemUsedEveMB uint64
 	Ncpus         uint32
 }
 
