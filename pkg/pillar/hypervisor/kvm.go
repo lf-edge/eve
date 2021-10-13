@@ -318,6 +318,9 @@ const qemuPciPassthruTemplate = `
 {{- if .Xvga }}
   x-vga = "on"
 {{- end -}}
+{{- if .Xopregion }}
+  x-igd-opregion = "on"
+{{- end -}}
 `
 const qemuSerialTemplate = `
 [chardev "charserial-usr{{.ID}}"]
@@ -603,7 +606,8 @@ func (ctx kvmContext) CreateDomConfig(domainName string, config types.DomainConf
 			PCIId        int
 			PciShortAddr string
 			Xvga         bool
-		}{PCIId: netContext.PCIId, PciShortAddr: "", Xvga: false}
+			Xopregion    bool
+		}{PCIId: netContext.PCIId, PciShortAddr: "", Xvga: false, Xopregion: false}
 
 		t, _ = template.New("qemuPciPT").Parse(qemuPciPassthruTemplate)
 		for _, pa := range pciAssignments {
@@ -612,12 +616,24 @@ func (ctx kvmContext) CreateDomConfig(domainName string, config types.DomainConf
 			if _, err := os.Stat(bootVgaFile); err == nil {
 				pciPTContext.Xvga = true
 			}
+			vendorFile := sysfsPciDevices + pa.pciLong + "/vendor"
+			if vendor, err := ioutil.ReadFile(vendorFile); err == nil {
+				// check for Intel vendor
+				if strings.TrimSpace(strings.TrimSuffix(string(vendor), "\n")) == "0x8086" {
+					if pciPTContext.Xvga {
+						// we set opregion for Intel vga
+						// https://github.com/qemu/qemu/blob/stable-5.0/docs/igd-assign.txt#L91-L96
+						pciPTContext.Xopregion = true
+					}
+				}
+			}
 
 			pciPTContext.PciShortAddr = short
 			if err := t.Execute(file, pciPTContext); err != nil {
 				return logError("can't write PCI Passthrough to config file %s (%v)", file.Name(), err)
 			}
 			pciPTContext.Xvga = false
+			pciPTContext.Xopregion = false
 			pciPTContext.PCIId = pciPTContext.PCIId + 1
 		}
 	}
