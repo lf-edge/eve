@@ -203,6 +203,30 @@ func handleSignals(log *base.LogObject, agentName string, agentPid int, sigs cha
 	}
 }
 
+// DumpAllStacks writes to file but does not log
+func DumpAllStacks(log *base.LogObject, agentName string) {
+	agentDebugDir := fmt.Sprintf("%s/%s/", types.PersistDebugDir, agentName)
+	sigUsr1FileName := agentDebugDir + "/sigusr1"
+
+	stacks := getStacks(true)
+	stackArray := strings.Split(stacks, "\n\n")
+
+	sigUsr1File, err := os.OpenFile(sigUsr1FileName,
+		os.O_WRONLY|os.O_CREATE|os.O_SYNC|os.O_TRUNC, 0755)
+	if err == nil {
+		for _, stack := range stackArray {
+			// This goes to /persist/agentdebug/<agentname>/sigusr1 file
+			sigUsr1File.WriteString(stack + "\n\n")
+		}
+		sigUsr1File.Close()
+		log.Noticef("DumpAllStacks: Wrote file %s",
+			sigUsr1FileName)
+	} else {
+		log.Errorf("DumpAllStacks: Error opening file %s with: %s",
+			sigUsr1FileName, err)
+	}
+}
+
 // PrintStacks - for newlogd log init
 func PrintStacks(log *base.LogObject) {
 	stacks := getStacks(false)
@@ -306,11 +330,11 @@ func RebootReason(reason string, bootReason types.BootReason, agentName string,
 	if bootReason != types.BootReasonNone {
 		filename = "/persist/" + bootReasonFile
 		brString := bootReason.String()
-		cur, _, _ := fileutils.StatAndRead(nil, filename, maxReadSize)
-		if cur != "" {
+		b, _ := fileutils.ReadWithMaxSize(nil, filename, maxReadSize)
+		if len(b) != 0 {
 			// Note: can not use log here since we are called from a log hook!
 			fmt.Printf("not replacing BootReason %s with %s\n",
-				cur, brString)
+				string(b), brString)
 		} else {
 			err = overWriteFile(filename, brString)
 			if err != nil {

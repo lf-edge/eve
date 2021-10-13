@@ -14,5 +14,3 @@ require (
 replace github.com/lf-edge/eve/api/go => ../../api/go
 
 replace github.com/lf-edge/eve/pkg/pillar => ../pillar
-
-replace github.com/vishvananda/netlink => github.com/eriknordmark/netlink v0.0.0-20210521210133-6f4f9eb80eb3

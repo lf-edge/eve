@@ -479,7 +479,7 @@ github.com/stretchr/testify/assert
 # github.com/tatsushid/go-fastping v0.0.0-20160109021039-d7bb493dee3e
 ## explicit
 github.com/tatsushid/go-fastping
-# github.com/vishvananda/netlink v1.1.1-0.20201029203352-d40f9887b852 => github.com/eriknordmark/netlink v0.0.0-20210521210133-6f4f9eb80eb3
+# github.com/vishvananda/netlink v1.1.1-0.20210924202909-187053b97868
 ## explicit
 github.com/vishvananda/netlink
 github.com/vishvananda/netlink/nl
@@ -665,7 +665,5 @@ oras.land/oras-go/pkg/content
 oras.land/oras-go/pkg/oras
 # github.com/lf-edge/eve/api/go => ../../api/go
 # github.com/lf-edge/eve/libs/zedUpload => ../../libs/zedUpload
-# github.com/vishvananda/netlink/nl => github.com/eriknordmark/netlink/nl v0.0.0-20210521210133-6f4f9eb80eb3
-# github.com/vishvananda/netlink => github.com/eriknordmark/netlink v0.0.0-20210521210133-6f4f9eb80eb3
 # git.apache.org/thrift.git => github.com/apache/thrift v0.12.0
 # github.com/docker/distribution => github.com/docker/distribution v0.0.0-20190205005809-0d3efadf0154

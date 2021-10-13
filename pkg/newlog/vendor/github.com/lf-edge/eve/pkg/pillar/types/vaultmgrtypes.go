@@ -14,6 +14,7 @@ import (
 type VaultStatus struct {
 	Name               string
 	Status             info.DataSecAtRestStatus
+	PCRStatus          info.PCRStatus
 	ConversionComplete bool
 	// ErrorAndTime provides SetErrorNow() and ClearError()
 	ErrorAndTime

@@ -35,12 +35,11 @@ type IoBundle struct {
 	//	Type of the IoBundle
 	Type IoType
 	// Phylabel
-	//	Short hand name such as "COM1".
-	//	Used in the API to specify that a adapter should
-	//	be assigned to an application.
+	//	Label on the outside of the enclosure
 	Phylabel string
 
-	// Logical Label assigned to the Adapter
+	// Logical Label assigned to the Adapter. Could match Phylabel
+	// or could be a user-chosen string like "shopfloor"
 	Logicallabel string
 
 	// Assignment Group, is unique label that is applied across PhysicalIOs

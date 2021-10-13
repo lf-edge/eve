@@ -209,12 +209,11 @@ func (status AppInstanceStatus) LogModify(logBase *base.LogObject, old interface
 	}
 
 	if status.HasError() {
-		errAndTime := status.ErrorAndTime()
 		logObject.CloneAndAddField("state", status.State.String()).
 			AddField("restart-in-progress", status.RestartInprogress).
 			AddField("purge-in-progress", status.PurgeInprogress).
-			AddField("error", errAndTime.Error).
-			AddField("error-time", errAndTime.ErrorTime).
+			AddField("error", status.Error).
+			AddField("error-time", status.ErrorTime).
 			Noticef("App instance status modify")
 	}
 }

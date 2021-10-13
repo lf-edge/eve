@@ -4,6 +4,7 @@
 package types
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"net"
@@ -207,8 +208,8 @@ type AppContainerStats struct {
 	CPUTotal       uint64 // container CPU since starts in sec
 	SystemCPUTotal uint64 // total system, user, idle in sec
 	// Memory stats
-	UsedMem  uint32 // in MBytes
-	AvailMem uint32 // in MBytes
+	UsedMem      uint32 // in MBytes
+	AllocatedMem uint32 // in MBytes
 	// Network stats
 	TxBytes uint64 // in Bytes
 	RxBytes uint64 // in Bytes
@@ -868,7 +869,8 @@ type DhcpConfig struct {
 	Gateway    net.IP
 	DomainName string
 	NtpServer  net.IP
-	DnsServers []net.IP // If not set we use Gateway as DNS server
+	DnsServers []net.IP    // If not set we use Gateway as DNS server
+	Type       NetworkType // IPv4 or IPv6 or Dual stack
 }
 
 // WifiConfig - Wifi structure
@@ -935,6 +937,7 @@ type NetworkPortStatus struct {
 	IsMgmt         bool   // Used to talk to controller
 	Cost           uint8
 	Dhcp           DhcpType
+	Type           NetworkType // IPv4 or IPv6 or Dual stack
 	Subnet         net.IPNet
 	NtpServer      net.IP // This comes from network instance configuration
 	DomainName     string
@@ -1317,13 +1320,13 @@ func CountLocalAddrAnyNoLinkLocal(globalStatus DeviceNetworkStatus) int {
 // CountLocalAddrAnyNoLinkLocalIf return number of local IP addresses for
 // the interface excluding link-local addresses
 func CountLocalAddrAnyNoLinkLocalIf(globalStatus DeviceNetworkStatus,
-	phylabelOrIfname string) (int, error) {
+	ifname string) (int, error) {
 
-	if phylabelOrIfname == "" {
+	if ifname == "" {
 		return 0, fmt.Errorf("ifname not specified")
 	}
 	// Count the number of addresses which apply
-	addrs, err := getLocalAddrListImpl(globalStatus, phylabelOrIfname,
+	addrs, err := getLocalAddrListImpl(globalStatus, ifname,
 		PortCostMax, false, 0)
 	return len(addrs), err
 }
@@ -1352,15 +1355,9 @@ func CountLocalIPv4AddrAnyNoLinkLocal(globalStatus DeviceNetworkStatus) int {
 	return len(addrs)
 }
 
-// CountDNSServers returns the number of DNS servers; for phylabelOrIfname if set
-func CountDNSServers(globalStatus DeviceNetworkStatus, phylabelOrIfname string) int {
+// CountDNSServers returns the number of DNS servers; for ifname if set
+func CountDNSServers(globalStatus DeviceNetworkStatus, ifname string) int {
 
-	var ifname string
-	if phylabelOrIfname != "" {
-		ifname = PhylabelToIfName(&globalStatus, phylabelOrIfname)
-	} else {
-		ifname = phylabelOrIfname
-	}
 	count := 0
 	for _, us := range globalStatus.Ports {
 		if us.IfName != ifname && ifname != "" {
@@ -1407,28 +1404,28 @@ func GetNTPServers(globalStatus DeviceNetworkStatus, ifname string) []net.IP {
 // CountLocalIPv4AddrAnyNoLinkLocalIf is like CountLocalAddrAnyNoLinkLocalIf but
 // only IPv4 addresses are counted
 func CountLocalIPv4AddrAnyNoLinkLocalIf(globalStatus DeviceNetworkStatus,
-	phylabelOrIfname string) (int, error) {
+	ifname string) (int, error) {
 
-	if phylabelOrIfname == "" {
+	if ifname == "" {
 		return 0, fmt.Errorf("ifname not specified")
 	}
 	// Count the number of addresses which apply
-	addrs, err := getLocalAddrListImpl(globalStatus, phylabelOrIfname,
+	addrs, err := getLocalAddrListImpl(globalStatus, ifname,
 		PortCostMax, false, 4)
 	return len(addrs), err
 }
 
 // GetLocalAddrAnyNoLinkLocal is used to pick one address from:
-// - phylabelOrIfname if set.
+// - ifname if set.
 // - otherwise from all of the management ports
 // Excludes link-local addresses.
 // The addresses are sorted in cost order thus as the caller starts with
 // pickNum zero and increases it will use the ports in cost order.
 func GetLocalAddrAnyNoLinkLocal(globalStatus DeviceNetworkStatus, pickNum int,
-	phylabelOrIfname string) (net.IP, error) {
+	ifname string) (net.IP, error) {
 
 	includeLinkLocal := false
-	return getLocalAddrImpl(globalStatus, pickNum, phylabelOrIfname,
+	return getLocalAddrImpl(globalStatus, pickNum, ifname,
 		PortCostMax, includeLinkLocal, 0)
 }
 
@@ -1438,22 +1435,22 @@ func GetLocalAddrAnyNoLinkLocal(globalStatus DeviceNetworkStatus, pickNum int,
 // If 0 is specified it only considers local addresses on cost zero ports;
 // if 255 is specified it considers all the local addresses.
 func GetLocalAddrNoLinkLocalWithCost(globalStatus DeviceNetworkStatus, pickNum int,
-	phylabelOrIfname string, maxCost uint8) (net.IP, error) {
+	ifname string, maxCost uint8) (net.IP, error) {
 
 	includeLinkLocal := false
-	return getLocalAddrImpl(globalStatus, pickNum, phylabelOrIfname,
+	return getLocalAddrImpl(globalStatus, pickNum, ifname,
 		maxCost, includeLinkLocal, 0)
 }
 
 // getLocalAddrImpl returns an IP address based on interfaces sorted in
-// cost order. If phylabelOrIfname is set, the addresses are from that
+// cost order. If ifname is set, the addresses are from that
 // interface. Otherwise from all management interfaces up to and including maxCost.
 // af can be set to 0 (any), 4, IPv4), or 6 (IPv6) to select the family.
 func getLocalAddrImpl(globalStatus DeviceNetworkStatus, pickNum int,
-	phylabelOrIfname string, maxCost uint8, includeLinkLocal bool,
+	ifname string, maxCost uint8, includeLinkLocal bool,
 	af uint) (net.IP, error) {
 
-	addrs, err := getLocalAddrListImpl(globalStatus, phylabelOrIfname,
+	addrs, err := getLocalAddrListImpl(globalStatus, ifname,
 		maxCost, includeLinkLocal, af)
 	if err != nil {
 		return net.IP{}, err
@@ -1464,20 +1461,23 @@ func getLocalAddrImpl(globalStatus DeviceNetworkStatus, pickNum int,
 }
 
 // getLocalAddrListImpl returns a list IP addresses based on interfaces sorted
-// in cost order. If phylabelOrIfname is set, the addresses are from that
+// in cost order. If ifname is set, the addresses are from that
 // interface. Otherwise from all management interfaces up to and including maxCost
 // af can be set to 0 (any), 4, IPv4), or 6 (IPv6) to select a subset.
 func getLocalAddrListImpl(globalStatus DeviceNetworkStatus,
-	phylabelOrIfname string, maxCost uint8, includeLinkLocal bool,
+	ifname string, maxCost uint8, includeLinkLocal bool,
 	af uint) ([]net.IP, error) {
 
 	var ifnameList []string
-	if phylabelOrIfname == "" {
+	var ignoreErrors bool
+	if ifname == "" {
 		// Get interfaces in cost order
 		ifnameList = getMgmtPortsSortedCostImpl(globalStatus, 0,
 			maxCost, false)
+		// If we are looking across all interfaces, then We ignore errors
+		// since we get them if there are no addresses on a ports
+		ignoreErrors = true
 	} else {
-		ifname := PhylabelToIfName(&globalStatus, phylabelOrIfname)
 		us := GetPort(globalStatus, ifname)
 		if us == nil {
 			return []net.IP{}, fmt.Errorf("Unknown interface %s",
@@ -1493,9 +1493,7 @@ func getLocalAddrListImpl(globalStatus DeviceNetworkStatus,
 	for _, ifname := range ifnameList {
 		ifaddrs, err := getLocalAddrIf(globalStatus, ifname,
 			includeLinkLocal, af)
-		// If we are looking across all interfaces, then We ignore errors
-		// since we get them if there are no addresses on a ports
-		if err != nil && phylabelOrIfname != "" {
+		if !ignoreErrors && err != nil {
 			return addrs, err
 		}
 		addrs = append(addrs, ifaddrs...)
@@ -1532,9 +1530,9 @@ func IsPort(globalStatus DeviceNetworkStatus, ifname string) bool {
 }
 
 // Check if a physical label or ifname is a management port
-func IsMgmtPort(globalStatus DeviceNetworkStatus, phylabelOrIfname string) bool {
+func IsMgmtPort(globalStatus DeviceNetworkStatus, ifname string) bool {
 	for _, us := range globalStatus.Ports {
-		if us.Phylabel != phylabelOrIfname && us.IfName != phylabelOrIfname {
+		if us.IfName != ifname {
 			continue
 		}
 		if globalStatus.Version >= DPCIsMgmt &&
@@ -1548,9 +1546,9 @@ func IsMgmtPort(globalStatus DeviceNetworkStatus, phylabelOrIfname string) bool 
 
 // GetPortCost returns the port cost
 // Returns 0 if the ifname does not exist.
-func GetPortCost(globalStatus DeviceNetworkStatus, phylabelOrIfname string) uint8 {
+func GetPortCost(globalStatus DeviceNetworkStatus, ifname string) uint8 {
 	for _, us := range globalStatus.Ports {
-		if us.Phylabel != phylabelOrIfname && us.IfName != phylabelOrIfname {
+		if us.IfName != ifname {
 			continue
 		}
 		return us.Cost
@@ -1558,9 +1556,9 @@ func GetPortCost(globalStatus DeviceNetworkStatus, phylabelOrIfname string) uint
 	return 0
 }
 
-func GetPort(globalStatus DeviceNetworkStatus, phylabelOrIfname string) *NetworkPortStatus {
+func GetPort(globalStatus DeviceNetworkStatus, ifname string) *NetworkPortStatus {
 	for _, us := range globalStatus.Ports {
-		if us.Phylabel != phylabelOrIfname && us.IfName != phylabelOrIfname {
+		if us.IfName != ifname {
 			continue
 		}
 		if globalStatus.Version < DPCIsMgmt {
@@ -1587,15 +1585,14 @@ func GetMgmtPortFromAddr(globalStatus DeviceNetworkStatus, addr net.IP) string {
 	return ""
 }
 
-// GetLocalAddrList returns all IP addresses on the phylabelOrIfName except
+// GetLocalAddrList returns all IP addresses on the ifName except
 // the link local addresses.
 func GetLocalAddrList(globalStatus DeviceNetworkStatus,
-	phylabelOrIfname string) ([]net.IP, error) {
+	ifname string) ([]net.IP, error) {
 
-	if phylabelOrIfname == "" {
+	if ifname == "" {
 		return []net.IP{}, fmt.Errorf("ifname not specified")
 	}
-	ifname := PhylabelToIfName(&globalStatus, phylabelOrIfname)
 	return getLocalAddrIf(globalStatus, ifname, false, 0)
 }
 
@@ -1661,24 +1658,6 @@ func (status *DeviceNetworkStatus) UpdatePortStatusFromIntfStatusMap(
 		}
 		// Else - Port not tested hence no change
 	}
-}
-
-// PhylabelToIfName looks up a port Phylabel or IfName to find an existing IfName
-// If not found, return the phylabelOrIfname argument string
-func PhylabelToIfName(deviceNetworkStatus *DeviceNetworkStatus,
-	phylabelOrIfname string) string {
-
-	for _, p := range deviceNetworkStatus.Ports {
-		if p.Phylabel == phylabelOrIfname {
-			return p.IfName
-		}
-	}
-	for _, p := range deviceNetworkStatus.Ports {
-		if p.IfName == phylabelOrIfname {
-			return phylabelOrIfname
-		}
-	}
-	return phylabelOrIfname
 }
 
 // LogicallabelToIfName looks up a port Logical label to find an existing IfName
@@ -1816,13 +1795,14 @@ type UnderlayNetworkStatus struct {
 	UnderlayNetworkConfig
 	ACLs int // drop ACLs field from UnderlayNetworkConfig
 	VifInfo
-	BridgeMac       net.HardwareAddr
-	BridgeIPAddr    string // The address for DNS/DHCP service in zedrouter
-	AllocatedIPAddr string // Assigned to domU
-	Assigned        bool   // Set to true once DHCP has assigned it to domU
-	IPAddrMisMatch  bool
-	HostName        string
-	ACLDependList   []ACLDepend
+	BridgeMac         net.HardwareAddr
+	BridgeIPAddr      string   // The address for DNS/DHCP service in zedrouter
+	AllocatedIPv4Addr string   // Assigned to domU
+	AllocatedIPv6List []string // IPv6 addresses assigned to domU
+	IPv4Assigned      bool     // Set to true once DHCP has assigned it to domU
+	IPAddrMisMatch    bool
+	HostName          string
+	ACLDependList     []ACLDepend
 }
 
 // ACLDepend is used to track an external interface/port and optional IP addresses
@@ -1845,8 +1825,19 @@ const (
 	NT_NOOP NetworkType = 0
 	NT_IPV4             = 4
 	NT_IPV6             = 6
-	// XXX Do we need a NT_DUAL/NT_IPV46? Implies two subnets/dhcp ranges?
-	// XXX how do we represent a bridge? NT_L2??
+
+	// EVE has been running with Dual stack DHCP behavior with both IPv4 & IPv6 specific networks.
+	// There can be users who are currently benefitting from this behavior.
+	// It makes sense to introduce two new types IPv4_ONLY & IPv6_ONLY and allow
+	// the same family selection from UI for the use cases where only one of the IP families
+	// is required on management/app-shared adapters.
+
+	// NtIpv4Only : IPv4 addresses only
+	NtIpv4Only = 5
+	// NtIpv6Only : IPv6 addresses only
+	NtIpv6Only = 7
+	// NtDualStack : Run with dual stack
+	NtDualStack = 8
 )
 
 // Extracted from the protobuf NetworkConfig. Used by parseSystemAdapter
@@ -1872,6 +1863,16 @@ type NetworkXObjectConfig struct {
 type IpRange struct {
 	Start net.IP
 	End   net.IP
+}
+
+// Contains used to evaluate whether an IP address
+// is within the range
+func (ipRange IpRange) Contains(ipAddr net.IP) bool {
+	if bytes.Compare(ipAddr, ipRange.Start) >= 0 &&
+		bytes.Compare(ipAddr, ipRange.End) <= 0 {
+		return true
+	}
+	return false
 }
 
 func (config NetworkXObjectConfig) Key() string {
@@ -1916,6 +1917,12 @@ func (config NetworkXObjectConfig) LogKey() string {
 	return string(base.NetworkXObjectConfigLogType) + "-" + config.Key()
 }
 
+// AssignedAddrs :
+type AssignedAddrs struct {
+	IPv4Addr  net.IP
+	IPv6Addrs []net.IP
+}
+
 type NetworkInstanceInfo struct {
 	BridgeNum     int
 	BridgeName    string // bn<N>
@@ -1927,7 +1934,7 @@ type NetworkInstanceInfo struct {
 	IfNameList []string // Recorded at time of activate
 
 	// Collection of address assignments; from MAC address to IP address
-	IPAssignments map[string]net.IP
+	IPAssignments map[string]AssignedAddrs
 
 	// Union of all ipsets fed to dnsmasq for the linux bridge
 	BridgeIPSets []string
@@ -1963,13 +1970,20 @@ func (instanceInfo *NetworkInstanceInfo) IsVifInBridge(
 
 func (instanceInfo *NetworkInstanceInfo) RemoveVif(log *base.LogObject,
 	vifName string) {
-	log.Functionf("DelVif(%s, %s)\n", instanceInfo.BridgeName, vifName)
+	log.Functionf("RemoveVif(%s, %s)", instanceInfo.BridgeName, vifName)
 
+	found := false
 	var vifs []VifNameMac
 	for _, vif := range instanceInfo.Vifs {
 		if vif.Name != vifName {
 			vifs = append(vifs, vif)
+		} else {
+			found = true
 		}
+	}
+	if !found {
+		log.Errorf("RemoveVif(%x, %x) not found",
+			instanceInfo.BridgeName, vifName)
 	}
 	instanceInfo.Vifs = vifs
 }
@@ -1977,12 +1991,12 @@ func (instanceInfo *NetworkInstanceInfo) RemoveVif(log *base.LogObject,
 func (instanceInfo *NetworkInstanceInfo) AddVif(log *base.LogObject,
 	vifName string, appMac string, appID uuid.UUID) {
 
-	log.Functionf("addVifToBridge(%s, %s, %s, %s)\n",
+	log.Functionf("AddVif(%s, %s, %s, %s)",
 		instanceInfo.BridgeName, vifName, appMac, appID.String())
 	// XXX Should we just overwrite it? There is a lookup function
 	//	anyways if the caller wants "check and add" semantics
 	if instanceInfo.IsVifInBridge(vifName) {
-		log.Errorf("addVifToBridge(%s, %s) exists\n",
+		log.Errorf("AddVif(%s, %s) exists",
 			instanceInfo.BridgeName, vifName)
 		return
 	}
@@ -2298,6 +2312,8 @@ type NetworkInstanceStatus struct {
 	//	Keeps track of current state of object - if it has been activated
 	Activated bool
 
+	Server4Running bool // Did we start the server?
+
 	NetworkInstanceInfo
 
 	OpaqueStatus string
@@ -2358,7 +2374,7 @@ type AppNetworkACLArgs struct {
 	VifName    string
 	BridgeIP   string
 	AppIP      string
-	UpLinks    []string
+	UpLinks    []string // List of ifnames
 	NIType     NetworkInstanceType
 	// This is the same AppNum that comes from AppNetworkStatus
 	AppNum int32
@@ -2380,6 +2396,7 @@ type IPTablesRule struct {
 	IsPortMapRule    bool // Is this a port map rule?
 	IsLimitDropRule  bool // Is this a policer limit drop rule?
 	IsDefaultDrop    bool // Is this a default drop rule that forwards to dummy?
+	AnyPhysdev       bool // Apply rule irrespective of the input/output physical device.
 }
 
 // IPTablesRuleList : list of iptables rules
@@ -2450,9 +2467,14 @@ func (status *NetworkInstanceStatus) UpdateBridgeMetrics(log *base.LogObject,
 
 // Returns true if found
 func (status *NetworkInstanceStatus) IsIpAssigned(ip net.IP) bool {
-	for _, a := range status.IPAssignments {
-		if ip.Equal(a) {
+	for _, assignments := range status.IPAssignments {
+		if ip.Equal(assignments.IPv4Addr) {
 			return true
+		}
+		for _, nip := range assignments.IPv6Addrs {
+			if ip.Equal(nip) {
+				return true
+			}
 		}
 	}
 	return false
@@ -2745,7 +2767,6 @@ type DNSReq struct {
 
 // IPFlow :
 type IPFlow struct {
-	DevID   uuid.UUID
 	Scope   FlowScope
 	Flows   []FlowRec
 	DNSReqs []DNSReq
@@ -2759,7 +2780,7 @@ func (flows IPFlow) Key() string {
 // LogCreate : we treat IPFlow as Metrics for logging
 func (flows IPFlow) LogCreate(logBase *base.LogObject) {
 	logObject := base.NewLogObject(logBase, base.IPFlowLogType, "",
-		flows.DevID, flows.LogKey())
+		nilUUID, flows.LogKey())
 	if logObject == nil {
 		return
 	}
@@ -2769,7 +2790,7 @@ func (flows IPFlow) LogCreate(logBase *base.LogObject) {
 // LogModify :
 func (flows IPFlow) LogModify(logBase *base.LogObject, old interface{}) {
 	logObject := base.EnsureLogObject(logBase, base.IPFlowLogType, "",
-		flows.DevID, flows.LogKey())
+		nilUUID, flows.LogKey())
 
 	oldFlows, ok := old.(IPFlow)
 	if !ok {
@@ -2783,7 +2804,7 @@ func (flows IPFlow) LogModify(logBase *base.LogObject, old interface{}) {
 // LogDelete :
 func (flows IPFlow) LogDelete(logBase *base.LogObject) {
 	logObject := base.EnsureLogObject(logBase, base.IPFlowLogType, "",
-		flows.DevID, flows.LogKey())
+		nilUUID, flows.LogKey())
 	logObject.Metricf("IP flow delete")
 
 	base.DeleteLogObject(logBase, flows.LogKey())
@@ -2796,8 +2817,9 @@ func (flows IPFlow) LogKey() string {
 
 // VifIPTrig - structure contains Mac Address
 type VifIPTrig struct {
-	MacAddr string
-	IPAddr  net.IP
+	MacAddr   string
+	IPv4Addr  net.IP
+	IPv6Addrs []net.IP
 }
 
 // Key - VifIPTrig key function
@@ -2891,3 +2913,103 @@ func (status OnboardingStatus) LogDelete(logBase *base.LogObject) {
 func (status OnboardingStatus) LogKey() string {
 	return string(base.OnboardingStatusLogType) + "-" + status.Key()
 }
+
+// AppInstMetaDataType - types of app meta data
+type AppInstMetaDataType uint8
+
+// enum app metadata type
+const (
+	AppInstMetaDataTypeNone AppInstMetaDataType = iota // enum for app inst metadata type
+	AppInstMetaDataTypeKubeConfig
+)
+
+// AppInstMetaData : App Instance Metadata
+type AppInstMetaData struct {
+	AppInstUUID uuid.UUID
+	Data        []byte
+	Type        AppInstMetaDataType
+}
+
+// Key : App Instance Metadata unique key
+func (data AppInstMetaData) Key() string {
+	return data.AppInstUUID.String()
+}
+
+// Bitmap :
+// Bitmap of the reserved and allocated resources
+// Keeps 256 bits indexed by 0 to 255.
+type Bitmap [32]byte
+
+// IsSet :
+// Test the bit value
+func (bits *Bitmap) IsSet(i int) bool {
+	return bits[i/8]&(1<<uint(7-i%8)) != 0
+}
+
+// Set :
+// Set the bit value
+func (bits *Bitmap) Set(i int) {
+	bits[i/8] |= 1 << uint(7-i%8)
+}
+
+// Clear :
+// Clear the bit value
+func (bits *Bitmap) Clear(i int) {
+	bits[i/8] &^= 1 << uint(7-i%8)
+}
+
+// AddToIP :
+func AddToIP(ip net.IP, addition int) net.IP {
+	if addr := ip.To4(); addr != nil {
+		val := uint32(addr[0])<<24 + uint32(addr[1])<<16 +
+			uint32(addr[2])<<8 + uint32(addr[3])
+		val += uint32(addition)
+		byte0 := byte((val >> 24) & 0xFF)
+		byte1 := byte((val >> 16) & 0xFF)
+		byte2 := byte((val >> 8) & 0xFF)
+		byte3 := byte(val & 0xFF)
+		return net.IPv4(byte0, byte1, byte2, byte3)
+	}
+	//TBD:XXX, IPv6 handling
+	return net.IP{}
+}
+
+// GetIPAddrCountOnSubnet IP address count on subnet
+func GetIPAddrCountOnSubnet(subnet net.IPNet) int {
+	prefixLen, _ := subnet.Mask.Size()
+	if prefixLen != 0 {
+		if subnet.IP.To4() != nil {
+			return 0x01 << (32 - prefixLen)
+		}
+		if subnet.IP.To16() != nil {
+			return 0x01 << (128 - prefixLen)
+		}
+	}
+	return 0
+}
+
+// GetIPNetwork  :
+// returns the first IP Address of the subnet(Network Address)
+func GetIPNetwork(subnet net.IPNet) net.IP {
+	return subnet.IP.Mask(subnet.Mask)
+}
+
+// GetIPBroadcast :
+// returns the last IP Address of the subnet(Broadcast Address)
+func GetIPBroadcast(subnet net.IPNet) net.IP {
+	if network := GetIPNetwork(subnet); network != nil {
+		if addrCount := GetIPAddrCountOnSubnet(subnet); addrCount != 0 {
+			return AddToIP(network, addrCount-1)
+		}
+	}
+	return net.IP{}
+}
+
+// AppNumber :
+// PS. Any change to BitMapMax, must be
+// reflected in the BitMap Size(32 bytes)
+const (
+	BitMapMax       = 255 // with 0 base, its 256
+	MinSubnetSize   = 8   // minimum Subnet Size
+	LargeSubnetSize = 16  // for determining default Dhcp Range
+)

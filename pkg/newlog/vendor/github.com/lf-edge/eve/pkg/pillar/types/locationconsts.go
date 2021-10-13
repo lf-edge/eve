@@ -79,6 +79,10 @@ const (
 	NewlogKeepSentQueueDir = NewlogDir + "/keepSentQueue"
 	// EveMemoryLimitFile - stores memory reserved for eve
 	EveMemoryLimitFile = "/hostfs/sys/fs/cgroup/memory/eve/memory.soft_limit_in_bytes"
+	// EveMemoryUsageFile - current usage
+	EveMemoryUsageFile = "/hostfs/sys/fs/cgroup/memory/eve/memory.usage_in_bytes"
+	// EveKmemUsageFile - current kernel usage
+	EveKmemUsageFile = "/hostfs/sys/fs/cgroup/memory/eve/memory.kmem.usage_in_bytes"
 
 	// ContainerdContentDir - path to containerd`s content store
 	ContainerdContentDir = PersistDir + "/containerd/io.containerd.content.v1.content"
