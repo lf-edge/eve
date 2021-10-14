@@ -52,7 +52,7 @@ stopped by matching against the [profile_list in AppInstanceConfig](./proto/conf
 
 ### Radio
 
-Publish the current state of all wireless network adapters and optionally obtain airplane-mode configuration in the response:
+Publish the current state of all wireless network adapters and optionally obtain radio configuration in the response:
 
    POST /api/v1/radio
 
