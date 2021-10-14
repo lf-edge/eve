@@ -909,6 +909,9 @@ func checkDirGzfiles(sfiles map[string]gfileStats, logdir string) ([]string, int
 	var sizes int64
 
 	if _, err := os.Stat(logdir); err != nil {
+		if os.IsNotExist(err) {
+			return nil, 0, nil
+		}
 		return nil, sizes, err
 	}
 

@@ -725,13 +725,18 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 			appDiskDetails := new(metrics.AppDiskMetric)
 			if vrs.ActiveFileLocation == "" {
 				log.Functionf("ActiveFileLocation is empty for %s", vrs.Key())
-			} else {
-				err := getDiskInfo(ctx, vrs, appDiskDetails)
-				if err != nil {
-					log.Warnf("getDiskInfo(%s) failed %v",
-						vrs.ActiveFileLocation, err)
-					continue
+				continue
+			}
+			err := getDiskInfo(ctx, vrs, appDiskDetails)
+			if err != nil {
+				logData := fmt.Sprintf("getDiskInfo(%s) failed %v",
+					vrs.ActiveFileLocation, err)
+				if vrs.State >= types.CREATED_VOLUME {
+					log.Warn(logData)
+				} else {
+					log.Function(logData)
 				}
+				continue
 			}
 			ReportAppMetric.Disk = append(ReportAppMetric.Disk,
 				appDiskDetails)
@@ -806,9 +811,7 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 func getDiskInfo(ctx *zedagentContext, vrs types.VolumeRefStatus, appDiskDetails *metrics.AppDiskMetric) error {
 	appDiskMetric := lookupAppDiskMetric(ctx, vrs.ActiveFileLocation)
 	if appDiskMetric == nil {
-		err := fmt.Errorf("getDiskInfo: No AppDiskMetric found for %s", vrs.ActiveFileLocation)
-		log.Error(err)
-		return err
+		return fmt.Errorf("getDiskInfo: No AppDiskMetric found for %s", vrs.ActiveFileLocation)
 	}
 	appDiskDetails.Disk = vrs.ActiveFileLocation
 	appDiskDetails.Used = utils.RoundToMbytes(appDiskMetric.UsedBytes)
