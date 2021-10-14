@@ -4,6 +4,7 @@
 package domainmgr
 
 import (
+	"fmt"
 	"github.com/lf-edge/eve/pkg/pillar/hypervisor"
 	"time"
 
@@ -11,6 +12,8 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/shirou/gopsutil/cpu"
 )
+
+const warnMemoryWatermark = 80 //send warning in case of exceed memory percent limit
 
 // Run a periodic post of the metrics
 func metricsTimerTask(ctx *domainContext, hyper hypervisor.Hypervisor) {
@@ -61,11 +64,17 @@ func logWatermarks(ctx *domainContext, status *types.DomainStatus, dm *types.Dom
 
 	if CurrMaxUsedMemory < dm.MaxUsedMemory && config.Memory != 0 {
 		usedPercents := dm.MaxUsedMemory * 100 * 1024 / uint32(config.Memory)
-		log.Noticef("Memory watermark for %s increased: %d MiB,"+
+		watermark := fmt.Sprintf("Memory watermark for %s increased: %d MiB,"+
 			" app-memory %d MiB (%d%%), %.2f%% of cgroup limit",
 			status.DomainName,
 			dm.MaxUsedMemory, config.Memory>>10,
 			usedPercents, dm.UsedMemoryPercent)
+		if usedPercents >= warnMemoryWatermark || dm.UsedMemoryPercent >= warnMemoryWatermark {
+			log.Warn(watermark)
+		} else {
+			// reduce log severity for cases when memory no exceed warnMemoryWatermark % of limit
+			log.Function(watermark)
+		}
 	}
 }
 

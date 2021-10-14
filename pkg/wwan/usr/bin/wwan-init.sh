@@ -113,7 +113,7 @@ wait_for_wds() {
 }
 
 wait_for_register() {
-  echo "Waiting for the device to register on the network"
+  # echo "Waiting for the device to register on the network"
   if [ "$MODE" = mbim ]; then
      CMD="mbim --query-registration-state | grep -qE 'Register state:.*(home|roaming|partner)' && echo registered"
   else

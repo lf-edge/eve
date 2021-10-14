@@ -127,7 +127,7 @@ func parseBaseOS(getconfigCtx *getconfigContext,
 
 	baseOS := config.GetBaseos()
 	if baseOS == nil {
-		log.Warn("parseBaseOS: nil config received")
+		log.Function("parseBaseOS: nil config received")
 		return
 	}
 	h := sha256.New()
