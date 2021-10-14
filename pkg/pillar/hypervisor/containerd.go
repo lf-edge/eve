@@ -106,6 +106,14 @@ func (ctx ctrdContext) Setup(status types.DomainStatus, config types.DomainConfi
 		Destination: "/etc/resolv.conf",
 		Options:     []string{"rbind", "ro"}})
 
+	//remove /run mount to use data from provided image
+	for i, el := range spec.Get().Mounts {
+		if el.Destination == "/run" && el.Type == "tmpfs" {
+			spec.Get().Mounts = append(spec.Get().Mounts[:i], spec.Get().Mounts[i+1:]...)
+			break
+		}
+	}
+
 	if err := spec.CreateContainer(true); err != nil {
 		return logError("Failed to create container for task %s from %v: %v", status.DomainName, config, err)
 	}
