@@ -19,11 +19,11 @@ message LocalProfile {
 
 // RadioStatus message is sent in the POST request to the api/v1/radio API.
 message RadioStatus {
-   // airplaneMode is True if the airplane mode is enabled by config AND successfully
+   // radio_silence is True if the Radio-Silence mode is enabled by config AND successfully
    // applied for all radio devices.
-   // If the airplane mode was requested but this field is still returned as False,
-   // expect non-empty configError attached.
-   bool airplane_mode = 1;
+   // If the radio silence was requested but this field is still returned as False,
+   // expect non-empty config_error attached.
+   bool radio_silence = 1;
    // If the last radio configuration change failed, error message is reported here.
    // Please note that there is also a per-modem configuration error reported under CellularStatus.
    string config_error = 2;
@@ -49,7 +49,8 @@ message RadioConfig {
    // Security token. EVE will verify that serverToken matches the profile server
    // token received from the controller.
    string server_token = 1;
-   // Enable or disable airplane mode.
-   bool airplane_mode = 2;
+   // If enabled, EVE will disable radio transmission on all wireless devices available
+   // to the host (i.e. it does not cover wireless devices directly attached to applications).
+   bool radio_silence = 2;
 }
 

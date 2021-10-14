@@ -20,7 +20,7 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   syntax='proto3',
   serialized_options=b'\n\026org.lfedge.eve.profileZ%github.com/lf-edge/eve/api/go/profile',
   create_key=_descriptor._internal_create_key,
-  serialized_pb=b'\n\x1bprofile/local_profile.proto\x12\x16org.lfedge.eve.profile\x1a\x0finfo/info.proto\";\n\x0cLocalProfile\x12\x15\n\rlocal_profile\x18\x01 \x01(\t\x12\x14\n\x0cserver_token\x18\x02 \x01(\t\"{\n\x0bRadioStatus\x12\x15\n\rairplane_mode\x18\x01 \x01(\x08\x12\x14\n\x0c\x63onfig_error\x18\x02 \x01(\t\x12?\n\x0f\x63\x65llular_status\x18\x03 \x03(\x0b\x32&.org.lfedge.eve.profile.CellularStatus\"\xfc\x01\n\x0e\x43\x65llularStatus\x12\x14\n\x0clogicallabel\x18\x01 \x01(\t\x12\x38\n\x06module\x18\x02 \x01(\x0b\x32(.org.lfedge.eve.info.ZCellularModuleInfo\x12\x34\n\tsim_cards\x18\x03 \x03(\x0b\x32!.org.lfedge.eve.info.ZSimcardInfo\x12\x39\n\tproviders\x18\x04 \x03(\x0b\x32&.org.lfedge.eve.info.ZCellularProvider\x12\x14\n\x0c\x63onfig_error\x18\n \x01(\t\x12\x13\n\x0bprobe_error\x18\x0b \x01(\t\":\n\x0bRadioConfig\x12\x14\n\x0cserver_token\x18\x01 \x01(\t\x12\x15\n\rairplane_mode\x18\x02 \x01(\x08\x42?\n\x16org.lfedge.eve.profileZ%github.com/lf-edge/eve/api/go/profileb\x06proto3'
+  serialized_pb=b'\n\x1bprofile/local_profile.proto\x12\x16org.lfedge.eve.profile\x1a\x0finfo/info.proto\";\n\x0cLocalProfile\x12\x15\n\rlocal_profile\x18\x01 \x01(\t\x12\x14\n\x0cserver_token\x18\x02 \x01(\t\"{\n\x0bRadioStatus\x12\x15\n\rradio_silence\x18\x01 \x01(\x08\x12\x14\n\x0c\x63onfig_error\x18\x02 \x01(\t\x12?\n\x0f\x63\x65llular_status\x18\x03 \x03(\x0b\x32&.org.lfedge.eve.profile.CellularStatus\"\xfc\x01\n\x0e\x43\x65llularStatus\x12\x14\n\x0clogicallabel\x18\x01 \x01(\t\x12\x38\n\x06module\x18\x02 \x01(\x0b\x32(.org.lfedge.eve.info.ZCellularModuleInfo\x12\x34\n\tsim_cards\x18\x03 \x03(\x0b\x32!.org.lfedge.eve.info.ZSimcardInfo\x12\x39\n\tproviders\x18\x04 \x03(\x0b\x32&.org.lfedge.eve.info.ZCellularProvider\x12\x14\n\x0c\x63onfig_error\x18\n \x01(\t\x12\x13\n\x0bprobe_error\x18\x0b \x01(\t\":\n\x0bRadioConfig\x12\x14\n\x0cserver_token\x18\x01 \x01(\t\x12\x15\n\rradio_silence\x18\x02 \x01(\x08\x42?\n\x16org.lfedge.eve.profileZ%github.com/lf-edge/eve/api/go/profileb\x06proto3'
   ,
   dependencies=[info_dot_info__pb2.DESCRIPTOR,])
 
@@ -75,7 +75,7 @@ _RADIOSTATUS = _descriptor.Descriptor(
   create_key=_descriptor._internal_create_key,
   fields=[
     _descriptor.FieldDescriptor(
-      name='airplane_mode', full_name='org.lfedge.eve.profile.RadioStatus.airplane_mode', index=0,
+      name='radio_silence', full_name='org.lfedge.eve.profile.RadioStatus.radio_silence', index=0,
       number=1, type=8, cpp_type=7, label=1,
       has_default_value=False, default_value=False,
       message_type=None, enum_type=None, containing_type=None,
@@ -195,7 +195,7 @@ _RADIOCONFIG = _descriptor.Descriptor(
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
     _descriptor.FieldDescriptor(
-      name='airplane_mode', full_name='org.lfedge.eve.profile.RadioConfig.airplane_mode', index=1,
+      name='radio_silence', full_name='org.lfedge.eve.profile.RadioConfig.radio_silence', index=1,
       number=2, type=8, cpp_type=7, label=1,
       has_default_value=False, default_value=False,
       message_type=None, enum_type=None, containing_type=None,
