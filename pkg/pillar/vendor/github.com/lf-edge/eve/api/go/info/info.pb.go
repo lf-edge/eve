@@ -631,7 +631,7 @@ type ZCellularOperatingState int32
 const (
 	ZCellularOperatingState_Z_CELLULAR_OPERATING_STATE_UNSPECIFIED          ZCellularOperatingState = 0
 	ZCellularOperatingState_Z_CELLULAR_OPERATING_STATE_OFFLINE              ZCellularOperatingState = 1
-	ZCellularOperatingState_Z_CELLULAR_OPERATING_STATE_RADIO_OFF            ZCellularOperatingState = 2 // AKA airplane mode
+	ZCellularOperatingState_Z_CELLULAR_OPERATING_STATE_RADIO_OFF            ZCellularOperatingState = 2 // AKA Radio-Silence mode
 	ZCellularOperatingState_Z_CELLULAR_OPERATING_STATE_ONLINE               ZCellularOperatingState = 3
 	ZCellularOperatingState_Z_CELLULAR_OPERATING_STATE_ONLINE_AND_CONNECTED ZCellularOperatingState = 4
 	ZCellularOperatingState_Z_CELLULAR_OPERATING_STATE_UNRECOGNIZED         ZCellularOperatingState = 5
