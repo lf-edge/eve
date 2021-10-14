@@ -23,6 +23,12 @@ else
     echo "$(date -Ins -u) No separate $CONFIGDIR partition"
 fi
 
+STORAGE_OVERRIDE_CONFIG="${CONFIGDIR}"/storage.cfg
+if [ -f "${STORAGE_OVERRIDE_CONFIG}" ]; then
+    config_str="$(awk '{if (sub(/\\$/,"")) printf "%s", $0; else print $0}' "${STORAGE_OVERRIDE_CONFIG}")"
+    zfs_module_opts="$(echo "${config_str}" | grep "^STORAGE_ZFS_MODULE_OPTS="| cut -d "=" -f 2-)"
+fi
+
 INIT_FS=0
 P3_FS_TYPE_DEFAULT=ext4
 if grep -E 'zfs-(kvm|xen|acrn)' /hostfs/etc/eve-release; then
@@ -94,7 +100,16 @@ fi
 if P3=$(findfs PARTLABEL=P3) && [ -n "$P3" ]; then
     # Loading zfs modules to see if we have any zpools attached to the system
     # We will unload them later (if they do unload it meands we didn't find zpools)
-    modprobe zfs
+
+    # Disabling SC2086 because word splitting her is intended -
+    # otherwise modprobe would not recognize arguments
+    # shellcheck disable=SC2086
+    if ! modprobe zfs $zfs_module_opts; then
+        # To avoid bricking node with errorneusly specified overrides,
+        # if modprobe failed, we repeat with default arguments
+        echo "Failed to load zfs with parameters, falling back to default"
+        modprobe zfs
+    fi
 
     P3_FS_TYPE=$(blkid "$P3"| tr ' ' '\012' | awk -F= '/^TYPE/{print $2;}' | sed 's/"//g')
     echo "$(date -Ins -u) Using $P3 (formatted with $P3_FS_TYPE), for $PERSISTDIR"
@@ -158,7 +173,17 @@ if P3=$(findfs PARTLABEL=P3) && [ -n "$P3" ]; then
     rmmod $(lsmod | grep zfs | awk '{print $1;}') || :
 else
   #in case of no P3 we may have EVE persist on another disks
-  modprobe zfs
+
+    # Disabling SC2086 because word splitting her is intended -
+    # otherwise modprobe would not recognize arguments
+    # shellcheck disable=SC2086
+    if ! modprobe zfs $zfs_module_opts; then
+        # To avoid bricking node with errorneusly specified overrides,
+        # if modprobe failed, we repeat with default arguments
+        echo "Failed to load zfs with parameters, falling back to default"
+        modprobe zfs
+    fi
+
   if chroot /hostfs zpool import -f persist; then
     echo "zfs" > /run/eve.persist_type
   else
