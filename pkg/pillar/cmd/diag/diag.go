@@ -915,7 +915,7 @@ func tryPostUUID(ctx *diagContext, ifname string) bool {
 
 	retryCount := 0
 	done := false
-	rtf := types.SenderStatusNone
+	senderStatus := types.SenderStatusNone
 	var delay time.Duration
 	for !done {
 		time.Sleep(delay)
@@ -923,13 +923,13 @@ func tryPostUUID(ctx *diagContext, ifname string) bool {
 		var buf []byte
 		reqURL := zedcloud.URLPathString(ctx.serverNameAndPort, zedcloudCtx.V2API,
 			nilUUID, "uuid")
-		done, resp, rtf, buf = myPost(ctx, reqURL, ifname, retryCount,
+		done, resp, senderStatus, buf = myPost(ctx, reqURL, ifname, retryCount,
 			int64(len(b)), bytes.NewBuffer(b))
 		if done {
 			parsePrint(reqURL, resp, buf)
 			break
 		}
-		if rtf == types.SenderStatusCertMiss {
+		if senderStatus == types.SenderStatusCertMiss {
 			// currently only three places we need to verify envelope data
 			// 1) client
 			// 2) zedagent
@@ -1038,10 +1038,10 @@ func myGet(ctx *diagContext, reqURL string, ifname string,
 			ifname, proxyURL.String(), reqURL)
 	}
 	const allowProxy = true
-	resp, contents, rtf, err := zedcloud.SendOnIntf(zedcloudCtx,
+	resp, contents, senderStatus, err := zedcloud.SendOnIntf(zedcloudCtx,
 		reqURL, ifname, 0, nil, allowProxy, ctx.usingOnboardCert)
 	if err != nil {
-		switch rtf {
+		switch senderStatus {
 		case types.SenderStatusUpgrade:
 			fmt.Fprintf(outfile, "ERROR: %s: get %s Controller upgrade in progress\n",
 				ifname, reqURL)
@@ -1102,10 +1102,10 @@ func myPost(ctx *diagContext, reqURL string, ifname string,
 			ifname, proxyURL.String(), reqURL)
 	}
 	const allowProxy = true
-	resp, contents, rtf, err := zedcloud.SendOnIntf(zedcloudCtx,
+	resp, contents, senderStatus, err := zedcloud.SendOnIntf(zedcloudCtx,
 		reqURL, ifname, reqlen, b, allowProxy, ctx.usingOnboardCert)
 	if err != nil {
-		switch rtf {
+		switch senderStatus {
 		case types.SenderStatusUpgrade:
 			fmt.Fprintf(outfile, "ERROR: %s: post %s Controller upgrade in progress\n",
 				ifname, reqURL)
@@ -1122,23 +1122,23 @@ func myPost(ctx *diagContext, reqURL string, ifname string,
 			fmt.Fprintf(outfile, "ERROR: %s: post %s failed: %s\n",
 				ifname, reqURL, err)
 		}
-		return false, nil, rtf, nil
+		return false, nil, senderStatus, nil
 	}
 
 	switch resp.StatusCode {
 	case http.StatusOK:
 		fmt.Fprintf(outfile, "INFO: %s: %s StatusOK\n", ifname, reqURL)
-		return true, resp, rtf, contents
+		return true, resp, senderStatus, contents
 	case http.StatusNotModified:
 		fmt.Fprintf(outfile, "INFO: %s: %s StatusNotModified\n", ifname, reqURL)
-		return true, resp, rtf, contents
+		return true, resp, senderStatus, contents
 	default:
 		fmt.Fprintf(outfile, "ERROR: %s: %s statuscode %d %s\n",
 			ifname, reqURL, resp.StatusCode,
 			http.StatusText(resp.StatusCode))
 		fmt.Fprintf(outfile, "ERRROR: %s: Received %s\n",
 			ifname, string(contents))
-		return false, nil, rtf, nil
+		return false, nil, senderStatus, nil
 	}
 }
 

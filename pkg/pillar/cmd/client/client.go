@@ -510,12 +510,11 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 func myPost(zedcloudCtx *zedcloud.ZedCloudContext, tlsConfig *tls.Config,
 	requrl string, retryCount int, reqlen int64, b *bytes.Buffer) (bool, *http.Response, types.SenderResult, []byte) {
 
-	senderStatus := types.SenderStatusNone
 	zedcloudCtx.TlsConfig = tlsConfig
-	resp, contents, rtf, err := zedcloud.SendOnAllIntf(zedcloudCtx,
+	resp, contents, senderStatus, err := zedcloud.SendOnAllIntf(zedcloudCtx,
 		requrl, reqlen, b, retryCount, bailOnHTTPErr)
 	if err != nil {
-		switch rtf {
+		switch senderStatus {
 		case types.SenderStatusUpgrade:
 			log.Functionf("Controller upgrade in progress")
 		case types.SenderStatusRefused:
@@ -533,7 +532,7 @@ func myPost(zedcloudCtx *zedcloud.ZedCloudContext, tlsConfig *tls.Config,
 		default:
 			log.Error(err)
 		}
-		return false, resp, rtf, contents
+		return false, resp, senderStatus, contents
 	}
 
 	switch resp.StatusCode {
@@ -710,7 +709,8 @@ func doGetUUIDNew(ctx *clientContext, tlsConfig *tls.Config,
 	retryCount int) (bool, uuid.UUID, string) {
 	var resp *http.Response
 	var contents []byte
-	var rtf types.SenderResult
+	var senderStatus types.SenderResult
+
 	zedcloudCtx := ctx.zedcloudCtx
 
 	// get UUID does not have UUID string in V2 API
@@ -721,12 +721,12 @@ func doGetUUIDNew(ctx *clientContext, tlsConfig *tls.Config,
 		log.Errorln(err)
 		return false, nilUUID, ""
 	}
-	done, resp, rtf, contents = myPost(zedcloudCtx, tlsConfig, requrl, retryCount,
+	done, resp, senderStatus, contents = myPost(zedcloudCtx, tlsConfig, requrl, retryCount,
 		int64(len(b)), bytes.NewBuffer(b))
 	if !done {
 		// This may be due to the cloud cert file is stale, since the hash does not match.
 		// acquire new cert chain.
-		if rtf == types.SenderStatusCertMiss {
+		if senderStatus == types.SenderStatusCertMiss {
 			ctx.getCertsTimer = time.NewTimer(time.Second)
 			log.Functionf("doGetUUID: Cert miss. Setup timer to acquire")
 		}
