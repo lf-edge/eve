@@ -86,7 +86,7 @@ RUN make INSTALL_MOD_PATH=/tmp/kernel-modules modules_install
 
 # Out-of-tree, open source modules
 #  * ZFS on Linux
-ENV ZFS_VERSION=2.0.4
+ENV ZFS_VERSION=2.1.1
 ENV ZFS_COMMIT=zfs-${ZFS_VERSION}
 ENV ZFS_REPO=https://github.com/zfsonlinux/zfs.git
 
