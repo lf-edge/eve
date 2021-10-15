@@ -126,19 +126,6 @@ func readConfigResponseProtoMessage(contents []byte) (*zconfig.ConfigResponse, e
 // The most recent config hash we received
 var prevConfigHash string
 
-func generateConfigRequest() ([]byte, error) {
-	log.Tracef("generateConfigRequest() sending hash %s", prevConfigHash)
-	configRequest := &zconfig.ConfigRequest{
-		ConfigHash: prevConfigHash,
-	}
-	b, err := proto.Marshal(configRequest)
-	if err != nil {
-		log.Errorln(err)
-		return b, err
-	}
-	return b, nil
-}
-
 func generateUUIDRequest() ([]byte, error) {
 	uuidRequest := &eveuuid.UuidRequest{}
 	b, err := proto.Marshal(uuidRequest)

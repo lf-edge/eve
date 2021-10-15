@@ -172,6 +172,8 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	zedcloudCtx.TlsConfig = &tls.Config{
 		ClientSessionCache: tls.NewLRUClientSessionCache(0),
 	}
+	// As we ping the cloud or other URLs, don't affect the LEDs
+	zedcloudCtx.NoLedManager = true
 	log.Functionf("Diag Get Device Serial %s, Soft Serial %s", zedcloudCtx.DevSerial,
 		zedcloudCtx.DevSoftSerial)
 
@@ -871,9 +873,6 @@ func tryPing(ctx *diagContext, ifname string, reqURL string) bool {
 		zedcloudCtx.TlsConfig.InsecureSkipVerify = true
 	}
 
-	// As we ping the cloud or other URLs, don't affect the LEDs
-	zedcloudCtx.NoLedManager = true
-
 	retryCount := 0
 	done := false
 	var delay time.Duration
@@ -914,8 +913,6 @@ func tryPostUUID(ctx *diagContext, ifname string) bool {
 	}
 	zedcloudCtx := ctx.zedcloudCtx
 
-	// As we ping the cloud or other URLs, don't affect the LEDs
-	zedcloudCtx.NoLedManager = true
 	retryCount := 0
 	done := false
 	rtf := types.SenderStatusNone
@@ -925,7 +922,7 @@ func tryPostUUID(ctx *diagContext, ifname string) bool {
 		var resp *http.Response
 		var buf []byte
 		reqURL := zedcloud.URLPathString(ctx.serverNameAndPort, zedcloudCtx.V2API,
-			ctx.devUUID, "config")
+			nilUUID, "uuid")
 		done, resp, rtf, buf = myPost(ctx, reqURL, ifname, retryCount,
 			int64(len(b)), bytes.NewBuffer(b))
 		if done {
