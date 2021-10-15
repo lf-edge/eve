@@ -30,10 +30,10 @@ func UpdateLedManagerConfig(log *base.LogObject, count types.LedBlinkCount) {
 				count)
 			return
 		}
-		log.Functionf("UpdateLedManagerConfig: set %d was %d", count,
+		log.Noticef("UpdateLedManagerConfig: set %d was %d", count,
 			bc.BlinkCounter)
 	} else {
-		log.Functionf("UpdateLedManagerConfig: set to %d", count)
+		log.Noticef("UpdateLedManagerConfig: set to %d", count)
 	}
 	err = pub.Publish(ledConfigKey, blinkCount)
 	if err != nil {
