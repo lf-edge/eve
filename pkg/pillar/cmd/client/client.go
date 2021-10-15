@@ -524,16 +524,18 @@ func myPost(zedcloudCtx *zedcloud.ZedCloudContext, tlsConfig *tls.Config,
 			log.Warnf("Controller certificate invalid time")
 		case types.SenderStatusCertMiss:
 			log.Functionf("Controller certificate miss")
+		case types.SenderStatusNotFound:
+			if !zedcloudCtx.NoLedManager {
+				// Inform ledmanager about cloud connectivity
+				utils.UpdateLedManagerConfig(log,
+					types.LedBlinkConnectedToController)
+			}
 		default:
 			log.Error(err)
 		}
 		return false, resp, rtf, contents
 	}
 
-	if !zedcloudCtx.NoLedManager {
-		// Inform ledmanager about cloud connectivity
-		utils.UpdateLedManagerConfig(log, types.LedBlinkConnectedToController)
-	}
 	switch resp.StatusCode {
 	case http.StatusOK:
 		if !zedcloudCtx.NoLedManager {
@@ -558,8 +560,18 @@ func myPost(zedcloudCtx *zedcloud.ZedCloudContext, tlsConfig *tls.Config,
 		return false, resp, senderStatus, contents
 	case http.StatusNotFound, http.StatusUnauthorized, http.StatusNotModified:
 		// Caller needs to handle
+		if !zedcloudCtx.NoLedManager {
+			// Inform ledmanager about cloud connectivity
+			utils.UpdateLedManagerConfig(log,
+				types.LedBlinkConnectedToController)
+		}
 		return false, resp, senderStatus, contents
 	default:
+		if !zedcloudCtx.NoLedManager {
+			// Inform ledmanager about cloud connectivity
+			utils.UpdateLedManagerConfig(log,
+				types.LedBlinkConnectedToController)
+		}
 		log.Errorf("%s statuscode %d %s",
 			requrl, resp.StatusCode,
 			http.StatusText(resp.StatusCode))
@@ -691,12 +703,7 @@ func doGetUUID(ctx *clientContext, tlsConfig *tls.Config,
 	retryCount int) (bool, uuid.UUID, string) {
 	//First try the new /uuid api, if fails, fall back to /config API
 	done, devUUID, hardwaremodel := doGetUUIDNew(ctx, tlsConfig, retryCount)
-	if done {
-		return done, devUUID, hardwaremodel
-	} else {
-		log.Warnln("/uuid API failed, falling back to /config API for doGetUUID")
-		return doGetUUIDLegacy(ctx, tlsConfig, retryCount)
-	}
+	return done, devUUID, hardwaremodel
 }
 
 func doGetUUIDNew(ctx *clientContext, tlsConfig *tls.Config,
@@ -739,52 +746,6 @@ func doGetUUIDNew(ctx *clientContext, tlsConfig *tls.Config,
 				log.Noticef("Peer certificate:(%d) Issuer: %s, Subject: %s, NotAfter: %v",
 					i, cert.Issuer, cert.Subject, cert.NotAfter)
 			}
-		}
-		return true, devUUID, hardwaremodel
-	}
-	// Keep on trying until it parses
-	log.Errorf("Failed parsing uuid: %s", err)
-	return false, nilUUID, ""
-}
-
-func doGetUUIDLegacy(ctx *clientContext, tlsConfig *tls.Config,
-	retryCount int) (bool, uuid.UUID, string) {
-
-	var resp *http.Response
-	var contents []byte
-	var rtf types.SenderResult
-	zedcloudCtx := ctx.zedcloudCtx
-
-	// get UUID does not have UUID string in V2 API
-	requrl := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API, nilUUID, "config")
-	b, err := generateConfigRequest()
-	if err != nil {
-		log.Errorln(err)
-		return false, nilUUID, ""
-	}
-	var done bool
-	done, resp, rtf, contents = myPost(zedcloudCtx, tlsConfig, requrl, retryCount,
-		int64(len(b)), bytes.NewBuffer(b))
-	if resp != nil && resp.StatusCode == http.StatusNotModified {
-		// Acceptable response for a ConfigRequest POST
-		done = true
-	}
-	if !done {
-		// This may be due to the cloud cert file is stale, since the hash does not match.
-		// acquire new cert chain.
-		if rtf == types.SenderStatusCertMiss {
-			interval := time.Duration(1)
-			ctx.getCertsTimer = time.NewTimer(interval * time.Second)
-			log.Functionf("doGetUUID: Cert miss. Setup timer to acquire")
-		}
-		return false, nilUUID, ""
-	}
-	log.Functionf("doGetUUID: client getUUID ok")
-	devUUID, hardwaremodel, err := parseConfig(requrl, resp, contents)
-	if err == nil {
-		// Inform ledmanager about config received from cloud
-		if !zedcloudCtx.NoLedManager {
-			utils.UpdateLedManagerConfig(log, types.LedBlinkOnboarded)
 		}
 		return true, devUUID, hardwaremodel
 	}
