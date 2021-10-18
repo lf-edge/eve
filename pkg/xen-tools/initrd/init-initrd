@@ -42,7 +42,7 @@ mount -t cgroup cgroup /mnt/rootfs/sys/fs/cgroup
 mount -o bind /proc /mnt/rootfs/proc
 mount -t devpts -o gid=5,mode=0620,noexec,nosuid devpts /mnt/rootfs/dev/pts
 mount -t tmpfs -o nodev,nosuid,noexec,size=20% shm /mnt/rootfs/dev/shm
-mount -t tmpfs -o nodev,nosuid,noexec,size=20% tmp /mnt/rootfs/tmp
+mount -t tmpfs -o nodev,nosuid,size=20% tmp /mnt/rootfs/tmp
 mount -t mqueue -o nodev,nosuid,noexec none /mnt/rootfs/dev/mqueue
 ln -s /proc/self/fd /mnt/rootfs/dev/fd
 ln -s /proc/self/fd/0 /mnt/rootfs/dev/stdin
