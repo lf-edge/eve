@@ -68,7 +68,7 @@ type DeviceNetworkContext struct {
 	NetworkTestBetterInterval uint32 // Look for lower/better index
 	TestSendTimeout           uint32 // Timeout for HTTP/Send
 	Log                       *base.LogObject
-	PrevTlsConfig             *tls.Config
+	PrevTLSConfig             *tls.Config
 }
 
 func UpdateLastResortPortConfig(ctx *DeviceNetworkContext, ports []string) {

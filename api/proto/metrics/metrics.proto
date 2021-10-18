@@ -129,7 +129,7 @@ message urlcloudMetric {
   int64 recvMsgCount = 6;
   int64 recvByteCount = 7;
   int64 total_time_spent = 8; // Total time spent servicing requests that succeeded
-  int64 sessResumeCount = 9;  // Total counts of the TLS session resumption
+  int64 sess_resume_count = 9;  // Total counts of the TLS session resumption
 }
 
 // Failures and successes for the object decryption
