@@ -76,6 +76,9 @@ var cipherMetricsDL types.CipherMetricsMap
 var cipherMetricsDM types.CipherMetricsMap
 var cipherMetricsNim types.CipherMetricsMap
 var cipherMetricsZR types.CipherMetricsMap
+var diagMetrics types.MetricsMap
+var nimMetrics types.MetricsMap
+var zrouterMetrics types.MetricsMap
 
 // Context for handleDNSModify
 type DNSContext struct {
@@ -1142,6 +1145,38 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	if err != nil {
 		log.Fatal(err)
 	}
+	// cloud metrics of diag
+	subDiagMetrics, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName: "diag",
+		TopicImpl: types.MetricsMap{},
+		Activate:  true,
+		Ctx:       &zedagentCtx,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// cloud metrics of nim
+	subNimMetrics, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName: "nim",
+		TopicImpl: types.MetricsMap{},
+		Activate:  true,
+		Ctx:       &zedagentCtx,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// cloud metrics of zedrouter
+	subZRouterMetrics, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName: "zedrouter",
+		TopicImpl: types.MetricsMap{},
+		Activate:  true,
+		Ctx:       &zedagentCtx,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	subCipherMetricsDL, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:   "downloader",
@@ -1321,6 +1356,36 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 					err)
 			} else {
 				loguploaderMetrics = m.(types.MetricsMap)
+			}
+
+		case change := <-subDiagMetrics.MsgChan():
+			subDiagMetrics.ProcessChange(change)
+			m, err := subDiagMetrics.Get("global")
+			if err != nil {
+				log.Errorf("subDiagMetrics.Get failed: %s",
+					err)
+			} else {
+				diagMetrics = m.(types.MetricsMap)
+			}
+
+		case change := <-subNimMetrics.MsgChan():
+			subNimMetrics.ProcessChange(change)
+			m, err := subNimMetrics.Get("global")
+			if err != nil {
+				log.Errorf("subNimMetrics.Get failed: %s",
+					err)
+			} else {
+				nimMetrics = m.(types.MetricsMap)
+			}
+
+		case change := <-subZRouterMetrics.MsgChan():
+			subZRouterMetrics.ProcessChange(change)
+			m, err := subZRouterMetrics.Get("global")
+			if err != nil {
+				log.Errorf("subZRouterMetrics.Get failed: %s",
+					err)
+			} else {
+				zrouterMetrics = m.(types.MetricsMap)
 			}
 
 		case change := <-subNewlogMetrics.MsgChan():

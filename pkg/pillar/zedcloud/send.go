@@ -35,7 +35,7 @@ type ZedCloudContext struct {
 	DeviceNetworkStatus *types.DeviceNetworkStatus
 	TlsConfig           *tls.Config
 	FailureFunc         func(log *base.LogObject, intf string, url string, reqLen int64, respLen int64, authFail bool)
-	SuccessFunc         func(log *base.LogObject, intf string, url string, reqLen int64, respLen int64, timeSpent int64)
+	SuccessFunc         func(log *base.LogObject, intf string, url string, reqLen int64, respLen int64, timeSpent int64, resume bool)
 	NoLedManager        bool // Don't call UpdateLedManagerConfig
 	DevUUID             uuid.UUID
 	DevSerial           string
@@ -356,6 +356,7 @@ func SendOnIntf(ctx *ZedCloudContext, destURL string, intf string, reqlen int64,
 	defer transport.CloseIdleConnections()
 
 	var errorList []error
+	var sessionResume bool
 
 	// Try all addresses
 	for retryCount := 0; retryCount < addrCount; retryCount += 1 {
@@ -400,6 +401,7 @@ func SendOnIntf(ctx *ZedCloudContext, destURL string, intf string, reqlen int64,
 				log.Errorf("SendOnIntf: auth error %v\n", err)
 				return nil, nil, senderStatus, err
 			}
+			reqlen = int64(b2.Len())
 			log.Tracef("SendOnIntf: add auth for %s\n", reqUrl)
 		} else {
 			b2 = b
@@ -448,6 +450,9 @@ func SendOnIntf(ctx *ZedCloudContext, destURL string, intf string, reqlen int64,
 			},
 			DNSStart: func(dnsInfo httptrace.DNSStartInfo) {
 				log.Tracef("DNS start: %+v\n", dnsInfo)
+			},
+			TLSHandshakeDone: func(state tls.ConnectionState, err error) {
+				sessionResume = state.DidResume
 			},
 		}
 		req = req.WithContext(httptrace.WithClientTrace(req.Context(),
@@ -569,7 +574,7 @@ func SendOnIntf(ctx *ZedCloudContext, destURL string, intf string, reqlen int64,
 		// success since we care about the connectivity to the cloud.
 		totalTimeMillis := int64(time.Since(apiCallStartTime) / time.Millisecond)
 		if ctx.SuccessFunc != nil {
-			ctx.SuccessFunc(log, intf, reqUrl, reqlen, resplen, totalTimeMillis)
+			ctx.SuccessFunc(log, intf, reqUrl, reqlen, resplen, totalTimeMillis, sessionResume)
 		}
 
 		switch resp.StatusCode {
@@ -734,7 +739,7 @@ func SendLocal(ctx *ZedCloudContext, destURL string, intf string, ipSrc net.IP, 
 	case http.StatusOK, http.StatusCreated, http.StatusNotModified:
 		totalTimeMillis := int64(time.Since(callStartTime) / time.Millisecond)
 		if ctx.SuccessFunc != nil {
-			ctx.SuccessFunc(log, intf, reqURL, reqlen, resplen, totalTimeMillis)
+			ctx.SuccessFunc(log, intf, reqURL, reqlen, resplen, totalTimeMillis, false)
 		}
 		log.Tracef("SendLocal to %s, response %s", reqURL, resp.Status)
 		return resp, contents, nil

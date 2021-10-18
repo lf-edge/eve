@@ -4,6 +4,7 @@
 package devicenetwork
 
 import (
+	"crypto/tls"
 	"fmt"
 	"net"
 	"os"
@@ -14,7 +15,8 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/cipher"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	"github.com/satori/go.uuid"
+	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
+	uuid "github.com/satori/go.uuid"
 )
 
 const (
@@ -49,6 +51,7 @@ type DeviceNetworkContext struct {
 	PubDevicePortConfigList  pubsub.Publication
 	PubCipherBlockStatus     pubsub.Publication
 	PubDeviceNetworkStatus   pubsub.Publication
+	PubPingMetricMap         pubsub.Publication
 	Changed                  bool
 	SubGlobalConfig          pubsub.Subscription
 
@@ -65,6 +68,7 @@ type DeviceNetworkContext struct {
 	NetworkTestBetterInterval uint32 // Look for lower/better index
 	TestSendTimeout           uint32 // Timeout for HTTP/Send
 	Log                       *base.LogObject
+	PrevTlsConfig             *tls.Config
 }
 
 func UpdateLastResortPortConfig(ctx *DeviceNetworkContext, ports []string) {
@@ -294,8 +298,8 @@ func VerifyPending(ctx *DeviceNetworkContext, pending *DPCPending,
 	// Hard-coded at 1 for now; at least one interface needs to work
 	const successCount uint = 1
 	ctx.Iteration++
-	rtf, intfStatusMap, err := VerifyDeviceNetworkStatus(log, ctx.AgentName,
-		pending.PendDNS, successCount, ctx.Iteration, timeout)
+	rtf, intfStatusMap, err := VerifyDeviceNetworkStatus(log, ctx,
+		pending.PendDNS, successCount, timeout)
 	// Use TestResults to update the DevicePortConfigList and DeviceNetworkStatus
 	// Note that the TestResults will at least have an updated timestamp
 	// for one of the ports.
@@ -980,6 +984,10 @@ func DoDNSUpdate(ctx *DeviceNetworkContext) {
 			ctx.DeviceNetworkStatus)
 		ctx.PubDeviceNetworkStatus.Publish("global",
 			*ctx.DeviceNetworkStatus)
+	}
+	if ctx.PubPingMetricMap != nil {
+		cms := zedcloud.Append(types.MetricsMap{}, zedcloud.GetCloudMetrics(log))
+		ctx.PubPingMetricMap.Publish("global", cms)
 	}
 	ctx.Changed = true
 }
