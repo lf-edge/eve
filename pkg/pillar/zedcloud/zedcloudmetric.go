@@ -88,7 +88,7 @@ func ZedCloudFailure(log *base.LogObject, ifname string, url string, reqLen int6
 	mutex.Unlock()
 }
 
-func ZedCloudSuccess(log *base.LogObject, ifname string, url string, reqLen int64, respLen int64, timeSpent int64) {
+func ZedCloudSuccess(log *base.LogObject, ifname string, url string, reqLen int64, respLen int64, timeSpent int64, resume bool) {
 	log.Tracef("ZedCloudSuccess(%s, %s) %d %d",
 		ifname, url, reqLen, respLen)
 	mutex.Lock()
@@ -105,6 +105,9 @@ func ZedCloudSuccess(log *base.LogObject, ifname string, url string, reqLen int6
 	u.RecvMsgCount += 1
 	u.RecvByteCount += respLen
 	u.TotalTimeSpent += timeSpent
+	if resume {
+		u.SessionResume++
+	}
 	m.URLCounters[url] = u
 	updateAgentIfnameMetrics(log, ifname, m)
 	mutex.Unlock()
@@ -215,6 +218,7 @@ func Append(cms types.MetricsMap, cms1 types.MetricsMap) types.MetricsMap {
 			um.RecvMsgCount += um1.RecvMsgCount
 			um.RecvByteCount += um1.RecvByteCount
 			um.TotalTimeSpent += um1.TotalTimeSpent
+			um.SessionResume += um1.SessionResume
 			cmu[url] = um
 		}
 		cms[ifname] = cm

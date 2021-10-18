@@ -600,7 +600,7 @@ func getSystemURL() string {
 	} else {
 		remoteURL = "www.google.com"
 	}
-	return remoteURL
+	return "http://" + remoteURL
 }
 
 func getRemoteURL(netstatus *types.NetworkInstanceStatus, defaultURL string) string {

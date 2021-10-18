@@ -336,6 +336,15 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 	if loguploaderMetrics != nil {
 		cms = zedcloud.Append(cms, loguploaderMetrics)
 	}
+	if diagMetrics != nil {
+		cms = zedcloud.Append(cms, diagMetrics)
+	}
+	if nimMetrics != nil {
+		cms = zedcloud.Append(cms, nimMetrics)
+	}
+	if zrouterMetrics != nil {
+		cms = zedcloud.Append(cms, zrouterMetrics)
+	}
 	for ifname, cm := range cms {
 		metric := metrics.ZedcloudMetric{IfName: ifname,
 			Failures:          cm.FailureCount,
@@ -362,6 +371,7 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 			urlMet.RecvMsgCount = um.RecvMsgCount
 			urlMet.RecvByteCount = um.RecvByteCount
 			urlMet.TotalTimeSpent = um.TotalTimeSpent
+			urlMet.SessResumeCount = um.SessionResume
 			metric.UrlMetrics = append(metric.UrlMetrics, urlMet)
 		}
 		ReportDeviceMetric.Zedcloud = append(ReportDeviceMetric.Zedcloud,

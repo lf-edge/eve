@@ -81,9 +81,11 @@ func IsProxyConfigEmpty(proxyConfig types.ProxyConfig) bool {
 //    For each interface verified
 //      set Error ( If success, set to "")
 //      set ErrorTime to time of testing ( Even if verify Successful )
-func VerifyDeviceNetworkStatus(log *base.LogObject, agentName string, status types.DeviceNetworkStatus,
-	successCount uint, iteration int, timeout uint32) (bool, types.IntfStatusMap, error) {
+func VerifyDeviceNetworkStatus(log *base.LogObject, ctx *DeviceNetworkContext, status types.DeviceNetworkStatus,
+	successCount uint, timeout uint32) (bool, types.IntfStatusMap, error) {
 
+	agentName := ctx.AgentName
+	iteration := ctx.Iteration
 	log.Tracef("VerifyDeviceNetworkStatus() successCount %d, iteration %d",
 		successCount, iteration)
 
@@ -100,6 +102,7 @@ func VerifyDeviceNetworkStatus(log *base.LogObject, agentName string, status typ
 	zedcloudCtx := zedcloud.NewContext(log, zedcloud.ContextOptions{
 		DevNetworkStatus: &status,
 		Timeout:          timeout,
+		NeedStatsFunc:    true,
 		Serial:           hardware.GetProductSerial(log),
 		SoftSerial:       hardware.GetSoftSerial(log),
 		AgentName:        agentName,
@@ -132,6 +135,10 @@ func VerifyDeviceNetworkStatus(log *base.LogObject, agentName string, status typ
 			return false, intfStatusMap, errors.New(errStr)
 		}
 	}
+
+	if ctx.PrevTlsConfig != nil {
+		tlsConfig.ClientSessionCache = ctx.PrevTlsConfig.ClientSessionCache
+	}
 	zedcloudCtx.TlsConfig = tlsConfig
 	for ix := range status.Ports {
 		err = CheckAndGetNetworkProxy(log, &status, &status.Ports[ix])
@@ -158,6 +165,8 @@ func VerifyDeviceNetworkStatus(log *base.LogObject, agentName string, status typ
 		}
 		return rtf, intfStatusMap, err
 	}
+
+	ctx.PrevTlsConfig = zedcloudCtx.TlsConfig
 
 	if cloudReachable {
 		log.Functionf("Uplink test SUCCESS to URL: %s", testURL)

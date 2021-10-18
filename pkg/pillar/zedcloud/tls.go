@@ -167,6 +167,8 @@ func GetTlsConfig(dns *types.DeviceNetworkStatus, serverName string, clientCert 
 			tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256},
 		// TLS 1.2 because we can
 		MinVersion: tls.VersionTLS12,
+		// Session Resumption, zero means using the default, which is 64
+		ClientSessionCache: tls.NewLRUClientSessionCache(0),
 	}
 	tlsConfig.BuildNameToCertificate()
 	return tlsConfig, nil

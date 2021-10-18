@@ -238,7 +238,7 @@ func handleSyncOp(ctx *downloaderContext, key string,
 		status.Size = uint64(size)
 		status.ContentType = contentType
 		zedcloud.ZedCloudSuccess(log, ifname,
-			metricsURL, 1024, size, downloadTime)
+			metricsURL, 1024, size, downloadTime, false)
 		if st.Progress(100, size, size) {
 			log.Noticef("updated sizes at end to %d/%d",
 				size, size)

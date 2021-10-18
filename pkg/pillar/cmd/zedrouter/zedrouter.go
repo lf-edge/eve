@@ -31,6 +31,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
+	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 	uuid "github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
 	"github.com/vishvananda/netlink"
@@ -515,6 +516,15 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	zedrouterCtx.subAppInstanceConfig = subAppInstanceConfig
 	subAppInstanceConfig.Activate()
 
+	cloudProbeMetricPub, err := ps.NewPublication(
+		pubsub.PublicationOptions{
+			AgentName: agentName,
+			TopicType: types.MetricsMap{},
+		})
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	PbrInit(&zedrouterCtx)
 	routeChanges := devicenetwork.RouteChangeInit(log)
 	linkChanges := devicenetwork.LinkChangeInit(log)
@@ -671,6 +681,11 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 			if err != nil {
 				log.Errorln(err)
 			}
+
+			cms := zedcloud.Append(types.MetricsMap{},
+				zedcloud.GetCloudMetrics(log))
+			cloudProbeMetricPub.Publish("global", cms)
+
 			ps.CheckMaxTimeTopic(agentName, "PublishDhcpLeases", start,
 				warningTime, errorTime)
 
