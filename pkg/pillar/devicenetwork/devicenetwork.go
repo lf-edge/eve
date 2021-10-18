@@ -136,8 +136,8 @@ func VerifyDeviceNetworkStatus(log *base.LogObject, ctx *DeviceNetworkContext, s
 		}
 	}
 
-	if ctx.PrevTlsConfig != nil {
-		tlsConfig.ClientSessionCache = ctx.PrevTlsConfig.ClientSessionCache
+	if ctx.PrevTLSConfig != nil {
+		tlsConfig.ClientSessionCache = ctx.PrevTLSConfig.ClientSessionCache
 	}
 	zedcloudCtx.TlsConfig = tlsConfig
 	for ix := range status.Ports {
@@ -166,7 +166,7 @@ func VerifyDeviceNetworkStatus(log *base.LogObject, ctx *DeviceNetworkContext, s
 		return rtf, intfStatusMap, err
 	}
 
-	ctx.PrevTlsConfig = zedcloudCtx.TlsConfig
+	ctx.PrevTLSConfig = zedcloudCtx.TlsConfig
 
 	if cloudReachable {
 		log.Functionf("Uplink test SUCCESS to URL: %s", testURL)
