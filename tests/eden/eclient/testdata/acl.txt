@@ -34,9 +34,9 @@ eden network create 10.11.12.0/24 -n {{$network_name}} -s {{$fake_domain}}:$host
 test eden.network.test -test.v -timewait 10m ACTIVATED {{$network_name}}
 
 # First app is only allowed to access github.com and $long_domain.
-eden pod deploy -n curl-acl1 --memory=512MB docker://lfedge/eden-eclient:83cfe07 -p 2223:22 --networks={{$network_name}} --acl={{$network_name}}:github.com --acl={{$network_name}}:{{$long_domain}}:allow --acl={{$network_name}}:google.com:drop
+eden pod deploy -n curl-acl1 --memory=512MB docker://lfedge/eden-eclient:d9eb23f -p 2223:22 --networks={{$network_name}} --acl={{$network_name}}:github.com --acl={{$network_name}}:{{$long_domain}}:allow --acl={{$network_name}}:google.com:drop
 # Second app is only allowed to access $long_domain and $fake_domain.
-eden pod deploy -n curl-acl2 --memory=512MB docker://lfedge/eden-eclient:83cfe07 -p 2224:22 --networks={{$network_name}} --acl={{$network_name}}:{{$long_domain}} --acl={{$network_name}}:{{$fake_domain}}:allow --acl={{$network_name}}:ieee.org:drop
+eden pod deploy -n curl-acl2 --memory=512MB docker://lfedge/eden-eclient:d9eb23f -p 2224:22 --networks={{$network_name}} --acl={{$network_name}}:{{$long_domain}} --acl={{$network_name}}:{{$fake_domain}}:allow --acl={{$network_name}}:ieee.org:drop
 
 test eden.app.test -test.v -timewait 15m RUNNING curl-acl1 curl-acl2
 

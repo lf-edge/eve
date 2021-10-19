@@ -4,8 +4,8 @@ eden -t 10s volume ls
 ! test eden.reboot.test -test.v -timewait=0 -reboot=0 -count=1 &
 
 # Create v1 volume
-eden -t 1m volume create -n v-docker docker://lfedge/eden-eclient:83cfe07 --disk-size=200M
-stdout 'create volume v-docker with docker://lfedge/eden-eclient:83cfe07 request sent'
+eden -t 1m volume create -n v-docker docker://lfedge/eden-eclient:d9eb23f --disk-size=200M
+stdout 'create volume v-docker with docker://lfedge/eden-eclient:d9eb23f request sent'
 eden -t 1m volume create -n v-qcow2 file://{{EdenConfig "eden.root"}}/empty.qcow2 --format=qcow2 --disk-size=200M
 stdout 'create volume v-qcow2 with file://{{EdenConfig "eden.root"}}/empty.qcow2 request sent'
 eden -t 1m volume create -n v-qcow file://{{EdenConfig "eden.root"}}/empty.qcow --format=qcow --disk-size=560

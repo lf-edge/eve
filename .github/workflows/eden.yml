@@ -67,6 +67,7 @@ jobs:
         run: |
           ./eden config set default --key eve.tag --value="$TAG"
           ./eden config set default --key=eve.accel --value=false
+          ./eden config set default --key=eve.cpu --value=2
           ./eden config set default --key=eden.tests --value=${{ github.workspace }}/eve/tests/eden
           EDITOR=cat ./eden config edit default
           echo > ${{ github.workspace }}/eve/tests/eden/workflow/testdata/eden_stop.txt

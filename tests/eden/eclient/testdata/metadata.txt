@@ -9,7 +9,7 @@
 
 exec chmod 600 {{EdenConfig "eden.tests"}}/eclient/image/cert/id_rsa
 
-eden pod deploy -n eclient --memory=512MB docker://lfedge/eden-eclient:83cfe07 -p {{$port}}:22
+eden pod deploy -n eclient --memory=512MB docker://lfedge/eden-eclient:d9eb23f -p {{$port}}:22
 
 test eden.app.test -test.v -timewait 20m RUNNING eclient
 

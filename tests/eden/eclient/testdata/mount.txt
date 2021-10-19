@@ -11,7 +11,7 @@ exec chmod 600 {{EdenConfig "eden.tests"}}/eclient/image/cert/id_rsa
 # Starting of reboot detector with a 1 reboot limit
 ! test eden.reboot.test -test.v -timewait 60m -reboot=0 -count=1 &
 
-eden pod deploy -n eclient-mount --memory=512MB docker://lfedge/eden-eclient:83cfe07 -p {{$port}}:22 --mount=src=docker://nginx:1.20.0,dst=/tst --mount=src={{EdenConfig "eden.tests"}}/eclient/testdata,dst=/dir
+eden pod deploy -n eclient-mount --memory=512MB docker://lfedge/eden-eclient:d9eb23f -p {{$port}}:22 --mount=src=docker://nginx:1.20.0,dst=/tst --mount=src={{EdenConfig "eden.tests"}}/eclient/testdata,dst=/dir
 
 test eden.app.test -test.v -timewait 21m RUNNING eclient-mount
 
