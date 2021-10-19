@@ -449,11 +449,12 @@ func handleDomainStatusDelete(ctxArg interface{}, key string, statusArg interfac
 
 	log.Tracef("handleDomainStatusDelete: for %s", key)
 	status := statusArg.(types.DomainStatus)
-	if _, ok := domainUUID[status.UUIDandVersion.UUID.String()]; !ok {
+	appUUID := status.UUIDandVersion.UUID.String()
+	if _, ok := domainUUID[appUUID]; !ok {
 		return
 	}
-	log.Tracef("handleDomainStatusDelete: remove %s", status.DisplayName)
-	delete(domainUUID, status.DisplayName)
+	log.Tracef("handleDomainStatusDelete: remove %s", appUUID)
+	delete(domainUUID, appUUID)
 	log.Tracef("handleDomainStatusDelete: done for %s", key)
 }
 
