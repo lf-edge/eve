@@ -16,7 +16,7 @@ exec chmod 600 {{EdenConfig "eden.tests"}}/eclient/image/cert/id_rsa
 # Starting of reboot detector with a 2 reboot limit
 ! test eden.reboot.test -test.v -timewait 10m -reboot=0 -count=2 &
 
-eden pod deploy -n eclient --memory=512MB docker://lfedge/eden-eclient:83cfe07 -p {{template "port"}}:22
+eden pod deploy -n eclient --memory=512MB docker://lfedge/eden-eclient:d9eb23f -p {{template "port"}}:22
 
 test eden.app.test -test.v -timewait 20m RUNNING eclient
 

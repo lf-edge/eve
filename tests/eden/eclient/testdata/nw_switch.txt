@@ -26,9 +26,9 @@ eden network create 10.11.13.0/24 -n n2
 test eden.network.test -test.v -timewait 10m ACTIVATED n1 n2
 
 message 'Starting applications'
-eden pod deploy -v debug -n ping1 docker://lfedge/eden-eclient:83cfe07 -p 2223:22 --networks=n1 --memory=512MB
-eden pod deploy -v debug -n ping2 docker://lfedge/eden-eclient:83cfe07 -p 2224:22 --networks=n2 --memory=512MB
-eden pod deploy -v debug -n pong docker://lfedge/eden-eclient:83cfe07 --networks=n1 --memory=512MB
+eden pod deploy -v debug -n ping1 docker://lfedge/eden-eclient:d9eb23f -p 2223:22 --networks=n1 --memory=512MB
+eden pod deploy -v debug -n ping2 docker://lfedge/eden-eclient:d9eb23f -p 2224:22 --networks=n2 --memory=512MB
+eden pod deploy -v debug -n pong docker://lfedge/eden-eclient:d9eb23f --networks=n1 --memory=512MB
 
 message 'Waiting of running'
 test eden.app.test -test.v -timewait 20m RUNNING ping1 ping2 pong

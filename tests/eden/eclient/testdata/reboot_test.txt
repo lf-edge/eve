@@ -18,7 +18,7 @@ eden -t 1m network create 10.11.12.0/24 -n {{$network_name}}
 # Wait for run
 test eden.network.test -test.v -timewait 10m ACTIVATED {{$network_name}}
 
-eden pod deploy -n {{$app_name}} --memory=512MB docker://lfedge/eden-eclient:83cfe07 -p {{$port}}:22 --networks={{$network_name}}
+eden pod deploy -n {{$app_name}} --memory=512MB docker://lfedge/eden-eclient:d9eb23f -p {{$port}}:22 --networks={{$network_name}}
 
 test eden.app.test -test.v -timewait 20m RUNNING {{$app_name}}
 

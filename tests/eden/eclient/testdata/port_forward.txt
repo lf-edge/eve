@@ -29,8 +29,8 @@ test eden.network.test -test.v -timewait 10m ACTIVATED n1
 exec sleep 10
 
 message 'SCENARIO 1: Starting with both application attached to same network instance'
-eden pod deploy -v debug -n app1 docker://lfedge/eden-eclient:83cfe07 -p 2223:22 --networks=n1 --memory=512MB
-eden pod deploy -v debug -n app2 docker://lfedge/eden-eclient:83cfe07 -p 2224:22 --networks=n1 --memory=512MB
+eden pod deploy -v debug -n app1 docker://lfedge/eden-eclient:d9eb23f -p 2223:22 --networks=n1 --memory=512MB
+eden pod deploy -v debug -n app2 docker://lfedge/eden-eclient:d9eb23f -p 2224:22 --networks=n1 --memory=512MB
 
 message 'SCENARIO 1: Waiting for apps to enter RUNNING state'
 test eden.app.test -test.v -timewait 20m RUNNING app1 app2
@@ -92,8 +92,8 @@ eden network create 10.11.13.0/24 -n n2 --uplink eth1
 test eden.network.test -test.v -timewait 10m ACTIVATED n1 n2
 
 message 'SCENARIO 2: Starting with each application attached to a different network instance'
-eden pod deploy -v debug -n app1 docker://lfedge/eden-eclient:83cfe07 -p 2223:22 --networks=n1 --memory=512MB
-eden pod deploy -v debug -n app2 docker://lfedge/eden-eclient:83cfe07 -p 2234:22 --networks=n2 --memory=512MB
+eden pod deploy -v debug -n app1 docker://lfedge/eden-eclient:d9eb23f -p 2223:22 --networks=n1 --memory=512MB
+eden pod deploy -v debug -n app2 docker://lfedge/eden-eclient:d9eb23f -p 2234:22 --networks=n2 --memory=512MB
 
 message 'SCENARIO 2: Waiting for apps to enter RUNNING state'
 test eden.app.test -test.v -timewait 20m RUNNING app1 app2

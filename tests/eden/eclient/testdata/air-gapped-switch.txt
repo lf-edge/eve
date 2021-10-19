@@ -29,8 +29,8 @@ eden network create --type switch --uplink none -n direct
 test eden.network.test -test.v -timewait 20m ACTIVATED indirect direct
 
 message 'Starting applications'
-eden pod deploy -v debug -n eclient1 docker://lfedge/eden-eclient:83cfe07 -p {{template "port1"}}:22 --networks=indirect --networks=direct:{{template "mac1"}} --memory=512MB
-eden pod deploy -v debug -n eclient2 docker://lfedge/eden-eclient:83cfe07 -p {{template "port2"}}:22 --networks=indirect --networks=direct:{{template "mac2"}} --memory=512MB
+eden pod deploy -v debug -n eclient1 docker://lfedge/eden-eclient:d9eb23f -p {{template "port1"}}:22 --networks=indirect --networks=direct:{{template "mac1"}} --memory=512MB
+eden pod deploy -v debug -n eclient2 docker://lfedge/eden-eclient:d9eb23f -p {{template "port2"}}:22 --networks=indirect --networks=direct:{{template "mac2"}} --memory=512MB
 
 message 'Waiting for running state'
 test eden.app.test -test.v -timewait 15m RUNNING eclient1 eclient2
