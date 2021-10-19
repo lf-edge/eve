@@ -94,7 +94,7 @@ type remoteLog struct {
 // Path returns the name of a FIFO connected to the logging daemon.
 func (r *remoteLog) Path(n string) string {
 	path := filepath.Join(r.fifoDir, n+".log")
-	if err := syscall.Mkfifo(path, 0600); err != nil {
+	if err := syscall.Mkfifo(path, 0600); err != nil && err.(syscall.Errno) != syscall.EEXIST {
 		return "/dev/null"
 	}
 	logrus.Infof("Creating %s at %s", "func", logutils.GetMyStack())
@@ -103,7 +103,7 @@ func (r *remoteLog) Path(n string) string {
 		// containerd opens it when the task is started.
 		fd, err := syscall.Open(path, syscall.O_RDONLY, 0)
 		if err != nil {
-			// Should never happen: we just created the fifo
+			// Should never happen: we just checked the fifo
 			logrus.Printf("failed to open fifo %s: %s", path, err)
 		}
 		defer syscall.Close(fd)
