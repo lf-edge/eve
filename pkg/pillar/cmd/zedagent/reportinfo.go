@@ -397,10 +397,10 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 					reportMac)
 			}
 		}
-		if ib.IsPort {
-			reportAA.UsedByBaseOS = true
-		} else if ib.UsedByUUID != nilUUID {
+		if ib.UsedByUUID != nilUUID {
 			reportAA.UsedByAppUUID = ib.UsedByUUID.String()
+		} else if ib.KeepInHost {
+			reportAA.UsedByBaseOS = true
 		}
 		if ib.Error != "" {
 			errInfo := new(info.ErrorInfo)
