@@ -83,8 +83,11 @@ type IoBundle struct {
 	//  If the device is ( or to be ) managed by DomU, this is True
 	IsPCIBack bool // Assigned to pciback
 	IsPort    bool // Whole or part of the bundle is a zedrouter port
-	Error     string
-	ErrorTime time.Time
+	// Do not put device under pciBack, instead keep it in dom0 as long as it is not assigned to any application.
+	// In other words, this does not prevent assignments but keeps unassigned devices visible to EVE.
+	KeepInHost bool
+	Error      string
+	ErrorTime  time.Time
 }
 
 // Really a constant
@@ -248,7 +251,7 @@ func (aa AssignableAdapters) LogKey() string {
 // AddOrUpdateIoBundle - Add an Io bundle to AA. If the bundle already exists,
 // the function updates it, while preserving the most specific information.
 // The information we preserve are of two kinds:
-// - IsPort/IsPCIBack/UsedByUUID which come from interaction with nim
+// - IsPort/IsPCIBack/UsedByUUID/KeepInHost which come from interaction with nim
 // - PciLong, UsbAddr, etc which come from controller but might be filled in by domainmgr
 // - Unique/MacAddr which come from the PhysicalIoAdapter
 func (aa *AssignableAdapters) AddOrUpdateIoBundle(log *base.LogObject, ib IoBundle) {
@@ -278,6 +281,11 @@ func (aa *AssignableAdapters) AddOrUpdateIoBundle(log *base.LogObject, ib IoBund
 		log.Functionf("AddOrUpdateIoBundle(%d %s %s) preserve IsPCIBack %t",
 			ib.Type, ib.Phylabel, ib.AssignmentGroup, curIbPtr.IsPCIBack)
 		ib.IsPCIBack = curIbPtr.IsPCIBack
+	}
+	if curIbPtr.KeepInHost {
+		log.Functionf("AddOrUpdateIoBundle(%d %s %s) preserve KeepInHost %t",
+			ib.Type, ib.Phylabel, ib.AssignmentGroup, curIbPtr.KeepInHost)
+		ib.KeepInHost = curIbPtr.KeepInHost
 	}
 	if curIbPtr.PciLong != "" {
 		log.Functionf("AddOrUpdateIoBundle(%d %s %s) preserve PciLong %v",
