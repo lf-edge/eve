@@ -1,16 +1,15 @@
 --- images/rootfs.yml.in
 +++ images/rootfs-adam-kvm.yml.in
-@@ -30,6 +30,13 @@ services:
-      image: RSYSLOGD_TAG
-    - name: ntpd
-      image: linuxkit/openntpd:v0.5
+@@ -30,6 +30,12 @@
+      image: NEWLOGD_TAG
+      cgroupsPath: /eve/services/eve-newlog
+      oomScoreAdj: -999
 +   - name: adam
 +     image: lfedge/adam:latest
 +     binds:
 +        - /var/persist:/persist
 +        - /var/config:/config
 +     command: ["/bin/eve-embedded.sh"]
-+     net: host
-    - name: sshd
-      image: linuxkit/sshd:v0.5
-    - name: wwan
+    - name: debug
+      image: DEBUG_TAG
+      cgroupsPath: /eve/services/debug
