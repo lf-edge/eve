@@ -8,6 +8,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/cipher"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 )
 
 type downloaderContext struct {
@@ -23,6 +24,8 @@ type downloaderContext struct {
 	subNetworkInstanceStatus pubsub.Subscription
 	deviceNetworkStatus      types.DeviceNetworkStatus
 	subGlobalConfig          pubsub.Subscription
+	zedcloudMetrics          *zedcloud.AgentMetrics
+	cipherMetrics            *cipher.AgentMetrics
 	GCInitialized            bool
 	downloadMaxPortCost      uint8
 }
@@ -44,6 +47,7 @@ func (ctx *downloaderContext) registerHandlers(ps *pubsub.PubSub) error {
 	}
 	ctx.decryptCipherContext.Log = log
 	ctx.decryptCipherContext.AgentName = agentName
+	ctx.decryptCipherContext.AgentMetrics = ctx.cipherMetrics
 	ctx.decryptCipherContext.SubControllerCert = subControllerCert
 	subControllerCert.Activate()
 

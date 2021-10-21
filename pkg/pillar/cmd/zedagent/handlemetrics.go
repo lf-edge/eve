@@ -22,7 +22,6 @@ import (
 	"github.com/lf-edge/eve/api/go/info"
 	"github.com/lf-edge/eve/api/go/metrics"
 	zmet "github.com/lf-edge/eve/api/go/metrics" // zinfo and zmet here
-	"github.com/lf-edge/eve/pkg/pillar/cipher"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
@@ -325,28 +324,13 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 
 	// Transfer to a local copy in since metrics updates are done concurrently
 	cms := types.MetricsMap{}
-	zedagentMetrics := zedcloud.GetCloudMetrics(log)
-	if zedagentMetrics != nil {
-		cms = zedcloud.Append(cms, zedagentMetrics)
-	}
-	if clientMetrics != nil {
-		cms = zedcloud.Append(cms, clientMetrics)
-	}
-	if downloaderMetrics != nil {
-		cms = zedcloud.Append(cms, downloaderMetrics)
-	}
-	if loguploaderMetrics != nil {
-		cms = zedcloud.Append(cms, loguploaderMetrics)
-	}
-	if diagMetrics != nil {
-		cms = zedcloud.Append(cms, diagMetrics)
-	}
-	if nimMetrics != nil {
-		cms = zedcloud.Append(cms, nimMetrics)
-	}
-	if zrouterMetrics != nil {
-		cms = zedcloud.Append(cms, zrouterMetrics)
-	}
+	ctx.zedcloudMetrics.AddInto(log, cms)
+	clientMetrics.AddInto(cms)
+	downloaderMetrics.AddInto(cms)
+	loguploaderMetrics.AddInto(cms)
+	diagMetrics.AddInto(cms)
+	nimMetrics.AddInto(cms)
+	zrouterMetrics.AddInto(cms)
 	for ifname, cm := range cms {
 		metric := metrics.ZedcloudMetric{IfName: ifname,
 			Failures:          cm.FailureCount,
@@ -445,27 +429,16 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 	ReportDeviceMetric.Newlog = nlm
 	log.Tracef("publishMetrics: newlog-metrics %+v", nlm)
 
-	// collect CipherMetric from ourselves and agents and report
-	cipherMetrics := types.CipherMetricsMap{}
-	cipherMetricsZA := cipher.GetCipherMetrics(log)
-	if cipherMetricsZA != nil {
-		cipherMetrics = cipher.Append(cipherMetrics, cipherMetricsZA)
+	// combine CipherMetric from all agents and report
+	cipherMetrics := []types.CipherMetrics{
+		cipherMetricsDL,
+		cipherMetricsDM,
+		cipherMetricsNim,
+		cipherMetricsZR,
 	}
-	if cipherMetricsDL != nil {
-		cipherMetrics = cipher.Append(cipherMetrics, cipherMetricsDL)
-	}
-	if cipherMetricsDM != nil {
-		cipherMetrics = cipher.Append(cipherMetrics, cipherMetricsDM)
-	}
-	if cipherMetricsNim != nil {
-		cipherMetrics = cipher.Append(cipherMetrics, cipherMetricsNim)
-	}
-	if cipherMetricsZR != nil {
-		cipherMetrics = cipher.Append(cipherMetrics, cipherMetricsZR)
-	}
-	for agentName, cm := range cipherMetrics {
-		log.Functionf("Cipher metrics for %s: %+v", agentName, cm)
-		metric := metrics.CipherMetric{AgentName: agentName,
+	for _, cm := range cipherMetrics {
+		log.Functionf("Cipher metrics for %s: %+v", cm.AgentName, cm)
+		metric := metrics.CipherMetric{AgentName: cm.AgentName,
 			FailureCount: cm.FailureCount,
 			SuccessCount: cm.SuccessCount,
 		}
@@ -814,10 +787,8 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 	log.Tracef("publishMetrics: after send, total elapse sec %v", time.Since(startPubTime).Seconds())
 
 	// publish the cloud MetricsMap for zedagent for device debugging purpose
-	if zedagentMetrics != nil {
-		cms = types.MetricsMap{}
-		cms = zedcloud.Append(cms, zedagentMetrics)
-		ctx.pubMetricsMap.Publish("global", cms)
+	if ctx.zedcloudMetrics != nil {
+		ctx.zedcloudMetrics.Publish(log, ctx.pubMetricsMap, "global")
 	}
 }
 

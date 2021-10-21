@@ -57,6 +57,9 @@ type DeviceNetworkContext struct {
 	Changed                  bool
 	SubGlobalConfig          pubsub.Subscription
 
+	ZedcloudMetrics *zedcloud.AgentMetrics
+	CipherMetrics   *cipher.AgentMetrics
+
 	Pending                DPCPending
 	NetworkTestTimer       *time.Timer
 	NetworkTestBetterTimer *time.Timer
@@ -996,8 +999,7 @@ func DoDNSUpdate(ctx *DeviceNetworkContext) {
 			*ctx.DeviceNetworkStatus)
 	}
 	if ctx.PubPingMetricMap != nil {
-		cms := zedcloud.Append(types.MetricsMap{}, zedcloud.GetCloudMetrics(log))
-		ctx.PubPingMetricMap.Publish("global", cms)
+		ctx.ZedcloudMetrics.Publish(log, ctx.PubPingMetricMap, "global")
 	}
 	ctx.Changed = true
 }

@@ -179,11 +179,9 @@ func getWifiCredential(ctx *DeviceNetworkContext,
 			// data. Hence this is a fallback if there is
 			// some cleartext.
 			if decBlock.WifiUserName != "" || decBlock.WifiPassword != "" {
-				cipher.RecordFailure(ctx.Log, ctx.AgentName,
-					types.CleartextFallback)
+				ctx.CipherMetrics.RecordFailure(ctx.Log, types.CleartextFallback)
 			} else {
-				cipher.RecordFailure(ctx.Log, ctx.AgentName,
-					types.MissingFallback)
+				ctx.CipherMetrics.RecordFailure(ctx.Log, types.MissingFallback)
 			}
 			return decBlock, nil
 		}
@@ -195,9 +193,9 @@ func getWifiCredential(ctx *DeviceNetworkContext,
 	decBlock.WifiUserName = wifi.Identity
 	decBlock.WifiPassword = wifi.Password
 	if decBlock.WifiUserName != "" || decBlock.WifiPassword != "" {
-		cipher.RecordFailure(ctx.Log, ctx.AgentName, types.NoCipher)
+		ctx.CipherMetrics.RecordFailure(ctx.Log, types.NoCipher)
 	} else {
-		cipher.RecordFailure(ctx.Log, ctx.AgentName, types.NoData)
+		ctx.CipherMetrics.RecordFailure(ctx.Log, types.NoData)
 	}
 	return decBlock, nil
 }

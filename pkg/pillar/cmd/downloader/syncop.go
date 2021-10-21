@@ -17,7 +17,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/cipher"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	logutils "github.com/lf-edge/eve/pkg/pillar/utils/logging"
-	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 )
 
 // Drona APIs for object Download
@@ -215,7 +214,8 @@ func handleSyncOp(ctx *downloaderContext, key string,
 				errStr = "download cancelled by user"
 				break
 			}
-			sourceFailureError(ipSrc.String(), ifname, metricsURL, err)
+			log.Errorf("Source IP %s failed: %s", ipSrc, err)
+			ctx.zedcloudMetrics.RecordFailure(log, ifname, metricsURL, 1024, 0, false)
 			// the error with "no suitable address found" for http schemes
 			// are suppressed inside httputil library.
 			// the S3 and Azure similar error have their own private error structure
@@ -237,7 +237,7 @@ func handleSyncOp(ctx *downloaderContext, key string,
 		downloadTime := int64(time.Since(downloadStartTime) / time.Millisecond)
 		status.Size = uint64(size)
 		status.ContentType = contentType
-		zedcloud.ZedCloudSuccess(log, ifname,
+		ctx.zedcloudMetrics.RecordSuccess(log, ifname,
 			metricsURL, 1024, size, downloadTime, false)
 		if st.Progress(100, size, size) {
 			log.Noticef("updated sizes at end to %d/%d",
@@ -341,11 +341,6 @@ func constructDatastoreContext(ctx *downloaderContext, configName string, NameIs
 	return &dsCtx, nil
 }
 
-func sourceFailureError(ip, ifname, url string, err error) {
-	log.Errorf("Source IP %s failed: %s", ip, err)
-	zedcloud.ZedCloudFailure(log, ifname, url, 1024, 0, false)
-}
-
 func getDatastoreCredential(ctx *downloaderContext,
 	dst types.DatastoreConfig) (types.EncryptionBlock, error) {
 	if dst.CipherBlockStatus.IsCipher {
@@ -361,11 +356,9 @@ func getDatastoreCredential(ctx *downloaderContext,
 			// data. Hence this is a fallback if there is
 			// some cleartext.
 			if decBlock.DsAPIKey != "" || decBlock.DsPassword != "" {
-				cipher.RecordFailure(log, agentName,
-					types.CleartextFallback)
+				ctx.cipherMetrics.RecordFailure(log, types.CleartextFallback)
 			} else {
-				cipher.RecordFailure(log, agentName,
-					types.MissingFallback)
+				ctx.cipherMetrics.RecordFailure(log, types.MissingFallback)
 			}
 			return decBlock, nil
 		}
@@ -377,9 +370,9 @@ func getDatastoreCredential(ctx *downloaderContext,
 	decBlock.DsAPIKey = dst.ApiKey
 	decBlock.DsPassword = dst.Password
 	if decBlock.DsAPIKey != "" || decBlock.DsPassword != "" {
-		cipher.RecordFailure(log, agentName, types.NoCipher)
+		ctx.cipherMetrics.RecordFailure(log, types.NoCipher)
 	} else {
-		cipher.RecordFailure(log, agentName, types.NoData)
+		ctx.cipherMetrics.RecordFailure(log, types.NoData)
 	}
 	return decBlock, nil
 }

@@ -302,10 +302,10 @@ func launchHostProbe(ctx *zedrouterContext) {
 	ditems := dpub.GetAll()
 
 	zcloudCtx := zedcloud.NewContext(log, zedcloud.ContextOptions{
-		Timeout:       maxRemoteProbeWait,
-		TLSConfig:     &tls.Config{InsecureSkipVerify: true},
-		NeedStatsFunc: true,
-		AgentName:     agentName,
+		Timeout:      maxRemoteProbeWait,
+		TLSConfig:    &tls.Config{InsecureSkipVerify: true},
+		AgentMetrics: ctx.zedcloudMetrics,
+		AgentName:    agentName,
 	})
 
 	remoteURL := getSystemURL()

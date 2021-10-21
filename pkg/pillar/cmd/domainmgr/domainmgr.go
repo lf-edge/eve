@@ -88,6 +88,7 @@ type domainContext struct {
 	pubHostMemory          pubsub.Publication
 	pubProcessMetric       pubsub.Publication
 	pubCipherBlockStatus   pubsub.Publication
+	cipherMetrics          *cipher.AgentMetrics
 	usbAccess              bool
 	createSema             *sema.Semaphore
 	GCComplete             bool
@@ -196,6 +197,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		usbAccess:           true,
 		domainBootRetryTime: 600,
 		pids:                make(map[int32]bool),
+		cipherMetrics:       cipher.NewAgentMetrics(agentName),
 	}
 	aa := types.AssignableAdapters{}
 	domainCtx.assignableAdapters = &aa
@@ -269,7 +271,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 	cipherMetricsPub, err := ps.NewPublication(pubsub.PublicationOptions{
 		AgentName: agentName,
-		TopicType: types.CipherMetricsMap{},
+		TopicType: types.CipherMetrics{},
 	})
 	if err != nil {
 		log.Fatal(err)
@@ -299,6 +301,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	}
 	domainCtx.decryptCipherContext.Log = log
 	domainCtx.decryptCipherContext.AgentName = agentName
+	domainCtx.decryptCipherContext.AgentMetrics = domainCtx.cipherMetrics
 	domainCtx.decryptCipherContext.SubControllerCert = subControllerCert
 	subControllerCert.Activate()
 
@@ -593,11 +596,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 		case <-publishTimer.C:
 			start := time.Now()
-			// Transfer to a local copy in since updates are
-			// done concurrently
-			cmm := cipher.Append(types.CipherMetricsMap{},
-				cipher.GetCipherMetrics(log))
-			err = cipherMetricsPub.Publish("global", cmm)
+			err = domainCtx.cipherMetrics.Publish(log, cipherMetricsPub, "global")
 			if err != nil {
 				log.Errorln(err)
 			}
@@ -2218,11 +2217,9 @@ func getCloudInitUserData(ctx *domainContext,
 			// data. Hence this is a fallback if there is
 			// some cleartext.
 			if decBlock.ProtectedUserData != "" {
-				cipher.RecordFailure(log, agentName,
-					types.CleartextFallback)
+				ctx.cipherMetrics.RecordFailure(log, types.CleartextFallback)
 			} else {
-				cipher.RecordFailure(log, agentName,
-					types.MissingFallback)
+				ctx.cipherMetrics.RecordFailure(log, types.MissingFallback)
 			}
 			return decBlock, nil
 		}
@@ -2233,9 +2230,9 @@ func getCloudInitUserData(ctx *domainContext,
 	decBlock := types.EncryptionBlock{}
 	decBlock.ProtectedUserData = *dc.CloudInitUserData
 	if decBlock.ProtectedUserData != "" {
-		cipher.RecordFailure(log, agentName, types.NoCipher)
+		ctx.cipherMetrics.RecordFailure(log, types.NoCipher)
 	} else {
-		cipher.RecordFailure(log, agentName, types.NoData)
+		ctx.cipherMetrics.RecordFailure(log, types.NoData)
 	}
 	return decBlock, nil
 }

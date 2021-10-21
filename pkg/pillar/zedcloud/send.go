@@ -65,7 +65,7 @@ type ZedCloudContext struct {
 type ContextOptions struct {
 	DevNetworkStatus *types.DeviceNetworkStatus
 	TLSConfig        *tls.Config
-	NeedStatsFunc    bool
+	AgentMetrics     *AgentMetrics
 	Timeout          uint32
 	Serial           string
 	SoftSerial       string
@@ -886,9 +886,9 @@ func NewContext(log *base.LogObject, opt ContextOptions) ZedCloudContext {
 		AgentName:           opt.AgentName,
 		log:                 log,
 	}
-	if opt.NeedStatsFunc {
-		ctx.FailureFunc = ZedCloudFailure
-		ctx.SuccessFunc = ZedCloudSuccess
+	if opt.AgentMetrics != nil {
+		ctx.FailureFunc = opt.AgentMetrics.RecordFailure
+		ctx.SuccessFunc = opt.AgentMetrics.RecordSuccess
 	}
 	return ctx
 }

@@ -31,6 +31,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/ssh"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
+	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 	uuid "github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
 )
@@ -91,6 +92,10 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	logger = loggerArg
 	log = logArg
 	nimCtx := nimContext{
+		deviceNetworkContext: devicenetwork.DeviceNetworkContext{
+			ZedcloudMetrics: zedcloud.NewAgentMetrics(),
+			CipherMetrics:   cipher.NewAgentMetrics(agentName),
+		},
 		fallbackPortMap:  make(map[string]bool),
 		filteredFallback: make(map[string]bool),
 	}
@@ -217,7 +222,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 	cipherMetricsPub, err := ps.NewPublication(pubsub.PublicationOptions{
 		AgentName: agentName,
-		TopicType: types.CipherMetricsMap{},
+		TopicType: types.CipherMetrics{},
 	})
 	if err != nil {
 		log.Fatal(err)
@@ -248,6 +253,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	}
 	nimCtx.deviceNetworkContext.DecryptCipherContext.Log = log
 	nimCtx.deviceNetworkContext.DecryptCipherContext.AgentName = agentName
+	nimCtx.deviceNetworkContext.DecryptCipherContext.AgentMetrics = nimCtx.deviceNetworkContext.CipherMetrics
 	nimCtx.deviceNetworkContext.DecryptCipherContext.SubControllerCert = subControllerCert
 	subControllerCert.Activate()
 
@@ -842,11 +848,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 		case <-publishTimer.C:
 			start := time.Now()
-			// Transfer to a local copy in since updates are
-			// done concurrently
-			cmm := cipher.Append(types.CipherMetricsMap{},
-				cipher.GetCipherMetrics(log))
-			err = cipherMetricsPub.Publish("global", cmm)
+			err = dnc.CipherMetrics.Publish(log, cipherMetricsPub, "global")
 			if err != nil {
 				log.Errorln(err)
 			}
