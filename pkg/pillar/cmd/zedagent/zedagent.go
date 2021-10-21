@@ -72,10 +72,10 @@ var loguploaderMetrics types.MetricsMap
 var newlogMetrics types.NewlogMetrics
 var downloaderMetrics types.MetricsMap
 var networkMetrics types.NetworkMetrics
-var cipherMetricsDL types.CipherMetricsMap
-var cipherMetricsDM types.CipherMetricsMap
-var cipherMetricsNim types.CipherMetricsMap
-var cipherMetricsZR types.CipherMetricsMap
+var cipherMetricsDL types.CipherMetrics
+var cipherMetricsDM types.CipherMetrics
+var cipherMetricsNim types.CipherMetrics
+var cipherMetricsZR types.CipherMetrics
 var diagMetrics types.MetricsMap
 var nimMetrics types.MetricsMap
 var zrouterMetrics types.MetricsMap
@@ -126,6 +126,7 @@ type zedagentContext struct {
 	subAppInstMetaData        pubsub.Subscription
 	subWwanMetrics            pubsub.Subscription
 	subDeviceNetworkStatus    pubsub.Subscription
+	zedcloudMetrics           *zedcloud.AgentMetrics
 	rebootCmd                 bool
 	rebootCmdDeferred         bool
 	deviceReboot              bool
@@ -237,6 +238,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		FlowlogQueue:      flowlogQueue,
 		TriggerDeviceInfo: triggerDeviceInfo,
 		TriggerObjectInfo: triggerObjectInfo,
+		zedcloudMetrics:   zedcloud.NewAgentMetrics(),
 	}
 	zedagentCtx.specMap = types.NewConfigItemSpecMap()
 	zedagentCtx.globalConfig = *types.DefaultConfigItemValueMap()
@@ -352,7 +354,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	}
 
 	// We know our own UUID; prepare for communication with controller
-	zedcloudCtx = handleConfigInit(zedagentCtx.globalConfig.GlobalValueInt(types.NetworkSendTimeout))
+	zedcloudCtx = handleConfigInit(
+		zedagentCtx.globalConfig.GlobalValueInt(types.NetworkSendTimeout),
+		zedagentCtx.zedcloudMetrics)
 	// Timer for deferred sends of info messages
 	deferredChan := zedcloud.GetDeferredChan(zedcloudCtx, getDeferredSentHandlerFunction(), getDeferredPriorityFunctions()...)
 
@@ -1208,7 +1212,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	subCipherMetricsDL, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:   "downloader",
 		MyAgentName: agentName,
-		TopicImpl:   types.CipherMetricsMap{},
+		TopicImpl:   types.CipherMetrics{},
 		Activate:    true,
 		Ctx:         &zedagentCtx,
 	})
@@ -1218,7 +1222,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	subCipherMetricsDM, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:   "domainmgr",
 		MyAgentName: agentName,
-		TopicImpl:   types.CipherMetricsMap{},
+		TopicImpl:   types.CipherMetrics{},
 		Activate:    true,
 		Ctx:         &zedagentCtx,
 	})
@@ -1228,7 +1232,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	subCipherMetricsNim, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:   "nim",
 		MyAgentName: agentName,
-		TopicImpl:   types.CipherMetricsMap{},
+		TopicImpl:   types.CipherMetrics{},
 		Activate:    true,
 		Ctx:         &zedagentCtx,
 	})
@@ -1238,7 +1242,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	subCipherMetricsZR, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:   "zedrouter",
 		MyAgentName: agentName,
-		TopicImpl:   types.CipherMetricsMap{},
+		TopicImpl:   types.CipherMetrics{},
 		Activate:    true,
 		Ctx:         &zedagentCtx,
 	})
@@ -1456,7 +1460,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 				log.Errorf("subCipherMetricsDL.Get failed: %s",
 					err)
 			} else {
-				cipherMetricsDL = m.(types.CipherMetricsMap)
+				cipherMetricsDL = m.(types.CipherMetrics)
 			}
 
 		case change := <-subCipherMetricsDM.MsgChan():
@@ -1466,7 +1470,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 				log.Errorf("subCipherMetricsDM.Get failed: %s",
 					err)
 			} else {
-				cipherMetricsDM = m.(types.CipherMetricsMap)
+				cipherMetricsDM = m.(types.CipherMetrics)
 			}
 
 		case change := <-subCipherMetricsNim.MsgChan():
@@ -1476,7 +1480,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 				log.Errorf("subCipherMetricsNim.Get failed: %s",
 					err)
 			} else {
-				cipherMetricsNim = m.(types.CipherMetricsMap)
+				cipherMetricsNim = m.(types.CipherMetrics)
 			}
 
 		case change := <-subCipherMetricsZR.MsgChan():
@@ -1486,7 +1490,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 				log.Errorf("subCipherMetricsZR.Get failed: %s",
 					err)
 			} else {
-				cipherMetricsZR = m.(types.CipherMetricsMap)
+				cipherMetricsZR = m.(types.CipherMetrics)
 			}
 
 		case change := <-subNetworkInstanceStatus.MsgChan():

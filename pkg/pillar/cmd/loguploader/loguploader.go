@@ -79,6 +79,7 @@ type loguploaderContext struct {
 	subAppInstConfig       pubsub.Subscription
 	usableAddrCount        int
 	metrics                types.NewlogMetrics
+	zedcloudMetrics        *zedcloud.AgentMetrics
 	serverNameAndPort      string
 	metricsPub             pubsub.Publication
 	enableFastUpload       bool
@@ -109,7 +110,8 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	ps.StillRunning(agentName, warningTime, errorTime)
 
 	loguploaderCtx := loguploaderContext{
-		globalConfig: types.DefaultConfigItemValueMap(),
+		globalConfig:    types.DefaultConfigItemValueMap(),
+		zedcloudMetrics: zedcloud.NewAgentMetrics(),
 	}
 
 	// Wait until we have been onboarded aka know our own UUID
@@ -290,11 +292,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		case <-publishCloudTimer.C:
 			start := time.Now()
 			log.Tracef("publishCloudTimer cloud metrics at at %s", time.Now().String())
-			// Transfer to a local copy in in case metrics updates
-			// are done concurrently
-			cms := zedcloud.Append(types.MetricsMap{},
-				zedcloud.GetCloudMetrics(log))
-			err := pubCloud.Publish("global", cms)
+			err := loguploaderCtx.zedcloudMetrics.Publish(log, pubCloud, "global")
 			if err != nil {
 				log.Errorln(err)
 			}
@@ -418,7 +416,7 @@ func sendCtxInit(ctx *loguploaderContext) {
 	zedcloudCtx := zedcloud.NewContext(log, zedcloud.ContextOptions{
 		DevNetworkStatus: deviceNetworkStatus,
 		Timeout:          ctx.globalConfig.GlobalValueInt(types.NetworkSendTimeout),
-		NeedStatsFunc:    true,
+		AgentMetrics:     ctx.zedcloudMetrics,
 		Serial:           hardware.GetProductSerial(log),
 		SoftSerial:       hardware.GetSoftSerial(log),
 		AgentName:        agentName,
@@ -501,7 +499,7 @@ func checkAppLogMetrics(ctx *loguploaderContext) {
 	}
 
 	// get the url set in the log metric-map
-	urlstats := zedcloud.GetAppURLset(log)
+	urlstats := ctx.zedcloudMetrics.GetURLsWithSubstr(log, "apps/instanceid")
 	log.Tracef("checkAppLogMetrics: app config len %d, log metrics url length %d", len(ai), len(urlstats))
 
 	// get a removal set
@@ -521,8 +519,8 @@ func checkAppLogMetrics(ctx *loguploaderContext) {
 		rmlist = append(rmlist, stats)
 	}
 	log.Tracef("checkAppLogMetrics: list of remove urls %v", rmlist)
-	for _, rem := range rmlist {
-		zedcloud.CleanAppCloudMetrics(log, rem)
+	for _, url := range rmlist {
+		ctx.zedcloudMetrics.RemoveURLMetrics(log, url)
 	}
 }
 

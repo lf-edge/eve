@@ -109,7 +109,7 @@ var nilUUID uuid.UUID
 // current epoch received from controller
 var controllerEpoch int64
 
-func handleConfigInit(networkSendTimeout uint32) *zedcloud.ZedCloudContext {
+func handleConfigInit(networkSendTimeout uint32, agentMetrics *zedcloud.AgentMetrics) *zedcloud.ZedCloudContext {
 
 	// get the server name
 	bytes, err := ioutil.ReadFile(types.ServerFileName)
@@ -122,7 +122,7 @@ func handleConfigInit(networkSendTimeout uint32) *zedcloud.ZedCloudContext {
 	zedcloudCtx := zedcloud.NewContext(log, zedcloud.ContextOptions{
 		DevNetworkStatus: deviceNetworkStatus,
 		Timeout:          networkSendTimeout,
-		NeedStatsFunc:    true,
+		AgentMetrics:     agentMetrics,
 		Serial:           hardware.GetProductSerial(log),
 		SoftSerial:       hardware.GetSoftSerial(log),
 		AgentName:        agentName,

@@ -58,6 +58,7 @@ type diagContext struct {
 	subLedBlinkCounter      pubsub.Subscription
 	subDeviceNetworkStatus  pubsub.Subscription
 	subDevicePortConfigList pubsub.Subscription
+	zedcloudMetrics         *zedcloud.AgentMetrics
 	gotBC                   bool
 	gotDNS                  bool
 	gotDPCList              bool
@@ -115,9 +116,10 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	}
 	log.Functionf("Starting %s", agentName)
 	ctx := diagContext{
-		forever:      *foreverPtr,
-		pacContents:  *pacContentsPtr,
-		globalConfig: types.DefaultConfigItemValueMap(),
+		forever:         *foreverPtr,
+		pacContents:     *pacContentsPtr,
+		globalConfig:    types.DefaultConfigItemValueMap(),
+		zedcloudMetrics: zedcloud.NewAgentMetrics(),
 	}
 	ctx.AgentName = agentName
 	ctx.DeviceNetworkStatus = &types.DeviceNetworkStatus{}
@@ -164,7 +166,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	zedcloudCtx := zedcloud.NewContext(log, zedcloud.ContextOptions{
 		DevNetworkStatus: ctx.DeviceNetworkStatus,
 		Timeout:          ctx.globalConfig.GlobalValueInt(types.NetworkSendTimeout),
-		NeedStatsFunc:    true,
+		AgentMetrics:     ctx.zedcloudMetrics,
 		Serial:           hardware.GetProductSerial(log),
 		SoftSerial:       hardware.GetSoftSerial(log),
 		AgentName:        agentName,
@@ -293,9 +295,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		gotAll := ctx.gotBC && ctx.gotDNS && ctx.gotDPCList
 		select {
 		case <-pubTimer.C:
-			cms := zedcloud.Append(types.MetricsMap{},
-				zedcloud.GetCloudMetrics(log))
-			cloudPingMetricPub.Publish("global", cms)
+			ctx.zedcloudMetrics.Publish(log, cloudPingMetricPub, "global")
 			pubTimer = time.NewTimer(30 * time.Second)
 
 		case change := <-subGlobalConfig.MsgChan():

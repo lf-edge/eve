@@ -93,7 +93,7 @@ func VerifyDeviceNetworkStatus(log *base.LogObject, ctx *DeviceNetworkContext, s
 	zedcloudCtx := zedcloud.NewContext(log, zedcloud.ContextOptions{
 		DevNetworkStatus: &status,
 		Timeout:          timeout,
-		NeedStatsFunc:    true,
+		AgentMetrics:     ctx.ZedcloudMetrics,
 		Serial:           hardware.GetProductSerial(log),
 		SoftSerial:       hardware.GetSoftSerial(log),
 		AgentName:        agentName,
@@ -132,7 +132,7 @@ func VerifyDeviceNetworkStatus(log *base.LogObject, ctx *DeviceNetworkContext, s
 	}
 	zedcloudCtx.TlsConfig = tlsConfig
 	for ix := range status.Ports {
-		err = CheckAndGetNetworkProxy(log, &status, &status.Ports[ix])
+		err = CheckAndGetNetworkProxy(ctx, &status, &status.Ports[ix])
 		if err != nil {
 			ifName := status.Ports[ix].IfName
 			errStr := fmt.Sprintf("ifName: %s. Failed to get NetworkProxy. Err:%s",
@@ -243,7 +243,7 @@ func MakeDeviceNetworkStatus(ctx *DeviceNetworkContext, globalConfig types.Devic
 		// Result is updating the Pacfile
 		// We always redo this since we don't know what has changed
 		// from the previous DeviceNetworkStatus.
-		err = CheckAndGetNetworkProxy(log, &globalStatus,
+		err = CheckAndGetNetworkProxy(ctx, &globalStatus,
 			&globalStatus.Ports[ix])
 		if err != nil {
 			errStr := fmt.Sprintf("GetNetworkProxy failed for %s: %s",

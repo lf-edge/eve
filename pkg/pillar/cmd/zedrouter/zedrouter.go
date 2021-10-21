@@ -94,6 +94,9 @@ type zedrouterContext struct {
 	flowPublishMap            map[string]time.Time
 	metricInterval            uint32 // In seconds
 
+	zedcloudMetrics *zedcloud.AgentMetrics
+	cipherMetrics   *cipher.AgentMetrics
+
 	// cipher context
 	pubCipherBlockStatus pubsub.Publication
 	decryptCipherContext cipher.DecryptCipherContext
@@ -179,6 +182,8 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		aclog:              agentlog.CustomLogInit(logrus.InfoLevel),
 		NLaclMap:           make(map[uuid.UUID]map[string]types.ULNetworkACLs),
 		flowPublishMap:     make(map[string]time.Time),
+		zedcloudMetrics:    zedcloud.NewAgentMetrics(),
+		cipherMetrics:      cipher.NewAgentMetrics(agentName),
 	}
 
 	subDeviceNetworkStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
@@ -334,7 +339,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 	cipherMetricsPub, err := ps.NewPublication(pubsub.PublicationOptions{
 		AgentName: agentName,
-		TopicType: types.CipherMetricsMap{},
+		TopicType: types.CipherMetrics{},
 	})
 	if err != nil {
 		log.Fatal(err)
@@ -342,6 +347,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 	zedrouterCtx.decryptCipherContext.Log = log
 	zedrouterCtx.decryptCipherContext.AgentName = agentName
+	zedrouterCtx.decryptCipherContext.AgentMetrics = zedrouterCtx.cipherMetrics
 
 	// Look for controller certs which will be used for decryption
 	subControllerCert, err := ps.NewSubscription(pubsub.SubscriptionOptions{
@@ -673,18 +679,16 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 			// XXX add file watch...
 			checkAndPublishDhcpLeases(&zedrouterCtx)
 
-			// Transfer to a local copy in since updates are
-			// done concurrently
-			cmm := cipher.Append(types.CipherMetricsMap{},
-				cipher.GetCipherMetrics(log))
-			err = cipherMetricsPub.Publish("global", cmm)
+			err = zedrouterCtx.cipherMetrics.Publish(
+				log, cipherMetricsPub, "global")
 			if err != nil {
 				log.Errorln(err)
 			}
-
-			cms := zedcloud.Append(types.MetricsMap{},
-				zedcloud.GetCloudMetrics(log))
-			cloudProbeMetricPub.Publish("global", cms)
+			err = zedrouterCtx.zedcloudMetrics.Publish(
+				log, cloudProbeMetricPub, "global")
+			if err != nil {
+				log.Errorln(err)
+			}
 
 			ps.CheckMaxTimeTopic(agentName, "PublishDhcpLeases", start,
 				warningTime, errorTime)
@@ -2538,11 +2542,9 @@ func getCloudInitUserData(ctx *zedrouterContext,
 			// data. Hence this is a fallback if there is
 			// some cleartext.
 			if decBlock.ProtectedUserData != "" {
-				cipher.RecordFailure(log, agentName,
-					types.CleartextFallback)
+				ctx.cipherMetrics.RecordFailure(log, types.CleartextFallback)
 			} else {
-				cipher.RecordFailure(log, agentName,
-					types.MissingFallback)
+				ctx.cipherMetrics.RecordFailure(log, types.MissingFallback)
 			}
 			return decBlock.ProtectedUserData, nil
 		}
@@ -2553,9 +2555,9 @@ func getCloudInitUserData(ctx *zedrouterContext,
 	decBlock := types.EncryptionBlock{}
 	decBlock.ProtectedUserData = *dc.CloudInitUserData
 	if decBlock.ProtectedUserData != "" {
-		cipher.RecordFailure(log, agentName, types.NoCipher)
+		ctx.cipherMetrics.RecordFailure(log, types.NoCipher)
 	} else {
-		cipher.RecordFailure(log, agentName, types.NoData)
+		ctx.cipherMetrics.RecordFailure(log, types.NoData)
 	}
 	return decBlock.ProtectedUserData, nil
 }

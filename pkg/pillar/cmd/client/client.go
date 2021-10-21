@@ -70,6 +70,7 @@ type clientContext struct {
 	globalConfig           *types.ConfigItemValueMap
 	zedcloudCtx            *zedcloud.ZedCloudContext
 	getCertsTimer          *time.Timer
+	zedcloudMetrics        *zedcloud.AgentMetrics
 }
 
 var (
@@ -155,6 +156,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	clientCtx := clientContext{
 		deviceNetworkStatus: &types.DeviceNetworkStatus{},
 		globalConfig:        types.DefaultConfigItemValueMap(),
+		zedcloudMetrics:     zedcloud.NewAgentMetrics(),
 	}
 
 	// Look for global config such as log levels
@@ -196,7 +198,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	zedcloudCtx := zedcloud.NewContext(log, zedcloud.ContextOptions{
 		DevNetworkStatus: clientCtx.deviceNetworkStatus,
 		Timeout:          clientCtx.globalConfig.GlobalValueInt(types.NetworkSendTimeout),
-		NeedStatsFunc:    true,
+		AgentMetrics:     clientCtx.zedcloudMetrics,
 		Serial:           hardware.GetProductSerial(log),
 		SoftSerial:       hardware.GetSoftSerial(log),
 		AgentName:        agentName,
@@ -494,9 +496,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		}
 	}
 
-	// Transfer to a local copy in case metrics updates are done concurrently
-	cms := zedcloud.Append(types.MetricsMap{}, zedcloud.GetCloudMetrics(log))
-	err = pub.Publish("global", cms)
+	err = clientCtx.zedcloudMetrics.Publish(log, pub, "global")
 	if err != nil {
 		log.Errorln(err)
 	}

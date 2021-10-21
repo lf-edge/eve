@@ -67,7 +67,7 @@ func GetCipherCredentials(ctx *DecryptCipherContext,
 	}
 	ctx.Log.Functionf("%s, cipherblock decryption successful", cipherBlock.Key())
 	decBlock = getEncryptionBlock(&zconfigDecBlock)
-	RecordSuccess(ctx.Log, ctx.AgentName)
+	ctx.AgentMetrics.RecordSuccess(ctx.Log)
 	return *cipherBlock, decBlock, err
 }
 
@@ -104,7 +104,7 @@ func GetCipherData(ctx *DecryptCipherContext, status types.CipherBlockStatus,
 func handleCipherBlockCredError(ctx *DecryptCipherContext, status *types.CipherBlockStatus,
 	decBlock types.EncryptionBlock, err error, errtype types.CipherError) (types.CipherBlockStatus, types.EncryptionBlock, error) {
 
-	RecordFailure(ctx.Log, ctx.AgentName, errtype)
+	ctx.AgentMetrics.RecordFailure(ctx.Log, errtype)
 	if err != nil {
 		status.SetErrorNow(err.Error())
 		// we have already captured the error info above

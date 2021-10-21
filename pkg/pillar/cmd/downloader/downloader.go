@@ -84,7 +84,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 	cipherMetricsPub, err := ps.NewPublication(pubsub.PublicationOptions{
 		AgentName: agentName,
-		TopicType: types.CipherMetricsMap{},
+		TopicType: types.CipherMetrics{},
 	})
 	if err != nil {
 		log.Fatal(err)
@@ -98,7 +98,10 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		time.Duration(max))
 
 	// Any state needed by handler functions
-	ctx := downloaderContext{}
+	ctx := downloaderContext{
+		zedcloudMetrics: zedcloud.NewAgentMetrics(),
+		cipherMetrics:   cipher.NewAgentMetrics(agentName),
+	}
 
 	// set up any state needed by handler functions
 	err = ctx.registerHandlers(ps)
@@ -179,19 +182,11 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 		case <-publishTimer.C:
 			start := time.Now()
-			// Transfer to a local copy in since metrics updates are
-			// done concurrently
-			cms := zedcloud.Append(types.MetricsMap{},
-				zedcloud.GetCloudMetrics(log))
-			err := metricsPub.Publish("global", cms)
+			err := ctx.zedcloudMetrics.Publish(log, metricsPub, "global")
 			if err != nil {
 				log.Errorln(err)
 			}
-			// Transfer to a local copy in since updates are
-			// done concurrently
-			cmm := cipher.Append(types.CipherMetricsMap{},
-				cipher.GetCipherMetrics(log))
-			err = cipherMetricsPub.Publish("global", cmm)
+			err = ctx.cipherMetrics.Publish(log, cipherMetricsPub, "global")
 			if err != nil {
 				log.Errorln(err)
 			}
