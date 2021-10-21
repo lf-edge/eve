@@ -481,6 +481,7 @@ $(CONFIG_IMG): $(CONF_FILES) | $(INSTALLER)
 
 $(PERSIST_IMG): | $(INSTALLER)
 	$(if $(findstring zfs,$(HV)),echo 'eve<3zfs' > $@)
+	$(if $(findstring lvm,$(HV)),echo 'eve<3lvm' > $@)
 	# 1M of zeroes should be enough to trigger filesystem wipe on first boot
 	dd if=/dev/zero bs=1048576 count=1 >> $@
 	$(QUIET): $@: Succeeded

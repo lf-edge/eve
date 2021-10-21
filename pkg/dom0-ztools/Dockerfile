@@ -1,7 +1,8 @@
-ARG EVE_BUILDER_IMAGE=lfedge/eve-alpine:81e6520f4f1554789eb1ac299168e72ac37d88e2
+ARG EVE_BUILDER_IMAGE=lfedge/eve-alpine:7.2.0
+
 # hadolint ignore=DL3006
 FROM ${EVE_BUILDER_IMAGE} as zfs
-ENV PKGS zfs zfs-udev ca-certificates util-linux
+ENV PKGS lvm2 zfs zfs-udev ca-certificates util-linux
 RUN eve-alpine-deploy.sh
 
 FROM scratch

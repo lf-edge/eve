@@ -7,6 +7,7 @@ PERSISTDIR=/persist
 CONFIGDIR=/config
 SMART_DETAILS_FILE=$PERSISTDIR/SMART_details.json
 SMART_DETAILS_PREVIOUS_FILE=$PERSISTDIR/SMART_details_previous.json
+LVM_LV_GROUP=vg_eve
 
 # the following is here just for compatibility reasons and it should go away soon
 ln -s "$CONFIGDIR" "/var/$CONFIGDIR"
@@ -27,6 +28,10 @@ INIT_FS=0
 P3_FS_TYPE_DEFAULT=ext4
 if grep -E 'zfs-(kvm|xen|acrn)' /hostfs/etc/eve-release; then
    P3_FS_TYPE_DEFAULT=zfs
+fi
+
+if grep -E 'lvm-(kvm|xen|acrn)' /hostfs/etc/eve-release; then
+   P3_FS_TYPE_DEFAULT=lvm
 fi
 
 # First lets see if we're running with the disk that hasn't been properly
@@ -89,23 +94,45 @@ if [ -n "$IMGA" ] && [ -z "$P3" ] && [ -z "$IMGB" ]; then
    fi
 fi
 
-# We support P3 partition either formatted as ext3/4 or as part of ZFS pool
-# Priorities are: ext3, ext4, zfs
+# setup LVM2 config files and backup folders on a /run tmpfs
+mkdir /run/lvm
+if [ -d /hostfs/etc/lvm ]; then
+    cp -r /hostfs/etc/lvm /run/lvm
+fi
+export LVM_SYSTEM_DIR=/run/lvm
+
+# We support P3 partition either formatted as ext3/4, as part of ZFS pool or as LVM2
+# logical volume group
+# Priorities are: ext3, ext4, zfs, lvm2
 if P3=$(findfs PARTLABEL=P3) && [ -n "$P3" ]; then
+
+    echo "We have found a $P3 partition. Probing FS type"
+
     # Loading zfs modules to see if we have any zpools attached to the system
     # We will unload them later (if they do unload it meands we didn't find zpools)
     modprobe zfs
 
     P3_FS_TYPE=$(blkid "$P3"| tr ' ' '\012' | awk -F= '/^TYPE/{print $2;}' | sed 's/"//g')
+    echo "P3_FS_TYPE='$P3_FS_TYPE'"
     echo "$(date -Ins -u) Using $P3 (formatted with $P3_FS_TYPE), for $PERSISTDIR"
 
-    # XXX FIXME: the following hack MUST go away when/if we decide to officially support ZFS
-    # for now we are using first block in the device to flip into zfs on demand
-    if [ "$(dd if="$P3" bs=8 count=1 2>/dev/null)" = "eve<3zfs" ]; then
-       # zero out the request (regardless of whether we can convert to zfs)
-       dd if=/dev/zero of="$P3" bs=8 count=1 conv=noerror,sync,notrunc
+    # XXX FIXME: the following hack MUST go away when/if we decide to officially support ZFS/LVM
+    # for now we are using first block in the device to flip into zfs or lvm on demand
 
-       P3_FS_TYPE=zfs
+    FS_MAGIC=$(dd if="$P3" bs=8 count=1 2>/dev/null)
+
+    if [ -n "$FS_MAGIC" ]; then
+        "FS_MAGIC=$FS_MAGIC found. Reinitilizing persist"
+        # zero out the request (regardless of whether we can convert to zfs)
+        dd if=/dev/zero of="$P3" bs=8 count=1 conv=noerror,sync,notrunc
+        case $FS_MAGIC in
+            'eve<3zfs') P3_FS_TYPE=zfs
+                ;;
+            'eve<3lvm') P3_FS_TYPE=lvm
+                ;;
+            *) echo "Unknown FS magic"
+                ;;
+        esac
     fi
 
     if [ "$P3_FS_TYPE" = zfs_member ]; then
@@ -116,6 +143,19 @@ if P3=$(findfs PARTLABEL=P3) && [ -n "$P3" ]; then
         else
             # set from zfs_member to zfs
             P3_FS_TYPE="zfs"
+        fi
+    elif [ "$P3_FS_TYPE" = LVM2_member ]; then
+        # scan phisical LVM volumes and activate them
+        # FIXME: do we need lvmetad so --cache --aay works?
+        # without lvmetad LVs must be manually activated
+        LVM_LV_GROUP=$(chroot /hostfs pvscan   | head -n 1 | awk -F" " '/VG/{print $4 ;}')
+        echo "LVM VG name $LVM_LV_GROUP"
+        if [ -n "$LVM_LV_GROUP" ]; then
+            P3_FS_TYPE="lvm"
+        else
+            echo "No LVM2 volume groups found. Creating"
+            INIT_FS=1
+            P3_FS_TYPE="$P3_FS_TYPE_DEFAULT"
         fi
     else
         #For systems with ext3 filesystem, try not to change to ext4, since it will brick
@@ -148,6 +188,22 @@ if P3=$(findfs PARTLABEL=P3) && [ -n "$P3" ]; then
                    fi
                    chroot /hostfs zpool import -f persist
                    ;;
+             lvm) if [ "$INIT_FS" = 1 ]; then
+                        chroot /hostfs pvcreate "$P3"
+                        chroot /hostfs pvscan
+                        chroot /hostfs vgcreate "$LVM_LV_GROUP" "$P3"
+                        chroot /hostfs lvcreate -l 50%VG -n persist "$LVM_LV_GROUP"
+                        chroot /hostfs lvcreate -l 100%FREE -n vm_images "$LVM_LV_GROUP"
+                        mkfs -t ext4 -v -F -F -O encrypt "/dev/$LVM_LV_GROUP/persist"
+                  else
+                        chroot /hostfs lvscan
+                        chroot /hostfs lvchange -a y "/dev/$LVM_LV_GROUP/persist"
+                        chroot /hostfs lvchange -a y "/dev/$LVM_LV_GROUP/vm_images"
+                        chroot /hostfs lvscan
+                  fi
+
+                  mount -t ext4 -o dirsync,noatime "/dev/$LVM_LV_GROUP/persist" "$PERSISTDIR"
+
     esac || echo "$(date -Ins -u) mount of $P3 as $P3_FS_TYPE failed"
 
     # deposit fs type into /run
