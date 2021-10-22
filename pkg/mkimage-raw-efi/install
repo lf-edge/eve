@@ -29,7 +29,7 @@ pause() {
 }
 
 bail() {
-   if mount_part INVENTORY "$(root_dev)" -t vfat -o iocharset=iso8859-1; then
+   if mount_part INVENTORY "$(root_dev)" /run/INVENTORY -t vfat -o iocharset=iso8859-1; then
       collect_black_box /run/INVENTORY 2>/dev/null
    fi
    echo "$*"
@@ -75,18 +75,19 @@ find_part() {
    done
 }
 
-# mount_part PART_NAME DISK [mount opts]
+# mount_part PART_NAME DISK TARGET [mount opts]
 mount_part() {
    local PART="$1"
    local DISK="$2"
+   local TARGET="$3"
    local ID
-   shift 2
+   shift 3
 
    ID="$(find_part "$PART" "$DISK")"
    [ -z "$ID" ] && return 1
 
-   mkdir -p "/run/$PART"
-   mount "$@" "/dev/$ID" "/run/$PART"
+   mkdir -p "$TARGET"
+   mount "$@" "/dev/$ID" "$TARGET"
 }
 
 # run command in a chroot with system mount points provisioned
@@ -105,7 +106,7 @@ collect_black_box() {
    dmesg > "$1/dmesg.txt"
    tar -C /proc -cjf "$1/procfs.tar.bz2" cpuinfo meminfo
    tar -C /sys -cjf "$1/sysfs.tar.bz2" .
-   tar -C /run/CONFIG -cjf "$1/config.tar.bz2" .
+   tar -C /config -cjf "$1/config.tar.bz2" .
    tar -C /run/P3 -cjf "$1/persist.tar.bz2" status newlog log config checkpoint certs agentdebug
    tpmmgr saveTpmInfo "$1"/tpminfo.txt
 }
@@ -288,20 +289,21 @@ if [ "$MULTIPLE_DISKS" = true ]; then
   prepare_mounts_and_zfs_pool "$POOL_CREATION_COMMAND_SUFFIX"
 else
   # now the disk is ready - mount partitions
-  mount_part P3 "$INSTALL_DEV" 2>/dev/null
+  mount_part P3 "$INSTALL_DEV" /run/P3 2>/dev/null
 fi
 
 
-if mount_part CONFIG "$INSTALL_DEV" -t vfat -o iocharset=iso8859-1; then
+if mount_part CONFIG "$INSTALL_DEV" /config -t vfat -o iocharset=iso8859-1; then
    # uuidgen | sed -e 's#^.*-##'
    SOFT_SERIAL=$(tr ' ' '\012' < /proc/cmdline | sed -n '/eve_soft_serial=/s#eve_soft_serial=##p')
    SOFT_SERIAL=${SOFT_SERIAL:-$(uuidgen)}
-   grep -q eve_blackbox /proc/cmdline || [ -f /run/CONFIG/soft_serial ] || echo "$SOFT_SERIAL" > /run/CONFIG/soft_serial
+   grep -q eve_blackbox /proc/cmdline || [ -f /config/soft_serial ] || echo "$SOFT_SERIAL" > /config/soft_serial
 fi
 
-# finally collect information about the node (including the blackbox if found)
-if mount_part INVENTORY "$(root_dev)" -t vfat -o iocharset=iso8859-1; then
-   REPORT="/run/INVENTORY/$(cat /run/CONFIG/soft_serial 2>/dev/null)"
+REPORT=
+# collect information about the node
+if mount_part INVENTORY "$(root_dev)" /run/INVENTORY -t vfat -o iocharset=iso8859-1; then
+   REPORT="/run/INVENTORY/$(cat /config/soft_serial 2>/dev/null)"
    mkdir -p "$REPORT"
 
    # first lets look at hardware model
@@ -310,7 +312,53 @@ if mount_part INVENTORY "$(root_dev)" -t vfat -o iocharset=iso8859-1; then
    # try to generate model json file
    ctr_run /opt/debug spec.sh > "$REPORT/controller-model.json"
    ctr_run /opt/debug spec.sh -v > "$REPORT/controller-model-verbose.json"
+fi
 
+# The creation of the 4 key pairs on the TPM below can take significant
+# time. Make sure a hardware watchdog will not fire.
+wdctl
+watchdog -F /dev/watchdog &
+
+TPM_DEVICE_PATH="/dev/tpmrm0"
+
+# The device cert generation needs the current time. Some hardware
+# doesn't have a battery-backed clock so we check the year makes some sense
+# In that case we defer until first boot of EVE to run ntp and generate
+# the device certificate
+YEAR=$(date +%Y)
+if [ "$YEAR" -gt 2020 ] && [ ! -f /config/device.cert.pem ]; then
+   if [ -c $TPM_DEVICE_PATH ] && ! [ -f /config/disable-tpm ]; then
+      echo "Generating TPM device certificate"
+      if ! /opt/zededa/bin/tpmmgr createDeviceCert; then
+         echo "Failed generating device certificate on TPM; fallback to soft"
+         touch /config/disable-tpm
+         sync
+      else
+         echo "Generated a TPM device certificate"
+         if ! /opt/zededa/bin/tpmmgr createCerts; then
+            echo "Failed to create additional certificates on TPM"
+         fi
+      fi
+   else
+      echo "No TPM; Generating soft device certificate"
+   fi
+   if [ ! -f /config/device.cert.pem ]; then
+      if ! /opt/zededa/bin/tpmmgr createSoftDeviceCert; then
+         echo "Failed to generate soft device certificate"
+      elif ! /opt/zededa/bin/tpmmgr createSoftCerts; then
+         echo "Failed to create additional certificates"
+      fi
+   fi
+   sync
+   sleep 5
+fi
+# Collect the device cert
+if [ -f /config/device.cert.pem ] && [ -n "$REPORT" ]; then
+   cat /config/device.cert.pem > "$REPORT/device.cert.pem"
+fi
+
+# finally check whether we are collecting a black box
+if [ -n "$REPORT" ]; then
    # then we can collect our black box
    grep -q eve_blackbox /proc/cmdline && collect_black_box "$REPORT" 2>/dev/null
 fi
@@ -320,7 +368,8 @@ grep -q eve_pause_after_install /proc/cmdline && pause "shutting the node down"
 
 # lets hope this is enough to flush the caches
 sync; sleep 5; sync
-for p in CONFIG INVENTORY P3; do
+umount /config 2>/dev/null
+for p in INVENTORY P3; do
    umount "/run/$p" 2>/dev/null
 done
 
