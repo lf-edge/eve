@@ -7,7 +7,7 @@ RUN eve-alpine-deploy.sh
 
 SHELL ["/bin/bash", "-eo", "pipefail", "-c"]
 
-ENV VERSION v2021.04
+ENV VERSION v2021.10
 ENV SOURCE_URL https://github.com/u-boot/u-boot/archive/${VERSION}.tar.gz
 ENV RAPBERRY_FIRMWARE_BLOBS_VERSION 1.20200601
 ENV RAPBERRY_FIRMWARE_BLOBS https://github.com/raspberrypi/firmware/raw/${RAPBERRY_FIRMWARE_BLOBS_VERSION}
