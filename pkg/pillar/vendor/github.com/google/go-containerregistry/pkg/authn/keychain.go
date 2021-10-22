@@ -15,12 +15,11 @@
 package authn
 
 import (
-	"encoding/json"
 	"os"
+	"sync"
 
 	"github.com/docker/cli/cli/config"
 	"github.com/docker/cli/cli/config/types"
-	"github.com/google/go-containerregistry/pkg/logs"
 	"github.com/google/go-containerregistry/pkg/name"
 )
 
@@ -44,7 +43,9 @@ type Keychain interface {
 
 // defaultKeychain implements Keychain with the semantics of the standard Docker
 // credential keychain.
-type defaultKeychain struct{}
+type defaultKeychain struct {
+	mu sync.Mutex
+}
 
 var (
 	// DefaultKeychain implements Keychain by interpreting the docker config file.
@@ -59,6 +60,8 @@ const (
 
 // Resolve implements Keychain.
 func (dk *defaultKeychain) Resolve(target Resource) (Authenticator, error) {
+	dk.mu.Lock()
+	defer dk.mu.Unlock()
 	cf, err := config.Load(os.Getenv("DOCKER_CONFIG"))
 	if err != nil {
 		return nil, err
@@ -75,12 +78,6 @@ func (dk *defaultKeychain) Resolve(target Resource) (Authenticator, error) {
 	cfg, err := cf.GetAuthConfig(key)
 	if err != nil {
 		return nil, err
-	}
-	if logs.Enabled(logs.Debug) {
-		b, err := json.Marshal(cfg)
-		if err == nil {
-			logs.Debug.Printf("defaultKeychain.Resolve(%q) = %s", key, string(b))
-		}
 	}
 
 	empty := types.AuthConfig{}

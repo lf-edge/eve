@@ -1,7 +1,6 @@
 package ociutil
 
 import (
-	"encoding/json"
 	"fmt"
 	"runtime"
 
@@ -22,12 +21,6 @@ func manifestsDescImg(image string, options []remote.Option) (name.Reference, *r
 		ref                              name.Reference
 	)
 	logrus.Infof("manifestsDescImg(%s)", image)
-
-	// FIXME tar archive size is 1024 bytes greater than the sizes of
-	// the underlying file. Currently, it has been added purely on the
-	// basis of analysis. These changes will go away once underlying
-	// "go-containerregistry" library will start supporting download progess
-	size = 1024
 
 	ref, err = name.ParseReference(image)
 	if err != nil {
@@ -61,41 +54,13 @@ func manifestsDescImg(image string, options []remote.Option) (name.Reference, *r
 		return ref, desc, img, manifestDirect, manifestResolved, size, fmt.Errorf("error getting resolved manifest bytes: %v", err)
 	}
 
-	// we now get the actual manifest, to get the layers and resolve the size
-	manifest, err := img.Manifest()
+	refToImage := make(map[name.Reference]v1.Image, 1)
+	refToImage[ref] = img
+	tarSize, err := v1tarball.CalculateSize(refToImage)
 	if err != nil {
-		return ref, desc, img, manifestDirect, manifestResolved, size, fmt.Errorf("error getting resolved manifest object: %v", err)
+		return ref, desc, img, manifestDirect, manifestResolved, size, fmt.Errorf("error getting size: %v", err)
 	}
-
-	// size starts at the default of 0
-	// add the size of the config
-	size += v1tarball.CalculateTarFileSize(manifest.Config.Size)
-
-	// next the layers and their sizes, along with filenames for the manifest
-	imgLayers, err := img.Layers()
-	if err != nil {
-		return ref, desc, img, manifestDirect, manifestResolved, size, fmt.Errorf("error getting layers of image: %v", err)
-	}
-	for _, layer := range imgLayers {
-		layerSize, err := layer.Size()
-		if err != nil {
-			return ref, desc, img, manifestDirect, manifestResolved, size, fmt.Errorf("error getting size of layers: %v", err)
-		}
-		size += v1tarball.CalculateTarFileSize(layerSize)
-	}
-
-	// get our manifestFile that will be added, convert to bytes, get size
-	manifestFile, err := v1tarball.ComputeManifest(map[name.Reference]v1.Image{
-		ref: img,
-	})
-	if err != nil {
-		return ref, desc, img, manifestDirect, manifestResolved, size, fmt.Errorf("error getting tar manifest file: %v", err)
-	}
-	manifestFileBytes, err := json.Marshal(manifestFile)
-	if err != nil {
-		return ref, desc, img, manifestDirect, manifestResolved, size, fmt.Errorf("error converting tar manifest file to json: %v", err)
-	}
-	size += v1tarball.CalculateTarFileSize(int64(len(manifestFileBytes)))
+	size = tarSize
 
 	return ref, desc, img, manifestDirect, manifestResolved, size, nil
 }

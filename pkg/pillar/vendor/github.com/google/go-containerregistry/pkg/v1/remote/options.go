@@ -16,6 +16,7 @@ package remote
 
 import (
 	"context"
+	"errors"
 	"net/http"
 
 	"github.com/google/go-containerregistry/pkg/authn"
@@ -28,12 +29,23 @@ import (
 type Option func(*options) error
 
 type options struct {
-	auth      authn.Authenticator
-	keychain  authn.Keychain
-	transport http.RoundTripper
-	platform  v1.Platform
-	context   context.Context
+	auth                           authn.Authenticator
+	keychain                       authn.Keychain
+	transport                      http.RoundTripper
+	platform                       v1.Platform
+	context                        context.Context
+	jobs                           int
+	userAgent                      string
+	allowNondistributableArtifacts bool
+	updates                        chan<- v1.Update
 }
+
+var defaultPlatform = v1.Platform{
+	Architecture: "amd64",
+	OS:           "linux",
+}
+
+const defaultJobs = 4
 
 func makeOptions(target authn.Resource, opts ...Option) (*options, error) {
 	o := &options{
@@ -41,6 +53,7 @@ func makeOptions(target authn.Resource, opts ...Option) (*options, error) {
 		transport: http.DefaultTransport,
 		platform:  defaultPlatform,
 		context:   context.Background(),
+		jobs:      defaultJobs,
 	}
 
 	for _, option := range opts {
@@ -54,9 +67,6 @@ func makeOptions(target authn.Resource, opts ...Option) (*options, error) {
 		if err != nil {
 			return nil, err
 		}
-		if auth == authn.Anonymous {
-			logs.Warn.Println("No matching credentials were found, falling back on anonymous")
-		}
 		o.auth = auth
 	}
 
@@ -69,6 +79,11 @@ func makeOptions(target authn.Resource, opts ...Option) (*options, error) {
 
 	// Wrap the transport in something that can retry network flakes.
 	o.transport = transport.NewRetry(o.transport)
+
+	// Wrap this last to prevent transport.New from double-wrapping.
+	if o.userAgent != "" {
+		o.transport = transport.NewUserAgent(o.transport, o.userAgent)
+	}
 
 	return o, nil
 }
@@ -128,6 +143,53 @@ func WithPlatform(p v1.Platform) Option {
 func WithContext(ctx context.Context) Option {
 	return func(o *options) error {
 		o.context = ctx
+		return nil
+	}
+}
+
+// WithJobs is a functional option for setting the parallelism of remote
+// operations performed by a given function. Note that not all remote
+// operations support parallelism.
+//
+// The default value is 4.
+func WithJobs(jobs int) Option {
+	return func(o *options) error {
+		if jobs <= 0 {
+			return errors.New("jobs must be greater than zero")
+		}
+		o.jobs = jobs
+		return nil
+	}
+}
+
+// WithUserAgent adds the given string to the User-Agent header for any HTTP
+// requests. This header will also include "go-containerregistry/${version}".
+//
+// If you want to completely overwrite the User-Agent header, use WithTransport.
+func WithUserAgent(ua string) Option {
+	return func(o *options) error {
+		o.userAgent = ua
+		return nil
+	}
+}
+
+// WithNondistributable includes non-distributable (foreign) layers
+// when writing images, see:
+// https://github.com/opencontainers/image-spec/blob/master/layer.md#non-distributable-layers
+//
+// The default behaviour is to skip these layers
+func WithNondistributable(o *options) error {
+	o.allowNondistributableArtifacts = true
+	return nil
+}
+
+// WithProgress takes a channel that will receive progress updates as bytes are written.
+//
+// Sending updates to an unbuffered channel will block writes, so callers
+// should provide a buffered channel to avoid potential deadlocks.
+func WithProgress(updates chan<- v1.Update) Option {
+	return func(o *options) error {
+		o.updates = updates
 		return nil
 	}
 }
