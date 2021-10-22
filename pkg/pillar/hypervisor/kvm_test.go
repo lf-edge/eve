@@ -42,8 +42,12 @@ func initTest(t *testing.T) {
 
 func TestCreateDomConfigOnlyCom1(t *testing.T) {
 	initTest(t)
+	id, err := uuid.NewV4()
+	if err != nil {
+		t.Errorf("NewV4 failed: %v", err)
+	}
 	config := types.DomainConfig{
-		UUIDandVersion: types.UUIDandVersion{UUID: uuid.NewV4(), Version: "1.0"},
+		UUIDandVersion: types.UUIDandVersion{UUID: id, Version: "1.0"},
 		VmConfig: types.VmConfig{
 			Kernel:     "/boot/kernel",
 			Ramdisk:    "/boot/ramdisk",
@@ -854,8 +858,12 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
 }
 func TestCreateDomConfig(t *testing.T) {
 	initTest(t)
+	id, err := uuid.NewV4()
+	if err != nil {
+		t.Errorf("NewV4 failed: %v", err)
+	}
 	config := types.DomainConfig{
-		UUIDandVersion: types.UUIDandVersion{UUID: uuid.NewV4(), Version: "1.0"},
+		UUIDandVersion: types.UUIDandVersion{UUID: id, Version: "1.0"},
 		VmConfig: types.VmConfig{
 			Kernel:     "/boot/kernel",
 			Ramdisk:    "/boot/ramdisk",
@@ -2117,9 +2125,12 @@ func TestCreateDom(t *testing.T) {
 		// skipping this test since we're clearly not in a presence of qemu
 		return
 	}
-
+	id, err := uuid.NewV4()
+	if err != nil {
+		t.Errorf("NewV4 failed: %v", err)
+	}
 	config := types.DomainConfig{
-		UUIDandVersion: types.UUIDandVersion{UUID: uuid.NewV4(), Version: "1.0"},
+		UUIDandVersion: types.UUIDandVersion{UUID: id, Version: "1.0"},
 		VmConfig: types.VmConfig{
 			Kernel:             "/boot/kernel",
 			Ramdisk:            "/boot/ramdisk",

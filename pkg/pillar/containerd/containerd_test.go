@@ -24,7 +24,7 @@ const (
 )
 
 var (
-	containerID     = uuid.NewV4()
+	containerID, _  = uuid.NewV4()
 	containerDir    = fmt.Sprintf("%s#0.container", containerID.String())
 	snapshotID      = containerDir
 	oldTempRootPath = path.Join(oldTempBasePath, containerDir)

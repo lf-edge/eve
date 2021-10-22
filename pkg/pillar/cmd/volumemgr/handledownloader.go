@@ -44,7 +44,12 @@ func AddOrRefcountDownloaderConfig(ctx *volumemgrContext, blob types.BlobStatus)
 	// where should the final downloaded file be?
 	// Pick a unique name since the sha has not yet been verified hence
 	// can potentially collide between different concurrent downloads
-	pendingFile := uuid.NewV4().String() + "." + blob.Sha256
+	id, err := uuid.NewV4()
+	if err != nil {
+		log.Errorf("NewV4 failed: %v", err)
+		return
+	}
+	pendingFile := id.String() + "." + blob.Sha256
 	locFilename := path.Join(types.SealedDirName, "downloader", "pending",
 		pendingFile)
 

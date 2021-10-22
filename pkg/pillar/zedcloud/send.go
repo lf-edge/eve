@@ -422,8 +422,14 @@ func SendOnIntf(ctx *ZedCloudContext, destURL string, intf string, reqlen int64,
 			req.Header.Add("Content-Type", "application/x-proto-binary")
 		}
 		// Add a per-request UUID to the HTTP Header
-		// for tracability in the controller
-		req.Header.Add("X-Request-Id", uuid.NewV4().String())
+		// for traceability in the controller
+		id, err := uuid.NewV4()
+		if err != nil {
+			log.Errorf("NewV4 failed: %v", err)
+			errorList = append(errorList, err)
+			continue
+		}
+		req.Header.Add("X-Request-Id", id.String())
 		if ctx.DevUUID == nilUUID {
 			// Also add Device Serial Number to the HTTP Header for initial tracability
 			devSerialNum := ctx.DevSerial
@@ -691,8 +697,12 @@ func SendLocal(ctx *ZedCloudContext, destURL string, intf string, ipSrc net.IP, 
 	}
 
 	// Add a per-request UUID to the HTTP Header
-	// for tracability in the receiver
-	req.Header.Add("X-Request-Id", uuid.NewV4().String())
+	// for traceability in the receiver
+	id, err := uuid.NewV4()
+	if err != nil {
+		return nil, nil, fmt.Errorf("NewRequest NewV4 failed %s", err)
+	}
+	req.Header.Add("X-Request-Id", id.String())
 
 	trace := &httptrace.ClientTrace{
 		GotConn: func(connInfo httptrace.GotConnInfo) {
