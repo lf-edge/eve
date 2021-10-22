@@ -48,7 +48,7 @@ require (
 	github.com/prometheus/common v0.17.0 // indirect
 	github.com/rackn/gohai v0.0.0-20190321191141-5053e7f1fa36
 	github.com/robertkrimen/otto v0.0.0-20180617131154-15f95af6e78d // indirect
-	github.com/satori/go.uuid v1.2.0
+	github.com/satori/go.uuid v1.2.1-0.20180404165556-75cca531ea76
 	github.com/shirou/gopsutil v0.0.0-20190323131628-2cbc9195c892
 	github.com/sirupsen/logrus v1.8.1
 	github.com/stretchr/testify v1.7.0

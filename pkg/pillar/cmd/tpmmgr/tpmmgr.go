@@ -349,8 +349,13 @@ func genCredentials() error {
 	//First try to read from TPM, if it was stored earlier
 	err := readCredentials()
 	if err != nil {
+		id, err := uuid.NewV4()
+		if err != nil {
+			log.Errorf("NewV4 failed: %v", err)
+			return err
+		}
 		//Write uuid to credentials file for faster access
-		err = ioutil.WriteFile(etpm.TpmCredentialsFileName, []byte(uuid.NewV4().String()), 0644)
+		err = ioutil.WriteFile(etpm.TpmCredentialsFileName, []byte(id.String()), 0644)
 		if err != nil {
 			log.Errorf("Writing to credentials file failed: %v", err)
 			return err

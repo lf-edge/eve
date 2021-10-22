@@ -468,7 +468,7 @@ github.com/robertkrimen/otto/file
 github.com/robertkrimen/otto/parser
 github.com/robertkrimen/otto/registry
 github.com/robertkrimen/otto/token
-# github.com/satori/go.uuid v1.2.0
+# github.com/satori/go.uuid v1.2.1-0.20180404165556-75cca531ea76
 ## explicit
 github.com/satori/go.uuid
 # github.com/shirou/gopsutil v0.0.0-20190323131628-2cbc9195c892

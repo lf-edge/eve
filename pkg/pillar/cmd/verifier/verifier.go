@@ -303,7 +303,11 @@ func handleCreate(ctx *verifierContext,
 	// We generate a temporary UUID to avoid conflicts
 	// where multiple different objects can have a different claimed sha256
 	// Of course, only one of those will pass the verification.
-	tmpID := uuid.NewV4()
+	tmpID, err := uuid.NewV4()
+	if err != nil {
+		log.Errorf("NewV4 failed: %v", err)
+		return
+	}
 	ok, size := markObjectAsVerifying(ctx, config, &status, tmpID)
 	if !ok {
 		log.Errorf("handleCreate: markObjectAsVerifying failed for %s", config.Name)
