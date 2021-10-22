@@ -22,22 +22,16 @@ import (
 	"io/ioutil"
 	"net/http"
 	"net/url"
-	"strconv"
 	"strings"
 
+	"github.com/google/go-containerregistry/internal/verify"
 	"github.com/google/go-containerregistry/pkg/logs"
 	"github.com/google/go-containerregistry/pkg/name"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/partial"
 	"github.com/google/go-containerregistry/pkg/v1/remote/transport"
 	"github.com/google/go-containerregistry/pkg/v1/types"
-	"github.com/google/go-containerregistry/pkg/v1/v1util"
 )
-
-var defaultPlatform = v1.Platform{
-	Architecture: "amd64",
-	OS:           "linux",
-}
 
 // ErrSchema1 indicates that we received a schema1 manifest from the registry.
 // This library doesn't have plans to support this legacy image format:
@@ -92,6 +86,9 @@ func Get(ref name.Reference, options ...Option) (*Descriptor, error) {
 
 // Head returns a v1.Descriptor for the given reference by issuing a HEAD
 // request.
+//
+// Note that the server response will not have a body, so any errors encountered
+// should be retried with Get to get more details.
 func Head(ref name.Reference, options ...Option) (*v1.Descriptor, error) {
 	acceptable := []types.MediaType{
 		// Just to look at them.
@@ -220,7 +217,7 @@ type fetcher struct {
 }
 
 func makeFetcher(ref name.Reference, o *options) (*fetcher, error) {
-	tr, err := transport.New(ref.Context().Registry, o.auth, o.transport, []string{ref.Scope(transport.PullScope)})
+	tr, err := transport.NewWithContext(o.context, ref.Context().Registry, o.auth, o.transport, []string{ref.Scope(transport.PullScope)})
 	if err != nil {
 		return nil, err
 	}
@@ -326,14 +323,22 @@ func (f *fetcher) headManifest(ref name.Reference, acceptable []types.MediaType)
 		return nil, err
 	}
 
-	mediaType := types.MediaType(resp.Header.Get("Content-Type"))
+	mth := resp.Header.Get("Content-Type")
+	if mth == "" {
+		return nil, fmt.Errorf("HEAD %s: response did not include Content-Type header", u.String())
+	}
+	mediaType := types.MediaType(mth)
 
-	size, err := strconv.ParseInt(resp.Header.Get("Content-Length"), 10, 64)
-	if err != nil {
-		return nil, err
+	size := resp.ContentLength
+	if size == -1 {
+		return nil, fmt.Errorf("GET %s: response did not include Content-Length header", u.String())
 	}
 
-	digest, err := v1.NewHash(resp.Header.Get("Docker-Content-Digest"))
+	dh := resp.Header.Get("Docker-Content-Digest")
+	if dh == "" {
+		return nil, fmt.Errorf("HEAD %s: response did not include Docker-Content-Digest header", u.String())
+	}
+	digest, err := v1.NewHash(dh)
 	if err != nil {
 		return nil, err
 	}
@@ -353,14 +358,14 @@ func (f *fetcher) headManifest(ref name.Reference, acceptable []types.MediaType)
 	}, nil
 }
 
-func (f *fetcher) fetchBlob(h v1.Hash) (io.ReadCloser, error) {
+func (f *fetcher) fetchBlob(ctx context.Context, size int64, h v1.Hash) (io.ReadCloser, error) {
 	u := f.url("blobs", h.String())
 	req, err := http.NewRequest(http.MethodGet, u.String(), nil)
 	if err != nil {
 		return nil, err
 	}
 
-	resp, err := f.Client.Do(req.WithContext(f.context))
+	resp, err := f.Client.Do(req.WithContext(ctx))
 	if err != nil {
 		return nil, err
 	}
@@ -370,7 +375,18 @@ func (f *fetcher) fetchBlob(h v1.Hash) (io.ReadCloser, error) {
 		return nil, err
 	}
 
-	return v1util.VerifyReadCloser(resp.Body, h)
+	// Do whatever we can.
+	// If we have an expected size and Content-Length doesn't match, return an error.
+	// If we don't have an expected size and we do have a Content-Length, use Content-Length.
+	if hsize := resp.ContentLength; hsize != -1 {
+		if size == verify.SizeUnknown {
+			size = hsize
+		} else if hsize != size {
+			return nil, fmt.Errorf("GET %s: Content-Length header %d does not match expected size %d", u.String(), hsize, size)
+		}
+	}
+
+	return verify.ReadCloser(resp.Body, size, h)
 }
 
 func (f *fetcher) headBlob(h v1.Hash) (*http.Response, error) {
@@ -391,4 +407,24 @@ func (f *fetcher) headBlob(h v1.Hash) (*http.Response, error) {
 	}
 
 	return resp, nil
+}
+
+func (f *fetcher) blobExists(h v1.Hash) (bool, error) {
+	u := f.url("blobs", h.String())
+	req, err := http.NewRequest(http.MethodHead, u.String(), nil)
+	if err != nil {
+		return false, err
+	}
+
+	resp, err := f.Client.Do(req.WithContext(f.context))
+	if err != nil {
+		return false, err
+	}
+	defer resp.Body.Close()
+
+	if err := transport.CheckError(resp, http.StatusOK, http.StatusNotFound); err != nil {
+		return false, err
+	}
+
+	return resp.StatusCode == http.StatusOK, nil
 }

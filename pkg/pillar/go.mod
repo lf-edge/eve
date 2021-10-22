@@ -16,16 +16,16 @@ require (
 	github.com/cshari-zededa/eve-tpm2-tools v0.0.4
 	github.com/digitalocean/go-libvirt v0.0.0-20190715144809-7b622097a793 // indirect
 	github.com/digitalocean/go-qemu v0.0.0-20181112162955-dd7bb9c771b8
-	github.com/docker/docker v20.10.3+incompatible
+	github.com/docker/docker v20.10.7+incompatible
 	github.com/docker/libtrust v0.0.0-20160708172513-aabc10ec26b7 // indirect
 	github.com/eriknordmark/ipinfo v0.0.0-20190220084921-7ee0839158f9
 	github.com/fsnotify/fsnotify v1.4.9
 	github.com/garyburd/redigo v1.6.2 // indirect
 	github.com/go-ole/go-ole v1.2.4 // indirect
 	github.com/gofrs/uuid v3.3.0+incompatible // indirect
-	github.com/golang/protobuf v1.5.0
-	github.com/google/go-cmp v0.5.5
-	github.com/google/go-containerregistry v0.1.4
+	github.com/golang/protobuf v1.5.2
+	github.com/google/go-cmp v0.5.6
+	github.com/google/go-containerregistry v0.6.0
 	github.com/google/go-tpm v0.3.0
 	github.com/google/gopacket v1.1.19
 	github.com/gorilla/handlers v1.5.1 // indirect
@@ -61,8 +61,7 @@ require (
 	golang.org/x/crypto v0.0.0-20210513164829-c07d793c2f9a
 	golang.org/x/net v0.0.0-20210805182204-aaa1db679c0d
 	golang.org/x/sys v0.0.0-20210809222454-d867a43fc93e
-	google.golang.org/genproto v0.0.0-20210224155714-063164c882e6 // indirect
-	google.golang.org/grpc v1.36.0
+	google.golang.org/grpc v1.38.0
 	gopkg.in/sourcemap.v1 v1.0.5 // indirect
 )
 
