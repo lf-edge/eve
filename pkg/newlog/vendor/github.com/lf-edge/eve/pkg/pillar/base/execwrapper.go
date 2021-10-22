@@ -7,6 +7,7 @@ package base
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -28,6 +29,7 @@ type Command struct {
 	agentName string
 	timeout   time.Duration
 	buffer    *bytes.Buffer
+	ctx       context.Context
 }
 
 // Output runs the command and returns its standard output.
@@ -108,8 +110,17 @@ func (c *Command) execCommand() ([]byte, error) {
 
 	waitTimer := time.NewTimer(c.timeout * time.Second)
 	defer waitTimer.Stop()
+
+	if c.ctx == nil {
+		c.ctx = context.Background()
+	}
+
 	for {
 		select {
+		case <-c.ctx.Done():
+			// context cancelled, kill the process
+			c.command.Process.Kill()
+			return nil, fmt.Errorf("execCommand(%v): context cancelled", c.command.Args)
 		case <-waitTimer.C:
 			// Timeout happened first, kill the process.
 			c.command.Process.Kill()
@@ -121,6 +132,12 @@ func (c *Command) execCommand() ([]byte, error) {
 		}
 		updateAgentTouchFile(c.log, c.agentName)
 	}
+}
+
+//WithContext set context for command
+func (c *Command) WithContext(ctx context.Context) *Command {
+	c.ctx = ctx
+	return c
 }
 
 //Exec returns Command object
