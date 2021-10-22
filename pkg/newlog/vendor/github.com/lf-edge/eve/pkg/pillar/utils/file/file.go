@@ -129,7 +129,7 @@ func ReadSavedCounter(log *base.LogObject, fileName string) (uint32, bool) {
 		return uint32(c), true
 	}
 	if log != nil {
-		log.Warnf("ReadSavedCounter(%s): %s", fileName, err)
+		log.Functionf("ReadSavedCounter(%s): %s", fileName, err)
 	}
 	return 0, false
 }

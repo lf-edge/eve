@@ -269,7 +269,7 @@ func maybeLogAllocated(log *base.LogObject) {
 	if lastLoggedAllocated == allocated {
 		return
 	}
-	log.Noticef("pubsub buffer allocation changed from %d to  %d",
+	log.Functionf("pubsub buffer allocation changed from %d to  %d",
 		lastLoggedAllocated, allocated)
 	lastLoggedAllocated = allocated
 }

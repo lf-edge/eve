@@ -205,8 +205,8 @@ type AppContainerStats struct {
 	Pids          uint32 // number of PIDs within the container
 	// CPU stats
 	Uptime         int64  // unix.nano, time since container starts
-	CPUTotal       uint64 // container CPU since starts in sec
-	SystemCPUTotal uint64 // total system, user, idle in sec
+	CPUTotal       uint64 // container CPU since starts in nanosec
+	SystemCPUTotal uint64 // total system, user, idle in nanosec
 	// Memory stats
 	UsedMem      uint32 // in MBytes
 	AllocatedMem uint32 // in MBytes
@@ -493,7 +493,7 @@ func (config DevicePortConfig) LogModify(logBase *base.LogObject, old interface{
 		oldConfig.LastError != config.LastError ||
 		oldConfig.State != config.State {
 
-		logObject.CloneAndAddField("ports-int64", len(config.Ports)).
+		logData := logObject.CloneAndAddField("ports-int64", len(config.Ports)).
 			AddField("last-failed", config.LastFailed).
 			AddField("last-succeeded", config.LastSucceeded).
 			AddField("last-error", config.LastError).
@@ -502,8 +502,18 @@ func (config DevicePortConfig) LogModify(logBase *base.LogObject, old interface{
 			AddField("old-last-failed", oldConfig.LastFailed).
 			AddField("old-last-succeeded", oldConfig.LastSucceeded).
 			AddField("old-last-error", oldConfig.LastError).
-			AddField("old-state", oldConfig.State.String()).
-			Noticef("DevicePortConfig modify")
+			AddField("old-state", oldConfig.State.String())
+		if len(oldConfig.Ports) == len(config.Ports) &&
+			config.LastFailed == oldConfig.LastFailed &&
+			config.LastError == oldConfig.LastError &&
+			oldConfig.State == config.State &&
+			config.LastSucceeded.After(oldConfig.LastFailed) &&
+			oldConfig.LastSucceeded.After(oldConfig.LastFailed) {
+			// if we have success again, reduce log level
+			logData.Function("DevicePortConfig port modify")
+		} else {
+			logData.Notice("DevicePortConfig port modify")
+		}
 	}
 	// XXX which fields to compare/log?
 	for i, p := range config.Ports {
@@ -516,14 +526,23 @@ func (config DevicePortConfig) LogModify(logBase *base.LogObject, old interface{
 			p.LastFailed != op.LastFailed ||
 			p.LastSucceeded != op.LastSucceeded ||
 			p.LastError != op.LastError {
-			logObject.CloneAndAddField("ifname", p.IfName).
+			logData := logObject.CloneAndAddField("ifname", p.IfName).
 				AddField("last-error", p.LastError).
 				AddField("last-succeeded", p.LastSucceeded).
 				AddField("last-failed", p.LastFailed).
 				AddField("old-last-error", op.LastError).
 				AddField("old-last-succeeded", op.LastSucceeded).
-				AddField("old-last-failed", op.LastFailed).
-				Noticef("DevicePortConfig port modify")
+				AddField("old-last-failed", op.LastFailed)
+			if p.HasError() == op.HasError() &&
+				p.LastFailed == op.LastFailed &&
+				p.LastError == op.LastError &&
+				p.LastSucceeded.After(op.LastFailed) &&
+				op.LastSucceeded.After(op.LastFailed) {
+				// if we have success again, reduce log level
+				logData.Function("DevicePortConfig port modify")
+			} else {
+				logData.Notice("DevicePortConfig port modify")
+			}
 		}
 	}
 }
@@ -1026,15 +1045,22 @@ func (status DeviceNetworkStatus) LogModify(logBase *base.LogObject, old interfa
 		oldStatus.CurrentIndex != status.CurrentIndex ||
 		len(oldStatus.Ports) != len(status.Ports) {
 
-		logObject.CloneAndAddField("testing-bool", status.Testing).
+		logData := logObject.CloneAndAddField("testing-bool", status.Testing).
 			AddField("ports-int64", len(status.Ports)).
 			AddField("state", status.State.String()).
 			AddField("current-index-int64", status.CurrentIndex).
 			AddField("old-testing-bool", oldStatus.Testing).
 			AddField("old-ports-int64", len(oldStatus.Ports)).
 			AddField("old-state", oldStatus.State.String()).
-			AddField("old-current-index-int64", oldStatus.CurrentIndex).
-			Noticef("DeviceNetworkStatus modify")
+			AddField("old-current-index-int64", oldStatus.CurrentIndex)
+
+		if oldStatus.State == status.State && oldStatus.CurrentIndex == status.CurrentIndex &&
+			len(oldStatus.Ports) == len(status.Ports) {
+			// if only testing state changed, reduce log level
+			logData.Function("DeviceNetworkStatus modify")
+		} else {
+			logData.Notice("DeviceNetworkStatus modify")
+		}
 	}
 	// XXX which fields to compare/log?
 	for i, p := range status.Ports {
@@ -1047,14 +1073,23 @@ func (status DeviceNetworkStatus) LogModify(logBase *base.LogObject, old interfa
 			p.LastFailed != op.LastFailed ||
 			p.LastSucceeded != op.LastSucceeded ||
 			p.LastError != op.LastError {
-			logObject.CloneAndAddField("ifname", p.IfName).
+			logData := logObject.CloneAndAddField("ifname", p.IfName).
 				AddField("last-error", p.LastError).
 				AddField("last-succeeded", p.LastSucceeded).
 				AddField("last-failed", p.LastFailed).
 				AddField("old-last-error", op.LastError).
 				AddField("old-last-succeeded", op.LastSucceeded).
-				AddField("old-last-failed", op.LastFailed).
-				Noticef("DeviceNetworkStatus port modify")
+				AddField("old-last-failed", op.LastFailed)
+			if p.HasError() == op.HasError() &&
+				p.LastFailed == op.LastFailed &&
+				p.LastError == op.LastError &&
+				p.LastSucceeded.After(op.LastFailed) &&
+				op.LastSucceeded.After(op.LastFailed) {
+				// if we have success again, reduce log level
+				logData.Function("DeviceNetworkStatus port modify")
+			} else {
+				logData.Notice("DeviceNetworkStatus port modify")
+			}
 		}
 	}
 }

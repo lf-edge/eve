@@ -32,4 +32,5 @@ type UrlcloudMetrics struct {
 	RecvMsgCount   int64
 	RecvByteCount  int64 // Based on content-length which could be off
 	TotalTimeSpent int64
+	SessionResume  int64
 }
