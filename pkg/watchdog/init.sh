@@ -1,6 +1,7 @@
 #!/bin/sh
 
 USE_HW_WATCHDOG=1
+DEV=/dev/watchdog
 DEFAULT_WATCHDOG_CHANGE_TIME=300
 WATCHDOG_CHANGE_TIME=$(</proc/cmdline grep -o '\bchange=[^ ]*' | cut -d = -f 2)
 
@@ -22,7 +23,7 @@ reload_watchdog() {
         while kill -0 "$wp"; do
             log "Waiting for watchdog to exit"
             if [ $USE_HW_WATCHDOG = 1 ]; then
-                wdctl
+                wdctl "$DEV"
             fi
             sleep 1
         done
@@ -63,10 +64,21 @@ if [ -z "${WATCHDOG_CHANGE_TIME}" ]; then
     WATCHDOG_CHANGE_TIME=$DEFAULT_WATCHDOG_CHANGE_TIME
 fi
 
-if [ -c /dev/watchdog ]; then
+# Prefer higher numbered devices
+DEV=
+if [ -c /dev/watchdog1 ]; then
+    DEV=/dev/watchdog1
+elif [ -c /dev/watchdog0 ]; then
+    DEV=/dev/watchdog0
+elif [ -c /dev/watchdog ]; then
+    DEV=/dev/watchdog
+fi
+
+if [ -n "$DEV" ]; then
     if [ $USE_HW_WATCHDOG = 0 ]; then
         log "Disabling use of /dev/watchdog"
-        wdctl /dev/watchdog
+        wdctl "$DEV"
+        DEV=
     fi
 else
     log "Platform has no /dev/watchdog"
@@ -78,8 +90,8 @@ adjust_parent_oom_score
 
 # Create the watchdog(8) config files we will use
 # XXX should we enable realtime in the kernel?
-if [ $USE_HW_WATCHDOG = 1 ]; then
-   echo 'watchdog-device = /dev/watchdog' >> /etc/watchdog.conf.seed
+if [ -n "$DEV" ]; then
+   echo "watchdog-device = $DEV" >> /etc/watchdog.conf.seed
 fi
 
 # Create configuration end-points
