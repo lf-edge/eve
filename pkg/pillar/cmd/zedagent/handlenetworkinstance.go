@@ -444,6 +444,11 @@ func handleAppFlowMonitorImpl(ctxArg interface{}, key string,
 	case ctx.FlowlogQueue <- pflows:
 	default:
 		log.Errorf("Flowlog queue is full, dropping flowlog entry: %+v", pflows.Scope)
+		ctx.flowLogMetrics.Lock()
+		ctx.flowLogMetrics.Messages.Drops++
+		ctx.flowLogMetrics.Flows.Drops += uint64(len(pflows.Flows))
+		ctx.flowLogMetrics.DNSReqs.Drops += uint64(len(pflows.DnsReqs))
+		ctx.flowLogMetrics.Unlock()
 	}
 }
 
@@ -545,11 +550,26 @@ func flowlogTask(ctx *zedagentContext, flowlogQueue <-chan *flowlog.FlowMessage)
 		err := publishFlowMessage(msg, iteration)
 		if err == nil {
 			iteration++
+			ctx.flowLogMetrics.Lock()
+			ctx.flowLogMetrics.Messages.Success++
+			ctx.flowLogMetrics.Flows.Success += uint64(len(msg.Flows))
+			ctx.flowLogMetrics.DNSReqs.Success += uint64(len(msg.DnsReqs))
+			ctx.flowLogMetrics.Unlock()
 		} else {
 			log.Error(err)
+			ctx.flowLogMetrics.Lock()
+			ctx.flowLogMetrics.Messages.FailedAttempts++
+			ctx.flowLogMetrics.Flows.FailedAttempts += uint64(len(msg.Flows))
+			ctx.flowLogMetrics.DNSReqs.FailedAttempts += uint64(len(msg.DnsReqs))
+			ctx.flowLogMetrics.Unlock()
 			if (100*len(flowlogQueue))/cap(flowlogQueue) > 90 {
 				// More than 90% of the queue is used, start dropping instead of retrying.
 				log.Warnf("flowlogTask: dropped flow message: %+v", msg.Scope)
+				ctx.flowLogMetrics.Lock()
+				ctx.flowLogMetrics.Messages.Drops++
+				ctx.flowLogMetrics.Flows.Drops += uint64(len(msg.Flows))
+				ctx.flowLogMetrics.DNSReqs.Drops += uint64(len(msg.DnsReqs))
+				ctx.flowLogMetrics.Unlock()
 			} else {
 				retry = true
 			}

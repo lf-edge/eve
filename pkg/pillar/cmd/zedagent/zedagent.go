@@ -148,6 +148,7 @@ type zedagentContext struct {
 	globalConfig            types.ConfigItemValueMap
 	specMap                 types.ConfigItemSpecMap
 	globalStatus            types.GlobalStatus
+	flowLogMetrics          types.FlowlogMetrics
 	appContainerStatsTime   time.Time // last time the App Container stats uploaded
 	// The MaintenanceMode can come from GlobalConfig and from the config
 	// API. Those are merged into maintenanceMode
