@@ -58,7 +58,11 @@ func updateWlanConfig(ctx *DeviceNetworkContext, oldCfg *types.DevicePortConfig,
 }
 
 func hasWifiPortConfig(ctx *DeviceNetworkContext) bool {
-	for _, portCfg := range ctx.DevicePortConfig.Ports {
+	dpc := ctx.DevicePortConfig
+	if ctx.Pending.Inprogress {
+		dpc = &ctx.Pending.PendDPC
+	}
+	for _, portCfg := range dpc.Ports {
 		if portCfg.WirelessCfg.WType == types.WirelessTypeWifi {
 			return true
 		}
