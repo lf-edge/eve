@@ -21,7 +21,7 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   syntax='proto3',
   serialized_options=b'\n\026org.lfedge.eve.metricsZ%github.com/lf-edge/eve/api/go/metrics',
   create_key=_descriptor._internal_create_key,
-  serialized_pb=b'\n\x15metrics/metrics.proto\x12\x16org.lfedge.eve.metrics\x1a\x1fgoogle/protobuf/timestamp.proto\"b\n\x0cmemoryMetric\x12\x0f\n\x07usedMem\x18\x02 \x01(\r\x12\x10\n\x08\x61vailMem\x18\x03 \x01(\r\x12\x16\n\x0eusedPercentage\x18\x04 \x01(\x01\x12\x17\n\x0f\x61vailPercentage\x18\x05 \x01(\x01\"6\n\x0f\x41ppMemoryMetric\x12\x13\n\x0b\x61llocatedMB\x18\x01 \x01(\r\x12\x0e\n\x06usedMB\x18\x02 \x01(\r\"m\n\x12\x44\x65viceMemoryMetric\x12\x10\n\x08memoryMB\x18\x01 \x01(\r\x12\x18\n\x10\x61llocated_appsMB\x18\x02 \x01(\r\x12\x17\n\x0f\x61llocated_eveMB\x18\x03 \x01(\r\x12\x12\n\nused_eveMB\x18\x04 \x01(\r\"\xaa\x02\n\rnetworkMetric\x12\r\n\x05iName\x18\x01 \x01(\t\x12\r\n\x05\x61lias\x18\x14 \x01(\t\x12\x0f\n\x07txBytes\x18\x02 \x01(\x04\x12\x0f\n\x07rxBytes\x18\x03 \x01(\x04\x12\x0f\n\x07txDrops\x18\x04 \x01(\x04\x12\x0f\n\x07rxDrops\x18\x05 \x01(\x04\x12\x0e\n\x06txPkts\x18\x08 \x01(\x04\x12\x0e\n\x06rxPkts\x18\t \x01(\x04\x12\x10\n\x08txErrors\x18\n \x01(\x04\x12\x10\n\x08rxErrors\x18\x0b \x01(\x04\x12\x12\n\ntxAclDrops\x18\x0c \x01(\x04\x12\x12\n\nrxAclDrops\x18\r \x01(\x04\x12\x1b\n\x13txAclRateLimitDrops\x18\x0e \x01(\x04\x12\x1b\n\x13rxAclRateLimitDrops\x18\x0f \x01(\x04\x12\x11\n\tlocalName\x18\x10 \x01(\t\"\xb2\x01\n\x0e\x43\x65llularMetric\x12\x14\n\x0clogicallabel\x18\x01 \x01(\t\x12G\n\x0fsignal_strength\x18\x02 \x01(\x0b\x32..org.lfedge.eve.metrics.CellularSignalStrength\x12\x41\n\x0cpacket_stats\x18\x03 \x01(\x0b\x32+.org.lfedge.eve.metrics.CellularPacketStats\"O\n\x16\x43\x65llularSignalStrength\x12\x0c\n\x04rssi\x18\x01 \x01(\x05\x12\x0c\n\x04rsrq\x18\x02 \x01(\x05\x12\x0c\n\x04rsrp\x18\x03 \x01(\x05\x12\x0b\n\x03snr\x18\x04 \x01(\x05\"y\n\x13\x43\x65llularPacketStats\x12\x30\n\x02rx\x18\x01 \x01(\x0b\x32$.org.lfedge.eve.metrics.NetworkStats\x12\x30\n\x02tx\x18\x02 \x01(\x0b\x32$.org.lfedge.eve.metrics.NetworkStats\"\xfc\x01\n\x0ezedcloudMetric\x12\x0e\n\x06ifName\x18\x01 \x01(\t\x12\x10\n\x08\x66\x61ilures\x18\x02 \x01(\x04\x12\x0f\n\x07success\x18\x03 \x01(\x04\x12/\n\x0blastFailure\x18\x04 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12/\n\x0blastSuccess\x18\x05 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12:\n\nurlMetrics\x18\x06 \x03(\x0b\x32&.org.lfedge.eve.metrics.urlcloudMetric\x12\x19\n\x11\x61uthVerifyFailure\x18\x07 \x01(\x04\"\xd7\x01\n\x0eurlcloudMetric\x12\x0b\n\x03url\x18\x01 \x01(\t\x12\x13\n\x0btryMsgCount\x18\x02 \x01(\x03\x12\x14\n\x0ctryByteCount\x18\x03 \x01(\x03\x12\x14\n\x0csentMsgCount\x18\x04 \x01(\x03\x12\x15\n\rsentByteCount\x18\x05 \x01(\x03\x12\x14\n\x0crecvMsgCount\x18\x06 \x01(\x03\x12\x15\n\rrecvByteCount\x18\x07 \x01(\x03\x12\x18\n\x10total_time_spent\x18\x08 \x01(\x03\x12\x19\n\x11sess_resume_count\x18\t \x01(\x03\"\xe5\x01\n\x0c\x43ipherMetric\x12\x12\n\nagent_name\x18\x01 \x01(\t\x12\x15\n\rfailure_count\x18\x02 \x01(\x04\x12\x15\n\rsuccess_count\x18\x03 \x01(\x04\x12\x30\n\x0clast_failure\x18\x04 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x30\n\x0clast_success\x18\x05 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12/\n\x02tc\x18\x06 \x03(\x0b\x32#.org.lfedge.eve.metrics.TypeCounter\"U\n\x0bTypeCounter\x12\x37\n\nerror_code\x18\x01 \x01(\x0e\x32#.org.lfedge.eve.metrics.CipherError\x12\r\n\x05\x63ount\x18\x02 \x01(\x04\"p\n\x0c\x61ppCpuMetric\x12*\n\x06upTime\x18\x04 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\r\n\x05total\x18\x05 \x01(\x04\x12\x13\n\x0bsystemTotal\x18\x06 \x01(\x04\x12\x10\n\x08total_ns\x18\x07 \x01(\x04\"\xd1\x07\n\x0c\x64\x65viceMetric\x12\x34\n\x06memory\x18\x02 \x01(\x0b\x32$.org.lfedge.eve.metrics.memoryMetric\x12\x36\n\x07network\x18\x03 \x03(\x0b\x32%.org.lfedge.eve.metrics.networkMetric\x12\x38\n\x08zedcloud\x18\x04 \x03(\x0b\x32&.org.lfedge.eve.metrics.zedcloudMetric\x12\x30\n\x04\x64isk\x18\x06 \x03(\x0b\x32\".org.lfedge.eve.metrics.diskMetric\x12\x37\n\tcpuMetric\x18\x07 \x01(\x0b\x32$.org.lfedge.eve.metrics.appCpuMetric\x12\x37\n\x0bmetricItems\x18\x08 \x03(\x0b\x32\".org.lfedge.eve.metrics.MetricItem\x12 \n\x18runtimeStorageOverheadMB\x18\t \x01(\x04\x12\x1b\n\x13\x61ppRunTimeStorageMB\x18\n \x01(\x04\x12\x44\n\x16systemServicesMemoryMB\x18\x0b \x01(\x0b\x32$.org.lfedge.eve.metrics.memoryMetric\x12.\n\x03log\x18\x0c \x01(\x0b\x32!.org.lfedge.eve.metrics.logMetric\x12\x34\n\x06\x63ipher\x18\r \x03(\x0b\x32$.org.lfedge.eve.metrics.CipherMetric\x12.\n\x03\x61\x63l\x18\x0e \x01(\x0b\x32!.org.lfedge.eve.metrics.AclMetric\x12\x34\n\x06newlog\x18\x0f \x01(\x0b\x32$.org.lfedge.eve.metrics.newlogMetric\x12\x33\n\x06zedbox\x18\x10 \x01(\x0b\x32#.org.lfedge.eve.metrics.zedboxStats\x12@\n\x0c\x64\x65viceMemory\x18\x11 \x01(\x0b\x32*.org.lfedge.eve.metrics.DeviceMemoryMetric\x12\x38\n\x14last_received_config\x18\x12 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x39\n\x15last_processed_config\x18\x13 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x38\n\x08\x63\x65llular\x18\x14 \x03(\x0b\x32&.org.lfedge.eve.metrics.CellularMetric\"%\n\tAclMetric\x12\x18\n\x10total_rule_count\x18\x01 \x01(\x04\"\xe4\x02\n\x12\x61ppContainerMetric\x12\x18\n\x10\x61ppContainerName\x18\x01 \x01(\t\x12\x0e\n\x06status\x18\x02 \x01(\t\x12\x0c\n\x04PIDs\x18\x03 \x01(\r\x12\x31\n\x03\x63pu\x18\x04 \x01(\x0b\x32$.org.lfedge.eve.metrics.appCpuMetric\x12\x34\n\x06memory\x18\x05 \x01(\x0b\x32$.org.lfedge.eve.metrics.memoryMetric\x12\x36\n\x07network\x18\x06 \x01(\x0b\x32%.org.lfedge.eve.metrics.networkMetric\x12\x30\n\x04\x64isk\x18\x07 \x01(\x0b\x32\".org.lfedge.eve.metrics.diskMetric\x12\x43\n\x12\x61ppContainerMemory\x18\x08 \x01(\x0b\x32\'.org.lfedge.eve.metrics.AppMemoryMetric\"\xd2\x01\n\nMetricItem\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\x34\n\x04type\x18\x02 \x01(\x0e\x32&.org.lfedge.eve.metrics.MetricItemType\x12\x13\n\tboolValue\x18\x03 \x01(\x08H\x00\x12\x15\n\x0buint32Value\x18\x04 \x01(\rH\x00\x12\x15\n\x0buint64Value\x18\x05 \x01(\x04H\x00\x12\x14\n\nfloatValue\x18\x06 \x01(\x02H\x00\x12\x15\n\x0bstringValue\x18\x07 \x01(\tH\x00\x42\x11\n\x0fmetricItemValue\"\xa6\x01\n\ndiskMetric\x12\x0c\n\x04\x64isk\x18\x01 \x01(\t\x12\x11\n\tmountPath\x18\x02 \x01(\t\x12\x11\n\treadBytes\x18\x03 \x01(\x04\x12\x12\n\nwriteBytes\x18\x04 \x01(\x04\x12\x11\n\treadCount\x18\x05 \x01(\x04\x12\x12\n\nwriteCount\x18\x06 \x01(\x04\x12\r\n\x05total\x18\x07 \x01(\x04\x12\x0c\n\x04used\x18\x08 \x01(\x04\x12\x0c\n\x04\x66ree\x18\t \x01(\x04\"a\n\rappDiskMetric\x12\x0c\n\x04\x64isk\x18\x01 \x01(\t\x12\x13\n\x0bprovisioned\x18\x02 \x01(\x04\x12\x0c\n\x04used\x18\x03 \x01(\x04\x12\x10\n\x08\x64iskType\x18\x04 \x01(\t\x12\r\n\x05\x64irty\x18\x05 \x01(\x08\"\x90\x03\n\tappMetric\x12\r\n\x05\x41ppID\x18\x01 \x01(\t\x12\x12\n\nappVersion\x18\n \x01(\t\x12\x0f\n\x07\x41ppName\x18\x02 \x01(\t\x12\x31\n\x03\x63pu\x18\x03 \x01(\x0b\x32$.org.lfedge.eve.metrics.appCpuMetric\x12\x34\n\x06memory\x18\x04 \x01(\x0b\x32$.org.lfedge.eve.metrics.memoryMetric\x12\x36\n\x07network\x18\x05 \x03(\x0b\x32%.org.lfedge.eve.metrics.networkMetric\x12\x33\n\x04\x64isk\x18\x06 \x03(\x0b\x32%.org.lfedge.eve.metrics.appDiskMetric\x12=\n\tcontainer\x18\x07 \x03(\x0b\x32*.org.lfedge.eve.metrics.appContainerMetric\x12:\n\tappMemory\x18\x08 \x01(\x0b\x32\'.org.lfedge.eve.metrics.AppMemoryMetric\"\xba\x05\n\tlogMetric\x12\x1b\n\x13numDeviceEventsSent\x18\x01 \x01(\x04\x12\x1c\n\x14numDeviceBundlesSent\x18\x02 \x01(\x04\x12\x18\n\x10numAppEventsSent\x18\x03 \x01(\x04\x12\x19\n\x11numAppBundlesSent\x18\x04 \x01(\x04\x12\x17\n\x0fnum4xxResponses\x18\x05 \x01(\x04\x12<\n\x18lastDeviceBundleSendTime\x18\x06 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x39\n\x15lastAppBundleSendTime\x18\x07 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x1f\n\x17isLogProcessingDeferred\x18\x08 \x01(\x08\x12\x18\n\x10numTimesDeferred\x18\t \x01(\x04\x12\x34\n\x10lastLogDeferTime\x18\n \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x1b\n\x13totalDeviceLogInput\x18\r \x01(\x04\x12\x18\n\x10totalAppLogInput\x18\x0e \x01(\x04\x12\x1c\n\x14numDeviceEventErrors\x18\x0f \x01(\x04\x12\x19\n\x11numAppEventErrors\x18\x10 \x01(\x04\x12%\n\x1dnumDeviceBundleProtoBytesSent\x18\x11 \x01(\x04\x12\"\n\x1anumAppBundleProtoBytesSent\x18\x12 \x01(\x04\x12J\n\rinput_sources\x18\x13 \x03(\x0b\x32\x33.org.lfedge.eve.metrics.logMetric.InputSourcesEntry\x1a\x33\n\x11InputSourcesEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\x04:\x02\x38\x01\")\n\x07PktStat\x12\x0f\n\x07Packets\x18\x01 \x01(\x04\x12\r\n\x05\x42ytes\x18\x02 \x01(\x04\"\xda\x01\n\x0bZMetricConn\x12/\n\x06InPkts\x18\x01 \x01(\x0b\x32\x1f.org.lfedge.eve.metrics.PktStat\x12\x30\n\x07OutPkts\x18\x02 \x01(\x0b\x32\x1f.org.lfedge.eve.metrics.PktStat\x12\x30\n\x07\x45rrPkts\x18\x03 \x01(\x0b\x32\x1f.org.lfedge.eve.metrics.PktStat\x12\x36\n\rCarierErrPkts\x18\x04 \x01(\x0b\x32\x1f.org.lfedge.eve.metrics.PktStat\"\xe6\x01\n\nZMetricVpn\x12\x35\n\x08\x43onnStat\x18\x01 \x01(\x0b\x32#.org.lfedge.eve.metrics.ZMetricConn\x12\x34\n\x07IkeStat\x18\x02 \x01(\x0b\x32#.org.lfedge.eve.metrics.ZMetricConn\x12\x35\n\x08NatTStat\x18\x03 \x01(\x0b\x32#.org.lfedge.eve.metrics.ZMetricConn\x12\x34\n\x07\x45spStat\x18\x04 \x01(\x0b\x32#.org.lfedge.eve.metrics.ZMetricConn\"\r\n\x0bZMetricNone\":\n\x0fZMetricFlowLink\x12\x10\n\x06subNet\x18\x01 \x01(\tH\x00\x12\r\n\x05spiId\x18\x03 \x01(\tB\x06\n\x04Link\"\x9a\x01\n\x13ZMetricFlowEndPoint\x12\x10\n\x06ipAddr\x18\x01 \x01(\tH\x00\x12\x35\n\x04link\x18\x05 \x03(\x0b\x32\'.org.lfedge.eve.metrics.ZMetricFlowLink\x12.\n\x05stats\x18\n \x01(\x0b\x32\x1f.org.lfedge.eve.metrics.PktStatB\n\n\x08\x45ndpoint\"\xc6\x01\n\x0bZMetricFlow\x12\n\n\x02id\x18\x01 \x01(\t\x12\x0c\n\x04name\x18\x02 \x01(\t\x12\x0c\n\x04type\x18\x03 \x01(\r\x12\x0f\n\x07\x65stTime\x18\x05 \x01(\x04\x12>\n\tlEndPoint\x18\n \x01(\x0b\x32+.org.lfedge.eve.metrics.ZMetricFlowEndPoint\x12>\n\trEndPoint\x18\x0b \x03(\x0b\x32+.org.lfedge.eve.metrics.ZMetricFlowEndPoint\"W\n\x0cNetworkStats\x12\x14\n\x0ctotalPackets\x18\x01 \x01(\x04\x12\x0e\n\x06\x65rrors\x18\x02 \x01(\x04\x12\r\n\x05\x64rops\x18\x03 \x01(\x04\x12\x12\n\ntotalBytes\x18\x04 \x01(\x04\"y\n\x13ZMetricNetworkStats\x12\x30\n\x02rx\x18\x01 \x01(\x0b\x32$.org.lfedge.eve.metrics.NetworkStats\x12\x30\n\x02tx\x18\x02 \x01(\x0b\x32$.org.lfedge.eve.metrics.NetworkStats\"\xaf\x03\n\x0fZProbeNIMetrics\x12\x13\n\x0b\x63urrentIntf\x18\x01 \x01(\t\x12\x16\n\x0eremoteEndpoint\x18\x02 \x01(\t\x12\x10\n\x08pingIntv\x18\x03 \x01(\r\x12\x16\n\x0eremotePingIntv\x18\x04 \x01(\r\x12\x11\n\tuplinkCnt\x18\x05 \x01(\r\x12L\n\nintfMetric\x18\n \x03(\x0b\x32\x38.org.lfedge.eve.metrics.ZProbeNIMetrics.ZProbeIntfMetric\x1a\xe3\x01\n\x10ZProbeIntfMetric\x12\x10\n\x08intfName\x18\x0b \x01(\t\x12\x16\n\x0egatewayNexhtop\x18\x0c \x01(\t\x12\x11\n\tgatewayUP\x18\r \x01(\x08\x12\x14\n\x0cremoteHostUP\x18\x0e \x01(\x08\x12\x16\n\x0enexthopUpCount\x18\x0f \x01(\r\x12\x18\n\x10nexthopDownCount\x18\x10 \x01(\r\x12\x15\n\rremoteUpCount\x18\x11 \x01(\r\x12\x17\n\x0fremoteDownCount\x18\x12 \x01(\r\x12\x1a\n\x12remoteProbeLatency\x18\x13 \x01(\r\"\xa0\x04\n\x16ZMetricNetworkInstance\x12\x11\n\tnetworkID\x18\x02 \x01(\t\x12\x16\n\x0enetworkVersion\x18\x03 \x01(\t\x12\x10\n\x08instType\x18\x05 \x01(\r\x12\x13\n\x0b\x64isplayname\x18\x06 \x01(\t\x12\x11\n\tactivated\x18\x07 \x01(\x08\x12\x36\n\x07network\x18\n \x03(\x0b\x32%.org.lfedge.eve.metrics.networkMetric\x12<\n\x0bprobeMetric\x18\x0c \x01(\x0b\x32\'.org.lfedge.eve.metrics.ZProbeNIMetrics\x12\x32\n\x04vpnm\x18\x14 \x01(\x0b\x32\".org.lfedge.eve.metrics.ZMetricVpnH\x00\x12\x34\n\x05nonem\x18\x16 \x01(\x0b\x32#.org.lfedge.eve.metrics.ZMetricNoneH\x00\x12\x36\n\tflowStats\x18\x1e \x03(\x0b\x32#.org.lfedge.eve.metrics.ZMetricFlow\x12\x41\n\x0cnetworkStats\x18( \x01(\x0b\x32+.org.lfedge.eve.metrics.ZMetricNetworkStats\x12\x33\n\tvlan_info\x18) \x01(\x0b\x32 .org.lfedge.eve.metrics.vlanInfoB\x11\n\x0fInstanceContent\"\xba\x01\n\rZMetricVolume\x12\x0c\n\x04uuid\x18\x01 \x01(\t\x12\x13\n\x0b\x64isplayName\x18\x02 \x01(\t\x12\x11\n\treadBytes\x18\x03 \x01(\x04\x12\x12\n\nwriteBytes\x18\x04 \x01(\x04\x12\x11\n\treadCount\x18\x05 \x01(\x04\x12\x12\n\nwriteCount\x18\x06 \x01(\x04\x12\x12\n\ntotalBytes\x18\x07 \x01(\x04\x12\x11\n\tusedBytes\x18\x08 \x01(\x04\x12\x11\n\tfreeBytes\x18\t \x01(\x04\"\xb2\x02\n\x0eZMetricProcess\x12\x0b\n\x03pid\x18\x01 \x01(\x05\x12\x0c\n\x04name\x18\x02 \x01(\t\x12\x14\n\x0cuser_process\x18\x03 \x01(\x08\x12\x0f\n\x07watched\x18\x04 \x01(\x08\x12\x0f\n\x07num_fds\x18\x05 \x01(\x05\x12\x13\n\x0bnum_threads\x18\x06 \x01(\x05\x12\x11\n\tuser_time\x18\x07 \x01(\x01\x12\x13\n\x0bsystem_time\x18\x08 \x01(\x01\x12\x13\n\x0b\x63pu_percent\x18\t \x01(\x01\x12/\n\x0b\x63reate_time\x18\n \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x10\n\x08vm_bytes\x18\x0b \x01(\x04\x12\x11\n\trss_bytes\x18\x0c \x01(\x04\x12\x16\n\x0ememory_percent\x18\r \x01(\x02\x12\r\n\x05stack\x18\x0e \x01(\t\"\xe3\x02\n\nZMetricMsg\x12\r\n\x05\x64\x65vID\x18\x01 \x01(\t\x12/\n\x0b\x61tTimeStamp\x18\x03 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x32\n\x02\x64m\x18\x04 \x01(\x0b\x32$.org.lfedge.eve.metrics.deviceMetricH\x00\x12-\n\x02\x61m\x18\x05 \x03(\x0b\x32!.org.lfedge.eve.metrics.appMetric\x12:\n\x02nm\x18\x07 \x03(\x0b\x32..org.lfedge.eve.metrics.ZMetricNetworkInstance\x12\x31\n\x02vm\x18\x08 \x03(\x0b\x32%.org.lfedge.eve.metrics.ZMetricVolume\x12\x32\n\x02pr\x18\t \x03(\x0b\x32&.org.lfedge.eve.metrics.ZMetricProcessB\x0f\n\rMetricContent\"\x9c\x06\n\x0cnewlogMetric\x12\x14\n\x0c\x66\x61iledToSend\x18\x01 \x01(\x08\x12\x35\n\x11\x66\x61ilSentStartTime\x18\x02 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x18\n\x10totalBytesUpload\x18\x03 \x01(\x04\x12\x17\n\x0fnum4xxResponses\x18\x04 \x01(\r\x12\x19\n\x11\x63urrentUploadIntv\x18\x05 \x01(\r\x12\x16\n\x0elogfileTimeout\x18\x06 \x01(\r\x12\x17\n\x0fmaxGzipFileSize\x18\x07 \x01(\r\x12\x17\n\x0f\x61vgGzipFileSize\x18\x08 \x01(\r\x12\x15\n\rmimUploadMsec\x18\t \x01(\r\x12\x15\n\rmaxUploadMsec\x18\n \x01(\r\x12\x15\n\ravgUploadMsec\x18\x0b \x01(\r\x12\x16\n\x0elastUploadMsec\x18\x0c \x01(\r\x12\x19\n\x11\x63urrentCPULoadPct\x18\r \x01(\x02\x12\x19\n\x11\x61verageCPULoadPct\x18\x0e \x01(\x02\x12\x1b\n\x13\x63urrentProcessDelay\x18\x0f \x01(\r\x12\x1b\n\x13\x61verageProcessDelay\x18\x10 \x01(\r\x12=\n\rdeviceMetrics\x18\x11 \x01(\x0b\x32&.org.lfedge.eve.metrics.logfileMetrics\x12:\n\nappMetrics\x18\x12 \x01(\x0b\x32&.org.lfedge.eve.metrics.logfileMetrics\x12X\n\x13top10_input_sources\x18\x13 \x03(\x0b\x32;.org.lfedge.eve.metrics.newlogMetric.Top10InputSourcesEntry\x12\x18\n\x10gzipFilesRemoved\x18\x14 \x01(\r\x12\x16\n\x0etooManyRequest\x18\x15 \x01(\r\x12\x19\n\x11skipUploadAppFile\x18\x16 \x01(\r\x1a\x38\n\x16Top10InputSourcesEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\r:\x02\x38\x01\"\xb6\x02\n\x0elogfileMetrics\x12\x17\n\x0fnumGzipFileSent\x18\x01 \x01(\x04\x12\x19\n\x11numGzipBytesWrite\x18\x02 \x01(\x04\x12\x15\n\rnumBytesWrite\x18\x03 \x01(\x04\x12\x18\n\x10numGzipFileInDir\x18\x04 \x01(\r\x12\x15\n\rnumInputEvent\x18\x05 \x01(\x04\x12\x18\n\x10numGzipFileRetry\x18\x06 \x01(\x04\x12\x1c\n\x14numGzipFileKeptLocal\x18\x07 \x01(\r\x12\x36\n\x12recentGzipFileTime\x18\x08 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x38\n\x14lastGzipFileSendTime\x18\t \x01(\x0b\x32\x1a.google.protobuf.Timestamp\"$\n\x0bzedboxStats\x12\x15\n\rnumGoRoutines\x18\x01 \x01(\r\"\x9d\x01\n\x08vlanInfo\x12\x17\n\x0fnum_trunk_ports\x18\x01 \x01(\r\x12\x45\n\x0bvlan_counts\x18\x02 \x03(\x0b\x32\x30.org.lfedge.eve.metrics.vlanInfo.VlanCountsEntry\x1a\x31\n\x0fVlanCountsEntry\x12\x0b\n\x03key\x18\x01 \x01(\r\x12\r\n\x05value\x18\x02 \x01(\r:\x02\x38\x01*2\n\x0cZmetricTypes\x12\t\n\x05ZmNop\x10\x00\x12\x0c\n\x08ZmDevice\x10\x01\x12\t\n\x05ZmApp\x10\x03*\x85\x02\n\x0b\x43ipherError\x12\x18\n\x14\x43IPHER_ERROR_INVALID\x10\x00\x12\x1a\n\x16\x43IPHER_ERROR_NOT_READY\x10\x01\x12\x1f\n\x1b\x43IPHER_ERROR_DECRYPT_FAILED\x10\x02\x12!\n\x1d\x43IPHER_ERROR_UNMARSHAL_FAILED\x10\x03\x12#\n\x1f\x43IPHER_ERROR_CLEARTEXT_FALLBACK\x10\x04\x12!\n\x1d\x43IPHER_ERROR_MISSING_FALLBACK\x10\x05\x12\x1a\n\x16\x43IPHER_ERROR_NO_CIPHER\x10\x06\x12\x18\n\x14\x43IPHER_ERROR_NO_DATA\x10\x07*f\n\x0eMetricItemType\x12\x13\n\x0fMetricItemOther\x10\x00\x12\x13\n\x0fMetricItemGauge\x10\x01\x12\x15\n\x11MetricItemCounter\x10\x02\x12\x13\n\x0fMetricItemState\x10\x03\x42?\n\x16org.lfedge.eve.metricsZ%github.com/lf-edge/eve/api/go/metricsb\x06proto3'
+  serialized_pb=b'\n\x15metrics/metrics.proto\x12\x16org.lfedge.eve.metrics\x1a\x1fgoogle/protobuf/timestamp.proto\"b\n\x0cmemoryMetric\x12\x0f\n\x07usedMem\x18\x02 \x01(\r\x12\x10\n\x08\x61vailMem\x18\x03 \x01(\r\x12\x16\n\x0eusedPercentage\x18\x04 \x01(\x01\x12\x17\n\x0f\x61vailPercentage\x18\x05 \x01(\x01\"6\n\x0f\x41ppMemoryMetric\x12\x13\n\x0b\x61llocatedMB\x18\x01 \x01(\r\x12\x0e\n\x06usedMB\x18\x02 \x01(\r\"m\n\x12\x44\x65viceMemoryMetric\x12\x10\n\x08memoryMB\x18\x01 \x01(\r\x12\x18\n\x10\x61llocated_appsMB\x18\x02 \x01(\r\x12\x17\n\x0f\x61llocated_eveMB\x18\x03 \x01(\r\x12\x12\n\nused_eveMB\x18\x04 \x01(\r\"\xaa\x02\n\rnetworkMetric\x12\r\n\x05iName\x18\x01 \x01(\t\x12\r\n\x05\x61lias\x18\x14 \x01(\t\x12\x0f\n\x07txBytes\x18\x02 \x01(\x04\x12\x0f\n\x07rxBytes\x18\x03 \x01(\x04\x12\x0f\n\x07txDrops\x18\x04 \x01(\x04\x12\x0f\n\x07rxDrops\x18\x05 \x01(\x04\x12\x0e\n\x06txPkts\x18\x08 \x01(\x04\x12\x0e\n\x06rxPkts\x18\t \x01(\x04\x12\x10\n\x08txErrors\x18\n \x01(\x04\x12\x10\n\x08rxErrors\x18\x0b \x01(\x04\x12\x12\n\ntxAclDrops\x18\x0c \x01(\x04\x12\x12\n\nrxAclDrops\x18\r \x01(\x04\x12\x1b\n\x13txAclRateLimitDrops\x18\x0e \x01(\x04\x12\x1b\n\x13rxAclRateLimitDrops\x18\x0f \x01(\x04\x12\x11\n\tlocalName\x18\x10 \x01(\t\"\xb2\x01\n\x0e\x43\x65llularMetric\x12\x14\n\x0clogicallabel\x18\x01 \x01(\t\x12G\n\x0fsignal_strength\x18\x02 \x01(\x0b\x32..org.lfedge.eve.metrics.CellularSignalStrength\x12\x41\n\x0cpacket_stats\x18\x03 \x01(\x0b\x32+.org.lfedge.eve.metrics.CellularPacketStats\"O\n\x16\x43\x65llularSignalStrength\x12\x0c\n\x04rssi\x18\x01 \x01(\x05\x12\x0c\n\x04rsrq\x18\x02 \x01(\x05\x12\x0c\n\x04rsrp\x18\x03 \x01(\x05\x12\x0b\n\x03snr\x18\x04 \x01(\x05\"y\n\x13\x43\x65llularPacketStats\x12\x30\n\x02rx\x18\x01 \x01(\x0b\x32$.org.lfedge.eve.metrics.NetworkStats\x12\x30\n\x02tx\x18\x02 \x01(\x0b\x32$.org.lfedge.eve.metrics.NetworkStats\"\xfc\x01\n\x0ezedcloudMetric\x12\x0e\n\x06ifName\x18\x01 \x01(\t\x12\x10\n\x08\x66\x61ilures\x18\x02 \x01(\x04\x12\x0f\n\x07success\x18\x03 \x01(\x04\x12/\n\x0blastFailure\x18\x04 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12/\n\x0blastSuccess\x18\x05 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12:\n\nurlMetrics\x18\x06 \x03(\x0b\x32&.org.lfedge.eve.metrics.urlcloudMetric\x12\x19\n\x11\x61uthVerifyFailure\x18\x07 \x01(\x04\"\xd7\x01\n\x0eurlcloudMetric\x12\x0b\n\x03url\x18\x01 \x01(\t\x12\x13\n\x0btryMsgCount\x18\x02 \x01(\x03\x12\x14\n\x0ctryByteCount\x18\x03 \x01(\x03\x12\x14\n\x0csentMsgCount\x18\x04 \x01(\x03\x12\x15\n\rsentByteCount\x18\x05 \x01(\x03\x12\x14\n\x0crecvMsgCount\x18\x06 \x01(\x03\x12\x15\n\rrecvByteCount\x18\x07 \x01(\x03\x12\x18\n\x10total_time_spent\x18\x08 \x01(\x03\x12\x19\n\x11sess_resume_count\x18\t \x01(\x03\"\xe5\x01\n\x0c\x43ipherMetric\x12\x12\n\nagent_name\x18\x01 \x01(\t\x12\x15\n\rfailure_count\x18\x02 \x01(\x04\x12\x15\n\rsuccess_count\x18\x03 \x01(\x04\x12\x30\n\x0clast_failure\x18\x04 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x30\n\x0clast_success\x18\x05 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12/\n\x02tc\x18\x06 \x03(\x0b\x32#.org.lfedge.eve.metrics.TypeCounter\"U\n\x0bTypeCounter\x12\x37\n\nerror_code\x18\x01 \x01(\x0e\x32#.org.lfedge.eve.metrics.CipherError\x12\r\n\x05\x63ount\x18\x02 \x01(\x04\"p\n\x0c\x61ppCpuMetric\x12*\n\x06upTime\x18\x04 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\r\n\x05total\x18\x05 \x01(\x04\x12\x13\n\x0bsystemTotal\x18\x06 \x01(\x04\x12\x10\n\x08total_ns\x18\x07 \x01(\x04\"\x89\x08\n\x0c\x64\x65viceMetric\x12\x34\n\x06memory\x18\x02 \x01(\x0b\x32$.org.lfedge.eve.metrics.memoryMetric\x12\x36\n\x07network\x18\x03 \x03(\x0b\x32%.org.lfedge.eve.metrics.networkMetric\x12\x38\n\x08zedcloud\x18\x04 \x03(\x0b\x32&.org.lfedge.eve.metrics.zedcloudMetric\x12\x30\n\x04\x64isk\x18\x06 \x03(\x0b\x32\".org.lfedge.eve.metrics.diskMetric\x12\x37\n\tcpuMetric\x18\x07 \x01(\x0b\x32$.org.lfedge.eve.metrics.appCpuMetric\x12\x37\n\x0bmetricItems\x18\x08 \x03(\x0b\x32\".org.lfedge.eve.metrics.MetricItem\x12 \n\x18runtimeStorageOverheadMB\x18\t \x01(\x04\x12\x1b\n\x13\x61ppRunTimeStorageMB\x18\n \x01(\x04\x12\x44\n\x16systemServicesMemoryMB\x18\x0b \x01(\x0b\x32$.org.lfedge.eve.metrics.memoryMetric\x12.\n\x03log\x18\x0c \x01(\x0b\x32!.org.lfedge.eve.metrics.logMetric\x12\x34\n\x06\x63ipher\x18\r \x03(\x0b\x32$.org.lfedge.eve.metrics.CipherMetric\x12.\n\x03\x61\x63l\x18\x0e \x01(\x0b\x32!.org.lfedge.eve.metrics.AclMetric\x12\x34\n\x06newlog\x18\x0f \x01(\x0b\x32$.org.lfedge.eve.metrics.newlogMetric\x12\x33\n\x06zedbox\x18\x10 \x01(\x0b\x32#.org.lfedge.eve.metrics.zedboxStats\x12@\n\x0c\x64\x65viceMemory\x18\x11 \x01(\x0b\x32*.org.lfedge.eve.metrics.DeviceMemoryMetric\x12\x38\n\x14last_received_config\x18\x12 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x39\n\x15last_processed_config\x18\x13 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x38\n\x08\x63\x65llular\x18\x14 \x03(\x0b\x32&.org.lfedge.eve.metrics.CellularMetric\x12\x36\n\x07\x66lowlog\x18\x15 \x01(\x0b\x32%.org.lfedge.eve.metrics.FlowlogMetric\"%\n\tAclMetric\x12\x18\n\x10total_rule_count\x18\x01 \x01(\x04\"\xe4\x02\n\x12\x61ppContainerMetric\x12\x18\n\x10\x61ppContainerName\x18\x01 \x01(\t\x12\x0e\n\x06status\x18\x02 \x01(\t\x12\x0c\n\x04PIDs\x18\x03 \x01(\r\x12\x31\n\x03\x63pu\x18\x04 \x01(\x0b\x32$.org.lfedge.eve.metrics.appCpuMetric\x12\x34\n\x06memory\x18\x05 \x01(\x0b\x32$.org.lfedge.eve.metrics.memoryMetric\x12\x36\n\x07network\x18\x06 \x01(\x0b\x32%.org.lfedge.eve.metrics.networkMetric\x12\x30\n\x04\x64isk\x18\x07 \x01(\x0b\x32\".org.lfedge.eve.metrics.diskMetric\x12\x43\n\x12\x61ppContainerMemory\x18\x08 \x01(\x0b\x32\'.org.lfedge.eve.metrics.AppMemoryMetric\"\xd2\x01\n\nMetricItem\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\x34\n\x04type\x18\x02 \x01(\x0e\x32&.org.lfedge.eve.metrics.MetricItemType\x12\x13\n\tboolValue\x18\x03 \x01(\x08H\x00\x12\x15\n\x0buint32Value\x18\x04 \x01(\rH\x00\x12\x15\n\x0buint64Value\x18\x05 \x01(\x04H\x00\x12\x14\n\nfloatValue\x18\x06 \x01(\x02H\x00\x12\x15\n\x0bstringValue\x18\x07 \x01(\tH\x00\x42\x11\n\x0fmetricItemValue\"\xa6\x01\n\ndiskMetric\x12\x0c\n\x04\x64isk\x18\x01 \x01(\t\x12\x11\n\tmountPath\x18\x02 \x01(\t\x12\x11\n\treadBytes\x18\x03 \x01(\x04\x12\x12\n\nwriteBytes\x18\x04 \x01(\x04\x12\x11\n\treadCount\x18\x05 \x01(\x04\x12\x12\n\nwriteCount\x18\x06 \x01(\x04\x12\r\n\x05total\x18\x07 \x01(\x04\x12\x0c\n\x04used\x18\x08 \x01(\x04\x12\x0c\n\x04\x66ree\x18\t \x01(\x04\"a\n\rappDiskMetric\x12\x0c\n\x04\x64isk\x18\x01 \x01(\t\x12\x13\n\x0bprovisioned\x18\x02 \x01(\x04\x12\x0c\n\x04used\x18\x03 \x01(\x04\x12\x10\n\x08\x64iskType\x18\x04 \x01(\t\x12\r\n\x05\x64irty\x18\x05 \x01(\x08\"\x90\x03\n\tappMetric\x12\r\n\x05\x41ppID\x18\x01 \x01(\t\x12\x12\n\nappVersion\x18\n \x01(\t\x12\x0f\n\x07\x41ppName\x18\x02 \x01(\t\x12\x31\n\x03\x63pu\x18\x03 \x01(\x0b\x32$.org.lfedge.eve.metrics.appCpuMetric\x12\x34\n\x06memory\x18\x04 \x01(\x0b\x32$.org.lfedge.eve.metrics.memoryMetric\x12\x36\n\x07network\x18\x05 \x03(\x0b\x32%.org.lfedge.eve.metrics.networkMetric\x12\x33\n\x04\x64isk\x18\x06 \x03(\x0b\x32%.org.lfedge.eve.metrics.appDiskMetric\x12=\n\tcontainer\x18\x07 \x03(\x0b\x32*.org.lfedge.eve.metrics.appContainerMetric\x12:\n\tappMemory\x18\x08 \x01(\x0b\x32\'.org.lfedge.eve.metrics.AppMemoryMetric\"\xba\x05\n\tlogMetric\x12\x1b\n\x13numDeviceEventsSent\x18\x01 \x01(\x04\x12\x1c\n\x14numDeviceBundlesSent\x18\x02 \x01(\x04\x12\x18\n\x10numAppEventsSent\x18\x03 \x01(\x04\x12\x19\n\x11numAppBundlesSent\x18\x04 \x01(\x04\x12\x17\n\x0fnum4xxResponses\x18\x05 \x01(\x04\x12<\n\x18lastDeviceBundleSendTime\x18\x06 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x39\n\x15lastAppBundleSendTime\x18\x07 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x1f\n\x17isLogProcessingDeferred\x18\x08 \x01(\x08\x12\x18\n\x10numTimesDeferred\x18\t \x01(\x04\x12\x34\n\x10lastLogDeferTime\x18\n \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x1b\n\x13totalDeviceLogInput\x18\r \x01(\x04\x12\x18\n\x10totalAppLogInput\x18\x0e \x01(\x04\x12\x1c\n\x14numDeviceEventErrors\x18\x0f \x01(\x04\x12\x19\n\x11numAppEventErrors\x18\x10 \x01(\x04\x12%\n\x1dnumDeviceBundleProtoBytesSent\x18\x11 \x01(\x04\x12\"\n\x1anumAppBundleProtoBytesSent\x18\x12 \x01(\x04\x12J\n\rinput_sources\x18\x13 \x03(\x0b\x32\x33.org.lfedge.eve.metrics.logMetric.InputSourcesEntry\x1a\x33\n\x11InputSourcesEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\x04:\x02\x38\x01\")\n\x07PktStat\x12\x0f\n\x07Packets\x18\x01 \x01(\x04\x12\r\n\x05\x42ytes\x18\x02 \x01(\x04\"\xda\x01\n\x0bZMetricConn\x12/\n\x06InPkts\x18\x01 \x01(\x0b\x32\x1f.org.lfedge.eve.metrics.PktStat\x12\x30\n\x07OutPkts\x18\x02 \x01(\x0b\x32\x1f.org.lfedge.eve.metrics.PktStat\x12\x30\n\x07\x45rrPkts\x18\x03 \x01(\x0b\x32\x1f.org.lfedge.eve.metrics.PktStat\x12\x36\n\rCarierErrPkts\x18\x04 \x01(\x0b\x32\x1f.org.lfedge.eve.metrics.PktStat\"\xe6\x01\n\nZMetricVpn\x12\x35\n\x08\x43onnStat\x18\x01 \x01(\x0b\x32#.org.lfedge.eve.metrics.ZMetricConn\x12\x34\n\x07IkeStat\x18\x02 \x01(\x0b\x32#.org.lfedge.eve.metrics.ZMetricConn\x12\x35\n\x08NatTStat\x18\x03 \x01(\x0b\x32#.org.lfedge.eve.metrics.ZMetricConn\x12\x34\n\x07\x45spStat\x18\x04 \x01(\x0b\x32#.org.lfedge.eve.metrics.ZMetricConn\"\r\n\x0bZMetricNone\":\n\x0fZMetricFlowLink\x12\x10\n\x06subNet\x18\x01 \x01(\tH\x00\x12\r\n\x05spiId\x18\x03 \x01(\tB\x06\n\x04Link\"\x9a\x01\n\x13ZMetricFlowEndPoint\x12\x10\n\x06ipAddr\x18\x01 \x01(\tH\x00\x12\x35\n\x04link\x18\x05 \x03(\x0b\x32\'.org.lfedge.eve.metrics.ZMetricFlowLink\x12.\n\x05stats\x18\n \x01(\x0b\x32\x1f.org.lfedge.eve.metrics.PktStatB\n\n\x08\x45ndpoint\"\xc6\x01\n\x0bZMetricFlow\x12\n\n\x02id\x18\x01 \x01(\t\x12\x0c\n\x04name\x18\x02 \x01(\t\x12\x0c\n\x04type\x18\x03 \x01(\r\x12\x0f\n\x07\x65stTime\x18\x05 \x01(\x04\x12>\n\tlEndPoint\x18\n \x01(\x0b\x32+.org.lfedge.eve.metrics.ZMetricFlowEndPoint\x12>\n\trEndPoint\x18\x0b \x03(\x0b\x32+.org.lfedge.eve.metrics.ZMetricFlowEndPoint\"W\n\x0cNetworkStats\x12\x14\n\x0ctotalPackets\x18\x01 \x01(\x04\x12\x0e\n\x06\x65rrors\x18\x02 \x01(\x04\x12\r\n\x05\x64rops\x18\x03 \x01(\x04\x12\x12\n\ntotalBytes\x18\x04 \x01(\x04\"y\n\x13ZMetricNetworkStats\x12\x30\n\x02rx\x18\x01 \x01(\x0b\x32$.org.lfedge.eve.metrics.NetworkStats\x12\x30\n\x02tx\x18\x02 \x01(\x0b\x32$.org.lfedge.eve.metrics.NetworkStats\"\xaf\x03\n\x0fZProbeNIMetrics\x12\x13\n\x0b\x63urrentIntf\x18\x01 \x01(\t\x12\x16\n\x0eremoteEndpoint\x18\x02 \x01(\t\x12\x10\n\x08pingIntv\x18\x03 \x01(\r\x12\x16\n\x0eremotePingIntv\x18\x04 \x01(\r\x12\x11\n\tuplinkCnt\x18\x05 \x01(\r\x12L\n\nintfMetric\x18\n \x03(\x0b\x32\x38.org.lfedge.eve.metrics.ZProbeNIMetrics.ZProbeIntfMetric\x1a\xe3\x01\n\x10ZProbeIntfMetric\x12\x10\n\x08intfName\x18\x0b \x01(\t\x12\x16\n\x0egatewayNexhtop\x18\x0c \x01(\t\x12\x11\n\tgatewayUP\x18\r \x01(\x08\x12\x14\n\x0cremoteHostUP\x18\x0e \x01(\x08\x12\x16\n\x0enexthopUpCount\x18\x0f \x01(\r\x12\x18\n\x10nexthopDownCount\x18\x10 \x01(\r\x12\x15\n\rremoteUpCount\x18\x11 \x01(\r\x12\x17\n\x0fremoteDownCount\x18\x12 \x01(\r\x12\x1a\n\x12remoteProbeLatency\x18\x13 \x01(\r\"\xa0\x04\n\x16ZMetricNetworkInstance\x12\x11\n\tnetworkID\x18\x02 \x01(\t\x12\x16\n\x0enetworkVersion\x18\x03 \x01(\t\x12\x10\n\x08instType\x18\x05 \x01(\r\x12\x13\n\x0b\x64isplayname\x18\x06 \x01(\t\x12\x11\n\tactivated\x18\x07 \x01(\x08\x12\x36\n\x07network\x18\n \x03(\x0b\x32%.org.lfedge.eve.metrics.networkMetric\x12<\n\x0bprobeMetric\x18\x0c \x01(\x0b\x32\'.org.lfedge.eve.metrics.ZProbeNIMetrics\x12\x32\n\x04vpnm\x18\x14 \x01(\x0b\x32\".org.lfedge.eve.metrics.ZMetricVpnH\x00\x12\x34\n\x05nonem\x18\x16 \x01(\x0b\x32#.org.lfedge.eve.metrics.ZMetricNoneH\x00\x12\x36\n\tflowStats\x18\x1e \x03(\x0b\x32#.org.lfedge.eve.metrics.ZMetricFlow\x12\x41\n\x0cnetworkStats\x18( \x01(\x0b\x32+.org.lfedge.eve.metrics.ZMetricNetworkStats\x12\x33\n\tvlan_info\x18) \x01(\x0b\x32 .org.lfedge.eve.metrics.vlanInfoB\x11\n\x0fInstanceContent\"\xba\x01\n\rZMetricVolume\x12\x0c\n\x04uuid\x18\x01 \x01(\t\x12\x13\n\x0b\x64isplayName\x18\x02 \x01(\t\x12\x11\n\treadBytes\x18\x03 \x01(\x04\x12\x12\n\nwriteBytes\x18\x04 \x01(\x04\x12\x11\n\treadCount\x18\x05 \x01(\x04\x12\x12\n\nwriteCount\x18\x06 \x01(\x04\x12\x12\n\ntotalBytes\x18\x07 \x01(\x04\x12\x11\n\tusedBytes\x18\x08 \x01(\x04\x12\x11\n\tfreeBytes\x18\t \x01(\x04\"\xb2\x02\n\x0eZMetricProcess\x12\x0b\n\x03pid\x18\x01 \x01(\x05\x12\x0c\n\x04name\x18\x02 \x01(\t\x12\x14\n\x0cuser_process\x18\x03 \x01(\x08\x12\x0f\n\x07watched\x18\x04 \x01(\x08\x12\x0f\n\x07num_fds\x18\x05 \x01(\x05\x12\x13\n\x0bnum_threads\x18\x06 \x01(\x05\x12\x11\n\tuser_time\x18\x07 \x01(\x01\x12\x13\n\x0bsystem_time\x18\x08 \x01(\x01\x12\x13\n\x0b\x63pu_percent\x18\t \x01(\x01\x12/\n\x0b\x63reate_time\x18\n \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x10\n\x08vm_bytes\x18\x0b \x01(\x04\x12\x11\n\trss_bytes\x18\x0c \x01(\x04\x12\x16\n\x0ememory_percent\x18\r \x01(\x02\x12\r\n\x05stack\x18\x0e \x01(\t\"\xe3\x02\n\nZMetricMsg\x12\r\n\x05\x64\x65vID\x18\x01 \x01(\t\x12/\n\x0b\x61tTimeStamp\x18\x03 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x32\n\x02\x64m\x18\x04 \x01(\x0b\x32$.org.lfedge.eve.metrics.deviceMetricH\x00\x12-\n\x02\x61m\x18\x05 \x03(\x0b\x32!.org.lfedge.eve.metrics.appMetric\x12:\n\x02nm\x18\x07 \x03(\x0b\x32..org.lfedge.eve.metrics.ZMetricNetworkInstance\x12\x31\n\x02vm\x18\x08 \x03(\x0b\x32%.org.lfedge.eve.metrics.ZMetricVolume\x12\x32\n\x02pr\x18\t \x03(\x0b\x32&.org.lfedge.eve.metrics.ZMetricProcessB\x0f\n\rMetricContent\"\x9c\x06\n\x0cnewlogMetric\x12\x14\n\x0c\x66\x61iledToSend\x18\x01 \x01(\x08\x12\x35\n\x11\x66\x61ilSentStartTime\x18\x02 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x18\n\x10totalBytesUpload\x18\x03 \x01(\x04\x12\x17\n\x0fnum4xxResponses\x18\x04 \x01(\r\x12\x19\n\x11\x63urrentUploadIntv\x18\x05 \x01(\r\x12\x16\n\x0elogfileTimeout\x18\x06 \x01(\r\x12\x17\n\x0fmaxGzipFileSize\x18\x07 \x01(\r\x12\x17\n\x0f\x61vgGzipFileSize\x18\x08 \x01(\r\x12\x15\n\rmimUploadMsec\x18\t \x01(\r\x12\x15\n\rmaxUploadMsec\x18\n \x01(\r\x12\x15\n\ravgUploadMsec\x18\x0b \x01(\r\x12\x16\n\x0elastUploadMsec\x18\x0c \x01(\r\x12\x19\n\x11\x63urrentCPULoadPct\x18\r \x01(\x02\x12\x19\n\x11\x61verageCPULoadPct\x18\x0e \x01(\x02\x12\x1b\n\x13\x63urrentProcessDelay\x18\x0f \x01(\r\x12\x1b\n\x13\x61verageProcessDelay\x18\x10 \x01(\r\x12=\n\rdeviceMetrics\x18\x11 \x01(\x0b\x32&.org.lfedge.eve.metrics.logfileMetrics\x12:\n\nappMetrics\x18\x12 \x01(\x0b\x32&.org.lfedge.eve.metrics.logfileMetrics\x12X\n\x13top10_input_sources\x18\x13 \x03(\x0b\x32;.org.lfedge.eve.metrics.newlogMetric.Top10InputSourcesEntry\x12\x18\n\x10gzipFilesRemoved\x18\x14 \x01(\r\x12\x16\n\x0etooManyRequest\x18\x15 \x01(\r\x12\x19\n\x11skipUploadAppFile\x18\x16 \x01(\r\x1a\x38\n\x16Top10InputSourcesEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\r:\x02\x38\x01\"\xb6\x02\n\x0elogfileMetrics\x12\x17\n\x0fnumGzipFileSent\x18\x01 \x01(\x04\x12\x19\n\x11numGzipBytesWrite\x18\x02 \x01(\x04\x12\x15\n\rnumBytesWrite\x18\x03 \x01(\x04\x12\x18\n\x10numGzipFileInDir\x18\x04 \x01(\r\x12\x15\n\rnumInputEvent\x18\x05 \x01(\x04\x12\x18\n\x10numGzipFileRetry\x18\x06 \x01(\x04\x12\x1c\n\x14numGzipFileKeptLocal\x18\x07 \x01(\r\x12\x36\n\x12recentGzipFileTime\x18\x08 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x38\n\x14lastGzipFileSendTime\x18\t \x01(\x0b\x32\x1a.google.protobuf.Timestamp\"$\n\x0bzedboxStats\x12\x15\n\rnumGoRoutines\x18\x01 \x01(\r\"\x9d\x01\n\x08vlanInfo\x12\x17\n\x0fnum_trunk_ports\x18\x01 \x01(\r\x12\x45\n\x0bvlan_counts\x18\x02 \x03(\x0b\x32\x30.org.lfedge.eve.metrics.vlanInfo.VlanCountsEntry\x1a\x31\n\x0fVlanCountsEntry\x12\x0b\n\x03key\x18\x01 \x01(\r\x12\r\n\x05value\x18\x02 \x01(\r:\x02\x38\x01\"\xc1\x01\n\rFlowlogMetric\x12\x39\n\x08messages\x18\x01 \x01(\x0b\x32\'.org.lfedge.eve.metrics.FlowlogCounters\x12\x36\n\x05\x66lows\x18\x02 \x01(\x0b\x32\'.org.lfedge.eve.metrics.FlowlogCounters\x12=\n\x0c\x64ns_requests\x18\x03 \x01(\x0b\x32\'.org.lfedge.eve.metrics.FlowlogCounters\"J\n\x0f\x46lowlogCounters\x12\x0f\n\x07success\x18\x01 \x01(\x04\x12\r\n\x05\x64rops\x18\x02 \x01(\x04\x12\x17\n\x0f\x66\x61iled_attempts\x18\x03 \x01(\x04*2\n\x0cZmetricTypes\x12\t\n\x05ZmNop\x10\x00\x12\x0c\n\x08ZmDevice\x10\x01\x12\t\n\x05ZmApp\x10\x03*\x85\x02\n\x0b\x43ipherError\x12\x18\n\x14\x43IPHER_ERROR_INVALID\x10\x00\x12\x1a\n\x16\x43IPHER_ERROR_NOT_READY\x10\x01\x12\x1f\n\x1b\x43IPHER_ERROR_DECRYPT_FAILED\x10\x02\x12!\n\x1d\x43IPHER_ERROR_UNMARSHAL_FAILED\x10\x03\x12#\n\x1f\x43IPHER_ERROR_CLEARTEXT_FALLBACK\x10\x04\x12!\n\x1d\x43IPHER_ERROR_MISSING_FALLBACK\x10\x05\x12\x1a\n\x16\x43IPHER_ERROR_NO_CIPHER\x10\x06\x12\x18\n\x14\x43IPHER_ERROR_NO_DATA\x10\x07*f\n\x0eMetricItemType\x12\x13\n\x0fMetricItemOther\x10\x00\x12\x13\n\x0fMetricItemGauge\x10\x01\x12\x15\n\x11MetricItemCounter\x10\x02\x12\x13\n\x0fMetricItemState\x10\x03\x42?\n\x16org.lfedge.eve.metricsZ%github.com/lf-edge/eve/api/go/metricsb\x06proto3'
   ,
   dependencies=[google_dot_protobuf_dot_timestamp__pb2.DESCRIPTOR,])
 
@@ -50,8 +50,8 @@ _ZMETRICTYPES = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=9193,
-  serialized_end=9243,
+  serialized_start=9521,
+  serialized_end=9571,
 )
 _sym_db.RegisterEnumDescriptor(_ZMETRICTYPES)
 
@@ -106,8 +106,8 @@ _CIPHERERROR = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=9246,
-  serialized_end=9507,
+  serialized_start=9574,
+  serialized_end=9835,
 )
 _sym_db.RegisterEnumDescriptor(_CIPHERERROR)
 
@@ -142,8 +142,8 @@ _METRICITEMTYPE = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=9509,
-  serialized_end=9611,
+  serialized_start=9837,
+  serialized_end=9939,
 )
 _sym_db.RegisterEnumDescriptor(_METRICITEMTYPE)
 
@@ -1034,6 +1034,13 @@ _DEVICEMETRIC = _descriptor.Descriptor(
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+    _descriptor.FieldDescriptor(
+      name='flowlog', full_name='org.lfedge.eve.metrics.deviceMetric.flowlog', index=18,
+      number=21, type=11, cpp_type=10, label=1,
+      has_default_value=False, default_value=None,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
   ],
   extensions=[
   ],
@@ -1047,7 +1054,7 @@ _DEVICEMETRIC = _descriptor.Descriptor(
   oneofs=[
   ],
   serialized_start=1942,
-  serialized_end=2919,
+  serialized_end=2975,
 )
 
 
@@ -1078,8 +1085,8 @@ _ACLMETRIC = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=2921,
-  serialized_end=2958,
+  serialized_start=2977,
+  serialized_end=3014,
 )
 
 
@@ -1159,8 +1166,8 @@ _APPCONTAINERMETRIC = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=2961,
-  serialized_end=3317,
+  serialized_start=3017,
+  serialized_end=3373,
 )
 
 
@@ -1238,8 +1245,8 @@ _METRICITEM = _descriptor.Descriptor(
       create_key=_descriptor._internal_create_key,
     fields=[]),
   ],
-  serialized_start=3320,
-  serialized_end=3530,
+  serialized_start=3376,
+  serialized_end=3586,
 )
 
 
@@ -1326,8 +1333,8 @@ _DISKMETRIC = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=3533,
-  serialized_end=3699,
+  serialized_start=3589,
+  serialized_end=3755,
 )
 
 
@@ -1386,8 +1393,8 @@ _APPDISKMETRIC = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=3701,
-  serialized_end=3798,
+  serialized_start=3757,
+  serialized_end=3854,
 )
 
 
@@ -1474,8 +1481,8 @@ _APPMETRIC = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=3801,
-  serialized_end=4201,
+  serialized_start=3857,
+  serialized_end=4257,
 )
 
 
@@ -1513,8 +1520,8 @@ _LOGMETRIC_INPUTSOURCESENTRY = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=4851,
-  serialized_end=4902,
+  serialized_start=4907,
+  serialized_end=4958,
 )
 
 _LOGMETRIC = _descriptor.Descriptor(
@@ -1656,8 +1663,8 @@ _LOGMETRIC = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=4204,
-  serialized_end=4902,
+  serialized_start=4260,
+  serialized_end=4958,
 )
 
 
@@ -1695,8 +1702,8 @@ _PKTSTAT = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=4904,
-  serialized_end=4945,
+  serialized_start=4960,
+  serialized_end=5001,
 )
 
 
@@ -1748,8 +1755,8 @@ _ZMETRICCONN = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=4948,
-  serialized_end=5166,
+  serialized_start=5004,
+  serialized_end=5222,
 )
 
 
@@ -1801,8 +1808,8 @@ _ZMETRICVPN = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=5169,
-  serialized_end=5399,
+  serialized_start=5225,
+  serialized_end=5455,
 )
 
 
@@ -1826,8 +1833,8 @@ _ZMETRICNONE = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=5401,
-  serialized_end=5414,
+  serialized_start=5457,
+  serialized_end=5470,
 )
 
 
@@ -1870,8 +1877,8 @@ _ZMETRICFLOWLINK = _descriptor.Descriptor(
       create_key=_descriptor._internal_create_key,
     fields=[]),
   ],
-  serialized_start=5416,
-  serialized_end=5474,
+  serialized_start=5472,
+  serialized_end=5530,
 )
 
 
@@ -1921,8 +1928,8 @@ _ZMETRICFLOWENDPOINT = _descriptor.Descriptor(
       create_key=_descriptor._internal_create_key,
     fields=[]),
   ],
-  serialized_start=5477,
-  serialized_end=5631,
+  serialized_start=5533,
+  serialized_end=5687,
 )
 
 
@@ -1988,8 +1995,8 @@ _ZMETRICFLOW = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=5634,
-  serialized_end=5832,
+  serialized_start=5690,
+  serialized_end=5888,
 )
 
 
@@ -2041,8 +2048,8 @@ _NETWORKSTATS = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=5834,
-  serialized_end=5921,
+  serialized_start=5890,
+  serialized_end=5977,
 )
 
 
@@ -2080,8 +2087,8 @@ _ZMETRICNETWORKSTATS = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=5923,
-  serialized_end=6044,
+  serialized_start=5979,
+  serialized_end=6100,
 )
 
 
@@ -2168,8 +2175,8 @@ _ZPROBENIMETRICS_ZPROBEINTFMETRIC = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=6251,
-  serialized_end=6478,
+  serialized_start=6307,
+  serialized_end=6534,
 )
 
 _ZPROBENIMETRICS = _descriptor.Descriptor(
@@ -2234,8 +2241,8 @@ _ZPROBENIMETRICS = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=6047,
-  serialized_end=6478,
+  serialized_start=6103,
+  serialized_end=6534,
 )
 
 
@@ -2348,8 +2355,8 @@ _ZMETRICNETWORKINSTANCE = _descriptor.Descriptor(
       create_key=_descriptor._internal_create_key,
     fields=[]),
   ],
-  serialized_start=6481,
-  serialized_end=7025,
+  serialized_start=6537,
+  serialized_end=7081,
 )
 
 
@@ -2436,8 +2443,8 @@ _ZMETRICVOLUME = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=7028,
-  serialized_end=7214,
+  serialized_start=7084,
+  serialized_end=7270,
 )
 
 
@@ -2559,8 +2566,8 @@ _ZMETRICPROCESS = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=7217,
-  serialized_end=7523,
+  serialized_start=7273,
+  serialized_end=7579,
 )
 
 
@@ -2638,8 +2645,8 @@ _ZMETRICMSG = _descriptor.Descriptor(
       create_key=_descriptor._internal_create_key,
     fields=[]),
   ],
-  serialized_start=7526,
-  serialized_end=7881,
+  serialized_start=7582,
+  serialized_end=7937,
 )
 
 
@@ -2677,8 +2684,8 @@ _NEWLOGMETRIC_TOP10INPUTSOURCESENTRY = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=8624,
-  serialized_end=8680,
+  serialized_start=8680,
+  serialized_end=8736,
 )
 
 _NEWLOGMETRIC = _descriptor.Descriptor(
@@ -2855,8 +2862,8 @@ _NEWLOGMETRIC = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=7884,
-  serialized_end=8680,
+  serialized_start=7940,
+  serialized_end=8736,
 )
 
 
@@ -2943,8 +2950,8 @@ _LOGFILEMETRICS = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=8683,
-  serialized_end=8993,
+  serialized_start=8739,
+  serialized_end=9049,
 )
 
 
@@ -2975,8 +2982,8 @@ _ZEDBOXSTATS = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=8995,
-  serialized_end=9031,
+  serialized_start=9051,
+  serialized_end=9087,
 )
 
 
@@ -3014,8 +3021,8 @@ _VLANINFO_VLANCOUNTSENTRY = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=9142,
-  serialized_end=9191,
+  serialized_start=9198,
+  serialized_end=9247,
 )
 
 _VLANINFO = _descriptor.Descriptor(
@@ -3052,8 +3059,100 @@ _VLANINFO = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=9034,
-  serialized_end=9191,
+  serialized_start=9090,
+  serialized_end=9247,
+)
+
+
+_FLOWLOGMETRIC = _descriptor.Descriptor(
+  name='FlowlogMetric',
+  full_name='org.lfedge.eve.metrics.FlowlogMetric',
+  filename=None,
+  file=DESCRIPTOR,
+  containing_type=None,
+  create_key=_descriptor._internal_create_key,
+  fields=[
+    _descriptor.FieldDescriptor(
+      name='messages', full_name='org.lfedge.eve.metrics.FlowlogMetric.messages', index=0,
+      number=1, type=11, cpp_type=10, label=1,
+      has_default_value=False, default_value=None,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+    _descriptor.FieldDescriptor(
+      name='flows', full_name='org.lfedge.eve.metrics.FlowlogMetric.flows', index=1,
+      number=2, type=11, cpp_type=10, label=1,
+      has_default_value=False, default_value=None,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+    _descriptor.FieldDescriptor(
+      name='dns_requests', full_name='org.lfedge.eve.metrics.FlowlogMetric.dns_requests', index=2,
+      number=3, type=11, cpp_type=10, label=1,
+      has_default_value=False, default_value=None,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+  ],
+  extensions=[
+  ],
+  nested_types=[],
+  enum_types=[
+  ],
+  serialized_options=None,
+  is_extendable=False,
+  syntax='proto3',
+  extension_ranges=[],
+  oneofs=[
+  ],
+  serialized_start=9250,
+  serialized_end=9443,
+)
+
+
+_FLOWLOGCOUNTERS = _descriptor.Descriptor(
+  name='FlowlogCounters',
+  full_name='org.lfedge.eve.metrics.FlowlogCounters',
+  filename=None,
+  file=DESCRIPTOR,
+  containing_type=None,
+  create_key=_descriptor._internal_create_key,
+  fields=[
+    _descriptor.FieldDescriptor(
+      name='success', full_name='org.lfedge.eve.metrics.FlowlogCounters.success', index=0,
+      number=1, type=4, cpp_type=4, label=1,
+      has_default_value=False, default_value=0,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+    _descriptor.FieldDescriptor(
+      name='drops', full_name='org.lfedge.eve.metrics.FlowlogCounters.drops', index=1,
+      number=2, type=4, cpp_type=4, label=1,
+      has_default_value=False, default_value=0,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+    _descriptor.FieldDescriptor(
+      name='failed_attempts', full_name='org.lfedge.eve.metrics.FlowlogCounters.failed_attempts', index=2,
+      number=3, type=4, cpp_type=4, label=1,
+      has_default_value=False, default_value=0,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+  ],
+  extensions=[
+  ],
+  nested_types=[],
+  enum_types=[
+  ],
+  serialized_options=None,
+  is_extendable=False,
+  syntax='proto3',
+  extension_ranges=[],
+  oneofs=[
+  ],
+  serialized_start=9445,
+  serialized_end=9519,
 )
 
 _CELLULARMETRIC.fields_by_name['signal_strength'].message_type = _CELLULARSIGNALSTRENGTH
@@ -3084,6 +3183,7 @@ _DEVICEMETRIC.fields_by_name['deviceMemory'].message_type = _DEVICEMEMORYMETRIC
 _DEVICEMETRIC.fields_by_name['last_received_config'].message_type = google_dot_protobuf_dot_timestamp__pb2._TIMESTAMP
 _DEVICEMETRIC.fields_by_name['last_processed_config'].message_type = google_dot_protobuf_dot_timestamp__pb2._TIMESTAMP
 _DEVICEMETRIC.fields_by_name['cellular'].message_type = _CELLULARMETRIC
+_DEVICEMETRIC.fields_by_name['flowlog'].message_type = _FLOWLOGMETRIC
 _APPCONTAINERMETRIC.fields_by_name['cpu'].message_type = _APPCPUMETRIC
 _APPCONTAINERMETRIC.fields_by_name['memory'].message_type = _MEMORYMETRIC
 _APPCONTAINERMETRIC.fields_by_name['network'].message_type = _NETWORKMETRIC
@@ -3170,6 +3270,9 @@ _LOGFILEMETRICS.fields_by_name['recentGzipFileTime'].message_type = google_dot_p
 _LOGFILEMETRICS.fields_by_name['lastGzipFileSendTime'].message_type = google_dot_protobuf_dot_timestamp__pb2._TIMESTAMP
 _VLANINFO_VLANCOUNTSENTRY.containing_type = _VLANINFO
 _VLANINFO.fields_by_name['vlan_counts'].message_type = _VLANINFO_VLANCOUNTSENTRY
+_FLOWLOGMETRIC.fields_by_name['messages'].message_type = _FLOWLOGCOUNTERS
+_FLOWLOGMETRIC.fields_by_name['flows'].message_type = _FLOWLOGCOUNTERS
+_FLOWLOGMETRIC.fields_by_name['dns_requests'].message_type = _FLOWLOGCOUNTERS
 DESCRIPTOR.message_types_by_name['memoryMetric'] = _MEMORYMETRIC
 DESCRIPTOR.message_types_by_name['AppMemoryMetric'] = _APPMEMORYMETRIC
 DESCRIPTOR.message_types_by_name['DeviceMemoryMetric'] = _DEVICEMEMORYMETRIC
@@ -3208,6 +3311,8 @@ DESCRIPTOR.message_types_by_name['newlogMetric'] = _NEWLOGMETRIC
 DESCRIPTOR.message_types_by_name['logfileMetrics'] = _LOGFILEMETRICS
 DESCRIPTOR.message_types_by_name['zedboxStats'] = _ZEDBOXSTATS
 DESCRIPTOR.message_types_by_name['vlanInfo'] = _VLANINFO
+DESCRIPTOR.message_types_by_name['FlowlogMetric'] = _FLOWLOGMETRIC
+DESCRIPTOR.message_types_by_name['FlowlogCounters'] = _FLOWLOGCOUNTERS
 DESCRIPTOR.enum_types_by_name['ZmetricTypes'] = _ZMETRICTYPES
 DESCRIPTOR.enum_types_by_name['CipherError'] = _CIPHERERROR
 DESCRIPTOR.enum_types_by_name['MetricItemType'] = _METRICITEMTYPE
@@ -3510,6 +3615,20 @@ vlanInfo = _reflection.GeneratedProtocolMessageType('vlanInfo', (_message.Messag
   })
 _sym_db.RegisterMessage(vlanInfo)
 _sym_db.RegisterMessage(vlanInfo.VlanCountsEntry)
+
+FlowlogMetric = _reflection.GeneratedProtocolMessageType('FlowlogMetric', (_message.Message,), {
+  'DESCRIPTOR' : _FLOWLOGMETRIC,
+  '__module__' : 'metrics.metrics_pb2'
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.metrics.FlowlogMetric)
+  })
+_sym_db.RegisterMessage(FlowlogMetric)
+
+FlowlogCounters = _reflection.GeneratedProtocolMessageType('FlowlogCounters', (_message.Message,), {
+  'DESCRIPTOR' : _FLOWLOGCOUNTERS,
+  '__module__' : 'metrics.metrics_pb2'
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.metrics.FlowlogCounters)
+  })
+_sym_db.RegisterMessage(FlowlogCounters)
 
 
 DESCRIPTOR._options = None

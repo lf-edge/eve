@@ -207,6 +207,7 @@ message deviceMetric {
   google.protobuf.Timestamp last_processed_config = 19;
 
   repeated CellularMetric cellular = 20;
+  FlowlogMetric flowlog = 21;
 }
 
 message AclMetric {
@@ -560,3 +561,31 @@ message vlanInfo {
   uint32 num_trunk_ports = 1; // Number of ports attached to this network instance that are designated trunk
   map <uint32, uint32> vlan_counts = 2; // vlan id to it's usage count map
 }
+
+// Flowlog stats.
+message FlowlogMetric {
+  // Counting FlowMessage instances.
+  // Note that FlowMessage is used to package and carry a list of flows and DNS requests.
+  FlowlogCounters messages = 1;
+  // Counting FlowMessage.Flows.
+  FlowlogCounters flows = 2;
+  // Counting FlowMessage.DnsReqs.
+  FlowlogCounters dns_requests = 3;
+}
+
+// Counters for published/dropped flowlog messages/flows or DNS requests.
+// Note that every record is eventually either successfully published or dropped.
+// In the process of publishing a flowlog record, one or more failed attempts can be made.
+// This means that the total number of fully processed records (i.e. not queued anymore)
+// equals the sum of "success" and "drops", while "failed_attempts" is an orthogonal metric.
+message FlowlogCounters {
+  // Flow records successfully published to zedcloud.
+  uint64 success = 1;
+  // Flow records dropped because the flowlog queue would not fit them.
+  // This is either because the queue was already full when the record was created,
+  // or the publish attempts would keep failing and the queue was nearing its capacity.
+  uint64 drops = 2;
+  // The number of failed attempts to publish a flow record.
+  uint64 failed_attempts = 3;
+}
+

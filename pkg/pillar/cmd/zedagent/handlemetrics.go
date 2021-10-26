@@ -616,6 +616,15 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 		}
 	}
 
+	// Report flowlog metrics.
+	ctx.flowLogMetrics.Lock()
+	ReportDeviceMetric.Flowlog = &metrics.FlowlogMetric{
+		Messages:    protoEncodeFlowlogCounters(ctx.flowLogMetrics.Messages),
+		Flows:       protoEncodeFlowlogCounters(ctx.flowLogMetrics.Flows),
+		DnsRequests: protoEncodeFlowlogCounters(ctx.flowLogMetrics.DNSReqs),
+	}
+	ctx.flowLogMetrics.Unlock()
+
 	ReportMetrics.MetricContent = new(metrics.ZMetricMsg_Dm)
 	if x, ok := ReportMetrics.GetMetricContent().(*metrics.ZMetricMsg_Dm); ok {
 		x.Dm = ReportDeviceMetric
@@ -1560,4 +1569,12 @@ func protoEncodeNetworkInstanceMetricProto(status types.NetworkInstanceMetrics) 
 	}
 
 	return metric
+}
+
+func protoEncodeFlowlogCounters(counters types.FlowlogCounters) *metrics.FlowlogCounters {
+	return &metrics.FlowlogCounters{
+		Success:        counters.Success,
+		Drops:          counters.Drops,
+		FailedAttempts: counters.FailedAttempts,
+	}
 }
