@@ -18,32 +18,33 @@ RUN apk add --no-cache \
   autoconf \
   pkgconf \
   patch \
-  gettext-dev
-RUN [ "$(uname -m)" != riscv64 ] || apk add coreutils
+  gettext-dev \
+  coreutils
 
 # because python is not available
 RUN ln -s python3 /usr/bin/python
 
 # list of grub modules that are portable between x86_64 and aarch64
 ENV GRUB_MODULES_PORT="part_gpt fat ext2 iso9660 squash4 gzio linux acpi normal cpio crypto disk boot crc64 gpt \
-search_disk_uuid search_part_label search_label verify xzio xfs video gfxterm serial gptprio chain probe reboot regexp smbios    \
+search_disk_uuid search_part_label search_label xzio xfs video gfxterm serial gptprio chain probe reboot regexp smbios    \
 part_msdos cat echo test configfile loopback"
 ENV GRUB_MODULES_i386_pc="multiboot multiboot2 biosdisk"
-ENV GRUB_MODULES_x86_64="multiboot multiboot2 efi_uga efi_gop linuxefi"
+ENV GRUB_MODULES_x86_64="multiboot multiboot2 efi_uga efi_gop"
 ENV GRUB_MODULES_aarch64="xen_boot efi_gop"
-ENV GRUB_MODULES_riscv64="part_gpt fat ext2 iso9660 squash4 gzio linux acpi normal cpio crypto disk boot crc64 \
-search_label xzio xfs video gfxterm serial  chain probe reboot regexp smbios part_msdos cat echo test configfile loopback"
-ENV GRUB_COMMIT=71f9e4ac44142af52c3fc1860436cf9e432bf764
+ENV GRUB_MODULES_riscv64="part_gpt fat ext2 iso9660 squash4 gzio linux acpi normal cpio crypto disk boot crc64 gptprio \
+search_label xzio xfs video gfxterm serial chain probe reboot regexp smbios part_msdos cat echo test configfile loopback"
+# grub-2.06 tag
+ENV GRUB_COMMIT=ae94b97be2b81b625d6af6654d3ed79078b50ff6
 ENV GRUB_REPO=https://git.savannah.gnu.org/git/grub.git
 
-COPY patches/* /patches/
-COPY patches.riscv64/* /riscv64/
+COPY patches.2.06/* /patches/
+COPY patches.riscv64.2.06/* /riscv64/
 RUN mkdir /grub-lib && git clone ${GRUB_REPO}
 
 WORKDIR /grub
 RUN git config --add user.email a@b.c && git config user.name a && \
     git checkout -b grub-build ${GRUB_COMMIT}
-RUN if [ "$(uname -m)" = riscv64 ]; then rm -rf /patches && mv /riscv64 /patches && git checkout grub-2.06-rc1a; fi
+RUN if [ "$(uname -m)" = riscv64 ]; then rm -rf /patches && mv /riscv64 /patches; fi
 RUN git am /patches/*
 
 ENV BUILD_GRUB="set -e && git clean -f -d -x && git reset --hard HEAD && \
