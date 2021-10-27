@@ -1,0 +1,87 @@
+From f3fe8743576640f65dbe2515d2bcc32e536766cf Mon Sep 17 00:00:00 2001
+From: Vedant Paranjape <22630228+VedantParanjape@users.noreply.github.com>
+Date: Thu, 14 Oct 2021 01:34:58 +0530
+Subject: [PATCH 3/8] Add search_part_label module
+
+Signed-off-by: Vedant Paranjape <22630228+VedantParanjape@users.noreply.github.com>
+---
+ grub-core/Makefile.core.def            | 5 +++++
+ grub-core/commands/search_part_label.c | 5 +++++
+ grub-core/commands/search_wrap.c       | 6 ++++++
+ include/grub/search.h                  | 3 ++-
+ 4 files changed, 18 insertions(+), 1 deletion(-)
+ create mode 100644 grub-core/commands/search_part_label.c
+
+diff --git a/grub-core/Makefile.core.def b/grub-core/Makefile.core.def
+index 820f67c03..25a274067 100644
+--- a/grub-core/Makefile.core.def
++++ b/grub-core/Makefile.core.def
+@@ -1083,6 +1083,11 @@ module = {
+   common = commands/search_label.c;
+ };
+ 
++module = {
++  name = search_part_label;
++  common = commands/search_part_label.c;
++};
++
+ module = {
+   name = setpci;
+   common = commands/setpci.c;
+diff --git a/grub-core/commands/search_part_label.c b/grub-core/commands/search_part_label.c
+new file mode 100644
+index 000000000..ca906cbd9
+--- /dev/null
++++ b/grub-core/commands/search_part_label.c
+@@ -0,0 +1,5 @@
++#define DO_SEARCH_PART_LABEL 1
++#define FUNC_NAME grub_search_part_label
++#define COMMAND_NAME "search.part_label"
++#define HELP_MESSAGE N_("Search devices by partition label. If VARIABLE is specified, the first device found is set to a variable.")
++#include "search.c"
+diff --git a/grub-core/commands/search_wrap.c b/grub-core/commands/search_wrap.c
+index 47fc8eb99..ffa349add 100644
+--- a/grub-core/commands/search_wrap.c
++++ b/grub-core/commands/search_wrap.c
+@@ -36,6 +36,8 @@ static const struct grub_arg_option options[] =
+      0, 0},
+     {"fs-uuid",		'u', 0, N_("Search devices by a filesystem UUID."),
+      0, 0},
++    {"part-label",	'L', 0, N_("Search devices by a partition label."),
++     0, 0},
+     {"set",		's', GRUB_ARG_OPTION_OPTIONAL,
+      N_("Set a variable to the first device found."), N_("VARNAME"),
+      ARG_TYPE_STRING},
+@@ -71,6 +73,7 @@ enum options
+     SEARCH_FILE,
+     SEARCH_LABEL,
+     SEARCH_FS_UUID,
++    SEARCH_PART_LABEL,
+     SEARCH_SET,
+     SEARCH_NO_FLOPPY,
+     SEARCH_HINT,
+@@ -186,6 +189,9 @@ grub_cmd_search (grub_extcmd_context_t ctxt, int argc, char **args)
+   else if (state[SEARCH_FS_UUID].set)
+     grub_search_fs_uuid (id, var, state[SEARCH_NO_FLOPPY].set,
+ 			 hints, nhints);
++  else if (state[SEARCH_PART_LABEL].set)
++    grub_search_part_label (id, var, state[SEARCH_NO_FLOPPY].set,
++			    hints, nhints);
+   else if (state[SEARCH_FILE].set)
+     grub_search_fs_file (id, var, state[SEARCH_NO_FLOPPY].set, 
+ 			 hints, nhints);
+diff --git a/include/grub/search.h b/include/grub/search.h
+index d80347df3..9b83f515c 100644
+--- a/include/grub/search.h
++++ b/include/grub/search.h
+@@ -25,5 +25,6 @@ void grub_search_fs_uuid (const char *key, const char *var, int no_floppy,
+ 			  char **hints, unsigned nhints);
+ void grub_search_label (const char *key, const char *var, int no_floppy,
+ 			char **hints, unsigned nhints);
+-
++void grub_search_part_label (const char *key, const char *var, int no_floppy,
++			     char **hints, unsigned nhints);
+ #endif
+-- 
+2.25.1
+

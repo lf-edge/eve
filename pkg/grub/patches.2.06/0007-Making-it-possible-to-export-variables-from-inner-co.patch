@@ -1,0 +1,39 @@
+From 018f26b947f2dc03b2acbadf35edacabbff96107 Mon Sep 17 00:00:00 2001
+From: Vedant Paranjape <22630228+VedantParanjape@users.noreply.github.com>
+Date: Tue, 26 Oct 2021 22:18:49 +0530
+Subject: [PATCH 7/8] Making it possible to export variables from inner
+ contexts of GRUB
+
+Signed-off-by: Roman Shaposhnik <rvs@zededa.com>
+---
+ grub-core/normal/context.c | 14 ++++++++++++++
+ 1 file changed, 14 insertions(+)
+
+diff --git a/grub-core/normal/context.c b/grub-core/normal/context.c
+index ee53d4a68..67737b127 100644
+--- a/grub-core/normal/context.c
++++ b/grub-core/normal/context.c
+@@ -129,6 +129,20 @@ grub_env_context_close (void)
+ 
+       for (p = grub_current_context->vars[i]; p; p = q)
+ 	{
++	  if (p->global)
++	    {
++	      /* Set and export all global variables inside
++		 the calling/previous context.  */
++	      struct grub_env_context *tmp_context = grub_current_context;
++	      grub_current_context = grub_current_context->prev;
++	      if (grub_env_set (p->name, p->value) == GRUB_ERR_NONE)
++		{
++		  grub_env_export (p->name);
++		  grub_register_variable_hook (p->name, p->read_hook, p->write_hook);
++		}
++	      grub_current_context = tmp_context;
++	    }
++
+ 	  q = p->next;
+           grub_free (p->name);
+ 	  grub_free (p->value);
+-- 
+2.25.1
+
