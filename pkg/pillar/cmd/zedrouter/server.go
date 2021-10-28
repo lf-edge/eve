@@ -67,7 +67,7 @@ const AppInstMetadataResponseSizeLimitInBytes = 35840 // 35KB
 func createServer4(ctx *zedrouterContext, bridgeIP string, bridgeName string) error {
 	if bridgeIP == "" {
 		err := fmt.Errorf("can't run server on %s: no bridgeIP", bridgeName)
-		log.Error(err)
+		log.Warn(err)
 		return err
 	}
 	mux := http.NewServeMux()
