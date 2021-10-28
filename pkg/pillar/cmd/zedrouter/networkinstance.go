@@ -504,8 +504,8 @@ func doNetworkInstanceCreate(ctx *zedrouterContext,
 	}
 
 	// monitor the DNS and DHCP information
-	log.Functionf("Creating %s at %s", "DNSMonitor", agentlog.GetMyStack())
-	go DNSMonitor(bridgeName, bridgeNum, ctx, status)
+	log.Functionf("Creating %s at %s", "DNSDhcpMonitor", agentlog.GetMyStack())
+	go DNSDhcpMonitor(bridgeName, bridgeNum, ctx, status)
 
 	if status.IsIPv6() {
 		// XXX do we need same logic as for IPv4 dnsmasq to not
@@ -1069,6 +1069,45 @@ func maybeUpdateBridgeIPAddr(
 	}
 }
 
+func handleMetaDataServerChange(ctx *zedrouterContext, dnstatus *types.DeviceNetworkStatus) {
+	pub := ctx.pubNetworkInstanceStatus
+	items := pub.GetAll()
+	for _, st := range items {
+		status := st.(types.NetworkInstanceStatus)
+		if status.Type != types.NetworkInstanceTypeSwitch {
+			continue
+		}
+		addr, err := types.GetLocalAddrAnyNoLinkLocal(*dnstatus, 0, status.BridgeName)
+		if err != nil || (addr.String() == "" && status.MetaDataServerIP != "") {
+			// Bridge had a valid IP and it is gone now
+			deleteServer4(ctx, status.MetaDataServerIP, status.BridgeName)
+			status.Server4Running = false
+			log.Functionf("Deleted meta data server with IP %s on bridge %s",
+				status.MetaDataServerIP, status.BridgeName)
+			ctx.pubNetworkInstanceStatus.Publish(status.Key(), status)
+			continue
+		}
+		if status.MetaDataServerIP != "" && status.Server4Running == true {
+			// Stop any currently running meta-data server
+			deleteServer4(ctx, status.MetaDataServerIP, status.BridgeName)
+			log.Functionf("Deleted meta data server with IP %s on bridge %s",
+				status.MetaDataServerIP, status.BridgeName)
+			status.Server4Running = false
+		}
+		if addr.String() != "" {
+			// Start new meta-data server
+			status.MetaDataServerIP = addr.String()
+			err := createServer4(ctx, status.MetaDataServerIP, status.BridgeName)
+			if err == nil {
+				status.Server4Running = true
+				log.Functionf("Created meta data server with IP %s on bridge %s",
+					status.MetaDataServerIP, status.BridgeName)
+			}
+		}
+		ctx.pubNetworkInstanceStatus.Publish(status.Key(), status)
+	}
+}
+
 // maybeRetryNetworkInstances retries for all
 func maybeRetryNetworkInstances(ctx *zedrouterContext) {
 
@@ -1210,14 +1249,34 @@ func doNetworkInstanceActivate(ctx *zedrouterContext,
 			status.Type)
 		err = errors.New(errStr)
 	}
-	if err == nil && status.Type != types.NetworkInstanceTypeSwitch &&
-		!status.Server4Running {
+	if err == nil && !status.Server4Running {
 		switch status.IpType {
 		case types.AddressTypeIPV4:
+			log.Errorf("Creating Meta data server on bridge %s with IP %s",
+				status.BridgeName, status.BridgeIPAddr)
 			err = createServer4(ctx, status.BridgeIPAddr,
 				status.BridgeName)
 			if err == nil {
 				status.Server4Running = true
+			}
+		}
+		// Start meta-data server if the bridge corresponding to switch network instance has a valid IPv4 address
+		if status.IpType == types.AddressTypeNone && status.Type == types.NetworkInstanceTypeSwitch {
+			addrs, _, _, err := devicenetwork.GetIPAddrs(log, status.BridgeIfindex)
+			if err == nil {
+				for _, addr := range addrs {
+					if addr.IsLinkLocalUnicast() {
+						continue
+					}
+					status.MetaDataServerIP = addr.String()
+					err = createServer4(ctx, addr.String(), status.BridgeName)
+					if err == nil {
+						status.Server4Running = true
+						log.Errorf("Created Meta data server on bridge %s with IP %s",
+							status.BridgeName, addr)
+					}
+					break
+				}
 			}
 		}
 	}
@@ -1317,8 +1376,13 @@ func doNetworkInstanceDelete(
 			status.DisplayName, status.UUID, status.Type)
 	}
 	if status.Server4Running {
-		deleteServer4(ctx, status.BridgeIPAddr, status.BridgeName)
-		status.Server4Running = false
+		if status.Type != types.NetworkInstanceTypeSwitch {
+			deleteServer4(ctx, status.BridgeIPAddr, status.BridgeName)
+			status.Server4Running = false
+		} else {
+			deleteServer4(ctx, status.MetaDataServerIP, status.BridgeName)
+			status.Server4Running = false
+		}
 	}
 	doBridgeAclsDelete(ctx, status)
 	if status.BridgeName != "" {
@@ -1489,6 +1553,12 @@ func bridgeActivate(ctx *zedrouterContext,
 		errStr := fmt.Sprintf("LinkSetMaster %s ifname %s bridge %s failed: %s",
 			status.Logicallabel, ifname, status.BridgeName, err)
 		return errors.New(errStr)
+	}
+	// Drop external connection request to meta-data server
+	err = iptables.IptableCmd(log, "-t", "raw", "-A", "PREROUTING", "-i", "k"+status.BridgeName,
+		"-p", "tcp", "-d", "169.254.169.254", "--dport", "80", "-j", "DROP")
+	if err != nil {
+		log.Errorf("bridgeActivate: Failed adding Iptables command that rejects external connections to meta-data store")
 	}
 	log.Functionf("bridgeActivate: added %s ifname %s to bridge %s\n",
 		status.Logicallabel, ifname, status.BridgeName)

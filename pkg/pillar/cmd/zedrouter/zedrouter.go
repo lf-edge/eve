@@ -2078,6 +2078,7 @@ func handleDNSImpl(ctxArg interface{}, key string,
 	// Look for ports which disappeared
 	maybeRetryNetworkInstances(ctx)
 	propagateNetworkInstToAppNetwork(ctx)
+	handleMetaDataServerChange(ctx, &status)
 	log.Functionf("handleDNSImpl done for %s\n", key)
 }
 

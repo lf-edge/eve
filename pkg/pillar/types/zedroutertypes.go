@@ -2018,6 +2018,9 @@ type NetworkInstanceInfo struct {
 	VlanMap map[uint32]uint32
 	// Counts the number of trunk ports attached to this network instance
 	NumTrunkPorts uint32
+
+	// IP address on which the meta-data server listens
+	MetaDataServerIP string
 }
 
 func (instanceInfo *NetworkInstanceInfo) IsVifInBridge(

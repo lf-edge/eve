@@ -589,8 +589,8 @@ func checkFlowUnpublish(ctx *zedrouterContext) {
 	}
 }
 
-// DNSMonitor : DNS Query and Reply monitor on bridges
-func DNSMonitor(bn string, bnNum int, ctx *zedrouterContext, status *types.NetworkInstanceStatus) {
+// DNSDhcpMonitor : DNS Query/Reply and DHCP monitor on bridges
+func DNSDhcpMonitor(bn string, bnNum int, ctx *zedrouterContext, status *types.NetworkInstanceStatus) {
 	var (
 		err         error
 		snapshotLen int32 = 1280             // draft-madi-dnsop-udp4dns-00
