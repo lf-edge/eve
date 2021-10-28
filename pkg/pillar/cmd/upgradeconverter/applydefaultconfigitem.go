@@ -72,11 +72,20 @@ func importFromConfigPartition(ctxPtr *ucContext) error {
 
 	persistStatusFile := ctxPtr.newConfigItemValueMapFile()
 	globalConfigExists := fileExists(importGlobalConfigFile)
+	persistedConfigExists := fileExists(persistStatusFile)
 
 	if globalConfigExists {
+		log.Noticef("Importing config items from %s", importGlobalConfigFile)
 		globalConfigPtr, err = parseFile(importGlobalConfigFile)
 		if err != nil {
 			log.Errorf("Error parsing configuration from file: %s, %s", importGlobalConfigFile, err)
+			return err
+		}
+	} else if persistedConfigExists {
+		log.Noticef("Reusing persisted config items from the previous run")
+		globalConfigPtr, err = parseFile(persistStatusFile)
+		if err != nil {
+			log.Errorf("Error parsing configuration from file: %s, %s", persistStatusFile, err)
 			return err
 		}
 	} else {
@@ -84,6 +93,7 @@ func importFromConfigPartition(ctxPtr *ucContext) error {
 			persistStatusFile)
 		globalConfigPtr = types.NewConfigItemValueMap()
 	}
+
 	keyData, keyDataValid := readAuthorizedKeys(baseAuthorizedKeysFile)
 	if len(keyData) != 0 {
 		log.Functionf("Found the key data in %s", baseAuthorizedKeysFile)
@@ -110,7 +120,7 @@ func importFromConfigPartition(ctxPtr *ucContext) error {
 		os.Remove(importGlobalConfigFile)
 		log.Functionf("Deleted %s file from /config/", importGlobalConfigFile)
 	}
-	log.Tracef("upgradeconverter.applyDefaultConfigItem done")
+	log.Tracef("upgradeconverter.importFromConfigPartition done")
 	return nil
 }
 
