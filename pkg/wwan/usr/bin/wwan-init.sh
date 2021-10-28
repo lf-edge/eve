@@ -442,11 +442,15 @@ __EOT__
   if [ "$EVENT" = "METRICS" ]; then
     json_struct \
       "$(json_attr networks "$(printf "%b" "$METRICS" | json_array)")" \
-        | jq > "$METRICS_PATH"
+        | jq > "${METRICS_PATH}.tmp"
+    # update metrics atomically
+    mv "${METRICS_PATH}.tmp" "${METRICS_PATH}"
   else
     json_struct \
       "$(json_attr     networks        "$(printf "%b" "$STATUS" | json_array)")" \
       "$(json_str_attr config-checksum "$CHECKSUM")" \
-        | jq > "$STATUS_PATH"
+        | jq > "${STATUS_PATH}.tmp"
+    # update metrics atomically
+    mv "${STATUS_PATH}.tmp" "${STATUS_PATH}"
   fi
 done
