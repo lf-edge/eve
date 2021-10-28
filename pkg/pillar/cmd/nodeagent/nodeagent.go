@@ -412,7 +412,7 @@ func handleGlobalConfigImpl(ctxArg interface{}, key string,
 	var gcp *types.ConfigItemValueMap
 	debug, gcp = agentlog.HandleGlobalConfig(log, ctxPtr.subGlobalConfig, agentName,
 		debugOverride, ctxPtr.agentBaseContext.Logger)
-	if gcp != nil && !ctxPtr.GCInitialized {
+	if gcp != nil {
 		ctxPtr.globalConfig = gcp
 		ctxPtr.GCInitialized = true
 	}
