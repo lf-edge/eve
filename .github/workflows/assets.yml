@@ -39,6 +39,10 @@ jobs:
           $APT_INSTALL || { sudo apt update && $APT_INSTALL ; }
           echo "ARCH=${{ matrix.arch }}" >> "$GITHUB_ENV"
           echo "TAG=$(echo "$REF" | sed -e 's#^.*/##' -e 's#master#snapshot#' -e 's#main#snapshot#')" >> "$GITHUB_ENV"
+      - name: Clone repository
+        uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
       - name: Pull the EVE release from DockerHUB or build it
         run: |
           HV=kvm
@@ -46,8 +50,6 @@ jobs:
              EVE=lfedge/eve:${{ env.TAG }}-${HV}-${{ env.ARCH }}
              docker pull "$EVE"
           else
-             git clone ${{ github.event.repository.html_url }} .
-             git reset --hard ${{ github.event.workflow_run.head_branch }}
              make pkgs
              make HV=${HV} ZARCH=${{ env.ARCH }} eve
              EVE=lfedge/eve:$(make version)-${HV}-${{ env.ARCH }}
@@ -72,6 +74,9 @@ jobs:
              mv assets/kernel assets/kernel.gz
              gzip -d assets/kernel.gz
           fi
+      - name: Extract onboarding key from onboarding cert for convenience
+        run: |
+          openssl x509 -in conf/onboard.cert.pem -noout -subject | sed -e '/^[ \t]*subject[ \t]*=/s/.*CN.*=[ \t]*//g' > assets/onboarding-key.txt
       - name: Create a GitHub release and clean up artifacts
         id: create-release
         uses: actions/github-script@v3
@@ -196,3 +201,23 @@ jobs:
           asset_path: assets/ipxe.efi.ip.cfg
           asset_name: ${{ env.ARCH }}.ipxe.efi.ip.cfg
           asset_content_type: application/octet-stream
+      - name: Upload onboarding key
+        id: upload-onboarding-key
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create-release.outputs.result }}
+          asset_path: assets/onboarding-key.txt
+          asset_name: onboarding-key.txt
+          asset_content_type: application/text
+      - name: Upload onboarding cert
+        id: upload-onboarding-cert
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create-release.outputs.result }}
+          asset_path: conf/onboard.cert.pem
+          asset_name: onboard.cert.pem
+          asset_content_type: application/text
