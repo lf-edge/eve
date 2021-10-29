@@ -66,9 +66,15 @@ const AppInstMetadataResponseSizeLimitInBytes = 35840 // 35KB
 
 func createServer4(ctx *zedrouterContext, bridgeIP string, bridgeName string) error {
 	if bridgeIP == "" {
-		err := fmt.Errorf("can't run server on %s: no bridgeIP", bridgeName)
+		err := fmt.Errorf("can't run meta-data server on %s: no bridgeIP", bridgeName)
 		log.Warn(err)
 		return err
+	}
+	done := incrementDoneChanRefcount(bridgeName, bridgeIP)
+	if done {
+		log.Functionf("http meta-data server already running for Bridge %s, IP %s: incremented refcount",
+			bridgeName, bridgeIP)
+		return nil
 	}
 	mux := http.NewServeMux()
 	nh := &networkHandler{ctx: ctx}
@@ -108,6 +114,12 @@ func createServer4(ctx *zedrouterContext, bridgeIP string, bridgeName string) er
 
 func deleteServer4(ctx *zedrouterContext, bridgeIP string, bridgeName string) {
 	log.Noticef("deleteServer4(%s %s)", bridgeIP, bridgeName)
+	keepGoing := decrementDoneChanRefcount(bridgeName, bridgeIP)
+	if keepGoing {
+		log.Functionf("deleteServer4: Done chan refCount decremented for Bridge %s, IP %s",
+			bridgeName, bridgeIP)
+		return
+	}
 	targetPort := 80
 	subnetStr := "169.254.169.254/32"
 	target := fmt.Sprintf("%s:%d", bridgeIP, targetPort)
@@ -142,6 +154,7 @@ type doneChanKey struct {
 type doneChanVal struct {
 	doneChan chan<- struct{}
 	ackChan  <-chan struct{}
+	refCount uint32
 }
 
 var mapToDoneChan = make(map[doneChanKey]doneChanVal)
@@ -152,7 +165,7 @@ func setDoneChan(bridgeName string, bridgeIP string, doneChan chan<- struct{},
 	if _, exists := mapToDoneChan[key]; exists {
 		log.Fatalf("setDoneChan: key already exists %+v", key)
 	}
-	mapToDoneChan[key] = doneChanVal{doneChan: doneChan, ackChan: ackChan}
+	mapToDoneChan[key] = doneChanVal{doneChan: doneChan, ackChan: ackChan, refCount: 1}
 }
 
 func getDoneChan(bridgeName string, bridgeIP string) (chan<- struct{}, <-chan struct{}, bool) {
@@ -164,6 +177,43 @@ func getDoneChan(bridgeName string, bridgeIP string) (chan<- struct{}, <-chan st
 		delete(mapToDoneChan, key)
 	}
 	return val.doneChan, val.ackChan, exists
+}
+
+func incrementDoneChanRefcount(bridgeName string, bridgeIP string) bool {
+	key := doneChanKey{bridgeName: bridgeName, bridgeIP: bridgeIP}
+	val, exists := mapToDoneChan[key]
+	if !exists {
+		log.Functionf("incrementDoneChanRefcount: Done chan does not exist yet for Bridge %s, IP %s",
+			bridgeName, bridgeIP)
+		return false
+	} else {
+		mapToDoneChan[key] = doneChanVal{
+			doneChan: val.doneChan,
+			ackChan:  val.ackChan,
+			refCount: val.refCount + 1,
+		}
+	}
+	return true
+}
+
+// Returns false if the caller should continue to stop/destroy the http meta-data server
+func decrementDoneChanRefcount(bridgeName string, bridgeIP string) bool {
+	key := doneChanKey{bridgeName: bridgeName, bridgeIP: bridgeIP}
+	val, exists := mapToDoneChan[key]
+	if !exists {
+		log.Fatalf("decrementDoneChanRefcount: Done chan does not exist yet for Bridge %s, IP %s",
+			bridgeName, bridgeIP)
+	} else {
+		if val.refCount > 1 {
+			mapToDoneChan[key] = doneChanVal{
+				doneChan: val.doneChan,
+				ackChan:  val.ackChan,
+				refCount: val.refCount - 1,
+			}
+			return true
+		}
+	}
+	return false
 }
 
 // getTCP is used to collect some debug output from netstat
