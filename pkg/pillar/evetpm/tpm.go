@@ -133,8 +133,19 @@ type ecdsaSignature struct {
 	R, S *big.Int
 }
 
+var myDevicePublicKey crypto.PublicKey
+
+// SetDevicePublicKey is needed for the self-signed bootstrap
+func SetDevicePublicKey(pubkey crypto.PublicKey) {
+	myDevicePublicKey = pubkey
+}
+
 //Public implements crypto.PrivateKey interface
 func (s TpmPrivateKey) Public() crypto.PublicKey {
+	if myDevicePublicKey != nil {
+		ecdsaPublicKey := myDevicePublicKey.(*ecdsa.PublicKey)
+		return ecdsaPublicKey
+	}
 	clientCertBytes, err := ioutil.ReadFile(types.DeviceCertName)
 	if err != nil {
 		return nil
@@ -207,6 +218,7 @@ func FileExists(filename string) bool {
 }
 
 //IsTpmEnabled checks if TPM is being used by software for creating device cert
+// Note that this must not be called before the device certificate has been generated
 func IsTpmEnabled() bool {
 	return FileExists(types.DeviceCertName) && !FileExists(types.DeviceKeyName)
 }
