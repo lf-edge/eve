@@ -359,6 +359,11 @@ fi
 if [ $RTC = 0 ]; then
     echo "$(date -Ins -u) No real-time clock"
 fi
+# On first boot (of boxes which have been powered off for a while) force
+# ntp setting of clock
+if [ -f $FIRSTBOOTFILE ]; then
+    RTC=0
+fi
 if [ ! -s $CONFIGDIR/device.cert.pem ] || [ $RTC = 0 ]; then
     # Wait for having IP addresses for a few minutes
     # so that we are likely to have an address when we run ntp then create cert
