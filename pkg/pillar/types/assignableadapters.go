@@ -409,7 +409,7 @@ func (aa *AssignableAdapters) CheckBadAssignmentGroups(log *base.LogObject, PCIS
 			if ib2.Phylabel == ib.Phylabel {
 				continue
 			}
-			if ib.AssignmentGroup != "" && ib2.AssignmentGroup == ib.AssignmentGroup {
+			if ib.AssignmentGroup == "" || ib2.AssignmentGroup == ib.AssignmentGroup {
 				continue
 			}
 			if PCISameController != nil && PCISameController(ib.PciLong, ib2.PciLong) {
