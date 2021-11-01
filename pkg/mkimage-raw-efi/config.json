@@ -208,6 +208,16 @@
             ]
         },
         {
+            "destination": "/config",
+            "type": "bind",
+            "source": "/config",
+            "options": [
+                "rshared",
+                "rbind",
+                "rbind"
+            ]
+        },
+        {
             "destination": "/opt/zededa",
             "type": "bind",
             "source": "/containers/services/pillar/lower/opt/zededa",
