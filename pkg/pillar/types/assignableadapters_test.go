@@ -340,6 +340,14 @@ var aa2 AssignableAdapters = AssignableAdapters{
 			PciLong:         "",
 			Serial:          "/dev/ttyS3",
 		},
+		{
+			Type:            IoAudio,
+			Phylabel:        "Audio",
+			Logicallabel:    "Audio",
+			AssignmentGroup: "",
+			Ifname:          "None",
+			PciLong:         "0000:05:01.f",
+		},
 	},
 }
 
@@ -355,6 +363,7 @@ var aa2Errors = []string{
 	"",
 	"CheckBadAssignmentGroup: eth9 same PCI controller as eth8; pci long 0000:08:00.1 vs 0000:08:00.0",
 	"CheckBadAssignmentGroup: eth8 same PCI controller as eth9; pci long 0000:08:00.0 vs 0000:08:00.1",
+	"",
 	"",
 	"",
 	"",
