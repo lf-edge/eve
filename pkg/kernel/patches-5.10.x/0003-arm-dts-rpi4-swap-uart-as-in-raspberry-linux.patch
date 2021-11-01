@@ -1,0 +1,35 @@
+From 33886c32c250b25900f11533f04232e902f943fb Mon Sep 17 00:00:00 2001
+From: Aleksandrov Dmitriy <goodmobiledevices@gmail.com>
+Date: Fri, 22 Oct 2021 09:41:37 +0300
+Subject: [PATCH] arm: dts: rpi4: swap uart as in raspberry/linux
+
+Signed-off-by: Aleksandrov Dmitriy <goodmobiledevices@gmail.com>
+---
+ arch/arm/boot/dts/bcm2711-rpi-4-b.dts | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/arch/arm/boot/dts/bcm2711-rpi-4-b.dts b/arch/arm/boot/dts/bcm2711-rpi-4-b.dts
+index 09a1182c2936..c5d7353ec823 100644
+--- a/arch/arm/boot/dts/bcm2711-rpi-4-b.dts
++++ b/arch/arm/boot/dts/bcm2711-rpi-4-b.dts
+@@ -12,7 +12,7 @@ / {
+ 
+ 	chosen {
+ 		/* 8250 auxiliary UART instead of pl011 */
+-		stdout-path = "serial1:115200n8";
++		stdout-path = "serial0:115200n8";
+ 	};
+ 
+ 	/* Will be filled by the bootloader */
+@@ -25,6 +25,8 @@ aliases {
+ 		emmc2bus = &emmc2bus;
+ 		ethernet0 = &genet;
+ 		pcie0 = &pcie0;
++		serial0 = &uart1;
++		serial1 = &uart0;
+ 	};
+ 
+ 	leds {
+-- 
+2.25.1
+
