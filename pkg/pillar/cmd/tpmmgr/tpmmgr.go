@@ -4,6 +4,7 @@
 package tpmmgr
 
 import (
+	"crypto"
 	"crypto/aes"
 	"crypto/ecdsa"
 	"crypto/elliptic"
@@ -47,13 +48,7 @@ type tpmMgrContext struct {
 
 const (
 	agentName = "tpmmgr"
-	//TpmPubKeyName is the file to store TPM public key file
-	TpmPubKeyName = "/var/tmp/tpm.eccpubk.der"
 
-	//TpmDeviceCertFileName is the file name to store device certificate
-	TpmDeviceCertFileName = types.DeviceCertName
-
-	tpmLockName = types.TmpDirname + "/tpm.lock"
 	maxPCRIndex = 23
 
 	// Time limits for event loop handlers
@@ -230,29 +225,30 @@ func createKey(keyHandle, ownerHandle tpmutil.Handle, template tpm2.Public, over
 	return nil
 }
 
-func createDeviceKey() error {
+func createDeviceKey() (crypto.PublicKey, error) {
 	rw, err := tpm2.OpenTPM(etpm.TpmDevicePath)
 	if err != nil {
 		log.Errorln(err)
-		return err
+		return nil, err
 	}
 	defer rw.Close()
 
 	tpmOwnerPasswd, err := etpm.ReadOwnerCrdl()
 	if err != nil {
-		return fmt.Errorf("Reading owner credential failed: %s", err)
+		return nil, fmt.Errorf("Reading owner credential failed: %s", err)
 	}
-
-	//No previous key, create new one
+	// No previous key, create new one
+	// We later retrieve the public key from the handle to create the cert.
 	signerHandle, newPubKey, err := tpm2.CreatePrimary(rw,
 		tpm2.HandleOwner,
 		pcrSelection,
 		etpm.EmptyPassword,
 		tpmOwnerPasswd,
 		defaultKeyParams)
+
 	if err != nil {
 		log.Errorf("CreatePrimary failed: %s, do BIOS reset of TPM", err)
-		return err
+		return nil, err
 	}
 	if err := tpm2.EvictControl(rw, etpm.EmptyPassword,
 		tpm2.HandleOwner,
@@ -264,17 +260,9 @@ func createDeviceKey() error {
 		tpm2.HandleOwner, signerHandle,
 		etpm.TpmDeviceKeyHdl); err != nil {
 		log.Errorf("EvictControl failed: %v, do BIOS reset of TPM", err)
-		return err
+		return nil, err
 	}
-
-	pubKeyBytes, _ := x509.MarshalPKIXPublicKey(newPubKey)
-	err = ioutil.WriteFile(TpmPubKeyName, pubKeyBytes, 0644)
-	if err != nil {
-		log.Errorf("Error in writing TPM public key to file: %v", err)
-		return err
-	}
-
-	return nil
+	return newPubKey, nil
 }
 
 func writeDeviceCert() error {
@@ -291,7 +279,7 @@ func writeDeviceCert() error {
 		log.Tracef("NVUndefineSpace failed: %v", err)
 	}
 
-	deviceCertBytes, err := ioutil.ReadFile(TpmDeviceCertFileName)
+	deviceCertBytes, err := ioutil.ReadFile(types.DeviceCertName)
 	if err != nil {
 		log.Errorf("Failed to read device cert file: %v", err)
 		return err
@@ -314,7 +302,8 @@ func writeDeviceCert() error {
 	// Write the data
 	if err := tpm2.NVWrite(rw, tpm2.HandleOwner, etpm.TpmDeviceCertHdl,
 		etpm.EmptyPassword, deviceCertBytes, 0); err != nil {
-		log.Errorf("NVWrite failed: %v", err)
+		log.Errorf("NVWrite %d bytes failed: %v",
+			len(deviceCertBytes), err)
 		return err
 	}
 	return nil
@@ -336,7 +325,7 @@ func readDeviceCert() error {
 		return err
 	}
 
-	err = ioutil.WriteFile(TpmDeviceCertFileName, deviceCertBytes, 0644)
+	err = ioutil.WriteFile(types.DeviceCertName, deviceCertBytes, 0644)
 	if err != nil {
 		log.Errorf("Writing to device cert file failed: %v", err)
 		return err
@@ -715,6 +704,171 @@ func createEkCertOnTpm() error {
 			return err
 		}
 
+	}
+	return nil
+}
+
+// create deviceCert Template with 20 year lifetime
+// If we have a /config/soft_serial we put it in the CN
+func createDeviceCertTemplate() *x509.Certificate {
+	serialNumberLimit := new(big.Int).Lsh(big.NewInt(1), 128)
+	serialNumber, _ := rand.Int(rand.Reader, serialNumberLimit)
+	// Backdate one day in case clock is off a bit
+	yesterday := time.Now().AddDate(0, 0, -1)
+
+	// We'd like to put hardware.GetSoftSerial(log) and
+	// hardware.GetProductSerial(log) in the CN, but the size seems to
+	// be limited to 768 bytes on some devices so we refrain from that.
+	cn := "EVE"
+	template := x509.Certificate{
+		SerialNumber: serialNumber,
+		Subject: pkix.Name{
+			Organization: []string{"The Linux Foundation"},
+			CommonName:   cn,
+		},
+		NotBefore: yesterday,
+		NotAfter:  yesterday.AddDate(20, 0, 0),
+		IsCA:      true,
+		// No x509.KeyUsageKeyEncipherment for ECC
+		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageServerAuth},
+		BasicConstraintsValid: true,
+	}
+	return &template
+}
+
+// generate the TPM device key and certificate,
+// the certificate is self-signed using the device private key
+func createDeviceCertOnTpm(pubkey crypto.PublicKey) error {
+	//Check if we already have the certificate
+	if etpm.FileExists(types.DeviceCertName) {
+		return nil
+	}
+
+	//Cert is not present, generate new one
+	rw, err := tpm2.OpenTPM(etpm.TpmDevicePath)
+	if err != nil {
+		return err
+	}
+	defer rw.Close()
+
+	deviceKey, _, _, err := tpm2.ReadPublic(rw, etpm.TpmDeviceKeyHdl)
+	if err != nil {
+		return err
+	}
+
+	publicKey, err := deviceKey.Key()
+	if err != nil {
+		return err
+	}
+
+	// Need to force the public key since we haven't created
+	// the device cert yet.
+	etpm.SetDevicePublicKey(pubkey)
+	tpmPrivKey := etpm.TpmPrivateKey{}
+	tpmPrivKey.PublicKey = tpmPrivKey.Public()
+
+	template := createDeviceCertTemplate()
+	// create a self-signed certificate. template = parent
+	var parent = template
+
+	cert, err := x509.CreateCertificate(rand.Reader,
+		template, parent, publicKey, tpmPrivKey)
+	if err != nil {
+		return fmt.Errorf("Failed to create device certificate: %w",
+			err)
+	}
+
+	certBlock := &pem.Block{
+		Type:  "CERTIFICATE",
+		Bytes: cert,
+	}
+
+	certBytes := pem.EncodeToMemory(certBlock)
+	if certBytes == nil {
+		return fmt.Errorf("empty bytes after encoding to PEM")
+	}
+
+	err = ioutil.WriteFile(types.DeviceCertName, certBytes, 0644)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+// generate the software device key and certificate,
+// the certificate is self-signed using the device private key
+// Assumes no TPM hence device private key is in a file
+func createDeviceCertSoft() error {
+	// Generate private key
+	certPrivKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		return fmt.Errorf("Failed to generate software device key pair: %v",
+			err)
+	}
+
+	// get the device cert template
+	template := createDeviceCertTemplate()
+	// create a self-signed certificate. template = parent
+	var parent = template
+
+	derBytes, err := x509.CreateCertificate(rand.Reader,
+		template, parent, certPrivKey.Public(), certPrivKey)
+	if err != nil {
+		return fmt.Errorf("Failed to create device certificate: %w",
+			err)
+	}
+
+	certBlock := &pem.Block{
+		Type:  "CERTIFICATE",
+		Bytes: derBytes,
+	}
+
+	// public cert bytes
+	certBytes := pem.EncodeToMemory(certBlock)
+	if certBytes == nil {
+		return fmt.Errorf("Failed in PEM encoding of device cert: empty bytes")
+	}
+
+	// private cert bytes
+	privBytes, err := x509.MarshalECPrivateKey(certPrivKey)
+	if err != nil {
+		return fmt.Errorf("Failed in MarshalECPrivateKey of ECDH cert: %v", err)
+	}
+	keyBlock := &pem.Block{
+		Type:  "PRIVATE KEY",
+		Bytes: privBytes,
+	}
+
+	keyBytes := pem.EncodeToMemory(keyBlock)
+	if keyBytes == nil {
+		return fmt.Errorf("Failed in PEM encoding of ECDH key: empty bytes")
+	}
+	return writeDeviceCertToFile(certBytes, keyBytes)
+}
+
+func writeDeviceCertToFile(certBytes, keyBytes []byte) error {
+	if err := ioutil.WriteFile(types.DeviceKeyName, keyBytes, 0644); err != nil {
+		return err
+	}
+	return ioutil.WriteFile(types.DeviceCertName, certBytes, 0644)
+}
+
+func createOtherKeys(override bool) error {
+	if err := createKey(etpm.TpmEKHdl, tpm2.HandleEndorsement, defaultEkTemplate, override); err != nil {
+		return fmt.Errorf("Error in creating Endorsement key: %w ", err)
+	}
+	if err := createKey(etpm.TpmSRKHdl, tpm2.HandleOwner, defaultSrkTemplate, override); err != nil {
+		return fmt.Errorf("Error in creating SRK key: %w ", err)
+	}
+	if err := createKey(etpm.TpmAKHdl, tpm2.HandleOwner, defaultAkTemplate, override); err != nil {
+		return fmt.Errorf("Error in creating Attestation key: %w ", err)
+	}
+	if err := createKey(etpm.TpmQuoteKeyHdl, tpm2.HandleOwner, defaultQuoteKeyTemplate, override); err != nil {
+		return fmt.Errorf("Error in creating Quote key: %w ", err)
+	}
+	if err := createKey(etpm.TpmEcdhKeyHdl, tpm2.HandleOwner, defaultEcdhKeyTemplate, override); err != nil {
+		return fmt.Errorf("Error in creating ECDH key: %w ", err)
 	}
 	return nil
 }
@@ -1234,53 +1388,61 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	}
 
 	switch flag.Args()[0] {
-	case "genKey":
-		if err = createDeviceKey(); err != nil {
+	case "createDeviceCert":
+		//Create required directories if not present
+		initializeDirs()
+		if err = genCredentials(); err != nil {
+			//No need for Fatal, caller will take action based on return code.
+			log.Errorf("Error in generating credentials: %v", err)
+			return 1
+		}
+		// Do we already have a device cert in the TPM NVRAW?
+		// If so write to /config/device.cert.pem
+		if err = readDeviceCert(); err == nil {
+			log.Noticef("readDeviceCert success, re-using key and cert")
+			return 0
+
+		}
+		log.Errorf("readDeviceCert failed %s, generating new key and cert",
+			err)
+		pubkey, err := createDeviceKey()
+		if err != nil {
 			//No need for Fatal, caller will take action based on return code.
 			log.Errorf("Error in creating device primary key: %v ", err)
 			return 1
 		}
-		if err = createKey(etpm.TpmEKHdl, tpm2.HandleEndorsement, defaultEkTemplate, true); err != nil {
-			//No need for Fatal, caller will take action based on return code.
-			log.Errorf("Error in creating Endorsement key: %v ", err)
+		if err := createDeviceCertOnTpm(pubkey); err != nil {
+			log.Errorf("Failed to create TPM device cert: %v", err)
 			return 1
 		}
-		if err = createKey(etpm.TpmSRKHdl, tpm2.HandleOwner, defaultSrkTemplate, true); err != nil {
-			//No need for Fatal, caller will take action based on return code.
-			log.Errorf("Error in creating Srk key: %v ", err)
-			return 1
-		}
-		if err = createKey(etpm.TpmAKHdl, tpm2.HandleOwner, defaultAkTemplate, true); err != nil {
-			//No need for Fatal, caller will take action based on return code.
-			log.Errorf("Error in creating Attestation key: %v ", err)
-			return 1
-		}
-		if err = createKey(etpm.TpmQuoteKeyHdl, tpm2.HandleOwner, defaultQuoteKeyTemplate, true); err != nil {
-			log.Errorf("Error in creating Quote key: %v ", err)
-			return 1
-		}
-		if err = createKey(etpm.TpmEcdhKeyHdl, tpm2.HandleOwner, defaultEcdhKeyTemplate, true); err != nil {
-			log.Errorf("Error in creating ECDH key: %v ", err)
-			return 1
-		}
-	case "readDeviceCert":
-		if err = readDeviceCert(); err != nil {
-			//No need for Fatal, caller will take action based on return code.
-			log.Errorf("Error in reading device cert: %v", err)
-			return 1
-		}
-	case "writeDeviceCert":
+		// Write to /config/device.cert.pem and backup to TPM NVRAW
 		if err = writeDeviceCert(); err != nil {
 			//No need for Fatal, caller will take action based on return code.
-			log.Errorf("Error in writing device cert: %v", err)
+			log.Errorf("Failed to backup device cert in TPM NVRAM: %v",
+				err)
 			return 1
 		}
+		if err := createOtherKeys(true); err != nil {
+			//No need for Fatal, caller will take action based on return code.
+			log.Errorf("Error in creating other keys: %v ", err)
+			return 1
+		}
+
+	case "createSoftDeviceCert":
+		//Create required directories if not present
+		initializeDirs()
+		if err := createDeviceCertSoft(); err != nil {
+			log.Errorf("Failed to create soft device cert: %v", err)
+			return 1
+		}
+
 	case "readCredentials":
 		if err = readCredentials(); err != nil {
 			//No need for Fatal, caller will take action based on return code.
 			log.Errorf("Error in reading credentials: %v", err)
 			return 1
 		}
+
 	case "genCredentials":
 		if err = genCredentials(); err != nil {
 			//No need for Fatal, caller will take action based on return code.
@@ -1463,25 +1625,10 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		//Create required directories if not present
 		initializeDirs()
 
-		//Create additional security keys if already not created, followed by security certificates
-		if err = createKey(etpm.TpmEKHdl, tpm2.HandleEndorsement, defaultEkTemplate, false); err != nil {
-			log.Errorf("Error in creating Endorsement key: %v ", err)
-			return 1
-		}
-		if err = createKey(etpm.TpmSRKHdl, tpm2.HandleOwner, defaultSrkTemplate, false); err != nil {
-			log.Errorf("Error in creating Srk key: %v ", err)
-			return 1
-		}
-		if err = createKey(etpm.TpmAKHdl, tpm2.HandleOwner, defaultAkTemplate, false); err != nil {
-			log.Errorf("Error in creating Attestation key: %v ", err)
-			return 1
-		}
-		if err = createKey(etpm.TpmQuoteKeyHdl, tpm2.HandleOwner, defaultQuoteKeyTemplate, false); err != nil {
-			log.Errorf("Error in creating PCR Quote key: %v ", err)
-			return 1
-		}
-		if err = createKey(etpm.TpmEcdhKeyHdl, tpm2.HandleOwner, defaultEcdhKeyTemplate, false); err != nil {
-			log.Errorf("Error in creating Ecdh key: %v ", err)
+		// Create additional security keys if already not created,
+		// followed by security certificates
+		if err = createOtherKeys(false); err != nil {
+			log.Errorf("Error in creating other keys: %v ", err)
 			return 1
 		}
 		fallthrough

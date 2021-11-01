@@ -395,13 +395,13 @@ if [ ! -s $CONFIGDIR/device.cert.pem ]; then
     echo "$(date -Ins -u) Generating a device key pair and self-signed cert (using TPM/TEE if available)"
     if [ -c $TPM_DEVICE_PATH ] && ! [ -f $CONFIGDIR/disable-tpm ]; then
         echo "$(date -Ins -u) TPM device is present and allowed, creating TPM based device key"
-        if ! $BINDIR/generate-device.sh -b $CONFIGDIR/device -t; then
+        if ! $BINDIR/tpmmgr createDeviceCert; then
             echo "$(date -Ins -u) TPM is malfunctioning, falling back to software certs; disabling tpm"
-            $BINDIR/generate-device.sh -b $CONFIGDIR/device
+            $BINDIR/tpmmgr createSoftDeviceCert
             touch $CONFIGDIR/disable-tpm
         fi
     else
-        $BINDIR/generate-device.sh -b $CONFIGDIR/device
+        $BINDIR/tpmmgr createSoftDeviceCert
     fi
     # Reduce chance that we register with controller and crash before
     # the filesystem has persisted /config/device.cert.*
