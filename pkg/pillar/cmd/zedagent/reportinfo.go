@@ -925,7 +925,7 @@ func createAppInstances(ctxPtr *zedagentContext,
 }
 
 func parseSMARTData() {
-	filename := "/run/SMART_details.json"
+	filename := "/persist/SMART_details.json"
 	data, err := ioutil.ReadFile(filename)
 	if err != nil {
 		log.Errorf("parseSMARTData: exception while opening %s. %s", filename, err.Error())
