@@ -1,7 +1,7 @@
 From 681b7079898e60e8596f7ab0b938ad2a0623a5dd Mon Sep 17 00:00:00 2001
 From: Vedant Paranjape <22630228+VedantParanjape@users.noreply.github.com>
 Date: Thu, 14 Oct 2021 14:39:34 +0530
-Subject: [PATCH 2/3] Add gpt module
+Subject: [PATCH 2/6] Add gpt module
 
 Signed-off-by: Vedant Paranjape <22630228+VedantParanjape@users.noreply.github.com>
 ---
