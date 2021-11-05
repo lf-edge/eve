@@ -290,6 +290,7 @@ func publishEdgeNodeCertsToController(ctx *zedagentContext) {
 
 	// not V2API
 	if !zedcloud.UseV2API() {
+		ctx.publishedEdgeNodeCerts = true
 		return
 	}
 
@@ -327,6 +328,7 @@ func publishEdgeNodeCertsToController(ctx *zedagentContext) {
 	log.Tracef("publishEdgeNodeCertsToController: after send, total elapse sec %v",
 		time.Since(startPubTime).Seconds())
 	ctx.cipherCtx.iteration++
+	ctx.publishedEdgeNodeCerts = true
 }
 
 // Try all (first free, then rest) until it gets through.

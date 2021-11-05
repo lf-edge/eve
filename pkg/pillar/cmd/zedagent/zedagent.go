@@ -164,6 +164,9 @@ type zedagentContext struct {
 
 	// Track the counter from force.fallback.counter to detect changes
 	forceFallbackCounter int
+
+	// Interlock with controller to ensure we get the encrypted secrets
+	publishedEdgeNodeCerts bool
 }
 
 var debug = false

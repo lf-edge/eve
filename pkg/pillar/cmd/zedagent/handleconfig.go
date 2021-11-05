@@ -232,6 +232,13 @@ func getLatestConfig(url string, iteration int,
 	getconfigCtx *getconfigContext) bool {
 
 	log.Tracef("getLatestConfig(%s, %d)", url, iteration)
+	// If we haven't yet published our certificates we defer to ensure
+	// that the controller has our certs and can add encrypted secrets to
+	// our config.
+	if !getconfigCtx.zedagentCtx.publishedEdgeNodeCerts {
+		log.Noticef("Defer fetching config until our EdgeNodeCerts have been published")
+		return false
+	}
 	ctx := getconfigCtx.zedagentCtx
 	const bailOnHTTPErr = false // For 4xx and 5xx HTTP errors we try other interfaces
 	// except http.StatusForbidden(which returns error
