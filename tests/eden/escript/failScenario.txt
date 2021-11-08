@@ -10,6 +10,10 @@ eden pod ps
 eden network ls
 /bin/echo eden volume ls
 eden volume ls
+
+# stay for 10 seconds to keep additional logs
+/bin/sleep 10
+
 /bin/echo check fatal_stacks in logs
 eden log --format=json content:fatal_stacks
 

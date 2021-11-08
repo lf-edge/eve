@@ -1,0 +1,42 @@
+# Test of App logs functionality
+
+eden pod deploy -n eclient --memory=512MB docker://lfedge/eden-eclient:d9eb23f
+
+# We run it in background as of logs and info are async
+test eden.app.test -test.v -timewait 15m RUNNING eclient &
+
+# We check for pattern exists in lfedge/eden-eclient:d9eb23f
+message 'Waiting for App logs'
+test eden.lim.test -test.v -timewait 15m -test.run TestAppLog -app eclient -out content 'content:.*ubuntu-http.*'
+stdout 'ubuntu-http-server'
+
+wait
+
+# Restart app
+eden pod stop eclient
+test eden.app.test -test.v -timewait 5m HALTED eclient
+eden pod start eclient
+
+# We run it in background as of logs and info are async
+test eden.app.test -test.v -timewait 5m RUNNING eclient &
+
+# We check for pattern exists in lfedge/eden-eclient:d9eb23f
+message 'Waiting for App logs after app restart'
+test eden.lim.test -test.v -timewait 5m -test.run TestAppLog -app eclient -out content 'content:.*ubuntu-http.*'
+stdout 'ubuntu-http-server'
+
+wait
+
+eden pod delete eclient
+
+test eden.app.test -test.v -timewait 10m - eclient
+
+-- eden-config.yml --
+{{/* Test's config. file */}}
+test:
+    controller: adam://{{EdenConfig "adam.ip"}}:{{EdenConfig "adam.port"}}
+    eve:
+      {{EdenConfig "eve.name"}}:
+        onboard-cert: {{EdenConfigPath "eve.cert"}}
+        serial: "{{EdenConfig "eve.serial"}}"
+        model: {{EdenConfig "eve.devmodel"}}
