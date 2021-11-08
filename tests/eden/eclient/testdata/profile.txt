@@ -20,13 +20,13 @@ exec sleep 30
 
 # Define local-manager and two apps in different profiles
 # TBD: static ip in pod deploy
-eden pod deploy -n local-manager --memory=512MB docker://lfedge/eden-eclient:d9eb23f -p 2223:22
+eden pod deploy -n local-manager --memory=512MB docker://lfedge/eden-eclient:9081ccc -p 2223:22
 
-test eden.app.test -test.v -timewait 15m RUNNING local-manager
+test eden.app.test -test.v -timewait 10m RUNNING local-manager
 
-eden pod deploy -n app-profile-1 --memory=512MB docker://lfedge/eden-eclient:d9eb23f --profile=profile-1
-eden pod deploy -n app-profile-2 --memory=512MB docker://lfedge/eden-eclient:d9eb23f --profile=profile-2
-eden pod deploy -n app-profile-1-2 --memory=512MB docker://lfedge/eden-eclient:d9eb23f --profile=profile-1 --profile=profile-2
+eden pod deploy -n app-profile-1 --memory=512MB docker://lfedge/eden-eclient:9081ccc --profile=profile-1
+eden pod deploy -n app-profile-2 --memory=512MB docker://lfedge/eden-eclient:9081ccc --profile=profile-2
+eden pod deploy -n app-profile-1-2 --memory=512MB docker://lfedge/eden-eclient:9081ccc --profile=profile-1 --profile=profile-2
 
 # We have empty local_manager and empty default_profile, so apps should be in RUNNING state
 test eden.app.test -test.v -timewait 20m RUNNING app-profile-1 app-profile-2 app-profile-1-2 local-manager
@@ -145,7 +145,7 @@ done
 -- local-manager-start.sh --
 EDEN={{EdenConfig "eden.root"}}/{{EdenConfig "eden.bin-dist"}}/{{EdenConfig "eden.eden-bin"}}
 HOST=$($EDEN eve ip)
-{{template "ssh"}}$HOST -p $1 '/root/local_manager --token={{template "profile_server_token"}} --file={{template "profile_server_file"}} &>/dev/null &'
+{{template "ssh"}}$HOST -p $1 '/root/local_manager --token={{template "profile_server_token"}} --profile={{template "profile_server_file"}} &>/dev/null &'
 
 -- local-manager-profile.sh --
 EDEN={{EdenConfig "eden.root"}}/{{EdenConfig "eden.bin-dist"}}/{{EdenConfig "eden.eden-bin"}}

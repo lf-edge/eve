@@ -1,0 +1,144 @@
+# Test radio silence.
+# Note that currently all our device models are defined without any wireless network adapter.
+# Until we physically add a device into the "lab in the box" with a cellular module
+# and/or WiFi adapter included and allocate it for use in github actions,
+# this test will merely cover message exchange between the local server and EVE microservices
+# (zedagent, nim and wwan), not the actual radio ON/OFF switch.
+
+{{define "port"}}2223{{end}}
+{{define "token"}}server_token_123{{end}}
+{{define "radio_silence_config_file"}}/mnt/radio-silence{{end}}
+{{define "radio_silence_counter_file"}}/mnt/radio-silence-counter{{end}}
+{{define "radio_status_file"}}/mnt/radio-status.json{{end}}
+{{define "network"}}n1{{end}}
+{{define "ssh"}}ssh -q -o ConnectTimeout=10 -o StrictHostKeyChecking=no -o PasswordAuthentication=no -i {{EdenConfig "eden.tests"}}/eclient/image/cert/id_rsa root@{{end}}
+
+[!exec:bash] stop
+[!exec:sleep] stop
+[!exec:ssh] stop
+[!exec:chmod] stop
+[!exec:jq] stop
+
+exec chmod 600 {{EdenConfig "eden.tests"}}/eclient/image/cert/id_rsa
+
+# Starting of reboot detector with a 1 reboot limit
+! test eden.reboot.test -test.v -timewait 100m -reboot=0 -count=1 &
+
+message 'Resetting of EVE'
+eden eve reset
+exec sleep 30
+
+# Create n1 network
+eden -t 1m network create 10.11.12.0/24 -n {{template "network"}}
+test eden.network.test -test.v -timewait 10m ACTIVATED {{template "network"}}
+
+# Deploy local-manager
+eden pod deploy -n local-manager --memory=512MB docker://lfedge/eden-eclient:9081ccc -p {{template "port"}}:22 --networks={{template "network"}}
+test eden.app.test -test.v -timewait 10m RUNNING local-manager
+
+# Wait for ssh access
+exec -t 5m bash wait-ssh.sh {{template "port"}}
+
+# Start local manager application
+exec -t 1m bash local-manager-start.sh
+
+# Obtain local-manager IP address
+exec -t 2m bash get-app-ip.sh local-manager
+source .env
+
+# Configure local server
+eden controller edge-node update --device profile_server_token={{template "token"}}
+eden controller edge-node update --device local_profile_server=$app_ip:8888
+
+# STEP 1: Wait for radio status
+exec -t 1m bash get-radio-status.sh
+stdout 'radio-silence=false'
+! stderr .
+
+# STEP 2: Enable Radio-silence
+exec -t 2m bash toggle-radio-silence.sh ON
+exec -t 1m bash get-radio-status.sh
+stdout 'radio-silence=true'
+! stderr .
+
+# STEP 3: Disable Radio-silence mode
+exec -t 2m bash toggle-radio-silence.sh OFF
+exec -t 1m bash get-radio-status.sh
+stdout 'radio-silence=false'
+! stderr .
+
+# STEP 4: Undeploy local-manager
+eden pod delete local-manager
+test eden.app.test -test.v -timewait 15m - local-manager
+eden network delete {{template "network"}}
+test eden.network.test -test.v -timewait 10m - {{template "network"}}
+
+-- wait-ssh.sh --
+EDEN={{EdenConfig "eden.root"}}/{{EdenConfig "eden.bin-dist"}}/{{EdenConfig "eden.eden-bin"}}
+HOST=$($EDEN eve ip)
+for p in $*
+do
+  for i in `seq 20`
+  do
+    sleep 20
+    # Test SSH-access to container
+    echo {{template "ssh"}}$HOST -p $p grep -q Ubuntu /etc/issue
+    {{template "ssh"}}$HOST -p $p grep -q Ubuntu /etc/issue && break
+  done
+done
+
+-- local-manager-start.sh --
+EDEN={{EdenConfig "eden.root"}}/{{EdenConfig "eden.bin-dist"}}/{{EdenConfig "eden.eden-bin"}}
+HOST=$($EDEN eve ip)
+ARGS="--token={{template "token"}}"
+ARGS="$ARGS --radio-silence={{template "radio_silence_config_file"}}"
+ARGS="$ARGS --radio-silence-counter={{template "radio_silence_counter_file"}}"
+ARGS="$ARGS --radio-status={{template "radio_status_file"}}"
+{{template "ssh"}}$HOST -p {{template "port"}} "/root/local_manager $ARGS &>/dev/null &"
+
+-- get-app-ip.sh --
+EDEN={{EdenConfig "eden.root"}}/{{EdenConfig "eden.bin-dist"}}/{{EdenConfig "eden.eden-bin"}}
+IP=$($EDEN pod ps | grep $1 | awk '{print $4}' | cut -d ":" -f 1)
+echo app_ip=$IP>>.env
+
+-- toggle-radio-silence.sh --
+EDEN={{EdenConfig "eden.root"}}/{{EdenConfig "eden.bin-dist"}}/{{EdenConfig "eden.eden-bin"}}
+HOST=$($EDEN eve ip)
+CMDS="
+prev_counter=\$(cat {{template "radio_silence_counter_file"}})
+prev_counter=\${prev_counter:-0}
+echo $1>{{template "radio_silence_config_file"}}
+while true; do
+    new_counter=\$(cat {{template "radio_silence_counter_file"}})
+    new_counter=\${new_counter:-0}
+    [ \$new_counter -gt \$prev_counter ] && break
+    echo Radio silence is being switched $1...
+    sleep 5
+done
+"
+{{template "ssh"}}$HOST -p {{template "port"}} "$CMDS"
+
+-- get-radio-status.sh --
+EDEN={{EdenConfig "eden.root"}}/{{EdenConfig "eden.bin-dist"}}/{{EdenConfig "eden.eden-bin"}}
+HOST=$($EDEN eve ip)
+CMDS="
+until test -f {{template "radio_status_file"}}; do sleep 5; done
+sleep 2
+rs=\$(cat {{template "radio_status_file"}} | jq -rc '.radio_silence | select (.!=null)')
+echo "radio-silence=\${rs:-false}"
+cat {{template "radio_status_file"}} | jq -rc '.config_error | select (.!=null)' 1>&2
+cat {{template "radio_status_file"}} | jq -rc 'select(.cellular_status) | .cellular_status[] | .config_error | select (.!=null)' 1>&2
+cat {{template "radio_status_file"}} | jq -rc 'select(.cellular_status) | .cellular_status[] | .probe_error | select (.!=null)' 1>&2
+"
+
+{{template "ssh"}}$HOST -p {{template "port"}} "$CMDS"
+
+-- eden-config.yml --
+{{/* Test's config file */}}
+test:
+    controller: adam://{{EdenConfig "adam.ip"}}:{{EdenConfig "adam.port"}}
+    eve:
+      {{EdenConfig "eve.name"}}:
+        onboard-cert: {{EdenConfigPath "eve.cert"}}
+        serial: "{{EdenConfig "eve.serial"}}"
+        model: {{EdenConfig "eve.devmodel"}}
