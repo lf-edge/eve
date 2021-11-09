@@ -9,7 +9,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"strings"
 	"time"
@@ -25,14 +24,16 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/netclone"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
+	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
 	"github.com/lf-edge/eve/pkg/pillar/vault"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 	"github.com/shirou/gopsutil/host"
 )
 
 var (
-	nilIPInfo = ipinfo.IPInfo{}
-	smartData = types.NewSmartDataWithDefaults()
+	nilIPInfo       = ipinfo.IPInfo{}
+	smartData       = types.NewSmartDataWithDefaults()
+	maxSmartCtlSize = 65536 // Limit size of smartctl output files
 )
 
 func deviceInfoTask(ctxPtr *zedagentContext, triggerDeviceInfo <-chan struct{}) {
@@ -926,7 +927,8 @@ func createAppInstances(ctxPtr *zedagentContext,
 
 func parseSMARTData() {
 	filename := "/persist/SMART_details.json"
-	data, err := ioutil.ReadFile(filename)
+	data, err := fileutils.ReadWithMaxSize(log, filename,
+		maxSmartCtlSize)
 	if err != nil {
 		log.Errorf("parseSMARTData: exception while opening %s. %s", filename, err.Error())
 		return
