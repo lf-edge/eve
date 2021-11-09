@@ -57,6 +57,7 @@ const (
 	maxDomainHaltTime       uint32 = 300
 	domainHaltWaitIncrement uint32 = 5
 	maxReadSize                    = 16384 // From files in /persist
+	maxSmartCtlSize                = 65536 // Limit size of smartctl output files read
 )
 
 var (
@@ -696,7 +697,7 @@ func parseSMARTData() {
 	previousSMARTfilename := "/persist/SMART_details_previous.json"
 	parseData := func(filePath string, SMARTDataObj *types.SmartData) {
 		data, err := fileutils.ReadWithMaxSize(log, filePath,
-			maxReadSize)
+			maxSmartCtlSize)
 		if err != nil {
 			log.Errorf("parseSMARTData: exception while opening %s. %s", filePath, err.Error())
 			return
