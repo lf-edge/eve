@@ -21,10 +21,14 @@ cairo
 cairo-dev
 cmake
 coreutils
+cryptsetup
 cryptsetup-dev
+cryptsetup-libs
 curl
 curl-dev
 dev86
+device-mapper-event-libs
+device-mapper-libs
 dhcpcd
 diffutils
 dmidecode
@@ -68,9 +72,11 @@ jq
 keyutils
 kmod
 kmod-dev
+libaio
 libaio-dev
 libarchive-tools
 libtasn1-progs
+libblkid
 libbz2
 libc-dev
 libc-utils
@@ -107,6 +113,8 @@ libxtst-dev
 linux-headers
 linux-pam-dev
 lvm2
+lvm2-dmeventd
+lvm2-libs
 lz4
 lz4-libs
 lzo-dev
@@ -132,6 +140,7 @@ pciutils
 perl
 pixman-dev
 pkgconf
+popt
 ppp
 protobuf-dev
 py3-appdirs
