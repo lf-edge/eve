@@ -18,10 +18,8 @@ ARG KERNEL_PGP2_SIGN
 # The only variable that is used everywhere is KERNEL_SERIES, so we stick it into env
 SHELL ["/bin/sh", "-c", "export KERNEL_SERIES=$(eval echo \\$KERNEL_VERSION_$(uname -m) | sed -e 's#.[^.]*$#.x#') ; /bin/sh -c \"$1\"", "-" ]
 
-# We copy the entire directory. This copies some unneeded files, but
-# allows us to check for the existence /patches-${KERNEL_SERIES} to
-# build kernels without patches.
-COPY / /
+# Firstly copy file needed for gpg verification
+COPY keys.asc /
 
 # Download and verify kernel
 # PGP keys: 589DA6B1 (greg@kroah.com) & 6092693E (autosigner@kernel.org) & 00411886 (torvalds@linux-foundation.org)
@@ -40,6 +38,11 @@ RUN KERNEL_VERSION="$(eval echo \$KERNEL_VERSION_"$(uname -m)")" && KERNEL_MAJOR
     gpg2 --verify linux-${KERNEL_VERSION}.tar.sign linux-${KERNEL_VERSION}.tar && \
     cat linux-${KERNEL_VERSION}.tar | tar --absolute-names -x && mv /linux-${KERNEL_VERSION} /linux && \
     rm -rf /out && mkdir /out && echo "KERNEL_SOURCE=${KERNEL_SOURCE}" > /out/kernel-source-info
+
+# We copy the entire directory. This copies some unneeded files, but
+# allows us to check for the existence /patches-${KERNEL_SERIES} to
+# build kernels without patches.
+COPY / /
 
 # Apply local patches
 WORKDIR /linux
