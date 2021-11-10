@@ -106,6 +106,7 @@ libxrandr-dev
 libxtst-dev
 linux-headers
 linux-pam-dev
+lvm2
 lz4
 lz4-libs
 lzo-dev
