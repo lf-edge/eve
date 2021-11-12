@@ -2538,6 +2538,12 @@ func getCloudInitUserData(ctx *zedrouterContext,
 		if err != nil {
 			log.Errorf("%s, appnetwork config cipherblock decryption unsuccessful, falling back to cleartext: %v",
 				dc.Key(), err)
+			if dc.CloudInitUserData == nil {
+				ctx.cipherMetrics.RecordFailure(log, types.MissingFallback)
+				return decBlock.ProtectedUserData, fmt.Errorf("appnetwork config cipherblock decryption"+
+					"unsuccessful (%s); "+
+					"no fallback data", err)
+			}
 			decBlock.ProtectedUserData = *dc.CloudInitUserData
 			// We assume IsCipher is only set when there was some
 			// data. Hence this is a fallback if there is
@@ -2554,6 +2560,10 @@ func getCloudInitUserData(ctx *zedrouterContext,
 	}
 	log.Functionf("%s, appnetwork config cipherblock not present", dc.Key())
 	decBlock := types.EncryptionBlock{}
+	if dc.CloudInitUserData == nil {
+		ctx.cipherMetrics.RecordFailure(log, types.NoCipher)
+		return decBlock.ProtectedUserData, nil
+	}
 	decBlock.ProtectedUserData = *dc.CloudInitUserData
 	if decBlock.ProtectedUserData != "" {
 		ctx.cipherMetrics.RecordFailure(log, types.NoCipher)
