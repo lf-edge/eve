@@ -47,6 +47,13 @@ type localServerMap struct {
 	upToDate bool
 }
 
+// L2Adapter is used to represent L2 Adapter (VLAN, bond) during configuration parsing.
+type L2Adapter struct {
+	config         *types.NetworkPortConfig
+	lowerL2Ports   []*L2Adapter
+	lowerPhysPorts []*types.PhysicalIOAdapter
+}
+
 type getconfigContext struct {
 	zedagentCtx              *zedagentContext    // Cross link
 	ledBlinkCount            types.LedBlinkCount // Current count
@@ -91,6 +98,10 @@ type getconfigContext struct {
 	localProfile             string
 	localProfileTrigger      chan Notify
 	localServerMap           *localServerMap
+
+	// parsed L2 adapters
+	vlans []L2Adapter
+	bonds []L2Adapter
 
 	// radio-silence
 	radioSilence     types.RadioSilence // the intended state of radio devices

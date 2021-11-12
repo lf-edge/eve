@@ -28,6 +28,13 @@ const (
 	MaxBaseOsCount       = 2
 	BaseOsImageCount     = 1
 	rebootConfigFilename = types.PersistStatusDir + "/rebootConfig"
+
+	// interface name length limit as imposed by Linux kernel.
+	ifNameMaxLength = 15
+
+	// range of valid VLAN IDs
+	minVlanID = 1
+	maxVlanID = 4094
 )
 
 // Returns a rebootFlag
@@ -78,13 +85,16 @@ func parseConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigContext,
 		// DeviceIoList has some defaults for Usage and UsagePolicy
 		// used by systemAdapters
 		physioChanged := parseDeviceIoListConfig(config, getconfigCtx)
+		// It is important to parse Bonds before VLANs.
+		bondsChanged := parseBonds(config, getconfigCtx)
+		vlansChanged := parseVlans(config, getconfigCtx)
 		// Network objects are used for systemAdapters
 		networksChanged := parseNetworkXObjectConfig(config, getconfigCtx)
 		// system adapter configuration that we publish, depends
-		// on Physio configuration and Networks configuration. If either of
-		// Physio or Networks change, we should re-parse system adapters and
+		// on Physio, VLAN, Bond and Networks configuration.
+		// If any of these change, we should re-parse system adapters and
 		// publish updated configuration.
-		forceSystemAdaptersParse := physioChanged || networksChanged
+		forceSystemAdaptersParse := physioChanged || networksChanged || vlansChanged || bondsChanged
 		parseSystemAdapterConfig(config, getconfigCtx, forceSystemAdaptersParse)
 		parseBaseOS(getconfigCtx, config)
 		parseBaseOsConfig(getconfigCtx, config)
@@ -597,20 +607,17 @@ func parseSystemAdapterConfig(config *zconfig.EdgeDevConfig,
 		}
 	}
 
-	newPorts := []types.NetworkPortConfig{}
-	for _, sysAdapter := range sysAdapters {
-		port := parseOneSystemAdapterConfig(getconfigCtx, sysAdapter, version)
-		if port != nil {
-			newPorts = append(newPorts, *port)
-		}
-	}
-	if len(newPorts) == 0 {
-		log.Functionf("parseSystemAdapterConfig: No Port configuration present")
-		return
-	}
 	portConfig := &types.DevicePortConfig{}
 	portConfig.Version = version
-	portConfig.Ports = newPorts
+	var newPorts []*types.NetworkPortConfig
+	for _, sysAdapter := range sysAdapters {
+		ports, err := parseOneSystemAdapterConfig(getconfigCtx, sysAdapter, version)
+		if err != nil {
+			portConfig.RecordFailure(err.Error())
+		}
+		newPorts = append(newPorts, ports...)
+	}
+	validateAndAssignNetPorts(portConfig, newPorts)
 
 	// Check if all management ports have errors
 	// Propagate any parse errors for all ports to the DPC
@@ -630,6 +637,9 @@ func parseSystemAdapterConfig(config *zconfig.EdgeDevConfig,
 		errStr += p.LastError + "\n"
 	}
 	if !ok {
+		if errStr == "" && portConfig.HasError() {
+			errStr = portConfig.LastError
+		}
 		if errStr != "" {
 			errStr = "All management ports failed to parse: " + errStr
 		} else if mgmtCount == 0 {
@@ -644,6 +654,7 @@ func parseSystemAdapterConfig(config *zconfig.EdgeDevConfig,
 	// Even if only ErrorAndTime changed we publish so
 	// the change can be sent back to the controller using ctx.devicePortConfigList
 	if cmp.Equal(getconfigCtx.devicePortConfig.Ports, portConfig.Ports) &&
+		cmp.Equal(getconfigCtx.devicePortConfig.TestResults, portConfig.TestResults) &&
 		getconfigCtx.devicePortConfig.Version == portConfig.Version {
 		log.Functionf("parseSystemAdapterConfig: DevicePortConfig - " +
 			"Done with no change")
@@ -662,67 +673,288 @@ func parseSystemAdapterConfig(config *zconfig.EdgeDevConfig,
 	log.Functionf("parseSystemAdapterConfig: Done")
 }
 
-// Returns a port if it should be added to the list; some errors result in
-// adding a port to to DevicePortConfig with ErrorAndTime set.
-func parseOneSystemAdapterConfig(getconfigCtx *getconfigContext,
-	sysAdapter *zconfig.SystemAdapter,
-	version types.DevicePortConfigVersion) *types.NetworkPortConfig {
+// Validate parsed network ports and assign non-duplicates to DevicePortConfig.
+func validateAndAssignNetPorts(dpc *types.DevicePortConfig, newPorts []*types.NetworkPortConfig) {
+	var validatedPorts []*types.NetworkPortConfig
 
-	log.Functionf("XXX parseOneSystemAdapterConfig name %s lowerLayerName %s",
-		sysAdapter.Name, sysAdapter.LowerLayerName)
-	port := new(types.NetworkPortConfig)
+	// 1. check for collisions
+	for _, port := range newPorts {
+		var skip bool
+		for _, port2 := range validatedPorts {
+			// With VLANs the same physicalIO or bond may be used by multiple system adapters.
+			// So it is OK to get duplicates but they should be completely equal.
+			if cmp.Equal(port, port2) {
+				skip = true
+				break
+			}
+			if port.Logicallabel == port2.Logicallabel {
+				errStr := fmt.Sprintf(
+					"Port collides with another port with the same logical label (%s)",
+					port.Logicallabel)
+				log.Error(errStr)
+				port.RecordFailure(errStr)
+				port2.RecordFailure(errStr)
+				break
+			}
+			if port.IfName == port2.IfName {
+				errStr := fmt.Sprintf(
+					"Port collides with another port with the same interface name (%s)",
+					port.IfName)
+				log.Error(errStr)
+				port.RecordFailure(errStr)
+				port2.RecordFailure(errStr)
+				break
+			}
+		}
+		if skip {
+			continue
+		}
+		validatedPorts = append(validatedPorts, port)
+	}
 
-	port.Logicallabel = sysAdapter.Name // XXX Rename field in protobuf?
-	port.Alias = sysAdapter.Alias
-	// Look up using LowerLayerName which should match a phyio PhysicalLabel.
-	// If LowerLayerName was not set we use Name i.e., assume
-	// Phylabel and Logicallabel are the same
-	if sysAdapter.LowerLayerName == "" {
-		port.Phylabel = sysAdapter.Name
-	} else {
-		port.Phylabel = sysAdapter.LowerLayerName
+	// 2. validate L2 references
+	type l2References struct {
+		vlanSubIntfs []*types.NetworkPortConfig
+		bondMasters  []*types.NetworkPortConfig
 	}
-	phyio := lookupDeviceIoLogicallabel(getconfigCtx, port.Logicallabel)
-	if phyio == nil {
-		phyio = lookupDeviceIoPhylabel(getconfigCtx, port.Phylabel)
+	// key = logical name, value = inverted references from higher layers
+	invertedRefs := make(map[string]*l2References)
+	// build map of inverted L2 references, used for validation purposes below
+	for _, port := range validatedPorts {
+		switch port.L2LinkConfig.L2Type {
+		case types.L2LinkTypeVLAN:
+			parent := port.L2LinkConfig.VLAN.ParentPort
+			if _, exist := invertedRefs[parent]; !exist {
+				invertedRefs[parent] = &l2References{}
+			}
+			l2Refs := invertedRefs[parent]
+			l2Refs.vlanSubIntfs = append(l2Refs.vlanSubIntfs, port)
+		case types.L2LinkTypeBond:
+			aggrPorts := port.L2LinkConfig.Bond.AggregatedPorts
+			for _, aggrPort := range aggrPorts {
+				if _, exist := invertedRefs[aggrPort]; !exist {
+					invertedRefs[aggrPort] = &l2References{}
+				}
+				l2Refs := invertedRefs[aggrPort]
+				l2Refs.bondMasters = append(l2Refs.bondMasters, port)
+			}
+		}
 	}
-	if phyio == nil {
-		// We will re-check when phyio changes.
-		errStr := fmt.Sprintf("Missing phyio for %s lower %s; ignored",
-			sysAdapter.Name, sysAdapter.LowerLayerName)
-		log.Error(errStr)
-		return nil
+	for _, port := range validatedPorts {
+		l2Refs := invertedRefs[port.Logicallabel]
+		if l2Refs == nil {
+			continue
+		}
+		if len(l2Refs.bondMasters) > 1 {
+			errStr := fmt.Sprintf(
+				"Port %s is aggregated by multiple bond interfaces (%s, %s, ...)",
+				port.Logicallabel,
+				l2Refs.bondMasters[0].Logicallabel,
+				l2Refs.bondMasters[1].Logicallabel)
+			log.Error(errStr)
+			port.RecordFailure(errStr)
+			continue
+		}
+		if len(l2Refs.bondMasters) > 0 && len(l2Refs.vlanSubIntfs) > 0 {
+			errStr := fmt.Sprintf(
+				"Port %s is referenced by both bond (%s) and VLAN (%s)",
+				port.Logicallabel, l2Refs.bondMasters[0].Logicallabel,
+				l2Refs.vlanSubIntfs[0].Logicallabel)
+			log.Error(errStr)
+			port.RecordFailure(errStr)
+			continue
+		}
+		for i, vlanSubIntf := range l2Refs.vlanSubIntfs {
+			for j := 0; j < i; j++ {
+				if vlanSubIntf.VLAN.ID == l2Refs.vlanSubIntfs[j].VLAN.ID {
+					errStr := fmt.Sprintf(
+						"Port %s has duplicate VLAN sub-interfaces (VLAN ID = %d)",
+						port.Logicallabel, vlanSubIntf.VLAN.ID)
+					log.Error(errStr)
+					port.RecordFailure(errStr)
+					continue
+				}
+			}
+		}
 	}
-	if !types.IoType(phyio.Ptype).IsNet() {
-		errStr := fmt.Sprintf("phyio for %s lower %s not IsNet; ignored",
-			sysAdapter.Name, sysAdapter.LowerLayerName)
-		log.Error(errStr)
-		return nil
+
+	// 3. Propagate errors up to system adapters
+	propagateFrom := validatedPorts
+	for len(propagateFrom) > 0 {
+		var propagateFromNext []*types.NetworkPortConfig
+		for _, port := range propagateFrom {
+			if port.IsL3Port || !port.HasError() {
+				continue
+			}
+			l2Refs := invertedRefs[port.Logicallabel]
+			if l2Refs == nil {
+				continue
+			}
+			for _, vlanSubIntf := range l2Refs.vlanSubIntfs {
+				if !vlanSubIntf.HasError() {
+					propagateError(vlanSubIntf, port)
+					propagateFromNext = append(propagateFromNext, vlanSubIntf)
+				}
+			}
+			for _, bondMaster := range l2Refs.bondMasters {
+				if !bondMaster.HasError() {
+					propagateError(bondMaster, port)
+					propagateFromNext = append(propagateFromNext, bondMaster)
+				}
+			}
+		}
+		propagateFrom = propagateFromNext
 	}
-	if port.Logicallabel != phyio.Logicallabel {
-		errStr := fmt.Sprintf("phyio for %s lower %s mismatched logicallabel %s vs %s",
-			sysAdapter.Name, sysAdapter.LowerLayerName,
-			port.Logicallabel, phyio.Logicallabel)
-		log.Warn(errStr)
+
+	// 4. Assign all non-duplicate, validated ports.
+	for _, port := range validatedPorts {
+		dpc.Ports = append(dpc.Ports, *port)
 	}
+}
+
+// Propagate error from a lower-layer adapter to a higher-layer adapter.
+func propagateError(higherLayerPort, lowerLayerPort *types.NetworkPortConfig) {
+	if lowerLayerPort.HasError() {
+		// Inherit error from the lower-layer adapter if there is any
+		errStr := fmt.Sprintf("Lower-layer adapter %s has an error (%s)",
+			lowerLayerPort.Logicallabel, lowerLayerPort.LastError)
+		higherLayerPort.RecordFailure(errStr)
+	}
+}
+
+func propagatePhyioAttrsToPort(port *types.NetworkPortConfig, phyio *types.PhysicalIOAdapter) {
 	port.Phylabel = phyio.Phylabel
 	port.IfName = phyio.Phyaddr.Ifname
 	if port.IfName == "" {
 		// Might not be set for all models
-		log.Warnf("Phyio for phylabel %s logicallabel %s has no ifname",
-			phyio.Phylabel, phyio.Logicallabel)
+		log.Warnf("Physical IO %s (Phylabel %s) has no ifname",
+			phyio.Logicallabel, phyio.Phylabel)
 		if phyio.Logicallabel != "" {
 			port.IfName = phyio.Logicallabel
 		} else {
 			port.IfName = phyio.Phylabel
 		}
 	}
+}
+
+// Make NetworkPortConfig entry for PhysicalIO which is below an L2 port.
+// The port configuration will contain only labels and the interface name.
+func makeL2PhyioPort(phyio *types.PhysicalIOAdapter) *types.NetworkPortConfig {
+	phyioPort := &types.NetworkPortConfig{Logicallabel: phyio.Logicallabel}
+	propagatePhyioAttrsToPort(phyioPort, phyio)
+	return phyioPort
+}
+
+// Make NetworkPortConfig entry for L2Adapter (VLAN, bond, ...)
+// which is below a higher-level adapter (i.e. it is not L3 port).
+// Recursively adds port entries for all adapter below this one.
+// The port configuration will contain only labels, the interface name
+// and L2 configuration.
+func makeL2Port(l2Adapter *L2Adapter) (ports []*types.NetworkPortConfig) {
+	ports = append(ports, &types.NetworkPortConfig{
+		IfName:       l2Adapter.config.IfName,
+		Phylabel:     l2Adapter.config.Phylabel,
+		Logicallabel: l2Adapter.config.Logicallabel,
+		L2LinkConfig: l2Adapter.config.L2LinkConfig,
+		// copy parsing error if any
+		TestResults: l2Adapter.config.TestResults,
+	})
+	for _, phyio := range l2Adapter.lowerPhysPorts {
+		ports = append(ports, makeL2PhyioPort(phyio))
+	}
+	for _, lowerL2 := range l2Adapter.lowerL2Ports {
+		ports = append(ports, makeL2Port(lowerL2)...)
+	}
+	return ports
+}
+
+// Returns a list of ports that should be added to DevicePortConfig.
+// Even for a single system adapter there can be multiple ports returned.
+// This is because we may have a hierarchy of adapters with multiple layers (vlans, bonds, etc.).
+// One of the returned ports is L3 port (IsL3Port=true), others are from lower
+// layers with only some of the NetworkPortConfig attributes set.
+// Some parsing errors are recorded into ErrorAndTime which is embedded into NetworkPortConfig.
+func parseOneSystemAdapterConfig(getconfigCtx *getconfigContext,
+	sysAdapter *zconfig.SystemAdapter, version types.DevicePortConfigVersion,
+) (ports []*types.NetworkPortConfig, err error) {
+
+	log.Functionf("XXX parseOneSystemAdapterConfig name %s lowerLayerName %s",
+		sysAdapter.Name, sysAdapter.LowerLayerName)
+
 	// We check if any phyio has FreeUplink set. If so we operate
 	// in old mode which means that cost is 1 if FreeUplink == false
 	// XXX Remove this when all controllers send cost.
 	oldController := anyDeviceIoWithFreeUplink(getconfigCtx)
-	log.Functionf("Found phyio for %s: free %t, oldController: %t",
-		sysAdapter.Name, phyio.UsagePolicy.FreeUplink, oldController)
+
+	port := &types.NetworkPortConfig{}
+	port.Logicallabel = sysAdapter.Name // XXX Rename field in protobuf?
+	port.Alias = sysAdapter.Alias
+	port.IsL3Port = true // this one has SystemAdapter directly attached to it
+	lowerLayerName := sysAdapter.LowerLayerName
+	if lowerLayerName == "" {
+		// If LowerLayerName was not set we use Name i.e., assume that the system adapter
+		// and the underlying port share the same logical label.
+		log.Warnf("System adapter without a logical label: %v", sysAdapter)
+		lowerLayerName = sysAdapter.Name
+	}
+
+	// Lower layer of a system adapter is either an L2 object or a physical network adapter.
+	var matchCount int
+	phyio := lookupDeviceIoLogicallabel(getconfigCtx, lowerLayerName)
+	if phyio != nil {
+		matchCount++
+	}
+	var l2Adapter *L2Adapter
+	bond := lookupBondLogicallabel(getconfigCtx, lowerLayerName)
+	if bond != nil {
+		matchCount++
+		l2Adapter = bond
+	}
+	vlan := lookupVlanLogicallabel(getconfigCtx, lowerLayerName)
+	if vlan != nil {
+		matchCount++
+		l2Adapter = vlan
+	}
+	if matchCount == 0 {
+		err = fmt.Errorf("missing lower-layer adapter %s", lowerLayerName)
+		log.Errorf("parseSystemAdapterConfig: %v", err)
+		return nil, err
+	}
+	if matchCount > 1 {
+		err = fmt.Errorf("multiple lower-layer adapters match label %s",
+			lowerLayerName)
+		log.Errorf("parseSystemAdapterConfig: %v", err)
+		return nil, err
+	}
+
+	var phyioFreeUplink bool // XXX Remove this when all controllers send cost.
+	if phyio != nil {
+		// System adapter is referencing a physical IO adapter
+		if !types.IoType(phyio.Ptype).IsNet() {
+			err = fmt.Errorf(
+				"physicalIO %s (phyLabel %s) is not a network adapter",
+				phyio.Logicallabel, phyio.Phylabel)
+			log.Errorf("parseSystemAdapterConfig: %v", err)
+			return nil, err
+		}
+		phyioFreeUplink = phyio.UsagePolicy.FreeUplink
+		log.Functionf("Found phyio for %s: free %t, oldController: %t",
+			sysAdapter.Name, phyioFreeUplink, oldController)
+		propagatePhyioAttrsToPort(port, phyio)
+	} else {
+		// Note that if controller sends VLAN or bond config,
+		// it means that it is new enough to not use FreeUplink anymore.
+		port.IfName = l2Adapter.config.IfName
+		port.L2LinkConfig = l2Adapter.config.L2LinkConfig
+		propagateError(port, l2Adapter.config)
+		// Add NetworkPortConfig entries for lower-layer adapters.
+		for _, phyio := range l2Adapter.lowerPhysPorts {
+			ports = append(ports, makeL2PhyioPort(phyio))
+		}
+		for _, lowerL2 := range l2Adapter.lowerL2Ports {
+			ports = append(ports, makeL2Port(lowerL2)...)
+		}
+	}
 
 	var portCost uint8
 	if sysAdapter.Cost > 255 {
@@ -733,7 +965,7 @@ func parseOneSystemAdapterConfig(getconfigCtx *getconfigContext,
 		portCost = uint8(sysAdapter.Cost)
 	}
 	if portCost == 0 {
-		if phyio.UsagePolicy.FreeUplink || sysAdapter.FreeUplink {
+		if phyioFreeUplink || sysAdapter.FreeUplink {
 			portCost = 0
 		} else if oldController {
 			log.Warnf("XXX oldController and !FreeUplink; assume %s cost=1",
@@ -814,37 +1046,37 @@ func parseOneSystemAdapterConfig(getconfigCtx *getconfigContext,
 			port.DnsServers = network.DnsServers
 			// Need to be careful since zedcloud can feed us bad Dhcp type
 			port.Dhcp = network.Dhcp
-		}
-		switch port.Dhcp {
-		case types.DT_STATIC:
-			if port.AddrSubnet == "" {
-				errStr := fmt.Sprintf("Port %s Configured as DT_STATIC but "+
-					"missing subnet address. SysAdapter - Name: %s, Addr:%s",
-					port.IfName, sysAdapter.Name, sysAdapter.Addr)
-				log.Errorf("parseSystemAdapterConfig: %s", errStr)
-				port.RecordFailure(errStr)
-			}
-		case types.DT_CLIENT:
-			// Do nothing
-		case types.DT_NONE:
-			if isMgmt {
-				errStr := fmt.Sprintf("Port %s configured as Management port "+
-					"with an unsupported DHCP type %d. Client and static are "+
-					"the only allowed DHCP modes for management ports.",
-					port.IfName, types.DT_NONE)
+			switch port.Dhcp {
+			case types.DT_STATIC:
+				if port.AddrSubnet == "" {
+					errStr := fmt.Sprintf("Port %s Configured as DT_STATIC but "+
+						"missing subnet address. SysAdapter - Name: %s, Addr:%s",
+						port.IfName, sysAdapter.Name, sysAdapter.Addr)
+					log.Errorf("parseSystemAdapterConfig: %s", errStr)
+					port.RecordFailure(errStr)
+				}
+			case types.DT_CLIENT:
+				// Do nothing
+			case types.DT_NONE:
+				if isMgmt {
+					errStr := fmt.Sprintf("Port %s configured as Management port "+
+						"with an unsupported DHCP type %d. Client and static are "+
+						"the only allowed DHCP modes for management ports.",
+						port.IfName, types.DT_NONE)
 
+					log.Errorf("parseSystemAdapterConfig: %s", errStr)
+					port.RecordFailure(errStr)
+				}
+			default:
+				errStr := fmt.Sprintf("Port %s configured with unknown DHCP type %v",
+					port.IfName, network.Dhcp)
 				log.Errorf("parseSystemAdapterConfig: %s", errStr)
 				port.RecordFailure(errStr)
 			}
-		default:
-			errStr := fmt.Sprintf("Port %s configured with unknown DHCP type %v",
-				port.IfName, network.Dhcp)
-			log.Errorf("parseSystemAdapterConfig: %s", errStr)
-			port.RecordFailure(errStr)
-		}
-		// XXX use DnsNameToIpList?
-		if network != nil && network.Proxy != nil {
-			port.ProxyConfig = *network.Proxy
+			// XXX use DnsNameToIpList?
+			if network.Proxy != nil {
+				port.ProxyConfig = *network.Proxy
+			}
 		}
 	} else if isMgmt {
 		errStr := fmt.Sprintf("Port %s Configured as Management port without "+
@@ -853,7 +1085,8 @@ func parseOneSystemAdapterConfig(getconfigCtx *getconfigContext,
 		log.Errorf("parseSystemAdapterConfig: %s", errStr)
 		port.RecordFailure(errStr)
 	}
-	return port
+	ports = append(ports, port)
+	return ports, nil // there can still be error recorded inside individual ports
 }
 
 var deviceIoListPrevConfigHash []byte
@@ -903,6 +1136,14 @@ func parseDeviceIoListConfig(config *zconfig.EdgeDevConfig,
 			// for SystemAdapter
 			port.UsagePolicy.FreeUplink = ioDevicePtr.UsagePolicy.FreeUplink
 		}
+		if port.Logicallabel == "" {
+			log.Warnf("PhysicalIO without logical label: %+v", port)
+			// XXX Originally, the physical label was used as the IO adapter identifier
+			// and for references from upper layers.
+			// Now that we have migrated to logical labels, make sure that any old
+			// device model without logical labeling will still be supported.
+			port.Logicallabel = port.Phylabel
+		}
 
 		for key, value := range ioDevicePtr.Phyaddrs {
 			key = strings.ToLower(key)
@@ -927,7 +1168,7 @@ func parseDeviceIoListConfig(config *zconfig.EdgeDevConfig,
 		}
 		phyIoAdapterList.AdapterList = append(phyIoAdapterList.AdapterList,
 			port)
-		getconfigCtx.zedagentCtx.physicalIoAdapterMap[port.Phylabel] = port
+		getconfigCtx.zedagentCtx.physicalIoAdapterMap[port.Logicallabel] = port
 	}
 	phyIoAdapterList.Initialized = true
 	getconfigCtx.pubPhysicalIOAdapters.Publish("zedagent", phyIoAdapterList)
@@ -936,18 +1177,228 @@ func parseDeviceIoListConfig(config *zconfig.EdgeDevConfig,
 	return true
 }
 
-func lookupDeviceIoPhylabel(getconfigCtx *getconfigContext, label string) *types.PhysicalIOAdapter {
-	for _, port := range getconfigCtx.zedagentCtx.physicalIoAdapterMap {
-		if port.Phylabel == label {
+var bondsPrevConfigHash []byte
+
+func parseBonds(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigContext) bool {
+	bonds := config.GetBonds()
+	h := sha256.New()
+	for _, bond := range bonds {
+		computeConfigElementSha(h, bond)
+	}
+	configHash := h.Sum(nil)
+	same := bytes.Equal(configHash, bondsPrevConfigHash)
+	if same {
+		return false
+	}
+	bondsPrevConfigHash = configHash
+
+	getconfigCtx.bonds = []L2Adapter{}
+	for _, bondConfig := range config.GetBonds() {
+		portConfig := new(types.NetworkPortConfig)
+		portConfig.L2Type = types.L2LinkTypeBond
+		bond := L2Adapter{config: portConfig}
+
+		// logical label
+		portConfig.Logicallabel = bondConfig.GetLogicallabel()
+		if portConfig.Logicallabel == "" {
+			errStr := fmt.Sprintf("Bond without logicallabel: %+v; ignored", bondConfig)
+			log.Errorf("parseBonds: %s", errStr)
+			continue
+		}
+
+		// interface name
+		portConfig.IfName = bondConfig.GetInterfaceName()
+		if portConfig.IfName == "" {
+			portConfig.IfName = bondConfig.GetLogicallabel()
+		}
+		if len(portConfig.IfName) > ifNameMaxLength {
+			errStr := fmt.Sprintf("Bond interface name too long: %s", portConfig.IfName)
+			log.Errorf("parseBonds: %s", errStr)
+			portConfig.RecordFailure(errStr)
+		}
+
+		// bond parameters
+		portConfig.Bond.Mode = types.BondMode(bondConfig.GetBondMode())
+		portConfig.Bond.LacpRate = types.LacpRate(bondConfig.GetLacpRate())
+
+		// link monitoring
+		switch monitoring := bondConfig.Monitoring.(type) {
+		case *zconfig.BondAdapter_Arp:
+			arpMonitor := types.BondArpMonitor{
+				Enabled:  true,
+				Interval: monitoring.Arp.Interval,
+			}
+			for _, arpTarget := range monitoring.Arp.IpTargets {
+				ip := net.ParseIP(arpTarget)
+				if ip != nil {
+					arpMonitor.IPTargets = append(arpMonitor.IPTargets, ip)
+				} else {
+					errStr := fmt.Sprintf("Bond ARP monitoring configured with invalid target: %s",
+						arpTarget)
+					log.Errorf("parseBonds: %s", errStr)
+					portConfig.RecordFailure(errStr)
+				}
+			}
+			portConfig.Bond.ARPMonitor = arpMonitor
+		case *zconfig.BondAdapter_Mii:
+			portConfig.Bond.MIIMonitor = types.BondMIIMonitor{
+				Enabled:   true,
+				Interval:  monitoring.Mii.Interval,
+				UpDelay:   monitoring.Mii.Updelay,
+				DownDelay: monitoring.Mii.Downdelay,
+			}
+		}
+
+		// find physical IOs aggregated by the bond
+		for _, lowerLayerName := range bondConfig.LowerLayerNames {
+			physIO := lookupDeviceIoLogicallabel(getconfigCtx, lowerLayerName)
+			if physIO != nil {
+				if types.IoType(physIO.Ptype).IsNet() {
+					portConfig.Bond.AggregatedPorts =
+						append(portConfig.Bond.AggregatedPorts, physIO.Logicallabel)
+					bond.lowerPhysPorts = append(bond.lowerPhysPorts, physIO)
+				} else {
+					errStr := fmt.Sprintf("Bond %s is attached to a non-network adapter %s",
+						portConfig.Logicallabel, physIO.Logicallabel)
+					log.Errorf("parseBonds: %s", errStr)
+					portConfig.RecordFailure(errStr)
+				}
+			} else {
+				errStr := fmt.Sprintf("Bond interface %s referencing non-existing physical adapter %s",
+					portConfig.Logicallabel, lowerLayerName)
+				log.Errorf("parseBonds: %s", errStr)
+				portConfig.RecordFailure(errStr)
+			}
+		}
+		if !portConfig.HasError() && len(portConfig.Bond.AggregatedPorts) == 0 {
+			errStr := fmt.Sprintf("Missing all lower-layer adapters for bond %s",
+				portConfig.Logicallabel)
+			log.Errorf("parseBonds: %s", errStr)
+			portConfig.RecordFailure(errStr)
+		}
+
+		// add parsed Bond adapter
+		getconfigCtx.bonds = append(getconfigCtx.bonds, bond)
+	}
+	return true
+}
+
+var vlansPrevConfigHash []byte
+
+func parseVlans(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigContext) bool {
+	vlans := config.GetVlans()
+	h := sha256.New()
+	for _, vlan := range vlans {
+		computeConfigElementSha(h, vlan)
+	}
+	configHash := h.Sum(nil)
+	same := bytes.Equal(configHash, vlansPrevConfigHash)
+	if same {
+		return false
+	}
+	vlansPrevConfigHash = configHash
+
+	getconfigCtx.vlans = []L2Adapter{}
+	for _, vlanConfig := range config.GetVlans() {
+		portConfig := new(types.NetworkPortConfig)
+		portConfig.L2Type = types.L2LinkTypeVLAN
+		vlan := L2Adapter{config: portConfig}
+
+		// logical label
+		portConfig.Logicallabel = vlanConfig.GetLogicallabel()
+		if portConfig.Logicallabel == "" {
+			errStr := fmt.Sprintf("VLAN without logicallabel: %+v; ignored",
+				vlanConfig)
+			log.Errorf("parseVlans: %s", errStr)
+			continue
+		}
+
+		// interface name
+		portConfig.IfName = vlanConfig.GetInterfaceName()
+		if portConfig.IfName == "" {
+			portConfig.IfName = vlanConfig.GetLogicallabel()
+		}
+		if len(portConfig.IfName) > ifNameMaxLength {
+			errStr := fmt.Sprintf("VLAN interface name too long: %s",
+				portConfig.IfName)
+			log.Errorf("parseVlans: %s", errStr)
+			portConfig.RecordFailure(errStr)
+		}
+
+		// VLAN ID
+		vlanID := vlanConfig.GetVlanId()
+		if vlanID < minVlanID || vlanID > maxVlanID {
+			errStr := fmt.Sprintf("VLAN ID out of range: %d", vlanID)
+			log.Errorf("parseVlans: %s", errStr)
+			portConfig.RecordFailure(errStr)
+			// do not try to create this VLAN sub-interface
+			// (conversion to uint16 could turn it into a valid ID)
+			const maxUint16 = 0xFFFF
+			if vlanID > maxUint16 {
+				vlanID = maxUint16
+			}
+		}
+		portConfig.VLAN.ID = uint16(vlanID)
+
+		// find parent (physical IO or bond)
+		physIO := lookupDeviceIoLogicallabel(getconfigCtx, vlanConfig.GetLowerLayerName())
+		if physIO != nil {
+			if types.IoType(physIO.Ptype).IsNet() {
+				portConfig.VLAN.ParentPort = physIO.Logicallabel
+				vlan.lowerPhysPorts = []*types.PhysicalIOAdapter{physIO}
+			} else {
+				errStr := fmt.Sprintf("VLAN %s is attached to a non-network adapter %s",
+					portConfig.Logicallabel, physIO.Logicallabel)
+				log.Errorf("parseVlans: %s", errStr)
+				portConfig.RecordFailure(errStr)
+			}
+		} else {
+			bond := lookupBondLogicallabel(getconfigCtx, vlanConfig.GetLowerLayerName())
+			if bond != nil {
+				portConfig.VLAN.ParentPort = bond.config.Logicallabel
+				vlan.lowerL2Ports = []*L2Adapter{bond}
+				if bond.config.HasError() {
+					// Inherit error from bond if there is any
+					errStr := fmt.Sprintf("VLAN %s is attached to bond %s which has an error (%s)",
+						portConfig.Logicallabel, bond.config.Logicallabel, bond.config.LastError)
+					log.Errorf("parseVlans: %s", errStr)
+					portConfig.RecordFailure(errStr)
+				}
+			}
+		}
+		if !portConfig.HasError() && portConfig.VLAN.ParentPort == "" {
+			errStr := fmt.Sprintf("Missing lower-layer adapter for VLAN %s",
+				portConfig.Logicallabel)
+			log.Errorf("parseVlans: %s", errStr)
+			portConfig.RecordFailure(errStr)
+		}
+
+		// add parsed VLAN adapter
+		getconfigCtx.vlans = append(getconfigCtx.vlans, vlan)
+	}
+	return true
+}
+
+func lookupDeviceIoLogicallabel(getconfigCtx *getconfigContext, label string) *types.PhysicalIOAdapter {
+	port, exists := getconfigCtx.zedagentCtx.physicalIoAdapterMap[label]
+	if !exists {
+		return nil
+	}
+	return &port
+}
+
+func lookupBondLogicallabel(getconfigCtx *getconfigContext, label string) *L2Adapter {
+	for _, port := range getconfigCtx.bonds {
+		if port.config.Logicallabel == label {
 			return &port
 		}
 	}
 	return nil
 }
 
-func lookupDeviceIoLogicallabel(getconfigCtx *getconfigContext, label string) *types.PhysicalIOAdapter {
-	for _, port := range getconfigCtx.zedagentCtx.physicalIoAdapterMap {
-		if port.Logicallabel == label {
+func lookupVlanLogicallabel(getconfigCtx *getconfigContext, label string) *L2Adapter {
+	for _, port := range getconfigCtx.vlans {
+		if port.config.Logicallabel == label {
 			return &port
 		}
 	}

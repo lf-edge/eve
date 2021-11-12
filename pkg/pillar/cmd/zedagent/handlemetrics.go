@@ -283,6 +283,10 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 		if p == nil {
 			continue
 		}
+		if !p.IsL3Port {
+			// metrics for ports from lower layers are not reported
+			continue
+		}
 		for _, m := range networkMetrics.MetricList {
 			if p.IfName == m.IfName {
 				metric = &m
