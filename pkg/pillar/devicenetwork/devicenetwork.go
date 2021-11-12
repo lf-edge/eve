@@ -186,6 +186,7 @@ func MakeDeviceNetworkStatus(ctx *DeviceNetworkContext, globalConfig types.Devic
 		globalStatus.Ports[ix].Logicallabel = u.Logicallabel
 		globalStatus.Ports[ix].Alias = u.Alias
 		globalStatus.Ports[ix].IsMgmt = u.IsMgmt
+		globalStatus.Ports[ix].IsL3Port = u.IsL3Port
 		globalStatus.Ports[ix].Cost = u.Cost
 		globalStatus.Ports[ix].ProxyConfig = u.ProxyConfig
 		// Set fields from the config...

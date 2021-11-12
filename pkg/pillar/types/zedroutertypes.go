@@ -948,6 +948,103 @@ const (
 	PortCostMax = uint8(255)
 )
 
+// L2LinkType - supported types of an L2 link
+type L2LinkType uint8
+
+const (
+	// L2LinkTypeNone : not an L2 link (used for physical network adapters).
+	L2LinkTypeNone L2LinkType = iota
+	// L2LinkTypeVLAN : VLAN sub-interface
+	L2LinkTypeVLAN
+	// L2LinkTypeBond : Bond interface
+	L2LinkTypeBond
+)
+
+// L2LinkConfig - contains either VLAN or Bond interface configuration,
+// depending on the L2Type.
+type L2LinkConfig struct {
+	L2Type L2LinkType
+	VLAN   VLANConfig
+	Bond   BondConfig
+}
+
+// VLANConfig - VLAN sub-interface configuration.
+type VLANConfig struct {
+	// Logical name of the parent port.
+	ParentPort string
+	// VLAN ID.
+	ID uint16
+}
+
+// BondMode specifies the policy indicating how bonding slaves are used
+// during network transmissions.
+type BondMode uint8
+
+const (
+	// BondModeUnspecified : default is Round-Robin
+	BondModeUnspecified BondMode = iota
+	// BondModeBalanceRR : Round-Robin
+	BondModeBalanceRR
+	// BondModeActiveBackup : Active/Backup
+	BondModeActiveBackup
+	// BondModeBalanceXOR : select slave for a packet using a hash function
+	BondModeBalanceXOR
+	// BondModeBroadcast : send every packet on all slaves
+	BondModeBroadcast
+	// BondMode802Dot3AD : IEEE 802.3ad Dynamic link aggregation
+	BondMode802Dot3AD
+	// BondModeBalanceTLB : Adaptive transmit load balancing
+	BondModeBalanceTLB
+	// BondModeBalanceALB : Adaptive load balancing
+	BondModeBalanceALB
+)
+
+// LacpRate specifies the rate in which EVE will ask LACP link partners
+// to transmit LACPDU packets in 802.3ad mode.
+type LacpRate uint8
+
+const (
+	// LacpRateUnspecified : default is Slow.
+	LacpRateUnspecified LacpRate = iota
+	// LacpRateSlow : Request partner to transmit LACPDUs every 30 seconds.
+	LacpRateSlow
+	// LacpRateFast : Request partner to transmit LACPDUs every 1 second.
+	LacpRateFast
+)
+
+// BondConfig - Bond (LAG) interface configuration.
+type BondConfig struct {
+	// Logical names of PhysicalIO network adapters aggregated by this bond.
+	AggregatedPorts []string
+
+	// Bonding policy.
+	Mode BondMode
+
+	// LACPDU packets transmission rate.
+	// Applicable for BondMode802Dot3AD only.
+	LacpRate LacpRate
+
+	// Link monitoring is either disabled or one of the monitors
+	// is enabled, never both at the same time.
+	MIIMonitor BondMIIMonitor
+	ARPMonitor BondArpMonitor
+}
+
+// BondMIIMonitor : MII link monitoring parameters (see devmodel.proto for description).
+type BondMIIMonitor struct {
+	Enabled   bool
+	Interval  uint32
+	UpDelay   uint32
+	DownDelay uint32
+}
+
+// BondArpMonitor : ARP-based link monitoring parameters (see devmodel.proto for description).
+type BondArpMonitor struct {
+	Enabled   bool
+	Interval  uint32
+	IPTargets []net.IP
+}
+
 // NetworkPortConfig has the configuration and some status like TestResults
 // for one IfName.
 // XXX odd to have ParseErrors and/or TestResults here but we don't have
@@ -961,9 +1058,11 @@ type NetworkPortConfig struct {
 	// NetworkUUID - UUID of the Network Object configured for the port.
 	NetworkUUID uuid.UUID
 	IsMgmt      bool  // Used to talk to controller
+	IsL3Port    bool  // True if port is applicable to operate on the network layer
 	Cost        uint8 // Zero is free
 	DhcpConfig
 	ProxyConfig
+	L2LinkConfig
 	WirelessCfg WirelessConfig
 	// TestResults - Errors from parsing plus success/failure from testing
 	TestResults
@@ -975,6 +1074,7 @@ type NetworkPortStatus struct {
 	Logicallabel   string
 	Alias          string // From SystemAdapter's alias
 	IsMgmt         bool   // Used to talk to controller
+	IsL3Port       bool   // True if port is applicable to operate on the network layer
 	Cost           uint8
 	Dhcp           DhcpType
 	Type           NetworkType // IPv4 or IPv6 or Dual stack
@@ -989,6 +1089,7 @@ type NetworkPortStatus struct {
 	DefaultRouters []net.IP
 	WirelessStatus WirelessStatus
 	ProxyConfig
+	L2LinkConfig
 	// TestResults provides recording of failure and success
 	TestResults
 }
@@ -1583,13 +1684,24 @@ func GetExistingInterfaceList(log *base.LogObject, globalStatus DeviceNetworkSta
 	return ifs
 }
 
-// Check if an interface name is a port owned by zedrouter
+// Check if an interface name is a port owned by nim
 func IsPort(globalStatus DeviceNetworkStatus, ifname string) bool {
 	for _, us := range globalStatus.Ports {
 		if us.IfName != ifname {
 			continue
 		}
 		return true
+	}
+	return false
+}
+
+// IsL3Port checks if an interface name belongs to a port with SystemAdapter attached.
+func IsL3Port(globalStatus DeviceNetworkStatus, ifname string) bool {
+	for _, us := range globalStatus.Ports {
+		if us.IfName != ifname {
+			continue
+		}
+		return us.IsL3Port
 	}
 	return false
 }

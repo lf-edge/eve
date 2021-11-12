@@ -182,7 +182,7 @@ func PbrRouteChange(ctx *zedrouterContext,
 			rt.LinkIndex, err, rt)
 		return
 	}
-	if linkType != "bridge" && !types.IsPort(*deviceNetworkStatus, ifname) {
+	if linkType != "bridge" && !types.IsL3Port(*deviceNetworkStatus, ifname) {
 		// Ignore
 		log.Functionf("PbrRouteChange ignore %s: neither bridge nor port. route %v\n",
 			ifname, rt)

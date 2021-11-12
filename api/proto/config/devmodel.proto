@@ -64,7 +64,7 @@ message SystemAdapter {
   string alias = 7;
 
   // lowerLayerName - For example, if lower layer is PhysicalAdapter
-  // ( physical interface), this should point to PhyLabel of the
+  // ( physical interface), this should point to logicallabel of the
   // physicalIO.
   string lowerLayerName = 8;
 
