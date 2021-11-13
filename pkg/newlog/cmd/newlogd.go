@@ -84,7 +84,7 @@ var (
 
 	enableFastUpload bool // enable fast upload to controller similar to previous log operation
 
-	subGlobalConfig  pubsub.Subscription
+	subGlobalConfig pubsub.Subscription
 
 	schedResetTimer *time.Timer // after detect log has watchdog going down message, reset the file flush count
 	panicWriteTimer *time.Timer // after detect pillar panic, in case no other log comes in, write the panic files
@@ -125,11 +125,11 @@ type inputEntry struct {
 
 // collection time device/app temp file stats for file size and time limit
 type statsLogFile struct {
-	index      int
-	file       *os.File
-	size       int32
-	starttime  time.Time
-	notUpload  bool
+	index     int
+	file      *os.File
+	size      int32
+	starttime time.Time
+	notUpload bool
 }
 
 // file info passing from collection to compression threads
@@ -138,7 +138,7 @@ type fileChanInfo struct {
 	header    string
 	inputSize int32
 	isApp     bool
-	notUpload bool   // app log is configured not to upload
+	notUpload bool // app log is configured not to upload
 }
 
 // device Meta Data
@@ -316,11 +316,11 @@ func main() {
 			// handle logfile to gzip conversion work
 			doMoveCompressFile(tmpLogfileInfo)
 
-		case panicBuf := <- panicFileChan:
+		case panicBuf := <-panicFileChan:
 			// save panic stack into files
 			savePanicFiles(panicBuf)
 
-		case <- panicWriteTimer.C:
+		case <-panicWriteTimer.C:
 			if len(panicBuf) > 0 {
 				savePanicFiles(panicBuf)
 				panicBuf = nil
@@ -489,7 +489,7 @@ func handleGlobalConfigImp(ctxArg interface{}, key string, statusArg interface{}
 
 		// get user specified disk quota for logs and cap at 10% of /persist space
 		limitGzipFilesMbyts = gcp.GlobalValueInt(types.LogRemainToSendMBytes)
-		if limitGzipFilesMbyts > uint32(persistMbytes / 10) {
+		if limitGzipFilesMbyts > uint32(persistMbytes/10) {
 			limitGzipFilesMbyts = uint32(persistMbytes / 10)
 		}
 	}
@@ -513,7 +513,7 @@ func getKmessages(loggerChan chan inputEntry) {
 			timestamp: msg.Timestamp.Format(time.RFC3339Nano),
 		}
 		if msg.Priority >= 0 {
-			entry.severity = priorityStr[msg.Priority % 8]
+			entry.severity = priorityStr[msg.Priority%8]
 		}
 
 		logmetrics.NumKmessages++
@@ -747,7 +747,7 @@ func writelogFile(logChan <-chan inputEntry, moveChan chan fileChanInfo) {
 		case <-checklogTimer.C:
 			timeIdx++
 			checkLogTimeExpire(fileinfo, &devStats, moveChan)
-			checklogTimer = time.NewTimer(5 * time.Second)  // check the file time limit every 5 seconds
+			checklogTimer = time.NewTimer(5 * time.Second) // check the file time limit every 5 seconds
 
 		case entry := <-logChan:
 			appuuid := checkAppEntry(&entry)
@@ -855,9 +855,9 @@ func getAppStatsMap(appuuid string) statsLogFile {
 		}
 
 		appM := statsLogFile{
-			file:       applogfile,
-			starttime:  time.Now(),
-			notUpload:  notUpload,
+			file:      applogfile,
+			starttime: time.Now(),
+			notUpload: notUpload,
 		}
 		appStatsMap[appuuid] = appM
 
@@ -933,7 +933,7 @@ func checkDirGzfiles(sfiles map[string]gfileStats, logdir string) ([]string, int
 		fs := gfileStats{
 			filename: logdir + "/" + fname,
 			filesize: fsize,
-			isSent: alreadySent,
+			isSent:   alreadySent,
 		}
 		sizes += fsize
 
@@ -1045,7 +1045,7 @@ func doMoveCompressFile(tmplogfileInfo fileChanInfo) {
 		// remove this new oversied gzip file
 		os.Remove(outfile)
 
-		ratio = int(newSize / maxGzipFileSize + 2) // minimum to 3 segments
+		ratio = int(newSize/maxGzipFileSize + 2) // minimum to 3 segments
 		newSize = doGzipSplitContent(content, ratio, now, tmplogfileInfo)
 		logmetrics.NumBreakGZipFile += uint32(ratio)
 	} else {
@@ -1087,7 +1087,7 @@ func doGzipSplitContent(content []byte, ratio int, now time.Time, info fileChanI
 	dirName, appuuid := getFileInfo(info)
 	var totalNewSize int64
 	for idx, seg := range segments {
-		outfile := gzipFileNameGet(info.isApp, timenowNum + idx, dirName, appuuid, info.notUpload)
+		outfile := gzipFileNameGet(info.isApp, timenowNum+idx, dirName, appuuid, info.notUpload)
 		newSize := gzipToOutFile(seg, outfile, info, now)
 		calculateGzipSizes(newSize)
 		totalNewSize += newSize
@@ -1155,7 +1155,7 @@ func breakGzipSegments(content []byte, ratio int) [][]byte {
 	for {
 		pos := 0
 		for {
-			size := blocksize * (s + 1) + pos
+			size := blocksize*(s+1) + pos
 			pos++
 			if size > fsize {
 				err := fmt.Errorf("can't break the log file")
@@ -1169,7 +1169,7 @@ func breakGzipSegments(content []byte, ratio int) [][]byte {
 			}
 		}
 		s++
-		if s + 1 == ratio { // done, assign the last segment
+		if s+1 == ratio { // done, assign the last segment
 			contents[s] = content[presize:fsize]
 			break
 		}
@@ -1629,7 +1629,7 @@ func newMessage(pkt []byte, size int, sysfmt *regexp.Regexp) (inputEntry, error)
 
 	msgReceived := time.Now()
 	p, _ := strconv.ParseInt(string(res[1]), 10, 64)
-	msgPriority = priorityStr[p % 8]
+	msgPriority = priorityStr[p%8]
 	misc := res[3]
 	// Check for either "hostname tagpid" or "tagpid"
 	a := bytes.SplitN(misc, []byte(" "), 2)
@@ -1652,7 +1652,7 @@ func newMessage(pkt []byte, size int, sysfmt *regexp.Regexp) (inputEntry, error)
 	// Raw message string excluding priority, timestamp, tag and pid.
 	n := bytes.Index(pkt, []byte("]: "))
 	if n > 0 {
-		if size > n + 2 {
+		if size > n+2 {
 			msgRaw = bytes.TrimSpace(pkt[n+2 : size])
 		} else {
 			msgRaw = bytes.TrimSpace(pkt[n+2:])
@@ -1660,7 +1660,7 @@ func newMessage(pkt []byte, size int, sysfmt *regexp.Regexp) (inputEntry, error)
 	} else {
 		n = bytes.Index(pkt, []byte(": "))
 		if n > 0 {
-			if size > n + 1 {
+			if size > n+1 {
 				msgRaw = bytes.TrimSpace(pkt[n+1 : size])
 			} else {
 				msgRaw = bytes.TrimSpace(pkt[n+1:])
@@ -1671,11 +1671,11 @@ func newMessage(pkt []byte, size int, sysfmt *regexp.Regexp) (inputEntry, error)
 	}
 
 	entry = inputEntry{
-		source:     msgTag,
-		severity:   msgPriority,
-		content:    string(msgRaw),
-		pid:        strconv.Itoa(msgPid),
-		timestamp:  msgReceived.Format(time.RFC3339Nano),
+		source:    msgTag,
+		severity:  msgPriority,
+		content:   string(msgRaw),
+		pid:       strconv.Itoa(msgPid),
+		timestamp: msgReceived.Format(time.RFC3339Nano),
 	}
 
 	return entry, nil
