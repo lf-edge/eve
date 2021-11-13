@@ -93,10 +93,10 @@ var (
 	appStatsMap map[string]statsLogFile
 
 	// device source input bytes written to log file
-	devSourceBytes map[string]uint64
+	devSourceBytes *base.LockedStringMap
 
 	//domainUUID
-	domainUUID map[string]appDomain // App log, from domain-id to app-UUID and app-Name
+	domainUUID *base.LockedStringMap // App log, from domain-id to appDomain
 	// syslog/kmsg priority string definition
 	priorityStr = [8]string{"emerg", "alert", "crit", "err", "warning", "notice", "info", "debug"}
 )
@@ -207,7 +207,7 @@ func main() {
 	}
 
 	// domain-name to UUID and App-name mapping
-	domainUUID = make(map[string]appDomain)
+	domainUUID = base.NewLockedStringMap()
 	// Get DomainStatus from domainmgr
 	subDomainStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "domainmgr",
@@ -433,7 +433,8 @@ func handleDomainStatusImp(ctxArg interface{}, key string, statusArg interface{}
 	}
 
 	// close the app log file if already opened due to app log policy change
-	if d, ok := domainUUID[appD.appUUID]; ok {
+	if val, ok := domainUUID.Load(appD.appUUID); ok {
+		d := val.(appDomain)
 		if d.disableLogs != appD.disableLogs {
 			appD.trigMove = true
 		} else {
@@ -441,7 +442,7 @@ func handleDomainStatusImp(ctxArg interface{}, key string, statusArg interface{}
 		}
 		appD.msgIDAppCnt = d.msgIDAppCnt // inherit the counter for the app
 	}
-	domainUUID[appD.appUUID] = appD
+	domainUUID.Store(appD.appUUID, appD)
 	log.Tracef("handleDomainStatusModify: done for %s", key)
 }
 
@@ -450,11 +451,11 @@ func handleDomainStatusDelete(ctxArg interface{}, key string, statusArg interfac
 	log.Tracef("handleDomainStatusDelete: for %s", key)
 	status := statusArg.(types.DomainStatus)
 	appUUID := status.UUIDandVersion.UUID.String()
-	if _, ok := domainUUID[appUUID]; !ok {
+	if _, ok := domainUUID.Load(appUUID); !ok {
 		return
 	}
 	log.Tracef("handleDomainStatusDelete: remove %s", appUUID)
-	delete(domainUUID, appUUID)
+	domainUUID.Delete(appUUID)
 	log.Tracef("handleDomainStatusDelete: done for %s", key)
 }
 
@@ -729,7 +730,7 @@ func writelogFile(logChan <-chan inputEntry, moveChan chan fileChanInfo) {
 	var fileinfo fileChanInfo
 	var devStats statsLogFile
 
-	devSourceBytes = make(map[string]uint64)
+	devSourceBytes = base.NewLockedStringMap()
 	appStatsMap = make(map[string]statsLogFile)
 	checklogTimer := time.NewTimer(5 * time.Second)
 	devStats.file = devlogFile
@@ -807,7 +808,8 @@ func checkAppEntry(entry *inputEntry) string {
 				// of app-uuid.restart-num.app-num
 				entry.source = appSplitArr[1]
 				appsource := strings.Split(entry.source, ".")
-				if du, ok := domainUUID[appsource[0]]; ok {
+				if val, ok := domainUUID.Load(appsource[0]); ok {
+					du := val.(appDomain)
 					appuuid = du.appUUID
 				} else {
 					log.Tracef("entry.source not in right format %s", entry.source)
@@ -826,11 +828,11 @@ func updateLogMsgID(appUUID string) uint64 {
 		msgid = msgIDDevCnt
 		msgIDDevCnt++
 	} else {
-		if _, ok := domainUUID[appUUID]; ok {
-			appD := domainUUID[appUUID]
+		if val, ok := domainUUID.Load(appUUID); ok {
+			appD := val.(appDomain)
 			msgid = appD.msgIDAppCnt
 			appD.msgIDAppCnt++
-			domainUUID[appUUID] = appD
+			domainUUID.Store(appUUID, appD)
 		}
 	}
 
@@ -843,14 +845,14 @@ func getAppStatsMap(appuuid string) statsLogFile {
 		applogfile := startTmpfile(collectDir, applogname, true)
 
 		var notUpload bool
-		for _, appD := range domainUUID {
-			if appD.appUUID == appuuid {
-				notUpload = appD.disableLogs
-				if appD.trigMove {
-					appD.trigMove = false // reset this since we start a new file
-					domainUUID[appuuid] = appD
-				}
-				break
+
+		val, found := domainUUID.Load(appuuid)
+		if found {
+			appD := val.(appDomain)
+			notUpload = appD.disableLogs
+			if appD.trigMove {
+				appD.trigMove = false // reset this since we start a new file
+				domainUUID.Store(appuuid, appD)
 			}
 		}
 
@@ -872,12 +874,13 @@ func getAppStatsMap(appuuid string) statsLogFile {
 
 // update device log source map for metrics64
 func updateDevInputlogStats(source string, size uint64) {
-	b, ok := devSourceBytes[source]
-	if !ok {
-		b = 0
+	var b uint64
+	val, ok := devSourceBytes.Load(source)
+	if ok {
+		b = val.(uint64)
 	}
 	b += size
-	devSourceBytes[source] = b
+	devSourceBytes.Store(source, b)
 
 	logmetrics.DevMetrics.NumBytesWrite += size
 }
@@ -1297,10 +1300,11 @@ func checkLogTimeExpire(fileinfo fileChanInfo, devStats *statsLogFile, moveChan 
 
 	// check app log files
 	for appuuid, appM := range appStatsMap {
-		if d, ok := domainUUID[appuuid]; ok { // if app disable-upload status changes, move file to gzip now
+		if val, ok := domainUUID.Load(appuuid); ok { // if app disable-upload status changes, move file to gzip now
+			d := val.(appDomain)
 			if d.trigMove && appM.file != nil {
 				d.trigMove = false
-				domainUUID[appuuid] = d
+				domainUUID.Store(appuuid, d)
 				trigMoveToGzip(fileinfo, &appM, appuuid, moveChan, true)
 				continue
 			}
@@ -1313,13 +1317,11 @@ func checkLogTimeExpire(fileinfo fileChanInfo, devStats *statsLogFile, moveChan 
 
 // for dev, returns the meta data, and for app, return the appName
 func formatAndGetMeta(appuuid string) string {
-	var appName string
 	if appuuid != "" {
-		for _, appD := range domainUUID { // cycle through the domainUUID map and find the UUID and appName
-			if appD.appUUID == appuuid {
-				appName = appD.appName
-				return appName
-			}
+		val, found := domainUUID.Load(appuuid)
+		if found {
+			appD := val.(appDomain)
+			return appD.appName
 		}
 	}
 	metaStr := logs.LogBundle{
@@ -1506,13 +1508,13 @@ func cleanPanicFileDir() {
 	}
 }
 
-func rankByInputCount(Frequencies map[string]uint64) pairList {
-	pl := make(pairList, len(Frequencies))
-	i := 0
-	for k, v := range Frequencies {
-		pl[i] = pair{k, v}
-		i++
+func rankByInputCount(Frequencies *base.LockedStringMap) pairList {
+	pl := pairList{}
+	clb := func(key string, val interface{}) bool {
+		pl = append(pl, pair{key, val.(uint64)})
+		return true
 	}
+	Frequencies.Range(clb)
 	sort.Sort(sort.Reverse(pl))
 	return pl
 }
