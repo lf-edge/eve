@@ -169,6 +169,15 @@ type AppInstanceStatus struct {
 	ErrorAndTimeWithSource
 }
 
+type AppCount uint8
+type AppInstanceSummary struct {
+	UUIDandVersion UUIDandVersion
+	TotalApps      AppCount // Total number of apps configured
+	TotalRunning   AppCount // Total number of apps in running or booting state
+	TotalHalted    AppCount // Total number of apps in halted state
+	TotalError     AppCount // Total number of apps in error state
+}
+
 // LogCreate :
 func (status AppInstanceStatus) LogCreate(logBase *base.LogObject) {
 	logObject := base.NewLogObject(logBase, base.AppInstanceStatusLogType, status.DisplayName,
@@ -247,6 +256,9 @@ const (
 )
 
 func (status AppInstanceStatus) Key() string {
+	return status.UUIDandVersion.UUID.String()
+}
+func (status AppInstanceSummary) Key() string {
 	return status.UUIDandVersion.UUID.String()
 }
 
