@@ -13,44 +13,24 @@ option java_package = "org.lfedge.eve.config";
 //     Constitutes set of parameters that define the physical devices.
 //     Mainly they describes all the I/O adapters that make up the device.
 //
+//  L2 objects:
+//     Objects hierarchically placed between PhysicalIO and SystemAdapters
+//     related to Layer 2 networking.
+//     Currently supported are VLANs and LAGs (Link Aggregation Groups, aka "bonds").
+//     References based on logical names are used to describe parent-child
+//     or master-slave relations between L2 objects and PhysicalIO.
 //
 //  SystemAdapters:
-//     Are the higher level contstucts these are IP-ready network end point
-//     description.  SystemAdapters used by EVE device to connect
-//     to controller, alternatively systemAdapters are used to share the
-//     network connections for applications.
-//
-//     SystemAdapters, have proxy configuration, VLAN, Wifi credentials etc.
-//     System adapter refers to PhysicalIO by name.
-//
-//   NetworkAdapters:
-//     ** Not in this file**
-//     Is used for the providing the direct attach information to application
-//     Network adapter refers to PhysicalIO by name.
-//
+//     Higher-level IP-ready network endpoints.
+//     SystemAdapters are used by EVE device to connect to the controller
+//     and/or to share external network connectivity between applications.
+//     SystemAdapters have cost, proxy configuration, Wifi credentials etc.
+//     System adapter refers to an underlying L2 object or directly to PhysicalIO
+//     by the logical name.
 
-// Deprecate; replace by level 2 specification
-enum sWAdapterType {
-  IGNORE = 0;
-  VLAN = 1;
-  BOND = 2;
-}
-
-// Deprecate; replace by level 2 specification
-message sWAdapterParams {
-  sWAdapterType aType = 1;
-
-  // vlan
-  string underlayInterface = 8;
-  uint32 vlanId = 9;
-
-  // OR : repeated physical interfaces for bond0
-  repeated string bondgroup = 10;
-}
-
-// systemAdapters, are the higher l2 concept built on physicalIOs.
-// systemAdapters, gives all the required bits to turn the physical IOs
-// into useful IP endpoints.
+// systemAdapters are higher-level IP-ready network endpoints.
+// systemAdapters give all the required bits to turn the physical IOs
+// and intermediate L2 objects into useful IP endpoints.
 // These endpoints can be further used to connect to controller or
 // can be shared between workload/services running on the node.
 message SystemAdapter {
@@ -59,8 +39,6 @@ message SystemAdapter {
   // This will be the Network Port name.
   string name = 1;
 
-  // deprecated; need level 2 spec. sWAdapterParams allocDetails = 20;
-  // this is part of the freelink group
   // DEPRECATED by cost below
   bool freeUplink = 2;
 
@@ -170,4 +148,156 @@ message PhysicalIO {
   // physical and logical attributes
   //    For example in WWAN to which firmware version to load etc
   map <string, string> cbattr = 8;
+}
+
+// VlanAdapter represents a single VLAN sub-interface.
+// The parent, which is referenced by lower_layer_name,
+// should be either PhysicalIO or BondAdapter.
+message VlanAdapter {
+  // Logical name of this VLAN adapter.
+  string logicallabel = 1;
+
+  // A physical name of the VLAN sub-interface.
+  // Note that the interface name is limited in Linux kernel to 15 characters.
+  // If not defined, logicallabel will be used instead.
+  string interface_name = 2;
+
+  // Logical name of the lower layer adapter (bond or physicalIO).
+  string lower_layer_name = 3;
+
+  // VLAN ID. Valid values are from 1 to 4094.
+  uint32 vlan_id = 4;
+}
+
+// A bonding mode specifies the policy indicating how bonding slaves are used
+// during network transmission.
+enum BondMode {
+  // BOND_MODE_UNSPECIFIED : if bonding mode is not explicitly specified,
+  // then by default Round-Robin policy is applied (BOND_MODE_BALANCE_RR).
+  BOND_MODE_UNSPECIFIED = 0;
+  // BOND_MODE_BALANCE_RR : transmit packets in sequential order from the first
+  // available slave through the last. This mode provides load balancing
+  // and fault tolerance.
+  // This is the default bonding mode.
+  BOND_MODE_BALANCE_RR = 1;
+  // BOND_MODE_ACTIVE_BACKUP : only one slave in the bond is active.
+  // A different slave becomes active if, and only if, the active slave fails.
+  // The bond's MAC address is externally visible on only one port to avoid
+  // confusing the switch.
+  // This mode provides fault tolerance.
+  BOND_MODE_ACTIVE_BACKUP = 2;
+  // BOND_MODE_BALANCE_XOR : packet source and destination MAC addresses are
+  // used to calculate hash and select the output slave interface accordingly.
+  // This algorithm will place all traffic destined to a particular network
+  // peer on the same slave.
+  // This mode provides load balancing and fault tolerance.
+  BOND_MODE_BALANCE_XOR = 3;
+  // BOND_MODE_BROADCAST: transmits everything on all slave interfaces.
+  // This mode provides fault tolerance.
+  BOND_MODE_BROADCAST = 4;
+  // BOND_MODE_802_3AD : IEEE 802.3ad Dynamic link aggregation.
+  // Creates aggregation groups that share the same speed and duplex settings.
+  // Utilizes all slaves in the active aggregator according to the 802.3ad
+  // specification.
+  // Requires that upstream networks equipment supports and has the IEEE 802.3ad
+  // Dynamic link aggregation properly configured.
+  BOND_MODE_802_3AD = 5;
+  // BOND_MODE_BALANCE_TLB : adaptive transmit load balancing. Channel bonding that
+  // does not require any special switch support. The outgoing traffic
+  // is distributed according to the current load (computed relative to the speed)
+  // on each slave.
+  // Incoming traffic is received by the current slave. If the receiving slave
+  // fails, another slave takes over the MAC address of the failed receiving slave.
+  // This mode provides (TX) load balancing and fault tolerance.
+  BOND_MODE_BALANCE_TLB = 6;
+  // BOND_MODE_BALANCE_ALB : adaptive load balancing. Includes BOND_MODE_BALANCE_TLB
+  // plus receive load balancing (RLB) for IPV4 traffic, and does not require
+  // any special switch support. The receive load balancing is achieved by ARP
+  // negotiation.
+  // This mode provides load balancing and fault tolerance.
+  BOND_MODE_BALANCE_ALB = 7;
+}
+
+// Option specifying the rate in which EVE will ask LACP link partners
+// to transmit LACPDU packets in 802.3ad mode.
+enum LacpRate {
+  // Default LACP rate is Slow.
+  LACP_RATE_UNSPECIFIED = 0;
+  // Request LACP partner to transmit LACPDUs every 30 seconds.
+  LACP_RATE_SLOW = 1;
+  // Request LACP partner to transmit LACPDUs every 1 second.
+  LACP_RATE_FAST = 2;
+}
+
+// BondAdapter aggregates multiple PhysicalIOs into one adapter for redundancy
+// and load-spreading purposes.
+message BondAdapter {
+  // Name of this bond adapter.
+  string logicallabel = 1;
+
+  // A physical name of the bond interface.
+  // Note that the interface name is limited in Linux kernel to 15 characters.
+  // If not defined, logicallabel will be used instead.
+  string interface_name = 2;
+
+  // Logical names of aggregated PhysicalIOs.
+  // For all bonding modes but Active-Backup the order is irrelevant.
+  // In the Active-Backup mode (BOND_MODE_ACTIVE_BACKUP), the first PhysicalIO
+  // in the list will be considered as the primary port (i.e. only when
+  // the primary is off-line will alternate ports be used).
+  repeated string lower_layer_names = 3;
+
+  // A bonding mode specifies the policy indicating how bonding slaves are used
+  // during network transmission
+  BondMode bond_mode = 4;
+
+  // Method by which link failures and recoveries are detected.
+  oneof monitoring {
+    // The MII monitor is driver-dependent. It monitors the links from the device
+    // to the nearest connected switch. If the failure occurs beyond the nearest
+    // connected switch, it cannot be detected by MII monitor.
+    MIIMonitor mii = 5;
+    // The ARP monitor is based on the communication to the target
+    // hosts designated by their IP addresses. Even if the link is beyond
+    // the nearest connected switch, the APR monitor can detect it.
+    ArpMonitor arp = 6;
+  }
+
+  // Option specifying the rate in which EVE will ask LACP link partners
+  // to transmit LACPDU packets in 802.3ad mode.
+  LacpRate lacp_rate = 8;
+}
+
+// MIIMonitor : MII link monitoring parameters.
+// Defined for BondAdapter.
+message MIIMonitor {
+  // Specifies the MII link monitoring frequency in milliseconds.
+  // This determines how often the link state of each bond slave is inspected
+  // for link failures.
+  uint32 interval = 1;
+
+  // Updelay specifies the time, in milliseconds, to wait before enabling
+  // a bond slave after a link recovery has been detected.
+  // The updelay value should be a multiple of the monitoring interval; if not,
+  // it will be rounded down to the nearest multiple.
+  // The default value is 0.
+  uint32 updelay = 2;
+
+  // Specifies the time, in milliseconds, to wait before disabling a bond
+  // slave after a link failure has been detected.
+  // The downdelay value should be a multiple of the monitoring interval; if not,
+  // it will be rounded down to the nearest multiple.
+  // The default value is 0.
+  uint32 downdelay = 3;
+}
+
+// ArpMonitor : ARP-based link monitoring parameters.
+// Defined for BondAdapter.
+message ArpMonitor {
+  // Interval specifies the ARP link monitoring frequency in milliseconds.
+  uint32 interval = 1;
+
+  // IpTargets specifies the IPv4 addresses to use as ARP monitoring peers.
+  // These are the targets of ARP requests sent to determine the health of links.
+  repeated string ip_targets = 2;
 }
