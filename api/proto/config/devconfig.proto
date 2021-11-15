@@ -114,6 +114,13 @@ message EdgeDevConfig {
   // profile_server_token. EVE must verify that the response from the
   // local_profile_server contains this token.
   string profile_server_token = 29;
+
+  // A list of VLAN sub-interfaces configured for EVE management traffic and
+  // for local network instances.
+  repeated VlanAdapter vlans = 30;
+
+  // A list of bond interfaces (LAGs) aggregating physical network adapters.
+  repeated BondAdapter bonds = 31;
 }
 
 message ConfigRequest {
