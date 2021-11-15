@@ -27,7 +27,7 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   syntax='proto3',
   serialized_options=b'\n\025org.lfedge.eve.configZ$github.com/lf-edge/eve/api/go/config',
   create_key=_descriptor._internal_create_key,
-  serialized_pb=b'\n\x16\x63onfig/devconfig.proto\x12\x15org.lfedge.eve.config\x1a\x18\x63onfig/acipherinfo.proto\x1a\x16\x63onfig/appconfig.proto\x1a\x19\x63onfig/baseosconfig.proto\x1a\x16\x63onfig/devcommon.proto\x1a\x15\x63onfig/devmodel.proto\x1a\x16\x63onfig/netconfig.proto\x1a\x14\x63onfig/netinst.proto\x1a\x14\x63onfig/storage.proto\"\xb1\x08\n\rEdgeDevConfig\x12\x31\n\x02id\x18\x01 \x01(\x0b\x32%.org.lfedge.eve.config.UUIDandVersion\x12\x36\n\x04\x61pps\x18\x04 \x03(\x0b\x32(.org.lfedge.eve.config.AppInstanceConfig\x12\x36\n\x08networks\x18\x05 \x03(\x0b\x32$.org.lfedge.eve.config.NetworkConfig\x12:\n\ndatastores\x18\x06 \x03(\x0b\x32&.org.lfedge.eve.config.DatastoreConfig\x12\x31\n\x04\x62\x61se\x18\x08 \x03(\x0b\x32#.org.lfedge.eve.config.BaseOSConfig\x12\x33\n\x06reboot\x18\t \x01(\x0b\x32#.org.lfedge.eve.config.DeviceOpsCmd\x12\x33\n\x06\x62\x61\x63kup\x18\n \x01(\x0b\x32#.org.lfedge.eve.config.DeviceOpsCmd\x12\x36\n\x0b\x63onfigItems\x18\x0b \x03(\x0b\x32!.org.lfedge.eve.config.ConfigItem\x12?\n\x11systemAdapterList\x18\x0c \x03(\x0b\x32$.org.lfedge.eve.config.SystemAdapter\x12\x37\n\x0c\x64\x65viceIoList\x18\r \x03(\x0b\x32!.org.lfedge.eve.config.PhysicalIO\x12\x14\n\x0cmanufacturer\x18\x0e \x01(\t\x12\x13\n\x0bproductName\x18\x0f \x01(\t\x12\x46\n\x10networkInstances\x18\x10 \x03(\x0b\x32,.org.lfedge.eve.config.NetworkInstanceConfig\x12<\n\x0e\x63ipherContexts\x18\x13 \x03(\x0b\x32$.org.lfedge.eve.config.CipherContext\x12\x37\n\x0b\x63ontentInfo\x18\x14 \x03(\x0b\x32\".org.lfedge.eve.config.ContentTree\x12.\n\x07volumes\x18\x15 \x03(\x0b\x32\x1d.org.lfedge.eve.config.Volume\x12!\n\x19\x63ontrollercert_confighash\x18\x16 \x01(\t\x12\x18\n\x10maintenance_mode\x18\x18 \x01(\x08\x12\x18\n\x10\x63ontroller_epoch\x18\x19 \x01(\x03\x12-\n\x06\x62\x61seos\x18\x1a \x01(\x0b\x32\x1d.org.lfedge.eve.config.BaseOS\x12\x16\n\x0eglobal_profile\x18\x1b \x01(\t\x12\x1c\n\x14local_profile_server\x18\x1c \x01(\t\x12\x1c\n\x14profile_server_token\x18\x1d \x01(\t\"<\n\rConfigRequest\x12\x12\n\nconfigHash\x18\x01 \x01(\t\x12\x17\n\x0fintegrity_token\x18\x02 \x01(\x0c\"Z\n\x0e\x43onfigResponse\x12\x34\n\x06\x63onfig\x18\x01 \x01(\x0b\x32$.org.lfedge.eve.config.EdgeDevConfig\x12\x12\n\nconfigHash\x18\x02 \x01(\tB=\n\x15org.lfedge.eve.configZ$github.com/lf-edge/eve/api/go/configb\x06proto3'
+  serialized_pb=b'\n\x16\x63onfig/devconfig.proto\x12\x15org.lfedge.eve.config\x1a\x18\x63onfig/acipherinfo.proto\x1a\x16\x63onfig/appconfig.proto\x1a\x19\x63onfig/baseosconfig.proto\x1a\x16\x63onfig/devcommon.proto\x1a\x15\x63onfig/devmodel.proto\x1a\x16\x63onfig/netconfig.proto\x1a\x14\x63onfig/netinst.proto\x1a\x14\x63onfig/storage.proto\"\x97\t\n\rEdgeDevConfig\x12\x31\n\x02id\x18\x01 \x01(\x0b\x32%.org.lfedge.eve.config.UUIDandVersion\x12\x36\n\x04\x61pps\x18\x04 \x03(\x0b\x32(.org.lfedge.eve.config.AppInstanceConfig\x12\x36\n\x08networks\x18\x05 \x03(\x0b\x32$.org.lfedge.eve.config.NetworkConfig\x12:\n\ndatastores\x18\x06 \x03(\x0b\x32&.org.lfedge.eve.config.DatastoreConfig\x12\x31\n\x04\x62\x61se\x18\x08 \x03(\x0b\x32#.org.lfedge.eve.config.BaseOSConfig\x12\x33\n\x06reboot\x18\t \x01(\x0b\x32#.org.lfedge.eve.config.DeviceOpsCmd\x12\x33\n\x06\x62\x61\x63kup\x18\n \x01(\x0b\x32#.org.lfedge.eve.config.DeviceOpsCmd\x12\x36\n\x0b\x63onfigItems\x18\x0b \x03(\x0b\x32!.org.lfedge.eve.config.ConfigItem\x12?\n\x11systemAdapterList\x18\x0c \x03(\x0b\x32$.org.lfedge.eve.config.SystemAdapter\x12\x37\n\x0c\x64\x65viceIoList\x18\r \x03(\x0b\x32!.org.lfedge.eve.config.PhysicalIO\x12\x14\n\x0cmanufacturer\x18\x0e \x01(\t\x12\x13\n\x0bproductName\x18\x0f \x01(\t\x12\x46\n\x10networkInstances\x18\x10 \x03(\x0b\x32,.org.lfedge.eve.config.NetworkInstanceConfig\x12<\n\x0e\x63ipherContexts\x18\x13 \x03(\x0b\x32$.org.lfedge.eve.config.CipherContext\x12\x37\n\x0b\x63ontentInfo\x18\x14 \x03(\x0b\x32\".org.lfedge.eve.config.ContentTree\x12.\n\x07volumes\x18\x15 \x03(\x0b\x32\x1d.org.lfedge.eve.config.Volume\x12!\n\x19\x63ontrollercert_confighash\x18\x16 \x01(\t\x12\x18\n\x10maintenance_mode\x18\x18 \x01(\x08\x12\x18\n\x10\x63ontroller_epoch\x18\x19 \x01(\x03\x12-\n\x06\x62\x61seos\x18\x1a \x01(\x0b\x32\x1d.org.lfedge.eve.config.BaseOS\x12\x16\n\x0eglobal_profile\x18\x1b \x01(\t\x12\x1c\n\x14local_profile_server\x18\x1c \x01(\t\x12\x1c\n\x14profile_server_token\x18\x1d \x01(\t\x12\x31\n\x05vlans\x18\x1e \x03(\x0b\x32\".org.lfedge.eve.config.VlanAdapter\x12\x31\n\x05\x62onds\x18\x1f \x03(\x0b\x32\".org.lfedge.eve.config.BondAdapter\"<\n\rConfigRequest\x12\x12\n\nconfigHash\x18\x01 \x01(\t\x12\x17\n\x0fintegrity_token\x18\x02 \x01(\x0c\"Z\n\x0e\x43onfigResponse\x12\x34\n\x06\x63onfig\x18\x01 \x01(\x0b\x32$.org.lfedge.eve.config.EdgeDevConfig\x12\x12\n\nconfigHash\x18\x02 \x01(\tB=\n\x15org.lfedge.eve.configZ$github.com/lf-edge/eve/api/go/configb\x06proto3'
   ,
   dependencies=[config_dot_acipherinfo__pb2.DESCRIPTOR,config_dot_appconfig__pb2.DESCRIPTOR,config_dot_baseosconfig__pb2.DESCRIPTOR,config_dot_devcommon__pb2.DESCRIPTOR,config_dot_devmodel__pb2.DESCRIPTOR,config_dot_netconfig__pb2.DESCRIPTOR,config_dot_netinst__pb2.DESCRIPTOR,config_dot_storage__pb2.DESCRIPTOR,])
 
@@ -203,6 +203,20 @@ _EDGEDEVCONFIG = _descriptor.Descriptor(
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+    _descriptor.FieldDescriptor(
+      name='vlans', full_name='org.lfedge.eve.config.EdgeDevConfig.vlans', index=23,
+      number=30, type=11, cpp_type=10, label=3,
+      has_default_value=False, default_value=[],
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+    _descriptor.FieldDescriptor(
+      name='bonds', full_name='org.lfedge.eve.config.EdgeDevConfig.bonds', index=24,
+      number=31, type=11, cpp_type=10, label=3,
+      has_default_value=False, default_value=[],
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
   ],
   extensions=[
   ],
@@ -216,7 +230,7 @@ _EDGEDEVCONFIG = _descriptor.Descriptor(
   oneofs=[
   ],
   serialized_start=242,
-  serialized_end=1315,
+  serialized_end=1417,
 )
 
 
@@ -254,8 +268,8 @@ _CONFIGREQUEST = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=1317,
-  serialized_end=1377,
+  serialized_start=1419,
+  serialized_end=1479,
 )
 
 
@@ -293,8 +307,8 @@ _CONFIGRESPONSE = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=1379,
-  serialized_end=1469,
+  serialized_start=1481,
+  serialized_end=1571,
 )
 
 _EDGEDEVCONFIG.fields_by_name['id'].message_type = config_dot_devcommon__pb2._UUIDANDVERSION
@@ -312,6 +326,8 @@ _EDGEDEVCONFIG.fields_by_name['cipherContexts'].message_type = config_dot_aciphe
 _EDGEDEVCONFIG.fields_by_name['contentInfo'].message_type = config_dot_storage__pb2._CONTENTTREE
 _EDGEDEVCONFIG.fields_by_name['volumes'].message_type = config_dot_storage__pb2._VOLUME
 _EDGEDEVCONFIG.fields_by_name['baseos'].message_type = config_dot_baseosconfig__pb2._BASEOS
+_EDGEDEVCONFIG.fields_by_name['vlans'].message_type = config_dot_devmodel__pb2._VLANADAPTER
+_EDGEDEVCONFIG.fields_by_name['bonds'].message_type = config_dot_devmodel__pb2._BONDADAPTER
 _CONFIGRESPONSE.fields_by_name['config'].message_type = _EDGEDEVCONFIG
 DESCRIPTOR.message_types_by_name['EdgeDevConfig'] = _EDGEDEVCONFIG
 DESCRIPTOR.message_types_by_name['ConfigRequest'] = _CONFIGREQUEST
