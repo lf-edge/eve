@@ -32,6 +32,7 @@ func handleVolumeRefCreate(ctxArg interface{}, key string,
 			ReadOnly:           vs.ReadOnly,
 			DisplayName:        vs.DisplayName,
 			MaxVolSize:         vs.MaxVolSize,
+			WWN:                vs.WWN,
 		}
 		if vs.HasError() {
 			description := vs.ErrorDescription
