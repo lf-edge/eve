@@ -373,10 +373,12 @@ func getDatastoreCredential(ctx *downloaderContext,
 			}
 			return decBlock, nil
 		}
-		log.Functionf("%s, datastore config cipherblock decryption successful", dst.Key())
+		log.Noticef("%s, datastore config cipherblock decryption successful got %t/%t",
+			dst.Key(), len(decBlock.DsAPIKey) != 0,
+			len(decBlock.DsPassword) != 0)
 		return decBlock, nil
 	}
-	log.Functionf("%s, datastore config cipherblock not present", dst.Key())
+	log.Noticef("%s, datastore config cipherblock not present", dst.Key())
 	decBlock := types.EncryptionBlock{}
 	decBlock.DsAPIKey = dst.ApiKey
 	decBlock.DsPassword = dst.Password

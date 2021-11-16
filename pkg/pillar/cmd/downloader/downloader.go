@@ -139,6 +139,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 		case change := <-ctx.decryptCipherContext.SubEdgeNodeCert.MsgChan():
 			ctx.decryptCipherContext.SubEdgeNodeCert.ProcessChange(change)
+			log.Noticef("Processed EdgeNodeCert")
 
 		// This wait can take an unbounded time since we wait for IP
 		// addresses. Punch StillRunning
@@ -155,12 +156,15 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		select {
 		case change := <-ctx.decryptCipherContext.SubControllerCert.MsgChan():
 			ctx.decryptCipherContext.SubControllerCert.ProcessChange(change)
+			log.Noticef("Processed ControllerCert")
 
 		case change := <-ctx.decryptCipherContext.SubEdgeNodeCert.MsgChan():
 			ctx.decryptCipherContext.SubEdgeNodeCert.ProcessChange(change)
+			log.Noticef("Processed EdgeNodeCert")
 
 		case change := <-ctx.decryptCipherContext.SubCipherContext.MsgChan():
 			ctx.decryptCipherContext.SubCipherContext.ProcessChange(change)
+			log.Noticef("Processed CipherContext")
 
 		case change := <-ctx.subGlobalConfig.MsgChan():
 			ctx.subGlobalConfig.ProcessChange(change)
@@ -179,6 +183,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 		case change := <-ctx.subDatastoreConfig.MsgChan():
 			ctx.subDatastoreConfig.ProcessChange(change)
+			log.Noticef("Processed DatastoreConfig")
 
 		case <-publishTimer.C:
 			start := time.Now()
@@ -208,6 +213,8 @@ func checkAndUpdateDownloadableObjects(ctx *downloaderContext, dsID uuid.UUID) {
 		if status.DatastoreID == dsID {
 			config := lookupDownloaderConfig(ctx, status.Key())
 			if config != nil {
+				log.Noticef("checkAndUpdateDownloadableObjects updating %s due to datastore %s",
+					status.Key(), dsID)
 				dHandler.modify(ctx, status.Key(), *config)
 			}
 		}

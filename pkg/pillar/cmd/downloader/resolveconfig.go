@@ -324,6 +324,8 @@ func checkAndUpdateResolveConfig(ctx *downloaderContext, dsID uuid.UUID) {
 		if status.DatastoreID == dsID {
 			config := lookupResolveConfig(ctx, status.Key())
 			if config != nil {
+				log.Noticef("checkAndUpdateResolveConfig updating %s due to datastore %s",
+					status.Key(), dsID)
 				resHandler.modify(ctx, status.Key(), *config, *config)
 			}
 		}
