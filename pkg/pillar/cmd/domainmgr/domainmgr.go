@@ -835,6 +835,9 @@ func verifyStatus(ctx *domainContext, status *types.DomainStatus) {
 	domainID, domainStatus, err := hyper.Task(status).Info(status.DomainName)
 	if err != nil || domainStatus == types.HALTED {
 		if status.Activated && configActivate {
+			if err == nil {
+				err = fmt.Errorf("unexpected state %s", domainStatus.String())
+			}
 			errStr := fmt.Sprintf("verifyStatus(%s) failed %s",
 				status.Key(), err)
 			log.Warnln(errStr)
@@ -849,13 +852,24 @@ func verifyStatus(ctx *domainContext, status *types.DomainStatus) {
 				err := fmt.Errorf("one of the %s tasks has crashed (%v)", status.Key(), err)
 				log.Errorf(err.Error())
 				status.SetErrorNow("one of the application's tasks has crashed - please restart application instance")
-				if err := hyper.Task(status).Delete(status.DomainName); err != nil {
-					log.Errorf("failed to delete domain: %s (%v)", status.DomainName, err)
-				}
-				if err := hyper.Task(status).Cleanup(status.DomainName); err != nil {
-					log.Errorf("failed to cleanup domain: %s (%v)", status.DomainName, err)
-				}
 				status.State = types.BROKEN
+			} else {
+				//schedule for retry boot
+				status.BootFailed = true
+				errDescription := types.ErrorDescription{
+					Error:               err.Error(),
+					ErrorSeverity:       types.ErrorSeverityWarning,
+					ErrorRetryCondition: fmt.Sprintf("will retry in %s", time.Duration(ctx.domainBootRetryTime)*time.Second),
+				}
+				status.SetErrorDescription(errDescription)
+			}
+
+			//cleanup app instance tasks
+			if err := hyper.Task(status).Delete(status.DomainName); err != nil {
+				log.Errorf("failed to delete domain: %s (%v)", status.DomainName, err)
+			}
+			if err := hyper.Task(status).Cleanup(status.DomainName); err != nil {
+				log.Errorf("failed to cleanup domain: %s (%v)", status.DomainName, err)
 			}
 		}
 		status.DomainId = 0
