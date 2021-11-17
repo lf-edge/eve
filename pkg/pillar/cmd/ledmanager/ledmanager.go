@@ -49,7 +49,8 @@ type ledManagerContext struct {
 	radioSilence           bool
 	derivedLedCounter      types.LedBlinkCount // Based on ledCounter, usableAddressCount and radioSilence
 	GCInitialized          bool
-	blinkStatus            chan string
+	blinkSendStop          chan string // Used by sender to stop the running forever blink routine
+	blinkRecvStop          chan string // Sender waits for the ack.
 }
 
 // DisplayFunc takes an argument which can be the name of a LED or display
@@ -60,7 +61,7 @@ type DisplayFunc func(deviceNetworkStatus *types.DeviceNetworkStatus,
 type InitFunc func(arg string)
 
 // AppStatusDisplayFunc takes an argument to list of leds
-type AppStatusDisplayFunc func(blinkCh chan string, arg []string, blink bool, color string)
+type AppStatusDisplayFunc func(ctx *ledManagerContext, arg []string, blink bool, color string)
 
 type modelToFuncs struct {
 	model                string
@@ -68,7 +69,7 @@ type modelToFuncs struct {
 	displayFunc          DisplayFunc
 	arg                  string // Passed to initFunc and displayFunc
 	appStatusDisplayFunc AppStatusDisplayFunc
-	leds                 []string // Passed to appStatusDisplayFunc
+	appStatusArgs        []string // Passed to appStatusDisplayFunc
 	regexp               bool     // model string is a regex
 	isDisplay            bool     // no periodic blinking/update
 }
@@ -138,8 +139,8 @@ var mToF = []modelToFuncs{
 		initFunc:             InitLedCmd,
 		displayFunc:          ExecuteLedCmd,
 		arg:                  "ipc127:green:1",
-		appStatusDisplayFunc: ExecuteAppStatusDisplayFunc,
-		leds:                 []string{"ipc127:green:3", "ipc127:red:3"}, // For this model we use led3 to display app status
+		appStatusDisplayFunc: executeAppStatusDisplayFunc,
+		appStatusArgs:        []string{"ipc127:green:3", "ipc127:red:3"}, // For this model we use led3 to display app status
 	},
 	{
 		model:       "hisilicon,hi6220-hikey.hisilicon,hi6220.",
@@ -231,10 +232,8 @@ var log *base.LogObject
 var Version = "No version specified"
 
 var appStatusDisplayFunc AppStatusDisplayFunc
-var leds []string
+var appStatusArgs []string
 var model string
-
-var blinkInProgress = "/run/blink_in_progress"
 
 func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) int {
 	logger = loggerArg
@@ -279,11 +278,8 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		initFunc = m.initFunc
 		arg = m.arg
 		isDisplay = m.isDisplay
-		if m.model == "SIEMENS AG.SIMATIC IPC127E" {
-			appStatusDisplayFunc = m.appStatusDisplayFunc
-			leds = m.leds
-		}
-
+		appStatusDisplayFunc = m.appStatusDisplayFunc
+		appStatusArgs = m.appStatusArgs
 	}
 
 	for _, m := range mToF {
@@ -317,10 +313,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	// Any state needed by handler functions
 	ctx := ledManagerContext{}
 	ctx.countChange = make(chan types.LedBlinkCount)
-	ctx.blinkStatus = make(chan string)
 
 	if appStatusDisplayFunc != nil && model == "SIEMENS AG.SIMATIC IPC127E" {
-		appStatusDisplayFunc(ctx.blinkStatus, leds, false, "OFF") // Turn off at the start of ledmanager
+		executeAppStatusDisplayFunc(&ctx, appStatusArgs, false, "off") // turn off at the start
 	}
 	log.Functionf("Creating %s at %s", "handleDisplayUpdate",
 		agentlog.GetMyStack())
@@ -653,19 +648,30 @@ func ExecuteLedCmd(deviceNetworkStatus *types.DeviceNetworkStatus,
 	}
 }
 
-// Execute blink forever until there is a message to stop, do we really need blinkcount here ?
-// Just blink until blinkcount before checking for exit stop cmd.
-func ExecuteBlinkLoop(color string, blinkCh chan string) {
+// Execute blink forever until there is a message to stop
+func executeBlinkLoop(ctx *ledManagerContext, color string, leds []string) {
 
 	log.Functionf("Started blink thread for color %s", color)
+	// Both of these channels are created here. This routine is considered as a receiver.
+	// But closing of these channels happens as follows:
+	// blinkSendStop will be closed by the sender and that signal is received by this routine to exit the loop
+	// blinkRecvStop will be closed by the sender after this routine sends done message.
+	ctx.blinkRecvStop = make(chan string)
+	ctx.blinkSendStop = make(chan string, 1)
+	var ok, valid bool
+	for {
 
-	var file, err = os.Create(blinkInProgress)
-	if err != nil {
-		return
-	}
-	file.Close()
+		select {
+		case _, valid = <-ctx.blinkSendStop:
+			ok = true
+		default:
+			ok = false
+		}
 
-	for fileExists(blinkInProgress) {
+		if ok && !valid { // This channel was closed
+			ctx.blinkRecvStop <- "done"
+			return
+		}
 
 		switch color {
 		case "Orange":
@@ -682,35 +688,40 @@ func ExecuteBlinkLoop(color string, blinkCh chan string) {
 			time.Sleep(200 * time.Millisecond)
 		default:
 			log.Noticef("Unsupported Color")
-			os.Remove(blinkInProgress)
+			close(ctx.blinkRecvStop)
+			close(ctx.blinkSendStop)
+			ctx.blinkRecvStop = nil
+			ctx.blinkSendStop = nil
 			return
 		}
 
 	}
 
-	blinkCh <- "done"
 }
 
-func ExecuteAppStatusDisplayFunc(blinkCh chan string, leds []string, blink bool, color string) {
+// Sets the appStatusArgs
+func executeAppStatusDisplayFunc(ctx *ledManagerContext, appStatusArgs []string, blink bool, color string) {
 
 	switch color {
 	case "Red": // Solid Red
-		doLedAction(leds[0], false) // Green off
-		doLedAction(leds[1], true)  // Red on
-	case "Orange": // Orange always blinks
-		doLedAction(leds[0], true) // Green on
-		doLedAction(leds[1], true) // Red on
-		go ExecuteBlinkLoop("Orange", blinkCh)
+		doLedAction(appStatusArgs[0], false) // Green off
+		doLedAction(appStatusArgs[1], true)  // Red on
+	case "Orange": // Orange can blink or solid
+		doLedAction(appStatusArgs[0], true) // Green on
+		doLedAction(appStatusArgs[1], true) // Red on
+		if blink == true {
+			go executeBlinkLoop(ctx, "Orange", appStatusArgs)
+		}
 
 	case "Green": // Green can blink or solid
-		doLedAction(leds[1], false) // Red off
-		doLedAction(leds[0], true)  // Green on
+		doLedAction(appStatusArgs[1], false) // Red off
+		doLedAction(appStatusArgs[0], true)  // Green on
 		if blink == true {
-			go ExecuteBlinkLoop("Green", blinkCh)
+			go executeBlinkLoop(ctx, "Green", appStatusArgs)
 		}
 	default: // Turn off both red and green
-		doLedAction(leds[0], false)
-		doLedAction(leds[1], false)
+		doLedAction(appStatusArgs[0], false)
+		doLedAction(appStatusArgs[1], false)
 	}
 }
 
@@ -814,49 +825,38 @@ func handleAppInstanceSummaryModify(ctxArg interface{}, key string,
 func handleAppInstanceSummaryImpl(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
+	summary := statusArg.(types.AppInstanceSummary)
+	log.Functionf("handleAppInstanceSummaryImpl: Starting %d Running %d Stopping %d Error %d", summary.TotalStarting, summary.TotalRunning, summary.TotalStopping, summary.TotalError)
+
 	// For now we only support this model
 	if model != "SIEMENS AG.SIMATIC IPC127E" {
 		return
 	}
 	ctx := ctxArg.(*ledManagerContext)
 
-	// If previous blink loop is running, stop it here by removing the blink_in_progress file
-	if fileExists(blinkInProgress) {
-		os.Remove(blinkInProgress)
-
-		status := <-ctx.blinkStatus //This is blocking until blink is stopped
+	// Check if a previous blink loop is running.
+	if ctx.blinkSendStop != nil && ctx.blinkRecvStop != nil {
+		close(ctx.blinkSendStop)
+		status := <-ctx.blinkRecvStop //This is blocking until blink is stopped
 		if status == "done" {
 			log.Functionf("Blink stopped")
 		}
+		close(ctx.blinkRecvStop)
+		ctx.blinkRecvStop = nil
+		ctx.blinkSendStop = nil
 	}
 
-	summary := statusArg.(types.AppInstanceSummary)
-	log.Functionf("handleAppInstanceSummaryImpl: Apps %d Running %d Halted %d Error %d", summary.TotalApps, summary.TotalRunning, summary.TotalHalted, summary.TotalError)
-
-	ExecuteAppStatusDisplayFunc(ctx.blinkStatus, leds, false, "off") // turn off first before they get turnedon
-
-	if summary.TotalApps == 0 {
-		// No apps configured, led is already off here
-		return
-	}
+	executeAppStatusDisplayFunc(ctx, appStatusArgs, false, "off") // turn off first before they get turned on
 
 	if summary.TotalError > 0 {
-		ExecuteAppStatusDisplayFunc(ctx.blinkStatus, leds, false, "Red") // Error state: Solid Red
-	} else if summary.TotalApps == summary.TotalRunning {
-		ExecuteAppStatusDisplayFunc(ctx.blinkStatus, leds, false, "Green") // All good: Solid Green
-	} else if summary.TotalHalted > 0 {
-		ExecuteAppStatusDisplayFunc(ctx.blinkStatus, leds, true, "Orange") // Halted state: Blinking Orange
-	} else if summary.TotalApps > summary.TotalRunning {
-		ExecuteAppStatusDisplayFunc(ctx.blinkStatus, leds, true, "Green") //  Init state: Blinking Green
+		executeAppStatusDisplayFunc(ctx, appStatusArgs, false, "Red") // Error state: Solid Red
+	} else if summary.TotalStopping > 0 {
+		executeAppStatusDisplayFunc(ctx, appStatusArgs, true, "Orange") // Halted state: Blinking Orange
+	} else if summary.TotalStarting > 0 {
+		executeAppStatusDisplayFunc(ctx, appStatusArgs, true, "Green") //  Init state: Blinking Green
+	} else if summary.TotalRunning > 0 && summary.TotalStarting == 0 && summary.TotalStopping == 0 {
+		executeAppStatusDisplayFunc(ctx, appStatusArgs, false, "Green") // All good: Solid Green
 	}
-}
-
-func fileExists(filename string) bool {
-	info, err := os.Stat(filename)
-	if os.IsNotExist(err) {
-		return false
-	}
-	return !info.IsDir()
 }
 
 func handleDNSCreate(ctxArg interface{}, key string,

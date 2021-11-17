@@ -84,7 +84,7 @@ var (
 
 	enableFastUpload bool // enable fast upload to controller similar to previous log operation
 
-	subGlobalConfig  pubsub.Subscription
+	subGlobalConfig pubsub.Subscription
 
 	schedResetTimer *time.Timer // after detect log has watchdog going down message, reset the file flush count
 	panicWriteTimer *time.Timer // after detect pillar panic, in case no other log comes in, write the panic files
@@ -93,10 +93,10 @@ var (
 	appStatsMap map[string]statsLogFile
 
 	// device source input bytes written to log file
-	devSourceBytes map[string]uint64
+	devSourceBytes *base.LockedStringMap
 
 	//domainUUID
-	domainUUID map[string]appDomain // App log, from domain-id to app-UUID and app-Name
+	domainUUID *base.LockedStringMap // App log, from domain-id to appDomain
 	// syslog/kmsg priority string definition
 	priorityStr = [8]string{"emerg", "alert", "crit", "err", "warning", "notice", "info", "debug"}
 )
@@ -125,11 +125,11 @@ type inputEntry struct {
 
 // collection time device/app temp file stats for file size and time limit
 type statsLogFile struct {
-	index      int
-	file       *os.File
-	size       int32
-	starttime  time.Time
-	notUpload  bool
+	index     int
+	file      *os.File
+	size      int32
+	starttime time.Time
+	notUpload bool
 }
 
 // file info passing from collection to compression threads
@@ -138,7 +138,7 @@ type fileChanInfo struct {
 	header    string
 	inputSize int32
 	isApp     bool
-	notUpload bool   // app log is configured not to upload
+	notUpload bool // app log is configured not to upload
 }
 
 // device Meta Data
@@ -207,7 +207,7 @@ func main() {
 	}
 
 	// domain-name to UUID and App-name mapping
-	domainUUID = make(map[string]appDomain)
+	domainUUID = base.NewLockedStringMap()
 	// Get DomainStatus from domainmgr
 	subDomainStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "domainmgr",
@@ -316,11 +316,11 @@ func main() {
 			// handle logfile to gzip conversion work
 			doMoveCompressFile(tmpLogfileInfo)
 
-		case panicBuf := <- panicFileChan:
+		case panicBuf := <-panicFileChan:
 			// save panic stack into files
 			savePanicFiles(panicBuf)
 
-		case <- panicWriteTimer.C:
+		case <-panicWriteTimer.C:
 			if len(panicBuf) > 0 {
 				savePanicFiles(panicBuf)
 				panicBuf = nil
@@ -433,7 +433,8 @@ func handleDomainStatusImp(ctxArg interface{}, key string, statusArg interface{}
 	}
 
 	// close the app log file if already opened due to app log policy change
-	if d, ok := domainUUID[appD.appUUID]; ok {
+	if val, ok := domainUUID.Load(appD.appUUID); ok {
+		d := val.(appDomain)
 		if d.disableLogs != appD.disableLogs {
 			appD.trigMove = true
 		} else {
@@ -441,7 +442,7 @@ func handleDomainStatusImp(ctxArg interface{}, key string, statusArg interface{}
 		}
 		appD.msgIDAppCnt = d.msgIDAppCnt // inherit the counter for the app
 	}
-	domainUUID[appD.appUUID] = appD
+	domainUUID.Store(appD.appUUID, appD)
 	log.Tracef("handleDomainStatusModify: done for %s", key)
 }
 
@@ -450,11 +451,11 @@ func handleDomainStatusDelete(ctxArg interface{}, key string, statusArg interfac
 	log.Tracef("handleDomainStatusDelete: for %s", key)
 	status := statusArg.(types.DomainStatus)
 	appUUID := status.UUIDandVersion.UUID.String()
-	if _, ok := domainUUID[appUUID]; !ok {
+	if _, ok := domainUUID.Load(appUUID); !ok {
 		return
 	}
 	log.Tracef("handleDomainStatusDelete: remove %s", appUUID)
-	delete(domainUUID, appUUID)
+	domainUUID.Delete(appUUID)
 	log.Tracef("handleDomainStatusDelete: done for %s", key)
 }
 
@@ -489,7 +490,7 @@ func handleGlobalConfigImp(ctxArg interface{}, key string, statusArg interface{}
 
 		// get user specified disk quota for logs and cap at 10% of /persist space
 		limitGzipFilesMbyts = gcp.GlobalValueInt(types.LogRemainToSendMBytes)
-		if limitGzipFilesMbyts > uint32(persistMbytes / 10) {
+		if limitGzipFilesMbyts > uint32(persistMbytes/10) {
 			limitGzipFilesMbyts = uint32(persistMbytes / 10)
 		}
 	}
@@ -513,7 +514,7 @@ func getKmessages(loggerChan chan inputEntry) {
 			timestamp: msg.Timestamp.Format(time.RFC3339Nano),
 		}
 		if msg.Priority >= 0 {
-			entry.severity = priorityStr[msg.Priority % 8]
+			entry.severity = priorityStr[msg.Priority%8]
 		}
 
 		logmetrics.NumKmessages++
@@ -729,7 +730,7 @@ func writelogFile(logChan <-chan inputEntry, moveChan chan fileChanInfo) {
 	var fileinfo fileChanInfo
 	var devStats statsLogFile
 
-	devSourceBytes = make(map[string]uint64)
+	devSourceBytes = base.NewLockedStringMap()
 	appStatsMap = make(map[string]statsLogFile)
 	checklogTimer := time.NewTimer(5 * time.Second)
 	devStats.file = devlogFile
@@ -747,7 +748,7 @@ func writelogFile(logChan <-chan inputEntry, moveChan chan fileChanInfo) {
 		case <-checklogTimer.C:
 			timeIdx++
 			checkLogTimeExpire(fileinfo, &devStats, moveChan)
-			checklogTimer = time.NewTimer(5 * time.Second)  // check the file time limit every 5 seconds
+			checklogTimer = time.NewTimer(5 * time.Second) // check the file time limit every 5 seconds
 
 		case entry := <-logChan:
 			appuuid := checkAppEntry(&entry)
@@ -807,7 +808,8 @@ func checkAppEntry(entry *inputEntry) string {
 				// of app-uuid.restart-num.app-num
 				entry.source = appSplitArr[1]
 				appsource := strings.Split(entry.source, ".")
-				if du, ok := domainUUID[appsource[0]]; ok {
+				if val, ok := domainUUID.Load(appsource[0]); ok {
+					du := val.(appDomain)
 					appuuid = du.appUUID
 				} else {
 					log.Tracef("entry.source not in right format %s", entry.source)
@@ -826,11 +828,11 @@ func updateLogMsgID(appUUID string) uint64 {
 		msgid = msgIDDevCnt
 		msgIDDevCnt++
 	} else {
-		if _, ok := domainUUID[appUUID]; ok {
-			appD := domainUUID[appUUID]
+		if val, ok := domainUUID.Load(appUUID); ok {
+			appD := val.(appDomain)
 			msgid = appD.msgIDAppCnt
 			appD.msgIDAppCnt++
-			domainUUID[appUUID] = appD
+			domainUUID.Store(appUUID, appD)
 		}
 	}
 
@@ -843,21 +845,21 @@ func getAppStatsMap(appuuid string) statsLogFile {
 		applogfile := startTmpfile(collectDir, applogname, true)
 
 		var notUpload bool
-		for _, appD := range domainUUID {
-			if appD.appUUID == appuuid {
-				notUpload = appD.disableLogs
-				if appD.trigMove {
-					appD.trigMove = false // reset this since we start a new file
-					domainUUID[appuuid] = appD
-				}
-				break
+
+		val, found := domainUUID.Load(appuuid)
+		if found {
+			appD := val.(appDomain)
+			notUpload = appD.disableLogs
+			if appD.trigMove {
+				appD.trigMove = false // reset this since we start a new file
+				domainUUID.Store(appuuid, appD)
 			}
 		}
 
 		appM := statsLogFile{
-			file:       applogfile,
-			starttime:  time.Now(),
-			notUpload:  notUpload,
+			file:      applogfile,
+			starttime: time.Now(),
+			notUpload: notUpload,
 		}
 		appStatsMap[appuuid] = appM
 
@@ -872,12 +874,13 @@ func getAppStatsMap(appuuid string) statsLogFile {
 
 // update device log source map for metrics64
 func updateDevInputlogStats(source string, size uint64) {
-	b, ok := devSourceBytes[source]
-	if !ok {
-		b = 0
+	var b uint64
+	val, ok := devSourceBytes.Load(source)
+	if ok {
+		b = val.(uint64)
 	}
 	b += size
-	devSourceBytes[source] = b
+	devSourceBytes.Store(source, b)
 
 	logmetrics.DevMetrics.NumBytesWrite += size
 }
@@ -933,7 +936,7 @@ func checkDirGzfiles(sfiles map[string]gfileStats, logdir string) ([]string, int
 		fs := gfileStats{
 			filename: logdir + "/" + fname,
 			filesize: fsize,
-			isSent: alreadySent,
+			isSent:   alreadySent,
 		}
 		sizes += fsize
 
@@ -1045,7 +1048,7 @@ func doMoveCompressFile(tmplogfileInfo fileChanInfo) {
 		// remove this new oversied gzip file
 		os.Remove(outfile)
 
-		ratio = int(newSize / maxGzipFileSize + 2) // minimum to 3 segments
+		ratio = int(newSize/maxGzipFileSize + 2) // minimum to 3 segments
 		newSize = doGzipSplitContent(content, ratio, now, tmplogfileInfo)
 		logmetrics.NumBreakGZipFile += uint32(ratio)
 	} else {
@@ -1087,7 +1090,7 @@ func doGzipSplitContent(content []byte, ratio int, now time.Time, info fileChanI
 	dirName, appuuid := getFileInfo(info)
 	var totalNewSize int64
 	for idx, seg := range segments {
-		outfile := gzipFileNameGet(info.isApp, timenowNum + idx, dirName, appuuid, info.notUpload)
+		outfile := gzipFileNameGet(info.isApp, timenowNum+idx, dirName, appuuid, info.notUpload)
 		newSize := gzipToOutFile(seg, outfile, info, now)
 		calculateGzipSizes(newSize)
 		totalNewSize += newSize
@@ -1155,7 +1158,7 @@ func breakGzipSegments(content []byte, ratio int) [][]byte {
 	for {
 		pos := 0
 		for {
-			size := blocksize * (s + 1) + pos
+			size := blocksize*(s+1) + pos
 			pos++
 			if size > fsize {
 				err := fmt.Errorf("can't break the log file")
@@ -1169,7 +1172,7 @@ func breakGzipSegments(content []byte, ratio int) [][]byte {
 			}
 		}
 		s++
-		if s + 1 == ratio { // done, assign the last segment
+		if s+1 == ratio { // done, assign the last segment
 			contents[s] = content[presize:fsize]
 			break
 		}
@@ -1297,10 +1300,11 @@ func checkLogTimeExpire(fileinfo fileChanInfo, devStats *statsLogFile, moveChan 
 
 	// check app log files
 	for appuuid, appM := range appStatsMap {
-		if d, ok := domainUUID[appuuid]; ok { // if app disable-upload status changes, move file to gzip now
+		if val, ok := domainUUID.Load(appuuid); ok { // if app disable-upload status changes, move file to gzip now
+			d := val.(appDomain)
 			if d.trigMove && appM.file != nil {
 				d.trigMove = false
-				domainUUID[appuuid] = d
+				domainUUID.Store(appuuid, d)
 				trigMoveToGzip(fileinfo, &appM, appuuid, moveChan, true)
 				continue
 			}
@@ -1313,13 +1317,11 @@ func checkLogTimeExpire(fileinfo fileChanInfo, devStats *statsLogFile, moveChan 
 
 // for dev, returns the meta data, and for app, return the appName
 func formatAndGetMeta(appuuid string) string {
-	var appName string
 	if appuuid != "" {
-		for _, appD := range domainUUID { // cycle through the domainUUID map and find the UUID and appName
-			if appD.appUUID == appuuid {
-				appName = appD.appName
-				return appName
-			}
+		val, found := domainUUID.Load(appuuid)
+		if found {
+			appD := val.(appDomain)
+			return appD.appName
 		}
 	}
 	metaStr := logs.LogBundle{
@@ -1506,13 +1508,13 @@ func cleanPanicFileDir() {
 	}
 }
 
-func rankByInputCount(Frequencies map[string]uint64) pairList {
-	pl := make(pairList, len(Frequencies))
-	i := 0
-	for k, v := range Frequencies {
-		pl[i] = pair{k, v}
-		i++
+func rankByInputCount(Frequencies *base.LockedStringMap) pairList {
+	pl := pairList{}
+	clb := func(key string, val interface{}) bool {
+		pl = append(pl, pair{key, val.(uint64)})
+		return true
 	}
+	Frequencies.Range(clb)
 	sort.Sort(sort.Reverse(pl))
 	return pl
 }
@@ -1629,7 +1631,7 @@ func newMessage(pkt []byte, size int, sysfmt *regexp.Regexp) (inputEntry, error)
 
 	msgReceived := time.Now()
 	p, _ := strconv.ParseInt(string(res[1]), 10, 64)
-	msgPriority = priorityStr[p % 8]
+	msgPriority = priorityStr[p%8]
 	misc := res[3]
 	// Check for either "hostname tagpid" or "tagpid"
 	a := bytes.SplitN(misc, []byte(" "), 2)
@@ -1652,7 +1654,7 @@ func newMessage(pkt []byte, size int, sysfmt *regexp.Regexp) (inputEntry, error)
 	// Raw message string excluding priority, timestamp, tag and pid.
 	n := bytes.Index(pkt, []byte("]: "))
 	if n > 0 {
-		if size > n + 2 {
+		if size > n+2 {
 			msgRaw = bytes.TrimSpace(pkt[n+2 : size])
 		} else {
 			msgRaw = bytes.TrimSpace(pkt[n+2:])
@@ -1660,7 +1662,7 @@ func newMessage(pkt []byte, size int, sysfmt *regexp.Regexp) (inputEntry, error)
 	} else {
 		n = bytes.Index(pkt, []byte(": "))
 		if n > 0 {
-			if size > n + 1 {
+			if size > n+1 {
 				msgRaw = bytes.TrimSpace(pkt[n+1 : size])
 			} else {
 				msgRaw = bytes.TrimSpace(pkt[n+1:])
@@ -1671,11 +1673,11 @@ func newMessage(pkt []byte, size int, sysfmt *regexp.Regexp) (inputEntry, error)
 	}
 
 	entry = inputEntry{
-		source:     msgTag,
-		severity:   msgPriority,
-		content:    string(msgRaw),
-		pid:        strconv.Itoa(msgPid),
-		timestamp:  msgReceived.Format(time.RFC3339Nano),
+		source:    msgTag,
+		severity:  msgPriority,
+		content:   string(msgRaw),
+		pid:       strconv.Itoa(msgPid),
+		timestamp: msgReceived.Format(time.RFC3339Nano),
 	}
 
 	return entry, nil

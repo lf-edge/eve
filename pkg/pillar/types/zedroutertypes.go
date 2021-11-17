@@ -1518,6 +1518,9 @@ func getLocalAddrImpl(globalStatus DeviceNetworkStatus, pickNum int,
 		return net.IP{}, err
 	}
 	numAddrs := len(addrs)
+	if numAddrs == 0 {
+		return net.IP{}, fmt.Errorf("no addresses")
+	}
 	pickNum = pickNum % numAddrs
 	return addrs[pickNum], nil
 }

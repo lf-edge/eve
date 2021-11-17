@@ -169,12 +169,15 @@ type AppInstanceStatus struct {
 	ErrorAndTimeWithSource
 }
 
+// AppCount
 type AppCount uint8
+
+// AppInstanceSummary captures the current state of the apps.
 type AppInstanceSummary struct {
 	UUIDandVersion UUIDandVersion
-	TotalApps      AppCount // Total number of apps configured
+	TotalStarting  AppCount // Total number of apps with Activated flag set
 	TotalRunning   AppCount // Total number of apps in running or booting state
-	TotalHalted    AppCount // Total number of apps in halted state
+	TotalStopping  AppCount // Total number of apps in halting state
 	TotalError     AppCount // Total number of apps in error state
 }
 

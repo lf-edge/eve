@@ -142,6 +142,17 @@ func handleSyncOp(ctx *downloaderContext, key string,
 			errStr = errStr + "\n" + err.Error()
 		}
 
+	case zconfig.DsType_DsGoogleStorage.String():
+		auth = &zedUpload.AuthInput{
+			AuthType: "gs",
+			Uname:    dsCtx.APIKey,
+			Password: dsCtx.Password,
+		}
+		trType = zedUpload.SyncGSTr
+		serverURL = dsCtx.DownloadURL
+		// pass in the config.Name instead of 'filename' which
+		// does not contain the prefix of the relative path with '/'s
+		remoteName = config.Name
 	default:
 		errStr = "unsupported transport method " + dsCtx.TransportMethod
 

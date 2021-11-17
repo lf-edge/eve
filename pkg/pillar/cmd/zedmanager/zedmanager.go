@@ -448,51 +448,37 @@ func handleAppInstanceStatusDelete(ctxArg interface{}, key string,
 func publishAppInstanceSummary(ctxPtr *zedmanagerContext) {
 
 	summary := types.AppInstanceSummary{
-		TotalApps:    0,
-		TotalRunning: 0,
-		TotalHalted:  0,
-		TotalError:   0,
+		TotalStarting: 0,
+		TotalRunning:  0,
+		TotalStopping: 0,
+		TotalError:    0,
 	}
 	items := ctxPtr.pubAppInstanceStatus.GetAll()
 	for _, st := range items {
 		status := st.(types.AppInstanceStatus)
 
-		config := lookupAppInstanceConfig(ctxPtr, status.Key())
-		if config == nil {
-			log.Functionf("publishAppInstanceSummary: Appconfig missing for App %s", status.Key())
-			if status.EffectiveActivate == false {
-				continue
-			}
-			// App config missing but effective state is still active, must be halting
-			summary.TotalApps++
-			summary.TotalHalted++
-			continue
-		}
-
-		// App not activated yet
-		if config != nil && (status.EffectiveActivate != config.Activate) {
-			log.Functionf("publishAppInstanceSummary: App %s not activated yet", status.Key())
-			continue
-		}
-
-		// If here, we found App and its config.
-		summary.TotalApps++
-
-		switch status.State {
-		case types.BOOTING, types.RUNNING:
+		if status.EffectiveActivate && status.Activated {
 			summary.TotalRunning++
-		case types.HALTING, types.HALTED:
-			summary.TotalHalted++
-		default:
-			if len(status.Error) > 0 {
-				// publishSummary does not care what the errors are, we just need to know if this App is in error state
-				summary.TotalError++
+		} else {
+
+			switch status.State {
+			case types.INITIAL, types.DOWNLOADING, types.LOADING, types.CREATING_VOLUME, types.BOOTING:
+				summary.TotalStarting++
+			case types.HALTING:
+				summary.TotalStopping++
+			default:
+
+				if len(status.Error) > 0 {
+					// publishSummary does not care what the errors are, we just need to know if this App is in error state
+					summary.TotalError++
+				}
 			}
 		}
+
 	}
 
-	log.Functionf("publishAppInstanceSummary TotalApps: %d TotalRunning: %d TotalHalted: %d TotalError: %d",
-		summary.TotalApps, summary.TotalRunning, summary.TotalHalted, summary.TotalError)
+	log.Functionf("publishAppInstanceSummary TotalStarting: %d TotalRunning: %d TotalStopping: %d TotalError: %d",
+		summary.TotalStarting, summary.TotalRunning, summary.TotalStopping, summary.TotalError)
 
 	pub := ctxPtr.pubAppInstanceSummary
 

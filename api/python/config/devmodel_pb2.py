@@ -21,98 +21,109 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   syntax='proto3',
   serialized_options=b'\n\025org.lfedge.eve.configZ$github.com/lf-edge/eve/api/go/config',
   create_key=_descriptor._internal_create_key,
-  serialized_pb=b'\n\x15\x63onfig/devmodel.proto\x12\x15org.lfedge.eve.config\x1a\x1e\x65vecommon/devmodelcommon.proto\"\x84\x01\n\x0fsWAdapterParams\x12\x33\n\x05\x61Type\x18\x01 \x01(\x0e\x32$.org.lfedge.eve.config.sWAdapterType\x12\x19\n\x11underlayInterface\x18\x08 \x01(\t\x12\x0e\n\x06vlanId\x18\t \x01(\r\x12\x11\n\tbondgroup\x18\n \x03(\t\"\x99\x01\n\rSystemAdapter\x12\x0c\n\x04name\x18\x01 \x01(\t\x12\x12\n\nfreeUplink\x18\x02 \x01(\x08\x12\x0e\n\x06uplink\x18\x03 \x01(\x08\x12\x13\n\x0bnetworkUUID\x18\x04 \x01(\t\x12\x0c\n\x04\x61\x64\x64r\x18\x05 \x01(\t\x12\r\n\x05\x61lias\x18\x07 \x01(\t\x12\x16\n\x0elowerLayerName\x18\x08 \x01(\t\x12\x0c\n\x04\x63ost\x18\t \x01(\r\"&\n\x10PhyIOUsagePolicy\x12\x12\n\nfreeUplink\x18\x01 \x01(\x08\"\xd0\x03\n\nPhysicalIO\x12/\n\x05ptype\x18\x01 \x01(\x0e\x32 .org.lfedge.eve.common.PhyIoType\x12\x10\n\x08phylabel\x18\x02 \x01(\t\x12\x41\n\x08phyaddrs\x18\x03 \x03(\x0b\x32/.org.lfedge.eve.config.PhysicalIO.PhyaddrsEntry\x12\x14\n\x0clogicallabel\x18\x04 \x01(\t\x12\x11\n\tassigngrp\x18\x05 \x01(\t\x12\x36\n\x05usage\x18\x06 \x01(\x0e\x32\'.org.lfedge.eve.common.PhyIoMemberUsage\x12<\n\x0busagePolicy\x18\x07 \x01(\x0b\x32\'.org.lfedge.eve.config.PhyIOUsagePolicy\x12=\n\x06\x63\x62\x61ttr\x18\x08 \x03(\x0b\x32-.org.lfedge.eve.config.PhysicalIO.CbattrEntry\x1a/\n\rPhyaddrsEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01\x1a-\n\x0b\x43\x62\x61ttrEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01*/\n\rsWAdapterType\x12\n\n\x06IGNORE\x10\x00\x12\x08\n\x04VLAN\x10\x01\x12\x08\n\x04\x42OND\x10\x02\x42=\n\x15org.lfedge.eve.configZ$github.com/lf-edge/eve/api/go/configb\x06proto3'
+  serialized_pb=b'\n\x15\x63onfig/devmodel.proto\x12\x15org.lfedge.eve.config\x1a\x1e\x65vecommon/devmodelcommon.proto\"\x99\x01\n\rSystemAdapter\x12\x0c\n\x04name\x18\x01 \x01(\t\x12\x12\n\nfreeUplink\x18\x02 \x01(\x08\x12\x0e\n\x06uplink\x18\x03 \x01(\x08\x12\x13\n\x0bnetworkUUID\x18\x04 \x01(\t\x12\x0c\n\x04\x61\x64\x64r\x18\x05 \x01(\t\x12\r\n\x05\x61lias\x18\x07 \x01(\t\x12\x16\n\x0elowerLayerName\x18\x08 \x01(\t\x12\x0c\n\x04\x63ost\x18\t \x01(\r\"&\n\x10PhyIOUsagePolicy\x12\x12\n\nfreeUplink\x18\x01 \x01(\x08\"\xd0\x03\n\nPhysicalIO\x12/\n\x05ptype\x18\x01 \x01(\x0e\x32 .org.lfedge.eve.common.PhyIoType\x12\x10\n\x08phylabel\x18\x02 \x01(\t\x12\x41\n\x08phyaddrs\x18\x03 \x03(\x0b\x32/.org.lfedge.eve.config.PhysicalIO.PhyaddrsEntry\x12\x14\n\x0clogicallabel\x18\x04 \x01(\t\x12\x11\n\tassigngrp\x18\x05 \x01(\t\x12\x36\n\x05usage\x18\x06 \x01(\x0e\x32\'.org.lfedge.eve.common.PhyIoMemberUsage\x12<\n\x0busagePolicy\x18\x07 \x01(\x0b\x32\'.org.lfedge.eve.config.PhyIOUsagePolicy\x12=\n\x06\x63\x62\x61ttr\x18\x08 \x03(\x0b\x32-.org.lfedge.eve.config.PhysicalIO.CbattrEntry\x1a/\n\rPhyaddrsEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01\x1a-\n\x0b\x43\x62\x61ttrEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01\"f\n\x0bVlanAdapter\x12\x14\n\x0clogicallabel\x18\x01 \x01(\t\x12\x16\n\x0einterface_name\x18\x02 \x01(\t\x12\x18\n\x10lower_layer_name\x18\x03 \x01(\t\x12\x0f\n\x07vlan_id\x18\x04 \x01(\r\"\xb0\x02\n\x0b\x42ondAdapter\x12\x14\n\x0clogicallabel\x18\x01 \x01(\t\x12\x16\n\x0einterface_name\x18\x02 \x01(\t\x12\x19\n\x11lower_layer_names\x18\x03 \x03(\t\x12\x32\n\tbond_mode\x18\x04 \x01(\x0e\x32\x1f.org.lfedge.eve.config.BondMode\x12\x30\n\x03mii\x18\x05 \x01(\x0b\x32!.org.lfedge.eve.config.MIIMonitorH\x00\x12\x30\n\x03\x61rp\x18\x06 \x01(\x0b\x32!.org.lfedge.eve.config.ArpMonitorH\x00\x12\x32\n\tlacp_rate\x18\x08 \x01(\x0e\x32\x1f.org.lfedge.eve.config.LacpRateB\x0c\n\nmonitoring\"B\n\nMIIMonitor\x12\x10\n\x08interval\x18\x01 \x01(\r\x12\x0f\n\x07updelay\x18\x02 \x01(\r\x12\x11\n\tdowndelay\x18\x03 \x01(\r\"2\n\nArpMonitor\x12\x10\n\x08interval\x18\x01 \x01(\r\x12\x12\n\nip_targets\x18\x02 \x03(\t*\xdd\x01\n\x08\x42ondMode\x12\x19\n\x15\x42OND_MODE_UNSPECIFIED\x10\x00\x12\x18\n\x14\x42OND_MODE_BALANCE_RR\x10\x01\x12\x1b\n\x17\x42OND_MODE_ACTIVE_BACKUP\x10\x02\x12\x19\n\x15\x42OND_MODE_BALANCE_XOR\x10\x03\x12\x17\n\x13\x42OND_MODE_BROADCAST\x10\x04\x12\x15\n\x11\x42OND_MODE_802_3AD\x10\x05\x12\x19\n\x15\x42OND_MODE_BALANCE_TLB\x10\x06\x12\x19\n\x15\x42OND_MODE_BALANCE_ALB\x10\x07*M\n\x08LacpRate\x12\x19\n\x15LACP_RATE_UNSPECIFIED\x10\x00\x12\x12\n\x0eLACP_RATE_SLOW\x10\x01\x12\x12\n\x0eLACP_RATE_FAST\x10\x02\x42=\n\x15org.lfedge.eve.configZ$github.com/lf-edge/eve/api/go/configb\x06proto3'
   ,
   dependencies=[evecommon_dot_devmodelcommon__pb2.DESCRIPTOR,])
 
-_SWADAPTERTYPE = _descriptor.EnumDescriptor(
-  name='sWAdapterType',
-  full_name='org.lfedge.eve.config.sWAdapterType',
+_BONDMODE = _descriptor.EnumDescriptor(
+  name='BondMode',
+  full_name='org.lfedge.eve.config.BondMode',
   filename=None,
   file=DESCRIPTOR,
   create_key=_descriptor._internal_create_key,
   values=[
     _descriptor.EnumValueDescriptor(
-      name='IGNORE', index=0, number=0,
+      name='BOND_MODE_UNSPECIFIED', index=0, number=0,
       serialized_options=None,
       type=None,
       create_key=_descriptor._internal_create_key),
     _descriptor.EnumValueDescriptor(
-      name='VLAN', index=1, number=1,
+      name='BOND_MODE_BALANCE_RR', index=1, number=1,
       serialized_options=None,
       type=None,
       create_key=_descriptor._internal_create_key),
     _descriptor.EnumValueDescriptor(
-      name='BOND', index=2, number=2,
+      name='BOND_MODE_ACTIVE_BACKUP', index=2, number=2,
+      serialized_options=None,
+      type=None,
+      create_key=_descriptor._internal_create_key),
+    _descriptor.EnumValueDescriptor(
+      name='BOND_MODE_BALANCE_XOR', index=3, number=3,
+      serialized_options=None,
+      type=None,
+      create_key=_descriptor._internal_create_key),
+    _descriptor.EnumValueDescriptor(
+      name='BOND_MODE_BROADCAST', index=4, number=4,
+      serialized_options=None,
+      type=None,
+      create_key=_descriptor._internal_create_key),
+    _descriptor.EnumValueDescriptor(
+      name='BOND_MODE_802_3AD', index=5, number=5,
+      serialized_options=None,
+      type=None,
+      create_key=_descriptor._internal_create_key),
+    _descriptor.EnumValueDescriptor(
+      name='BOND_MODE_BALANCE_TLB', index=6, number=6,
+      serialized_options=None,
+      type=None,
+      create_key=_descriptor._internal_create_key),
+    _descriptor.EnumValueDescriptor(
+      name='BOND_MODE_BALANCE_ALB', index=7, number=7,
       serialized_options=None,
       type=None,
       create_key=_descriptor._internal_create_key),
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=878,
-  serialized_end=925,
+  serialized_start=1275,
+  serialized_end=1496,
 )
-_sym_db.RegisterEnumDescriptor(_SWADAPTERTYPE)
+_sym_db.RegisterEnumDescriptor(_BONDMODE)
 
-sWAdapterType = enum_type_wrapper.EnumTypeWrapper(_SWADAPTERTYPE)
-IGNORE = 0
-VLAN = 1
-BOND = 2
-
-
-
-_SWADAPTERPARAMS = _descriptor.Descriptor(
-  name='sWAdapterParams',
-  full_name='org.lfedge.eve.config.sWAdapterParams',
+BondMode = enum_type_wrapper.EnumTypeWrapper(_BONDMODE)
+_LACPRATE = _descriptor.EnumDescriptor(
+  name='LacpRate',
+  full_name='org.lfedge.eve.config.LacpRate',
   filename=None,
   file=DESCRIPTOR,
-  containing_type=None,
   create_key=_descriptor._internal_create_key,
-  fields=[
-    _descriptor.FieldDescriptor(
-      name='aType', full_name='org.lfedge.eve.config.sWAdapterParams.aType', index=0,
-      number=1, type=14, cpp_type=8, label=1,
-      has_default_value=False, default_value=0,
-      message_type=None, enum_type=None, containing_type=None,
-      is_extension=False, extension_scope=None,
-      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
-    _descriptor.FieldDescriptor(
-      name='underlayInterface', full_name='org.lfedge.eve.config.sWAdapterParams.underlayInterface', index=1,
-      number=8, type=9, cpp_type=9, label=1,
-      has_default_value=False, default_value=b"".decode('utf-8'),
-      message_type=None, enum_type=None, containing_type=None,
-      is_extension=False, extension_scope=None,
-      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
-    _descriptor.FieldDescriptor(
-      name='vlanId', full_name='org.lfedge.eve.config.sWAdapterParams.vlanId', index=2,
-      number=9, type=13, cpp_type=3, label=1,
-      has_default_value=False, default_value=0,
-      message_type=None, enum_type=None, containing_type=None,
-      is_extension=False, extension_scope=None,
-      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
-    _descriptor.FieldDescriptor(
-      name='bondgroup', full_name='org.lfedge.eve.config.sWAdapterParams.bondgroup', index=3,
-      number=10, type=9, cpp_type=9, label=3,
-      has_default_value=False, default_value=[],
-      message_type=None, enum_type=None, containing_type=None,
-      is_extension=False, extension_scope=None,
-      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+  values=[
+    _descriptor.EnumValueDescriptor(
+      name='LACP_RATE_UNSPECIFIED', index=0, number=0,
+      serialized_options=None,
+      type=None,
+      create_key=_descriptor._internal_create_key),
+    _descriptor.EnumValueDescriptor(
+      name='LACP_RATE_SLOW', index=1, number=1,
+      serialized_options=None,
+      type=None,
+      create_key=_descriptor._internal_create_key),
+    _descriptor.EnumValueDescriptor(
+      name='LACP_RATE_FAST', index=2, number=2,
+      serialized_options=None,
+      type=None,
+      create_key=_descriptor._internal_create_key),
   ],
-  extensions=[
-  ],
-  nested_types=[],
-  enum_types=[
-  ],
+  containing_type=None,
   serialized_options=None,
-  is_extendable=False,
-  syntax='proto3',
-  extension_ranges=[],
-  oneofs=[
-  ],
-  serialized_start=81,
-  serialized_end=213,
+  serialized_start=1498,
+  serialized_end=1575,
 )
+_sym_db.RegisterEnumDescriptor(_LACPRATE)
+
+LacpRate = enum_type_wrapper.EnumTypeWrapper(_LACPRATE)
+BOND_MODE_UNSPECIFIED = 0
+BOND_MODE_BALANCE_RR = 1
+BOND_MODE_ACTIVE_BACKUP = 2
+BOND_MODE_BALANCE_XOR = 3
+BOND_MODE_BROADCAST = 4
+BOND_MODE_802_3AD = 5
+BOND_MODE_BALANCE_TLB = 6
+BOND_MODE_BALANCE_ALB = 7
+LACP_RATE_UNSPECIFIED = 0
+LACP_RATE_SLOW = 1
+LACP_RATE_FAST = 2
+
 
 
 _SYSTEMADAPTER = _descriptor.Descriptor(
@@ -191,8 +202,8 @@ _SYSTEMADAPTER = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=216,
-  serialized_end=369,
+  serialized_start=81,
+  serialized_end=234,
 )
 
 
@@ -223,8 +234,8 @@ _PHYIOUSAGEPOLICY = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=371,
-  serialized_end=409,
+  serialized_start=236,
+  serialized_end=274,
 )
 
 
@@ -262,8 +273,8 @@ _PHYSICALIO_PHYADDRSENTRY = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=782,
-  serialized_end=829,
+  serialized_start=647,
+  serialized_end=694,
 )
 
 _PHYSICALIO_CBATTRENTRY = _descriptor.Descriptor(
@@ -300,8 +311,8 @@ _PHYSICALIO_CBATTRENTRY = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=831,
-  serialized_end=876,
+  serialized_start=696,
+  serialized_end=741,
 )
 
 _PHYSICALIO = _descriptor.Descriptor(
@@ -380,11 +391,227 @@ _PHYSICALIO = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=412,
-  serialized_end=876,
+  serialized_start=277,
+  serialized_end=741,
 )
 
-_SWADAPTERPARAMS.fields_by_name['aType'].enum_type = _SWADAPTERTYPE
+
+_VLANADAPTER = _descriptor.Descriptor(
+  name='VlanAdapter',
+  full_name='org.lfedge.eve.config.VlanAdapter',
+  filename=None,
+  file=DESCRIPTOR,
+  containing_type=None,
+  create_key=_descriptor._internal_create_key,
+  fields=[
+    _descriptor.FieldDescriptor(
+      name='logicallabel', full_name='org.lfedge.eve.config.VlanAdapter.logicallabel', index=0,
+      number=1, type=9, cpp_type=9, label=1,
+      has_default_value=False, default_value=b"".decode('utf-8'),
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+    _descriptor.FieldDescriptor(
+      name='interface_name', full_name='org.lfedge.eve.config.VlanAdapter.interface_name', index=1,
+      number=2, type=9, cpp_type=9, label=1,
+      has_default_value=False, default_value=b"".decode('utf-8'),
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+    _descriptor.FieldDescriptor(
+      name='lower_layer_name', full_name='org.lfedge.eve.config.VlanAdapter.lower_layer_name', index=2,
+      number=3, type=9, cpp_type=9, label=1,
+      has_default_value=False, default_value=b"".decode('utf-8'),
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+    _descriptor.FieldDescriptor(
+      name='vlan_id', full_name='org.lfedge.eve.config.VlanAdapter.vlan_id', index=3,
+      number=4, type=13, cpp_type=3, label=1,
+      has_default_value=False, default_value=0,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+  ],
+  extensions=[
+  ],
+  nested_types=[],
+  enum_types=[
+  ],
+  serialized_options=None,
+  is_extendable=False,
+  syntax='proto3',
+  extension_ranges=[],
+  oneofs=[
+  ],
+  serialized_start=743,
+  serialized_end=845,
+)
+
+
+_BONDADAPTER = _descriptor.Descriptor(
+  name='BondAdapter',
+  full_name='org.lfedge.eve.config.BondAdapter',
+  filename=None,
+  file=DESCRIPTOR,
+  containing_type=None,
+  create_key=_descriptor._internal_create_key,
+  fields=[
+    _descriptor.FieldDescriptor(
+      name='logicallabel', full_name='org.lfedge.eve.config.BondAdapter.logicallabel', index=0,
+      number=1, type=9, cpp_type=9, label=1,
+      has_default_value=False, default_value=b"".decode('utf-8'),
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+    _descriptor.FieldDescriptor(
+      name='interface_name', full_name='org.lfedge.eve.config.BondAdapter.interface_name', index=1,
+      number=2, type=9, cpp_type=9, label=1,
+      has_default_value=False, default_value=b"".decode('utf-8'),
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+    _descriptor.FieldDescriptor(
+      name='lower_layer_names', full_name='org.lfedge.eve.config.BondAdapter.lower_layer_names', index=2,
+      number=3, type=9, cpp_type=9, label=3,
+      has_default_value=False, default_value=[],
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+    _descriptor.FieldDescriptor(
+      name='bond_mode', full_name='org.lfedge.eve.config.BondAdapter.bond_mode', index=3,
+      number=4, type=14, cpp_type=8, label=1,
+      has_default_value=False, default_value=0,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+    _descriptor.FieldDescriptor(
+      name='mii', full_name='org.lfedge.eve.config.BondAdapter.mii', index=4,
+      number=5, type=11, cpp_type=10, label=1,
+      has_default_value=False, default_value=None,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+    _descriptor.FieldDescriptor(
+      name='arp', full_name='org.lfedge.eve.config.BondAdapter.arp', index=5,
+      number=6, type=11, cpp_type=10, label=1,
+      has_default_value=False, default_value=None,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+    _descriptor.FieldDescriptor(
+      name='lacp_rate', full_name='org.lfedge.eve.config.BondAdapter.lacp_rate', index=6,
+      number=8, type=14, cpp_type=8, label=1,
+      has_default_value=False, default_value=0,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+  ],
+  extensions=[
+  ],
+  nested_types=[],
+  enum_types=[
+  ],
+  serialized_options=None,
+  is_extendable=False,
+  syntax='proto3',
+  extension_ranges=[],
+  oneofs=[
+    _descriptor.OneofDescriptor(
+      name='monitoring', full_name='org.lfedge.eve.config.BondAdapter.monitoring',
+      index=0, containing_type=None,
+      create_key=_descriptor._internal_create_key,
+    fields=[]),
+  ],
+  serialized_start=848,
+  serialized_end=1152,
+)
+
+
+_MIIMONITOR = _descriptor.Descriptor(
+  name='MIIMonitor',
+  full_name='org.lfedge.eve.config.MIIMonitor',
+  filename=None,
+  file=DESCRIPTOR,
+  containing_type=None,
+  create_key=_descriptor._internal_create_key,
+  fields=[
+    _descriptor.FieldDescriptor(
+      name='interval', full_name='org.lfedge.eve.config.MIIMonitor.interval', index=0,
+      number=1, type=13, cpp_type=3, label=1,
+      has_default_value=False, default_value=0,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+    _descriptor.FieldDescriptor(
+      name='updelay', full_name='org.lfedge.eve.config.MIIMonitor.updelay', index=1,
+      number=2, type=13, cpp_type=3, label=1,
+      has_default_value=False, default_value=0,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+    _descriptor.FieldDescriptor(
+      name='downdelay', full_name='org.lfedge.eve.config.MIIMonitor.downdelay', index=2,
+      number=3, type=13, cpp_type=3, label=1,
+      has_default_value=False, default_value=0,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+  ],
+  extensions=[
+  ],
+  nested_types=[],
+  enum_types=[
+  ],
+  serialized_options=None,
+  is_extendable=False,
+  syntax='proto3',
+  extension_ranges=[],
+  oneofs=[
+  ],
+  serialized_start=1154,
+  serialized_end=1220,
+)
+
+
+_ARPMONITOR = _descriptor.Descriptor(
+  name='ArpMonitor',
+  full_name='org.lfedge.eve.config.ArpMonitor',
+  filename=None,
+  file=DESCRIPTOR,
+  containing_type=None,
+  create_key=_descriptor._internal_create_key,
+  fields=[
+    _descriptor.FieldDescriptor(
+      name='interval', full_name='org.lfedge.eve.config.ArpMonitor.interval', index=0,
+      number=1, type=13, cpp_type=3, label=1,
+      has_default_value=False, default_value=0,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+    _descriptor.FieldDescriptor(
+      name='ip_targets', full_name='org.lfedge.eve.config.ArpMonitor.ip_targets', index=1,
+      number=2, type=9, cpp_type=9, label=3,
+      has_default_value=False, default_value=[],
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+  ],
+  extensions=[
+  ],
+  nested_types=[],
+  enum_types=[
+  ],
+  serialized_options=None,
+  is_extendable=False,
+  syntax='proto3',
+  extension_ranges=[],
+  oneofs=[
+  ],
+  serialized_start=1222,
+  serialized_end=1272,
+)
+
 _PHYSICALIO_PHYADDRSENTRY.containing_type = _PHYSICALIO
 _PHYSICALIO_CBATTRENTRY.containing_type = _PHYSICALIO
 _PHYSICALIO.fields_by_name['ptype'].enum_type = evecommon_dot_devmodelcommon__pb2._PHYIOTYPE
@@ -392,19 +619,26 @@ _PHYSICALIO.fields_by_name['phyaddrs'].message_type = _PHYSICALIO_PHYADDRSENTRY
 _PHYSICALIO.fields_by_name['usage'].enum_type = evecommon_dot_devmodelcommon__pb2._PHYIOMEMBERUSAGE
 _PHYSICALIO.fields_by_name['usagePolicy'].message_type = _PHYIOUSAGEPOLICY
 _PHYSICALIO.fields_by_name['cbattr'].message_type = _PHYSICALIO_CBATTRENTRY
-DESCRIPTOR.message_types_by_name['sWAdapterParams'] = _SWADAPTERPARAMS
+_BONDADAPTER.fields_by_name['bond_mode'].enum_type = _BONDMODE
+_BONDADAPTER.fields_by_name['mii'].message_type = _MIIMONITOR
+_BONDADAPTER.fields_by_name['arp'].message_type = _ARPMONITOR
+_BONDADAPTER.fields_by_name['lacp_rate'].enum_type = _LACPRATE
+_BONDADAPTER.oneofs_by_name['monitoring'].fields.append(
+  _BONDADAPTER.fields_by_name['mii'])
+_BONDADAPTER.fields_by_name['mii'].containing_oneof = _BONDADAPTER.oneofs_by_name['monitoring']
+_BONDADAPTER.oneofs_by_name['monitoring'].fields.append(
+  _BONDADAPTER.fields_by_name['arp'])
+_BONDADAPTER.fields_by_name['arp'].containing_oneof = _BONDADAPTER.oneofs_by_name['monitoring']
 DESCRIPTOR.message_types_by_name['SystemAdapter'] = _SYSTEMADAPTER
 DESCRIPTOR.message_types_by_name['PhyIOUsagePolicy'] = _PHYIOUSAGEPOLICY
 DESCRIPTOR.message_types_by_name['PhysicalIO'] = _PHYSICALIO
-DESCRIPTOR.enum_types_by_name['sWAdapterType'] = _SWADAPTERTYPE
+DESCRIPTOR.message_types_by_name['VlanAdapter'] = _VLANADAPTER
+DESCRIPTOR.message_types_by_name['BondAdapter'] = _BONDADAPTER
+DESCRIPTOR.message_types_by_name['MIIMonitor'] = _MIIMONITOR
+DESCRIPTOR.message_types_by_name['ArpMonitor'] = _ARPMONITOR
+DESCRIPTOR.enum_types_by_name['BondMode'] = _BONDMODE
+DESCRIPTOR.enum_types_by_name['LacpRate'] = _LACPRATE
 _sym_db.RegisterFileDescriptor(DESCRIPTOR)
-
-sWAdapterParams = _reflection.GeneratedProtocolMessageType('sWAdapterParams', (_message.Message,), {
-  'DESCRIPTOR' : _SWADAPTERPARAMS,
-  '__module__' : 'config.devmodel_pb2'
-  # @@protoc_insertion_point(class_scope:org.lfedge.eve.config.sWAdapterParams)
-  })
-_sym_db.RegisterMessage(sWAdapterParams)
 
 SystemAdapter = _reflection.GeneratedProtocolMessageType('SystemAdapter', (_message.Message,), {
   'DESCRIPTOR' : _SYSTEMADAPTER,
@@ -442,6 +676,34 @@ PhysicalIO = _reflection.GeneratedProtocolMessageType('PhysicalIO', (_message.Me
 _sym_db.RegisterMessage(PhysicalIO)
 _sym_db.RegisterMessage(PhysicalIO.PhyaddrsEntry)
 _sym_db.RegisterMessage(PhysicalIO.CbattrEntry)
+
+VlanAdapter = _reflection.GeneratedProtocolMessageType('VlanAdapter', (_message.Message,), {
+  'DESCRIPTOR' : _VLANADAPTER,
+  '__module__' : 'config.devmodel_pb2'
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.config.VlanAdapter)
+  })
+_sym_db.RegisterMessage(VlanAdapter)
+
+BondAdapter = _reflection.GeneratedProtocolMessageType('BondAdapter', (_message.Message,), {
+  'DESCRIPTOR' : _BONDADAPTER,
+  '__module__' : 'config.devmodel_pb2'
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.config.BondAdapter)
+  })
+_sym_db.RegisterMessage(BondAdapter)
+
+MIIMonitor = _reflection.GeneratedProtocolMessageType('MIIMonitor', (_message.Message,), {
+  'DESCRIPTOR' : _MIIMONITOR,
+  '__module__' : 'config.devmodel_pb2'
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.config.MIIMonitor)
+  })
+_sym_db.RegisterMessage(MIIMonitor)
+
+ArpMonitor = _reflection.GeneratedProtocolMessageType('ArpMonitor', (_message.Message,), {
+  'DESCRIPTOR' : _ARPMONITOR,
+  '__module__' : 'config.devmodel_pb2'
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.config.ArpMonitor)
+  })
+_sym_db.RegisterMessage(ArpMonitor)
 
 
 DESCRIPTOR._options = None

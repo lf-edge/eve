@@ -3944,8 +3944,8 @@ func (x *FlowlogMetric) GetDnsRequests() *FlowlogCounters {
 // Counters for published/dropped flowlog messages/flows or DNS requests.
 // Note that every record is eventually either successfully published or dropped.
 // In the process of publishing a flowlog record, one or more failed attempts can be made.
-// This means that the total number of processed records equals the sum of "success" and "drops",
-// while "failed_attempts" is an orthogonal metric.
+// This means that the total number of fully processed records (i.e. not queued anymore)
+// equals the sum of "success" and "drops", while "failed_attempts" is an orthogonal metric.
 type FlowlogCounters struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
