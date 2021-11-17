@@ -106,8 +106,15 @@ acpid -l /proc/self/fd/1
 
 cmd=`cat /mnt/cmdline`
 echo "Executing $cmd"
+
+ug="0 0"
+if [ -f /mnt/ug ]; then
+  ug=$(cat /mnt/ug)
+fi
+echo "Executing with uid gid: $ug"
+
 #shellcheck disable=SC2086
-eval /chroot2 /mnt/rootfs "${WORKDIR:-/}" $cmd <> /dev/console 2>&1
+eval /chroot2 /mnt/rootfs "${WORKDIR:-/}" $ug $cmd <> /dev/console 2>&1
 
 # once the command exits -- the only thing left is shut everything down
 /sbin/poweroff

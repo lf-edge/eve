@@ -126,7 +126,6 @@ func (s *ociSpec) AddLoader(volume string) error {
 		}
 
 		// create env manifest
-		envPreservelist := make([]string, 0) //store envs for passing to sudo
 		envContent := ""
 		if s.Process.Cwd != "" {
 			envContent = fmt.Sprintf("export WORKDIR=\"%s\"\n", s.Process.Cwd)
@@ -136,20 +135,13 @@ func (s *ociSpec) AddLoader(volume string) error {
 			if len(keyAndValueSlice) == 2 {
 				//handles Key=Value case
 				envContent = envContent + fmt.Sprintf("export %s=\"%s\"\n", keyAndValueSlice[0], keyAndValueSlice[1])
-				envPreservelist = append(envPreservelist, keyAndValueSlice[0])
 			} else {
 				//handles Key= case
 				envContent = envContent + fmt.Sprintf("export %s\n", e)
-				envPreservelist = append(envPreservelist, e)
 			}
 		}
 		if err := ioutil.WriteFile(filepath.Join(volumeRoot, "environment"), []byte(envContent), 0644); err != nil {
 			return err
-		}
-
-		envInsert := ""
-		if len(envPreservelist) > 0 {
-			envInsert = fmt.Sprintf("--preserve-env=%s", strings.Join(envPreservelist, ","))
 		}
 
 		// create cmdline manifest
@@ -159,16 +151,14 @@ func (s *ociSpec) AddLoader(volume string) error {
 			execpathQuoted = append(execpathQuoted, fmt.Sprintf("\"%s\"", s))
 		}
 		execpath := strings.Join(execpathQuoted, " ")
-		// in case of non-zero UID we should use sudo inside cmdline
-		if s.Process.User.UID != 0 {
-			groupInsert := ""
-			if s.Process.User.GID != 0 {
-				groupInsert = fmt.Sprintf("-g '#%d'", s.Process.User.GID)
-			}
-			execpath = fmt.Sprintf("/usr/bin/sudo -u '#%d' %s %s %s", s.Process.User.UID, groupInsert, envInsert, execpath)
-		}
 		if err := ioutil.WriteFile(filepath.Join(volumeRoot, "cmdline"),
 			[]byte(execpath), 0644); err != nil {
+			return err
+		}
+
+		ug := fmt.Sprintf("%d %d", s.Process.User.UID, s.Process.User.GID)
+		if err := ioutil.WriteFile(filepath.Join(volumeRoot, "ug"),
+			[]byte(ug), 0644); err != nil {
 			return err
 		}
 
