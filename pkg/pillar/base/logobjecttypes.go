@@ -156,6 +156,10 @@ const (
 	DiskNotificationType = "disk_notification"
 	// UUIDPairToNumLogType:
 	UUIDPairToNumLogType LogObjectType = "uuid_pair_to_num"
+	// EncryptedVaultKeyFromDeviceLogType:
+	EncryptedVaultKeyFromDeviceLogType LogObjectType = "encrypted_vault_key_from_device"
+	// EncryptedVaultKeyFromControllerLogType:
+	EncryptedVaultKeyFromControllerLogType LogObjectType = "encrypted_vault_key_from_controller"
 )
 
 // RelationObjectType :
