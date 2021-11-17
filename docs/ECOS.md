@@ -179,6 +179,23 @@ ECI Configuration is a json file with the following schema:
     * Annotations (deprecated)
     * Permissions (future work item to have local resources that have been granted access: set of entitlements that allows ECO to perform intended function)
 
+## Configuration of Docker/OCI based ECOs
+
+We use special prepared VMs to run ECOs based on Docker/OCI (if edge-node supports hardware-assistance virtualization).
+In this case we start VM with the kernel of EVE and with pre-build [initrd](../pkg/xen-tools/initrd). Inside init we
+make needed system mounts, mount rootfs (to /mnt) and block devices attached (to mount points defined in the file
+`mountPoints`). Static IP address is assigned to the network interface if the option `ip` defined in the kernel cmdline,
+otherwise dhcp is enabled.
+
+We use several files to run application comes from Docker/OCI manifest:
+
+* `environment` - all environment variables defined in Docker/OCI goes here
+* `cmdline` - it is cmd defined to run in Docker/OCI
+* `ug` - file contains user and group to run cmd under
+
+After preparation done we chroot into /mnt and run cmd from cmdline under specified user and group, output goes to
+/dev/console and is accessible from log of ECO.
+
 ## ECI Distribution Specification
 
 While ECIs are regular, self-contained binary files and can be distributed by any transport (http, ftp, etc.) in certain situations it is advantageous to define an optimized transport protocol that can be used specifically for ECI distribution.
