@@ -491,6 +491,11 @@ message ZInfoDevice {
   // The global_profile from the controller is not echoed in this field.
   string local_profile = 45;
   repeated MaintenanceModeReason maintenance_mode_reasons = 46;
+
+  // Time to wait between metrics messages before marking an edge-node as
+  // inactive in the controller. 'dormant_time' is subjected to change based
+  // of network connectivity.
+  string dormant_time = 47;
 }
 
 // Different reasons for a boot/reboot
