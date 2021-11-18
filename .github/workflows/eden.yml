@@ -45,8 +45,8 @@ jobs:
           CACHE: evebuild/danger
         run: |
           if docker pull "$CACHE:$TAG-kvm"; then
-             docker tag  "$CACHE:$TAG-kvm" "lfedge/eve:$TAG-kvm"
-             docker tag  "$CACHE:$TAG-kvm" "lfedge/eve:$TAG-kvm-amd64"
+             docker tag  "$CACHE:$TAG-kvm" "dautovri/eve:$TAG-kvm"
+             docker tag  "$CACHE:$TAG-kvm" "dautovri/eve:$TAG-kvm-amd64"
           else
              make -C eve V=1 pkgs
              make -C eve V=1 ROOTFS_VERSION="$TAG" HV=kvm eve

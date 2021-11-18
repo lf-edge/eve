@@ -50,7 +50,7 @@ jobs:
              git reset --hard ${{ github.event.workflow_run.head_branch }}
              make pkgs
              make HV=${HV} ZARCH=${{ env.ARCH }} eve
-             EVE=lfedge/eve:$(make version)-${HV}-${{ env.ARCH }}
+             EVE=dautovri/eve:$(make version)-${HV}-${{ env.ARCH }}
           fi
           rm -rf assets && mkdir assets && cd assets
           docker run "$EVE" rootfs > rootfs.img
