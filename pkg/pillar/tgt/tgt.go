@@ -79,6 +79,9 @@ func TargetCreateIBlock(dev, tgtName, serial string) error {
 	if err := ioutil.WriteFile(filepath.Join(targetRoot, "enable"), []byte("1"), 0660); err != nil {
 		return fmt.Errorf("error set enable: %v", err)
 	}
+	if err := ioutil.WriteFile(filepath.Join(targetRoot, "attrib", "emulate_tpu"), []byte("1"), 0660); err != nil {
+		return fmt.Errorf("error set emulate_tpu: %v", err)
+	}
 	return nil
 }
 
