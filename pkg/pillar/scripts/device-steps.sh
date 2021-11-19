@@ -377,10 +377,10 @@ if [ ! -s $CONFIGDIR/device.cert.pem ] || [ $RTC = 0 ] || [ -n "$FIRSTBOOT" ]; t
     # Otherwise the cert may have start date in the future or in 1970
     echo "$(date -Ins -u) Check for NTP config"
     if [ -f /usr/sbin/ntpd ]; then
-        # '-p' means peer in some distros; pidfile in others
-        /usr/sbin/ntpd -q -n -p pool.ntp.org
+        # Wait until synchronized and force the clock to be set from ntp
+        /usr/sbin/ntpd -q -n -g -p pool.ntp.org
         # Run ntpd to keep it in sync.
-        /usr/sbin/ntpd -g -p pool.ntp.org
+        /usr/sbin/ntpd -p pool.ntp.org
         # Add ndpd to watchdog
         touch "$WATCHDOG_PID/ntpd.pid"
     else
@@ -395,6 +395,11 @@ if [ ! -s $CONFIGDIR/device.cert.pem ] || [ $RTC = 0 ] || [ -n "$FIRSTBOOT" ]; t
         sleep 10
         YEAR=$(date +%Y)
     done
+    if [ $RTC = 1 ]; then
+        # Update RTC based on time from ntpd so that after a reboot we have a
+        # sane starting time. This fixes issues when the RTC was not in UTC
+        hwclock -u -v --systohc
+    fi
 fi
 if [ ! -s $CONFIGDIR/device.cert.pem ]; then
     echo "$(date -Ins -u) Generating a device key pair and self-signed cert (using TPM/TEE if available)"
