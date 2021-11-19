@@ -14,6 +14,7 @@ TMPDIR=/persist/tmp
 ZTMPDIR=/run/global
 DPCDIR=$ZTMPDIR/DevicePortConfig
 FIRSTBOOTFILE=$ZTMPDIR/first-boot
+FIRSTBOOT=
 AGENTS0="zedagent ledmanager nim nodeagent domainmgr loguploader"
 AGENTS1="zedmanager zedrouter downloader verifier baseosmgr wstunnelclient volumemgr watcher zfsmanager"
 AGENTS="$AGENTS0 $AGENTS1"
@@ -81,6 +82,7 @@ DIRS="$CONFIGDIR $CONFIGDIR/DevicePortConfig $PERSIST_CERTS $PERSIST_AGENT_DEBUG
 # If /persist didn't exist or was removed treat this as a first boot
 if [ ! -d $PERSIST_CERTS ]; then
     touch $FIRSTBOOTFILE # For nodeagent
+    FIRSTBOOT=1
 fi
 
 for d in $DIRS; do
@@ -160,7 +162,7 @@ fi
 
 if [ -f $PERSISTDIR/reboot-reason ]; then
     echo "Reboot reason: $(cat $PERSISTDIR/reboot-reason)" > /dev/console
-elif [ -f $FIRSTBOOTFILE ]; then
+elif [ -n "$FIRSTBOOT" ]; then
     echo "Reboot reason: NORMAL: First boot of device - at $(date -Ins -u)" > /dev/console
 else
     echo "Reboot reason: UNKNOWN: reboot reason - power failure or crash - at $(date -Ins -u)" > /dev/console
@@ -244,6 +246,7 @@ if ! pgrep ledmanager >/dev/null; then
 fi
 if [ ! -s $CONFIGDIR/device.cert.pem ]; then
     touch $FIRSTBOOTFILE # For nodeagent
+    FIRSTBOOT=1
 fi
 
 # Start domainmgr to setup USB hid/storage based on onboarding status
@@ -361,10 +364,7 @@ if [ $RTC = 0 ]; then
 fi
 # On first boot (of boxes which have been powered off for a while) force
 # ntp setting of clock
-if [ -f $FIRSTBOOTFILE ]; then
-    RTC=0
-fi
-if [ ! -s $CONFIGDIR/device.cert.pem ] || [ $RTC = 0 ]; then
+if [ ! -s $CONFIGDIR/device.cert.pem ] || [ $RTC = 0 ] || [ -n "$FIRSTBOOT" ]; then
     # Wait for having IP addresses for a few minutes
     # so that we are likely to have an address when we run ntp then create cert
     echo "$(date -Ins -u) Starting waitforaddr"
