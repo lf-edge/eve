@@ -304,7 +304,7 @@ func (server *VerifierImpl) SendAttestQuote(ctx *zattest.Context) error {
 				encryptedKey := sk.GetKey()
 				if encryptedKeyType == attest.AttestVolumeKeyType_ATTEST_VOLUME_KEY_TYPE_VSK {
 					publishEncryptedKeyFromController(attestCtx, encryptedKey)
-					log.Functionf("[ATTEST] published Controller-given encrypted key")
+					log.Noticef("[ATTEST] published Controller-given encrypted key")
 				}
 			}
 		}

@@ -25,7 +25,7 @@ func handleDatastoreConfigImpl(ctxArg interface{}, key string,
 	log.Functionf("handleDatastoreConfigImpl for %s", key)
 	checkAndUpdateDownloadableObjects(ctx, config.UUID)
 	checkAndUpdateResolveConfig(ctx, config.UUID)
-	log.Functionf("handleDatastoreConfigImpl for %s, done", key)
+	log.Noticef("handleDatastoreConfigImpl for %s, done", key)
 }
 
 func handleDatastoreConfigDelete(ctxArg interface{}, key string,
@@ -34,5 +34,5 @@ func handleDatastoreConfigDelete(ctxArg interface{}, key string,
 	config := configArg.(types.DatastoreConfig)
 	cipherBlock := config.CipherBlockStatus
 	ctx.pubCipherBlockStatus.Unpublish(cipherBlock.Key())
-	log.Functionf("handleDatastoreConfigDelete for %s", key)
+	log.Noticef("handleDatastoreConfigDelete for %s", key)
 }

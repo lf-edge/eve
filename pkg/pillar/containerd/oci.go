@@ -315,20 +315,24 @@ func (s *ociSpec) UpdateFromDomain(dom *types.DomainConfig) {
 // OCI runtime spec takes precedence). In addition to that each volume is
 // expected to have rootfs subfolder with a full rootfs filesystem
 func (s *ociSpec) UpdateFromVolume(volume string) error {
+	//if not based on an OCI image, nothing to update here
+	if volume == "" {
+		return nil
+	}
 	if f, err := os.Open(filepath.Join(volume, ociRuntimeSpecFilename)); err == nil {
 		defer f.Close()
 		if err = s.Load(f); err != nil {
 			return err
 		}
 		s.Root.Path = volume + "/rootfs"
-	} else if imgInfo, err := getSavedImageInfo(volume); err == nil {
-		s.Root.Path = volume + "/rootfs" // we need to set Root.Path before doing things with users/groups in spec
-		if err = s.updateFromImageConfig(imgInfo.Config); err != nil {
-			return err
-		}
+		return nil
 	}
-
-	return nil
+	imgInfo, err := getSavedImageInfo(volume)
+	if err != nil {
+		return err
+	}
+	s.Root.Path = volume + "/rootfs" // we need to set Root.Path before doing things with users/groups in spec
+	return s.updateFromImageConfig(imgInfo.Config)
 }
 
 // UpdateFromImageConfig updates values in the OCI spec based
