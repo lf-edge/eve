@@ -62,17 +62,6 @@ services:
         networks:
             - eve
 
-    ntpd:
-        image: linuxkit/openntpd:v0.5
-        privileged: true
-        volumes:
-            - persist:/persist
-            - config:/config
-            - run:/run
-        # network_mode: host
-        networks:
-            - eve
-
     wwan:
         image: WWAN_TAG
         privileged: true

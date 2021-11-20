@@ -30,10 +30,6 @@ services:
      image: NEWLOGD_TAG
      cgroupsPath: /eve/services/eve-newlog
      oomScoreAdj: -999
-   - name: ntpd
-     image: linuxkit/openntpd:v0.5
-     cgroupsPath: /eve/services/ntpd
-     oomScoreAdj: -999
    - name: debug
      image: DEBUG_TAG
      cgroupsPath: /eve/services/debug

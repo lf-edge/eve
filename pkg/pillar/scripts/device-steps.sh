@@ -400,6 +400,17 @@ if [ ! -s $CONFIGDIR/device.cert.pem ] || [ $RTC = 0 ] || [ -n "$FIRSTBOOT" ]; t
         # sane starting time. This fixes issues when the RTC was not in UTC
         hwclock -u -v --systohc
     fi
+else
+    # Start ntpd before network is up. Assumes it will synchronize later.
+    if [ -f /usr/sbin/ntpd ]; then
+        # Run ntpd to keep it in sync. Allow a large initial jump in case clock
+        # had drifted more than 1000 seconds while the device was powered off
+        /usr/sbin/ntpd -g -p pool.ntp.org
+        # Add ndpd to watchdog
+        touch "$WATCHDOG_PID/ntpd.pid"
+    else
+        echo "$(date -Ins -u) No ntpd"
+    fi
 fi
 if [ ! -s $CONFIGDIR/device.cert.pem ]; then
     echo "$(date -Ins -u) Generating a device key pair and self-signed cert (using TPM/TEE if available)"
