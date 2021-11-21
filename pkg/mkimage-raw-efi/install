@@ -12,6 +12,7 @@
 #   eve_nuke_all_disks
 #   eve_install_disk
 #   eve_persist_disk
+#   eve_lvm_persist_size
 #   eve_install_server
 #   eve_pause_before_install
 #   eve_pause_after_install
@@ -131,6 +132,38 @@ adjust_zfs_mounts_and_umount() {
   umount /root/run ||:
 }
 
+prepare_mounts_and_lvm() {
+  [ -e /root/sys ] || mkdir /root/sys && mount -t sysfs sysfs /root/sys
+  [ -e /root/proc ] || mkdir /root/proc && mount -t proc proc /root/proc
+  [ -e /root/dev ] || mkdir /root/dev && mount -t devtmpfs -o size=10m,nr_inodes=248418,mode=755,nosuid,noexec,relatime devtmpfs /root/dev
+  [ -e /root/run ] || mkdir /root/run && mount --rbind /run /root/run
+
+  mkdir /run/lvm
+  if [ -d /root/etc/lvm ]; then
+    cp -r /root/etc/lvm /run/lvm
+  fi
+  export LVM_SYSTEM_DIR=/run/lvm
+
+  chroot /root pvcreate "$1"
+  chroot /root pvscan
+  chroot /root vgcreate eve_vg "$1"
+  chroot /root lvcreate -l "$2" -n persist eve_vg
+  chroot /root lvcreate -l 100%FREE -n vm_images eve_vg
+  mkfs -t ext4 -v -F -F -O encrypt /dev/eve_vg/persist
+
+  mkdir /run/P3
+  mount -t ext4 -o dirsync,noatime /dev/eve_vg/persist /run/P3
+}
+
+adjust_lvm_mounts_and_umount() {
+  mount -t ext4 -o dirsync,noatime /dev/eve_vg/persist /persist
+
+  umount /root/sys ||:
+  umount /root/proc ||:
+  umount /root/dev ||:
+  umount /root/run ||:
+}
+
 # do this just in case
 modprobe usbhid && modprobe usbkbd
 
@@ -186,6 +219,9 @@ fi
 INSTALL_PERSIST=$(</proc/cmdline tr ' ' '\012' | sed -ne '/^eve_persist_disk=/s#^.*=##p')
 INSTALL_PERSIST=${INSTALL_PERSIST:-$INSTALL_DEV}
 
+# if this option exists, we create persist as LVM2
+INSTALL_PERSIST_SIZE=$(</proc/cmdline tr ' ' '\012' | sed -ne '/^eve_lvm_persist_size=/s#^.*=##p')
+
 # now lets figure out whether we have installation material
 CONFIG_PART=$(find_part CONFIG "$(root_dev)")
 CONFIG_PART="${CONFIG_PART:+"/dev/"}${CONFIG_PART:-"/bits/config.img"}"
@@ -220,6 +256,7 @@ POOL_CREATION_COMMAND_SUFFIX=""
 DISK_WITH_P3=""
 DISKS_TO_MERGE_COUNT=0
 MULTIPLE_DISKS=false
+
 if [ "$INSTALL_DEV" != "$INSTALL_PERSIST" ]; then
    if echo "$INSTALL_PERSIST"| grep -q ","; then
      MULTIPLE_DISKS=true
@@ -274,19 +311,24 @@ if [ "$MULTIPLE_DISKS" = true ]; then
     echo "WARNING: Will use /dev/$P3_ID instead of /dev/$DISK_WITH_P3 for P3 because of bootable parts needed"
   fi
   # we use mirror for 2 disks, raidz1 for 3 disks and raidz2 for more than 3 disks
-  case $DISKS_TO_MERGE_COUNT in
-    1) ;;
-    2)
-      POOL_CREATION_COMMAND_SUFFIX="mirror $POOL_CREATION_COMMAND_SUFFIX"
-      ;;
-    3)
-      POOL_CREATION_COMMAND_SUFFIX="raidz1 $POOL_CREATION_COMMAND_SUFFIX"
-      ;;
-    *)
-      POOL_CREATION_COMMAND_SUFFIX="raidz2 $POOL_CREATION_COMMAND_SUFFIX"
-      ;;
-  esac
-  prepare_mounts_and_zfs_pool "$POOL_CREATION_COMMAND_SUFFIX"
+  # we skip raid support for LVM
+  if [ -z "$INSTALL_PERSIST_SIZE" ]; then
+    case $DISKS_TO_MERGE_COUNT in
+      1) ;;
+      2)
+          POOL_CREATION_COMMAND_SUFFIX="mirror $POOL_CREATION_COMMAND_SUFFIX"
+          ;;
+      3)
+          POOL_CREATION_COMMAND_SUFFIX="raidz1 $POOL_CREATION_COMMAND_SUFFIX"
+          ;;
+      *)
+          POOL_CREATION_COMMAND_SUFFIX="raidz2 $POOL_CREATION_COMMAND_SUFFIX"
+          ;;
+    esac
+    prepare_mounts_and_zfs_pool "$POOL_CREATION_COMMAND_SUFFIX"
+  else
+    prepare_mounts_and_lvm "$POOL_CREATION_COMMAND_SUFFIX" "$INSTALL_PERSIST_SIZE"
+  fi
 else
   # now the disk is ready - mount partitions
   mount_part P3 "$INSTALL_DEV" /run/P3 2>/dev/null
@@ -374,7 +416,11 @@ for p in INVENTORY P3; do
 done
 
 if [ "$MULTIPLE_DISKS" = true ]; then
-   adjust_zfs_mounts_and_umount
+  if [ -z "$INSTALL_PERSIST_SIZE" ]; then
+    adjust_zfs_mounts_and_umount
+  else
+    adjust_lvm_mounts_and_umount
+  fi
 fi
 
 # we need a copy of these in tmpfs so that a block device with rootfs can be yanked
