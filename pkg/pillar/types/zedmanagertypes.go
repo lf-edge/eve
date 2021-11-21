@@ -169,6 +169,18 @@ type AppInstanceStatus struct {
 	ErrorAndTimeWithSource
 }
 
+// AppCount is uint8 and it should be sufficient for the number of apps we can support
+type AppCount uint8
+
+// AppInstanceSummary captures the running state of all apps
+type AppInstanceSummary struct {
+	UUIDandVersion UUIDandVersion
+	TotalStarting  AppCount // Total number of apps starting/booting
+	TotalRunning   AppCount // Total number of apps in running state
+	TotalStopping  AppCount // Total number of apps in halting state
+	TotalError     AppCount // Total number of apps in error state
+}
+
 // LogCreate :
 func (status AppInstanceStatus) LogCreate(logBase *base.LogObject) {
 	logObject := base.NewLogObject(logBase, base.AppInstanceStatusLogType, status.DisplayName,
@@ -247,6 +259,11 @@ const (
 )
 
 func (status AppInstanceStatus) Key() string {
+	return status.UUIDandVersion.UUID.String()
+}
+
+// Key provides a unique key
+func (status AppInstanceSummary) Key() string {
 	return status.UUIDandVersion.UUID.String()
 }
 

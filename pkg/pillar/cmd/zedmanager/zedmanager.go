@@ -36,23 +36,25 @@ var Version = "No version specified"
 
 // State used by handlers
 type zedmanagerContext struct {
-	subAppInstanceConfig pubsub.Subscription
-	pubAppInstanceStatus pubsub.Publication
-	pubVolumeRefConfig   pubsub.Publication
-	subVolumeRefStatus   pubsub.Subscription
-	pubAppNetworkConfig  pubsub.Publication
-	subAppNetworkStatus  pubsub.Subscription
-	pubDomainConfig      pubsub.Publication
-	subDomainStatus      pubsub.Subscription
-	subGlobalConfig      pubsub.Subscription
-	subHostMemory        pubsub.Subscription
-	subZedAgentStatus    pubsub.Subscription
-	globalConfig         *types.ConfigItemValueMap
-	pubUuidToNum         pubsub.Publication
-	GCInitialized        bool
-	checkFreedResources  bool // Set when app instance has !Activated
-	currentProfile       string
-	currentTotalMemoryMB uint64
+	subAppInstanceConfig  pubsub.Subscription
+	subAppInstanceStatus  pubsub.Subscription // zedmanager both publishes and subscribes to AppInstanceStatus
+	pubAppInstanceStatus  pubsub.Publication
+	pubAppInstanceSummary pubsub.Publication
+	pubVolumeRefConfig    pubsub.Publication
+	subVolumeRefStatus    pubsub.Subscription
+	pubAppNetworkConfig   pubsub.Publication
+	subAppNetworkStatus   pubsub.Subscription
+	pubDomainConfig       pubsub.Publication
+	subDomainStatus       pubsub.Subscription
+	subGlobalConfig       pubsub.Subscription
+	subHostMemory         pubsub.Subscription
+	subZedAgentStatus     pubsub.Subscription
+	globalConfig          *types.ConfigItemValueMap
+	pubUuidToNum          pubsub.Publication
+	GCInitialized         bool
+	checkFreedResources   bool // Set when app instance has !Activated
+	currentProfile        string
+	currentTotalMemoryMB  uint64
 }
 
 var debug = false
@@ -100,6 +102,16 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	}
 	ctx.pubAppInstanceStatus = pubAppInstanceStatus
 	pubAppInstanceStatus.ClearRestarted()
+
+	pubAppInstanceSummary, err := ps.NewPublication(pubsub.PublicationOptions{
+		AgentName: agentName,
+		TopicType: types.AppInstanceSummary{},
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctx.pubAppInstanceSummary = pubAppInstanceSummary
+	pubAppInstanceSummary.ClearRestarted()
 
 	pubVolumeRefConfig, err := ps.NewPublication(pubsub.PublicationOptions{
 		AgentName:  agentName,
@@ -275,6 +287,25 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	ctx.subZedAgentStatus = subZedAgentStatus
 	subZedAgentStatus.Activate()
 
+	// subscribe to zedmanager(myself) to get AppInstancestatus events
+	subAppInstanceStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "zedmanager",
+		MyAgentName:   agentName,
+		TopicImpl:     types.AppInstanceStatus{},
+		Activate:      false,
+		Ctx:           &ctx,
+		CreateHandler: handleAppInstanceStatusCreate,
+		ModifyHandler: handleAppInstanceStatusModify,
+		DeleteHandler: handleAppInstanceStatusDelete,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctx.subAppInstanceStatus = subAppInstanceStatus
+	subAppInstanceStatus.Activate()
+
 	// Pick up debug aka log level before we start real work
 	for !ctx.GCInitialized {
 		log.Functionf("waiting for GCInitialized")
@@ -312,6 +343,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 		case change := <-subZedAgentStatus.MsgChan():
 			subZedAgentStatus.ProcessChange(change)
+
+		case change := <-subAppInstanceStatus.MsgChan():
+			subAppInstanceStatus.ProcessChange(change)
 
 		case <-freeResourceChecker.C:
 			// Did any update above make more resources available for
@@ -388,6 +422,60 @@ func handleZedrouterRestarted(ctxArg interface{}, restartCounter int) {
 	if restartCounter != 0 {
 		ctx.pubDomainConfig.SignalRestarted()
 	}
+}
+
+// handleAppInstanceStatusCreate - Handle AIS create. Publish AppStatusSummary to ledmanager
+func handleAppInstanceStatusCreate(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	ctx := ctxArg.(*zedmanagerContext)
+	publishAppInstanceSummary(ctx)
+}
+
+// handleAppInstanceStatusModify - Handle AIS modify. Publish AppStatusSummary to ledmanager
+func handleAppInstanceStatusModify(ctxArg interface{}, key string,
+	statusArg interface{}, oldStatusArg interface{}) {
+	ctx := ctxArg.(*zedmanagerContext)
+	publishAppInstanceSummary(ctx)
+}
+
+// handleAppInstanceStatusDelete - Handle AIS delete. Publish AppStatusSummary to ledmanager
+func handleAppInstanceStatusDelete(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	ctx := ctxArg.(*zedmanagerContext)
+	publishAppInstanceSummary(ctx)
+}
+
+func publishAppInstanceSummary(ctxPtr *zedmanagerContext) {
+
+	summary := types.AppInstanceSummary{
+		TotalStarting: 0,
+		TotalRunning:  0,
+		TotalStopping: 0,
+		TotalError:    0,
+	}
+	items := ctxPtr.pubAppInstanceStatus.GetAll()
+	for _, st := range items {
+		status := st.(types.AppInstanceStatus)
+		// Only condition we did not count is EffectiveActive = true and Activated = false.
+		// That means customer either halted his app or did not activate it yet.
+		if status.EffectiveActivate && status.Activated {
+			summary.TotalRunning++
+		} else if len(status.Error) > 0 {
+			summary.TotalError++
+		} else if status.Activated {
+			summary.TotalStopping++
+		} else if status.EffectiveActivate {
+			summary.TotalStarting++
+		}
+
+	}
+
+	log.Functionf("publishAppInstanceSummary TotalStarting: %d TotalRunning: %d TotalStopping: %d TotalError: %d",
+		summary.TotalStarting, summary.TotalRunning, summary.TotalStopping, summary.TotalError)
+
+	pub := ctxPtr.pubAppInstanceSummary
+
+	pub.Publish(summary.Key(), summary)
 }
 
 func publishAppInstanceStatus(ctx *zedmanagerContext,

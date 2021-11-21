@@ -44,10 +44,13 @@ type ledManagerContext struct {
 	subLedBlinkCounter     pubsub.Subscription
 	subDeviceNetworkStatus pubsub.Subscription
 	deviceNetworkStatus    types.DeviceNetworkStatus
+	subAppInstanceSummary  pubsub.Subscription
 	usableAddressCount     int
 	radioSilence           bool
 	derivedLedCounter      types.LedBlinkCount // Based on ledCounter, usableAddressCount and radioSilence
 	GCInitialized          bool
+	blinkSendStop          chan string // Used by sender to stop the running forever blink routine
+	blinkRecvStop          chan string // Sender waits for the ack.
 }
 
 // DisplayFunc takes an argument which can be the name of a LED or display
@@ -57,13 +60,18 @@ type DisplayFunc func(deviceNetworkStatus *types.DeviceNetworkStatus,
 // InitFunc takes an argument which can be the name of a LED or display
 type InitFunc func(arg string)
 
+// AppStatusDisplayFunc takes an argument to list of leds
+type AppStatusDisplayFunc func(ctx *ledManagerContext, arg []string, blink bool, color string)
+
 type modelToFuncs struct {
-	model       string
-	initFunc    InitFunc
-	displayFunc DisplayFunc
-	arg         string // Passed to initFunc and displayFunc
-	regexp      bool   // model string is a regex
-	isDisplay   bool   // no periodic blinking/update
+	model                string
+	initFunc             InitFunc
+	displayFunc          DisplayFunc
+	arg                  string // Passed to initFunc and displayFunc
+	appStatusDisplayFunc AppStatusDisplayFunc
+	appStatusArgs        []string // Passed to appStatusDisplayFunc
+	regexp               bool     // model string is a regex
+	isDisplay            bool     // no periodic blinking/update
 }
 
 var mToF = []modelToFuncs{
@@ -127,10 +135,12 @@ var mToF = []modelToFuncs{
 		arg:         "/sys/class/gpio/gpio346/value",
 	},
 	{
-		model:       "SIEMENS AG.SIMATIC IPC127E",
-		initFunc:    InitLedCmd,
-		displayFunc: ExecuteLedCmd,
-		arg:         "ipc127:green:1",
+		model:                "SIEMENS AG.SIMATIC IPC127E",
+		initFunc:             InitLedCmd,
+		displayFunc:          ExecuteLedCmd,
+		arg:                  "ipc127:green:1",
+		appStatusDisplayFunc: executeAppStatusDisplayFunc,
+		appStatusArgs:        []string{"ipc127:green:3", "ipc127:red:3"}, // For this model we use led3 to display app status
 	},
 	{
 		model:       "hisilicon,hi6220-hikey.hisilicon,hi6220.",
@@ -221,6 +231,9 @@ var log *base.LogObject
 // Set from Makefile
 var Version = "No version specified"
 
+var appStatusDisplayFunc AppStatusDisplayFunc
+var appStatusArgs []string
+
 func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) int {
 	logger = loggerArg
 	log = logArg
@@ -258,12 +271,16 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	var initFunc InitFunc
 	var arg string
 	var isDisplay bool
+
 	setFuncs := func(m modelToFuncs) {
 		displayFunc = m.displayFunc
 		initFunc = m.initFunc
 		arg = m.arg
 		isDisplay = m.isDisplay
+		appStatusDisplayFunc = m.appStatusDisplayFunc
+		appStatusArgs = m.appStatusArgs
 	}
+
 	for _, m := range mToF {
 		if !m.regexp && m.model == model {
 			setFuncs(m)
@@ -295,6 +312,10 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	// Any state needed by handler functions
 	ctx := ledManagerContext{}
 	ctx.countChange = make(chan types.LedBlinkCount)
+
+	if appStatusDisplayFunc != nil {
+		executeAppStatusDisplayFunc(&ctx, appStatusArgs, false, "off") // turn off at the start
+	}
 	log.Functionf("Creating %s at %s", "handleDisplayUpdate",
 		agentlog.GetMyStack())
 	go handleDisplayUpdate(&ctx, displayFunc, arg, isDisplay)
@@ -334,6 +355,24 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	}
 	ctx.subDeviceNetworkStatus = subDeviceNetworkStatus
 	subDeviceNetworkStatus.Activate()
+
+	// Look for AppInstanceSummary from zedmanager
+	subAppInstanceSummary, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "zedmanager",
+		MyAgentName:   agentName,
+		TopicImpl:     types.AppInstanceSummary{},
+		Activate:      false,
+		Ctx:           &ctx,
+		CreateHandler: handleAppInstanceSummaryCreate,
+		ModifyHandler: handleAppInstanceSummaryModify,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctx.subAppInstanceSummary = subAppInstanceSummary
+	subAppInstanceSummary.Activate()
 
 	// Look for global config such as log levels
 	subGlobalConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
@@ -377,6 +416,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 		case change := <-subLedBlinkCounter.MsgChan():
 			subLedBlinkCounter.ProcessChange(change)
+
+		case change := <-subAppInstanceSummary.MsgChan():
+			subAppInstanceSummary.ProcessChange(change)
 
 		case <-stillRunning.C:
 			// Fault injection
@@ -605,6 +647,105 @@ func ExecuteLedCmd(deviceNetworkStatus *types.DeviceNetworkStatus,
 	}
 }
 
+// Execute blink forever until there is a message to stop
+func executeBlinkLoop(ctx *ledManagerContext, color string, leds []string) {
+
+	log.Functionf("Started blink thread for color %s", color)
+	// Both of these channels are created here. This routine is considered as a receiver.
+	// But closing of these channels happens as follows:
+	// blinkSendStop will be closed by the sender and that signal is received by this routine to exit the loop
+	// blinkRecvStop will be closed by the sender after this routine sends done message.
+	ctx.blinkRecvStop = make(chan string)
+	ctx.blinkSendStop = make(chan string, 1)
+	var ok, valid bool
+	for {
+
+		select {
+		case _, valid = <-ctx.blinkSendStop:
+			ok = true
+		default:
+			ok = false
+		}
+
+		if ok && !valid { // This channel was closed
+			ctx.blinkRecvStop <- "done"
+			return
+		}
+
+		switch color {
+		case "Orange":
+			doLedAction(leds[0], false) // Green off
+			doLedAction(leds[1], false) // Red off
+			time.Sleep(200 * time.Millisecond)
+			doLedAction(leds[0], true) // Green on
+			doLedAction(leds[1], true) // Red on
+			time.Sleep(200 * time.Millisecond)
+		case "Green":
+			doLedAction(leds[0], false) // Green off
+			time.Sleep(200 * time.Millisecond)
+			doLedAction(leds[0], true) // Green on
+			time.Sleep(200 * time.Millisecond)
+		default:
+			log.Noticef("Unsupported Color")
+			close(ctx.blinkRecvStop)
+			close(ctx.blinkSendStop)
+			ctx.blinkRecvStop = nil
+			ctx.blinkSendStop = nil
+			return
+		}
+
+	}
+
+}
+
+// Sets the appStatusArgs
+func executeAppStatusDisplayFunc(ctx *ledManagerContext, appStatusArgs []string, blink bool, color string) {
+
+	switch color {
+	case "Red": // Solid Red
+		doLedAction(appStatusArgs[0], false) // Green off
+		doLedAction(appStatusArgs[1], true)  // Red on
+	case "Orange": // Orange can blink or solid
+		doLedAction(appStatusArgs[0], true) // Green on
+		doLedAction(appStatusArgs[1], true) // Red on
+		if blink == true {
+			go executeBlinkLoop(ctx, "Orange", appStatusArgs)
+		}
+
+	case "Green": // Green can blink or solid
+		doLedAction(appStatusArgs[1], false) // Red off
+		doLedAction(appStatusArgs[0], true)  // Green on
+		if blink == true {
+			go executeBlinkLoop(ctx, "Green", appStatusArgs)
+		}
+	default: // Turn off both red and green
+		doLedAction(appStatusArgs[0], false)
+		doLedAction(appStatusArgs[1], false)
+	}
+}
+
+// doLedAction can use different LEDs in /sys/class/leds and can turn on/off
+func doLedAction(ledName string, turnon bool) {
+	var brightnessFilename string
+	var b []byte
+	if turnon == true {
+		b = []byte("1")
+	} else {
+		b = []byte("0")
+	}
+
+	if strings.HasPrefix(ledName, "/") {
+		brightnessFilename = ledName
+	} else {
+		brightnessFilename = fmt.Sprintf("/sys/class/leds/%s/brightness", ledName)
+	}
+	err := ioutil.WriteFile(brightnessFilename, b, 0644)
+	if err != nil {
+		log.Trace(err, brightnessFilename)
+	}
+	return
+}
+
 // doLedBlink can use different LEDs in /sys/class/leds
 // Enable the led for 200ms
 func doLedBlink(ledName string) {
@@ -670,9 +811,57 @@ func appendLogfile(deviceNetworkStatus *types.DeviceNetworkStatus,
 	}
 }
 
+func handleAppInstanceSummaryCreate(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	handleAppInstanceSummaryImpl(ctxArg, key, statusArg)
+}
+
+func handleAppInstanceSummaryModify(ctxArg interface{}, key string,
+	statusArg interface{}, oldStatusArg interface{}) {
+	handleAppInstanceSummaryImpl(ctxArg, key, statusArg)
+}
+
+func handleAppInstanceSummaryImpl(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
+	summary := statusArg.(types.AppInstanceSummary)
+	log.Functionf("handleAppInstanceSummaryImpl: Starting %d Running %d Stopping %d Error %d", summary.TotalStarting, summary.TotalRunning, summary.TotalStopping, summary.TotalError)
+
+	// Nothing to do if display function is not set
+	if appStatusDisplayFunc == nil {
+		return
+	}
+	ctx := ctxArg.(*ledManagerContext)
+
+	// Check if a previous blink loop is running.
+	if ctx.blinkSendStop != nil && ctx.blinkRecvStop != nil {
+		close(ctx.blinkSendStop)
+		status := <-ctx.blinkRecvStop //This is blocking until blink is stopped
+		if status == "done" {
+			log.Functionf("Blink stopped")
+		}
+		close(ctx.blinkRecvStop)
+		ctx.blinkRecvStop = nil
+		ctx.blinkSendStop = nil
+	}
+
+	executeAppStatusDisplayFunc(ctx, appStatusArgs, false, "off") // turn off first before they get turned on
+
+	if summary.TotalError > 0 {
+		executeAppStatusDisplayFunc(ctx, appStatusArgs, false, "Red") // Error state: Solid Red
+	} else if summary.TotalStopping > 0 {
+		executeAppStatusDisplayFunc(ctx, appStatusArgs, true, "Orange") // Halted state: Blinking Orange
+	} else if summary.TotalStarting > 0 {
+		executeAppStatusDisplayFunc(ctx, appStatusArgs, true, "Green") //  Init state: Blinking Green
+	} else if summary.TotalRunning > 0 && summary.TotalStarting == 0 && summary.TotalStopping == 0 {
+		executeAppStatusDisplayFunc(ctx, appStatusArgs, false, "Green") // All good: Solid Green
+	}
+}
+
 func handleDNSCreate(ctxArg interface{}, key string,
 	statusArg interface{}) {
 	handleDNSImpl(ctxArg, key, statusArg)
+
 }
 
 func handleDNSModify(ctxArg interface{}, key string,
