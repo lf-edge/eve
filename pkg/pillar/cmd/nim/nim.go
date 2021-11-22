@@ -39,8 +39,9 @@ import (
 const (
 	agentName = "nim"
 	// Time limits for event loop handlers; shorter for nim than other agents
-	errorTime   = 60 * time.Second
-	warningTime = 40 * time.Second
+	errorTime    = 60 * time.Second
+	warningTime  = 40 * time.Second
+	stillRunTime = 25 * time.Second
 )
 
 type nimContext struct {
@@ -117,7 +118,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	log.Noticef("Starting %s", agentName)
 
 	// Run a periodic timer so we always update StillRunning
-	stillRunning := time.NewTicker(25 * time.Second)
+	stillRunning := time.NewTicker(stillRunTime)
 	ps.StillRunning(agentName, warningTime, errorTime)
 
 	// Publish metrics for zedagent every 10 seconds
@@ -695,6 +696,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	}
 	log.Noticef("AA initialized")
 	devicenetwork.MoveDownLocalIPRule(log, devicenetwork.PbrLocalDestPrio)
+
+	// wait for AA and launch controller dns query routine
+	go queryControllerDNS(ps)
 
 	for {
 		select {
