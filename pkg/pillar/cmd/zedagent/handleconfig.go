@@ -24,7 +24,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/utils"
 	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
-	"github.com/satori/go.uuid"
+	uuid "github.com/satori/go.uuid"
 )
 
 // This is set once at init time and not changed
@@ -80,6 +80,7 @@ type getconfigContext struct {
 	pubContentTreeConfig     pubsub.Publication
 	subVolumeStatus          pubsub.Subscription
 	pubVolumeConfig          pubsub.Publication
+	NodeAgentStatus          *types.NodeAgentStatus
 	rebootFlag               bool
 	lastReceivedConfig       time.Time
 	lastProcessedConfig      time.Time
@@ -166,6 +167,13 @@ func configTimerTask(handleChannel chan interface{},
 	// Return handle to caller
 	handleChannel <- ticker
 
+	// ticker for periodical info publish around 10 min when no real change
+	interval2 := time.Duration(600) * time.Second
+	max2 := float64(interval2) * 1.2
+	min2 := float64(interval2) * 0.8
+	tickerInfo := flextimer.NewRangeTicker(time.Duration(min2),
+		time.Duration(max2))
+
 	wdName := agentName + "config"
 
 	// Run a periodic timer so we always update StillRunning
@@ -190,6 +198,12 @@ func configTimerTask(handleChannel chan interface{},
 			ctx.ps.CheckMaxTimeTopic(wdName, "getLastestConfig", start,
 				warningTime, errorTime)
 			publishZedAgentStatus(getconfigCtx)
+
+		case <-tickerInfo.C:
+			start := time.Now()
+			triggerPublishDevInfo(ctx)
+			ctx.ps.CheckMaxTimeTopic(wdName, "publishInfoTimer", start,
+				warningTime, errorTime)
 
 		case <-stillRunning.C:
 			if getconfigCtx.rebootFlag {

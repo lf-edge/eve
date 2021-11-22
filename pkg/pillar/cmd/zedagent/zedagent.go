@@ -32,6 +32,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/eriknordmark/ipinfo"
 	"github.com/google/go-cmp/cmp"
 	"github.com/lf-edge/eve/api/go/attest"
 	"github.com/lf-edge/eve/api/go/flowlog"
@@ -144,6 +145,7 @@ type zedagentContext struct {
 	// outstanding reboot commands from cloud.
 	rebootConfigCounter     uint32
 	subDevicePortConfigList pubsub.Subscription
+	DevicePortConfigList    *types.DevicePortConfigList
 	remainingTestTime       time.Duration
 	physicalIoAdapterMap    map[string]types.PhysicalIOAdapter
 	globalConfig            types.ConfigItemValueMap
@@ -857,6 +859,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	}
 	getconfigCtx.subNodeAgentStatus = subNodeAgentStatus
 	subNodeAgentStatus.Activate()
+	getconfigCtx.NodeAgentStatus = &types.NodeAgentStatus{}
 
 	DNSctx := DNSContext{}
 	subDeviceNetworkStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
@@ -895,6 +898,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	}
 	zedagentCtx.subDevicePortConfigList = subDevicePortConfigList
 	subDevicePortConfigList.Activate()
+	zedagentCtx.DevicePortConfigList = &types.DevicePortConfigList{}
 
 	subBlobStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "volumemgr",
@@ -1748,15 +1752,43 @@ func handleDNSImpl(ctxArg interface{}, key string,
 	}
 	log.Functionf("handleDNSImpl: changed %v",
 		cmp.Diff(*deviceNetworkStatus, status))
+
+	if dnsHasRealChange(*deviceNetworkStatus, status) {
+		ctx.triggerDeviceInfo = true
+		log.Functionf("handleDNSImpl: has change. hasRealChange")
+	}
 	*deviceNetworkStatus = status
 	ctx.DNSinitialized = true
-	ctx.triggerDeviceInfo = true
 
 	if zedcloudCtx.V2API {
 		zedcloud.UpdateTLSProxyCerts(zedcloudCtx)
 	}
 
 	log.Functionf("handleDNSImpl done for %s", key)
+}
+
+// compare two DNS records with some timestamp, etc. fields cleared
+// to detect a real change in the status
+func dnsHasRealChange(dnsOld, dnsNew types.DeviceNetworkStatus) bool {
+	dummy1 := dnsClearSomeItems(dnsOld)
+	dummy2 := dnsClearSomeItems(dnsNew)
+	return !cmp.Equal(dummy1, dummy2)
+}
+
+func dnsClearSomeItems(dummy types.DeviceNetworkStatus) types.DeviceNetworkStatus {
+	for i, nps := range dummy.Ports {
+		nps.LastFailed = time.Time{}
+		nps.LastSucceeded = time.Time{}
+		for j, naddr := range nps.AddrInfoList {
+			naddr.Geo = ipinfo.IPInfo{}
+			naddr.LastGeoTimestamp = time.Time{}
+			nps.AddrInfoList[j] = naddr
+		}
+		dummy.Ports[i] = nps
+	}
+
+	dummy.Testing = false
+	return dummy
 }
 
 func handleDNSDelete(ctxArg interface{}, key string,
@@ -1791,7 +1823,13 @@ func handleDPCLImpl(ctxArg interface{}, key string,
 		log.Functionf("handleDPCLImpl: ignoring %s", key)
 		return
 	}
-	triggerPublishDevInfo(ctx)
+
+	status := statusArg.(types.DevicePortConfigList)
+	if dpcHasRealChange(*ctx.DevicePortConfigList, status) {
+		triggerPublishDevInfo(ctx)
+		log.Noticef("handleDPCLImpl: has real change.")
+	}
+	*ctx.DevicePortConfigList = status
 }
 
 func handleDPCLDelete(ctxArg interface{}, key string, statusArg interface{}) {
@@ -1803,6 +1841,31 @@ func handleDPCLDelete(ctxArg interface{}, key string, statusArg interface{}) {
 	}
 	log.Functionf("handleDPCLDelete for %s", key)
 	triggerPublishDevInfo(ctx)
+	ctx.DevicePortConfigList = &types.DevicePortConfigList{}
+}
+
+// compare two DPCL records with some timestamp, etc. fields cleared
+// to detect a real change in the status
+func dpcHasRealChange(dpclOld, dpclNew types.DevicePortConfigList) bool {
+	dummy1 := dpclClearSomeItems(dpclOld)
+	dummy2 := dpclClearSomeItems(dpclNew)
+	return !cmp.Equal(dummy1, dummy2)
+}
+
+func dpclClearSomeItems(dpcl types.DevicePortConfigList) types.DevicePortConfigList {
+	dummy := dpcl
+	for i, l := range dummy.PortConfigList {
+		l.LastFailed = time.Time{}
+		l.LastSucceeded = time.Time{}
+		l.LastIPAndDNS = time.Time{}
+		for j, p := range l.Ports {
+			p.LastFailed = time.Time{}
+			p.LastSucceeded = time.Time{}
+			l.Ports[j] = p
+		}
+		dummy.PortConfigList[i] = l
+	}
+	return dummy
 }
 
 // base os status event handlers
@@ -2030,12 +2093,27 @@ func handleNodeAgentStatusImpl(ctxArg interface{}, key string,
 		ctx.localMaintModeReason = status.LocalMaintenanceModeReason
 		mergeMaintenanceMode(ctx)
 	}
-	triggerPublishDevInfo(ctx)
+
+	if naHasRealChange(*getconfigCtx.NodeAgentStatus, status) {
+		triggerPublishDevInfo(ctx)
+	}
+	*getconfigCtx.NodeAgentStatus = status
 	log.Functionf("handleNodeAgentStatusImpl: done.")
+}
+
+// NodeAgent status clear out the field and compare for real change
+func naHasRealChange(naOld, naNew types.NodeAgentStatus) bool {
+	dummy1 := naOld
+	dummy2 := naNew
+	dummy1.RemainingTestTime = 0
+	dummy2.RemainingTestTime = 0
+	return !cmp.Equal(dummy1, dummy2)
 }
 
 func handleNodeAgentStatusDelete(ctxArg interface{}, key string,
 	statusArg interface{}) {
+	getconfigCtx := ctxArg.(*getconfigContext)
+	getconfigCtx.NodeAgentStatus = &types.NodeAgentStatus{}
 	ctx := ctxArg.(*zedagentContext)
 	log.Functionf("handleNodeAgentStatusDelete: for %s", key)
 	// Nothing to do
