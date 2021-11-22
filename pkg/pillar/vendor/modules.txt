@@ -16,6 +16,9 @@ github.com/Azure/azure-storage-blob-go/azblob
 # github.com/Azure/go-ansiterm v0.0.0-20170929234023-d6e3b3328b78
 github.com/Azure/go-ansiterm
 github.com/Azure/go-ansiterm/winterm
+# github.com/Focinfi/go-dns-resolver v1.0.0
+## explicit
+github.com/Focinfi/go-dns-resolver
 # github.com/Microsoft/go-winio v0.5.0
 github.com/Microsoft/go-winio
 github.com/Microsoft/go-winio/backuptar
@@ -398,7 +401,7 @@ github.com/lf-edge/eve/libs/zedUpload/sftputil
 github.com/mattn/go-ieproxy
 # github.com/matttproud/golang_protobuf_extensions v1.0.2-0.20181231171920-c182affec369
 github.com/matttproud/golang_protobuf_extensions/pbutil
-# github.com/miekg/dns v1.1.27
+# github.com/miekg/dns v1.1.35
 github.com/miekg/dns
 # github.com/moby/locker v1.0.1
 github.com/moby/locker

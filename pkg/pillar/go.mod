@@ -3,6 +3,7 @@ module github.com/lf-edge/eve/pkg/pillar
 go 1.15
 
 require (
+	github.com/Focinfi/go-dns-resolver v1.0.0
 	github.com/Shopify/logrus-bugsnag v0.0.0-20171204204709-577dee27f20d // indirect
 	github.com/VictorLowther/godmi v0.0.0-20190311134151-270258a8252d // indirect
 	github.com/bitly/go-simplejson v0.5.0 // indirect
