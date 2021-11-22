@@ -39,7 +39,7 @@ jobs:
 
       - name: Download EVE amd64
         run: |
-          wget -O eve-amd64.zip "${{steps.find-pr-artifact-amd64.outputs.result}}"
+          wget -O eve-amd64.zip https://github.com/dautovri/eve/suites/4423306992/artifacts/117008495
 
       - name: Find PR build artifact for arm64
         id: find-pr-artifact-arm64
