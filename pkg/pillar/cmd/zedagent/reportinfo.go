@@ -805,11 +805,7 @@ func encodeCellProviders(wwanProviders []types.WwanProvider) (providers []*info.
 }
 
 func encodeSystemAdapterInfo(ctx *zedagentContext) *info.SystemAdapterInfo {
-	dpcl := types.DevicePortConfigList{}
-	item, err := ctx.subDevicePortConfigList.Get("global")
-	if err == nil {
-		dpcl = item.(types.DevicePortConfigList)
-	}
+	dpcl := *ctx.DevicePortConfigList
 	sainfo := new(info.SystemAdapterInfo)
 	sainfo.CurrentIndex = uint32(dpcl.CurrentIndex)
 	sainfo.Status = make([]*info.DevicePortStatus, len(dpcl.PortConfigList))
