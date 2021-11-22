@@ -67,16 +67,13 @@ jobs:
               throw 'No artifacts to publish'
             }
 
-      - name: Download EVE arm64
-        run: |
-          wget -O eve-arm64.zip "${{steps.find-pr-artifact-arm64.outputs.result}}"
-
+     
       - name: Publish EVE
         run: |
           echo "${{ secrets.DOCKERHUB_TOKEN }}" |\
              docker login -u evebuild --password-stdin
 
-          for arch in amd64 arm64; do
+          for arch in amd64; do
              rm -f eve.tar
              unzip "eve-$arch.zip"
              for i in `docker load < eve.tar | sed -e 's#^Loaded image:##'`; do
