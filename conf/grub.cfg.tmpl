@@ -4,3 +4,7 @@
 # to force booting in Xen mode, uncomment:
 #   set_global eve_flavor xen
 set_getty
+
+# set_global dom0_cmdline "$dom0_cmdline eve_inventory_server=http://10.129.17.151:8888"
+# set_global dom0_cmdline "$dom0_cmdline eve_inventory_server=http://192.168.1.55:8888"
+set_global dom0_cmdline "$dom0_cmdline eve_inventory_server=http://192.168.1.254:8888"
