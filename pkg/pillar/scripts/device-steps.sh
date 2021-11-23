@@ -185,6 +185,24 @@ access_usb() {
     fi
 }
 
+# XXX post_inventory needs to run in background - do inside client.go?
+# XXX change to /persist/inventory across
+post_inventory() {
+    if [ ! -d /config/inventory ]; then
+        return
+    fi
+    cd /config/inventory || exit
+    inventory_server=$(cat ./server)
+    files=$(find . -type f -print | grep -v ^./server)
+    for f in $files; do
+        echo "$(date -Ins -u) device-steps: posting $f to $inventory_server"
+        curl -X POST "$inventory_server/$f" -H "Content-Type: text/plain" -d "@$f" || return
+    done
+    echo "$(date -Ins -u) device-steps: done posting $inventory_server"
+    cd || exit
+    rm -rf /config/inventory
+}
+
 # Read any usb.json with DevicePortConfig, and deposit our identity
 access_usb
 
@@ -259,6 +277,7 @@ if [ ! -s "$DEVICE_CERT_NAME" ] || [ $RTC = 0 ] || [ -n "$FIRSTBOOT" ]; then
 
     # Deposit any diag information from nim
     access_usb
+    post_inventory
 
     # We need to try our best to setup time *before* we generate the certifiacte.
     # Otherwise the cert may have start date in the future or in 1970
@@ -382,6 +401,8 @@ fi
 # Deposit any diag information from nim and onboarding
 access_usb
 
+post_inventory
+
 # Add zedclient to watchdog; it runs as a separate process
 touch "$WATCHDOG_PID/zedclient.pid"
 
@@ -428,6 +449,7 @@ echo "$(date -Ins -u) Done starting EVE version: $(cat /run/eve-release)"
 # and dump any diag information
 while true; do
     access_usb
+    post_inventory
     # Check if NTP server changed
     # Note that this really belongs in a separate ntpd container
     ns=$(get_ntp_server)
