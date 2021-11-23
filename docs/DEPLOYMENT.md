@@ -76,6 +76,12 @@ the number in the INVENTORY partition as a newly created folder, where the folde
 that soft serial number. Simply plug the USB stick back into a computer to view the contents
 of the INVENTORY partition to read the number.
 
+In addition, if you pass in a URL in the ```eve_inventory_server``` variables,
+then the EVE-OS installer will save this inventory partition and on boot of
+EVE-OS it will attempt to do http(s) POSTs of the inventory files to that URL.
+The POSTs will be retried until all the inventory files have been successfully
+POSTED to the server.
+
 ## Deploying EVE-OS in physical environments (aka onto bare metal)
 
 Deploying EVE-OS in a physical environment assumes it will be installed to run directly on an actual,
