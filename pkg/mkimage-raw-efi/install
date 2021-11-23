@@ -511,6 +511,15 @@ if [ -f $DEVICE_CERT_NAME ] && [ -n "$REPORT" ]; then
    cat $DEVICE_CERT_NAME > "$REPORT/device.cert.pem"
 fi
 
+# If we have an inventory server then save report so we can push on first
+# boot
+INVENTORY_SERVER=$(tr ' ' '\012' < /proc/cmdline | sed -n '/eve_inventory_server=/s#eve_inventory_server=##p')
+if [ -n "$INVENTORY_SERVER" ]; then
+    mkdir /config/inventory
+    echo "$INVENTORY_SERVER" >/config/inventory/server
+    cp -rp "$REPORT" /config/inventory/
+fi
+
 # finally check whether we are collecting a black box
 if [ -n "$REPORT" ]; then
    # then we can collect our black box
