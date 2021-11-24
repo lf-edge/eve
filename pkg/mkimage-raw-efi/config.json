@@ -228,6 +228,14 @@
             ]
         },
         {
+            "destination": "/etc",
+            "type": "tmpfs",
+            "source": "tmpfs",
+            "options": [
+                "rw"
+            ]
+        },
+        {
             "destination": "/opt/debug",
             "type": "bind",
             "source": "/containers/services/debug/lower",
