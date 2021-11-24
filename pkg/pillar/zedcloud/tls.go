@@ -128,8 +128,15 @@ func GetTlsConfig(dns *types.DeviceNetworkStatus, serverName string, clientCert 
 		for _, port := range dns.Ports {
 			for _, pem := range port.ProxyConfig.ProxyCertPEM {
 				if !caCertPool.AppendCertsFromPEM(pem) {
+					pemStr := string(pem)
+					// Keep the error message length reasonable.
+					const maxPrintedLen = 128
+					if len(pemStr) > maxPrintedLen {
+						pemStr = pemStr[:maxPrintedLen/2] + "..." +
+							pemStr[len(pemStr)-(maxPrintedLen/2):]
+					}
 					errStr := fmt.Sprintf("Failed to append ProxyCertPEM %s for %s",
-						string(pem), port.IfName)
+						pemStr, port.IfName)
 					log.Errorf(errStr)
 					return nil, errors.New(errStr)
 				}

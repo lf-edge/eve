@@ -5,6 +5,7 @@ package devicenetwork
 
 import (
 	"crypto/tls"
+	"crypto/x509"
 	"fmt"
 	"net"
 	"os"
@@ -796,6 +797,26 @@ func IngestPortConfigList(ctx *DeviceNetworkContext) {
 				portConfig.Key)
 			continue
 		}
+
+		var invalidCert bool
+		caCertPool := x509.NewCertPool()
+		for _, port := range portConfig.Ports {
+			for _, pem := range port.ProxyCertPEM {
+				if !caCertPool.AppendCertsFromPEM(pem) {
+					invalidCert = true
+					break
+				}
+			}
+			if invalidCert {
+				break
+			}
+		}
+		if invalidCert {
+			log.Warnf("Stored DevicePortConfig key %s contains invalid certificate; ignored",
+				portConfig.Key)
+			continue
+		}
+
 		dpcl.PortConfigList = append(dpcl.PortConfigList, portConfig)
 	}
 	ctx.DevicePortConfigList = &dpcl
