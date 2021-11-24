@@ -60,6 +60,48 @@ wait_for_touch() {
     fi
 }
 
+INPUTFILE=/run/nim/DeviceNetworkStatus/global.json
+DEFAULT_NTPSERVER=pool.ntp.org
+# Return one line with all the NTP servers for all the ports
+get_ntp_servers() {
+    if [ ! -f "$INPUTFILE" ];  then
+        return
+    fi
+    res=
+    i=0
+    while true; do
+        portInfo=$(jq -c .Ports[$i] < $INPUTFILE)
+        if [ "$portInfo" = "null" ] || [ -z "$portInfo" ]; then
+            break
+        fi
+        list=$(echo "$portInfo" | jq .NtpServers)
+        ns=$(echo "$list" | awk -F\" '{ if (NF > 2) { print $2}}')
+        res="$res $ns"
+        i=$((i + 1))
+    done
+    out=
+    # Make uniform whitespace separator
+    for r in $res; do
+        if [ -z "$out" ]; then
+            out="$r"
+        else
+            out="$out $r"
+        fi
+    done
+    echo "$out"
+}
+
+# Return one (the first) ntp server with default if none
+get_ntp_server() {
+    res=$(get_ntp_servers)
+    one="$DEFAULT_NTPSERVER"
+    for first in $res; do
+        one=$first
+        break
+    done
+    echo "$one"
+}
+
 mkdir -p $ZTMPDIR
 if [ -d $TMPDIR ]; then
     echo "$(date -Ins -u) Old TMPDIR files:"
@@ -375,12 +417,15 @@ if [ ! -s $CONFIGDIR/device.cert.pem ] || [ $RTC = 0 ] || [ -n "$FIRSTBOOT" ]; t
 
     # We need to try our best to setup time *before* we generate the certifiacte.
     # Otherwise the cert may have start date in the future or in 1970
+    # Did NIM get some NTP servers from DHCP? Pick the first one we find.
+    # Otherwise we use the default
+    NTPSERVER=$(get_ntp_server)
     echo "$(date -Ins -u) Check for NTP config"
     if [ -f /usr/sbin/ntpd ]; then
         # Wait until synchronized and force the clock to be set from ntp
-        /usr/sbin/ntpd -q -n -g -p pool.ntp.org
+        /usr/sbin/ntpd -q -n -g -p "$NTPSERVER"
         # Run ntpd to keep it in sync.
-        /usr/sbin/ntpd -p pool.ntp.org
+        /usr/sbin/ntpd -p "$NTPSERVER"
         # Add ndpd to watchdog
         touch "$WATCHDOG_PID/ntpd.pid"
     else
@@ -402,10 +447,14 @@ if [ ! -s $CONFIGDIR/device.cert.pem ] || [ $RTC = 0 ] || [ -n "$FIRSTBOOT" ]; t
     fi
 else
     # Start ntpd before network is up. Assumes it will synchronize later.
+    # Did NIM get some NTP servers from DHCP? Otherwise use default.
+    # If DHCP isn't done we don't get a server here. So we recheck
+    # at the end of device-steps.sh
+    NTPSERVER=$(get_ntp_server)
     if [ -f /usr/sbin/ntpd ]; then
         # Run ntpd to keep it in sync. Allow a large initial jump in case clock
         # had drifted more than 1000 seconds while the device was powered off
-        /usr/sbin/ntpd -g -p pool.ntp.org
+        /usr/sbin/ntpd -g -p "$NTPSERVER"
         # Add ndpd to watchdog
         touch "$WATCHDOG_PID/ntpd.pid"
     else
@@ -546,5 +595,14 @@ echo "$(date -Ins -u) Done starting EVE version: $(cat /run/eve-release)"
 # and dump any diag information
 while true; do
     access_usb
+    # Check if NTP server changed
+    # Note that this really belongs in a separate ntpd container
+    ns=$(get_ntp_server)
+    if [ -n "$ns" ] && [ "$ns" != "$NTPSERVER" ] && [ -f /run/ntpd.pid ]; then
+        echo "$(date -Ins -u) NTP server changed from $NTPSERVER to $ns"
+        NTPSERVER="$ns"
+        kill "$(cat /run/ntpd.pid)"
+        /usr/sbin/ntpd -p "$NTPSERVER"
+    fi
     sleep 300
 done

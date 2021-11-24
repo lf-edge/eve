@@ -15,7 +15,6 @@ import (
 )
 
 // GetDhcpInfo gets info from dhcpcd. Updates Gateway and Subnet
-// XXX set NtpServer once we know what name it has
 // XXX add IPv6 support?
 func GetDhcpInfo(log *base.LogObject, us *types.NetworkPortStatus) {
 
