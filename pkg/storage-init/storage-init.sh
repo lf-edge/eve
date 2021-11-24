@@ -3,6 +3,15 @@
 # Copyright (c) 2018 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
 
+zfs_module_load() {
+    modprobe zfs
+}
+
+zfs_module_unload() {
+    # shellcheck disable=SC2046
+    rmmod $(lsmod | grep zfs | awk '{print $1;}') || :
+}
+
 PERSISTDIR=/persist
 CONFIGDIR=/config
 SMART_DETAILS_FILE=$PERSISTDIR/SMART_details.json
@@ -94,7 +103,7 @@ fi
 if P3=$(findfs PARTLABEL=P3) && [ -n "$P3" ]; then
     # Loading zfs modules to see if we have any zpools attached to the system
     # We will unload them later (if they do unload it meands we didn't find zpools)
-    modprobe zfs
+    zfs_module_load
 
     P3_FS_TYPE=$(blkid "$P3"| tr ' ' '\012' | awk -F= '/^TYPE/{print $2;}' | sed 's/"//g')
     echo "$(date -Ins -u) Using $P3 (formatted with $P3_FS_TYPE), for $PERSISTDIR"
@@ -155,18 +164,17 @@ if P3=$(findfs PARTLABEL=P3) && [ -n "$P3" ]; then
     echo "$P3_FS_TYPE" > /run/eve.persist_type
 
     # this is safe, since if the mount fails the following will fail too
-    # shellcheck disable=SC2046
-    rmmod $(lsmod | grep zfs | awk '{print $1;}') || :
+    zfs_module_unload
 else
-  #in case of no P3 we may have EVE persist on another disks
-  modprobe zfs
-  if chroot /hostfs zpool import -f persist; then
-    echo "zfs" > /run/eve.persist_type
-  else
-    # shellcheck disable=SC2046
-    rmmod $(lsmod | grep zfs | awk '{print $1;}') || :
-    echo "$(date -Ins -u) No separate $PERSISTDIR partition"
-  fi
+    #in case of no P3 we may have EVE persist on another disks
+    zfs_module_load
+    if chroot /hostfs zpool import -f persist; then
+        echo "zfs" > /run/eve.persist_type
+    else
+        # shellcheck disable=SC2046
+        zfs_module_unload
+        echo "$(date -Ins -u) No separate $PERSISTDIR partition"
+    fi
 fi
 
 UUID_SYMLINK_PATH="/dev/disk/by-uuid"
