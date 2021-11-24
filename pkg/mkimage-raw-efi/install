@@ -168,7 +168,26 @@ zfs_umount() {
   umount /root/dev ||:
 }
 
+# XXX post_inventory needs to run in background - do inside client.go?
+# XXX change to /persist/inventory
+post_inventory() {
+    if [ ! -d /config/inventory ]; then
+        return
+    fi
+    cd /config/inventory || exit
+    inventory_server=$(cat ./server)
+    files=$(find . -type f -print | grep -v ^./server)
+    for f in $files; do
+        logmsg "device-steps: posting $f to $inventory_server"
+        curl -X POST "$inventory_server/$f" -H "Content-Type: text/plain" -d "@$f" || return
+    done
+    logmsg "device-steps: done posting $inventory_server"
+    cd || exit
+    rm -rf /config/inventory
+}
+
 logmsg "EVE-OS installation started"
+
 # do this just in case
 modprobe usbhid && modprobe usbkbd
 # clean partition tables on disks defined to nuke
@@ -518,6 +537,26 @@ if [ -n "$INVENTORY_SERVER" ]; then
     mkdir /config/inventory
     echo "$INVENTORY_SERVER" >/config/inventory/server
     cp -rp "$REPORT" /config/inventory/
+    # XXX
+    ls -lR /config/inventory
+    ip link show
+    mkdir /etc/network
+    cat <<EOF >/etc/network/interfaces
+auto eth0
+iface eth0 inet dhcp
+        hostname localhost
+
+EOF
+    ifup -av
+    ls -l /etc/network/interfaces*
+    ifconfig
+    # XXX This is bogus since not from dhcpcd
+    ping -c 1 pool.ntp.org
+    # Wait until synchronized and force the clock to be set from ntp
+    /usr/sbin/ntpd -q -n -g -p pool.ntp.org
+
+    # Try once
+    post_inventory
 fi
 
 # finally check whether we are collecting a black box
