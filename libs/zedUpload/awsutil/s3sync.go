@@ -8,9 +8,11 @@ import (
 	"compress/gzip"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"os"
 	"path/filepath"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -18,14 +20,16 @@ import (
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/aws/aws-sdk-go/service/s3/s3manager"
+	"github.com/lf-edge/eve/libs/zedUpload/types"
 )
 
 // stats update
 type UpdateStats struct {
-	Name  string   // always the remote key
-	Size  int64    // complete size to upload/download
-	Asize int64    // current size uploaded/downloaded
-	List  []string //list of images at given path
+	Name      string                // always the remote key
+	Size      int64                 // complete size to upload/download
+	Asize     int64                 // current size uploaded/downloaded
+	List      []string              //list of images at given path
+	DoneParts types.DownloadedParts //downloaded parts
 }
 
 type NotifChan chan UpdateStats
@@ -72,26 +76,42 @@ func (r *CustomReader) Seek(offset int64, whence int) (int64, error) {
 	return r.fp.Seek(offset, whence)
 }
 
+type writerOptions struct {
+	fp            *os.File
+	upSize        UpdateStats
+	prgNotify     NotifChan
+	donePartsLock sync.Mutex
+	err           error
+}
+
 type CustomWriter struct {
-	fp        *os.File
-	upSize    UpdateStats
-	prgNotify NotifChan
+	writerGlobalOptions *writerOptions
+	writtenBytes        int64
+	offset              int64
+	partInd             int64
 }
 
 func (r *CustomWriter) Write(p []byte) (int, error) {
-	return r.fp.Write(p)
+	return r.writerGlobalOptions.fp.Write(p)
 }
+
 func (r *CustomWriter) WriteAt(p []byte, off int64) (int, error) {
-	n, err := r.fp.WriteAt(p, off)
+	//adjust offset from begin of the part
+	off += r.offset
+	n, err := r.writerGlobalOptions.fp.WriteAt(p, off)
 	if err != nil {
 		return n, err
 	}
-	// Got the length have read( or means has uploaded), and you can construct your message
-	atomic.AddInt64(&r.upSize.Asize, int64(n))
+	r.writtenBytes += int64(n)
+	r.writerGlobalOptions.donePartsLock.Lock()
+	r.writerGlobalOptions.upSize.DoneParts.SetPartSize(r.partInd, r.writtenBytes)
+	r.writerGlobalOptions.donePartsLock.Unlock()
+	// Got the length have read (or means has uploaded), and you can construct your message
+	atomic.AddInt64(&r.writerGlobalOptions.upSize.Asize, int64(n))
 
-	if r.prgNotify != nil {
+	if r.writerGlobalOptions.prgNotify != nil {
 		select {
-		case r.prgNotify <- r.upSize:
+		case r.writerGlobalOptions.prgNotify <- r.writerGlobalOptions.upSize:
 		default: //ignore we cannot write
 		}
 	}
@@ -100,7 +120,7 @@ func (r *CustomWriter) WriteAt(p []byte, off int64) (int, error) {
 }
 
 func (r *CustomWriter) Seek(offset int64, whence int) (int64, error) {
-	return r.fp.Seek(offset, whence)
+	return r.writerGlobalOptions.fp.Seek(offset, whence)
 }
 
 func (s *S3ctx) UploadFile(fname, bname, bkey string, compression bool, prgNotify NotifChan) (string, error) {
@@ -161,32 +181,136 @@ func (s *S3ctx) UploadFile(fname, bname, bkey string, compression bool, prgNotif
 	return result.Location, nil
 }
 
+// partS3 stores information about part of file in S3 datastore
+type partS3 struct {
+	cWriter     *CustomWriter
+	bname, bkey string
+	start, size int64 // offset in the file and size of range
+}
+
+func (s *S3ctx) downloadPart(ch chan *partS3, wg *sync.WaitGroup) {
+	defer wg.Done()
+	for {
+		p, ok := <-ch
+		if !ok {
+			break
+		}
+		if p.cWriter.writerGlobalOptions.err != nil {
+			continue
+		}
+		//download range of bytes from file
+		byteRange := fmt.Sprintf("bytes=%d-%d", p.start, p.start+p.size-1)
+		_, err := s.dn.DownloadWithContext(s.ctx, p.cWriter, &s3.GetObjectInput{Bucket: aws.String(p.bname),
+			Key:   aws.String(p.bkey),
+			Range: aws.String(byteRange)})
+		if err != nil {
+			p.cWriter.writerGlobalOptions.err = err
+		}
+	}
+}
+
+//getNeededParts returns description of parts of file to download
+//it skips parts from doneParts slice which are fully downloaded
+func getNeededParts(cWriterOptions *writerOptions, bname, bkey string, doneParts types.DownloadedParts, size int64) []*partS3 {
+	partsCount := int64(math.Ceil(float64(size) / float64(S3PartSize)))
+	var needed []*partS3
+	for i := int64(0); i < partsCount; i++ {
+		currentPartSize := int64(0)
+		for _, val := range doneParts.Parts {
+			if val.Ind == i {
+				currentPartSize = val.Size
+				break
+			}
+		}
+		part := &partS3{
+			cWriter: &CustomWriter{
+				writerGlobalOptions: cWriterOptions,
+				partInd:             i,
+				offset:              S3PartSize*i + currentPartSize,
+				writtenBytes:        currentPartSize,
+			},
+			bname: bname,
+			bkey:  bkey,
+			start: S3PartSize*i + currentPartSize,
+			size:  S3PartSize - currentPartSize,
+		}
+		if i == partsCount-1 {
+			part.size = size - (partsCount-1)*S3PartSize - currentPartSize
+		}
+		if part.size > 0 {
+			needed = append(needed, part)
+		}
+	}
+	return needed
+}
+
 func (s *S3ctx) DownloadFile(fname, bname, bkey string,
-	bsize int64, prgNotify NotifChan) error {
+	bsize int64, doneParts types.DownloadedParts, prgNotify NotifChan) (types.DownloadedParts, error) {
+
+	var fd *os.File
+	var err error
+	var wg sync.WaitGroup
+
+	if bsize == 0 {
+		err, bsize = s.GetObjectSize(bname, bkey)
+		if err != nil {
+			return doneParts, err
+		}
+	}
 
 	if err := os.MkdirAll(filepath.Dir(fname), 0775); err != nil {
-		return err
+		return doneParts, err
 	}
 
-	// Setup the local file
-	fd, err := os.Create(fname)
-	if err != nil {
-		return err
+	if _, err := os.Stat(fname); err != nil && os.IsNotExist(err) {
+		//if file not exists clean doneParts
+		doneParts = types.DownloadedParts{
+			PartSize: S3PartSize,
+		}
 	}
 
-	cWriter := &CustomWriter{
+	if len(doneParts.Parts) > 0 {
+		fd, err = os.OpenFile(fname, os.O_RDWR, 0666)
+		if err != nil {
+			return doneParts, err
+		}
+	} else {
+		// Create the local file
+		fd, err = os.Create(fname)
+		if err != nil {
+			return doneParts, err
+		}
+	}
+	defer fd.Close()
+
+	asize := int64(0)
+	for _, p := range doneParts.Parts {
+		asize += p.Size
+	}
+
+	cWriterOpts := &writerOptions{
 		fp:        fd,
-		upSize:    UpdateStats{Size: bsize, Name: bkey},
+		upSize:    UpdateStats{Size: bsize, Name: bkey, Asize: asize, DoneParts: doneParts},
 		prgNotify: prgNotify,
 	}
 
-	defer fd.Close()
-	_, err = s.dn.DownloadWithContext(s.ctx, cWriter, &s3.GetObjectInput{Bucket: aws.String(bname),
-		Key: aws.String(bkey)})
-	if err != nil {
-		return err
+	ch := make(chan *partS3, S3Concurrency)
+	neededPart := getNeededParts(cWriterOpts, bname, bkey, doneParts, bsize)
+	//create goroutines to download parts in parallel
+	for c := 0; c < S3Concurrency; c++ {
+		wg.Add(1)
+		go s.downloadPart(ch, &wg)
 	}
-	return nil
+	for _, el := range neededPart {
+		if cWriterOpts.err != nil {
+			break
+		}
+		ch <- el
+	}
+	close(ch)
+	wg.Wait()
+
+	return cWriterOpts.upSize.DoneParts, cWriterOpts.err
 }
 
 // DownloadFileByChunks downloads the file from s3 chunk by chunk and passes it to the caller
