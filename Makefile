@@ -301,7 +301,7 @@ itest: $(GOBUILDER) run-proxy | $(DIST)
 	@cd tests/integration ; CGO_ENABLED=0 GOOS= go test -v -run "$(ITESTS)" .
 
 clean:
-	rm -rf $(DIST) images/*.yml pkg/qrexec-dom0/Dockerfile
+	rm -rf $(DIST) images/*.yml
 
 yetus:
 	@echo Running yetus
