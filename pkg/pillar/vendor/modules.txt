@@ -397,6 +397,7 @@ github.com/lf-edge/eve/libs/zedUpload/gsutil
 github.com/lf-edge/eve/libs/zedUpload/httputil
 github.com/lf-edge/eve/libs/zedUpload/ociutil
 github.com/lf-edge/eve/libs/zedUpload/sftputil
+github.com/lf-edge/eve/libs/zedUpload/types
 # github.com/mattn/go-ieproxy v0.0.1
 github.com/mattn/go-ieproxy
 # github.com/matttproud/golang_protobuf_extensions v1.0.2-0.20181231171920-c182affec369

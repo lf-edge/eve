@@ -198,6 +198,7 @@ func (ep *AwsTransportMethod) processS3Download(req *DronaRequest) (error, int) 
 						return
 					}
 				case <-ticker.C:
+					req.doneParts = stats.DoneParts
 					ep.ctx.postSize(req, stats.Size, stats.Asize)
 				}
 			}
@@ -211,7 +212,8 @@ func (ep *AwsTransportMethod) processS3Download(req *DronaRequest) (error, int) 
 	if req.cancelContext != nil {
 		sc = sc.WithContext(req.cancelContext)
 	}
-	err := sc.DownloadFile(req.objloc, ep.bucket, req.name, req.sizelimit, prgChan)
+	doneParts, err := sc.DownloadFile(req.objloc, ep.bucket, req.name, req.sizelimit, req.doneParts, prgChan)
+	req.doneParts = doneParts
 	if err != nil {
 		return err, 0
 	}

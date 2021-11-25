@@ -34,7 +34,7 @@ const (
 	SysOpDownloadByChunks       = 10
 	DefaultNumberOfHandlers     = 11
 
-	StatsUpdateTicker = 5 * time.Second // timer for updating client for stats
+	StatsUpdateTicker = 1 * time.Second // timer for updating client for stats
 	FailPostTimeout   = 2 * time.Minute
 )
 

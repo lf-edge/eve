@@ -13,6 +13,8 @@ import (
 	"os"
 	"sync"
 	"time"
+
+	"github.com/lf-edge/eve/libs/zedUpload/types"
 )
 
 var (
@@ -90,6 +92,9 @@ type DronaRequest struct {
 	EtagID string
 	// chunkInfoChan used for communication of chunk details
 	chunkInfoChan chan ChunkData
+
+	//downloaded parts indexes
+	doneParts types.DownloadedParts
 }
 
 // Return object local name
@@ -337,4 +342,16 @@ func (req *DronaRequest) WithCancel(ctx context.Context) *DronaRequest {
 	req.cancelContext = cancelContext
 	req.cancelFunc = cancel
 	return req
+}
+
+// WithDoneParts can be used to set already downloaded parts indexes
+func (req *DronaRequest) WithDoneParts(doneParts types.DownloadedParts) *DronaRequest {
+
+	req.doneParts = doneParts
+	return req
+}
+
+// GetDoneParts returns already downloaded parts indexes
+func (req *DronaRequest) GetDoneParts() types.DownloadedParts {
+	return req.doneParts
 }
