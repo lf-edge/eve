@@ -3,7 +3,6 @@ obj
 dist/
 build-tools/bin/
 images/*.yml
-pkg/qrexec-dom0/Dockerfile
 .go/
 tags
 tmp/
