@@ -1,5 +1,5 @@
 # hadolint ignore=DL3006
-FROM UEFI_TAG as uefi-build
+FROM lfedge/eve-uefi:6be7d8ce5c058a39cb0b120f84e2e508e126c24a as uefi-build
 
 FROM lfedge/eve-alpine:6.7.0 as runx-build
 ENV BUILD_PKGS mkinitfs gcc musl-dev e2fsprogs
