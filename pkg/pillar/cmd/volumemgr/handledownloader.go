@@ -4,10 +4,12 @@
 package volumemgr
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"path"
+	"strconv"
 
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	uuid "github.com/satori/go.uuid"
 )
 
 // AddOrRefcountDownloaderConfig used to publish the downloader config
@@ -42,14 +44,12 @@ func AddOrRefcountDownloaderConfig(ctx *volumemgrContext, blob types.BlobStatus)
 	}
 
 	// where should the final downloaded file be?
-	// Pick a unique name since the sha has not yet been verified hence
-	// can potentially collide between different concurrent downloads
-	id, err := uuid.NewV4()
-	if err != nil {
-		log.Errorf("NewV4 failed: %v", err)
-		return
-	}
-	pendingFile := id.String() + "." + blob.Sha256
+	// Pick a name based on existing info about object to persist it across reboots
+	idHash := sha256.New()
+	idHash.Write(blob.DatastoreID.Bytes())
+	idHash.Write([]byte(blob.RelativeURL))
+	idHash.Write([]byte(strconv.FormatUint(blob.Size, 10)))
+	pendingFile := hex.EncodeToString(idHash.Sum(nil)) + "." + blob.Sha256
 	locFilename := path.Join(types.SealedDirName, "downloader", "pending",
 		pendingFile)
 

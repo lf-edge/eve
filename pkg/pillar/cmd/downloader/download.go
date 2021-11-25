@@ -5,14 +5,51 @@ package downloader
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
+	"os"
 	"time"
 
 	"github.com/lf-edge/eve/libs/zedUpload"
+	"github.com/lf-edge/eve/libs/zedUpload/types"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 )
+
+func loadDownloadedParts(locFilename string) types.DownloadedParts {
+	var downloadedParts types.DownloadedParts
+	fd, err := os.Open(locFilename + progressFileSuffix)
+	if err == nil {
+		decoder := json.NewDecoder(fd)
+		err = decoder.Decode(&downloadedParts)
+		if err != nil {
+			log.Errorf("failed to decode progress file: %s", err)
+		}
+		err := fd.Close()
+		if err != nil {
+			log.Errorf("failed to close progress file: %s", err)
+		}
+	}
+	return downloadedParts
+}
+
+func saveDownloadedParts(locFilename string, downloadedParts types.DownloadedParts) {
+	fd, err := os.Create(locFilename + progressFileSuffix)
+	if err != nil {
+		log.Errorf("error creating progress file: %s", err)
+	} else {
+		encoder := json.NewEncoder(fd)
+		err = encoder.Encode(downloadedParts)
+		if err != nil {
+			log.Errorf("failed to encode progress file: %s", err)
+		}
+		err := fd.Close()
+		if err != nil {
+			log.Errorf("failed to close progress file: %s", err)
+		}
+	}
+}
 
 // download perform the actual download, given the necessary information.
 // Returns the content-type of the object downloaded, normally from the
@@ -84,9 +121,14 @@ func download(ctx *downloaderContext, trType zedUpload.SyncTransportType,
 		"downloadURL: <%s>, maxsize: %d, ifname: %s, ipSrc: %+v, locFilename: %s",
 		trType, dpath, region, filename, downloadURL, maxsize, ifname, ipSrc,
 		locFilename)
+
+	downloadedParts := loadDownloadedParts(locFilename)
+	downloadedPartsHash := downloadedParts.Hash()
+
 	// create Request
 	req := dEndPoint.NewRequest(syncOp, filename, locFilename,
 		int64(maxsize), true, respChan)
+	req = req.WithDoneParts(downloadedParts)
 	if req == nil {
 		return "", cancel, errors.New("NewRequest failed")
 	}
@@ -110,6 +152,14 @@ func download(ctx *downloaderContext, trType zedUpload.SyncTransportType,
 
 	lastProgress := time.Now()
 	for resp := range respChan {
+		newDownloadedParts := resp.GetDoneParts()
+		newDownloadedPartsHash := newDownloadedParts.Hash()
+		if downloadedPartsHash != newDownloadedPartsHash {
+			downloadedPartsHash = newDownloadedPartsHash
+			downloadedParts = newDownloadedParts
+			saveDownloadedParts(locFilename, downloadedParts)
+		}
+
 		if resp.IsDnUpdate() {
 			currentSize, totalSize, progress := resp.Progress()
 			log.Functionf("Update progress for %v: %v/%v",
