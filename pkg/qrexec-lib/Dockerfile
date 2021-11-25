@@ -1,4 +1,4 @@
-FROM XENTOOLS_TAG as xentools
+FROM lfedge/eve-xen-tools:5f5a4015f2e392b5e8afb76fbc3019d17425e029 as xentools
 
 FROM lfedge/eve-alpine:6.7.0 as build
 ENV BUILD_PKGS gcc make libc-dev linux-headers git pkgconf
