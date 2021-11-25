@@ -18,8 +18,12 @@ import (
 )
 
 const (
-	S3_PART_SIZE        = 5 * 1024 * 1024
-	S3_PART_LEAVE_ERROR = true
+	//S3Concurrency parallels parts download limit
+	S3Concurrency = 5
+	//S3PartSize size of part to download
+	S3PartSize = 5 * 1024 * 1024
+	//S3PartLeaveError leaves parts to manual resolve errors on uploads
+	S3PartLeaveError = true
 )
 
 type S3ctx struct {
@@ -66,11 +70,13 @@ func NewAwsCtx(id, secret, region string, hctx *http.Client) *S3ctx {
 	// s3.New is deprecated.. Ignoring the lint error as this is not new code.
 	ctx.ss3 = s3.New(session.New(), cfg) // nolint
 	ctx.up = s3manager.NewUploaderWithClient(ctx.ss3, func(u *s3manager.Uploader) {
-		u.PartSize = S3_PART_SIZE
-		u.LeavePartsOnError = S3_PART_LEAVE_ERROR
+		u.PartSize = S3PartSize
+		u.LeavePartsOnError = S3PartLeaveError
+		u.Concurrency = S3Concurrency
 	})
 	ctx.dn = s3manager.NewDownloaderWithClient(ctx.ss3, func(d *s3manager.Downloader) {
-		d.PartSize = S3_PART_SIZE
+		d.PartSize = S3PartSize
+		d.Concurrency = S3Concurrency
 	})
 
 	return &ctx
