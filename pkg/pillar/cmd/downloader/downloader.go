@@ -152,6 +152,11 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 	ctx.dCtx = downloaderInit(&ctx)
 
+	// run gc every 5 minutes
+	gcInterval := 5 * time.Minute
+	gcTimer := flextimer.NewRangeTicker(time.Duration(0.3*float64(gcInterval)),
+		gcInterval)
+
 	for {
 		select {
 		case change := <-ctx.decryptCipherContext.SubControllerCert.MsgChan():
@@ -196,6 +201,12 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 				log.Errorln(err)
 			}
 			ps.CheckMaxTimeTopic(agentName, "publishTimer", start,
+				warningTime, errorTime)
+
+		case <-gcTimer.C:
+			start := time.Now()
+			clearInProgressDownloadDirs(&ctx)
+			ps.CheckMaxTimeTopic(agentName, "gcTimer", start,
 				warningTime, errorTime)
 
 		case <-stillRunning.C:
@@ -423,6 +434,10 @@ func doDelete(ctx *downloaderContext, key string, filename string,
 			log.Errorf("Failed to remove %s: err %s",
 				filename, err)
 		}
+		if err := os.RemoveAll(filename + progressFileSuffix); err != nil {
+			log.Errorf("Failed to remove %s: err %s",
+				filename, err)
+		}
 	}
 
 	status.State = types.INITIAL
@@ -490,7 +505,7 @@ func downloaderInit(ctx *downloaderContext) *zedUpload.DronaCtx {
 		log.Fatal(err)
 	}
 	// Remove any files which didn't complete before the device reboot
-	clearInProgressDownloadDirs()
+	clearInProgressDownloadDirs(nil)
 	createDownloadDirs()
 	return dCtx
 }

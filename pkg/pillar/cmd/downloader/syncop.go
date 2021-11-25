@@ -44,6 +44,7 @@ func handleSyncOp(ctx *downloaderContext, key string,
 	// As of this writing, the file is downloaded directly to `config.Target`
 	locFilename = config.Target
 	locDirname = path.Dir(locFilename)
+	cleanOnError := true
 
 	// construct the datastore context
 	dsCtx, err := constructDatastoreContext(ctx, config.Name, config.NameIsURL, *dst)
@@ -51,7 +52,7 @@ func handleSyncOp(ctx *downloaderContext, key string,
 		errStr := fmt.Sprintf("Will retry in %v: %s failed: %s",
 			retryTime, config.Name, err)
 		handleSyncOpResponse(ctx, config, status, locFilename, key,
-			errStr, cancelled)
+			errStr, cancelled, cleanOnError)
 		return
 	}
 
@@ -103,6 +104,7 @@ func handleSyncOp(ctx *downloaderContext, key string,
 		// does not contain the prefix of the relative path with '/'s
 		remoteName = config.Name
 		metricsURL = fmt.Sprintf("S3:%s/%s", dsCtx.Dpath, config.Name)
+		cleanOnError = false
 
 	case zconfig.DsType_DsAzureBlob.String():
 		auth = &zedUpload.AuthInput{
@@ -164,7 +166,7 @@ func handleSyncOp(ctx *downloaderContext, key string,
 	if errStr != "" {
 		log.Errorf("Error preparing to download. All errors:%s", errStr)
 		handleSyncOpResponse(ctx, config, status, locFilename,
-			key, errStr, cancelled)
+			key, errStr, cancelled, cleanOnError)
 		return
 	}
 
@@ -180,7 +182,7 @@ func handleSyncOp(ctx *downloaderContext, key string,
 				downloadMaxPortCost)
 			log.Error(err.Error())
 			handleSyncOpResponse(ctx, config, status, locFilename,
-				key, err.Error(), cancelled)
+				key, err.Error(), cancelled, cleanOnError)
 			return
 		}
 	}
@@ -255,7 +257,7 @@ func handleSyncOp(ctx *downloaderContext, key string,
 				size, size)
 		}
 		handleSyncOpResponse(ctx, config, status,
-			locFilename, key, "", cancelled)
+			locFilename, key, "", cancelled, cleanOnError)
 		return
 
 	}
@@ -264,7 +266,7 @@ func handleSyncOp(ctx *downloaderContext, key string,
 			errStr)
 	}
 	handleSyncOpResponse(ctx, config, status, locFilename,
-		key, errStr, cancelled)
+		key, errStr, cancelled, cleanOnError)
 }
 
 // DownloadURL format : http://<serverURL>/dpath/filename
@@ -278,16 +280,18 @@ func getServerURL(dsCtx *types.DatastoreContext) (string, error) {
 }
 
 func handleSyncOpResponse(ctx *downloaderContext, config types.DownloaderConfig,
-	status *types.DownloaderStatus, locFilename string,
-	key string, errStr string, cancelled bool) {
+	status *types.DownloaderStatus, locFilename,
+	key, errStr string, cancelled, cleanOnError bool) {
 
 	// have finished the download operation
 	// based on the result, perform some storage
 	// management also
 
 	if errStr != "" {
-		// Delete file, and update the storage
-		doDelete(ctx, key, locFilename, status)
+		if cleanOnError {
+			// Delete file, and update the storage
+			doDelete(ctx, key, locFilename, status)
+		}
 		status.HandleDownloadFail(errStr, retryTime, cancelled)
 		publishDownloaderStatus(ctx, status)
 		log.Errorf("handleSyncOpResponse(%s): failed with %s",
@@ -306,6 +310,12 @@ func handleSyncOpResponse(ctx *downloaderContext, config types.DownloaderConfig,
 		log.Errorf("handleSyncOpResponse(%s): failed with %s",
 			status.Name, errStr)
 		return
+	}
+
+	err = os.RemoveAll(locFilename + progressFileSuffix)
+	if err != nil {
+		log.Errorf("handleSyncOpResponse(%s): failed to clean progress file %s",
+			status.Name, err)
 	}
 
 	log.Functionf("handleSyncOpResponse(%s): successful <%s>",
