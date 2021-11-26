@@ -16,7 +16,8 @@ that deserve user attention.
 | 2   | Device is attempting to connect to the Controller. |
 | 3   | Device has connected to the Controller but it is not yet onboarded. |
 | 4   | Device is connected to the Controller and onboarded.  |
-| 5-9 | *unused* |
+| 5   | Radio silence is imposed (wireless transmission is disabled). |
+| 6-9 | *unused* |
 | 10  | Device onboarding is failing. |
 | 11  | *unused* |
 | 12  | Controller replied without TLS connection state. |

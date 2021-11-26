@@ -158,6 +158,198 @@ The fact that EVE itself stays out of Firmware upgrade business means that you m
 
 Aside from vendor and system integrator's forums, a lot of great information and software is available at [ROOter Of Modems and Men](https://www.ofmodemsandmen.com/) and [Daniel Wood's GitHub](https://github.com/danielewood/sierra-wireless-modems).
 
+## Radio Silence
+
+Radio silence is the act of disabling all radio transmission for safety or security reasons.
+This is commonly used to mitigate the risk of radio frequency interference with other instruments
+in the vicinity of the edge node. However, often times it is just the regulations that prohibit
+the use of radio devices in some areas or during certain procedures.
+
+### Permanent radio silence
+
+In some countries/regions or designated areas, it may be required that an edge node is deployed
+with all wireless devices permanently disabled and with only wired connectivity options used
+to communicate with the controller. This can be easily accomplished in EVE because the default
+state for wireless devices (as imposed by EVE) is to disable radio transmission. This means
+that as long as a `PhysicalIO` representing a cellular modem or a WiFi adapter has no network
+associated with it, EVE will prevent the device from emitting any power over the radio.
+
+### Temporary radio silence
+
+In situations where wireless communication may interfere with other instruments during a certain
+procedure of a limited duration, it may be necessary to temporarily disable radio transmission.
+If there are no wired connection alternatives, the edge node will lose connectivity with
+the controller, but it should not cause the node to reboot, fallback to previous network
+configuration or to do anything else that may negatively affect applications running on it.
+For safety reasons and due to uncertain accessibility to the controller, it is typically required
+that the radio silence mode is switched ON and OFF locally and not managed remotely.
+
+With these requirements in mind, EVE was designed to use the [Local profile server](../api/PROFILE.md)
+(a designated application overriding controller for a small subset of the config) with a separate
+[Radio endpoint](../api/PROFILE.md#Radio), to periodically obtain the required state of the radio
+silence mode and to publish the actual state. Intentionally, it is not possible to enabled or disable
+radio silence remotely through the controller. Still, the controller is at least used to deploy
+the application, mark it as a Local profile server and to specify string token that the application
+will have to present to EVE with each request to authenticate itself. This is submitted to the edge
+node using the `local_profile_server` and `profile_server_token` fields from `EdgeDevConfig`.
+
+#### Radio endpoint semantic
+
+Without Local profile server deployed or configured (from the controller), the default behavior
+is to enable radio transmission for all wireless devices with a network configuration attached
+and disable the rest. In other words, a temporary radio silence is disabled by default and only
+unused devices are (permanently) silenced.
+
+Once a Local profile server has been deployed and the application transitioned to the "running"
+state, EVE will start periodically making a POST request to the [Radio endpoint](../api/PROFILE.md#Radio).
+If this (optional) endpoint is not implemented, the default policy for radio transmission
+will remain in effect. If the endpoint is available, EVE will provide an update of the
+current state of wireless devices in the POST request body, formatted and marshalled using
+the [RadioStatus](./proto/profile/local_profile.proto) proto message.
+
+If a response from the application contains no content (response code 204), EVE assumes
+that the intended radio silence state has not changed (initial intended state is a disabled
+radio silence).
+Application response with non-empty content (response code 200) is unmarshalled into
+[RadioConfig](../api/proto/profile/local_profile.proto) protobuf message. If the unmarshalling
+succeeded and the token matches the expected value configured through the controller,
+EVE will accept the new radio configuration. Currently, apart from the token, RadioConfig
+contains only a single boolean field which determines if the radio silence should be imposed
+or lifted.
+
+Whenever the newly received intended state of the radio silence mode differs from
+the currently applied state, EVE will trigger an operation of switching radio transmission
+ON/OFF on all (used) wireless devices. This operation takes some time, during which EVE
+stops publishing radio status updates and receiving new radio configs. This is purely
+to simplify the implementation and avoid any interleaving between config updates and state
+changes. Once the new radio config was applied (successfully or with an error),
+EVE will restart the periodic radio status updates and will POST the outcome of the operation
+back to the application via the radio endpoint.
+
+A formal definition for the syntax and the semantics of the radio endpoint can be found
+[here](../api/PROFILE.md#Radio)
+
+#### Persistence
+
+The intended radio configuration received from Local profile server is persisted
+by EVE (under `/persist` partition) and remains in effect even if the application
+restarts or the edge node reboots (but please see [risks and limitations](#risks-and-limitations)
+associated with the edge node reboot).
+Only once the Local profile server is un-configured or un-deployed will EVE discard
+the last radio config and restore the default behavior of disabled radio silence.
+
+#### Controller connectivity
+
+While the radio silence is imposed, it is perfectly normal for the edge node to lose access
+to the controller, especially if there are no wired connectivity alternatives.
+Normally, this could cause the network configuration to fallback to a previous state
+in an attempt to restore the connectivity. However, in this case this behavior is not desirable,
+therefore the network connectivity testing and the whole fallback mechanism is disabled
+during the radio silence.
+
+Please note that there is also a timer inside EVE to reboot the device if it has not had
+controller connectivity for a prolonged time period - by default this is configured to one week.
+Since it is not expected that a temporary radio silence would remain turned ON for such an extended
+period of time in practice, this timer remains enabled even when radio communication is disabled.
+
+#### Expected application behaviour
+
+Application acting as a Local Profile Server for the radio management is expected
+to behave as follows:
+
+* Application provides UI on the user-side and runs HTTP server with `/api/v1/radio`
+  endpoint on the EVE-side.
+* The application UI should allow to:
+  * Toggle the radio silence intended state (ON/OFF) and as a result change the message content
+    that the HTTP server will respond with to `/api/v1/radio` POST calls.
+  * Show the last received actual state and the last error if there was any
+    (periodically POSTed to `/api/v1/radio` by EVE).
+  * Show that an operation of changing the radio state is still ongoing (e.g. a "loading gif").
+    This starts from a moment of user changing the intended state in the UI, continues
+    through the next POST API call (from which EVE learns the new intended state,
+    different from the actual state), up to the second next POST API call with the actual
+    radio state after making the attempt to apply the new intended config
+    (please remember that for simplicity's sake there will be no POST API calls while
+    a change is ongoing).
+
+#### Radio silence indication
+
+When radio silence is temporarily imposed, the device status indicator (by default the disk LED)
+will repeat a patter of blinking 5 times in a row. The pattern is the same regardless of what state
+the device was in before the radio silence was imposed.
+More information about the node state indication using LED can be found [here](LED-INDICATION.md).
+
+Additionally, [Diagnostics](../pkg/pillar/cmd/diag) prints information about radio silence state
+changes into the console, mostly for debugging purposes.
+
+### Risks and Limitations
+
+The current implementation of the radio silence mode has few limitations that users
+should be aware of, especially if used for safety-critical use-cases.
+
+* Currently supported are cellular modems and WiFi adapters.
+  Bluetooth devices are NOT covered.
+* For WiFi adapters, the Linux [rfkill subsystem](https://linux.die.net/man/1/rfkill) is used
+  to enable/disable radio communication. This, however, requires that for every attached WiFi
+  adapter there is a corresponding rfkill driver available and loaded into the kernel.
+  Run `rfkill` command from the debug console and look for a table entry with `wlan` TYPE.
+  For some devices it may be necessary to enable certain `*_RFKILL=y` kernel parameters
+  to build their drivers (e.g. `CONFIG_ATH9K_RFKILL=y`).
+* For cellular modems we use QMI and MBIM protocols for management. Both of these protocols
+  provide APIs to enable/disable radio transmission. However, cellular modems that do not
+  support any of these protocols (and likely only AT commands), cannot be managed by EVE
+  and the radio transmission will remain in the modem's default state (which usually is ON).
+* Radio silence only applies to wireless network adapters which are visible to EVE (host OS).
+  Adapters directly assigned to applications are not covered. It is up to those applications
+  to manage the state of radio transmission.
+* The intended radio configuration is obtained from the Local profile server by means of periodic
+  polling. However, because we want to limit the delay between a user turning radio silence ON/OFF
+  and the requested change taking the effect, the polling period is set down to 5 seconds,
+  i.e. substantially less than the default 1 minute period for edge node config retrieval
+  from the controller.
+  Still, expect that it may take several seconds to enable/disable radio silence.
+  Especially with cellular modems and QMI/MBIM protocols there is some latency in response
+  from the modem itself.
+  Users should wait for the Local profile server application to display a confirmation
+  in the UI of a finalized state change (and whether it actually succeeded).
+* If the radio silence is imposed while the edge node reboots, there could be a short window
+  between the boot and EVE microservices starting and applying the persisted state,
+  during which wireless devices might in theory manage to quickly turn on and transmit some
+  signals. This also applies to permanently disabled wireless devices (i.e. without network config).
+  However, this risk is mitigated in EVE quite well. For WiFi cards this is actually completely
+  avoided by using a kernel commandline parameter `rfkill.default_state=0`, to ensure that WiFi
+  radios are initially all disabled and can be turned ON only by an EVE microservice.
+  For cellular modems, however, we rely here on the modem to support configuration persistence.
+  For example, SierraWireless modems `EM7565` and `MC7455`, that were tested and verified with EVE,
+  do support persistence.
+* The last limitation (not really a risk) is that by design the local profile override
+  and the radio silence mode both have to be managed by the same application.
+
+## Cellular info and metrics
+
+The list of all cellular modems visible to the host (incl. the unused ones, without network config attached),
+is published in `ZInfoDevice.cell_radios`. The `name` of each modem is simply a string that EVE guarantees
+to be unique among all the modems in the list (for example IMEI if available). Information provided for each
+modem may include IMEI (a globally unique modem ID), hardware model, firmware version, operating state
+(radio silence is one of the states) and the protocol used for management (QMI or MBIM).
+
+The list of all SIM cards inserted into cellular modems is published in `ZInfoDevice.sims`. The `name` of each
+SIM card is simply a string that EVE guarantees to be unique among all the SIM cards in the list (for example
+ICCID if available). Information provided for each SIM card may include ICCID (a globally unique SIM ID),
+IMSI (a mobile subscriber identity) and a reference to the name of the modem to which it is inserted.
+SIM card state is also defined but currently not provided.
+
+Every device port associated with a cellular modem has `wireless_status` defined. It contains references
+to the names of the modem and the SIM card being used, information about visible network providers
+(with PLMN codes) and potentially also error messages if EVE failed to apply the last configuration for
+this port or if the connectivity testing is failing.
+
+EVE also collects metrics from cellular modems (i.e. stats recorded by modems themselves, not from the Linux
+network stack). These are published in `deviceMetric.cellular`.  Included are packet and byte RX/TX
+counters, drop/error counters and information about the signal strength: RSSI, RSRQ, RSRP, SNR.
+Note that with MBIM control protocol, only RSSI is available. The maximum value of int32 (`0x7FFFFFFF`)
+represents unspecified/unavailable metric (zero is a valid value).
+
 ## References
 
 * [Sierra Wireless MC7455 stuck in MBIM-only USB composition](https://forum.sierrawireless.com/t/mc7455-stuck-in-mbim-only-usb-composition/8499)
