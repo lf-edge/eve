@@ -7,7 +7,7 @@
 FROM lfedge/eve-alpine:145f062a40639b6c65efa36bed1c5614b873be52 AS build
 SHELL ["/bin/ash", "-eo", "pipefail", "-c"]
 ENV BUILD_PKGS mkinitfs grep patch
-ENV PKGS mtools dosfstools libarchive-tools sgdisk e2fsprogs util-linux squashfs-tools coreutils tar dmidecode
+ENV PKGS curl mtools dosfstools libarchive-tools sgdisk e2fsprogs util-linux squashfs-tools coreutils tar dmidecode
 RUN eve-alpine-deploy.sh
 
 WORKDIR /out
