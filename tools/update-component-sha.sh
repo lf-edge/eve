@@ -7,6 +7,9 @@ set -e
 # see usage() for usage and functionality
 #
 
+EVE="$(cd "$(dirname "$0")" && pwd)/../"
+PATH="$EVE/build-tools/bin:$PATH"
+
 usage() {
     cat >&2 <<EOF
 $0 --<mode> <how-to-find> <new-hash>
