@@ -597,7 +597,7 @@ init:
 
 We may want to rebuild using the latest version currently available to us of each of the above packages. If we changed 1, 3 or even all of them, it is a tedious and error-prone job to change the hashes of the commits for each of them.
 
-Similarly, a `pkg/` may be sourced from another package which, in turn, has a specific commit. For example, the first line of the generated qrexec-lib [Dockerfile](../pkg/qrexec-lib/Dockerfile) is:
+Similarly, a `pkg/` may be sourced from another package which, in turn, has a specific commit. For example, the first line of the generated qrexec-dom0 [Dockerfile](../pkg/qrexec-dom0/Dockerfile) is:
 
 ```yml
 FROM lfedge/eve-xen-tools@sha256:4a6d0bcfc33a3096398b4daa0931f9583c674358eeb47241e0df5f96e24c0110 as xentools
