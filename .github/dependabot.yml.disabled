@@ -44,10 +44,6 @@ updates:
     schedule:
       interval: "monthly"
   - package-ecosystem: "docker"
-    directory: "/pkg/qrexec-lib"
-    schedule:
-      interval: "monthly"
-  - package-ecosystem: "docker"
     directory: "/pkg/rngd"
     schedule:
       interval: "monthly"
