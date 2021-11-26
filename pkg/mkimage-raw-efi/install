@@ -188,6 +188,36 @@ post_inventory() {
 
 logmsg "EVE-OS installation started"
 
+# XXX remove
+ip link show
+
+# Kick off network configuration on eth0 so we can run ntpd and later post
+# inventory
+mkdir -p /var/run/
+mkdir -p /etc/network/if-up.d/
+mkdir -p /etc/network/if-pre-up.d/
+mkdir -p /etc/network/interfaces.d/
+cat <<EOF >/etc/network/interfaces
+auto eth0
+iface eth0 inet dhcp
+EOF
+mkdir -p /etc/conf.d/
+cat <<EOF >/etc/conf.d/ntpd
+NTPD_OPTS="-s"
+EOF
+ifup -av
+# XXX remove
+ls -l /etc/network/interfaces*
+ifconfig
+ip route show
+
+# XXX This is bogus since not from udhcp
+# https://www.unix.com/man-page/suse/8/udhcpc/ - ntpsrv
+ls -l /usr/share/udhcpc/default.script
+ping -c 1 pool.ntp.org
+# Wait until synchronized and force the clock to be set from ntp
+/usr/sbin/ntpd -q -n -g -p pool.ntp.org
+
 # do this just in case
 modprobe usbhid && modprobe usbkbd
 # clean partition tables on disks defined to nuke
@@ -539,23 +569,15 @@ if [ -n "$INVENTORY_SERVER" ]; then
     cp -rp "$REPORT" /config/inventory/
     # XXX
     ls -lR /config/inventory
-    ip link show
-    mkdir /etc/network
-    cat <<EOF >/etc/network/interfaces
-auto eth0
-iface eth0 inet dhcp
-        hostname localhost
-
-EOF
-    ifup -av
-    ls -l /etc/network/interfaces*
-    ifconfig
-    # XXX This is bogus since not from dhcpcd
-    ping -c 1 pool.ntp.org
-    # Wait until synchronized and force the clock to be set from ntp
-    /usr/sbin/ntpd -q -n -g -p pool.ntp.org
-
-    # Try once
+    # Try once and if this fails EVE-OS will try again on boot
+    ping -c 1 192.168.1.2
+    ping -c 1 192.168.1.55
+    post_inventory
+    # XXX sleep and try again?
+    ping -c 1 192.168.1.2
+    ping -c 1 192.168.1.254
+    ip route show
+    sleep 5
     post_inventory
 fi
 
