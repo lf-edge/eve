@@ -22,3 +22,13 @@ that deserve user attention.
 | 12  | Controller replied without TLS connection state. |
 | 13  | Controller replied without OCSP response. |
 | 14  | Failed to fetch or verify Controller certificate. |
+
+Application status is also displayed using LEDs on device model SIEMENS AG.SIMATIC IPC127E
+Uses LED3 (the one labeled as L3 MAINT) for application state.
+
+1. If no application has even started booting then LED3 will be off.
+2. If one or more applications is in error state, then the LED3 will be solid red.
+3. If there is no error
+    - If EVE has moved all of the applications to the booted or running state, then solid green
+    - If some applications are in the halting state, then blinking orange.
+    - If some applications are in the init state, then blinking green.
