@@ -364,7 +364,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		zedagentCtx.globalConfig.GlobalValueInt(types.NetworkSendTimeout),
 		zedagentCtx.zedcloudMetrics)
 	// Timer for deferred sends of info messages
-	deferredChan := zedcloud.GetDeferredChan(zedcloudCtx, getDeferredSentHandlerFunction(), getDeferredPriorityFunctions()...)
+	deferredChan := zedcloud.GetDeferredChan(zedcloudCtx, getDeferredSentHandlerFunction(&zedagentCtx), getDeferredPriorityFunctions()...)
 
 	subAssignableAdapters, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "domainmgr",
@@ -2120,7 +2120,7 @@ func handleNodeAgentStatusDelete(ctxArg interface{}, key string,
 	triggerPublishDevInfo(ctx)
 }
 
-func getDeferredSentHandlerFunction() *zedcloud.SentHandlerFunction {
+func getDeferredSentHandlerFunction(ctx *zedagentContext) *zedcloud.SentHandlerFunction {
 	var function zedcloud.SentHandlerFunction
 	function = func(itemType interface{}, data *bytes.Buffer, result types.SenderResult) {
 		if result == types.SenderStatusNone {
@@ -2132,6 +2132,10 @@ func getDeferredSentHandlerFunction() *zedcloud.SentHandlerFunction {
 			}
 			if el, ok := itemType.(info.ZInfoTypes); ok && el == info.ZInfoTypes_ZiApp {
 				writeSentAppInfoProtoMessage(data.Bytes())
+			}
+			if el, ok := itemType.(attest.ZAttestReqType); ok && el == attest.ZAttestReqType_ATTEST_REQ_CERT {
+				log.Noticef("sendAttestReqProtobuf: Sent EdgeNodeCerts")
+				ctx.publishedEdgeNodeCerts = true
 			}
 		} else {
 			if _, ok := itemType.(attest.ZAttestReqType); ok {
