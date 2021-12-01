@@ -283,30 +283,44 @@ func updateRadioSilence(ctx *DeviceNetworkContext, radioSilence types.RadioSilen
 	var err error
 	var errMsgs []string
 	log := ctx.Log
-	ctx.RadioSilence = radioSilence
 
-	// (asynchronously) update RF state for wwan
-	ctx.WwanService.Config.RadioSilence = radioSilence.Imposed
-	ctx.WwanService.ConfigChecksum, err = installWwanConfig(ctx.Log, ctx.WwanService.Config)
-	if err != nil {
-		errMsgs = append(errMsgs, fmt.Sprintf("Failed to install wwan config: %v", err))
-		if ctx.RadioSilence.Imposed {
-			// failed to disable wwan RF (can't even install config for wwan service)
-			ctx.RadioSilence.Imposed = false
-		}
+	// ChangeInProgress is enabled below if wwan config changes.
+	ctx.RadioSilence.ChangeInProgress = false
+	ctx.RadioSilence.ChangeRequestedAt = radioSilence.ChangeRequestedAt
+
+	if radioSilence.ConfigError != "" {
+		// Do not apply if configuration is marked as invalid by zedagent.
+		// Keep RadioSilence.Imposed unchanged.
+		errMsgs = append(errMsgs, radioSilence.ConfigError)
 	} else {
-		ctx.RadioSilence.ChangeInProgress = true
-		log.Noticef("Triggering radio-silence state change to: %s", ctx.RadioSilence)
-	}
+		// Valid configuration, try to apply.
+		ctx.RadioSilence.Imposed = radioSilence.Imposed
 
-	// (synchronously) update rf state for wlan
-	err = toggleWlanRF(log, !radioSilence.Imposed && hasWifiPortConfig(ctx))
-	if err != nil {
-		if ctx.RadioSilence.Imposed {
-			// failed to disable wlan RF
-			ctx.RadioSilence.Imposed = false
+		// (asynchronously) update RF state for wwan
+		if ctx.WwanService.Config.RadioSilence != radioSilence.Imposed {
+			ctx.WwanService.Config.RadioSilence = radioSilence.Imposed
+			ctx.WwanService.ConfigChecksum, err = installWwanConfig(ctx.Log, ctx.WwanService.Config)
+			if err != nil {
+				errMsgs = append(errMsgs, fmt.Sprintf("Failed to install wwan config: %v", err))
+				if ctx.RadioSilence.Imposed {
+					// failed to disable wwan RF (can't even install config for wwan service)
+					ctx.RadioSilence.Imposed = false
+				}
+			} else {
+				ctx.RadioSilence.ChangeInProgress = true
+				log.Noticef("Triggering radio-silence state change to: %s", ctx.RadioSilence)
+			}
 		}
-		errMsgs = append(errMsgs, err.Error())
+
+		// (synchronously) update rf state for wlan
+		err = toggleWlanRF(log, !radioSilence.Imposed && hasWifiPortConfig(ctx))
+		if err != nil {
+			if ctx.RadioSilence.Imposed {
+				// failed to disable wlan RF
+				ctx.RadioSilence.Imposed = false
+			}
+			errMsgs = append(errMsgs, err.Error())
+		}
 	}
 
 	ctx.RadioSilence.ConfigError = strings.Join(errMsgs, "\n")
