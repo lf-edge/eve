@@ -68,8 +68,9 @@ func gcObjects(ctx *volumemgrContext, dirName string) {
 				filelocation)
 			if format == "CONTAINER" {
 				_ = ctx.casClient.RemoveContainerRootDir(filelocation)
+			} else {
+				deleteFile(filelocation)
 			}
-			deleteFile(filelocation)
 		}
 	}
 	log.Tracef("gcObjects(%s) Done", dirName)
