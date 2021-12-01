@@ -214,7 +214,7 @@ func (s *ociSpec) Save(file *os.File) error {
 func (s *ociSpec) Load(file *os.File) error {
 	var ns *specs.Spec
 	if err := json.NewDecoder(file).Decode(&ns); err != nil {
-		return err
+		return fmt.Errorf("ociSpec.Load error: %s", err)
 	}
 	s.Spec = *ns
 	if s.Process == nil {

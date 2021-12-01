@@ -644,7 +644,7 @@ func (c *containerdCAS) RemoveContainerRootDir(rootPath string) error {
 		err = fmt.Errorf("RemoveContainerRootDir: exception while unmounting: %v/%v. %v",
 			rootPath, containerRootfsPath, err)
 		logrus.Error(err.Error())
-		return err
+		// do not stop the flow here, we need to do cleanup regardless of mounting issues
 	}
 
 	//Step 2: Clean container rootPath
