@@ -680,7 +680,7 @@ func handleZedAgentStatusImpl(ctxArg interface{}, key string, statusArg interfac
 	log.Functionf("handleZedAgentStatusImpl() %+v\n", newStatus)
 
 	if newStatus.RadioSilence.ChangeRequestedAt.After(ctx.RadioSilence.ChangeRequestedAt) {
-		log.Noticef("The intended radio-silence state changed to: %s", ctx.RadioSilence)
+		log.Noticef("The intended radio-silence state changed to: %s", newStatus.RadioSilence)
 		updateRadioSilence(ctx, newStatus.RadioSilence)
 	}
 }

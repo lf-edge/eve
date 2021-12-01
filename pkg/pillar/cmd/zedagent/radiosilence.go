@@ -74,12 +74,25 @@ func radioPOSTTask(ctx *getconfigContext) {
 		}
 		config := getRadioConfig(ctx, status)
 		if config != nil {
-			if config.RadioSilence != ctx.radioSilence.Imposed {
-				ctx.radioSilence.Imposed = config.RadioSilence
-				ctx.radioSilence.ChangeInProgress = true
+			var configErr string
+			if config.RadioSilence && ctx.updateInprogress {
+				configErr = "Imposing radio silence during EVE update testing is not allowed"
+			}
+			if ctx.radioSilence.Imposed != config.RadioSilence ||
+				ctx.radioSilence.ConfigError != configErr {
+				// Configuration for radio silence has changed.
 				ctx.radioSilence.ChangeRequestedAt = time.Now()
-				log.Noticef("Triggering radio-silence state change to: %s",
-					ctx.radioSilence)
+				ctx.radioSilence.Imposed = config.RadioSilence
+				// Zedagent uses RadioSilence.ConfigError to mark invalid request,
+				// which is then ignored by NIM.
+				ctx.radioSilence.ConfigError = configErr
+				if configErr != "" {
+					log.Error(configErr)
+				} else {
+					ctx.radioSilence.ChangeInProgress = true
+					log.Noticef("Triggering radio-silence state change to: %s",
+						ctx.radioSilence)
+				}
 				publishZedAgentStatus(ctx)
 			}
 		}
