@@ -96,6 +96,10 @@ jobs:
           echo "::group::Error log function filename duplicates"
           echo "$(jq -s 'map(select(.severity | contains("err")))|group_by(.filename)|map(select(length>10))|map({"source": .[0].source, "filename": .[0].filename, "function": .[0].function, "content": [.[].content], "total":length})|sort_by(.total)| reverse[]' trace.log)"
           echo "::endgroup::"
+          echo "::group::Segfaults"
+          echo "$(jq -s 'map(select(.content | contains("segfault at")))' trace.log)"|tee segfaults.log
+          [ "$(jq length segfaults.log)" -gt 0 ] && echo "::warning::segfaults found, you can see them in Log counting->Segfaults section"
+          echo "::endgroup::"
       - name: Store raw test results
         if: ${{ always() }}
         uses: actions/upload-artifact@v2
