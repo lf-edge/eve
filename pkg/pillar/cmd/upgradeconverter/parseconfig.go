@@ -95,26 +95,31 @@ func parseAppInstances(config *zconfig.EdgeDevConfig) ([]driveAndVolumeRef, erro
 		log.Functionf("parseAppInstances[%d] %d drives %d volumeRefs",
 			i, len(drives), len(volumeRefs))
 
-		davr := make([]driveAndVolumeRef, len(drives))
+		var davr []driveAndVolumeRef
 		for i, drive := range drives {
 			image := drive.GetImage()
+			if image == nil || image.Uuidandversion == nil {
+				continue
+			}
 			imageID, _ := uuid.FromString(image.Uuidandversion.Uuid)
-			davr[i].appInstID = appInstID
-			davr[i].imageID = imageID
-			davr[i].imageName = image.Name
-			davr[i].sha256 = image.Sha256
+			davrCurrent := driveAndVolumeRef{}
+			davrCurrent.appInstID = appInstID
+			davrCurrent.imageID = imageID
+			davrCurrent.imageName = image.Name
+			davrCurrent.sha256 = image.Sha256
 			// Just like zedagent we apply the purgeCounter to the
 			// first disk
 			if i == 0 && purgeCounter != 0 {
 				log.Functionf("parseAppInstances setting purgeCounter to %d  for appInstID %s imageID %s",
 					purgeCounter, appInstID, imageID)
-				davr[i].purgeCounter = purgeCounter
+				davrCurrent.purgeCounter = purgeCounter
 			}
 			if len(volumeRefs) > i {
 				volumeID, _ := uuid.FromString(volumeRefs[i].Uuid)
-				davr[i].volumeID = volumeID
-				davr[i].generationCounter = volumeRefs[i].GenerationCount
+				davrCurrent.volumeID = volumeID
+				davrCurrent.generationCounter = volumeRefs[i].GenerationCount
 			}
+			davr = append(davr, davrCurrent)
 		}
 		appInsts = append(appInsts, davr...)
 	}
