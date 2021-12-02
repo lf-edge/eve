@@ -15,7 +15,7 @@ cp stdout pod_ps
 exec bash server_ip.sh nginx
 
 exec sleep 10
-exec -t 5m bash run_clent.sh
+exec -t 5m bash run_client.sh
 stdout 'Welcome to nginx!'
 
 eden pod modify t1 -p 8028:80
@@ -25,7 +25,7 @@ cp stdout pod_ps
 exec bash server_ip.sh nginx
 
 exec sleep 10
-exec -t 5m bash run_clent.sh
+exec -t 5m bash run_client.sh
 stdout 'Welcome to nginx!'
 
 eden pod modify t1 -p 8027:80
@@ -35,17 +35,21 @@ cp stdout pod_ps
 exec bash server_ip.sh nginx
 
 exec sleep 10
-exec -t 5m bash run_clent.sh
+exec -t 5m bash run_client.sh
 stdout 'Welcome to nginx!'
 
 eden pod delete nginx
 
 test eden.app.test -test.v -timewait 10m - nginx
 
+message 'Resetting of EVE'
+eden eve reset
+exec sleep 10
+
 -- server_ip.sh --
 echo export ENGINX=$(grep "^$1\s" pod_ps | cut -f 5) > env
 
--- run_clent.sh --
+-- run_client.sh --
 . ./env
 
 for i in `seq 10`

@@ -147,8 +147,12 @@ eden.escript.test -testdata ../docker/testdata/ -test.run TestEdenScripts/2docke
 eden.escript.test -testdata ../app/testdata/ -test.run TestEdenScripts/2dockers_test
 /bin/echo Eden Nginx (28/{{$tests}})
 eden.escript.test -testdata ../eclient/testdata/ -test.run TestEdenScripts/ngnix
-/bin/echo Eden Mariadb (29/{{$tests}})
+
+/bin/echo Eden Mariadb (29.1/{{$tests}})
 eden.escript.test -testdata ../eclient/testdata/ -test.run TestEdenScripts/maridb
+/bin/echo Eden nodered (29.2/{{$tests}})
+eden.escript.test -testdata ../eclient/testdata/ -test.run TestEdenScripts/nodered
+
 /bin/echo Eden eclient with disk (30/{{$tests}})
 eden.escript.test -testdata ../eclient/testdata/ -test.run TestEdenScripts/disk
 /bin/echo EVE reset (31/{{$tests}})
