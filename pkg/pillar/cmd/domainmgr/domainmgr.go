@@ -1707,6 +1707,9 @@ func configToStatus(ctx *domainContext, config types.DomainConfig,
 		ds.Vdev = fmt.Sprintf("xvd%c", int('a')+i)
 	}
 
+	//clean environment variables
+	status.EnvVariables = nil
+
 	if config.IsCipher || config.CloudInitUserData != nil {
 		ciStr, err := fetchCloudInit(ctx, config)
 		if err != nil {

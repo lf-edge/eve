@@ -189,9 +189,16 @@ otherwise dhcp is enabled.
 
 We use several files to run application comes from Docker/OCI manifest:
 
-* `environment` - all environment variables defined in Docker/OCI goes here
-* `cmdline` - it is cmd defined to run in Docker/OCI
+* `environment` - all environment variables defined in Docker/OCI and user data from controller goes here
+* `cmdline` - it is concatenation of entrypoint and cmd defined to run in Docker/OCI manifest
 * `ug` - file contains user and group to run cmd under
+
+`cmdline` may be overridden by setting of `EVE_ECO_CMD` environment variables. Thus, if defined, `cmdline` will contain
+`EVE_ECO_CMD` value. It may help to run specific command inside application without rebuilding and redeploy of it.
+Command is executing inside the same behaviour as the command passed from Docker/OCI manifest and can access/modify
+files inside rootfs of the ECO (i.e. this way user can print some files to the logs of application or touch/download
+file needed for the application), also this way user can run entrypoint with specified arguments (i.e. debugging ones).
+Please note, that change of environment variables require restart of the application.
 
 After preparation done we chroot into /mnt and run cmd from cmdline under specified user and group, output goes to
 /dev/console and is accessible from log of ECO.
