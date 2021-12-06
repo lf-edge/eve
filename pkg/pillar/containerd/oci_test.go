@@ -767,6 +767,27 @@ func TestUpdateMounts(t *testing.T) {
 	g.Expect(spec.UpdateMounts(tresAmigos)).To(HaveOccurred())
 }
 
+func TestEnvs(t *testing.T) {
+	g := NewGomegaWithT(t)
+	spec := ociSpec{
+		name: "test",
+		Spec: specs.Spec{
+			Annotations: map[string]string{},
+			Process:     &specs.Process{},
+		},
+	}
+
+	envVars := make(map[string]string)
+
+	envVars[eveECOCMDOverride] = "echo me"
+	spec.UpdateEnvVar(envVars)
+	g.Expect(spec.Process.Args).To(Equal([]string{"echo", "me"}))
+
+	envVars[eveECOCMDOverride] = "echo hello"
+	spec.UpdateEnvVar(envVars)
+	g.Expect(spec.Process.Args).To(Equal([]string{"echo", "hello"}))
+}
+
 func TestAddLoader(t *testing.T) {
 	g := NewGomegaWithT(t)
 	specTemplate := ociSpec{

@@ -30,6 +30,9 @@ import (
 
 const eveScript = "/bin/eve"
 
+// eveECOCMDOverride value overrides cmd if provided
+const eveECOCMDOverride = "EVE_ECO_CMD"
+
 var vethScript = []string{"eve", "exec", "pillar", "/opt/zededa/bin/veth.sh"}
 
 // ociSpec is kept private (with all the actions done by getters and setters
@@ -433,5 +436,11 @@ func (s *ociSpec) UpdateMounts(disks []types.DiskStatus) error {
 func (s *ociSpec) UpdateEnvVar(envVars map[string]string) {
 	for k, v := range envVars {
 		s.Process.Env = append(s.Process.Env, fmt.Sprintf("%s=%s", k, v))
+		switch k {
+		case eveECOCMDOverride:
+			if len(v) != 0 {
+				s.Process.Args = strings.Fields(v)
+			}
+		}
 	}
 }
