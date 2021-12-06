@@ -143,6 +143,7 @@ if P3=$(findfs PARTLABEL=P3) && [ -n "$P3" ]; then
                       # note that we immediately create a zfs dataset for containerd, since otherwise the init sequence will fail
                       #   https://bugs.launchpad.net/ubuntu/+source/zfs-linux/+bug/1718761
                       chroot /hostfs zpool create -f -m none -o feature@encryption=enabled -O overlay=on persist "$P3" && \
+                      chroot /hostfs zfs create -o refreservation="$(zfs get -o value -Hp available | awk '{ print ($1/1024/1024)/5 }')"m persist/reserved && \
                       chroot /hostfs zfs set mountpoint="$PERSISTDIR" persist                                          && \
                       chroot /hostfs zfs create -p -o mountpoint="$PERSISTDIR/containerd/io.containerd.snapshotter.v1.zfs" persist/snapshots
                    fi
