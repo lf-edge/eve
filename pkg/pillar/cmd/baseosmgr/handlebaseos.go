@@ -183,23 +183,35 @@ func doBaseOsStatusUpdate(ctx *baseOsMgrContext, uuidStr string,
 	// we only update to latch it from empty, and if it matches exactly
 	cts := lookupContentTreeStatus(ctx, uuidStr)
 	log.Functionf("doBaseOsStatusUpdate(%s) ContentTreeStatus %#v", config.BaseOsVersion, cts)
-	if cts != nil && cts.ContentSha256 != "" {
-		updated := false
-		// we cannot just change it on the fly, because status.ContentTreeStatusList is
-		// []ContentTreeStatus and not []*ContentTreeStatus
-		var ctsList []types.ContentTreeStatus
-		for _, baseCts := range status.ContentTreeStatusList {
-			if baseCts.ContentID == cts.ContentID && baseCts.ContentSha256 == "" {
-				baseCts.ContentSha256 = cts.ContentSha256
-				baseCts.RelativeURL = cts.RelativeURL
-				updated = true
+	if cts != nil {
+		if cts.ContentSha256 != "" {
+			updated := false
+			// we cannot just change it on the fly, because status.ContentTreeStatusList is
+			// []ContentTreeStatus and not []*ContentTreeStatus
+			var ctsList []types.ContentTreeStatus
+			for _, baseCts := range status.ContentTreeStatusList {
+				if baseCts.ContentID == cts.ContentID && baseCts.ContentSha256 == "" {
+					baseCts.ContentSha256 = cts.ContentSha256
+					baseCts.RelativeURL = cts.RelativeURL
+					updated = true
+				}
+				ctsList = append(ctsList, baseCts)
 			}
-			ctsList = append(ctsList, baseCts)
+			status.ContentTreeStatusList = ctsList
+			if updated {
+				log.Functionf("doBaseOsStatusUpdate(%s) Updating BaseOsStatus %#v", config.BaseOsVersion, status)
+				publishBaseOsStatus(ctx, status)
+			}
 		}
-		status.ContentTreeStatusList = ctsList
-		if updated {
-			log.Functionf("doBaseOsStatusUpdate(%s) Updating BaseOsStatus %#v", config.BaseOsVersion, status)
-			publishBaseOsStatus(ctx, status)
+		if cts.HasError() {
+			description := cts.ErrorDescription
+			description.ErrorEntities = []*types.ErrorEntity{{EntityID: cts.Key(), EntityType: types.ErrorEntityContentTree}}
+			status.SetErrorDescription(description)
+			return true
+		}
+		if status.HasError() {
+			status.ClearError()
+			changed = true
 		}
 	}
 
