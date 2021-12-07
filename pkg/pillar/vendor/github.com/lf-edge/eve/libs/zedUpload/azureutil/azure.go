@@ -8,14 +8,17 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"net/url"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Azure/azure-pipeline-go/pipeline"
 	"github.com/Azure/azure-storage-blob-go/azblob"
+	"github.com/lf-edge/eve/libs/zedUpload/types"
 )
 
 const (
@@ -34,6 +37,54 @@ type UpdateStats struct {
 	Error         error
 	BodyLength    int   // Body legth in http response
 	ContentLength int64 // Content length in http response
+
+	DoneParts types.DownloadedParts //downloaded parts
+}
+
+type sectionWriter struct {
+	count    int64
+	offset   int64
+	position int64
+	part     *types.PartDefinition
+	writerAt io.WriterAt
+}
+
+func newSectionWriter(c io.WriterAt, off int64, count int64, part *types.PartDefinition) *sectionWriter {
+	return &sectionWriter{
+		count:    count,
+		offset:   off,
+		writerAt: c,
+		part:     part,
+	}
+}
+
+//Write implementation for sectionWriter
+func (c *sectionWriter) Write(p []byte) (int, error) {
+	remaining := c.count - c.position
+
+	if remaining <= 0 {
+		return 0, fmt.Errorf("end of section reached: %v", *c.part)
+	}
+
+	slice := p
+
+	if int64(len(slice)) > remaining {
+		slice = slice[:remaining]
+	}
+
+	n, err := c.writerAt.WriteAt(slice, c.offset+c.position)
+	c.position += int64(n)
+	if err != nil {
+		return n, err
+	}
+
+	if len(p) > n {
+		return n, fmt.Errorf("not enough space for %d bytes: %d", p, n)
+	}
+
+	c.part.Size = c.part.Size + int64(n)
+
+	return n, nil
 }
 
 // NotifChan is the uploading/downloading progress notification channel
@@ -116,17 +167,18 @@ func DeleteAzureBlob(accountName, accountKey, containerName, remoteFile string, 
 }
 
 func DownloadAzureBlob(accountName, accountKey, containerName, remoteFile, localFile string,
-	objSize int64, httpClient *http.Client, prgNotify NotifChan) error {
+	objSize int64, httpClient *http.Client, doneParts types.DownloadedParts, prgNotify NotifChan) (types.DownloadedParts, error) {
 
-	stats := UpdateStats{}
+	var file *os.File
+	stats := &UpdateStats{DoneParts: doneParts}
 	p, err := newPipeline(accountName, accountKey, httpClient)
 	if err != nil {
-		return fmt.Errorf("unable to create pipeline: %v", err)
+		return stats.DoneParts, fmt.Errorf("unable to create pipeline: %v", err)
 	}
 
 	URL, err := url.Parse(fmt.Sprintf(blobURLPattern, accountName, containerName))
 	if err != nil {
-		return fmt.Errorf("invalid URL for container name %s: %v", containerName, err)
+		return stats.DoneParts, fmt.Errorf("invalid URL for container name %s: %v", containerName, err)
 	}
 
 	// Create a ContainerURL object that wraps the container URL and a request
@@ -135,16 +187,40 @@ func DownloadAzureBlob(accountName, accountKey, containerName, remoteFile, local
 	blobURL := containerURL.NewBlockBlobURL(remoteFile)
 	ctx := context.Background()
 
+	if objSize == 0 {
+		properties, err := blobURL.GetProperties(ctx, azblob.BlobAccessConditions{}, azblob.ClientProvidedKeyOptions{})
+		if err != nil {
+			return stats.DoneParts, fmt.Errorf("could not get properties for blob: %v", err)
+		}
+		objSize = properties.ContentLength()
+	}
+
 	tempLocalFile := localFile
 	index := strings.LastIndex(tempLocalFile, "/")
 	dir_err := os.MkdirAll(tempLocalFile[:index+1], 0755)
 	if dir_err != nil {
-		return dir_err
+		return stats.DoneParts, dir_err
 	}
 
-	file, err := os.Create(localFile)
-	if err != nil {
-		return err
+	if _, err := os.Stat(localFile); err != nil && os.IsNotExist(err) {
+		//if file not exists clean doneParts
+		stats.DoneParts = types.DownloadedParts{
+			PartSize: SingleMB,
+		}
+	}
+
+	if len(doneParts.Parts) > 0 {
+		file, err = os.OpenFile(localFile, os.O_RDWR, 0666)
+		if err != nil {
+			return stats.DoneParts, err
+		}
+	} else {
+		// Create the local file
+		file, err = os.Create(localFile)
+		if err != nil {
+			return stats.DoneParts, err
+		}
+		stats.DoneParts.PartSize = SingleMB
 	}
 	defer file.Close()
 
@@ -154,27 +230,84 @@ func DownloadAzureBlob(accountName, accountKey, containerName, remoteFile, local
 		progressReceiver = func(bytesTransferred int64) {
 			stats.Asize = bytesTransferred
 			select {
-			case prgNotify <- stats:
+			case prgNotify <- *stats:
 			default: //ignore we cannot write
 			}
 		}
 	}
-	// we could just return the error that comes from this function, but in the case of
-	// a nil error, we want to be sure we sent the total
-	if err := azblob.DownloadBlobToFile(ctx, blobURL.BlobURL, 0, 0, file, azblob.DownloadFromBlobOptions{
-		BlockSize:                  SingleMB,
-		Parallelism:                uint16(parallelism),
-		RetryReaderOptionsPerBlock: azblob.RetryReaderOptions{MaxRetryRequests: maxRetries},
-		Progress:                   progressReceiver,
-	}); err != nil {
-		return err
+	// calculate downloaded size based on parts
+	progress := int64(0)
+	for _, p := range stats.DoneParts.Parts {
+		progress += p.Size
+	}
+	progressLock := &sync.Mutex{}
+
+	partsCount := int64(math.Ceil(float64(objSize) / float64(SingleMB)))
+	//last part may have less size than chunk size
+	lastPartSize := objSize - (partsCount-1)*SingleMB
+
+	err = azblob.DoBatchTransfer(ctx, azblob.BatchTransferOptions{
+		OperationName: "DownloadAzureBlob",
+		TransferSize:  objSize,
+		ChunkSize:     SingleMB,
+		Parallelism:   parallelism,
+		Operation: func(chunkStart int64, count int64, ctx context.Context) error {
+			offset := int64(0)
+			partNum := int64(0)
+			if chunkStart > 0 {
+				//calculate part number based on offset (chunkStart) in file
+				partNum = int64(math.Floor(float64(chunkStart) / float64(SingleMB)))
+			}
+			var part *types.PartDefinition
+			progressLock.Lock()
+			for _, el := range stats.DoneParts.Parts {
+				if el.Ind == partNum {
+					if el.Size == SingleMB || (partNum == partsCount && el.Size == lastPartSize) {
+						progressLock.Unlock()
+						// do nothing if part has already been downloaded
+						return nil
+					}
+					offset = el.Size
+					part = el
+					break
+				}
+			}
+			if part == nil {
+				// if no part found, append new
+				part = &types.PartDefinition{Ind: partNum}
+				stats.DoneParts.Parts = append(stats.DoneParts.Parts, part)
+			}
+			progressLock.Unlock()
+			dr, err := blobURL.Download(ctx, chunkStart+offset, count-offset, azblob.BlobAccessConditions{}, false, azblob.ClientProvidedKeyOptions{})
+			if err != nil {
+				return err
+			}
+			body := dr.Body(azblob.RetryReaderOptions{MaxRetryRequests: maxRetries})
+			rangeProgress := int64(0)
+			body = pipeline.NewResponseBodyProgress(
+				body,
+				func(bytesTransferred int64) {
+					diff := bytesTransferred - rangeProgress
+					rangeProgress = bytesTransferred
+					progressLock.Lock()
+					progress += diff
+					progressReceiver(progress)
+					progressLock.Unlock()
+				})
+			_, err = io.Copy(newSectionWriter(file, chunkStart+offset, count-offset, part), body)
+			body.Close()
+			return err
+		},
+	})
+	if err != nil {
+		return stats.DoneParts, err
 	}
 	// ensure we send the total; it is theoretically possible that it downloaded without error
 	// but the progress receiver did not get invoked at the end
 	if stats.Asize < stats.Size {
 		progressReceiver(stats.Size)
 	}
-	return nil
+	return stats.DoneParts, nil
 }
 
 // DownloadAzureBlobByChunks will process the blob download by chunks, i.e., chunks will be
