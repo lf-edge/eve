@@ -140,12 +140,14 @@ func (ep *AzureTransportMethod) processAzureDownload(req *DronaRequest) error {
 						return
 					}
 				case <-ticker.C:
+					req.doneParts = stats.DoneParts
 					ep.ctx.postSize(req, stats.Size, stats.Asize)
 				}
 			}
 		}(req, prgChan)
 	}
-	err := azure.DownloadAzureBlob(ep.acName, ep.acKey, ep.container, file, req.objloc, req.sizelimit, ep.hClient, prgChan)
+	doneParts, err := azure.DownloadAzureBlob(ep.acName, ep.acKey, ep.container, file, req.objloc, req.sizelimit, ep.hClient, req.doneParts, prgChan)
+	req.doneParts = doneParts
 	if err != nil {
 		return err
 	}
