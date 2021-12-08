@@ -117,6 +117,7 @@ func handleSyncOp(ctx *downloaderContext, key string,
 		// pass in the config.Name instead of 'filename' which
 		// does not contain the prefix of the relative path with '/'s
 		remoteName = config.Name
+		cleanOnError = false
 
 	case zconfig.DsType_DsSFTP.String():
 		auth = &zedUpload.AuthInput{
