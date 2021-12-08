@@ -78,19 +78,9 @@ func maybeRetryResolve(ctx *downloaderContext, status *types.ResolveStatus,
 	log.Functionf("maybeRetryResolve(%s) after %s at %v",
 		status.Key(), status.Error, status.ErrorTime)
 
-	if status.RetryCount == 0 {
-		status.OrigError = status.Error
-	}
 	// Increment count; we defer clearing error until success
 	// to avoid confusing the user.
 	status.RetryCount++
-	severity := types.GetErrorSeverity(status.RetryCount, time.Duration(status.RetryCount)*retryTime)
-	errDescription := types.ErrorDescription{
-		Error:               status.OrigError,
-		ErrorRetryCondition: fmt.Sprintf("Retrying; attempt %d", status.RetryCount),
-		ErrorSeverity:       severity,
-	}
-	status.SetErrorDescription(errDescription)
 	publishResolveStatus(ctx, status)
 
 	resolveTagsToHash(ctx, *config, receiveChan)

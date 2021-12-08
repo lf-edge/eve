@@ -114,8 +114,6 @@ type DownloaderStatus struct {
 	// ErrorAndTime provides SetErrorNow() and ClearError()
 	ErrorAndTime
 	RetryCount int
-	// We save the original error when we do a retry
-	OrigError string
 }
 
 func (status DownloaderStatus) Key() string {

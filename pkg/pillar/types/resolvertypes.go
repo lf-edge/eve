@@ -76,8 +76,6 @@ type ResolveStatus struct {
 	RetryCount  int
 	// ErrorAndTime provides SetErrorNow() and ClearError()
 	ErrorAndTime
-	// We save the original error when we do a retry
-	OrigError string
 }
 
 // Key : DatastoreID, name and sequence counter are used

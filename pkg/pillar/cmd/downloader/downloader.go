@@ -141,6 +141,18 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 			ctx.decryptCipherContext.SubEdgeNodeCert.ProcessChange(change)
 			log.Noticef("Processed EdgeNodeCert")
 
+		case change := <-ctx.decryptCipherContext.SubControllerCert.MsgChan():
+			ctx.decryptCipherContext.SubControllerCert.ProcessChange(change)
+			log.Noticef("Processed ControllerCert")
+
+		case change := <-ctx.decryptCipherContext.SubCipherContext.MsgChan():
+			ctx.decryptCipherContext.SubCipherContext.ProcessChange(change)
+			log.Noticef("Processed CipherContext")
+
+		case change := <-ctx.subDatastoreConfig.MsgChan():
+			ctx.subDatastoreConfig.ProcessChange(change)
+			log.Noticef("Processed DatastoreConfig")
+
 		// This wait can take an unbounded time since we wait for IP
 		// addresses. Punch StillRunning
 		case <-stillRunning.C:
@@ -338,19 +350,9 @@ func maybeRetryDownload(ctx *downloaderContext,
 	log.Functionf("maybeRetryDownload(%s) after %s at %v",
 		status.Key(), status.Error, status.ErrorTime)
 
-	if status.RetryCount == 0 {
-		status.OrigError = status.Error
-	}
 	// Increment count; we defer clearing error until success
 	// to avoid confusing the user.
 	status.RetryCount++
-	severity := types.GetErrorSeverity(status.RetryCount, time.Duration(status.RetryCount)*retryTime)
-	errDescription := types.ErrorDescription{
-		Error:               status.OrigError,
-		ErrorRetryCondition: fmt.Sprintf("Retrying; attempt %d", status.RetryCount),
-		ErrorSeverity:       severity,
-	}
-	status.SetErrorDescription(errDescription)
 	publishDownloaderStatus(ctx, status)
 
 	doDownload(ctx, *config, status, receiveChan)

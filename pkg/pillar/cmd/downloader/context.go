@@ -33,14 +33,16 @@ type downloaderContext struct {
 func (ctx *downloaderContext) registerHandlers(ps *pubsub.PubSub) error {
 	// Look for controller certs which will be used for decryption
 	subControllerCert, err := ps.NewSubscription(pubsub.SubscriptionOptions{
-		AgentName:   "zedagent",
-		MyAgentName: agentName,
-		TopicImpl:   types.ControllerCert{},
-		Activate:    false,
-		Ctx:         ctx,
-		WarningTime: warningTime,
-		ErrorTime:   errorTime,
-		Persistent:  true,
+		AgentName:     "zedagent",
+		MyAgentName:   agentName,
+		CreateHandler: handleControllerCertCreate,
+		ModifyHandler: handleControllerCertModify,
+		TopicImpl:     types.ControllerCert{},
+		Activate:      false,
+		Ctx:           ctx,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+		Persistent:    true,
 	})
 	if err != nil {
 		log.Fatal(err)
@@ -49,41 +51,53 @@ func (ctx *downloaderContext) registerHandlers(ps *pubsub.PubSub) error {
 	ctx.decryptCipherContext.AgentName = agentName
 	ctx.decryptCipherContext.AgentMetrics = ctx.cipherMetrics
 	ctx.decryptCipherContext.SubControllerCert = subControllerCert
-	subControllerCert.Activate()
 
 	// Look for edge node certs which will be used for decryption
 	subEdgeNodeCert, err := ps.NewSubscription(pubsub.SubscriptionOptions{
-		AgentName:   "tpmmgr",
-		MyAgentName: agentName,
-		TopicImpl:   types.EdgeNodeCert{},
-		Activate:    false,
-		Persistent:  true,
-		Ctx:         ctx,
-		WarningTime: warningTime,
-		ErrorTime:   errorTime,
+		AgentName:     "tpmmgr",
+		MyAgentName:   agentName,
+		CreateHandler: handleEdgeNodeCertCreate,
+		ModifyHandler: handleEdgeNodeCertModify,
+		TopicImpl:     types.EdgeNodeCert{},
+		Activate:      false,
+		Persistent:    true,
+		Ctx:           ctx,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
 	})
 	if err != nil {
 		log.Fatal(err)
 	}
 	ctx.decryptCipherContext.SubEdgeNodeCert = subEdgeNodeCert
-	subEdgeNodeCert.Activate()
 
 	// Look for cipher context which will be used for decryption
 	subCipherContext, err := ps.NewSubscription(pubsub.SubscriptionOptions{
-		AgentName:   "zedagent",
-		MyAgentName: agentName,
-		TopicImpl:   types.CipherContext{},
-		Activate:    false,
-		Ctx:         ctx,
-		WarningTime: warningTime,
-		ErrorTime:   errorTime,
-		Persistent:  true,
+		AgentName:     "zedagent",
+		MyAgentName:   agentName,
+		CreateHandler: handleCipherContextCreate,
+		ModifyHandler: handleCipherContextModify,
+		TopicImpl:     types.CipherContext{},
+		Activate:      false,
+		Ctx:           ctx,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+		Persistent:    true,
 	})
 	if err != nil {
 		log.Fatal(err)
 	}
 	ctx.decryptCipherContext.SubCipherContext = subCipherContext
-	subCipherContext.Activate()
+
+	//activate after defining all decryptCipherContext
+	if err = subCipherContext.Activate(); err != nil {
+		log.Fatal(err)
+	}
+	if err = subEdgeNodeCert.Activate(); err != nil {
+		log.Fatal(err)
+	}
+	if err = subControllerCert.Activate(); err != nil {
+		log.Fatal(err)
+	}
 
 	// Look for global config such as log levels
 	subGlobalConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
