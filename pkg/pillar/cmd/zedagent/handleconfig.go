@@ -110,6 +110,12 @@ type getconfigContext struct {
 	callProcessLocalProfileServerChange bool //did we already call processLocalProfileServerChange
 
 	configRetryUpdateCounter uint32 // received from config
+
+	// Frequency in seconds at which metrics is published to the controller.
+	// This value can be different from 'timer.metric.interval' in the case of
+	// timer.metric.interval > currentMetricInterval, until the value of
+	// 'timer.metric.interval' has been successfully notified to the controller.
+	currentMetricInterval uint32
 }
 
 // current devUUID from OnboardingStatus

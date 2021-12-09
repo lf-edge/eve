@@ -58,6 +58,9 @@ const (
 	warningTime = 40 * time.Second
 	// Maximum allowed number of flow messages enqueued and waiting to be published.
 	flowlogQueueCap = 100
+
+	// Factor by which the dormant time needs to be scaled up.
+	dormantTimeScaleFactor = 3
 )
 
 // Set from Makefile
@@ -299,7 +302,11 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	initializeDirs()
 
 	// Context to pass around
-	getconfigCtx := getconfigContext{localServerMap: &localServerMap{}}
+	getconfigCtx := getconfigContext{
+		localServerMap: &localServerMap{},
+		// default value of currentMetricInterval
+		currentMetricInterval: zedagentCtx.globalConfig.GlobalValueInt(types.MetricInterval),
+	}
 	cipherCtx := cipherContext{}
 	attestCtx := attestContext{}
 
