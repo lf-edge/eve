@@ -212,7 +212,7 @@ type SystemAdapter struct {
 	// cloud.
 	Alias string `protobuf:"bytes,7,opt,name=alias,proto3" json:"alias,omitempty"`
 	// lowerLayerName - For example, if lower layer is PhysicalAdapter
-	// ( physical interface), this should point to PhyLabel of the
+	// ( physical interface), this should point to logicallabel of the
 	// physicalIO.
 	LowerLayerName string `protobuf:"bytes,8,opt,name=lowerLayerName,proto3" json:"lowerLayerName,omitempty"`
 	// cost of using a port for EVE management traffic (which is determined
