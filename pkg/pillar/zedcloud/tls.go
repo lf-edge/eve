@@ -242,32 +242,46 @@ func UpdateTLSProxyCerts(ctx *ZedCloudContext) bool {
 	}
 
 	var caCertPool *x509.CertPool
-	if len(ctx.PrevCertPEM) > 0 {
+	if len(ctx.PrevCertPEM) > 0 || tlsCfg.RootCAs == nil {
 
 		// previous certs we have are different, lets rebuild from beginning
 		caCertPool = x509.NewCertPool()
-		line, err := ioutil.ReadFile(types.V2TLSCertShaFilename)
+		if ctx.V2API {
+			line, err := ioutil.ReadFile(types.V2TLSCertShaFilename)
+			if err != nil {
+				errStr := fmt.Sprintf("Failed to read V2TLSCertShaFilename")
+				log.Errorf(errStr)
+				return false
+			}
+			sha := strings.TrimSpace(string(line))
+			if len(sha) == 0 {
+				errStr := fmt.Sprintf("Read zero byte from sha file")
+				log.Errorf(errStr)
+				return false
+			}
+			v2RootFilename := types.CertificateDirname + "/" + sha
+			caCert, err := ioutil.ReadFile(v2RootFilename)
+			if err != nil {
+				errStr := fmt.Sprintf("Failed to read v2RootFilename")
+				log.Errorf(errStr)
+				return false
+			}
+			if !caCertPool.AppendCertsFromPEM(caCert) {
+				errStr := fmt.Sprintf("Failed to append certs from %s", v2RootFilename)
+				log.Errorf(errStr)
+				return false
+			}
+		}
+		// Also append the v1's private signed root-cert
+		caCert1, err := ioutil.ReadFile(types.RootCertFileName)
 		if err != nil {
-			errStr := fmt.Sprintf("Failed to read V2TLSCertShaFilename")
-			log.Errorf(errStr)
+			log.Errorf("Failed to read %s", types.RootCertFileName)
 			return false
 		}
-		sha := strings.TrimSpace(string(line))
-		if len(sha) == 0 {
-			errStr := fmt.Sprintf("Read zero byte from sha file")
-			log.Errorf(errStr)
-			return false
-		}
-		v2RootFilename := types.CertificateDirname + "/" + sha
-		caCert, err := ioutil.ReadFile(v2RootFilename)
-		if err != nil {
-			errStr := fmt.Sprintf("Failed to read v2RootFilename")
-			log.Errorf(errStr)
-			return false
-		}
-		if !caCertPool.AppendCertsFromPEM(caCert) {
-			errStr := fmt.Sprintf("Failed to append certs from %s", v2RootFilename)
-			log.Errorf(errStr)
+		caCertStr := string(caCert1) // prevent potential memory leak
+		if !caCertPool.AppendCertsFromPEM([]byte(caCertStr)) {
+			log.Errorf("Failed to append certs from %s",
+				types.RootCertFileName)
 			return false
 		}
 		log.Functionf("UpdateTLSProxyCerts: rebuild root CA\n")
