@@ -208,6 +208,11 @@ message deviceMetric {
 
   repeated CellularMetric cellular = 20;
   FlowlogMetric flowlog = 21;
+
+  // Time to wait between metrics messages before marking an edge-node as
+  // inactive in the controller. 'dormantTimeInSeconds' is subjected to change based
+  // of network connectivity.
+  uint64 dormant_time_in_seconds = 22;
 }
 
 message AclMetric {
