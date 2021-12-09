@@ -492,10 +492,7 @@ message ZInfoDevice {
   string local_profile = 45;
   repeated MaintenanceModeReason maintenance_mode_reasons = 46;
 
-  // Time to wait between metrics messages before marking an edge-node as
-  // inactive in the controller. 'dormant_time' is subjected to change based
-  // of network connectivity.
-  string dormant_time = 47;
+  string dormant_time = 47 [deprecated = true];
 }
 
 // Different reasons for a boot/reboot
