@@ -174,11 +174,45 @@ func metricsTimerTask(ctx *zedagentContext, handleChannel chan interface{}) {
 	}
 }
 
+// maybeUpdateMetricsTimer is responsible of calling updateMetricsTimer.
+// This method handles 2 scenarios:
+// 1. Current metrics publish interval > new metrics publish interval in GlobalConfig
+//     For instance, if currentMetricInterval = 300s and latestMetricTickerInterval = 200s,
+//     the controller will be expecting a metrics every 300s. So increasing the frequency
+//     immediately to 200s will not result in controller marking the edge-node as suspect
+//     in between.
+// 2. Current metrics publish interval < new metrics publish interval in GlobalConfig
+//     For instance, if currentMetricInterval = 200s and latestMetricTickerInterval = 300s,
+//     the controller will be expecting a metrics every 200s. So decreasing the frequency to
+//     300s can result in controller marking the edge-node as suspect in between. To avoid this,
+//     we have to make sure that the controller is notified  to expect a metrics every 300s before
+//     updating our publish frequency. forceUpdate should be true only after we've successfully
+//     notified new frequency to the controller.
+func maybeUpdateMetricsTimer(ctx *getconfigContext, forceUpdate bool) {
+	latestMetricsInterval := ctx.zedagentCtx.globalConfig.GlobalValueInt(types.MetricInterval)
+	log.Functionf("maybeUpdateMetricsTimer: currentMetricInterval %v, latestMetricsInterval %v, forceUpdate: %v",
+		ctx.currentMetricInterval, latestMetricsInterval, forceUpdate)
+	if ctx.currentMetricInterval > latestMetricsInterval {
+		log.Tracef("maybeUpdateMetricsTimer: updating metrics publish interval %v seconds",
+			latestMetricsInterval)
+		updateMetricsTimer(ctx, latestMetricsInterval)
+	} else if ctx.currentMetricInterval < latestMetricsInterval {
+		if forceUpdate {
+			log.Tracef("maybeUpdateMetricsTimer: updating metrics publish interval %v seconds",
+				latestMetricsInterval)
+			updateMetricsTimer(ctx, latestMetricsInterval)
+		} else {
+			// Force an immediate timeout to publish metrics.
+			flextimer.TickNow(ctx.metricsTickerHandle)
+		}
+	}
+}
+
 // Called when globalConfig changes
 // Assumes the caller has verifier that the interval has changed
-func updateMetricsTimer(metricInterval uint32, tickerHandle interface{}) {
+func updateMetricsTimer(ctx *getconfigContext, metricInterval uint32) {
 
-	if tickerHandle == nil {
+	if ctx.metricsTickerHandle == nil {
 		log.Warnf("updateMetricsTimer: no metricsTickerHandle yet")
 		return
 	}
@@ -186,10 +220,11 @@ func updateMetricsTimer(metricInterval uint32, tickerHandle interface{}) {
 	log.Functionf("updateMetricsTimer() change to %v", interval)
 	max := float64(interval)
 	min := max * 0.3
-	flextimer.UpdateRangeTicker(tickerHandle,
+	flextimer.UpdateRangeTicker(ctx.metricsTickerHandle,
 		time.Duration(min), time.Duration(max))
-	// Force an immediate timout since timer could have decreased
-	flextimer.TickNow(tickerHandle)
+	ctx.currentMetricInterval = metricInterval
+	// Force an immediate timeout since timer could have decreased
+	flextimer.TickNow(ctx.metricsTickerHandle)
 }
 
 // Key is device UUID for host and app instance UUID for app instances
@@ -592,6 +627,7 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 				ctx.getconfigCtx.lastProcessedConfig, err)
 		}
 	}
+	ReportDeviceMetric.DormantTimeInSeconds = getDormantTime(ctx)
 
 	// Report flowlog metrics.
 	ctx.flowLogMetrics.Lock()
@@ -787,7 +823,7 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 	createProcessMetrics(ctx, ReportMetrics)
 
 	log.Tracef("PublishMetricsToZedCloud sending %s", ReportMetrics)
-	SendMetricsProtobuf(ReportMetrics, iteration)
+	SendMetricsProtobuf(ctx.getconfigCtx, ReportMetrics, iteration)
 	log.Tracef("publishMetrics: after send, total elapse sec %v", time.Since(startPubTime).Seconds())
 
 	// publish the cloud MetricsMap for zedagent for device debugging purpose
@@ -1406,7 +1442,7 @@ func SendProtobuf(url string, buf *bytes.Buffer, size int64,
 // Try all (first free, then rest) until it gets through.
 // Each iteration we try a different port for load spreading.
 // For each port we try all its local IP addresses until we get a success.
-func SendMetricsProtobuf(ReportMetrics *metrics.ZMetricMsg,
+func SendMetricsProtobuf(ctx *getconfigContext, ReportMetrics *metrics.ZMetricMsg,
 	iteration int) {
 	data, err := proto.Marshal(ReportMetrics)
 	if err != nil {
@@ -1424,6 +1460,7 @@ func SendMetricsProtobuf(ReportMetrics *metrics.ZMetricMsg,
 		log.Errorf("SendMetricsProtobuf status %d failed: %s", rtf, err)
 		return
 	} else {
+		maybeUpdateMetricsTimer(ctx, true)
 		writeSentMetricsProtoMessage(data)
 	}
 }
@@ -1552,4 +1589,9 @@ func protoEncodeFlowlogCounters(counters types.FlowlogCounters) *metrics.Flowlog
 		Drops:          counters.Drops,
 		FailedAttempts: counters.FailedAttempts,
 	}
+}
+
+// getDormantTime returns scaled dormant time
+func getDormantTime(ctx *zedagentContext) uint64 {
+	return uint64(ctx.globalConfig.GlobalValueInt(types.MetricInterval) * dormantTimeScaleFactor)
 }

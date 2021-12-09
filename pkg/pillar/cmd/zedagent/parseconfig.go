@@ -2194,7 +2194,7 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 		if newMetricInterval != oldMetricInterval {
 			log.Functionf("parseConfigItems: %s change from %d to %d",
 				"MetricInterval", oldMetricInterval, newMetricInterval)
-			updateMetricsTimer(newMetricInterval, ctx.metricsTickerHandle)
+			maybeUpdateMetricsTimer(ctx, false)
 		}
 		oldMaintenanceMode := oldGlobalConfig.GlobalValueTriState(types.MaintenanceMode)
 		newMaintenanceMode := newGlobalConfig.GlobalValueTriState(types.MaintenanceMode)
