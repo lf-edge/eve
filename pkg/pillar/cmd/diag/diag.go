@@ -171,9 +171,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		SoftSerial:       hardware.GetSoftSerial(log),
 		AgentName:        agentName,
 	})
-	zedcloudCtx.TlsConfig = &tls.Config{
-		ClientSessionCache: tls.NewLRUClientSessionCache(0),
-	}
 	// As we ping the cloud or other URLs, don't affect the LEDs
 	zedcloudCtx.NoLedManager = true
 	log.Functionf("Diag Get Device Serial %s, Soft Serial %s", zedcloudCtx.DevSerial,
@@ -881,6 +878,14 @@ func tryLookupIP(ctx *diagContext, ifname string) bool {
 func tryPing(ctx *diagContext, ifname string, reqURL string) bool {
 
 	zedcloudCtx := ctx.zedcloudCtx
+	if zedcloudCtx.TlsConfig == nil {
+		err := zedcloud.UpdateTLSConfig(zedcloudCtx, ctx.serverName, ctx.cert)
+		if err != nil {
+			log.Errorf("internal UpdateTLSConfig failed %v", err)
+			return false
+		}
+		zedcloudCtx.TlsConfig.ClientSessionCache = tls.NewLRUClientSessionCache(0)
+	}
 	if reqURL == "" {
 		reqURL = zedcloud.URLPathString(ctx.serverNameAndPort, zedcloudCtx.V2API, nilUUID, "ping")
 	} else {

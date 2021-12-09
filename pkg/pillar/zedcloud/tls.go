@@ -275,6 +275,13 @@ func UpdateTLSProxyCerts(ctx *ZedCloudContext) bool {
 		// we don't have proxy certs, add them if any exist
 		caCertPool = tlsCfg.RootCAs
 	}
+
+	if caCertPool == nil {
+		errStr := fmt.Sprintf("caCertPool is nil")
+		log.Errorf(errStr)
+		return false
+	}
+
 	// AppendCertsFromPEM checks duplicates inside
 	for _, port := range devNS.Ports {
 		for _, pem := range port.ProxyCertPEM {
