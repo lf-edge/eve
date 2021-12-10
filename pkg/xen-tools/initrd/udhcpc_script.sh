@@ -3,11 +3,14 @@
 # This script is sourced from
 # https://github.com/debian-pi/raspbian-ua-netinst/blob/master/scripts/etc/udhcpc/default.script
 # and modified as per EVE requirement
+# Variables made available by udhcpc can be found here:
+# https://udhcp.busybox.net/README.udhcpc
 
 : "${staticroutes:=}"
 : "${ip:=}"
 : "${hostname:=}"
 : "${router:=}"
+: "${mask:=}"
 
 [ -z "$1" ] && echo 'Error: should be called from udhcpc' && exit 1
 
@@ -81,7 +84,7 @@ case "$1" in
     set > $CFG
     # configure interface and routes
     ip addr flush dev $interface
-    ip addr add ${ip}/${mask} dev $interface
+    ip addr add "${ip}"/"${mask}" brd + dev "${interface}"
     # shellcheck disable=SC2154
     if [ -n "$router" ] ; then
       if [ -n "$staticroutes" ] ; then
@@ -132,7 +135,7 @@ case "$1" in
       # Do not touch if IP address and mask did not change
       if [ "$old_ip" != "$ip" ] || [ "$old_mask" != "$mask" ] ; then
         ip addr flush dev "$interface"
-        ip addr add "${ip}"/"${mask}" dev "$interface"
+        ip addr add "${ip}"/"${mask}" brd + dev "${interface}"
       fi
       # shellcheck disable=SC2086
       if [ -n "$router" ] ; then
