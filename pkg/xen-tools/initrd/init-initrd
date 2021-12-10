@@ -38,7 +38,20 @@ if [ -d /mnt/rootfs/dev/eve ]; then
 fi
 mount -o rbind /dev /mnt/rootfs/dev
 mount -o bind /sys /mnt/rootfs/sys
-mount -t cgroup cgroup /mnt/rootfs/sys/fs/cgroup
+mount -t tmpfs -o uid=0,gid=0,mode=0755 cgroup /mnt/rootfs/sys/fs/cgroup
+awk '!/^#/ { if ($4 == 1) print $1 }' /proc/cgroups | while IFS= read -r sys
+do
+  cgroup="/mnt/rootfs/sys/fs/cgroup/$sys"
+  mkdir -p "$cgroup"
+  if ! mountpoint -q "$cgroup"; then
+    if ! mount -n -t cgroup -o "$sys" cgroup "$cgroup"; then
+      rmdir "$cgroup" || true
+    fi
+  fi
+done
+if [ -e /mnt/rootfs/sys/fs/cgroup/memory/memory.use_hierarchy ]; then
+  echo 1 > /mnt/rootfs/sys/fs/cgroup/memory/memory.use_hierarchy
+fi
 mount -t devpts -o gid=5,mode=0620,noexec,nosuid devpts /mnt/rootfs/dev/pts
 mount -t tmpfs -o nodev,nosuid,noexec,size=20% shm /mnt/rootfs/dev/shm
 mount -t tmpfs -o nodev,nosuid,size=20% tmp /mnt/rootfs/tmp
