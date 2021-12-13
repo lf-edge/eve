@@ -14,6 +14,21 @@ jobs:
       matrix:
         os: [arm64-dirty, ubuntu-20.04]
     steps:
+      - name: Workspace cleanup
+        run: |
+          # cleanup existing workspace folder if exists to not hit permission denied on checkout
+          repoName="${{ github.event.repository.name }}"
+          workspace="${{ github.workspace }}"
+          if [ -d "$workspace" ] && [ "$(ls -A $workspace)" ]; then
+            # to avoid unexpected removal of sensitive information
+            # we check that workspace variable ends with repoName/repoName sequence
+            if [ ! -z "$repoName" ] && [ -z "${workspace##*$repoName/$repoName}" ]; then
+              ls -la "$workspace"
+              docker run --rm -v "$workspace":/mnt/eve alpine find /mnt/eve -maxdepth 1 -mindepth 1 -exec rm -rvf {} \;
+              ls -la "$workspace"
+            fi
+          fi
+
       - uses: actions/checkout@v2
         with:
           fetch-depth: 0
