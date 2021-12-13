@@ -526,7 +526,17 @@ func handleLastRebootReason(ctx *nodeagentContext) {
 	}
 
 	agentlog.DiscardBootReason(log)
-	// still nothing, fillup the default
+	// Make sure we log the reboot stack
+	if len(rebootStack) > 0 {
+		log.Warnf("Found RebootStack %d bytes", len(rebootStack))
+		lines := strings.Split(rebootStack, "\n")
+		log.Warnf("Found RebootStack %d bytes %d lines",
+			len(rebootStack), len(lines))
+		for i, l := range lines {
+			log.Warnf("[%d]: %s", i, l)
+		}
+	}
+	// still no rebootReason? set the default
 	if rebootReason == "" {
 		rebootTime = time.Now()
 		dateStr := rebootTime.Format(time.RFC3339Nano)
