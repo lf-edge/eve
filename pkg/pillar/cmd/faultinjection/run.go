@@ -20,7 +20,7 @@ import (
 )
 
 const (
-	agentName = "fault-injection"
+	agentName = "faultinjection"
 	// Time limits for event loop handlers
 	errorTime   = 3 * time.Minute
 	warningTime = 40 * time.Second
@@ -77,8 +77,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	stillRunning := time.NewTicker(25 * time.Second)
 	ps.StillRunning(agentName, warningTime, errorTime)
 
-	// Add .pid and .touch file to watchdog config
-	ps.RegisterPidWatchdog(agentName)
 	ps.RegisterFileWatchdog(agentName)
 
 	// Look for global config such as log levels
