@@ -6,6 +6,8 @@
 #eden start
 #eden eve onboard
 
+eden eve epoch &
+
 # Trying to find eth0 or eth1 in dinfo.network.devName.
 {{$test1}} -out InfoContent.dinfo.network.devName 'InfoContent.dinfo.network.devName:.*eth[01].*'
 stdout 'eth[01]'

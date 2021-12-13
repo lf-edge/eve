@@ -37,8 +37,13 @@ jobs:
         uses: google-github-actions/setup-gcloud@master
         with:
           project_id: ${{ secrets.GCP_PROJECT_ID }}
-          service_account_key: ${{ secrets.GCP_SA_KEY }}
-          export_default_credentials: true
+      - id: 'gcpauth'
+        name: Auth to Google Cloud SDK
+        uses: google-github-actions/auth@v0.4.1
+        with:
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+          create_credentials_file: true
       - name: clean
         run: |
           gcloud compute instances delete eve-edengcp-actions-${{ matrix.hv }}-${{github.run_number}} -q --zone=us-west1-a || echo "Does not exist"
@@ -70,18 +75,19 @@ jobs:
           ./eden config add default --devmodel GCP
           ./eden config set default --key eve.tag --value="snapshot"
           ./eden config set default --key eve.hv --value ${{ matrix.hv }}
+          ./eden config set default --key eve.tpm --value true
           ./eden config set default --key adam.eve-ip --value ${{ steps.connect_vpn.outputs.tunnel_ip }}
           ./eden config set default --key registry.ip --value ${{ steps.connect_vpn.outputs.tunnel_ip }}
           ./eden config set default --key=eden.tests --value=${{ github.workspace }}/eve/tests/eden
-          ./eden utils gcp firewall --source-range $ipv4/32 --name eve-edengcp-actions-${{ matrix.hv }}-${{github.run_number}} -k "$GOOGLE_APPLICATION_CREDENTIALS"
+          ./eden utils gcp firewall --source-range $ipv4/32 --name eve-edengcp-actions-${{ matrix.hv }}-${{github.run_number}} -k "${{ steps.gcpauth.outputs.credentials_file_path }}"
           ./eden setup -v debug
-          ./eden utils gcp image --image-name eve-edengcp-actions-${{ matrix.hv }}-${{github.run_number}} -k "$GOOGLE_APPLICATION_CREDENTIALS" upload
-          ./eden utils gcp vm --image-name eve-edengcp-actions-${{ matrix.hv }}-${{github.run_number}} --vm-name eve-edengcp-actions-${{ matrix.hv }}-${{github.run_number}} -k "$GOOGLE_APPLICATION_CREDENTIALS" run
+          ./eden utils gcp image --image-name eve-edengcp-actions-${{ matrix.hv }}-${{github.run_number}} -k "${{ steps.gcpauth.outputs.credentials_file_path }}" upload
+          ./eden utils gcp vm --image-name eve-edengcp-actions-${{ matrix.hv }}-${{github.run_number}} --vm-name eve-edengcp-actions-${{ matrix.hv }}-${{github.run_number}} -k "${{ steps.gcpauth.outputs.credentials_file_path }}" run
           ./eden start
           sleep 100
-          BWD=$(./eden utils gcp vm get-ip --vm-name eve-edengcp-actions-${{ matrix.hv }}-${{github.run_number}} -k "$GOOGLE_APPLICATION_CREDENTIALS") || { echo "no IP, probably VM does not exist"; exit 1; }
+          BWD=$(./eden utils gcp vm get-ip --vm-name eve-edengcp-actions-${{ matrix.hv }}-${{github.run_number}} -k "${{ steps.gcpauth.outputs.credentials_file_path }}") || { echo "no IP, probably VM does not exist"; exit 1; }
           echo "the IP is $BWD"
-          ./eden utils gcp firewall -k "$GOOGLE_APPLICATION_CREDENTIALS" --source-range $BWD --name edengcp-actions-${{ matrix.hv }}-${{github.run_number}} || { echo "cannot set firewall"; exit 1; }
+          ./eden utils gcp firewall -k "${{ steps.gcpauth.outputs.credentials_file_path }}" --source-range $BWD --name edengcp-actions-${{ matrix.hv }}-${{github.run_number}} || { echo "cannot set firewall"; exit 1; }
           ./eden eve onboard
           echo > tests/workflow/testdata/eden_stop.txt
       - name: Test
@@ -95,7 +101,7 @@ jobs:
           ./eden metric > metric.log || echo "no metric"
           ./eden netstat > netstat.log || echo "no netstat"
           docker logs eden_adam > adam.log 2>&1 || echo "no adam log"
-          ./eden utils gcp vm log --vm-name eve-edengcp-actions-${{ matrix.hv }}-${{github.run_number}} -k "$GOOGLE_APPLICATION_CREDENTIALS" > console.log || echo "no device log"
+          ./eden utils gcp vm log --vm-name eve-edengcp-actions-${{ matrix.hv }}-${{github.run_number}} -k "${{ steps.gcpauth.outputs.credentials_file_path }}" > console.log || echo "no device log"
       - name: Log counting
         if: ${{ always() }}
         run: |
