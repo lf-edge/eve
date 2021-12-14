@@ -1407,7 +1407,7 @@ func enableVlanFiltering(bridgeName string) error {
 }
 
 func setupVlans(vifList []types.VifInfo) error {
-	deadline := time.Now().Add(10 * time.Second)
+	deadline := time.Now().Add(20 * time.Second)
 	const delay = 500 * time.Millisecond
 	for _, vif := range vifList {
 		if vif.Vlan.End == 0 {
