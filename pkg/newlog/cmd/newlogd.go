@@ -1384,14 +1384,17 @@ func checkWatchdogRestart(entry *inputEntry, panicStackCount *int, origMsg strin
 		return
 	}
 
-	if entry.source == "pillar" && strings.Contains(origMsg, "pillar;panic") && !strings.Contains(entry.content, "rebootReason") {
+	// the panic generated message can have the source either as 'pillar' or 'pillar.out'
+	// this origMsg is the raw message, the ";" is the deliminator between source and content.
+	if strings.Contains(entry.source, "pillar") && strings.Contains(origMsg, ";panic:") &&
+		!strings.Contains(entry.content, "rebootReason") {
 		*panicStackCount = 1
 		panicBuf = append(panicBuf, []byte(origMsg)...)
 		// in case there is only few log messages after this, kick off a timer to write the panic files
-		panicWriteTimer = time.NewTimer(10 * time.Second)
+		panicWriteTimer = time.NewTimer(2 * time.Second)
 	} else if *panicStackCount > 0 {
 		var done bool
-		if entry.source == "pillar" {
+		if strings.Contains(entry.source, "pillar") {
 			panicBuf = append(panicBuf, []byte(origMsg)...)
 		} else {
 			// conclude the capture when log source is not 'pillar'
