@@ -2112,8 +2112,7 @@ func handleNodeAgentStatusImpl(ctxArg interface{}, key string,
 func naHasRealChange(naOld, naNew types.NodeAgentStatus) bool {
 	dummy1 := naOld
 	dummy2 := naNew
-	dummy1.RemainingTestTime = 0
-	dummy2.RemainingTestTime = 0
+
 	return !cmp.Equal(dummy1, dummy2)
 }
 
