@@ -119,7 +119,7 @@ prepare_mounts_and_zfs_pool() {
   [ -e /root/run ] || mkdir /root/run && mount --rbind /run /root/run
   POOL_CREATION_COMMAND="chroot /root zpool create -f -m none -o feature@encryption=enabled -O overlay=on persist $1"
   eval "$POOL_CREATION_COMMAND"
-  chroot /root zfs create -o refreservation="$(zfs get -o value -Hp available | awk '{ print ($1/1024/1024)/5 }')"m persist/reserved
+  chroot /root zfs create -o refreservation="$(chroot /root zfs get -o value -Hp available persist | awk '{ print ($1/1024/1024)/5 }')"m persist/reserved
   chroot /root zfs set mountpoint="/run/P3" persist
 }
 
