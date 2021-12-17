@@ -94,3 +94,9 @@ jobs:
         run: |
           rm -rf dist dist.xen
           make -e V=1 HV=mini LINUXKIT_PKG_TARGET=push eve
+      - name: Clean
+        if: ${{ always() }}
+        run: |
+          make clean
+          docker system prune -f -a
+          rm -rf ~/.linuxkit
