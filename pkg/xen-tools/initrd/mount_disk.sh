@@ -1,7 +1,10 @@
 #!/bin/sh
 
+# we expect the same order in block device enumeration (we put them in order in VM's configuration)
+# and in /mnt/mountPoints file (where mount points defined)
+
 mountPointLineNo=1
-find /sys/block/ -maxdepth 1 -regex '.*[sv]d.*' -exec basename '{}' ';'| while read -r disk ; do
+find /sys/block/ -maxdepth 1 -regex '.*[sv]d.*' -exec basename '{}' ';'| sort | while read -r disk ; do
   echo "Processing $disk"
   targetDir=$(sed "${mountPointLineNo}q;d" /mnt/mountPoints)
   if [ -z "$targetDir" ]
