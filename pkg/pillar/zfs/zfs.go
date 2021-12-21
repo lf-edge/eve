@@ -83,7 +83,11 @@ func CreateVolumeDataset(log *base.LogObject, dataset string, size uint64, compr
 		"-V", strconv.FormatUint(size, 10),
 		"-o", "volmode=dev",
 		"-o", fmt.Sprintf("compression=%s", compression),
+		"-o", "volblocksize=16k",
+		"-o", "logbias=throughput",
+		"-o", "redundant_metadata=most",
 		dataset)
+
 	stdoutStderr, err := base.Exec(log, vault.ZfsPath, args...).CombinedOutput()
 	if err != nil {
 		return string(stdoutStderr), err

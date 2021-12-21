@@ -75,7 +75,7 @@ func prepareZVol(ctx *volumemgrContext, status types.VolumeStatus) error {
 		}
 	}
 	zVolName := status.ZVolName(types.VolumeZFSPool)
-	if stdoutStderr, err := zfs.CreateVolumeDataset(log, zVolName, size, "on"); err != nil {
+	if stdoutStderr, err := zfs.CreateVolumeDataset(log, zVolName, size, "zstd"); err != nil {
 		errStr := fmt.Sprintf("Error creating zfs zvol at %s, error=%v, output=%s",
 			zVolName, err, stdoutStderr)
 		log.Error(errStr)
