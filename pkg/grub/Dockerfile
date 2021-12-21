@@ -43,7 +43,7 @@ RUN mkdir /grub-lib && git clone ${GRUB_REPO}
 
 WORKDIR /grub
 RUN git config --add user.email a@b.c && git config user.name a && \
-    git checkout -b grub-build $(if [ "$(uname -m)" = riscv64 ]; then echo ${GRUB_COMMIT_riscv64}; else echo ${GRUB_COMMIT}; fi)
+    git checkout -b grub-build "$(if [ "$(uname -m)" = riscv64 ]; then echo "${GRUB_COMMIT_riscv64}"; else echo "${GRUB_COMMIT}"; fi)"
 RUN if [ "$(uname -m)" = riscv64 ]; then rm -rf /patches && mv /riscv64 /patches; fi
 RUN git am /patches/*
 
