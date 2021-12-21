@@ -88,7 +88,7 @@ RUN make INSTALL_MOD_PATH=/tmp/kernel-modules modules_install
 #  * ZFS on Linux
 ENV ZFS_VERSION=2.1.1
 ENV ZFS_COMMIT=zfs-${ZFS_VERSION}
-ENV ZFS_REPO=https://github.com/zfsonlinux/zfs.git
+ENV ZFS_REPO=https://github.com/openzfs/zfs.git
 
 WORKDIR /tmp/zfs
 RUN git clone --depth 1 -b ${ZFS_COMMIT} ${ZFS_REPO} .
