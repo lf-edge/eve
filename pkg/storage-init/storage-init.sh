@@ -3,8 +3,77 @@
 # Copyright (c) 2018 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
 
+zfs_set_parameter() {
+    parameter="$1"
+    value="$2"
+
+    echo "${value}" > /sys/module/zfs/parameters/"${parameter}"
+}
+
+zfs_set_arc_limits() {
+    # NOOP if persist is not ZFS
+    if ! read -r persist_fs < /run/eve.persist_type; then
+       echo "Can not determine persist filesystem type"
+       return 1
+    fi
+
+    if [ "${persist_fs}" != "zfs" ]; then
+       return 0
+    fi
+
+    # Constants
+    zfs_arc_min="$(( 256*1024*1024 ))"
+
+    # can't go below 384 MiB
+    zfs_arc_max_minimum="$(( 384*1024*1024 ))"
+
+    if ! pool_size_bytes="$(chroot /hostfs zpool list -p -H -o size persist)"; then
+       echo "Failed to get pool size"
+       return 1
+    fi
+
+    metadata_estimate=$(( pool_size_bytes*3/100/10 ))
+    zfs_arc_max=$(( zfs_arc_min + metadata_estimate ))
+    if [ ${zfs_arc_max} -lt ${zfs_arc_max_minimum} ]; then
+        zfs_arc_max="${zfs_arc_max_minimum}"
+    fi
+
+    zfs_dirty_data_max="$(( zfs_arc_max / 2 ))"
+
+    zfs_set_parameter zfs_arc_min "${zfs_arc_min}"
+    zfs_set_parameter zfs_arc_max "${zfs_arc_max}"
+    zfs_set_parameter zfs_dirty_data_max "${zfs_dirty_data_max}"
+}
+
 zfs_module_load() {
-    modprobe zfs
+    zfs_options="zfs_compressed_arc_enabled=0 \
+zfs_vdev_min_auto_ashift=12 \
+zvol_request_sync=0 \
+zfs_vdev_aggregation_limit_non_rotating=$(( 1024*1024 )) \
+zfs_vdev_async_write_active_min_dirty_percent=10 \
+zfs_vdev_async_write_active_max_dirty_percent=30 \
+zfs_delay_min_dirty_percent=40 \
+zfs_delay_scale=800000 \
+zfs_dirty_data_sync_percent=15 \
+zfs_prefetch_disable=1 \
+\
+zfs_vdev_sync_read_min_active=35 \
+zfs_vdev_sync_read_max_active=35 \
+zfs_vdev_sync_write_min_active=35 \
+zfs_vdev_sync_write_max_active=35 \
+zfs_vdev_async_read_min_active=1 \
+zfs_vdev_async_read_max_active=10 \
+zfs_vdev_async_write_min_active=1 \
+zfs_vdev_async_write_max_active=10
+"
+
+    # Disabling SC2086 because word splitting here is intended -
+    # otherwise modprobe would not recognize arguments
+    # shellcheck disable=SC2086
+    if ! modprobe zfs ${zfs_options}; then
+        echo "Failed to load ZFS module with parameters, falling back to defaults"
+        modprobe zfs
+    fi
 }
 
 zfs_module_unload() {
@@ -176,6 +245,8 @@ else
         echo "$(date -Ins -u) No separate $PERSISTDIR partition"
     fi
 fi
+
+zfs_set_arc_limits
 
 UUID_SYMLINK_PATH="/dev/disk/by-uuid"
 mkdir -p $UUID_SYMLINK_PATH
