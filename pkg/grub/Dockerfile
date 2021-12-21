@@ -1,7 +1,6 @@
 ARG EVE_BUILDER_IMAGE=lfedge/eve-alpine:6.7.0
 # hadolint ignore=DL3006
 FROM ${EVE_BUILDER_IMAGE} as grub-build
-RUN uname -a
 # hadolint ignore=DL3018
 RUN apk add --no-cache \
   automake \
