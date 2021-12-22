@@ -119,7 +119,6 @@ func (ctx *DeferredContext) handleDeferred(log *base.LogObject, event time.Time,
 			}
 
 			//SenderStatusNone indicates no problems
-			result := types.SenderStatusNone
 			resp, _, result, err := SendOnAllIntf(ctx.zedcloudCtx, item.url,
 				item.size, item.buf, ctx.iteration, item.bailOnHTTPErr)
 			if item.bailOnHTTPErr && resp != nil &&
@@ -129,6 +128,10 @@ func (ctx *DeferredContext) handleDeferred(log *base.LogObject, event time.Time,
 			} else if err != nil {
 				log.Functionf("handleDeferred: for %s failed %s",
 					key, err)
+				exit = true
+			} else if result != types.SenderStatusNone {
+				log.Functionf("handleDeferred: for %s received unexpected status %d",
+					key, result)
 				exit = true
 			}
 			if ctx.sentHandler != nil {

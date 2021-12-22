@@ -1286,7 +1286,7 @@ func getCertHash(cert []byte, hashAlgo types.CertHashType) ([]byte, error) {
 func publishEdgeNodeCertToController(ctx *tpmMgrContext, certFile string, certType types.CertType, isTpm bool, metaDataItems []types.CertMetaData) {
 	log.Functionf("publishEdgeNodeCertToController started")
 	if !etpm.FileExists(certFile) {
-		log.Errorf("publishEdgeNodeCertToController failed: no cert file")
+		log.Errorf("publishEdgeNodeCertToController failed: no cert file of type: %v", certType)
 		return
 	}
 	certBytes, err := readEdgeNodeCert(certFile)

@@ -306,6 +306,8 @@ func publishEdgeNodeCertsToController(ctx *zedagentContext) {
 		return
 	}
 
+	ecdhCertExists := false
+
 	for _, item := range items {
 		config := item.(types.EdgeNodeCert)
 		certMsg := zcert.ZCert{
@@ -321,6 +323,14 @@ func publishEdgeNodeCertsToController(ctx *zedagentContext) {
 			certMsg.MetaDataItems = append(certMsg.MetaDataItems, certMetaData)
 		}
 		attestReq.Certs = append(attestReq.Certs, &certMsg)
+		if certMsg.Type == zcert.ZCertType_CERT_TYPE_DEVICE_ECDH_EXCHANGE {
+			ecdhCertExists = true
+		}
+	}
+
+	if !ecdhCertExists {
+		//we expect it to be published first
+		log.Warn("publishEdgeNodeCertsToController: no ecdh")
 	}
 
 	log.Tracef("publishEdgeNodeCertsToController, sending %s", attestReq)
