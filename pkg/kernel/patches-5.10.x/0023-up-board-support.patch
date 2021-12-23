@@ -184,22 +184,22 @@ Subject: [PATCH 12/19] acpi: acpi_node_add_pin_mapping added to header file.
  1 file changed, 13 insertions(+)
 
 diff --git a/include/linux/acpi.h b/include/linux/acpi.h
-index acd2b5f..20f7440 100644
+index fdb1d5262ce8..dacc84699b82 100644
 --- a/include/linux/acpi.h
 +++ b/include/linux/acpi.h
-@@ -997,6 +997,11 @@ void devm_acpi_dev_remove_driver_gpios(struct device *dev);
+@@ -1080,6 +1080,11 @@ void __acpi_handle_debug(struct _ddebug *descriptor, acpi_handle handle, const c
  bool acpi_gpio_get_irq_resource(struct acpi_resource *ares,
  				struct acpi_resource_gpio **agpio);
- int acpi_dev_gpio_irq_get(struct acpi_device *adev, int index);
+ int acpi_dev_gpio_irq_get_by(struct acpi_device *adev, const char *name, int index);
 +int acpi_node_add_pin_mapping(struct fwnode_handle *fwnode,
 +			      const char *propname,
 +			      const char *pinctl_name,
 +			      unsigned int pin_offset,
 +			      unsigned int npins);
  #else
- static inline int acpi_dev_add_driver_gpios(struct acpi_device *adev,
- 			      const struct acpi_gpio_mapping *gpios)
-@@ -1021,6 +1026,14 @@ static inline int acpi_dev_gpio_irq_get(struct acpi_device *adev, int index)
+ static inline bool acpi_gpio_get_irq_resource(struct acpi_resource *ares,
+ 					      struct acpi_resource_gpio **agpio)
+@@ -1091,6 +1096,14 @@ static inline int acpi_dev_gpio_irq_get_by(struct acpi_device *adev,
  {
  	return -ENXIO;
  }
@@ -213,9 +213,9 @@ index acd2b5f..20f7440 100644
 +}
  #endif
  
- /* Device properties */
+ static inline int acpi_dev_gpio_irq_get(struct acpi_device *adev, int index)
 -- 
-2.7.4
+2.25.1
 
 From b0ec896e741f330df18785e931537be1862ff4c8 Mon Sep 17 00:00:00 2001
 From: Nicola Lunghi <nicola.lunghi@emutex.com>
