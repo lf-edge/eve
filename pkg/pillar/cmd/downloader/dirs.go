@@ -4,6 +4,7 @@
 package downloader
 
 import (
+	"io/ioutil"
 	"os"
 	"path"
 	"path/filepath"
@@ -35,6 +36,16 @@ func createDownloadDirs() {
 // if ctx provided it go through DownloaderConfig and prepare existingTargets map
 // to clean all files which are not inside config
 func clearInProgressDownloadDirs(ctx *downloaderContext) {
+	// get files
+	dirName := getPendingDir()
+	files, err := ioutil.ReadDir(dirName)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return
+		}
+		log.Fatal(err)
+	}
+	// load all known download objects
 	existingTargets := make(map[string]bool)
 	if ctx != nil {
 		dss := ctx.subDownloaderConfig.GetAll()
@@ -43,38 +54,32 @@ func clearInProgressDownloadDirs(ctx *downloaderContext) {
 			existingTargets[obj.Target] = true
 		}
 	}
-
-	// Now remove the in-progress dirs
-	workingDirTypes := []string{getPendingDir()}
-
-	for _, dirName := range workingDirTypes {
-		if _, err := os.Stat(dirName); err == nil {
-			err := filepath.Walk(dirName, func(walkPath string, fi os.FileInfo, err error) error {
-				if err != nil {
-					return err
-				}
-				if fi.IsDir() {
-					return nil
-				}
-				// if progress file
-				if strings.HasSuffix(walkPath, progressFileSuffix) {
-					//check if progress file points onto existing file
-					if _, err := os.Stat(strings.TrimSuffix(walkPath, progressFileSuffix)); err == nil {
-						return nil
-					}
-					// if not exists, remove progress file
-					return os.Remove(walkPath)
-				}
-				// skip ctx related checks if not provided
-				if ctx == nil {
-					return nil
-				}
-				//if no file in existing targets, remove it as garbage
-				if _, ok := existingTargets[walkPath]; !ok {
-					return os.Remove(walkPath)
-				}
-				return nil
-			})
+	// loop through files and check if they are in place
+	for _, fi := range files {
+		if fi.IsDir() {
+			continue
+		}
+		filePath := filepath.Join(dirName, fi.Name())
+		// if progress file
+		if strings.HasSuffix(filePath, progressFileSuffix) {
+			//check if progress file points onto existing file
+			if _, err := os.Stat(strings.TrimSuffix(filePath, progressFileSuffix)); err == nil {
+				continue
+			}
+			// if not exists, remove progress file
+			err = os.RemoveAll(filePath)
+			if err != nil {
+				log.Fatal(err)
+			}
+			continue
+		}
+		// skip ctx related checks if not provided
+		if ctx == nil {
+			continue
+		}
+		//if no file in existing targets, remove it as garbage
+		if _, ok := existingTargets[filePath]; !ok {
+			err = os.RemoveAll(filePath)
 			if err != nil {
 				log.Fatal(err)
 			}
