@@ -1,0 +1,135 @@
+---
+name: EdenRPi4
+on:  # yamllint disable-line rule:truthy
+  workflow_run:
+    workflows:
+      - Publish
+    types:
+      - completed
+# yamllint disable rule:line-length
+jobs:
+  integration:
+    runs-on: ubuntu-20.04
+    strategy:
+      fail-fast: false
+      matrix:
+        hv: ["kvm", "xen"]
+    steps:
+      - name: Check secrets
+        run: |
+          if [ -z "$ROL_API_URL" ]; then echo "::error::ROL_API_URL is empty" && exit 1; fi
+          if [ -z "$ROL_API_KEY" ]; then echo "::error::ROL_API_KEY is empty" && exit 1; fi
+          if [ -z "$ROL_PROJECT" ]; then echo "::error::ROL_PROJECT is empty" && exit 1; fi
+          if [ -z "$ROL_OVPN_CONF_BASE64" ]; then echo "::error::ROL_OVPN_CONF_BASE64 is empty" && exit 1; fi
+        env:
+          ROL_API_URL: ${{ secrets.ROL_API_URL }}
+          ROL_API_KEY: ${{ secrets.ROL_API_KEY }}
+          ROL_PROJECT: ${{ secrets.ROL_PROJECT }}
+          ROL_OVPN_CONF_BASE64: ${{ secrets.ROL_OVPN_CONF_BASE64 }}
+      - name: Get EVE
+        uses: actions/checkout@v2
+        with:
+          path: eve
+      - name: Setup packages
+        run: |
+          sudo apt update && sudo apt upgrade
+          sudo apt install -y curl golang net-tools qemu binfmt-support qemu-user-static qemu-utils qemu-system-x86 qemu-system-aarch64 openvpn jq
+      - name: Setup OVPN connection to RoL RPi4 demo
+        id: vpn
+        run: |
+          echo "$ROL_OVPN_CONF_BASE64" | base64 -d > ./config.ovpn
+          sudo openvpn --config ./config.ovpn --daemon
+          VPN_ATTEMPTS_COUNT=0
+          VPN_MAX_ATTEMPTS=24
+          until [ $VPN_ATTEMPTS_COUNT -eq $VPN_MAX_ATTEMPTS ] || ip -f inet addr show tun0; do sleep 5; ip a; let VPN_ATTEMPTS_COUNT=VPN_ATTEMPTS_COUNT+1; done
+          [ $VPN_ATTEMPTS_COUNT -lt $VPN_MAX_ATTEMPTS ] || $(echo "::error::VPN connection not established" && exit 1)
+          echo ::set-output name=ip::$(ip -f inet addr show tun0 | sed -En -e 's/.*inet ([0-9.]+).*/\1/p')
+        env:
+          ROL_OVPN_CONF_BASE64: ${{ secrets.ROL_OVPN_CONF_BASE64 }}
+      - name: Prepare eden
+        run: |
+          docker run -v $PWD:/out lfedge/eden:0.4.0 cp -a /eden/. /out/
+          sudo chown -R $(whoami) .
+      - name: Setup eden
+        run: |
+          ./eden config add default --devmodel=general --arch=arm64
+          ./eden config set default --key eve.tag --value="snapshot"
+          ./eden config set default --key eve.hv --value ${{ matrix.hv }}
+          ./eden config set default --key adam.eve-ip --value ${{ steps.vpn.outputs.ip }}
+          ./eden config set default --key registry.ip --value ${{ steps.vpn.outputs.ip }}
+          ./eden config set default --key=eden.tests --value=${{ github.workspace }}/eve/tests/eden
+          ./eden setup -v debug --netboot=true
+          ./eden start
+      - name: Rent RPi4
+        id: rol
+        run: |
+          rent_id=$(./eden rol rent create -p "$ROL_PROJECT" -m raspberry --model pi_4_model_b_8gb -n GHAction-${{ github.run_number }}-snapshot-${{ matrix.hv }})
+          echo ::set-output name=id::$(echo $rent_id)
+        env:
+          ROL_API_URL: ${{ secrets.ROL_API_URL }}
+          ROL_API_KEY: ${{ secrets.ROL_API_KEY }}
+          ROL_PROJECT: ${{ secrets.ROL_PROJECT }}
+      - name: Waiting for EVE OS to load
+        run: |
+          EVE_ATTEMPTS_COUNT=0
+          EVE_MAX_ATTEMPTS=360
+          until [ $EVE_ATTEMPTS_COUNT -eq $EVE_MAX_ATTEMPTS ] || [[ "$(./eden rol rent get -p "$ROL_PROJECT" -i ${{ steps.rol.outputs.id }} | jq -r .machineState)" == "Ready" ]]; do sleep 10; echo "Waiting for EVE to load"; let EVE_ATTEMPTS_COUNT=EVE_ATTEMPTS_COUNT+1; done
+          [ $EVE_ATTEMPTS_COUNT -lt $EVE_MAX_ATTEMPTS ] || $(echo "::error::EVE OS boot timeout" && exit 1)
+        env:
+          ROL_API_URL: ${{ secrets.ROL_API_URL }}
+          ROL_API_KEY: ${{ secrets.ROL_API_KEY }}
+          ROL_PROJECT: ${{ secrets.ROL_PROJECT }}
+      - name: EVE Onboard
+        run: |
+          ./eden eve onboard
+          echo > tests/workflow/testdata/eden_stop.txt
+      - name: Run eden workflow test
+        run: |
+            ./eden test ${{ github.workspace }}/eve/tests/eden/workflow -v debug
+      - name: Collect logs
+        if: ${{ always() }}
+        run: |
+          ./eden log --format json > trace.log || echo "no log"
+          ./eden info > info.log || echo "no info"
+          ./eden metric > metric.log || echo "no metric"
+          ./eden netstat > netstat.log || echo "no netstat"
+          docker logs eden_adam > adam.log 2>&1 || echo "no adam log"
+      - name: Log counting
+        if: ${{ always() }}
+        run: |
+          echo "::group::Total errors"
+          echo "$(jq '.severity' trace.log|grep err|wc -l)"
+          echo "::endgroup::"
+          echo "::group::Errors by source"
+          echo "errors by source: $(jq -s 'map(select(.severity|contains("err")))|group_by(.source)|map({"source": .[0].source, "total":length})|sort_by(.total)|reverse[]' trace.log)"
+          echo "::endgroup::"
+          echo "::group::Error log content duplicates"
+          echo "$(jq -s 'map(select(.severity | contains("err")))|group_by(.content)|map(select(length>1))' trace.log)"
+          echo "::endgroup::"
+          echo "::group::Error log function filename duplicates"
+          echo "$(jq -s 'map(select(.severity | contains("err")))|group_by(.filename)|map(select(length>10))|map({"source": .[0].source, "filename": .[0].filename, "function": .[0].function, "content": [.[].content], "total":length})|sort_by(.total)| reverse[]' trace.log)"
+          echo "::endgroup::"
+          echo "::group::Segfaults"
+          echo "$(jq -s 'map(select(.content | contains("segfault at")))' trace.log)"|tee segfaults.log
+          [ "$(jq length segfaults.log)" -gt 0 ] && echo "::warning::segfaults found, you can see them in Log counting->Segfaults section"
+          echo "::endgroup::"
+      - name: Store raw test results
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v2
+        with:
+          name: eden-report-${{ matrix.hv }}
+          path: |
+            ${{ github.workspace }}/trace.log
+            ${{ github.workspace }}/info.log
+            ${{ github.workspace }}/adam.log
+            ${{ github.workspace }}/netstat.log
+            ${{ github.workspace }}/metric.log
+      - name: Close device rental
+        if: ${{ always() }}
+        run: |
+          if [ -z "${{ steps.rol.outputs.id }}" ]; then exit 0; fi
+          ./eden rol rent close -p $ROL_PROJECT -i ${{ steps.rol.outputs.id }}
+        env:
+          ROL_API_URL: ${{ secrets.ROL_API_URL }}
+          ROL_API_KEY: ${{ secrets.ROL_API_KEY }}
+          ROL_PROJECT: ${{ secrets.ROL_PROJECT }}
