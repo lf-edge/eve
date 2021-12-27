@@ -32,19 +32,20 @@ ENV GRUB_MODULES_x86_64="multiboot multiboot2 efi_uga efi_gop linuxefi"
 ENV GRUB_MODULES_aarch64="xen_boot efi_gop"
 ENV GRUB_MODULES_riscv64="part_gpt fat ext2 iso9660 squash4 gzio linux acpi normal cpio crypto disk boot crc64 gptprio search_disk_uuid \
 search_part_label search_label xzio xfs video gfxterm serial chain probe reboot regexp smbios part_msdos cat echo test configfile loopback"
-# grub-2.06 tag
 ENV GRUB_COMMIT=71f9e4ac44142af52c3fc1860436cf9e432bf764
-ENV GRUB_COMMIT_riscv64=ae94b97be2b81b625d6af6654d3ed79078b50ff6
+ENV GRUB_TAG_riscv64=2.06
+ENV GRUB_TAG_aarch64=2.06
+
 ENV GRUB_REPO=https://git.savannah.gnu.org/git/grub.git
 
-COPY patches/* /patches/
-COPY patches.riscv64.2.06/* /riscv64/
+COPY / /
 RUN mkdir /grub-lib && git clone ${GRUB_REPO}
 
 WORKDIR /grub
 RUN git config --add user.email a@b.c && git config user.name a && \
-    git checkout -b grub-build "$(if [ "$(uname -m)" = riscv64 ]; then echo "${GRUB_COMMIT_riscv64}"; else echo "${GRUB_COMMIT}"; fi)"
-RUN if [ "$(uname -m)" = riscv64 ]; then rm -rf /patches && mv /riscv64 /patches; fi
+    if [ "$(uname -m)" != x86_64 ]; then GRUB_COMMIT="$(git show-ref -s tags/grub-"$(eval echo "\$GRUB_TAG_$(uname -m)")")"; fi && \
+    git checkout -b grub-build "$GRUB_COMMIT"
+RUN if [ "$(uname -m)" != x86_64 ]; then rm -rf /patches && mv /patches-"$(eval echo "\$GRUB_TAG_$(uname -m)")" /patches && cp /patches-"$(uname -m)"-"$(eval echo "\$GRUB_TAG_$(uname -m)")"/* /patches/; fi
 RUN git am /patches/*
 
 ENV BUILD_GRUB="set -e && git clean -f -d -x && git reset --hard HEAD && \
