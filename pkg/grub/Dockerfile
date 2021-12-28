@@ -25,10 +25,10 @@ RUN ln -s python3 /usr/bin/python
 
 # list of grub modules that are portable between x86_64 and aarch64
 ENV GRUB_MODULES_PORT="part_gpt fat ext2 iso9660 squash4 gzio linux acpi normal cpio crypto disk boot crc64 gpt \
-search_disk_uuid search_part_label search_label verify xzio xfs video gfxterm serial gptprio chain probe reboot regexp smbios    \
+search_disk_uuid search_part_label search_label xzio xfs video gfxterm serial gptprio chain probe reboot regexp smbios \
 part_msdos cat echo test configfile loopback"
-ENV GRUB_MODULES_i386_pc="multiboot multiboot2 biosdisk"
-ENV GRUB_MODULES_x86_64="multiboot multiboot2 efi_uga efi_gop linuxefi"
+ENV GRUB_MODULES_i386_pc="multiboot multiboot2 biosdisk verify "
+ENV GRUB_MODULES_x86_64="multiboot multiboot2 efi_uga efi_gop linuxefi verify"
 ENV GRUB_MODULES_aarch64="xen_boot efi_gop"
 ENV GRUB_MODULES_riscv64="part_gpt fat ext2 iso9660 squash4 gzio linux acpi normal cpio crypto disk boot crc64 gptprio search_disk_uuid \
 search_part_label search_label xzio xfs video gfxterm serial chain probe reboot regexp smbios part_msdos cat echo test configfile loopback"
