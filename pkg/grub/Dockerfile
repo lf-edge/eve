@@ -24,14 +24,13 @@ RUN [ "$(uname -m)" = x86_64 ] || apk add coreutils
 RUN ln -s python3 /usr/bin/python
 
 # list of grub modules that are portable between x86_64 and aarch64
-ENV GRUB_MODULES_PORT="part_gpt fat ext2 iso9660 squash4 gzio linux acpi normal cpio crypto disk boot crc64 gpt \
+ENV GRUB_MODULES_PORT="part_gpt fat ext2 iso9660 squash4 gzio linux acpi normal cpio crypto disk boot crc64 \
 search_disk_uuid search_part_label search_label xzio xfs video gfxterm serial gptprio chain probe reboot regexp smbios \
 part_msdos cat echo test configfile loopback"
-ENV GRUB_MODULES_i386_pc="multiboot multiboot2 biosdisk verify "
-ENV GRUB_MODULES_x86_64="multiboot multiboot2 efi_uga efi_gop linuxefi verify"
-ENV GRUB_MODULES_aarch64="xen_boot efi_gop"
-ENV GRUB_MODULES_riscv64="part_gpt fat ext2 iso9660 squash4 gzio linux acpi normal cpio crypto disk boot crc64 gptprio search_disk_uuid \
-search_part_label search_label xzio xfs video gfxterm serial chain probe reboot regexp smbios part_msdos cat echo test configfile loopback"
+ENV GRUB_MODULES_i386_pc="multiboot multiboot2 biosdisk gpt verify"
+ENV GRUB_MODULES_x86_64="multiboot multiboot2 efi_uga efi_gop linuxefi gpt verify"
+ENV GRUB_MODULES_aarch64="xen_boot efi_gop gpt"
+ENV GRUB_MODULES_riscv64=""
 ENV GRUB_COMMIT=71f9e4ac44142af52c3fc1860436cf9e432bf764
 ENV GRUB_TAG_riscv64=2.06
 ENV GRUB_TAG_aarch64=2.06
@@ -69,7 +68,7 @@ RUN case $(uname -m) in \
   aarch64) \
     ./grub-mkimage -O arm64-efi -d /grub-lib/grub/arm64-efi -o /grub-lib/BOOTAA64.EFI -p /EFI/BOOT ${GRUB_MODULES_PORT} ${GRUB_MODULES_aarch64} ;; \
   riscv64) \
-     ./grub-mkimage -O riscv64-efi -d /grub-lib/grub/riscv64-efi -o /grub-lib/BOOTRISCV64.EFI -p /EFI/BOOT ${GRUB_MODULES_riscv64} ;;\
+     ./grub-mkimage -O riscv64-efi -d /grub-lib/grub/riscv64-efi -o /grub-lib/BOOTRISCV64.EFI -p /EFI/BOOT ${GRUB_MODULES_PORT} ${GRUB_MODULES_riscv64} ;;\
   esac
 
 FROM scratch
