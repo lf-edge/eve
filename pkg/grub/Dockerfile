@@ -18,7 +18,7 @@ RUN apk add --no-cache \
   pkgconf \
   patch \
   gettext-dev
-RUN [ "$(uname -m)" != riscv64 ] || apk add coreutils
+RUN [ "$(uname -m)" = x86_64 ] || apk add coreutils
 
 # because python is not available
 RUN ln -s python3 /usr/bin/python
