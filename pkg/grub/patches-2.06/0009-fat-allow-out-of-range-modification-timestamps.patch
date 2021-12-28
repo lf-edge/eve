@@ -1,0 +1,57 @@
+From a05c6caa15fac362038bfa7acf0151b3ebc19470 Sun May 23 00:15:25 2021
+From: Tomasz Kramkowski <tk@the-tk.com>
+Date: Sun, 23 May 2021 01:15:24 +0100
+Subject: [PATCH v2] fat: Allow out-of-range FAT modification timestamps
+
+20def1a3c introduced support for file modification times to allow
+comparison of file ages on EFI systems. This patch used
+grub_datetime2unixtime which uses a 32 bit unix timestamp and as a
+result did not allow the full range of times that FAT timestamps do.
+
+In some situations a file with a timestamp of 1970-01-01 gets
+transferred to a FAT partition, the timestamp ends up as 2098-01-01
+because of FAT's use of the 1980-01-01 DOS epoch and lack of negative
+timestamps.
+
+Since 2098 is after 2038, this date cannot fit in a 32 bit timestamp.
+
+Ideally grub should use 64 bit timestamps but I have not investigated
+what kind of work would be required to support this.
+
+This fixes bug #60565.
+
+Reported-by: Naïm Favier <n+grub@monade.li>
+Tested-by: Naïm Favier <n+grub@monade.li>
+Signed-off-by: Tomasz Kramkowski <tk@the-tk.com>
+---
+ grub-core/fs/fat.c | 7 ++++---
+ 1 file changed, 4 insertions(+), 3 deletions(-)
+
+diff --git a/grub-core/fs/fat.c b/grub-core/fs/fat.c
+index dd82e4ee3..09e9b381d 100644
+--- a/grub-core/fs/fat.c
++++ b/grub-core/fs/fat.c
+@@ -1020,16 +1020,17 @@ grub_fat_dir (grub_device_t device, const char *path, grub_fs_dir_hook_t hook,
+       info.mtimeset = grub_exfat_timestamp (grub_le_to_cpu32 (ctxt.entry.type_specific.file.m_time),
+ 					    ctxt.entry.type_specific.file.m_time_tenth,
+ 					    &info.mtime);
++      if (info.mtimeset == 0)
++        grub_dprintf("exfat", "invalid modification timestamp for %s\n", path);
+ #else
+       if (ctxt.dir.attr & GRUB_FAT_ATTR_VOLUME_ID)
+ 	continue;
+       info.mtimeset = grub_fat_timestamp (grub_le_to_cpu16 (ctxt.dir.w_time),
+ 					  grub_le_to_cpu16 (ctxt.dir.w_date),
+ 					  &info.mtime);
+-#endif
+       if (info.mtimeset == 0)
+-	grub_error (GRUB_ERR_OUT_OF_RANGE,
+-		    "invalid modification timestamp for %s", path);
++        grub_dprintf("fat", "invalid modification timestamp for %s\n", path);
++#endif
+ 
+       if (hook (ctxt.filename, &info, hook_data))
+ 	break;
+-- 
+2.25.1
+
