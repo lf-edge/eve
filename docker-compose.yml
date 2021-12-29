@@ -4,6 +4,7 @@ volumes:
     persist: {}
     config: {}
     run: {}
+    version: {}
 
 networks:
     # eve-host:
@@ -38,7 +39,7 @@ networks:
 services:
     # this is the only service from the onboot: section
     storage-init:
-        image: STORAGE_INIT_TAG
+        image: ${STORAGE_INIT_TAG}
         volumes:
             - persist:/persist
             - config:/config
@@ -53,7 +54,7 @@ services:
             - eve
 
     newlogd:
-        image: NEWLOGD_TAG
+        image: ${NEWLOGD_TAG}
         privileged: true
         volumes:
             - persist:/persist
@@ -63,7 +64,7 @@ services:
             - eve
 
     wwan:
-        image: WWAN_TAG
+        image: ${WWAN_TAG}
         privileged: true
         volumes:
             - persist:/persist
@@ -74,7 +75,7 @@ services:
             - eve
 
     wlan:
-        image: WLAN_TAG
+        image: ${WLAN_TAG}
         privileged: true
         volumes:
             - persist:/persist
@@ -85,7 +86,7 @@ services:
             - eve
 
     guacd:
-        image: GUACD_TAG
+        image: ${GUACD_TAG}
         privileged: true
         volumes:
             - persist:/persist
@@ -96,7 +97,7 @@ services:
             - eve
 
     vtpm:
-        image: VTPM_TAG
+        image: ${VTPM_TAG}
         privileged: true
         volumes:
             - persist:/persist
@@ -107,7 +108,7 @@ services:
             - eve
 
     watchdog:
-        image: WATCHDOG_TAG
+        image: ${WATCHDOG_TAG}
         privileged: true
         volumes:
             - persist:/persist
@@ -118,7 +119,7 @@ services:
             - eve
 
     xen-tools:
-        image: XENTOOLS_TAG
+        image: ${XENTOOLS_TAG}
         privileged: true
         volumes:
             - persist:/persist
@@ -129,7 +130,7 @@ services:
             - eve
 
     kvm-tools:
-        image: KVMTOOLS_TAG
+        image: ${KVMTOOLS_TAG}
         privileged: true
         volumes:
             - persist:/persist
@@ -139,7 +140,7 @@ services:
             - eve
 
     pillar:
-        image: PILLAR_TAG
+        image: ${PILLAR_TAG}
         # privileged: true
         volumes:
             - persist:/persist
