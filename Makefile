@@ -387,9 +387,11 @@ run-grub: $(BIOS_IMG) $(UBOOT_IMG) $(EFI_PART) $(DEVICETREE_DTB)
 	$(QEMU_SYSTEM) $(QEMU_OPTS) -drive format=vvfat,id=uefi-disk,label=EVE,file=fat:rw:$(EFI_PART)/..
 	$(QUIET): $@: Succeeded
 
-run-compose: images/docker-compose.yml images/version.yml
-	docker-compose -f $< run storage-init sh -c 'rm -rf /run/* /config/* ; cp -Lr /conf/* /config/ ; echo IMGA > /run/eve.id'
-	docker-compose -f $< up
+run-compose: images/version.yml
+	# we regenerate this on every run, in case things changed
+	$(PARSE_PKGS) > tmp/images
+	docker-compose -f docker-compose.yml run storage-init sh -c 'rm -rf /run/* /config/* ; cp -Lr /conf/* /config/ ; echo IMGA > /run/eve.id'
+	docker-compose -f docker-compose.yml --env-file tmp/images up
 
 run-proxy:
 	ssh $(SSH_PROXY) -N -i $(SSH_KEY) -p $(SSH_PORT) -o StrictHostKeyChecking=no -o GlobalKnownHostsFile=/dev/null -o UserKnownHostsFile=/dev/null root@localhost &
