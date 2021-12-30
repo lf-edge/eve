@@ -13,6 +13,15 @@ RUN apk add --no-cache \
     linux-firmware-rtl_nic \
     linux-firmware-other
 
+# FIXME: this is a binary block firmware for Raspberry Pi4, waiting for linux-firmware-rpi4 package
+COPY rpi /lib/firmware/rpi
+
+# remove rpi and tegra blobs from non arm64 arch
+RUN if [ "$(uname -m)" != "aarch64" ] ; then \
+    rm -rf /lib/firmware/rpi && mkdir -p /lib/firmware/rpi/brcm &&\
+    rm -rf /lib/firmware/nvidia/tegra210 && mkdir -p /lib/firmware/nvidia/tegra210 ;\
+    fi
+
 FROM scratch
 ENTRYPOINT []
 WORKDIR /
@@ -37,8 +46,8 @@ COPY --from=build /lib/firmware/iwlwifi-cc-a0* /lib/firmware/
 COPY --from=build /lib/firmware/iwlwifi-QuZ-a0-hr-b0* /lib/firmware/
 # RTL8111/8168/8411 PCI Express Gigabit Ethernet Controller
 COPY --from=build /lib/firmware/rtl_nic/* /lib/firmware/rtl_nic/
-# FIXME: this is a binary block firmware for Raspberry Pi4, waiting for linux-firmware-rpi4 package
-COPY rpi /lib/firmware/
+# blobs for rpi4
+COPY --from=build /lib/firmware/rpi /lib/firmware
 # FIXME: we're currently using ath10k firmware supplied
 # by Advantech. This is getting upstreamed and when it
 # does we should switch back to linux-firmware-ath10k from Alpine
