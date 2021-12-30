@@ -2449,6 +2449,9 @@ func handlePhysicalIOAdapterListImpl(ctxArg interface{}, key string,
 			if err != nil {
 				ib.Error = err.Error()
 				ib.ErrorTime = time.Now()
+			} else {
+				ib.Error = ""
+				ib.ErrorTime = time.Time{}
 			}
 			// We assume AddOrUpdateIoBundle will preserve any
 			// existing IsPort/IsPCIBack/UsedByUUID
@@ -2494,6 +2497,9 @@ func handlePhysicalIOAdapterListImpl(ctxArg interface{}, key string,
 		if err != nil {
 			ib.Error = err.Error()
 			ib.ErrorTime = time.Now()
+		} else {
+			ib.Error = ""
+			ib.ErrorTime = time.Time{}
 		}
 		currentIbPtr := aa.LookupIoBundlePhylabel(phyAdapter.Phylabel)
 		if currentIbPtr == nil || currentIbPtr.HasAdapterChanged(log, phyAdapter) {
@@ -2607,6 +2613,9 @@ func updatePortAndPciBackIoBundle(ctx *domainContext, ib *types.IoBundle) (chang
 			ib.Error = err.Error()
 			ib.ErrorTime = time.Now()
 			log.Error(err)
+		} else {
+			ib.Error = ""
+			ib.ErrorTime = time.Time{}
 		}
 	}
 	return anyChanged
