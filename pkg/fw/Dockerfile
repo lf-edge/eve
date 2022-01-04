@@ -13,6 +13,12 @@ RUN apk add --no-cache \
     linux-firmware-rtl_nic \
     linux-firmware-other
 
+RUN if [ "$(uname -m)" = "x86_64" ] ; then \
+    apk add --no-cache intel-ucode amd-ucode; \
+    else \
+    mkdir -p /boot; \
+    fi
+
 # FIXME: this is a binary block firmware for Raspberry Pi4, waiting for linux-firmware-rpi4 package
 COPY rpi /lib/firmware/rpi
 
@@ -55,3 +61,5 @@ COPY --from=build /lib/firmware/rpi /lib/firmware
 COPY ath10k /lib/firmware/ath10k
 # FIXME: this is binary block firmware for HiKey
 COPY ti-connectivity /lib/firmware/ti-connectivity
+# ucode files for microcode update
+COPY --from=build /boot /boot
