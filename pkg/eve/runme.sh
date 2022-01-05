@@ -117,7 +117,7 @@ do_installer_net() {
   ln -s /bits/* /
   unsquashfs -d /tmp/kernel rootfs.img boot/kernel
   mv /tmp/kernel/boot/kernel /
-  tar -C / -chvf /output.net ipxe.efi.cfg ipxe.efi kernel initrd.img installer.img initrd.bits rootfs.img
+  tar --mode=644 -C / -chvf /output.net ipxe.efi.cfg ipxe.efi kernel initrd.img installer.img initrd.bits rootfs.img
   if [ "$(uname -m)" = aarch64 ]
   then
   cat > /tmp/boot.scr <<__EOT__
