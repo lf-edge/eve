@@ -1292,6 +1292,10 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	//process saved local profile
 	processSavedProfile(&getconfigCtx)
 
+	// initialize localInfo
+	initializeLocalAppInfo(&getconfigCtx)
+	go localAppInfoPOSTTask(&getconfigCtx)
+
 	// start the config fetch tasks, when zboot status is ready
 	log.Functionf("Creating %s at %s", "configTimerTask", agentlog.GetMyStack())
 	go configTimerTask(handleChannel, &getconfigCtx)
@@ -1677,6 +1681,7 @@ func handleAppInstanceStatusCreate(ctxArg interface{}, key string,
 	PublishAppInfoToZedCloud(ctx, uuidStr, &status, ctx.assignableAdapters,
 		ctx.iteration)
 	triggerPublishDevInfo(ctx)
+	triggerLocalAppInfoPOST(ctx.getconfigCtx)
 	ctx.iteration++
 	log.Functionf("handleAppInstanceStatusCreate(%s) DONE", key)
 }
@@ -1693,6 +1698,7 @@ func handleAppInstanceStatusModify(ctxArg interface{}, key string,
 	uuidStr := status.Key()
 	PublishAppInfoToZedCloud(ctx, uuidStr, &status, ctx.assignableAdapters,
 		ctx.iteration)
+	triggerLocalAppInfoPOST(ctx.getconfigCtx)
 	ctx.iteration++
 	log.Functionf("handleAppInstanceStatusModify(%s) DONE", key)
 }
@@ -1706,6 +1712,7 @@ func handleAppInstanceStatusDelete(ctxArg interface{}, key string,
 	PublishAppInfoToZedCloud(ctx, uuidStr, nil, ctx.assignableAdapters,
 		ctx.iteration)
 	triggerPublishDevInfo(ctx)
+	triggerLocalAppInfoPOST(ctx.getconfigCtx)
 	ctx.iteration++
 	log.Functionf("handleAppInstanceStatusDelete(%s) DONE", key)
 }

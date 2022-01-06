@@ -107,6 +107,8 @@ type getconfigContext struct {
 	radioSilence     types.RadioSilence // the intended state of radio devices
 	triggerRadioPOST chan Notify
 
+	localAppInfoPOSTTicker flextimer.FlexTickerHandle
+
 	callProcessLocalProfileServerChange bool //did we already call processLocalProfileServerChange
 
 	configRetryUpdateCounter uint32 // received from config
