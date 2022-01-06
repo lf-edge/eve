@@ -190,6 +190,8 @@ func parseProfile(ctx *getconfigContext, config *zconfig.EdgeDevConfig) {
 		ctx.localProfileServer = config.LocalProfileServer
 		triggerGetLocalProfile(ctx)
 		triggerRadioPOST(ctx)
+		updateLocalAppInfoTicker(ctx, false)
+		triggerLocalAppInfoPOST(ctx)
 	}
 	profileStateMachine(ctx, true)
 	log.Functionf("parseProfile done globalProfile: %s currentProfile: %s",

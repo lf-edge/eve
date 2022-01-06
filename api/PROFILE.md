@@ -80,6 +80,25 @@ without any ongoing or pending operations left behind.
 When device fails to apply the configuration, it SHOULD eventually stop retrying and publish the new radio status afterwards,
 indicating the error condition inside the `RadioStatus.config_error` field.
 
+### AppInfo
+
+Publish the current state of app instances on device to the local server.
+
+POST /api/v1/appinfo
+
+Return codes:
+
+* Success: `200`
+* Not implemented: `404`
+
+Request:
+
+The request mime type MUST be "application/x-proto-binary".
+The request MUST have the body of a single protobuf message of type [LocalAppInfoList](./proto/profile/local_profile.proto).
+
+Device publishes information repeatedly because of no expectation of persist storage inside local server. Device MAY
+throttle or cancel sending in case of Not implemented response.
+
 ## Security
 
 In addition to using a server_token it is recommended that ACLs/firewall rules are deployed so that the traffic
