@@ -1541,7 +1541,8 @@ func createProcessMetrics(ctx *zedagentContext, reportMetrics *metrics.ZMetricMs
 		processMetric.VmBytes = p.VMBytes
 		processMetric.RssBytes = p.RssBytes
 		processMetric.MemoryPercent = p.MemoryPercent
-		processMetric.Stack = p.Stack
+		// XXX block sending stacks to reduce the size of metrics message, for now.
+		//processMetric.Stack = p.Stack
 		reportMetrics.Pr = append(reportMetrics.Pr, processMetric)
 	}
 	log.Tracef("Process metrics done: %v", reportMetrics.Pr)
