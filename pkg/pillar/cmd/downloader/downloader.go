@@ -463,7 +463,7 @@ func doDownload(ctx *downloaderContext, config types.DownloaderConfig, status *t
 	if dst == nil {
 		errStr := fmt.Sprintf("Will retry when datastore available: %s",
 			err.Error())
-		status.HandleDownloadFail(errStr, 0, false)
+		status.HandleDownloadFail(errStr, retryTime, false)
 		publishDownloaderStatus(ctx, status)
 		log.Errorf("doDownload(%s): deferred with %v", config.Name, err)
 		return
