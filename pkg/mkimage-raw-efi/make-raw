@@ -309,10 +309,10 @@ __EOT__
 
 
 #
-# Extract partitions from stdin or look them up in /bits
+# Extract partitions from stdin if /parts not exists or empty
 #
-if [ ! -d /parts ]; then
-   mkdir /parts
+if [ ! -d /parts ] || [ -z "$(ls -A -- /parts)" ]; then
+   mkdir -p /parts
    (cd /parts ; bsdtar xzf -)
 fi
 
@@ -367,6 +367,12 @@ esac
 for p in $PARTS ; do
   eval do_$p CUR_SEC
 done
+
+if [ "$PARTS" = usb_conf ]; then
+  # Validate the health of our creation
+  sgdisk -v "$IMGFILE"
+  exit 0
+fi
 
 # Create a hybrid MBR to allow booting on legacy BIOS PC systems and ARM boards that
 # look for bootloaders in the first entry of the MBR
