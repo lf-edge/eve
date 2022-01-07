@@ -54,3 +54,18 @@ message RadioConfig {
    bool radio_silence = 2;
 }
 
+// LocalAppInfoList contains information about all app on EdgeNode
+// sent to the api/v1/appinfo
+message LocalAppInfoList {
+   repeated LocalAppInfo apps_info = 1;
+}
+
+// LocalAppInfo contains information about app on EdgeNode
+message LocalAppInfo {
+   string id = 1;
+   string version = 2;
+   string name = 3;
+   org.lfedge.eve.info.ErrorInfo err = 4;
+   org.lfedge.eve.info.ZSwState state = 5;
+}
+
