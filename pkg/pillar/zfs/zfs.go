@@ -17,6 +17,8 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/vault"
 )
 
+const volBlockSize = uint64(16 * 1024)
+
 var (
 	zfsPath = []string{"/hostfs", "zfs"}
 )
@@ -79,11 +81,13 @@ func GetDatasetOption(log *base.LogObject, dataset string, option string) (strin
 
 //CreateVolumeDataset creates dataset of zvol type in zfs
 func CreateVolumeDataset(log *base.LogObject, dataset string, size uint64, compression string) (string, error) {
+	alignedSize := alignUpToBlockSize(size)
+
 	args := append(zfsPath, "create", "-p",
-		"-V", strconv.FormatUint(size, 10),
+		"-V", strconv.FormatUint(alignedSize, 10),
 		"-o", "volmode=dev",
 		"-o", fmt.Sprintf("compression=%s", compression),
-		"-o", "volblocksize=16k",
+		"-o", fmt.Sprintf("volblocksize=%d", volBlockSize),
 		"-o", "logbias=throughput",
 		"-o", "redundant_metadata=most",
 		dataset)
@@ -166,4 +170,8 @@ func GetZFSVolumeInfo(log *base.LogObject, device string) (*types.ImgInfo, error
 		return nil, fmt.Errorf("GetZFSVolumeInfo: failed to parse volblocksize: %s", err)
 	}
 	return &imgInfo, nil
+}
+
+func alignUpToBlockSize(size uint64) uint64 {
+	return (size + volBlockSize - 1) & ^(volBlockSize - 1)
 }
