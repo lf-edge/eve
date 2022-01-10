@@ -1404,15 +1404,6 @@ func getUlAddrs(ctx *zedrouterContext,
 	// for static IP Address
 	if ulStatus.AppIPAddr != nil {
 		ipAddr = ulStatus.AppIPAddr.String()
-		// the IP Address, should not be in dhcpRange
-		if netInstStatus.DhcpRange.Contains(ulStatus.AppIPAddr) {
-			errStr := fmt.Sprintf("static IP(%s) is in DhcpRange(%s, %s)",
-				ipAddr, netInstStatus.DhcpRange.Start.String(),
-				netInstStatus.DhcpRange.End.String())
-			log.Errorf("getUlAddrs(%s): app(%s) fail: %s",
-				networkID.String(), appID.String(), errStr)
-			return "", errors.New(errStr)
-		}
 		// IP Address must be inside the subnet range
 		if !netInstStatus.Subnet.Contains(ulStatus.AppIPAddr) {
 			errStr := fmt.Sprintf("static IP(%s) is outside subnet range",
