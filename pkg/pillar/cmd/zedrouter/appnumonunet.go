@@ -14,6 +14,8 @@ package zedrouter
 
 import (
 	"fmt"
+	"net"
+
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/uuidpairtonum"
 	"github.com/satori/go.uuid"
@@ -131,11 +133,12 @@ func appNumMapOnUNetGC(ctx *zedrouterContext) {
 }
 
 func appNumOnUNetAllocate(ctx *zedrouterContext, baseID uuid.UUID,
-	appID uuid.UUID, isStatic bool, isZedmanager bool) (int, error) {
+	appID uuid.UUID, addr net.IP, isZedmanager bool) (int, error) {
 
 	pub := ctx.pubUUIDPairToNum
 	numType := appNumOnUNetType
 	baseMap := appNumOnUNetBaseCreate(baseID)
+	isStatic := addr != nil
 
 	// Do we already have a number?
 	appNum, err := uuidpairtonum.NumGet(log, pub, baseID, appID,
@@ -163,12 +166,40 @@ func appNumOnUNetAllocate(ctx *zedrouterContext, baseID uuid.UUID,
 		// for static we pick the topmost numbers so avoid consuming
 		// dynamic IP address from a smallish DHCP range.
 		if isStatic {
-			for i := types.BitMapMax; i >= 0; i-- {
-				if !baseMap.IsSet(i) {
+			niStatus, err := ctx.pubNetworkInstanceStatus.Get(baseID.String())
+			if err != nil {
+				log.Fatalf("appNumOnUNetAllocate: no network status found: %s", err)
+			}
+			networkInstanceStatus := niStatus.(types.NetworkInstanceStatus)
+			// firstly check if provided addr is inside BitMap
+			// XXX we are limited with BitMapMax(255) and cannot cover larger ranges of IP addresses
+			// XXX we must use appNum to check intersections outside of BitMapMax
+			if networkInstanceStatus.DhcpRange.Start != nil &&
+				!networkInstanceStatus.DhcpRange.Start.IsUnspecified() {
+				for i := types.BitMapMax; i >= 0; i-- {
+					if !addr.Equal(types.AddToIP(networkInstanceStatus.DhcpRange.Start, i)) {
+						// calculated IP not match static
+						continue
+					}
+					if baseMap.IsSet(i) {
+						return appNum, fmt.Errorf("no free appNum for the static IP address %s", addr.String())
+					}
 					appNum = i
 					log.Functionf("Allocating appNum %d for %s",
 						appNum, types.UUIDPairToNumKey(baseID, appID))
 					break
+				}
+			}
+			// if not covered just allocate first available appNum from the end of BitMap
+			// XXX do we need it for static IP
+			if appNum == -1 {
+				for i := types.BitMapMax; i >= 0; i-- {
+					if !baseMap.IsSet(i) {
+						appNum = i
+						log.Functionf("Allocating appNum %d for %s",
+							appNum, types.UUIDPairToNumKey(baseID, appID))
+						break
+					}
 				}
 			}
 		} else {

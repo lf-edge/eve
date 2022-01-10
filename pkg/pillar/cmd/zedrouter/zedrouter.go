@@ -912,7 +912,15 @@ func handleAppNetworkCreate(ctxArg interface{}, key string, configArg interface{
 	publishAppNetworkStatus(ctx, &status)
 
 	// allocate application numbers on underlay network
-	if err := appNumsOnUNetAllocate(ctx, &config); err != nil {
+	// firstly allocate for static hosts
+	if err := appNumsOnUNetAllocate(ctx, &config, true); err != nil {
+		status.PendingAdd = false
+		addError(ctx, &status, "handleAppNetworkCreate", err)
+		return
+	}
+	// next allocate for dynamic hosts
+	if err := appNumsOnUNetAllocate(ctx, &config, false); err != nil {
+		status.PendingAdd = false
 		addError(ctx, &status, "handleAppNetworkCreate", err)
 		return
 	}
@@ -1731,9 +1739,8 @@ func doAppNetworkModifyUNetAppNum(
 		appNumOnUNetFree(ctx, oldNetworkID, appID)
 	}
 	// allocate an app number on new network
-	isStatic := (ulConfig.AppIPAddr != nil)
 	if _, err := appNumOnUNetAllocate(ctx, networkID, appID,
-		isStatic, false); err != nil {
+		ulConfig.AppIPAddr, false); err != nil {
 		log.Errorf("appNumsOnUNetAllocate(%s, %s): fail: %s",
 			networkID.String(), appID.String(), err)
 		return err

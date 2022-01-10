@@ -12,18 +12,21 @@ import (
 )
 
 func appNumsOnUNetAllocate(ctx *zedrouterContext,
-	config *types.AppNetworkConfig) error {
+	config *types.AppNetworkConfig, static bool) error {
 
 	log.Functionf("appNumsOnUNetAllocate(%v) for %s",
 		config.UUIDandVersion, config.DisplayName)
 	for _, ulConfig := range config.UnderlayNetworkList {
-		isStatic := (ulConfig.AppIPAddr != nil)
+		if (ulConfig.AppIPAddr != nil) != static {
+			//skip creation based on static or not
+			continue
+		}
 		appID := config.UUIDandVersion.UUID
 		networkID := ulConfig.Network
 		appNum, err := appNumOnUNetAllocate(ctx, networkID, appID,
-			isStatic, false)
+			ulConfig.AppIPAddr, false)
 		if err != nil {
-			errStr := fmt.Sprintf("App Num get fail :%s", err)
+			errStr := fmt.Sprintf("App Num get fail: %s", err)
 			log.Errorf("appNumsOnUNetAllocate(%s, %s): fail: %s",
 				networkID.String(), appID.String(), errStr)
 			return errors.New(errStr)
