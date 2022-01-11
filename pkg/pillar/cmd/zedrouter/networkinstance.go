@@ -1152,6 +1152,7 @@ func retryNetworkInstance(ctx *zedrouterContext, status *types.NetworkInstanceSt
 		if err := ensurePortName(ctx, status); err != nil {
 			log.Errorf("retryNetworkInstance(%s) failed: %v",
 				status.DisplayName, err)
+			// Keep old error assuming it is the same
 			return
 		}
 		err := doNetworkInstanceModify(ctx, *config, status)
@@ -1168,6 +1169,8 @@ func retryNetworkInstance(ctx *zedrouterContext, status *types.NetworkInstanceSt
 		if err := ensurePortName(ctx, status); err != nil {
 			log.Errorf("retryNetworkInstance(%s) failed: %v",
 				status.DisplayName, err)
+			status.SetErrorNow(err.Error())
+			publishNetworkInstanceStatus(ctx, status)
 			return
 		}
 
