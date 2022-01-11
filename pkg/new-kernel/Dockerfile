@@ -95,12 +95,23 @@ RUN make INSTALL_MOD_PATH=/tmp/kernel-modules modules_install
 
 # Out-of-tree, open source modules
 #  * ZFS on Linux
-ENV ZFS_VERSION=2.1.0-rc3
+ENV ZFS_VERSION=2.1.2
 ENV ZFS_COMMIT=zfs-${ZFS_VERSION}
-ENV ZFS_REPO=https://github.com/zfsonlinux/zfs.git
+ENV ZFS_REPO=https://github.com/openzfs/zfs.git
+ENV ZFS_PATCH_DIR=/patches-zfs-"${ZFS_VERSION}"
 
 WORKDIR /tmp/zfs
+
 RUN git clone --depth 1 -b ${ZFS_COMMIT} ${ZFS_REPO} .
+RUN set -e; \
+    if [ ! -d "${ZFS_PATCH_DIR}" ]; then \
+        echo "No such dir ${ZFS_PATCH_DIR}"; \
+    else \
+        for patch in "${ZFS_PATCH_DIR}"/*.patch; do \
+            echo "Applying $patch"; \
+            patch -p1 < "$patch"; \
+        done \
+    fi
 RUN ./autogen.sh && \
     ./configure --with-linux=/linux && \
     ./scripts/make_gitrev.sh && \
