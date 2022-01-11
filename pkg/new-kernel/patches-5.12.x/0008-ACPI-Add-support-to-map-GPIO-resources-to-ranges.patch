@@ -1,7 +1,7 @@
-From 4c0f50aaa56077957d627a79277eb0d75caca30a Mon Sep 17 00:00:00 2001
+From 7455b4efa4c0734da8617f3504fb574cb49871c3 Mon Sep 17 00:00:00 2001
 From: Carlos Calderon <carlos.calderon@emutex.com>
 Date: Wed, 20 Feb 2019 16:49:37 +0000
-Subject: [PATCH] ACPI: Add support to map GPIO resources to ranges
+Subject: [PATCH 08/11] ACPI: Add support to map GPIO resources to ranges
 
 All of this is selectively taken from:
     https://github.com/AaeonCM/meta-up-board/tree/warrior/recipes-kernel/linux/files
@@ -44,17 +44,94 @@ manages direction and enable state for those header pins.
 ====================================================================================
 [PATCH 12/19] acpi: acpi_node_add_pin_mapping added to header file.
 ====================================================================================
-
-
 ---
- drivers/gpio/gpiolib-acpi.c | 88 ++++++++++++++++++++++++++++++++++++---------
- 1 file changed, 71 insertions(+), 17 deletions(-)
+ drivers/base/regmap/internal.h    |   5 -
+ drivers/base/regmap/regmap.c      |   5 +
+ drivers/gpio/gpiolib-acpi.c       |  88 +++-
+ drivers/leds/Kconfig              |   7 +
+ drivers/leds/Makefile             |   1 +
+ drivers/leds/leds-upboard.c       |  88 ++++
+ drivers/mfd/Kconfig               |   6 +
+ drivers/mfd/Makefile              |   1 +
+ drivers/mfd/upboard-fpga.c        | 411 +++++++++++++++
+ drivers/pinctrl/Kconfig           |  12 +
+ drivers/pinctrl/Makefile          |   1 +
+ drivers/pinctrl/core.c            | 341 +++++++------
+ drivers/pinctrl/pinctrl-upboard.c | 797 ++++++++++++++++++++++++++++++
+ include/linux/acpi.h              |  13 +
+ include/linux/mfd/upboard-fpga.h  |  52 ++
+ include/linux/regmap.h            |   6 +
+ 16 files changed, 1658 insertions(+), 176 deletions(-)
+ create mode 100644 drivers/leds/leds-upboard.c
+ create mode 100644 drivers/mfd/upboard-fpga.c
+ create mode 100644 drivers/pinctrl/pinctrl-upboard.c
+ create mode 100644 include/linux/mfd/upboard-fpga.h
 
+diff --git a/drivers/base/regmap/internal.h b/drivers/base/regmap/internal.h
+index 0097696c31de..a43309063a68 100644
+--- a/drivers/base/regmap/internal.h
++++ b/drivers/base/regmap/internal.h
+@@ -180,11 +180,6 @@ struct regcache_ops {
+ 	int (*drop)(struct regmap *map, unsigned int min, unsigned int max);
+ };
+ 
+-bool regmap_cached(struct regmap *map, unsigned int reg);
+-bool regmap_writeable(struct regmap *map, unsigned int reg);
+-bool regmap_readable(struct regmap *map, unsigned int reg);
+-bool regmap_volatile(struct regmap *map, unsigned int reg);
+-bool regmap_precious(struct regmap *map, unsigned int reg);
+ bool regmap_writeable_noinc(struct regmap *map, unsigned int reg);
+ bool regmap_readable_noinc(struct regmap *map, unsigned int reg);
+ 
+diff --git a/drivers/base/regmap/regmap.c b/drivers/base/regmap/regmap.c
+index 297e95be25b3..0a6b2ee0b5e0 100644
+--- a/drivers/base/regmap/regmap.c
++++ b/drivers/base/regmap/regmap.c
+@@ -100,6 +100,7 @@ bool regmap_writeable(struct regmap *map, unsigned int reg)
+ 
+ 	return true;
+ }
++EXPORT_SYMBOL_GPL(regmap_writeable);
+ 
+ bool regmap_cached(struct regmap *map, unsigned int reg)
+ {
+@@ -123,6 +124,7 @@ bool regmap_cached(struct regmap *map, unsigned int reg)
+ 
+ 	return true;
+ }
++EXPORT_SYMBOL_GPL(regmap_cached);
+ 
+ bool regmap_readable(struct regmap *map, unsigned int reg)
+ {
+@@ -143,6 +145,7 @@ bool regmap_readable(struct regmap *map, unsigned int reg)
+ 
+ 	return true;
+ }
++EXPORT_SYMBOL_GPL(regmap_readable);
+ 
+ bool regmap_volatile(struct regmap *map, unsigned int reg)
+ {
+@@ -160,6 +163,7 @@ bool regmap_volatile(struct regmap *map, unsigned int reg)
+ 	else
+ 		return true;
+ }
++EXPORT_SYMBOL_GPL(regmap_volatile);
+ 
+ bool regmap_precious(struct regmap *map, unsigned int reg)
+ {
+@@ -174,6 +178,7 @@ bool regmap_precious(struct regmap *map, unsigned int reg)
+ 
+ 	return false;
+ }
++EXPORT_SYMBOL_GPL(regmap_precious);
+ 
+ bool regmap_writeable_noinc(struct regmap *map, unsigned int reg)
+ {
 diff --git a/drivers/gpio/gpiolib-acpi.c b/drivers/gpio/gpiolib-acpi.c
-index 57d157e..9ff45a3 100644
+index 1aacd2a5a1fd..16d3dab2f201 100644
 --- a/drivers/gpio/gpiolib-acpi.c
 +++ b/drivers/gpio/gpiolib-acpi.c
-@@ -1213,6 +1213,32 @@ static int acpi_find_gpio_count(struct acpi_resource *ares, void *data)
+@@ -1325,6 +1325,32 @@ static int acpi_find_gpio_count(struct acpi_resource *ares, void *data)
  	return 1;
  }
  
@@ -85,9 +162,9 @@ index 57d157e..9ff45a3 100644
 +}
 +
  /**
-  * acpi_gpio_count - return the number of GPIOs associated with a
-  *		device / function or -ENOENT if no GPIO has been
-@@ -1223,10 +1249,7 @@ static int acpi_find_gpio_count(struct acpi_resource *ares, void *data)
+  * acpi_gpio_count - count the GPIOs associated with a device / function
+  * @dev:	GPIO consumer, can be %NULL for system-global GPIOs
+@@ -1337,10 +1363,7 @@ static int acpi_find_gpio_count(struct acpi_resource *ares, void *data)
  int acpi_gpio_count(struct device *dev, const char *con_id)
  {
  	struct acpi_device *adev = ACPI_COMPANION(dev);
@@ -98,7 +175,7 @@ index 57d157e..9ff45a3 100644
  	char propname[32];
  	unsigned int i;
  
-@@ -1239,20 +1262,7 @@ int acpi_gpio_count(struct device *dev, const char *con_id)
+@@ -1353,20 +1376,7 @@ int acpi_gpio_count(struct device *dev, const char *con_id)
  			snprintf(propname, sizeof(propname), "%s",
  				 gpio_suffixes[i]);
  
@@ -120,8 +197,8 @@ index 57d157e..9ff45a3 100644
  		if (count > 0)
  			break;
  	}
-@@ -1284,6 +1294,50 @@ bool acpi_can_fallback_to_crs(struct acpi_device *adev, const char *con_id)
- 	return con_id == NULL;
+@@ -1389,6 +1399,50 @@ int acpi_gpio_count(struct device *dev, const char *con_id)
+ 	return count ? count : -ENOENT;
  }
  
 +/**
@@ -169,196 +246,15 @@ index 57d157e..9ff45a3 100644
 +EXPORT_SYMBOL_GPL(acpi_node_add_pin_mapping);
 +
  /* Run deferred acpi_gpiochip_request_irqs() */
- static int acpi_gpio_handle_deferred_request_irqs(void)
+ static int __init acpi_gpio_handle_deferred_request_irqs(void)
  {
--- 
-2.7.4
-
-From 9bdaf721fd148b50439d9e1c4dbf5e5c45313944 Mon Sep 17 00:00:00 2001
-From: Carlos Calderon <carlos@emutex.com>
-Date: Mon, 8 Oct 2018 16:06:21 +0100
-Subject: [PATCH 12/19] acpi: acpi_node_add_pin_mapping added to header file.
-
----
- include/linux/acpi.h | 13 +++++++++++++
- 1 file changed, 13 insertions(+)
-
-diff --git a/include/linux/acpi.h b/include/linux/acpi.h
-index fdb1d5262ce8..dacc84699b82 100644
---- a/include/linux/acpi.h
-+++ b/include/linux/acpi.h
-@@ -1080,6 +1080,11 @@ void __acpi_handle_debug(struct _ddebug *descriptor, acpi_handle handle, const c
- bool acpi_gpio_get_irq_resource(struct acpi_resource *ares,
- 				struct acpi_resource_gpio **agpio);
- int acpi_dev_gpio_irq_get_by(struct acpi_device *adev, const char *name, int index);
-+int acpi_node_add_pin_mapping(struct fwnode_handle *fwnode,
-+			      const char *propname,
-+			      const char *pinctl_name,
-+			      unsigned int pin_offset,
-+			      unsigned int npins);
- #else
- static inline bool acpi_gpio_get_irq_resource(struct acpi_resource *ares,
- 					      struct acpi_resource_gpio **agpio)
-@@ -1091,6 +1096,14 @@ static inline int acpi_dev_gpio_irq_get_by(struct acpi_device *adev,
- {
- 	return -ENXIO;
- }
-+static inline int acpi_node_add_pin_mapping(struct fwnode_handle *fwnode,
-+					    const char *propname,
-+					    const char *pinctl_name,
-+					    unsigned int pin_offset,
-+					    unsigned int npins)
-+{
-+	return -ENXIO;
-+}
- #endif
- 
- static inline int acpi_dev_gpio_irq_get(struct acpi_device *adev, int index)
--- 
-2.25.1
-
-From b0ec896e741f330df18785e931537be1862ff4c8 Mon Sep 17 00:00:00 2001
-From: Nicola Lunghi <nicola.lunghi@emutex.com>
-Date: Thu, 27 Jul 2017 17:55:34 +0100
-Subject: [PATCH 05/19] regmap: Expose regmap_writable function to check if a
- register is writable
-
-Signed-off-by: Nicola Lunghi <nicola.lunghi@emutex.com>
----
- drivers/base/regmap/internal.h | 5 -----
- drivers/base/regmap/regmap.c   | 5 +++++
- include/linux/regmap.h         | 6 ++++++
- 3 files changed, 11 insertions(+), 5 deletions(-)
-
-diff --git a/drivers/base/regmap/internal.h b/drivers/base/regmap/internal.h
-index a6bf34d63..de951a1 100644
---- a/drivers/base/regmap/internal.h
-+++ b/drivers/base/regmap/internal.h
-@@ -180,11 +180,6 @@
- 	int (*drop)(struct regmap *map, unsigned int min, unsigned int max);
- };
- 
--bool regmap_cached(struct regmap *map, unsigned int reg);
--bool regmap_writeable(struct regmap *map, unsigned int reg);
--bool regmap_readable(struct regmap *map, unsigned int reg);
--bool regmap_volatile(struct regmap *map, unsigned int reg);
--bool regmap_precious(struct regmap *map, unsigned int reg);
- bool regmap_writeable_noinc(struct regmap *map, unsigned int reg);
- bool regmap_readable_noinc(struct regmap *map, unsigned int reg);
- 
-diff --git a/drivers/base/regmap/regmap.c b/drivers/base/regmap/regmap.c
-index 0360a90..f61a24c 100644
---- a/drivers/base/regmap/regmap.c
-+++ b/drivers/base/regmap/regmap.c
-@@ -93,6 +93,7 @@ bool regmap_writeable(struct regmap *map, unsigned int reg)
- 
- 	return true;
- }
-+EXPORT_SYMBOL_GPL(regmap_writeable);
- 
- bool regmap_cached(struct regmap *map, unsigned int reg)
- {
-@@ -116,6 +117,7 @@ bool regmap_cached(struct regmap *map, unsigned int reg)
- 
- 	return true;
- }
-+EXPORT_SYMBOL_GPL(regmap_cached);
- 
- bool regmap_readable(struct regmap *map, unsigned int reg)
- {
-@@ -136,6 +138,7 @@ bool regmap_readable(struct regmap *map, unsigned int reg)
- 
- 	return true;
- }
-+EXPORT_SYMBOL_GPL(regmap_readable);
- 
- bool regmap_volatile(struct regmap *map, unsigned int reg)
- {
-@@ -153,6 +156,7 @@ bool regmap_volatile(struct regmap *map, unsigned int reg)
- 	else
- 		return true;
- }
-+EXPORT_SYMBOL_GPL(regmap_volatile);
- 
- bool regmap_precious(struct regmap *map, unsigned int reg)
- {
-@@ -167,6 +171,7 @@ bool regmap_precious(struct regmap *map, unsigned int reg)
- 
- 	return false;
- }
-+EXPORT_SYMBOL_GPL(regmap_precious);
- 
- bool regmap_readable_noinc(struct regmap *map, unsigned int reg)
- {
-diff --git a/include/linux/regmap.h b/include/linux/regmap.h
-index 035129b..36bc898 100644
---- a/include/linux/regmap.h
-+++ b/include/linux/regmap.h
-@@ -1025,6 +1025,12 @@ void regcache_mark_dirty(struct regmap *map);
- bool regmap_check_range_table(struct regmap *map, unsigned int reg,
- 			      const struct regmap_access_table *table);
- 
-+bool regmap_cached(struct regmap *map, unsigned int reg);
-+bool regmap_writeable(struct regmap *map, unsigned int reg);
-+bool regmap_readable(struct regmap *map, unsigned int reg);
-+bool regmap_volatile(struct regmap *map, unsigned int reg);
-+bool regmap_precious(struct regmap *map, unsigned int reg);
-+
- int regmap_register_patch(struct regmap *map, const struct reg_sequence *regs,
- 			  int num_regs);
- int regmap_parse_val(struct regmap *map, const void *buf,
--- 
-2.7.4
-
-From bf2af81a5a93050a2b0b3feffac521c3ed177578 Mon Sep 17 00:00:00 2001
-From: Carlos Calderon <carlos@emutex.com>
-Date: Thu, 4 Oct 2018 10:40:49 +0100
-Subject: [PATCH 07/19] mfd: Add support for UP board CPLD/FPGA
-
-The UP Squared board <http://www.upboard.com> implements certain
-features (pin control, onboard LEDs or CEC) through an on-board FPGA.
-
-This mfd driver implements the line protocol to read and write registers
-from the FPGA through regmap. The register address map is also included.
-
-The UP boards come with a few FPGA-controlled onboard LEDs:
-* UP Board: yellow, green, red
-* UP Squared: blue, yellow, green, red
-
-The UP Boards provide a few I/O pin headers (for both GPIO and
-functions), including a 40-pin Raspberry Pi compatible header.
-
-This patch implements support for the FPGA-based pin controller that
-manages direction and enable state for those header pins.
-
-Signed-off-by: Javier Arteaga <javier@emutex.com>
-[merge various fixes]
-Signed-off-by: Nicola Lunghi <nicola.lunghi@emutex.com>
----
- drivers/leds/Kconfig              |   7 +
- drivers/leds/Makefile             |   1 +
- drivers/leds/leds-upboard.c       |  88 +++++
- drivers/mfd/Kconfig               |   6 +
- drivers/mfd/Makefile              |   1 +
- drivers/mfd/upboard-fpga.c        | 411 ++++++++++++++++++++
- drivers/pinctrl/Kconfig           |  12 +
- drivers/pinctrl/Makefile          |   1 +
- drivers/pinctrl/pinctrl-upboard.c | 797 ++++++++++++++++++++++++++++++++++++++
- include/linux/mfd/upboard-fpga.h  |  52 +++
- 10 files changed, 1376 insertions(+)
- create mode 100644 drivers/leds/leds-upboard.c
- create mode 100644 drivers/mfd/upboard-fpga.c
- create mode 100644 drivers/pinctrl/pinctrl-upboard.c
- create mode 100644 include/linux/mfd/upboard-fpga.h
-
-
 diff --git a/drivers/leds/Kconfig b/drivers/leds/Kconfig
-index 44097a3..554a2d9 100644
+index f38cae8c977e..5d0d6ffd9397 100644
 --- a/drivers/leds/Kconfig
 +++ b/drivers/leds/Kconfig
-@@ -928,6 +928,13 @@
- 	  This option enables support for the Power Button LED of
- 	  Acer Iconia Tab A500.
+@@ -939,6 +939,13 @@ config LEDS_ACER_A500
+ comment "Flash and Torch LED drivers"
+ source "drivers/leds/flash/Kconfig"
  
 +config LEDS_UPBOARD
 +        tristate "LED support for the UP board"
@@ -371,10 +267,10 @@ index 44097a3..554a2d9 100644
  source "drivers/leds/trigger/Kconfig"
  
 diff --git a/drivers/leds/Makefile b/drivers/leds/Makefile
-index 420b5d2..fe79d1e 100644
+index d12e17d563e3..3e7cdf362d48 100644
 --- a/drivers/leds/Makefile
 +++ b/drivers/leds/Makefile
-@@ -68,6 +68,7 @@
+@@ -68,6 +68,7 @@ obj-$(CONFIG_LEDS_MIKROTIK_RB532)	+= leds-rb532.o
  obj-$(CONFIG_LEDS_MLXCPLD)		+= leds-mlxcpld.o
  obj-$(CONFIG_LEDS_MLXREG)		+= leds-mlxreg.o
  obj-$(CONFIG_LEDS_MT6323)		+= leds-mt6323.o
@@ -384,7 +280,7 @@ index 420b5d2..fe79d1e 100644
  obj-$(CONFIG_LEDS_NIC78BX)		+= leds-nic78bx.o
 diff --git a/drivers/leds/leds-upboard.c b/drivers/leds/leds-upboard.c
 new file mode 100644
-index 0000000..16bd1b7
+index 000000000000..16bd1b7c0a1e
 --- /dev/null
 +++ b/drivers/leds/leds-upboard.c
 @@ -0,0 +1,88 @@
@@ -478,12 +374,12 @@ index 0000000..16bd1b7
 +MODULE_ALIAS("platform:upboard-led");
 \ No newline at end of file
 diff --git a/drivers/mfd/Kconfig b/drivers/mfd/Kconfig
-index 11841f4..7164934 100644
+index b74efa469e90..ad405da713fa 100644
 --- a/drivers/mfd/Kconfig
 +++ b/drivers/mfd/Kconfig
-@@ -2098,6 +2098,12 @@
- 	  additional drivers must be enabled in order to use the functionality
- 	  of the device.
+@@ -2087,6 +2087,12 @@ config MFD_ACER_A500_EC
+ 	  The controller itself is ENE KB930, it is running firmware
+ 	  customized for the specific needs of the Acer A500 hardware.
  
 +config MFD_UPBOARD_FPGA
 +        tristate "Support for the UP board FPGA"
@@ -495,10 +391,10 @@ index 11841f4..7164934 100644
  	depends on ARCH_SA1100
  
 diff --git a/drivers/mfd/Makefile b/drivers/mfd/Makefile
-index 5856a94..22553f6 100644
+index 834f5463af28..3aa2d50021ed 100644
 --- a/drivers/mfd/Makefile
 +++ b/drivers/mfd/Makefile
-@@ -252,6 +252,7 @@
+@@ -252,6 +252,7 @@ obj-$(CONFIG_MFD_ALTERA_A10SR)	+= altera-a10sr.o
  obj-$(CONFIG_MFD_ALTERA_SYSMGR) += altera-sysmgr.o
  obj-$(CONFIG_MFD_STPMIC1)	+= stpmic1.o
  obj-$(CONFIG_MFD_SUN4I_GPADC)	+= sun4i-gpadc.o
@@ -506,10 +402,9 @@ index 5856a94..22553f6 100644
  
  obj-$(CONFIG_MFD_STM32_LPTIMER)	+= stm32-lptimer.o
  obj-$(CONFIG_MFD_STM32_TIMERS) 	+= stm32-timers.o
-
 diff --git a/drivers/mfd/upboard-fpga.c b/drivers/mfd/upboard-fpga.c
 new file mode 100644
-index 0000000..9f444f8
+index 000000000000..9f444f876af1
 --- /dev/null
 +++ b/drivers/mfd/upboard-fpga.c
 @@ -0,0 +1,411 @@
@@ -926,10 +821,10 @@ index 0000000..9f444f8
 +MODULE_LICENSE("GPL v2");
 \ No newline at end of file
 diff --git a/drivers/pinctrl/Kconfig b/drivers/pinctrl/Kconfig
-index e86752b..d68d3c7 100644
+index b7675cce0027..841b11c81e74 100644
 --- a/drivers/pinctrl/Kconfig
 +++ b/drivers/pinctrl/Kconfig
-@@ -362,6 +362,18 @@
+@@ -339,6 +339,18 @@ config PINCTRL_RK805
  	help
  	  This selects the pinctrl driver for RK805.
  
@@ -949,20 +844,442 @@ index e86752b..d68d3c7 100644
  	bool "Pinctrl driver for the Microsemi Ocelot and Jaguar2 SoCs"
  	depends on OF
 diff --git a/drivers/pinctrl/Makefile b/drivers/pinctrl/Makefile
-index 46ef9bd..828a6e9 100644
+index 8bf459c32a76..269a1a7ef1cc 100644
 --- a/drivers/pinctrl/Makefile
 +++ b/drivers/pinctrl/Makefile
-@@ -45,6 +45,7 @@
+@@ -42,6 +42,7 @@ obj-$(CONFIG_PINCTRL_STMFX) 	+= pinctrl-stmfx.o
  obj-$(CONFIG_PINCTRL_ZYNQ)	+= pinctrl-zynq.o
  obj-$(CONFIG_PINCTRL_INGENIC)	+= pinctrl-ingenic.o
  obj-$(CONFIG_PINCTRL_RK805)	+= pinctrl-rk805.o
 +obj-$(CONFIG_PINCTRL_UPBOARD)   += pinctrl-upboard.o
  obj-$(CONFIG_PINCTRL_OCELOT)	+= pinctrl-ocelot.o
+ obj-$(CONFIG_PINCTRL_MICROCHIP_SGPIO)	+= pinctrl-microchip-sgpio.o
  obj-$(CONFIG_PINCTRL_EQUILIBRIUM)   += pinctrl-equilibrium.o
-
+diff --git a/drivers/pinctrl/core.c b/drivers/pinctrl/core.c
+index 6e6825d17a1d..b80dbb8e9420 100644
+--- a/drivers/pinctrl/core.c
++++ b/drivers/pinctrl/core.c
+@@ -266,8 +266,7 @@ static int pinctrl_register_pins(struct pinctrl_dev *pctldev,
+  * and pin list based GPIO ranges is managed correctly by this function.
+  *
+  * This function assumes the gpio is part of the specified GPIO range, use
+- * only after making sure this is the case (e.g. by calling it on the
+- * result of successful pinctrl_get_device_gpio_range calls)!
++ * only after making sure this is the case!
+  */
+ static inline int gpio_to_pin(struct pinctrl_gpio_range *range,
+ 				unsigned int gpio)
+@@ -306,92 +305,6 @@ pinctrl_match_gpio_range(struct pinctrl_dev *pctldev, unsigned gpio)
+ 	return NULL;
+ }
+ 
+-/**
+- * pinctrl_ready_for_gpio_range() - check if other GPIO pins of
+- * the same GPIO chip are in range
+- * @gpio: gpio pin to check taken from the global GPIO pin space
+- *
+- * This function is complement of pinctrl_match_gpio_range(). If the return
+- * value of pinctrl_match_gpio_range() is NULL, this function could be used
+- * to check whether pinctrl device is ready or not. Maybe some GPIO pins
+- * of the same GPIO chip don't have back-end pinctrl interface.
+- * If the return value is true, it means that pinctrl device is ready & the
+- * certain GPIO pin doesn't have back-end pinctrl device. If the return value
+- * is false, it means that pinctrl device may not be ready.
+- */
+-#ifdef CONFIG_GPIOLIB
+-static bool pinctrl_ready_for_gpio_range(unsigned gpio)
+-{
+-	struct pinctrl_dev *pctldev;
+-	struct pinctrl_gpio_range *range = NULL;
+-	struct gpio_chip *chip = gpio_to_chip(gpio);
+-
+-	if (WARN(!chip, "no gpio_chip for gpio%i?", gpio))
+-		return false;
+-
+-	mutex_lock(&pinctrldev_list_mutex);
+-
+-	/* Loop over the pin controllers */
+-	list_for_each_entry(pctldev, &pinctrldev_list, node) {
+-		/* Loop over the ranges */
+-		mutex_lock(&pctldev->mutex);
+-		list_for_each_entry(range, &pctldev->gpio_ranges, node) {
+-			/* Check if any gpio range overlapped with gpio chip */
+-			if (range->base + range->npins - 1 < chip->base ||
+-			    range->base > chip->base + chip->ngpio - 1)
+-				continue;
+-			mutex_unlock(&pctldev->mutex);
+-			mutex_unlock(&pinctrldev_list_mutex);
+-			return true;
+-		}
+-		mutex_unlock(&pctldev->mutex);
+-	}
+-
+-	mutex_unlock(&pinctrldev_list_mutex);
+-
+-	return false;
+-}
+-#else
+-static bool pinctrl_ready_for_gpio_range(unsigned gpio) { return true; }
+-#endif
+-
+-/**
+- * pinctrl_get_device_gpio_range() - find device for GPIO range
+- * @gpio: the pin to locate the pin controller for
+- * @outdev: the pin control device if found
+- * @outrange: the GPIO range if found
+- *
+- * Find the pin controller handling a certain GPIO pin from the pinspace of
+- * the GPIO subsystem, return the device and the matching GPIO range. Returns
+- * -EPROBE_DEFER if the GPIO range could not be found in any device since it
+- * may still have not been registered.
+- */
+-static int pinctrl_get_device_gpio_range(unsigned gpio,
+-					 struct pinctrl_dev **outdev,
+-					 struct pinctrl_gpio_range **outrange)
+-{
+-	struct pinctrl_dev *pctldev;
+-
+-	mutex_lock(&pinctrldev_list_mutex);
+-
+-	/* Loop over the pin controllers */
+-	list_for_each_entry(pctldev, &pinctrldev_list, node) {
+-		struct pinctrl_gpio_range *range;
+-
+-		range = pinctrl_match_gpio_range(pctldev, gpio);
+-		if (range) {
+-			*outdev = pctldev;
+-			*outrange = range;
+-			mutex_unlock(&pinctrldev_list_mutex);
+-			return 0;
+-		}
+-	}
+-
+-	mutex_unlock(&pinctrldev_list_mutex);
+-
+-	return -EPROBE_DEFER;
+-}
+-
+ /**
+  * pinctrl_add_gpio_range() - register a GPIO range for a controller
+  * @pctldev: pin controller device to add the range to
+@@ -706,6 +619,57 @@ static inline void pinctrl_generic_free_groups(struct pinctrl_dev *pctldev)
+ }
+ #endif /* CONFIG_GENERIC_PINCTRL_GROUPS */
+ 
++void pinctrl_free_gpio_locked(unsigned int gpio)
++{
++	struct pinctrl_dev *pctldev;
++
++	list_for_each_entry(pctldev, &pinctrldev_list, node) {
++		struct pinctrl_gpio_range *range =
++			pinctrl_match_gpio_range(pctldev, gpio);
++		if (range != NULL) {
++			int pin;
++
++			mutex_lock(&pctldev->mutex);
++			pin = gpio_to_pin(range, gpio);
++			pinmux_free_gpio(pctldev, pin, range);
++			mutex_unlock(&pctldev->mutex);
++		}
++	}
++}
++
++static int pinctrl_request_if_match(struct pinctrl_dev *pctldev,
++				    unsigned int gpio, int dir)
++{
++	struct pinctrl_gpio_range *range =
++		pinctrl_match_gpio_range(pctldev, gpio);
++	int ret;
++
++	if (range != NULL) {
++		int pin;
++
++		mutex_lock(&pctldev->mutex);
++		pin = gpio_to_pin(range, gpio);
++
++		ret = pinmux_request_gpio(pctldev, range, pin, gpio);
++		if (ret) {
++			mutex_unlock(&pctldev->mutex);
++			return ret;
++		}
++
++		if (dir >= 0) {
++			ret = pinmux_gpio_direction(pctldev, range, pin, dir);
++			if (ret) {
++				mutex_unlock(&pctldev->mutex);
++				return ret;
++			}
++		}
++		mutex_unlock(&pctldev->mutex);
++
++	}
++
++	return 0;
++}
++
+ /**
+  * pinctrl_get_group_selector() - returns the group selector for a group
+  * @pctldev: the pin controller handling the group
+@@ -742,25 +706,27 @@ bool pinctrl_gpio_can_use_line(unsigned gpio)
+ {
+ 	struct pinctrl_dev *pctldev;
+ 	struct pinctrl_gpio_range *range;
+-	bool result;
++	bool result = true;
+ 	int pin;
+ 
+-	/*
+-	 * Try to obtain GPIO range, if it fails
+-	 * we're probably dealing with GPIO driver
+-	 * without a backing pin controller - bail out.
+-	 */
+-	if (pinctrl_get_device_gpio_range(gpio, &pctldev, &range))
+-		return true;
+-
+-	mutex_lock(&pctldev->mutex);
+-
+-	/* Convert to the pin controllers number space */
+-	pin = gpio_to_pin(range, gpio);
++	mutex_lock(&pinctrldev_list_mutex);
+ 
+-	result = pinmux_can_be_used_for_gpio(pctldev, pin);
++        /*
++         * Try to obtain GPIO range, if it fails
++         * we're probably dealing with GPIO driver
++         * without a backing pin controller - bail out.
++         */
++	list_for_each_entry(pctldev, &pinctrldev_list, node) {
++		range = pinctrl_match_gpio_range(pctldev, gpio);
++		if (range != NULL) {
++			mutex_lock(&pctldev->mutex);
++			pin = gpio_to_pin(range, gpio);
++			result = result && pinmux_can_be_used_for_gpio(pctldev, pin);
++			mutex_unlock(&pctldev->mutex);
++		}
++	}
+ 
+-	mutex_unlock(&pctldev->mutex);
++	mutex_unlock(&pinctrldev_list_mutex);
+ 
+ 	return result;
+ }
+@@ -774,28 +740,53 @@ EXPORT_SYMBOL_GPL(pinctrl_gpio_can_use_line);
+  * as part of their gpio_request() semantics, platforms and individual drivers
+  * shall *NOT* request GPIO pins to be muxed in.
+  */
+-int pinctrl_gpio_request(unsigned gpio)
++int pinctrl_gpio_request(unsigned int gpio)
+ {
+ 	struct pinctrl_dev *pctldev;
+-	struct pinctrl_gpio_range *range;
+-	int ret;
+-	int pin;
++	struct gpio_desc *desc;
++	int dir;
++	int ret = -EPROBE_DEFER;
+ 
+-	ret = pinctrl_get_device_gpio_range(gpio, &pctldev, &range);
+-	if (ret) {
+-		if (pinctrl_ready_for_gpio_range(gpio))
+-			ret = 0;
+-		return ret;
++	desc = gpio_to_desc(gpio);
++	if (!desc) {
++		pr_err("gpio_to_desc(%d) returned NULL", gpio);
++		return -ENODEV;
+ 	}
+ 
+-	mutex_lock(&pctldev->mutex);
++	dir = gpiod_get_direction(desc);
+ 
+-	/* Convert to the pin controllers number space */
+-	pin = gpio_to_pin(range, gpio);
++	mutex_lock(&pinctrldev_list_mutex);
+ 
+-	ret = pinmux_request_gpio(pctldev, range, pin, gpio);
++	/*
++	 * NOTE: this code suppose that if we have multiple pinctrl declared for
++	 * the same gpio those are configured in series.
++	 * In this situation we need to avoid the case were momentarely
++	 * multiple pinctrl try do drive the same line to a different logic value
++	 *
++	 * (1st pinctrl) 1>-----<0 (2nd pinctrl)
++	 *
++	 * To obtain that we need to mind the order in which the multiple pinctrl
++	 * are configured depending of the desired gpio direction (input, output)
++	 */
++	if (dir == 1) {
++		list_for_each_entry(pctldev, &pinctrldev_list, node) {
++			ret = pinctrl_request_if_match(pctldev, gpio, dir);
++			if (ret) {
++				pinctrl_free_gpio_locked(gpio);
++				break;
++			}
++		}
++	} else {
++		list_for_each_entry_reverse(pctldev, &pinctrldev_list, node) {
++			ret = pinctrl_request_if_match(pctldev, gpio, dir);
++			if (ret) {
++				pinctrl_free_gpio_locked(gpio);
++				break;
++			}
++		}
++	}
+ 
+-	mutex_unlock(&pctldev->mutex);
++	mutex_unlock(&pinctrldev_list_mutex);
+ 
+ 	return ret;
+ }
+@@ -809,47 +800,64 @@ EXPORT_SYMBOL_GPL(pinctrl_gpio_request);
+  * as part of their gpio_free() semantics, platforms and individual drivers
+  * shall *NOT* request GPIO pins to be muxed out.
+  */
+-void pinctrl_gpio_free(unsigned gpio)
++void pinctrl_gpio_free(unsigned int gpio)
+ {
+-	struct pinctrl_dev *pctldev;
+-	struct pinctrl_gpio_range *range;
+-	int ret;
+-	int pin;
++	mutex_lock(&pinctrldev_list_mutex);
+ 
+-	ret = pinctrl_get_device_gpio_range(gpio, &pctldev, &range);
+-	if (ret) {
+-		return;
+-	}
+-	mutex_lock(&pctldev->mutex);
++	pinctrl_free_gpio_locked(gpio);
++
++	mutex_unlock(&pinctrldev_list_mutex);
++}
++EXPORT_SYMBOL_GPL(pinctrl_gpio_free);
+ 
+-	/* Convert to the pin controllers number space */
+-	pin = gpio_to_pin(range, gpio);
++static int pinctrl_set_dir_if_match(struct pinctrl_dev *pctldev,
++				    unsigned int gpio, bool input)
++{
++	struct pinctrl_gpio_range *range =
++		pinctrl_match_gpio_range(pctldev, gpio);
++	int ret = 0;
+ 
+-	pinmux_free_gpio(pctldev, pin, range);
++	if (range != NULL) {
++		int pin;
+ 
+-	mutex_unlock(&pctldev->mutex);
++		mutex_lock(&pctldev->mutex);
++		pin = gpio_to_pin(range, gpio);
++		ret = pinmux_gpio_direction(pctldev, range, pin, input);
++		mutex_unlock(&pctldev->mutex);
++	}
++
++	return ret;
+ }
+-EXPORT_SYMBOL_GPL(pinctrl_gpio_free);
+ 
+ static int pinctrl_gpio_direction(unsigned gpio, bool input)
+ {
+ 	struct pinctrl_dev *pctldev;
+-	struct pinctrl_gpio_range *range;
+-	int ret;
+-	int pin;
+-
+-	ret = pinctrl_get_device_gpio_range(gpio, &pctldev, &range);
+-	if (ret) {
+-		return ret;
+-	}
++	int ret = -EPROBE_DEFER;
+ 
+-	mutex_lock(&pctldev->mutex);
++	mutex_lock(&pinctrldev_list_mutex);
+ 
+-	/* Convert to the pin controllers number space */
+-	pin = gpio_to_pin(range, gpio);
+-	ret = pinmux_gpio_direction(pctldev, range, pin, input);
++	/*
++	 * FIXME UP-specific
++	 * The two pin controllers (SoC, FPGA) share the GPIO line. Avoid
++	 * getting into a situation where both are momentarily trying to drive
++	 * the line (i.e. SoC as output and FPGA as HAT-to-SoC input) by walking
++	 * the list in opposite directions for the input and output cases.
++	 */
++	if (input) {
++		list_for_each_entry(pctldev, &pinctrldev_list, node) {
++			ret = pinctrl_set_dir_if_match(pctldev, gpio, input);
++			if (ret)
++				break;
++		}
++	} else {
++		list_for_each_entry_reverse(pctldev, &pinctrldev_list, node) {
++			ret = pinctrl_set_dir_if_match(pctldev, gpio, input);
++			if (ret)
++				break;
++		}
++	}
+ 
+-	mutex_unlock(&pctldev->mutex);
++	mutex_unlock(&pinctrldev_list_mutex);
+ 
+ 	return ret;
+ }
+@@ -894,18 +902,43 @@ EXPORT_SYMBOL_GPL(pinctrl_gpio_direction_output);
+ int pinctrl_gpio_set_config(unsigned gpio, unsigned long config)
+ {
+ 	unsigned long configs[] = { config };
+-	struct pinctrl_gpio_range *range;
+ 	struct pinctrl_dev *pctldev;
+-	int ret, pin;
++	struct gpio_desc *desc;
++	int dir;
++	int ret = -EPROBE_DEFER;
+ 
+-	ret = pinctrl_get_device_gpio_range(gpio, &pctldev, &range);
+-	if (ret)
+-		return ret;
++	desc = gpio_to_desc(gpio);
++	if (!desc) {
++		pr_err("gpio_to_desc(%d) returned NULL", gpio);
++		return -ENODEV;
++	}
+ 
+-	mutex_lock(&pctldev->mutex);
+-	pin = gpio_to_pin(range, gpio);
+-	ret = pinconf_set_config(pctldev, pin, configs, ARRAY_SIZE(configs));
+-	mutex_unlock(&pctldev->mutex);
++	dir = gpiod_get_direction(desc);
++
++	mutex_lock(&pinctrldev_list_mutex);
++
++	/*
++	 * NOTE: this code suppose that if we have multiple pinctrl declared for
++	 * the same gpio those are configured in series.
++	 * In this situation we need to avoid the case were momentarely
++	 * multiple pinctrl try do drive the same line to a different logic value
++	 *
++	 * (1st pinctrl) 1>-----<0 (2nd pinctrl)
++	 *
++	 * To obtain that we need to mind the order in which the multiple pinctrl
++	 * are configured depending of the desired gpio direction (input, output)
++	 */
++	if (dir == 1) {
++		list_for_each_entry(pctldev, &pinctrldev_list, node) {
++			ret = pinconf_set_config(pctldev, gpio, configs, ARRAY_SIZE(configs));
++		}
++	} else {
++		list_for_each_entry_reverse(pctldev, &pinctrldev_list, node) {
++			ret = pinconf_set_config(pctldev, gpio, configs, ARRAY_SIZE(configs));
++		}
++	}
++
++	mutex_unlock(&pinctrldev_list_mutex);
+ 
+ 	return ret;
+ }
 diff --git a/drivers/pinctrl/pinctrl-upboard.c b/drivers/pinctrl/pinctrl-upboard.c
 new file mode 100644
-index 0000000..64899e9
+index 000000000000..64899e988bb5
 --- /dev/null
 +++ b/drivers/pinctrl/pinctrl-upboard.c
 @@ -0,0 +1,797 @@
@@ -1764,9 +2081,40 @@ index 0000000..64899e9
 +MODULE_LICENSE("GPL v2");
 +MODULE_ALIAS("platform:upboard-pinctrl");
 \ No newline at end of file
+diff --git a/include/linux/acpi.h b/include/linux/acpi.h
+index 3bdcfc4401b7..703ebb7bc430 100644
+--- a/include/linux/acpi.h
++++ b/include/linux/acpi.h
+@@ -1087,6 +1087,11 @@ void __acpi_handle_debug(struct _ddebug *descriptor, acpi_handle handle, const c
+ bool acpi_gpio_get_irq_resource(struct acpi_resource *ares,
+ 				struct acpi_resource_gpio **agpio);
+ int acpi_dev_gpio_irq_get_by(struct acpi_device *adev, const char *name, int index);
++int acpi_node_add_pin_mapping(struct fwnode_handle *fwnode,
++			      const char *propname,
++			      const char *pinctl_name,
++			      unsigned int pin_offset,
++			      unsigned int npins);
+ #else
+ static inline bool acpi_gpio_get_irq_resource(struct acpi_resource *ares,
+ 					      struct acpi_resource_gpio **agpio)
+@@ -1098,6 +1103,14 @@ static inline int acpi_dev_gpio_irq_get_by(struct acpi_device *adev,
+ {
+ 	return -ENXIO;
+ }
++static inline int acpi_node_add_pin_mapping(struct fwnode_handle *fwnode,
++					    const char *propname,
++					    const char *pinctl_name,
++					    unsigned int pin_offset,
++					    unsigned int npins)
++{
++	return -ENXIO;
++}
+ #endif
+ 
+ static inline int acpi_dev_gpio_irq_get(struct acpi_device *adev, int index)
 diff --git a/include/linux/mfd/upboard-fpga.h b/include/linux/mfd/upboard-fpga.h
 new file mode 100644
-index 0000000..cd7fb81
+index 000000000000..cd7fb812d3b2
 --- /dev/null
 +++ b/include/linux/mfd/upboard-fpga.h
 @@ -0,0 +1,52 @@
@@ -1823,427 +2171,23 @@ index 0000000..cd7fb81
 +
 +#endif /*  __LINUX_MFD_UPBOARD_FPGA_H */
 \ No newline at end of file
+diff --git a/include/linux/regmap.h b/include/linux/regmap.h
+index 2cc4ecd36298..df5d754a13fc 100644
+--- a/include/linux/regmap.h
++++ b/include/linux/regmap.h
+@@ -1160,6 +1160,12 @@ void regcache_mark_dirty(struct regmap *map);
+ bool regmap_check_range_table(struct regmap *map, unsigned int reg,
+ 			      const struct regmap_access_table *table);
+ 
++bool regmap_cached(struct regmap *map, unsigned int reg);
++bool regmap_writeable(struct regmap *map, unsigned int reg);
++bool regmap_readable(struct regmap *map, unsigned int reg);
++bool regmap_volatile(struct regmap *map, unsigned int reg);
++bool regmap_precious(struct regmap *map, unsigned int reg);
++
+ int regmap_register_patch(struct regmap *map, const struct reg_sequence *regs,
+ 			  int num_regs);
+ int regmap_parse_val(struct regmap *map, const void *buf,
 -- 
-2.7.4
-diff --git a/drivers/pinctrl/core.c b/drivers/pinctrl/core.c
-index a3dd777..aad7a67 100644
---- a/drivers/pinctrl/core.c
-+++ b/drivers/pinctrl/core.c
-@@ -266,8 +266,7 @@
-  * and pin list based GPIO ranges is managed correctly by this function.
-  *
-  * This function assumes the gpio is part of the specified GPIO range, use
-- * only after making sure this is the case (e.g. by calling it on the
-- * result of successful pinctrl_get_device_gpio_range calls)!
-+ * only after making sure this is the case!
-  */
- static inline int gpio_to_pin(struct pinctrl_gpio_range *range,
- 				unsigned int gpio)
-@@ -307,92 +306,6 @@
- }
- 
- /**
-- * pinctrl_ready_for_gpio_range() - check if other GPIO pins of
-- * the same GPIO chip are in range
-- * @gpio: gpio pin to check taken from the global GPIO pin space
-- *
-- * This function is complement of pinctrl_match_gpio_range(). If the return
-- * value of pinctrl_match_gpio_range() is NULL, this function could be used
-- * to check whether pinctrl device is ready or not. Maybe some GPIO pins
-- * of the same GPIO chip don't have back-end pinctrl interface.
-- * If the return value is true, it means that pinctrl device is ready & the
-- * certain GPIO pin doesn't have back-end pinctrl device. If the return value
-- * is false, it means that pinctrl device may not be ready.
-- */
--#ifdef CONFIG_GPIOLIB
--static bool pinctrl_ready_for_gpio_range(unsigned gpio)
--{
--	struct pinctrl_dev *pctldev;
--	struct pinctrl_gpio_range *range = NULL;
--	struct gpio_chip *chip = gpio_to_chip(gpio);
--
--	if (WARN(!chip, "no gpio_chip for gpio%i?", gpio))
--		return false;
--
--	mutex_lock(&pinctrldev_list_mutex);
--
--	/* Loop over the pin controllers */
--	list_for_each_entry(pctldev, &pinctrldev_list, node) {
--		/* Loop over the ranges */
--		mutex_lock(&pctldev->mutex);
--		list_for_each_entry(range, &pctldev->gpio_ranges, node) {
--			/* Check if any gpio range overlapped with gpio chip */
--			if (range->base + range->npins - 1 < chip->base ||
--			    range->base > chip->base + chip->ngpio - 1)
--				continue;
--			mutex_unlock(&pctldev->mutex);
--			mutex_unlock(&pinctrldev_list_mutex);
--			return true;
--		}
--		mutex_unlock(&pctldev->mutex);
--	}
--
--	mutex_unlock(&pinctrldev_list_mutex);
--
--	return false;
--}
--#else
--static bool pinctrl_ready_for_gpio_range(unsigned gpio) { return true; }
--#endif
--
--/**
-- * pinctrl_get_device_gpio_range() - find device for GPIO range
-- * @gpio: the pin to locate the pin controller for
-- * @outdev: the pin control device if found
-- * @outrange: the GPIO range if found
-- *
-- * Find the pin controller handling a certain GPIO pin from the pinspace of
-- * the GPIO subsystem, return the device and the matching GPIO range. Returns
-- * -EPROBE_DEFER if the GPIO range could not be found in any device since it
-- * may still have not been registered.
-- */
--static int pinctrl_get_device_gpio_range(unsigned gpio,
--					 struct pinctrl_dev **outdev,
--					 struct pinctrl_gpio_range **outrange)
--{
--	struct pinctrl_dev *pctldev;
--
--	mutex_lock(&pinctrldev_list_mutex);
--
--	/* Loop over the pin controllers */
--	list_for_each_entry(pctldev, &pinctrldev_list, node) {
--		struct pinctrl_gpio_range *range;
--
--		range = pinctrl_match_gpio_range(pctldev, gpio);
--		if (range) {
--			*outdev = pctldev;
--			*outrange = range;
--			mutex_unlock(&pinctrldev_list_mutex);
--			return 0;
--		}
--	}
--
--	mutex_unlock(&pinctrldev_list_mutex);
--
--	return -EPROBE_DEFER;
--}
--
--/**
-  * pinctrl_add_gpio_range() - register a GPIO range for a controller
-  * @pctldev: pin controller device to add the range to
-  * @range: the GPIO range to add
-@@ -706,6 +619,57 @@
- }
- #endif /* CONFIG_GENERIC_PINCTRL_GROUPS */
- 
-+void pinctrl_free_gpio_locked(unsigned int gpio)
-+{
-+	struct pinctrl_dev *pctldev;
-+
-+	list_for_each_entry(pctldev, &pinctrldev_list, node) {
-+		struct pinctrl_gpio_range *range =
-+			pinctrl_match_gpio_range(pctldev, gpio);
-+		if (range != NULL) {
-+			int pin;
-+
-+			mutex_lock(&pctldev->mutex);
-+			pin = gpio_to_pin(range, gpio);
-+			pinmux_free_gpio(pctldev, pin, range);
-+			mutex_unlock(&pctldev->mutex);
-+		}
-+	}
-+}
-+
-+static int pinctrl_request_if_match(struct pinctrl_dev *pctldev,
-+				    unsigned int gpio, int dir)
-+{
-+	struct pinctrl_gpio_range *range =
-+		pinctrl_match_gpio_range(pctldev, gpio);
-+	int ret;
-+
-+	if (range != NULL) {
-+		int pin;
-+
-+		mutex_lock(&pctldev->mutex);
-+		pin = gpio_to_pin(range, gpio);
-+
-+		ret = pinmux_request_gpio(pctldev, range, pin, gpio);
-+		if (ret) {
-+			mutex_unlock(&pctldev->mutex);
-+			return ret;
-+		}
-+
-+		if (dir >= 0) {
-+			ret = pinmux_gpio_direction(pctldev, range, pin, dir);
-+			if (ret) {
-+				mutex_unlock(&pctldev->mutex);
-+				return ret;
-+			}
-+		}
-+		mutex_unlock(&pctldev->mutex);
-+
-+	}
-+
-+	return 0;
-+}
-+
- /**
-  * pinctrl_get_group_selector() - returns the group selector for a group
-  * @pctldev: the pin controller handling the group
-@@ -742,25 +706,27 @@
- {
- 	struct pinctrl_dev *pctldev;
- 	struct pinctrl_gpio_range *range;
--	bool result;
-+	bool result = true;
- 	int pin;
- 
--	/*
--	 * Try to obtain GPIO range, if it fails
--	 * we're probably dealing with GPIO driver
--	 * without a backing pin controller - bail out.
--	 */
--	if (pinctrl_get_device_gpio_range(gpio, &pctldev, &range))
--		return true;
--
--	mutex_lock(&pctldev->mutex);
--
--	/* Convert to the pin controllers number space */
--	pin = gpio_to_pin(range, gpio);
-+	mutex_lock(&pinctrldev_list_mutex);
- 
--	result = pinmux_can_be_used_for_gpio(pctldev, pin);
-+        /*
-+         * Try to obtain GPIO range, if it fails
-+         * we're probably dealing with GPIO driver
-+         * without a backing pin controller - bail out.
-+         */
-+	list_for_each_entry(pctldev, &pinctrldev_list, node) {
-+		range = pinctrl_match_gpio_range(pctldev, gpio);
-+		if (range != NULL) {
-+			mutex_lock(&pctldev->mutex);
-+			pin = gpio_to_pin(range, gpio);
-+			result = result && pinmux_can_be_used_for_gpio(pctldev, pin);
-+			mutex_unlock(&pctldev->mutex);
-+		}
-+	}
- 
--	mutex_unlock(&pctldev->mutex);
-+	mutex_unlock(&pinctrldev_list_mutex);
- 
- 	return result;
- }
-@@ -774,28 +740,53 @@
-  * as part of their gpio_request() semantics, platforms and individual drivers
-  * shall *NOT* request GPIO pins to be muxed in.
-  */
--int pinctrl_gpio_request(unsigned gpio)
-+int pinctrl_gpio_request(unsigned int gpio)
- {
- 	struct pinctrl_dev *pctldev;
--	struct pinctrl_gpio_range *range;
--	int ret;
--	int pin;
-+	struct gpio_desc *desc;
-+	int dir;
-+	int ret = -EPROBE_DEFER;
- 
--	ret = pinctrl_get_device_gpio_range(gpio, &pctldev, &range);
--	if (ret) {
--		if (pinctrl_ready_for_gpio_range(gpio))
--			ret = 0;
--		return ret;
-+	desc = gpio_to_desc(gpio);
-+	if (!desc) {
-+		pr_err("gpio_to_desc(%d) returned NULL", gpio);
-+		return -ENODEV;
- 	}
- 
--	mutex_lock(&pctldev->mutex);
-+	dir = gpiod_get_direction(desc);
- 
--	/* Convert to the pin controllers number space */
--	pin = gpio_to_pin(range, gpio);
-+	mutex_lock(&pinctrldev_list_mutex);
- 
--	ret = pinmux_request_gpio(pctldev, range, pin, gpio);
-+	/*
-+	 * NOTE: this code suppose that if we have multiple pinctrl declared for
-+	 * the same gpio those are configured in series.
-+	 * In this situation we need to avoid the case were momentarely
-+	 * multiple pinctrl try do drive the same line to a different logic value
-+	 *
-+	 * (1st pinctrl) 1>-----<0 (2nd pinctrl)
-+	 *
-+	 * To obtain that we need to mind the order in which the multiple pinctrl
-+	 * are configured depending of the desired gpio direction (input, output)
-+	 */
-+	if (dir == 1) {
-+		list_for_each_entry(pctldev, &pinctrldev_list, node) {
-+			ret = pinctrl_request_if_match(pctldev, gpio, dir);
-+			if (ret) {
-+				pinctrl_free_gpio_locked(gpio);
-+				break;
-+			}
-+		}
-+	} else {
-+		list_for_each_entry_reverse(pctldev, &pinctrldev_list, node) {
-+			ret = pinctrl_request_if_match(pctldev, gpio, dir);
-+			if (ret) {
-+				pinctrl_free_gpio_locked(gpio);
-+				break;
-+			}
-+		}
-+	}
- 
--	mutex_unlock(&pctldev->mutex);
-+	mutex_unlock(&pinctrldev_list_mutex);
- 
- 	return ret;
- }
-@@ -809,47 +800,64 @@
-  * as part of their gpio_free() semantics, platforms and individual drivers
-  * shall *NOT* request GPIO pins to be muxed out.
-  */
--void pinctrl_gpio_free(unsigned gpio)
-+void pinctrl_gpio_free(unsigned int gpio)
- {
--	struct pinctrl_dev *pctldev;
--	struct pinctrl_gpio_range *range;
--	int ret;
--	int pin;
-+	mutex_lock(&pinctrldev_list_mutex);
- 
--	ret = pinctrl_get_device_gpio_range(gpio, &pctldev, &range);
--	if (ret) {
--		return;
--	}
--	mutex_lock(&pctldev->mutex);
-+	pinctrl_free_gpio_locked(gpio);
-+
-+	mutex_unlock(&pinctrldev_list_mutex);
-+}
-+EXPORT_SYMBOL_GPL(pinctrl_gpio_free);
- 
--	/* Convert to the pin controllers number space */
--	pin = gpio_to_pin(range, gpio);
-+static int pinctrl_set_dir_if_match(struct pinctrl_dev *pctldev,
-+				    unsigned int gpio, bool input)
-+{
-+	struct pinctrl_gpio_range *range =
-+		pinctrl_match_gpio_range(pctldev, gpio);
-+	int ret = 0;
- 
--	pinmux_free_gpio(pctldev, pin, range);
-+	if (range != NULL) {
-+		int pin;
- 
--	mutex_unlock(&pctldev->mutex);
-+		mutex_lock(&pctldev->mutex);
-+		pin = gpio_to_pin(range, gpio);
-+		ret = pinmux_gpio_direction(pctldev, range, pin, input);
-+		mutex_unlock(&pctldev->mutex);
-+	}
-+
-+	return ret;
- }
--EXPORT_SYMBOL_GPL(pinctrl_gpio_free);
- 
- static int pinctrl_gpio_direction(unsigned gpio, bool input)
- {
- 	struct pinctrl_dev *pctldev;
--	struct pinctrl_gpio_range *range;
--	int ret;
--	int pin;
-+	int ret = -EPROBE_DEFER;
- 
--	ret = pinctrl_get_device_gpio_range(gpio, &pctldev, &range);
--	if (ret) {
--		return ret;
--	}
--
--	mutex_lock(&pctldev->mutex);
-+	mutex_lock(&pinctrldev_list_mutex);
- 
--	/* Convert to the pin controllers number space */
--	pin = gpio_to_pin(range, gpio);
--	ret = pinmux_gpio_direction(pctldev, range, pin, input);
-+	/*
-+	 * FIXME UP-specific
-+	 * The two pin controllers (SoC, FPGA) share the GPIO line. Avoid
-+	 * getting into a situation where both are momentarily trying to drive
-+	 * the line (i.e. SoC as output and FPGA as HAT-to-SoC input) by walking
-+	 * the list in opposite directions for the input and output cases.
-+	 */
-+	if (input) {
-+		list_for_each_entry(pctldev, &pinctrldev_list, node) {
-+			ret = pinctrl_set_dir_if_match(pctldev, gpio, input);
-+			if (ret)
-+				break;
-+		}
-+	} else {
-+		list_for_each_entry_reverse(pctldev, &pinctrldev_list, node) {
-+			ret = pinctrl_set_dir_if_match(pctldev, gpio, input);
-+			if (ret)
-+				break;
-+		}
-+	}
- 
--	mutex_unlock(&pctldev->mutex);
-+	mutex_unlock(&pinctrldev_list_mutex);
- 
- 	return ret;
- }
-@@ -894,18 +902,43 @@
- int pinctrl_gpio_set_config(unsigned gpio, unsigned long config)
- {
- 	unsigned long configs[] = { config };
--	struct pinctrl_gpio_range *range;
- 	struct pinctrl_dev *pctldev;
--	int ret, pin;
-+	struct gpio_desc *desc;
-+	int dir;
-+	int ret = -EPROBE_DEFER;
- 
--	ret = pinctrl_get_device_gpio_range(gpio, &pctldev, &range);
--	if (ret)
--		return ret;
-+	desc = gpio_to_desc(gpio);
-+	if (!desc) {
-+		pr_err("gpio_to_desc(%d) returned NULL", gpio);
-+		return -ENODEV;
-+	}
- 
--	mutex_lock(&pctldev->mutex);
--	pin = gpio_to_pin(range, gpio);
--	ret = pinconf_set_config(pctldev, pin, configs, ARRAY_SIZE(configs));
--	mutex_unlock(&pctldev->mutex);
-+	dir = gpiod_get_direction(desc);
-+
-+	mutex_lock(&pinctrldev_list_mutex);
-+
-+	/*
-+	 * NOTE: this code suppose that if we have multiple pinctrl declared for
-+	 * the same gpio those are configured in series.
-+	 * In this situation we need to avoid the case were momentarely
-+	 * multiple pinctrl try do drive the same line to a different logic value
-+	 *
-+	 * (1st pinctrl) 1>-----<0 (2nd pinctrl)
-+	 *
-+	 * To obtain that we need to mind the order in which the multiple pinctrl
-+	 * are configured depending of the desired gpio direction (input, output)
-+	 */
-+	if (dir == 1) {
-+		list_for_each_entry(pctldev, &pinctrldev_list, node) {
-+			ret = pinconf_set_config(pctldev, gpio, configs, ARRAY_SIZE(configs));
-+		}
-+	} else {
-+		list_for_each_entry_reverse(pctldev, &pinctrldev_list, node) {
-+			ret = pinconf_set_config(pctldev, gpio, configs, ARRAY_SIZE(configs));
-+		}
-+	}
-+
-+	mutex_unlock(&pinctrldev_list_mutex);
- 
- 	return ret;
- }
+2.25.1
+

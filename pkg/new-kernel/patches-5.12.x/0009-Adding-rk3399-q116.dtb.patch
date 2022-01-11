@@ -1,63 +1,32 @@
-From d79a9307d61f4ec2101653059306964b27f2b51b Mon Sep 17 00:00:00 2001
+From acf4504915bc6e80d231f23bcb5ee897aa737fd7 Mon Sep 17 00:00:00 2001
 From: Roman Shaposhnik <rvs@apache.org>
 Date: Sun, 1 Nov 2020 01:41:51 -0500
-Subject: [PATCH 1/1] Adding rk3399-q116.dtb
+Subject: [PATCH 09/11] Adding rk3399-q116.dtb
 
 ---
- .../arm64/boot/dts/rockchip/ | 16 ++++++++++++++++
- arch/arm64/boot/dts/rockchip/Makefile
- 3 file changed, 16 insertions(+)
+ arch/arm64/boot/dts/rockchip/Makefile         |    2 +
+ arch/arm64/boot/dts/rockchip/rk3399-q116.dts  | 1283 +++++++++++++++++
+ .../boot/dts/rockchip/rockchip-evb_rk3399.dts |   28 +
+ 3 files changed, 1313 insertions(+)
+ create mode 100644 arch/arm64/boot/dts/rockchip/rk3399-q116.dts
+ create mode 100644 arch/arm64/boot/dts/rockchip/rockchip-evb_rk3399.dts
 
 diff --git a/arch/arm64/boot/dts/rockchip/Makefile b/arch/arm64/boot/dts/rockchip/Makefile
-index 57d157e..9ff45a3 100644
---- a/arch/arm64/boot/dts/rockchip/Makefile  2021-04-28 22:29:15.660000000 +0000
-+++ b/arch/arm64/boot/dts/rockchip/Makefile  2021-04-28 22:30:08.310000000 +0000
-@@ -26,6 +26,8 @@
- dtb-$(CONFIG_ARCH_ROCKCHIP) += rk3399-nanopi-neo4.dtb
+index 62d3abc17a24..590e68c95aa7 100644
+--- a/arch/arm64/boot/dts/rockchip/Makefile
++++ b/arch/arm64/boot/dts/rockchip/Makefile
+@@ -39,6 +39,8 @@ dtb-$(CONFIG_ARCH_ROCKCHIP) += rk3399-nanopi-neo4.dtb
  dtb-$(CONFIG_ARCH_ROCKCHIP) += rk3399-orangepi.dtb
+ dtb-$(CONFIG_ARCH_ROCKCHIP) += rk3399-pinebook-pro.dtb
  dtb-$(CONFIG_ARCH_ROCKCHIP) += rk3399-puma-haikou.dtb
 +dtb-$(CONFIG_ARCH_ROCKCHIP) += rk3399-q116.dtb
 +dtb-$(CONFIG_ARCH_ROCKCHIP) += rockchip-evb_rk3399.dtb
  dtb-$(CONFIG_ARCH_ROCKCHIP) += rk3399-roc-pc.dtb
- dtb-$(CONFIG_ARCH_ROCKCHIP) += rk3399-rock-pi-4.dtb
- dtb-$(CONFIG_ARCH_ROCKCHIP) += rk3399-rock960.dtb
-diff --git a/arch/arm64/boot/dts/rockchip/rockchip-evb_rk3399.dts b/arch/arm64/boot/dts/rockchip/rockchip-evb_rk3399.dts
-new file mode 100644
-index 000000000000..b5411de59659
---- /dev/null
-+++ b/arch/arm64/boot/dts/rockchip/rockchip-evb_rk3399.dts
-@@ -0,0 +1,28 @@
-+// SPDX-License-Identifier: (GPL-2.0+ OR MIT)
-+/*
-+ * Copyright (c) 2021 ZEDEDA Inc.
-+ */
-+#include "rk3399-q116.dts"
-+#include <dt-bindings/leds/common.h>
-+
-+/ {
-+	leds {
-+                compatible = "gpio-leds"; 
-+
-+                power {
-+                        label = "power";
-+                        gpios = <&gpio0 12 GPIO_ACTIVE_HIGH>;
-+                        color = <LED_COLOR_ID_MULTI>; /* RED and BLUE */
-+                        default-state = "keep";
-+                        linux,default-trigger = "default-on";
-+                };
-+
-+		eve {
-+			label = "eve";
-+			gpios = <&gpio4 3 GPIO_ACTIVE_LOW>;
-+			color = <LED_COLOR_ID_YELLOW>;
-+			default-state = "keep";
-+			linux,default-trigger = "default-on";
-+		};
-+	};
-+};
+ dtb-$(CONFIG_ARCH_ROCKCHIP) += rk3399-roc-pc-mezzanine.dtb
+ dtb-$(CONFIG_ARCH_ROCKCHIP) += rk3399-rock-pi-4a.dtb
 diff --git a/arch/arm64/boot/dts/rockchip/rk3399-q116.dts b/arch/arm64/boot/dts/rockchip/rk3399-q116.dts
 new file mode 100644
-index 000000000000..b5411de59659
+index 000000000000..6e7af76739b8
 --- /dev/null
 +++ b/arch/arm64/boot/dts/rockchip/rk3399-q116.dts
 @@ -0,0 +1,1283 @@
@@ -1344,6 +1313,40 @@ index 000000000000..b5411de59659
 +};
 +
 +
+diff --git a/arch/arm64/boot/dts/rockchip/rockchip-evb_rk3399.dts b/arch/arm64/boot/dts/rockchip/rockchip-evb_rk3399.dts
+new file mode 100644
+index 000000000000..f1474c847b47
+--- /dev/null
++++ b/arch/arm64/boot/dts/rockchip/rockchip-evb_rk3399.dts
+@@ -0,0 +1,28 @@
++// SPDX-License-Identifier: (GPL-2.0+ OR MIT)
++/*
++ * Copyright (c) 2021 ZEDEDA Inc.
++ */
++#include "rk3399-q116.dts"
++#include <dt-bindings/leds/common.h>
++
++/ {
++	leds {
++                compatible = "gpio-leds"; 
++
++                power {
++                        label = "power";
++                        gpios = <&gpio0 12 GPIO_ACTIVE_HIGH>;
++                        color = <LED_COLOR_ID_MULTI>; /* RED and BLUE */
++                        default-state = "keep";
++                        linux,default-trigger = "default-on";
++                };
++
++		eve {
++			label = "eve";
++			gpios = <&gpio4 3 GPIO_ACTIVE_LOW>;
++			color = <LED_COLOR_ID_YELLOW>;
++			default-state = "keep";
++			linux,default-trigger = "default-on";
++		};
++	};
++};
+-- 
+2.25.1
 
---
-2.26.2
