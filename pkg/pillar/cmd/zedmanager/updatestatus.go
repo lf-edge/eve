@@ -257,9 +257,10 @@ func doInstall(ctx *zedmanagerContext,
 		changed = true
 	}
 
-	if status.State < types.CREATED_VOLUME || status.PurgeInprogress != types.NotInprogress {
-		for i := range status.VolumeRefStatusList {
-			vrs := &status.VolumeRefStatusList[i]
+	for i := range status.VolumeRefStatusList {
+		vrs := &status.VolumeRefStatusList[i]
+		// install volume ref again if we had an error
+		if status.State < types.CREATED_VOLUME || status.PurgeInprogress != types.NotInprogress || vrs.HasError() {
 			c := doInstallVolumeRef(ctx, config, status, vrs)
 			if c {
 				changed = true
