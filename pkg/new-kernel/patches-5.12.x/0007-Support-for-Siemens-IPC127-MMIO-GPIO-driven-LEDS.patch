@@ -1,22 +1,25 @@
-From 4c0f50aaa56077957d627a79277eb0d75caca30a Thu Apr 15 00:00:00 2021
+From ba1314ca6e3a466c12c0eeafc2c6ca3ca341ac01 Mon Sep 17 00:00:00 2001
 From: Roman Shaposhnik <rvs@apache.org>
 Date: Thu, 15 Apr 2021 16:49:37 +0000
-Subject: [PATCH] Support for Siemens IPC127 MMIO GPIO-driven LEDS
+Subject: [PATCH 07/11] Support for Siemens IPC127 MMIO GPIO-driven LEDS
 
 This simply introduces a tiny LED driver based on the MMIO GPIO
 registers described in user's manual. It would be nice to find
 a generic MMIO GPIO driver since it seems like there's a few that
 do this type of thing already (including the one for APU LEDs that
 was used as a prototype).
-
 ---
- drivers/gpio/gpiolib-acpi.c | 88 ++++++++++++++++++++++++++++++++++++---------
- 1 file changed, 71 insertions(+), 17 deletions(-)
+ drivers/leds/Kconfig               |   8 ++
+ drivers/leds/Makefile              |   1 +
+ drivers/leds/leds-siemens-ipc127.c | 203 +++++++++++++++++++++++++++++
+ 3 files changed, 212 insertions(+)
+ create mode 100644 drivers/leds/leds-siemens-ipc127.c
+
 diff --git a/drivers/leds/Kconfig b/drivers/leds/Kconfig
-index 57d157e..9ff45a3 100644
---- a/drivers/leds/Kconfig	2021-04-15 19:52:27.190000000 +0000
-+++ b/drivers/leds/Kconfig	2021-04-15 19:54:08.970000000 +0000
-@@ -315,6 +315,14 @@
+index b6742b4231bf..f38cae8c977e 100644
+--- a/drivers/leds/Kconfig
++++ b/drivers/leds/Kconfig
+@@ -315,6 +315,14 @@ config LEDS_COBALT_RAQ
  	help
  	  This option enables support for the Cobalt Raq series LEDs.
  
@@ -32,10 +35,10 @@ index 57d157e..9ff45a3 100644
  	tristate "LED support for SunFire servers."
  	depends on LEDS_CLASS
 diff --git a/drivers/leds/Makefile b/drivers/leds/Makefile
-index 57d157e..9ff45a3 100644
---- a/drivers/leds/Makefile	2021-04-15 19:50:57.140000000 +0000
-+++ b/drivers/leds/Makefile	2021-04-15 19:52:16.530000000 +0000
-@@ -84,6 +84,7 @@
+index 2a698df9da57..d12e17d563e3 100644
+--- a/drivers/leds/Makefile
++++ b/drivers/leds/Makefile
+@@ -83,6 +83,7 @@ obj-$(CONFIG_LEDS_REGULATOR)		+= leds-regulator.o
  obj-$(CONFIG_LEDS_S3C24XX)		+= leds-s3c24xx.o
  obj-$(CONFIG_LEDS_SC27XX_BLTC)		+= leds-sc27xx-bltc.o
  obj-$(CONFIG_LEDS_SGM3140)		+= leds-sgm3140.o
@@ -44,9 +47,10 @@ index 57d157e..9ff45a3 100644
  obj-$(CONFIG_LEDS_SYSCON)		+= leds-syscon.o
  obj-$(CONFIG_LEDS_TCA6507)		+= leds-tca6507.o
 diff --git a/drivers/leds/leds-siemens-ipc127.c b/drivers/leds/leds-siemens-ipc127.c
-index 57d157e..9ff45a3 100644
---- /dev/null	2021-04-15 19:50:35.920000000 +0000
-+++ a/drivers/leds/leds-siemens-ipc127.c	2021-04-15 22:54:26.370000000 +0000
+new file mode 100644
+index 000000000000..59a474820a5b
+--- /dev/null
++++ b/drivers/leds/leds-siemens-ipc127.c
 @@ -0,0 +1,203 @@
 +/*
 + * drivers/leds/leds-siemends-ipc127.c
@@ -251,3 +255,6 @@ index 57d157e..9ff45a3 100644
 +MODULE_DESCRIPTION("Siemens IPC127 MMIO GPIO-driven LEDS");
 +MODULE_LICENSE("GPL v2");
 +MODULE_ALIAS("platform:leds_siemens_ipc127");
+-- 
+2.25.1
+

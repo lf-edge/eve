@@ -1,11 +1,14 @@
-commit dd7076bed514bdc6230610d7d8e92be6264b54f9
-Author: Stefano Stabellini <sstabellini@kernel.org>
-Date:   Thu Dec 17 18:27:32 2020 -0800
+From d12cebc3ff175a8d849e561085cd4b20d406882e Mon Sep 17 00:00:00 2001
+From: Stefano Stabellini <sstabellini@kernel.org>
+Date: Thu, 17 Dec 2020 18:27:32 -0800
+Subject: [PATCH 01/11]  Xen SMBIOS property add
 
-    Xen SMBIOS property add
+---
+ arch/arm/xen/enlighten.c | 8 ++++++++
+ 1 file changed, 8 insertions(+)
 
 diff --git a/arch/arm/xen/enlighten.c b/arch/arm/xen/enlighten.c
-index 60e901cd0de6..948786d28bb3 100644
+index 8ad576ecd0f1..2a7ec6552f22 100644
 --- a/arch/arm/xen/enlighten.c
 +++ b/arch/arm/xen/enlighten.c
 @@ -33,6 +33,7 @@
@@ -37,3 +40,6 @@ index 60e901cd0de6..948786d28bb3 100644
  }
  
  static int __init xen_guest_init(void)
+-- 
+2.25.1
+

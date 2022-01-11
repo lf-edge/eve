@@ -1,20 +1,18 @@
-From 59ab1a96357ccc470294663e0ceeeaab0c0b7ddd Mon Sep 17 00:00:00 2001
+From 0f0f02452a0ee5eb07126acb8d6dfd53e8502d4e Mon Sep 17 00:00:00 2001
 From: Sergey Temerkhanov <s.temerkhanov@gmail.com>
 Date: Wed, 4 Nov 2020 04:16:57 -0500
-Subject: [PATCH] fget: Do not loop with rcu lock held
+Subject: [PATCH 05/12] fget: Do not loop with rcu lock held
 
 Do not loop wint the RCU lock held
-
-Signed-off-by: Sergey Temerkhanov <s.temerkhanov@gmail.com>
 ---
  fs/file.c | 34 ++++++++++++++++++++--------------
  1 file changed, 20 insertions(+), 14 deletions(-)
 
 diff --git a/fs/file.c b/fs/file.c
-index 5a0fa61504ff..c9ac0232df20 100644
+index 21c0893f2f1d..ab12f5fbcecb 100644
 --- a/fs/file.c
 +++ b/fs/file.c
-@@ -829,21 +829,27 @@
+@@ -821,21 +821,27 @@ static struct file *__fget_files(struct files_struct *files, unsigned int fd,
  				 fmode_t mask, unsigned int refs)
  {
  	struct file *file;
@@ -22,7 +20,7 @@ index 5a0fa61504ff..c9ac0232df20 100644
  
 -	rcu_read_lock();
 -loop:
--	file = files_lookup_fd_rcu(files, fd);
+-	file = fcheck_files(files, fd);
 -	if (file) {
 -		/* File object ref couldn't be taken.
 -		 * dup2() atomicity guarantee is the reason
@@ -37,7 +35,7 @@ index 5a0fa61504ff..c9ac0232df20 100644
 +	do {
 +		rcu_read_lock();
 +
-+		file = files_lookup_fd_rcu(files, fd);
++		file = fcheck_files(files, fd);
 +		if (file) {
 +			/* File object ref couldn't be taken.
 +			* dup2() atomicity guarantee is the reason
@@ -56,3 +54,6 @@ index 5a0fa61504ff..c9ac0232df20 100644
  
  	return file;
  }
+-- 
+2.25.1
+
