@@ -110,6 +110,9 @@ func deriveSessionKey(X, Y *big.Int) ([32]byte, error) {
 //with those ECC points
 func deriveEncryptDecryptKey() ([32]byte, error) {
 	publicKey, err := GetPublicKeyFromCert(types.DeviceCertName)
+	if err != nil {
+		return [32]byte{}, fmt.Errorf("error in GetPublicKeyFromCert: %s", err)
+	}
 	eccPublicKey, ok := publicKey.(*ecdsa.PublicKey)
 	if !ok {
 		return [32]byte{}, fmt.Errorf("Not an ECDH compatible key: %T", publicKey)
