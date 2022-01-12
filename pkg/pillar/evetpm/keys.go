@@ -69,8 +69,9 @@ func GetPrivateKeyFromFile(keyFile string) (*ecdsa.PrivateKey, error) {
 	}
 	if key, err := x509.ParseECPrivateKey(keyDERBlock.Bytes); err == nil {
 		return key, nil
+	} else {
+		return nil, err
 	}
-	return nil, err
 }
 
 //GetPublicKeyFromCert gets public key from a X.509 cert
