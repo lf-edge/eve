@@ -21,7 +21,7 @@ func appNumsOnUNetAllocate(ctx *zedrouterContext,
 		appID := config.UUIDandVersion.UUID
 		networkID := ulConfig.Network
 		appNum, err := appNumOnUNetAllocate(ctx, networkID, appID,
-			isStatic, false)
+			isStatic, ulConfig.IfIdx, false)
 		if err != nil {
 			errStr := fmt.Sprintf("App Num get fail :%s", err)
 			log.Errorf("appNumsOnUNetAllocate(%s, %s): fail: %s",
@@ -44,9 +44,6 @@ func appNumsOnUNetFree(ctx *zedrouterContext,
 		ulStatus := &status.UnderlayNetworkList[ulNum]
 		networkID := ulStatus.Network
 		// release the app number
-		_, err := appNumOnUNetGet(ctx, networkID, appID)
-		if err == nil {
-			appNumOnUNetFree(ctx, networkID, appID)
-		}
+		appNumOnUNetClean(ctx, networkID, appID)
 	}
 }

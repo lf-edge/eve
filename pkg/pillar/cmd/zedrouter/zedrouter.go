@@ -70,7 +70,8 @@ type zedrouterContext struct {
 	GCInitialized          bool
 	pubUuidToNum           pubsub.Publication
 	dhcpLeases             []dnsmasqLease
-	pubUUIDPairToNum       pubsub.Publication
+
+	pubUUIDPairAndIfIdxToNum pubsub.Publication
 
 	// NetworkInstance
 	subNetworkInstanceConfig  pubsub.Subscription
@@ -157,15 +158,15 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	}
 	pubUuidToNum.ClearRestarted()
 
-	pubUUIDPairToNum, err := ps.NewPublication(pubsub.PublicationOptions{
+	pubUUIDPairAndIfIdxToNum, err := ps.NewPublication(pubsub.PublicationOptions{
 		AgentName:  agentName,
 		Persistent: true,
-		TopicType:  types.UUIDPairToNum{},
+		TopicType:  types.UUIDPairAndIfIdxToNum{},
 	})
 	if err != nil {
 		log.Fatal(err)
 	}
-	pubUUIDPairToNum.ClearRestarted()
+	pubUUIDPairAndIfIdxToNum.ClearRestarted()
 
 	// Create the dummy interface used to re-direct DROP/REJECT packets.
 	createFlowMonDummyInterface()
@@ -247,7 +248,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 	zedrouterCtx.deviceNetworkStatus = &types.DeviceNetworkStatus{}
 	zedrouterCtx.pubUuidToNum = pubUuidToNum
-	zedrouterCtx.pubUUIDPairToNum = pubUUIDPairToNum
+	zedrouterCtx.pubUUIDPairAndIfIdxToNum = pubUUIDPairAndIfIdxToNum
 
 	// Create publish before subscribing and activating subscriptions
 	// Also need to do this before we wait for IP addresses since
@@ -1423,7 +1424,7 @@ func getUlAddrs(ctx *zedrouterContext,
 		}
 	} else {
 		// get the app number for the underlay network entry
-		appNum, err := appNumOnUNetGet(ctx, networkID, appID)
+		appNum, err := appNumOnUNetGet(ctx, networkID, appID, ulStatus.IfIdx)
 		if err != nil {
 			errStr := fmt.Sprintf("App Number get failed: %v", err)
 			log.Errorf("getUlAddrs(%s): app(%s) fail: %s",
@@ -1735,14 +1736,16 @@ func doAppNetworkModifyUNetAppNum(
 
 	networkID := ulConfig.Network
 	oldNetworkID := ulStatus.Network
+	ifIdx := ulConfig.IfIdx
+	oldIfIdx := ulStatus.IfIdx
 	// release the app number on old network
-	if _, err := appNumOnUNetGet(ctx, oldNetworkID, appID); err == nil {
-		appNumOnUNetFree(ctx, oldNetworkID, appID)
+	if _, err := appNumOnUNetGet(ctx, oldNetworkID, appID, oldIfIdx); err == nil {
+		appNumOnUNetFree(ctx, oldNetworkID, appID, oldIfIdx)
 	}
 	// allocate an app number on new network
 	isStatic := (ulConfig.AppIPAddr != nil)
 	if _, err := appNumOnUNetAllocate(ctx, networkID, appID,
-		isStatic, false); err != nil {
+		isStatic, ifIdx, false); err != nil {
 		log.Errorf("appNumsOnUNetAllocate(%s, %s): fail: %s",
 			networkID.String(), appID.String(), err)
 		return err

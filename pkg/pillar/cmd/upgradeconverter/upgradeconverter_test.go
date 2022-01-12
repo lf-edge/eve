@@ -14,8 +14,12 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/lf-edge/eve/pkg/pillar/base"
+	"github.com/lf-edge/eve/pkg/pillar/pubsub"
+	"github.com/lf-edge/eve/pkg/pillar/pubsub/socketdriver"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	uuid "github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
+	"github.com/stretchr/testify/assert"
 )
 
 type testEntry struct {
@@ -114,6 +118,14 @@ func ucContextForTest() *ucContext {
 	if err != nil {
 		log.Fatalf("Failed to create persistStatusDir. err: %s", err)
 	}
+	logger = logrus.StandardLogger()
+	ctxPtr.ps = pubsub.New(
+		&socketdriver.SocketDriver{
+			Logger:  logger,
+			Log:     log,
+			RootDir: ctxPtr.persistStatusDir,
+		},
+		logger, log)
 	return ctxPtr
 }
 
@@ -388,5 +400,120 @@ func Test_ApplyDefaultConfigItem(t *testing.T) {
 			}
 		}
 		ucContextCleanupDirs(ctxPtr)
+	}
+}
+
+// Test_ConvertUUIDPairToNum verifies conversion from UUIDPairToNum to UUIDPairAndIfIdxToNum
+func Test_ConvertUUIDPairToNum(t *testing.T) {
+	logrus.SetLevel(logrus.DebugLevel)
+	log = base.NewSourceLogObject(logrus.StandardLogger(), "test", 1234)
+	ctxPtr := ucContextForTest()
+	pubUUIDPairToNum, err := ctxPtr.ps.NewPublication(pubsub.PublicationOptions{
+		AgentName:  "zedrouter",
+		Persistent: true,
+		TopicType:  UUIDPairToNum{},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pubUUIDPairAndIfIdxToNum, err := ctxPtr.ps.NewPublication(pubsub.PublicationOptions{
+		AgentName:  "zedrouter",
+		Persistent: true,
+		TopicType:  types.UUIDPairAndIfIdxToNum{},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	appID, err := uuid.NewV4()
+	if err != nil {
+		t.Fatal(err)
+	}
+	baseID, err := uuid.NewV4()
+	if err != nil {
+		t.Fatal(err)
+	}
+	//it should be converted
+	uptn := UUIDPairToNum{
+		BaseID:      baseID,
+		AppID:       appID,
+		Number:      0,
+		NumType:     "",
+		CreateTime:  time.Now(),
+		LastUseTime: time.Now(),
+		InUse:       false,
+	}
+	err = pubUUIDPairToNum.Publish(uptn.Key(), uptn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// it should be removed
+	uptin := types.UUIDPairAndIfIdxToNum{
+		BaseID:      uuid.UUID{},
+		AppID:       uuid.UUID{},
+		Number:      0,
+		NumType:     "",
+		CreateTime:  time.Now().Add(time.Hour),
+		LastUseTime: time.Now().Add(time.Hour),
+		InUse:       false,
+		IfIdx:       0,
+	}
+	err = pubUUIDPairAndIfIdxToNum.Publish(uptin.Key(), uptin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// we are done with persist publishing, close publisher
+	err = pubUUIDPairToNum.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// we are done with persist publishing, close publisher
+	err = pubUUIDPairAndIfIdxToNum.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = convertUUIDPairToNum(ctxPtr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Verify that a second publish gets the data
+	// filled in.
+	pubUUIDPairToNum, err = ctxPtr.ps.NewPublication(pubsub.PublicationOptions{
+		AgentName:  "zedrouter",
+		Persistent: true,
+		TopicType:  UUIDPairToNum{},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Verify that a second publish gets the data
+	// filled in.
+	pubUUIDPairAndIfIdxToNum, err = ctxPtr.ps.NewPublication(pubsub.PublicationOptions{
+		AgentName:  "zedrouter",
+		Persistent: true,
+		TopicType:  types.UUIDPairAndIfIdxToNum{},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldUUIDs := pubUUIDPairToNum.GetAll()
+	if len(oldUUIDs) > 0 {
+		t.Fatalf("unexpected UUIDPairToNum count (expected 0): %d", len(oldUUIDs))
+	}
+	newUUIDs := pubUUIDPairAndIfIdxToNum.GetAll()
+	if len(newUUIDs) != 1 {
+		t.Fatalf("unexpected UUIDPairAndIfIdxToNum count (expected 1): %d", len(newUUIDs))
+	}
+	for _, v := range newUUIDs {
+		val, ok := v.(types.UUIDPairAndIfIdxToNum)
+		if !ok {
+			t.Fatal("cannot cast interface to UUIDPairAndIfIdxToNum")
+		}
+		assert.Equal(t, val.AppID, appID)
+		assert.Equal(t, val.BaseID, baseID)
+		assert.Equal(t, val.IfIdx, uint32(0))
+		if !val.CreateTime.Equal(uptn.CreateTime) {
+			t.Fatalf("CreateTime mismatch: %s vs %s", val.CreateTime, uptn.CreateTime)
+		}
 	}
 }
