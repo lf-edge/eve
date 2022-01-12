@@ -36,12 +36,12 @@ func appNumOnUNetInit(ctx *zedrouterContext) {
 	appNumBase = make(map[string]*types.Bitmap)
 
 	pubAppNetworkStatus := ctx.pubAppNetworkStatus
-	pub := ctx.pubUUIDPairToNum
+	pub := ctx.pubUUIDPairAndIfIdxToNum
 	numType := appNumOnUNetType
 
 	items := pub.GetAll()
 	for _, item := range items {
-		appNumMap := item.(types.UUIDPairToNum)
+		appNumMap := item.(types.UUIDPairAndIfIdxToNum)
 		if appNumMap.NumType != numType {
 			continue
 		}
@@ -49,6 +49,7 @@ func appNumOnUNetInit(ctx *zedrouterContext) {
 		appNum := appNumMap.Number
 		baseID := appNumMap.BaseID
 		appID := appNumMap.AppID
+		ifIdx := appNumMap.IfIdx
 
 		// If we have a config for the UUID Pair, we should mark it as
 		// allocated; otherwise mark it as reserved.
@@ -57,14 +58,14 @@ func appNumOnUNetInit(ctx *zedrouterContext) {
 		baseMap := appNumOnUNetBaseCreate(baseID)
 		if baseMap.IsSet(appNum) {
 			log.Errorf("Bitmap is already set for %s num %d",
-				types.UUIDPairToNumKey(baseID, appID), appNum)
+				types.UUIDPairAndIfIdxToNumKey(baseID, appID, ifIdx), appNum)
 			continue
 		}
 		log.Functionf("Reserving appNum %d for %s",
-			appNum, types.UUIDPairToNumKey(baseID, appID))
+			appNum, types.UUIDPairAndIfIdxToNumKey(baseID, appID, ifIdx))
 		baseMap.Set(appNum)
 		// Clear InUse
-		uuidpairtonum.NumFree(log, pub, baseID, appID)
+		uuidpairtonum.NumFree(log, pub, baseID, appID, ifIdx)
 	}
 	// In case zedrouter process restarted we fill in InUse from
 	// AppNetworkStatus, underlay network entries
@@ -85,19 +86,19 @@ func appNumOnUNetInit(ctx *zedrouterContext) {
 				continue
 			}
 			appNum, err := uuidpairtonum.NumGet(log, pub,
-				baseID, appID, numType)
+				baseID, appID, numType, ulStatus.IfIdx)
 			if err != nil {
 				continue
 			}
 			if !baseMap.IsSet(appNum) {
 				log.Fatalf("Bitmap is not set for %s num %d",
-					types.UUIDPairToNumKey(baseID, appID), appNum)
+					types.UUIDPairAndIfIdxToNumKey(baseID, appID, ulStatus.IfIdx), appNum)
 			}
 			log.Functionf("Marking InUse for appNum %d",
 				appNum)
 			// Set InUse
 			uuidpairtonum.NumAllocate(log, pub, baseID,
-				appID, appNum, false, numType)
+				appID, appNum, false, numType, ulStatus.IfIdx)
 		}
 	}
 }
@@ -106,14 +107,14 @@ func appNumOnUNetInit(ctx *zedrouterContext) {
 // before the agent started, then we free it up.
 func appNumMapOnUNetGC(ctx *zedrouterContext) {
 
-	pub := ctx.pubUUIDPairToNum
+	pub := ctx.pubUUIDPairAndIfIdxToNum
 	numType := appNumOnUNetType
 
 	log.Functionf("appNumOnUNetMapGC")
 	freedCount := 0
 	items := pub.GetAll()
 	for _, item := range items {
-		appNumMap := item.(types.UUIDPairToNum)
+		appNumMap := item.(types.UUIDPairAndIfIdxToNum)
 		if appNumMap.NumType != numType {
 			continue
 		}
@@ -124,31 +125,31 @@ func appNumMapOnUNetGC(ctx *zedrouterContext) {
 			continue
 		}
 		log.Functionf("appNumMapOnUNetGC: freeing %+v", appNumMap)
-		appNumOnUNetFree(ctx, appNumMap.BaseID, appNumMap.AppID)
+		appNumOnUNetFree(ctx, appNumMap.BaseID, appNumMap.AppID, appNumMap.IfIdx)
 		freedCount++
 	}
 	log.Functionf("appNumMapOnUNetGC freed %d", freedCount)
 }
 
 func appNumOnUNetAllocate(ctx *zedrouterContext, baseID uuid.UUID,
-	appID uuid.UUID, isStatic bool, isZedmanager bool) (int, error) {
+	appID uuid.UUID, isStatic bool, ifIdx uint32, isZedmanager bool) (int, error) {
 
-	pub := ctx.pubUUIDPairToNum
+	pub := ctx.pubUUIDPairAndIfIdxToNum
 	numType := appNumOnUNetType
 	baseMap := appNumOnUNetBaseCreate(baseID)
 
 	// Do we already have a number?
 	appNum, err := uuidpairtonum.NumGet(log, pub, baseID, appID,
-		numType)
+		numType, ifIdx)
 	if err == nil {
 		log.Functionf("Found allocated appNum %d for %s", appNum,
-			types.UUIDPairToNumKey(baseID, appID))
+			types.UUIDPairAndIfIdxToNumKey(baseID, appID, ifIdx))
 		if !baseMap.IsSet(appNum) {
 			log.Fatalf("Bitmap value(%d) is not set", appNum)
 		}
 		// Set InUse and update time
 		uuidpairtonum.NumAllocate(log, pub, baseID, appID, appNum,
-			false, numType)
+			false, numType, ifIdx)
 		return appNum, nil
 	}
 
@@ -156,7 +157,7 @@ func appNumOnUNetAllocate(ctx *zedrouterContext, baseID uuid.UUID,
 	if isZedmanager && !baseMap.IsSet(0) {
 		appNum = 0
 		log.Functionf("Allocating appNum %d for %s isZedmanager",
-			appNum, types.UUIDPairToNumKey(baseID, appID))
+			appNum, types.UUIDPairAndIfIdxToNumKey(baseID, appID, ifIdx))
 	} else {
 		// XXX could look for non-0xFF bytes first for efficiency
 		appNum = -1
@@ -167,7 +168,7 @@ func appNumOnUNetAllocate(ctx *zedrouterContext, baseID uuid.UUID,
 				if !baseMap.IsSet(i) {
 					appNum = i
 					log.Functionf("Allocating appNum %d for %s",
-						appNum, types.UUIDPairToNumKey(baseID, appID))
+						appNum, types.UUIDPairAndIfIdxToNumKey(baseID, appID, ifIdx))
 					break
 				}
 			}
@@ -176,14 +177,14 @@ func appNumOnUNetAllocate(ctx *zedrouterContext, baseID uuid.UUID,
 				if !baseMap.IsSet(i) {
 					appNum = i
 					log.Functionf("Allocating appNum %d for %s",
-						appNum, types.UUIDPairToNumKey(baseID, appID))
+						appNum, types.UUIDPairAndIfIdxToNumKey(baseID, appID, ifIdx))
 					break
 				}
 			}
 		}
 		if appNum == -1 {
 			log.Functionf("Failed to find free appNum for %s. Reusing!",
-				types.UUIDPairToNumKey(baseID, appID))
+				types.UUIDPairAndIfIdxToNumKey(baseID, appID, ifIdx))
 			oldAppID, oldAppNum, err :=
 				uuidpairtonum.NumGetOldestUnused(log, pub,
 					baseID, numType)
@@ -191,8 +192,8 @@ func appNumOnUNetAllocate(ctx *zedrouterContext, baseID uuid.UUID,
 				return appNum, fmt.Errorf("no free appNum")
 			}
 			log.Functionf("Reuse found appNum %d for %s. Reusing!",
-				oldAppNum, types.UUIDPairToNumKey(baseID, oldAppID))
-			uuidpairtonum.NumDelete(log, pub, baseID, oldAppID)
+				oldAppNum, types.UUIDPairAndIfIdxToNumKey(baseID, oldAppID, ifIdx))
+			uuidpairtonum.NumDelete(log, pub, baseID, oldAppID, ifIdx)
 			baseMap.Clear(oldAppNum)
 			appNum = oldAppNum
 		}
@@ -202,23 +203,23 @@ func appNumOnUNetAllocate(ctx *zedrouterContext, baseID uuid.UUID,
 	}
 	baseMap.Set(appNum)
 	uuidpairtonum.NumAllocate(log, pub, baseID, appID, appNum, true,
-		numType)
+		numType, ifIdx)
 	return appNum, nil
 }
 
 func appNumOnUNetFree(ctx *zedrouterContext, baseID uuid.UUID,
-	appID uuid.UUID) {
+	appID uuid.UUID, ifIdx uint32) {
 
-	pub := ctx.pubUUIDPairToNum
+	pub := ctx.pubUUIDPairAndIfIdxToNum
 	numType := appNumOnUNetType
-	appNum, err := uuidpairtonum.NumGet(log, pub, baseID, appID, numType)
+	appNum, err := uuidpairtonum.NumGet(log, pub, baseID, appID, numType, ifIdx)
 	if err != nil {
 		log.Fatalf("num not found for %s",
-			types.UUIDPairToNumKey(baseID, appID))
+			types.UUIDPairAndIfIdxToNumKey(baseID, appID, ifIdx))
 	}
 	baseMap := appNumOnUNetBaseGet(baseID)
 	if baseMap == nil {
-		uuidpairtonum.NumDelete(log, pub, baseID, appID)
+		uuidpairtonum.NumDelete(log, pub, baseID, appID, ifIdx)
 		return
 	}
 	// Check that number exists in the allocated numbers
@@ -226,14 +227,44 @@ func appNumOnUNetFree(ctx *zedrouterContext, baseID uuid.UUID,
 		log.Fatalf("Bitmap is not set for %d", appNum)
 	}
 	baseMap.Clear(appNum)
-	uuidpairtonum.NumDelete(log, pub, baseID, appID)
+	uuidpairtonum.NumDelete(log, pub, baseID, appID, ifIdx)
+}
+
+func appNumOnUNetClean(ctx *zedrouterContext, baseID uuid.UUID,
+	appID uuid.UUID) {
+
+	pub := ctx.pubUUIDPairAndIfIdxToNum
+	numType := appNumOnUNetType
+	pairs, err := uuidpairtonum.NumGetAll(log, pub, baseID, appID, numType)
+	if err != nil {
+		log.Fatalf("error getting NumGetAll for %s %s: %s", baseID, appID, err)
+	}
+	for _, el := range pairs {
+		ifIdx := el.IfIdx
+		appNum, err := uuidpairtonum.NumGet(log, pub, baseID, appID, numType, ifIdx)
+		if err != nil {
+			log.Fatalf("num not found for %s",
+				types.UUIDPairAndIfIdxToNumKey(baseID, appID, ifIdx))
+		}
+		baseMap := appNumOnUNetBaseGet(baseID)
+		if baseMap == nil {
+			uuidpairtonum.NumDelete(log, pub, baseID, appID, ifIdx)
+			return
+		}
+		// Check that number exists in the allocated numbers
+		if !baseMap.IsSet(appNum) {
+			log.Fatalf("Bitmap is not set for %d", appNum)
+		}
+		baseMap.Clear(appNum)
+		uuidpairtonum.NumDelete(log, pub, baseID, appID, ifIdx)
+	}
 }
 
 func appNumOnUNetGet(ctx *zedrouterContext, baseID uuid.UUID,
-	appID uuid.UUID) (int, error) {
-	pub := ctx.pubUUIDPairToNum
+	appID uuid.UUID, ifIdx uint32) (int, error) {
+	pub := ctx.pubUUIDPairAndIfIdxToNum
 	numType := appNumOnUNetType
-	return uuidpairtonum.NumGet(log, pub, baseID, appID, numType)
+	return uuidpairtonum.NumGet(log, pub, baseID, appID, numType, ifIdx)
 }
 
 // returns base bitMap for a given UUID
@@ -261,11 +292,11 @@ func appNumOnUNetBaseDelete(ctx *zedrouterContext, baseID uuid.UUID) {
 	}
 	// check whether there are still some apps on
 	// this network
-	pub := ctx.pubUUIDPairToNum
+	pub := ctx.pubUUIDPairAndIfIdxToNum
 	numType := appNumOnUNetType
 	items := pub.GetAll()
 	for _, item := range items {
-		appNumMap := item.(types.UUIDPairToNum)
+		appNumMap := item.(types.UUIDPairAndIfIdxToNum)
 		if appNumMap.NumType != numType {
 			continue
 		}
@@ -284,12 +315,12 @@ func appNumOnUNetRefCount(ctx *zedrouterContext, networkID uuid.UUID) int {
 	if appNumMap == nil {
 		log.Fatalf("appNumOnUNetRefCount: non map")
 	}
-	pub := ctx.pubUUIDPairToNum
+	pub := ctx.pubUUIDPairAndIfIdxToNum
 	numType := appNumOnUNetType
 	items := pub.GetAll()
 	count := 0
 	for _, item := range items {
-		appNumMap := item.(types.UUIDPairToNum)
+		appNumMap := item.(types.UUIDPairAndIfIdxToNum)
 		if appNumMap.NumType != numType {
 			continue
 		}

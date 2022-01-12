@@ -154,8 +154,8 @@ const (
 	MemoryNotificationType = "memory_notification"
 	// DiskNotificationType
 	DiskNotificationType = "disk_notification"
-	// UUIDPairToNumLogType:
-	UUIDPairToNumLogType LogObjectType = "uuid_pair_to_num"
+	// UUIDPairToNumAndIfIdxLogType:
+	UUIDPairToNumAndIfIdxLogType LogObjectType = "uuid_pair_and_if_idx_to_num"
 	// EncryptedVaultKeyFromDeviceLogType:
 	EncryptedVaultKeyFromDeviceLogType LogObjectType = "encrypted_vault_key_from_device"
 	// EncryptedVaultKeyFromControllerLogType:

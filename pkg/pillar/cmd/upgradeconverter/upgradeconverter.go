@@ -42,6 +42,10 @@ var preVaultconversionHandlers = []ConversionHandler{
 		description: "Apply defaults for new items in ConfigItemValueMap",
 		handlerFunc: applyDefaultConfigItem,
 	},
+	{
+		description: "Move UUIDPairToNumKey to UUIDPairAndIfIdxToNumKey",
+		handlerFunc: convertUUIDPairToNum,
+	},
 }
 
 //postVaultconversionHandlers run after vault is setup
