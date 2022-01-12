@@ -14,10 +14,10 @@ import (
 	"github.com/satori/go.uuid"
 )
 
-// NumGet : return the number for a given UUID pair
+// NumGet : return the number for a given UUID pair and interface index
 func NumGet(log *base.LogObject, pub pubsub.Publication,
-	baseID uuid.UUID, appID uuid.UUID, numType string) (int, error) {
-	key := types.UUIDPairToNumKey(baseID, appID)
+	baseID uuid.UUID, appID uuid.UUID, numType string, ifIdx uint32) (int, error) {
+	key := types.UUIDPairToNumKey(baseID, appID, ifIdx)
 	log.Functionf("NumGet(%s, %s)", key, numType)
 	i, err := pub.Get(key)
 	if err != nil {
@@ -27,19 +27,45 @@ func NumGet(log *base.LogObject, pub pubsub.Publication,
 	return u.Number, nil
 }
 
-// NumAllocate : stores the number for a given UUID pair
+// NumGetAll : return slice of the numbers for a given UUID pair
+func NumGetAll(log *base.LogObject, pub pubsub.Publication,
+	baseID uuid.UUID, appID uuid.UUID, numType string) ([]types.UUIDPairToNum, error) {
+	log.Functionf("NumGetAll(%s, %s)", baseID, appID)
+	pairs := pub.GetAll()
+	var val []types.UUIDPairToNum
+	if pairs == nil {
+		return val, nil
+	}
+	for _, el := range pairs {
+		uuidPairToNum := el.(types.UUIDPairToNum)
+		if uuidPairToNum.AppID != appID {
+			continue
+		}
+		if uuidPairToNum.BaseID != baseID {
+			continue
+		}
+		if uuidPairToNum.NumType != numType {
+			continue
+		}
+		val = append(val, uuidPairToNum)
+	}
+	return val, nil
+}
+
+// NumAllocate : stores the number for a given UUID pair and interface index
 func NumAllocate(log *base.LogObject, pub pubsub.Publication,
 	baseID uuid.UUID, appID uuid.UUID, appNum int, mustCreate bool,
-	numType string) {
-	log.Functionf("NumAllocate(%s, %s, %d, %v)", baseID.String(),
-		appID.String(), appNum, mustCreate)
+	numType string, ifIdx uint32) {
+	log.Functionf("NumAllocate(%s, %s, %d, %d, %v)", baseID.String(),
+		appID.String(), ifIdx, appNum, mustCreate)
 	now := time.Now()
-	key := types.UUIDPairToNumKey(baseID, appID)
+	key := types.UUIDPairToNumKey(baseID, appID, ifIdx)
 	i, err := pub.Get(key)
 	if err != nil {
 		u := types.UUIDPairToNum{
 			BaseID:      baseID,
 			AppID:       appID,
+			IfIdx:       ifIdx,
 			CreateTime:  now,
 			LastUseTime: now,
 			InUse:       true,
@@ -84,8 +110,8 @@ func NumAllocate(log *base.LogObject, pub pubsub.Publication,
 
 // NumFree : Clears InUse flag
 func NumFree(log *base.LogObject, pub pubsub.Publication,
-	baseID uuid.UUID, appID uuid.UUID) {
-	key := types.UUIDPairToNumKey(baseID, appID)
+	baseID uuid.UUID, appID uuid.UUID, ifIdx uint32) {
+	key := types.UUIDPairToNumKey(baseID, appID, ifIdx)
 	i, err := pub.Get(key)
 	if err != nil {
 		log.Fatalf("NumFree(%s) does not exist", key)
@@ -102,10 +128,10 @@ func NumFree(log *base.LogObject, pub pubsub.Publication,
 	}
 }
 
-// NumDelete : Removes the integer map for a given UUID pair
+// NumDelete : Removes the integer map for a given UUID pair and interface index
 func NumDelete(log *base.LogObject, pub pubsub.Publication,
-	baseID uuid.UUID, appID uuid.UUID) {
-	key := types.UUIDPairToNumKey(baseID, appID)
+	baseID uuid.UUID, appID uuid.UUID, ifIdx uint32) {
+	key := types.UUIDPairToNumKey(baseID, appID, ifIdx)
 	_, err := pub.Get(key)
 	if err != nil {
 		log.Fatalf("NumDelete(%s) does not exist", key)

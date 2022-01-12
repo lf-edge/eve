@@ -1422,7 +1422,7 @@ func getUlAddrs(ctx *zedrouterContext,
 		}
 	} else {
 		// get the app number for the underlay network entry
-		appNum, err := appNumOnUNetGet(ctx, networkID, appID)
+		appNum, err := appNumOnUNetGet(ctx, networkID, appID, ulStatus.IfIdx)
 		if err != nil {
 			errStr := fmt.Sprintf("App Number get failed: %v", err)
 			log.Errorf("getUlAddrs(%s): app(%s) fail: %s",
@@ -1735,12 +1735,12 @@ func doAppNetworkModifyUNetAppNum(
 	networkID := ulConfig.Network
 	oldNetworkID := ulStatus.Network
 	// release the app number on old network
-	if _, err := appNumOnUNetGet(ctx, oldNetworkID, appID); err == nil {
-		appNumOnUNetFree(ctx, oldNetworkID, appID)
+	if _, err := appNumOnUNetGet(ctx, oldNetworkID, appID, ulStatus.IfIdx); err == nil {
+		appNumOnUNetFree(ctx, oldNetworkID, appID, ulStatus.IfIdx)
 	}
 	// allocate an app number on new network
 	if _, err := appNumOnUNetAllocate(ctx, networkID, appID,
-		ulConfig.AppIPAddr, false); err != nil {
+		ulConfig.AppIPAddr, ulConfig.IfIdx, false); err != nil {
 		log.Errorf("appNumsOnUNetAllocate(%s, %s): fail: %s",
 			networkID.String(), appID.String(), err)
 		return err

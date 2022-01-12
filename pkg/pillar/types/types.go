@@ -279,6 +279,7 @@ type UEvent struct {
 type UUIDPairToNum struct {
 	BaseID      uuid.UUID
 	AppID       uuid.UUID
+	IfIdx       uint32
 	Number      int
 	NumType     string
 	CreateTime  time.Time
@@ -288,12 +289,16 @@ type UUIDPairToNum struct {
 
 // Key is the key in pubsub
 func (info UUIDPairToNum) Key() string {
-	return UUIDPairToNumKey(info.BaseID, info.AppID)
+	return UUIDPairToNumKey(info.BaseID, info.AppID, info.IfIdx)
 }
 
 // UUIDPairToNumKey is the index key
-func UUIDPairToNumKey(baseID, appID uuid.UUID) string {
-	return baseID.String() + "-" + appID.String()
+func UUIDPairToNumKey(baseID, appID uuid.UUID, ifIdx uint32) string {
+	// special case to support old versions without ifIdx
+	if ifIdx == 0 {
+		return baseID.String() + "-" + appID.String()
+	}
+	return fmt.Sprintf("%s-%s-%d", baseID.String(), appID.String(), ifIdx)
 }
 
 // LogCreate :

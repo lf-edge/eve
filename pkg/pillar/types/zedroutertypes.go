@@ -1967,6 +1967,7 @@ type UnderlayNetworkConfig struct {
 	Network      uuid.UUID // Points to a NetworkInstance.
 	ACLs         []ACE
 	AccessVlanID uint32
+	IfIdx        uint32 // If we have multiple interfaces on that network, we will increase the index
 }
 
 type UnderlayNetworkStatus struct {

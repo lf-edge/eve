@@ -1986,6 +1986,20 @@ func parseUnderlayNetworkConfig(appInstance *types.AppInstanceConfig,
 			return appInstance.UnderlayNetworkList[i].IntfOrder <
 				appInstance.UnderlayNetworkList[j].IntfOrder
 		})
+
+	// calculate IfIdx field for interfaces connected to the same network
+	networkIfs := make(map[uuid.UUID]uint32)
+	for i := range appInstance.UnderlayNetworkList {
+		ulCfg := &appInstance.UnderlayNetworkList[i]
+		if ind, ok := networkIfs[ulCfg.Network]; ok {
+			ulCfg.IfIdx = ind
+			networkIfs[ulCfg.Network] = ind + 1
+			continue
+		}
+		networkIfs[ulCfg.Network] = 1
+		ulCfg.IfIdx = 0
+	}
+
 	// XXX remove? Debug?
 	if len(appInstance.UnderlayNetworkList) > 1 {
 		log.Functionf("XXX post sort %+v", appInstance.UnderlayNetworkList)
