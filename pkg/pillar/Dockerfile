@@ -60,7 +60,7 @@ FROM lfedge/eve-dnsmasq:cc2426e0f51538f60e82c7ffe26e6a857fdc2483 as dnsmasq
 # hadolint ignore=DL3006
 FROM lfedge/eve-strongswan:5b322e95477774eca6ecf2fbe10945b56ff5310b as strongswan
 # hadolint ignore=DL3006
-FROM lfedge/eve-gpt-tools:11cd917db4f3b5d12bec731926af2832d52f5362 as gpttools
+FROM lfedge/eve-gpt-tools:ce3348932ba490c41965235186d7da5d9081519d as gpttools
 
 FROM scratch
 SHELL ["/bin/ash", "-eo", "pipefail", "-c"]

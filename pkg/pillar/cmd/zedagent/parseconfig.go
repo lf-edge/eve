@@ -25,9 +25,10 @@ import (
 )
 
 const (
-	MaxBaseOsCount       = 2
-	BaseOsImageCount     = 1
-	rebootConfigFilename = types.PersistStatusDir + "/rebootConfig"
+	MaxBaseOsCount         = 2
+	BaseOsImageCount       = 1
+	rebootConfigFilename   = types.PersistStatusDir + "/rebootConfig"
+	shutdownConfigFilename = types.PersistStatusDir + "/shutdownConfig"
 
 	// interface name length limit as imposed by Linux kernel.
 	ifNameMaxLength = 15
@@ -37,7 +38,7 @@ const (
 	maxVlanID = 4094
 )
 
-// Returns a rebootFlag
+// Returns a configProcessingSkipFlag
 func parseConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigContext,
 	usingSaved bool) bool {
 
@@ -48,8 +49,8 @@ func parseConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigContext,
 	//log.Tracef("parseConfig: EdgeDevConfig: %v", *config)
 
 	// Look for timers and other settings in configItems
-	// Process Config items even when rebootFlag is set.. Allows us to
-	//  recover if the system got stuck after setting rebootFlag
+	// Process Config items even when configProcessingSkipFlag is set.. Allows us to
+	//  recover if the system got stuck after setting configProcessingSkipFlag
 	parseConfigItems(config, getconfigCtx)
 
 	// Did MaintenanceMode change?
@@ -68,14 +69,24 @@ func parseConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigContext,
 		publishZedAgentStatus(ctx.getconfigCtx)
 	}
 
-	// Any new reboot command?
-	if !usingSaved && parseOpCmds(config, getconfigCtx) {
-		log.Noticeln("Reboot flag set, skipping config processing")
-		return true
+	if !usingSaved {
+		rebootFlag, shutdownFlag := parseOpCmds(config, getconfigCtx)
+
+		// Any new reboot command?
+		if rebootFlag {
+			log.Noticeln("Reboot flag set, skipping config processing")
+			return true
+		}
+
+		// Any new shutdown command?
+		if shutdownFlag {
+			log.Noticeln("Shutdown flag set, skipping config processing")
+			return true
+		}
 	}
 
-	if getconfigCtx.rebootFlag || ctx.deviceReboot {
-		log.Noticef("parseConfig: Ignoring config as rebootFlag set")
+	if getconfigCtx.configProcessingSkipFlag || ctx.deviceReboot || ctx.deviceShutdown {
+		log.Noticef("parseConfig: Ignoring config as reboot/shutdown flag set")
 	} else if ctx.maintenanceMode {
 		log.Noticef("parseConfig: Ignoring config due to maintenanceMode")
 	} else {
@@ -2340,41 +2351,81 @@ func computeConfigElementSha(h hash.Hash, msg interface{}) {
 	h.Write(data)
 }
 
-// Returns a rebootFlag
+// Returns reboot and shutdown flags
 func parseOpCmds(config *zconfig.EdgeDevConfig,
-	getconfigCtx *getconfigContext) bool {
+	getconfigCtx *getconfigContext) (bool, bool) {
 
 	scheduleBackup(config.GetBackup())
-	return scheduleReboot(config.GetReboot(), getconfigCtx)
+	reboot := scheduleDeviceOperation(config.GetReboot(), getconfigCtx, types.DeviceOperationReboot)
+	shutdown := scheduleDeviceOperation(config.GetShutdown(), getconfigCtx, types.DeviceOperationShutdown)
+	return reboot, shutdown
+}
+
+func removeDeviceOpsCmdConfig(op types.DeviceOperation) {
+	fileName := ""
+	switch op {
+	case types.DeviceOperationReboot:
+		fileName = rebootConfigFilename
+	case types.DeviceOperationShutdown:
+		fileName = shutdownConfigFilename
+	default:
+		log.Errorf("removeDeviceOpsCmdConfig unknown operation: %v", op)
+		return
+	}
+	log.Functionf("removeDeviceOpsCmdConfig - removing %s", fileName)
+	// remove the existing file
+	if err := os.Remove(fileName); err != nil {
+		log.Errorf("removeDeviceOpsCmdConfig error in removing of %s: %s", fileName, err)
+	}
 }
 
 // Returns the cmd if the file exists
-func readRebootConfig() *types.DeviceOpsCmd {
-	log.Tracef("readRebootConfigCounter - reading %s", rebootConfigFilename)
+func readDeviceOpsCmdConfig(op types.DeviceOperation) *types.DeviceOpsCmd {
+	fileName := ""
+	switch op {
+	case types.DeviceOperationReboot:
+		fileName = rebootConfigFilename
+	case types.DeviceOperationShutdown:
+		fileName = shutdownConfigFilename
+	default:
+		log.Errorf("readDeviceOpsCmdConfig unknown operation: %v", op)
+		return nil
+	}
+	log.Tracef("readDeviceOpsCmdConfig - reading %s", fileName)
 
-	bytes, err := ioutil.ReadFile(rebootConfigFilename)
+	b, err := ioutil.ReadFile(fileName)
 	if err == nil {
-		rebootConfig := types.DeviceOpsCmd{}
-		err = json.Unmarshal(bytes, &rebootConfig)
+		cfg := types.DeviceOpsCmd{}
+		err = json.Unmarshal(b, &cfg)
 		if err != nil {
 			// Treat the same way as a missing file
 			log.Error(err)
 			return nil
 		}
-		return &rebootConfig
+		return &cfg
 	}
-	log.Functionf("readRebootConfigCounter - %s doesn't exist",
-		rebootConfigFilename)
+	log.Functionf("readDeviceOpsCmdConfig - %s doesn't exist",
+		fileName)
 	return nil
 }
 
-func saveRebootConfig(reboot types.DeviceOpsCmd) {
-	log.Functionf("saveRebootConfig - reboot.Counter: %d", reboot.Counter)
-	bytes, err := json.Marshal(reboot)
+func saveDeviceOpsCmdConfig(cfg types.DeviceOpsCmd, op types.DeviceOperation) {
+	fileName := ""
+	switch op {
+	case types.DeviceOperationReboot:
+		fileName = rebootConfigFilename
+	case types.DeviceOperationShutdown:
+		fileName = shutdownConfigFilename
+	default:
+		log.Errorf("saveDeviceOpsCmdConfig unknown operation: %v", op)
+		return
+	}
+	log.Functionf("saveDeviceOpsCmdConfig - %s.Counter: %d", op.String(), cfg.Counter)
+	b, err := json.Marshal(cfg)
 	if err != nil {
 		log.Fatal(err)
 	}
-	err = fileutils.WriteRename(rebootConfigFilename, bytes)
+	err = fileutils.WriteRename(fileName, b)
 	if err != nil {
 		// Can fail if low on disk space
 		log.Error(err)
@@ -2383,69 +2434,90 @@ func saveRebootConfig(reboot types.DeviceOpsCmd) {
 
 var rebootPrevConfigHash []byte
 var rebootPrevReturn bool
+var shutdownPrevConfigHash []byte
+var shutdownPrevReturn bool
 
-// Returns a rebootFlag
-func scheduleReboot(reboot *zconfig.DeviceOpsCmd,
-	getconfigCtx *getconfigContext) bool {
-	if reboot == nil {
-		log.Functionf("scheduleReboot - removing %s",
-			rebootConfigFilename)
-		// remove the existing file
-		os.Remove(rebootConfigFilename)
+// Returns operation flag
+func scheduleDeviceOperation(opsCmd *zconfig.DeviceOpsCmd,
+	getconfigCtx *getconfigContext, op types.DeviceOperation) bool {
+
+	if opsCmd == nil {
+		removeDeviceOpsCmdConfig(op)
 		return false
 	}
 
-	configHash := computeConfigSha(reboot)
-	same := bytes.Equal(configHash, rebootPrevConfigHash)
-	rebootPrevConfigHash = configHash
+	var prevHash *[]byte
+	var prevReturn *bool
+	var configCounter *uint32
+	var operationFlag bool
+
+	switch op {
+	case types.DeviceOperationShutdown:
+		prevHash = &shutdownPrevConfigHash
+		prevReturn = &shutdownPrevReturn
+		operationFlag = getconfigCtx.zedagentCtx.deviceShutdown
+		configCounter = &getconfigCtx.zedagentCtx.shutdownConfigCounter
+	case types.DeviceOperationReboot:
+		prevHash = &rebootPrevConfigHash
+		prevReturn = &rebootPrevReturn
+		operationFlag = getconfigCtx.zedagentCtx.deviceReboot
+		configCounter = &getconfigCtx.zedagentCtx.rebootConfigCounter
+	default:
+		log.Errorf("scheduleDeviceOperation wrong operation: %v", op)
+		return false
+	}
+
+	configHash := computeConfigSha(opsCmd)
+	same := bytes.Equal(configHash, *prevHash)
+	*prevHash = configHash
 	if same {
-		return rebootPrevReturn
+		return *prevReturn
 	}
 
-	log.Functionf("scheduleReboot: Applying updated config %v", reboot)
-	rebootConfig := readRebootConfig()
-	if rebootConfig != nil && rebootConfig.Counter == reboot.Counter {
-		rebootPrevReturn = false
-		return false
+	log.Functionf("scheduleDeviceOperation: Applying updated config %v", opsCmd)
+	opCfg := readDeviceOpsCmdConfig(op)
+	if opCfg != nil && opCfg.Counter == opsCmd.Counter {
+		*prevReturn = false
+		return *prevReturn
 	}
-	if rebootConfig == nil || rebootConfig.Counter != reboot.Counter {
+	if opCfg == nil || opCfg.Counter != opsCmd.Counter {
 		// store current config, persistently
-		rebootCmd := types.DeviceOpsCmd{
-			Counter:      reboot.Counter,
-			DesiredState: reboot.DesiredState,
-			OpsTime:      reboot.OpsTime,
+		cmdToSave := types.DeviceOpsCmd{
+			Counter:      opsCmd.Counter,
+			DesiredState: opsCmd.DesiredState,
+			OpsTime:      opsCmd.OpsTime,
 		}
-		saveRebootConfig(rebootCmd)
-		// We read this into zedagentCtx.rebootConfigCounter and report that
-		// value to the controller once we have rebooted
+		saveDeviceOpsCmdConfig(cmdToSave, op)
+		// We read this into zedagentCtx reboot or shutdown ConfigCounter and report that
+		// value to the controller once we have started again after reboot/shutdown
 	}
-	if rebootConfig == nil {
-		// First boot - skip the reboot but report to cloud
-		getconfigCtx.zedagentCtx.rebootConfigCounter = reboot.Counter
+	if opCfg == nil {
+		// First boot - skip the reboot/shutdown but report to cloud
+		*configCounter = opsCmd.Counter
 		triggerPublishDevInfo(getconfigCtx.zedagentCtx)
-		rebootPrevReturn = false
-		return false
+		*prevReturn = false
+		return *prevReturn
 	}
 
-	// if device reboot is set, ignore op-command
-	if getconfigCtx.zedagentCtx.deviceReboot {
-		log.Warnf("device reboot is set")
-		return false
+	// if device operation flag is set, ignore op-command
+	if operationFlag {
+		log.Warnf("device %s is set", op.String())
+		return *prevReturn
 	}
 
 	// Defer if inprogress by returning
 	ctx := getconfigCtx.zedagentCtx
 	if getconfigCtx.updateInprogress {
 		// Wait until TestComplete
-		log.Warnf("Rebooting even though testing inprogress; defer")
-		ctx.rebootCmdDeferred = true
-		return false
+		log.Warnf("%s even though testing inprogress; defer", op.String())
+		ctx.shutdownCmdDeferred = true
+		return *prevReturn
 	}
 
-	infoStr := "NORMAL: handleReboot rebooting"
-	handleRebootCmd(ctx, infoStr)
-	rebootPrevReturn = true
-	return true
+	infoStr := fmt.Sprintf("NORMAL: handleOperation %s", op.String())
+	handleDeviceOperationCmd(ctx, infoStr, op)
+	*prevReturn = true
+	return *prevReturn
 }
 
 var backupPrevConfigHash []byte
@@ -2465,31 +2537,56 @@ func scheduleBackup(backup *zconfig.DeviceOpsCmd) {
 	log.Errorf("XXX handle Backup Config: %v", backup)
 }
 
-// user driven reboot command,
+// user driven reboot/shutdown command,
 // shutdown the application instances and
-// trigger nodeagent, to perform node reboot
-func handleRebootCmd(ctxPtr *zedagentContext, infoStr string) {
-	if ctxPtr.rebootCmd || ctxPtr.deviceReboot {
+// trigger nodeagent, to perform node reboot/shutdown
+func handleDeviceOperationCmd(ctxPtr *zedagentContext, infoStr string, op types.DeviceOperation) {
+	var bootReason types.BootReason
+	switch op {
+	case types.DeviceOperationShutdown:
+		if ctxPtr.shutdownCmd || ctxPtr.deviceShutdown {
+			return
+		}
+		ctxPtr.shutdownCmd = true
+		bootReason = types.BootReasonShutdownCmd
+	case types.DeviceOperationReboot:
+		if ctxPtr.rebootCmd || ctxPtr.deviceReboot {
+			return
+		}
+		ctxPtr.rebootCmd = true
+		bootReason = types.BootReasonRebootCmd
+	default:
+		log.Errorf("handleShutdownCmd wrong operation: %v", op)
 		return
 	}
-	ctxPtr.rebootCmd = true
 	// shutdown the application instances
 	shutdownAppsGlobal(ctxPtr)
 	getconfigCtx := ctxPtr.getconfigCtx
 	ctxPtr.currentRebootReason = infoStr
-	ctxPtr.currentBootReason = types.BootReasonRebootCmd
+	ctxPtr.currentBootReason = bootReason
 
 	publishZedAgentStatus(getconfigCtx)
 	log.Functionf(infoStr)
 }
 
-// nodeagent has initiated a node reboot,
+// nodeagent has initiated a node reboot/shutdown,
 // shutdown application instances
-func handleDeviceReboot(ctxPtr *zedagentContext) {
-	if ctxPtr.rebootCmd || ctxPtr.deviceReboot {
+func handleDeviceOperation(ctxPtr *zedagentContext, op types.DeviceOperation) {
+	switch op {
+	case types.DeviceOperationShutdown:
+		if ctxPtr.shutdownCmd || ctxPtr.deviceShutdown {
+			return
+		}
+		ctxPtr.deviceShutdown = true
+	case types.DeviceOperationReboot:
+		if ctxPtr.rebootCmd || ctxPtr.deviceReboot {
+			return
+		}
+		ctxPtr.deviceReboot = true
+	default:
+		log.Errorf("handleShutdownCmd wrong operation: %v", op)
 		return
 	}
-	ctxPtr.deviceReboot = true
 	// shutdown the application instances
 	shutdownAppsGlobal(ctxPtr)
 	// nothing else to be done

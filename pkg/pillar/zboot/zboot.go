@@ -53,6 +53,15 @@ func Reset(log *base.LogObject) {
 	}
 }
 
+// Shutdown routine
+// it runs poweroff -f
+func Shutdown(log *base.LogObject) {
+	_, err := execWithRetry(log, "zboot", "shutdown")
+	if err != nil {
+		logrus.Fatalf("zboot shutdown: err %v\n", err)
+	}
+}
+
 // If log is nil there is no logging
 func execWithRetry(log *base.LogObject, command string, args ...string) ([]byte, error) {
 	for {
