@@ -121,6 +121,9 @@ message EdgeDevConfig {
 
   // A list of bond interfaces (LAGs) aggregating physical network adapters.
   repeated BondAdapter bonds = 31;
+
+  // graceful shutdown of EdgeNode
+  DeviceOpsCmd shutdown = 32;
 }
 
 message ConfigRequest {

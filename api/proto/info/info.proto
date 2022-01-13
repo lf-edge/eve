@@ -403,6 +403,8 @@ enum ZDeviceState {
     // is able to communicate with the controller. When all the components of
     // EVE are up, it transitions to ONLINE.
     ZDEVICE_STATE_BOOTING = 5;
+    // device preparing to shut down
+    ZDEVICE_STATE_SHUTTING_DOWN = 6;
 }
 
 // Base device info, as discovered by Xen (or OS on bare metal)
@@ -493,6 +495,8 @@ message ZInfoDevice {
   repeated MaintenanceModeReason maintenance_mode_reasons = 46;
 
   string dormant_time = 47 [deprecated = true];
+  // shutdown command counter from config last processed by eve
+  uint32 shutdown_config_counter = 48;
 }
 
 // Different reasons for a boot/reboot
@@ -512,6 +516,7 @@ enum BootReason {
   BOOT_REASON_POWER_FAIL = 11;
   BOOT_REASON_UNKNOWN = 12;
   BOOT_REASON_VAULT_FAILED = 13;
+  BOOT_REASON_SHUTDOWN_CMD = 14;
   BOOT_REASON_PARSE_FAIL = 255;
 }
 
