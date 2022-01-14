@@ -242,10 +242,6 @@ func DownloadAzureBlob(accountName, accountKey, containerName, remoteFile, local
 	}
 	progressLock := &sync.Mutex{}
 
-	partsCount := int64(math.Ceil(float64(objSize) / float64(SingleMB)))
-	//last part may have less size than chunk size
-	lastPartSize := objSize - (partsCount-1)*SingleMB
-
 	err = azblob.DoBatchTransfer(ctx, azblob.BatchTransferOptions{
 		OperationName: "DownloadAzureBlob",
 		TransferSize:  objSize,
@@ -262,15 +258,15 @@ func DownloadAzureBlob(accountName, accountKey, containerName, remoteFile, local
 			progressLock.Lock()
 			for _, el := range stats.DoneParts.Parts {
 				if el.Ind == partNum {
-					if el.Size == SingleMB || (partNum == partsCount && el.Size == lastPartSize) {
-						progressLock.Unlock()
-						// do nothing if part has already been downloaded
-						return nil
-					}
 					offset = el.Size
 					part = el
 					break
 				}
+			}
+			if count-offset == 0 {
+				progressLock.Unlock()
+				// nothing to download
+				return nil
 			}
 			if part == nil {
 				// if no part found, append new
