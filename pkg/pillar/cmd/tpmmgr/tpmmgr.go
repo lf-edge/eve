@@ -560,7 +560,11 @@ func testEcdhAES() error {
 	X, Y := elliptic.P256().Params().ScalarMult(publicB.X, publicB.Y, privateA)
 
 	fmt.Printf("publicAX, publicAY, X/Y = %v, %v, %v, %v\n", publicAX, publicAY, X, Y)
-	encryptKey := etpm.Sha256FromECPoint(X, Y)
+	encryptKey, err := etpm.Sha256FromECPoint(X, Y, publicB)
+	if err != nil {
+		fmt.Printf("Sha256FromECPoint failed with error: %v", err)
+		return err
+	}
 	iv := make([]byte, aes.BlockSize)
 	if _, err := io.ReadFull(rand.Reader, iv); err != nil {
 		fmt.Printf("Unable to generate Initial Value %v\n", err)
