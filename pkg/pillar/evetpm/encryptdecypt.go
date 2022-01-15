@@ -9,6 +9,8 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/sha256"
+	"crypto/x509"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"math/big"
@@ -39,6 +41,12 @@ func DecryptSecretWithEcdhKey(log *base.LogObject, X, Y *big.Int, edgeNodeCert *
 
 //getDecryptKey : uses the given params to construct the AES decryption Key
 func getDecryptKey(log *base.LogObject, X, Y *big.Int, edgeNodeCert *types.EdgeNodeCert) ([32]byte, error) {
+	block, _ := pem.Decode(edgeNodeCert.Cert)
+	cert, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		return [32]byte{}, fmt.Errorf("error in parsing ecdh cert file: %v", err)
+	}
+	pubKey := cert.PublicKey.(*ecdsa.PublicKey)
 	if !IsTpmEnabled() || !edgeNodeCert.IsTpm {
 		//Either TPM is not enabled, or for some reason we are not using TPM for ECDH
 		//Look for soft cert/key
@@ -48,10 +56,9 @@ func getDecryptKey(log *base.LogObject, X, Y *big.Int, edgeNodeCert *types.EdgeN
 			return [32]byte{}, err
 		}
 		X, Y := elliptic.P256().Params().ScalarMult(X, Y, privateKey.D.Bytes())
-		decryptKey := Sha256FromECPoint(X, Y)
-		return decryptKey, nil
+		return Sha256FromECPoint(X, Y, pubKey)
 	}
-	return deriveSessionKey(X, Y)
+	return deriveSessionKey(X, Y, pubKey)
 }
 
 //AESEncrypt encrypts plaintext, and returns it in ciphertext
@@ -78,17 +85,54 @@ func AESDecrypt(plaintext, ciphertext, key, iv []byte) error {
 	return nil
 }
 
+func ecdsakeyBytes(pubKey *ecdsa.PublicKey) (int, error) {
+	curveBits := pubKey.Curve.Params().BitSize
+	keyBytes := curveBits / 8
+	if curveBits%8 > 0 {
+		keyBytes++
+	}
+
+	if keyBytes%8 > 0 {
+		return 0, fmt.Errorf("ecdsa pubkey size error, curveBits %v", curveBits)
+	}
+	return keyBytes, nil
+}
+
+// RSCombinedBytes - combine r & s into fixed length bytes
+func rsCombinedBytes(rBytes, sBytes []byte, pubKey *ecdsa.PublicKey) ([]byte, error) {
+	keySize, err := ecdsakeyBytes(pubKey)
+	if err != nil {
+		return nil, fmt.Errorf("RSCombinedBytes: ecdsa key bytes error %v", err)
+	}
+	rsize := len(rBytes)
+	ssize := len(sBytes)
+	if rsize > keySize || ssize > keySize {
+		return nil, fmt.Errorf("RSCombinedBytes: error. keySize %v, rSize %v, sSize %v", keySize, rsize, ssize)
+	}
+
+	// basically the size is 32 bytes. the r and s needs to be both left padded to two 32 bytes slice
+	// into a single signature buffer
+	buffer := make([]byte, keySize*2)
+	startPos := keySize - rsize
+	copy(buffer[startPos:], rBytes)
+	startPos = keySize*2 - ssize
+	copy(buffer[startPos:], sBytes)
+	return buffer[:], nil
+}
+
 // Sha256FromECPoint is the KDF
-func Sha256FromECPoint(X, Y *big.Int) [32]byte {
-	var bytes = make([]byte, 0)
-	bytes = append(bytes, X.Bytes()...)
-	bytes = append(bytes, Y.Bytes()...)
-	return sha256.Sum256(bytes)
+func Sha256FromECPoint(X, Y *big.Int, pubKey *ecdsa.PublicKey) ([32]byte, error) {
+	var sha [32]byte
+	bytes, err := rsCombinedBytes(X.Bytes(), Y.Bytes(), pubKey)
+	if err != nil {
+		return sha, fmt.Errorf("error occurred while combining bytes for ECPoints: %v", err)
+	}
+	return sha256.Sum256(bytes), nil
 }
 
 //deriveSessionKey derives a ECDH shared secret based on
 //ECDH private key, and the provided public key
-func deriveSessionKey(X, Y *big.Int) ([32]byte, error) {
+func deriveSessionKey(X, Y *big.Int, publicKey *ecdsa.PublicKey) ([32]byte, error) {
 	rw, err := tpm2.OpenTPM(TpmDevicePath)
 	if err != nil {
 		return [32]byte{}, fmt.Errorf("TPM open failed: %v", err)
@@ -101,8 +145,7 @@ func deriveSessionKey(X, Y *big.Int) ([32]byte, error) {
 	if err != nil {
 		return [32]byte{}, fmt.Errorf("deriveSessionKey failed: %v", err)
 	}
-	decryptKey := Sha256FromECPoint(z.X(), z.Y())
-	return decryptKey, nil
+	return Sha256FromECPoint(z.X(), z.Y(), publicKey)
 }
 
 //deriveEncryptDecryptKey is a helper function to parse device cert
@@ -118,7 +161,7 @@ func deriveEncryptDecryptKey() ([32]byte, error) {
 		return [32]byte{}, fmt.Errorf("Not an ECDH compatible key: %T", publicKey)
 	}
 
-	EncryptDecryptKey, err := deriveSessionKey(eccPublicKey.X, eccPublicKey.Y)
+	EncryptDecryptKey, err := deriveSessionKey(eccPublicKey.X, eccPublicKey.Y, eccPublicKey)
 	if err != nil {
 		return [32]byte{}, fmt.Errorf("EncryptSecretWithDeviceKey failed with %v", err)
 	}
