@@ -8,7 +8,7 @@ on:
       - completed
 
 jobs:
-  build:
+  build-amd64:
     runs-on: ubuntu-20.04
     steps:
       - name: Find PR build artifact for amd64
@@ -41,6 +41,9 @@ jobs:
         run: |
           wget -O eve-amd64.zip "${{steps.find-pr-artifact-amd64.outputs.result}}"
 
+  build-arm64:
+    runs-on: ubuntu-20.04
+    steps:
       - name: Find PR build artifact for arm64
         id: find-pr-artifact-arm64
         uses: actions/github-script@v3
@@ -71,21 +74,25 @@ jobs:
         run: |
           wget -O eve-arm64.zip "${{steps.find-pr-artifact-arm64.outputs.result}}"
 
+  publish_eve:
+    needs: [build-arm64, build-amd64]
+    runs-on: ubuntu-20.04
+    steps:
       - name: Publish EVE
-        run: |
-          echo "${{ secrets.DOCKERHUB_TOKEN }}" |\
-             docker login -u evebuild --password-stdin
-
-          for arch in amd64 arm64; do
-             rm -f eve.tar
-             unzip "eve-$arch.zip"
-             for i in `docker load < eve.tar | sed -e 's#^Loaded image:##'`; do
-                docker push "$i"
-                IMGS="$IMGS ${i/-$arch/}"
-             done
-          done
-
-          for i in $(echo "$IMGS" | tr ' ' '\012' | sort -u); do
-             docker manifest create "$i" --amend "$i-arm64" --amend "$i-amd64"
-             docker manifest push "$i"
-          done
+      - run: |
+            echo "${{ secrets.DOCKERHUB_TOKEN }}" |\
+               docker login -u evebuild --password-stdin
+  
+            for arch in amd64 arm64; do
+               rm -f eve.tar
+               unzip "eve-$arch.zip"
+               for i in `docker load < eve.tar | sed -e 's#^Loaded image:##'`; do
+                  docker push "$i"
+                  IMGS="$IMGS ${i/-$arch/}"
+               done
+            done
+  
+            for i in $(echo "$IMGS" | tr ' ' '\012' | sort -u); do
+               docker manifest create "$i" --amend "$i-arm64" --amend "$i-amd64"
+               docker manifest push "$i"
+            done
