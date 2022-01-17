@@ -1944,6 +1944,12 @@ func parseIpspec(ipspec *zconfig.Ipspec,
 		return fmt.Errorf("gateway(%s) inside Dhcp Range",
 			config.Gateway.String())
 	}
+	addressesInRange := config.DhcpRange.Size()
+	// we cannot use more than types.BitMapMax IPs for dynamic allocation
+	// and should keep some place in the end for static IPs assignment
+	if addressesInRange > types.BitMapMax {
+		config.DhcpRange.End = types.AddToIP(config.DhcpRange.Start, types.BitMapMax)
+	}
 	return nil
 }
 
