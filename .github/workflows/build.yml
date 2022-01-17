@@ -13,7 +13,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [arm64-dirty, ubuntu-20.04]
-        hv: [zen, kvm]
+        hv: [xen, kvm]
     steps:
       - name: Clear repository
         run: |
