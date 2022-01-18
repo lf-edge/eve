@@ -2,7 +2,7 @@
 
 ZFS provides a rich set of functionality but at a cost of extra
 resource usage. Currently ARC (Adaptive Replacement Cache) size is
-limited to `256 MiB + 0.3% of total storage`, but at least 384
+limited to `min(256 MiB + 0.3% of total zpool size, 20% of system RAM)` but at least 384
 MiB. Keep in mind that this memory will be taken out form the
 applications.
 

@@ -34,6 +34,17 @@ zfs_set_arc_limits() {
 
     metadata_estimate=$(( pool_size_bytes*3/100/10 ))
     zfs_arc_max=$(( zfs_arc_min + metadata_estimate ))
+
+    # zpool storage can grow to tens of TiB depending on the customer requirements.
+    # Hence resize the zfs_arc_max = min ( 256 MiB + 0.003 * poolSize ,  20% of System RAM)
+
+    system_memory_KiB="$(grep MemTotal /proc/meminfo | awk '{print $2}')"
+    zfs_system_memory_bytes=$(( system_memory_KiB*1024/5 ))
+
+    if [ ${zfs_arc_max} -gt ${zfs_system_memory_bytes} ]; then
+        zfs_arc_max="${zfs_system_memory_bytes}"
+    fi
+
     if [ ${zfs_arc_max} -lt ${zfs_arc_max_minimum} ]; then
         zfs_arc_max="${zfs_arc_max_minimum}"
     fi
