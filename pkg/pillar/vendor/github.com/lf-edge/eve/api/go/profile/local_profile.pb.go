@@ -302,6 +302,135 @@ func (x *RadioConfig) GetRadioSilence() bool {
 	return false
 }
 
+// LocalAppInfoList contains information about all app on EdgeNode
+// sent to the api/v1/appinfo
+type LocalAppInfoList struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	AppsInfo []*LocalAppInfo `protobuf:"bytes,1,rep,name=apps_info,json=appsInfo,proto3" json:"apps_info,omitempty"`
+}
+
+func (x *LocalAppInfoList) Reset() {
+	*x = LocalAppInfoList{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_profile_local_profile_proto_msgTypes[4]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *LocalAppInfoList) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*LocalAppInfoList) ProtoMessage() {}
+
+func (x *LocalAppInfoList) ProtoReflect() protoreflect.Message {
+	mi := &file_profile_local_profile_proto_msgTypes[4]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use LocalAppInfoList.ProtoReflect.Descriptor instead.
+func (*LocalAppInfoList) Descriptor() ([]byte, []int) {
+	return file_profile_local_profile_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *LocalAppInfoList) GetAppsInfo() []*LocalAppInfo {
+	if x != nil {
+		return x.AppsInfo
+	}
+	return nil
+}
+
+// LocalAppInfo contains information about app on EdgeNode
+type LocalAppInfo struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	Id      string          `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	Version string          `protobuf:"bytes,2,opt,name=version,proto3" json:"version,omitempty"`
+	Name    string          `protobuf:"bytes,3,opt,name=name,proto3" json:"name,omitempty"`
+	Err     *info.ErrorInfo `protobuf:"bytes,4,opt,name=err,proto3" json:"err,omitempty"`
+	State   info.ZSwState   `protobuf:"varint,5,opt,name=state,proto3,enum=org.lfedge.eve.info.ZSwState" json:"state,omitempty"`
+}
+
+func (x *LocalAppInfo) Reset() {
+	*x = LocalAppInfo{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_profile_local_profile_proto_msgTypes[5]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *LocalAppInfo) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*LocalAppInfo) ProtoMessage() {}
+
+func (x *LocalAppInfo) ProtoReflect() protoreflect.Message {
+	mi := &file_profile_local_profile_proto_msgTypes[5]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use LocalAppInfo.ProtoReflect.Descriptor instead.
+func (*LocalAppInfo) Descriptor() ([]byte, []int) {
+	return file_profile_local_profile_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *LocalAppInfo) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *LocalAppInfo) GetVersion() string {
+	if x != nil {
+		return x.Version
+	}
+	return ""
+}
+
+func (x *LocalAppInfo) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *LocalAppInfo) GetErr() *info.ErrorInfo {
+	if x != nil {
+		return x.Err
+	}
+	return nil
+}
+
+func (x *LocalAppInfo) GetState() info.ZSwState {
+	if x != nil {
+		return x.State
+	}
+	return info.ZSwState(0)
+}
+
 var File_profile_local_profile_proto protoreflect.FileDescriptor
 
 var file_profile_local_profile_proto_rawDesc = []byte{
@@ -351,11 +480,28 @@ var file_profile_local_profile_proto_rawDesc = []byte{
 	0x0b, 0x73, 0x65, 0x72, 0x76, 0x65, 0x72, 0x54, 0x6f, 0x6b, 0x65, 0x6e, 0x12, 0x23, 0x0a, 0x0d,
 	0x72, 0x61, 0x64, 0x69, 0x6f, 0x5f, 0x73, 0x69, 0x6c, 0x65, 0x6e, 0x63, 0x65, 0x18, 0x02, 0x20,
 	0x01, 0x28, 0x08, 0x52, 0x0c, 0x72, 0x61, 0x64, 0x69, 0x6f, 0x53, 0x69, 0x6c, 0x65, 0x6e, 0x63,
-	0x65, 0x42, 0x3f, 0x0a, 0x16, 0x6f, 0x72, 0x67, 0x2e, 0x6c, 0x66, 0x65, 0x64, 0x67, 0x65, 0x2e,
-	0x65, 0x76, 0x65, 0x2e, 0x70, 0x72, 0x6f, 0x66, 0x69, 0x6c, 0x65, 0x5a, 0x25, 0x67, 0x69, 0x74,
-	0x68, 0x75, 0x62, 0x2e, 0x63, 0x6f, 0x6d, 0x2f, 0x6c, 0x66, 0x2d, 0x65, 0x64, 0x67, 0x65, 0x2f,
-	0x65, 0x76, 0x65, 0x2f, 0x61, 0x70, 0x69, 0x2f, 0x67, 0x6f, 0x2f, 0x70, 0x72, 0x6f, 0x66, 0x69,
-	0x6c, 0x65, 0x62, 0x06, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x33,
+	0x65, 0x22, 0x55, 0x0a, 0x10, 0x4c, 0x6f, 0x63, 0x61, 0x6c, 0x41, 0x70, 0x70, 0x49, 0x6e, 0x66,
+	0x6f, 0x4c, 0x69, 0x73, 0x74, 0x12, 0x41, 0x0a, 0x09, 0x61, 0x70, 0x70, 0x73, 0x5f, 0x69, 0x6e,
+	0x66, 0x6f, 0x18, 0x01, 0x20, 0x03, 0x28, 0x0b, 0x32, 0x24, 0x2e, 0x6f, 0x72, 0x67, 0x2e, 0x6c,
+	0x66, 0x65, 0x64, 0x67, 0x65, 0x2e, 0x65, 0x76, 0x65, 0x2e, 0x70, 0x72, 0x6f, 0x66, 0x69, 0x6c,
+	0x65, 0x2e, 0x4c, 0x6f, 0x63, 0x61, 0x6c, 0x41, 0x70, 0x70, 0x49, 0x6e, 0x66, 0x6f, 0x52, 0x08,
+	0x61, 0x70, 0x70, 0x73, 0x49, 0x6e, 0x66, 0x6f, 0x22, 0xb3, 0x01, 0x0a, 0x0c, 0x4c, 0x6f, 0x63,
+	0x61, 0x6c, 0x41, 0x70, 0x70, 0x49, 0x6e, 0x66, 0x6f, 0x12, 0x0e, 0x0a, 0x02, 0x69, 0x64, 0x18,
+	0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x02, 0x69, 0x64, 0x12, 0x18, 0x0a, 0x07, 0x76, 0x65, 0x72,
+	0x73, 0x69, 0x6f, 0x6e, 0x18, 0x02, 0x20, 0x01, 0x28, 0x09, 0x52, 0x07, 0x76, 0x65, 0x72, 0x73,
+	0x69, 0x6f, 0x6e, 0x12, 0x12, 0x0a, 0x04, 0x6e, 0x61, 0x6d, 0x65, 0x18, 0x03, 0x20, 0x01, 0x28,
+	0x09, 0x52, 0x04, 0x6e, 0x61, 0x6d, 0x65, 0x12, 0x30, 0x0a, 0x03, 0x65, 0x72, 0x72, 0x18, 0x04,
+	0x20, 0x01, 0x28, 0x0b, 0x32, 0x1e, 0x2e, 0x6f, 0x72, 0x67, 0x2e, 0x6c, 0x66, 0x65, 0x64, 0x67,
+	0x65, 0x2e, 0x65, 0x76, 0x65, 0x2e, 0x69, 0x6e, 0x66, 0x6f, 0x2e, 0x45, 0x72, 0x72, 0x6f, 0x72,
+	0x49, 0x6e, 0x66, 0x6f, 0x52, 0x03, 0x65, 0x72, 0x72, 0x12, 0x33, 0x0a, 0x05, 0x73, 0x74, 0x61,
+	0x74, 0x65, 0x18, 0x05, 0x20, 0x01, 0x28, 0x0e, 0x32, 0x1d, 0x2e, 0x6f, 0x72, 0x67, 0x2e, 0x6c,
+	0x66, 0x65, 0x64, 0x67, 0x65, 0x2e, 0x65, 0x76, 0x65, 0x2e, 0x69, 0x6e, 0x66, 0x6f, 0x2e, 0x5a,
+	0x53, 0x77, 0x53, 0x74, 0x61, 0x74, 0x65, 0x52, 0x05, 0x73, 0x74, 0x61, 0x74, 0x65, 0x42, 0x3f,
+	0x0a, 0x16, 0x6f, 0x72, 0x67, 0x2e, 0x6c, 0x66, 0x65, 0x64, 0x67, 0x65, 0x2e, 0x65, 0x76, 0x65,
+	0x2e, 0x70, 0x72, 0x6f, 0x66, 0x69, 0x6c, 0x65, 0x5a, 0x25, 0x67, 0x69, 0x74, 0x68, 0x75, 0x62,
+	0x2e, 0x63, 0x6f, 0x6d, 0x2f, 0x6c, 0x66, 0x2d, 0x65, 0x64, 0x67, 0x65, 0x2f, 0x65, 0x76, 0x65,
+	0x2f, 0x61, 0x70, 0x69, 0x2f, 0x67, 0x6f, 0x2f, 0x70, 0x72, 0x6f, 0x66, 0x69, 0x6c, 0x65, 0x62,
+	0x06, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x33,
 }
 
 var (
@@ -370,26 +516,33 @@ func file_profile_local_profile_proto_rawDescGZIP() []byte {
 	return file_profile_local_profile_proto_rawDescData
 }
 
-var file_profile_local_profile_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
+var file_profile_local_profile_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
 var file_profile_local_profile_proto_goTypes = []interface{}{
 	(*LocalProfile)(nil),             // 0: org.lfedge.eve.profile.LocalProfile
 	(*RadioStatus)(nil),              // 1: org.lfedge.eve.profile.RadioStatus
 	(*CellularStatus)(nil),           // 2: org.lfedge.eve.profile.CellularStatus
 	(*RadioConfig)(nil),              // 3: org.lfedge.eve.profile.RadioConfig
-	(*info.ZCellularModuleInfo)(nil), // 4: org.lfedge.eve.info.ZCellularModuleInfo
-	(*info.ZSimcardInfo)(nil),        // 5: org.lfedge.eve.info.ZSimcardInfo
-	(*info.ZCellularProvider)(nil),   // 6: org.lfedge.eve.info.ZCellularProvider
+	(*LocalAppInfoList)(nil),         // 4: org.lfedge.eve.profile.LocalAppInfoList
+	(*LocalAppInfo)(nil),             // 5: org.lfedge.eve.profile.LocalAppInfo
+	(*info.ZCellularModuleInfo)(nil), // 6: org.lfedge.eve.info.ZCellularModuleInfo
+	(*info.ZSimcardInfo)(nil),        // 7: org.lfedge.eve.info.ZSimcardInfo
+	(*info.ZCellularProvider)(nil),   // 8: org.lfedge.eve.info.ZCellularProvider
+	(*info.ErrorInfo)(nil),           // 9: org.lfedge.eve.info.ErrorInfo
+	(info.ZSwState)(0),               // 10: org.lfedge.eve.info.ZSwState
 }
 var file_profile_local_profile_proto_depIdxs = []int32{
-	2, // 0: org.lfedge.eve.profile.RadioStatus.cellular_status:type_name -> org.lfedge.eve.profile.CellularStatus
-	4, // 1: org.lfedge.eve.profile.CellularStatus.module:type_name -> org.lfedge.eve.info.ZCellularModuleInfo
-	5, // 2: org.lfedge.eve.profile.CellularStatus.sim_cards:type_name -> org.lfedge.eve.info.ZSimcardInfo
-	6, // 3: org.lfedge.eve.profile.CellularStatus.providers:type_name -> org.lfedge.eve.info.ZCellularProvider
-	4, // [4:4] is the sub-list for method output_type
-	4, // [4:4] is the sub-list for method input_type
-	4, // [4:4] is the sub-list for extension type_name
-	4, // [4:4] is the sub-list for extension extendee
-	0, // [0:4] is the sub-list for field type_name
+	2,  // 0: org.lfedge.eve.profile.RadioStatus.cellular_status:type_name -> org.lfedge.eve.profile.CellularStatus
+	6,  // 1: org.lfedge.eve.profile.CellularStatus.module:type_name -> org.lfedge.eve.info.ZCellularModuleInfo
+	7,  // 2: org.lfedge.eve.profile.CellularStatus.sim_cards:type_name -> org.lfedge.eve.info.ZSimcardInfo
+	8,  // 3: org.lfedge.eve.profile.CellularStatus.providers:type_name -> org.lfedge.eve.info.ZCellularProvider
+	5,  // 4: org.lfedge.eve.profile.LocalAppInfoList.apps_info:type_name -> org.lfedge.eve.profile.LocalAppInfo
+	9,  // 5: org.lfedge.eve.profile.LocalAppInfo.err:type_name -> org.lfedge.eve.info.ErrorInfo
+	10, // 6: org.lfedge.eve.profile.LocalAppInfo.state:type_name -> org.lfedge.eve.info.ZSwState
+	7,  // [7:7] is the sub-list for method output_type
+	7,  // [7:7] is the sub-list for method input_type
+	7,  // [7:7] is the sub-list for extension type_name
+	7,  // [7:7] is the sub-list for extension extendee
+	0,  // [0:7] is the sub-list for field type_name
 }
 
 func init() { file_profile_local_profile_proto_init() }
@@ -446,6 +599,30 @@ func file_profile_local_profile_proto_init() {
 				return nil
 			}
 		}
+		file_profile_local_profile_proto_msgTypes[4].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*LocalAppInfoList); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
+		file_profile_local_profile_proto_msgTypes[5].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*LocalAppInfo); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
@@ -453,7 +630,7 @@ func file_profile_local_profile_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: file_profile_local_profile_proto_rawDesc,
 			NumEnums:      0,
-			NumMessages:   4,
+			NumMessages:   6,
 			NumExtensions: 0,
 			NumServices:   0,
 		},
