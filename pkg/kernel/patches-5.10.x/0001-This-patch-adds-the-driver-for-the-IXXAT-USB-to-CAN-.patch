@@ -1,11 +1,10 @@
-From a40199e4f0732709e2cebccba08a8902a373a297 Mon Sep 17 00:00:00 2001
+From 646851bc091cf89a6f2a087e3ba3258a0d015194 Mon Sep 17 00:00:00 2001
 From: Florian Ferg <flfe@xxxxxxxxxxxxxxx>
 Date: Sat, 31 Oct 2020 19:50:37 -0400
-Subject: [PATCH 01/14] This patch adds the driver for the IXXAT USB-to-CAN
+Subject: [PATCH 01/12] This patch adds the driver for the IXXAT USB-to-CAN
  interfaces. There is an adapter for the older communication layer cl1 and
  another adapter for the newer communication layer cl2.
 
-Signed-off-by: Florian Ferg <flfe@xxxxxxxxxxxxxxx>
 ---
  drivers/net/can/usb/Kconfig            |    6 +
  drivers/net/can/usb/Makefile           |    1 +
@@ -24,7 +23,7 @@ Signed-off-by: Florian Ferg <flfe@xxxxxxxxxxxxxxx>
  create mode 100644 drivers/net/can/usb/ixx/ixx_usb_core.h
 
 diff --git a/drivers/net/can/usb/Kconfig b/drivers/net/can/usb/Kconfig
-index b412f7ba4f89..33c7ea4cd949 100644
+index bcb331b0c958..f786b6c6348e 100644
 --- a/drivers/net/can/usb/Kconfig
 +++ b/drivers/net/can/usb/Kconfig
 @@ -29,6 +29,12 @@ config CAN_GS_USB
@@ -39,7 +38,7 @@ index b412f7ba4f89..33c7ea4cd949 100644
 +
  config CAN_KVASER_USB
  	tristate "Kvaser CAN/USB interface"
- 	---help---
+ 	help
 diff --git a/drivers/net/can/usb/Makefile b/drivers/net/can/usb/Makefile
 index aa0f17c0b2ed..2f9052abc1b2 100644
 --- a/drivers/net/can/usb/Makefile
@@ -2481,5 +2480,5 @@ index 000000000000..e57b435dd457
 +
 +#endif /* IXXAT_USB_CORE_H */
 -- 
-2.26.2
+2.25.1
 

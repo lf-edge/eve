@@ -1,7 +1,7 @@
-From 4287c729bf39a12a138dab0d25feed43b581d891 Mon Sep 17 00:00:00 2001
+From 3221b235ce2edb767b3e724f5e6b7ac1c5865b02 Mon Sep 17 00:00:00 2001
 From: Hariharasubramanian C S <cshari@zededa.com>
 Date: Mon, 23 Nov 2020 11:21:45 +0530
-Subject: [PATCH] add acs overrides for linux kernel version 5.4.51
+Subject: [PATCH 07/12] add acs overrides for linux kernel version 5.4.51
 
 This particular patch was taken from:
 https://gitlab.com/Queuecumber/linux-acs-override/-/blob/master/workspaces/5.4/acso.patch
@@ -59,10 +59,10 @@ Signed-off-by: Hariharasubramanian C S <cshari@zededa.com>
  2 files changed, 109 insertions(+)
 
 diff --git a/Documentation/admin-guide/kernel-parameters.txt b/Documentation/admin-guide/kernel-parameters.txt
-index 7bc83f3d9bdf..3174f3bd126a 100644
+index f103667d3727..1f36d9ccc921 100644
 --- a/Documentation/admin-guide/kernel-parameters.txt
 +++ b/Documentation/admin-guide/kernel-parameters.txt
-@@ -3509,6 +3509,15 @@
+@@ -3635,6 +3635,15 @@
  		nomsi		[MSI] If the PCI_MSI kernel config parameter is
  				enabled, this kernel boot option can be used to
  				disable the use of MSI interrupts system-wide.
@@ -79,10 +79,10 @@ index 7bc83f3d9bdf..3174f3bd126a 100644
  				Safety option to keep boot IRQs enabled. This
  				should never be necessary.
 diff --git a/drivers/pci/quirks.c b/drivers/pci/quirks.c
-index ca9ed5774eb1..1af267d0052f 100644
+index 5d2acebc3e96..639fa0fc490c 100644
 --- a/drivers/pci/quirks.c
 +++ b/drivers/pci/quirks.c
-@@ -3544,6 +3544,105 @@ static void quirk_no_bus_reset(struct pci_dev *dev)
+@@ -3560,6 +3560,105 @@ static void quirk_no_bus_reset(struct pci_dev *dev)
  	dev->dev_flags |= PCI_DEV_FLAGS_NO_BUS_RESET;
  }
  
@@ -186,10 +186,10 @@ index ca9ed5774eb1..1af267d0052f 100644
 +	return -ENOTTY;
 +}
  /*
-  * Some Atheros AR9xxx and QCA988x chips do not behave after a bus reset.
-  * The device will throw a Link Down error on AER-capable systems and
-@@ -4796,6 +4895,7 @@ static const struct pci_dev_acs_enabled {
- 	{ PCI_VENDOR_ID_ZHAOXIN, 0x9083, pci_quirk_mf_endpoint_acs },
+  * Some NVIDIA GPU devices do not work with bus reset, SBR needs to be
+  * prevented for those affected devices.
+@@ -4923,6 +5022,7 @@ static const struct pci_dev_acs_enabled {
+ 	{ PCI_VENDOR_ID_NXP, 0x8d9b, pci_quirk_nxp_rp_acs },
  	/* Zhaoxin Root/Downstream Ports */
  	{ PCI_VENDOR_ID_ZHAOXIN, PCI_ANY_ID, pci_quirk_zhaoxin_pcie_ports_acs },
 +	{ PCI_ANY_ID, PCI_ANY_ID, pcie_acs_overrides },
@@ -197,5 +197,5 @@ index ca9ed5774eb1..1af267d0052f 100644
  };
  
 -- 
-2.20.1 (Apple Git-117)
+2.25.1
 

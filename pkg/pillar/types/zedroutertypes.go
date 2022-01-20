@@ -5,6 +5,7 @@ package types
 
 import (
 	"bytes"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"net"
@@ -2051,6 +2052,22 @@ func (ipRange IpRange) Contains(ipAddr net.IP) bool {
 		return true
 	}
 	return false
+}
+
+// Size returns addresses count inside IpRange
+func (ipRange IpRange) Size() uint32 {
+	//TBD:XXX, IPv6 handling
+	ip1v4 := ipRange.Start.To4()
+	ip2v4 := ipRange.End.To4()
+	if ip1v4 == nil || ip2v4 == nil {
+		return 0
+	}
+	ip1Int := binary.BigEndian.Uint32(ip1v4)
+	ip2Int := binary.BigEndian.Uint32(ip2v4)
+	if ip1Int > ip2Int {
+		return ip1Int - ip2Int
+	}
+	return ip2Int - ip1Int
 }
 
 func (config NetworkXObjectConfig) Key() string {

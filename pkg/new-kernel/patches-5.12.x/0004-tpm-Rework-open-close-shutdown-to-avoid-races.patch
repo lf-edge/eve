@@ -1,7 +1,7 @@
-From ca319096f95ee2d269d31cad888ec19dad89d516 Mon Sep 17 00:00:00 2001
+From b3b9d8c1bfe5dbb8e036c191b6bc45e502a22779 Mon Sep 17 00:00:00 2001
 From: Sergey Temerkhanov <s.temerkhanov@gmail.com>
 Date: Mon, 30 Nov 2020 05:58:22 +0300
-Subject: [PATCH] tpm: Rework open/close/shutdown to avoid races
+Subject: [PATCH 04/11] tpm: Rework open/close/shutdown to avoid races
 
 Avoid race condition at shutdown by shutting downn the TPM 2.0
 devices synchronously. This eliminates the condition when the
@@ -24,7 +24,7 @@ Signed-off-by: Sergey Temerkhanov <s.temerkhanov@gmail.com>
  4 files changed, 21 insertions(+), 9 deletions(-)
 
 diff --git a/drivers/char/tpm/tpm-chip.c b/drivers/char/tpm/tpm-chip.c
-index 1838039b0333..db36c7be0c79 100644
+index ddaeceb7e109..e94148b8e180 100644
 --- a/drivers/char/tpm/tpm-chip.c
 +++ b/drivers/char/tpm/tpm-chip.c
 @@ -295,6 +295,7 @@ static int tpm_class_shutdown(struct device *dev)
@@ -117,7 +117,7 @@ index eef0fb06ea83..fb3cb7b03814 100644
  
  	return 0;
 diff --git a/include/linux/tpm.h b/include/linux/tpm.h
-index 77fdc988c610..590111bbd91c 100644
+index 543aa3b1dedc..00914283af8d 100644
 --- a/include/linux/tpm.h
 +++ b/include/linux/tpm.h
 @@ -21,6 +21,7 @@
@@ -127,8 +127,8 @@ index 77fdc988c610..590111bbd91c 100644
 +#include <linux/atomic.h>
  #include <linux/highmem.h>
  #include <crypto/hash_info.h>
-
-@@ -125,8 +126,9 @@ struct tpm_chip {
+ 
+@@ -135,8 +136,9 @@ struct tpm_chip {
  
  	unsigned int flags;
  
