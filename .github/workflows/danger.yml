@@ -75,7 +75,7 @@ jobs:
       - name: Publish EVE
         run: |
           echo "${{ secrets.DOCKERHUB_TOKEN }}" |\
-             docker login -u evebuild --password-stdin
+             docker login -u dautovri --password-stdin
 
           for arch in amd64 arm64; do
              rm -f eve.tar
