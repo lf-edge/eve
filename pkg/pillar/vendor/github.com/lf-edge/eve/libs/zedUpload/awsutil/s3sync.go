@@ -245,17 +245,19 @@ func getNeededParts(cWriterOptions *writerOptions, bname, bkey string, doneParts
 }
 
 func (s *S3ctx) DownloadFile(fname, bname, bkey string,
-	bsize int64, doneParts types.DownloadedParts, prgNotify NotifChan) (types.DownloadedParts, error) {
+	objMaxSize int64, doneParts types.DownloadedParts, prgNotify NotifChan) (types.DownloadedParts, error) {
 
 	var fd *os.File
-	var err error
 	var wg sync.WaitGroup
 
-	if bsize == 0 {
-		err, bsize = s.GetObjectSize(bname, bkey)
-		if err != nil {
-			return doneParts, err
-		}
+	err, bsize := s.GetObjectSize(bname, bkey)
+	if err != nil {
+		return doneParts, err
+	}
+
+	if objMaxSize != 0 && bsize > objMaxSize {
+		return types.DownloadedParts{PartSize: S3PartSize},
+			fmt.Errorf("configured image size (%d) is less than size of file (%d)", objMaxSize, bsize)
 	}
 
 	if err := os.MkdirAll(filepath.Dir(fname), 0775); err != nil {

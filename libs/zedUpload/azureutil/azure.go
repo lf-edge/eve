@@ -167,7 +167,7 @@ func DeleteAzureBlob(accountName, accountKey, containerName, remoteFile string, 
 }
 
 func DownloadAzureBlob(accountName, accountKey, containerName, remoteFile, localFile string,
-	objSize int64, httpClient *http.Client, doneParts types.DownloadedParts, prgNotify NotifChan) (types.DownloadedParts, error) {
+	objMaxSize int64, httpClient *http.Client, doneParts types.DownloadedParts, prgNotify NotifChan) (types.DownloadedParts, error) {
 
 	var file *os.File
 	stats := &UpdateStats{DoneParts: doneParts}
@@ -186,13 +186,15 @@ func DownloadAzureBlob(accountName, accountKey, containerName, remoteFile, local
 	containerURL := azblob.NewContainerURL(*URL, p)
 	blobURL := containerURL.NewBlockBlobURL(remoteFile)
 	ctx := context.Background()
+	properties, err := blobURL.GetProperties(ctx, azblob.BlobAccessConditions{}, azblob.ClientProvidedKeyOptions{})
+	if err != nil {
+		return stats.DoneParts, fmt.Errorf("could not get properties for blob: %v", err)
+	}
+	objSize := properties.ContentLength()
 
-	if objSize == 0 {
-		properties, err := blobURL.GetProperties(ctx, azblob.BlobAccessConditions{}, azblob.ClientProvidedKeyOptions{})
-		if err != nil {
-			return stats.DoneParts, fmt.Errorf("could not get properties for blob: %v", err)
-		}
-		objSize = properties.ContentLength()
+	if objMaxSize != 0 && objSize > objMaxSize {
+		return types.DownloadedParts{PartSize: SingleMB},
+			fmt.Errorf("configured image size (%d) is less than size of file (%d)", objMaxSize, objSize)
 	}
 
 	tempLocalFile := localFile
