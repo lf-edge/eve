@@ -82,22 +82,67 @@ indicating the error condition inside the `RadioStatus.config_error` field.
 
 ### AppInfo
 
-Publish the current state of app instances on device to the local server.
+Publish the current state of app instances on the device to the local server and optionally obtain
+a list of app commands to execute.
 
 POST /api/v1/appinfo
 
 Return codes:
 
-* Success: `200`
+* Success; with commands to execute as defined in the response body: `200`
+* Success; without commands to execute: `204`
 * Not implemented: `404`
 
 Request:
 
 The request mime type MUST be "application/x-proto-binary".
 The request MUST have the body of a single protobuf message of type [LocalAppInfoList](./proto/profile/local_profile.proto).
+Device publishes information repeatedly to keep the local server updated and to allow the server
+to submit application commands for execution.
+Local server MAY throttle or cancel this communication stream by returning the `404` code.
 
-Device publishes information repeatedly because of no expectation of persist storage inside local server. Device MAY
-throttle or cancel sending in case of Not implemented response.
+Response:
+
+The response MAY contain the body of a single protobuf message of type [LocalAppCmds](./proto/profile/local_profile.proto),
+encoded as "application/x-proto-binary".
+
+The requester MUST verify that the response payload (if provided) has the correct `server_token`.
+If the verification succeeds, all entries of `app_commands` are iterated, and those
+that successfully match a running application instance (by `id` and/or `displayname`)
+are applied.
+
+Currently, the method allows to request a locally running application instance
+to be *restarted* or *purged* by EVE. This may help to resolve a case of an application
+being in a broken state, and the user not being able to fix it (remotely) due to a lack
+of connectivity between the device and the controller. Rather than rebooting the entire
+device (locally), it is possible to restart/purge only a selected application.
+
+A command request, as defined by `AppCommand` protobuf message, includes an important
+field `timestamp` (`uint64`), which should record the time when the request was made
+by the user. The format of the timestamp is not defined. It can be a Unix timestamp
+or a different time representation. It is not even required for the timestamp to match
+the real time or to be in-sync with the device clock.
+
+What is required, however, is that two successive but distinct requests made for the same
+application will have different timestamps attached.
+This requirement applies even between restarts of the Local profile server. A request made
+after a restart should not have the same timestamp attached as the previous request made
+for the same application before the restart.
+
+EVE guarantees that a newly added command request (into `LocalAppCmds.app_commands`),
+or a change of the `timestamp` field, will result in the command being triggered ASAP.
+Even if the execution of a command is interrupted by a device reboot/crash, the eventuality
+of the command completion is still guaranteed. The only exception is if Local Profile Server
+restarts/crashes shortly after a request is made, in which case it can get lost before
+EVE is able to receive it. For this scenario to be avoided, a persistence of command requests
+on the side of the Local Profile server is necessary.
+
+It is not required for the Local profile server to stop submitting command requests
+that have been already processed by EVE. Using the `timestamp` field, EVE is able to determine
+if a given command request has been already handled or not.
+To check if the last requested command has completed, compare its timestamp with
+`last_cmd_timestamp` field from `LocalAppInfo` message, submitted by EVE in the request
+body of the API.
 
 ## Security
 

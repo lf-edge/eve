@@ -67,5 +67,69 @@ message LocalAppInfo {
    string name = 3;
    org.lfedge.eve.info.ErrorInfo err = 4;
    org.lfedge.eve.info.ZSwState state = 5;
+   // Value of the field `timestamp` from the last `AppCommand` that was
+   // requested by the Local profile server, received by EVE and has completed
+   // its execution for this application instance.
+   uint64 last_cmd_timestamp = 6;
 }
 
+// LocalAppCmds message may be returned in the response from a POST request
+// sent to the api/v1/appinfo API.
+message LocalAppCmdList {
+   // Security token. EVE will verify that server_token matches the profile server
+   // token received from the controller.
+   string server_token = 1;
+   // A list of commands requested to be executed for locally running application instances.
+   // A new request created for the same application should overwrite the previous entry
+   // with the 'timestamp' field updated. In other words, the list should contain at most
+   // one entry for each application instance.
+   // It is not required for the Local profile server to persist command requests.
+   // Also, it is not required for the Local profile server to stop submitting command
+   // requests that have been already processed by EVE. Using the `timestamp` field,
+   // EVE is able to determine if a given command request has been already handled or not.
+   // To check if the last requested command has completed, compare its timestamp with
+   // 'last_cmd_timestamp' from `LocalAppInfo` message, submitted by EVE in the request
+   // body of the api/v1/appinfo API.
+   repeated AppCommand app_commands = 2;
+}
+
+// AppCommand references a running application instance by UUID and/or displayname,
+// and describes a command to execute for this instance.
+message AppCommand {
+   // Reference the application instance by its ID (which is an instance of UUID).
+   // At least one of the id and displayname should be defined.
+   string id = 1;
+   // Reference the application instance by the user-friendly displayname.
+   // At least one of the id and displayname should be defined.
+   string displayname = 2;
+   // Timestamp to record when the request to run the command was made.
+   // The format of the timestamp is not defined. It can be a Unix timestamp
+   // or a different time representation. It is not even required for the timestamp
+   // to match the real time or to be in-sync with the device clock.
+   // What is required, however, is that two successive but distinct requests made
+   // for the same application will have different timestamps attached.
+   // This requirement applies even between restarts of the Local profile server.
+   // A request made after a restart should not have the same timestamp attached
+   // as the previous request made for the same application before the restart.
+   //
+   // EVE guarantees that a newly added command request or a change of the timestamp
+   // will result in the command being triggered ASAP. Even if the execution of a command
+   // is interrupted by a device reboot/crash, the eventuality of the command completion
+   // is still guaranteed. The only exception is if Local Profile Server restarts/crashes
+   // shortly after a request is made, in which case it can get lost before EVE is able
+   // to receive it. For this scenario to be avoided, a persistence of command requests
+   // on the side of the Local Profile server is necessary.
+   uint64 timestamp = 3;
+   enum Command {
+      COMMAND_UNSPECIFIED = 0;
+      // Application instance, which is either running or transitioning to a running state,
+      // will be stopped and subsequently started again, preserving the mutated run time state.
+      COMMAND_RESTART = 1;
+      // Application instance, which is either running or transitioning to a running state,
+      // will be stopped and the mutated run time state of the app is deleted.
+      // A subsequent action to start the app will start it with a pristine runtime state.
+      COMMAND_PURGE = 2;
+   }
+   // Command to run.
+   Command command = 4;
+}
