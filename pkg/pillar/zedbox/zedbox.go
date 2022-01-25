@@ -48,6 +48,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/pubsub/reverse"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub/socketdriver"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 	"github.com/sirupsen/logrus"
 )
 
@@ -132,6 +133,10 @@ func main() {
 		sep := entrypoint{f: runZedbox, inline: inlineAlways}
 		logger, log = agentlog.Init(basename)
 		inline := true
+		err := zedcloud.InitializeCertDir(log)
+		if err != nil {
+			log.Fatal(err)
+		}
 		retval := runService(basename, sep, inline)
 		// Not likely to ever return, but for uniformity ...
 		os.Exit(retval)

@@ -21,7 +21,7 @@
  * SOFTWARE.
  */
 
-package upgradeconverter
+package utils
 
 import (
 	"fmt"

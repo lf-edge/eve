@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/containerd"
+	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
 
 	uuid "github.com/satori/go.uuid"
 )
@@ -131,7 +132,7 @@ func maybeMove(oldPath string, oldModTime time.Time, newPath string, noFlag bool
 			return
 		}
 		if fi.IsDir() {
-			if err := CopyDir(oldPath, newPath); err != nil {
+			if err := fileutils.CopyDir(oldPath, newPath); err != nil {
 				log.Errorf("cp old to new failed: %s", err)
 			} else {
 				err := os.RemoveAll(oldPath)
