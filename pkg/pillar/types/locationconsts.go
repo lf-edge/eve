@@ -3,6 +3,8 @@
 
 package types
 
+import "strings"
+
 const (
 	// TmpDirname - used for files fed into pubsub as global subscriptions
 	TmpDirname = "/run/global"
@@ -25,8 +27,6 @@ const (
 	VolumeClearDirName = ClearDirName + "/volumes"
 	// PersistDebugDir - Location for service specific debug/traces
 	PersistDebugDir = PersistDir + "/agentdebug"
-	//VolumeZFSPool - pool for create volumes
-	VolumeZFSPool = "persist" + "/volumes"
 
 	// IdentityDirname - Config dir
 	IdentityDirname = "/config"
@@ -86,4 +86,11 @@ const (
 
 	// ContainerdContentDir - path to containerd`s content store
 	ContainerdContentDir = PersistDir + "/containerd/io.containerd.content.v1.content"
+)
+
+var (
+	//VolumeClearZFSDataset - dataset to create volumes without encryption
+	VolumeClearZFSDataset = strings.TrimLeft(VolumeClearDirName, "/")
+	//VolumeEncryptedZFSDataset - dataset to create volumes with encryption
+	VolumeEncryptedZFSDataset = strings.TrimLeft(VolumeEncryptedDirName, "/")
 )

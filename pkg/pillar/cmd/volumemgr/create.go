@@ -86,7 +86,7 @@ func createVdiskVolume(ctx *volumemgrContext, status types.VolumeStatus,
 
 	switch persistFsType {
 	case types.PersistZFS:
-		zVolName := status.ZVolName(types.VolumeZFSPool)
+		zVolName := status.ZVolName()
 		zVolDevice := zfs.GetZVolDeviceByDataset(zVolName)
 		if zVolDevice == "" {
 			errStr := fmt.Sprintf("Error finding zfs zvol %s", zVolName)
@@ -250,7 +250,7 @@ func destroyVdiskVolume(ctx *volumemgrContext, status types.VolumeStatus) (bool,
 			log.Error(errStr)
 		}
 		//Assume this is zfs device
-		zVolName := status.ZVolName(types.VolumeZFSPool)
+		zVolName := status.ZVolName()
 		if stdoutStderr, err := zfs.DestroyDataset(log, zVolName); err != nil {
 			errStr := fmt.Sprintf("Error destroying zfs zvol at %s, error=%v, output=%s",
 				zVolName, err, stdoutStderr)

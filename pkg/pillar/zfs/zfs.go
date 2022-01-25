@@ -23,6 +23,13 @@ var (
 	zfsPath = []string{"/hostfs", "zfs"}
 )
 
+//CreateDataset creates an empty dataset
+func CreateDataset(log *base.LogObject, dataset string) (string, error) {
+	args := append(zfsPath, "create", "-p", dataset)
+	stdoutStderr, err := base.Exec(log, vault.ZfsPath, args...).CombinedOutput()
+	return string(stdoutStderr), err
+}
+
 //DestroyDataset removes dataset from zfs
 //it runs 3 times in case of errors (we can hit dataset is busy)
 func DestroyDataset(log *base.LogObject, dataset string) (string, error) {

@@ -23,7 +23,7 @@ type VolumeConfig struct {
 	ReadOnly                bool
 	RefCount                uint
 	GenerationCounter       int64
-	VolumeDir               string
+	Encrypted               bool
 	DisplayName             string
 	HasNoAppReferences      bool
 }
@@ -114,7 +114,7 @@ type VolumeStatus struct {
 	MaxVolSize              uint64
 	ReadOnly                bool
 	GenerationCounter       int64
-	VolumeDir               string
+	Encrypted               bool
 	DisplayName             string
 	State                   SwState
 	SubState                volumeSubState
@@ -150,7 +150,11 @@ func (status VolumeStatus) IsContainer() bool {
 
 // PathName returns the path of the volume
 func (status VolumeStatus) PathName() string {
-	return fmt.Sprintf("%s/%s#%d.%s", status.VolumeDir, status.VolumeID.String(),
+	baseDir := VolumeClearDirName
+	if status.Encrypted {
+		baseDir = VolumeEncryptedDirName
+	}
+	return fmt.Sprintf("%s/%s#%d.%s", baseDir, status.VolumeID.String(),
 		status.GenerationCounter, strings.ToLower(status.ContentFormat.String()))
 }
 
