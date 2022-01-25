@@ -7,6 +7,7 @@ import (
 	"os"
 
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/zfs"
 )
 
 func initializeDirs() {
@@ -28,6 +29,21 @@ func initializeDirs() {
 			log.Functionf("Create %s", dirName)
 			if err := os.MkdirAll(dirName, 0700); err != nil {
 				log.Fatal(err)
+			}
+		}
+	}
+}
+
+func initializeDatasets() {
+	// Our destination volume datasets
+	volumeDatasets := []string{
+		types.VolumeClearZFSDataset,
+		types.VolumeEncryptedZFSDataset,
+	}
+	for _, datasetName := range volumeDatasets {
+		if _, err := zfs.GetDatasetOptions(log, datasetName); err != nil {
+			if output, err := zfs.CreateDataset(log, datasetName); err != nil {
+				log.Fatalf("CreateDataset failed: %s %s ", output, err)
 			}
 		}
 	}

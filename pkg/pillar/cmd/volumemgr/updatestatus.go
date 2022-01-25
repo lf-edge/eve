@@ -564,7 +564,7 @@ func doUpdateVol(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool)
 	}
 	if status.State == types.CREATING_VOLUME && status.SubState == types.VolumeSubStatePreparing {
 		if ctx.persistType == types.PersistZFS && !status.IsContainer() {
-			zVolStatus := lookupZVolStatusByDataset(ctx, status.ZVolName(types.VolumeZFSPool))
+			zVolStatus := lookupZVolStatusByDataset(ctx, status.ZVolName())
 			if zVolStatus != nil {
 				wwn, err := createTargetVhost(zVolStatus.Device, status)
 				if err != nil {

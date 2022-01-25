@@ -108,7 +108,7 @@ func handleDeferredVolumeCreate(ctx *volumemgrContext, key string, config *types
 		MaxVolSize:              config.MaxVolSize,
 		ReadOnly:                config.ReadOnly,
 		GenerationCounter:       config.GenerationCounter,
-		VolumeDir:               config.VolumeDir,
+		Encrypted:               config.Encrypted,
 		DisplayName:             config.DisplayName,
 		RefCount:                config.RefCount,
 		LastRefCountChangeTime:  time.Now(),
@@ -123,7 +123,7 @@ func handleDeferredVolumeCreate(ctx *volumemgrContext, key string, config *types
 	persistFsType := ctx.persistType
 
 	if persistFsType == types.PersistZFS {
-		zvolName := status.ZVolName(types.VolumeZFSPool)
+		zvolName := status.ZVolName()
 		if _, err := zfs.GetDatasetOptions(log, zvolName); err == nil {
 			zVolDevice := zfs.GetZVolDeviceByDataset(zvolName)
 			if zVolDevice == "" {
@@ -426,7 +426,7 @@ func handleZVolStatusCreate(ctxArg interface{}, key string, configArg interface{
 	status := configArg.(types.ZVolStatus)
 	for _, s := range ctx.pubVolumeStatus.GetAll() {
 		volumeStatus := s.(types.VolumeStatus)
-		if volumeStatus.ZVolName(types.VolumeZFSPool) == status.Dataset {
+		if volumeStatus.ZVolName() == status.Dataset {
 			updateVolumeStatus(ctx, volumeStatus.VolumeID)
 			break
 		}

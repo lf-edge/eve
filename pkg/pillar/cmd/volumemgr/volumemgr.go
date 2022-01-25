@@ -457,8 +457,13 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	}
 	log.Functionf("processed Vault Status")
 
-	// create the directories
-	initializeDirs()
+	if ctx.persistType == types.PersistZFS {
+		// create datasets for volumes
+		initializeDatasets()
+	} else {
+		// create the directories
+		initializeDirs()
+	}
 
 	// Iterate over volume directory and prepares map of
 	// volume's content format with the volume key
@@ -563,7 +568,8 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 			start := time.Now()
 			gcObjects(&ctx, volumeEncryptedDirName)
 			gcObjects(&ctx, volumeClearDirName)
-			gcDatasets(&ctx, types.VolumeZFSPool)
+			gcDatasets(&ctx, types.VolumeEncryptedZFSDataset)
+			gcDatasets(&ctx, types.VolumeClearZFSDataset)
 			if !ctx.initGced {
 				gcUnusedInitObjects(&ctx)
 				ctx.initGced = true

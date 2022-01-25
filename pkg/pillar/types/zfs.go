@@ -13,8 +13,12 @@ const (
 	ZVolDevicePrefix = "/dev/zvol"
 )
 
-// ZVolName returns name of zvol for volume in defined pool
-func (status VolumeStatus) ZVolName(pool string) string {
+// ZVolName returns name of zvol for volume
+func (status VolumeStatus) ZVolName() string {
+	pool := VolumeClearZFSDataset
+	if status.Encrypted {
+		pool = VolumeEncryptedZFSDataset
+	}
 	return fmt.Sprintf("%s/%s.%d", pool, status.VolumeID.String(), status.GenerationCounter)
 }
 
