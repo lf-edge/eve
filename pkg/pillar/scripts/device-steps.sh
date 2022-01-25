@@ -159,30 +159,6 @@ echo "$(date -Ins -u) Configuration from factory/install:"
 (cd $CONFIGDIR || return; ls -l)
 echo
 
-# Make sure we have a v2tlsbaseroot-certificates.pem for the V2 API. If none was in /config
-# from the installer we pick the one from Alpine. This ensures that updated systems have a
-# useful file in place.
-# NOTE: The V2 API does not trust the /config/root-certificates.pem for TLS, however
-# that file expresses the root for the trust in the signed configuration.
-# We also make sure that we have this file in /persist/certs/ under a sha-based name.
-# Finally, the currently used base file is indicated by the content of
-# /persist/certs/v2tlsbaseroot-certificates.sha256. This is to prepare for a future
-# feature where the controller can update the base file.
-# Note that programatically we add any proxy certificates to the list of roots we trust.
-if [ ! -s /config/v2tlsbaseroot-certificates.pem ]; then
-    echo "$(date -Ins -u) Creating default /config/v2tlsbaseroot-certificates.pem"
-    cp -p /etc/ssl/certs/ca-certificates.crt /config/v2tlsbaseroot-certificates.pem
-fi
-sha=$(openssl sha256 /config/v2tlsbaseroot-certificates.pem | awk '{print $2}')
-if [ ! -s "$PERSIST_CERTS/$sha" ]; then
-    echo "$(date -Ins -u) Adding /config/v2tlsbaseroot-certificates.pem to $PERSIST_CERTS"
-    cp /config/v2tlsbaseroot-certificates.pem "$PERSIST_CERTS/$sha"
-fi
-if [ ! -s "$PERSIST_CERTS/v2tlsbaseroot-certificates.sha256" ]; then
-    echo "$(date -Ins -u) Setting /config/v2tlsbaseroot-certificates.pem as current"
-    echo "$sha" >"$PERSIST_CERTS/v2tlsbaseroot-certificates.sha256"
-fi
-
 CONFIGDEV=$(zboot partdev CONFIG)
 
 # If zedbox is already running we don't have to start it.
@@ -336,7 +312,7 @@ access_usb() {
         done
         if [ -d /mnt/identity ] && [ -f $CONFIGDIR/device.cert.pem ]; then
             echo "$(date -Ins -u) Saving identity to USB stick"
-            IDENTITYHASH=$(openssl sha256 $CONFIGDIR/device.cert.pem |awk '{print $2}')
+            IDENTITYHASH=$(cat /config/soft_serial)
             IDENTITYDIR="/mnt/identity/$IDENTITYHASH"
             [ -d "$IDENTITYDIR" ] || mkdir -p "$IDENTITYDIR"
             cp -p $CONFIGDIR/device.cert.pem "$IDENTITYDIR"

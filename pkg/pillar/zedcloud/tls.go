@@ -1,4 +1,4 @@
-// Copyright (c) 2017-2018 Zededa, Inc.
+// Copyright (c) 2017-2022 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
 // Common code to communicate to zedcloud
@@ -7,11 +7,13 @@ package zedcloud
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -382,4 +384,54 @@ func updateEtcSSLforProxyCerts(ctx *ZedCloudContext, dns *types.DeviceNetworkSta
 	} else {
 		log.Functionf("updateEtcSSLforProxyCerts: update-ca-certificates %s, certs num %d", out, len(newCerts))
 	}
+}
+
+// InitializeCertDir is called by zedbox to make sure we have the initial
+// files in /persist/certs from /config/ under a sha-based name.
+// Also, the currently used base file is indicated by the content of
+// /persist/certs/v2tlsbaseroot-certificates.sha256. This is to prepare for a
+// future feature where the controller can update the base file.
+// Note that programmatically we add any proxy certificates to the list of roots
+// we trust separately from the file content.
+func InitializeCertDir(log *base.LogObject) error {
+	if _, err := os.Stat(types.CertificateDirname); err != nil {
+		log.Tracef("Create %s", types.CertificateDirname)
+		if err := os.MkdirAll(types.CertificateDirname, 0700); err != nil {
+			return err
+		}
+	}
+	f, err := os.Open(types.V2TLSBaseFile)
+	if err != nil {
+		return err
+	}
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		err = fmt.Errorf("Failed sha256 of %s: %w",
+			types.V2TLSBaseFile, err)
+		return err
+	}
+	sha := fmt.Sprintf("%x", h.Sum(nil))
+	// Copy base file to /persist/certs/<sha> if not exist or zero length
+	dstfile := fmt.Sprintf("%s/%s", types.CertificateDirname, sha)
+	st, err := os.Stat(dstfile)
+	if err != nil || st.Size() == 0 {
+		log.Noticef("Adding /config/v2tlsbaseroot-certificates.pem to %s",
+			dstfile)
+		err := fileutils.CopyFile("/config/v2tlsbaseroot-certificates.pem", dstfile)
+		if err != nil {
+			return err
+		}
+	}
+	// Write sha to types.V2TLSCertShaFilename if not exist or zero length
+	dstfile = types.V2TLSCertShaFilename
+	st, err = os.Stat(dstfile)
+	if err != nil || st.Size() == 0 {
+		log.Noticef("Setting /config/v2tlsbaseroot-certificates.pem as current")
+		line := sha + "\n"
+		err = fileutils.WriteRename(dstfile, []byte(line))
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }

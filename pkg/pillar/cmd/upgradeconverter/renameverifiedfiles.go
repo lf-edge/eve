@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
 )
 
 const (
@@ -106,7 +107,7 @@ func copyRenameDelete(srcFile, dstFile string) {
 			return
 		}
 	}
-	if err := CopyFile(srcFile, dstTmpFile); err != nil {
+	if err := fileutils.CopyFile(srcFile, dstTmpFile); err != nil {
 		log.Errorf("Copy failed: %s", err)
 	} else if err := os.Rename(dstTmpFile, dstFile); err != nil {
 		log.Errorf("Rename to %s failed: %s", dstFile, err)

@@ -5,6 +5,8 @@ package upgradeconverter
 
 import (
 	"os"
+
+	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
 )
 
 func moveConfigItemValueMap(ctxPtr *ucContext) error {
@@ -42,7 +44,7 @@ func moveConfigItemValueMap(ctxPtr *ucContext) error {
 	}
 
 	log.Functionf("Copy from %s to %s", oldFile, newFile)
-	err := CopyFile(oldFile, newFile)
+	err := fileutils.CopyFile(oldFile, newFile)
 	if err != nil {
 		log.Error(err)
 		return err
