@@ -2151,14 +2151,15 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 	//  value or retain the previous value.
 	gcPtr := &ctx.zedagentCtx.globalConfig
 	newGlobalConfig := types.DefaultConfigItemValueMap()
-	// Note: UsbAccess is special in that it has two defaults.
+	// Note: UsbAccess and VgaAccess are special in that they has two defaults.
 	// When the device first boots the default is "true" as specified
 	// in the DefaultConfigItemValueMap. But when connecting to the
 	// controller, if the controller does not include the item, it
 	// should default to "false".
 	// That way bringup of new hardware models can be done using an
-	// attached keyboard.
+	// attached keyboard and monitor.
 	newGlobalConfig.SetGlobalValueBool(types.UsbAccess, false)
+	newGlobalConfig.SetGlobalValueBool(types.VgaAccess, false)
 	newGlobalStatus := types.NewGlobalStatus()
 
 	for _, item := range items {

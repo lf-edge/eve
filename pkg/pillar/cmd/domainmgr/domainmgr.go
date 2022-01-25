@@ -90,13 +90,16 @@ type domainContext struct {
 	pubCipherBlockStatus   pubsub.Publication
 	cipherMetrics          *cipher.AgentMetrics
 	usbAccess              bool
+	vgaAccess              bool
 	createSema             *sema.Semaphore
 	GCComplete             bool
 	setInitialUsbAccess    bool
-	GCInitialized          bool
-	domainBootRetryTime    uint32 // In seconds
-	metricInterval         uint32 // In seconds
-	pids                   map[int32]bool
+	setInitialVgaAccess    bool
+
+	GCInitialized       bool
+	domainBootRetryTime uint32 // In seconds
+	metricInterval      uint32 // In seconds
+	pids                map[int32]bool
 	// Common CAS client which can be used by multiple routines.
 	// There is no shared data so its safe to be used by multiple goroutines
 	casClient cas.CAS
@@ -195,6 +198,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	domainCtx := domainContext{
 		ps:                  ps,
 		usbAccess:           true,
+		vgaAccess:           true,
 		domainBootRetryTime: 600,
 		pids:                make(map[int32]bool),
 		cipherMetrics:       cipher.NewAgentMetrics(agentName),
@@ -419,6 +423,14 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		domainCtx.usbAccess = true
 		updateUsbAccess(&domainCtx)
 		domainCtx.setInitialUsbAccess = true
+	}
+
+	if !domainCtx.setInitialVgaAccess {
+		log.Functionf("GCComplete but not setInitialVgaAccess => first boot")
+		// Enable VGA
+		domainCtx.vgaAccess = true
+		updateVgaAccess(&domainCtx)
+		domainCtx.setInitialVgaAccess = true
 	}
 
 	// Pick up debug aka log level before we start real work
@@ -2037,6 +2049,7 @@ func handleDelete(ctx *domainContext, key string, status *types.DomainStatus) {
 
 	// Check if the USB controller became available for dom0
 	updateUsbAccess(ctx)
+	updateVgaAccess(ctx)
 
 	// Delete xen cfg file for good measure
 	filename := xenCfgFilename(status.AppNum)
@@ -2178,6 +2191,13 @@ func handleGlobalConfigImpl(ctxArg interface{}, key string,
 			ctx.usbAccess = gcp.GlobalValueBool(types.UsbAccess)
 			updateUsbAccess(ctx)
 			ctx.setInitialUsbAccess = true
+		}
+		if gcp.GlobalValueBool(types.VgaAccess) != ctx.vgaAccess ||
+			!ctx.setInitialVgaAccess {
+
+			ctx.vgaAccess = gcp.GlobalValueBool(types.VgaAccess)
+			updateVgaAccess(ctx)
+			ctx.setInitialVgaAccess = true
 		}
 		if gcp.GlobalValueInt(types.MetricInterval) != 0 {
 			ctx.metricInterval = gcp.GlobalValueInt(types.MetricInterval)
@@ -2601,6 +2621,17 @@ func updatePortAndPciBackIoBundle(ctx *domainContext, ib *types.IoBundle) (chang
 		if ctx.usbAccess && ib.Type == types.IoUSB {
 			keepInHost = true
 		}
+		if ctx.vgaAccess && ib.Type == types.IoHDMI {
+			// only return VGA devices that were marked as boot devices.
+			// console output won't be visible on others anyway
+			// it allows us to debug issues with GPUs assigned to applications
+			if keep, err := types.PCIIsBootVga(log, ib.PciLong); err == nil {
+				keepInHost = keep
+			} else {
+				log.Errorf("Couldn't get boot_vga statues for VGA device %s", ib.PciLong)
+				log.Error(err)
+			}
+		}
 	}
 
 	log.Functionf("updatePortAndPciBackIoBundle(%d %s %s) isPort %t keepInHost %t members %d",
@@ -2825,6 +2856,15 @@ func updateUsbAccess(ctx *domainContext) {
 	} else {
 		addUSBtoKernel()
 	}
+	updatePortAndPciBackIoBundleAll(ctx)
+	checkIoBundleAll(ctx)
+}
+
+func updateVgaAccess(ctx *domainContext) {
+
+	log.Functionf("updateVgaAccess(%t)", ctx.usbAccess)
+	// TODO: we might need some extra work here for some VGA devices
+	// that do not enable output upon HDMI cable attachment
 	updatePortAndPciBackIoBundleAll(ctx)
 	checkIoBundleAll(ctx)
 }

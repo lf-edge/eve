@@ -173,6 +173,8 @@ const (
 	// Bool Items
 	// UsbAccess global setting key
 	UsbAccess GlobalSettingKey = "debug.enable.usb"
+	// VgaAccess global setting to enable host VGA console if it is not assigned to an application
+	VgaAccess GlobalSettingKey = "debug.enable.vga"
 	// AllowAppVnc global setting key
 	AllowAppVnc GlobalSettingKey = "app.allow.vnc"
 	// EveMemoryLimitInBytes global setting key
@@ -755,6 +757,7 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 
 	// Add Bool Items
 	configItemSpecMap.AddBoolItem(UsbAccess, true) // Controller likely default to false
+	configItemSpecMap.AddBoolItem(VgaAccess, true) // Controller likely default to false
 	configItemSpecMap.AddBoolItem(AllowAppVnc, false)
 	configItemSpecMap.AddBoolItem(IgnoreMemoryCheckForApps, false)
 	configItemSpecMap.AddBoolItem(IgnoreDiskCheckForApps, false)
