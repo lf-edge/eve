@@ -569,7 +569,7 @@ func handleCreate(ctxArg interface{}, key string,
 			log.Warnf("handleCreate(%v) for %s found different purge counter %d vs. %d",
 				config.UUIDandVersion, config.DisplayName, c,
 				config.PurgeCmd.Counter)
-			status.PurgeInprogress = types.RecreateVolumes
+			status.PurgeInprogress = types.DownloadAndVerify
 			status.State = types.PURGING
 			// We persist the PurgeCmd Counter when
 			// PurgeInprogress is done
@@ -594,6 +594,7 @@ func handleCreate(ctxArg interface{}, key string,
 		vrs.MountDir = vrc.MountDir
 		vrs.PendingAdd = true
 		vrs.State = types.INITIAL
+		vrs.VerifyOnly = true
 	}
 
 	allErrors := ""
@@ -703,7 +704,7 @@ func handleModify(ctxArg interface{}, key string,
 			log.Functionf("Removing error %s", status.Error)
 			status.ClearErrorWithSource()
 		}
-		status.PurgeInprogress = types.RecreateVolumes
+		status.PurgeInprogress = types.DownloadAndVerify
 		status.State = types.PURGING
 		// We persist the PurgeCmd Counter when PurgeInprogress is done
 	} else if needPurge {

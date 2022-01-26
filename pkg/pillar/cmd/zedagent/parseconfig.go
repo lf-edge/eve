@@ -1525,6 +1525,7 @@ func parseVolumeRefList(volumeRefConfigList []types.VolumeRefConfig,
 		volume.GenerationCounter = volumeRef.GenerationCount
 		volume.RefCount = 1
 		volume.MountDir = volumeRef.GetMountDir()
+		volume.VerifyOnly = true
 		volumeRefConfigList[idx] = *volume
 		idx++
 	}

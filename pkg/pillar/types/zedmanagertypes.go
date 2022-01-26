@@ -252,9 +252,10 @@ type Inprogress uint8
 
 // NotInprogress and other values for Inprogress
 const (
-	NotInprogress   Inprogress = iota
-	RecreateVolumes            // Download and verify new images if need be
+	NotInprogress     Inprogress = iota
+	DownloadAndVerify            // Download and verify new images if need be
 	BringDown
+	RecreateVolumes
 	BringUp
 )
 

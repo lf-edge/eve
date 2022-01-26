@@ -238,6 +238,7 @@ type VolumeRefConfig struct {
 	GenerationCounter int64
 	RefCount          uint
 	MountDir          string
+	VerifyOnly        bool
 }
 
 // Key : VolumeRefConfig unique key
@@ -313,6 +314,7 @@ type VolumeRefStatus struct {
 	MountDir           string
 	PendingAdd         bool // Flag to identify whether volume ref config published or not
 	WWN                string
+	VerifyOnly         bool
 
 	ErrorAndTimeWithSource
 }

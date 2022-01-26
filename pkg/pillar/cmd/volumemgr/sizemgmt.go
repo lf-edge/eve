@@ -42,8 +42,9 @@ func getRemainingDiskSpace(ctxPtr *volumemgrContext) (uint64, error) {
 		sizeToUseInCalculation := uint64(iterVolumeStatus.CurrentSize)
 		if cfg == nil {
 			// we have no config with this volume, so it will be purged
-			log.Noticef("getRemainingDiskSpace: Volume %s not found in VolumeConfigs, use CurrentSize",
+			log.Noticef("getRemainingDiskSpace: Volume %s not found in VolumeConfigs, ignore",
 				iterVolumeStatus.Key())
+			continue
 		} else if cfg.ReadOnly {
 			// it is ReadOnly and will not grow
 			log.Noticef("getRemainingDiskSpace: Volume %s is ReadOnly, use CurrentSize",

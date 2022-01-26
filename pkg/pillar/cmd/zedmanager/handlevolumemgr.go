@@ -16,13 +16,17 @@ import (
 // MaybeAddVolumeRefConfig publishes volume ref config with refcount
 // to the volumemgr
 func MaybeAddVolumeRefConfig(ctx *zedmanagerContext, appInstID uuid.UUID,
-	volumeID uuid.UUID, generationCounter int64, mountDir string) {
+	volumeID uuid.UUID, generationCounter int64, mountDir string, verifyOnly bool) {
 
 	key := fmt.Sprintf("%s#%d", volumeID.String(), generationCounter)
 	log.Functionf("MaybeAddVolumeRefConfig for %s", key)
 	m := lookupVolumeRefConfig(ctx, key)
 	if m != nil {
 		m.RefCount++
+		// only update from VerifyOnly to non-VerifyOnly
+		if m.VerifyOnly {
+			m.VerifyOnly = verifyOnly
+		}
 		log.Functionf("VolumeRefConfig exists for %s to refcount %d",
 			key, m.RefCount)
 		publishVolumeRefConfig(ctx, m)
@@ -33,6 +37,7 @@ func MaybeAddVolumeRefConfig(ctx *zedmanagerContext, appInstID uuid.UUID,
 			GenerationCounter: generationCounter,
 			RefCount:          1,
 			MountDir:          mountDir,
+			VerifyOnly:        verifyOnly,
 		}
 		publishVolumeRefConfig(ctx, &vrc)
 	}

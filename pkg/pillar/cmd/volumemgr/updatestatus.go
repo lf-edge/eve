@@ -435,6 +435,21 @@ func doUpdateVol(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool)
 			status.Key(), status.DisplayName)
 		return false, true
 	}
+
+	verifyOnly := false
+	vrc := lookupVolumeRefConfig(ctx, status.Key())
+	if vrc != nil {
+		verifyOnly = vrc.VerifyOnly
+	} else {
+		vc := lookupVolumeConfig(ctx, status.Key())
+		if vc != nil && !vc.HasNoAppReferences {
+			log.Functionf("doUpdateVol(%s) name %s has app references but no VolumeRefConfig found",
+				status.Key(), status.DisplayName)
+			// we have no ref config, so no information about its intent
+			verifyOnly = true
+		}
+	}
+
 	changed := false
 	switch status.VolumeContentOriginType {
 	case zconfig.VolumeContentOriginType_VCOT_BLANK:
@@ -449,6 +464,14 @@ func doUpdateVol(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool)
 		}
 		if status.State < types.CREATING_VOLUME &&
 			status.SubState == types.VolumeSubStateInitial {
+			// we should not verify empty volume
+			if verifyOnly {
+				if status.State != types.LOADED {
+					status.State = types.LOADED
+					changed = true
+				}
+				return changed, false
+			}
 			status.State = types.CREATING_VOLUME
 			status.ReferenceName = "" //set empty for blank volume
 			status.ContentFormat = blankVolumeFormat
@@ -509,6 +532,15 @@ func doUpdateVol(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool)
 			_, err := ctx.casClient.GetImageHash(ctStatus.ReferenceID())
 			if err != nil {
 				log.Functionf("doUpdateVol(%s): waiting for image create: %s", status.Key(), err.Error())
+				return changed, false
+			}
+
+			// we are done if verifyOnly set
+			if verifyOnly {
+				if status.State != types.LOADED {
+					status.State = types.LOADED
+					changed = true
+				}
 				return changed, false
 			}
 
