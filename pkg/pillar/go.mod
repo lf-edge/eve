@@ -12,7 +12,7 @@ require (
 	github.com/bugsnag/bugsnag-go v1.8.0 // indirect
 	github.com/bugsnag/panicwrap v1.2.1 // indirect
 	github.com/containerd/cgroups v1.0.1
-	github.com/containerd/containerd v1.5.7
+	github.com/containerd/containerd v1.5.9
 	github.com/containerd/typeurl v1.0.2
 	github.com/cshari-zededa/eve-tpm2-tools v0.0.4
 	github.com/digitalocean/go-libvirt v0.0.0-20190715144809-7b622097a793 // indirect
@@ -42,7 +42,7 @@ require (
 	github.com/ochapman/godmi v0.0.0-20140902235245-2527e2081a16 // indirect
 	github.com/onsi/gomega v1.10.3
 	github.com/opencontainers/go-digest v1.0.0
-	github.com/opencontainers/image-spec v1.0.1
+	github.com/opencontainers/image-spec v1.0.2
 	github.com/opencontainers/runtime-spec v1.0.3-0.20210326190908-1c3f411f0417
 	github.com/packetcap/go-pcap v0.0.0-20210809221331-e2e6b14e1812
 	github.com/prometheus/client_golang v1.9.0 // indirect
