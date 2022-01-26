@@ -75,7 +75,10 @@ zfs_vdev_sync_write_max_active=35 \
 zfs_vdev_async_read_min_active=1 \
 zfs_vdev_async_read_max_active=10 \
 zfs_vdev_async_write_min_active=1 \
-zfs_vdev_async_write_max_active=10
+zfs_vdev_async_write_max_active=10 \
+\
+zfs_smoothing_scale=50000 \
+zfs_smoothing_write=5
 "
 
     # Disabling SC2086 because word splitting here is intended -
