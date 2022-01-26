@@ -77,13 +77,17 @@ func removeAIStatus(ctx *zedmanagerContext, status *types.AppInstanceStatus) {
 		unpublishAppInstanceStatus(ctx, status)
 		return
 	}
-	log.Functionf("removeAIStatus(%s): PurgeInprogress bringing it up",
+	log.Functionf("removeAIStatus(%s): PurgeInprogress RecreateVolumes",
 		status.Key())
-	status.PurgeInprogress = types.BringUp
+	status.PurgeInprogress = types.RecreateVolumes
 	publishAppInstanceStatus(ctx, status)
 	config := lookupAppInstanceConfig(ctx, uuidStr)
 	if config != nil {
-		changed := doUpdate(ctx, *config, status)
+		changed := purgeCmdDone(ctx, *config, status)
+		if changed {
+			publishAppInstanceStatus(ctx, status)
+		}
+		changed = doUpdate(ctx, *config, status)
 		if changed {
 			publishAppInstanceStatus(ctx, status)
 		}
@@ -111,7 +115,7 @@ func doUpdate(ctx *zedmanagerContext,
 	}
 
 	// Are we doing a purge?
-	if status.PurgeInprogress == types.RecreateVolumes {
+	if status.PurgeInprogress == types.DownloadAndVerify {
 		log.Functionf("PurgeInprogress(%s) volumemgr done",
 			status.Key())
 		status.PurgeInprogress = types.BringDown
@@ -126,6 +130,12 @@ func doUpdate(ctx *zedmanagerContext,
 		log.Functionf("PurgeInprogress(%s) bringing it up",
 			status.Key())
 	}
+
+	if status.PurgeInprogress == types.RecreateVolumes {
+		status.PurgeInprogress = types.BringUp
+		changed = true
+	}
+
 	c, done := doPrepare(ctx, config, status)
 	changed = changed || c
 	if !done {
@@ -186,7 +196,7 @@ func doInstall(ctx *zedmanagerContext,
 	// and not used by any domain while purging. VolumeRefConfig which are
 	// not in AppInstanceConfig but used by some running domain will be
 	// removed as part of purgeCmdDone.
-	if status.PurgeInprogress == types.RecreateVolumes {
+	if status.PurgeInprogress == types.DownloadAndVerify {
 		domainVolMap := make(map[string]bool)
 		domainConfig := lookupDomainConfig(ctx, status.Key())
 		if domainConfig != nil {
@@ -251,10 +261,25 @@ func doInstall(ctx *zedmanagerContext,
 			MountDir:          vrc.MountDir,
 			PendingAdd:        true,
 			State:             types.INITIAL,
+			VerifyOnly:        vrc.VerifyOnly,
 		}
 		log.Functionf("Adding new VolumeRefStatus %v", newVrs)
 		status.VolumeRefStatusList = append(status.VolumeRefStatusList, newVrs)
 		changed = true
+	}
+
+	if status.PurgeInprogress == types.NotInprogress || status.PurgeInprogress == types.RecreateVolumes {
+		for i := range config.VolumeRefConfigList {
+			vrc := &config.VolumeRefConfigList[i]
+			vrsPubSub := lookupVolumeRefStatus(ctx, vrc.Key())
+			if vrsPubSub == nil {
+				continue
+			}
+			if vrsPubSub.VerifyOnly && vrsPubSub.State == types.LOADED {
+				vrc.VerifyOnly = false
+				publishVolumeRefConfig(ctx, vrc)
+			}
+		}
 	}
 
 	for i := range status.VolumeRefStatusList {
@@ -320,10 +345,16 @@ func doInstall(ctx *zedmanagerContext,
 		return changed, false
 	}
 
-	if minState < types.CREATED_VOLUME {
-		log.Functionf("Waiting for all volumes for %s", uuidStr)
+	if status.PurgeInprogress != types.DownloadAndVerify && status.PurgeInprogress != types.BringDown && minState < types.CREATED_VOLUME {
+		log.Functionf("Waiting for all new volumes for %s", uuidStr)
 		return changed, false
 	}
+
+	if status.PurgeInprogress == types.DownloadAndVerify && minState < types.LOADED {
+		log.Functionf("Waiting for all volumes to be loaded for %s", uuidStr)
+		return changed, false
+	}
+
 	log.Functionf("Done with volumes for %s", uuidStr)
 	log.Functionf("doInstall done for %s", uuidStr)
 	return changed, true
@@ -336,7 +367,8 @@ func doInstallVolumeRef(ctx *zedmanagerContext, config types.AppInstanceConfig,
 	changed := false
 	if vrs.PendingAdd {
 		MaybeAddVolumeRefConfig(ctx, config.UUIDandVersion.UUID,
-			vrs.VolumeID, vrs.GenerationCounter, vrs.MountDir)
+			vrs.VolumeID, vrs.GenerationCounter, vrs.MountDir,
+			vrs.VerifyOnly)
 		vrs.PendingAdd = false
 		changed = true
 	}
@@ -658,7 +690,6 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 				status.Key())
 			status.PurgeInprogress = types.NotInprogress
 			status.State = types.RUNNING
-			_ = purgeCmdDone(ctx, config, status)
 			changed = true
 		} else {
 			log.Functionf("PurgeInprogress(%s) waiting for Activated",

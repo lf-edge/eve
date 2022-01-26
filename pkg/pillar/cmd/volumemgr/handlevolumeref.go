@@ -17,6 +17,7 @@ func handleVolumeRefCreate(ctxArg interface{}, key string,
 	if status != nil {
 		log.Fatalf("VolumeRefStatus exists at handleVolumeRefCreate for %s", key)
 	}
+	needUpdateVol := false
 	vs := lookupVolumeStatus(ctx, config.VolumeKey())
 	if vs != nil {
 		updateVolumeStatusRefCount(ctx, vs)
@@ -33,6 +34,7 @@ func handleVolumeRefCreate(ctxArg interface{}, key string,
 			DisplayName:        vs.DisplayName,
 			MaxVolSize:         vs.MaxVolSize,
 			WWN:                vs.WWN,
+			VerifyOnly:         config.VerifyOnly,
 		}
 		if vs.HasError() {
 			description := vs.ErrorDescription
@@ -41,6 +43,7 @@ func handleVolumeRefCreate(ctxArg interface{}, key string,
 		} else if status.IsErrorSource(types.VolumeStatus{}) {
 			status.ClearErrorWithSource()
 		}
+		needUpdateVol = true
 	} else {
 		status = &types.VolumeRefStatus{
 			VolumeID:          config.VolumeID,
@@ -48,9 +51,17 @@ func handleVolumeRefCreate(ctxArg interface{}, key string,
 			RefCount:          config.RefCount,
 			MountDir:          config.MountDir,
 			State:             types.INITIAL, // Waiting for VolumeConfig from zedagent
+			VerifyOnly:        config.VerifyOnly,
 		}
 	}
 	publishVolumeRefStatus(ctx, status)
+	if needUpdateVol {
+		changed, _ := doUpdateVol(ctx, vs)
+		if changed {
+			publishVolumeStatus(ctx, vs)
+			updateVolumeRefStatus(ctx, vs)
+		}
+	}
 	log.Functionf("handleVolumeRefCreate(%s) Done", key)
 }
 
@@ -65,9 +76,17 @@ func handleVolumeRefModify(ctxArg interface{}, key string,
 		log.Fatalf("VolumeRefStatus doesn't exist at handleVolumeRefModify for %s", key)
 	}
 	status.RefCount = config.RefCount
+	needUpdateVol := false
+	if status.VerifyOnly != config.VerifyOnly {
+		status.VerifyOnly = config.VerifyOnly
+		needUpdateVol = true
+	}
 	publishVolumeRefStatus(ctx, status)
 	vs := lookupVolumeStatus(ctx, config.VolumeKey())
 	if vs != nil {
+		if needUpdateVol {
+			doUpdateVol(ctx, vs)
+		}
 		updateVolumeStatusRefCount(ctx, vs)
 		publishVolumeStatus(ctx, vs)
 	}
@@ -178,6 +197,7 @@ func updateVolumeRefStatus(ctx *volumemgrContext, vs *types.VolumeStatus) {
 				DisplayName:        vs.DisplayName,
 				MaxVolSize:         vs.MaxVolSize,
 				WWN:                vs.WWN,
+				VerifyOnly:         config.VerifyOnly,
 			}
 			if vs.HasError() {
 				description := vs.ErrorDescription
