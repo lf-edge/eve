@@ -1,6 +1,6 @@
 FROM lfedge/eve-alpine:6.7.0 as build
 ENV BUILD_PKGS cairo-dev jpeg-dev libpng-dev gcc make libc-dev openssl-dev libvncserver-dev file patch
-ENV PKGS alpine-baselayout musl-utils libtasn1-progs p11-kit cairo jpeg libpng openssl libvncserver
+ENV PKGS alpine-baselayout musl-utils libtasn1-progs p11-kit cairo jpeg libpng libvncserver
 RUN eve-alpine-deploy.sh
 
 ENV GUACD_VERSION=1.0.0
