@@ -12,8 +12,15 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [arm64-dirty, ubuntu-20.04]
+        os: [arm64-dirty, ubuntu-20.04] #arm64
+        hv: [xen, kvm]
+
     steps:
+
+      - name: Clear repository
+        run: |
+          sudo rm -fr "$GITHUB_WORKSPACE" && mkdir "$GITHUB_WORKSPACE"
+      
       - uses: actions/checkout@v2
         with:
           fetch-depth: 0
@@ -26,27 +33,29 @@ jobs:
           COMMIT_ID=$(git describe --abbrev=8 --always)
           echo "VERSION=0.0.0-pr$PR_ID-$COMMIT_ID" >> $GITHUB_ENV
           echo "TAG=evebuild/danger:pr$PR_ID" >> $GITHUB_ENV
-      - name: Build EVE for Xen
+      
+      - name: Build EVE
+        env:
+          HV: ${{ matrix.hv }}
         run: |
-          make V=1 ROOTFS_VERSION="$VERSION" HV=xen eve
-      - name: Build EVE for KVM
-        run: |
-          rm -rf dist
-          make V=1 ROOTFS_VERSION="$VERSION" HV=kvm eve
+          make V=1 ROOTFS_VERSION="$VERSION" HV=$HV eve
+      
       - name: Export docker container
+        env:
+          HV: ${{ matrix.hv }}
         run: |
           ARCH=$(uname -m | sed -e 's/x86_64/amd64/' -e 's/aarch64/arm64/')
           echo "ARCH=$ARCH" >> "$GITHUB_ENV"
-          for i in xen kvm; do
-             docker tag "lfedge/eve:$VERSION-$i" "$TAG-$i-$ARCH"
-             IMGS="$IMGS $TAG-$i-$ARCH"
-          done
-          docker save $IMGS > eve.tar
+          docker tag "lfedge/eve:$VERSION-$HV" "$TAG-$HV-$ARCH"
+          IMGS="$IMGS $TAG-$HV-$ARCH"
+          docker save $IMGS > eve-$HV-$ARCH.tar
+      
       - name: Upload EVE
         uses: actions/upload-artifact@v2
         with:
-          name: eve-${{ env.ARCH }}
-          path: eve.tar
+          name: eve-${{ matrix.hv }}-${{ env.ARCH }}
+          path: eve-${{ matrix.hv }}-${{ env.ARCH }}.tar
+      
       - name: Clean
         if: ${{ always() }}
         run: |

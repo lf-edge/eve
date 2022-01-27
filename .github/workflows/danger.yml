@@ -10,82 +10,41 @@ on:
 jobs:
   build:
     runs-on: ubuntu-20.04
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [arm64,amd64] 
+        hv: [xen, kvm]
+    env:
+      RUN_ID : ${{ github.event.workflow_run.id }}
     steps:
-      - name: Find PR build artifact for amd64
-        id: find-pr-artifact-amd64
-        uses: actions/github-script@v3
-        with:
-          result-encoding: string
-          script: |
-            artifacts = (await github.actions.listWorkflowRunArtifacts({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              run_id: context.payload.workflow_run.id,
-            })).data
-            if (artifacts.hasOwnProperty('total_count') && artifacts.total_count > 0) {
-              for (const artifact of artifacts.artifacts) {
-                if (artifact.name === 'eve-amd64') {
-                  return (await github.actions.downloadArtifact({
-                    owner: context.repo.owner,
-                    repo: context.repo.repo,
-                    artifact_id: artifact.id,
-                    archive_format: 'zip',
-                  })).url
-                }
-              }
-            } else {
-              throw 'No artifacts to publish'
-            }
-
-      - name: Download EVE amd64
+      - name: Find PR build artifact 
+        id: find-pr-artifact
+        env:
+          ARCH: ${{ matrix.arch }}
+          HV: ${{ matrix.hv }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          wget -O eve-amd64.zip "${{steps.find-pr-artifact-amd64.outputs.result}}"
+          gh run --repo ${{ github.repository }} download ${RUN_ID} -n eve-${HV}-${ARCH}
 
-      - name: Find PR build artifact for arm64
-        id: find-pr-artifact-arm64
-        uses: actions/github-script@v3
-        with:
-          result-encoding: string
-          script: |
-            artifacts = (await github.actions.listWorkflowRunArtifacts({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              run_id: context.payload.workflow_run.id,
-            })).data
-            if (artifacts.hasOwnProperty('total_count') && artifacts.total_count > 0) {
-              for (const artifact of artifacts.artifacts) {
-                if (artifact.name === 'eve-arm64') {
-                  return (await github.actions.downloadArtifact({
-                    owner: context.repo.owner,
-                    repo: context.repo.repo,
-                    artifact_id: artifact.id,
-                    archive_format: 'zip',
-                  })).url
-                }
-              }
-            } else {
-              throw 'No artifacts to publish'
-            }
+      - name: Display structure of downloaded files
+        run: ls -R
 
-      - name: Download EVE arm64
-        run: |
-          wget -O eve-arm64.zip "${{steps.find-pr-artifact-arm64.outputs.result}}"
-
-      - name: Publish EVE
+      - name: Publish EVE 
+        env:
+            ARCH: ${{ matrix.arch }}
+            HV: ${{ matrix.hv }}
         run: |
           echo "${{ secrets.DOCKERHUB_TOKEN }}" |\
-             docker login -u evebuild --password-stdin
-
-          for arch in amd64 arm64; do
-             rm -f eve.tar
-             unzip "eve-$arch.zip"
-             for i in `docker load < eve.tar | sed -e 's#^Loaded image:##'`; do
-                docker push "$i"
-                IMGS="$IMGS ${i/-$arch/}"
-             done
+             docker login -u evebuild --password-stdin 
+          
+          for i in `docker load --input eve-${HV}-${ARCH}.tar | sed -e 's#^Loaded image:##'`; do
+            docker push "$i"
+            IMGS="$IMGS ${i}"
           done
 
           for i in $(echo "$IMGS" | tr ' ' '\012' | sort -u); do
-             docker manifest create "$i" --amend "$i-arm64" --amend "$i-amd64"
+             docker manifest create "$i" --amend "$i" 
              docker manifest push "$i"
           done
