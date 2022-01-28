@@ -174,6 +174,7 @@ func TestNewConfigItemSpecMap(t *testing.T) {
 		DownloadMaxPortCost,
 		// Bool Items
 		UsbAccess,
+		VgaAccess,
 		AllowAppVnc,
 		EveMemoryLimitInBytes,
 		IgnoreMemoryCheckForApps,
