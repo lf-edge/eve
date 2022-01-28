@@ -5,9 +5,12 @@ package zedmanager
 
 import (
 	"fmt"
+	"io/ioutil"
+	"strconv"
 	"strings"
 
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/vault"
 )
 
 // getRemainingMemory returns how many bytes remain for app instance usage
@@ -40,6 +43,18 @@ func getRemainingMemory(ctxPtr *zedmanagerContext) (uint64, uint64, uint64, erro
 		}
 	}
 	memoryReservedForEve := ctxPtr.globalConfig.GlobalValueInt(types.EveMemoryLimitInBytes)
+	if vault.ReadPersistType() == types.PersistZFS {
+		byteCountStr, err := ioutil.ReadFile("/sys/module/zfs/parameters/zfs_arc_max")
+		if err != nil {
+			return 0, 0, 0, fmt.Errorf("failed to get data from zfs_arc_max. error: %v", err)
+		}
+		zfsArcMaxLimit, err := strconv.Atoi(string(byteCountStr))
+		if err != nil {
+			return 0, 0, 0, fmt.Errorf("failed to convert zfs_arc_max in to int: value: %s err: %v", byteCountStr, err)
+		} else {
+			memoryReservedForEve += uint32(zfsArcMaxLimit)
+		}
+	}
 	usedMemorySize += uint64(memoryReservedForEve)
 	deviceMemorySize, err := sysTotalMemory(ctxPtr)
 	if err != nil {
