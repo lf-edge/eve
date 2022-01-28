@@ -66,7 +66,11 @@ RUN case $(uname -m) in \
     fi && \
     make defconfig && \
     make oldconfig && \
-    if [ -z "${EXTRA}" ]; then diff -cw .config ${KERNEL_DEF_CONF}; fi
+    if [ -z "${EXTRA}" ]; then diff -cw .config ${KERNEL_DEF_CONF}; fi && \
+    if [ -d "/ucode/$(uname -m)" ]; then \
+          mkdir -p /lib/firmware; \
+          cp -r /ucode/"$(uname -m)"/* /lib/firmware ; \
+    fi
 
 # Kernel
 RUN make -j "$(getconf _NPROCESSORS_ONLN)" KCFLAGS="-fno-pie" && \
