@@ -3,8 +3,8 @@
 ZFS provides a rich set of functionality but at a cost of extra
 resource usage. Currently ARC (Adaptive Replacement Cache) size is
 limited to `min(256 MiB + 0.3% of total zpool size, 20% of system RAM)` but at least 384
-MiB. Keep in mind that this memory will be taken out form the
-applications.
+MiB. This RAM is included in the memory EVE reserves for its own operational needs.
+Thus would this memory not be available for allocation for applications.
 
 If system does not have enough memory to satisfy the limit mentioned
 above, severe performance degradation can occur on random access
