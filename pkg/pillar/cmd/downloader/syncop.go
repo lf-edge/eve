@@ -113,7 +113,17 @@ func handleSyncOp(ctx *downloaderContext, key string,
 			Password: dsCtx.Password,
 		}
 		trType = zedUpload.SyncAzureTr
-		serverURL = dsCtx.DownloadURL
+		serverURL = strings.TrimSpace(dst.Fqdn)
+		// if fqdn is defined, ensure that we have scheme defined
+		// if not, assume it is https
+		if serverURL != "" {
+			u, err := url.Parse(serverURL)
+			if err != nil {
+				errStr = fmt.Sprintf("invalid fqdn(%s): %s", serverURL, err)
+			} else if u.Scheme == "" {
+				serverURL = fmt.Sprintf("https://%s", serverURL)
+			}
+		}
 		// pass in the config.Name instead of 'filename' which
 		// does not contain the prefix of the relative path with '/'s
 		remoteName = config.Name

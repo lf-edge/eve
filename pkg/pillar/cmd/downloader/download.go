@@ -71,7 +71,7 @@ func download(ctx *downloaderContext, trType zedUpload.SyncTransportType,
 	case zedUpload.SyncHttpTr, zedUpload.SyncSftpTr:
 		dEndPoint, err = ctx.dCtx.NewSyncerDest(trType, downloadURL, dpath, auth)
 	case zedUpload.SyncAzureTr:
-		dEndPoint, err = ctx.dCtx.NewSyncerDest(trType, "", dpath, auth)
+		dEndPoint, err = ctx.dCtx.NewSyncerDest(trType, downloadURL, dpath, auth)
 	case zedUpload.SyncAwsTr:
 		dEndPoint, err = ctx.dCtx.NewSyncerDest(trType, region, dpath, auth)
 	case zedUpload.SyncOCIRegistryTr:
