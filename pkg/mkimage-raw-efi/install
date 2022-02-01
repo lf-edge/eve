@@ -19,6 +19,7 @@
 #   eve_install_skip_config
 #   eve_install_skip_persist
 #   eve_install_skip_rootfs
+#   eve_install_skip_zfs_checks
 #
 BAIL_FINAL_CMD=${BAIL_FINAL_CMD:-"exit 1"}
 [ -n "$DEBUG" ] && set -x
@@ -216,14 +217,20 @@ done
 # we may be asked to pause before install procedure
 grep -q eve_pause_before_install /proc/cmdline && pause "formatting the /dev/$INSTALL_DEV"
 
+# User may have requested to skip the zfs requirements checks.
+SKIP_ZFS_CHECKS=false
+grep -q eve_install_skip_zfs_checks /proc/cmdline && SKIP_ZFS_CHECKS=true
+
 P3_ON_BOOT_PLACEHOLDER="P3_ON_BOOT_PLACEHOLDER"
 POOL_CREATION_COMMAND_SUFFIX=""
 DISK_WITH_P3=""
 DISKS_TO_MERGE_COUNT=0
 MULTIPLE_DISKS=false
+INSTALL_ZFS=false
 if [ "$INSTALL_DEV" != "$INSTALL_PERSIST" ]; then
    if echo "$INSTALL_PERSIST"| grep -q ","; then
      MULTIPLE_DISKS=true
+     INSTALL_ZFS=true
      modprobe zfs
      MAKE_RAW_PARTS="efi imga imgb conf"
      IFS=',' ;for dev in $INSTALL_PERSIST; do
@@ -245,8 +252,21 @@ if [ "$INSTALL_DEV" != "$INSTALL_PERSIST" ]; then
            fi
         fi
      done
-     if [ $DISKS_TO_MERGE_COUNT -eq 0 ]; then
-          # in case of only comma provided
+
+     if [ "$SKIP_ZFS_CHECKS" = false ]; then
+        # Do ZFS minimum requirements checks (64GB memory and 3 physical drives in INSTALL_PERSIST)
+        # If requirements are not met, fallback to ext4 filesystem.
+        system_memory_GB="$(/usr/bin/free -g | grep Mem | awk '{print $2}')"
+
+        if [ "$system_memory_GB" -lt 64 ] || [ $DISKS_TO_MERGE_COUNT -lt 3 ]; then
+           echo "WARNING: ZFS installation minimum requirements are not met, installing ext4 filesystem instead."
+           # The following setting will install ext4 persist
+           INSTALL_ZFS=false
+        fi
+     fi
+
+     if [ $DISKS_TO_MERGE_COUNT -eq 0 ] || [ "$INSTALL_ZFS" = false ]; then
+          # in case of only comma provided or zfs requirements are not met
           MAKE_RAW_PARTS="efi imga imgb conf persist"
           DISK_WITH_P3="$INSTALL_DEV"
           POOL_CREATION_COMMAND_SUFFIX=$P3_ON_BOOT_PLACEHOLDER
@@ -267,7 +287,7 @@ fi
 # do the install (unless we're only here to collect the black box)
 grep -q eve_blackbox /proc/cmdline || /make-raw "/dev/$INSTALL_DEV" $MAKE_RAW_PARTS || bail "Installation failed. Entering shell..."
 
-if [ "$MULTIPLE_DISKS" = true ]; then
+if [ "$MULTIPLE_DISKS" = true ] && [ "$INSTALL_ZFS" = true ]; then
   if [ "$DISK_WITH_P3" != "" ]; then
     P3_ID="$(find_part P3 "$DISK_WITH_P3")"
     [ -z "$P3_ID" ] && bail "Installation failed. Cannot found P3. Entering shell..."
@@ -377,7 +397,7 @@ for p in INVENTORY P3; do
    umount "/run/$p" 2>/dev/null
 done
 
-if [ "$MULTIPLE_DISKS" = true ]; then
+if [ "$MULTIPLE_DISKS" = true ] && [ "$INSTALL_ZFS" = true ]; then
    adjust_zfs_mounts_and_umount
 fi
 
