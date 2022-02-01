@@ -24,7 +24,7 @@ import (
 const (
 	// SingleMB contains chunk size
 	SingleMB       int64 = 1024 * 1024
-	blobURLPattern       = "https://%s.blob.core.windows.net/%s"
+	blobURLPattern       = "https://%s.blob.core.windows.net"
 	maxRetries           = 20
 	parallelism          = 128
 )
@@ -116,14 +116,33 @@ func newPipeline(accountName, accountKey string, httpClient *http.Client) (pipel
 	return p, nil
 }
 
-func ListAzureBlob(accountName, accountKey, containerName string, httpClient *http.Client) ([]string, error) {
+func getURL(accountURL, accountName, pathPart, queryPart string) (*url.URL, error) {
+	if accountURL == "" {
+		accountURL = fmt.Sprintf(blobURLPattern, accountName)
+	}
+	accountURL = strings.TrimSuffix(accountURL, "/")
+	if pathPart != "" {
+		accountURL = fmt.Sprintf("%s/%s", accountURL, pathPart)
+	}
+	if queryPart != "" {
+		accountURL = fmt.Sprintf("%s?%s", accountURL, queryPart)
+	}
+	URL, err := url.Parse(accountURL)
+	if err != nil {
+		return nil, err
+	}
+
+	return URL, nil
+}
+
+func ListAzureBlob(accountURL, accountName, accountKey, containerName string, httpClient *http.Client) ([]string, error) {
 	var imgList []string
 	p, err := newPipeline(accountName, accountKey, httpClient)
 	if err != nil {
 		return nil, fmt.Errorf("unable to create pipeline: %v", err)
 	}
 
-	URL, err := url.Parse(fmt.Sprintf(blobURLPattern, accountName, containerName))
+	URL, err := getURL(accountURL, accountName, containerName, "")
 	if err != nil {
 		return nil, fmt.Errorf("invalid URL for container name %s: %v", containerName, err)
 	}
@@ -149,13 +168,13 @@ func ListAzureBlob(accountName, accountKey, containerName string, httpClient *ht
 	return imgList, nil
 }
 
-func DeleteAzureBlob(accountName, accountKey, containerName, remoteFile string, httpClient *http.Client) error {
+func DeleteAzureBlob(accountURL, accountName, accountKey, containerName, remoteFile string, httpClient *http.Client) error {
 	p, err := newPipeline(accountName, accountKey, httpClient)
 	if err != nil {
 		return fmt.Errorf("unable to create pipeline: %v", err)
 	}
 
-	URL, err := url.Parse(fmt.Sprintf(blobURLPattern, accountName, containerName))
+	URL, err := getURL(accountURL, accountName, containerName, "")
 	if err != nil {
 		return fmt.Errorf("invalid URL for container name %s: %v", containerName, err)
 	}
@@ -166,7 +185,7 @@ func DeleteAzureBlob(accountName, accountKey, containerName, remoteFile string, 
 	return err
 }
 
-func DownloadAzureBlob(accountName, accountKey, containerName, remoteFile, localFile string,
+func DownloadAzureBlob(accountURL, accountName, accountKey, containerName, remoteFile, localFile string,
 	objMaxSize int64, httpClient *http.Client, doneParts types.DownloadedParts, prgNotify NotifChan) (types.DownloadedParts, error) {
 
 	var file *os.File
@@ -176,7 +195,7 @@ func DownloadAzureBlob(accountName, accountKey, containerName, remoteFile, local
 		return stats.DoneParts, fmt.Errorf("unable to create pipeline: %v", err)
 	}
 
-	URL, err := url.Parse(fmt.Sprintf(blobURLPattern, accountName, containerName))
+	URL, err := getURL(accountURL, accountName, containerName, "")
 	if err != nil {
 		return stats.DoneParts, fmt.Errorf("invalid URL for container name %s: %v", containerName, err)
 	}
@@ -310,13 +329,13 @@ func DownloadAzureBlob(accountName, accountKey, containerName, remoteFile, local
 
 // DownloadAzureBlobByChunks will process the blob download by chunks, i.e., chunks will be
 // responded back on as and hwen they recieve
-func DownloadAzureBlobByChunks(accountName, accountKey, containerName, remoteFile, localFile string, httpClient *http.Client) (io.ReadCloser, int64, error) {
+func DownloadAzureBlobByChunks(accountURL, accountName, accountKey, containerName, remoteFile, localFile string, httpClient *http.Client) (io.ReadCloser, int64, error) {
 	p, err := newPipeline(accountName, accountKey, httpClient)
 	if err != nil {
 		return nil, 0, fmt.Errorf("unable to create pipeline: %v", err)
 	}
 
-	URL, err := url.Parse(fmt.Sprintf(blobURLPattern, accountName, containerName))
+	URL, err := getURL(accountURL, accountName, containerName, "")
 	if err != nil {
 		return nil, 0, fmt.Errorf("invalid URL for container name %s: %v", containerName, err)
 	}
@@ -340,7 +359,7 @@ func DownloadAzureBlobByChunks(accountName, accountKey, containerName, remoteFil
 	return readCloser, int64(properties.ContentLength()), nil
 }
 
-func UploadAzureBlob(accountName, accountKey, containerName, remoteFile, localFile string, httpClient *http.Client) (string, error) {
+func UploadAzureBlob(accountURL, accountName, accountKey, containerName, remoteFile, localFile string, httpClient *http.Client) (string, error) {
 	var (
 		ctx = context.Background()
 	)
@@ -349,7 +368,7 @@ func UploadAzureBlob(accountName, accountKey, containerName, remoteFile, localFi
 		return "", fmt.Errorf("unable to create pipeline: %v", err)
 	}
 
-	URL, err := url.Parse(fmt.Sprintf(blobURLPattern, accountName, containerName))
+	URL, err := getURL(accountURL, accountName, containerName, "")
 	if err != nil {
 		return "", fmt.Errorf("invalid URL for container name %s: %v", containerName, err)
 	}
@@ -389,13 +408,13 @@ func UploadAzureBlob(accountName, accountKey, containerName, remoteFile, localFi
 	return blob.String(), nil
 }
 
-func GetAzureBlobMetaData(accountName, accountKey, containerName, remoteFile string, httpClient *http.Client) (int64, string, error) {
+func GetAzureBlobMetaData(accountURL, accountName, accountKey, containerName, remoteFile string, httpClient *http.Client) (int64, string, error) {
 	p, err := newPipeline(accountName, accountKey, httpClient)
 	if err != nil {
 		return 0, "", fmt.Errorf("unable to create pipeline: %v", err)
 	}
 
-	URL, err := url.Parse(fmt.Sprintf(blobURLPattern, accountName, containerName))
+	URL, err := getURL(accountURL, accountName, containerName, "")
 	if err != nil {
 		return 0, "", fmt.Errorf("invalid URL for container name %s: %v", containerName, err)
 	}
@@ -414,7 +433,7 @@ func GetAzureBlobMetaData(accountName, accountKey, containerName, remoteFile str
 }
 
 // GenerateBlobSasURI is used to generate the URI which can be used to access the blob until the the URI expries
-func GenerateBlobSasURI(accountName, accountKey, containerName, remoteFile string, httpClient *http.Client, duration time.Duration) (string, error) {
+func GenerateBlobSasURI(accountURL, accountName, accountKey, containerName, remoteFile string, httpClient *http.Client, duration time.Duration) (string, error) {
 	credential, err := azblob.NewSharedKeyCredential(accountName, accountKey)
 	if err != nil {
 		return "", fmt.Errorf("Invalid credentials with error: " + err.Error())
@@ -437,13 +456,16 @@ func GenerateBlobSasURI(accountName, accountKey, containerName, remoteFile strin
 	// Since this is a blob SAS, the URL is to the Azure storage blob.
 	qp := sasQueryParams.Encode()
 
-	sasURI := fmt.Sprintf("%s/%s?%s", blobURLPattern, remoteFile, qp)
+	URL, err := getURL(accountURL, accountName, fmt.Sprintf("%s/%s", containerName, remoteFile), qp)
+	if err != nil {
+		return "", fmt.Errorf("invalid URL for container name %s: %v", containerName, err)
+	}
 
-	return sasURI, nil
+	return URL.String(), nil
 }
 
 // UploadPartByChunk upload an individual chunk given an io.ReadSeeker and partID
-func UploadPartByChunk(accountName, accountKey, containerName, remoteFile, partID string, httpClient *http.Client, chunk io.ReadSeeker) error {
+func UploadPartByChunk(accountURL, accountName, accountKey, containerName, remoteFile, partID string, httpClient *http.Client, chunk io.ReadSeeker) error {
 	var (
 		ctx = context.Background()
 	)
@@ -452,7 +474,7 @@ func UploadPartByChunk(accountName, accountKey, containerName, remoteFile, partI
 		return fmt.Errorf("unable to create pipeline: %v", err)
 	}
 
-	URL, err := url.Parse(fmt.Sprintf(blobURLPattern, accountName, containerName))
+	URL, err := getURL(accountURL, accountName, containerName, "")
 	if err != nil {
 		return fmt.Errorf("invalid URL for container name %s: %v", containerName, err)
 	}
@@ -487,7 +509,7 @@ func UploadPartByChunk(accountName, accountKey, containerName, remoteFile, partI
 }
 
 // UploadBlockListToBlob used to complete the list of parts which are already uploaded in block blob
-func UploadBlockListToBlob(accountName, accountKey, containerName, remoteFile string, httpClient *http.Client, blocks []string) error {
+func UploadBlockListToBlob(accountURL, accountName, accountKey, containerName, remoteFile string, httpClient *http.Client, blocks []string) error {
 	var (
 		ctx = context.Background()
 	)
@@ -496,7 +518,7 @@ func UploadBlockListToBlob(accountName, accountKey, containerName, remoteFile st
 		return fmt.Errorf("unable to create pipeline: %v", err)
 	}
 
-	URL, err := url.Parse(fmt.Sprintf(blobURLPattern, accountName, containerName))
+	URL, err := getURL(accountURL, accountName, containerName, "")
 	if err != nil {
 		return fmt.Errorf("invalid URL for container name %s: %v", containerName, err)
 	}

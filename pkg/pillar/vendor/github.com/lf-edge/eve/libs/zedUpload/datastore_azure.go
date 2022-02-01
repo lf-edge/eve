@@ -116,7 +116,7 @@ func (ep *AzureTransportMethod) WithLogging(onoff bool) error {
 // File upload to Azure Blob Datastore
 func (ep *AzureTransportMethod) processAzureUpload(req *DronaRequest) (string, error) {
 	file := req.name
-	loc, err := azure.UploadAzureBlob(ep.acName, ep.acKey, ep.container, file, req.objloc, ep.hClient)
+	loc, err := azure.UploadAzureBlob(ep.aurl, ep.acName, ep.acKey, ep.container, file, req.objloc, ep.hClient)
 	if err != nil {
 		return loc, err
 	}
@@ -146,7 +146,7 @@ func (ep *AzureTransportMethod) processAzureDownload(req *DronaRequest) error {
 			}
 		}(req, prgChan)
 	}
-	doneParts, err := azure.DownloadAzureBlob(ep.acName, ep.acKey, ep.container, file, req.objloc, req.sizelimit, ep.hClient, req.doneParts, prgChan)
+	doneParts, err := azure.DownloadAzureBlob(ep.aurl, ep.acName, ep.acKey, ep.container, file, req.objloc, req.sizelimit, ep.hClient, req.doneParts, prgChan)
 	req.doneParts = doneParts
 	if err != nil {
 		return err
@@ -156,7 +156,7 @@ func (ep *AzureTransportMethod) processAzureDownload(req *DronaRequest) error {
 
 // File delete from Azure Blob Datastore
 func (ep *AzureTransportMethod) processAzureBlobDelete(req *DronaRequest) error {
-	err := azure.DeleteAzureBlob(ep.acName, ep.acKey, ep.container, req.name, ep.hClient)
+	err := azure.DeleteAzureBlob(ep.aurl, ep.acName, ep.acKey, ep.container, req.name, ep.hClient)
 	//log.Printf("Azure Blob delete status: %v", status)
 	return err
 }
@@ -165,7 +165,7 @@ func (ep *AzureTransportMethod) processAzureBlobDelete(req *DronaRequest) error 
 func (ep *AzureTransportMethod) processAzureBlobList(req *DronaRequest) ([]string, error, int) {
 	var csize int
 	var img []string
-	img, err := azure.ListAzureBlob(ep.acName, ep.acKey, ep.container, ep.hClient)
+	img, err := azure.ListAzureBlob(ep.aurl, ep.acName, ep.acKey, ep.container, ep.hClient)
 	if err != nil {
 		return img, err, csize
 	}
@@ -173,7 +173,7 @@ func (ep *AzureTransportMethod) processAzureBlobList(req *DronaRequest) ([]strin
 }
 
 func (ep *AzureTransportMethod) processAzureBlobMetaData(req *DronaRequest) (int64, string, error) {
-	size, md5, err := azure.GetAzureBlobMetaData(ep.acName, ep.acKey, ep.container, req.name, ep.hClient)
+	size, md5, err := azure.GetAzureBlobMetaData(ep.aurl, ep.acName, ep.acKey, ep.container, req.name, ep.hClient)
 	if err != nil {
 		return 0, "", err
 	}
@@ -185,11 +185,11 @@ func (ep *AzureTransportMethod) getContext() *DronaCtx {
 }
 
 func (ep *AzureTransportMethod) processAzureUploadByChunks(req *DronaRequest) error {
-	return azure.UploadPartByChunk(ep.acName, ep.acKey, ep.container, req.localName, req.UploadID, ep.hClient, bytes.NewReader(req.Adata))
+	return azure.UploadPartByChunk(ep.aurl, ep.acName, ep.acKey, ep.container, req.localName, req.UploadID, ep.hClient, bytes.NewReader(req.Adata))
 }
 
 func (ep *AzureTransportMethod) processAzureDownloadByChunks(req *DronaRequest) error {
-	readCloser, size, err := azure.DownloadAzureBlobByChunks(ep.acName, ep.acKey, ep.container, req.name, req.objloc, ep.hClient)
+	readCloser, size, err := azure.DownloadAzureBlobByChunks(ep.aurl, ep.acName, ep.acKey, ep.container, req.name, req.objloc, ep.hClient)
 	if err != nil {
 		return err
 	}
@@ -204,11 +204,11 @@ func (ep *AzureTransportMethod) processAzureDownloadByChunks(req *DronaRequest) 
 }
 
 func (ep *AzureTransportMethod) processGenerateBlobSasURI(req *DronaRequest) (string, error) {
-	return azure.GenerateBlobSasURI(ep.acName, ep.acKey, ep.container, req.localName, ep.hClient, req.Duration)
+	return azure.GenerateBlobSasURI(ep.aurl, ep.acName, ep.acKey, ep.container, req.localName, ep.hClient, req.Duration)
 }
 
 func (ep *AzureTransportMethod) processPutBlockListIntoBlob(req *DronaRequest) error {
-	return azure.UploadBlockListToBlob(ep.acName, ep.acKey, ep.container, req.localName, ep.hClient, req.Blocks)
+	return azure.UploadBlockListToBlob(ep.aurl, ep.acName, ep.acKey, ep.container, req.localName, ep.hClient, req.Blocks)
 }
 
 func (ep *AzureTransportMethod) NewRequest(opType SyncOpType, objname, objloc string, sizelimit int64, ackback bool, reply chan *DronaRequest) *DronaRequest {
