@@ -661,11 +661,22 @@ eve-%: pkg/%/Dockerfile build-tools $(RESCAN_DEPS)
 	$(QUIET)$(LINUXKIT) $(DASH_V) pkg $(LINUXKIT_PKG_TARGET) $(LINUXKIT_OPTS) pkg/$*
 	$(QUIET): "$@: Succeeded (intermediate for pkg/%)"
 
-images/rootfs-%.yml.in: images/rootfs.yml.in FORCE
+images/rootfs-%.yml.in: images/rootfs.yml.in images/rootfs-%.yml.in.new FORCE
 	@if [ -e $@.patch ]; then patch -p0 -o $@.sed < $@.patch ;else cp $< $@.sed ;fi
 	$(QUIET)sed -e 's#EVE_VERSION#$(ROOTFS_VERSION)-$*-$(ZARCH)#' < $@.sed > $@ || rm $@ $@.sed
 	@rm $@.sed
+	@if ! diff -u $@ $(word 2,$^); then >&2 echo "new template doesn't match to the old"; false; fi
 	$(QUIET): $@: Succeeded
+
+# TODO: the new way of generating templates allows to combine
+# different flavours together (if compatible). This will be used later
+# by development builds, once the necessary changes are merged in
+# linuxkit. For now we keep both ways, and compare the output, to make
+# sure the change does not break any builds. In future the target
+# above can be deleted, and target below will be used instead.
+images/rootfs-%.yml.in.new: images/rootfs.yml.in FORCE
+	$(QUITE)tools/compose-image-yml.sh $< $@ "$(ROOTFS_VERSION)-$*-$(ZARCH)"
+
 
 $(ROOTFS_FULL_NAME)-adam-kvm-$(ZARCH).$(ROOTFS_FORMAT): $(ROOTFS_FULL_NAME)-kvm-adam-$(ZARCH).$(ROOTFS_FORMAT)
 $(ROOTFS_FULL_NAME)-kvm-adam-$(ZARCH).$(ROOTFS_FORMAT): fullname-rootfs $(SSH_KEY)

@@ -1,0 +1,18 @@
+--- images/rootfs.yml.in.sed
++++ images/rootfs.yml.in.sed
+@@ -1,5 +1,5 @@
+ kernel:
+-  image: KERNEL_TAG
++  image: ACRN_KERNEL_TAG
+   cmdline: "rootdelay=3"
+ init:
+   - linuxkit/init:v0.5
+@@ -9,7 +9,7 @@
+   - linuxkit/memlogd:v0.5
+   - GRUB_TAG
+   - FW_TAG
+-  - XEN_TAG
++  - ACRN_TAG
+   - GPTTOOLS_TAG
+   - DOM0ZTOOLS_TAG
+ onboot:

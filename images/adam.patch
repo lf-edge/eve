@@ -1,0 +1,15 @@
+--- images/rootfs.yml.in.sed
++++ images/rootfs.yml.in.sed
+@@ -30,6 +30,12 @@
+      image: NEWLOGD_TAG
+      cgroupsPath: /eve/services/eve-newlog
+      oomScoreAdj: -999
++   - name: adam
++     image: lfedge/adam:latest
++     binds:
++        - /var/persist:/persist
++        - /var/config:/config
++     command: ["/bin/eve-embedded.sh"]
+    - name: debug
+      image: DEBUG_TAG
+      cgroupsPath: /eve/services/debug
