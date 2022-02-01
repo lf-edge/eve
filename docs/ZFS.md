@@ -38,3 +38,8 @@ zfs_delay_scale = 800000
 zfs_dirty_data_max = 50% of zfs_arc_max
 zfs_dirty_data_sync_percent = 15
 ```
+
+### Minimum supported system requirements
+
+Minimum supported system requirements to install ZFS storage is 64GB memory and 3 physical disks set in eve_persist_disk.
+eve_install_skip_zfs_checks should be set in installation config to override the requirement check for experimental installs.
