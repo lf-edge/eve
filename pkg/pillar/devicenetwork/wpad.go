@@ -4,6 +4,7 @@
 package devicenetwork
 
 import (
+	"context"
 	"encoding/base64"
 	"errors"
 	"fmt"
@@ -104,7 +105,7 @@ func getPacFile(ctx *DeviceNetworkContext, status *types.DeviceNetworkStatus, ur
 	// Avoid using a proxy to fetch the wpad.dat; 15 second timeout
 	const allowProxy = false
 	const useOnboard = false
-	resp, contents, _, err := zedcloud.SendOnIntf(&zedcloudCtx, url, ifname, 0, nil,
+	resp, contents, _, err := zedcloud.SendOnIntf(context.Background(), &zedcloudCtx, url, ifname, 0, nil,
 		allowProxy, useOnboard)
 	if err != nil {
 		return "", err

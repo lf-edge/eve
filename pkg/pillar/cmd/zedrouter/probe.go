@@ -6,6 +6,7 @@
 package zedrouter
 
 import (
+	"context"
 	"crypto/tls"
 	"fmt"
 	"io/ioutil"
@@ -397,7 +398,7 @@ func launchHostProbe(ctx *zedrouterContext) {
 						startTime := time.Now()
 						const allowProxy = true
 						const useOnboard = false
-						resp, _, _, err := zedcloud.SendOnIntf(&zcloudCtx, remoteURL, info.IfName, 0, nil, allowProxy, useOnboard)
+						resp, _, _, err := zedcloud.SendOnIntf(context.Background(), &zcloudCtx, remoteURL, info.IfName, 0, nil, allowProxy, useOnboard)
 						if err != nil {
 							log.Tracef("launchHostProbe: send on intf %s, err %v\n", info.IfName, err)
 						}

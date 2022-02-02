@@ -284,7 +284,9 @@ func getLatestConfig(url string, iteration int,
 	}
 	buf := bytes.NewBuffer(b)
 	size := int64(proto.Size(cr))
-	resp, contents, senderStatus, err := zedcloud.SendOnAllIntf(zedcloudCtx, url, size, buf, iteration, bailOnHTTPErr)
+	ctxWork, cancel := zedcloud.GetContextForAllIntfFunctions(zedcloudCtx)
+	defer cancel()
+	resp, contents, senderStatus, err := zedcloud.SendOnAllIntf(ctxWork, zedcloudCtx, url, size, buf, iteration, bailOnHTTPErr)
 	if err != nil {
 		newCount := types.LedBlinkConnectingToController
 		switch senderStatus {

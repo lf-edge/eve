@@ -35,6 +35,10 @@ import (
 // ContentTypeProto : binary-encoded Protobuf content type
 const ContentTypeProto = "application/x-proto-binary"
 
+// MaxWaitForRequests : upper limit of time to send requests
+// independent of how many management interfaces and source IP addresses we try
+const MaxWaitForRequests = 4 * time.Minute
+
 // ZedCloudContent is set up by NewContext() below
 type ZedCloudContext struct {
 	DeviceNetworkStatus *types.DeviceNetworkStatus
@@ -74,6 +78,24 @@ type ContextOptions struct {
 
 var nilUUID = uuid.UUID{}
 
+//GetContextForAllIntfFunctions returns context with timeout to use with AllIntf functions
+// it uses 3 times of defined NetworkSendTimeout
+// and limits max wait up to MaxWaitForRequests
+func GetContextForAllIntfFunctions(ctx *ZedCloudContext) (context.Context, context.CancelFunc) {
+	maxWaitDuration := time.Duration(ctx.NetworkSendTimeout) * time.Second * 3
+	if maxWaitDuration == 0 {
+		maxWaitDuration = MaxWaitForRequests
+		ctx.log.Warnf("GetContextForAllIntfFunctions: provided maxWaitDuration equals 0, will use %d",
+			MaxWaitForRequests)
+	}
+	if maxWaitDuration > MaxWaitForRequests {
+		ctx.log.Functionf("GetContextForAllIntfFunctions: maxWaitDuration %d is more than limit, will use %d",
+			maxWaitDuration, MaxWaitForRequests)
+		maxWaitDuration = MaxWaitForRequests
+	}
+	return context.WithTimeout(context.Background(), maxWaitDuration)
+}
+
 // Tries all interfaces (free first) until one succeeds. interation arg
 // ensure load spreading across multiple interfaces.
 // Returns response for first success. Caller can not use resp.Body but can
@@ -84,7 +106,7 @@ var nilUUID = uuid.UUID{}
 // we bail out, since caller needs to be notified immediately for triggering any
 // reaction based on this.
 // We return a SenderResult enum for various error cases.
-func SendOnAllIntf(ctx *ZedCloudContext, url string, reqlen int64, b *bytes.Buffer, iteration int, bailOnHTTPErr bool) (*http.Response, []byte, types.SenderResult, error) {
+func SendOnAllIntf(ctxWork context.Context, ctx *ZedCloudContext, url string, reqlen int64, b *bytes.Buffer, iteration int, bailOnHTTPErr bool) (*http.Response, []byte, types.SenderResult, error) {
 
 	log := ctx.log
 	// If failed then try the non-free
@@ -105,9 +127,10 @@ func SendOnAllIntf(ctx *ZedCloudContext, url string, reqlen int64, b *bytes.Buff
 		log.Error(err.Error())
 		return nil, nil, senderStatus, err
 	}
+
 	for _, intf := range intfs {
 		const useOnboard = false
-		resp, contents, status, err := SendOnIntf(ctx, url, intf, reqlen, b, allowProxy, useOnboard)
+		resp, contents, status, err := SendOnIntf(ctxWork, ctx, url, intf, reqlen, b, allowProxy, useOnboard)
 		// this changes original boolean logic a little in V2 API, basically the last status non-zero enum would
 		// overwrite the previous one in the loop if they are differ
 		if status != types.SenderStatusNone {
@@ -201,6 +224,10 @@ func VerifyAllIntf(ctx *ZedCloudContext,
 		log.Error(err.Error())
 		return false, remoteTemporaryFailure, intfStatusMap, err
 	}
+
+	ctxWork, cancel := GetContextForAllIntfFunctions(ctx)
+	defer cancel()
+
 	for _, intf := range intfs {
 		if intfSuccessCount >= successCount {
 			// We have enough uplinks with cloud connectivity working.
@@ -209,7 +236,7 @@ func VerifyAllIntf(ctx *ZedCloudContext,
 		// This VerifyAllIntf() is called for "ping" url only, it does not have
 		// return envelope verifying check. Thus below does not check other values of status.
 		const useOnboard = false
-		resp, _, status, err := SendOnIntf(ctx, url, intf, 0, nil, allowProxy, useOnboard)
+		resp, _, status, err := SendOnIntf(ctxWork, ctx, url, intf, 0, nil, allowProxy, useOnboard)
 		switch status {
 		case types.SenderStatusRefused, types.SenderStatusCertInvalid:
 			remoteTemporaryFailure = true
@@ -266,7 +293,7 @@ func VerifyAllIntf(ctx *ZedCloudContext,
 // to allow the caller to look at StatusCode
 // We return a SenderResult enum for various error cases.
 // the controller but it is overloaded, or has certificate issues.
-func SendOnIntf(ctx *ZedCloudContext, destURL string, intf string, reqlen int64, b *bytes.Buffer, allowProxy bool, useOnboard bool) (*http.Response, []byte, types.SenderResult, error) {
+func SendOnIntf(workContext context.Context, ctx *ZedCloudContext, destURL string, intf string, reqlen int64, b *bytes.Buffer, allowProxy bool, useOnboard bool) (*http.Response, []byte, types.SenderResult, error) {
 
 	log := ctx.log
 	var reqUrl string
@@ -466,7 +493,7 @@ func SendOnIntf(ctx *ZedCloudContext, destURL string, intf string, reqlen int64,
 				sessionResume = state.DidResume
 			},
 		}
-		req = req.WithContext(httptrace.WithClientTrace(req.Context(),
+		req = req.WithContext(httptrace.WithClientTrace(workContext,
 			trace))
 		log.Tracef("SendOnIntf: req method %s, isget %v, url %s",
 			req.Method, isGet, reqUrl)
@@ -512,6 +539,9 @@ func SendOnIntf(ctx *ZedCloudContext, destURL string, intf string, reqlen int64,
 				// only address on some interfaces.
 				// Do not return as errors
 				log.Warn("client.Do fail: No suitable address")
+			} else if _, deadlineSet := workContext.Deadline(); deadlineSet {
+				log.Errorf("client.Do global deadline: %v", err)
+				errorList = append(errorList, err)
 			} else {
 				log.Errorf("client.Do (timeout %d) fail: %v",
 					ctx.NetworkSendTimeout, err)

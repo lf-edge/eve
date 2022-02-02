@@ -204,7 +204,10 @@ func getCertsFromController(ctx *zedagentContext) bool {
 		return false
 	}
 
-	resp, contents, rtf, err := zedcloud.SendOnAllIntf(zedcloudCtx,
+	ctxWork, cancel := zedcloud.GetContextForAllIntfFunctions(zedcloudCtx)
+	defer cancel()
+
+	resp, contents, rtf, err := zedcloud.SendOnAllIntf(ctxWork, zedcloudCtx,
 		certURL, 0, nil, 0, false)
 	if err != nil {
 		switch rtf {
