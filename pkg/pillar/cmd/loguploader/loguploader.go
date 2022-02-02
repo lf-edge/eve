@@ -768,11 +768,13 @@ func sendToCloud(ctx *loguploaderContext, data []byte, iter int, fName string, f
 	}
 	startTime := time.Now()
 
+	ctxWork, cancel := zedcloud.GetContextForAllIntfFunctions(ctx.zedcloudCtx)
+	defer cancel()
 	// if resp statusOK, then sent success
 	// otherwise have to retry the same file later:
 	//  - if resp is nil, or it's 'StatusServiceUnavailable', mark as serviceUnavailabe
 	//  - if resp is 4xx, the file maybe moved to 'failtosend' directory later
-	resp, contents, _, err := zedcloud.SendOnAllIntf(ctx.zedcloudCtx, logsURL, size, buf, iter, true)
+	resp, contents, _, err := zedcloud.SendOnAllIntf(ctxWork, ctx.zedcloudCtx, logsURL, size, buf, iter, true)
 	if resp != nil {
 		if resp.StatusCode == http.StatusOK {
 			latency := time.Since(startTime).Nanoseconds() / int64(time.Millisecond)

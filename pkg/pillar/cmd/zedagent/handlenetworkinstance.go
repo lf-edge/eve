@@ -626,7 +626,9 @@ func publishFlowMessage(flowMsg *flowlog.FlowMessage, iteration int) error {
 
 	flowlogURL := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API, devUUID, "flowlog")
 	const bailOnHTTPErr = false
-	_, _, rtf, err := zedcloud.SendOnAllIntf(zedcloudCtx, flowlogURL,
+	ctxWork, cancel := zedcloud.GetContextForAllIntfFunctions(zedcloudCtx)
+	defer cancel()
+	_, _, rtf, err := zedcloud.SendOnAllIntf(ctxWork, zedcloudCtx, flowlogURL,
 		size, buf, iteration, bailOnHTTPErr)
 	if err != nil {
 		err = fmt.Errorf("publishFlowMessage: SendOnAllIntf failed with %d: %s",

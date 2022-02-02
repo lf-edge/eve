@@ -1034,7 +1034,7 @@ func myGet(ctx *diagContext, reqURL string, ifname string,
 			ifname, proxyURL.String(), reqURL)
 	}
 	const allowProxy = true
-	resp, contents, senderStatus, err := zedcloud.SendOnIntf(zedcloudCtx,
+	resp, contents, senderStatus, err := zedcloud.SendOnIntf(context.Background(), zedcloudCtx,
 		reqURL, ifname, 0, nil, allowProxy, ctx.usingOnboardCert)
 	if err != nil {
 		switch senderStatus {
@@ -1098,7 +1098,7 @@ func myPost(ctx *diagContext, reqURL string, ifname string,
 			ifname, proxyURL.String(), reqURL)
 	}
 	const allowProxy = true
-	resp, contents, senderStatus, err := zedcloud.SendOnIntf(zedcloudCtx,
+	resp, contents, senderStatus, err := zedcloud.SendOnIntf(context.Background(), zedcloudCtx,
 		reqURL, ifname, reqlen, b, allowProxy, ctx.usingOnboardCert)
 	if err != nil {
 		switch senderStatus {

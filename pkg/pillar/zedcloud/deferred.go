@@ -101,6 +101,8 @@ func (ctx *DeferredContext) handleDeferred(log *base.LogObject, event time.Time,
 
 	exit := false
 	sent := 0
+	ctxWork, cancel := GetContextForAllIntfFunctions(ctx.zedcloudCtx)
+	defer cancel()
 	for _, f := range ctx.priorityCheckFunctions {
 		for _, item := range ctx.deferredItems {
 			key := item.key
@@ -119,7 +121,7 @@ func (ctx *DeferredContext) handleDeferred(log *base.LogObject, event time.Time,
 			}
 
 			//SenderStatusNone indicates no problems
-			resp, _, result, err := SendOnAllIntf(ctx.zedcloudCtx, item.url,
+			resp, _, result, err := SendOnAllIntf(ctxWork, ctx.zedcloudCtx, item.url,
 				item.size, item.buf, ctx.iteration, item.bailOnHTTPErr)
 			if item.bailOnHTTPErr && resp != nil &&
 				resp.StatusCode >= 400 && resp.StatusCode < 600 {

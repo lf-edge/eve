@@ -1418,7 +1418,9 @@ func SendProtobuf(url string, buf *bytes.Buffer, size int64,
 	iteration int) error {
 
 	const bailOnHTTPErr = true // For 4xx and 5xx HTTP errors we don't try other interfaces
-	resp, _, _, err := zedcloud.SendOnAllIntf(zedcloudCtx, url,
+	ctxWork, cancel := zedcloud.GetContextForAllIntfFunctions(zedcloudCtx)
+	defer cancel()
+	resp, _, _, err := zedcloud.SendOnAllIntf(ctxWork, zedcloudCtx, url,
 		size, buf, iteration, bailOnHTTPErr)
 	if resp != nil {
 		switch resp.StatusCode {
@@ -1453,7 +1455,9 @@ func SendMetricsProtobuf(ctx *getconfigContext, ReportMetrics *metrics.ZMetricMs
 	size := int64(proto.Size(ReportMetrics))
 	metricsUrl := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API, devUUID, "metrics")
 	const bailOnHTTPErr = false
-	_, _, rtf, err := zedcloud.SendOnAllIntf(zedcloudCtx, metricsUrl,
+	ctxWork, cancel := zedcloud.GetContextForAllIntfFunctions(zedcloudCtx)
+	defer cancel()
+	_, _, rtf, err := zedcloud.SendOnAllIntf(ctxWork, zedcloudCtx, metricsUrl,
 		size, buf, iteration, bailOnHTTPErr)
 	if err != nil {
 		// Hopefully next timeout will be more successful

@@ -511,7 +511,9 @@ func myPost(zedcloudCtx *zedcloud.ZedCloudContext, tlsConfig *tls.Config,
 	requrl string, retryCount int, reqlen int64, b *bytes.Buffer) (bool, *http.Response, types.SenderResult, []byte) {
 
 	zedcloudCtx.TlsConfig = tlsConfig
-	resp, contents, senderStatus, err := zedcloud.SendOnAllIntf(zedcloudCtx,
+	ctxWork, cancel := zedcloud.GetContextForAllIntfFunctions(zedcloudCtx)
+	defer cancel()
+	resp, contents, senderStatus, err := zedcloud.SendOnAllIntf(ctxWork, zedcloudCtx,
 		requrl, reqlen, b, retryCount, bailOnHTTPErr)
 	if err != nil {
 		switch senderStatus {
