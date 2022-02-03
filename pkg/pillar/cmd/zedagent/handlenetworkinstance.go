@@ -635,7 +635,7 @@ func publishFlowMessage(flowMsg *flowlog.FlowMessage, iteration int) error {
 			rtf, err)
 		return err
 	}
-	writeSentFlowProtoMessage(data)
+	saveSentFlowProtoMessage(data)
 	return nil
 }
 
@@ -644,8 +644,8 @@ func timeNanoToProto(timenum int64) *timestamp.Timestamp {
 	return timeProto
 }
 
-func writeSentFlowProtoMessage(contents []byte) {
-	writeProtoMessage("lastflowlog", contents)
+func saveSentFlowProtoMessage(contents []byte) {
+	saveConfig("lastflowlog", contents)
 }
 
 func handleAppContainerMetricsCreate(ctxArg interface{}, key string,

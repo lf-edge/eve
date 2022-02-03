@@ -483,12 +483,13 @@ type ZedAgentStatus struct {
 	Name                 string
 	ConfigGetStatus      ConfigGetStatus
 	RebootCmd            bool
-	RebootReason         string       // Current reason to reboot
-	BootReason           BootReason   // Current reason to reboot
-	MaintenanceMode      bool         // Don't run apps etc
-	ForceFallbackCounter int          // Try image fallback when counter changes
-	CurrentProfile       string       // Current profile
-	RadioSilence         RadioSilence // Currently requested state of radio devices
+	RebootReason         string           // Current reason to reboot
+	BootReason           BootReason       // Current reason to reboot
+	MaintenanceMode      bool             // Don't run apps etc
+	ForceFallbackCounter int              // Try image fallback when counter changes
+	CurrentProfile       string           // Current profile
+	RadioSilence         RadioSilence     // Currently requested state of radio devices
+	LocalAppCommands     LocalAppCommands // Currently requested application commands
 }
 
 // Key :
@@ -595,4 +596,55 @@ func (am RadioSilence) String() string {
 		return "Radio transmitters OFF"
 	}
 	return "Radio transmitters ON"
+}
+
+// AppCommand : application command requested to run by a local server.
+type AppCommand uint8
+
+// Integer values are in-sync with proto enum AppCommand_Command.
+const (
+	AppCommandUnspecified AppCommand = iota
+	AppCommandRestart
+	AppCommandPurge
+)
+
+// LocalAppCommands : list of application commands requested from a local server.
+// For each application there is at most one entry.
+type LocalAppCommands struct {
+	Cmds []LocalAppCommand
+}
+
+// LocalAppCommand : An application command requested from a local server.
+type LocalAppCommand struct {
+	// AppUUID : UUID of the application for which the command should be run.
+	AppUUID uuid.UUID
+	// Command to execute.
+	Command AppCommand
+	// LocalServerTimestamp : timestamp made by the local server when the request was created.
+	LocalServerTimestamp uint64
+	// DeviceTimestamp : timestamp made by EVE when the request was received.
+	DeviceTimestamp time.Time
+	// Completed is set to true by zedmanager once the command completes.
+	Completed bool
+	// LastCompletedTimestamp : (server) timestamp of the last command completed for this app.
+	// If Completed is true, then this happens to be the same as LocalServerTimestamp.
+	LastCompletedTimestamp uint64
+}
+
+// SameCommand returns true if this and the other commands are actually the same.
+// It does not compare the state information.
+func (ap LocalAppCommand) SameCommand(ap2 LocalAppCommand) bool {
+	return ap.AppUUID == ap2.AppUUID &&
+		ap.Command == ap2.Command &&
+		ap.LocalServerTimestamp == ap2.LocalServerTimestamp
+}
+
+// LookupByAppUUID : returns pointer (or nil) for the entry corresponding to the given app.
+func (acs LocalAppCommands) LookupByAppUUID(appUUID uuid.UUID) *LocalAppCommand {
+	for i := range acs.Cmds {
+		if acs.Cmds[i].AppUUID == appUUID {
+			return &acs.Cmds[i]
+		}
+	}
+	return nil
 }

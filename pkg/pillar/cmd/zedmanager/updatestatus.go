@@ -678,6 +678,7 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 				status.Key())
 			status.RestartInprogress = types.NotInprogress
 			status.State = types.RUNNING
+			updateLocalCommand(ctx, status)
 			changed = true
 		} else {
 			log.Functionf("RestartInprogress(%s) waiting for Activated",
@@ -690,6 +691,7 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 				status.Key())
 			status.PurgeInprogress = types.NotInprogress
 			status.State = types.RUNNING
+			updateLocalCommand(ctx, status)
 			changed = true
 		} else {
 			log.Functionf("PurgeInprogress(%s) waiting for Activated",

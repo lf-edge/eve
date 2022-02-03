@@ -154,7 +154,9 @@ type AppInstanceStatus struct {
 	BootTime            time.Time
 	IoAdapterList       []IoAdapter // Report what was actually used
 	RestartInprogress   Inprogress
+	RestartStartedAt    time.Time
 	PurgeInprogress     Inprogress
+	PurgeStartedAt      time.Time
 
 	// Mininum state across all steps and all StorageStatus.
 	// Error* set implies error.
@@ -163,6 +165,9 @@ type AppInstanceStatus struct {
 	MissingMemory  bool // Waiting for memory
 
 	EffectiveActivate bool //set here effective activate after profile check and apply
+
+	// Status of the application command (purge, restart) requested via the local profile server.
+	LocalCommand LocalAppCommand
 
 	// All error strings across all steps and all StorageStatus
 	// ErrorAndTimeWithSource provides SetError, SetErrrorWithSource, etc

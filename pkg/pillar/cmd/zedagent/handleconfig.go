@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/golang/protobuf/proto"
@@ -108,6 +109,8 @@ type getconfigContext struct {
 	triggerRadioPOST chan Notify
 
 	localAppInfoPOSTTicker flextimer.FlexTickerHandle
+	localAppCommands       types.LocalAppCommands
+	localAppCommandsLock   sync.Mutex
 
 	callProcessLocalProfileServerChange bool //did we already call processLocalProfileServerChange
 
@@ -379,7 +382,7 @@ func getLatestConfig(url string, iteration int,
 		publishZedAgentStatus(getconfigCtx)
 
 		log.Tracef("Configuration from zedcloud is unchanged")
-		// Update modification time since checked by readSavedProtoMessage
+		// Update modification time since checked by readSavedConfig
 		touchReceivedProtoMessage()
 		return false
 	}
@@ -415,77 +418,77 @@ func getLatestConfig(url string, iteration int,
 
 	if !changed {
 		log.Tracef("Configuration from zedcloud is unchanged")
-		// Update modification time since checked by readSavedProtoMessage
+		// Update modification time since checked by readSavedConfig
 		touchReceivedProtoMessage()
 		return false
 	}
-	writeReceivedProtoMessage(contents)
+	saveReceivedProtoMessage(contents)
 
 	return inhaleDeviceConfig(config, getconfigCtx, false)
 }
 
-func writeReceivedProtoMessage(contents []byte) {
-	writeProtoMessage("lastconfig", contents)
+func saveReceivedProtoMessage(contents []byte) {
+	saveConfig("lastconfig", contents)
 }
 
 // Update timestamp - no content changes
 func touchReceivedProtoMessage() {
-	touchProtoMessage("lastconfig")
+	touchSavedConfig("lastconfig")
 }
 
 // XXX for debug we track these
-func writeSentMetricsProtoMessage(contents []byte) {
-	writeProtoMessage("lastmetrics", contents)
+func saveSentMetricsProtoMessage(contents []byte) {
+	saveConfig("lastmetrics", contents)
 }
 
 // XXX for debug we track these
-func writeSentDeviceInfoProtoMessage(contents []byte) {
-	writeProtoMessage("lastdeviceinfo", contents)
+func saveSentDeviceInfoProtoMessage(contents []byte) {
+	saveConfig("lastdeviceinfo", contents)
 }
 
 // XXX for debug we track these
-func writeSentAppInfoProtoMessage(contents []byte) {
-	writeProtoMessage("lastappinfo", contents)
+func saveSentAppInfoProtoMessage(contents []byte) {
+	saveConfig("lastappinfo", contents)
 }
 
-func writeProtoMessage(filename string, contents []byte) {
+func saveConfig(filename string, contents []byte) {
 	filename = checkpointDirname + "/" + filename
 	err := fileutils.WriteRename(filename, contents)
 	if err != nil {
 		// Can occur if no space in filesystem
-		log.Errorf("writeProtoMessage failed: %s", err)
+		log.Errorf("saveConfig failed: %s", err)
 		return
 	}
 }
 
-// remove saved proto file if exists
-func cleanSavedProtoMessage(filename string) {
+// Remove saved config file if it exists.
+func cleanSavedConfig(filename string) {
 	filename = checkpointDirname + "/" + filename
 	if err := os.Remove(filename); err != nil {
-		log.Functionf("cleanSavedProtoMessage failed: %s", err)
+		log.Functionf("cleanSavedConfig failed: %s", err)
 	}
 }
 
 // Update modification time
-func touchProtoMessage(filename string) {
+func touchSavedConfig(filename string) {
 	filename = checkpointDirname + "/" + filename
 	_, err := os.Stat(filename)
 	if err != nil {
-		log.Warnf("touchProtoMessage stat failed: %s", err)
+		log.Warnf("touchSavedConfig stat failed: %s", err)
 	}
 	currentTime := time.Now()
 	err = os.Chtimes(filename, currentTime, currentTime)
 	if err != nil {
 		// Can occur if no space in filesystem?
-		log.Errorf("touchProtoMessage failed: %s", err)
+		log.Errorf("touchSavedConfig failed: %s", err)
 	}
 }
 
 // If the file exists then read the config, and return is modify time
-// Ignore if if older than StaleConfigTime seconds
+// Ignore if older than StaleConfigTime seconds
 func readSavedProtoMessageConfig(staleConfigTime uint32,
 	filename string, force bool) (*zconfig.EdgeDevConfig, time.Time, error) {
-	contents, ts, err := readSavedProtoMessage(staleConfigTime, filename, force)
+	contents, ts, err := readSavedConfig(staleConfigTime, filename, force)
 	if err != nil {
 		log.Errorln("readSavedProtoMessageConfig", err)
 		return nil, ts, err
@@ -501,9 +504,9 @@ func readSavedProtoMessageConfig(staleConfigTime uint32,
 	return config, ts, nil
 }
 
-// If the file exists then read the proto message from it, and return its modify time
-// Ignore if if older than staleTime seconds
-func readSavedProtoMessage(staleTime uint32,
+// If the file exists then read the config content from it, and return its modify time.
+// Ignore if older than staleTime seconds.
+func readSavedConfig(staleTime uint32,
 	filename string, force bool) ([]byte, time.Time, error) {
 	info, err := os.Stat(filename)
 	if err != nil {
@@ -516,14 +519,14 @@ func readSavedProtoMessage(staleTime uint32,
 	age := time.Since(info.ModTime())
 	staleLimit := time.Second * time.Duration(staleTime)
 	if !force && age > staleLimit {
-		errStr := fmt.Sprintf("savedProto too old: age %v limit %d\n",
+		errStr := fmt.Sprintf("saved config too old: age %v limit %d\n",
 			age, staleLimit)
 		log.Errorln(errStr)
 		return nil, info.ModTime(), nil
 	}
 	contents, err := ioutil.ReadFile(filename)
 	if err != nil {
-		log.Errorln("readSavedProtoMessage", err)
+		log.Errorln("readSavedConfig", err)
 		return nil, info.ModTime(), err
 	}
 	return contents, info.ModTime(), nil
@@ -640,6 +643,7 @@ func publishZedAgentStatus(getconfigCtx *getconfigContext) {
 		ForceFallbackCounter: ctx.forceFallbackCounter,
 		CurrentProfile:       getconfigCtx.currentProfile,
 		RadioSilence:         getconfigCtx.radioSilence,
+		LocalAppCommands:     getconfigCtx.localAppCommands,
 	}
 	pub := getconfigCtx.pubZedAgentStatus
 	pub.Publish(agentName, status)

@@ -1465,7 +1465,7 @@ func SendMetricsProtobuf(ctx *getconfigContext, ReportMetrics *metrics.ZMetricMs
 		return
 	} else {
 		maybeUpdateMetricsTimer(ctx, true)
-		writeSentMetricsProtoMessage(data)
+		saveSentMetricsProtoMessage(data)
 	}
 }
 

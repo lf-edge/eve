@@ -1683,6 +1683,7 @@ func handleAppInstanceStatusCreate(ctxArg interface{}, key string,
 	PublishAppInfoToZedCloud(ctx, uuidStr, &status, ctx.assignableAdapters,
 		ctx.iteration)
 	triggerPublishDevInfo(ctx)
+	processAppCommandStatus(ctx.getconfigCtx, status)
 	triggerLocalAppInfoPOST(ctx.getconfigCtx)
 	ctx.iteration++
 	log.Functionf("handleAppInstanceStatusCreate(%s) DONE", key)
@@ -1700,6 +1701,7 @@ func handleAppInstanceStatusModify(ctxArg interface{}, key string,
 	uuidStr := status.Key()
 	PublishAppInfoToZedCloud(ctx, uuidStr, &status, ctx.assignableAdapters,
 		ctx.iteration)
+	processAppCommandStatus(ctx.getconfigCtx, status)
 	triggerLocalAppInfoPOST(ctx.getconfigCtx)
 	ctx.iteration++
 	log.Functionf("handleAppInstanceStatusModify(%s) DONE", key)
@@ -2147,10 +2149,10 @@ func getDeferredSentHandlerFunction(ctx *zedagentContext) *zedcloud.SentHandlerF
 				return
 			}
 			if el, ok := itemType.(info.ZInfoTypes); ok && el == info.ZInfoTypes_ZiDevice {
-				writeSentDeviceInfoProtoMessage(data.Bytes())
+				saveSentDeviceInfoProtoMessage(data.Bytes())
 			}
 			if el, ok := itemType.(info.ZInfoTypes); ok && el == info.ZInfoTypes_ZiApp {
-				writeSentAppInfoProtoMessage(data.Bytes())
+				saveSentAppInfoProtoMessage(data.Bytes())
 			}
 			if el, ok := itemType.(attest.ZAttestReqType); ok && el == attest.ZAttestReqType_ATTEST_REQ_CERT {
 				log.Noticef("sendAttestReqProtobuf: Sent EdgeNodeCerts")
