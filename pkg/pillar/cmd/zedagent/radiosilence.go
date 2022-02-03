@@ -27,7 +27,7 @@ func initializeRadioConfig(ctx *getconfigContext) {
 	ctx.triggerRadioPOST = make(chan Notify, 1)
 	if !loadSavedRadioConfig(ctx) {
 		// invalid or missing configuration - overwrite with the default
-		writeRadioConfig(&profile.RadioConfig{RadioSilence: false})
+		saveRadioConfig(&profile.RadioConfig{RadioSilence: false})
 	}
 	ctx.radioSilence.ChangeRequestedAt = time.Now()
 	ctx.radioSilence.ChangeInProgress = true
@@ -212,7 +212,7 @@ func getRadioConfig(ctx *getconfigContext, radioStatus *profile.RadioStatus) *pr
 				// no actual configuration change to apply, just refresh the persisted config
 				touchRadioConfig()
 			} else {
-				writeRadioConfig(radioConfig)
+				saveRadioConfig(radioConfig)
 			}
 			return radioConfig
 		}
@@ -223,7 +223,7 @@ func getRadioConfig(ctx *getconfigContext, radioStatus *profile.RadioStatus) *pr
 
 // read saved radio config in case of a reboot
 func readSavedRadioConfig(ctx *getconfigContext) (*profile.RadioConfig, error) {
-	radioConfigBytes, ts, err := readSavedProtoMessage(
+	radioConfigBytes, ts, err := readSavedConfig(
 		ctx.zedagentCtx.globalConfig.GlobalValueInt(types.StaleConfigTime),
 		filepath.Join(checkpointDirname, savedRadioConfigFile), false)
 	if err != nil {
@@ -258,17 +258,17 @@ func loadSavedRadioConfig(ctx *getconfigContext) bool {
 	return true
 }
 
-// writeRadioConfig saves received RadioConfig into the persisted partition.
-func writeRadioConfig(radioConfig *profile.RadioConfig) {
+// saveRadioConfig saves received RadioConfig into the persisted partition.
+func saveRadioConfig(radioConfig *profile.RadioConfig) {
 	contents, err := proto.Marshal(radioConfig)
 	if err != nil {
-		log.Fatalf("writeRadioConfig: Marshalling failed: %v", err)
+		log.Fatalf("saveRadioConfig: Marshalling failed: %v", err)
 	}
-	writeProtoMessage(savedRadioConfigFile, contents)
+	saveConfig(savedRadioConfigFile, contents)
 	return
 }
 
 // touchRadioConfig is used to update the modification time of the persisted radio config.
 func touchRadioConfig() {
-	touchProtoMessage(savedRadioConfigFile)
+	touchSavedConfig(savedRadioConfigFile)
 }

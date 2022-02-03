@@ -96,7 +96,7 @@ func parseLocalProfile(localProfileBytes []byte) (*profile.LocalProfile, error) 
 
 // read saved local profile in case of particular reboot reason
 func readSavedLocalProfile(getconfigCtx *getconfigContext) (*profile.LocalProfile, error) {
-	localProfileMessage, ts, err := readSavedProtoMessage(
+	localProfileMessage, ts, err := readSavedConfig(
 		getconfigCtx.zedagentCtx.globalConfig.GlobalValueInt(types.StaleConfigTime),
 		filepath.Join(checkpointDirname, savedLocalProfileFile), false)
 	if err != nil {
@@ -156,20 +156,20 @@ func getLocalProfileConfig(getconfigCtx *getconfigContext, localServerURL string
 	return nil, fmt.Errorf("getLocalProfileConfig: all attempts failed: %s", strings.Join(errList, ";"))
 }
 
-//writeOrTouchReceivedLocalProfile updates modification time of received LocalProfile in case of no changes
+//saveOrTouchReceivedLocalProfile updates modification time of received LocalProfile in case of no changes
 //or updates content of received LocalProfile in case of changes
-func writeOrTouchReceivedLocalProfile(getconfigCtx *getconfigContext, localProfile *profile.LocalProfile) {
+func saveOrTouchReceivedLocalProfile(getconfigCtx *getconfigContext, localProfile *profile.LocalProfile) {
 	if getconfigCtx.localProfile == localProfile.GetLocalProfile() &&
 		getconfigCtx.profileServerToken == localProfile.GetServerToken() {
-		touchProtoMessage(savedLocalProfileFile)
+		touchSavedConfig(savedLocalProfileFile)
 		return
 	}
 	contents, err := proto.Marshal(localProfile)
 	if err != nil {
-		log.Errorf("writeOrTouchReceivedLocalProfile Marshalling failed: %s", err)
+		log.Errorf("saveOrTouchReceivedLocalProfile Marshalling failed: %s", err)
 		return
 	}
-	writeProtoMessage(savedLocalProfileFile, contents)
+	saveConfig(savedLocalProfileFile, contents)
 	return
 }
 
@@ -245,7 +245,7 @@ func getLocalProfile(ctx *getconfigContext, skipFetch bool) string {
 	if localProfileServer == "" {
 		if ctx.localProfile != "" {
 			log.Noticef("clearing localProfile checkpoint since no server")
-			cleanSavedProtoMessage(savedLocalProfileFile)
+			cleanSavedConfig(savedLocalProfileFile)
 		}
 		return ""
 	}
@@ -264,7 +264,7 @@ func getLocalProfile(ctx *getconfigContext, skipFetch bool) string {
 		return ctx.localProfile
 	}
 	localProfile := localProfileConfig.GetLocalProfile()
-	writeOrTouchReceivedLocalProfile(ctx, localProfileConfig)
+	saveOrTouchReceivedLocalProfile(ctx, localProfileConfig)
 	return localProfile
 }
 
