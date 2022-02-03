@@ -240,6 +240,31 @@ func (ctx *DeferredContext) setDeferred(zedcloudCtx *ZedCloudContext,
 	}
 }
 
+// RemoveDeferred removes key from deferred items if exists
+func RemoveDeferred(zedcloudCtx *ZedCloudContext, key string) {
+	zedcloudCtx.deferredCtx.removeDeferred(zedcloudCtx, key)
+}
+
+func (ctx *DeferredContext) removeDeferred(zedcloudCtx *ZedCloudContext, key string) {
+	ctx.lock.Lock()
+	defer ctx.lock.Unlock()
+
+	log := zedcloudCtx.log
+	log.Functionf("RemoveDeferred(%s) items %d",
+		key, len(ctx.deferredItems))
+
+	for ind, itemList := range ctx.deferredItems {
+		if itemList.key == key {
+			log.Tracef("Deleting key %s", key)
+			ctx.deferredItems = append(ctx.deferredItems[:ind], ctx.deferredItems[ind+1:]...)
+			break
+		}
+	}
+	if len(ctx.deferredItems) == 0 {
+		stopTimer(log, ctx)
+	}
+}
+
 // Try every minute backoff to every 15 minutes
 func startTimer(log *base.LogObject, ctx *DeferredContext) {
 
