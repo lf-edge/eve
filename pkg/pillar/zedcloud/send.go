@@ -117,7 +117,7 @@ func SendOnAllIntf(ctx *ZedCloudContext, url string, reqlen int64, b *bytes.Buff
 			switch resp.StatusCode {
 			case http.StatusServiceUnavailable:
 				senderStatus = types.SenderStatusUpgrade
-			case http.StatusNotFound:
+			case http.StatusNotFound, http.StatusBadRequest:
 				senderStatus = types.SenderStatusNotFound
 			}
 		}

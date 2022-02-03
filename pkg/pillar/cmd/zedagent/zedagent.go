@@ -2161,6 +2161,9 @@ func getDeferredSentHandlerFunction(ctx *zedagentContext) *zedcloud.SentHandlerF
 					log.Warnf("sendAttestReqProtobuf: Controller certificate invalid time")
 				case types.SenderStatusCertMiss:
 					log.Functionf("sendAttestReqProtobuf: Controller certificate miss")
+				case types.SenderStatusNotFound:
+					log.Functionf("sendAttestReqProtobuf: Controller SenderStatusNotFound")
+					potentialUUIDUpdate(ctx.getconfigCtx)
 				}
 			}
 		}
@@ -2206,6 +2209,7 @@ func handleOnboardStatusImpl(ctxArg interface{}, key string,
 		return
 	}
 	log.Noticef("Device UUID changed from %s to %s", devUUID, status.DeviceUUID)
+	oldUUID := devUUID
 	devUUID = status.DeviceUUID
 	if zedcloudCtx != nil {
 		zedcloudCtx.DevUUID = devUUID
@@ -2213,7 +2217,14 @@ func handleOnboardStatusImpl(ctxArg interface{}, key string,
 	// Make sure trigger function isn't going to trip on a nil pointer
 	if ctx.getconfigCtx != nil && ctx.getconfigCtx.zedagentCtx != nil &&
 		ctx.getconfigCtx.subAppInstanceStatus != nil {
-
+		if zedcloudCtx != nil && oldUUID != nilUUID {
+			// remove old deferred attest if exists
+			zedcloud.RemoveDeferred(zedcloudCtx, "attest:"+oldUUID.String())
+			if ctx.cipherCtx != nil && ctx.cipherCtx.triggerEdgeNodeCerts != nil {
+				// Re-publish certificates with new device UUID
+				triggerEdgeNodeCertEvent(ctx.getconfigCtx.zedagentCtx)
+			}
+		}
 		// Re-publish all objects with new device UUID
 		triggerPublishAllInfo(ctx.getconfigCtx.zedagentCtx)
 	}
