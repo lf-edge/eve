@@ -405,6 +405,59 @@ enum ZDeviceState {
     ZDEVICE_STATE_BOOTING = 5;
 }
 
+enum StorageRaidType {
+  STORAGE_RAID_TYPE_UNSPECIFIED = 0;
+  STORAGE_RAID_TYPE_RAID0 = 1;              // RAID-0
+  STORAGE_RAID_TYPE_RAID_MIRROR = 2;        // RAID-1
+  STORAGE_RAID_TYPE_RAIDZ1 = 3;             // raidz (RAID-5)
+  STORAGE_RAID_TYPE_RAIDZ2 = 4;             // raidz2 (RAID-6)
+  STORAGE_RAID_TYPE_RAIDZ3 = 5;             // raidz3 (RAID-7)
+  STORAGE_RAID_TYPE_NORAID = 6;             // without RAID
+}
+
+enum StorageTypeInfo {
+  STORAGE_TYPE_INFO_UNSPECIFIED = 0;
+  STORAGE_TYPE_INFO_EXT4 = 1;
+  STORAGE_TYPE_INFO_ZFS = 2;
+}
+
+message SmartAttr {
+  uint32 id = 1;
+  uint64 value = 2;   // the current value of the parameter
+  uint64 worst = 3;   // worst value that Value has ever reached
+  uint64 thresh = 4;  // the value that the Value of the same attribute must reach for the attribute's state to be considered critical.
+  string when_failed = 5; // critical state if no empty
+}
+
+message SmartMetric {
+  SmartAttr reallocated_sector_ct = 1;
+  SmartAttr power_on_hours = 2;
+  SmartAttr power_cycle_count = 3;
+  SmartAttr reallocated_event_count = 4;
+  SmartAttr current_pending_sector = 5;
+  bool need_update = 6;
+}
+
+message StorageDiskInfo {
+  string disk_name = 1;
+  repeated SmartMetric smart_data = 3; // smartctl output
+}
+
+// Information about storage system
+message StorageInfo {
+  string pool_name = 1;
+  StorageTypeInfo storage_type = 2; // Storage type zfs or ext4
+  string zfs_version = 3;
+  StorageRaidType curent_raid = 4;  // Current RAID configuration. When no have RAID send ""
+  double compression_ratio = 5;     // Compression ratio
+  uint64 zpool_size = 6;            // Storage pool size.
+}
+
+// Information about the system that is sent once when the system boots
+message HardwareInfo {
+  repeated StorageDiskInfo disks = 1; // S.M.A.R.T. info for disks
+}
+
 // Base device info, as discovered by Xen (or OS on bare metal)
 message ZInfoDevice {
   string machineArch = 4;
@@ -493,6 +546,7 @@ message ZInfoDevice {
   repeated MaintenanceModeReason maintenance_mode_reasons = 46;
 
   string dormant_time = 47 [deprecated = true];
+  repeated StorageInfo storage_info = 48;
 }
 
 // Different reasons for a boot/reboot
