@@ -84,6 +84,8 @@ const (
 	EveMemoryUsageFile = "/hostfs/sys/fs/cgroup/memory/eve/memory.usage_in_bytes"
 	// EveKmemUsageFile - current kernel usage
 	EveKmemUsageFile = "/hostfs/sys/fs/cgroup/memory/eve/memory.kmem.usage_in_bytes"
+	// ZFSArcMaxSizeFile - file with zfs_arc_max size in bytes
+	ZFSArcMaxSizeFile = "/hostfs/sys/module/zfs/parameters/zfs_arc_max"
 
 	// ContainerdContentDir - path to containerd`s content store
 	ContainerdContentDir = PersistDir + "/containerd/io.containerd.content.v1.content"
