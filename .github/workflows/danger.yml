@@ -30,7 +30,7 @@ jobs:
           find . -name '*.tar' -exec docker load --input {} \;
           docker image push --all-tags evebuild/danger
 
-          IMGS=$(docker images --format "{{.Repository}}:{{.Tag}}"| sed -r 's/.{6}$//')
+          IMGS=$(docker images --format "{{.Repository}}:{{.Tag}}" evebuild/danger | sed -r 's/.{6}$//' | sort -u)
           for i in ${IMGS}; do
             docker manifest create "$i" --amend "$i-arm64" --amend "$i-amd64"
             docker manifest push "$i"
