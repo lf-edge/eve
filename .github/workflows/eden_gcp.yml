@@ -45,7 +45,7 @@ jobs:
           sudo apt install -y qemu binfmt-support qemu-user-static qemu-system-x86 qemu-system-aarch64 qemu-utils openvpn curl jq
       - name: GCP Set up Google Cloud SDK
         if: matrix.backend == 'gcp'
-        uses: google-github-actions/setup-gcloud@master
+        uses: google-github-actions/setup-gcloud@v0.5.0
         with:
           project_id: ${{ secrets.GCP_PROJECT_ID }}
       - id: 'gcpauth'
@@ -77,14 +77,16 @@ jobs:
         uses: actions/checkout@v2
         with:
           path: 'eve'
+      # ROL introduced from Eden 0.4.0
+      # Conditions for backwards compatibility on old branches
       - name: Prepare eden
         run: |
           if [ "${{ matrix.backend }}" == "rol" ]; then
-            EDEN_VERSION=lfedge/eden:0.4.0
+             EDEN_VERSION=lfedge/eden:0.4.0
           elif [ -f ${{ github.workspace }}/eve/tests/eden/eden-version ]; then
-            EDEN_VERSION=$(cat ${{ github.workspace }}/eve/tests/eden/eden-version)
+             EDEN_VERSION=$(cat ${{ github.workspace }}/eve/tests/eden/eden-version)
           else
-            EDEN_VERSION=lfedge/eden:30c8b3f
+             EDEN_VERSION=lfedge/eden:0.4.0
           fi
           docker run -v $PWD:/out $EDEN_VERSION cp -a /eden/. /out/
           sudo chown -R $(whoami) .
