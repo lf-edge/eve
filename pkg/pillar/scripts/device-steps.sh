@@ -294,9 +294,10 @@ access_usb() {
     SPECIAL=$(lsblk -l -o name,label,partlabel | awk '/DevicePortConfig|QEMU VVFAT/ {print "/dev/"$1;}')
     if [ -n "$SPECIAL" ] && [ -b "$SPECIAL" ]; then
         echo "$(date -Ins -u) Found USB with DevicePortConfig: $SPECIAL"
-        if ! mount -t vfat "$SPECIAL" /mnt; then
-            # XXX !? will be zero
-            echo "$(date -Ins -u) mount $SPECIAL failed: $?"
+        mount -t vfat "$SPECIAL" /mnt
+        ret_code=$?
+        if [ "$ret_code" != 0 ]; then
+            echo "$(date -Ins -u) mount $SPECIAL failed: $ret_code"
             return
         fi
         for fd in "usb.json:$DPCDIR" hosts:/config server:/config ; do
@@ -399,9 +400,15 @@ if [ ! -s $CONFIGDIR/device.cert.pem ] || [ $RTC = 0 ] || [ -n "$FIRSTBOOT" ]; t
     echo "$(date -Ins -u) Check for NTP config"
     if [ -f /usr/sbin/ntpd ]; then
         # Wait until synchronized and force the clock to be set from ntp
+        echo "$(date -Ins -u) ntpd -q -n -g -p $NTPSERVER"
         /usr/sbin/ntpd -q -n -g -p "$NTPSERVER"
+        ret_code=$?
+        echo "$(date -Ins -u) ntpd: $ret_code"
         # Run ntpd to keep it in sync.
+        echo "$(date -Ins -u) ntpd -p $NTPSERVER"
         /usr/sbin/ntpd -p "$NTPSERVER"
+        ret_code=$?
+        echo "$(date -Ins -u) ntpd: $ret_code"
         # Add ndpd to watchdog
         touch "$WATCHDOG_PID/ntpd.pid"
     else
@@ -430,7 +437,10 @@ else
     if [ -f /usr/sbin/ntpd ]; then
         # Run ntpd to keep it in sync. Allow a large initial jump in case clock
         # had drifted more than 1000 seconds while the device was powered off
+        echo "$(date -Ins -u) ntpd -g -p $NTPSERVER"
         /usr/sbin/ntpd -g -p "$NTPSERVER"
+        ret_code=$?
+        echo "$(date -Ins -u) ntpd: $ret_code"
         # Add ndpd to watchdog
         touch "$WATCHDOG_PID/ntpd.pid"
     else
@@ -578,7 +588,10 @@ while true; do
         echo "$(date -Ins -u) NTP server changed from $NTPSERVER to $ns"
         NTPSERVER="$ns"
         kill "$(cat /run/ntpd.pid)"
-        /usr/sbin/ntpd -p "$NTPSERVER"
+        echo "$(date -Ins -u) ntpd -g -p $NTPSERVER"
+        /usr/sbin/ntpd -g -p "$NTPSERVER"
+        ret_code=$?
+        echo "$(date -Ins -u) ntpd: $ret_code"
     fi
     sleep 300
 done
