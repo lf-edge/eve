@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	libzfs "github.com/bicomsystems/go-libzfs"
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes"
 	"github.com/lf-edge/eve/api/go/evecommon"
@@ -25,7 +26,9 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
+	"github.com/lf-edge/eve/pkg/pillar/vault"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
+	"github.com/lf-edge/eve/pkg/pillar/zfs"
 	uuid "github.com/satori/go.uuid"
 	"github.com/shirou/gopsutil/host"
 )
@@ -527,6 +530,50 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 		}
 	}
 	log.Tracef("DirPaths in persist, elapse sec %v", time.Since(startPubTime).Seconds())
+
+	// ZFS metrics
+	if vault.ReadPersistType() == types.PersistZFS {
+		zpoolList, err := libzfs.PoolOpenAll()
+		if err != nil {
+			log.Errorf("get zpool list failed %v", err)
+		} else {
+			for _, zpool := range zpoolList {
+				rStorageMetric := new(zmet.StorageMetric)
+				rStorageMetric.PoolName = zpool.Properties[libzfs.PoolPropName].Value
+				rStorageMetric.StorageState = zfs.GetZfsDeviceStatusFromStr(zpool.Properties[libzfs.PoolPropHealth].Value)
+				rStorageMetric.CountVolume, err = zfs.GetZfsCountVolume(zpool.Properties[libzfs.PoolPropName].Value)
+				if err != nil {
+					log.Errorf("get count volume failed %v", err)
+				}
+
+				vdevs, err := zpool.VDevTree()
+				if err != nil {
+					log.Errorf("get info about disks in zpool failed %v", err)
+				} else {
+					for _, vdev := range vdevs.Devices {
+						// If this is a RAID or mirror, look at the disks it consists of
+						if vdev.Type == libzfs.VDevTypeMirror || vdev.Type == libzfs.VDevTypeRaidz {
+							for _, disk := range vdev.Devices {
+								rDiskStatus, err := zfs.GetZfsDiskAndStatus(disk)
+								if err == nil {
+									rStorageMetric.Disks = append(rStorageMetric.Disks, rDiskStatus)
+								}
+							}
+							break // for one pool, have one RAID
+						}
+						// If there is no RAID or mirror, add a disk if it is a disk
+						rDiskStatus, err := zfs.GetZfsDiskAndStatus(vdev)
+						if err == nil {
+							rStorageMetric.Disks = append(rStorageMetric.Disks, rDiskStatus)
+						}
+					}
+				}
+
+				zpool.Close()
+				ReportDeviceMetric.StorageMetrics = append(ReportDeviceMetric.StorageMetrics, rStorageMetric)
+			}
+		}
+	}
 
 	// Determine how much we use in /persist and how much of it is
 	// for the benefits of applications
