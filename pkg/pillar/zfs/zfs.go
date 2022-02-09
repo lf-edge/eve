@@ -7,11 +7,15 @@ import (
 	"bufio"
 	"bytes"
 	"fmt"
+	"io/ioutil"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
+	libzfs "github.com/bicomsystems/go-libzfs"
+	"github.com/lf-edge/eve/api/go/info"
+	"github.com/lf-edge/eve/api/go/metrics"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/vault"
@@ -188,4 +192,132 @@ func GetZFSVolumeInfo(log *base.LogObject, device string) (*types.ImgInfo, error
 
 func alignUpToBlockSize(size uint64) uint64 {
 	return (size + volBlockSize - 1) & ^(volBlockSize - 1)
+}
+
+// GetZfsVersion return zfs kernel module version
+func GetZfsVersion() (string, error) {
+	dataBytes, err := ioutil.ReadFile("/hostfs/sys/module/zfs/version")
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("zfs-kmod-%s", strings.TrimSpace(string(dataBytes))), nil
+}
+
+// GetZfsCompressratio takes a zpool name as input and returns compressratio
+// property for zpool
+func GetZfsCompressratio(zpoolName string) (float64, error) {
+	dataset, err := libzfs.DatasetOpen(zpoolName)
+	if err != nil {
+		return 0, fmt.Errorf("get zfs dataset for counting failed %v", err)
+	}
+	defer dataset.Close()
+
+	compressratio, err := dataset.GetProperty(libzfs.DatasetPropCompressratio)
+	if err != nil {
+		return 0, fmt.Errorf("get property Compressratio for dataset %s failed %v", zpoolName, err)
+	}
+
+	return strconv.ParseFloat(compressratio.Value, 64)
+}
+
+func countingVolumesInDataset(count int, list libzfs.Dataset) (int, error) {
+	for _, dataset := range list.Children {
+		pr, err := dataset.GetProperty(libzfs.DatasetPropType)
+		if err != nil {
+			return count, fmt.Errorf("get property for dataset failed %v", err)
+		}
+		if pr.Value == "filesystem" {
+			count, err = countingVolumesInDataset(count, dataset)
+			if err != nil {
+				return count, fmt.Errorf("get zfs dataset for counting failed %v", err)
+			}
+		} else if pr.Value == "volume" {
+			count++
+		}
+	}
+	return count, nil
+}
+
+// GetZfsCountVolume takes a datasetName name as input and returns the number of zvols.
+// Returns 0 if there are no zvols or an have error.
+func GetZfsCountVolume(datasetName string) (uint32, error) {
+	count := 0
+	dataset, err := libzfs.DatasetOpen(datasetName)
+	if err != nil {
+		return 0, fmt.Errorf("get zfs dataset for counting failed %v", err)
+	}
+	defer dataset.Close()
+
+	count, err = countingVolumesInDataset(count, dataset)
+	if err != nil {
+		return uint32(count), err
+	}
+
+	return uint32(count), nil
+}
+
+// getRaidTypeFromStr takes a RAID name as input and returns current RAID type
+func getRaidTypeFromStr(raidName string) info.StorageRaidType {
+	if len(raidName) == 0 {
+		return info.StorageRaidType_STORAGE_RAID_TYPE_NORAID
+	} else if strings.Contains(raidName, "raidz1") {
+		return info.StorageRaidType_STORAGE_RAID_TYPE_RAIDZ1
+	} else if strings.Contains(raidName, "raidz2") {
+		return info.StorageRaidType_STORAGE_RAID_TYPE_RAIDZ2
+	} else if strings.Contains(raidName, "raidz3") {
+		return info.StorageRaidType_STORAGE_RAID_TYPE_RAIDZ3
+	} else if strings.Contains(raidName, "mirror") {
+		return info.StorageRaidType_STORAGE_RAID_TYPE_RAID_MIRROR
+	}
+
+	return info.StorageRaidType_STORAGE_RAID_TYPE_NORAID
+}
+
+// GetZpoolRaidType takes a libzfs.VDevTree as input and returns current RAID type.
+// At the moment, while will start from the fact that for one pool, have one RAID
+func GetZpoolRaidType(vdevs libzfs.VDevTree) info.StorageRaidType {
+	for _, vdev := range vdevs.Devices {
+		if vdev.Type == libzfs.VDevTypeMirror || vdev.Type == libzfs.VDevTypeRaidz {
+			return getRaidTypeFromStr(vdev.Name)
+		}
+		break
+	}
+
+	return info.StorageRaidType_STORAGE_RAID_TYPE_NORAID
+}
+
+// GetZfsDeviceStatusFromStr takes a string with status as input and returns status
+func GetZfsDeviceStatusFromStr(statusStr string) metrics.StorageStatus {
+	if len(statusStr) == 0 {
+		return metrics.StorageStatus_STORAGE_STATUS_UNSPECIFIED
+	} else if strings.TrimSpace(statusStr) == "ONLINE" {
+		return metrics.StorageStatus_STORAGE_STATUS_ONLINE
+	} else if strings.TrimSpace(statusStr) == "DEGRADED" {
+		return metrics.StorageStatus_STORAGE_STATUS_DEGRADED
+	} else if strings.TrimSpace(statusStr) == "FAULTED" {
+		return metrics.StorageStatus_STORAGE_STATUS_FAULTED
+	} else if strings.TrimSpace(statusStr) == "OFFLINE" {
+		return metrics.StorageStatus_STORAGE_STATUS_OFFLINE
+	} else if strings.TrimSpace(statusStr) == "UNAVAIL" {
+		return metrics.StorageStatus_STORAGE_STATUS_UNAVAIL
+	} else if strings.TrimSpace(statusStr) == "REMOVED" {
+		return metrics.StorageStatus_STORAGE_STATUS_REMOVED
+	} else if strings.TrimSpace(statusStr) == "SUSPENDED" {
+		return metrics.StorageStatus_STORAGE_STATUS_SUSPENDED
+	}
+
+	return metrics.StorageStatus_STORAGE_STATUS_UNSPECIFIED
+}
+
+// GetZfsDiskAndStatus takes a libzfs.VDevTree as input and returns
+// *metrics.StorageDiskInfo.
+func GetZfsDiskAndStatus(disk libzfs.VDevTree) (*metrics.StorageDiskInfo, error) {
+	if disk.Type != libzfs.VDevTypeDisk {
+		return nil, fmt.Errorf("%s is not a disk", disk.Name)
+	}
+
+	rDiskStatus := new(metrics.StorageDiskInfo)
+	rDiskStatus.DiskName = disk.Name
+	rDiskStatus.Status = GetZfsDeviceStatusFromStr(disk.Stat.State.String())
+	return rDiskStatus, nil
 }
