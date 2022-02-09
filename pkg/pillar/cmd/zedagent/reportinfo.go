@@ -10,9 +10,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
+	libzfs "github.com/bicomsystems/go-libzfs"
 	"github.com/eriknordmark/ipinfo"
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes"
@@ -27,6 +29,7 @@ import (
 	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
 	"github.com/lf-edge/eve/pkg/pillar/vault"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
+	"github.com/lf-edge/eve/pkg/pillar/zfs"
 	"github.com/shirou/gopsutil/host"
 )
 
@@ -334,6 +337,58 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 		addUserSwInfo(ctx, swInfo, bos.TooEarly)
 		ReportDeviceInfo.SwList = append(ReportDeviceInfo.SwList,
 			swInfo)
+	}
+
+	// Reporting all zpools in Strorage Info
+	if vault.ReadPersistType() == types.PersistZFS {
+		zfsVersion, err := zfs.GetZfsVersion()
+		if err != nil {
+			log.Errorf("error: %v", err)
+		}
+
+		zpoolList, err := libzfs.PoolOpenAll()
+		if err != nil {
+			log.Errorf("get zpool list failed %v", err)
+		} else {
+			for _, zpool := range zpoolList {
+				rStorageInfo := new(info.StorageInfo)
+				curentRaid := info.StorageRaidType_STORAGE_RAID_TYPE_NORAID
+				zpoolName := zpool.Properties[libzfs.PoolPropName].Value
+				zpoolSizeInByte, err := strconv.ParseUint(zpool.Properties[libzfs.PoolPropSize].Value, 10, 64)
+				if err != nil {
+					log.Errorf("error with ParseUint for get zpool size in byte: %v", err)
+					zpoolSizeInByte = 0
+				}
+
+				dedup, _ := strconv.ParseFloat(zpool.Properties[libzfs.PoolPropDedupratio].Value, 64)
+				if err != nil {
+					log.Errorf("error with ParseFloat for get compression ratio: %v", err)
+					dedup = 0
+				}
+
+				vdevs, err := zpool.VDevTree()
+				if err != nil {
+					log.Errorf("error with get about RAID info from devTree: %v", err)
+				} else {
+					curentRaid = zfs.GetZpoolRaidType(vdevs)
+				}
+
+				zpool.Close()
+				rStorageInfo.PoolName = *proto.String(zpoolName)
+				rStorageInfo.StorageType = info.StorageTypeInfo_STORAGE_TYPE_INFO_ZFS
+				rStorageInfo.ZpoolSize = *proto.Uint64(zpoolSizeInByte)
+				rStorageInfo.ZfsVersion = *proto.String(zfsVersion)
+				rStorageInfo.CurentRaid = curentRaid
+				rStorageInfo.CompressionRatio = *proto.Float64(dedup)
+				ReportDeviceInfo.StorageInfo = append(ReportDeviceInfo.StorageInfo, rStorageInfo)
+				log.Tracef("report metrics sending info for ZFS zpool %s", zpoolName)
+			}
+		}
+	} else {
+		xStorageInfo := new(info.StorageInfo)
+		xStorageInfo.StorageType = info.StorageTypeInfo_STORAGE_TYPE_INFO_EXT4
+		ReportDeviceInfo.StorageInfo = append(ReportDeviceInfo.StorageInfo, xStorageInfo)
+		log.Tracef("report metrics sending info for EXT4 storage type")
 	}
 
 	// We report all the ports in DeviceNetworkStatus
