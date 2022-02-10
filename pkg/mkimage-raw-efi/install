@@ -69,10 +69,13 @@ root_dev() {
 }
 
 # find_part LABEL BLOCK_DEV
+# BLOCK_DEV is expected to be devicename only (ie sda not /dev/sda)
 find_part() {
-   PARTS=$(lsblk -anl -o "NAME,PARTLABEL" 2>/dev/null | sed -ne "/$1"'$/s#'"[[:space:]]*$1##p")
+   local LABEL="$1"
+   local BLOCK_DEV="$2"
+   PARTS=$(lsblk -anl -o "NAME,PARTLABEL" /dev/"$BLOCK_DEV" 2>/dev/null | sed -ne "/$LABEL"'$/s#'"[[:space:]]*$LABEL##p")
    for p in $PARTS ; do
-      [ -f "/sys/block/$2/$p/dev" ] && echo "$p" && exit 0
+      [ -f "/sys/block/$BLOCK_DEV/$p/dev" ] && echo "$p" && exit 0
    done
 }
 
