@@ -181,6 +181,7 @@ enum StorageStatus {
   STORAGE_STATUS_OFFLINE = 4;  // The device has been explicitly taken offline by the administrator.
   STORAGE_STATUS_UNAVAIL = 5;  // The device or virtual device cannot be opened. In some cases, pools with UNAVAIL devices appear in DEGRADED mode.
   STORAGE_STATUS_REMOVED = 6;  // The device was physically removed while the system was running.
+  STORAGE_STATUS_SUSPENDED = 7; // A pool that is waiting for device connectivity to be restored.
 }
 
 message StorageDiskInfo {
