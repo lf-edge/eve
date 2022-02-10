@@ -11,6 +11,9 @@ import (
 const (
 	// ZVolDevicePrefix controlled by mdev
 	ZVolDevicePrefix = "/dev/zvol"
+
+	//ZFSSnapshotter is containerd snapshotter for zfs
+	ZFSSnapshotter = "eve.zfs.snapshotter"
 )
 
 // ZVolName returns name of zvol for volume

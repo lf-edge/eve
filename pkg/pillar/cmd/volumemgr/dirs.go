@@ -45,6 +45,11 @@ func initializeDatasets() {
 			if output, err := zfs.CreateDataset(log, datasetName); err != nil {
 				log.Fatalf("CreateDataset failed: %s %s ", output, err)
 			}
+		} else {
+			if output, err := zfs.MountDataset(log, datasetName); err != nil {
+				// it may be mounted
+				log.Functionf("MountDataset failed: %s %s ", output, err)
+			}
 		}
 	}
 }
