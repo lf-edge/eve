@@ -13,7 +13,6 @@ import (
 	"math/rand"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"google.golang.org/grpc/connectivity"
@@ -30,6 +29,7 @@ import (
 	"github.com/containerd/typeurl"
 	"github.com/lf-edge/edge-containers/pkg/resolver"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/vault"
 	"github.com/opencontainers/go-digest"
 	"github.com/opencontainers/image-spec/identity"
 	"github.com/vishvananda/netlink"
@@ -87,10 +87,9 @@ type Client struct {
 
 func init() {
 	logrus.Info("Containerd Init")
-	// see if we need to fine-tune default snapshotter based on what flavor of storage persist partition is
-	persistType, err := ioutil.ReadFile(eveStorageTypeFile)
-	if err == nil && strings.TrimSpace(string(persistType)) == "zfs" {
-		defaultSnapshotter = "zfs"
+	// see if we need to use zfs snapshotter based on what flavor of storage persist partition is
+	if vault.ReadPersistType() == types.PersistZFS {
+		defaultSnapshotter = types.ZFSSnapshotter
 	}
 }
 

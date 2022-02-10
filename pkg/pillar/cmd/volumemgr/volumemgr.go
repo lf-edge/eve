@@ -156,6 +156,36 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	ctx.subGlobalConfig = subGlobalConfig
 	subGlobalConfig.Activate()
 
+	// Pick up debug aka log level before we start real work
+	for !ctx.GCInitialized {
+		log.Functionf("waiting for GCInitialized")
+		select {
+		case change := <-subGlobalConfig.MsgChan():
+			subGlobalConfig.ProcessChange(change)
+		case <-stillRunning.C:
+		}
+		ps.StillRunning(agentName, warningTime, errorTime)
+	}
+	log.Functionf("processed GlobalConfig")
+
+	if err := utils.WaitForVault(ps, log, agentName, warningTime, errorTime); err != nil {
+		log.Fatal(err)
+	}
+	log.Functionf("processed Vault Status")
+
+	if ctx.persistType == types.PersistZFS {
+		// create datasets for volumes
+		initializeDatasets()
+	} else {
+		// create the directories
+		initializeDirs()
+	}
+
+	// Iterate over volume directory and prepares map of
+	// volume's content format with the volume key
+	populateExistingVolumesFormat(volumeEncryptedDirName)
+	populateExistingVolumesFormat(volumeClearDirName)
+
 	// Create the background worker
 	ctx.worker = worker.NewPool(log, &ctx, 20, map[string]worker.Handler{
 		workCreate:  {Request: volumeWorker, Response: processVolumeWorkResult},
@@ -439,36 +469,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	}
 	ctx.subZVolStatus = subZVolStatus
 	subZVolStatus.Activate()
-
-	// Pick up debug aka log level before we start real work
-	for !ctx.GCInitialized {
-		log.Functionf("waiting for GCInitialized")
-		select {
-		case change := <-subGlobalConfig.MsgChan():
-			subGlobalConfig.ProcessChange(change)
-		case <-stillRunning.C:
-		}
-		ps.StillRunning(agentName, warningTime, errorTime)
-	}
-	log.Functionf("processed GlobalConfig")
-
-	if err := utils.WaitForVault(ps, log, agentName, warningTime, errorTime); err != nil {
-		log.Fatal(err)
-	}
-	log.Functionf("processed Vault Status")
-
-	if ctx.persistType == types.PersistZFS {
-		// create datasets for volumes
-		initializeDatasets()
-	} else {
-		// create the directories
-		initializeDirs()
-	}
-
-	// Iterate over volume directory and prepares map of
-	// volume's content format with the volume key
-	populateExistingVolumesFormat(volumeEncryptedDirName)
-	populateExistingVolumesFormat(volumeClearDirName)
 
 	if ctx.casClient, err = cas.NewCAS(casClientType); err != nil {
 		err = fmt.Errorf("Run: exception while initializing CAS client: %s", err.Error())

@@ -30,6 +30,13 @@ func CreateDataset(log *base.LogObject, dataset string) (string, error) {
 	return string(stdoutStderr), err
 }
 
+//MountDataset mounts dataset
+func MountDataset(log *base.LogObject, dataset string) (string, error) {
+	args := append(zfsPath, "mount", dataset)
+	stdoutStderr, err := base.Exec(log, vault.ZfsPath, args...).CombinedOutput()
+	return string(stdoutStderr), err
+}
+
 //DestroyDataset removes dataset from zfs
 //it runs 3 times in case of errors (we can hit dataset is busy)
 func DestroyDataset(log *base.LogObject, dataset string) (string, error) {

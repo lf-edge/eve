@@ -17,6 +17,11 @@ disabled_plugins = ["cri", "btrfs", "aufs"]
 [cgroup]
   path = "/eve/containerd"
 
+[proxy_plugins]
+  [proxy_plugins."eve.zfs.snapshotter"]
+    type = "snapshot"
+    address = "/run/eve.zfs.snapshotter.sock"
+
 # [plugins]
 #  [plugins.content]
 #    root = "/persist/vault/content"

@@ -633,10 +633,22 @@ func setupDefaultVaultOnZfs() error {
 //setupDefaultVault sets up default vault, based on the current filesystem
 //On non-TPM platforms, it just creates the directory (if absent)
 func setupDefaultVault(ctx *vaultMgrContext) error {
+	persistFsType := vault.ReadPersistType()
 	if !etpm.IsTpmEnabled() {
 		_, err := os.Stat(defaultVault)
 		if os.IsNotExist(err) {
 			//No TPM or TPM lacks required features
+			if persistFsType == types.PersistZFS {
+				args := getCreateParams(defaultSecretDataset, false)
+				if stdOut, stdErr, err := execCmd(vault.ZfsPath, args...); err != nil {
+					return fmt.Errorf("error creating zfs vault %s, error=%v, %s, %s",
+						defaultVault, err, stdOut, stdErr)
+				}
+				if err := eveZFSSnapshotterInit(); err != nil {
+					return fmt.Errorf("error setting up zfs snapshooter: %s", err)
+				}
+				return nil
+			}
 			//Vault is just a plain folder in those cases
 			return os.MkdirAll(defaultVault, 755)
 		}
@@ -648,9 +660,13 @@ func setupDefaultVault(ctx *vaultMgrContext) error {
 			//in these cases
 			return setupVault(defaultVault, true)
 		}
+		if err == nil && persistFsType == types.PersistZFS {
+			if err := eveZFSSnapshotterInit(); err != nil {
+				return fmt.Errorf("error setting up zfs snapshooter: %s", err)
+			}
+		}
 		return err
 	}
-	persistFsType := vault.ReadPersistType()
 	switch persistFsType {
 	case types.PersistExt4:
 		if err := setupDefaultVaultOnExt4(); err != nil {
@@ -662,6 +678,9 @@ func setupDefaultVault(ctx *vaultMgrContext) error {
 	case types.PersistZFS:
 		if err := setupDefaultVaultOnZfs(); err != nil {
 			return err
+		}
+		if err := eveZFSSnapshotterInit(); err != nil {
+			return fmt.Errorf("error setting up zfs snapshooter: %s", err)
 		}
 		//Log the type of key used for unlocking default vault
 		log.Noticef("%s unlocked using key type %s", defaultVault,
