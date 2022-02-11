@@ -674,24 +674,27 @@ func (ctx kvmContext) CreateDomConfig(domainName string, config types.DomainConf
 	return nil
 }
 
-func waitForQmp(domainName string) error {
+func waitForQmp(domainName string, available bool) error {
 	maxDelay := time.Second * 10
 	delay := time.Second
 	var waited time.Duration
 	for {
-		logrus.Infof("waitForQmp for %s: waiting for %v", domainName, delay)
+		logrus.Infof("waitForQmp for %s %t: waiting for %v", domainName, available, delay)
 		if delay != 0 {
 			time.Sleep(delay)
 			waited += delay
 		}
-		if _, err := getQemuStatus(getQmpExecutorSocket(domainName)); err == nil {
-			logrus.Infof("waitForQmp for %s, found file", domainName)
+		if _, err := getQemuStatus(getQmpExecutorSocket(domainName)); available == (err == nil) {
+			logrus.Infof("waitForQmp for %s %t done", domainName, available)
 			return nil
 		} else {
 			if waited > maxDelay {
 				// Give up
-				logrus.Warnf("waitForQmp for %s: giving up", domainName)
-				return logError("Qmp not found: error %v", err)
+				logrus.Warnf("waitForQmp for %s %t: giving up", domainName, available)
+				if available {
+					return logError("Qmp not found: error %v", err)
+				}
+				return logError("Qmp still available")
 			}
 			delay = 2 * delay
 			if delay > time.Minute {
@@ -708,7 +711,7 @@ func (ctx kvmContext) Start(domainName string) error {
 		return err
 	}
 	logrus.Infof("done launching qemu device model")
-	if err := waitForQmp(domainName); err != nil {
+	if err := waitForQmp(domainName, true); err != nil {
 		logrus.Errorf("Error waiting for Qmp for domain %s: %v", domainName, err)
 		return err
 	}
@@ -802,6 +805,9 @@ func (ctx kvmContext) Info(domainName string) (int, types.SwState, error) {
 func (ctx kvmContext) Cleanup(domainName string) error {
 	if err := ctx.ctrdContext.Delete(domainName); err != nil {
 		return fmt.Errorf("couldn't cleanup task %s: %v", domainName, err)
+	}
+	if err := waitForQmp(domainName, false); err != nil {
+		return fmt.Errorf("error waiting for Qmp absent for domain %s: %v", domainName, err)
 	}
 
 	return nil
