@@ -148,6 +148,13 @@ message PhysicalIO {
   // physical and logical attributes
   //    For example in WWAN to which firmware version to load etc
   map <string, string> cbattr = 8;
+  // list of virtual functions for given physical function only applies for PHY_IO_TYPE_PHY_IO_NET_ETH_PF
+  VfList vflist = 9;
+}
+message VfList {
+  uint32 vfCount = 1;
+  // configured VF
+  repeated EthVF data = 2;
 }
 
 // VlanAdapter represents a single VLAN sub-interface.

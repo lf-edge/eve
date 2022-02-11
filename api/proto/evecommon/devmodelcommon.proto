@@ -19,6 +19,8 @@ enum PhyIoType {
   PhyIoNetWLAN = 5;
   PhyIoNetWWAN = 6;
   PhyIoHDMI = 7;
+  PHY_IO_TYPE_PHY_IO_NET_ETH_PF = 8;
+  PHY_IO_TYPE_PHY_IO_NET_ETH_VF = 9;
   PhyIoOther = 255;
 }
 

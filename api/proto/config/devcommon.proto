@@ -49,4 +49,12 @@ message ConfigItem {
 message Adapter {
   org.lfedge.eve.common.PhyIoType type = 1;
   string name = 2;	// Short hand name such as "com" from bundle
+  EthVF eth_vf = 3; // Only relevant for PHY_IO_TYPE_PHY_IO_NET_ETH_VF
+}
+// Information containing customisation for Virtual Function (VF)
+message EthVF {
+  uint32 index = 1;
+  string pci = 2;
+  string mac = 3;
+  uint32 vlanId = 4;
 }
