@@ -140,7 +140,7 @@ modprobe usbhid && modprobe usbkbd
 if grep -q eve_nuke_disks /proc/cmdline; then
   NUKE_DISKS=$(</proc/cmdline tr ' ' '\012' | sed -ne '/^eve_nuke_disks=/s#^.*=##p')
   printf '%s' "Nuking partition tables on:"
-  IFS=',' ;for dev in $NUKE_DISKS; do
+  for dev in $(echo "$NUKE_DISKS" | tr ',' ' '); do
       printf ' %s' "$dev"
       dd if=/dev/zero of="/dev/$dev" bs=512 count=34 >/dev/null 2>&1
   done
@@ -233,7 +233,7 @@ if [ "$INSTALL_DEV" != "$INSTALL_PERSIST" ]; then
      INSTALL_ZFS=true
      modprobe zfs
      MAKE_RAW_PARTS="efi imga imgb conf"
-     IFS=',' ;for dev in $INSTALL_PERSIST; do
+     for dev in $(echo "$INSTALL_PERSIST" | tr ',' ' '); do
         if [ "$dev" = "$INSTALL_DEV" ]; then
            # in case we want to have one of P3 on the bootable disk
            MAKE_RAW_PARTS="efi imga imgb conf persist"
