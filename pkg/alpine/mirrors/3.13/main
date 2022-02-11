@@ -176,6 +176,7 @@ xz-libs
 yajl
 yajl-dev
 zfs
+zfs-dev
 zfs-udev
 zlib
 zlib-dev
