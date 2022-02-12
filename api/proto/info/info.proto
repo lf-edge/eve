@@ -1,4 +1,4 @@
-// Copyright(c) 2017-2020 Zededa, Inc.
+// Copyright(c) 2017-2022 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
 syntax = "proto3";
@@ -952,6 +952,8 @@ message ZInfoMsg {
     ZInfoContentTree cinfo = 14;
     ZInfoBlobList binfo = 15;
     ZInfoAppInstMetaData amdinfo = 16;
+    // evinfo include only if the edge-view is running on device
+    ZInfoEdgeview evinfo = 17;
   }
   google.protobuf.Timestamp atTimeStamp = 6;
 }
@@ -971,4 +973,16 @@ message ZInfoAppInstMetaData {
   string uuid = 1;
   AppInstMetaDataType type = 2;
   bytes data = 3;
+}
+
+// ZInfoEdgeview - edge-view operation status/event
+message ZInfoEdgeview {
+  // expires on timestamp
+  google.protobuf.Timestamp expire_time = 1;
+  // started timestamp
+  google.protobuf.Timestamp started_time = 2;
+  // total number of device related cmds edge-view has processed
+  uint32 count_dev = 3;
+  // total number of app related cmds edge-view has processed
+  uint32 count_app = 4;
 }

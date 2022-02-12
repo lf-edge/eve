@@ -1,4 +1,4 @@
-// Copyright (c) 2017-2018 Zededa, Inc.
+// Copyright (c) 2017-2022 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
 package zedagent
@@ -118,6 +118,8 @@ type getconfigContext struct {
 	// timer.metric.interval > currentMetricInterval, until the value of
 	// 'timer.metric.interval' has been successfully notified to the controller.
 	currentMetricInterval uint32
+
+	configEdgeview *types.EdgeviewConfig // edge-view config save
 }
 
 // current devUUID from OnboardingStatus
