@@ -62,11 +62,11 @@ func NewAwsCtx(id, secret, region string, hctx *http.Client) *S3ctx {
 	cfg.WithRegion(region)
 
 	if hctx != nil {
+		// This picks up the TLS settings including any extra proxy
+		// certificates.
 		cfg.WithHTTPClient(hctx)
 	}
 
-	// FIXME: We need figoure out how to do this with SSL verification
-	cfg.WithDisableSSL(true)
 	// s3.New is deprecated.. Ignoring the lint error as this is not new code.
 	ctx.ss3 = s3.New(session.New(), cfg) // nolint
 	ctx.up = s3manager.NewUploaderWithClient(ctx.ss3, func(u *s3manager.Uploader) {
