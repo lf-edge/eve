@@ -13,6 +13,7 @@ require (
 	github.com/docker/docker v20.10.7+incompatible
 	github.com/eriknordmark/ipinfo v0.0.0-20190220084921-7ee0839158f9
 	github.com/fsnotify/fsnotify v1.4.9
+	github.com/golang-jwt/jwt v3.2.2+incompatible
 	github.com/golang/protobuf v1.5.2
 	github.com/google/go-cmp v0.5.6
 	github.com/google/go-containerregistry v0.6.0
