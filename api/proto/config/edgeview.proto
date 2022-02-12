@@ -1,0 +1,32 @@
+// Copyright(c) 2021-2022 Zededa, Inc.
+// All rights reserved.
+
+syntax = "proto3";
+
+package org.lfedge.eve.config;
+option go_package  = "github.com/lf-edge/eve/api/go/config";
+option java_package = "org.lfedge.eve.config";
+
+message EdgeViewConfig {
+    // JWT token for signed info, it contains the dispatcher
+    // endpoint IP:Port, device UUID, nonce and expiration time
+    string  token = 1;
+    // dispatcher certificate(s) if it's not well-known CA signed
+    repeated bytes disp_cert_pem = 2;
+    // policy for device access through edge-view
+    DevDebugAccessPolicy dev_policy = 3;
+    // policy access for apps through edge-view
+    AppDebugAccessPolicy app_policy = 4;
+}
+
+// Dev debug policy applicable to edge-view
+message DevDebugAccessPolicy {
+    // device side of edge-view access is allowed or not
+    bool allow_dev = 1;
+}
+
+// App debug policy applicable to edge-view
+message AppDebugAccessPolicy {
+    // app side of edge-view access is allowed or not
+    bool allow_app = 1;
+}

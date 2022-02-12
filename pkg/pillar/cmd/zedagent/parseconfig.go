@@ -1,4 +1,4 @@
-// Copyright (c) 2017-2018 Zededa, Inc.
+// Copyright (c) 2017-2022 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
 package zedagent
@@ -105,6 +105,9 @@ func parseConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigContext,
 		// parseProfile must be called before processing of app instances from config
 		parseProfile(getconfigCtx, config)
 		parseAppInstanceConfig(config, getconfigCtx)
+
+		parseEvConfig(getconfigCtx, config)
+
 		getconfigCtx.lastProcessedConfig = time.Now()
 	}
 	return false

@@ -1,4 +1,4 @@
-// Copyright (c) 2017-2018 Zededa, Inc.
+// Copyright (c) 2017-2022 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
 // zedAgent interfaces with zedcloud for
@@ -306,6 +306,8 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		localServerMap: &localServerMap{},
 		// default value of currentMetricInterval
 		currentMetricInterval: zedagentCtx.globalConfig.GlobalValueInt(types.MetricInterval),
+		// edge-view configure
+		configEdgeview: &types.EdgeviewConfig{},
 	}
 	cipherCtx := cipherContext{}
 	attestCtx := attestContext{}
@@ -1972,6 +1974,10 @@ func handleGlobalConfigImpl(ctxArg interface{}, key string,
 		ctx.gcpMaintenanceMode = gcp.GlobalValueTriState(types.MaintenanceMode)
 		mergeMaintenanceMode(ctx)
 	}
+
+	// XXX for testing edge-view
+	handleEdgeviewToken(gcp)
+
 	log.Functionf("handleGlobalConfigImpl done for %s", key)
 }
 

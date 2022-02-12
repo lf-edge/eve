@@ -1,4 +1,4 @@
-// Copyright(c) 2017-2018 Zededa, Inc.
+// Copyright(c) 2017-2022 Zededa, Inc.
 // All rights reserved.
 
 syntax = "proto3";
@@ -15,6 +15,7 @@ import "config/devmodel.proto";
 import "config/netconfig.proto";
 import "config/netinst.proto";
 import "config/storage.proto";
+import "config/edgeview.proto";
 
 // This is the response to a GET /api/v1/edgeDevice/config
 // The EdgeDevConfig message carries all of the device's configuration from
@@ -121,6 +122,9 @@ message EdgeDevConfig {
 
   // A list of bond interfaces (LAGs) aggregating physical network adapters.
   repeated BondAdapter bonds = 31;
+
+  // edge-view configuration
+  EdgeViewConfig edgeview = 32;
 }
 
 message ConfigRequest {
