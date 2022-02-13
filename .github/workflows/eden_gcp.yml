@@ -182,7 +182,7 @@ jobs:
         if: ${{ always() }}
         uses: actions/upload-artifact@v2
         with:
-          name: eden-report-${{ matrix.hv }}
+          name: eden-report-${{ matrix.backend }}-${{ matrix.hv }}
           path: |
             ${{ github.workspace }}/trace.log
             ${{ github.workspace }}/info.log
