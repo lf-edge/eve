@@ -8,7 +8,7 @@ ARG EVE_BUILDER_IMAGE=lfedge/eve-alpine:6.7.0
 FROM ${EVE_BUILDER_IMAGE} AS build
 SHELL ["/bin/ash", "-eo", "pipefail", "-c"]
 ENV BUILD_PKGS mkinitfs grep patch
-ENV PKGS mtools dosfstools libarchive-tools sgdisk e2fsprogs util-linux squashfs-tools coreutils tar dmidecode
+ENV PKGS mtools dosfstools libarchive-tools sgdisk e2fsprogs util-linux squashfs-tools coreutils tar dmidecode zfs-libs
 RUN eve-alpine-deploy.sh
 
 WORKDIR /out
