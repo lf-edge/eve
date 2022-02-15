@@ -1883,7 +1883,7 @@ func parseIpspec(ipspec *zconfig.Ipspec,
 	}
 
 	addrCount := types.GetIPAddrCountOnSubnet(config.Subnet)
-	if addrCount <= types.MinSubnetSize {
+	if addrCount < types.MinSubnetSize {
 		return fmt.Errorf("network(%s), Subnet too small(%d)",
 			config.Key(), addrCount)
 	}
