@@ -25,8 +25,14 @@ BAIL_FINAL_CMD=${BAIL_FINAL_CMD:-"exit 1"}
 [ -n "$DEBUG" ] && set -x
 
 pause() {
+   echo "stop rungetty.sh to not re-run login"
+   killall -STOP rungetty.sh
+   echo "killing login"
+   killall login
    echo "Pausing before $1. Entering shell. Type 'exit' to proceed to $1"
-   sh
+   sh </dev/console >/dev/console 2>&1
+   echo "resume rungetty.sh"
+   killall -CONT rungetty.sh
 }
 
 bail() {
