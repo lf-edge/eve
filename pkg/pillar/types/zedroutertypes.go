@@ -3204,12 +3204,13 @@ func GetIPBroadcast(subnet net.IPNet) net.IP {
 	return net.IP{}
 }
 
-// AppNumber :
 // PS. Any change to BitMapMax, must be
 // reflected in the BitMap Size(32 bytes)
+// At the MinSubnetSize there is room for one app instance (.0 being reserved,
+// .3 broadcast, .1 is the bridgeIPAddr, and .2 is usable).
 const (
 	BitMapMax       = 255 // with 0 base, its 256
-	MinSubnetSize   = 8   // minimum Subnet Size
+	MinSubnetSize   = 4   // minimum Subnet Size
 	LargeSubnetSize = 16  // for determining default Dhcp Range
 )
 
