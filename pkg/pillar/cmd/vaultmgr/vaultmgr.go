@@ -42,6 +42,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	uc "github.com/lf-edge/eve/pkg/pillar/cmd/upgradeconverter"
+	"github.com/lf-edge/eve/pkg/pillar/containerd"
 	etpm "github.com/lf-edge/eve/pkg/pillar/evetpm"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
@@ -644,10 +645,13 @@ func setupDefaultVault(ctx *vaultMgrContext) error {
 					return fmt.Errorf("error creating zfs vault %s, error=%v, %s, %s",
 						defaultVault, err, stdOut, stdErr)
 				}
-				if err := eveZFSSnapshotterInit(); err != nil {
+				if err := containerd.EveSnapshotterInit(types.ZFSSnapshotter); err != nil {
 					return fmt.Errorf("error setting up zfs snapshooter: %s", err)
 				}
 				return nil
+			}
+			if err := containerd.EveSnapshotterInit(types.OverlaySnapshotter); err != nil {
+				return fmt.Errorf("error setting up overlay snapshooter: %s", err)
 			}
 			//Vault is just a plain folder in those cases
 			return os.MkdirAll(defaultVault, 755)
@@ -660,9 +664,15 @@ func setupDefaultVault(ctx *vaultMgrContext) error {
 			//in these cases
 			return setupVault(defaultVault, true)
 		}
-		if err == nil && persistFsType == types.PersistZFS {
-			if err := eveZFSSnapshotterInit(); err != nil {
-				return fmt.Errorf("error setting up zfs snapshooter: %s", err)
+		if err == nil {
+			if persistFsType == types.PersistZFS {
+				if err := containerd.EveSnapshotterInit(types.ZFSSnapshotter); err != nil {
+					return fmt.Errorf("error setting up zfs snapshooter: %s", err)
+				}
+			} else {
+				if err := containerd.EveSnapshotterInit(types.OverlaySnapshotter); err != nil {
+					return fmt.Errorf("error setting up overlay snapshooter: %s", err)
+				}
 			}
 		}
 		return err
@@ -672,6 +682,9 @@ func setupDefaultVault(ctx *vaultMgrContext) error {
 		if err := setupDefaultVaultOnExt4(); err != nil {
 			return err
 		}
+		if err := containerd.EveSnapshotterInit(types.OverlaySnapshotter); err != nil {
+			return fmt.Errorf("error setting up overlay snapshooter: %s", err)
+		}
 		//Log the type of key used for unlocking default vault
 		log.Noticef("%s unlocked using key type %s", defaultVault,
 			etpm.CompareLegacyandSealedKey().String())
@@ -679,7 +692,7 @@ func setupDefaultVault(ctx *vaultMgrContext) error {
 		if err := setupDefaultVaultOnZfs(); err != nil {
 			return err
 		}
-		if err := eveZFSSnapshotterInit(); err != nil {
+		if err := containerd.EveSnapshotterInit(types.ZFSSnapshotter); err != nil {
 			return fmt.Errorf("error setting up zfs snapshooter: %s", err)
 		}
 		//Log the type of key used for unlocking default vault
@@ -1006,7 +1019,7 @@ func handleVaultKeyFromControllerImpl(ctxArg interface{}, key string,
 					err)
 				return
 			}
-			if err := eveZFSSnapshotterInit(); err != nil {
+			if err := containerd.EveSnapshotterInit(types.ZFSSnapshotter); err != nil {
 				log.Errorf("error setting up zfs snapshooter: %s", err)
 			}
 		} else {
@@ -1016,6 +1029,9 @@ func handleVaultKeyFromControllerImpl(ctxArg interface{}, key string,
 				log.Errorf("Failed to unlock vault after receiving Controller key, %v",
 					err)
 				return
+			}
+			if err := containerd.EveSnapshotterInit(types.OverlaySnapshotter); err != nil {
+				log.Errorf("error setting up overlay snapshooter: %s", err)
 			}
 		}
 

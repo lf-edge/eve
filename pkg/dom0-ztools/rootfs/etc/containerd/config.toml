@@ -21,6 +21,9 @@ disabled_plugins = ["cri", "btrfs", "aufs"]
   [proxy_plugins."eve.zfs.snapshotter"]
     type = "snapshot"
     address = "/run/eve.zfs.snapshotter.sock"
+  [proxy_plugins."eve.overlay.snapshotter"]
+    type = "snapshot"
+    address = "/run/eve.overlay.snapshotter.sock"
 
 # [plugins]
 #  [plugins.content]

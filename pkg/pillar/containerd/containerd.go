@@ -21,6 +21,7 @@ import (
 	"github.com/containerd/containerd/api/services/tasks/v1"
 	"github.com/containerd/containerd/cio"
 	"github.com/containerd/containerd/content"
+	"github.com/containerd/containerd/errdefs"
 	"github.com/containerd/containerd/images"
 	"github.com/containerd/containerd/leases"
 	"github.com/containerd/containerd/mount"
@@ -76,7 +77,7 @@ const (
 
 var (
 	// default snapshotter used by containerd
-	defaultSnapshotter = "overlayfs"
+	defaultSnapshotter = types.OverlaySnapshotter.String()
 )
 
 // Client is the handle we return to the caller
@@ -89,7 +90,7 @@ func init() {
 	logrus.Info("Containerd Init")
 	// see if we need to use zfs snapshotter based on what flavor of storage persist partition is
 	if vault.ReadPersistType() == types.PersistZFS {
-		defaultSnapshotter = types.ZFSSnapshotter
+		defaultSnapshotter = types.ZFSSnapshotter.String()
 	}
 }
 
@@ -305,7 +306,17 @@ func (client *Client) CtrMountSnapshot(ctx context.Context, snapshotID, targetPa
 	snapshotter := client.ctrdClient.SnapshotService(defaultSnapshotter)
 	mounts, err := snapshotter.Mounts(ctx, snapshotID)
 	if err != nil {
-		return fmt.Errorf("CtrMountSnapshot: Exception while fetching mounts of snapshot: %s. %s", snapshotID, err)
+		if errdefs.IsNotFound(err) && defaultSnapshotter == types.OverlaySnapshotter.String() {
+			// fallback to the old snapshotter
+			snapshotter = client.ctrdClient.SnapshotService(types.OldSnapshotter.String())
+			mounts, err = snapshotter.Mounts(ctx, snapshotID)
+			if err != nil {
+				return fmt.Errorf("CtrMountSnapshot: Exception while fetching mounts of snapshot with %s: %s. %s",
+					types.OldSnapshotter.String(), snapshotID, err)
+			}
+		} else {
+			return fmt.Errorf("CtrMountSnapshot: Exception while fetching mounts of snapshot: %s. %s", snapshotID, err)
+		}
 	}
 	if err := os.MkdirAll(targetPath, 0766); err != nil {
 		return fmt.Errorf("CtrMountSnapshot: Exception while creating targetPath dir. %v", err)
@@ -336,8 +347,19 @@ func (client *Client) CtrRemoveSnapshot(ctx context.Context, snapshotID string) 
 	}
 	snapshotter := client.ctrdClient.SnapshotService(defaultSnapshotter)
 	if err := snapshotter.Remove(ctx, snapshotID); err != nil {
-		logrus.Errorf("CtrRemoveSnapshot: unable to remove snapshot: %v. %v", snapshotID, err)
-		return err
+		if errdefs.IsNotFound(err) && defaultSnapshotter == types.OverlaySnapshotter.String() {
+			// fallback to the old snapshotter
+			snapshotter = client.ctrdClient.SnapshotService(types.OldSnapshotter.String())
+			err = snapshotter.Remove(ctx, snapshotID)
+			if err != nil {
+				logrus.Errorf("CtrRemoveSnapshot: unable to remove snapshot with %s: %v. %v",
+					types.OldSnapshotter.String(), snapshotID, err)
+				return err
+			}
+		} else {
+			logrus.Errorf("CtrRemoveSnapshot: unable to remove snapshot: %v. %v", snapshotID, err)
+			return err
+		}
 	}
 	return nil
 }
