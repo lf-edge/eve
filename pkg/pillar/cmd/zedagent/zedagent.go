@@ -132,6 +132,7 @@ type zedagentContext struct {
 	subWwanMetrics            pubsub.Subscription
 	subDeviceNetworkStatus    pubsub.Subscription
 	subZFSPoolStatus          pubsub.Subscription
+	subEdgeviewStatus         pubsub.Subscription
 	zedcloudMetrics           *zedcloud.AgentMetrics
 	rebootCmd                 bool
 	rebootCmdDeferred         bool
@@ -736,6 +737,22 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		log.Fatal(err)
 	}
 	getconfigCtx.subHostMemory = subHostMemory
+
+	subEdgeviewStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "edgeview",
+		MyAgentName:   agentName,
+		TopicImpl:     types.EdgeviewStatus{},
+		Activate:      true,
+		Ctx:           &zedagentCtx,
+		CreateHandler: handleEdgeviewStatusCreate,
+		ModifyHandler: handleEdgeviewStatusModify,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	zedagentCtx.subEdgeviewStatus = subEdgeviewStatus
 
 	// Look for zboot status
 	subZbootStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
@@ -1604,6 +1621,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		case <-hwInfoTiker.C:
 			triggerPublishHwInfo(&zedagentCtx)
 
+		case change := <-subEdgeviewStatus.MsgChan():
+			subEdgeviewStatus.ProcessChange(change)
+
 		case <-stillRunning.C:
 			// Fault injection
 			if fatalFlag {
@@ -1694,6 +1714,13 @@ func triggerPublishAllInfo(ctxPtr *zedagentContext) {
 			ctxPtr.TriggerObjectInfo <- infoForObjectKey{
 				info.ZInfoTypes_ZiAppInstMetaData,
 				c.(types.AppInstMetaData).Key(),
+			}
+		}
+		// trigger publish edgeview infos
+		for _, c := range ctxPtr.subEdgeviewStatus.GetAll() {
+			ctxPtr.TriggerObjectInfo <- infoForObjectKey{
+				info.ZInfoTypes_ZiEdgeview,
+				c.(types.EdgeviewStatus).Key(),
 			}
 		}
 	}()
@@ -2294,4 +2321,20 @@ func handleOnboardStatusImpl(ctxArg interface{}, key string,
 		// Re-publish all objects with new device UUID
 		triggerPublishAllInfo(ctx.getconfigCtx.zedagentCtx)
 	}
+}
+
+func handleEdgeviewStatusCreate(ctxArg interface{}, key string, statusArg interface{}) {
+	handleEdgeviewStatusImpl(ctxArg, key, statusArg)
+}
+
+func handleEdgeviewStatusModify(ctxArg interface{}, key string,
+	statusArg interface{}, oldStatusArg interface{}) {
+	handleEdgeviewStatusImpl(ctxArg, key, statusArg)
+}
+
+func handleEdgeviewStatusImpl(ctxArg interface{}, key string, statusArg interface{}) {
+	status := statusArg.(types.EdgeviewStatus)
+	ctx := ctxArg.(*zedagentContext)
+	PublishEdgeviewToZedCloud(ctx, &status, ctx.iteration)
+	ctx.iteration++
 }

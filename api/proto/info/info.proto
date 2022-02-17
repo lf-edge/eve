@@ -67,6 +67,7 @@ enum ZInfoTypes {
   ZiBlobList = 9;
   ZiAppInstMetaData = 10;
   ZiHardware = 11;
+  ZiEdgeview = 12;
 }
 
 // Information about assignable I/O adapter bundles
