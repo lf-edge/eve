@@ -1386,6 +1386,55 @@ func PublishBlobInfoToZedCloud(ctx *zedagentContext, blobSha string, blobStatus 
 	zedcloud.HandleDeferred(zedcloudCtx, time.Now(), 0, true)
 }
 
+// PublishEdgeviewToZedCloud - publish Edgeview info to controller
+func PublishEdgeviewToZedCloud(ctx *zedagentContext, evStatus *types.EdgeviewStatus, iteration int) {
+
+	log.Functionf("PublishEdgeviewToZedCloud")
+	var ReportInfo = &info.ZInfoMsg{}
+
+	evType := new(info.ZInfoTypes)
+	*evType = info.ZInfoTypes_ZiEdgeview
+	ReportInfo.Ztype = *evType
+	ReportInfo.DevId = *proto.String(devUUID.String())
+	ReportInfo.AtTimeStamp = ptypes.TimestampNow()
+
+	ReportEvInfo := new(info.ZInfoEdgeview)
+	if evStatus != nil {
+		expTime, _ := ptypes.TimestampProto(time.Unix(int64(evStatus.ExpireOn), 0).UTC())
+		startTime, _ := ptypes.TimestampProto(evStatus.StartedOn)
+		ReportEvInfo.ExpireTime = expTime
+		ReportEvInfo.StartedTime = startTime
+		ReportEvInfo.CountDev = evStatus.CmdCountDev
+		ReportEvInfo.CountApp = evStatus.CmdCountApp
+	}
+
+	ReportInfo.InfoContent = new(info.ZInfoMsg_Evinfo)
+	if x, ok := ReportInfo.GetInfoContent().(*info.ZInfoMsg_Evinfo); ok {
+		x.Evinfo = ReportEvInfo
+	}
+
+	log.Functionf("PublishEdgeviewToZedCloud sending %v", ReportInfo)
+
+	data, err := proto.Marshal(ReportInfo)
+	if err != nil {
+		log.Fatal("PublishEdgeviewToZedCloud proto marshaling error: ", err)
+	}
+	statusURL := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API, devUUID, "info")
+
+	buf := bytes.NewBuffer(data)
+	if buf == nil {
+		log.Fatal("malloc error")
+	}
+	size := int64(proto.Size(ReportInfo))
+
+	//We queue the message and then get the highest priority message to send.
+	//If there are no failures and defers we'll send this message,
+	//but if there is a queue we'll retry sending the highest priority message.
+	zedcloud.SetDeferred(zedcloudCtx, "global", buf, size, statusURL,
+		true, info.ZInfoTypes_ZiEdgeview)
+	zedcloud.HandleDeferred(zedcloudCtx, time.Now(), 0, true)
+}
+
 func appIfnameToNetworkInstance(ctx *zedagentContext,
 	aiStatus *types.AppInstanceStatus, vifname string) *types.NetworkInstanceStatus {
 	for _, ulStatus := range aiStatus.UnderlayNetworks {

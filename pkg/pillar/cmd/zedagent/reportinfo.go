@@ -139,6 +139,14 @@ func objectInfoTask(ctxPtr *zedagentContext, triggerInfo <-chan infoForObjectKey
 						ctxPtr.iteration)
 					ctxPtr.iteration++
 				}
+			case info.ZInfoTypes_ZiEdgeview:
+				// publish Edgeview info
+				sub := ctxPtr.subEdgeviewStatus
+				if c, err = sub.Get(infoForKeyMessage.objectKey); err == nil {
+					evStatus := c.(types.EdgeviewStatus)
+					PublishEdgeviewToZedCloud(ctxPtr, &evStatus, ctxPtr.iteration)
+					ctxPtr.iteration++
+				}
 			}
 			if err != nil {
 				log.Functionf("objectInfoTask not found %s for key %s: %s",

@@ -90,3 +90,8 @@ type EdgeviewStatus struct {
 	CmdCountDev uint32    // total edge-view dev related commands performed
 	CmdCountApp uint32    // total edge-view app related commands performed
 }
+
+// Key is global for edgeview for now
+func (status EdgeviewStatus) Key() string {
+	return "global"
+}
