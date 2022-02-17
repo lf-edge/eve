@@ -171,6 +171,8 @@ github.com/containerd/containerd/runtime/v2/runc/options
 github.com/containerd/containerd/services
 github.com/containerd/containerd/services/introspection
 github.com/containerd/containerd/snapshots
+github.com/containerd/containerd/snapshots/overlay
+github.com/containerd/containerd/snapshots/overlay/overlayutils
 github.com/containerd/containerd/snapshots/proxy
 github.com/containerd/containerd/snapshots/storage
 github.com/containerd/containerd/sys
