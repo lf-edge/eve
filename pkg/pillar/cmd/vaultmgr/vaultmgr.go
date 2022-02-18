@@ -999,12 +999,24 @@ func handleVaultKeyFromControllerImpl(ctxArg interface{}, key string,
 		}
 		log.Noticef("Sealed key in TPM, unlocking %s", types.DefaultVaultName)
 
-		//cloudKeyOnlyMode=false, useSealedKey=true
-		err = unlockVault(defaultVault, false, true)
-		if err != nil {
-			log.Errorf("Failed to unlock vault after receiving Controller key, %v",
-				err)
-			return
+		if vault.ReadPersistType() == types.PersistZFS {
+			err = unlockZfsVault(defaultSecretDataset)
+			if err != nil {
+				log.Errorf("Failed to unlock zfs vault after receiving Controller key, %v",
+					err)
+				return
+			}
+			if err := eveZFSSnapshotterInit(); err != nil {
+				log.Errorf("error setting up zfs snapshooter: %s", err)
+			}
+		} else {
+			//cloudKeyOnlyMode=false, useSealedKey=true
+			err = unlockVault(defaultVault, false, true)
+			if err != nil {
+				log.Errorf("Failed to unlock vault after receiving Controller key, %v",
+					err)
+				return
+			}
 		}
 
 		//Log the type of key used for unlocking default vault
