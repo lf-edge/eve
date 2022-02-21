@@ -450,7 +450,7 @@ __EOT__
       "$(json_attr     networks        "$(printf "%b" "$STATUS" | json_array)")" \
       "$(json_str_attr config-checksum "$CHECKSUM")" \
         | jq > "${STATUS_PATH}.tmp"
-    # update metrics atomically
+    # update status atomically
     mv "${STATUS_PATH}.tmp" "${STATUS_PATH}"
   fi
 done

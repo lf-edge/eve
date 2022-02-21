@@ -1,4 +1,4 @@
-// Copyright (c) 2020 Zededa, Inc.
+// Copyright (c) 2021 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
 package nim
@@ -12,7 +12,6 @@ import (
 	"time"
 
 	dns "github.com/Focinfi/go-dns-resolver"
-	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 )
 
@@ -26,7 +25,7 @@ const (
 )
 
 // go routine for dns query to the controller
-func queryControllerDNS(ps *pubsub.PubSub) {
+func (n *nim) queryControllerDNS() {
 	var etchosts, controllerServer []byte
 	var ttlSec int
 	var ipaddrCached string
@@ -46,7 +45,7 @@ func queryControllerDNS(ps *pubsub.PubSub) {
 	}
 
 	if len(controllerServer) == 0 {
-		log.Errorf("can't read /etc/hosts or server file")
+		n.Log.Errorf("can't read /etc/hosts or server file")
 		return
 	}
 
@@ -54,8 +53,8 @@ func queryControllerDNS(ps *pubsub.PubSub) {
 
 	wdName := agentName + "dnsQuery"
 	stillRunning := time.NewTicker(stillRunTime)
-	ps.StillRunning(wdName, warningTime, errorTime)
-	ps.RegisterFileWatchdog(wdName)
+	n.PubSub.StillRunning(wdName, warningTime, errorTime)
+	n.PubSub.RegisterFileWatchdog(wdName)
 
 	for {
 		select {
@@ -63,18 +62,18 @@ func queryControllerDNS(ps *pubsub.PubSub) {
 			// base on ttl from server dns update frequency for controller IP resolve
 			// even if the dns server implementation returns the remaining value of the TTL it caches,
 			// it will still work.
-			ipaddrCached, ttlSec = controllerDNSCache(etchosts, controllerServer, ipaddrCached)
+			ipaddrCached, ttlSec = n.controllerDNSCache(etchosts, controllerServer, ipaddrCached)
 			dnsTimer = time.NewTimer(time.Duration(ttlSec) * time.Second)
 
 		case <-stillRunning.C:
 		}
-		ps.StillRunning(wdName, warningTime, errorTime)
+		n.PubSub.StillRunning(wdName, warningTime, errorTime)
 	}
 }
 
 // periodical cache the controller DNS resolution into /etc/hosts file
 // it returns the cached ip string, and TTL setting from the server
-func controllerDNSCache(etchosts, controllerServer []byte, ipaddrCached string) (string, int) {
+func (n *nim) controllerDNSCache(etchosts, controllerServer []byte, ipaddrCached string) (string, int) {
 	if len(etchosts) == 0 || len(controllerServer) == 0 {
 		return ipaddrCached, maxTTLSec
 	}
@@ -87,7 +86,7 @@ func controllerDNSCache(etchosts, controllerServer []byte, ipaddrCached string) 
 			fields := bytes.Fields(entry)
 			if len(fields) == 2 {
 				if bytes.Compare(fields[1], controllerServer) == 0 {
-					log.Tracef("server entry %s already in /etc/hosts, skip", controllerServer)
+					n.Log.Tracef("server entry %s already in /etc/hosts, skip", controllerServer)
 					return ipaddrCached, maxTTLSec
 				}
 			}
@@ -108,7 +107,7 @@ func controllerDNSCache(etchosts, controllerServer []byte, ipaddrCached string) 
 	}
 
 	if _, err := os.Stat(tmpHostFileName); err == nil {
-		os.Remove(tmpHostFileName)
+		_ = os.Remove(tmpHostFileName)
 	}
 
 	var newhosts []byte
@@ -132,14 +131,14 @@ func controllerDNSCache(etchosts, controllerServer []byte, ipaddrCached string) 
 				lookupIPaddr = dIP.String()
 				ttlSec = getTTL(r.Ttl)
 				if ipaddrCached == lookupIPaddr {
-					log.Tracef("same IP address %s, return", lookupIPaddr)
+					n.Log.Tracef("same IP address %s, return", lookupIPaddr)
 					return ipaddrCached, ttlSec
 				}
 				serverEntry := fmt.Sprintf("%s %s\n", lookupIPaddr, controllerServer)
 				newhosts = append(etchosts, []byte(serverEntry)...)
 				gotipentry = true
 				// a rare event for dns address change, log it
-				log.Noticef("dnsServer %s, ttl %d, entry add to /etc/hosts: %s", nameServer, ttlSec, serverEntry)
+				n.Log.Noticef("dnsServer %s, ttl %d, entry add to /etc/hosts: %s", nameServer, ttlSec, serverEntry)
 				break
 			}
 			if gotipentry {
@@ -162,15 +161,15 @@ func controllerDNSCache(etchosts, controllerServer []byte, ipaddrCached string) 
 	err := ioutil.WriteFile(tmpHostFileName, newhosts, 0644)
 	if err == nil {
 		if err := os.Rename(tmpHostFileName, etcHostFileName); err != nil {
-			log.Errorf("can not rename /etc/hosts file %v", err)
+			n.Log.Errorf("can not rename /etc/hosts file %v", err)
 		} else {
 			if gotipentry {
 				ipaddrCached = lookupIPaddr
 			}
-			log.Tracef("append controller IP %s to /etc/hosts", lookupIPaddr)
+			n.Log.Tracef("append controller IP %s to /etc/hosts", lookupIPaddr)
 		}
 	} else {
-		log.Errorf("can not write /tmp/etchosts file %v", err)
+		n.Log.Errorf("can not write /tmp/etchosts file %v", err)
 	}
 
 	return ipaddrCached, ttlSec

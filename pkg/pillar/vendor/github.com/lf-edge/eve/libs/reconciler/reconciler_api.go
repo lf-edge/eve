@@ -83,6 +83,23 @@ func ContinueInBackground(ctx context.Context) (done func(error)) {
 	}
 }
 
+// MockRun : Use this method to create context for "mock" Reconcile().
+// When used, reconciler will proceed with the reconciliation algorithm as normally
+// except that it will not actually call any Create/Delete/Modify operations
+// provided by Configurators. Instead, it will pretend that all scheduled operations
+// were run and all returned nil errors. This is useful for unit testing, because it
+// allows to compare the sequence of executed config operations against the expectation
+// without actually running those operations and interfering with the host system.
+func MockRun(ctx context.Context) context.Context {
+	return context.WithValue(ctx, mockRunCtxKey, &mockRunAttrs{})
+}
+
+// IsMockRun : Is this context configured for mock reconciliation?
+func IsMockRun(ctx context.Context) bool {
+	_, isMockRun := ctx.Value(mockRunCtxKey).(*mockRunAttrs)
+	return isMockRun
+}
+
 // ConfiguratorRegistry implements mapping between items and configurators that manage
 // their state transitions.
 type ConfiguratorRegistry interface {

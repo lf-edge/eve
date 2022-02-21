@@ -1785,8 +1785,8 @@ func handleDNSImpl(ctxArg interface{}, key string,
 		ctx.DNSinitialized = true
 		return
 	}
-	// if status changed to DPC_SUCCESS try to send deferred objects
-	if status.State == types.DPC_SUCCESS && deviceNetworkStatus.State != types.DPC_SUCCESS {
+	// if status changed to DPCStateSuccess try to send deferred objects
+	if status.State == types.DPCStateSuccess && deviceNetworkStatus.State != types.DPCStateSuccess {
 		ctx.triggerHandleDeferred = true
 	}
 	if deviceNetworkStatus.RadioSilence.ChangeInProgress &&

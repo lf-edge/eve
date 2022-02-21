@@ -38,40 +38,8 @@ const MINACEID = 101
 // Dummy interface used as a blackhole for packets marked for dropping by ACLs.
 const dummyIntfName = "flow-mon-dummy"
 
-// Connection mark is used to remember for a given flow to which application it belongs
-// and which ACE was applied.
-// The 32 bits of a connmark are used as follows:
-//  +------------------------+---------------+------------------+
-//  | Application ID (8bits) | Action (1bit) | ACE ID (23 bits) |
-//  +------------------------+---------------+------------------+
-// where: Drop action = 1; Allow action = 0
-const (
-	appIDMask     = 0xff << 24
-	aceActionMask = 0x1 << 23
-	aceDropAction = aceActionMask
-	aceIDMask     = 0x7fffff
-	// By default, traffic not matched by any ACE is dropped.
-	// For this default rule we use the maximum integer value available for ACE ID.
-	defaultDropAceID = aceIDMask
-)
-
 func appChain(chain string) string {
 	return chain + iptables.AppChainSuffix
-}
-
-func getConnmark(appID uint8, aceID uint32, drop bool) uint32 {
-	mark := uint32(appID)<<24 | aceID
-	if drop {
-		mark |= aceDropAction
-	}
-	return mark
-}
-
-func parseConnmark(mark uint32) (appID uint8, aceID uint32, drop bool) {
-	appID = uint8(mark >> 24)
-	aceID = mark & aceIDMask
-	drop = (mark & aceActionMask) == aceDropAction
-	return
 }
 
 var lastAllocatedAceID int32 = -1
@@ -776,10 +744,11 @@ func aclDropRules(aclArgs types.AppNetworkACLArgs) (types.IPTablesRuleList, erro
 		chainName := fmt.Sprintf("drop-all-%s-%s",
 			aclArgs.BridgeName, aclArgs.VifName)
 		aclRule3.ActionChainName = chainName
-		marking := getConnmark(uint8(aclArgs.AppNum), defaultDropAceID, true)
+		marking := iptables.GetConnmark(
+			uint8(aclArgs.AppNum), iptables.DefaultDropAceID, true)
 		createMarkAndAcceptChain(aclArgs, chainName, marking)
 		aclRule3.Action = []string{"-j", chainName}
-		aclRule3.RuleID = defaultDropAceID
+		aclRule3.RuleID = iptables.DefaultDropAceID
 		aclRule3.IsDefaultDrop = true
 		rulesList = append(rulesList, aclRule1, aclRule2, aclRule3)
 	default:
@@ -1053,7 +1022,8 @@ func aceToRules(ctx *zedrouterContext, aclArgs types.AppNetworkACLArgs,
 						aclArgs.BridgeName, aclArgs.VifName, aclRule1.RuleID)
 
 					// Embed App id in marking value
-					markingValue := getConnmark(uint8(aclArgs.AppNum), uint32(aclRule1.RuleID), false)
+					markingValue := iptables.GetConnmark(
+						uint8(aclArgs.AppNum), uint32(aclRule1.RuleID), false)
 					createMarkAndAcceptChain(aclArgs, chainName, markingValue)
 					aclRule1.Action = []string{"-j", chainName}
 					aclRule1.ActionChainName = chainName
@@ -1088,7 +1058,8 @@ func aceToRules(ctx *zedrouterContext, aclArgs types.AppNetworkACLArgs,
 						aclArgs.BridgeName, aclArgs.VifName, aclRuleH.RuleID)
 
 					// Embed App id in marking value
-					markingValue := getConnmark(uint8(aclArgs.AppNum), uint32(aclRuleH.RuleID), false)
+					markingValue := iptables.GetConnmark(
+						uint8(aclArgs.AppNum), uint32(aclRuleH.RuleID), false)
 					createMarkAndAcceptChain(aclArgs, chainName, markingValue)
 					aclRuleH.Action = []string{"-j", chainName}
 					aclRuleH.ActionChainName = chainName
@@ -1202,7 +1173,8 @@ func aceToRules(ctx *zedrouterContext, aclArgs types.AppNetworkACLArgs,
 				aclArgs.BridgeName, aclArgs.VifName, aclRule4.RuleID)
 
 			// Embed App id in marking value
-			markingValue := getConnmark(uint8(aclArgs.AppNum), uint32(aclRule4.RuleID), foundDrop)
+			markingValue := iptables.GetConnmark(
+				uint8(aclArgs.AppNum), uint32(aclRule4.RuleID), foundDrop)
 			createMarkAndAcceptChain(aclArgs, chainName, markingValue)
 			aclRule4.Action = []string{"-j", chainName}
 			aclRule4.ActionChainName = chainName
@@ -1223,7 +1195,8 @@ func aceToRules(ctx *zedrouterContext, aclArgs types.AppNetworkACLArgs,
 				aclArgs.BridgeName, aclArgs.VifName, aclRule4.RuleID)
 
 			// Embed App id in marking value
-			markingValue := getConnmark(uint8(aclArgs.AppNum), uint32(aclRule4.RuleID), foundDrop)
+			markingValue := iptables.GetConnmark(
+				uint8(aclArgs.AppNum), uint32(aclRule4.RuleID), foundDrop)
 			createMarkAndAcceptChain(aclArgs, chainName, markingValue)
 			aclRule4.Action = []string{"-j", chainName}
 			aclRule4.ActionChainName = chainName
@@ -1243,7 +1216,7 @@ func aceToRules(ctx *zedrouterContext, aclArgs types.AppNetworkACLArgs,
 				aclArgs.BridgeName, aclArgs.VifName, aclRule3.RuleID)
 
 			// Embed App id in marking value
-			markingValue := getConnmark(uint8(aclArgs.AppNum), uint32(aclRule3.RuleID), foundDrop)
+			markingValue := iptables.GetConnmark(uint8(aclArgs.AppNum), uint32(aclRule3.RuleID), foundDrop)
 			createMarkAndAcceptChain(aclArgs, chainName, markingValue)
 			aclRule3.Action = []string{"-j", chainName}
 			aclRule3.ActionChainName = chainName
@@ -1483,13 +1456,13 @@ func updateACLConfiglet(ctx *zedrouterContext, aclArgs types.AppNetworkACLArgs, 
 	if srcIP == nil {
 		log.Errorf("updateACLConfiglet: App IP (%s) parse failed", aclArgs.AppIP)
 	} else {
-		mark := getConnmark(uint8(aclArgs.AppNum), 0, false)
+		mark := iptables.GetConnmark(uint8(aclArgs.AppNum), 0, false)
 		number, err := netlink.ConntrackDeleteFilter(netlink.ConntrackTable, family,
 			conntrack.SrcIPFilter{
 				Log:      log,
 				SrcIP:    srcIP,
 				Mark:     mark,
-				MarkMask: appIDMask})
+				MarkMask: iptables.AppIDMask})
 		if err != nil {
 			log.Errorf("updateACLConfiglet: Error clearing flows before update - %s", err)
 		} else {
@@ -1714,51 +1687,6 @@ func executeIPTablesRule(operation string, rule types.IPTablesRule) error {
 	return err
 }
 
-// handle network instance level ACL rules
-// Network Instance Level ACL rule handling routines
-func handleNetworkInstanceACLConfiglet(op string, aclArgs types.AppNetworkACLArgs) error {
-
-	log.Functionf("bridge(%s, %v) iptables op: %v\n", aclArgs.BridgeName, aclArgs.BridgeIP, op)
-	rulesList := networkInstanceBridgeRules(aclArgs)
-	// For Network instance, we are going to do a "-A" operation
-	// so that, the rules, will at the end of the rule chain
-	// for the specific table
-	// For App Network ACLs, we are doing "-I" opration, they
-	// will be always above these Network Instance log/drop rules.
-	for _, rule := range rulesList {
-		if err := executeIPTablesRule(op, rule); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func networkInstanceBridgeRules(aclArgs types.AppNetworkACLArgs) types.IPTablesRuleList {
-	var rulesList types.IPTablesRuleList
-
-	// not for dom0
-	if aclArgs.IsMgmt {
-		return rulesList
-	}
-	aclArgs.IPVer = determineIPVer(aclArgs.IsMgmt, aclArgs.BridgeIP)
-	// XXX To monitor flows (Local/Switch instances) we should
-	// add connection tracking rules to mangle table at PREROUTING hook.
-	switch aclArgs.NIType {
-	case types.NetworkInstanceTypeLocal:
-		rules := createFlowMatchRules(aclArgs)
-		rulesList = append(rulesList, rules...)
-	case types.NetworkInstanceTypeSwitch:
-		rules := createFlowMatchRules(aclArgs)
-		rulesList = append(rulesList, rules...)
-		// XXX May be add the extra matches rules copied from filter FORWARD
-	default:
-	}
-
-	log.Tracef("bridge(%s, %v) attach iptable rules:%v\n",
-		aclArgs.BridgeName, aclArgs.BridgeIP, rulesList)
-	return rulesList
-}
-
 func createFlowMonDummyInterface() {
 	// Check if our dummy interface already exits.
 	link, err := netlink.LinkByName(dummyIntfName)
@@ -1802,52 +1730,6 @@ func createFlowMonDummyInterface() {
 		log.Errorf("createFlowMonDummyInterface: FwMark rule for %s failed: %s",
 			dummyIntfName, err)
 	}
-}
-
-func createFlowMatchRules(aclArgs types.AppNetworkACLArgs) types.IPTablesRuleList {
-	var rulesList types.IPTablesRuleList
-	var aclRule types.IPTablesRule
-
-	// not for dom0
-	if aclArgs.IsMgmt {
-		return rulesList
-	}
-	aclArgs.IPVer = determineIPVer(aclArgs.IsMgmt, aclArgs.BridgeIP)
-	for _, uplink := range aclArgs.UpLinks {
-		aclRule.IPVer = 4
-		aclRule.Table = "mangle"
-		aclRule.Chain = "PREROUTING"
-		aclRule.Rule = []string{"-i", uplink}
-		// Restore marking from connection into packet
-		aclRule.Action = []string{"-j", "CONNMARK", "--restore-mark"}
-		rulesList = append(rulesList, aclRule)
-
-		aclRule.IPVer = 4
-		aclRule.Table = "mangle"
-		aclRule.Chain = "PREROUTING"
-		// Check if packet has non-zero marking and ACCEPT if Yes.
-		aclRule.Rule = []string{"-i", uplink, "-m", "mark", "!", "--mark", "0"}
-		aclRule.Action = []string{"-j", "ACCEPT"}
-		rulesList = append(rulesList, aclRule)
-
-		aclRule.IPVer = 4
-		aclRule.Table = "mangle"
-		aclRule.Chain = "PREROUTING"
-		aclRule.Rule = []string{"-i", uplink}
-		// For connections originating from outside we use App ID = 0.
-		mark := getConnmark(0, defaultDropAceID, true)
-		aclRule.Action = []string{"-j", "MARK", "--set-mark", strconv.FormatUint(uint64(mark), 10)}
-		rulesList = append(rulesList, aclRule)
-
-		aclRule.IPVer = 4
-		aclRule.Table = "mangle"
-		aclRule.Chain = "PREROUTING"
-		aclRule.Rule = []string{"-i", uplink}
-		// Save packet mark into connection
-		aclRule.Action = []string{"-j", "CONNMARK", "--save-mark"}
-		rulesList = append(rulesList, aclRule)
-	}
-	return rulesList
 }
 
 func createMarkAndAcceptChain(aclArgs types.AppNetworkACLArgs,
@@ -1972,7 +1854,8 @@ func appConfigContainerStatsACL(appIPAddr net.IP, isRemove bool) {
 // and would otherwise continue in their path even if marked for dropping.
 func dropEscapedFlows() {
 	err := iptables.IptableCmd(log, "-t", "mangle", "-I", appChain("POSTROUTING"),
-		"--match", "connmark", "--mark", fmt.Sprintf("%d/%d", aceDropAction, aceActionMask),
+		"--match", "connmark", "--mark",
+		fmt.Sprintf("%d/%d", iptables.AceDropAction, iptables.AceActionMask),
 		"!", "-o", dummyIntfName,
 		"-j", "DROP")
 	if err != nil {

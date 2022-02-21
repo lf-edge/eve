@@ -18,6 +18,7 @@ import (
 
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
+	"github.com/lf-edge/eve/pkg/pillar/iptables"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	pcap "github.com/packetcap/go-pcap"
 	uuid "github.com/satori/go.uuid"
@@ -191,7 +192,7 @@ func FlowStatsCollect(ctx *zedrouterContext) {
 					continue
 				}
 
-				if tuple.aclNum != defaultDropAceID {
+				if tuple.aclNum != iptables.DefaultDropAceID {
 					tmpMap := instData.ipaclattr[int(appN)]
 					if tmpMap != nil {
 						if _, ok := tmpMap[int(tuple.aclNum)]; !ok {
@@ -321,7 +322,7 @@ func flowMergeProcess(entry *netlink.ConntrackFlow, instData networkAttrs) flowS
 	if ipflowTimeOut > timeoutSec {
 		return ipFlow
 	}
-	ipFlow.appNum, ipFlow.aclNum, ipFlow.drop = parseConnmark(entry.Mark)
+	ipFlow.appNum, ipFlow.aclNum, ipFlow.drop = iptables.ParseConnmark(entry.Mark)
 	AppNum = int(ipFlow.appNum)
 	if AppNum == 0 { // only handle App related flow stats, Mark set needs to zero out the app field if not app related
 		return ipFlow

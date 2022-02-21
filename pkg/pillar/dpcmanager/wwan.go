@@ -1,0 +1,239 @@
+// Copyright (c) 2021 Zededa, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
+package dpcmanager
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"io/ioutil"
+	"os"
+	"reflect"
+	"strings"
+
+	"github.com/fsnotify/fsnotify"
+	"github.com/lf-edge/eve/pkg/pillar/base"
+	"github.com/lf-edge/eve/pkg/pillar/devicenetwork"
+	"github.com/lf-edge/eve/pkg/pillar/types"
+)
+
+type wwanWatcher struct {
+	Log *base.LogObject
+}
+
+func (w *wwanWatcher) Watch(ctx context.Context) (<-chan WwanEvent, error) {
+	fsw, err := fsnotify.NewWatcher()
+	if err != nil {
+		err = fmt.Errorf("failed to create fsnotify watcher for wwan dir: %w", err)
+		w.Log.Error(err)
+		return nil, err
+	}
+	if err = w.createWwanDir(); err != nil {
+		_ = fsw.Close()
+		return nil, err
+	}
+	if err = fsw.Add(devicenetwork.RunWwanDir); err != nil {
+		_ = fsw.Close()
+		return nil, err
+	}
+	// Buffered to ensure that runWatcher will not miss fsnotify
+	// notification due to a delayed send.
+	sub := make(chan WwanEvent, 10)
+	go w.runWatcher(ctx, fsw, sub)
+	return sub, nil
+}
+
+func (w *wwanWatcher) runWatcher(ctx context.Context, fsw *fsnotify.Watcher,
+	sub chan WwanEvent) {
+	for {
+		select {
+		case event, ok := <-fsw.Events:
+			if !ok {
+				w.Log.Warnf("fsnotify watcher for wwan directory stopped")
+				return
+			}
+			switch event.Name {
+			case devicenetwork.WwanStatusPath:
+				sub <- WwanEventNewStatus
+			case devicenetwork.WwanMetricsPath:
+				sub <- WwanEventNewMetrics
+			}
+		case <-ctx.Done():
+			return
+		}
+	}
+}
+
+func (w *wwanWatcher) LoadStatus() (status types.WwanStatus, err error) {
+	statusFile, err := os.Open(devicenetwork.WwanStatusPath)
+	if err != nil {
+		w.Log.Errorf("Failed to open file %s: %v", devicenetwork.WwanStatusPath, err)
+		return status, err
+	}
+	defer statusFile.Close()
+	statusBytes, err := ioutil.ReadAll(statusFile)
+	if err != nil {
+		w.Log.Errorf("Failed to read file %s: %v", devicenetwork.WwanStatusPath, err)
+		return status, err
+	}
+	err = json.Unmarshal(statusBytes, &status)
+	if err != nil {
+		w.Log.Errorf("Failed to unmarshall wwan status: %v", err)
+		return status, err
+	}
+	return status, nil
+}
+
+func (w *wwanWatcher) LoadMetrics() (metrics types.WwanMetrics, err error) {
+	metricsFile, err := os.Open(devicenetwork.WwanMetricsPath)
+	if err != nil {
+		w.Log.Errorf("Failed to open file %s: %v", devicenetwork.WwanMetricsPath, err)
+		return metrics, err
+	}
+	defer metricsFile.Close()
+	metricsBytes, err := ioutil.ReadAll(metricsFile)
+	if err != nil {
+		w.Log.Errorf("Failed to read file %s: %v", devicenetwork.WwanMetricsPath, err)
+		return metrics, err
+	}
+	err = json.Unmarshal(metricsBytes, &metrics)
+	if err != nil {
+		w.Log.Errorf("Failed to unmarshall wwan metrics: %v", err)
+		return metrics, err
+	}
+	return metrics, nil
+}
+
+func (w *wwanWatcher) createWwanDir() error {
+	if _, err := os.Stat(devicenetwork.RunWwanDir); err != nil {
+		if err = os.MkdirAll(devicenetwork.RunWwanDir, 0700); err != nil {
+			err = fmt.Errorf("failed to create directory %s: %w",
+				devicenetwork.RunWwanDir, err)
+			w.Log.Error(err)
+			return err
+		}
+	}
+	return nil
+}
+
+// reloadWwanStatus loads the latest state data published by the wwan service.
+func (m *DpcManager) reloadWwanStatus() {
+	status, err := m.WwanWatcher.LoadStatus()
+	if err != nil {
+		// Already logged.
+		return
+	}
+	expectedChecksum := m.reconcileStatus.RS.WwanConfigChecksum
+	if expectedChecksum != "" && expectedChecksum != status.ConfigChecksum {
+		m.Log.Noticef("Ignoring obsolete wwan status")
+		return
+	}
+
+	netName := func(modem types.WwanNetworkStatus) string {
+		netName := modem.LogicalLabel
+		if netName == "" {
+			netName = modem.PhysAddrs.Interface
+		}
+		return netName
+	}
+
+	status.DoSanitize()
+	changed := !reflect.DeepEqual(m.wwanStatus, status)
+	if changed {
+		m.Log.Functionf("Have new wwan status: %v", m.wwanStatus)
+	}
+	wasInProgress := m.radioSilence.ChangeInProgress
+	m.wwanStatus = status
+
+	if m.radioSilence.ChangeInProgress {
+		var errMsgs []string
+		if m.radioSilence.ConfigError != "" {
+			errMsgs = append(errMsgs, m.radioSilence.ConfigError)
+		}
+		for _, network := range status.Networks {
+			if network.ConfigError != "" {
+				errMsgs = append(errMsgs, netName(network)+": "+network.ConfigError)
+			}
+		}
+		if m.radioSilence.Imposed {
+			for _, network := range status.Networks {
+				if network.Module.OpMode != types.WwanOpModeRadioOff {
+					// Failed to turn off the radio
+					m.Log.Warnf("Modem %s (network: %s) is not in the radio-off operational state",
+						network.Module.Name, netName(network))
+					m.radioSilence.Imposed = false // the actual state
+					if network.ConfigError == "" {
+						errMsgs = append(errMsgs,
+							fmt.Sprintf("%s: modem %s is not in the radio-off operational state",
+								netName(network), network.Module.Name))
+					}
+				}
+			}
+		}
+		m.radioSilence.ConfigError = strings.Join(errMsgs, "\n")
+		m.radioSilence.ChangeInProgress = false
+		m.Log.Noticeln("Radio-silence state changing operation has finalized (as seen by nim)")
+	}
+
+	if changed || wasInProgress {
+		m.updateDNS()
+	}
+}
+
+// reloadWwanMetrics loads the latest metrics published by the wwan service.
+func (m *DpcManager) reloadWwanMetrics() {
+	metrics, err := m.WwanWatcher.LoadMetrics()
+	if err != nil {
+		// Already logged.
+		return
+	}
+	if reflect.DeepEqual(metrics, m.wwanMetrics) {
+		// nothing really changed
+		return
+	}
+
+	m.wwanMetrics = metrics
+	if m.PubWwanMetrics != nil {
+		m.Log.Functionf("PubWwanMetrics: %+v", metrics)
+		if err = m.PubWwanMetrics.Publish("global", metrics); err != nil {
+			m.Log.Errorf("Failed to publish wwan metrics: %v", err)
+		}
+	}
+}
+
+// react to changed radio-silence configuration
+func (m *DpcManager) updateRadioSilence(ctx context.Context, newRS types.RadioSilence) {
+	var errMsgs []string
+	if !newRS.ChangeRequestedAt.After(m.radioSilence.ChangeRequestedAt) {
+		return
+	}
+
+	// ChangeInProgress is enabled below if wwan config changes.
+	m.radioSilence.ChangeInProgress = false
+	m.radioSilence.ChangeRequestedAt = newRS.ChangeRequestedAt
+	m.radioSilence.ConfigError = ""
+
+	if newRS.ConfigError != "" {
+		// Do not apply if configuration is marked as invalid by zedagent.
+		// Keep RadioSilence.Imposed unchanged.
+		errMsgs = append(errMsgs, newRS.ConfigError)
+	} else {
+		// Valid configuration, try to apply.
+		wasImposed := m.radioSilence.Imposed
+		m.radioSilence.Imposed = newRS.Imposed
+
+		// update RF state for wwan and wlan
+		m.reconcileStatus = m.DpcReconciler.Reconcile(ctx, m.reconcilerArgs())
+		if m.reconcileStatus.RS.ConfigError != "" {
+			errMsgs = append(errMsgs, m.reconcileStatus.RS.ConfigError)
+			m.radioSilence.Imposed = m.reconcileStatus.RS.Imposed // should be false
+		} else if wasImposed != newRS.Imposed {
+			m.radioSilence.ChangeInProgress = true // waiting for ack from wwan service
+			m.Log.Noticef("Triggering radio-silence state change to: %s", m.radioSilence)
+		}
+	}
+
+	m.radioSilence.ConfigError = strings.Join(errMsgs, "\n")
+	m.updateDNS()
+}

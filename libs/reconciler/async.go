@@ -4,7 +4,6 @@
 package reconciler
 
 import (
-	"context"
 	"sync"
 	"time"
 
@@ -217,21 +216,4 @@ func (s asyncOpStatus) cancelTimeout() bool {
 		endTime = time.Now()
 	}
 	return !s.cancelTime.IsZero() && endTime.Sub(s.cancelTime) > cancelTimeout
-}
-
-// ctxKey is an unexported type for context keys defined in this package.
-// This prevents collisions with keys defined in other packages.
-type ctxKey int
-
-// opCtxKey is the key for opCtx values in Contexts.
-var opCtxKey ctxKey
-
-// newOpCtx returns a new context to pass to Create/Delete/Modify.
-func newOpCtx(ctx context.Context, opCtx *opCtx) context.Context {
-	return context.WithValue(ctx, opCtxKey, opCtx)
-}
-
-// getOpCtx returns opCtx value stored in ctx.
-func getOpCtx(ctx context.Context) *opCtx {
-	return ctx.Value(opCtxKey).(*opCtx)
 }

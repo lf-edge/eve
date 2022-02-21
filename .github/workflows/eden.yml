@@ -77,6 +77,10 @@ jobs:
           EDITOR=cat ./eden config edit default
           echo > ${{ github.workspace }}/eve/tests/eden/workflow/testdata/eden_stop.txt
           ./eden test ${{ github.workspace }}/eve/tests/eden/workflow -v debug
+      - name: Setup tmate session
+        if: ${{ failure() }}
+        uses: mxschmitt/action-tmate@v3
+        timeout-minutes: 45
       - name: Collect logs
         if: ${{ always() }}
         run: |

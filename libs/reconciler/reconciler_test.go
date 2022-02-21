@@ -1395,6 +1395,95 @@ func TestSubGraphs(test *testing.T) {
 	t.Expect(stateData.State).To(Equal(rec.ItemStateCreated))
 }
 
+// Items (grouped with subgraphs): [A [B]]
+// Dependencies: A->B
+func TestRecreateFromOutsideOfSelection(test *testing.T) {
+	t := NewGomegaWithT(test)
+
+	itemA := mockItem{
+		name:     "A",
+		itemType: "type1",
+		deps: []dg.Dependency{
+			{
+				RequiredItem: dg.ItemRef{
+					ItemType: "type2",
+					ItemName: "B",
+				},
+			},
+		},
+	}
+	itemB := mockItem{
+		name:     "B",
+		itemType: "type2",
+	}
+
+	reg := &rec.DefaultRegistry{}
+	t.Expect(addConfigurator(reg, "type1")).To(Succeed())
+	t.Expect(addConfigurator(reg, "type2")).To(Succeed())
+
+	// 1. Create graph with subgraphs
+	intent := dg.New(dg.InitArgs{
+		Name:        "TestGraph",
+		Description: "Graph for testing",
+		Items:       []dg.Item{itemA},
+		Subgraphs: []dg.InitArgs{
+			{
+				Name:        "SubGraph",
+				Description: "SubGraph inside TestGraph",
+				Items:       []dg.Item{itemB},
+			},
+		},
+	})
+
+	r := rec.New(reg)
+	status = r.Reconcile(context.Background(), nil, intent)
+	t.Expect(status.Err).To(BeNil())
+	t.Expect(status.AsyncOpsInProgress).To(BeFalse())
+	t.Expect(itemA).To(BeCreated().After(itemB))
+	t.Expect(itemB).To(BeCreated())
+	t.Expect(status.OperationLog).To(HaveLen(2))
+	t.Expect(status.NewCurrentState).ToNot(BeNil())
+	current := status.NewCurrentState
+
+	// 2. Make modification to itemB which requires re-create
+	//    Reconcile only subgraph with item B - still the item A should be recreated as well.
+	itemB.staticAttrs.intAttr++
+	itemBPath := dg.NewSubGraphPath("SubGraph")
+	dg.PutItemInto(intent, itemB, nil, itemBPath)
+	r = rec.New(reg)
+	subGraph := current.SubGraph("SubGraph")
+	subGraphRW := current.EditSubGraph(subGraph)
+	status = r.Reconcile(context.Background(), subGraphRW, intent.SubGraph("SubGraph"))
+	t.Expect(status.Err).To(BeNil())
+	t.Expect(status.AsyncOpsInProgress).To(BeFalse())
+	t.Expect(status.NewCurrentState).To(BeIdenticalTo(subGraphRW))
+	t.Expect(itemA).To(BeRecreated())
+	t.Expect(itemB).To(BeRecreated())
+	t.Expect(itemA).To(BeDeleted().Before(itemB).IsRecreated())
+	t.Expect(itemA).To(BeCreated().After(itemB).IsRecreated())
+	t.Expect(status.OperationLog).To(HaveLen(4))
+
+	item, state, path, exists := current.Item(dg.Reference(itemA))
+	t.Expect(exists).To(BeTrue())
+	t.Expect(path.Len()).To(BeZero())
+	t.Expect(item).To(BeMockItem(itemA))
+	stateData := state.(*rec.ItemStateData)
+	t.Expect(stateData).ToNot(BeNil())
+	t.Expect(stateData.LastOperation).To(Equal(rec.OperationCreate))
+	t.Expect(stateData.LastError).To(BeNil())
+	t.Expect(stateData.State).To(Equal(rec.ItemStateCreated))
+
+	item, state, path, exists = current.Item(dg.Reference(itemB))
+	t.Expect(exists).To(BeTrue())
+	t.Expect(path.Compare(itemBPath)).To(Equal(0))
+	t.Expect(item).To(BeMockItem(itemB))
+	stateData = state.(*rec.ItemStateData)
+	t.Expect(stateData).ToNot(BeNil())
+	t.Expect(stateData.LastOperation).To(Equal(rec.OperationCreate))
+	t.Expect(stateData.LastError).To(BeNil())
+	t.Expect(stateData.State).To(Equal(rec.ItemStateCreated))
+}
+
 // Items: A, B, External (obviously external item)
 // Dependencies: A->External, B->External
 func TestExternalItems(test *testing.T) {

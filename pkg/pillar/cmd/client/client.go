@@ -65,7 +65,7 @@ type clientContext struct {
 	subDeviceNetworkStatus pubsub.Subscription
 	deviceNetworkStatus    *types.DeviceNetworkStatus
 	usableAddressCount     int
-	networkState           types.PendDPCStatus
+	networkState           types.DPCState
 	subGlobalConfig        pubsub.Subscription
 	globalConfig           *types.ConfigItemValueMap
 	zedcloudCtx            *zedcloud.ZedCloudContext
@@ -278,9 +278,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 			// We keep exponential unchanged
 			return 0
 		}
-		if clientCtx.networkState != types.DPC_SUCCESS &&
-			clientCtx.networkState != types.DPC_FAIL_WITH_IPANDDNS &&
-			clientCtx.networkState != types.DPC_REMOTE_WAIT {
+		if clientCtx.networkState != types.DPCStateSuccess &&
+			clientCtx.networkState != types.DPCStateFailWithIPAndDNS &&
+			clientCtx.networkState != types.DPCStateRemoteWait {
 			log.Noticef("tryRegister: networkState %s",
 				clientCtx.networkState.String())
 			// We keep exponential unchanged
@@ -406,7 +406,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 			// an onboarded system
 			// Unlikely to have a network outage during that
 			// upgrade *and* require an override.
-			if clientCtx.networkState != types.DPC_SUCCESS &&
+			if clientCtx.networkState != types.DPCStateSuccess &&
 				operations["getUuid"] && oldUUID != nilUUID {
 
 				log.Functionf("Already have a UUID %s; declaring success",

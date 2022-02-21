@@ -13,6 +13,7 @@ import (
 	"net"
 	"syscall"
 
+	"github.com/lf-edge/eve/pkg/pillar/iptables"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/vishvananda/netlink"
 )
@@ -303,8 +304,8 @@ func AddFwMarkRuleToDummy(iifIndex int) error {
 	r := netlink.NewRule()
 	myTable := baseTableIndex + iifIndex
 	r.Table = myTable
-	r.Mark = aceDropAction
-	r.Mask = aceActionMask
+	r.Mark = iptables.AceDropAction
+	r.Mask = iptables.AceActionMask
 	// This rule gets added during the starting steps of service.
 	// Other ip rules corresponding to network instances get added after this
 	// and take higher priority. We want this ip rule to match before anything else.

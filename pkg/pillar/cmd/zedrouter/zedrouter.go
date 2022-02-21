@@ -26,7 +26,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/cipher"
 	"github.com/lf-edge/eve/pkg/pillar/devicenetwork"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
-	"github.com/lf-edge/eve/pkg/pillar/iptables"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
@@ -785,7 +784,6 @@ func handleInit() {
 	dnsmasqClearLeases()
 
 	// Setup initial iptables rules
-	iptables.Init(log)
 	dropEscapedFlows()
 
 	// ipsets which are independent of config

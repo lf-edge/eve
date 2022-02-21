@@ -392,8 +392,10 @@ func (e *DotExporter) isDepSatisfied(edge Edge) bool {
 }
 
 func escapeName(name string) string {
-	name = strings.Replace(name, "-", "_", -1)
-	name = strings.Replace(name, "/", "_", -1)
+	escapeChars := []string{"-", "/", ".", ":"}
+	for _, char := range escapeChars {
+		name = strings.Replace(name, char, "_", -1)
+	}
 	return name
 }
 
