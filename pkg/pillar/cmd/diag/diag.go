@@ -615,7 +615,7 @@ func printOutput(ctx *diagContext) {
 	if testing {
 		fmt.Fprintf(outfile, "WARNING: The configuration below is under test hence might report failures\n")
 	}
-	if ctx.DeviceNetworkStatus.State != types.DPC_SUCCESS {
+	if ctx.DeviceNetworkStatus.State != types.DPCStateSuccess {
 		fmt.Fprintf(outfile, "WARNING: state %s not SUCCESS\n",
 			ctx.DeviceNetworkStatus.State.String())
 	}

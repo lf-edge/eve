@@ -7,21 +7,22 @@ The onboarding of devices is done by `scripts/device-steps.sh`, and after onboar
 The agents are:
 
 - ledmanager - make LEDs light/blink for feedback to the person installing the hardware
-- nim - network interface manager (ensures that there is connectivity to the controller)
+- [nim](./docs/nim.md) - network interface manager (ensures that there is connectivity to the controller); manages [radio-silence](./docs/radio-silence.md)
 - waitforaddr - merely waiting for a few minutes max for IP address(es) for a more orderly boot in the normal case
-- vaultmgr - responsible of creation and operations over, encrypted vault(s) for mutable application images and device configuration data
+- [vaultmgr](./docs/vaultmgr.md) - responsible of creation and operations over, encrypted vault(s) for mutable application images and device configuration data
 - nodeagent - montior the device health, while node is in baseos upgrade or normal operation mode. Also orchestrates baseos installation and upgrade validation by interacting with baseosmgr and zedagent.
 - zedagent - communicate using the device API to the controller to retrieve configuration and send status and metrics
 - loguploader - send gzip logs to the controller for debugging of these agents
 - baseosmgr - handle updates of the base OS (hypervisors plus all of the services which make up EVE) using dual partitions for fallback
-- volumemgr - create volumes based on downloads or from scratch
+- [volumemgr](./docs/volumemgr.md) - create volumes based on downloads or from scratch
 - downloader - download objects like images and certificates
 - verifier - verify cryptographic checksums and signatures on downloaded objects
-- zedmanager - drive the application instance lifecycle
-- zedrouter - drive the lifecycle for the connectivity for the instances. Includes services like DHCP, DNS, and Access Control Lists. Provides different connectivity like local, switch, cloud, and mesh networks
-- domainmgr - interface with the hypervisor to start and stop application images. Includes performing device assignment
+- [zedmanager](./docs/zedmanager.md) - drive the application instance lifecycle
+- [zedrouter](./docs/zedrouter.md) - drive the lifecycle for the connectivity for the instances. Includes services like DHCP, DNS, and Access Control Lists. Provides different connectivity like local, switch, cloud, and mesh networks
+- [domainmgr](./docs/domainmgr.md) - interface with the hypervisor to start and stop application images. Includes performing device assignment
 - identitymgr - used when mesh networks desire locally created key pairs for the cryptographic application instance identities
 - zfsmanager - handle zfs devices managed by mdev
+- [tpmmgr](./docs/tpmmgr.md) - manages the Trusted Platform Module
 
 In addition there are debugging tools like:
 

@@ -1,0 +1,92 @@
+@startuml
+
+title "<b>New DPC published by zedagent</b>
+
+queue "PubSub"
+participant NIM
+participant "DPC Manager" as Manager
+participant "DPC Reconciler" as Reconciler
+participant "Connectivity Tester" as Tester
+participant "Network Monitor" as Monitor
+control "Pending DPC Timer" as PendTimer
+control "Re-Testing DPC Timer" as TestTimer
+
+
+PubSub --> NIM : Handle DPC Create\n(key: zedagent)
+NIM --> Manager : AddDPC()
+activate Manager
+Manager --> Manager : Add DPC to DPC-List
+note right Manager: DPC has <b>highest-priority</b>\nInserted at the position 0
+Manager --> Manager : Restart Verify
+Manager --> Reconciler : Reconcile(with latest DPC)
+activate Reconciler
+Reconciler --> Reconciler : Run state reconciliation, apply new DPC
+note right Reconciler: Some operations continue\n running <b>asynchronously</b>
+Reconciler --> Manager : Return Reconciliation status\n<b>Async ops still running...</b>
+deactivate Reconciler
+Manager --> PubSub : Publish DPC-List, DNS
+deactivate Manager
+
+note right Reconciler: Async operations have completed\n(received signal from Configurators)
+Reconciler --> Manager : Resume Reconcile \n<b>Async ops have completed...</b>
+activate Manager
+Manager --> Reconciler : Reconcile(with latest DPC)
+activate Reconciler
+Reconciler --> Reconciler : Run state reconciliation
+note right Reconciler: Finalize async ops
+Reconciler --> Manager : Return Reconciliation status\n<b>All async ops have completed</b>
+deactivate Reconciler
+Manager --> Tester : Test external connectivity
+activate Tester
+Tester --> Manager : Test <b>failed</b> (attempt 1)\n<b>No good IP addresses.</b>
+deactivate Tester
+Manager --> PendTimer : Schedule DPC re-testing
+Manager --> PubSub : Publish DPC-List, DNS
+deactivate Manager
+
+note over PendTimer: Wait 30 seconds
+PendTimer --> Manager
+activate Manager
+Manager --> Reconciler : Reconcile(with latest DPC)
+activate Reconciler
+Reconciler --> Reconciler : Run state reconciliation
+note right Reconciler: NOOP\nCurrent and intended states are in-sync
+Reconciler --> Manager : Return Reconciliation status
+deactivate Reconciler
+Manager --> Tester : Test external connectivity
+activate Tester
+Tester --> Manager : Test <b>failed</b> (attempt 2)\n<b>No good IP addresses.</b>
+deactivate Tester
+Manager --> PendTimer : Schedule DPC re-testing
+Manager --> PubSub : Publish DPC-List, DNS
+deactivate Manager
+
+note over Monitor: Netlink notification received
+Monitor --> Reconciler: IP address assigned to interface
+activate Reconciler
+Reconciler --> Reconciler : Update current state
+deactivate Reconciler
+Monitor --> Manager : IP address assigned to interface
+activate Manager
+Manager --> Reconciler : Reconcile(with latest DPC)
+activate Reconciler
+Reconciler --> Reconciler : Run state reconciliation
+note right Reconciler: Add routes, ARPs, etc.
+Reconciler --> Manager : Return Reconciliation status
+deactivate Reconciler
+Manager --> Tester : Test external connectivity
+activate Tester
+Tester --> Manager : Test <b>succeeded</b>
+deactivate Tester
+Manager --> PendTimer : Stop timer
+Manager --> Manager : Mark DPC as working
+Manager --> PubSub : Publish DPC-List, DNS
+deactivate Manager
+
+TestTimer --> Manager : Re-test network connectivity
+activate Manager
+Manager --> Tester : Test external connectivity
+Tester --> Manager : Test <b>succeeded</b>
+deactivate Manager
+
+@enduml

@@ -25,6 +25,8 @@ func IfnameToResolvConf(ifname string) string {
 	return ""
 }
 
+// ResolvConfToIfname : Returns the name of the interface for which
+// the given resolv.conf file was created.
 func ResolvConfToIfname(resolvConf string) string {
 	ext := filepath.Ext(resolvConf)
 	if ext != ".dhcp" {

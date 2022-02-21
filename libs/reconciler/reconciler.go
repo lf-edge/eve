@@ -20,8 +20,26 @@ type reconciler struct {
 	CR ConfiguratorRegistry
 }
 
-var mockRunCtxKey ctxKey
+// ctxKey is an unexported type for context keys defined in this package.
+// This prevents collisions with keys defined in other packages.
+type ctxKey int
 
+const (
+	opCtxKey ctxKey = iota
+	mockRunCtxKey
+)
+
+// newOpCtx returns a new context to pass to Create/Delete/Modify.
+func newOpCtx(ctx context.Context, opCtx *opCtx) context.Context {
+	return context.WithValue(ctx, opCtxKey, opCtx)
+}
+
+// getOpCtx returns opCtx value stored in ctx.
+func getOpCtx(ctx context.Context) *opCtx {
+	return ctx.Value(opCtxKey).(*opCtx)
+}
+
+// mockRunAttrs : attributes for a mock reconciliation (see MockRun()).
 type mockRunAttrs struct {
 	// No attributes for now.
 }
@@ -236,10 +254,10 @@ func (r *reconciler) reconcileItems(ctx context.Context, asyncManager *asyncMana
 	//     Created -> Deleting/Modifying -> Failure/<Deleted>
 	// Only at the transition from Created we trigger DFS from an item.
 	var (
-		dfsRunning   bool
-		dfsOrigin    dg.ItemRef
-		wait         bool
-		globalErr    error
+		dfsRunning bool
+		dfsOrigin  dg.ItemRef
+		wait       bool
+		globalErr  error
 	)
 	for !stage1Stack.isEmpty() {
 		elem, _ := stage1Stack.pop()
@@ -320,7 +338,8 @@ func (r *reconciler) reconcileItems(ctx context.Context, asyncManager *asyncMana
 		}
 
 		// Check if there is an asynchronous operation still running for this item.
-		inProgress, err := r.checkAsyncOp(currentFullState, intendedFullState,
+		inProgress, asyncDeleted, err := r.checkAsyncOp(
+			currentFullState, intendedFullState,
 			itemRef, asyncManager, failed, stage2Stack, status)
 		if err != nil {
 			globalErr = err
@@ -330,6 +349,10 @@ func (r *reconciler) reconcileItems(ctx context.Context, asyncManager *asyncMana
 			if dfsRunning {
 				wait = true
 			}
+			continue
+		}
+		if asyncDeleted {
+			// Item no longer exists, async Delete just completed.
 			continue
 		}
 		// No continuous item states (*ing) below this point...
@@ -343,8 +366,10 @@ func (r *reconciler) reconcileItems(ctx context.Context, asyncManager *asyncMana
 			}
 		}
 		delItem := func() {
-			if !dg.DelItemFrom(currentState, itemRef, path) {
-				panic("unreachable")
+			if isOutside {
+				dg.DelItemFrom(currentFullState, itemRef, path)
+			} else {
+				dg.DelItemFrom(currentState, itemRef, path)
 			}
 		}
 		startDFS := func() {
@@ -575,7 +600,9 @@ func (r *reconciler) reconcileItems(ctx context.Context, asyncManager *asyncMana
 		}
 		item, _, path, found := r.getItem(intendedFullState, itemRef)
 		if !found {
-			panic("unreachable")
+			// Removed in the previous stage.
+			// XXX We could improve stage1 to avoid spurious inserts into stage2Stack.
+			continue
 		}
 
 		if stateData.State.Continuous() {
@@ -734,24 +761,24 @@ func (r *reconciler) runOperation(ctx context.Context, graphName string,
 // Function can also post-process and log completed async operation.
 func (r *reconciler) checkAsyncOp(currentFullState dg.Graph, intendedFullState dg.GraphR,
 	itemRef dg.ItemRef, asyncManager *asyncManager, failed map[dg.ItemRef]struct{},
-	stage2Stack *stack, status *Status) (asyncInProgress bool, err error) {
+	stage2Stack *stack, status *Status) (asyncInProgress, deleted bool, err error) {
 
 	// Check if async operation is/was running.
 	item, stateData, path, found := r.getItem(currentFullState, itemRef)
 	if !found {
-		return false, nil
+		return false, false, nil
 	}
 	if !stateData.State.Continuous() {
-		return false, nil
+		return false, false, nil
 	}
 	opID := stateData.asyncOpID
 	asyncOp, found := asyncManager.getAsyncOp(opID)
 	if !found {
-		return true, fmt.Errorf("missing async operation: %d", opID)
+		return true, false, fmt.Errorf("missing async operation: %d", opID)
 	}
 	if !asyncOp.status.done && !asyncOp.status.cancelTimeout() {
 		// still running
-		return true, nil
+		return true, false, nil
 	}
 
 	// Async operation has finalized.
@@ -805,7 +832,7 @@ func (r *reconciler) checkAsyncOp(currentFullState dg.Graph, intendedFullState d
 		r.schedulePostPutOps(
 			currentFullState, intendedFullState, itemRef, stage2Stack)
 	}
-	return false, nil
+	return false, delItem, nil
 }
 
 // If changingItem is about to be deleted, iterate over items that depend on it

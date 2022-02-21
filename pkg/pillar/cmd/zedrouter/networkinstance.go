@@ -174,13 +174,6 @@ func doLookupBridge(ctx *zedrouterContext,
 func networkInstanceBridgeDelete(
 	ctx *zedrouterContext,
 	status *types.NetworkInstanceStatus) {
-	// Here we explicitly delete the iptables rules which are tied to the Linux bridge
-	// itself and not the rules for specific domU vifs.
-
-	aclArgs := types.AppNetworkACLArgs{IsMgmt: false, BridgeName: status.BridgeName,
-		BridgeIP: status.BridgeIPAddr, NIType: status.Type, UpLinks: status.IfNameList}
-	handleNetworkInstanceACLConfiglet("-D", aclArgs)
-
 	if !strings.HasPrefix(status.BridgeName, "bn") {
 		log.Noticef("networkInstanceBridgeDelete(%s) %s ignored",
 			status.DisplayName, status.BridgeName)
@@ -1302,13 +1295,6 @@ func doNetworkInstanceActivate(ctx *zedrouterContext,
 	}
 
 	status.ProgUplinkIntf = status.CurrentUplinkIntf
-	// setup the ACLs for the bridge
-	// Here we explicitly adding the iptables rules, to the bottom of the
-	// rule chains, which are tied to the Linux bridge itself and not the
-	//  rules for any specific domU vifs.
-	aclArgs := types.AppNetworkACLArgs{IsMgmt: false, BridgeName: status.BridgeName,
-		BridgeIP: status.BridgeIPAddr, NIType: status.Type, UpLinks: status.IfNameList}
-	handleNetworkInstanceACLConfiglet("-A", aclArgs)
 	return err
 }
 

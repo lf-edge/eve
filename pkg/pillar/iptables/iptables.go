@@ -25,8 +25,9 @@ const (
 
 // Init : prepare iptables for use by EVE. Specifically, NIM and zedrouter
 // use iptables to implement network ACLs.
-func Init(log *base.LogObject) {
+func Init(log *base.LogObject) (err error) {
 	// Pre-create chains separating device-wide ACLs from app-scoped ACLs.
+	// Note that app-ACLs are put before device-wide ACLs!
 	usedChains := map[string][]string{ // table -> chains
 		"filter": {"INPUT", "FORWARD", "OUTPUT"},
 		"mangle": {"INPUT", "FORWARD", "OUTPUT", "PREROUTING", "POSTROUTING"},
@@ -36,20 +37,51 @@ func Init(log *base.LogObject) {
 	for table, chains := range usedChains {
 		for _, chain := range chains {
 			// Flush rules from the previous run.
-			IptableCmd(log, "-t", table, "-F", chain)
-			Ip6tableCmd(log, "-t", table, "-F", chain)
-			// Create sub-chain for device ACLs.
-			IptableCmd(log, "-t", table, "-N", chain+DeviceChainSuffix)
-			IptableCmd(log, "-t", table, "-A", chain, "j", chain+DeviceChainSuffix)
-			Ip6tableCmd(log, "-t", table, "-N", chain+DeviceChainSuffix)
-			Ip6tableCmd(log, "-t", table, "-A", chain, "j", chain+DeviceChainSuffix)
+			err = IptableCmd(log, "-t", table, "-F", chain)
+			if err != nil {
+				return err
+			}
+			err = Ip6tableCmd(log, "-t", table, "-F", chain)
+			if err != nil {
+				return err
+			}
 			// Create sub-chain for app ACLs.
-			IptableCmd(log, "-t", table, "-N", chain+AppChainSuffix)
-			IptableCmd(log, "-t", table, "-A", chain, "j", chain+AppChainSuffix)
-			Ip6tableCmd(log, "-t", table, "-N", chain+AppChainSuffix)
-			Ip6tableCmd(log, "-t", table, "-A", chain, "j", chain+AppChainSuffix)
+			err = IptableCmd(log, "-t", table, "-N", chain+AppChainSuffix)
+			if err != nil {
+				return err
+			}
+			err = IptableCmd(log, "-t", table, "-A", chain, "-j", chain+AppChainSuffix)
+			if err != nil {
+				return err
+			}
+			err = Ip6tableCmd(log, "-t", table, "-N", chain+AppChainSuffix)
+			if err != nil {
+				return err
+			}
+			err = Ip6tableCmd(log, "-t", table, "-A", chain, "-j", chain+AppChainSuffix)
+			if err != nil {
+				return err
+			}
+			// Create sub-chain for device ACLs.
+			err = IptableCmd(log, "-t", table, "-N", chain+DeviceChainSuffix)
+			if err != nil {
+				return err
+			}
+			err = IptableCmd(log, "-t", table, "-A", chain, "-j", chain+DeviceChainSuffix)
+			if err != nil {
+				return err
+			}
+			err = Ip6tableCmd(log, "-t", table, "-N", chain+DeviceChainSuffix)
+			if err != nil {
+				return err
+			}
+			err = Ip6tableCmd(log, "-t", table, "-A", chain, "-j", chain+DeviceChainSuffix)
+			if err != nil {
+				return err
+			}
 		}
 	}
+	return nil
 }
 
 // IptableCmdOut logs the command string if log is set

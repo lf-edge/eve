@@ -241,7 +241,7 @@ func TestIsDPCTestable(t *testing.T) {
 	}
 	for testname, test := range testMatrix {
 		t.Logf("Running test case %s", testname)
-		value := test.devicePortConfig.IsDPCTestable()
+		value := test.devicePortConfig.IsDPCTestable(5 * time.Minute)
 		assert.Equal(t, test.expectedValue, value)
 	}
 }

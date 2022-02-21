@@ -397,41 +397,53 @@ func (config DevicePortConfigList) LogKey() string {
 	return string(base.DevicePortConfigListLogType) + "-" + config.PubKey()
 }
 
-// PendDPCStatus tracks the internal progression of a DPC
-type PendDPCStatus uint32
+// DPCState tracks the progression a DPC verification.
+type DPCState uint8
 
-// DPC_NONE and friends is the internal state of the testing
 const (
-	DPC_NONE PendDPCStatus = iota
-	DPC_FAIL
-	DPC_FAIL_WITH_IPANDDNS // Failed to reach controller but has IP/DNS
-	DPC_SUCCESS
-	DPC_IPDNS_WAIT  // DPC_IPDNS_WAIT means not IP and DNS server yet
-	DPC_PCI_WAIT    // DPC_PCI_WAIT means some interface still in pci back
-	DPC_INTF_WAIT   // DPC_INTF_WAIT means some interface missing from kernel
-	DPC_REMOTE_WAIT // DPC_REMOTE_WAIT means controller is down or has old certificate
-	DPC_ASYNC_WAIT  // DPC_ASYNC_WAIT means some config is still being applied asynchronously
+	// DPCStateNone : undefined state.
+	DPCStateNone DPCState = iota
+	// DPCStateFail : DPC verification failed.
+	DPCStateFail
+	// DPCStateFailWithIPAndDNS : failed to reach controller but has IP/DNS.
+	DPCStateFailWithIPAndDNS
+	// DPCStateSuccess : DPC verification succeeded.
+	DPCStateSuccess
+	// DPCStateIPDNSWait : waiting for interface IP address(es) and/or DNS server(s).
+	DPCStateIPDNSWait
+	// DPCStatePCIWait : waiting for some interface to come from pciback.
+	DPCStatePCIWait
+	// DPCStateIntfWait : waiting for some interface to appear in the network stack.
+	DPCStateIntfWait
+	// DPCStateRemoteWait : DPC verification failed because controller is down
+	// or has old certificate.
+	DPCStateRemoteWait
+	// DPCStateAsyncWait : waiting for some config operations to finalize which are
+	// running asynchronously in the background.
+	DPCStateAsyncWait
 )
 
 // String returns the string name
-func (status PendDPCStatus) String() string {
+func (status DPCState) String() string {
 	switch status {
-	case DPC_NONE:
+	case DPCStateNone:
 		return ""
-	case DPC_FAIL:
+	case DPCStateFail:
 		return "DPC_FAIL"
-	case DPC_FAIL_WITH_IPANDDNS:
+	case DPCStateFailWithIPAndDNS:
 		return "DPC_FAIL_WITH_IPANDDNS"
-	case DPC_SUCCESS:
+	case DPCStateSuccess:
 		return "DPC_SUCCESS"
-	case DPC_IPDNS_WAIT:
+	case DPCStateIPDNSWait:
 		return "DPC_IPDNS_WAIT"
-	case DPC_PCI_WAIT:
+	case DPCStatePCIWait:
 		return "DPC_PCI_WAIT"
-	case DPC_INTF_WAIT:
+	case DPCStateIntfWait:
 		return "DPC_INTF_WAIT"
-	case DPC_REMOTE_WAIT:
+	case DPCStateRemoteWait:
 		return "DPC_REMOTE_WAIT"
+	case DPCStateAsyncWait:
+		return "DPC_ASYNC_WAIT"
 	default:
 		return fmt.Sprintf("Unknown status %d", status)
 	}
@@ -444,7 +456,7 @@ type DevicePortConfig struct {
 	Version      DevicePortConfigVersion
 	Key          string
 	TimePriority time.Time // All zero's is fallback lowest priority
-	State        PendDPCStatus
+	State        DPCState
 	OriginFile   string // File to be deleted once DevicePortConfigList published
 	TestResults
 	LastIPAndDNS time.Time // Time when we got some IP addresses and DNS
@@ -791,10 +803,9 @@ func (config *DevicePortConfig) MostlyEqual(config2 *DevicePortConfig) bool {
 	return true
 }
 
-// IsDPCTestable - Return false if recent failure (less than 60 seconds ago)
+// IsDPCTestable - Return false if recent failure (less than "minTimeSinceFailure")
 // Also returns false if it isn't usable
-func (config DevicePortConfig) IsDPCTestable() bool {
-
+func (config DevicePortConfig) IsDPCTestable(minTimeSinceFailure time.Duration) bool {
 	if !config.IsDPCUsable() {
 		return false
 	}
@@ -804,11 +815,7 @@ func (config DevicePortConfig) IsDPCTestable() bool {
 	if config.LastSucceeded.After(config.LastFailed) {
 		return true
 	}
-	// convert time difference in nano seconds to seconds
-	// make this 5 minutes, have seen multiple intf/ipv6 addresses taking long time
-	// the the test table list
-	timeDiff := time.Since(config.LastFailed) / time.Second
-	return timeDiff > 300
+	return time.Since(config.LastFailed) >= minTimeSinceFailure
 }
 
 // IsDPCUntested - returns true if this is something we might want to test now.
@@ -1138,7 +1145,7 @@ type DeviceNetworkStatus struct {
 	DPCKey       string                  // For logs/testing
 	Version      DevicePortConfigVersion // From DevicePortConfig
 	Testing      bool                    // Ignore since it is not yet verified
-	State        PendDPCStatus           // Details about testing state
+	State        DPCState                // Details about testing state
 	CurrentIndex int                     // For logs
 	RadioSilence RadioSilence            // The actual state of the radio-silence mode
 	Ports        []NetworkPortStatus
