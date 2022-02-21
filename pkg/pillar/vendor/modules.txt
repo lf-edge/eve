@@ -140,7 +140,6 @@ github.com/containerd/containerd/containers
 github.com/containerd/containerd/content
 github.com/containerd/containerd/content/local
 github.com/containerd/containerd/content/proxy
-github.com/containerd/containerd/contrib/snapshotservice
 github.com/containerd/containerd/defaults
 github.com/containerd/containerd/diff
 github.com/containerd/containerd/errdefs
@@ -154,7 +153,6 @@ github.com/containerd/containerd/labels
 github.com/containerd/containerd/leases
 github.com/containerd/containerd/leases/proxy
 github.com/containerd/containerd/log
-github.com/containerd/containerd/metadata/boltutil
 github.com/containerd/containerd/mount
 github.com/containerd/containerd/namespaces
 github.com/containerd/containerd/oci
@@ -177,7 +175,6 @@ github.com/containerd/containerd/services
 github.com/containerd/containerd/services/introspection
 github.com/containerd/containerd/snapshots
 github.com/containerd/containerd/snapshots/proxy
-github.com/containerd/containerd/snapshots/storage
 github.com/containerd/containerd/sys
 github.com/containerd/containerd/version
 # github.com/containerd/continuity v0.2.2
@@ -193,9 +190,6 @@ github.com/containerd/ttrpc
 # github.com/containerd/typeurl v1.0.2
 ## explicit
 github.com/containerd/typeurl
-# github.com/containerd/zfs v1.0.0
-## explicit
-github.com/containerd/zfs
 # github.com/cshari-zededa/eve-tpm2-tools v0.0.4
 ## explicit
 github.com/cshari-zededa/eve-tpm2-tools/eventlog
@@ -431,8 +425,6 @@ github.com/mattn/go-ieproxy
 github.com/matttproud/golang_protobuf_extensions/pbutil
 # github.com/miekg/dns v1.1.35
 github.com/miekg/dns
-# github.com/mistifyio/go-zfs v2.1.2-0.20190413222219-f784269be439+incompatible
-github.com/mistifyio/go-zfs
 # github.com/mitchellh/go-homedir v1.1.0
 github.com/mitchellh/go-homedir
 # github.com/moby/locker v1.0.1
@@ -546,8 +538,6 @@ github.com/vishvananda/netlink
 github.com/vishvananda/netlink/nl
 # github.com/vishvananda/netns v0.0.0-20210104183010-2eb08e3e575f
 github.com/vishvananda/netns
-# go.etcd.io/bbolt v1.3.6
-go.etcd.io/bbolt
 # go.opencensus.io v0.23.0
 go.opencensus.io
 go.opencensus.io/internal

@@ -714,9 +714,6 @@ func setupDefaultVault(ctx *vaultMgrContext) error {
 					return fmt.Errorf("error creating zfs vault %s, error=%v, %s, %s",
 						defaultVault, err, stdOut, stdErr)
 				}
-				if err := eveZFSSnapshotterInit(); err != nil {
-					return fmt.Errorf("error setting up zfs snapshooter: %s", err)
-				}
 				return nil
 			}
 			//Vault is just a plain folder in those cases
@@ -729,11 +726,6 @@ func setupDefaultVault(ctx *vaultMgrContext) error {
 			//just to keep the encryption ON. No sealing/attestation support
 			//in these cases
 			return setupVault(defaultVault, true)
-		}
-		if err == nil && persistFsType == types.PersistZFS {
-			if err := eveZFSSnapshotterInit(); err != nil {
-				return fmt.Errorf("error setting up zfs snapshooter: %s", err)
-			}
 		}
 		return err
 	}
@@ -752,9 +744,6 @@ func setupDefaultVault(ctx *vaultMgrContext) error {
 	case types.PersistZFS:
 		if err := setupDefaultVaultOnZfs(); err != nil {
 			return err
-		}
-		if err := eveZFSSnapshotterInit(); err != nil {
-			return fmt.Errorf("error setting up zfs snapshooter: %s", err)
 		}
 		//Log the type of key used for unlocking default vault
 		log.Noticef("%s unlocked using key type %s", defaultVault,
@@ -1078,9 +1067,6 @@ func handleVaultKeyFromControllerImpl(ctxArg interface{}, key string,
 				log.Errorf("Failed to unlock zfs vault after receiving Controller key, %v",
 					err)
 				return
-			}
-			if err := eveZFSSnapshotterInit(); err != nil {
-				log.Errorf("error setting up zfs snapshooter: %s", err)
 			}
 		} else {
 			//cloudKeyOnlyMode=false, useSealedKey=true
