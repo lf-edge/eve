@@ -95,7 +95,7 @@ func createServer4(ctx *zedrouterContext, bridgeIP string, bridgeName string) er
 	subnetStr := "169.254.169.254/32"
 	target := fmt.Sprintf("%s:%d", bridgeIP, targetPort)
 	log.Noticef("add NAT to target %s", target)
-	if err := iptables.IptableCmd(log, "-t", "nat", "-I", "PREROUTING",
+	if err := iptables.IptableCmd(log, "-t", "nat", "-I", appChain("PREROUTING"),
 		"-i", bridgeName, "-p", "tcp", "-d", subnetStr,
 		"--dport", strconv.Itoa(targetPort),
 		"-j", "DNAT", "--to-destination", target); err != nil {
@@ -124,7 +124,7 @@ func deleteServer4(ctx *zedrouterContext, bridgeIP string, bridgeName string) {
 	subnetStr := "169.254.169.254/32"
 	target := fmt.Sprintf("%s:%d", bridgeIP, targetPort)
 	log.Noticef("delete NAT from target %s", target)
-	if err := iptables.IptableCmd(log, "-t", "nat", "-D", "PREROUTING",
+	if err := iptables.IptableCmd(log, "-t", "nat", "-D", appChain("PREROUTING"),
 		"-i", bridgeName, "-p", "tcp", "-d", subnetStr,
 		"--dport", strconv.Itoa(targetPort),
 		"-j", "DNAT", "--to-destination", target); err != nil {

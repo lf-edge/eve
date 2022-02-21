@@ -14,6 +14,44 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/base"
 )
 
+const (
+	// DeviceChainSuffix : suffix added to the name of a chain,
+	// which is configured by NIM for device-wide access control.
+	DeviceChainSuffix = "-device"
+	// AppChainSuffix : suffix added to the name of a chain,
+	// which is configured by Zedrouter for app-scoped access control.
+	AppChainSuffix = "-apps"
+)
+
+// Init : prepare iptables for use by EVE. Specifically, NIM and zedrouter
+// use iptables to implement network ACLs.
+func Init(log *base.LogObject) {
+	// Pre-create chains separating device-wide ACLs from app-scoped ACLs.
+	usedChains := map[string][]string{ // table -> chains
+		"filter": {"INPUT", "FORWARD", "OUTPUT"},
+		"mangle": {"INPUT", "FORWARD", "OUTPUT", "PREROUTING", "POSTROUTING"},
+		"raw":    {"PREROUTING"},
+		"nat":    {"PREROUTING", "POSTROUTING"},
+	}
+	for table, chains := range usedChains {
+		for _, chain := range chains {
+			// Flush rules from the previous run.
+			IptableCmd(log, "-t", table, "-F", chain)
+			Ip6tableCmd(log, "-t", table, "-F", chain)
+			// Create sub-chain for device ACLs.
+			IptableCmd(log, "-t", table, "-N", chain+DeviceChainSuffix)
+			IptableCmd(log, "-t", table, "-A", chain, "j", chain+DeviceChainSuffix)
+			Ip6tableCmd(log, "-t", table, "-N", chain+DeviceChainSuffix)
+			Ip6tableCmd(log, "-t", table, "-A", chain, "j", chain+DeviceChainSuffix)
+			// Create sub-chain for app ACLs.
+			IptableCmd(log, "-t", table, "-N", chain+AppChainSuffix)
+			IptableCmd(log, "-t", table, "-A", chain, "j", chain+AppChainSuffix)
+			Ip6tableCmd(log, "-t", table, "-N", chain+AppChainSuffix)
+			Ip6tableCmd(log, "-t", table, "-A", chain, "j", chain+AppChainSuffix)
+		}
+	}
+}
+
 // IptableCmdOut logs the command string if log is set
 func IptableCmdOut(log *base.LogObject, args ...string) (string, error) {
 	cmd := "iptables"
@@ -82,66 +120,27 @@ func Ip6tableCmd(log *base.LogObject, args ...string) error {
 	return err
 }
 
-func IptablesInit(log *base.LogObject) {
-	// Avoid adding nat rule multiple times as we restart by flushing first
-	IptableCmd(log, "-t", "nat", "-F", "POSTROUTING")
-
-	// Flush IPv6 mangle rules from previous run
-	Ip6tableCmd(log, "-F", "PREROUTING", "-t", "mangle")
-
-	IptableCmd(log, "-F", "POSTROUTING", "-t", "mangle")
-}
+// XXX : Everything below is zedrouter-specific, consider moving to pillar/cmd/zedrouter
 
 func FetchIprulesCounters(log *base.LogObject) []AclCounters {
+	// Get for IPv4 and IPv6 from filter and raw tables.
+	chainsWithCounters := map[string][]string{ // table -> chains
+		"filter": {"FORWARD", "OUTPUT"},
+		"raw":    {"PREROUTING"},
+	}
 	var counters []AclCounters
-	// get for IPv4 filter, IPv6 filter, and IPv6 raw
-	// Do not log anything
-	out, err := IptableCmdOut(nil, "-t", "filter", "-S", "FORWARD", "-v")
-	if err != nil {
-		log.Errorf("FetchIprulesCounters: iptables -S failed %s\n", err)
-	} else {
-		c := parseCounters(log, out, "filter", 4)
-		if c != nil {
-			counters = append(counters, c...)
-		}
-	}
-
-	out, err = IptableCmdOut(nil, "-t", "raw", "-S", "PREROUTING", "-v")
-	if err != nil {
-		log.Errorf("FetchIprulesCounters: iptables -S failed %s\n", err)
-	} else {
-		c := parseCounters(log, out, "filter", 4)
-		if c != nil {
-			counters = append(counters, c...)
-		}
-	}
-
-	// Only needed to get dbo1x0 stats
-	out, err = Ip6tableCmdOut(nil, "-t", "filter", "-S", "OUTPUT", "-v")
-	if err != nil {
-		log.Errorf("FetchIprulesCounters: iptables -S failed %s\n", err)
-	} else {
-		c := parseCounters(log, out, "filter", 6)
-		if c != nil {
-			counters = append(counters, c...)
-		}
-	}
-	out, err = Ip6tableCmdOut(nil, "-t", "filter", "-S", "FORWARD", "-v")
-	if err != nil {
-		log.Errorf("FetchIprulesCounters: ip6tables failed %s\n", err)
-	} else {
-		c := parseCounters(log, out, "filter", 6)
-		if c != nil {
-			counters = append(counters, c...)
-		}
-	}
-	out, err = Ip6tableCmdOut(nil, "-t", "raw", "-S", "PREROUTING", "-v")
-	if err != nil {
-		log.Errorf("FetchIprulesCounters: ip6tables -S failed %s\n", err)
-	} else {
-		c := parseCounters(log, out, "filter", 6)
-		if c != nil {
-			counters = append(counters, c...)
+	for table, chains := range chainsWithCounters {
+		for _, chain := range chains {
+			out, err := IptableCmdOut(
+				nil, "-t", table, "-S", chain+AppChainSuffix, "-v")
+			if err != nil {
+				log.Errorf("FetchIprulesCounters: iptables -S failed %s\n", err)
+			} else {
+				c := parseCounters(log, out, "filter", 4)
+				if c != nil {
+					counters = append(counters, c...)
+				}
+			}
 		}
 	}
 	return counters
@@ -288,8 +287,9 @@ func parseline(log *base.LogObject, line string, table string, ipVer int) *AclCo
 	if items[0] != "-A" {
 		return nil
 	}
-	forward := items[1] == "FORWARD"
-	ac := AclCounters{Table: table, Chain: items[1], IpVer: ipVer}
+	chain := strings.TrimSuffix(items[1], AppChainSuffix)
+	forward := chain == "FORWARD"
+	ac := AclCounters{Table: table, Chain: chain, IpVer: ipVer}
 	i := 2
 	for i < len(items) {
 		// Ignore any xen-related entries.

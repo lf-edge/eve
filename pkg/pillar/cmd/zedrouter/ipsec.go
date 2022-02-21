@@ -194,7 +194,7 @@ func ipTablesAwsClientRulesSet(tunnelName string,
 	// set the iptable rules
 	// forward rule
 	if err := iptables.IptableCmd(log, "-t", ipTableName,
-		"-I", "FORWARD", "1", "-o", tunnelName,
+		"-I", appChain("FORWARD"), "1", "-o", tunnelName,
 		"-p", "tcp", "--tcp-flags", "SYN,RST",
 		"SYN", "-j", "TCPMSS", "--clamp-mss-to-pmtu"); err != nil {
 		log.Errorf("%s for %s, %s forward rule create\n",
@@ -204,7 +204,7 @@ func ipTablesAwsClientRulesSet(tunnelName string,
 
 	// input rule
 	if err := iptables.IptableCmd(log, "-t", ipTableName,
-		"-I", "INPUT", "1", "-p", "esp", "-s", gatewayIpAddr,
+		"-I", appChain("INPUT"), "1", "-p", "esp", "-s", gatewayIpAddr,
 		"-j", "MARK", "--set-xmark", tunnelKey); err != nil {
 		log.Errorf("%s for %s, %s input rule create\n",
 			err.Error(), "iptables", tunnelName)
@@ -282,7 +282,7 @@ func iptableCounterRuleOp(acl vpnAclRule, set bool) error {
 	} else {
 		cmd = append(cmd, "-D")
 	}
-	cmd = append(cmd, acl.chain)
+	cmd = append(cmd, appChain(acl.chain))
 	cmd = append(cmd, "-p")
 	cmd = append(cmd, acl.proto)
 	if acl.sport != "" {
@@ -339,7 +339,7 @@ func iptableCounterRuleStat(acl vpnAclRule) (types.PktStats, error) {
 		cmd = append(cmd, acl.table)
 	}
 	cmd = append(cmd, "-S")
-	cmd = append(cmd, acl.chain)
+	cmd = append(cmd, appChain(acl.chain))
 	cmd = append(cmd, "-v")
 
 	out, err := iptables.IptableCmdOut(nil, cmd...)

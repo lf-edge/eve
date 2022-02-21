@@ -55,6 +55,10 @@ const (
 	defaultDropAceID = aceIDMask
 )
 
+func appChain(chain string) string {
+	return chain + iptables.AppChainSuffix
+}
+
 func getConnmark(appID uint8, aceID uint32, drop bool) uint32 {
 	mark := uint32(appID)<<24 | aceID
 	if drop {
@@ -1683,7 +1687,7 @@ func executeIPTablesRule(operation string, rule types.IPTablesRule) error {
 		ruleStr = append(ruleStr, rule.Table)
 	}
 	ruleStr = append(ruleStr, operation)
-	ruleStr = append(ruleStr, rule.Chain)
+	ruleStr = append(ruleStr, appChain(rule.Chain))
 	ruleStr = append(ruleStr, rule.Prefix...)
 	ruleStr = append(ruleStr, rule.Rule...)
 	if len(rule.Action) > 0 {
@@ -1947,10 +1951,12 @@ func appConfigContainerStatsACL(appIPAddr net.IP, isRemove bool) {
 	//   later it may be possible to change below '-j DROP' to '-j MARK' action
 	if isRemove {
 		action = "-D"
-		err = iptables.IptableCmd(log, "-t", "raw", action, "PREROUTING", "-d", appIPAddr.String(), "-p", "tcp",
+		err = iptables.IptableCmd(log, "-t", "raw", action, appChain("PREROUTING"),
+			"-d", appIPAddr.String(), "-p", "tcp",
 			"--dport", strconv.Itoa(DOCKERAPIPORT), "-j", "DROP")
 	} else {
-		err = iptables.IptableCmd(log, "-t", "raw", action, "PREROUTING", "1", "-d", appIPAddr.String(), "-p", "tcp",
+		err = iptables.IptableCmd(log, "-t", "raw", action, appChain("PREROUTING"), "1",
+			"-d", appIPAddr.String(), "-p", "tcp",
 			"--dport", strconv.Itoa(DOCKERAPIPORT), "-j", "DROP")
 	}
 	if err != nil {
@@ -1965,7 +1971,7 @@ func appConfigContainerStatsACL(appIPAddr net.IP, isRemove bool) {
 // interface using a high-priority IP rule, packets which are only bridged and not routed by EVE escape this IP rule
 // and would otherwise continue in their path even if marked for dropping.
 func dropEscapedFlows() {
-	err := iptables.IptableCmd(log, "-t", "mangle", "-I", "POSTROUTING",
+	err := iptables.IptableCmd(log, "-t", "mangle", "-I", appChain("POSTROUTING"),
 		"--match", "connmark", "--mark", fmt.Sprintf("%d/%d", aceDropAction, aceActionMask),
 		"!", "-o", dummyIntfName,
 		"-j", "DROP")
