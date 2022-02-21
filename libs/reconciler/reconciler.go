@@ -20,6 +20,12 @@ type reconciler struct {
 	CR ConfiguratorRegistry
 }
 
+var mockRunCtxKey ctxKey
+
+type mockRunAttrs struct {
+	// No attributes for now.
+}
+
 func errMissingConfigurator(item dg.Item) error {
 	return fmt.Errorf("missing configurator for item: %s/%s",
 		item.Type(), item.Name())
@@ -655,11 +661,17 @@ func (r *reconciler) runOperation(ctx context.Context, graphName string,
 		if prevItem != nil {
 			logEntry.Operation = OperationModify
 			execOperation = func(ctx context.Context) error {
+				if IsMockRun(ctx) {
+					return nil
+				}
 				return configurator.Modify(ctx, prevItem, newItem)
 			}
 		} else {
 			logEntry.Operation = OperationCreate
 			execOperation = func(ctx context.Context) error {
+				if IsMockRun(ctx) {
+					return nil
+				}
 				return configurator.Create(ctx, newItem)
 			}
 		}
@@ -671,6 +683,9 @@ func (r *reconciler) runOperation(ctx context.Context, graphName string,
 			err = errMissingConfigurator(prevItem)
 		}
 		execOperation = func(ctx context.Context) error {
+			if IsMockRun(ctx) {
+				return nil
+			}
 			return configurator.Delete(ctx, prevItem)
 		}
 	}
