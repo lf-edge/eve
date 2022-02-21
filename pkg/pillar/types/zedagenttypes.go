@@ -566,7 +566,7 @@ type BaseOs struct {
 // (true or false).
 // When nim receives ZedAgentStatus, it checks if ChangeRequestedAt is greater than
 // the timestamp of the last seen radio configuration change. If it is the case, it copies
-// ChangeRequestedAt and ChangeInProgress (=true) from ZedAgentStatus.RadioSilence to
+// ChangeRequestedAt and ChangeInProgress (=true) from ZedAgentStatus. RadioSilence to
 // DeviceNetworkStatus.RadioSilence and starts switching radios of wireless devices ON/OFF
 // (in cooperation with wwan service).
 // Once nim is done with all radio devices, it updates RadioSilence of DeviceNetworkStatus and sets

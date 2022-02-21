@@ -410,6 +410,7 @@ const (
 	DPC_PCI_WAIT    // DPC_PCI_WAIT means some interface still in pci back
 	DPC_INTF_WAIT   // DPC_INTF_WAIT means some interface missing from kernel
 	DPC_REMOTE_WAIT // DPC_REMOTE_WAIT means controller is down or has old certificate
+	DPC_ASYNC_WAIT  // DPC_ASYNC_WAIT means some config is still being applied asynchronously
 )
 
 // String returns the string name
@@ -582,6 +583,17 @@ func (config *DevicePortConfig) LookupPortByIfName(ifName string) *NetworkPortCo
 			if port.IfName == ifName {
 				return &port
 			}
+		}
+	}
+	return nil
+}
+
+// LookupPortByLogicallabel returns port configuration referenced by the logical label.
+func (config *DevicePortConfig) LookupPortByLogicallabel(
+	label string) *NetworkPortConfig {
+	for _, port := range config.Ports {
+		if port.Logicallabel == label {
+			return &port
 		}
 	}
 	return nil
@@ -796,7 +808,7 @@ func (config DevicePortConfig) IsDPCTestable() bool {
 	// make this 5 minutes, have seen multiple intf/ipv6 addresses taking long time
 	// the the test table list
 	timeDiff := time.Since(config.LastFailed) / time.Second
-	return (timeDiff > 300)
+	return timeDiff > 300
 }
 
 // IsDPCUntested - returns true if this is something we might want to test now.
@@ -1089,6 +1101,7 @@ type NetworkPortStatus struct {
 	Up             bool
 	MacAddr        string
 	DefaultRouters []net.IP
+	WirelessCfg    WirelessConfig
 	WirelessStatus WirelessStatus
 	ProxyConfig
 	L2LinkConfig
@@ -1122,6 +1135,7 @@ type AddrInfo struct {
 // DeviceNetworkStatus is published to microservices which needs to know about ports and IP addresses
 // It is published under the key "global" only
 type DeviceNetworkStatus struct {
+	DPCKey       string                  // For logs/testing
 	Version      DevicePortConfigVersion // From DevicePortConfig
 	Testing      bool                    // Ignore since it is not yet verified
 	State        PendDPCStatus           // Details about testing state
@@ -1853,12 +1867,13 @@ func LogicallabelToIfName(deviceNetworkStatus *DeviceNetworkStatus,
 }
 
 // IsAnyPortInPciBack
-//	Checks is any of the Ports are part of IO bundles which are in PCIback.
+//	Checks if any of the Ports are part of IO bundles which are in PCIback.
 //	If true, it also returns the ifName ( NOT bundle name )
 //	Also returns whether it is currently used by an application by
 //	returning a UUID. If the UUID is zero it is in PCIback but available.
+//	Use filterUnassigned to filter out unassigned ports.
 func (config *DevicePortConfig) IsAnyPortInPciBack(
-	log *base.LogObject, aa *AssignableAdapters) (bool, string, uuid.UUID) {
+	log *base.LogObject, aa *AssignableAdapters, filterUnassigned bool) (bool, string, uuid.UUID) {
 	if aa == nil {
 		log.Functionf("IsAnyPortInPciBack: nil aa")
 		return false, "", uuid.UUID{}
@@ -1875,7 +1890,7 @@ func (config *DevicePortConfig) IsAnyPortInPciBack(
 				port.IfName)
 			continue
 		}
-		if ioBundle.IsPCIBack {
+		if ioBundle.IsPCIBack && (!filterUnassigned || ioBundle.UsedByUUID != nilUUID) {
 			return true, port.IfName, ioBundle.UsedByUUID
 		}
 	}
