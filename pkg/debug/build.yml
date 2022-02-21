@@ -25,6 +25,5 @@ config:
     - /usr/bin/ctr:/usr/bin/ctr
     - /usr/bin/runc:/usr/bin/runc
     - /var/log:/var/log
-    - /persist/containerd:/var/lib/containerd
   capabilities:
     - all

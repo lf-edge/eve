@@ -22,8 +22,8 @@ Simple: you actually can run containers with it.
 
 ### Where does containerd keep images and containers
 
-containerd wants to keep its persistent data in `/var/lib/containerd`, and its runtime state
-in `/run/containerd` but on EVE you want both to be persistent -- hence we have a symlink pointing to `/persist/`.
+We use separate containerd instance (user) and start it after vault unlocked to store all data inside encrypted directory
+`/persist/vault/containerd`. All work with preparation of images and containers are done by separate user instance.
 
 ### What else can I do
 

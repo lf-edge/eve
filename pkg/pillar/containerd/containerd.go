@@ -12,6 +12,7 @@ import (
 	"io/ioutil"
 	"math/rand"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"time"
 
@@ -41,10 +42,10 @@ import (
 )
 
 const (
-	// EVE persist storage type file (content can be: ext3, ext4, zfs)
-	eveStorageTypeFile = "/run/eve.persist_type"
 	// containerd socket
 	ctrdSocket = "/run/containerd/containerd.sock"
+	// containerd user socket
+	ctrdUserSocket = "/run/containerd-user/containerd.sock"
 	// ctrdSystemServicesNamespace containerd namespace for EVE system containers
 	ctrdSystemServicesNamespace = "services.linuxkit"
 	// ctrdServicesNamespace containerd namespace for running user containers
@@ -95,7 +96,7 @@ func init() {
 
 // NewContainerdClient returns a *Client
 // Callable from multiple go-routines.
-func NewContainerdClient() (*Client, error) {
+func NewContainerdClient(user bool) (*Client, error) {
 	logrus.Infof("NewContainerdClient")
 	var (
 		err          error
@@ -103,7 +104,12 @@ func NewContainerdClient() (*Client, error) {
 		contentStore content.Store
 	)
 
-	ctrdClient, err = containerd.New(ctrdSocket, containerd.WithDefaultRuntime(containerdRunTime))
+	socket := ctrdSocket
+	if user {
+		socket = ctrdUserSocket
+	}
+
+	ctrdClient, err = containerd.New(socket, containerd.WithDefaultRuntime(containerdRunTime))
 	if err != nil {
 		logrus.Errorf("NewContainerdClient: could not create containerd client. %v", err.Error())
 		return nil, fmt.Errorf("initContainerdClient: could not create containerd client. %v", err.Error())
@@ -859,5 +865,20 @@ func (client *Client) UnpackClientImage(clientImage containerd.Image) error {
 			return fmt.Errorf("UnpackClientImage: unable to unpack image: %v: %v", clientImage.Name(), err)
 		}
 	}
+	return nil
+}
+
+//StartUserContainerdInstance execute user containerd instance in goroutine
+func StartUserContainerdInstance() error {
+	name := "/usr/bin/containerd"
+	args := []string{"--config", "/etc/containerd/user.toml"}
+	cmd := exec.Command(name, args...)
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("user containerd cannot start: %v", err)
+	}
+	go func() {
+		err := cmd.Wait()
+		logrus.Fatalf("user containerd stopped: %v", err)
+	}()
 	return nil
 }
