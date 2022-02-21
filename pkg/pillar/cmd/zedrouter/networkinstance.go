@@ -1316,7 +1316,7 @@ func getSwitchIPv4Addr(bridgeIndex int) (string, bool) {
 	addrs, _, _, err := devicenetwork.GetIPAddrs(log, bridgeIndex)
 	if err == nil {
 		for _, addr := range addrs {
-			if addr.IsLinkLocalUnicast() {
+			if addr.IP.IsLinkLocalUnicast() {
 				continue
 			}
 			return addr.String(), true

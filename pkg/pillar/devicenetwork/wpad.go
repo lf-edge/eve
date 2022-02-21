@@ -11,17 +11,17 @@ import (
 	"mime"
 	"strings"
 
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 )
 
 // Download a wpad file if so configured
-func CheckAndGetNetworkProxy(ctx *DeviceNetworkContext, deviceNetworkStatus *types.DeviceNetworkStatus,
-	status *types.NetworkPortStatus) error {
+func CheckAndGetNetworkProxy(log *base.LogObject, portStatus *types.NetworkPortStatus,
+	metrics *zedcloud.AgentMetrics) error {
 
-	log := ctx.Log
-	ifname := status.IfName
-	proxyConfig := &status.ProxyConfig
+	ifname := portStatus.IfName
+	proxyConfig := &portStatus.ProxyConfig
 
 	log.Tracef("CheckAndGetNetworkProxy(%s): enable %v, url %s\n",
 		ifname, proxyConfig.NetworkProxyEnable,
@@ -38,8 +38,7 @@ func CheckAndGetNetworkProxy(ctx *DeviceNetworkContext, deviceNetworkStatus *typ
 		return nil
 	}
 	if proxyConfig.NetworkProxyURL != "" {
-		pac, err := getPacFile(ctx, deviceNetworkStatus,
-			proxyConfig.NetworkProxyURL, ifname)
+		pac, err := getPacFile(log, proxyConfig.NetworkProxyURL, ifname, metrics)
 		if err != nil {
 			errStr := fmt.Sprintf("Failed to fetch %s for %s: %s",
 				proxyConfig.NetworkProxyURL, ifname, err)
@@ -49,7 +48,7 @@ func CheckAndGetNetworkProxy(ctx *DeviceNetworkContext, deviceNetworkStatus *typ
 		proxyConfig.Pacfile = pac
 		return nil
 	}
-	dn := status.DomainName
+	dn := portStatus.DomainName
 	if dn == "" {
 		errStr := fmt.Sprintf("NetworkProxyEnable for %s but neither a NetworkProxyURL nor a DomainName",
 			ifname)
@@ -62,7 +61,7 @@ func CheckAndGetNetworkProxy(ctx *DeviceNetworkContext, deviceNetworkStatus *typ
 	// in DomainName until we succeed
 	for {
 		url := fmt.Sprintf("http://wpad.%s/wpad.dat", dn)
-		pac, err := getPacFile(ctx, deviceNetworkStatus, url, ifname)
+		pac, err := getPacFile(log, url, ifname, metrics)
 		if err == nil {
 			proxyConfig.Pacfile = pac
 			proxyConfig.WpadURL = url
@@ -92,16 +91,14 @@ func CheckAndGetNetworkProxy(ctx *DeviceNetworkContext, deviceNetworkStatus *typ
 	}
 }
 
-func getPacFile(ctx *DeviceNetworkContext, status *types.DeviceNetworkStatus, url string,
-	ifname string) (string, error) {
+func getPacFile(log *base.LogObject, url string,
+	ifname string, metrics *zedcloud.AgentMetrics) (string, error) {
 
-	log := ctx.Log
 	zedcloudCtx := zedcloud.NewContext(log, zedcloud.ContextOptions{
 		Timeout:      15,
 		AgentName:    "wpad",
-		AgentMetrics: ctx.ZedcloudMetrics,
+		AgentMetrics: metrics,
 	})
-	ctx.DeviceNetworkStatus = status
 	// Avoid using a proxy to fetch the wpad.dat; 15 second timeout
 	const allowProxy = false
 	const useOnboard = false
