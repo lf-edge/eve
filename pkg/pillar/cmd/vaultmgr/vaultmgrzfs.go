@@ -4,17 +4,10 @@
 package vaultmgr
 
 import (
-	"net"
-	"os"
-	"path/filepath"
 	"regexp"
 
-	snapshotsapi "github.com/containerd/containerd/api/services/snapshots/v1"
-	"github.com/containerd/containerd/contrib/snapshotservice"
-	zfsSnapshooter "github.com/containerd/zfs"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/vault"
-	"google.golang.org/grpc"
 )
 
 const (
@@ -133,33 +126,4 @@ func setupZfsVault(vaultPath string) error {
 	}
 	//try creating the dataset
 	return createZfsVault(vaultPath)
-}
-
-// eveZFSSnapshotterInit initializes containerd snapshotter eve.zfs.snapshotter
-// we cannot use default one because of no mount of persist/vault dataset on boot if encrypted
-// we use proxy plugin and start it here after defaultVault is mounted
-func eveZFSSnapshotterInit() error {
-	dirToSaveMetadata := filepath.Join(defaultVault, types.ZFSSnapshotter)
-	err := os.MkdirAll(dirToSaveMetadata, os.ModeDir)
-	if err != nil {
-		return err
-	}
-	//it makes lookup internally for mount point of provided path
-	sn, err := zfsSnapshooter.NewSnapshotter(dirToSaveMetadata)
-	if err != nil {
-		return err
-	}
-	service := snapshotservice.FromSnapshotter(sn)
-	rpc := grpc.NewServer()
-	snapshotsapi.RegisterSnapshotsServer(rpc, service)
-	l, err := net.Listen("unix", zfsSnapshotterSock)
-	if err != nil {
-		return err
-	}
-	go func() {
-		if err := rpc.Serve(l); err != nil {
-			log.Fatalf("eveZFSSnapshotterInit Serve error: %v\n", err)
-		}
-	}()
-	return nil
 }

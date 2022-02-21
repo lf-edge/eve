@@ -13,7 +13,7 @@ const (
 	ZVolDevicePrefix = "/dev/zvol"
 
 	//ZFSSnapshotter is containerd snapshotter for zfs
-	ZFSSnapshotter = "eve.zfs.snapshotter"
+	ZFSSnapshotter = "zfs"
 )
 
 // ZVolName returns name of zvol for volume
