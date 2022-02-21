@@ -85,6 +85,15 @@ func dnsmasqInitDirs() {
 	}
 }
 
+func dnsmasqClearLeases() {
+	leasesFile := "/var/lib/misc/dnsmasq.leases"
+	if _, err := os.Stat(leasesFile); err == nil {
+		if err := os.Remove(leasesFile); err != nil {
+			log.Fatal(err)
+		}
+	}
+}
+
 func dnsmasqConfigFile(bridgeName string) string {
 	cfgFilename := "dnsmasq." + bridgeName + ".conf"
 	return cfgFilename

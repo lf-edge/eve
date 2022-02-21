@@ -135,18 +135,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	stillRunning := time.NewTicker(25 * time.Second)
 	ps.StillRunning(agentName, warningTime, errorTime)
 
-	if _, err := os.Stat(runDirname); err != nil {
-		log.Functionf("Create %s\n", runDirname)
-		if err := os.Mkdir(runDirname, 0755); err != nil {
-			log.Fatal(err)
-		}
-	} else {
-		// dnsmasq needs to read as nobody
-		if err := os.Chmod(runDirname, 0755); err != nil {
-			log.Fatal(err)
-		}
-	}
-	dnsmasqInitDirs()
+	handleInit()
 
 	pubUuidToNum, err := ps.NewPublication(pubsub.PublicationOptions{
 		AgentName:  agentName,
@@ -422,7 +411,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 	appNumAllocatorInit(&zedrouterCtx)
 	bridgeNumAllocatorInit(&zedrouterCtx)
-	handleInit(runDirname)
 	appNumOnUNetInit(&zedrouterCtx)
 
 	// Before we process any NetworkInstances we want to know the
@@ -779,18 +767,25 @@ func handleRestart(ctxArg interface{}, restartCounter int) {
 	}
 }
 
-func handleInit(runDirname string) {
-	// XXX should this be in dnsmasq code?
-	// Need to make sure we don't have any stale leases
-	leasesFile := "/var/lib/misc/dnsmasq.leases"
-	if _, err := os.Stat(leasesFile); err == nil {
-		if err := os.Remove(leasesFile); err != nil {
+func handleInit() {
+	if _, err := os.Stat(runDirname); err != nil {
+		log.Functionf("Create %s\n", runDirname)
+		if err := os.Mkdir(runDirname, 0755); err != nil {
+			log.Fatal(err)
+		}
+	} else {
+		// dnsmasq needs to read as nobody
+		if err := os.Chmod(runDirname, 0755); err != nil {
 			log.Fatal(err)
 		}
 	}
 
+	dnsmasqInitDirs()
+	// Need to make sure we don't have any stale leases
+	dnsmasqClearLeases()
+
 	// Setup initial iptables rules
-	iptables.IptablesInit(log)
+	iptables.Init(log)
 	dropEscapedFlows()
 
 	// ipsets which are independent of config

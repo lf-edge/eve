@@ -1252,7 +1252,7 @@ func doNetworkInstanceActivate(ctx *zedrouterContext,
 		link, _ := netlink.LinkByName(portName)
 		if link != nil {
 			err = iptables.IptableCmd(log, "-t", "filter",
-				"-A", "INPUT", "-i", status.BridgeName,
+				"-A", appChain("INPUT"), "-i", status.BridgeName,
 				"-p", "tcp", "--dport", "80", "-m", "physdev",
 				"--physdev-in", portName, "-j", "DROP")
 			if err != nil {
@@ -1389,7 +1389,7 @@ func doNetworkInstanceInactivate(
 		link, _ := netlink.LinkByName(portName)
 		if link != nil {
 			err := iptables.IptableCmd(log, "-t", "filter",
-				"-D", "INPUT", "-i", status.BridgeName,
+				"-D", appChain("INPUT"), "-i", status.BridgeName,
 				"-p", "tcp", "--dport", "80", "-m", "physdev",
 				"--physdev-in", portName, "-j", "DROP")
 			if err != nil {
@@ -1666,8 +1666,8 @@ func natActivate(ctx *zedrouterContext,
 	}
 	for _, a := range status.IfNameList {
 		log.Functionf("Adding iptables rules for %s \n", a)
-		err := iptables.IptableCmd(log, "-t", "nat", "-A", "POSTROUTING", "-o", a,
-			"-s", subnetStr, "-j", "MASQUERADE")
+		err := iptables.IptableCmd(log, "-t", "nat", "-A", appChain("POSTROUTING"),
+			"-o", a, "-s", subnetStr, "-j", "MASQUERADE")
 		if err != nil {
 			log.Errorf("IptableCmd failed: %s", err)
 			return err
@@ -1698,8 +1698,8 @@ func natInactivate(ctx *zedrouterContext,
 	} else {
 		oldUplinkIntf = status.CurrentUplinkIntf
 	}
-	err := iptables.IptableCmd(log, "-t", "nat", "-D", "POSTROUTING", "-o", oldUplinkIntf,
-		"-s", subnetStr, "-j", "MASQUERADE")
+	err := iptables.IptableCmd(log, "-t", "nat", "-D", appChain("POSTROUTING"),
+		"-o", oldUplinkIntf, "-s", subnetStr, "-j", "MASQUERADE")
 	if err != nil {
 		log.Errorf("natInactivate: iptableCmd failed %s\n", err)
 	}
