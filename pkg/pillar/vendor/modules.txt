@@ -409,6 +409,12 @@ github.com/lf-edge/eve/api/go/logs
 github.com/lf-edge/eve/api/go/metrics
 github.com/lf-edge/eve/api/go/profile
 github.com/lf-edge/eve/api/go/register
+# github.com/lf-edge/eve/libs/depgraph v0.0.0-20220129022022-ba04fd269658 => ../../libs/depgraph
+## explicit
+github.com/lf-edge/eve/libs/depgraph
+# github.com/lf-edge/eve/libs/reconciler v0.0.0-20220131150115-6941dbe72001 => ../../libs/reconciler
+## explicit
+github.com/lf-edge/eve/libs/reconciler
 # github.com/lf-edge/eve/libs/zedUpload v0.0.0-20210120050122-276fea8f6efd => ../../libs/zedUpload
 ## explicit
 github.com/lf-edge/eve/libs/zedUpload
@@ -792,5 +798,7 @@ oras.land/oras-go/pkg/oras
 oras.land/oras-go/pkg/target
 # github.com/lf-edge/eve/api/go => ../../api/go
 # github.com/lf-edge/eve/libs/zedUpload => ../../libs/zedUpload
+# github.com/lf-edge/eve/libs/depgraph => ../../libs/depgraph
+# github.com/lf-edge/eve/libs/reconciler => ../../libs/reconciler
 # git.apache.org/thrift.git => github.com/apache/thrift v0.12.0
 # github.com/docker/distribution => github.com/docker/distribution v0.0.0-20190205005809-0d3efadf0154

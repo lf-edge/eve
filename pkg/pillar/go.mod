@@ -31,6 +31,8 @@ require (
 	github.com/klauspost/compress v1.15.1 // indirect
 	github.com/lf-edge/edge-containers v0.0.0-20220320131500-9d9f95d81e2c
 	github.com/lf-edge/eve/api/go v0.0.0-00010101000000-000000000000
+	github.com/lf-edge/eve/libs/depgraph v0.0.0-20220129022022-ba04fd269658
+	github.com/lf-edge/eve/libs/reconciler v0.0.0-20220131150115-6941dbe72001
 	github.com/lf-edge/eve/libs/zedUpload v0.0.0-20210120050122-276fea8f6efd
 	github.com/moby/term v0.0.0-20210619224110-3f7ff695adc6 // indirect
 	github.com/onsi/gomega v1.15.0
@@ -57,6 +59,10 @@ require (
 replace github.com/lf-edge/eve/api/go => ../../api/go
 
 replace github.com/lf-edge/eve/libs/zedUpload => ../../libs/zedUpload
+
+replace github.com/lf-edge/eve/libs/depgraph => ../../libs/depgraph
+
+replace github.com/lf-edge/eve/libs/reconciler => ../../libs/reconciler
 
 replace git.apache.org/thrift.git => github.com/apache/thrift v0.12.0
 
