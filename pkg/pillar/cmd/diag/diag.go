@@ -45,8 +45,9 @@ const (
 
 // State passed to handlers
 type diagContext struct {
-	devicenetwork.DeviceNetworkContext
+	DeviceNetworkStatus     *types.DeviceNetworkStatus
 	DevicePortConfigList    *types.DevicePortConfigList
+	usableAddressCount      int
 	forever                 bool // Keep on reporting until ^C
 	pacContents             bool // Print PAC file contents
 	radioSilence            bool
@@ -121,7 +122,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		globalConfig:    types.DefaultConfigItemValueMap(),
 		zedcloudMetrics: zedcloud.NewAgentMetrics(),
 	}
-	ctx.AgentName = agentName
 	ctx.DeviceNetworkStatus = &types.DeviceNetworkStatus{}
 	ctx.DevicePortConfigList = &types.DevicePortConfigList{}
 
@@ -377,9 +377,9 @@ func handleLedBlinkImpl(ctxArg interface{}, key string,
 	}
 	ctx.ledCounter = config.BlinkCounter
 	ctx.derivedLedCounter = types.DeriveLedCounter(ctx.ledCounter,
-		ctx.UsableAddressCount, ctx.radioSilence)
+		ctx.usableAddressCount, ctx.radioSilence)
 	log.Functionf("counter %d usableAddr %d, derived %d",
-		ctx.ledCounter, ctx.UsableAddressCount, ctx.derivedLedCounter)
+		ctx.ledCounter, ctx.usableAddressCount, ctx.derivedLedCounter)
 	// XXX wait in case we get another handle call?
 	// XXX set output sched in ctx; print one second later?
 	printOutput(ctx)
@@ -419,14 +419,14 @@ func handleDNSImpl(ctxArg interface{}, key string,
 	*ctx.DeviceNetworkStatus = status
 	newAddrCount := types.CountLocalAddrAnyNoLinkLocal(*ctx.DeviceNetworkStatus)
 	log.Functionf("handleDNSImpl %d usable addresses", newAddrCount)
-	if (ctx.UsableAddressCount == 0 && newAddrCount != 0) ||
-		(ctx.UsableAddressCount != 0 && newAddrCount == 0) ||
+	if (ctx.usableAddressCount == 0 && newAddrCount != 0) ||
+		(ctx.usableAddressCount != 0 && newAddrCount == 0) ||
 		updateRadioSilence(ctx, ctx.DeviceNetworkStatus) {
-		ctx.UsableAddressCount = newAddrCount
+		ctx.usableAddressCount = newAddrCount
 		ctx.derivedLedCounter = types.DeriveLedCounter(ctx.ledCounter,
-			ctx.UsableAddressCount, ctx.radioSilence)
+			ctx.usableAddressCount, ctx.radioSilence)
 		log.Functionf("counter %d, usableAddr %d, radioSilence %t, derived %d",
-			ctx.ledCounter, ctx.UsableAddressCount, ctx.radioSilence, ctx.derivedLedCounter)
+			ctx.ledCounter, ctx.usableAddressCount, ctx.radioSilence, ctx.derivedLedCounter)
 	}
 
 	// update proxy certs if configured
@@ -458,14 +458,14 @@ func handleDNSDelete(ctxArg interface{}, key string,
 	*ctx.DeviceNetworkStatus = types.DeviceNetworkStatus{}
 	newAddrCount := types.CountLocalAddrAnyNoLinkLocal(*ctx.DeviceNetworkStatus)
 	log.Functionf("handleDNSDelete %d usable addresses", newAddrCount)
-	if (ctx.UsableAddressCount == 0 && newAddrCount != 0) ||
-		(ctx.UsableAddressCount != 0 && newAddrCount == 0) ||
+	if (ctx.usableAddressCount == 0 && newAddrCount != 0) ||
+		(ctx.usableAddressCount != 0 && newAddrCount == 0) ||
 		updateRadioSilence(ctx, ctx.DeviceNetworkStatus) {
-		ctx.UsableAddressCount = newAddrCount
+		ctx.usableAddressCount = newAddrCount
 		ctx.derivedLedCounter = types.DeriveLedCounter(ctx.ledCounter,
-			ctx.UsableAddressCount, ctx.radioSilence)
+			ctx.usableAddressCount, ctx.radioSilence)
 		log.Functionf("counter %d, usableAddr %d, radioSilence %t, derived %d",
-			ctx.ledCounter, ctx.UsableAddressCount, ctx.radioSilence, ctx.derivedLedCounter)
+			ctx.ledCounter, ctx.usableAddressCount, ctx.radioSilence, ctx.derivedLedCounter)
 	}
 	// XXX wait in case we get another handle call?
 	// XXX set output sched in ctx; print one second later?

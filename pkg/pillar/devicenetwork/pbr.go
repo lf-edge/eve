@@ -12,8 +12,9 @@ import (
 )
 
 const (
-	baseTableIndex = 500
-
+	// BaseRTIndex : base index for per-interface routing tables.
+	// Routing table ID is a sum of the base with the interface index.
+	BaseRTIndex = 500
 	// PbrLocalDestPrio : IP rule priority for packets destined to locally owned addresses
 	PbrLocalDestPrio = 12000
 	// PbrLocalOrigPrio : IP rule priority for locally generated packets
@@ -29,7 +30,7 @@ const (
 // ===== Manage routes in a particular table.
 // See also pbr_linux.go
 
-// FlushRoutesTable removes all rules from this table.
+// FlushRoutesTable removes all routes from this table.
 // If ifindex is non-zero we also compare it
 func FlushRoutesTable(log *base.LogObject, table int, ifindex int) {
 	filter := netlink.Route{Table: table, LinkIndex: ifindex}
@@ -73,7 +74,7 @@ func FlushRules(log *base.LogObject, ifindex int) {
 	}
 	log.Tracef("FlushRules(%d) - got %d", ifindex, len(rules))
 	for _, r := range rules {
-		if r.Table != baseTableIndex+ifindex {
+		if r.Table != BaseRTIndex+ifindex {
 			continue
 		}
 		log.Functionf("FlushRules: RuleDel %v", r)
@@ -86,7 +87,7 @@ func FlushRules(log *base.LogObject, ifindex int) {
 
 func makeSrcNetlinkRule(ifindex int, p net.IPNet, addForSubnet bool, prio int) *netlink.Rule {
 	r := netlink.NewRule()
-	r.Table = baseTableIndex + ifindex
+	r.Table = BaseRTIndex + ifindex
 	r.Priority = prio
 	r.Family = HostFamily(p.IP)
 
@@ -117,7 +118,7 @@ func makeDstLocalNetlinkRule(subnet net.IPNet, gateway net.IP, prio int) *netlin
 
 func makeDstNetlinkRule(ifindex int, p net.IPNet, addForSubnet bool, prio int) *netlink.Rule {
 	r := netlink.NewRule()
-	r.Table = baseTableIndex + ifindex
+	r.Table = BaseRTIndex + ifindex
 	r.Priority = prio
 	r.Family = HostFamily(p.IP)
 
@@ -130,35 +131,6 @@ func makeDstNetlinkRule(ifindex int, p net.IPNet, addForSubnet bool, prio int) *
 	r.Dst = &subnet
 
 	return r
-}
-
-// MoveDownLocalIPRule : Move IP rule that matches local destined packets below network instance rules.
-func MoveDownLocalIPRule(log *base.LogObject, prio int) {
-	// IPv4
-	r := netlink.NewRule()
-	r.Table = syscall.RT_TABLE_LOCAL
-	r.Priority = prio
-	r.Family = syscall.AF_INET
-	if err := netlink.RuleAdd(r); err != nil {
-		log.Errorf("MoveDownLocalIPRule: RuleAdd %v failed with %s", r, err)
-		return
-	}
-	r.Priority = 0
-	if err := netlink.RuleDel(r); err != nil {
-		log.Errorf("MoveDownLocalIPRule: RuleDel %v failed with %s", r, err)
-	}
-
-	// IPv6
-	r.Priority = prio
-	r.Family = syscall.AF_INET6
-	if err := netlink.RuleAdd(r); err != nil {
-		log.Errorf("MoveDownLocalIPRule: RuleAdd %v failed with %s", r, err)
-		return
-	}
-	r.Priority = 0
-	if err := netlink.RuleDel(r); err != nil {
-		log.Errorf("MoveDownLocalIPRule: RuleDel %v failed with %s", r, err)
-	}
 }
 
 // AddSourceRule create a pbr rule for the address or subet which refers to the
