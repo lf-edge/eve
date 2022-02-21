@@ -173,6 +173,11 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	}
 	log.Functionf("processed Vault Status")
 
+	if err := utils.WaitForUserContainerd(ps, log, agentName, warningTime, errorTime); err != nil {
+		log.Fatal(err)
+	}
+	log.Functionf("user containerd ready")
+
 	if ctx.persistType == types.PersistZFS {
 		// create datasets for volumes
 		initializeDatasets()

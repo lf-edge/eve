@@ -31,7 +31,7 @@ func initTest(t *testing.T) {
 		dmArgs:      []string{},
 	}
 	var err error
-	ctrdClient, err = containerd.NewContainerdClient()
+	ctrdClient, err = containerd.NewContainerdClient(false)
 	if err == nil {
 		kvmIntel.ctrdClient = ctrdClient
 		kvmArm.ctrdClient = ctrdClient

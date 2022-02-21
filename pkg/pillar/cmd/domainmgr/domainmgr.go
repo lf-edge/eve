@@ -46,8 +46,6 @@ const (
 	runDirname = "/run/" + agentName
 	xenDirname = runDirname + "/xen"       // We store xen cfg files here
 	ciDirname  = runDirname + "/cloudinit" // For cloud-init images
-	//dir with runtime files of containerd for eve user apps
-	ctrdAppsRunDir = "/persist/containerd/io.containerd.runtime.v1.linux/eve-user-apps"
 
 	// Time limits for event loop handlers
 	errorTime           = 3 * time.Minute
@@ -174,9 +172,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		if err := os.RemoveAll(ciDirname); err != nil {
 			log.Fatal(err)
 		}
-	}
-	if err := os.RemoveAll(ctrdAppsRunDir); err != nil {
-		log.Errorf("Failed cleanup %s: %v", ctrdAppsRunDir, err)
 	}
 	if _, err := os.Stat(xenDirname); err != nil {
 		if err := os.MkdirAll(xenDirname, 0700); err != nil {
@@ -384,14 +379,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	domainCtx.subDeviceNetworkStatus = subDeviceNetworkStatus
 	subDeviceNetworkStatus.Activate()
 
-	if domainCtx.casClient, err = cas.NewCAS(casClientType); err != nil {
-		err = fmt.Errorf("Run: exception while initializing CAS client: %s", err.Error())
-		log.Fatal(err)
-	}
-
-	//casClient which is commonly used across volumemgr will be closed when volumemgr exits.
-	defer domainCtx.casClient.CloseClient()
-
 	// Parse any existing ConfigIntemValueMap but continue if there
 	// is none
 	for !domainCtx.GCComplete {
@@ -561,6 +548,29 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		ps.StillRunning(agentName, warningTime, errorTime)
 	}
 	log.Noticef("Have %d assignable adapters", len(aa.IoBundleList))
+
+	if err := utils.WaitForVault(ps, log, agentName, warningTime, errorTime); err != nil {
+		log.Fatal(err)
+	}
+
+	log.Functionf("processed vault status")
+
+	if err := containerd.StartUserContainerdInstance(); err != nil {
+		log.Fatalf("StartUserContainerdInstance: failed %v", err)
+	}
+
+	if err := utils.WaitForUserContainerd(ps, log, agentName, warningTime, errorTime); err != nil {
+		log.Fatal(err)
+	}
+	log.Functionf("user containerd ready")
+
+	if domainCtx.casClient, err = cas.NewCAS(casClientType); err != nil {
+		err = fmt.Errorf("Run: exception while initializing CAS client: %s", err.Error())
+		log.Fatal(err)
+	}
+
+	//casClient which is commonly used across volumemgr will be closed when volumemgr exits.
+	defer domainCtx.casClient.CloseClient()
 
 	// Subscribe to DomainConfig from zedmanager
 	subDomainConfig, err := ps.NewSubscription(

@@ -88,7 +88,7 @@ const (
 	ZFSArcMaxSizeFile = "/hostfs/sys/module/zfs/parameters/zfs_arc_max"
 
 	// ContainerdContentDir - path to containerd`s content store
-	ContainerdContentDir = PersistDir + "/containerd/io.containerd.content.v1.content"
+	ContainerdContentDir = SealedDirName + "/containerd/io.containerd.content.v1.content"
 )
 
 var (

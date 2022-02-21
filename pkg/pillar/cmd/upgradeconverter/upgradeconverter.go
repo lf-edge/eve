@@ -60,6 +60,10 @@ var postVaultconversionHandlers = []ConversionHandler{
 		description: "Move verified files to /persist/vault/verifier/verified",
 		handlerFunc: renameVerifiedFiles,
 	},
+	{
+		description: "Move old files to user containerd",
+		handlerFunc: moveToUserContainerd,
+	},
 }
 
 type ucContext struct {

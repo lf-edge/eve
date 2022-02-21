@@ -746,7 +746,7 @@ func (c *containerdCAS) CtrNewUserServicesCtx() (context.Context, context.Cancel
 
 //newContainerdCAS: constructor for containerd CAS
 func newContainerdCAS() CAS {
-	ctrdClient, err := containerd.NewContainerdClient()
+	ctrdClient, err := containerd.NewContainerdClient(true)
 	if err != nil {
 		logrus.Fatalf("newContainerdCAS: exception while creating containerd client: %s", err.Error())
 	}

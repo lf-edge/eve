@@ -26,7 +26,7 @@ type ctrdContext struct {
 }
 
 func initContainerd() (*ctrdContext, error) {
-	ctrdClient, err := containerd.NewContainerdClient()
+	ctrdClient, err := containerd.NewContainerdClient(false)
 	if err != nil {
 		return nil, err
 	}

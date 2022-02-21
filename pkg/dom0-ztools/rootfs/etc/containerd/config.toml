@@ -1,5 +1,5 @@
 state = "/run/containerd"
-root = "/persist/containerd"
+root = "/persist/containerd-system-root"
 disabled_plugins = ["cri", "btrfs", "aufs"]
 
 [grpc]
@@ -16,7 +16,3 @@ disabled_plugins = ["cri", "btrfs", "aufs"]
 
 [cgroup]
   path = "/eve/containerd"
-
-# [plugins]
-#  [plugins.content]
-#    root = "/persist/vault/content"
