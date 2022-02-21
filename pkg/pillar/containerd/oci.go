@@ -298,6 +298,7 @@ func (s *ociSpec) UpdateFromDomain(dom *types.DomainConfig) {
 
 		s.Linux.CgroupsPath = fmt.Sprintf("/%s/%s", ctrdServicesNamespace, dom.GetTaskName())
 	}
+	s.Hostname = dom.UUIDandVersion.UUID.String()
 	s.Annotations[EVEOCIVNCPasswordLabel] = dom.VncPasswd
 }
 
