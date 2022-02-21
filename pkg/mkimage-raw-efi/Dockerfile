@@ -8,12 +8,12 @@ ARG EVE_BUILDER_IMAGE=lfedge/eve-alpine:6.7.0
 FROM ${EVE_BUILDER_IMAGE} AS build
 SHELL ["/bin/ash", "-eo", "pipefail", "-c"]
 ENV BUILD_PKGS mkinitfs grep patch
-ENV PKGS mtools dosfstools libarchive-tools sgdisk e2fsprogs util-linux squashfs-tools coreutils tar dmidecode zfs-libs
+ENV PKGS mtools dosfstools libarchive-tools sgdisk e2fsprogs util-linux squashfs-tools coreutils tar dmidecode
 RUN eve-alpine-deploy.sh
 
 WORKDIR /out
 RUN echo "mtools_skip_check=1" >> etc/mtools.conf
-RUN mkdir -p efifs parts root bits config persist opt/zededa opt/debug lib/modules run sys
+RUN mkdir -p efifs parts root bits config persist opt/pillar opt/debug lib/modules run sys
 COPY make-raw install grub.cfg.in UsbInvocationScript.txt ./
 COPY grub.stage1 ./usr/lib/grub/i386-pc/boot.img
 

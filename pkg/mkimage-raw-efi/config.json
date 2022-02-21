@@ -9,7 +9,7 @@
             "sh", "-c", "/install > /dev/console 2>&1"
         ],
         "env": [
-            "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/opt/zededa/bin"
+            "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
         ],
         "cwd": "/",
         "capabilities": {
@@ -218,9 +218,9 @@
             ]
         },
         {
-            "destination": "/opt/zededa",
+            "destination": "/opt/pillar",
             "type": "bind",
-            "source": "/containers/services/pillar/lower/opt/zededa",
+            "source": "/containers/services/pillar/lower",
             "options": [
                 "rw",
                 "rbind",

@@ -104,6 +104,13 @@ ctr_run() {
    for d in $SYS_DIRS; do umount "$DIR/$d"; done
 }
 
+# run binary from pillar
+pillar_run() {
+  binary="$1"
+  shift
+  LD_LIBRARY_PATH=/opt/pillar/lib:/opt/pillar/usr/lib /opt/pillar/opt/zededa/bin/"$binary" "$@"
+}
+
 # collect_black_box FOLDER_TO_PUT_BLACK_BOX
 collect_black_box() {
    lsblk > "$1/lsblk.txt"
@@ -112,7 +119,7 @@ collect_black_box() {
    tar -C /sys -cjf "$1/sysfs.tar.bz2" .
    tar -C /config -cjf "$1/config.tar.bz2" .
    tar -C /run/P3 -cjf "$1/persist.tar.bz2" status newlog log config checkpoint certs agentdebug
-   tpmmgr saveTpmInfo "$1"/tpminfo.txt
+   pillar_run tpmmgr saveTpmInfo "$1"/tpminfo.txt
 }
 
 # prepare_mounts_and_zfs_pool POOL_CREATION_COMMAND_SUFFIX_SUFFIX
@@ -356,13 +363,13 @@ YEAR=$(date +%Y)
 if [ "$YEAR" -gt 2020 ] && [ ! -f /config/device.cert.pem ]; then
    if [ -c $TPM_DEVICE_PATH ] && ! [ -f /config/disable-tpm ]; then
       echo "Generating TPM device certificate"
-      if ! /opt/zededa/bin/tpmmgr createDeviceCert; then
+      if ! pillar_run tpmmgr createDeviceCert; then
          echo "Failed generating device certificate on TPM; fallback to soft"
          touch /config/disable-tpm
          sync
       else
          echo "Generated a TPM device certificate"
-         if ! /opt/zededa/bin/tpmmgr createCerts; then
+         if ! pillar_run tpmmgr createCerts; then
             echo "Failed to create additional certificates on TPM"
          fi
       fi
@@ -370,9 +377,9 @@ if [ "$YEAR" -gt 2020 ] && [ ! -f /config/device.cert.pem ]; then
       echo "No TPM; Generating soft device certificate"
    fi
    if [ ! -f /config/device.cert.pem ]; then
-      if ! /opt/zededa/bin/tpmmgr createSoftDeviceCert; then
+      if ! pillar_run tpmmgr createSoftDeviceCert; then
          echo "Failed to generate soft device certificate"
-      elif ! /opt/zededa/bin/tpmmgr createSoftCerts; then
+      elif ! pillar_run tpmmgr createSoftCerts; then
          echo "Failed to create additional certificates"
       fi
    fi
