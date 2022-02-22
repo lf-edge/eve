@@ -50,6 +50,7 @@ var Version = "No version specified"
 
 // Any state used by handlers goes here
 type verifierContext struct {
+	ps                   *pubsub.PubSub
 	subVerifyImageConfig pubsub.Subscription
 	pubVerifyImageStatus pubsub.Publication
 	subGlobalConfig      pubsub.Subscription
@@ -90,7 +91,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	ps.StillRunning(agentName, warningTime, errorTime)
 
 	// Any state needed by handler functions
-	ctx := verifierContext{}
+	ctx := verifierContext{ps: ps}
 
 	// Set up our publications before the subscriptions so ctx is set
 	pubVerifyImageStatus, err := ps.NewPublication(
@@ -163,8 +164,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	initializeDirs()
 
 	// Publish status for any objects that were verified before reboot
-	// The signatures and shas can re-checked during handleCreate
-	// by inserting code.
+	// It re-checks shas for existing images
 	handleInit(&ctx)
 
 	// Report to volumemgr that init is done
@@ -189,8 +189,27 @@ func handleInit(ctx *verifierContext) {
 
 	log.Functionln("handleInit")
 
-	// Create VerifyImageStatus for objects that were verified before reboot
-	handleInitVerifiedObjects(ctx)
+	// Init reverification of the shas can take minutes for large objects
+	// Run a periodic timer so we always update StillRunning
+	stillRunning := time.NewTicker(25 * time.Second)
+	defer stillRunning.Stop()
+	waitForVerifiedObjectsChan := make(chan bool, 1)
+	go func() {
+		log.Notice("Waiting for initial objects to be verified")
+		// Create VerifyImageStatus for objects that were verified before reboot
+		handleInitVerifiedObjects(ctx)
+		waitForVerifiedObjectsChan <- true
+	}()
+	objectsVerified := false
+	for !objectsVerified {
+		select {
+		case <-waitForVerifiedObjectsChan:
+			log.Notice("Initial objects verification done")
+			objectsVerified = true
+		case <-stillRunning.C:
+			ctx.ps.StillRunning(agentName, warningTime, errorTime)
+		}
+	}
 
 	log.Functionln("handleInit done")
 }
@@ -654,6 +673,25 @@ func populateInitialStatusFromVerified(ctx *verifierContext,
 			status := verifyImageStatusFromImageFile(
 				location.Name(), size, pathname)
 			if status != nil {
+				imageHash, err := computeShaFile(pathname)
+				if err != nil {
+					log.Errorf("populateInitialStatusFromVerified: cannot compute sha: %v", err)
+					err = os.Remove(pathname)
+					if err != nil {
+						log.Errorf("populateInitialStatusFromVerified: cannot remove broken file: %v", err)
+					}
+					continue
+				}
+				formattedHash := fmt.Sprintf("%x", imageHash)
+				if formattedHash != status.ImageSha256 {
+					log.Errorf("populateInitialStatusFromVerified: calculated sha %s is not the same as provided %s",
+						formattedHash, status.ImageSha256)
+					err = os.Remove(pathname)
+					if err != nil {
+						log.Errorf("populateInitialStatusFromVerified: cannot remove broken file: %v", err)
+					}
+					continue
+				}
 				publishVerifyImageStatus(ctx, status)
 			}
 		}
