@@ -24,6 +24,20 @@
 BAIL_FINAL_CMD=${BAIL_FINAL_CMD:-"exit 1"}
 [ -n "$DEBUG" ] && set -x
 
+# This is a temp file to capture various stages of install
+# the contents of this file are saved to $REPORT/installer.log
+# After the USB install, users can see the installation status under /Volumes/INVENTORY/<serial#>/installer.log
+LOGFILE_DIR="/run"
+LOGFILE="$LOGFILE_DIR/installer.log"
+# logs to both console and a file.
+logmsg() {
+   local MSG
+   local TIME
+   MSG="$*"
+   TIME=$(date +"%F %T")
+   echo "$TIME : $MSG" | tee -a $LOGFILE >/dev/console 2>&1
+}
+
 pause() {
    echo "Pausing before $1. Entering shell. Type 'exit' to proceed to $1"
    sh
@@ -33,7 +47,7 @@ bail() {
    if mount_part INVENTORY "$(root_dev)" /run/INVENTORY -t vfat -o iocharset=iso8859-1; then
       collect_black_box /run/INVENTORY 2>/dev/null
    fi
-   echo "$*"
+   logmsg "$*"
    $BAIL_FINAL_CMD
 }
 
@@ -87,6 +101,7 @@ mount_part() {
    local ID
    shift 3
 
+   logmsg "mount_part PART = $PART DISK = $DISK TARGET = $TARGET"
    ID="$(find_part "$PART" "$DISK")"
    [ -z "$ID" ] && return 1
 
@@ -124,6 +139,7 @@ collect_black_box() {
 
 # prepare_mounts_and_zfs_pool POOL_CREATION_COMMAND_SUFFIX_SUFFIX
 prepare_mounts_and_zfs_pool() {
+  logmsg "Preparing ZFS pool and mounts"
   [ -e /root/sys ] || mkdir /root/sys && mount -t sysfs sysfs /root/sys
   [ -e /root/proc ] || mkdir /root/proc && mount -t proc proc /root/proc
   [ -e /root/dev ] || mkdir /root/dev && mount -t devtmpfs -o size=10m,nr_inodes=248418,mode=755,nosuid,noexec,relatime devtmpfs /root/dev
@@ -135,6 +151,7 @@ prepare_mounts_and_zfs_pool() {
 }
 
 adjust_zfs_mounts_and_umount() {
+  logmsg "Setting ZFS mountpoint to /persist"
   chroot /root zfs set mountpoint="/persist" persist
   chroot /root zfs create -p -o mountpoint="/persist/containerd/io.containerd.snapshotter.v1.zfs" persist/snapshots
   umount /root/sys ||:
@@ -143,9 +160,9 @@ adjust_zfs_mounts_and_umount() {
   umount /root/run ||:
 }
 
+logmsg "EVE-OS installation started"
 # do this just in case
 modprobe usbhid && modprobe usbkbd
-
 # clean partition tables on disks defined to nuke
 if grep -q eve_nuke_disks /proc/cmdline; then
   NUKE_DISKS=$(</proc/cmdline tr ' ' '\012' | sed -ne '/^eve_nuke_disks=/s#^.*=##p')
@@ -153,6 +170,7 @@ if grep -q eve_nuke_disks /proc/cmdline; then
   for dev in $(echo "$NUKE_DISKS" | tr ',' ' '); do
       printf ' %s' "$dev"
       dd if=/dev/zero of="/dev/$dev" bs=512 count=34 >/dev/null 2>&1
+      logmsg "Nuked partition tables on $dev"
   done
   sync; sleep 5; sync
   echo " done!"
@@ -167,9 +185,11 @@ if grep -q eve_nuke_all_disks /proc/cmdline; then
    for i in $(lsblk -anlb -o "TYPE,NAME,SIZE" | grep "^disk" | awk '$3 { print $2;}'); do
       echo -n " $i"
       dd if=/dev/zero of="/dev/$i" bs=512 count=34 >/dev/null 2>&1
+      logmsg "Nuked partition tables on $i"
    done
    sync; sleep 5; sync
    echo " done!"
+   logmsg "Poweroff triggered after nuking all disks"
    poweroff -f
 fi
 
@@ -191,6 +211,7 @@ if [ -z "$INSTALL_DEV" ] ; then
    INSTALL_DEV=$(set ${FREE_DISKS:-""} ; echo $1)
 fi
 
+logmsg "Installing EVE-OS on device $INSTALL_DEV"
 # ...if we didn't find a single free disk - bail
 [ -z "$INSTALL_DEV" ] && bail "FATAL: didn't find a single free disk"
 
@@ -198,6 +219,7 @@ fi
 INSTALL_PERSIST=$(</proc/cmdline tr ' ' '\012' | sed -ne '/^eve_persist_disk=/s#^.*=##p')
 INSTALL_PERSIST=${INSTALL_PERSIST:-$INSTALL_DEV}
 
+logmsg "Installing persist on disk(s) $INSTALL_PERSIST"
 # now lets figure out whether we have installation material
 CONFIG_PART=$(find_part CONFIG "$(root_dev)")
 CONFIG_PART="${CONFIG_PART:+"/dev/"}${CONFIG_PART:-"/bits/config.img"}"
@@ -210,6 +232,11 @@ fi
 # the only thing we override in /config for now is server
 tr ' ' '\012' < /proc/cmdline | sed -ne '/^eve_install_server=/s#^.*=##p' > /parts/eve_install_server
 [ ! -s /parts/eve_install_server ] || mcopy -i /parts/config.img -o /parts/eve_install_server ::/server
+
+if [ -s /parts/eve_install_server ]; then
+   EVE_INSTALL_SERVER=$(cat /parts/eve_install_server)
+   logmsg "EVE install server : $EVE_INSTALL_SERVER"
+fi
 
 # if there's something in /bits -- that's the ultimate source
 ln -s /bits/* /parts 2>/dev/null
@@ -231,6 +258,7 @@ grep -q eve_pause_before_install /proc/cmdline && pause "formatting the /dev/$IN
 SKIP_ZFS_CHECKS=false
 grep -q eve_install_skip_zfs_checks /proc/cmdline && SKIP_ZFS_CHECKS=true
 
+logmsg "SKIP_ZFS_CHECKS = $SKIP_ZFS_CHECKS"
 P3_ON_BOOT_PLACEHOLDER="P3_ON_BOOT_PLACEHOLDER"
 POOL_CREATION_COMMAND_SUFFIX=""
 DISK_WITH_P3=""
@@ -269,9 +297,9 @@ if [ "$INSTALL_DEV" != "$INSTALL_PERSIST" ]; then
         system_memory_GB="$(/usr/bin/free -g | grep Mem | awk '{print $2}')"
 
         if [ "$system_memory_GB" -lt 64 ] || [ $DISKS_TO_MERGE_COUNT -lt 3 ]; then
-           echo "WARNING: ZFS installation minimum requirements are not met, installing ext4 filesystem instead."
            # The following setting will install ext4 persist
            INSTALL_ZFS=false
+           logmsg "WARNING: ZFS installation minimum requirements are not met, installing ext4 filesystem instead."
         fi
      fi
 
@@ -292,6 +320,12 @@ if [ "$INSTALL_DEV" != "$INSTALL_PERSIST" ]; then
      # force make-raw to skip persist
      MAKE_RAW_PARTS="efi imga imgb conf"
    fi
+fi
+
+if [ "$INSTALL_ZFS" = true ]; then
+   logmsg "Installing ZFS filesystem, MULTIPLE_DISKS = $MULTIPLE_DISKS"
+else
+   logmsg "Installing ext4 filesystem, MULTIPLE_DISKS = $MULTIPLE_DISKS"
 fi
 
 # do the install (unless we're only here to collect the black box)
@@ -328,6 +362,7 @@ if mount_part CONFIG "$INSTALL_DEV" /config -t vfat -o iocharset=iso8859-1; then
    # uuidgen | sed -e 's#^.*-##'
    SOFT_SERIAL=$(tr ' ' '\012' < /proc/cmdline | sed -n '/eve_soft_serial=/s#eve_soft_serial=##p')
    SOFT_SERIAL=${SOFT_SERIAL:-$(uuidgen)}
+   logmsg "SOFT_SERIAL = $SOFT_SERIAL"
    grep -q eve_blackbox /proc/cmdline || [ -f /config/soft_serial ] || echo "$SOFT_SERIAL" > /config/soft_serial
 fi
 
@@ -362,25 +397,25 @@ TPM_DEVICE_PATH="/dev/tpmrm0"
 YEAR=$(date +%Y)
 if [ "$YEAR" -gt 2020 ] && [ ! -f /config/device.cert.pem ]; then
    if [ -c $TPM_DEVICE_PATH ] && ! [ -f /config/disable-tpm ]; then
-      echo "Generating TPM device certificate"
+      logmsg "Generating TPM device certificate"
       if ! pillar_run tpmmgr createDeviceCert; then
-         echo "Failed generating device certificate on TPM; fallback to soft"
+         logmsg "Failed generating device certificate on TPM; fallback to soft"
          touch /config/disable-tpm
          sync
       else
-         echo "Generated a TPM device certificate"
+         logmsg "Generated a TPM device certificate"
          if ! pillar_run tpmmgr createCerts; then
-            echo "Failed to create additional certificates on TPM"
+            logmsg "Failed to create additional certificates on TPM"
          fi
       fi
    else
-      echo "No TPM; Generating soft device certificate"
+      logmsg "No TPM; Generating soft device certificate"
    fi
    if [ ! -f /config/device.cert.pem ]; then
       if ! pillar_run tpmmgr createSoftDeviceCert; then
-         echo "Failed to generate soft device certificate"
+         logmsg "Failed to generate soft device certificate"
       elif ! pillar_run tpmmgr createSoftCerts; then
-         echo "Failed to create additional certificates"
+         logmsg "Failed to create additional certificates"
       fi
    fi
    sync
@@ -400,16 +435,22 @@ fi
 # we also maybe asked to pause after
 grep -q eve_pause_after_install /proc/cmdline && pause "shutting the node down"
 
+if [ "$MULTIPLE_DISKS" = true ] && [ "$INSTALL_ZFS" = true ]; then
+   adjust_zfs_mounts_and_umount
+fi
+
+if [ -n "$REPORT" ]; then
+   # Copy the LOGFILE under REPORT"
+   logmsg "EVE-OS installation completed, device will now reboot/poweroff"
+   cat $LOGFILE > "$REPORT/installer.log"
+fi
+
 # lets hope this is enough to flush the caches
 sync; sleep 5; sync
 umount /config 2>/dev/null
 for p in INVENTORY P3; do
    umount "/run/$p" 2>/dev/null
 done
-
-if [ "$MULTIPLE_DISKS" = true ] && [ "$INSTALL_ZFS" = true ]; then
-   adjust_zfs_mounts_and_umount
-fi
 
 # we need a copy of these in tmpfs so that a block device with rootfs can be yanked
 cp /sbin/poweroff /sbin/reboot /bin/sleep /run
