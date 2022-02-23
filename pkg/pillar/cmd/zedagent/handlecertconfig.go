@@ -363,7 +363,7 @@ func sendAttestReqProtobuf(attestReq *attest.ZAttestReq, iteration int) {
 			log.Errorf("sendAttestReqProtobuf failed: %s", err)
 		}
 		zedcloud.SetDeferred(zedcloudCtx, deferKey, buf, size, attestURL,
-			true)
+			bailOnHTTPErr)
 	}
 }
 
