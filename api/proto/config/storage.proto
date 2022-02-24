@@ -9,6 +9,7 @@ option java_package = "org.lfedge.eve.config";
 
 import "config/devcommon.proto";
 import "config/acipherinfo.proto";
+import "evecommon/evecommon.proto";
 
 // XXX this will be deprecated when all deployed instances of EVE
 // no longer expect it. 5.6.X depend on it. 5.7.1 does not.
@@ -192,4 +193,34 @@ message Volume {
   bool readonly = 6;       // Will be offered to tasks as read-only
   string displayName = 7;  // Optional friendly name echo'ed in info message
   bool clear_text = 8;  // Flag to indicate the volume encryption needed or not
+}
+
+// DiskConfigType is the desired configuration of disks
+enum DiskConfigType {
+  DISK_CONFIG_TYPE_UNSPECIFIED = 0; // no configured, do nothing
+  DISK_CONFIG_TYPE_EVEOS = 1; // the disk EVE is installed on
+  DISK_CONFIG_TYPE_PERSIST = 2; // the disk is separate persist partition, not zfs
+  DISK_CONFIG_TYPE_ZFS_ONLINE = 3; // included in zfs and online
+  DISK_CONFIG_TYPE_ZFS_OFFLINE = 4; // included in zfs and offline
+  DISK_CONFIG_TYPE_APPDIRECT = 5; // for direct assignment
+  DISK_CONFIG_TYPE_UNUSED = 6; // removed from zfs/app-direct
+}
+
+//DiskConfig describe desired configuration of disk
+message DiskConfig {
+  org.lfedge.eve.common.DiskDescription disk = 1;
+  // define old disk here to replace it with new one defined in disk, omit it to not use replacement
+  org.lfedge.eve.common.DiskDescription old_disk = 2;
+  DiskConfigType disk_config = 3;
+}
+
+//DisksConfig is a configuration of disks
+//We expect information about disks to be filled and will try to adjust disks states accordingly
+//If we want change state to online/offline we should define its state
+//If we want to add disk we should define it here and set DiskConfigType to online or offline
+//If we want to remove disk we should set its state to unused or appdirect
+//If we want to replace disk we should fill old_disk to be replaced with disk
+//Progress of operation is expected to be available in info messages
+message DisksConfig {
+  repeated DiskConfig disks = 1;
 }

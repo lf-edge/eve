@@ -15,3 +15,11 @@ enum HashAlgorithm {
   HASH_ALGORITHM_SHA256_16BYTES = 1; // hash with sha256, the 1st 16 bytes of result
   HASH_ALGORITHM_SHA256_32BYTES = 2; // hash with sha256, the whole 32 bytes of result
 }
+
+//DiskDescription describes disk
+//we can use different data to locate disk in the system
+message DiskDescription {
+  string name = 1; // bus-related name, for example: /dev/sdc
+  string logical_name = 2; // logical name, for example: disk3
+  string serial = 3; // serial number of disk
+}
