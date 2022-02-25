@@ -48,18 +48,49 @@ dump() {
 
 do_help() {
 cat <<__EOT__
-Usage: docker run lfedge/eve [-f fmt] version|rootfs|live|installer_raw|installer_iso|installer_net
+Usage: docker run [-v <option>] lfedge/eve [-f <fmt>] version|rootfs|live|installer_raw|installer_iso|installer_net
 
-The artifact will be produced on stdout, so don't forget to redirect it to a file.
+The artifact will be produced on stdout, so don't forget to redirect 
+it to a file or use the /out option below. 
 
-Optionally you can pass the following right before run in docker run:
- -v <local folder>:/in to overwrite the files in config partition with the files from /in
- -v <local folder>:/out or -v <local empty file>:/out/f to redirect output from stdout
-Passing -v <local folder>:/out makes sure the file created is given most appropriate name.
+Example:
+docker run --rm lfedge/eve installer_raw > installer.raw
 
--f fmt selects a packaging format: raw (default), qcow2, parallels, vdi and gcp are all valid options.
+(Where "--rm" is a generic optional Docker argument that simply means 
+to remove the locally pulled container after the command completes.)
 
-live and installer_raw support an optional last argument specifying the size of the image in Mb.
+Optionally you can pass arguments right after docker run:
+
+ -v <full path to local folder>:/in 
+
+This allows you to overwrite files in the EVE-OS config partition with 
+your own local modifications of those files (must have the same name).
+
+Example:
+docker run -v $HOME/eve/eve-overrides:/in --rm lfedge/eve:latest installer_raw > installer.raw
+(Where your local "eve-overrides" directory contains one file "server" 
+with one text string "some.eve-controller-url.com")
+
+ -v <full path to new local folder>:/out 
+
+This allows you to redirect output from stdout to a file, with your 
+choice of path.
+
+Example:
+docker run -v $HOME/eve-images:/out --rm lfedge/eve:latest installer_raw
+
+Optionally you can specify an alternate image format:
+
+ -f <fmt> 
+
+This specifies a packaging format: raw (default), qcow2, parallels, 
+vdi, and gcp are all valid options.
+
+Example:
+docker run --rm lfedge/eve -f qcow2 installer_iso > eve-iso.img
+
+The two raw formats "live" and "installer_raw" support an optional 
+last argument specifying the size of the image in Mb.
 __EOT__
   exit 0
 }
