@@ -13,13 +13,14 @@ package types
 
 import (
 	"fmt"
+	"reflect"
 	"strings"
 	"time"
 
 	"github.com/google/go-cmp/cmp"
 	zcommon "github.com/lf-edge/eve/api/go/evecommon"
 	"github.com/lf-edge/eve/pkg/pillar/base"
-	"github.com/satori/go.uuid"
+	uuid "github.com/satori/go.uuid"
 )
 
 type AssignableAdapters struct {
@@ -88,6 +89,20 @@ type IoBundle struct {
 	KeepInHost bool
 	Error      string
 	ErrorTime  time.Time
+
+	Cbattr map[string]string
+
+	// Only used in IoNetEthPF Physical function
+	Vfs VFList
+	// Only used in IoNetEthVF Virtual function
+	VfParams VfInfo
+}
+
+// VfInfo used to store information for VF
+type VfInfo struct {
+	Index   uint8
+	VlanId  uint16
+	PFIface string
 }
 
 // Really a constant
@@ -148,6 +163,10 @@ func (ib IoBundle) HasAdapterChanged(log *base.LogObject, phyAdapter PhysicalIOA
 		log.Functionf("Usage changed from %d to %d", ib.Usage, phyAdapter.Usage)
 		return true
 	}
+	if !reflect.DeepEqual(phyAdapter.Vfs, ib.Vfs) {
+		log.Functionf("SRIOVNumVFs changed from %v to %v", ib.Vfs, phyAdapter.Vfs)
+		return true
+	}
 	return false
 }
 
@@ -166,6 +185,11 @@ func IoBundleFromPhyAdapter(log *base.LogObject, phyAdapter PhysicalIOAdapter) *
 	ib.Ioports = phyAdapter.Phyaddr.Ioports
 	ib.Serial = phyAdapter.Phyaddr.Serial
 	ib.Usage = phyAdapter.Usage
+	// We're making deep copy
+	ib.Vfs.Data = make([]EthVF, len(phyAdapter.Vfs.Data))
+	copy(ib.Vfs.Data, phyAdapter.Vfs.Data)
+	ib.Vfs.Count = phyAdapter.Vfs.Count
+
 	// Guard against models without ifname for network adapters
 	if ib.Type.IsNet() && ib.Ifname == "" {
 		log.Warnf("phyAdapter IsNet without ifname: phylabel %s logicallabel %s",
@@ -176,6 +200,7 @@ func IoBundleFromPhyAdapter(log *base.LogObject, phyAdapter PhysicalIOAdapter) *
 			ib.Ifname = ib.Phylabel
 		}
 	}
+
 	return &ib
 }
 
@@ -184,15 +209,17 @@ func IoBundleFromPhyAdapter(log *base.LogObject, phyAdapter PhysicalIOAdapter) *
 type IoType uint8
 
 const (
-	IoNop     IoType = 0
-	IoNetEth  IoType = 1
-	IoUSB     IoType = 2
-	IoCom     IoType = 3
-	IoAudio   IoType = 4
-	IoNetWLAN IoType = 5
-	IoNetWWAN IoType = 6
-	IoHDMI    IoType = 7
-	IoOther   IoType = 255
+	IoNop      IoType = 0
+	IoNetEth   IoType = 1
+	IoUSB      IoType = 2
+	IoCom      IoType = 3
+	IoAudio    IoType = 4
+	IoNetWLAN  IoType = 5
+	IoNetWWAN  IoType = 6
+	IoHDMI     IoType = 7
+	IoNetEthPF IoType = 8
+	IoNetEthVF IoType = 9
+	IoOther    IoType = 255
 )
 
 // IsNet checks if the type is any of the networking types.
@@ -255,7 +282,8 @@ func (aa AssignableAdapters) LogKey() string {
 // - PciLong, UsbAddr, etc which come from controller but might be filled in by domainmgr
 // - Unique/MacAddr which come from the PhysicalIoAdapter
 func (aa *AssignableAdapters) AddOrUpdateIoBundle(log *base.LogObject, ib IoBundle) {
-	curIbPtr := aa.LookupIoBundlePhylabel(ib.Phylabel)
+	var curIbPtr *IoBundle
+	curIbPtr = aa.LookupIoBundlePhylabel(ib.Phylabel)
 	if curIbPtr == nil {
 		log.Functionf("AddOrUpdateIoBundle(%d %s %s) New bundle",
 			ib.Type, ib.Phylabel, ib.AssignmentGroup)

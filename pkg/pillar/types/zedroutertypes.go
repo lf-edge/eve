@@ -1087,6 +1087,7 @@ type NetworkPortConfig struct {
 	ProxyConfig
 	L2LinkConfig
 	WirelessCfg WirelessConfig
+	Vfs         VFList // Used only for PF
 	// TestResults - Errors from parsing plus success/failure from testing
 	TestResults
 }

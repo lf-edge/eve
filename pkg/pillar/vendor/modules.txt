@@ -532,6 +532,9 @@ github.com/stretchr/testify/assert
 # github.com/tatsushid/go-fastping v0.0.0-20160109021039-d7bb493dee3e
 ## explicit
 github.com/tatsushid/go-fastping
+# github.com/uncleDecart/nettb v0.1.5
+## explicit
+github.com/uncleDecart/nettb
 # github.com/vishvananda/netlink v1.1.1-0.20210924202909-187053b97868
 ## explicit
 github.com/vishvananda/netlink

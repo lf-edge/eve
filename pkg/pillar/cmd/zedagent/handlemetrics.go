@@ -1091,6 +1091,9 @@ func PublishAppInfoToZedCloud(ctx *zedagentContext, uuid string,
 				if ib.MacAddr != "" {
 					reportMac := new(info.IoAddresses)
 					reportMac.MacAddress = ib.MacAddr
+					if ib.Type == types.IoNetEthVF {
+						reportMac.VfInfo = &info.VfPublishedInfo{Index: uint32(ib.VfParams.Index), VlanId: uint32(ib.VfParams.VlanId)}
+					}
 					reportAA.IoAddressList = append(reportAA.IoAddressList,
 						reportMac)
 				}

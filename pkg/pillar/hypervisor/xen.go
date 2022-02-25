@@ -6,15 +6,16 @@ package hypervisor
 import (
 	"errors"
 	"fmt"
-	"github.com/lf-edge/eve/pkg/pillar/types"
-	"github.com/shirou/gopsutil/cpu"
-	"github.com/shirou/gopsutil/mem"
-	"github.com/sirupsen/logrus"
 	"io/ioutil"
 	"os"
 	"runtime"
 	"strconv"
 	"strings"
+
+	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/shirou/gopsutil/cpu"
+	"github.com/shirou/gopsutil/mem"
+	"github.com/sirupsen/logrus"
 )
 
 const (

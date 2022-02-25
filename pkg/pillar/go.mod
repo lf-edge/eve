@@ -47,6 +47,7 @@ require (
 	github.com/spf13/cobra v1.4.0 // indirect
 	github.com/stretchr/testify v1.7.0
 	github.com/tatsushid/go-fastping v0.0.0-20160109021039-d7bb493dee3e
+	github.com/uncleDecart/nettb v0.1.5
 	github.com/vishvananda/netlink v1.1.1-0.20210924202909-187053b97868
 	golang.org/x/crypto v0.0.0-20220131195533-30dcbda58838
 	golang.org/x/net v0.0.0-20220225172249-27dd8689420f

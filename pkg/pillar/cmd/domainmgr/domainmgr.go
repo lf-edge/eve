@@ -38,6 +38,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/utils"
 	uuid "github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
+	"github.com/uncleDecart/nettb"
 	"github.com/vishvananda/netlink"
 	"golang.org/x/sys/unix"
 )
@@ -2494,10 +2495,17 @@ func handlePhysicalIOAdapterListModify(ctxArg interface{}, key string,
 
 func handlePhysicalIOAdapterListImpl(ctxArg interface{}, key string,
 	configArg interface{}) {
-
 	ctx := ctxArg.(*domainContext)
 	phyIOAdapterList := configArg.(types.PhysicalIOAdapterList)
 	aa := ctx.assignableAdapters
+
+	defer func() {
+		ctx.publishAssignableAdapters()
+		log.Functionf("handlePhysicalIOAdapterListImpl() done len %d",
+			len(aa.IoBundleList))
+		log.Fatal("FAILED ", aa)
+	}()
+
 	log.Functionf("handlePhysicalIOAdapterListImpl: current len %d, update %+v",
 		len(aa.IoBundleList), phyIOAdapterList)
 
@@ -2518,6 +2526,35 @@ func handlePhysicalIOAdapterListImpl(ctxArg interface{}, key string,
 			// We assume AddOrUpdateIoBundle will preserve any
 			// existing IsPort/IsPCIBack/UsedByUUID
 			aa.AddOrUpdateIoBundle(log, *ib)
+
+			// Adding PF before VF to have correct boot order
+			if ib.Type == types.IoNetEthPF && ib.Vfs.Count > 0 {
+				ifNameMap, err := nettb.GetPciToIfNameMapByTimeout(60 * time.Second)
+				if err != nil {
+					log.Fatal("Failed to obtain ifNameMap")
+				}
+
+				err = createVF(ifNameMap[ib.PciLong], ib.Vfs.Count)
+				if err != nil {
+					log.Fatal("Failed to create VF for iface with PCI address", ib.PciLong)
+				}
+
+				vfs, err := getVfByTimeout(30*time.Second, ifNameMap[ib.PciLong])
+				if err != nil {
+					log.Fatal("Failed to get VF for iface ", ifNameMap[ib.PciLong], " ", err)
+				}
+				if len(vfs.Data) == 0 {
+					log.Fatal("VF list is empty for iface ", ifNameMap[ib.PciLong])
+				}
+
+				for _, vf := range vfs.Data {
+					vfIb, err := createVfIoBundle(*ib, vf)
+					if err != nil {
+						log.Fatal("createVfIoBundle failed ", err)
+					}
+					aa.AddOrUpdateIoBundle(log, vfIb)
+				}
+			}
 		}
 		log.Functionf("handlePhysicalIOAdapterListImpl: initialized to get len %d",
 			len(aa.IoBundleList))
@@ -2531,9 +2568,6 @@ func handlePhysicalIOAdapterListImpl(ctxArg interface{}, key string,
 			updatePortAndPciBackIoBundle(ctx, ib)
 		}
 		aa.Initialized = true
-		ctx.publishAssignableAdapters()
-		log.Functionf("handlePhysicalIOAdapterListImpl() done len %d",
-			len(aa.IoBundleList))
 		return
 	}
 
@@ -2580,9 +2614,28 @@ func handlePhysicalIOAdapterListImpl(ctxArg interface{}, key string,
 				"- No Change", phyAdapter.Phylabel)
 		}
 	}
-	ctx.publishAssignableAdapters()
-	log.Functionf("handlePhysicalIOAdapterListImpl() done len %d",
-		len(aa.IoBundleList))
+}
+
+func createVfIoBundle(pfIb types.IoBundle, vf types.EthVF) (types.IoBundle, error) {
+	vfUserConfig := pfIb.Vfs.GetInfo(vf.Index)
+	if vfUserConfig == nil {
+		return types.IoBundle{}, fmt.Errorf("Can't find any with index %d", vf.Index)
+	}
+	vfIb := pfIb
+	vfIb.Type = types.IoNetEthVF
+	vfIb.Ifname = fmt.Sprintf("vf%d%s", vf.Index, pfIb.Ifname)
+	vfIb.Phylabel = fmt.Sprintf("vf%d%s", vf.Index, pfIb.Phylabel)
+	vfIb.Logicallabel = fmt.Sprintf("vf%d%s", vf.Index, pfIb.Logicallabel)
+	vfIb.PciLong = vf.PciLong
+	vfIb.VfParams = types.VfInfo{Index: vf.Index, VlanId: vf.VlanId, PFIface: pfIb.Ifname}
+	if vfUserConfig.Mac != "" {
+		vfIb.MacAddr = vfUserConfig.Mac
+		setupVfHardwareAddr(vfIb.Ifname, vfIb.MacAddr, vf.Index)
+	}
+	if vfUserConfig.VlanId != 0 {
+		setupVfVlan(vfIb.Ifname, vf.Index, vf.VlanId)
+	}
+	return vfIb, nil
 }
 
 func handlePhysicalIOAdapterListDelete(ctxArg interface{},
@@ -2673,6 +2726,9 @@ func updatePortAndPciBackIoBundle(ctx *domainContext, ib *types.IoBundle) (chang
 				log.Errorf("Couldn't get boot_vga statues for VGA device %s", ib.PciLong)
 				log.Error(err)
 			}
+		}
+		if ib.Type == types.IoNetEthPF {
+			keepInHost = true
 		}
 	}
 

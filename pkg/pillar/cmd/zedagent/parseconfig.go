@@ -551,9 +551,17 @@ func parseAppInstanceConfig(config *zconfig.EdgeDevConfig,
 		for _, adapter := range cfgApp.Adapters {
 			log.Tracef("Processing adapter type %d name %s",
 				adapter.Type, adapter.Name)
-			appInstance.IoAdapterList = append(appInstance.IoAdapterList,
-				types.IoAdapter{Type: types.IoType(adapter.Type),
-					Name: adapter.Name})
+			hwaddr, err := net.ParseMAC(adapter.EthVf.Mac)
+			if err != nil {
+				log.Errorf("Failed to parse hardware address for adapter %s: %s", adapter.Name, err)
+			}
+			ioa := types.IoAdapter{Type: types.IoType(adapter.Type), Name: adapter.Name}
+			if ioa.Type == types.IoNetEthVF {
+				ioa.EthVf = types.EthVF{
+					Mac:    hwaddr.String(),
+					VlanId: uint16(adapter.EthVf.VlanId)}
+			}
+			appInstance.IoAdapterList = append(appInstance.IoAdapterList, ioa)
 		}
 		log.Functionf("Got adapters %v", appInstance.IoAdapterList)
 
@@ -839,6 +847,9 @@ func propagateError(higherLayerPort, lowerLayerPort *types.NetworkPortConfig) {
 func propagatePhyioAttrsToPort(port *types.NetworkPortConfig, phyio *types.PhysicalIOAdapter) {
 	port.Phylabel = phyio.Phylabel
 	port.IfName = phyio.Phyaddr.Ifname
+	port.Vfs.Data = make([]types.EthVF, len(phyio.Vfs.Data))
+	copy(port.Vfs.Data, phyio.Vfs.Data)
+	port.Vfs.Count = phyio.Vfs.Count
 	if port.IfName == "" {
 		// Might not be set for all models
 		log.Warnf("Physical IO %s (Phylabel %s) has no ifname",
