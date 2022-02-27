@@ -56,8 +56,8 @@ it to a file or use the /out option below.
 Example:
 docker run --rm lfedge/eve installer_raw > installer.raw
 
-(Where "--rm" is a generic optional Docker argument that simply means
-to remove the locally pulled container after the command completes.)
+Where "--rm" is a generic optional Docker argument that simply means
+to remove the locally pulled container after the command completes.
 
 Optionally you can pass arguments right after docker run:
 
@@ -67,9 +67,10 @@ This allows you to overwrite files in the EVE-OS config partition with
 your own local modifications of those files (must have the same name).
 
 Example:
-docker run -v $HOME/eve/eve-overrides:/in --rm lfedge/eve:latest installer_raw > installer.raw
-(Where your local "eve-overrides" directory contains one file "server"
-with one text string "some.eve-controller-url.com")
+docker run -v $HOME/eve-overrides:/in --rm lfedge/eve:latest installer_raw > installer.raw
+
+Where your local "eve-overrides" directory contains one file "server"
+with one text string "some.eve-controller-url.com"
 
  -v <full path to new local folder>:/out
 
