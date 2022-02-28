@@ -30,14 +30,18 @@ type typeAndPCI struct {
 	ioType  types.IoType
 }
 
-func addNoDuplicatePCI(list []typeAndPCI, tap typeAndPCI) []typeAndPCI {
-
-	for _, t := range list {
-		if t.pciLong == tap.pciLong {
-			return list
+func addNoDuplicatePCI(list map[string][]typeAndPCI, tap typeAndPCI, group string) map[string][]typeAndPCI {
+	for _, tAr := range list {
+		for _, t := range tAr {
+			if t.pciLong == tap.pciLong {
+				return list
+			}
 		}
 	}
-	return append(list, tap)
+	t := list[group]
+	t = append(t, tap)
+	list[group] = t
+	return list
 }
 
 func addNoDuplicate(list []string, add string) []string {
@@ -353,7 +357,7 @@ func (ctx xenContext) CreateDomConfig(domainName string, config types.DomainConf
 	// Gather all PCI assignments into a single line
 	// Also irqs, ioports, and serials
 	// irqs and ioports are used if we are pv; serials if hvm
-	var pciAssignments []typeAndPCI
+	pciAssignments := make(map[string][]typeAndPCI)
 	var irqAssignments []string
 	var ioportsAssignments []string
 	var usbAssignments []string
@@ -382,7 +386,7 @@ func (ctx xenContext) CreateDomConfig(domainName string, config types.DomainConf
 			}
 			if ib.PciLong != "" {
 				tap := typeAndPCI{pciLong: ib.PciLong, ioType: ib.Type}
-				pciAssignments = addNoDuplicatePCI(pciAssignments, tap)
+				pciAssignments = addNoDuplicatePCI(pciAssignments, tap, ib.AssignmentGroup)
 			}
 			if ib.Irq != "" && config.VirtualizationMode == types.PV {
 				logrus.Infof("Adding irq <%s>\n", ib.Irq)
@@ -406,18 +410,22 @@ func (ctx xenContext) CreateDomConfig(domainName string, config types.DomainConf
 	if len(pciAssignments) != 0 {
 		logrus.Infof("PCI assignments %v\n", pciAssignments)
 		cfg := fmt.Sprintf("pci = [ ")
-		for i, pa := range pciAssignments {
-			if i != 0 {
-				cfg = cfg + ", "
-			}
-			short := types.PCILongToShort(pa.pciLong)
-			// USB controller are subject to legacy USB support from
-			// some BIOS. Use relaxed to get past that.
-			if pa.ioType == types.IoUSB {
-				cfg = cfg + fmt.Sprintf("'%s,rdm_policy=relaxed'",
-					short)
-			} else {
-				cfg = cfg + fmt.Sprintf("'%s'", short)
+		ind := 0
+		for _, paAr := range pciAssignments {
+			for _, pa := range paAr {
+				if ind != 0 {
+					cfg = cfg + ", "
+				}
+				ind++
+				short := types.PCILongToShort(pa.pciLong)
+				// USB controller are subject to legacy USB support from
+				// some BIOS. Use relaxed to get past that.
+				if pa.ioType == types.IoUSB {
+					cfg = cfg + fmt.Sprintf("'%s,rdm_policy=relaxed'",
+						short)
+				} else {
+					cfg = cfg + fmt.Sprintf("'%s'", short)
+				}
 			}
 		}
 		cfg = cfg + "]"
