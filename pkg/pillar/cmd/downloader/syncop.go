@@ -79,6 +79,8 @@ func handleSyncOp(ctx *downloaderContext, key string,
 	log.Functionf("Downloading <%s> to <%s> using %d downloadMaxPortCost",
 		config.Name, locFilename, downloadMaxPortCost)
 
+	dsPath := dsCtx.Dpath
+
 	switch dsCtx.TransportMethod {
 	case zconfig.DsType_DsContainerRegistry.String():
 		auth = &zedUpload.AuthInput{
@@ -103,7 +105,18 @@ func handleSyncOp(ctx *downloaderContext, key string,
 		// pass in the config.Name instead of 'filename' which
 		// does not contain the prefix of the relative path with '/'s
 		remoteName = config.Name
-		metricsURL = fmt.Sprintf("S3:%s/%s", dsCtx.Dpath, config.Name)
+
+		// we assume that the bucket name should not contain a / and we make the remoteName pick up anything after a /
+		// remove all leading '/' if we have them in dsPath, remove duplicates of '/' and split by '/'
+		splittedPath := strings.Split(path.Clean(strings.TrimLeft(dsPath, "/")), "/")
+		if len(splittedPath) > 1 {
+			// if we have '/' in datastore path, move all after first occurrence from bucket to remoteName
+			// valid bucket name should not contain '/'
+			dsPath = splittedPath[0]
+			splittedPath = append(splittedPath, remoteName)
+			remoteName = path.Join(splittedPath[1:]...)
+		}
+		metricsURL = fmt.Sprintf("S3:%s/%s", dsPath, remoteName)
 		cleanOnError = false
 
 	case zconfig.DsType_DsAzureBlob.String():
@@ -229,7 +242,7 @@ func handleSyncOp(ctx *downloaderContext, key string,
 		}
 		downloadStartTime := time.Now()
 		contentType, cancelled, err = download(ctx, trType, st, syncOp, serverURL, auth,
-			dsCtx.Dpath, dsCtx.Region,
+			dsPath, dsCtx.Region,
 			config.Size, ifname, ipSrc, remoteName, locFilename, dst.DsCertPEM,
 			receiveChan)
 		if err != nil {
