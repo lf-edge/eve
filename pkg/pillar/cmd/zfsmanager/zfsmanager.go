@@ -25,6 +25,8 @@ const (
 	errorTime            = 3 * time.Minute
 	warningTime          = 40 * time.Second
 	stillRunningInterval = 25 * time.Second
+
+	disksProcessingInterval = 60 * time.Second
 )
 
 var (
@@ -41,8 +43,11 @@ type zVolDeviceEvent struct {
 }
 
 type zfsContext struct {
-	zVolStatusPub    pubsub.Publication
-	storageStatusPub pubsub.Publication
+	ps                     *pubsub.PubSub
+	zVolStatusPub          pubsub.Publication
+	storageStatusPub       pubsub.Publication
+	subDisksConfig         pubsub.Subscription
+	disksProcessingTrigger chan interface{}
 }
 
 // Run - an zfs run
@@ -67,7 +72,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	stillRunning := time.NewTicker(stillRunningInterval)
 	ps.StillRunning(agentName, warningTime, errorTime)
 
-	ctxPtr := zfsContext{}
+	ctxPtr := zfsContext{ps: ps, disksProcessingTrigger: make(chan interface{}, 1)}
 
 	if err := utils.WaitForVault(ps, log, agentName, warningTime, errorTime); err != nil {
 		log.Fatal(err)
@@ -85,6 +90,24 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		log.Fatal(err)
 	}
 	ctxPtr.zVolStatusPub = zVolStatusPub
+
+	// Look for disks config
+	subDisksConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "zedagent",
+		MyAgentName:   agentName,
+		TopicImpl:     types.EdgeNodeDisks{},
+		Activate:      false,
+		Ctx:           &ctxPtr,
+		CreateHandler: handleDisksConfigCreate,
+		ModifyHandler: handleDisksConfigModify,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctxPtr.subDisksConfig = subDisksConfig
+	subDisksConfig.Activate()
 
 	// Publish cloud metrics
 	storageStatusPub, err := ps.NewPublication(
@@ -104,6 +127,8 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		log.Fatal(err)
 	}
 
+	go processDisksTask(&ctxPtr)
+
 	go deviceWatcher(deviceNotifyChannel)
 
 	go storageStatusPublisher(&ctxPtr)
@@ -112,6 +137,8 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		select {
 		case event := <-deviceNotifyChannel:
 			processEvent(&ctxPtr, event)
+		case change := <-subDisksConfig.MsgChan():
+			subDisksConfig.ProcessChange(change)
 		case <-stillRunning.C:
 		}
 		ps.StillRunning(agentName, warningTime, errorTime)
