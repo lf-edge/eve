@@ -275,6 +275,7 @@ const qemuDiskTemplate = `
   wwpn = "{{.WWN}}"
   bus = "pci.{{.PCIId}}"
   addr = "0x0"
+  num_queues = "{{.NumQueues}}"
 {{- end}}
 {{end}}`
 
@@ -515,11 +516,11 @@ func (ctx kvmContext) CreateDomConfig(domainName string, config types.DomainConf
 
 	// render disk device model settings
 	diskContext := struct {
-		Machine               string
-		PCIId, DiskID, SATAId int
-		AioType               string
+		Machine                          string
+		PCIId, DiskID, SATAId, NumQueues int
+		AioType                          string
 		types.DiskStatus
-	}{Machine: ctx.devicemodel, PCIId: 4, DiskID: 0, SATAId: 0, AioType: "io_uring"}
+	}{Machine: ctx.devicemodel, PCIId: 4, DiskID: 0, SATAId: 0, AioType: "io_uring", NumQueues: config.VCpus}
 
 	t, _ = template.New("qemuDisk").
 		Funcs(template.FuncMap{"Fmt": func(f zconfig.Format) string { return strings.ToLower(f.String()) }}).

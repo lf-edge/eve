@@ -1154,6 +1154,7 @@ func TestCreateDomConfig(t *testing.T) {
   wwpn = "naa.000000000000000a"
   bus = "pci.7"
   addr = "0x0"
+  num_queues = "2"
 
 [device "pci.8"]
   driver = "pcie-root-port"
@@ -1452,6 +1453,7 @@ func TestCreateDomConfig(t *testing.T) {
   wwpn = "naa.000000000000000a"
   bus = "pci.7"
   addr = "0x0"
+  num_queues = "2"
 
 [device "pci.8"]
   driver = "pcie-root-port"
@@ -1761,6 +1763,7 @@ func TestCreateDomConfig(t *testing.T) {
   wwpn = "naa.000000000000000a"
   bus = "pci.7"
   addr = "0x0"
+  num_queues = "2"
 
 [device "pci.8"]
   driver = "pcie-root-port"
@@ -2047,6 +2050,7 @@ func TestCreateDomConfig(t *testing.T) {
   wwpn = "naa.000000000000000a"
   bus = "pci.7"
   addr = "0x0"
+  num_queues = "2"
 
 [device "pci.8"]
   driver = "pcie-root-port"
