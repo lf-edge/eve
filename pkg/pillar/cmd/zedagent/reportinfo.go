@@ -351,12 +351,36 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 			log.Errorf("get zpool list failed %v", err)
 		} else {
 			for _, zpool := range zpoolList {
-				rStorageInfo := new(info.StorageInfo)
-				curentRaid := info.StorageRaidType_STORAGE_RAID_TYPE_NORAID
-				zpoolName := zpool.Properties[libzfs.PoolPropName].Value
-				zpoolSizeInByte, err := strconv.ParseUint(zpool.Properties[libzfs.PoolPropSize].Value, 10, 64)
+				defer zpool.Close()
+				currentRaid := info.StorageRaidType_STORAGE_RAID_TYPE_NORAID
+				zpoolPropName, err := zpool.GetProperty(libzfs.PoolPropName)
+				if err != nil {
+					log.Errorf("error with get properties PoolPropName %v", err)
+					continue
+				}
+
+				zpoolPropHealth, err := zpool.GetProperty(libzfs.PoolPropHealth)
+				if err != nil {
+					log.Errorf("error with get properties PoolPropHealth %v", err)
+					continue
+				}
+
+				zpoolPropSize, err := zpool.GetProperty(libzfs.PoolPropSize)
+				if err != nil {
+					log.Errorf("error with get properties PoolPropSize %v", err)
+					continue
+				}
+
+				zpoolName := zpoolPropName.Value
+				storageState := zfs.GetZfsDeviceStatusFromStr(zpoolPropHealth.Value)
+				zpoolSizeInByte, err := strconv.ParseUint(zpoolPropSize.Value, 10, 64)
 				if err != nil {
 					log.Errorf("error with ParseUint for get zpool size in byte: %v", err)
+				}
+
+				countZvolume, err := zfs.GetZfsCountVolume(zpoolName)
+				if err != nil {
+					log.Errorf("get count volume failed %v", err)
 				}
 
 				compressratio, _ := zfs.GetZfsCompressratio(zpoolName)
@@ -364,20 +388,42 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 					log.Errorf("error with ParseFloat for get compression ratio: %v", err)
 				}
 
+				rStorageInfo := new(info.StorageInfo)
 				vdevs, err := zpool.VDevTree()
 				if err != nil {
 					log.Errorf("error with get about RAID info from devTree: %v", err)
 				} else {
-					curentRaid = zfs.GetZpoolRaidType(vdevs)
+					currentRaid = zfs.GetZpoolRaidType(vdevs)
+					for _, vdev := range vdevs.Devices {
+						// If this is a RAID or mirror, look at the disks it consists of
+						if vdev.Type == libzfs.VDevTypeMirror || vdev.Type == libzfs.VDevTypeRaidz {
+							for _, disk := range vdev.Devices {
+								rDiskStatus, err := zfs.GetZfsDiskAndStatus(disk)
+								// vdev.Devices might includes snapshots or caches,
+								// and those will result in errors which need to ignore.
+								if err == nil {
+									rStorageInfo.Disks = append(rStorageInfo.Disks, rDiskStatus)
+								}
+							}
+							break // for one pool, have one RAID
+						}
+						// If there is no RAID or mirror, add a disk if it is a disk
+						rDiskStatus, err := zfs.GetZfsDiskAndStatus(vdev)
+						// vdev.Devices might includes snapshots or caches,
+						// and those will result in errors which need to ignore.
+						if err == nil {
+							rStorageInfo.Disks = append(rStorageInfo.Disks, rDiskStatus)
+						}
+					}
 				}
-
-				zpool.Close()
 				rStorageInfo.PoolName = *proto.String(zpoolName)
 				rStorageInfo.StorageType = info.StorageTypeInfo_STORAGE_TYPE_INFO_ZFS
 				rStorageInfo.ZpoolSize = *proto.Uint64(zpoolSizeInByte)
 				rStorageInfo.ZfsVersion = *proto.String(zfsVersion)
-				rStorageInfo.CurentRaid = curentRaid
+				rStorageInfo.CurrentRaid = currentRaid
 				rStorageInfo.CompressionRatio = *proto.Float64(compressratio)
+				rStorageInfo.CountZvols = *proto.Uint32(countZvolume)
+				rStorageInfo.StorageState = storageState
 				ReportDeviceInfo.StorageInfo = append(ReportDeviceInfo.StorageInfo, rStorageInfo)
 				log.Tracef("report metrics sending info for ZFS zpool %s", zpoolName)
 			}
