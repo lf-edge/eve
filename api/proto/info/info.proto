@@ -5,6 +5,7 @@ syntax = "proto3";
 
 import "google/protobuf/timestamp.proto";
 import "evecommon/devmodelcommon.proto";
+import "evecommon/evecommon.proto";
 
 package org.lfedge.eve.info;
 option go_package  = "github.com/lf-edge/eve/api/go/info";
@@ -405,6 +406,22 @@ enum ZDeviceState {
     ZDEVICE_STATE_BOOTING = 5;
 }
 
+enum StorageStatus {
+  STORAGE_STATUS_UNSPECIFIED = 0;
+  STORAGE_STATUS_ONLINE = 1;   // The device or virtual device is in normal working order.
+  STORAGE_STATUS_DEGRADED = 2; // The virtual device has experienced a failure but can still function.
+  STORAGE_STATUS_FAULTED = 3;  // The device or virtual device is completely inaccessible.
+  STORAGE_STATUS_OFFLINE = 4;  // The device has been explicitly taken offline by the administrator.
+  STORAGE_STATUS_UNAVAIL = 5;  // The device or virtual device cannot be opened. In some cases, pools with UNAVAIL devices appear in DEGRADED mode.
+  STORAGE_STATUS_REMOVED = 6;  // The device was physically removed while the system was running.
+  STORAGE_STATUS_SUSPENDED = 7; // A pool that is waiting for device connectivity to be restored.
+}
+
+message StorageDiskState {
+  org.lfedge.eve.common.DiskDescription disk_name = 1;
+  StorageStatus status = 2;            // In ZFS
+}
+
 enum StorageRaidType {
   STORAGE_RAID_TYPE_UNSPECIFIED = 0;
   STORAGE_RAID_TYPE_RAID0 = 1;              // RAID-0
@@ -448,9 +465,12 @@ message StorageInfo {
   string pool_name = 1;
   StorageTypeInfo storage_type = 2; // Storage type zfs or ext4
   string zfs_version = 3;
-  StorageRaidType curent_raid = 4;  // Current RAID configuration. When no have RAID send ""
+  StorageRaidType current_raid = 4;  // Current RAID configuration. When no have RAID send STORAGE_RAID_TYPE_NORAID
   double compression_ratio = 5;     // Compression ratio
   uint64 zpool_size = 6;            // Storage pool size.
+  uint32 count_zvols = 7;           // zvols count
+  StorageStatus storage_state = 8;  // zfs zpool status
+  repeated StorageDiskState disks = 9;  // Disks lists in EVE (use in storage)
 }
 
 // Information about the system that is sent once when the system boots
