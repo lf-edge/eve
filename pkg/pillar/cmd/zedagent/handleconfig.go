@@ -88,6 +88,7 @@ type getconfigContext struct {
 	pubContentTreeConfig     pubsub.Publication
 	subVolumeStatus          pubsub.Subscription
 	pubVolumeConfig          pubsub.Publication
+	pubDisksConfig           pubsub.Publication
 	NodeAgentStatus          *types.NodeAgentStatus
 	rebootFlag               bool
 	lastReceivedConfig       time.Time

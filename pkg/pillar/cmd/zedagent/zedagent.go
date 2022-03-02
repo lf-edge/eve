@@ -537,6 +537,18 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	pubVolumeConfig.ClearRestarted()
 	getconfigCtx.pubVolumeConfig = pubVolumeConfig
 
+	// for disk config Publisher
+	pubDisksConfig, err := ps.NewPublication(
+		pubsub.PublicationOptions{
+			AgentName: agentName,
+			TopicType: types.EdgeNodeDisks{},
+		})
+	if err != nil {
+		log.Fatal(err)
+	}
+	pubDisksConfig.ClearRestarted()
+	getconfigCtx.pubDisksConfig = pubDisksConfig
+
 	// Look for global config such as log levels
 	subGlobalConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     agentName,

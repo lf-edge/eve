@@ -227,6 +227,46 @@ func alignUpToBlockSize(size uint64) uint64 {
 	return (size + volBlockSize - 1) & ^(volBlockSize - 1)
 }
 
+//RemoveVDev removes vdev from the pool
+func RemoveVDev(log *base.LogObject, pool, vdev string) (string, error) {
+	args := append(zpoolPath, "remove", pool, vdev)
+	stdoutStderr, err := base.Exec(log, vault.ZfsPath, args...).CombinedOutput()
+	if err != nil {
+		return string(stdoutStderr), err
+	}
+	return strings.TrimSpace(string(stdoutStderr)), nil
+}
+
+//AttachVDev attach newVdev to existing vdev
+func AttachVDev(log *base.LogObject, pool, vdev, newVdev string) (string, error) {
+	args := append(zpoolPath, "attach", pool, vdev, newVdev)
+	stdoutStderr, err := base.Exec(log, vault.ZfsPath, args...).CombinedOutput()
+	if err != nil {
+		return string(stdoutStderr), err
+	}
+	return strings.TrimSpace(string(stdoutStderr)), nil
+}
+
+//AddVDev add newVdev to pool
+func AddVDev(log *base.LogObject, pool, vdev string) (string, error) {
+	args := append(zpoolPath, "add", "-f", pool, vdev)
+	stdoutStderr, err := base.Exec(log, vault.ZfsPath, args...).CombinedOutput()
+	if err != nil {
+		return string(stdoutStderr), err
+	}
+	return strings.TrimSpace(string(stdoutStderr)), nil
+}
+
+//ReplaceVDev replaces vdev from the pool
+func ReplaceVDev(log *base.LogObject, pool, oldVdev, newVdev string) (string, error) {
+	args := append(zpoolPath, "replace", pool, oldVdev, newVdev)
+	stdoutStderr, err := base.Exec(log, vault.ZfsPath, args...).CombinedOutput()
+	if err != nil {
+		return string(stdoutStderr), err
+	}
+	return strings.TrimSpace(string(stdoutStderr)), nil
+}
+
 // GetZfsVersion return zfs kernel module version
 func GetZfsVersion() (string, error) {
 	dataBytes, err := ioutil.ReadFile("/hostfs/sys/module/zfs/version")
