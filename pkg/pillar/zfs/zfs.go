@@ -14,8 +14,8 @@ import (
 	"time"
 
 	libzfs "github.com/bicomsystems/go-libzfs"
+	"github.com/golang/protobuf/proto"
 	"github.com/lf-edge/eve/api/go/info"
-	"github.com/lf-edge/eve/api/go/metrics"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/vault"
@@ -287,37 +287,38 @@ func GetZpoolRaidType(vdevs libzfs.VDevTree) info.StorageRaidType {
 }
 
 // GetZfsDeviceStatusFromStr takes a string with status as input and returns status
-func GetZfsDeviceStatusFromStr(statusStr string) metrics.StorageStatus {
+func GetZfsDeviceStatusFromStr(statusStr string) info.StorageStatus {
 	if len(statusStr) == 0 {
-		return metrics.StorageStatus_STORAGE_STATUS_UNSPECIFIED
+		return info.StorageStatus_STORAGE_STATUS_UNSPECIFIED
 	} else if strings.TrimSpace(statusStr) == "ONLINE" {
-		return metrics.StorageStatus_STORAGE_STATUS_ONLINE
+		return info.StorageStatus_STORAGE_STATUS_ONLINE
 	} else if strings.TrimSpace(statusStr) == "DEGRADED" {
-		return metrics.StorageStatus_STORAGE_STATUS_DEGRADED
+		return info.StorageStatus_STORAGE_STATUS_DEGRADED
 	} else if strings.TrimSpace(statusStr) == "FAULTED" {
-		return metrics.StorageStatus_STORAGE_STATUS_FAULTED
+		return info.StorageStatus_STORAGE_STATUS_FAULTED
 	} else if strings.TrimSpace(statusStr) == "OFFLINE" {
-		return metrics.StorageStatus_STORAGE_STATUS_OFFLINE
+		return info.StorageStatus_STORAGE_STATUS_OFFLINE
 	} else if strings.TrimSpace(statusStr) == "UNAVAIL" {
-		return metrics.StorageStatus_STORAGE_STATUS_UNAVAIL
+		return info.StorageStatus_STORAGE_STATUS_UNAVAIL
 	} else if strings.TrimSpace(statusStr) == "REMOVED" {
-		return metrics.StorageStatus_STORAGE_STATUS_REMOVED
+		return info.StorageStatus_STORAGE_STATUS_REMOVED
 	} else if strings.TrimSpace(statusStr) == "SUSPENDED" {
-		return metrics.StorageStatus_STORAGE_STATUS_SUSPENDED
+		return info.StorageStatus_STORAGE_STATUS_SUSPENDED
 	}
 
-	return metrics.StorageStatus_STORAGE_STATUS_UNSPECIFIED
+	return info.StorageStatus_STORAGE_STATUS_UNSPECIFIED
 }
 
 // GetZfsDiskAndStatus takes a libzfs.VDevTree as input and returns
-// *metrics.StorageDiskInfo.
-func GetZfsDiskAndStatus(disk libzfs.VDevTree) (*metrics.StorageDiskInfo, error) {
+// *info.StorageDiskState.
+func GetZfsDiskAndStatus(disk libzfs.VDevTree) (*info.StorageDiskState, error) {
 	if disk.Type != libzfs.VDevTypeDisk {
 		return nil, fmt.Errorf("%s is not a disk", disk.Name)
 	}
 
-	rDiskStatus := new(metrics.StorageDiskInfo)
-	rDiskStatus.DiskName = disk.Name
+	rDiskStatus := new(info.StorageDiskState)
+	rDiskStatus.DiskName.Name = *proto.String(disk.Name)
+	// Fix here. Here you need to get serial number
 	rDiskStatus.Status = GetZfsDeviceStatusFromStr(disk.Stat.State.String())
 	return rDiskStatus, nil
 }
