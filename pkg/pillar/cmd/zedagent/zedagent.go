@@ -106,6 +106,7 @@ type zedagentContext struct {
 	subCertObjConfig          pubsub.Subscription
 	FlowlogQueue              chan<- *flowlog.FlowMessage
 	TriggerDeviceInfo         chan<- struct{}
+	TriggerHwInfo             chan<- struct{}
 	TriggerObjectInfo         chan<- infoForObjectKey
 	zbootRestarted            bool // published by baseosmgr
 	subBaseOsStatus           pubsub.Subscription
@@ -114,6 +115,7 @@ type zedagentContext struct {
 	subAppFlowMonitor         pubsub.Subscription
 	pubGlobalConfig           pubsub.Publication
 	pubMetricsMap             pubsub.Publication
+	pubHardwareInfo           pubsub.Publication
 	subGlobalConfig           pubsub.Subscription
 	subEdgeNodeCert           pubsub.Subscription
 	subVaultStatus            pubsub.Subscription
@@ -241,11 +243,13 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 	flowlogQueue := make(chan *flowlog.FlowMessage, flowlogQueueCap)
 	triggerDeviceInfo := make(chan struct{}, 1)
+	triggerHwInfo := make(chan struct{}, 1)
 	triggerObjectInfo := make(chan infoForObjectKey, 1)
 	zedagentCtx := zedagentContext{
 		ps:                ps,
 		FlowlogQueue:      flowlogQueue,
 		TriggerDeviceInfo: triggerDeviceInfo,
+		TriggerHwInfo:     triggerHwInfo,
 		TriggerObjectInfo: triggerObjectInfo,
 		zedcloudMetrics:   zedcloud.NewAgentMetrics(),
 	}
@@ -1278,9 +1282,15 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	go objectInfoTask(&zedagentCtx, triggerObjectInfo)
 	log.Functionf("Creating %s at %s", "flowLogTask", agentlog.GetMyStack())
 	go flowlogTask(&zedagentCtx, flowlogQueue)
+	log.Functionf("Creating %s at %s", "hardwareInfoTask", agentlog.GetMyStack())
+	go hardwareInfoTask(&zedagentCtx, triggerHwInfo)
 
 	// Publish initial device info.
 	triggerPublishDevInfo(&zedagentCtx)
+
+	// Publish initial hardware info.
+	hwInfoTiker := time.NewTicker(1 * time.Hour)
+	triggerPublishHwIHwfo(&zedagentCtx)
 
 	// start the metrics reporting task
 	handleChannel := make(chan interface{})
@@ -1560,6 +1570,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		case change := <-subWwanMetrics.MsgChan():
 			subWwanMetrics.ProcessChange(change)
 
+		case <-hwInfoTiker.C:
+			triggerPublishHwIHwfo(&zedagentCtx)
+
 		case <-stillRunning.C:
 			// Fault injection
 			if fatalFlag {
@@ -1571,6 +1584,19 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		} else {
 			ps.StillRunning(agentName, warningTime, errorTime)
 		}
+	}
+}
+
+func triggerPublishHwIHwfo(ctxPtr *zedagentContext) {
+
+	log.Function("Triggered PublishHardwareInfo")
+	select {
+	case ctxPtr.TriggerHwInfo <- struct{}{}:
+		// Do nothing more
+	default:
+		// This occurs if we are already trying to send a device info
+		// and we get a second and third trigger before that is complete.
+		log.Warnf("Failed to send on PublishHardwareInfo")
 	}
 }
 
