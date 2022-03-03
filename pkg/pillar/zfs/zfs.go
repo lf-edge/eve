@@ -15,6 +15,7 @@ import (
 
 	libzfs "github.com/bicomsystems/go-libzfs"
 	"github.com/golang/protobuf/proto"
+	"github.com/lf-edge/eve/api/go/evecommon"
 	"github.com/lf-edge/eve/api/go/info"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/types"
@@ -317,6 +318,7 @@ func GetZfsDiskAndStatus(disk libzfs.VDevTree) (*info.StorageDiskState, error) {
 	}
 
 	rDiskStatus := new(info.StorageDiskState)
+	rDiskStatus.DiskName = new(evecommon.DiskDescription)
 	rDiskStatus.DiskName.Name = *proto.String(disk.Name)
 	// Fix here. Here you need to get serial number
 	rDiskStatus.Status = GetZfsDeviceStatusFromStr(disk.Stat.State.String())
