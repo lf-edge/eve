@@ -65,6 +65,7 @@ enum ZInfoTypes {
   ZiContentTree = 8;
   ZiBlobList = 9;
   ZiAppInstMetaData = 10;
+  ZiHardWare = 11;
 }
 
 // Information about assignable I/O adapter bundles
@@ -427,6 +428,7 @@ message SmartAttr {
   uint64 worst = 3;   // worst value that Value has ever reached
   uint64 thresh = 4;  // the value that the Value of the same attribute must reach for the attribute's state to be considered critical.
   string when_failed = 5; // critical state if no empty
+  uint64 raw_value = 6;
 }
 
 message SmartMetric {
@@ -441,6 +443,9 @@ message SmartMetric {
 message StorageDiskInfo {
   string disk_name = 1;
   repeated SmartMetric smart_data = 3; // smartctl output
+  string wwn = 4;
+  string serial_number = 5;
+  string model = 6;
 }
 
 // Information about storage system
@@ -451,11 +456,13 @@ message StorageInfo {
   StorageRaidType curent_raid = 4;  // Current RAID configuration. When no have RAID send ""
   double compression_ratio = 5;     // Compression ratio
   uint64 zpool_size = 6;            // Storage pool size.
+  bool collector_errors = 7;        // Reports errors when collecting information. Default and normal value = false
 }
 
 // Information about the system that is sent once when the system boots
 message HardwareInfo {
   repeated StorageDiskInfo disks = 1; // S.M.A.R.T. info for disks
+  bool collector_errors = 2; // Reports errors when collecting information. Default and normal value = false
 }
 
 // Base device info, as discovered by Xen (or OS on bare metal)
