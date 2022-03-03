@@ -273,6 +273,9 @@ for BLK_DEVICE in $BLK_DEVICES; do
     fi
 done
 
+#Directory for storing disks S.M.A.R.T. information
+SMART_DATA_PATH="/persist/disks_info"
+mkdir -p $SMART_DATA_PATH
 #Recording SMART details to a file
 SMART_JSON=$(smartctl -a "$(grep -m 1 /persist < /proc/mounts | cut -d ' ' -f 1)" --json)
 if [ -f "$SMART_DETAILS_PREVIOUS_FILE" ];
