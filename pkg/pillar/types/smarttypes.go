@@ -5,6 +5,10 @@
 
 package types
 
+import (
+	smart "github.com/anatol/smart.go"
+)
+
 //SmartData holds SMART details of the device
 type SmartData struct {
 	SmartCtl        SmartCtl       `json:"smartctl"`
