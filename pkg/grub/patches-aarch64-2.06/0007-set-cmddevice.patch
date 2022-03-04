@@ -1,0 +1,26 @@
+From 35c2f5ba467711b308124ebb61ea6aef4eb77707 Mon Sep 17 00:00:00 2001
+From: Petr Fedchenkov <giggsoff@gmail.com>
+Date: Thu, 3 Mar 2022 13:00:27 +0100
+Subject: [PATCH 1/2] set cmddevice
+
+---
+ grub-core/kern/main.c | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/grub-core/kern/main.c b/grub-core/kern/main.c
+index 73967e2f5..f4ffecc2a 100644
+--- a/grub-core/kern/main.c
++++ b/grub-core/kern/main.c
+@@ -132,6 +132,9 @@ grub_set_prefix_and_root (void)
+     {
+       char *cmdpath;
+ 
++      grub_env_set ("cmddevice", fwdevice);
++      grub_env_export ("cmddevice");
++
+       cmdpath = grub_xasprintf ("(%s)%s", fwdevice, fwpath ? : "");
+       if (cmdpath)
+ 	{
+-- 
+2.32.0
+
