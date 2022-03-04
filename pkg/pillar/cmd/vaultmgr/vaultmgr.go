@@ -25,6 +25,7 @@ package vaultmgr
 import (
 	"bytes"
 	"crypto/sha256"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -73,6 +74,8 @@ const (
 	keyDir                 = "/TmpVaultDir2"
 	keyFile                = keyDir + "/protector.key"
 	protectorPrefix        = "TheVaultKey"
+	vaultConfigDir         = types.PersistStatusDir + "/" + agentName
+	vaultConfigFile        = vaultConfigDir + "/vaultconfig.json"
 	vaultKeyLen            = 32 //bytes
 	vaultHalfKeyLen        = 16 //bytes
 	deprecatedCfgVaultName = "Configuration Data Store"
@@ -90,6 +93,11 @@ var (
 	logger            *logrus.Logger
 	log               *base.LogObject
 )
+
+//vaultConfig: defines config for the vault
+type vaultConfig struct {
+	TpmKeyOnly bool
+}
 
 func getEncryptParams(vaultPath string) []string {
 	args := []string{"encrypt", vaultPath, "--key=" + keyFile,
@@ -264,6 +272,47 @@ func retrieveCloudKey() ([]byte, error) {
 	return cloudKey, nil
 }
 
+//useTpmKeyOnly: checks vaultConfigFile
+func useTpmKeyOnly() bool {
+	_, err := os.Stat(vaultConfigFile)
+	if os.IsNotExist(err) {
+		// vaultConfigFile does not exist, merge the keys
+		return false
+	}
+	content, err := ioutil.ReadFile(vaultConfigFile)
+	if err != nil {
+		log.Errorf("Error reading from %s", vaultConfigFile)
+		return false
+	}
+	data := vaultConfig{}
+	_ = json.Unmarshal(content, &data)
+	return data.TpmKeyOnly
+}
+
+func createVaultConfigFile() error {
+
+	// Create VaultConfigFile with TpmKeyOnly = true
+	// Going forward we will be using only TPM key and the mergekeys() will be called to
+	// support older installs which does not have VaultConfig file present.
+	if err := os.MkdirAll(vaultConfigDir, 755); err != nil {
+		log.Errorf("Failed to create vault confir directory %s", vaultConfigDir)
+		return err
+	}
+	config := vaultConfig{}
+	config.TpmKeyOnly = true
+	content, err := json.Marshal(config)
+	if err != nil {
+		log.Errorf("Failed to generate json config")
+		return err
+	}
+	if err := ioutil.WriteFile(vaultConfigFile, content, 0644); err != nil {
+		log.Errorf("Failed to write to vault config file %s", vaultConfigFile)
+		return err
+	}
+	log.Noticef("Created vault config file %s", vaultConfigFile)
+	return nil
+}
+
 func mergeKeys(key1 []byte, key2 []byte) ([]byte, error) {
 	if len(key1) != vaultKeyLen ||
 		len(key2) != vaultKeyLen {
@@ -296,7 +345,14 @@ func deriveVaultKey(cloudKeyOnlyMode, useSealedKey bool) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return mergeKeys(tpmKey, cloudKey)
+
+	tpmKeyOnlyMode := useTpmKeyOnly()
+	if tpmKeyOnlyMode == false {
+		log.Noticef("Calling mergeKeys")
+		return mergeKeys(tpmKey, cloudKey)
+	}
+	log.Noticef("Using TPM key only")
+	return tpmKey, nil
 }
 
 //stageKey is responsible for talking to TPM and Controller
@@ -428,6 +484,9 @@ func setupVault(vaultPath string, deprecated bool) error {
 	if err != nil && !deprecated {
 		//Create vault dir
 		if err := os.MkdirAll(vaultPath, 755); err != nil {
+			return err
+		}
+		if err := createVaultConfigFile(); err != nil {
 			return err
 		}
 	}

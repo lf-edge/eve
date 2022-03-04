@@ -76,6 +76,11 @@ func unlockZfsVault(vaultPath string) error {
 
 //e.g. zfs create -o encryption=aes-256-gcm -o keylocation=file://tmp/raw.key -o keyformat=raw perist/vault
 func createZfsVault(vaultPath string) error {
+
+	//create vault config file before creating the vault
+	if err := createVaultConfigFile(); err != nil {
+		return err
+	}
 	//prepare key in the staging file
 	//we never create deprecated vault on ZFS
 	//cloudKeyOnlyMode=false, useSealedKey=true
