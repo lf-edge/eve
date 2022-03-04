@@ -4,6 +4,7 @@ go 1.15
 
 require (
 	github.com/Focinfi/go-dns-resolver v1.0.0
+	github.com/anatol/smart.go v0.0.0-20220218195151-5ee9e8fa73f0
 	github.com/bicomsystems/go-libzfs v0.4.0
 	github.com/containerd/cgroups v1.0.1
 	github.com/containerd/containerd v1.5.9
@@ -38,9 +39,9 @@ require (
 	github.com/stretchr/testify v1.7.0
 	github.com/tatsushid/go-fastping v0.0.0-20160109021039-d7bb493dee3e
 	github.com/vishvananda/netlink v1.1.1-0.20210924202909-187053b97868
-	golang.org/x/crypto v0.0.0-20210513164829-c07d793c2f9a
-	golang.org/x/net v0.0.0-20210805182204-aaa1db679c0d
-	golang.org/x/sys v0.0.0-20210908233432-aa78b53d3365
+	golang.org/x/crypto v0.0.0-20220131195533-30dcbda58838
+	golang.org/x/net v0.0.0-20211112202133-69e39bad7dc2
+	golang.org/x/sys v0.0.0-20220204135822-1c1b9b1eba6a
 	google.golang.org/grpc v1.40.0
 )
 
