@@ -5,8 +5,8 @@ go 1.15
 require (
 	github.com/Focinfi/go-dns-resolver v1.0.0
 	github.com/bicomsystems/go-libzfs v0.4.0
-	github.com/containerd/cgroups v1.0.1
-	github.com/containerd/containerd v1.5.9
+	github.com/containerd/cgroups v1.0.3
+	github.com/containerd/containerd v1.6.1
 	github.com/containerd/typeurl v1.0.2
 	github.com/containerd/zfs v1.0.0
 	github.com/cshari-zededa/eve-tpm2-tools v0.0.4
@@ -26,7 +26,7 @@ require (
 	github.com/lf-edge/edge-containers v0.0.0-20210630151415-7dbb4f290dab
 	github.com/lf-edge/eve/api/go v0.0.0-00010101000000-000000000000
 	github.com/lf-edge/eve/libs/zedUpload v0.0.0-20210120050122-276fea8f6efd
-	github.com/onsi/gomega v1.10.3
+	github.com/onsi/gomega v1.15.0
 	github.com/opencontainers/go-digest v1.0.0
 	github.com/opencontainers/image-spec v1.0.2
 	github.com/opencontainers/runtime-spec v1.0.3-0.20210326190908-1c3f411f0417
@@ -38,10 +38,10 @@ require (
 	github.com/stretchr/testify v1.7.0
 	github.com/tatsushid/go-fastping v0.0.0-20160109021039-d7bb493dee3e
 	github.com/vishvananda/netlink v1.1.1-0.20210924202909-187053b97868
-	golang.org/x/crypto v0.0.0-20210513164829-c07d793c2f9a
-	golang.org/x/net v0.0.0-20210805182204-aaa1db679c0d
-	golang.org/x/sys v0.0.0-20210908233432-aa78b53d3365
-	google.golang.org/grpc v1.40.0
+	golang.org/x/crypto v0.0.0-20210817164053-32db794688a5
+	golang.org/x/net v0.0.0-20211216030914-fe4d6282115f
+	golang.org/x/sys v0.0.0-20211216021012-1d35b9e2eb4e
+	google.golang.org/grpc v1.43.0
 )
 
 replace github.com/lf-edge/eve/api/go => ../../api/go
