@@ -1,5 +1,5 @@
 # Default EVE version to update
-{{$eve_ver := "6.4.0"}}
+{{$eve_ver := "7.4.0"}}
 
 # Obtain EVE version from environment variable EVE_VERSION
 {{$env := EdenGetEnv "EVE_VERSION"}}
@@ -7,8 +7,9 @@
 # If environment variable EVE_VERSION set, use it instead of default
 {{if $env}}{{$eve_ver = $env}}{{end}}
 
-# Obtain eve.hv from config
-{{$eve_hv := EdenConfig "eve.hv"}}
+# We want to test update logic of current image
+# Will use predefined HV
+{{$eve_hv := "kvm"}}
 
 # Obtain eve.arch from config
 {{$eve_arch := EdenConfig "eve.arch"}}
@@ -24,7 +25,7 @@ eden controller edge-node update --config timer.test.baseimage.update=30
 
 # Download EVE rootfs into eve-dist
 message 'EVE image download'
-eden -t 10m utils download eve-rootfs --eve-tag={{$eve_ver}} --eve-hv={{EdenConfig "eve.hv"}} --downloader-dist={{EdenConfigPath "eve.dist"}} -v debug
+eden -t 10m utils download eve-rootfs --eve-tag={{$eve_ver}} --eve-hv={{$eve_hv}} --downloader-dist={{EdenConfigPath "eve.dist"}} -v debug
 
 # Check stdout of previous command. Expected to get full path to squashfs
 stdout '{{EdenConfigPath "eve.dist"}}/rootfs-{{ $short_version }}.squashfs'

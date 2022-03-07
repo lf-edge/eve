@@ -18,7 +18,7 @@ eden controller edge-node update --config timer.test.baseimage.update=30
 
 # Download EVE rootfs into eve-dist
 message 'EVE image download'
-eden -t 10m utils download eve-rootfs --eve-tag={{$eve_ver}} --eve-hv={{EdenConfig "eve.hv"}} --downloader-dist={{EdenConfigPath "eve.dist"}} -v debug
+eden -t 10m utils download eve-rootfs --eve-tag={{$eve_ver}} --eve-hv={{$eve_hv}} --downloader-dist={{EdenConfigPath "eve.dist"}} -v debug
 
 # Check stdout of previous command. Expected to get full path to squashfs
 stdout '{{EdenConfigPath "eve.dist"}}/rootfs-{{ $short_version }}.squashfs'
