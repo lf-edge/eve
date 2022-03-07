@@ -4,10 +4,9 @@ go 1.15
 
 require (
 	github.com/Focinfi/go-dns-resolver v1.0.0
-	github.com/anatol/smart.go v0.0.0-20220218195151-5ee9e8fa73f0
 	github.com/bicomsystems/go-libzfs v0.4.0
 	github.com/containerd/cgroups v1.0.1
-	github.com/containerd/containerd v1.5.9
+	github.com/containerd/containerd v1.5.10
 	github.com/containerd/typeurl v1.0.2
 	github.com/containerd/zfs v1.0.0
 	github.com/cshari-zededa/eve-tpm2-tools v0.0.4

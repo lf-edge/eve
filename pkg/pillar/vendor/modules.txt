@@ -51,9 +51,6 @@ github.com/Microsoft/hcsshim/pkg/ociwclayer
 github.com/StackExchange/wmi
 # github.com/VictorLowther/godmi v0.0.0-20190311134151-270258a8252d
 github.com/VictorLowther/godmi
-# github.com/anatol/smart.go v0.0.0-20220218195151-5ee9e8fa73f0
-## explicit
-github.com/anatol/smart.go
 # github.com/aws/aws-sdk-go v1.35.35
 github.com/aws/aws-sdk-go/aws
 github.com/aws/aws-sdk-go/aws/arn
@@ -115,7 +112,7 @@ github.com/cespare/xxhash/v2
 # github.com/containerd/cgroups v1.0.1
 ## explicit
 github.com/containerd/cgroups/stats/v1
-# github.com/containerd/containerd v1.5.9
+# github.com/containerd/containerd v1.5.10
 ## explicit
 github.com/containerd/containerd
 github.com/containerd/containerd/api/services/containers/v1
