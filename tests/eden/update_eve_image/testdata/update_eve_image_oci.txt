@@ -1,5 +1,5 @@
 # Default EVE version to update
-{{$eve_ver := "6.5.0"}}
+{{$eve_ver := "7.5.0"}}
 
 # Obtain EVE version from environment variable EVE_VERSION
 {{$env := EdenGetEnv "EVE_VERSION"}}
@@ -7,8 +7,9 @@
 # If environment variable EVE_VERSION set, use it instead of default
 {{if $env}}{{$eve_ver = $env}}{{end}}
 
-# Obtain eve.hv from config
-{{$eve_hv := EdenConfig "eve.hv"}}
+# We want to test update logic of current image
+# Will use predefined HV
+{{$eve_hv := "kvm"}}
 
 # Obtain eve.arch from config
 {{$eve_arch := EdenConfig "eve.arch"}}

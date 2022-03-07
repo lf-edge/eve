@@ -11,6 +11,10 @@ on:
 jobs:
   integration:
     runs-on: ubuntu-20.04
+    strategy:
+      fail-fast: false
+      matrix:
+        hv: ["kvm", "zfs-kvm"]
     if: ${{ github.event.review.state == 'approved' || github.ref == 'refs/heads/master' }}
     steps:
       - name: Check
@@ -44,12 +48,12 @@ jobs:
           TAG: pr${{ github.event.pull_request.number }}
           CACHE: evebuild/danger
         run: |
-          if docker pull "$CACHE:$TAG-kvm"; then
-             docker tag  "$CACHE:$TAG-kvm" "lfedge/eve:$TAG-kvm"
-             docker tag  "$CACHE:$TAG-kvm" "lfedge/eve:$TAG-kvm-amd64"
+          if docker pull "$CACHE:$TAG-${{ matrix.hv }}"; then
+             docker tag  "$CACHE:$TAG-${{ matrix.hv }}" "lfedge/eve:$TAG-${{ matrix.hv }}"
+             docker tag  "$CACHE:$TAG-${{ matrix.hv }}" "lfedge/eve:$TAG-${{ matrix.hv }}-amd64"
           else
              make -C eve V=1 pkgs
-             make -C eve V=1 ROOTFS_VERSION="$TAG" HV=kvm eve
+             make -C eve V=1 ROOTFS_VERSION="$TAG" HV=${{ matrix.hv }} eve
              IMAGES="$(docker images -f reference="lfedge/eve-*" -q)"
              IMAGES="$IMAGES $(docker images -f reference="eve-build-*" -q)"
              IMAGES="$IMAGES $(docker images -f reference="golang" -q)"
@@ -66,6 +70,7 @@ jobs:
       - name: run
         run: |
           ./eden config set default --key eve.tag --value="$TAG"
+          ./eden config set default --key eve.hv --value="${{ matrix.hv }}"
           ./eden config set default --key=eve.accel --value=false
           ./eden config set default --key=eve.cpu --value=2
           ./eden config set default --key=eden.tests --value=${{ github.workspace }}/eve/tests/eden
@@ -104,7 +109,7 @@ jobs:
         if: ${{ always() }}
         uses: actions/upload-artifact@v2
         with:
-          name: 'eden-report'
+          name: eden-report-${{ matrix.hv }}
           path: |
             ${{ github.workspace }}/trace.log
             ${{ github.workspace }}/info.log
