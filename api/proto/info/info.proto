@@ -66,6 +66,7 @@ enum ZInfoTypes {
   ZiContentTree = 8;
   ZiBlobList = 9;
   ZiAppInstMetaData = 10;
+  ZiHardware = 11;
 }
 
 // Information about assignable I/O adapter bundles
@@ -444,20 +445,26 @@ message SmartAttr {
   uint64 worst = 3;   // worst value that Value has ever reached
   uint64 thresh = 4;  // the value that the Value of the same attribute must reach for the attribute's state to be considered critical.
   string when_failed = 5; // critical state if no empty
+  uint64 raw_value = 6; // Contains miscellaneous meter readings (where applicable)
 }
 
 message SmartMetric {
-  SmartAttr reallocated_sector_ct = 1;
-  SmartAttr power_on_hours = 2;
-  SmartAttr power_cycle_count = 3;
-  SmartAttr reallocated_event_count = 4;
-  SmartAttr current_pending_sector = 5;
-  bool need_update = 6;
+  SmartAttr reallocated_sector_ct = 1; // Count of reallocated sectors. The higher the attribute value, the more sectors were reallocated
+  SmartAttr power_on_hours = 2; // Count of hours in power-on state.
+  SmartAttr power_cycle_count = 3; // This attribute indicates the count of full hard disk power on/off cycles
+  SmartAttr reallocated_event_count = 4; // Count of remap operations. Shows the total count of attempts.
+  SmartAttr current_pending_sector = 5; // Count of "unstable" sectors (waiting to be remapped, because of unrecoverable read errors)
+  bool need_update = 6; // Indicates that data has changed
+  SmartAttr temperature = 7; // Indicates the device temperature, if the appropriate sensor is fitted.
 }
 
 message StorageDiskInfo {
   string disk_name = 1;
   repeated SmartMetric smart_data = 3; // smartctl output
+  string wwn = 4;
+  string serial_number = 5;
+  string model = 6; // Intel 123456F
+  string collector_errors = 7; // Reports errors when collecting information. Default and normal value = ""
 }
 
 // Information about storage system
@@ -465,12 +472,13 @@ message StorageInfo {
   string pool_name = 1;
   StorageTypeInfo storage_type = 2; // Storage type zfs or ext4
   string zfs_version = 3;
-  StorageRaidType current_raid = 4;  // Current RAID configuration. When no have RAID send STORAGE_RAID_TYPE_NORAID
+  StorageRaidType current_raid = 4; // Current RAID configuration. When no have RAID send STORAGE_RAID_TYPE_NORAID
   double compression_ratio = 5;     // Compression ratio
   uint64 zpool_size = 6;            // Storage pool size.
   uint32 count_zvols = 7;           // zvols count
   StorageStatus storage_state = 8;  // zfs zpool status
   repeated StorageDiskState disks = 9;  // Disks lists in EVE (use in storage)
+  string collector_errors = 10; // Reports errors when collecting information. Default and normal value = ""
 }
 
 // Information about the system that is sent once when the system boots
