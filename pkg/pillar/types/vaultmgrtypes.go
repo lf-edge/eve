@@ -20,6 +20,16 @@ type VaultStatus struct {
 	ErrorAndTime
 }
 
+// VaultConfig represents vault key to be used
+type VaultConfig struct {
+	TpmKeyOnly bool
+}
+
+// Key :
+func (config VaultConfig) Key() string {
+	return "global"
+}
+
 //Key returns the key used for indexing into a list of vaults
 func (status VaultStatus) Key() string {
 	return status.Name

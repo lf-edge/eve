@@ -53,6 +53,7 @@ import (
 type vaultMgrContext struct {
 	pubVaultStatus            pubsub.Publication
 	pubVaultKeyFromDevice     pubsub.Publication
+	pubVaultConfig            pubsub.Publication
 	subGlobalConfig           pubsub.Subscription
 	subVaultKeyFromController pubsub.Subscription
 	GCInitialized             bool // GlobalConfig initialized
@@ -89,6 +90,8 @@ var (
 	debugOverride     bool // From command line arg
 	logger            *logrus.Logger
 	log               *base.LogObject
+	vaultConfig       types.VaultConfig
+	vaultConfigInited bool
 )
 
 func getEncryptParams(vaultPath string) []string {
@@ -264,6 +267,18 @@ func retrieveCloudKey() ([]byte, error) {
 	return cloudKey, nil
 }
 
+//publishVaultConfig: publishes vault config and also updates in memory vaultConfig
+func publishVaultConfig(ctx *vaultMgrContext, tpmKeyOnly bool) {
+	config := types.VaultConfig{}
+	config.TpmKeyOnly = tpmKeyOnly
+
+	key := config.Key()
+	log.Notice("Publishing Vault Config with tpmKeyOnly ", tpmKeyOnly)
+	pub := ctx.pubVaultConfig
+	pub.Publish(key, config)
+	vaultConfig = config
+}
+
 func mergeKeys(key1 []byte, key2 []byte) ([]byte, error) {
 	if len(key1) != vaultKeyLen ||
 		len(key2) != vaultKeyLen {
@@ -296,7 +311,14 @@ func deriveVaultKey(cloudKeyOnlyMode, useSealedKey bool) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return mergeKeys(tpmKey, cloudKey)
+
+	tpmKeyOnlyMode := vaultConfig.TpmKeyOnly
+	if tpmKeyOnlyMode == false {
+		log.Notice("Calling mergeKeys")
+		return mergeKeys(tpmKey, cloudKey)
+	}
+	log.Notice("Using TPM key only")
+	return tpmKey, nil
 }
 
 //stageKey is responsible for talking to TPM and Controller
@@ -598,6 +620,27 @@ func initializeSelfPublishHandles(ps *pubsub.PubSub, ctx *vaultMgrContext) {
 	}
 	pubVaultKeyFromDevice.ClearRestarted()
 	ctx.pubVaultKeyFromDevice = pubVaultKeyFromDevice
+
+	//to publish vault config to myself
+	pubVaultConfig, err := ps.NewPublication(
+		pubsub.PublicationOptions{
+			AgentName:  agentName,
+			TopicType:  types.VaultConfig{},
+			Persistent: true,
+		})
+	if err != nil {
+		log.Fatal(err)
+	}
+	item, err := pubVaultConfig.Get("global")
+	if err != nil {
+		vaultConfigInited = false
+		log.Notice("Could not find vault config")
+	} else {
+		vaultConfig = item.(types.VaultConfig)
+		vaultConfigInited = true
+		log.Notice("Vault config inited with tpmkeyonly ", vaultConfig.TpmKeyOnly)
+	}
+	ctx.pubVaultConfig = pubVaultConfig
 }
 
 func setupDeprecatedVaultsOnExt4(ignoreDefaultVault bool) error {
@@ -628,6 +671,33 @@ func setupDefaultVaultOnZfs() error {
 		return fmt.Errorf("Error in setting up ZFS vault %s:%v", defaultSecretDataset, err)
 	}
 	return nil
+}
+
+// checkAndPublishVaultConfig: If vault config is not yet initialized
+// Checks if defaultVault/defaultSecretDataset exists and if not publishes the vault config TmpKeyOnly = true
+// If those directories exists, then publishes the vault config TmpKeyOnly = false
+func checkAndPublishVaultConfig(ctx *vaultMgrContext) {
+	// We do not have vault config, publish it
+	if vaultConfigInited == false {
+		persistFsType := vault.ReadPersistType()
+		tpmKeyOnly := false
+
+		switch persistFsType {
+		case types.PersistExt4:
+			_, err := os.Stat(defaultVault)
+			if os.IsNotExist(err) {
+				tpmKeyOnly = true
+			}
+		case types.PersistZFS:
+			if err := checkKeyStatus(defaultSecretDataset); err != nil {
+				tpmKeyOnly = true
+			}
+		default:
+			log.Noticef("unsupported %s filesystem, ignoring vault config setup",
+				persistFsType)
+		}
+		publishVaultConfig(ctx, tpmKeyOnly)
+	}
 }
 
 //setupDefaultVault sets up default vault, based on the current filesystem
@@ -667,6 +737,10 @@ func setupDefaultVault(ctx *vaultMgrContext) error {
 		}
 		return err
 	}
+
+	// TPM is enabled. Check if defaultVault directory exists, if not set vaultconfig
+	checkAndPublishVaultConfig(ctx)
+
 	switch persistFsType {
 	case types.PersistExt4:
 		if err := setupDefaultVaultOnExt4(); err != nil {
@@ -860,7 +934,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 		// initialize publishing handles
 		initializeSelfPublishHandles(ps, &ctx)
-
 		if err := setupDefaultVault(&ctx); err != nil {
 			log.Errorf("setupDefaultVault failed, err: %v", err)
 			publishVaultStatus(&ctx)
