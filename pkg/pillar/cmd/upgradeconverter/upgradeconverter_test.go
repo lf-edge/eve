@@ -516,4 +516,5 @@ func Test_ConvertUUIDPairToNum(t *testing.T) {
 			t.Fatalf("CreateTime mismatch: %s vs %s", val.CreateTime, uptn.CreateTime)
 		}
 	}
+	ucContextCleanupDirs(ctxPtr)
 }
