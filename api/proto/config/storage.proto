@@ -207,6 +207,11 @@ enum DiskConfigType {
 }
 
 //DiskConfig describe desired configuration of disk
+//If we want change state to online/offline we should define its state
+//If we want to add disk we should define it here and set DiskConfigType to online or offline
+//If we want to remove disk we should set its state to unused or appdirect
+//If we want to replace disk we should fill old_disk to be replaced with disk
+//Progress of operation is expected to be available in info messages
 message DiskConfig {
   org.lfedge.eve.common.DiskDescription disk = 1;
   // define old disk here to replace it with new one defined in disk, omit it to not use replacement
@@ -214,13 +219,26 @@ message DiskConfig {
   DiskConfigType disk_config = 3;
 }
 
+// DisksArrayType is the desired configuration of disks in DisksConfig
+enum DisksArrayType {
+  DISKS_ARRAY_TYPE_UNSPECIFIED = 0; // no configured
+  DISKS_ARRAY_TYPE_RAID0 = 1; // stripe
+  DISKS_ARRAY_TYPE_RAID1 = 2; // mirror
+  DISKS_ARRAY_TYPE_RAIDZ1 = 3; // raidz1
+  DISKS_ARRAY_TYPE_RAIDZ2 = 4; // raidz2
+}
+
 //DisksConfig is a configuration of disks
 //We expect information about disks to be filled and will try to adjust disks states accordingly
-//If we want change state to online/offline we should define its state
-//If we want to add disk we should define it here and set DiskConfigType to online or offline
-//If we want to remove disk we should set its state to unused or appdirect
-//If we want to replace disk we should fill old_disk to be replaced with disk
-//Progress of operation is expected to be available in info messages
+//All disks defined in disks field expected to have array type defined in array_type
+//To support nested topologies we can use children field
+//
+//For example to use stripe of two pairs of mirrored disks we should define
+//DisksConfig without disks with array_type DISKS_ARRAY_TYPE_RAID0
+//with two children with properly defined disks inside and with array_type DISKS_ARRAY_TYPE_RAID1
+//and empty children
 message DisksConfig {
   repeated DiskConfig disks = 1;
+  DisksArrayType array_type = 2;
+  repeated DisksConfig children = 3;
 }
