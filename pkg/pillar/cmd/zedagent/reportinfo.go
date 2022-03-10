@@ -15,6 +15,7 @@ import (
 	"time"
 
 	libzfs "github.com/bicomsystems/go-libzfs"
+	"github.com/containerd/containerd/mount"
 	"github.com/eriknordmark/ipinfo"
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes"
@@ -431,6 +432,16 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 	} else {
 		xStorageInfo := new(info.StorageInfo)
 		xStorageInfo.StorageType = info.StorageTypeInfo_STORAGE_TYPE_INFO_EXT4
+		mi, err := mount.Lookup(types.PersistDir)
+		if err != nil {
+			log.Errorf("cannot find device with %s mount", types.PersistDir)
+		} else {
+			rDiskStatus := new(info.StorageDiskState)
+			rDiskStatus.DiskName = new(evecommon.DiskDescription)
+			rDiskStatus.DiskName.Name = *proto.String(mi.Source)
+			rDiskStatus.Status = info.StorageStatus_STORAGE_STATUS_ONLINE
+			xStorageInfo.Disks = append(xStorageInfo.Disks, rDiskStatus)
+		}
 		ReportDeviceInfo.StorageInfo = append(ReportDeviceInfo.StorageInfo, xStorageInfo)
 		log.Tracef("report metrics sending info for EXT4 storage type")
 	}
