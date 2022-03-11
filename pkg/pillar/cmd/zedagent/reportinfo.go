@@ -1048,7 +1048,6 @@ func parseSMARTData() {
 		log.Errorf("parseSMARTData: exception while parsing SMART data. %s", err.Error())
 		return
 	}
-	smartData.RawData = string(data)
 }
 
 func getCapabilities(ctx *zedagentContext) *info.Capabilities {

@@ -705,7 +705,7 @@ func handleVaultStatusImpl(ctxArg interface{}, key string,
 func parseSMARTData() {
 	currentSMARTfilename := "/persist/SMART_details.json"
 	previousSMARTfilename := "/persist/SMART_details_previous.json"
-	parseData := func(filePath string, SMARTDataObj *types.SmartData) {
+	parseData := func(filePath string, SMARTDataObj *types.DeviceSmartInfo) {
 		data, err := fileutils.ReadWithMaxSize(log, filePath,
 			maxSmartCtlSize)
 		if err != nil {
@@ -716,7 +716,6 @@ func parseSMARTData() {
 			log.Errorf("parseSMARTData: exception while parsing SMART data. %s", err.Error())
 			return
 		}
-		SMARTDataObj.RawData = string(data)
 	}
 
 	parseData(currentSMARTfilename, smartData)
