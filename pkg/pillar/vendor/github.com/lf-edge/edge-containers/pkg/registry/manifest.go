@@ -1,23 +1,25 @@
 package registry
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"path"
 	"time"
 
+	"github.com/containerd/containerd/remotes"
 	"github.com/lf-edge/edge-containers/pkg/tgz"
 
 	"oras.land/oras-go/pkg/content"
+	"oras.land/oras-go/pkg/target"
 
-	ctrcontent "github.com/containerd/containerd/content"
 	digest "github.com/opencontainers/go-digest"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 )
 
 // Manifest create the manifest for the given Artifact.
-func (a Artifact) Manifest(format Format, configOpts ConfigOpts, legacyOpts ...LegacyOpt) (*ocispec.Manifest, ctrcontent.Provider, error) {
+func (a Artifact) Manifest(format Format, configOpts ConfigOpts, ref string, legacyOpts ...LegacyOpt) (*ocispec.Manifest, target.Target, error) {
 	var (
 		desc  ocispec.Descriptor
 		err   error
@@ -29,9 +31,9 @@ func (a Artifact) Manifest(format Format, configOpts ConfigOpts, legacyOpts ...L
 	}
 
 	// Go through each file type in the registry and add the appropriate file type and path, along with annotations
-	fileStore := content.NewFileStore("")
+	fileStore := content.NewFile("")
 	defer fileStore.Close()
-	memStore := content.NewMemoryStore()
+	memStore := content.NewMemory()
 	multiStore := content.MultiReader{}
 	multiStore.AddStore(fileStore, memStore)
 
@@ -188,16 +190,35 @@ func (a Artifact) Manifest(format Format, configOpts ConfigOpts, legacyOpts ...L
 
 		name := "config.json"
 		mediaType := MimeTypeOCIImageConfig
-		desc = memStore.Add(name, mediaType, configBytes)
+		desc, err = memStore.Add(name, mediaType, configBytes)
 		if err != nil {
 			return nil, nil, fmt.Errorf("error adding OCI config: %v", err)
 		}
 	}
 	// make our manifest
-	return &ocispec.Manifest{
-		Config: desc,
-		Layers: pushContents,
-	}, multiStore, nil
+	mediaType := ocispec.MediaTypeImageManifest
+	manifest := &ocispec.Manifest{
+		Config:    desc,
+		Layers:    pushContents,
+		MediaType: mediaType,
+	}
+	b, err := json.Marshal(manifest)
+	if err != nil {
+		return nil, nil, fmt.Errorf("unable to convert manifest to json: %v", err)
+	}
+	manifestDesc := ocispec.Descriptor{
+		MediaType: mediaType,
+		Size:      int64(len(b)),
+		Digest:    digest.FromBytes(b),
+	}
+	target := newMultiTarget(multiStore)
+	// It is a bit annoying that we need to store this twice, but the only oras structure
+	// that supports multiple backends is content.MultiReader, and that does not have
+	// support for Resolve(), only for Fetch().
+	_ = memStore.StoreManifest(ref, manifestDesc, b)
+	_ = target.StoreManifest(ref, manifestDesc, b)
+
+	return manifest, target, nil
 }
 
 func getManifest(dig, name, mediaType string, size int64) (ocispec.Descriptor, error) {
@@ -228,7 +249,7 @@ func getManifest(dig, name, mediaType string, size int64) (ocispec.Descriptor, e
 	return desc, nil
 }
 
-func createLayerAndDesc(role, name, customMediaType, tmpDir string, format Format, timestamp *time.Time, source Source, fileStore *content.FileStore, memStore *content.Memorystore) (ocispec.Descriptor, error) {
+func createLayerAndDesc(role, name, customMediaType, tmpDir string, format Format, timestamp *time.Time, source Source, fileStore *content.File, memStore *content.Memory) (ocispec.Descriptor, error) {
 	var (
 		desc ocispec.Descriptor
 		err  error
@@ -250,7 +271,10 @@ func createLayerAndDesc(role, name, customMediaType, tmpDir string, format Forma
 			return desc, fmt.Errorf("error adding %s from file at %s: %v", name, filepath, err)
 		}
 	case source.GetContent() != nil:
-		desc = memStore.Add(name, mediaType, source.GetContent())
+		desc, err = memStore.Add(name, mediaType, source.GetContent())
+		if err != nil {
+			return desc, fmt.Errorf("error adding content for %s: %v", name, err)
+		}
 	case source.GetDigest() != "":
 		desc, err = getManifest(source.GetDigest(), name, mediaType, source.GetSize())
 		if err != nil {
@@ -263,4 +287,30 @@ func createLayerAndDesc(role, name, customMediaType, tmpDir string, format Forma
 	desc.Annotations[AnnotationRole] = role
 	desc.Annotations[ocispec.AnnotationTitle] = name
 	return desc, nil
+}
+
+// multiTarget wrap a multiReader so it can be a proper target.Target. This really should be upstream in oras.
+type multiTarget struct {
+	reader *content.MultiReader
+	memory *content.Memory
+}
+
+func newMultiTarget(reader content.MultiReader) *multiTarget {
+	return &multiTarget{
+		reader: &reader,
+		memory: content.NewMemory(),
+	}
+}
+
+func (m *multiTarget) StoreManifest(ref string, manifest ocispec.Descriptor, b []byte) error {
+	return m.memory.StoreManifest(ref, manifest, b)
+}
+func (m *multiTarget) Fetcher(ctx context.Context, ref string) (remotes.Fetcher, error) {
+	return m.reader, nil
+}
+func (m *multiTarget) Pusher(ctx context.Context, ref string) (remotes.Pusher, error) {
+	return nil, fmt.Errorf("unsupported")
+}
+func (m *multiTarget) Resolve(ctx context.Context, ref string) (name string, desc ocispec.Descriptor, err error) {
+	return m.memory.Resolve(ctx, ref)
 }

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	ctrcontent "github.com/containerd/containerd/content"
+	"github.com/containerd/containerd/remotes"
 	"github.com/opencontainers/go-digest"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"oras.land/oras-go/pkg/content"
@@ -27,21 +28,6 @@ type IngesterCloser interface {
 type Target interface {
 	Ingester() IngesterCloser
 	MultiWriter() bool
-}
-
-// DirTarget save the entire contents to a single directory.
-type DirTarget struct {
-	Dir string
-}
-
-// Ingester get the IngesterCloser
-func (d DirTarget) Ingester() IngesterCloser {
-	return content.NewFileStore(d.Dir)
-}
-
-// MultiWriter does this support multiwriter
-func (d DirTarget) MultiWriter() bool {
-	return false
 }
 
 // FilesTarget provides targets for each file type. If a type is nil,
@@ -69,14 +55,29 @@ type FilesTarget struct {
 	pathWriters map[string]io.Writer
 }
 
-// Ingester get the IngesterCloser
-func (f *FilesTarget) Ingester() IngesterCloser {
+// Resolver get a resolver for content
+func (f *FilesTarget) Resolver() remotes.Resolver {
 	return f
 }
 
-// MultiWriter does this support multiwriter
-func (f *FilesTarget) MultiWriter() bool {
-	return true
+// Resolve resolve a specific reference, currently unsupported
+func (f *FilesTarget) Resolve(ctx context.Context, ref string) (name string, desc ocispec.Descriptor, err error) {
+	return "", ocispec.Descriptor{}, fmt.Errorf("unsupported")
+}
+
+// Fetcher fetch the content for a specific ref
+func (f *FilesTarget) Fetcher(ctx context.Context, ref string) (remotes.Fetcher, error) {
+	return nil, fmt.Errorf("unsupported")
+}
+
+// Fetch get an io.ReadCloser for the specific content
+func (f *FilesTarget) Fetch(ctx context.Context, desc ocispec.Descriptor) (io.ReadCloser, error) {
+	return nil, fmt.Errorf("unsupported")
+}
+
+// Ingester get the IngesterCloser
+func (f *FilesTarget) Ingester() IngesterCloser {
+	return f
 }
 
 // Close close anything that might be open
@@ -84,7 +85,24 @@ func (f *FilesTarget) Close() error {
 	return nil
 }
 
-// Writer get a writer
+// Pusher get a pusher to push content
+func (f *FilesTarget) Pusher(ctx context.Context, ref string) (remotes.Pusher, error) {
+	var tag, hash string
+	parts := strings.SplitN(ref, "@", 2)
+	if len(parts) > 0 {
+		tag = parts[0]
+	}
+	if len(parts) > 1 {
+		hash = parts[1]
+	}
+	pusher := &filesPusher{
+		target: f,
+		ref:    tag,
+		hash:   hash,
+	}
+	return content.NewDecompress(pusher, content.WithMultiWriterIngester()), nil
+}
+
 func (f *FilesTarget) Writer(ctx context.Context, opts ...ctrcontent.WriterOpt) (ctrcontent.Writer, error) {
 	// we have to reprocess the opts to find the desc
 	var wOpts ctrcontent.WriterOpts
@@ -95,40 +113,10 @@ func (f *FilesTarget) Writer(ctx context.Context, opts ...ctrcontent.WriterOpt) 
 	}
 	desc := wOpts.Desc
 
-	writerOpts := []content.WriterOpt{}
-	if f.BlockSize > 0 {
-		writerOpts = append(writerOpts, content.WithBlocksize(f.BlockSize))
+	p := &filesPusher{
+		target: f,
 	}
-	if f.AcceptHash {
-		writerOpts = append(writerOpts, content.WithInputHash(desc.Digest))
-		writerOpts = append(writerOpts, content.WithOutputHash(desc.Digest))
-	}
-	// save any config
-	// because the config always is pulled first, this should work. But it depends on this remaining the same:
-	// https://github.com/containerd/containerd/blob/178e9a10121b344aece9fe918f6fc4dc4dbde9a3/images/image.go#L346-L347
-	if IsConfigType(desc.MediaType) {
-		// process the config, looking for annotations
-		return f.configIngestor(), nil
-	}
-
-	// check if it meets the requirements
-	switch desc.Annotations[AnnotationRole] {
-	case RoleKernel:
-		if f.Kernel != nil {
-			return content.NewIoContentWriter(f.Kernel, writerOpts...), nil
-		}
-	case RoleInitrd:
-		if f.Initrd != nil {
-			return content.NewIoContentWriter(f.Initrd, writerOpts...), nil
-		}
-	case RoleRootDisk:
-		if f.Root != nil {
-			return content.NewIoContentWriter(f.Root, writerOpts...), nil
-		}
-	case RoleAdditionalDisk:
-	}
-
-	return content.NewIoContentWriter(nil, writerOpts...), nil
+	return p.Push(ctx, desc)
 }
 
 // Writers get writers by filename
@@ -162,8 +150,74 @@ func (f *FilesTarget) Writers(ctx context.Context, opts ...ctrcontent.WriterOpt)
 	}, nil
 }
 
-func (f *FilesTarget) configIngestor() ctrcontent.Writer {
-	return &configIngestor{target: f}
+type filesPusher struct {
+	target *FilesTarget
+	ref    string
+	hash   string
+}
+
+func (f *filesPusher) Push(ctx context.Context, desc ocispec.Descriptor) (ctrcontent.Writer, error) {
+	writerOpts := []content.WriterOpt{}
+	if f.target.BlockSize > 0 {
+		writerOpts = append(writerOpts, content.WithBlocksize(f.target.BlockSize))
+	}
+	if f.target.AcceptHash {
+		writerOpts = append(writerOpts, content.WithInputHash(desc.Digest))
+		writerOpts = append(writerOpts, content.WithOutputHash(desc.Digest))
+	}
+
+	// save any config
+	// because the config always is pulled first, this should work. But it depends on this remaining the same:
+	// https://github.com/containerd/containerd/blob/178e9a10121b344aece9fe918f6fc4dc4dbde9a3/images/image.go#L346-L347
+	if IsConfigType(desc.MediaType) {
+		// process the config, looking for annotations
+		return f.configIngestor(), nil
+	}
+
+	// check if it meets the requirements
+	switch desc.Annotations[AnnotationRole] {
+	case RoleKernel:
+		if f.target.Kernel != nil {
+			return content.NewIoContentWriter(f.target.Kernel, writerOpts...), nil
+		}
+	case RoleInitrd:
+		if f.target.Initrd != nil {
+			return content.NewIoContentWriter(f.target.Initrd, writerOpts...), nil
+		}
+	case RoleRootDisk:
+		if f.target.Root != nil {
+			return content.NewIoContentWriter(f.target.Root, writerOpts...), nil
+		}
+	case RoleAdditionalDisk:
+	}
+
+	//return content.NewIoContentWriter(nil, writerOpts...), nil
+	return content.NewIoContentWriter(nil, writerOpts...), nil
+}
+
+func (f *filesPusher) Pushers(ctx context.Context, desc ocispec.Descriptor) (func(name string) (ctrcontent.Writer, error), error) {
+	writerOpts := []content.WriterOpt{}
+	if f.target.BlockSize > 0 {
+		writerOpts = append(writerOpts, content.WithBlocksize(f.target.BlockSize))
+	}
+	if f.target.AcceptHash {
+		writerOpts = append(writerOpts, content.WithInputHash(desc.Digest))
+		writerOpts = append(writerOpts, content.WithOutputHash(desc.Digest))
+	}
+	return func(name string) (ctrcontent.Writer, error) {
+		if f.target.pathWriters == nil {
+			return nil, nil
+		}
+		if w, ok := f.target.pathWriters[name]; ok {
+			return content.NewIoContentWriter(w, writerOpts...), nil
+		}
+
+		return nil, nil
+	}, nil
+}
+
+func (f *filesPusher) configIngestor() ctrcontent.Writer {
+	return &configIngestor{target: f.target}
 }
 
 type configIngestor struct {

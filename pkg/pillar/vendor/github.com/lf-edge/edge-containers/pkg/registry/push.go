@@ -11,9 +11,8 @@ import (
 
 	ecresolver "github.com/lf-edge/edge-containers/pkg/resolver"
 
-	ctrcontent "github.com/containerd/containerd/content"
-	"github.com/containerd/containerd/remotes"
 	"oras.land/oras-go/pkg/oras"
+	"oras.land/oras-go/pkg/target"
 
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 )
@@ -32,7 +31,7 @@ type Pusher struct {
 	// Timestamp set any files to have this timestamp, instead of the default of the file time
 	Timestamp *time.Time
 	// Impl the OCI artifacts pusher. Normally should be left blank, will be filled in to use oras. Override only for special cases like testing.
-	Impl func(ctx context.Context, resolver remotes.Resolver, ref string, provider ctrcontent.Provider, descriptors []ocispec.Descriptor, opts ...oras.PushOpt) (ocispec.Descriptor, error)
+	Impl func(ctx context.Context, from target.Target, fromRef string, to target.Target, toRef string, opts ...oras.CopyOpt) (ocispec.Descriptor, error)
 }
 
 // Push push the artifact to the appropriate registry. Arguments are the format to write,
@@ -41,11 +40,11 @@ type Pusher struct {
 //
 // The target determines the target type. target.Registry just uses the default registry,
 // while target.Directory uses a local directory.
-func (p Pusher) Push(format Format, verbose bool, writer io.Writer, configOpts ConfigOpts, resolver ecresolver.ResolverCloser) (string, error) {
+func (p Pusher) Push(format Format, verbose bool, statusWriter io.Writer, configOpts ConfigOpts, to ecresolver.ResolverCloser) (string, error) {
 	var (
 		desc     ocispec.Descriptor
 		err      error
-		pushOpts []oras.PushOpt
+		copyOpts []oras.CopyOpt
 	)
 
 	// ensure the artifact and name are provided
@@ -57,11 +56,11 @@ func (p Pusher) Push(format Format, verbose bool, writer io.Writer, configOpts C
 	}
 	// ensure we have a real pusher
 	if p.Impl == nil {
-		p.Impl = oras.Push
+		p.Impl = oras.Copy
 	}
 
 	// get the saved context; if nil, create a background one
-	ctx := resolver.Context()
+	ctx := to.Context()
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -82,22 +81,21 @@ func (p Pusher) Push(format Format, verbose bool, writer io.Writer, configOpts C
 		defer os.RemoveAll(tmpDir)
 	}
 
-	manifest, provider, err := p.Artifact.Manifest(format, configOpts, legacyOpts...)
+	_, from, err := p.Artifact.Manifest(format, configOpts, p.Image, legacyOpts...)
 	if err != nil {
 		return "", fmt.Errorf("could not build manifest: %v", err)
 	}
-	pushOpts = append(pushOpts, oras.WithConfig(manifest.Config))
 
 	if verbose {
-		pushOpts = append(pushOpts, oras.WithPushStatusTrack(writer))
+		copyOpts = append(copyOpts, oras.WithPullStatusTrack(statusWriter))
 	}
 
 	// push the data
-	desc, err = p.Impl(ctx, resolver, p.Image, provider, manifest.Layers, pushOpts...)
+	desc, err = p.Impl(ctx, from, p.Image, to, "", copyOpts...)
 	if err != nil {
 		return "", err
 	}
-	if err := resolver.Finalize(ctx); err != nil {
+	if err := to.Finalize(ctx); err != nil {
 		return desc.Digest.String(), fmt.Errorf("failed to finalize: %v", err)
 	}
 	return desc.Digest.String(), nil

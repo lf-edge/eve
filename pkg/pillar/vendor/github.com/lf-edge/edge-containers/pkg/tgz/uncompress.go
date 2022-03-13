@@ -37,6 +37,9 @@ func Uncompress(infile, outdir string) error {
 		fullFilename := path.Join(outdir, filename)
 		// open a file to write
 		f, err := os.Create(fullFilename)
+		if err != nil {
+			return fmt.Errorf("error creating file %s: %w", fullFilename, err)
+		}
 		if _, err := io.Copy(f, tarReader); err != nil {
 			f.Close()
 			return fmt.Errorf("error reading tar file %s and writing to %s: %v", filename, fullFilename, err)

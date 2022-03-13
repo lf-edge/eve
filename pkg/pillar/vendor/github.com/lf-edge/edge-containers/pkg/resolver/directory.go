@@ -169,7 +169,7 @@ func (d directoryWriter) Close() error {
 
 func (d directoryWriter) Write(p []byte) (n int, err error) {
 	n, err = d.file.Write(p)
-	d.total += int64(n)
+	d.total += int64(n) //nolint:staticcheck
 	return n, err
 }
 

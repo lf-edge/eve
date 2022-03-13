@@ -1,4 +1,4 @@
-ARG GOVER=1.15.3
+ARG GOVER=1.17.7
 FROM golang:${GOVER}-alpine
 ARG USER
 ARG GROUP
@@ -17,10 +17,12 @@ RUN deluser ${USER} ; delgroup ${GROUP} || :
 RUN sed -ie /:${UID}:/d /etc/passwd /etc/shadow ; sed -ie /:${GID}:/d /etc/group || :
 RUN addgroup -g ${GID} ${GROUP} && adduser -h /home/${USER} -G ${GROUP} -D -H -u ${UID} ${USER}
 RUN echo "${USER} ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/${USER}
-RUN go get github.com/golang/dep/cmd/dep
-RUN go get -u github.com/golang/protobuf/protoc-gen-go
-RUN go get -u gotest.tools/gotestsum
-RUN go get -u github.com/seamia/protodot
+# dep is deprecated and probably should be gotten rid of; no need to parametrize the version, as there will be no further releases
+# hadolint ignore=SC2086,DL4006
+RUN OS="$(uname -o | tr '[:upper:]' '[:lower:]')" && PLATFORM="$(go version | sed 's#^.*'${OS}'/##g')" && curl -o /usr/local/bin/dep -L "https://github.com/golang/dep/releases/download/v0.5.4/dep-${OS}-${PLATFORM}" && chmod +x /usr/local/bin/dep
+RUN go install github.com/golang/protobuf/protoc-gen-go@v1.5.2
+RUN go install gotest.tools/gotestsum@v1.7.0
+RUN go install github.com/seamia/protodot@87817c3d0a8e7af753af15508b51292e941bc7c6
 RUN mv /go/bin/protodot /usr/local/bin
 RUN mv /go/bin/* /usr/bin
 ENV HOME /home/${USER}

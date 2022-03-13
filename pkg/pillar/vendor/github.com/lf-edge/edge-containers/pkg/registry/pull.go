@@ -5,12 +5,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"io/ioutil"
 
 	ctrcontent "github.com/containerd/containerd/content"
-	"github.com/containerd/containerd/remotes"
+	"github.com/containerd/containerd/images"
 	ecresolver "github.com/lf-edge/edge-containers/pkg/resolver"
 	"oras.land/oras-go/pkg/content"
 	"oras.land/oras-go/pkg/oras"
+	"oras.land/oras-go/pkg/target"
 
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 )
@@ -19,7 +21,7 @@ type Puller struct {
 	// Image reference to image, e.g. docker.io/foo/bar:tagabc
 	Image string
 	// Impl the OCI artifacts puller. Normally should be left blank, will be filled in to use oras. Override only for special cases like testing.
-	Impl func(ctx context.Context, resolver remotes.Resolver, ref string, ingester ctrcontent.Ingester, opts ...oras.PullOpt) (ocispec.Descriptor, []ocispec.Descriptor, error)
+	Impl func(ctx context.Context, from target.Target, fromRef string, to target.Target, toRef string, opts ...oras.CopyOpt) (ocispec.Descriptor, error)
 }
 
 // Pull pull the artifact from the appropriate registry and save it to a local directory.
@@ -27,14 +29,14 @@ type Puller struct {
 //
 // The resolver provides the channel to connect to the target type. resolver.Registry just uses the default registry,
 // while resolver.Directory uses a local directory, etc.
-func (p *Puller) Pull(target Target, blocksize int, verbose bool, writer io.Writer, resolver ecresolver.ResolverCloser) (*ocispec.Descriptor, *Artifact, error) {
+func (p *Puller) Pull(to target.Target, blocksize int, verbose bool, writer io.Writer, resolver ecresolver.ResolverCloser) (*ocispec.Descriptor, *Artifact, error) {
 	// must have valid image ref
 	if p.Image == "" {
 		return nil, nil, fmt.Errorf("must have valid image ref")
 	}
 	// ensure we have a real puller
 	if p.Impl == nil {
-		p.Impl = oras.Pull
+		p.Impl = oras.Copy
 	}
 
 	var (
@@ -45,28 +47,27 @@ func (p *Puller) Pull(target Target, blocksize int, verbose bool, writer io.Writ
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	pullOpts := []oras.PullOpt{}
-
-	targetStore := target.Ingester()
-	defer targetStore.Close()
-	dcstoreOpts := []content.WriterOpt{content.WithBlocksize(blocksize)}
-	if target.MultiWriter() {
-		dcstoreOpts = append(dcstoreOpts, content.WithMultiWriterIngester())
-	}
-	decompressStore := content.NewDecompressStore(targetStore, dcstoreOpts...)
+	copyOpts := []oras.CopyOpt{}
 
 	allowedMediaTypes := AllMimeTypes()
 
 	if verbose {
-		pullOpts = append(pullOpts, oras.WithPullStatusTrack(writer))
+		copyOpts = append(copyOpts, oras.WithPullStatusTrack(writer))
 	}
 
-	// provide our own cache because of https://github.com/deislabs/oras/issues/225 and https://github.com/deislabs/oras/issues/226
-	store := newCacheStoreFromIngester(decompressStore)
-	pullOpts = append(pullOpts, oras.WithAllowedMediaTypes(allowedMediaTypes), oras.WithPullEmptyNameAllowed(), oras.WithContentProvideIngester(store), oras.WithPullByBFS)
+	var layers []ocispec.Descriptor
+	copyOpts = append(copyOpts,
+		oras.WithAllowedMediaTypes(allowedMediaTypes),
+		oras.WithPullEmptyNameAllowed(),
+		oras.WithPullByBFS,
+		oras.WithAdditionalCachedMediaTypes(ocispec.MediaTypeImageManifest, ocispec.MediaTypeImageIndex, images.MediaTypeDockerSchema2Manifest, images.MediaTypeDockerSchema2ManifestList),
+		oras.WithLayerDescriptors(func(l []ocispec.Descriptor) {
+			layers = l
+		}),
+	)
 
 	// pull the images
-	desc, layers, err := p.Impl(ctx, resolver, p.Image, decompressStore, pullOpts...)
+	desc, err := p.Impl(ctx, resolver, p.Image, to, "", copyOpts...)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -117,55 +118,81 @@ func (p *Puller) Config(verbose bool, writer io.Writer, resolver ecresolver.Reso
 	}
 	// ensure we have a real puller
 	if p.Impl == nil {
-		p.Impl = oras.Pull
+		p.Impl = oras.Copy
 	}
 
-	var (
-		err error
-	)
 	// get the saved context; if nil, create a background one
 	ctx := resolver.Context()
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	pullOpts := []oras.PullOpt{}
+	copyOpts := []oras.CopyOpt{}
 
-	store := content.NewMemoryStore()
+	store := content.NewMemory()
 
 	// we only pull indexes, manifests and configs
 	allowedMediaTypes := []string{ocispec.MediaTypeImageIndex, ocispec.MediaTypeImageManifest, ocispec.MediaTypeImageConfig, MimeTypeDockerImageConfig, MimeTypeDockerImageManifest, MimeTypeDockerImageIndex}
 
 	if verbose {
-		pullOpts = append(pullOpts, oras.WithPullStatusTrack(writer))
+		copyOpts = append(copyOpts, oras.WithPullStatusTrack(writer))
 	}
-	pullOpts = append(pullOpts, oras.WithAllowedMediaTypes(allowedMediaTypes), oras.WithPullEmptyNameAllowed())
+	copyOpts = append(copyOpts, oras.WithAllowedMediaTypes(allowedMediaTypes), oras.WithPullEmptyNameAllowed(),
+		oras.WithAdditionalCachedMediaTypes(ocispec.MediaTypeImageManifest, ocispec.MediaTypeImageIndex, images.MediaTypeDockerSchema2Manifest, images.MediaTypeDockerSchema2ManifestList),
+	)
 
 	// pull the images
-	_, layers, err := p.Impl(ctx, resolver, p.Image, store, pullOpts...)
+	root, err := p.Impl(ctx, resolver, p.Image, store, "", copyOpts...)
 	if err != nil {
 		return nil, nil, err
 	}
-	// run through the layers, looking for configs
-	return findConfig(store, layers, "", "")
+	// walk the tree, looking for configs
+	ctx2 := context.TODO()
+	provider := oras.ProviderWrapper{Fetcher: store}
+	return findConfig(ctx2, &provider, "", "", []ocispec.Descriptor{root})
 }
 
-func findConfig(store *content.Memorystore, layers []ocispec.Descriptor, os, arch string) (desc *ocispec.Descriptor, config *ocispec.Image, err error) {
-	// run through the layers, looking for configs
-	for _, l := range layers {
-		switch l.MediaType {
+func findConfig(ctx context.Context, provider ctrcontent.Provider, os, arch string, descs []ocispec.Descriptor) (desc *ocispec.Descriptor, config *ocispec.Image, err error) {
+	// find the configs
+	for _, d := range descs {
+		switch d.MediaType {
 		case ocispec.MediaTypeImageConfig, MimeTypeDockerImageConfig:
-			var conf ocispec.Image
-			if _, data, found := store.Get(l); found {
-				if err := json.Unmarshal(data, &conf); err != nil {
-					return nil, nil, err
-				}
+			var (
+				conf   ocispec.Image
+				reader ctrcontent.ReaderAt
+				data   []byte
+			)
+			reader, err = provider.ReaderAt(ctx, d)
+			if err != nil {
+				continue
+			}
+			data, err = ioutil.ReadAll(content.NewReaderAtWrapper(reader))
+			if err != nil {
+				continue
+			}
+			if err := json.Unmarshal(data, &conf); err != nil {
+				return nil, nil, err
 			}
 			if (os != "" && conf.OS != os) || (arch != "" && conf.Architecture != arch) {
 				continue
 			}
+			// found a config with the right os and arch, so return it
 			config = &conf
-			desc = &l
+			desc = &d
+			return
+		default:
+			children, err := images.Children(ctx, provider, d)
+			if err != nil {
+				continue
+			}
+			childDesc, childConfig, err := findConfig(ctx, provider, os, arch, children)
+			if err != nil {
+				return nil, nil, err
+			}
+			if childDesc != nil && childConfig != nil {
+				return childDesc, childConfig, nil
+			}
 		}
 	}
-	return desc, config, nil
+
+	return nil, nil, fmt.Errorf("not found")
 }

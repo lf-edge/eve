@@ -6,6 +6,7 @@ import (
 )
 
 const (
+	MimeTypeECIArtifact         = "application/vnd.lfedge.eci.v1+json"
 	MimeTypeECIConfig           = "application/vnd.lfedge.eci.config.v1+json"
 	MimeTypeECIKernel           = "application/vnd.lfedge.eci.kernel.layer.v1+kernel"
 	MimeTypeECIInitrd           = "application/vnd.lfedge.eci.initrd.layer.v1+cpio"
@@ -31,6 +32,7 @@ const (
 )
 
 var allTypes = []string{
+	MimeTypeECIArtifact,
 	MimeTypeECIConfig,
 	MimeTypeECIKernel,
 	MimeTypeECIInitrd,
@@ -74,6 +76,12 @@ func GetConfigMediaType(actualType string, format Format) string {
 		return actualType
 	}
 	return MimeTypeOCIImageConfig
+}
+func GetArtifactMediaType(actualType string, format Format) string {
+	if format == FormatArtifacts {
+		return actualType
+	}
+	return MimeTypeOCIImageManifest
 }
 
 func IsConfigType(mediaType string) bool {
