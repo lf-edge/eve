@@ -97,7 +97,7 @@ func (d *Containerd) Pusher(ctx context.Context, ref string) (remotes.Pusher, er
 
 func (d *Containerd) Finalize(ctx context.Context) error {
 	if d.done != nil {
-		d.done(ctx)
+		_ = d.done(ctx)
 	}
 	return nil
 }

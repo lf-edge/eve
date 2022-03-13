@@ -11,7 +11,6 @@ import (
 	"strings"
 	"time"
 
-	ctrcontent "github.com/containerd/containerd/content"
 	v1types "github.com/google/go-containerregistry/pkg/v1/types"
 	"github.com/lf-edge/edge-containers/pkg/registry"
 	"github.com/lf-edge/eve/pkg/pillar/types"
@@ -81,7 +80,8 @@ func getManifestsForBareBlob(ctx *volumemgrContext, image, rootHash string, size
 // it can be used in OCI stores like containerd
 func createManifestsForBareBlob(artifact *registry.Artifact) ([]*types.BlobStatus, error) {
 	blobStatuses := []*types.BlobStatus{}
-	manifest, provider, err := artifact.Manifest(registry.FormatArtifacts, registry.ConfigOpts{})
+	ref := "bareblob:latest"
+	manifest, provider, err := artifact.Manifest(registry.FormatArtifacts, registry.ConfigOpts{}, ref)
 	if err != nil {
 		return nil, fmt.Errorf("getManifestsForBareBlob: Could not get manifest or provider for artifact: %s", err.Error())
 	}
@@ -101,13 +101,20 @@ func createManifestsForBareBlob(artifact *registry.Artifact) ([]*types.BlobStatu
 		LastRefCountChangeTime: time.Now(),
 	})
 
-	configReaderAt, err := provider.ReaderAt(context.Background(), manifest.Config)
+	ctx := context.TODO()
+	fetcher, err := provider.Fetcher(ctx, ref)
 	if err != nil {
-		return nil, fmt.Errorf("getManifestsForBlob: Exception while getting config ReaderAt: %s",
+		return nil, fmt.Errorf("getManifestsForBlob: Exception while getting config Fetcher: %s",
 			err.Error())
 	}
-	configReader := ctrcontent.NewReader(configReaderAt)
-	configBytes, err := ioutil.ReadAll(configReader)
+	reader, err := fetcher.Fetch(ctx, manifest.Config)
+	if err != nil {
+		return nil, fmt.Errorf("getManifestsForBlob: Exception while getting config reader: %s",
+			err.Error())
+	}
+	defer reader.Close()
+
+	configBytes, err := ioutil.ReadAll(reader)
 	if err != nil {
 		return nil, fmt.Errorf("getManifestsForBlob: Exception while reading config bytes: %s",
 			err.Error())
