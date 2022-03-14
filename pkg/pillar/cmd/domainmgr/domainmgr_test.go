@@ -13,7 +13,9 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/lf-edge/eve/pkg/pillar/base"
@@ -330,6 +332,8 @@ func TestHandleMimeMultipart(t *testing.T) {
 		ciStr           string
 		expectMultipart bool
 		expectFail      bool
+		expectFiles     []string
+		expectDirs      []string
 	}{
 		"Test empty": {
 			ciStr:           "",
@@ -360,16 +364,20 @@ func TestHandleMimeMultipart(t *testing.T) {
 			ciStr:           ciNocd,
 			expectMultipart: true,
 			expectFail:      true,
+			expectFiles:     []string{"/commands.txt"},
 		},
 		"Test good": {
 			ciStr:           ciGood,
 			expectMultipart: true,
 			expectFail:      false,
+			expectFiles:     []string{"/commands.txt", "/empty.txt"},
 		},
 		"Test subdirs": {
 			ciStr:           ciSubdirs,
 			expectMultipart: true,
 			expectFail:      false,
+			expectFiles:     []string{"/a/b/commands.txt", "/empty.txt"},
+			expectDirs:      []string{"/a", "/a/b"},
 		},
 		"Test escape": {
 			ciStr:           ciEscape,
@@ -380,11 +388,13 @@ func TestHandleMimeMultipart(t *testing.T) {
 			ciStr:           ciTruncated,
 			expectMultipart: true,
 			expectFail:      true,
+			expectFiles:     []string{"/commands.txt", "/empty.txt"},
 		},
 		"Test truncated one": {
 			ciStr:           ciTruncatedOne,
 			expectMultipart: true,
 			expectFail:      false,
+			expectFiles:     []string{"/commands.txt"},
 		},
 		"Test truncated zero": {
 			ciStr:           ciTruncatedZero,
@@ -399,12 +409,49 @@ func TestHandleMimeMultipart(t *testing.T) {
 	}
 	for testname, test := range testMatrix {
 		t.Logf("Running test case %s", testname)
-		ok, err := handleMimeMultipart(dir, test.ciStr)
+		mydir := dir + "/" + testname
+		err = os.Mkdir(mydir, 0700)
+		assert.Nil(t, err)
+		if err != nil {
+			continue
+		}
+		ok, err := handleMimeMultipart(mydir, test.ciStr)
 		assert.Equal(t, test.expectMultipart, ok)
 		if test.expectFail {
 			assert.NotNil(t, err)
 		} else {
 			assert.Nil(t, err)
+		}
+		var files []string
+		var dirs []string
+		err = filepath.Walk(mydir, func(path string, info os.FileInfo, e error) error {
+			if e != nil {
+				return e
+			}
+			// Update files and dirs except top level dir
+			filename := strings.TrimPrefix(path, mydir)
+			if info.Mode().IsRegular() {
+				files = append(files, filename)
+			} else if info.Mode().IsDir() && filename != "" {
+				dirs = append(dirs, filename)
+			}
+			return nil
+		})
+		assert.Nil(t, err)
+		if err != nil {
+			continue
+		}
+		assert.Equal(t, len(test.expectFiles), len(files))
+		if len(test.expectFiles) == len(files) {
+			for i := range files {
+				assert.Equal(t, test.expectFiles[i], files[i])
+			}
+		}
+		assert.Equal(t, len(test.expectDirs), len(dirs))
+		if len(test.expectDirs) == len(dirs) {
+			for i := range dirs {
+				assert.Equal(t, test.expectDirs[i], dirs[i])
+			}
 		}
 	}
 	os.RemoveAll(dir)
