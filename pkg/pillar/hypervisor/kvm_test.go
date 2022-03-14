@@ -1150,6 +1150,7 @@ func TestCreateDomConfig(t *testing.T) {
 
 [device "vhost-disk4"]
   driver = "vhost-scsi-pci"
+  max_sectors = "16384"
   wwpn = "naa.000000000000000a"
   bus = "pci.7"
   addr = "0x0"
@@ -1447,6 +1448,7 @@ func TestCreateDomConfig(t *testing.T) {
 
 [device "vhost-disk4"]
   driver = "vhost-scsi-pci"
+  max_sectors = "16384"
   wwpn = "naa.000000000000000a"
   bus = "pci.7"
   addr = "0x0"
@@ -1755,6 +1757,7 @@ func TestCreateDomConfig(t *testing.T) {
 
 [device "vhost-disk4"]
   driver = "vhost-scsi-pci"
+  max_sectors = "16384"
   wwpn = "naa.000000000000000a"
   bus = "pci.7"
   addr = "0x0"
@@ -2040,6 +2043,7 @@ func TestCreateDomConfig(t *testing.T) {
 
 [device "vhost-disk4"]
   driver = "vhost-scsi-pci"
+  max_sectors = "16384"
   wwpn = "naa.000000000000000a"
   bus = "pci.7"
   addr = "0x0"

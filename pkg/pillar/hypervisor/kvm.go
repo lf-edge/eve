@@ -271,6 +271,7 @@ const qemuDiskTemplate = `
 {{- else}}
 [device "vhost-disk{{.DiskID}}"]
   driver = "vhost-scsi-pci"
+  max_sectors = "16384"
   wwpn = "{{.WWN}}"
   bus = "pci.{{.PCIId}}"
   addr = "0x0"
