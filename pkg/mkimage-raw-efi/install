@@ -16,6 +16,7 @@
 #   eve_pause_before_install
 #   eve_pause_after_install
 #   eve_reboot_after_install
+#   eve_install_random_disk_uuids
 #   eve_install_skip_config
 #   eve_install_skip_persist
 #   eve_install_skip_rootfs
@@ -254,6 +255,11 @@ done
 # we may be asked to pause before install procedure
 grep -q eve_pause_before_install /proc/cmdline && pause "formatting the /dev/$INSTALL_DEV"
 
+# Do we want random or fixed disk and partition UUIDs?
+RANDOM_DISK_UUIDS=
+grep -q eve_install_random_disk_uuids /proc/cmdline && RANDOM_DISK_UUIDS="-r"
+logmsg "INFO: RANDOM_DISK_UUIDS $RANDOM_DISK_UUIDS"
+
 # User may have requested to skip the zfs requirements checks.
 SKIP_ZFS_CHECKS=false
 grep -q eve_install_skip_zfs_checks /proc/cmdline && SKIP_ZFS_CHECKS=true
@@ -317,6 +323,10 @@ if [ "$INSTALL_DEV" != "$INSTALL_PERSIST" ]; then
      sgdisk -Z --clear "$PDEV" 2>/dev/null || :
      sgdisk --new 1:2048:0 --typecode=1:5f24425a-2dfa-11e8-a270-7b663faccc2c --change-name=1:P3 "$PDEV"
      sgdisk -v "$PDEV"
+     if [ -z "$RANDOM_DISK_UUIDS" ]; then
+        PERSIST_UUID=ad6871ee-31f9-4cf3-9e09-6f7a25c30059
+        sgdisk --partition-guid="1:$PERSIST_UUID" "$PDEV"
+     fi
      # force make-raw to skip persist
      MAKE_RAW_PARTS="efi imga imgb conf"
    fi
@@ -329,7 +339,8 @@ else
 fi
 
 # do the install (unless we're only here to collect the black box)
-grep -q eve_blackbox /proc/cmdline || /make-raw "/dev/$INSTALL_DEV" $MAKE_RAW_PARTS || bail "Installation failed. Entering shell..."
+# shellcheck disable=SC2086
+grep -q eve_blackbox /proc/cmdline || /make-raw $RANDOM_DISK_UUIDS "/dev/$INSTALL_DEV" $MAKE_RAW_PARTS || bail "Installation failed. Entering shell..."
 
 if [ "$MULTIPLE_DISKS" = true ] && [ "$INSTALL_ZFS" = true ]; then
   if [ "$DISK_WITH_P3" != "" ]; then
