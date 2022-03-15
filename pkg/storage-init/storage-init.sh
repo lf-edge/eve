@@ -164,12 +164,30 @@ if [ -n "$IMGA" ] && [ -z "$P3" ] && [ -z "$IMGB" ]; then
 
    IMGA_SIZE=$(sgdisk -i "$IMGA_ID" "$DEV" | awk '/^Partition size:/ { print $3; }')
    IMGA_GUID=$(sgdisk -i "$IMGA_ID" "$DEV" | awk '/^Partition GUID code:/ { print $4; }')
+   IMGA_UNIQ_GUID=$(sgdisk -i "$IMGA_ID" "$DEV" | awk '/^Partition unique GUID:/ { print $4; }')
 
    SEC_START=$(sgdisk -f "$DEV")
    SEC_END=$((SEC_START + IMGA_SIZE))
 
    sgdisk --new "$IMGB_ID:$SEC_START:$SEC_END" --typecode="$IMGB_ID:$IMGA_GUID" --change-name="$IMGB_ID:IMGB" "$DEV"
    sgdisk --largest-new="$P3_ID" --typecode="$P3_ID:5f24425a-2dfa-11e8-a270-7b663faccc2c" --change-name="$P3_ID:P3" "$DEV"
+   # Assume we want the fixed partition UUIDs if IMGA has the fixed one.
+   # UUIDs from make-raw.
+   IMGA_UUID=ad6871ee-31f9-4cf3-9e09-6f7a25c30052
+   IMGB_UUID=ad6871ee-31f9-4cf3-9e09-6f7a25c30053
+   PERSIST_UUID=ad6871ee-31f9-4cf3-9e09-6f7a25c30059
+
+   # Need case-insensitive comparison; sh can't do that.
+   res=$(awk -vs1="$IMGA_UNIQ_GUID" -vs2="$IMGA_UUID" 'BEGIN {
+     if ( tolower(s1) == tolower(s2) ){
+         print "match"
+     }
+   }')
+
+   if [ "$res" = "match" ]; then
+       sgdisk --partition-guid="$IMGB_ID:$IMGB_UUID" "$DEV"
+       sgdisk --partition-guid="$P3_ID:$PERSIST_UUID" "$DEV"
+   fi
 
    # focrce kernel to re-scan partition table
    partprobe "$DEV"
