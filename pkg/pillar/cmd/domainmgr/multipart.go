@@ -18,10 +18,12 @@ import (
 )
 
 // handleMIMEMultipart returns true if this is a MIME multipart
-// and if so it takes it apart and writes it to dir
+// and if so it takes it apart and writes it to dir.
+// If allowFullFilenamePaths is set it allows directory creation; otherwise
+// any directory part of the filename is silently ignored.
 // It returns errors if a filename tries to escape the dir, and also
 // errors if the MIME multi-part is malformed
-func handleMimeMultipart(dir string, ciStr string) (bool, error) {
+func handleMimeMultipart(dir string, ciStr string, allowFullFilenamePaths bool) (bool, error) {
 	r := strings.NewReader(ciStr)
 	msg, err := mail.ReadMessage(r)
 	if err != nil {
@@ -55,7 +57,22 @@ func handleMimeMultipart(dir string, ciStr string) (bool, error) {
 			log.Error(err.Error())
 			return true, err
 		}
-		filename := p.FileName()
+		var filename string
+		if allowFullFilenamePaths {
+			// Note that p.FileName() now excludes the directory part of
+			// the filename to conform with RFC 7578, but we need that to
+			// be able to layout the CDROM image so we extract the
+			// field directly. Note that we check that we use filepath.Clean
+			// to avoid escapes outside of the dir.
+			v := p.Header.Get("Content-Disposition")
+			_, dispositionParams, err := mime.ParseMediaType(v)
+			if err != nil {
+				dispositionParams = make(map[string]string)
+			}
+			filename = dispositionParams["filename"]
+		} else {
+			filename = p.FileName()
+		}
 		if filename == "" {
 			err := fmt.Errorf("Empty filename field")
 			log.Error(err.Error())

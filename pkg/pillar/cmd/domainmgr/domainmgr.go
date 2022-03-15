@@ -2352,7 +2352,7 @@ func createCloudInitISO(ctx *domainContext,
 	// as normal and fill in a user-data file below.
 	if config.MetaDataType == types.MetaDataDriveMultipart ||
 		ctx.processCloudInitMultiPart {
-		didMultipart, err = handleMimeMultipart(dir, ciStr)
+		didMultipart, err = handleMimeMultipart(dir, ciStr, true)
 		if err != nil {
 			return nil, err
 		}

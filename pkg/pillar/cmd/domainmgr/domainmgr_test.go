@@ -415,7 +415,7 @@ func TestHandleMimeMultipart(t *testing.T) {
 		if err != nil {
 			continue
 		}
-		ok, err := handleMimeMultipart(mydir, test.ciStr)
+		ok, err := handleMimeMultipart(mydir, test.ciStr, true)
 		assert.Equal(t, test.expectMultipart, ok)
 		if test.expectFail {
 			assert.NotNil(t, err)
