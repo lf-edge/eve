@@ -654,4 +654,171 @@ func TestWireless(test *testing.T) {
 	t.Expect(itemCountWithType(generic.ArpTypename)).To(Equal(0))
 }
 
-// TODO: test for VLANs and Bonds
+func TestVlansAndBonds(test *testing.T) {
+	t := initTest(test)
+	eth0Mac := "02:00:00:00:00:01"
+	eth0 := netmonitor.MockInterface{
+		Attrs: netmonitor.IfAttrs{
+			IfIndex:       1,
+			IfName:        "eth0",
+			IfType:        "device",
+			WithBroadcast: true,
+			AdminUp:       true,
+			LowerUp:       true,
+		},
+		HwAddr: macAddress(eth0Mac),
+	}
+	eth1Mac := "02:00:00:00:00:02"
+	eth1 := netmonitor.MockInterface{
+		Attrs: netmonitor.IfAttrs{
+			IfIndex:       2,
+			IfName:        "eth1",
+			IfType:        "device",
+			WithBroadcast: true,
+			AdminUp:       true,
+			LowerUp:       true,
+		},
+		HwAddr: macAddress(eth1Mac),
+	}
+	networkMonitor.AddOrUpdateInterface(eth0)
+	networkMonitor.AddOrUpdateInterface(eth1)
+	gcp := types.DefaultConfigItemValueMap()
+	dpc := types.DevicePortConfig{
+		Version:      types.DPCIsMgmt,
+		Key:          "zedagent",
+		TimePriority: time.Now(),
+		Ports: []types.NetworkPortConfig{
+			{
+				IfName:       "eth0",
+				Phylabel:     "ethernet0",
+				Logicallabel: "shopfloor0",
+			},
+			{
+				IfName:       "eth1",
+				Phylabel:     "ethernet1",
+				Logicallabel: "shopfloor1",
+			},
+			{
+				IfName:       "bond0",
+				Logicallabel: "bond-shopfloor",
+				L2LinkConfig: types.L2LinkConfig{
+					L2Type: types.L2LinkTypeBond,
+					Bond: types.BondConfig{
+						AggregatedPorts: []string{"shopfloor0", "shopfloor1"},
+						Mode:            types.BondModeActiveBackup,
+						MIIMonitor: types.BondMIIMonitor{
+							Enabled:   true,
+							Interval:  400,
+							UpDelay:   800,
+							DownDelay: 1200,
+						},
+					},
+				},
+			},
+			{
+				IfName:       "shopfloor.100",
+				Logicallabel: "shopfloor-vlan100",
+				IsL3Port:     true,
+				IsMgmt:       true,
+				DhcpConfig: types.DhcpConfig{
+					Dhcp: types.DT_CLIENT,
+					Type: types.NT_IPV4,
+				},
+				L2LinkConfig: types.L2LinkConfig{
+					L2Type: types.L2LinkTypeVLAN,
+					VLAN: types.VLANConfig{
+						ParentPort: "bond-shopfloor",
+						ID:         100,
+					},
+				},
+			},
+			{
+				IfName:       "shopfloor.200",
+				Logicallabel: "shopfloor-vlan200",
+				IsL3Port:     true,
+				IsMgmt:       true,
+				DhcpConfig: types.DhcpConfig{
+					Dhcp: types.DT_CLIENT,
+					Type: types.NT_IPV4,
+				},
+				L2LinkConfig: types.L2LinkConfig{
+					L2Type: types.L2LinkTypeVLAN,
+					VLAN: types.VLANConfig{
+						ParentPort: "bond-shopfloor",
+						ID:         200,
+					},
+				},
+			},
+		},
+	}
+	aa := types.AssignableAdapters{
+		Initialized: true,
+		IoBundleList: []types.IoBundle{
+			{
+				Type:         types.IoNetEth,
+				Phylabel:     "ethernet0",
+				Logicallabel: "shopfloor0",
+				Usage:        evecommon.PhyIoMemberUsage_PhyIoUsageMgmtAndApps,
+				Cost:         0,
+				Ifname:       "eth0",
+				MacAddr:      eth0Mac,
+				IsPCIBack:    false,
+				IsPort:       true,
+			},
+			{
+				Type:         types.IoNetEth,
+				Phylabel:     "ethernet1",
+				Logicallabel: "shopfloor1",
+				Usage:        evecommon.PhyIoMemberUsage_PhyIoUsageMgmtAndApps,
+				Cost:         0,
+				Ifname:       "eth1",
+				MacAddr:      eth1Mac,
+				IsPCIBack:    false,
+				IsPort:       true,
+			},
+		},
+	}
+
+	ctx := reconciler.MockRun(context.Background())
+	status := dpcReconciler.Reconcile(ctx, dpcrec.Args{GCP: *gcp, DPC: dpc, AA: aa})
+	t.Expect(status.Error).To(BeNil())
+
+	t.Expect(itemCountWithType(generic.IOHandleTypename)).To(Equal(2))
+	t.Expect(itemCountWithType(generic.BondTypename)).To(Equal(1))
+	t.Expect(itemCountWithType(generic.VlanTypename)).To(Equal(2))
+	t.Expect(itemCountWithType(generic.AdapterTypename)).To(Equal(2))
+
+	t.Expect(itemIsCreatedWithLabel("dhcpcd for shopfloor-vlan100")).To(BeTrue())
+	t.Expect(itemIsCreatedWithLabel("dhcpcd for shopfloor-vlan200")).To(BeTrue())
+
+	bondRef := dg.Reference(linux.Bond{IfName: "bond0"})
+	item, _, _, found := dpcReconciler.GetCurrentState().Item(bondRef)
+	t.Expect(found).To(BeTrue())
+	bond := item.(linux.Bond)
+	t.Expect(bond.IfName).To(Equal("bond0"))
+	t.Expect(bond.AggregatedPorts).To(Equal([]string{"shopfloor0", "shopfloor1"}))
+	t.Expect(bond.AggregatedIfNames).To(Equal([]string{"eth0", "eth1"}))
+	t.Expect(bond.ARPMonitor.Enabled).To(BeFalse())
+	t.Expect(bond.MIIMonitor.Enabled).To(BeTrue())
+	t.Expect(bond.MIIMonitor.Interval).To(BeEquivalentTo(400))
+	t.Expect(bond.MIIMonitor.UpDelay).To(BeEquivalentTo(800))
+	t.Expect(bond.MIIMonitor.DownDelay).To(BeEquivalentTo(1200))
+
+	vlan100Ref := dg.Reference(linux.Vlan{IfName: "shopfloor.100"})
+	item, _, _, found = dpcReconciler.GetCurrentState().Item(vlan100Ref)
+	t.Expect(found).To(BeTrue())
+	vlan100 := item.(linux.Vlan)
+	t.Expect(vlan100.IfName).To(Equal("shopfloor.100"))
+	t.Expect(vlan100.ID).To(BeEquivalentTo(100))
+	t.Expect(vlan100.ParentLL).To(BeEquivalentTo("bond-shopfloor"))
+	t.Expect(vlan100.ParentIfName).To(BeEquivalentTo("bond0"))
+
+	vlan200Ref := dg.Reference(linux.Vlan{IfName: "shopfloor.200"})
+	item, _, _, found = dpcReconciler.GetCurrentState().Item(vlan200Ref)
+	t.Expect(found).To(BeTrue())
+	vlan200 := item.(linux.Vlan)
+	t.Expect(vlan200.IfName).To(Equal("shopfloor.200"))
+	t.Expect(vlan200.ID).To(BeEquivalentTo(200))
+	t.Expect(vlan200.ParentLL).To(BeEquivalentTo("bond-shopfloor"))
+	t.Expect(vlan200.ParentIfName).To(BeEquivalentTo("bond0"))
+}

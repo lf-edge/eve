@@ -27,6 +27,7 @@ import (
 	dpcmngr "github.com/lf-edge/eve/pkg/pillar/dpcmanager"
 	dpcrec "github.com/lf-edge/eve/pkg/pillar/dpcreconciler"
 	generic "github.com/lf-edge/eve/pkg/pillar/dpcreconciler/genericitems"
+	linux "github.com/lf-edge/eve/pkg/pillar/dpcreconciler/linuxitems"
 	"github.com/lf-edge/eve/pkg/pillar/netmonitor"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
@@ -142,10 +143,14 @@ func itemDescription(itemRef dg.ItemRef) string {
 	return item.String()
 }
 
+func itemIsCreated(itemRef dg.ItemRef) bool {
+	_, state, _, found := dpcReconciler.GetCurrentState().Item(itemRef)
+	return found && state.IsCreated()
+}
+
 func itemIsCreatedCb(itemRef dg.ItemRef) func() bool {
 	return func() bool {
-		_, state, _, found := dpcReconciler.GetCurrentState().Item(itemRef)
-		return found && state.IsCreated()
+		return itemIsCreated(itemRef)
 	}
 }
 
@@ -1398,4 +1403,301 @@ func TestDPCWithReleasedAndRenamedInterface(test *testing.T) {
 	eth1.Attrs.IfIndex = mockEth0().Attrs.IfIndex // index was not changed by domainmgr
 	networkMonitor.AddOrUpdateInterface(eth1)
 	t.Eventually(dpcStateCb(0)).Should(Equal(types.DPCStateSuccess))
+}
+
+func TestVlansAndBonds(test *testing.T) {
+	t := initTest(test)
+
+	// Prepare simulated network stack.
+	// Initially there are only physical network interfaces.
+	eth0 := netmonitor.MockInterface{
+		Attrs: netmonitor.IfAttrs{
+			IfIndex:       1,
+			IfName:        "eth0",
+			IfType:        "device",
+			WithBroadcast: true,
+			AdminUp:       true,
+			LowerUp:       true,
+		},
+		HwAddr: macAddress("02:00:00:00:00:01"),
+	}
+	eth1 := netmonitor.MockInterface{
+		Attrs: netmonitor.IfAttrs{
+			IfIndex:       2,
+			IfName:        "eth1",
+			IfType:        "device",
+			WithBroadcast: true,
+			AdminUp:       true,
+			LowerUp:       true,
+		},
+		HwAddr: macAddress("02:00:00:00:00:02"),
+	}
+	networkMonitor.AddOrUpdateInterface(eth0)
+	networkMonitor.AddOrUpdateInterface(eth1)
+
+	// Apply global config first.
+	dpcManager.UpdateGCP(globalConfig())
+
+	// Apply DPC with bond and VLAN sub-interfaces.
+	aa := makeAA(selectedIntfs{eth0: true, eth1: true})
+	timePrio1 := time.Now()
+	dpc := types.DevicePortConfig{
+		Version:      types.DPCIsMgmt,
+		Key:          "zedagent",
+		TimePriority: timePrio1,
+		Ports: []types.NetworkPortConfig{
+			{
+				IfName:       "eth0",
+				Phylabel:     "ethernet0",
+				Logicallabel: "shopfloor0",
+			},
+			{
+				IfName:       "eth1",
+				Phylabel:     "ethernet1",
+				Logicallabel: "shopfloor1",
+			},
+			{
+				IfName:       "bond0",
+				Logicallabel: "bond-shopfloor",
+				L2LinkConfig: types.L2LinkConfig{
+					L2Type: types.L2LinkTypeBond,
+					Bond: types.BondConfig{
+						AggregatedPorts: []string{"shopfloor0", "shopfloor1"},
+						Mode:            types.BondModeActiveBackup,
+						MIIMonitor: types.BondMIIMonitor{
+							Enabled:   true,
+							Interval:  400,
+							UpDelay:   800,
+							DownDelay: 1200,
+						},
+					},
+				},
+			},
+			{
+				IfName:       "shopfloor.100",
+				Logicallabel: "shopfloor-vlan100",
+				IsL3Port:     true,
+				IsMgmt:       true,
+				DhcpConfig: types.DhcpConfig{
+					Dhcp: types.DT_CLIENT,
+					Type: types.NT_IPV4,
+				},
+				L2LinkConfig: types.L2LinkConfig{
+					L2Type: types.L2LinkTypeVLAN,
+					VLAN: types.VLANConfig{
+						ParentPort: "bond-shopfloor",
+						ID:         100,
+					},
+				},
+			},
+			{
+				IfName:       "shopfloor.200",
+				Logicallabel: "shopfloor-vlan200",
+				IsL3Port:     true,
+				IsMgmt:       true,
+				DhcpConfig: types.DhcpConfig{
+					Dhcp: types.DT_CLIENT,
+					Type: types.NT_IPV4,
+				},
+				L2LinkConfig: types.L2LinkConfig{
+					L2Type: types.L2LinkTypeVLAN,
+					VLAN: types.VLANConfig{
+						ParentPort: "bond-shopfloor",
+						ID:         200,
+					},
+				},
+			},
+		},
+	}
+	dpcManager.UpdateAA(aa)
+	dpcManager.AddDPC(dpc)
+
+	// Update simulated network stack.
+	// Simulate that logical interfaces were created.
+	bond0 := netmonitor.MockInterface{
+		Attrs: netmonitor.IfAttrs{
+			IfIndex:       3,
+			IfName:        "bond0",
+			IfType:        "device",
+			WithBroadcast: true,
+			AdminUp:       true,
+			LowerUp:       true,
+		},
+		HwAddr: macAddress("02:00:00:00:00:03"),
+	}
+	shopfloor100 := netmonitor.MockInterface{
+		Attrs: netmonitor.IfAttrs{
+			IfIndex:       4,
+			IfName:        "shopfloor.100",
+			IfType:        "device",
+			WithBroadcast: true,
+			AdminUp:       true,
+			LowerUp:       true,
+		},
+		HwAddr: macAddress("02:00:00:00:00:04"),
+	}
+	shopfloor200 := netmonitor.MockInterface{
+		Attrs: netmonitor.IfAttrs{
+			IfIndex:       5,
+			IfName:        "shopfloor.200",
+			IfType:        "device",
+			WithBroadcast: true,
+			AdminUp:       true,
+			LowerUp:       true,
+		},
+		HwAddr: macAddress("02:00:00:00:00:05"),
+	}
+	networkMonitor.AddOrUpdateInterface(bond0)
+	networkMonitor.AddOrUpdateInterface(shopfloor100)
+	networkMonitor.AddOrUpdateInterface(shopfloor200)
+
+	// Verification will wait for IP addresses.
+	t.Eventually(testingInProgressCb()).Should(BeTrue())
+	t.Eventually(dpcIdxCb()).Should(Equal(0))
+	t.Eventually(dpcKeyCb(0)).Should(Equal("zedagent"))
+	t.Eventually(dpcTimePrioCb(0, timePrio1)).Should(BeTrue())
+	t.Eventually(dnsKeyCb()).Should(Equal("zedagent"))
+	t.Expect(getDPC(0).State).To(Equal(types.DPCStateIPDNSWait))
+
+	// Simulate events of VLAN sub-interfaces receiving IP addresses from DHCP servers.
+	shopfloor100.IPAddrs = []*net.IPNet{ipAddress("192.168.10.5/24")}
+	shopfloor100.DHCP = netmonitor.DHCPInfo{
+		Subnet:     ipSubnet("192.168.10.0/24"),
+		NtpServers: []net.IP{net.ParseIP("132.163.96.5")},
+	}
+	shopfloor100.DNS = netmonitor.DNSInfo{
+		ResolvConfPath: "/etc/shopfloor.100-resolv.conf",
+		Domains:        []string{"vlan100-test-domain"},
+		DNSServers:     []net.IP{net.ParseIP("8.8.8.8")},
+	}
+	shopfloor200.IPAddrs = []*net.IPNet{ipAddress("172.20.1.2/24")}
+	shopfloor200.DHCP = netmonitor.DHCPInfo{
+		Subnet:     ipSubnet("172.20.1.0/24"),
+		NtpServers: []net.IP{net.ParseIP("132.163.96.6")},
+	}
+	shopfloor200.DNS = netmonitor.DNSInfo{
+		ResolvConfPath: "/etc/shopfloor.200-resolv.conf",
+		Domains:        []string{"vlan200-test-domain"},
+		DNSServers:     []net.IP{net.ParseIP("1.1.1.1")},
+	}
+	networkMonitor.AddOrUpdateInterface(shopfloor100)
+	networkMonitor.AddOrUpdateInterface(shopfloor200)
+	t.Eventually(testingInProgressCb()).Should(BeFalse())
+	t.Eventually(dpcIdxCb()).Should(Equal(0))
+	t.Expect(getDPC(0).State).To(Equal(types.DPCStateSuccess))
+	// Eventually both VLAN sub-interfaces are reported as functional.
+	t.Eventually(func() bool {
+		dns := dpcManager.GetDNS()
+		return len(dns.Ports) == 5 &&
+			dns.Ports[3].LastError == "" &&
+			dns.Ports[4].LastError == ""
+	}).Should(BeTrue())
+
+	vlan100Ref := dg.Reference(linux.Vlan{IfName: "shopfloor.100"})
+	t.Expect(itemIsCreated(vlan100Ref)).To(BeTrue())
+	vlan200Ref := dg.Reference(linux.Vlan{IfName: "shopfloor.200"})
+	t.Expect(itemIsCreated(vlan200Ref)).To(BeTrue())
+	bondRef := dg.Reference(linux.Bond{IfName: "bond0"})
+	t.Expect(itemIsCreated(bondRef)).To(BeTrue())
+
+	// Check DNS content.
+	dnsObj, _ := pubDNS.Get("global")
+	dns := dnsObj.(types.DeviceNetworkStatus)
+	t.Expect(dns.Version).To(Equal(types.DPCIsMgmt))
+	t.Expect(dns.State).To(Equal(types.DPCStateSuccess))
+	t.Expect(dns.Testing).To(BeFalse())
+	t.Expect(dns.DPCKey).To(Equal("zedagent"))
+	t.Expect(dns.CurrentIndex).To(Equal(0))
+	t.Expect(dns.RadioSilence.Imposed).To(BeFalse())
+	t.Expect(dns.Ports).To(HaveLen(5))
+	eth0State := dns.Ports[0]
+	t.Expect(eth0State.IfName).To(Equal("eth0"))
+	t.Expect(eth0State.Phylabel).To(Equal("ethernet0"))
+	t.Expect(eth0State.Logicallabel).To(Equal("shopfloor0"))
+	t.Expect(eth0State.LastError).To(BeEmpty())
+	t.Expect(eth0State.AddrInfoList).To(BeEmpty())
+	t.Expect(eth0State.IsMgmt).To(BeFalse())
+	t.Expect(eth0State.IsL3Port).To(BeFalse())
+	t.Expect(eth0State.DomainName).To(BeEmpty())
+	t.Expect(eth0State.DNSServers).To(BeEmpty())
+	t.Expect(eth0State.NtpServers).To(BeEmpty())
+	t.Expect(eth0State.Subnet.IP).To(BeNil())
+	t.Expect(eth0State.MacAddr).To(Equal("02:00:00:00:00:01"))
+	t.Expect(eth0State.Up).To(BeTrue())
+	t.Expect(eth0State.Type).To(BeEquivalentTo(types.NT_NOOP))
+	t.Expect(eth0State.Dhcp).To(BeEquivalentTo(types.DT_NOOP))
+	t.Expect(eth0State.DefaultRouters).To(BeEmpty())
+	eth1State := dns.Ports[1]
+	t.Expect(eth1State.IfName).To(Equal("eth1"))
+	t.Expect(eth1State.Phylabel).To(Equal("ethernet1"))
+	t.Expect(eth1State.Logicallabel).To(Equal("shopfloor1"))
+	t.Expect(eth1State.LastError).To(BeEmpty())
+	t.Expect(eth1State.AddrInfoList).To(BeEmpty())
+	t.Expect(eth1State.IsMgmt).To(BeFalse())
+	t.Expect(eth1State.IsL3Port).To(BeFalse())
+	t.Expect(eth1State.DomainName).To(BeEmpty())
+	t.Expect(eth1State.DNSServers).To(BeEmpty())
+	t.Expect(eth1State.NtpServers).To(BeEmpty())
+	t.Expect(eth1State.Subnet.IP).To(BeNil())
+	t.Expect(eth1State.MacAddr).To(Equal("02:00:00:00:00:02"))
+	t.Expect(eth1State.Up).To(BeTrue())
+	t.Expect(eth1State.Type).To(BeEquivalentTo(types.NT_NOOP))
+	t.Expect(eth1State.Dhcp).To(BeEquivalentTo(types.DT_NOOP))
+	t.Expect(eth1State.DefaultRouters).To(BeEmpty())
+	bond0State := dns.Ports[2]
+	t.Expect(bond0State.IfName).To(Equal("bond0"))
+	t.Expect(bond0State.Logicallabel).To(Equal("bond-shopfloor"))
+	t.Expect(bond0State.LastError).To(BeEmpty())
+	t.Expect(bond0State.AddrInfoList).To(BeEmpty())
+	t.Expect(bond0State.IsMgmt).To(BeFalse())
+	t.Expect(bond0State.IsL3Port).To(BeFalse())
+	t.Expect(bond0State.DomainName).To(BeEmpty())
+	t.Expect(bond0State.DNSServers).To(BeEmpty())
+	t.Expect(bond0State.NtpServers).To(BeEmpty())
+	t.Expect(bond0State.Subnet.IP).To(BeNil())
+	t.Expect(bond0State.MacAddr).To(Equal("02:00:00:00:00:03"))
+	t.Expect(bond0State.Up).To(BeTrue())
+	t.Expect(bond0State.Type).To(BeEquivalentTo(types.NT_NOOP))
+	t.Expect(bond0State.Dhcp).To(BeEquivalentTo(types.DT_NOOP))
+	t.Expect(bond0State.DefaultRouters).To(BeEmpty())
+	vlan100State := dns.Ports[3]
+	t.Expect(vlan100State.IfName).To(Equal("shopfloor.100"))
+	t.Expect(vlan100State.Logicallabel).To(Equal("shopfloor-vlan100"))
+	t.Expect(vlan100State.LastError).To(BeEmpty())
+	t.Expect(vlan100State.AddrInfoList).To(HaveLen(1))
+	t.Expect(vlan100State.AddrInfoList[0].Addr.String()).To(Equal("192.168.10.5"))
+	t.Expect(vlan100State.IsMgmt).To(BeTrue())
+	t.Expect(vlan100State.IsL3Port).To(BeTrue())
+	t.Expect(vlan100State.DomainName).To(Equal("vlan100-test-domain"))
+	t.Expect(vlan100State.DNSServers).To(HaveLen(1))
+	t.Expect(vlan100State.DNSServers[0].String()).To(Equal("8.8.8.8"))
+	t.Expect(vlan100State.NtpServers).To(HaveLen(1))
+	t.Expect(vlan100State.NtpServers[0].String()).To(Equal("132.163.96.5"))
+	t.Expect(vlan100State.Subnet.String()).To(Equal("192.168.10.0/24"))
+	t.Expect(vlan100State.MacAddr).To(Equal("02:00:00:00:00:04"))
+	t.Expect(vlan100State.Up).To(BeTrue())
+	t.Expect(vlan100State.Type).To(BeEquivalentTo(types.NT_IPV4))
+	t.Expect(vlan100State.Dhcp).To(BeEquivalentTo(types.DT_CLIENT))
+	t.Expect(vlan100State.DefaultRouters).To(BeEmpty())
+	t.Expect(vlan100State.LastSucceeded.After(vlan100State.LastFailed)).To(BeTrue())
+	vlan200State := dns.Ports[4]
+	t.Expect(vlan200State.IfName).To(Equal("shopfloor.200"))
+	t.Expect(vlan200State.Logicallabel).To(Equal("shopfloor-vlan200"))
+	t.Expect(vlan200State.LastError).To(BeEmpty())
+	t.Expect(vlan200State.AddrInfoList).To(HaveLen(1))
+	t.Expect(vlan200State.AddrInfoList[0].Addr.String()).To(Equal("172.20.1.2"))
+	t.Expect(vlan200State.IsMgmt).To(BeTrue())
+	t.Expect(vlan200State.IsL3Port).To(BeTrue())
+	t.Expect(vlan200State.DomainName).To(Equal("vlan200-test-domain"))
+	t.Expect(vlan200State.DNSServers).To(HaveLen(1))
+	t.Expect(vlan200State.DNSServers[0].String()).To(Equal("1.1.1.1"))
+	t.Expect(vlan200State.NtpServers).To(HaveLen(1))
+	t.Expect(vlan200State.NtpServers[0].String()).To(Equal("132.163.96.6"))
+	t.Expect(vlan200State.Subnet.String()).To(Equal("172.20.1.0/24"))
+	t.Expect(vlan200State.MacAddr).To(Equal("02:00:00:00:00:05"))
+	t.Expect(vlan200State.Up).To(BeTrue())
+	t.Expect(vlan200State.Type).To(BeEquivalentTo(types.NT_IPV4))
+	t.Expect(vlan200State.Dhcp).To(BeEquivalentTo(types.DT_CLIENT))
+	t.Expect(vlan200State.DefaultRouters).To(BeEmpty())
+	t.Expect(vlan200State.LastSucceeded.After(vlan200State.LastFailed)).To(BeTrue())
 }

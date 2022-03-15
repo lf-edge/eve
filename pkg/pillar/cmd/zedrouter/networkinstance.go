@@ -2082,33 +2082,3 @@ func doNetworkInstanceFallback(
 	publishNetworkInstanceStatus(ctx, status)
 	return err
 }
-
-// uplinkToPhysdev checks if the ifname is a bridge and if so it
-// prepends a "k" to the name (assuming that ifname exists)
-// If any issues it returns the argument ifname
-func uplinkToPhysdev(ifname string) string {
-
-	link, err := netlink.LinkByName(ifname)
-	if err != nil {
-		err = fmt.Errorf("uplinkToPhysdev LinkByName(%s) failed: %v",
-			ifname, err)
-		log.Error(err)
-		return ifname
-	}
-	linkType := link.Type()
-	if linkType != "bridge" {
-		log.Functionf("uplinkToPhysdev(%s) not a bridge", ifname)
-		return ifname
-	}
-
-	kernIfname := "k" + ifname
-	_, err = netlink.LinkByName(kernIfname)
-	if err != nil {
-		err = fmt.Errorf("uplinkToPhysdev(%s) %s does not exist: %v",
-			ifname, kernIfname, err)
-		log.Error(err)
-		return ifname
-	}
-	log.Functionf("uplinkToPhysdev found %s", kernIfname)
-	return kernIfname
-}

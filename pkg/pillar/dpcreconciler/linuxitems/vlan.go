@@ -8,6 +8,8 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/vishvananda/netlink"
+
 	"github.com/lf-edge/eve/libs/depgraph"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/dpcreconciler/genericitems"
@@ -101,28 +103,65 @@ type VlanConfigurator struct {
 	NetworkMonitor netmonitor.NetworkMonitor
 }
 
-// Create is not yet implemented.
+// Create creates a VLAN sub-interface.
 func (c *VlanConfigurator) Create(ctx context.Context, item depgraph.Item) error {
-	// TODO
+	vlanCfg := item.(Vlan)
+	parentLink, err := netlink.LinkByName(vlanCfg.ParentIfName)
+	if err != nil {
+		err = fmt.Errorf("failed to get parent interface %s: %v",
+			vlanCfg.ParentIfName, err)
+		c.Log.Error(err)
+		return err
+	}
+	vlan := &netlink.Vlan{}
+	vlan.ParentIndex = parentLink.Attrs().Index
+	vlan.Name = vlanCfg.IfName
+	vlan.VlanId = int(vlanCfg.ID)
+	err = netlink.LinkAdd(vlan)
+	if err != nil {
+		err = fmt.Errorf("failed to add VLAN sub-interface %s: %v",
+			vlanCfg.IfName, err)
+		c.Log.Error(err)
+		return err
+	}
+	err = netlink.LinkSetUp(vlan)
+	if err != nil {
+		err = fmt.Errorf("failed to set VLAN sub-interface %s UP: %v",
+			vlanCfg.IfName, err)
+		c.Log.Error(err)
+		return err
+	}
+	return nil
+}
+
+// Modify is not implemented.
+func (c *VlanConfigurator) Modify(_ context.Context, _, _ depgraph.Item) (err error) {
 	return errors.New("not implemented")
 }
 
-// Modify is not yet implemented.
-func (c *VlanConfigurator) Modify(ctx context.Context, oldItem, newItem depgraph.Item) (err error) {
-	// TODO
-	return errors.New("not implemented")
-}
-
-// Delete is not yet implemented.
+// Delete removes VLAN sub-interface.
 func (c *VlanConfigurator) Delete(ctx context.Context, item depgraph.Item) error {
 	// After removing interfaces it is best to clear the cache.
 	defer c.NetworkMonitor.ClearCache()
-
-	// TODO
-	return errors.New("not implemented")
+	vlanCfg := item.(Vlan)
+	link, err := netlink.LinkByName(vlanCfg.IfName)
+	if err != nil {
+		err = fmt.Errorf("failed to select VLAN sub-interface %s for removal: %v",
+			vlanCfg.IfName, err)
+		c.Log.Error(err)
+		return err
+	}
+	err = netlink.LinkDel(link)
+	if err != nil {
+		err = fmt.Errorf("failed to delete VLAN sub-interface %s: %v",
+			vlanCfg.IfName, err)
+		c.Log.Error(err)
+		return err
+	}
+	return nil
 }
 
-// NeedsRecreate returns true for now - Modify is not implemented (yet).
+// NeedsRecreate always returns true - Modify is not implemented.
 func (c *VlanConfigurator) NeedsRecreate(oldItem, newItem depgraph.Item) (recreate bool) {
 	return true
 }
