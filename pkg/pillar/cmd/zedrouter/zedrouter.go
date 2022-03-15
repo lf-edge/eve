@@ -1139,6 +1139,9 @@ func appNetworkDoActivateUnderlayNetwork(
 			ulStatus.Vlan.End = ulConfig.AccessVlanID
 			netInstStatus.VlanMap[ulConfig.AccessVlanID]++
 		}
+		if len(netInstStatus.IfNameList) > 0 {
+			ulStatus.Vlan.SwitchUplink = netInstStatus.IfNameList[0]
+		}
 	}
 
 	appID := status.UUIDandVersion.UUID

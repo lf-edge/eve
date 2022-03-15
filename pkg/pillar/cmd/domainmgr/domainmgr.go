@@ -28,6 +28,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/cas"
 	"github.com/lf-edge/eve/pkg/pillar/cipher"
 	"github.com/lf-edge/eve/pkg/pillar/containerd"
+	"github.com/lf-edge/eve/pkg/pillar/devicenetwork"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	"github.com/lf-edge/eve/pkg/pillar/hypervisor"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
@@ -1428,6 +1429,7 @@ func enableVlanFiltering(bridgeName string) error {
 	return nil
 }
 
+// TODO Move this to zedrouter.
 func setupVlans(vifList []types.VifInfo) error {
 	deadline := time.Now().Add(20 * time.Second)
 	const delay = 500 * time.Millisecond
@@ -1482,12 +1484,34 @@ func setupVlans(vifList []types.VifInfo) error {
 			err = fmt.Errorf("failed to get link '%s': %w", vif.Vif, err)
 			return err
 		}
+
+		// Switch network instances have one or zero uplinks.
+		var uplink netlink.Link
+		if vif.Vlan.SwitchUplink != "" {
+			ifName := devicenetwork.UplinkToPhysdev(log, vif.Vlan.SwitchUplink)
+			uplink, err = netlink.LinkByName(ifName)
+			if err != nil {
+				err = fmt.Errorf("failed to get uplink %s for VIF %s",
+					vif.Vlan.SwitchUplink, vif.Vif)
+				return err
+			}
+		}
+
 		if !vif.Vlan.IsTrunk {
-			err = netlink.BridgeVlanAdd(link, uint16(vif.Vlan.Start), true, true, false, false)
+			vlanID := vif.Vlan.Start
+			err = netlink.BridgeVlanAdd(link, uint16(vlanID), true, true, false, false)
 			if err != nil {
 				err = fmt.Errorf("failed to configure VLAN (%d) for access port '%s': %w",
 					vif.Vlan.Start, vif.Vif, err)
 				return err
+			}
+			if uplink != nil {
+				err = netlink.BridgeVlanAdd(uplink, uint16(vlanID), false, false, false, false)
+				if err != nil {
+					err = fmt.Errorf("failed to configure VLAN (%d) for uplink trunk port '%s': %w",
+						vlanID, uplink.Attrs().Name, err)
+					return err
+				}
 			}
 		} else {
 			start := vif.Vlan.Start
@@ -1498,6 +1522,14 @@ func setupVlans(vifList []types.VifInfo) error {
 					err = fmt.Errorf("failed to configure VLAN (%d) for trunk port '%s': %w",
 						vlanID, vif.Vif, err)
 					return err
+				}
+				if uplink != nil {
+					err = netlink.BridgeVlanAdd(uplink, uint16(vlanID), false, false, false, false)
+					if err != nil {
+						err = fmt.Errorf("failed to configure VLAN (%d) for uplink trunk port '%s': %w",
+							vlanID, uplink.Attrs().Name, err)
+						return err
+					}
 				}
 			}
 		}

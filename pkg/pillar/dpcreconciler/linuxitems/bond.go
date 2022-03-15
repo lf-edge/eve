@@ -5,9 +5,10 @@ package linuxitems
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"reflect"
+
+	"github.com/vishvananda/netlink"
 
 	"github.com/lf-edge/eve/libs/depgraph"
 	"github.com/lf-edge/eve/pkg/pillar/base"
@@ -89,28 +90,208 @@ type BondConfigurator struct {
 	NetworkMonitor netmonitor.NetworkMonitor
 }
 
-// Create is not yet implemented.
+// Create adds new Bond interface.
 func (c *BondConfigurator) Create(ctx context.Context, item depgraph.Item) error {
-	// TODO
-	return errors.New("not implemented")
+	bondCfg := item.(Bond)
+	bond := netlink.NewLinkBond(netlink.LinkAttrs{Name: bondCfg.IfName})
+	switch bondCfg.Mode {
+	case types.BondModeUnspecified:
+		err := fmt.Errorf("unspecified Bond mode: %v", bondCfg.Mode)
+		c.Log.Error(err)
+		return err
+	case types.BondModeBalanceRR:
+		bond.Mode = netlink.BOND_MODE_BALANCE_RR
+	case types.BondModeActiveBackup:
+		bond.Mode = netlink.BOND_MODE_ACTIVE_BACKUP
+	case types.BondModeBalanceXOR:
+		bond.Mode = netlink.BOND_MODE_BALANCE_XOR
+	case types.BondModeBroadcast:
+		bond.Mode = netlink.BOND_MODE_BROADCAST
+	case types.BondMode802Dot3AD:
+		bond.Mode = netlink.BOND_MODE_802_3AD
+		switch bondCfg.LacpRate {
+		case types.LacpRateSlow:
+			bond.LacpRate = netlink.BOND_LACP_RATE_SLOW
+		case types.LacpRateFast:
+			bond.LacpRate = netlink.BOND_LACP_RATE_FAST
+		}
+	case types.BondModeBalanceTLB:
+		bond.Mode = netlink.BOND_MODE_BALANCE_TLB
+	case types.BondModeBalanceALB:
+		bond.Mode = netlink.BOND_MODE_BALANCE_ALB
+	default:
+		err := fmt.Errorf("unsupported Bond mode: %v", bondCfg.Mode)
+		c.Log.Error(err)
+		return err
+	}
+	bond.Miimon = 0
+	bond.ArpInterval = 0
+	if bondCfg.MIIMonitor.Enabled {
+		bond.DownDelay = int(bondCfg.MIIMonitor.DownDelay)
+		bond.UpDelay = int(bondCfg.MIIMonitor.UpDelay)
+		bond.Miimon = int(bondCfg.MIIMonitor.Interval)
+	} else if bondCfg.ARPMonitor.Enabled {
+		bond.ArpInterval = int(bondCfg.ARPMonitor.Interval)
+		bond.ArpIpTargets = bondCfg.ARPMonitor.IPTargets
+	}
+	err := netlink.LinkAdd(bond)
+	if err != nil {
+		err = fmt.Errorf("failed to add bond: %v", err)
+		c.Log.Error(err)
+		return err
+	}
+	err = netlink.LinkSetUp(bond)
+	if err != nil {
+		err = fmt.Errorf("failed to set bond %s UP: %v", bondCfg.IfName, err)
+		c.Log.Error(err)
+		return err
+	}
+	for _, aggrIfName := range bondCfg.AggregatedIfNames {
+		err := c.aggregateInterface(bond, aggrIfName)
+		if err != nil {
+			err = fmt.Errorf("failed to put interface %s under bond %s: %v",
+				aggrIfName, bondCfg.IfName, err)
+			c.Log.Error(err)
+			return err
+		}
+	}
+	return nil
 }
 
-// Modify is not yet implemented.
+func (c *BondConfigurator) aggregateInterface(bond *netlink.Bond, ifName string) error {
+	aggrLink, err := netlink.LinkByName(ifName)
+	if err != nil {
+		return err
+	}
+	// Interface must be down before it can be put under a bond.
+	err = netlink.LinkSetDown(aggrLink)
+	if err != nil {
+		return err
+	}
+	err = netlink.LinkSetBondSlave(aggrLink, bond)
+	if err != nil {
+		return err
+	}
+	err = netlink.LinkSetUp(aggrLink)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (c *BondConfigurator) disaggregateInterface(aggrIfName string) error {
+	aggrLink, err := netlink.LinkByName(aggrIfName)
+	if err != nil {
+		return err
+	}
+	err = netlink.LinkSetNoMaster(aggrLink)
+	if err != nil {
+		return err
+	}
+	// Releasing interface from the master causes it be automatically
+	// brought down - we need to bring it back up.
+	err = netlink.LinkSetUp(aggrLink)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+// Modify is able to change the set of aggregated interfaces.
 func (c *BondConfigurator) Modify(ctx context.Context, oldItem, newItem depgraph.Item) (err error) {
-	// TODO
-	return errors.New("not implemented")
+	oldBondCfg := oldItem.(Bond)
+	newBondCfg := newItem.(Bond)
+	bondLink, err := netlink.LinkByName(oldBondCfg.IfName)
+	if err != nil {
+		c.Log.Error(err)
+		return err
+	}
+	if bondLink.Type() != "bond" {
+		err = fmt.Errorf("interface %s is not Bond", oldBondCfg.IfName)
+		c.Log.Error(err)
+		return err
+	}
+	bond := bondLink.(*netlink.Bond)
+	// Disaggregate interfaces which are no longer configured to be under the Bond.
+	for _, oldAggrIntf := range oldBondCfg.AggregatedIfNames {
+		var found bool
+		for _, newAggrIntf := range newBondCfg.AggregatedIfNames {
+			if oldAggrIntf == newAggrIntf {
+				found = true
+				break
+			}
+		}
+		if !found {
+			err := c.disaggregateInterface(oldAggrIntf)
+			if err != nil {
+				err = fmt.Errorf("failed to release interface %s from bond %s: %v",
+					oldAggrIntf, oldBondCfg.IfName, err)
+				c.Log.Error(err)
+				return err
+			}
+		}
+	}
+	// Add interfaces newly configured for aggregation under this Bond.
+	for _, newAggrIntf := range newBondCfg.AggregatedIfNames {
+		var found bool
+		for _, oldAggrIntf := range oldBondCfg.AggregatedIfNames {
+			if oldAggrIntf == newAggrIntf {
+				found = true
+				break
+			}
+		}
+		if !found {
+			err := c.aggregateInterface(bond, newAggrIntf)
+			if err != nil {
+				err = fmt.Errorf("failed to put interface %s under bond %s: %v",
+					newAggrIntf, oldBondCfg.IfName, err)
+				c.Log.Error(err)
+				return err
+			}
+		}
+	}
+	return nil
 }
 
-// Delete is not yet implemented.
+// Delete removes bond interface.
 func (c *BondConfigurator) Delete(ctx context.Context, item depgraph.Item) error {
 	// After removing interfaces it is best to clear the cache.
 	defer c.NetworkMonitor.ClearCache()
-
-	// TODO
-	return errors.New("not implemented")
+	bondCfg := item.(Bond)
+	for _, aggrIfName := range bondCfg.AggregatedIfNames {
+		err := c.disaggregateInterface(aggrIfName)
+		if err != nil {
+			err = fmt.Errorf("failed to release interface %s from bond %s: %v",
+				aggrIfName, bondCfg.IfName, err)
+			return err
+		}
+	}
+	link, err := netlink.LinkByName(bondCfg.IfName)
+	if err != nil {
+		err = fmt.Errorf("failed to select bond %s for removal: %v",
+			bondCfg.IfName, err)
+		c.Log.Error(err)
+		return err
+	}
+	err = netlink.LinkDel(link)
+	if err != nil {
+		err = fmt.Errorf("failed to delete bond %s: %v", bondCfg.IfName, err)
+		c.Log.Error(err)
+		return err
+	}
+	return nil
 }
 
-// NeedsRecreate for now returns true - Modify is not implemented (yet).
+// NeedsRecreate returns true if Bond attributes or Usage have changed.
+// The set of aggregated interfaces can be changed without recreating Bond.
 func (c *BondConfigurator) NeedsRecreate(oldItem, newItem depgraph.Item) (recreate bool) {
-	return true
+	oldBondCfg := oldItem.(Bond)
+	newBondCfg := newItem.(Bond)
+	if !reflect.DeepEqual(oldBondCfg.BondConfig, newBondCfg.BondConfig) {
+		return true
+	}
+	if oldBondCfg.Usage != newBondCfg.Usage {
+		return true
+	}
+	return false
 }
