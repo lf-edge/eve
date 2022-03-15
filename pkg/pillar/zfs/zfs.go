@@ -20,7 +20,9 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/hardware"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/utils/disks"
 	"github.com/lf-edge/eve/pkg/pillar/vault"
+	log "github.com/sirupsen/logrus"
 )
 
 const volBlockSize = uint64(16 * 1024)
@@ -317,6 +319,21 @@ func GetZfsDiskAndStatus(disk libzfs.VDevTree) (*info.StorageDiskState, error) {
 	if disk.Type != libzfs.VDevTypeDisk {
 		return nil, fmt.Errorf("%s is not a disk", disk.Name)
 	}
+	rootDevice, err := disks.GetRootDevice()
+	if err != nil {
+		log.Errorf("cannot get root device: %s", err)
+	}
+	diskZfsName := disk.Name
+	// ensure that we convert from partition to device
+	diskName, err := disks.GetDiskNameByPartName(diskZfsName)
+	if err != nil {
+		log.Errorf("cannot get disk name for %s: %s", diskZfsName, err)
+	} else {
+		// check if zfs is not on partition of root device
+		if diskName != rootDevice {
+			diskZfsName = diskName
+		}
+	}
 
 	serialNumber, err := hardware.GetSerialNumberForDisk(disk.Name)
 	if err != nil {
@@ -325,7 +342,7 @@ func GetZfsDiskAndStatus(disk libzfs.VDevTree) (*info.StorageDiskState, error) {
 
 	rDiskStatus := new(info.StorageDiskState)
 	rDiskStatus.DiskName = new(evecommon.DiskDescription)
-	rDiskStatus.DiskName.Name = *proto.String(disk.Name)
+	rDiskStatus.DiskName.Name = *proto.String(diskZfsName)
 	rDiskStatus.DiskName.Serial = *proto.String(serialNumber)
 	rDiskStatus.Status = GetZfsDeviceStatusFromStr(disk.Stat.State.String())
 	return rDiskStatus, nil
