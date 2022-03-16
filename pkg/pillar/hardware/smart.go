@@ -32,7 +32,8 @@ func ReadSMARTinfoForDisks() (*types.DisksInformation, error) {
 		if err != nil {
 			// When cannot open the disk, it means that it will not be
 			// possible to get SMART information from it. It's ok
-			// fmt.Printf("failed open disk %s err: %v", diskName, err)
+			diskSmartInfo = getInfoFromUnknownDisk(diskName, "unknown")
+			disksInfo.Disks = append(disksInfo.Disks, diskSmartInfo)
 			continue
 		}
 		diskType := dev.Type()
@@ -56,6 +57,9 @@ func ReadSMARTinfoForDisks() (*types.DisksInformation, error) {
 				disksInfo.Disks = append(disksInfo.Disks, diskSmartInfo)
 				continue
 			}
+		} else {
+			diskSmartInfo = getInfoFromUnknownDisk(diskName, diskType)
+			disksInfo.Disks = append(disksInfo.Disks, diskSmartInfo)
 		}
 
 		disksInfo.Disks = append(disksInfo.Disks, diskSmartInfo)
@@ -63,7 +67,20 @@ func ReadSMARTinfoForDisks() (*types.DisksInformation, error) {
 	return disksInfo, nil
 }
 
-// GetInfoFromSATAdisk - tеakes a disk name (/dev/sda or /dev/nvme0n1)
+// getInfoFromUnknownDisk - takes a disk name (/dev/sda or /dev/nvme0n1)
+// and disk type as input and returns *types.DiskSmartInfo
+// indicating an unknown disk type
+func getInfoFromUnknownDisk(diskName, diskType string) *types.DiskSmartInfo {
+	diskInfo := new(types.DiskSmartInfo)
+	diskInfo.DiskName = diskName
+	diskInfo.DiskType = types.SmartDiskTypeUnknown
+	diskInfo.Errors = fmt.Errorf("disk with name: %s have %s type", diskName, diskType)
+	diskInfo.CollectingStatus = types.SmartCollectingStatusError
+	diskInfo.TimeUpdate = uint64(time.Now().Unix())
+	return diskInfo
+}
+
+// GetInfoFromSATAdisk - takes a disk name (/dev/sda or /dev/nvme0n1)
 // as input and returns information on it
 func GetInfoFromSATAdisk(diskName string) (*types.DiskSmartInfo, error) {
 	diskInfo := new(types.DiskSmartInfo)
@@ -115,7 +132,7 @@ func GetInfoFromSATAdisk(diskName string) (*types.DiskSmartInfo, error) {
 	return diskInfo, nil
 }
 
-// GetInfoFromNVMeDisk - tеakes a disk name (/dev/sda or /dev/nvme0n1)
+// GetInfoFromNVMeDisk - takes a disk name (/dev/sda or /dev/nvme0n1)
 // as input and returns information on it
 func GetInfoFromNVMeDisk(diskName string) (*types.DiskSmartInfo, error) {
 	diskInfo := new(types.DiskSmartInfo)
@@ -172,7 +189,7 @@ func GetInfoFromNVMeDisk(diskName string) (*types.DiskSmartInfo, error) {
 	return diskInfo, nil
 }
 
-// GetInfoFromSCSIDisk - tеakes a disk name (/dev/sda or /dev/nvme0n1)
+// GetInfoFromSCSIDisk - takes a disk name (/dev/sda or /dev/nvme0n1)
 // as input and returns information on it
 func GetInfoFromSCSIDisk(diskName string) (*types.DiskSmartInfo, error) {
 	diskInfo := new(types.DiskSmartInfo)
@@ -202,19 +219,37 @@ func GetInfoFromSCSIDisk(diskName string) (*types.DiskSmartInfo, error) {
 	return diskInfo, nil
 }
 
-// GetSerialNumberForDisk tеakes a disk name (from dev directory,
-// for example /dev/sda) as input and return serial number
+// GetSerialNumberForDisk takes a disk name (from dev directory,
+// for example /dev/sda or /dev/sda1) as input and return serial number
 func GetSerialNumberForDisk(diskName string) (string, error) {
-	block, err := ghw.Block()
+	dev, err := smart.Open(diskName)
 	if err != nil {
-		return "", fmt.Errorf("error getting block storage info: %v", err)
+		return "", fmt.Errorf("disk with name: %s have unknown type", diskName)
 	}
+	diskType := dev.Type()
+	dev.Close()
 
-	for _, disk := range block.Disks {
-		if fmt.Sprintf("/dev/%v", disk.Name) == diskName {
-			return disk.SerialNumber, nil
+	var diskSmartInfo *types.DiskSmartInfo
+
+	if diskType == "sata" {
+		diskSmartInfo, err = GetInfoFromSATAdisk(diskName)
+		if err != nil {
+			return "", err
 		}
+	} else if diskType == "nvme" {
+		diskSmartInfo, err = GetInfoFromNVMeDisk(diskName)
+		if err != nil {
+			return "", err
+		}
+	} else if diskType == "scsi" {
+		diskSmartInfo, err = GetInfoFromSCSIDisk(diskName)
+		if err != nil {
+			return "", err
+		}
+	} else {
+		return "",
+			fmt.Errorf("failed to get serial number for %s disk with type %s", diskName, diskType)
 	}
 
-	return "", fmt.Errorf("disk %s not found", diskName)
+	return diskSmartInfo.SerialNumber, nil
 }
