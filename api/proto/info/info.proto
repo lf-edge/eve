@@ -467,6 +467,13 @@ message StorageDiskInfo {
   string collector_errors = 7; // Reports errors when collecting information. Default and normal value = ""
 }
 
+// For nested structures like pool of stripes of mirrors we should define this structure
+message StorageChildren {
+  StorageRaidType current_raid = 1;
+  repeated StorageDiskState disks = 2;
+  repeated StorageChildren children = 3;
+}
+
 // Information about storage system
 message StorageInfo {
   string pool_name = 1;
@@ -479,6 +486,7 @@ message StorageInfo {
   StorageStatus storage_state = 8;  // zfs zpool status
   repeated StorageDiskState disks = 9;  // Disks lists in EVE (use in storage)
   string collector_errors = 10; // Reports errors when collecting information. Default and normal value = ""
+  repeated StorageChildren children = 11; // If we have nested objects we should define them here
 }
 
 // Information about the system that is sent once when the system boots
