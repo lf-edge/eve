@@ -482,7 +482,7 @@ message StorageInfo {
 }
 
 // Information about the system that is sent once when the system boots
-message HardwareInfo {
+message ZInfoHardware {
   repeated StorageDiskInfo disks = 1; // S.M.A.R.T. info for disks
 }
 
@@ -982,6 +982,7 @@ message ZInfoMsg {
     ZInfoAppInstMetaData amdinfo = 16;
     // evinfo include only if the edge-view is running on device
     ZInfoEdgeview evinfo = 17;
+    ZInfoHardware hwinfo = 18;
   }
   google.protobuf.Timestamp atTimeStamp = 6;
 }
