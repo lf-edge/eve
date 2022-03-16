@@ -436,9 +436,14 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 		if err != nil {
 			log.Errorf("cannot find device with %s mount", types.PersistDir)
 		} else {
+			serialNumber, err := hardware.GetSerialNumberForDisk(mi.Source)
+			if err != nil {
+				serialNumber = "unknown"
+			}
 			rDiskStatus := new(info.StorageDiskState)
 			rDiskStatus.DiskName = new(evecommon.DiskDescription)
 			rDiskStatus.DiskName.Name = *proto.String(mi.Source)
+			rDiskStatus.DiskName.Serial = *proto.String(serialNumber)
 			rDiskStatus.Status = info.StorageStatus_STORAGE_STATUS_ONLINE
 			xStorageInfo.Disks = append(xStorageInfo.Disks, rDiskStatus)
 		}

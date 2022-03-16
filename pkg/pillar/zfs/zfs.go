@@ -18,6 +18,7 @@ import (
 	"github.com/lf-edge/eve/api/go/evecommon"
 	"github.com/lf-edge/eve/api/go/info"
 	"github.com/lf-edge/eve/pkg/pillar/base"
+	"github.com/lf-edge/eve/pkg/pillar/hardware"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/vault"
 )
@@ -317,10 +318,15 @@ func GetZfsDiskAndStatus(disk libzfs.VDevTree) (*info.StorageDiskState, error) {
 		return nil, fmt.Errorf("%s is not a disk", disk.Name)
 	}
 
+	serialNumber, err := hardware.GetSerialNumberForDisk(disk.Name)
+	if err != nil {
+		serialNumber = "unknown"
+	}
+
 	rDiskStatus := new(info.StorageDiskState)
 	rDiskStatus.DiskName = new(evecommon.DiskDescription)
 	rDiskStatus.DiskName.Name = *proto.String(disk.Name)
-	// Fix here. Here you need to get serial number
+	rDiskStatus.DiskName.Serial = *proto.String(serialNumber)
 	rDiskStatus.Status = GetZfsDeviceStatusFromStr(disk.Stat.State.String())
 	return rDiskStatus, nil
 }
