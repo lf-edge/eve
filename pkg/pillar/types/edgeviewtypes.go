@@ -19,6 +19,8 @@ const (
 	EdgeViewJwtPrefix = "EvJWToken:"
 	// EdgeViewExpPrefix - jwt expire prefix string
 	EdgeViewExpPrefix = "EvJWTExp:"
+	// EdgeViewMultiInstPrefix - multi-instance prefix string
+	EdgeViewMultiInstPrefix = "EdgeViewMultiInst:"
 	// EdgeViewCertPrefix - Edgeview Dispatcher Certs prefix string
 	EdgeViewCertPrefix = "EvDepCerts:"
 	// EdgeViewDevPolicyPrefix - Edgeview device policy prefix string
@@ -30,6 +32,9 @@ const (
 	EdgeviewJWTAlgo = "ES256"
 	// EdgeviewJWTType - JWT type string
 	EdgeviewJWTType = "JWT"
+
+	// EdgeviewMaxInstNum - maximum instancess allowed
+	EdgeviewMaxInstNum = 5
 )
 
 // EdgeviewConfig - edge-view config from controller
@@ -72,6 +77,8 @@ type EvjwtInfo struct {
 	Sub string `json:"sub"` // jwt subject, the device UUID string
 	Exp uint64 `json:"exp"` // expiration time for the token
 	Key string `json:"key"` // key or nonce for payload hmac authentication
+	Num uint8  `json:"num"` // number of instances, default is 1
+	Enc bool   `json:"enc"` // payload with encryption, default is authentication
 }
 
 // EdgeviewStatus - status advertised by edge-view
