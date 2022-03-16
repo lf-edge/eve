@@ -170,6 +170,20 @@ func addEvFiles(evConfig types.EdgeviewConfig, params []string) error {
 		return err
 	}
 
+	// multi-instance
+	if jdata.Num > 1 {
+		if jdata.Num > types.EdgeviewMaxInstNum {
+			err = fmt.Errorf("Exceeds maximum instances")
+			log.Errorf("%v", err)
+			return err
+		}
+		_, err = f.WriteString(types.EdgeViewMultiInstPrefix + strconv.Itoa(int(jdata.Num)) + "\n")
+		if err != nil {
+			log.Errorf("file write failed: %v", err)
+			return err
+		}
+	}
+
 	_, err = f.WriteString(types.EdgeViewExpPrefix + strconv.FormatUint(jdata.Exp, 10) + "\n")
 	if err != nil {
 		log.Errorf("file write failed: %v", err)
