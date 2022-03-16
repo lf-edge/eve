@@ -224,8 +224,8 @@ enum DisksArrayType {
   DISKS_ARRAY_TYPE_UNSPECIFIED = 0; // no configured
   DISKS_ARRAY_TYPE_RAID0 = 1; // stripe
   DISKS_ARRAY_TYPE_RAID1 = 2; // mirror
-  DISKS_ARRAY_TYPE_RAIDZ1 = 3; // raidz1
-  DISKS_ARRAY_TYPE_RAIDZ2 = 4; // raidz2
+  DISKS_ARRAY_TYPE_RAID5 = 3; // raidz1
+  DISKS_ARRAY_TYPE_RAID6 = 4; // raidz2
 }
 
 //DisksConfig is a configuration of disks

@@ -265,13 +265,13 @@ func getRaidTypeFromStr(raidName string) info.StorageRaidType {
 	if len(raidName) == 0 {
 		return info.StorageRaidType_STORAGE_RAID_TYPE_NORAID
 	} else if strings.Contains(raidName, "raidz1") {
-		return info.StorageRaidType_STORAGE_RAID_TYPE_RAIDZ1
+		return info.StorageRaidType_STORAGE_RAID_TYPE_RAID5
 	} else if strings.Contains(raidName, "raidz2") {
-		return info.StorageRaidType_STORAGE_RAID_TYPE_RAIDZ2
+		return info.StorageRaidType_STORAGE_RAID_TYPE_RAID6
 	} else if strings.Contains(raidName, "raidz3") {
-		return info.StorageRaidType_STORAGE_RAID_TYPE_RAIDZ3
+		return info.StorageRaidType_STORAGE_RAID_TYPE_RAID7
 	} else if strings.Contains(raidName, "mirror") {
-		return info.StorageRaidType_STORAGE_RAID_TYPE_RAID_MIRROR
+		return info.StorageRaidType_STORAGE_RAID_TYPE_RAID1
 	}
 
 	return info.StorageRaidType_STORAGE_RAID_TYPE_NORAID
