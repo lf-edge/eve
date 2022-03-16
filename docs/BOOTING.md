@@ -127,6 +127,7 @@ in grub.cfg with graphical GRUB menu to get the device to boot again.
     10. `eve_install_skip_persist` - do not install persist partition onto device. May be selected from graphical GRUB menu.
     11. `eve_install_skip_rootfs` - do not install rootfs partition onto device. May be selected from graphical GRUB menu.
     12. `eve_install_skip_zfs_checks` - install zfs by skipping minimum requirement checks.
+    13. `eve_install_zfs_with_raid_level` - Sets raid level for zfs storage. Valid values are none,raid1,raid5,raid6. Default value is none.
 3. General kernel parameters may be adjusted with `set_global dom0_extra_args "$dom0_extra_args OPTION1=VAL1 OPTION2 "`.
    They will be added to kernel cmdline.
 

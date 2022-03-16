@@ -21,6 +21,7 @@
 #   eve_install_skip_persist
 #   eve_install_skip_rootfs
 #   eve_install_skip_zfs_checks
+#   eve_install_zfs_with_raid_level
 #
 BAIL_FINAL_CMD=${BAIL_FINAL_CMD:-"exit 1"}
 [ -n "$DEBUG" ] && set -x
@@ -140,6 +141,7 @@ collect_black_box() {
 
 # prepare_mounts_and_zfs_pool POOL_CREATION_COMMAND_SUFFIX_SUFFIX
 prepare_mounts_and_zfs_pool() {
+  modprobe zfs
   logmsg "Preparing ZFS pool and mounts"
   [ -e /root/sys ] || mkdir /root/sys && mount -t sysfs sysfs /root/sys
   [ -e /root/proc ] || mkdir /root/proc && mount -t proc proc /root/proc
@@ -271,11 +273,21 @@ DISK_WITH_P3=""
 DISKS_TO_MERGE_COUNT=0
 MULTIPLE_DISKS=false
 INSTALL_ZFS=false
+grep -q eve_install_zfs_with_raid_level /proc/cmdline && INSTALL_ZFS=true
+RAID_LEVEL="none"
+
+if [ "$INSTALL_ZFS" = true ]; then
+   # User explicitly asked to install ZFS so skip the zfs minimum requirement checks.
+   # We will do checks only when user just provides multiple disks for persist and did not expliclty ask to install zfs
+   SKIP_ZFS_CHECKS=true
+   RAID_LEVEL=$(</proc/cmdline tr ' ' '\012' | sed -ne '/^eve_install_zfs_with_raid_level=/s#^.*=##p')
+   logmsg "ZFS raid level: $RAID_LEVEL"
+fi
+
 if [ "$INSTALL_DEV" != "$INSTALL_PERSIST" ]; then
    if echo "$INSTALL_PERSIST"| grep -q ","; then
      MULTIPLE_DISKS=true
      INSTALL_ZFS=true
-     modprobe zfs
      MAKE_RAW_PARTS="efi imga imgb conf"
      for dev in $(echo "$INSTALL_PERSIST" | tr ',' ' '); do
         if [ "$dev" = "$INSTALL_DEV" ]; then
@@ -329,6 +341,10 @@ if [ "$INSTALL_DEV" != "$INSTALL_PERSIST" ]; then
      fi
      # force make-raw to skip persist
      MAKE_RAW_PARTS="efi imga imgb conf"
+     # We will be here if persist is being installed on single disk. In ZFS case update pool creation command
+     if [ "$INSTALL_ZFS" = true ]; then
+         POOL_CREATION_COMMAND_SUFFIX=$PDEV
+     fi
    fi
 fi
 
@@ -342,26 +358,24 @@ fi
 # shellcheck disable=SC2086
 grep -q eve_blackbox /proc/cmdline || /make-raw $RANDOM_DISK_UUIDS "/dev/$INSTALL_DEV" $MAKE_RAW_PARTS || bail "Installation failed. Entering shell..."
 
-if [ "$MULTIPLE_DISKS" = true ] && [ "$INSTALL_ZFS" = true ]; then
+if [ "$INSTALL_ZFS" = true ]; then
   if [ "$DISK_WITH_P3" != "" ]; then
     P3_ID="$(find_part P3 "$DISK_WITH_P3")"
     [ -z "$P3_ID" ] && bail "Installation failed. Cannot found P3. Entering shell..."
     POOL_CREATION_COMMAND_SUFFIX=$(echo "$POOL_CREATION_COMMAND_SUFFIX" | sed "s#$P3_ON_BOOT_PLACEHOLDER#/dev/$P3_ID#g")
     echo "WARNING: Will use /dev/$P3_ID instead of /dev/$DISK_WITH_P3 for P3 because of bootable parts needed"
   fi
-  # we use mirror for 2 disks, raidz1 for 3 disks and raidz2 for more than 3 disks
-  case $DISKS_TO_MERGE_COUNT in
-    1) ;;
-    2)
+  # Set the raid level requested by user, if nothing is set, default will be no raid persist pool
+  if [ "$RAID_LEVEL" = "raid1" ]; then
       POOL_CREATION_COMMAND_SUFFIX="mirror $POOL_CREATION_COMMAND_SUFFIX"
-      ;;
-    3)
+  elif [ "$RAID_LEVEL" = "raid5" ]; then
       POOL_CREATION_COMMAND_SUFFIX="raidz1 $POOL_CREATION_COMMAND_SUFFIX"
-      ;;
-    *)
+  elif [ "$RAID_LEVEL" = "raid6" ]; then
       POOL_CREATION_COMMAND_SUFFIX="raidz2 $POOL_CREATION_COMMAND_SUFFIX"
-      ;;
-  esac
+  fi
+
+  logmsg "Creating ZFS pool with raid level: $RAID_LEVEL"
+  logmsg "Pool creation command: $POOL_CREATION_COMMAND_SUFFIX"
   prepare_mounts_and_zfs_pool "$POOL_CREATION_COMMAND_SUFFIX"
 else
   # now the disk is ready - mount partitions
@@ -446,7 +460,7 @@ fi
 # we also maybe asked to pause after
 grep -q eve_pause_after_install /proc/cmdline && pause "shutting the node down"
 
-if [ "$MULTIPLE_DISKS" = true ] && [ "$INSTALL_ZFS" = true ]; then
+if [ "$INSTALL_ZFS" = true ]; then
    adjust_zfs_mounts_and_umount
 fi
 
