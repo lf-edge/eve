@@ -291,8 +291,8 @@ func GetZfsCountVolume(datasetName string) (uint32, error) {
 	return uint32(count), nil
 }
 
-// getRaidTypeFromStr takes a RAID name as input and returns current RAID type
-func getRaidTypeFromStr(raidName string) info.StorageRaidType {
+// GetRaidTypeFromStr takes a RAID name as input and returns current RAID type
+func GetRaidTypeFromStr(raidName string) info.StorageRaidType {
 	if len(raidName) == 0 {
 		return info.StorageRaidType_STORAGE_RAID_TYPE_NORAID
 	} else if strings.Contains(raidName, "raidz1") {
@@ -309,15 +309,23 @@ func getRaidTypeFromStr(raidName string) info.StorageRaidType {
 }
 
 // GetZpoolRaidType takes a libzfs.VDevTree as input and returns current RAID type.
-// At the moment, while will start from the fact that for one pool, have one RAID
+// return RAID0 in case of mixed topology as we can mix nested topology into the stripe
 func GetZpoolRaidType(vdevs libzfs.VDevTree) info.StorageRaidType {
+	vdevsCount := 0
+	for _, vdev := range vdevs.Devices {
+		if vdev.Type == libzfs.VDevTypeMirror || vdev.Type == libzfs.VDevTypeRaidz || vdev.Type == libzfs.VDevTypeDisk {
+			vdevsCount++
+		}
+	}
+	if vdevsCount > 1 {
+		return info.StorageRaidType_STORAGE_RAID_TYPE_RAID0
+	}
 	for _, vdev := range vdevs.Devices {
 		if vdev.Type == libzfs.VDevTypeMirror || vdev.Type == libzfs.VDevTypeRaidz {
-			return getRaidTypeFromStr(vdev.Name)
+			return GetRaidTypeFromStr(vdev.Name)
 		}
 		break
 	}
-
 	return info.StorageRaidType_STORAGE_RAID_TYPE_NORAID
 }
 

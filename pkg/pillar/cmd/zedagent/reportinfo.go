@@ -394,26 +394,82 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 				if err != nil {
 					log.Errorf("error with get about RAID info from devTree: %v", err)
 				} else {
+					// it returns top-level raid type
 					currentRaid = zfs.GetZpoolRaidType(vdevs)
-					for _, vdev := range vdevs.Devices {
-						// If this is a RAID or mirror, look at the disks it consists of
-						if vdev.Type == libzfs.VDevTypeMirror || vdev.Type == libzfs.VDevTypeRaidz {
-							for _, disk := range vdev.Devices {
-								rDiskStatus, err := zfs.GetZfsDiskAndStatus(disk)
-								// vdev.Devices might includes snapshots or caches,
-								// and those will result in errors which need to ignore.
-								if err == nil {
-									rStorageInfo.Disks = append(rStorageInfo.Disks, rDiskStatus)
+					// handle the case when we have only one top-level vdev
+					if currentRaid != info.StorageRaidType_STORAGE_RAID_TYPE_RAID0 {
+						for _, vdev := range vdevs.Devices {
+							// If this is a RAID or mirror, look at the disks it consists of
+							if vdev.Type == libzfs.VDevTypeMirror || vdev.Type == libzfs.VDevTypeRaidz {
+								for _, disk := range vdev.Devices {
+									rDiskStatus, err := zfs.GetZfsDiskAndStatus(disk)
+									// vdev.Devices might includes snapshots or caches,
+									// and those will result in errors which need to ignore.
+									if err == nil {
+										rStorageInfo.Disks = append(rStorageInfo.Disks, rDiskStatus)
+									}
 								}
+								break // in that case we have only one RAID
 							}
-							break // for one pool, have one RAID
+							// If there is no RAID or mirror, add a disk if it is a disk
+							rDiskStatus, err := zfs.GetZfsDiskAndStatus(vdev)
+							// vdev.Devices might includes snapshots or caches,
+							// and those will result in errors which need to ignore.
+							if err == nil {
+								rStorageInfo.Disks = append(rStorageInfo.Disks, rDiskStatus)
+							}
 						}
-						// If there is no RAID or mirror, add a disk if it is a disk
-						rDiskStatus, err := zfs.GetZfsDiskAndStatus(vdev)
-						// vdev.Devices might includes snapshots or caches,
-						// and those will result in errors which need to ignore.
-						if err == nil {
-							rStorageInfo.Disks = append(rStorageInfo.Disks, rDiskStatus)
+					} else {
+						// multiple top-level vdevs should be handled separately
+						currentRaid = info.StorageRaidType_STORAGE_RAID_TYPE_UNSPECIFIED
+						// if unspecified, use provided
+						// if noraid, keep it
+						// if lower than current, update
+						updateCurrentRaid := func(raidType info.StorageRaidType) {
+							if currentRaid == info.StorageRaidType_STORAGE_RAID_TYPE_UNSPECIFIED {
+								currentRaid = raidType
+								return
+							}
+							if currentRaid == info.StorageRaidType_STORAGE_RAID_TYPE_NORAID {
+								return
+							}
+							if raidType < currentRaid {
+								currentRaid = raidType
+								return
+							}
+						}
+						for _, vdev := range vdevs.Devices {
+							child := new(info.StorageChildren)
+							// If this is a RAID or mirror, look at the disks it consists of
+							if vdev.Type == libzfs.VDevTypeMirror || vdev.Type == libzfs.VDevTypeRaidz {
+								child.CurrentRaid = zfs.GetRaidTypeFromStr(vdev.Name)
+								updateCurrentRaid(child.CurrentRaid)
+								for _, disk := range vdev.Devices {
+									rDiskStatus, err := zfs.GetZfsDiskAndStatus(disk)
+									// vdev.Devices might includes snapshots or caches,
+									// and those will result in errors which need to ignore.
+									if err == nil {
+										child.Disks = append(child.Disks, rDiskStatus)
+									}
+								}
+								rStorageInfo.Children = append(rStorageInfo.Children, child)
+								continue
+							}
+							// If there is no RAID or mirror, add a disk if it is a disk
+							rDiskStatus, err := zfs.GetZfsDiskAndStatus(vdev)
+							// vdev.Devices might includes snapshots or caches,
+							// and those will result in errors which need to ignore.
+							if err == nil {
+								child.CurrentRaid = info.StorageRaidType_STORAGE_RAID_TYPE_NORAID
+								updateCurrentRaid(child.CurrentRaid)
+								child.Disks = append(child.Disks, rDiskStatus)
+								rStorageInfo.Children = append(rStorageInfo.Children, child)
+							}
+						}
+						// unspecified or raid0 gives no redundancy, so noraid here
+						if currentRaid == info.StorageRaidType_STORAGE_RAID_TYPE_UNSPECIFIED ||
+							currentRaid == info.StorageRaidType_STORAGE_RAID_TYPE_RAID0 {
+							currentRaid = info.StorageRaidType_STORAGE_RAID_TYPE_NORAID
 						}
 					}
 				}
