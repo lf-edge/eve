@@ -28,7 +28,8 @@ import (
 const volBlockSize = uint64(16 * 1024)
 
 var (
-	zfsPath = []string{"/hostfs", "zfs"}
+	zfsPath   = []string{"/hostfs", "zfs"}
+	zpoolPath = []string{"/hostfs", "zpool"}
 )
 
 //CreateDataset creates an empty dataset
@@ -43,6 +44,36 @@ func MountDataset(log *base.LogObject, dataset string) (string, error) {
 	args := append(zfsPath, "mount", dataset)
 	stdoutStderr, err := base.Exec(log, vault.ZfsPath, args...).CombinedOutput()
 	return string(stdoutStderr), err
+}
+
+// GetZfsStatusStr returns detailed status of pool
+func GetZfsStatusStr(log *base.LogObject, pool string) string {
+	args := append(zpoolPath, "status", pool)
+	stdoutStderr, err := base.Exec(log, vault.ZfsPath, args...).CombinedOutput()
+	if err != nil {
+		log.Errorf("zpool status error: %s", err)
+		return ""
+	}
+	var status []string
+	inStatus := false
+	scanner := bufio.NewScanner(strings.NewReader(string(stdoutStderr)))
+	for scanner.Scan() {
+		text := strings.TrimSpace(scanner.Text())
+		// we expect 'status:' in the beginning to start capture output
+		if strings.HasPrefix(strings.TrimSpace(text), "status:") {
+			inStatus = true
+			text = strings.TrimPrefix(text, "status:")
+		} else
+		// status ends with 'action:' or 'config:' in the beginning of the line
+		if strings.HasPrefix(text, "action:") ||
+			strings.HasPrefix(text, "config:") {
+			break
+		}
+		if inStatus {
+			status = append(status, strings.TrimSpace(text))
+		}
+	}
+	return strings.Join(status, " ")
 }
 
 //DestroyDataset removes dataset from zfs
