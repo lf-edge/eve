@@ -425,6 +425,9 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 				rStorageInfo.CompressionRatio = *proto.Float64(compressratio)
 				rStorageInfo.CountZvols = *proto.Uint32(countZvolume)
 				rStorageInfo.StorageState = storageState
+				if storageState != info.StorageStatus_STORAGE_STATUS_ONLINE {
+					rStorageInfo.CollectorErrors = zfs.GetZfsStatusStr(log, zpoolName)
+				}
 				ReportDeviceInfo.StorageInfo = append(ReportDeviceInfo.StorageInfo, rStorageInfo)
 				log.Tracef("report metrics sending info for ZFS zpool %s", zpoolName)
 			}
