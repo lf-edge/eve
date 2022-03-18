@@ -432,10 +432,14 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 	} else {
 		xStorageInfo := new(info.StorageInfo)
 		xStorageInfo.StorageType = info.StorageTypeInfo_STORAGE_TYPE_INFO_EXT4
+		xStorageInfo.PoolName = *proto.String(types.PersistDir)
 		mi, err := mount.Lookup(types.PersistDir)
 		if err != nil {
 			log.Errorf("cannot find device with %s mount", types.PersistDir)
+			xStorageInfo.StorageState = info.StorageStatus_STORAGE_STATUS_OFFLINE
 		} else {
+			// If ext4 is mounted its state is considered online
+			xStorageInfo.StorageState = info.StorageStatus_STORAGE_STATUS_ONLINE
 			serialNumber, err := hardware.GetSerialNumberForDisk(mi.Source)
 			if err != nil {
 				serialNumber = "unknown"
