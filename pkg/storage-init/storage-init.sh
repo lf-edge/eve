@@ -56,6 +56,7 @@ zfs_set_arc_limits() {
     zfs_set_parameter zfs_dirty_data_max "${zfs_dirty_data_max}"
 }
 
+# should be in sync with options inside installer
 zfs_module_load() {
     zfs_options="zfs_compressed_arc_enabled=0 \
 zfs_vdev_min_auto_ashift=12 \
