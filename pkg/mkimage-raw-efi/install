@@ -286,12 +286,19 @@ INSTALL_ZFS=false
 grep -q eve_install_zfs_with_raid_level /proc/cmdline && INSTALL_ZFS=true
 RAID_LEVEL="none"
 
+
 if [ "$INSTALL_ZFS" = true ]; then
    # User explicitly asked to install ZFS so skip the zfs minimum requirement checks.
    # We will do checks only when user just provides multiple disks for persist and did not expliclty ask to install zfs
    SKIP_ZFS_CHECKS=true
    RAID_LEVEL=$(</proc/cmdline tr ' ' '\012' | sed -ne '/^eve_install_zfs_with_raid_level=/s#^.*=##p')
    logmsg "ZFS raid level: $RAID_LEVEL"
+   #If installing eve and zfs on same drive set DISK_WITH_P3
+   if [ "$INSTALL_DEV" = "$INSTALL_PERSIST" ]; then
+      DISK_WITH_P3=$INSTALL_PERSIST
+      POOL_CREATION_COMMAND_SUFFIX="$POOL_CREATION_COMMAND_SUFFIX $P3_ON_BOOT_PLACEHOLDER"
+      logmsg "Installing EVE and ZFS on same drive $DISK_WITH_P3"
+   fi
 fi
 
 if [ "$INSTALL_DEV" != "$INSTALL_PERSIST" ]; then
