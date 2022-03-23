@@ -62,6 +62,7 @@ PARTS=${*:-"efi imga imgb conf persist"}
 PARTITION_TYPE_USR_X86_64=5dfbf5f4-2848-4bac-aa5e-0d9a20b745a6
 
 # The static UUIDs for the disk and the partitions
+# Also in install and storage-init.sh
 DISK_UUID=ad6871ee-31f9-4cf3-9e09-6f7a25c30050
 EFI_UUID=ad6871ee-31f9-4cf3-9e09-6f7a25c30051
 IMGA_UUID=ad6871ee-31f9-4cf3-9e09-6f7a25c30052

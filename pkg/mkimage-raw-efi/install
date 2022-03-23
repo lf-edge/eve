@@ -179,6 +179,15 @@ if grep -q eve_nuke_disks /proc/cmdline; then
   echo " done!"
 fi
 
+# The static UUIDs for the disk and the partitions
+# Also in make-raw and storage-init.sh
+DISK_UUID=ad6871ee-31f9-4cf3-9e09-6f7a25c30050
+EFI_UUID=ad6871ee-31f9-4cf3-9e09-6f7a25c30051
+IMGA_UUID=ad6871ee-31f9-4cf3-9e09-6f7a25c30052
+IMGB_UUID=ad6871ee-31f9-4cf3-9e09-6f7a25c30053
+CONF_UUID=ad6871ee-31f9-4cf3-9e09-6f7a25c30054
+PERSIST_UUID=ad6871ee-31f9-4cf3-9e09-6f7a25c30059
+
 # measure of last resort: we nuke all partition tables
 # so that we can get to a blank state. NOTE that this
 # may damage installer image itself, but we don't really
@@ -271,6 +280,7 @@ P3_ON_BOOT_PLACEHOLDER="P3_ON_BOOT_PLACEHOLDER"
 POOL_CREATION_COMMAND_SUFFIX=""
 DISK_WITH_P3=""
 DISKS_TO_MERGE_COUNT=0
+PDEV_LIST=""
 MULTIPLE_DISKS=false
 INSTALL_ZFS=false
 grep -q eve_install_zfs_with_raid_level /proc/cmdline && INSTALL_ZFS=true
@@ -303,6 +313,7 @@ if [ "$INSTALL_DEV" != "$INSTALL_PERSIST" ]; then
               sgdisk -Z --clear "$PDEV" 2>/dev/null || :
               POOL_CREATION_COMMAND_SUFFIX="$POOL_CREATION_COMMAND_SUFFIX $PDEV"
               DISKS_TO_MERGE_COUNT=$((DISKS_TO_MERGE_COUNT+1))
+	      PDEV_LIST="$PDEV_LIST $PDEV"
            else
               echo "WARNING: Cannot find /sys/block/$dev/dev, will skip it"
            fi
@@ -336,7 +347,6 @@ if [ "$INSTALL_DEV" != "$INSTALL_PERSIST" ]; then
      sgdisk --new 1:2048:0 --typecode=1:5f24425a-2dfa-11e8-a270-7b663faccc2c --change-name=1:P3 "$PDEV"
      sgdisk -v "$PDEV"
      if [ -z "$RANDOM_DISK_UUIDS" ]; then
-        PERSIST_UUID=ad6871ee-31f9-4cf3-9e09-6f7a25c30059
         sgdisk --partition-guid="1:$PERSIST_UUID" "$PDEV"
      fi
      # force make-raw to skip persist
@@ -377,6 +387,15 @@ if [ "$INSTALL_ZFS" = true ]; then
   logmsg "Creating ZFS pool with raid level: $RAID_LEVEL"
   logmsg "Pool creation command: $POOL_CREATION_COMMAND_SUFFIX"
   prepare_mounts_and_zfs_pool "$POOL_CREATION_COMMAND_SUFFIX"
+  if [ -z "$RANDOM_DISK_UUIDS" ]; then
+      # Walk disks and set fixed UUIDs
+      # We assume that as part of adding to the zpool there is partition 1 and 9
+      for dev in $PDEV_LIST; do
+          sgdisk --disk-guid=$DISK_UUID "$dev"
+          sgdisk --partition-guid="1:$EFI_UUID" "$dev"
+          sgdisk --partition-guid="9:$PERSIST_UUID" "$dev"
+      done
+  fi
 else
   # now the disk is ready - mount partitions
   mount_part P3 "$INSTALL_DEV" /run/P3 2>/dev/null
