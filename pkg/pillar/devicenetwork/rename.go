@@ -18,6 +18,7 @@ import (
 // Ethernet interfaces have no bridge
 // Assumes that the caller has checked that the interfaces exist
 // We therefore skip any interfaces which do not exist
+// Also sets sysctls on the interface
 func UpdateBridge(log *base.LogObject, newConfig, oldConfig types.DevicePortConfig) {
 
 	// Look for adds
@@ -47,6 +48,7 @@ func addBridge(log *base.LogObject, ifname string) error {
 	log.Noticef("addBridge(%s)", ifname)
 	if !strings.HasPrefix(ifname, "eth") {
 		log.Functionf("addBridge: skipping %s", ifname)
+		setSysctls(log, ifname)
 		return nil
 	}
 	link, err := netlink.LinkByName(ifname)
@@ -115,6 +117,7 @@ func addBridge(log *base.LogObject, ifname string) error {
 		log.Error(err)
 		return err
 	}
+	setSysctls(log, ifname)
 	// ip link set kethN master ethN
 	if err := netlink.LinkSetMaster(kernLink, bridge); err != nil {
 		err = fmt.Errorf("addBridge LinkSetMaster(%s, %s) failed: %v",
@@ -128,12 +131,46 @@ func addBridge(log *base.LogObject, ifname string) error {
 		log.Error(err)
 		return err
 	}
-	// update cached ifindex
+	// updatecached ifindex
 	_, err = UpdateIfnameToIndex(log, ifname)
 	if err != nil {
 		log.Errorf("addBridge: UpdateIfnameToIndex failed: %v", err)
 	}
 	return nil
+}
+
+// Make sure we have the settings needed for IPv6
+func setSysctls(log *base.LogObject, ifname string) {
+	sysctlSetting := fmt.Sprintf("net.ipv6.conf.%s.stable_secret=ff::0",
+		ifname)
+	args := []string{"-w", sysctlSetting}
+	log.Noticef("Calling command %s %v", "sysctl", args)
+	out, err := base.Exec(log, "sysctl", args...).CombinedOutput()
+	if err != nil {
+		errStr := fmt.Sprintf("sysctl command %s failed %s output %s",
+			args, err, out)
+		log.Errorln(errStr)
+	}
+	sysctlSetting = fmt.Sprintf("net.ipv6.conf.%s.accept_ra=2",
+		ifname)
+	args = []string{"-w", sysctlSetting}
+	log.Noticef("Calling command %s %v", "sysctl", args)
+	out, err = base.Exec(log, "sysctl", args...).CombinedOutput()
+	if err != nil {
+		errStr := fmt.Sprintf("sysctl command %s failed %s output %s",
+			args, err, out)
+		log.Errorln(errStr)
+	}
+	sysctlSetting = fmt.Sprintf("net.ipv6.conf.%s.addr_gen_mode=4",
+		ifname)
+	args = []string{"-w", sysctlSetting}
+	log.Noticef("Calling command %s %v", "sysctl", args)
+	out, err = base.Exec(log, "sysctl", args...).CombinedOutput()
+	if err != nil {
+		errStr := fmt.Sprintf("sysctl command %s failed %s output %s",
+			args, err, out)
+		log.Errorln(errStr)
+	}
 }
 
 // Check if the name is ethN and a bridge
