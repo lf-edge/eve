@@ -131,6 +131,7 @@ type zedagentContext struct {
 	subAppInstMetaData        pubsub.Subscription
 	subWwanMetrics            pubsub.Subscription
 	subDeviceNetworkStatus    pubsub.Subscription
+	subZFSPoolStatus          pubsub.Subscription
 	zedcloudMetrics           *zedcloud.AgentMetrics
 	rebootCmd                 bool
 	rebootCmdDeferred         bool
@@ -1270,6 +1271,21 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		log.Fatal(err)
 	}
 
+	subZFSPoolStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:   "zfsmanager",
+		MyAgentName: agentName,
+		TopicImpl:   types.ZFSPoolStatus{},
+		Activate:    false,
+		Ctx:         &zedagentCtx,
+		WarningTime: warningTime,
+		ErrorTime:   errorTime,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	zedagentCtx.subZFSPoolStatus = subZFSPoolStatus
+	subZFSPoolStatus.Activate()
+
 	//Parse SMART data
 	go parseSMARTData()
 
@@ -1568,6 +1584,10 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 		case change := <-subWwanMetrics.MsgChan():
 			subWwanMetrics.ProcessChange(change)
+
+		case change := <-subZFSPoolStatus.MsgChan():
+			subZFSPoolStatus.ProcessChange(change)
+			triggerPublishDevInfo(&zedagentCtx)
 
 		case <-hwInfoTiker.C:
 			triggerPublishHwInfo(&zedagentCtx)

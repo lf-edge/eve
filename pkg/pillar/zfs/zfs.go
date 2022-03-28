@@ -15,8 +15,6 @@ import (
 
 	libzfs "github.com/bicomsystems/go-libzfs"
 	"github.com/golang/protobuf/proto"
-	"github.com/lf-edge/eve/api/go/evecommon"
-	"github.com/lf-edge/eve/api/go/info"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/hardware"
 	"github.com/lf-edge/eve/pkg/pillar/types"
@@ -292,25 +290,25 @@ func GetZfsCountVolume(datasetName string) (uint32, error) {
 }
 
 // GetRaidTypeFromStr takes a RAID name as input and returns current RAID type
-func GetRaidTypeFromStr(raidName string) info.StorageRaidType {
+func GetRaidTypeFromStr(raidName string) types.StorageRaidType {
 	if len(raidName) == 0 {
-		return info.StorageRaidType_STORAGE_RAID_TYPE_NORAID
+		return types.StorageRaidTypeNoRAID
 	} else if strings.Contains(raidName, "raidz1") {
-		return info.StorageRaidType_STORAGE_RAID_TYPE_RAID5
+		return types.StorageRaidTypeRAID5
 	} else if strings.Contains(raidName, "raidz2") {
-		return info.StorageRaidType_STORAGE_RAID_TYPE_RAID6
+		return types.StorageRaidTypeRAID6
 	} else if strings.Contains(raidName, "raidz3") {
-		return info.StorageRaidType_STORAGE_RAID_TYPE_RAID7
+		return types.StorageRaidTypeRAID7
 	} else if strings.Contains(raidName, "mirror") {
-		return info.StorageRaidType_STORAGE_RAID_TYPE_RAID1
+		return types.StorageRaidTypeRAID1
 	}
 
-	return info.StorageRaidType_STORAGE_RAID_TYPE_NORAID
+	return types.StorageRaidTypeNoRAID
 }
 
 // GetZpoolRaidType takes a libzfs.VDevTree as input and returns current RAID type.
 // return RAID0 in case of mixed topology as we can mix nested topology into the stripe
-func GetZpoolRaidType(vdevs libzfs.VDevTree) info.StorageRaidType {
+func GetZpoolRaidType(vdevs libzfs.VDevTree) types.StorageRaidType {
 	vdevsCount := 0
 	for _, vdev := range vdevs.Devices {
 		if vdev.Type == libzfs.VDevTypeMirror || vdev.Type == libzfs.VDevTypeRaidz || vdev.Type == libzfs.VDevTypeDisk {
@@ -318,7 +316,7 @@ func GetZpoolRaidType(vdevs libzfs.VDevTree) info.StorageRaidType {
 		}
 	}
 	if vdevsCount > 1 {
-		return info.StorageRaidType_STORAGE_RAID_TYPE_RAID0
+		return types.StorageRaidTypeRAID0
 	}
 	for _, vdev := range vdevs.Devices {
 		if vdev.Type == libzfs.VDevTypeMirror || vdev.Type == libzfs.VDevTypeRaidz {
@@ -326,35 +324,35 @@ func GetZpoolRaidType(vdevs libzfs.VDevTree) info.StorageRaidType {
 		}
 		break
 	}
-	return info.StorageRaidType_STORAGE_RAID_TYPE_NORAID
+	return types.StorageRaidTypeNoRAID
 }
 
 // GetZfsDeviceStatusFromStr takes a string with status as input and returns status
-func GetZfsDeviceStatusFromStr(statusStr string) info.StorageStatus {
+func GetZfsDeviceStatusFromStr(statusStr string) types.StorageStatus {
 	if len(statusStr) == 0 {
-		return info.StorageStatus_STORAGE_STATUS_UNSPECIFIED
+		return types.StorageStatusUnspecified
 	} else if strings.TrimSpace(statusStr) == "ONLINE" {
-		return info.StorageStatus_STORAGE_STATUS_ONLINE
+		return types.StorageStatusOnline
 	} else if strings.TrimSpace(statusStr) == "DEGRADED" {
-		return info.StorageStatus_STORAGE_STATUS_DEGRADED
+		return types.StorageStatusDegraded
 	} else if strings.TrimSpace(statusStr) == "FAULTED" {
-		return info.StorageStatus_STORAGE_STATUS_FAULTED
+		return types.StorageStatusFaulted
 	} else if strings.TrimSpace(statusStr) == "OFFLINE" {
-		return info.StorageStatus_STORAGE_STATUS_OFFLINE
+		return types.StorageStatusOffline
 	} else if strings.TrimSpace(statusStr) == "UNAVAIL" {
-		return info.StorageStatus_STORAGE_STATUS_UNAVAIL
+		return types.StorageStatusUnavail
 	} else if strings.TrimSpace(statusStr) == "REMOVED" {
-		return info.StorageStatus_STORAGE_STATUS_REMOVED
+		return types.StorageStatusRemoved
 	} else if strings.TrimSpace(statusStr) == "SUSPENDED" {
-		return info.StorageStatus_STORAGE_STATUS_SUSPENDED
+		return types.StorageStatusSuspended
 	}
 
-	return info.StorageStatus_STORAGE_STATUS_UNSPECIFIED
+	return types.StorageStatusUnspecified
 }
 
 // GetZfsDiskAndStatus takes a libzfs.VDevTree as input and returns
 // *info.StorageDiskState.
-func GetZfsDiskAndStatus(disk libzfs.VDevTree) (*info.StorageDiskState, error) {
+func GetZfsDiskAndStatus(disk libzfs.VDevTree) (*types.StorageDiskState, error) {
 	if disk.Type != libzfs.VDevTypeDisk {
 		return nil, fmt.Errorf("%s is not a disk", disk.Name)
 	}
@@ -379,8 +377,8 @@ func GetZfsDiskAndStatus(disk libzfs.VDevTree) (*info.StorageDiskState, error) {
 		serialNumber = "unknown"
 	}
 
-	rDiskStatus := new(info.StorageDiskState)
-	rDiskStatus.DiskName = new(evecommon.DiskDescription)
+	rDiskStatus := new(types.StorageDiskState)
+	rDiskStatus.DiskName = new(types.DiskDescription)
 	rDiskStatus.DiskName.Name = *proto.String(diskZfsName)
 	rDiskStatus.DiskName.Serial = *proto.String(serialNumber)
 	rDiskStatus.Status = GetZfsDeviceStatusFromStr(disk.Stat.State.String())

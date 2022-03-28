@@ -10,11 +10,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"strconv"
 	"strings"
 	"time"
 
-	libzfs "github.com/bicomsystems/go-libzfs"
 	"github.com/containerd/containerd/mount"
 	"github.com/eriknordmark/ipinfo"
 	"github.com/golang/protobuf/proto"
@@ -30,7 +28,6 @@ import (
 	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
 	"github.com/lf-edge/eve/pkg/pillar/vault"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
-	"github.com/lf-edge/eve/pkg/pillar/zfs"
 	"github.com/shirou/gopsutil/host"
 )
 
@@ -154,6 +151,28 @@ func objectInfoTask(ctxPtr *zedagentContext, triggerInfo <-chan infoForObjectKey
 		}
 		ctxPtr.ps.StillRunning(wdName, warningTime, errorTime)
 	}
+}
+
+func fillStorageChildren(children []*types.StorageChildren) []*info.StorageChildren {
+	var infoChildren []*info.StorageChildren
+	for _, child := range children {
+		childInfo := new(info.StorageChildren)
+		childInfo.CurrentRaid = info.StorageRaidType(child.CurrentRaid)
+		for _, disk := range child.Disks {
+			diskInfo := new(info.StorageDiskState)
+			diskInfo.Status = info.StorageStatus(disk.Status)
+			if disk.DiskName != nil {
+				diskInfo.DiskName = new(evecommon.DiskDescription)
+				diskInfo.DiskName.Name = disk.DiskName.Name
+				diskInfo.DiskName.LogicalName = disk.DiskName.LogicalName
+				diskInfo.DiskName.Serial = disk.DiskName.Serial
+			}
+			childInfo.Disks = append(childInfo.Disks, diskInfo)
+		}
+		childInfo.Children = fillStorageChildren(child.Children)
+		infoChildren = append(infoChildren, childInfo)
+	}
+	return infoChildren
 }
 
 // PublishDeviceInfoToZedCloud This function is called per change, hence needs to try over all management ports
@@ -342,151 +361,33 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 
 	// Reporting all zpools in Strorage Info
 	if vault.ReadPersistType() == types.PersistZFS {
-		zfsVersion, err := zfs.GetZfsVersion()
-		if err != nil {
-			log.Errorf("error: %v", err)
-		}
-
-		zpoolList, err := libzfs.PoolOpenAll()
-		if err != nil {
-			log.Errorf("get zpool list failed %v", err)
-		} else {
-			for _, zpool := range zpoolList {
-				defer zpool.Close()
-				currentRaid := info.StorageRaidType_STORAGE_RAID_TYPE_NORAID
-				zpoolPropName, err := zpool.GetProperty(libzfs.PoolPropName)
-				if err != nil {
-					log.Errorf("error with get properties PoolPropName %v", err)
-					continue
+		zfsPoolStatusMap := ctx.subZFSPoolStatus.GetAll()
+		for _, el := range zfsPoolStatusMap {
+			zfsPoolStatus := el.(types.ZFSPoolStatus)
+			storageInfo := new(info.StorageInfo)
+			storageInfo.StorageType = info.StorageTypeInfo_STORAGE_TYPE_INFO_ZFS
+			storageInfo.PoolName = zfsPoolStatus.PoolName
+			storageInfo.StorageState = info.StorageStatus(zfsPoolStatus.StorageState)
+			storageInfo.ZfsVersion = zfsPoolStatus.ZfsVersion
+			storageInfo.CurrentRaid = info.StorageRaidType(zfsPoolStatus.CurrentRaid)
+			storageInfo.CompressionRatio = zfsPoolStatus.CompressionRatio
+			storageInfo.ZpoolSize = zfsPoolStatus.ZpoolSize
+			storageInfo.CountZvols = zfsPoolStatus.CountZvols
+			storageInfo.CollectorErrors = zfsPoolStatus.CollectorErrors
+			for _, disk := range zfsPoolStatus.Disks {
+				diskInfo := new(info.StorageDiskState)
+				diskInfo.Status = info.StorageStatus(disk.Status)
+				if disk.DiskName != nil {
+					diskInfo.DiskName = new(evecommon.DiskDescription)
+					diskInfo.DiskName.Name = disk.DiskName.Name
+					diskInfo.DiskName.LogicalName = disk.DiskName.LogicalName
+					diskInfo.DiskName.Serial = disk.DiskName.Serial
 				}
-
-				zpoolPropHealth, err := zpool.GetProperty(libzfs.PoolPropHealth)
-				if err != nil {
-					log.Errorf("error with get properties PoolPropHealth %v", err)
-					continue
-				}
-
-				zpoolPropSize, err := zpool.GetProperty(libzfs.PoolPropSize)
-				if err != nil {
-					log.Errorf("error with get properties PoolPropSize %v", err)
-					continue
-				}
-
-				zpoolName := zpoolPropName.Value
-				storageState := zfs.GetZfsDeviceStatusFromStr(zpoolPropHealth.Value)
-				zpoolSizeInByte, err := strconv.ParseUint(zpoolPropSize.Value, 10, 64)
-				if err != nil {
-					log.Errorf("error with ParseUint for get zpool size in byte: %v", err)
-				}
-
-				countZvolume, err := zfs.GetZfsCountVolume(zpoolName)
-				if err != nil {
-					log.Errorf("get count volume failed %v", err)
-				}
-
-				compressratio, _ := zfs.GetZfsCompressratio(zpoolName)
-				if err != nil {
-					log.Errorf("error with ParseFloat for get compression ratio: %v", err)
-				}
-
-				rStorageInfo := new(info.StorageInfo)
-				vdevs, err := zpool.VDevTree()
-				if err != nil {
-					log.Errorf("error with get about RAID info from devTree: %v", err)
-				} else {
-					// it returns top-level raid type
-					currentRaid = zfs.GetZpoolRaidType(vdevs)
-					// handle the case when we have only one top-level vdev
-					if currentRaid != info.StorageRaidType_STORAGE_RAID_TYPE_RAID0 {
-						for _, vdev := range vdevs.Devices {
-							// If this is a RAID or mirror, look at the disks it consists of
-							if vdev.Type == libzfs.VDevTypeMirror || vdev.Type == libzfs.VDevTypeRaidz {
-								for _, disk := range vdev.Devices {
-									rDiskStatus, err := zfs.GetZfsDiskAndStatus(disk)
-									// vdev.Devices might includes snapshots or caches,
-									// and those will result in errors which need to ignore.
-									if err == nil {
-										rStorageInfo.Disks = append(rStorageInfo.Disks, rDiskStatus)
-									}
-								}
-								break // in that case we have only one RAID
-							}
-							// If there is no RAID or mirror, add a disk if it is a disk
-							rDiskStatus, err := zfs.GetZfsDiskAndStatus(vdev)
-							// vdev.Devices might includes snapshots or caches,
-							// and those will result in errors which need to ignore.
-							if err == nil {
-								rStorageInfo.Disks = append(rStorageInfo.Disks, rDiskStatus)
-							}
-						}
-					} else {
-						// multiple top-level vdevs should be handled separately
-						currentRaid = info.StorageRaidType_STORAGE_RAID_TYPE_UNSPECIFIED
-						// if unspecified, use provided
-						// if noraid, keep it
-						// if lower than current, update
-						updateCurrentRaid := func(raidType info.StorageRaidType) {
-							if currentRaid == info.StorageRaidType_STORAGE_RAID_TYPE_UNSPECIFIED {
-								currentRaid = raidType
-								return
-							}
-							if currentRaid == info.StorageRaidType_STORAGE_RAID_TYPE_NORAID {
-								return
-							}
-							if raidType < currentRaid {
-								currentRaid = raidType
-								return
-							}
-						}
-						for _, vdev := range vdevs.Devices {
-							child := new(info.StorageChildren)
-							// If this is a RAID or mirror, look at the disks it consists of
-							if vdev.Type == libzfs.VDevTypeMirror || vdev.Type == libzfs.VDevTypeRaidz {
-								child.CurrentRaid = zfs.GetRaidTypeFromStr(vdev.Name)
-								updateCurrentRaid(child.CurrentRaid)
-								for _, disk := range vdev.Devices {
-									rDiskStatus, err := zfs.GetZfsDiskAndStatus(disk)
-									// vdev.Devices might includes snapshots or caches,
-									// and those will result in errors which need to ignore.
-									if err == nil {
-										child.Disks = append(child.Disks, rDiskStatus)
-									}
-								}
-								rStorageInfo.Children = append(rStorageInfo.Children, child)
-								continue
-							}
-							// If there is no RAID or mirror, add a disk if it is a disk
-							rDiskStatus, err := zfs.GetZfsDiskAndStatus(vdev)
-							// vdev.Devices might includes snapshots or caches,
-							// and those will result in errors which need to ignore.
-							if err == nil {
-								child.CurrentRaid = info.StorageRaidType_STORAGE_RAID_TYPE_NORAID
-								updateCurrentRaid(child.CurrentRaid)
-								child.Disks = append(child.Disks, rDiskStatus)
-								rStorageInfo.Children = append(rStorageInfo.Children, child)
-							}
-						}
-						// unspecified or raid0 gives no redundancy, so noraid here
-						if currentRaid == info.StorageRaidType_STORAGE_RAID_TYPE_UNSPECIFIED ||
-							currentRaid == info.StorageRaidType_STORAGE_RAID_TYPE_RAID0 {
-							currentRaid = info.StorageRaidType_STORAGE_RAID_TYPE_NORAID
-						}
-					}
-				}
-				rStorageInfo.PoolName = *proto.String(zpoolName)
-				rStorageInfo.StorageType = info.StorageTypeInfo_STORAGE_TYPE_INFO_ZFS
-				rStorageInfo.ZpoolSize = *proto.Uint64(zpoolSizeInByte)
-				rStorageInfo.ZfsVersion = *proto.String(zfsVersion)
-				rStorageInfo.CurrentRaid = currentRaid
-				rStorageInfo.CompressionRatio = *proto.Float64(compressratio)
-				rStorageInfo.CountZvols = *proto.Uint32(countZvolume)
-				rStorageInfo.StorageState = storageState
-				if storageState != info.StorageStatus_STORAGE_STATUS_ONLINE {
-					rStorageInfo.CollectorErrors = zfs.GetZfsStatusStr(log, zpoolName)
-				}
-				ReportDeviceInfo.StorageInfo = append(ReportDeviceInfo.StorageInfo, rStorageInfo)
-				log.Tracef("report metrics sending info for ZFS zpool %s", zpoolName)
+				storageInfo.Disks = append(storageInfo.Disks, diskInfo)
 			}
+			storageInfo.Children = fillStorageChildren(zfsPoolStatus.Children)
+			ReportDeviceInfo.StorageInfo = append(ReportDeviceInfo.StorageInfo, storageInfo)
+			log.Tracef("sending info for ZFS zpool %s", zfsPoolStatus.PoolName)
 		}
 	} else {
 		xStorageInfo := new(info.StorageInfo)
