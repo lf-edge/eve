@@ -41,7 +41,8 @@ type zVolDeviceEvent struct {
 }
 
 type zfsContext struct {
-	zVolStatusPub pubsub.Publication
+	zVolStatusPub    pubsub.Publication
+	storageStatusPub pubsub.Publication
 }
 
 // Run - an zfs run
@@ -85,6 +86,18 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	}
 	ctxPtr.zVolStatusPub = zVolStatusPub
 
+	// Publish cloud metrics
+	storageStatusPub, err := ps.NewPublication(
+		pubsub.PublicationOptions{
+			AgentName:  agentName,
+			TopicType:  types.ZFSPoolStatus{},
+			Persistent: false,
+		})
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctxPtr.storageStatusPub = storageStatusPub
+
 	deviceNotifyChannel := make(chan *zVolDeviceEvent)
 
 	if err := os.MkdirAll(types.ZVolDevicePrefix, os.ModeDir); err != nil {
@@ -93,17 +106,19 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 	go deviceWatcher(deviceNotifyChannel)
 
+	go storageStatusPublisher(&ctxPtr)
+
 	for {
 		select {
 		case event := <-deviceNotifyChannel:
-			processEvent(ctxPtr, event)
+			processEvent(&ctxPtr, event)
 		case <-stillRunning.C:
 		}
 		ps.StillRunning(agentName, warningTime, errorTime)
 	}
 }
 
-func processEvent(ctxPtr zfsContext, event *zVolDeviceEvent) {
+func processEvent(ctxPtr *zfsContext, event *zVolDeviceEvent) {
 	if event == nil {
 		return
 	}
