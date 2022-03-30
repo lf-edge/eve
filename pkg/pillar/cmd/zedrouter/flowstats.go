@@ -920,6 +920,19 @@ func checkDHCPPacketInfo(bnNum int, packet gopacket.Packet, ctx *zedrouterContex
 		if !isReplyAck {
 			return true
 		}
+		if dhcpv4.YourClientIP.IsUnspecified() {
+			// DHCP clients might use DHCPINFORM messages to obtain additional configuration
+			// state that was not present in their lease binding.
+			// In this case the RFC states that the DHCPACK message returned by server
+			// should have the yiaddr field (YourClientIP) unset.
+			// In order to not loose information about the allocated app IP address
+			// we therefore skip over DHCPACK messages with unspecified client IP.
+			//
+			// For more information see:
+			// https://datatracker.ietf.org/doc/html/rfc2131#section-4.3.5
+			// https://datatracker.ietf.org/doc/html/draft-ietf-dhc-dhcpinform-clarify
+			return true
+		}
 		log.Tracef("checkDHCPPacketInfo: bn%d, Xid %d, clientip %s, yourclientip %s, clienthw %v, options %v\n",
 			bnNum, dhcpv4.Xid, dhcpv4.ClientIP.String(), dhcpv4.YourClientIP.String(), dhcpv4.ClientHWAddr, dhcpv4.Options)
 
