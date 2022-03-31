@@ -144,6 +144,26 @@ To check if the last requested command has completed, compare its timestamp with
 `last_cmd_timestamp` field from `LocalAppInfo` message, submitted by EVE in the request
 body of the API.
 
+### Device Location Info (GNSS)
+
+Publish the current location of the device as obtained from a GNSS receiver
+to the local server.
+
+POST /api/v1/location
+
+Return codes:
+
+* Success: `200`
+* Not implemented: `404`
+
+Request:
+
+The request mime type MUST be "application/x-proto-binary".
+The request MUST have the body of a single protobuf message of type [ZInfoLocation](./proto/info/info.proto).
+Device publishes information repeatedly with a (default) period of 20 seconds to keep the local
+server updated (configurable using [timer.location.app.interval](../docs/CONFIG-PROPERTIES.md)).
+Local server MAY throttle or cancel this communication stream by returning the `404` code.
+
 ## Security
 
 In addition to using a server_token it is recommended that ACLs/firewall rules are deployed so that the traffic
