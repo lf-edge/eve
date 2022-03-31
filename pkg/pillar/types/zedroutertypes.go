@@ -946,6 +946,8 @@ type CellConfig struct {
 	APN          string // LTE APN
 	ProbeAddr    string
 	DisableProbe bool
+	// Enable to get location info from the GNSS receiver of the LTE modem.
+	LocationTracking bool
 }
 
 // WirelessConfig - wireless structure
@@ -3273,6 +3275,13 @@ type WwanNetworkConfig struct {
 	// XXX Multiple APNs are not yet supported.
 	Apns  []string  `json:"apns"`
 	Probe WwanProbe `json:"probe"`
+	// Some LTE modems have GNSS receiver integrated and can be used
+	// for device location tracking.
+	// Enable this option to have location info periodically obtained
+	// from this modem and published into /run/wwan/location.json by the wwan
+	// microservice. This is further distributed to the controller and
+	// to applications by zedagent.
+	LocationTracking bool `json:"location-tracking"`
 }
 
 // WwanProbe : cellular connectivity verification probe.
@@ -3535,3 +3544,40 @@ type WwanSignalInfo struct {
 	RSRP int32 `json:"rsrp"`
 	SNR  int32 `json:"snr"`
 }
+
+// WwanLocationInfo contains device location information obtained from a GNSS
+// receiver integrated into an LTE modem.
+type WwanLocationInfo struct {
+	// Latitude in the Decimal degrees (DD) notation.
+	Latitude float64 `json:"latitude"`
+	// Longitude in the Decimal degrees (DD) notation.
+	Longitude float64 `json:"longitude"`
+	// Altitude w.r.t. mean sea level in meters.
+	Altitude float64 `json:"altitude"`
+	// Circular horizontal position uncertainty in meters.
+	HorizontalUncertainty float32 `json:"horizontal-uncertainty"`
+	// Reliability of the provided information for latitude and longitude.
+	HorizontalReliability LocReliability `json:"horizontal-reliability"`
+	// Vertical position uncertainty in meters.
+	VerticalUncertainty float32 `json:"vertical-uncertainty"`
+	// Reliability of the provided information for altitude.
+	VerticalReliability LocReliability `json:"vertical-reliability"`
+	// Unix timestamp in milliseconds.
+	UTCTimestamp uint64 `json:"utc-timestamp"`
+}
+
+// LocReliability : reliability of location information.
+type LocReliability string
+
+const (
+	// LocReliabilityUnspecified : reliability is not specified
+	LocReliabilityUnspecified LocReliability = ""
+	// LocReliabilityVeryLow : very low reliability
+	LocReliabilityVeryLow LocReliability = "very-low"
+	// LocReliabilityLow : low reliability
+	LocReliabilityLow LocReliability = "low"
+	// LocReliabilityMedium : medium reliability
+	LocReliabilityMedium LocReliability = "medium"
+	// LocReliabilityHigh : high reliability
+	LocReliabilityHigh LocReliability = "high"
+)

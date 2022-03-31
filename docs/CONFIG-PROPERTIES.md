@@ -6,6 +6,8 @@
 | timer.config.interval | integer in seconds | 60 | how frequently device gets config |
 | timer.metric.interval  | integer in seconds | 60 | how frequently device reports metrics |
 | timer.metric.diskscan.interval  | integer in seconds | 300 | how frequently device should scan the disk for metrics |
+| timer.location.cloud.interval | integer in seconds | 1 hour | how frequently device reports geographic location information to controller |
+| timer.location.app.interval | integer in seconds | 20 | how frequently device reports geographic location information to applications (to local profile server and to other apps via meta-data server) |
 | timer.send.timeout | timer in seconds | 120 | time for each http/send |
 | timer.reboot.no.network | integer in seconds | 7 days | reboot after no cloud connectivity |
 | timer.update.fallback.no.network | integer in seconds | 300 | fallback after no cloud connectivity |

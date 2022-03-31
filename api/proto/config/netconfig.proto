@@ -68,6 +68,11 @@ message CellularConfig {
   // Optional cellular connectivity probing.
   // By default it is enabled.
   CellularConnectivityProbe probe = 2;
+  // Some LTE modems have GNSS receiver integrated and can be used for device
+  // location tracking.
+  // Enable this option to have location info periodically obtained from this
+  // modem and published to controller and to applications.
+  bool location_tracking = 3;
 }
 
 // CellularConnectivityProbe is used to periodically check the connectivity status of a cellular network

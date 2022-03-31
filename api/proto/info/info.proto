@@ -68,6 +68,7 @@ enum ZInfoTypes {
   ZiAppInstMetaData = 10;
   ZiHardware = 11;
   ZiEdgeview = 12;
+  ZiLocation = 13;
 }
 
 // Information about assignable I/O adapter bundles
@@ -992,6 +993,7 @@ message ZInfoMsg {
     // evinfo include only if the edge-view is running on device
     ZInfoEdgeview evinfo = 17;
     ZInfoHardware hwinfo = 18;
+    ZInfoLocation locinfo = 19;
   }
   google.protobuf.Timestamp atTimeStamp = 6;
 }
@@ -1023,4 +1025,35 @@ message ZInfoEdgeview {
   uint32 count_dev = 3;
   // total number of app related cmds edge-view has processed
   uint32 count_app = 4;
+}
+
+// LocReliability - reliability of location information.
+enum LocReliability {
+  LOC_RELIABILITY_UNSPECIFIED = 0;
+  LOC_RELIABILITY_VERY_LOW = 1;
+  LOC_RELIABILITY_LOW = 2;
+  LOC_RELIABILITY_MEDIUM = 3;
+  LOC_RELIABILITY_HIGH = 4;
+}
+
+// ZInfoLocation - geographic location of the device obtained from a GNSS receiver.
+message ZInfoLocation {
+  // Latitude in the Decimal degrees (DD) notation.
+  double latitude = 1;
+  // Longitude in the Decimal degrees (DD) notation.
+  double longitude = 2;
+  // Altitude w.r.t. mean sea level in meters.
+  double altitude = 3;
+  // UTC timestamp for the location measurement
+  // (recorded by the GNSS clock).
+  // Currently, this timestamp is limited to millisecond resolution.
+  google.protobuf.Timestamp utc_timestamp = 4;
+  // Reliability of the provided information for latitude and longitude.
+  LocReliability horizontal_reliability = 5;
+  // Reliability of the provided information for altitude.
+  LocReliability vertical_reliability = 6;
+  // Circular horizontal position uncertainty in meters.
+  float horizontal_uncertainty = 7;
+  // Vertical position uncertainty in meters.
+  float vertical_uncertainty = 8;
 }
