@@ -288,6 +288,10 @@ func resolveTagsToHash(ctx *downloaderContext, rc types.ResolveConfig,
 		return
 
 	}
+	// we skip this error earlier but we must fill errStr
+	if errStr == "" {
+		errStr = logutils.NoSuitableAddrStr
+	}
 	if !cancelled {
 		log.Errorf("All source IP addresses failed. All errors:%s",
 			errStr)

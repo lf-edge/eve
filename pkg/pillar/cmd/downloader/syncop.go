@@ -285,6 +285,10 @@ func handleSyncOp(ctx *downloaderContext, key string,
 		return
 
 	}
+	// we skip this error earlier but we must fill errStr
+	if errStr == "" {
+		errStr = logutils.NoSuitableAddrStr
+	}
 	if !cancelled {
 		log.Errorf("All source IP addresses failed. All errors:%s",
 			errStr)
