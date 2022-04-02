@@ -334,9 +334,11 @@ func handleNodeReboot(ctxPtr *nodeagentContext) {
 	<-rebootTimer.C
 	go func() {
 		// in case of problems inside zboot.Reset
-		// we will stop zedbox process after delay of 20 seconds
-		// and wait for watchdog to fire
-		<-time.After(time.Second * time.Duration(20))
+		// we will stop zedbox process after delay of 120 seconds
+		// and wait for watchdog to fire.
+		// This time needs to be long; if there are disks in failed state
+		// a single zboot commands can take more than 20 seconds
+		<-time.After(time.Second * time.Duration(120))
 		log.Errorf("Timer expired.. Exit %s", agentName)
 		os.Exit(0)
 	}()

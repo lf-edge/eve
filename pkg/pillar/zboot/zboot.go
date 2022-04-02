@@ -83,8 +83,9 @@ func execWithTimeout(log *base.LogObject, command string, args ...string) ([]byt
 	}
 	// initialize context after getting lock
 	// it uses the current time on initialization step
+	// Handle slow zboot due to bad disks by waiting for a while
 	ctx, cancel := context.WithTimeout(context.Background(),
-		10*time.Second)
+		30*time.Second)
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, command, args...)
