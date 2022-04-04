@@ -587,7 +587,13 @@ while true; do
     if [ -n "$ns" ] && [ "$ns" != "$NTPSERVER" ] && [ -f /run/ntpd.pid ]; then
         echo "$(date -Ins -u) NTP server changed from $NTPSERVER to $ns"
         NTPSERVER="$ns"
-        kill "$(cat /run/ntpd.pid)"
+        ntpd_pid="$(cat /run/ntpd.pid)"
+        kill "$ntpd_pid"
+        # Wait for it to go away before restarting
+        while kill -0 "$ntpd_pid"; do
+            echo "$(date -Ins -u) NTP server $ntpd_pid still running"
+            sleep 3
+        done
         echo "$(date -Ins -u) ntpd -g -p $NTPSERVER"
         /usr/sbin/ntpd -g -p "$NTPSERVER"
         ret_code=$?
