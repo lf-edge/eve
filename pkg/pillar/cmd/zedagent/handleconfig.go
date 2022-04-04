@@ -20,6 +20,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	"github.com/lf-edge/eve/pkg/pillar/hardware"
+	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
@@ -608,20 +609,33 @@ func inhaleDeviceConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigCo
 	return parseConfig(config, getconfigCtx, usingSaved)
 }
 
-var lastDevUUIDChange time.Time
+var (
+	lastDevUUIDChange       = time.Now()
+	potentialUUIDUpdateLock sync.Mutex
+)
 
 // When we think (due to 404) or know that the controller has changed our UUID,
 // ask client to get it so OnboardingStatus can be updated and notified to all agents
 // The controller might do this due to a delete and re-onboard with the same device
 // certificate.
 // We ask client at most every 10 minutes.
-func potentialUUIDUpdate(getconfigCtx *getconfigContext) {
+// We check that another zedclient instance is not running
+func potentialUUIDUpdate(_ *getconfigContext) {
+	potentialUUIDUpdateLock.Lock()
 	if time.Since(lastDevUUIDChange) < 10*time.Minute {
 		log.Warnf("Device UUID last changed %v ago",
 			time.Since(lastDevUUIDChange))
+		potentialUUIDUpdateLock.Unlock()
+		return
+	}
+	if exists, description := pidfile.CheckProcessExists(log, "zedclient"); exists {
+		log.Warnf("another process is still running: %s", description)
+		potentialUUIDUpdateLock.Unlock()
 		return
 	}
 	lastDevUUIDChange = time.Now()
+	// after time updated we can unlock mutex to go into time check from other routine
+	potentialUUIDUpdateLock.Unlock()
 	cmd := "/opt/zededa/bin/client"
 	cmdArgs := []string{"getUuid"}
 	log.Noticef("Calling command %s %v", cmd, cmdArgs)
