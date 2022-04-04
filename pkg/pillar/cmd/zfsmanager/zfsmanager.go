@@ -5,6 +5,7 @@ package zfsmanager
 
 import (
 	"flag"
+	"github.com/lf-edge/eve/pkg/pillar/zboot"
 	"os"
 	"path/filepath"
 	"time"
@@ -47,6 +48,8 @@ type zfsContext struct {
 	zVolStatusPub          pubsub.Publication
 	storageStatusPub       pubsub.Publication
 	subDisksConfig         pubsub.Subscription
+	subNodeAgentStatus     pubsub.Subscription
+	zbootWaitTestComplete  bool
 	disksProcessingTrigger chan interface{}
 }
 
@@ -72,7 +75,11 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	stillRunning := time.NewTicker(stillRunningInterval)
 	ps.StillRunning(agentName, warningTime, errorTime)
 
-	ctxPtr := zfsContext{ps: ps, disksProcessingTrigger: make(chan interface{}, 1)}
+	ctxPtr := zfsContext{
+		ps:                     ps,
+		disksProcessingTrigger: make(chan interface{}, 1),
+		zbootWaitTestComplete:  zboot.IsCurrentPartitionStateInProgress(),
+	}
 
 	if err := utils.WaitForVault(ps, log, agentName, warningTime, errorTime); err != nil {
 		log.Fatal(err)
@@ -109,6 +116,25 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	ctxPtr.subDisksConfig = subDisksConfig
 	subDisksConfig.Activate()
 
+	// Look for ZbootConfig, from nodeagent
+	subNodeAgentStatus, err := ps.NewSubscription(
+		pubsub.SubscriptionOptions{
+			AgentName:     "nodeagent",
+			MyAgentName:   agentName,
+			TopicImpl:     types.NodeAgentStatus{},
+			Activate:      false,
+			Ctx:           &ctxPtr,
+			CreateHandler: handleNodeAgentStatusCreate,
+			ModifyHandler: handleNodeAgentStatusModify,
+			WarningTime:   warningTime,
+			ErrorTime:     errorTime,
+		})
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctxPtr.subNodeAgentStatus = subNodeAgentStatus
+	subNodeAgentStatus.Activate()
+
 	// Publish cloud metrics
 	storageStatusPub, err := ps.NewPublication(
 		pubsub.PublicationOptions{
@@ -139,6 +165,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 			processEvent(&ctxPtr, event)
 		case change := <-subDisksConfig.MsgChan():
 			subDisksConfig.ProcessChange(change)
+		case change := <-subNodeAgentStatus.MsgChan():
+			subNodeAgentStatus.ProcessChange(change)
+
 		case <-stillRunning.C:
 		}
 		ps.StillRunning(agentName, warningTime, errorTime)

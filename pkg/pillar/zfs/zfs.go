@@ -267,6 +267,16 @@ func ReplaceVDev(log *base.LogObject, pool, oldVdev, newVdev string) (string, er
 	return strings.TrimSpace(string(stdoutStderr)), nil
 }
 
+//ZpoolUpgrade upgrade zpool
+func ZpoolUpgrade(log *base.LogObject, pool string) (string, error) {
+	args := append(zpoolPath, "upgrade", pool)
+	stdoutStderr, err := base.Exec(log, vault.ZfsPath, args...).CombinedOutput()
+	if err != nil {
+		return string(stdoutStderr), err
+	}
+	return strings.TrimSpace(string(stdoutStderr)), nil
+}
+
 // GetZfsVersion return zfs kernel module version
 func GetZfsVersion() (string, error) {
 	dataBytes, err := ioutil.ReadFile("/hostfs/sys/module/zfs/version")
