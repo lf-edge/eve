@@ -453,7 +453,8 @@ func MarkCurrentPartitionStateActive(log *base.LogObject) error {
 
 // XXX known pathnames for the version file and the zededa-tools container
 const (
-	otherPartVersionFile = "/etc/eve-release"
+	otherPartVersionFile    = "/etc/eve-release"
+	otherPartZFSVersionFile = "/etc/zfs-release" //included as part of dom0-ztools package
 )
 
 // GetShortVersion get short form of version for partName
