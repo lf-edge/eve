@@ -221,7 +221,7 @@ func doInstall(ctx *zedmanagerContext,
 				status.ClearErrorWithSource()
 			}
 			MaybeRemoveVolumeRefConfig(ctx, config.UUIDandVersion.UUID,
-				vrs.VolumeID, vrs.GenerationCounter)
+				vrs.VolumeID, vrs.GenerationCounter, vrs.LocalGenerationCounter)
 			if !vrs.PendingAdd {
 				vrs.PendingAdd = true
 				// Keep in VolumeRefStatus until we get an update
@@ -247,21 +247,24 @@ func doInstall(ctx *zedmanagerContext,
 			continue
 		}
 		if status.PurgeInprogress == types.NotInprogress {
-			errString := fmt.Sprintf("New volumeRefConfig (VolumeID: %s, GenerationCounter: %d) found."+
-				"New Storage configs are not allowed unless purged",
-				vrc.VolumeID, vrc.GenerationCounter)
+			errString := fmt.Sprintf(
+				"New volumeRefConfig (VolumeID: %s, GenerationCounter: %d, "+
+					"LocalGenerationCounter: %d) found. "+
+					"New Storage configs are not allowed unless purged",
+				vrc.VolumeID, vrc.GenerationCounter, vrc.LocalGenerationCounter)
 			log.Error(errString)
 			status.SetError(errString, time.Now())
 			return true, false
 		}
 		newVrs := types.VolumeRefStatus{
-			VolumeID:          vrc.VolumeID,
-			GenerationCounter: vrc.GenerationCounter,
-			RefCount:          vrc.RefCount,
-			MountDir:          vrc.MountDir,
-			PendingAdd:        true,
-			State:             types.INITIAL,
-			VerifyOnly:        vrc.VerifyOnly,
+			VolumeID:               vrc.VolumeID,
+			GenerationCounter:      vrc.GenerationCounter,
+			LocalGenerationCounter: vrc.LocalGenerationCounter,
+			RefCount:               vrc.RefCount,
+			MountDir:               vrc.MountDir,
+			PendingAdd:             true,
+			State:                  types.INITIAL,
+			VerifyOnly:             vrc.VerifyOnly,
 		}
 		log.Functionf("Adding new VolumeRefStatus %v", newVrs)
 		status.VolumeRefStatusList = append(status.VolumeRefStatusList, newVrs)
@@ -367,13 +370,14 @@ func doInstallVolumeRef(ctx *zedmanagerContext, config types.AppInstanceConfig,
 	changed := false
 	if vrs.PendingAdd {
 		MaybeAddVolumeRefConfig(ctx, config.UUIDandVersion.UUID,
-			vrs.VolumeID, vrs.GenerationCounter, vrs.MountDir,
-			vrs.VerifyOnly)
+			vrs.VolumeID, vrs.GenerationCounter, vrs.LocalGenerationCounter,
+			vrs.MountDir, vrs.VerifyOnly)
 		vrs.PendingAdd = false
 		changed = true
 	}
-	log.Functionf("doInstallVolumeRef: VolumeRefStatus volumeID %s, generationCounter %d",
-		vrs.VolumeID, vrs.GenerationCounter)
+	log.Functionf("doInstallVolumeRef: VolumeRefStatus volumeID %s, "+
+		"generationCounter %d, localGenerationCounter %d",
+		vrs.VolumeID, vrs.GenerationCounter, vrs.LocalGenerationCounter)
 
 	// VolumeRefStatus in app instance status is updated with the volume
 	// ref status published from the volumemgr if status gets changed
@@ -678,7 +682,6 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 				status.Key())
 			status.RestartInprogress = types.NotInprogress
 			status.State = types.RUNNING
-			updateLocalCommand(ctx, status)
 			changed = true
 		} else {
 			log.Functionf("RestartInprogress(%s) waiting for Activated",
@@ -691,7 +694,6 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 				status.Key())
 			status.PurgeInprogress = types.NotInprogress
 			status.State = types.RUNNING
-			updateLocalCommand(ctx, status)
 			changed = true
 		} else {
 			log.Functionf("PurgeInprogress(%s) waiting for Activated",
@@ -732,10 +734,11 @@ func purgeCmdDone(ctx *zedmanagerContext, config types.AppInstanceConfig,
 			newVrs = append(newVrs, *vrs)
 			continue
 		}
-		log.Functionf("purgeCmdDone(%s) unused volume ref %s generationCounter %d",
-			config.Key(), vrs.VolumeID, vrs.GenerationCounter)
+		log.Functionf("purgeCmdDone(%s) unused volume ref %s "+
+			"generationCounter %d localGenerationCounter %d",
+			config.Key(), vrs.VolumeID, vrs.GenerationCounter, vrs.LocalGenerationCounter)
 		MaybeRemoveVolumeRefConfig(ctx, config.UUIDandVersion.UUID,
-			vrs.VolumeID, vrs.GenerationCounter)
+			vrs.VolumeID, vrs.GenerationCounter, vrs.LocalGenerationCounter)
 		changed = true
 	}
 	log.Functionf("purgeCmdDone(%s) volumeRefStatus from %d to %d",
@@ -744,7 +747,7 @@ func purgeCmdDone(ctx *zedmanagerContext, config types.AppInstanceConfig,
 	// Update persistent counter
 	uuidtonum.UuidToNumAllocate(log, ctx.pubUuidToNum,
 		status.UUIDandVersion.UUID,
-		int(config.PurgeCmd.Counter),
+		int(config.PurgeCmd.Counter+config.LocalPurgeCmd.Counter),
 		false, "purgeCmdCounter")
 	return changed
 }
@@ -920,7 +923,7 @@ func doUninstall(ctx *zedmanagerContext, appInstID uuid.UUID,
 	for i := range status.VolumeRefStatusList {
 		vrs := &status.VolumeRefStatusList[i]
 		MaybeRemoveVolumeRefConfig(ctx, appInstID,
-			vrs.VolumeID, vrs.GenerationCounter)
+			vrs.VolumeID, vrs.GenerationCounter, vrs.LocalGenerationCounter)
 		changed = true
 	}
 	log.Tracef("Done with all volume refs removes for %s",

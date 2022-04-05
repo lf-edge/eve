@@ -176,7 +176,7 @@ func createContainerVolume(ctx *volumemgrContext, status types.VolumeStatus,
 	ctStatus := lookupContentTreeStatusAny(ctx, status.ContentID.String())
 	if ctStatus == nil {
 		err := fmt.Errorf("createContainerVolume: Unable to find contentTreeStatus %s for Volume %s",
-			status.ContentID.String(), status.VolumeID)
+			status.ContentID.String(), status.Key())
 		log.Errorf(err.Error())
 		return created, filelocation, err
 	}
@@ -184,7 +184,7 @@ func createContainerVolume(ctx *volumemgrContext, status types.VolumeStatus,
 	rootBlobStatus := lookupBlobStatus(ctx, ctStatus.Blobs[0])
 	if rootBlobStatus == nil {
 		err := fmt.Errorf("createContainerVolume: Unable to find root BlobStatus %s for Volume %s",
-			ctStatus.Blobs[0], status.VolumeID)
+			ctStatus.Blobs[0], status.Key())
 		log.Errorf(err.Error())
 		return created, filelocation, err
 	}

@@ -1334,6 +1334,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	// initialize localInfo
 	initializeLocalAppInfo(&getconfigCtx)
 	go localAppInfoPOSTTask(&getconfigCtx)
+	initializeLocalCommands(&getconfigCtx)
 
 	// start the config fetch tasks, when zboot status is ready
 	log.Functionf("Creating %s at %s", "configTimerTask", agentlog.GetMyStack())

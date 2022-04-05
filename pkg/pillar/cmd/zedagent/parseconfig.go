@@ -41,6 +41,11 @@ const (
 func parseConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigContext,
 	usingSaved bool) bool {
 
+	// Do not accept new commands from Local profile server while new config
+	// from the controller is being applied.
+	getconfigCtx.localCommands.Lock()
+	defer getconfigCtx.localCommands.Unlock()
+
 	getconfigCtx.lastReceivedConfig = time.Now()
 	ctx := getconfigCtx.zedagentCtx
 
@@ -501,6 +506,7 @@ func parseAppInstanceConfig(config *zconfig.EdgeDevConfig,
 		if !found {
 			log.Functionf("Remove app config %s", uuidStr)
 			getconfigCtx.pubAppInstanceConfig.Unpublish(uuidStr)
+			delLocalAppConfig(getconfigCtx, uuidStr)
 		}
 	}
 
@@ -569,6 +575,9 @@ func parseAppInstanceConfig(config *zconfig.EdgeDevConfig,
 		appInstance.CipherBlockStatus = parseCipherBlock(getconfigCtx, appInstance.Key(),
 			cfgApp.GetCipherData())
 		appInstance.ProfileList = cfgApp.ProfileList
+
+		// Add config submitted via local profile server.
+		addLocalAppConfig(getconfigCtx, &appInstance)
 
 		// Verify that it fits and if not publish with error
 		checkAndPublishAppInstanceConfig(getconfigCtx, appInstance)
