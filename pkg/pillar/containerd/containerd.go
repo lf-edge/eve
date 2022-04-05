@@ -873,6 +873,8 @@ func StartUserContainerdInstance() error {
 	name := "/usr/bin/containerd"
 	args := []string{"--config", "/etc/containerd/user.toml"}
 	cmd := exec.Command(name, args...)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("user containerd cannot start: %v", err)
 	}
