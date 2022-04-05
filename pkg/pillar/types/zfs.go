@@ -22,7 +22,8 @@ func (status VolumeStatus) ZVolName() string {
 	if status.Encrypted {
 		pool = VolumeEncryptedZFSDataset
 	}
-	return fmt.Sprintf("%s/%s.%d", pool, status.VolumeID.String(), status.GenerationCounter)
+	return fmt.Sprintf("%s/%s.%d", pool, status.VolumeID.String(),
+		status.GenerationCounter+status.LocalGenerationCounter)
 }
 
 // ZVolNameToKey returns key for volumestatus for provided zVolName

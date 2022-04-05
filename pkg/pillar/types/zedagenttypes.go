@@ -6,6 +6,7 @@ package types
 import (
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/go-cmp/cmp"
@@ -483,13 +484,12 @@ type ZedAgentStatus struct {
 	Name                 string
 	ConfigGetStatus      ConfigGetStatus
 	RebootCmd            bool
-	RebootReason         string           // Current reason to reboot
-	BootReason           BootReason       // Current reason to reboot
-	MaintenanceMode      bool             // Don't run apps etc
-	ForceFallbackCounter int              // Try image fallback when counter changes
-	CurrentProfile       string           // Current profile
-	RadioSilence         RadioSilence     // Currently requested state of radio devices
-	LocalAppCommands     LocalAppCommands // Currently requested application commands
+	RebootReason         string       // Current reason to reboot
+	BootReason           BootReason   // Current reason to reboot
+	MaintenanceMode      bool         // Don't run apps etc
+	ForceFallbackCounter int          // Try image fallback when counter changes
+	CurrentProfile       string       // Current profile
+	RadioSilence         RadioSilence // Currently requested state of radio devices
 }
 
 // Key :
@@ -598,53 +598,61 @@ func (am RadioSilence) String() string {
 	return "Radio transmitters ON"
 }
 
+// LocalCommands : commands triggered locally via Local profile server.
+type LocalCommands struct {
+	sync.Mutex
+	// Locally issued app commands.
+	// For every app there is entry only for the last command (completed
+	// or still in progress). Previous commands are not remembered.
+	AppCommands map[string]*LocalAppCommand // key: app UUID
+	// Counters for locally issued app commands.
+	AppCounters map[string]*LocalAppCounters // key: app UUID
+	// Local volume generation counters.
+	VolumeGenCounters map[string]int64 // key: volume UUID
+}
+
+// Empty : returns true if there were no commands triggered locally
+// (for currently deployed apps and volumes).
+func (lc *LocalCommands) Empty() bool {
+	return len(lc.AppCommands) == 0 && len(lc.AppCounters) == 0 &&
+		len(lc.VolumeGenCounters) == 0
+}
+
 // AppCommand : application command requested to run by a local server.
 type AppCommand uint8
 
 // Integer values are in-sync with proto enum AppCommand_Command.
 const (
+	// AppCommandUnspecified : command was not specified (invalid input).
 	AppCommandUnspecified AppCommand = iota
+	// AppCommandRestart : restart application without re-creating volumes.
 	AppCommandRestart
+	// AppCommandPurge : purge application with ALL of its volumes.
 	AppCommandPurge
+	// TODO : purge for a single or a subset of volumes.
 )
-
-// LocalAppCommands : list of application commands requested from a local server.
-// For each application there is at most one entry.
-type LocalAppCommands struct {
-	Cmds []LocalAppCommand
-}
 
 // LocalAppCommand : An application command requested from a local server.
 type LocalAppCommand struct {
-	// AppUUID : UUID of the application for which the command should be run.
-	AppUUID uuid.UUID
 	// Command to execute.
 	Command AppCommand
 	// LocalServerTimestamp : timestamp made by the local server when the request was created.
 	LocalServerTimestamp uint64
 	// DeviceTimestamp : timestamp made by EVE when the request was received.
 	DeviceTimestamp time.Time
-	// Completed is set to true by zedmanager once the command completes.
+	// Completed is set to true by zedagent once the command completes.
 	Completed bool
 	// LastCompletedTimestamp : (server) timestamp of the last command completed for this app.
 	// If Completed is true, then this happens to be the same as LocalServerTimestamp.
 	LastCompletedTimestamp uint64
 }
 
-// SameCommand returns true if this and the other commands are actually the same.
-// It does not compare the state information.
-func (ap LocalAppCommand) SameCommand(ap2 LocalAppCommand) bool {
-	return ap.AppUUID == ap2.AppUUID &&
-		ap.Command == ap2.Command &&
-		ap.LocalServerTimestamp == ap2.LocalServerTimestamp
-}
-
-// LookupByAppUUID : returns pointer (or nil) for the entry corresponding to the given app.
-func (acs LocalAppCommands) LookupByAppUUID(appUUID uuid.UUID) *LocalAppCommand {
-	for i := range acs.Cmds {
-		if acs.Cmds[i].AppUUID == appUUID {
-			return &acs.Cmds[i]
-		}
-	}
-	return nil
+// LocalAppCounters : counters for locally issued application commands.
+type LocalAppCounters struct {
+	// RestartCmd : contains counter counting how many restart requests have been submitted
+	// via local server for this application in total (including uncompleted requests).
+	RestartCmd AppInstanceOpsCmd
+	// PurgeCounter : contains counter counting how many purge requests have been submitted
+	// via local server for this application in total (including uncompleted requests).
+	PurgeCmd AppInstanceOpsCmd
 }

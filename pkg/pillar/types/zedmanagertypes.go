@@ -60,6 +60,8 @@ type AppInstanceConfig struct {
 	IoAdapterList       []IoAdapter
 	RestartCmd          AppInstanceOpsCmd
 	PurgeCmd            AppInstanceOpsCmd
+	LocalRestartCmd     AppInstanceOpsCmd
+	LocalPurgeCmd       AppInstanceOpsCmd
 	// XXX: to be deprecated, use CipherBlockStatus instead
 	CloudInitUserData *string `json:"pubsub-large-CloudInitUserData"`
 	RemoteConsole     bool
@@ -165,9 +167,6 @@ type AppInstanceStatus struct {
 	MissingMemory  bool // Waiting for memory
 
 	EffectiveActivate bool //set here effective activate after profile check and apply
-
-	// Status of the application command (purge, restart) requested via the local profile server.
-	LocalCommand LocalAppCommand
 
 	// All error strings across all steps and all StorageStatus
 	// ErrorAndTimeWithSource provides SetError, SetErrrorWithSource, etc
