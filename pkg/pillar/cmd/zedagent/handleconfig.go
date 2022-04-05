@@ -109,8 +109,10 @@ type getconfigContext struct {
 	triggerRadioPOST chan Notify
 
 	localAppInfoPOSTTicker flextimer.FlexTickerHandle
-	localAppCommands       types.LocalAppCommands
-	localAppCommandsLock   sync.Mutex
+
+	// localCommands : list of commands requested from a local server.
+	// This information is persisted under /persist/checkpoint/localcommands
+	localCommands *types.LocalCommands
 
 	callProcessLocalProfileServerChange bool //did we already call processLocalProfileServerChange
 
@@ -643,7 +645,6 @@ func publishZedAgentStatus(getconfigCtx *getconfigContext) {
 		ForceFallbackCounter: ctx.forceFallbackCounter,
 		CurrentProfile:       getconfigCtx.currentProfile,
 		RadioSilence:         getconfigCtx.radioSilence,
-		LocalAppCommands:     getconfigCtx.localAppCommands,
 	}
 	pub := getconfigCtx.pubZedAgentStatus
 	pub.Publish(agentName, status)

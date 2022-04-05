@@ -22,7 +22,7 @@ const (
 	localAppInfoURLPath               = "/api/v1/appinfo"
 	localAppInfoPOSTInterval          = time.Minute
 	localAppInfoPOSTThrottledInterval = time.Hour
-	savedAppCommandsFile              = "appcommands"
+	savedLocalCommandsFile            = "localcommands"
 )
 
 var (
@@ -46,11 +46,13 @@ func initializeLocalAppInfo(ctx *getconfigContext) {
 	max := 1.1 * float64(localAppInfoPOSTInterval)
 	min := 0.8 * max
 	ctx.localAppInfoPOSTTicker = flextimer.NewRangeTicker(time.Duration(min), time.Duration(max))
-	if loadSavedAppCommands(ctx) {
-		publishZedAgentStatus(ctx)
-	} else {
+}
+
+func initializeLocalCommands(ctx *getconfigContext) {
+	if !loadSavedLocalCommands(ctx) {
 		// Write the initial empty content.
-		persistAppCommands(ctx.localAppCommands)
+		ctx.localCommands = &types.LocalCommands{}
+		persistLocalCommands(ctx.localCommands)
 	}
 }
 
@@ -167,14 +169,18 @@ func postLocalAppInfo(ctx *getconfigContext) *profile.LocalAppCmdList {
 }
 
 func processReceivedAppCommands(ctx *getconfigContext, cmdList *profile.LocalAppCmdList) {
-	ctx.localAppCommandsLock.Lock()
-	defer ctx.localAppCommandsLock.Unlock()
+	ctx.localCommands.Lock()
+	defer ctx.localCommands.Unlock()
 	if cmdList == nil {
 		// Nothing requested by local server, just refresh the persisted config.
-		touchAppCommands()
+		if !ctx.localCommands.Empty() {
+			touchLocalCommands()
+		}
 		return
 	}
-	var cmdChanges bool
+
+	var cmdChanges, volChanges bool
+	processedApps := make(map[string]struct{})
 	for _, appCmdReq := range cmdList.AppCommands {
 		var err error
 		appUUID := nilUUID
@@ -192,81 +198,216 @@ func processReceivedAppCommands(ctx *getconfigContext, cmdList *profile.LocalApp
 			continue
 		}
 		// Try to find the application instance.
-		ais := findAppInstance(ctx, appUUID, displayName)
-		if ais == nil {
+		appInst := findAppInstance(ctx, appUUID, displayName)
+		if appInst == nil {
 			log.Warnf("Failed to find app instance with UUID=%s, displayName=%s",
 				appUUID, displayName)
 			continue
 		}
-		appUUID = ais.UUIDandVersion.UUID
-		command := types.AppCommand(appCmdReq.Command)
-		appCmd := ctx.localAppCommands.LookupByAppUUID(appUUID)
-		if appCmd != nil {
-			// Entry for this app already exists.
-			if appCmd.Command == command &&
-				appCmd.LocalServerTimestamp == appCmdReq.Timestamp {
-				// already accepted
-				continue
-			}
-			appCmd.Command = command
-			appCmd.LocalServerTimestamp = appCmdReq.Timestamp
-			appCmd.DeviceTimestamp = time.Now()
-			appCmd.Completed = false
-			cmdChanges = true
+		appUUID = appInst.UUIDandVersion.UUID
+		if _, duplicate := processedApps[appUUID.String()]; duplicate {
+			log.Warnf("Multiple commands requested for app instance with UUID=%s",
+				appUUID)
 			continue
 		}
-		// Add new entry.
-		ctx.localAppCommands.Cmds = append(ctx.localAppCommands.Cmds,
-			types.LocalAppCommand{
-				AppUUID:              appUUID,
-				Command:              command,
-				LocalServerTimestamp: appCmdReq.Timestamp,
-				DeviceTimestamp:      time.Now(),
-				Completed:            false,
-			})
+		processedApps[appUUID.String()] = struct{}{}
+
+		// Accept (or skip already accepted) application command.
+		command := types.AppCommand(appCmdReq.Command)
+		appCmd, hasLocalCmd := ctx.localCommands.AppCommands[appUUID.String()]
+		if !hasLocalCmd {
+			appCmd = &types.LocalAppCommand{}
+			if ctx.localCommands.AppCommands == nil {
+				ctx.localCommands.AppCommands = make(map[string]*types.LocalAppCommand)
+			}
+			ctx.localCommands.AppCommands[appUUID.String()] = appCmd
+		}
+		if appCmd.Command == command &&
+			appCmd.LocalServerTimestamp == appCmdReq.Timestamp {
+			// already accepted
+			continue
+		}
+		appCmd.Command = command
+		appCmd.LocalServerTimestamp = appCmdReq.Timestamp
+		appCmd.DeviceTimestamp = time.Now()
+		appCmd.Completed = false
 		cmdChanges = true
+
+		// Update and re-publish configuration to trigger the operation.
+		timestamp := appCmd.DeviceTimestamp.String()
+		changedVolumes := triggerLocalCommand(ctx, command, appInst, timestamp)
+		if changedVolumes {
+			volChanges = true
+		}
 	}
+
+	// Persist accepted application commands and counters.
 	if cmdChanges {
-		publishZedAgentStatus(ctx)
-		persistAppCommands(ctx.localAppCommands)
+		persistLocalCommands(ctx.localCommands)
 	} else {
 		// No actual configuration change to apply, just refresh the persisted config.
-		touchAppCommands()
+		touchLocalCommands()
+	}
+
+	// Signal changes in the configuration of volumes.
+	if volChanges {
+		signalVolumeConfigRestarted(ctx)
 	}
 }
 
-func processAppCommandStatus(ctx *getconfigContext, appStatus types.AppInstanceStatus) {
-	ctx.localAppCommandsLock.Lock()
-	defer ctx.localAppCommandsLock.Unlock()
-	appCmdStatus := appStatus.LocalCommand
-	if appCmdStatus.Command == types.AppCommandUnspecified {
+// Trigger application command (restart, purge, ...) requested via Local profile server.
+// TODO: move this logic to zedmanager
+func triggerLocalCommand(ctx *getconfigContext, cmd types.AppCommand,
+	app *types.AppInstanceConfig, timestamp string) (changedVolumes bool) {
+	// Get current local counters of the application.
+	appUUID := app.UUIDandVersion.UUID
+	appCounters, hasCounters := ctx.localCommands.AppCounters[appUUID.String()]
+	if !hasCounters {
+		appCounters = &types.LocalAppCounters{}
+		if ctx.localCommands.AppCounters == nil {
+			ctx.localCommands.AppCounters = make(map[string]*types.LocalAppCounters)
+		}
+		ctx.localCommands.AppCounters[appUUID.String()] = appCounters
+	}
+
+	// Update configuration to trigger the operation.
+	switch cmd {
+	case types.AppCommandRestart:
+		// To trigger application restart we take the previously published
+		// app instance config, increase the local-restart command counter by 1
+		// and re-publish the updated configuration.
+		appCounters.RestartCmd.Counter++
+		appCounters.RestartCmd.ApplyTime = timestamp
+		app.LocalRestartCmd = appCounters.RestartCmd
+		checkAndPublishAppInstanceConfig(ctx, *app)
+
+	case types.AppCommandPurge:
+		// To trigger application purge we take the previously published
+		// app instance config, increase the local-purge command counter by 1,
+		// next we add increment of 1 to local-generation counters of ALL volumes
+		// used by the application (inside both volume config and volume-reference
+		// config), and re-publish the updated configuration of the application
+		// and all the volumes.
+		appCounters.PurgeCmd.Counter++
+		appCounters.PurgeCmd.ApplyTime = timestamp
+		app.LocalPurgeCmd = appCounters.PurgeCmd
+		// Trigger purge of all volumes used by the application.
+		// XXX Currently the assumption is that every volume instance is used
+		//     by at most one application.
+		if ctx.localCommands.VolumeGenCounters == nil {
+			ctx.localCommands.VolumeGenCounters = make(map[string]int64)
+		}
+		for i := range app.VolumeRefConfigList {
+			vr := &app.VolumeRefConfigList[i]
+			uuid := vr.VolumeID.String()
+			remoteGenCounter := vr.GenerationCounter
+			localGenCounter := ctx.localCommands.VolumeGenCounters[uuid]
+			// Un-publish volume with the current counters.
+			volKey := volumeKey(uuid, remoteGenCounter, localGenCounter)
+			volObj, _ := ctx.pubVolumeConfig.Get(volKey)
+			if volObj == nil {
+				log.Warnf("Failed to find volume %s referenced by app instance "+
+					"with UUID=%s - not purging this volume", volKey, appUUID)
+				continue
+			}
+			volume := volObj.(types.VolumeConfig)
+			unpublishVolumeConfig(ctx, volKey)
+			// Publish volume with an increased local generation counter.
+			localGenCounter++
+			ctx.localCommands.VolumeGenCounters[uuid] = localGenCounter
+			vr.LocalGenerationCounter = localGenCounter
+			volume.LocalGenerationCounter = localGenCounter
+			publishVolumeConfig(ctx, volume)
+			changedVolumes = true
+		}
+		checkAndPublishAppInstanceConfig(ctx, *app)
+	}
+	return changedVolumes
+}
+
+func processAppCommandStatus(
+	ctx *getconfigContext, appStatus types.AppInstanceStatus) {
+	ctx.localCommands.Lock()
+	defer ctx.localCommands.Unlock()
+	uuid := appStatus.UUIDandVersion.UUID.String()
+	appCmd, hasLocalCmd := ctx.localCommands.AppCommands[uuid]
+	if !hasLocalCmd {
+		// This app received no local command requests.
 		return
 	}
-	if !appCmdStatus.Completed {
-		// Command has not yet completed, nothing to update.
+	if appCmd.Completed {
+		// Nothing to update.
 		return
 	}
-	appCmd := ctx.localAppCommands.LookupByAppUUID(appStatus.UUIDandVersion.UUID)
-	if appCmd == nil {
-		log.Warnf("Missing entry for app command: %+v", appStatus.LocalCommand)
+	if appStatus.PurgeInprogress != types.NotInprogress ||
+		appStatus.RestartInprogress != types.NotInprogress {
+		// A command is still ongoing.
 		return
 	}
 	var updated bool
-	if appCmd.LastCompletedTimestamp != appCmdStatus.LocalServerTimestamp {
-		appCmd.LastCompletedTimestamp = appCmdStatus.LocalServerTimestamp
-		updated = true
-	}
-	if !appCmd.Completed && appCmd.SameCommand(appCmdStatus) {
-		appCmd.Completed = true
-		updated = true
+	switch appCmd.Command {
+	case types.AppCommandRestart:
+		if appStatus.RestartStartedAt.After(appCmd.DeviceTimestamp) {
+			appCmd.Completed = true
+			appCmd.LastCompletedTimestamp = appCmd.LocalServerTimestamp
+			updated = true
+			log.Noticef("Local restart completed: %+v", appCmd)
+		}
+	case types.AppCommandPurge:
+		if appStatus.PurgeStartedAt.After(appCmd.DeviceTimestamp) {
+			appCmd.Completed = true
+			appCmd.LastCompletedTimestamp = appCmd.LocalServerTimestamp
+			updated = true
+			log.Noticef("Local purge completed: %+v", appCmd)
+		}
 	}
 	if updated {
-		persistAppCommands(ctx.localAppCommands)
+		persistLocalCommands(ctx.localCommands)
 	}
+}
+
+// Add config submitted for the application via local profile server.
+// ctx.localCommands should be locked!
+func addLocalAppConfig(ctx *getconfigContext, appInstance *types.AppInstanceConfig) {
+	uuid := appInstance.UUIDandVersion.UUID.String()
+	appCounters, hasCounters := ctx.localCommands.AppCounters[uuid]
+	if hasCounters {
+		appInstance.LocalRestartCmd = appCounters.RestartCmd
+		appInstance.LocalPurgeCmd = appCounters.PurgeCmd
+	}
+	for i := range appInstance.VolumeRefConfigList {
+		vr := &appInstance.VolumeRefConfigList[i]
+		uuid = vr.VolumeID.String()
+		vr.LocalGenerationCounter = ctx.localCommands.VolumeGenCounters[uuid]
+	}
+}
+
+// Delete all local config for this application.
+// ctx.localCommands should be locked!
+func delLocalAppConfig(ctx *getconfigContext, appUUID string) {
+	delete(ctx.localCommands.AppCommands, appUUID)
+	delete(ctx.localCommands.AppCounters, appUUID)
+	persistLocalCommands(ctx.localCommands)
+}
+
+// Add config submitted for the volume via local profile server.
+// ctx.localCommands should be locked!
+func addLocalVolumeConfig(ctx *getconfigContext, volumeConfig *types.VolumeConfig) {
+	uuid := volumeConfig.VolumeID.String()
+	volumeConfig.LocalGenerationCounter = ctx.localCommands.VolumeGenCounters[uuid]
+}
+
+// Delete all local config for this volume.
+// ctx.localCommands should be locked!
+func delLocalVolumeConfig(ctx *getconfigContext, volumeUUID string) {
+	delete(ctx.localCommands.VolumeGenCounters, volumeUUID)
+	persistLocalCommands(ctx.localCommands)
 }
 
 func prepareLocalInfo(ctx *getconfigContext) *profile.LocalAppInfoList {
 	msg := profile.LocalAppInfoList{}
+	ctx.localCommands.Lock()
+	defer ctx.localCommands.Unlock()
 	addAppInstanceFunc := func(key string, value interface{}) bool {
 		ais := value.(types.AppInstanceStatus)
 		zinfoAppInst := new(profile.LocalAppInfo)
@@ -275,14 +416,9 @@ func prepareLocalInfo(ctx *getconfigContext) *profile.LocalAppInfoList {
 		zinfoAppInst.Name = ais.DisplayName
 		zinfoAppInst.Err = encodeErrorInfo(ais.ErrorAndTimeWithSource.ErrorDescription)
 		zinfoAppInst.State = ais.State.ZSwState()
-		ctx.localAppCommandsLock.Lock()
-		for _, appCmd := range ctx.localAppCommands.Cmds {
-			if appCmd.AppUUID == ais.UUIDandVersion.UUID {
-				zinfoAppInst.LastCmdTimestamp = appCmd.LastCompletedTimestamp
-				break
-			}
+		if appCmd, hasEntry := ctx.localCommands.AppCommands[zinfoAppInst.Id]; hasEntry {
+			zinfoAppInst.LastCmdTimestamp = appCmd.LastCompletedTimestamp
 		}
-		ctx.localAppCommandsLock.Unlock()
 		msg.AppsInfo = append(msg.AppsInfo, zinfoAppInst)
 		return true
 	}
@@ -291,9 +427,9 @@ func prepareLocalInfo(ctx *getconfigContext) *profile.LocalAppInfoList {
 }
 
 func findAppInstance(
-	ctx *getconfigContext, appUUID uuid.UUID, displayName string) (appInst *types.AppInstanceStatus) {
+	ctx *getconfigContext, appUUID uuid.UUID, displayName string) (appInst *types.AppInstanceConfig) {
 	matchApp := func(_ string, value interface{}) bool {
-		ais := value.(types.AppInstanceStatus)
+		ais := value.(types.AppInstanceConfig)
 		if (appUUID == nilUUID || appUUID == ais.UUIDandVersion.UUID) &&
 			(displayName == "" || displayName == ais.DisplayName) {
 			appInst = &ais
@@ -302,53 +438,55 @@ func findAppInstance(
 		}
 		return true
 	}
-	ctx.subAppInstanceStatus.Iterate(matchApp)
+	ctx.pubAppInstanceConfig.Iterate(matchApp)
 	return appInst
 }
 
-func readSavedAppCommands(ctx *getconfigContext) (types.LocalAppCommands, error) {
-	appCommands := types.LocalAppCommands{}
+func readSavedLocalCommands(ctx *getconfigContext) (*types.LocalCommands, error) {
+	commands := &types.LocalCommands{}
 	contents, ts, err := readSavedConfig(
 		ctx.zedagentCtx.globalConfig.GlobalValueInt(types.StaleConfigTime),
-		filepath.Join(checkpointDirname, savedAppCommandsFile), false)
+		filepath.Join(checkpointDirname, savedLocalCommandsFile), false)
 	if err != nil {
-		return appCommands, err
+		return commands, err
 	}
 	if contents != nil {
-		err := json.Unmarshal(contents, &appCommands)
+		err := json.Unmarshal(contents, &commands)
 		if err != nil {
-			return appCommands, err
+			return commands, err
 		}
-		log.Noticef("Using saved app commands dated %s",
+		log.Noticef("Using saved local commands dated %s",
 			ts.Format(time.RFC3339Nano))
-		return appCommands, nil
+		return commands, nil
 	}
-	return appCommands, nil
+	return commands, nil
 }
 
-// loadSavedAppCommands reads saved application commands and sets it.
-func loadSavedAppCommands(ctx *getconfigContext) bool {
-	appCommands, err := readSavedAppCommands(ctx)
+// loadSavedLocalCommands reads saved locally-issued commands and sets them.
+func loadSavedLocalCommands(ctx *getconfigContext) bool {
+	commands, err := readSavedLocalCommands(ctx)
 	if err != nil {
-		log.Errorf("readSavedAppCommands failed: %v", err)
+		log.Errorf("loadSavedLocalCommands failed: %v", err)
 		return false
 	}
-	log.Noticef("Starting with app commands: %+v", appCommands)
-	ctx.localAppCommands = appCommands
+	for _, appCmd := range commands.AppCommands {
+		log.Noticef("Loaded persisted local app command: %+v", appCmd)
+	}
+	ctx.localCommands = commands
 	return true
 }
 
-func persistAppCommands(cmds types.LocalAppCommands) {
-	contents, err := json.Marshal(cmds)
+func persistLocalCommands(localCommands *types.LocalCommands) {
+	contents, err := json.Marshal(localCommands)
 	if err != nil {
-		log.Fatalf("persistAppCommands: Marshalling failed: %v", err)
+		log.Fatalf("persistLocalCommands: Marshalling failed: %v", err)
 	}
-	saveConfig(savedAppCommandsFile, contents)
+	saveConfig(savedLocalCommandsFile, contents)
 	return
 }
 
-// touchAppCommands is used to update the modification time of the persisted
-// application commands.
-func touchAppCommands() {
-	touchSavedConfig(savedAppCommandsFile)
+// touchLocalCommands is used to update the modification time of the persisted
+// local commands.
+func touchLocalCommands() {
+	touchSavedConfig(savedLocalCommandsFile)
 }

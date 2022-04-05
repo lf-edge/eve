@@ -23,6 +23,7 @@ type VolumeConfig struct {
 	ReadOnly                bool
 	RefCount                uint
 	GenerationCounter       int64
+	LocalGenerationCounter  int64
 	Encrypted               bool
 	DisplayName             string
 	HasNoAppReferences      bool
@@ -30,7 +31,8 @@ type VolumeConfig struct {
 
 // Key is volume UUID which will be unique
 func (config VolumeConfig) Key() string {
-	return fmt.Sprintf("%s#%d", config.VolumeID.String(), config.GenerationCounter)
+	return fmt.Sprintf("%s#%d", config.VolumeID.String(),
+		config.GenerationCounter+config.LocalGenerationCounter)
 }
 
 // LogCreate :
@@ -44,6 +46,7 @@ func (config VolumeConfig) LogCreate(logBase *base.LogObject) {
 		AddField("max-vol-size-int64", config.MaxVolSize).
 		AddField("refcount-int64", config.RefCount).
 		AddField("generation-counter-int64", config.GenerationCounter).
+		AddField("local-generation-counter-int64", config.LocalGenerationCounter).
 		Noticef("Volume config create")
 }
 
@@ -58,17 +61,14 @@ func (config VolumeConfig) LogModify(logBase *base.LogObject, old interface{}) {
 	}
 	if oldConfig.ContentID != config.ContentID ||
 		oldConfig.MaxVolSize != config.MaxVolSize ||
-		oldConfig.RefCount != config.RefCount ||
-		oldConfig.GenerationCounter != config.GenerationCounter {
+		oldConfig.RefCount != config.RefCount {
 
 		logObject.CloneAndAddField("content-id", config.ContentID).
 			AddField("max-vol-size-int64", config.MaxVolSize).
 			AddField("refcount-int64", config.RefCount).
-			AddField("generation-counter-int64", config.GenerationCounter).
 			AddField("old-content-id", oldConfig.ContentID).
 			AddField("old-max-vol-size-int64", oldConfig.MaxVolSize).
 			AddField("old-refcount-int64", oldConfig.RefCount).
-			AddField("old-generation-counter-int64", oldConfig.GenerationCounter).
 			Noticef("Volume config modify")
 	} else {
 		// XXX remove?
@@ -85,6 +85,7 @@ func (config VolumeConfig) LogDelete(logBase *base.LogObject) {
 		AddField("max-vol-size-int64", config.MaxVolSize).
 		AddField("refcount-int64", config.RefCount).
 		AddField("generation-counter-int64", config.GenerationCounter).
+		AddField("local-generation-counter-int64", config.LocalGenerationCounter).
 		Noticef("Volume config delete")
 
 	base.DeleteLogObject(logBase, config.LogKey())
@@ -114,6 +115,7 @@ type VolumeStatus struct {
 	MaxVolSize              uint64
 	ReadOnly                bool
 	GenerationCounter       int64
+	LocalGenerationCounter  int64
 	Encrypted               bool
 	DisplayName             string
 	State                   SwState
@@ -136,7 +138,8 @@ type VolumeStatus struct {
 
 // Key is volume UUID which will be unique
 func (status VolumeStatus) Key() string {
-	return fmt.Sprintf("%s#%d", status.VolumeID.String(), status.GenerationCounter)
+	return fmt.Sprintf("%s#%d", status.VolumeID.String(),
+		status.GenerationCounter+status.LocalGenerationCounter)
 }
 
 // IsContainer will return true if content tree attached
@@ -155,7 +158,8 @@ func (status VolumeStatus) PathName() string {
 		baseDir = VolumeEncryptedDirName
 	}
 	return fmt.Sprintf("%s/%s#%d.%s", baseDir, status.VolumeID.String(),
-		status.GenerationCounter, strings.ToLower(status.ContentFormat.String()))
+		status.GenerationCounter+status.LocalGenerationCounter,
+		strings.ToLower(status.ContentFormat.String()))
 }
 
 // LogCreate :
@@ -234,21 +238,24 @@ func (status VolumeStatus) LogKey() string {
 // If a volume is purged (re-created from scratch) it will either have a new
 // UUID or a new generationCount
 type VolumeRefConfig struct {
-	VolumeID          uuid.UUID
-	GenerationCounter int64
-	RefCount          uint
-	MountDir          string
-	VerifyOnly        bool
+	VolumeID               uuid.UUID
+	GenerationCounter      int64
+	LocalGenerationCounter int64
+	RefCount               uint
+	MountDir               string
+	VerifyOnly             bool
 }
 
 // Key : VolumeRefConfig unique key
 func (config VolumeRefConfig) Key() string {
-	return fmt.Sprintf("%s#%d", config.VolumeID.String(), config.GenerationCounter)
+	return fmt.Sprintf("%s#%d", config.VolumeID.String(),
+		config.GenerationCounter+config.LocalGenerationCounter)
 }
 
 // VolumeKey : Unique key of volume referenced in VolumeRefConfig
 func (config VolumeRefConfig) VolumeKey() string {
-	return fmt.Sprintf("%s#%d", config.VolumeID.String(), config.GenerationCounter)
+	return fmt.Sprintf("%s#%d", config.VolumeID.String(),
+		config.GenerationCounter+config.LocalGenerationCounter)
 }
 
 // LogCreate :
@@ -260,6 +267,7 @@ func (config VolumeRefConfig) LogCreate(logBase *base.LogObject) {
 	}
 	logObject.CloneAndAddField("refcount-int64", config.RefCount).
 		AddField("generation-counter-int64", config.GenerationCounter).
+		AddField("local-generation-counter-int64", config.LocalGenerationCounter).
 		Noticef("Volume ref config create")
 }
 
@@ -302,31 +310,34 @@ func (config VolumeRefConfig) LogKey() string {
 // If a volume is purged (re-created from scratch) it will either have a new
 // UUID or a new generationCount
 type VolumeRefStatus struct {
-	VolumeID           uuid.UUID
-	GenerationCounter  int64
-	RefCount           uint
-	State              SwState
-	ActiveFileLocation string
-	ContentFormat      zconfig.Format
-	ReadOnly           bool
-	DisplayName        string
-	MaxVolSize         uint64
-	MountDir           string
-	PendingAdd         bool // Flag to identify whether volume ref config published or not
-	WWN                string
-	VerifyOnly         bool
+	VolumeID               uuid.UUID
+	GenerationCounter      int64
+	LocalGenerationCounter int64
+	RefCount               uint
+	State                  SwState
+	ActiveFileLocation     string
+	ContentFormat          zconfig.Format
+	ReadOnly               bool
+	DisplayName            string
+	MaxVolSize             uint64
+	MountDir               string
+	PendingAdd             bool // Flag to identify whether volume ref config published or not
+	WWN                    string
+	VerifyOnly             bool
 
 	ErrorAndTimeWithSource
 }
 
 // Key : VolumeRefStatus unique key
 func (status VolumeRefStatus) Key() string {
-	return fmt.Sprintf("%s#%d", status.VolumeID.String(), status.GenerationCounter)
+	return fmt.Sprintf("%s#%d", status.VolumeID.String(),
+		status.GenerationCounter+status.LocalGenerationCounter)
 }
 
 // VolumeKey : Unique key of volume referenced in VolumeRefStatus
 func (status VolumeRefStatus) VolumeKey() string {
-	return fmt.Sprintf("%s#%d", status.VolumeID.String(), status.GenerationCounter)
+	return fmt.Sprintf("%s#%d", status.VolumeID.String(),
+		status.GenerationCounter+status.LocalGenerationCounter)
 }
 
 // IsContainer will return true if content tree attached
@@ -347,6 +358,7 @@ func (status VolumeRefStatus) LogCreate(logBase *base.LogObject) {
 	}
 	logObject.CloneAndAddField("refcount-int64", status.RefCount).
 		AddField("generation-counter-int64", status.GenerationCounter).
+		AddField("local-generation-counter-int64", status.LocalGenerationCounter).
 		AddField("state", status.State.String()).
 		AddField("filelocation", status.ActiveFileLocation).
 		AddField("content-format", status.ContentFormat).
@@ -401,6 +413,7 @@ func (status VolumeRefStatus) LogDelete(logBase *base.LogObject) {
 		status.VolumeID, status.LogKey())
 	logObject.CloneAndAddField("refcount-int64", status.RefCount).
 		AddField("generation-counter-int64", status.GenerationCounter).
+		AddField("local-generation-counter-int64", status.LocalGenerationCounter).
 		AddField("state", status.State.String()).
 		AddField("filelocation", status.ActiveFileLocation).
 		AddField("content-format", status.ContentFormat).

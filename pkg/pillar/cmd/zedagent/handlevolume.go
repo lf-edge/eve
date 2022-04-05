@@ -18,8 +18,8 @@ import (
 var volumeHash []byte
 
 // volumeKey returns the key of the VM and OCI volumes
-func volumeKey(volumeID string, generationCounter int64) string {
-	return fmt.Sprintf("%s#%d", volumeID, generationCounter)
+func volumeKey(volumeID string, generationCounter, localGenCounter int64) string {
+	return fmt.Sprintf("%s#%d", volumeID, generationCounter+localGenCounter)
 }
 
 // volume parsing routine
@@ -46,25 +46,31 @@ func parseVolumeConfig(ctx *getconfigContext,
 
 	// First look for deleted ones
 	items := ctx.pubVolumeConfig.GetAll()
-	for idStr, vc := range items {
-		found := false
+	for _, vc := range items {
+		volume := vc.(types.VolumeConfig)
+		uuid := volume.VolumeID.String()
+		genCounter := volume.GenerationCounter
+		var foundVolume, sameGenCounter bool
 		var cfgVolume *zconfig.Volume
 		for _, cfgVolume = range cfgVolumeList {
-			vKey := volumeKey(cfgVolume.GetUuid(), cfgVolume.GetGenerationCount())
-			if vKey == idStr {
-				found = true
+			// Search by UUID and (remote) Generation counter, ignore local gen. counter.
+			if cfgVolume.Uuid == uuid {
+				foundVolume = true
+				sameGenCounter = cfgVolume.GenerationCount == genCounter
 				break
 			}
 		}
-		// content tree not found, delete
-		if !found {
-			log.Functionf("parseVolumeConfig: deleting %s\n", idStr)
-			unpublishVolumeConfig(ctx, idStr)
+		if !foundVolume || !sameGenCounter {
+			// volume not found, delete
+			log.Functionf("parseVolumeConfig: deleting %s\n", volume.Key())
+			unpublishVolumeConfig(ctx, volume.Key())
+			if !foundVolume {
+				delLocalVolumeConfig(ctx, uuid)
+			}
 		} else {
 			// check links from apps
-			volumeConfig := vc.(types.VolumeConfig)
-			volumeConfig.HasNoAppReferences = checkVolumeHasNoAppReferences(ctx, cfgVolume, config)
-			publishVolumeConfig(ctx, volumeConfig)
+			volume.HasNoAppReferences = checkVolumeHasNoAppReferences(ctx, cfgVolume, config)
+			publishVolumeConfig(ctx, volume)
 		}
 	}
 
@@ -87,6 +93,10 @@ func parseVolumeConfig(ctx *getconfigContext,
 		volumeConfig.ReadOnly = cfgVolume.GetReadonly()
 		volumeConfig.RefCount = 1
 		volumeConfig.HasNoAppReferences = checkVolumeHasNoAppReferences(ctx, cfgVolume, config)
+
+		// Add config submitted via local profile server.
+		addLocalVolumeConfig(ctx, volumeConfig)
+
 		publishVolumeConfig(ctx, *volumeConfig)
 	}
 
@@ -109,7 +119,8 @@ func checkVolumeHasNoAppReferences(ctx *getconfigContext, cfgVolume *zconfig.Vol
 	appInstanceList := devConfig.GetApps()
 	for _, el := range appInstanceList {
 		for _, vr := range el.VolumeRefList {
-			if vr.Uuid == cfgVolume.GetUuid() {
+			if vr.Uuid == cfgVolume.GetUuid() &&
+				vr.GenerationCount == cfgVolume.GenerationCount {
 				return false
 			}
 		}

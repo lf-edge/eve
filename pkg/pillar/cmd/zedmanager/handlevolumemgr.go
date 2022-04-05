@@ -16,9 +16,11 @@ import (
 // MaybeAddVolumeRefConfig publishes volume ref config with refcount
 // to the volumemgr
 func MaybeAddVolumeRefConfig(ctx *zedmanagerContext, appInstID uuid.UUID,
-	volumeID uuid.UUID, generationCounter int64, mountDir string, verifyOnly bool) {
+	volumeID uuid.UUID, generationCounter, localGenerationCounter int64,
+	mountDir string, verifyOnly bool) {
 
-	key := fmt.Sprintf("%s#%d", volumeID.String(), generationCounter)
+	key := fmt.Sprintf("%s#%d", volumeID.String(),
+		generationCounter+localGenerationCounter)
 	log.Functionf("MaybeAddVolumeRefConfig for %s", key)
 	m := lookupVolumeRefConfig(ctx, key)
 	if m != nil {
@@ -33,11 +35,12 @@ func MaybeAddVolumeRefConfig(ctx *zedmanagerContext, appInstID uuid.UUID,
 	} else {
 		log.Tracef("MaybeAddVolumeRefConfig: add for %s", key)
 		vrc := types.VolumeRefConfig{
-			VolumeID:          volumeID,
-			GenerationCounter: generationCounter,
-			RefCount:          1,
-			MountDir:          mountDir,
-			VerifyOnly:        verifyOnly,
+			VolumeID:               volumeID,
+			GenerationCounter:      generationCounter,
+			LocalGenerationCounter: localGenerationCounter,
+			RefCount:               1,
+			MountDir:               mountDir,
+			VerifyOnly:             verifyOnly,
 		}
 		publishVolumeRefConfig(ctx, &vrc)
 	}
@@ -49,9 +52,10 @@ func MaybeAddVolumeRefConfig(ctx *zedmanagerContext, appInstID uuid.UUID,
 // MaybeRemoveVolumeRefConfig decreases the RefCount and deletes the VolumeRefConfig
 // when the RefCount reaches zero
 func MaybeRemoveVolumeRefConfig(ctx *zedmanagerContext, appInstID uuid.UUID,
-	volumeID uuid.UUID, generationCounter int64) {
+	volumeID uuid.UUID, generationCounter, localGenerationCounter int64) {
 
-	key := fmt.Sprintf("%s#%d", volumeID.String(), generationCounter)
+	key := fmt.Sprintf("%s#%d", volumeID.String(),
+		generationCounter+localGenerationCounter)
 	log.Functionf("MaybeRemoveVolumeRefConfig for %s", key)
 	m := lookupVolumeRefConfig(ctx, key)
 	if m == nil {
@@ -145,6 +149,7 @@ func handleVolumeRefStatusImpl(ctxArg interface{}, key string,
 		aiStatus := st.(types.AppInstanceStatus)
 		for _, vrs := range aiStatus.VolumeRefStatusList {
 			if vrs.GenerationCounter == status.GenerationCounter &&
+				vrs.LocalGenerationCounter == status.LocalGenerationCounter &&
 				vrs.VolumeID == status.VolumeID {
 
 				updateAIStatusUUID(ctx, aiStatus.UUIDandVersion.UUID.String())
@@ -167,6 +172,7 @@ func handleVolumeRefStatusDelete(ctxArg interface{}, key string,
 		aiStatus := st.(types.AppInstanceStatus)
 		for _, vrs := range aiStatus.VolumeRefStatusList {
 			if vrs.GenerationCounter == status.GenerationCounter &&
+				vrs.LocalGenerationCounter == status.LocalGenerationCounter &&
 				vrs.VolumeID == status.VolumeID {
 
 				updateAIStatusUUID(ctx, aiStatus.UUIDandVersion.UUID.String())
@@ -182,9 +188,13 @@ func getVolumeRefStatusFromAIStatus(status *types.AppInstanceStatus,
 	log.Tracef("getVolumeRefStatusFromAIStatus(%v)", vrc.Key())
 	for i := range status.VolumeRefStatusList {
 		vrs := &status.VolumeRefStatusList[i]
-		if vrs.VolumeID == vrc.VolumeID && vrs.GenerationCounter == vrc.GenerationCounter {
-			log.Tracef("getVolumeRefStatusFromAIStatus(%v) found %s generationCounter %d",
-				vrs.Key(), vrs.DisplayName, vrs.GenerationCounter)
+		if vrs.VolumeID == vrc.VolumeID &&
+			vrs.GenerationCounter == vrc.GenerationCounter &&
+			vrs.LocalGenerationCounter == vrc.LocalGenerationCounter {
+			log.Tracef("getVolumeRefStatusFromAIStatus(%v) found %s "+
+				"generationCounter %d localGenerationCounter %d",
+				vrs.Key(), vrs.DisplayName, vrs.GenerationCounter,
+				vrs.LocalGenerationCounter)
 			return vrs
 		}
 	}
@@ -198,9 +208,13 @@ func getVolumeRefConfigFromAIConfig(config *types.AppInstanceConfig,
 	log.Tracef("getVolumeRefConfigFromAIConfig(%v)", vrs.Key())
 	for i := range config.VolumeRefConfigList {
 		vrc := &config.VolumeRefConfigList[i]
-		if vrc.VolumeID == vrs.VolumeID && vrc.GenerationCounter == vrs.GenerationCounter {
-			log.Tracef("getVolumeRefConfigFromAIConfig(%v) found %s generationCounter %d",
-				vrs.Key(), vrs.DisplayName, vrs.GenerationCounter)
+		if vrc.VolumeID == vrs.VolumeID &&
+			vrc.GenerationCounter == vrs.GenerationCounter &&
+			vrc.LocalGenerationCounter == vrs.LocalGenerationCounter {
+			log.Tracef("getVolumeRefConfigFromAIConfig(%v) found %s "+
+				"generationCounter %d localGenerationCounter %d",
+				vrs.Key(), vrs.DisplayName, vrs.GenerationCounter,
+				vrs.LocalGenerationCounter)
 			return vrc
 		}
 	}
