@@ -631,14 +631,14 @@ func doUpdateVol(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool)
 				status.Key(), vr.FileLocation, vr.VolumeCreated)
 			if vr.VolumeCreated && status.SubState == types.VolumeSubStatePrepareDone {
 				log.Functionf("From vr set VolumeCreated to %s for %s",
-					vr.FileLocation, status.VolumeID)
+					vr.FileLocation, status.Key())
 				status.SubState = types.VolumeSubStateCreated
 				status.CreateTime = vr.CreateTime
 				changed = true
 			}
 			if status.FileLocation != vr.FileLocation && vr.Error == nil {
 				log.Functionf("doUpdateContentTree: From vr set FileLocation to %s for %s",
-					vr.FileLocation, status.VolumeID)
+					vr.FileLocation, status.Key())
 				status.FileLocation = vr.FileLocation
 				changed = true
 			}

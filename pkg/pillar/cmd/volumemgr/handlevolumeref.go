@@ -23,18 +23,19 @@ func handleVolumeRefCreate(ctxArg interface{}, key string,
 		updateVolumeStatusRefCount(ctx, vs)
 		publishVolumeStatus(ctx, vs)
 		status = &types.VolumeRefStatus{
-			VolumeID:           config.VolumeID,
-			GenerationCounter:  config.GenerationCounter,
-			RefCount:           config.RefCount,
-			MountDir:           config.MountDir,
-			State:              vs.State,
-			ActiveFileLocation: vs.FileLocation,
-			ContentFormat:      vs.ContentFormat,
-			ReadOnly:           vs.ReadOnly,
-			DisplayName:        vs.DisplayName,
-			MaxVolSize:         vs.MaxVolSize,
-			WWN:                vs.WWN,
-			VerifyOnly:         config.VerifyOnly,
+			VolumeID:               config.VolumeID,
+			GenerationCounter:      config.GenerationCounter,
+			LocalGenerationCounter: config.LocalGenerationCounter,
+			RefCount:               config.RefCount,
+			MountDir:               config.MountDir,
+			State:                  vs.State,
+			ActiveFileLocation:     vs.FileLocation,
+			ContentFormat:          vs.ContentFormat,
+			ReadOnly:               vs.ReadOnly,
+			DisplayName:            vs.DisplayName,
+			MaxVolSize:             vs.MaxVolSize,
+			WWN:                    vs.WWN,
+			VerifyOnly:             config.VerifyOnly,
 		}
 		if vs.HasError() {
 			description := vs.ErrorDescription
@@ -46,12 +47,13 @@ func handleVolumeRefCreate(ctxArg interface{}, key string,
 		needUpdateVol = true
 	} else {
 		status = &types.VolumeRefStatus{
-			VolumeID:          config.VolumeID,
-			GenerationCounter: config.GenerationCounter,
-			RefCount:          config.RefCount,
-			MountDir:          config.MountDir,
-			State:             types.INITIAL, // Waiting for VolumeConfig from zedagent
-			VerifyOnly:        config.VerifyOnly,
+			VolumeID:               config.VolumeID,
+			GenerationCounter:      config.GenerationCounter,
+			LocalGenerationCounter: config.LocalGenerationCounter,
+			RefCount:               config.RefCount,
+			MountDir:               config.MountDir,
+			State:                  types.INITIAL, // Waiting for VolumeConfig from zedagent
+			VerifyOnly:             config.VerifyOnly,
 		}
 	}
 	publishVolumeRefStatus(ctx, status)
@@ -186,18 +188,19 @@ func updateVolumeRefStatus(ctx *volumemgrContext, vs *types.VolumeStatus) {
 				return
 			}
 			status = &types.VolumeRefStatus{
-				VolumeID:           config.VolumeID,
-				GenerationCounter:  config.GenerationCounter,
-				RefCount:           config.RefCount,
-				MountDir:           config.MountDir,
-				State:              vs.State,
-				ActiveFileLocation: vs.FileLocation,
-				ContentFormat:      vs.ContentFormat,
-				ReadOnly:           vs.ReadOnly,
-				DisplayName:        vs.DisplayName,
-				MaxVolSize:         vs.MaxVolSize,
-				WWN:                vs.WWN,
-				VerifyOnly:         config.VerifyOnly,
+				VolumeID:               config.VolumeID,
+				GenerationCounter:      config.GenerationCounter,
+				LocalGenerationCounter: config.LocalGenerationCounter,
+				RefCount:               config.RefCount,
+				MountDir:               config.MountDir,
+				State:                  vs.State,
+				ActiveFileLocation:     vs.FileLocation,
+				ContentFormat:          vs.ContentFormat,
+				ReadOnly:               vs.ReadOnly,
+				DisplayName:            vs.DisplayName,
+				MaxVolSize:             vs.MaxVolSize,
+				WWN:                    vs.WWN,
+				VerifyOnly:             config.VerifyOnly,
 			}
 			if vs.HasError() {
 				description := vs.ErrorDescription

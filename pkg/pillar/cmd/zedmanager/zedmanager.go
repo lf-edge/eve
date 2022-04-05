@@ -559,16 +559,17 @@ func handleCreate(ctxArg interface{}, key string,
 	}
 
 	// Do we have a PurgeCmd counter from before the reboot?
-	c, err := uuidtonum.UuidToNumGet(log, ctx.pubUuidToNum,
+	// Note that purgeCmdCounter is a sum of the remote and the local purge counter.
+	persistedCounter, err := uuidtonum.UuidToNumGet(log, ctx.pubUuidToNum,
 		config.UUIDandVersion.UUID, "purgeCmdCounter")
+	configCounter := int(config.PurgeCmd.Counter + config.LocalPurgeCmd.Counter)
 	if err == nil {
-		if uint32(c) == config.PurgeCmd.Counter {
+		if persistedCounter == configCounter {
 			log.Functionf("handleCreate(%v) for %s found matching purge counter %d",
-				config.UUIDandVersion, config.DisplayName, c)
+				config.UUIDandVersion, config.DisplayName, persistedCounter)
 		} else {
 			log.Warnf("handleCreate(%v) for %s found different purge counter %d vs. %d",
-				config.UUIDandVersion, config.DisplayName, c,
-				config.PurgeCmd.Counter)
+				config.UUIDandVersion, config.DisplayName, persistedCounter, configCounter)
 			status.PurgeInprogress = types.DownloadAndVerify
 			status.State = types.PURGING
 			status.PurgeStartedAt = time.Now()
@@ -578,10 +579,9 @@ func handleCreate(ctxArg interface{}, key string,
 	} else {
 		// Save this PurgeCmd.Counter as the baseline
 		log.Functionf("handleCreate(%v) for %s saving purge counter %d",
-			config.UUIDandVersion, config.DisplayName,
-			config.PurgeCmd.Counter)
+			config.UUIDandVersion, config.DisplayName, configCounter)
 		uuidtonum.UuidToNumAllocate(log, ctx.pubUuidToNum,
-			config.UUIDandVersion.UUID, int(config.PurgeCmd.Counter),
+			config.UUIDandVersion.UUID, configCounter,
 			true, "purgeCmdCounter")
 	}
 
@@ -591,6 +591,7 @@ func handleCreate(ctxArg interface{}, key string,
 		vrs := &status.VolumeRefStatusList[i]
 		vrs.VolumeID = vrc.VolumeID
 		vrs.GenerationCounter = vrc.GenerationCounter
+		vrs.LocalGenerationCounter = vrc.LocalGenerationCounter
 		vrs.RefCount = vrc.RefCount
 		vrs.MountDir = vrc.MountDir
 		vrs.PendingAdd = true
@@ -668,12 +669,14 @@ func handleModify(ctxArg interface{}, key string,
 		needRestart = false
 	}
 
-	if config.RestartCmd.Counter != oldConfig.RestartCmd.Counter {
+	if config.RestartCmd.Counter != oldConfig.RestartCmd.Counter ||
+		config.LocalRestartCmd.Counter != oldConfig.LocalRestartCmd.Counter {
 
-		log.Functionf("handleModify(%v) for %s restartcmd from %d to %d "+
+		log.Functionf("handleModify(%v) for %s restartcmd from %d/%d to %d/%d "+
 			"needRestart: %v",
 			config.UUIDandVersion, config.DisplayName,
-			oldConfig.RestartCmd.Counter, config.RestartCmd.Counter,
+			oldConfig.RestartCmd.Counter, oldConfig.LocalRestartCmd.Counter,
+			config.RestartCmd.Counter, config.LocalRestartCmd.Counter,
 			needRestart)
 		if effectiveActivate {
 			// Will restart even if we crash/power cycle since that
@@ -686,6 +689,7 @@ func handleModify(ctxArg interface{}, key string,
 			log.Functionf("handleModify(%v) for %s restartcmd ignored config !Activate",
 				config.UUIDandVersion, config.DisplayName)
 			oldConfig.RestartCmd.Counter = config.RestartCmd.Counter
+			oldConfig.LocalRestartCmd.Counter = config.LocalRestartCmd.Counter
 		}
 	} else if needRestart {
 		errStr := fmt.Sprintf("Need restart due to %s but not a restartCmd",
@@ -696,11 +700,13 @@ func handleModify(ctxArg interface{}, key string,
 		return
 	}
 
-	if config.PurgeCmd.Counter != oldConfig.PurgeCmd.Counter {
-		log.Functionf("handleModify(%v) for %s purgecmd from %d to %d "+
+	if config.PurgeCmd.Counter != oldConfig.PurgeCmd.Counter ||
+		config.LocalPurgeCmd.Counter != oldConfig.LocalPurgeCmd.Counter {
+		log.Functionf("handleModify(%v) for %s purgecmd from %d/%d to %d/%d "+
 			"needPurge: %v",
 			config.UUIDandVersion, config.DisplayName,
-			oldConfig.PurgeCmd.Counter, config.PurgeCmd.Counter,
+			oldConfig.PurgeCmd.Counter, oldConfig.LocalPurgeCmd.Counter,
+			config.PurgeCmd.Counter, config.LocalPurgeCmd.Counter,
 			needPurge)
 		if status.IsErrorSource(types.AppInstanceStatus{}) {
 			log.Functionf("Removing error %s", status.Error)
@@ -767,8 +773,9 @@ func quantifyChanges(config types.AppInstanceConfig, oldConfig types.AppInstance
 		for _, vrc := range config.VolumeRefConfigList {
 			vrs := getVolumeRefStatusFromAIStatus(&status, vrc)
 			if vrs == nil {
-				str := fmt.Sprintf("Missing VolumeRefStatus for (VolumeID: %s, GenerationCounter: %d)",
-					vrc.VolumeID, vrc.GenerationCounter)
+				str := fmt.Sprintf("Missing VolumeRefStatus for "+
+					"(VolumeID: %s, GenerationCounter: %d, LocalGenerationCounter: %d)",
+					vrc.VolumeID, vrc.GenerationCounter, vrc.LocalGenerationCounter)
 				log.Errorf(str)
 				needPurge = true
 				purgeReason += str + "\n"
@@ -896,83 +903,7 @@ func handleZedAgentStatusImpl(ctxArg interface{}, key string,
 		ctxPtr.currentProfile = status.CurrentProfile
 		updateBasedOnProfile(ctxPtr)
 	}
-	pub := ctxPtr.pubAppInstanceStatus
-	items := pub.GetAll()
-	for _, st := range items {
-		ais := st.(types.AppInstanceStatus)
-		var cmdChanged bool
-		for _, appCmd := range status.LocalAppCommands.Cmds {
-			if appCmd.AppUUID == ais.UUIDandVersion.UUID {
-				if appCmd.Command == types.AppCommandUnspecified {
-					// Should be unreachable.
-					log.Warnf("zedagent did not specify the command: %+v", appCmd)
-					break
-				}
-				if !appCmd.SameCommand(ais.LocalCommand) {
-					log.Noticef("Updated local command: %+v", appCmd)
-					ais.LocalCommand = appCmd
-					cmdChanged = true
-				}
-				break
-			}
-		}
-		if updateLocalCommand(ctxPtr, &ais) || cmdChanged {
-			publishAppInstanceStatus(ctxPtr, &ais)
-		}
-	}
 	log.Functionf("handleZedAgentStatusImpl(%s) done", key)
-}
-
-func updateLocalCommand(ctx *zedmanagerContext, status *types.AppInstanceStatus) (change bool) {
-	uuidStr := status.UUIDandVersion.UUID.String()
-	config := lookupAppInstanceConfig(ctx, uuidStr)
-	if config == nil {
-		log.Warnf("Failed to find config for app instance UUID=%s", uuidStr)
-		return false
-	}
-	effectiveActivate := effectiveActivateCurrentProfile(*config, ctx.currentProfile)
-	if status.LocalCommand.Completed {
-		// Nothing to update or trigger.
-		return false
-	}
-	if status.PurgeInprogress != types.NotInprogress ||
-		status.RestartInprogress != types.NotInprogress {
-		// There is a command ongoing, cannot trigger another one right now.
-		return false
-	}
-	switch status.LocalCommand.Command {
-	case types.AppCommandRestart:
-		if !effectiveActivate {
-			status.LocalCommand.Completed = true
-			log.Noticef("Ignoring local restart: %+v", status.LocalCommand)
-		} else if status.RestartStartedAt.After(status.LocalCommand.DeviceTimestamp) {
-			status.LocalCommand.Completed = true
-			log.Noticef("Local restart completed: %+v", status.LocalCommand)
-		} else {
-			// Trigger restart command.
-			log.Noticef("Triggering local restart: %+v", status.LocalCommand)
-			status.RestartInprogress = types.BringDown
-			status.State = types.RESTARTING
-			status.RestartStartedAt = time.Now()
-			doUpdate(ctx, *config, status)
-		}
-		return true
-
-	case types.AppCommandPurge:
-		if status.PurgeStartedAt.After(status.LocalCommand.DeviceTimestamp) {
-			status.LocalCommand.Completed = true
-			log.Noticef("Local purge completed: %+v", status.LocalCommand)
-		} else {
-			// Trigger purge command.
-			log.Noticef("Triggering local purge: %+v", status.LocalCommand)
-			status.PurgeInprogress = types.DownloadAndVerify
-			status.State = types.PURGING
-			status.PurgeStartedAt = time.Now()
-			doUpdate(ctx, *config, status)
-		}
-		return true
-	}
-	return false
 }
 
 func handleHostMemoryCreate(ctxArg interface{}, key string,
