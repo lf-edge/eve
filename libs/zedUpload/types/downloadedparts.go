@@ -23,12 +23,10 @@ type DownloadedParts struct {
 
 // Hash returns hash of DownloadedParts struct
 func (dp *DownloadedParts) Hash() string {
-	data, err := json.Marshal(dp)
-	if err != nil {
-		return ""
-	}
 	hash := sha256.New()
-	if _, err = hash.Write(data); err != nil {
+	encoder := json.NewEncoder(hash)
+	err := encoder.Encode(dp)
+	if err != nil {
 		return ""
 	}
 	return hex.EncodeToString(hash.Sum(nil))
