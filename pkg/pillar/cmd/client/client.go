@@ -819,8 +819,8 @@ func handleDNSImpl(ctxArg interface{}, key string,
 		return
 	}
 	log.Functionf("handleDNSImpl for %s", key)
-	// Ignore test status and timestamps
-	if ctx.deviceNetworkStatus.MostlyEqual(status) {
+	// Ignore timestamps
+	if ctx.deviceNetworkStatus.State == status.State && ctx.deviceNetworkStatus.MostlyEqual(status) {
 		log.Functionf("handleDNSImpl no change")
 		return
 	}
