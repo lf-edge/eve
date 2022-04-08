@@ -16,7 +16,7 @@ uqmi() {
 # We prefer to use uqmi over qmicli as a CLI agent for QMI devices.
 # However, some fields are available for retrieval only with qmicli.
 qmicli() {
-  timeout -s KILL "$LTESTAT_TIMEOUT" qmicli -d "/dev/$CDC_DEV" "$@"
+  timeout -s KILL "$LTESTAT_TIMEOUT" qmicli -p -d "/dev/$CDC_DEV" "$@"
 }
 
 qmi_get_packet_stats() {

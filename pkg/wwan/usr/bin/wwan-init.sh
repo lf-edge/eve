@@ -19,6 +19,7 @@ BBS=/run/wwan
 CONFIG_PATH="${BBS}/config.json"
 STATUS_PATH="${BBS}/status.json"
 METRICS_PATH="${BBS}/metrics.json"
+LOCINFO_PATH="${BBS}/location.json"
 
 LTESTAT_TIMEOUT=120
 PROBE_INTERVAL=300  # how often to probe the connectivity status (in seconds)
@@ -35,6 +36,8 @@ SRC="$(cd "$(dirname "$0")" || exit 1; pwd)"
 . "${SRC}/wwan-qmi.sh"
 # shellcheck source=./pkg/wwan/usr/bin/wwan-mbim.sh
 . "${SRC}/wwan-mbim.sh"
+# shellcheck source=./pkg/wwan/usr/bin/wwan-loc.sh
+. "${SRC}/wwan-loc.sh"
 
 json_attr() {
   printf '"%s":%s' "$1" "$2"
@@ -312,6 +315,8 @@ event_stream | while read -r EVENT; do
   unset MODEMS
   unset STATUS
   unset METRICS
+  unset LOC_TRACKING_DEV
+  unset LOC_TRACKING_PROTO
   RADIO_SILENCE="$(parse_json_attr "$CONFIG" "\"radio-silence\"")"
 
   # iterate over each configured cellular network
@@ -332,6 +337,7 @@ event_stream | while read -r EVENT; do
     PROBE_ADDR="${PROBE_ADDR:-$DEFAULT_PROBE_ADDR}"
     APN="$(parse_json_attr "$NETWORK" "apns[0]")" # FIXME XXX limited to a single APN for now
     APN="${APN:-$DEFAULT_APN}"
+    LOC_TRACKING="$(parse_json_attr "$NETWORK" "\"location-tracking\"")"
 
     if ! lookup_modem "${IFACE}" "${USB_ADDR}" "${PCI_ADDR}" 2>/tmp/wwan.stderr; then
       CONFIG_ERROR="$(cat /tmp/wwan.stderr)"
@@ -355,6 +361,11 @@ event_stream | while read -r EVENT; do
     if [ "$EVENT" = "METRICS" ]; then
       collect_network_metrics 2>/dev/null
       continue
+    fi
+
+    if [ "$LOC_TRACKING" = "true" ]; then
+      LOC_TRACKING_DEV="$CDC_DEV"
+      LOC_TRACKING_PROTO="$PROTOCOL"
     fi
 
     # reflect updated config or just probe the current status
@@ -398,6 +409,22 @@ event_stream | while read -r EVENT; do
   done <<__EOT__
   $(echo "$CONFIG" | jq -c '.networks[]' 2>/dev/null)
 __EOT__
+
+  # Start/stop location tracking.
+  if [ "$CONFIG_CHANGE" = "y" ]; then
+    if [ -n "$LOC_TRACKING_DEV" ]; then
+      if [ -z "$LOC_TRACKER" ]; then
+        location_tracking "${LOC_TRACKING_DEV}" "${LOC_TRACKING_PROTO}" "${LOCINFO_PATH}" &
+        LOC_TRACKER=$!
+      fi
+    else
+      if [ -n "$LOC_TRACKER" ]; then
+        kill_process_tree $LOC_TRACKER >/dev/null 2>&1
+        echo "Location tracking was stopped (parent process: $LOC_TRACKER)"
+        unset LOC_TRACKER
+      fi
+    fi
+  fi
 
   # manage RF state also for modems not configured by the controller
   for DEV in /sys/class/usbmisc/*; do
