@@ -106,6 +106,8 @@ The onboarding token lives in conf/onboard.*.pem in the repo, and this is used t
 openssl x509 -in conf/onboard.cert.pem -text | grep CN
 ```
 
+The [generate-onboard.sh](../pkg/pillar/scripts/generate-onboard.sh) script can be used to generate such onboarding certificates.
+
 A variant of that approach is to use a random soft serial number. When EVE is installed it generates a /config/soft_serial which is a random 128-bit UUID. If installed from a USB stick this serial number (together with the less random hardware serial number) are written to a directory on the USB installer stick.
 
 When EVE is calling the register API it will present both the hardware serial and soft serial, hence if the controller has been told of the random soft serial for the device we avoid depending on guessable hardware serial numbers.
