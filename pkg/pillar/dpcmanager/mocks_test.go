@@ -34,6 +34,7 @@ type MockWwanWatcher struct {
 	sync.Mutex
 	wwanStatus  types.WwanStatus
 	wwanMetrics types.WwanMetrics
+	wwanLocInfo types.WwanLocationInfo
 	wwanEvents  chan dpcmngr.WwanEvent
 }
 
@@ -59,6 +60,17 @@ func (m *MockWwanWatcher) UpdateMetrics(metrics types.WwanMetrics) {
 	}
 }
 
+// UpdateLocationInfo : simulate update of Wwan location info.
+func (m *MockWwanWatcher) UpdateLocationInfo(locInfo types.WwanLocationInfo) {
+	m.Lock()
+	defer m.Unlock()
+
+	m.wwanLocInfo = locInfo
+	if m.wwanEvents != nil {
+		m.wwanEvents <- dpcmngr.WwanEventNewLocationInfo
+	}
+}
+
 // Watch for simulated wwan events.
 func (m *MockWwanWatcher) Watch(context.Context) (<-chan dpcmngr.WwanEvent, error) {
 	m.Lock()
@@ -81,6 +93,13 @@ func (m *MockWwanWatcher) LoadMetrics() (types.WwanMetrics, error) {
 	m.Lock()
 	defer m.Unlock()
 	return m.wwanMetrics, nil
+}
+
+// LoadLocationInfo returns last location info submitted via UpdateLocationInfo.
+func (m *MockWwanWatcher) LoadLocationInfo() (types.WwanLocationInfo, error) {
+	m.Lock()
+	defer m.Unlock()
+	return m.wwanLocInfo, nil
 }
 
 // MockGeoService allows to simulate geolocation service.

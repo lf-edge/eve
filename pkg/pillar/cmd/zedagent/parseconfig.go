@@ -1757,6 +1757,7 @@ func parseNetworkWirelessConfig(ctx *getconfigContext, key string, netEnt *zconf
 			wcell.APN = cellular.GetAPN()
 			wcell.ProbeAddr = cellular.GetProbe().GetProbeAddress()
 			wcell.DisableProbe = cellular.GetProbe().GetDisable()
+			wcell.LocationTracking = cellular.GetLocationTracking()
 			wconfig.Cellular = append(wconfig.Cellular, wcell)
 		}
 		log.Functionf("parseNetworkWirelessConfig: Wireless of network Cellular, %v", wconfig.Cellular)
@@ -2221,6 +2222,15 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 		oldMetricInterval := oldGlobalConfig.GlobalValueInt(types.MetricInterval)
 		newMetricInterval := newGlobalConfig.GlobalValueInt(types.MetricInterval)
 
+		oldLocationCloudInterval := oldGlobalConfig.GlobalValueInt(
+			types.LocationCloudInterval)
+		newLocationCloudInterval := newGlobalConfig.GlobalValueInt(
+			types.LocationCloudInterval)
+		oldLocationAppInterval := oldGlobalConfig.GlobalValueInt(
+			types.LocationAppInterval)
+		newLocationAppInterval := newGlobalConfig.GlobalValueInt(
+			types.LocationAppInterval)
+
 		if newConfigInterval != oldConfigInterval {
 			log.Functionf("parseConfigItems: %s change from %d to %d",
 				"ConfigInterval", oldConfigInterval, newConfigInterval)
@@ -2231,6 +2241,16 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 			log.Functionf("parseConfigItems: %s change from %d to %d",
 				"MetricInterval", oldMetricInterval, newMetricInterval)
 			maybeUpdateMetricsTimer(ctx, false)
+		}
+		if oldLocationCloudInterval != newLocationCloudInterval {
+			log.Functionf("parseConfigItems: %s change from %d to %d",
+				"LocationCloudInterval", oldLocationCloudInterval, newLocationCloudInterval)
+			updateLocationCloudTimer(ctx, newLocationCloudInterval)
+		}
+		if oldLocationAppInterval != newLocationAppInterval {
+			log.Functionf("parseConfigItems: %s change from %d to %d",
+				"LocationAppInterval", oldLocationAppInterval, newLocationAppInterval)
+			updateLocationAppTimer(ctx, newLocationAppInterval)
 		}
 		oldMaintenanceMode := oldGlobalConfig.GlobalValueTriState(types.MaintenanceMode)
 		newMaintenanceMode := newGlobalConfig.GlobalValueTriState(types.MaintenanceMode)

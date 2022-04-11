@@ -57,50 +57,52 @@ type L2Adapter struct {
 }
 
 type getconfigContext struct {
-	zedagentCtx              *zedagentContext    // Cross link
-	ledBlinkCount            types.LedBlinkCount // Current count
-	configReceived           bool
-	configGetStatus          types.ConfigGetStatus
-	updateInprogress         bool
-	readSavedConfig          bool // Did we already read it?
-	configTickerHandle       interface{}
-	metricsTickerHandle      interface{}
-	localProfileTickerHandle interface{}
-	pubDevicePortConfig      pubsub.Publication
-	pubPhysicalIOAdapters    pubsub.Publication
-	devicePortConfig         types.DevicePortConfig
-	pubNetworkXObjectConfig  pubsub.Publication
-	subAppInstanceStatus     pubsub.Subscription
-	subDomainMetric          pubsub.Subscription
-	subProcessMetric         pubsub.Subscription
-	subHostMemory            pubsub.Subscription
-	subNodeAgentStatus       pubsub.Subscription
-	pubZedAgentStatus        pubsub.Publication
-	pubAppInstanceConfig     pubsub.Publication
-	pubAppNetworkConfig      pubsub.Publication
-	subAppNetworkStatus      pubsub.Subscription
-	pubBaseOsConfig          pubsub.Publication
-	pubBaseOs                pubsub.Publication
-	pubDatastoreConfig       pubsub.Publication
-	pubNetworkInstanceConfig pubsub.Publication
-	pubControllerCert        pubsub.Publication
-	pubCipherContext         pubsub.Publication
-	subContentTreeStatus     pubsub.Subscription
-	pubContentTreeConfig     pubsub.Publication
-	subVolumeStatus          pubsub.Subscription
-	pubVolumeConfig          pubsub.Publication
-	pubDisksConfig           pubsub.Publication
-	NodeAgentStatus          *types.NodeAgentStatus
-	rebootFlag               bool
-	lastReceivedConfig       time.Time
-	lastProcessedConfig      time.Time
-	localProfileServer       string
-	profileServerToken       string
-	currentProfile           string
-	globalProfile            string
-	localProfile             string
-	localProfileTrigger      chan Notify
-	localServerMap           *localServerMap
+	zedagentCtx               *zedagentContext    // Cross link
+	ledBlinkCount             types.LedBlinkCount // Current count
+	configReceived            bool
+	configGetStatus           types.ConfigGetStatus
+	updateInprogress          bool
+	readSavedConfig           bool // Did we already read it?
+	configTickerHandle        interface{}
+	metricsTickerHandle       interface{}
+	locationCloudTickerHandle interface{}
+	locationAppTickerHandle   interface{}
+	localProfileTickerHandle  interface{}
+	pubDevicePortConfig       pubsub.Publication
+	pubPhysicalIOAdapters     pubsub.Publication
+	devicePortConfig          types.DevicePortConfig
+	pubNetworkXObjectConfig   pubsub.Publication
+	subAppInstanceStatus      pubsub.Subscription
+	subDomainMetric           pubsub.Subscription
+	subProcessMetric          pubsub.Subscription
+	subHostMemory             pubsub.Subscription
+	subNodeAgentStatus        pubsub.Subscription
+	pubZedAgentStatus         pubsub.Publication
+	pubAppInstanceConfig      pubsub.Publication
+	pubAppNetworkConfig       pubsub.Publication
+	subAppNetworkStatus       pubsub.Subscription
+	pubBaseOsConfig           pubsub.Publication
+	pubBaseOs                 pubsub.Publication
+	pubDatastoreConfig        pubsub.Publication
+	pubNetworkInstanceConfig  pubsub.Publication
+	pubControllerCert         pubsub.Publication
+	pubCipherContext          pubsub.Publication
+	subContentTreeStatus      pubsub.Subscription
+	pubContentTreeConfig      pubsub.Publication
+	subVolumeStatus           pubsub.Subscription
+	pubVolumeConfig           pubsub.Publication
+	pubDisksConfig            pubsub.Publication
+	NodeAgentStatus           *types.NodeAgentStatus
+	rebootFlag                bool
+	lastReceivedConfig        time.Time
+	lastProcessedConfig       time.Time
+	localProfileServer        string
+	profileServerToken        string
+	currentProfile            string
+	globalProfile             string
+	localProfile              string
+	localProfileTrigger       chan Notify
+	localServerMap            *localServerMap
 
 	// parsed L2 adapters
 	vlans []L2Adapter
@@ -111,6 +113,11 @@ type getconfigContext struct {
 	triggerRadioPOST chan Notify
 
 	localAppInfoPOSTTicker flextimer.FlexTickerHandle
+
+	// When enabled, device location reports are being published to the Local profile server
+	// at a significantly decreased rate.
+	lpsThrottledLocation     bool
+	lpsLastPublishedLocation time.Time
 
 	// localCommands : list of commands requested from a local server.
 	// This information is persisted under /persist/checkpoint/localcommands

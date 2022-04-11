@@ -3303,6 +3303,9 @@ func (wnc WwanNetworkConfig) Equal(wnc2 WwanNetworkConfig) bool {
 		wnc.Probe.Disable != wnc2.Probe.Disable {
 		return false
 	}
+	if wnc.LocationTracking != wnc2.LocationTracking {
+		return false
+	}
 	if len(wnc.Apns) != len(wnc2.Apns) {
 		return false
 	}
@@ -3564,6 +3567,48 @@ type WwanLocationInfo struct {
 	VerticalReliability LocReliability `json:"vertical-reliability"`
 	// Unix timestamp in milliseconds.
 	UTCTimestamp uint64 `json:"utc-timestamp"`
+}
+
+// Key is used for pubsub
+func (wli WwanLocationInfo) Key() string {
+	return "global"
+}
+
+// LogCreate :
+func (wli WwanLocationInfo) LogCreate(logBase *base.LogObject) {
+	logObject := base.NewLogObject(logBase, base.WwanLocationInfoLogType, "",
+		nilUUID, wli.LogKey())
+	if logObject == nil {
+		return
+	}
+	logObject.Metricf("Wwan location info create")
+}
+
+// LogModify :
+func (wli WwanLocationInfo) LogModify(logBase *base.LogObject, old interface{}) {
+	logObject := base.EnsureLogObject(logBase, base.WwanLocationInfoLogType, "",
+		nilUUID, wli.LogKey())
+
+	oldWli, ok := old.(WwanLocationInfo)
+	if !ok {
+		logObject.Clone().Fatalf("LogModify: Old object passed is not of WwanLocationInfo type")
+	}
+	// XXX remove?
+	logObject.CloneAndAddField("diff", cmp.Diff(oldWli, wli)).
+		Metricf("Wwan location info modify")
+}
+
+// LogDelete :
+func (wli WwanLocationInfo) LogDelete(logBase *base.LogObject) {
+	logObject := base.EnsureLogObject(logBase, base.WwanLocationInfoLogType, "",
+		nilUUID, wli.LogKey())
+	logObject.Metricf("Wwan location info delete")
+	base.DeleteLogObject(logBase, wli.LogKey())
+}
+
+// LogKey :
+func (wli WwanLocationInfo) LogKey() string {
+	return string(base.WwanLocationInfoLogType) + "-" + wli.Key()
 }
 
 // LocReliability : reliability of location information.

@@ -130,6 +130,7 @@ type zedagentContext struct {
 	subCapabilities           pubsub.Subscription
 	subAppInstMetaData        pubsub.Subscription
 	subWwanMetrics            pubsub.Subscription
+	subLocationInfo           pubsub.Subscription
 	subDeviceNetworkStatus    pubsub.Subscription
 	subZFSPoolStatus          pubsub.Subscription
 	subEdgeviewStatus         pubsub.Subscription
@@ -1066,6 +1067,21 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	zedagentCtx.subWwanMetrics = subWwanMetrics
 	subWwanMetrics.Activate()
 
+	subLocationInfo, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:   "nim",
+		MyAgentName: agentName,
+		TopicImpl:   types.WwanLocationInfo{},
+		Activate:    false,
+		Ctx:         &zedagentCtx,
+		WarningTime: warningTime,
+		ErrorTime:   errorTime,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	zedagentCtx.subLocationInfo = subLocationInfo
+	subLocationInfo.Activate()
+
 	//initialize cipher processing block
 	cipherModuleInitialize(&zedagentCtx, ps)
 
@@ -1164,6 +1180,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 		case change := <-subWwanMetrics.MsgChan():
 			subWwanMetrics.ProcessChange(change)
+
+		case change := <-subLocationInfo.MsgChan():
+			subLocationInfo.ProcessChange(change)
 
 		case change := <-deferredChan:
 			start := time.Now()
@@ -1342,6 +1361,12 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	go metricsTimerTask(&zedagentCtx, handleChannel)
 	metricsTickerHandle := <-handleChannel
 	getconfigCtx.metricsTickerHandle = metricsTickerHandle
+
+	// start the location reporting task
+	log.Functionf("Creating %s at %s", "locationTimerTask", agentlog.GetMyStack())
+	go locationTimerTask(&zedagentCtx, handleChannel)
+	getconfigCtx.locationCloudTickerHandle = <-handleChannel
+	getconfigCtx.locationAppTickerHandle = <-handleChannel
 
 	//trigger channel for localProfile state machine
 	getconfigCtx.localProfileTrigger = make(chan Notify, 1)
@@ -1614,6 +1639,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 		case change := <-subWwanMetrics.MsgChan():
 			subWwanMetrics.ProcessChange(change)
+
+		case change := <-subLocationInfo.MsgChan():
+			subLocationInfo.ProcessChange(change)
 
 		case change := <-subZFSPoolStatus.MsgChan():
 			subZFSPoolStatus.ProcessChange(change)

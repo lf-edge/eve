@@ -11,6 +11,7 @@ import (
 	"os"
 	"reflect"
 	"strings"
+	"time"
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/lf-edge/eve/pkg/pillar/base"
@@ -58,6 +59,8 @@ func (w *wwanWatcher) runWatcher(ctx context.Context, fsw *fsnotify.Watcher,
 				sub <- WwanEventNewStatus
 			case devicenetwork.WwanMetricsPath:
 				sub <- WwanEventNewMetrics
+			case devicenetwork.WwanLocationPath:
+				sub <- WwanEventNewLocationInfo
 			}
 		case <-ctx.Done():
 			return
@@ -103,6 +106,27 @@ func (w *wwanWatcher) LoadMetrics() (metrics types.WwanMetrics, err error) {
 		return metrics, err
 	}
 	return metrics, nil
+}
+
+func (w *wwanWatcher) LoadLocationInfo() (locInfo types.WwanLocationInfo, err error) {
+	filepath := devicenetwork.WwanLocationPath
+	locFile, err := os.Open(filepath)
+	if err != nil {
+		w.Log.Errorf("Failed to open file %s: %v", filepath, err)
+		return locInfo, err
+	}
+	defer locFile.Close()
+	locBytes, err := ioutil.ReadAll(locFile)
+	if err != nil {
+		w.Log.Errorf("Failed to read file %s: %v", filepath, err)
+		return locInfo, err
+	}
+	err = json.Unmarshal(locBytes, &locInfo)
+	if err != nil {
+		w.Log.Errorf("Failed to unmarshall wwan location data: %v", err)
+		return locInfo, err
+	}
+	return locInfo, nil
 }
 
 func (w *wwanWatcher) createWwanDir() error {
@@ -199,6 +223,53 @@ func (m *DpcManager) reloadWwanMetrics() {
 		if err = m.PubWwanMetrics.Publish("global", metrics); err != nil {
 			m.Log.Errorf("Failed to publish wwan metrics: %v", err)
 		}
+	}
+}
+
+// reloadWwanLocationInfo loads the latest location info published by the wwan service.
+func (m *DpcManager) reloadWwanLocationInfo() {
+	if !m.hasGlobalCfg {
+		// Do not publish location info until we learn the publish interval
+		// from the global config.
+		return
+	}
+	locInfo, err := m.WwanWatcher.LoadLocationInfo()
+	if err != nil {
+		// Already logged.
+		return
+	}
+
+	// We may receive location information from the GNSS receiver quite often.
+	// In fact, qmicli (as used by the wwan microservice) hard-codes the interval between
+	// location reports to 1 second, see:
+	// https://github.com/freedesktop/libqmi/blob/qmi-1-30/src/qmicli/qmicli-loc.c#L1426
+	// (value in the code is in milliseconds).
+	// Here we rate-limit location updates (by dropping some) to decrease the volume
+	// of pubsub messages.
+	publishCloudInterval := time.Second *
+		time.Duration(m.globalCfg.GlobalValueInt(types.LocationCloudInterval))
+	publishAppInterval := time.Second *
+		time.Duration(m.globalCfg.GlobalValueInt(types.LocationAppInterval))
+	// Publish 2x more often (at most) than zedagent publishes to applications/controller.
+	publishInterval := publishAppInterval
+	if publishCloudInterval < publishInterval {
+		// This is quite unlikely config.
+		publishInterval = publishCloudInterval
+	}
+	maxRate := publishInterval >> 1
+	if !m.lastPublishedLocInfo.IsZero() {
+		if time.Since(m.lastPublishedLocInfo) < maxRate {
+			// Drop the location info.
+			return
+		}
+	}
+
+	if m.PubWwanLocationInfo != nil {
+		m.Log.Functionf("PubWwanLocationInfo: %+v", locInfo)
+		if err = m.PubWwanLocationInfo.Publish("global", locInfo); err != nil {
+			m.Log.Errorf("Failed to publish wwan location info: %v", err)
+		}
+		m.lastPublishedLocInfo = time.Now()
 	}
 }
 
