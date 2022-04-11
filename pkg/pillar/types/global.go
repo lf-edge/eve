@@ -150,6 +150,10 @@ const (
 	NetworkTestTimeout GlobalSettingKey = "timer.port.timeout"
 	// NetworkSendTimeout global setting key
 	NetworkSendTimeout GlobalSettingKey = "timer.send.timeout"
+	// LocationCloudInterval global setting key
+	LocationCloudInterval GlobalSettingKey = "timer.location.cloud.interval"
+	// LocationAppInterval global setting key
+	LocationAppInterval GlobalSettingKey = "timer.location.app.interval"
 	// Dom0MinDiskUsagePercent global setting key
 	Dom0MinDiskUsagePercent GlobalSettingKey = "storage.dom0.disk.minusage.percent"
 	// Dom0DiskUsageMaxBytes - Max disk usage for Dom0. Dom0 can use
@@ -745,6 +749,8 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	configItemSpecMap.AddIntItem(NetworkTestBetterInterval, 600, 0, 0xFFFFFFFF)
 	configItemSpecMap.AddIntItem(NetworkTestTimeout, 15, 0, 3600)
 	configItemSpecMap.AddIntItem(NetworkSendTimeout, 120, 0, 3600)
+	configItemSpecMap.AddIntItem(LocationCloudInterval, HourInSec, 5*MinuteInSec, 0xFFFFFFFF)
+	configItemSpecMap.AddIntItem(LocationAppInterval, 20, 5, HourInSec)
 	configItemSpecMap.AddIntItem(Dom0MinDiskUsagePercent, 20, 20, 80)
 	configItemSpecMap.AddIntItem(AppContainerStatsInterval, 300, 1, 0xFFFFFFFF)
 	configItemSpecMap.AddIntItem(VaultReadyCutOffTime, 300, 60, 0xFFFFFFFF)

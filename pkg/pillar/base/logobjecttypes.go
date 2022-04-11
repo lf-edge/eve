@@ -136,6 +136,8 @@ const (
 	NetworkMetricsLogType LogObjectType = "network_metrics"
 	// WwanMetricsLogType:
 	WwanMetricsLogType LogObjectType = "wwan_metrics"
+	// WwanLocationInfoLogType:
+	WwanLocationInfoLogType LogObjectType = "wwan_location_info"
 	// NetworkXObjectConfigLogType:
 	NetworkXObjectConfigLogType LogObjectType = "network_x_object"
 	// UUIDToNumLogType:

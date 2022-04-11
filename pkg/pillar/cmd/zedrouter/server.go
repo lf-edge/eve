@@ -56,6 +56,11 @@ type kubeConfigHandler struct {
 	ctx *zedrouterContext
 }
 
+// Provides geographic location of the device.
+type locationInfoHandler struct {
+	ctx *zedrouterContext
+}
+
 // KubeconfigFileSizeLimitInBytes holds the maximum expected size of Kubeconfig file received from k3s server appInst.
 // Note: KubeconfigFileSizeLimitInBytes should always be < AppInstMetadataResponseSizeLimitInBytes.
 const KubeconfigFileSizeLimitInBytes = 32768 // 32KB
@@ -90,6 +95,9 @@ func createServer4(ctx *zedrouterContext, bridgeIP string, bridgeName string) er
 
 	kubeConfigHandler := &kubeConfigHandler{ctx: ctx}
 	mux.Handle("/eve/v1/kubeconfig", kubeConfigHandler)
+
+	locationInfoHandler := &locationInfoHandler{ctx: ctx}
+	mux.Handle("/eve/v1/location.json", locationInfoHandler)
 
 	targetPort := 80
 	subnetStr := "169.254.169.254/32"
@@ -628,4 +636,25 @@ func (hdl kubeConfigHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	publishAppInstMetadata(hdl.ctx, appInstMetaData)
 	return
+}
+
+// ServeHTTP for locationInfoHandler provides a json return
+func (hdl locationInfoHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	log.Tracef("locationInfoHandler.ServeHTTP")
+	locInfoObj, err := hdl.ctx.subLocationInfo.Get("global")
+	if err != nil {
+		http.Error(w, http.StatusText(http.StatusNoContent), http.StatusNoContent)
+		return
+	}
+	locInfo := locInfoObj.(types.WwanLocationInfo)
+	resp, err := json.Marshal(locInfo)
+	if err != nil {
+		msg := fmt.Sprintf("Failed to marshal location info: %v", err)
+		log.Errorf(msg)
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Add("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	w.Write(resp)
 }

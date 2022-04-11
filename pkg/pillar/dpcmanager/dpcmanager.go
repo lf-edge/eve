@@ -81,6 +81,7 @@ type DpcManager struct {
 	PubDevicePortConfigList  pubsub.Publication
 	PubDeviceNetworkStatus   pubsub.Publication
 	PubWwanMetrics           pubsub.Publication
+	PubWwanLocationInfo      pubsub.Publication
 
 	// Metrics
 	ZedcloudMetrics *zedcloud.AgentMetrics
@@ -116,6 +117,7 @@ type DpcManager struct {
 	dpcTestBetterInterval time.Duration // Look for lower/better index
 	geoRedoInterval       time.Duration
 	geoRetryInterval      time.Duration
+	lastPublishedLocInfo  time.Time
 }
 
 // Watchdog : methods used by DpcManager to interact with Watchdog.
@@ -143,6 +145,9 @@ const (
 	// WwanEventNewMetrics : new wwan metrics are available,
 	// reload with WwanWatcher.LoadMetrics()
 	WwanEventNewMetrics
+	// WwanEventNewLocationInfo : new location info published by wwan microservice,
+	// reload with WwanWatcher.LoadLocationInfo()
+	WwanEventNewLocationInfo
 )
 
 // WwanWatcher allows to watch for output coming from wwan microservice.
@@ -152,6 +157,7 @@ type WwanWatcher interface {
 	Watch(ctx context.Context) (<-chan WwanEvent, error)
 	LoadStatus() (types.WwanStatus, error)
 	LoadMetrics() (types.WwanMetrics, error)
+	LoadLocationInfo() (types.WwanLocationInfo, error)
 }
 
 // GeolocationService allows to obtain geolocation information based
@@ -380,6 +386,8 @@ func (m *DpcManager) run(ctx context.Context) {
 				m.reloadWwanStatus()
 			case WwanEventNewMetrics:
 				m.reloadWwanMetrics()
+			case WwanEventNewLocationInfo:
+				m.reloadWwanLocationInfo()
 			}
 
 		case <-ctx.Done():

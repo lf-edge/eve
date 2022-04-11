@@ -69,6 +69,7 @@ type zedrouterContext struct {
 	GCInitialized          bool
 	pubUuidToNum           pubsub.Publication
 	dhcpLeases             []dnsmasqLease
+	subLocationInfo        pubsub.Subscription
 
 	pubUUIDPairAndIfIdxToNum pubsub.Publication
 
@@ -510,6 +511,22 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	zedrouterCtx.subAppInstanceConfig = subAppInstanceConfig
 	subAppInstanceConfig.Activate()
 
+	// Look for geographic location reports
+	subLocationInfo, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:   "nim",
+		MyAgentName: agentName,
+		TopicImpl:   types.WwanLocationInfo{},
+		Activate:    false,
+		Ctx:         &zedrouterCtx,
+		WarningTime: warningTime,
+		ErrorTime:   errorTime,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	zedrouterCtx.subLocationInfo = subLocationInfo
+	subLocationInfo.Activate()
+
 	cloudProbeMetricPub, err := ps.NewPublication(
 		pubsub.PublicationOptions{
 			AgentName: agentName,
@@ -615,6 +632,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 		case change := <-subDeviceNetworkStatus.MsgChan():
 			subDeviceNetworkStatus.ProcessChange(change)
+
+		case change := <-subLocationInfo.MsgChan():
+			subLocationInfo.ProcessChange(change)
 
 		case change, ok := <-linkChanges:
 			start := time.Now()

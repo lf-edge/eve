@@ -13,4 +13,6 @@ const (
 	WwanStatusPath = RunWwanDir + "status.json"
 	// WwanMetricsPath : LTE metrics published by wwan microservice.
 	WwanMetricsPath = RunWwanDir + "metrics.json"
+	// WwanLocationPath : Location info obtained from GNSS receiver by wwan microservice.
+	WwanLocationPath = RunWwanDir + "location.json"
 )

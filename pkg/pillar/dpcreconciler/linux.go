@@ -1179,6 +1179,7 @@ func (r *LinuxDpcReconciler) getIntendedWwanConfig(dpc types.DevicePortConfig,
 				Disable: cellCfg.DisableProbe,
 				Address: cellCfg.ProbeAddr,
 			},
+			LocationTracking: cellCfg.LocationTracking,
 		}
 		config.Networks = append(config.Networks, network)
 	}

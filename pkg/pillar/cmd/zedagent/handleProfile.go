@@ -192,6 +192,7 @@ func parseProfile(ctx *getconfigContext, config *zconfig.EdgeDevConfig) {
 		triggerRadioPOST(ctx)
 		updateLocalAppInfoTicker(ctx, false)
 		triggerLocalAppInfoPOST(ctx)
+		ctx.lpsThrottledLocation = false
 	}
 	profileStateMachine(ctx, true)
 	log.Functionf("parseProfile done globalProfile: %s currentProfile: %s",

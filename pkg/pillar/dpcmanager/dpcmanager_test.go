@@ -45,6 +45,7 @@ var (
 	pubDPCList      pubsub.Publication
 	pubDNS          pubsub.Publication
 	pubWwwanMetrics pubsub.Publication
+	pubWwanLocInfo  pubsub.Publication
 )
 
 func initTest(test *testing.T) *GomegaWithT {
@@ -91,6 +92,14 @@ func initTest(test *testing.T) *GomegaWithT {
 	if err != nil {
 		log.Fatal(err)
 	}
+	pubWwanLocInfo, err = ps.NewPublication(
+		pubsub.PublicationOptions{
+			AgentName: "test",
+			TopicType: types.WwanLocationInfo{},
+		})
+	if err != nil {
+		log.Fatal(err)
+	}
 	networkMonitor = &netmonitor.MockNetworkMonitor{
 		Log:    logObj,
 		MainRT: syscall.RT_TABLE_MAIN,
@@ -119,6 +128,7 @@ func initTest(test *testing.T) *GomegaWithT {
 		PubDevicePortConfigList:  pubDPCList,
 		PubDeviceNetworkStatus:   pubDNS,
 		PubWwanMetrics:           pubWwwanMetrics,
+		PubWwanLocationInfo:      pubWwanLocInfo,
 		ZedcloudMetrics:          zedcloud.NewAgentMetrics(),
 	}
 	ctx := reconciler.MockRun(context.Background())
@@ -267,6 +277,8 @@ func globalConfig() types.ConfigItemValueMap {
 	gcp.SetGlobalValueInt(types.NetworkTestDuration, 1)
 	gcp.SetGlobalValueInt(types.NetworkGeoRetryTime, 1)
 	gcp.SetGlobalValueInt(types.NetworkGeoRedoTime, 3)
+	gcp.SetGlobalValueInt(types.LocationCloudInterval, 10)
+	gcp.SetGlobalValueInt(types.LocationAppInterval, 2)
 	return *gcp
 }
 
@@ -480,6 +492,19 @@ func mockWwan0Metrics() types.WwanMetrics {
 	}
 }
 
+func mockWwan0LocationInfo() types.WwanLocationInfo {
+	return types.WwanLocationInfo{
+		Latitude:              37.333964,
+		Longitude:             -121.893975,
+		Altitude:              93.170685,
+		HorizontalUncertainty: 16.123,
+		HorizontalReliability: types.LocReliabilityMedium,
+		VerticalUncertainty:   12.42,
+		VerticalReliability:   types.LocReliabilityLow,
+		UTCTimestamp:          1648629022000,
+	}
+}
+
 type selectedIntfs struct {
 	eth0  bool
 	eth1  bool
@@ -558,7 +583,8 @@ func makeDPC(key string, timePrio time.Time, intfs selectedIntfs) types.DevicePo
 				WType: types.WirelessTypeCellular,
 				Cellular: []types.CellConfig{
 					{
-						APN: "apn",
+						APN:              "apn",
+						LocationTracking: true,
 					},
 				},
 			},
@@ -1066,7 +1092,8 @@ func TestWireless(test *testing.T) {
 				PhysAddrs: types.WwanPhysAddrs{
 					Interface: "wwan0",
 				},
-				Apns: []string{"apn"},
+				Apns:             []string{"apn"},
+				LocationTracking: true,
 			},
 		},
 	}
@@ -1077,6 +1104,8 @@ func TestWireless(test *testing.T) {
 	wwanWatcher.UpdateStatus(wwan0Status)
 	wwan0Metrics := mockWwan0Metrics()
 	wwanWatcher.UpdateMetrics(wwan0Metrics)
+	wwan0LocInfo := mockWwan0LocationInfo()
+	wwanWatcher.UpdateLocationInfo(wwan0LocInfo)
 
 	// Check DNS content, it should include wwan state data.
 	t.Eventually(wwanOpModeCb(types.WwanOpModeConnected)).Should(BeTrue())
@@ -1119,6 +1148,22 @@ func TestWireless(test *testing.T) {
 	t.Expect(metrics.Networks[0].SignalInfo.RSRQ).To(BeEquivalentTo(-11))
 	t.Expect(metrics.Networks[0].SignalInfo.RSRP).To(BeEquivalentTo(-97))
 	t.Expect(metrics.Networks[0].SignalInfo.SNR).To(BeEquivalentTo(92))
+
+	// Check published wwan location info.
+	t.Eventually(func() bool {
+		obj, err := pubWwanLocInfo.Get("global")
+		return err == nil && obj != nil
+	}).Should(BeTrue())
+	obj, err = pubWwanLocInfo.Get("global")
+	locInfo := obj.(types.WwanLocationInfo)
+	t.Expect(locInfo.Latitude).To(BeNumerically("~", 37.333964, 0.1))
+	t.Expect(locInfo.Longitude).To(BeNumerically("~", -121.893975, 0.1))
+	t.Expect(locInfo.Altitude).To(BeNumerically("~", 93.170685, 0.1))
+	t.Expect(locInfo.HorizontalUncertainty).To(BeNumerically("~", 16.123, 0.1))
+	t.Expect(locInfo.HorizontalReliability).To(Equal(types.LocReliabilityMedium))
+	t.Expect(locInfo.VerticalUncertainty).To(BeNumerically("~", 12.42, 0.1))
+	t.Expect(locInfo.VerticalReliability).To(Equal(types.LocReliabilityLow))
+	t.Expect(locInfo.UTCTimestamp).To(BeEquivalentTo(1648629022000))
 
 	// Impose radio silence.
 	// But actually there is a config error coming from upper layers,
