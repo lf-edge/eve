@@ -89,6 +89,7 @@ type DpcManager struct {
 	dpcList      types.DevicePortConfigList
 	adapters     types.AssignableAdapters
 	globalCfg    types.ConfigItemValueMap
+	hasGlobalCfg bool
 	radioSilence types.RadioSilence
 
 	// DPC verification
@@ -457,7 +458,9 @@ func (m *DpcManager) GetDNS() types.DeviceNetworkStatus {
 }
 
 func (m *DpcManager) updateGCP(ctx context.Context, gcp types.ConfigItemValueMap) {
+	firstGCP := !m.hasGlobalCfg
 	m.globalCfg = gcp
+	m.hasGlobalCfg = true
 	testInterval := time.Second *
 		time.Duration(m.globalCfg.GlobalValueInt(types.NetworkTestInterval))
 	testBetterInterval := time.Second *
@@ -513,6 +516,12 @@ func (m *DpcManager) updateGCP(ctx context.Context, gcp types.ConfigItemValueMap
 	}
 	m.geoRedoInterval = geoRedoInterval
 	m.reconcileStatus = m.DpcReconciler.Reconcile(ctx, m.reconcilerArgs())
+
+	// If we have persisted DPCs then go ahead and pick a working one
+	// with the highest priority, do not wait for dpcTestTimer to fire.
+	if firstGCP && m.currentDPC() == nil && len(m.dpcList.PortConfigList) > 0 {
+		m.restartVerify(ctx, "looking for working (persisted) DPC")
+	}
 }
 
 func (m *DpcManager) updateAA(ctx context.Context, adapters types.AssignableAdapters) {
