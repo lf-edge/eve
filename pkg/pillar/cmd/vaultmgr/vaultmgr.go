@@ -255,9 +255,9 @@ func linkKeyrings() error {
 
 func retrieveTpmKey(useSealedKey bool) ([]byte, error) {
 	if useSealedKey {
-		return etpm.FetchSealedVaultKey()
+		return etpm.FetchSealedVaultKey(log)
 	}
-	return etpm.FetchVaultKey()
+	return etpm.FetchVaultKey(log)
 }
 
 //retrieveCloudKey is to support pre-5.6.2 devices, remove once devices move to 5.6.2
@@ -376,9 +376,11 @@ func isDirEmpty(path string) bool {
 			log.Tracef("No files in %s", path)
 			return true
 		}
+		log.Tracef("Dir is not empty at %s", path)
+		return false
 	}
-	log.Tracef("Dir is not empty at %s", path)
-	return false
+	log.Tracef("Dir not exist %s - consider empty", path)
+	return true
 }
 
 //handleFirstUse sets up mountpoint for the first time use

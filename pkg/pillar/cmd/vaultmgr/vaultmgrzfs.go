@@ -6,6 +6,7 @@ package vaultmgr
 import (
 	"regexp"
 
+	etpm "github.com/lf-edge/eve/pkg/pillar/evetpm"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/vault"
 )
@@ -67,7 +68,7 @@ func unlockZfsVault(vaultPath string) error {
 	return nil
 }
 
-//e.g. zfs create -o encryption=aes-256-gcm -o keylocation=file://tmp/raw.key -o keyformat=raw perist/vault
+//e.g. zfs create -o encryption=aes-256-gcm -o keylocation=file://tmp/raw.key -o keyformat=raw persist/vault
 func createZfsVault(vaultPath string) error {
 	//prepare key in the staging file
 	//we never create deprecated vault on ZFS
@@ -123,6 +124,18 @@ func setupZfsVault(vaultPath string) error {
 	if err := checkKeyStatus(vaultPath); err == nil {
 		//present, call unlock
 		return unlockZfsVault(vaultPath)
+	}
+	// If it does not exist then the mount presumbly does not exist either but
+	// double check.
+	if !isDirEmpty(vaultPath) {
+		log.Noticef("Not disturbing non-empty vault(%s)",
+			vaultPath)
+	} else {
+		log.Warnf("Clear saved keys for empty vault(%s)",
+			vaultPath)
+		if err := etpm.WipeOutStaleSealedKeyIfAny(); err != nil {
+			log.Errorf("WipteOutStaleSealKeyIfAny failed: %s", err)
+		}
 	}
 	//try creating the dataset
 	return createZfsVault(vaultPath)
