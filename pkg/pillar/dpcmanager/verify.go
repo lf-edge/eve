@@ -27,7 +27,8 @@ func (m *DpcManager) restartVerify(ctx context.Context, reason string) {
 		m.Log.Noticef("DPC verify: DPC list verification in progress")
 		return
 	}
-	if !m.radioSilence.ChangeInProgress && m.radioSilence.Imposed {
+	if m.currentDPC() != nil &&
+		!m.radioSilence.ChangeInProgress && m.radioSilence.Imposed {
 		m.Log.Noticef("DPC verify: Radio-silence is imposed, skipping DPC verification")
 		return
 	}
@@ -77,10 +78,14 @@ func (m *DpcManager) runVerify(ctx context.Context, reason string) {
 		return
 	}
 
-	// Stop DPC test timer.
+	// Stop DPC test timer (if running).
 	// It shall be resumed when we find working network configuration.
-	m.dpcTestTimer.Stop()
-	m.dpcTestBetterTimer.Stop()
+	if m.dpcTestTimer.C != nil {
+		m.dpcTestTimer.Stop()
+	}
+	if m.dpcTestBetterTimer.C != nil {
+		m.dpcTestBetterTimer.Stop()
+	}
 
 	endloop := false
 	var res types.DPCState
