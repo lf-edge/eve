@@ -21,6 +21,7 @@ import (
 	"github.com/google/go-tpm/tpm2"
 	"github.com/google/go-tpm/tpmutil"
 	"github.com/lf-edge/eve/api/go/info"
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 )
 
@@ -380,10 +381,11 @@ func FetchTpmHwInfo() (string, error) {
 }
 
 //FetchVaultKey retreives TPM part of the vault key
-func FetchVaultKey() ([]byte, error) {
+func FetchVaultKey(log *base.LogObject) ([]byte, error) {
 	//First try to read from TPM, if it was stored earlier
 	key, err := readDiskKey()
 	if err != nil {
+		log.Noticef("Generating VaultKey")
 		//
 		//Note on why we are using GetRandom here:
 		//We are using raw_key option to protect the encryption/decryption protector:
@@ -408,6 +410,8 @@ func FetchVaultKey() ([]byte, error) {
 		if err != nil {
 			return nil, fmt.Errorf("FetchVaultKey: Writing Key to TPM failed: %v", err)
 		}
+	} else {
+		log.Noticef("Found VaultKey")
 	}
 	return key, nil
 }
@@ -461,7 +465,7 @@ func readDiskKey() ([]byte, error) {
 }
 
 //FetchSealedVaultKey fetches Vault key sealed into TPM2.0
-func FetchSealedVaultKey() ([]byte, error) {
+func FetchSealedVaultKey(log *base.LogObject) ([]byte, error) {
 	if !PCRBankSHA256Enabled() {
 		//On platforms without PCR Bank SHA256, we can't
 		//generate a sealed key. On those platforms,
@@ -471,7 +475,7 @@ func FetchSealedVaultKey() ([]byte, error) {
 		//handle upgrade scenario, where vault is already
 		//present with legacy key, and we are trying to
 		//move it to a sealed one.
-		return FetchVaultKey()
+		return FetchVaultKey(log)
 	}
 
 	//gain some knowledge about existing environment
@@ -479,6 +483,7 @@ func FetchSealedVaultKey() ([]byte, error) {
 	legacyKeyPresent := isLegacyKeyPresent()
 
 	if !sealedKeyPresent && !legacyKeyPresent {
+		log.Noticef("FetchSealedVaultKey generate new key")
 		//Fresh install, generate a new key
 		//
 		//Note on why we are using GetRandom here:
@@ -507,6 +512,7 @@ func FetchSealedVaultKey() ([]byte, error) {
 	}
 
 	if !sealedKeyPresent && legacyKeyPresent {
+		log.Noticef("FetchSealedVaultKey legacy present")
 		//XXX: we need a migration path for existing installations.
 		//hence re-using the current key here. i.e. if we end up creating
 		//a new random key here, and we fail the upgrade, the fallback
@@ -528,7 +534,9 @@ func FetchSealedVaultKey() ([]byte, error) {
 	}
 	//sealedKeyPresent && !legacyKeyPresent : unseal
 	//sealedKeyPresent && legacyKeyPresent  : unseal
-
+	if sealedKeyPresent {
+		log.Noticef("FetchSealedVaultKey unseal key")
+	}
 	//By this, we have a key sealed into TPM
 	return UnsealDiskKey(DiskKeySealingPCRs)
 }
