@@ -29,3 +29,28 @@ func (e *RemoteTemporaryFailure) Error() string {
 	return fmt.Sprintf("Remote temporary failure (endpoint: %s): %v",
 		e.Endpoint, e.WrappedErr)
 }
+
+// Unwrap : return wrapped error.
+func (e *RemoteTemporaryFailure) Unwrap() error {
+	return e.WrappedErr
+}
+
+// PortsNotReady can be returned by TestConnectivity to indicate that one or more
+// ports do not have working connectivity due to a potentially transient error
+// (e.g. missing DNS config, no suitable IP addresses, etc.).
+// For the caller this is a signal to possibly wait and repeat the test later.
+type PortsNotReady struct {
+	WrappedErr error
+	// Ports which are not ready.
+	Ports []string
+}
+
+// Error message.
+func (e *PortsNotReady) Error() string {
+	return fmt.Sprintf("Ports %v are not ready: %v", e.Ports, e.WrappedErr)
+}
+
+// Unwrap : return wrapped error.
+func (e *PortsNotReady) Unwrap() error {
+	return e.WrappedErr
+}

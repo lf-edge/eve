@@ -6,7 +6,6 @@ package types
 import (
 	"bytes"
 	"encoding/binary"
-	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -21,6 +20,28 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/vishvananda/netlink"
 )
+
+// IPAddrNotAvail is returned when there is no (suitable) IP address
+// assigned to a given interface.
+type IPAddrNotAvail struct {
+	IfName string
+}
+
+// Error message.
+func (e *IPAddrNotAvail) Error() string {
+	return fmt.Sprintf("interface %s: no suitable IP address available", e.IfName)
+}
+
+// DNSNotAvail is returned when there is no DNS server configured
+// for a given interface.
+type DNSNotAvail struct {
+	IfName string
+}
+
+// Error message.
+func (e *DNSNotAvail) Error() string {
+	return fmt.Sprintf("interface %s: no DNS server available", e.IfName)
+}
 
 // Indexed by UUID
 type AppNetworkConfig struct {
@@ -1833,7 +1854,7 @@ func getLocalAddrIf(globalStatus DeviceNetworkStatus, ifname string,
 	if len(addrs) != 0 {
 		return addrs, nil
 	} else {
-		return []net.IP{}, errors.New("No good IP address")
+		return []net.IP{}, &IPAddrNotAvail{IfName: ifname}
 	}
 }
 

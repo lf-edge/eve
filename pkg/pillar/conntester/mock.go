@@ -50,10 +50,11 @@ func (t *MockConnectivityTester) TestConnectivity(
 	defer t.Unlock()
 
 	var (
-		successCount uint
-		errorList    []error
-		nonRtfErrs   bool
-		rtfErr       error
+		successCount  uint
+		errorList     []error
+		nonRtfErrs    bool
+		rtfErr        error
+		portsNotReady []string
 	)
 	t.iteration++
 	intfStatusMap = *types.NewIntfStatusMap()
@@ -81,7 +82,7 @@ func (t *MockConnectivityTester) TestConnectivity(
 			continue
 		}
 		if len(port.AddrInfoList) == 0 {
-			err := errors.New("no IP addresses")
+			err := &types.IPAddrNotAvail{IfName: ifName}
 			errorList = append(errorList, err)
 			intfStatusMap.RecordFailure(ifName, err.Error())
 			continue
@@ -94,6 +95,12 @@ func (t *MockConnectivityTester) TestConnectivity(
 		} else {
 			nonRtfErrs = true
 		}
+		if _, noDNSErr := err.(*types.DNSNotAvail); noDNSErr {
+			portsNotReady = append(portsNotReady, port.Logicallabel)
+		}
+		if _, noIPErr := err.(*types.IPAddrNotAvail); noIPErr {
+			portsNotReady = append(portsNotReady, port.Logicallabel)
+		}
 		if err != nil {
 			errorList = append(errorList, err)
 			intfStatusMap.RecordFailure(ifName, err.Error())
@@ -104,9 +111,15 @@ func (t *MockConnectivityTester) TestConnectivity(
 	}
 
 	if successCount < requiredSuccessCount {
+		err = fmt.Errorf("not enough working ports (%d); failed with: %v",
+			successCount, errorList)
+		if len(portsNotReady) > 0 {
+			return intfStatusMap, &PortsNotReady{
+				WrappedErr: err,
+				Ports:      portsNotReady,
+			}
+		}
 		if nonRtfErrs || rtfErr == nil {
-			err = fmt.Errorf("not enough working ports (%d); failed with: %v",
-				successCount, errorList)
 			return intfStatusMap, err
 		}
 		// RTF error(s) only.

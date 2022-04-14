@@ -704,7 +704,8 @@ func TestSingleDPC(test *testing.T) {
 	t.Expect(dpcList[0].TimePriority.Equal(timePrio1)).To(BeTrue())
 	t.Expect(dpcList[0].State).To(Equal(types.DPCStateFail))
 	t.Expect(dpcList[0].LastFailed.After(dpcList[0].LastSucceeded)).To(BeTrue())
-	t.Expect(dpcList[0].LastError).To(Equal("network test failed: not enough working ports (0); failed with: [no IP addresses]"))
+	t.Expect(dpcList[0].LastError).To(Equal("not enough working ports (0); failed with: " +
+		"[interface eth0: no suitable IP address available]"))
 
 	// Simulate the interface obtaining the IP address back after a while.
 	time.Sleep(5 * time.Second)
@@ -765,7 +766,7 @@ func TestDPCFallback(test *testing.T) {
 	t.Expect(dpcList[0].State).To(Equal(types.DPCStateFail))
 	t.Expect(dpcList[0].LastFailed.After(dpcList[0].LastSucceeded)).To(BeTrue())
 	t.Expect(dpcList[0].LastError).To(
-		Equal("network test failed: not enough working ports (0); failed with: [interface eth1 is missing]"))
+		Equal("not enough working ports (0); failed with: [interface eth1 is missing]"))
 	t.Expect(dpcList[1].Key).To(Equal("lastresort"))
 	t.Expect(dpcList[1].TimePriority.Equal(timePrio1)).To(BeTrue())
 	t.Expect(dpcList[1].State).To(Equal(types.DPCStateSuccess))
@@ -840,7 +841,7 @@ func TestDPCFallback(test *testing.T) {
 	t.Expect(dpcList[0].TimePriority.Equal(timePrio3)).To(BeTrue())
 	t.Expect(dpcList[0].State).To(Equal(types.DPCStateFailWithIPAndDNS))
 	t.Expect(dpcList[0].LastFailed.After(dpcList[0].LastSucceeded)).To(BeTrue())
-	t.Expect(dpcList[0].LastError).To(Equal("network test failed: not enough working ports (0); failed with: [failed to connect]"))
+	t.Expect(dpcList[0].LastError).To(Equal("not enough working ports (0); failed with: [failed to connect]"))
 	t.Expect(dpcList[1].Key).To(Equal("lastresort"))
 	t.Expect(dpcList[1].TimePriority.Equal(timePrio1)).To(BeTrue())
 	t.Expect(dpcList[1].State).To(Equal(types.DPCStateSuccess))
@@ -922,7 +923,7 @@ func TestDPCWithMultipleEths(test *testing.T) {
 	t.Expect(dpcList[0].State).To(Equal(types.DPCStateFailWithIPAndDNS))
 	t.Expect(dpcList[0].LastFailed.After(dpcList[0].LastSucceeded)).To(BeTrue())
 	t.Expect(dpcList[0].LastError).To(
-		Equal("network test failed: not enough working ports (0); failed with: " +
+		Equal("not enough working ports (0); failed with: " +
 			"[failed to connect over eth0 failed to connect over eth1]"))
 	t.Expect(dpcList[1].Key).To(Equal("lastresort"))
 	t.Expect(dpcList[1].TimePriority.Equal(timePrio1)).To(BeTrue())
@@ -1745,4 +1746,73 @@ func TestVlansAndBonds(test *testing.T) {
 	t.Expect(vlan200State.Dhcp).To(BeEquivalentTo(types.DT_CLIENT))
 	t.Expect(vlan200State.DefaultRouters).To(BeEmpty())
 	t.Expect(vlan200State.LastSucceeded.After(vlan200State.LastFailed)).To(BeTrue())
+}
+
+func TestTransientDNSError(test *testing.T) {
+	t := initTest(test)
+
+	// Prepare simulated network stack.
+	eth0 := mockEth0()
+	eth0.IPAddrs = nil // eth0 does not yet provide working connectivity
+	eth0.DNS = netmonitor.DNSInfo{}
+	networkMonitor.AddOrUpdateInterface(eth0)
+
+	// Apply global config first.
+	gcp := globalConfig()
+	gcp.SetGlobalValueInt(types.NetworkTestInterval, 30)
+	gcp.SetGlobalValueInt(types.NetworkTestDuration, 3)
+	dpcManager.UpdateGCP(gcp)
+
+	// Apply "zedagent" DPC with single ethernet port.
+	aa := makeAA(selectedIntfs{eth0: true})
+	dpcManager.UpdateAA(aa)
+	timePrio1 := time.Now()
+	dpc := makeDPC("zedagent", timePrio1, selectedIntfs{eth0: true})
+	dpcManager.AddDPC(dpc)
+
+	// Verification should wait for IP addresses and DNS servers.
+	t.Eventually(testingInProgressCb()).Should(BeTrue())
+	t.Eventually(dpcIdxCb()).Should(Equal(0))
+	t.Eventually(dpcKeyCb(0)).Should(Equal("zedagent"))
+	t.Eventually(dpcTimePrioCb(0, timePrio1)).Should(BeTrue())
+	t.Eventually(dnsKeyCb()).Should(Equal("zedagent"))
+	t.Expect(getDPC(0).State).To(Equal(types.DPCStateIPDNSWait))
+
+	// Simulate an event of interface receiving IP and DNS config from DHCP.
+	// However, let's pretend that the DNS resolver of the connection tester
+	// has not reloaded DNS config yet.
+	connTester.SetConnectivityError("zedagent", "eth0",
+		&types.DNSNotAvail{
+			IfName: eth0.Attrs.IfName,
+		})
+	eth0 = mockEth0() // With IPAddrs and DNS.
+	networkMonitor.AddOrUpdateInterface(eth0)
+	// Do not mark DPC as failed yet - missing DNS could be a transient error.
+	t.Consistently(testingInProgressCb(), 8*time.Second).Should(BeTrue())
+	t.Expect(getDPC(0).State).To(Equal(types.DPCStateIPDNSWait))
+	dpc = getDPC(0)
+	dpcEth0 := dpc.GetPortByIfName("eth0")
+	t.Expect(dpcEth0).ToNot(BeNil())
+	t.Expect(dpcEth0.HasError()).To(BeTrue())
+	t.Expect(dpcEth0.LastError).To(Equal("interface eth0: no DNS server available"))
+	dns := dpcManager.GetDNS()
+	dnsEth0 := dns.GetPortByIfName("eth0")
+	t.Expect(dnsEth0).ToNot(BeNil())
+	t.Expect(dnsEth0.HasError()).To(BeTrue())
+	t.Expect(dnsEth0.LastError).To(Equal("interface eth0: no DNS server available"))
+
+	// Eventually the DNS resolver reloads DNS config.
+	connTester.SetConnectivityError("zedagent", "eth0", nil)
+	t.Eventually(testingInProgressCb()).Should(BeFalse())
+	t.Expect(getDPC(0).State).To(Equal(types.DPCStateSuccess))
+	dpc = getDPC(0)
+	dpcEth0 = dpc.GetPortByIfName("eth0")
+	t.Expect(dpcEth0).ToNot(BeNil())
+	t.Expect(dpcEth0.HasError()).To(BeFalse())
+	t.Expect(dpcEth0.LastError).To(BeEmpty())
+	dns = dpcManager.GetDNS()
+	dnsEth0 = dns.GetPortByIfName("eth0")
+	t.Expect(dnsEth0).ToNot(BeNil())
+	t.Expect(dnsEth0.HasError()).To(BeFalse())
+	t.Expect(dnsEth0.LastError).To(BeEmpty())
 }

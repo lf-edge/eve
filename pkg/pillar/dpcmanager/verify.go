@@ -233,7 +233,9 @@ func (m *DpcManager) verifyDPC(ctx context.Context) (status types.DPCState) {
 	// for one of the ports.
 	dpc.UpdatePortStatusFromIntfStatusMap(intfStatusMap)
 	_ = m.PubDummyDevicePortConfig.Publish(dpc.PubKey(), *dpc)
+	m.publishDPCL()
 	m.deviceNetStatus.UpdatePortStatusFromIntfStatusMap(intfStatusMap)
+	m.publishDNS()
 
 	if err == nil {
 		if m.checkIfMgmtPortsHaveIPandDNS() {
@@ -255,7 +257,6 @@ func (m *DpcManager) verifyDPC(ctx context.Context) (status types.DPCState) {
 		dpc.State = status
 		return status
 	}
-	err = fmt.Errorf("network test failed: %v", err)
 
 	// Connectivity test failed, maybe we are missing an interface or an address.
 	elapsed = time.Since(m.dpcVerify.startedAt)
@@ -303,6 +304,7 @@ func (m *DpcManager) verifyDPC(ctx context.Context) (status types.DPCState) {
 		return status
 	}
 
+	// Check for the availability of IP configuration.
 	if !m.checkIfMgmtPortsHaveIPandDNS() {
 		// Still waiting for IP or DNS.
 		if elapsed < waitForIPDNSRetries*m.dpcTestDuration {
@@ -316,6 +318,30 @@ func (m *DpcManager) verifyDPC(ctx context.Context) (status types.DPCState) {
 			"%v for %+v\n", elapsed, err, dpc)
 		dpc.RecordFailure(err.Error())
 		status = types.DPCStateFail
+		dpc.State = status
+		return status
+	}
+
+	// Check for the readiness of uplink ports as signaled by the connectivity tester.
+	// There might be a delay between IP/DNS configuration being submitted
+	// and having a full effect on the connectivity testing.
+	// For example, the Go resolver reloads resolv.conf at most once per 5 seconds.
+	// See: https://github.com/golang/go/blob/release-branch.go1.18/src/net/dnsclient_unix.go#L362-L366
+	// This means that a recent update of resolv.conf (not older than 5 seconds),
+	// might not have been yet loaded and used by the connectivity test.
+	notReadyErr, notReady := err.(*conntester.PortsNotReady)
+	if notReady {
+		if elapsed < waitForIPDNSRetries*m.dpcTestDuration {
+			m.Log.Noticef("DPC verify: ports %v are not ready: will retry (waiting for %v): "+
+				"%v for %+v\n", notReadyErr.Ports, elapsed, err, dpc)
+			status = types.DPCStateIPDNSWait
+			dpc.State = status
+			return status
+		}
+		m.Log.Errorf("DPC verify: ports %v are not ready: exceeded timeout (waited for %v): "+
+			"%v for %+v\n", notReadyErr.Ports, elapsed, err, dpc)
+		dpc.RecordFailure(err.Error())
+		status = types.DPCStateFailWithIPAndDNS
 		dpc.State = status
 		return status
 	}
@@ -343,7 +369,7 @@ func (m *DpcManager) testConnectivityToCloud(ctx context.Context) error {
 		dpc.TestResults.RecordSuccess()
 	}
 	_ = m.PubDummyDevicePortConfig.Publish(dpc.PubKey(), *dpc)
-	m.publishDPCL()
+	m.publishDPCL() // publish updated port errors
 	m.updateDNS()
 
 	if err == nil {
@@ -497,7 +523,8 @@ func (m *DpcManager) checkIfMgmtPortsHaveIPandDNS() bool {
 			continue
 		}
 		// Also confirm that the global resolv.conf contains entries for this port.
-		if len(m.reconcileStatus.DNS.Servers[port]) == 0 {
+		dnsServers := m.reconcileStatus.DNS.Servers[port]
+		if len(dnsServers) == 0 {
 			m.Log.Tracef("Have addresses but DNS config is not yet installed "+
 				"for %s", port)
 			continue
