@@ -231,10 +231,14 @@ func createDnsmasqConfiglet(
 		}
 	}
 	advertizeDns := false
-	for _, ns := range netstatus.DnsServers {
+	if len(netstatus.DnsServers) > 0 {
 		advertizeDns = true
+		var addrList []string
+		for _, srvIP := range netstatus.DnsServers {
+			addrList = append(addrList, srvIP.String())
+		}
 		file.WriteString(fmt.Sprintf("dhcp-option=option:dns-server,%s\n",
-			ns.String()))
+			strings.Join(addrList, ",")))
 	}
 	if netstatus.NtpServer != nil {
 		file.WriteString(fmt.Sprintf("dhcp-option=option:ntp-server,%s\n",
