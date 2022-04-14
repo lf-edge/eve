@@ -1789,25 +1789,30 @@ func handleDNSImpl(ctxArg interface{}, key string,
 // compare two DNS records with some timestamp, etc. fields cleared
 // to detect a real change in the status
 func dnsHasRealChange(dnsOld, dnsNew types.DeviceNetworkStatus) bool {
-	dummy1 := dnsClearSomeItems(dnsOld)
-	dummy2 := dnsClearSomeItems(dnsNew)
+	dummy1 := trimmedDNS(dnsOld)
+	dummy2 := trimmedDNS(dnsNew)
 	return !cmp.Equal(dummy1, dummy2)
 }
 
-func dnsClearSomeItems(dummy types.DeviceNetworkStatus) types.DeviceNetworkStatus {
-	for i, nps := range dummy.Ports {
-		nps.LastFailed = time.Time{}
-		nps.LastSucceeded = time.Time{}
+// Return copy of DNS with frequently-changing fields cleared.
+// Not everything is deep-copied - only those fields which are being cleared.
+func trimmedDNS(dns types.DeviceNetworkStatus) types.DeviceNetworkStatus {
+	dnsCopy := dns
+	dnsCopy.Ports = make([]types.NetworkPortStatus, len(dns.Ports))
+	for i, nps := range dns.Ports {
+		npsCopy := nps
+		npsCopy.LastFailed = time.Time{}
+		npsCopy.LastSucceeded = time.Time{}
+		npsCopy.AddrInfoList = make([]types.AddrInfo, len(nps.AddrInfoList))
 		for j, naddr := range nps.AddrInfoList {
 			naddr.Geo = ipinfo.IPInfo{}
 			naddr.LastGeoTimestamp = time.Time{}
-			nps.AddrInfoList[j] = naddr
+			npsCopy.AddrInfoList[j] = naddr
 		}
-		dummy.Ports[i] = nps
+		dnsCopy.Ports[i] = npsCopy
 	}
-
-	dummy.Testing = false
-	return dummy
+	dnsCopy.Testing = false
+	return dnsCopy
 }
 
 func handleDNSDelete(ctxArg interface{}, key string,
@@ -1844,7 +1849,7 @@ func handleDPCLImpl(ctxArg interface{}, key string,
 	}
 
 	status := statusArg.(types.DevicePortConfigList)
-	if dpcHasRealChange(*ctx.DevicePortConfigList, status) {
+	if dpclHasRealChange(*ctx.DevicePortConfigList, status) {
 		triggerPublishDevInfo(ctx)
 		log.Noticef("handleDPCLImpl: has real change.")
 	}
@@ -1865,26 +1870,30 @@ func handleDPCLDelete(ctxArg interface{}, key string, statusArg interface{}) {
 
 // compare two DPCL records with some timestamp, etc. fields cleared
 // to detect a real change in the status
-func dpcHasRealChange(dpclOld, dpclNew types.DevicePortConfigList) bool {
-	dummy1 := dpclClearSomeItems(dpclOld)
-	dummy2 := dpclClearSomeItems(dpclNew)
+func dpclHasRealChange(dpclOld, dpclNew types.DevicePortConfigList) bool {
+	dummy1 := trimmedDPCL(dpclOld)
+	dummy2 := trimmedDPCL(dpclNew)
 	return !cmp.Equal(dummy1, dummy2)
 }
 
-func dpclClearSomeItems(dpcl types.DevicePortConfigList) types.DevicePortConfigList {
-	dummy := dpcl
-	for i, l := range dummy.PortConfigList {
-		l.LastFailed = time.Time{}
-		l.LastSucceeded = time.Time{}
-		l.LastIPAndDNS = time.Time{}
-		for j, p := range l.Ports {
+// Return copy of DPCL with frequently-changing fields cleared.
+func trimmedDPCL(dpcl types.DevicePortConfigList) types.DevicePortConfigList {
+	dpclCopy := dpcl
+	dpclCopy.PortConfigList = make([]types.DevicePortConfig, len(dpcl.PortConfigList))
+	for i, dpc := range dpcl.PortConfigList {
+		dpcCopy := dpc
+		dpcCopy.LastFailed = time.Time{}
+		dpcCopy.LastSucceeded = time.Time{}
+		dpcCopy.LastIPAndDNS = time.Time{}
+		dpcCopy.Ports = make([]types.NetworkPortConfig, len(dpc.Ports))
+		for j, p := range dpc.Ports {
 			p.LastFailed = time.Time{}
 			p.LastSucceeded = time.Time{}
-			l.Ports[j] = p
+			dpcCopy.Ports[j] = p
 		}
-		dummy.PortConfigList[i] = l
+		dpclCopy.PortConfigList[i] = dpcCopy
 	}
-	return dummy
+	return dpclCopy
 }
 
 // base os status event handlers
