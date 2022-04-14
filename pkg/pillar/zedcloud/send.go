@@ -76,6 +76,44 @@ type ContextOptions struct {
 	AgentName        string // XXX replace by NoLogFailures?
 }
 
+// SendAttempt - single attempt to send data made by SendOnIntf function.
+type SendAttempt struct {
+	// Non-nil if the attempt failed.
+	Err error
+	// Name of the interface through which the data were send.
+	IfName string
+	// Source IP address used by the send operation.
+	SourceAddr net.IP
+}
+
+// String describes single Send* attempt.
+func (sa SendAttempt) String() string {
+	var withSrc string
+	if sa.SourceAddr != nil && !sa.SourceAddr.IsUnspecified() {
+		withSrc = " with src IP " + sa.SourceAddr.String()
+	}
+	return fmt.Sprintf("send via %s%s: %v", sa.IfName, withSrc, sa.Err)
+}
+
+// SendError - error that may be returned by VerifyAllIntf and SendOn* functions below,
+// summarizing all errors from all the attempts.
+type SendError struct {
+	// A summary error for the failed Send operation.
+	Err error
+	// Information about individual Send attempts.
+	Attempts []SendAttempt
+}
+
+// Error message.
+func (e *SendError) Error() string {
+	return e.Err.Error()
+}
+
+// Unwrap - return wrapped error.
+func (e *SendError) Unwrap() error {
+	return e.Err
+}
+
 var nilUUID = uuid.UUID{}
 
 //GetContextForAllIntfFunctions returns context with timeout to use with AllIntf functions
@@ -111,7 +149,7 @@ func SendOnAllIntf(ctxWork context.Context, ctx *ZedCloudContext, url string, re
 	log := ctx.log
 	// If failed then try the non-free
 	const allowProxy = true
-	var errorList []error
+	var attempts []SendAttempt
 	senderStatus := types.SenderStatusNone
 
 	intfs := types.GetMgmtPortsSortedCostWithoutFailed(*ctx.DeviceNetworkStatus, iteration)
@@ -155,15 +193,27 @@ func SendOnAllIntf(ctxWork context.Context, ctx *ZedCloudContext, url string, re
 			return resp, nil, senderStatus, err
 		}
 		if err != nil {
-			errorList = append(errorList, err)
+			if sendErr, ok := err.(*SendError); ok && len(sendErr.Attempts) > 0 {
+				// Merge errors from all attempts.
+				attempts = append(attempts, sendErr.Attempts...)
+			} else {
+				attempts = append(attempts, SendAttempt{
+					Err:    err,
+					IfName: intf,
+				})
+			}
 			continue
 		}
 		return resp, contents, senderStatus, nil
 	}
 	errStr := fmt.Sprintf("All attempts to connect to %s failed: %v",
-		url, errorList)
+		url, attempts)
 	log.Errorln(errStr)
-	return nil, nil, senderStatus, errors.New(errStr)
+	err := &SendError{
+		Err:      errors.New(errStr),
+		Attempts: attempts,
+	}
+	return nil, nil, senderStatus, err
 }
 
 // VerifyAllIntf
@@ -191,7 +241,7 @@ func VerifyAllIntf(ctx *ZedCloudContext,
 	log := ctx.log
 	var intfSuccessCount uint
 	const allowProxy = true
-	var errorList []error
+	var attempts []SendAttempt
 
 	remoteTemporaryFailure := false
 	// Map of per-interface errors
@@ -249,7 +299,15 @@ func VerifyAllIntf(ctx *ZedCloudContext,
 		if err != nil {
 			log.Errorf("Zedcloud un-reachable via interface %s: %s",
 				intf, err)
-			errorList = append(errorList, err)
+			if sendErr, ok := err.(*SendError); ok && len(sendErr.Attempts) > 0 {
+				// Merge errors from all attempts.
+				attempts = append(attempts, sendErr.Attempts...)
+			} else {
+				attempts = append(attempts, SendAttempt{
+					Err:    err,
+					IfName: intf,
+				})
+			}
 			intfStatusMap.RecordFailure(intf, err.Error())
 			continue
 		}
@@ -259,27 +317,36 @@ func VerifyAllIntf(ctx *ZedCloudContext,
 			intfStatusMap.RecordSuccess(intf)
 			intfSuccessCount++
 		default:
-			errStr := fmt.Sprintf("Uplink test FAILED via %s to URL %s with "+
-				"status code %d and status %s",
-				intf, url, resp.StatusCode, http.StatusText(resp.StatusCode))
-			log.Errorln(errStr)
-			err = errors.New(errStr)
-			errorList = append(errorList, err)
+			err = fmt.Errorf("controller with URL %s returned status code %d (%s)",
+				url, resp.StatusCode, http.StatusText(resp.StatusCode))
+			log.Errorf("Uplink test FAILED via %s: %v", intf, err)
+			attempts = append(attempts, SendAttempt{
+				Err:    err,
+				IfName: intf,
+			})
 			intfStatusMap.RecordFailure(intf, err.Error())
 			continue
 		}
 	}
 	if intfSuccessCount == 0 {
-		err := fmt.Errorf("All test attempts to connect to %s failed: %v",
-			url, errorList)
-		log.Error(err.Error())
+		errStr := fmt.Sprintf("All attempts to connect to %s failed: %v",
+			url, attempts)
+		log.Errorln(errStr)
+		err := &SendError{
+			Err:      errors.New(errStr),
+			Attempts: attempts,
+		}
 		return false, remoteTemporaryFailure, intfStatusMap, err
 	}
 	if intfSuccessCount < successCount {
-		err := fmt.Errorf("Not enough Ports (%d) against required count %d"+
-			" to reach %s; last failed with %v",
-			intfSuccessCount, successCount, url, errorList)
-		log.Error(err.Error())
+		errStr := fmt.Sprintf("Not enough Ports (%d) against required count %d"+
+			" to reach %s; last failed with: %v",
+			intfSuccessCount, successCount, url, attempts)
+		log.Errorln(errStr)
+		err := &SendError{
+			Err:      errors.New(errStr),
+			Attempts: attempts,
+		}
 		return false, remoteTemporaryFailure, intfStatusMap, err
 	}
 	log.Tracef("VerifyAllIntf: Verify done. intfStatusMap: %+v", intfStatusMap)
@@ -350,20 +417,20 @@ func SendOnIntf(workContext context.Context, ctx *ZedCloudContext, destURL strin
 			log.Traceln(errStr)
 			return nil, nil, senderStatus, errors.New(errStr)
 		}
-		errStr := fmt.Sprintf("No IP addresses to connect to %s using intf %s",
-			reqUrl, intf)
-		log.Traceln(errStr)
-		return nil, nil, senderStatus, errors.New(errStr)
+		err = &types.IPAddrNotAvail{IfName: intf}
+		log.Trace(err)
+		return nil, nil, senderStatus, err
 	}
 	dnsServers := types.GetDNSServers(*ctx.DeviceNetworkStatus, intf)
 	if len(dnsServers) == 0 {
 		if ctx.FailureFunc != nil {
 			ctx.FailureFunc(log, intf, reqUrl, 0, 0, false)
 		}
-		errStr := fmt.Sprintf("No DNS servers to connect to %s using intf %s",
-			reqUrl, intf)
-		log.Traceln(errStr)
-		return nil, nil, senderStatus, errors.New(errStr)
+		err = &types.DNSNotAvail{
+			IfName: intf,
+		}
+		log.Trace(err)
+		return nil, nil, senderStatus, err
 	}
 
 	// Get the transport header with proxy information filled
@@ -387,7 +454,7 @@ func SendOnIntf(workContext context.Context, ctx *ZedCloudContext, destURL strin
 	// to keeping the connections open.
 	defer transport.CloseIdleConnections()
 
-	var errorList []error
+	var attempts []SendAttempt
 	var sessionResume bool
 
 	// Try all addresses
@@ -398,15 +465,21 @@ func SendOnIntf(workContext context.Context, ctx *ZedCloudContext, destURL strin
 			log.Error(err)
 			return nil, nil, senderStatus, err
 		}
+		attempt := SendAttempt{
+			IfName:     intf,
+			SourceAddr: localAddr,
+		}
 		localTCPAddr := net.TCPAddr{IP: localAddr}
 		localUDPAddr := net.UDPAddr{IP: localAddr}
 		log.Tracef("Connecting to %s using intf %s source %v\n",
 			reqUrl, intf, localTCPAddr)
+		var dnsIsAvail bool
 		resolverDial := func(ctx context.Context, network, address string) (net.Conn, error) {
 			log.Tracef("resolverDial %v %v", network, address)
 			ip := net.ParseIP(strings.Split(address, ":")[0])
 			for _, dnsServer := range dnsServers {
 				if dnsServer != nil && dnsServer.Equal(ip) {
+					dnsIsAvail = true
 					// XXX can we fallback to TCP? Would get a mismatched address if we do
 					d := net.Dialer{LocalAddr: &localUDPAddr}
 					return d.Dial(network, address)
@@ -446,7 +519,8 @@ func SendOnIntf(workContext context.Context, ctx *ZedCloudContext, destURL strin
 		}
 		if err != nil {
 			log.Errorf("NewRequest failed %s\n", err)
-			errorList = append(errorList, err)
+			attempt.Err = err
+			attempts = append(attempts, attempt)
 			continue
 		}
 
@@ -458,7 +532,8 @@ func SendOnIntf(workContext context.Context, ctx *ZedCloudContext, destURL strin
 		id, err := uuid.NewV4()
 		if err != nil {
 			log.Errorf("NewV4 failed: %v", err)
-			errorList = append(errorList, err)
+			attempt.Err = err
+			attempts = append(attempts, attempt)
 			continue
 		}
 		req.Header.Add("X-Request-Id", id.String())
@@ -500,7 +575,9 @@ func SendOnIntf(workContext context.Context, ctx *ZedCloudContext, destURL strin
 		apiCallStartTime := time.Now()
 		resp, err := client.Do(req)
 		if err != nil {
-			if cf, cert := isCertFailure(err); cf {
+			if !dnsIsAvail {
+				attempt.Err = &types.DNSNotAvail{IfName: intf}
+			} else if cf, cert := isCertFailure(err); cf {
 				// XXX can we ever get this from a proxy?
 				// We assume we reached the controller here
 				log.Errorf("client.Do fail: certFailure")
@@ -511,9 +588,9 @@ func SendOnIntf(workContext context.Context, ctx *ZedCloudContext, destURL strin
 						cert.NotAfter)
 					log.Error(errStr)
 					cerr := errors.New(errStr)
-					errorList = append(errorList, cerr)
+					attempt.Err = cerr
 				} else {
-					errorList = append(errorList, err)
+					attempt.Err = err
 				}
 			} else if isCertUnknownAuthority(err) {
 				if usedProxy {
@@ -523,7 +600,7 @@ func SendOnIntf(workContext context.Context, ctx *ZedCloudContext, destURL strin
 					log.Errorf("client.Do fail: CertUnknownAuthority") // could be transparent proxy
 					senderStatus = types.SenderStatusCertUnknownAuthority
 				}
-				errorList = append(errorList, err)
+				attempt.Err = err
 			} else if isECONNREFUSED(err) {
 				if usedProxy {
 					// Must try other interfaces and configs
@@ -533,7 +610,7 @@ func SendOnIntf(workContext context.Context, ctx *ZedCloudContext, destURL strin
 					log.Errorf("client.Do fail: ECONNREFUSED")
 					senderStatus = types.SenderStatusRefused
 				}
-				errorList = append(errorList, err)
+				attempt.Err = err
 			} else if logutils.IsNoSuitableAddrErr(err) {
 				// We get lots of these due to IPv6 link-local
 				// only address on some interfaces.
@@ -541,11 +618,14 @@ func SendOnIntf(workContext context.Context, ctx *ZedCloudContext, destURL strin
 				log.Warn("client.Do fail: No suitable address")
 			} else if _, deadlineSet := workContext.Deadline(); deadlineSet {
 				log.Errorf("client.Do global deadline: %v", err)
-				errorList = append(errorList, err)
+				attempt.Err = err
 			} else {
 				log.Errorf("client.Do (timeout %d) fail: %v",
 					ctx.NetworkSendTimeout, err)
-				errorList = append(errorList, err)
+				attempt.Err = err
+			}
+			if attempt.Err != nil {
+				attempts = append(attempts, attempt)
 			}
 			continue
 		}
@@ -556,7 +636,8 @@ func SendOnIntf(workContext context.Context, ctx *ZedCloudContext, destURL strin
 				ctx.NetworkSendTimeout, err)
 			resp.Body.Close()
 			resp.Body = nil
-			errorList = append(errorList, err)
+			attempt.Err = err
+			attempts = append(attempts, attempt)
 			continue
 		}
 		resp.Body.Close()
@@ -568,8 +649,8 @@ func SendOnIntf(workContext context.Context, ctx *ZedCloudContext, destURL strin
 			if connState == nil {
 				errStr := "no TLS connection state"
 				log.Errorln(errStr)
-				err = errors.New(errStr)
-				errorList = append(errorList, err)
+				attempt.Err = errors.New(errStr)
+				attempts = append(attempts, attempt)
 				// Inform ledmanager about broken cloud connectivity
 				if !ctx.NoLedManager {
 					utils.UpdateLedManagerConfig(log, types.LedBlinkRespWithoutTLS)
@@ -604,8 +685,8 @@ func SendOnIntf(workContext context.Context, ctx *ZedCloudContext, destURL strin
 						ctx.FailureFunc(log, intf, reqUrl,
 							reqlen, resplen, false)
 					}
-					err = errors.New(errStr)
-					errorList = append(errorList, err)
+					attempt.Err = errors.New(errStr)
+					attempts = append(attempts, attempt)
 					continue
 				}
 				log.Traceln(errStr)
@@ -666,10 +747,14 @@ func SendOnIntf(workContext context.Context, ctx *ZedCloudContext, destURL strin
 	if ctx.FailureFunc != nil {
 		ctx.FailureFunc(log, intf, reqUrl, 0, 0, false)
 	}
-	errStr := fmt.Sprintf("All attempts to connect to %s using intf %s failed: %v",
-		reqUrl, intf, errorList)
+	errStr := fmt.Sprintf("All attempts to connect to %s failed: %v",
+		reqUrl, attempts)
 	log.Errorln(errStr)
-	return nil, nil, senderStatus, errors.New(errStr)
+	err = &SendError{
+		Err:      errors.New(errStr),
+		Attempts: attempts,
+	}
+	return nil, nil, senderStatus, err
 }
 
 //SendLocal uses local routes to request the data

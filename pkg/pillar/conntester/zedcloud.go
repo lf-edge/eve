@@ -5,6 +5,7 @@ package conntester
 
 import (
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"strings"
@@ -111,6 +112,13 @@ func (t *ZedcloudConnectivityTester) TestConnectivity(
 				Endpoint:   serverNameAndPort,
 				WrappedErr: err,
 			}
+		} else if portsNotReady := t.getPortsNotReady(err, dns); len(portsNotReady) > 0 {
+			// At least one of the uplink ports is not ready in terms of L3 connectivity.
+			// Signal to the caller that it might make sense to wait and repeat test later.
+			err = &PortsNotReady{
+				WrappedErr: err,
+				Ports:      portsNotReady,
+			}
 		}
 		t.Log.Errorf("TestConnectivity: %v", err)
 		return intfStatusMap, err
@@ -124,4 +132,29 @@ func (t *ZedcloudConnectivityTester) TestConnectivity(
 	err = fmt.Errorf("uplink test FAILED for URL: %s", testURL)
 	t.Log.Errorf("TestConnectivity: %v, intfStatusMap: %+v", err, intfStatusMap)
 	return intfStatusMap, err
+}
+
+func (t *ZedcloudConnectivityTester) getPortsNotReady(
+	verifyErr error, dns types.DeviceNetworkStatus) (ports []string) {
+	if sendErr, isSendErr := verifyErr.(*zedcloud.SendError); isSendErr {
+		portMap := make(map[string]struct{}) // Avoid duplicate entries.
+		for _, attempt := range sendErr.Attempts {
+			var dnsErr *types.DNSNotAvail
+			if errors.As(attempt.Err, &dnsErr) {
+				if port := dns.GetPortByIfName(dnsErr.IfName); port != nil {
+					portMap[port.Logicallabel] = struct{}{}
+				}
+			}
+			var ipErr *types.IPAddrNotAvail
+			if errors.As(attempt.Err, &ipErr) {
+				if port := dns.GetPortByIfName(ipErr.IfName); port != nil {
+					portMap[port.Logicallabel] = struct{}{}
+				}
+			}
+		}
+		for port := range portMap {
+			ports = append(ports, port)
+		}
+	}
+	return ports
 }
