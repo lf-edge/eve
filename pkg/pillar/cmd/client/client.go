@@ -214,8 +214,8 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 	// Wait for a usable IP address.
 	// After 5 seconds we check; if we already have a UUID we proceed.
-	// That ensures that we will start zedagent and it will check
-	// the cloudGoneTime if we are doing an imake update.
+	// If there is a UUID change later then zedagent will detect it and trigger
+	// re-running client.
 	t1 := time.NewTimer(5 * time.Second)
 
 	ticker := flextimer.NewExpTicker(time.Second, maxDelay, 0.0)
@@ -331,12 +331,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 				log.Errorf("Failed to getUUID at %s. Wrong URL? Not activated?",
 					serverNameAndPort)
 			}
-			if oldUUID != nilUUID && retryCount > 2 {
-				log.Noticef("Sticking with old UUID")
-				devUUID = oldUUID
-				done = true
-				return 0
-			}
 		}
 		retryCount++
 		if maxRetries != 0 && retryCount > maxRetries {
@@ -409,8 +403,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 			if clientCtx.networkState != types.DPCStateSuccess &&
 				operations["getUuid"] && oldUUID != nilUUID {
 
-				log.Functionf("Already have a UUID %s; declaring success",
+				log.Noticef("Already have a UUID %s; declaring success",
 					oldUUID.String())
+				devUUID = oldUUID
 				done = true
 			}
 
@@ -442,22 +437,21 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		} else {
 			log.Functionf("Got config with UUID %s", devUUID)
 		}
-		if doWrite {
-			// Set the kernel hostname
-			cmd := "/bin/hostname"
-			cmdArgs := []string{devUUID.String()}
-			log.Noticef("Calling command %s %v", cmd, cmdArgs)
-			out, err := base.Exec(log, cmd, cmdArgs...).CombinedOutput()
-			if err != nil {
-				log.Errorf("hostname command %s failed %s output %s",
-					cmdArgs, err, out)
-			}
+		// Set the kernel hostname
+		cmd := "/bin/hostname"
+		cmdArgs := []string{devUUID.String()}
+		log.Noticef("Calling command %s %v", cmd, cmdArgs)
+		out, err := base.Exec(log, cmd, cmdArgs...).CombinedOutput()
+		if err != nil {
+			log.Errorf("hostname command %s failed %s output %s",
+				cmdArgs, err, out)
+		} else {
+			log.Noticef("Set hostname to %s", devUUID.String())
 		}
-		_, err := os.Stat(uuidFileName)
+		_, err = os.Stat(uuidFileName)
 		if err != nil {
 			doWrite = true
 		}
-		// Write to file since device-steps.sh sets hostname from uuidFileName
 		if doWrite {
 			b := []byte(fmt.Sprintf("%s\n", devUUID))
 			err = ioutil.WriteFile(uuidFileName, b, 0644)
