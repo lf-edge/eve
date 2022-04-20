@@ -498,7 +498,6 @@ func (m *LinuxNetworkMonitor) watcher() {
 			m.Unlock()
 
 		case dnsChange := <-dnsWatcher.Events:
-			m.Lock()
 			switch dnsChange.Op {
 			case fsnotify.Create, fsnotify.Remove, fsnotify.Write:
 				ifName := devicenetwork.ResolvConfToIfname(dnsChange.Name)
@@ -513,15 +512,18 @@ func (m *LinuxNetworkMonitor) watcher() {
 				event := DNSInfoChange{
 					IfIndex: ifIndex,
 				}
+				if dnsChange.Op != fsnotify.Remove {
+					event.Info = m.parseDNSInfo(dnsChange.Name)
+				}
+				m.Lock()
 				if dnsChange.Op == fsnotify.Remove {
 					delete(m.ifIndexToDNS, ifIndex)
 				} else {
-					event.Info = m.parseDNSInfo(dnsChange.Name)
 					m.ifIndexToDNS[ifIndex] = event.Info
 				}
 				m.publishEvent(event)
+				m.Unlock()
 			}
-			m.Unlock()
 		}
 	}
 }
