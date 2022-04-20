@@ -1232,14 +1232,27 @@ func (r *LinuxDpcReconciler) getIntendedACLs(
 	}
 
 	// Allow/block VNC access.
-	gcpAllowAppVnc := gcp.GlobalValueBool(types.AllowAppVnc)
-	blockVNC := linux.IptablesRule{
-		Args:        []string{"-p", "tcp", "--dport", "5900:5999", "-j", "REJECT", "--reject-with", "tcp-reset"},
-		Description: "Block VNC",
+	allowLocalVNCv4 := linux.IptablesRule{
+		Args: []string{"-p", "tcp", "-s", "127.0.0.1", "-d", "127.0.0.1",
+			"--dport", "5900:5999", "-j", "ACCEPT"},
+		Description: "Local VNC traffic is always allowed",
 	}
-	if !gcpAllowAppVnc {
-		filterV4Rules = append(filterV4Rules, blockVNC)
-		filterV6Rules = append(filterV6Rules, blockVNC)
+	allowLocalVNCv6 := linux.IptablesRule{
+		Args: []string{"-p", "tcp", "-s", "::1", "-d", "::1",
+			"--dport", "5900:5999", "-j", "ACCEPT"},
+		Description: "Local VNC traffic is always allowed",
+	}
+	filterV4Rules = append(filterV4Rules, allowLocalVNCv4)
+	filterV6Rules = append(filterV6Rules, allowLocalVNCv6)
+	gcpAllowRemoteVNC := gcp.GlobalValueBool(types.AllowAppVnc)
+	if !gcpAllowRemoteVNC {
+		blockRemoteVNC := linux.IptablesRule{
+			Args: []string{"-p", "tcp", "--dport", "5900:5999",
+				"-j", "REJECT", "--reject-with", "tcp-reset"},
+			Description: "Block VNC traffic originating from outside",
+		}
+		filterV4Rules = append(filterV4Rules, blockRemoteVNC)
+		filterV6Rules = append(filterV6Rules, blockRemoteVNC)
 	}
 
 	// Collect filtering rules.
