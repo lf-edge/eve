@@ -34,6 +34,7 @@ const (
 	// Application instance, which is either running or transitioning to a running state,
 	// will be stopped and the mutated run time state of the app is deleted.
 	// A subsequent action to start the app will start it with a pristine runtime state.
+	// This command will purge ALL volumes used by the application.
 	AppCommand_COMMAND_PURGE AppCommand_Command = 2
 )
 
