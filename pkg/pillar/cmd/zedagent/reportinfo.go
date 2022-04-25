@@ -166,6 +166,7 @@ func fillStorageChildren(children []*types.StorageChildren) []*info.StorageChild
 	for _, child := range children {
 		childInfo := new(info.StorageChildren)
 		childInfo.CurrentRaid = info.StorageRaidType(child.CurrentRaid)
+		childInfo.DisplayName = child.DisplayName
 		for _, disk := range child.Disks {
 			diskInfo := new(info.StorageDiskState)
 			diskInfo.Status = info.StorageStatus(disk.Status)

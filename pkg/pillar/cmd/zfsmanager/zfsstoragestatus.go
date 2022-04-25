@@ -132,6 +132,7 @@ func collectAndPublishStorageStatus(ctxPtr *zfsContext) {
 					}
 					for _, vdev := range vdevs.Devices {
 						child := new(types.StorageChildren)
+						child.DisplayName = vdev.Name
 						// If this is a RAID or mirror, look at the disks it consists of
 						if vdev.Type == libzfs.VDevTypeMirror || vdev.Type == libzfs.VDevTypeRaidz {
 							child.CurrentRaid = zfs.GetRaidTypeFromStr(vdev.Name)
