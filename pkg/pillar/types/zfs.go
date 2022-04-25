@@ -107,6 +107,7 @@ type StorageDiskState struct {
 
 // StorageChildren stores children of zfs pool
 type StorageChildren struct {
+	DisplayName string
 	CurrentRaid StorageRaidType
 	Disks       []*StorageDiskState
 	Children    []*StorageChildren
