@@ -118,6 +118,14 @@ message AppInstanceConfig {
   // be started independent of the global or local profile specified for the
   // device.
   repeated string profile_list = 18;
+
+  // start_delay_in_seconds - Applicable only when EVE boots up fresh and starts
+  // applications for the first time after boot up. This is the amount of time that
+  // EVE waits (after boot finish) before starting each application.
+  // Default value 0 -> start application immediately.
+  // Non-Zero value -> After EVE is ready to start application instance, wait for the
+  // given amount of time before starting the respective application instance.
+  uint32 start_delay_in_seconds = 19;
 }
 
 // Reference to a Volume specified separately in the API
