@@ -474,6 +474,7 @@ message StorageChildren {
   StorageRaidType current_raid = 1;
   repeated StorageDiskState disks = 2;
   repeated StorageChildren children = 3;
+  string display_name = 4; // A string which can be used to organize the display
 }
 
 // Information about storage system
