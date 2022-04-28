@@ -204,9 +204,9 @@ enum ZSwState {
 
   // It would have been ideal to leave a gap before the ERROR state.
   // Since we cannot change the existing states now, introduce the
-  // Z_SW_STATE_START_DELAYED state after ERROR.
+  // START_DELAYED state after ERROR.
   // Had to prefix with Z_SW_STATE_ to satisfy yetus checks.
-  Z_SW_STATE_START_DELAYED = 22; // App has been configured to start with delay by user
+  START_DELAYED = 22; // App has been configured to start with delay by user
 }
 
 // SW Info for Apps
