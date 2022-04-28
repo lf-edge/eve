@@ -3552,20 +3552,34 @@ type WwanSignalInfo struct {
 // receiver integrated into an LTE modem.
 type WwanLocationInfo struct {
 	// Latitude in the Decimal degrees (DD) notation.
+	// Valid values are in the range <-90, 90>. Anything outside of this range
+	// should be treated as an unavailable value.
+	// Note that wwan microservice uses -32768 specifically when latitude is not known.
 	Latitude float64 `json:"latitude"`
 	// Longitude in the Decimal degrees (DD) notation.
+	// Valid values are in the range <-180, 180>. Anything outside of this range
+	// should be treated as an unavailable value.
+	// Note that wwan microservice uses -32768 specifically when longitude is not known.
 	Longitude float64 `json:"longitude"`
 	// Altitude w.r.t. mean sea level in meters.
+	// Negative value of -32768 is returned when altitude is not known.
 	Altitude float64 `json:"altitude"`
 	// Circular horizontal position uncertainty in meters.
+	// Negative values are not valid and represent unavailable uncertainty.
+	// Note that wwan microservice uses -32768 specifically when horizontal
+	// uncertainty is not known.
 	HorizontalUncertainty float32 `json:"horizontal-uncertainty"`
 	// Reliability of the provided information for latitude and longitude.
 	HorizontalReliability LocReliability `json:"horizontal-reliability"`
 	// Vertical position uncertainty in meters.
+	// Negative values are not valid and represent unavailable uncertainty.
+	// Note that wwan microservice uses -32768 specifically when vertical
+	// uncertainty is not known.
 	VerticalUncertainty float32 `json:"vertical-uncertainty"`
 	// Reliability of the provided information for altitude.
 	VerticalReliability LocReliability `json:"vertical-reliability"`
 	// Unix timestamp in milliseconds.
+	// Zero value represents unavailable UTC timestamp.
 	UTCTimestamp uint64 `json:"utc-timestamp"`
 }
 
@@ -3616,7 +3630,7 @@ type LocReliability string
 
 const (
 	// LocReliabilityUnspecified : reliability is not specified
-	LocReliabilityUnspecified LocReliability = ""
+	LocReliabilityUnspecified LocReliability = "not-set"
 	// LocReliabilityVeryLow : very low reliability
 	LocReliabilityVeryLow LocReliability = "very-low"
 	// LocReliabilityLow : low reliability

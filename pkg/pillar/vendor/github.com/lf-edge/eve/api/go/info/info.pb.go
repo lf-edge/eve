@@ -6909,22 +6909,35 @@ type ZInfoLocation struct {
 	unknownFields protoimpl.UnknownFields
 
 	// Latitude in the Decimal degrees (DD) notation.
+	// Valid values are in the range <-90, 90>. Anything outside of this range
+	// should be treated as an unavailable value.
+	// However, note that EVE avoids publishing location updates without valid
+	// latitude and longitude values.
 	Latitude float64 `protobuf:"fixed64,1,opt,name=latitude,proto3" json:"latitude,omitempty"`
 	// Longitude in the Decimal degrees (DD) notation.
+	// Valid values are in the range <-180, 180>. Anything outside of this range
+	// should be treated as an unavailable value.
+	// However, note that EVE avoids publishing location updates without valid
+	// latitude and longitude values.
 	Longitude float64 `protobuf:"fixed64,2,opt,name=longitude,proto3" json:"longitude,omitempty"`
 	// Altitude w.r.t. mean sea level in meters.
+	// Value of -32768 is reported when altitude is not known.
 	Altitude float64 `protobuf:"fixed64,3,opt,name=altitude,proto3" json:"altitude,omitempty"`
 	// UTC timestamp for the location measurement
 	// (recorded by the GNSS clock).
 	// Currently, this timestamp is limited to millisecond resolution.
+	// When the timestamp is not available, EVE returns the Unix epoch time
+	// (UTC midnight on January 1, 1970).
 	UtcTimestamp *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=utc_timestamp,json=utcTimestamp,proto3" json:"utc_timestamp,omitempty"`
 	// Reliability of the provided information for latitude and longitude.
 	HorizontalReliability LocReliability `protobuf:"varint,5,opt,name=horizontal_reliability,json=horizontalReliability,proto3,enum=org.lfedge.eve.info.LocReliability" json:"horizontal_reliability,omitempty"`
 	// Reliability of the provided information for altitude.
 	VerticalReliability LocReliability `protobuf:"varint,6,opt,name=vertical_reliability,json=verticalReliability,proto3,enum=org.lfedge.eve.info.LocReliability" json:"vertical_reliability,omitempty"`
 	// Circular horizontal position uncertainty in meters.
+	// Negative values are not valid and represent unavailable uncertainty.
 	HorizontalUncertainty float32 `protobuf:"fixed32,7,opt,name=horizontal_uncertainty,json=horizontalUncertainty,proto3" json:"horizontal_uncertainty,omitempty"`
 	// Vertical position uncertainty in meters.
+	// Negative values are not valid and represent unavailable uncertainty.
 	VerticalUncertainty float32 `protobuf:"fixed32,8,opt,name=vertical_uncertainty,json=verticalUncertainty,proto3" json:"vertical_uncertainty,omitempty"`
 }
 

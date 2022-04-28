@@ -83,16 +83,24 @@ curl 169.254.169.254/eve/v1/location.json 2>/dev/null | jq
 
 Geographic coordinates latitude and longitude are expressed using
 [decimal degrees (DD) notation](https://en.wikipedia.org/wiki/Decimal_degrees),
-with double-precision floating-point values.
+with double-precision floating-point values. Note that if latitude or longitude
+is not known, EVE will not update the published location information. This means
+that the published location represents the last known position and applications
+can use the attached UTC timestamp to determine when it was obtained.
+If EVE has not been able to determine device location even once since the boot,
+the API endpoint will return empty content with the HTTP code 204.
 Altitude is in meters w.r.t. mean sea level. Just like latitude and longitude, it is
-a floating-point value with double-precision.
+a floating-point value with double-precision. Value of -32768 is reported when altitude
+is not known.
 UTC timestamp is a unix timestamp in milliseconds, recorded by the GNSS clock.
 Note that the limitation of having only millisecond resolution for the timestamp is imposed
 by the QMI protocol, which is used to obtain the location information.
+Zero value represents unavailable UTC timestamp.
 Uncertainty and reliability fields describe how accurate the provided location information is.
 (Circular) Horizontal uncertainty as well as vertical uncertainty are both in meters
-with single-precision floating-point values.
-Reliability is one of: `very-low`, `low`, `medium` and `high`.
+with single-precision floating-point values. Negative values are not valid and represent
+unavailable uncertainty.
+Reliability is one of: `not-set` (unavailable), `very-low`, `low`, `medium` and `high`.
 
 The frequency at which EVE updates location information is configurable using the option
 [timer.location.app.interval](../docs/CONFIG-PROPERTIES.md). By default, the interval is 20
