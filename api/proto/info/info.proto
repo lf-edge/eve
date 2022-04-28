@@ -201,6 +201,12 @@ enum ZSwState {
   // state. If an App Instance is in ERROR state, it means there is NO DOMAIN
   // currently running.
   ERROR                 = 21;   // Error State
+
+  // It would have been ideal to leave a gap before the ERROR state.
+  // Since we cannot change the existing states now, introduce the
+  // Z_SW_STATE_START_DELAYED state after ERROR.
+  // Had to prefix with Z_SW_STATE_ to satisfy yetus checks.
+  Z_SW_STATE_START_DELAYED = 22; // App has been configured to start with delay by user
 }
 
 // SW Info for Apps
