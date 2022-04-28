@@ -239,6 +239,13 @@ func (m *DpcManager) reloadWwanLocationInfo() {
 		return
 	}
 
+	// Filter out location updates with invalid (aka unknown) coordinates.
+	if locInfo.Latitude < -90 || locInfo.Latitude > 90 ||
+		locInfo.Longitude < -180 || locInfo.Longitude > 180 {
+		// Ignore the update.
+		return
+	}
+
 	// We may receive location information from the GNSS receiver quite often.
 	// In fact, qmicli (as used by the wwan microservice) hard-codes the interval between
 	// location reports to 1 second, see:
