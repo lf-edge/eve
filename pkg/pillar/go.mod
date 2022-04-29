@@ -16,11 +16,11 @@ require (
 	github.com/docker/distribution v2.8.1+incompatible // indirect
 	github.com/docker/docker v20.10.13+incompatible
 	github.com/eriknordmark/ipinfo v0.0.0-20190220084921-7ee0839158f9
-	github.com/fsnotify/fsnotify v1.4.9
+	github.com/fsnotify/fsnotify v1.5.1
 	github.com/golang-jwt/jwt v3.2.2+incompatible
 	github.com/golang/protobuf v1.5.2
 	github.com/google/go-cmp v0.5.7
-	github.com/google/go-containerregistry v0.6.0
+	github.com/google/go-containerregistry v0.8.0
 	github.com/google/go-tpm v0.3.0
 	github.com/google/gopacket v1.1.19
 	github.com/gorilla/websocket v1.4.2
