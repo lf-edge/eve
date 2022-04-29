@@ -4,6 +4,7 @@
 syntax = "proto3";
 
 import "info/info.proto";
+import "google/protobuf/timestamp.proto";
 
 package org.lfedge.eve.profile;
 
@@ -133,4 +134,58 @@ message AppCommand {
    }
    // Command to run.
    Command command = 4;
+}
+
+// LocalDevInfo contains information about an EdgeNode
+// sent to the api/v1/devinfo
+message LocalDevInfo {
+   string device_uuid = 1;
+   org.lfedge.eve.info.ZDeviceState state = 2;
+   repeated org.lfedge.eve.info.MaintenanceModeReason maintenance_mode_reasons = 3;
+   google.protobuf.Timestamp boot_time = 4;
+   org.lfedge.eve.info.BootReason last_boot_reason = 5;
+
+   // Value of the field `timestamp` from the last `DevCommand` that was
+   // requested by the Local profile server, received by EVE and has completed
+   // its execution for this edge node.
+   uint64 last_cmd_timestamp = 10;
+}
+
+// LocalDevCmd message may be returned in the response from a POST request
+// sent to the api/v1/devinfo API.
+message LocalDevCmd {
+   // Security token. EVE will verify that server_token matches the profile server
+   // token received from the controller.
+   string server_token = 1;
+   // A command requested to be executed for the edge node.
+   // A new request created will overwrite the previous entry with the 'timestamp'
+   // field updated. In other words, if there are multiple commands to execute
+   // then the local profile server has to wait until it receives the
+   // last_cmd_timestamp for a command before issuing the next command.
+   // It is not required for the Local profile server to persist command requests.
+   // Also, it is not required for the Local profile server to stop submitting command
+   // requests that have been already processed by EVE. Using the `timestamp` field,
+   // EVE is able to determine if a given command request has been already handled or not.
+   // To check if the last requested command has completed, compare its timestamp with
+   // 'last_cmd_timestamp' from `LocalDevInfo` message, submitted by EVE in the request
+   // body of the api/v1/devinfo API.
+
+   uint64 timestamp = 2;
+   enum Command {
+      COMMAND_UNSPECIFIED = 0;
+      COMMAND_SHUTDOWN = 1;
+      // Edge node will initiate a graceful shutdown of all of the application
+      // instances on the node (including an application instance implementing
+      // the local profile server API).
+      // The state of the application instances (HALTING, HALTED, etc) can be
+      // observed since is is sent to the api/v1/appinfo API endpoint as normal.
+      // XXX should we do the LPS app instance last?
+      COMMAND_SHUTDOWN_POWEROFF = 2;
+      // As above, but once all of the app instances have been shut down the
+      // edge node will also power off. Note that the power on will need to be done
+      // through other local means (UPS power cycling the edge node or someone
+      // manually power cycling the edge node.)
+   }
+   // Command to run.
+   Command command = 3;
 }
