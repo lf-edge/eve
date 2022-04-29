@@ -413,6 +413,10 @@ enum ZDeviceState {
     // is able to communicate with the controller. When all the components of
     // EVE are up, it transitions to ONLINE.
     ZDEVICE_STATE_BOOTING = 5;
+    // device shutting down all app instances
+    ZDEVICE_STATE_SHUTTING_DOWN = 6;
+    // device powering off
+    ZDEVICE_STATE_POWERING_OFF = 7;
 }
 
 enum StorageStatus {
@@ -592,6 +596,9 @@ message ZInfoDevice {
 
   string dormant_time = 47 [deprecated = true];
   repeated StorageInfo storage_info = 48;
+
+  // shutdown command counter from EdgeDevConfig last processed by eve
+  uint32 shutdown_config_counter = 49;
 }
 
 // Different reasons for a boot/reboot
@@ -611,6 +618,7 @@ enum BootReason {
   BOOT_REASON_POWER_FAIL = 11;
   BOOT_REASON_UNKNOWN = 12;
   BOOT_REASON_VAULT_FAILED = 13;
+  BOOT_REASON_POWEROFF_CMD = 14; // From Local Profile Server poweroff
   BOOT_REASON_PARSE_FAIL = 255;
 }
 
