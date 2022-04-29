@@ -128,6 +128,9 @@ message EdgeDevConfig {
 
   // disks configuration
   DisksConfig disks = 33;
+
+  // graceful shutdown of all app instances on EdgeNode
+  DeviceOpsCmd shutdown = 34;
 }
 
 message ConfigRequest {
