@@ -12,6 +12,7 @@ _sym_db = _symbol_database.Default()
 
 
 from info import info_pb2 as info_dot_info__pb2
+from google.protobuf import timestamp_pb2 as google_dot_protobuf_dot_timestamp__pb2
 
 
 DESCRIPTOR = _descriptor.FileDescriptor(
@@ -20,9 +21,9 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   syntax='proto3',
   serialized_options=b'\n\026org.lfedge.eve.profileZ%github.com/lf-edge/eve/api/go/profile',
   create_key=_descriptor._internal_create_key,
-  serialized_pb=b'\n\x1bprofile/local_profile.proto\x12\x16org.lfedge.eve.profile\x1a\x0finfo/info.proto\";\n\x0cLocalProfile\x12\x15\n\rlocal_profile\x18\x01 \x01(\t\x12\x14\n\x0cserver_token\x18\x02 \x01(\t\"{\n\x0bRadioStatus\x12\x15\n\rradio_silence\x18\x01 \x01(\x08\x12\x14\n\x0c\x63onfig_error\x18\x02 \x01(\t\x12?\n\x0f\x63\x65llular_status\x18\x03 \x03(\x0b\x32&.org.lfedge.eve.profile.CellularStatus\"\xfc\x01\n\x0e\x43\x65llularStatus\x12\x14\n\x0clogicallabel\x18\x01 \x01(\t\x12\x38\n\x06module\x18\x02 \x01(\x0b\x32(.org.lfedge.eve.info.ZCellularModuleInfo\x12\x34\n\tsim_cards\x18\x03 \x03(\x0b\x32!.org.lfedge.eve.info.ZSimcardInfo\x12\x39\n\tproviders\x18\x04 \x03(\x0b\x32&.org.lfedge.eve.info.ZCellularProvider\x12\x14\n\x0c\x63onfig_error\x18\n \x01(\t\x12\x13\n\x0bprobe_error\x18\x0b \x01(\t\":\n\x0bRadioConfig\x12\x14\n\x0cserver_token\x18\x01 \x01(\t\x12\x15\n\rradio_silence\x18\x02 \x01(\x08\"K\n\x10LocalAppInfoList\x12\x37\n\tapps_info\x18\x01 \x03(\x0b\x32$.org.lfedge.eve.profile.LocalAppInfo\"\xb0\x01\n\x0cLocalAppInfo\x12\n\n\x02id\x18\x01 \x01(\t\x12\x0f\n\x07version\x18\x02 \x01(\t\x12\x0c\n\x04name\x18\x03 \x01(\t\x12+\n\x03\x65rr\x18\x04 \x01(\x0b\x32\x1e.org.lfedge.eve.info.ErrorInfo\x12,\n\x05state\x18\x05 \x01(\x0e\x32\x1d.org.lfedge.eve.info.ZSwState\x12\x1a\n\x12last_cmd_timestamp\x18\x06 \x01(\x04\"a\n\x0fLocalAppCmdList\x12\x14\n\x0cserver_token\x18\x01 \x01(\t\x12\x38\n\x0c\x61pp_commands\x18\x02 \x03(\x0b\x32\".org.lfedge.eve.profile.AppCommand\"\xc9\x01\n\nAppCommand\x12\n\n\x02id\x18\x01 \x01(\t\x12\x13\n\x0b\x64isplayname\x18\x02 \x01(\t\x12\x11\n\ttimestamp\x18\x03 \x01(\x04\x12;\n\x07\x63ommand\x18\x04 \x01(\x0e\x32*.org.lfedge.eve.profile.AppCommand.Command\"J\n\x07\x43ommand\x12\x17\n\x13\x43OMMAND_UNSPECIFIED\x10\x00\x12\x13\n\x0f\x43OMMAND_RESTART\x10\x01\x12\x11\n\rCOMMAND_PURGE\x10\x02\x42?\n\x16org.lfedge.eve.profileZ%github.com/lf-edge/eve/api/go/profileb\x06proto3'
+  serialized_pb=b'\n\x1bprofile/local_profile.proto\x12\x16org.lfedge.eve.profile\x1a\x0finfo/info.proto\x1a\x1fgoogle/protobuf/timestamp.proto\";\n\x0cLocalProfile\x12\x15\n\rlocal_profile\x18\x01 \x01(\t\x12\x14\n\x0cserver_token\x18\x02 \x01(\t\"{\n\x0bRadioStatus\x12\x15\n\rradio_silence\x18\x01 \x01(\x08\x12\x14\n\x0c\x63onfig_error\x18\x02 \x01(\t\x12?\n\x0f\x63\x65llular_status\x18\x03 \x03(\x0b\x32&.org.lfedge.eve.profile.CellularStatus\"\xfc\x01\n\x0e\x43\x65llularStatus\x12\x14\n\x0clogicallabel\x18\x01 \x01(\t\x12\x38\n\x06module\x18\x02 \x01(\x0b\x32(.org.lfedge.eve.info.ZCellularModuleInfo\x12\x34\n\tsim_cards\x18\x03 \x03(\x0b\x32!.org.lfedge.eve.info.ZSimcardInfo\x12\x39\n\tproviders\x18\x04 \x03(\x0b\x32&.org.lfedge.eve.info.ZCellularProvider\x12\x14\n\x0c\x63onfig_error\x18\n \x01(\t\x12\x13\n\x0bprobe_error\x18\x0b \x01(\t\":\n\x0bRadioConfig\x12\x14\n\x0cserver_token\x18\x01 \x01(\t\x12\x15\n\rradio_silence\x18\x02 \x01(\x08\"K\n\x10LocalAppInfoList\x12\x37\n\tapps_info\x18\x01 \x03(\x0b\x32$.org.lfedge.eve.profile.LocalAppInfo\"\xb0\x01\n\x0cLocalAppInfo\x12\n\n\x02id\x18\x01 \x01(\t\x12\x0f\n\x07version\x18\x02 \x01(\t\x12\x0c\n\x04name\x18\x03 \x01(\t\x12+\n\x03\x65rr\x18\x04 \x01(\x0b\x32\x1e.org.lfedge.eve.info.ErrorInfo\x12,\n\x05state\x18\x05 \x01(\x0e\x32\x1d.org.lfedge.eve.info.ZSwState\x12\x1a\n\x12last_cmd_timestamp\x18\x06 \x01(\x04\"a\n\x0fLocalAppCmdList\x12\x14\n\x0cserver_token\x18\x01 \x01(\t\x12\x38\n\x0c\x61pp_commands\x18\x02 \x03(\x0b\x32\".org.lfedge.eve.profile.AppCommand\"\xc9\x01\n\nAppCommand\x12\n\n\x02id\x18\x01 \x01(\t\x12\x13\n\x0b\x64isplayname\x18\x02 \x01(\t\x12\x11\n\ttimestamp\x18\x03 \x01(\x04\x12;\n\x07\x63ommand\x18\x04 \x01(\x0e\x32*.org.lfedge.eve.profile.AppCommand.Command\"J\n\x07\x43ommand\x12\x17\n\x13\x43OMMAND_UNSPECIFIED\x10\x00\x12\x13\n\x0f\x43OMMAND_RESTART\x10\x01\x12\x11\n\rCOMMAND_PURGE\x10\x02\"\xa9\x02\n\x0cLocalDevInfo\x12\x13\n\x0b\x64\x65vice_uuid\x18\x01 \x01(\t\x12\x30\n\x05state\x18\x02 \x01(\x0e\x32!.org.lfedge.eve.info.ZDeviceState\x12L\n\x18maintenance_mode_reasons\x18\x03 \x03(\x0e\x32*.org.lfedge.eve.info.MaintenanceModeReason\x12-\n\tboot_time\x18\x04 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x39\n\x10last_boot_reason\x18\x05 \x01(\x0e\x32\x1f.org.lfedge.eve.info.BootReason\x12\x1a\n\x12last_cmd_timestamp\x18\n \x01(\x04\"\xcd\x01\n\x0bLocalDevCmd\x12\x14\n\x0cserver_token\x18\x01 \x01(\t\x12\x11\n\ttimestamp\x18\x02 \x01(\x04\x12<\n\x07\x63ommand\x18\x03 \x01(\x0e\x32+.org.lfedge.eve.profile.LocalDevCmd.Command\"W\n\x07\x43ommand\x12\x17\n\x13\x43OMMAND_UNSPECIFIED\x10\x00\x12\x14\n\x10\x43OMMAND_SHUTDOWN\x10\x01\x12\x1d\n\x19\x43OMMAND_SHUTDOWN_POWEROFF\x10\x02\x42?\n\x16org.lfedge.eve.profileZ%github.com/lf-edge/eve/api/go/profileb\x06proto3'
   ,
-  dependencies=[info_dot_info__pb2.DESCRIPTOR,])
+  dependencies=[info_dot_info__pb2.DESCRIPTOR,google_dot_protobuf_dot_timestamp__pb2.DESCRIPTOR,])
 
 
 
@@ -51,10 +52,40 @@ _APPCOMMAND_COMMAND = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=1056,
-  serialized_end=1130,
+  serialized_start=1089,
+  serialized_end=1163,
 )
 _sym_db.RegisterEnumDescriptor(_APPCOMMAND_COMMAND)
+
+_LOCALDEVCMD_COMMAND = _descriptor.EnumDescriptor(
+  name='Command',
+  full_name='org.lfedge.eve.profile.LocalDevCmd.Command',
+  filename=None,
+  file=DESCRIPTOR,
+  create_key=_descriptor._internal_create_key,
+  values=[
+    _descriptor.EnumValueDescriptor(
+      name='COMMAND_UNSPECIFIED', index=0, number=0,
+      serialized_options=None,
+      type=None,
+      create_key=_descriptor._internal_create_key),
+    _descriptor.EnumValueDescriptor(
+      name='COMMAND_SHUTDOWN', index=1, number=1,
+      serialized_options=None,
+      type=None,
+      create_key=_descriptor._internal_create_key),
+    _descriptor.EnumValueDescriptor(
+      name='COMMAND_SHUTDOWN_POWEROFF', index=2, number=2,
+      serialized_options=None,
+      type=None,
+      create_key=_descriptor._internal_create_key),
+  ],
+  containing_type=None,
+  serialized_options=None,
+  serialized_start=1584,
+  serialized_end=1671,
+)
+_sym_db.RegisterEnumDescriptor(_LOCALDEVCMD_COMMAND)
 
 
 _LOCALPROFILE = _descriptor.Descriptor(
@@ -91,8 +122,8 @@ _LOCALPROFILE = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=72,
-  serialized_end=131,
+  serialized_start=105,
+  serialized_end=164,
 )
 
 
@@ -137,8 +168,8 @@ _RADIOSTATUS = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=133,
-  serialized_end=256,
+  serialized_start=166,
+  serialized_end=289,
 )
 
 
@@ -204,8 +235,8 @@ _CELLULARSTATUS = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=259,
-  serialized_end=511,
+  serialized_start=292,
+  serialized_end=544,
 )
 
 
@@ -243,8 +274,8 @@ _RADIOCONFIG = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=513,
-  serialized_end=571,
+  serialized_start=546,
+  serialized_end=604,
 )
 
 
@@ -275,8 +306,8 @@ _LOCALAPPINFOLIST = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=573,
-  serialized_end=648,
+  serialized_start=606,
+  serialized_end=681,
 )
 
 
@@ -342,8 +373,8 @@ _LOCALAPPINFO = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=651,
-  serialized_end=827,
+  serialized_start=684,
+  serialized_end=860,
 )
 
 
@@ -381,8 +412,8 @@ _LOCALAPPCMDLIST = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=829,
-  serialized_end=926,
+  serialized_start=862,
+  serialized_end=959,
 )
 
 
@@ -435,8 +466,122 @@ _APPCOMMAND = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=929,
-  serialized_end=1130,
+  serialized_start=962,
+  serialized_end=1163,
+)
+
+
+_LOCALDEVINFO = _descriptor.Descriptor(
+  name='LocalDevInfo',
+  full_name='org.lfedge.eve.profile.LocalDevInfo',
+  filename=None,
+  file=DESCRIPTOR,
+  containing_type=None,
+  create_key=_descriptor._internal_create_key,
+  fields=[
+    _descriptor.FieldDescriptor(
+      name='device_uuid', full_name='org.lfedge.eve.profile.LocalDevInfo.device_uuid', index=0,
+      number=1, type=9, cpp_type=9, label=1,
+      has_default_value=False, default_value=b"".decode('utf-8'),
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+    _descriptor.FieldDescriptor(
+      name='state', full_name='org.lfedge.eve.profile.LocalDevInfo.state', index=1,
+      number=2, type=14, cpp_type=8, label=1,
+      has_default_value=False, default_value=0,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+    _descriptor.FieldDescriptor(
+      name='maintenance_mode_reasons', full_name='org.lfedge.eve.profile.LocalDevInfo.maintenance_mode_reasons', index=2,
+      number=3, type=14, cpp_type=8, label=3,
+      has_default_value=False, default_value=[],
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+    _descriptor.FieldDescriptor(
+      name='boot_time', full_name='org.lfedge.eve.profile.LocalDevInfo.boot_time', index=3,
+      number=4, type=11, cpp_type=10, label=1,
+      has_default_value=False, default_value=None,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+    _descriptor.FieldDescriptor(
+      name='last_boot_reason', full_name='org.lfedge.eve.profile.LocalDevInfo.last_boot_reason', index=4,
+      number=5, type=14, cpp_type=8, label=1,
+      has_default_value=False, default_value=0,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+    _descriptor.FieldDescriptor(
+      name='last_cmd_timestamp', full_name='org.lfedge.eve.profile.LocalDevInfo.last_cmd_timestamp', index=5,
+      number=10, type=4, cpp_type=4, label=1,
+      has_default_value=False, default_value=0,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+  ],
+  extensions=[
+  ],
+  nested_types=[],
+  enum_types=[
+  ],
+  serialized_options=None,
+  is_extendable=False,
+  syntax='proto3',
+  extension_ranges=[],
+  oneofs=[
+  ],
+  serialized_start=1166,
+  serialized_end=1463,
+)
+
+
+_LOCALDEVCMD = _descriptor.Descriptor(
+  name='LocalDevCmd',
+  full_name='org.lfedge.eve.profile.LocalDevCmd',
+  filename=None,
+  file=DESCRIPTOR,
+  containing_type=None,
+  create_key=_descriptor._internal_create_key,
+  fields=[
+    _descriptor.FieldDescriptor(
+      name='server_token', full_name='org.lfedge.eve.profile.LocalDevCmd.server_token', index=0,
+      number=1, type=9, cpp_type=9, label=1,
+      has_default_value=False, default_value=b"".decode('utf-8'),
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+    _descriptor.FieldDescriptor(
+      name='timestamp', full_name='org.lfedge.eve.profile.LocalDevCmd.timestamp', index=1,
+      number=2, type=4, cpp_type=4, label=1,
+      has_default_value=False, default_value=0,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+    _descriptor.FieldDescriptor(
+      name='command', full_name='org.lfedge.eve.profile.LocalDevCmd.command', index=2,
+      number=3, type=14, cpp_type=8, label=1,
+      has_default_value=False, default_value=0,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+  ],
+  extensions=[
+  ],
+  nested_types=[],
+  enum_types=[
+    _LOCALDEVCMD_COMMAND,
+  ],
+  serialized_options=None,
+  is_extendable=False,
+  syntax='proto3',
+  extension_ranges=[],
+  oneofs=[
+  ],
+  serialized_start=1466,
+  serialized_end=1671,
 )
 
 _RADIOSTATUS.fields_by_name['cellular_status'].message_type = _CELLULARSTATUS
@@ -449,6 +594,12 @@ _LOCALAPPINFO.fields_by_name['state'].enum_type = info_dot_info__pb2._ZSWSTATE
 _LOCALAPPCMDLIST.fields_by_name['app_commands'].message_type = _APPCOMMAND
 _APPCOMMAND.fields_by_name['command'].enum_type = _APPCOMMAND_COMMAND
 _APPCOMMAND_COMMAND.containing_type = _APPCOMMAND
+_LOCALDEVINFO.fields_by_name['state'].enum_type = info_dot_info__pb2._ZDEVICESTATE
+_LOCALDEVINFO.fields_by_name['maintenance_mode_reasons'].enum_type = info_dot_info__pb2._MAINTENANCEMODEREASON
+_LOCALDEVINFO.fields_by_name['boot_time'].message_type = google_dot_protobuf_dot_timestamp__pb2._TIMESTAMP
+_LOCALDEVINFO.fields_by_name['last_boot_reason'].enum_type = info_dot_info__pb2._BOOTREASON
+_LOCALDEVCMD.fields_by_name['command'].enum_type = _LOCALDEVCMD_COMMAND
+_LOCALDEVCMD_COMMAND.containing_type = _LOCALDEVCMD
 DESCRIPTOR.message_types_by_name['LocalProfile'] = _LOCALPROFILE
 DESCRIPTOR.message_types_by_name['RadioStatus'] = _RADIOSTATUS
 DESCRIPTOR.message_types_by_name['CellularStatus'] = _CELLULARSTATUS
@@ -457,6 +608,8 @@ DESCRIPTOR.message_types_by_name['LocalAppInfoList'] = _LOCALAPPINFOLIST
 DESCRIPTOR.message_types_by_name['LocalAppInfo'] = _LOCALAPPINFO
 DESCRIPTOR.message_types_by_name['LocalAppCmdList'] = _LOCALAPPCMDLIST
 DESCRIPTOR.message_types_by_name['AppCommand'] = _APPCOMMAND
+DESCRIPTOR.message_types_by_name['LocalDevInfo'] = _LOCALDEVINFO
+DESCRIPTOR.message_types_by_name['LocalDevCmd'] = _LOCALDEVCMD
 _sym_db.RegisterFileDescriptor(DESCRIPTOR)
 
 LocalProfile = _reflection.GeneratedProtocolMessageType('LocalProfile', (_message.Message,), {
@@ -514,6 +667,20 @@ AppCommand = _reflection.GeneratedProtocolMessageType('AppCommand', (_message.Me
   # @@protoc_insertion_point(class_scope:org.lfedge.eve.profile.AppCommand)
   })
 _sym_db.RegisterMessage(AppCommand)
+
+LocalDevInfo = _reflection.GeneratedProtocolMessageType('LocalDevInfo', (_message.Message,), {
+  'DESCRIPTOR' : _LOCALDEVINFO,
+  '__module__' : 'profile.local_profile_pb2'
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.profile.LocalDevInfo)
+  })
+_sym_db.RegisterMessage(LocalDevInfo)
+
+LocalDevCmd = _reflection.GeneratedProtocolMessageType('LocalDevCmd', (_message.Message,), {
+  'DESCRIPTOR' : _LOCALDEVCMD,
+  '__module__' : 'profile.local_profile_pb2'
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.profile.LocalDevCmd)
+  })
+_sym_db.RegisterMessage(LocalDevCmd)
 
 
 DESCRIPTOR._options = None
