@@ -1,26 +1,14 @@
 #!/bin/sh
 # shellcheck disable=SC2039
 # shellcheck disable=SC2155
+# shellcheck disable=SC2034
 
-uqmi() {
-  local JSON
-  if JSON="$(timeout -s KILL "$LTESTAT_TIMEOUT" uqmi -d "/dev/$CDC_DEV" "$@")"; then
-    if echo "$JSON" | jq -ea . > /dev/null 2>&1; then
-      echo "$JSON"
-      return 0
-    fi
-  fi
-  return 1
-}
-
-# We prefer to use uqmi over qmicli as a CLI agent for QMI devices.
-# However, some fields are available for retrieval only with qmicli.
-qmicli() {
+qmi() {
   timeout -s KILL "$LTESTAT_TIMEOUT" qmicli -p -d "/dev/$CDC_DEV" "$@"
 }
 
 qmi_get_packet_stats() {
-  local STATS="$(qmicli --wds-get-packet-statistics)"
+  local STATS="$(qmi --wds-get-packet-statistics)"
   local TXP=$(parse_modem_attr "$STATS" "TX packets OK")
   local TXB=$(parse_modem_attr "$STATS" "TX bytes OK")
   local TXD=$(parse_modem_attr "$STATS" "TX packets dropped")
@@ -33,21 +21,33 @@ qmi_get_packet_stats() {
 }
 
 qmi_get_signal_info() {
-  local INFO
-  INFO="$(uqmi --get-signal-info)" || INFO="{}"
-  FILTER="{rssi: (if .rssi == null then $UNAVAIL_SIGNAL_METRIC else .rssi end),
-           rsrq: (if .rsrq == null then $UNAVAIL_SIGNAL_METRIC else .rsrq end),
-           rsrp: (if .rsrp == null then $UNAVAIL_SIGNAL_METRIC else .rsrp end),
-           snr:  (if .snr  == null then $UNAVAIL_SIGNAL_METRIC else .snr end)}"
-  echo "$INFO" | jq -c "$FILTER"
+  local INFO="$(qmi --nas-get-signal-info)"
+  local RSSI="$(parse_modem_attr "$INFO" "RSSI" " dBm")"
+  local RSRQ="$(parse_modem_attr "$INFO" "RSRQ" " dB")"
+  local RSRP="$(parse_modem_attr "$INFO" "RSRP" " dBm")"
+  local SNR="$(parse_modem_attr "$INFO"  "SNR"  " dB")"
+  # SNR is published with one decimal place.
+  # Round it to the nearest integer.
+  if [ -n "$SNR" ]; then
+    SNR="$(printf "%.0f" "$SNR")"
+  fi
+  json_struct \
+    "$(json_attr rssi "${RSSI:-$UNAVAIL_SIGNAL_METRIC}")" \
+    "$(json_attr rsrq "${RSRQ:-$UNAVAIL_SIGNAL_METRIC}")" \
+    "$(json_attr rsrp "${RSRP:-$UNAVAIL_SIGNAL_METRIC}")" \
+    "$(json_attr snr  "${SNR:-$UNAVAIL_SIGNAL_METRIC}")"
+}
+
+qmi_get_packet_state() {
+  qmi --wds-get-packet-service-status | sed -n "s/.*Connection status: '\(.*\)'/\1/p"
 }
 
 # qmi_get_op_mode returns one of: "" (aka unspecified), "online", "online-and-connected", "radio-off", "offline", "unrecognized"
 qmi_get_op_mode() {
-  local OP_MODE="$(qmicli --dms-get-operating-mode | sed -n "s/\s*Mode: '\(.*\)'/\1/p")"
+  local OP_MODE="$(parse_modem_attr "$(qmi --dms-get-operating-mode)" "Mode")"
   case "$OP_MODE" in
     "online")
-      if [ "$(uqmi --get-data-status)" = '"connected"' ]; then
+      if [ "$(qmi_get_packet_state)" = "connected" ]; then
         echo "online-and-connected"
       else
         echo "online"
@@ -63,36 +63,100 @@ qmi_get_op_mode() {
 }
 
 qmi_get_imei() {
-  uqmi --get-imei | tr -d '"'
+  parse_modem_attr "$(qmi --dms-get-ids)" "IMEI"
 }
 
 qmi_get_modem_model() {
-  qmicli --dms-get-model | sed -n "s/\s*Model: '\(.*\)'/\1/p"
+  parse_modem_attr "$(qmi --dms-get-model)" "Model"
 }
 
 qmi_get_modem_revision() {
-  qmicli --dms-get-revision | sed -n "s/\s*Revision: '\(.*\)'/\1/p"
+  parse_modem_attr "$(qmi --dms-get-revision)" "Revision"
+}
+
+qmi_get_serving_system() {
+  local INFO="$(qmi --nas-get-serving-system)"
+  local REGSTATE="$(parse_modem_attr "$INFO" "Registration state")"
+  if [ "$REGSTATE" != "registered" ]; then
+    return 1
+  fi
+  local MCC="$(parse_modem_attr "$INFO" "MCC")"
+  local MNC="$(parse_modem_attr "$INFO" "MNC")"
+  local DESCRIPTION="$(parse_modem_attr "$INFO" "Description")"
+  local ROAMING="$(parse_modem_attr "$INFO"  "Roaming status")"
+  local PLMN="$(printf "%03d-%02d" "$MCC" "$MNC" 2>/dev/null)"
+  if [ "$ROAMING" = "on" ]; then
+    ROAMING="true"
+  else
+    ROAMING="false"
+  fi
+  json_struct \
+    "$(json_str_attr plmn "${PLMN}")" \
+    "$(json_str_attr description "${DESCRIPTION}")" \
+    "$(json_attr current-serving "true")" \
+    "$(json_attr roaming "${ROAMING}")"
 }
 
 qmi_get_providers() {
   local PROVIDERS
-  if ! PROVIDERS="$(uqmi --network-scan)"; then
-    echo "[]"
-    return 1
+  if ! PROVIDERS="$(qmi --nas-network-scan)"; then
+    # Alternative to listing all providers is to return info at least
+    # for the current provider.
+    SERVING="$(qmi_get_serving_system)"
+    printf "[%b]" "$SERVING"
+    return
   fi
-  FILTER='[.network_info[] | { "plmn": [if .mcc == null then "000" else .mcc end, if .mnc == null then "000" else .mnc end] | join("-"),
-                               "description": .description,
-                               "current-serving": .status | contains(["current_serving"]),
-                               "roaming":  .status | contains(["roaming"])}
-          ] | unique'
-  echo "$PROVIDERS" | jq -c "$FILTER"
+  if ! echo "$PROVIDERS"  | grep -q "Network \[[0-9]\+\]"; then
+    # Network scan was most likely aborted with output:
+    #  Network scan result: abort
+    SERVING="$(qmi_get_serving_system)"
+    printf "[%b]" "$SERVING"
+    return
+  fi
+  echo "$PROVIDERS" | awk '
+    BEGIN{RS="Network [[0-9]+]:"; FS="\n"; print "["}
+    $0 ~ /Status: / {
+      print sep_outer "{"
+      sep_inner=""
+      mcc=""
+      mnc=""
+      for(i=1; i<=NF; i++) {
+        kv=""
+        if ($i~/MCC:/) {
+          mcc = gensub(/.*: \x27(.*)\x27/, "\\1", 1, $i)
+        }
+        if ($i~/MNC:/) {
+          mnc = gensub(/.*: \x27(.*)\x27/, "\\1", 1, $i)
+        }
+        if ($i~/Description:/) {
+          kv = gensub(/.*: \x27(.*)\x27/, "\"description\": \"\\1\"", 1, $i)
+        }
+        if ($i~/Status:/) {
+          current="false"
+          roaming="false"
+          if ($i~/current-serving/) current="true"
+          if ($i~/roaming/) roaming="true"
+          kv="\"current-serving\":" current ",\"roaming\":" roaming
+        }
+        if (kv) {
+          print sep_inner kv
+          sep_inner=","
+        }
+      }
+      if (mcc && mnc) {
+        printf "%s \"plmn\": \"%03d-%02d\"", sep_inner, mcc, mnc
+      }
+      print "}"
+      sep_outer=","
+    }
+    END{print "]"}' | jq -c "unique"
 }
 
-get_get_sim_iccid() {
+qmi_get_sim_iccid() {
   local OUTPUT
   # Get ICCID from User Identity Module (UIM).
   # Please refer to ETSI/3GPP "TS 102 221" section 13.2 for the coding of this EF.
-  if ! OUTPUT="$(qmicli --uim-read-transparent=0x3F00,0x2FE2)"; then
+  if ! OUTPUT="$(qmi --uim-read-transparent=0x3F00,0x2FE2)"; then
     return 1
   fi
   printf "%s" "$OUTPUT" | awk '
@@ -110,11 +174,11 @@ get_get_sim_iccid() {
     }'
 }
 
-get_get_sim_imsi() {
+qmi_get_sim_imsi() {
   local OUTPUT
   # Get IMSI from User Identity Module (UIM).
   # Please refer to ETSI/3GPP "TS 31.102" section 4.2.2 for the coding of this EF.
-  if ! OUTPUT="$(qmicli --uim-read-transparent=0x3F00,0x7FFF,0x6F07)"; then
+  if ! OUTPUT="$(qmi --uim-read-transparent=0x3F00,0x7FFF,0x6F07)"; then
     return 1
   fi
   printf "%s" "$OUTPUT" | awk '
@@ -136,16 +200,27 @@ get_get_sim_imsi() {
 
 qmi_get_sim_cards() {
   # FIXME XXX Limited to a single SIM card
-  if ! ICCID="$(get_get_sim_iccid)"; then
+  if ! ICCID="$(qmi_get_sim_iccid)"; then
     echo "[]"
     return 1
   fi
-  if ! IMSI="$(get_get_sim_imsi)"; then
+  if ! IMSI="$(qmi_get_sim_imsi)"; then
     echo "[]"
     return 1
   fi
   SIM="$(json_struct "$(json_str_attr "iccid" "$ICCID")" "$(json_str_attr "imsi" "$IMSI")")\n"
   printf "%b" "$SIM" | json_array
+}
+
+qmi_get_ip_settings() {
+  if ! SETTINGS="$(qmi --wds-get-current-settings)"; then
+    return 1
+  fi
+  IP=$(parse_modem_attr "$SETTINGS" "IPv4 address")
+  SUBNET=$(parse_modem_attr "$SETTINGS" "IPv4 subnet mask")
+  GW=$(parse_modem_attr "$SETTINGS" "IPv4 gateway address")
+  DNS1=$(parse_modem_attr "$SETTINGS" "IPv4 primary DNS")
+  DNS2=$(parse_modem_attr "$SETTINGS" "IPv4 secondary DNS")
 }
 
 qmi_start_network() {
@@ -154,19 +229,33 @@ qmi_start_network() {
   echo Y > "/sys/class/net/$IFACE/qmi/raw_ip"
   ip link set "$IFACE" up
 
-  uqmi --sync
-  uqmi --start-network --apn "${APN}" --keep-client-id wds |\
-      mbus_publish "pdh_$IFACE"
+  qmi --wds-reset
+  if ! OUTPUT="$(qmi --wds-start-network="apn=${APN}" --client-no-release-cid)"; then
+    return 1
+  fi
+
+  parse_modem_attr "$OUTPUT" "Packet data handle" | mbus_publish "pdh_$IFACE"
+  parse_modem_attr "$OUTPUT" "CID" | mbus_publish "cid_$IFACE"
+}
+
+qmi_get_sim_status() {
+  # FIXME: limited to a single SIM card
+  parse_modem_attr "$(qmi --uim-get-card-status)" "Application state" | head -n 1
 }
 
 qmi_wait_for_sim() {
-  # FIXME XXX this is only for MBIM for now
-  :
+  echo "[$CDC_DEV] Waiting for SIM card to initialize"
+  local CMD="qmi_get_sim_status"
+
+  if ! wait_for ready "$CMD"; then
+    echo "Timeout waiting for SIM initialization" >&2
+    return 1
+  fi
 }
 
 qmi_wait_for_wds() {
   echo "[$CDC_DEV] Waiting for DATA services to connect"
-  local CMD="uqmi --get-data-status | jq -r ."
+  local CMD="qmi_get_packet_state"
 
   if ! wait_for connected "$CMD"; then
     echo "Timeout waiting for DATA services to connect" >&2
@@ -174,9 +263,13 @@ qmi_wait_for_wds() {
   fi
 }
 
+qmi_get_registration_status() {
+  parse_modem_attr "$(qmi --nas-get-serving-system)" "Registration state"
+}
+
 qmi_wait_for_register() {
   echo "[$CDC_DEV] Waiting for the device to register on the network"
-  local CMD="uqmi --get-serving-system | jq -r .registration"
+  local CMD="qmi_get_registration_status"
 
   if ! wait_for registered "$CMD"; then
     echo "Timeout waiting for the device to register on the network" >&2
@@ -184,37 +277,38 @@ qmi_wait_for_register() {
   fi
 }
 
+qmi_get_ip_address() {
+  parse_modem_attr "$(qmi --wds-get-current-settings)" "IPv4 address"
+}
+
 qmi_wait_for_settings() {
   echo "[$CDC_DEV] Waiting for IP configuration for the $IFACE interface"
-  local CMD="uqmi --get-current-settings"
+  local CMD="qmi_get_ip_address | grep -q \"$IPV4_REGEXP\" && echo connected"
 
-  if ! wait_for connected "$CMD | jq -r .ipv4.ip | grep -q \"$IPV4_REGEXP\" && echo connected"; then
+  if ! wait_for connected "$CMD"; then
     echo "Timeout waiting for IP configuration for the $IFACE interface" >&2
     return 1
   fi
 }
 
-qmi_reset_modem() {
-  # last ditch attempt to reset our modem -- not sure how effective :-(
+qmi_stop_network() {
   local PDH="$(cat "${BBS}/pdh_${IFACE}.json" 2>/dev/null)"
+  local CID="$(cat "${BBS}/cid_${IFACE}.json" 2>/dev/null)"
 
-  for i in "$PDH" 0xFFFFFFFF ; do
-    uqmi --stop-network "$i" --autoconnect || continue
-  done
-
-  qmicli --dms-reset
-
-  for i in "$PDH" 0xFFFFFFFF ; do
-    uqmi --stop-network "$i" --autoconnect || continue
-  done
+  if ! qmi --wds-stop-network="$PDH" --client-cid="$CID"; then
+    # If qmicli failed to stop the network, reset operating mode of the modem.
+    qmi --dms-set-operating-mode=low-power
+    sleep 1
+    qmi --dms-set-operating-mode=online
+  fi
 }
 
 qmi_toggle_rf() {
   if [ "$1" = "off" ]; then
     echo "[$CDC_DEV] Disabling RF"
-    uqmi --set-device-operating-mode "persistent_low_power"
+    qmi --dms-set-operating-mode=persistent-low-power
   else
     echo "[$CDC_DEV] Enabling RF"
-    uqmi --set-device-operating-mode "online"
+    qmi --dms-set-operating-mode=online
   fi
 }

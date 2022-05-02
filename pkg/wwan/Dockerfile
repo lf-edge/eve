@@ -6,7 +6,6 @@ ENV PKGS alpine-baselayout musl-utils ppp jq glib
 RUN eve-alpine-deploy.sh
 
 WORKDIR /
-RUN git clone https://git.openwrt.org/project/uqmi.git
 RUN git clone https://git.openwrt.org/project/libubox.git
 RUN git clone https://github.com/json-c/json-c.git
 RUN git clone https://gitlab.freedesktop.org/mobile-broadband/libqmi
@@ -18,9 +17,6 @@ RUN git checkout ed54353d && ./autogen.sh && ./configure && make install
 
 WORKDIR /libubox
 RUN git checkout 7da66430 && cmake . -DBUILD_LUA=OFF -DBUILD_EXAMPLES=OFF && make install
-
-WORKDIR /uqmi
-RUN git checkout 1965c713 && cmake -DBUILD_STATIC=true . && make
 
 WORKDIR /libmbim
 RUN git checkout 1.24.2
@@ -42,7 +38,7 @@ FROM scratch
 ENTRYPOINT []
 WORKDIR /
 COPY --from=build /out/ /
-COPY --from=build /uqmi/uqmi /usr/bin/qmicli /usr/bin/mbimcli /usr/bin/inotify* /bin/
+COPY --from=build /usr/bin/qmicli /usr/bin/mbimcli /usr/bin/inotify* /bin/
 COPY --from=build /usr/lib/libmbim*.so.[0-9] /usr/lib/libqmi*.so.[0-9] /usr/lib/
 COPY --from=build /usr/lib/libinotifytools*.so.[0-9] /usr/lib/
 COPY --from=build /usr/libexec/*proxy /usr/libexec/

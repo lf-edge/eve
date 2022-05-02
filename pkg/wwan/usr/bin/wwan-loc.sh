@@ -104,10 +104,6 @@ location_tracking() {
     mkfifo "$PIPE"
   fi
 
-  # Make sure we use the qmicli binary directly here and not through the wrapper
-  # function defined in wwan-qmi.sh
-  QMICLI="$(which qmicli)"
-
   while true; do
     if [ "$FIRST_ATTEMPT" = "n" ]; then
       sleep 1 # Maybe intentionally killed, wait before claiming that we will retry.
@@ -118,9 +114,9 @@ location_tracking() {
 
     # Start location tracking session.
     # For commands from location service qmicli supports both QMI and MBIM protocols.
-    if ! LOC_START="$(timeout -s KILL 60 "$QMICLI" -p "--device-open-$PROTOCOL" \
-                                                   -d "/dev/$CDC_DEV" --loc-start \
-                                                   --client-no-release-cid)"; then
+    if ! LOC_START="$(timeout -s KILL 60 qmicli -p "--device-open-$PROTOCOL" \
+                                                -d "/dev/$CDC_DEV" --loc-start \
+                                                --client-no-release-cid)"; then
       echo "Failed to start location service"
       continue
     fi
@@ -131,36 +127,36 @@ location_tracking() {
     PUBLISHER_PID=$!
     echo "PID of the location publisher is $PUBLISHER_PID"
 
-    "$QMICLI" -p "--device-open-$PROTOCOL" -d "/dev/$CDC_DEV" \
-              --loc-follow-position-report "--client-cid=$CID" >"$PIPE" 2>"$STDERR" &
+    qmicli -p "--device-open-$PROTOCOL" -d "/dev/$CDC_DEV" \
+           --loc-follow-position-report "--client-cid=$CID" >"$PIPE" 2>"$STDERR" &
     TRACKER_PID=$!
     echo "PID of the location tracker is $TRACKER_PID"
 
     # Watchdog - we expect at least one location update every minute,
     # otherwise we consider the location tracking to be stuck.
-    MODTIME="$(date "+%s" -r "$OUTPUT_FILE")"
+    MODTIME="$(date "+%s" -r "$OUTPUT_FILE" 2>/dev/null)"
     while true; do
       sleep 60
       if [ ! -f "$OUTPUT_FILE" ]; then
-        echo "Location info is not available"
+        echo "Location info is not available, restarting tracker"
         break
       fi
-      NEW_MODTIME="$(date "+%s" -r "$OUTPUT_FILE")"
+      NEW_MODTIME="$(date "+%s" -r "$OUTPUT_FILE" 2>/dev/null)"
       if [ "$MODTIME" = "$NEW_MODTIME" ]; then
-        echo "Location info has not been updated in the last minute"
+        echo "Location info has not been updated in the last minute, restarting tracker"
         break
       fi
       MODTIME="$NEW_MODTIME"
     done
 
     # Stop location tracking - it is likely stuck.
-    killtree $PUBLISHER_PID >/dev/null 2>&1
-    killtree $TRACKER_PID >/dev/null 2>&1
+    kill_process_tree $PUBLISHER_PID >/dev/null 2>&1
+    kill_process_tree $TRACKER_PID >/dev/null 2>&1
     echo "Location tracking was killed"
     cat "$STDERR"
 
     # Release client CID
-    timeout -s KILL 60 "$QMICLI" -p "--device-open-$PROTOCOL" -d "/dev/$CDC_DEV" \
-                                 --loc-noop "--client-cid=$CID" 2>/dev/null
+    timeout -s KILL 60 qmicli -p "--device-open-$PROTOCOL" -d "/dev/$CDC_DEV" \
+                              --loc-noop "--client-cid=$CID" 2>/dev/null
   done
 }
