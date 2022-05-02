@@ -1,7 +1,7 @@
 #!/bin/sh
 # shellcheck disable=SC2039
 # shellcheck disable=SC2155
-# shellcheck disable=SC2034 # Constants defined here are used by sourced wwan-mbim.sh and wwan-mbim.sh
+# shellcheck disable=SC2034 # Constants defined here are used by sourced wwan-qmi.sh and wwan-mbim.sh
 # set -x
 
 # Currently our message bus is files in /run
@@ -95,7 +95,8 @@ mbus_publish() {
 parse_modem_attr() {
   local STDOUT="$1"
   local ATTR="$2"
-  local VAL="$(echo "$STDOUT" | sed -n "s/\s*$ATTR: \(.*\)/\1/p" | tr -d "'")"
+  local UNIT="$3"
+  local VAL="$(echo "$STDOUT" | sed -n "s/\s*$ATTR: \(.*\)$UNIT/\1/p" | head -n 1 | tr -d "'")"
   if [ "$VAL" = "unknown" ]; then
     # "unknown" is used by VALIDATE_UNKNOWN macro in libqmi and libmbim
     VAL=""
@@ -181,31 +182,24 @@ lookup_modem() {
     return 0
   done
 
-  echo "Failed to find modem for "\
+  echo "Failed to find modem for"\
     "interface=${ARG_IF:-<ANY>}, USB=${ARG_USB:-<ANY>}, PCI=${ARG_PCI:-<ANY>}" >&2
   return 1
 }
 
 bringup_iface() {
-  if [ "$PROTOCOL" = mbim ]; then
-     local JSON=$(mbim --query-ip-configuration)
-     local DNS0="dns0"
-     local DNS1="dns1"
-  else
-     local JSON=$(uqmi --get-current-settings)
-     local DNS0="dns1"
-     local DNS1="dns2"
+  if ! "${PROTOCOL}_get_ip_settings"; then
+    echo "Failed to get IP config for interface $IFACE"
+    return 1
   fi
-  ifconfig "$IFACE" "$(echo "$JSON" | jq -r .ipv4.ip)" \
-                   netmask "$(echo "$JSON" | jq -r .ipv4.subnet)" \
-                   pointopoint "$(echo "$JSON" | jq -r .ipv4.gateway)"
+  ifconfig "$IFACE" "$IP" netmask "$SUBNET" pointopoint "$GW"
   # NOTE we may want to disable /proc/sys/net/ipv4/conf/default/rp_filter instead
   #      Verify it by cat /proc/net/netstat | awk '{print $80}'
-  ip route add default via "$(echo "$JSON" | jq -r .ipv4.gateway)" dev "$IFACE" metric 65000
+  ip route add default via "$GW" dev "$IFACE" metric 65000
   mkdir "$BBS/resolv.conf" || :
   cat > "$BBS/resolv.conf/${IFACE}.dhcp" <<__EOT__
-nameserver $(echo "$JSON" | jq -r .ipv4.$DNS0)
-nameserver $(echo "$JSON" | jq -r .ipv4.$DNS1)
+nameserver $DNS1
+nameserver $DNS2
 __EOT__
 }
 
@@ -373,7 +367,7 @@ event_stream | while read -r EVENT; do
       if [ "$CONFIG_CHANGE" = "y" ] || ! probe; then
         echo "[$CDC_DEV] Restarting connection (APN=${APN}, interface=${IFACE})"
         {
-          "${PROTOCOL}_reset_modem"       &&\
+          "${PROTOCOL}_stop_network"      &&\
           "${PROTOCOL}_toggle_rf" on      &&\
           "${PROTOCOL}_wait_for_sim"      &&\
           "${PROTOCOL}_wait_for_register" &&\
