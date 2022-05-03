@@ -174,7 +174,7 @@ The requester MUST verify that the response payload (if provided) has the correc
 If the verification succeeds, then the timestamp is checked to determine whether
 or not the command has already been executed, and it not it is applied.
 
-Currently, the method allows to request the a graceful Shutdown (of all app instances)
+Currently, the method allows to request a graceful Shutdown (of all app instances)
 or such a Shutdown followed by a Poweroff of EVE. This allows for graceful shutdown of applications and optionally a poweroff whether triggered by a user on the local profile server or a UPS interfacing with the local profile server.
 
 The command request includes an important field `timestamp` (`uint64`), which
