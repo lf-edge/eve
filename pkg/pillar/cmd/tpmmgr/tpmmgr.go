@@ -36,14 +36,12 @@ import (
 )
 
 type tpmMgrContext struct {
-	subGlobalConfig    pubsub.Subscription
-	subNodeAgentStatus pubsub.Subscription
-	subAttestNonce     pubsub.Subscription
-	pubAttestQuote     pubsub.Publication
-	pubEdgeNodeCert    pubsub.Publication
-	globalConfig       *types.ConfigItemValueMap
-	GCInitialized      bool // GlobalConfig initialized
-	DeviceReboot       bool //is the device rebooting?
+	subGlobalConfig pubsub.Subscription
+	subAttestNonce  pubsub.Subscription
+	pubAttestQuote  pubsub.Publication
+	pubEdgeNodeCert pubsub.Publication
+	globalConfig    *types.ConfigItemValueMap
+	GCInitialized   bool // GlobalConfig initialized
 }
 
 const (
@@ -1501,24 +1499,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		ctx.subGlobalConfig = subGlobalConfig
 		subGlobalConfig.Activate()
 
-		subNodeAgentStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
-			AgentName:     "nodeagent",
-			MyAgentName:   agentName,
-			TopicImpl:     types.NodeAgentStatus{},
-			Activate:      false,
-			Ctx:           &ctx,
-			CreateHandler: handleNodeAgentStatusCreate,
-			ModifyHandler: handleNodeAgentStatusModify,
-			DeleteHandler: handleNodeAgentStatusDelete,
-			WarningTime:   warningTime,
-			ErrorTime:     errorTime,
-		})
-		if err != nil {
-			log.Fatal(err)
-		}
-		ctx.subNodeAgentStatus = subNodeAgentStatus
-		subNodeAgentStatus.Activate()
-
 		pubAttestQuote, err := ps.NewPublication(
 			pubsub.PublicationOptions{
 				AgentName: agentName,
@@ -1579,8 +1559,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 			select {
 			case change := <-subGlobalConfig.MsgChan():
 				subGlobalConfig.ProcessChange(change)
-			case change := <-ctx.subNodeAgentStatus.MsgChan():
-				ctx.subNodeAgentStatus.ProcessChange(change)
 			case <-stillRunning.C:
 			}
 			ps.StillRunning(agentName, warningTime, errorTime)
@@ -1599,8 +1577,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 			select {
 			case change := <-subGlobalConfig.MsgChan():
 				subGlobalConfig.ProcessChange(change)
-			case change := <-ctx.subNodeAgentStatus.MsgChan():
-				ctx.subNodeAgentStatus.ProcessChange(change)
 			case change := <-ctx.subAttestNonce.MsgChan():
 				ctx.subAttestNonce.ProcessChange(change)
 			case <-stillRunning.C:
@@ -1697,52 +1673,6 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 	debug, _ = agentlog.HandleGlobalConfig(log, ctx.subGlobalConfig, agentName,
 		debugOverride, logger)
 	log.Functionf("handleGlobalConfigDelete done for %s", key)
-}
-
-func handleNodeAgentStatusCreate(ctxArg interface{}, key string,
-	statusArg interface{}) {
-	handleNodeAgentStatusImpl(ctxArg, key, statusArg)
-}
-
-func handleNodeAgentStatusModify(ctxArg interface{}, key string,
-	statusArg interface{}, oldStatusArg interface{}) {
-	handleNodeAgentStatusImpl(ctxArg, key, statusArg)
-}
-
-func handleNodeAgentStatusImpl(ctxArg interface{}, key string,
-	statusArg interface{}) {
-
-	status := statusArg.(types.NodeAgentStatus)
-	ctx := ctxArg.(*tpmMgrContext)
-	if key != "nodeagent" {
-		log.Functionf("handleNodeAgentStatusImpl: ignoring %s", key)
-		return
-	}
-	ctx.DeviceReboot = status.DeviceReboot
-	log.Functionf("handleNodeAgentStatusImpl done for %s: %v", key, ctx.DeviceReboot)
-}
-
-func handleNodeAgentStatusDelete(ctxArg interface{}, key string,
-	statusArg interface{}) {
-
-	log.Functionf("handleNodeAgentStatusDelete for %s", key)
-	ctx := ctxArg.(*tpmMgrContext)
-
-	if key != "nodeagent" {
-		log.Functionf("handleNodeAgentStatusDelete: ignoring %s", key)
-		return
-	}
-	ctx.DeviceReboot = false
-	log.Functionf("handleNodeAgentStatusDelete done for %s: %v", key, ctx.DeviceReboot)
-}
-
-func readNodeAgentStatus(ctx *tpmMgrContext) (bool, error) {
-	nodeAgentStatus, err := ctx.subNodeAgentStatus.Get("nodeagent")
-	if err != nil {
-		return false, err
-	}
-	status := nodeAgentStatus.(types.NodeAgentStatus)
-	return status.DeviceReboot, nil
 }
 
 func handleAttestNonceCreate(ctxArg interface{}, key string,
