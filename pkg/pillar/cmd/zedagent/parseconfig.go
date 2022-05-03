@@ -134,22 +134,73 @@ func parseConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigContext,
 
 // Walk published AppInstanceConfig's and set Activate=false
 // Note that we don't currently wait for the shutdown to complete.
-func shutdownApps(getconfigCtx *getconfigContext) {
+// If withLocalServer is set we skip the app instances which are running
+// a Local Profile Server, and return the number of Local Profile Server apps
+func shutdownApps(getconfigCtx *getconfigContext, withLocalServer bool) (lpsCount uint) {
 	pub := getconfigCtx.pubAppInstanceConfig
 	items := pub.GetAll()
 	for _, c := range items {
 		config := c.(types.AppInstanceConfig)
 		if config.Activate {
+			if config.HasLocalServer && !withLocalServer {
+				log.Noticef("shutdownApps: defer for %s uuid %s",
+					config.DisplayName, config.Key())
+				lpsCount++
+				continue
+			}
 			log.Functionf("shutdownApps: clearing Activate for %s uuid %s",
 				config.DisplayName, config.Key())
 			config.Activate = false
 			pub.Publish(config.Key(), config)
 		}
 	}
+	return lpsCount
 }
 
+// countRunningApps returns the number of app instances which are booting,
+// running, or halting.
+func countRunningApps(getconfigCtx *getconfigContext) (runningCount uint) {
+	sub := getconfigCtx.subAppInstanceStatus
+	items := sub.GetAll()
+	for _, s := range items {
+		status := s.(types.AppInstanceStatus)
+		switch status.State {
+		case types.BOOTING, types.RUNNING, types.HALTING:
+			runningCount++
+		case types.PURGING, types.RESTARTING:
+			log.Noticef("countRunningApps: %s for %s in %s",
+				status.Key(), status.DisplayName, status.State)
+			runningCount++
+		}
+	}
+	return runningCount
+}
+
+// Defer shutting down app instances with HasLocalServer until all other app
+// instances has halted
 func shutdownAppsGlobal(ctx *zedagentContext) {
-	shutdownApps(ctx.getconfigCtx)
+	lpsCount := shutdownApps(ctx.getconfigCtx, false)
+	if lpsCount == 0 {
+		log.Noticef("shutDownAppsGlobal: no Local Profile Server apps")
+		return
+	}
+	startTime := time.Now()
+	go func() {
+		for {
+			runningCount := countRunningApps(ctx.getconfigCtx)
+			log.Noticef("shutdownAppsGlobal: %d LPS apps, %d running, waited %v",
+				lpsCount, runningCount, time.Since(startTime))
+			if runningCount > lpsCount {
+				waitTimer := time.NewTimer(10 * time.Second)
+				<-waitTimer.C
+				continue
+			}
+			log.Noticef("shutdownAppsGlobal: defer done after %v",
+				time.Since(startTime))
+			shutdownApps(ctx.getconfigCtx, true)
+			break
+		}
+	}()
 }
 
 var baseOSPrevConfigHash []byte
@@ -2627,7 +2678,6 @@ func handleDeviceOperationCmd(ctxPtr *zedagentContext, infoStr string, op types.
 		return
 	}
 	// shutdown the application instances
-	// XXX can we defer the local profile server til last?
 	shutdownAppsGlobal(ctxPtr)
 	getconfigCtx := ctxPtr.getconfigCtx
 

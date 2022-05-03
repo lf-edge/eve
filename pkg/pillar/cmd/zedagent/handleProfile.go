@@ -120,6 +120,8 @@ func getLocalProfileConfig(getconfigCtx *getconfigContext, localServerURL string
 		if err != nil {
 			return nil, fmt.Errorf("getLocalProfileConfig: updateLocalServerMap: %v", err)
 		}
+		// Make sure HasLocalServer is set correctly for the AppInstanceConfig
+		updateHasLocalServer(getconfigCtx)
 	}
 
 	srvMap := getconfigCtx.localServerMap.servers
