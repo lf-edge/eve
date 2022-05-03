@@ -41,6 +41,7 @@ type Notify struct{}
 type localServerAddr struct {
 	bridgeIP        net.IP
 	localServerAddr string
+	appUUID         uuid.UUID
 }
 
 // localServerMap is a map of all local (profile, radio, ...) servers
@@ -703,7 +704,11 @@ func updateLocalServerMap(getconfigCtx *getconfigContext, localServerURL string)
 			if localServerIP != nil {
 				// check if the defined IP of localServer equals the allocated IP of the app
 				if ulStatus.AllocatedIPv4Addr == localServerIP.String() {
-					srvAddr := localServerAddr{localServerAddr: localServerURL, bridgeIP: bridgeIP}
+					srvAddr := localServerAddr{
+						localServerAddr: localServerURL,
+						bridgeIP:        bridgeIP,
+						appUUID:         appNetworkStatus.UUIDandVersion.UUID,
+					}
 					srvMap.servers[ulStatus.Bridge] = append(srvMap.servers[ulStatus.Bridge], srvAddr)
 				}
 				continue
@@ -721,7 +726,11 @@ func updateLocalServerMap(getconfigCtx *getconfigContext, localServerURL string)
 						log.Functionf(
 							"updateLocalServerMap: will use %s for bridge %s",
 							localServerURLReplaced, ulStatus.Bridge)
-						srvAddr := localServerAddr{localServerAddr: localServerURLReplaced, bridgeIP: bridgeIP}
+						srvAddr := localServerAddr{
+							localServerAddr: localServerURLReplaced,
+							bridgeIP:        bridgeIP,
+							appUUID:         appNetworkStatus.UUIDandVersion.UUID,
+						}
 						srvMap.servers[ulStatus.Bridge] = append(srvMap.servers[ulStatus.Bridge], srvAddr)
 					}
 				}
@@ -733,4 +742,32 @@ func updateLocalServerMap(getconfigCtx *getconfigContext, localServerURL string)
 	// constructed.
 	getconfigCtx.localServerMap = srvMap
 	return nil
+}
+
+// updateHasLocalServer sets HasLocalServer on the app instances
+// Note that if there are changes to the AppInstanceConfig or the allocated IP
+// addresses the HasLocalServer will not immediately reflect that since we need
+// the IP address from AppNetworkStatus.
+func updateHasLocalServer(ctx *getconfigContext) {
+	srvMap := ctx.localServerMap.servers
+	items := ctx.pubAppInstanceConfig.GetAll()
+	for _, item := range items {
+		aic := item.(types.AppInstanceConfig)
+		hasLocalServer := false
+		for _, servers := range srvMap {
+			for _, srv := range servers {
+				if srv.appUUID == aic.UUIDandVersion.UUID {
+					hasLocalServer = true
+					break
+				}
+			}
+		}
+		if hasLocalServer != aic.HasLocalServer {
+			aic.HasLocalServer = hasLocalServer
+			log.Noticef("HasLocalServer(%s) for %s change to %t",
+				aic.Key(), aic.DisplayName, hasLocalServer)
+			// Verify that it fits and if not publish with error
+			checkAndPublishAppInstanceConfig(ctx, aic)
+		}
+	}
 }

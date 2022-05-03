@@ -179,6 +179,8 @@ func publishLocationToLocalServer(ctx *getconfigContext, locInfo *info.ZInfoLoca
 			log.Errorf("publishLocationToLocalServer: updateLocalServerMap: %v", err)
 			return
 		}
+		// Make sure HasLocalServer is set correctly for the AppInstanceConfig
+		updateHasLocalServer(ctx)
 	}
 	srvMap := ctx.localServerMap.servers
 	if len(srvMap) == 0 {

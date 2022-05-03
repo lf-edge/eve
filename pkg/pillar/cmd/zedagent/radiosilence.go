@@ -174,6 +174,8 @@ func getRadioConfig(ctx *getconfigContext, radioStatus *profile.RadioStatus) *pr
 			log.Errorf("getRadioConfig: updateLocalServerMap: %v", err)
 			return nil
 		}
+		// Make sure HasLocalServer is set correctly for the AppInstanceConfig
+		updateHasLocalServer(ctx)
 	}
 	srvMap := ctx.localServerMap.servers
 	if len(srvMap) == 0 {

@@ -125,6 +125,8 @@ func postLocalAppInfo(ctx *getconfigContext) *profile.LocalAppCmdList {
 			log.Errorf("sendLocalAppInfo: updateLocalServerMap: %v", err)
 			return nil
 		}
+		// Make sure HasLocalServer is set correctly for the AppInstanceConfig
+		updateHasLocalServer(ctx)
 	}
 	srvMap := ctx.localServerMap.servers
 	if len(srvMap) == 0 {
@@ -614,6 +616,8 @@ func postLocalDevInfo(ctx *getconfigContext) *profile.LocalDevCmd {
 			log.Errorf("sendLocalDevInfo: updateLocalServerMap: %v", err)
 			return nil
 		}
+		// Make sure HasLocalServer is set correctly for the AppInstanceConfig
+		updateHasLocalServer(ctx)
 	}
 	srvMap := ctx.localServerMap.servers
 	if len(srvMap) == 0 {
@@ -732,7 +736,6 @@ func processReceivedDevCommands(getconfigCtx *getconfigContext, cmd *profile.Loc
 	}
 
 	// shutdown the application instances
-	// XXX can we defer the local profile server til last?
 	shutdownAppsGlobal(ctx)
 
 	publishZedAgentStatus(getconfigCtx)

@@ -321,7 +321,6 @@ func allDomainsHalted(ctxPtr *nodeagentContext) bool {
 // waitForAllDomainsHalted
 //  blocks till all domains are halted. Should only be invoked from
 //  a thread.
-// XXX can we treat app instance running local profile server differently? last?
 func waitForAllDomainsHalted(ctxPtr *nodeagentContext) {
 
 	var totalWaitTime uint32
