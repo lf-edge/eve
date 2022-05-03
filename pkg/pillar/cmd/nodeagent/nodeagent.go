@@ -92,7 +92,11 @@ type nodeagentContext struct {
 	testInprogress              bool
 	timeTickCount               uint32 // Don't get confused by NTP making time jump by tracking our own progression
 	rebootCmd                   bool   // Are we rebooting?
+	shutdownCmd                 bool   // Are we shutting down all apps?
+	poweroffCmd                 bool   // Shutting down all apps plus poweroff?
 	deviceReboot                bool
+	deviceShutdown              bool
+	devicePoweroff              bool
 	currentRebootReason         string // Reason we are rebooting
 	currentBootReason           types.BootReason
 	lastLock                    sync.Mutex       // Ensure publish gets consistent data
@@ -451,7 +455,15 @@ func handleZedAgentStatusImpl(ctxArg interface{}, key string,
 
 	ctxPtr := ctxArg.(*nodeagentContext)
 	status := statusArg.(types.ZedAgentStatus)
-	handleRebootCmd(ctxPtr, status)
+	if status.RebootCmd {
+		handleDeviceCmd(ctxPtr, status, types.DeviceOperationReboot)
+	}
+	if status.ShutdownCmd {
+		handleDeviceCmd(ctxPtr, status, types.DeviceOperationShutdown)
+	}
+	if status.PoweroffCmd {
+		handleDeviceCmd(ctxPtr, status, types.DeviceOperationPoweroff)
+	}
 	updateZedagentCloudConnectStatus(ctxPtr, status)
 	log.Functionf("handleZedAgentStatusImpl(%s) done", key)
 }
@@ -646,6 +658,8 @@ func publishNodeAgentStatus(ctxPtr *nodeagentContext) {
 		RemainingTestTime:          ctxPtr.remainingTestTime,
 		UpdateInprogress:           ctxPtr.updateInprogress,
 		DeviceReboot:               ctxPtr.deviceReboot,
+		DeviceShutdown:             ctxPtr.deviceShutdown,
+		DevicePoweroff:             ctxPtr.devicePoweroff,
 		RebootReason:               ctxPtr.rebootReason,
 		BootReason:                 ctxPtr.bootReason,
 		RebootStack:                ctxPtr.rebootStack,

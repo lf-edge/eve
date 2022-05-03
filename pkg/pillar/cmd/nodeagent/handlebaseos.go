@@ -21,7 +21,8 @@ func doZbootBaseOsInstallationComplete(ctxPtr *nodeagentContext,
 		return
 	}
 	// This check will also handle forced fallback
-	if isZbootOtherPartitionStateUpdating(ctxPtr) && !ctxPtr.deviceReboot {
+	if isZbootOtherPartitionStateUpdating(ctxPtr) && !ctxPtr.deviceReboot &&
+		!ctxPtr.devicePoweroff {
 		var newVersion string
 
 		partName := getZbootOtherPartition(ctxPtr)
@@ -34,7 +35,8 @@ func doZbootBaseOsInstallationComplete(ctxPtr *nodeagentContext,
 		infoStr := fmt.Sprintf("NORMAL: baseos-update(%s) to EVE version %s reboot",
 			key, newVersion)
 		log.Functionf(infoStr)
-		scheduleNodeReboot(ctxPtr, infoStr, types.BootReasonUpdate)
+		scheduleNodeOperation(ctxPtr, infoStr, types.BootReasonUpdate,
+			types.DeviceOperationReboot)
 	}
 }
 

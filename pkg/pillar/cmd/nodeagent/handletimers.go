@@ -64,7 +64,8 @@ func handleFallbackOnCloudDisconnect(ctxPtr *nodeagentContext) {
 		errStr := fmt.Sprintf("Exceeded fallback outage for cloud connectivity %d by %d seconds; rebooting\n",
 			fallbackLimit, timePassed-fallbackLimit)
 		log.Errorf(errStr)
-		scheduleNodeReboot(ctxPtr, errStr, types.BootReasonFallback)
+		scheduleNodeOperation(ctxPtr, errStr, types.BootReasonFallback,
+			types.DeviceOperationReboot)
 	} else {
 		log.Functionf("handleFallbackOnCloudDisconnect %d seconds remaining",
 			fallbackLimit-timePassed)
@@ -80,7 +81,8 @@ func handleResetOnCloudDisconnect(ctxPtr *nodeagentContext) {
 		errStr := fmt.Sprintf("Exceeded outage for cloud connectivity %d by %d seconds; rebooting\n",
 			resetLimit, timePassed-resetLimit)
 		log.Errorf(errStr)
-		scheduleNodeReboot(ctxPtr, errStr, types.BootReasonDisconnect)
+		scheduleNodeOperation(ctxPtr, errStr, types.BootReasonDisconnect,
+			types.DeviceOperationReboot)
 	} else {
 		log.Tracef("handleResetOnCloudDisconnect %d seconds remaining",
 			resetLimit-timePassed)
@@ -90,7 +92,7 @@ func handleResetOnCloudDisconnect(ctxPtr *nodeagentContext) {
 // on upgrade validation testing time expiry,
 // initiate the validation completion procedure
 func handleUpgradeTestValidation(ctxPtr *nodeagentContext) {
-	if !ctxPtr.testInprogress || ctxPtr.deviceReboot {
+	if !ctxPtr.testInprogress || ctxPtr.deviceReboot || ctxPtr.devicePoweroff {
 		return
 	}
 	if checkUpgradeValidationTestTimeExpiry(ctxPtr) {
@@ -126,7 +128,8 @@ func handleRebootOnVaultLocked(ctxPtr *nodeagentContext) {
 			errStr := fmt.Sprintf("Exceeded time for vault to be ready %d by %d seconds, rebooting",
 				vaultCutOffTime, timePassed-vaultCutOffTime)
 			log.Errorf(errStr)
-			scheduleNodeReboot(ctxPtr, errStr, types.BootReasonVaultFailure)
+			scheduleNodeOperation(ctxPtr, errStr, types.BootReasonVaultFailure,
+				types.DeviceOperationReboot)
 		} else {
 			log.Noticef("Setting %s",
 				types.MaintenanceModeReasonVaultLockedUp)
@@ -228,39 +231,73 @@ func updateZedagentCloudConnectStatus(ctxPtr *nodeagentContext,
 	}
 }
 
-// zedagent is telling us to reboot
-func handleRebootCmd(ctxPtr *nodeagentContext, status types.ZedAgentStatus) {
-	if !status.RebootCmd || ctxPtr.rebootCmd {
+// zedagent is telling us to reboot/shutdown/poweroff
+func handleDeviceCmd(ctxPtr *nodeagentContext, status types.ZedAgentStatus, op types.DeviceOperation) {
+	switch op {
+	case types.DeviceOperationReboot:
+		if !status.RebootCmd || ctxPtr.rebootCmd {
+			return
+		}
+		ctxPtr.rebootCmd = true
+	case types.DeviceOperationShutdown:
+		if !status.ShutdownCmd || ctxPtr.shutdownCmd {
+			return
+		}
+		ctxPtr.shutdownCmd = true
+	case types.DeviceOperationPoweroff:
+		if !status.PoweroffCmd || ctxPtr.poweroffCmd {
+			return
+		}
+		ctxPtr.poweroffCmd = true
+	default:
+		log.Errorf("handleDeviceCmd unknown operation: %v", op)
 		return
 	}
-	log.Functionf("handleRebootCmd reason %s bootReason %s",
+	log.Functionf("handleDeviceCmd reason %s bootReason %s",
 		status.RebootReason, status.BootReason.String())
-	ctxPtr.rebootCmd = true
-	scheduleNodeReboot(ctxPtr, status.RebootReason, status.BootReason)
+	scheduleNodeOperation(ctxPtr, status.RebootReason, status.BootReason, op)
 }
 
-func scheduleNodeReboot(ctxPtr *nodeagentContext, reasonStr string, bootReason types.BootReason) {
-	if ctxPtr.deviceReboot {
-		log.Functionf("reboot flag is already set")
+func scheduleNodeOperation(ctxPtr *nodeagentContext, reasonStr string, bootReason types.BootReason, op types.DeviceOperation) {
+	switch op {
+	case types.DeviceOperationReboot:
+		if ctxPtr.deviceReboot {
+			log.Functionf("reboot flag is already set")
+			return
+		}
+		ctxPtr.deviceReboot = true
+	case types.DeviceOperationShutdown:
+		if ctxPtr.deviceShutdown {
+			log.Functionf("shutdown flag is already set")
+			return
+		}
+		ctxPtr.deviceShutdown = true
+	case types.DeviceOperationPoweroff:
+		if ctxPtr.devicePoweroff {
+			log.Functionf("poweroff flag is already set")
+			return
+		}
+		ctxPtr.devicePoweroff = true
+	default:
+		log.Errorf("scheduleNodeOperation unknown operation: %v", op)
 		return
 	}
-	log.Functionf("scheduleNodeReboot(): current RebootReason: %s BootReason %s",
+	log.Functionf("scheduleNodeOperation(): current RebootReason: %s BootReason %s",
 		reasonStr, bootReason.String())
 
-	// publish, for zedagent to pick up the reboot event
+	// publish, for zedagent to pick up the event
 	// TBD:XXX, all other agents can subscribe to nodeagent or,
 	// status to gracefully shutdown their states, for example
 	// downloader can teardown the existing connections
 	// and clean up its temporary states etc.
-	ctxPtr.deviceReboot = true
 	ctxPtr.currentRebootReason = reasonStr
 	ctxPtr.currentBootReason = bootReason
 	publishNodeAgentStatus(ctxPtr)
 
 	// in any case, execute the reboot procedure
 	// with a delayed timer
-	log.Functionf("Creating %s at %s", "handleNodeReboot", agentlog.GetMyStack())
-	go handleNodeReboot(ctxPtr)
+	log.Functionf("Creating %s at %s", "scheduleNodeOperation", agentlog.GetMyStack())
+	go handleNodeOperation(ctxPtr, op)
 }
 
 func allDomainsHalted(ctxPtr *nodeagentContext) bool {
@@ -284,6 +321,7 @@ func allDomainsHalted(ctxPtr *nodeagentContext) bool {
 // waitForAllDomainsHalted
 //  blocks till all domains are halted. Should only be invoked from
 //  a thread.
+// XXX can we treat app instance running local profile server differently? last?
 func waitForAllDomainsHalted(ctxPtr *nodeagentContext) {
 
 	var totalWaitTime uint32
@@ -304,36 +342,47 @@ func waitForAllDomainsHalted(ctxPtr *nodeagentContext) {
 		"with reboot", totalWaitTime, maxDomainHaltTime)
 }
 
-func handleNodeReboot(ctxPtr *nodeagentContext) {
+func handleNodeOperation(ctxPtr *nodeagentContext, op types.DeviceOperation) {
 	// Wait for MinRebootDelay time
 	duration := time.Second * time.Duration(minRebootDelay)
 	rebootTimer := time.NewTimer(duration)
-	log.Functionf("handleNodeReboot: minRebootDelay timer %d seconds",
+	log.Functionf("handleNodeOperation: minRebootDelay timer %d seconds",
 		duration/time.Second)
 	<-rebootTimer.C
 
-	// set the reboot reason
-	agentlog.RebootReason(ctxPtr.currentRebootReason,
-		ctxPtr.currentBootReason, agentName, os.Getpid(), true)
-
+	if op != types.DeviceOperationShutdown {
+		// set the reboot reason
+		agentlog.RebootReason(ctxPtr.currentRebootReason,
+			ctxPtr.currentBootReason, agentName, os.Getpid(), true)
+	}
 	// Wait for All Domains Halted
 	waitForAllDomainsHalted(ctxPtr)
 
 	// do a sync
 	log.Functionf("Doing a sync..")
 	syscall.Sync()
-	log.Functionf("Rebooting... Starting timer for Duration(secs): %d",
-		duration/time.Second)
+	opStr := ""
+	switch op {
+	case types.DeviceOperationShutdown:
+		log.Functionf("Shutting down done")
+		return
+	case types.DeviceOperationPoweroff:
+		opStr = "Power off"
+	case types.DeviceOperationReboot:
+		opStr = "Rebooting"
+	}
+	log.Functionf("%s... Starting timer for Duration(secs): %d",
+		opStr, duration/time.Second)
 
 	rebootTimer = time.NewTimer(duration)
 	log.Functionf("Timer started. Wait to expire")
 	<-rebootTimer.C
 	rebootTimer = time.NewTimer(1)
-	log.Functionf("Timer Expired.. Zboot.Reset()")
+	log.Functionf("Timer Expired.. %s", opStr)
 	syscall.Sync()
 	<-rebootTimer.C
 	go func() {
-		// in case of problems inside zboot.Reset
+		// in case of problems inside zboot.Reset or zboot.Poweroff
 		// we will stop zedbox process after delay of 120 seconds
 		// and wait for watchdog to fire.
 		// This time needs to be long; if there are disks in failed state
@@ -342,5 +391,9 @@ func handleNodeReboot(ctxPtr *nodeagentContext) {
 		log.Errorf("Timer expired.. Exit %s", agentName)
 		os.Exit(0)
 	}()
-	zboot.Reset(log)
+	if op == types.DeviceOperationPoweroff {
+		zboot.Poweroff(log)
+	} else {
+		zboot.Reset(log)
+	}
 }
