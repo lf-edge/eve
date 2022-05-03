@@ -7,15 +7,21 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
+	"github.com/golang/protobuf/ptypes"
+	"github.com/lf-edge/eve/api/go/info"
 	"github.com/lf-edge/eve/api/go/profile"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 	uuid "github.com/satori/go.uuid"
+	"github.com/shirou/gopsutil/host"
 )
 
 const (
@@ -23,10 +29,14 @@ const (
 	localAppInfoPOSTInterval          = time.Minute
 	localAppInfoPOSTThrottledInterval = time.Hour
 	savedLocalCommandsFile            = "localcommands"
+	localDevInfoURLPath               = "/api/v1/devinfo"
+	localDevInfoPOSTInterval          = time.Minute
+	localDevInfoPOSTThrottledInterval = time.Hour
 )
 
 var (
 	throttledLocalAppInfo bool
+	throttledLocalDevInfo bool
 )
 
 //updateLocalAppInfoTicker sets ticker options to the initial value
@@ -123,7 +133,7 @@ func postLocalAppInfo(ctx *getconfigContext) *profile.LocalAppCmdList {
 		return nil
 	}
 
-	localInfo := prepareLocalInfo(ctx)
+	localInfo := prepareLocalAppInfo(ctx)
 	var errList []string
 	for bridgeName, servers := range srvMap {
 		for _, srv := range servers {
@@ -404,7 +414,7 @@ func delLocalVolumeConfig(ctx *getconfigContext, volumeUUID string) {
 	persistLocalCommands(ctx.localCommands)
 }
 
-func prepareLocalInfo(ctx *getconfigContext) *profile.LocalAppInfoList {
+func prepareLocalAppInfo(ctx *getconfigContext) *profile.LocalAppInfoList {
 	msg := profile.LocalAppInfoList{}
 	ctx.localCommands.Lock()
 	defer ctx.localCommands.Unlock()
@@ -489,4 +499,252 @@ func persistLocalCommands(localCommands *types.LocalCommands) {
 // local commands.
 func touchLocalCommands() {
 	touchSavedConfig(savedLocalCommandsFile)
+}
+
+//updateLocalDevInfoTicker sets ticker options to the initial value
+//if throttle set, will use localDevInfoPOSTThrottledInterval as interval
+func updateLocalDevInfoTicker(ctx *getconfigContext, throttle bool) {
+	interval := float64(localDevInfoPOSTInterval)
+	if throttle {
+		interval = float64(localDevInfoPOSTThrottledInterval)
+	}
+	max := 1.1 * interval
+	min := 0.8 * max
+	throttledLocalDevInfo = throttle
+	ctx.localDevInfoPOSTTicker.UpdateRangeTicker(time.Duration(min), time.Duration(max))
+}
+
+func initializeLocalDevInfo(ctx *getconfigContext) {
+	max := 1.1 * float64(localDevInfoPOSTInterval)
+	min := 0.8 * max
+	ctx.localDevInfoPOSTTicker = flextimer.NewRangeTicker(time.Duration(min), time.Duration(max))
+}
+
+const maxReadSize = 1024 // Sufficient for a uin64
+
+func initializeLocalDevCmdTimestamp(ctx *getconfigContext) {
+	if _, err := os.Stat(lastDevCmdTimestampFile); err != nil && os.IsNotExist(err) {
+		ctx.lastDevCmdTimestamp = 0
+		return
+	}
+	b, err := fileutils.ReadWithMaxSize(log, lastDevCmdTimestampFile,
+		maxReadSize)
+	if err != nil {
+		log.Errorf("initializeLocalDevCmdTimestamp read: %s", err)
+		ctx.lastDevCmdTimestamp = 0
+		return
+	}
+	u, err := strconv.ParseUint(string(b), 10, 64)
+	if err != nil {
+		log.Errorf("initializeLocalDevCmdTimestamp: %s", err)
+		ctx.lastDevCmdTimestamp = 0
+	} else {
+		ctx.lastDevCmdTimestamp = u
+		log.Noticef("initializeLocalDevCmdTimestamp: read %d",
+			ctx.lastDevCmdTimestamp)
+	}
+}
+
+func saveLocalDevCmdTimestamp(ctx *getconfigContext) {
+	b := []byte(fmt.Sprintf("%v", ctx.lastDevCmdTimestamp))
+	err := fileutils.WriteRename(lastDevCmdTimestampFile, b)
+	if err != nil {
+		log.Errorf("saveLocalDevCmdTimestamp write: %s", err)
+	}
+}
+
+func triggerLocalDevInfoPOST(ctx *getconfigContext) {
+	log.Functionf("Triggering POST for %s to local server", localDevInfoURLPath)
+	if throttledLocalDevInfo {
+		log.Functionln("throttledLocalDevInfo flag set")
+		return
+	}
+	ctx.localDevInfoPOSTTicker.TickNow()
+}
+
+// Run a periodic POST request to send information message about devs to local server
+// and optionally receive dev commands to run in the response.
+func localDevInfoPOSTTask(ctx *getconfigContext) {
+
+	log.Functionf("localDevInfoPOSTTask: waiting for localDevInfoPOSTTicker")
+	// wait for the first trigger
+	<-ctx.localDevInfoPOSTTicker.C
+	log.Functionln("localDevInfoPOSTTask: waiting for localDevInfoPOSTTicker done")
+	// trigger again to pass into the loop
+	triggerLocalDevInfoPOST(ctx)
+
+	wdName := agentName + "-localdevinfo"
+
+	// Run a periodic timer so we always update StillRunning
+	stillRunning := time.NewTicker(25 * time.Second)
+	ctx.zedagentCtx.ps.StillRunning(wdName, warningTime, errorTime)
+	ctx.zedagentCtx.ps.RegisterFileWatchdog(wdName)
+
+	for {
+		select {
+		case <-ctx.localDevInfoPOSTTicker.C:
+			start := time.Now()
+			devCmd := postLocalDevInfo(ctx)
+			if devCmd != nil {
+				processReceivedDevCommands(ctx, devCmd)
+			}
+			ctx.zedagentCtx.ps.CheckMaxTimeTopic(wdName, "localDevInfoPOSTTask", start,
+				warningTime, errorTime)
+		case <-stillRunning.C:
+		}
+		ctx.zedagentCtx.ps.StillRunning(wdName, warningTime, errorTime)
+	}
+}
+
+// Post the current state of locally running devlication instances to the local server
+// and optionally receive a set of dev commands to run in the response.
+func postLocalDevInfo(ctx *getconfigContext) *profile.LocalDevCmd {
+	localProfileServer := ctx.localProfileServer
+	if localProfileServer == "" {
+		return nil
+	}
+	localServerURL, err := makeLocalServerBaseURL(localProfileServer)
+	if err != nil {
+		log.Errorf("sendLocalDevInfo: makeLocalServerBaseURL: %v", err)
+		return nil
+	}
+	if !ctx.localServerMap.upToDate {
+		err := updateLocalServerMap(ctx, localServerURL)
+		if err != nil {
+			log.Errorf("sendLocalDevInfo: updateLocalServerMap: %v", err)
+			return nil
+		}
+	}
+	srvMap := ctx.localServerMap.servers
+	if len(srvMap) == 0 {
+		log.Functionf("sendLocalDevInfo: cannot find any configured devs for localServerURL: %s",
+			localServerURL)
+		return nil
+	}
+
+	localInfo := prepareLocalDevInfo(ctx.zedagentCtx)
+	var errList []string
+	for bridgeName, servers := range srvMap {
+		for _, srv := range servers {
+			fullURL := srv.localServerAddr + localDevInfoURLPath
+			devCmd := &profile.LocalDevCmd{}
+			resp, err := zedcloud.SendLocalProto(
+				zedcloudCtx, fullURL, bridgeName, srv.bridgeIP,
+				localInfo, devCmd)
+			if err != nil {
+				errList = append(errList, fmt.Sprintf("SendLocalProto: %v", err))
+				continue
+			}
+			switch resp.StatusCode {
+			case http.StatusNotFound:
+				// Throttle sending to be about once per hour.
+				updateLocalDevInfoTicker(ctx, true)
+				return nil
+			case http.StatusOK:
+				if devCmd.GetServerToken() != ctx.profileServerToken {
+					errList = append(errList,
+						fmt.Sprintf("invalid token submitted by local server (%s)",
+							devCmd.GetServerToken()))
+					continue
+				}
+				updateLocalDevInfoTicker(ctx, false)
+				return devCmd
+			case http.StatusNoContent:
+				log.Functionf("Local server %s does not require additional dev commands to execute",
+					localServerURL)
+				updateLocalDevInfoTicker(ctx, false)
+				return nil
+			default:
+				errList = append(errList, fmt.Sprintf("sendLocalDevInfo: wrong response status code: %d",
+					resp.StatusCode))
+				continue
+			}
+		}
+	}
+	log.Errorf("sendLocalDevInfo: all attempts failed: %s", strings.Join(errList, ";"))
+	return nil
+}
+
+func prepareLocalDevInfo(ctx *zedagentContext) *profile.LocalDevInfo {
+	msg := profile.LocalDevInfo{}
+	msg.DeviceUuid = devUUID.String()
+	msg.State = getState(ctx)
+	msg.MaintenanceModeReasons = append(msg.MaintenanceModeReasons,
+		info.MaintenanceModeReason(ctx.maintModeReason))
+	hinfo, err := host.Info()
+	if err != nil {
+		log.Errorf("host.Info(): %s", err)
+	} else {
+		bootTime, _ := ptypes.TimestampProto(
+			time.Unix(int64(hinfo.BootTime), 0).UTC())
+		msg.BootTime = bootTime
+	}
+	msg.LastBootReason = info.BootReason(ctx.bootReason)
+	msg.LastCmdTimestamp = ctx.getconfigCtx.lastDevCmdTimestamp
+	return &msg
+}
+
+func processReceivedDevCommands(getconfigCtx *getconfigContext, cmd *profile.LocalDevCmd) {
+	ctx := getconfigCtx.zedagentCtx
+	if cmd == nil {
+		return
+	}
+
+	if cmd.Timestamp == getconfigCtx.lastDevCmdTimestamp {
+		log.Functionf("unchanged timestamp %v",
+			getconfigCtx.lastDevCmdTimestamp)
+		return
+	}
+	command := types.DevCommand(cmd.Command)
+	if getconfigCtx.updateInprogress {
+		switch command {
+		case types.DevCommandUnspecified:
+			// Do nothing
+		case types.DevCommandShutdown:
+			log.Noticef("Received shutdown from local profile server during updateInProgress")
+			ctx.shutdownCmdDeferred = true
+		case types.DevCommandShutdownPoweroff:
+			log.Noticef("Received shutdown_poweroff from local profile server during updateInProgress")
+			ctx.poweroffCmdDeferred = true
+		}
+		return
+	}
+	switch command {
+	case types.DevCommandUnspecified:
+		// Do nothing
+		return
+	case types.DevCommandShutdown:
+		log.Noticef("Received shutdown from local profile server")
+		if ctx.shutdownCmd || ctx.deviceShutdown {
+			log.Warnf("Shutdown already in progress")
+			return
+		}
+		ctx.shutdownCmd = true
+	case types.DevCommandShutdownPoweroff:
+		log.Noticef("Received shutdown_poweroff from local profile server")
+		if ctx.poweroffCmd || ctx.devicePoweroff {
+			log.Warnf("Poweroff already in progress")
+		}
+		ctx.poweroffCmd = true
+		infoStr := fmt.Sprintf("NORMAL: local profile server power off")
+		ctx.currentRebootReason = infoStr
+		ctx.currentBootReason = types.BootReasonPoweroffCmd
+	}
+
+	// shutdown the application instances
+	// XXX can we defer the local profile server til last?
+	shutdownAppsGlobal(ctx)
+
+	publishZedAgentStatus(getconfigCtx)
+
+	// Persist timestamp here even though the operation is not complete.
+	// The only reason it would not complete is if we crash or reboot due to
+	// a power failure, and in that case we'd shutdown all the app instances
+	// implicitly.
+	// However, if it was a shutdown_poweroff command and we crash to get a
+	// power failure, then we will not poweroff. It seems impossible to do that
+	// without introducing a race condition where we might poweroff without
+	// a power cycle from a UPS to power on again.
+	getconfigCtx.lastDevCmdTimestamp = cmd.Timestamp
+	saveLocalDevCmdTimestamp(getconfigCtx)
 }

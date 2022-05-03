@@ -563,6 +563,7 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 
 	ReportDeviceInfo.RestartCounter = ctx.restartCounter
 	ReportDeviceInfo.RebootConfigCounter = ctx.rebootConfigCounter
+	ReportDeviceInfo.ShutdownConfigCounter = ctx.shutdownConfigCounter
 
 	//Operational information about TPM presence/absence/usage.
 	ReportDeviceInfo.HSMStatus = etpm.FetchTpmSwStatus()
@@ -589,7 +590,8 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 	// Watchdog
 	ReportDeviceInfo.HardwareWatchdogPresent = getHarwareWatchdogPresent(ctx)
 
-	ReportDeviceInfo.RebootInprogress = ctx.getconfigCtx.rebootFlag
+	// This is also reported in State
+	ReportDeviceInfo.RebootInprogress = ctx.rebootCmd || ctx.deviceReboot
 
 	ReportDeviceInfo.Capabilities = getCapabilities(ctx)
 
@@ -1060,6 +1062,12 @@ func getState(ctx *zedagentContext) info.ZDeviceState {
 	}
 	if ctx.rebootCmd || ctx.deviceReboot {
 		return info.ZDeviceState_ZDEVICE_STATE_REBOOTING
+	}
+	if ctx.shutdownCmd || ctx.deviceShutdown {
+		return info.ZDeviceState_ZDEVICE_STATE_SHUTTING_DOWN
+	}
+	if ctx.poweroffCmd || ctx.devicePoweroff {
+		return info.ZDeviceState_ZDEVICE_STATE_POWERING_OFF
 	}
 	if ctx.getconfigCtx != nil && ctx.getconfigCtx.configReceived {
 		return info.ZDeviceState_ZDEVICE_STATE_ONLINE

@@ -93,7 +93,7 @@ type getconfigContext struct {
 	pubVolumeConfig           pubsub.Publication
 	pubDisksConfig            pubsub.Publication
 	NodeAgentStatus           *types.NodeAgentStatus
-	rebootFlag                bool
+	configProcessingSkipFlag  bool
 	lastReceivedConfig        time.Time
 	lastProcessedConfig       time.Time
 	localProfileServer        string
@@ -103,6 +103,7 @@ type getconfigContext struct {
 	localProfile              string
 	localProfileTrigger       chan Notify
 	localServerMap            *localServerMap
+	lastDevCmdTimestamp       uint64 // From lastDevCmdTimestampFile
 
 	// parsed L2 adapters
 	vlans []L2Adapter
@@ -113,6 +114,7 @@ type getconfigContext struct {
 	triggerRadioPOST chan Notify
 
 	localAppInfoPOSTTicker flextimer.FlexTickerHandle
+	localDevInfoPOSTTicker flextimer.FlexTickerHandle
 
 	// When enabled, device location reports are being published to the Local profile server
 	// at a significantly decreased rate.
@@ -184,10 +186,10 @@ func configTimerTask(handleChannel chan interface{},
 	ctx := getconfigCtx.zedagentCtx
 	configUrl := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API, devUUID, "config")
 	iteration := 0
-	rebootFlag := getLatestConfig(configUrl, iteration,
+	configProcessingSkipFlag := getLatestConfig(configUrl, iteration,
 		getconfigCtx)
-	if rebootFlag != getconfigCtx.rebootFlag {
-		getconfigCtx.rebootFlag = rebootFlag
+	if configProcessingSkipFlag != getconfigCtx.configProcessingSkipFlag {
+		getconfigCtx.configProcessingSkipFlag = configProcessingSkipFlag
 		triggerPublishDevInfo(ctx)
 	}
 	getconfigCtx.localServerMap.upToDate = false
@@ -224,9 +226,9 @@ func configTimerTask(handleChannel chan interface{},
 			// In case devUUID changed we re-generate
 			configUrl = zedcloud.URLPathString(serverNameAndPort,
 				zedcloudCtx.V2API, devUUID, "config")
-			rebootFlag := getLatestConfig(configUrl, iteration, getconfigCtx)
-			if rebootFlag != getconfigCtx.rebootFlag {
-				getconfigCtx.rebootFlag = rebootFlag
+			configProcessingSkipFlag := getLatestConfig(configUrl, iteration, getconfigCtx)
+			if configProcessingSkipFlag != getconfigCtx.configProcessingSkipFlag {
+				getconfigCtx.configProcessingSkipFlag = configProcessingSkipFlag
 				triggerPublishDevInfo(ctx)
 			}
 			getconfigCtx.localServerMap.upToDate = false
@@ -241,8 +243,8 @@ func configTimerTask(handleChannel chan interface{},
 				warningTime, errorTime)
 
 		case <-stillRunning.C:
-			if getconfigCtx.rebootFlag {
-				log.Noticef("reboot flag set")
+			if getconfigCtx.configProcessingSkipFlag {
+				log.Noticef("config processing skip flag set")
 			}
 		}
 		ctx.ps.StillRunning(wdName, warningTime, errorTime)
@@ -276,7 +278,7 @@ func updateConfigTimer(configInterval uint32, tickerHandle interface{}) {
 // Start by trying the all the free management ports and then all the non-free
 // until one succeeds in communicating with the cloud.
 // We use the iteration argument to start at a different point each time.
-// Returns a rebootFlag
+// Returns a configProcessingSkipFlag
 func getLatestConfig(url string, iteration int,
 	getconfigCtx *getconfigContext) bool {
 
@@ -586,7 +588,7 @@ func readConfigResponseProtoMessage(resp *http.Response, contents []byte) (bool,
 	return true, config, nil
 }
 
-// Returns a rebootFlag
+// Returns a configProcessingSkipFlag
 func inhaleDeviceConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigContext, usingSaved bool) bool {
 	log.Tracef("Inhaling config")
 
@@ -615,7 +617,7 @@ func inhaleDeviceConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigCo
 		}
 	}
 
-	// add new BaseOS/App instances; returns rebootFlag
+	// add new BaseOS/App instances; returns configProcessingSkipFlag
 	return parseConfig(config, getconfigCtx, usingSaved)
 }
 
@@ -662,6 +664,8 @@ func publishZedAgentStatus(getconfigCtx *getconfigContext) {
 		Name:                 agentName,
 		ConfigGetStatus:      getconfigCtx.configGetStatus,
 		RebootCmd:            ctx.rebootCmd,
+		ShutdownCmd:          ctx.shutdownCmd,
+		PoweroffCmd:          ctx.poweroffCmd,
 		RebootReason:         ctx.currentRebootReason,
 		BootReason:           ctx.currentBootReason,
 		MaintenanceMode:      ctx.maintenanceMode,

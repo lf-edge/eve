@@ -268,6 +268,7 @@ const (
 	BootReasonPowerFail          // Known power failure e.g., from disk controller S.M.A.R.T counter increase
 	BootReasonUnknown            // Could be power failure, kernel panic, or hardware watchdog
 	BootReasonVaultFailure       // Vault was not ready within the expected time
+	BootReasonPoweroffCmd        // Start after Local Profile Server poweroff
 	BootReasonParseFail    = 255 // BootReasonFromString didn't find match
 )
 
@@ -302,6 +303,8 @@ func (br BootReason) String() string {
 		return "BootReasonUnknown"
 	case BootReasonVaultFailure:
 		return "BootReasonVaultFailure"
+	case BootReasonPoweroffCmd:
+		return "BootReasonPoweroffCmd"
 	default:
 		return fmt.Sprintf("Unknown BootReason %d", br)
 	}
@@ -340,6 +343,8 @@ func (br BootReason) StartWithSavedConfig() bool {
 		return true
 	case BootReasonVaultFailure:
 		return false
+	case BootReasonPoweroffCmd:
+		return true
 	default:
 		return false
 	}
@@ -379,6 +384,8 @@ func BootReasonFromString(str string) BootReason {
 		return BootReasonUnknown
 	case "BootReasonVaultFailure":
 		return BootReasonVaultFailure
+	case "BootReasonPoweroffCmd":
+		return BootReasonPoweroffCmd
 	default:
 		return BootReasonParseFail
 	}
@@ -415,6 +422,8 @@ type NodeAgentStatus struct {
 	UpdateInprogress           bool
 	RemainingTestTime          time.Duration
 	DeviceReboot               bool
+	DeviceShutdown             bool
+	DevicePoweroff             bool
 	RebootReason               string     // From last reboot
 	BootReason                 BootReason // From last reboot
 	RebootStack                string     // From last reboot
@@ -479,11 +488,39 @@ const (
 	ConfigGetReadSaved
 )
 
+//DeviceOperation is an operation on device
+type DeviceOperation uint8
+
+const (
+	//DeviceOperationReboot reboot the device
+	DeviceOperationReboot DeviceOperation = iota
+	//DeviceOperationShutdown shutdown all app instances on device
+	DeviceOperationShutdown
+	//DeviceOperationPoweroff is shutdown plus poweroff. Not setable from controller
+	DeviceOperationPoweroff
+)
+
+// String returns the verbose equivalent of DeviceOperation code
+func (do DeviceOperation) String() string {
+	switch do {
+	case DeviceOperationReboot:
+		return "reboot"
+	case DeviceOperationShutdown:
+		return "shutdown"
+	case DeviceOperationPoweroff:
+		return "poweroff"
+	default:
+		return fmt.Sprintf("Unknown DeviceOperation %d", do)
+	}
+}
+
 // ZedAgentStatus :
 type ZedAgentStatus struct {
 	Name                 string
 	ConfigGetStatus      ConfigGetStatus
 	RebootCmd            bool
+	ShutdownCmd          bool
+	PoweroffCmd          bool
 	RebootReason         string       // Current reason to reboot
 	BootReason           BootReason   // Current reason to reboot
 	MaintenanceMode      bool         // Don't run apps etc
@@ -656,3 +693,16 @@ type LocalAppCounters struct {
 	// via local server for this application in total (including uncompleted requests).
 	PurgeCmd AppInstanceOpsCmd
 }
+
+// DevCommand : application command requested to run by a local server.
+type DevCommand uint8
+
+// Integer values are in-sync with proto enum LocalDevCmd_Command.
+const (
+	// DevCommandUnspecified : command was not specified (invalid input).
+	DevCommandUnspecified DevCommand = iota
+	// DevCommandShutdown : shut down all app instances
+	DevCommandShutdown
+	// DevCommandShutdownPoweroff : shut down all app instances + poweroff
+	DevCommandShutdownPoweroff
+)

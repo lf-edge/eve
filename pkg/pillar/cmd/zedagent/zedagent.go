@@ -49,8 +49,9 @@ import (
 )
 
 const (
-	agentName          = "zedagent"
-	restartCounterFile = types.PersistStatusDir + "/restartcounter"
+	agentName               = "zedagent"
+	restartCounterFile      = types.PersistStatusDir + "/restartcounter"
+	lastDevCmdTimestampFile = types.PersistStatusDir + "/lastdevcmdtimestamp"
 	// checkpointDirname - location of config checkpoint
 	checkpointDirname = types.PersistDir + "/checkpoint"
 	// Time limits for event loop handlers
@@ -137,7 +138,13 @@ type zedagentContext struct {
 	zedcloudMetrics           *zedcloud.AgentMetrics
 	rebootCmd                 bool
 	rebootCmdDeferred         bool
-	deviceReboot              bool
+	deviceReboot              bool // From nodeagent
+	shutdownCmd               bool
+	shutdownCmdDeferred       bool
+	deviceShutdown            bool // From nodeagent
+	poweroffCmd               bool
+	poweroffCmdDeferred       bool
+	devicePoweroff            bool             // From nodeagent
 	currentRebootReason       string           // Set by zedagent
 	currentBootReason         types.BootReason // Set by zedagent
 	rebootReason              string           // Previous reboot from nodeagent
@@ -151,6 +158,7 @@ type zedagentContext struct {
 	//  device info msg. Can be used to verify device is caught up on all
 	// outstanding reboot commands from cloud.
 	rebootConfigCounter     uint32
+	shutdownConfigCounter   uint32
 	subDevicePortConfigList pubsub.Subscription
 	DevicePortConfigList    *types.DevicePortConfigList
 	remainingTestTime       time.Duration
@@ -264,11 +272,18 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	zedagentCtx.globalStatus.UnknownConfigItems = make(
 		map[string]types.ConfigItemStatus)
 
-	rebootConfig := readRebootConfig()
+	rebootConfig := readDeviceOpsCmdConfig(types.DeviceOperationReboot)
 	if rebootConfig != nil {
 		zedagentCtx.rebootConfigCounter = rebootConfig.Counter
 		log.Functionf("Zedagent Run - rebootConfigCounter at init is %d",
 			zedagentCtx.rebootConfigCounter)
+	}
+
+	shutdownConfig := readDeviceOpsCmdConfig(types.DeviceOperationShutdown)
+	if shutdownConfig != nil {
+		zedagentCtx.shutdownConfigCounter = shutdownConfig.Counter
+		log.Functionf("Zedagent Run - shutdownConfigCounter at init is %d",
+			zedagentCtx.shutdownConfigCounter)
 	}
 
 	zedagentCtx.physicalIoAdapterMap = make(map[string]types.PhysicalIOAdapter)
@@ -1378,6 +1393,10 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	go localAppInfoPOSTTask(&getconfigCtx)
 	initializeLocalCommands(&getconfigCtx)
 
+	initializeLocalDevCmdTimestamp(&getconfigCtx)
+	initializeLocalDevInfo(&getconfigCtx)
+	go localDevInfoPOSTTask(&getconfigCtx)
+
 	// start the config fetch tasks, when zboot status is ready
 	log.Functionf("Creating %s at %s", "configTimerTask", agentlog.GetMyStack())
 	go configTimerTask(handleChannel, &getconfigCtx)
@@ -1691,6 +1710,7 @@ func triggerPublishDevInfo(ctxPtr *zedagentContext) {
 		// and we get a second and third trigger before that is complete.
 		log.Warnf("Failed to send on PublishDeviceInfo")
 	}
+	triggerLocalDevInfoPOST(ctxPtr.getconfigCtx)
 }
 
 func triggerPublishAllInfo(ctxPtr *zedagentContext) {
@@ -2228,10 +2248,30 @@ func handleNodeAgentStatusImpl(ctxArg interface{}, key string,
 		log.Functionf("TestComplete and deferred reboot")
 		ctx.rebootCmdDeferred = false
 		infoStr := fmt.Sprintf("TestComplete and deferred Reboot Cmd")
-		handleRebootCmd(ctx, infoStr)
+		handleDeviceOperationCmd(ctx, infoStr, types.DeviceOperationReboot)
+	}
+	if ctx.shutdownCmdDeferred &&
+		updateInprogress && !status.UpdateInprogress {
+		log.Functionf("TestComplete and deferred shutdown")
+		ctx.shutdownCmdDeferred = false
+		infoStr := fmt.Sprintf("TestComplete and deferred Shutdown Cmd")
+		handleDeviceOperationCmd(ctx, infoStr, types.DeviceOperationShutdown)
+	}
+	if ctx.poweroffCmdDeferred &&
+		updateInprogress && !status.UpdateInprogress {
+		log.Functionf("TestComplete and deferred poweroff")
+		ctx.poweroffCmdDeferred = false
+		infoStr := fmt.Sprintf("TestComplete and deferred Poweroff Cmd")
+		handleDeviceOperationCmd(ctx, infoStr, types.DeviceOperationPoweroff)
 	}
 	if status.DeviceReboot {
-		handleDeviceReboot(ctx)
+		handleDeviceOperation(ctx, types.DeviceOperationReboot)
+	}
+	if status.DeviceShutdown {
+		handleDeviceOperation(ctx, types.DeviceOperationShutdown)
+	}
+	if status.DevicePoweroff {
+		handleDeviceOperation(ctx, types.DeviceOperationPoweroff)
 	}
 	if ctx.localMaintenanceMode != status.LocalMaintenanceMode {
 		ctx.localMaintenanceMode = status.LocalMaintenanceMode
