@@ -645,10 +645,14 @@ type CellularSignalStrength struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
+	// Received Signal Strength Indicator (RSSI) measured in dBm (decibel-milliwatts).
 	Rssi int32 `protobuf:"varint,1,opt,name=rssi,proto3" json:"rssi,omitempty"`
+	// Reference Signal Received Quality (RSRQ) measured in dB (decibels).
 	Rsrq int32 `protobuf:"varint,2,opt,name=rsrq,proto3" json:"rsrq,omitempty"`
+	// Reference Signal Receive Power (RSRP) measured in dBm (decibel-milliwatts).
 	Rsrp int32 `protobuf:"varint,3,opt,name=rsrp,proto3" json:"rsrp,omitempty"`
-	Snr  int32 `protobuf:"varint,4,opt,name=snr,proto3" json:"snr,omitempty"`
+	// Signal-to-Noise Ratio (SNR) measured in dB (decibels).
+	Snr int32 `protobuf:"varint,4,opt,name=snr,proto3" json:"snr,omitempty"`
 }
 
 func (x *CellularSignalStrength) Reset() {
