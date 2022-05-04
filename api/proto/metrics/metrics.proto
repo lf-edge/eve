@@ -95,9 +95,13 @@ message CellularMetric {
 // CellularSignalStrength contains cellular signal strength information.
 // The maximum value of int32 (0x7FFFFFFF) represents unspecified/unavailable metric.
 message CellularSignalStrength {
+  // Received Signal Strength Indicator (RSSI) measured in dBm (decibel-milliwatts).
   int32 rssi = 1;
+  // Reference Signal Received Quality (RSRQ) measured in dB (decibels).
   int32 rsrq = 2;
+  // Reference Signal Receive Power (RSRP) measured in dBm (decibel-milliwatts).
   int32 rsrp = 3;
+  // Signal-to-Noise Ratio (SNR) measured in dB (decibels).
   int32 snr = 4;
 }
 
