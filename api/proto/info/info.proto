@@ -1084,4 +1084,8 @@ message ZInfoLocation {
   // Vertical position uncertainty in meters.
   // Negative values are not valid and represent unavailable uncertainty.
   float vertical_uncertainty = 8;
+  // Logical label of the device used to obtain this location information.
+  // If the GNSS receiver is integrated with an LTE modem, then this is the logical
+  // label from the modem's PhysicalIO entry.
+  string logicallabel = 9;
 }
