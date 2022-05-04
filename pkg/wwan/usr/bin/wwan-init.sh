@@ -311,6 +311,7 @@ event_stream | while read -r EVENT; do
   unset METRICS
   unset LOC_TRACKING_DEV
   unset LOC_TRACKING_PROTO
+  unset LOC_TRACKING_LL
   RADIO_SILENCE="$(parse_json_attr "$CONFIG" "\"radio-silence\"")"
 
   # iterate over each configured cellular network
@@ -360,6 +361,7 @@ event_stream | while read -r EVENT; do
     if [ "$LOC_TRACKING" = "true" ]; then
       LOC_TRACKING_DEV="$CDC_DEV"
       LOC_TRACKING_PROTO="$PROTOCOL"
+      LOC_TRACKING_LL="$LOGICAL_LABEL"
     fi
 
     # reflect updated config or just probe the current status
@@ -408,7 +410,8 @@ __EOT__
   if [ "$CONFIG_CHANGE" = "y" ]; then
     if [ -n "$LOC_TRACKING_DEV" ]; then
       if [ -z "$LOC_TRACKER" ]; then
-        location_tracking "${LOC_TRACKING_DEV}" "${LOC_TRACKING_PROTO}" "${LOCINFO_PATH}" &
+        location_tracking "${LOC_TRACKING_LL}" "${LOC_TRACKING_DEV}"\
+                          "${LOC_TRACKING_PROTO}" "${LOCINFO_PATH}" &
         LOC_TRACKER=$!
       fi
     else

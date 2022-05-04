@@ -70,6 +70,7 @@ For example:
 ```shell
 curl 169.254.169.254/eve/v1/location.json 2>/dev/null | jq
 {
+  "logical-label": "wwan0",
   "latitude": 52.517679,
   "longitude": 13.377630,
   "altitude": 25.045,
@@ -81,6 +82,9 @@ curl 169.254.169.254/eve/v1/location.json 2>/dev/null | jq
 }
 ```
 
+Logical label refers to the device which was used to obtain location coordinates.
+If the GNSS receiver is integrated with an LTE modem, then this is the logical
+label of the modem.
 Geographic coordinates latitude and longitude are expressed using
 [decimal degrees (DD) notation](https://en.wikipedia.org/wiki/Decimal_degrees),
 with double-precision floating-point values. Note that if latitude or longitude
