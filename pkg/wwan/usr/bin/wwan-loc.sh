@@ -16,15 +16,16 @@ kill_process_tree() {
 }
 
 publish_location() {
-  local INPUT="$1"
-  local OUTPUT="$2"
+  local LOGICAL_LABEL="$1"
+  local INPUT="$2"
+  local OUTPUT="$3"
   # Value not valid for any of the numerical attributes.
   # Note that for (unsigned) UTC timestamp we use 0 to represent unavailable value.
   local UNAVAIL_LOC_PARAM="-32768"
-  awk -v unavail="$UNAVAIL_LOC_PARAM" 'BEGIN { RS="\\[position report\\]"; FS="\n"; ORS="" }
+  awk -v unavail="$UNAVAIL_LOC_PARAM" -v logicallabel="$LOGICAL_LABEL" \
+  'BEGIN { RS="\\[position report\\]"; FS="\n"; ORS="" }
   $0 ~ /status:/ {
-     sep_inner=""
-     print "{"
+     printf "{\"logical-label\": \"%s\"", logicallabel
      for(i=1; i<=NF; i++) {
        kv=""
        if ($i~/latitude:/) {
@@ -76,8 +77,7 @@ publish_location() {
          }
        }
        if (kv) {
-         print sep_inner kv
-         sep_inner=", "
+         print ", " kv
        }
      }
      print "}\n"
@@ -91,10 +91,12 @@ publish_location() {
 }
 
 # Function keeps publishing location updates to /run/wwan/location.json
+# FIXME XXX Limited to a single cellular modem
 location_tracking() {
-  local CDC_DEV="$1"
-  local PROTOCOL="$2"
-  local OUTPUT_FILE="$3"
+  local LOGICAL_LABEL="$1"
+  local CDC_DEV="$2"
+  local PROTOCOL="$3"
+  local OUTPUT_FILE="$4"
   local RETRY_AFTER=15
   local FIRST_ATTEMPT=y
   local STDERR="/tmp/wwan-loc.stderr"
@@ -123,7 +125,7 @@ location_tracking() {
     CID=$(echo "$LOC_START" | sed -n "s/\s*CID: '\(.*\)'/\1/p")
     echo "Location tracking CID is $CID"
 
-    publish_location "$PIPE" "$OUTPUT_FILE" &
+    publish_location "$LOGICAL_LABEL" "$PIPE" "$OUTPUT_FILE" &
     PUBLISHER_PID=$!
     echo "PID of the location publisher is $PUBLISHER_PID"
 

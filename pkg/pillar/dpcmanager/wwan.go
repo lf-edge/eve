@@ -239,9 +239,10 @@ func (m *DpcManager) reloadWwanLocationInfo() {
 		return
 	}
 
-	// Filter out location updates with invalid (aka unknown) coordinates.
+	// Filter out location updates with invalid (aka unknown) coordinates or timestamps.
 	if locInfo.Latitude < -90 || locInfo.Latitude > 90 ||
-		locInfo.Longitude < -180 || locInfo.Longitude > 180 {
+		locInfo.Longitude < -180 || locInfo.Longitude > 180 ||
+		locInfo.UTCTimestamp == 0 {
 		// Ignore the update.
 		return
 	}
@@ -264,9 +265,25 @@ func (m *DpcManager) reloadWwanLocationInfo() {
 		publishInterval = publishCloudInterval
 	}
 	maxRate := publishInterval >> 1
-	if !m.lastPublishedLocInfo.IsZero() {
-		if time.Since(m.lastPublishedLocInfo) < maxRate {
-			// Drop the location info.
+
+	// Do not drop if this is a very first location info.
+	if m.lastPublishedLocInfo.UTCTimestamp != 0 {
+		// More accurate location estimation than the previous one?
+		var moreAccurate bool
+		newUncertainty := locInfo.HorizontalUncertainty
+		prevUncertainty := m.lastPublishedLocInfo.HorizontalUncertainty
+		if newUncertainty >= 0 {
+			if prevUncertainty < 0 || newUncertainty < prevUncertainty {
+				moreAccurate = true
+			}
+		}
+		// How much time elapsed between the last published location update
+		// and this one (as measured by the modem).
+		elapsed := time.Millisecond *
+			time.Duration(locInfo.UTCTimestamp-m.lastPublishedLocInfo.UTCTimestamp)
+		if !moreAccurate && elapsed < maxRate {
+			// Drop the location update if it came too fast and wasn't more accurate
+			// than the previous one.
 			return
 		}
 	}
@@ -276,7 +293,7 @@ func (m *DpcManager) reloadWwanLocationInfo() {
 		if err = m.PubWwanLocationInfo.Publish("global", locInfo); err != nil {
 			m.Log.Errorf("Failed to publish wwan location info: %v", err)
 		}
-		m.lastPublishedLocInfo = time.Now()
+		m.lastPublishedLocInfo = locInfo
 	}
 }
 

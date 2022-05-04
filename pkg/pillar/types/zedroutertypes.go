@@ -3542,15 +3542,21 @@ type WwanPacketStats struct {
 // WwanSignalInfo contains cellular signal strength information.
 // The maximum value of int32 (0x7FFFFFFF) represents unspecified/unavailable metric.
 type WwanSignalInfo struct {
+	// Received signal strength indicator (RSSI) measured in dBm (decibel-milliwatts).
 	RSSI int32 `json:"rssi"`
+	// Reference Signal Received Quality (RSRQ) measured in dB (decibels).
 	RSRQ int32 `json:"rsrq"`
+	// Reference Signal Receive Power (RSRP) measured in dBm (decibel-milliwatts).
 	RSRP int32 `json:"rsrp"`
-	SNR  int32 `json:"snr"`
+	// Signal-to-Noise Ratio (SNR) measured in dB (decibels).
+	SNR int32 `json:"snr"`
 }
 
 // WwanLocationInfo contains device location information obtained from a GNSS
 // receiver integrated into an LTE modem.
 type WwanLocationInfo struct {
+	// Logical label of the device used to obtain this location information.
+	LogicalLabel string `json:"logical-label"`
 	// Latitude in the Decimal degrees (DD) notation.
 	// Valid values are in the range <-90, 90>. Anything outside of this range
 	// should be treated as an unavailable value.

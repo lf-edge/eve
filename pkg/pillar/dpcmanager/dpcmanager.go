@@ -117,7 +117,7 @@ type DpcManager struct {
 	dpcTestBetterInterval time.Duration // Look for lower/better index
 	geoRedoInterval       time.Duration
 	geoRetryInterval      time.Duration
-	lastPublishedLocInfo  time.Time
+	lastPublishedLocInfo  types.WwanLocationInfo
 }
 
 // Watchdog : methods used by DpcManager to interact with Watchdog.

@@ -238,6 +238,7 @@ func getLocationInfo(ctx *zedagentContext) *info.ZInfoLocation {
 	timestamp := time.Unix(unixSec, unixNano)
 	timestampProto, _ := ptypes.TimestampProto(timestamp)
 	return &info.ZInfoLocation{
+		Logicallabel:          locInfo.LogicalLabel,
 		Latitude:              locInfo.Latitude,
 		Longitude:             locInfo.Longitude,
 		Altitude:              locInfo.Altitude,
