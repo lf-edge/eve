@@ -116,10 +116,11 @@ done
 -- dns_lookup.sh --
 
 # Performs DNS lookup for a given hostname and adds host_ip=<ip> into the .env file
+# If query returns several IPs they will be joined into one line with comma separator
 # Uses dig command which is already included by most modern Linux systems and also macOS.
 # Usage: dns_lookup.sh <hostname>
 
-IP=$(dig +short $1)
+IP=$(dig +short $1 | paste -sd "," -)
 echo host_ip=$IP>>.env
 
 -- curl.sh --
