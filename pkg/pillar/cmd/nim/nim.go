@@ -107,6 +107,7 @@ type nim struct {
 	assignableAdapters types.AssignableAdapters
 	enabledLastResort  bool
 	lastResort         *types.DevicePortConfig
+	dpclPresent        bool // DPC List present on boot
 }
 
 // Run - Main function - invoked from zedbox.go
@@ -191,7 +192,7 @@ func (n *nim) run(ctx context.Context) (err error) {
 	n.Log.Noticef("Starting %s", agentName)
 
 	// Start DPC Manager.
-	if err = n.dpcManager.Run(ctx); err != nil {
+	if n.dpclPresent, err = n.dpcManager.Run(ctx); err != nil {
 		return err
 	}
 
@@ -652,6 +653,8 @@ func (n *nim) applyGlobalConfig(gcp *types.ConfigItemValueMap) {
 	n.connTester.TestTimeout = time.Second * time.Duration(timeout)
 	fallbackAnyEth := gcp.GlobalValueTriState(types.NetworkFallbackAnyEth)
 	enableLastResort := fallbackAnyEth == types.TS_ENABLED
+	// If we had no DevicePortConfigList on boot then always enable last resort
+	enableLastResort = enableLastResort || !n.dpclPresent
 	if n.enabledLastResort != enableLastResort {
 		if enableLastResort {
 			n.updateLastResortDPC("lastresort enabled by global config")
@@ -791,6 +794,7 @@ func (n *nim) ingestDevicePortConfigFile(oldDirname string, newDirname string, n
 }
 
 func (n *nim) updateLastResortDPC(reason string) {
+	n.Log.Noticef("updateLastResortDPC")
 	dpc, err := n.makeLastResortDPC()
 	if err != nil {
 		n.Log.Error(err)
@@ -808,6 +812,7 @@ func (n *nim) updateLastResortDPC(reason string) {
 }
 
 func (n *nim) removeLastResortDPC() {
+	n.Log.Noticef("removeLastResortDPC")
 	if err := n.pubDevicePortConfig.Unpublish(dpcmanager.LastResortKey); err != nil {
 		n.Log.Errorf("Failed to un-publish last-resort DPC: %v", err)
 		return

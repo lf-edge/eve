@@ -132,7 +132,7 @@ func initTest(test *testing.T) *GomegaWithT {
 		ZedcloudMetrics:          zedcloud.NewAgentMetrics(),
 	}
 	ctx := reconciler.MockRun(context.Background())
-	if err := dpcManager.Run(ctx); err != nil {
+	if _, err := dpcManager.Run(ctx); err != nil {
 		log.Fatal(err)
 	}
 	return t

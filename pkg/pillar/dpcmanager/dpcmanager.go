@@ -87,11 +87,12 @@ type DpcManager struct {
 	ZedcloudMetrics *zedcloud.AgentMetrics
 
 	// Current configuration
-	dpcList      types.DevicePortConfigList
-	adapters     types.AssignableAdapters
-	globalCfg    types.ConfigItemValueMap
-	hasGlobalCfg bool
-	radioSilence types.RadioSilence
+	dpcList          types.DevicePortConfigList
+	adapters         types.AssignableAdapters
+	globalCfg        types.ConfigItemValueMap
+	hasGlobalCfg     bool
+	radioSilence     types.RadioSilence
+	enableLastResort bool
 
 	// DPC verification
 	dpcVerify dpcVerify
@@ -195,7 +196,8 @@ type dpcVerify struct {
 }
 
 // Run DpcManager as a separate task with its own loop and a watchdog file.
-func (m *DpcManager) Run(ctx context.Context) (err error) {
+// Returns an indication whether the DPC list was found in /persist
+func (m *DpcManager) Run(ctx context.Context) (dpclPresent bool, err error) {
 	m.dpcVerify.crucialIfs = make(map[string]netmonitor.IfAttrs)
 	m.inputCommands = make(chan inputCommand, 10)
 	if m.WwanWatcher == nil {
@@ -220,11 +222,15 @@ func (m *DpcManager) Run(ctx context.Context) (err error) {
 	m.networkEvents = m.NetworkMonitor.WatchEvents(ctx, "dpc-reconciler")
 	m.wwanEvents, err = m.WwanWatcher.Watch(ctx)
 	if err != nil {
-		return err
+		return false, err
 	}
 
+	// Ingest persisted list of DPCs. ingestDPCList will return false
+	// to indicate the file is missing in /persist
+	dpclPresent = m.ingestDPCList()
+
 	go m.run(ctx)
-	return nil
+	return dpclPresent, nil
 }
 
 func (m *DpcManager) run(ctx context.Context) {
@@ -232,9 +238,6 @@ func (m *DpcManager) run(ctx context.Context) {
 	stillRunning := time.NewTicker(watchdogPeriod)
 	m.Watchdog.StillRunning(wdName, warningTime, errorTime)
 	m.Watchdog.RegisterFileWatchdog(wdName)
-
-	// Ingest persisted list of DPCs.
-	m.ingestDPCList()
 
 	// Run initial reconciliation.
 	m.reconcileStatus = m.DpcReconciler.Reconcile(ctx, m.reconcilerArgs())
@@ -482,6 +485,9 @@ func (m *DpcManager) updateGCP(ctx context.Context, gcp types.ConfigItemValueMap
 	// Interval for Geo retries after failure etc. Should be less than geoRedoInterval.
 	geoRetryInterval := time.Second *
 		time.Duration(m.globalCfg.GlobalValueInt(types.NetworkGeoRetryTime))
+
+	fallbackAnyEth := m.globalCfg.GlobalValueTriState(types.NetworkFallbackAnyEth)
+	m.enableLastResort = fallbackAnyEth == types.TS_ENABLED
 
 	if m.dpcTestInterval != testInterval {
 		if testInterval == 0 {
