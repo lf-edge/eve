@@ -61,6 +61,11 @@ type locationInfoHandler struct {
 	ctx *zedrouterContext
 }
 
+// Provides cellular metrics (signal strength, packet counters).
+type wwanMetricsHandler struct {
+	ctx *zedrouterContext
+}
+
 // KubeconfigFileSizeLimitInBytes holds the maximum expected size of Kubeconfig file received from k3s server appInst.
 // Note: KubeconfigFileSizeLimitInBytes should always be < AppInstMetadataResponseSizeLimitInBytes.
 const KubeconfigFileSizeLimitInBytes = 32768 // 32KB
@@ -98,6 +103,9 @@ func createServer4(ctx *zedrouterContext, bridgeIP string, bridgeName string) er
 
 	locationInfoHandler := &locationInfoHandler{ctx: ctx}
 	mux.Handle("/eve/v1/location.json", locationInfoHandler)
+
+	wwanMetricsHandler := &wwanMetricsHandler{ctx: ctx}
+	mux.Handle("/eve/v1/wwan-metrics.json", wwanMetricsHandler)
 
 	targetPort := 80
 	subnetStr := "169.254.169.254/32"
@@ -648,6 +656,27 @@ func (hdl locationInfoHandler) ServeHTTP(w http.ResponseWriter, r *http.Request)
 	}
 	locInfo := locInfoObj.(types.WwanLocationInfo)
 	resp, err := json.Marshal(locInfo)
+	if err != nil {
+		msg := fmt.Sprintf("Failed to marshal location info: %v", err)
+		log.Errorf(msg)
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Add("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	w.Write(resp)
+}
+
+// ServeHTTP for wwanMetricsHandler returns json output.
+func (hdl wwanMetricsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	log.Tracef("wwanMetricsHandler.ServeHTTP")
+	metricsObj, err := hdl.ctx.subWwanMetrics.Get("global")
+	if err != nil {
+		http.Error(w, http.StatusText(http.StatusNoContent), http.StatusNoContent)
+		return
+	}
+	metrics := metricsObj.(types.WwanMetrics)
+	resp, err := json.Marshal(metrics)
 	if err != nil {
 		msg := fmt.Sprintf("Failed to marshal location info: %v", err)
 		log.Errorf(msg)
