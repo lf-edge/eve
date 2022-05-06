@@ -190,7 +190,7 @@ if [ -n "$IMGA" ] && [ -z "$P3" ] && [ -z "$IMGB" ]; then
        sgdisk --partition-guid="$P3_ID:$PERSIST_UUID" "$DEV"
    fi
 
-   # focrce kernel to re-scan partition table
+   # force kernel to re-scan partition table
    partprobe "$DEV"
    partx -a --nr "$IMGB_ID:$P3_ID" "$DEV"
 
@@ -247,6 +247,9 @@ if P3=$(findfs PARTLABEL=P3) && [ -n "$P3" ]; then
                    if [ "$INIT_FS" = 1 ]; then
                       mkfs -t ext4 -v -F -F -O encrypt "$P3"
                    fi
+                   # Reduce risk of losing file content on power failure.
+                   # Enable encryption.
+                   tune2fs -o journal_data "$P3" && \
                    tune2fs -O encrypt "$P3" && \
                    mount -t ext4 -o dirsync,noatime "$P3" $PERSISTDIR
                    ;;
