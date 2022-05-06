@@ -20,6 +20,7 @@ import (
 
 type compressDPCLTestEntry struct {
 	dpcl                 types.DevicePortConfigList
+	enableLastResort     bool
 	pendingInProgress    bool
 	expectedEntries      []int
 	expectedCurrentIndex int
@@ -75,6 +76,7 @@ func (testEntry compressDPCLTestEntry) checkDpclEqual(
 var testMatrix = map[string]compressDPCLTestEntry{
 	"Pending in progress": {
 		// DPCL is not compressed
+		enableLastResort: true,
 		dpcl: types.DevicePortConfigList{
 			CurrentIndex: 0,
 			PortConfigList: []types.DevicePortConfig{
@@ -123,6 +125,7 @@ var testMatrix = map[string]compressDPCLTestEntry{
 
 	// CurrentIndex != 0 - None of the entries are deleted.
 	"Current Index Not Zero": {
+		enableLastResort: true,
 		dpcl: types.DevicePortConfigList{
 			CurrentIndex: 1,
 			PortConfigList: []types.DevicePortConfig{
@@ -170,6 +173,7 @@ var testMatrix = map[string]compressDPCLTestEntry{
 
 	// Empty DPCL
 	"Empty DPCL": {
+		enableLastResort: true,
 		dpcl: types.DevicePortConfigList{
 			CurrentIndex:   0,
 			PortConfigList: []types.DevicePortConfig{},
@@ -180,6 +184,7 @@ var testMatrix = map[string]compressDPCLTestEntry{
 
 	// First Key Not Zedagent - No compression
 	"First Key Not Zedagent": {
+		enableLastResort: true,
 		dpcl: types.DevicePortConfigList{
 			CurrentIndex: 0,
 			PortConfigList: []types.DevicePortConfig{
@@ -227,6 +232,7 @@ var testMatrix = map[string]compressDPCLTestEntry{
 
 	// First Entry Not working
 	"First Entry Not working": {
+		enableLastResort: true,
 		dpcl: types.DevicePortConfigList{
 			CurrentIndex: 0,
 			PortConfigList: []types.DevicePortConfig{
@@ -274,6 +280,7 @@ var testMatrix = map[string]compressDPCLTestEntry{
 
 	// With Last resort
 	"ValidZedEntry with last resort - Last resort is retained": {
+		enableLastResort: true,
 		dpcl: types.DevicePortConfigList{
 			CurrentIndex: 0,
 			PortConfigList: []types.DevicePortConfig{
@@ -328,8 +335,66 @@ var testMatrix = map[string]compressDPCLTestEntry{
 		expectedCurrentIndex: 0,
 	}, // compressDPCLTestEntry
 
+	// With Last resort
+	"ValidZedEntry with last resort but disabled - Last resort is removed": {
+		enableLastResort: false,
+		dpcl: types.DevicePortConfigList{
+			CurrentIndex: 0,
+			PortConfigList: []types.DevicePortConfig{
+				{
+					Version:      1,
+					Key:          "zedagent",
+					TimePriority: time.Date(2000, 3, 3, 0, 0, 0, 0, time.UTC),
+					TestResults: types.TestResults{
+						LastSucceeded: time.Date(2000, 3, 4, 0, 0, 0, 0, time.UTC),
+					},
+					Ports: []types.NetworkPortConfig{},
+				},
+				{ // DELETED
+					Version:      2,
+					Key:          "zedagent",
+					TimePriority: time.Date(2000, 3, 0, 0, 0, 0, 0, time.UTC),
+					TestResults: types.TestResults{
+						LastSucceeded: time.Date(2000, 3, 4, 0, 0, 0, 0, time.UTC),
+					},
+					Ports: []types.NetworkPortConfig{},
+				},
+				{ // DELETED
+					Version:      3,
+					Key:          "override",
+					TimePriority: time.Date(2000, 3, 0, 0, 0, 0, 0, time.UTC),
+					TestResults: types.TestResults{
+						LastFailed: time.Date(2000, 3, 4, 0, 0, 0, 0, time.UTC),
+					},
+					Ports: []types.NetworkPortConfig{},
+				},
+				{ // DELETED
+					Version:      4,
+					Key:          "hardware",
+					TimePriority: time.Date(2000, 3, 0, 0, 0, 0, 0, time.UTC),
+					TestResults: types.TestResults{
+						LastFailed: time.Date(2000, 3, 4, 0, 0, 0, 0, time.UTC),
+					},
+					Ports: []types.NetworkPortConfig{},
+				},
+				{ // Retained
+					Version:      5,
+					Key:          "lastresort",
+					TimePriority: time.Date(2000, 3, 0, 0, 0, 0, 0, time.UTC),
+					TestResults: types.TestResults{
+						LastSucceeded: time.Date(2000, 3, 4, 0, 0, 0, 0, time.UTC),
+					},
+					Ports: []types.NetworkPortConfig{},
+				},
+			}, // PortConfigList
+		}, // dpcl
+		expectedEntries:      []int{0},
+		expectedCurrentIndex: 0,
+	}, // compressDPCLTestEntry
+
 	// Without Last resort
 	"ValidZedEntry without last resort": {
+		enableLastResort: true,
 		dpcl: types.DevicePortConfigList{
 			CurrentIndex: 0,
 			PortConfigList: []types.DevicePortConfig{
@@ -385,7 +450,8 @@ func TestCompressDPCL(t *testing.T) {
 		log.Tracef("======================TESTCASE: %s - Running============",
 			testname)
 		m := &DpcManager{
-			dpcList: test.dpcl,
+			dpcList:          test.dpcl,
+			enableLastResort: test.enableLastResort,
 			dpcVerify: dpcVerify{
 				inProgress: test.pendingInProgress,
 			},

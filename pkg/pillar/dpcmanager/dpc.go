@@ -215,14 +215,17 @@ func (m *DpcManager) lookupDPC(dpc types.DevicePortConfig) (*types.DevicePortCon
 // ingestDPCList creates and republishes the initial list.
 // Removes useless ones (which might be re-added by the controller/zedagent
 // later but at least they are not in the way during boot).
-func (m *DpcManager) ingestDPCList() {
-	m.Log.Functionf("IngestPortConfigList")
+// Returns whether or not the DPCList was present
+func (m *DpcManager) ingestDPCList() (dpclPresent bool) {
+	m.Log.Functionf("IngestDPCList")
 	item, err := m.PubDevicePortConfigList.Get("global")
 	var storedDpcl types.DevicePortConfigList
 	if err != nil {
 		m.Log.Errorf("No global key for DevicePortConfigList")
+		dpclPresent = false
 	} else {
 		storedDpcl = item.(types.DevicePortConfigList)
+		dpclPresent = true
 	}
 	m.Log.Functionf("Initial DPCL %v", storedDpcl)
 	var dpcl types.DevicePortConfigList
@@ -262,7 +265,8 @@ func (m *DpcManager) ingestDPCList() {
 	m.compressAndPublishDPCL()
 	m.dpcList.CurrentIndex = -1 // No known working one
 	m.Log.Functionf("Published DPCL %v", m.dpcList)
-	m.Log.Functionf("IngestPortConfigList len %d", len(m.dpcList.PortConfigList))
+	m.Log.Functionf("IngestDPCList len %d", len(m.dpcList.PortConfigList))
+	return dpclPresent
 }
 
 func (m *DpcManager) compressAndPublishDPCL() {
@@ -299,8 +303,8 @@ func (m *DpcManager) compressDPCL() {
 			m.Log.Tracef("compressDPCL: Adding Current Index: i = %d, dpc: %+v",
 				i, dpc)
 		} else {
-			// Retain the lastresort. Delete everything else.
-			if dpc.Key == LastResortKey {
+			// Retain the lastresort if enabled. Delete everything else.
+			if dpc.Key == LastResortKey && m.enableLastResort {
 				m.Log.Tracef("compressDPCL: Retaining last resort. i = %d, dpc: %+v",
 					i, dpc)
 				newConfig = append(newConfig, dpc)
