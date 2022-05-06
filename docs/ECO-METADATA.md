@@ -110,3 +110,65 @@ The frequency at which EVE updates location information is configurable using th
 [timer.location.app.interval](../docs/CONFIG-PROPERTIES.md). By default, the interval is 20
 seconds. This means that with a good continuous reception of the GNSS signal, the geographic
 coordinates presented to applications are never older than 20 seconds.
+
+## WWAN Metrics API endpoint
+
+Meta-data service allows applications to obtain WWAN metrics, which includes information
+about the cellular signal strength and packet counters recorded by the cellular modem(s).
+
+Provided that device has at least one cellular modem visible to EVE (i.e. not assigned
+directly to an application), JSON-formatted WWAN metrics are made available to all
+applications on the `/eve/v1/wwan-metrics.json` endpoint.
+
+For example:
+
+```shell
+curl 169.254.169.254/eve/v1/wwan-metrics.json 2>/dev/null | jq
+{
+  "networks": [
+    {
+      "logical-label": "cell-modem0",
+      "physical-addrs": {
+        "interface": "wwan0",
+        "usb": "1:1",
+        "pci": "0000:00:1d.7"
+      },
+      "packet-stats": {
+        "rx-bytes": 504,
+        "rx-packets": 6,
+        "rx-drops": 0,
+        "tx-bytes": 504,
+        "tx-packets": 6,
+        "tx-drops": 0
+      },
+      "signal-info": {
+        "rssi": -60,
+        "rsrq": -13,
+        "rsrp": -87,
+        "snr": 116
+      }
+    }
+  ]
+}
+```
+
+The endpoint returns a list of entries, one for every cellular modem, with the modem's
+logical label (from the device model) used as a reference. The physical connection between
+the device and the modem is described by the provided physical addresses. For example,
+`physical-addrs.usb` is a USB address in the format `<BUS>:[<PORT>]` (with nested ports
+separated by dots), identifying the USB port through which the modem is connected with the device.
+
+Packet statics contain RX/TX packet/byte counters (all uint64) as recorded by the modem itself.
+This may differ from the Linux kernel counters (from `networkMetric` proto message) if for example
+some packets were dropped by the modem.
+
+Cellular signal strength is described using multiple different measurements:
+
+- Received signal strength indicator (RSSI) measured in dBm (decibel-milliwatts)
+- Reference Signal Received Quality (RSRQ) measured in dB (decibels)
+- Reference Signal Receive Power (RSRP) measured in dBm (decibel-milliwatts)
+- Signal-to-Noise Ratio (SNR) measured in dB (decibels)
+
+All measurements are of type int32. Measured values are rounded to the nearest integers
+(by the modem) and published without decimal places. The maximum value of int32 (0x7FFFFFFF)
+represents unspecified/unavailable metric.

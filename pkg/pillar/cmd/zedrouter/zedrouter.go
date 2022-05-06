@@ -70,6 +70,7 @@ type zedrouterContext struct {
 	pubUuidToNum           pubsub.Publication
 	dhcpLeases             []dnsmasqLease
 	subLocationInfo        pubsub.Subscription
+	subWwanMetrics         pubsub.Subscription
 
 	pubUUIDPairAndIfIdxToNum pubsub.Publication
 
@@ -527,6 +528,22 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	zedrouterCtx.subLocationInfo = subLocationInfo
 	subLocationInfo.Activate()
 
+	// Look for cellular metrics
+	subWwanMetrics, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:   "nim",
+		MyAgentName: agentName,
+		TopicImpl:   types.WwanMetrics{},
+		Activate:    false,
+		Ctx:         &zedrouterCtx,
+		WarningTime: warningTime,
+		ErrorTime:   errorTime,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	zedrouterCtx.subWwanMetrics = subWwanMetrics
+	subWwanMetrics.Activate()
+
 	cloudProbeMetricPub, err := ps.NewPublication(
 		pubsub.PublicationOptions{
 			AgentName: agentName,
@@ -635,6 +652,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 		case change := <-subLocationInfo.MsgChan():
 			subLocationInfo.ProcessChange(change)
+
+		case change := <-subWwanMetrics.MsgChan():
+			subWwanMetrics.ProcessChange(change)
 
 		case change, ok := <-linkChanges:
 			start := time.Now()
