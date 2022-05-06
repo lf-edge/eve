@@ -12,6 +12,7 @@ _sym_db = _symbol_database.Default()
 
 
 from info import info_pb2 as info_dot_info__pb2
+from metrics import metrics_pb2 as metrics_dot_metrics__pb2
 from google.protobuf import timestamp_pb2 as google_dot_protobuf_dot_timestamp__pb2
 
 
@@ -21,9 +22,9 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   syntax='proto3',
   serialized_options=b'\n\026org.lfedge.eve.profileZ%github.com/lf-edge/eve/api/go/profile',
   create_key=_descriptor._internal_create_key,
-  serialized_pb=b'\n\x1bprofile/local_profile.proto\x12\x16org.lfedge.eve.profile\x1a\x0finfo/info.proto\x1a\x1fgoogle/protobuf/timestamp.proto\";\n\x0cLocalProfile\x12\x15\n\rlocal_profile\x18\x01 \x01(\t\x12\x14\n\x0cserver_token\x18\x02 \x01(\t\"{\n\x0bRadioStatus\x12\x15\n\rradio_silence\x18\x01 \x01(\x08\x12\x14\n\x0c\x63onfig_error\x18\x02 \x01(\t\x12?\n\x0f\x63\x65llular_status\x18\x03 \x03(\x0b\x32&.org.lfedge.eve.profile.CellularStatus\"\xfc\x01\n\x0e\x43\x65llularStatus\x12\x14\n\x0clogicallabel\x18\x01 \x01(\t\x12\x38\n\x06module\x18\x02 \x01(\x0b\x32(.org.lfedge.eve.info.ZCellularModuleInfo\x12\x34\n\tsim_cards\x18\x03 \x03(\x0b\x32!.org.lfedge.eve.info.ZSimcardInfo\x12\x39\n\tproviders\x18\x04 \x03(\x0b\x32&.org.lfedge.eve.info.ZCellularProvider\x12\x14\n\x0c\x63onfig_error\x18\n \x01(\t\x12\x13\n\x0bprobe_error\x18\x0b \x01(\t\":\n\x0bRadioConfig\x12\x14\n\x0cserver_token\x18\x01 \x01(\t\x12\x15\n\rradio_silence\x18\x02 \x01(\x08\"K\n\x10LocalAppInfoList\x12\x37\n\tapps_info\x18\x01 \x03(\x0b\x32$.org.lfedge.eve.profile.LocalAppInfo\"\xb0\x01\n\x0cLocalAppInfo\x12\n\n\x02id\x18\x01 \x01(\t\x12\x0f\n\x07version\x18\x02 \x01(\t\x12\x0c\n\x04name\x18\x03 \x01(\t\x12+\n\x03\x65rr\x18\x04 \x01(\x0b\x32\x1e.org.lfedge.eve.info.ErrorInfo\x12,\n\x05state\x18\x05 \x01(\x0e\x32\x1d.org.lfedge.eve.info.ZSwState\x12\x1a\n\x12last_cmd_timestamp\x18\x06 \x01(\x04\"a\n\x0fLocalAppCmdList\x12\x14\n\x0cserver_token\x18\x01 \x01(\t\x12\x38\n\x0c\x61pp_commands\x18\x02 \x03(\x0b\x32\".org.lfedge.eve.profile.AppCommand\"\xc9\x01\n\nAppCommand\x12\n\n\x02id\x18\x01 \x01(\t\x12\x13\n\x0b\x64isplayname\x18\x02 \x01(\t\x12\x11\n\ttimestamp\x18\x03 \x01(\x04\x12;\n\x07\x63ommand\x18\x04 \x01(\x0e\x32*.org.lfedge.eve.profile.AppCommand.Command\"J\n\x07\x43ommand\x12\x17\n\x13\x43OMMAND_UNSPECIFIED\x10\x00\x12\x13\n\x0f\x43OMMAND_RESTART\x10\x01\x12\x11\n\rCOMMAND_PURGE\x10\x02\"\xa9\x02\n\x0cLocalDevInfo\x12\x13\n\x0b\x64\x65vice_uuid\x18\x01 \x01(\t\x12\x30\n\x05state\x18\x02 \x01(\x0e\x32!.org.lfedge.eve.info.ZDeviceState\x12L\n\x18maintenance_mode_reasons\x18\x03 \x03(\x0e\x32*.org.lfedge.eve.info.MaintenanceModeReason\x12-\n\tboot_time\x18\x04 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x39\n\x10last_boot_reason\x18\x05 \x01(\x0e\x32\x1f.org.lfedge.eve.info.BootReason\x12\x1a\n\x12last_cmd_timestamp\x18\n \x01(\x04\"\xcd\x01\n\x0bLocalDevCmd\x12\x14\n\x0cserver_token\x18\x01 \x01(\t\x12\x11\n\ttimestamp\x18\x02 \x01(\x04\x12<\n\x07\x63ommand\x18\x03 \x01(\x0e\x32+.org.lfedge.eve.profile.LocalDevCmd.Command\"W\n\x07\x43ommand\x12\x17\n\x13\x43OMMAND_UNSPECIFIED\x10\x00\x12\x14\n\x10\x43OMMAND_SHUTDOWN\x10\x01\x12\x1d\n\x19\x43OMMAND_SHUTDOWN_POWEROFF\x10\x02\x42?\n\x16org.lfedge.eve.profileZ%github.com/lf-edge/eve/api/go/profileb\x06proto3'
+  serialized_pb=b'\n\x1bprofile/local_profile.proto\x12\x16org.lfedge.eve.profile\x1a\x0finfo/info.proto\x1a\x15metrics/metrics.proto\x1a\x1fgoogle/protobuf/timestamp.proto\";\n\x0cLocalProfile\x12\x15\n\rlocal_profile\x18\x01 \x01(\t\x12\x14\n\x0cserver_token\x18\x02 \x01(\t\"\xbd\x01\n\x0bRadioStatus\x12\x15\n\rradio_silence\x18\x01 \x01(\x08\x12\x14\n\x0c\x63onfig_error\x18\x02 \x01(\t\x12?\n\x0f\x63\x65llular_status\x18\x03 \x03(\x0b\x32&.org.lfedge.eve.profile.CellularStatus\x12@\n\x10\x63\x65llular_metrics\x18\x04 \x03(\x0b\x32&.org.lfedge.eve.metrics.CellularMetric\"\xfc\x01\n\x0e\x43\x65llularStatus\x12\x14\n\x0clogicallabel\x18\x01 \x01(\t\x12\x38\n\x06module\x18\x02 \x01(\x0b\x32(.org.lfedge.eve.info.ZCellularModuleInfo\x12\x34\n\tsim_cards\x18\x03 \x03(\x0b\x32!.org.lfedge.eve.info.ZSimcardInfo\x12\x39\n\tproviders\x18\x04 \x03(\x0b\x32&.org.lfedge.eve.info.ZCellularProvider\x12\x14\n\x0c\x63onfig_error\x18\n \x01(\t\x12\x13\n\x0bprobe_error\x18\x0b \x01(\t\":\n\x0bRadioConfig\x12\x14\n\x0cserver_token\x18\x01 \x01(\t\x12\x15\n\rradio_silence\x18\x02 \x01(\x08\"K\n\x10LocalAppInfoList\x12\x37\n\tapps_info\x18\x01 \x03(\x0b\x32$.org.lfedge.eve.profile.LocalAppInfo\"\xb0\x01\n\x0cLocalAppInfo\x12\n\n\x02id\x18\x01 \x01(\t\x12\x0f\n\x07version\x18\x02 \x01(\t\x12\x0c\n\x04name\x18\x03 \x01(\t\x12+\n\x03\x65rr\x18\x04 \x01(\x0b\x32\x1e.org.lfedge.eve.info.ErrorInfo\x12,\n\x05state\x18\x05 \x01(\x0e\x32\x1d.org.lfedge.eve.info.ZSwState\x12\x1a\n\x12last_cmd_timestamp\x18\x06 \x01(\x04\"a\n\x0fLocalAppCmdList\x12\x14\n\x0cserver_token\x18\x01 \x01(\t\x12\x38\n\x0c\x61pp_commands\x18\x02 \x03(\x0b\x32\".org.lfedge.eve.profile.AppCommand\"\xc9\x01\n\nAppCommand\x12\n\n\x02id\x18\x01 \x01(\t\x12\x13\n\x0b\x64isplayname\x18\x02 \x01(\t\x12\x11\n\ttimestamp\x18\x03 \x01(\x04\x12;\n\x07\x63ommand\x18\x04 \x01(\x0e\x32*.org.lfedge.eve.profile.AppCommand.Command\"J\n\x07\x43ommand\x12\x17\n\x13\x43OMMAND_UNSPECIFIED\x10\x00\x12\x13\n\x0f\x43OMMAND_RESTART\x10\x01\x12\x11\n\rCOMMAND_PURGE\x10\x02\"\xa9\x02\n\x0cLocalDevInfo\x12\x13\n\x0b\x64\x65vice_uuid\x18\x01 \x01(\t\x12\x30\n\x05state\x18\x02 \x01(\x0e\x32!.org.lfedge.eve.info.ZDeviceState\x12L\n\x18maintenance_mode_reasons\x18\x03 \x03(\x0e\x32*.org.lfedge.eve.info.MaintenanceModeReason\x12-\n\tboot_time\x18\x04 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x39\n\x10last_boot_reason\x18\x05 \x01(\x0e\x32\x1f.org.lfedge.eve.info.BootReason\x12\x1a\n\x12last_cmd_timestamp\x18\n \x01(\x04\"\xcd\x01\n\x0bLocalDevCmd\x12\x14\n\x0cserver_token\x18\x01 \x01(\t\x12\x11\n\ttimestamp\x18\x02 \x01(\x04\x12<\n\x07\x63ommand\x18\x03 \x01(\x0e\x32+.org.lfedge.eve.profile.LocalDevCmd.Command\"W\n\x07\x43ommand\x12\x17\n\x13\x43OMMAND_UNSPECIFIED\x10\x00\x12\x14\n\x10\x43OMMAND_SHUTDOWN\x10\x01\x12\x1d\n\x19\x43OMMAND_SHUTDOWN_POWEROFF\x10\x02\x42?\n\x16org.lfedge.eve.profileZ%github.com/lf-edge/eve/api/go/profileb\x06proto3'
   ,
-  dependencies=[info_dot_info__pb2.DESCRIPTOR,google_dot_protobuf_dot_timestamp__pb2.DESCRIPTOR,])
+  dependencies=[info_dot_info__pb2.DESCRIPTOR,metrics_dot_metrics__pb2.DESCRIPTOR,google_dot_protobuf_dot_timestamp__pb2.DESCRIPTOR,])
 
 
 
@@ -52,8 +53,8 @@ _APPCOMMAND_COMMAND = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=1089,
-  serialized_end=1163,
+  serialized_start=1179,
+  serialized_end=1253,
 )
 _sym_db.RegisterEnumDescriptor(_APPCOMMAND_COMMAND)
 
@@ -82,8 +83,8 @@ _LOCALDEVCMD_COMMAND = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=1584,
-  serialized_end=1671,
+  serialized_start=1674,
+  serialized_end=1761,
 )
 _sym_db.RegisterEnumDescriptor(_LOCALDEVCMD_COMMAND)
 
@@ -122,8 +123,8 @@ _LOCALPROFILE = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=105,
-  serialized_end=164,
+  serialized_start=128,
+  serialized_end=187,
 )
 
 
@@ -156,6 +157,13 @@ _RADIOSTATUS = _descriptor.Descriptor(
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+    _descriptor.FieldDescriptor(
+      name='cellular_metrics', full_name='org.lfedge.eve.profile.RadioStatus.cellular_metrics', index=3,
+      number=4, type=11, cpp_type=10, label=3,
+      has_default_value=False, default_value=[],
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
   ],
   extensions=[
   ],
@@ -168,8 +176,8 @@ _RADIOSTATUS = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=166,
-  serialized_end=289,
+  serialized_start=190,
+  serialized_end=379,
 )
 
 
@@ -235,8 +243,8 @@ _CELLULARSTATUS = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=292,
-  serialized_end=544,
+  serialized_start=382,
+  serialized_end=634,
 )
 
 
@@ -274,8 +282,8 @@ _RADIOCONFIG = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=546,
-  serialized_end=604,
+  serialized_start=636,
+  serialized_end=694,
 )
 
 
@@ -306,8 +314,8 @@ _LOCALAPPINFOLIST = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=606,
-  serialized_end=681,
+  serialized_start=696,
+  serialized_end=771,
 )
 
 
@@ -373,8 +381,8 @@ _LOCALAPPINFO = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=684,
-  serialized_end=860,
+  serialized_start=774,
+  serialized_end=950,
 )
 
 
@@ -412,8 +420,8 @@ _LOCALAPPCMDLIST = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=862,
-  serialized_end=959,
+  serialized_start=952,
+  serialized_end=1049,
 )
 
 
@@ -466,8 +474,8 @@ _APPCOMMAND = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=962,
-  serialized_end=1163,
+  serialized_start=1052,
+  serialized_end=1253,
 )
 
 
@@ -533,8 +541,8 @@ _LOCALDEVINFO = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=1166,
-  serialized_end=1463,
+  serialized_start=1256,
+  serialized_end=1553,
 )
 
 
@@ -580,11 +588,12 @@ _LOCALDEVCMD = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=1466,
-  serialized_end=1671,
+  serialized_start=1556,
+  serialized_end=1761,
 )
 
 _RADIOSTATUS.fields_by_name['cellular_status'].message_type = _CELLULARSTATUS
+_RADIOSTATUS.fields_by_name['cellular_metrics'].message_type = metrics_dot_metrics__pb2._CELLULARMETRIC
 _CELLULARSTATUS.fields_by_name['module'].message_type = info_dot_info__pb2._ZCELLULARMODULEINFO
 _CELLULARSTATUS.fields_by_name['sim_cards'].message_type = info_dot_info__pb2._ZSIMCARDINFO
 _CELLULARSTATUS.fields_by_name['providers'].message_type = info_dot_info__pb2._ZCELLULARPROVIDER

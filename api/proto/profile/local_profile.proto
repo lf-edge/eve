@@ -4,6 +4,7 @@
 syntax = "proto3";
 
 import "info/info.proto";
+import "metrics/metrics.proto";
 import "google/protobuf/timestamp.proto";
 
 package org.lfedge.eve.profile;
@@ -30,6 +31,8 @@ message RadioStatus {
    string config_error = 2;
    // Status of every LTE network.
    repeated CellularStatus cellular_status = 3;
+   // Metrics for every LTE network.
+   repeated org.lfedge.eve.metrics.CellularMetric cellular_metrics = 4;
    // XXX Later we can add status for every WiFi network adapter.
 }
 
