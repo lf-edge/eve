@@ -149,9 +149,10 @@ func getRadioStatus(ctx *getconfigContext) *profile.RadioStatus {
 			})
 	}
 	return &profile.RadioStatus{
-		RadioSilence:   dns.RadioSilence.Imposed,
-		ConfigError:    dns.RadioSilence.ConfigError,
-		CellularStatus: cellularStatus,
+		RadioSilence:    dns.RadioSilence.Imposed,
+		ConfigError:     dns.RadioSilence.ConfigError,
+		CellularStatus:  cellularStatus,
+		CellularMetrics: getCellularMetrics(ctx.zedagentCtx),
 	}
 }
 

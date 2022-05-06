@@ -205,7 +205,10 @@ state, EVE will start periodically making a POST request to the [Radio endpoint]
 If this (optional) endpoint is not implemented, the default policy for radio transmission
 will remain in effect. If the endpoint is available, EVE will provide an update of the
 current state of wireless devices in the POST request body, formatted and marshalled using
-the [RadioStatus](./proto/profile/local_profile.proto) proto message.
+the [RadioStatus](./proto/profile/local_profile.proto) proto message. This includes the state
+of the radio silence mode, information about cellular modem(s) and SIM card(s), signal strength
+metrics and packets counters as recorded by modem(s). Note that currently the state information
+is limited to cellular connectivity and does not cover WiFi network adapters.
 
 If a response from the application contains no content (response code 204), EVE assumes
 that the intended radio silence state has not changed (initial intended state is a disabled
