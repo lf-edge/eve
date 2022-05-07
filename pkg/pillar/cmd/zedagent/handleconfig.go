@@ -316,6 +316,8 @@ func getLatestConfig(url string, iteration int,
 			log.Functionf("getLatestConfig : Controller certificate miss")
 		case types.SenderStatusNotFound:
 			log.Functionf("getLatestConfig : Device deleted in controller?")
+		case types.SenderStatusForbidden:
+			log.Functionf("getLatestConfig : Device integrity token mismatch")
 		default:
 			log.Errorf("getLatestConfig  failed: %s", err)
 		}
@@ -338,6 +340,14 @@ func getLatestConfig(url string, iteration int,
 		}
 		if senderStatus == types.SenderStatusNotFound {
 			potentialUUIDUpdate(getconfigCtx)
+		}
+		if senderStatus == types.SenderStatusForbidden {
+			log.Errorf("Config request is forbidden, triggering attestation again")
+			_ = restartAttestation(ctx)
+			if getconfigCtx.updateInprogress {
+				log.Warnf("updateInprogress=true,resp.StatusCode=Forbidden, so marking ConfigGetTemporaryFail")
+				getconfigCtx.configGetStatus = types.ConfigGetTemporaryFail
+			}
 		}
 
 		if !getconfigCtx.readSavedConfig && !getconfigCtx.configReceived {
@@ -371,15 +381,6 @@ func getLatestConfig(url string, iteration int,
 		return false
 	}
 
-	if resp.StatusCode == http.StatusForbidden {
-		log.Errorf("Config request is forbidden, triggering attestation again")
-		restartAttestation(ctx)
-		if getconfigCtx.updateInprogress {
-			log.Warnf("updateInprogress=true,resp.StatusCode=Forbidden, so marking ConfigGetTemporaryFail")
-			getconfigCtx.configGetStatus = types.ConfigGetTemporaryFail
-		}
-		return false
-	}
 	if resp.StatusCode == http.StatusNotModified {
 		log.Tracef("StatusNotModified len %d", len(contents))
 		// Inform ledmanager about config received from cloud

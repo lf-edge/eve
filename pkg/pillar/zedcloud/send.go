@@ -180,6 +180,8 @@ func SendOnAllIntf(ctxWork context.Context, ctx *ZedCloudContext, url string, re
 				senderStatus = types.SenderStatusUpgrade
 			case http.StatusNotFound, http.StatusBadRequest:
 				senderStatus = types.SenderStatusNotFound
+			case http.StatusForbidden:
+				senderStatus = types.SenderStatusForbidden
 			}
 		}
 
