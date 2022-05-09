@@ -84,13 +84,18 @@ type LocalDevCmd_Command int32
 
 const (
 	LocalDevCmd_COMMAND_UNSPECIFIED LocalDevCmd_Command = 0
-	LocalDevCmd_COMMAND_SHUTDOWN    LocalDevCmd_Command = 1
-	// Edge node will initiate a graceful shutdown of all of the application
+	// SHUTDOWN: Edge node will initiate a graceful shutdown of all of the app
 	// instances on the node (including an application instance implementing
 	// the local profile server API).
 	// The state of the application instances (HALTING, HALTED, etc) can be
-	// observed since is is sent to the api/v1/appinfo API endpoint as normal.
-	// XXX should we do the LPS app instance last?
+	// observed since is sent to the api/v1/appinfo API endpoint as normal.
+	// Any local profile server is shut down after all the other app instances
+	// have halted.
+	LocalDevCmd_COMMAND_SHUTDOWN LocalDevCmd_Command = 1
+	// SHUTDOWN_POWEROFF: As above, but once all of the app instances have
+	// been shut down the edge node will also power off. Note that the power
+	// on will need to be done through other local means (UPS power cycling
+	// the edge node or someone manually power cycling the edge node.)
 	LocalDevCmd_COMMAND_SHUTDOWN_POWEROFF LocalDevCmd_Command = 2
 )
 

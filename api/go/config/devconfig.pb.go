@@ -114,7 +114,12 @@ type EdgeDevConfig struct {
 	Edgeview *EdgeViewConfig `protobuf:"bytes,32,opt,name=edgeview,proto3" json:"edgeview,omitempty"`
 	// disks configuration
 	Disks *DisksConfig `protobuf:"bytes,33,opt,name=disks,proto3" json:"disks,omitempty"`
-	// graceful shutdown of all app instances on EdgeNode
+	// Graceful shutdown of all app instances on the edge node.
+	// Any local profile server is shut down after all the other app instances
+	// have halted.
+	// Note that this does not power off the edge node since there is no remote
+	// power on capability; power off can be done locally using the Local Profile
+	// Server API.
 	Shutdown *DeviceOpsCmd `protobuf:"bytes,34,opt,name=shutdown,proto3" json:"shutdown,omitempty"`
 }
 
