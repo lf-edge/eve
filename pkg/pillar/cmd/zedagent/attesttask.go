@@ -51,6 +51,8 @@ type attestContext struct {
 	InternalQuote *types.AttestQuote
 	//Data to be escrowed with Controller
 	EscrowData []byte
+	//Indicates that we can skip escrow send
+	SkipEscrow bool
 	//Iteration keeps track of retry count
 	Iteration int
 	//EventLogEntries are the TPM EventLog entries
@@ -339,6 +341,10 @@ func (server *VerifierImpl) SendAttestEscrow(ctx *zattest.Context) error {
 	// bail if V2API is not supported
 	if !zedcloud.UseV2API() {
 		return zattest.ErrNoVerifier
+	}
+	if attestCtx.SkipEscrow {
+		log.Notice("[ATTEST] Escrow successful skipped")
+		return nil
 	}
 	if attestCtx.EscrowData == nil {
 		return zattest.ErrNoEscrowData
@@ -643,6 +649,10 @@ func handleEncryptedKeyFromDeviceImpl(ctxArg interface{}, key string,
 	}
 	attestCtx := ctx.attestCtx
 	attestCtx.EscrowData = vaultKey.EncryptedVaultKey
+	attestCtx.SkipEscrow = false
+	if len(attestCtx.EscrowData) == 0 {
+		attestCtx.SkipEscrow = true
+	}
 
 	if attestCtx.attestFsmCtx == nil {
 		log.Fatalf("[ATTEST] Uninitialized access to attestFsmCtx")
