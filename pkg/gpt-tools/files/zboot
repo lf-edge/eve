@@ -132,7 +132,7 @@ reset() {
 
     # Warning, this does not really play nice with init
     # do not sync, don't go through init
-    reboot -n -f
+    /sbin/reboot -n -f
 }
 
 #
@@ -141,7 +141,7 @@ reset() {
 poweroff() {
     # Warning, this does not really play nice with init
     # do not sync, don't go through init
-    poweroff -f
+    /sbin/poweroff -f
 }
 
 if [ $# -eq 0 ]; then
