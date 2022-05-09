@@ -1102,36 +1102,41 @@ func handleVaultKeyFromControllerImpl(ctxArg interface{}, key string,
 }
 
 func publishVaultKey(ctx *vaultMgrContext, vaultName string) error {
-	if !ctx.defaultVaultUnlocked {
-		log.Errorf("Vault is not yet unlocked, waiting for Controller key")
-		return nil
-	}
-	keyBytes, err := retrieveTpmKey(true)
-	if err != nil {
-		return fmt.Errorf("Failed to retrieve key from TPM %v", err)
-	}
+	var encryptedVaultKey []byte
+	//we try to fill EncryptedVaultKey only in case of tpm enabled
+	//otherwise we leave it empty
+	if etpm.IsTpmEnabled() {
+		if !ctx.defaultVaultUnlocked {
+			log.Errorf("Vault is not yet unlocked, waiting for Controller key")
+			return nil
+		}
+		keyBytes, err := retrieveTpmKey(true)
+		if err != nil {
+			return fmt.Errorf("Failed to retrieve key from TPM %v", err)
+		}
 
-	encryptedKey, err := etpm.EncryptDecryptUsingTpm(keyBytes, true)
-	if err != nil {
-		return fmt.Errorf("Failed to encrypt vault key %v", err)
-	}
+		encryptedKey, err := etpm.EncryptDecryptUsingTpm(keyBytes, true)
+		if err != nil {
+			return fmt.Errorf("Failed to encrypt vault key %v", err)
+		}
 
-	hash := sha256.New()
-	hash.Write(keyBytes)
-	digest256 := hash.Sum(nil)
+		hash := sha256.New()
+		hash.Write(keyBytes)
+		digest256 := hash.Sum(nil)
 
-	keyData := &attest.AttestVolumeKeyData{
-		EncryptedKey: encryptedKey,
-		DigestSha256: digest256,
-	}
-	b, err := proto.Marshal(keyData)
-	if err != nil {
-		return fmt.Errorf("Failed to Marshal keyData %v", err)
+		keyData := &attest.AttestVolumeKeyData{
+			EncryptedKey: encryptedKey,
+			DigestSha256: digest256,
+		}
+		encryptedVaultKey, err = proto.Marshal(keyData)
+		if err != nil {
+			return fmt.Errorf("Failed to Marshal keyData %v", err)
+		}
 	}
 
 	keyFromDevice := types.EncryptedVaultKeyFromDevice{}
 	keyFromDevice.Name = vaultName
-	keyFromDevice.EncryptedVaultKey = b
+	keyFromDevice.EncryptedVaultKey = encryptedVaultKey
 	key := keyFromDevice.Key()
 	log.Tracef("Publishing EncryptedVaultKeyFromDevice %s\n", key)
 	pub := ctx.pubVaultKeyFromDevice

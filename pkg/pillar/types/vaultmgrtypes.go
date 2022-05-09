@@ -82,7 +82,7 @@ func (status VaultStatus) LogKey() string {
 //EncryptedVaultKeyFromDevice is published by vaultmgr towards Controller (through zedagent)
 type EncryptedVaultKeyFromDevice struct {
 	Name              string
-	EncryptedVaultKey []byte
+	EncryptedVaultKey []byte // empty if no TPM enabled
 }
 
 //Key returns name of the vault corresponding to this object
