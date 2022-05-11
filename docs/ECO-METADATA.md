@@ -111,19 +111,134 @@ The frequency at which EVE updates location information is configurable using th
 seconds. This means that with a good continuous reception of the GNSS signal, the geographic
 coordinates presented to applications are never older than 20 seconds.
 
-## WWAN Metrics API endpoint
+## Cellular connectivity metadata
 
-Meta-data service allows applications to obtain WWAN metrics, which includes information
-about the cellular signal strength and packet counters recorded by the cellular modem(s).
+Using meta-data server, applications are able to request information about the current state
+of the cellular connectivity of the device. This covers all wireless wide area networks (WWANs)
+configured for the device, with information about the installed cellular equipment (modem(s)
+and SIM card(s)), identity information (IMEI, IMSI, ICCID), available network providers (PLMNs),
+signal strength metrics (RSSI, RSRP, etc.), packet stats (RX/TX counters) and more.
 
-Provided that device has at least one cellular modem visible to EVE (i.e. not assigned
-directly to an application), JSON-formatted WWAN metrics are made available to all
-applications on the `/eve/v1/wwan-metrics.json` endpoint.
+This is split between two API endpoints:
+
+- `/eve/v1/wwan/status.json`
+- `/eve/v1/wwan/metrics.json`
+
+The rationale is that metrics are much more dynamic and frequently changing, therefore they are
+expected to be requested more often than status information. It would be therefore inefficient
+to post status attributes alongside metrics.
+
+### WWAN Status API endpoint
+
+JSON-formatted WWAN-related status information can be requested by applications on the
+`/eve/v1/wwan/status.json` endpoint.
 
 For example:
 
 ```shell
-curl 169.254.169.254/eve/v1/wwan-metrics.json 2>/dev/null | jq
+curl 169.254.169.254/eve/v1/wwan/status.json 2>/dev/null | jq
+{
+  "networks": [
+    {
+      "logical-label": "wwan0",
+      "physical-addrs": {
+        "interface": "wwan0",
+        "usb": "1:1",
+        "pci": "0000:00:1d.7"
+      },
+      "cellular-module": {
+        "imei": "353533102301374",
+        "model": "EM7565",
+        "revision": "SWI9X50C_01.08.04.00 dbb5d0 jenkins 2018/08/21 21:40:11",
+        "control-protocol": "qmi",
+        "operating-mode": "online-and-connected"
+      },
+      "sim-cards": [
+        {
+          "iccid": "8942104393400779111",
+          "imsi": "231063511665993"
+        }
+      ],
+      "config-error": "",
+      "probe-error": "",
+      "providers": [
+        {
+          "plmn": "231-01",
+          "description": "Orange",
+          "current-serving": false,
+          "roaming": true
+        },
+        {
+          "plmn": "231-03",
+          "description": "SWAN SK",
+          "current-serving": false,
+          "roaming": true
+        },
+        {
+          "plmn": "231-02",
+          "description": "Telekom",
+          "current-serving": false,
+          "roaming": true
+        },
+        {
+          "plmn": "231-06",
+          "description": "Tesco - SK",
+          "current-serving": false,
+          "roaming": false
+        },
+        {
+          "plmn": "231-06",
+          "description": "Tesco - SK",
+          "current-serving": true,
+          "roaming": false
+        }
+      ]
+    }
+  ]
+}
+```
+
+The underlying structure, used by EVE to store the information and output it as JSON,
+is named `WwanStatus` and can be found in [zedroutertypes.go](../pkg/pillar/types/zedroutertypes.go).
+
+The endpoint returns a list of entries, one for every cellular modem, with the modem's
+logical label (from the device model) used as a reference. The physical connection between
+the device and the modem is described by the provided physical addresses. For example,
+`physical-addrs.usb` is a USB address in the format `<BUS>:[<PORT>]` (with nested ports
+separated by dots), identifying the USB port through which the modem is connected with the device.
+
+Information about the cellular modem is summarized inside the `cellular-module` structure.
+It provides the modem identification number (`IMEI`), describes the hardware model (`model`)
+and the version of the running firmware (`revision`).
+`control-protocol` is either `qmi` or `mbim`, and it is the protocol used by EVE to manage
+the modem.
+`operating-mode` is one of: `online` (modem is online but not connected), `online-and-connected`
+(modem is online and connected), `radio-off` (modem has disabled radio transmission), `offline`
+(modem is offline), `unrecognized` (unrecognized operating mode).
+
+The set of SIM cards inserted into the modem is listed under `sim-cards`. Included is
+the identification number of the subscriber (`IMSI`) and the SIM card itself (`ICCID`).
+
+If EVE fails to configure modem and put it into a desired state, `config-error` will explain
+what exactly went wrong.
+If enabled, EVE will periodically test connectivity by running a ping towards a remote
+endpoint (with configurable address). If the last probing failed, `probe-error` will contain an error
+message.
+
+Lastly, the set of available network providers is listed under `providers`.
+Each of them is referenced by the Public land mobile network (PLMN) code, identifying a country,
+and a mobile network operator in that country. If the modem is connected to one of the networks,
+that network will have attribute `current-serving` returned as `true`.
+
+### WWAN Metrics API endpoint
+
+JSON-formatted WWAN-related metrics can be requested by applications on the
+`/eve/v1/wwan/metrics.json` endpoint.
+
+For example:
+
+```shell
+curl 169.254.169.254/eve/v1/wwan/metrics.json 2>/dev/null | jq
 {
   "networks": [
     {
@@ -152,14 +267,16 @@ curl 169.254.169.254/eve/v1/wwan-metrics.json 2>/dev/null | jq
 }
 ```
 
-The endpoint returns a list of entries, one for every cellular modem, with the modem's
-logical label (from the device model) used as a reference. The physical connection between
-the device and the modem is described by the provided physical addresses. For example,
-`physical-addrs.usb` is a USB address in the format `<BUS>:[<PORT>]` (with nested ports
-separated by dots), identifying the USB port through which the modem is connected with the device.
+The underlying structure, used by EVE to store the information and output it as JSON,
+is named `WwanMetrics` and can be found in [zedroutertypes.go](../pkg/pillar/types/zedroutertypes.go).
 
-Packet statics contain RX/TX packet/byte counters (all uint64) as recorded by the modem itself.
-This may differ from the Linux kernel counters (from `networkMetric` proto message) if for example
+The endpoint returns a list of entries, one for every cellular modem, with the modem's
+logical label (from the device model) used as a reference. Just like in the
+[WWAN status API endpoint](#wwan-status-api-endpoint), the physical connection between
+the device and the cellular modem is described by the `physical-addrs` structure.
+
+Packet statics contain RX/TX packet/byte counters (all `uint64`) as recorded by the modem itself.
+This may differ from the Linux kernel counters (from `networkMetric` proto message) if, for example,
 some packets were dropped by the modem.
 
 Cellular signal strength is described using multiple different measurements:
@@ -169,6 +286,6 @@ Cellular signal strength is described using multiple different measurements:
 - Reference Signal Receive Power (RSRP) measured in dBm (decibel-milliwatts)
 - Signal-to-Noise Ratio (SNR) measured in dB (decibels)
 
-All measurements are of type int32. Measured values are rounded to the nearest integers
-(by the modem) and published without decimal places. The maximum value of int32 (0x7FFFFFFF)
+All measurements are of type `int32`. Measured values are rounded to the nearest integers
+(by the modem) and published without decimal places. The maximum value of `int32` (`0x7FFFFFFF`)
 represents unspecified/unavailable metric.

@@ -80,6 +80,7 @@ type DpcManager struct {
 	PubDummyDevicePortConfig pubsub.Publication // for logging
 	PubDevicePortConfigList  pubsub.Publication
 	PubDeviceNetworkStatus   pubsub.Publication
+	PubWwanStatus            pubsub.Publication
 	PubWwanMetrics           pubsub.Publication
 	PubWwanLocationInfo      pubsub.Publication
 

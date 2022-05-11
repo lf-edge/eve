@@ -203,6 +203,14 @@ func (m *DpcManager) reloadWwanStatus() {
 	if changed || wasInProgress {
 		m.updateDNS()
 	}
+	if changed && m.PubWwanStatus != nil {
+		// WWAN status is published to zedrouter, which then exposes it to apps
+		// via meta-data server.
+		m.Log.Functionf("PubWwanStatus: %+v", status)
+		if err = m.PubWwanStatus.Publish("global", status); err != nil {
+			m.Log.Errorf("Failed to publish wwan status: %v", err)
+		}
+	}
 }
 
 // reloadWwanMetrics loads the latest metrics published by the wwan service.

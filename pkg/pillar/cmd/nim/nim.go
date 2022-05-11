@@ -94,6 +94,7 @@ type nim struct {
 	pubDeviceNetworkStatus   pubsub.Publication
 	pubZedcloudMetrics       pubsub.Publication
 	pubCipherMetrics         pubsub.Publication
+	pubWwanStatus            pubsub.Publication
 	pubWwanMetrics           pubsub.Publication
 	pubWwanLocationInfo      pubsub.Publication
 
@@ -178,6 +179,7 @@ func (n *nim) init() (err error) {
 		PubDummyDevicePortConfig: n.pubDummyDevicePortConfig,
 		PubDevicePortConfigList:  n.pubDevicePortConfigList,
 		PubDeviceNetworkStatus:   n.pubDeviceNetworkStatus,
+		PubWwanStatus:            n.pubWwanStatus,
 		PubWwanMetrics:           n.pubWwanMetrics,
 		PubWwanLocationInfo:      n.pubWwanLocationInfo,
 		ZedcloudMetrics:          n.zedcloudMetrics,
@@ -442,6 +444,15 @@ func (n *nim) initPublications() (err error) {
 		AgentName: agentName,
 		TopicType: types.CipherMetrics{},
 	})
+	if err != nil {
+		return err
+	}
+
+	n.pubWwanStatus, err = n.PubSub.NewPublication(
+		pubsub.PublicationOptions{
+			AgentName: agentName,
+			TopicType: types.WwanStatus{},
+		})
 	if err != nil {
 		return err
 	}

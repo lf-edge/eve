@@ -3386,7 +3386,7 @@ type WwanPhysAddrs struct {
 type WwanStatus struct {
 	Networks []WwanNetworkStatus `json:"networks"`
 	// MD5 checksum of the corresponding WwanConfig (as config.json).
-	ConfigChecksum string `json:"config-checksum"`
+	ConfigChecksum string `json:"config-checksum,omitempty"`
 }
 
 // LookupNetworkStatus returns status corresponding to the given cellular network.
@@ -3450,7 +3450,7 @@ type WwanNetworkStatus struct {
 
 // WwanCellModule contains cellular module specs.
 type WwanCellModule struct {
-	Name            string       `json:"name"`
+	Name            string       `json:"name,omitempty"`
 	IMEI            string       `json:"imei"`
 	Model           string       `json:"model"`
 	Revision        string       `json:"revision"`
@@ -3460,7 +3460,7 @@ type WwanCellModule struct {
 
 // WwanSimCard contains SIM card information.
 type WwanSimCard struct {
-	Name  string `json:"name"`
+	Name  string `json:"name,omitempty"`
 	ICCID string `json:"iccid"`
 	IMSI  string `json:"imsi"`
 }
