@@ -19,4 +19,4 @@ test:
 
 -- ssh.sh --
 EDEN={{EdenConfig "eden.root"}}/{{EdenConfig "eden.bin-dist"}}/{{EdenConfig "eden.eden-bin"}}
-until $EDEN eve ssh sleep 10; do sleep 10; done
+until timeout 10 $EDEN eve ssh exit; do sleep 10; done
