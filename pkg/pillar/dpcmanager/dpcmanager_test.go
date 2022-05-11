@@ -35,6 +35,7 @@ import (
 )
 
 var (
+	logObj          *base.LogObject
 	networkMonitor  *netmonitor.MockNetworkMonitor
 	wwanWatcher     *MockWwanWatcher
 	geoService      *MockGeoService
@@ -55,7 +56,7 @@ func initTest(test *testing.T) *GomegaWithT {
 	t.SetDefaultConsistentlyDuration(5 * time.Second) // > NetworkTestInterval
 	t.SetDefaultConsistentlyPollingInterval(250 * time.Millisecond)
 	logger := logrus.StandardLogger()
-	logObj := base.NewSourceLogObject(logger, "test", 1234)
+	logObj = base.NewSourceLogObject(logger, "test", 1234)
 	ps := pubsub.New(&pubsub.EmptyDriver{}, logger, logObj)
 	var err error
 	pubDummyDPC, err = ps.NewPublication(
@@ -1818,4 +1819,44 @@ func TestTransientDNSError(test *testing.T) {
 	t.Expect(dnsEth0).ToNot(BeNil())
 	t.Expect(dnsEth0.HasError()).To(BeFalse())
 	t.Expect(dnsEth0.LastError).To(BeEmpty())
+}
+
+// Test DPC from before 7.3.0 which does not have IsL3Port flag.
+func TestOldDPC(test *testing.T) {
+	t := initTest(test)
+
+	// Prepare simulated network stack.
+	eth0 := mockEth0()
+	networkMonitor.AddOrUpdateInterface(eth0)
+
+	// Single interface configured for mgmt.
+	aa := makeAA(selectedIntfs{eth0: true})
+	dpcManager.UpdateAA(aa)
+
+	// Apply global config.
+	dpcManager.UpdateGCP(globalConfig())
+
+	// Apply "zedagent" DPC persisted by an older version of EVE,
+	// which is missing IsL3Port flag.
+	timePrio1 := time.Time{}
+	dpc := makeDPC("zedagent", timePrio1, selectedIntfs{eth0: true})
+	dpc.Ports[0].IsL3Port = false
+
+	// This is run by nim for any input DPC to make sure that it is compliant
+	// with the latest EVE version.
+	dpc.DoSanitize(logObj, true, false, "", true, true)
+
+	dpcManager.AddDPC(dpc)
+
+	// Verification should succeed even with the old DPC.
+	t.Eventually(testingInProgressCb()).Should(BeTrue())
+	t.Eventually(testingInProgressCb()).Should(BeFalse())
+	t.Eventually(dpcIdxCb()).Should(Equal(0))
+	t.Eventually(dnsKeyCb()).Should(Equal("zedagent"))
+	t.Eventually(dpcStateCb(0)).Should(Equal(types.DPCStateSuccess))
+
+	// DPC manager should have applied L3 config for eth0 even if it was
+	// not marked as L3 port in the old DPC.
+	eth0Dhcpcd := dg.Reference(generic.Dhcpcd{AdapterIfName: "eth0"})
+	t.Expect(itemIsCreated(eth0Dhcpcd)).To(BeTrue())
 }

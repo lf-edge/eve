@@ -728,7 +728,7 @@ const (
 // DoSanitize -
 func (config *DevicePortConfig) DoSanitize(log *base.LogObject,
 	sanitizeTimePriority bool, sanitizeKey bool, key string,
-	sanitizeName bool) {
+	sanitizeName, sanitizeL3Port bool) {
 
 	if sanitizeTimePriority {
 		zeroTime := time.Time{}
@@ -775,6 +775,28 @@ func (config *DevicePortConfig) DoSanitize(log *base.LogObject,
 				port.Logicallabel = port.IfName
 				log.Functionf("XXX DoSanitize: Forcing Logicallabel for %s ifname %s\n",
 					key, port.IfName)
+			}
+		}
+	}
+	if sanitizeL3Port {
+		// IsL3Port flag was introduced to NetworkPortConfig in 7.3.0
+		// It is used to differentiate between L3 ports (with IP/DNS config)
+		// and intermediate L2-only ports (bond slaves, VLAN parents, etc.).
+		// Before 7.3.0, EVE didn't support L2-only adapters and all uplink ports
+		// were L3 endpoints.
+		// However, even with VLANs and bonds there has to be at least one L3
+		// port (L2 adapters are only intermediates with L3 endpoint(s) at the top).
+		// This means that to support upgrade from older EVE versions,
+		// we can simply check if there is at least one L3 port, and if not, it means
+		// that we are dealing with an older persisted/override DPC, where all
+		// ports should be marked as L3.
+		var hasL3Port bool
+		for _, port := range config.Ports {
+			hasL3Port = hasL3Port || port.IsL3Port
+		}
+		if !hasL3Port {
+			for i := range config.Ports {
+				config.Ports[i].IsL3Port = true
 			}
 		}
 	}
