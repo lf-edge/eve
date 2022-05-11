@@ -230,6 +230,8 @@ func (m *DpcManager) ingestDPCList() (dpclPresent bool) {
 	m.Log.Functionf("Initial DPCL %v", storedDpcl)
 	var dpcl types.DevicePortConfigList
 	for _, portConfig := range storedDpcl.PortConfigList {
+		// Sanitize port labels and IsL3Port flag.
+		portConfig.DoSanitize(m.Log, false, false, "", true, true)
 		// Clear the errors from before reboot and start fresh.
 		for i := 0; i < len(portConfig.Ports); i++ {
 			portPtr := &portConfig.Ports[i]

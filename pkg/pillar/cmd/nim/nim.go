@@ -683,13 +683,13 @@ func (n *nim) handleDPCModify(_ interface{}, key string, configArg, _ interface{
 
 func (n *nim) handleDPCImpl(key string, configArg interface{}) {
 	dpc := configArg.(types.DevicePortConfig)
-	dpc.DoSanitize(n.Log, true, true, key, true)
+	dpc.DoSanitize(n.Log, true, true, key, true, true)
 	n.dpcManager.AddDPC(dpc)
 }
 
 func (n *nim) handleDPCDelete(_ interface{}, key string, configArg interface{}) {
 	dpc := configArg.(types.DevicePortConfig)
-	dpc.DoSanitize(n.Log, false, true, key, true)
+	dpc.DoSanitize(n.Log, false, true, key, true, true)
 	n.dpcManager.DelDPC(dpc)
 }
 
@@ -775,7 +775,7 @@ func (n *nim) ingestDevicePortConfigFile(oldDirname string, newDirname string, n
 			filename, err)
 		return
 	}
-	dpc.DoSanitize(n.Log, true, false, "", true)
+	dpc.DoSanitize(n.Log, true, false, "", true, true)
 	dpc.OriginFile = filename
 
 	// Save New config to file.
