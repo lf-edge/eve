@@ -93,6 +93,8 @@ type DpcManager struct {
 	hasGlobalCfg     bool
 	radioSilence     types.RadioSilence
 	enableLastResort bool
+	// Boot-time configuration
+	dpclPresentAtBoot bool
 
 	// DPC verification
 	dpcVerify dpcVerify
@@ -195,9 +197,8 @@ type dpcVerify struct {
 	crucialIfs     map[string]netmonitor.IfAttrs // key = ifName, change triggers restartVerify
 }
 
-// Run DpcManager as a separate task with its own loop and a watchdog file.
-// Returns an indication whether the DPC list was found in /persist
-func (m *DpcManager) Run(ctx context.Context) (dpclPresent bool, err error) {
+// Init DpcManager
+func (m *DpcManager) Init(ctx context.Context) error {
 	m.dpcVerify.crucialIfs = make(map[string]netmonitor.IfAttrs)
 	m.inputCommands = make(chan inputCommand, 10)
 	if m.WwanWatcher == nil {
@@ -219,18 +220,27 @@ func (m *DpcManager) Run(ctx context.Context) (dpclPresent bool, err error) {
 	m.pendingDpcTimer = &time.Timer{}
 	m.geoTimer = flextimer.FlexTickerHandle{}
 
+	// Ingest persisted list of DPCs. ingestDPCList will return false
+	// to indicate the file is missing in /persist
+	m.dpclPresentAtBoot = m.ingestDPCList()
+	return nil
+}
+
+// Run DpcManager as a separate task with its own loop and a watchdog file.
+func (m *DpcManager) Run(ctx context.Context) (err error) {
 	m.networkEvents = m.NetworkMonitor.WatchEvents(ctx, "dpc-reconciler")
 	m.wwanEvents, err = m.WwanWatcher.Watch(ctx)
 	if err != nil {
-		return false, err
+		return err
 	}
 
-	// Ingest persisted list of DPCs. ingestDPCList will return false
-	// to indicate the file is missing in /persist
-	dpclPresent = m.ingestDPCList()
-
 	go m.run(ctx)
-	return dpclPresent, nil
+	return nil
+}
+
+// GetDpclPresentAtBoot returns the attribute
+func (m *DpcManager) GetDpclPresentAtBoot(ctx context.Context) bool {
+	return m.dpclPresentAtBoot
 }
 
 func (m *DpcManager) run(ctx context.Context) {
