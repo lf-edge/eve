@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+	"time"
 
 	dg "github.com/lf-edge/eve/libs/depgraph"
 	"github.com/lf-edge/eve/libs/reconciler"
@@ -358,6 +359,7 @@ func (r *LinuxDpcReconciler) Reconcile(ctx context.Context, args Args) Reconcile
 
 	// Reconcile with clear network monitor cache to avoid working with stale data.
 	r.NetworkMonitor.ClearCache()
+	reconcileStartTime := time.Now()
 	if reconcileAll {
 		r.updateIntendedState(args)
 		r.updateCurrentState(args)
@@ -401,8 +403,19 @@ func (r *LinuxDpcReconciler) Reconcile(ctx context.Context, args Args) Reconcile
 		if log.Err != nil {
 			withErr = fmt.Sprintf(" with error: %v", log.Err)
 		}
-		r.Log.Noticef("DPC Reconciler executed %v for %v%s, content: %s",
-			log.Operation, dg.Reference(log.Item), withErr, log.Item.String())
+		var verb string
+		if log.InProgress {
+			verb = "started async execution of"
+		} else {
+			if log.StartTime.Before(reconcileStartTime) {
+				verb = "finalized async execution of"
+			} else {
+				// synchronous operation
+				verb = "executed"
+			}
+		}
+		r.Log.Noticef("DPC Reconciler %s %v for %v%s, content: %s",
+			verb, log.Operation, dg.Reference(log.Item), withErr, log.Item.String())
 	}
 
 	// Log transitions from no-error to error and vice-versa.

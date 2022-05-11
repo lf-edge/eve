@@ -6,6 +6,7 @@ package dpcmanager
 import (
 	"context"
 	"crypto/x509"
+	"fmt"
 	"os"
 
 	"github.com/lf-edge/eve/pkg/pillar/types"
@@ -50,7 +51,7 @@ func (m *DpcManager) addDPC(ctx context.Context, dpc types.DevicePortConfig) {
 
 	// Restart verification.
 	m.dpcVerify.inProgress = false
-	m.restartVerify(ctx, "new DPC")
+	m.restartVerify(ctx, fmt.Sprintf("new DPC (%s/%v)", dpc.Key, dpc.TimePriority))
 }
 
 func (m *DpcManager) delDPC(ctx context.Context, dpc types.DevicePortConfig) {
@@ -59,7 +60,7 @@ func (m *DpcManager) delDPC(ctx context.Context, dpc types.DevicePortConfig) {
 		m.Log.Functionf("delDPC: System current. No change detected.\n")
 		return
 	}
-	m.restartVerify(ctx, "removed DPC")
+	m.restartVerify(ctx, fmt.Sprintf("removed DPC (%s/%v)", dpc.Key, dpc.TimePriority))
 }
 
 // Returns true if the current config has actually changed.
