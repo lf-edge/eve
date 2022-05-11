@@ -216,16 +216,15 @@ func (m *DpcManager) lookupDPC(dpc types.DevicePortConfig) (*types.DevicePortCon
 // Removes useless ones (which might be re-added by the controller/zedagent
 // later but at least they are not in the way during boot).
 // Returns whether or not the DPCList was present
-func (m *DpcManager) ingestDPCList() (dpclPresent bool) {
+func (m *DpcManager) ingestDPCList() (dpclPresentAtBoot bool) {
 	m.Log.Functionf("IngestDPCList")
 	item, err := m.PubDevicePortConfigList.Get("global")
 	var storedDpcl types.DevicePortConfigList
 	if err != nil {
 		m.Log.Errorf("No global key for DevicePortConfigList")
-		dpclPresent = false
+		dpclPresentAtBoot = false
 	} else {
 		storedDpcl = item.(types.DevicePortConfigList)
-		dpclPresent = true
 	}
 	m.Log.Functionf("Initial DPCL %v", storedDpcl)
 	var dpcl types.DevicePortConfigList
@@ -259,6 +258,8 @@ func (m *DpcManager) ingestDPCList() (dpclPresent bool) {
 			continue
 		}
 		dpcl.PortConfigList = append(dpcl.PortConfigList, portConfig)
+		// We have at least one port
+		dpclPresentAtBoot = true
 	}
 	m.dpcList = dpcl
 	m.Log.Functionf("Sanitized DPCL %v", dpcl)
@@ -266,7 +267,7 @@ func (m *DpcManager) ingestDPCList() (dpclPresent bool) {
 	m.dpcList.CurrentIndex = -1 // No known working one
 	m.Log.Functionf("Published DPCL %v", m.dpcList)
 	m.Log.Functionf("IngestDPCList len %d", len(m.dpcList.PortConfigList))
-	return dpclPresent
+	return dpclPresentAtBoot
 }
 
 func (m *DpcManager) compressAndPublishDPCL() {
