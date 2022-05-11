@@ -45,6 +45,7 @@ var (
 	pubDummyDPC     pubsub.Publication // for logging
 	pubDPCList      pubsub.Publication
 	pubDNS          pubsub.Publication
+	pubWwwanStatus  pubsub.Publication
 	pubWwwanMetrics pubsub.Publication
 	pubWwanLocInfo  pubsub.Publication
 )
@@ -81,6 +82,14 @@ func initTest(test *testing.T) *GomegaWithT {
 		pubsub.PublicationOptions{
 			AgentName: "test",
 			TopicType: types.DeviceNetworkStatus{},
+		})
+	if err != nil {
+		log.Fatal(err)
+	}
+	pubWwwanStatus, err = ps.NewPublication(
+		pubsub.PublicationOptions{
+			AgentName: "test",
+			TopicType: types.WwanStatus{},
 		})
 	if err != nil {
 		log.Fatal(err)
@@ -128,6 +137,7 @@ func initTest(test *testing.T) *GomegaWithT {
 		PubDummyDevicePortConfig: pubDummyDPC,
 		PubDevicePortConfigList:  pubDPCList,
 		PubDeviceNetworkStatus:   pubDNS,
+		PubWwanStatus:            pubWwwanStatus,
 		PubWwanMetrics:           pubWwwanMetrics,
 		PubWwanLocationInfo:      pubWwanLocInfo,
 		ZedcloudMetrics:          zedcloud.NewAgentMetrics(),
@@ -1133,12 +1143,21 @@ func TestWireless(test *testing.T) {
 	t.Expect(wwanDNS.Cellular.PhysAddrs.USB).To(Equal("1:3.3"))
 	t.Expect(wwanDNS.Cellular.PhysAddrs.PCI).To(Equal("0000:04:00.0"))
 
+	// Check published wwan status
+	t.Eventually(func() bool {
+		obj, err := pubWwwanStatus.Get("global")
+		return err == nil && obj != nil
+	}).Should(BeTrue())
+	obj, err := pubWwwanStatus.Get("global")
+	status := obj.(types.WwanStatus)
+	t.Expect(status).To(BeEquivalentTo(wwan0Status))
+
 	// Check published wwan metrics
 	t.Eventually(func() bool {
 		obj, err := pubWwwanMetrics.Get("global")
 		return err == nil && obj != nil
 	}).Should(BeTrue())
-	obj, err := pubWwwanMetrics.Get("global")
+	obj, err = pubWwwanMetrics.Get("global")
 	metrics := obj.(types.WwanMetrics)
 	t.Expect(metrics.Networks).To(HaveLen(1))
 	t.Expect(metrics.Networks[0].LogicalLabel).To(Equal("mock-wwan0"))
