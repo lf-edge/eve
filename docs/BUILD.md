@@ -82,6 +82,7 @@ You must have the following installed in order to build EVE:
 * [Go](https://golang.org) (optional) Required only if you want to build packages locally. By default, all builds happen in a docker environment.
 * [qemu](https://www.qemu.org) (optional) Required only if you wish to run the generated image. On macOS, easiest to install via [homebrew](https://brew.sh) via `brew install qemu`.
 * [git](https://git-scm.com) which you must have to clone this repository.
+* [swtpm](https://github.com/stefanberger/swtpm) (optional) Required only if you wish to run EVE-OS in qemu with TPM device. On macOS, easiest to install via [homebrew](https://brew.sh) via `brew install swtpm`. On Ubuntu with enabled apparmor please disable apparmor for swtpm after install to use it from local directory: `sudo ln -s /etc/apparmor.d/usr.bin.swtpm /etc/apparmor.d/disable/ && sudo apparmor_parser -R /etc/apparmor.d/disable/usr.bin.swtpm`.
 
 ### Installed As Needed
 
