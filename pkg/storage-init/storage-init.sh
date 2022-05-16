@@ -257,6 +257,7 @@ if P3=$(findfs PARTLABEL=P3) && [ -n "$P3" ]; then
                       chroot /hostfs zpool create -f -m none -o feature@encryption=enabled -O overlay=on persist "$P3" && \
                       chroot /hostfs zfs create -o refreservation="$(chroot /hostfs zfs get -o value -Hp available persist | awk '{ print ($1/1024/1024)/5 }')"m persist/reserved && \
                       chroot /hostfs zfs set mountpoint="$PERSISTDIR" persist                                          && \
+                      chroot /hostfs zfs set primarycache=metadata persist                                             && \
                       chroot /hostfs zfs create -p -o mountpoint="$PERSISTDIR/containerd/io.containerd.snapshotter.v1.zfs" persist/snapshots
                    fi
                    chroot /hostfs zpool import -f persist
