@@ -186,6 +186,7 @@ prepare_mounts_and_zfs_pool() {
   eval "$POOL_CREATION_COMMAND"
   chroot /root zfs create -o refreservation="$(chroot /root zfs get -o value -Hp available persist | awk '{ print ($1/1024/1024)/5 }')"m persist/reserved
   chroot /root zfs set mountpoint="/run/P3" persist
+  chroot /root zfs set primarycache=metadata persist
 }
 
 adjust_zfs_mounts_and_umount() {
