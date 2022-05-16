@@ -40,6 +40,8 @@ SSH_PROXY=-L6000:localhost:6000
 SSH_KEY=$(CONF_DIR)/ssh.key
 # Use QEMU H/W accelearation (any non-empty value will trigger using it)
 ACCEL=
+# Use TPM device (any non-empty value will trigger using it), i.e. 'make TPM=y run'
+TPM=
 # Location of the EVE configuration folder to be used in builds
 CONF_DIR=conf
 # Source of the cloud-init enabled qcow2 Linux VM for all architectures
@@ -104,6 +106,7 @@ INSTALLER=$(BUILD_DIR)/installer
 BUILD_DIR=$(DIST)/$(ROOTFS_VERSION)
 CURRENT_DIR=$(DIST)/current
 CURRENT_IMG=$(CURRENT_DIR)/live.$(IMG_FORMAT)
+CURRENT_SWTPM=$(CURRENT_DIR)/swtpm
 CURRENT_INSTALLER=$(CURRENT_DIR)/installer
 INSTALLER_IMG=$(INSTALLER).$(INSTALLER_IMG_FORMAT)
 INSTALLER_FIRMWARE_DIR=$(INSTALLER)/firmware
@@ -185,6 +188,12 @@ QEMU_OPTS_BIOS_y=-drive if=pflash,format=raw,unit=0,readonly,file=$(CURRENT_FIRM
 QEMU_OPTS_BIOS_=-bios $(CURRENT_FIRMWARE_DIR)/OVMF.fd
 QEMU_OPTS_BIOS=$(QEMU_OPTS_BIOS_$(PFLASH))
 
+QEMU_TPM_DEVICE_amd64=tpm-tis
+QEMU_TPM_DEVICE_arm64=tpm-tis-device
+QEMU_TPM_DEVICE_riscv64=tpm-tis
+QEMU_OPTS_TPM_Y_$(ZARCH)=-chardev socket,id=chrtpm,path=$(CURRENT_SWTPM)/swtpm-sock -tpmdev emulator,id=tpm0,chardev=chrtpm -device $(QEMU_TPM_DEVICE_$(ZARCH)),tpmdev=tpm0
+QEMU_OPTS_TPM=$(QEMU_OPTS_TPM_$(TPM:%=Y)_$(ZARCH))
+
 QEMU_OPTS_amd64=-smbios type=1,serial=31415926
 QEMU_OPTS_arm64=-smbios type=1,serial=31415926 -drive file=fat:rw:$(dir $(DEVICETREE_DTB)),label=QEMU_DTB,format=vvfat
 QEMU_OPTS_riscv64=-kernel $(UBOOT_IMG)/u-boot.bin -device virtio-blk,drive=uefi-disk
@@ -195,7 +204,7 @@ QEMU_OPTS_COMMON= -m $(QEMU_MEMORY) -smp 4 -display none $(QEMU_OPTS_BIOS) \
         -netdev user,id=eth0,net=$(QEMU_OPTS_NET1),dhcpstart=$(QEMU_OPTS_NET1_FIRST_IP),hostfwd=tcp::$(SSH_PORT)-:22$(QEMU_TFTP_OPTS) -device virtio-net-pci,netdev=eth0,romfile="" \
         -netdev user,id=eth1,net=$(QEMU_OPTS_NET2),dhcpstart=$(QEMU_OPTS_NET2_FIRST_IP) -device virtio-net-pci,netdev=eth1,romfile=""
 QEMU_OPTS_CONF_PART=$(shell [ -d "$(CONF_PART)" ] && echo '-drive file=fat:rw:$(CONF_PART),format=raw')
-QEMU_OPTS=$(QEMU_OPTS_COMMON) $(QEMU_ACCEL) $(QEMU_OPTS_$(ZARCH)) $(QEMU_OPTS_CONF_PART)
+QEMU_OPTS=$(QEMU_OPTS_COMMON) $(QEMU_ACCEL) $(QEMU_OPTS_$(ZARCH)) $(QEMU_OPTS_CONF_PART) $(QEMU_OPTS_TPM)
 # -device virtio-blk-device,drive=image -drive if=none,id=image,file=X
 # -device virtio-net-device,netdev=user0 -netdev user,id=user0,hostfwd=tcp::1234-:22
 
@@ -328,7 +337,7 @@ $(BUILD_VM_CLOUD_INIT): build-tools/src/scripts/cloud-init.in | $(DIST)
 $(BUILD_VM).orig: | $(DIST)
 	@curl -L $(BUILD_VM_SRC) > $@
 
-$(BUILD_VM): $(BUILD_VM_CLOUD_INIT) $(BUILD_VM).orig $(DEVICETREE_DTB) $(BIOS_IMG) | $(DIST)
+$(BUILD_VM): $(BUILD_VM_CLOUD_INIT) $(BUILD_VM).orig $(DEVICETREE_DTB) $(BIOS_IMG) $(SWTPM) | $(DIST)
 	cp $@.orig $@.active
 	# currently a fulle EVE build *almost* fits into 40Gb -- we need twice as much in a VM
 	qemu-img resize $@.active 100G
@@ -337,6 +346,8 @@ $(BUILD_VM): $(BUILD_VM_CLOUD_INIT) $(BUILD_VM).orig $(DEVICETREE_DTB) $(BIOS_IM
 
 $(DEVICETREE_DTB): $(BIOS_IMG) | $(DIST)
 	mkdir $(dir $@) 2>/dev/null || :
+	# start swtpm to generate dtb
+	$(MAKE) $(SWTPM)
 	$(QEMU_SYSTEM) $(QEMU_OPTS) -machine dumpdtb=$@
 	$(QUIET): $@: Succeeded
 
@@ -353,39 +364,48 @@ $(EFI_PART) $(BOOT_PART) $(INITRD_IMG) $(INSTALLER_IMG) $(KERNEL_IMG) $(IPXE_IMG
 	cd $(dir $@) && $(DOCKER_UNPACK) $(shell $(LINUXKIT) pkg show-tag pkg/$(PKG))-$(DOCKER_ARCH_TAG) $(notdir $@)
 	$(QUIET): $@: Succeeded
 
+# run swtpm if TPM flag defined
+# to run it please ensure that https://github.com/stefanberger/swtpm package built/installed in your system
+# we use --terminate flag, so swtpm will terminate after qemu disconnection
+SWTPM_:
+SWTPM_Y:
+	mkdir -p $(CURRENT_SWTPM)
+	swtpm socket --daemon --terminate --tpmstate dir=$(CURRENT_SWTPM) --ctrl type=unixio,path=$(CURRENT_SWTPM)/swtpm-sock --log file=$(CURRENT_SWTPM)/swtpm.log,level=20 --pid file=$(CURRENT_SWTPM)/swtpm.pid --tpm2
+SWTPM:=SWTPM_$(TPM:%=Y)
+
 # run-installer
 #
 # This creates an image equivalent to live.img (called target.img)
 # through the installer. It's the long road to live.img. Good for
 # testing.
 #
-run-installer-iso: $(BIOS_IMG) $(DEVICETREE_DTB)
+run-installer-iso: $(BIOS_IMG) $(DEVICETREE_DTB) $(SWTPM)
 	qemu-img create -f ${IMG_FORMAT} $(TARGET_IMG) ${MEDIA_SIZE}M
 	$(QEMU_SYSTEM) -drive file=$(TARGET_IMG),format=$(IMG_FORMAT) -cdrom $(INSTALLER).iso -boot d $(QEMU_OPTS)
 
-run-installer-raw: $(BIOS_IMG) $(DEVICETREE_DTB)
+run-installer-raw: $(BIOS_IMG) $(DEVICETREE_DTB) $(SWTPM)
 	qemu-img create -f ${IMG_FORMAT} $(TARGET_IMG) ${MEDIA_SIZE}M
 	$(QEMU_SYSTEM) -drive file=$(TARGET_IMG),format=$(IMG_FORMAT) -drive file=$(INSTALLER).raw,format=raw $(QEMU_OPTS)
 
 run-installer-net: QEMU_TFTP_OPTS=,tftp=$(dir $(IPXE_IMG)),bootfile=$(notdir $(IPXE_IMG))
-run-installer-net: $(BIOS_IMG) $(IPXE_IMG) $(DEVICETREE_DTB)
+run-installer-net: $(BIOS_IMG) $(IPXE_IMG) $(DEVICETREE_DTB) $(SWTPM)
 	tar -C $(INSTALLER) -xvf $(INSTALLER).net || :
 	qemu-img create -f ${IMG_FORMAT} $(TARGET_IMG) ${MEDIA_SIZE}M
 	$(QEMU_SYSTEM) -drive file=$(TARGET_IMG),format=$(IMG_FORMAT) $(QEMU_OPTS)
 
 # run MUST NOT change the current dir; it depends on the output being correct from a previous build
-run-live run: $(BIOS_IMG) $(DEVICETREE_DTB)
+run-live run: $(BIOS_IMG) $(DEVICETREE_DTB) $(SWTPM)
 	$(QEMU_SYSTEM) $(QEMU_OPTS) -drive file=$(CURRENT_IMG),format=$(IMG_FORMAT),id=uefi-disk
 
-run-target: $(BIOS_IMG) $(DEVICETREE_DTB)
+run-target: $(BIOS_IMG) $(DEVICETREE_DTB) $(SWTPM)
 	$(QEMU_SYSTEM) $(QEMU_OPTS) -drive file=$(TARGET_IMG),format=$(IMG_FORMAT)
 
-run-rootfs: $(BIOS_IMG) $(UBOOT_IMG) $(EFI_PART) $(DEVICETREE_DTB)
+run-rootfs: $(BIOS_IMG) $(UBOOT_IMG) $(EFI_PART) $(DEVICETREE_DTB) $(SWTPM)
 	(echo 'set devicetree="(hd0,msdos1)/eve.dtb"' ; echo 'set rootfs_root=/dev/vdb' ; echo 'set root=hd1' ; echo 'export rootfs_root' ; echo 'export devicetree' ; echo 'configfile /EFI/BOOT/grub.cfg' ) > $(EFI_PART)/BOOT/grub.cfg
 	$(QEMU_SYSTEM) $(QEMU_OPTS) -drive file=$(ROOTFS_IMG),format=raw -drive file=fat:rw:$(EFI_PART)/..,label=CONFIG,id=uefi-disk,format=vvfat
 	$(QUIET): $@: Succeeded
 
-run-grub: $(BIOS_IMG) $(UBOOT_IMG) $(EFI_PART) $(DEVICETREE_DTB)
+run-grub: $(BIOS_IMG) $(UBOOT_IMG) $(EFI_PART) $(DEVICETREE_DTB) $(SWTPM)
 	[ -f $(EFI_PART)/BOOT/grub.cfg ] && mv $(EFI_PART)/BOOT/grub.cfg $(EFI_PART)/BOOT/grub.cfg.$(notdir $(shell mktemp))
 	$(QEMU_SYSTEM) $(QEMU_OPTS) -drive format=vvfat,id=uefi-disk,label=EVE,file=fat:rw:$(EFI_PART)/..
 	$(QUIET): $@: Succeeded
