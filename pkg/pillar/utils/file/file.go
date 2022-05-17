@@ -14,10 +14,48 @@ import (
 	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/base"
+	"github.com/sirupsen/logrus"
 	"golang.org/x/sys/unix"
 )
 
 const maxCounterReadSize = 16384 // Max size of counter file
+
+func dirSync(dirName string) error {
+	f, err := os.OpenFile(dirName, os.O_RDONLY, 0755)
+	if err != nil {
+		return err
+	}
+
+	err = f.Sync()
+	if err != nil {
+		f.Close()
+		return err
+	}
+
+	// Not a deferred call, because dirSync is a critical
+	// path. Better safe then sorry, and we better check all the
+	// errors including one returned by close()
+	err = f.Close()
+	return err
+}
+
+func backupFile(fileName string) error {
+	_, err := os.Stat(fileName)
+	if err != nil {
+		// File doesn't exist
+		return err
+	}
+
+	bakName := fmt.Sprintf("%s.bak", fileName)
+
+	err = CopyFile(fileName, bakName)
+	if err != nil {
+		return err
+	}
+
+	err = dirSync(filepath.Dir(fileName))
+	return err
+}
 
 // WriteRename write data to a fmpfile and then rename it to a desired name
 func WriteRename(fileName string, b []byte) error {
@@ -38,18 +76,31 @@ func WriteRename(fileName string, b []byte) error {
 		return errors.New(errStr)
 	}
 	// Make sure the file is flused from buffers onto the disk
-	tmpfile.Sync()
+	if err := tmpfile.Sync(); err != nil {
+		errStr := fmt.Sprintf("WriteRename(%s) failed to sync temp file: %s",
+			fileName, err)
+		return errors.New(errStr)
+	}
+
 	if err := tmpfile.Close(); err != nil {
 		errStr := fmt.Sprintf("WriteRename(%s): %s",
 			fileName, err)
 		return errors.New(errStr)
 	}
+
+	err = backupFile(fileName)
+	if err != nil {
+		// Not a fatal error, continuing
+		logrus.Errorf("Unable to backup file %s: %v", fileName, err)
+	}
+
 	if err := os.Rename(tmpfile.Name(), fileName); err != nil {
 		errStr := fmt.Sprintf("writeRename(%s): %s",
 			fileName, err)
 		return errors.New(errStr)
 	}
-	return nil
+
+	return dirSync(filepath.Dir(fileName))
 }
 
 // Writable checks if the directory is writable
