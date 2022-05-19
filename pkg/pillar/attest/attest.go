@@ -10,6 +10,7 @@ import (
 
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
+	"github.com/lf-edge/eve/pkg/pillar/types"
 )
 
 //Event represents an event in the attest state machine
@@ -167,6 +168,7 @@ type Context struct {
 	watchdogTickerTime    time.Duration //in seconds
 	//OpaqueCtx for consumer module's own use
 	OpaqueCtx interface{}
+	types.ErrorAndTime
 }
 
 //Transition represents an event triggered from a state
@@ -192,6 +194,11 @@ func New(ps *pubsub.PubSub, log *base.LogObject, retryTime, watchdogTickerTime t
 //Initialize initializes the new instance of state machine
 func (ctx *Context) Initialize() error {
 	return nil
+}
+
+//GetState returns current state
+func (ctx *Context) GetState() State {
+	return ctx.state
 }
 
 //EventHandler represents a handler function for a Transition
@@ -260,7 +267,7 @@ func startNewRetryTimer(ctx *Context) error {
 	if ctx.restartTimer != nil {
 		ctx.restartTimer.Stop()
 	}
-	ctx.log.Tracef("Starting retry timer at %v\n", time.Now())
+	ctx.log.Tracef("Starting retry timer at %v", time.Now())
 	if ctx.retryTime == 0 {
 		return fmt.Errorf("retryTime not initialized")
 	}
@@ -277,7 +284,7 @@ func handleInitializeAtNone(ctx *Context) error {
 		triggerSelfEvent(ctx, EventNonceRecvd)
 		return nil
 	}
-	ctx.log.Errorf("Error %v while sending nonce request\n", err)
+	ctx.log.Errorf("Error %v while sending nonce request", err)
 	switch err {
 	case ErrControllerReqFailed:
 		return startNewRetryTimer(ctx)
@@ -305,7 +312,7 @@ func handleNonceRecvdAtNonceWait(ctx *Context) error {
 	if err == nil {
 		return nil
 	}
-	ctx.log.Errorf("Error %v while sending internal quote request\n", err)
+	ctx.log.Errorf("Error %v while sending internal quote request", err)
 	switch err {
 	case ErrTpmAgentUnavailable:
 		return startNewRetryTimer(ctx)
@@ -322,7 +329,7 @@ func handleInternalQuoteRecvdAtInternalQuoteWait(ctx *Context) error {
 		triggerSelfEvent(ctx, EventAttestSuccessful)
 		return nil
 	}
-	ctx.log.Errorf("Error %v while sending quote\n", err)
+	ctx.log.Errorf("Error %v while sending quote", err)
 	switch err {
 	case ErrNonceMismatch:
 		return triggerSelfEvent(ctx, EventNonceMismatch)
@@ -352,7 +359,7 @@ func handleAttestSuccessfulAtAttestWait(ctx *Context) error {
 		triggerSelfEvent(ctx, EventAttestEscrowRecorded)
 		return nil
 	}
-	ctx.log.Errorf("Error %v while sending attest escrow keys\n", err)
+	ctx.log.Errorf("Error %v while sending attest escrow keys", err)
 	switch err {
 	case ErrControllerReqFailed:
 		return startNewRetryTimer(ctx)
