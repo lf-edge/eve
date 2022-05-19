@@ -599,6 +599,9 @@ message ZInfoDevice {
 
   // shutdown command counter from EdgeDevConfig last processed by eve
   uint32 shutdown_config_counter = 49;
+
+  // state of attestation process of eve
+  AttestationInfo attestation_info = 50;
 }
 
 // Different reasons for a boot/reboot
@@ -629,6 +632,26 @@ enum MaintenanceModeReason {
   MAINTENANCE_MODE_REASON_USER_REQUESTED = 1;
   MAINTENANCE_MODE_REASON_VAULT_LOCKED_UP = 2;
   MAINTENANCE_MODE_REASON_LOW_DISK_SPACE = 3;
+}
+
+// Information about attestation process
+message AttestationInfo {
+  AttestationState state = 1;   //current state of attestation
+  ErrorInfo error = 2;          //last error
+}
+
+// Different states of attestation process
+// Must match the values in pkg/pillar/attest.State
+// We do not expect StateAny to be published as not a real state
+enum AttestationState {
+  ATTESTATION_STATE_UNSPECIFIED = 0;            //State when (Re)Starting attestation
+  ATTESTATION_STATE_NONCE_WAIT = 1;             //Waiting for response from Controller for Nonce request
+  ATTESTATION_STATE_TPM_QUOTE_WAIT = 2;         //Waiting for TPM PCR quote to be published from the tpmmgr
+  ATTESTATION_STATE_TPM_ESCROW_WAIT = 3;        //Waiting for TPM Escrow data to be published from the tpmmgr
+  ATTESTATION_STATE_ATTEST_WAIT = 4;            //Waiting for response from Controller for PCR quote
+  ATTESTATION_STATE_ATTEST_ESCROW_WAIT = 5;     //Waiting for response from Controller for Escrow data
+  ATTESTATION_STATE_RESTART_WAIT = 6;           //Waiting for restart timer to expire, to start all over again
+  ATTESTATION_STATE_COMPLETE = 7;               //Everything w.r.t attestation is complete
 }
 
 // Different types of app instance metadata
