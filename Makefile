@@ -305,7 +305,7 @@ clean:
 
 yetus:
 	@echo Running yetus
-	docker run -it --rm -v $(CURDIR):/src:delegated -v /tmp:/tmp apache/yetus:0.13.0 \
+	docker run -it --rm -v $(CURDIR):/src:delegated -v /tmp:/tmp apache/yetus:0.14.0 \
 		--basedir=/src \
 		--dirty-workspace \
 		--empty-patch \
