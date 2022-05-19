@@ -85,6 +85,18 @@ func trySendToController(attestReq *attest.ZAttestReq, iteration int) (*http.Res
 		size, buf, iteration, true)
 }
 
+//setAttestErrorAndTriggerInfo sets errorDescription on zattest.Context,
+//triggers publishing of device info
+func setAttestErrorAndTriggerInfo(ctx *zattest.Context, errorDescription types.ErrorDescription) {
+	ctx.SetErrorDescription(errorDescription)
+	attestCtx, ok := ctx.OpaqueCtx.(*attestContext)
+	if !ok {
+		log.Fatalf("[ATTEST] Unexpected type from opaque ctx: %T",
+			ctx.OpaqueCtx)
+	}
+	triggerPublishDevInfo(attestCtx.zedagentCtx)
+}
+
 //SendNonceRequest implements SendNonceRequest method of zattest.Verifier
 func (server *VerifierImpl) SendNonceRequest(ctx *zattest.Context) error {
 	if ctx.OpaqueCtx == nil {
@@ -115,29 +127,47 @@ func (server *VerifierImpl) SendNonceRequest(ctx *zattest.Context) error {
 
 	_, contents, senderStatus, err := trySendToController(attestReq, attestCtx.Iteration)
 	if err != nil || senderStatus != types.SenderStatusNone {
-		log.Errorf("[ATTEST] Error %v, senderStatus %v",
-			err, senderStatus)
+		errorDescription := types.ErrorDescription{
+			Error: fmt.Sprintf("[ATTEST] Error %v, senderStatus %v",
+				err, senderStatus),
+		}
+		log.Error(errorDescription.Error)
+		setAttestErrorAndTriggerInfo(ctx, errorDescription)
 		return zattest.ErrControllerReqFailed
 	}
 
 	attestResp := &attest.ZAttestResponse{}
 	if err := proto.Unmarshal(contents, attestResp); err != nil {
-		log.Errorf("[ATTEST] Error %v in Unmarshaling nonce response", err)
+		errorDescription := types.ErrorDescription{
+			Error: fmt.Sprintf("[ATTEST] Error %v in Unmarshaling nonce response", err),
+		}
+		log.Error(errorDescription.Error)
+		setAttestErrorAndTriggerInfo(ctx, errorDescription)
 		return zattest.ErrControllerReqFailed
 	}
 
 	respType := attestResp.GetRespType()
 	if respType != attest.ZAttestRespType_ATTEST_RESP_NONCE {
-		log.Errorf("[ATTEST] Got %v, but want %v",
-			respType, attest.ZAttestRespType_ATTEST_RESP_NONCE)
+		errorDescription := types.ErrorDescription{
+			Error: fmt.Sprintf("[ATTEST] Got %v, but want %v",
+				respType, attest.ZAttestRespType_ATTEST_RESP_NONCE),
+		}
+		log.Error(errorDescription.Error)
+		setAttestErrorAndTriggerInfo(ctx, errorDescription)
 		return zattest.ErrControllerReqFailed
 	}
 
 	if nonceResp := attestResp.GetNonce(); nonceResp == nil {
-		log.Errorf("[ATTEST] Got empty nonce response")
+		errorDescription := types.ErrorDescription{
+			Error: "[ATTEST] Got empty nonce response",
+		}
+		log.Error(errorDescription.Error)
+		setAttestErrorAndTriggerInfo(ctx, errorDescription)
 		return zattest.ErrControllerReqFailed
 	} else {
 		attestCtx.Nonce = nonceResp.GetNonce()
+		ctx.ClearError()
+		triggerPublishDevInfo(attestCtx.zedagentCtx)
 	}
 
 	return nil
@@ -241,12 +271,20 @@ func (server *VerifierImpl) SendAttestQuote(ctx *zattest.Context) error {
 	}
 
 	if err := encodePCRValues(attestCtx.InternalQuote, quote); err != nil {
-		log.Errorf("[ATTEST] encodePCRValues failed with err %v", err)
+		errorDescription := types.ErrorDescription{
+			Error: fmt.Sprintf("[ATTEST] encodePCRValues failed with err %v", err),
+		}
+		log.Error(errorDescription.Error)
+		setAttestErrorAndTriggerInfo(ctx, errorDescription)
 		return zattest.ErrControllerReqFailed
 	}
 
 	if err := encodeVersions(quote); err != nil {
-		log.Errorf("[ATTEST] encodeVersions failed with err %v", err)
+		errorDescription := types.ErrorDescription{
+			Error: fmt.Sprintf("[ATTEST] encodeVersions failed with err %v", err),
+		}
+		log.Error(errorDescription.Error)
+		setAttestErrorAndTriggerInfo(ctx, errorDescription)
 		return zattest.ErrControllerReqFailed
 	}
 
@@ -270,33 +308,53 @@ func (server *VerifierImpl) SendAttestQuote(ctx *zattest.Context) error {
 
 	_, contents, senderStatus, err := trySendToController(attestReq, attestCtx.Iteration)
 	if err != nil || senderStatus != types.SenderStatusNone {
-		log.Errorf("[ATTEST] Error %v, senderStatus %v",
-			err, senderStatus)
+		errorDescription := types.ErrorDescription{
+			Error: fmt.Sprintf("[ATTEST] Error %v, senderStatus %v",
+				err, senderStatus),
+		}
+		log.Error(errorDescription.Error)
+		setAttestErrorAndTriggerInfo(ctx, errorDescription)
 		return zattest.ErrControllerReqFailed
 	}
 
 	attestResp := &attest.ZAttestResponse{}
 	if err := proto.Unmarshal(contents, attestResp); err != nil {
-		log.Errorf("[ATTEST] Error %v in Unmarshaling quote response", err)
+		errorDescription := types.ErrorDescription{
+			Error: fmt.Sprintf("[ATTEST] Error %v in Unmarshaling quote response", err),
+		}
+		log.Error(errorDescription.Error)
+		setAttestErrorAndTriggerInfo(ctx, errorDescription)
 		return zattest.ErrControllerReqFailed
 	}
 
 	respType := attestResp.GetRespType()
 	if respType != attest.ZAttestRespType_ATTEST_RESP_QUOTE_RESP {
-		log.Errorf("[ATTEST] Got %v, but want %v",
-			respType, attest.ZAttestRespType_ATTEST_RESP_QUOTE_RESP)
+		errorDescription := types.ErrorDescription{
+			Error: fmt.Sprintf("[ATTEST] Got %v, but want %v",
+				respType, attest.ZAttestRespType_ATTEST_RESP_QUOTE_RESP),
+		}
+		log.Error(errorDescription.Error)
+		setAttestErrorAndTriggerInfo(ctx, errorDescription)
 		return zattest.ErrControllerReqFailed
 	}
 
 	var quoteResp *attest.ZAttestQuoteResp
 	if quoteResp = attestResp.GetQuoteResp(); quoteResp == nil {
-		log.Errorf("[ATTEST] Got empty quote response")
+		errorDescription := types.ErrorDescription{
+			Error: "[ATTEST] Got empty quote response",
+		}
+		log.Error(errorDescription.Error)
+		setAttestErrorAndTriggerInfo(ctx, errorDescription)
 		return zattest.ErrControllerReqFailed
 	}
 	quoteRespCode := quoteResp.GetResponse()
 	switch quoteRespCode {
 	case attest.ZAttestResponseCode_Z_ATTEST_RESPONSE_CODE_INVALID:
-		log.Errorf("[ATTEST] Invalid response code")
+		errorDescription := types.ErrorDescription{
+			Error: "[ATTEST] Invalid response code",
+		}
+		log.Error(errorDescription.Error)
+		setAttestErrorAndTriggerInfo(ctx, errorDescription)
 		return zattest.ErrControllerReqFailed
 	case attest.ZAttestResponseCode_Z_ATTEST_RESPONSE_CODE_SUCCESS:
 		//Retrieve integrity token
@@ -312,18 +370,36 @@ func (server *VerifierImpl) SendAttestQuote(ctx *zattest.Context) error {
 				}
 			}
 		}
+		ctx.ClearError()
+		triggerPublishDevInfo(attestCtx.zedagentCtx)
 		return nil
 	case attest.ZAttestResponseCode_Z_ATTEST_RESPONSE_CODE_NONCE_MISMATCH:
-		log.Errorf("[ATTEST] Nonce Mismatch")
+		errorDescription := types.ErrorDescription{
+			Error: "[ATTEST] Nonce Mismatch",
+		}
+		log.Error(errorDescription.Error)
+		setAttestErrorAndTriggerInfo(ctx, errorDescription)
 		return zattest.ErrNonceMismatch
 	case attest.ZAttestResponseCode_Z_ATTEST_RESPONSE_CODE_NO_CERT_FOUND:
-		log.Errorf("[ATTEST] Controller yet to receive signing cert")
+		errorDescription := types.ErrorDescription{
+			Error: "[ATTEST] Controller yet to receive signing cert",
+		}
+		log.Error(errorDescription.Error)
+		setAttestErrorAndTriggerInfo(ctx, errorDescription)
 		return zattest.ErrNoCertYet
 	case attest.ZAttestResponseCode_Z_ATTEST_RESPONSE_CODE_QUOTE_FAILED:
-		log.Errorf("[ATTEST] Quote Mismatch")
+		errorDescription := types.ErrorDescription{
+			Error: "[ATTEST] Quote Mismatch",
+		}
+		log.Error(errorDescription.Error)
+		setAttestErrorAndTriggerInfo(ctx, errorDescription)
 		return zattest.ErrQuoteMismatch
 	default:
-		log.Errorf("[ATTEST] Unknown quoteRespCode %v", quoteRespCode)
+		errorDescription := types.ErrorDescription{
+			Error: "[ATTEST] Unknown quoteRespCode %v",
+		}
+		log.Error(errorDescription.Error)
+		setAttestErrorAndTriggerInfo(ctx, errorDescription)
 		return zattest.ErrControllerReqFailed
 	}
 }
@@ -347,6 +423,9 @@ func (server *VerifierImpl) SendAttestEscrow(ctx *zattest.Context) error {
 		return nil
 	}
 	if attestCtx.EscrowData == nil {
+		errorDescription := types.ErrorDescription{Error: "[ATTEST] No escrow data"}
+		log.Error(errorDescription.Error)
+		setAttestErrorAndTriggerInfo(ctx, errorDescription)
 		return zattest.ErrNoEscrowData
 	}
 
@@ -369,41 +448,70 @@ func (server *VerifierImpl) SendAttestEscrow(ctx *zattest.Context) error {
 
 	_, contents, senderStatus, err := trySendToController(attestReq, attestCtx.Iteration)
 	if err != nil || senderStatus != types.SenderStatusNone {
-		log.Errorf("[ATTEST] Error %v, senderStatus %v",
-			err, senderStatus)
+		errorDescription := types.ErrorDescription{
+			Error: fmt.Sprintf("[ATTEST] Error %v, senderStatus %v", err, senderStatus),
+		}
+		log.Error(errorDescription.Error)
+		setAttestErrorAndTriggerInfo(ctx, errorDescription)
 		return zattest.ErrControllerReqFailed
 	}
 	attestResp := &attest.ZAttestResponse{}
 	if err := proto.Unmarshal(contents, attestResp); err != nil {
-		log.Errorf("[ATTEST] Error %v in Unmarshaling storage keys response", err)
+		errorDescription := types.ErrorDescription{
+			Error: fmt.Sprintf("[ATTEST] Error %v in Unmarshaling storage keys response", err),
+		}
+		log.Error(errorDescription.Error)
+		setAttestErrorAndTriggerInfo(ctx, errorDescription)
 		return zattest.ErrControllerReqFailed
 	}
 
 	respType := attestResp.GetRespType()
 	if respType != attest.ZAttestRespType_Z_ATTEST_RESP_TYPE_STORE_KEYS {
-		log.Errorf("[ATTEST] Got %v, but want %v",
-			respType, attest.ZAttestRespType_Z_ATTEST_RESP_TYPE_STORE_KEYS)
+		errorDescription := types.ErrorDescription{
+			Error: fmt.Sprintf("[ATTEST] Got %v, but want %v",
+				respType, attest.ZAttestRespType_Z_ATTEST_RESP_TYPE_STORE_KEYS),
+		}
+		log.Error(errorDescription.Error)
+		setAttestErrorAndTriggerInfo(ctx, errorDescription)
 		return zattest.ErrControllerReqFailed
 	}
 
 	var escrowResp *attest.AttestStorageKeysResp
 	if escrowResp = attestResp.GetStorageKeysResp(); escrowResp == nil {
-		log.Errorf("[ATTEST] Got empty storage keys response")
+		errorDescription := types.ErrorDescription{
+			Error: "[ATTEST] Got empty storage keys response",
+		}
+		log.Error(errorDescription.Error)
+		setAttestErrorAndTriggerInfo(ctx, errorDescription)
 		return zattest.ErrControllerReqFailed
 	}
 	escrowRespCode := escrowResp.GetResponse()
 	switch escrowRespCode {
 	case attest.AttestStorageKeysResponseCode_ATTEST_STORAGE_KEYS_RESPONSE_CODE_INVALID:
-		log.Errorf("[ATTEST] Invalid response code")
+		errorDescription := types.ErrorDescription{
+			Error: "[ATTEST] Invalid response code",
+		}
+		log.Error(errorDescription.Error)
+		setAttestErrorAndTriggerInfo(ctx, errorDescription)
 		return zattest.ErrControllerReqFailed
 	case attest.AttestStorageKeysResponseCode_ATTEST_STORAGE_KEYS_RESPONSE_CODE_ITOKEN_MISMATCH:
-		log.Errorf("[ATTEST] Integrity Token Mismatch")
+		errorDescription := types.ErrorDescription{
+			Error: "[ATTEST] Integrity Token Mismatch",
+		}
+		log.Error(errorDescription.Error)
+		setAttestErrorAndTriggerInfo(ctx, errorDescription)
 		return zattest.ErrITokenMismatch
 	case attest.AttestStorageKeysResponseCode_ATTEST_STORAGE_KEYS_RESPONSE_CODE_SUCCESS:
 		log.Notice("[ATTEST] Escrow successful")
+		ctx.ClearError()
+		triggerPublishDevInfo(attestCtx.zedagentCtx)
 		return nil
 	default:
-		log.Errorf("[ATTEST] Unknown escrowRespCode %v", escrowRespCode)
+		errorDescription := types.ErrorDescription{
+			Error: fmt.Sprintf("[ATTEST] Unknown escrowRespCode %v", escrowRespCode),
+		}
+		log.Error(errorDescription.Error)
+		setAttestErrorAndTriggerInfo(ctx, errorDescription)
 		return zattest.ErrControllerReqFailed
 	}
 }

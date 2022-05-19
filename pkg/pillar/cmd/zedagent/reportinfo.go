@@ -615,6 +615,15 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 	// is deleted.
 	createAppInstances(ctx, ReportDeviceInfo)
 
+	if ctx.attestCtx != nil && ctx.attestCtx.attestFsmCtx != nil {
+		ReportDeviceInfo.AttestationInfo = &info.AttestationInfo{
+			State: info.AttestationState(ctx.attestCtx.attestFsmCtx.GetState()),
+		}
+		if ctx.attestCtx.attestFsmCtx.HasError() {
+			ReportDeviceInfo.AttestationInfo.Error = encodeErrorInfo(ctx.attestCtx.attestFsmCtx.ErrorDescription)
+		}
+	}
+
 	log.Tracef("PublishDeviceInfoToZedCloud sending %v", ReportInfo)
 	data, err := proto.Marshal(ReportInfo)
 	if err != nil {
