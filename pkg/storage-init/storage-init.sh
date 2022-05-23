@@ -293,7 +293,12 @@ for BLK_DEVICE in $BLK_DEVICES; do
 done
 
 #Recording SMART details to a file
-SMART_JSON=$(smartctl -a "$(grep -m 1 /persist < /proc/mounts | cut -d ' ' -f 1)" --json)
+if [ -L /dev/root ] ; then
+  DEV_TO_CHECK_SMART=/dev/root
+else
+  DEV_TO_CHECK_SMART=$(grep -m 1 /persist < /proc/mounts | cut -d ' ' -f 1)
+fi
+SMART_JSON=$(smartctl -a "$DEV_TO_CHECK_SMART" --json)
 if [ -f "$SMART_DETAILS_PREVIOUS_FILE" ];
 then
   mv $SMART_DETAILS_FILE $SMART_DETAILS_PREVIOUS_FILE
