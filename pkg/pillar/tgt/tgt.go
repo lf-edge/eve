@@ -76,6 +76,9 @@ func TargetCreateIBlock(dev, tgtName, serial string) error {
 	if err := ioutil.WriteFile(filepath.Join(targetRoot, "wwn", "vpd_unit_serial"), []byte(serial), 0660); err != nil {
 		return fmt.Errorf("error set vpd_unit_serial: %v", err)
 	}
+	if err := waitForFile(filepath.Join(targetRoot, "enable")); err != nil {
+		return fmt.Errorf("error waitForFile: %v", err)
+	}
 	if err := ioutil.WriteFile(filepath.Join(targetRoot, "enable"), []byte("1"), 0660); err != nil {
 		return fmt.Errorf("error set enable: %v", err)
 	}
