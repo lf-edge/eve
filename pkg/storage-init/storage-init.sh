@@ -217,15 +217,6 @@ if P3=$(findfs PARTLABEL=P3) && [ -n "$P3" ]; then
     P3_FS_TYPE=$(blkid "$P3"| tr ' ' '\012' | awk -F= '/^TYPE/{print $2;}' | sed 's/"//g')
     echo "$(date -Ins -u) Using $P3 (formatted with $P3_FS_TYPE), for $PERSISTDIR"
 
-    # XXX FIXME: the following hack MUST go away when/if we decide to officially support ZFS
-    # for now we are using first block in the device to flip into zfs on demand
-    if [ "$(dd if="$P3" bs=8 count=1 2>/dev/null)" = "eve<3zfs" ]; then
-       # zero out the request (regardless of whether we can convert to zfs)
-       dd if=/dev/zero of="$P3" bs=8 count=1 conv=noerror,sync,notrunc
-
-       P3_FS_TYPE=zfs
-    fi
-
     if [ "$P3_FS_TYPE" = zfs_member ]; then
         if ! chroot /hostfs zpool import -f persist; then
             echo "$(date -Ins -u) Cannot import persist pool on P3 partition $P3 of type $P3_FS_TYPE, recreating it as $P3_FS_TYPE_DEFAULT"
