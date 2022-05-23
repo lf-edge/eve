@@ -215,16 +215,17 @@ if P3=$(findfs PARTLABEL=P3) && [ -n "$P3" ]; then
     zfs_module_load
 
     P3_FS_TYPE=$(blkid "$P3"| tr ' ' '\012' | awk -F= '/^TYPE/{print $2;}' | sed 's/"//g')
+    if [ "$P3_FS_TYPE" = zfs_member ]; then
+       # zfs_member is part of zfs type
+       P3_FS_TYPE="zfs"
+    fi
     echo "$(date -Ins -u) Using $P3 (formatted with $P3_FS_TYPE), for $PERSISTDIR"
 
-    if [ "$P3_FS_TYPE" = zfs_member ]; then
+    if [ "$P3_FS_TYPE" = zfs ]; then
         if ! chroot /hostfs zpool import -f persist; then
             echo "$(date -Ins -u) Cannot import persist pool on P3 partition $P3 of type $P3_FS_TYPE, recreating it as $P3_FS_TYPE_DEFAULT"
             INIT_FS=1
             P3_FS_TYPE="$P3_FS_TYPE_DEFAULT"
-        else
-            # set from zfs_member to zfs
-            P3_FS_TYPE="zfs"
         fi
     else
         #For systems with ext3 filesystem, try not to change to ext4, since it will brick
@@ -258,7 +259,6 @@ if P3=$(findfs PARTLABEL=P3) && [ -n "$P3" ]; then
                       chroot /hostfs zfs set primarycache=metadata persist                                             && \
                       chroot /hostfs zfs create -p -o mountpoint="$PERSISTDIR/containerd/io.containerd.snapshotter.v1.zfs" persist/snapshots
                    fi
-                   chroot /hostfs zpool import -f persist
                    ;;
     esac || echo "$(date -Ins -u) mount of $P3 as $P3_FS_TYPE failed"
 
