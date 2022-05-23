@@ -103,7 +103,7 @@ Local server MAY throttle or cancel this communication stream by returning the `
 
 Response:
 
-The response MAY contain the body of a single protobuf message of type [LocalAppCmds](./proto/profile/local_profile.proto),
+The response MAY contain the body of a single protobuf message of type [LocalAppCmdList](./proto/profile/local_profile.proto),
 encoded as "application/x-proto-binary".
 
 The requester MUST verify that the response payload (if provided) has the correct `server_token`.
@@ -129,7 +129,7 @@ This requirement applies even between restarts of the Local profile server. A re
 after a restart should not have the same timestamp attached as the previous request made
 for the same application before the restart.
 
-EVE guarantees that a newly added command request (into `LocalAppCmds.app_commands`),
+EVE guarantees that a newly added command request (into `LocalAppCmdList.app_commands`),
 or a change of the `timestamp` field, will result in the command being triggered ASAP.
 Even if the execution of a command is interrupted by a device reboot/crash, the eventuality
 of the command completion is still guaranteed. The only exception is if Local Profile Server

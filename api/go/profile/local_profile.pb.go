@@ -568,7 +568,7 @@ func (x *LocalAppInfo) GetLastCmdTimestamp() uint64 {
 	return 0
 }
 
-// LocalAppCmds message may be returned in the response from a POST request
+// LocalAppCmdList message may be returned in the response from a POST request
 // sent to the api/v1/appinfo API.
 type LocalAppCmdList struct {
 	state         protoimpl.MessageState
