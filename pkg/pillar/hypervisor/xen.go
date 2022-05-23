@@ -19,6 +19,9 @@ import (
 
 const (
 	dom0Name = "Domain-0"
+
+	//XenHypervisorName is a name of xen hypervisor
+	XenHypervisorName = "xen"
 )
 
 type typeAndPCI struct {
@@ -117,7 +120,7 @@ func newXen() Hypervisor {
 }
 
 func (ctx xenContext) Name() string {
-	return "xen"
+	return XenHypervisorName
 }
 
 func (ctx xenContext) Task(status *types.DomainStatus) types.Task {

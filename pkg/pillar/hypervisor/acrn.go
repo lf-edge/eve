@@ -3,6 +3,9 @@
 
 package hypervisor
 
+//ACRNHypervisorName is a name of acrn hypervisor
+const ACRNHypervisorName = "acrn"
+
 type acrnContext struct {
 	nullContext
 }
@@ -13,5 +16,5 @@ func newAcrn() Hypervisor {
 
 // Name returns the name of this hypervisor implementation
 func (ctx acrnContext) Name() string {
-	return "acrn"
+	return ACRNHypervisorName
 }

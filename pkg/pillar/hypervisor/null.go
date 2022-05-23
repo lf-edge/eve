@@ -12,6 +12,9 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+//NullHypervisorName is a name of null hypervisor
+const NullHypervisorName = "null"
+
 type domState struct {
 	id     int
 	config string
@@ -45,7 +48,7 @@ func newNull() Hypervisor {
 }
 
 func (ctx nullContext) Name() string {
-	return "null"
+	return NullHypervisorName
 }
 
 func (ctx nullContext) Task(status *types.DomainStatus) types.Task {

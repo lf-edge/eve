@@ -139,7 +139,7 @@ func handleDeferredVolumeCreate(ctx *volumemgrContext, key string, config *types
 			}
 			created = true
 			status.FileLocation = zVolDevice
-			if !tgt.CheckTargetIBlock(status.Key()) {
+			if ctx.useVHost && !tgt.CheckTargetIBlock(status.Key()) {
 				log.Functionf("generating target and vhost for %s", status.Key())
 				wwn, err := createTargetVhost(zVolDevice, status)
 				if err != nil {
