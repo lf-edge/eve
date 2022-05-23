@@ -17,6 +17,9 @@ import (
 
 const (
 	vifsDir string = "/run/tasks/vifs"
+
+	//ContainerdHypervisorName is a name of containerd hypervisor
+	ContainerdHypervisorName = "containerd"
 )
 
 type ctrdContext struct {
@@ -55,7 +58,7 @@ func (ctx ctrdContext) GetCapabilities() (*types.Capabilities, error) {
 }
 
 func (ctx ctrdContext) Name() string {
-	return "containerd"
+	return ContainerdHypervisorName
 }
 
 func (ctx ctrdContext) Task(status *types.DomainStatus) types.Task {

@@ -282,15 +282,17 @@ func destroyVdiskVolume(ctx *volumemgrContext, status types.VolumeStatus) (bool,
 		return created, "", errors.New(errStr)
 	}
 	if info.Mode()&os.ModeDevice != 0 {
-		if err := tgt.VHostDeleteIBlock(status.WWN); err != nil {
-			errStr := fmt.Sprintf("Error deleting vhost for %s, error=%v",
-				status.Key(), err)
-			log.Error(errStr)
-		}
-		if err := tgt.TargetDeleteIBlock(status.Key()); err != nil {
-			errStr := fmt.Sprintf("Error deleting target for %s, error=%v",
-				status.Key(), err)
-			log.Error(errStr)
+		if ctx.useVHost {
+			if err := tgt.VHostDeleteIBlock(status.WWN); err != nil {
+				errStr := fmt.Sprintf("Error deleting vhost for %s, error=%v",
+					status.Key(), err)
+				log.Error(errStr)
+			}
+			if err := tgt.TargetDeleteIBlock(status.Key()); err != nil {
+				errStr := fmt.Sprintf("Error deleting target for %s, error=%v",
+					status.Key(), err)
+				log.Error(errStr)
+			}
 		}
 		//Assume this is zfs device
 		zVolName := status.ZVolName()

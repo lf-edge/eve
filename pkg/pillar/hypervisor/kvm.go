@@ -19,6 +19,9 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+//KVMHypervisorName is a name of kvm hypervisor
+const KVMHypervisorName = "kvm"
+
 //TBD: Have a better way to calculate this number.
 //For now it is based on some trial-and-error experiments
 const minQemuOverHead = int64(600 * 1024 * 1024)
@@ -436,7 +439,7 @@ func (ctx kvmContext) checkIOVirtualisation() (bool, error) {
 }
 
 func (ctx kvmContext) Name() string {
-	return "kvm"
+	return KVMHypervisorName
 }
 
 func (ctx kvmContext) Task(status *types.DomainStatus) types.Task {
