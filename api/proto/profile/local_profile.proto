@@ -77,7 +77,7 @@ message LocalAppInfo {
    uint64 last_cmd_timestamp = 6;
 }
 
-// LocalAppCmds message may be returned in the response from a POST request
+// LocalAppCmdList message may be returned in the response from a POST request
 // sent to the api/v1/appinfo API.
 message LocalAppCmdList {
    // Security token. EVE will verify that server_token matches the profile server
