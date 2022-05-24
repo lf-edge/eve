@@ -112,3 +112,19 @@ type StorageChildren struct {
 	Disks       []*StorageDiskState
 	Children    []*StorageChildren
 }
+
+// ZfsSnapshot describes a snapshot for a logical zfs volume
+type ZfsSnapshot struct {
+	CreatinonTime     uint32
+	ID                string  // The real snapshot name in ZFS
+	FullPath          string  // Ex: "persist/vault/volumes/vol1@" + Id
+	DisplayName       string  // Display name (User-friendly name)
+	UsedSpace         uint64  // in byte
+	Referenced        uint64  // in byte
+	Compressratio     float64 // Compression ratio
+	Volsize           uint64  // in byte
+	GUID              string
+	Encryption        bool
+	Readonly          bool
+	Logicalreferenced uint64 // in byte
+}

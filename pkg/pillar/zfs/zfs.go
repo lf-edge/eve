@@ -20,6 +20,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils/disks"
 	"github.com/lf-edge/eve/pkg/pillar/vault"
+	uuid "github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -423,4 +424,97 @@ func GetZfsDiskAndStatus(disk libzfs.VDevTree) (*types.StorageDiskState, error) 
 	rDiskStatus.DiskName.Serial = *proto.String(serialNumber)
 	rDiskStatus.Status = GetZfsDeviceStatusFromStr(disk.Stat.State.String())
 	return rDiskStatus, nil
+}
+
+// DoesSnapshotExist - returns true if the snapshot exists in zfs
+//
+// fullSnapshotName - full path in zfs for dataset
+// (Ex: persist/vault/volumes/592f4a9e-c0d5-4846-903f-dc95308ac03f@9383ed21-a509-40ae-8adb-097022e40df7)
+func DoesSnapshotExist(fullSnapshotName string) bool {
+	dataset, err := libzfs.DatasetOpen(fullSnapshotName)
+	if err != nil {
+		return false
+	}
+	defer dataset.Close()
+
+	if !dataset.IsSnapshot() {
+		return false
+	}
+
+	return true
+}
+
+// CreateSnapshotInZfs - create snapshot for dataset
+//
+// zVolumeFullName - full name for zvol in ZFS
+// (Ex: persist/.../592f4a9e-c0d5-4846-903f-dc95308ac03f.0)
+func CreateSnapshotInZfs(zVolumeFullName, snapID string) (libzfs.Dataset, error) {
+	//generate id for snapshot
+	var newSnapshot libzfs.Dataset
+	snapshotID := snapID
+	if snapID == "" {
+		// Create New UUID
+		snapshotID, err := uuid.NewV4()
+		if err != nil {
+			return newSnapshot,
+				fmt.Errorf("snapshot %s creation failed: %v", snapshotID, err)
+		}
+	}
+	newSnapshot, err := libzfs.DatasetSnapshot(
+		fmt.Sprintf("%s@%s", zVolumeFullName, snapshotID), false, nil)
+	if err != nil {
+		return newSnapshot, fmt.Errorf("snapshot creation failed: %v", err)
+	}
+
+	return newSnapshot, nil
+}
+
+// DeleteSnapshotInZfs delete snapshot in ZFS
+//
+// fullSnapshotName - full path in zfs for dataset
+// (Ex: persist/vault/volumes/592f4a9e-c0d5-4846-903f-dc95308ac03f@9383ed21-a509-40ae-8adb-097022e40df7)
+func DeleteSnapshotInZfs(fullSnapshotName string) error {
+	dataset, err := libzfs.DatasetOpen(fullSnapshotName)
+	if err != nil {
+		return fmt.Errorf("delete snapshot %s failed: %v", fullSnapshotName, err)
+	}
+	defer dataset.Close()
+
+	if !dataset.IsSnapshot() {
+		// Dataset is not a snapshot
+		return fmt.Errorf("delete snapshot %s failed. Dataset is not a snapshot", fullSnapshotName)
+	}
+
+	err = dataset.Destroy(false)
+	if err != nil {
+		return fmt.Errorf("delete snapshot %s failed: %v", fullSnapshotName, err)
+	}
+	return nil
+}
+
+// RollbackSnapshotInZfs rollback snapshot
+//
+// zVolumeFullName - it's fill zvol name in ZFS
+// (Ex. persist/.../592f4a9e-c0d5-4846-903f-dc95308ac03f.0)
+//
+// snapshotId - short snapshot name without symbol @ Ex."9383ed21-a509-40ae-8adb-097022e40df7"
+func RollbackSnapshotInZfs(zVolumeFullName, snapshotID string) error {
+	dataset, err := libzfs.DatasetOpen(zVolumeFullName)
+	if err != nil {
+		return fmt.Errorf("open dataset [%s] failed", zVolumeFullName)
+	}
+	defer dataset.Close()
+
+	findOk, snapshot := dataset.FindSnapshotName(fmt.Sprintf("@%s", snapshotID))
+	if !findOk {
+		return fmt.Errorf("rollback snapshot error, snapshot %s not found", snapshotID)
+	}
+	defer snapshot.Close()
+
+	err = dataset.Rollback(&snapshot, false)
+	if err != nil {
+		return fmt.Errorf("snapshot rollback [%s] for dataset [%s] failed", snapshotID, zVolumeFullName)
+	}
+
+	return nil
 }
