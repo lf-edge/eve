@@ -135,6 +135,7 @@ type zedagentContext struct {
 	subDeviceNetworkStatus    pubsub.Subscription
 	subZFSPoolStatus          pubsub.Subscription
 	subEdgeviewStatus         pubsub.Subscription
+	subSnapshotStatus         pubsub.Subscription
 	zedcloudMetrics           *zedcloud.AgentMetrics
 	rebootCmd                 bool
 	rebootCmdDeferred         bool
@@ -565,6 +566,19 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	}
 	pubDisksConfig.ClearRestarted()
 	getconfigCtx.pubDisksConfig = pubDisksConfig
+
+	// for snapshot config Publisher
+	pubSnapshotConfig, err := ps.NewPublication(
+		pubsub.PublicationOptions{
+			AgentName:  agentName,
+			Persistent: true,
+			TopicType:  types.ZfsSnapshotConfig{},
+		})
+	if err != nil {
+		log.Fatal(err)
+	}
+	pubSnapshotConfig.ClearRestarted()
+	getconfigCtx.pubSnapshotConfig = pubSnapshotConfig
 
 	// Look for global config such as log levels
 	subGlobalConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
@@ -1349,6 +1363,26 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	zedagentCtx.subZFSPoolStatus = subZFSPoolStatus
 	subZFSPoolStatus.Activate()
 
+	// Look for subSnapshotStatus from zfsmanager
+	subSnapshotStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "zfsmanager",
+		MyAgentName:   agentName,
+		TopicImpl:     types.ZfsSnapshotStatus{},
+		Activate:      false,
+		Persistent:    true,
+		Ctx:           &zedagentCtx,
+		CreateHandler: handleSnapshotStatusCreate,
+		ModifyHandler: handleSnapshotStatusModify,
+		DeleteHandler: handleSnapshotStatusDelete,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	zedagentCtx.subSnapshotStatus = subSnapshotStatus
+	subSnapshotStatus.Activate()
+
 	//Parse SMART data
 	go parseSMARTData()
 
@@ -1666,6 +1700,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 			subZFSPoolStatus.ProcessChange(change)
 			triggerPublishDevInfo(&zedagentCtx)
 
+		case change := <-subSnapshotStatus.MsgChan():
+			subSnapshotStatus.ProcessChange(change)
+
 		case <-hwInfoTiker.C:
 			triggerPublishHwInfo(&zedagentCtx)
 
@@ -1770,6 +1807,13 @@ func triggerPublishAllInfo(ctxPtr *zedagentContext) {
 			ctxPtr.TriggerObjectInfo <- infoForObjectKey{
 				info.ZInfoTypes_ZiEdgeview,
 				c.(types.EdgeviewStatus).Key(),
+			}
+		}
+		// trigger publish snapshots info
+		for _, c := range ctxPtr.subSnapshotStatus.GetAll() {
+			ctxPtr.TriggerObjectInfo <- infoForObjectKey{
+				info.ZInfoTypes_ZiSnapshot,
+				c.(types.ZfsSnapshotStatus).Key(),
 			}
 		}
 	}()
@@ -2415,4 +2459,54 @@ func handleEdgeviewStatusImpl(ctxArg interface{}, key string, statusArg interfac
 	ctx := ctxArg.(*zedagentContext)
 	PublishEdgeviewToZedCloud(ctx, &status, ctx.iteration)
 	ctx.iteration++
+}
+
+// handleSnapshotStatusCreate - Handle Snapshot create. Publish ZInfoSnapshot
+// and ZInfoDevice to ZedCloud.
+func handleSnapshotStatusCreate(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	status := statusArg.(types.ZfsSnapshotStatus)
+	log.Functionf("handleSnapshotStatusCreate(%s)", key)
+	ctx := ctxArg.(*zedagentContext)
+	uuidStr := status.Key()
+	PublishSnapshotInfoToZedCloud(ctx, uuidStr, &status, ctx.iteration)
+	triggerPublishDevInfo(ctx)
+	ctx.iteration++
+	log.Functionf("handleSnapshotStatusCreate(%s) DONE", key)
+}
+
+// snapshot event watch to capture transitions
+// and publish to zedCloud
+// Handles both create and modify events
+func handleSnapshotStatusModify(ctxArg interface{}, key string,
+	statusArg interface{}, oldStatusArg interface{}) {
+	newStatus := statusArg.(types.ZfsSnapshotStatus)
+	oldStatus := oldStatusArg.(types.ZfsSnapshotStatus)
+	log.Functionf("handleSnapshotStatusModify(%s)", key)
+	ctx := ctxArg.(*zedagentContext)
+	uuidStr := newStatus.Key()
+
+	if newStatus.DisplayName != oldStatus.DisplayName ||
+		newStatus.CurrentState != oldStatus.CurrentState ||
+		newStatus.RollbackCounter != oldStatus.RollbackCounter ||
+		newStatus.RollbackLastOpsTime != oldStatus.RollbackLastOpsTime ||
+		newStatus.Error != oldStatus.Error ||
+		newStatus.Readonly != oldStatus.Readonly ||
+		newStatus.Encryption != oldStatus.Encryption {
+		PublishSnapshotInfoToZedCloud(ctx, uuidStr, &newStatus, ctx.iteration)
+		triggerPublishDevInfo(ctx)
+	}
+	ctx.iteration++
+	log.Functionf("handleSnapshotStatusModify(%s) DONE", key)
+}
+
+func handleSnapshotStatusDelete(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	log.Functionf("handleSnapshotStatusDelete(%s)", key)
+	ctx := ctxArg.(*zedagentContext)
+	uuidStr := key
+	PublishSnapshotInfoToZedCloud(ctx, uuidStr, nil, ctx.iteration)
+	triggerPublishDevInfo(ctx)
+	ctx.iteration++
+	log.Functionf("handleSnapshotStatusDelete(%s) DONE", key)
 }

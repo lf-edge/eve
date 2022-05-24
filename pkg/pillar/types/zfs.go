@@ -113,18 +113,64 @@ type StorageChildren struct {
 	Children    []*StorageChildren
 }
 
+//ZfsSnapshotConfig contains configuration for snapshot
+type ZfsSnapshotConfig struct {
+	UUID            string // Snapshot ID
+	VolumeUUID      string // Volume ID of the volume this snapshot belongs to.
+	DisplayName     string // Display name (User-friendly name)
+	RollbackCounter uint32 // Counter for rollback cmd
+}
+
+//Key for ZfsSnapshotConfig pubsub
+func (s ZfsSnapshotConfig) Key() string {
+	return s.UUID
+}
+
+// ZSnapshotState indicates storage raid type
+type ZSnapshotState uint32
+
+// SnapshotState enum
+const (
+	SnapshotStateUnspecified ZSnapshotState = 0
+	// This state is used when a snapshot is in the process of being
+	// created or an error occurred during the first attempt to create it.
+	// (For example, the operation was delayed)
+	SnapshotStateCreating ZSnapshotState = 1
+	// This state is used when the snapshot has been successfully created.
+	SnapshotStateCreated ZSnapshotState = 2
+	// This state is used when the snapshot is pending deletion or
+	// the first deletion attempt was not successful.
+	SnapshotStateDeleting ZSnapshotState = 3
+	// This state is used when the snapshot has been successfully deleted.
+	SnapshotStateDeleted ZSnapshotState = 4
+)
+
 // ZfsSnapshot describes a snapshot for a logical zfs volume
-type ZfsSnapshot struct {
-	CreatinonTime     uint32
-	ID                string  // The real snapshot name in ZFS
-	FullPath          string  // Ex: "persist/vault/volumes/vol1@" + Id
-	DisplayName       string  // Display name (User-friendly name)
-	UsedSpace         uint64  // in byte
-	Referenced        uint64  // in byte
-	Compressratio     float64 // Compression ratio
-	Volsize           uint64  // in byte
-	GUID              string
-	Encryption        bool
-	Readonly          bool
-	Logicalreferenced uint64 // in byte
+type ZfsSnapshotStatus struct {
+	CreationTime        uint64
+	UUID                string  // The real snapshot name in ZFS. Link a command and a response with status.
+	VolumeUUID          string  // Volume ID of the volume this snapshot belongs to.
+	ZvolPath            string  // Ex: "persist/vault/volumes/vol1"
+	DisplayName         string  // Display name (User-friendly name)
+	UsedSpace           uint64  // in byte
+	Referenced          uint64  // in byte
+	Compressratio       float64 // Compression ratio
+	VolSize             uint64  // in byte
+	Encryption          bool
+	Readonly            bool
+	Logicalreferenced   uint64         // in byte
+	Error               string         // Critical cmd error
+	CurrentState        ZSnapshotState // Displays the current state of the snapshot
+	RollbackCounter     uint32         // Counter for rollback cmd
+	RollbackLastOpsTime uint64         // Last ops time of this snapshot rollback
+}
+
+//Key for pubsub
+func (s ZfsSnapshotStatus) Key() string {
+	return s.UUID
+}
+
+//Path for snapshot in zfs
+func (s ZfsSnapshotStatus) Path() string {
+	return fmt.Sprintf("%s@%s", s.ZvolPath, s.UUID)
 }

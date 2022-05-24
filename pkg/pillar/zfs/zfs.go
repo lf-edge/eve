@@ -78,7 +78,8 @@ func GetZfsStatusStr(log *base.LogObject, pool string) string {
 //DestroyDataset removes dataset from zfs
 //it runs 3 times in case of errors (we can hit dataset is busy)
 func DestroyDataset(log *base.LogObject, dataset string) (string, error) {
-	args := append(zfsPath, "destroy", dataset)
+	// Use '-r' here to destroy the all children's datasets including snapshots
+	args := append(zfsPath, "destroy", "-r", dataset)
 	var err error
 	var stdoutStderr []byte
 	tries := 0

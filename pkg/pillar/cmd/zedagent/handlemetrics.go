@@ -643,6 +643,22 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 		x.Dm = ReportDeviceMetric
 	}
 
+	// Snapshots metrics
+	for _, vs := range ctx.subSnapshotStatus.GetAll() {
+		snapshotStatus := vs.(types.ZfsSnapshotStatus)
+		if snapshotStatus.CurrentState == types.SnapshotStateCreated {
+			reportSnapMetric := new(metrics.ZMetricSnapshot)
+			reportSnapMetric.Uuid = snapshotStatus.UUID
+			reportSnapMetric.DisplayName = snapshotStatus.DisplayName
+			reportSnapMetric.UsedSpace = snapshotStatus.UsedSpace
+			reportSnapMetric.VolSize = snapshotStatus.VolSize
+			reportSnapMetric.Referenced = snapshotStatus.Referenced
+			reportSnapMetric.Logicalreferenced = snapshotStatus.Logicalreferenced
+			reportSnapMetric.Compressratio = snapshotStatus.Compressratio
+			ReportMetrics.Sm = append(ReportMetrics.Sm, reportSnapMetric)
+		}
+	}
+
 	// Loop over AppInstanceStatus so we report before the instance has booted
 	sub = ctx.getconfigCtx.subAppInstanceStatus
 	items := sub.GetAll()

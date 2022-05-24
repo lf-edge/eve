@@ -47,6 +47,10 @@ type zfsContext struct {
 	zVolStatusPub          pubsub.Publication
 	storageStatusPub       pubsub.Publication
 	subDisksConfig         pubsub.Subscription
+	subVolumeStatus        pubsub.Subscription
+	subAppInstanceStatus   pubsub.Subscription
+	subSnapshotConfig      pubsub.Subscription
+	pubSnapshotStatus      pubsub.Publication
 	disksProcessingTrigger chan interface{}
 }
 
@@ -110,6 +114,73 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	subDisksConfig.Activate()
 
 	// Publish cloud metrics
+	pubSnapshotStatus, err := ps.NewPublication(
+		pubsub.PublicationOptions{
+			AgentName:  agentName,
+			TopicType:  types.ZfsSnapshotStatus{},
+			Persistent: true,
+		})
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctxPtr.pubSnapshotStatus = pubSnapshotStatus
+
+	// Look for subSnapshotStatus
+	subSnapshotConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "zedagent",
+		MyAgentName:   agentName,
+		TopicImpl:     types.ZfsSnapshotConfig{},
+		Activate:      false,
+		Persistent:    true,
+		Ctx:           &ctxPtr,
+		CreateHandler: handleSnapshotConfigCreate,
+		ModifyHandler: handleSnapshotConfigModify,
+		DeleteHandler: handleSnapshotConfigDelete,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctxPtr.subSnapshotConfig = subSnapshotConfig
+	subSnapshotConfig.Activate()
+
+	// Look for VolumeStatus from volumemgr
+	subVolumeStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "volumemgr",
+		MyAgentName:   agentName,
+		AgentScope:    types.AppImgObj,
+		TopicImpl:     types.VolumeStatus{},
+		CreateHandler: handleVolumeStatusCreate,
+		ModifyHandler: handleVolumeStatusModify,
+		DeleteHandler: handleVolumeStatusDelete,
+		Activate:      false,
+		Ctx:           &ctxPtr,
+		ErrorTime:     errorTime,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctxPtr.subVolumeStatus = subVolumeStatus
+	subVolumeStatus.Activate()
+
+	// Look for AppInstanceStatus from zedmanager
+	subAppInstanceStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:   "zedmanager",
+		MyAgentName: agentName,
+		TopicImpl:   types.AppInstanceStatus{},
+		Activate:    false,
+		Ctx:         &ctxPtr,
+		WarningTime: warningTime,
+		ErrorTime:   errorTime,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctxPtr.subAppInstanceStatus = subAppInstanceStatus
+	subAppInstanceStatus.Activate()
+
+	// Publish cloud metrics
 	storageStatusPub, err := ps.NewPublication(
 		pubsub.PublicationOptions{
 			AgentName:  agentName,
@@ -139,7 +210,12 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 			processEvent(&ctxPtr, event)
 		case change := <-subDisksConfig.MsgChan():
 			subDisksConfig.ProcessChange(change)
+		case change := <-subSnapshotConfig.MsgChan():
+			subSnapshotConfig.ProcessChange(change)
+		case change := <-subVolumeStatus.MsgChan():
+			subVolumeStatus.ProcessChange(change)
 		case <-stillRunning.C:
+			snapshotPropertiesFill(&ctxPtr)
 		}
 		ps.StillRunning(agentName, warningTime, errorTime)
 	}

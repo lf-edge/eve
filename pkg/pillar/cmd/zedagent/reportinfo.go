@@ -147,6 +147,15 @@ func objectInfoTask(ctxPtr *zedagentContext, triggerInfo <-chan infoForObjectKey
 					PublishEdgeviewToZedCloud(ctxPtr, &evStatus, ctxPtr.iteration)
 					ctxPtr.iteration++
 				}
+			case info.ZInfoTypes_ZiSnapshot:
+				// publish Snapshot info
+				sub := ctxPtr.subSnapshotStatus
+				if c, err = sub.Get(infoForKeyMessage.objectKey); err == nil {
+					snapStatus := c.(types.ZfsSnapshotStatus)
+					id := snapStatus.Key()
+					PublishSnapshotInfoToZedCloud(ctxPtr, id, &snapStatus, ctxPtr.iteration)
+					ctxPtr.iteration++
+				}
 			}
 			if err != nil {
 				log.Functionf("objectInfoTask not found %s for key %s: %s",
@@ -1104,4 +1113,54 @@ func isUpdating(ctx *zedagentContext) bool {
 		return false
 	}
 	return false
+}
+
+//PublishSnapshotInfoToZedCloud send ZInfoSnapshot message
+func PublishSnapshotInfoToZedCloud(ctx *zedagentContext, snapshotID string,
+	snapshot *types.ZfsSnapshotStatus, iteration int) {
+	log.Functionf("PublishSnapshotToZedCloud uuid %s", snapshotID)
+	var ReportInfo = &info.ZInfoMsg{}
+	snapType := new(info.ZInfoTypes)
+	*snapType = info.ZInfoTypes_ZiSnapshot
+	ReportInfo.Ztype = *snapType
+	ReportInfo.DevId = *proto.String(devUUID.String())
+	ReportInfo.AtTimeStamp = ptypes.TimestampNow()
+	snapshotInfo := new(info.ZInfoSnapshot)
+
+	snapshotInfo.Uuid = *proto.String(snapshotID)
+	if snapshot != nil {
+		snapshotInfo.CreationTime = *proto.Uint64(snapshot.CreationTime)
+		snapshotInfo.VolumeUuid = *proto.String(snapshot.VolumeUUID)
+		snapshotInfo.DisplayName = *proto.String(snapshot.DisplayName)
+		snapshotInfo.Encryption = snapshot.Encryption
+		snapshotInfo.Readonly = snapshot.Readonly
+		snapshotInfo.CurrentState = info.ZSnapshotState(snapshot.CurrentState)
+		snapshotInfo.RollbackCmdCounter = snapshot.RollbackCounter
+		snapshotInfo.ErrorMsg = *proto.String(snapshot.Error)
+		snapshotInfo.RollbackTimeLastOp = *proto.Uint64(snapshot.RollbackLastOpsTime)
+	}
+
+	ReportInfo.InfoContent = new(info.ZInfoMsg_Snapinfo)
+	if x, ok := ReportInfo.GetInfoContent().(*info.ZInfoMsg_Snapinfo); ok {
+		x.Snapinfo = snapshotInfo
+	}
+
+	log.Tracef("PublishSnapshotInfoToZedCloud sending %v", ReportInfo)
+	data, err := proto.Marshal(ReportInfo)
+	if err != nil {
+		log.Fatal("PublishSnapshotInfoToZedCloud proto marshaling error: ", err)
+	}
+
+	statusURL := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API, devUUID, "info")
+
+	buf := bytes.NewBuffer(data)
+	if buf == nil {
+		log.Fatal("PublishSnapshotInfoToZedCloud malloc error")
+	}
+	size := int64(proto.Size(ReportInfo))
+	deferKey := "snapshotInfo:" + snapshotInfo.Uuid
+
+	zedcloud.SetDeferred(zedcloudCtx, deferKey, buf, size,
+		statusURL, true, info.ZInfoTypes_ZiSnapshot)
+	zedcloud.HandleDeferred(zedcloudCtx, time.Now(), 0, true)
 }
