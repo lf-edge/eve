@@ -242,3 +242,32 @@ message DisksConfig {
   DisksArrayType array_type = 2;
   repeated DisksConfig children = 3;
 }
+
+// SnapshotConfig describes a snapshot for a specific logical
+// volume that must exist on the device. It has a required field
+// volume_uuid for which it was created and UUID for snapshot name in ZFS.
+message SnapshotConfig {
+  // The real name of the snapshot in ZFS. It is the link between
+  // the command and the response to the command. It is assumed
+  // that the field will always be filled with a unique value
+  // that the controller will generate.
+  string uuid = 1;
+  // Display name (User-friendly name). This name does not affect
+  // the snapshot properties in ZFS in any way.
+  // Can be filled on the controller side.
+  // If a snapshot has already been created and this field has changed,
+  // it can be assumed that the friendly name for this snapshot has
+  // been renamed on the controller side.
+  string display_name = 2;
+  // Volume ID of the volume this snapshot belongs to. The field is
+  // required for all messages. Must always be filled in on the
+  // cloud side before sending to create snapshot command.
+  string volume_uuid = 3;
+  // The command for the snapshot rollback operation.
+  // Keep in mind that to revert to any of the previous
+  // snapshots except the last one, all intermediate snapshots
+  // will be destroyed in ZFS. This will happen automatically.
+  // These deleted snapshots will have a "Z_SNAPSHOT_STATE_DELETED"
+  // status in the SnapshotInfo message.
+  DeviceOpsCmd rollback = 7;
+}

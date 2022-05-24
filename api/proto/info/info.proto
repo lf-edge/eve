@@ -69,6 +69,7 @@ enum ZInfoTypes {
   ZiHardware = 11;
   ZiEdgeview = 12;
   ZiLocation = 13;
+  ZiSnapshot = 14;
 }
 
 // Information about assignable I/O adapter bundles
@@ -393,6 +394,38 @@ message ZCellularProvider {
   bool roaming = 4;
 }
 
+// Snapshot states
+enum ZSnapshotState {
+  Z_SNAPSHOT_STATE_UNSPECIFIED = 0;
+  // This state is used when a snapshot is in the process of being
+  // created or an error occurred during the first attempt to create it.
+  // (For example, the operation was delayed)
+  Z_SNAPSHOT_STATE_CREATING = 1;
+  // This state is used when the snapshot has been successfully created.
+  Z_SNAPSHOT_STATE_CREATED = 2;
+  // This state is used when the snapshot is pending deletion or
+  // the first deletion attempt was not successful.
+  Z_SNAPSHOT_STATE_DELETING = 3;
+  // This state is used when the snapshot has been successfully deleted.
+  // Also can get into this state when snapshots were
+  // deleted automatically after the rollback command
+  Z_SNAPSHOT_STATE_DELETED = 4;
+}
+
+// ZInfoSnapshot - Information about snapshot in zfs for zvol
+message ZInfoSnapshot {
+  uint64 creation_time = 1;           // In seconds
+  string uuid = 2;                    // link a command and a response. Is the real name of the snapshot in ZFS
+  string volume_uuid = 3;             // Volume ID of the volume this snapshot belongs to.
+  string display_name = 4;            // Ex: "Tuesday" or creation time (User-friendly name)
+  bool encryption = 5;
+  bool readonly = 6;                  // Controls whether this dataset can be modified.
+  ZSnapshotState current_state = 7;   // Displays the current state of the snapshot
+  string error_msg = 8;               // Ops error
+  uint32 rollback_cmd_counter = 9;    // Counter for rollback cmd
+  uint64 rollback_time_last_op = 10;  // The time when the last rollback operation was performed for this snapshot
+}
+
 // Device Run State
 enum ZDeviceState {
     // Just to handle Un-Initialized runState variable Internally
@@ -438,7 +471,7 @@ message StorageDiskState {
 enum StorageRaidType {
   STORAGE_RAID_TYPE_UNSPECIFIED = 0;
   STORAGE_RAID_TYPE_RAID0 = 1;             // RAID-0
-  STORAGE_RAID_TYPE_RAID1 = 2;        	   // Mirror 
+  STORAGE_RAID_TYPE_RAID1 = 2;        	   // Mirror
   STORAGE_RAID_TYPE_RAID5 = 3;             // raidz1 (RAID-5)
   STORAGE_RAID_TYPE_RAID6 = 4;             // raidz2 (RAID-6)
   STORAGE_RAID_TYPE_RAID7 = 5;             // raidz3 (RAID-7)
@@ -1009,6 +1042,7 @@ message ZInfoMsg {
     ZInfoEdgeview evinfo = 17;
     ZInfoHardware hwinfo = 18;
     ZInfoLocation locinfo = 19;
+    ZInfoSnapshot snapinfo = 20;
   }
   google.protobuf.Timestamp atTimeStamp = 6;
 }
