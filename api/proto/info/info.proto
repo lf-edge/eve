@@ -602,6 +602,24 @@ message ZInfoDevice {
 
   // state of attestation process of eve
   AttestationInfo attestation_info = 50;
+
+  // Capability indicating which new EdgeDevConfig fields which are supported
+  APICapability api_capability = 51;
+}
+
+// Capabilities indicates features in the EdgeDevConfig where there is
+// no easy way to otherwise determine whether or not they are parsed and
+// supported by EVE-OS
+// A larger number indicates all lower numbers are also supported thus
+// this works similar to a version field for the EdgeDevConfig support.
+enum APICapability {
+  API_CAPABILITY_UNSPECIFIED = 0;
+  API_CAPABILITY_RETRY_UPDATE = 1; // BaseOs.retry_update counter supported
+  API_CAPABILITY_SHUTDOWN = 2; // shutdown DevOpsCmd support
+  // Coming soon:
+  // API_CAPABILITT_START_DELAY_IN_SECONDS = 3; // start_delay_in_seconds supported
+  // API_CAPABILITY_EDGEVIEW = 4; // edgeview and edgeview.token supported
+  // Add new values as new EdgeDevConfig API features are implemented
 }
 
 // Different reasons for a boot/reboot
