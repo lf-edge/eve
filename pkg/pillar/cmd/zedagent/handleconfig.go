@@ -673,6 +673,7 @@ func publishZedAgentStatus(getconfigCtx *getconfigContext) {
 		ForceFallbackCounter: ctx.forceFallbackCounter,
 		CurrentProfile:       getconfigCtx.currentProfile,
 		RadioSilence:         getconfigCtx.radioSilence,
+		AttestationStatus:    ctx.attestationStatus,
 	}
 	pub := getconfigCtx.pubZedAgentStatus
 	pub.Publish(agentName, status)

@@ -56,11 +56,13 @@ type vaultMgrContext struct {
 	pubVaultConfig            pubsub.Publication
 	subGlobalConfig           pubsub.Subscription
 	subVaultKeyFromController pubsub.Subscription
+	subZedAgentStatus         pubsub.Subscription
 	GCInitialized             bool // GlobalConfig initialized
 	defaultVaultUnlocked      bool
 	vaultUCDone               bool
 	ps                        *pubsub.PubSub
 	ucChan                    chan struct{}
+	lastAttestStatus          types.AttestationStatus
 }
 
 const (
@@ -942,6 +944,25 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		ctx.subVaultKeyFromController = subVaultKeyFromController
 		subVaultKeyFromController.Activate()
 
+		// Look for attestation state from zedagent
+		subZedAgentStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+			AgentName:     "zedagent",
+			MyAgentName:   agentName,
+			TopicImpl:     types.ZedAgentStatus{},
+			Activate:      false,
+			Ctx:           &ctx,
+			CreateHandler: handleZedAgentStatusCreate,
+			ModifyHandler: handleZedAgentStatusModify,
+			WarningTime:   warningTime,
+			ErrorTime:     errorTime,
+		})
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		ctx.subZedAgentStatus = subZedAgentStatus
+		subZedAgentStatus.Activate()
+
 		// Pick up debug aka log level before we start real work
 		for !ctx.GCInitialized {
 			log.Functionf("waiting for GCInitialized")
@@ -978,6 +999,8 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 			select {
 			case change := <-subVaultKeyFromController.MsgChan():
 				subVaultKeyFromController.ProcessChange(change)
+			case change := <-subZedAgentStatus.MsgChan():
+				subZedAgentStatus.ProcessChange(change)
 			case <-stillRunning.C:
 				ps.StillRunning(agentName, warningTime, errorTime)
 			case <-ctx.ucChan:
@@ -1179,4 +1202,42 @@ func publishVaultKey(ctx *vaultMgrContext, vaultName string) error {
 	pub := ctx.pubVaultKeyFromDevice
 	pub.Publish(key, keyFromDevice)
 	return nil
+}
+
+func handleZedAgentStatusCreate(ctxArg interface{}, key string,
+	keyArg interface{}) {
+	handleZedAgentStatusImpl(ctxArg, key, keyArg)
+}
+
+func handleZedAgentStatusModify(ctxArg interface{}, key string,
+	keyArg interface{}, oldStatusArg interface{}) {
+	handleZedAgentStatusImpl(ctxArg, key, keyArg)
+}
+
+func handleZedAgentStatusImpl(ctxArg interface{}, key string, keyArg interface{}) {
+	ctx := ctxArg.(*vaultMgrContext)
+	if !etpm.IsTpmEnabled() {
+		return
+	}
+	zedAgentStatus := keyArg.(types.ZedAgentStatus)
+	if zedAgentStatus.AttestationStatus != ctx.lastAttestStatus {
+		ctx.lastAttestStatus = zedAgentStatus.AttestationStatus
+		switch zedAgentStatus.AttestationStatus {
+		case types.AttestationStatusEmptyKeys:
+			if !ctx.defaultVaultUnlocked {
+				// we already tried to unlock but still locked
+				// and received empty recovery keys from the controller
+				// so no chance to recover
+				log.Error("No keys received from controller but vault still locked")
+				// XXX do we need separate flag for unrecoverable error
+				ctx.vaultUCDone = true
+				publishVaultStatus(ctx)
+			}
+		case types.AttestationStatusCompleted:
+			// ensure that we remove legacy key on attestation complete
+			if err := etpm.WipeOutStaleVaultKeyIfAny(false); err != nil {
+				log.Errorf("Failed to wipe non-sealed key: %v", err)
+			}
+		}
+	}
 }

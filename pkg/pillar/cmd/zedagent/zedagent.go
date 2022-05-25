@@ -184,6 +184,8 @@ type zedagentContext struct {
 
 	// Interlock with controller to ensure we get the encrypted secrets
 	publishedEdgeNodeCerts bool
+
+	attestationStatus types.AttestationStatus
 }
 
 var debug = false

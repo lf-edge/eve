@@ -85,16 +85,21 @@ func trySendToController(attestReq *attest.ZAttestReq, iteration int) (*http.Res
 		size, buf, iteration, true)
 }
 
-//setAttestErrorAndTriggerInfo sets errorDescription on zattest.Context,
-//triggers publishing of device info
-func setAttestErrorAndTriggerInfo(ctx *zattest.Context, errorDescription types.ErrorDescription) {
-	ctx.SetErrorDescription(errorDescription)
+func getZedAgentCtx(ctx *zattest.Context) *zedagentContext {
 	attestCtx, ok := ctx.OpaqueCtx.(*attestContext)
 	if !ok {
 		log.Fatalf("[ATTEST] Unexpected type from opaque ctx: %T",
 			ctx.OpaqueCtx)
 	}
-	triggerPublishDevInfo(attestCtx.zedagentCtx)
+	return attestCtx.zedagentCtx
+}
+
+//setAttestErrorAndTriggerInfo sets errorDescription on zattest.Context,
+//triggers publishing of device info
+func setAttestErrorAndTriggerInfo(ctx *zattest.Context, errorDescription types.ErrorDescription) {
+	ctx.SetErrorDescription(errorDescription)
+	attestCtx := getZedAgentCtx(ctx)
+	triggerPublishDevInfo(attestCtx)
 }
 
 //SendNonceRequest implements SendNonceRequest method of zattest.Verifier
@@ -118,6 +123,9 @@ func (server *VerifierImpl) SendNonceRequest(ctx *zattest.Context) error {
 	if !zedcloud.UseV2API() {
 		return zattest.ErrNoVerifier
 	}
+
+	zedAgentCtx := getZedAgentCtx(ctx)
+	publishZedAgentStatus(zedAgentCtx.getconfigCtx)
 
 	attestReq.ReqType = attest.ZAttestReqType_ATTEST_REQ_NONCE
 
@@ -360,16 +368,21 @@ func (server *VerifierImpl) SendAttestQuote(ctx *zattest.Context) error {
 		//Retrieve integrity token
 		storeIntegrityToken(quoteResp.GetIntegrityToken())
 		log.Notice("[ATTEST] Attestation successful, processing keys given by Controller")
+		publishedEncryptedKeyFromController := types.AttestationStatusEmptyKeys
 		if encryptedKeys := quoteResp.GetKeys(); encryptedKeys != nil {
 			for _, sk := range encryptedKeys {
 				encryptedKeyType := sk.GetKeyType()
 				encryptedKey := sk.GetKey()
-				if encryptedKeyType == attest.AttestVolumeKeyType_ATTEST_VOLUME_KEY_TYPE_VSK {
+				if encryptedKeyType == attest.AttestVolumeKeyType_ATTEST_VOLUME_KEY_TYPE_VSK && len(encryptedKey) > 0 {
 					publishEncryptedKeyFromController(attestCtx, encryptedKey)
+					publishedEncryptedKeyFromController = types.AttestationStatusKeysReceived
 					log.Noticef("[ATTEST] published Controller-given encrypted key")
 				}
 			}
 		}
+		zedAgentCtx := getZedAgentCtx(ctx)
+		zedAgentCtx.attestationStatus = publishedEncryptedKeyFromController
+		publishZedAgentStatus(zedAgentCtx.getconfigCtx)
 		ctx.ClearError()
 		triggerPublishDevInfo(attestCtx.zedagentCtx)
 		return nil
@@ -393,6 +406,9 @@ func (server *VerifierImpl) SendAttestQuote(ctx *zattest.Context) error {
 		}
 		log.Error(errorDescription.Error)
 		setAttestErrorAndTriggerInfo(ctx, errorDescription)
+		zedAgentCtx := getZedAgentCtx(ctx)
+		zedAgentCtx.attestationStatus = types.AttestationStatusQuoteMismatch
+		publishZedAgentStatus(zedAgentCtx.getconfigCtx)
 		return zattest.ErrQuoteMismatch
 	default:
 		errorDescription := types.ErrorDescription{
@@ -420,6 +436,11 @@ func (server *VerifierImpl) SendAttestEscrow(ctx *zattest.Context) error {
 	}
 	if attestCtx.SkipEscrow {
 		log.Notice("[ATTEST] Escrow successful skipped")
+		ctx.ClearError()
+		zedAgentCtx := getZedAgentCtx(ctx)
+		zedAgentCtx.attestationStatus = types.AttestationStatusCompleted
+		publishZedAgentStatus(zedAgentCtx.getconfigCtx)
+		triggerPublishDevInfo(attestCtx.zedagentCtx)
 		return nil
 	}
 	if attestCtx.EscrowData == nil {
@@ -503,6 +524,9 @@ func (server *VerifierImpl) SendAttestEscrow(ctx *zattest.Context) error {
 		return zattest.ErrITokenMismatch
 	case attest.AttestStorageKeysResponseCode_ATTEST_STORAGE_KEYS_RESPONSE_CODE_SUCCESS:
 		log.Notice("[ATTEST] Escrow successful")
+		zedAgentCtx := getZedAgentCtx(ctx)
+		zedAgentCtx.attestationStatus = types.AttestationStatusCompleted
+		publishZedAgentStatus(zedAgentCtx.getconfigCtx)
 		ctx.ClearError()
 		triggerPublishDevInfo(attestCtx.zedagentCtx)
 		return nil

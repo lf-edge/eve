@@ -514,6 +514,40 @@ func (do DeviceOperation) String() string {
 	}
 }
 
+//AttestationStatus contains current status of attestation
+type AttestationStatus uint8
+
+const (
+	//AttestationStatusNone placeholder
+	AttestationStatusNone AttestationStatus = iota
+	//AttestationStatusQuoteMismatch indicates that we cannot pass attestation with template issue
+	AttestationStatusQuoteMismatch
+	//AttestationStatusEmptyKeys empty keys received from controller
+	AttestationStatusEmptyKeys
+	//AttestationStatusKeysReceived keys received from controller
+	AttestationStatusKeysReceived
+	//AttestationStatusCompleted completed
+	AttestationStatusCompleted
+)
+
+// String returns the verbose equivalent of AttestationStatus code
+func (a AttestationStatus) String() string {
+	switch a {
+	case AttestationStatusNone:
+		return "none"
+	case AttestationStatusQuoteMismatch:
+		return "quote mismatch"
+	case AttestationStatusEmptyKeys:
+		return "no keys"
+	case AttestationStatusKeysReceived:
+		return "keys received"
+	case AttestationStatusCompleted:
+		return "completed"
+	default:
+		return fmt.Sprintf("Unknown AttestationStatus %d", a)
+	}
+}
+
 // ZedAgentStatus :
 type ZedAgentStatus struct {
 	Name                 string
@@ -527,6 +561,7 @@ type ZedAgentStatus struct {
 	ForceFallbackCounter int          // Try image fallback when counter changes
 	CurrentProfile       string       // Current profile
 	RadioSilence         RadioSilence // Currently requested state of radio devices
+	AttestationStatus    AttestationStatus
 }
 
 // Key :
