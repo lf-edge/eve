@@ -180,13 +180,13 @@ func itemIsCreatedCb(itemRef dg.ItemRef) func() bool {
 
 func dnsKeyCb() func() string {
 	return func() string {
-		return dpcManager.GetDNS().DPCKey
+		return getDNS().DPCKey
 	}
 }
 
 func testingInProgressCb() func() bool {
 	return func() bool {
-		return dpcManager.GetDNS().Testing
+		return getDNS().Testing
 	}
 }
 
@@ -225,6 +225,14 @@ func dpcStateCb(idx int) func() types.DPCState {
 	}
 }
 
+func getDNS() types.DeviceNetworkStatus {
+	dnsObj, err := pubDNS.Get("global")
+	if err != nil {
+		return types.DeviceNetworkStatus{}
+	}
+	return dnsObj.(types.DeviceNetworkStatus)
+}
+
 func getDPC(idx int) types.DevicePortConfig {
 	_, dpcList := getDPCList()
 	if idx < 0 || idx >= len(dpcList) {
@@ -243,7 +251,7 @@ func getDPCList() (currentIndex int, list []types.DevicePortConfig) {
 }
 
 func wirelessStatusFromDNS(wType types.WirelessType) types.WirelessStatus {
-	for _, port := range dpcManager.GetDNS().Ports {
+	for _, port := range getDNS().Ports {
 		if port.WirelessStatus.WType == wType {
 			return port.WirelessStatus
 		}
@@ -255,6 +263,12 @@ func wwanOpModeCb(expMode types.WwanOpMode) func() bool {
 	return func() bool {
 		wwanDNS := wirelessStatusFromDNS(types.WirelessTypeCellular)
 		return wwanDNS.Cellular.Module.OpMode == expMode
+	}
+}
+
+func rsChangeInProgressCb() func() bool {
+	return func() bool {
+		return getDNS().RadioSilence.ChangeInProgress
 	}
 }
 
@@ -698,7 +712,7 @@ func TestSingleDPC(test *testing.T) {
 	t.Expect(dpcList[0].Key).To(Equal("zedagent"))
 	t.Expect(dpcList[0].LastSucceeded.After(dpcList[0].LastFailed)).To(BeTrue())
 	t.Expect(dpcList[0].LastError).To(BeEmpty())
-	dns := dpcManager.GetDNS()
+	dns := getDNS()
 	t.Expect(dns.CurrentIndex).To(Equal(0))
 	t.Expect(dns.State).To(Equal(types.DPCStateSuccess))
 
@@ -1093,7 +1107,7 @@ func TestWireless(test *testing.T) {
 	wwan0 = mockWwan0() // with IP
 	networkMonitor.AddOrUpdateInterface(wwan0)
 	t.Eventually(func() bool {
-		ports := dpcManager.GetDNS().Ports
+		ports := getDNS().Ports
 		return len(ports) == 2 && len(ports[1].AddrInfoList) == 1 &&
 			ports[1].AddrInfoList[0].Addr.String() == "15.123.87.20"
 	}).Should(BeTrue())
@@ -1200,10 +1214,10 @@ func TestWireless(test *testing.T) {
 		ConfigError:       "Error from upper layers",
 	})
 	t.Eventually(func() bool {
-		rs := dpcManager.GetDNS().RadioSilence
+		rs := getDNS().RadioSilence
 		return rs.ConfigError == "Error from upper layers"
 	}).Should(BeTrue())
-	rs := dpcManager.GetDNS().RadioSilence
+	rs := getDNS().RadioSilence
 	t.Expect(rs.ChangeRequestedAt.Equal(rsImposedAt)).To(BeTrue())
 	t.Expect(rs.ConfigError).To(Equal("Error from upper layers"))
 	t.Expect(rs.Imposed).To(BeFalse())
@@ -1218,6 +1232,7 @@ func TestWireless(test *testing.T) {
 		ChangeInProgress:  true,
 		ChangeRequestedAt: rsImposedAt,
 	})
+	t.Eventually(rsChangeInProgressCb()).Should(BeTrue())
 	expectedWwanConfig.RadioSilence = true
 	_, wwanCfgHash, err = generic.MarshalWwanConfig(expectedWwanConfig)
 	t.Expect(err).To(BeNil())
@@ -1227,7 +1242,8 @@ func TestWireless(test *testing.T) {
 	wwan0Status.Networks[0].ConfigError = ""
 	wwanWatcher.UpdateStatus(wwan0Status)
 	t.Eventually(wwanOpModeCb(types.WwanOpModeRadioOff)).Should(BeTrue())
-	rs = dpcManager.GetDNS().RadioSilence
+	t.Eventually(rsChangeInProgressCb()).Should(BeFalse())
+	rs = getDNS().RadioSilence
 	t.Expect(rs.ChangeRequestedAt.Equal(rsImposedAt)).To(BeTrue())
 	t.Expect(rs.ConfigError).To(BeEmpty())
 	t.Expect(rs.Imposed).To(BeTrue())
@@ -1241,6 +1257,7 @@ func TestWireless(test *testing.T) {
 		ChangeInProgress:  true,
 		ChangeRequestedAt: rsLiftedAt,
 	})
+	t.Eventually(rsChangeInProgressCb()).Should(BeTrue())
 	expectedWwanConfig.RadioSilence = false
 	_, wwanCfgHash, err = generic.MarshalWwanConfig(expectedWwanConfig)
 	t.Expect(err).To(BeNil())
@@ -1250,7 +1267,8 @@ func TestWireless(test *testing.T) {
 	wwan0Status.Networks[0].ConfigError = ""
 	wwanWatcher.UpdateStatus(wwan0Status)
 	t.Eventually(wwanOpModeCb(types.WwanOpModeConnected)).Should(BeTrue())
-	rs = dpcManager.GetDNS().RadioSilence
+	t.Eventually(rsChangeInProgressCb()).Should(BeFalse())
+	rs = getDNS().RadioSilence
 	t.Expect(rs.ChangeRequestedAt.Equal(rsLiftedAt)).To(BeTrue())
 	t.Expect(rs.ConfigError).To(BeEmpty())
 	t.Expect(rs.Imposed).To(BeFalse())
@@ -1264,6 +1282,7 @@ func TestWireless(test *testing.T) {
 		ChangeInProgress:  true,
 		ChangeRequestedAt: rsImposedAt,
 	})
+	t.Eventually(rsChangeInProgressCb()).Should(BeTrue())
 	expectedWwanConfig.RadioSilence = true
 	_, wwanCfgHash, err = generic.MarshalWwanConfig(expectedWwanConfig)
 	t.Expect(err).To(BeNil())
@@ -1273,7 +1292,8 @@ func TestWireless(test *testing.T) {
 	wwan0Status.Networks[0].ConfigError = "failed to impose RS"
 	wwanWatcher.UpdateStatus(wwan0Status)
 	t.Eventually(wwanOpModeCb(types.WwanOpModeOnline)).Should(BeTrue())
-	rs = dpcManager.GetDNS().RadioSilence
+	t.Eventually(rsChangeInProgressCb()).Should(BeFalse())
+	rs = getDNS().RadioSilence
 	t.Expect(rs.ChangeRequestedAt.Equal(rsImposedAt)).To(BeTrue())
 	t.Expect(rs.ConfigError).To(Equal("mock-wwan0: failed to impose RS"))
 	t.Expect(rs.Imposed).To(BeFalse())
@@ -1454,7 +1474,7 @@ func TestDPCWithReleasedAndRenamedInterface(test *testing.T) {
 	eth1Dhcpcd := dg.Reference(generic.Dhcpcd{AdapterIfName: "eth1"})
 	t.Consistently(itemIsCreatedCb(eth0Dhcpcd)).Should(BeFalse())
 	t.Consistently(itemIsCreatedCb(eth1Dhcpcd)).Should(BeFalse())
-	dns := dpcManager.GetDNS()
+	dns := getDNS()
 	t.Expect(dns.Ports).To(HaveLen(2))
 	t.Expect(dns.Ports[0].Up).To(BeFalse())
 	t.Expect(dns.Ports[1].Up).To(BeFalse())
@@ -1656,7 +1676,7 @@ func TestVlansAndBonds(test *testing.T) {
 	t.Expect(getDPC(0).State).To(Equal(types.DPCStateSuccess))
 	// Eventually both VLAN sub-interfaces are reported as functional.
 	t.Eventually(func() bool {
-		dns := dpcManager.GetDNS()
+		dns := getDNS()
 		return len(dns.Ports) == 5 &&
 			dns.Ports[3].LastError == "" &&
 			dns.Ports[4].LastError == ""
@@ -1818,7 +1838,7 @@ func TestTransientDNSError(test *testing.T) {
 	t.Expect(dpcEth0).ToNot(BeNil())
 	t.Expect(dpcEth0.HasError()).To(BeTrue())
 	t.Expect(dpcEth0.LastError).To(Equal("interface eth0: no DNS server available"))
-	dns := dpcManager.GetDNS()
+	dns := getDNS()
 	dnsEth0 := dns.GetPortByIfName("eth0")
 	t.Expect(dnsEth0).ToNot(BeNil())
 	t.Expect(dnsEth0.HasError()).To(BeTrue())
@@ -1833,7 +1853,7 @@ func TestTransientDNSError(test *testing.T) {
 	t.Expect(dpcEth0).ToNot(BeNil())
 	t.Expect(dpcEth0.HasError()).To(BeFalse())
 	t.Expect(dpcEth0.LastError).To(BeEmpty())
-	dns = dpcManager.GetDNS()
+	dns = getDNS()
 	dnsEth0 = dns.GetPortByIfName("eth0")
 	t.Expect(dnsEth0).ToNot(BeNil())
 	t.Expect(dnsEth0.HasError()).To(BeFalse())
