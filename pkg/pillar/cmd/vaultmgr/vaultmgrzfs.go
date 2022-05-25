@@ -43,11 +43,11 @@ func getKeyStatusParams(vaultPath string) []string {
 
 //e.g. zfs load-key persist/vault followed by
 //zfs mount persist/vault
-func unlockZfsVault(vaultPath string) error {
+func unlockZfsVault(vaultPath string, sealedKey bool) error {
 	//prepare key in the staging file
 	//we never unlock a deprecated vault in ZFS (we never created those)
-	//cloudKeyOnlyMode=false, useSealedKey=true
-	if err := stageKey(false, true, zfsKeyDir, zfsKeyFile); err != nil {
+	//cloudKeyOnlyMode=false, useSealedKey=sealedKey
+	if err := stageKey(false, sealedKey, zfsKeyDir, zfsKeyFile); err != nil {
 		return err
 	}
 	defer unstageKey(zfsKeyDir, zfsKeyFile)
@@ -70,6 +70,17 @@ func unlockZfsVault(vaultPath string) error {
 
 //e.g. zfs create -o encryption=aes-256-gcm -o keylocation=file://tmp/raw.key -o keyformat=raw persist/vault
 func createZfsVault(vaultPath string) error {
+	if !etpm.IsTpmEnabled() || !etpm.PCRBankSHA256Enabled() {
+		log.Noticef("Ignoring vault create request on no-TPM(%v) or no-PCR (%v) platform",
+			!etpm.IsTpmEnabled(), !etpm.PCRBankSHA256Enabled())
+		return nil
+	}
+	if err := etpm.WipeOutStaleVaultKeyIfAny(true); err != nil {
+		return err
+	}
+	if err := etpm.WipeOutStaleVaultKeyIfAny(false); err != nil {
+		return err
+	}
 	//prepare key in the staging file
 	//we never create deprecated vault on ZFS
 	//cloudKeyOnlyMode=false, useSealedKey=true
@@ -118,24 +129,12 @@ func processOperStatus(status string) string {
 	return ""
 }
 
-func setupZfsVault(vaultPath string) error {
+func setupZfsVault(vaultPath string, useSealedKey bool) error {
 	//zfs get keystatus returns success as long as vaultPath is a dataset,
 	//(even if not mounted yet), so use it to check dataset presence
 	if err := checkKeyStatus(vaultPath); err == nil {
 		//present, call unlock
-		return unlockZfsVault(vaultPath)
-	}
-	// If it does not exist then the mount presumbly does not exist either but
-	// double check.
-	if !isDirEmpty(vaultPath) {
-		log.Noticef("Not disturbing non-empty vault(%s)",
-			vaultPath)
-	} else {
-		log.Warnf("Clear saved keys for empty vault(%s)",
-			vaultPath)
-		if err := etpm.WipeOutStaleSealedKeyIfAny(); err != nil {
-			log.Errorf("WipteOutStaleSealKeyIfAny failed: %s", err)
-		}
+		return unlockZfsVault(vaultPath, useSealedKey)
 	}
 	//try creating the dataset
 	return createZfsVault(vaultPath)

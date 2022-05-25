@@ -417,7 +417,10 @@ func createVault(vaultPath string) error {
 	if err := removeProtectorIfAny(vaultPath); err != nil {
 		return err
 	}
-	if err := etpm.WipeOutStaleSealedKeyIfAny(); err != nil {
+	if err := etpm.WipeOutStaleVaultKeyIfAny(true); err != nil {
+		return err
+	}
+	if err := etpm.WipeOutStaleVaultKeyIfAny(false); err != nil {
 		return err
 	}
 	//We never create deprecated vaults, so -
@@ -661,18 +664,46 @@ func setupDeprecatedVaultsOnExt4(ignoreDefaultVault bool) error {
 
 //setup vaults on ext4, using fscrypt
 func setupDefaultVaultOnExt4() error {
-	if err := setupVault(defaultVault, false); err != nil {
-		return fmt.Errorf("Error in setting up vault %s:%v", defaultVault, err)
+	err := setupVault(defaultVault, false)
+	if err == nil {
+		return nil
 	}
-	return nil
+	if etpm.PCRBankSHA256Enabled() && etpm.IsLegacyVaultKeyPresent() {
+		// try to unlock with legacy key
+		// we will remove this key after first receive of storage keys from the cloud
+		if err := unlockVault(defaultVault, false, false); err != nil {
+			log.Errorf("Failed to unlock vault with legacy key, %v", err)
+		} else {
+			log.Warn("Unlocked with legacy key")
+			if err := etpm.SealLegacyDiskKey(etpm.DiskKeySealingPCRs); err != nil {
+				log.Errorf("SealLegacyDiskKey: %s", err)
+			}
+			return nil
+		}
+	}
+	return fmt.Errorf("error in setting up vault %s: %v", defaultVault, err)
 }
 
 //setup vaults on zfs, using zfs native encryption support
 func setupDefaultVaultOnZfs() error {
-	if err := setupZfsVault(defaultSecretDataset); err != nil {
-		return fmt.Errorf("Error in setting up ZFS vault %s:%v", defaultSecretDataset, err)
+	err := setupZfsVault(defaultSecretDataset, true)
+	if err == nil {
+		return nil
 	}
-	return nil
+	if etpm.PCRBankSHA256Enabled() && etpm.IsLegacyVaultKeyPresent() {
+		// try to unlock with legacy key
+		// we will remove this key after first receive of storage keys from the cloud
+		if err := unlockZfsVault(defaultSecretDataset, false); err != nil {
+			log.Errorf("Failed to unlock vault with legacy key, %v", err)
+		} else {
+			log.Warn("Unlocked with legacy key")
+			if err := etpm.SealLegacyDiskKey(etpm.DiskKeySealingPCRs); err != nil {
+				log.Errorf("SealLegacyDiskKey: %s", err)
+			}
+			return nil
+		}
+	}
+	return fmt.Errorf("error in setting up ZFS vault %s: %v", defaultSecretDataset, err)
 }
 
 // checkAndPublishVaultConfig: If vault config is not yet initialized
@@ -1064,7 +1095,7 @@ func handleVaultKeyFromControllerImpl(ctxArg interface{}, key string,
 		log.Noticef("Sealed key in TPM, unlocking %s", types.DefaultVaultName)
 
 		if vault.ReadPersistType() == types.PersistZFS {
-			err = unlockZfsVault(defaultSecretDataset)
+			err = unlockZfsVault(defaultSecretDataset, true)
 			if err != nil {
 				log.Errorf("Failed to unlock zfs vault after receiving Controller key, %v",
 					err)
@@ -1098,6 +1129,12 @@ func handleVaultKeyFromControllerImpl(ctxArg interface{}, key string,
 		log.Notice("Starting upgradeconverter(post-vault)")
 		go uc.RunPostVaultHandlers(agentName, ctx.ps, logger, log,
 			debugOverride, ctx.ucChan)
+	}
+	//we are here if we receive vault key from controller and unlocked
+	//we should delete legacy key from EVE and use sealed keys and keys stored on controller side
+	if err := etpm.WipeOutStaleVaultKeyIfAny(false); err != nil {
+		log.Errorf("Failed to wipe non-sealed key: %v", err)
+		return
 	}
 }
 

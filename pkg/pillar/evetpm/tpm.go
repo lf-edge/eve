@@ -479,8 +479,8 @@ func FetchSealedVaultKey(log *base.LogObject) ([]byte, error) {
 	}
 
 	//gain some knowledge about existing environment
-	sealedKeyPresent := isSealedKeyPresent()
-	legacyKeyPresent := isLegacyKeyPresent()
+	sealedKeyPresent := IsSealedVaultKeyPresent()
+	legacyKeyPresent := IsLegacyVaultKeyPresent()
 
 	if !sealedKeyPresent && !legacyKeyPresent {
 		log.Noticef("FetchSealedVaultKey generate new key")
@@ -501,6 +501,9 @@ func FetchSealedVaultKey(log *base.LogObject) ([]byte, error) {
 		//The name "key" may be confusing here, as in it is not a key per se. It is a seed value AFAIK.
 		//But that is what fscrypt uses, so I borrowed the same term for uniformity.
 		//
+		//We store the key in both places (sealed and legacy) because we cannot unseal the key on PCR change
+		//and if we did not send the key as part of attestation we will lose vault. We should remove legacy key
+		//as soon as possible and rely on attestation keys
 		key, err := GetRandom(vaultKeyLength)
 		if err != nil {
 			return nil, fmt.Errorf("FetchSealedVaultKey: GetRandom failed, %v", err)
@@ -508,6 +511,10 @@ func FetchSealedVaultKey(log *base.LogObject) ([]byte, error) {
 		err = SealDiskKey(key, DiskKeySealingPCRs)
 		if err != nil {
 			return nil, fmt.Errorf("FetchSealedVaultKey: Sealing failed: %v", err)
+		}
+		err = writeDiskKey(key)
+		if err != nil {
+			return nil, fmt.Errorf("FetchVaultKey: Writing Key to TPM failed: %w", err)
 		}
 	}
 
@@ -523,11 +530,7 @@ func FetchSealedVaultKey(log *base.LogObject) ([]byte, error) {
 		//First clone the existing key(not sealed), and make it a sealed key.
 		//In a subsequent release, rotate the sealed key to a new one.
 		//Upgrade path will be to first upgrade to a) first release and then b)
-		key, err := readDiskKey()
-		if err != nil {
-			return nil, fmt.Errorf("Error in retrieving old key")
-		}
-		err = SealDiskKey(key, DiskKeySealingPCRs)
+		err := SealLegacyDiskKey(DiskKeySealingPCRs)
 		if err != nil {
 			return nil, fmt.Errorf("FetchSealedVaultKey: Sealing failed: %v", err)
 		}
@@ -539,6 +542,15 @@ func FetchSealedVaultKey(log *base.LogObject) ([]byte, error) {
 	}
 	//By this, we have a key sealed into TPM
 	return UnsealDiskKey(DiskKeySealingPCRs)
+}
+
+// SealLegacyDiskKey seals key from legacy location into TPM2.0, with provided PCRs
+func SealLegacyDiskKey(pcrSel tpm2.PCRSelection) error {
+	key, err := readDiskKey()
+	if err != nil {
+		return fmt.Errorf("error in retrieving legacy key: %w", err)
+	}
+	return SealDiskKey(key, pcrSel)
 }
 
 //SealDiskKey seals key into TPM2.0, with provided PCRs
@@ -620,7 +632,8 @@ func SealDiskKey(key []byte, pcrSel tpm2.PCRSelection) error {
 	return nil
 }
 
-func isSealedKeyPresent() bool {
+// IsSealedVaultKeyPresent returns true if sealed vault key present
+func IsSealedVaultKeyPresent() bool {
 	rw, err := tpm2.OpenTPM(TpmDevicePath)
 	if err != nil {
 		return false
@@ -632,7 +645,8 @@ func isSealedKeyPresent() bool {
 	return err == nil
 }
 
-func isLegacyKeyPresent() bool {
+// IsLegacyVaultKeyPresent returns true if legacy vault key present
+func IsLegacyVaultKeyPresent() bool {
 	_, err := readDiskKey()
 	return err == nil
 }
@@ -727,7 +741,7 @@ func TestSealUnseal() error {
 //CompareLegacyandSealedKey compares legacy and sealed keys
 //to record if we are using a new key for sealed vault
 func CompareLegacyandSealedKey() SealedKeyType {
-	if !isSealedKeyPresent() {
+	if !IsSealedVaultKeyPresent() {
 		return SealedKeyTypeUnprotected
 	}
 	legacyKey, err := readDiskKey()
@@ -749,20 +763,24 @@ func CompareLegacyandSealedKey() SealedKeyType {
 	return SealedKeyTypeNew
 }
 
-//WipeOutStaleSealedKeyIfAny checks and deletes
-//sealed vault key
-func WipeOutStaleSealedKeyIfAny() error {
+// WipeOutStaleVaultKeyIfAny checks and deletes vault key
+func WipeOutStaleVaultKeyIfAny(sealed bool) error {
 	rw, err := tpm2.OpenTPM(TpmDevicePath)
 	if err != nil {
 		return err
 	}
 	defer rw.Close()
 
-	tpm2.NVUndefineSpace(rw, EmptyPassword,
-		tpm2.HandleOwner, TpmSealedDiskPubHdl)
+	if sealed {
+		_ = tpm2.NVUndefineSpace(rw, EmptyPassword,
+			tpm2.HandleOwner, TpmSealedDiskPubHdl)
 
-	tpm2.NVUndefineSpace(rw, EmptyPassword,
-		tpm2.HandleOwner, TpmSealedDiskPrivHdl)
+		_ = tpm2.NVUndefineSpace(rw, EmptyPassword,
+			tpm2.HandleOwner, TpmSealedDiskPrivHdl)
+	} else {
+		_ = tpm2.NVUndefineSpace(rw, EmptyPassword,
+			tpm2.HandleOwner, TpmDiskKeyHdl)
+	}
 
 	return nil
 }
