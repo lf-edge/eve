@@ -42,6 +42,16 @@ func newContainerd() Hypervisor {
 		logrus.Fatalf("couldn't initialize containerd (this should not happen): %v. Exiting.", err)
 		return nil // it really never returns on account of above
 	} else {
+		ctrdSystemCtx, done := ret.ctrdClient.CtrNewSystemServicesCtx()
+		defer done()
+		// we do not need running shim of xen-tools for containerd hypervisor
+		if err = ret.ctrdClient.CtrDeleteContainer(ctrdSystemCtx, "xen-tools"); err != nil {
+			logrus.Errorf("cannot delete xen-tools: %s", err)
+		}
+		// we cannot provide VNC with containerd hypervisor, so no need for guacd container
+		if err = ret.ctrdClient.CtrDeleteContainer(ctrdSystemCtx, "guacd"); err != nil {
+			logrus.Errorf("cannot delete xen-tools: %s", err)
+		}
 		return ret
 	}
 }

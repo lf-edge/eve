@@ -30,12 +30,7 @@ if [ -d /proc/xen/ ]; then
    while true ; do sleep 60 ; done
 
 elif [ -e /dev/kvm ]; then
-   echo "KVM hypervisor support detected"
-
-   # set things up for R/O FS qemu task execution
-   ln -s . /run/run || :
-
-   while true ; do sleep 60 ; done
+   echo "KVM hypervisor support detected, no need for xen-tools"
 
 else
    echo "No hypervisor support detected, feel free to run bare-metal containers"

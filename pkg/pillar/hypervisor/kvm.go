@@ -378,6 +378,12 @@ func newKvm() Hypervisor {
 		logrus.Fatalf("couldn't initialize containerd (this should not happen): %v. Exiting.", err)
 		return nil // it really never returns on account of above
 	}
+	// we do not need running shim of xen-tools for kvm hypervisor
+	ctrdSystemCtx, done := ctrdCtx.ctrdClient.CtrNewSystemServicesCtx()
+	defer done()
+	if err = ctrdCtx.ctrdClient.CtrDeleteContainer(ctrdSystemCtx, "xen-tools"); err != nil {
+		logrus.Errorf("cannot delete xen-tools: %s", err)
+	}
 	// later on we may want to pass device model machine type in DomainConfig directly;
 	// for now -- lets just pick a static device model based on the host architecture
 	// "-cpu host",

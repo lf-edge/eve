@@ -25,8 +25,10 @@ import (
 
 	"github.com/google/go-tpm/tpm2"
 	"github.com/google/go-tpm/tpmutil"
+	"github.com/lf-edge/eve/api/go/info"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/base"
+	"github.com/lf-edge/eve/pkg/pillar/containerd"
 	etpm "github.com/lf-edge/eve/pkg/pillar/evetpm"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
@@ -1467,6 +1469,19 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 		//Create required directories if not present
 		initializeDirs()
+
+		// remove vtpm container if no tpm device
+		if etpm.FetchTpmSwStatus() == info.HwSecurityModuleStatus_NOTFOUND {
+			ctrdClient, err := containerd.NewContainerdClient(false)
+			if err != nil {
+				logrus.Fatalf("newContainerdCAS: exception while creating containerd client: %s", err.Error())
+			}
+			ctrdSystemCtx, done := ctrdClient.CtrNewSystemServicesCtx()
+			defer done()
+			if err = ctrdClient.CtrDeleteContainer(ctrdSystemCtx, "vtpm"); err != nil {
+				logrus.Errorf("cannot delete xen-tools: %s", err)
+			}
+		}
 
 		if err := pidfile.CheckAndCreatePidfile(log, agentName); err != nil {
 			log.Fatal(err)
