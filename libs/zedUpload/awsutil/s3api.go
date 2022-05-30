@@ -73,10 +73,12 @@ func NewAwsCtx(id, secret, region string, hctx *http.Client) *S3ctx {
 		u.PartSize = S3PartSize
 		u.LeavePartsOnError = S3PartLeaveError
 		u.Concurrency = S3Concurrency
+		u.BufferProvider = s3manager.NewBufferedReadSeekerWriteToPool(32 * 1024)
 	})
 	ctx.dn = s3manager.NewDownloaderWithClient(ctx.ss3, func(d *s3manager.Downloader) {
 		d.PartSize = S3PartSize
 		d.Concurrency = S3Concurrency
+		d.BufferProvider = s3manager.NewPooledBufferedWriterReadFromProvider(32 * 1024)
 	})
 
 	return &ctx

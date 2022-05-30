@@ -26,7 +26,7 @@ const (
 	SingleMB       int64 = 1024 * 1024
 	blobURLPattern       = "https://%s.blob.core.windows.net"
 	maxRetries           = 20
-	parallelism          = 128
+	parallelism          = 16
 )
 
 // UpdateStats contains the information for the progress of an update
@@ -263,6 +263,14 @@ func DownloadAzureBlob(accountURL, accountName, accountKey, containerName, remot
 	}
 	progressLock := &sync.Mutex{}
 
+	// use pool of buffers to re-use them if needed without re-allocation
+	var bufPool = sync.Pool{
+		New: func() interface{} {
+			buf := make([]byte, 32*1024)
+			return &buf
+		},
+	}
+
 	err = azblob.DoBatchTransfer(ctx, azblob.BatchTransferOptions{
 		OperationName: "DownloadAzureBlob",
 		TransferSize:  objSize,
@@ -311,9 +319,17 @@ func DownloadAzureBlob(accountURL, accountName, accountKey, containerName, remot
 					progressReceiver(progress)
 					progressLock.Unlock()
 				})
-			_, err = io.Copy(newSectionWriter(file, chunkStart+offset, count-offset, part), body)
-			body.Close()
-			return err
+			// we get buffer from the pool to not allocate
+			// new buffer per every chunk inside io.copyBuffer
+			// and to not rely on garbage collecting of them
+			bp := *bufPool.Get().(*[]byte)
+			_, err = io.CopyBuffer(newSectionWriter(file, chunkStart+offset, count-offset, part), body, bp)
+			bufPool.Put(&bp)
+			if err != nil {
+				_ = body.Close()
+				return err
+			}
+			return body.Close()
 		},
 	})
 	if err != nil {
