@@ -134,6 +134,7 @@ func (ep *AwsTransportMethod) processS3Upload(req *DronaRequest) (error, int) {
 	if req.ackback {
 		go func(req *DronaRequest, prgNotif zedAWS.NotifChan) {
 			ticker := time.NewTicker(StatsUpdateTicker)
+			defer ticker.Stop()
 			var stats zedAWS.UpdateStats
 			var ok bool
 			for {
@@ -195,6 +196,7 @@ func (ep *AwsTransportMethod) processS3Download(req *DronaRequest) (error, int) 
 				select {
 				case stats, ok = <-prgNotif:
 					if !ok {
+						ticker.Stop()
 						return
 					}
 				case <-ticker.C:
@@ -281,6 +283,7 @@ func (ep *AwsTransportMethod) processS3List(req *DronaRequest) ([]string, error,
 	if req.ackback {
 		go func(req *DronaRequest, prgNotif zedAWS.NotifChan) {
 			ticker := time.NewTicker(StatsUpdateTicker)
+			defer ticker.Stop()
 			var stats zedAWS.UpdateStats
 			var ok bool
 			for {
