@@ -128,6 +128,7 @@ func (ep *GsTransportMethod) processGSUpload(req *DronaRequest) (int, error) {
 	if req.ackback {
 		go func(req *DronaRequest, prgNotif zedGS.NotifChan) {
 			ticker := time.NewTicker(StatsUpdateTicker)
+			defer ticker.Stop()
 			var stats zedGS.UpdateStats
 			var ok bool
 			for {
@@ -175,6 +176,7 @@ func (ep *GsTransportMethod) processGSDownload(req *DronaRequest) (int, error) {
 	if req.ackback {
 		go func(req *DronaRequest, prgNotif zedGS.NotifChan) {
 			ticker := time.NewTicker(StatsUpdateTicker)
+			defer ticker.Stop()
 			var stats zedGS.UpdateStats
 			var ok bool
 			for {
@@ -229,6 +231,7 @@ func (ep *GsTransportMethod) processGSList(req *DronaRequest) ([]string, int, er
 	if req.ackback {
 		go func(req *DronaRequest, prgNotif zedGS.NotifChan) {
 			ticker := time.NewTicker(StatsUpdateTicker)
+			defer ticker.Stop()
 			var stats zedGS.UpdateStats
 			var ok bool
 			for {

@@ -150,6 +150,7 @@ func (ep *OCITransportMethod) processDownload(req *DronaRequest) (int64, string,
 	if req.ackback {
 		go func(req *DronaRequest, prgNotif ociutil.NotifChan) {
 			ticker := time.NewTicker(StatsUpdateTicker)
+			defer ticker.Stop()
 			var stats ociutil.UpdateStats
 			var ok bool
 			for {
@@ -183,6 +184,7 @@ func (ep *OCITransportMethod) processList(req *DronaRequest) ([]string, error) {
 	if req.ackback {
 		go func(req *DronaRequest, prgNotif ociutil.NotifChan) {
 			ticker := time.NewTicker(StatsUpdateTicker)
+			defer ticker.Stop()
 			var stats ociutil.UpdateStats
 			var ok bool
 			for {
@@ -216,6 +218,7 @@ func (ep *OCITransportMethod) processObjectMetaData(req *DronaRequest) (string, 
 	if req.ackback {
 		go func(req *DronaRequest, prgNotif ociutil.NotifChan) {
 			ticker := time.NewTicker(StatsUpdateTicker)
+			defer ticker.Stop()
 			var stats ociutil.UpdateStats
 			var ok bool
 			for {

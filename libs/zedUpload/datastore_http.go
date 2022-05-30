@@ -118,6 +118,7 @@ func (ep *HttpTransportMethod) processHttpUpload(req *DronaRequest) (error, int)
 	if req.ackback {
 		go func(req *DronaRequest, prgNotif zedHttp.NotifChan) {
 			ticker := time.NewTicker(StatsUpdateTicker)
+			defer ticker.Stop()
 			var stats zedHttp.UpdateStats
 			var ok bool
 			for {
@@ -147,6 +148,7 @@ func (ep *HttpTransportMethod) processHttpDownload(req *DronaRequest) (error, in
 	if req.ackback {
 		go func(req *DronaRequest, prgNotif zedHttp.NotifChan) {
 			ticker := time.NewTicker(StatsUpdateTicker)
+			defer ticker.Stop()
 			var stats zedHttp.UpdateStats
 			var ok bool
 			for {
@@ -181,6 +183,7 @@ func (ep *HttpTransportMethod) processHttpList(req *DronaRequest) ([]string, err
 	if req.ackback {
 		go func(req *DronaRequest, prgNotif zedHttp.NotifChan) {
 			ticker := time.NewTicker(StatsUpdateTicker)
+			defer ticker.Stop()
 			var stats zedHttp.UpdateStats
 			var ok bool
 			for {
@@ -210,6 +213,7 @@ func (ep *HttpTransportMethod) processHttpObjectMetaData(req *DronaRequest) (err
 	if req.ackback {
 		go func(req *DronaRequest, prgNotif zedHttp.NotifChan) {
 			ticker := time.NewTicker(StatsUpdateTicker)
+			defer ticker.Stop()
 			var stats zedHttp.UpdateStats
 			var ok bool
 			for {
