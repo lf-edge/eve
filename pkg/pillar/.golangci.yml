@@ -12,6 +12,7 @@ linters:
     - stylecheck        # covered by revive
     - typecheck         # See golangci/golangci-lint#419
     - varcheck          # unreliable
+    - varnamelen        # Too opinionated about var length
     - funlen            # function length checks
     - godot             # Don't mandate periods at end of comments
     - nlreturn          # Too opioniated about whitespace
