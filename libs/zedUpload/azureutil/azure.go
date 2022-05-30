@@ -112,7 +112,12 @@ func newPipeline(accountName, accountKey string, httpClient *http.Client) (pipel
 	if err != nil {
 		return nil, fmt.Errorf("Invalid credentials with error: " + err.Error())
 	}
-	p := azblob.NewPipeline(credential, azblob.PipelineOptions{HTTPSender: sender})
+	p := azblob.NewPipeline(credential, azblob.PipelineOptions{
+		HTTPSender: sender,
+		RequestLog: azblob.RequestLogOptions{
+			LogWarningIfTryOverThreshold: -1,
+			SyslogDisabled:               true,
+		}})
 	return p, nil
 }
 
