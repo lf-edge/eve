@@ -156,9 +156,23 @@ func volumeWorker(ctxPtr interface{}, w worker.Work) worker.WorkResult {
 	var volumeCreated bool
 	var fileLocation string
 	var err error
+
+	vcp := types.VolumeCreatePendingFromVolumeStatus(d.status)
+
 	if d.create {
+		//set or update pending create operation
+		_ = ctx.pubVolumeCreatePending.Publish(vcp.Key(), vcp)
 		volumeCreated, fileLocation, err = createVolume(ctx, d.status)
+		if err == nil {
+			//in case of no error remove pending create operation
+			_ = ctx.pubVolumeCreatePending.Unpublish(vcp.Key())
+		}
 	} else if d.destroy {
+		if el, _ := ctx.pubVolumeCreatePending.Get(vcp.Key()); el != nil {
+			// we are not worry about volume consistency here as we want to delete it
+			// so remove pending create operation if exists
+			_ = ctx.pubVolumeCreatePending.Unpublish(vcp.Key())
+		}
 		volumeCreated, fileLocation, err = destroyVolume(ctx, d.status)
 	}
 	d.VolumeCreated = volumeCreated

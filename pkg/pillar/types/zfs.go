@@ -26,6 +26,16 @@ func (status VolumeStatus) ZVolName() string {
 		status.GenerationCounter+status.LocalGenerationCounter)
 }
 
+// ZVolName returns name of zvol for volume
+func (status VolumeCreatePending) ZVolName() string {
+	pool := VolumeClearZFSDataset
+	if status.Encrypted {
+		pool = VolumeEncryptedZFSDataset
+	}
+	return fmt.Sprintf("%s/%s.%d", pool, status.VolumeID.String(),
+		status.GenerationCounter+status.LocalGenerationCounter)
+}
+
 // ZVolNameToKey returns key for volumestatus for provided zVolName
 func ZVolNameToKey(zVolName string) string {
 	split := strings.Split(zVolName, "/")
