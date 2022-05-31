@@ -70,6 +70,7 @@ type volumemgrContext struct {
 	pubAppDiskMetric        pubsub.Publication
 	subDatastoreConfig      pubsub.Subscription
 	subZVolStatus           pubsub.Subscription
+	pubVolumeCreatePending  pubsub.Publication
 	diskMetricsTickerHandle interface{}
 	gc                      *time.Ticker
 	deferDelete             *time.Ticker
@@ -482,6 +483,21 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 	//casClient which is commonly used across volumemgr will be closed when volumemgr exits.
 	defer ctx.casClient.CloseClient()
+
+	pubVolumeCreatePending, err := ps.NewPublication(
+		pubsub.PublicationOptions{
+			AgentName:  agentName,
+			TopicType:  types.VolumeCreatePending{},
+			Persistent: true,
+		},
+	)
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctx.pubVolumeCreatePending = pubVolumeCreatePending
+
+	// iterate over saved VolumeCreatePending and remove remaining volumes
+	gcPendingCreateVolume(&ctx)
 
 	populateInitBlobStatus(&ctx)
 

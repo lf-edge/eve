@@ -430,3 +430,105 @@ func (status VolumeRefStatus) LogDelete(logBase *base.LogObject) {
 func (status VolumeRefStatus) LogKey() string {
 	return string(base.VolumeRefStatusLogType) + "-" + status.Key()
 }
+
+// VolumeCreatePending is temporary store for volumes that are creating
+// After successful creating operation we should delete this object
+type VolumeCreatePending struct {
+	VolumeID               uuid.UUID
+	GenerationCounter      int64
+	LocalGenerationCounter int64
+	ContentFormat          zconfig.Format
+	Encrypted              bool
+}
+
+// Key : VolumeCreatePending unique key
+func (status VolumeCreatePending) Key() string {
+	return fmt.Sprintf("%s#%d", status.VolumeID.String(),
+		status.GenerationCounter+status.LocalGenerationCounter)
+}
+
+// LogKey :
+func (status VolumeCreatePending) LogKey() string {
+	return string(base.VolumeCreatePendingLogType) + "-" + status.Key()
+}
+
+// PathName returns the path of the volume
+func (status VolumeCreatePending) PathName() string {
+	baseDir := VolumeClearDirName
+	if status.Encrypted {
+		baseDir = VolumeEncryptedDirName
+	}
+	return fmt.Sprintf("%s/%s#%d.%s", baseDir, status.VolumeID.String(),
+		status.GenerationCounter+status.LocalGenerationCounter,
+		strings.ToLower(status.ContentFormat.String()))
+}
+
+// IsContainer will return true if content tree attached
+// to the volume is of container type
+func (status VolumeCreatePending) IsContainer() bool {
+	return status.ContentFormat == zconfig.Format_CONTAINER
+}
+
+// VolumeCreatePendingFromVolumeStatus returns VolumeCreatePending for provided VolumeStatus
+func VolumeCreatePendingFromVolumeStatus(status VolumeStatus) VolumeCreatePending {
+	return VolumeCreatePending{
+		VolumeID:               status.VolumeID,
+		GenerationCounter:      status.GenerationCounter,
+		LocalGenerationCounter: status.LocalGenerationCounter,
+		ContentFormat:          status.ContentFormat,
+		Encrypted:              status.Encrypted,
+	}
+}
+
+// LogCreate :
+func (status VolumeCreatePending) LogCreate(logBase *base.LogObject) {
+	logObject := base.NewLogObject(logBase, base.VolumeCreatePendingLogType, "",
+		status.VolumeID, status.LogKey())
+	if logObject == nil {
+		return
+	}
+	logObject.CloneAndAddField("generation-counter-int64", status.GenerationCounter).
+		AddField("local-generation-counter-int64", status.LocalGenerationCounter).
+		AddField("content-format", status.ContentFormat).
+		AddField("encrypted", status.Encrypted).
+		Noticef("Volume create pending create")
+}
+
+// LogModify :
+func (status VolumeCreatePending) LogModify(logBase *base.LogObject, old interface{}) {
+	logObject := base.EnsureLogObject(logBase, base.VolumeCreatePendingLogType, "",
+		status.VolumeID, status.LogKey())
+
+	oldStatus, ok := old.(VolumeCreatePending)
+	if !ok {
+		logObject.Clone().Fatalf("LogModify: Old object interface passed is not of VolumeCreatePending type")
+	}
+	if oldStatus.GenerationCounter != status.GenerationCounter ||
+		oldStatus.LocalGenerationCounter != status.LocalGenerationCounter ||
+		oldStatus.ContentFormat != status.ContentFormat ||
+		oldStatus.Encrypted != status.Encrypted {
+
+		logObject.CloneAndAddField("generation-counter-int64", status.GenerationCounter).
+			AddField("local-generation-counter-int64", status.LocalGenerationCounter).
+			AddField("content-format", status.ContentFormat).
+			AddField("encrypted", status.Encrypted).
+			AddField("old-generation-counter-int64", oldStatus.GenerationCounter).
+			AddField("old-local-generation-counter-int64", oldStatus.LocalGenerationCounter).
+			AddField("old-content-format", oldStatus.ContentFormat).
+			AddField("old-encrypted", oldStatus.Encrypted).
+			Noticef("Volume create pending modify")
+	}
+}
+
+// LogDelete :
+func (status VolumeCreatePending) LogDelete(logBase *base.LogObject) {
+	logObject := base.EnsureLogObject(logBase, base.VolumeCreatePendingLogType, "",
+		status.VolumeID, status.LogKey())
+	logObject.CloneAndAddField("generation-counter-int64", status.GenerationCounter).
+		AddField("local-generation-counter-int64", status.LocalGenerationCounter).
+		AddField("content-format", status.ContentFormat).
+		AddField("encrypted", status.Encrypted).
+		Noticef("Volume create pending delete")
+
+	base.DeleteLogObject(logBase, status.LogKey())
+}
