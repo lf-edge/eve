@@ -32,3 +32,9 @@ linters:
 issues:
   max-issues-per-linter: 0
   max-same-issues: 0
+
+# yetus expects stable output from linter
+# that is we should return all errors
+# not only the first hit
+output:
+  uniq-by-line: false
