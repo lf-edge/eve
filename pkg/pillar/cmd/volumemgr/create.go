@@ -16,6 +16,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/diskmetrics"
 	"github.com/lf-edge/eve/pkg/pillar/tgt"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	utils "github.com/lf-edge/eve/pkg/pillar/utils/file"
 	"github.com/lf-edge/eve/pkg/pillar/zfs"
 )
 
@@ -107,6 +108,23 @@ func createVdiskVolume(ctx *volumemgrContext, status types.VolumeStatus,
 				log.Error(errStr)
 				return created, zVolDevice, errors.New(errStr)
 			}
+			f, err := os.Open(zVolDevice)
+			if err != nil {
+				errStr := fmt.Sprintf("Error opening zfs zvol %s: %v",
+					zVolDevice, err)
+				log.Error(errStr)
+				return created, zVolDevice, errors.New(errStr)
+			}
+			defer func() {
+				if err := f.Close(); err != nil {
+					log.Errorf("error closing zfs zvol: %s: %v", zVolDevice, err)
+				}
+			}()
+			if err := f.Sync(); err != nil {
+				errStr := fmt.Sprintf("Error syncing zfs zvol %s: %v", zVolDevice, err)
+				log.Error(errStr)
+				return created, zVolDevice, errors.New(errStr)
+			}
 		}
 		filelocation = zVolDevice
 	default:
@@ -151,10 +169,31 @@ func createVdiskVolume(ctx *volumemgrContext, status types.VolumeStatus,
 				log.Error(err)
 				return created, filelocation, err
 			}
+			if err := f.Sync(); err != nil {
+				log.Error(err)
+				return created, filelocation, err
+			}
 		} else {
 			if err := diskmetrics.CreateImg(createContext, log, filelocation, strings.ToLower(status.ContentFormat.String()), status.MaxVolSize); err != nil {
 				log.Error(err)
 				return created, filelocation, err
+			}
+			f, err := os.Open(filelocation)
+			if err != nil {
+				errStr := fmt.Sprintf("Error opening volume %s: %v",
+					filelocation, err)
+				log.Error(errStr)
+				return created, filelocation, errors.New(errStr)
+			}
+			defer func() {
+				if err := f.Close(); err != nil {
+					log.Errorf("error closing volume: %s: %v", filelocation, err)
+				}
+			}()
+			if err := f.Sync(); err != nil {
+				errStr := fmt.Sprintf("Error syncing volume %s: %v", filelocation, err)
+				log.Error(errStr)
+				return created, filelocation, errors.New(errStr)
 			}
 		}
 	}
@@ -190,6 +229,10 @@ func createContainerVolume(ctx *volumemgrContext, status types.VolumeStatus,
 	}
 	if err := ctx.casClient.PrepareContainerRootDir(filelocation, ref, checkAndCorrectBlobHash(rootBlobStatus.Sha256)); err != nil {
 		log.Errorf("Failed to create ctr bundle. Error %s", err)
+		return created, filelocation, err
+	}
+	if err := utils.DirSync(filelocation); err != nil {
+		log.Errorf("Failed to sync directory. Error %s", err)
 		return created, filelocation, err
 	}
 	log.Functionf("createContainerVolume(%s) DONE", status.Key())

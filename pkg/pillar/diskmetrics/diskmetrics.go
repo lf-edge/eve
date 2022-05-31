@@ -75,7 +75,8 @@ func ConvertImg(ctx context.Context, log *base.LogObject, diskfile, outputFile, 
 	if _, err := os.Stat(diskfile); err != nil {
 		return err
 	}
-	args := []string{"convert", "-O", outputFormat, diskfile, outputFile}
+	// writeback cache instead of default unsafe, out of order enabled, skip file creation
+	args := []string{"convert", "-t", "writeback", "-W", "-n", "-O", outputFormat, diskfile, outputFile}
 	output, err := base.Exec(log, "/usr/bin/qemu-img", args...).WithContext(ctx).CombinedOutput()
 	if err != nil {
 		errStr := fmt.Sprintf("qemu-img failed: %s, %s\n",
