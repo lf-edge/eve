@@ -314,7 +314,7 @@ do_usb_conf() {
 # NOTE: theoretically one can patch grub-install to do this, but it requires much more hoop jumping
 deploy_legacy_grub() {
     # put GRUB stage1 loader into the MBR (don't overwrite MBR partition table -- hence size 446 not 512)
-    dd if=/usr/lib/grub/i386-pc/boot.img of="$IMGFILE" bs=446 count=1 conv=noerror,sync,notrunc
+    dd if=/efifs/EFI/BOOT/BOOT.img of="$IMGFILE" bs=446 count=1 conv=noerror,sync,notrunc
     # embed GRUB stage2 into the gap between the end of GPT (sector 34) and start of the first partition (FIRST_PART_SEC)
     dd if=/efifs/EFI/BOOT/BOOT.pc of="$IMGFILE" bs=512 seek=34 conv=noerror,sync,notrunc
     # update locations where stage1 and stage2 store the value of the first (34 == \042)...

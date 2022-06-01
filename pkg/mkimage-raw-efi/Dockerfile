@@ -15,7 +15,6 @@ WORKDIR /out
 RUN echo "mtools_skip_check=1" >> etc/mtools.conf
 RUN mkdir -p efifs parts root bits config persist opt/pillar opt/debug lib/modules run sys
 COPY make-raw install grub.cfg.in UsbInvocationScript.txt ./
-COPY grub.stage1 ./usr/lib/grub/i386-pc/boot.img
 
 # now lets create an edge container
 # FIXME: 003-installer? why not linuxkit build?
