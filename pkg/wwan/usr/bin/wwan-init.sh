@@ -142,7 +142,7 @@ sys_get_modem_usbaddr() {
 
 sys_get_modem_pciaddr() {
   local SYS_DEV="$1"
-  local DEV_PATH="$(readlink -f "${DEV}/device")"
+  local DEV_PATH="$(readlink -f "${SYS_DEV}/device")"
   while [ -e "$DEV_PATH/subsystem" ]; do
     if [ "$(basename "$(readlink "$DEV_PATH/subsystem")")" != "pci" ]; then
       DEV_PATH="$(dirname "$DEV_PATH")"
@@ -153,7 +153,32 @@ sys_get_modem_pciaddr() {
   done
 }
 
-# If successful, sets CDC_DEV, PROTOCOL, IFACE, USB_ADDR and PCI_ADDR variables.
+# https://en.wikipedia.org/wiki/Hayes_command_set
+# Args: <command> <tty device>
+send_hayes_command() {
+  printf "%s\r\n" "$1" | picocom -qrx 2000 -b 9600 "$2"
+}
+
+sys_get_modem_ttys() {
+  # Convert USB address to <bus>-<port> as used in the /sys filesystem.
+  local USB_ADDR="$(echo "$1" | tr ':' '-')"
+  find /sys/bus/usb/devices -maxdepth 1 -name "${USB_ADDR}*" |\
+    while read -r USB_INTF; do
+      find "$(realpath "$USB_INTF")" -maxdepth 1 -name "tty*" -exec basename {} \;
+    done
+}
+
+sys_get_modem_atport() {
+  for TTY in $(sys_get_modem_ttys "$1"); do
+    if send_hayes_command "AT" "/dev/$TTY" 2>/dev/null | grep -q "OK"; then
+      echo "/dev/$TTY"
+      return
+    fi
+  done
+  return 1
+}
+
+# If successful, sets CDC_DEV, PROTOCOL, IFACE, USB_ADDR, PCI_ADDR and AT_PORT variables.
 lookup_modem() {
   local ARG_IF="$1"
   local ARG_USB="$2"
@@ -173,6 +198,8 @@ lookup_modem() {
     # check PCI address
     DEV_PCI="$(sys_get_modem_pciaddr "$DEV")"
     [ -n "$ARG_PCI" ] && [ "$ARG_PCI" != "$DEV_PCI" ] && continue
+
+    AT_PORT="$(sys_get_modem_atport "$DEV_USB")"
 
     PROTOCOL="$DEV_PROT"
     IFACE="$DEV_IF"
@@ -260,6 +287,41 @@ collect_network_metrics() {
   METRICS="${METRICS}${NETWORK_METRICS}\n"
 }
 
+switch_to_preferred_proto() {
+  local MODEL="$("${PROTOCOL}_get_modem_model")"
+  case "$MODEL" in
+   "EM7565")
+     # With Sierra Wireless EM7565 we are experiencing quite often a firmware
+     # bug causing the transmit queue to get stuck. In dmesg we see:
+     #   NETDEV WATCHDOG: wwan0 (qmi_wwan): transmit queue 0 timed out
+     # Followed by a stacktrace which shows that netif_tx_lock hangs.
+     # This can be only fixed by restarting the modem, but it does not guarantee
+     # that it will not happen again and so we may end up restarting the modem
+     # quite frequently, disrupting the ongoing traffic.
+     # This bug is easily reproducible with the QMI control protocol.
+     # With MBIM, we have not been able to reproduce this issue even after many
+     # attempts. Therefore we prefer to use MBIM with this modem until we find
+     # a better solution.
+     if [ "$PROTOCOL" != "mbim" ]; then
+       if [ -z "$AT_PORT" ]; then
+         echo "Cannot switch modem $LOGICAL_LABEL to MBIM: AT port is not available"
+         return 1
+       fi
+       echo "Switching modem $LOGICAL_LABEL to MBIM (using AT port: ${AT_PORT})..."
+       for CMD in '+++' 'AT!ENTERCND="A710"' 'AT!USBCOMP=1,1,100D' 'AT!RESET'; do
+         local OUT="$(send_hayes_command "$CMD" "${AT_PORT}")"
+         if echo "$OUT" | grep -q "ERROR"; then
+           echo "Failed to switch modem $LOGICAL_LABEL to MBIM: $OUT"
+           return 1
+         fi
+       done
+       return 0
+     fi
+   ;;
+  esac
+  return 1 # No switch executed.
+}
+
 event_stream() {
   inotifywait -qm "${BBS}" -e create -e modify -e delete &
   while true; do
@@ -345,6 +407,11 @@ event_stream | while read -r EVENT; do
     fi
     MODEMS="${MODEMS}${CDC_DEV}\n"
     echo "Processing managed modem (event: $EVENT): $CDC_DEV"
+
+    if switch_to_preferred_proto; then
+      # Modem is being restarted, return back to it later.
+      continue
+    fi
 
     # in status.json and metrics.json print all modem addresses (as found by lookup_modem),
     # not just the ones used in config.json
