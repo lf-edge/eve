@@ -14,3 +14,6 @@ config:
     - all
   pid: host
   userns: host
+  devices:
+    - path: all
+      type: a

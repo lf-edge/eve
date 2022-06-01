@@ -6,7 +6,7 @@
 +  image: ACRN_KERNEL_TAG
    cmdline: "rootdelay=3"
  init:
-   - linuxkit/init:a68f9fa0c1d9dbfc9c23663749a0b7ac510cbe1c
+   - linuxkit/init:8f1e6a0747acbbb4d7e24dc98f97faa8d1c6cec7
 @@ -10,7 +10,7 @@
    - DOM0ZTOOLS_TAG
    - GRUB_TAG

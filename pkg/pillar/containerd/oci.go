@@ -83,9 +83,13 @@ func (client *Client) NewOciSpec(name string) (OCISpec, error) {
 	// default OCI specs have all devices being denied by default,
 	// we flip it back to all allow for now, but later on we may
 	// need to get more fine-grained
-	if s.Linux != nil && s.Linux.Resources != nil && s.Linux.Resources.Devices != nil {
-		s.Linux.Resources.Devices = nil
+	if s.Linux == nil {
+		s.Linux = &specs.Linux{}
 	}
+	if s.Linux.Resources == nil {
+		s.Linux.Resources = &specs.LinuxResources{}
+	}
+	s.Linux.Resources.Devices = []specs.LinuxDeviceCgroup{{Type: "a", Allow: true, Access: "rwm"}}
 	s.Root.Path = "/"
 	return s, nil
 }

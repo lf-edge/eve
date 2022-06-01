@@ -316,7 +316,15 @@
         }
     ],
     "linux": {
-        "resources": {},
+        "resources": {
+            "devices": [
+                {
+                    "allow": true,
+                    "type": "a",
+                    "access": "rwm"
+                }
+            ]
+        },
         "namespaces": [
             {
                 "type": "mount"

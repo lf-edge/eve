@@ -13,7 +13,9 @@ disabled_plugins = [
     "io.containerd.service.v1.containers-service",
     "io.containerd.grpc.v1.containers",
     "io.containerd.monitor.v1.cgroups",
-    "io.containerd.snapshotter.v1.native"
+    "io.containerd.snapshotter.v1.native",
+    "io.containerd.internal.v1.tracing",
+    "io.containerd.tracing.processor.v1.otlp"
 ]
 
 [grpc]

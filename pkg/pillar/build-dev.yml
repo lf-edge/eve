@@ -20,6 +20,9 @@ config:
     - all
   pid: host
   rootfsPropagation: shared
+  devices:
+    - path: all
+      type: a
   security_opt:
     - seccomp:unconfined
   ports:

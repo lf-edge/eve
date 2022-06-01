@@ -27,3 +27,6 @@ config:
     - /var/log:/var/log
   capabilities:
     - all
+  devices:
+    - path: all
+      type: a
