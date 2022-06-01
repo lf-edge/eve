@@ -146,6 +146,7 @@ func (s *SocketDriver) Publisher(global bool, name, topic string, persistent boo
 	}
 	doneChan := make(chan struct{})
 	return &Publisher{
+		persistent:     persistent,
 		sockName:       sockName,
 		listener:       listener,
 		dirName:        dirName,

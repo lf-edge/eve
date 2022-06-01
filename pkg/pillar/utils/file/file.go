@@ -20,7 +20,8 @@ import (
 
 const maxCounterReadSize = 16384 // Max size of counter file
 
-func dirSync(dirName string) error {
+// DirSync flushes changes made to a directory.
+func DirSync(dirName string) error {
 	f, err := os.OpenFile(dirName, os.O_RDONLY, 0755)
 	if err != nil {
 		return err
@@ -32,7 +33,7 @@ func dirSync(dirName string) error {
 		return err
 	}
 
-	// Not a deferred call, because dirSync is a critical
+	// Not a deferred call, because DirSync is a critical
 	// path. Better safe then sorry, and we better check all the
 	// errors including one returned by close()
 	err = f.Close()
@@ -42,8 +43,8 @@ func dirSync(dirName string) error {
 func backupFile(fileName string) error {
 	_, err := os.Stat(fileName)
 	if err != nil {
-		// File doesn't exist
-		return err
+		//lint:ignore nilerr File doesn't exist, nothing to backup.
+		return nil
 	}
 
 	bakName := fmt.Sprintf("%s.bak", fileName)
@@ -53,12 +54,23 @@ func backupFile(fileName string) error {
 		return err
 	}
 
-	err = dirSync(filepath.Dir(fileName))
+	err = DirSync(filepath.Dir(fileName))
 	return err
 }
 
 // WriteRename write data to a fmpfile and then rename it to a desired name
 func WriteRename(fileName string, b []byte) error {
+	return writeRename(fileName, b, false)
+}
+
+// WriteRenameWithBackup : just like WriteRename but additionally it creates
+// a backup of the original file at the same path but with the ".bak" extension
+// added.
+func WriteRenameWithBackup(fileName string, b []byte) error {
+	return writeRename(fileName, b, true)
+}
+
+func writeRename(fileName string, b []byte, withBackup bool) error {
 	dirName := filepath.Dir(fileName)
 	// Do atomic rename to avoid partially written files
 	tmpfile, err := ioutil.TempFile(dirName, "tmp")
@@ -75,7 +87,7 @@ func WriteRename(fileName string, b []byte) error {
 			fileName, err)
 		return errors.New(errStr)
 	}
-	// Make sure the file is flused from buffers onto the disk
+	// Make sure the file is flushed from buffers onto the disk
 	if err := tmpfile.Sync(); err != nil {
 		errStr := fmt.Sprintf("WriteRename(%s) failed to sync temp file: %s",
 			fileName, err)
@@ -88,10 +100,12 @@ func WriteRename(fileName string, b []byte) error {
 		return errors.New(errStr)
 	}
 
-	err = backupFile(fileName)
-	if err != nil {
-		// Not a fatal error, continuing
-		logrus.Errorf("Unable to backup file %s: %v", fileName, err)
+	if withBackup {
+		err = backupFile(fileName)
+		if err != nil {
+			// Not a fatal error, continuing
+			logrus.Errorf("Unable to backup file %s: %v", fileName, err)
+		}
 	}
 
 	if err := os.Rename(tmpfile.Name(), fileName); err != nil {
@@ -100,7 +114,7 @@ func WriteRename(fileName string, b []byte) error {
 		return errors.New(errStr)
 	}
 
-	return dirSync(filepath.Dir(fileName))
+	return DirSync(filepath.Dir(fileName))
 }
 
 // Writable checks if the directory is writable
