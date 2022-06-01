@@ -223,11 +223,10 @@ func (m *DpcManager) ingestDPCList() (dpclPresentAtBoot bool) {
 	var storedDpcl types.DevicePortConfigList
 	if err != nil {
 		m.Log.Errorf("No global key for DevicePortConfigList")
-		dpclPresentAtBoot = false
 	} else {
 		storedDpcl = item.(types.DevicePortConfigList)
 	}
-	m.Log.Functionf("Initial DPCL %v", storedDpcl)
+	m.Log.Noticef("Initial DPCL %v", storedDpcl)
 	var dpcl types.DevicePortConfigList
 	for _, portConfig := range storedDpcl.PortConfigList {
 		// Sanitize port labels and IsL3Port flag.
