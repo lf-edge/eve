@@ -25,6 +25,7 @@ import (
 // Implements Unix-domain socket or directory publication,
 // and directory-based persistence.
 type Publisher struct {
+	persistent     bool
 	sock           net.Conn // For socket subscriptions
 	sockName       string   // there is one socket per publishing agent
 	listener       net.Listener
@@ -43,10 +44,18 @@ type Publisher struct {
 
 // Publish publish a key-value pair
 func (s *Publisher) Publish(key string, item []byte) error {
+	if len(item) == 0 {
+		return fmt.Errorf("empty content published for %s/%s", s.name, key)
+	}
 	fileName := s.dirName + "/" + key + ".json"
 	s.log.Tracef("Publish writing %s\n", fileName)
 
-	err := fileutils.WriteRename(fileName, item)
+	var err error
+	if s.persistent {
+		err = fileutils.WriteRenameWithBackup(fileName, item)
+	} else {
+		err = fileutils.WriteRename(fileName, item)
+	}
 	if err != nil {
 		return err
 	}
@@ -57,8 +66,23 @@ func (s *Publisher) Publish(key string, item []byte) error {
 func (s *Publisher) Unpublish(key string) error {
 	fileName := s.dirName + "/" + key + ".json"
 	s.log.Tracef("Unpublish deleting file %s\n", fileName)
+
+	// First remove backup file so that unpublished item will not be accidentally recovered.
+	if s.persistent {
+		err := os.Remove(fileName + ".bak")
+		// Ignore if backup file is missing.
+		if err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("Unpublish(%s/%s): failed to remove backup: %w",
+				s.name, key, err)
+		}
+	}
+
 	if err := os.Remove(fileName); err != nil {
-		return fmt.Errorf("Unpublish(%s/%s): failed %s", s.name, key, err)
+		return fmt.Errorf("Unpublish(%s/%s): failed: %w", s.name, key, err)
+	}
+	if err := fileutils.DirSync(s.dirName); err != nil {
+		return fmt.Errorf("Unpublish(%s/%s): failed to sync directory %s: %w",
+			s.name, key, s.dirName, err)
 	}
 	return nil
 }
@@ -114,9 +138,57 @@ func (s *Publisher) Load() (map[string][]byte, int, error) {
 			s.log.Errorf("Load: %s for %s\n", err, statusFile)
 			continue
 		}
+		if len(sb) == 0 {
+			s.log.Errorf("Load: %s is empty", statusFile)
+			continue
+		}
 		items[key] = sb
 	}
+
+	// Try to recover lost items (have backup but missing the original).
+	if s.persistent {
+		const backupSuffix = ".json.bak"
+		var keysToRecover []string
+		for _, file := range files {
+			if strings.HasSuffix(file.Name(), backupSuffix) {
+				key := strings.TrimSuffix(file.Name(), backupSuffix)
+				if _, loaded := items[key]; !loaded {
+					keysToRecover = append(keysToRecover, key)
+				}
+			}
+		}
+		for _, key := range keysToRecover {
+			sb, err := s.recoverFromBackup(key)
+			if err != nil {
+				s.log.Errorf("Failed to recover %s/%s: %v", s.name, key, err)
+				continue
+			}
+			items[key] = sb
+			s.log.Warnf("Using backup of %s/%s", s.name, key)
+		}
+	}
 	return items, restartCounter, err
+}
+
+// recoverFromBackup tries to recover lost item from a backup file.
+// Called when the original file is missing or empty.
+func (s *Publisher) recoverFromBackup(key string) ([]byte, error) {
+	origFileName := s.dirName + "/" + key + ".json"
+	backupFileName := origFileName + ".bak"
+	bakData, err := ioutil.ReadFile(backupFileName)
+	if err != nil {
+		err = fmt.Errorf("failed to read backup file %s: %w", backupFileName, err)
+		return nil, err
+	}
+	if len(bakData) == 0 {
+		err = fmt.Errorf("empty backup file %s: %w", backupFileName, err)
+		return nil, err
+	}
+	if err := fileutils.WriteRename(origFileName, bakData); err != nil {
+		err = fmt.Errorf("failed to overwrite %s with backup data: %w", origFileName, err)
+		return nil, err
+	}
+	return bakData, nil
 }
 
 // Start start publishing on the socket
