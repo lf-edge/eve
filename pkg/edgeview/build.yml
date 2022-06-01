@@ -15,3 +15,6 @@ config:
     - all
   net: host
   pid: host
+  devices:
+    - path: all
+      type: a

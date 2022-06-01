@@ -6,9 +6,9 @@
 +  image: NEW_KERNEL_TAG
    cmdline: "rootdelay=3"
  init:
--  - linuxkit/init:a68f9fa0c1d9dbfc9c23663749a0b7ac510cbe1c
--  - linuxkit/runc:f79954950022fea76b8b6f10de58cb48e4fb3878
--  - linuxkit/containerd:1ae8f054e9fe792d1dbdb9a65f1b5e14491cb106
+-  - linuxkit/init:8f1e6a0747acbbb4d7e24dc98f97faa8d1c6cec7
+-  - linuxkit/runc:f01b88c7033180d50ae43562d72707c6881904e4
+-  - linuxkit/containerd:de1b18eed76a266baa3092e5c154c84f595e56da
 -  - linuxkit/getty:v0.5
 -  - linuxkit/memlogd:v0.5
    - DOM0ZTOOLS_TAG

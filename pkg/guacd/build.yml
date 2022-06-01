@@ -10,3 +10,6 @@ config:
   net: host
   capabilities:
     - all
+  devices:
+    - path: all
+      type: a

@@ -5,7 +5,9 @@ disabled_plugins = [
     "io.containerd.grpc.v1.cri",
     "io.containerd.snapshotter.v1.btrfs",
     "io.containerd.snapshotter.v1.aufs",
-    "io.containerd.internal.v1.opt"
+    "io.containerd.internal.v1.opt",
+    "io.containerd.internal.v1.tracing",
+    "io.containerd.tracing.processor.v1.otlp"
 ]
 
 [grpc]
