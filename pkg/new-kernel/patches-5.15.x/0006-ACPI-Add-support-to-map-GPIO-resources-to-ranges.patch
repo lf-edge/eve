@@ -1,7 +1,7 @@
-From 7455b4efa4c0734da8617f3504fb574cb49871c3 Mon Sep 17 00:00:00 2001
+From 426d347f91f5b99b15a0be7a74bf671968aa03ce Mon Sep 17 00:00:00 2001
 From: Carlos Calderon <carlos.calderon@emutex.com>
 Date: Wed, 20 Feb 2019 16:49:37 +0000
-Subject: [PATCH 08/11] ACPI: Add support to map GPIO resources to ranges
+Subject: [PATCH 6/9] ACPI: Add support to map GPIO resources to ranges
 
 All of this is selectively taken from:
     https://github.com/AaeonCM/meta-up-board/tree/warrior/recipes-kernel/linux/files
@@ -68,10 +68,10 @@ manages direction and enable state for those header pins.
  create mode 100644 include/linux/mfd/upboard-fpga.h
 
 diff --git a/drivers/base/regmap/internal.h b/drivers/base/regmap/internal.h
-index 0097696c31de..a43309063a68 100644
+index b1905916f7af..6571217de05c 100644
 --- a/drivers/base/regmap/internal.h
 +++ b/drivers/base/regmap/internal.h
-@@ -180,11 +180,6 @@ struct regcache_ops {
+@@ -184,11 +184,6 @@ struct regcache_ops {
  	int (*drop)(struct regmap *map, unsigned int min, unsigned int max);
  };
  
@@ -84,7 +84,7 @@ index 0097696c31de..a43309063a68 100644
  bool regmap_readable_noinc(struct regmap *map, unsigned int reg);
  
 diff --git a/drivers/base/regmap/regmap.c b/drivers/base/regmap/regmap.c
-index 297e95be25b3..0a6b2ee0b5e0 100644
+index f7811641ed5a..2e1010533e60 100644
 --- a/drivers/base/regmap/regmap.c
 +++ b/drivers/base/regmap/regmap.c
 @@ -100,6 +100,7 @@ bool regmap_writeable(struct regmap *map, unsigned int reg)
@@ -128,10 +128,10 @@ index 297e95be25b3..0a6b2ee0b5e0 100644
  bool regmap_writeable_noinc(struct regmap *map, unsigned int reg)
  {
 diff --git a/drivers/gpio/gpiolib-acpi.c b/drivers/gpio/gpiolib-acpi.c
-index 1aacd2a5a1fd..16d3dab2f201 100644
+index 53be0bdf2bc3..9ecaf15c513d 100644
 --- a/drivers/gpio/gpiolib-acpi.c
 +++ b/drivers/gpio/gpiolib-acpi.c
-@@ -1325,6 +1325,32 @@ static int acpi_find_gpio_count(struct acpi_resource *ares, void *data)
+@@ -1394,6 +1394,32 @@ static int acpi_find_gpio_count(struct acpi_resource *ares, void *data)
  	return 1;
  }
  
@@ -164,7 +164,7 @@ index 1aacd2a5a1fd..16d3dab2f201 100644
  /**
   * acpi_gpio_count - count the GPIOs associated with a device / function
   * @dev:	GPIO consumer, can be %NULL for system-global GPIOs
-@@ -1337,10 +1363,7 @@ static int acpi_find_gpio_count(struct acpi_resource *ares, void *data)
+@@ -1406,10 +1432,7 @@ static int acpi_find_gpio_count(struct acpi_resource *ares, void *data)
  int acpi_gpio_count(struct device *dev, const char *con_id)
  {
  	struct acpi_device *adev = ACPI_COMPANION(dev);
@@ -175,7 +175,7 @@ index 1aacd2a5a1fd..16d3dab2f201 100644
  	char propname[32];
  	unsigned int i;
  
-@@ -1353,20 +1376,7 @@ int acpi_gpio_count(struct device *dev, const char *con_id)
+@@ -1422,20 +1445,7 @@ int acpi_gpio_count(struct device *dev, const char *con_id)
  			snprintf(propname, sizeof(propname), "%s",
  				 gpio_suffixes[i]);
  
@@ -197,7 +197,7 @@ index 1aacd2a5a1fd..16d3dab2f201 100644
  		if (count > 0)
  			break;
  	}
-@@ -1389,6 +1399,50 @@ int acpi_gpio_count(struct device *dev, const char *con_id)
+@@ -1458,6 +1468,50 @@ int acpi_gpio_count(struct device *dev, const char *con_id)
  	return count ? count : -ENOENT;
  }
  
@@ -249,10 +249,10 @@ index 1aacd2a5a1fd..16d3dab2f201 100644
  static int __init acpi_gpio_handle_deferred_request_irqs(void)
  {
 diff --git a/drivers/leds/Kconfig b/drivers/leds/Kconfig
-index f38cae8c977e..5d0d6ffd9397 100644
+index 602c8479ded1..4bcefbd368e7 100644
 --- a/drivers/leds/Kconfig
 +++ b/drivers/leds/Kconfig
-@@ -939,6 +939,13 @@ config LEDS_ACER_A500
+@@ -884,6 +884,13 @@ source "drivers/leds/blink/Kconfig"
  comment "Flash and Torch LED drivers"
  source "drivers/leds/flash/Kconfig"
  
@@ -267,10 +267,10 @@ index f38cae8c977e..5d0d6ffd9397 100644
  source "drivers/leds/trigger/Kconfig"
  
 diff --git a/drivers/leds/Makefile b/drivers/leds/Makefile
-index d12e17d563e3..3e7cdf362d48 100644
+index 0182f02b8f22..2a4bdf32dfd8 100644
 --- a/drivers/leds/Makefile
 +++ b/drivers/leds/Makefile
-@@ -68,6 +68,7 @@ obj-$(CONFIG_LEDS_MIKROTIK_RB532)	+= leds-rb532.o
+@@ -63,6 +63,7 @@ obj-$(CONFIG_LEDS_MIKROTIK_RB532)	+= leds-rb532.o
  obj-$(CONFIG_LEDS_MLXCPLD)		+= leds-mlxcpld.o
  obj-$(CONFIG_LEDS_MLXREG)		+= leds-mlxreg.o
  obj-$(CONFIG_LEDS_MT6323)		+= leds-mt6323.o
@@ -374,12 +374,12 @@ index 000000000000..16bd1b7c0a1e
 +MODULE_ALIAS("platform:upboard-led");
 \ No newline at end of file
 diff --git a/drivers/mfd/Kconfig b/drivers/mfd/Kconfig
-index b74efa469e90..ad405da713fa 100644
+index d2f345245538..b40f9561b9e1 100644
 --- a/drivers/mfd/Kconfig
 +++ b/drivers/mfd/Kconfig
-@@ -2087,6 +2087,12 @@ config MFD_ACER_A500_EC
- 	  The controller itself is ENE KB930, it is running firmware
- 	  customized for the specific needs of the Acer A500 hardware.
+@@ -2131,6 +2131,12 @@ config MFD_QCOM_PM8008
+ 	  under it in the device tree. Additional drivers must be enabled in
+ 	  order to use the functionality of the device.
  
 +config MFD_UPBOARD_FPGA
 +        tristate "Support for the UP board FPGA"
@@ -391,7 +391,7 @@ index b74efa469e90..ad405da713fa 100644
  	depends on ARCH_SA1100
  
 diff --git a/drivers/mfd/Makefile b/drivers/mfd/Makefile
-index 834f5463af28..3aa2d50021ed 100644
+index 2ba6646e874c..eed8ad67c805 100644
 --- a/drivers/mfd/Makefile
 +++ b/drivers/mfd/Makefile
 @@ -252,6 +252,7 @@ obj-$(CONFIG_MFD_ALTERA_A10SR)	+= altera-a10sr.o
@@ -821,10 +821,10 @@ index 000000000000..9f444f876af1
 +MODULE_LICENSE("GPL v2");
 \ No newline at end of file
 diff --git a/drivers/pinctrl/Kconfig b/drivers/pinctrl/Kconfig
-index b7675cce0027..841b11c81e74 100644
+index 31921108e456..b7f81c5fbc74 100644
 --- a/drivers/pinctrl/Kconfig
 +++ b/drivers/pinctrl/Kconfig
-@@ -339,6 +339,18 @@ config PINCTRL_RK805
+@@ -363,6 +363,18 @@ config PINCTRL_RK805
  	help
  	  This selects the pinctrl driver for RK805.
  
@@ -844,11 +844,11 @@ index b7675cce0027..841b11c81e74 100644
  	bool "Pinctrl driver for the Microsemi Ocelot and Jaguar2 SoCs"
  	depends on OF
 diff --git a/drivers/pinctrl/Makefile b/drivers/pinctrl/Makefile
-index 8bf459c32a76..269a1a7ef1cc 100644
+index 200073bcc2c1..5e60f731bd1c 100644
 --- a/drivers/pinctrl/Makefile
 +++ b/drivers/pinctrl/Makefile
-@@ -42,6 +42,7 @@ obj-$(CONFIG_PINCTRL_STMFX) 	+= pinctrl-stmfx.o
- obj-$(CONFIG_PINCTRL_ZYNQ)	+= pinctrl-zynq.o
+@@ -43,6 +43,7 @@ obj-$(CONFIG_PINCTRL_ZYNQ)	+= pinctrl-zynq.o
+ obj-$(CONFIG_PINCTRL_ZYNQMP)	+= pinctrl-zynqmp.o
  obj-$(CONFIG_PINCTRL_INGENIC)	+= pinctrl-ingenic.o
  obj-$(CONFIG_PINCTRL_RK805)	+= pinctrl-rk805.o
 +obj-$(CONFIG_PINCTRL_UPBOARD)   += pinctrl-upboard.o
@@ -856,7 +856,7 @@ index 8bf459c32a76..269a1a7ef1cc 100644
  obj-$(CONFIG_PINCTRL_MICROCHIP_SGPIO)	+= pinctrl-microchip-sgpio.o
  obj-$(CONFIG_PINCTRL_EQUILIBRIUM)   += pinctrl-equilibrium.o
 diff --git a/drivers/pinctrl/core.c b/drivers/pinctrl/core.c
-index 6e6825d17a1d..b80dbb8e9420 100644
+index ffe39336fcac..35dc0331ddfc 100644
 --- a/drivers/pinctrl/core.c
 +++ b/drivers/pinctrl/core.c
 @@ -266,8 +266,7 @@ static int pinctrl_register_pins(struct pinctrl_dev *pctldev,
@@ -1185,13 +1185,13 @@ index 6e6825d17a1d..b80dbb8e9420 100644
 -	struct pinctrl_gpio_range *range;
 -	int ret;
 -	int pin;
--
++	int ret = -EPROBE_DEFER;
+ 
 -	ret = pinctrl_get_device_gpio_range(gpio, &pctldev, &range);
 -	if (ret) {
 -		return ret;
 -	}
-+	int ret = -EPROBE_DEFER;
- 
+-
 -	mutex_lock(&pctldev->mutex);
 +	mutex_lock(&pinctrldev_list_mutex);
  
@@ -2082,12 +2082,12 @@ index 000000000000..64899e988bb5
 +MODULE_ALIAS("platform:upboard-pinctrl");
 \ No newline at end of file
 diff --git a/include/linux/acpi.h b/include/linux/acpi.h
-index 3bdcfc4401b7..703ebb7bc430 100644
+index 6224b1e32681..7bb91d4792f1 100644
 --- a/include/linux/acpi.h
 +++ b/include/linux/acpi.h
-@@ -1087,6 +1087,11 @@ void __acpi_handle_debug(struct _ddebug *descriptor, acpi_handle handle, const c
- bool acpi_gpio_get_irq_resource(struct acpi_resource *ares,
- 				struct acpi_resource_gpio **agpio);
+@@ -1124,6 +1124,11 @@ bool acpi_gpio_get_irq_resource(struct acpi_resource *ares,
+ bool acpi_gpio_get_io_resource(struct acpi_resource *ares,
+ 			       struct acpi_resource_gpio **agpio);
  int acpi_dev_gpio_irq_get_by(struct acpi_device *adev, const char *name, int index);
 +int acpi_node_add_pin_mapping(struct fwnode_handle *fwnode,
 +			      const char *propname,
@@ -2097,7 +2097,7 @@ index 3bdcfc4401b7..703ebb7bc430 100644
  #else
  static inline bool acpi_gpio_get_irq_resource(struct acpi_resource *ares,
  					      struct acpi_resource_gpio **agpio)
-@@ -1098,6 +1103,14 @@ static inline int acpi_dev_gpio_irq_get_by(struct acpi_device *adev,
+@@ -1140,6 +1145,14 @@ static inline int acpi_dev_gpio_irq_get_by(struct acpi_device *adev,
  {
  	return -ENXIO;
  }
@@ -2172,10 +2172,10 @@ index 000000000000..cd7fb812d3b2
 +#endif /*  __LINUX_MFD_UPBOARD_FPGA_H */
 \ No newline at end of file
 diff --git a/include/linux/regmap.h b/include/linux/regmap.h
-index 2cc4ecd36298..df5d754a13fc 100644
+index e3c9a25a853a..b3cd5e268f8a 100644
 --- a/include/linux/regmap.h
 +++ b/include/linux/regmap.h
-@@ -1160,6 +1160,12 @@ void regcache_mark_dirty(struct regmap *map);
+@@ -1200,6 +1200,12 @@ void regcache_mark_dirty(struct regmap *map);
  bool regmap_check_range_table(struct regmap *map, unsigned int reg,
  			      const struct regmap_access_table *table);
  
@@ -2189,5 +2189,5 @@ index 2cc4ecd36298..df5d754a13fc 100644
  			  int num_regs);
  int regmap_parse_val(struct regmap *map, const void *buf,
 -- 
-2.25.1
+2.34.1
 

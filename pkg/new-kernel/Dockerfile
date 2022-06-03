@@ -11,9 +11,9 @@ ENV BUILD_PKGS \
     attr-dev autoconf file coreutils libtirpc-dev libtool util-linux-dev
 RUN eve-alpine-deploy.sh
 
-ARG KERNEL_VERSION_riscv64=5.12.5
-ARG KERNEL_VERSION_aarch64=5.12.5
-ARG KERNEL_VERSION_x86_64=5.12.5
+ARG KERNEL_VERSION_riscv64=5.15.46
+ARG KERNEL_VERSION_aarch64=5.15.46
+ARG KERNEL_VERSION_x86_64=5.15.46
 ARG KERNEL_SOURCE
 ARG KERNEL_SHA256_SUMS
 ARG KERNEL_PGP2_SIGN
@@ -119,10 +119,9 @@ RUN ./autogen.sh && \
     make -C module INSTALL_MOD_PATH=/tmp/kernel-modules install # cd /lib/modules && depmod -ae *
 
 # Out-of-tree, creepy modules
-#  * Realtek rtl8821CU (waiting for a fix for ARM64 build)
-RUN if [ "$(uname -m)" = x86_64 ]; then \
+RUN if [ "$(uname -m)" != riscv64 ]; then \
        git clone https://github.com/brektrou/rtl8821CU.git /tmp/rtl8821CU &&\
-       (cd /tmp/rtl8821CU && git checkout 2dc966f0dc99 && patch -p1 < /rtl8821CU.patch ) &&\
+       (cd /tmp/rtl8821CU && git checkout 8c2226a7 ) &&\
        make -C /tmp/rtl8821CU KSRC=/linux modules &&\
        install -D -p -m 644 /tmp/rtl8821CU/8821cu.ko $(echo /tmp/kernel-modules/lib/modules/*)/kernel/drivers/net/wireless/realtek/rtl8821cu/8821cu.ko ;\
      fi

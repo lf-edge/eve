@@ -1,7 +1,7 @@
-From 7acd555b255bff281c0fea7523e1fe38c68f6fd1 Mon Sep 17 00:00:00 2001
+From d435e56397ff2620c275f964e57426eadb0d7d6f Mon Sep 17 00:00:00 2001
 From: Roman Shaposhnik <rvs@apache.org>
 Date: Sun, 1 Nov 2020 01:41:51 -0500
-Subject: [PATCH 06/11] Add stdout path overlay
+Subject: [PATCH 4/9] Add stdout path overlay
 
 ---
  arch/arm/boot/dts/Makefile                    |   1 +
@@ -11,28 +11,28 @@ Subject: [PATCH 06/11] Add stdout path overlay
  create mode 100644 arch/arm64/boot/dts/broadcom/raspberrypi-uno-220.dts
 
 diff --git a/arch/arm/boot/dts/Makefile b/arch/arm/boot/dts/Makefile
-index 8e5d4ab4e75e..4ffa6d13505a 100644
+index 27ca1ca6e827..2db59d95b626 100644
 --- a/arch/arm/boot/dts/Makefile
 +++ b/arch/arm/boot/dts/Makefile
-@@ -89,6 +89,7 @@ dtb-$(CONFIG_ARCH_BCM2835) += \
- 	bcm2837-rpi-3-b-plus.dtb \
+@@ -92,6 +92,7 @@ dtb-$(CONFIG_ARCH_BCM2835) += \
  	bcm2837-rpi-cm3-io3.dtb \
+ 	bcm2711-rpi-400.dtb \
  	bcm2711-rpi-4-b.dtb \
 +       raspberrypi-uno-220.dtb \
  	bcm2835-rpi-zero.dtb \
  	bcm2835-rpi-zero-w.dtb
  dtb-$(CONFIG_ARCH_BCM_5301X) += \
 diff --git a/arch/arm64/boot/dts/broadcom/Makefile b/arch/arm64/boot/dts/broadcom/Makefile
-index 998e240aa698..0f907b3fb0b6 100644
+index 11eae3e3a944..c7663ed0c7ad 100644
 --- a/arch/arm64/boot/dts/broadcom/Makefile
 +++ b/arch/arm64/boot/dts/broadcom/Makefile
 @@ -1,5 +1,6 @@
  # SPDX-License-Identifier: GPL-2.0
- dtb-$(CONFIG_ARCH_BCM2835) += bcm2711-rpi-4-b.dtb \
+ dtb-$(CONFIG_ARCH_BCM2835) += bcm2711-rpi-400.dtb \
 +			      raspberrypi-uno-220.dtb \
+ 			      bcm2711-rpi-4-b.dtb \
  			      bcm2837-rpi-3-a-plus.dtb \
  			      bcm2837-rpi-3-b.dtb \
- 			      bcm2837-rpi-3-b-plus.dtb \
 diff --git a/arch/arm64/boot/dts/broadcom/raspberrypi-uno-220.dts b/arch/arm64/boot/dts/broadcom/raspberrypi-uno-220.dts
 new file mode 100644
 index 000000000000..c3d25f522be8
@@ -256,5 +256,5 @@ index 000000000000..c3d25f522be8
 +       };
 +};
 -- 
-2.25.1
+2.34.1
 

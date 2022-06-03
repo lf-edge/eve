@@ -1,7 +1,7 @@
-From 6c7278a2236ccbd4226356aa7ba89488346d9f67 Mon Sep 17 00:00:00 2001
+From a1b8df30703e592e4fc94b675878200caf1bb860 Mon Sep 17 00:00:00 2001
 From: Ming Lin <ming.l@ssi.samsung.com>
 Date: Wed, 18 Nov 2015 13:15:20 -0800
-Subject: [PATCH 10/11] Add NVMe VHost
+Subject: [PATCH 8/9] Add NVMe VHost
 
 Signed-off-by: Ming Lin <ming.l@ssi.samsung.com>
 Signed-off-by: Sergey Temerkhanov <s.temerkhanov@gmail.com>
@@ -69,10 +69,10 @@ Signed-off-by: Sergey Temerkhanov <s.temerkhanov@gmail.com>
  create mode 100644 drivers/nvme/target/vhost.c
 
 diff --git a/drivers/nvme/target/Kconfig b/drivers/nvme/target/Kconfig
-index 4be2ececbc45..637706518684 100644
+index 973561c93888..dbff90b15c37 100644
 --- a/drivers/nvme/target/Kconfig
 +++ b/drivers/nvme/target/Kconfig
-@@ -85,3 +85,13 @@ config NVME_TARGET_TCP
+@@ -83,3 +83,13 @@ config NVME_TARGET_TCP
  	  devices over TCP.
  
  	  If unsure, say N.
@@ -87,7 +87,7 @@ index 4be2ececbc45..637706518684 100644
 +
 +	  If unsure, say N.
 diff --git a/drivers/nvme/target/Makefile b/drivers/nvme/target/Makefile
-index ebf91fc4c72e..1b64bc41c0a3 100644
+index 9837e580fa7e..5c0910f16e1b 100644
 --- a/drivers/nvme/target/Makefile
 +++ b/drivers/nvme/target/Makefile
 @@ -8,6 +8,7 @@ obj-$(CONFIG_NVME_TARGET_RDMA)		+= nvmet-rdma.o
@@ -98,16 +98,16 @@ index ebf91fc4c72e..1b64bc41c0a3 100644
  
  nvmet-y		+= core.o configfs.o admin-cmd.o fabrics-cmd.o \
  			discovery.o io-cmd-file.o io-cmd-bdev.o
-@@ -18,3 +19,4 @@ nvmet-fc-y	+= fc.o
+@@ -19,3 +20,4 @@ nvmet-fc-y	+= fc.o
  nvme-fcloop-y	+= fcloop.o
  nvmet-tcp-y	+= tcp.o
  nvmet-$(CONFIG_TRACING)	+= trace.o
 +nvme-vhost-y	+= vhost.o
 diff --git a/drivers/nvme/target/core.c b/drivers/nvme/target/core.c
-index a027433b8be8..76a3713dbb7f 100644
+index a8dafe8670f2..b8b67e91edc7 100644
 --- a/drivers/nvme/target/core.c
 +++ b/drivers/nvme/target/core.c
-@@ -1448,6 +1448,7 @@ void nvmet_ctrl_put(struct nvmet_ctrl *ctrl)
+@@ -1474,6 +1474,7 @@ void nvmet_ctrl_put(struct nvmet_ctrl *ctrl)
  {
  	kref_put(&ctrl->ref, nvmet_ctrl_free);
  }
@@ -116,13 +116,13 @@ index a027433b8be8..76a3713dbb7f 100644
  void nvmet_ctrl_fatal_error(struct nvmet_ctrl *ctrl)
  {
 diff --git a/drivers/nvme/target/nvmet.h b/drivers/nvme/target/nvmet.h
-index 5aad34b106dc..2e20d047fe00 100644
+index dbeb0b8c1194..66aab483f5c8 100644
 --- a/drivers/nvme/target/nvmet.h
 +++ b/drivers/nvme/target/nvmet.h
-@@ -167,7 +167,7 @@ struct nvmet_ctrl {
+@@ -170,7 +170,7 @@ struct nvmet_ctrl {
  	struct nvmet_sq		**sqs;
  
- 	bool			cmd_seen;
+ 	bool			reset_tbkas;
 -
 +	struct nvmet_cq		**cqs;
  	struct mutex		lock;
@@ -1266,10 +1266,10 @@ index 000000000000..2b93f7e40850
 +MODULE_AUTHOR("Ming Lin <ming.l@ssi.samsung.com>");
 +MODULE_LICENSE("GPL v2");
 diff --git a/drivers/vhost/vhost.c b/drivers/vhost/vhost.c
-index 5ccb0705beae..26807a750ebd 100644
+index 6942472cffb0..1e8c2dce8c97 100644
 --- a/drivers/vhost/vhost.c
 +++ b/drivers/vhost/vhost.c
-@@ -883,6 +883,101 @@ static int vhost_copy_from_user(struct vhost_virtqueue *vq, void *to,
+@@ -889,6 +889,101 @@ static int vhost_copy_from_user(struct vhost_virtqueue *vq, void *to,
  	return ret;
  }
  
@@ -1372,10 +1372,10 @@ index 5ccb0705beae..26807a750ebd 100644
  					  void __user *addr, unsigned int size,
  					  int type)
 diff --git a/drivers/vhost/vhost.h b/drivers/vhost/vhost.h
-index b063324c7669..a8a4b87de09f 100644
+index 638bb640d6b4..bb65977aea0e 100644
 --- a/drivers/vhost/vhost.h
 +++ b/drivers/vhost/vhost.h
-@@ -166,6 +166,11 @@ struct vhost_dev {
+@@ -165,6 +165,11 @@ struct vhost_dev {
  			   struct vhost_iotlb_msg *msg);
  };
  
@@ -1435,5 +1435,5 @@ index f7f6a3a28977..df0d2e9f7b5d 100644
  
  struct vhost_vdpa_config {
 -- 
-2.25.1
+2.34.1
 
