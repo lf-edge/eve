@@ -1,7 +1,7 @@
-From f1100acbe759fdebba9ae5dc5c88b798d2a59538 Mon Sep 17 00:00:00 2001
+From 62e0b1695fa5ee079d6115c1c9c0af31a61da656 Mon Sep 17 00:00:00 2001
 From: Roman Shaposhnik <rvs@apache.org>
 Date: Sun, 1 Nov 2020 01:41:51 -0500
-Subject: [PATCH 08/12] Add stdout path overlay
+Subject: [PATCH 06/10] Add stdout path overlay
 
 ---
  arch/arm/boot/dts/Makefile                    |   1 +
@@ -11,7 +11,7 @@ Subject: [PATCH 08/12] Add stdout path overlay
  create mode 100644 arch/arm64/boot/dts/broadcom/raspberrypi-uno-220.dts
 
 diff --git a/arch/arm/boot/dts/Makefile b/arch/arm/boot/dts/Makefile
-index ce66ffd5a1bb..32ea6404a345 100644
+index 7e8151681597..1f620e554219 100644
 --- a/arch/arm/boot/dts/Makefile
 +++ b/arch/arm/boot/dts/Makefile
 @@ -93,6 +93,7 @@ dtb-$(CONFIG_ARCH_BCM2835) += \
@@ -256,5 +256,5 @@ index 000000000000..c3d25f522be8
 +       };
 +};
 -- 
-2.25.1
+2.34.1
 
