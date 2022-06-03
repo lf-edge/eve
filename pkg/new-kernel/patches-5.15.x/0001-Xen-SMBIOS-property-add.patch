@@ -1,17 +1,17 @@
-From d12cebc3ff175a8d849e561085cd4b20d406882e Mon Sep 17 00:00:00 2001
+From 0cb019871fffcaa9b3b1df9ef12ca2c058f08bfb Mon Sep 17 00:00:00 2001
 From: Stefano Stabellini <sstabellini@kernel.org>
 Date: Thu, 17 Dec 2020 18:27:32 -0800
-Subject: [PATCH 01/11]  Xen SMBIOS property add
+Subject: [PATCH 1/9] Xen SMBIOS property add
 
 ---
  arch/arm/xen/enlighten.c | 8 ++++++++
  1 file changed, 8 insertions(+)
 
 diff --git a/arch/arm/xen/enlighten.c b/arch/arm/xen/enlighten.c
-index 8ad576ecd0f1..2a7ec6552f22 100644
+index 7f1c106b746f..92eca0d26153 100644
 --- a/arch/arm/xen/enlighten.c
 +++ b/arch/arm/xen/enlighten.c
-@@ -33,6 +33,7 @@
+@@ -34,6 +34,7 @@
  #include <linux/timekeeping.h>
  #include <linux/timekeeper_internal.h>
  #include <linux/acpi.h>
@@ -19,7 +19,7 @@ index 8ad576ecd0f1..2a7ec6552f22 100644
  
  #include <linux/mm.h>
  
-@@ -62,6 +63,8 @@ static __read_mostly unsigned int xen_events_irq;
+@@ -63,6 +64,8 @@ static __read_mostly unsigned int xen_events_irq;
  uint32_t xen_start_flags;
  EXPORT_SYMBOL(xen_start_flags);
  
@@ -28,7 +28,7 @@ index 8ad576ecd0f1..2a7ec6552f22 100644
  int xen_unmap_domain_gfn_range(struct vm_area_struct *vma,
  			       int nr, struct page **pages)
  {
-@@ -303,6 +306,11 @@ static void __init xen_dt_guest_init(void)
+@@ -311,6 +314,11 @@ static void __init xen_dt_guest_init(void)
  	}
  
  	xen_events_irq = irq_of_parse_and_map(xen_node, 0);
@@ -41,5 +41,5 @@ index 8ad576ecd0f1..2a7ec6552f22 100644
  
  static int __init xen_guest_init(void)
 -- 
-2.25.1
+2.34.1
 

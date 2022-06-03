@@ -1,7 +1,7 @@
-From fb7372797aaa4068f3b917d464b786712932230f Mon Sep 17 00:00:00 2001
+From b4442796852f1b6531e907f99d8a2677e72f5520 Mon Sep 17 00:00:00 2001
 From: Mikhail Malyshev <mikem@zededa.com>
 Date: Thu, 16 Dec 2021 11:29:26 +0100
-Subject: [PATCH 11/11] Quirk for brocken INTx on Euresys Grablink Full XR
+Subject: [PATCH 9/9] Quirk for brocken INTx on Euresys Grablink Full XR
 
 Signed-off-by: Mikhail Malyshev <mikem@zededa.com>
 ---
@@ -9,10 +9,10 @@ Signed-off-by: Mikhail Malyshev <mikem@zededa.com>
  1 file changed, 2 insertions(+)
 
 diff --git a/drivers/pci/quirks.c b/drivers/pci/quirks.c
-index 70b187edb1ce..7db563e79669 100644
+index 2933432289bd..1314aafe6205 100644
 --- a/drivers/pci/quirks.c
 +++ b/drivers/pci/quirks.c
-@@ -3434,6 +3434,8 @@ DECLARE_PCI_FIXUP_FINAL(0x1814, 0x0601, /* Ralink RT2800 802.11n PCI */
+@@ -3476,6 +3476,8 @@ DECLARE_PCI_FIXUP_FINAL(0x1814, 0x0601, /* Ralink RT2800 802.11n PCI */
  			quirk_broken_intx_masking);
  DECLARE_PCI_FIXUP_FINAL(0x1b7c, 0x0004, /* Ceton InfiniTV4 */
  			quirk_broken_intx_masking);
@@ -22,5 +22,5 @@ index 70b187edb1ce..7db563e79669 100644
  /*
   * Realtek RTL8169 PCI Gigabit Ethernet Controller (rev 10)
 -- 
-2.25.1
+2.34.1
 
