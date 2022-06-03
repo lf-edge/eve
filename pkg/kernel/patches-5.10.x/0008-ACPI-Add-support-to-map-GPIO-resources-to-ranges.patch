@@ -1,7 +1,7 @@
-From 3e055892790867c4c741f2a38b602c9f8ffd5476 Mon Sep 17 00:00:00 2001
+From 11b9a1fef102b276d25417ecf3bb660042988534 Mon Sep 17 00:00:00 2001
 From: Carlos Calderon <carlos.calderon@emutex.com>
 Date: Wed, 20 Feb 2019 16:49:37 +0000
-Subject: [PATCH 10/12] ACPI: Add support to map GPIO resources to ranges
+Subject: [PATCH 08/10] ACPI: Add support to map GPIO resources to ranges
 
 All of this is selectively taken from:
     https://github.com/AaeonCM/meta-up-board/tree/warrior/recipes-kernel/linux/files
@@ -84,7 +84,7 @@ index 0097696c31de..a43309063a68 100644
  bool regmap_readable_noinc(struct regmap *map, unsigned int reg);
  
 diff --git a/drivers/base/regmap/regmap.c b/drivers/base/regmap/regmap.c
-index 456a1787e18d..7d503f67b700 100644
+index 55a30afc14a0..070c98d34175 100644
 --- a/drivers/base/regmap/regmap.c
 +++ b/drivers/base/regmap/regmap.c
 @@ -100,6 +100,7 @@ bool regmap_writeable(struct regmap *map, unsigned int reg)
@@ -128,10 +128,10 @@ index 456a1787e18d..7d503f67b700 100644
  bool regmap_writeable_noinc(struct regmap *map, unsigned int reg)
  {
 diff --git a/drivers/gpio/gpiolib-acpi.c b/drivers/gpio/gpiolib-acpi.c
-index 6f11714ce023..2b8c172be7a6 100644
+index 44ee319da1b3..ddb7152e4d32 100644
 --- a/drivers/gpio/gpiolib-acpi.c
 +++ b/drivers/gpio/gpiolib-acpi.c
-@@ -1294,6 +1294,32 @@ static int acpi_find_gpio_count(struct acpi_resource *ares, void *data)
+@@ -1301,6 +1301,32 @@ static int acpi_find_gpio_count(struct acpi_resource *ares, void *data)
  	return 1;
  }
  
@@ -164,7 +164,7 @@ index 6f11714ce023..2b8c172be7a6 100644
  /**
   * acpi_gpio_count - count the GPIOs associated with a device / function
   * @dev:	GPIO consumer, can be %NULL for system-global GPIOs
-@@ -1306,10 +1332,7 @@ static int acpi_find_gpio_count(struct acpi_resource *ares, void *data)
+@@ -1313,10 +1339,7 @@ static int acpi_find_gpio_count(struct acpi_resource *ares, void *data)
  int acpi_gpio_count(struct device *dev, const char *con_id)
  {
  	struct acpi_device *adev = ACPI_COMPANION(dev);
@@ -175,7 +175,7 @@ index 6f11714ce023..2b8c172be7a6 100644
  	char propname[32];
  	unsigned int i;
  
-@@ -1322,20 +1345,7 @@ int acpi_gpio_count(struct device *dev, const char *con_id)
+@@ -1329,20 +1352,7 @@ int acpi_gpio_count(struct device *dev, const char *con_id)
  			snprintf(propname, sizeof(propname), "%s",
  				 gpio_suffixes[i]);
  
@@ -197,7 +197,7 @@ index 6f11714ce023..2b8c172be7a6 100644
  		if (count > 0)
  			break;
  	}
-@@ -1358,6 +1368,50 @@ int acpi_gpio_count(struct device *dev, const char *con_id)
+@@ -1365,6 +1375,50 @@ int acpi_gpio_count(struct device *dev, const char *con_id)
  	return count ? count : -ENOENT;
  }
  
@@ -856,7 +856,7 @@ index f53933b2ff02..81a059a6ca64 100644
  obj-$(CONFIG_PINCTRL_EQUILIBRIUM)   += pinctrl-equilibrium.o
  
 diff --git a/drivers/pinctrl/core.c b/drivers/pinctrl/core.c
-index 6e6825d17a1d..b80dbb8e9420 100644
+index 840000870d5a..efd31be388b2 100644
 --- a/drivers/pinctrl/core.c
 +++ b/drivers/pinctrl/core.c
 @@ -266,8 +266,7 @@ static int pinctrl_register_pins(struct pinctrl_dev *pctldev,
@@ -2082,10 +2082,10 @@ index 000000000000..64899e988bb5
 +MODULE_ALIAS("platform:upboard-pinctrl");
 \ No newline at end of file
 diff --git a/include/linux/acpi.h b/include/linux/acpi.h
-index fdb1d5262ce8..dacc84699b82 100644
+index 96d69404a54f..d2d8c1ffc03e 100644
 --- a/include/linux/acpi.h
 +++ b/include/linux/acpi.h
-@@ -1080,6 +1080,11 @@ void __acpi_handle_debug(struct _ddebug *descriptor, acpi_handle handle, const c
+@@ -1089,6 +1089,11 @@ void __acpi_handle_debug(struct _ddebug *descriptor, acpi_handle handle, const c
  bool acpi_gpio_get_irq_resource(struct acpi_resource *ares,
  				struct acpi_resource_gpio **agpio);
  int acpi_dev_gpio_irq_get_by(struct acpi_device *adev, const char *name, int index);
@@ -2097,7 +2097,7 @@ index fdb1d5262ce8..dacc84699b82 100644
  #else
  static inline bool acpi_gpio_get_irq_resource(struct acpi_resource *ares,
  					      struct acpi_resource_gpio **agpio)
-@@ -1091,6 +1096,14 @@ static inline int acpi_dev_gpio_irq_get_by(struct acpi_device *adev,
+@@ -1100,6 +1105,14 @@ static inline int acpi_dev_gpio_irq_get_by(struct acpi_device *adev,
  {
  	return -ENXIO;
  }
@@ -2189,5 +2189,5 @@ index e7834d98207f..8ffd5ae8708c 100644
  			  int num_regs);
  int regmap_parse_val(struct regmap *map, const void *buf,
 -- 
-2.25.1
+2.34.1
 

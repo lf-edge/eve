@@ -1,7 +1,7 @@
-From 4525c94498360d38eabbebabf9dab84ff690b2de Mon Sep 17 00:00:00 2001
+From 7f906a163405e163db8d69dbb17ea7eb675baf46 Mon Sep 17 00:00:00 2001
 From: Sergey Temerkhanov <s.temerkhanov@gmail.com>
 Date: Wed, 26 Aug 2020 00:02:19 +0300
-Subject: [PATCH 04/12] rsi91x: Check wowlan pointer in rsi_shutdown
+Subject: [PATCH 04/10] rsi91x: Check wowlan pointer in rsi_shutdown
 
 Check wowlan pointer before calling rsi_config_wowlan to
 prevent erroneous configuration attempts
@@ -12,10 +12,10 @@ Signed-off-by: Sergey Temerkhanov <s.temerkhanov@gmail.com>
  1 file changed, 1 insertion(+), 1 deletion(-)
 
 diff --git a/drivers/net/wireless/rsi/rsi_91x_sdio.c b/drivers/net/wireless/rsi/rsi_91x_sdio.c
-index 3a243c532647..114ea93c8abf 100644
+index 8108f941ccd3..31e46af66f0b 100644
 --- a/drivers/net/wireless/rsi/rsi_91x_sdio.c
 +++ b/drivers/net/wireless/rsi/rsi_91x_sdio.c
-@@ -1469,7 +1469,7 @@ static void rsi_shutdown(struct device *dev)
+@@ -1466,7 +1466,7 @@ static void rsi_shutdown(struct device *dev)
  	if (hw) {
  		struct cfg80211_wowlan *wowlan = hw->wiphy->wowlan_config;
  
@@ -25,5 +25,5 @@ index 3a243c532647..114ea93c8abf 100644
  	}
  
 -- 
-2.25.1
+2.34.1
 

@@ -9,8 +9,8 @@ ENV BUILD_PKGS \
     attr-dev autoconf file coreutils libtirpc-dev libtool util-linux-dev
 RUN eve-alpine-deploy.sh
 
-ARG KERNEL_VERSION_aarch64=5.10.76
-ARG KERNEL_VERSION_x86_64=5.10.76
+ARG KERNEL_VERSION_aarch64=5.10.121
+ARG KERNEL_VERSION_x86_64=5.10.121
 ARG KERNEL_SOURCE
 ARG KERNEL_SHA256_SUMS
 ARG KERNEL_PGP2_SIGN
@@ -117,13 +117,11 @@ RUN unzip -d /tmp /tmp/xr.zip ;\
     make -C /linux INSTALL_MOD_PATH=/tmp/kernel-modules \
                    M=/tmp/xr_usb_serial_common_lnx-3.6-and-newer-pak \
          modules modules_install
-#  * Realtek rtl8821CU (waiting for a fix for ARM64 build)
-RUN if [ "$(uname -m)" != aarch64 ]; then \
-       git clone https://github.com/brektrou/rtl8821CU.git /tmp/rtl8821CU &&\
-       (cd /tmp/rtl8821CU && git checkout 2dc966f0dc99 && patch -p1 < /rtl8821CU.patch ) &&\
-       make -C /tmp/rtl8821CU KSRC=/linux modules &&\
-       install -D -p -m 644 /tmp/rtl8821CU/8821cu.ko $(echo /tmp/kernel-modules/lib/modules/*)/kernel/drivers/net/wireless/realtek/rtl8821cu/8821cu.ko ;\
-     fi
+
+RUN git clone https://github.com/brektrou/rtl8821CU.git /tmp/rtl8821CU &&\
+    (cd /tmp/rtl8821CU && git checkout 8c2226a7 ) &&\
+    make -C /tmp/rtl8821CU KSRC=/linux modules &&\
+    install -D -p -m 644 /tmp/rtl8821CU/8821cu.ko $(echo /tmp/kernel-modules/lib/modules/*)/kernel/drivers/net/wireless/realtek/rtl8821cu/8821cu.ko
 
 # Strip at least some of the modules to conserve space
 RUN if [ "$(uname -m)" = aarch64 ];then strip --strip-debug `find /tmp/kernel-modules/lib/modules -name \*.ko` ;fi
