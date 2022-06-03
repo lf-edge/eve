@@ -150,7 +150,7 @@ func doUpdate(ctx *zedmanagerContext,
 			// Since we are not activating we set the state to
 			// HALTED to indicate it is not running since it
 			// might have been halted before the device was rebooted
-			if status.State == types.INSTALLED {
+			if status.State == types.INSTALLED || status.State == types.START_DELAYED {
 				status.State = types.HALTED
 				changed = true
 			}
@@ -565,6 +565,21 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 		changed = true
 	}
 	log.Tracef("Done with AppNetworkStatus for %s", uuidStr)
+
+	// Do we try to activate an application earlier than it's configured to start?
+	if time.Now().Before(status.StartTime) {
+		// Check that we delay a not yet active VM or a VM in the bring-up state after restarting/purging
+		if !status.Activated || status.RestartInprogress == types.BringUp || status.PurgeInprogress == types.BringUp {
+			// If we try to activate it for the first time - mark is with the corresponding state
+			if status.State != types.START_DELAYED {
+				status.State = types.START_DELAYED
+				return true
+			}
+			// if the VM is already in the START_DELAYED state - just return from the doActivate now
+			return changed
+		}
+		// if the VM already active or in restarting/purging state - continue with the doActivate logic
+	}
 
 	// Make sure we have a DomainConfig
 	// We modify it below and then publish it

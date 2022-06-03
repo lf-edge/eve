@@ -597,6 +597,7 @@ func parseAppInstanceConfig(config *zconfig.EdgeDevConfig,
 		appInstance.FixedResources.VncPasswd = cfgApp.Fixedresources.VncPasswd
 		appInstance.FixedResources.DisableLogs = cfgApp.Fixedresources.DisableLogs
 		appInstance.MetaDataType = types.MetaDataType(cfgApp.MetaDataType)
+		appInstance.Delay = time.Duration(cfgApp.StartDelayInSeconds) * time.Second
 
 		appInstance.VolumeRefConfigList = make([]types.VolumeRefConfig,
 			len(cfgApp.VolumeRefList))
