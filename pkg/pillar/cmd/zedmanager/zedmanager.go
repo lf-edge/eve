@@ -55,6 +55,8 @@ type zedmanagerContext struct {
 	checkFreedResources   bool // Set when app instance has !Activated
 	currentProfile        string
 	currentTotalMemoryMB  uint64
+	// The time from which the configured applications delays should be counted
+	delayBaseTime time.Time
 }
 
 var debug = false
@@ -320,6 +322,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	//use timer for free resource checker to run it after stabilising of other changes
 	freeResourceChecker := flextimer.NewRangeTicker(5*time.Second, 10*time.Second)
 
+	// The ticker that triggers a check for the applications in the START_DELAYED state
+	delayedStartTicker := time.NewTicker(1 * time.Second)
+
 	log.Functionf("Handling all inputs")
 	for {
 		select {
@@ -357,6 +362,10 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 					warningTime, errorTime)
 				ctx.checkFreedResources = false
 			}
+
+		case <-delayedStartTicker.C:
+			checkDelayedStartApps(&ctx)
+
 		case <-stillRunning.C:
 		}
 		ps.StillRunning(agentName, warningTime, errorTime)
@@ -387,6 +396,22 @@ func checkRetry(ctxPtr *zedmanagerContext) {
 
 		log.Noticef("checkRetry: %s waiting for memory", status.Key())
 		handleModify(ctxPtr, status.Key(), *config, *config)
+	}
+}
+
+// Handle the applications in the START_DELAY state ready to be started.
+func checkDelayedStartApps(ctx *zedmanagerContext) {
+	configs := ctx.subAppInstanceConfig.GetAll()
+	for _, c := range configs {
+		config := c.(types.AppInstanceConfig)
+		status := lookupAppInstanceStatus(ctx, config.Key())
+		// Is the application in the delayed state and ready to be started?
+		if status != nil && status.State == types.START_DELAYED && status.StartTime.Before(time.Now()) {
+			// Change the state immediately, so we do not enter here twice
+			status.State = types.INSTALLED
+			doUpdate(ctx, config, status)
+			publishAppInstanceStatus(ctx, status)
+		}
 	}
 }
 
@@ -558,6 +583,9 @@ func handleCreate(ctxArg interface{}, key string,
 		State:             types.INITIAL,
 	}
 
+	// Calculate the moment when the application should start, taking into account the configured delay
+	status.StartTime = ctx.delayBaseTime.Add(config.Delay)
+
 	// Do we have a PurgeCmd counter from before the reboot?
 	// Note that purgeCmdCounter is a sum of the remote and the local purge counter.
 	persistedCounter, err := uuidtonum.UuidToNumGet(log, ctx.pubUuidToNum,
@@ -651,6 +679,8 @@ func handleModify(ctxArg interface{}, key string,
 	status := lookupAppInstanceStatus(ctx, key)
 	log.Functionf("handleModify(%v) for %s",
 		config.UUIDandVersion, config.DisplayName)
+
+	status.StartTime = ctx.delayBaseTime.Add(config.Delay)
 
 	effectiveActivate := effectiveActivateCurrentProfile(config, ctx.currentProfile)
 	status.EffectiveActivate = effectiveActivate
@@ -897,6 +927,14 @@ func handleZedAgentStatusImpl(ctxArg interface{}, key string,
 	statusArg interface{}) {
 	ctxPtr := ctxArg.(*zedmanagerContext)
 	status := statusArg.(types.ZedAgentStatus)
+	// When getting the config successfully for the first time (get from the controller or read from the file), consider
+	// the device as ready to start apps. Hence, count the app delay timeout from now.
+	if status.ConfigGetStatus == types.ConfigGetSuccess || status.ConfigGetStatus == types.ConfigGetReadSaved {
+		if ctxPtr.delayBaseTime.IsZero() {
+			ctxPtr.delayBaseTime = time.Now()
+		}
+	}
+
 	if ctxPtr.currentProfile != status.CurrentProfile {
 		log.Noticef("handleZedAgentStatusImpl: CurrentProfile changed from %s to %s",
 			ctxPtr.currentProfile, status.CurrentProfile)

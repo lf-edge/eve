@@ -75,6 +75,8 @@ type AppInstanceConfig struct {
 	MetaDataType MetaDataType
 
 	ProfileList []string
+
+	Delay time.Duration
 }
 
 type AppInstanceOpsCmd struct {
@@ -172,6 +174,8 @@ type AppInstanceStatus struct {
 	// All error strings across all steps and all StorageStatus
 	// ErrorAndTimeWithSource provides SetError, SetErrrorWithSource, etc
 	ErrorAndTimeWithSource
+	// Effective time, when the application should start
+	StartTime time.Time
 }
 
 // AppCount is uint8 and it should be sufficient for the number of apps we can support

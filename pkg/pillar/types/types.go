@@ -36,6 +36,7 @@ const (
 	CREATED_VOLUME  // Volume create done or failed
 	INSTALLED       // Available to be activated
 	AWAITNETWORKINSTANCE
+	START_DELAYED // Domain start is delayed to due to StartDelay being honored.
 	BOOTING
 	RUNNING
 	PAUSING
@@ -96,6 +97,8 @@ func (state SwState) String() string {
 		return "PURGING"
 	case BROKEN:
 		return "BROKEN"
+	case START_DELAYED:
+		return "START_DELAYED"
 	case UNKNOWN:
 		return "UNKNOWN"
 	default:
@@ -163,6 +166,8 @@ func (state SwState) ZSwState() info.ZSwState {
 	// a final HALTED state
 	case BROKEN:
 		return info.ZSwState_HALTING
+	case START_DELAYED:
+		return info.ZSwState_START_DELAYED
 	// If we ever see UNKNOWN we return RUNNING assuming the state will change to something
 	// known soon.
 	case UNKNOWN:
