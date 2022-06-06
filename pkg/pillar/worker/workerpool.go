@@ -8,6 +8,8 @@ package worker
 
 import (
 	"fmt"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
@@ -26,7 +28,8 @@ type Pool struct {
 	periodicGCTime time.Duration
 	submitGCTime   time.Duration
 	workers        []myworker
-	numChan        int // Number of result channels from workers
+	workersLock    sync.RWMutex
+	numChan        int32 // Number of result channels from workers
 	resultChan     chan Processor
 	log            Logger
 	ctx            interface{}
@@ -76,7 +79,9 @@ func (wp *Pool) periodicGC() {
 	for !done {
 		select {
 		case <-t.C:
+			wp.workersLock.Lock()
 			wp.purgeOld(0)
+			wp.workersLock.Unlock()
 
 		case _, ok := <-wp.stopTimer:
 			if !ok {
@@ -94,9 +99,8 @@ func (wp *Pool) mergeResult(w Worker) {
 		wp.log.Tracef("mergeResult got %+v", res)
 		wp.resultChan <- res
 	}
-	wp.numChan--
 	// Are all the mergeResults done?
-	if wp.numChan == 0 {
+	if atomic.AddInt32(&wp.numChan, -1) == 0 {
 		close(wp.resultChan)
 	}
 	wp.log.Tracef("mergeResult done")
@@ -104,6 +108,8 @@ func (wp *Pool) mergeResult(w Worker) {
 
 // NumPending returns the current number work items
 func (wp *Pool) NumPending() int {
+	wp.workersLock.RLock()
+	defer wp.workersLock.RUnlock()
 	total := 0
 	for _, w := range wp.workers {
 		total += w.worker.NumPending()
@@ -113,6 +119,8 @@ func (wp *Pool) NumPending() int {
 
 // NumResults returns the number of results waiting to be processed.
 func (wp *Pool) NumResults() int {
+	wp.workersLock.RLock()
+	defer wp.workersLock.RUnlock()
 	total := 0
 	for _, w := range wp.workers {
 		total += w.worker.NumResults()
@@ -122,6 +130,8 @@ func (wp *Pool) NumResults() int {
 
 // NumWorkers returns the current number of workers
 func (wp *Pool) NumWorkers() int {
+	wp.workersLock.RLock()
+	defer wp.workersLock.RUnlock()
 	return len(wp.workers)
 }
 
@@ -150,6 +160,8 @@ func (wp *Pool) Submit(work Work) error {
 // queues of all workers are full - returns false.
 // returns JobInProgressError if a job with that key already in progress.
 func (wp *Pool) TrySubmit(work Work) (bool, error) {
+	wp.workersLock.Lock()
+	defer wp.workersLock.Unlock()
 	for i, w := range wp.workers {
 		done, err := w.worker.TrySubmit(work)
 		if err != nil {
@@ -172,7 +184,7 @@ func (wp *Pool) TrySubmit(work Work) (bool, error) {
 			wp.maxWorkersUsed = len(wp.workers)
 			wp.log.Tracef("maxWorkersUsed %d", wp.maxWorkersUsed)
 		}
-		wp.numChan++
+		atomic.AddInt32(&wp.numChan, 1)
 		wp.log.Tracef("Creating %s at %s", "wp.mergeResult",
 			agentlog.GetMyStack())
 		go wp.mergeResult(w)
@@ -204,6 +216,8 @@ func (wp *Pool) C() <-chan Processor {
 // It is idempotent, will return no errors if the job is not found,
 // which means it either never was submitted, or it already was processed.
 func (wp *Pool) Cancel(key string) {
+	wp.workersLock.RLock()
+	defer wp.workersLock.RUnlock()
 	for _, w := range wp.workers {
 		w.worker.Cancel(key)
 	}
@@ -211,6 +225,8 @@ func (wp *Pool) Cancel(key string) {
 
 // Done will stop the workers
 func (wp *Pool) Done() {
+	wp.workersLock.Lock()
+	defer wp.workersLock.Unlock()
 	for _, w := range wp.workers {
 		w.worker.Done()
 	}
@@ -220,6 +236,8 @@ func (wp *Pool) Done() {
 
 // Pop get a result and remove it from the list
 func (wp *Pool) Pop(key string) *WorkResult {
+	wp.workersLock.RLock()
+	defer wp.workersLock.RUnlock()
 	for _, w := range wp.workers {
 		res := w.worker.Pop(key)
 		if res != nil {
@@ -231,6 +249,8 @@ func (wp *Pool) Pop(key string) *WorkResult {
 
 // Peek get a result without removing it from the list
 func (wp *Pool) Peek(key string) *WorkResult {
+	wp.workersLock.RLock()
+	defer wp.workersLock.RUnlock()
 	for _, w := range wp.workers {
 		res := w.worker.Peek(key)
 		if res != nil {
@@ -241,6 +261,7 @@ func (wp *Pool) Peek(key string) *WorkResult {
 }
 
 // purgeOld removes old workers from the pool
+// expect workersLock acquired
 func (wp *Pool) purgeOld(startIndex int) {
 
 	wp.log.Tracef("purgeOld(%d) have %d", startIndex, len(wp.workers))
