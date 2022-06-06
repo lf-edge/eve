@@ -182,7 +182,7 @@ prepare_mounts_and_zfs_pool() {
   [ -e /root/proc ] || mkdir /root/proc && mount -t proc proc /root/proc
   [ -e /root/dev ] || mkdir /root/dev && mount -t devtmpfs -o size=10m,nr_inodes=248418,mode=755,nosuid,noexec,relatime devtmpfs /root/dev
   [ -e /root/run ] || mkdir /root/run && mount --rbind /run /root/run
-  POOL_CREATION_COMMAND="chroot /root zpool create -f -m none -o feature@encryption=enabled -O overlay=on persist $1"
+  POOL_CREATION_COMMAND="chroot /root zpool create -f -m none -o feature@encryption=enabled -O atime=off -O overlay=on persist $1"
   eval "$POOL_CREATION_COMMAND"
   chroot /root zfs create -o refreservation="$(chroot /root zfs get -o value -Hp available persist | awk '{ print ($1/1024/1024)/5 }')"m persist/reserved
   chroot /root zfs set mountpoint="/run/P3" persist
