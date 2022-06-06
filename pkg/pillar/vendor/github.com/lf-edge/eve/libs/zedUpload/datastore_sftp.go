@@ -11,6 +11,7 @@ import (
 	"time"
 
 	sftp "github.com/lf-edge/eve/libs/zedUpload/sftputil"
+	"github.com/lf-edge/eve/libs/zedUpload/types"
 )
 
 type SftpTransportMethod struct {
@@ -123,29 +124,14 @@ func (ep *SftpTransportMethod) processSftpUpload(req *DronaRequest) (error, int)
 			file = ep.path + "/" + req.name
 		}
 	}
-	prgChan := make(sftp.NotifChan)
+	prgChan := make(types.StatsNotifChan)
 	defer close(prgChan)
 	if req.ackback {
-		go func(req *DronaRequest, prgNotif sftp.NotifChan) {
-			ticker := time.NewTicker(StatsUpdateTicker)
-			defer ticker.Stop()
-			var stats sftp.UpdateStats
-			var ok bool
-			for {
-				select {
-				case stats, ok = <-prgNotif:
-					if !ok {
-						return
-					}
-				case <-ticker.C:
-					ep.ctx.postSize(req, stats.Size, stats.Asize)
-				}
-			}
-		}(req, prgChan)
+		go statsUpdater(req, ep.ctx, prgChan)
 	}
 
-	resp := sftp.ExecCmd("put", ep.surl, ep.uname, ep.passwd, file, req.objloc, req.sizelimit, prgChan)
-	return resp.Error, int(resp.Asize)
+	stats, _ := sftp.ExecCmd("put", ep.surl, ep.uname, ep.passwd, file, req.objloc, req.sizelimit, prgChan)
+	return stats.Error, int(stats.Asize)
 }
 
 // File download from SFTP Datastore
@@ -158,29 +144,14 @@ func (ep *SftpTransportMethod) processSftpDownload(req *DronaRequest) (error, in
 			file = ep.path + "/" + req.name
 		}
 	}
-	prgChan := make(sftp.NotifChan)
+	prgChan := make(types.StatsNotifChan)
 	defer close(prgChan)
 	if req.ackback {
-		go func(req *DronaRequest, prgNotif sftp.NotifChan) {
-			ticker := time.NewTicker(StatsUpdateTicker)
-			defer ticker.Stop()
-			var stats sftp.UpdateStats
-			var ok bool
-			for {
-				select {
-				case stats, ok = <-prgNotif:
-					if !ok {
-						return
-					}
-				case <-ticker.C:
-					ep.ctx.postSize(req, stats.Size, stats.Asize)
-				}
-			}
-		}(req, prgChan)
+		go statsUpdater(req, ep.ctx, prgChan)
 	}
 
-	resp := sftp.ExecCmd("fetch", ep.surl, ep.uname, ep.passwd, file, req.objloc, req.sizelimit, prgChan)
-	return resp.Error, int(resp.Asize)
+	stats, _ := sftp.ExecCmd("fetch", ep.surl, ep.uname, ep.passwd, file, req.objloc, req.sizelimit, prgChan)
+	return stats.Error, int(stats.Asize)
 }
 
 // File delete from SFTP Datastore
@@ -193,35 +164,20 @@ func (ep *SftpTransportMethod) processSftpDelete(req *DronaRequest) error {
 			file = ep.path + "/" + req.name
 		}
 	}
-	resp := sftp.ExecCmd("rm", ep.surl, ep.uname, ep.passwd, file, "", req.sizelimit, nil)
-	return resp.Error
+	stats, _ := sftp.ExecCmd("rm", ep.surl, ep.uname, ep.passwd, file, "", req.sizelimit, nil)
+	return stats.Error
 }
 
 // File list from SFTP Datastore
 func (ep *SftpTransportMethod) processSftpList(req *DronaRequest) ([]string, error) {
-	prgChan := make(sftp.NotifChan)
+	prgChan := make(types.StatsNotifChan)
 	defer close(prgChan)
 	if req.ackback {
-		go func(req *DronaRequest, prgNotif sftp.NotifChan) {
-			ticker := time.NewTicker(StatsUpdateTicker)
-			defer ticker.Stop()
-			var stats sftp.UpdateStats
-			var ok bool
-			for {
-				select {
-				case stats, ok = <-prgNotif:
-					if !ok {
-						return
-					}
-				case <-ticker.C:
-					ep.ctx.postSize(req, stats.Size, stats.Asize)
-				}
-			}
-		}(req, prgChan)
+		go statsUpdater(req, ep.ctx, prgChan)
 	}
 
-	resp := sftp.ExecCmd("ls", ep.surl, ep.uname, ep.passwd, ep.path, "", req.sizelimit, prgChan)
-	return resp.List, resp.Error
+	stats, resp := sftp.ExecCmd("ls", ep.surl, ep.uname, ep.passwd, ep.path, "", req.sizelimit, prgChan)
+	return resp.List, stats.Error
 }
 
 func (ep *SftpTransportMethod) processSftpObjectMetaData(req *DronaRequest) (error, int64) {
@@ -233,8 +189,8 @@ func (ep *SftpTransportMethod) processSftpObjectMetaData(req *DronaRequest) (err
 			file = ep.path + "/" + req.name
 		}
 	}
-	resp := sftp.ExecCmd("stat", ep.surl, ep.uname, ep.passwd, file, "", req.sizelimit, nil)
-	return resp.Error, resp.ContentLength
+	stats, resp := sftp.ExecCmd("stat", ep.surl, ep.uname, ep.passwd, file, "", req.sizelimit, nil)
+	return stats.Error, resp.ContentLength
 }
 
 func (ep *SftpTransportMethod) getContext() *DronaCtx {

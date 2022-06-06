@@ -13,6 +13,8 @@ import (
 	"net/url"
 	"sync"
 	"time"
+
+	"github.com/lf-edge/eve/libs/zedUpload/types"
 )
 
 //
@@ -309,4 +311,22 @@ func NewDronaCtx(name string, noHandlers int) (*DronaCtx, error) {
 	}
 
 	return &dSync, nil
+}
+
+func statsUpdater(req *DronaRequest, dronaCtx *DronaCtx, prgNotif types.StatsNotifChan) {
+	ticker := time.NewTicker(StatsUpdateTicker)
+	defer ticker.Stop()
+	var stats types.UpdateStats
+	var ok bool
+	for {
+		select {
+		case stats, ok = <-prgNotif:
+			if !ok {
+				return
+			}
+		case <-ticker.C:
+			req.doneParts = stats.DoneParts
+			dronaCtx.postSize(req, stats.Size, stats.Asize)
+		}
+	}
 }

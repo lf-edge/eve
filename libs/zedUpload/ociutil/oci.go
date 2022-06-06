@@ -16,25 +16,15 @@ import (
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
 	"github.com/google/go-containerregistry/pkg/v1/tarball"
+	"github.com/lf-edge/eve/libs/zedUpload/types"
 	"github.com/sirupsen/logrus"
 )
-
-// UpdateStats single status update for an OCI transfer
-type UpdateStats struct {
-	Size  int64    // complete size to upload/download
-	Asize int64    // current size uploaded/downloaded
-	Tags  []string //list of tags for given image
-	Error error
-}
-
-// NotifChan channel for sending status updates
-type NotifChan chan UpdateStats
 
 // Tags return all known tags for a given repository on a given registry.
 // Optionally, can use authentication of username and apiKey as provided, else defaults
 // to the local user config. Also can use a given http client, else uses the default.
 // Returns a slice of tags of the repo passed to it, and error, if any.
-func Tags(registry, repository, username, apiKey string, client *http.Client, prgchan NotifChan) ([]string, error) {
+func Tags(registry, repository, username, apiKey string, client *http.Client, prgchan types.StatsNotifChan) ([]string, error) {
 	var (
 		tags  []string
 		err   error
@@ -61,7 +51,7 @@ func Tags(registry, repository, username, apiKey string, client *http.Client, pr
 // Returns the manifest of the repo passed to it, the manifest of the resolved image,
 // which either is the same as the repo manifest if an image, or the repo resolved
 // from a manifest index, the size of the entire image, and error, if any.
-func Manifest(registry, repo, username, apiKey string, client *http.Client, prgchan NotifChan) ([]byte, []byte, int64, error) {
+func Manifest(registry, repo, username, apiKey string, client *http.Client, prgchan types.StatsNotifChan) ([]byte, []byte, int64, error) {
 	var (
 		manifestDirect, manifestResolved []byte
 		size                             int64
@@ -76,13 +66,13 @@ func Manifest(registry, repo, username, apiKey string, client *http.Client, prgc
 }
 
 // PullBlob downloads a blob from a registry and save it as a file as-is.
-func PullBlob(registry, repo, hash, localFile, username, apiKey string, maxsize int64, client *http.Client, prgchan NotifChan) (int64, string, error) {
+func PullBlob(registry, repo, hash, localFile, username, apiKey string, maxsize int64, client *http.Client, prgchan types.StatsNotifChan) (int64, string, error) {
 	logrus.Infof("PullBlob(%s, %s, %s) to %s", registry, repo, hash, localFile)
 
 	var (
 		w           io.Writer
 		r           io.Reader
-		stats       UpdateStats
+		stats       types.UpdateStats
 		size        int64
 		finalErr    error
 		contentType string
@@ -159,7 +149,7 @@ func PullBlob(registry, repo, hash, localFile, username, apiKey string, maxsize 
 
 	// send out the size
 	stats.Size = size
-	sendStats(prgchan, stats)
+	types.SendStats(prgchan, stats)
 
 	if localFile != "" {
 		f, err := os.Create(localFile)
@@ -203,7 +193,7 @@ func PullBlob(registry, repo, hash, localFile, username, apiKey string, maxsize 
 	for update := range c {
 		atomic.StoreInt64(&stats.Asize, update.Complete)
 		atomic.StoreInt64(&stats.Size, update.Total)
-		sendStats(prgchan, stats)
+		types.SendStats(prgchan, stats)
 		size = update.Complete
 		// any error means to stop
 		if update.Error != nil {
@@ -237,7 +227,7 @@ func ociGetManifest(ref name.Reference, opts []remote.Option) (io.Reader, string
 // Returns the manifest of the repo passed to it, the manifest of the resolved image,
 // which either is the same as the repo manifest if an image, or the repo resolved
 // from a manifest index, the size of the entire download, and error, if any.
-func Pull(registry, repo, localFile, username, apiKey string, client *http.Client, prgchan NotifChan) ([]byte, []byte, int64, error) {
+func Pull(registry, repo, localFile, username, apiKey string, client *http.Client, prgchan types.StatsNotifChan) ([]byte, []byte, int64, error) {
 	// this is the manifest referenced by the image. If it is an index, it returns the index.
 	var (
 		manifestDirect, manifestResolved []byte
@@ -245,7 +235,7 @@ func Pull(registry, repo, localFile, username, apiKey string, client *http.Clien
 		size                             int64
 		err                              error
 		ref                              name.Reference
-		stats                            UpdateStats
+		stats                            types.UpdateStats
 		image                            = fmt.Sprintf("%s/%s", registry, repo)
 	)
 
@@ -259,7 +249,7 @@ func Pull(registry, repo, localFile, username, apiKey string, client *http.Clien
 	}
 	// record the target size and send it
 	stats.Size = size
-	sendStats(prgchan, stats)
+	types.SendStats(prgchan, stats)
 
 	// create our local file and save to it
 	localDir := path.Dir(localFile)
@@ -306,7 +296,7 @@ func Pull(registry, repo, localFile, username, apiKey string, client *http.Clien
 
 	for update := range c {
 		atomic.StoreInt64(&stats.Asize, update.Complete)
-		sendStats(prgchan, stats)
+		types.SendStats(prgchan, stats)
 		// EOF means we are at the end
 		if update.Error != nil && update.Error == io.EOF {
 			break
@@ -317,15 +307,6 @@ func Pull(registry, repo, localFile, username, apiKey string, client *http.Clien
 	}
 
 	return manifestDirect, manifestResolved, size, nil
-}
-
-func sendStats(prgChan NotifChan, stats UpdateStats) {
-	if prgChan != nil {
-		select {
-		case prgChan <- stats:
-		default: //ignore we cannot write
-		}
-	}
 }
 
 func options(username, apiKey string, client *http.Client) []remote.Option {

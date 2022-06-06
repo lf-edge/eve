@@ -13,6 +13,7 @@ import (
 	"time"
 
 	azure "github.com/lf-edge/eve/libs/zedUpload/azureutil"
+	"github.com/lf-edge/eve/libs/zedUpload/types"
 )
 
 func (ep *AzureTransportMethod) Action(req *DronaRequest) error {
@@ -126,26 +127,10 @@ func (ep *AzureTransportMethod) processAzureUpload(req *DronaRequest) (string, e
 // File download from Azure Blob Datastore
 func (ep *AzureTransportMethod) processAzureDownload(req *DronaRequest) error {
 	file := req.name
-	prgChan := make(azure.NotifChan)
+	prgChan := make(types.StatsNotifChan)
 	defer close(prgChan)
 	if req.ackback {
-		go func(req *DronaRequest, prgNotif azure.NotifChan) {
-			ticker := time.NewTicker(StatsUpdateTicker)
-			defer ticker.Stop()
-			var stats azure.UpdateStats
-			var ok bool
-			for {
-				select {
-				case stats, ok = <-prgNotif:
-					if !ok {
-						return
-					}
-				case <-ticker.C:
-					req.doneParts = stats.DoneParts
-					ep.ctx.postSize(req, stats.Size, stats.Asize)
-				}
-			}
-		}(req, prgChan)
+		go statsUpdater(req, ep.ctx, prgChan)
 	}
 	doneParts, err := azure.DownloadAzureBlob(ep.aurl, ep.acName, ep.acKey, ep.container, file, req.objloc, req.sizelimit, ep.hClient, req.doneParts, prgChan)
 	req.doneParts = doneParts

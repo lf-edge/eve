@@ -11,6 +11,7 @@ import (
 	"time"
 
 	zedHttp "github.com/lf-edge/eve/libs/zedUpload/httputil"
+	"github.com/lf-edge/eve/libs/zedUpload/types"
 )
 
 type HttpTransportMethod struct {
@@ -113,28 +114,13 @@ func (ep *HttpTransportMethod) WithLogging(onoff bool) error {
 // File upload to HTTP Datastore
 func (ep *HttpTransportMethod) processHttpUpload(req *DronaRequest) (error, int) {
 	postUrl := ep.hurl + "/" + ep.path
-	prgChan := make(zedHttp.NotifChan)
+	prgChan := make(types.StatsNotifChan)
 	defer close(prgChan)
 	if req.ackback {
-		go func(req *DronaRequest, prgNotif zedHttp.NotifChan) {
-			ticker := time.NewTicker(StatsUpdateTicker)
-			defer ticker.Stop()
-			var stats zedHttp.UpdateStats
-			var ok bool
-			for {
-				select {
-				case stats, ok = <-prgNotif:
-					if !ok {
-						return
-					}
-				case <-ticker.C:
-					ep.ctx.postSize(req, stats.Size, stats.Asize)
-				}
-			}
-		}(req, prgChan)
+		go statsUpdater(req, ep.ctx, prgChan)
 	}
-	resp := zedHttp.ExecCmd(req.cancelContext, "post", postUrl, req.name, req.objloc, req.sizelimit, prgChan, ep.hClient)
-	return resp.Error, resp.BodyLength
+	stats, resp := zedHttp.ExecCmd(req.cancelContext, "post", postUrl, req.name, req.objloc, req.sizelimit, prgChan, ep.hClient)
+	return stats.Error, resp.BodyLength
 }
 
 // File download from HTTP Datastore
@@ -143,31 +129,13 @@ func (ep *HttpTransportMethod) processHttpDownload(req *DronaRequest) (error, in
 	if ep.hurl != "" {
 		file = ep.hurl + "/" + ep.path + "/" + req.name
 	}
-	prgChan := make(zedHttp.NotifChan)
+	prgChan := make(types.StatsNotifChan)
 	defer close(prgChan)
 	if req.ackback {
-		go func(req *DronaRequest, prgNotif zedHttp.NotifChan) {
-			ticker := time.NewTicker(StatsUpdateTicker)
-			defer ticker.Stop()
-			var stats zedHttp.UpdateStats
-			var ok bool
-			for {
-				select {
-				case stats, ok = <-prgNotif:
-					if !ok {
-						return
-					}
-				case <-ticker.C:
-					ep.ctx.postSize(req, stats.Size, stats.Asize)
-				}
-			}
-		}(req, prgChan)
+		go statsUpdater(req, ep.ctx, prgChan)
 	}
-	resp := zedHttp.ExecCmd(req.cancelContext, "get", file, "", req.objloc, req.sizelimit, prgChan, ep.hClient)
-	if resp.Error != nil {
-		return resp.Error, resp.BodyLength
-	}
-	return resp.Error, resp.BodyLength
+	stats, resp := zedHttp.ExecCmd(req.cancelContext, "get", file, "", req.objloc, req.sizelimit, prgChan, ep.hClient)
+	return stats.Error, resp.BodyLength
 }
 
 // File delete from HTTP Datastore
@@ -178,28 +146,13 @@ func (ep *HttpTransportMethod) processHttpDelete(req *DronaRequest) error {
 // File list from HTTP Datastore
 func (ep *HttpTransportMethod) processHttpList(req *DronaRequest) ([]string, error) {
 	listUrl := ep.hurl + "/" + ep.path
-	prgChan := make(zedHttp.NotifChan)
+	prgChan := make(types.StatsNotifChan)
 	defer close(prgChan)
 	if req.ackback {
-		go func(req *DronaRequest, prgNotif zedHttp.NotifChan) {
-			ticker := time.NewTicker(StatsUpdateTicker)
-			defer ticker.Stop()
-			var stats zedHttp.UpdateStats
-			var ok bool
-			for {
-				select {
-				case stats, ok = <-prgNotif:
-					if !ok {
-						return
-					}
-				case <-ticker.C:
-					ep.ctx.postSize(req, stats.Size, stats.Asize)
-				}
-			}
-		}(req, prgChan)
+		go statsUpdater(req, ep.ctx, prgChan)
 	}
-	resp := zedHttp.ExecCmd(req.cancelContext, "ls", listUrl, "", "", req.sizelimit, prgChan, ep.hClient)
-	return resp.List, resp.Error
+	stats, resp := zedHttp.ExecCmd(req.cancelContext, "ls", listUrl, "", "", req.sizelimit, prgChan, ep.hClient)
+	return resp.List, stats.Error
 }
 
 // Object Metadata from HTTP datastore
@@ -208,31 +161,13 @@ func (ep *HttpTransportMethod) processHttpObjectMetaData(req *DronaRequest) (err
 	if ep.hurl != "" {
 		file = ep.hurl + "/" + ep.path + "/" + req.name
 	}
-	prgChan := make(zedHttp.NotifChan)
+	prgChan := make(types.StatsNotifChan)
 	defer close(prgChan)
 	if req.ackback {
-		go func(req *DronaRequest, prgNotif zedHttp.NotifChan) {
-			ticker := time.NewTicker(StatsUpdateTicker)
-			defer ticker.Stop()
-			var stats zedHttp.UpdateStats
-			var ok bool
-			for {
-				select {
-				case stats, ok = <-prgNotif:
-					if !ok {
-						return
-					}
-				case <-ticker.C:
-					ep.ctx.postSize(req, stats.Size, stats.Asize)
-				}
-			}
-		}(req, prgChan)
+		go statsUpdater(req, ep.ctx, prgChan)
 	}
-	resp := zedHttp.ExecCmd(req.cancelContext, "meta", file, "", req.objloc, req.sizelimit, prgChan, ep.hClient)
-	if resp.Error != nil {
-		return resp.Error, resp.ContentLength
-	}
-	return resp.Error, resp.ContentLength
+	stats, resp := zedHttp.ExecCmd(req.cancelContext, "meta", file, "", req.objloc, req.sizelimit, prgChan, ep.hClient)
+	return stats.Error, resp.ContentLength
 }
 func (ep *HttpTransportMethod) getContext() *DronaCtx {
 	return ep.ctx
