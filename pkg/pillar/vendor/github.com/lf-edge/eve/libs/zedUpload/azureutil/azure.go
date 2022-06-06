@@ -29,18 +29,6 @@ const (
 	parallelism          = 16
 )
 
-// UpdateStats contains the information for the progress of an update
-type UpdateStats struct {
-	Size          int64    // complete size to upload/download
-	Asize         int64    // current size uploaded/downloaded
-	List          []string //list of images at given path
-	Error         error
-	BodyLength    int   // Body legth in http response
-	ContentLength int64 // Content length in http response
-
-	DoneParts types.DownloadedParts //downloaded parts
-}
-
 type sectionWriter struct {
 	count    int64
 	offset   int64
@@ -86,9 +74,6 @@ func (c *sectionWriter) Write(p []byte) (int, error) {
 
 	return n, nil
 }
-
-// NotifChan is the uploading/downloading progress notification channel
-type NotifChan chan UpdateStats
 
 // newHTTPClientFactory creates a HTTPClientPolicyFactory object that sends HTTP requests using a provided http.Client
 func newHTTPClientFactory(pipelineHTTPClient *http.Client) pipeline.Factory {
@@ -191,10 +176,10 @@ func DeleteAzureBlob(accountURL, accountName, accountKey, containerName, remoteF
 }
 
 func DownloadAzureBlob(accountURL, accountName, accountKey, containerName, remoteFile, localFile string,
-	objMaxSize int64, httpClient *http.Client, doneParts types.DownloadedParts, prgNotify NotifChan) (types.DownloadedParts, error) {
+	objMaxSize int64, httpClient *http.Client, doneParts types.DownloadedParts, prgNotify types.StatsNotifChan) (types.DownloadedParts, error) {
 
 	var file *os.File
-	stats := &UpdateStats{DoneParts: doneParts}
+	stats := &types.UpdateStats{DoneParts: doneParts}
 	p, err := newPipeline(accountName, accountKey, httpClient)
 	if err != nil {
 		return stats.DoneParts, fmt.Errorf("unable to create pipeline: %v", err)
@@ -269,6 +254,21 @@ func DownloadAzureBlob(accountURL, accountName, accountKey, containerName, remot
 	progressLock := &sync.Mutex{}
 
 	// use pool of buffers to re-use them if needed without re-allocation
+	// The way that azure download azblob.DoBatchTransfer below works,
+	// we are downloading `SingleMB` chunks, with a parallelism of `parallelism`.
+	// Above, that is set to 16.
+	// So we are downloading 16 1MB chunks at a time.
+	// We then write those to the correct offset in a file.
+	// This is a highly efficient way to download them.
+	// However, each call of `io.Copy()` will create a new buffer on start, and
+	// remove it on completion.
+	// With a parallelism of 16, we will need at least 16 buffers. As file sizes get large,
+	// and we require more and more 1MB chunks, there will be more and more buffer created and destroyed.
+	// A 1TB file has 1024*1024 1MB chunks, and therefore 1024*1024 buffer create and destroy.
+	// This can cause significant overhead.
+	//
+	// To alleviate this burden, we create a sync.Pool, which creates a reusable pool of buffers.
+	// With 16 parallelism, it will create 16 buffers, and then reuse them, reducing the burden.
 	var bufPool = sync.Pool{
 		New: func() interface{} {
 			buf := make([]byte, 32*1024)

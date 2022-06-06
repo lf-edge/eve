@@ -12,6 +12,7 @@ import (
 	"time"
 
 	zedGS "github.com/lf-edge/eve/libs/zedUpload/gsutil"
+	"github.com/lf-edge/eve/libs/zedUpload/types"
 )
 
 //Action do the operation with Google Storage datastore
@@ -123,25 +124,10 @@ func (ep *GsTransportMethod) processGSUpload(req *DronaRequest) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	prgChan := make(zedGS.NotifChan)
+	prgChan := make(types.StatsNotifChan)
 	defer close(prgChan)
 	if req.ackback {
-		go func(req *DronaRequest, prgNotif zedGS.NotifChan) {
-			ticker := time.NewTicker(StatsUpdateTicker)
-			defer ticker.Stop()
-			var stats zedGS.UpdateStats
-			var ok bool
-			for {
-				select {
-				case stats, ok = <-prgNotif:
-					if !ok {
-						return
-					}
-				case <-ticker.C:
-					ep.ctx.postSize(req, stats.Size, stats.Asize)
-				}
-			}
-		}(req, prgChan)
+		go statsUpdater(req, ep.ctx, prgChan)
 	}
 
 	sc, err := zedGS.NewGsCtx(req.cancelContext, ep.projectID, ep.apiKey, ep.hClient, true)
@@ -171,25 +157,10 @@ func (ep *GsTransportMethod) processGSDownload(req *DronaRequest) (int, error) {
 		}
 	}
 
-	prgChan := make(zedGS.NotifChan)
+	prgChan := make(types.StatsNotifChan)
 	defer close(prgChan)
 	if req.ackback {
-		go func(req *DronaRequest, prgNotif zedGS.NotifChan) {
-			ticker := time.NewTicker(StatsUpdateTicker)
-			defer ticker.Stop()
-			var stats zedGS.UpdateStats
-			var ok bool
-			for {
-				select {
-				case stats, ok = <-prgNotif:
-					if !ok {
-						return
-					}
-				case <-ticker.C:
-					ep.ctx.postSize(req, stats.Size, stats.Asize)
-				}
-			}
-		}(req, prgChan)
+		go statsUpdater(req, ep.ctx, prgChan)
 	}
 
 	err = s.DownloadFile(req.objloc, ep.bucket, req.name, req.sizelimit, prgChan)
@@ -226,25 +197,10 @@ func (ep *GsTransportMethod) processGSList(req *DronaRequest) ([]string, int, er
 	var csize int
 	var s []string
 
-	prgChan := make(zedGS.NotifChan)
+	prgChan := make(types.StatsNotifChan)
 	defer close(prgChan)
 	if req.ackback {
-		go func(req *DronaRequest, prgNotif zedGS.NotifChan) {
-			ticker := time.NewTicker(StatsUpdateTicker)
-			defer ticker.Stop()
-			var stats zedGS.UpdateStats
-			var ok bool
-			for {
-				select {
-				case stats, ok = <-prgNotif:
-					if !ok {
-						return
-					}
-				case <-ticker.C:
-					ep.ctx.postSize(req, stats.Size, stats.Asize)
-				}
-			}
-		}(req, prgChan)
+		go statsUpdater(req, ep.ctx, prgChan)
 	}
 	sc, err := zedGS.NewGsCtx(req.cancelContext, ep.projectID, ep.apiKey, ep.hClient, false)
 	if err != nil {

@@ -18,6 +18,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/lf-edge/eve/libs/zedUpload/types"
 	logutils "github.com/lf-edge/eve/pkg/pillar/utils/logging"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/net/html"
@@ -31,16 +32,12 @@ const (
 	inactivityTimeout = 5 * time.Minute
 )
 
-type UpdateStats struct {
-	Size          int64    // complete size to upload/download
-	Asize         int64    // current size uploaded/downloaded
+// Resp response data from executing commands
+type Resp struct {
 	List          []string //list of images at given path
-	Error         error
-	BodyLength    int   // Body legth in http response
-	ContentLength int64 // Content length in http response
+	BodyLength    int      // Body legth in http response
+	ContentLength int64    // Content length in http response
 }
-
-type NotifChan chan UpdateStats
 
 var userAgent = "UnityNetworkReporter/" + " (" + runtime.GOOS + " " + runtime.GOARCH + ")"
 
@@ -71,12 +68,13 @@ func getHref(token html.Token) (ok bool, href string) {
 // ExecCmd performs various commands such as "ls", "get", etc.
 // Note that "host" needs to contain the URL in the case of a get
 func ExecCmd(ctx context.Context, cmd, host, remoteFile, localFile string, objSize int64,
-	prgNotify NotifChan, client *http.Client) UpdateStats {
+	prgNotify types.StatsNotifChan, client *http.Client) (types.UpdateStats, Resp) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
 	var imgList []string
-	stats := UpdateStats{}
+	stats := types.UpdateStats{}
+	rsp := Resp{}
 	if client == nil {
 		client = getHttpClient()
 	}
@@ -86,19 +84,19 @@ func ExecCmd(ctx context.Context, cmd, host, remoteFile, localFile string, objSi
 		if err != nil {
 			stats.Error = fmt.Errorf("request failed for ls %s: %s",
 				host, err)
-			return stats
+			return stats, rsp
 		}
 		resp, err := client.Do(req)
 		if err != nil {
 			stats.Error = fmt.Errorf("get failed for ls %s: %s",
 				host, err)
-			return stats
+			return stats, rsp
 		}
 
 		if resp.StatusCode != 200 {
 			stats.Error = fmt.Errorf("bad response code for ls %s: %d",
 				host, resp.StatusCode)
-			return stats
+			return stats, rsp
 		}
 
 		tokenizer := html.NewTokenizer(resp.Body)
@@ -122,26 +120,21 @@ func ExecCmd(ctx context.Context, cmd, host, remoteFile, localFile string, objSi
 		}
 
 		resp.Body.Close()
-		stats.List = imgList
-		if prgNotify != nil {
-			select {
-			case prgNotify <- stats:
-			default: //ignore we cannot write
-			}
-		}
-		return stats
+		types.SendStats(prgNotify, stats)
+		rsp.List = imgList
+		return stats, rsp
 	case "get":
 		var copiedSize int64
 		stats.Size = objSize
 		dirErr := os.MkdirAll(filepath.Dir(localFile), 0755)
 		if dirErr != nil {
 			stats.Error = dirErr
-			return stats
+			return stats, Resp{}
 		}
 		local, fileErr := os.Create(localFile)
 		if fileErr != nil {
 			stats.Error = fileErr
-			return stats
+			return stats, Resp{}
 		}
 		defer local.Close()
 
@@ -194,7 +187,7 @@ func ExecCmd(ctx context.Context, cmd, host, remoteFile, localFile string, objSi
 			if err != nil {
 				stats.Error = fmt.Errorf("request failed for get %s: %s",
 					host, err)
-				return stats
+				return stats, Resp{}
 			}
 			req.Header.Set("User-Agent", userAgent)
 			req.Header.Set("Content-Type", "application/octet-stream")
@@ -244,7 +237,7 @@ func ExecCmd(ctx context.Context, cmd, host, remoteFile, localFile string, objSi
 			}
 			if resp.StatusCode == http.StatusOK {
 				// we received StatusOK which is the response for the whole content, not for the partial one
-				stats.BodyLength = int(resp.ContentLength)
+				rsp.BodyLength = int(resp.ContentLength)
 			}
 			//reset to be not affected by the client.Do timeouts
 			inactivityTimer.Reset(inactivityTimeout)
@@ -272,12 +265,7 @@ func ExecCmd(ctx context.Context, cmd, host, remoteFile, localFile string, objSi
 				//we received data so re-schedule inactivity timer
 				inactivityTimer.Reset(inactivityTimeout)
 				stats.Asize = copiedSize
-				if prgNotify != nil {
-					select {
-					case prgNotify <- stats:
-					default: //ignore we cannot write
-					}
-				}
+				types.SendStats(prgNotify, stats)
 			}
 			if done {
 				break
@@ -290,12 +278,12 @@ func ExecCmd(ctx context.Context, cmd, host, remoteFile, localFile string, objSi
 		if !done {
 			stats.Error = fmt.Errorf("%s: %s", host, strings.Join(errorList, "; "))
 		}
-		return stats
+		return stats, rsp
 	case "post":
 		file, err := os.Open(localFile)
 		if err != nil {
 			stats.Error = err
-			return stats
+			return stats, rsp
 		}
 		defer file.Close()
 		body := &bytes.Buffer{}
@@ -303,17 +291,17 @@ func ExecCmd(ctx context.Context, cmd, host, remoteFile, localFile string, objSi
 		part, err := writer.CreateFormFile(remoteFile, filepath.Base(localFile))
 		if err != nil {
 			stats.Error = err
-			return stats
+			return stats, rsp
 		}
 		_, err = io.Copy(part, file)
 		if err != nil {
 			stats.Error = err
-			return stats
+			return stats, rsp
 		}
 		err = writer.Close()
 		if err != nil {
 			stats.Error = err
-			return stats
+			return stats, rsp
 		}
 		req, _ := http.NewRequestWithContext(ctx, http.MethodPost, host, body)
 		req.Header.Set("User-Agent", userAgent)
@@ -323,33 +311,28 @@ func ExecCmd(ctx context.Context, cmd, host, remoteFile, localFile string, objSi
 		if err != nil {
 			stats.Error = fmt.Errorf("request failed for post %s: %s",
 				host, err)
-			return stats
+			return stats, rsp
 		} else {
 			BODY := &bytes.Buffer{}
 			_, err := BODY.ReadFrom(resp.Body)
 			if err != nil {
 				stats.Error = fmt.Errorf("post failed for %s: %s",
 					host, err)
-				return stats
+				return stats, rsp
 			}
 			resp.Body.Close()
 		}
 		Body, _ := ioutil.ReadAll(resp.Body)
 		stats.Asize = int64(len(Body))
-		if prgNotify != nil {
-			select {
-			case prgNotify <- stats:
-			default: //ignore we cannot write
-			}
-		}
-		stats.BodyLength = len(Body)
-		return stats
+		types.SendStats(prgNotify, stats)
+		rsp.BodyLength = len(Body)
+		return stats, rsp
 	case "meta":
 		req, err := http.NewRequestWithContext(ctx, http.MethodHead, host, nil)
 		if err != nil {
 			stats.Error = fmt.Errorf("request failed for meta %s: %s",
 				host, err)
-			return stats
+			return stats, rsp
 		}
 		req.Header.Set("User-Agent", userAgent)
 		req.Header.Set("Content-Type", "application/octet-stream")
@@ -358,12 +341,12 @@ func ExecCmd(ctx context.Context, cmd, host, remoteFile, localFile string, objSi
 		if err != nil {
 			stats.Error = fmt.Errorf("head failed for meta %s: %s",
 				host, err)
-			return stats
+			return stats, rsp
 		}
-		stats.ContentLength = resp.ContentLength
-		return stats
+		rsp.ContentLength = resp.ContentLength
+		return stats, rsp
 	default:
 		stats.Error = fmt.Errorf("unknown subcommand: %v", cmd)
-		return stats
+		return stats, rsp
 	}
 }

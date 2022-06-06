@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/lf-edge/eve/libs/zedUpload/types"
 	"github.com/pkg/sftp"
 	"golang.org/x/crypto/ssh"
 )
@@ -20,16 +21,12 @@ const (
 	SingleMB int64 = 1024 * 1024
 )
 
-// stats update
-type UpdateStats struct {
-	Size          int64    // complete size to upload/download
-	Asize         int64    // current size uploaded/downloaded
+// Resp response data from executing commands
+type Resp struct {
 	List          []string //list of images at given path
-	Error         error
 	ContentLength int64
+	Stats         types.UpdateStats
 }
-
-type NotifChan chan UpdateStats
 
 func getSftpClient(host, user, pass string) (*sftp.Client, error) {
 	clientConfig := &ssh.ClientConfig{
@@ -68,15 +65,14 @@ func getSftpClient(host, user, pass string) (*sftp.Client, error) {
 }
 
 func ExecCmd(cmd, host, user, pass, remoteFile, localFile string,
-	objSize int64, prgNotify NotifChan) UpdateStats {
+	objSize int64, prgNotify types.StatsNotifChan) (types.UpdateStats, Resp) {
 
 	var list []string
-	stats := UpdateStats{}
+	stats := types.UpdateStats{}
 	client, err := getSftpClient(host, user, pass)
 	if err != nil {
-		stats.Error = fmt.Errorf("sftpclient failed for %s: %s",
-			host, err)
-		return stats
+		stats.Error = fmt.Errorf("sftpclient failed for %s: %s", host, err)
+		return stats, Resp{}
 	}
 	defer client.Close()
 	switch cmd {
@@ -85,38 +81,32 @@ func ExecCmd(cmd, host, user, pass, remoteFile, localFile string,
 		for walker.Step() {
 			if err := walker.Err(); err != nil {
 				stats.Error = err
-				return stats
+				return stats, Resp{}
 			}
 			file := strings.Replace(walker.Path(), remoteFile+"/", "", -1)
 			list = append(list, file)
 		}
-		stats.List = list
-		if prgNotify != nil {
-			select {
-			case prgNotify <- stats:
-			default: //ignore we cannot write
-			}
-		}
-		return stats
+		types.SendStats(prgNotify, stats)
+		return stats, Resp{List: list}
 	case "fetch":
 		fr, err := client.Open(remoteFile)
 		if err != nil {
 			stats.Error = fmt.Errorf("open failed for %s: %s",
 				remoteFile, err)
-			return stats
+			return stats, Resp{}
 		}
 		tempLocalFile := localFile
 		index := strings.LastIndex(tempLocalFile, "/")
 		dir_err := os.MkdirAll(tempLocalFile[:index+1], 0755)
 		if dir_err != nil {
 			stats.Error = dir_err
-			return stats
+			return stats, Resp{}
 		}
 
 		fl, err := os.Create(localFile)
 		if err != nil {
 			stats.Error = err
-			return stats
+			return stats, Resp{}
 		}
 		defer fl.Close()
 
@@ -126,7 +116,7 @@ func ExecCmd(cmd, host, user, pass, remoteFile, localFile string,
 		for {
 			if written, err = io.CopyN(fl, fr, chunkSize); err != nil && err != io.EOF {
 				stats.Error = err
-				return stats
+				return stats, Resp{}
 			}
 			copiedSize += written
 			if written != chunkSize {
@@ -134,14 +124,9 @@ func ExecCmd(cmd, host, user, pass, remoteFile, localFile string,
 				break
 			}
 			stats.Asize = copiedSize
-			if prgNotify != nil {
-				select {
-				case prgNotify <- stats:
-				default: //ignore we cannot write
-				}
-			}
+			types.SendStats(prgNotify, stats)
 		}
-		return stats
+		return stats, Resp{}
 	case "put":
 		tempRemoteFile := remoteFile
 		index := strings.LastIndex(tempRemoteFile, "/")
@@ -149,49 +134,44 @@ func ExecCmd(cmd, host, user, pass, remoteFile, localFile string,
 		if err != nil {
 			stats.Error = fmt.Errorf("mkdir failed for %s: %s",
 				tempRemoteFile[:index+1], err)
-			return stats
+			return stats, Resp{}
 		}
 		fr, err := client.Create(remoteFile)
 		if err != nil {
 			stats.Error = fmt.Errorf("create failed for %s: %s",
 				remoteFile, err)
-			return stats
+			return stats, Resp{}
 		}
 		defer fr.Close()
 
 		fl, err := os.Open(localFile)
 		if err != nil {
 			stats.Error = err
-			return stats
+			return stats, Resp{}
 		}
 		fSize, err := fl.Stat()
 		if err != nil {
 			stats.Error = err
-			return stats
+			return stats, Resp{}
 		}
 		defer fl.Close()
 
 		chunkSize := SingleMB
 		var written, copiedSize int64
-		stats := UpdateStats{}
+		stats := types.UpdateStats{}
 		stats.Size = fSize.Size()
 		for {
 			if written, err = io.CopyN(fr, fl, chunkSize); err != nil && err != io.EOF {
 				stats.Error = err
-				return stats
+				return stats, Resp{}
 			}
 			copiedSize += written
 			if written != chunkSize {
 				// Must have reached EOF
-				return stats
+				return stats, Resp{}
 			}
 			stats.Asize = copiedSize
-			if prgNotify != nil {
-				select {
-				case prgNotify <- stats:
-				default: //ignore we cannot write
-				}
-			}
+			types.SendStats(prgNotify, stats)
 		}
 		// control never gets here - we will return from inside the loop.
 	case "stat":
@@ -200,19 +180,18 @@ func ExecCmd(cmd, host, user, pass, remoteFile, localFile string,
 			stats.Error = fmt.Errorf("lstat failed for %s: %s",
 				remoteFile, err)
 			stats.Error = err
-			return stats
+			return stats, Resp{}
 		}
-		stats.ContentLength = file.Size()
-		return stats
+		return stats, Resp{ContentLength: file.Size()}
 	case "rm":
 		err := client.Remove(remoteFile)
 		if err != nil {
 			stats.Error = fmt.Errorf("remove failed for %s: %s",
 				remoteFile, err)
 		}
-		return stats
+		return stats, Resp{}
 	default:
 		stats.Error = fmt.Errorf("unknown subcommand: %v", cmd)
-		return stats
+		return stats, Resp{}
 	}
 }

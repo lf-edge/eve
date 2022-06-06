@@ -23,22 +23,12 @@ import (
 	"github.com/lf-edge/eve/libs/zedUpload/types"
 )
 
-// stats update
-type UpdateStats struct {
-	Name      string                // always the remote key
-	Size      int64                 // complete size to upload/download
-	Asize     int64                 // current size uploaded/downloaded
-	List      []string              //list of images at given path
-	DoneParts types.DownloadedParts //downloaded parts
-}
-
-type NotifChan chan UpdateStats
-
 // CustomReader contains the details of Chunks being downloaded
 type CustomReader struct {
 	fp        *os.File
-	upSize    UpdateStats
-	prgNotify NotifChan
+	name      string
+	upSize    types.UpdateStats
+	prgNotify types.StatsNotifChan
 }
 
 func (r *CustomReader) Read(p []byte) (int, error) {
@@ -78,8 +68,9 @@ func (r *CustomReader) Seek(offset int64, whence int) (int64, error) {
 
 type writerOptions struct {
 	fp            *os.File
-	upSize        UpdateStats
-	prgNotify     NotifChan
+	upSize        types.UpdateStats
+	name          string
+	prgNotify     types.StatsNotifChan
 	donePartsLock sync.Mutex
 	err           error
 }
@@ -123,7 +114,7 @@ func (r *CustomWriter) Seek(offset int64, whence int) (int64, error) {
 	return r.writerGlobalOptions.fp.Seek(offset, whence)
 }
 
-func (s *S3ctx) UploadFile(fname, bname, bkey string, compression bool, prgNotify NotifChan) (string, error) {
+func (s *S3ctx) UploadFile(fname, bname, bkey string, compression bool, prgNotify types.StatsNotifChan) (string, error) {
 	location := ""
 
 	// if bucket doesn't exits, create one
@@ -147,7 +138,8 @@ func (s *S3ctx) UploadFile(fname, bname, bkey string, compression bool, prgNotif
 
 	creader := &CustomReader{
 		fp:        file,
-		upSize:    UpdateStats{Size: fileInfo.Size(), Name: bkey},
+		upSize:    types.UpdateStats{Size: fileInfo.Size()},
+		name:      bkey,
 		prgNotify: prgNotify,
 	}
 
@@ -245,7 +237,7 @@ func getNeededParts(cWriterOptions *writerOptions, bname, bkey string, doneParts
 }
 
 func (s *S3ctx) DownloadFile(fname, bname, bkey string,
-	objMaxSize int64, doneParts types.DownloadedParts, prgNotify NotifChan) (types.DownloadedParts, error) {
+	objMaxSize int64, doneParts types.DownloadedParts, prgNotify types.StatsNotifChan) (types.DownloadedParts, error) {
 
 	var fd *os.File
 	var wg sync.WaitGroup
@@ -292,7 +284,8 @@ func (s *S3ctx) DownloadFile(fname, bname, bkey string,
 
 	cWriterOpts := &writerOptions{
 		fp:        fd,
-		upSize:    UpdateStats{Size: bsize, Name: bkey, Asize: asize, DoneParts: doneParts},
+		upSize:    types.UpdateStats{Size: bsize, Asize: asize, DoneParts: doneParts},
+		name:      bkey,
 		prgNotify: prgNotify,
 	}
 
@@ -330,7 +323,7 @@ func (s *S3ctx) DownloadFileByChunks(fname, bname, bkey string) (io.ReadCloser, 
 	return req.Body, bsize, nil
 }
 
-func (s *S3ctx) ListImages(bname string, prgNotify NotifChan) ([]string, error) {
+func (s *S3ctx) ListImages(bname string, prgNotify types.StatsNotifChan) ([]string, error) {
 	var img []string
 	input := &s3.ListObjectsInput{
 		Bucket: aws.String(bname),
@@ -355,14 +348,8 @@ func (s *S3ctx) ListImages(bname string, prgNotify NotifChan) ([]string, error) 
 	for _, list := range result.Contents {
 		img = append(img, *list.Key)
 	}
-	stats := UpdateStats{}
-	stats.List = img
-	if prgNotify != nil {
-		select {
-		case prgNotify <- stats:
-		default: //ignore we cannot write
-		}
-	}
+	stats := types.UpdateStats{}
+	types.SendStats(prgNotify, stats)
 	return img, nil
 }
 

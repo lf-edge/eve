@@ -5,30 +5,29 @@ package gsutil
 
 import (
 	"compress/gzip"
-	"google.golang.org/api/iterator"
 	"io"
 	"os"
 	"path"
 	"path/filepath"
 	"sync/atomic"
+
+	"google.golang.org/api/iterator"
+
+	"github.com/lf-edge/eve/libs/zedUpload/types"
 )
 
-//UpdateStats structure for stats update
-type UpdateStats struct {
-	Name  string   // always the remote key
-	Size  int64    // complete size to upload/download
-	Asize int64    // current size uploaded/downloaded
-	List  []string //list of images at given path
+//Resp structure for response
+type Resp struct {
+	Name string
+	List []string //list of images at given path
 }
-
-//NotifChan to send updates
-type NotifChan chan UpdateStats
 
 // CustomReader contains the details of Chunks being downloaded
 type CustomReader struct {
 	fp        *os.File
-	upSize    UpdateStats
-	prgNotify NotifChan
+	upSize    types.UpdateStats
+	name      string
+	prgNotify types.StatsNotifChan
 }
 
 //Read with updates notification
@@ -38,12 +37,7 @@ func (r *CustomReader) Read(p []byte) (int, error) {
 		return n, err
 	}
 	atomic.AddInt64(&r.upSize.Asize, int64(n))
-	if r.prgNotify != nil {
-		select {
-		case r.prgNotify <- r.upSize:
-		default: //ignore we cannot write
-		}
-	}
+	types.SendStats(r.prgNotify, r.upSize)
 	return n, err
 }
 
@@ -56,12 +50,7 @@ func (r *CustomReader) ReadAt(p []byte, off int64) (int, error) {
 	// Got the length have read( or means has uploaded), and you can construct your message
 	atomic.AddInt64(&r.upSize.Asize, int64(n))
 
-	if r.prgNotify != nil {
-		select {
-		case r.prgNotify <- r.upSize:
-		default: //ignore we cannot write
-		}
-	}
+	types.SendStats(r.prgNotify, r.upSize)
 
 	return n, err
 }
@@ -74,8 +63,9 @@ func (r *CustomReader) Seek(offset int64, whence int) (int64, error) {
 //CustomWriter with notification on updates
 type CustomWriter struct {
 	fp        *os.File
-	upSize    UpdateStats
-	prgNotify NotifChan
+	upSize    types.UpdateStats
+	name      string
+	prgNotify types.StatsNotifChan
 }
 
 //Write with notification on updates
@@ -86,12 +76,7 @@ func (r *CustomWriter) Write(p []byte) (int, error) {
 	}
 	atomic.AddInt64(&r.upSize.Asize, int64(n))
 
-	if r.prgNotify != nil {
-		select {
-		case r.prgNotify <- r.upSize:
-		default: //ignore we cannot write
-		}
-	}
+	types.SendStats(r.prgNotify, r.upSize)
 
 	return n, err
 }
@@ -105,12 +90,7 @@ func (r *CustomWriter) WriteAt(p []byte, off int64) (int, error) {
 	// Got the length have written( or means has uploaded), and you can construct your message
 	atomic.AddInt64(&r.upSize.Asize, int64(n))
 
-	if r.prgNotify != nil {
-		select {
-		case r.prgNotify <- r.upSize:
-		default: //ignore we cannot write
-		}
-	}
+	types.SendStats(r.prgNotify, r.upSize)
 
 	return n, err
 }
@@ -121,7 +101,7 @@ func (r *CustomWriter) Seek(offset int64, whence int) (int64, error) {
 }
 
 //UploadFile to Google Storage
-func (s *GSctx) UploadFile(fname, bname, bkey string, compression bool, prgNotify NotifChan) (string, error) {
+func (s *GSctx) UploadFile(fname, bname, bkey string, compression bool, prgNotify types.StatsNotifChan) (string, error) {
 	location := ""
 
 	// if bucket doesn't exist, create one
@@ -145,7 +125,8 @@ func (s *GSctx) UploadFile(fname, bname, bkey string, compression bool, prgNotif
 
 	creader := &CustomReader{
 		fp:        file,
-		upSize:    UpdateStats{Size: fileInfo.Size(), Name: bkey},
+		upSize:    types.UpdateStats{Size: fileInfo.Size()},
+		name:      bkey,
 		prgNotify: prgNotify,
 	}
 
@@ -188,7 +169,7 @@ func (s *GSctx) UploadFile(fname, bname, bkey string, compression bool, prgNotif
 
 //DownloadFile from Google Storage
 func (s *GSctx) DownloadFile(fname, bname, bkey string,
-	bsize int64, prgNotify NotifChan) error {
+	bsize int64, prgNotify types.StatsNotifChan) error {
 
 	if err := os.MkdirAll(filepath.Dir(fname), 0775); err != nil {
 		return err
@@ -202,7 +183,8 @@ func (s *GSctx) DownloadFile(fname, bname, bkey string,
 
 	cWriter := &CustomWriter{
 		fp:        fd,
-		upSize:    UpdateStats{Size: bsize, Name: bkey},
+		upSize:    types.UpdateStats{Size: bsize},
+		name:      bkey,
 		prgNotify: prgNotify,
 	}
 
@@ -223,10 +205,10 @@ func (s *GSctx) DownloadFile(fname, bname, bkey string,
 }
 
 //ListImages in Google Storage
-func (s *GSctx) ListImages(bname string, prgNotify NotifChan) ([]string, error) {
+func (s *GSctx) ListImages(bname string, prgNotify types.StatsNotifChan) ([]string, error) {
 	var img []string
 
-	stats := UpdateStats{}
+	stats := types.UpdateStats{}
 	objs := s.gsClient.Bucket(bname).Objects(s.ctx, nil)
 	for {
 		o, err := objs.Next()
@@ -240,13 +222,7 @@ func (s *GSctx) ListImages(bname string, prgNotify NotifChan) ([]string, error) 
 			return img, nil
 		}
 		img = append(img, o.Name)
-		stats.List = img
-		if prgNotify != nil {
-			select {
-			case prgNotify <- stats:
-			default: //ignore we cannot write
-			}
-		}
+		types.SendStats(prgNotify, stats)
 	}
 	return img, nil
 }

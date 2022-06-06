@@ -13,6 +13,7 @@ import (
 	"time"
 
 	ociutil "github.com/lf-edge/eve/libs/zedUpload/ociutil"
+	"github.com/lf-edge/eve/libs/zedUpload/types"
 )
 
 // OCITransportMethod transport method to send images from OCI distribution
@@ -145,25 +146,10 @@ func (ep *OCITransportMethod) processDownload(req *DronaRequest) (int64, string,
 	if ep.registry == "" {
 		return size, "", fmt.Errorf("cannot download from blank registry")
 	}
-	prgChan := make(ociutil.NotifChan)
+	prgChan := make(types.StatsNotifChan)
 	defer close(prgChan)
 	if req.ackback {
-		go func(req *DronaRequest, prgNotif ociutil.NotifChan) {
-			ticker := time.NewTicker(StatsUpdateTicker)
-			defer ticker.Stop()
-			var stats ociutil.UpdateStats
-			var ok bool
-			for {
-				select {
-				case stats, ok = <-prgNotif:
-					if !ok {
-						return
-					}
-				case <-ticker.C:
-					ep.ctx.postSize(req, stats.Size, stats.Asize)
-				}
-			}
-		}(req, prgChan)
+		go statsUpdater(req, ep.ctx, prgChan)
 	}
 
 	// Pull down the blob as is and save it to a file named for the hash
@@ -179,25 +165,10 @@ func (ep *OCITransportMethod) processDelete(req *DronaRequest) error {
 
 // processList list tags for a given image in OCI registry
 func (ep *OCITransportMethod) processList(req *DronaRequest) ([]string, error) {
-	prgChan := make(ociutil.NotifChan)
+	prgChan := make(types.StatsNotifChan)
 	defer close(prgChan)
 	if req.ackback {
-		go func(req *DronaRequest, prgNotif ociutil.NotifChan) {
-			ticker := time.NewTicker(StatsUpdateTicker)
-			defer ticker.Stop()
-			var stats ociutil.UpdateStats
-			var ok bool
-			for {
-				select {
-				case stats, ok = <-prgNotif:
-					if !ok {
-						return
-					}
-				case <-ticker.C:
-					ep.ctx.postSize(req, stats.Size, stats.Asize)
-				}
-			}
-		}(req, prgChan)
+		go statsUpdater(req, ep.ctx, prgChan)
 	}
 	return ociutil.Tags(ep.registry, ep.path, ep.uname, ep.apiKey, ep.hClient, prgChan)
 }
@@ -213,25 +184,10 @@ func (ep *OCITransportMethod) processObjectMetaData(req *DronaRequest) (string, 
 	if ep.registry == "" {
 		return imageSha256, size, fmt.Errorf("cannot download from blank registry")
 	}
-	prgChan := make(ociutil.NotifChan)
+	prgChan := make(types.StatsNotifChan)
 	defer close(prgChan)
 	if req.ackback {
-		go func(req *DronaRequest, prgNotif ociutil.NotifChan) {
-			ticker := time.NewTicker(StatsUpdateTicker)
-			defer ticker.Stop()
-			var stats ociutil.UpdateStats
-			var ok bool
-			for {
-				select {
-				case stats, ok = <-prgNotif:
-					if !ok {
-						return
-					}
-				case <-ticker.C:
-					ep.ctx.postSize(req, stats.Size, stats.Asize)
-				}
-			}
-		}(req, prgChan)
+		go statsUpdater(req, ep.ctx, prgChan)
 	}
 	_, imageManifest, size, err = ociutil.Manifest(ep.registry, ep.path, ep.uname, ep.apiKey, ep.hClient, prgChan)
 	if err != nil {

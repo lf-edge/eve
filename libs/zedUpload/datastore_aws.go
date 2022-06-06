@@ -13,6 +13,7 @@ import (
 	"time"
 
 	zedAWS "github.com/lf-edge/eve/libs/zedUpload/awsutil"
+	"github.com/lf-edge/eve/libs/zedUpload/types"
 )
 
 //
@@ -129,25 +130,10 @@ func (ep *AwsTransportMethod) processS3Upload(req *DronaRequest) (error, int) {
 	if err != nil {
 		return err, 0
 	}
-	prgChan := make(zedAWS.NotifChan)
+	prgChan := make(types.StatsNotifChan)
 	defer close(prgChan)
 	if req.ackback {
-		go func(req *DronaRequest, prgNotif zedAWS.NotifChan) {
-			ticker := time.NewTicker(StatsUpdateTicker)
-			defer ticker.Stop()
-			var stats zedAWS.UpdateStats
-			var ok bool
-			for {
-				select {
-				case stats, ok = <-prgNotif:
-					if !ok {
-						return
-					}
-				case <-ticker.C:
-					ep.ctx.postSize(req, stats.Size, stats.Asize)
-				}
-			}
-		}(req, prgChan)
+		go statsUpdater(req, ep.ctx, prgChan)
 	}
 
 	// FiXME: strings.TrimSuffix needs to go away once final soultion is done.
@@ -172,6 +158,9 @@ func (ep *AwsTransportMethod) processS3Upload(req *DronaRequest) (error, int) {
 func (ep *AwsTransportMethod) processS3Download(req *DronaRequest) (error, int) {
 	var csize int
 	pwd := strings.TrimSuffix(ep.apiKey, "\n")
+	prgChan := make(types.StatsNotifChan)
+	defer close(prgChan)
+
 	if req.ackback {
 		s := zedAWS.NewAwsCtx(ep.token, pwd, ep.region, ep.hClient)
 		if req.cancelContext != nil {
@@ -183,28 +172,7 @@ func (ep *AwsTransportMethod) processS3Download(req *DronaRequest) (error, int) 
 				ep.ctx.postSize(req, length, 0)
 			}
 		}
-	}
-
-	prgChan := make(zedAWS.NotifChan)
-	defer close(prgChan)
-	if req.ackback {
-		go func(req *DronaRequest, prgNotif zedAWS.NotifChan) {
-			ticker := time.NewTicker(StatsUpdateTicker)
-			var stats zedAWS.UpdateStats
-			var ok bool
-			for {
-				select {
-				case stats, ok = <-prgNotif:
-					if !ok {
-						ticker.Stop()
-						return
-					}
-				case <-ticker.C:
-					req.doneParts = stats.DoneParts
-					ep.ctx.postSize(req, stats.Size, stats.Asize)
-				}
-			}
-		}(req, prgChan)
+		go statsUpdater(req, ep.ctx, prgChan)
 	}
 
 	sc := zedAWS.NewAwsCtx(ep.token, pwd, ep.region, ep.hClient)
@@ -278,25 +246,10 @@ func (ep *AwsTransportMethod) processS3List(req *DronaRequest) ([]string, error,
 	var s []string
 	pwd := strings.TrimSuffix(ep.apiKey, "\n")
 
-	prgChan := make(zedAWS.NotifChan)
+	prgChan := make(types.StatsNotifChan)
 	defer close(prgChan)
 	if req.ackback {
-		go func(req *DronaRequest, prgNotif zedAWS.NotifChan) {
-			ticker := time.NewTicker(StatsUpdateTicker)
-			defer ticker.Stop()
-			var stats zedAWS.UpdateStats
-			var ok bool
-			for {
-				select {
-				case stats, ok = <-prgNotif:
-					if !ok {
-						return
-					}
-				case <-ticker.C:
-					ep.ctx.postSize(req, stats.Size, stats.Asize)
-				}
-			}
-		}(req, prgChan)
+		go statsUpdater(req, ep.ctx, prgChan)
 	}
 	sc := zedAWS.NewAwsCtx(ep.token, pwd, ep.region, ep.hClient)
 	if sc == nil {
