@@ -16,6 +16,7 @@
 package nodeagent
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/json"
 	"fmt"
@@ -47,6 +48,8 @@ const (
 	configDir                   = "/config"
 	tmpDirname                  = "/run/global"
 	firstbootFile               = tmpDirname + "/first-boot"
+	installLog                  = types.PersistInstallerDir + "/installer.log"
+	installLogSendReq           = types.PersistInstallerDir + "/send-require" //indicates that we should send logs
 	restartCounterFile          = types.PersistStatusDir + "/restartcounter"
 	// Time limits for event loop handlers
 	errorTime   = 3 * time.Minute
@@ -217,6 +220,8 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	parseSMARTData()
 	// get the last reboot reason
 	handleLastRebootReason(ctxPtr)
+	// send Installation log and remove first-boot from installation
+	handleInstallationLog(ctxPtr)
 
 	// Fault injection; if /persist/fault-injection/readfile exists we read it
 	// which will use memory
@@ -612,6 +617,39 @@ func handleLastRebootReason(ctx *nodeagentContext) {
 	// Read and increment restartCounter
 	ctx.restartCounter = incrementRestartCounter()
 	ctx.lastLock.Unlock()
+}
+
+// handleInstallationLog checks if we should send installer logs
+// send log from installation to the controller
+// and remove file after small timeout to not send them after reboot
+func handleInstallationLog(ctx *nodeagentContext) {
+	if fileExists(installLogSendReq) {
+		f, err := os.Open(installLog)
+		if err != nil {
+			log.Errorf("cannot open installation log: %s", err)
+			return
+		}
+		scanner := bufio.NewScanner(f)
+		buf := make([]byte, 0, maxReadSize)
+		scanner.Buffer(buf, maxReadSize)
+		// installerLog is logger with modified source and zeroed pid
+		installerLog := base.NewSourceLogObject(ctx.agentBaseContext.Logger, "installer", 0)
+		for scanner.Scan() {
+			installerLog.Noticeln(scanner.Text())
+		}
+		if scanner.Err() != nil {
+			log.Errorf("cannot read installation log: %s", scanner.Err())
+		}
+		_ = f.Close()
+		// schedule remove of installLogSendReq file after small timeout
+		// to not re-send log after reboot
+		time.AfterFunc(warningTime, func() {
+			err := os.Remove(installLogSendReq)
+			if err != nil {
+				log.Errorf("cannot remove installation log sending request file: %s", err)
+			}
+		})
+	}
 }
 
 // If the file doesn't exist we pick zero.
