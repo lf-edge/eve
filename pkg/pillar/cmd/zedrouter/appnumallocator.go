@@ -104,7 +104,7 @@ func appNumAllocatorGC(ctx *zedrouterContext) {
 			continue
 		}
 		log.Functionf("appNumAllocatorGC: freeing %+v", appNumMap)
-		appNumFree(ctx, appNumMap.UUID)
+		appNumFree(ctx, appNumMap.UUID, false)
 		freedCount++
 	}
 	log.Functionf("appNumAllocatorGC freed %d", freedCount)
@@ -172,21 +172,32 @@ func appNumAllocate(ctx *zedrouterContext, baseID uuid.UUID,
 	return appNum
 }
 
-func appNumFree(ctx *zedrouterContext, baseID uuid.UUID) {
+func appNumFree(ctx *zedrouterContext, baseID uuid.UUID, fatal bool) {
 
 	pub := ctx.pubUuidToNum
 	numType := appNumType
 	appNum, err := uuidtonum.UuidToNumGet(log, pub, baseID, numType)
 	if err != nil {
-		log.Fatalf("num not found for %s",
-			baseID.String())
+		if fatal {
+			log.Fatalf("num not found for %s",
+				baseID.String())
+		} else {
+			log.Warnf("num not found for %s",
+				baseID.String())
+		}
+		return
 	}
 	baseMap := appNumBaseGet()
 	// Check that number exists in the allocated numbers
 	if !baseMap.IsSet(appNum) {
-		log.Fatalf("Bitmap is not set for %d", appNum)
+		if fatal {
+			log.Fatalf("Bitmap is not set for %d", appNum)
+		} else {
+			log.Warnf("Bitmap is not set for %d", appNum)
+		}
+	} else {
+		baseMap.Clear(appNum)
 	}
-	baseMap.Clear(appNum)
 	uuidtonum.UuidToNumDelete(log, pub, baseID)
 }
 

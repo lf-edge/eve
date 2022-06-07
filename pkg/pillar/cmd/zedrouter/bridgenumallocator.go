@@ -92,7 +92,7 @@ func bridgeNumAllocatorGC(ctx *zedrouterContext) {
 			continue
 		}
 		log.Functionf("bridgeNumAllocatorGC: freeing %+v", status)
-		bridgeNumFree(ctx, status.UUID)
+		bridgeNumFree(ctx, status.UUID, false)
 		freedCount++
 	}
 	log.Functionf("bridgeNumAllocatorGC freed %d", freedCount)
@@ -150,18 +150,30 @@ func bridgeNumAllocate(ctx *zedrouterContext, uuid uuid.UUID) int {
 	return bridgeNum
 }
 
-func bridgeNumFree(ctx *zedrouterContext, uuid uuid.UUID) {
+func bridgeNumFree(ctx *zedrouterContext, uuid uuid.UUID, fatal bool) {
 
 	bridgeNum, err := uuidtonum.UuidToNumGet(log, ctx.pubUuidToNum, uuid, "bridgeNum")
 	if err != nil {
-		log.Fatalf("bridgeNumFree: num not found for %s\n",
-			uuid.String())
+		if fatal {
+			log.Fatalf("bridgeNumFree: num not found for %s\n",
+				uuid.String())
+		} else {
+			log.Warnf("bridgeNumFree: num not found for %s\n",
+				uuid.String())
+		}
+		return
 	}
 	// Check that number exists in the allocated numbers
 	if !AllocReservedBridgeNumBits.IsSet(bridgeNum) {
-		log.Fatalf("bridgeNumFree: AllocReservedBridgeNumBits not set for %d\n",
-			bridgeNum)
+		if fatal {
+			log.Fatalf("bridgeNumFree: AllocReservedBridgeNumBits not set for %d\n",
+				bridgeNum)
+		} else {
+			log.Warnf("bridgeNumFree: AllocReservedBridgeNumBits not set for %d\n",
+				bridgeNum)
+		}
+	} else {
+		AllocReservedBridgeNumBits.Clear(bridgeNum)
 	}
-	AllocReservedBridgeNumBits.Clear(bridgeNum)
 	uuidtonum.UuidToNumDelete(log, ctx.pubUuidToNum, uuid)
 }
