@@ -1796,7 +1796,7 @@ func doAppNetworkModifyUNetAppNum(
 	oldIfIdx := ulStatus.IfIdx
 	// release the app number on old network
 	if _, err := appNumOnUNetGet(ctx, oldNetworkID, appID, oldIfIdx); err == nil {
-		appNumOnUNetFree(ctx, oldNetworkID, appID, oldIfIdx)
+		appNumOnUNetFree(ctx, oldNetworkID, appID, oldIfIdx, true)
 	}
 	// allocate an app number on new network
 	isStatic := (ulConfig.AppIPAddr != nil)
@@ -1845,7 +1845,7 @@ func handleDelete(ctx *zedrouterContext, key string,
 	// Write out what we modified to AppNetworkStatus aka delete
 	unpublishAppNetworkStatus(ctx, status)
 
-	appNumFree(ctx, status.UUIDandVersion.UUID)
+	appNumFree(ctx, status.UUIDandVersion.UUID, true)
 	appNumsOnUNetFree(ctx, status)
 	// Did this free up any last references against any Network Instance Status?
 	for ulNum := 0; ulNum < len(status.UnderlayNetworkList); ulNum++ {

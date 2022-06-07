@@ -188,7 +188,7 @@ func networkInstanceBridgeDelete(
 	if status.BridgeNum != 0 {
 		status.BridgeName = ""
 		status.BridgeNum = 0
-		bridgeNumFree(ctx, status.UUID)
+		bridgeNumFree(ctx, status.UUID, true)
 	}
 }
 
