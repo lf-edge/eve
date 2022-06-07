@@ -27,6 +27,8 @@ const (
 	VolumeClearDirName = ClearDirName + "/volumes"
 	// PersistDebugDir - Location for service specific debug/traces
 	PersistDebugDir = PersistDir + "/agentdebug"
+	// PersistInstallerDir - location for installer output
+	PersistInstallerDir = PersistDir + "/installer"
 
 	// IdentityDirname - Config dir
 	IdentityDirname = "/config"

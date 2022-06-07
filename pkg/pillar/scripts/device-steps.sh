@@ -121,6 +121,14 @@ fi
 
 DIRS="$CONFIGDIR $CONFIGDIR/DevicePortConfig $PERSIST_CERTS $PERSIST_AGENT_DEBUG /persist/status/zedclient/OnboardingStatus"
 
+# If /persist/installer/first-boot exists treat this as a first boot
+# we rename file to not assume that it is the first boot if we reboot occasionally
+if [ -f "$PERSISTDIR/installer/first-boot" ]; then
+    mv "$PERSISTDIR/installer/first-boot" "$PERSISTDIR/installer/send-require"
+    touch $FIRSTBOOTFILE # For nodeagent
+    FIRSTBOOT=1
+fi
+
 # If /persist didn't exist or was removed treat this as a first boot
 if [ ! -d $PERSIST_CERTS ]; then
     touch $FIRSTBOOTFILE # For nodeagent
