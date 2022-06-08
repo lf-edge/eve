@@ -616,8 +616,8 @@ enum APICapability {
   API_CAPABILITY_UNSPECIFIED = 0;
   API_CAPABILITY_RETRY_UPDATE = 1; // BaseOs.retry_update counter supported
   API_CAPABILITY_SHUTDOWN = 2; // shutdown DevOpsCmd support
+  API_CAPABILITY_START_DELAY_IN_SECONDS = 3; // start_delay_in_seconds supported
   // Coming soon:
-  // API_CAPABILITT_START_DELAY_IN_SECONDS = 3; // start_delay_in_seconds supported
   // API_CAPABILITY_EDGEVIEW = 4; // edgeview and edgeview.token supported
   // Add new values as new EdgeDevConfig API features are implemented
 }
