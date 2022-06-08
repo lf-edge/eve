@@ -597,7 +597,7 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 
 	ReportDeviceInfo.State = getState(ctx)
 
-	ReportDeviceInfo.ApiCapability = info.APICapability_API_CAPABILITY_SHUTDOWN
+	ReportDeviceInfo.ApiCapability = info.APICapability_API_CAPABILITY_START_DELAY_IN_SECONDS
 
 	// Report if there is a local override of profile
 	if ctx.getconfigCtx.currentProfile != ctx.getconfigCtx.globalProfile {
