@@ -144,7 +144,8 @@ type zedagentContext struct {
 	deviceShutdown            bool // From nodeagent
 	poweroffCmd               bool
 	poweroffCmdDeferred       bool
-	devicePoweroff            bool             // From nodeagent
+	devicePoweroff            bool // From nodeagent
+	allDomainsHalted          bool
 	currentRebootReason       string           // Set by zedagent
 	currentBootReason         types.BootReason // Set by zedagent
 	rebootReason              string           // Previous reboot from nodeagent
@@ -2240,6 +2241,7 @@ func handleNodeAgentStatusImpl(ctxArg interface{}, key string,
 	ctx.rebootReason = status.RebootReason
 	ctx.bootReason = status.BootReason
 	ctx.restartCounter = status.RestartCounter
+	ctx.allDomainsHalted = status.AllDomainsHalted
 	// if config reboot command was initiated and
 	// was deferred, and the device is not in inprogress
 	// state, initiate the reboot process
