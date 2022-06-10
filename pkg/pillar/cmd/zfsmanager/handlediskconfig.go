@@ -16,25 +16,32 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/zfs"
 )
 
-func getVdevNameAndStatus(devTree libzfs.VDevTree, name string) (string, libzfs.VDevStat) {
+// getVDevState returns vDev state from zfs if found
+// it processes name of vDev to remove partition and check that provided vDevName contains device
+// vDevName may be in form /dev/sda, /dev/sda9, sda, sda9
+func getVDevState(devTree libzfs.VDevTree, vDevName string) *libzfs.VDevState {
+	if vDevName == "" {
+		return nil
+	}
 	if devTree.Type != libzfs.VDevTypeDisk {
 		for _, d := range devTree.Devices {
-			retDev, retStat := getVdevNameAndStatus(d, name)
-			if retDev != "" {
-				return retDev, retStat
+			retState := getVDevState(d, vDevName)
+			if retState != nil {
+				return retState
 			}
 		}
-	} else {
-		// we can receive partition number
-		devName, err := disks.GetDiskNameByPartName(devTree.Name)
-		if err != nil {
-			log.Errorf("failed to get disk name by part name %s: %s", devTree.Name, err)
-		}
-		if strings.Contains(devName, name) {
-			return devName, devTree.Stat
-		}
+		return nil
 	}
-	return "", libzfs.VDevStat{}
+	// we can receive partition for example /dev/sda1
+	devName, err := disks.GetDiskNameByPartName(devTree.Name)
+	if err != nil {
+		log.Errorf("failed to get disk name by part name %s: %s", devTree.Name, err)
+		return nil
+	}
+	if strings.Contains(vDevName, filepath.Base(devName)) {
+		return &devTree.Stat.State
+	}
+	return nil
 }
 
 func handleDisksConfigCreate(ctxArg interface{}, _ string, _ interface{}) {
@@ -96,9 +103,15 @@ func processDisks(ctx *zfsContext) error {
 	if err != nil {
 		return fmt.Errorf("cannot open pool: %s", err)
 	}
-	defer persistPool.Close()
 	disksStateProcessing(disksConfig, persistPool)
+	persistPool.Close()
+	// re-read pool to grab changes after disksStateProcessing
+	persistPool, err = libzfs.PoolOpen(vault.DefaultZpool)
+	if err != nil {
+		return fmt.Errorf("cannot open pool: %s", err)
+	}
 	disksLayoutProcessing(disksConfig, persistPool)
+	persistPool.Close()
 	return nil
 }
 
@@ -111,51 +124,49 @@ func disksStateProcessing(disks types.EdgeNodeDisks, pool libzfs.Pool) {
 		return
 	}
 	for _, diskCfg := range disks.Disks {
-		diskName := filepath.Base(diskCfg.Disk.Name)
 		if diskCfg.OldDisk != nil {
-			oldDiskName := filepath.Base(diskCfg.OldDisk.Name)
-			oldDevName, oldDevStat := getVdevNameAndStatus(vdevTree, oldDiskName)
-			if oldDevName != "" && diskCfg.Disk.Name != "" {
+			oldDevState := getVDevState(vdevTree, diskCfg.OldDisk.Name)
+			if oldDevState != nil && diskCfg.Disk.Name != "" {
 				// if we found device oldDevName, replace it
-				log.Functionf("replacing %s with %s, old stat %s", oldDevName, diskCfg.Disk.Name, oldDevStat.State.String())
-				if stdout, err := zfs.ReplaceVDev(log, vault.DefaultZpool, oldDevName, diskCfg.Disk.Name); err != nil {
-					log.Errorf("cannot replace %s with %s: %s %s", oldDevName, diskCfg.Disk.Name, stdout, err)
+				log.Functionf("replacing %s with %s, old stat %s", diskCfg.OldDisk.Name, diskCfg.Disk.Name, oldDevState.String())
+				if stdout, err := zfs.ReplaceVDev(log, vault.DefaultZpool, diskCfg.OldDisk.Name, diskCfg.Disk.Name); err != nil {
+					log.Errorf("cannot replace %s with %s: %s %s", diskCfg.OldDisk.Name, diskCfg.Disk.Name, stdout, err)
 					continue
 				}
 			}
 		}
-		devName, devStat := getVdevNameAndStatus(vdevTree, diskName)
+		devState := getVDevState(vdevTree, diskCfg.Disk.Name)
 		// found in pool
-		if devName != "" {
-			log.Functionf("zpool config disk %s, op %d, stat %s", devName, diskCfg.Config, devStat.State.String())
+		if devState != nil {
+			log.Functionf("zpool config disk %s, op %d, stat %s", diskCfg.Disk.Name, diskCfg.Config, devState.String())
 			switch diskCfg.Config {
 			case types.EdgeNodeDiskConfigTypeZfsOnline:
-				switch zfs.GetZfsDeviceStatusFromStr(devStat.State.String()) {
+				switch zfs.GetZfsDeviceStatusFromStr(devState.String()) {
 				case types.StorageStatusOffline:
-					if err := pool.Online(true, devName); err != nil {
-						log.Errorf("cannot bring %s online: %s", devName, err)
+					if err := pool.Online(true, diskCfg.Disk.Name); err != nil {
+						log.Errorf("cannot bring %s online: %s", diskCfg.Disk.Name, err)
 					}
 				case types.StorageStatusOnline:
 					continue
 				default:
-					log.Errorf("unexpected state of disk %s (%s) to make online", devName, devStat.State.String())
+					log.Errorf("unexpected state of disk %s (%s) to make online", diskCfg.Disk.Name, devState.String())
 					continue
 				}
 			case types.EdgeNodeDiskConfigTypeZfsOffline:
-				switch zfs.GetZfsDeviceStatusFromStr(devStat.State.String()) {
+				switch zfs.GetZfsDeviceStatusFromStr(devState.String()) {
 				case types.StorageStatusOnline:
-					if err := pool.Offline(true, devName); err != nil {
-						log.Errorf("cannot bring %s offline: %s", devName, err)
+					if err := pool.Offline(true, diskCfg.Disk.Name); err != nil {
+						log.Errorf("cannot bring %s offline: %s", diskCfg.Disk.Name, err)
 					}
 				case types.StorageStatusOffline:
 					continue
 				default:
-					log.Errorf("unexpected state of disk %s (%s) to make offline", devName, devStat.State.String())
+					log.Errorf("unexpected state of disk %s (%s) to make offline", diskCfg.Disk.Name, devState.String())
 					continue
 				}
 			case types.EdgeNodeDiskConfigTypeUnused:
-				if stdout, err := zfs.RemoveVDev(log, vault.DefaultZpool, devName); err != nil {
-					log.Errorf("cannot remove %s: %s %s", devName, stdout, err)
+				if stdout, err := zfs.RemoveVDev(log, vault.DefaultZpool, diskCfg.Disk.Name); err != nil {
+					log.Errorf("cannot remove %s: %s %s", diskCfg.Disk.Name, stdout, err)
 				}
 			}
 		}
@@ -177,6 +188,7 @@ func disksLayoutProcessing(disks types.EdgeNodeDisks, pool libzfs.Pool) {
 	switch disks.ArrayType {
 	case types.EdgeNodeDiskArrayTypeRAID0:
 		disksLayoutRaid0Process(vdevTree, disks.Children)
+	case types.EdgeNodeDiskArrayTypeUnspecified:
 	default:
 		// TBD: other array types
 		log.Warnf("Not implemented layout processing for array type: %d", disks.ArrayType)
@@ -192,7 +204,7 @@ func disksLayoutRaid0Process(vdevTree libzfs.VDevTree, disks []types.EdgeNodeDis
 			diskName := ""
 			// check if we have one of defined devices as part of vdev
 			for _, dsk := range el.Disks {
-				if currentDiskName, _ := getVdevNameAndStatus(vdevTree, dsk.Disk.Name); currentDiskName != "" {
+				if devState := getVDevState(vdevTree, dsk.Disk.Name); devState != nil {
 					diskName = dsk.Disk.Name
 					break
 				}
@@ -202,7 +214,7 @@ func disksLayoutRaid0Process(vdevTree libzfs.VDevTree, disks []types.EdgeNodeDis
 				if len(el.Disks) > 0 {
 					// we add first device here as a new vdev to attach needed disks to it later
 					if stdout, err := zfs.AddVDev(log, vault.DefaultZpool, el.Disks[0].Disk.Name); err != nil {
-						log.Errorf("cannot add %s: %s %s", diskName, stdout, err)
+						log.Errorf("cannot add %s: %s %s", el.Disks[0].Disk.Name, stdout, err)
 					} else {
 						diskName = el.Disks[0].Disk.Name
 					}
@@ -211,8 +223,12 @@ func disksLayoutRaid0Process(vdevTree libzfs.VDevTree, disks []types.EdgeNodeDis
 			// if disk is here attach another disks
 			if diskName != "" {
 				for _, dsk := range el.Disks {
-					// check if already in pool or added as part of current iteration (we do not refresh the tree)
-					if currentDiskName, _ := getVdevNameAndStatus(vdevTree, dsk.Disk.Name); currentDiskName != "" || diskName == dsk.Disk.Name {
+					// check if added as part of current iteration (we do not refresh the tree)
+					if diskName == dsk.Disk.Name {
+						continue
+					}
+					// check if already in pool
+					if devState := getVDevState(vdevTree, dsk.Disk.Name); devState != nil {
 						continue
 					}
 					if stdout, err := zfs.AttachVDev(log, vault.DefaultZpool, diskName, dsk.Disk.Name); err != nil {
