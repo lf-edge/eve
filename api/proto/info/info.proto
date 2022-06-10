@@ -413,10 +413,12 @@ enum ZDeviceState {
     // is able to communicate with the controller. When all the components of
     // EVE are up, it transitions to ONLINE.
     ZDEVICE_STATE_BOOTING = 5;
-    // device shutting down all app instances
-    ZDEVICE_STATE_SHUTTING_DOWN = 6;
-    // device powering off
+    // device preparing power off - shutting down all app instances
+    ZDEVICE_STATE_PREPARING_POWEROFF = 6;
+    // device powering off from local profile server
     ZDEVICE_STATE_POWERING_OFF = 7;
+    // device prepared power off - all app instances are shut down
+    ZDEVICE_STATE_PREPARED_POWEROFF = 8;
 }
 
 enum StorageStatus {
