@@ -97,6 +97,7 @@ type nodeagentContext struct {
 	deviceReboot                bool
 	deviceShutdown              bool
 	devicePoweroff              bool
+	allDomainsHalted            bool   // Progression of reboot, shutdown, etc
 	currentRebootReason         string // Reason we are rebooting
 	currentBootReason           types.BootReason
 	lastLock                    sync.Mutex       // Ensure publish gets consistent data
@@ -660,6 +661,7 @@ func publishNodeAgentStatus(ctxPtr *nodeagentContext) {
 		DeviceReboot:               ctxPtr.deviceReboot,
 		DeviceShutdown:             ctxPtr.deviceShutdown,
 		DevicePoweroff:             ctxPtr.devicePoweroff,
+		AllDomainsHalted:           ctxPtr.allDomainsHalted,
 		RebootReason:               ctxPtr.rebootReason,
 		BootReason:                 ctxPtr.bootReason,
 		RebootStack:                ctxPtr.rebootStack,

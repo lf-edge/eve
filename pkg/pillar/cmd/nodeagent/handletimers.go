@@ -356,6 +356,8 @@ func handleNodeOperation(ctxPtr *nodeagentContext, op types.DeviceOperation) {
 	}
 	// Wait for All Domains Halted
 	waitForAllDomainsHalted(ctxPtr)
+	ctxPtr.allDomainsHalted = true
+	publishNodeAgentStatus(ctxPtr)
 
 	// do a sync
 	log.Functionf("Doing a sync..")

@@ -1075,7 +1075,10 @@ func getState(ctx *zedagentContext) info.ZDeviceState {
 		return info.ZDeviceState_ZDEVICE_STATE_REBOOTING
 	}
 	if ctx.shutdownCmd || ctx.deviceShutdown {
-		return info.ZDeviceState_ZDEVICE_STATE_SHUTTING_DOWN
+		if ctx.allDomainsHalted {
+			return info.ZDeviceState_ZDEVICE_STATE_PREPARED_POWEROFF
+		}
+		return info.ZDeviceState_ZDEVICE_STATE_PREPARING_POWEROFF
 	}
 	if ctx.poweroffCmd || ctx.devicePoweroff {
 		return info.ZDeviceState_ZDEVICE_STATE_POWERING_OFF

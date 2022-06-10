@@ -424,6 +424,7 @@ type NodeAgentStatus struct {
 	DeviceReboot               bool
 	DeviceShutdown             bool
 	DevicePoweroff             bool
+	AllDomainsHalted           bool       // Progression of reboot etc
 	RebootReason               string     // From last reboot
 	BootReason                 BootReason // From last reboot
 	RebootStack                string     // From last reboot
