@@ -554,10 +554,6 @@ func printOutput(ctx *diagContext) {
 	fmt.Fprintf(outfile, "\nINFO: updated diag information at %v\n",
 		time.Now().Format(time.RFC3339Nano))
 	// XXX certificate fingerprints? What does zedcloud use?
-	if fileExists(types.SelfRegFile) {
-		fmt.Fprintf(outfile, "INFO: selfRegister is still in progress\n")
-		// XXX print onboarding cert
-	}
 
 	switch ctx.derivedLedCounter {
 	case types.LedBlinkOnboarded:

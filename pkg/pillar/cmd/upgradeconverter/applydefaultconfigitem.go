@@ -113,10 +113,12 @@ func importFromConfigPartition(ctxPtr *ucContext) error {
 		return err
 	}
 	if keyDataValid {
+		// XXX fixme can't modify /config! Want protobuf config
 		os.Remove(baseAuthorizedKeysFile)
 		log.Functionf("Deleted %s file from /config/", baseAuthorizedKeysFile)
 	}
 	if globalConfigExists {
+		// XXX fixme can't update /config. Want proto file!
 		os.Remove(importGlobalConfigFile)
 		log.Functionf("Deleted %s file from /config/", importGlobalConfigFile)
 	}

@@ -31,7 +31,7 @@ const (
 	compatibleFile    = "/proc/device-tree/compatible"
 	cpuInfoFile       = "/proc/cpuinfo"
 	modelOverrideFile = types.PersistStatusDir + "/hardwaremodel"
-	softSerialFile    = types.IdentityDirname + "/soft_serial"
+	softSerialFile    = types.PersistDir + "/soft_serial"
 )
 
 // XXX Note that this function (and the ones below) log if there is an

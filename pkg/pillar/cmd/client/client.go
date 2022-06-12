@@ -56,9 +56,6 @@ var Version = "No version specified"
 //  server			Fixed? Written if redirected. factory-root-cert?
 //  onboard.cert.pem, onboard.key.pem	Per device onboarding certificate/key
 //  		   		for selfRegister operation
-//  device.cert.pem,
-//  device.key.pem		Device certificate/key created before this
-//  		     		client is started.
 //
 
 type clientContext struct {

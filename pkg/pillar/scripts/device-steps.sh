@@ -8,6 +8,8 @@ WATCHDOG_FILE=/run/watchdog/file
 CONFIGDIR=/config
 PERSISTDIR=/persist
 PERSIST_CERTS=$PERSISTDIR/certs
+DEVICE_CERT_NAME="/run/tpmmgr/device.cert.pem"
+DEVICE_KEY_NAME="/run/tpmmgr/device.key.pem"
 PERSIST_AGENT_DEBUG=$PERSISTDIR/agentdebug
 BINDIR=/opt/zededa/bin
 TMPDIR=/persist/tmp
@@ -111,10 +113,6 @@ fi
 mkdir -p $TMPDIR
 export TMPDIR
 
-if ! mount -o remount,flush,dirsync,noatime $CONFIGDIR; then
-    echo "$(date -Ins -u) Remount $CONFIGDIR failed"
-fi
-
 if ! mount -t securityfs securityfs "$SECURITYFSPATH"; then
     echo "$(date -Ins -u) mounting securityfs failed"
 fi
@@ -167,7 +165,30 @@ echo "$(date -Ins -u) Configuration from factory/install:"
 (cd $CONFIGDIR || return; ls -l)
 echo
 
-CONFIGDEV=$(zboot partdev CONFIG)
+PERSISTDEV=$(zboot partdev P3)
+
+# Handle upgrade from old EVE-OS on device without a TPM
+# Leave any existing cert/key in /config since read-only
+if [ -s $CONFIGDIR/device.key.pem ] && [ ! -s $PERSIST_CERTS/device.key.pem ]; then
+    echo "$(date -Ins -u) Copying device.key.pem to $PERSIST_CERTS"
+    cp -p $CONFIGDIR/device.key.pem $PERSIST_CERTS/
+    cp -p $CONFIGDIR/device.cert.pem $PERSIST_CERTS/
+fi
+
+# Also leave any existing soft_serial in /config since read-only
+if [ -s $CONFIGDIR/soft_serial ] && [ ! -s $PERSISTDIR/soft_serial ]; then
+    echo "$(date -Ins -u) Copying soft_serial to $PERSISTDIR"
+    cp -p $CONFIGDIR/soft_serial $PERSISTDIR/
+fi
+
+# If we already have a certificate in TPM NVRAM or in /persist put it in /run/tpmmgr
+if ! $BINDIR/tpmmgr getDeviceCert; then
+    echo "$(date -Ins -u) No existing device certificate"
+    touch $FIRSTBOOTFILE # For nodeagent
+    FIRSTBOOT=1
+else
+    echo "$(date -Ins -u) Found existing device certificate"
+fi
 
 # If zedbox is already running we don't have to start it.
 if ! pgrep zedbox >/dev/null; then
@@ -179,8 +200,8 @@ fi
 mkdir -p "$WATCHDOG_PID" "$WATCHDOG_FILE"
 touch "$WATCHDOG_PID/zedbox.pid" "$WATCHDOG_FILE/zedbox.touch"
 
-if [ -c $TPM_DEVICE_PATH ] && ! [ -f $CONFIGDIR/disable-tpm ]; then
-#It is a device with TPM, enable disk encryption
+if [ -c $TPM_DEVICE_PATH ] && ! [ -f $DEVICE_KEY_NAME ]; then
+    # It is a device with TPM, enable disk encryption
     if ! $BINDIR/vaultmgr setupDeprecatedVaults; then
         echo "$(date -Ins -u) device-steps: vaultmgr setupDeprecatedVaults failed"
     fi
@@ -270,10 +291,6 @@ if ! pgrep ledmanager >/dev/null; then
     $BINDIR/ledmanager &
     wait_for_touch ledmanager
 fi
-if [ ! -s $CONFIGDIR/device.cert.pem ]; then
-    touch $FIRSTBOOTFILE # For nodeagent
-    FIRSTBOOT=1
-fi
 
 # Start domainmgr to setup USB hid/storage based on onboarding status
 # and config item
@@ -319,17 +336,17 @@ access_usb() {
                 echo "$(date -Ins -u) $file not found on $SPECIAL"
             fi
         done
-        if [ -d /mnt/identity ] && [ -f $CONFIGDIR/device.cert.pem ]; then
+        if [ -d /mnt/identity ] && [ -f "$DEVICE_CERT_NAME" ]; then
             echo "$(date -Ins -u) Saving identity to USB stick"
-            IDENTITYHASH=$(cat /config/soft_serial)
+            IDENTITYHASH=$(cat $PERSISTDIR/soft_serial)
             IDENTITYDIR="/mnt/identity/$IDENTITYHASH"
             [ -d "$IDENTITYDIR" ] || mkdir -p "$IDENTITYDIR"
-            cp -p $CONFIGDIR/device.cert.pem "$IDENTITYDIR"
+            cp -p "$DEVICE_CERT_NAME" "$IDENTITYDIR"
             [ ! -f $CONFIGDIR/onboard.cert.pem ] || cp -p $CONFIGDIR/onboard.cert.pem "$IDENTITYDIR"
             [ ! -f $PERSISTDIR/status/uuid ] || cp -p $PERSISTDIR/status/uuid "$IDENTITYDIR"
             cp -p $CONFIGDIR/root-certificate.pem "$IDENTITYDIR"
             [ ! -f $CONFIGDIR/v2tlsbaseroot-certificates.pem ] || cp -p $CONFIGDIR/v2tlsbaseroot-certificates.pem "$IDENTITYDIR"
-            [ ! -f $CONFIGDIR/soft_serial ] || cp -p $CONFIGDIR/soft_serial "$IDENTITYDIR"
+            [ ! -f $PERSISTDIR/soft_serial ] || cp -p $PERSISTDIR/soft_serial "$IDENTITYDIR"
             $BINDIR/hardwaremodel -c -o "$IDENTITYDIR/hardwaremodel.dmi"
             $BINDIR/hardwaremodel -f -o "$IDENTITYDIR/hardwaremodel.txt"
             sync
@@ -361,6 +378,7 @@ access_usb
 # Need to clear old usb files from /config/DevicePortConfig
 if [ -f $CONFIGDIR/DevicePortConfig/usb.json ]; then
     echo "$(date -Ins -u) Removing old $CONFIGDIR/DevicePortConfig/usb.json"
+    # XXX can't modify CONFIGDIR
     rm -f $CONFIGDIR/DevicePortConfig/usb.json
 fi
 
@@ -391,7 +409,7 @@ if [ $RTC = 0 ]; then
 fi
 # On first boot (of boxes which have been powered off for a while) force
 # ntp setting of clock
-if [ ! -s $CONFIGDIR/device.cert.pem ] || [ $RTC = 0 ] || [ -n "$FIRSTBOOT" ]; then
+if [ ! -s "$DEVICE_CERT_NAME" ] || [ $RTC = 0 ] || [ -n "$FIRSTBOOT" ]; then
     # Wait for having IP addresses for a few minutes
     # so that we are likely to have an address when we run ntp then create cert
     echo "$(date -Ins -u) Starting waitforaddr"
@@ -455,27 +473,27 @@ else
         echo "$(date -Ins -u) No ntpd"
     fi
 fi
-if [ ! -s $CONFIGDIR/device.cert.pem ]; then
+if [ ! -s "$DEVICE_CERT_NAME" ]; then
     echo "$(date -Ins -u) Generating a device key pair and self-signed cert (using TPM/TEE if available)"
-    if [ -c $TPM_DEVICE_PATH ] && ! [ -f $CONFIGDIR/disable-tpm ]; then
+    if [ -c $TPM_DEVICE_PATH ] && ! [ -f $DEVICE_KEY_NAME ]; then
         echo "$(date -Ins -u) TPM device is present and allowed, creating TPM based device key"
         if ! $BINDIR/tpmmgr createDeviceCert; then
             echo "$(date -Ins -u) TPM is malfunctioning, falling back to software certs; disabling tpm"
             $BINDIR/tpmmgr createSoftDeviceCert
-            touch $CONFIGDIR/disable-tpm
         fi
     else
         $BINDIR/tpmmgr createSoftDeviceCert
     fi
     # Reduce chance that we register with controller and crash before
-    # the filesystem has persisted /config/device.cert.*
+    # the filesystem has persisted /persist/certs/device.cert.* on a device
+    # without a TPM
     sync
-    blockdev --flushbufs "$CONFIGDEV"
+    blockdev --flushbufs "$PERSISTDEV"
     sleep 10
     sync
-    blockdev --flushbufs "$CONFIGDEV"
+    blockdev --flushbufs "$PERSISTDEV"
     # Did we fail to generate a certificate?
-    if [ ! -s $CONFIGDIR/device.cert.pem ]; then
+    if [ ! -s "$DEVICE_CERT_NAME" ]; then
         echo "$(date -Ins -u) Failed to generate a device certificate. Done" | tee /dev/console
         exit 0
     fi
@@ -487,7 +505,7 @@ if [ ! -s $CONFIGDIR/server ] || [ ! -s $CONFIGDIR/root-certificate.pem ]; then
     exit 0
 fi
 
-if [ -c $TPM_DEVICE_PATH ] && ! [ -f $CONFIGDIR/disable-tpm ]; then
+if [ -c $TPM_DEVICE_PATH ] && ! [ -f $DEVICE_KEY_NAME ]; then
     echo "$(date -Ins -u) device-steps: TPM device, creating additional security certificates"
     if ! $BINDIR/tpmmgr createCerts; then
         echo "$(date -Ins -u) device-steps: createCerts failed"
@@ -562,7 +580,7 @@ for AGENT in $AGENTS; do
     touch "$WATCHDOG_FILE/$AGENT.touch"
 done
 
-blockdev --flushbufs "$CONFIGDEV"
+blockdev --flushbufs "$PERSISTDEV"
 
 echo "$(date -Ins -u) Initial setup done"
 
