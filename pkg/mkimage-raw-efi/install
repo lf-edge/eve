@@ -356,7 +356,7 @@ if [ "$INSTALL_DEV" != "$INSTALL_PERSIST" ]; then
               sgdisk -Z --clear "$PDEV" 2>/dev/null || :
               POOL_CREATION_COMMAND_SUFFIX="$POOL_CREATION_COMMAND_SUFFIX $PDEV"
               DISKS_TO_MERGE_COUNT=$((DISKS_TO_MERGE_COUNT+1))
-	      PDEV_LIST="$PDEV_LIST $PDEV"
+              PDEV_LIST="$PDEV_LIST $PDEV"
            else
               echo "WARNING: Cannot find /sys/block/$dev/dev, will skip it"
            fi
@@ -453,19 +453,21 @@ else
 fi
 
 
-if mount_part CONFIG "$INSTALL_DEV" /config -t vfat -o iocharset=iso8859-1; then
+# Note that /config is read only.
+if mount_part CONFIG "$INSTALL_DEV" /config -t vfat -o ro,iocharset=iso8859-1; then
    # uuidgen | sed -e 's#^.*-##'
    SOFT_SERIAL=$(tr ' ' '\012' < /proc/cmdline | sed -n '/eve_soft_serial=/s#eve_soft_serial=##p')
+   [ -n "$SOFT_SERIAL" ] || [ ! -f /config/soft_serial ] || SOFT_SERIAL=$(cat /config/soft_serial)
    SOFT_SERIAL=${SOFT_SERIAL:-$(uuidgen)}
    logmsg "SOFT_SERIAL = $SOFT_SERIAL"
-   grep -q eve_blackbox /proc/cmdline || [ -f /config/soft_serial ] || echo "$SOFT_SERIAL" > /config/soft_serial
+   grep -q eve_blackbox /proc/cmdline || echo "$SOFT_SERIAL" > /persist/soft_serial
 fi
 
 REPORT=
 # collect information about the node
 if mount_part INVENTORY "$(root_dev)" /run/INVENTORY -t vfat -o iocharset=iso8859-1; then
-   REPORT="/run/INVENTORY/$(cat /config/soft_serial 2>/dev/null)"
-   logmsg "EVE-OS installation will store report to USB inside /INVENTORY/$(cat /config/soft_serial 2>/dev/null)"
+   REPORT="/run/INVENTORY/$(cat /persist/soft_serial 2>/dev/null)"
+   logmsg "EVE-OS installation will store report to USB inside /INVENTORY/$(cat /persist/soft_serial 2>/dev/null)"
 else
    REPORT="/persist/installer"
    logmsg "EVE-OS installation will store report to $REPORT"
@@ -489,18 +491,38 @@ wdctl
 watchdog -F /dev/watchdog &
 
 TPM_DEVICE_PATH="/dev/tpmrm0"
+CONFIGDIR=/config
+PERSISTDIR=/persist
+PERSIST_CERTS=$PERSISTDIR/certs
+DEVICE_CERT_NAME="/run/tpmmgr/device.cert.pem"
+DEVICE_KEY_NAME="/run/tpmmgr/device.key.pem"
+
+mkdir -p $PERSIST_CERTS
+# Copy any pre-defined device cert/key from config partition to /persist
+if [ -s $CONFIGDIR/device.key.pem ] && [ ! -s $PERSIST_CERTS/device.key.pem ]; then
+    logmsg "Copying device.key.pem to $PERSIST_CERTS"
+    cp -p $CONFIGDIR/device.key.pem $PERSIST_CERTS/
+    cp -p $CONFIGDIR/device.cert.pem $PERSIST_CERTS/
+fi
+
+# If we already have a certificate put it in /run/tpmmgr
+if ! pillar_run tpmmgr getDeviceCert; then
+    logmsg "No existing device certificate"
+else
+    logmsg "Found pre-created device certificate"
+fi
 
 # The device cert generation needs the current time. Some hardware
 # doesn't have a battery-backed clock so we check the year makes some sense
 # In that case we defer until first boot of EVE to run ntp and generate
 # the device certificate
 YEAR=$(date +%Y)
-if [ "$YEAR" -gt 2020 ] && [ ! -f /config/device.cert.pem ]; then
-   if [ -c $TPM_DEVICE_PATH ] && ! [ -f /config/disable-tpm ]; then
+if [ "$YEAR" -gt 2020 ] && [ ! -f $DEVICE_CERT_NAME ]; then
+   if [ -c $TPM_DEVICE_PATH ] && ! [ -f $DEVICE_KEY_NAME ]; then
       logmsg "Generating TPM device certificate"
       if ! pillar_run tpmmgr createDeviceCert; then
          logmsg "Failed generating device certificate on TPM; fallback to soft"
-         touch /config/disable-tpm
+         # The future existence of /persist/certs/device.key.pem indicates not using TPM
          sync
       else
          logmsg "Generated a TPM device certificate"
@@ -511,7 +533,7 @@ if [ "$YEAR" -gt 2020 ] && [ ! -f /config/device.cert.pem ]; then
    else
       logmsg "No TPM; Generating soft device certificate"
    fi
-   if [ ! -f /config/device.cert.pem ]; then
+   if [ ! -f $DEVICE_CERT_NAME ]; then
       if ! pillar_run tpmmgr createSoftDeviceCert; then
          logmsg "Failed to generate soft device certificate"
       elif ! pillar_run tpmmgr createSoftCerts; then
@@ -522,8 +544,8 @@ if [ "$YEAR" -gt 2020 ] && [ ! -f /config/device.cert.pem ]; then
    sleep 5
 fi
 # Collect the device cert
-if [ -f /config/device.cert.pem ] && [ -n "$REPORT" ]; then
-   cat /config/device.cert.pem > "$REPORT/device.cert.pem"
+if [ -f $DEVICE_CERT_NAME ] && [ -n "$REPORT" ]; then
+   cat $DEVICE_CERT_NAME > "$REPORT/device.cert.pem"
 fi
 
 # finally check whether we are collecting a black box

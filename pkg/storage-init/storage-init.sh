@@ -114,7 +114,7 @@ if CONFIG=$(findfs PARTLABEL=CONFIG) && [ -n "$CONFIG" ]; then
     if ! fsck.vfat -y "$CONFIG"; then
         echo "$(date -Ins -u) fsck.vfat $CONFIG failed"
     fi
-    if ! mount -t vfat -o dirsync,noatime "$CONFIG" $CONFIGDIR; then
+    if ! mount -t vfat -o ro,iocharset=iso8859-1 "$CONFIG" $CONFIGDIR; then
         echo "$(date -Ins -u) mount $CONFIG failed"
     fi
 else
