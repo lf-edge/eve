@@ -237,6 +237,7 @@ LINUXKIT_VERSION=80c4edd5c54dc05fbeae932440372990fce39bd6
 LINUXKIT_SOURCE=https://github.com/linuxkit/linuxkit.git
 LINUXKIT_OPTS=--disable-content-trust $(if $(strip $(EVE_HASH)),--hash) $(EVE_HASH) $(if $(strip $(EVE_REL)),--release) $(EVE_REL) $(FORCE_BUILD)
 LINUXKIT_PKG_TARGET=build
+LINUXKIT_PATCHES_DIR=tools/linuxkit/patches
 RESCAN_DEPS=FORCE
 FORCE_BUILD=--force
 
@@ -609,6 +610,9 @@ $(LINUXKIT): | $(GOBUILDER)
 	git clone $(LINUXKIT_SOURCE) /tmp/linuxkit && \
 	cd /tmp/linuxkit && \
 	git checkout $(LINUXKIT_VERSION) && \
+	if [ -e /eve/$(LINUXKIT_PATCHES_DIR) ]; then \
+	    patch -p1 < /eve/$(LINUXKIT_PATCHES_DIR)/*.patch; \
+	fi && \
 	cd /tmp/linuxkit/src/cmd/linuxkit && \
 	GO111MODULE=on CGO_ENABLED=0 go build -o /go/bin/linuxkit -mod=vendor . && \
 	cd && \
