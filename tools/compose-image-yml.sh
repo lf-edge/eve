@@ -1,5 +1,9 @@
 #!/bin/bash
 
+yq() {
+  docker run --rm -i -v "${PWD}":/workdir mikefarah/yq "$@"
+}
+
 process-image-template() {
     local out_templ_path="$1"
     local eve_version="$2"
@@ -16,7 +20,7 @@ process-image-template() {
     for bit in "${bits[@]}"; do
         case "${bit}" in
             dev)
-                # TODO: process DEV flag
+                yq eval -i '(.services[] | select(.name == "pillar").image) |= "PILLAR_DEV_TAG"' "${out_templ_path}"
                 ;;
         esac
     done
