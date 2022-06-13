@@ -32,10 +32,14 @@ $(DISTDIR):
 
 build: $(APPS) $(APPS1)
 
+
+LDFLAGS=-s -w -X=main.Version=$(BUILD_VERSION)
+LDFLAGS:=-ldflags "$(LDFLAGS)"
+
 $(APPS): $(DISTDIR)/$(APPS)
 $(DISTDIR)/$(APPS): $(DISTDIR)
 	@echo "Building $@"
-	GO111MODULE=on GOOS=linux go build -mod=vendor -ldflags "-s -w -X=main.Version=$(BUILD_VERSION)" -o $@ ./$(@F)
+	GO111MODULE=on GOOS=linux go build -mod=vendor $(LDFLAGS) -o $@ ./$(@F)
 
 $(APPS1): $(DISTDIR)
 	@echo $@
