@@ -1,4 +1,4 @@
-#!/bin/bash -u
+#!/bin/bash
 # Poor man's[1] yml generator
 #
 #
@@ -12,7 +12,25 @@ get_git_tag() {
 }
 
 linuxkit_tag() {
-    echo "$(linuxkit pkg show-tag ${EVE_HASH:+--hash $EVE_HASH} "$EVE/$1")$ARCH"
+    local pkg="$1"
+    _linuxkit_tag 0 "${pkg}"
+}
+
+linuxkit_dev_tag() {
+    local pkg="$1"
+    _linuxkit_tag 1 "${pkg}"
+}
+
+_linuxkit_tag() {
+    local is_dev_build="$1"
+    local pkg="$2"
+    local -a build_yml_cmd
+
+    if [[ "${is_dev_build}" == 1 ]]; then
+      build_yml_cmd=(-build-yml build-dev.yml)
+    fi
+
+    echo "$(linuxkit pkg show-tag "${build_yml_cmd[@]}" ${EVE_HASH:+--hash $EVE_HASH} "${EVE}/${pkg}")${ARCH}"
 }
 
 immutable_tag() {
@@ -76,6 +94,7 @@ DNSMASQ_TAG=${DNSMASQ_TAG}
 STRONGSWAN_TAG=${STRONGSWAN_TAG}
 TESTMSVCS_TAG=${TESTMSVCS_TAG}
 PILLAR_TAG=${PILLAR_TAG}
+PILLAR_DEV_TAG=${PILLAR_DEV_TAG}
 STORAGE_INIT_TAG=${STORAGE_INIT_TAG}
 WWAN_TAG=${WWAN_TAG}
 WLAN_TAG=${WLAN_TAG}
@@ -129,6 +148,7 @@ WWAN_TAG=$(linuxkit_tag pkg/wwan)
 WLAN_TAG=$(linuxkit_tag pkg/wlan)
 GUACD_TAG=$(linuxkit_tag pkg/guacd)
 PILLAR_TAG=$(linuxkit_tag pkg/pillar)
+PILLAR_DEV_TAG=$(linuxkit_dev_tag pkg/pillar)
 STORAGE_INIT_TAG=$(linuxkit_tag pkg/storage-init)
 GPTTOOLS_TAG=$(linuxkit_tag pkg/gpt-tools)
 WATCHDOG_TAG=$(linuxkit_tag pkg/watchdog)
