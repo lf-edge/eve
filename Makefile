@@ -657,10 +657,7 @@ eve-%: pkg/%/Dockerfile build-tools $(RESCAN_DEPS)
 	$(QUIET): "$@: Succeeded (intermediate for pkg/%)"
 
 images/rootfs-%.yml.in: images/rootfs.yml.in FORCE
-	@if [ -e $@.patch ]; then patch -p0 -o $@.sed < $@.patch ;else cp $< $@.sed ;fi
-	$(QUIET)sed -e 's#EVE_VERSION#$(ROOTFS_VERSION)-$*-$(ZARCH)#' < $@.sed > $@ || rm $@ $@.sed
-	@rm $@.sed
-	$(QUIET): $@: Succeeded
+	$(QUITE)tools/compose-image-yml.sh $< $@ "$(ROOTFS_VERSION)-$*-$(ZARCH)"
 
 $(ROOTFS_FULL_NAME)-adam-kvm-$(ZARCH).$(ROOTFS_FORMAT): $(ROOTFS_FULL_NAME)-kvm-adam-$(ZARCH).$(ROOTFS_FORMAT)
 $(ROOTFS_FULL_NAME)-kvm-adam-$(ZARCH).$(ROOTFS_FORMAT): fullname-rootfs $(SSH_KEY)
