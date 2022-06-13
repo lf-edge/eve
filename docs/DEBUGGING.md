@@ -2,6 +2,57 @@
 
 This document describes various scenarios and how to debug them. It is a living document to which elements will be added.
 
+## Development Builds
+
+EveOS can be built in "development" mode, by specifying `DEV=y` flag. Currently this affects only pillar package. Specifically pillar is built with debug symbols, and includes [delve](https://github.com/go-delve/delve).
+
+Note that you might need to update your build tools (`rm build-tools/bin/linuxkit && make build-tools`), as this feature requires a backported patch (which will be deleted once we update to the latest linuxkit).
+
+```bash
+rm build-tools/bin/linuxkit
+make build-tools
+```
+
+To build and run a development Eve in virtualized environment:
+
+```bash
+make DEV=y pkg/pillar live run
+```
+
+### Using Delve debugger
+
+```bash
+ssh -L 2348:localhost:2345 -p 2222 root@localhost
+# -L 2348:localhost:2345 - forward host's port 2348 to Eve's port 2345
+# -p 2222 - use port 2222, as qemu forward it to Guest's (in this case EveOS) port 22 (ssh)
+
+eve enter pillar
+/opt/dlv --headless --listen :2345 attach "$(pgrep zedbox)"
+```
+
+In a different termianl
+
+```bash
+❯ dlv connect :2348
+Type 'help' for list of commands.
+(dlv) b github.com/lf-edge/eve/pkg/pillar/base.(*LogObject).Functionf
+Breakpoint 1 set at 0xf50db8 for github.com/lf-edge/eve/pkg/pillar/base.(*LogObject).Functionf() /pillar/base/log.go:74
+(dlv) c
+> github.com/lf-edge/eve/pkg/pillar/base.(*LogObject).Functionf() /pillar/base/log.go:74 (hits goroutine(56):1 total:1) (PC: 0xf50db8)
+(dlv) bt
+0  0x0000000000f50db8 in github.com/lf-edge/eve/pkg/pillar/base.(*LogObject).Functionf
+   at /pillar/base/log.go:74
+1  0x0000000001c82067 in github.com/lf-edge/eve/pkg/pillar/utils.WaitForOnboarded
+   at /pillar/utils/waitfor.go:111
+2  0x000000000254f047 in github.com/lf-edge/eve/pkg/pillar/cmd/domainmgr.Run
+   at /pillar/cmd/domainmgr/domainmgr.go:456
+3  0x0000000002bc5225 in main.startAgentAndDone
+   at /pillar/zedbox/zedbox.go:246
+4  0x0000000000ceef01 in runtime.goexit
+   at /usr/lib/go/src/runtime/asm_amd64.s:1371
+(dlv)
+```
+
 ## Live updates of system containers
 
 In order to aid rapid edit/compile/debug cycle EVE's storage-init container can be instructed to dynamically
@@ -10,11 +61,11 @@ with the code block at the bottom of [storage-init.sh](../pkg/storage-init/stora
 that image is ready, content of the `/persist/service/<service name>` will be made available as a rootfs of
 the `<service name>`. For example, in order to rapidly iterate on pillar services one can:
 
-```
-cp -r /containers/services/pillar/lower /persist/service/pillar
+```bash
+cp -r /containers/services/pillar/lower /persist/services/pillar
 # edit content under /persist/service/pillar
 # reboot and enjoy updates to the pillar container
-``` 
+```
 
 ## Keyboard/console access
 
