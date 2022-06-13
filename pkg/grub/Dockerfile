@@ -38,17 +38,32 @@ ENV GRUB_TAG_aarch64=2.06
 ENV GRUB_REPO=https://git.savannah.gnu.org/git/grub.git
 
 COPY / /
-RUN mkdir /grub-lib && git clone ${GRUB_REPO}
+RUN mkdir /grub-lib
+
+# hadolint ignore=DL3003
+RUN if [ ! -d "grub" ]; then \
+        git clone ${GRUB_REPO} \
+        && cd /grub \
+        && git config --add user.email a@b.c \
+        && git config user.name a \
+        && if [ "$(uname -m)" != x86_64 ]; then \
+            GRUB_COMMIT="$(git show-ref -s tags/grub-"$(eval echo "\$GRUB_TAG_$(uname -m)")")"; \
+        fi \
+        && git checkout -b grub-build "$GRUB_COMMIT" \
+        && if [ "$(uname -m)" != x86_64 ]; then \
+            rm -rf /patches \
+            && mv /patches-"$(eval echo "\$GRUB_TAG_$(uname -m)")" /patches \
+            && cp /patches-"$(uname -m)"-"$(eval echo "\$GRUB_TAG_$(uname -m)")"/* /patches/; \
+        fi \
+        && git am /patches/* \
+        && (./bootstrap || ./autogen.sh) ; \
+    fi
+
 
 WORKDIR /grub
-RUN git config --add user.email a@b.c && git config user.name a && \
-    if [ "$(uname -m)" != x86_64 ]; then GRUB_COMMIT="$(git show-ref -s tags/grub-"$(eval echo "\$GRUB_TAG_$(uname -m)")")"; fi && \
-    git checkout -b grub-build "$GRUB_COMMIT"
-RUN if [ "$(uname -m)" != x86_64 ]; then rm -rf /patches && mv /patches-"$(eval echo "\$GRUB_TAG_$(uname -m)")" /patches && cp /patches-"$(uname -m)"-"$(eval echo "\$GRUB_TAG_$(uname -m)")"/* /patches/; fi
-RUN git am /patches/*
 
-ENV BUILD_GRUB="set -e && git clean -f -d -x && git reset --hard HEAD && \
-  (./bootstrap || ./autogen.sh) && \
+ENV BUILD_GRUB="set -e && \
+  if [ -f Makefile ]; then make distclean; fi && \
   ./configure --disable-werror --libdir=/grub-lib --with-platform=\${GRUB_PLATFORM} CFLAGS='-Os -Wno-unused-value' && \
   make -j $(getconf _NPROCESSORS_ONLN) && \
   make install"
