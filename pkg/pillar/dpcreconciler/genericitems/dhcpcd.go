@@ -95,6 +95,7 @@ func (c *DhcpcdConfigurator) Create(ctx context.Context, item depgraph.Item) err
 		config := client.DhcpConfig
 
 		// Prepare input arguments
+		var op string
 		var args []string
 		switch config.Dhcp {
 		case types.DT_NONE:
@@ -102,6 +103,7 @@ func (c *DhcpcdConfigurator) Create(ctx context.Context, item depgraph.Item) err
 			return
 
 		case types.DT_CLIENT:
+			op = "--request"
 			args = []string{"-f", "/dhcpcd.conf", "--noipv4ll", "-b", "-t", "0"}
 			switch config.Type {
 			case types.NtIpv4Only:
@@ -136,6 +138,7 @@ func (c *DhcpcdConfigurator) Create(ctx context.Context, item depgraph.Item) err
 				done(err)
 				return
 			}
+			op = "--static"
 			args = []string{fmt.Sprintf("ip_address=%s", config.AddrSubnet)}
 			extras := []string{"-f", "/dhcpcd.conf", "-b", "-t", "0"}
 			if config.Gateway == nil || config.Gateway.String() == "0.0.0.0" {
@@ -176,7 +179,7 @@ func (c *DhcpcdConfigurator) Create(ctx context.Context, item depgraph.Item) err
 		}
 		c.Log.Functionf("dhcpcd for interface %s is not running", ifName)
 		startTime := time.Now()
-		if err := c.dhcpcdCmd("--request", args, ifName, true); err != nil {
+		if err := c.dhcpcdCmd(op, args, ifName, true); err != nil {
 			c.Log.Error(err)
 			done(err)
 			return
