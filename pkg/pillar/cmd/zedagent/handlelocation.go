@@ -34,8 +34,8 @@ func locationTimerTask(ctx *zedagentContext, handleChannel chan interface{}) {
 	// Ticker for periodic publishing to the controller.
 	cloudInterval := ctx.globalConfig.GlobalValueInt(types.LocationCloudInterval)
 	interval := time.Duration(cloudInterval) * time.Second
-	max := float64(interval)
-	min := max * 0.3
+	max := float64(interval) * 1.5
+	min := float64(interval) * 0.5
 	cloudTicker := flextimer.NewRangeTicker(time.Duration(min), time.Duration(max))
 
 	// Ticker for periodic publishing to the Local profile server.
@@ -96,8 +96,8 @@ func updateLocationCloudTimer(ctx *getconfigContext, cloudInterval uint32) {
 	}
 	interval := time.Duration(cloudInterval) * time.Second
 	log.Functionf("updateLocationCloudTimer: cloudInterval change to %v", interval)
-	max := float64(interval)
-	min := max * 0.3
+	max := float64(interval) * 1.5
+	min := float64(interval) * 0.5
 	flextimer.UpdateRangeTicker(ctx.locationCloudTickerHandle,
 		time.Duration(min), time.Duration(max))
 	// Force an immediate timeout since timer could have decreased.
