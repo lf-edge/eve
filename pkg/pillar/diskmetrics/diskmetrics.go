@@ -70,14 +70,15 @@ func CreateImg(ctx context.Context, log *base.LogObject, diskfile string, format
 	return nil
 }
 
-//ConvertImg do conversion of diskfile to outputFile with defined format
-func ConvertImg(ctx context.Context, log *base.LogObject, diskfile, outputFile, outputFormat string) error {
+//RolloutImgToBlock do conversion of diskfile to outputFile with defined format
+func RolloutImgToBlock(ctx context.Context, log *base.LogObject, diskfile, outputFile, outputFormat string) error {
 	if _, err := os.Stat(diskfile); err != nil {
 		return err
 	}
 	// writeback cache instead of default unsafe, out of order enabled, skip file creation
-	args := []string{"convert", "-t", "writeback", "-W", "-n", "-O", outputFormat, diskfile, outputFile}
-	output, err := base.Exec(log, "/usr/bin/qemu-img", args...).WithContext(ctx).CombinedOutput()
+	// Timeout 2 hours
+	args := []string{"convert", "--target-is-zero", "-t", "writeback", "-W", "-n", "-O", outputFormat, diskfile, outputFile}
+	output, err := base.Exec(log, "/usr/bin/qemu-img", args...).WithContext(ctx).CombinedOutputWithCustomTimeout(432000)
 	if err != nil {
 		errStr := fmt.Sprintf("qemu-img failed: %s, %s\n",
 			err, output)

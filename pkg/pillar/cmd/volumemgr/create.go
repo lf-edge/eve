@@ -102,7 +102,7 @@ func createVdiskVolume(ctx *volumemgrContext, status types.VolumeStatus,
 				log.Error(errStr)
 				return created, "", errors.New(errStr)
 			}
-			if err := diskmetrics.ConvertImg(createContext, log, pathToFile, zVolDevice, "raw"); err != nil {
+			if err := diskmetrics.RolloutImgToBlock(createContext, log, pathToFile, zVolDevice, "raw"); err != nil {
 				errStr := fmt.Sprintf("Error converting %s to zfs zvol %s: %v",
 					pathToFile, zVolDevice, err)
 				log.Error(errStr)
