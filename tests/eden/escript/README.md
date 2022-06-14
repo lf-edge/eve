@@ -151,6 +151,8 @@ are:
 - [link] for whether the OS has hard link support
 - [symlink] for whether the OS has symbolic link support
 - [exec:prog] for whether prog is available for execution (found by exec.LookPath)
+- [env:variable] if the environment variable has a non-empty string value assigned
+- [stdout:pattern] and [stderr:pattern] if stdout/stderr match provided pattern
 ```
 
 A condition can be negated: [!short] means to run the rest of the line when
@@ -224,6 +226,10 @@ The predefined commands are:
     test. At the end of the test, any remaining background processes are
     terminated using os.Interrupt (if supported) or os.Kill.
 
+    If the last token is '&word&` (where "word" is alphanumeric), the
+    command runs in the background but has a name, and can be waited
+    for specifically by passing the word to 'wait'.
+
     Standard input can be provided using the stdin command; this will be
     cleared after exec has been called.
 
@@ -288,7 +294,7 @@ The predefined commands are:
     Run the given 'eden' test executable program with the arguments.
     Behaves the same way as an 'exec'.
 
-* wait
+* wait [command]
 
     Wait for all 'exec', 'eden' and 'test' commands started in
     the background (with the '&' token) to exit, and display success
@@ -296,6 +302,8 @@ The predefined commands are:
     After a call to wait, the 'stderr' and 'stdout' commands will apply to the
     concatenation of the corresponding streams of the background commands,
     in the order in which those commands were started.
+
+    If an argument is specified, it waits for just that command.
 
 When TestEdenScripts runs a script and the script fails, by default TestEdenScripts
 shows the execution of the most recent phase of the script (since the last # comment)
@@ -355,14 +363,14 @@ directory behind when it exits, for manual debugging of failing tests:
     $ ./eden test tests/escript/ -r TestEdenScripts/bug -v debug -a '-testwork'
     DEBU[0000] DIR: tests/escript/
     DEBU[0000] Will use config from /home/user/.eden/contexts/default.yml
-    DEBU[0000] Try to add config from /data/work/user/EVE/github/itmo-eve/eden/tests/escript/eden-config.yml
-    DEBU[0000] Merged config with /data/work/user/EVE/github/itmo-eve/eden/tests/escript/eden-config.yml
+    DEBU[0000] Try to add config from /data/work/user/EVE/github/lf-edge/eden/tests/escript/eden-config.yml
+    DEBU[0000] Merged config with /data/work/user/EVE/github/lf-edge/eden/tests/escript/eden-config.yml
     DEBU[0000] testApp: eden.escript.test
     DEBU[0000] Will use config from /home/user/.eden/contexts/default.yml
-    DEBU[0000] Try to add config from /data/work/user/EVE/github/itmo-eve/eden/tests/escript/eden-config.yml
-    DEBU[0000] Merged config with /data/work/user/EVE/github/itmo-eve/eden/tests/escript/eden-config.yml
-    DEBU[0000] testProg: /home/user/work/EVE/github/itmo-eve/eden/dist/bin/eden.escript.test
-    DEBU[0000] Test: /home/user/work/EVE/github/itmo-eve/eden/dist/bin/eden.escript.test -test.run TestEdenScripts/bug -test.v -testwork
+    DEBU[0000] Try to add config from /data/work/user/EVE/github/lf-edge/eden/tests/escript/eden-config.yml
+    DEBU[0000] Merged config with /data/work/user/EVE/github/lf-edge/eden/tests/escript/eden-config.yml
+    DEBU[0000] testProg: /home/user/work/EVE/github/lf-edge/eden/dist/bin/eden.escript.test
+    DEBU[0000] Test: /home/user/work/EVE/github/lf-edge/eden/dist/bin/eden.escript.test -test.run TestEdenScripts/bug -test.v -testwork
     === RUN   TestEdenScripts
     INFO[0000] testData directory: testdata
     === RUN   TestEdenScripts/bug

@@ -1,5 +1,4 @@
-{{$test1 := "test eden.lim.test -test.v -timewait 10m -test.run TestInfo"}}
-{{$test2 := "test eden.lim.test -test.v -timewait 1m -test.run TestInfo"}}
+{{$test := "test eden.lim.test -test.v -timewait 5m -test.run TestInfo"}}
 
 #eden config add default
 #eden setup
@@ -7,14 +6,18 @@
 #eden eve onboard
 
 eden eve epoch &
-
 # Trying to find eth0 or eth1 in dinfo.network.devName.
-{{$test1}} -out InfoContent.dinfo.network.devName 'InfoContent.dinfo.network.devName:.*eth[01].*'
+{{$test}} -out InfoContent.dinfo.network.devName 'InfoContent.dinfo.network.devName:.*eth[01].*'
 stdout 'eth[01]'
 
-# Checking dinfo.network.devName for interfaces other than eth0 or eth1.
-! {{$test2}} -out InfoContent.dinfo.network.devName 'InfoContent.dinfo.network.devName:.*eth[^01].*'
-! stdout 'eth[^01]'
+{{$tpm := EdenConfig "eve.tpm"}}
+{{if (eq $tpm "true")}}
+eden eve epoch &
+{{$test}} -out InfoContent.dinfo.HSMStatus 'InfoContent.dinfo.HSMStatus:ENABLED'
+stdout 'ENABLED'
+{{end}}
+
+wait
 
 # Test's config. file
 -- eden-config.yml --

@@ -36,21 +36,21 @@ test eden.network.test -test.v -timewait 10m ACTIVATED nat
 test eden.network.test -test.v -timewait 10m ACTIVATED switch
 
 # Deploy DHCP server
-eden pod deploy -n dhcp-server --memory=512MB --networks=nat --networks=switch -p 8027:80 --mount=src={{EdenConfig "eden.tests"}}/network/testdata/vlans/dhcp-server,dst=/app {{$image}}
+eden pod deploy -n dhcp-server --memory=448MB --networks=nat --networks=switch -p 8027:80 --mount=src={{EdenConfig "eden.tests"}}/network/testdata/vlans/dhcp-server,dst=/app {{$image}}
 test eden.app.test -test.v -timewait 10m RUNNING dhcp-server
 exec -t 2m bash wait_and_get_ifconfig.sh dhcp-server 8027
 stdout '10.2.100.1  netmask 255.255.255.0'
 stdout '10.2.200.1  netmask 255.255.255.0'
 
 # Deploy app1 and connect it to VLAN 100
-eden pod deploy -n app1 --memory=512MB --networks=nat --networks=switch -p 8028:80 --vlan=switch:100 --metadata='url={{$test_data}}' {{$image}}
+eden pod deploy -n app1 --memory=448MB --networks=nat --networks=switch -p 8028:80 --vlan=switch:100 --metadata='url={{$test_data}}' {{$image}}
 test eden.app.test -test.v -timewait 10m RUNNING app1
 exec -t 5m bash wait_and_get_ip.sh app1 8028
 grep 'app1_ip=10.2.100.\d+' .env
 source .env
 
 # Deploy app2 and connect it to VLAN 100
-eden pod deploy -n app2 --memory=512MB --networks=nat --networks=switch -p 8029:80 --vlan=switch:100 --metadata="url=http://${app1_ip}/user-data.html" {{$image}}
+eden pod deploy -n app2 --memory=448MB --networks=nat --networks=switch -p 8029:80 --vlan=switch:100 --metadata="url=http://${app1_ip}/user-data.html" {{$image}}
 test eden.app.test -test.v -timewait 10m RUNNING app2
 exec -t 5m bash wait_and_get_ip.sh app2 8029
 grep 'app2_ip=10.2.100.\d+' .env
@@ -61,7 +61,7 @@ exec -t 5m bash wait_and_get_recv_data.sh app2 8029
 stdout '{{$test_data}}'
 
 # Deploy app3 and connect it to VLAN 200
-eden pod deploy -n app3 --memory=512MB --networks=nat --networks=switch -p 8030:80 --vlan=switch:200 --metadata="url=http://${app1_ip}/user-data.html" {{$image}}
+eden pod deploy -n app3 --memory=448MB --networks=nat --networks=switch -p 8030:80 --vlan=switch:200 --metadata="url=http://${app1_ip}/user-data.html" {{$image}}
 test eden.app.test -test.v -timewait 10m RUNNING app3
 exec -t 5m bash wait_and_get_ip.sh app3 8030
 grep 'app3_ip=10.2.200.\d+' .env
@@ -72,7 +72,7 @@ exec -t 5m bash wait_and_get_recv_data.sh app3 8030
 ! stdout '{{$test_data}}'
 
 # Deploy app4 outside of VLANs
-eden pod deploy -n app4 --memory=512MB --networks=nat --networks=switch -p 8031:80 --metadata="url=http://${app1_ip}/user-data.html" {{$image}}
+eden pod deploy -n app4 --memory=448MB --networks=nat --networks=switch -p 8031:80 --metadata="url=http://${app1_ip}/user-data.html" {{$image}}
 test eden.app.test -test.v -timewait 10m RUNNING app4
 exec -t 5m bash wait_and_get_ip.sh app4 8031
 grep 'app4_ip=10.2.0.\d+' .env

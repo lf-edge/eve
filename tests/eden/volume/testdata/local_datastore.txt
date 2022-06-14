@@ -1,10 +1,12 @@
 # Test for deploying app from local datastore https://wiki.lfedge.org/display/EVE/Local+DataStore+with+ZeroConfig
 
 {{$port := "2223"}}
-{{$eve_arch := EdenConfig "eve.arch"}}
-{{$image_dir := "releases/groovy/release-20210108"}}
-{{$image_path := printf "%s/ubuntu-20.10-server-cloudimg-%s.img" $image_dir $eve_arch}}
-{{$image_url := printf "https://cloud-images.ubuntu.com/%s" $image_path}}
+{{$arch := EdenConfig "eve.arch"}}
+{{if (eq $arch "amd64")}}{{$arch = "x86_64"}}{{end}}
+{{if (eq $arch "arm64")}}{{$arch = "aarch64"}}{{end}}
+{{$image_dir := "0.5.2"}}
+{{$image_path := printf "%s/cirros-0.5.2-%s-disk.img" $image_dir $arch}}
+{{$image_url := printf "http://download.cirros-cloud.net/%s" $image_path}}
 {{$datastore := "http://ubuntu-http-server.local"}}
 
 [!exec:bash] stop

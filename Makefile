@@ -296,10 +296,6 @@ test: $(GOBUILDER) | $(DIST)
 	$(QUIET)$(DOCKER_GO) "gotestsum --jsonfile $(DOCKER_DIST)/results.json --junitfile $(DOCKER_DIST)/results.xml" $(GOTREE) $(GOMODULE)
 	$(QUIET): $@: Succeeded
 
-itest: $(GOBUILDER) run-proxy | $(DIST)
-	@echo Running integration tests
-	@cd tests/integration ; CGO_ENABLED=0 GOOS= go test -v -run "$(ITESTS)" .
-
 clean:
 	rm -rf $(DIST) images/*.yml
 

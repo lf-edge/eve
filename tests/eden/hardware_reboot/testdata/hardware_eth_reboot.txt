@@ -154,5 +154,21 @@ echo {{template "ssh"}}$HOST "$CMDS"
         "freeUplink": true
       }
     }
+  ],
+  "networks": [
+    {
+      "id": "6605d17b-3273-4108-8e6e-4965441ebe01",
+      "type": 4,
+      "ip": {
+        "dhcp": 4
+      }
+    }
+  ],
+  "systemAdapterList": [
+    {
+      "name": "eth0",
+      "uplink": true,
+      "networkUUID": "6605d17b-3273-4108-8e6e-4965441ebe01"
+    }
   ]
 }
