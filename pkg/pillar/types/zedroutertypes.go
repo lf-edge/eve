@@ -1625,8 +1625,19 @@ func GetNTPServers(globalStatus DeviceNetworkStatus, ifname string) []net.IP {
 		if ifname != "" && ifname != us.IfName {
 			continue
 		}
-		for _, server := range us.NtpServers {
-			servers = append(servers, server)
+		servers = append(servers, us.NtpServers...)
+		// Add statically configured NTP server as well, but avoid duplicates.
+		if us.NtpServer != nil {
+			var found bool
+			for _, server := range servers {
+				if server.Equal(us.NtpServer) {
+					found = true
+					break
+				}
+			}
+			if !found {
+				servers = append(servers, us.NtpServer)
+			}
 		}
 	}
 	return servers
