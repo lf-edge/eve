@@ -10,11 +10,13 @@ on:
 
 jobs:
   integration:
-    runs-on: ubuntu-20.04
+    name: Integration test (tpm=${{ matrix.tpm }};${{ matrix.fs }})
+    runs-on: ubuntu-22.04
     strategy:
       fail-fast: false
       matrix:
-        hv: ["kvm", "zfs-kvm"]
+        tpm: ["true", "false"]
+        fs: ["zfs", "ext4"]
     if: ${{ github.event.review.state == 'approved' || github.ref == 'refs/heads/master' }}
     steps:
       - name: Check
@@ -25,10 +27,13 @@ jobs:
                 echo "$addr overlaps with test"; exit 1
               fi
           done
+          sudo df -h
+          sudo swapoff -a
+          sudo free
       - name: setup
         run: |
-          sudo add-apt-repository ppa:canonical-server/server-backports
-          sudo apt install -y qemu-utils qemu-system-x86 jq
+          sudo add-apt-repository ppa:stefanberger/swtpm-jammy
+          sudo apt install -y qemu-utils qemu-system-x86 jq swtpm
       - name: get eve
         uses: actions/checkout@v2
         with:
@@ -38,7 +43,7 @@ jobs:
           if [ -f ${{ github.workspace }}/eve/tests/eden/eden-version ]; then
             EDEN_VERSION=$(cat ${{ github.workspace }}/eve/tests/eden/eden-version)
           else
-            EDEN_VERSION=lfedge/eden:0.4.0
+            EDEN_VERSION=lfedge/eden:0.5.0
           fi
           docker run -v $PWD:/out $EDEN_VERSION cp -a /eden/. /out/
           sudo chown -R $(whoami) .
@@ -48,12 +53,12 @@ jobs:
           TAG: pr${{ github.event.pull_request.number }}
           CACHE: evebuild/danger
         run: |
-          if docker pull "$CACHE:$TAG-${{ matrix.hv }}"; then
-             docker tag  "$CACHE:$TAG-${{ matrix.hv }}" "lfedge/eve:$TAG-${{ matrix.hv }}"
-             docker tag  "$CACHE:$TAG-${{ matrix.hv }}" "lfedge/eve:$TAG-${{ matrix.hv }}-amd64"
+          if docker pull "$CACHE:$TAG-kvm"; then
+             docker tag  "$CACHE:$TAG-kvm" "lfedge/eve:$TAG-kvm"
+             docker tag  "$CACHE:$TAG-kvm" "lfedge/eve:$TAG-kvm-amd64"
           else
              make -C eve V=1 pkgs
-             make -C eve V=1 ROOTFS_VERSION="$TAG" HV=${{ matrix.hv }} eve
+             make -C eve V=1 ROOTFS_VERSION="$TAG" eve
              IMAGES="$(docker images -f reference="lfedge/eve-*" -q)"
              IMAGES="$IMAGES $(docker images -f reference="eve-build-*" -q)"
              IMAGES="$IMAGES $(docker images -f reference="golang" -q)"
@@ -70,13 +75,22 @@ jobs:
       - name: run
         run: |
           ./eden config set default --key eve.tag --value="$TAG"
-          ./eden config set default --key eve.hv --value="${{ matrix.hv }}"
           ./eden config set default --key=eve.accel --value=false
+          ./eden config set default --key=eve.tpm --value=${{ matrix.tpm }}
           ./eden config set default --key=eve.cpu --value=2
           ./eden config set default --key=eden.tests --value=${{ github.workspace }}/eve/tests/eden
           EDITOR=cat ./eden config edit default
-          echo > ${{ github.workspace }}/eve/tests/eden/workflow/testdata/eden_stop.txt
-          ./eden test ${{ github.workspace }}/eve/tests/eden/workflow -v debug
+      - name: setup-ext4
+        if: matrix.fs == 'ext4'
+        run: ./eden setup -v debug
+      - name: setup-zfs
+        if: matrix.fs == 'zfs'
+        run: |
+          ./eden config set default --key=eve.disks --value=4
+          ./eden config set default --key=eve.disk --value=4096
+          ./eden setup -v debug --grub-options='set_global dom0_extra_args "$dom0_extra_args eve_install_zfs_with_raid_level "'
+      - name: run
+        run: EDEN_TEST_STOP=n ./eden test ${{ github.workspace }}/eve/tests/eden/workflow -v debug
       - name: Collect logs
         if: ${{ always() }}
         run: |
@@ -109,7 +123,7 @@ jobs:
         if: ${{ always() }}
         uses: actions/upload-artifact@v2
         with:
-          name: eden-report-${{ matrix.hv }}
+          name: eden-report-tpm-${{ matrix.tpm }}-${{ matrix.fs }}
           path: |
             ${{ github.workspace }}/trace.log
             ${{ github.workspace }}/info.log

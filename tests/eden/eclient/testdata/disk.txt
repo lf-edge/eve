@@ -20,7 +20,8 @@ test eden.app.test -test.v -timewait 20m RUNNING eclient-disk
 #stdout 'Executing "/usr/sbin/sshd" "-D"'
 
 exec -t 20m bash ssh.sh
-stdout 'vd.*disk'
+# we can receive sd* for zfs-enabled test
+stdout '[sv]d.*disk'
 
 eden pod delete eclient-disk
 

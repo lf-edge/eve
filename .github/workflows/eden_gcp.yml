@@ -9,12 +9,14 @@ on:  # yamllint disable-line rule:truthy
 # yamllint disable rule:line-length
 jobs:
   integration:
-    runs-on: ubuntu-20.04
+    name: Integration test (${{ matrix.backend }};${{ matrix.hv }};${{ matrix.fs }})
+    runs-on: ubuntu-22.04
     strategy:
       fail-fast: false
       matrix:
         backend: ["gcp", "rol"]
         hv: ["kvm", "xen"]
+        fs: ["zfs", "ext4"]
     steps:
       - name: Check
         run: |
@@ -27,6 +29,9 @@ jobs:
                 echo "$addr overlaps with vpn"; exit 1
               fi
           done
+          sudo df -h
+          sudo swapoff -a
+          sudo free
       - name: Check RoL secrets
         if: matrix.backend == 'rol'
         run: |
@@ -59,8 +64,8 @@ jobs:
       - name: GCP Clean
         if: matrix.backend == 'gcp'
         run: |
-          gcloud compute instances delete eve-edengcp-actions-${{ matrix.hv }}-${{github.run_number}} -q --zone=us-west1-a || echo "Does not exist"
-          gcloud compute images delete eve-edengcp-actions-${{ matrix.hv }}-${{github.run_number}} -q || echo "Does not exist"
+          gcloud compute instances delete eve-edengcp-actions-${{ matrix.hv }}-${{ matrix.fs }}-${{github.run_number}} -q --zone=us-west1-a || echo "Does not exist"
+          gcloud compute images delete eve-edengcp-actions-${{ matrix.hv }}-${{ matrix.fs }}-${{github.run_number}} -q || echo "Does not exist"
       - name: Connect VPN
         id: connect_vpn
         timeout-minutes: 1
@@ -81,45 +86,60 @@ jobs:
       # Conditions for backwards compatibility on old branches
       - name: Prepare eden
         run: |
-          if [ "${{ matrix.backend }}" == "rol" ]; then
-             EDEN_VERSION=lfedge/eden:0.4.0
-          elif [ -f ${{ github.workspace }}/eve/tests/eden/eden-version ]; then
-             EDEN_VERSION=$(cat ${{ github.workspace }}/eve/tests/eden/eden-version)
+          if [ "${{ matrix.backend }}" == "rol" ] || ! [ -f ${{ github.workspace }}/eve/tests/eden/eden-version ]; then
+             EDEN_VERSION=lfedge/eden:0.5.0
           else
-             EDEN_VERSION=lfedge/eden:0.4.0
+             EDEN_VERSION=$(cat ${{ github.workspace }}/eve/tests/eden/eden-version)
           fi
           docker run -v $PWD:/out $EDEN_VERSION cp -a /eden/. /out/
           sudo chown -R $(whoami) .
       - name: Eden setup
         run: |
-          devmodel="--devmodel GCP"; [ "${{ matrix.backend }}" == "rol" ] && devmodel="--devmodel general --arch=arm64"
-          setup_flags="-v debug $([ "${{ matrix.backend }}" == "gcp" ] || echo "--netboot=true")"
-          eval ./eden config add default $devmodel
+          if [ "${{ matrix.backend }}" == "rol" ]; then
+            devmodel='general'
+            arch='arm64'
+            netboot='true'
+            tpm='false'
+          else
+            devmodel='GCP'
+            arch='amd64'
+            netboot='false'
+            tpm='true'
+          fi
+          ./eden config add default --devmodel="${devmodel}" --arch="${arch}"
           ./eden config set default --key eve.tag --value="snapshot"
           ./eden config set default --key eve.hv --value ${{ matrix.hv }}
-          ./eden config set default --key eve.tpm --value true
+          ./eden config set default --key eve.tpm --value "${tpm}"
           ./eden config set default --key adam.eve-ip --value ${{ steps.connect_vpn.outputs.tunnel_ip }}
           ./eden config set default --key registry.ip --value ${{ steps.connect_vpn.outputs.tunnel_ip }}
           ./eden config set default --key=eden.tests --value=${{ github.workspace }}/eve/tests/eden
-          eval ./eden setup "$setup_flags"
+          if [ "${{ matrix.fs }}" == "zfs" ]; then
+            if [ "${{ matrix.backend }}" == "gcp" ]; then
+              ./eden config set default --key=eve.disks --value=4
+            fi
+            grub_options='set_global dom0_extra_args "$dom0_extra_args eve_install_zfs_with_raid_level "'
+          else
+            grub_options=''
+          fi
+          ./eden setup -v debug --grub-options="${grub_options}" --netboot="${netboot}"
           ./eden start
       - name: GCP Create VM
         if: matrix.backend == 'gcp'
         run: |
           export ipv4=`curl https://api.ipify.org/?format=json | jq ".ip" -r`
-          ./eden utils gcp firewall --source-range $ipv4/32 --name eve-edengcp-actions-${{ matrix.hv }}-${{github.run_number}} -k "${{ steps.gcpauth.outputs.credentials_file_path }}"
-          ./eden utils gcp image --image-name eve-edengcp-actions-${{ matrix.hv }}-${{github.run_number}} -k "${{ steps.gcpauth.outputs.credentials_file_path }}" upload
-          ./eden utils gcp vm --image-name eve-edengcp-actions-${{ matrix.hv }}-${{github.run_number}} --vm-name eve-edengcp-actions-${{ matrix.hv }}-${{github.run_number}} -k "${{ steps.gcpauth.outputs.credentials_file_path }}" run
+          ./eden utils gcp firewall --source-range $ipv4/32 --name eve-edengcp-actions-${{ matrix.hv }}-${{ matrix.fs }}-${{github.run_number}} -k "${{ steps.gcpauth.outputs.credentials_file_path }}"
+          ./eden utils gcp image --image-name eve-edengcp-actions-${{ matrix.hv }}-${{ matrix.fs }}-${{github.run_number}} -k "${{ steps.gcpauth.outputs.credentials_file_path }}" upload
+          ./eden utils gcp vm --image-name eve-edengcp-actions-${{ matrix.hv }}-${{ matrix.fs }}-${{github.run_number}} --vm-name eve-edengcp-actions-${{ matrix.hv }}-${{ matrix.fs }}-${{github.run_number}} -k "${{ steps.gcpauth.outputs.credentials_file_path }}" run
           sleep 100
-          BWD=$(./eden utils gcp vm get-ip --vm-name eve-edengcp-actions-${{ matrix.hv }}-${{github.run_number}} -k "${{ steps.gcpauth.outputs.credentials_file_path }}") || { echo "no IP, probably VM does not exist"; exit 1; }
+          BWD=$(./eden utils gcp vm get-ip --vm-name eve-edengcp-actions-${{ matrix.hv }}-${{ matrix.fs }}-${{github.run_number}} -k "${{ steps.gcpauth.outputs.credentials_file_path }}") || { echo "no IP, probably VM does not exist"; exit 1; }
           echo "the IP is $BWD"
-          ./eden utils gcp firewall -k "${{ steps.gcpauth.outputs.credentials_file_path }}" --source-range $BWD --name edengcp-actions-${{ matrix.hv }}-${{github.run_number}} || { echo "cannot set firewall"; exit 1; }
+          ./eden utils gcp firewall -k "${{ steps.gcpauth.outputs.credentials_file_path }}" --source-range $BWD --name edengcp-actions-${{ matrix.hv }}-${{ matrix.fs }}-${{github.run_number}} || { echo "cannot set firewall"; exit 1; }
       - name: RoL rent RPi4
         id: rol
         if: matrix.backend == 'rol'
         timeout-minutes: 60
         run: |
-          rent_id=$(./eden rol rent create -p "$ROL_PROJECT" -m raspberry --model pi_4_model_b_8gb -n GHAction-${{ github.run_number }}-snapshot-${{ matrix.hv }})
+          rent_id=$(./eden rol rent create -p "$ROL_PROJECT" -m raspberry --model pi_4_model_b_8gb -n GHAction-${{ github.run_number }}-snapshot-${{ matrix.hv }}-${{ matrix.fs }})
           echo ::set-output name=id::$(echo $rent_id)
           until [[ "$(./eden rol rent get -p "$ROL_PROJECT" -i $rent_id | jq -r .machineState)" == "Ready" ]]; do sleep 10; echo "Waiting for EVE to load"; done
         env:
@@ -131,9 +151,8 @@ jobs:
           ./eden eve onboard
       - name: Test
         run: |
-          echo > tests/workflow/testdata/eden_stop.txt
           if [ "${{ matrix.backend }}" == "gcp" ]; then export EDEN_TEST=gcp; fi
-          ./eden test ${{ github.workspace }}/eve/tests/eden/workflow -v debug
+          EDEN_TEST_STOP=n ./eden test ${{ github.workspace }}/eve/tests/eden/workflow -v debug
       - name: Collect logs
         if: ${{ always() }}
         run: |
@@ -142,7 +161,7 @@ jobs:
           ./eden metric > metric.log || echo "no metric"
           ./eden netstat > netstat.log || echo "no netstat"
           docker logs eden_adam > adam.log 2>&1 || echo "no adam log"
-          ./eden utils gcp vm log --vm-name eve-edengcp-actions-${{ matrix.hv }}-${{github.run_number}} -k "${{ steps.gcpauth.outputs.credentials_file_path }}" > console.log || echo "no device log"
+          ./eden utils gcp vm log --vm-name eve-edengcp-actions-${{ matrix.hv }}-${{ matrix.fs }}-${{github.run_number}} -k "${{ steps.gcpauth.outputs.credentials_file_path }}" > console.log || echo "no device log"
       - name: Log counting
         if: ${{ always() }}
         run: |
@@ -165,10 +184,10 @@ jobs:
       - name: GCP Clean
         if: ${{ always() }}
         run: |
-          gcloud compute firewall-rules delete eve-edengcp-actions-${{ matrix.hv }}-${{github.run_number}} || echo "Does not exist"
-          gcloud compute firewall-rules delete edengcp-actions-${{ matrix.hv }}-${{github.run_number}} || echo "Does not exist"
-          gcloud compute instances delete eve-edengcp-actions-${{ matrix.hv }}-${{github.run_number}} -q --zone=us-west1-a || echo "Does not exist"
-          gcloud compute images delete eve-edengcp-actions-${{ matrix.hv }}-${{github.run_number}} -q || echo "Does not exist"
+          gcloud compute firewall-rules delete eve-edengcp-actions-${{ matrix.hv }}-${{ matrix.fs }}-${{github.run_number}} || echo "Does not exist"
+          gcloud compute firewall-rules delete edengcp-actions-${{ matrix.hv }}-${{ matrix.fs }}-${{github.run_number}} || echo "Does not exist"
+          gcloud compute instances delete eve-edengcp-actions-${{ matrix.hv }}-${{ matrix.fs }}-${{github.run_number}} -q --zone=us-west1-a || echo "Does not exist"
+          gcloud compute images delete eve-edengcp-actions-${{ matrix.hv }}-${{ matrix.fs }}-${{github.run_number}} -q || echo "Does not exist"
       - name: RoL Clean
         if: ${{ always() }}
         run: |
@@ -182,7 +201,7 @@ jobs:
         if: ${{ always() }}
         uses: actions/upload-artifact@v2
         with:
-          name: eden-report-${{ matrix.backend }}-${{ matrix.hv }}
+          name: eden-report-${{ matrix.backend }}-${{ matrix.hv }}-${{ matrix.fs }}
           path: |
             ${{ github.workspace }}/trace.log
             ${{ github.workspace }}/info.log

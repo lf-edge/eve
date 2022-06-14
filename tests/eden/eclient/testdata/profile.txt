@@ -115,6 +115,7 @@ exec sleep 20
 eden controller edge-node update --device global_profile=""
 eden controller edge-node update --device local_profile_server=""
 
+exec sleep 30
 # We have empty local_manager and empty default_profile, so apps should come back to RUNNING state now
 test eden.app.test -test.v -timewait 5m RUNNING app-profile-1 app-profile-2 app-profile-1-2 local-manager
 
