@@ -19,6 +19,14 @@ jobs:
         os: [arm64-dirty, ubuntu-20.04]
         hv: [xen, kvm]
     steps:
+      - name: Starting Report
+        run: |
+          echo Git Ref: ${{ github.ref }}
+          echo GitHub Event: ${{ github.event_name }}
+          echo Disk usage
+          df -h
+          echo Memory
+          free -m
       - name: Clear repository
         run: |
           sudo rm -fr "$GITHUB_WORKSPACE" && mkdir "$GITHUB_WORKSPACE"
@@ -33,11 +41,27 @@ jobs:
           COMMIT_ID=$(git describe --abbrev=8 --always)
           echo "VERSION=0.0.0-pr$PR_ID-$COMMIT_ID" >> $GITHUB_ENV
           echo "TAG=evebuild/danger:pr$PR_ID" >> $GITHUB_ENV
+      - name: Post package report
+        run: |
+          echo Disk usage
+          df -h
+          echo Memory
+          free -m
+          docker system df
+          docker system df -v
       - name: Build EVE
         env:
           HV: ${{ matrix.hv }}
         run: |
           make V=1 ROOTFS_VERSION="$VERSION" HV=$HV eve
+      - name: Post eve build report
+        run: |
+          echo Disk usage
+          df -h
+          echo Memory
+          free -m
+          docker system df
+          docker system df -v
       - name: Export docker container
         env:
           HV: ${{ matrix.hv }}

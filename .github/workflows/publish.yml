@@ -9,6 +9,18 @@ on:
       - "[0-9]+.[0-9]+.[0-9]+"
 
 jobs:
+  report:
+    name: Report
+    runs-on: ${{ matrix.os }}
+    steps:
+    - name: ref
+      run: echo ${{ github.ref }}
+    - name: event_name
+      run: echo ${{ github.event_name }}
+    - name: disk usage
+      run: df -h
+    - name: memory
+      run: free -m
   build:
     if: github.event.repository.full_name == 'lf-edge/eve'
     runs-on: ${{ matrix.os }}
@@ -17,6 +29,14 @@ jobs:
       matrix:
         os: [arm64-secure, ubuntu-20.04, ubuntu-latest]
     steps:
+      - name: Starting Report
+        run: |
+          echo Git Ref: ${{ github.ref }}
+          echo GitHub Event: ${{ github.event_name }}
+          echo Disk usage
+          df -h
+          echo Memory
+          free -m
       - uses: actions/checkout@v2
         with:
           fetch-depth: 0
@@ -69,6 +89,14 @@ jobs:
                 docker system prune -f || :
              fi
           done
+      - name: Post package report
+        run: |
+          echo Disk usage
+          df -h
+          echo Memory
+          free -m
+          docker system df
+          docker system df -v
       - name: Build EVE for KVM
         # build #1 without push (do not push either unless both can build)
         if: ${{ matrix.os != 'ubuntu-latest' }}
@@ -76,11 +104,27 @@ jobs:
           rm -rf dist dist.xen
           make -e V=1 HV=kvm eve
           mv -f dist dist.xen
+      - name: Post eve KVM report
+        run: |
+          echo Disk usage
+          df -h
+          echo Memory
+          free -m
+          docker system df
+          docker system df -v
       - name: Build and push EVE for Xen
         # since build #1 works, build and push #2
         if: ${{ matrix.os != 'ubuntu-latest' }}
         run: |
           make -e V=1 HV=xen LINUXKIT_PKG_TARGET=push eve
+      - name: Post eve Xen report
+        run: |
+          echo Disk usage
+          df -h
+          echo Memory
+          free -m
+          docker system df
+          docker system df -v
       - name: Build and push EVE for KVM
         # redo build #1 with push
         if: ${{ matrix.os != 'ubuntu-latest' }}
