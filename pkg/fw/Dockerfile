@@ -1,6 +1,6 @@
 FROM alpine:edge as build
 
-WORKDIR /
+# hadolint ignore=DL3018
 RUN apk add --no-cache \
     wireless-regdb \
     linux-firmware-bnx2x \
@@ -11,9 +11,10 @@ RUN apk add --no-cache \
     linux-firmware-rsi \
     linux-firmware-nvidia \
     linux-firmware-rtl_nic \
-    linux-firmware-other
+    linux-firmware-brcm \
+    linux-firmware-ti-connectivity
 
-FROM scratch
+FROM busybox as compactor
 ENTRYPOINT []
 WORKDIR /
 COPY --from=build /lib/firmware/regulatory* /lib/firmware/
@@ -37,12 +38,17 @@ COPY --from=build /lib/firmware/iwlwifi-cc-a0* /lib/firmware/
 COPY --from=build /lib/firmware/iwlwifi-QuZ-a0-hr-b0* /lib/firmware/
 # RTL8111/8168/8411 PCI Express Gigabit Ethernet Controller
 COPY --from=build /lib/firmware/rtl_nic/* /lib/firmware/rtl_nic/
-# FIXME: this is a binary block firmware for Raspberry Pi4, waiting for linux-firmware-rpi4 package
-COPY rpi /lib/firmware/
-# FIXME: we're currently using ath10k firmware supplied
-# by Advantech. This is getting upstreamed and when it
-# does we should switch back to linux-firmware-ath10k from Alpine
-# COPY --from=build /lib/firmware/ath10k /lib/firmware/ath10k
-COPY ath10k /lib/firmware/ath10k
-# FIXME: this is binary block firmware for HiKey
-COPY ti-connectivity /lib/firmware/ti-connectivity
+# Firmware for Raspberry Pi4 and Broadcom wifi
+COPY --from=build /lib/firmware/brcm /lib/firmware/brcm
+# ath10k firmware
+COPY --from=build /lib/firmware/ath10k /lib/firmware/ath10k
+# firmware for HiKey
+COPY --from=build /lib/firmware/ti-connectivity /lib/firmware/ti-connectivity
+# to keep compatibility with the current layout
+RUN cp --symbolic-link /lib/firmware/brcm/* /lib/firmware
+
+FROM scratch
+ENTRYPOINT []
+WORKDIR /
+
+COPY --from=compactor /lib/firmware /lib/firmware
