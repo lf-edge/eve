@@ -92,6 +92,8 @@ const (
 	VolumeRefConfigLogType LogObjectType = "volume_ref_config"
 	// VolumeRefStatusLogType:
 	VolumeRefStatusLogType LogObjectType = "volume_ref_status"
+	// VolumeCreatePendingLogType:
+	VolumeCreatePendingLogType LogObjectType = "volume_create_pending"
 	// ServiceInitType:
 	ServiceInitLogType LogObjectType = "service_init"
 	// AppAndImageToHashLogType:
@@ -134,6 +136,10 @@ const (
 	NetworkInstanceMetricsLogType LogObjectType = "network_instance_metrics"
 	// NetworkMetricsLogType:
 	NetworkMetricsLogType LogObjectType = "network_metrics"
+	// WwanMetricsLogType:
+	WwanMetricsLogType LogObjectType = "wwan_metrics"
+	// WwanLocationInfoLogType:
+	WwanLocationInfoLogType LogObjectType = "wwan_location_info"
 	// NetworkXObjectConfigLogType:
 	NetworkXObjectConfigLogType LogObjectType = "network_x_object"
 	// UUIDToNumLogType:
@@ -152,8 +158,12 @@ const (
 	MemoryNotificationType = "memory_notification"
 	// DiskNotificationType
 	DiskNotificationType = "disk_notification"
-	// UUIDPairToNumLogType:
-	UUIDPairToNumLogType LogObjectType = "uuid_pair_to_num"
+	// UUIDPairToNumAndIfIdxLogType:
+	UUIDPairToNumAndIfIdxLogType LogObjectType = "uuid_pair_and_if_idx_to_num"
+	// EncryptedVaultKeyFromDeviceLogType:
+	EncryptedVaultKeyFromDeviceLogType LogObjectType = "encrypted_vault_key_from_device"
+	// EncryptedVaultKeyFromControllerLogType:
+	EncryptedVaultKeyFromControllerLogType LogObjectType = "encrypted_vault_key_from_controller"
 )
 
 // RelationObjectType :

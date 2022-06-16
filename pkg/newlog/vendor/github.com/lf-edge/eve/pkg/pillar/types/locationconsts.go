@@ -3,6 +3,8 @@
 
 package types
 
+import "strings"
+
 const (
 	// TmpDirname - used for files fed into pubsub as global subscriptions
 	TmpDirname = "/run/global"
@@ -25,8 +27,8 @@ const (
 	VolumeClearDirName = ClearDirName + "/volumes"
 	// PersistDebugDir - Location for service specific debug/traces
 	PersistDebugDir = PersistDir + "/agentdebug"
-	//VolumeZFSPool - pool for create volumes
-	VolumeZFSPool = "persist" + "/volumes"
+	// PersistInstallerDir - location for installer output
+	PersistInstallerDir = PersistDir + "/installer"
 
 	// IdentityDirname - Config dir
 	IdentityDirname = "/config"
@@ -46,7 +48,8 @@ const (
 	RootCertFileName = IdentityDirname + "/root-certificate.pem"
 	// V2TLSCertShaFilename - find TLS root cert for API V2 based on this sha
 	V2TLSCertShaFilename = CertificateDirname + "/v2tlsbaseroot-certificates.sha256"
-
+	// V2TLSBaseFile is where the initial file
+	V2TLSBaseFile = IdentityDirname + "/v2tlsbaseroot-certificates.pem"
 	// APIV1FileName - user can statically allow for API v1
 	APIV1FileName = IdentityDirname + "/Force-API-V1"
 
@@ -83,7 +86,16 @@ const (
 	EveMemoryUsageFile = "/hostfs/sys/fs/cgroup/memory/eve/memory.usage_in_bytes"
 	// EveKmemUsageFile - current kernel usage
 	EveKmemUsageFile = "/hostfs/sys/fs/cgroup/memory/eve/memory.kmem.usage_in_bytes"
+	// ZFSArcMaxSizeFile - file with zfs_arc_max size in bytes
+	ZFSArcMaxSizeFile = "/hostfs/sys/module/zfs/parameters/zfs_arc_max"
 
 	// ContainerdContentDir - path to containerd`s content store
-	ContainerdContentDir = PersistDir + "/containerd/io.containerd.content.v1.content"
+	ContainerdContentDir = SealedDirName + "/containerd/io.containerd.content.v1.content"
+)
+
+var (
+	//VolumeClearZFSDataset - dataset to create volumes without encryption
+	VolumeClearZFSDataset = strings.TrimLeft(VolumeClearDirName, "/")
+	//VolumeEncryptedZFSDataset - dataset to create volumes with encryption
+	VolumeEncryptedZFSDataset = strings.TrimLeft(VolumeEncryptedDirName, "/")
 )

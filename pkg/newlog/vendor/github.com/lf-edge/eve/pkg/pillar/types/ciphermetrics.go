@@ -10,11 +10,9 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/base"
 )
 
-// CipherMetricsMap maps from an agentname string to some metrics
-type CipherMetricsMap map[string]CipherMetrics
-
 // CipherMetrics are metrics from one agent
 type CipherMetrics struct {
+	AgentName    string
 	FailureCount uint64
 	SuccessCount uint64
 	LastFailure  time.Time
