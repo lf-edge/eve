@@ -5,7 +5,7 @@ package types
 
 import (
 	"bytes"
-	"errors"
+	"encoding/binary"
 	"fmt"
 	"net"
 	"os"
@@ -20,6 +20,28 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/vishvananda/netlink"
 )
+
+// IPAddrNotAvail is returned when there is no (suitable) IP address
+// assigned to a given interface.
+type IPAddrNotAvail struct {
+	IfName string
+}
+
+// Error message.
+func (e *IPAddrNotAvail) Error() string {
+	return fmt.Sprintf("interface %s: no suitable IP address available", e.IfName)
+}
+
+// DNSNotAvail is returned when there is no DNS server configured
+// for a given interface.
+type DNSNotAvail struct {
+	IfName string
+}
+
+// Error message.
+func (e *DNSNotAvail) Error() string {
+	return fmt.Sprintf("interface %s: no DNS server available", e.IfName)
+}
 
 // Indexed by UUID
 type AppNetworkConfig struct {
@@ -396,40 +418,53 @@ func (config DevicePortConfigList) LogKey() string {
 	return string(base.DevicePortConfigListLogType) + "-" + config.PubKey()
 }
 
-// PendDPCStatus tracks the internal progression of a DPC
-type PendDPCStatus uint32
+// DPCState tracks the progression a DPC verification.
+type DPCState uint8
 
-// DPC_NONE and friends is the internal state of the testing
 const (
-	DPC_NONE PendDPCStatus = iota
-	DPC_FAIL
-	DPC_FAIL_WITH_IPANDDNS // Failed to reach controller but has IP/DNS
-	DPC_SUCCESS
-	DPC_IPDNS_WAIT  // DPC_IPDNS_WAIT means not IP and DNS server yet
-	DPC_PCI_WAIT    // DPC_PCI_WAIT means some interface still in pci back
-	DPC_INTF_WAIT   // DPC_INTF_WAIT means some interface missing from kernel
-	DPC_REMOTE_WAIT // DPC_REMOTE_WAIT means controller is down or has old certificate
+	// DPCStateNone : undefined state.
+	DPCStateNone DPCState = iota
+	// DPCStateFail : DPC verification failed.
+	DPCStateFail
+	// DPCStateFailWithIPAndDNS : failed to reach controller but has IP/DNS.
+	DPCStateFailWithIPAndDNS
+	// DPCStateSuccess : DPC verification succeeded.
+	DPCStateSuccess
+	// DPCStateIPDNSWait : waiting for interface IP address(es) and/or DNS server(s).
+	DPCStateIPDNSWait
+	// DPCStatePCIWait : waiting for some interface to come from pciback.
+	DPCStatePCIWait
+	// DPCStateIntfWait : waiting for some interface to appear in the network stack.
+	DPCStateIntfWait
+	// DPCStateRemoteWait : DPC verification failed because controller is down
+	// or has old certificate.
+	DPCStateRemoteWait
+	// DPCStateAsyncWait : waiting for some config operations to finalize which are
+	// running asynchronously in the background.
+	DPCStateAsyncWait
 )
 
 // String returns the string name
-func (status PendDPCStatus) String() string {
+func (status DPCState) String() string {
 	switch status {
-	case DPC_NONE:
+	case DPCStateNone:
 		return ""
-	case DPC_FAIL:
+	case DPCStateFail:
 		return "DPC_FAIL"
-	case DPC_FAIL_WITH_IPANDDNS:
+	case DPCStateFailWithIPAndDNS:
 		return "DPC_FAIL_WITH_IPANDDNS"
-	case DPC_SUCCESS:
+	case DPCStateSuccess:
 		return "DPC_SUCCESS"
-	case DPC_IPDNS_WAIT:
+	case DPCStateIPDNSWait:
 		return "DPC_IPDNS_WAIT"
-	case DPC_PCI_WAIT:
+	case DPCStatePCIWait:
 		return "DPC_PCI_WAIT"
-	case DPC_INTF_WAIT:
+	case DPCStateIntfWait:
 		return "DPC_INTF_WAIT"
-	case DPC_REMOTE_WAIT:
+	case DPCStateRemoteWait:
 		return "DPC_REMOTE_WAIT"
+	case DPCStateAsyncWait:
+		return "DPC_ASYNC_WAIT"
 	default:
 		return fmt.Sprintf("Unknown status %d", status)
 	}
@@ -442,7 +477,7 @@ type DevicePortConfig struct {
 	Version      DevicePortConfigVersion
 	Key          string
 	TimePriority time.Time // All zero's is fallback lowest priority
-	State        PendDPCStatus
+	State        DPCState
 	OriginFile   string // File to be deleted once DevicePortConfigList published
 	TestResults
 	LastIPAndDNS time.Time // Time when we got some IP addresses and DNS
@@ -574,6 +609,29 @@ func (config DevicePortConfig) LogKey() string {
 	return string(base.DevicePortConfigLogType) + "-" + config.PubKey()
 }
 
+// LookupPortByIfName returns port configuration for the given interface.
+func (config *DevicePortConfig) LookupPortByIfName(ifName string) *NetworkPortConfig {
+	if config != nil {
+		for _, port := range config.Ports {
+			if port.IfName == ifName {
+				return &port
+			}
+		}
+	}
+	return nil
+}
+
+// LookupPortByLogicallabel returns port configuration referenced by the logical label.
+func (config *DevicePortConfig) LookupPortByLogicallabel(
+	label string) *NetworkPortConfig {
+	for _, port := range config.Ports {
+		if port.Logicallabel == label {
+			return &port
+		}
+	}
+	return nil
+}
+
 // TestResults is used to record when some test Failed or Succeeded.
 // All zeros timestamps means it was never tested.
 type TestResults struct {
@@ -670,7 +728,7 @@ const (
 // DoSanitize -
 func (config *DevicePortConfig) DoSanitize(log *base.LogObject,
 	sanitizeTimePriority bool, sanitizeKey bool, key string,
-	sanitizeName bool) {
+	sanitizeName, sanitizeL3Port bool) {
 
 	if sanitizeTimePriority {
 		zeroTime := time.Time{}
@@ -720,6 +778,28 @@ func (config *DevicePortConfig) DoSanitize(log *base.LogObject,
 			}
 		}
 	}
+	if sanitizeL3Port {
+		// IsL3Port flag was introduced to NetworkPortConfig in 7.3.0
+		// It is used to differentiate between L3 ports (with IP/DNS config)
+		// and intermediate L2-only ports (bond slaves, VLAN parents, etc.).
+		// Before 7.3.0, EVE didn't support L2-only adapters and all uplink ports
+		// were L3 endpoints.
+		// However, even with VLANs and bonds there has to be at least one L3
+		// port (L2 adapters are only intermediates with L3 endpoint(s) at the top).
+		// This means that to support upgrade from older EVE versions,
+		// we can simply check if there is at least one L3 port, and if not, it means
+		// that we are dealing with an older persisted/override DPC, where all
+		// ports should be marked as L3.
+		var hasL3Port bool
+		for _, port := range config.Ports {
+			hasL3Port = hasL3Port || port.IsL3Port
+		}
+		if !hasL3Port {
+			for i := range config.Ports {
+				config.Ports[i].IsL3Port = true
+			}
+		}
+	}
 }
 
 // CountMgmtPorts returns the number of management ports
@@ -766,10 +846,9 @@ func (config *DevicePortConfig) MostlyEqual(config2 *DevicePortConfig) bool {
 	return true
 }
 
-// IsDPCTestable - Return false if recent failure (less than 60 seconds ago)
+// IsDPCTestable - Return false if recent failure (less than "minTimeSinceFailure")
 // Also returns false if it isn't usable
-func (config DevicePortConfig) IsDPCTestable() bool {
-
+func (config DevicePortConfig) IsDPCTestable(minTimeSinceFailure time.Duration) bool {
 	if !config.IsDPCUsable() {
 		return false
 	}
@@ -779,11 +858,7 @@ func (config DevicePortConfig) IsDPCTestable() bool {
 	if config.LastSucceeded.After(config.LastFailed) {
 		return true
 	}
-	// convert time difference in nano seconds to seconds
-	// make this 5 minutes, have seen multiple intf/ipv6 addresses taking long time
-	// the the test table list
-	timeDiff := time.Since(config.LastFailed) / time.Second
-	return (timeDiff > 300)
+	return time.Since(config.LastFailed) >= minTimeSinceFailure
 }
 
 // IsDPCUntested - returns true if this is something we might want to test now.
@@ -876,10 +951,11 @@ type ProxyConfig struct {
 	Pacfile    string
 	// If Enable is set we use WPAD. If the URL is not set we try
 	// the various DNS suffixes until we can download a wpad.dat file
-	NetworkProxyEnable bool     // Enable WPAD
-	NetworkProxyURL    string   // Complete URL i.e., with /wpad.dat
-	WpadURL            string   // The URL determined from DNS
-	ProxyCertPEM       [][]byte // List of certs which will be added to TLS trust
+	NetworkProxyEnable bool   // Enable WPAD
+	NetworkProxyURL    string // Complete URL i.e., with /wpad.dat
+	WpadURL            string // The URL determined from DNS
+	// List of certs which will be added to TLS trust
+	ProxyCertPEM [][]byte `json:"pubsub-large-ProxyCertPEM"`
 }
 
 type DhcpConfig struct {
@@ -910,7 +986,11 @@ type WifiConfig struct {
 
 // CellConfig - Cellular part of the configure
 type CellConfig struct {
-	APN string // LTE APN
+	APN          string // LTE APN
+	ProbeAddr    string
+	DisableProbe bool
+	// Enable to get location info from the GNSS receiver of the LTE modem.
+	LocationTracking bool
 }
 
 // WirelessConfig - wireless structure
@@ -920,12 +1000,116 @@ type WirelessConfig struct {
 	Wifi     []WifiConfig // Wifi Config params
 }
 
+// WirelessStatus : state information for a single wireless device
+type WirelessStatus struct {
+	WType    WirelessType
+	Cellular WwanNetworkStatus
+	// TODO: Wifi status
+}
+
 const (
 	// PortCostMin is the lowest cost
 	PortCostMin = uint8(0)
 	// PortCostMax is the highest cost
 	PortCostMax = uint8(255)
 )
+
+// L2LinkType - supported types of an L2 link
+type L2LinkType uint8
+
+const (
+	// L2LinkTypeNone : not an L2 link (used for physical network adapters).
+	L2LinkTypeNone L2LinkType = iota
+	// L2LinkTypeVLAN : VLAN sub-interface
+	L2LinkTypeVLAN
+	// L2LinkTypeBond : Bond interface
+	L2LinkTypeBond
+)
+
+// L2LinkConfig - contains either VLAN or Bond interface configuration,
+// depending on the L2Type.
+type L2LinkConfig struct {
+	L2Type L2LinkType
+	VLAN   VLANConfig
+	Bond   BondConfig
+}
+
+// VLANConfig - VLAN sub-interface configuration.
+type VLANConfig struct {
+	// Logical name of the parent port.
+	ParentPort string
+	// VLAN ID.
+	ID uint16
+}
+
+// BondMode specifies the policy indicating how bonding slaves are used
+// during network transmissions.
+type BondMode uint8
+
+const (
+	// BondModeUnspecified : default is Round-Robin
+	BondModeUnspecified BondMode = iota
+	// BondModeBalanceRR : Round-Robin
+	BondModeBalanceRR
+	// BondModeActiveBackup : Active/Backup
+	BondModeActiveBackup
+	// BondModeBalanceXOR : select slave for a packet using a hash function
+	BondModeBalanceXOR
+	// BondModeBroadcast : send every packet on all slaves
+	BondModeBroadcast
+	// BondMode802Dot3AD : IEEE 802.3ad Dynamic link aggregation
+	BondMode802Dot3AD
+	// BondModeBalanceTLB : Adaptive transmit load balancing
+	BondModeBalanceTLB
+	// BondModeBalanceALB : Adaptive load balancing
+	BondModeBalanceALB
+)
+
+// LacpRate specifies the rate in which EVE will ask LACP link partners
+// to transmit LACPDU packets in 802.3ad mode.
+type LacpRate uint8
+
+const (
+	// LacpRateUnspecified : default is Slow.
+	LacpRateUnspecified LacpRate = iota
+	// LacpRateSlow : Request partner to transmit LACPDUs every 30 seconds.
+	LacpRateSlow
+	// LacpRateFast : Request partner to transmit LACPDUs every 1 second.
+	LacpRateFast
+)
+
+// BondConfig - Bond (LAG) interface configuration.
+type BondConfig struct {
+	// Logical names of PhysicalIO network adapters aggregated by this bond.
+	AggregatedPorts []string
+
+	// Bonding policy.
+	Mode BondMode
+
+	// LACPDU packets transmission rate.
+	// Applicable for BondMode802Dot3AD only.
+	LacpRate LacpRate
+
+	// Link monitoring is either disabled or one of the monitors
+	// is enabled, never both at the same time.
+	MIIMonitor BondMIIMonitor
+	ARPMonitor BondArpMonitor
+}
+
+// BondMIIMonitor : MII link monitoring parameters (see devmodel.proto for description).
+type BondMIIMonitor struct {
+	Enabled   bool
+	Interval  uint32
+	UpDelay   uint32
+	DownDelay uint32
+}
+
+// BondArpMonitor : ARP-based link monitoring parameters (see devmodel.proto for description).
+type BondArpMonitor struct {
+	Enabled   bool
+	Interval  uint32
+	IPTargets []net.IP
+}
 
 // NetworkPortConfig has the configuration and some status like TestResults
 // for one IfName.
@@ -940,9 +1124,11 @@ type NetworkPortConfig struct {
 	// NetworkUUID - UUID of the Network Object configured for the port.
 	NetworkUUID uuid.UUID
 	IsMgmt      bool  // Used to talk to controller
+	IsL3Port    bool  // True if port is applicable to operate on the network layer
 	Cost        uint8 // Zero is free
 	DhcpConfig
 	ProxyConfig
+	L2LinkConfig
 	WirelessCfg WirelessConfig
 	// TestResults - Errors from parsing plus success/failure from testing
 	TestResults
@@ -954,6 +1140,7 @@ type NetworkPortStatus struct {
 	Logicallabel   string
 	Alias          string // From SystemAdapter's alias
 	IsMgmt         bool   // Used to talk to controller
+	IsL3Port       bool   // True if port is applicable to operate on the network layer
 	Cost           uint8
 	Dhcp           DhcpType
 	Type           NetworkType // IPv4 or IPv6 or Dual stack
@@ -966,7 +1153,10 @@ type NetworkPortStatus struct {
 	Up             bool
 	MacAddr        string
 	DefaultRouters []net.IP
+	WirelessCfg    WirelessConfig
+	WirelessStatus WirelessStatus
 	ProxyConfig
+	L2LinkConfig
 	// TestResults provides recording of failure and success
 	TestResults
 }
@@ -997,10 +1187,12 @@ type AddrInfo struct {
 // DeviceNetworkStatus is published to microservices which needs to know about ports and IP addresses
 // It is published under the key "global" only
 type DeviceNetworkStatus struct {
+	DPCKey       string                  // For logs/testing
 	Version      DevicePortConfigVersion // From DevicePortConfig
 	Testing      bool                    // Ignore since it is not yet verified
-	State        PendDPCStatus           // Details about testing state
+	State        DPCState                // Details about testing state
 	CurrentIndex int                     // For logs
+	RadioSilence RadioSilence            // The actual state of the radio-silence mode
 	Ports        []NetworkPortStatus
 }
 
@@ -1171,9 +1363,13 @@ func (status DeviceNetworkStatus) MostlyEqual(status2 DeviceNetworkStatus) bool 
 			}
 		}
 
-		if !reflect.DeepEqual(p1.ProxyConfig, p2.ProxyConfig) {
+		if !reflect.DeepEqual(p1.ProxyConfig, p2.ProxyConfig) ||
+			!reflect.DeepEqual(p1.WirelessStatus, p2.WirelessStatus) {
 			return false
 		}
+	}
+	if !reflect.DeepEqual(status.RadioSilence, status2.RadioSilence) {
+		return false
 	}
 	return true
 }
@@ -1429,8 +1625,19 @@ func GetNTPServers(globalStatus DeviceNetworkStatus, ifname string) []net.IP {
 		if ifname != "" && ifname != us.IfName {
 			continue
 		}
-		for _, server := range us.NtpServers {
-			servers = append(servers, server)
+		servers = append(servers, us.NtpServers...)
+		// Add statically configured NTP server as well, but avoid duplicates.
+		if us.NtpServer != nil {
+			var found bool
+			for _, server := range servers {
+				if server.Equal(us.NtpServer) {
+					found = true
+					break
+				}
+			}
+			if !found {
+				servers = append(servers, us.NtpServer)
+			}
 		}
 	}
 	return servers
@@ -1491,6 +1698,9 @@ func getLocalAddrImpl(globalStatus DeviceNetworkStatus, pickNum int,
 		return net.IP{}, err
 	}
 	numAddrs := len(addrs)
+	if numAddrs == 0 {
+		return net.IP{}, fmt.Errorf("no addresses")
+	}
 	pickNum = pickNum % numAddrs
 	return addrs[pickNum], nil
 }
@@ -1553,13 +1763,24 @@ func GetExistingInterfaceList(log *base.LogObject, globalStatus DeviceNetworkSta
 	return ifs
 }
 
-// Check if an interface name is a port owned by zedrouter
+// Check if an interface name is a port owned by nim
 func IsPort(globalStatus DeviceNetworkStatus, ifname string) bool {
 	for _, us := range globalStatus.Ports {
 		if us.IfName != ifname {
 			continue
 		}
 		return true
+	}
+	return false
+}
+
+// IsL3Port checks if an interface name belongs to a port with SystemAdapter attached.
+func IsL3Port(globalStatus DeviceNetworkStatus, ifname string) bool {
+	for _, us := range globalStatus.Ports {
+		if us.IfName != ifname {
+			continue
+		}
+		return us.IsL3Port
 	}
 	return false
 }
@@ -1666,7 +1887,7 @@ func getLocalAddrIf(globalStatus DeviceNetworkStatus, ifname string,
 	if len(addrs) != 0 {
 		return addrs, nil
 	} else {
-		return []net.IP{}, errors.New("No good IP address")
+		return []net.IP{}, &IPAddrNotAvail{IfName: ifname}
 	}
 }
 
@@ -1709,12 +1930,13 @@ func LogicallabelToIfName(deviceNetworkStatus *DeviceNetworkStatus,
 }
 
 // IsAnyPortInPciBack
-//	Checks is any of the Ports are part of IO bundles which are in PCIback.
+//	Checks if any of the Ports are part of IO bundles which are in PCIback.
 //	If true, it also returns the ifName ( NOT bundle name )
 //	Also returns whether it is currently used by an application by
 //	returning a UUID. If the UUID is zero it is in PCIback but available.
+//	Use filterUnassigned to filter out unassigned ports.
 func (config *DevicePortConfig) IsAnyPortInPciBack(
-	log *base.LogObject, aa *AssignableAdapters) (bool, string, uuid.UUID) {
+	log *base.LogObject, aa *AssignableAdapters, filterUnassigned bool) (bool, string, uuid.UUID) {
 	if aa == nil {
 		log.Functionf("IsAnyPortInPciBack: nil aa")
 		return false, "", uuid.UUID{}
@@ -1731,7 +1953,7 @@ func (config *DevicePortConfig) IsAnyPortInPciBack(
 				port.IfName)
 			continue
 		}
-		if ioBundle.IsPCIBack {
+		if ioBundle.IsPCIBack && (!filterUnassigned || ioBundle.UsedByUUID != nilUUID) {
 			return true, port.IfName, ioBundle.UsedByUUID
 		}
 	}
@@ -1824,6 +2046,7 @@ type UnderlayNetworkConfig struct {
 	Network      uuid.UUID // Points to a NetworkInstance.
 	ACLs         []ACE
 	AccessVlanID uint32
+	IfIdx        uint32 // If we have multiple interfaces on that network, we will increase the index
 }
 
 type UnderlayNetworkStatus struct {
@@ -1910,6 +2133,22 @@ func (ipRange IpRange) Contains(ipAddr net.IP) bool {
 	return false
 }
 
+// Size returns addresses count inside IpRange
+func (ipRange IpRange) Size() uint32 {
+	//TBD:XXX, IPv6 handling
+	ip1v4 := ipRange.Start.To4()
+	ip2v4 := ipRange.End.To4()
+	if ip1v4 == nil || ip2v4 == nil {
+		return 0
+	}
+	ip1Int := binary.BigEndian.Uint32(ip1v4)
+	ip2Int := binary.BigEndian.Uint32(ip2v4)
+	if ip1Int > ip2Int {
+		return ip1Int - ip2Int
+	}
+	return ip2Int - ip1Int
+}
+
 func (config NetworkXObjectConfig) Key() string {
 	return config.UUID.String()
 }
@@ -1991,6 +2230,9 @@ type NetworkInstanceInfo struct {
 	VlanMap map[uint32]uint32
 	// Counts the number of trunk ports attached to this network instance
 	NumTrunkPorts uint32
+
+	// IP address on which the meta-data server listens
+	MetaDataServerIP string
 }
 
 func (instanceInfo *NetworkInstanceInfo) IsVifInBridge(
@@ -3040,11 +3282,421 @@ func GetIPBroadcast(subnet net.IPNet) net.IP {
 	return net.IP{}
 }
 
-// AppNumber :
 // PS. Any change to BitMapMax, must be
 // reflected in the BitMap Size(32 bytes)
+// At the MinSubnetSize there is room for one app instance (.0 being reserved,
+// .3 broadcast, .1 is the bridgeIPAddr, and .2 is usable).
 const (
 	BitMapMax       = 255 // with 0 base, its 256
-	MinSubnetSize   = 8   // minimum Subnet Size
+	MinSubnetSize   = 4   // minimum Subnet Size
 	LargeSubnetSize = 16  // for determining default Dhcp Range
+)
+
+// WwanConfig is published by nim and consumed by the wwan service.
+type WwanConfig struct {
+	RadioSilence bool                `json:"radio-silence"`
+	Networks     []WwanNetworkConfig `json:"networks"`
+}
+
+// Equal compares two instances of WwanConfig for equality.
+func (wc WwanConfig) Equal(wc2 WwanConfig) bool {
+	if wc.RadioSilence != wc2.RadioSilence {
+		return false
+	}
+	if len(wc.Networks) != len(wc2.Networks) {
+		return false
+	}
+	for _, m1 := range wc.Networks {
+		var found bool
+		for _, m2 := range wc2.Networks {
+			if m1.Equal(m2) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return false
+		}
+	}
+	return true
+}
+
+// WwanNetworkConfig contains configuration for a single cellular network.
+type WwanNetworkConfig struct {
+	// Logical label in PhysicalIO.
+	LogicalLabel string        `json:"logical-label"`
+	PhysAddrs    WwanPhysAddrs `json:"physical-addrs"`
+	// XXX Multiple APNs are not yet supported.
+	Apns  []string  `json:"apns"`
+	Probe WwanProbe `json:"probe"`
+	// Some LTE modems have GNSS receiver integrated and can be used
+	// for device location tracking.
+	// Enable this option to have location info periodically obtained
+	// from this modem and published into /run/wwan/location.json by the wwan
+	// microservice. This is further distributed to the controller and
+	// to applications by zedagent.
+	LocationTracking bool `json:"location-tracking"`
+}
+
+// WwanProbe : cellular connectivity verification probe.
+type WwanProbe struct {
+	Disable bool `json:"disable"`
+	// IP/FQDN address to periodically probe to determine connection status.
+	Address string `json:"address"`
+}
+
+// Equal compares two instances of WwanNetworkConfig for equality.
+func (wnc WwanNetworkConfig) Equal(wnc2 WwanNetworkConfig) bool {
+	if wnc.LogicalLabel != wnc2.LogicalLabel ||
+		wnc.PhysAddrs.PCI != wnc2.PhysAddrs.PCI ||
+		wnc.PhysAddrs.USB != wnc2.PhysAddrs.USB ||
+		wnc.PhysAddrs.Interface != wnc2.PhysAddrs.Interface {
+		return false
+	}
+	if wnc.Probe.Address != wnc2.Probe.Address ||
+		wnc.Probe.Disable != wnc2.Probe.Disable {
+		return false
+	}
+	if wnc.LocationTracking != wnc2.LocationTracking {
+		return false
+	}
+	if len(wnc.Apns) != len(wnc2.Apns) {
+		return false
+	}
+	for _, apn1 := range wnc.Apns {
+		var found bool
+		for _, apn2 := range wnc2.Apns {
+			if apn1 == apn2 {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return false
+		}
+	}
+	return true
+}
+
+// WwanPhysAddrs is a physical address of a cellular modem.
+// Not all fields have to be defined. Empty WwanPhysAddrs will match the first modem found in sysfs.
+// With multiple LTE modems the USB address is the most unambiguous and reliable.
+type WwanPhysAddrs struct {
+	// Interface name.
+	// For example: wwan0
+	Interface string `json:"interface"`
+	// USB address in the format "<BUS>:[<PORT>]", with nested ports separated by dots.
+	// For example: 1:2.3
+	USB string `json:"usb"`
+	// PCI address in the long format.
+	// For example: 0000:00:15.0
+	PCI string `json:"pci"`
+}
+
+// WwanStatus is published by the wwan service and consumed by nim.
+type WwanStatus struct {
+	Networks []WwanNetworkStatus `json:"networks"`
+	// MD5 checksum of the corresponding WwanConfig (as config.json).
+	ConfigChecksum string `json:"config-checksum,omitempty"`
+}
+
+// LookupNetworkStatus returns status corresponding to the given cellular network.
+func (ws WwanStatus) LookupNetworkStatus(logicalLabel string) (WwanNetworkStatus, bool) {
+	for _, status := range ws.Networks {
+		if logicalLabel == status.LogicalLabel {
+			return status, true
+		}
+	}
+	return WwanNetworkStatus{}, false
+}
+
+// DoSanitize fills in logical names for cellular modules and SIM cards.
+func (ws WwanStatus) DoSanitize() {
+	uniqueModel := func(model string) bool {
+		var counter int
+		for i := range ws.Networks {
+			if ws.Networks[i].Module.Model == model {
+				counter++
+			}
+		}
+		return counter == 1
+	}
+	for i := range ws.Networks {
+		network := &ws.Networks[i]
+		if network.Module.Name == "" {
+			if network.Module.IMEI != "" {
+				network.Module.Name = network.Module.IMEI
+			} else if uniqueModel(network.Module.Model) {
+				network.Module.Name = network.Module.Model
+			} else {
+				network.Module.Name = network.PhysAddrs.USB
+			}
+		}
+		for j := range network.SimCards {
+			simCard := &network.SimCards[j]
+			if simCard.Name == "" {
+				if simCard.ICCID != "" {
+					simCard.Name = simCard.ICCID
+				} else {
+					simCard.Name = fmt.Sprintf("%s - SIM%d", network.Module.Name, j)
+				}
+			}
+		}
+	}
+}
+
+// WwanNetworkStatus contains status information for a single cellular network.
+type WwanNetworkStatus struct {
+	// Logical label of the cellular modem in PhysicalIO.
+	// Can be empty if this device is not configured by the controller
+	// (and hence logical label does not exist).
+	LogicalLabel string         `json:"logical-label"`
+	PhysAddrs    WwanPhysAddrs  `json:"physical-addrs"`
+	Module       WwanCellModule `json:"cellular-module"`
+	SimCards     []WwanSimCard  `json:"sim-cards"`
+	ConfigError  string         `json:"config-error"`
+	ProbeError   string         `json:"probe-error"`
+	Providers    []WwanProvider `json:"providers"`
+}
+
+// WwanCellModule contains cellular module specs.
+type WwanCellModule struct {
+	Name            string       `json:"name,omitempty"`
+	IMEI            string       `json:"imei"`
+	Model           string       `json:"model"`
+	Revision        string       `json:"revision"`
+	ControlProtocol WwanCtrlProt `json:"control-protocol"`
+	OpMode          WwanOpMode   `json:"operating-mode"`
+}
+
+// WwanSimCard contains SIM card information.
+type WwanSimCard struct {
+	Name  string `json:"name,omitempty"`
+	ICCID string `json:"iccid"`
+	IMSI  string `json:"imsi"`
+}
+
+// WwanProvider contains information about a cellular connectivity provider.
+type WwanProvider struct {
+	PLMN           string `json:"plmn"`
+	Description    string `json:"description"`
+	CurrentServing bool   `json:"current-serving"`
+	Roaming        bool   `json:"roaming"`
+}
+
+// WwanOpMode : wwan operating mode
+type WwanOpMode string
+
+const (
+	// WwanOpModeUnspecified : operating mode is not specified
+	WwanOpModeUnspecified WwanOpMode = ""
+	// WwanOpModeOnline : modem is online but not connected
+	WwanOpModeOnline WwanOpMode = "online"
+	// WwanOpModeConnected : modem is online and connected
+	WwanOpModeConnected WwanOpMode = "online-and-connected"
+	// WwanOpModeRadioOff : modem has disabled radio transmission
+	WwanOpModeRadioOff WwanOpMode = "radio-off"
+	// WwanOpModeOffline : modem is offline
+	WwanOpModeOffline WwanOpMode = "offline"
+	// WwanOpModeUnrecognized : unrecongized operating mode
+	WwanOpModeUnrecognized WwanOpMode = "unrecognized"
+)
+
+// WwanCtrlProt : wwan control protocol
+type WwanCtrlProt string
+
+const (
+	// WwanCtrlProtUnspecified : control protocol is not specified
+	WwanCtrlProtUnspecified WwanCtrlProt = ""
+	// WwanCtrlProtQMI : modem is controlled using the QMI protocol
+	WwanCtrlProtQMI WwanCtrlProt = "qmi"
+	// WwanCtrlProtMBIM : modem is controlled using the MBIM protocol
+	WwanCtrlProtMBIM WwanCtrlProt = "mbim"
+)
+
+// WwanMetrics is published by the wwan service.
+type WwanMetrics struct {
+	Networks []WwanNetworkMetrics `json:"networks"`
+}
+
+// LookupNetworkMetrics returns metrics corresponding to the given cellular network.
+func (wm WwanMetrics) LookupNetworkMetrics(logicalLabel string) (WwanNetworkMetrics, bool) {
+	for _, metrics := range wm.Networks {
+		if logicalLabel == metrics.LogicalLabel {
+			return metrics, true
+		}
+	}
+	return WwanNetworkMetrics{}, false
+}
+
+// Key is used for pubsub
+func (wm WwanMetrics) Key() string {
+	return "global"
+}
+
+// LogCreate :
+func (wm WwanMetrics) LogCreate(logBase *base.LogObject) {
+	logObject := base.NewLogObject(logBase, base.WwanMetricsLogType, "",
+		nilUUID, wm.LogKey())
+	if logObject == nil {
+		return
+	}
+	logObject.Metricf("Wwan metrics create")
+}
+
+// LogModify :
+func (wm WwanMetrics) LogModify(logBase *base.LogObject, old interface{}) {
+	logObject := base.EnsureLogObject(logBase, base.WwanMetricsLogType, "",
+		nilUUID, wm.LogKey())
+
+	oldWm, ok := old.(WwanMetrics)
+	if !ok {
+		logObject.Clone().Fatalf("LogModify: Old object passed is not of WwanMetrics type")
+	}
+	// XXX remove?
+	logObject.CloneAndAddField("diff", cmp.Diff(oldWm, wm)).
+		Metricf("Wwan metrics modify")
+}
+
+// LogDelete :
+func (wm WwanMetrics) LogDelete(logBase *base.LogObject) {
+	logObject := base.EnsureLogObject(logBase, base.WwanMetricsLogType, "",
+		nilUUID, wm.LogKey())
+	logObject.Metricf("Wwan metrics delete")
+
+	base.DeleteLogObject(logBase, wm.LogKey())
+}
+
+// LogKey :
+func (wm WwanMetrics) LogKey() string {
+	return string(base.WwanMetricsLogType) + "-" + wm.Key()
+}
+
+// WwanNetworkMetrics contains metrics for a single cellular network.
+type WwanNetworkMetrics struct {
+	// Logical label of the cellular modem in PhysicalIO.
+	// Can be empty if this device is not configured by the controller
+	// (and hence logical label does not exist).
+	LogicalLabel string          `json:"logical-label"`
+	PhysAddrs    WwanPhysAddrs   `json:"physical-addrs"`
+	PacketStats  WwanPacketStats `json:"packet-stats"`
+	SignalInfo   WwanSignalInfo  `json:"signal-info"`
+}
+
+// WwanPacketStats contains packet statistics recorded by a cellular modem.
+type WwanPacketStats struct {
+	RxBytes   uint64 `json:"rx-bytes"`
+	RxPackets uint64 `json:"rx-packets"`
+	RxDrops   uint64 `json:"rx-drops"`
+	TxBytes   uint64 `json:"tx-bytes"`
+	TxPackets uint64 `json:"tx-packets"`
+	TxDrops   uint64 `json:"tx-drops"`
+}
+
+// WwanSignalInfo contains cellular signal strength information.
+// The maximum value of int32 (0x7FFFFFFF) represents unspecified/unavailable metric.
+type WwanSignalInfo struct {
+	// Received signal strength indicator (RSSI) measured in dBm (decibel-milliwatts).
+	RSSI int32 `json:"rssi"`
+	// Reference Signal Received Quality (RSRQ) measured in dB (decibels).
+	RSRQ int32 `json:"rsrq"`
+	// Reference Signal Receive Power (RSRP) measured in dBm (decibel-milliwatts).
+	RSRP int32 `json:"rsrp"`
+	// Signal-to-Noise Ratio (SNR) measured in dB (decibels).
+	SNR int32 `json:"snr"`
+}
+
+// WwanLocationInfo contains device location information obtained from a GNSS
+// receiver integrated into an LTE modem.
+type WwanLocationInfo struct {
+	// Logical label of the device used to obtain this location information.
+	LogicalLabel string `json:"logical-label"`
+	// Latitude in the Decimal degrees (DD) notation.
+	// Valid values are in the range <-90, 90>. Anything outside of this range
+	// should be treated as an unavailable value.
+	// Note that wwan microservice uses -32768 specifically when latitude is not known.
+	Latitude float64 `json:"latitude"`
+	// Longitude in the Decimal degrees (DD) notation.
+	// Valid values are in the range <-180, 180>. Anything outside of this range
+	// should be treated as an unavailable value.
+	// Note that wwan microservice uses -32768 specifically when longitude is not known.
+	Longitude float64 `json:"longitude"`
+	// Altitude w.r.t. mean sea level in meters.
+	// Negative value of -32768 is returned when altitude is not known.
+	Altitude float64 `json:"altitude"`
+	// Circular horizontal position uncertainty in meters.
+	// Negative values are not valid and represent unavailable uncertainty.
+	// Note that wwan microservice uses -32768 specifically when horizontal
+	// uncertainty is not known.
+	HorizontalUncertainty float32 `json:"horizontal-uncertainty"`
+	// Reliability of the provided information for latitude and longitude.
+	HorizontalReliability LocReliability `json:"horizontal-reliability"`
+	// Vertical position uncertainty in meters.
+	// Negative values are not valid and represent unavailable uncertainty.
+	// Note that wwan microservice uses -32768 specifically when vertical
+	// uncertainty is not known.
+	VerticalUncertainty float32 `json:"vertical-uncertainty"`
+	// Reliability of the provided information for altitude.
+	VerticalReliability LocReliability `json:"vertical-reliability"`
+	// Unix timestamp in milliseconds.
+	// Zero value represents unavailable UTC timestamp.
+	UTCTimestamp uint64 `json:"utc-timestamp"`
+}
+
+// Key is used for pubsub
+func (wli WwanLocationInfo) Key() string {
+	return "global"
+}
+
+// LogCreate :
+func (wli WwanLocationInfo) LogCreate(logBase *base.LogObject) {
+	logObject := base.NewLogObject(logBase, base.WwanLocationInfoLogType, "",
+		nilUUID, wli.LogKey())
+	if logObject == nil {
+		return
+	}
+	logObject.Metricf("Wwan location info create")
+}
+
+// LogModify :
+func (wli WwanLocationInfo) LogModify(logBase *base.LogObject, old interface{}) {
+	logObject := base.EnsureLogObject(logBase, base.WwanLocationInfoLogType, "",
+		nilUUID, wli.LogKey())
+
+	oldWli, ok := old.(WwanLocationInfo)
+	if !ok {
+		logObject.Clone().Fatalf("LogModify: Old object passed is not of WwanLocationInfo type")
+	}
+	// XXX remove?
+	logObject.CloneAndAddField("diff", cmp.Diff(oldWli, wli)).
+		Metricf("Wwan location info modify")
+}
+
+// LogDelete :
+func (wli WwanLocationInfo) LogDelete(logBase *base.LogObject) {
+	logObject := base.EnsureLogObject(logBase, base.WwanLocationInfoLogType, "",
+		nilUUID, wli.LogKey())
+	logObject.Metricf("Wwan location info delete")
+	base.DeleteLogObject(logBase, wli.LogKey())
+}
+
+// LogKey :
+func (wli WwanLocationInfo) LogKey() string {
+	return string(base.WwanLocationInfoLogType) + "-" + wli.Key()
+}
+
+// LocReliability : reliability of location information.
+type LocReliability string
+
+const (
+	// LocReliabilityUnspecified : reliability is not specified
+	LocReliabilityUnspecified LocReliability = "not-set"
+	// LocReliabilityVeryLow : very low reliability
+	LocReliabilityVeryLow LocReliability = "very-low"
+	// LocReliabilityLow : low reliability
+	LocReliabilityLow LocReliability = "low"
+	// LocReliabilityMedium : medium reliability
+	LocReliabilityMedium LocReliability = "medium"
+	// LocReliabilityHigh : high reliability
+	LocReliabilityHigh LocReliability = "high"
 )

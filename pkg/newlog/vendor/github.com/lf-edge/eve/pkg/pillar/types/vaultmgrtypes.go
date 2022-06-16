@@ -20,6 +20,16 @@ type VaultStatus struct {
 	ErrorAndTime
 }
 
+// VaultConfig represents vault key to be used
+type VaultConfig struct {
+	TpmKeyOnly bool
+}
+
+// Key :
+func (config VaultConfig) Key() string {
+	return "global"
+}
+
 //Key returns the key used for indexing into a list of vaults
 func (status VaultStatus) Key() string {
 	return status.Name
@@ -72,13 +82,49 @@ func (status VaultStatus) LogKey() string {
 //EncryptedVaultKeyFromDevice is published by vaultmgr towards Controller (through zedagent)
 type EncryptedVaultKeyFromDevice struct {
 	Name              string
-	EncryptedVaultKey []byte
+	EncryptedVaultKey []byte // empty if no TPM enabled
 }
 
 //Key returns name of the vault corresponding to this object
 //for now it is only the default vault i.e. "Application Volume Store"
 func (key EncryptedVaultKeyFromDevice) Key() string {
 	return key.Name
+}
+
+// LogCreate :
+func (key EncryptedVaultKeyFromDevice) LogCreate(logBase *base.LogObject) {
+	logObject := base.NewLogObject(logBase, base.EncryptedVaultKeyFromDeviceLogType, key.Name,
+		nilUUID, key.LogKey())
+	if logObject == nil {
+		return
+	}
+	logObject.Noticef("EncryptedVaultKeyFromDevice create")
+}
+
+// LogModify :
+func (key EncryptedVaultKeyFromDevice) LogModify(logBase *base.LogObject, old interface{}) {
+	logObject := base.EnsureLogObject(logBase, base.EncryptedVaultKeyFromDeviceLogType, key.Name,
+		nilUUID, key.LogKey())
+
+	_, ok := old.(EncryptedVaultKeyFromDevice)
+	if !ok {
+		logObject.Clone().Fatalf("LogModify: Old object interface passed is not of EncryptedVaultKeyFromDevice type")
+	}
+	logObject.Noticef("EncryptedVaultKeyFromDevice modify")
+}
+
+// LogDelete :
+func (key EncryptedVaultKeyFromDevice) LogDelete(logBase *base.LogObject) {
+	logObject := base.EnsureLogObject(logBase, base.EncryptedVaultKeyFromDeviceLogType, key.Name,
+		nilUUID, key.LogKey())
+	logObject.Noticef("EncryptedVaultKeyFromDevice delete")
+
+	base.DeleteLogObject(logBase, key.LogKey())
+}
+
+// LogKey :
+func (key EncryptedVaultKeyFromDevice) LogKey() string {
+	return string(base.EncryptedVaultKeyFromDeviceLogType) + "-" + key.Key()
 }
 
 //EncryptedVaultKeyFromController is published from Controller to vaultmgr (through zedagent)
@@ -91,4 +137,40 @@ type EncryptedVaultKeyFromController struct {
 //for now it is only the default vault i.e. "Application Volume Store"
 func (key EncryptedVaultKeyFromController) Key() string {
 	return key.Name
+}
+
+// LogCreate :
+func (key EncryptedVaultKeyFromController) LogCreate(logBase *base.LogObject) {
+	logObject := base.NewLogObject(logBase, base.EncryptedVaultKeyFromControllerLogType, key.Name,
+		nilUUID, key.LogKey())
+	if logObject == nil {
+		return
+	}
+	logObject.Noticef("EncryptedVaultKeyFromController create")
+}
+
+// LogModify :
+func (key EncryptedVaultKeyFromController) LogModify(logBase *base.LogObject, old interface{}) {
+	logObject := base.EnsureLogObject(logBase, base.EncryptedVaultKeyFromControllerLogType, key.Name,
+		nilUUID, key.LogKey())
+
+	_, ok := old.(EncryptedVaultKeyFromController)
+	if !ok {
+		logObject.Clone().Fatalf("LogModify: Old object interface passed is not of EncryptedVaultKeyFromController type")
+	}
+	logObject.Noticef("EncryptedVaultKeyFromController modify")
+}
+
+// LogDelete :
+func (key EncryptedVaultKeyFromController) LogDelete(logBase *base.LogObject) {
+	logObject := base.EnsureLogObject(logBase, base.EncryptedVaultKeyFromControllerLogType, key.Name,
+		nilUUID, key.LogKey())
+	logObject.Noticef("EncryptedVaultKeyFromController delete")
+
+	base.DeleteLogObject(logBase, key.LogKey())
+}
+
+// LogKey :
+func (key EncryptedVaultKeyFromController) LogKey() string {
+	return string(base.EncryptedVaultKeyFromControllerLogType) + "-" + key.Key()
 }

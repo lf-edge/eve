@@ -28,6 +28,7 @@ const (
 	SenderStatusCertUnknownAuthority                   // device may miss proxy certificate for MiTM
 	SenderStatusCertUnknownAuthorityProxy              // device configed proxy, may miss proxy certificate for MiTM
 	SenderStatusNotFound                               // 404 indicating device might have been deleted in controller
+	SenderStatusForbidden                              // 403 indicating integrity token might invalidated
 )
 
 const (
@@ -150,6 +151,10 @@ const (
 	NetworkTestTimeout GlobalSettingKey = "timer.port.timeout"
 	// NetworkSendTimeout global setting key
 	NetworkSendTimeout GlobalSettingKey = "timer.send.timeout"
+	// LocationCloudInterval global setting key
+	LocationCloudInterval GlobalSettingKey = "timer.location.cloud.interval"
+	// LocationAppInterval global setting key
+	LocationAppInterval GlobalSettingKey = "timer.location.app.interval"
 	// Dom0MinDiskUsagePercent global setting key
 	Dom0MinDiskUsagePercent GlobalSettingKey = "storage.dom0.disk.minusage.percent"
 	// Dom0DiskUsageMaxBytes - Max disk usage for Dom0. Dom0 can use
@@ -173,6 +178,8 @@ const (
 	// Bool Items
 	// UsbAccess global setting key
 	UsbAccess GlobalSettingKey = "debug.enable.usb"
+	// VgaAccess global setting to enable host VGA console if it is not assigned to an application
+	VgaAccess GlobalSettingKey = "debug.enable.vga"
 	// AllowAppVnc global setting key
 	AllowAppVnc GlobalSettingKey = "app.allow.vnc"
 	// EveMemoryLimitInBytes global setting key
@@ -204,6 +211,9 @@ const (
 
 	// ProcessCloudInitMultiPart to help VMs which do not handle mime multi-part themselves
 	ProcessCloudInitMultiPart GlobalSettingKey = "process.cloud-init.multipart"
+
+	// XXX temp for testing edge-view
+	EdgeViewToken GlobalSettingKey = "edgeview.authen.jwt"
 )
 
 // AgentSettingKey - keys for per-agent settings
@@ -735,11 +745,13 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	configItemSpecMap.AddIntItem(DomainBootRetryTime, 600, 10, 0xFFFFFFFF)
 	configItemSpecMap.AddIntItem(NetworkGeoRedoTime, 3600, 60, 0xFFFFFFFF)
 	configItemSpecMap.AddIntItem(NetworkGeoRetryTime, 600, 5, 0xFFFFFFFF)
-	configItemSpecMap.AddIntItem(NetworkTestDuration, 30, 10, 0xFFFFFFFF)
-	configItemSpecMap.AddIntItem(NetworkTestInterval, 300, 300, 0xFFFFFFFF)
+	configItemSpecMap.AddIntItem(NetworkTestDuration, 30, 10, 3600)
+	configItemSpecMap.AddIntItem(NetworkTestInterval, 300, 300, 3600)
 	configItemSpecMap.AddIntItem(NetworkTestBetterInterval, 600, 0, 0xFFFFFFFF)
-	configItemSpecMap.AddIntItem(NetworkTestTimeout, 15, 0, 0xFFFFFFFF)
-	configItemSpecMap.AddIntItem(NetworkSendTimeout, 120, 0, 0xFFFFFFFF)
+	configItemSpecMap.AddIntItem(NetworkTestTimeout, 15, 0, 3600)
+	configItemSpecMap.AddIntItem(NetworkSendTimeout, 120, 0, 3600)
+	configItemSpecMap.AddIntItem(LocationCloudInterval, HourInSec, 5*MinuteInSec, 0xFFFFFFFF)
+	configItemSpecMap.AddIntItem(LocationAppInterval, 20, 5, HourInSec)
 	configItemSpecMap.AddIntItem(Dom0MinDiskUsagePercent, 20, 20, 80)
 	configItemSpecMap.AddIntItem(AppContainerStatsInterval, 300, 1, 0xFFFFFFFF)
 	configItemSpecMap.AddIntItem(VaultReadyCutOffTime, 300, 60, 0xFFFFFFFF)
@@ -755,6 +767,7 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 
 	// Add Bool Items
 	configItemSpecMap.AddBoolItem(UsbAccess, true) // Controller likely default to false
+	configItemSpecMap.AddBoolItem(VgaAccess, true) // Controller likely default to false
 	configItemSpecMap.AddBoolItem(AllowAppVnc, false)
 	configItemSpecMap.AddBoolItem(IgnoreMemoryCheckForApps, false)
 	configItemSpecMap.AddBoolItem(IgnoreDiskCheckForApps, false)
@@ -774,6 +787,9 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	// Add Agent Settings
 	configItemSpecMap.AddAgentSettingStringItem(LogLevel, "info", parseLevel)
 	configItemSpecMap.AddAgentSettingStringItem(RemoteLogLevel, "info", parseLevel)
+
+	// XXX temp edgeview setting
+	configItemSpecMap.AddStringItem(EdgeViewToken, "", blankValidator)
 
 	return configItemSpecMap
 }

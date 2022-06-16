@@ -6,6 +6,7 @@ package types
 import (
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/go-cmp/cmp"
@@ -267,6 +268,7 @@ const (
 	BootReasonPowerFail          // Known power failure e.g., from disk controller S.M.A.R.T counter increase
 	BootReasonUnknown            // Could be power failure, kernel panic, or hardware watchdog
 	BootReasonVaultFailure       // Vault was not ready within the expected time
+	BootReasonPoweroffCmd        // Start after Local Profile Server poweroff
 	BootReasonParseFail    = 255 // BootReasonFromString didn't find match
 )
 
@@ -301,6 +303,8 @@ func (br BootReason) String() string {
 		return "BootReasonUnknown"
 	case BootReasonVaultFailure:
 		return "BootReasonVaultFailure"
+	case BootReasonPoweroffCmd:
+		return "BootReasonPoweroffCmd"
 	default:
 		return fmt.Sprintf("Unknown BootReason %d", br)
 	}
@@ -339,6 +343,8 @@ func (br BootReason) StartWithSavedConfig() bool {
 		return true
 	case BootReasonVaultFailure:
 		return false
+	case BootReasonPoweroffCmd:
+		return true
 	default:
 		return false
 	}
@@ -378,6 +384,8 @@ func BootReasonFromString(str string) BootReason {
 		return BootReasonUnknown
 	case "BootReasonVaultFailure":
 		return BootReasonVaultFailure
+	case "BootReasonPoweroffCmd":
+		return BootReasonPoweroffCmd
 	default:
 		return BootReasonParseFail
 	}
@@ -414,6 +422,9 @@ type NodeAgentStatus struct {
 	UpdateInprogress           bool
 	RemainingTestTime          time.Duration
 	DeviceReboot               bool
+	DeviceShutdown             bool
+	DevicePoweroff             bool
+	AllDomainsHalted           bool       // Progression of reboot etc
 	RebootReason               string     // From last reboot
 	BootReason                 BootReason // From last reboot
 	RebootStack                string     // From last reboot
@@ -478,16 +489,45 @@ const (
 	ConfigGetReadSaved
 )
 
+//DeviceOperation is an operation on device
+type DeviceOperation uint8
+
+const (
+	//DeviceOperationReboot reboot the device
+	DeviceOperationReboot DeviceOperation = iota
+	//DeviceOperationShutdown shutdown all app instances on device
+	DeviceOperationShutdown
+	//DeviceOperationPoweroff is shutdown plus poweroff. Not setable from controller
+	DeviceOperationPoweroff
+)
+
+// String returns the verbose equivalent of DeviceOperation code
+func (do DeviceOperation) String() string {
+	switch do {
+	case DeviceOperationReboot:
+		return "reboot"
+	case DeviceOperationShutdown:
+		return "shutdown"
+	case DeviceOperationPoweroff:
+		return "poweroff"
+	default:
+		return fmt.Sprintf("Unknown DeviceOperation %d", do)
+	}
+}
+
 // ZedAgentStatus :
 type ZedAgentStatus struct {
 	Name                 string
 	ConfigGetStatus      ConfigGetStatus
 	RebootCmd            bool
-	RebootReason         string     // Current reason to reboot
-	BootReason           BootReason // Current reason to reboot
-	MaintenanceMode      bool       // Don't run apps etc
-	ForceFallbackCounter int        // Try image fallback when counter changes
-	CurrentProfile       string     // Current profile
+	ShutdownCmd          bool
+	PoweroffCmd          bool
+	RebootReason         string       // Current reason to reboot
+	BootReason           BootReason   // Current reason to reboot
+	MaintenanceMode      bool         // Don't run apps etc
+	ForceFallbackCounter int          // Try image fallback when counter changes
+	CurrentProfile       string       // Current profile
+	RadioSilence         RadioSilence // Currently requested state of radio devices
 }
 
 // Key :
@@ -550,3 +590,120 @@ type BaseOs struct {
 	ContentTreeUUID          string
 	ConfigRetryUpdateCounter uint32
 }
+
+// RadioSilence : used in ZedAgentStatus to record the *requested* state of radio devices.
+// Also used in DeviceNetworkStatus to publish the *actual* state of radios.
+// InProgress is used to wait for the operation changing the radio state
+// to finalize before publishing the status update.
+// RequestedAt is used to match the request published by zedagent with the response
+// published by nim.
+//
+// When zedagent receives new radio configuration from the local profile server,
+// it publishes new ZedAgentStatus with RadioSilence.ChangeRequestedAt set to time.Now(),
+// RadioSilence.ChangeInProgress set to true and RadioSilence.Imposed copying RadioConfig.RadioSilence
+// (true or false).
+// When nim receives ZedAgentStatus, it checks if ChangeRequestedAt is greater than
+// the timestamp of the last seen radio configuration change. If it is the case, it copies
+// ChangeRequestedAt and ChangeInProgress (=true) from ZedAgentStatus. RadioSilence to
+// DeviceNetworkStatus.RadioSilence and starts switching radios of wireless devices ON/OFF
+// (in cooperation with wwan service).
+// Once nim is done with all radio devices, it updates RadioSilence of DeviceNetworkStatus and sets
+// ChangeInProgress to false and Imposed to reflect the actual radio state (could be different
+// from the intended state if operation failed).
+// When zedagent sees DeviceNetworkStatus with RadioSilence where CHangeRequestedAt equals
+// the last configuration request time and ChangeInProgress has changed to false, it knows
+// that the operation has finalized and it can publish the status up to the local profile server.
+// Note that while ChangeInProgress is true, zedagent is neither publishing radio status
+// nor obtaining configuration updates from the local profile server.
+type RadioSilence struct {
+	// If true, all radio devices are switched off.
+	Imposed bool
+	// ChangeInProgress is true if change in the radio state is still in-progress.
+	ChangeInProgress bool
+	// Time when the last change in the radio state was requested (by a local profile server).
+	ChangeRequestedAt time.Time
+	// If the last radio configuration change failed, error message is reported here.
+	ConfigError string
+}
+
+// String prints the currently imposed state for radio transmitting.
+// Note: to print the whole structure (including Change* and ConfigError fields), use %#v
+// as the formatting directive.
+func (am RadioSilence) String() string {
+	if am.Imposed {
+		return "Radio transmitters OFF"
+	}
+	return "Radio transmitters ON"
+}
+
+// LocalCommands : commands triggered locally via Local profile server.
+type LocalCommands struct {
+	sync.Mutex
+	// Locally issued app commands.
+	// For every app there is entry only for the last command (completed
+	// or still in progress). Previous commands are not remembered.
+	AppCommands map[string]*LocalAppCommand // key: app UUID
+	// Counters for locally issued app commands.
+	AppCounters map[string]*LocalAppCounters // key: app UUID
+	// Local volume generation counters.
+	VolumeGenCounters map[string]int64 // key: volume UUID
+}
+
+// Empty : returns true if there were no commands triggered locally
+// (for currently deployed apps and volumes).
+func (lc *LocalCommands) Empty() bool {
+	return len(lc.AppCommands) == 0 && len(lc.AppCounters) == 0 &&
+		len(lc.VolumeGenCounters) == 0
+}
+
+// AppCommand : application command requested to run by a local server.
+type AppCommand uint8
+
+// Integer values are in-sync with proto enum AppCommand_Command.
+const (
+	// AppCommandUnspecified : command was not specified (invalid input).
+	AppCommandUnspecified AppCommand = iota
+	// AppCommandRestart : restart application without re-creating volumes.
+	AppCommandRestart
+	// AppCommandPurge : purge application with ALL of its volumes.
+	AppCommandPurge
+	// TODO : purge for a single or a subset of volumes.
+)
+
+// LocalAppCommand : An application command requested from a local server.
+type LocalAppCommand struct {
+	// Command to execute.
+	Command AppCommand
+	// LocalServerTimestamp : timestamp made by the local server when the request was created.
+	LocalServerTimestamp uint64
+	// DeviceTimestamp : timestamp made by EVE when the request was received.
+	DeviceTimestamp time.Time
+	// Completed is set to true by zedagent once the command completes.
+	Completed bool
+	// LastCompletedTimestamp : (server) timestamp of the last command completed for this app.
+	// If Completed is true, then this happens to be the same as LocalServerTimestamp.
+	LastCompletedTimestamp uint64
+}
+
+// LocalAppCounters : counters for locally issued application commands.
+type LocalAppCounters struct {
+	// RestartCmd : contains counter counting how many restart requests have been submitted
+	// via local server for this application in total (including uncompleted requests).
+	RestartCmd AppInstanceOpsCmd
+	// PurgeCounter : contains counter counting how many purge requests have been submitted
+	// via local server for this application in total (including uncompleted requests).
+	PurgeCmd AppInstanceOpsCmd
+}
+
+// DevCommand : application command requested to run by a local server.
+type DevCommand uint8
+
+// Integer values are in-sync with proto enum LocalDevCmd_Command.
+const (
+	// DevCommandUnspecified : command was not specified (invalid input).
+	DevCommandUnspecified DevCommand = iota
+	// DevCommandShutdown : shut down all app instances
+	DevCommandShutdown
+	// DevCommandShutdownPoweroff : shut down all app instances + poweroff
+	DevCommandShutdownPoweroff
+)

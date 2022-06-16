@@ -6,7 +6,6 @@
 package pidfile
 
 import (
-	"errors"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -27,38 +26,42 @@ func writeMyPid(filename string) error {
 	return ioutil.WriteFile(filename, b, 0644)
 }
 
-func CheckAndCreatePidfile(log *base.LogObject, agentName string) error {
+// CheckProcessExists returns true if agent process is running
+// returns string with description of check result
+func CheckProcessExists(log *base.LogObject, agentName string) (bool, string) {
 	filename := fmt.Sprintf("%s/%s.pid", rundir, agentName)
-	if _, err := os.Stat(filename); err != nil {
-		// Assume file does not exist; Create file
-		if err := writeMyPid(filename); err != nil {
-			log.Fatalf("checkAndCreatePidfile: %s\n", err)
-		}
-		return nil
+	if _, err := os.Stat(filename); err != nil && os.IsNotExist(err) {
+		return false, err.Error()
 	}
-	log.Functionf("checkAndCreatePidfile: found %s\n", filename)
+	log.Functionf("CheckProcessExists: found %s\n", filename)
 	// Check if process still exists
 	b, err := ioutil.ReadFile(filename)
 	if err != nil {
-		log.Fatalf("checkAndCreatePidfile: %s\n", err)
+		log.Fatalf("CheckProcessExists: %s", err)
 	}
 	oldPid, err := strconv.Atoi(string(b))
 	if err != nil {
-		log.Errorf("Atoi of %s failed %s; ignored\n", filename, err)
-	} else {
-		// Does the old pid exist?
-		p, err := os.FindProcess(oldPid)
+		return false, fmt.Sprintf("atoi of %s failed %s", filename, err)
+	}
+	// Does the old pid exist?
+	p, err := os.FindProcess(oldPid)
+	if err == nil {
+		err = p.Signal(syscall.Signal(0))
 		if err == nil {
-			err = p.Signal(syscall.Signal(0))
-			if err == nil {
-				errStr := fmt.Sprintf("Old pid %d exists for agent %s",
-					oldPid, agentName)
-				return errors.New(errStr)
-			}
+			return true, fmt.Sprintf("old pid %d exists for agent %s", oldPid, agentName)
 		}
 	}
+	return false, fmt.Sprintf("no running process found for agent %s", agentName)
+}
+
+//CheckAndCreatePidfile check if old process is not running and create new pid file
+func CheckAndCreatePidfile(log *base.LogObject, agentName string) error {
+	if exists, description := CheckProcessExists(log, agentName); exists {
+		return fmt.Errorf("checkAndCreatePidfile: %s", description)
+	}
+	filename := fmt.Sprintf("%s/%s.pid", rundir, agentName)
 	if err := writeMyPid(filename); err != nil {
-		log.Fatalf("checkAndCreatePidfile: %s\n", err)
+		log.Fatalf("checkAndCreatePidfile: %s", err)
 	}
 	return nil
 }

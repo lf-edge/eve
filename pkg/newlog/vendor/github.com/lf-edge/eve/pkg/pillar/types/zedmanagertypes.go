@@ -60,6 +60,9 @@ type AppInstanceConfig struct {
 	IoAdapterList       []IoAdapter
 	RestartCmd          AppInstanceOpsCmd
 	PurgeCmd            AppInstanceOpsCmd
+	LocalRestartCmd     AppInstanceOpsCmd
+	LocalPurgeCmd       AppInstanceOpsCmd
+	HasLocalServer      bool // Set if localServerAddr matches
 	// XXX: to be deprecated, use CipherBlockStatus instead
 	CloudInitUserData *string `json:"pubsub-large-CloudInitUserData"`
 	RemoteConsole     bool
@@ -72,6 +75,8 @@ type AppInstanceConfig struct {
 	MetaDataType MetaDataType
 
 	ProfileList []string
+
+	Delay time.Duration
 }
 
 type AppInstanceOpsCmd struct {
@@ -154,7 +159,9 @@ type AppInstanceStatus struct {
 	BootTime            time.Time
 	IoAdapterList       []IoAdapter // Report what was actually used
 	RestartInprogress   Inprogress
+	RestartStartedAt    time.Time
 	PurgeInprogress     Inprogress
+	PurgeStartedAt      time.Time
 
 	// Mininum state across all steps and all StorageStatus.
 	// Error* set implies error.
@@ -167,6 +174,20 @@ type AppInstanceStatus struct {
 	// All error strings across all steps and all StorageStatus
 	// ErrorAndTimeWithSource provides SetError, SetErrrorWithSource, etc
 	ErrorAndTimeWithSource
+	// Effective time, when the application should start
+	StartTime time.Time
+}
+
+// AppCount is uint8 and it should be sufficient for the number of apps we can support
+type AppCount uint8
+
+// AppInstanceSummary captures the running state of all apps
+type AppInstanceSummary struct {
+	UUIDandVersion UUIDandVersion
+	TotalStarting  AppCount // Total number of apps starting/booting
+	TotalRunning   AppCount // Total number of apps in running state
+	TotalStopping  AppCount // Total number of apps in halting state
+	TotalError     AppCount // Total number of apps in error state
 }
 
 // LogCreate :
@@ -240,13 +261,19 @@ type Inprogress uint8
 
 // NotInprogress and other values for Inprogress
 const (
-	NotInprogress   Inprogress = iota
-	RecreateVolumes            // Download and verify new images if need be
+	NotInprogress     Inprogress = iota
+	DownloadAndVerify            // Download and verify new images if need be
 	BringDown
+	RecreateVolumes
 	BringUp
 )
 
 func (status AppInstanceStatus) Key() string {
+	return status.UUIDandVersion.UUID.String()
+}
+
+// Key provides a unique key
+func (status AppInstanceSummary) Key() string {
 	return status.UUIDandVersion.UUID.String()
 }
 
