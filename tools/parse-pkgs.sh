@@ -144,7 +144,7 @@ IPXE_TAG=$(linuxkit_tag pkg/ipxe)
 #
 # These tags need to be declared last sine they depend
 # on the previous tags being already defined.
-EVE_TAG=$(synthetic_tag zededa/eve pkg/pillar/Dockerfile.in)
+EVE_TAG=$(synthetic_tag zededa/eve pkg/eve/Dockerfile.in)
 
 TAGS=$(gen_tags)
 if [ $# -ge 1 ]; then
