@@ -595,9 +595,13 @@ func doUpdateVol(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool)
 		}
 	}
 	if status.State == types.CREATING_VOLUME && status.SubState == types.VolumeSubStatePreparing {
-		if ctx.useVHost && ctx.persistType == types.PersistZFS && !status.IsContainer() {
+		if ctx.persistType == types.PersistZFS && !status.IsContainer() {
 			zVolStatus := lookupZVolStatusByDataset(ctx, status.ZVolName())
-			if zVolStatus != nil {
+			if zVolStatus == nil {
+				// wait for ZVolStatus from zfsmanager
+				return changed, false
+			}
+			if ctx.useVHost {
 				wwn, err := createTargetVhost(zVolStatus.Device, status)
 				if err != nil {
 					log.Errorf("doUpdateVol(%s) name %s: %v",
@@ -609,20 +613,15 @@ func doUpdateVol(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool)
 					return changed, false
 				}
 				status.WWN = wwn
-				status.SubState = types.VolumeSubStatePrepareDone
-				changed = true
 			}
-		} else {
-			status.SubState = types.VolumeSubStatePrepareDone
-			changed = true
 		}
-		if status.SubState == types.VolumeSubStatePrepareDone {
-			//prepare work done
-			DeleteWorkPrepare(ctx, status)
-			// Asynch creation; ensure we have requested it
-			AddWorkCreate(ctx, status)
-			return changed, false
-		}
+		status.SubState = types.VolumeSubStatePrepareDone
+		changed = true
+		//prepare work done
+		DeleteWorkPrepare(ctx, status)
+		// Asynch creation; ensure we have requested it
+		AddWorkCreate(ctx, status)
+		return changed, false
 	}
 	if status.State == types.CREATING_VOLUME && status.SubState == types.VolumeSubStatePrepareDone {
 		vr := popVolumeWorkResult(ctx, status.Key())
