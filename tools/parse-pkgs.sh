@@ -51,11 +51,13 @@ synthetic_tag() {
 }
 
 resolve_tags() {
-  local tags="$1"
-  local file="$2"
-  local sedcmd
-  sedcmd=$(echo "$tags" | sed -e "s/^/s#/g" -e "s/$/#g/g" -e "s/=/#/g")
-  sed -e "$sedcmd" "${file:-}"
+  local tags="${1:-default}"
+  local file="${2:-default}"
+  if [ "$tags" != "default" ]; then
+      local sedcmd
+      sedcmd=$(echo "$tags" | sed -e "s/^/s#/g" -e "s/$/#g/g" -e "s/=/#/g")
+      sed -e "$sedcmd" "${file:-}"
+  fi
 }
 
 gen_tags() {
