@@ -112,6 +112,8 @@ pci_to_ztype() {
         ztype=4
     elif lspci -D -s "${pci}" | grep -q VGA; then
         ztype=7
+    elif lspci -D -s "${pci}" | grep -q "Non-Volatile memory"; then
+        ztype=8
     else
         ztype=255
     fi
@@ -227,6 +229,30 @@ cat <<__EOT__
     },
 __EOT__
 fi
+
+#enumerate NVME
+ID=""
+for NVME in $(lspci -D  | grep "Non-Volatile memory" | cut -f1 -d\ ); do
+    grp=$(get_assignmentgroup "NVME${ID}" "$NVME")
+    cat <<__EOT__
+    {
+      "ztype": 255,
+      "phylabel": "NVME${ID}",
+      "assigngrp": "${grp}",
+      "phyaddrs": {
+        "PciLong": "${NVME}"
+      },
+      "logicallabel": "NVME${ID}",
+      "usagePolicy": {}
+__EOT__
+    if [ -n "$verbose" ]; then
+        add_pci_info "${NVME}"
+    fi
+    cat <<__EOT__
+    },
+__EOT__
+    ID=$(( ${ID:-0} + 1 ))
+done
 
 #enumerate serial ports
 ID="1"
