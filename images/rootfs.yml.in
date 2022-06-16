@@ -28,7 +28,7 @@ onboot:
 services:
    - name: newlogd
      image: NEWLOGD_TAG
-     cgroupsPath: /eve/services/eve-newlog
+     cgroupsPath: /eve/services/newlogd
      oomScoreAdj: -999
    - name: edgeview
      image: EDGEVIEW_TAG
