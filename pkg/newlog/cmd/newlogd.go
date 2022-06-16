@@ -94,6 +94,8 @@ var (
 
 	// device source input bytes written to log file
 	devSourceBytes *base.LockedStringMap
+	// last number of bytes from call to calculate ranks
+	lastDevNumBytesWrite uint64
 
 	//domainUUID
 	domainUUID *base.LockedStringMap // App log, from domain-id to appDomain
@@ -1533,9 +1535,10 @@ func (p pairList) Len() int           { return len(p) }
 func (p pairList) Less(i, j int) bool { return p[i].Value < p[j].Value }
 func (p pairList) Swap(i, j int)      { p[i], p[j] = p[j], p[i] }
 
-// generate top 10 contributor in total bytes from services
+// getDevTop10Inputs generates top 10 contributor in total bytes from services
+// we calculate ranks from the last call and cleanup devSourceBytes
 func getDevTop10Inputs() {
-	if logmetrics.DevMetrics.NumBytesWrite == 0 {
+	if logmetrics.DevMetrics.NumBytesWrite-lastDevNumBytesWrite == 0 {
 		return
 	}
 
@@ -1545,9 +1548,11 @@ func getDevTop10Inputs() {
 		if i >= 10 {
 			break
 		}
-		top10[p.Key] = uint32(p.Value * 100 / logmetrics.DevMetrics.NumBytesWrite)
+		top10[p.Key] = uint32(p.Value * 100 / (logmetrics.DevMetrics.NumBytesWrite - lastDevNumBytesWrite))
 	}
 	logmetrics.DevTop10InputBytesPCT = top10
+	lastDevNumBytesWrite = logmetrics.DevMetrics.NumBytesWrite
+	devSourceBytes = base.NewLockedStringMap()
 }
 
 func getPtypeTimestamp(timeStr string) *timestamp.Timestamp {
