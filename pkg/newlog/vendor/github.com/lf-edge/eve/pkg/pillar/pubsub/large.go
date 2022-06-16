@@ -67,21 +67,39 @@ func writeLargeImpl(log *base.LogObject, b []byte, dirname string, rootDir strin
 func writeRemoveTree(log *base.LogObject,
 	tree jsonTree, dirname string, rootDir string) (jsonTree, error) {
 
+	// function to recursively descend into a subtree
+	descend := func(k string, v interface{}) (interface{}, error) {
+		subtree, ok := v.(map[string]interface{})
+		if !ok {
+			return v, nil
+		}
+		log.Tracef("Descending into %s", k)
+		return writeRemoveTree(log, subtree, dirname, rootDir)
+	}
+
 	out := make(jsonTree)
 	for k, v := range tree {
 		if !strings.HasPrefix(k, tagLarge) {
-			// descend into subtree if map
-			tree1, ok := v.(map[string]interface{})
-			if !ok {
-				out[k] = v
+			list, ok := v.([]interface{})
+			if ok {
+				var subtrees []interface{}
+				// descend into each entry of a list
+				for _, entry := range list {
+					subtree, err := descend(k, entry)
+					if err != nil {
+						return out, err
+					}
+					subtrees = append(subtrees, subtree)
+				}
+				out[k] = subtrees
 				continue
 			}
-			log.Tracef("Descending into %s", k)
-			tree1, err := writeRemoveTree(log, tree1, dirname, rootDir)
+			// map or a scalar type
+			subtree, err := descend(k, v)
 			if err != nil {
 				return out, err
 			}
-			out[k] = tree1
+			out[k] = subtree
 			continue
 		}
 		oldTagLen := len(tagLarge)
@@ -191,21 +209,39 @@ func readAddLarge(log *base.LogObject, b []byte) ([]byte, error) {
 }
 
 func readAddTree(log *base.LogObject, tree jsonTree) (jsonTree, error) {
+	// function to recursively descend into a subtree
+	descend := func(k string, v interface{}) (interface{}, error) {
+		subtree, ok := v.(map[string]interface{})
+		if !ok {
+			return v, nil
+		}
+		log.Tracef("Descending into %s", k)
+		return readAddTree(log, subtree)
+	}
+
 	out := make(jsonTree)
 	for k, v := range tree {
 		if !strings.HasPrefix(k, tagFile) {
-			// descend into subtree if map
-			tree1, ok := v.(map[string]interface{})
-			if !ok {
-				out[k] = v
+			list, ok := v.([]interface{})
+			if ok {
+				var subtrees []interface{}
+				// descend into each entry of a list
+				for _, entry := range list {
+					subtree, err := descend(k, entry)
+					if err != nil {
+						return out, err
+					}
+					subtrees = append(subtrees, subtree)
+				}
+				out[k] = subtrees
 				continue
 			}
-			log.Tracef("Descending into %s", k)
-			tree1, err := readAddTree(log, tree1)
+			// map or a scalar type
+			subtree, err := descend(k, v)
 			if err != nil {
 				return out, err
 			}
-			out[k] = tree1
+			out[k] = subtree
 			continue
 		}
 		oldTagLen := len(tagFile)

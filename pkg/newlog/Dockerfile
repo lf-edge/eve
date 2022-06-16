@@ -1,18 +1,19 @@
 FROM lfedge/eve-alpine:6.7.0 as build
-ENV BUILD_PKGS libc-dev git gcc linux-headers go
-ENV PKGS alpine-baselayout musl-utils
+ENV BUILD_PKGS git go
+ENV PKGS busybox
 RUN eve-alpine-deploy.sh
 
 # FIXME bump eve-alpine to alpine 3.14
-RUN echo 'http://dl-cdn.alpinelinux.org/alpine/v3.14/community' >> /etc/apk/repositories &&\
-  apk --no-cache add -U --upgrade go && go version
+# hadolint ignore=DL3018
+RUN apk --no-cache --repository https://dl-cdn.alpinelinux.org/alpine/v3.14/community add -U --upgrade go && go version
 
 COPY ./  /newlog/.
 WORKDIR /newlog
 
-RUN GO111MODULE=on CGO_ENABLED=1 go build -mod=vendor -o newlogd ./cmd
-RUN strip newlogd
-RUN cp newlogd /out/usr/bin
+RUN GO111MODULE=on CGO_ENABLED=0 go build -ldflags "-s -w" -mod=vendor -o /out/usr/bin/newlogd ./cmd
+
+# required for pubsub
+RUN rm -rf /out/var/run && mkdir -p /out/run /out/var && ln -s /run /out/var
 
 FROM scratch
 COPY --from=build /out/ /
