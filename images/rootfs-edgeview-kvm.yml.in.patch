@@ -1,0 +1,13 @@
+--- images/rootfs.yml.in
++++ images/rootfs-edgeview-kvm.yml.in
+@@ -30,6 +30,10 @@ services:
+      image: NEWLOGD_TAG
+      cgroupsPath: /eve/services/eve-newlog
+      oomScoreAdj: -999
++   - name: edgeview
++     image: EDGEVIEW_TAG
++     cgroupsPath: /eve/services/edgeview
++     oomScoreAdj: -999
+    - name: debug
+      image: DEBUG_TAG
+      cgroupsPath: /eve/services/debug

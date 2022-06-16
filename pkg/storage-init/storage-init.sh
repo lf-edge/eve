@@ -284,6 +284,10 @@ zfs_set_arc_limits
 UUID_SYMLINK_PATH="/dev/disk/by-uuid"
 mkdir -p $UUID_SYMLINK_PATH
 chmod 700 $UUID_SYMLINK_PATH
+
+# create /run/edgeview early before the disk mount for edgeview container
+mkdir -p /run/edgeview
+
 BLK_DEVICES=$(ls /sys/class/block/)
 for BLK_DEVICE in $BLK_DEVICES; do
     BLK_UUID=$(blkid "/dev/$BLK_DEVICE" | sed -n 's/.*UUID=//p' | sed 's/"//g' | awk '{print $1}')

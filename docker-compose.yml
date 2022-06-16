@@ -53,6 +53,17 @@ services:
         networks:
             - eve
 
+    edgeview:
+        image: EDGEVIEW_TAG
+        privileged: true
+        volumes:
+            - persist:/persist:ro
+            - config:/config:ro
+            - run:/run:ro
+            - etc:/etc:ro
+            - proc:/host/proc:ro
+        network_mode: host
+
     newlogd:
         image: ${NEWLOGD_TAG}
         privileged: true
