@@ -300,7 +300,12 @@ func RebootReason(reason string, bootReason types.BootReason, agentName string,
 
 	// Printing the reboot reason to the console
 	filename = "/dev/console"
-	err = printToFile(filename, fmt.Sprintf("Rebooting EVE. Reason: %s", reason))
+
+	operation := "Rebooting"
+	if bootReason == types.BootReasonPoweroffCmd {
+		operation = "Power off"
+	}
+	err = printToFile(filename, fmt.Sprintf("%s EVE. Reason: %s", operation, reason))
 
 	if err != nil {
 		// Note: can not use log here since we are called from a log hook!

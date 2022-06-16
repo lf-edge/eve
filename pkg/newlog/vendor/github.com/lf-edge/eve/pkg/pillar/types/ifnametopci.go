@@ -252,3 +252,15 @@ func IfRename(log *base.LogObject, ifname string, newIfname string) error {
 	}
 	return nil
 }
+
+// PCIIsBootVga return 'true' if VGA device is a console device
+func PCIIsBootVga(log *base.LogObject, long string) (bool, error) {
+	log.Functionf("PCIIsBootVga %s", long)
+
+	bootVgaFile := pciPath + "/" + long + "/boot_vga"
+	if isBoot, err := ioutil.ReadFile(bootVgaFile); err != nil {
+		return false, err
+	} else {
+		return strings.TrimSpace(strings.TrimSuffix(string(isBoot), "\n")) == "1", err
+	}
+}

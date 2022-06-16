@@ -27,6 +27,12 @@ func GetEveKmemUsageInBytes() (uint64, error) {
 	return readUint64File(EveKmemUsageFile)
 }
 
+// GetZFSArcMaxSizeInBytes returns memory limit
+// reserved for zfs arc
+func GetZFSArcMaxSizeInBytes() (uint64, error) {
+	return readUint64File(ZFSArcMaxSizeFile)
+}
+
 func readUint64File(filename string) (uint64, error) {
 	dataBytes, err := ioutil.ReadFile(filename)
 	if err != nil {
