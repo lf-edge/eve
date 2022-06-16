@@ -1,0 +1,18 @@
+image: eve-edgeview
+org: lfedge
+network: yes
+config:
+  binds:
+    - /:/hostfs:ro
+    - /dev:/dev:ro
+    - /run:/run:ro
+    - /run/edgeview:/run/edgeview
+    - /persist:/persist:ro
+    - /config:/config:ro
+    - /etc/resolv.conf:/etc/resolv.conf:ro
+    - /proc:/host/proc:ro
+    - /persist/certs:/certs:ro
+  capabilities:
+    - all
+  net: host
+  pid: host
