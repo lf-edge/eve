@@ -4,7 +4,6 @@
 package loguploader
 
 import (
-	"bufio"
 	"bytes"
 	"encoding/json"
 	"flag"
@@ -26,6 +25,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	utils "github.com/lf-edge/eve/pkg/pillar/utils/file"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 	uuid "github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
@@ -47,8 +47,10 @@ const (
 	metricsPublishInterval = 300 * time.Second
 	cloudMetricInterval    = 10 * time.Second
 	stillRunningInerval    = 25 * time.Second
-	max4xxdropFiles        = 1000 // leave maximum of 1000 gzip failed to upload files on device, 50M max disk space
-	max4xxRetries          = 10   // move on if the same gzip file failed for 4xx
+	max4xxdropFiles        = 1000  // leave maximum of 1000 gzip failed to upload files on device, 50M max disk space
+	max4xxRetries          = 10    // move on if the same gzip file failed for 4xx
+	warnGzipFileSize       = 50000 // maximum expected gzipped file size for upload in bytes
+	errorGzipFileSize      = 65536 // hard limit of gzipped file size for upload in bytes
 )
 
 var (
@@ -616,18 +618,19 @@ func doFetchSend(ctx *loguploaderContext, zipDir string, iter *int) int {
 
 	if fileTime > 0 && gotFileName != "" {
 		gziplogfile := zipDir + "/" + gotFileName
-		file, err := os.Open(gziplogfile)
-		if err != nil { // could be deleted by newlogd
-			log.Errorf("doFetchSend: can not open gziplogfile %v", err)
+		content, err := utils.ReadWithMaxSize(log, gziplogfile, errorGzipFileSize)
+		if err != nil {
+			if !os.IsNotExist(err) {
+				log.Errorf("doFetchSend: error reading file %s, removing: %s", gziplogfile, err)
+				// remove broken file
+				_ = os.Remove(gziplogfile)
+			}
 			return numFiles
 		}
-		reader := bufio.NewReader(file)
-		content, err := ioutil.ReadAll(reader)
-		if err != nil { // could be deleted by newlogd
-			log.Errorf("doFetchSend: can not readall gziplogfile %v", err)
-			return numFiles
+		if len(content) > warnGzipFileSize {
+			log.Warnf("doFetchSend: log file size %d more than expected %d",
+				len(content), warnGzipFileSize)
 		}
-
 		unavailable, err := sendToCloud(ctx, content, *iter, gotFileName, fileTime, isApp)
 		if err != nil {
 			if unavailable {

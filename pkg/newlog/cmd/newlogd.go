@@ -15,12 +15,14 @@ import (
 	"net"
 	"os"
 	"path"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
 	"strings"
 	"syscall"
 	"time"
+	"unicode"
 
 	"github.com/euank/go-kmsg-parser/kmsgparser"
 	"github.com/golang/protobuf/ptypes/timestamp"
@@ -60,6 +62,7 @@ const (
 
 	maxLogFileSize   int32 = 550000 // maximum collect file size in bytes
 	maxGzipFileSize  int64 = 50000  // maximum gzipped file size for upload in bytes
+	gzipFileFooter   int64 = 12     // size of gzip footer to use in calculations
 	defaultSyncCount       = 30     // default log events flush/sync to disk file
 
 	maxToSendMbytes uint32 = 2048 // default 2 Gbytes for log files remains on disk
@@ -83,6 +86,8 @@ var (
 	limitGzipFilesMbyts uint32 // maximum Mbytes for gzip files remain to be sent up
 
 	enableFastUpload bool // enable fast upload to controller similar to previous log operation
+
+	lastLogNum int // last number used for file name generation
 
 	subGlobalConfig pubsub.Subscription
 
@@ -1015,22 +1020,28 @@ func doMoveCompressFile(tmplogfileInfo fileChanInfo) {
 	dirName, appuuid := getFileInfo(tmplogfileInfo)
 
 	now := time.Now()
-	timenowNum := int(now.UnixNano() / int64(time.Millisecond)) // in msec
-	outfile := gzipFileNameGet(isApp, timenowNum, dirName, appuuid, tmplogfileInfo.notUpload)
+	timeNowNum := int(now.UnixNano() / int64(time.Millisecond)) // in msec
+	if timeNowNum < lastLogNum {
+		// adjust variable for file name generation to not overlap with the old one
+		timeNowNum = lastLogNum + 1
+	}
+	outfile := gzipFileNameGet(isApp, timeNowNum, dirName, appuuid, tmplogfileInfo.notUpload)
 
-	// read input file
-	ifile, err := os.Open(tmplogfileInfo.tmpfile)
+	// open input file
+	iFile, err := os.Open(tmplogfileInfo.tmpfile)
 	if err != nil {
 		log.Fatal(err)
 	}
-	reader := bufio.NewReader(ifile)
-	content, _ := ioutil.ReadAll(reader)
-
-	c2 := bytes.SplitN(content, []byte("\n"), 2)
-	if len(c2) != 2 { // most likely the file is created before any write on it
+	scanner := bufio.NewScanner(iFile)
+	// check if we cannot scan
+	// check valid json header for device log we will use later
+	if !scanner.Scan() || (!isApp && !json.Valid(scanner.Bytes())) {
+		_ = iFile.Close()
 		err = fmt.Errorf("doMoveCompressFile: can't get metadata on first line, remove %s", tmplogfileInfo.tmpfile)
 		log.Error(err)
-		ifile.Close()
+		if scanner.Err() != nil {
+			log.Error(scanner.Err())
+		}
 		err = os.Remove(tmplogfileInfo.tmpfile)
 		if err != nil {
 			log.Fatal("doMoveCompressFile: remove file failed", err)
@@ -1039,37 +1050,60 @@ func doMoveCompressFile(tmplogfileInfo fileChanInfo) {
 	}
 
 	// assign the metadata in the first line of the logfile
-	tmplogfileInfo.header = string(c2[0])
-	content = c2[1]
-	newSize := gzipToOutFile(content, outfile, tmplogfileInfo, now)
-	ifile.Close()
+	tmplogfileInfo.header = scanner.Text()
 
-	// if the newSize exceeding the limit, split into multiple segments and redo the gzip on them
-	var ratio int
-	if newSize > maxGzipFileSize {
-		// remove this new oversied gzip file
-		os.Remove(outfile)
+	// prepare writers to save gzipped logs
+	gw, underlayWriter, oTmpFile := prepareGzipToOutTempFile(filepath.Dir(outfile), tmplogfileInfo, now)
 
-		ratio = int(newSize/maxGzipFileSize + 2) // minimum to 3 segments
-		newSize = doGzipSplitContent(content, ratio, now, tmplogfileInfo)
-		logmetrics.NumBreakGZipFile += uint32(ratio)
-	} else {
-		calculateGzipSizes(newSize)
+	fileID := 0
+	var newSize int64
+	for scanner.Scan() {
+		newLine := scanner.Bytes()
+		//trim non-graphic symbols
+		newLine = bytes.TrimFunc(newLine, func(r rune) bool {
+			return !unicode.IsGraphic(r)
+		})
+		if len(newLine) == 0 {
+			continue
+		}
+		if !json.Valid(newLine) {
+			log.Errorf("doMoveCompressFile: found broken line: %s", string(newLine))
+			continue
+		}
+		// assume that next line is incompressible to be safe
+		// note: bytesWritten may be updated eventually because of gzip implementation
+		// potentially we cannot account maxGzipFileSize less than windowsize of gzip 32768
+		if underlayWriter.bytesWritten+gzipFileFooter+int64(len(newLine)) >= maxGzipFileSize {
+			newSize += finalizeGzipToOutTempFile(gw, oTmpFile, outfile)
+			logmetrics.NumBreakGZipFile++
+			fileID++
+			outfile = gzipFileNameGet(isApp, timeNowNum+fileID, dirName, appuuid, tmplogfileInfo.notUpload)
+			gw, underlayWriter, oTmpFile = prepareGzipToOutTempFile(filepath.Dir(outfile), tmplogfileInfo, now)
+		}
+		_, err := gw.Write(append(newLine, '\n'))
+		if err != nil {
+			log.Fatal("doMoveCompressFile: cannot write file", err)
+		}
 	}
+	if scanner.Err() != nil {
+		log.Fatal("doMoveCompressFile: reading file failed", scanner.Err())
+	}
+	newSize += finalizeGzipToOutTempFile(gw, oTmpFile, outfile)
+	fileID++
+
+	// store variable to check for the new file name generator
+	lastLogNum = timeNowNum + fileID
 
 	if isApp {
 		logmetrics.AppMetrics.NumGZipBytesWrite += uint64(newSize)
 		if tmplogfileInfo.notUpload {
-			if ratio > 0 {
-				logmetrics.NumSkipUploadAppFile += uint32(ratio)
-			} else {
-				logmetrics.NumSkipUploadAppFile++
-			}
+			logmetrics.NumSkipUploadAppFile += uint32(fileID)
 		}
 	} else {
 		logmetrics.DevMetrics.NumGZipBytesWrite += uint64(newSize)
 	}
 
+	_ = iFile.Close()
 	// done gzip conversion, get rid of the temp log file in collect directory
 	err = os.Remove(tmplogfileInfo.tmpfile)
 	if err != nil {
@@ -1086,31 +1120,31 @@ func calculateGzipSizes(size int64) {
 	logmetrics.AvgGzipSize = uint32((oldtotal + size) / gzipFilesCnt)
 }
 
-func doGzipSplitContent(content []byte, ratio int, now time.Time, info fileChanInfo) int64 {
-	segments := breakGzipSegments(content, ratio)
-	timenowNum := int(now.UnixNano() / int64(time.Millisecond)) // in msec
-	dirName, appuuid := getFileInfo(info)
-	var totalNewSize int64
-	for idx, seg := range segments {
-		outfile := gzipFileNameGet(info.isApp, timenowNum+idx, dirName, appuuid, info.notUpload)
-		newSize := gzipToOutFile(seg, outfile, info, now)
-		calculateGzipSizes(newSize)
-		totalNewSize += newSize
-	}
-	return totalNewSize
+// countingWriter implements io.Writer and store count of bytesWritten
+type countingWriter struct {
+	writer       io.Writer
+	bytesWritten int64
 }
 
-func gzipToOutFile(content []byte, fName string, fHdr fileChanInfo, now time.Time) int64 {
+// Write implementation for countingWriter
+func (w *countingWriter) Write(p []byte) (n int, err error) {
+	n, err = w.writer.Write(p)
+	w.bytesWritten += int64(n)
+	return n, err
+}
+
+func prepareGzipToOutTempFile(gzipDirName string, fHdr fileChanInfo, now time.Time) (*gzip.Writer, *countingWriter, *os.File) {
 	// open output file
-	files := strings.Split(fName, "/")
-	gzipfileName := files[len(files)-1]
-	gzipDirName := strings.TrimSuffix(fName, "/"+gzipfileName)
 	oTmpFile, err := ioutil.TempFile(gzipDirName, tmpPrefix)
 	if err != nil {
-		log.Fatal("gzipToOutFile: create tmp file failed ", err)
+		log.Fatal("prepareGzipToOutTempFile: create tmp file failed ", err)
 	}
 
-	gw, _ := gzip.NewWriterLevel(oTmpFile, gzip.BestCompression)
+	writer := &countingWriter{
+		writer: oTmpFile,
+	}
+
+	gw, _ := gzip.NewWriterLevel(writer, gzip.BestCompression)
 
 	// for app upload, use gzip header 'Name' for appName string to simplify cloud side implementation
 	// for now, the gw.Comment has the metadata for device log, and gw.Name for appName for app log
@@ -1121,15 +1155,14 @@ func gzipToOutFile(content []byte, fName string, fHdr fileChanInfo, now time.Tim
 	}
 	gw.ModTime = now
 
-	_, err = gw.Write(content)
-	if err != nil {
-		log.Error(err)
-	}
-	err = gw.Close()
-	if err != nil {
-		log.Error(err)
-	}
+	return gw, writer, oTmpFile
+}
 
+func finalizeGzipToOutTempFile(gw *gzip.Writer, oTmpFile *os.File, outfile string) int64 {
+	err := gw.Close()
+	if err != nil {
+		log.Fatal("finalizeGzipToOutTempFile: cannot close file", err)
+	}
 	tmpFileName := oTmpFile.Name()
 	err = oTmpFile.Sync()
 	if err != nil {
@@ -1141,45 +1174,15 @@ func gzipToOutFile(content []byte, fName string, fHdr fileChanInfo, now time.Tim
 	}
 	f2, err := os.Stat(tmpFileName)
 	if err != nil {
-		log.Fatal("gzipToOutFile: ofile stat error", err)
+		log.Fatal("finalizeGzipToOutTempFile: file stat error", err)
 	}
 	newSize := f2.Size()
-	err = os.Rename(tmpFileName, fName)
+	err = os.Rename(tmpFileName, outfile)
 	if err != nil {
-		log.Fatal("gzipToOutFile: os.Rename error: ", err)
+		log.Fatal("finalizeGzipToOutTempFile: rename tmp file failed ", err)
 	}
+	calculateGzipSizes(newSize)
 	return newSize
-}
-
-func breakGzipSegments(content []byte, ratio int) [][]byte {
-	contents := make([][]byte, ratio)
-	fsize := len(content)
-	blocksize := fsize / ratio
-	s := 0
-	presize := 0
-	for {
-		pos := 0
-		for {
-			size := blocksize*(s+1) + pos
-			pos++
-			if size > fsize {
-				err := fmt.Errorf("can't break the log file")
-				log.Fatal(err)
-			}
-			if content[size] == '\n' { // find the newline to break
-				size++
-				contents[s] = content[presize:size]
-				presize = size
-				break
-			}
-		}
-		s++
-		if s+1 == ratio { // done, assign the last segment
-			contents[s] = content[presize:fsize]
-			break
-		}
-	}
-	return contents
 }
 
 func getFileInfo(tmplogfileInfo fileChanInfo) (string, string) {
