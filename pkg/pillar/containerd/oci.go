@@ -56,7 +56,7 @@ type OCISpec interface {
 	CreateContainer(bool) error
 	AddLoader(string) error
 	AdjustMemLimit(types.DomainConfig, int64)
-	UpdateVifList([]types.VifInfo)
+	UpdateVifList([]types.VifConfig)
 	UpdateFromDomain(*types.DomainConfig)
 	UpdateFromVolume(string) error
 	UpdateMounts([]types.DiskStatus) error
@@ -252,7 +252,7 @@ func (s *ociSpec) AdjustMemLimit(dom types.DomainConfig, addMemory int64) {
 }
 
 // UpdateVifList creates VIF management hooks in OCI spec
-func (s *ociSpec) UpdateVifList(vifs []types.VifInfo) {
+func (s *ociSpec) UpdateVifList(vifs []types.VifConfig) {
 	// use pre-start and post-stop hooks for networking
 	if s.Hooks == nil {
 		s.Hooks = &specs.Hooks{}

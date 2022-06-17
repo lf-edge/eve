@@ -75,7 +75,7 @@ func (ctx ctrdContext) setupSpec(status *types.DomainStatus, config *types.Domai
 	}
 	spec.UpdateFromDomain(config)
 	spec.UpdateMounts(status.DiskStatusList)
-	spec.UpdateVifList(status.VifList)
+	spec.UpdateVifList(config.VifList)
 	spec.UpdateEnvVar(status.EnvVariables)
 
 	return spec, nil

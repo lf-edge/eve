@@ -112,10 +112,10 @@ func MaybeAddDomainConfig(ctx *zedmanagerContext,
 	if ns != nil {
 		ulNum := len(ns.UnderlayNetworkList)
 
-		dc.VifList = make([]types.VifInfo, ulNum)
+		dc.VifList = make([]types.VifConfig, ulNum)
 		// Put UL before OL
 		for i, ul := range ns.UnderlayNetworkList {
-			dc.VifList[i] = ul.VifInfo
+			dc.VifList[i] = ul.VifInfo.VifConfig
 		}
 	}
 	log.Functionf("MaybeAddDomainConfig done for %s", key)

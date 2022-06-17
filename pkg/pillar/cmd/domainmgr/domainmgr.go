@@ -1105,7 +1105,6 @@ func handleCreate(ctx *domainContext, key string, config *types.DomainConfig) {
 		DisplayName:        config.DisplayName,
 		DomainName:         config.GetTaskName(),
 		AppNum:             config.AppNum,
-		VifList:            config.VifList,
 		VirtualizationMode: config.VirtualizationModeOrDefault(),
 		EnableVnc:          config.EnableVnc,
 		VncDisplay:         config.VncDisplay,
@@ -1116,7 +1115,7 @@ func handleCreate(ctx *domainContext, key string, config *types.DomainConfig) {
 	}
 	// Note that the -emu interface doesn't exist until after boot of the domU, but we
 	// initialize the VifList here with the VifUsed.
-	status.VifList = checkIfEmu(status.VifList)
+	status.VifList = fillVifUsed(config.VifList)
 
 	publishDomainStatus(ctx, &status)
 	log.Functionf("handleCreate(%v) set domainName %s for %s",
@@ -1928,7 +1927,7 @@ func handleModify(ctx *domainContext, key string,
 				config.UUIDandVersion, status.DomainName,
 				config.DisplayName)
 		}
-		status.VifList = checkIfEmu(config.VifList)
+		status.VifList = fillVifUsed(config.VifList)
 		publishDomainStatus(ctx, status)
 
 		// Update disks based on any change to volumes
@@ -2016,6 +2015,15 @@ func updateStatusFromConfig(status *types.DomainStatus, config types.DomainConfi
 	status.VncDisplay = config.VncDisplay
 	status.VncPasswd = config.VncPasswd
 	status.DisableLogs = config.DisableLogs
+}
+
+// fillVifUsed iterates over vifs from received config and fill VifUsed
+func fillVifUsed(vifList []types.VifConfig) []types.VifInfo {
+	var retList []types.VifInfo
+	for _, net := range vifList {
+		retList = append(retList, types.VifInfo{VifConfig: net})
+	}
+	return checkIfEmu(retList)
 }
 
 // If we have a -emu named interface we assume it is being used

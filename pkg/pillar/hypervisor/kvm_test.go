@@ -58,7 +58,7 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
 			VncPasswd:  "rosebud",
 		},
 		GPUConfig: "legacy",
-		VifList: []types.VifInfo{
+		VifList: []types.VifConfig{
 			{Bridge: "bn0", Mac: "6a:00:03:61:a6:90", Vif: "nbu1x1"},
 			{Bridge: "bn0", Mac: "6a:00:03:61:a6:91", Vif: "nbu1x2"},
 		},
@@ -874,7 +874,7 @@ func TestCreateDomConfig(t *testing.T) {
 			VncPasswd:  "rosebud",
 		},
 		GPUConfig: "legacy",
-		VifList: []types.VifInfo{
+		VifList: []types.VifConfig{
 			{Bridge: "bn0", Mac: "6a:00:03:61:a6:90", Vif: "nbu1x1"},
 			{Bridge: "bn0", Mac: "6a:00:03:61:a6:91", Vif: "nbu1x2"},
 		},
@@ -2150,7 +2150,7 @@ func TestCreateDom(t *testing.T) {
 			VirtualizationMode: types.HVM,
 		},
 		GPUConfig: "legacy",
-		VifList: []types.VifInfo{
+		VifList: []types.VifConfig{
 			{Bridge: "bn0", Mac: "6a:00:03:61:a6:90", Vif: "nbu1x1"},
 			{Bridge: "bn0", Mac: "6a:00:03:61:a6:91", Vif: "nbu1x2"},
 		},
