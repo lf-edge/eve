@@ -383,9 +383,9 @@ func TestOciSpec(t *testing.T) {
 
 	conf := &types.DomainConfig{
 		VmConfig: types.VmConfig{Memory: 1234, VCpus: 4},
-		VifList: []types.VifInfo{
-			{Vif: "vif0", Bridge: "br0", Mac: "52:54:00:12:34:56", VifUsed: "vif0-ctr"},
-			{Vif: "vif1", Bridge: "br0", Mac: "52:54:00:12:34:57", VifUsed: "vif1-ctr"},
+		VifList: []types.VifConfig{
+			{Vif: "vif0", Bridge: "br0", Mac: "52:54:00:12:34:56"},
+			{Vif: "vif1", Bridge: "br0", Mac: "52:54:00:12:34:57"},
 		},
 	}
 	spec.UpdateFromDomain(conf)
