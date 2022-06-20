@@ -481,15 +481,20 @@ func publishAppInstanceSummary(ctxPtr *zedmanagerContext) {
 	items := ctxPtr.pubAppInstanceStatus.GetAll()
 	for _, st := range items {
 		status := st.(types.AppInstanceStatus)
+		effectiveActivate := false
+		config := lookupAppInstanceConfig(ctxPtr, status.Key())
+		if config != nil {
+			effectiveActivate = effectiveActivateCurrentProfile(*config, ctxPtr.currentProfile)
+		}
 		// Only condition we did not count is EffectiveActive = true and Activated = false.
 		// That means customer either halted his app or did not activate it yet.
-		if status.EffectiveActivate && status.Activated {
+		if effectiveActivate && status.Activated {
 			summary.TotalRunning++
 		} else if len(status.Error) > 0 {
 			summary.TotalError++
 		} else if status.Activated {
 			summary.TotalStopping++
-		} else if status.EffectiveActivate {
+		} else if effectiveActivate {
 			summary.TotalStarting++
 		}
 
@@ -573,14 +578,11 @@ func handleCreate(ctxArg interface{}, key string,
 	log.Functionf("handleCreate(%v) for %s",
 		config.UUIDandVersion, config.DisplayName)
 
-	effectiveActivate := effectiveActivateCurrentProfile(config, ctx.currentProfile)
-
 	status := types.AppInstanceStatus{
-		EffectiveActivate: effectiveActivate,
-		UUIDandVersion:    config.UUIDandVersion,
-		DisplayName:       config.DisplayName,
-		FixedResources:    config.FixedResources,
-		State:             types.INITIAL,
+		UUIDandVersion: config.UUIDandVersion,
+		DisplayName:    config.DisplayName,
+		FixedResources: config.FixedResources,
+		State:          types.INITIAL,
 	}
 
 	// Calculate the moment when the application should start, taking into account the configured delay
@@ -683,7 +685,7 @@ func handleModify(ctxArg interface{}, key string,
 	status.StartTime = ctx.delayBaseTime.Add(config.Delay)
 
 	effectiveActivate := effectiveActivateCurrentProfile(config, ctx.currentProfile)
-	status.EffectiveActivate = effectiveActivate
+
 	publishAppInstanceStatus(ctx, status)
 
 	// We handle at least ACL and activate changes. XXX What else?
@@ -938,8 +940,9 @@ func handleZedAgentStatusImpl(ctxArg interface{}, key string,
 	if ctxPtr.currentProfile != status.CurrentProfile {
 		log.Noticef("handleZedAgentStatusImpl: CurrentProfile changed from %s to %s",
 			ctxPtr.currentProfile, status.CurrentProfile)
+		oldProfile := ctxPtr.currentProfile
 		ctxPtr.currentProfile = status.CurrentProfile
-		updateBasedOnProfile(ctxPtr)
+		updateBasedOnProfile(ctxPtr, oldProfile)
 	}
 	log.Functionf("handleZedAgentStatusImpl(%s) done", key)
 }
@@ -970,20 +973,24 @@ func handleHostMemoryImpl(ctxArg interface{}, key string,
 	log.Functionf("handleHostMemoryImpl(%s) done", key)
 }
 
-// updateBasedOnProfile check all app instances with currentProfile, set EffectiveActivate and update app instances
-func updateBasedOnProfile(ctx *zedmanagerContext) {
+// updateBasedOnProfile check all app instances with ctx.currentProfile and oldProfile
+// update AppInstance if change in effective activate detected
+func updateBasedOnProfile(ctx *zedmanagerContext, oldProfile string) {
 	pub := ctx.subAppInstanceConfig
 	items := pub.GetAll()
 	for _, c := range items {
 		config := c.(types.AppInstanceConfig)
 		effectiveActivate := effectiveActivateCurrentProfile(config, ctx.currentProfile)
+		effectiveActivateOld := effectiveActivateCurrentProfile(config, oldProfile)
+		if effectiveActivateOld == effectiveActivate {
+			// no changes in effective activate
+			continue
+		}
 		status := lookupAppInstanceStatus(ctx, config.Key())
 		if status != nil {
-			if status.EffectiveActivate != effectiveActivate {
-				log.Functionf("updateBasedOnProfile: change activate state for %s from %t to %t",
-					config.Key(), status.EffectiveActivate, effectiveActivate)
-				status.EffectiveActivate = effectiveActivate
-				doUpdate(ctx, config, status)
+			log.Functionf("updateBasedOnProfile: change activate state for %s from %t to %t",
+				config.Key(), effectiveActivateOld, effectiveActivate)
+			if doUpdate(ctx, config, status) {
 				publishAppInstanceStatus(ctx, status)
 			}
 		}
