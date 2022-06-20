@@ -142,7 +142,9 @@ func doUpdate(ctx *zedmanagerContext,
 		return changed
 	}
 
-	if !status.EffectiveActivate {
+	effectiveActivate := effectiveActivateCurrentProfile(config, ctx.currentProfile)
+
+	if !effectiveActivate {
 		if status.Activated || status.ActivateInprogress {
 			c := doInactivateHalt(ctx, config, status)
 			changed = changed || c

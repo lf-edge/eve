@@ -35,11 +35,11 @@ func MaybeAddDomainConfig(ctx *zedmanagerContext,
 	if ns != nil {
 		AppNum = ns.AppNum
 	}
-
+	effectiveActivate := effectiveActivateCurrentProfile(aiConfig, ctx.currentProfile)
 	dc := types.DomainConfig{
 		UUIDandVersion:    aiConfig.UUIDandVersion,
 		DisplayName:       aiConfig.DisplayName,
-		Activate:          aiStatus.EffectiveActivate,
+		Activate:          effectiveActivate,
 		AppNum:            AppNum,
 		VmConfig:          aiConfig.FixedResources,
 		IoAdapterList:     aiConfig.IoAdapterList,
