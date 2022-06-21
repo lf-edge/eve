@@ -17,6 +17,7 @@ import (
 	"github.com/eriknordmark/ipinfo"
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes"
+	"github.com/lf-edge/eve/api/go/config"
 	"github.com/lf-edge/eve/api/go/evecommon"
 	"github.com/lf-edge/eve/api/go/info"
 	"github.com/lf-edge/eve/pkg/pillar/base"
@@ -159,6 +160,32 @@ func objectInfoTask(ctxPtr *zedagentContext, triggerInfo <-chan infoForObjectKey
 		}
 		ctxPtr.ps.StillRunning(wdName, warningTime, errorTime)
 	}
+}
+
+// fillStorageServiceCmd - fills in information about the current
+// state commands about servicing storage systems
+func fillStorageServiceCmd(ctx *zedagentContext,
+	poolName string) []*info.StorageServiceCmd {
+	var serviceCmdList []*info.StorageServiceCmd
+	storageServiceMap := ctx.subStorageCmdStatus.GetAll()
+	for _, el := range storageServiceMap {
+		storageServiceStatus := el.(types.StorageServiceCmdStatus)
+		if poolName != storageServiceStatus.PoolName {
+			continue
+		}
+
+		infoStorageCmd := new(info.StorageServiceCmd)
+		infoStorageCmd.CmdType = config.StorageCmdType(storageServiceStatus.CmdType)
+		infoStorageCmd.RunType = config.StorageCmdRunType(storageServiceStatus.CmdRunType)
+		infoStorageCmd.LastChangeCmdRunTypeTime = uint64(storageServiceStatus.LastChangeCmdRunTypeTime)
+		infoStorageCmd.LastUpdateTime = uint64(storageServiceStatus.LastUpdateTime)
+		infoStorageCmd.NextRunTime = uint64(storageServiceStatus.NextRunTime)
+		for _, el := range storageServiceStatus.LastRunTimeList {
+			infoStorageCmd.LaunchTimesHistoryList = append(infoStorageCmd.LaunchTimesHistoryList, uint64(el))
+		}
+		serviceCmdList = append(serviceCmdList, infoStorageCmd)
+	}
+	return serviceCmdList
 }
 
 func fillStorageChildren(children []*types.StorageChildren) []*info.StorageChildren {
@@ -394,6 +421,7 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 				}
 				storageInfo.Disks = append(storageInfo.Disks, diskInfo)
 			}
+			storageInfo.ServiceCmdInfo = fillStorageServiceCmd(ctx, storageInfo.PoolName)
 			storageInfo.Children = fillStorageChildren(zfsPoolStatus.Children)
 			ReportDeviceInfo.StorageInfo = append(ReportDeviceInfo.StorageInfo, storageInfo)
 			log.Tracef("sending info for ZFS zpool %s", zfsPoolStatus.PoolName)

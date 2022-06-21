@@ -46,7 +46,9 @@ type zfsContext struct {
 	ps                     *pubsub.PubSub
 	zVolStatusPub          pubsub.Publication
 	storageStatusPub       pubsub.Publication
+	pubStorageCmdStatus    pubsub.Publication
 	subDisksConfig         pubsub.Subscription
+	subStorageCmdConfig    pubsub.Subscription
 	disksProcessingTrigger chan interface{}
 }
 
@@ -121,6 +123,37 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	}
 	ctxPtr.storageStatusPub = storageStatusPub
 
+	// Publish pubStorageCmdStatus
+	pubStorageCmdStatus, err := ps.NewPublication(
+		pubsub.PublicationOptions{
+			AgentName:  agentName,
+			TopicType:  types.StorageServiceCmdStatus{},
+			Persistent: true,
+		})
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctxPtr.pubStorageCmdStatus = pubStorageCmdStatus
+
+	// Look for subStorageCmdStatus
+	subStorageCmdConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "zedagent",
+		MyAgentName:   agentName,
+		TopicImpl:     types.StorageServiceCmdConfig{},
+		Activate:      false,
+		Ctx:           &ctxPtr,
+		CreateHandler: handleStorageServiceCmdCreate,
+		ModifyHandler: handleStorageServiceCmdModify,
+		DeleteHandler: handleStorageServiceCmdDelete,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctxPtr.subStorageCmdConfig = subStorageCmdConfig
+	subStorageCmdConfig.Activate()
+
 	deviceNotifyChannel := make(chan *zVolDeviceEvent)
 
 	if err := os.MkdirAll(types.ZVolDevicePrefix, os.ModeDir); err != nil {
@@ -133,12 +166,16 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 	go storageStatusPublisher(&ctxPtr)
 
+	go storageServiceCmdTask(&ctxPtr)
+
 	for {
 		select {
 		case event := <-deviceNotifyChannel:
 			processEvent(&ctxPtr, event)
 		case change := <-subDisksConfig.MsgChan():
 			subDisksConfig.ProcessChange(change)
+		case change := <-subStorageCmdConfig.MsgChan():
+			subStorageCmdConfig.ProcessChange(change)
 		case <-stillRunning.C:
 		}
 		ps.StillRunning(agentName, warningTime, errorTime)

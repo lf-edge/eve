@@ -134,6 +134,7 @@ type zedagentContext struct {
 	subLocationInfo           pubsub.Subscription
 	subDeviceNetworkStatus    pubsub.Subscription
 	subZFSPoolStatus          pubsub.Subscription
+	subStorageCmdStatus       pubsub.Subscription
 	subEdgeviewStatus         pubsub.Subscription
 	zedcloudMetrics           *zedcloud.AgentMetrics
 	rebootCmd                 bool
@@ -566,6 +567,18 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	}
 	pubDisksConfig.ClearRestarted()
 	getconfigCtx.pubDisksConfig = pubDisksConfig
+
+	// for snapshot config Publisher
+	pubStorageCmdConfig, err := ps.NewPublication(
+		pubsub.PublicationOptions{
+			AgentName: agentName,
+			TopicType: types.StorageServiceCmdConfig{},
+		})
+	if err != nil {
+		log.Fatal(err)
+	}
+	pubStorageCmdConfig.ClearRestarted()
+	getconfigCtx.pubStorageCmdConfig = pubStorageCmdConfig
 
 	// Look for global config such as log levels
 	subGlobalConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
@@ -1350,6 +1363,22 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	zedagentCtx.subZFSPoolStatus = subZFSPoolStatus
 	subZFSPoolStatus.Activate()
 
+	subStorageCmdStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:   "zfsmanager",
+		MyAgentName: agentName,
+		TopicImpl:   types.StorageServiceCmdStatus{},
+		Persistent:  true,
+		Activate:    false,
+		Ctx:         &zedagentCtx,
+		WarningTime: warningTime,
+		ErrorTime:   errorTime,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	zedagentCtx.subStorageCmdStatus = subStorageCmdStatus
+	subStorageCmdStatus.Activate()
+
 	//Parse SMART data
 	go parseSMARTData()
 
@@ -1662,6 +1691,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 		case change := <-subLocationInfo.MsgChan():
 			subLocationInfo.ProcessChange(change)
+
+		case change := <-subStorageCmdStatus.MsgChan():
+			subStorageCmdStatus.ProcessChange(change)
 
 		case change := <-subZFSPoolStatus.MsgChan():
 			subZFSPoolStatus.ProcessChange(change)

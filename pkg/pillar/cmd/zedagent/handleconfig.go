@@ -93,6 +93,7 @@ type getconfigContext struct {
 	subVolumeStatus           pubsub.Subscription
 	pubVolumeConfig           pubsub.Publication
 	pubDisksConfig            pubsub.Publication
+	pubStorageCmdConfig       pubsub.Publication
 	NodeAgentStatus           *types.NodeAgentStatus
 	configProcessingSkipFlag  bool
 	lastReceivedConfig        time.Time

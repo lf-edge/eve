@@ -122,3 +122,81 @@ type StorageChildren struct {
 	Disks       []*StorageDiskState
 	Children    []*StorageChildren
 }
+
+// StorageCmdType is the type of command for servicing the storage system
+type StorageCmdType int32
+
+// StorageCmdType enum should be in sync with info api for edge dev
+const (
+	StorageCmdTypeUnspecified StorageCmdType = iota
+	StorageCmdTypeTrim                       // Command for Trim ops
+	StorageCmdTypeScrub                      // Command for Scrub ops
+)
+
+// StorageCmdRunType - type for determining the frequency of commands running
+// when servicing the storage system
+type StorageCmdRunType int32
+
+// StorageCmdRunType enum should be in sync with info api for edge dev
+const (
+	StorageCmdRunTypeUnspecified StorageCmdRunType = iota
+	StorageCmdRunTypeNotRun
+	StorageCmdRunTypeNow
+	StorageCmdRunTypeEveryHour
+	StorageCmdRunTypeEvery3Hours
+	StorageCmdRunTypeEvery6Hours
+	StorageCmdRunTypeEvery12Hours
+	StorageCmdRunTypeEveryDay
+	StorageCmdRunTypeEvery2Days
+	StorageCmdRunTypeEvery3Days
+	StorageCmdRunTypeEveryWeek
+	StorageCmdRunTypeEvery2Weeks
+	StorageCmdRunTypeEveryMonth
+	StorageCmdRunTypeEvery3Months
+	StorageCmdRunTypeEvery6Months
+	StorageCmdRunTypeEveryYear
+)
+
+// StorageServiceCmdConfig describes the desired command
+// configuration for servicing storage.
+type StorageServiceCmdConfig struct {
+	PoolName   string
+	CmdType    StorageCmdType
+	CmdRunType StorageCmdRunType
+}
+
+// Key for StorageServiceCmdConfig pubsub
+func (s StorageServiceCmdConfig) Key() string {
+	if s.CmdType == StorageCmdTypeTrim {
+		return s.PoolName + "trim"
+	}
+
+	if s.CmdType == StorageCmdTypeScrub {
+		return s.PoolName + "scrub"
+	}
+	return s.PoolName + "unknown"
+}
+
+// StorageServiceCmdStatus describes the state of the command
+// for servicing storage systems.
+type StorageServiceCmdStatus struct {
+	PoolName                 string
+	CmdType                  StorageCmdType
+	CmdRunType               StorageCmdRunType
+	LastUpdateTime           int64
+	LastRunTimeList          []int64
+	NextRunTime              int64
+	LastChangeCmdRunTypeTime int64
+}
+
+// Key for StorageServiceCmdStatus pubsub
+func (s StorageServiceCmdStatus) Key() string {
+	if s.CmdType == StorageCmdTypeTrim {
+		return s.PoolName + "trim"
+	}
+
+	if s.CmdType == StorageCmdTypeScrub {
+		return s.PoolName + "scrub"
+	}
+	return s.PoolName + "unknown"
+}

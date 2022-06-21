@@ -127,6 +127,8 @@ func parseConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigContext,
 
 		parseDisksConfig(getconfigCtx, config)
 
+		parseStorageCmdConfig(getconfigCtx, config)
+
 		getconfigCtx.lastProcessedConfig = time.Now()
 	}
 	return false

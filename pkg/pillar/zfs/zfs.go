@@ -424,3 +424,21 @@ func GetZfsDiskAndStatus(disk libzfs.VDevTree) (*types.StorageDiskState, error) 
 	rDiskStatus.Status = GetZfsDeviceStatusFromStr(disk.Stat.State.String())
 	return rDiskStatus, nil
 }
+
+// RunServiceCmd - runs commands like Trim and Scrub
+func RunServiceCmd(log *base.LogObject, poolName string, cmdType types.StorageCmdType) (string, error) {
+	var args []string
+
+	if cmdType == types.StorageCmdTypeScrub {
+		args = append(zpoolPath, "scrub", poolName)
+	} else {
+		args = append(zpoolPath, "trim", poolName)
+	}
+
+	stdoutStderr, err := base.Exec(log, vault.ZfsPath, args...).CombinedOutput()
+	if err != nil {
+		return string(stdoutStderr), err
+	}
+
+	return "", nil
+}
