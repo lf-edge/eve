@@ -136,6 +136,9 @@ message EdgeDevConfig {
   // power on capability; power off can be done locally using the Local Profile
   // Server API.
   DeviceOpsCmd shutdown = 34;
+
+  // List with commands for servicing storage systems
+  repeated StorageCmdConfig storage_service_cmd = 35;
 }
 
 message ConfigRequest {

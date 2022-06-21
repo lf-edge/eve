@@ -242,3 +242,38 @@ message DisksConfig {
   DisksArrayType array_type = 2;
   repeated DisksConfig children = 3;
 }
+
+// StorageCmdType is the type of command for servicing the storage system
+enum StorageCmdType {
+  STORAGE_CMD_TYPE_UNSPECIFIED = 0;
+  STORAGE_CMD_TYPE_TRIM = 1;        // Command for Trim ops
+  STORAGE_CMD_TYPE_SCRUB = 2;       // Command for Scrub ops
+}
+
+// StorageCmdRunType - type for determining the frequency of commands running
+// when servicing the storage system
+enum StorageCmdRunType {
+  STORAGE_CMD_RUN_TYPE_UNSPECIFIED = 0;
+  STORAGE_CMD_RUN_TYPE_NOT_RUN = 1;
+  STORAGE_CMD_RUN_TYPE_NOW = 2;
+  STORAGE_CMD_RUN_TYPE_EVERY_HOUR = 3;
+  STORAGE_CMD_RUN_TYPE_EVERY_3_HOURS = 4;
+  STORAGE_CMD_RUN_TYPE_EVERY_6_HOURS = 5;
+  STORAGE_CMD_RUN_TYPE_EVERY_12_HOURS = 6;
+  STORAGE_CMD_RUN_TYPE_EVERY_DAY = 7;
+  STORAGE_CMD_RUN_TYPE_EVERY_2_DAYS = 8;
+  STORAGE_CMD_RUN_TYPE_EVERY_3_DAYS = 9;
+  STORAGE_CMD_RUN_TYPE_EVERY_WEEK = 10;
+  STORAGE_CMD_RUN_TYPE_EVERY_2_WEEKS = 11;
+  STORAGE_CMD_RUN_TYPE_EVERY_MONTH = 12;
+  STORAGE_CMD_RUN_TYPE_EVERY_3_MONTHS = 13;
+  STORAGE_CMD_RUN_TYPE_EVERY_6_MONTHS = 14;
+  STORAGE_CMD_RUN_TYPE_EVERY_YEAR = 15;
+}
+
+// StorageCmdConfig describes the desired command configuration for serving storage.
+message StorageCmdConfig {
+  string pool_name = 1;
+  StorageCmdType cmd_type = 2;
+  StorageCmdRunType run_type = 3;
+}
