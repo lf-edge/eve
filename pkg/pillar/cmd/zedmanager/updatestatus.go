@@ -148,7 +148,9 @@ func doUpdate(ctx *zedmanagerContext,
 		if status.Activated || status.ActivateInprogress {
 			c := doInactivateHalt(ctx, config, status)
 			changed = changed || c
-		} else {
+		}
+		// Activated and ActivateInprogress flags may be changed during doInactivateHalt call
+		if !status.Activated && !status.ActivateInprogress {
 			// Since we are not activating we set the state to
 			// HALTED to indicate it is not running since it
 			// might have been halted before the device was rebooted
