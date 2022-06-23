@@ -19,7 +19,7 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   syntax='proto3',
   serialized_options=b'\n\025org.lfedge.eve.configZ$github.com/lf-edge/eve/api/go/config',
   create_key=_descriptor._internal_create_key,
-  serialized_pb=b'\n\x15\x63onfig/edgeview.proto\x12\x15org.lfedge.eve.config\"\xb8\x01\n\x0e\x45\x64geViewConfig\x12\r\n\x05token\x18\x01 \x01(\t\x12\x15\n\rdisp_cert_pem\x18\x02 \x03(\x0c\x12?\n\ndev_policy\x18\x03 \x01(\x0b\x32+.org.lfedge.eve.config.DevDebugAccessPolicy\x12?\n\napp_policy\x18\x04 \x01(\x0b\x32+.org.lfedge.eve.config.AppDebugAccessPolicy\")\n\x14\x44\x65vDebugAccessPolicy\x12\x11\n\tallow_dev\x18\x01 \x01(\x08\")\n\x14\x41ppDebugAccessPolicy\x12\x11\n\tallow_app\x18\x01 \x01(\x08\x42=\n\x15org.lfedge.eve.configZ$github.com/lf-edge/eve/api/go/configb\x06proto3'
+  serialized_pb=b'\n\x15\x63onfig/edgeview.proto\x12\x15org.lfedge.eve.config\"\x92\x02\n\x0e\x45\x64geViewConfig\x12\r\n\x05token\x18\x01 \x01(\t\x12\x15\n\rdisp_cert_pem\x18\x02 \x03(\x0c\x12?\n\ndev_policy\x18\x03 \x01(\x0b\x32+.org.lfedge.eve.config.DevDebugAccessPolicy\x12?\n\napp_policy\x18\x04 \x01(\x0b\x32+.org.lfedge.eve.config.AppDebugAccessPolicy\x12\x41\n\next_policy\x18\x05 \x01(\x0b\x32-.org.lfedge.eve.config.ExternalEndPointPolicy\x12\x15\n\rgeneration_id\x18\x06 \x01(\r\")\n\x14\x44\x65vDebugAccessPolicy\x12\x11\n\tallow_dev\x18\x01 \x01(\x08\")\n\x14\x41ppDebugAccessPolicy\x12\x11\n\tallow_app\x18\x01 \x01(\x08\"+\n\x16\x45xternalEndPointPolicy\x12\x11\n\tallow_ext\x18\x01 \x01(\x08\x42=\n\x15org.lfedge.eve.configZ$github.com/lf-edge/eve/api/go/configb\x06proto3'
 )
 
 
@@ -61,6 +61,20 @@ _EDGEVIEWCONFIG = _descriptor.Descriptor(
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+    _descriptor.FieldDescriptor(
+      name='ext_policy', full_name='org.lfedge.eve.config.EdgeViewConfig.ext_policy', index=4,
+      number=5, type=11, cpp_type=10, label=1,
+      has_default_value=False, default_value=None,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+    _descriptor.FieldDescriptor(
+      name='generation_id', full_name='org.lfedge.eve.config.EdgeViewConfig.generation_id', index=5,
+      number=6, type=13, cpp_type=3, label=1,
+      has_default_value=False, default_value=0,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
   ],
   extensions=[
   ],
@@ -74,7 +88,7 @@ _EDGEVIEWCONFIG = _descriptor.Descriptor(
   oneofs=[
   ],
   serialized_start=49,
-  serialized_end=233,
+  serialized_end=323,
 )
 
 
@@ -105,8 +119,8 @@ _DEVDEBUGACCESSPOLICY = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=235,
-  serialized_end=276,
+  serialized_start=325,
+  serialized_end=366,
 )
 
 
@@ -137,15 +151,49 @@ _APPDEBUGACCESSPOLICY = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=278,
-  serialized_end=319,
+  serialized_start=368,
+  serialized_end=409,
+)
+
+
+_EXTERNALENDPOINTPOLICY = _descriptor.Descriptor(
+  name='ExternalEndPointPolicy',
+  full_name='org.lfedge.eve.config.ExternalEndPointPolicy',
+  filename=None,
+  file=DESCRIPTOR,
+  containing_type=None,
+  create_key=_descriptor._internal_create_key,
+  fields=[
+    _descriptor.FieldDescriptor(
+      name='allow_ext', full_name='org.lfedge.eve.config.ExternalEndPointPolicy.allow_ext', index=0,
+      number=1, type=8, cpp_type=7, label=1,
+      has_default_value=False, default_value=False,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+  ],
+  extensions=[
+  ],
+  nested_types=[],
+  enum_types=[
+  ],
+  serialized_options=None,
+  is_extendable=False,
+  syntax='proto3',
+  extension_ranges=[],
+  oneofs=[
+  ],
+  serialized_start=411,
+  serialized_end=454,
 )
 
 _EDGEVIEWCONFIG.fields_by_name['dev_policy'].message_type = _DEVDEBUGACCESSPOLICY
 _EDGEVIEWCONFIG.fields_by_name['app_policy'].message_type = _APPDEBUGACCESSPOLICY
+_EDGEVIEWCONFIG.fields_by_name['ext_policy'].message_type = _EXTERNALENDPOINTPOLICY
 DESCRIPTOR.message_types_by_name['EdgeViewConfig'] = _EDGEVIEWCONFIG
 DESCRIPTOR.message_types_by_name['DevDebugAccessPolicy'] = _DEVDEBUGACCESSPOLICY
 DESCRIPTOR.message_types_by_name['AppDebugAccessPolicy'] = _APPDEBUGACCESSPOLICY
+DESCRIPTOR.message_types_by_name['ExternalEndPointPolicy'] = _EXTERNALENDPOINTPOLICY
 _sym_db.RegisterFileDescriptor(DESCRIPTOR)
 
 EdgeViewConfig = _reflection.GeneratedProtocolMessageType('EdgeViewConfig', (_message.Message,), {
@@ -168,6 +216,13 @@ AppDebugAccessPolicy = _reflection.GeneratedProtocolMessageType('AppDebugAccessP
   # @@protoc_insertion_point(class_scope:org.lfedge.eve.config.AppDebugAccessPolicy)
   })
 _sym_db.RegisterMessage(AppDebugAccessPolicy)
+
+ExternalEndPointPolicy = _reflection.GeneratedProtocolMessageType('ExternalEndPointPolicy', (_message.Message,), {
+  'DESCRIPTOR' : _EXTERNALENDPOINTPOLICY,
+  '__module__' : 'config.edgeview_pb2'
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.config.ExternalEndPointPolicy)
+  })
+_sym_db.RegisterMessage(ExternalEndPointPolicy)
 
 
 DESCRIPTOR._options = None

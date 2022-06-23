@@ -7,7 +7,7 @@
 +   - name: edgeview
 +     image: EDGEVIEW_TAG
 +     cgroupsPath: /eve/services/edgeview
-+     oomScoreAdj: -999
++     oomScoreAdj: -800
     - name: debug
       image: DEBUG_TAG
       cgroupsPath: /eve/services/debug
