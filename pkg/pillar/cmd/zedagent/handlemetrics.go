@@ -1406,6 +1406,7 @@ func PublishEdgeviewToZedCloud(ctx *zedagentContext, evStatus *types.EdgeviewSta
 		ReportEvInfo.StartedTime = startTime
 		ReportEvInfo.CountDev = evStatus.CmdCountDev
 		ReportEvInfo.CountApp = evStatus.CmdCountApp
+		ReportEvInfo.CountExt = evStatus.CmdCountExt
 	}
 
 	ReportInfo.InfoContent = new(info.ZInfoMsg_Evinfo)

@@ -229,6 +229,28 @@ func addEvFiles(evConfig types.EdgeviewConfig, params []string) error {
 		return err
 	}
 
+	// write ext policy
+	extbytes, err := json.Marshal(evConfig.ExtPolicy)
+	if err != nil {
+		log.Errorf("json marshal failed: %v", err)
+		return err
+	}
+
+	_, err = f.WriteString(types.EdgeViewExtPolicyPrefix + string(extbytes) + "\n")
+	if err != nil {
+		log.Errorf("file write failed: %v", err)
+		return err
+	}
+
+	// write generation-id
+	// since this new generation-id will cause the change of hash value of the configure file,
+	// it would restart the edge-view instances as the result
+	_, err = f.WriteString(types.EdgeViewGenIDPrefix + strconv.Itoa(int(evConfig.GenID)) + "\n")
+	if err != nil {
+		log.Errorf("file write failed: %v", err)
+		return err
+	}
+
 	if err = f.Close(); err != nil {
 		log.Errorf("file close failed: %v", err)
 		return err
@@ -272,11 +294,15 @@ func handleEdgeviewToken(gcp *types.ConfigItemValueMap) {
 	app := types.EvAppPolicy{
 		Enabled: true,
 	}
-
+	ext := types.EvExtPolicy{
+		Enabled: true,
+	}
 	evConfig := types.EdgeviewConfig{
 		JWToken:   edgeviewParam,
 		DevPolicy: dev,
 		AppPolicy: app,
+		ExtPolicy: ext,
+		GenID:     1,
 	}
 
 	if edgeviewParam != "" {

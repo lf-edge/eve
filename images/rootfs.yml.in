@@ -30,6 +30,10 @@ services:
      image: NEWLOGD_TAG
      cgroupsPath: /eve/services/eve-newlog
      oomScoreAdj: -999
+   - name: edgeview
+     image: EDGEVIEW_TAG
+     cgroupsPath: /eve/services/eve-edgeview
+     oomScoreAdj: -800
    - name: debug
      image: DEBUG_TAG
      cgroupsPath: /eve/services/debug

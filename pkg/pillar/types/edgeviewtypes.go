@@ -27,6 +27,10 @@ const (
 	EdgeViewDevPolicyPrefix = "EvDevPolicy:"
 	// EdgeViewAppPolicyPrefix - Edgeview application policy prefix string
 	EdgeViewAppPolicyPrefix = "EvAppPolicy:"
+	// EdgeViewExtPolicyPrefix - Edgeview external policy prefix string
+	EdgeViewExtPolicyPrefix = "EvExtPolicy:"
+	// EdgeViewGenIDPrefix - Edgeview generation-ID prefix string
+	EdgeViewGenIDPrefix = "EvGenID:"
 
 	// EdgeviewJWTAlgo - JWT algorithm string
 	EdgeviewJWTAlgo = "ES256"
@@ -43,6 +47,8 @@ type EdgeviewConfig struct {
 	DispCertPEM [][]byte    // dispatcher certificates
 	DevPolicy   EvDevPolicy // device policy
 	AppPolicy   EvAppPolicy // app policy
+	ExtPolicy   EvExtPolicy // external policy
+	GenID       uint32      // number of time started
 }
 
 // EvDevPolicy - edge-view policy for device access
@@ -57,6 +63,13 @@ type EvDevPolicy struct {
 // With Enable App, can expend later for other policies
 type EvAppPolicy struct {
 	Enabled bool `json:"enabled"` // allow access to apps
+}
+
+// EvExtPolicy - edge-view policy for external access
+// the 'Enabled' controls all external access is allowed or not
+// With Enable Ext, can expend later for other policies
+type EvExtPolicy struct {
+	Enabled bool `json:"enabled"` // allow access to external end-points
 }
 
 // EvjwtAlgo - jwt algorithm
@@ -89,6 +102,7 @@ type EdgeviewStatus struct {
 	StartedOn   time.Time // edge-view process started on timestamp
 	CmdCountDev uint32    // total edge-view dev related commands performed
 	CmdCountApp uint32    // total edge-view app related commands performed
+	CmdCountExt uint32    // total edge-view ext related commands performed
 }
 
 // Key is global for edgeview for now
