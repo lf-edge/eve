@@ -1083,6 +1083,8 @@ message ZInfoEdgeview {
   uint32 count_dev = 3;
   // total number of app related cmds edge-view has processed
   uint32 count_app = 4;
+  // total number of external related cmds edge-view has processed
+  uint32 count_ext = 5;
 }
 
 // LocReliability - reliability of location information.

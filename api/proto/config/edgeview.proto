@@ -17,6 +17,10 @@ message EdgeViewConfig {
     DevDebugAccessPolicy dev_policy = 3;
     // policy access for apps through edge-view
     AppDebugAccessPolicy app_policy = 4;
+    // policy access for external endpoint through edge-view
+    ExternalEndPointPolicy ext_policy = 5;
+    // Generation ID for re-start edgeview without parameter changes
+    uint32 generation_id = 6;
 }
 
 // Dev debug policy applicable to edge-view
@@ -29,4 +33,13 @@ message DevDebugAccessPolicy {
 message AppDebugAccessPolicy {
     // app side of edge-view access is allowed or not
     bool allow_app = 1;
+}
+
+// External Endpoint applicable to edge-view
+// To mean the entity external to the device, e.g. a local-profile server on the LAN outside of mgmt
+// or app-shared ports. since it's not part of EVE, and not part of EVE applications. In the EdgeView code,
+// if tcp session setup is to an address we don't have, it identifies the request as 'external'
+message ExternalEndPointPolicy {
+    // external of device side of edge-view access is allowed or not
+    bool allow_ext = 1;
 }
