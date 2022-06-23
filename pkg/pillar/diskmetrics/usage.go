@@ -5,6 +5,7 @@ package diskmetrics
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"strconv"
 	"strings"
@@ -30,22 +31,30 @@ func SizeFromDir(log *base.LogObject, dirname string) (uint64, error) {
 		err = fmt.Errorf("Exception while opening %s: %v", dirname, err)
 		return totalUsed, err
 	}
-	locations, err := f.Readdir(-1)
-	f.Close()
-	if err != nil {
-		err = fmt.Errorf("Exception while reading dir %s: %v", dirname, err)
-		return totalUsed, err
-	}
-	for _, location := range locations {
-		filename := dirname + "/" + location.Name()
-		log.Tracef("Looking in %s\n", filename)
-		if location.IsDir() {
-			size, _ := SizeFromDir(log, filename)
-			log.Tracef("Dir %s size %d\n", filename, size)
-			totalUsed += size
-		} else {
-			log.Tracef("File %s Size %d\n", filename, location.Size())
-			totalUsed += uint64(location.Size())
+	defer func() {
+		if err := f.Close(); err != nil {
+			log.Errorf("cannot close dir %s: %s", dirname, err)
+		}
+	}()
+	for {
+		locations, err := f.Readdir(10)
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return totalUsed, err
+		}
+		for _, location := range locations {
+			filename := dirname + "/" + location.Name()
+			log.Tracef("Looking in %s\n", filename)
+			if location.IsDir() {
+				size, _ := SizeFromDir(log, filename)
+				log.Tracef("Dir %s size %d\n", filename, size)
+				totalUsed += size
+			} else {
+				log.Tracef("File %s Size %d\n", filename, location.Size())
+				totalUsed += uint64(location.Size())
+			}
 		}
 	}
 	return totalUsed, nil

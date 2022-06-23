@@ -910,50 +910,85 @@ func writelogEntry(stats *statsLogFile, logline string) int {
 	return len
 }
 
+type logDirectoryType int
+
+const (
+	keepSentDirType logDirectoryType = iota
+	uploadAppDirType
+	uploadDevDirType
+	failSendDIrType
+)
+
+func (dirType logDirectoryType) getPath() string {
+	switch dirType {
+	case keepSentDirType:
+		return keepSentDir
+	case uploadAppDirType:
+		return uploadAppDir
+	case uploadDevDirType:
+		return uploadDevDir
+	case failSendDIrType:
+		return failSendDIr
+	}
+	return ""
+}
+
 type gfileStats struct {
 	isSent   bool
+	dirType  logDirectoryType
 	filename string
 	filesize int64
 }
 
-func checkDirGzfiles(sfiles map[string]gfileStats, logdir string) ([]string, int64, error) {
+func checkDirGZFiles(sfiles map[string]gfileStats, dirType logDirectoryType) ([]string, int64, error) {
 	var sizes int64
-
-	if _, err := os.Stat(logdir); err != nil {
+	logDir := dirType.getPath()
+	dir, err := os.Open(logDir)
+	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, 0, nil
 		}
 		return nil, sizes, err
 	}
-
-	files, err := ioutil.ReadDir(logdir)
-	if err != nil {
-		return nil, sizes, err
-	}
+	defer func() {
+		if err := dir.Close(); err != nil {
+			log.Errorf("cannot close dir %s: %s", logDir, err)
+		}
+	}()
 
 	var alreadySent bool
-	if logdir == keepSentDir {
+	if logDir == keepSentDir {
 		alreadySent = true
 	}
 
-	keys := make([]string, 0, len(files))
-	for _, f := range files {
-		fname := f.Name()
-		fsize := f.Size()
-		fs := gfileStats{
-			filename: logdir + "/" + fname,
-			filesize: fsize,
-			isSent:   alreadySent,
-		}
-		sizes += fsize
+	var keys []string
 
-		fname2 := strings.TrimSuffix(fname, ".gz")
-		fname3 := strings.Split(fname2, ".log.")
-		if len(fname3) != 2 {
-			continue
+	for {
+		files, err := dir.Readdir(10)
+		if err == io.EOF {
+			break
 		}
-		keys = append(keys, fname3[1])
-		sfiles[fname3[1]] = fs
+		if err != nil {
+			return nil, sizes, err
+		}
+		for _, fi := range files {
+			fname := fi.Name()
+			fsize := fi.Size()
+			fs := gfileStats{
+				filename: fname,
+				filesize: fsize,
+				isSent:   alreadySent,
+				dirType:  dirType,
+			}
+			sizes += fsize
+			fname2 := strings.TrimSuffix(fname, ".gz")
+			fname3 := strings.Split(fname2, ".log.")
+			if len(fname3) != 2 {
+				continue
+			}
+			keys = append(keys, fname3[1])
+			sfiles[fname3[1]] = fs
+		}
 	}
 
 	return keys, sizes, nil
@@ -964,26 +999,30 @@ func checkKeepQuota() {
 	maxSize := int64(limitGzipFilesMbyts * 1000000)
 	sfiles := make(map[string]gfileStats)
 
-	key0, size0, err := checkDirGzfiles(sfiles, keepSentDir)
+	key0, size0, err := checkDirGZFiles(sfiles, keepSentDirType)
 	if err != nil {
 		log.Errorf("checkKeepQuota: keepSentDir %v", err)
 	}
-	key1, size1, err := checkDirGzfiles(sfiles, uploadAppDir)
+	key1, size1, err := checkDirGZFiles(sfiles, uploadAppDirType)
 	if err != nil {
 		log.Errorf("checkKeepQuota: AppDir %v", err)
 	}
-	key2, size2, err := checkDirGzfiles(sfiles, uploadDevDir)
+	key2, size2, err := checkDirGZFiles(sfiles, uploadDevDirType)
 	if err != nil {
 		log.Errorf("checkKeepQuota: DevDir %v", err)
 	}
-	key3, size3, err := checkDirGzfiles(sfiles, failSendDIr)
+	key3, size3, err := checkDirGZFiles(sfiles, failSendDIrType)
 	if err != nil && !os.IsNotExist(err) {
 		log.Errorf("checkKeepQuota: FailToSendDir %v", err)
 	}
 
 	totalsize := size0 + size1 + size2 + size3
+	totalCount := len(key0) + len(key1) + len(key2) + len(key3)
 	removed := 0
-	if totalsize > maxSize {
+	// limit file count to not as they can have less size than expected
+	// we can have enormous number of files
+	maxCount := int(maxSize / maxGzipFileSize)
+	if totalsize > maxSize || totalCount > maxCount {
 		keys := key0
 		keys = append(keys, key1...)
 		keys = append(keys, key2...)
@@ -995,11 +1034,12 @@ func checkKeepQuota() {
 				continue
 			}
 			fs := sfiles[key]
-			if _, err := os.Stat(fs.filename); err != nil {
+			filePath := filepath.Join(fs.dirType.getPath(), fs.filename)
+			if _, err := os.Stat(filePath); err != nil {
 				continue
 			}
-			if err := os.Remove(fs.filename); err != nil {
-				log.Errorf("checkKeepQuota: remove failed %s, %v", fs.filename, err)
+			if err := os.Remove(filePath); err != nil {
+				log.Errorf("checkKeepQuota: remove failed %s, %v", filePath, err)
 				continue
 			}
 			if !fs.isSent {
@@ -1007,7 +1047,8 @@ func checkKeepQuota() {
 			}
 			removed++
 			totalsize -= fs.filesize
-			if totalsize < maxSize {
+			totalCount--
+			if totalsize < maxSize && totalCount < maxCount {
 				break
 			}
 		}
