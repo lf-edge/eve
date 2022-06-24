@@ -8,6 +8,12 @@ COPY go.mod /edge-view/.
 COPY go.sum /edge-view/.
 WORKDIR /edge-view
 
+SHELL ["/bin/ash", "-eo", "pipefail", "-c"]
+# hadolint ignore=SC2046
+RUN echo "Running go vet" && go vet ./... && echo "Running go fmt" && \
+    ERR=$(gofmt -e -l -s $(find . -name \*.go | grep -v /vendor/)) && \
+    if [ -n "$ERR" ] ; then echo "go fmt Failed - ERR: $ERR"; exit 1 ; fi
+
 RUN go build -o edge-view edge-view.go tcp.go proxy.go basics.go crypto.go multiinst.go \
  websocket.go system.go network.go pubsub.go log-search.go copyfile.go policy.go \
  && strip edge-view && cp edge-view /out/usr/bin && cp edge-view-init.sh /out/usr/bin

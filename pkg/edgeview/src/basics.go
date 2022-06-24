@@ -26,13 +26,13 @@ import (
 )
 
 const (
-	colorRED     = "\033[1;31m%s\033[0m"
-	colorBLUE    = "\033[1;34m%s\033[0m"
-	colorCYAN    = "\033[1;36m%s\033[0m"
-	colorGREEN   = "\033[0;32m%s\033[0m"
-	colorYELLOW  = "\033[0;93m%s\033[0m"
-	colorPURPLE  = "\033[1;95m%s\033[0m"
-	colorRESET   = "\033[0m"
+	colorRED    = "\033[1;31m%s\033[0m"
+	colorBLUE   = "\033[1;34m%s\033[0m"
+	colorCYAN   = "\033[1;36m%s\033[0m"
+	colorGREEN  = "\033[0;32m%s\033[0m"
+	colorYELLOW = "\033[0;93m%s\033[0m"
+	colorPURPLE = "\033[1;95m%s\033[0m"
+	colorRESET  = "\033[0m"
 )
 
 var (
@@ -201,7 +201,7 @@ func getAddrFromJWT(token string, isServer bool, instID int) (string, string, er
 	now := time.Now()
 	nowSec := uint64(now.Unix())
 	if nowSec > jdata.Exp {
-		return addrport, path, fmt.Errorf("JWT expired %d sec ago", nowSec - jdata.Exp)
+		return addrport, path, fmt.Errorf("JWT expired %d sec ago", nowSec-jdata.Exp)
 	}
 
 	if jdata.Num > 1 && instID < 1 {
@@ -476,7 +476,7 @@ func listJSONFiles(path string) ([]string, error) {
 			if !strings.HasSuffix(path, "/") {
 				dir = dir + "/"
 			}
-			jfiles = append(jfiles, dir + f.Name())
+			jfiles = append(jfiles, dir+f.Name())
 		}
 	}
 	return jfiles, nil
@@ -517,10 +517,11 @@ func listRecursiveFiles(path, pattern string) ([]string, error) {
 	return jfiles, nil
 }
 
-var helpStr =`edge-view-query [ -token <session-token> ] [ -debug ] [ -inst <instance-id> ] <query string>
+var helpStr = `edge-view-query [ -token <session-token> ] [ -debug ] [ -inst <instance-id> ] <query string>
  options:
   log/search-pattern [ -time <start_time>-<end_time> -json -type <app|dev> -line <num> ]
 `
+
 func printHelp(opt string) {
 	if opt == "" {
 		fmt.Println(helpStr)

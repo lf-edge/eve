@@ -290,7 +290,7 @@ func main() {
 
 	localIP := getOutboundIP()
 	server := &http.Server{
-		Addr:      localIP + ":" + *portPtr,
+		Addr: localIP + ":" + *portPtr,
 	}
 
 	http.HandleFunc("/edge-view", socketHandler)

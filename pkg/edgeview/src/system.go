@@ -55,9 +55,9 @@ func runSystem(cmds cmdOpt, sysOpt string) {
 			runCopy(opt)
 		} else if strings.HasPrefix(opt, "cat/") {
 			runCat(opt, cmds.Extraline)
-			} else if strings.HasPrefix(opt, "du/") {
-				runDu(opt)
-			} else if strings.HasPrefix(opt, "ls/") {
+		} else if strings.HasPrefix(opt, "du/") {
+			runDu(opt)
+		} else if strings.HasPrefix(opt, "ls/") {
 			runLs(opt)
 		} else if strings.HasPrefix(opt, "usb") {
 			runUSB()
@@ -271,7 +271,7 @@ func getVolume() {
 			fmt.Printf("   name: %s, ID %s, RefCount: %d \n", vol1.DisplayName, vol1.VolumeID.String(), vol1.RefCount)
 
 			printColor("\n content tree config: "+vol1.ContentID.String(), colorBLUE)
-			retbytes, err = ioutil.ReadFile("/run/zedagent/ContentTreeConfig/"+vol1.ContentID.String()+".json")
+			retbytes, err = ioutil.ReadFile("/run/zedagent/ContentTreeConfig/" + vol1.ContentID.String() + ".json")
 			var cont types.ContentTreeConfig
 			_ = json.Unmarshal(retbytes, &cont)
 			fmt.Printf("   url: %s, format: %s, sha: %s\n", cont.RelativeURL, cont.Format, cont.ContentSha256)
@@ -292,7 +292,7 @@ func getSysApp() {
 		retbytes, _ := ioutil.ReadFile(s)
 		status := strings.TrimSuffix(string(retbytes), "\n")
 		appuuid := doAppNet(status, "", true)
-		retbytes, err := ioutil.ReadFile("/run/domainmgr/DomainMetric/"+appuuid+".json")
+		retbytes, err := ioutil.ReadFile("/run/domainmgr/DomainMetric/" + appuuid + ".json")
 		if err == nil {
 			var metric types.DomainMetric
 			_ = json.Unmarshal(retbytes, &metric)
@@ -300,7 +300,7 @@ func getSysApp() {
 				metric.CPUTotalNs, metric.UsedMemory, metric.AvailableMemory)
 		}
 
-		retbytes, err = ioutil.ReadFile("/run/zedmanager/DomainConfig/"+appuuid+".json")
+		retbytes, err = ioutil.ReadFile("/run/zedmanager/DomainConfig/" + appuuid + ".json")
 		if err != nil {
 			continue
 		}
@@ -395,7 +395,7 @@ func getLastReboot() {
 			if n < 1 {
 				continue
 			}
-			retbytes, err := ioutil.ReadFile("/persist/newlog/panicStacks/"+fields[n-1])
+			retbytes, err := ioutil.ReadFile("/persist/newlog/panicStacks/" + fields[n-1])
 			if err != nil {
 				break
 			}
@@ -444,7 +444,7 @@ func getCipher() {
 	if err == nil {
 		printColor(" - /persist/certs:\n", colorCYAN)
 		for _, f := range files {
-			fmt.Printf("file: %s, size %d\n", path + f.Name(), f.Size())
+			fmt.Printf("file: %s, size %d\n", path+f.Name(), f.Size())
 		}
 	}
 
@@ -499,7 +499,7 @@ func getCipher() {
 			_ = json.Unmarshal(retbytes1, &data)
 			fmt.Printf(" %s:\n", getJSONFileID(l))
 			fmt.Printf("  ID: %s, Is Cipher: %v\n", data.CipherBlockID, data.IsCipher)
-			filename := "/run/domainmgr/cloudinit/"+data.CipherBlockID+".cidata"
+			filename := "/run/domainmgr/cloudinit/" + data.CipherBlockID + ".cidata"
 			_, err = os.Stat(filename)
 			if err == nil {
 				fmt.Printf("   cloudinit file: %s\n", filename)
@@ -582,10 +582,10 @@ func runConfigItems() {
 		//fmt.Printf("key: %s; value %v\n", k, g)
 		s := configMap.GlobalSettings[k]
 		s1 := types.ConfigItemValue{
-			ItemType: s.ItemType,
-			IntValue: s.IntDefault,
-			StrValue: s.StringDefault,
-			BoolValue: s.BoolDefault,
+			ItemType:      s.ItemType,
+			IntValue:      s.IntDefault,
+			StrValue:      s.StringDefault,
+			BoolValue:     s.BoolDefault,
 			TriStateValue: s.TriStateDefault,
 		}
 		if getCfgValue(g) == getCfgValue(s1) {
@@ -803,8 +803,8 @@ func runLs(opt string) {
 		}
 		for _, file := range files {
 			if len(matchStr) > 0 {
-				if (hasPref != "" && !strings.HasPrefix(file.Name(), hasPref) ||
-					(hasSuff != "" && !strings.HasSuffix(file.Name(), hasSuff))) {
+				if hasPref != "" && !strings.HasPrefix(file.Name(), hasPref) ||
+					(hasSuff != "" && !strings.HasSuffix(file.Name(), hasSuff)) {
 					continue
 				}
 				var notmatch bool
@@ -853,7 +853,7 @@ func readAFile(path string, extraline int) {
 			newlines = lines[:end]
 		} else { // tail
 			start := 0
-			if -(extraline)  < N {
+			if -(extraline) < N {
 				start = N + extraline
 			}
 			newlines = lines[start:]
@@ -934,7 +934,7 @@ func gzipTechSuppFile(ifileName string) (string, error) {
 		return ofileName, fmt.Errorf("filename format incorrect")
 	}
 
-	ofile, err := os.Create(tmpfiles[0]+"-"+tmpfiles[1]+".gz")
+	ofile, err := os.Create(tmpfiles[0] + "-" + tmpfiles[1] + ".gz")
 	if err != nil {
 		log.Errorf("can not create file %v", err)
 		return ofileName, err

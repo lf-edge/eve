@@ -22,7 +22,7 @@ import (
 )
 
 const serverCertFile = "/certs/wss-server-cacert.pem"
-const maxReconnWait  = 120 * 1000 // 120 seconds
+const maxReconnWait = 120 * 1000 // 120 seconds
 
 var (
 	readP         *os.File
@@ -77,8 +77,8 @@ func setupWebC(hostname, token string, u url.URL, isServer bool) bool {
 		c, resp, err := tlsDialer.Dial(u.String(),
 			http.Header{
 				"X-Session-Token": []string{token},
-				"X-Hostname": []string{hostname}},
-			)
+				"X-Hostname":      []string{hostname}},
+		)
 		if err != nil {
 			if resp == nil {
 				log.Noticef("dial: %v, wait for 10 sec", err)
@@ -130,7 +130,7 @@ func tlsDial(isServer bool, pIP string, pport int) (*websocket.Dialer, error) {
 		TLSClientConfig: tlsConfig,
 	}
 	if pIP != "" && pport != 0 {
-		proxyURL, _ := url.Parse("http://"+pIP+":"+strconv.Itoa(pport))
+		proxyURL, _ := url.Parse("http://" + pIP + ":" + strconv.Itoa(pport))
 		dialer.Proxy = http.ProxyURL(proxyURL)
 	}
 

@@ -53,7 +53,7 @@ func runPubsub(pubStr string) {
 			printColor("\n pubsub in: "+sdir, colorBLUE)
 
 			if subdir != "" {
-				files, err := ioutil.ReadDir(sdir+pubsubdir)
+				files, err := ioutil.ReadDir(sdir + pubsubdir)
 				if err != nil {
 					continue
 				}
@@ -91,7 +91,7 @@ func pubsubSvs(startDir, pubsubDir, subDir string) {
 	printpath := ""
 	byteCnt := 0
 	for _, f := range jfiles {
-		dir1 := strings.Split(f, newdir + "/")
+		dir1 := strings.Split(f, newdir+"/")
 		if len(dir1) < 2 {
 			continue
 		}

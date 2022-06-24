@@ -25,35 +25,35 @@ import (
 )
 
 var (
-	runOnServer   bool       // container running inside remote linux host
-	querytype     string
-	cmdTimeout    string
-	log           *base.LogObject
-	trigPubchan   chan bool
-	myEvEndPoint  string
-	rePattern     *regexp.Regexp
-	evStatus      types.EdgeviewStatus
+	runOnServer  bool // container running inside remote linux host
+	querytype    string
+	cmdTimeout   string
+	log          *base.LogObject
+	trigPubchan  chan bool
+	myEvEndPoint string
+	rePattern    *regexp.Regexp
+	evStatus     types.EdgeviewStatus
 )
 
 const (
-	agentName         = "edgeview"
-	closeMessage      = "+++Done+++"
-	edgeViewVersion   = "0.8.2"
-	cpLogFileString   = "copy-logfiles"
-	clientIPMsg       = "YourEndPointIPAddr:"
+	agentName       = "edgeview"
+	closeMessage    = "+++Done+++"
+	edgeViewVersion = "0.8.2"
+	cpLogFileString = "copy-logfiles"
+	clientIPMsg     = "YourEndPointIPAddr:"
 )
 
 type cmdOpt struct {
-	Version       string     `json:"version"`
-	ClientEPAddr  string     `json:"clientEPAddr"`
-	Network       string     `json:"network"`
-	System        string     `json:"system"`
-	Pubsub        string     `json:"pubsub"`
-	Logopt        string     `json:"logopt"`
-	Timerange     string     `json:"timerange"`
-	IsJSON        bool       `json:"isJSON"`
-	Extraline     int        `json:"extraline"`
-	Logtype       string     `json:"logtype"`
+	Version      string `json:"version"`
+	ClientEPAddr string `json:"clientEPAddr"`
+	Network      string `json:"network"`
+	System       string `json:"system"`
+	Pubsub       string `json:"pubsub"`
+	Logopt       string `json:"logopt"`
+	Timerange    string `json:"timerange"`
+	IsJSON       bool   `json:"isJSON"`
+	Extraline    int    `json:"extraline"`
+	Logtype      string `json:"logtype"`
 }
 
 func main() {
@@ -92,7 +92,7 @@ func main() {
 
 	initOpts()
 
-	var intSignal  chan os.Signal
+	var intSignal chan os.Signal
 	var fstatus fileCopyStatus
 	remotePorts := make(map[int]int)
 	var tcpclientCnt int
@@ -111,7 +111,7 @@ func main() {
 	// or ./myscript.sh -device <ip-addr> route
 	for _, word := range values {
 		if skiptype != "" {
-			switch skiptype  {
+			switch skiptype {
 			case "time":
 				timeopt = word
 			case "type":
@@ -253,14 +253,14 @@ func main() {
 	done = make(chan struct{})
 
 	queryCmds := cmdOpt{
-		Version:       edgeViewVersion,
-		Network:       pnetopt,
-		System:        psysopt,
-		Pubsub:        ppubsubopt,
-		Logopt:        logopt,
-		Timerange:     timeopt,
-		IsJSON:        jsonopt,
-		Extraline:     extraopt,
+		Version:   edgeViewVersion,
+		Network:   pnetopt,
+		System:    psysopt,
+		Pubsub:    ppubsubopt,
+		Logopt:    logopt,
+		Timerange: timeopt,
+		IsJSON:    jsonopt,
+		Extraline: extraopt,
 	}
 	if typeopt != "all" {
 		queryCmds.Logtype = typeopt
@@ -444,7 +444,7 @@ func main() {
 	// non-ssh server will be killed when the session is expired with the script
 	for {
 		select {
-		case <- trigPubchan:
+		case <-trigPubchan:
 			// not to publish the status too fast
 			pubStatusTimer = time.NewTimer(15 * time.Second)
 		case <-pubStatusTimer.C:

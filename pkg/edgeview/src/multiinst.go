@@ -16,13 +16,13 @@ import (
 const multiInstStatsEPString = "localhost:8234"
 
 var (
-	evInstStats    [types.EdgeviewMaxInstNum]evLocalStats   // instances stats
-	edgeviewInstID int                                      // if set, range 1 to 5
+	evInstStats    [types.EdgeviewMaxInstNum]evLocalStats // instances stats
+	edgeviewInstID int                                    // if set, range 1 to 5
 )
 
 type evLocalStats struct {
-	InstID        int                   `json:"instID"`
-	Stats         types.EdgeviewStatus  `json:"stats"`
+	InstID int                  `json:"instID"`
+	Stats  types.EdgeviewStatus `json:"stats"`
 }
 
 func serverEvStats() {
@@ -82,7 +82,7 @@ func evStatsHandler(w http.ResponseWriter, r *http.Request) {
 			log.Errorf("stats server receive incorrect stats: %v", localStats)
 			return
 		}
-		evInstStats[localStats.InstID - 1] = localStats
+		evInstStats[localStats.InstID-1] = localStats
 		log.Tracef("InstStats: received stats from inst %d ok, %v", localStats.InstID, localStats) // XXX
 
 		trigPubchan <- true

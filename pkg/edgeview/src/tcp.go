@@ -20,26 +20,26 @@ import (
 )
 
 type wsMessage struct {
-	mtype      int
-	msg        []byte
+	mtype int
+	msg   []byte
 }
 
 type tcpData struct {
-	Version    uint16      `json:"version"`
-	MappingID  uint16      `json:"mappingId"`
-	ChanNum    uint16      `json:"chanNum"`
-	Data       []byte      `json:"data"`
+	Version   uint16 `json:"version"`
+	MappingID uint16 `json:"mappingId"`
+	ChanNum   uint16 `json:"chanNum"`
+	Data      []byte `json:"data"`
 }
 
 type tcpconn struct {
-	conn       net.Conn
-	msgChan    chan wsMessage
-	pending    bool
-	closed     bool
-	closeTime  time.Time
-	recvLocal  int
-	recvWss    int
-	done       chan struct{}
+	conn      net.Conn
+	msgChan   chan wsMessage
+	pending   bool
+	closed    bool
+	closeTime time.Time
+	recvLocal int
+	recvWss   int
+	done      chan struct{}
 }
 
 // Endpt - endpoint struct
@@ -88,11 +88,11 @@ var (
 	tcpDataChn    []chan tcpData
 	tcpServerDone chan struct{}
 
-	tcpMapMutex       sync.Mutex
-	wssWrMutex        sync.Mutex
-	tcpConnM          []tcpConnRWMap
+	tcpMapMutex sync.Mutex
+	wssWrMutex  sync.Mutex
+	tcpConnM    []tcpConnRWMap
 
-	tcpServerRecvTime time.Time   // updated by all the tcp sessions
+	tcpServerRecvTime time.Time // updated by all the tcp sessions
 	tcpTimeMutex      sync.Mutex
 )
 
@@ -118,7 +118,7 @@ func tcpClientsLaunch(tcpclientCnt int, remotePorts map[int]int) {
 
 func tcpClientStart(idx int, rport int) {
 	clientep := clientTCPEndpoint
-	clientep.Port += (idx + 1)
+	clientep.Port += idx + 1
 	listener, err := net.Listen("tcp", clientep.String())
 	if err != nil {
 		return
@@ -128,7 +128,7 @@ func tcpClientStart(idx int, rport int) {
 	tcpConnM[idx].m = make(map[int]tcpconn)
 	channelNum := 0
 	cleanMapTimer := time.Tick(3 * time.Minute)
-	go func (l net.Listener) {
+	go func(l net.Listener) {
 		for {
 			here, err := listener.Accept()
 			if err != nil {
@@ -143,7 +143,7 @@ func tcpClientStart(idx int, rport int) {
 		case here := <-newChan:
 			channelNum++
 			go clientTCPtunnel(here, idx, channelNum, rport)
-		case <- cleanMapTimer:
+		case <-cleanMapTimer:
 			cleanClosedMapEntries(idx)
 		}
 	}
@@ -171,7 +171,7 @@ func clientTCPtunnel(here net.Conn, idx, chNum int, rport int) {
 					log.Tracef("Ch(%d)-%d, pending close send to client, %v", idx, chNum, time.Now())
 				}
 				_, _ = io.Copy(here, buf)
-			case <- done:
+			case <-done:
 				return
 			}
 		}
@@ -261,8 +261,8 @@ func recvServerData(mtype int, message []byte) {
 		return
 	}
 	msg := wsMessage{
-		mtype:    mtype,
-		msg:      jmsg.Data,
+		mtype: mtype,
+		msg:   jmsg.Data,
 	}
 	//fmt.Printf("in TCP Client, send msg to chan %d\n", jmsg.ChanNum)
 	myChan.msgChan <- msg
@@ -334,7 +334,7 @@ func setAndStartProxyTCP(opt string) {
 
 	for {
 		select {
-		case <- tcpServerDone:
+		case <-tcpServerDone:
 			for _, d := range serverDone {
 				if !isClosed(d) {
 					close(d)
@@ -347,7 +347,7 @@ func setAndStartProxyTCP(opt string) {
 			isTCPServer = false
 			return
 
-		case <- proxyServerDone:
+		case <-proxyServerDone:
 			for _, d := range serverDone {
 				if !isClosed(d) {
 					close(d)
@@ -370,21 +370,21 @@ func startTCPServer(idx int, ipAddrPort string, tcpServerDone chan struct{}) {
 	var tcpluanchCnt int
 	for {
 		select {
-		case wssMsg := <- tcpDataChn[idx]:
+		case wssMsg := <-tcpDataChn[idx]:
 			if int(wssMsg.ChanNum) > tcpluanchCnt {
 				tcpluanchCnt++
 			} else {
 				log.Tracef("tcp re-launch channel(%d): %d", idx, wssMsg.ChanNum)
 			}
 			go tcpTransfer(ipAddrPort, wssMsg, idx)
-		case <- tcpServerDone:
+		case <-tcpServerDone:
 			log.Tracef("tcp server done(%d). exit", idx)
 			isTCPServer = false
 			cleanMapTimer.Stop()
 			doneTCPtransfer(idx)
 			cleanClosedMapEntries(idx)
 			return
-		case <- cleanMapTimer.C:
+		case <-cleanMapTimer.C:
 			cleanClosedMapEntries(idx)
 		}
 	}
@@ -719,7 +719,7 @@ func processTCPcmd(opt string, remotePorts map[int]int) (bool, int, map[int]int)
 		if edgeviewInstID > 1 {
 			addports = (edgeviewInstID - 1) * types.EdgeviewMaxInstNum
 		}
-		mapline := fmt.Sprintf("  0.0.0.0:%d -> %s\n", 9001 + addports + i, p)
+		mapline := fmt.Sprintf("  0.0.0.0:%d -> %s\n", 9001+addports+i, p)
 		printColor(mapline, colorGREEN)
 	}
 
