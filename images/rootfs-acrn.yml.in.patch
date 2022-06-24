@@ -1,18 +1,18 @@
---- images/rootfs.yml.in	2020-04-08 18:14:23.000000000 -0700
-+++ images/rootfs-acrn.yml.in	2020-04-08 18:22:10.000000000 -0700
+--- images/rootfs.yml.in	2022-06-24 10:36:01.021218466 +0300
++++ images/rootfs-acrn.yml.in	2022-06-24 10:50:32.399494792 +0300
 @@ -1,5 +1,5 @@
  kernel:
 -  image: KERNEL_TAG
 +  image: ACRN_KERNEL_TAG
    cmdline: "rootdelay=3"
  init:
-   - linuxkit/init:v0.5
-@@ -9,7 +9,7 @@
-   - linuxkit/memlogd:v0.5
+   - linuxkit/init:a68f9fa0c1d9dbfc9c23663749a0b7ac510cbe1c
+@@ -10,7 +10,7 @@
+   - DOM0ZTOOLS_TAG
    - GRUB_TAG
    - FW_TAG
 -  - XEN_TAG
 +  - ACRN_TAG
    - GPTTOOLS_TAG
-   - DOM0ZTOOLS_TAG
  onboot:
+    - name: rngd
