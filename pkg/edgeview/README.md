@@ -11,24 +11,26 @@ It contains an example of golang source for 'edgeview' websocket dispatcher runn
 ## Dockerfiles
 
 The 'Dockerfile' in the directory is used for EVE to build the 'edgeview' container running on EVE device
-The same docker container `lf-edge/eve-edgeview` can be run on user laptops.
+The same docker container `lfedge/eve-edgeview` can be run on user laptops.
 
 ## Query script
 
-The 'query-edgeview.sh' is an example of running the `lf-edge/eve-edgeview` docker container on the client computer
+The 'query-edgeview.sh' is an example of running the `lfedge/eve-edgeview` docker container on the client computer
 
 ## Makefile
 
 the 'Makefile' supports in pkg/edgeview directory:
 
-(1) 'make eve-edge-view' to build the lf-edge/eve-edge-view:latest docker container;
+(1) `make eve-edge-view` to build the `lfedge/eve-edgeview:latest` docker container;
 
-(2) 'make wss-server' to build a golang program for 'edgeview' websocket dispatcher. It needs to be run this compile on a Linux server if the websocket dispatcher will run in the same architecture;
+(2) `make wss-server` to build a golang program for 'edgeview' websocket dispatcher. It needs to be run this compile on a Linux server if the websocket dispatcher will run in the same architecture;
 
 ## Help
 
-On edge-vew client container, or 'lf-edge/eve-edgeview', use '-h' or '-help' to see all the options, and one can do help on specific command option to get detail on the command.
+On edge-view client container, or `lfedge/eve-edgeview` with environment variable EDGEVIEW_CLIENT=1, use '-h' or '-help' to see all the options, and one can do help on specific command option to get detail on the command.
 
+```console
+edge-view-query [ -token <session-token> ] [ -debug ] [ -inst <instance-id> ] <query string>
  options:
   log/search-pattern [ -time start_time-end_time -json -type app|dev -line num ]
 
@@ -36,3 +38,4 @@ On edge-vew client container, or 'lf-edge/eve-edgeview', use '-h' or '-help' to 
 
   [acl app arp connectivity flow if mdns nslookup ping route socket speed tcp tcpdump trace url wireless]
   [app configitem cat cp datastore download du hw lastreboot ls model newlog pci ps cipher top usb volume]
+```
