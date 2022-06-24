@@ -184,18 +184,24 @@ func recvCopyFile(msg []byte, fstatus *fileCopyStatus, mtype int) {
 		fstatus.buf = make([]byte, info.Size)
 
 		fmt.Printf("file: name %s, size %d\n", fstatus.filename, fstatus.fileSize)
-		fstatus.gotFileInfo = true
 
 		_, err = os.Stat(fileCopyDir)
 		if err != nil {
 			sendCopyDone("file stat ", err)
 			return
 		}
-		fstatus.f, err = os.Create(fileCopyDir + fstatus.filename)
+		filePath := filepath.Join(fileCopyDir, fstatus.filename)
+		// check if we receive valid filename to avoid touch of files outside fileCopyDir
+		if !strings.HasPrefix(filePath, fileCopyDir) {
+			sendCopyDone("filename check ", fmt.Errorf("filename has unexpected path inside the name"))
+			return
+		}
+		fstatus.f, err = os.Create(filePath)
 		if err != nil {
 			sendCopyDone("file create", err)
 			return
 		}
+		fstatus.gotFileInfo = true
 
 		err = addEnvelopeAndWriteWss([]byte(startCopyMessage), false)
 		if err != nil {
