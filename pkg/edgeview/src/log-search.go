@@ -16,23 +16,22 @@ import (
 	"github.com/lf-edge/eve/api/go/logs"
 )
 
-
 type logfiletime struct {
-	filepath    string
-	filesec     int64
+	filepath string
+	filesec  int64
 }
 
 // LogContent - log content struct
 type LogContent struct {
-	File     string    `json:"file,omitempty"`
-	Func     string    `json:"func,omitempty"`
-	IfName   string    `ifname:"func,omitempty"`
-	Level    string    `json:"level,omitempty"`
-	Msg      string    `json:"msg,omitempty"`
-	Objtype  string    `json:"obj_type,omitempty"`
-	PID      int       `json:"pid,omitempty"`
-	Source   string    `json:"source,omitempty"`
-	Time     string    `json:"time,omitempty"`
+	File    string `json:"file,omitempty"`
+	Func    string `json:"func,omitempty"`
+	IfName  string `ifname:"func,omitempty"`
+	Level   string `json:"level,omitempty"`
+	Msg     string `json:"msg,omitempty"`
+	Objtype string `json:"obj_type,omitempty"`
+	PID     int    `json:"pid,omitempty"`
+	Source  string `json:"source,omitempty"`
+	Time    string `json:"time,omitempty"`
 }
 
 func runLogSearch(cmds cmdOpt) {
@@ -60,12 +59,12 @@ func runLogSearch(cmds cmdOpt) {
 		return
 	}
 	if pattern == cpLogFileString {
-		if t1 - t2 > 1800 {
+		if t1-t2 > 1800 {
 			fmt.Printf("copy-logfiles can only be in the range of 30 minutes\n")
 			return
 		}
 		copylogfiles = true
-	} else if t1 - t2 > 18000 {
+	} else if t1-t2 > 18000 {
 		fmt.Printf("log search can only be in the range of 5 hours\n")
 		return
 	}
@@ -94,7 +93,7 @@ func runLogSearch(cmds cmdOpt) {
 		}
 	}
 
-	if now - t1 < 10 { // search for collect directory for uncompressed files
+	if now-t1 < 10 { // search for collect directory for uncompressed files
 		if querytype != "app" {
 			searchLiveLogs(pattern, now, "dev", &printIdx, cmds.IsJSON)
 		}
@@ -128,7 +127,7 @@ func walkLogDirs(t1, t2, now int64) []logfiletime {
 		if strings.Contains(dir.Name(), "appUpload") && querytype == "dev" {
 			continue
 		}
-		files1, err := ioutil.ReadDir("/persist/newlog/"+dir.Name())
+		files1, err := ioutil.ReadDir("/persist/newlog/" + dir.Name())
 		if err != nil {
 			continue
 		}
@@ -161,7 +160,7 @@ func walkLogDirs(t1, t2, now int64) []logfiletime {
 				file1 := strings.TrimPrefix(l, "./")
 				gfile := logfiletime{
 					filepath: k + "/" + file1,
-					filesec: ftime,
+					filesec:  ftime,
 				}
 				getfiles = append(getfiles, gfile)
 			}
@@ -204,7 +203,7 @@ func searchCurrentLogs(pattern, path, typeStr string, now int64, idx *int, logjs
 		}
 		selectlines = selectlines + string(l)
 	}
-	bout := fmt.Sprintf("\n current " + typeStr + " log, -- %v --\n", time.Unix(now, 0).Format(time.RFC3339))
+	bout := fmt.Sprintf("\n current "+typeStr+" log, -- %v --\n", time.Unix(now, 0).Format(time.RFC3339))
 	printColor(bout, colorRED)
 
 	colorMatch(selectlines, pattern, idx, logjson)
@@ -264,7 +263,7 @@ func getTimeSec(timeline string, now int64) (int64, int64) {
 	if strings.Contains(timeline, "Z-") {
 		times := strings.Split(timeline, "Z-")
 
-		t1, _ := time.Parse(time.RFC3339, times[0] + "Z")
+		t1, _ := time.Parse(time.RFC3339, times[0]+"Z")
 		t2, _ := time.Parse(time.RFC3339, times[1])
 		ti1 = t1.Unix()
 		ti2 = t2.Unix()
@@ -287,8 +286,8 @@ func getTimeSec(timeline string, now int64) (int64, int64) {
 			return 0, 0
 		}
 
-		ti1 = now - int64(f1 * 3600)
-		ti2 = now - int64(f2 * 3600)
+		ti1 = now - int64(f1*3600)
+		ti2 = now - int64(f2*3600)
 	}
 	if ti1 >= ti2 {
 		return ti1, ti2

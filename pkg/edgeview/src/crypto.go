@@ -17,19 +17,19 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/types"
 )
 
-const hashBytesNum = 32  // Hmac Sha256 Hash is 32 bytes fixed
+const hashBytesNum = 32 // Hmac Sha256 Hash is 32 bytes fixed
 
 var (
 	nonceOpEncrption bool
-	nonceHash        [32]byte  // JWT Nonce with Sha256Sum for encryption
-	viBytes          [16]byte  // vi 16 bytes data for encryption
-	jwtNonce         string    // JWT session Nonce for authentication
+	nonceHash        [32]byte // JWT Nonce with Sha256Sum for encryption
+	viBytes          [16]byte // vi 16 bytes data for encryption
+	jwtNonce         string   // JWT session Nonce for authentication
 )
 
 // authentication/encryption wrapper for messages
 type envelopeMsg struct {
-	Message     []byte              `json:"message"`
-	Sha256Hash  [hashBytesNum]byte  `json:"sha256Hash"`
+	Message    []byte             `json:"message"`
+	Sha256Hash [hashBytesNum]byte `json:"sha256Hash"`
 }
 
 // sign with JWT nonce on message data and send through websocket
@@ -135,8 +135,8 @@ func encryptEvMsg(msg []byte) ([]byte, error) {
 	cfb := cipher.NewCFBEncrypter(block, viBytes[:])
 	cipherText := make([]byte, len(msg))
 	cfb.XORKeyStream(cipherText, msg)
-		return cipherText, nil
-	}
+	return cipherText, nil
+}
 
 func decryptEvMsg(data []byte) (bool, []byte) {
 	block, err := aes.NewCipher(nonceHash[:])

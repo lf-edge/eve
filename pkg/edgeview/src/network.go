@@ -20,14 +20,14 @@ import (
 	"github.com/grandcat/zeroconf"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	snet "github.com/shirou/gopsutil/net"
-	fastping "github.com/tatsushid/go-fastping"
+	"github.com/tatsushid/go-fastping"
 	"github.com/vishvananda/netlink"
 )
 
 type urlStats struct {
-	recvBytes      int64
-	sentBytes      int64
-	sentNumber     int64
+	recvBytes  int64
+	sentBytes  int64
+	sentNumber int64
 }
 
 type appIPvnc struct {
@@ -149,7 +149,7 @@ func doAppNet(status, appstr string, isSummary bool) string {
 
 	for _, item := range appStatus.UnderlayNetworkList {
 		niUUID := item.Network.String()
-		retbytes, err := ioutil.ReadFile("/run/zedrouter/NetworkInstanceStatus/"+niUUID+".json")
+		retbytes, err := ioutil.ReadFile("/run/zedrouter/NetworkInstanceStatus/" + niUUID + ".json")
 		if err != nil {
 			continue
 		}
@@ -196,7 +196,7 @@ func doAppNet(status, appstr string, isSummary bool) string {
 				}
 			}
 
-			retbytes, err := ioutil.ReadFile("/run/zedrouter/dnsmasq.leases/"+item.Bridge)
+			retbytes, err := ioutil.ReadFile("/run/zedrouter/dnsmasq.leases/" + item.Bridge)
 			if err == nil {
 				printColor("\n - dnsmasq lease files\n", colorGREEN)
 				lines := strings.Split(string(retbytes), "\n")
@@ -239,7 +239,7 @@ func doAppNet(status, appstr string, isSummary bool) string {
 	}
 
 	appUUIDStr := appStatus.UUIDandVersion.UUID.String()
-	retbytes, err := ioutil.ReadFile("/run/domainmgr/DomainStatus/"+appUUIDStr+".json")
+	retbytes, err := ioutil.ReadFile("/run/domainmgr/DomainStatus/" + appUUIDStr + ".json")
 	if err == nil {
 		printColor("\n  - domain status:", colorGREEN)
 		var domainS types.DomainStatus
@@ -253,7 +253,6 @@ func doAppNet(status, appstr string, isSummary bool) string {
 	}
 	return appUUIDStr
 }
-
 
 // getAppNetTable - in 'doAppNet'
 func getAppNetTable(ipaddr string, niStatus *types.NetworkInstanceStatus) {
@@ -283,7 +282,6 @@ func getAppNetTable(ipaddr string, niStatus *types.NetworkInstanceStatus) {
 		fmt.Printf("%s\n", r.String())
 	}
 }
-
 
 // getVifStats - in 'doAppNet'
 func getVifStats(vifStr string) {
@@ -316,7 +314,7 @@ func runAppACLTblAddr(op, tbl, ipaddr string) {
 	prog := "iptables"
 	args := []string{op, "-t", tbl}
 	retStr, err := runCmd(prog, args, false)
-	fmt.Printf(" iptable " + tbl + "op" + " rules: \n",)
+	fmt.Printf(" iptable " + tbl + "op" + " rules: \n")
 	if err == nil && len(retStr) > 0 {
 		lines := strings.Split(retStr, "\n")
 		for _, l := range lines {
@@ -445,7 +443,7 @@ func getAllAppIPs() []appIPvnc {
 		appIPs, appUUID := getAppIPs(status)
 		var oneAppIPs []appIPvnc
 		if len(appIPs) > 0 {
-			retbytes1, err := ioutil.ReadFile("/run/zedagent/AppInstanceConfig/"+appUUID.String()+".json")
+			retbytes1, err := ioutil.ReadFile("/run/zedagent/AppInstanceConfig/" + appUUID.String() + ".json")
 			if err != nil {
 				log.Errorf("getAllAppIPs: run appinstcfg %v", err)
 				continue
@@ -460,7 +458,7 @@ func getAllAppIPs() []appIPvnc {
 			enableVNC := appInstCfg.FixedResources.EnableVnc
 			for _, ipaddr := range appIPs {
 				ipVNC := appIPvnc{
-					ipAddr: ipaddr,
+					ipAddr:    ipaddr,
 					vncEnable: enableVNC,
 				}
 				oneAppIPs = append(oneAppIPs, ipVNC)
@@ -630,7 +628,7 @@ func getTables(rules string) []string {
 }
 
 func getMetricsMap(path string, stats *urlStats, isPrint bool) {
-	retbytes, err := ioutil.ReadFile(path+"global.json")
+	retbytes, err := ioutil.ReadFile(path + "global.json")
 	if err != nil {
 		return
 	}
@@ -760,7 +758,7 @@ func runTrace(substring, server string) {
 	}
 }
 
-func runPing(intfStat []intfIP , server string, opt string) {
+func runPing(intfStat []intfIP, server string, opt string) {
 	if opt != "" {
 		if strings.Contains(opt, "/") {
 			opts := strings.Split(opt, "/")
@@ -848,19 +846,18 @@ func getProxy(needPrint bool) (string, int, [][]byte) {
 	return proxyIP, proxyPort, proxyPEM
 }
 
-
 func httpsclient(server string, ipaddr net.IP) {
 
 	localTCPAddr, _ := net.ResolveTCPAddr("tcp", ipaddr.String())
 	transport := &http.Transport{
-		Dial: (&net.Dialer{ Timeout: 30 * time.Second,
+		Dial: (&net.Dialer{Timeout: 30 * time.Second,
 			KeepAlive: 30 * time.Second,
 			LocalAddr: localTCPAddr}).Dial, TLSHandshakeTimeout: 10 * time.Second}
 	client := &http.Client{
 		Transport: transport,
 	}
 
-	resp, err := client.Get("https://"+server+":/api/v1/cloud/ping")
+	resp, err := client.Get("https://" + server + ":/api/v1/cloud/ping")
 	if err != nil {
 		fmt.Printf("%v\n", err)
 		return
@@ -961,7 +958,6 @@ func runmDNS(subStr string) {
 			fmt.Printf("  - %+v\n", entry)
 		}
 	}(entries)
-
 
 	err = resolver.Browse(mctx, serviceStr, "local", entries)
 	if err != nil {
@@ -1138,8 +1134,8 @@ func getAllIntfs() []intfIP {
 			}
 			ifp := intfIP{
 				intfName: i.Name,
-				ipAddr: ip.String(),
-				iFlag: i.Flags,
+				ipAddr:   ip.String(),
+				iFlag:    i.Flags,
 			}
 			ifs = append(ifs, ifp)
 		}
@@ -1166,10 +1162,10 @@ func allUPIntfIPv4() []intfIP {
 			if ip.To4() == nil {
 				continue
 			}
-			if (i.Flags & net.FlagUp) != 0 && (i.Flags & net.FlagLoopback) == 0 {
+			if (i.Flags&net.FlagUp) != 0 && (i.Flags&net.FlagLoopback) == 0 {
 				ifp := intfIP{
 					intfName: i.Name,
-					ipAddr: ip.String(),
+					ipAddr:   ip.String(),
 				}
 				ifs = append(ifs, ifp)
 			}

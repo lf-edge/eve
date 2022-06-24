@@ -54,7 +54,7 @@ func handleTunneling(w http.ResponseWriter, r *http.Request, dnsIP string) {
 				return d.DialContext(ctx, network, dnsIP+":53")
 			},
 		}
-		d := net.Dialer{Resolver: r, Timeout: 10*time.Second}
+		d := net.Dialer{Resolver: r, Timeout: 10 * time.Second}
 		log.Tracef("handleTunneling: custom dialer")
 		destConn, err = d.Dial("tcp", remoteHost)
 	} else {

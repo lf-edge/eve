@@ -20,35 +20,35 @@ import (
 )
 
 const (
-	startCopyMessage  = "+++Start-Copy+++"
-	fileCopyDir       = "/download/"
+	startCopyMessage = "+++Start-Copy+++"
+	fileCopyDir      = "/download/"
 )
 
 var (
-	isCopy        bool           // client side
-	isSvrCopy     bool           // server side
-	copyMsgChn    chan []byte
-	lastPerc      int64
-	barDone       chan struct{}
+	isCopy     bool // client side
+	isSvrCopy  bool // server side
+	copyMsgChn chan []byte
+	lastPerc   int64
+	barDone    chan struct{}
 )
 
 type copyFile struct {
-	TokenHash []byte   `json:"tokenHash"`
-	Name      string   `json:"name"`
-	Size      int64    `json:"size"`
-	Sha256    string   `json:"sha256"`
-	ModTsec   int64    `json:"modtsec"`
+	TokenHash []byte `json:"tokenHash"`
+	Name      string `json:"name"`
+	Size      int64  `json:"size"`
+	Sha256    string `json:"sha256"`
+	ModTsec   int64  `json:"modtsec"`
 }
 
 type fileCopyStatus struct {
-	gotFileInfo   bool
-	filename      string
-	fileSize      int64
-	fileHash      string
-	currSize      int64
-	modTime       time.Time
-	buf           []byte
-	f             *os.File
+	gotFileInfo bool
+	filename    string
+	fileSize    int64
+	fileHash    string
+	currSize    int64
+	modTime     time.Time
+	buf         []byte
+	f           *os.File
 }
 
 func runCopy(opt string) {
@@ -65,10 +65,10 @@ func runCopy(opt string) {
 	}
 
 	cfile := copyFile{
-		Name:      info.Name(),
-		Size:      info.Size(),
-		ModTsec:   info.ModTime().Unix(),
-		Sha256:    fmt.Sprintf("%x", getFileSha256(file)),
+		Name:    info.Name(),
+		Size:    info.Size(),
+		ModTsec: info.ModTime().Unix(),
+		Sha256:  fmt.Sprintf("%x", getFileSha256(file)),
 	}
 	jbytes, err := json.Marshal(cfile)
 	if err != nil {
@@ -116,7 +116,7 @@ func runCopy(opt string) {
 				isSvrCopy = false
 				return
 
-			case <- done:
+			case <-done:
 				t.Stop()
 				isSvrCopy = false
 				return
@@ -124,7 +124,7 @@ func runCopy(opt string) {
 		}
 	}()
 
-	<- ahead
+	<-ahead
 	if !readerRunning {
 		return
 	}
@@ -191,7 +191,7 @@ func recvCopyFile(msg []byte, fstatus *fileCopyStatus, mtype int) {
 			sendCopyDone("file stat ", err)
 			return
 		}
-		fstatus.f, err = os.Create(fileCopyDir+fstatus.filename)
+		fstatus.f, err = os.Create(fileCopyDir + fstatus.filename)
 		if err != nil {
 			sendCopyDone("file create", err)
 			return
@@ -239,7 +239,7 @@ func recvCopyFile(msg []byte, fstatus *fileCopyStatus, mtype int) {
 
 func checkAndPrintBar(lastSize, currSize, totalSize int64, lastPerc *int64) {
 	currPerc := currSize * 100 / totalSize
-	for currPerc - *lastPerc  > 2 {
+	for currPerc-*lastPerc > 2 {
 		fmt.Printf("=")
 		*lastPerc += 2
 	}
@@ -277,7 +277,7 @@ func sendCopyDone(context string, err error) {
 
 func untarLogfile(downloadedFile string) {
 	if !strings.HasPrefix(downloadedFile, "logfiles-") || !strings.HasSuffix(downloadedFile, ".tar") {
-		fmt.Printf("\n file saved at %s\n\n", fileCopyDir + downloadedFile)
+		fmt.Printf("\n file saved at %s\n\n", fileCopyDir+downloadedFile)
 		return
 	}
 
@@ -287,7 +287,7 @@ func untarLogfile(downloadedFile string) {
 	if err != nil {
 		fmt.Printf("untar error: %v\n", err)
 	} else {
-		_ = os.Remove(fileCopyDir+downloadedFile)
+		_ = os.Remove(fileCopyDir + downloadedFile)
 	}
 
 	fileStr := strings.SplitN(downloadedFile, ".tar", 2)
