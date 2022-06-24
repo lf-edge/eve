@@ -85,10 +85,6 @@ func main() {
 		}
 		*wsAddr = addrport
 	}
-	if *wsAddr == "" {
-		fmt.Printf("wss address:port needs to be specified when '-token' is used\n")
-		return
-	}
 
 	initOpts()
 
@@ -152,6 +148,11 @@ func main() {
 
 	if *phopt || *phelpopt {
 		printHelp(pqueryopt)
+		return
+	}
+
+	if *wsAddr == "" {
+		fmt.Printf("wss address:port needs to be specified when '-token' is used\n")
 		return
 	}
 
