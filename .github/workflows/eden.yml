@@ -5,8 +5,12 @@ on:
     branches:
       - "master"
       - "[0-9]+.[0-9]+"
+    paths-ignore:
+      - 'docs/**'
   pull_request_review:
     types: [submitted]
+    paths-ignore:
+      - 'docs/**'
 
 jobs:
   integration:
@@ -17,7 +21,7 @@ jobs:
       matrix:
         tpm: ["true", "false"]
         fs: ["zfs", "ext4"]
-    if: ${{ github.event.review.state == 'approved' || github.ref == 'refs/heads/master' }}
+    if: ${{ github.event.review.state == 'approved' || github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags') }}
     steps:
       - name: Check
         run: |
@@ -43,7 +47,7 @@ jobs:
           if [ -f ${{ github.workspace }}/eve/tests/eden/eden-version ]; then
             EDEN_VERSION=$(cat ${{ github.workspace }}/eve/tests/eden/eden-version)
           else
-            EDEN_VERSION=lfedge/eden:0.5.0
+            EDEN_VERSION=lfedge/eden:0.6.1
           fi
           docker run -v $PWD:/out $EDEN_VERSION cp -a /eden/. /out/
           sudo chown -R $(whoami) .

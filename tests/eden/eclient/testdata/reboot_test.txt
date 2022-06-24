@@ -37,7 +37,7 @@ test eden.app.test -test.v -timewait 5m HALTED {{$app_name}}
 # simulate network outage
 eden eve link down
 # sleep without networks for 7 minutes
-exec sleep 7m
+exec sleep 420
 {{end}}
 
 # check info messages sent correct data in background

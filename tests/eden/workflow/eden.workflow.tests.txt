@@ -178,15 +178,14 @@ eden.escript.test -testdata ../eclient/testdata/ -test.run TestEdenScripts/app_n
 eden.escript.test -testdata ../eclient/testdata/ -test.run TestEdenScripts/eclients
 {{end}}
 
-/bin/echo Eden Reboot test (34/{{$tests}})
-eden.escript.test -testdata ../eclient/testdata/ -test.run TestEdenScripts/reboot_test
-
-/bin/echo Eden Shutdown test (34.1/{{$tests}})
+/bin/echo Eden Shutdown test (34/{{$tests}})
 eden.escript.test -testdata ../eclient/testdata/ -test.run TestEdenScripts/shutdown_test
 
 {{ if ne $workflow "small" }}
+{{ if or (eq $workflow "large") (eq $workflow "gcp") }}
 /bin/echo Eden base OS update http (35/{{$tests}})
 eden.escript.test -testdata ../update_eve_image/testdata/ -test.run TestEdenScripts/update_eve_image_http
+{{end}}
 /bin/echo Eden base OS update oci (36/{{$tests}})
 eden.escript.test -testdata ../update_eve_image/testdata/ -test.run TestEdenScripts/update_eve_image_oci
 {{end}}

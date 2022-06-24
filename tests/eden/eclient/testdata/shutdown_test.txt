@@ -1,4 +1,5 @@
 # Test for shutdown of all app instances of EVE
+# we inject network outage and check for entities to come after reboot for qemu and vbox
 
 {{$port := "2223"}}
 {{$network_name := "n1"}}
@@ -27,6 +28,9 @@ test eden.app.test -test.v -timewait 20m RUNNING {{$app_name}}
 # check for the ZDEVICE_STATE_PREPARING_POWEROFF state
 test eden.lim.test -test.v -timewait 5m -test.run TestInfo -out InfoContent.dinfo.state 'InfoContent.dinfo.state:ZDEVICE_STATE_PREPARING_POWEROFF' &
 
+# add small sleep to not miss rare PREPARING_POWEROFF state in the background
+exec sleep 10
+
 # send shutdown command
 eden controller edge-node shutdown
 
@@ -37,17 +41,32 @@ wait
 test eden.app.test -test.v -timewait 5m HALTED {{$app_name}} &
 
 # check for the ZDEVICE_STATE_PREPARED_POWEROFF state
-test eden.lim.test -test.v -timewait 5m -test.run TestInfo -out InfoContent.dinfo.state 'InfoContent.dinfo.state:ZDEVICE_STATE_PREPARED_POWEROFF' &
+test eden.lim.test -test.v -timewait 10m -test.run TestInfo -out InfoContent.dinfo.state 'InfoContent.dinfo.state:ZDEVICE_STATE_PREPARED_POWEROFF' &
 
 # wait for detectors
 wait
 
 # now reboot node to bring app back up
-test eden.reboot.test -test.v -timewait=15m -reboot=1 -count=1 &
+test eden.reboot.test -test.v -timewait=20m -reboot=1 -count=1 &
+
+{{$devmodel := EdenConfig "eve.devmodel"}}
+
+{{if or (eq $devmodel "ZedVirtual-4G") (eq $devmodel "VBox") }}
+exec sleep 20
+# simulate network outage
+eden eve link down
+# sleep without networks for 7 minutes
+exec sleep 420
+{{end}}
 
 # check info messages sent correct data in background
-test eden.app.test -test.v -timewait 15m -check-new RUNNING {{$app_name}} &
-test eden.network.test -test.v -timewait 15m -check-new ACTIVATED {{$network_name}} &
+test eden.app.test -test.v -timewait 10m -check-new RUNNING {{$app_name}} &
+test eden.network.test -test.v -timewait 10m -check-new ACTIVATED {{$network_name}} &
+
+{{if or (eq $devmodel "ZedVirtual-4G") (eq $devmodel "VBox") }}
+# return networks
+eden eve link up
+{{end}}
 
 # wait for detectors
 wait

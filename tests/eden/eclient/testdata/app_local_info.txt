@@ -53,7 +53,7 @@ stdout 'local-manager'
 ! stderr .
 
 # STEP 2: Deploy the second app
-eden pod deploy -n app1 --memory=512MB docker://lfedge/eden-eclient:9455582 -p {{template "app_port"}}:22 --networks={{template "network"}}
+eden pod deploy -n app1 --memory=512MB docker://lfedge/eden-eclient:afaa332 -p {{template "app_port"}}:22 --networks={{template "network"}}
 test eden.app.test -test.v -timewait 10m RUNNING app1
 
 # Wait for ssh access
@@ -206,7 +206,13 @@ CMD="${3:-COMMAND_UNSPECIFIED}"
 EDEN={{EdenConfig "eden.root"}}/{{EdenConfig "eden.bin-dist"}}/{{EdenConfig "eden.eden-bin"}}
 HOST=$($EDEN eve ip)
 CONFIG="{\"displayname\": \"$DN\", \"timestamp\": $TIMESTAMP, \"command\": \"$CMD\"}"
-echo "$CONFIG" | {{template "ssh"}}$HOST -p {{template "mngr_port"}} 'cat > {{template "app_cmd_file"}}'
+
+while true; do
+    echo "$CONFIG" | {{template "ssh"}}$HOST -p {{template "mngr_port"}} 'cat > {{template "app_cmd_file"}}'
+    APP_CMD_FILE_CONTENT="$({{template "ssh"}}$HOST -p {{template "mngr_port"}} "cat {{template "app_cmd_file"}}")"
+    echo "$APP_CMD_FILE_CONTENT" | grep "$CMD" && break
+    sleep 1
+done
 
 -- wait-for-app-state.sh --
 APP="${1}"
