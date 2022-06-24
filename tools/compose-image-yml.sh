@@ -32,7 +32,7 @@ main() {
     local eve_version="$3"
 
     if [ -e "${out_templ_path}".patch ]; then
-        patch -p0 -o "${out_templ_path}".sed < "${out_templ_path}".patch
+        patch -p0 -o "${out_templ_path}".sed < "${out_templ_path}".patch || exit 1
     else
         cp "${base_templ_path}" "${out_templ_path}".sed
     fi
