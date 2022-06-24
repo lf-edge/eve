@@ -10,6 +10,6 @@
 +        - /var/persist:/persist
 +        - /var/config:/config
 +     command: ["/bin/eve-embedded.sh"]
-    - name: debug
-      image: DEBUG_TAG
-      cgroupsPath: /eve/services/debug
+    - name: edgeview
+      image: EDGEVIEW_TAG
+      cgroupsPath: /eve/services/eve-edgeview
