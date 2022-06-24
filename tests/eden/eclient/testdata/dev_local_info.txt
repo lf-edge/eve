@@ -52,7 +52,7 @@ exec -t 10m bash get-devinfo-status.sh
 ! stderr .
 
 # STEP 2: Deploy the second app
-eden pod deploy -n app1 --memory=512MB docker://lfedge/eden-eclient:9455582 -p {{template "app_port"}}:22 --networks={{template "network"}}
+eden pod deploy -n app1 --memory=512MB docker://lfedge/eden-eclient:99d7f62 -p {{template "app_port"}}:22 --networks={{template "network"}}
 test eden.app.test -test.v -timewait 10m RUNNING app1
 
 # Wait for ssh access
@@ -85,7 +85,7 @@ exec -t 1m bash eden-pod-ps.sh local-manager
 eden controller edge-node reboot
 
 # STEP 5.1: Wait for ssh access
-test eden.app.test -test.v -timewait 20m RUNNING app1
+test eden.app.test -test.v -timewait 20m RUNNING app1 local-manager
 exec -t 10m bash wait-ssh.sh {{template "app_port"}}
 
 # STEP 5.2: Start local manager application
@@ -243,7 +243,13 @@ EDEN={{EdenConfig "eden.root"}}/{{EdenConfig "eden.bin-dist"}}/{{EdenConfig "ede
 HOST=$($EDEN eve ip)
 CONFIG="{\"command\": \"$CMD\"}"
 echo "$CONFIG"
-echo "$CONFIG" | {{template "ssh"}}$HOST -p {{template "mngr_port"}} 'cat > {{template "dev_cmd_file"}}'
+
+while true; do
+    echo "$CONFIG" | {{template "ssh"}}$HOST -p {{template "mngr_port"}} 'cat > {{template "dev_cmd_file"}}'
+    DEV_CMD_FILE_CONTENT="$({{template "ssh"}}$HOST -p {{template "mngr_port"}} "cat {{template "dev_cmd_file"}}")"
+    echo "$DEV_CMD_FILE_CONTENT" | grep "$CMD" && break
+    sleep 1
+done
 
 -- wait-for-dev-state.sh --
 EXPSTATE="${1}"

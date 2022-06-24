@@ -51,19 +51,19 @@ eden controller edge-node update --device profile_server_token={{template "token
 eden controller edge-node update --device local_profile_server=$app_ip:8888
 
 # STEP 1: Wait for radio status
-exec -t 1m bash get-radio-status.sh
+exec -t 2m bash get-radio-status.sh
 stdout 'radio-silence=false'
 ! stderr .
 
 # STEP 2: Enable Radio-silence
 exec -t 2m bash toggle-radio-silence.sh ON
-exec -t 1m bash get-radio-status.sh
+exec -t 2m bash get-radio-status.sh
 stdout 'radio-silence=true'
 ! stderr .
 
 # STEP 3: Disable Radio-silence mode
 exec -t 2m bash toggle-radio-silence.sh OFF
-exec -t 1m bash get-radio-status.sh
+exec -t 2m bash get-radio-status.sh
 stdout 'radio-silence=false'
 ! stderr .
 

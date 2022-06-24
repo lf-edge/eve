@@ -19,7 +19,7 @@ eden pod deploy -n eclient --memory=512MB docker://lfedge/eden-eclient:d9eb23f -
 
 test eden.app.test -test.v -timewait 20m RUNNING eclient
 
-exec sleep 10s
+exec sleep 10
 
 eden pod delete eclient
 
