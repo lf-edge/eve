@@ -31,6 +31,8 @@ const (
 	PersistDebugDir = PersistDir + "/agentdebug"
 	// PersistInstallerDir - location for installer output
 	PersistInstallerDir = PersistDir + "/installer"
+	// IngestedDirname - location for shas of files we pulled from /config
+	IngestedDirname = PersistDir + "/ingested"
 
 	// IdentityDirname - Config dir
 	IdentityDirname = "/config"

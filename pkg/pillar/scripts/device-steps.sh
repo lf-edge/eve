@@ -117,7 +117,7 @@ if ! mount -t securityfs securityfs "$SECURITYFSPATH"; then
     echo "$(date -Ins -u) mounting securityfs failed"
 fi
 
-DIRS="$CONFIGDIR $CONFIGDIR/DevicePortConfig $PERSIST_CERTS $PERSIST_AGENT_DEBUG /persist/status/zedclient/OnboardingStatus"
+DIRS="$PERSIST_CERTS $PERSIST_AGENT_DEBUG /persist/status/zedclient/OnboardingStatus"
 
 # If /persist/installer/first-boot exists treat this as a first boot
 # we rename file to not assume that it is the first boot if we reboot occasionally
@@ -267,6 +267,7 @@ then
 fi
 
 # Run upgradeconverter
+mkdir -p /persist/ingested/
 echo "$(date -Ins -u) device-steps: Starting upgradeconverter (pre-vault)"
 $BINDIR/upgradeconverter pre-vault
 echo "$(date -Ins -u) device-steps: upgradeconverter (pre-vault) Completed"
@@ -374,13 +375,6 @@ access_usb
 
 # Update our local /etc/hosts with entries comming from /config
 [ -f /config/hosts ] && cat /config/hosts >> /etc/hosts
-
-# Need to clear old usb files from /config/DevicePortConfig
-if [ -f $CONFIGDIR/DevicePortConfig/usb.json ]; then
-    echo "$(date -Ins -u) Removing old $CONFIGDIR/DevicePortConfig/usb.json"
-    # XXX can't modify CONFIGDIR
-    rm -f $CONFIGDIR/DevicePortConfig/usb.json
-fi
 
 # Get IP addresses
 echo "$(date -Ins -u) Starting nim"
