@@ -1,6 +1,6 @@
 --- images/rootfs.yml.in
 +++ images/rootfs-adam-kvm.yml.in
-@@ -30,6 +30,12 @@
+@@ -33,6 +33,12 @@
       image: NEWLOGD_TAG
       cgroupsPath: /eve/services/newlogd
       oomScoreAdj: -999
