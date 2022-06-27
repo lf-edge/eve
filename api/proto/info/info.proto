@@ -234,6 +234,7 @@ message ErrorInfo {
 message DeviceEntity {
   Entity entity = 1;           // entity type
   string entity_id = 2;        // entity uuid
+  string entity_name = 3;      // entity name
 }
 
 // Entity contains the entity type
