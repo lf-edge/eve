@@ -12,10 +12,8 @@
 package verifier
 
 import (
-	"crypto/sha256"
 	"flag"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"os"
 	"path"
@@ -28,6 +26,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
+	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
 	uuid "github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
 )
@@ -368,7 +367,7 @@ func verifyObjectSha(ctx *verifierContext, config *types.VerifyImageConfig, stat
 		return false
 	}
 
-	imageHashB, err := computeShaFile(verifierFilename)
+	imageHashB, err := fileutils.ComputeShaFile(verifierFilename)
 	if err != nil {
 		cerr := fmt.Sprintf("%v", err)
 		updateVerifyErrStatus(ctx, status, cerr)
@@ -395,20 +394,6 @@ func verifyObjectSha(ctx *verifierContext, config *types.VerifyImageConfig, stat
 
 	log.Functionf("Sha validation successful for %s", config.Name)
 	return true
-}
-
-// compute the sha for a straight file
-func computeShaFile(filename string) ([]byte, error) {
-	f, err := os.Open(filename)
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-	h := sha256.New()
-	if _, err := io.Copy(h, f); err != nil {
-		return nil, err
-	}
-	return h.Sum(nil), nil
 }
 
 // This merely updates the RefCount and Expired in the status
@@ -673,7 +658,7 @@ func populateInitialStatusFromVerified(ctx *verifierContext,
 			status := verifyImageStatusFromImageFile(
 				location.Name(), size, pathname)
 			if status != nil {
-				imageHash, err := computeShaFile(pathname)
+				imageHash, err := fileutils.ComputeShaFile(pathname)
 				if err != nil {
 					log.Errorf("populateInitialStatusFromVerified: cannot compute sha: %v", err)
 					err = os.Remove(pathname)
