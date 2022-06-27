@@ -18,8 +18,10 @@ import (
 )
 
 const (
-	baseAuthorizedKeysFile = types.IdentityDirname + "/authorized_keys"
-	importGlobalConfigFile = types.IdentityDirname + "/GlobalConfig/global.json"
+	baseAuthorizedKeysFile    = types.IdentityDirname + "/authorized_keys"
+	importGlobalConfigFile    = types.IdentityDirname + "/GlobalConfig/global.json"
+	ingestedAuthorizedKeysSha = types.IngestedDirname + "/authorized_keys.sha"
+	ingestedGlobalConfigSha   = types.IngestedDirname + "/GlobalConfig/global.sha"
 )
 
 func applyDefaultConfigItem(ctxPtr *ucContext) error {
@@ -66,15 +68,29 @@ func applyDefaultConfigItem(ctxPtr *ucContext) error {
 	return nil
 }
 
+// If we have a /config/ importGlobalConfigFile then we compare its sha against
+// ingestedGlobalConfigSha and only import is different. This ensures that we only
+// apply it once.
 func importFromConfigPartition(ctxPtr *ucContext) error {
 	var err error
 	var globalConfigPtr *types.ConfigItemValueMap
+	var configSha, authorizedKeysSha []byte
 
 	persistStatusFile := ctxPtr.newConfigItemValueMapFile()
 	globalConfigExists := fileExists(importGlobalConfigFile)
 	persistedConfigExists := fileExists(persistStatusFile)
 
-	if globalConfigExists {
+	doImport := globalConfigExists
+	if doImport {
+		doImport, configSha, err = fileutils.CompareSha(importGlobalConfigFile,
+			ingestedGlobalConfigSha)
+		if err != nil {
+			log.Errorf("CompareSha failed: %s", err)
+		} else if !doImport {
+			log.Noticef("No change to %s", importGlobalConfigFile)
+		}
+	}
+	if doImport {
 		log.Noticef("Importing config items from %s", importGlobalConfigFile)
 		globalConfigPtr, err = parseFile(importGlobalConfigFile)
 		if err != nil {
@@ -95,8 +111,19 @@ func importFromConfigPartition(ctxPtr *ucContext) error {
 	}
 
 	keyData, keyDataValid := readAuthorizedKeys(baseAuthorizedKeysFile)
-	if len(keyData) != 0 {
-		log.Functionf("Found the key data in %s", baseAuthorizedKeysFile)
+	doAuthorizedKeys := (len(keyData) != 0 && keyDataValid)
+	if doAuthorizedKeys {
+		doAuthorizedKeys, authorizedKeysSha, err = fileutils.CompareSha(baseAuthorizedKeysFile,
+			ingestedAuthorizedKeysSha)
+		if err != nil {
+			log.Errorf("CompareSha failed: %s", err)
+		} else if !doAuthorizedKeys {
+			log.Noticef("No change to the key data in %s",
+				baseAuthorizedKeysFile)
+		}
+	}
+	if doAuthorizedKeys {
+		log.Noticef("Found the key data in %s", baseAuthorizedKeysFile)
 		globalConfigPtr.SetGlobalValueString(types.SSHAuthorizedKeys, keyData)
 	}
 
@@ -112,15 +139,26 @@ func importFromConfigPartition(ctxPtr *ucContext) error {
 		log.Errorf("Failed to Save global config in: %s, %s", persistStatusFile, err)
 		return err
 	}
-	if keyDataValid {
-		// XXX fixme can't modify /config! Want protobuf config
-		os.Remove(baseAuthorizedKeysFile)
-		log.Functionf("Deleted %s file from /config/", baseAuthorizedKeysFile)
+	if doAuthorizedKeys {
+		// Save sha of what we ingested
+		err := fileutils.SaveShaInFile(ingestedAuthorizedKeysSha, authorizedKeysSha)
+		if err != nil {
+			log.Errorf("SaveShaInFile %s failed: %s", ingestedAuthorizedKeysSha, err)
+		} else {
+			log.Noticef("Saved new sha for %s in %s",
+				baseAuthorizedKeysFile, ingestedAuthorizedKeysSha)
+		}
 	}
-	if globalConfigExists {
-		// XXX fixme can't update /config. Want proto file!
-		os.Remove(importGlobalConfigFile)
-		log.Functionf("Deleted %s file from /config/", importGlobalConfigFile)
+
+	if doImport {
+		// Save sha of what we ingested
+		err := fileutils.SaveShaInFile(ingestedGlobalConfigSha, configSha)
+		if err != nil {
+			log.Errorf("SaveShaInFile %s failed: %s", ingestedGlobalConfigSha, err)
+		} else {
+			log.Noticef("Saved new sha for %s in %s",
+				importGlobalConfigFile, ingestedGlobalConfigSha)
+		}
 	}
 	log.Tracef("upgradeconverter.importFromConfigPartition done")
 	return nil
