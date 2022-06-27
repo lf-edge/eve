@@ -11,6 +11,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -217,10 +218,6 @@ func (n *nim) run(ctx context.Context) (err error) {
 
 	// Check if we have a /config/DevicePortConfig/*.json which we need to
 	// take into account by copying it to /run/global/DevicePortConfig/
-	// We tag it with a OriginFile so that the file in /config/DevicePortConfig/
-	// will be deleted once we have published its content in
-	// the DevicePortConfigList.
-	// This avoids repeated application of this startup file.
 	n.ingestDevicePortConfig()
 
 	// Activate some subscriptions.
@@ -773,10 +770,12 @@ func (n *nim) handleZedAgentStatusImpl(_ string, statusArg interface{}) {
 }
 
 // ingestPortConfig reads all json files in configDevicePortConfigDir, ensures
-// they have a TimePriority, and adds a OriginFile to them and then writes to
+// they have a TimePriority, and adds a ShaFile and Shavalue to them and then writes to
 // runDevicePortConfigDir.
-// Later the OriginFile field will result in removing the original file from
-// /config/DevicePortConfig/ to avoid re-application (this is done by DPC Manager).
+// If a file has already been ingested (based on finding the sha of the file content
+// being in /persist/ingested/DevicePortConfig/<key>.sha), it is ignored.
+// Otherwise the ShaFile and Shavalue is used to write the sha for the new file to avoid
+// re-application of the same config.
 func (n *nim) ingestDevicePortConfig() {
 	locations, err := ioutil.ReadDir(configDevicePortConfigDir)
 	if err != nil {
@@ -811,8 +810,32 @@ func (n *nim) ingestDevicePortConfigFile(oldDirname string, newDirname string, n
 			filename, err)
 		return
 	}
-	dpc.DoSanitize(n.Log, true, false, "", true, true)
-	dpc.OriginFile = filename
+	key := strings.TrimSuffix(name, ".json")
+	dpc.DoSanitize(n.Log, true, true, key, true, true)
+	if filename != "" {
+		// Determine ingested filename.
+		// Files from /config can have any name while files from an
+		// override USB stick must be named usb.json.
+		basename := filepath.Base(filename)
+		if !strings.HasSuffix(basename, ".json") {
+			n.Log.Noticef("Ignoring %s file", filename)
+			return
+		}
+		// Use sha to determine if file has already been ingested
+		shaFilename := filepath.Join(types.IngestedDirname, "DevicePortConfig",
+			strings.TrimSuffix(basename, ".json")) + ".sha"
+		changed, dpcSha, err := fileutils.CompareSha(filename,
+			shaFilename)
+		if err != nil {
+			n.Log.Errorf("CompareSha failed: %s", err)
+		} else if changed {
+			dpc.ShaFile = shaFilename
+			dpc.ShaValue = dpcSha
+		} else {
+			n.Log.Noticef("No change to %s", filename)
+			return
+		}
+	}
 
 	// Save New config to file.
 	var data []byte
