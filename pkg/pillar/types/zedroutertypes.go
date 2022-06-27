@@ -478,7 +478,8 @@ type DevicePortConfig struct {
 	Key          string
 	TimePriority time.Time // All zero's is fallback lowest priority
 	State        DPCState
-	OriginFile   string // File to be deleted once DevicePortConfigList published
+	ShaFile      string // File in which to write ShaValue once DevicePortConfigList published
+	ShaValue     []byte
 	TestResults
 	LastIPAndDNS time.Time // Time when we got some IP addresses and DNS
 
@@ -740,10 +741,11 @@ func (config *DevicePortConfig) DoSanitize(log *base.LogObject,
 			// If we can stat the file we use 1980, otherwise
 			// we use 1970; using the modify time of the file
 			// is too unpredictable.
-			filename := fmt.Sprintf("%s/DevicePortConfig/%s.json",
-				TmpDirname, key)
-			_, err := os.Stat(filename)
-			if err == nil {
+			_, err1 := os.Stat(fmt.Sprintf("%s/DevicePortConfig/%s.json",
+				TmpDirname, key))
+			_, err2 := os.Stat(fmt.Sprintf("%s/DevicePortConfig/%s.json",
+				IdentityDirname, key))
+			if err1 == nil || err2 == nil {
 				config.TimePriority = time.Date(1980,
 					time.January, 1, 0, 0, 0, 0, time.UTC)
 			} else {
@@ -757,7 +759,7 @@ func (config *DevicePortConfig) DoSanitize(log *base.LogObject,
 	if sanitizeKey {
 		if config.Key == "" {
 			config.Key = key
-			log.Functionf("DoSanitize: Forcing Key for %s TS %v\n",
+			log.Noticef("DoSanitize: Forcing Key for %s TS %v\n",
 				key, config.TimePriority)
 		}
 	}

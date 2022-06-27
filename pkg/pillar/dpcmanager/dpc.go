@@ -7,9 +7,9 @@ import (
 	"context"
 	"crypto/x509"
 	"fmt"
-	"os"
 
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
 )
 
 func (m *DpcManager) currentDPC() *types.DevicePortConfig {
@@ -312,14 +312,16 @@ func (m *DpcManager) compressDPCL() {
 					i, dpc)
 				newConfig = append(newConfig, dpc)
 				// last resort also found.. discard all remaining entries
-				break
 			}
-			m.Log.Functionf("compressDPCL: Ignoring - i = %d, dpc: %+v", i, dpc)
-			// Check and delete any OriginFile; might already have been deleted
-			if dpc.OriginFile != "" {
-				err := os.Remove(dpc.OriginFile)
-				if err == nil {
-					m.Log.Noticef("Removed OriginFile %s for %d", dpc.OriginFile, i)
+			m.Log.Noticef("compressDPCL: Ignoring - i = %d, dpc: %+v", i, dpc)
+			// Update any ShaFile with Shavalue
+			if dpc.ShaFile != "" {
+				err := fileutils.SaveShaInFile(dpc.ShaFile, dpc.ShaValue)
+				if err != nil {
+					m.Log.Errorf("SaveShaInFile %s failed: %s", dpc.ShaFile, err)
+				} else {
+
+					m.Log.Noticef("Updated %s for %d", dpc.ShaFile, i)
 				}
 			}
 		}
