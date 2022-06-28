@@ -9,18 +9,6 @@ on:
       - "[0-9]+.[0-9]+.[0-9]+"
 
 jobs:
-  report:
-    name: Report
-    runs-on: ${{ matrix.os }}
-    steps:
-    - name: ref
-      run: echo ${{ github.ref }}
-    - name: event_name
-      run: echo ${{ github.event_name }}
-    - name: disk usage
-      run: df -h
-    - name: memory
-      run: free -m
   build:
     if: github.event.repository.full_name == 'lf-edge/eve'
     runs-on: ${{ matrix.os }}
@@ -138,6 +126,15 @@ jobs:
         run: |
           rm -rf dist dist.xen
           make -e V=1 HV=mini LINUXKIT_PKG_TARGET=push eve
+      - name: Pre clean report
+        if: ${{ always() }}
+        run: |
+          echo Disk usage
+          df -h
+          echo Memory
+          free -m
+          docker system df
+          docker system df -v
       - name: Clean
         if: ${{ always() }}
         run: |
