@@ -188,6 +188,7 @@ jobs:
           gcloud compute firewall-rules delete edengcp-actions-${{ matrix.hv }}-${{ matrix.fs }}-${{github.run_number}} || echo "Does not exist"
           gcloud compute instances delete eve-edengcp-actions-${{ matrix.hv }}-${{ matrix.fs }}-${{github.run_number}} -q --zone=us-west1-a || echo "Does not exist"
           gcloud compute images delete eve-edengcp-actions-${{ matrix.hv }}-${{ matrix.fs }}-${{github.run_number}} -q || echo "Does not exist"
+          gsutil -o "Credentials:gs_service_key_file=${{ steps.gcpauth.outputs.credentials_file_path }}" rm gs://eve-live/eve-edengcp-actions-${{ matrix.hv }}-${{ matrix.fs }}-${{github.run_number}}.img.tar.gz || echo "Does not exists"
       - name: RoL Clean
         if: ${{ always() }}
         run: |
