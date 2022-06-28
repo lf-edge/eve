@@ -457,15 +457,15 @@ run-live-parallels:
 #    gcloud compute images create $(CLOUD_IMG_NAME) --project=lf-edge-eve
 #           --source-uri=https://storage.googleapis.com/eve-live/live.img.tar.gz
 #           --licenses="https://www.googleapis.com/compute/v1/projects/vm-options/global/licenses/enable-vmx"
-run-live-gcp: $(LINUXKIT) | $(LIVE).img.tar.gz
+run-live-gcp: $(LINUXKIT)
 	if gcloud compute images list -$(CLOUD_PROJECT) --filter="name=$(CLOUD_IMG_NAME)" 2>&1 | grep -q 'Listed 0 items'; then \
-	    $^ push gcp -nested-virt -img-name $(CLOUD_IMG_NAME) $(CLOUD_PROJECT) $(CLOUD_BUCKET) $|                          ;\
+	    $^ push gcp -nested-virt -img-name $(CLOUD_IMG_NAME) $(CLOUD_PROJECT) $(CLOUD_BUCKET) $(LIVE).img.tar.gz           ;\
 	fi
 	$^ run gcp $(CLOUD_PROJECT) $(CLOUD_INSTANCE) $(CLOUD_IMG_NAME)
 
-live-gcp-upload: $(LINUXKIT) | $(LIVE).img.tar.gz
+live-gcp-upload: $(LINUXKIT)
 	if gcloud compute images list -$(CLOUD_PROJECT) --filter="name=$(CLOUD_IMG_NAME)" 2>&1 | grep -q 'Listed 0 items'; then \
-	    $^ push gcp -nested-virt -img-name $(CLOUD_IMG_NAME) $(CLOUD_PROJECT) $(CLOUD_BUCKET) $|                          ;\
+	    $^ push gcp -nested-virt -img-name $(CLOUD_IMG_NAME) $(CLOUD_PROJECT) $(CLOUD_BUCKET) $(LIVE).img.tar.gz           ;\
 		echo "Uploaded $(CLOUD_IMG_NAME)"; \
 	else \
 		echo "Image $(CLOUD_IMG_NAME) already exists in GCP" ;\
@@ -666,8 +666,9 @@ endif
 	cp $< $@
 	dd of=$@ bs=1 seek=$$(($(MEDIA_SIZE) * 1024 * 1024)) count=0
 	rm -f $(dir $@)/disk.raw ; ln -s $(notdir $@) $(dir $@)/disk.raw
-	$(DOCKER_GO) "tar --mode=644 --owner=root --group=root -S -h -czvf $(notdir $*).img.tar.gz disk.raw" $(DIST) dist
+	$(DOCKER_GO) "tar --mode=644 --owner=root --group=root -S -h -czvf $(notdir $*).img.tar.gz disk.raw" $(dir $@) dist
 	rm -f $(dir $@)/disk.raw
+	$(QUIET): $(dir $@)/$(notdir $*).img.tar.gz: Succeeded
 
 %.qcow2: %.raw | $(DIST)
 	qemu-img convert -c -f raw -O qcow2 $< $@
