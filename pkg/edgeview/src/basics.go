@@ -82,7 +82,8 @@ func initOpts() {
 		"zedagent",
 		"zedclient",
 		"zedmanager",
-		"zedrouter"}
+		"zedrouter",
+		"zfsmanager"}
 
 	pubsubpersist = []string{
 		"nim",
