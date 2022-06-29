@@ -21,7 +21,7 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-const serverCertFile = "/certs/wss-server-cacert.pem"
+const serverCertFile = "/persist/certs/wss-server-cacert.pem"
 const maxReconnWait = 120 * 1000 // 120 seconds
 
 var (
