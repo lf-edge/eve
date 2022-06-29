@@ -899,7 +899,7 @@ func runTechSupport(cmds cmdOpt) {
 	closePipe(true)
 
 	printTitle("\n       - pub/sub info -\n\n", colorRED, false)
-	runPubsub("nim,domainmgr,nodeagent,baseosmgr,tpmmgr,global,vaultmgr,volumemgr,zedagent,zedmanager,zedrouter,zedclient,edgeview,watcher")
+	runPubsub("nim,domainmgr,nodeagent,baseosmgr,tpmmgr,global,vaultmgr,volumemgr,zedagent,zedmanager,zedrouter,zedclient,zfsmanager,edgeview,watcher")
 
 	printTitle("\n       - Done Tech-Support -\n\n", colorYELLOW, false)
 	closePipe(true)
