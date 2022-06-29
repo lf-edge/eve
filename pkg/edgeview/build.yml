@@ -11,7 +11,6 @@ config:
     - /config:/config:ro
     - /etc/resolv.conf:/etc/resolv.conf:ro
     - /proc:/host/proc:ro
-    - /persist/certs:/certs:ro
   capabilities:
     - all
   net: host
