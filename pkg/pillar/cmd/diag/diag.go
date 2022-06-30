@@ -23,7 +23,7 @@ import (
 	"github.com/eriknordmark/ipinfo"
 	"github.com/golang/protobuf/proto"
 	"github.com/google/go-cmp/cmp"
-	zconfig "github.com/lf-edge/eve/api/go/config"
+	eveuuid "github.com/lf-edge/eve/api/go/eveuuid"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/devicenetwork"
@@ -916,16 +916,13 @@ func tryPing(ctx *diagContext, ifname string, reqURL string) bool {
 	return true
 }
 
-// The most recent config hash we received
-var prevConfigHash string
+// The most recent uuid we received
+var prevUUID string
 
 func tryPostUUID(ctx *diagContext, ifname string) bool {
 
-	log.Tracef("tryPostUUID() sending hash %s", prevConfigHash)
-	configRequest := &zconfig.ConfigRequest{
-		ConfigHash: prevConfigHash,
-	}
-	b, err := proto.Marshal(configRequest)
+	uuidRequest := &eveuuid.UuidRequest{}
+	b, err := proto.Marshal(uuidRequest)
 	if err != nil {
 		log.Errorln(err)
 		return false
@@ -970,43 +967,38 @@ func tryPostUUID(ctx *diagContext, ifname string) bool {
 	return true
 }
 
-func parsePrint(configURL string, resp *http.Response, contents []byte) {
+func parsePrint(reqURL string, resp *http.Response, contents []byte) {
 	if resp.StatusCode == http.StatusNotModified {
 		log.Tracef("StatusNotModified len %d", len(contents))
 		return
 	}
 
-	if err := zedcloud.ValidateProtoContentType(configURL, resp); err != nil {
+	if err := zedcloud.ValidateProtoContentType(reqURL, resp); err != nil {
 		log.Errorln("ValidateProtoContentType: ", err)
 		return
 	}
 
-	configResponse, err := readConfigResponseProtoMessage(contents)
+	uuidResponse, err := readUUIDResponseProtoMessage(contents)
 	if err != nil {
-		log.Errorln("readConfigResponseProtoMessage: ", err)
+		log.Errorln("readUUIDResponseProtoMessage: ", err)
 		return
 	}
-	hash := configResponse.GetConfigHash()
-	if hash == prevConfigHash {
-		log.Tracef("Same ConfigHash len %d", len(contents))
-		return
+	newUUID := uuidResponse.GetUuid()
+	if prevUUID != newUUID {
+		prevUUID = newUUID
+		log.Functionf("Changed UUIDResponse with uuid %s", newUUID)
 	}
-	log.Functionf("Change in ConfigHash from %s to %s", prevConfigHash, hash)
-	prevConfigHash = hash
-	config := configResponse.GetConfig()
-	uuidStr := strings.TrimSpace(config.GetId().Uuid)
-	log.Functionf("Changed ConfigResponse with uuid %s", uuidStr)
 }
 
-func readConfigResponseProtoMessage(contents []byte) (*zconfig.ConfigResponse, error) {
-	var configResponse = &zconfig.ConfigResponse{}
+func readUUIDResponseProtoMessage(contents []byte) (*eveuuid.UuidResponse, error) {
+	var uuidResponse = &eveuuid.UuidResponse{}
 
-	err := proto.Unmarshal(contents, configResponse)
+	err := proto.Unmarshal(contents, uuidResponse)
 	if err != nil {
 		log.Errorf("Unmarshalling failed: %v", err)
 		return nil, err
 	}
-	return configResponse, nil
+	return uuidResponse, nil
 }
 
 // Get something without a return type; used by ping
