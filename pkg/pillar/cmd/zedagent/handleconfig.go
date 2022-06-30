@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -497,6 +498,19 @@ func touchSavedConfig(filename string) {
 		// Can occur if no space in filesystem?
 		log.Errorf("touchSavedConfig failed: %s", err)
 	}
+}
+
+// Check if SavedConfig exists
+func existsSavedConfig(filename string) bool {
+	filename = filepath.Join(checkpointDirname, filename)
+	_, err := os.Stat(filename)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			log.Errorf("existsSavedConfig: cannot stat %s: %s", filename, err)
+		}
+		return false
+	}
+	return true
 }
 
 // If the file exists then read the config, and return is modify time
