@@ -44,11 +44,18 @@ func (r *resolveHandler) create(ctxArg interface{},
 	// it so it can be used if there is a cancel
 	go func() {
 		for ch := range receiveChan {
-			log.Noticef("resolveHandler(%s) received cancelChan %v",
-				key, ch)
+			if h.currentCancelChan != nil && ch != nil {
+				log.Noticef("resolveHandler(%s) received updated cancelChan %v",
+					key, ch)
+			}
+			if h.currentCancelChan != nil {
+				close(h.currentCancelChan)
+			}
 			h.currentCancelChan = ch
 		}
-		log.Noticef("resolveHandler(%s) receiveChan func done", key)
+		if h.currentCancelChan != nil {
+			log.Noticef("resolveHandler(%s) receiveChan func done", key)
+		}
 	}()
 
 	log.Functionf("Creating %s at %s", "runResolveHandler",

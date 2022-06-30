@@ -139,13 +139,21 @@ func download(ctx *downloaderContext, trType zedUpload.SyncTransportType,
 	// Tell caller where we can be cancelled
 	cancelChan := make(chan Notify, 1)
 	receiveChan <- cancelChan
+	// if we are done before event from cancelChan do nothing
+	doneChan := make(chan Notify)
+	defer close(doneChan)
 	go func() {
-		<-cancelChan
-		cancel = true
-		errStr := fmt.Sprintf("cancelled by user: <%s>, <%s>, <%s>",
-			dpath, region, filename)
-		log.Error(errStr)
-		req.Cancel()
+		select {
+		case <-doneChan:
+			// remove cancel channel
+			receiveChan <- nil
+		case <-cancelChan:
+			cancel = true
+			errStr := fmt.Sprintf("cancelled by user: <%s>, <%s>, <%s>",
+				dpath, region, filename)
+			log.Error(errStr)
+			_ = req.Cancel()
+		}
 	}()
 
 	req.Post()
@@ -263,13 +271,21 @@ func objectMetadata(ctx *downloaderContext, trType zedUpload.SyncTransportType,
 	// Tell caller where we can be cancelled
 	cancelChan := make(chan Notify, 1)
 	receiveChan <- cancelChan
+	// if we are done before event from cancelChan do nothing
+	doneChan := make(chan Notify)
+	defer close(doneChan)
 	go func() {
-		<-cancelChan
-		cancel = true
-		errStr := fmt.Sprintf("cancelled by user: <%s>, <%s>, <%s>",
-			dpath, region, filename)
-		log.Error(errStr)
-		req.Cancel()
+		select {
+		case <-doneChan:
+			// remove cancel channel
+			receiveChan <- nil
+		case <-cancelChan:
+			cancel = true
+			errStr := fmt.Sprintf("cancelled by user: <%s>, <%s>, <%s>",
+				dpath, region, filename)
+			log.Error(errStr)
+			_ = req.Cancel()
+		}
 	}()
 
 	req.Post()
