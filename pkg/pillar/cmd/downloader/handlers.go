@@ -99,11 +99,18 @@ func (d *downloadHandler) create(ctxArg interface{},
 	// it so it can be used if there is a cancel
 	go func() {
 		for ch := range receiveChan {
-			log.Noticef("downloadHandler(%s) received cancelChan %v",
-				key, ch)
+			if h.currentCancelChan != nil && ch != nil {
+				log.Noticef("downloadHandler(%s) received updated cancelChan %v",
+					key, ch)
+			}
+			if h.currentCancelChan != nil {
+				close(h.currentCancelChan)
+			}
 			h.currentCancelChan = ch
 		}
-		log.Noticef("downloadHandler(%s) receiveChan func done", key)
+		if h.currentCancelChan != nil {
+			log.Noticef("downloadHandler(%s) receiveChan func done", key)
+		}
 	}()
 
 	log.Functionf("Creating %s at %s", "runHandler", agentlog.GetMyStack())
