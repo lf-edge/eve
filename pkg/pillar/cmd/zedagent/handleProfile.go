@@ -159,10 +159,11 @@ func getLocalProfileConfig(getconfigCtx *getconfigContext, localServerURL string
 }
 
 //saveOrTouchReceivedLocalProfile updates modification time of received LocalProfile in case of no changes
-//or updates content of received LocalProfile in case of changes
+//or updates content of received LocalProfile in case of changes or no checkpoint file
 func saveOrTouchReceivedLocalProfile(getconfigCtx *getconfigContext, localProfile *profile.LocalProfile) {
 	if getconfigCtx.localProfile == localProfile.GetLocalProfile() &&
-		getconfigCtx.profileServerToken == localProfile.GetServerToken() {
+		getconfigCtx.profileServerToken == localProfile.GetServerToken() &&
+		existsSavedConfig(savedLocalProfileFile) {
 		touchSavedConfig(savedLocalProfileFile)
 		return
 	}
