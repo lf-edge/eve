@@ -170,7 +170,7 @@ func (c *containerdCAS) IngestBlob(ctx context.Context, blobs ...types.BlobStatu
 			sha = fmt.Sprintf("%s:%s", digest.SHA256, strings.ToLower(blob.Sha256))
 		)
 
-		logrus.Infof("IngestBlob(%s): processing blob %+v", blob.Sha256, blob)
+		logrus.Debugf("IngestBlob(%s): processing blob %+v", blob.Sha256, blob)
 		// Process the blob only if its not in a loaded status already
 		if blob.State == types.LOADED {
 			logrus.Infof("IngestBlob(%s): Not loading blob as it is already marked as loaded", blob.Sha256)
