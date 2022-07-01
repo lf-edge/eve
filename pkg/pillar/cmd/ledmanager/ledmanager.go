@@ -186,6 +186,11 @@ var mToF = []modelToFuncs{
 		// No disk light blinking on Google
 	},
 	{
+		model:  "VMware.*",
+		regexp: true,
+		// No disk light blinking on VMware
+	},
+	{
 		model:       "raspberrypi.rpi.raspberrypi,4-model-b.brcm,bcm2711",
 		initFunc:    InitLedCmd,
 		displayFunc: ExecuteLedCmd,
