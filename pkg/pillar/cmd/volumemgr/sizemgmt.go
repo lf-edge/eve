@@ -5,8 +5,9 @@ package volumemgr
 
 import (
 	"fmt"
-
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/vault"
+	"github.com/lf-edge/eve/pkg/pillar/zfs"
 	"github.com/shirou/gopsutil/disk"
 )
 
@@ -61,7 +62,7 @@ func getRemainingDiskSpace(ctxPtr *volumemgrContext) (uint64, error) {
 		}
 		totalDiskSize += sizeToUseInCalculation
 	}
-	deviceDiskUsage, err := disk.Usage(types.PersistDir)
+	deviceDiskUsage, err := persistUsageStat(ctxPtr)
 	if err != nil {
 		err := fmt.Errorf("Failed to get diskUsage for /persist. err: %s", err)
 		log.Error(err)
@@ -97,4 +98,36 @@ func dom0DiskReservedSize(ctxPtr *volumemgrContext, deviceDiskSize uint64) uint6
 		diskReservedForDom0 = maxDom0DiskSize
 	}
 	return diskReservedForDom0
+}
+
+// persistUsageStat returns usage stat for persist
+// We need to handle ZFS differently since the mounted /persist does not indicate
+// usage of zvols and snapshots
+// Note that we subtract usage of persist/reserved dataset (about 20% of persist capacity)
+func persistUsageStat(_ *volumemgrContext) (*types.UsageStat, error) {
+	if vault.ReadPersistType() != types.PersistZFS {
+		deviceDiskUsage, err := disk.Usage(types.PersistDir)
+		if err != nil {
+			return nil, err
+		}
+		usageStat := &types.UsageStat{
+			Total: deviceDiskUsage.Total,
+			Used:  deviceDiskUsage.Used,
+			Free:  deviceDiskUsage.Free,
+		}
+		return usageStat, nil
+	}
+	usageStat, err := zfs.GetDatasetUsageStat(types.PersistDataset)
+	if err != nil {
+		return nil, err
+	}
+	usageStatReserved, err := zfs.GetDatasetUsageStat(types.PersistReservedDataset)
+	if err != nil {
+		log.Errorf("GetDatasetUsageStat: %s", err)
+	} else {
+		// subtract usage of reserved dataset to start with 0 Used bytes
+		usageStat.Used -= usageStatReserved.Used
+		usageStat.Total -= usageStatReserved.Used
+	}
+	return usageStat, nil
 }

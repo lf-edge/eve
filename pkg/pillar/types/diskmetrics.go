@@ -191,3 +191,10 @@ type ImgInfo struct {
 	ActualSize  uint64 `json:"actual-size"`
 	DirtyFlag   bool   `json:"dirty-flag"`
 }
+
+//UsageStat stores usage information about directory
+type UsageStat struct {
+	Total uint64
+	Used  uint64
+	Free  uint64
+}
