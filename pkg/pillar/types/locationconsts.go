@@ -94,6 +94,10 @@ const (
 )
 
 var (
+	// PersistDataset - parent dataset
+	PersistDataset = strings.TrimLeft(PersistDir, "/")
+	// PersistReservedDataset - reserved dataset
+	PersistReservedDataset = PersistDataset + "/reserved"
 	//VolumeClearZFSDataset - dataset to create volumes without encryption
 	VolumeClearZFSDataset = strings.TrimLeft(VolumeClearDirName, "/")
 	//VolumeEncryptedZFSDataset - dataset to create volumes with encryption

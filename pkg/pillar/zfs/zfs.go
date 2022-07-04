@@ -424,3 +424,31 @@ func GetZfsDiskAndStatus(disk libzfs.VDevTree) (*types.StorageDiskState, error) 
 	rDiskStatus.Status = GetZfsDeviceStatusFromStr(disk.Stat.State.String())
 	return rDiskStatus, nil
 }
+
+//GetDatasetUsageStat returns UsageStat for provided datasetName
+func GetDatasetUsageStat(datasetName string) (*types.UsageStat, error) {
+	var usageStat types.UsageStat
+	dataset, err := libzfs.DatasetOpen(datasetName)
+	if err != nil {
+		return nil, err
+	}
+	defer dataset.Close()
+	used, err := dataset.GetProperty(libzfs.DatasetPropUsed)
+	if err != nil {
+		return nil, err
+	}
+	usageStat.Used, err = strconv.ParseUint(used.Value, 10, 64)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse used: %s", err)
+	}
+	available, err := dataset.GetProperty(libzfs.DatasetPropAvailable)
+	if err != nil {
+		return nil, err
+	}
+	usageStat.Free, err = strconv.ParseUint(available.Value, 10, 64)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse available: %s", err)
+	}
+	usageStat.Total = usageStat.Used + usageStat.Free
+	return &usageStat, nil
+}
