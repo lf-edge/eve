@@ -159,16 +159,31 @@ func createOrUpdateDiskMetrics(ctx *volumemgrContext) {
 
 	var persistUsage uint64
 	for _, path := range types.ReportDiskPaths {
-		u, err := disk.Usage(path)
-		if err != nil {
-			// Happens e.g., if we don't have a /persist
-			log.Errorf("createOrUpdateDiskMetrics: disk.Usage: %s", err)
-			continue
-		}
-		// We can not run diskmetrics.SizeFromDir("/persist") below in reportDirPaths, get the usage
-		// data here for persistUsage
+		var u *types.UsageStat
+		var err error
 		if path == types.PersistDir {
+			// dedicated handler for PersistDir as we have to use PersistType dependent calculations
+			u, err = persistUsageStat(ctx)
+			if err != nil {
+				// Happens e.g., if we don't have a /persist
+				log.Errorf("createOrUpdateDiskMetrics: persistUsageStat: %s", err)
+				continue
+			}
+			// We can not run diskmetrics.SizeFromDir("/persist") below in reportDirPaths, get the usage
+			// data here for persistUsage
 			persistUsage = u.Used
+		} else {
+			usage, err := disk.Usage(path)
+			if err != nil {
+				// Happens e.g., if we don't have a /persist
+				log.Errorf("createOrUpdateDiskMetrics: disk.Usage: %s", err)
+				continue
+			}
+			u = &types.UsageStat{
+				Total: usage.Total,
+				Used:  usage.Used,
+				Free:  usage.Free,
+			}
 		}
 		log.Tracef("createOrUpdateDiskMetrics: Path %s total %d used %d free %d",
 			path, u.Total, u.Used, u.Free)
