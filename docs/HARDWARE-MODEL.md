@@ -47,7 +47,7 @@ If and only if you have a debug version of EVE-OS booted with the KVM hypervisor
 
 Note that the script does not take photos of the front and back, nor find the product URL, hence the output must be edited. The less obvious but more critical manual work includes:
 
-- The script looks for controllers on the PCI bus but has no visibility to which controllers are connected to which external physical ports. This is a an issue in particular for USB ports where one controller can be connected to multiple physical ports, but there can also be multiple USB controllers perhaps with some of them having no external physical ports. On a device with multiple USB controllers manual testing is needed to determine which controller is connected to which external USB ports.
+- The script looks for controllers on the PCI bus but has no visibility to which controllers are connected to which external physical ports. This is an issue in particular for USB ports where one controller can be connected to multiple physical ports, but there can also be multiple USB controllers perhaps with some of them having no external physical ports. On a device with multiple USB controllers manual testing is needed to determine which controller is connected to which external USB ports.
 - A cellular modem (if available) is typically connected via a USB controller, but it might not be visible (not plugged in or software not yet initializing it) when you run the script. ```lsusb``` and ```lspci``` can help finding those.
 - If there are unknown controllers/functions on the PCI bus which share an IOMMU group with a known controller/function, the script is conservative and will mark the known as not assignable by setting assigngrp to empty. More about that below.
 

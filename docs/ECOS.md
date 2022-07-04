@@ -91,7 +91,7 @@ As part of a regular config that EVE receives from its controller, each ECO gets
         * dsId
         * siginfo
 
-EVE periodically pulls the configuration from the controller. The configuration specifies the desired end state. EVE implements "eventual consistentency" model. To reach the desired state from the current state of the system, EVE computes the required operations to be performed. EVE then executes those operations. At the end of each operation, EVE reports the state of the system back to the controller.
+EVE periodically pulls the configuration from the controller. The configuration specifies the desired end state. EVE implements "eventual consistency" model. To reach the desired state from the current state of the system, EVE computes the required operations to be performed. EVE then executes those operations. At the end of each operation, EVE reports the state of the system back to the controller.
 
 The picture below provides simplified view of states and transitions for an ECO.
 
@@ -117,7 +117,7 @@ The picture below provides simplified view of states and transitions for an ECO.
 The controller drives the ECO state transitions via the configuration. These state transitions are described below. Due to the eventual consistency model, a new configuration may result in zero or more state transitions for a given ECO.
 
 * Prepare an ECO
-  * The ECI(s) is transfer'ed to EVE's storage area and resources required for the ECO are reserved.
+  * The ECI(s) is transferred to EVE's storage area and resources required for the ECO are reserved.
   * EVE performs the operations to "prepare an ECO" for each entry in the array of ECO's in the new configuration and not present in older configuration.
 
 * Start an ECO
