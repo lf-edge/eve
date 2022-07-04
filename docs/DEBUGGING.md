@@ -30,7 +30,7 @@ eve enter pillar
 /opt/dlv --headless --listen :2345 attach "$(pgrep zedbox)"
 ```
 
-In a different termianl
+In a different terminal
 
 ```bash
 ❯ dlv connect :2348

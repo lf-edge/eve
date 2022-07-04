@@ -54,7 +54,7 @@ can be not. For example, on a popular Raspberry Pi 4 ARM board there are at leas
 
 EVE helps managing layers #2 and #3 and leaves #1 to the operator. In general,
 as long as firmware can be derived from u-boot -- EVE can manage it by carrying
-all the extra firmware blobs in its UEFI compliant exfat partiotion (UEFI doesn't
+all the extra firmware blobs in its UEFI compliant exfat partition (UEFI doesn't
 mind if extra files are present in that partition).
 
 On ARM boards EVE leverages u-boot to provide UEFI environment and fill out SMBIOS

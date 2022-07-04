@@ -97,7 +97,7 @@ our goals we put forward a [few guiding principles](SECURITY.md).
 ## EVE Controller
 
 Each Edge Node with EVE running on it can participate in sophisticated
-[Edge Computing scenarious](https://www.zdnet.com/article/10-scenarios-where-edge-computing-can-bring-new-value/)
+[Edge Computing scenarios](https://www.zdnet.com/article/10-scenarios-where-edge-computing-can-bring-new-value/)
 ranging from simple [data collection](https://blog.equinix.com/blog/2017/11/29/how-iot-data-collection-and-aggregation-with-local-event-processing-work/)
 all the way to [Edge Analytics and AI](https://www.datanami.com/2019/02/04/exploring-artificial-intelligence-at-the-edge/).
 While EVE provides an incredible amount of functionality to support these use
@@ -266,7 +266,7 @@ absolutely no reason of ever being written to past initial installation process.
 
 P3 is a scratch space. Unlike CONFIG and EFI System partition, P3 can be wiped out
 and re-created without affecting much of edge node behaviour. The content of CONFIG
-and EFI System has to be preserved at all costs. Corrupting those parititions will
+and EFI System has to be preserved at all costs. Corrupting those partitions will
 result in an edge node that needs to be re-installed (technically IMGA and IMGB
 should be protected as well, but since they are always treated as read-only corrupting
 them is much harder).

@@ -603,7 +603,7 @@ Similarly, a `pkg/` may be sourced from another package which, in turn, has a sp
 FROM lfedge/eve-xen-tools@sha256:4a6d0bcfc33a3096398b4daa0931f9583c674358eeb47241e0df5f96e24c0110 as xentools
 ```
 
-The Dockerfile mentioned above is not checked into the repository, but instead generated from a teampled by a parse-pkgs script.
+The Dockerfile mentioned above is not checked into the repository, but instead generated from a template by a parse-pkgs script.
 
 The purpose of [parse-pkgs](../parse-pkgs.sh) is to collect the actual hashes of the latest version of every relevant package and either report them to stdout or modify a template file à la sed.
 

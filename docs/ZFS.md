@@ -19,14 +19,14 @@ it's data, furthermore it knows better what to cache.
 `recordsize=16k` - is a sweet spot between constantly having sub-blocks
 updates, and good compression ratio.
 
-`compression=zstd` - is a less cpu intencive algorithm, with not too big
+`compression=zstd` - is a less cpu intensive algorithm, with not too big
 compromise on compression ratio
 
 `redundant_metadata=most` - will reduce the number of copies of the
 indirect blocks at the higher levels. This can greatly cut the amount
 of data that must be written, resulting in better performance.
 
-Multiple tunabels to better regulate how fast ZFS can accept
+Multiple tunables to better regulate how fast ZFS can accept
 requests. This along helped mediate maximum latency on parallel access
 with small ARC:
 
