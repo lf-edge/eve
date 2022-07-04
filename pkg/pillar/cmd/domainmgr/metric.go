@@ -13,19 +13,27 @@ import (
 	"github.com/shirou/gopsutil/cpu"
 )
 
-const warnMemoryWatermark = 80 //send warning in case of exceed memory percent limit
+const (
+	warnMemoryWatermark = 80 //send warning in case of exceed memory percent limit
+	// Publish 4X more often than zedagent publishes to controller
+	// to reduce effect of quantization errors
+	publishTickerDivider = 4
+)
 
 // Run a periodic post of the metrics
 func metricsTimerTask(ctx *domainContext, hyper hypervisor.Hypervisor) {
 	log.Functionln("starting metrics timer task")
 	getAndPublishMetrics(ctx, hyper)
 
-	// Publish 20X more often than zedagent publishes to controller
-	// to reduce effect of quantization errors
-	interval := time.Duration(ctx.metricInterval) * time.Second
-	max := float64(interval) / 20
-	min := max * 0.3
-	ticker := flextimer.NewRangeTicker(time.Duration(min), time.Duration(max))
+	oldMetricInterval := ctx.metricInterval
+	calculateMinMax := func(metricInterval uint32) (time.Duration, time.Duration) {
+		interval := time.Duration(metricInterval) * time.Second
+		max := float64(interval) / publishTickerDivider
+		min := max * 0.3
+		return time.Duration(min), time.Duration(max)
+	}
+
+	ticker := flextimer.NewRangeTicker(calculateMinMax(ctx.metricInterval))
 
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)
@@ -40,6 +48,11 @@ func metricsTimerTask(ctx *domainContext, hyper hypervisor.Hypervisor) {
 				warningTime, errorTime)
 
 		case <-stillRunning.C:
+		}
+		if oldMetricInterval != ctx.metricInterval {
+			log.Functionf("metricInterval updated from %d to %d", oldMetricInterval, ctx.metricInterval)
+			oldMetricInterval = ctx.metricInterval
+			ticker.UpdateRangeTicker(calculateMinMax(ctx.metricInterval))
 		}
 		ctx.ps.StillRunning(agentName+"metrics", warningTime, errorTime)
 	}

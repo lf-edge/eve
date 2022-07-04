@@ -42,6 +42,9 @@ const (
 	// Time limits for event loop handlers
 	errorTime   = 3 * time.Minute
 	warningTime = 40 * time.Second
+	// Publish 4X more often than zedagent publishes to controller
+	// to reduce effect of quantization errors
+	publishTickerDivider = 4
 )
 
 // Set from Makefile
@@ -104,6 +107,7 @@ type zedrouterContext struct {
 	pubCipherBlockStatus pubsub.Publication
 	decryptCipherContext cipher.DecryptCipherContext
 	pubAppInstMetaData   pubsub.Publication
+	publishTicker        *flextimer.FlexTickerHandle
 }
 
 var debug = false
@@ -574,13 +578,12 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	routeChanges := devicenetwork.RouteChangeInit(log)
 	linkChanges := devicenetwork.LinkChangeInit(log)
 
-	// Publish 20X more often than zedagent publishes to controller
-	// to reduce effect of quantization errors
 	interval := time.Duration(zedrouterCtx.metricInterval) * time.Second
-	max := float64(interval) / 20
+	max := float64(interval) / publishTickerDivider
 	min := max * 0.3
-	publishTimer := flextimer.NewRangeTicker(time.Duration(min),
+	publishTicker := flextimer.NewRangeTicker(time.Duration(min),
 		time.Duration(max))
+	zedrouterCtx.publishTicker = &publishTicker
 
 	flowStatIntv := time.Duration(120 * time.Second) // 120 sec, flow timeout if less than150 sec
 	fmax := float64(flowStatIntv)
@@ -709,15 +712,17 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 			ps.CheckMaxTimeTopic(agentName, "routeChanges", start,
 				warningTime, errorTime)
 
-		case <-publishTimer.C:
+		case <-zedrouterCtx.publishTicker.C:
 			start := time.Now()
-			log.Traceln("publishTimer at", time.Now())
-			err := pub.Publish("global",
-				getNetworkMetrics(&zedrouterCtx))
+			log.Traceln("publishTicker at", time.Now())
+			nms := getNetworkMetrics(&zedrouterCtx)
+			err := pub.Publish("global", nms)
 			if err != nil {
 				log.Errorf("getNetworkMetrics failed %s\n", err)
 			}
-			publishNetworkInstanceMetricsAll(&zedrouterCtx)
+			// nms is the unmodified output from getNetworkMetrics()
+			// we do not call getNetworkMetrics twice to not spend resources in calls to iptables
+			publishNetworkInstanceMetricsAll(&zedrouterCtx, &nms)
 			ps.CheckMaxTimeTopic(agentName, "publishNetworkInstanceMetrics", start,
 				warningTime, errorTime)
 
@@ -2032,8 +2037,16 @@ func handleGlobalConfigImpl(ctxArg interface{}, key string,
 		ctx.GCInitialized = true
 		ctx.appStatsInterval = gcp.GlobalValueInt(types.AppContainerStatsInterval)
 		ctx.disableDHCPAllOnesNetMask = gcp.GlobalValueBool(types.DisableDHCPAllOnesNetMask)
-		if gcp.GlobalValueInt(types.MetricInterval) != 0 {
-			ctx.metricInterval = gcp.GlobalValueInt(types.MetricInterval)
+		metricInterval := gcp.GlobalValueInt(types.MetricInterval)
+		if metricInterval != 0 && ctx.metricInterval != metricInterval {
+			if ctx.publishTicker != nil {
+				interval := time.Duration(metricInterval) * time.Second
+				max := float64(interval) / publishTickerDivider
+				min := max * 0.3
+				ctx.publishTicker.UpdateRangeTicker(time.Duration(min), time.Duration(max))
+			}
+
+			ctx.metricInterval = metricInterval
 		}
 	}
 	log.Functionf("handleGlobalConfigImpl done for %s\n", key)

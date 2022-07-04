@@ -1495,16 +1495,16 @@ func createNetworkInstanceMetrics(ctx *zedrouterContext,
 }
 
 // this is periodic metrics handler
-func publishNetworkInstanceMetricsAll(ctx *zedrouterContext) {
+// nms must be the unmodified output from getNetworkMetrics()
+func publishNetworkInstanceMetricsAll(ctx *zedrouterContext, nms *types.NetworkMetrics) {
 	pub := ctx.pubNetworkInstanceStatus
 	niList := pub.GetAll()
 	if niList == nil {
 		return
 	}
-	nms := getNetworkMetrics(ctx)
 	for _, ni := range niList {
 		status := ni.(types.NetworkInstanceStatus)
-		netMetrics := createNetworkInstanceMetrics(ctx, &status, &nms)
+		netMetrics := createNetworkInstanceMetrics(ctx, &status, nms)
 		publishNetworkInstanceMetrics(ctx, netMetrics)
 	}
 }

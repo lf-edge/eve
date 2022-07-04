@@ -105,6 +105,7 @@ type domainContext struct {
 
 	// From global config setting
 	processCloudInitMultiPart bool
+	publishTicker             flextimer.FlexTickerHandle
 }
 
 func (ctx *domainContext) publishAssignableAdapters() {
@@ -153,13 +154,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	stillRunning := time.NewTicker(25 * time.Second)
 	ps.StillRunning(agentName, warningTime, errorTime)
 
-	// Publish metrics for zedagent every 10 seconds
-	interval := time.Duration(10 * time.Second)
-	max := float64(interval)
-	min := max * 0.3
-	publishTimer := flextimer.NewRangeTicker(time.Duration(min),
-		time.Duration(max))
-
 	if _, err := os.Stat(runDirname); err != nil {
 		log.Tracef("Create %s", runDirname)
 		if err := os.MkdirAll(runDirname, 0700); err != nil {
@@ -198,7 +192,16 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		domainBootRetryTime: 600,
 		pids:                make(map[int32]bool),
 		cipherMetrics:       cipher.NewAgentMetrics(agentName),
+		metricInterval:      10,
 	}
+
+	// Publish metrics for zedagent every 10 seconds and
+	// adjust publishTicker interval if global MetricInterval changed later
+	interval := time.Duration(domainCtx.metricInterval) * time.Second
+	max := float64(interval)
+	min := max * 0.3
+	domainCtx.publishTicker = flextimer.NewRangeTicker(time.Duration(min), time.Duration(max))
+
 	aa := types.AssignableAdapters{}
 	domainCtx.assignableAdapters = &aa
 
@@ -388,7 +391,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		case change := <-subGlobalConfig.MsgChan():
 			subGlobalConfig.ProcessChange(change)
 
-		case <-publishTimer.C:
+		case <-domainCtx.publishTicker.C:
 			start := time.Now()
 			metrics, pids := gatherProcessMetricList(&domainCtx)
 			for _, m := range metrics {
@@ -428,7 +431,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		case change := <-subGlobalConfig.MsgChan():
 			subGlobalConfig.ProcessChange(change)
 
-		case <-publishTimer.C:
+		case <-domainCtx.publishTicker.C:
 			start := time.Now()
 			metrics, pids := gatherProcessMetricList(&domainCtx)
 			for _, m := range metrics {
@@ -476,7 +479,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		case change := <-subDeviceNetworkStatus.MsgChan():
 			subDeviceNetworkStatus.ProcessChange(change)
 
-		case <-publishTimer.C:
+		case <-domainCtx.publishTicker.C:
 			start := time.Now()
 			metrics, pids := gatherProcessMetricList(&domainCtx)
 			for _, m := range metrics {
@@ -531,7 +534,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		case change := <-subPhysicalIOAdapter.MsgChan():
 			subPhysicalIOAdapter.ProcessChange(change)
 
-		case <-publishTimer.C:
+		case <-domainCtx.publishTicker.C:
 			start := time.Now()
 			metrics, pids := gatherProcessMetricList(&domainCtx)
 			for _, m := range metrics {
@@ -617,7 +620,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		case change := <-subPhysicalIOAdapter.MsgChan():
 			subPhysicalIOAdapter.ProcessChange(change)
 
-		case <-publishTimer.C:
+		case <-domainCtx.publishTicker.C:
 			start := time.Now()
 			err = domainCtx.cipherMetrics.Publish(log, cipherMetricsPub, "global")
 			if err != nil {
@@ -2250,8 +2253,15 @@ func handleGlobalConfigImpl(ctxArg interface{}, key string,
 			updateVgaAccess(ctx)
 			ctx.setInitialVgaAccess = true
 		}
-		if gcp.GlobalValueInt(types.MetricInterval) != 0 {
-			ctx.metricInterval = gcp.GlobalValueInt(types.MetricInterval)
+		metricInterval := gcp.GlobalValueInt(types.MetricInterval)
+		if metricInterval != 0 && ctx.metricInterval != metricInterval {
+			// adjust publishTicker interval if metricInterval changed
+			interval := time.Duration(metricInterval) * time.Second
+			max := float64(interval) / publishTickerDivider
+			min := max * 0.3
+			ctx.publishTicker.UpdateRangeTicker(time.Duration(min), time.Duration(max))
+
+			ctx.metricInterval = metricInterval
 		}
 		ctx.processCloudInitMultiPart = gcp.GlobalValueBool(types.ProcessCloudInitMultiPart)
 		ctx.GCInitialized = true
