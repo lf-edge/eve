@@ -1,0 +1,49 @@
+From: Colin Watson <cjwatson@debian.org>
+Date: Mon, 27 Jul 2020 14:22:12 +0100
+Subject: efilinux: Fix integer overflows in grub_cmd_initrd
+
+These could be triggered by an extremely large number of arguments to
+the initrd command on 32-bit architectures, or a crafted filesystem with
+very large files on any architecture.
+
+Fixes: CVE-2020-15707
+
+Signed-off-by: Colin Watson <cjwatson@debian.org>
+---
+ grub-core/loader/i386/efi/linux.c | 9 +++++++--
+ 1 file changed, 7 insertions(+), 2 deletions(-)
+
+diff --git a/grub-core/loader/i386/efi/linux.c b/grub-core/loader/i386/efi/linux.c
+index 262d357..6a90743 100644
+--- a/grub-core/loader/i386/efi/linux.c
++++ b/grub-core/loader/i386/efi/linux.c
+@@ -28,6 +28,7 @@
+ #include <grub/efi/efi.h>
+ #include <grub/efi/linux.h>
+ #include <grub/efi/sb.h>
++#include <grub/safemath.h>
+ 
+ GRUB_MOD_LICENSE ("GPLv3+");
+ 
+@@ -94,7 +95,7 @@ grub_cmd_initrd (grub_command_t cmd __attribute__ ((unused)),
+       goto fail;
+     }
+ 
+-  files = grub_zalloc (argc * sizeof (files[0]));
++  files = grub_calloc (argc, sizeof (files[0]));
+   if (!files)
+     goto fail;
+ 
+@@ -104,7 +105,11 @@ grub_cmd_initrd (grub_command_t cmd __attribute__ ((unused)),
+       if (! files[i])
+         goto fail;
+       nfiles++;
+-      size += ALIGN_UP (grub_file_size (files[i]), 4);
++      if (grub_add (size, ALIGN_UP (grub_file_size (files[i]), 4), &size))
++	{
++	  grub_error (GRUB_ERR_OUT_OF_RANGE, N_("overflow is detected"));
++	  goto fail;
++	}
+     }
+ 
+   initrd_mem = grub_efi_allocate_pages_max (0x3fffffff, BYTES_TO_PAGES(size));

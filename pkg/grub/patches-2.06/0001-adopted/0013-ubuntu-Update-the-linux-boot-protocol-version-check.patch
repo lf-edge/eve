@@ -1,0 +1,24 @@
+From: Chris Coulson <chris.coulson@canonical.com>
+Date: Wed, 11 Mar 2020 16:46:41 +0100
+Subject: ubuntu: Update the linux boot protocol version check.
+
+The EFI implementation of grub_cmd_linux makes use of xloadflags which was
+introduced in to version 2.12 of the kernel's boot protocol, so update the
+check accordingly.
+---
+ grub-core/loader/i386/efi/linux.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/grub-core/loader/i386/efi/linux.c b/grub-core/loader/i386/efi/linux.c
+index 9241fed..c7dc08b 100644
+--- a/grub-core/loader/i386/efi/linux.c
++++ b/grub-core/loader/i386/efi/linux.c
+@@ -245,7 +245,7 @@ grub_cmd_linux (grub_command_t cmd __attribute__ ((unused)),
+     }
+ 
+   grub_dprintf ("linuxefi", "checking lh->version\n");
+-  if (lh->version < grub_cpu_to_le16 (0x020b))
++  if (lh->version < grub_cpu_to_le16 (0x020c))
+     {
+       grub_error (GRUB_ERR_BAD_OS, N_("kernel too old"));
+       goto fail;

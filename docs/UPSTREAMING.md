@@ -37,69 +37,7 @@ More relevant and useful is an analysis of the usage of `config` in a production
 
 ### grub
 
-[grub](pkg/grub) applies a series of necessary patches to [upstream grub](https://www.gnu.org/software/grub/). These patches are in [pkg/grub/patches](../pkg/grub/patches). The primary way to eliminate the need for custom grub is to upstream these patches into grub itself. The largest of them - the [coreos patches](../pkg/grub/patches/0000-core-os-merge.patch) is in the process of being upstreamed, courtesy of Matthew Garrett, who did the original work at CoreOS and is now at Google. The rest simply require effort to interact with the main grub team and get the patches accepted.
-
-The customizations we apply via patches, and their purpose (i.e. we why need them for EVE), are as follows:
-
-#### 0000-core-os-merge.patch
-
-Merge in all of the changes that the CoreOS (RIP, CoreOS Inc) team included in their [fork of grub](https://github.com/coreos/grub). These include the following, and why we need them.
-
-Generally, most of the support we needed was for tpm and a few other capabilities. We need to do the following:
-
-1. Create a state diagram for our boot process.
-2. Determine the logic used to transition between states.
-3. Determine the tools that implement the given logic.
-4. For state transitions that depend on grub, determine if grub mainstream supports it.
-5. Isolate just those elements that: are required for state transitions; are not implemented in mainstream grub; cannot be worked around in any other mainstream way.
-6. Apply just those patches.
-7. Upstream those few patches.
-
-For a reference boot state diagram from Android, see [this one](https://source.android.com/security/verifiedboot/boot-flow).
-
-#### 0001-TPM-build-issue-fixing.patch
-
-Apparently, there is build issue which CoreOS grub has when building the tpm support; this fixes it in both `tpm.h` and `tpm.c`. The patch was submitted via staff at ARM in August 2017, so it is unclear if this is an issue _just_ on arm architectures, or a general problem. Additionally, even though tpm support was added (at least for efi booting) in mainstream grub as of late December 2018 into early 2019, `tpm.c` does not exist in the given location, and may be elsewhere. This entire patch may or may not be necessary.
-
-More importantly, the purpose of the tpm patches to grub in general are for static root of trust measurement (SRTM), or measured boot. We currently do not use measured boot, and as such, this patch may be unnecessary.
-
-**Task:** See if the issue exists in mainstream grub.
-
-#### 0002-video-Allow-to-set-pure-text-mode-in-case-of-EFI.patch
-
-Mainstream grub's loader for `i386/linux`, when EFI is defined via `define GRUB_MACHINE_EFI`, does not accept pure text mode. This leads to the common, "no suitable video mode found" error. This patch fixes it by defining `define ACCEPTS_PURE_TEXT 1` in EFI.
-
-It is unclear _why_ mainstream grub does not accept pure text mode, and should be investigated.
-
-**Task:** Determine why mainstream grub does not accept pure text and offer patch upstream.
-
-#### 0003-allow-probe-partuuid.patch
-
-Mainstream grub's does not enable searching for partitions via the partition's UUID. It does for filesystem elements, including its label and UUID, but not the partition's. This adds support for searching via partition UUID.
-
-**Task:** Upstream support for probing via partition UUID.
-
-#### 0004-Disabling-linuxefi-after-the-merge.patch
-
-This disables and removes the `linuxefi` command that the coreos grub patch added. The original purpose of the `linuxefi` option, added [here](https://github.com/coreos/grub/pull/4) appears to be to handle shims for secure boot.
-
-This was removed because of issues with building it. If we are sticking with CoreOS's fork - which we should not, as it largely is abandonware - then we should make this work. Else, it is irrelevant.
-
-**Task:** Get linuxefi to work, or remove it from CoreOS patch 0000.
-
-#### 0005-rc-may-be-used-uninitialized.patch
-
-In the function `grub_install_remove_efi_entries_by_distributor`, sets the default of `int rc = 0`, so it never is accessed uninitialized.
-
-**Note:** this has been fixed in mainstream grub as of master on the date of this writing, see [grub-core/osdep/unix/platform.c#L88](http://git.savannah.gnu.org/cgit/grub.git/tree/grub-core/osdep/unix/platform.c#n88). If we update to a more recent commit, we can remove this patch, assuming, of course, that a previous patch does not break it, likely the coreos one.
-
-#### 0006-export-vars.patch
-
-Exports current grub setting vars. This is required for our use in grub.cfg where we [set global variable from submenus](../pkg/grub/rootfs.cfg).
-
-Traditionally, grub would have menu options, each of which would launch a boot option with variables set. However, if there is a moderately large number of variables and a moderately large number of boot options, we end up with an MxN problem with a very large number of menu entries.
-
-We attempt to solve this by making the grub variables settable from within the menu. This leaves one menu to set each option, and one menu to boot after options are set.
+[grub](../pkg/grub) applies a series of necessary patches to [upstream grub](https://www.gnu.org/software/grub/). These patches are in [pkg/grub/patches-2.06](../pkg/grub/patches-2.06). We use several patches adopted from [grub2 2.06-2ubuntu7](https://launchpad.net/ubuntu/+source/grub2/2.06-2ubuntu7) in [0001-adopted](../pkg/grub/patches-2.06/0001-adopted) and our own patches in [0002-own](../pkg/grub/patches-2.06/0002-own).
 
 For upstreaming, we should:
 

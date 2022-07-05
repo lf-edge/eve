@@ -1,0 +1,63 @@
+From: Heinrich Schuchardt <heinrich.schuchardt@canonical.com>
+Date: Wed, 13 Apr 2022 18:51:37 +0200
+Subject: ubuntu: disable LOAD FILE2 protocol for initrd on ARM
+
+RISC-V cannot load the initrd without the LOAD FILE2 protocol.
+
+Currently the LOAD FILE2 protocol does not work with PXE due to a preboot
+hook invoking grub_net_fini_hw().
+
+So let's disable this for ARM until a solution has been agreed on with
+upstream.
+
+Signed-off-by: Heinrich Schuchardt <heinrich.schuchardt@canonical.com>
+---
+ grub-core/loader/efi/linux.c | 18 +++++++++++++++---
+ 1 file changed, 15 insertions(+), 3 deletions(-)
+
+diff --git a/grub-core/loader/efi/linux.c b/grub-core/loader/efi/linux.c
+index 24abc0c0b..6dd31966d 100644
+--- a/grub-core/loader/efi/linux.c
++++ b/grub-core/loader/efi/linux.c
+@@ -67,8 +67,10 @@ struct grub_arm64_linux_pe_header
+ grub_err_t
+ grub_arch_efi_linux_check_image (struct linux_arch_kernel_header * lh)
+ {
++#ifdef __riscv
+   struct grub_pe32_coff_header *coff_header;
+   struct grub_pe32_optional_header *optional_header;
++#endif
+ 
+   if (lh->magic != GRUB_LINUX_ARCH_MAGIC_SIGNATURE)
+     return grub_error(GRUB_ERR_BAD_OS, "invalid magic number");
+@@ -80,17 +82,27 @@ grub_arch_efi_linux_check_image (struct linux_arch_kernel_header * lh)
+   grub_dprintf ("linux", "UEFI stub kernel:\n");
+   grub_dprintf ("linux", "PE/COFF header @ %08x\n", lh->hdr_offset);
+ 
+-  coff_header = (struct grub_pe32_coff_header *)((unsigned long)lh + lh->hdr_offset);
+-  optional_header = (struct grub_pe32_optional_header *)(coff_header + 1);
+-
+   /*
+    * Linux kernels built for any architecture are guaranteed to support the
+    * LoadFile2 based initrd loading protocol if the image version is >= 1.
+    */
++#ifdef __riscv
++  /*
++   * RISC-V cannot load the initrd without the LOAD FILE2 protocol.
++   *
++   * Currently the LOAD FILE2 protocol does not work with PXE due to a preboot
++   * hook invoking grub_net_fini_hw().
++   *
++   * TODO: clarify if the preboot hook is needed
++   */
++  coff_header = (struct grub_pe32_coff_header *)((unsigned long)lh + lh->hdr_offset);
++  optional_header = (struct grub_pe32_optional_header *)(coff_header + 1);
++
+   if (optional_header->major_image_version >= 1)
+     initrd_use_loadfile2 = 1;
+    else
+     initrd_use_loadfile2 = 0;
++#endif
+ 
+   grub_dprintf ("linux", "LoadFile2 initrd loading %sabled\n",
+ 		initrd_use_loadfile2 ? "en" : "dis");

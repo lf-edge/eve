@@ -1,0 +1,117 @@
+From: Julian Andres Klode <julian.klode@canonical.com>
+Date: Thu, 2 Dec 2021 12:25:37 +0100
+Subject: ubuntu: Make the linux command in EFI grub always try EFI handover
+
+The previous implementation only boots via the EFI handover protocol when
+secure boot is enabled. This means that disabling secure boot breaks some
+features that depend on the kernel being booted via the EFI handover entry
+point, such as retrieval of the TCG event log.
+
+Update the linux command to always attempt to defer to linuxefi in EFI grub
+builds, regardless of whether secure boot is enabled or not. This also allows
+a fallback to the non-EFI handover path on kernels that don't support it, but
+only if secure boot is disabled.
+---
+ grub-core/loader/i386/efi/linux.c | 14 +++++++-----
+ grub-core/loader/i386/linux.c     | 47 ++++++++++++++++++++++-----------------
+ 2 files changed, 35 insertions(+), 26 deletions(-)
+
+diff --git a/grub-core/loader/i386/efi/linux.c b/grub-core/loader/i386/efi/linux.c
+index 382ff52..9241fed 100644
+--- a/grub-core/loader/i386/efi/linux.c
++++ b/grub-core/loader/i386/efi/linux.c
+@@ -27,6 +27,7 @@
+ #include <grub/lib/cmdline.h>
+ #include <grub/efi/efi.h>
+ #include <grub/efi/linux.h>
++#include <grub/efi/sb.h>
+ 
+ GRUB_MOD_LICENSE ("GPLv3+");
+ 
+@@ -195,12 +196,15 @@ grub_cmd_linux (grub_command_t cmd __attribute__ ((unused)),
+       goto fail;
+     }
+ 
+-  rc = grub_linuxefi_secure_validate (kernel, filelen);
+-  if (rc < 0)
++  if (grub_efi_get_secureboot() == GRUB_EFI_SECUREBOOT_MODE_ENABLED)
+     {
+-      grub_error (GRUB_ERR_ACCESS_DENIED, N_("%s has invalid signature"),
+-		  argv[0]);
+-      goto fail;
++      rc = grub_linuxefi_secure_validate (kernel, filelen);
++      if (rc < 0)
++	{
++	  grub_error (GRUB_ERR_ACCESS_DENIED, N_("%s has invalid signature"),
++		      argv[0]);
++	  goto fail;
++	}
+     }
+ 
+   params = grub_efi_allocate_pages_max (0x3fffffff,
+diff --git a/grub-core/loader/i386/linux.c b/grub-core/loader/i386/linux.c
+index b6c13d7..e764e2a 100644
+--- a/grub-core/loader/i386/linux.c
++++ b/grub-core/loader/i386/linux.c
+@@ -665,35 +665,40 @@ grub_cmd_linux (grub_command_t cmd __attribute__ ((unused)),
+ 
+ #ifdef GRUB_MACHINE_EFI
+   using_linuxefi = 0;
+-  if (grub_efi_get_secureboot() == GRUB_EFI_SECUREBOOT_MODE_ENABLED)
+-    {
+-      /* linuxefi requires a successful signature check and then hand over
+-	 to the kernel without calling ExitBootServices. */
+-      grub_dl_t mod;
+-      grub_command_t linuxefi_cmd;
+ 
+-      grub_dprintf ("linux", "Secure Boot enabled: trying linuxefi\n");
++  grub_dl_t mod;
++  grub_command_t linuxefi_cmd;
++
++  grub_dprintf ("linux", "Trying linuxefi\n");
+ 
+-      mod = grub_dl_load ("linuxefi");
+-      if (mod)
++  mod = grub_dl_load ("linuxefi");
++  if (mod)
++    {
++      grub_dl_ref (mod);
++      linuxefi_cmd = grub_command_find ("linuxefi");
++      initrdefi_cmd = grub_command_find ("initrdefi");
++      if (linuxefi_cmd && initrdefi_cmd)
+ 	{
+-	  grub_dl_ref (mod);
+-	  linuxefi_cmd = grub_command_find ("linuxefi");
+-	  initrdefi_cmd = grub_command_find ("initrdefi");
+-	  if (linuxefi_cmd && initrdefi_cmd)
++	  (linuxefi_cmd->func) (linuxefi_cmd, argc, argv);
++	  if (grub_errno == GRUB_ERR_NONE)
++	    {
++	      grub_dprintf ("linux", "Handing off to linuxefi\n");
++	      using_linuxefi = 1;
++	      return GRUB_ERR_NONE;
++	    }
++	  else if (grub_efi_get_secureboot() == GRUB_EFI_SECUREBOOT_MODE_ENABLED)
+ 	    {
+-	      (linuxefi_cmd->func) (linuxefi_cmd, argc, argv);
+-	      if (grub_errno == GRUB_ERR_NONE)
+-		{
+-		  grub_dprintf ("linux", "Handing off to linuxefi\n");
+-		  using_linuxefi = 1;
+-		  return GRUB_ERR_NONE;
+-		}
+-	      grub_dprintf ("linux", "linuxefi failed (%d)\n", grub_errno);
++	      grub_dprintf ("linux", "linuxefi failed and secure boot is enabled (%d)\n", grub_errno);
+ 	      goto fail;
+ 	    }
+ 	}
+     }
++
++  if (grub_efi_get_secureboot() == GRUB_EFI_SECUREBOOT_MODE_ENABLED)
++    {
++      grub_dprintf("linux", "Unable to hand off to linuxefi and secure boot is enabled\n");
++      goto fail;
++    }
+ #endif
+ 
+   if (argc == 0)

@@ -1,0 +1,89 @@
+From: Dimitri John Ledkov <xnox@ubuntu.com>
+Date: Wed, 22 Jul 2020 11:31:43 +0100
+Subject: linuxefi: fail kernel validation without shim protocol.
+
+If certificates that signed grub are installed into db, grub can be
+booted directly. It will then boot any kernel without signature
+validation. The booted kernel will think it was booted in secureboot
+mode and will implement lockdown, yet it could have been tampered.
+
+CVE-2020-15705
+
+Reported-by: Mathieu Trudel-Lapierre <cyphermox@ubuntu.com>
+Signed-off-by: Dimitri John Ledkov <xnox@ubuntu.com>
+---
+ grub-core/loader/efi/chainloader.c |  1 +
+ grub-core/loader/efi/linux.c       | 13 +++++++++----
+ grub-core/loader/efi/linux_sb.c    |  1 +
+ grub-core/loader/i386/efi/linux.c  |  2 +-
+ 4 files changed, 12 insertions(+), 5 deletions(-)
+
+diff --git a/grub-core/loader/efi/chainloader.c b/grub-core/loader/efi/chainloader.c
+index 2b74d79..9042603 100644
+--- a/grub-core/loader/efi/chainloader.c
++++ b/grub-core/loader/efi/chainloader.c
+@@ -1097,6 +1097,7 @@ grub_cmd_chainloader (grub_command_t cmd __attribute__ ((unused)),
+ 
+       return 0;
+     }
++  // -1 fall-through to fail
+ 
+   grub_file_close (file);
+   grub_device_close (dev);
+diff --git a/grub-core/loader/efi/linux.c b/grub-core/loader/efi/linux.c
+index 93e4cfc..56d6745 100644
+--- a/grub-core/loader/efi/linux.c
++++ b/grub-core/loader/efi/linux.c
+@@ -34,6 +34,7 @@
+ #include <grub/i18n.h>
+ #include <grub/lib/cmdline.h>
+ #include <grub/verify.h>
++#include <grub/efi/sb.h>
+ 
+ GRUB_MOD_LICENSE ("GPLv3+");
+ 
+@@ -455,11 +456,15 @@ grub_cmd_linux (grub_command_t cmd __attribute__ ((unused)),
+ 
+   grub_dprintf ("linux", "kernel @ %p\n", kernel_addr);
+ 
+-  rc = grub_linuxefi_secure_validate (kernel_addr, kernel_size);
+-  if (rc < 0)
++  if (grub_efi_get_secureboot() == GRUB_EFI_SECUREBOOT_MODE_ENABLED)
+     {
+-      grub_error (GRUB_ERR_INVALID_COMMAND, N_("%s has invalid signature"), argv[0]);
+-      goto fail;
++      rc = grub_linuxefi_secure_validate (kernel_addr, kernel_size);
++      if (rc <= 0)
++        {
++          grub_error (GRUB_ERR_INVALID_COMMAND,
++		      N_("%s has invalid signature"), argv[0]);
++          goto fail;
++        }
+     }
+ 
+   pe = (void *)((unsigned long)kernel_addr + lh.hdr_offset);
+diff --git a/grub-core/loader/efi/linux_sb.c b/grub-core/loader/efi/linux_sb.c
+index 73a7196..a09479c 100644
+--- a/grub-core/loader/efi/linux_sb.c
++++ b/grub-core/loader/efi/linux_sb.c
+@@ -34,6 +34,7 @@ struct grub_efi_shim_lock
+ };
+ typedef struct grub_efi_shim_lock grub_efi_shim_lock_t;
+ 
++// Returns 1 on success, -1 on error, 0 when not available
+ int
+ grub_linuxefi_secure_validate (void *data, grub_uint32_t size)
+ {
+diff --git a/grub-core/loader/i386/efi/linux.c b/grub-core/loader/i386/efi/linux.c
+index c7dc08b..262d357 100644
+--- a/grub-core/loader/i386/efi/linux.c
++++ b/grub-core/loader/i386/efi/linux.c
+@@ -199,7 +199,7 @@ grub_cmd_linux (grub_command_t cmd __attribute__ ((unused)),
+   if (grub_efi_get_secureboot() == GRUB_EFI_SECUREBOOT_MODE_ENABLED)
+     {
+       rc = grub_linuxefi_secure_validate (kernel, filelen);
+-      if (rc < 0)
++      if (rc <= 0)
+ 	{
+ 	  grub_error (GRUB_ERR_ACCESS_DENIED, N_("%s has invalid signature"),
+ 		      argv[0]);
