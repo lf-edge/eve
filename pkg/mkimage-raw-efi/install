@@ -442,8 +442,9 @@ if [ "$INSTALL_ZFS" = true ]; then
 else
   P3="$(find_part P3 "$INSTALL_DEV")"
   [ -z "$P3" ] && bail "Installation failed. Cannot found P3. Entering shell..."
-  # attempt to zero the first 5Mb of the P3 (to get rid of any residual prior data)
+  # attempt to zero the first and last 5Mb of the P3 (to get rid of any residual prior data)
   dd if=/dev/zero of="/dev/$P3" bs=512 count=10240 2>/dev/null
+  dd if=/dev/zero of="/dev/$P3" bs=512 seek=$(( $(blockdev --getsz "/dev/$P3") - 10240 )) count=10240 2>/dev/null
   # Use -F option twice, to avoid any user confirmation in mkfs
   mkfs -t ext4 -v -F -F -O encrypt "/dev/$P3"
   mkdir -p /persist
