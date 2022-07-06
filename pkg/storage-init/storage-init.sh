@@ -201,9 +201,10 @@ if [ -n "$IMGA" ] && [ -z "$P3" ] && [ -z "$IMGB" ]; then
    partprobe "$DEV"
    partx -a --nr "$IMGB_ID:$P3_ID" "$DEV"
 
-   # attempt to zero the first 5Mb of the P3 (to get rid of any residual prior data)
+   # attempt to zero the first and last 5Mb of the P3 (to get rid of any residual prior data)
    if P3=$(findfs PARTLABEL=P3) && [ -n "$P3" ]; then
       dd if=/dev/zero of="$P3" bs=512 count=10240 2>/dev/null
+      dd if=/dev/zero of="$P3" bs=512 seek=$(( $(blockdev --getsz "$P3") - 10240 )) count=10240 2>/dev/null
    fi
 fi
 
