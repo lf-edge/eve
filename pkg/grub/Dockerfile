@@ -28,7 +28,7 @@ ENV GRUB_MODULES_PORT="part_gpt fat ext2 iso9660 squash4 gzio linux acpi normal 
 search_disk_uuid search_part_label search_label xzio xfs video gfxterm serial gptprio chain probe reboot regexp smbios \
 part_msdos cat echo test configfile loopback"
 ENV GRUB_MODULES_i386_pc="multiboot multiboot2 biosdisk gpt verify"
-ENV GRUB_MODULES_x86_64="multiboot multiboot2 efi_uga efi_gop linuxefi gpt verify"
+ENV GRUB_MODULES_x86_64="multiboot multiboot2 efi_uga efi_gop linuxefi gpt verify gcry_sha256 measurefs"
 ENV GRUB_MODULES_aarch64="xen_boot efi_gop gpt"
 ENV GRUB_MODULES_riscv64=""
 ENV GRUB_COMMIT=71f9e4ac44142af52c3fc1860436cf9e432bf764
