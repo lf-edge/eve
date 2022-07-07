@@ -21,6 +21,7 @@ func OpenScsi(name string) (*ScsiDevice, error) {
 
 	i, err := scsi.Inquiry()
 	if err != nil {
+		unix.Close(fd)
 		return nil, err
 	}
 
@@ -28,10 +29,12 @@ func OpenScsi(name string) (*ScsiDevice, error) {
 	// https://github.com/systemd/systemd/blob/58551e6ebc465227d0add8c714f9f38213b6878a/src/udev/ata_id/ata_id.c#L324-L344
 	deviceType := i.Peripheral & 0x1f
 	if deviceType != 0 {
+		unix.Close(fd)
 		return nil, fmt.Errorf("not a direct access block device")
 	}
 
 	if bytes.Equal(i.VendorIdent[:], []byte(_SATA_IDENT)) {
+		unix.Close(fd)
 		return nil, fmt.Errorf("it is SATA device")
 	}
 
