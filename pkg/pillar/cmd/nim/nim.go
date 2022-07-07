@@ -43,7 +43,8 @@ const (
 const (
 	configDevicePortConfigDir = types.IdentityDirname + "/DevicePortConfig"
 	runDevicePortConfigDir    = "/run/global/DevicePortConfig"
-	maxReadSize               = 16384 // Punt on too large files
+	maxReadSize               = 16384       // Punt on too large files
+	dpcAvailableTimeLimit     = time.Minute // TODO: make configurable?
 )
 
 // Really a constant
@@ -107,8 +108,8 @@ type nim struct {
 	gcInitialized      bool // Received initial GlobalConfig
 	assignableAdapters types.AssignableAdapters
 	enabledLastResort  bool
+	forceLastResort    bool
 	lastResort         *types.DevicePortConfig
-	dpclPresentAtBoot  bool // DPC List present on boot
 }
 
 // Run - Main function - invoked from zedbox.go
@@ -197,7 +198,6 @@ func (n *nim) run(ctx context.Context) (err error) {
 	if err = n.dpcManager.Init(ctx); err != nil {
 		return err
 	}
-	n.dpclPresentAtBoot = n.dpcManager.GetDpclPresentAtBoot(ctx)
 	if err = n.dpcManager.Run(ctx); err != nil {
 		return err
 	}
@@ -253,6 +253,13 @@ func (n *nim) run(ctx context.Context) (err error) {
 	defer close(done)
 	netEvents := n.networkMonitor.WatchEvents(ctx, agentName)
 
+	// Time limit to obtain some network config.
+	// If it runs out and we still do not have any config, lastresort will be enabled
+	// unconditionally.
+	// This is mainly to handle the case when for whatever reason the device
+	// has lost /persist/status/nim/DevicePortConfigList
+	dpcAvailTimer := time.After(dpcAvailableTimeLimit)
+
 	waitForLastResort := n.enabledLastResort
 	waitForAA := true
 
@@ -289,7 +296,7 @@ func (n *nim) run(ctx context.Context) (err error) {
 			n.subGlobalConfig.ProcessChange(change)
 			if waitForLastResort && !n.enabledLastResort {
 				waitForLastResort = false
-				n.Log.Notice("last-resort DPC is ready")
+				n.Log.Notice("last-resort DPC is not enabled")
 				if err = lastResortIsReady(); err != nil {
 					return err
 				}
@@ -343,6 +350,21 @@ func (n *nim) run(ctx context.Context) (err error) {
 			}
 			n.PubSub.CheckMaxTimeTopic(agentName, "publishTimer", start,
 				warningTime, errorTime)
+
+		case <-dpcAvailTimer:
+			obj, err := n.pubDevicePortConfigList.Get("global")
+			if err != nil {
+				n.Log.Errorf("Failed to get published DPCL: %v", err)
+				continue
+			}
+			dpcl := obj.(types.DevicePortConfigList)
+			if len(dpcl.PortConfigList) == 0 {
+				n.Log.Noticef("DPC Manager has no network config to work with "+
+					"even after %v, enabling lastresort unconditionally", dpcAvailableTimeLimit)
+				n.forceLastResort = true
+				n.enabledLastResort = true
+				n.updateLastResortDPC("lastresort forcefully enabled")
+			}
 
 		case <-ctx.Done():
 			return nil
@@ -668,8 +690,7 @@ func (n *nim) applyGlobalConfig(gcp *types.ConfigItemValueMap) {
 	n.connTester.TestTimeout = time.Second * time.Duration(timeout)
 	fallbackAnyEth := gcp.GlobalValueTriState(types.NetworkFallbackAnyEth)
 	enableLastResort := fallbackAnyEth == types.TS_ENABLED
-	// If we had no DevicePortConfigList on boot then always enable last resort
-	enableLastResort = enableLastResort || !n.dpclPresentAtBoot
+	enableLastResort = enableLastResort || n.forceLastResort
 	if n.enabledLastResort != enableLastResort {
 		if enableLastResort {
 			n.updateLastResortDPC("lastresort enabled by global config")
@@ -809,7 +830,7 @@ func (n *nim) ingestDevicePortConfigFile(oldDirname string, newDirname string, n
 }
 
 func (n *nim) updateLastResortDPC(reason string) {
-	n.Log.Noticef("updateLastResortDPC")
+	n.Log.Functionf("updateLastResortDPC")
 	dpc, err := n.makeLastResortDPC()
 	if err != nil {
 		n.Log.Error(err)
