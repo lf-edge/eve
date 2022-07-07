@@ -25,6 +25,17 @@ func IsProxyConfigEmpty(proxyConfig types.ProxyConfig) bool {
 	return false
 }
 
+// IsExplicitProxyConfigured returns true if EVE is explicitly configured
+// to route traffic via a proxy for a given uplink interface.
+func IsExplicitProxyConfigured(proxyConfig types.ProxyConfig) bool {
+	if len(proxyConfig.Proxies) > 0 ||
+		proxyConfig.Pacfile != "" ||
+		proxyConfig.NetworkProxyEnable {
+		return true
+	}
+	return false
+}
+
 // GetIPAddrs return all IP addresses for an ifindex, and updates the cached info.
 // Also returns the up flag (based on admin status), and hardware address.
 // Leaves mask uninitialized

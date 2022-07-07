@@ -696,10 +696,14 @@ func printOutput(ctx *diagContext) {
 				ifname)
 			continue
 		}
-		// DNS lookup, ping and getUuid calls
-		if !tryLookupIP(ctx, ifname) {
-			continue
+		// DNS lookup - skip if an explicit (i.e. not transparent) proxy is configured.
+		// In that case it is the proxy which is responsible for domain name resolution.
+		if !devicenetwork.IsExplicitProxyConfigured(port.ProxyConfig) {
+			if !tryLookupIP(ctx, ifname) {
+				continue
+			}
 		}
+		// ping and getUuid calls
 		if !tryPing(ctx, ifname, "") {
 			fmt.Fprintf(outfile, "ERROR: %s: ping failed to %s; trying google\n",
 				ifname, ctx.serverNameAndPort)
