@@ -5,6 +5,10 @@ package volumemgr
 
 import (
 	"fmt"
+	"strings"
+
+	"github.com/containerd/containerd/mount"
+	"github.com/lf-edge/eve/pkg/pillar/diskmetrics"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/vault"
 	"github.com/lf-edge/eve/pkg/pillar/zfs"
@@ -125,9 +129,35 @@ func persistUsageStat(_ *volumemgrContext) (*types.UsageStat, error) {
 	if err != nil {
 		log.Errorf("GetDatasetUsageStat: %s", err)
 	} else {
-		// subtract usage of reserved dataset to start with 0 Used bytes
-		usageStat.Used -= usageStatReserved.Used
-		usageStat.Total -= usageStatReserved.Used
+		// subtract reserved dataset Total from persist Total
+		// we use LogicalUsed for usageStat.Total of persist for usageStat.Free calculation
+		// so need to subtract
+		usageStat.Free -= usageStatReserved.Total
+		usageStat.Total -= usageStatReserved.Total
 	}
 	return usageStat, nil
+}
+
+// dirUsage calculates usage of directory
+// it checks if provided directory is zfs mountpoint and take usage from zfs in that case
+func dirUsage(_ *volumemgrContext, dir string) (uint64, error) {
+	if vault.ReadPersistType() != types.PersistZFS || !strings.HasPrefix(dir, types.PersistDir) {
+		return diskmetrics.SizeFromDir(log, dir)
+	}
+	mi, err := mount.Lookup(dir)
+	if err != nil {
+		// Lookup do not return error in case of dir is not mountpoint
+		// it returns the longest found parent mountpoint for provided dir
+		log.Errorf("dirUsage: Lookup returns error (%s), fallback to SizeFromDir", err)
+		return diskmetrics.SizeFromDir(log, dir)
+	}
+	// if it is zfs mountpoint and we mount exactly the directory of interest (not parent folder)
+	if mi.FSType == types.PersistZFS.String() && mi.Mountpoint == dir {
+		usageStat, err := zfs.GetDatasetUsageStat(strings.TrimPrefix(dir, "/"))
+		if err != nil {
+			return 0, err
+		}
+		return usageStat.Used, nil
+	}
+	return diskmetrics.SizeFromDir(log, dir)
 }
