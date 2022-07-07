@@ -426,6 +426,9 @@ func GetZfsDiskAndStatus(disk libzfs.VDevTree) (*types.StorageDiskState, error) 
 }
 
 //GetDatasetUsageStat returns UsageStat for provided datasetName
+//for dataset with RefReservation it will return dataset.RefReservation as UsageStat.Total and UsageStat.Used
+//for dataset without RefReservation it will calculate UsageStat.Total as sum of dataset.Used and dataset.Available
+//and use dataset.LogicalUsed as UsageStat.Used to not count empty blocks of child zvols
 func GetDatasetUsageStat(datasetName string) (*types.UsageStat, error) {
 	var usageStat types.UsageStat
 	dataset, err := libzfs.DatasetOpen(datasetName)
@@ -433,22 +436,47 @@ func GetDatasetUsageStat(datasetName string) (*types.UsageStat, error) {
 		return nil, err
 	}
 	defer dataset.Close()
+	refReservation, err := dataset.GetProperty(libzfs.DatasetPropRefreservation)
+	if err != nil {
+		return nil, err
+	}
+	refReservationBytes, err := strconv.ParseUint(refReservation.Value, 10, 64)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse used: %s", err)
+	}
+	// special case for dataset with reservation
+	if refReservationBytes > 0 {
+		usageStat.Total = refReservationBytes
+		usageStat.Used = refReservationBytes
+		usageStat.Free = 0
+		return &usageStat, nil
+	}
 	used, err := dataset.GetProperty(libzfs.DatasetPropUsed)
 	if err != nil {
 		return nil, err
 	}
-	usageStat.Used, err = strconv.ParseUint(used.Value, 10, 64)
+	usedBytes, err := strconv.ParseUint(used.Value, 10, 64)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse used: %s", err)
+	}
+	logicalUsed, err := dataset.GetProperty(libzfs.DatasetPropLogicalused)
+	if err != nil {
+		return nil, err
+	}
+	logicalUsedBytes, err := strconv.ParseUint(logicalUsed.Value, 10, 64)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse logicalUsed: %s", err)
 	}
 	available, err := dataset.GetProperty(libzfs.DatasetPropAvailable)
 	if err != nil {
 		return nil, err
 	}
-	usageStat.Free, err = strconv.ParseUint(available.Value, 10, 64)
+	availableBytes, err := strconv.ParseUint(available.Value, 10, 64)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse available: %s", err)
 	}
-	usageStat.Total = usageStat.Used + usageStat.Free
+	usageStat.Total = usedBytes + availableBytes
+	usageStat.Used = logicalUsedBytes
+	usageStat.Free = usageStat.Total - usageStat.Used
 	return &usageStat, nil
 }
