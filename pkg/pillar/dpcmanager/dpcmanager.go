@@ -239,11 +239,6 @@ func (m *DpcManager) Run(ctx context.Context) (err error) {
 	return nil
 }
 
-// GetDpclPresentAtBoot returns the attribute
-func (m *DpcManager) GetDpclPresentAtBoot(ctx context.Context) bool {
-	return m.dpclPresentAtBoot
-}
-
 func (m *DpcManager) run(ctx context.Context) {
 	wdName := m.AgentName + "-DpcManager"
 	stillRunning := time.NewTicker(watchdogPeriod)
