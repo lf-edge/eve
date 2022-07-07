@@ -41,5 +41,31 @@ Power-on hours:  499
 Power cycles:  1433
 ```
 
+Here is an example of iterating over system's block devices:
+```go
+block, err := ghw.Block()
+if err != nil {
+  panic(err)
+}
+for _, disk := range block.Disks {
+        dev, err := smart.Open("/dev/" + disk.Name)
+        if err != nil {
+            // some devices (like dmcrypt) do not support SMART interface
+            fmt.Println(err)
+            continue
+        }
+        defer dev.Close()
+
+        switch sm := dev.(type) {
+        case *smart.SataDevice:
+            _, _ = sm.Identify()
+        case *smart.ScsiDevice:
+            _, _ = sm.Capacity()
+        case *smart.NVMeDevice:
+            _, _ = sm.ReadSMART()
+        }
+}
+```
+
 ### Credit
 This project is inspired by https://github.com/dswarbrick/smart

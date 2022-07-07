@@ -3,7 +3,6 @@ package smart
 import (
 	"errors"
 	"fmt"
-	"os"
 )
 
 // ErrOSUnsupported is returned on unsupported operating systems.
@@ -21,10 +20,7 @@ func Open(path string) (Device, error) {
 		if err == nil {
 			return n, nil
 		}
-	}
-
-	if os.IsPermission(err) || errors.Is(err, ErrOSUnsupported) {
-		return nil, err
+		n.Close()
 	}
 
 	a, err := OpenSata(path)
@@ -35,9 +31,6 @@ func Open(path string) (Device, error) {
 	s, err := OpenScsi(path)
 	if err == nil {
 		return s, nil
-	}
-	if errors.Is(err, ErrOSUnsupported) {
-		return nil, err
 	}
 
 	return nil, fmt.Errorf("unknown drive type")
