@@ -16,10 +16,12 @@ func OpenSata(name string) (*SataDevice, error) {
 
 	i, err := scsiInquiry(fd)
 	if err != nil {
+		unix.Close(fd)
 		return nil, err
 	}
 
 	if !bytes.Equal(i.VendorIdent[:], []byte(_SATA_IDENT)) {
+		unix.Close(fd)
 		return nil, fmt.Errorf("it is not a SATA device")
 	}
 
