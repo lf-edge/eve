@@ -178,7 +178,17 @@ func (s *ociSpec) AddLoader(volume string) error {
 			Type:        "bind",
 			Source:      volumeRoot,
 			Destination: "/mnt",
-			Options:     []string{"rbind", "rw"}})
+			Options:     []string{"rbind", "rw", "rslave"}})
+
+		if err := os.MkdirAll(filepath.Join(volumeRoot, "modules"), 0600); err != nil {
+			return err
+		}
+
+		spec.Mounts = append(spec.Mounts, specs.Mount{
+			Type:        "bind",
+			Source:      "/lib/modules",
+			Destination: "/mnt/modules",
+			Options:     []string{"rbind", "ro", "rslave"}})
 	}
 	for _, mount := range s.Mounts {
 		// for now we're filtering anything that is not a bind-mount

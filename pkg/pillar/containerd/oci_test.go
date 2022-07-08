@@ -835,8 +835,9 @@ func TestAddLoader(t *testing.T) {
 	g.Expect(spec2.AddLoader(tmpdir)).ToNot(HaveOccurred())
 	g.Expect(spec2.Root).To(Equal(&specs.Root{Path: filepath.Join(tmpdir, "rootfs"), Readonly: true}))
 	g.Expect(spec2.Linux.CgroupsPath).To(Equal("/foo/bar/baz"))
-	g.Expect(spec2.Mounts[10]).To(Equal(specs.Mount{Destination: "/mnt/rootfs/test", Type: "bind", Source: "/test", Options: []string{"ro"}}))
-	g.Expect(spec2.Mounts[9]).To(Equal(specs.Mount{Destination: "/mnt", Type: "bind", Source: path.Join(tmpdir, ".."), Options: []string{"rbind", "rw"}}))
+	g.Expect(spec2.Mounts[11]).To(Equal(specs.Mount{Destination: "/mnt/rootfs/test", Type: "bind", Source: "/test", Options: []string{"ro"}}))
+	g.Expect(spec2.Mounts[10]).To(Equal(specs.Mount{Destination: "/mnt/modules", Type: "bind", Source: "/lib/modules", Options: []string{"rbind", "ro", "rslave"}}))
+	g.Expect(spec2.Mounts[9]).To(Equal(specs.Mount{Destination: "/mnt", Type: "bind", Source: path.Join(tmpdir, ".."), Options: []string{"rbind", "rw", "rslave"}}))
 	g.Expect(spec2.Mounts[0]).To(Equal(specs.Mount{Destination: "/dev", Type: "bind", Source: "/dev", Options: []string{"rw", "rbind", "rshared"}}))
 }
 
