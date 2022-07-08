@@ -106,6 +106,15 @@ then
     done
 fi
 
+# mount modules shared by EVE-OS in /mnt/modules to /lib/modules
+# if /lib/modules inside container is not empty we will silently ignore the content
+# we use overlayfs to allow replacing of modules from user's entrypoint scripts
+# but changes will not persist reboot
+mkdir -p /mnt/rootfs/lib/modules
+mkdir -p /mnt/rootfs/tmp/modules.upper
+mkdir -p /mnt/rootfs/tmp/modules.work
+mount -t overlay -o rw,relatime,lowerdir=/mnt/modules,upperdir=/mnt/rootfs/tmp/modules.upper,workdir=/mnt/rootfs/tmp/modules.work overlay /mnt/rootfs/lib/modules
+
 # Mounting requested volumes
 echo "Executing /mount_disk.sh"
 /mount_disk.sh
