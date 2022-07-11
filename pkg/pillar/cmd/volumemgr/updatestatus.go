@@ -427,6 +427,8 @@ func doUpdateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus)
 // XXX remove "done" boolean return?
 func doUpdateVol(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool) {
 
+	var changed bool
+
 	log.Functionf("doUpdateVol(%s) name %s", status.Key(), status.DisplayName)
 
 	// Anything to do?
@@ -434,6 +436,39 @@ func doUpdateVol(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool)
 		log.Functionf("doUpdateVol(%s) name %s nothing to do",
 			status.Key(), status.DisplayName)
 		return false, true
+	}
+
+	// do not go into CREATING_VOLUME state if no space available
+	if status.State < types.CREATING_VOLUME && !ctx.globalConfig.GlobalValueBool(types.IgnoreDiskCheckForApps) {
+		// Check disk usage
+		remaining, err := getRemainingDiskSpace(ctx)
+		if err != nil {
+			description := types.ErrorDescription{}
+			description.Error = fmt.Sprintf("getRemainingDiskSpace failed: %s\n", err)
+			// do not touch time of the error with the same content
+			if status.Error != description.Error {
+				status.SetErrorWithSourceAndDescription(description, types.DiskMetric{})
+				changed = true
+			}
+			return changed, false
+		} else if remaining < status.MaxVolSize {
+			description := types.ErrorDescription{}
+			description.Error = fmt.Sprintf("Remaining disk space %d volume needs %d\n",
+				remaining, status.MaxVolSize)
+			description.ErrorRetryCondition = "Will retry when more space will be available"
+			// do not touch time of the error with the same content
+			if status.Error != description.Error {
+				status.SetErrorWithSourceAndDescription(description, types.DiskMetric{})
+				changed = true
+			}
+			return changed, false
+		}
+	}
+
+	if status.IsErrorSource(types.DiskMetric{}) {
+		log.Functionf("doUpdateVol: Clearing DiskMetric error %s", status.Error)
+		status.ClearErrorWithSource()
+		changed = true
 	}
 
 	verifyOnly := false
@@ -450,7 +485,6 @@ func doUpdateVol(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool)
 		}
 	}
 
-	changed := false
 	switch status.VolumeContentOriginType {
 	case zconfig.VolumeContentOriginType_VCOT_BLANK:
 		if status.MaxVolSize == 0 {

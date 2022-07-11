@@ -38,8 +38,9 @@ func getRemainingDiskSpace(ctxPtr *volumemgrContext) (uint64, error) {
 	itemsVolume := pubVolume.GetAll()
 	for _, iterVolumeStatusJSON := range itemsVolume {
 		iterVolumeStatus := iterVolumeStatusJSON.(types.VolumeStatus)
-		if iterVolumeStatus.State < types.CREATED_VOLUME {
-			log.Tracef("Volume %s State %d < CREATED_VOLUME",
+		// we start consume space when moving into CREATING_VOLUME state
+		if iterVolumeStatus.State < types.CREATING_VOLUME {
+			log.Tracef("Volume %s State %d < CREATING_VOLUME",
 				iterVolumeStatus.Key(), iterVolumeStatus.State)
 			continue
 		}
@@ -50,6 +51,11 @@ func getRemainingDiskSpace(ctxPtr *volumemgrContext) (uint64, error) {
 			log.Noticef("getRemainingDiskSpace: Volume %s not found in VolumeConfigs, ignore",
 				iterVolumeStatus.Key())
 			continue
+		}
+		if vault.ReadPersistType() == types.PersistZFS {
+			log.Noticef("getRemainingDiskSpace: Volume %s is zvol, use MaxVolSize",
+				iterVolumeStatus.Key())
+			sizeToUseInCalculation = iterVolumeStatus.MaxVolSize
 		} else if cfg.ReadOnly {
 			// it is ReadOnly and will not grow
 			log.Noticef("getRemainingDiskSpace: Volume %s is ReadOnly, use CurrentSize",

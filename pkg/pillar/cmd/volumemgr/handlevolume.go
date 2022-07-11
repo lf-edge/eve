@@ -90,6 +90,7 @@ func handleVolumeDelete(ctxArg interface{}, key string,
 		}
 		updateVolumeStatusRefCount(ctx, status)
 		maybeDeleteVolume(ctx, status)
+		maybeSpaceAvailable(ctx)
 	}
 	log.Functionf("handleVolumeDelete(%s) Done", key)
 }
@@ -190,31 +191,6 @@ func handleDeferredVolumeCreate(ctx *volumemgrContext, key string, config *types
 		return
 	}
 	publishVolumeStatus(ctx, status)
-	if !ctx.globalConfig.GlobalValueBool(types.IgnoreDiskCheckForApps) {
-		// Check disk usage
-		remaining, err := getRemainingDiskSpace(ctx)
-		if err != nil {
-			errStr := fmt.Sprintf("getRemainingDiskSpace failed: %s\n",
-				err)
-			status.SetError(errStr, time.Now())
-			publishVolumeStatus(ctx, status)
-			updateVolumeRefStatus(ctx, status)
-			if err := createOrUpdateAppDiskMetrics(ctx, status); err != nil {
-				log.Errorf("handleDeferredVolumeCreate(%s): exception while publishing diskmetric. %s", key, err.Error())
-			}
-			return
-		} else if remaining < status.MaxVolSize {
-			errStr := fmt.Sprintf("Remaining disk space %d volume needs %d\n",
-				remaining, status.MaxVolSize)
-			status.SetError(errStr, time.Now())
-			publishVolumeStatus(ctx, status)
-			updateVolumeRefStatus(ctx, status)
-			if err := createOrUpdateAppDiskMetrics(ctx, status); err != nil {
-				log.Errorf("handleDeferredVolumeCreate(%s): exception while publishing diskmetric. %s", key, err.Error())
-			}
-			return
-		}
-	}
 	changed, _ := doUpdateVol(ctx, status)
 	if changed {
 		publishVolumeStatus(ctx, status)
@@ -349,6 +325,27 @@ func maybeDeleteVolume(ctx *volumemgrContext, status *types.VolumeStatus) {
 		unpublishAppDiskMetrics(ctx, appDiskMetric)
 	}
 	log.Functionf("maybeDeleteVolume for %v Done", status.Key())
+}
+
+// maybeSpaceAvailable iterates over VolumeStatus and call doUpdateVol if state is less than CREATING_VOLUME
+func maybeSpaceAvailable(ctx *volumemgrContext) {
+	for _, s := range ctx.pubVolumeStatus.GetAll() {
+		status := s.(types.VolumeStatus)
+		if status.State >= types.CREATING_VOLUME {
+			continue
+		}
+		if vc := lookupVolumeConfig(ctx, status.Key()); vc == nil {
+			continue
+		}
+		changed, _ := doUpdateVol(ctx, &status)
+		if changed {
+			publishVolumeStatus(ctx, &status)
+			updateVolumeRefStatus(ctx, &status)
+			if err := createOrUpdateAppDiskMetrics(ctx, &status); err != nil {
+				log.Errorf("maybeSpaceAvailable(%s): exception while publishing diskmetric. %s", status.Key(), err.Error())
+			}
+		}
+	}
 }
 
 // updateVolumeStatusRefCount updates the refcount in volume status
