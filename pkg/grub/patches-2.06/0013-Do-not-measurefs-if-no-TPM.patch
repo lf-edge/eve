@@ -1,0 +1,58 @@
+From 0e600f755387e8c30b6b79d35a044596b03b1ee9 Mon Sep 17 00:00:00 2001
+From: Petr Fedchenkov <giggsoff@gmail.com>
+Date: Mon, 11 Jul 2022 17:02:35 +0300
+Subject: [PATCH] Do not measurefs if no TPM
+
+Signed-off-by: Petr Fedchenkov <giggsoff@gmail.com>
+---
+ grub-core/commands/efi/tpm.c   | 10 ++++++++++
+ grub-core/commands/measurefs.c |  3 +++
+ include/grub/tpm.h             |  2 ++
+ 3 files changed, 15 insertions(+)
+
+diff --git a/grub-core/commands/efi/tpm.c b/grub-core/commands/efi/tpm.c
+index a97d85368..5a688a629 100644
+--- a/grub-core/commands/efi/tpm.c
++++ b/grub-core/commands/efi/tpm.c
+@@ -239,3 +239,13 @@ grub_tpm_measure (unsigned char *buf, grub_size_t size, grub_uint8_t pcr,
+   else
+     return grub_tpm2_log_event (tpm_handle, buf, size, pcr, description);
+ }
++
++char
++grub_tpm_device_present () {
++    grub_efi_handle_t tpm_handle;
++    grub_efi_uint8_t protocol_version;
++
++    if (!grub_tpm_handle_find(&tpm_handle, &protocol_version))
++        return 0;
++    return 1;
++}
+diff --git a/grub-core/commands/measurefs.c b/grub-core/commands/measurefs.c
+index 0cfbb0f3d..afcc46a49 100644
+--- a/grub-core/commands/measurefs.c
++++ b/grub-core/commands/measurefs.c
+@@ -40,6 +40,9 @@ static const struct grub_arg_option options[] =
+ static grub_err_t
+ grub_cmd_measurefs (grub_extcmd_context_t ctxt, int argc, char **args)
+ {
++    if (!grub_tpm_device_present ())
++        return 0;
++
+     struct grub_arg_list *state = ctxt->state;
+     grub_device_t dev;
+     grub_fs_t fs;
+diff --git a/include/grub/tpm.h b/include/grub/tpm.h
+index 5c285cbc5..d27ed92de 100644
+--- a/include/grub/tpm.h
++++ b/include/grub/tpm.h
+@@ -36,4 +36,6 @@
+ 
+ grub_err_t grub_tpm_measure (unsigned char *buf, grub_size_t size,
+ 			     grub_uint8_t pcr, const char *description);
++
++char grub_tpm_device_present ();
+ #endif
+-- 
+2.34.1
+
