@@ -96,6 +96,11 @@ zfs_module_unload() {
     rmmod $(lsmod | grep zfs | awk '{print $1;}') || :
 }
 
+# set sequential mdev handler to avoid add-remove-add mis-order of zvols
+set_sequential_mdev() {
+  echo >/dev/mdev.seq
+}
+
 PERSISTDIR=/persist
 CONFIGDIR=/config
 SMART_DETAILS_FILE=$PERSISTDIR/SMART_details.json
@@ -223,6 +228,7 @@ if P3=$(findfs PARTLABEL=P3) && [ -n "$P3" ]; then
     echo "$(date -Ins -u) Using $P3 (formatted with $P3_FS_TYPE), for $PERSISTDIR"
 
     if [ "$P3_FS_TYPE" = zfs ]; then
+        set_sequential_mdev
         if ! chroot /hostfs zpool import -f persist; then
             echo "$(date -Ins -u) Cannot import persist pool on P3 partition $P3 of type $P3_FS_TYPE, recreating it as $P3_FS_TYPE_DEFAULT"
             INIT_FS=1
@@ -259,6 +265,7 @@ if P3=$(findfs PARTLABEL=P3) && [ -n "$P3" ]; then
                       chroot /hostfs zfs set mountpoint="$PERSISTDIR" persist                                          && \
                       chroot /hostfs zfs set primarycache=metadata persist                                             && \
                       chroot /hostfs zfs create -p -o mountpoint="$PERSISTDIR/containerd/io.containerd.snapshotter.v1.zfs" persist/snapshots
+                      set_sequential_mdev
                    fi
                    ;;
     esac || echo "$(date -Ins -u) mount of $P3 as $P3_FS_TYPE failed"
@@ -271,6 +278,7 @@ if P3=$(findfs PARTLABEL=P3) && [ -n "$P3" ]; then
 else
     #in case of no P3 we may have EVE persist on another disks
     zfs_module_load
+    set_sequential_mdev
     if chroot /hostfs zpool import -f persist; then
         echo "zfs" > /run/eve.persist_type
     else

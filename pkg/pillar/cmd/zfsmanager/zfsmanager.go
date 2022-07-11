@@ -11,6 +11,7 @@ import (
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/lf-edge/eve/pkg/pillar/base"
+	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
@@ -27,6 +28,7 @@ const (
 	stillRunningInterval = 25 * time.Second
 
 	disksProcessingInterval = 60 * time.Second
+	zvolsProcessingInterval = 5 * time.Second
 )
 
 var (
@@ -38,7 +40,6 @@ var (
 
 type zVolDeviceEvent struct {
 	delete  bool
-	device  string
 	dataset string
 }
 
@@ -48,6 +49,7 @@ type zfsContext struct {
 	storageStatusPub       pubsub.Publication
 	subDisksConfig         pubsub.Subscription
 	disksProcessingTrigger chan interface{}
+	zVolDeviceEvents       *base.LockedStringMap // stores device->zVolDeviceEvent mapping to check and publish
 }
 
 // Run - an zfs run
@@ -72,19 +74,18 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	stillRunning := time.NewTicker(stillRunningInterval)
 	ps.StillRunning(agentName, warningTime, errorTime)
 
-	ctxPtr := zfsContext{ps: ps, disksProcessingTrigger: make(chan interface{}, 1)}
+	ctxPtr := zfsContext{ps: ps, disksProcessingTrigger: make(chan interface{}, 1), zVolDeviceEvents: base.NewLockedStringMap()}
 
 	if err := utils.WaitForVault(ps, log, agentName, warningTime, errorTime); err != nil {
 		log.Fatal(err)
 	}
 	log.Functionf("processed Vault Status")
 
-	// Publish cloud metrics
+	// Publish ZVolStatus for zvol devices
 	zVolStatusPub, err := ps.NewPublication(
 		pubsub.PublicationOptions{
-			AgentName:  agentName,
-			TopicType:  types.ZVolStatus{},
-			Persistent: true,
+			AgentName: agentName,
+			TopicType: types.ZVolStatus{},
 		})
 	if err != nil {
 		log.Fatal(err)
@@ -121,22 +122,25 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	}
 	ctxPtr.storageStatusPub = storageStatusPub
 
-	deviceNotifyChannel := make(chan *zVolDeviceEvent)
-
 	if err := os.MkdirAll(types.ZVolDevicePrefix, os.ModeDir); err != nil {
 		log.Fatal(err)
 	}
 
 	go processDisksTask(&ctxPtr)
 
-	go deviceWatcher(deviceNotifyChannel)
+	go deviceWatcher(&ctxPtr)
 
 	go storageStatusPublisher(&ctxPtr)
 
+	max := float64(zvolsProcessingInterval)
+	min := max * 0.3
+	devicesProcessTicker := flextimer.NewRangeTicker(time.Duration(min),
+		time.Duration(max))
+
 	for {
 		select {
-		case event := <-deviceNotifyChannel:
-			processEvent(&ctxPtr, event)
+		case <-devicesProcessTicker.C:
+			processZVolDeviceEvents(&ctxPtr)
 		case change := <-subDisksConfig.MsgChan():
 			subDisksConfig.ProcessChange(change)
 		case <-stillRunning.C:
@@ -145,24 +149,55 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	}
 }
 
-func processEvent(ctxPtr *zfsContext, event *zVolDeviceEvent) {
-	if event == nil {
-		return
-	}
-	log.Functionf("processEvent: %+v", event)
-	if event.delete {
-		ctxPtr.zVolStatusPub.Unpublish(event.device)
-		return
-	}
-	ctxPtr.zVolStatusPub.Publish(event.device,
-		types.ZVolStatus{
-			Device:  event.device,
+// processZVolDeviceEvents iterates over saved zVolDeviceEvent, check for device existence and publish ZVolStatus
+func processZVolDeviceEvents(ctxPtr *zfsContext) {
+	var processedKeys []string
+	checker := func(key string, val interface{}) bool {
+		event, ok := val.(zVolDeviceEvent)
+		if !ok {
+			log.Fatalf("unexpected type for key: %s", key)
+		}
+		zvolStatus := types.ZVolStatus{
+			Device:  key,
 			Dataset: event.dataset,
-		},
-	)
+		}
+		if event.delete {
+			if el, _ := ctxPtr.zVolStatusPub.Get(zvolStatus.Key()); el == nil {
+				processedKeys = append(processedKeys, key)
+				return true
+			}
+			if err := ctxPtr.zVolStatusPub.Unpublish(zvolStatus.Key()); err != nil {
+				log.Errorf("cannot unpublish device: %s", err)
+				return true
+			}
+			processedKeys = append(processedKeys, key)
+			return true
+		}
+		l, err := filepath.EvalSymlinks(key)
+		if err != nil {
+			log.Warnf("failed to EvalSymlinks: %s", err)
+			return true
+		}
+		_, err = os.Stat(l)
+		if err != nil {
+			log.Warnf("failed to Stat device: %s", err)
+			return true
+		}
+
+		if err := ctxPtr.zVolStatusPub.Publish(zvolStatus.Key(), zvolStatus); err != nil {
+			log.Errorf("cannot publish device: %s", err)
+			return true
+		}
+		processedKeys = append(processedKeys, key)
+		return true
+	}
+	ctxPtr.zVolDeviceEvents.Range(checker)
+	for _, key := range processedKeys {
+		ctxPtr.zVolDeviceEvents.Delete(key)
+	}
 }
 
-func deviceWatcher(notifyChannel chan *zVolDeviceEvent) {
+func deviceWatcher(ctxPtr *zfsContext) {
 	w, err := fsnotify.NewWatcher()
 	if err != nil {
 		log.Fatalf("NewWatcher: %s", err)
@@ -185,11 +220,9 @@ func deviceWatcher(notifyChannel chan *zVolDeviceEvent) {
 						log.Errorf("cannot determine dataset for device: %s", walkPath)
 						return nil
 					}
-					notifyChannel <- &zVolDeviceEvent{
-						delete:  false,
-						device:  walkPath,
+					ctxPtr.zVolDeviceEvents.Store(walkPath, zVolDeviceEvent{
 						dataset: dataset,
-					}
+					})
 				}
 			}
 			return nil
@@ -218,17 +251,13 @@ func deviceWatcher(notifyChannel chan *zVolDeviceEvent) {
 				log.Errorf("cannot determine dataset for device: %s", fileName)
 				continue
 			}
-			notifyChannel <- &zVolDeviceEvent{
-				delete:  false,
-				device:  fileName,
+			ctxPtr.zVolDeviceEvents.Store(fileName, zVolDeviceEvent{
 				dataset: dataset,
-			}
+			})
 		} else if event.Op&fsnotify.Remove != 0 {
-			_ = w.Remove(fileName)
-			notifyChannel <- &zVolDeviceEvent{
+			ctxPtr.zVolDeviceEvents.Store(fileName, zVolDeviceEvent{
 				delete: true,
-				device: fileName,
-			}
+			})
 		}
 	}
 }
