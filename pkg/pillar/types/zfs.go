@@ -49,9 +49,9 @@ type ZVolStatus struct {
 	Device  string
 }
 
-// Key is volume UUID which will be unique
+// Key is Dataset with '/' replaced by '_'
 func (status ZVolStatus) Key() string {
-	return status.Device
+	return strings.ReplaceAll(status.Dataset, "/", "_")
 }
 
 // StorageRaidType indicates storage raid type
