@@ -55,7 +55,7 @@ func (s *Subscriber) Load() (map[string][]byte, int, error) {
 		return items, restartCounter, err
 	}
 	for _, file := range files {
-		if !strings.HasSuffix(file.Name(), ".json") {
+		if !strings.HasSuffix(file.Name(), ".json") && !strings.HasSuffix(file.Name(), pubsub.EncodedJSONSuffix) {
 			if file.Name() == "restarted" {
 				statusFile := dirName + "/" + file.Name()
 				sb, err := ioutil.ReadFile(statusFile)
@@ -74,7 +74,15 @@ func (s *Subscriber) Load() (map[string][]byte, int, error) {
 			continue
 		}
 		// Remove .json from name */
-		key := strings.Split(file.Name(), ".json")[0]
+		key := strings.Split(file.Name(), pubsub.JSONSuffix)[0]
+
+		if strings.HasSuffix(file.Name(), pubsub.EncodedJSONSuffix) {
+			key, err = pubsub.DecodeKey(strings.TrimSuffix(file.Name(), pubsub.EncodedJSONSuffix))
+			if err != nil {
+				s.log.Errorf("Load: cannot decode key: %s", err)
+				continue
+			}
+		}
 
 		statusFile := dirName + "/" + file.Name()
 		if _, err := os.Stat(statusFile); err != nil {
@@ -420,9 +428,19 @@ func (s *Subscriber) translate(in <-chan string, out chan<- pubsub.Change) {
 			}
 			s.log.Tracef("translate received message '%s'", change)
 			operation := string(change[0])
-			fileName := string(change[2:])
-			// Remove .json from name */
-			name := strings.Split(fileName, ".json")
+			fileName := change[2:]
+			// Remove .json or .json.enc from name */
+			key := strings.TrimSuffix(fileName, pubsub.BackupSuffix)
+			if strings.HasSuffix(key, pubsub.EncodedJSONSuffix) {
+				var err error
+				key, err = pubsub.DecodeKey(strings.TrimSuffix(fileName, pubsub.EncodedJSONSuffix))
+				if err != nil {
+					s.log.Errorf("Load: cannot decode key: %s", err)
+					continue
+				}
+			} else {
+				key = strings.TrimSuffix(key, pubsub.JSONSuffix)
+			}
 			switch {
 			case operation == "R":
 				s.log.Functionf("Received restart <%s>", fileName)
@@ -451,14 +469,13 @@ func (s *Subscriber) translate(in <-chan string, out chan<- pubsub.Change) {
 				ticker.UpdateRangeTicker(time.Duration(min),
 					time.Duration(max))
 
-			case !strings.HasSuffix(fileName, ".json"):
+			case !strings.HasSuffix(fileName, pubsub.JSONSuffix) && !strings.HasSuffix(fileName, pubsub.EncodedJSONSuffix):
 				// s.log.Tracef("Ignoring file <%s> operation %s\n",
 				//	fileName, operation)
 				continue
 			case operation == "D":
-				out <- pubsub.Change{Operation: pubsub.Delete, Key: name[0]}
-				s.log.Tracef("sent delete file for %s",
-					name[0])
+				out <- pubsub.Change{Operation: pubsub.Delete, Key: key}
+				s.log.Tracef("sent delete file for %s", key)
 			case operation == "M":
 				statusFile := path.Join(statusDirName, fileName)
 				cb, err := ioutil.ReadFile(statusFile)
@@ -466,9 +483,8 @@ func (s *Subscriber) translate(in <-chan string, out chan<- pubsub.Change) {
 					s.log.Errorf("%s for %s\n", err, statusFile)
 					continue
 				}
-				out <- pubsub.Change{Operation: pubsub.Modify, Key: name[0], Value: cb}
-				s.log.Tracef("sent modify file for %s",
-					name[0])
+				out <- pubsub.Change{Operation: pubsub.Modify, Key: key, Value: cb}
+				s.log.Tracef("sent modify file for %s", key)
 			default:
 				s.log.Fatal("Unknown operation from Watcher: ", operation)
 			}

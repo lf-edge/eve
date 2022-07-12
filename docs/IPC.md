@@ -256,7 +256,7 @@ The specific implementations of the `DriverPublisher` interface and `DriverSubsc
 ##### `socketdriver.Publisher` Updates
 
 When `socketdriver.Publisher` receives updates from its calling `pubsub.Publication`, it saves the data in a file, whose name is determined
-as `<dirName>/<key>.json`.
+as `<dirName>/<key>.json`. If key contains slashes we encode key using hex and store into `<dirName>/<encoded_key>.json.enc` to not create nested directories.
 
 For example, if the `<dirName>` from above was `/persist/tester/configmgr/inputs/`, and the `Publish()` used the key `important`, then
 the filename is `/persist/tester/configmgr/inputs/important.json`.
@@ -269,7 +269,7 @@ _Where_ those files are, i.e. which directory, is determined by whether or not t
 
 ##### `socketdriver.Publisher` Actions
 
-As described above, `socketdriver.Publisher` _always_ writes to a file, whose name is `<dirName>/<key>.json`, whether the `<dirName>` is determined by the
+As described above, `socketdriver.Publisher` _always_ writes to a file, whose name is `<dirName>/<key>.json` or to `<dirName>/<encoded_key>.json.enc` if key contains slashes, whether the `<dirName>` is determined by the
 algorithm above. `persistent` determines where that directory will be placed.
 
 When `socketdriver.Publisher` receives a [`Publish()` call](https://github.com/lf-edge/eve/blob/6160d0e96c72a1954db2a8bdfd99c2fec1972341/pkg/pillar/pubsub/socketdriver/publish.go#L45-L54), it determines the file name

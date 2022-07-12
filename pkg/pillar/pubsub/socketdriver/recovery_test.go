@@ -59,13 +59,13 @@ func TestRecovery(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	filePath := filepath.Join(rootPath, "persist", "config", "test", "global.json")
+	filePath := filepath.Join(rootPath, "persist", "config", "test", "global"+pubsub.JSONSuffix)
 	_, err = os.Stat(filePath)
 	if err != nil {
 		t.Fatalf("published item was not persisted: %v", err)
 	}
 	// Nothing has been backed up yet, this was the first publication.
-	backupPath := filePath + ".bak"
+	backupPath := filePath + pubsub.BackupSuffix
 	_, err = os.Stat(backupPath)
 	if !os.IsNotExist(err) {
 		t.Fatal("unexpected backup file")

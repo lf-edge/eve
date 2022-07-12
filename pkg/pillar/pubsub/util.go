@@ -4,6 +4,7 @@
 package pubsub
 
 import (
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -96,4 +97,23 @@ func ConnReadCheck(conn net.Conn) error {
 			err)
 	}
 	return sysErr
+}
+
+// MaybeEncodeKey checks and encode key if needed
+func MaybeEncodeKey(key string) (string, bool) {
+	var encoded bool
+	if strings.Contains(key, "/") {
+		key = hex.EncodeToString([]byte(key))
+		encoded = true
+	}
+	return key, encoded
+}
+
+// DecodeKey decode key
+func DecodeKey(key string) (string, error) {
+	b, err := hex.DecodeString(key)
+	if err != nil {
+		return "", err
+	}
+	return string(b), nil
 }

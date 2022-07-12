@@ -10,6 +10,7 @@ import (
 	"io/ioutil"
 	"net"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -42,12 +43,27 @@ type Publisher struct {
 	rootDir        string
 }
 
+const maxFileName = 255
+
 // Publish publish a key-value pair
 func (s *Publisher) Publish(key string, item []byte) error {
 	if len(item) == 0 {
 		return fmt.Errorf("empty content published for %s/%s", s.name, key)
 	}
-	fileName := s.dirName + "/" + key + ".json"
+	if len(key) > maxFileName {
+		return fmt.Errorf("key(%s) exceed maximum filename limit of %d bytes: %d",
+			key, maxFileName, len(key))
+	}
+	fileName := s.dirName + "/" + key + pubsub.JSONSuffix
+	encodedKey, encoded := pubsub.MaybeEncodeKey(key)
+	if encoded {
+		fileName = filepath.Join(s.dirName, encodedKey+pubsub.EncodedJSONSuffix)
+	}
+	if len(encodedKey) > maxFileName {
+		return fmt.Errorf("encodedKey(%s) for key(%s) exceed maximum filename limit of %d bytes: %d",
+			encodedKey, key, maxFileName, len(encodedKey))
+	}
+
 	s.log.Tracef("Publish writing %s\n", fileName)
 
 	var err error
@@ -64,12 +80,16 @@ func (s *Publisher) Publish(key string, item []byte) error {
 
 // Unpublish delete a key and publish its deletion
 func (s *Publisher) Unpublish(key string) error {
-	fileName := s.dirName + "/" + key + ".json"
+	fileName := s.dirName + "/" + key + pubsub.JSONSuffix
+	encodedKey, encoded := pubsub.MaybeEncodeKey(key)
+	if encoded {
+		fileName = filepath.Join(s.dirName, encodedKey+pubsub.EncodedJSONSuffix)
+	}
 	s.log.Tracef("Unpublish deleting file %s\n", fileName)
 
 	// First remove backup file so that unpublished item will not be accidentally recovered.
 	if s.persistent {
-		err := os.Remove(fileName + ".bak")
+		err := os.Remove(fileName + pubsub.BackupSuffix)
 		// Ignore if backup file is missing.
 		if err != nil && !os.IsNotExist(err) {
 			return fmt.Errorf("Unpublish(%s/%s): failed to remove backup: %w",
@@ -102,7 +122,7 @@ func (s *Publisher) Load() (map[string][]byte, int, error) {
 		return items, restartCounter, err
 	}
 	for _, file := range files {
-		if !strings.HasSuffix(file.Name(), ".json") {
+		if !strings.HasSuffix(file.Name(), pubsub.JSONSuffix) && !strings.HasSuffix(file.Name(), pubsub.EncodedJSONSuffix) {
 			if file.Name() == "restarted" {
 				statusFile := dirName + "/" + file.Name()
 				sb, err := ioutil.ReadFile(statusFile)
@@ -121,7 +141,15 @@ func (s *Publisher) Load() (map[string][]byte, int, error) {
 			continue
 		}
 		// Remove .json from name */
-		key := strings.Split(file.Name(), ".json")[0]
+		key := strings.Split(file.Name(), pubsub.JSONSuffix)[0]
+
+		if strings.HasSuffix(file.Name(), pubsub.EncodedJSONSuffix) {
+			key, err = pubsub.DecodeKey(strings.TrimSuffix(file.Name(), pubsub.EncodedJSONSuffix))
+			if err != nil {
+				s.log.Errorf("Load: cannot decode key: %s", err)
+				continue
+			}
+		}
 
 		statusFile := dirName + "/" + file.Name()
 		if _, err := os.Stat(statusFile); err != nil {
@@ -147,11 +175,19 @@ func (s *Publisher) Load() (map[string][]byte, int, error) {
 
 	// Try to recover lost items (have backup but missing the original).
 	if s.persistent {
-		const backupSuffix = ".json.bak"
 		var keysToRecover []string
 		for _, file := range files {
-			if strings.HasSuffix(file.Name(), backupSuffix) {
-				key := strings.TrimSuffix(file.Name(), backupSuffix)
+			if strings.HasSuffix(file.Name(), pubsub.BackupSuffix) {
+				key := strings.TrimSuffix(file.Name(), pubsub.BackupSuffix)
+				if strings.HasSuffix(key, pubsub.EncodedJSONSuffix) {
+					key, err = pubsub.DecodeKey(strings.TrimSuffix(key, pubsub.EncodedJSONSuffix))
+					if err != nil {
+						s.log.Errorf("Load: cannot decode key: %s", err)
+						continue
+					}
+				} else {
+					key = strings.TrimSuffix(key, pubsub.JSONSuffix)
+				}
 				if _, loaded := items[key]; !loaded {
 					keysToRecover = append(keysToRecover, key)
 				}
@@ -173,8 +209,12 @@ func (s *Publisher) Load() (map[string][]byte, int, error) {
 // recoverFromBackup tries to recover lost item from a backup file.
 // Called when the original file is missing or empty.
 func (s *Publisher) recoverFromBackup(key string) ([]byte, error) {
-	origFileName := s.dirName + "/" + key + ".json"
-	backupFileName := origFileName + ".bak"
+	origFileName := s.dirName + "/" + key + pubsub.JSONSuffix
+	encodedKey, encoded := pubsub.MaybeEncodeKey(key)
+	if encoded {
+		origFileName = filepath.Join(s.dirName, encodedKey+pubsub.EncodedJSONSuffix)
+	}
+	backupFileName := origFileName + pubsub.BackupSuffix
 	bakData, err := ioutil.ReadFile(backupFileName)
 	if err != nil {
 		err = fmt.Errorf("failed to read backup file %s: %w", backupFileName, err)
