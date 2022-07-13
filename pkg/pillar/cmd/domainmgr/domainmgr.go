@@ -1651,7 +1651,15 @@ func doInactivate(ctx *domainContext, status *types.DomainStatus, impatient bool
 		status.Activated = false
 		status.State = types.HALTED
 	}
-	unmountContainers(ctx, status.DiskStatusList)
+	// first try to unmount containers without force flag
+	if !unmountContainers(ctx, status.DiskStatusList, false) {
+		log.Warnln("unmountContainers not done, wait and retry with force flag")
+		time.Sleep(10 * time.Second)
+		// the second try to unmount containers with force flag
+		if !unmountContainers(ctx, status.DiskStatusList, true) {
+			log.Errorln("unmountContainers failed after retry with force flag")
+		}
+	}
 	releaseAdapters(ctx, status.IoAdapterList, status.UUIDandVersion.UUID,
 		status)
 	status.IoAdapterList = nil
@@ -1662,15 +1670,18 @@ func doInactivate(ctx *domainContext, status *types.DomainStatus, impatient bool
 }
 
 //unmountContainers process provided diskStatusList and unmount all disks with Format_CONTAINER
-func unmountContainers(ctx *domainContext, diskStatusList []types.DiskStatus) {
+func unmountContainers(ctx *domainContext, diskStatusList []types.DiskStatus, force bool) bool {
+	done := true
 	for _, ds := range diskStatusList {
 		switch ds.Format {
 		case zconfig.Format_CONTAINER:
-			if err := ctx.casClient.UnmountContainerRootDir(ds.FileLocation); err != nil {
+			if err := ctx.casClient.UnmountContainerRootDir(ds.FileLocation, force); err != nil {
 				log.Errorf("unmountContainers: %s", err)
+				done = false
 			}
 		}
 	}
+	return done
 }
 
 // releaseAdapters is called when the domain is done with the device and we
