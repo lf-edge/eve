@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -19,7 +20,9 @@ import (
 	"github.com/lf-edge/edge-containers/pkg/resolver"
 	"github.com/lf-edge/eve/pkg/pillar/containerd"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/moby/sys/mountinfo"
 	"github.com/opencontainers/go-digest"
+	"golang.org/x/sys/unix"
 
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 	v1types "github.com/google/go-containerregistry/pkg/v1/types"
@@ -627,8 +630,17 @@ func (c *containerdCAS) PrepareContainerRootDir(rootPath, reference, rootBlobSha
 }
 
 // UnmountContainerRootDir unmounts container's rootPath
-func (c *containerdCAS) UnmountContainerRootDir(rootPath string) error {
-	if err := mount.Unmount(filepath.Join(rootPath, containerRootfsPath), 0); err != nil {
+func (c *containerdCAS) UnmountContainerRootDir(rootPath string, force bool) error {
+	// check if mounted before proceed
+	mounted, err := mountinfo.Mounted(filepath.Join(rootPath, containerRootfsPath))
+	if !mounted || errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	flag := 0
+	if force {
+		flag = unix.MNT_FORCE
+	}
+	if err := mount.Unmount(filepath.Join(rootPath, containerRootfsPath), flag); err != nil {
 		err = fmt.Errorf("UnmountContainerRootDir: exception while unmounting: %v/%v. %v",
 			rootPath, containerRootfsPath, err)
 		logrus.Error(err.Error())
@@ -639,8 +651,9 @@ func (c *containerdCAS) UnmountContainerRootDir(rootPath string) error {
 
 // RemoveContainerRootDir removes contents of a container's rootPath and snapshot.
 func (c *containerdCAS) RemoveContainerRootDir(rootPath string) error {
-	//Step 1: Un-mount container's rootfs
-	if err := c.UnmountContainerRootDir(rootPath); err != nil {
+
+	//Step 1: Un-mount container's rootfs with force flag as we do not aware of content
+	if err := c.UnmountContainerRootDir(rootPath, true); err != nil {
 		err = fmt.Errorf("RemoveContainerRootDir: exception while unmounting: %v/%v. %v",
 			rootPath, containerRootfsPath, err)
 		logrus.Error(err.Error())

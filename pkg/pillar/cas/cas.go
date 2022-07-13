@@ -106,7 +106,9 @@ type CAS interface {
 	PrepareContainerRootDir(rootPath, reference, rootBlobSha string) error
 
 	// UnmountContainerRootDir unmounts container's rootPath.
-	UnmountContainerRootDir(rootPath string) error
+	// with force flag will use MNT_FORCE
+	// if not mounted will not return error
+	UnmountContainerRootDir(rootPath string, force bool) error
 
 	// RemoveContainerRootDir removes contents of a container's rootPath, existing snapshot and reference.
 	RemoveContainerRootDir(rootPath string) error
