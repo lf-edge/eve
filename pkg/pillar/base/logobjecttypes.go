@@ -359,7 +359,8 @@ func EnsureLogObject(logBase *LogObject, objType LogObjectType, objName string, 
 	return logObject
 }
 
-// DeleteLogObject :
+// DeleteLogObject : Delete log object from internal map
+// logBase must be the same object as for calls to EnsureLogObject and NewLogObject
 func DeleteLogObject(logBase *LogObject, key string) {
 	if logBase == nil {
 		logrus.Fatalf("No logBase for %s", key)
@@ -367,7 +368,8 @@ func DeleteLogObject(logBase *LogObject, key string) {
 	mapKey := logBase.mapKey(key)
 	_, ok := logObjectMap.Load(mapKey)
 	if !ok {
-		logrus.Errorf("DeleteLogObject: LogObject with mapKey %s not found in internal map", mapKey)
+		// use logBase as logger to show agent in source instead of zedbox
+		logBase.Errorf("DeleteLogObject: LogObject with mapKey %s not found in internal map", mapKey)
 		return
 	}
 	logObjectMap.Delete(mapKey)
