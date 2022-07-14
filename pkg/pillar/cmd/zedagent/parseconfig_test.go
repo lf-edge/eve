@@ -93,7 +93,7 @@ func TestParsePhysicalNetworkAdapters(t *testing.T) {
 				Assigngrp:    "eth-grp-1",
 				Phyaddrs: map[string]string{
 					"ifname":  "eth0",
-					"pcilong": "0000:04:00.0",
+					"pcilong": "0000:f4:00.0",
 				},
 				Usage: zcommon.PhyIoMemberUsage_PhyIoUsageMgmtAndApps,
 			},
@@ -154,7 +154,7 @@ func TestDPCWithError(t *testing.T) {
 				Assigngrp:    "eth-grp-1",
 				Phyaddrs: map[string]string{
 					"ifname":  "eth0",
-					"pcilong": "0000:04:00.0",
+					"pcilong": "0000:f4:00.0",
 				},
 				Usage: zcommon.PhyIoMemberUsage_PhyIoUsageMgmtAndApps,
 			},
@@ -242,7 +242,7 @@ func TestParseVlans(t *testing.T) {
 				Assigngrp:    "eth-grp-1",
 				Phyaddrs: map[string]string{
 					"ifname":  "eth0",
-					"pcilong": "0000:04:00.0",
+					"pcilong": "0000:f4:00.0",
 				},
 				Usage: zcommon.PhyIoMemberUsage_PhyIoUsageMgmtAndApps,
 			},
@@ -421,7 +421,7 @@ func TestParseBonds(t *testing.T) {
 				Assigngrp:    "eth-grp-1",
 				Phyaddrs: map[string]string{
 					"ifname":  "eth0",
-					"pcilong": "0000:04:00.0",
+					"pcilong": "0000:f4:00.0",
 				},
 				Usage: zcommon.PhyIoMemberUsage_PhyIoUsageMgmtAndApps,
 			},
@@ -553,7 +553,7 @@ func TestParseVlansOverBonds(t *testing.T) {
 				Assigngrp:    "eth-grp-1",
 				Phyaddrs: map[string]string{
 					"ifname":  "eth0",
-					"pcilong": "0000:04:00.0",
+					"pcilong": "0000:f4:00.0",
 				},
 				Usage: zcommon.PhyIoMemberUsage_PhyIoUsageMgmtAndApps,
 			},
@@ -740,7 +740,7 @@ func TestInvalidLowerLayerReferences(t *testing.T) {
 				Assigngrp:    "eth-grp-1",
 				Phyaddrs: map[string]string{
 					"ifname":  "eth0",
-					"pcilong": "0000:04:00.0",
+					"pcilong": "0000:f4:00.0",
 				},
 				Usage: zcommon.PhyIoMemberUsage_PhyIoUsageMgmtAndApps,
 			},

@@ -908,7 +908,7 @@ func TestCreateDomConfig(t *testing.T) {
 				AssignmentGroup: "eth0-1",
 				Phylabel:        "eth0",
 				Ifname:          "eth0",
-				PciLong:         "0000:03:00.0",
+				PciLong:         "0000:f3:00.0",
 				UsedByUUID:      config.UUIDandVersion.UUID,
 			},
 			{
@@ -1210,7 +1210,7 @@ func TestCreateDomConfig(t *testing.T) {
 
 [device]
   driver = "vfio-pci"
-  host = "03:00.0"
+  host = "f3:00.0"
   bus = "pci.10"
   addr = "0x0"
 [chardev "charserial-usr0"]
@@ -1509,7 +1509,7 @@ func TestCreateDomConfig(t *testing.T) {
 
 [device]
   driver = "vfio-pci"
-  host = "03:00.0"
+  host = "f3:00.0"
   bus = "pci.10"
   addr = "0x0"
 [chardev "charserial-usr0"]
@@ -1536,12 +1536,13 @@ func TestCreateDomConfig(t *testing.T) {
 			Type: types.IoNetEth,
 			Name: "eth1",
 		})
+		// we use device that expected to not exists on the real hardware
 		aa.IoBundleList = append(aa.IoBundleList, types.IoBundle{
 			Type:            types.IoNetEth,
 			AssignmentGroup: "eth1-1",
 			Phylabel:        "eth1",
 			Ifname:          "eth1",
-			PciLong:         "0000:04:00.0",
+			PciLong:         "0000:f4:00.0",
 			UsedByUUID:      config.UUIDandVersion.UUID,
 		})
 		if err := kvmIntel.CreateDomConfig("test", config, disks, &aa, conf); err != nil {
@@ -1819,7 +1820,7 @@ func TestCreateDomConfig(t *testing.T) {
 
 [device]
   driver = "vfio-pci"
-  host = "03:00.0"
+  host = "f3:00.0"
   bus = "pci.10"
   addr = "0x0"
 [device "pci.11"]
@@ -1832,7 +1833,7 @@ func TestCreateDomConfig(t *testing.T) {
 
 [device]
   driver = "vfio-pci"
-  host = "04:00.0"
+  host = "f4:00.0"
   bus = "pci.11"
   addr = "0x0"
 [chardev "charserial-usr0"]
@@ -2106,7 +2107,7 @@ func TestCreateDomConfig(t *testing.T) {
 
 [device]
   driver = "vfio-pci"
-  host = "03:00.0"
+  host = "f3:00.0"
   bus = "pci.10"
   addr = "0x0"
 [chardev "charserial-usr0"]
