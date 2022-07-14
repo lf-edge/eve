@@ -466,7 +466,7 @@ func mockWwan0Status() types.WwanStatus {
 				PhysAddrs: types.WwanPhysAddrs{
 					Interface: "wwan0",
 					USB:       "1:3.3",
-					PCI:       "0000:04:00.0",
+					PCI:       "0000:f4:00.0",
 				},
 				Module: types.WwanCellModule{
 					IMEI:            "353533101772021",
@@ -501,7 +501,7 @@ func mockWwan0Metrics() types.WwanMetrics {
 				PhysAddrs: types.WwanPhysAddrs{
 					Interface: "wwan0",
 					USB:       "1:3.3",
-					PCI:       "0000:04:00.0",
+					PCI:       "0000:f4:00.0",
 				},
 				PacketStats: types.WwanPacketStats{
 					RxBytes:   12345,
@@ -1155,7 +1155,7 @@ func TestWireless(test *testing.T) {
 	t.Expect(wwanDNS.Cellular.SimCards[0].IMSI).To(Equal("310180933695713"))
 	t.Expect(wwanDNS.Cellular.PhysAddrs.Interface).To(Equal("wwan0"))
 	t.Expect(wwanDNS.Cellular.PhysAddrs.USB).To(Equal("1:3.3"))
-	t.Expect(wwanDNS.Cellular.PhysAddrs.PCI).To(Equal("0000:04:00.0"))
+	t.Expect(wwanDNS.Cellular.PhysAddrs.PCI).To(Equal("0000:f4:00.0"))
 
 	// Check published wwan status
 	t.Eventually(func() bool {
@@ -1175,7 +1175,7 @@ func TestWireless(test *testing.T) {
 	metrics := obj.(types.WwanMetrics)
 	t.Expect(metrics.Networks).To(HaveLen(1))
 	t.Expect(metrics.Networks[0].LogicalLabel).To(Equal("mock-wwan0"))
-	t.Expect(metrics.Networks[0].PhysAddrs.PCI).To(Equal("0000:04:00.0"))
+	t.Expect(metrics.Networks[0].PhysAddrs.PCI).To(Equal("0000:f4:00.0"))
 	t.Expect(metrics.Networks[0].PhysAddrs.USB).To(Equal("1:3.3"))
 	t.Expect(metrics.Networks[0].PhysAddrs.Interface).To(Equal("wwan0"))
 	t.Expect(metrics.Networks[0].PacketStats.RxBytes).To(BeEquivalentTo(12345))

@@ -13,7 +13,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-var aa AssignableAdapters = AssignableAdapters{
+var aa = AssignableAdapters{
 	Initialized: true,
 	IoBundleList: []IoBundle{
 		{
@@ -150,7 +150,7 @@ func TestIoBundleFromPhyAdapter(t *testing.T) {
 		Assigngrp:    "eth-grp-1",
 		Phyaddr: PhysicalAddress{
 			Ifname:  "eth0",
-			PciLong: "0000:04:00.0",
+			PciLong: "0000:f4:00.0",
 			Irq:     "5",
 			Ioports: "3f8-3ff",
 			Serial:  "/dev/ttyS0",
@@ -175,7 +175,7 @@ func TestIoBundleFromPhyAdapter(t *testing.T) {
 	assert.Equal(t, phyAdapter.Usage, ibPtr.Usage)
 }
 
-var aa2 AssignableAdapters = AssignableAdapters{
+var aa2 = AssignableAdapters{
 	Initialized: true,
 	IoBundleList: []IoBundle{
 		{
@@ -183,70 +183,70 @@ var aa2 AssignableAdapters = AssignableAdapters{
 			AssignmentGroup: "eth0-1",
 			Phylabel:        "eth0",
 			Ifname:          "eth0",
-			PciLong:         "0000:02:00.0",
+			PciLong:         "0000:f2:00.0",
 		},
 		{
 			Type:            IoNetEth,
 			AssignmentGroup: "eth0-1",
 			Phylabel:        "eth1",
 			Ifname:          "eth1",
-			PciLong:         "0000:02:00.0",
+			PciLong:         "0000:f2:00.0",
 		},
 		{
 			Type:            IoNetEth,
 			AssignmentGroup: "eth2",
 			Phylabel:        "eth2",
 			Ifname:          "eth2",
-			PciLong:         "0000:02:00.0",
+			PciLong:         "0000:f2:00.0",
 		},
 		{
 			Type:            IoNetEth,
 			AssignmentGroup: "eth3",
 			Phylabel:        "eth3",
 			Ifname:          "eth3",
-			PciLong:         "0000:02:00.1",
+			PciLong:         "0000:f2:00.1",
 		},
 		{
 			Type:            IoNetEth,
 			AssignmentGroup: "eth4-7",
 			Phylabel:        "eth4",
 			Ifname:          "eth4",
-			PciLong:         "0000:04:00.0",
+			PciLong:         "0000:f4:00.0",
 		},
 		{
 			Type:            IoNetEth,
 			AssignmentGroup: "eth4-7",
 			Phylabel:        "eth5",
 			Ifname:          "eth5",
-			PciLong:         "0000:04:00.1",
+			PciLong:         "0000:f4:00.1",
 		},
 		{
 			Type:            IoNetEth,
 			AssignmentGroup: "eth4-7",
 			Phylabel:        "eth6",
 			Ifname:          "eth6",
-			PciLong:         "0000:04:00.2",
+			PciLong:         "0000:f4:00.2",
 		},
 		{
 			Type:            IoNetEth,
 			AssignmentGroup: "eth4-7",
 			Phylabel:        "eth7",
 			Ifname:          "eth7",
-			PciLong:         "0000:04:00.3",
+			PciLong:         "0000:f4:00.3",
 		},
 		{
 			Type:            IoNetEth,
 			AssignmentGroup: "eth8",
 			Phylabel:        "eth8",
 			Ifname:          "eth8",
-			PciLong:         "0000:08:00.0",
+			PciLong:         "0000:f8:00.0",
 		},
 		{
 			Type:            IoNetEth,
 			AssignmentGroup: "eth9",
 			Phylabel:        "eth9",
 			Ifname:          "eth9",
-			PciLong:         "0000:08:00.1",
+			PciLong:         "0000:f8:00.1",
 		},
 		{
 			Type:            IoUSB,
@@ -254,7 +254,7 @@ var aa2 AssignableAdapters = AssignableAdapters{
 			Logicallabel:    "USB0",
 			AssignmentGroup: "USB-A",
 			Ifname:          "",
-			PciLong:         "0000:00:15.0",
+			PciLong:         "0000:f0:15.0",
 		},
 		{
 			Type:            IoUSB,
@@ -262,7 +262,7 @@ var aa2 AssignableAdapters = AssignableAdapters{
 			Logicallabel:    "USB1",
 			AssignmentGroup: "USB-A",
 			Ifname:          "",
-			PciLong:         "0000:00:15.0",
+			PciLong:         "0000:f0:15.0",
 		},
 		{
 			Type:            IoUSB,
@@ -270,7 +270,7 @@ var aa2 AssignableAdapters = AssignableAdapters{
 			Logicallabel:    "USB2",
 			AssignmentGroup: "USB-A",
 			Ifname:          "",
-			PciLong:         "0000:00:15.0",
+			PciLong:         "0000:f0:15.0",
 		},
 		{
 			Type:            IoUSB,
@@ -278,7 +278,7 @@ var aa2 AssignableAdapters = AssignableAdapters{
 			Logicallabel:    "USB3",
 			AssignmentGroup: "USB-A",
 			Ifname:          "",
-			PciLong:         "0000:00:15.0",
+			PciLong:         "0000:f0:15.0",
 		},
 		{
 			Type:            IoUSB,
@@ -286,7 +286,7 @@ var aa2 AssignableAdapters = AssignableAdapters{
 			Logicallabel:    "USB4",
 			AssignmentGroup: "USB-A",
 			Ifname:          "",
-			PciLong:         "0000:00:15.0",
+			PciLong:         "0000:f0:15.0",
 		},
 		{
 			Type:            IoUSB,
@@ -294,7 +294,7 @@ var aa2 AssignableAdapters = AssignableAdapters{
 			Logicallabel:    "USB5",
 			AssignmentGroup: "USB-A",
 			Ifname:          "",
-			PciLong:         "0000:00:15.0",
+			PciLong:         "0000:f0:15.0",
 		},
 		{
 			Type:            IoUSB,
@@ -302,7 +302,7 @@ var aa2 AssignableAdapters = AssignableAdapters{
 			Logicallabel:    "USB6",
 			AssignmentGroup: "USB-C",
 			Ifname:          "",
-			PciLong:         "0000:05:00.0",
+			PciLong:         "0000:f5:00.0",
 		},
 		{
 			Type:            IoCom,
@@ -346,23 +346,23 @@ var aa2 AssignableAdapters = AssignableAdapters{
 			Logicallabel:    "Audio",
 			AssignmentGroup: "",
 			Ifname:          "None",
-			PciLong:         "0000:05:01.f",
+			PciLong:         "0000:f5:01.f",
 		},
 	},
 }
 
 // Same indices as above
 var aa2Errors = []string{
-	"CheckBadAssignmentGroup: eth3 same PCI controller as eth0; pci long 0000:02:00.1 vs 0000:02:00.0",
-	"CheckBadAssignmentGroup: eth3 same PCI controller as eth1; pci long 0000:02:00.1 vs 0000:02:00.0",
-	"CheckBadAssignmentGroup: eth3 same PCI controller as eth2; pci long 0000:02:00.1 vs 0000:02:00.0",
-	"CheckBadAssignmentGroup: eth2 same PCI controller as eth3; pci long 0000:02:00.0 vs 0000:02:00.1",
+	"CheckBadAssignmentGroup: eth3 same PCI controller as eth0; pci long 0000:f2:00.1 vs 0000:f2:00.0",
+	"CheckBadAssignmentGroup: eth3 same PCI controller as eth1; pci long 0000:f2:00.1 vs 0000:f2:00.0",
+	"CheckBadAssignmentGroup: eth3 same PCI controller as eth2; pci long 0000:f2:00.1 vs 0000:f2:00.0",
+	"CheckBadAssignmentGroup: eth2 same PCI controller as eth3; pci long 0000:f2:00.0 vs 0000:f2:00.1",
 	"",
 	"",
 	"",
 	"",
-	"CheckBadAssignmentGroup: eth9 same PCI controller as eth8; pci long 0000:08:00.1 vs 0000:08:00.0",
-	"CheckBadAssignmentGroup: eth8 same PCI controller as eth9; pci long 0000:08:00.0 vs 0000:08:00.1",
+	"CheckBadAssignmentGroup: eth9 same PCI controller as eth8; pci long 0000:f8:00.1 vs 0000:f8:00.0",
+	"CheckBadAssignmentGroup: eth8 same PCI controller as eth9; pci long 0000:f8:00.0 vs 0000:f8:00.1",
 	"",
 	"",
 	"",
