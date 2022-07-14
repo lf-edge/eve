@@ -39,6 +39,11 @@ var sleep4 = dummyDescription{
 	generateOutput: "sleep4",
 }
 
+var sleep8 = dummyDescription{
+	sleepTime:      8,
+	generateOutput: "sleep8",
+}
+
 var sleep20 = dummyDescription{
 	sleepTime:      20,
 	generateOutput: "sleep20",
@@ -318,40 +323,50 @@ func TestGC(t *testing.T) {
 	assert.Equal(t, 2, wp.NumWorkers())
 	assert.Equal(t, 2, wp.NumPending())
 
-	w3 := worker.Work{Kind: "test", Key: testname + "3", Description: sleep3}
+	w3 := worker.Work{Kind: "test", Key: testname + "3", Description: sleep4}
 	done, err = wp.TrySubmit(w3)
 	assert.True(t, done)
 	assert.Nil(t, err)
 	assert.Equal(t, 3, wp.NumWorkers())
 	assert.Equal(t, 3, wp.NumPending())
 
-	w4 := worker.Work{Kind: "test", Key: testname + "4", Description: sleep4}
+	w4 := worker.Work{Kind: "test", Key: testname + "4", Description: sleep8}
 	done, err = wp.TrySubmit(w4)
 	assert.True(t, done)
 	assert.Nil(t, err)
 	assert.Equal(t, 4, wp.NumWorkers())
 	assert.Equal(t, 4, wp.NumPending())
 
-	// Pick up 1 second one and two second one
+	// Pick up 1 second one
 	proc2 := <-wp.MsgChan()
-	proc2.Process(ctx, true)
+	err = proc2.Process(ctx, true)
+	assert.Nil(t, err)
 	res2 := wp.Pop(testname + "2")
 	assert.Equal(t, testname+"2", res2.Key)
 	assert.Equal(t, 3, wp.NumPending())
 	assert.Equal(t, testname+"2", res.Key)
 	assert.Equal(t, sleep1.generateOutput, res.Output)
 
+	// Wait for GC timer after 1 second test
+	time.Sleep(2 * time.Second)
+	assert.Equal(t, 3, wp.NumWorkers())
+
+	// Pick up four seconds test
 	proc3 := <-wp.MsgChan()
-	proc3.Process(ctx, true)
+	err = proc3.Process(ctx, true)
+	assert.Nil(t, err)
 	res3 := wp.Pop(testname + "3")
 	assert.Equal(t, testname+"3", res3.Key)
 	assert.Equal(t, 2, wp.NumPending())
 	assert.Equal(t, testname+"3", res.Key)
-	assert.Equal(t, sleep3.generateOutput, res.Output)
+	assert.Equal(t, sleep4.generateOutput, res.Output)
 
-	assert.Equal(t, 3, wp.NumWorkers())
-	// Wait for GC timer
-	time.Sleep(10 * time.Second)
+	// Wait for GC timer after four second test
+	time.Sleep(2 * time.Second)
+	assert.Equal(t, 2, wp.NumWorkers())
+
+	// sleep to keep eight seconds test work in the background
+	time.Sleep(8 * time.Second)
 
 	w5 := worker.Work{Kind: "test", Key: testname + "5", Description: sleep1}
 	done, err = wp.TrySubmit(w5)
@@ -360,16 +375,22 @@ func TestGC(t *testing.T) {
 	assert.Equal(t, 2, wp.NumWorkers())
 	assert.Equal(t, 3, wp.NumPending())
 
+	// Pick up eight seconds test
+	// it is expected to end before one second test
+	// as we wait enough for result
 	proc4 := <-wp.MsgChan()
-	proc4.Process(ctx, true)
+	err = proc4.Process(ctx, true)
+	assert.Nil(t, err)
 	res4 := wp.Pop(testname + "4")
 	assert.Equal(t, testname+"4", res4.Key)
 	assert.Equal(t, 2, wp.NumPending())
 	assert.Equal(t, testname+"4", res.Key)
-	assert.Equal(t, sleep4.generateOutput, res.Output)
+	assert.Equal(t, sleep8.generateOutput, res.Output)
 
+	// Pick up one second test
 	proc5 := <-wp.MsgChan()
-	proc5.Process(ctx, true)
+	err = proc5.Process(ctx, true)
+	assert.Nil(t, err)
 	res5 := wp.Pop(testname + "5")
 	assert.Equal(t, testname+"5", res5.Key)
 	assert.Equal(t, 1, wp.NumPending())
@@ -377,7 +398,8 @@ func TestGC(t *testing.T) {
 	assert.Equal(t, sleep1.generateOutput, res.Output)
 
 	proc1 := <-wp.MsgChan()
-	proc1.Process(ctx, true)
+	err = proc1.Process(ctx, true)
+	assert.Nil(t, err)
 	res1 := wp.Pop(testname + "1")
 	assert.Equal(t, testname+"1", res1.Key)
 	assert.Equal(t, 0, wp.NumPending())
