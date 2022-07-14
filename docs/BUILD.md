@@ -2,6 +2,9 @@
 
 This document describes how the EVE build process works, its dependencies, inputs and outputs. The planned complementary document [CONTRIBUTING.md](./CONTRIBUTING.md) describes how to contribute to EVE.
 
+If you want to customize any part of the build for your own purposes, to generate a custom eve-os image, please read this document to understand it,
+and then read [CUSTOM-BUILD.md](./CUSTOM-BUILD.md).
+
 ## Conceptual structure of EVE Makefile targets
 
 EVE Makefile automates building and running the following artifacts (all of which are described in gory details below):
