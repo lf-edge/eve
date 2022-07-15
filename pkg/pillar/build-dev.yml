@@ -15,8 +15,6 @@ config:
     - /:/hostfs
     - /persist:/persist:rshared,rbind
     - /usr/bin/containerd:/usr/bin/containerd
-    - /usr/bin/containerd-shim:/usr/bin/containerd-shim
-    - /usr/bin/containerd-shim-runc-v2:/usr/bin/containerd-shim-runc-v2
   net: host
   capabilities:
     - all

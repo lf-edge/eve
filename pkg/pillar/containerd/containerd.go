@@ -51,7 +51,7 @@ const (
 	// ctrdServicesNamespace containerd namespace for running user containers
 	ctrdServicesNamespace = "eve-user-apps"
 	//containerdRunTime - default runtime of containerd
-	containerdRunTime = "io.containerd.runtime.v1.linux"
+	containerdRunTime = "io.containerd.runc.v2"
 	// container config file name
 	imageConfigFilename = "image-config.json"
 	// full OCI runtime spec

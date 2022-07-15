@@ -1,6 +1,12 @@
+version = 2
 state = "/run/containerd"
 root = "/persist/containerd-system-root"
-disabled_plugins = ["cri", "btrfs", "aufs"]
+disabled_plugins = [
+    "io.containerd.grpc.v1.cri",
+    "io.containerd.snapshotter.v1.btrfs",
+    "io.containerd.snapshotter.v1.aufs",
+    "io.containerd.internal.v1.opt"
+]
 
 [grpc]
   address = "/run/containerd/containerd.sock"
