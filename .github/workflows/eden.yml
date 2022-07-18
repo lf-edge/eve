@@ -61,7 +61,7 @@ jobs:
              docker tag  "$CACHE:$TAG-kvm" "lfedge/eve:$TAG-kvm"
              docker tag  "$CACHE:$TAG-kvm" "lfedge/eve:$TAG-kvm-amd64"
           else
-             make -C eve V=1 pkgs
+             make -C eve V=1 PRUNE=1 pkgs
              make -C eve V=1 ROOTFS_VERSION="$TAG" eve
              IMAGES="$(docker images -f reference="lfedge/eve-*" -q)"
              IMAGES="$IMAGES $(docker images -f reference="eve-build-*" -q)"
