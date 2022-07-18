@@ -3,8 +3,8 @@
 #
 # This script creates a raw disk image partitioned with GPT partition table
 # and set up for UEFI boot sequence with a GRUB UEFI payload and a default
-# grub.cfg attempting to chainload GRUB from one of the actuall rootfs 
-# partitions. This means that at the very minimim the output of this script
+# grub.cfg attempting to chainload GRUB from one of the actual rootfs
+# partitions. This means that at the very minimum the output of this script
 # will produce a disk that looks like:
 #
 # +----------------------------+
@@ -30,11 +30,11 @@
 # <img>       file name of the raw disk image (we expect it to be pre-created and 
 #             sized correctly OR be an actual physical device)
 # [part1...]  list of partitions to be created: efi imga imgb conf persist
-#             Can be ommitted. Default is: efi imga imgb conf persist
+#             Can be omitted. Default is: efi imga imgb conf persist
 # 
-# On stdin, this scripts expects to recieve a tarball full of partition images
+# On stdin, this scripts expects to receive a tarball full of partition images
 # that will be used to pre-populated actual partitions it creates. This tarball 
-# is going to be recieved from stdin and extracted into /parts folder. This means, 
+# is going to be received from stdin and extracted into /parts folder. This means,
 # of course, that if you don't supply a tarball stream to the script you can just
 # pre-populate /parts with the same images:
 #   * rootfs*.img for rootfs partition
@@ -304,9 +304,9 @@ do_usb_conf() {
     eval "$1=$(( SEC_END + 1))"
 }
 
-# This function deploys GRUB stage1 into MBR (sector 0) and GRUB stage2 into the gap betwee
+# This function deploys GRUB stage1 into MBR (sector 0) and GRUB stage2 into the gap between
 # where GPT ends and first partition begins (sector 34 - sector FIRST_PART_SEC). It relies
-# on the knowlege of where GRUB implemenation stores the value for the 1st and 2nd sectors
+# on the knowledge of where GRUB implementation stores the value for the 1st and 2nd sectors
 # of stage2 (see the seek offsets for dd below). Whenever GRUB version changes there's a chance
 # these offsets may change and will have to be adjusted accordingly as per:
 #   * grub-core/boot/i386/pc/boot.S kernel_sector
@@ -325,9 +325,9 @@ deploy_legacy_grub() {
 
 adjust_protective_mbr() {
     # Since sgdisk by default puts protective partition first, we need to swap the
-    # order to make sone legacy BIOS implementations happy. Strictly speaking, this
+    # order to make some legacy BIOS implementations happy. Strictly speaking, this
     # goes against good recommendations of how to build a protective MBR for the GPT
-    # but it doesn't seem to cause any troubles and it helps with compabitlity.
+    # but it doesn't seem to cause any troubles and it helps with compatibility.
     # On top of that we need to mark 1st MBR partition bootable and vfat type to
     # make legacy BIOSes real happy:
     (fdisk "$IMGFILE" > /dev/null <<__EOT__
@@ -374,7 +374,7 @@ INSTALLER_IMG=/parts/installer.img
 # GRUB cfg override for our installer
 INSTALLER_GRUB_CFG=/parts/grub.cfg
 
-# offset in the GTP partition table from which we can start our numbering
+# offset in the GPT partition table from which we can start our numbering
 PART_OFFSET=0
 # starting sector for our portion of the disk
 CUR_SEC="$FIRST_PART_SEC"
@@ -398,7 +398,7 @@ case "$(sgdisk -p $IMGFILE 2>/dev/null | sed -ne '/^Number/,$s/^.* //p' | tr '\0
       dd if=/dev/zero of="$IMGFILE" bs=512 count=1 conv=notrunc
       sgdisk -Z --clear $IMGFILE 2>/dev/null || :
       ;;
-   *) echo "Unknown (or unrecongnizable) GTP partition table on $IMGFILE"
+   *) echo "Unknown (or unrecognizable) GPT partition table on $IMGFILE"
       # apparently sgdisk -Z doesn't clear MBR and keeps complaining
       dd if=/dev/zero of="$IMGFILE" bs=512 count=1 conv=notrunc
       sgdisk -Z --clear $IMGFILE 2>/dev/null || :
@@ -429,7 +429,7 @@ if [ -e /efifs/EFI/BOOT/BOOT.pc ]; then
 fi
 
 # Update embedded boot partition with our own bootloader - this only happens if
-# we noticed a recongnizable GPT structure and we are ADDING ourselves to it,
+# we noticed a recognizable GPT structure and we are ADDING ourselves to it,
 # as opposed to replacing the entire GPT with our own structure (currently this
 # only happens for HiKey but the approach of using partitions to store firmware
 # blobs on flash is fairly common on ARM so we expect to see others as well)
