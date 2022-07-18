@@ -17,7 +17,6 @@ jobs:
       fail-fast: false
       matrix:
         os: [arm64-dirty, ubuntu-20.04]
-        hv: [xen, kvm]
     steps:
       - name: Starting Report
         run: |
@@ -37,10 +36,11 @@ jobs:
         env:
           PR_ID: ${{ github.event.pull_request.number  }}
         run: |
-          make V=1 pkgs
+          make V=1 PRUNE=1 pkgs
           COMMIT_ID=$(git describe --abbrev=8 --always)
           echo "VERSION=0.0.0-pr$PR_ID-$COMMIT_ID" >> $GITHUB_ENV
           echo "TAG=evebuild/danger:pr$PR_ID" >> $GITHUB_ENV
+          echo "ARCH=$(uname -m | sed -e 's/x86_64/amd64/' -e 's/aarch64/arm64/')" >> "$GITHUB_ENV"
       - name: Post package report
         run: |
           echo Disk usage
@@ -49,11 +49,9 @@ jobs:
           free -m
           docker system df
           docker system df -v
-      - name: Build EVE
-        env:
-          HV: ${{ matrix.hv }}
+      - name: Build EVE KVM
         run: |
-          make V=1 ROOTFS_VERSION="$VERSION" HV=$HV eve
+          make V=1 ROOTFS_VERSION="$VERSION" HV=kvm eve
       - name: Post eve build report
         run: |
           echo Disk usage
@@ -63,22 +61,49 @@ jobs:
           docker system df
           docker system df -v
       - name: Export docker container
-        env:
-          HV: ${{ matrix.hv }}
         run: |
-          ARCH=$(uname -m | sed -e 's/x86_64/amd64/' -e 's/aarch64/arm64/')
-          echo "ARCH=$ARCH" >> "$GITHUB_ENV"
-          docker tag "lfedge/eve:$VERSION-$HV" "$TAG-$HV-$ARCH"
-          IMGS="$IMGS $TAG-$HV-$ARCH"
-          docker save $IMGS > eve-$HV-$ARCH.tar
-      - name: Upload EVE
+          docker tag "lfedge/eve:$VERSION-kvm" "$TAG-kvm-${{ env.ARCH }}"
+          docker save "$TAG-kvm-${{ env.ARCH }}" > "eve-kvm-${{ env.ARCH }}.tar"
+      - name: Upload EVE KVM
         uses: actions/upload-artifact@v2
         with:
-          name: eve-${{ matrix.hv }}-${{ env.ARCH }}
-          path: eve-${{ matrix.hv }}-${{ env.ARCH }}.tar
+          name: eve-kvm-${{ env.ARCH }}
+          path: eve-kvm-${{ env.ARCH }}.tar
+      - name: Clean EVE KVM
+        run: |
+          make clean
+          docker rmi "$TAG-kvm-${{ env.ARCH }}" "lfedge/eve:$VERSION-kvm" "lfedge/eve:$VERSION-kvm-${{ env.ARCH }}" ||:
+      - name: Post clean eve KVM report
+        run: |
+          echo Disk usage
+          df -h
+          echo Memory
+          free -m
+          docker system df
+          docker system df -v
+      - name: Build EVE XEN
+        run: |
+          make V=1 ROOTFS_VERSION="$VERSION" HV=xen eve
+      - name: Post eve build report
+        run: |
+          echo Disk usage
+          df -h
+          echo Memory
+          free -m
+          docker system df
+          docker system df -v
+      - name: Export docker container
+        run: |
+          docker tag "lfedge/eve:$VERSION-xen" "$TAG-xen-${{ env.ARCH }}"
+          docker save "$TAG-xen-${{ env.ARCH }}" > "eve-xen-${{ env.ARCH }}.tar"
+      - name: Upload EVE XEN
+        uses: actions/upload-artifact@v2
+        with:
+          name: eve-xen-${{ env.ARCH }}
+          path: eve-xen-${{ env.ARCH }}.tar
       - name: Clean
         if: ${{ always() }}
         run: |
           make clean
-          docker system prune -f -a
+          docker system prune -f -a --volumes
           rm -rf ~/.linuxkit

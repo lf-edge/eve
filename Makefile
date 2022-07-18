@@ -42,6 +42,9 @@ SSH_KEY=$(CONF_DIR)/ssh.key
 ACCEL=
 # Use TPM device (any non-empty value will trigger using it), i.e. 'make TPM=y run'
 TPM=
+# Prune dangling images after build of package to reduce disk usage (any non-empty value will trigger using it)
+# Be aware that with this flag we will clean all dangling images in system, not only EVE-OS related
+PRUNE=
 # Location of the EVE configuration folder to be used in builds
 CONF_DIR=conf
 # Source of the cloud-init enabled qcow2 Linux VM for all architectures
@@ -690,6 +693,7 @@ get_pkg_build_dev_yml = $(if $(wildcard pkg/$1/build-dev.yml),build-dev.yml,buil
 eve-%: pkg/%/Dockerfile build-tools $(RESCAN_DEPS)
 	$(QUIET): "$@: Begin: LINUXKIT_PKG_TARGET=$(LINUXKIT_PKG_TARGET)"
 	$(QUIET)$(LINUXKIT) $(DASH_V) pkg $(LINUXKIT_PKG_TARGET) $(LINUXKIT_OPTS) -build-yml $(call get_pkg_build_yml,$*) pkg/$*
+	$(QUIET)if [ -n "$(PRUNE)" ]; then docker image prune -f; fi
 	$(QUIET): "$@: Succeeded (intermediate for pkg/%)"
 
 images/rootfs-%.yml.in: images/rootfs.yml.in FORCE
