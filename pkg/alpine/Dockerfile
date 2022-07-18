@@ -27,7 +27,7 @@ RUN for p in */*; do build-cache.sh "$p" "/mirror/$(dirname "$p")" $(cat "$p") ;
 # set the default repository to use
 RUN cp /mirror/${ALPINE_VERSION}/rootfs/etc/apk/repositories /etc/apk && apk update
 
-FROM ${EVE_BUILDER_IMAGE}
+FROM ${EVE_BUILDER_IMAGE} as compactor
 
 COPY --from=cache /etc/apk/repositories* /etc/apk/
 COPY --from=cache /etc/apk/keys /etc/apk/keys/
@@ -35,3 +35,9 @@ COPY --from=cache /mirror /mirror/
 COPY eve-alpine-deploy.sh go-compile.sh /bin/
 
 RUN apk update && apk upgrade -a
+
+# we merge layers in previous step
+# so we should avoid large possible diff
+FROM scratch
+COPY --from=compactor / /
+CMD ["/bin/sh"]
