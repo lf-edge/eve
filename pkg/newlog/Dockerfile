@@ -1,6 +1,6 @@
 FROM lfedge/eve-alpine:6.7.0 as build
 ENV BUILD_PKGS git go
-ENV PKGS busybox
+ENV PKGS coreutils
 RUN eve-alpine-deploy.sh
 
 # FIXME bump eve-alpine to alpine 3.14
