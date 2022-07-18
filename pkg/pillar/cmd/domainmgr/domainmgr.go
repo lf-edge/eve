@@ -1402,7 +1402,8 @@ func doActivateTail(ctx *domainContext, status *types.DomainStatus,
 	status.Activated = true
 	err = setupVlans(status.VifList)
 	if err != nil {
-		log.Errorf("setupVlans failed: %v", err)
+		log.Errorf("doActivateTail(%v) setupVlans failed for %s: %v",
+			status.UUIDandVersion, status.DisplayName, err)
 	}
 	log.Functionf("doActivateTail(%v) done for %s",
 		status.UUIDandVersion, status.DisplayName)
@@ -1433,8 +1434,8 @@ func enableVlanFiltering(bridgeName string) error {
 
 // TODO Move this to zedrouter.
 func setupVlans(vifList []types.VifInfo) error {
-	deadline := time.Now().Add(20 * time.Second)
-	const delay = 500 * time.Millisecond
+	deadline := time.Now().Add(time.Minute)
+	const delay = time.Second
 	for _, vif := range vifList {
 		if vif.Vlan.End == 0 {
 			// VLAN not configured for this interface
