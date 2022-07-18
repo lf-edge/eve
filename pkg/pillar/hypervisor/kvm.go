@@ -490,7 +490,7 @@ func (ctx kvmContext) Setup(status types.DomainStatus, config types.DomainConfig
 	}
 
 	/* 2.5 % of total memory */
-	qemuOverHead := int64(config.Memory) * 1024 * 25 / 1000
+	qemuOverHead := int64(config.Memory) * 1024 * 40 / 1000
 	if qemuOverHead < minQemuOverHead {
 		qemuOverHead = minQemuOverHead
 	}
