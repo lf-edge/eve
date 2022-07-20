@@ -256,7 +256,7 @@ The specific implementations of the `DriverPublisher` interface and `DriverSubsc
 ##### `socketdriver.Publisher` Updates
 
 When `socketdriver.Publisher` receives updates from its calling `pubsub.Publication`, it saves the data in a file, whose name is determined
-as `<dirName>/<key>.json`.
+as `<dirName>/<key>.json`. Key must not contain slashes and should fit max filesize limit (not exceed 255 symbols).
 
 For example, if the `<dirName>` from above was `/persist/tester/configmgr/inputs/`, and the `Publish()` used the key `important`, then
 the filename is `/persist/tester/configmgr/inputs/important.json`.
