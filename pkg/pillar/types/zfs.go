@@ -6,6 +6,7 @@ package types
 import (
 	"fmt"
 	"strings"
+	"time"
 )
 
 const (
@@ -54,6 +55,86 @@ func (status ZVolStatus) Key() string {
 	return strings.ReplaceAll(status.Dataset, "/", "_")
 }
 
+// PoolStatus type value from ZFS
+type PoolStatus uint32
+
+// PoolStatus value.
+//
+// The following correspond to faults as defined in enum zfs_error in the
+// libzfs.h header file. But we add +1 to their values to that we can
+// have a Unspecified=0 value to follow our conventions. Basically that the
+// definitions should follow that in the (fault.fs.zfs.*) event namespace.
+const (
+	PoolStatusUnspecified       PoolStatus = iota // Unspecified
+	PoolStatusCorruptCache                        // PoolStatusCorruptCache - corrupt /kernel/drv/zpool.cache
+	PoolStatusMissingDevR                         // missing device with replicas
+	PoolStatusMissingDevNr                        // missing device with no replicas
+	PoolStatusCorruptLabelR                       // bad device label with replicas
+	PoolStatusCorruptLabelNr                      // bad device label with no replicas
+	PoolStatusBadGUIDSum                          // sum of device guids didn't match
+	PoolStatusCorruptPool                         // pool metadata is corrupted
+	PoolStatusCorruptData                         // data errors in user (meta)data
+	PoolStatusFailingDev                          // device experiencing errors
+	PoolStatusVersionNewer                        // newer on-disk version
+	PoolStatusHostidMismatch                      // last accessed by another system
+	PoolStatusHosidActive                         // currently active on another system
+	PoolStatusHostidRequired                      // multihost=on and hostid=0
+	PoolStatusIoFailureWait                       // failed I/O, failmode 'wait'
+	PoolStatusIoFailureContinue                   // failed I/O, failmode 'continue'
+	PoolStatusIOFailureMMP                        // ailed MMP, failmode not 'panic'
+	PoolStatusBadLog                              // cannot read log chain(s)
+	PoolStatusErrata                              // informational errata available
+	PoolStatusUnsupFeatRead                       // If the pool has unsupported features but cannot be opened at all, its status is ZPOOL_STATUS_UNSUP_FEAT_READ.
+	PoolStatusUnsupFeatWrite                      // If the pool has unsupported features but can still be opened in read-only mode, its status is ZPOOL_STATUS_UNSUP_FEAT_WRITE
+	PoolStatusFaultedDevR                         // faulted device with replicas
+	PoolStatusFaultedDevNr                        // faulted device with no replicas
+	PoolStatusVersionOlder                        // older legacy on-disk version
+	PoolStatusFeatDisabled                        // supported features are disabled
+	PoolStatusResilvering                         // device being resilvered
+	PoolStatusOfflineDev                          // device offline
+	PoolStatusRemovedDev                          // removed device
+	PoolStatusRebuilding                          // device being rebuilt
+	PoolStatusRebuildScrub                        // recommend scrubbing the pool
+	PoolStatusNonNativeAshift                     // (e.g. 512e dev with ashift of 9)
+	PoolStatusCompatibilityErr                    // bad 'compatibility' property
+	PoolStatusIncompatibleFeat                    // feature set outside compatibility
+	PoolStatusOk                                  // the indicates a healthy pool.
+)
+
+// VDevAux - vdev aux states
+type VDevAux uint64
+
+// VDevAux - vdev aux states. When a vdev is in the CANT_OPEN state, the aux field
+// of the vdev stats structure uses these constants to distinguish why.
+//
+// But we add +1 to their values to that we can have a Unspecified=0 value
+// to follow our conventions. Basically that the
+// definitions should follow that in the vdev_aux enum in sys/fs/zfs.h.
+const (
+	VDevAuxUnspecified     VDevAux = iota // Unspecified
+	VDevAuxStatusOk                       // no error (normal state)
+	VDevAuxOpenFailed                     // ldi_open_*() or vn_open() failed
+	VDevAuxCorruptData                    // bad label or disk contents
+	VDevAuxNoReplicas                     // insufficient number of replicas
+	VDevAuxBadGUIDSum                     // vdev guid sum doesn't match
+	VDevAuxTooSmall                       // vdev size is too small
+	VDevAuxBadLabel                       // the label is OK but invalid
+	VDevAuxVersionNewer                   // on-disk version is too new
+	VDevAuxVersionOlder                   // on-disk version is too old
+	VDevAuxUnsupFeat                      // unsupported features
+	VDevAuxSpared                         // hot spare used in another pool
+	VDevAuxErrExceeded                    // too many errors
+	VDevAuxIOFailure                      // experienced I/O failure
+	VDevAuxBadLog                         // cannot read log chain(s)
+	VDevAuxExternal                       // external diagnosis
+	VDevAuxSplitPool                      // vdev was split off into another pool
+	VdevAuxBadAshift                      // vdev ashift is invalid
+	VdevAuxExternalPersist                // persistent forced fault
+	VdevAuxActive                         // vdev active on a different host
+	VdevAuxChildrenOffline                // all children are offline
+	VdevAuxAshiftTooBig                   // vdev's min block size is too large
+)
+
 // StorageRaidType indicates storage raid type
 type StorageRaidType int32
 
@@ -83,6 +164,19 @@ const (
 	StorageStatusSuspended   StorageStatus = 7 // A pool that is waiting for device connectivity to be restored.
 )
 
+// ZFSPoolMetrics - stores metrics for the pool including all child devices
+type ZFSPoolMetrics struct {
+	DisplayName     string            // Pool or Dataset name
+	CollectionTime  time.Time         // Time in seconds when the metrics was collected
+	Metrics         *ZDeviceMetrics   // metrics and error counters for Pool or Dataset
+	ChildrenDataset []*ZFSPoolMetrics // children datasets or devices
+}
+
+//Key for pubsub ZFSPoolMetrics
+func (s ZFSPoolMetrics) Key() string {
+	return s.DisplayName
+}
+
 // ZFSPoolStatus stores collected information about zpool
 type ZFSPoolStatus struct {
 	PoolName         string
@@ -95,6 +189,7 @@ type ZFSPoolStatus struct {
 	Disks            []*StorageDiskState
 	CollectorErrors  string
 	Children         []*StorageChildren
+	PoolStatusMsg    PoolStatus // pool status value from ZFS
 }
 
 //Key for pubsub
@@ -109,10 +204,47 @@ type DiskDescription struct {
 	Serial      string // serial number of disk
 }
 
+// ZIOType - IO types in ZFS.
+// These values are used to access the data in the
+// arrays (Ops/Bytes) with statistics coming from libzfs.
+// ZIOTypeMax value determines the number of ZIOType in this enum.
+// (Should always be the last in this enum)
+const (
+	ZIOTypeNull = iota
+	ZIOTypeRead
+	ZIOTypeWrite
+	ZIOTypeFree
+	ZIOTypeClaim
+	ZIOTypeIoctl
+	ZIOTypeMax // ZIOTypeMax value determines the number of ZIOType in this enum. (Should always be the last in this enum)
+)
+
+// ZDeviceMetrics metrics for dev from ZFS and /proc/diskstats
+type ZDeviceMetrics struct {
+	Alloc          uint64             // space allocated (in byte)
+	Space          uint64             // total capacity (in byte)
+	DSpace         uint64             // deflated capacity (in byte)
+	RSize          uint64             // replaceable dev size (in byte)
+	ESize          uint64             // expandable dev size (in byte)
+	ReadErrors     uint64             // read errors
+	WriteErrors    uint64             // write errors
+	ChecksumErrors uint64             // checksum errors
+	Ops            [ZIOTypeMax]uint64 // operation count
+	Bytes          [ZIOTypeMax]uint64 // bytes read/written
+	IOsInProgress  uint64             // IOsInProgress is number of I/Os currently in progress.
+	ReadTicks      uint64             // ReadTicks is the total number of milliseconds spent by all reads.
+	WriteTicks     uint64             // WriteTicks is the total number of milliseconds spent by all writes.
+	IOsTotalTicks  uint64             // IOsTotalTicks is the number of milliseconds spent doing I/Os.
+	// WeightedIOTicks is the weighted number of milliseconds spent doing I/Os.
+	// This can also be used to estimate average queue wait time for requests.
+	WeightedIOTicks uint64
+}
+
 //StorageDiskState represent state of disk
 type StorageDiskState struct {
 	DiskName *DiskDescription
 	Status   StorageStatus
+	AuxState VDevAux
 }
 
 // StorageChildren stores children of zfs pool

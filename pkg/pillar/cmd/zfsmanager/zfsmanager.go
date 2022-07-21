@@ -47,6 +47,7 @@ type zfsContext struct {
 	ps                     *pubsub.PubSub
 	zVolStatusPub          pubsub.Publication
 	storageStatusPub       pubsub.Publication
+	storageMetricsPub      pubsub.Publication
 	subDisksConfig         pubsub.Subscription
 	disksProcessingTrigger chan interface{}
 	zVolDeviceEvents       *base.LockedStringMap // stores device->zVolDeviceEvent mapping to check and publish
@@ -110,7 +111,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	ctxPtr.subDisksConfig = subDisksConfig
 	subDisksConfig.Activate()
 
-	// Publish cloud metrics
+	// Publish cloud status
 	storageStatusPub, err := ps.NewPublication(
 		pubsub.PublicationOptions{
 			AgentName:  agentName,
@@ -122,6 +123,18 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	}
 	ctxPtr.storageStatusPub = storageStatusPub
 
+	// Publish cloud metrics
+	storageMetricsPub, err := ps.NewPublication(
+		pubsub.PublicationOptions{
+			AgentName:  agentName,
+			TopicType:  types.ZFSPoolMetrics{},
+			Persistent: false,
+		})
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctxPtr.storageMetricsPub = storageMetricsPub
+
 	if err := os.MkdirAll(types.ZVolDevicePrefix, os.ModeDir); err != nil {
 		log.Fatal(err)
 	}
@@ -131,6 +144,8 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	go deviceWatcher(&ctxPtr)
 
 	go storageStatusPublisher(&ctxPtr)
+
+	go storageMetricsPublisher(&ctxPtr)
 
 	max := float64(zvolsProcessingInterval)
 	min := max * 0.3
