@@ -12,6 +12,7 @@ RUN apk add --no-cache \
     linux-firmware-nvidia \
     linux-firmware-rtl_nic \
     linux-firmware-brcm \
+    linux-firmware-cypress \
     linux-firmware-ti-connectivity
 
 FROM busybox as compactor
@@ -43,6 +44,7 @@ COPY --from=build /lib/firmware/iwlwifi-QuZ-a0-hr-b0* /lib/firmware/
 COPY --from=build /lib/firmware/rtl_nic/* /lib/firmware/rtl_nic/
 # Firmware for Raspberry Pi4 and Broadcom wifi
 COPY --from=build /lib/firmware/brcm /lib/firmware/brcm
+COPY --from=build /lib/firmware/cypress /lib/firmware/cypress
 # ath10k firmware
 COPY --from=build /lib/firmware/ath10k /lib/firmware/ath10k
 # firmware for HiKey
