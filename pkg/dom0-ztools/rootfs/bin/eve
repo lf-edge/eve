@@ -19,6 +19,7 @@ Welcome to EVE!
             persist attach <disk>
             firewall drop
             verbose on|off
+            version
 __EOT__
   exit 1
 }
@@ -117,6 +118,10 @@ __EOT__
               *) help
                  ;;
           esac
+          ;;
+ version)
+          v=$(cat /run/eve-release)
+          echo "$v"
           ;;
  persist) case "$2" in
                list) list_partitions
