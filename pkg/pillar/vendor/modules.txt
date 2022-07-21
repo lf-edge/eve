@@ -430,6 +430,7 @@ github.com/mitchellh/go-homedir
 # github.com/moby/locker v1.0.1
 github.com/moby/locker
 # github.com/moby/sys/mountinfo v0.6.0
+## explicit
 github.com/moby/sys/mountinfo
 # github.com/moby/sys/signal v0.7.0
 github.com/moby/sys/signal

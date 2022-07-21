@@ -20,6 +20,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils/disks"
 	"github.com/lf-edge/eve/pkg/pillar/vault"
+	"github.com/prometheus/procfs/blockdevice"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -390,6 +391,50 @@ func GetZfsDeviceStatusFromStr(statusStr string) types.StorageStatus {
 	return types.StorageStatusUnspecified
 }
 
+// GetZfsDeviceMetrics read libzfs.VDevStat and return metrics
+// (*types.DiskMetrics) for only one device in zfs pool.
+func GetZfsDeviceMetrics(stat libzfs.VDevStat, diskName string) *types.ZDeviceMetrics {
+	devMetrics := new(types.ZDeviceMetrics)
+	devMetrics.Alloc = stat.Alloc
+	devMetrics.Space = stat.Space
+	devMetrics.DSpace = stat.DSpace
+	devMetrics.RSize = stat.RSize
+	devMetrics.ESize = stat.ESize
+	devMetrics.ChecksumErrors = stat.ChecksumErrors
+	devMetrics.ReadErrors = stat.ReadErrors
+	devMetrics.WriteErrors = stat.WriteErrors
+	for i := 0; i < types.ZIOTypeMax; i++ {
+		devMetrics.Ops[i] = stat.Ops[i]
+		devMetrics.Bytes[i] = stat.Bytes[i]
+	}
+
+	// Only for block devices (Ex. /dev/sd*)
+	if diskName != "" {
+		shortName := filepath.Base(diskName)
+		fs, err := blockdevice.NewFS("/proc", "/sys")
+		if err != nil {
+			log.Errorf("failed to get block device stats for %s. Error:%v", diskName, err)
+			return devMetrics
+		}
+		stats, err := fs.ProcDiskstats()
+		if err != nil {
+			log.Errorf("failed to get diskstats %v", err)
+			return devMetrics
+		}
+
+		for _, stat := range stats {
+			if shortName == stat.Info.DeviceName {
+				devMetrics.IOsInProgress = stat.IOStats.IOsInProgress
+				devMetrics.ReadTicks = stat.IOStats.ReadTicks
+				devMetrics.WriteTicks = stat.IOStats.WriteTicks
+				devMetrics.IOsTotalTicks = stat.IOStats.IOsTotalTicks
+				devMetrics.WeightedIOTicks = stat.IOStats.WeightedIOTicks
+			}
+		}
+	}
+	return devMetrics
+}
+
 // GetZfsDiskAndStatus takes a libzfs.VDevTree as input and returns
 // *info.StorageDiskState.
 func GetZfsDiskAndStatus(disk libzfs.VDevTree) (*types.StorageDiskState, error) {
@@ -421,6 +466,7 @@ func GetZfsDiskAndStatus(disk libzfs.VDevTree) (*types.StorageDiskState, error) 
 	rDiskStatus.DiskName = new(types.DiskDescription)
 	rDiskStatus.DiskName.Name = *proto.String(diskZfsName)
 	rDiskStatus.DiskName.Serial = *proto.String(serialNumber)
+	rDiskStatus.AuxState = types.VDevAux(disk.Stat.Aux + 1) // + 1 given the presence of VDevAuxUnspecified on the EVE side
 	rDiskStatus.Status = GetZfsDeviceStatusFromStr(disk.Stat.State.String())
 	return rDiskStatus, nil
 }
@@ -479,4 +525,31 @@ func GetDatasetUsageStat(datasetName string) (*types.UsageStat, error) {
 	usageStat.Used = logicalUsedBytes
 	usageStat.Free = usageStat.Total - usageStat.Used
 	return &usageStat, nil
+}
+
+// GetAllDeviceMetricsFromZpool - returns metrics for all devices in zfs pool/dataset
+func GetAllDeviceMetricsFromZpool(vdev libzfs.VDevTree) *types.ZFSPoolMetrics {
+	metrics := new(types.ZFSPoolMetrics)
+	// If this is a RAID or mirror, look at the disks it consists of
+	if vdev.Type == libzfs.VDevTypeMirror ||
+		vdev.Type == libzfs.VDevTypeRaidz ||
+		vdev.Type == libzfs.VDevTypeRoot {
+		for _, disk := range vdev.Devices {
+			metrics.ChildrenDataset = append(metrics.ChildrenDataset,
+				GetAllDeviceMetricsFromZpool(disk))
+		}
+		metrics.DisplayName = vdev.Name
+		metrics.CollectionTime = time.Now()
+		metrics.Metrics = GetZfsDeviceMetrics(vdev.Stat, "")
+	} else if vdev.Type == libzfs.VDevTypeDisk {
+		diskName, err := disks.GetDiskNameByPartName(vdev.Name)
+		if err != nil {
+			log.Errorf("cannot get disk name for %s: %s", vdev.Name, err)
+			diskName = vdev.Name
+		}
+		metrics.DisplayName = diskName
+		metrics.CollectionTime = time.Now()
+		metrics.Metrics = GetZfsDeviceMetrics(vdev.Stat, vdev.Name)
+	}
+	return metrics
 }

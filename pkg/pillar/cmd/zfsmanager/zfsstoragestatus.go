@@ -59,6 +59,12 @@ func collectAndPublishStorageStatus(ctxPtr *zfsContext) {
 				continue
 			}
 
+			poolStatus, err := zpool.Status()
+			if err != nil {
+				log.Errorf("error with get zpool status %v", err)
+				continue
+			}
+
 			zpoolPropSize, err := zpool.GetProperty(libzfs.PoolPropSize)
 			if err != nil {
 				log.Errorf("error with get properties PoolPropSize %v", err)
@@ -167,6 +173,7 @@ func collectAndPublishStorageStatus(ctxPtr *zfsContext) {
 				}
 			}
 			status.PoolName = zpoolName
+			status.PoolStatusMsg = types.PoolStatus(poolStatus + 1) // + 1 given the presence of PoolStatusUnspecified on the EVE side
 			status.ZpoolSize = zpoolSizeInByte
 			status.ZfsVersion = zfsVersion
 			status.CurrentRaid = currentRaid
