@@ -326,7 +326,8 @@ access_usb() {
             echo "$(date -Ins -u) mount $SPECIAL failed: $ret_code"
             return
         fi
-        for fd in "usb.json:$DPCDIR" hosts:/config server:/config ; do
+        # shellcheck disable=SC2066
+        for fd in "usb.json:$DPCDIR" ; do
             file=/mnt/$(echo "$fd" | cut -f1 -d:)
             dst=$(echo "$fd" | cut -f2 -d:)
             if [ -f "$file" ]; then
@@ -374,6 +375,7 @@ access_usb() {
 access_usb
 
 # Update our local /etc/hosts with entries comming from /config
+# We append on every boot since /etc/hosts starts from read-only rootfs
 [ -f /config/hosts ] && cat /config/hosts >> /etc/hosts
 
 # Get IP addresses
