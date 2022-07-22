@@ -305,7 +305,7 @@ grep -q eve_pause_before_install /proc/cmdline && pause "formatting the /dev/$IN
 # Do we want random or fixed disk and partition UUIDs?
 RANDOM_DISK_UUIDS=
 grep -q eve_install_random_disk_uuids /proc/cmdline && RANDOM_DISK_UUIDS="-r"
-logmsg "INFO: RANDOM_DISK_UUIDS $RANDOM_DISK_UUIDS"
+logmsg "INFO: RANDOM_DISK_UUIDS = $RANDOM_DISK_UUIDS"
 
 # User may have requested to skip the zfs requirements checks.
 SKIP_ZFS_CHECKS=false
@@ -453,21 +453,21 @@ else
 fi
 
 
-# Note that /config is read only.
-if mount_part CONFIG "$INSTALL_DEV" /config -t vfat -o ro,iocharset=iso8859-1; then
+# Note that /config is read only once the installer is done
+if mount_part CONFIG "$INSTALL_DEV" /config -t vfat -o iocharset=iso8859-1; then
    # uuidgen | sed -e 's#^.*-##'
    SOFT_SERIAL=$(tr ' ' '\012' < /proc/cmdline | sed -n '/eve_soft_serial=/s#eve_soft_serial=##p')
    [ -n "$SOFT_SERIAL" ] || [ ! -f /config/soft_serial ] || SOFT_SERIAL=$(cat /config/soft_serial)
    SOFT_SERIAL=${SOFT_SERIAL:-$(uuidgen)}
    logmsg "SOFT_SERIAL = $SOFT_SERIAL"
-   grep -q eve_blackbox /proc/cmdline || echo "$SOFT_SERIAL" > /persist/soft_serial
+   grep -q eve_blackbox /proc/cmdline || echo "$SOFT_SERIAL" > /config/soft_serial
 fi
 
 REPORT=
 # collect information about the node
 if mount_part INVENTORY "$(root_dev)" /run/INVENTORY -t vfat -o iocharset=iso8859-1; then
-   REPORT="/run/INVENTORY/$(cat /persist/soft_serial 2>/dev/null)"
-   logmsg "EVE-OS installation will store report to USB inside /INVENTORY/$(cat /persist/soft_serial 2>/dev/null)"
+   REPORT="/run/INVENTORY/$(cat /config/soft_serial 2>/dev/null)"
+   logmsg "EVE-OS installation will store report to USB inside /INVENTORY/$(cat /config/soft_serial 2>/dev/null)"
 else
    REPORT="/persist/installer"
    logmsg "EVE-OS installation will store report to $REPORT"
@@ -491,26 +491,8 @@ wdctl
 watchdog -F /dev/watchdog &
 
 TPM_DEVICE_PATH="/dev/tpmrm0"
-CONFIGDIR=/config
-PERSISTDIR=/persist
-PERSIST_CERTS=$PERSISTDIR/certs
-DEVICE_CERT_NAME="/run/tpmmgr/device.cert.pem"
-DEVICE_KEY_NAME="/run/tpmmgr/device.key.pem"
-
-mkdir -p $PERSIST_CERTS
-# Copy any pre-defined device cert/key from config partition to /persist
-if [ -s $CONFIGDIR/device.key.pem ] && [ ! -s $PERSIST_CERTS/device.key.pem ]; then
-    logmsg "Copying device.key.pem to $PERSIST_CERTS"
-    cp -p $CONFIGDIR/device.key.pem $PERSIST_CERTS/
-    cp -p $CONFIGDIR/device.cert.pem $PERSIST_CERTS/
-fi
-
-# If we already have a certificate put it in /run/tpmmgr
-if ! pillar_run tpmmgr getDeviceCert; then
-    logmsg "No existing device certificate"
-else
-    logmsg "Found pre-created device certificate"
-fi
+DEVICE_CERT_NAME="/config/device.cert.pem"
+DEVICE_KEY_NAME="/config/device.key.pem"
 
 # The device cert generation needs the current time. Some hardware
 # doesn't have a battery-backed clock so we check the year makes some sense
@@ -522,7 +504,7 @@ if [ "$YEAR" -gt 2020 ] && [ ! -f $DEVICE_CERT_NAME ]; then
       logmsg "Generating TPM device certificate"
       if ! pillar_run tpmmgr createDeviceCert; then
          logmsg "Failed generating device certificate on TPM; fallback to soft"
-         # The future existence of /persist/certs/device.key.pem indicates not using TPM
+         # The future existence of /config/device.key.pem indicates not using TPM
          sync
       else
          logmsg "Generated a TPM device certificate"
@@ -541,6 +523,7 @@ if [ "$YEAR" -gt 2020 ] && [ ! -f $DEVICE_CERT_NAME ]; then
       fi
    fi
    sync
+   mount -o remount,flush,ro /config
    sleep 5
 fi
 # Collect the device cert

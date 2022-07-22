@@ -51,8 +51,7 @@ const (
 	TpmDeviceKeyHdl tpmutil.Handle = 0x817FFFFF
 
 	//TpmCredentialsFileName is the file that holds the dynamically created TPM credentials
-	// Read from TPM NVRAM into /run/
-	TpmCredentialsFileName = types.CertificateRunDirname + "/tpm_credential"
+	TpmCredentialsFileName = types.IdentityDirname + "/tpm_credential"
 
 	//MaxPasswdLength is the max length allowed for a TPM password
 	MaxPasswdLength = 7 //limit TPM password to this length
