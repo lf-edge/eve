@@ -853,20 +853,7 @@ func writeDeviceCertToFile(certBytes, keyBytes []byte) error {
 	if err := ioutil.WriteFile(types.DeviceKeyName, keyBytes, 0600); err != nil {
 		return err
 	}
-	if err := ioutil.WriteFile(types.DeviceCertName, certBytes, 0644); err != nil {
-		return err
-	}
-	if _, err := os.Stat(types.PersistDeviceKeyName); err != nil {
-		if err := ioutil.WriteFile(types.PersistDeviceKeyName, keyBytes, 0600); err != nil {
-			return err
-		}
-	}
-	if _, err := os.Stat(types.PersistDeviceCertName); err != nil {
-		if err := ioutil.WriteFile(types.PersistDeviceCertName, certBytes, 0644); err != nil {
-			return err
-		}
-	}
-	return nil
+	return ioutil.WriteFile(types.DeviceCertName, certBytes, 0644)
 }
 
 func createOtherKeys(override bool) error {
@@ -1374,12 +1361,6 @@ func saveTpmInfo(filename string) error {
 
 //Create required directories, if not already created
 func initializeDirs() {
-	if _, err := os.Stat(types.CertificateRunDirname); err != nil {
-		log.Tracef("Create %s", types.CertificateRunDirname)
-		if err := os.MkdirAll(types.CertificateRunDirname, 0700); err != nil {
-			log.Fatal(err)
-		}
-	}
 	if _, err := os.Stat(types.CertificateDirname); err != nil {
 		log.Tracef("Create %s", types.CertificateDirname)
 		if err := os.MkdirAll(types.CertificateDirname, 0700); err != nil {
@@ -1409,41 +1390,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	}
 
 	switch flag.Args()[0] {
-	case "getDeviceCert":
-		// Create required directories if not present then retrieve device certificate
-		// Try reading from TPM NVRAM; fall back to files in /persist
-		initializeDirs()
-		_, err := os.Stat(etpm.TpmDevicePath)
-		if err == nil && readCredentials() == nil {
-			// Do we already have a device cert in the TPM NVRAW?
-			// If so write to /run/tpmmgr/device.cert.pem
-			if err = readDeviceCert(); err == nil {
-				log.Noticef("copied cert to /run/tpmmgr")
-				return 0
-			}
-			// Expected if not yet created/onboarded
-			log.Noticef("readDeviceCert failed: %s", err)
-		}
-		// Copy any cert and key from /persist to run
-		deviceCertBytes, err := ioutil.ReadFile(types.PersistDeviceCertName)
-		if err != nil {
-			// Expected if not yet created/onboarded
-			log.Notice(err)
-			return 1
-		}
-		deviceKeyBytes, err := ioutil.ReadFile(types.PersistDeviceKeyName)
-		if err != nil {
-			log.Error(err)
-			return 1
-		}
-		err = writeDeviceCertToFile(deviceCertBytes, deviceKeyBytes)
-		if err != nil {
-			log.Error(err)
-			return 1
-		}
-		log.Noticef("copied cert+key to /run/tpmmgr")
-		return 0
-
 	case "createDeviceCert":
 		//Create required directories if not present
 		initializeDirs()
@@ -1453,7 +1399,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 			return 1
 		}
 		// Do we already have a device cert in the TPM NVRAW?
-		// If so write to /run/tpmmgr/device.cert.pem
+		// If so write to /config/device.cert.pem
 		if err = readDeviceCert(); err == nil {
 			log.Noticef("readDeviceCert success, re-using key and cert")
 			return 0
@@ -1471,7 +1417,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 			log.Errorf("Failed to create TPM device cert: %v", err)
 			return 1
 		}
-		// Write to /run/tpmmgr/device.cert.pem and backup to TPM NVRAW
+		// Write to /config/device.cert.pem and backup to TPM NVRAW
 		if err = writeDeviceCert(); err != nil {
 			//No need for Fatal, caller will take action based on return code.
 			log.Errorf("Failed to backup device cert in TPM NVRAM: %v",

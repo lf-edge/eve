@@ -17,8 +17,6 @@ const (
 	PersistStatusDir = PersistDir + "/status"
 	// CertificateDirname - Location of certificates
 	CertificateDirname = PersistDir + "/certs"
-	// CertificateRunDirname - Location of device cert/key to use
-	CertificateRunDirname = "/run/tpmmgr/"
 	// SealedDirName - directory sealed under TPM PCRs
 	SealedDirName = PersistDir + "/vault"
 	// VolumeEncryptedDirName - sealed directory used to store volumes
@@ -38,14 +36,10 @@ const (
 	IdentityDirname = "/config"
 	// ServerFileName - server file
 	ServerFileName = IdentityDirname + "/server"
-	// PersistDeviceCertName - device certificate when no TPM
-	PersistDeviceCertName = CertificateDirname + "/device.cert.pem"
-	// PersistDeviceKeyName - device private key when no TPM
-	PersistDeviceKeyName = CertificateDirname + "/device.key.pem"
 	// DeviceCertName - device certificate
-	DeviceCertName = CertificateRunDirname + "/device.cert.pem"
+	DeviceCertName = IdentityDirname + "/device.cert.pem"
 	// DeviceKeyName - device private key (if not in TPM)
-	DeviceKeyName = CertificateRunDirname + "/device.key.pem"
+	DeviceKeyName = IdentityDirname + "/device.key.pem"
 	// OnboardCertName - Onboard certificate
 	OnboardCertName = IdentityDirname + "/onboard.cert.pem"
 	// OnboardKeyName - onboard key
