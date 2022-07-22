@@ -51,7 +51,7 @@ jobs:
           docker system df -v
       - name: Build EVE KVM
         run: |
-          make V=1 ROOTFS_VERSION="$VERSION" HV=kvm eve
+          make V=1 ROOTFS_VERSION="$VERSION" HV=kvm eve  # note that this already loads it into docker
       - name: Post eve build report
         run: |
           echo Disk usage

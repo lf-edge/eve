@@ -141,3 +141,19 @@ jobs:
           make clean
           docker system prune -f -a
           rm -rf ~/.linuxkit
+
+  manifest:
+    if: github.event.repository.full_name == 'lf-edge/eve'
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+      - name: Login to DockerHUB
+        run: |
+          echo "${{ secrets.RELEASE_DOCKERHUB_TOKEN }}" |\
+             docker login -u "${{ secrets.RELEASE_DOCKERHUB_ACCOUNT }}" --password-stdin
+      - name: Push manifest
+        run: |
+          make -e V=1 LINUXKIT_PKG_TARGET=manifest pkgs
