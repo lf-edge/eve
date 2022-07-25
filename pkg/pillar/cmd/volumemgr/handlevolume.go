@@ -289,40 +289,46 @@ func maybeDeleteVolume(ctx *volumemgrContext, status *types.VolumeStatus) {
 		log.Functionf("maybeDeleteVolume for %v Done", status.Key())
 		return
 	}
+	var readyToUnPublish bool
 	if status.SubState == types.VolumeSubStateCreated {
+		// we are not interested in result
+		_ = popVolumeWorkResult(ctx, status.Key())
+		status.SubState = types.VolumeSubStateDeleting
+		publishVolumeStatus(ctx, status)
 		// Asynch destruction; make sure we have a request for the work
 		AddWorkDestroy(ctx, status)
+	} else if status.SubState == types.VolumeSubStateDeleting {
 		vr := popVolumeWorkResult(ctx, status.Key())
 		if vr != nil {
 			log.Functionf("VolumeWorkResult(%s) location %s, created %t",
 				status.Key(), vr.FileLocation, vr.VolumeCreated)
-			if vr.VolumeCreated {
-				status.SubState = types.VolumeSubStateCreated
-				status.CreateTime = vr.CreateTime
+			if !vr.VolumeCreated {
+				readyToUnPublish = true
 			} else {
-				status.SubState = types.VolumeSubStateInitial
+				var err string
+				if vr.Error != nil {
+					err = vr.Error.Error()
+				} else {
+					err = fmt.Sprintf("unexpected WorkDestroy return for %s", status.Key())
+				}
+				log.Errorf("maybeDeleteVolume: %s", err)
+				status.SetErrorDescription(types.ErrorDescription{Error: vr.Error.Error()})
+				// we have no retrial mechanism for volume delete now
+				// so let publish error in status and log and unpublish the volume
+				readyToUnPublish = true
 			}
-			status.FileLocation = vr.FileLocation
-			if vr.Error != nil {
-				status.SetErrorWithSource(vr.Error.Error(),
-					types.VolumeStatus{}, vr.ErrorTime)
-			} else if status.IsErrorSource(types.VolumeStatus{}) {
-				log.Functionf("Clearing volume error %s",
-					status.Error)
-				status.ClearErrorWithSource()
-			}
-			if status.SubState != types.VolumeSubStateCreated {
-				DeleteWorkDestroy(ctx, status)
-			}
-		} else {
-			log.Functionf("VolumeWorkResult(%s) not found", status.Key())
-			// XXX what happens when VolumeWork is done?
 		}
+	} else {
+		readyToUnPublish = true
 	}
-	publishVolumeStatus(ctx, status)
-	unpublishVolumeStatus(ctx, status)
-	if appDiskMetric := lookupAppDiskMetric(ctx, status.FileLocation); appDiskMetric != nil {
-		unpublishAppDiskMetrics(ctx, appDiskMetric)
+	if readyToUnPublish {
+		// we are not interested in result
+		_ = popVolumeWorkResult(ctx, status.Key())
+		publishVolumeStatus(ctx, status)
+		unpublishVolumeStatus(ctx, status)
+		if appDiskMetric := lookupAppDiskMetric(ctx, status.FileLocation); appDiskMetric != nil {
+			unpublishAppDiskMetrics(ctx, appDiskMetric)
+		}
 	}
 	log.Functionf("maybeDeleteVolume for %v Done", status.Key())
 }
