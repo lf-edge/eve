@@ -44,23 +44,29 @@ func getRemainingDiskSpace(ctxPtr *volumemgrContext) (uint64, error) {
 				iterVolumeStatus.Key(), iterVolumeStatus.State)
 			continue
 		}
-		cfg := lookupVolumeConfig(ctxPtr, iterVolumeStatus.Key())
 		sizeToUseInCalculation := uint64(iterVolumeStatus.CurrentSize)
+		hasNoAppReferences := false
+		cfg := lookupVolumeConfig(ctxPtr, iterVolumeStatus.Key())
 		if cfg == nil {
-			// we have no config with this volume, so it will be purged
-			log.Noticef("getRemainingDiskSpace: Volume %s not found in VolumeConfigs, ignore",
+			// we have no config with this volume, so it cannot have app references
+			log.Noticef("getRemainingDiskSpace: Volume %s not found in VolumeConfigs, assume no app references",
 				iterVolumeStatus.Key())
-			continue
+			hasNoAppReferences = true
+		} else {
+			hasNoAppReferences = cfg.HasNoAppReferences
 		}
+		// for zfs we allocate the whole space of volume, but still fill CurrentSize with real usage
+		// we should account MaxVolSize here
 		if vault.ReadPersistType() == types.PersistZFS {
-			log.Noticef("getRemainingDiskSpace: Volume %s is zvol, use MaxVolSize",
+			// let's use lower verbosity as it will happen for zfs in any cases
+			log.Functionf("getRemainingDiskSpace: Volume %s is zvol, use MaxVolSize",
 				iterVolumeStatus.Key())
 			sizeToUseInCalculation = iterVolumeStatus.MaxVolSize
-		} else if cfg.ReadOnly {
+		} else if iterVolumeStatus.ReadOnly {
 			// it is ReadOnly and will not grow
 			log.Noticef("getRemainingDiskSpace: Volume %s is ReadOnly, use CurrentSize",
 				iterVolumeStatus.Key())
-		} else if cfg.HasNoAppReferences {
+		} else if hasNoAppReferences {
 			// it has no apps pointing onto it in new config
 			log.Noticef("getRemainingDiskSpace: Volume %s has no app references, use CurrentSize",
 				iterVolumeStatus.Key())

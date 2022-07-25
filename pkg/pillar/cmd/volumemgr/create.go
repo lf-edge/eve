@@ -244,16 +244,6 @@ func createContainerVolume(ctx *volumemgrContext, status types.VolumeStatus,
 func destroyVolume(ctx *volumemgrContext, status types.VolumeStatus) (bool, string, error) {
 
 	log.Functionf("destroyVolume(%s)", status.Key())
-	// we have no explicit un-prepare action for now, so it works with prepared or created volumes
-	if status.SubState != types.VolumeSubStateCreated && status.SubState != types.VolumeSubStatePrepareDone {
-		log.Functionf("destroyVolume(%s) nothing was created/prepared", status.Key())
-		return false, status.FileLocation, nil
-	}
-
-	if status.ReadOnly {
-		log.Functionf("destroyVolume(%s) ReadOnly", status.Key())
-		return false, "", nil
-	}
 
 	if status.FileLocation == "" {
 		log.Errorf("destroyVolume(%s) no FileLocation", status.Key())
@@ -271,7 +261,7 @@ func destroyVolume(ctx *volumemgrContext, status types.VolumeStatus) (bool, stri
 // new values for VolumeCreated, FileLocation, and error
 func destroyVdiskVolume(ctx *volumemgrContext, status types.VolumeStatus) (bool, string, error) {
 
-	created := status.SubState == types.VolumeSubStateCreated
+	created := status.State == types.CREATED_VOLUME
 	filelocation := status.FileLocation
 	log.Functionf("Delete copy at %s", filelocation)
 
@@ -318,7 +308,7 @@ func destroyVdiskVolume(ctx *volumemgrContext, status types.VolumeStatus) (bool,
 // new values for VolumeCreated, FileLocation, and error
 func destroyContainerVolume(ctx *volumemgrContext, status types.VolumeStatus) (bool, string, error) {
 
-	created := status.SubState == types.VolumeSubStateCreated
+	created := status.State == types.CREATED_VOLUME
 	filelocation := status.FileLocation
 	log.Functionf("Removing container volume %s", filelocation)
 	if err := ctx.casClient.RemoveContainerRootDir(filelocation); err != nil {
