@@ -55,6 +55,10 @@ jobs:
           rm -rf assets && mkdir assets && cd assets
           docker run "$EVE" rootfs > rootfs.img
           docker run "$EVE" installer_net | tar -xvf -
+          if [ "${{ env.ARCH }}" = amd64 ]; then
+            # it is new feature, old releases may not support this
+            docker run "$EVE" nupkg > LFEdge.EVE.API.nupkg && echo "NUPKG=true" >> "$GITHUB_ENV" || echo "not supported"
+          fi
       - name: Create direct iPXE config
         run: |
           URL="${{ github.event.repository.html_url }}/releases/download/${{ env.TAG }}/${{ env.ARCH }}."
@@ -205,4 +209,15 @@ jobs:
           upload_url: ${{ steps.create-release.outputs.result }}
           asset_path: assets/ipxe.efi.ip.cfg
           asset_name: ${{ env.ARCH }}.ipxe.efi.ip.cfg
+          asset_content_type: application/octet-stream
+      - name: Upload nupkg for the release
+        id: upload-nupkg-asset
+        if: ${{ env.NUPKG == 'true' }}
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create-release.outputs.result }}
+          asset_path: assets/LFEdge.EVE.API.nupkg
+          asset_name: LFEdge.EVE.API.${{ env.TAG }}.nupkg
           asset_content_type: application/octet-stream

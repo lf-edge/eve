@@ -48,7 +48,7 @@ dump() {
 
 do_help() {
 cat <<__EOT__
-Usage: docker run [-v <option>] lfedge/eve [-f <fmt>] version|rootfs|live|installer_raw|installer_iso|installer_net
+Usage: docker run [-v <option>] lfedge/eve [-f <fmt>] version|rootfs|live|installer_raw|installer_iso|installer_net|nupkg
 
 The artifact will be produced on stdout, so don't forget to redirect
 it to a file or use the /out option below.
@@ -92,6 +92,13 @@ docker run --rm lfedge/eve -f qcow2 installer_iso > eve-iso.img
 
 The two raw formats "live" and "installer_raw" support an optional
 last argument specifying the size of the image in Mb.
+
+Option nupkg allows you to extract nuget package of EVE-OS API. Only arm64 and amd64 supported now.
+Be aware that nupkg file name should have LFEdge.EVE.API.\$eve_version.nupkg notation to use from local source.
+
+Example:
+eve_version=\$(docker run lfedge/eve version)
+docker run --rm lfedge/eve nupkg > LFEdge.EVE.API.\$eve_version.nupkg
 __EOT__
   exit 0
 }
@@ -162,6 +169,17 @@ __EOT__
     tar -C / -rhvf /output.net boot.scr.uimg overlays u-boot.bin bcm2711-rpi-4-b.dtb config.txt fixup4.dat start4.elf
   fi
   dump /output.net installer.net
+}
+
+do_nupkg() {
+  case $(uname -m) in
+  x86_64) ;;
+  aarch64) ;;
+  *)
+    echo "Unsupported architecture $(uname -m)." && exit 1
+    ;;
+  esac
+  dump /bits/LFEdge.EVE.API.nupkg LFEdge.EVE.API.nupkg
 }
 
 # Lets' parse global options first

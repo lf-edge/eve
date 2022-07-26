@@ -135,6 +135,7 @@ KERNEL_IMG=$(INSTALLER)/kernel
 IPXE_IMG=$(INSTALLER)/ipxe.efi
 EFI_PART=$(INSTALLER)/EFI
 BOOT_PART=$(INSTALLER)/boot
+NUPKG_IMG=$(INSTALLER)/LFEdge.EVE.API.nupkg
 
 DEVICETREE_DTB_amd64=
 DEVICETREE_DTB_arm64=$(DIST)/dtb/eve.dtb
@@ -524,6 +525,11 @@ $(ROOTFS_IMG): images/rootfs-$(HV).yml | $(INSTALLER)
 	        echo "ERROR: size of $@ is greater than 250MB (bigger than allocated partition)" && exit 1 || :
 	$(QUIET): $@: Succeeded
 
+$(NUPKG_IMG): | $(INSTALLER)
+	$(QUIET): $@: Begin
+	./tools/makenupkg.sh $(ROOTFS_VERSION) $@
+	$(QUIET): $@: Succeeded
+
 $(LIVE).raw: $(BOOT_PART) $(EFI_PART) $(ROOTFS_IMG) $(CONFIG_IMG) $(PERSIST_IMG) | $(INSTALLER)
 	./tools/makeflash.sh -C 350 $| $@ $(PART_SPEC)
 	$(QUIET): $@: Succeeded
@@ -568,7 +574,7 @@ pkg/%: eve-% FORCE
 $(RUNME) $(BUILD_YML):
 	cp pkg/eve/$(@F) $@
 
-EVE_ARTIFACTS=$(BIOS_IMG) $(EFI_PART) $(CONFIG_IMG) $(PERSIST_IMG) $(INITRD_IMG) $(INSTALLER_IMG) $(ROOTFS_IMG) fullname-rootfs $(BOOT_PART)
+EVE_ARTIFACTS=$(BIOS_IMG) $(EFI_PART) $(CONFIG_IMG) $(PERSIST_IMG) $(INITRD_IMG) $(INSTALLER_IMG) $(ROOTFS_IMG) fullname-rootfs $(BOOT_PART) $(NUPKG_IMG)
 eve: $(INSTALLER) $(EVE_ARTIFACTS) current $(RUNME) $(BUILD_YML) | $(BUILD_DIR)
 	$(QUIET): "$@: Begin: EVE_REL=$(EVE_REL), HV=$(HV), LINUXKIT_PKG_TARGET=$(LINUXKIT_PKG_TARGET)"
 	cp images/*.yml $|
