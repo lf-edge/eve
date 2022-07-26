@@ -32,6 +32,9 @@ func storageMetricsPublisher(ctxPtr *zfsContext) {
 }
 
 func collectAndPublishStorageMetrics(ctxPtr *zfsContext) {
+	log.Functionf("collectAndPublishStorageMetrics start")
+	ctxPtr.zfsIterLock.Lock()
+	defer ctxPtr.zfsIterLock.Unlock()
 	zpoolList, err := libzfs.PoolOpenAll()
 	if err != nil {
 		log.Errorf("get zpool list for collect metrics failed %v", err)
@@ -50,4 +53,5 @@ func collectAndPublishStorageMetrics(ctxPtr *zfsContext) {
 			}
 		}
 	}
+	log.Functionf("collectAndPublishStorageMetrics Done")
 }
