@@ -34,6 +34,8 @@ func storageStatusPublisher(ctxPtr *zfsContext) {
 
 func collectAndPublishStorageStatus(ctxPtr *zfsContext) {
 	log.Functionf("collectAndPublishStorageStatus start")
+	ctxPtr.zfsIterLock.Lock()
+	defer ctxPtr.zfsIterLock.Unlock()
 	zfsVersion, err := zfs.GetZfsVersion()
 	if err != nil {
 		log.Errorf("error: %v", err)
