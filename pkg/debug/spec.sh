@@ -61,7 +61,10 @@ get_assignmentgroup() {
     local pcilong=$2
     local grp
     grp=$(pci_iommu_group "$pcilong")
-    if pci_iommugroup_includes_unknown "${pcilong}" "${grp}"; then
+    if [ -z "$grp" ]; then
+        # Maybe no VT-d support hence not assignable
+        echo ""
+    elif pci_iommugroup_includes_unknown "${pcilong}" "${grp}"; then
         echo ""
     else
         echo "group${grp}"
