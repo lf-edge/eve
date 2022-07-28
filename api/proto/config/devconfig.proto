@@ -136,6 +136,12 @@ message EdgeDevConfig {
   // power on capability; power off can be done locally using the Local Profile
   // Server API.
   DeviceOpsCmd shutdown = 34;
+
+  string device_name = 35;
+  string project_name = 36;
+  string project_id = 37;
+  string enterprise_name = 38;
+  string enterprise_id = 39;
 }
 
 message ConfigRequest {
