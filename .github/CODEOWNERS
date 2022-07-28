@@ -3,4 +3,7 @@
 # be requested for review when someone opens a pull request.
 *       @eriknordmark @rvs
 
-/api/   @eriknordmark @rvs @zedvijay @deitch
+/api/   @eriknordmark @rvs @deitch
+/pkg/pillar/cmd/zedrouter @milan-zededa
+/pkg/pillar/cmd/nim @milan-zededa
+
