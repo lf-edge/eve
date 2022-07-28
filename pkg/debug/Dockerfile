@@ -10,7 +10,7 @@ ENV BUILD_PKGS abuild curl tar make linux-headers patch g++ git gcc ncurses-dev 
 # forget to check on all supported architectures: e.g. arm64
 # binaries are typically larger and amd64 ones).
 # RUN apk add --no-cache gdb valgrind
-ENV PKGS openssl openssh-client openssh-server tini util-linux ca-certificates pciutils usbutils vim tcpdump perf strace iproute2-minimal
+ENV PKGS openssl openssh-client openssh-server tini util-linux ca-certificates pciutils usbutils vim tcpdump perf strace iproute2-minimal curl
 RUN eve-alpine-deploy.sh
 
 ENV LSHW_VERSION 02.19.2
@@ -52,7 +52,7 @@ RUN ./autogen.sh && ./configure && make DESTDIR=/out install
 
 # tweaking various bit
 WORKDIR /out
-COPY ssh.sh spec.sh ./usr/bin/
+COPY ssh.sh spec.sh scripts/ ./usr/bin/
 RUN mkdir -p ./etc/ssh ./root/.ssh && chmod 0700 ./root/.ssh
 RUN cp /etc/passwd /etc/group ./etc/
 RUN ln -s /run ./var/run
