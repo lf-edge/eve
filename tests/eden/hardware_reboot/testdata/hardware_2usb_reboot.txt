@@ -3,6 +3,7 @@
 
 {{define "port"}}2223{{end}}
 {{define "ssh"}} ssh -oServerAliveInterval=10 -oConnectTimeout=10 -oStrictHostKeyChecking=no -oPasswordAuthentication=no -i {{EdenConfig "eden.tests"}}/eclient/image/cert/id_rsa -p {{template "port"}} root@$HOST {{end}}
+{{define "eclient_image"}}docker://{{EdenConfig "eden.eclient.image"}}:{{EdenConfig "eden.eclient.tag"}}{{end}}
 
 [!exec:bash] stop
 [!exec:sleep] stop
@@ -11,7 +12,7 @@
 # Starting of reboot detector with a 2 reboot limit
 ! test eden.reboot.test -test.v -timewait=0 -reboot=0 -count=2 &
 
-eden pod deploy -n eclient --memory=512MB docker://lfedge/eden-eclient:d9eb23f -p {{template "port"}}:22 --adapters USB2:2 --adapters USB2:3
+eden pod deploy -n eclient --memory=512MB {{template "eclient_image"}} -p {{template "port"}}:22 --adapters USB2:2 --adapters USB2:3
 
 test eden.app.test -test.v -timewait 20m RUNNING eclient
 

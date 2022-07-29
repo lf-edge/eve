@@ -8,6 +8,7 @@
 {{define "dev_cmd_file"}}/mnt/dev-command.json{{end}}
 {{define "network"}}n1{{end}}
 {{define "ssh"}}ssh -q -o ConnectTimeout=10 -o StrictHostKeyChecking=no -o PasswordAuthentication=no -i {{EdenConfig "eden.tests"}}/eclient/image/cert/id_rsa root@{{end}}
+{{define "eclient_image"}}docker://{{EdenConfig "eden.eclient.image"}}:{{EdenConfig "eden.eclient.tag"}}{{end}}
 
 [!exec:bash] stop
 [!exec:sleep] stop
@@ -29,7 +30,7 @@ eden -t 1m network create 10.11.12.0/24 -n {{template "network"}}
 test eden.network.test -test.v -timewait 10m ACTIVATED {{template "network"}}
 
 # Deploy local-manager
-eden pod deploy -n local-manager --memory=512MB docker://lfedge/eden-eclient:99d7f62 -p {{template "mngr_port"}}:22 --networks={{template "network"}}
+eden pod deploy -n local-manager --memory=512MB {{template "eclient_image"}} -p {{template "mngr_port"}}:22 --networks={{template "network"}}
 test eden.app.test -test.v -timewait 10m RUNNING local-manager
 
 # Wait for ssh access
@@ -52,7 +53,7 @@ exec -t 10m bash get-devinfo-status.sh
 ! stderr .
 
 # STEP 2: Deploy the second app
-eden pod deploy -n app1 --memory=512MB docker://lfedge/eden-eclient:99d7f62 -p {{template "app_port"}}:22 --networks={{template "network"}}
+eden pod deploy -n app1 --memory=512MB {{template "eclient_image"}} -p {{template "app_port"}}:22 --networks={{template "network"}}
 test eden.app.test -test.v -timewait 10m RUNNING app1
 
 # Wait for ssh access
@@ -60,19 +61,15 @@ exec -t 5m bash wait-ssh.sh {{template "app_port"}}
 
 # STEP 3: Wait for devinfo status reporting ONLINE
 exec -t 10m bash wait-for-dev-state.sh ONLINE
-! stderr .
 
 # STEP 4: Request for shutdown. Check that app1 stops before local_manager
 exec -t 10m bash wait-for-app-state.sh app1 HALTED &app1halted&
 exec -t 1m bash put-devinfo-cmd.sh COMMAND_SHUTDOWN &
 exec -t 5m bash wait-for-dev-state.sh SHUTTING_DOWN
-! stderr .
 # Could it already have HALTED? Match HALTING or HALTED
 exec -t 5m bash wait-for-app-state.sh app1 HALT
-! stderr .
 exec -t 1m bash get-appinfo-status.sh local-manager
 stdout 'RUNNING'
-! stderr .
 wait app1halted
 
 # Did local-manager halt? Can't check by asking local-manager
@@ -94,13 +91,10 @@ exec -t 1m bash local-manager-start.sh
 # STEP 5.3: Wait for devinfo status reporting ONLINE
 exec sleep 30
 exec -t 10m bash wait-for-dev-state.sh ONLINE
-! stderr .
 
 # STEP 5.4: Check apps are back
 exec -t 20m bash wait-for-app-state.sh local-manager RUNNING
-! stderr .
 exec -t 20m bash wait-for-app-state.sh app1 RUNNING
-! stderr .
 
 # We can run the rest of the test only with qemu right now to properly
 # handle start of EVE after poweroff.
@@ -119,15 +113,11 @@ skip 'The rest of the test is supported only on QEMU'
 # STEP 6: Request for poweroff. Check that app1 stops before local_manager
 exec -t 1m bash put-devinfo-cmd.sh COMMAND_SHUTDOWN_POWEROFF &
 exec -t 5m bash wait-for-dev-state.sh POWERING_OFF
-! stderr .
 # Could it already have HALTED? Match HALTING or HALTED
 exec -t 5m bash wait-for-app-state.sh app1 HALT
-! stderr .
 exec -t 1m bash get-appinfo-status.sh local-manager
 stdout 'RUNNING'
-! stderr .
 exec -t 5m bash wait-for-app-state.sh app1 HALTED
-! stderr .
 
 # Did local-manager halt? Can't check by asking local-manager
 exec -t 1m bash eden-pod-ps.sh local-manager
@@ -178,7 +168,10 @@ done
 EDEN={{EdenConfig "eden.root"}}/{{EdenConfig "eden.bin-dist"}}/{{EdenConfig "eden.eden-bin"}}
 HOST=$($EDEN eve ip)
 ARGS="--token={{template "token"}}"
-{{template "ssh"}}$HOST -p {{template "mngr_port"}} "/root/local_manager $ARGS &>/dev/null &"
+while true; do
+    {{template "ssh"}}$HOST -p {{template "mngr_port"}} "/root/local_manager $ARGS &>/proc/1/fd/1 &" && break
+    sleep 5
+done
 
 -- get-app-ip.sh --
 EDEN={{EdenConfig "eden.root"}}/{{EdenConfig "eden.bin-dist"}}/{{EdenConfig "eden.eden-bin"}}

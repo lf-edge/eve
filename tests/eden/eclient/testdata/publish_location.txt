@@ -11,6 +11,7 @@
 {{define "location_file"}}/mnt/location.json{{end}}
 {{define "network"}}n1{{end}}
 {{define "ssh"}}ssh -q -o ConnectTimeout=10 -o StrictHostKeyChecking=no -o PasswordAuthentication=no -i {{EdenConfig "eden.tests"}}/eclient/image/cert/id_rsa root@{{end}}
+{{define "eclient_image"}}docker://{{EdenConfig "eden.eclient.image"}}:{{EdenConfig "eden.eclient.tag"}}{{end}}
 
 [!exec:bash] stop
 [!exec:sleep] stop
@@ -32,7 +33,7 @@ eden -t 1m network create 10.11.12.0/24 -n {{template "network"}}
 test eden.network.test -test.v -timewait 10m ACTIVATED {{template "network"}}
 
 # Deploy local-manager
-eden pod deploy -n local-manager --memory=512MB docker://lfedge/eden-eclient:a8b6f1a -p {{template "mngr_port"}}:22 --networks={{template "network"}}
+eden pod deploy -n local-manager --memory=512MB {{template "eclient_image"}} -p {{template "mngr_port"}}:22 --networks={{template "network"}}
 test eden.app.test -test.v -timewait 10m RUNNING local-manager
 
 # Wait for ssh access
@@ -50,7 +51,7 @@ eden controller edge-node update --device profile_server_token={{template "token
 eden controller edge-node update --device local_profile_server=$app_ip:8888
 
 # Deploy (ordinary) application
-eden pod deploy -n app --memory=512MB docker://lfedge/eden-eclient:a8b6f1a -p {{template "app_port"}}:22 --networks={{template "network"}}
+eden pod deploy -n app --memory=512MB {{template "eclient_image"}} -p {{template "app_port"}}:22 --networks={{template "network"}}
 test eden.app.test -test.v -timewait 10m RUNNING app
 
 # Wait for ssh access
@@ -142,7 +143,7 @@ done
 EDEN={{EdenConfig "eden.root"}}/{{EdenConfig "eden.bin-dist"}}/{{EdenConfig "eden.eden-bin"}}
 HOST=$($EDEN eve ip)
 ARGS="--token={{template "token"}}"
-{{template "ssh"}}$HOST -p {{template "mngr_port"}} "/root/local_manager $ARGS &>/dev/null &"
+{{template "ssh"}}$HOST -p {{template "mngr_port"}} "/root/local_manager $ARGS &>/proc/1/fd/1 &"
 
 -- get-app-ip.sh --
 EDEN={{EdenConfig "eden.root"}}/{{EdenConfig "eden.bin-dist"}}/{{EdenConfig "eden.eden-bin"}}

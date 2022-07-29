@@ -19,6 +19,7 @@ source .env
 
 {{define "port"}}2223{{end}}
 {{define "ssh"}}ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=no -i {{EdenConfig "eden.tests"}}/eclient/image/cert/id_rsa -p {{template "port"}} root@{{end}}
+{{define "eclient_image"}}docker://{{EdenConfig "eden.eclient.image"}}:{{EdenConfig "eden.eclient.tag"}}{{end}}
 
 exec chmod 600 {{EdenConfig "eden.tests"}}/eclient/image/cert/id_rsa
 
@@ -36,7 +37,7 @@ test eden.network.test -test.v -timewait 10m ACTIVATED nat switch
 
 message 'Starting applications'
 eden pod deploy -v debug -n dhcp-server --memory=512MB --networks=switch --mount=src={{EdenConfig "eden.tests"}}/eclient/testdata/dhcp-server,dst=/app docker://lfedge/eden-docker-test:83cfe07
-eden pod deploy -v debug -n eclient --memory=512MB --networks=nat --networks=switch -p {{template "port"}}:22 docker://lfedge/eden-eclient:77dc00b
+eden pod deploy -v debug -n eclient --memory=512MB --networks=nat --networks=switch -p {{template "port"}}:22 {{template "eclient_image"}}
 test eden.app.test -test.v -timewait 20m RUNNING dhcp-server eclient
 
 message 'Checking accessibility'

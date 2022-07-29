@@ -47,7 +47,7 @@ jobs:
           if [ -f ${{ github.workspace }}/eve/tests/eden/eden-version ]; then
             EDEN_VERSION=$(cat ${{ github.workspace }}/eve/tests/eden/eden-version)
           else
-            EDEN_VERSION=lfedge/eden:0.6.1
+            EDEN_VERSION=lfedge/eden:0.7.0
           fi
           docker run -v $PWD:/out $EDEN_VERSION cp -a /eden/. /out/
           sudo chown -R $(whoami) .
@@ -99,9 +99,9 @@ jobs:
         if: ${{ always() }}
         run: |
           ./eden log --format json > trace.log || echo "no log"
-          ./eden info > info.log || echo "no info"
-          ./eden metric > metric.log || echo "no metric"
-          ./eden netstat > netstat.log || echo "no netstat"
+          ./eden info --format json > info.log || echo "no info"
+          ./eden metric --format json > metric.log || echo "no metric"
+          ./eden netstat --format json > netstat.log || echo "no netstat"
           cp dist/default-eve.log console.log || echo "no device log"
           docker logs eden_adam > adam.log 2>&1 || echo "no adam log"
       - name: Log counting

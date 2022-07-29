@@ -87,7 +87,7 @@ jobs:
       - name: Prepare eden
         run: |
           if [ "${{ matrix.backend }}" == "rol" ] || ! [ -f ${{ github.workspace }}/eve/tests/eden/eden-version ]; then
-             EDEN_VERSION=lfedge/eden:0.6.1
+             EDEN_VERSION=lfedge/eden:0.7.0
           else
              EDEN_VERSION=$(cat ${{ github.workspace }}/eve/tests/eden/eden-version)
           fi
@@ -157,11 +157,15 @@ jobs:
         if: ${{ always() }}
         run: |
           ./eden log --format json > trace.log || echo "no log"
-          ./eden info > info.log || echo "no info"
-          ./eden metric > metric.log || echo "no metric"
-          ./eden netstat > netstat.log || echo "no netstat"
+          ./eden info --format json > info.log || echo "no info"
+          ./eden metric --format json > metric.log || echo "no metric"
+          ./eden netstat --format json > netstat.log || echo "no netstat"
           docker logs eden_adam > adam.log 2>&1 || echo "no adam log"
-          ./eden utils gcp vm log --vm-name eve-edengcp-actions-${{ matrix.hv }}-${{ matrix.fs }}-${{github.run_number}} -k "${{ steps.gcpauth.outputs.credentials_file_path }}" > console.log || echo "no device log"
+          if [ "${{ matrix.backend }}" == "gcp" ]; then
+            ./eden utils gcp vm log --vm-name eve-edengcp-actions-${{ matrix.hv }}-${{ matrix.fs }}-${{github.run_number}} -k "${{ steps.gcpauth.outputs.credentials_file_path }}" > console.log || echo "no device log"
+          else
+            ./eden rol rent console-output -p "$ROL_PROJECT" -i "$rent_id" > console.log || echo "no device log"
+          fi
       - name: Log counting
         if: ${{ always() }}
         run: |

@@ -7,6 +7,7 @@
 {{define "app_cmd_file"}}/mnt/app-command.json{{end}}
 {{define "network"}}n1{{end}}
 {{define "ssh"}}ssh -q -o ConnectTimeout=10 -o StrictHostKeyChecking=no -o PasswordAuthentication=no -i {{EdenConfig "eden.tests"}}/eclient/image/cert/id_rsa root@{{end}}
+{{define "eclient_image"}}docker://{{EdenConfig "eden.eclient.image"}}:{{EdenConfig "eden.eclient.tag"}}{{end}}
 
 [!exec:bash] stop
 [!exec:sleep] stop
@@ -28,7 +29,7 @@ eden -t 1m network create 10.11.12.0/24 -n {{template "network"}}
 test eden.network.test -test.v -timewait 10m ACTIVATED {{template "network"}}
 
 # Deploy local-manager
-eden pod deploy -n local-manager --memory=512MB docker://lfedge/eden-eclient:afaa332 -p {{template "mngr_port"}}:22 --networks={{template "network"}}
+eden pod deploy -n local-manager --memory=512MB {{template "eclient_image"}} -p {{template "mngr_port"}}:22 --networks={{template "network"}}
 test eden.app.test -test.v -timewait 10m RUNNING local-manager
 
 # Wait for ssh access
@@ -53,7 +54,7 @@ stdout 'local-manager'
 ! stderr .
 
 # STEP 2: Deploy the second app
-eden pod deploy -n app1 --memory=512MB docker://lfedge/eden-eclient:afaa332 -p {{template "app_port"}}:22 --networks={{template "network"}}
+eden pod deploy -n app1 --memory=512MB {{template "eclient_image"}} -p {{template "app_port"}}:22 --networks={{template "network"}}
 test eden.app.test -test.v -timewait 10m RUNNING app1
 
 # Wait for ssh access
@@ -73,9 +74,7 @@ exec -t 1m bash get-appinfo-status.sh app1
 ! stderr .
 exec -t 1m bash put-appinfo-cmd.sh app1 123 COMMAND_PURGE &
 exec -t 5m bash wait-for-app-state.sh app1 PURGING
-! stderr .
 exec -t 5m bash wait-for-app-state.sh app1 RUNNING
-! stderr .
 exec -t 5m bash wait-for-volume.sh app1
 stdout DELIVERED
 ! stderr .
@@ -94,9 +93,7 @@ exec -t 5m bash wait-ssh.sh {{template "app_port"}}
 exec -t 1m bash create-file-in-app1.sh /root/purge_test
 eden pod purge app1
 exec -t 5m bash wait-for-app-state.sh app1 PURGING
-! stderr .
 exec -t 5m bash wait-for-app-state.sh app1 RUNNING
-! stderr .
 exec -t 5m bash wait-for-volume.sh app1
 stdout DELIVERED
 ! stderr .
@@ -113,9 +110,7 @@ exec -t 1m bash create-file-in-app1.sh /run/restart_test
 exec -t 1m bash create-file-in-app1.sh /root/purge_test
 exec -t 1m bash put-appinfo-cmd.sh app1 456 COMMAND_RESTART &
 exec -t 5m bash wait-for-app-state.sh app1 RESTARTING
-! stderr .
 exec -t 5m bash wait-for-app-state.sh app1 RUNNING
-! stderr .
 exec -t 1m bash get-appinfo-status.sh app1
 stdout '"lastCmdTimestamp": "456"'
 ! stderr .
@@ -129,9 +124,7 @@ exec -t 1m bash create-file-in-app1.sh /run/restart_test
 exec -t 1m bash create-file-in-app1.sh /root/purge_test
 eden pod restart app1
 exec -t 5m bash wait-for-app-state.sh app1 RESTARTING
-! stderr .
 exec -t 5m bash wait-for-app-state.sh app1 RUNNING
-! stderr .
 exec -t 1m bash get-appinfo-status.sh app1
 stdout '"lastCmdTimestamp": "456"'
 ! stderr .
@@ -174,7 +167,7 @@ done
 EDEN={{EdenConfig "eden.root"}}/{{EdenConfig "eden.bin-dist"}}/{{EdenConfig "eden.eden-bin"}}
 HOST=$($EDEN eve ip)
 ARGS="--token={{template "token"}}"
-{{template "ssh"}}$HOST -p {{template "mngr_port"}} "/root/local_manager $ARGS &>/dev/null &"
+{{template "ssh"}}$HOST -p {{template "mngr_port"}} "/root/local_manager $ARGS &>/proc/1/fd/1 &"
 
 -- get-app-ip.sh --
 EDEN={{EdenConfig "eden.root"}}/{{EdenConfig "eden.bin-dist"}}/{{EdenConfig "eden.eden-bin"}}

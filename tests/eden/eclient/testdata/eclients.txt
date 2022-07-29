@@ -1,12 +1,13 @@
 # Apps deployment stress test
 
+{{define "eclient_image"}}docker://{{EdenConfig "eden.eclient.image"}}:{{EdenConfig "eden.eclient.tag"}}{{end}}
 {{$port := "2222"}}
 {{$test_opts := "-test.v -timewait 20m"}}
 # Number of apps
 {{$apps := EdenGetEnv "EDEN_TEST_APPS"}}
 # Time of app waiting (default -- 30 min)
 {{$time := EdenGetEnv "EDEN_TEST_TIME"}}
-# Image for app (default -- docker://lfedge/eden-eclient:d9eb23f)
+# Image for app (default -- {{template "eclient_image"}})
 {{$img := EdenGetEnv "EDEN_TEST_IMG"}}
 
 {{$devmodel := EdenConfig "eve.devmodel"}}
@@ -49,8 +50,8 @@ TAPP={{EdenConfig "eden.root"}}/{{EdenConfig "eden.bin-dist"}}/eden.app.test
 HOST=$($EDEN eve ip)
 
 APPS="{{$apps}}"
-# Default image -- docker://lfedge/eden-eclient:d9eb23f
-IMG="{{if $img}}{{$img}}{{else}}docker://lfedge/eden-eclient:d9eb23f{{end}}"
+# Default image -- {{template "eclient_image"}}
+IMG="{{if $img}}{{$img}}{{else}}{{template "eclient_image"}}{{end}}"
 
 PORTS=""
 for i in `seq $APPS`
@@ -109,9 +110,9 @@ TAPP={{EdenConfig "eden.root"}}/{{EdenConfig "eden.bin-dist"}}/eden.app.test
 HOST=$($EDEN eve ip)
 
 APPS="{{$apps}}"
-# Default image -- docker://lfedge/eden-eclient:d9eb23f
-#IMG="{{if $img}}{{$img}}{{else}}docker://lfedge/eden-eclient:d9eb23f{{end}}"
-IMG="{{if $img}}{{$img}}{{else}}docker://lfedge/eden-eclient:d9eb23f{{end}}"
+# Default image -- {{template "eclient_image"}}
+#IMG="{{if $img}}{{$img}}{{else}}{{template "eclient_image"}}{{end}}"
+IMG="{{if $img}}{{$img}}{{else}}{{template "eclient_image"}}{{end}}"
 
 PODS=""
 for i in `seq $APPS`

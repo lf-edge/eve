@@ -7,6 +7,7 @@
 {{define "mac2"}}00:01:02:03:04:02{{end}}
 {{define "ip2"}}11.12.13.12{{end}}
 {{define "ssh"}}ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=no -i {{EdenConfig "eden.tests"}}/eclient/image/cert/id_rsa root@{{end}}
+{{define "eclient_image"}}docker://{{EdenConfig "eden.eclient.image"}}:{{EdenConfig "eden.eclient.tag"}}{{end}}
 
 [!exec:bash] stop
 [!exec:sleep] stop
@@ -29,8 +30,8 @@ eden network create --type switch --uplink none -n direct
 test eden.network.test -test.v -timewait 20m ACTIVATED indirect direct
 
 message 'Starting applications'
-eden pod deploy -v debug -n eclient1 docker://lfedge/eden-eclient:d9eb23f -p {{template "port1"}}:22 --networks=indirect --networks=direct:{{template "mac1"}} --memory=512MB
-eden pod deploy -v debug -n eclient2 docker://lfedge/eden-eclient:d9eb23f -p {{template "port2"}}:22 --networks=indirect --networks=direct:{{template "mac2"}} --memory=512MB
+eden pod deploy -v debug -n eclient1 {{template "eclient_image"}} -p {{template "port1"}}:22 --networks=indirect --networks=direct:{{template "mac1"}} --memory=512MB
+eden pod deploy -v debug -n eclient2 {{template "eclient_image"}} -p {{template "port2"}}:22 --networks=indirect --networks=direct:{{template "mac2"}} --memory=512MB
 
 message 'Waiting for running state'
 test eden.app.test -test.v -timewait 15m RUNNING eclient1 eclient2

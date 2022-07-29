@@ -1,5 +1,5 @@
-{{$test1 := "test eden.lim.test -test.v -timewait 10m -test.run TestMetric"}}
-{{$test2 := "test eden.lim.test -test.v -timewait 1m -test.run TestMetric"}}
+{{$test1 := "test eden.lim.test -test.v -timewait 2m -test.run TestMetric"}}
+{{$test2 := "test eden.lim.test -test.v -timewait 90 -test.run TestMetric"}}
 
 #eden config add default
 #eden setup
