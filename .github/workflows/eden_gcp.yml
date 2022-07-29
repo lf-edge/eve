@@ -164,8 +164,12 @@ jobs:
           if [ "${{ matrix.backend }}" == "gcp" ]; then
             ./eden utils gcp vm log --vm-name eve-edengcp-actions-${{ matrix.hv }}-${{ matrix.fs }}-${{github.run_number}} -k "${{ steps.gcpauth.outputs.credentials_file_path }}" > console.log || echo "no device log"
           else
-            ./eden rol rent console-output -p "$ROL_PROJECT" -i "$rent_id" > console.log || echo "no device log"
+            ./eden rol rent console-output -p "$ROL_PROJECT" -i "${{ steps.rol.outputs.id }}" > console.log || echo "no device log"
           fi
+        env:
+          ROL_API_URL: ${{ secrets.ROL_API_URL }}
+          ROL_API_KEY: ${{ secrets.ROL_API_KEY }}
+          ROL_PROJECT: ${{ secrets.ROL_PROJECT }}
       - name: Log counting
         if: ${{ always() }}
         run: |
