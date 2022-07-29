@@ -8,6 +8,7 @@
 {{$image_path := printf "%s/cirros-0.5.2-%s-disk.img" $image_dir $arch}}
 {{$image_url := printf "http://download.cirros-cloud.net/%s" $image_path}}
 {{$datastore := "http://ubuntu-http-server.local"}}
+{{define "eclient_image"}}docker://{{EdenConfig "eden.eclient.image"}}:{{EdenConfig "eden.eclient.tag"}}{{end}}
 
 [!exec:bash] stop
 [!exec:sleep] stop
@@ -19,7 +20,7 @@ exec chmod 600 {{EdenConfig "eden.tests"}}/eclient/image/cert/id_rsa
 # Starting of reboot detector with 1 reboot limit
 ! test eden.reboot.test -test.v -timewait 60m -reboot=0 -count=1 &
 
-eden pod deploy -n eclient --memory=512MB docker://lfedge/eden-eclient:d9eb23f -p {{$port}}:22
+eden pod deploy -n eclient --memory=512MB {{template "eclient_image"}} -p {{$port}}:22
 
 test eden.app.test -test.v -timewait 20m RUNNING eclient
 

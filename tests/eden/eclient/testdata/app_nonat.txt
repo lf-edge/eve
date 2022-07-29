@@ -2,6 +2,7 @@
 
 {{define "port"}}2223{{end}}
 {{define "ssh"}}ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=no -i {{EdenConfig "eden.tests"}}/eclient/image/cert/id_rsa -p {{template "port"}} root@{{end}}
+{{define "eclient_image"}}docker://{{EdenConfig "eden.eclient.image"}}:{{EdenConfig "eden.eclient.tag"}}{{end}}
 
 [!exec:bash] stop
 [!exec:sleep] stop
@@ -24,7 +25,7 @@ eden network create --type switch --uplink eth0 -n direct
 test eden.network.test -test.v -timewait 10m ACTIVATED indirect direct
 
 message 'Starting applications'
-eden pod deploy -v debug -n eclient docker://lfedge/eden-eclient:d9eb23f -p {{template "port"}}:22 --networks=indirect --networks=direct --memory=512MB
+eden pod deploy -v debug -n eclient {{template "eclient_image"}} -p {{template "port"}}:22 --networks=indirect --networks=direct --memory=512MB
 
 message 'Waiting of running'
 test eden.app.test -test.v -timewait 30m RUNNING eclient

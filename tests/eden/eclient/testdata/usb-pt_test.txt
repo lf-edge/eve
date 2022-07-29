@@ -1,6 +1,7 @@
 # Simple test of USB passthrough functionality
 
 {{$usb_dev := "2-2"}}
+{{define "eclient_image"}}docker://{{EdenConfig "eden.eclient.image"}}:{{EdenConfig "eden.eclient.tag"}}{{end}}
 
 [!exec:bash] stop
 [!exec:sleep] stop
@@ -12,8 +13,8 @@ exec chmod 600 {{EdenConfig "eden.tests"}}/eclient/image/cert/id_rsa
 # Starting of reboot detector with a 2 reboot limit
 ! test eden.reboot.test -test.v -timewait=0 -reboot=0 -count=2 &
 
-eden pod deploy -n n1 --memory=512MB docker://lfedge/eden-eclient:d9eb23f -p 2223:22
-eden pod deploy -n n2 --memory=512MB docker://lfedge/eden-eclient:d9eb23f -p 2224:22 --adapters USB2:2
+eden pod deploy -n n1 --memory=512MB {{template "eclient_image"}} -p 2223:22
+eden pod deploy -n n2 --memory=512MB {{template "eclient_image"}} -p 2224:22 --adapters USB2:2
 
 test eden.app.test -test.v -timewait 20m RUNNING n1 n2
 

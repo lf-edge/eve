@@ -15,12 +15,4 @@ interface=${eth0}
 dhcp-range=10.11.13.2,10.11.13.254,60m
 EOF
 
-cat <<EOF > /etc/supervisord.conf
-[supervisord]
-nodaemon=true
-
-[program:dnsmasq]
-command=dnsmasq -d -b -C /etc/dnsmasq.conf
-EOF
-
-exec /usr/bin/supervisord -c /etc/supervisord.conf
+exec dnsmasq -d -b -C /etc/dnsmasq.conf

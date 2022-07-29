@@ -24,6 +24,10 @@ exec -t 2m bash check_vm_support.sh
 source .env
 [!env:with_hw_virt] skip 'Missing HW-assisted virtualization capability'
 
+
+# Starting of reboot detector with a 1 reboot limit
+! test eden.reboot.test -test.v -timewait=0 -reboot=0 -count=1 &
+
 {{$image := "docker://lfedge/eden-docker-test:83cfe07"}}
 
 # string to use as the testing sequence
@@ -60,6 +64,9 @@ source .env
 exec -t 5m bash wait_and_get_recv_data.sh app2 8029
 stdout '{{$test_data}}'
 
+eden pod delete app2
+test eden.app.test -test.v -timewait 10m - app2
+
 # Deploy app3 and connect it to VLAN 200
 eden pod deploy -n app3 --memory=448MB --networks=nat --networks=switch -p 8030:80 --vlan=switch:200 --metadata="url=http://${app1_ip}/user-data.html" {{$image}}
 test eden.app.test -test.v -timewait 10m RUNNING app3
@@ -70,6 +77,9 @@ source .env
 # app3 will try to obtain test_data from app1, but it should fail because they are in different VLANs
 exec -t 5m bash wait_and_get_recv_data.sh app3 8030
 ! stdout '{{$test_data}}'
+
+eden pod delete app3
+test eden.app.test -test.v -timewait 10m - app3
 
 # Deploy app4 outside of VLANs
 eden pod deploy -n app4 --memory=448MB --networks=nat --networks=switch -p 8031:80 --metadata="url=http://${app1_ip}/user-data.html" {{$image}}
@@ -85,7 +95,7 @@ exec -t 5m bash wait_and_get_recv_data.sh app4 8031
 # Modify app4 and move it to the VLAN 100
 eden pod modify app4 --networks=nat --networks=switch -p 8031:80 --vlan=switch:100
 exec sleep 15
-test eden.app.test -test.v -timewait 10m RUNNING app4
+test eden.app.test -test.v -timewait 15m RUNNING app4
 exec -t 5m bash wait_and_get_ip.sh app4 8031
 grep 'app4_ip=10.2.100.\d+' .env
 source .env
@@ -97,10 +107,8 @@ stdout '{{$test_data}}'
 # Cleanup - undeploy applications
 eden pod delete dhcp-server
 eden pod delete app1
-eden pod delete app2
-eden pod delete app3
 eden pod delete app4
-test eden.app.test -test.v -timewait 10m - dhcp-server app1 app2 app3 app4
+test eden.app.test -test.v -timewait 10m - dhcp-server app1 app4
 eden pod ps
 ! stdout 'dhcp-server'
 ! stdout 'app[1-4]'

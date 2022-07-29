@@ -5,8 +5,8 @@
 [!exec:sleep] stop
 
 {{$srvimage := "docker://lfedge/eden-docker-test:83cfe07"}}
-{{$appimage := "docker://lfedge/eden-eclient:d9eb23f"}}
 {{define "ssh"}}ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=no -o PasswordAuthentication=no -i {{EdenConfig "eden.tests"}}/eclient/image/cert/id_rsa root@{{end}}
+{{define "eclient_image"}}docker://{{EdenConfig "eden.eclient.image"}}:{{EdenConfig "eden.eclient.tag"}}{{end}}
 
 # In this test we first create two ethernet loops (pairs of eth interfaces interconnected
 # using virtual crossover cables). On both ends of these cables we put bonds to aggregate
@@ -72,8 +72,8 @@ stdout '10.2.100.1  netmask 255.255.255.0'
 stdout '10.2.200.1  netmask 255.255.255.0'
 
 # Deploy applications inside the switch network, separated by VLANs
-eden pod deploy -n app1 --memory=512MB -p 2223:22 --networks=ni-nat --networks=ni-switch --vlan=ni-switch:100 {{$appimage}}
-eden pod deploy -n app2 --memory=512MB -p 2224:22 --networks=ni-nat --networks=ni-switch --vlan=ni-switch:200 {{$appimage}}
+eden pod deploy -n app1 --memory=512MB -p 2223:22 --networks=ni-nat --networks=ni-switch --vlan=ni-switch:100 {{template "eclient_image"}}
+eden pod deploy -n app2 --memory=512MB -p 2224:22 --networks=ni-nat --networks=ni-switch --vlan=ni-switch:200 {{template "eclient_image"}}
 test eden.app.test -test.v -timewait 10m RUNNING app1 app2
 exec -t 10m bash wait_ssh.sh 2223
 exec -t 10m bash wait_ssh.sh 2224
@@ -130,6 +130,9 @@ eden -t 2m eve stop
 exec sleep 1m
 eden -t 2m eve start
 ! stderr .
+
+# wait for the next device info to stabilize last reboot reason
+test eden.lim.test -test.v -timewait 10m -test.run TestInfo -out InfoContent.dinfo
 
 -- check_vm_support.sh --
 EDEN={{EdenConfig "eden.root"}}/{{EdenConfig "eden.bin-dist"}}/{{EdenConfig "eden.eden-bin"}}
