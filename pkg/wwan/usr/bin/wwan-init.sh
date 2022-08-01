@@ -220,6 +220,9 @@ bringup_iface() {
     return 1
   fi
   ifconfig "$IFACE" "$IP" netmask "$SUBNET" pointopoint "$GW"
+  if [ -n "$MTU" ]; then
+    ip link set mtu "$MTU" dev "$IFACE"
+  fi
   # NOTE we may want to disable /proc/sys/net/ipv4/conf/default/rp_filter instead
   #      Verify it by cat /proc/net/netstat | awk '{print $80}'
   ip route add default via "$GW" dev "$IFACE" metric 65000

@@ -130,6 +130,7 @@ mbim_get_ip_settings() {
   GW="$(echo "$SETTINGS" | jq -r .ipv4.gateway)"
   DNS1="$(echo "$SETTINGS" | jq -r .ipv4.dns0)"
   DNS2="$(echo "$SETTINGS" | jq -r .ipv4.dns1)"
+  MTU="$(echo "$SETTINGS" | jq -r .mtu)"
 }
 
 mbim_start_network() {

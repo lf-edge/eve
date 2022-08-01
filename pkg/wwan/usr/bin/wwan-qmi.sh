@@ -221,6 +221,7 @@ qmi_get_ip_settings() {
   GW=$(parse_modem_attr "$SETTINGS" "IPv4 gateway address")
   DNS1=$(parse_modem_attr "$SETTINGS" "IPv4 primary DNS")
   DNS2=$(parse_modem_attr "$SETTINGS" "IPv4 secondary DNS")
+  MTU=$(parse_modem_attr "$SETTINGS" "MTU")
 }
 
 qmi_start_network() {
