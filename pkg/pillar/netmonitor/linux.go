@@ -172,10 +172,10 @@ func (m *LinuxNetworkMonitor) GetInterfaceAddrs(ifIndex int) ([]*net.IPNet, net.
 	}
 	addrs := ifAddrs{hwAddr: link.Attrs().HardwareAddr}
 	for _, addr := range addrs4 {
-		addrs.ipAddrs = append(addrs.ipAddrs, addr.IPNet)
+		addrs.ipAddrs = append(addrs.ipAddrs, ipNetFromNetlinkAddr(addr))
 	}
 	for _, addr := range addrs6 {
-		addrs.ipAddrs = append(addrs.ipAddrs, addr.IPNet)
+		addrs.ipAddrs = append(addrs.ipAddrs, ipNetFromNetlinkAddr(addr))
 	}
 	m.ifIndexToAddrs[ifIndex] = addrs
 	return addrs.ipAddrs, addrs.hwAddr, nil
@@ -616,5 +616,19 @@ func trimQuotes(str string) string {
 		return str[1 : len(str)-1]
 	} else {
 		return str
+	}
+}
+
+func ipNetFromNetlinkAddr(addr netlink.Addr) *net.IPNet {
+	// For interfaces with a peer (like Point-to-Point, which in EVE is used for wwan),
+	// we must take mask from the peer.
+	// See: https://github.com/vishvananda/netlink/commit/b1cc70dea22210e3b9deca021a824f4edfd9dcf1
+	mask := addr.Mask
+	if addr.Peer != nil {
+		mask = addr.Peer.Mask
+	}
+	return &net.IPNet{
+		IP:   addr.IP,
+		Mask: mask,
 	}
 }
