@@ -6,6 +6,10 @@ on:  # yamllint disable-line rule:truthy
       - Publish
     types:
       - completed
+
+concurrency:
+  group: ${{ github.workflow }}
+
 # yamllint disable rule:line-length
 jobs:
   integration:
