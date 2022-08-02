@@ -70,6 +70,7 @@ const (
 
 //One shot send, if fails, return an error to the state machine to retry later
 func trySendToController(attestReq *attest.ZAttestReq, iteration int) (*http.Response, []byte, types.SenderResult, error) {
+	log.Noticef("trySendToController type %d", attestReq.ReqType)
 	data, err := proto.Marshal(attestReq)
 	if err != nil {
 		log.Fatal("SendInfoProtobufStr proto marshaling error: ", err)
@@ -444,7 +445,7 @@ func (server *VerifierImpl) SendAttestEscrow(ctx *zattest.Context) error {
 
 	//Increment Iteration for interface rotation
 	attestCtx.Iteration++
-	log.Tracef("Sending Escrow data")
+	log.Noticef("[ATTEST] Sending Escrow data len %d", len(key.Key))
 
 	_, contents, senderStatus, err := trySendToController(attestReq, attestCtx.Iteration)
 	if err != nil || senderStatus != types.SenderStatusNone {
@@ -746,6 +747,8 @@ func handleEncryptedKeyFromDeviceImpl(ctxArg interface{}, key string,
 	if !ok {
 		log.Fatalf("[ATTEST] Unexpected pub type %T", vaultKeyArg)
 	}
+	log.Noticef("handleEncryptedKeyFromDeviceImpl len %d",
+		len(vaultKey.EncryptedVaultKey))
 
 	if ctx.attestCtx == nil {
 		log.Fatalf("[ATTEST] Uninitialized access to attestCtx")

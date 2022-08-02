@@ -1107,7 +1107,7 @@ func publishVaultKey(ctx *vaultMgrContext, vaultName string) error {
 	//otherwise we leave it empty
 	if etpm.IsTpmEnabled() {
 		if !ctx.defaultVaultUnlocked {
-			log.Errorf("Vault is not yet unlocked, waiting for Controller key")
+			log.Errorf("Vault is not yet unlocked")
 			return nil
 		}
 		keyBytes, err := retrieveTpmKey(true)
