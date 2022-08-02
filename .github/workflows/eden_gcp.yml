@@ -82,19 +82,20 @@ jobs:
         env:
           OVPN_GCP_FILE: ${{ secrets.OVPN_FILE }}
           OVPN_ROL_FILE: ${{ secrets.ROL_OVPN_CONF_BASE64 }}
-      - name: Get EVE
-        uses: actions/checkout@v2
-        with:
-          path: 'eve'
-      # ROL introduced from Eden 0.4.0
-      # Conditions for backwards compatibility on old branches
+      # We run this workflow for tags, release and default branches,
+      # so we should pull required version of EVE.
+      - name: Prepare EVE
+        env:
+          REF: ${{ github.event.workflow_run.head_branch }}
+        run: |
+          BRANCH="$(echo "$REF" | sed -e 's#^.*/##')"
+          git clone ${{ github.event.repository.html_url }} eve
+          git --git-dir ./eve/.git reset --hard "$BRANCH"
+          echo "TAG=$(make -C eve --no-print-directory version)" >> "$GITHUB_ENV"
+      # Use the latest version of EDEN with subset of tests from EVE-OS repo
       - name: Prepare eden
         run: |
-          if [ "${{ matrix.backend }}" == "rol" ] || ! [ -f ${{ github.workspace }}/eve/tests/eden/eden-version ]; then
-             EDEN_VERSION=lfedge/eden:0.7.0
-          else
-             EDEN_VERSION=$(cat ${{ github.workspace }}/eve/tests/eden/eden-version)
-          fi
+          EDEN_VERSION=lfedge/eden:0.7.0
           docker run -v $PWD:/out $EDEN_VERSION cp -a /eden/. /out/
           sudo chown -R $(whoami) .
       - name: Eden setup
@@ -111,7 +112,7 @@ jobs:
             tpm='true'
           fi
           ./eden config add default --devmodel="${devmodel}" --arch="${arch}"
-          ./eden config set default --key eve.tag --value="snapshot"
+          ./eden config set default --key eve.tag --value="${{ env.TAG }}"
           ./eden config set default --key eve.hv --value ${{ matrix.hv }}
           ./eden config set default --key eve.tpm --value "${tpm}"
           ./eden config set default --key adam.eve-ip --value ${{ steps.connect_vpn.outputs.tunnel_ip }}
