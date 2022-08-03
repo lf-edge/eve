@@ -581,8 +581,8 @@ func (n *nim) initSubscriptions() (err error) {
 		MyAgentName:   agentName,
 		TopicImpl:     types.DevicePortConfig{},
 		Activate:      false,
-		CreateHandler: n.handleDPCCreate,
-		ModifyHandler: n.handleDPCModify,
+		CreateHandler: n.handleDPCFileCreate,
+		ModifyHandler: n.handleDPCFileModify,
 		DeleteHandler: n.handleDPCDelete,
 		WarningTime:   warningTime,
 		ErrorTime:     errorTime,
@@ -706,17 +706,43 @@ func (n *nim) applyGlobalConfig(gcp *types.ConfigItemValueMap) {
 // 3. "lastresort" derived from the set of network interfaces
 // We determine the priority from TimePriority in the config.
 func (n *nim) handleDPCCreate(_ interface{}, key string, configArg interface{}) {
-	n.handleDPCImpl(key, configArg)
+	n.handleDPCImpl(key, configArg, false)
 }
 
 // handleDPCModify handles three different sources as above
 func (n *nim) handleDPCModify(_ interface{}, key string, configArg, _ interface{}) {
-	n.handleDPCImpl(key, configArg)
+	n.handleDPCImpl(key, configArg, false)
 }
 
-func (n *nim) handleDPCImpl(key string, configArg interface{}) {
+func (n *nim) handleDPCFileCreate(_ interface{}, key string, configArg interface{}) {
+	n.handleDPCImpl(key, configArg, true)
+}
+
+func (n *nim) handleDPCFileModify(_ interface{}, key string, configArg, _ interface{}) {
+	n.handleDPCImpl(key, configArg, true)
+}
+
+func (n *nim) handleDPCImpl(key string, configArg interface{}, fromFile bool) {
 	dpc := configArg.(types.DevicePortConfig)
 	dpc.DoSanitize(n.Log, true, true, key, true, true)
+	if fromFile {
+		// Use sha to determine if file has already been ingested
+		filename := filepath.Join(types.TmpDirname, "DevicePortConfig",
+			key) + ".json"
+		shaFilename := filepath.Join(types.IngestedDirname, "DevicePortConfig",
+			key) + ".sha"
+		changed, dpcSha, err := fileutils.CompareSha(filename,
+			shaFilename)
+		if err != nil {
+			n.Log.Errorf("CompareSha failed: %s", err)
+		} else if changed {
+			dpc.ShaFile = shaFilename
+			dpc.ShaValue = dpcSha
+		} else {
+			n.Log.Noticef("No change to %s", filename)
+			return
+		}
+	}
 	n.dpcManager.AddDPC(dpc)
 }
 
