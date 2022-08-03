@@ -6,3 +6,4 @@ images/*.yml
 .go/
 tags
 tmp/
+mkdocs.yml
