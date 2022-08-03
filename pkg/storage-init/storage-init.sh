@@ -101,6 +101,13 @@ set_sequential_mdev() {
   echo >/dev/mdev.seq
 }
 
+zfs_adjust_features() {
+  # we had a bug with mismatch of libzfs and zfs module versions
+  # let's set draid feature enabled as we started with zfs 2.1.x which supports this feature
+  # with disabled we will see errors from zpool status
+  chroot /hostfs zpool set feature@draid=enabled persist
+}
+
 PERSISTDIR=/persist
 CONFIGDIR=/config
 SMART_DETAILS_FILE=$PERSISTDIR/SMART_details.json
@@ -233,6 +240,8 @@ if P3=$(findfs PARTLABEL=P3) && [ -n "$P3" ]; then
             echo "$(date -Ins -u) Cannot import persist pool on P3 partition $P3 of type $P3_FS_TYPE, recreating it as $P3_FS_TYPE_DEFAULT"
             INIT_FS=1
             P3_FS_TYPE="$P3_FS_TYPE_DEFAULT"
+        else
+            zfs_adjust_features
         fi
     else
         #For systems with ext3 filesystem, try not to change to ext4, since it will brick
@@ -281,6 +290,7 @@ else
     set_sequential_mdev
     if chroot /hostfs zpool import -f persist; then
         echo "zfs" > /run/eve.persist_type
+        zfs_adjust_features
     else
         # shellcheck disable=SC2046
         zfs_module_unload
