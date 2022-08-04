@@ -7,7 +7,7 @@ please refer to the user-facing EVE documentation, section [WIRELESS](../../../d
 Radio silence implementation is split between 3 EVE microservices:
 
 * `zedagent`: If Local profile server is deployed and running, the microservice [makes a POST
-  request to the Radio endpoint every 5 seconds](../pkg/pillar/cmd/zedagent/radiosilence.go).
+  request to the Radio endpoint every 5 seconds](../cmd/zedagent/radiosilence.go).
   In the request body, it publishes the current state of all used wireless devices, which it obtains
   from the `DeviceNetworkStatus` (`DNS` for short; the message is received from NIM). Radio silence
   status in encapsulated by `RadioSilence` structure, embedded into `DNS`. It contains a `ChangeInProgress`
@@ -29,7 +29,7 @@ Radio silence implementation is split between 3 EVE microservices:
   is greater than the timestamp of the last seen radio configuration change. If it is the case, it copies
   `ChangeRequestedAt` from `ZedAgentStatus.RadioSilence` to `DeviceNetworkStatus.RadioSilence`,
   sets `ChangeInProgress` to `true` and starts switching radios of wireless devices ON/OFF.
-  For WiFi adapters, this is done by directly [calling the rfkill command](../pkg/pillar/devicenetwork/wlan.go).
+  For WiFi adapters, this is done by directly [calling the rfkill command](../devicenetwork/wlan.go).
   For cellular modems, NIM updates the configuration file `/run/wwan/config.json`, which is picked up
   by the `wwan` microservice, and waits for the status update published in `/run/wwan/status.json` (see below).
   Once NIM is done with all radio devices, it updates `RadioSilence` of `DeviceNetworkStatus` and sets
@@ -37,7 +37,7 @@ Radio silence implementation is split between 3 EVE microservices:
   (could be different from the intended state if operation failed). If the operation fails, it also shares
   all error messages with zedagent, to be published up to the Local profile server.
 
-* `wwan`: Microservice implemented as a [shell script](../pkg/wwan/usr/bin/wwan-init.sh), which manages
+* `wwan`: Microservice implemented as a [shell script](../../wwan/usr/bin/wwan-init.sh), which manages
   cellular modems, including the state of radio transmission. It receives the intended configuration
   from NIM through the file `/run/wwan/config.json`. A boolean field `radio-silence` is used to order
   the microservice to either enable or disable radio transmission on all cellular modems visible to the host.
