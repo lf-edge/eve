@@ -43,6 +43,10 @@ type DomainConfig struct {
 
 	// MetaDataType for select type of metadata service for app
 	MetaDataType MetaDataType
+
+	// Service flag indicates that we want to start app instance
+	// with options defined in org.mobyproject.config label of image provided by linuxkit
+	Service bool
 }
 
 // MetaDataType of metadata service for app
@@ -268,6 +272,7 @@ type DomainStatus struct {
 	OCIConfigDir   string            // folder holding an OCI Image config for this domain (empty string means no config)
 	EnvVariables   map[string]string // List of environment variables to be set in container
 	VmConfig                         // From DomainConfig
+	Service        bool
 }
 
 func (status DomainStatus) Key() string {

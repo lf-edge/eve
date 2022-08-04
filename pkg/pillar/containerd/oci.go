@@ -24,6 +24,7 @@ import (
 	"github.com/containerd/containerd/oci"
 	zconfig "github.com/lf-edge/eve/api/go/config"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/linuxkit/linuxkit/src/cmd/linuxkit/moby"
 	v1 "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/opencontainers/runtime-spec/specs-go"
 )
@@ -48,6 +49,7 @@ type ociSpec struct {
 	volumes      map[string]struct{}
 	labels       map[string]string
 	stopSignal   string
+	service      bool
 }
 
 // OCISpec provides methods to manipulate OCI runtime specifications and create containers based on them
@@ -66,7 +68,7 @@ type OCISpec interface {
 }
 
 // NewOciSpec returns a default oci spec from the containerd point of view
-func (client *Client) NewOciSpec(name string) (OCISpec, error) {
+func (client *Client) NewOciSpec(name string, service bool) (OCISpec, error) {
 	s := &ociSpec{name: name, client: client}
 	// we need a dummy container object to trick containerd
 	// initialization functions into filling out defaults
@@ -93,6 +95,7 @@ func (client *Client) NewOciSpec(name string) (OCISpec, error) {
 	}
 	s.Linux.Resources.Devices = []specs.LinuxDeviceCgroup{{Type: "a", Allow: true, Access: "rwm"}}
 	s.Root.Path = "/"
+	s.service = service
 	return s, nil
 }
 
@@ -259,6 +262,10 @@ func (s *ociSpec) AdjustMemLimit(dom types.DomainConfig, addMemory int64) {
 
 // UpdateVifList creates VIF management hooks in OCI spec
 func (s *ociSpec) UpdateVifList(vifs []types.VifConfig) {
+	if s.service {
+		// we do not want to hook network for service
+		return
+	}
 	// use pre-start and post-stop hooks for networking
 	if s.Hooks == nil {
 		s.Hooks = &specs.Hooks{}
@@ -314,7 +321,10 @@ func (s *ociSpec) UpdateFromDomain(dom *types.DomainConfig) {
 
 		s.Linux.CgroupsPath = fmt.Sprintf("/%s/%s", ctrdServicesNamespace, dom.GetTaskName())
 	}
-	s.Hostname = dom.UUIDandVersion.UUID.String()
+	if !s.service {
+		// not create uts namespace by default for MobyLabelConfigMode
+		s.Hostname = dom.UUIDandVersion.UUID.String()
+	}
 	s.Annotations[EVEOCIVNCPasswordLabel] = dom.VncPasswd
 }
 
@@ -327,6 +337,29 @@ func (s *ociSpec) UpdateFromDomain(dom *types.DomainConfig) {
 func (s *ociSpec) UpdateFromVolume(volume string) error {
 	//if not based on an OCI image, nothing to update here
 	if volume == "" {
+		return nil
+	}
+	if s.service {
+		imgInfoConfig, err := getSavedImageInfo(volume)
+		if err != nil {
+			return err
+		}
+		label := "org.mobyproject.config"
+		labelString, ok := imgInfoConfig.Config.Labels[label]
+		// if label not found than it was not prepared as expected
+		if !ok {
+			return fmt.Errorf("label %s not found, cannot run as service container", label)
+		}
+		imgInfo, err := moby.NewImage([]byte(labelString))
+		if err != nil {
+			return err
+		}
+
+		s.Spec, _, err = moby.ConfigToOCI(&imgInfo, imgInfoConfig.Config, map[string]uint32{})
+		if err != nil {
+			return err
+		}
+		s.Root.Path = volume + "/rootfs"
 		return nil
 	}
 	if f, err := os.Open(filepath.Join(volume, ociRuntimeSpecFilename)); err == nil {

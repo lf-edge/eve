@@ -28,11 +28,7 @@ type MemoryMapsStat struct {
 type MemoryInfoExStat struct {
 }
 
-func Pids() ([]int32, error) {
-	return PidsWithContext(context.Background())
-}
-
-func PidsWithContext(ctx context.Context) ([]int32, error) {
+func pidsWithContext(ctx context.Context) ([]int32, error) {
 	return []int32{}, common.ErrNotImplementedError
 }
 
@@ -44,8 +40,19 @@ func ProcessesWithContext(ctx context.Context) ([]*Process, error) {
 	return nil, common.ErrNotImplementedError
 }
 
-func NewProcess(pid int32) (*Process, error) {
-	return nil, common.ErrNotImplementedError
+func PidExistsWithContext(ctx context.Context, pid int32) (bool, error) {
+	pids, err := PidsWithContext(ctx)
+	if err != nil {
+		return false, err
+	}
+
+	for _, i := range pids {
+		if i == pid {
+			return true, err
+		}
+	}
+
+	return false, err
 }
 
 func (p *Process) Ppid() (int32, error) {

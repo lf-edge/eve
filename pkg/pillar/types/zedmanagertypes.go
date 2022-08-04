@@ -77,6 +77,10 @@ type AppInstanceConfig struct {
 	ProfileList []string
 
 	Delay time.Duration
+
+	// Service flag indicates that we want to start app instance
+	// with options defined in org.mobyproject.config label of image provided by linuxkit
+	Service bool
 }
 
 type AppInstanceOpsCmd struct {

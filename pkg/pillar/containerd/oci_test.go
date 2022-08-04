@@ -358,7 +358,7 @@ const imageConfig = `
 func TestOciSpec(t *testing.T) {
 
 	client := &Client{}
-	spec, err := client.NewOciSpec("test")
+	spec, err := client.NewOciSpec("test", false)
 	if err != nil {
 		t.Errorf("failed to create default OCI spec %v", err)
 	}
@@ -496,7 +496,7 @@ func TestCreateMountPointExecEnvFiles(t *testing.T) {
 	}
 
 	client := &Client{}
-	spec, err := client.NewOciSpec("test")
+	spec, err := client.NewOciSpec("test", false)
 	if err != nil {
 		t.Errorf("failed to create new OCI spec %v", err)
 	}
@@ -678,7 +678,7 @@ func TestPrepareMount(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			client := &Client{}
-			spec, err := client.NewOciSpec("test")
+			spec, err := client.NewOciSpec("test", false)
 			if err != nil {
 				t.Errorf("failed to create new OCI spec")
 			}

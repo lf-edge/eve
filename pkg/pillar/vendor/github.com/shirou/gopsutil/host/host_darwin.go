@@ -43,6 +43,11 @@ func InfoWithContext(ctx context.Context) (*InfoStat, error) {
 		ret.KernelVersion = kernelVersion
 	}
 
+	kernelArch, err := kernelArch()
+	if err == nil {
+		ret.KernelArch = kernelArch
+	}
+
 	platform, family, pver, err := PlatformInformation()
 	if err == nil {
 		ret.Platform = platform
@@ -187,6 +192,16 @@ func PlatformInformationWithContext(ctx context.Context) (string, string, string
 	out, err := invoke.CommandWithContext(ctx, sw_vers, "-productVersion")
 	if err == nil {
 		pver = strings.ToLower(strings.TrimSpace(string(out)))
+	}
+
+	// check if the macos server version file exists
+	_, err = os.Stat("/System/Library/CoreServices/ServerVersion.plist")
+
+	// server file doesn't exist
+	if os.IsNotExist(err) {
+		family = "Standalone Workstation"
+	} else {
+		family = "Server"
 	}
 
 	return platform, family, pver, nil

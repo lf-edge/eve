@@ -66,7 +66,7 @@ func (ctx ctrdContext) Task(status *types.DomainStatus) types.Task {
 }
 
 func (ctx ctrdContext) setupSpec(status *types.DomainStatus, config *types.DomainConfig, volume string) (containerd.OCISpec, error) {
-	spec, err := ctx.ctrdClient.NewOciSpec(status.DomainName)
+	spec, err := ctx.ctrdClient.NewOciSpec(status.DomainName, config.Service)
 	if err != nil {
 		return nil, err
 	}

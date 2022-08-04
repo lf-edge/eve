@@ -16,7 +16,6 @@ import (
 	"strings"
 
 	"github.com/shirou/gopsutil/cpu"
-	"github.com/shirou/gopsutil/host"
 	"github.com/shirou/gopsutil/internal/common"
 	"github.com/shirou/gopsutil/net"
 	"golang.org/x/sys/unix"
@@ -63,19 +62,6 @@ type MemoryMapsStat struct {
 func (m MemoryMapsStat) String() string {
 	s, _ := json.Marshal(m)
 	return string(s)
-}
-
-// NewProcess creates a new Process instance, it only stores the pid and
-// checks that the process exists. Other method on Process can be used
-// to get more information about the process. An error will be returned
-// if the process does not exist.
-func NewProcess(pid int32) (*Process, error) {
-	p := &Process{
-		Pid: int32(pid),
-	}
-	file, err := os.Open(common.HostProc(strconv.Itoa(int(p.Pid))))
-	defer file.Close()
-	return p, err
 }
 
 // Ppid returns Parent Process ID of the process.
@@ -1236,7 +1222,7 @@ func (p *Process) fillFromTIDStatWithContext(ctx context.Context, tid int32) (ui
 		System: float64(stime / ClockTicks),
 	}
 
-	bootTime, _ := host.BootTime()
+	bootTime, _ := common.BootTimeWithContext(ctx)
 	t, err := strconv.ParseUint(fields[i+20], 10, 64)
 	if err != nil {
 		return 0, 0, nil, 0, 0, 0, nil, err
@@ -1294,12 +1280,7 @@ func (p *Process) fillFromStatWithContext(ctx context.Context) (uint64, int32, *
 	return p.fillFromTIDStat(-1)
 }
 
-// Pids returns a slice of process ID list which are running now.
-func Pids() ([]int32, error) {
-	return PidsWithContext(context.Background())
-}
-
-func PidsWithContext(ctx context.Context) ([]int32, error) {
+func pidsWithContext(ctx context.Context) ([]int32, error) {
 	return readPidsFromDir(common.HostProc())
 }
 

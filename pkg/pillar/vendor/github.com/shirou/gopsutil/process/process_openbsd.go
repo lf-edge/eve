@@ -26,11 +26,7 @@ type MemoryInfoExStat struct {
 type MemoryMapsStat struct {
 }
 
-func Pids() ([]int32, error) {
-	return PidsWithContext(context.Background())
-}
-
-func PidsWithContext(ctx context.Context) ([]int32, error) {
+func pidsWithContext(ctx context.Context) ([]int32, error) {
 	var ret []int32
 	procs, err := Processes()
 	if err != nil {
@@ -494,12 +490,6 @@ func (p *Process) getKProcWithContext(ctx context.Context) (*KinfoProc, error) {
 		return nil, err
 	}
 	return &k, nil
-}
-
-func NewProcess(pid int32) (*Process, error) {
-	p := &Process{Pid: pid}
-
-	return p, nil
 }
 
 func CallKernProcSyscall(op int32, arg int32) ([]byte, uint64, error) {
