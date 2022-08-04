@@ -1,6 +1,6 @@
 # Building EVE
 
-This document describes how the EVE build process works, its dependencies, inputs and outputs. The planned complementary document [CONTRIBUTING.md](./CONTRIBUTING.md) describes how to contribute to EVE.
+This document describes how the EVE build process works, its dependencies, inputs and outputs. The planned complementary document [CONTRIBUTING.md](../CONTRIBUTING.md) describes how to contribute to EVE.
 
 If you want to customize any part of the build for your own purposes, to generate a custom eve-os image, please read this document to understand it,
 and then read [CUSTOM-BUILD.md](./CUSTOM-BUILD.md).
