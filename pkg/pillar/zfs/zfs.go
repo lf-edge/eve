@@ -19,36 +19,30 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/hardware"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils/disks"
-	"github.com/lf-edge/eve/pkg/pillar/vault"
 	"github.com/prometheus/procfs/blockdevice"
 	log "github.com/sirupsen/logrus"
 )
 
 const volBlockSize = uint64(16 * 1024)
 
-var (
-	zfsPath   = []string{"/hostfs", "zfs"}
-	zpoolPath = []string{"/hostfs", "zpool"}
-)
-
 //CreateDataset creates an empty dataset
 func CreateDataset(log *base.LogObject, dataset string) (string, error) {
-	args := append(zfsPath, "create", "-p", dataset)
-	stdoutStderr, err := base.Exec(log, vault.ZfsPath, args...).CombinedOutput()
+	args := []string{"create", "-p", dataset}
+	stdoutStderr, err := base.Exec(log, types.ZFSBinary, args...).CombinedOutput()
 	return string(stdoutStderr), err
 }
 
 //MountDataset mounts dataset
 func MountDataset(log *base.LogObject, dataset string) (string, error) {
-	args := append(zfsPath, "mount", dataset)
-	stdoutStderr, err := base.Exec(log, vault.ZfsPath, args...).CombinedOutput()
+	args := []string{"mount", dataset}
+	stdoutStderr, err := base.Exec(log, types.ZFSBinary, args...).CombinedOutput()
 	return string(stdoutStderr), err
 }
 
 // GetZfsStatusStr returns detailed status of pool
 func GetZfsStatusStr(log *base.LogObject, pool string) string {
-	args := append(zpoolPath, "status", pool)
-	stdoutStderr, err := base.Exec(log, vault.ZfsPath, args...).CombinedOutput()
+	args := []string{"status", pool}
+	stdoutStderr, err := base.Exec(log, types.ZPoolBinary, args...).CombinedOutput()
 	if err != nil {
 		log.Errorf("zpool status error: %s", err)
 		return ""
@@ -78,13 +72,13 @@ func GetZfsStatusStr(log *base.LogObject, pool string) string {
 //DestroyDataset removes dataset from zfs
 //it runs 3 times in case of errors (we can hit dataset is busy)
 func DestroyDataset(log *base.LogObject, dataset string) (string, error) {
-	args := append(zfsPath, "destroy", dataset)
+	args := []string{"destroy", dataset}
 	var err error
 	var stdoutStderr []byte
 	tries := 0
 	maxTries := 3
 	for {
-		stdoutStderr, err = base.Exec(log, vault.ZfsPath, args...).CombinedOutput()
+		stdoutStderr, err = base.Exec(log, types.ZFSBinary, args...).CombinedOutput()
 		if err == nil {
 			return string(stdoutStderr), nil
 		}
@@ -100,8 +94,8 @@ func DestroyDataset(log *base.LogObject, dataset string) (string, error) {
 //GetDatasetOptions get dataset options from zfs
 //will return error if not exists
 func GetDatasetOptions(log *base.LogObject, dataset string) (map[string]string, error) {
-	args := append(zfsPath, "get", "-Hp", "-o", "property,value", "all", dataset)
-	stdoutStderr, err := base.Exec(log, vault.ZfsPath, args...).CombinedOutput()
+	args := []string{"get", "-Hp", "-o", "property,value", "all", dataset}
+	stdoutStderr, err := base.Exec(log, types.ZFSBinary, args...).CombinedOutput()
 	if err != nil {
 		return nil, fmt.Errorf("cannot obtain options of %s, output=%s, error=%s",
 			dataset, stdoutStderr, err)
@@ -123,8 +117,8 @@ func GetDatasetOptions(log *base.LogObject, dataset string) (map[string]string, 
 //GetDatasetOption get dataset option value from zfs
 //will return error if not exists
 func GetDatasetOption(log *base.LogObject, dataset string, option string) (string, error) {
-	args := append(zfsPath, "get", "-Hp", "-o", "value", option, dataset)
-	stdoutStderr, err := base.Exec(log, vault.ZfsPath, args...).CombinedOutput()
+	args := []string{"get", "-Hp", "-o", "value", option, dataset}
+	stdoutStderr, err := base.Exec(log, types.ZFSBinary, args...).CombinedOutput()
 	if err != nil {
 		return string(stdoutStderr), err
 	}
@@ -135,16 +129,16 @@ func GetDatasetOption(log *base.LogObject, dataset string, option string) (strin
 func CreateVolumeDataset(log *base.LogObject, dataset string, size uint64, compression string) (string, error) {
 	alignedSize := alignUpToBlockSize(size)
 
-	args := append(zfsPath, "create", "-p",
+	args := []string{"create", "-p",
 		"-V", strconv.FormatUint(alignedSize, 10),
 		"-o", "volmode=dev",
 		"-o", fmt.Sprintf("compression=%s", compression),
 		"-o", fmt.Sprintf("volblocksize=%d", volBlockSize),
 		"-o", "logbias=throughput",
 		"-o", "redundant_metadata=most",
-		dataset)
+		dataset}
 
-	stdoutStderr, err := base.Exec(log, vault.ZfsPath, args...).CombinedOutput()
+	stdoutStderr, err := base.Exec(log, types.ZFSBinary, args...).CombinedOutput()
 	if err != nil {
 		return string(stdoutStderr), err
 	}
@@ -153,11 +147,11 @@ func CreateVolumeDataset(log *base.LogObject, dataset string, size uint64, compr
 
 //GetVolumesInDataset obtains volumes list from dataset
 func GetVolumesInDataset(log *base.LogObject, dataset string) ([]string, error) {
-	args := append(zfsPath, "list", "-Hr",
+	args := []string{"list", "-Hr",
 		"-o", "name",
 		"-t", "volume",
-		dataset)
-	stdoutStderr, err := base.Exec(log, vault.ZfsPath, args...).CombinedOutput()
+		dataset}
+	stdoutStderr, err := base.Exec(log, types.ZFSBinary, args...).CombinedOutput()
 	if err != nil {
 		return nil, fmt.Errorf("GetVolumesInDataset: output=%s error=%s", stdoutStderr, err)
 	}
@@ -230,8 +224,8 @@ func alignUpToBlockSize(size uint64) uint64 {
 
 //RemoveVDev removes vdev from the pool
 func RemoveVDev(log *base.LogObject, pool, vdev string) (string, error) {
-	args := append(zpoolPath, "remove", pool, vdev)
-	stdoutStderr, err := base.Exec(log, vault.ZfsPath, args...).CombinedOutput()
+	args := []string{"remove", pool, vdev}
+	stdoutStderr, err := base.Exec(log, types.ZPoolBinary, args...).CombinedOutput()
 	if err != nil {
 		return string(stdoutStderr), err
 	}
@@ -240,8 +234,8 @@ func RemoveVDev(log *base.LogObject, pool, vdev string) (string, error) {
 
 //AttachVDev attach newVdev to existing vdev
 func AttachVDev(log *base.LogObject, pool, vdev, newVdev string) (string, error) {
-	args := append(zpoolPath, "attach", pool, vdev, newVdev)
-	stdoutStderr, err := base.Exec(log, vault.ZfsPath, args...).CombinedOutput()
+	args := []string{"attach", pool, vdev, newVdev}
+	stdoutStderr, err := base.Exec(log, types.ZPoolBinary, args...).CombinedOutput()
 	if err != nil {
 		return string(stdoutStderr), err
 	}
@@ -250,8 +244,8 @@ func AttachVDev(log *base.LogObject, pool, vdev, newVdev string) (string, error)
 
 //AddVDev add newVdev to pool
 func AddVDev(log *base.LogObject, pool, vdev string) (string, error) {
-	args := append(zpoolPath, "add", "-f", pool, vdev)
-	stdoutStderr, err := base.Exec(log, vault.ZfsPath, args...).CombinedOutput()
+	args := []string{"add", "-f", pool, vdev}
+	stdoutStderr, err := base.Exec(log, types.ZPoolBinary, args...).CombinedOutput()
 	if err != nil {
 		return string(stdoutStderr), err
 	}
@@ -260,8 +254,8 @@ func AddVDev(log *base.LogObject, pool, vdev string) (string, error) {
 
 //ReplaceVDev replaces vdev from the pool
 func ReplaceVDev(log *base.LogObject, pool, oldVdev, newVdev string) (string, error) {
-	args := append(zpoolPath, "replace", pool, oldVdev, newVdev)
-	stdoutStderr, err := base.Exec(log, vault.ZfsPath, args...).CombinedOutput()
+	args := []string{"replace", pool, oldVdev, newVdev}
+	stdoutStderr, err := base.Exec(log, types.ZPoolBinary, args...).CombinedOutput()
 	if err != nil {
 		return string(stdoutStderr), err
 	}

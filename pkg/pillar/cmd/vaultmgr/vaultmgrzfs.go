@@ -16,28 +16,27 @@ const (
 	defaultCfgSecretDataset = vault.DefaultZpool + "/config"
 	zfsKeyFile              = zfsKeyDir + "/protector.key"
 	zfsKeyDir               = "/run/TmpVaultDir2"
-	zfsSnapshotterSock      = "/run/" + types.ZFSSnapshotter + ".sock"
 )
 
 func getCreateParams(vaultPath string, encrypted bool) []string {
 	if encrypted {
-		return []string{"/hostfs", "zfs", "create", "-o", "encryption=aes-256-gcm", "-o", "keylocation=file://" + zfsKeyFile, "-o", "keyformat=raw", vaultPath}
+		return []string{"create", "-o", "encryption=aes-256-gcm", "-o", "keylocation=file://" + zfsKeyFile, "-o", "keyformat=raw", vaultPath}
 	}
-	return []string{"/hostfs", "zfs", "create", vaultPath}
+	return []string{"create", vaultPath}
 }
 
 func getLoadKeyParams(vaultPath string) []string {
-	args := []string{"/hostfs", "zfs", "load-key", vaultPath}
+	args := []string{"load-key", vaultPath}
 	return args
 }
 
 func getMountParams(vaultPath string) []string {
-	args := []string{"/hostfs", "zfs", "mount", vaultPath}
+	args := []string{"mount", vaultPath}
 	return args
 }
 
 func getKeyStatusParams(vaultPath string) []string {
-	args := []string{"/hostfs", "zfs", "get", "keystatus", vaultPath}
+	args := []string{"get", "keystatus", vaultPath}
 	return args
 }
 
@@ -54,14 +53,14 @@ func unlockZfsVault(vaultPath string) error {
 
 	//zfs load-key
 	args := getLoadKeyParams(vaultPath)
-	if stdOut, stdErr, err := execCmd(vault.ZfsPath, args...); err != nil {
+	if stdOut, stdErr, err := execCmd(types.ZFSBinary, args...); err != nil {
 		log.Errorf("Error loading key for vault: %v, %s, %s",
 			err, stdOut, stdErr)
 		return err
 	}
 	//zfs mount
 	args = getMountParams(vaultPath)
-	if stdOut, stdErr, err := execCmd(vault.ZfsPath, args...); err != nil {
+	if stdOut, stdErr, err := execCmd(types.ZFSBinary, args...); err != nil {
 		log.Errorf("Error unlocking vault: %v, %s, %s", err, stdOut, stdErr)
 		return err
 	}
@@ -78,7 +77,7 @@ func createZfsVault(vaultPath string) error {
 	}
 	defer unstageKey(zfsKeyDir, zfsKeyFile)
 	args := getCreateParams(vaultPath, true)
-	if stdOut, stdErr, err := execCmd(vault.ZfsPath, args...); err != nil {
+	if stdOut, stdErr, err := execCmd(types.ZFSBinary, args...); err != nil {
 		log.Errorf("Error creating zfs vault %s, error=%v, %s, %s",
 			vaultPath, err, stdOut, stdErr)
 		return err
@@ -90,7 +89,7 @@ func createZfsVault(vaultPath string) error {
 //e.g. zfs get keystatus persist/vault
 func checkKeyStatus(vaultPath string) error {
 	args := getKeyStatusParams(vaultPath)
-	if stdOut, stdErr, err := execCmd(vault.ZfsPath, args...); err != nil {
+	if stdOut, stdErr, err := execCmd(types.ZFSBinary, args...); err != nil {
 		log.Tracef("keystatus query for %s results in error=%v, %s, %s",
 			vaultPath, err, stdOut, stdErr)
 		return err

@@ -15,6 +15,12 @@ const (
 
 	//ZFSSnapshotter is containerd snapshotter for zfs
 	ZFSSnapshotter = "zfs"
+
+	// ZFSBinary is the zfs binary
+	ZFSBinary = "zfs"
+
+	// ZPoolBinary is the zpool binary
+	ZPoolBinary = "zpool"
 )
 
 // ZVolName returns name of zvol for volume
