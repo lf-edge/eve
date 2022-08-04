@@ -103,6 +103,8 @@ type zedrouterContext struct {
 	zedcloudMetrics *zedcloud.AgentMetrics
 	cipherMetrics   *cipher.AgentMetrics
 
+	// Edge node info
+	subEdgeNodeInfo pubsub.Subscription
 	// cipher context
 	pubCipherBlockStatus pubsub.Publication
 	decryptCipherContext cipher.DecryptCipherContext
@@ -240,6 +242,21 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	}
 	zedrouterCtx.subGlobalConfig = subGlobalConfig
 	subGlobalConfig.Activate()
+
+	// Look for edge node info
+	subEdgeNodeInfo, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:   "zedagent",
+		MyAgentName: agentName,
+		TopicImpl:   types.EdgeNodeInfo{},
+		Persistent:  true,
+		Activate:    false,
+		Ctx:         &zedrouterCtx,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	zedrouterCtx.subEdgeNodeInfo = subEdgeNodeInfo
+	subEdgeNodeInfo.Activate()
 
 	zedrouterCtx.deviceNetworkStatus = &types.DeviceNetworkStatus{}
 	zedrouterCtx.pubUuidToNum = pubUuidToNum
@@ -678,6 +695,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 		case change := <-subWwanMetrics.MsgChan():
 			subWwanMetrics.ProcessChange(change)
+
+		case change := <-subEdgeNodeInfo.MsgChan():
+			subEdgeNodeInfo.ProcessChange(change)
 
 		case change, ok := <-linkChanges:
 			start := time.Now()
