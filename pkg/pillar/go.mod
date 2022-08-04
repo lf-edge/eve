@@ -12,9 +12,7 @@ require (
 	github.com/containerd/typeurl v1.0.2
 	github.com/cshari-zededa/eve-tpm2-tools v0.0.4
 	github.com/digitalocean/go-qemu v0.0.0-20181112162955-dd7bb9c771b8
-	github.com/docker/cli v20.10.13+incompatible // indirect
-	github.com/docker/distribution v2.8.1+incompatible // indirect
-	github.com/docker/docker v20.10.13+incompatible
+	github.com/docker/docker v20.10.17+incompatible
 	github.com/eriknordmark/ipinfo v0.0.0-20190220084921-7ee0839158f9
 	github.com/fsnotify/fsnotify v1.5.1
 	github.com/golang-jwt/jwt v3.2.2+incompatible
@@ -27,26 +25,23 @@ require (
 	github.com/grandcat/zeroconf v1.0.0
 	github.com/jackwakefield/gopac v1.0.2
 	github.com/jaypipes/ghw v0.8.0
-	github.com/klauspost/compress v1.15.1 // indirect
 	github.com/lf-edge/edge-containers v0.0.0-20220320131500-9d9f95d81e2c
 	github.com/lf-edge/eve/api/go v0.0.0-00010101000000-000000000000
 	github.com/lf-edge/eve/libs/depgraph v0.0.0-20220129022022-ba04fd269658
 	github.com/lf-edge/eve/libs/reconciler v0.0.0-20220131150115-6941dbe72001
 	github.com/lf-edge/eve/libs/zedUpload v0.0.0-20210120050122-276fea8f6efd
+	github.com/linuxkit/linuxkit/src/cmd/linuxkit v0.0.0-20220913135124-e532e7310810
 	github.com/moby/sys/mountinfo v0.6.0
-	github.com/moby/term v0.0.0-20210619224110-3f7ff695adc6 // indirect
 	github.com/onsi/gomega v1.17.0
 	github.com/opencontainers/go-digest v1.0.0
 	github.com/opencontainers/image-spec v1.0.3-0.20211202183452-c5a74bcca799
 	github.com/opencontainers/runtime-spec v1.0.3-0.20210326190908-1c3f411f0417
 	github.com/packetcap/go-pcap v0.0.0-20210809221331-e2e6b14e1812
-	github.com/prometheus/client_golang v1.12.1 // indirect
 	github.com/prometheus/procfs v0.7.3
 	github.com/rackn/gohai v0.0.0-20190321191141-5053e7f1fa36
 	github.com/satori/go.uuid v1.2.1-0.20180404165556-75cca531ea76
-	github.com/shirou/gopsutil v0.0.0-20190323131628-2cbc9195c892
+	github.com/shirou/gopsutil v0.0.0-20190901111213-e4ec7b275ada
 	github.com/sirupsen/logrus v1.8.1
-	github.com/spf13/cobra v1.4.0 // indirect
 	github.com/stretchr/testify v1.7.2
 	github.com/tatsushid/go-fastping v0.0.0-20160109021039-d7bb493dee3e
 	github.com/vishvananda/netlink v1.1.1-0.20210924202909-187053b97868
@@ -65,8 +60,3 @@ replace github.com/lf-edge/eve/libs/zedUpload => ../../libs/zedUpload
 replace github.com/lf-edge/eve/libs/depgraph => ../../libs/depgraph
 
 replace github.com/lf-edge/eve/libs/reconciler => ../../libs/reconciler
-
-replace git.apache.org/thrift.git => github.com/apache/thrift v0.12.0
-
-// because containerd
-replace github.com/docker/distribution => github.com/docker/distribution v0.0.0-20190205005809-0d3efadf0154

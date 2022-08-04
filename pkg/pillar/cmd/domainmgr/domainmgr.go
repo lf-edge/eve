@@ -1095,6 +1095,7 @@ func handleCreate(ctx *domainContext, key string, config *types.DomainConfig) {
 		DisableLogs:        config.DisableLogs,
 		State:              types.INSTALLED,
 		VmConfig:           config.VmConfig,
+		Service:            config.Service,
 	}
 	// Note that the -emu interface doesn't exist until after boot of the domU, but we
 	// initialize the VifList here with the VifUsed.

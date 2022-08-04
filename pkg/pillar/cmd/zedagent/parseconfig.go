@@ -632,6 +632,7 @@ func parseAppInstanceConfig(getconfigCtx *getconfigContext,
 		appInstance.FixedResources.DisableLogs = cfgApp.Fixedresources.DisableLogs
 		appInstance.MetaDataType = types.MetaDataType(cfgApp.MetaDataType)
 		appInstance.Delay = time.Duration(cfgApp.StartDelayInSeconds) * time.Second
+		appInstance.Service = cfgApp.Service
 
 		appInstance.VolumeRefConfigList = make([]types.VolumeRefConfig,
 			len(cfgApp.VolumeRefList))
@@ -2470,6 +2471,11 @@ func checkAndPublishAppInstanceConfig(getconfigCtx *getconfigContext,
 		for i := range config.UnderlayNetworkList {
 			config.UnderlayNetworkList[i].ACLs = nil
 		}
+	}
+	if config.Service && config.FixedResources.VirtualizationMode != types.NOHYPER {
+		err := fmt.Errorf("service app instance %s must have NOHYPER VirtualizationMode", config.UUIDandVersion.UUID)
+		log.Error(err)
+		config.Errors = append(config.Errors, err.Error())
 	}
 
 	pub.Publish(key, config)
