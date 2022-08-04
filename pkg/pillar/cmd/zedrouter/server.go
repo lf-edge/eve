@@ -443,12 +443,26 @@ func (hdl networkHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if anStatus != nil {
 		hostname = anStatus.UUIDandVersion.UUID.String()
 	}
+
+	enInfoObj, err := hdl.ctx.subEdgeNodeInfo.Get("global")
+	if err != nil {
+		http.Error(w, http.StatusText(http.StatusNoContent), http.StatusNoContent)
+		return
+	}
+	enInfo := enInfoObj.(types.EdgeNodeInfo)
 	w.Header().Add("Content-Type", "application/json")
 	w.WriteHeader(code)
 	resp, _ := json.Marshal(map[string]string{
-		"caller-ip":     r.RemoteAddr,
-		"external-ipv4": ipStr,
-		"hostname":      hostname,
+		"caller-ip":         r.RemoteAddr,
+		"external-ipv4":     ipStr,
+		"hostname":          hostname, // Do not delete this line for backward compatibility
+		"app-instance-uuid": hostname,
+		"device-uuid":       enInfo.DeviceID,
+		"device-name":       enInfo.DeviceName,
+		"project-name":      enInfo.ProjectName,
+		"project-uuid":      enInfo.ProjectID,
+		"enterprise-name":   enInfo.EnterpriseName,
+		"enterprise-uuid":   enInfo.EnterpriseID,
 		// TBD: add public-ipv4 when controller tells us
 	})
 	w.Write(resp)

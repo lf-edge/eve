@@ -569,6 +569,19 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	pubDisksConfig.ClearRestarted()
 	getconfigCtx.pubDisksConfig = pubDisksConfig
 
+	// for Edge Node Info Publisher
+	pubEdgeNodeInfo, err := ps.NewPublication(
+		pubsub.PublicationOptions{
+			AgentName:  agentName,
+			TopicType:  types.EdgeNodeInfo{},
+			Persistent: true,
+		})
+	if err != nil {
+		log.Fatal(err)
+	}
+	pubEdgeNodeInfo.ClearRestarted()
+	getconfigCtx.pubEdgeNodeInfo = pubEdgeNodeInfo
+
 	// Look for global config such as log levels
 	subGlobalConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     agentName,
