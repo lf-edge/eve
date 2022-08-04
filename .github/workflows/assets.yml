@@ -18,6 +18,8 @@ on:
       - Publish
     types:
       - completed
+    branches-ignore:
+      - "[0-9]+.[0-9]+"
 
 jobs:
   build:
