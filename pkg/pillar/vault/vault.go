@@ -23,9 +23,6 @@ const (
 	// FscryptPath is the fscrypt binary
 	FscryptPath = "/opt/zededa/bin/fscrypt"
 
-	// ZfsPath is the zfs binary(?)
-	ZfsPath = "/usr/sbin/chroot"
-
 	// MountPoint is the root of all vaults
 	MountPoint = types.PersistDir
 

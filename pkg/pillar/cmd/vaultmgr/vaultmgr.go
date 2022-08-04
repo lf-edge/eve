@@ -712,7 +712,7 @@ func setupDefaultVault(ctx *vaultMgrContext) error {
 			//No TPM or TPM lacks required features
 			if persistFsType == types.PersistZFS {
 				args := getCreateParams(defaultSecretDataset, false)
-				if stdOut, stdErr, err := execCmd(vault.ZfsPath, args...); err != nil {
+				if stdOut, stdErr, err := execCmd(types.ZFSBinary, args...); err != nil {
 					return fmt.Errorf("error creating zfs vault %s, error=%v, %s, %s",
 						defaultVault, err, stdOut, stdErr)
 				}
