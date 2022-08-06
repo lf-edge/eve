@@ -11,17 +11,17 @@ Signed-off-by: Aleksandrov Dmitriy <goodmobiledevices@gmail.com>
  create mode 100644 arch/arm/boot/dts/bcm2835-spi-tpm-slb9670.dtsi
 
 diff --git a/arch/arm/boot/dts/bcm2711-rpi-4-b.dts b/arch/arm/boot/dts/bcm2711-rpi-4-b.dts
-index fcd561c021ea..ff4a896deb16 100644
+index 72ce80fbf266..34d876efee51 100644
 --- a/arch/arm/boot/dts/bcm2711-rpi-4-b.dts
 +++ b/arch/arm/boot/dts/bcm2711-rpi-4-b.dts
 @@ -3,6 +3,7 @@
  #include "bcm2711.dtsi"
- #include "bcm2835-rpi.dtsi"
+ #include "bcm2711-rpi.dtsi"
  #include "bcm283x-rpi-usb-peripheral.dtsi"
 +#include "bcm2835-spi-tpm-slb9670.dtsi"
  
- #include <dt-bindings/reset/raspberrypi,firmware-reset.h>
- 
+ / {
+ 	compatible = "raspberrypi,4-model-b", "brcm,bcm2711";
 diff --git a/arch/arm/boot/dts/bcm2835-spi-tpm-slb9670.dtsi b/arch/arm/boot/dts/bcm2835-spi-tpm-slb9670.dtsi
 new file mode 100644
 index 000000000000..8b522d8702bb
