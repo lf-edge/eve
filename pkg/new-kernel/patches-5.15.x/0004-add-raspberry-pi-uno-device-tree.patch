@@ -1,7 +1,7 @@
 From d435e56397ff2620c275f964e57426eadb0d7d6f Mon Sep 17 00:00:00 2001
 From: Roman Shaposhnik <rvs@apache.org>
 Date: Sun, 1 Nov 2020 01:41:51 -0500
-Subject: [PATCH 4/9] Add stdout path overlay
+Subject: [PATCH 4/9] add raspberry pi uno device tree
 
 ---
  arch/arm/boot/dts/Makefile                    |   1 +
