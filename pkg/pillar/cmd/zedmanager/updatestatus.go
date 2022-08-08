@@ -163,7 +163,7 @@ func doUpdate(ctx *zedmanagerContext,
 		return changed
 	}
 	log.Functionf("Have config.Activate for %s", uuidStr)
-	c = doActivate(ctx, uuidStr, config, status)
+	c = doUpdateActivate(ctx, uuidStr, config, status)
 	changed = changed || c
 	log.Functionf("doUpdate done for %s", uuidStr)
 	return changed
@@ -417,12 +417,12 @@ func doPrepare(ctx *zedmanagerContext,
 	return changed, true
 }
 
-// doActivate - Returns if the status has changed. Doesn't publish any changes.
+// doUpdateActivate - Returns if the status has changed. Doesn't publish any changes.
 // It is caller's responsibility to publish.
-func doActivate(ctx *zedmanagerContext, uuidStr string,
+func doUpdateActivate(ctx *zedmanagerContext, uuidStr string,
 	config types.AppInstanceConfig, status *types.AppInstanceStatus) bool {
 
-	log.Functionf("doActivate for %s", uuidStr)
+	log.Functionf("doUpdateActivate for %s", uuidStr)
 	changed := false
 
 	// Are we doing a restart and it came down?
@@ -464,7 +464,7 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 		if err != nil {
 			errStr := fmt.Sprintf("getRemainingMemory failed: %s\n",
 				err)
-			log.Errorf("doActivate(%s) failed: %s",
+			log.Errorf("doUpdateActivate(%s) failed: %s",
 				status.Key(), errStr)
 			description := types.ErrorDescription{
 				Error:               errStr,
@@ -504,7 +504,7 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 				}
 				retryCondition = "Retry will be triggered when one or more apps will shutdown"
 			}
-			log.Errorf("doActivate(%s) failed: %s",
+			log.Errorf("doUpdateActivate(%s) failed: %s",
 				status.Key(), errStr)
 			description := types.ErrorDescription{
 				Error:               errStr,
@@ -579,10 +579,10 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 				status.State = types.START_DELAYED
 				return true
 			}
-			// if the VM is already in the START_DELAYED state - just return from the doActivate now
+			// if the VM is already in the START_DELAYED state - just return from the doUpdateActivate now
 			return changed
 		}
-		// if the VM already active or in restarting/purging state - continue with the doActivate logic
+		// if the VM already active or in restarting/purging state - continue with the doUpdateActivate logic
 	}
 
 	// Make sure we have a DomainConfig
@@ -719,7 +719,7 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 				status.Key())
 		}
 	}
-	log.Functionf("doActivate done for %s", uuidStr)
+	log.Functionf("doUpdateActivate done for %s", uuidStr)
 	return changed
 }
 
