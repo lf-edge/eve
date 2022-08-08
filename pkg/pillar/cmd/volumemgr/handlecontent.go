@@ -12,6 +12,7 @@ import (
 	zconfig "github.com/lf-edge/eve/api/go/config"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
+	"github.com/lf-edge/eve/pkg/pillar/vault"
 )
 
 func handleContentTreeCreate(ctxArg interface{}, key string,
@@ -20,6 +21,12 @@ func handleContentTreeCreate(ctxArg interface{}, key string,
 	log.Functionf("handleContentTreeCreate(%s)", key)
 	config := configArg.(types.ContentTreeConfig)
 	ctx := ctxArg.(*volumemgrContext)
+	// we received content tree configuration
+	// clean of vault is not safe from now
+	// note that we wait for vault before start this handler
+	if err := vault.DisallowVaultCleanup(); err != nil {
+		log.Errorf("cannot disallow vault cleanup: %s", err)
+	}
 	status := createContentTreeStatus(ctx, config)
 	updateContentTree(ctx, status)
 	log.Functionf("handleContentTreeCreate(%s) Done", key)

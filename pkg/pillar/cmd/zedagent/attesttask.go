@@ -16,6 +16,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/hardware"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/vault"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 	"google.golang.org/protobuf/proto"
 	"io/ioutil"
@@ -368,15 +369,30 @@ func (server *VerifierImpl) SendAttestQuote(ctx *zattest.Context) error {
 		//Retrieve integrity token
 		storeIntegrityToken(quoteResp.GetIntegrityToken())
 		log.Notice("[ATTEST] Attestation successful, processing keys given by Controller")
+		publishedStorageKeys := 0
 		if encryptedKeys := quoteResp.GetKeys(); encryptedKeys != nil {
 			for _, sk := range encryptedKeys {
 				encryptedKeyType := sk.GetKeyType()
 				encryptedKey := sk.GetKey()
 				if encryptedKeyType == attest.AttestVolumeKeyType_ATTEST_VOLUME_KEY_TYPE_VSK {
+					// it is not expected and may affect vaultmgr cleanup
+					if len(encryptedKey) == 0 {
+						log.Errorf("[ATTEST] received empty Controller-given encrypted key")
+						continue
+					}
 					publishEncryptedKeyFromController(attestCtx, encryptedKey)
 					log.Noticef("[ATTEST] published Controller-given encrypted key")
+					publishedStorageKeys++
 				}
 			}
+		}
+		// if no storage keys come from the controller
+		// then send empty key instead to vaultmgr
+		// it is expected on first communication with the controller
+		// to receive no keys
+		if publishedStorageKeys == 0 {
+			log.Noticeln("[ATTEST] no storage keys received from controller")
+			publishEncryptedKeyFromController(attestCtx, nil)
 		}
 		ctx.ClearError()
 		triggerPublishDevInfo(attestCtx.zedagentCtx)
@@ -513,6 +529,11 @@ func (server *VerifierImpl) SendAttestEscrow(ctx *zattest.Context) error {
 		log.Notice("[ATTEST] Escrow successful")
 		ctx.ClearError()
 		triggerPublishDevInfo(attestCtx.zedagentCtx)
+		// we sent storage keys successfully
+		// and do not allow to clean vault
+		if err := vault.DisallowVaultCleanup(); err != nil {
+			log.Errorf("cannot disallow vault cleanup: %s", err)
+		}
 		return nil
 	default:
 		errorDescription := types.ErrorDescription{

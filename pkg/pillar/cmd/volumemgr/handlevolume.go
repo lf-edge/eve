@@ -12,6 +12,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/tgt"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
+	"github.com/lf-edge/eve/pkg/pillar/vault"
 	"github.com/lf-edge/eve/pkg/pillar/zfs"
 )
 
@@ -21,6 +22,12 @@ func handleVolumeCreate(ctxArg interface{}, key string,
 	log.Functionf("handleVolumeCreate(%s)", key)
 	config := configArg.(types.VolumeConfig)
 	ctx := ctxArg.(*volumemgrContext)
+	// we received volume configuration
+	// clean of vault is not safe from now
+	// note that we wait for vault before start this handler
+	if err := vault.DisallowVaultCleanup(); err != nil {
+		log.Errorf("cannot disallow vault cleanup: %s", err)
+	}
 	//defer creation to restart handler
 	ctx.volumeConfigCreateDeferredMap[key] = &config
 	log.Functionf("handleVolumeCreate(%s) Done", key)
