@@ -1,4 +1,4 @@
-// Copyright (c) 2017-2018 Zededa, Inc.
+// Copyright (c) 2017-2022 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
 // Common code to communicate to zedcloud
@@ -144,6 +144,8 @@ func GetContextForAllIntfFunctions(ctx *ZedCloudContext) (context.Context, conte
 // we bail out, since caller needs to be notified immediately for triggering any
 // reaction based on this.
 // We return a SenderResult enum for various error cases.
+// The caller is responsible to handle any required AuthContainer by calling
+// RemoveAndVerifyAuthContainer
 func SendOnAllIntf(ctxWork context.Context, ctx *ZedCloudContext, url string, reqlen int64, b *bytes.Buffer, iteration int, bailOnHTTPErr bool) (*http.Response, []byte, types.SenderResult, error) {
 
 	log := ctx.log
@@ -285,8 +287,9 @@ func VerifyAllIntf(ctx *ZedCloudContext,
 			// We have enough uplinks with cloud connectivity working.
 			break
 		}
-		// This VerifyAllIntf() is called for "ping" url only, it does not have
-		// return envelope verifying check. Thus below does not check other values of status.
+		// This VerifyAllIntf() is called for "ping" url only, it does
+		// not have return envelope verifying check after the call nor
+		// does it check other values of status.
 		const useOnboard = false
 		resp, _, status, err := SendOnIntf(ctxWork, ctx, url, intf, 0, nil, allowProxy, useOnboard)
 		switch status {
@@ -362,11 +365,13 @@ func VerifyAllIntf(ctx *ZedCloudContext,
 // to allow the caller to look at StatusCode
 // We return a SenderResult enum for various error cases.
 // the controller but it is overloaded, or has certificate issues.
+// The caller is responsible to handle any required AuthContainer by calling
+// RemoveAndVerifyAuthContainer
 func SendOnIntf(workContext context.Context, ctx *ZedCloudContext, destURL string, intf string, reqlen int64, b *bytes.Buffer, allowProxy bool, useOnboard bool) (*http.Response, []byte, types.SenderResult, error) {
 
 	log := ctx.log
 	var reqUrl string
-	var useTLS, isEdgenode, isGet, isCerts bool
+	var useTLS, isEdgenode, isGet bool
 
 	senderStatus := types.SenderStatusNone
 	if strings.HasPrefix(destURL, "http:") {
@@ -383,9 +388,7 @@ func SendOnIntf(workContext context.Context, ctx *ZedCloudContext, destURL strin
 
 	if strings.Contains(destURL, "/edgedevice/") {
 		isEdgenode = true
-		if strings.Contains(destURL, "/certs") {
-			isCerts = true
-		} else if strings.Contains(destURL, "/register") {
+		if strings.Contains(destURL, "/register") {
 			useOnboard = true
 		}
 	}
@@ -704,35 +707,7 @@ func SendOnIntf(workContext context.Context, ctx *ZedCloudContext, destURL strin
 		switch resp.StatusCode {
 		case http.StatusOK, http.StatusCreated, http.StatusNotModified:
 			log.Tracef("SendOnIntf to %s, response %s\n", reqUrl, resp.Status)
-
-			var contents2 []byte
-			var err error
-			status := types.SenderStatusNone
-			if ctx.V2API || isCerts { // /certs may not have set the V2API yet
-				if resplen > 0 && checkMimeProtoType(resp) {
-					contents2, status, err = verifyAuthentication(ctx, contents, isCerts)
-					if err != nil {
-						var envelopeErr bool
-						if status == types.SenderStatusHashSizeError || status == types.SenderStatusAlgoFail {
-							// server may not support V2 envelope
-							envelopeErr = true
-						}
-						log.Errorf("SendOnIntf verify auth error %v, V2 %v, content len %d, url %s, extraStatus %v\n",
-							err, !envelopeErr, len(contents), reqUrl, status) // XXX change to debug later
-						if ctx.FailureFunc != nil {
-							ctx.FailureFunc(log, intf, reqUrl, 0, 0, true)
-						}
-						return nil, nil, status, err
-					}
-					log.Tracef("SendOnIntf verify auth ok, len content/content2 %d/%d, url %s",
-						len(contents), len(contents2), reqUrl)
-				} else {
-					contents2 = contents
-				}
-			} else {
-				contents2 = contents
-			}
-			return resp, contents2, status, nil
+			return resp, contents, senderStatus, nil
 		default:
 			errStr := fmt.Sprintf("SendOnIntf to %s reqlen %d statuscode %d %s",
 				reqUrl, reqlen, resp.StatusCode,
