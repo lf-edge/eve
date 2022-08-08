@@ -499,7 +499,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 // Returns true when done; false when retry
 // the third return value is the extra send status, for Cert Miss status for example
 func myPost(zedcloudCtx *zedcloud.ZedCloudContext, tlsConfig *tls.Config,
-	requrl string, retryCount int, reqlen int64, b *bytes.Buffer) (bool, *http.Response, types.SenderResult, []byte) {
+	requrl string, skipVerify bool, retryCount int, reqlen int64, b *bytes.Buffer) (bool, *http.Response, types.SenderResult, []byte) {
 
 	zedcloudCtx.TlsConfig = tlsConfig
 	ctxWork, cancel := zedcloud.GetContextForAllIntfFunctions(zedcloudCtx)
@@ -588,6 +588,20 @@ func myPost(zedcloudCtx *zedcloud.ZedCloudContext, tlsConfig *tls.Config,
 		log.Errorln("Incorrect Content-Type " + mimeType)
 		return false, resp, senderStatus, contents
 	}
+	if len(contents) == 0 {
+		return true, resp, senderStatus, contents
+	}
+	contents, senderStatus, err = zedcloud.RemoveAndVerifyAuthContainer(zedcloudCtx,
+		requrl, contents, skipVerify, senderStatus)
+	if err != nil {
+		if !zedcloudCtx.NoLedManager {
+			utils.UpdateLedManagerConfig(log,
+				types.LedBlinkInvalidAuthContainer)
+		}
+		log.Errorf("RemoveAndVerifyAuthContainer failed: %s",
+			err)
+		return false, resp, senderStatus, contents
+	}
 	return true, resp, senderStatus, contents
 }
 
@@ -614,7 +628,7 @@ func selfRegister(zedcloudCtx *zedcloud.ZedCloudContext, tlsConfig *tls.Config, 
 	// in V2 API, register does not send UUID string
 	requrl := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API, nilUUID, "register")
 	done, resp, _, contents := myPost(zedcloudCtx, tlsConfig,
-		requrl, retryCount,
+		requrl, false, retryCount,
 		int64(len(b)), bytes.NewBuffer(b))
 	if resp != nil && resp.StatusCode == http.StatusNotModified {
 		if !zedcloudCtx.NoLedManager {
@@ -652,7 +666,7 @@ func fetchCertChain(zedcloudCtx *zedcloud.ZedCloudContext, tlsConfig *tls.Config
 	zedcloudCtx.NoLedManager = true
 
 	// currently there is no data included for the request, same as myGet()
-	done, resp, _, contents = myPost(zedcloudCtx, tlsConfig, requrl, retryCount, 0, nil)
+	done, resp, _, contents = myPost(zedcloudCtx, tlsConfig, requrl, true, retryCount, 0, nil)
 	zedcloudCtx.NoLedManager = savedNoLedManager
 	if resp != nil {
 		log.Functionf("client fetchCertChain done %v, resp-code %d, content len %d", done, resp.StatusCode, len(contents))
@@ -714,7 +728,7 @@ func doGetUUIDNew(ctx *clientContext, tlsConfig *tls.Config,
 		log.Errorln(err)
 		return false, nilUUID, ""
 	}
-	done, resp, senderStatus, contents = myPost(zedcloudCtx, tlsConfig, requrl, retryCount,
+	done, resp, senderStatus, contents = myPost(zedcloudCtx, tlsConfig, requrl, false, retryCount,
 		int64(len(b)), bytes.NewBuffer(b))
 	if !done {
 		// This may be due to the cloud cert file is stale, since the hash does not match.
