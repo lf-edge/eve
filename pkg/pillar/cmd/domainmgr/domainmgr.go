@@ -1011,7 +1011,7 @@ func maybeRetryBoot(ctx *domainContext, status *types.DomainStatus) {
 		return
 	}
 	status.BootFailed = false
-	doActivateTail(ctx, status, domainID)
+	doDomainActivateTail(ctx, status, domainID)
 	publishDomainStatus(ctx, status)
 	log.Functionf("maybeRetryBoot(%s) DONE for %s",
 		status.Key(), status.DisplayName)
@@ -1049,7 +1049,7 @@ func maybeRetryAdapters(ctx *domainContext, status *types.DomainStatus) {
 
 	// Write any Location so that it can later be deleted based on status
 	publishDomainStatus(ctx, status)
-	doActivate(ctx, *config, status)
+	doDomainActivate(ctx, *config, status)
 	// work done
 	publishDomainStatus(ctx, status)
 	log.Functionf("maybeRetryAdapters(%s) DONE for %s",
@@ -1138,7 +1138,7 @@ func doCreateDomain(ctx *domainContext, key string, config *types.DomainConfig) 
 	publishDomainStatus(ctx, &status)
 
 	if config.Activate {
-		doActivate(ctx, *config, &status)
+		doDomainActivate(ctx, *config, &status)
 	}
 	// work done
 	status.PendingAdd = false
@@ -1223,10 +1223,10 @@ func doAssignIoAdaptersToDomain(ctx *domainContext, config types.DomainConfig,
 	return nil
 }
 
-func doActivate(ctx *domainContext, config types.DomainConfig,
+func doDomainActivate(ctx *domainContext, config types.DomainConfig,
 	status *types.DomainStatus) {
 
-	log.Functionf("doActivate(%v) for %s",
+	log.Functionf("doDomainActivate(%v) for %s",
 		config.UUIDandVersion, config.DisplayName)
 
 	if errDescription := reserveAdapters(ctx, config); errDescription != nil {
@@ -1272,7 +1272,7 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 		case zconfig.Format_CONTAINER:
 			snapshotID := containerd.GetSnapshotID(ds.FileLocation)
 			if err := ctx.casClient.MountSnapshot(snapshotID, getRoofFsPath(ds.FileLocation)); err != nil {
-				err := fmt.Errorf("doActivate: Failed mount snapshot: %s for %s. Error %s",
+				err := fmt.Errorf("doDomainActivate: Failed mount snapshot: %s for %s. Error %s",
 					snapshotID, config.UUIDandVersion.UUID, err)
 				log.Error(err.Error())
 				status.SetErrorNow(err.Error())
@@ -1333,10 +1333,10 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 		time.Sleep(5 * time.Second)
 	}
 	status.BootFailed = false
-	doActivateTail(ctx, status, domainID)
+	doDomainActivateTail(ctx, status, domainID)
 }
 
-func doActivateTail(ctx *domainContext, status *types.DomainStatus,
+func doDomainActivateTail(ctx *domainContext, status *types.DomainStatus,
 	domainID int) {
 
 	log.Functionf("created domainID %d for %s", domainID, status.DomainName)
@@ -1380,7 +1380,7 @@ func doActivateTail(ctx *domainContext, status *types.DomainStatus,
 		status.State = state
 		status.Activated = false
 		status.SetErrorNow(err.Error())
-		log.Errorf("doActivateTail(%v) failed for %s: %s",
+		log.Errorf("doDomainActivateTail(%v) failed for %s: %s",
 			status.UUIDandVersion, status.DisplayName, err)
 		// Delete
 		if err := hyper.Task(status).Delete(status.DomainName); err != nil {
@@ -1402,10 +1402,10 @@ func doActivateTail(ctx *domainContext, status *types.DomainStatus,
 	status.Activated = true
 	err = setupVlans(status.VifList)
 	if err != nil {
-		log.Errorf("doActivateTail(%v) setupVlans failed for %s: %v",
+		log.Errorf("doDomainActivateTail(%v) setupVlans failed for %s: %v",
 			status.UUIDandVersion, status.DisplayName, err)
 	}
-	log.Functionf("doActivateTail(%v) done for %s",
+	log.Functionf("doDomainActivateTail(%v) done for %s",
 		status.UUIDandVersion, status.DisplayName)
 }
 
@@ -1955,7 +1955,7 @@ func doModifyDomain(ctx *domainContext, key string,
 			return
 		}
 		updateStatusFromConfig(status, *config)
-		doActivate(ctx, *config, status)
+		doDomainActivate(ctx, *config, status)
 		changed = true
 	} else if !config.Activate {
 		log.Functionf("handleModify(%v) NOT activating for %s",
