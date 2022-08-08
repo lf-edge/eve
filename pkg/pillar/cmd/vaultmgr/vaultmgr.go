@@ -675,6 +675,14 @@ func setupDefaultVaultOnZfs() error {
 	return nil
 }
 
+// remove vaults from ext4
+func removeDefaultVaultOnExt4() error {
+	if err := os.RemoveAll(defaultVault); err != nil {
+		return fmt.Errorf("error in clean up vault %s: %w", defaultVault, err)
+	}
+	return nil
+}
+
 // checkAndPublishVaultConfig: If vault config is not yet initialized
 // Checks if defaultVault/defaultSecretDataset exists and if not publishes the vault config TmpKeyOnly = true
 // If those directories exists, then publishes the vault config TmpKeyOnly = false
@@ -702,8 +710,28 @@ func checkAndPublishVaultConfig(ctx *vaultMgrContext) {
 	}
 }
 
-//setupDefaultVault sets up default vault, based on the current filesystem
-//On non-TPM platforms, it just creates the directory (if absent)
+// removeDefaultVault removes previously created vault
+func removeDefaultVault(_ *vaultMgrContext) error {
+	persistFsType := vault.ReadPersistType()
+
+	switch persistFsType {
+	case types.PersistExt4:
+		if err := removeDefaultVaultOnExt4(); err != nil {
+			return err
+		}
+	case types.PersistZFS:
+		if err := removeDefaultVaultOnZfs(); err != nil {
+			return err
+		}
+	case types.PersistExt3, types.PersistUnknown:
+		log.Noticef("unsupported %s filesystem, ignoring vault remove",
+			persistFsType)
+	}
+	return nil
+}
+
+// setupDefaultVault sets up default vault, based on the current filesystem
+// On non-TPM platforms, it just creates the directory (if absent)
 func setupDefaultVault(ctx *vaultMgrContext) error {
 	persistFsType := vault.ReadPersistType()
 	if !etpm.IsTpmEnabled() {
@@ -1033,28 +1061,31 @@ func handleVaultKeyFromControllerImpl(ctxArg interface{}, key string,
 		return
 	}
 	log.Tracef("Processing EncryptedVaultKeyFromController %s\n", key)
-	keyData := &attest.AttestVolumeKeyData{}
-	if err := proto.Unmarshal(keyFromController.EncryptedVaultKey, keyData); err != nil {
-		log.Errorf("Failed to unmarshal keyData %v", err)
-		return
-	}
-	decryptedKey, err := etpm.EncryptDecryptUsingTpm(keyData.EncryptedKey, false)
-	if err != nil {
-		log.Errorf("Failed to decrypt Controller provided key data: %v", err)
-		return
-	}
+	if len(keyFromController.EncryptedVaultKey) > 0 {
+		keyData := &attest.AttestVolumeKeyData{}
+		if err := proto.Unmarshal(keyFromController.EncryptedVaultKey, keyData); err != nil {
+			log.Errorf("Failed to unmarshal keyData %v", err)
+			return
+		}
+		decryptedKey, err := etpm.EncryptDecryptUsingTpm(keyData.EncryptedKey, false)
+		if err != nil {
+			log.Errorf("Failed to decrypt Controller provided key data: %v", err)
+			return
+		}
 
-	hash := sha256.New()
-	hash.Write(decryptedKey)
-	digest256 := hash.Sum(nil)
-	if !bytes.Equal(digest256, keyData.DigestSha256) {
-		log.Errorf("Computed SHA is not matching provided SHA")
-		return
-	}
-	log.Functionf("Computed and provided SHA are matching")
+		hash := sha256.New()
+		hash.Write(decryptedKey)
+		digest256 := hash.Sum(nil)
+		if !bytes.Equal(digest256, keyData.DigestSha256) {
+			log.Errorf("Computed SHA is not matching provided SHA")
+			return
+		}
+		log.Functionf("Computed and provided SHA are matching")
 
-	//Try unlocking the vault now, in case it is not yet unlocked
-	if !ctx.defaultVaultUnlocked {
+		if ctx.defaultVaultUnlocked {
+			return
+		}
+		// Try unlocking the vault now, in case it is not yet unlocked
 		log.Noticef("Vault is still locked, trying to unlock")
 		err = etpm.SealDiskKey(decryptedKey, etpm.DiskKeySealingPCRs)
 		if err != nil {
@@ -1083,25 +1114,51 @@ func handleVaultKeyFromControllerImpl(ctxArg interface{}, key string,
 		//Log the type of key used for unlocking default vault
 		log.Noticef("%s unlocked using key type %s", defaultVault,
 			etpm.CompareLegacyandSealedKey().String())
-
-		//Mark the default vault as unlocked
-		ctx.defaultVaultUnlocked = true
-
-		//publish vault key to Controller
-		if err := publishVaultKey(ctx, types.DefaultVaultName); err != nil {
-			log.Errorf("Failed to publish Vault Key, %v", err)
+	} else {
+		// We are here if we receive no keys from controller
+		if ctx.defaultVaultUnlocked {
+			// if already unlocked, do nothing
+			return
 		}
-
-		// Publish current status of vault
-		publishVaultStatus(ctx)
-
-		// Now that vault is unlocked, run any upgrade converter handler if needed
-		// The main select loop which is waiting on ucChan event, will publish
-		// latest status of vault(s) once RunPostVaultHandlers is complete.
-		log.Notice("Starting upgradeconverter(post-vault)")
-		go uc.RunPostVaultHandlers(agentName, ctx.ps, logger, log,
-			debugOverride, ctx.ucChan)
+		if !vault.IsVaultCleanupAllowed() {
+			log.Warnf("Vault cleanup is not allowed")
+			return
+		}
+		log.Warnf("Processing empty EncryptedVaultKeyFromController %s", key)
+		// If we had no luck in unlock with sealed key, and receive empty EncryptedVaultKey from zedagent,
+		// which indicates that we receive no keys from the controller,
+		// than we cannot unlock the vault.
+		// Try to remove and re-create default vault now
+		if err := removeDefaultVault(ctx); err != nil {
+			log.Errorf("Failed to remove vault after receiving dummy Controller key: %v", err)
+			return
+		}
+		log.Warnln("default vault removed")
+		if err := setupDefaultVault(ctx); err != nil {
+			log.Errorf("setupDefaultVault failed, err: %v", err)
+			publishVaultStatus(ctx)
+			return
+		}
+		log.Noticef("%s re-created", defaultVault)
 	}
+
+	// Mark the default vault as unlocked
+	ctx.defaultVaultUnlocked = true
+
+	// publish vault key to Controller
+	if err := publishVaultKey(ctx, types.DefaultVaultName); err != nil {
+		log.Errorf("Failed to publish Vault Key, %v", err)
+	}
+
+	// Publish current status of vault
+	publishVaultStatus(ctx)
+
+	// Now that vault is unlocked, run any upgrade converter handler if needed
+	// The main select loop which is waiting on ucChan event, will publish
+	// the latest status of vault(s) once RunPostVaultHandlers is complete.
+	log.Notice("Starting upgradeconverter(post-vault)")
+	go uc.RunPostVaultHandlers(agentName, ctx.ps, logger, log,
+		debugOverride, ctx.ucChan)
 }
 
 func publishVaultKey(ctx *vaultMgrContext, vaultName string) error {
@@ -1110,7 +1167,7 @@ func publishVaultKey(ctx *vaultMgrContext, vaultName string) error {
 	//otherwise we leave it empty
 	if etpm.IsTpmEnabled() {
 		if !ctx.defaultVaultUnlocked {
-			log.Errorf("Vault is not yet unlocked")
+			log.Errorf("Vault is not yet unlocked, waiting for Controller key")
 			return nil
 		}
 		keyBytes, err := retrieveTpmKey(true)

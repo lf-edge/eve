@@ -86,6 +86,17 @@ func createZfsVault(vaultPath string) error {
 	return nil
 }
 
+// remove vault from zfs
+func removeDefaultVaultOnZfs() error {
+	args := []string{"destroy", "-fr", defaultSecretDataset}
+	if stdOut, stdErr, err := execCmd(types.ZFSBinary, args...); err != nil {
+		log.Errorf("error remove zfs vault %s, error=%v, %s, %s",
+			defaultSecretDataset, err, stdOut, stdErr)
+		return err
+	}
+	return nil
+}
+
 //e.g. zfs get keystatus persist/vault
 func checkKeyStatus(vaultPath string) error {
 	args := getKeyStatusParams(vaultPath)

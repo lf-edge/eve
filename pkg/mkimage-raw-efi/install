@@ -555,6 +555,11 @@ fi
 #store file to indicate first boot after installer
 touch /persist/installer/first-boot
 
+# store file to indicate that EVE will clean vault
+# in case of no key received from controller
+mkdir -p /persist/status
+touch /persist/status/allow-vault-clean
+
 # lets hope this is enough to flush the caches
 sync; sleep 5; sync
 

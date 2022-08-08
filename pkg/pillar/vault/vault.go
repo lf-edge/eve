@@ -5,15 +5,18 @@ package vault
 
 import (
 	"bytes"
+	"fmt"
 	"io/ioutil"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 
 	"github.com/lf-edge/eve/api/go/info"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	etpm "github.com/lf-edge/eve/pkg/pillar/evetpm"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	utils "github.com/lf-edge/eve/pkg/pillar/utils/file"
 )
 
 const (
@@ -30,6 +33,11 @@ const (
 	DefaultZpool = "persist"
 
 	evePersistTypeFile = "/run/eve.persist_type"
+
+	// allowVaultCleanFile existence indicates that we want to recreate vault in case of no controller key
+	// we set it in installer and storage-init
+	// so path must be aligned
+	allowVaultCleanFile = types.PersistStatusDir + "/allow-vault-clean"
 )
 
 var (
@@ -115,4 +123,24 @@ func ReadPersistType() types.PersistType {
 		persistFsType = strings.TrimSpace(string(pBytes))
 	}
 	return types.ParsePersistType(persistFsType)
+}
+
+// DisallowVaultCleanup do not allow vault cleanup
+func DisallowVaultCleanup() error {
+	if _, err := os.Stat(allowVaultCleanFile); os.IsNotExist(err) {
+		return nil
+	}
+	// remove file to indicate that we do not allow to clean vault
+	if err := os.RemoveAll(allowVaultCleanFile); err != nil {
+		return fmt.Errorf("cannot remove allowVaultCleanFile: %w", err)
+	}
+	return utils.DirSync(filepath.Dir(allowVaultCleanFile))
+}
+
+// IsVaultCleanupAllowed returns true if vault cleanup allowed
+func IsVaultCleanupAllowed() bool {
+	if _, err := os.Stat(allowVaultCleanFile); os.IsNotExist(err) {
+		return false
+	}
+	return true
 }

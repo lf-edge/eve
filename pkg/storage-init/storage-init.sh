@@ -284,6 +284,13 @@ if P3=$(findfs PARTLABEL=P3) && [ -n "$P3" ]; then
 
     # this is safe, since if the mount fails the following will fail too
     zfs_module_unload
+
+    if [ "$INIT_FS" = 1 ]; then
+      # store file to indicate that EVE will clean vault
+      # in case of no key received from controller
+      mkdir -p /persist/status
+      touch /persist/status/allow-vault-clean
+    fi
 else
     #in case of no P3 we may have EVE persist on another disks
     zfs_module_load
