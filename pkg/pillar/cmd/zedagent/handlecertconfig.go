@@ -207,10 +207,10 @@ func getCertsFromController(ctx *zedagentContext) bool {
 	ctxWork, cancel := zedcloud.GetContextForAllIntfFunctions(zedcloudCtx)
 	defer cancel()
 
-	resp, contents, rtf, err := zedcloud.SendOnAllIntf(ctxWork, zedcloudCtx,
+	resp, contents, senderStatus, err := zedcloud.SendOnAllIntf(ctxWork, zedcloudCtx,
 		certURL, 0, nil, 0, false)
 	if err != nil {
-		switch rtf {
+		switch senderStatus {
 		case types.SenderStatusUpgrade:
 			log.Functionf("getCertsFromController: Controller upgrade in progress")
 		case types.SenderStatusRefused:
@@ -237,6 +237,14 @@ func getCertsFromController(ctx *zedagentContext) bool {
 	if err := zedcloud.ValidateProtoContentType(certURL, resp); err != nil {
 		log.Errorf("getCertsFromController: resp header error")
 		return false
+	}
+	if len(contents) > 0 {
+		contents, senderStatus, err = zedcloud.RemoveAndVerifyAuthContainer(zedcloudCtx,
+			certURL, contents, true, senderStatus)
+		if err != nil {
+			log.Errorf("RemoveAndVerifyAuthContainer failed: %s", err)
+			return false
+		}
 	}
 
 	// validate the certificate message payload
