@@ -825,9 +825,9 @@ func runHandler(ctx *domainContext, key string, c <-chan Notify) {
 				config := c.(types.DomainConfig)
 				status := lookupDomainStatus(ctx, key)
 				if status == nil {
-					handleCreate(ctx, key, &config)
+					doCreateDomain(ctx, key, &config)
 				} else {
-					handleModify(ctx, key, &config, status)
+					doModifyDomain(ctx, key, &config, status)
 				}
 			} else {
 				// Closed
@@ -1095,7 +1095,7 @@ func lookupDomainConfig(ctx *domainContext, key string) *types.DomainConfig {
 	return &config
 }
 
-func handleCreate(ctx *domainContext, key string, config *types.DomainConfig) {
+func doCreateDomain(ctx *domainContext, key string, config *types.DomainConfig) {
 
 	log.Functionf("handleCreate(%v) for %s",
 		config.UUIDandVersion, config.DisplayName)
@@ -1919,7 +1919,7 @@ func addNoDuplicate(list []string, add string) []string {
 // then we need to reboot. Thus version can change but can't handle disk or
 // vif changes.
 // XXX should we reboot if there are such changes? Or reject with error?
-func handleModify(ctx *domainContext, key string,
+func doModifyDomain(ctx *domainContext, key string,
 	config *types.DomainConfig, status *types.DomainStatus) {
 
 	log.Functionf("handleModify(%v) activate %t for %s state %s",
