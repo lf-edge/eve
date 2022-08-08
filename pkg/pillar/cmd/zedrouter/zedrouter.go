@@ -977,7 +977,7 @@ func handleAppNetworkCreate(ctxArg interface{}, key string, configArg interface{
 	}
 
 	if config.Activate {
-		doActivate(ctx, config, &status) // We check any error below
+		doNetActivate(ctx, config, &status) // We check any error below
 	}
 	status.PendingAdd = false
 	publishAppNetworkStatus(ctx, &status)
@@ -1048,10 +1048,10 @@ func handleAppInstConfigDelete(ctxArg interface{}, key string, configArg interfa
 	log.Functionf("handleAppNetworkConfigDelete(%s) done\n", key)
 }
 
-func doActivate(ctx *zedrouterContext, config types.AppNetworkConfig,
+func doNetActivate(ctx *zedrouterContext, config types.AppNetworkConfig,
 	status *types.AppNetworkStatus) error {
 
-	log.Functionf("doActivate %s-%s", config.DisplayName, config.UUIDandVersion)
+	log.Functionf("doNetActivate %s-%s", config.DisplayName, config.UUIDandVersion)
 
 	// Check that Network exists for all underlays.
 	// We look for AwaitNetworkInstance when a NetworkInstance is added
@@ -1059,7 +1059,7 @@ func doActivate(ctx *zedrouterContext, config types.AppNetworkConfig,
 	if !allNetworksExist {
 		// Not reported as error since should be transient, but has unique state
 		status.AwaitNetworkInstance = true
-		log.Functionf("doActivate(%v) for %s: missing networks\n",
+		log.Functionf("doNetActivate(%v) for %s: missing networks\n",
 			config.UUIDandVersion, config.DisplayName)
 		publishAppNetworkStatus(ctx, status)
 		return nil
@@ -1071,7 +1071,7 @@ func doActivate(ctx *zedrouterContext, config types.AppNetworkConfig,
 
 	appNetworkDoCopyNetworksToStatus(ctx, config, status)
 	if err := validateAppNetworkConfig(ctx, config, status); err != nil {
-		log.Errorf("doActivate(%v) AppNetwork Config check failed for %s: %v",
+		log.Errorf("doNetActivate(%v) AppNetwork Config check failed for %s: %v",
 			config.UUIDandVersion, config.DisplayName, err)
 		// addError has already been done
 		publishAppNetworkStatus(ctx, status)
@@ -1090,7 +1090,7 @@ func doActivate(ctx *zedrouterContext, config types.AppNetworkConfig,
 		return err
 	}
 	if status.AwaitNetworkInstance {
-		log.Functionf("doActivate %s-%s clearing error %s",
+		log.Functionf("doNetActivate %s-%s clearing error %s",
 			config.DisplayName, config.UUIDandVersion, status.Error)
 		status.AwaitNetworkInstance = false
 		// XXX better to use ErrorWithSource and check for NetworkInstanceStatus?
@@ -1402,7 +1402,7 @@ func checkAndRecreateAppNetwork(ctx *zedrouterContext, niStatus types.NetworkIns
 
 		log.Functionf("checkAndRecreateAppNetwork(%s) try remove error %s for %s",
 			niStatus.Key(), status.Error, status.DisplayName)
-		doActivate(ctx, *config, &status) // If error we will try again
+		doNetActivate(ctx, *config, &status) // If error we will try again
 		log.Functionf("checkAndRecreateAppNetwork(%s) done for %s\n",
 			niStatus.Key(), config.DisplayName)
 	}
@@ -1572,7 +1572,7 @@ func handleAppNetworkModify(ctxArg interface{}, key string,
 	} else if config.Activate && !status.Activated {
 		checkAppNetworkModifyUNetAppNum(ctx, config, status)
 		appNetworkDoCopyNetworksToStatus(ctx, config, status)
-		doActivate(ctx, config, status) // We check any error below
+		doNetActivate(ctx, config, status) // We check any error below
 	} else if !status.Activated {
 		checkAppNetworkModifyUNetAppNum(ctx, config, status)
 		// Just copy in config
