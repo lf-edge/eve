@@ -411,6 +411,17 @@ func getLatestConfig(url string, iteration int,
 		return false
 	}
 
+	contents, senderStatus, err = zedcloud.RemoveAndVerifyAuthContainer(zedcloudCtx,
+		url, contents, false, senderStatus)
+	if err != nil {
+		log.Errorf("RemoveAndVerifyAuthContainer failed: %s", err)
+		// Inform ledmanager about problem
+		utils.UpdateLedManagerConfig(log, types.LedBlinkInvalidAuthContainer)
+		getconfigCtx.ledBlinkCount = types.LedBlinkInvalidAuthContainer
+		publishZedAgentStatus(getconfigCtx)
+		return false
+	}
+
 	changed, config, err := readConfigResponseProtoMessage(resp, contents)
 	if err != nil {
 		log.Errorln("readConfigResponseProtoMessage: ", err)
