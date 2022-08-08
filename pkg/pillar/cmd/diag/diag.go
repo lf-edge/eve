@@ -1034,6 +1034,7 @@ func myGet(ctx *diagContext, reqURL string, ifname string,
 			ifname, proxyURL.String(), reqURL)
 	}
 	const allowProxy = true
+	// No verification of AuthContainer for this GET
 	resp, contents, senderStatus, err := zedcloud.SendOnIntf(context.Background(), zedcloudCtx,
 		reqURL, ifname, 0, nil, allowProxy, ctx.usingOnboardCert)
 	if err != nil {
@@ -1124,10 +1125,8 @@ func myPost(ctx *diagContext, reqURL string, ifname string,
 	switch resp.StatusCode {
 	case http.StatusOK:
 		fmt.Fprintf(outfile, "INFO: %s: %s StatusOK\n", ifname, reqURL)
-		return true, resp, senderStatus, contents
 	case http.StatusNotModified:
 		fmt.Fprintf(outfile, "INFO: %s: %s StatusNotModified\n", ifname, reqURL)
-		return true, resp, senderStatus, contents
 	default:
 		fmt.Fprintf(outfile, "ERROR: %s: %s statuscode %d %s\n",
 			ifname, reqURL, resp.StatusCode,
@@ -1136,6 +1135,16 @@ func myPost(ctx *diagContext, reqURL string, ifname string,
 			ifname, string(contents))
 		return false, nil, senderStatus, nil
 	}
+	if len(contents) > 0 {
+		contents, senderStatus, err = zedcloud.RemoveAndVerifyAuthContainer(zedcloudCtx,
+			reqURL, contents, false, senderStatus)
+		if err != nil {
+			fmt.Fprintf(outfile, "ERROR: %s: %s RemoveAndVerifyAuthContainer  %s\n",
+				ifname, reqURL, err)
+			return false, nil, senderStatus, nil
+		}
+	}
+	return true, resp, senderStatus, contents
 }
 
 func handleGlobalConfigCreate(ctxArg interface{}, key string,

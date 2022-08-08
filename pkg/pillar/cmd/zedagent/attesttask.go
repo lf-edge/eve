@@ -81,8 +81,14 @@ func trySendToController(attestReq *attest.ZAttestReq, iteration int) (*http.Res
 		devUUID, "attest")
 	ctxWork, cancel := zedcloud.GetContextForAllIntfFunctions(zedcloudCtx)
 	defer cancel()
-	return zedcloud.SendOnAllIntf(ctxWork, zedcloudCtx, attestURL,
-		size, buf, iteration, true)
+	resp, contents, senderStatus, err := zedcloud.SendOnAllIntf(ctxWork,
+		zedcloudCtx, attestURL, size, buf, iteration, true)
+	if err != nil || len(contents) == 0 {
+		return resp, contents, senderStatus, err
+	}
+	contents, senderStatus, err = zedcloud.RemoveAndVerifyAuthContainer(zedcloudCtx,
+		attestURL, contents, false, senderStatus)
+	return resp, contents, senderStatus, err
 }
 
 //setAttestErrorAndTriggerInfo sets errorDescription on zattest.Context,
