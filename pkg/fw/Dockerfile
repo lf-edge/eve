@@ -1,19 +1,49 @@
-FROM alpine:edge as build
+ARG EVE_BUILDER_IMAGE=lfedge/eve-alpine:6.7.0
+# hadolint ignore=DL3006
+FROM ${EVE_BUILDER_IMAGE} as build
 
-# hadolint ignore=DL3018
-RUN apk add --no-cache \
-    wireless-regdb \
-    linux-firmware-bnx2x \
-    linux-firmware-other \
-    linux-firmware-ath10k \
-    linux-firmware-mrvl \
-    linux-firmware-rtlwifi \
-    linux-firmware-rsi \
-    linux-firmware-nvidia \
-    linux-firmware-rtl_nic \
-    linux-firmware-brcm \
-    linux-firmware-cypress \
-    linux-firmware-ti-connectivity
+ENV BUILD_PKGS curl tar make
+RUN eve-alpine-deploy.sh
+
+ENV WIRELESS_REGDB_VERSION 2022.06.06
+ENV WIRELESS_REGDB_REPO https://mirrors.edge.kernel.org/pub/software/network/wireless-regdb/wireless-regdb
+RUN mkdir /wireless-regdb &&\
+    curl -fsSL ${WIRELESS_REGDB_REPO}-${WIRELESS_REGDB_VERSION}.tar.gz | tar -xz --strip-components=1 -C /wireless-regdb &&\
+    cp /wireless-regdb/regulatory.db /wireless-regdb/regulatory.db.p7s /lib/firmware
+
+ENV LINUX_FIRMWARE_VERSION 20220708
+ENV LINUX_FIRMWARE_URL https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/snapshot/linux-firmware
+RUN mkdir /linux-firmware &&\
+    curl -fsSL ${LINUX_FIRMWARE_URL}-${LINUX_FIRMWARE_VERSION}.tar.gz | tar -xz --strip-components=1 -C /linux-firmware &&\
+    make -C /linux-firmware FIRMWAREDIR="/lib/firmware" install
+
+# patch merged, but not released, remove this when update LINUX_FIRMWARE_VERSION
+RUN rm /lib/firmware/brcm/brcmfmac43455-sdio.AW-CM256SM.txt &&\
+    cp /linux-firmware/brcm/brcmfmac43455-sdio.AW-CM256SM.txt /lib/firmware/brcm &&\
+    ln -s brcmfmac43455-sdio.AW-CM256SM.txt /lib/firmware/brcm/brcmfmac43455-sdio.beagle,am5729-beagleboneai.txt &&\
+    ln -s brcmfmac43455-sdio.AW-CM256SM.txt /lib/firmware/brcm/brcmfmac43455-sdio.pine64,pinebook-pro.txt &&\
+    ln -s brcmfmac43455-sdio.AW-CM256SM.txt /lib/firmware/brcm/brcmfmac43455-sdio.pine64,pinephone-pro.txt &&\
+    ln -s brcmfmac43455-sdio.AW-CM256SM.txt /lib/firmware/brcm/brcmfmac43455-sdio.pine64,quartz64-b.txt
+# add compat links for pre-5.0 kernel
+RUN ln -s brcmfmac43455-sdio.raspberrypi,3-model-b-plus.txt /lib/firmware/brcm/brcmfmac43455-sdio.txt &&\
+    ln -s brcmfmac43430-sdio.raspberrypi,3-model-b.txt /lib/firmware/brcm/brcmfmac43430-sdio.txt
+# symlinks for Visionfive1 riscv64 boards
+RUN ln -s ../cypress/cyfmac43430-sdio.bin /lib/firmware/brcm/brcmfmac43430-sdio.starfive,visionfive-v1.bin
+
+ENV RPI_FIRMWARE_VERSION 2c8f665254899a52260788dd902083bb57a99738
+ENV RPI_FIRMWARE_URL https://github.com/RPi-Distro/firmware-nonfree/archive
+RUN mkdir /rpi-firmware &&\
+    curl -fsSL ${RPI_FIRMWARE_URL}/${RPI_FIRMWARE_VERSION}.tar.gz | tar -xz --strip-components=1 -C /rpi-firmware &&\
+    cp -a /rpi-firmware/debian/config/brcm80211/brcm/brcmfmac43436* /lib/firmware/brcm
+
+ENV RPI_BT_FIRMWARE_VERSION e7fd166981ab4bb9a36c2d1500205a078a35714d
+ENV RPI_BT_FIRMWARE_URL https://github.com/RPi-Distro/bluez-firmware/raw
+
+WORKDIR /lib/firmware/brcm
+RUN curl -fsSL ${RPI_BT_FIRMWARE_URL}/${RPI_BT_FIRMWARE_VERSION}/broadcom/BCM43430A1.hcd -O &&\
+    curl -fsSL ${RPI_BT_FIRMWARE_URL}/${RPI_BT_FIRMWARE_VERSION}/broadcom/BCM4345C0.hcd -O &&\
+    curl -fsSL ${RPI_BT_FIRMWARE_URL}/${RPI_BT_FIRMWARE_VERSION}/broadcom/BCM43430B0.hcd -O &&\
+    curl -fsSL ${RPI_BT_FIRMWARE_URL}/${RPI_BT_FIRMWARE_VERSION}/broadcom/BCM4345C5.hcd -O
 
 FROM busybox as compactor
 ENTRYPOINT []
