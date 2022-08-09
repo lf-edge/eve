@@ -1,4 +1,4 @@
-ARG GOVER=1.14.4
+ARG GOVER=1.18.5
 FROM lfedge/eve-alpine:6.7.0 as build
 ENV BUILD_PKGS make gcc git musl-dev linux-headers curl bash pkgconf libseccomp-dev go patch
 RUN eve-alpine-deploy.sh
