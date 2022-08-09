@@ -231,7 +231,7 @@ qmi_start_network() {
   ip link set "$IFACE" up
 
   qmi --wds-reset
-  if ! OUTPUT="$(qmi --wds-start-network="apn=${APN}" --client-no-release-cid)"; then
+  if ! OUTPUT="$(qmi --wds-start-network="ip-type=4,apn=${APN}" --client-no-release-cid)"; then
     return 1
   fi
 
