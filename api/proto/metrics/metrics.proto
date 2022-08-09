@@ -468,6 +468,52 @@ message ZMetricVolume {
   uint64 freeBytes = 9;
 }
 
+// Metrics for a snapshot
+// When a snapshot is created, its disk space is initially shared between
+// the snapshot and the file system, and possibly with previous snapshots.
+// As the file system changes, disk space that was previously shared becomes
+// unique to the snapshot, and thus is counted in the snapshot's used property.
+// Additionally, deleting snapshots can increase the amount of disk space
+// unique to (and thus used by) other snapshots, however, this does not increase
+// the amount of disk space specified for the volume itself.
+message ZMetricSnapshot {
+  // Snapshot UUID
+  string snapshot_uuid = 1;
+  // User-friendly name on controller
+  string display_name = 2;
+  // The used space of a snapshot is space that is referenced exclusively
+  // by this snapshot. If this snapshot is destroyed, the amount of used
+  // space will be freed. Space that is shared by multiple snapshots isn't
+  // accounted for in this metric. When a snapshot is destroyed, space that
+  // was previously shared with this snapshot can become unique to snapshots
+  // adjacent to it, thus changing the used space of those snapshots.
+  // The used space of the latest snapshot can also be affected by changes
+  // in the file system. Note that the used space of a snapshot is a subset
+  // of the written space of the snapshot. (in bytes)
+  uint64 used_space = 3;
+  // Identifies the amount of data accessible by this snapshot, which might
+  // or might not be shared with other datasets in the pool. When a snapshot or
+  // clone is created, It initially references the same amount of space as the
+  // file system or snapshot it was created from because
+  // its contents are identical. (in bytes)
+  uint64 referenced = 4;
+  // Identifies the compression ratio achieved for this snapshot,
+  // expressed as a multiplier.
+  double compressratio = 5;
+  // Specifies the logical size of the volume this snapshot belongs to (in bytes)
+  uint64 vol_size = 6;
+  // The amount of space that is "logically" accessible by this dataset.
+  // See the referenced property. The logical space ignores the effect of
+  // the compression and copies properties, giving a quantity closer to
+  // the amount of data that applications see.
+  // However, it does include space consumed by metadata. (in bytes)
+  uint64 logicalreferenced = 7;
+  // The amount of referenced space written to this dataset since the specified
+  // snapshot. This is the space that is referenced by this dataset but was
+  // not referenced by the specified snapshot. (in bytes)
+  uint64 written = 8;
+}
+
 // metrics for a single process
 message ZMetricProcess {
   int32 pid = 1;
@@ -510,6 +556,8 @@ message ZMetricMsg {
   repeated ZMetricVolume vm = 8;
 
   repeated ZMetricProcess pr = 9;
+
+  repeated ZMetricSnapshot sm = 10;
 }
 
 // newlogMetric - stats for newlog

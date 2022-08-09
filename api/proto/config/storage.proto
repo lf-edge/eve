@@ -242,3 +242,71 @@ message DisksConfig {
   DisksArrayType array_type = 2;
   repeated DisksConfig children = 3;
 }
+
+// RollbackCmd - snapshot rollback command
+//
+// If the counter in the DeviceOpsCmd is different, it will cause a
+// rollback operation.
+//
+// The fields from RollbackCmd (snapshot_uuid, volume_uuid) will
+// always match the fields from the SnapshotConfig (snapshot_uuid, volume_uuid)
+// to which RollbackCmd belongs.
+//
+// For example: take the situation where the controller requests one or more
+// snapshots (uuid=1 for volume_uuid=X, then add a second SnapshotCmd
+// with uuid=2 for volume_uuid=X), and then later it send a RollbackCmd with
+// snapshot_uuid=1
+//
+// In this case, the following will happen:
+// It is assumed that the RollbackCmd message cannot come separately from
+// the configuration, and will always be part of the SnapshotConfig for
+// every snapshot. And we will always receive from the controller a complete
+// list of SnapshotConfig for all snapshots that the controller knows about.
+// Then after the snapshot with uuid=2 has been created, we can also get
+// a SnapshotConfig for uuid=1, where the counter in RollbackCmd will be +1.
+// Thus, we will roll back to the state of the logical volume at the time
+// of the snapshot with uuid=1, and the snapshot with uuid=2 will be marked
+// in the info message how IMPLICITLY_DELETED (If the controller did not take
+// care of deleting the snapshot with uuid=2 before the rollback command).
+message RollbackCmd {
+  // UUID of the snapshot to rollback to. Is the snapshot_uuid
+  // from the SnapshotConfig and the real and unique name of the
+  // snapshot in ZFS. This is the rollback target for volume_uuid.
+  string snapshot_uuid = 1;
+  string volume_uuid = 2;    // UUID of the volume to rollback
+  DeviceOpsCmd rollback = 3; // Counter for rollback
+}
+
+// SnapshotConfig describes a snapshot for a specific logical
+// volume that must exist on the device. It has a required field
+// volume_uuid for which it was created and UUID for snapshot name in ZFS.
+message SnapshotConfig {
+  // The real name of the snapshot in ZFS. It is the link between
+  // the command and the response to the command. It is assumed
+  // that the field will always be filled with a unique value
+  // that the controller will generate.
+  string snapshot_uuid = 1;
+  // Display name (User-friendly name). This name does not affect
+  // the snapshot properties in ZFS in any way.
+  // Can be filled on the controller side.
+  // If a snapshot has already been created and this field has changed,
+  // it can be assumed that the friendly name for this snapshot has
+  // been renamed on the controller side.
+  string display_name = 2;
+  // Volume ID of the volume this snapshot belongs to. The field is
+  // required for all messages. Must always be filled in on the
+  // controller side before sending to create snapshot command.
+  string volume_uuid = 3;
+  // An "optional" snapshot rollback operation command, because
+  // not all SnapshotConfig require a rollback command
+  // If the RollbackCmd message is not enabled, it means that
+  // a rollback is not requested. If RollbackCmd is enabled in this
+  // config, then a rollback has been requested, and also the counter
+  // in RollbackCmd will be checked.
+  // It should also be taken that the rollback cmd
+  // to snapshot k will implicitly automatically delete
+  // all snapshots from k+1 to N, If the deletion of snapshots
+  // from k+1 to N was not initiated by the controller before
+  // the rollback cmd.
+  RollbackCmd rollback = 4;
+}

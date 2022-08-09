@@ -69,6 +69,7 @@ enum ZInfoTypes {
   ZiHardware = 11;
   ZiEdgeview = 12;
   ZiLocation = 13;
+  ZiSnapshot = 14;
 }
 
 // Information about assignable I/O adapter bundles
@@ -392,6 +393,43 @@ message ZCellularProvider {
   // True if this is the provider currently being used.
   bool current_serving = 3;
   bool roaming = 4;
+}
+
+// Snapshot states
+enum ZSnapshotState {
+  Z_SNAPSHOT_STATE_UNSPECIFIED = 0;
+  // This state is used when a snapshot is in the process of being
+  // created or an error occurred during the first attempt to create it.
+  // (For example, the operation was delayed)
+  Z_SNAPSHOT_STATE_CREATING = 1;
+  // This state is used when the snapshot has been successfully created.
+  Z_SNAPSHOT_STATE_CREATED = 2;
+  // This state is used when the snapshot is pending deletion or
+  // the first deletion attempt was not successful. Once a snapshot is deleted,
+  // EVE will no longer create a ZInfoSnapshot for it.
+  Z_SNAPSHOT_STATE_DELETING = 3;
+  // This state is used to send information to the controller about a
+  // snapshot that was implicitly deleted after a rollback snapshot
+  // or volume delete command. After sending a message with this status once,
+  // EVE no longer expects to receive the configuration (SnapshotConfig)
+  // for this snapshot. If the controller continues to send configuration
+  // for a snapshot that was implicitly deleted, then EVE will ignore
+  // the configuration for that snapshot and resend the ZInfoSnapshot
+  // message to the controller with the status IMPLICITLY_DELETED.
+  Z_SNAPSHOT_STATE_IMPLICITLY_DELETED = 4;
+}
+
+// ZInfoSnapshot - Information about snapshot in zfs for zvol
+message ZInfoSnapshot {
+  google.protobuf.Timestamp creation_time = 1;
+  string snapshot_uuid = 2;           // Link a command and a response. Is the real name of the snapshot in ZFS
+  string volume_uuid = 3;             // Volume ID of the volume this snapshot belongs to.
+  string display_name = 4;            // Ex: "Tuesday" or creation time (User-friendly name)
+  bool encryption = 5;                // This is just an indication. Inherited from zvol.
+  ZSnapshotState current_state = 6;   // Displays the current state of the snapshot
+  ErrorInfo error_msg = 7;            // Ops error
+  uint32 rollback_cmd_counter = 8;    // Counter for rollback cmd from the DevOpsCmd in RollbackCmd
+  google.protobuf.Timestamp rollback_time_last_op = 9;  // The time when the last rollback operation was performed for this snapshot
 }
 
 // Device Run State
@@ -1053,6 +1091,7 @@ message ZInfoMsg {
     ZInfoEdgeview evinfo = 17;
     ZInfoHardware hwinfo = 18;
     ZInfoLocation locinfo = 19;
+    ZInfoSnapshot snapinfo = 20;
   }
   google.protobuf.Timestamp atTimeStamp = 6;
 }

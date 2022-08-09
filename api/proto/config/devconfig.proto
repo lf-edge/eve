@@ -142,6 +142,8 @@ message EdgeDevConfig {
   string project_id = 37;
   string enterprise_name = 38;
   string enterprise_id = 39;
+  // Snapshots list
+  repeated SnapshotConfig snapshots = 40;
 }
 
 message ConfigRequest {
