@@ -446,13 +446,15 @@ func (hdl networkHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	enInfoObj, err := hdl.ctx.subEdgeNodeInfo.Get("global")
 	if err != nil {
-		http.Error(w, http.StatusText(http.StatusNoContent), http.StatusNoContent)
+		errorLine := fmt.Sprintf("cannot fetch edge node information: %s", err)
+		log.Error(errorLine)
+		http.Error(w, errorLine, http.StatusInternalServerError)
 		return
 	}
 	enInfo := enInfoObj.(types.EdgeNodeInfo)
 	w.Header().Add("Content-Type", "application/json")
 	w.WriteHeader(code)
-	resp, _ := json.Marshal(map[string]string{
+	resp, _ := json.Marshal(map[string]interface{}{
 		"caller-ip":         r.RemoteAddr,
 		"external-ipv4":     ipStr,
 		"hostname":          hostname, // Do not delete this line for backward compatibility
@@ -462,7 +464,7 @@ func (hdl networkHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		"project-name":      enInfo.ProjectName,
 		"project-uuid":      enInfo.ProjectID,
 		"enterprise-name":   enInfo.EnterpriseName,
-		"enterprise-uuid":   enInfo.EnterpriseID,
+		"enterprise-id":     enInfo.EnterpriseID,
 		// TBD: add public-ipv4 when controller tells us
 	})
 	w.Write(resp)

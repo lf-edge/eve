@@ -21,6 +21,13 @@ The returned json contains
 - caller-ip: a string with the IP address and TCP port of the requesting app instance
 - external-ipv4: a string with the external IPv4 address
 - hostname: a string with the UUID hostname assigned to the app instance
+- app-instance-uuid: a string with the app instance UUID
+- device-uuid: a string with the device UUID
+- device-name: a string with the device name
+- project-uuid: a string with the UUID of the project the device is associated with
+- project-name: a string with the name of the project the device is associated with
+- enterprise-id: a string with the id of the enterprise the device is associated with
+- enterprise-name: a string with the name of the enterprise the device is associated with
 
 Note that there is no need to specify the application instance identity since the meta-data server in EVE determines that from the virtual network adapter the application instance is using to communicate with EVE.
 
@@ -28,7 +35,7 @@ Note that there is no need to specify the application instance identity since th
 
 curl <http://169.254.169.254/eve/v1/network.json>
 
-{"caller-ip":"10.1.0.2:39380","external-ipv4":"192.168.1.10","hostname":"afa43e51-56b7-4021-a5fa-4272b0381913", "app-instance-uuid":"afa43e51-56b7-4021-a5fa-4272b0381913","device-uuid":"6c6cb828-b0be-4166-9daf-ab353430dbc1","device-name":"test-system","project-name":"test-project","project-uuid":"4d12659e-6c9f-44bc-8e98-d525347afae6","enterprise-name":"testing","enterprise-uuid":"AAFlABBtJ0mP_lhJjIyVzjzgMXiR"}
+{"caller-ip":"10.1.0.2:39380","external-ipv4":"192.168.1.10","hostname":"afa43e51-56b7-4021-a5fa-4272b0381913", "app-instance-uuid":"afa43e51-56b7-4021-a5fa-4272b0381913","device-uuid":"6c6cb828-b0be-4166-9daf-ab353430dbc1","device-name":"test-system","project-name":"test-project","project-uuid":"4d12659e-6c9f-44bc-8e98-d525347afae6","enterprise-name":"testing","enterprise-id":"AAFlABBtJ0mP_lhJjIyVzjzgMXiR"}
 
 ## Application instances with multiple network interface adapters
 
