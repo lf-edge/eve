@@ -3,12 +3,16 @@
 
 package types
 
+import (
+	uuid "github.com/satori/go.uuid"
+)
+
 // EdgeNodeInfo - edge node info from controller
 type EdgeNodeInfo struct {
 	DeviceName     string
-	DeviceID       string
+	DeviceID       uuid.UUID
 	ProjectName    string
-	ProjectID      string
+	ProjectID      uuid.UUID
 	EnterpriseName string
 	EnterpriseID   string
 }
