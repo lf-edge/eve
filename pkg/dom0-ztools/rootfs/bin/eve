@@ -6,15 +6,15 @@ CTR_UA_CMD="ctr --namespace eve-user-apps"
 help() {
   cat <<__EOT__
 Welcome to EVE!
-  commands: enter [qube (assumed pillar)] [command (assumed sh)]
-            enter-user-app <qube>
-            exec qube command
+  commands: enter [service] [command (assumed sh)]
+            enter-user-app <service>
+            exec [service] command
             list
             status
-            start <qube> (requires a qube to be in a destroyed state) 
-            pause <qube>
-            resume <qube>
-            destroy <qube>
+            start <service>
+            pause <service>
+            resume <service>
+            destroy <service>
             persist list
             persist attach <disk>
             firewall drop

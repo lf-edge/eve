@@ -560,8 +560,6 @@ pkg/pillar: pkg/dnsmasq pkg/strongswan pkg/gpt-tools eve-pillar
 	$(QUIET): $@: Succeeded
 pkg/xen-tools: pkg/uefi eve-xen-tools
 	$(QUIET): $@: Succeeded
-pkg/qrexec-dom0: pkg/xen-tools eve-qrexec-dom0
-	$(QUIET): $@: Succeeded
 pkg/%: eve-% FORCE
 	$(QUIET): $@: Succeeded
 
