@@ -3,9 +3,13 @@ ENV BUILD_PKGS git go
 ENV PKGS coreutils
 RUN eve-alpine-deploy.sh
 
-# FIXME bump eve-alpine to alpine 3.14
+# FIXME bump eve-alpine to alpine 3.16
+# update keys to not hit UNTRUSTED signature
 # hadolint ignore=DL3018
-RUN apk --no-cache --repository https://dl-cdn.alpinelinux.org/alpine/v3.14/community add -U --upgrade go && go version
+RUN apk --no-cache --repository https://dl-cdn.alpinelinux.org/alpine/v3.13/main add -U --upgrade alpine-keys
+# bump alpine to 3.16 to get go 1.18.5
+# hadolint ignore=DL3018
+RUN apk --no-cache --repository https://dl-cdn.alpinelinux.org/alpine/v3.16/community add -U --upgrade go && go version
 
 COPY ./  /newlog/.
 WORKDIR /newlog

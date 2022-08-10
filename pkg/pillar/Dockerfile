@@ -8,9 +8,13 @@ ENV BUILD_PKGS git gcc linux-headers libc-dev make linux-pam-dev m4 findutils go
 ENV PKGS alpine-baselayout musl-utils libtasn1-progs pciutils yajl xz bash iptables ip6tables iproute2 dhcpcd coreutils dmidecode libbz2 libuuid ipset curl radvd ethtool util-linux e2fsprogs libcrypto1.1 xorriso qemu-img jq e2fsprogs-extra keyutils ca-certificates ip6tables-openrc iptables-openrc ipset-openrc hdparm zfs
 RUN eve-alpine-deploy.sh
 
-# FIXME bump eve-alpine to alpine 3.14
+# FIXME bump eve-alpine to alpine 3.16
+# update keys to not hit UNTRUSTED signature
 # hadolint ignore=DL3018
-RUN apk --no-cache --repository https://dl-cdn.alpinelinux.org/alpine/v3.14/community add -U --upgrade go && go version
+RUN apk --no-cache --repository https://dl-cdn.alpinelinux.org/alpine/v3.13/main add -U --upgrade alpine-keys
+# bump alpine to 3.16 to get go 1.18.5
+# hadolint ignore=DL3018
+RUN apk --no-cache --repository https://dl-cdn.alpinelinux.org/alpine/v3.16/community add -U --upgrade go && go version
 
 RUN mkdir -p /go/src/github.com/google
 WORKDIR /go/src/github.com/google

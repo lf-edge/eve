@@ -5,6 +5,7 @@
 // one for the collection of free management ports.
 
 // This file is built only for linux
+//go:build linux
 // +build linux
 
 package zedrouter
