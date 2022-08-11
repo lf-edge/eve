@@ -166,6 +166,13 @@ mbim_wait_for_wds() {
 }
 
 mbim_wait_for_register() {
+  # Make sure we are registering with the right APN.
+  # Some LTE networks require explicit (and correct) APN for the registration/attach
+  # procedure (for the initial EPS bearer activation).
+  # Note that qmicli is able to apply this change even in the mbim mode.
+  # On the other hand, mbimcli does not yet provide command to manipulate with profiles.
+  qmi --wds-modify-profile="3gpp,1,apn=${APN},pdp-type=ip"
+
   echo "[$CDC_DEV] Waiting for the device to register on the network"
   local CMD="mbim --query-registration-state | grep -qE 'Register state:.*(home|roaming|partner)' && echo registered"
 
