@@ -364,6 +364,7 @@ func getLatestConfig(url string, iteration int,
 					ctx.bootReason)
 			} else {
 				config, ts, err := readSavedProtoMessageConfig(
+					zedcloudCtx, url,
 					ctx.globalConfig.GlobalValueInt(types.StaleConfigTime),
 					checkpointDirname+"/lastconfig", false)
 				if err != nil {
@@ -411,7 +412,8 @@ func getLatestConfig(url string, iteration int,
 		return false
 	}
 
-	contents, senderStatus, err = zedcloud.RemoveAndVerifyAuthContainer(zedcloudCtx,
+	var configContents []byte
+	configContents, senderStatus, err = zedcloud.RemoveAndVerifyAuthContainer(zedcloudCtx,
 		url, contents, false, senderStatus)
 	if err != nil {
 		log.Errorf("RemoveAndVerifyAuthContainer failed: %s", err)
@@ -422,7 +424,7 @@ func getLatestConfig(url string, iteration int,
 		return false
 	}
 
-	changed, config, err := readConfigResponseProtoMessage(resp, contents)
+	changed, config, err := readConfigResponseProtoMessage(resp, configContents)
 	if err != nil {
 		log.Errorln("readConfigResponseProtoMessage: ", err)
 		// Inform ledmanager about cloud connectivity
@@ -512,15 +514,21 @@ func touchSavedConfig(filename string) {
 
 // If the file exists then read the config, and return is modify time
 // Ignore if older than StaleConfigTime seconds
-func readSavedProtoMessageConfig(staleConfigTime uint32,
-	filename string, force bool) (*zconfig.EdgeDevConfig, time.Time, error) {
+func readSavedProtoMessageConfig(zedcloudCtx *zedcloud.ZedCloudContext, URL string,
+	staleConfigTime uint32, filename string, force bool) (*zconfig.EdgeDevConfig, time.Time, error) {
 	contents, ts, err := readSavedConfig(staleConfigTime, filename, force)
 	if err != nil {
 		log.Errorln("readSavedProtoMessageConfig", err)
 		return nil, ts, err
 	}
+	configContents, _, err := zedcloud.RemoveAndVerifyAuthContainer(zedcloudCtx,
+		URL, contents, false, types.SenderStatusNone)
+	if err != nil {
+		log.Errorf("RemoveAndVerifyAuthContainer failed: %s", err)
+		return nil, ts, err
+	}
 	var configResponse = &zconfig.ConfigResponse{}
-	err = proto.Unmarshal(contents, configResponse)
+	err = proto.Unmarshal(configContents, configResponse)
 	if err != nil {
 		log.Errorf("readSavedProtoMessageConfig Unmarshalling failed: %v",
 			err)
