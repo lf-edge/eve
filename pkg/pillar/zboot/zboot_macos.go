@@ -3,6 +3,7 @@
 
 // Zboot mac OS specific calls
 
+//go:build darwin
 // +build darwin
 
 package zboot

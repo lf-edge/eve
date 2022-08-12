@@ -1,11 +1,10 @@
-FROM lfedge/eve-alpine:6.7.0 as build
-ENV BUILD_PKGS git go
+FROM lfedge/eve-alpine:9639a88a6856455ce639258490814b17a89ce7a3 as build
+ENV BUILD_PKGS go
+RUN eve-alpine-deploy.sh 3.16
+
+ENV BUILD_PKGS git
 ENV PKGS alpine-baselayout musl-utils iproute2 iptables
 RUN eve-alpine-deploy.sh
-
-# FIXME bump eve-alpine to alpine 3.14
-# hadolint ignore=DL3018
-RUN apk --no-cache --repository https://dl-cdn.alpinelinux.org/alpine/v3.14/community add -U --upgrade go && go version
 
 COPY src/  /edge-view/.
 COPY go.mod /edge-view/.

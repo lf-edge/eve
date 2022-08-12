@@ -1,16 +1,15 @@
 # Copyright (c) 2018 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
-FROM lfedge/eve-alpine:3a7658b4168bcf40dfbcb15fbae8979d81efb6f1 as build
+FROM lfedge/eve-alpine:9639a88a6856455ce639258490814b17a89ce7a3 as build
 
 ARG DEV=n
 
-ENV BUILD_PKGS git gcc linux-headers libc-dev make linux-pam-dev m4 findutils go util-linux make patch wget zfs-dev
+ENV BUILD_PKGS go
+RUN eve-alpine-deploy.sh 3.16
+
+ENV BUILD_PKGS git gcc linux-headers libc-dev make linux-pam-dev m4 findutils util-linux make patch wget zfs-dev
 ENV PKGS alpine-baselayout musl-utils libtasn1-progs pciutils yajl xz bash iptables ip6tables iproute2 dhcpcd coreutils dmidecode libbz2 libuuid ipset curl radvd ethtool util-linux e2fsprogs libcrypto1.1 xorriso qemu-img jq e2fsprogs-extra keyutils ca-certificates ip6tables-openrc iptables-openrc ipset-openrc hdparm zfs
 RUN eve-alpine-deploy.sh
-
-# FIXME bump eve-alpine to alpine 3.14
-# hadolint ignore=DL3018
-RUN apk --no-cache --repository https://dl-cdn.alpinelinux.org/alpine/v3.14/community add -U --upgrade go && go version
 
 RUN mkdir -p /go/src/github.com/google
 WORKDIR /go/src/github.com/google
