@@ -36,10 +36,12 @@ case "$(uname -m)" in
 esac
 
 set $BUILD_PKGS
-[ $# -eq 0 ] || apk add "$@"
+[ $# -eq 0 ] || apk add --repository "/mirror/$ALPINE_VERSION" "$@"
 
-rm -rf /out
-mkdir /out
+# we can use eve-alpine-deploy several times with different ALPINE_VERSION
+# so should not delete the data
+# rm -rf /out
+mkdir -p /out
 tar -C "/mirror/$ALPINE_VERSION/rootfs" -cf- . | tar -C /out -xf-
 
 # FIXME: for now we're apk-enabling executable repos, but strictly
@@ -47,7 +49,7 @@ tar -C "/mirror/$ALPINE_VERSION/rootfs" -cf- . | tar -C /out -xf-
 PKGS="$PKGS apk-tools"
 
 set $PKGS
-[ $# -eq 0 ] || apk add --no-cache -p /out "$@"
+[ $# -eq 0 ] || apk add --no-cache --repository "/mirror/$ALPINE_VERSION" -p /out "$@"
 
 # FIXME: see above
 cp /etc/apk/repositories.upstream /out/etc/apk/repositories

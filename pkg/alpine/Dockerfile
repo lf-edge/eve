@@ -18,6 +18,11 @@ RUN apk add --no-cache abuild gcc sudo
 # install a new key into /etc/apk/keys
 RUN abuild-keygen -a -i -n
 
+# bundled alpine-keys incompatible with alpine 3.15+
+# remove this line when upgrade to ALPINE_VERSION 3.15+
+# hadolint ignore=DL3018
+RUN apk --no-cache --repository https://dl-cdn.alpinelinux.org/alpine/v${ALPINE_VERSION}/main add -U --upgrade alpine-keys
+
 # create all the mirrors
 WORKDIR /tmp/mirrors
 RUN [ -f /etc/apk/repositories.upstream ] || mv /etc/apk/repositories /etc/apk/repositories.upstream
