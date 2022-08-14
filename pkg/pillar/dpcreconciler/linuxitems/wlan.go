@@ -138,12 +138,7 @@ func (c *WlanConfigurator) installWifiConfig(config []WifiConfig) error {
 	}
 	if len(config) == 0 {
 		// generate dummy wpa_supplicant.conf
-		tmpfile.WriteString("# Fill in the networks and their passwords\nnetwork={\n")
-		tmpfile.WriteString("       ssid=\"XXX\"\n")
-		tmpfile.WriteString("       scan_ssid=1\n")
-		tmpfile.WriteString("       key_mgmt=WPA-PSK\n")
-		tmpfile.WriteString("       psk=\"YYYYYYYY\"\n")
-		tmpfile.WriteString("}\n")
+		tmpfile.WriteString("# No WiFi config received\n")
 	} else {
 		tmpfile.WriteString("# Automatically generated\n")
 		for _, wifi := range config {
