@@ -9,17 +9,17 @@
 #
 # This script is drive by the following environment variables:
 #   BUILD_PKGS - packages required for the build stage
-#   BUILD_PKGS_[amd64|arm64] - like BUILD_PKGS but arch specific
+#   BUILD_PKGS_[amd64|arm64|riscv64] - like BUILD_PKGS but arch specific
 #   PKGS - packages required for the executable container
-#   PKGS_[amd64|arm64] - like PKGS but arch specific
+#   PKGS_[amd64|arm64|riscv64] - like PKGS but arch specific
 #
 # In the future, you'll be able to pass an optional Alpine version to
 # the script to indicate the the environment has to be setup with that
 # cached version. E.g.:
-#   eve-alpine-deploy.sh 3.14
+#   eve-alpine-deploy.sh 3.17
 set -e
 
-ALPINE_VERSION=${1:-3.13}
+ALPINE_VERSION=${1:-3.16}
 
 bail() {
    echo "$@"
@@ -32,6 +32,9 @@ case "$(uname -m)" in
            ;;
   aarch64) BUILD_PKGS="$BUILD_PKGS $BUILD_PKGS_arm64"
            PKGS="$PKGS $PKGS_arm64"
+           ;;
+  riscv64) BUILD_PKGS="$BUILD_PKGS $BUILD_PKGS_riscv64"
+           PKGS="$PKGS $PKGS_riscv64"
            ;;
 esac
 

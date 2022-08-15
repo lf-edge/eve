@@ -1,7 +1,6 @@
-ARG EVE_BUILDER_IMAGE=lfedge/eve-alpine:6.7.0
-FROM ${EVE_BUILDER_IMAGE} AS cache
+FROM lfedge/eve-alpine-base:f11c7a5dcffe1ab7b466bea7e26010a27da62b3b AS cache
 
-ARG ALPINE_VERSION=3.13
+ARG ALPINE_VERSION=3.16
 # this is only needed once, when this package
 # is rebased on the new version of Alpine and
 # you have to have FROM alpine:x.y.z above:
@@ -22,12 +21,19 @@ RUN abuild-keygen -a -i -n
 WORKDIR /tmp/mirrors
 RUN [ -f /etc/apk/repositories.upstream ] || mv /etc/apk/repositories /etc/apk/repositories.upstream
 RUN [ -f /etc/apk/cache.url ] || echo https://dl-cdn.alpinelinux.org/alpine > /etc/apk/cache.url
-RUN for p in */*; do build-cache.sh "$p" "/mirror/$(dirname "$p")" $(cat "$p") ; done
+RUN for repo in main community testing; do \
+      for p in */"$repo"; do \
+        packages="" &&\
+        if [ -f "$p" ]; then packages="$packages $(cat "$p")"; fi &&\
+        if [ -f "$p.$(apk --print-arch)" ]; then packages="$packages $(cat "$p.$(apk --print-arch)")"; fi &&\
+        if [ -n "$packages" ]; then build-cache.sh "$p" "/mirror/$(dirname "$p")" "$packages"; fi \
+      done \
+    done
 
 # set the default repository to use
 RUN cp /mirror/${ALPINE_VERSION}/rootfs/etc/apk/repositories /etc/apk && apk update
 
-FROM ${EVE_BUILDER_IMAGE} as compactor
+FROM lfedge/eve-alpine-base:f11c7a5dcffe1ab7b466bea7e26010a27da62b3b as compactor
 
 COPY --from=cache /etc/apk/repositories* /etc/apk/
 COPY --from=cache /etc/apk/keys /etc/apk/keys/
