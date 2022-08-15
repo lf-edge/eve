@@ -1,0 +1,38 @@
+From 6696bb154ed74c9563bc0d6fdcfbfbc5715e3aad Mon Sep 17 00:00:00 2001
+From: Petr Fedchenkov <giggsoff@gmail.com>
+Date: Tue, 16 Aug 2022 14:51:47 +0300
+Subject: [PATCH] Disable Werror to be compiled under gcc 11.2
+
+Signed-off-by: Petr Fedchenkov <giggsoff@gmail.com>
+---
+ devicemodel/Makefile | 1 -
+ hypervisor/Makefile  | 1 -
+ 2 files changed, 2 deletions(-)
+
+diff --git a/devicemodel/Makefile b/devicemodel/Makefile
+index f29341436..204a115ef 100644
+--- a/devicemodel/Makefile
++++ b/devicemodel/Makefile
+@@ -16,7 +16,6 @@ CFLAGS += -D_GNU_SOURCE
+ CFLAGS += -DNO_OPENSSL
+ CFLAGS += -m64
+ CFLAGS += -Wall -ffunction-sections
+-CFLAGS += -Werror
+ CFLAGS += -O2 -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=2
+ CFLAGS += -Wformat -Wformat-security -fno-strict-aliasing
+ CFLAGS += -fpie
+diff --git a/hypervisor/Makefile b/hypervisor/Makefile
+index ac743a1a8..c6872f576 100644
+--- a/hypervisor/Makefile
++++ b/hypervisor/Makefile
+@@ -80,7 +80,6 @@ CFLAGS += -fsigned-char
+ CFLAGS += -m64 -mno-mmx -mno-sse -mno-sse2 -mno-80387 -mno-fp-ret-in-387
+ CFLAGS += -mno-red-zone
+ CFLAGS += -nostdinc -nostdlib -fno-common
+-CFLAGS += -Werror
+ ifeq (y, $(CONFIG_RELOC))
+ CFLAGS += -fpie
+ else
+-- 
+2.34.1
+
