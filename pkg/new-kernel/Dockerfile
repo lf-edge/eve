@@ -1,7 +1,5 @@
-# This file must be kept as much in sync with pkg/kernel/Dockerfile as posisble
-ARG EVE_BUILDER_IMAGE=lfedge/eve-alpine:6.7.0
-# hadolint ignore=DL3006
-FROM ${EVE_BUILDER_IMAGE} as kernel-build
+# This file must be kept as much in sync with pkg/kernel/Dockerfile as possible
+FROM lfedge/eve-alpine:145f062a40639b6c65efa36bed1c5614b873be52 as kernel-build
 
 ENV BUILD_PKGS \
     argp-standalone automake bash bc binutils-dev bison build-base curl \
