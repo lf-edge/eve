@@ -2660,8 +2660,8 @@ func handleDeviceOperationCmd(ctxPtr *zedagentContext, infoStr string, op types.
 			return
 		}
 		ctxPtr.rebootCmd = true
-		ctxPtr.currentRebootReason = infoStr
-		ctxPtr.currentBootReason = types.BootReasonRebootCmd
+		ctxPtr.requestedRebootReason = infoStr
+		ctxPtr.requestedBootReason = types.BootReasonRebootCmd
 	case types.DeviceOperationShutdown:
 		if ctxPtr.shutdownCmd || ctxPtr.deviceShutdown {
 			return
@@ -2672,8 +2672,8 @@ func handleDeviceOperationCmd(ctxPtr *zedagentContext, infoStr string, op types.
 			return
 		}
 		ctxPtr.poweroffCmd = true
-		ctxPtr.currentRebootReason = infoStr
-		ctxPtr.currentBootReason = types.BootReasonPoweroffCmd
+		ctxPtr.requestedRebootReason = infoStr
+		ctxPtr.requestedBootReason = types.BootReasonPoweroffCmd
 	default:
 		log.Errorf("handleDeviceOperationCmd wrong operation: %v", op)
 		return
