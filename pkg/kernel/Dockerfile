@@ -1,5 +1,5 @@
 # This file must be kept as much in sync with pkg/new-kernel/Dockerfile as posisble
-FROM lfedge/eve-alpine:6.7.0 AS kernel-build
+FROM lfedge/eve-alpine:145f062a40639b6c65efa36bed1c5614b873be52 AS kernel-build
 
 ENV BUILD_PKGS \
     argp-standalone automake bash bc binutils-dev bison build-base curl \
