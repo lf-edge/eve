@@ -1,6 +1,4 @@
-ARG EVE_BUILDER_IMAGE=lfedge/eve-alpine:6.7.0
-# hadolint ignore=DL3006
-FROM ${EVE_BUILDER_IMAGE} as build
+FROM lfedge/eve-alpine:145f062a40639b6c65efa36bed1c5614b873be52 as build
 ENV PKGS alpine-baselayout musl-utils bash glib squashfs-tools util-linux e2fsprogs e2fsprogs-extra keyutils dosfstools coreutils sgdisk smartmontools
 RUN eve-alpine-deploy.sh
 
