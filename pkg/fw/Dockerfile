@@ -1,6 +1,4 @@
-ARG EVE_BUILDER_IMAGE=lfedge/eve-alpine:6.7.0
-# hadolint ignore=DL3006
-FROM ${EVE_BUILDER_IMAGE} as build
+FROM lfedge/eve-alpine:145f062a40639b6c65efa36bed1c5614b873be52 as build
 
 ENV BUILD_PKGS curl tar make
 RUN eve-alpine-deploy.sh
@@ -45,7 +43,7 @@ RUN curl -fsSL ${RPI_BT_FIRMWARE_URL}/${RPI_BT_FIRMWARE_VERSION}/broadcom/BCM434
     curl -fsSL ${RPI_BT_FIRMWARE_URL}/${RPI_BT_FIRMWARE_VERSION}/broadcom/BCM43430B0.hcd -O &&\
     curl -fsSL ${RPI_BT_FIRMWARE_URL}/${RPI_BT_FIRMWARE_VERSION}/broadcom/BCM4345C5.hcd -O
 
-FROM ${EVE_BUILDER_IMAGE} as compactor
+FROM lfedge/eve-alpine:145f062a40639b6c65efa36bed1c5614b873be52 as compactor
 ENTRYPOINT []
 WORKDIR /
 COPY --from=build /lib/firmware/regulatory* /lib/firmware/
