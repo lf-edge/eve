@@ -1,27 +1,23 @@
-ARG EVE_BUILDER_IMAGE=lfedge/eve-alpine:6.7.0
-# hadolint ignore=DL3006
-FROM ${EVE_BUILDER_IMAGE} as grub-build
-# hadolint ignore=DL3018
-RUN apk add --no-cache \
-  automake \
-  make \
-  bison \
-  gettext \
-  flex \
-  gcc \
-  git \
-  libtool \
-  libc-dev \
-  linux-headers \
-  python3 \
-  autoconf \
-  pkgconf \
-  patch \
-  gettext-dev
-RUN [ "$(uname -m)" = x86_64 ] || apk add coreutils
-
-# because python is not available
-RUN ln -s python3 /usr/bin/python
+FROM lfedge/eve-alpine:145f062a40639b6c65efa36bed1c5614b873be52 as grub-build
+ENV BUILD_PKGS automake \
+               make \
+               bison \
+               gettext \
+               flex \
+               gcc \
+               git \
+               libtool \
+               libc-dev \
+               linux-headers \
+               python3 \
+               autoconf \
+               pkgconf \
+               patch \
+               gettext-dev \
+               bash
+ENV BUILD_PKGS_arm64 coreutils
+ENV BUILD_PKGS_riscv64 coreutils
+RUN eve-alpine-deploy.sh
 
 # list of grub modules that are portable between x86_64 and aarch64
 ENV GRUB_MODULES_PORT="part_gpt fat ext2 iso9660 squash4 gzio linux acpi normal cpio crypto disk boot crc64 \
@@ -38,7 +34,9 @@ ENV GRUB_TAG_aarch64=2.06
 ENV GRUB_REPO=https://git.savannah.gnu.org/git/grub.git
 
 COPY / /
-RUN mkdir /grub-lib
+# because python is not available
+RUN ln -s python3 /usr/bin/python && \
+    mkdir /grub-lib
 
 # hadolint ignore=DL3003
 RUN if [ ! -d "grub" ]; then \
