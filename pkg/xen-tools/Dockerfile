@@ -1,7 +1,6 @@
-# hadolint ignore=DL3006
-FROM lfedge/eve-uefi:2dbd55c5aaa69de821e510ca416ce88ffe60555f as uefi-build
+FROM lfedge/eve-uefi:a2130b68b82abfc72e520101f32a60eced2a044f as uefi-build
 
-FROM lfedge/eve-alpine:6.7.0 as runx-build
+FROM lfedge/eve-alpine:145f062a40639b6c65efa36bed1c5614b873be52 as runx-build
 ENV BUILD_PKGS mkinitfs gcc musl-dev e2fsprogs
 RUN eve-alpine-deploy.sh
 
@@ -15,7 +14,7 @@ RUN gcc -s -o /chroot2 /tmp/chroot2.c
 RUN gcc -s -o /hacf /tmp/hacf.c
 RUN mkinitfs -n -F base -i /init-initrd -o /runx-initrd
 
-FROM lfedge/eve-alpine:6.7.0 as build
+FROM lfedge/eve-alpine:145f062a40639b6c65efa36bed1c5614b873be52 as build
 ENV BUILD_PKGS \
     gcc make libc-dev dev86 xz-dev perl bash python3-dev \
     gettext iasl util-linux-dev ncurses-dev glib-dev \
