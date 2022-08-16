@@ -169,7 +169,7 @@ func (m *DpcManager) runVerify(ctx context.Context, reason string) {
 
 	// Did we get a new DPC at index zero?
 	if m.dpcList.PortConfigList[0].IsDPCUntested() {
-		m.Log.Warn("DPC verify: %v: New DPC arrived "+
+		m.Log.Warn("DPC verify: %w: New DPC arrived "+
 			"or a old working DPC moved up to top of DPC list while network testing "+
 			"was in progress. Restarting DPC verification.", res)
 		m.restartVerify(ctx, "runVerify "+res.String())
