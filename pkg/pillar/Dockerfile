@@ -1,7 +1,7 @@
 # Copyright (c) 2018 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
 
-FROM lfedge/eve-dom0-ztools:99cb15ad5cdd454cf31d606bcd55dce719663109 as zfs
+FROM lfedge/eve-dom0-ztools:417d4ff6a57d2317c9e65166274b0ea6f6da16e2 as zfs
 RUN mkdir /out
 # copy zfs-related files from dom0-ztools using prepared list of files
 RUN while read -r x; do \
@@ -12,7 +12,7 @@ RUN while read -r x; do \
         fi \
     done < /etc/zfs-files
 
-FROM lfedge/eve-alpine:3a7658b4168bcf40dfbcb15fbae8979d81efb6f1 as build
+FROM lfedge/eve-alpine:145f062a40639b6c65efa36bed1c5614b873be52 as build
 
 ARG DEV=n
 
@@ -24,11 +24,6 @@ ENV PKGS alpine-baselayout musl-utils libtasn1-progs pciutils yajl xz bash iptab
     libintl libtirpc libblkid zlib
 RUN eve-alpine-deploy.sh
 
-# FIXME bump eve-alpine to alpine 3.14
-# hadolint ignore=DL3018
-RUN apk --no-cache --repository https://dl-cdn.alpinelinux.org/alpine/v3.14/community add -U --upgrade go && go version
-
-RUN mkdir -p /go/src/github.com/google
 WORKDIR /go/src/github.com/google
 RUN git clone https://github.com/google/fscrypt
 WORKDIR /go/src/github.com/google/fscrypt
@@ -50,7 +45,7 @@ ENV GO111MODULE=on
 ENV CGO_ENABLED=1
 ARG GOARCH=
 ARG CROSS_GCC=https://musl.cc/aarch64-linux-musleabi-cross.tgz
-RUN [ -z "$GOARCH" ] || wget -O - $CROSS_GCC | tar -C / -xzvf -
+RUN [ -z "$GOARCH" ] || wget -q -O - $CROSS_GCC | tar -C / -xzvf -
 
 ADD ./  /pillar/
 
@@ -63,6 +58,7 @@ RUN set -e && for patch in ../patches/*.patch; do \
         patch -p1 --no-backup-if-mismatch -r /tmp/deleteme.rej < "$patch"; \
     done
 
+# hadolint ignore=DL4006
 RUN [ -z "$GOARCH" ] || export CC=$(echo /*-cross/bin/*-gcc) ;\
     echo "Running go vet" && go vet ./... && \
     echo "Running go fmt" && ERR=$(gofmt -e -l -s $(find . -name \*.go | grep -v /vendor/)) && \
@@ -86,12 +82,9 @@ RUN set -e && for patch in /sys-patches/*.patch; do \
 # we need zfs files on running system
 COPY --from=zfs /out /out
 
-# hadolint ignore=DL3006
-FROM lfedge/eve-dnsmasq:cc2426e0f51538f60e82c7ffe26e6a857fdc2483 as dnsmasq
-# hadolint ignore=DL3006
-FROM lfedge/eve-strongswan:5b322e95477774eca6ecf2fbe10945b56ff5310b as strongswan
-# hadolint ignore=DL3006
-FROM lfedge/eve-gpt-tools:d4440cebd4cd3caef733880f401ecee964ff7c81 as gpttools
+FROM lfedge/eve-dnsmasq:3af908d86a95a627c729e09b1b125bf8de7fadcb as dnsmasq
+FROM lfedge/eve-strongswan:3f426e1c9fe2bbeb324a61c33b861c37459f616a as strongswan
+FROM lfedge/eve-gpt-tools:ab2e9f924e22709b4e08ebedd6d3c6a2882d071e as gpttools
 
 FROM scratch
 SHELL ["/bin/ash", "-eo", "pipefail", "-c"]

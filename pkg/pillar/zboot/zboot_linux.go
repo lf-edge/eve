@@ -3,6 +3,7 @@
 
 // Zboot linux specific calls
 
+//go:build linux
 // +build linux
 
 package zboot

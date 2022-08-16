@@ -4,6 +4,7 @@
 //
 // Stub file to allow compilation of pbr.go to go thru on macos.
 // We don't need the actual functionality to work
+//go:build darwin
 // +build darwin
 
 package zedrouter
