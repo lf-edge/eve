@@ -683,17 +683,17 @@ func potentialUUIDUpdate(_ *getconfigContext) {
 func publishZedAgentStatus(getconfigCtx *getconfigContext) {
 	ctx := getconfigCtx.zedagentCtx
 	status := types.ZedAgentStatus{
-		Name:                 agentName,
-		ConfigGetStatus:      getconfigCtx.configGetStatus,
-		RebootCmd:            ctx.rebootCmd,
-		ShutdownCmd:          ctx.shutdownCmd,
-		PoweroffCmd:          ctx.poweroffCmd,
-		RebootReason:         ctx.currentRebootReason,
-		BootReason:           ctx.currentBootReason,
-		MaintenanceMode:      ctx.maintenanceMode,
-		ForceFallbackCounter: ctx.forceFallbackCounter,
-		CurrentProfile:       getconfigCtx.currentProfile,
-		RadioSilence:         getconfigCtx.radioSilence,
+		Name:                  agentName,
+		ConfigGetStatus:       getconfigCtx.configGetStatus,
+		RebootCmd:             ctx.rebootCmd,
+		ShutdownCmd:           ctx.shutdownCmd,
+		PoweroffCmd:           ctx.poweroffCmd,
+		RequestedRebootReason: ctx.requestedRebootReason,
+		RequestedBootReason:   ctx.requestedBootReason,
+		MaintenanceMode:       ctx.maintenanceMode,
+		ForceFallbackCounter:  ctx.forceFallbackCounter,
+		CurrentProfile:        getconfigCtx.currentProfile,
+		RadioSilence:          getconfigCtx.radioSilence,
 	}
 	pub := getconfigCtx.pubZedAgentStatus
 	pub.Publish(agentName, status)
