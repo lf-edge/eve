@@ -1,8 +1,6 @@
-ARG EVE_BUILDER_IMAGE=lfedge/eve-alpine:81e6520f4f1554789eb1ac299168e72ac37d88e2
-# hadolint ignore=DL3006
-FROM ${EVE_BUILDER_IMAGE} as zfs
+FROM lfedge/eve-alpine:145f062a40639b6c65efa36bed1c5614b873be52 as zfs
 ENV BUILD_PKGS git patch ca-certificates util-linux build-base gettext-dev libtirpc-dev automake autoconf \
-    libtool linux-headers attr-dev e2fsprogs-dev glib-dev openssl-dev util-linux-dev
+    libtool linux-headers attr-dev e2fsprogs-dev glib-dev openssl-dev util-linux-dev coreutils
 ENV PKGS ca-certificates util-linux libintl libuuid libtirpc libblkid libcrypto1.1 zlib
 RUN eve-alpine-deploy.sh
 
