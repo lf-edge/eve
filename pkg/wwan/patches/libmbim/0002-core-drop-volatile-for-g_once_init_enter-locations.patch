@@ -1,0 +1,96 @@
+From e772a8103acd3ead338903307a036b63f2f63a51 Mon Sep 17 00:00:00 2001
+From: Aleksander Morgado <aleksander@aleksander.es>
+Date: Tue, 18 May 2021 11:09:54 +0200
+Subject: [PATCH] core: drop "volatile" for g_once_init_enter locations
+
+This fixes a few (fatal in gcc 11) warnings.
+
+See https://gitlab.gnome.org/GNOME/glib/-/issues/600
+
+(cherry picked from commit 764d91155570d653e178ae8f12ff4de00d71e06c)
+---
+ build-aux/templates/mbim-enum-types-template.c  | 8 ++++----
+ build-aux/templates/mbim-error-types-template.c | 8 ++++----
+ src/libmbim-glib/mbim-message.c                 | 8 ++++----
+ 3 files changed, 12 insertions(+), 12 deletions(-)
+
+diff --git a/build-aux/templates/mbim-enum-types-template.c b/build-aux/templates/mbim-enum-types-template.c
+index c59b798..fd3d47e 100644
+--- a/build-aux/templates/mbim-enum-types-template.c
++++ b/build-aux/templates/mbim-enum-types-template.c
+@@ -21,16 +21,16 @@ static const G@Type@Value @enum_name@_values[] = {
+ GType
+ @enum_name@_get_type (void)
+ {
+-    static volatile gsize g_define_type_id__volatile = 0;
++    static gsize g_define_type_id_initialized = 0;
+ 
+-    if (g_once_init_enter (&g_define_type_id__volatile)) {
++    if (g_once_init_enter (&g_define_type_id_initialized)) {
+         GType g_define_type_id =
+             g_@type@_register_static (g_intern_static_string ("@EnumName@"),
+                                       @enum_name@_values);
+-        g_once_init_leave (&g_define_type_id__volatile, g_define_type_id);
++        g_once_init_leave (&g_define_type_id_initialized, g_define_type_id);
+     }
+ 
+-    return g_define_type_id__volatile;
++    return g_define_type_id_initialized;
+ }
+ 
+ /* Enum-specific method to get the value as a string.
+diff --git a/build-aux/templates/mbim-error-types-template.c b/build-aux/templates/mbim-error-types-template.c
+index 7ed24b9..9f9589d 100644
+--- a/build-aux/templates/mbim-error-types-template.c
++++ b/build-aux/templates/mbim-error-types-template.c
+@@ -20,16 +20,16 @@ static const G@Type@Value @enum_name@_values[] = {
+ GType
+ @enum_name@_get_type (void)
+ {
+-    static volatile gsize g_define_type_id__volatile = 0;
++    static gsize g_define_type_id_initialized = 0;
+ 
+-    if (g_once_init_enter (&g_define_type_id__volatile)) {
++    if (g_once_init_enter (&g_define_type_id_initialized)) {
+         GType g_define_type_id =
+             g_@type@_register_static (g_intern_static_string ("@EnumName@"),
+                                       @enum_name@_values);
+-        g_once_init_leave (&g_define_type_id__volatile, g_define_type_id);
++        g_once_init_leave (&g_define_type_id_initialized, g_define_type_id);
+     }
+ 
+-    return g_define_type_id__volatile;
++    return g_define_type_id_initialized;
+ }
+ 
+ /* Enum-specific method to get the value as a string.
+diff --git a/src/libmbim-glib/mbim-message.c b/src/libmbim-glib/mbim-message.c
+index 7c30dd2..0d35647 100644
+--- a/src/libmbim-glib/mbim-message.c
++++ b/src/libmbim-glib/mbim-message.c
+@@ -90,18 +90,18 @@ set_error_from_status (GError          **error,
+ GType
+ mbim_message_get_type (void)
+ {
+-    static volatile gsize g_define_type_id__volatile = 0;
++    static gsize g_define_type_id_initialized = 0;
+ 
+-    if (g_once_init_enter (&g_define_type_id__volatile)) {
++    if (g_once_init_enter (&g_define_type_id_initialized)) {
+         GType g_define_type_id =
+             g_boxed_type_register_static (g_intern_static_string ("MbimMessage"),
+                                           (GBoxedCopyFunc) mbim_message_ref,
+                                           (GBoxedFreeFunc) mbim_message_unref);
+ 
+-        g_once_init_leave (&g_define_type_id__volatile, g_define_type_id);
++        g_once_init_leave (&g_define_type_id_initialized, g_define_type_id);
+     }
+ 
+-    return g_define_type_id__volatile;
++    return g_define_type_id_initialized;
+ }
+ 
+ /*****************************************************************************/
+-- 
+2.34.1
+

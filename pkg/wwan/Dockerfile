@@ -1,7 +1,7 @@
-FROM lfedge/eve-alpine:6.7.0 as build
+FROM lfedge/eve-alpine:145f062a40639b6c65efa36bed1c5614b873be52 as build
 ENV BUILD_PKGS automake autoconf gettext gettext-dev git pkgconfig \
                libtool libc-dev linux-headers gcc make glib-dev \
-               autoconf-archive patch cmake
+               autoconf-archive patch cmake gtk-doc
 ENV PKGS alpine-baselayout musl-utils ppp jq glib
 RUN eve-alpine-deploy.sh
 
@@ -21,12 +21,15 @@ RUN git checkout 7da66430 && cmake . -DBUILD_LUA=OFF -DBUILD_EXAMPLES=OFF && mak
 
 WORKDIR /libmbim
 RUN git checkout 1.24.2
-COPY 0001-produce-json-output.patch .
-RUN patch -p1 < 0001-produce-json-output.patch
+COPY patches/libmbim/*.patch /tmp/patches/libmbim/
+RUN for patch in /tmp/patches/libmbim/*.patch ; do patch -p1 < "$patch" ; done
 RUN ./autogen.sh && ./configure --prefix=/usr && make && make install
 
 WORKDIR /libqmi
-RUN git checkout 1.26.2 && ./autogen.sh --without-udev && ./configure --prefix=/usr --without-udev --enable-mbim-qmux && make && make install
+RUN git checkout 1.26.2
+COPY patches/libqmi/*.patch /tmp/patches/libqmi/
+RUN for patch in /tmp/patches/libqmi/*.patch ; do patch -p1 < "$patch" ; done
+RUN ./autogen.sh --without-udev && ./configure --prefix=/usr --without-udev --enable-mbim-qmux && make && make install
 
 WORKDIR /inotify-tools
 RUN git checkout 3.20.11.0 && ./autogen.sh && ./configure --prefix=/usr && make && make install
