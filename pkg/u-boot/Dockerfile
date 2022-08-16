@@ -1,6 +1,4 @@
-ARG EVE_BUILDER_IMAGE=lfedge/eve-alpine:6.7.0
-# hadolint ignore=DL3006
-FROM ${EVE_BUILDER_IMAGE} as build
+FROM lfedge/eve-alpine:145f062a40639b6c65efa36bed1c5614b873be52 as build
 ENV BUILD_PKGS bash binutils-dev build-base bc curl bison flex openssl-dev python3 swig
 ENV BUILD_PKGS_amd64 python3-dev py-pip
 RUN eve-alpine-deploy.sh
@@ -21,7 +19,7 @@ WORKDIR /u-boot
 # FIXME: we need to get to the bottom of this weird workaround on x86/Alpine
 RUN [ "$(uname -m)" != x86_64 ] || sed -ie 's#CONFIG_IS_ENABLED(X86_64)#1#' ./arch/x86/include/asm/byteorder.h
 COPY patches /tmp/patches
-RUN if [ "$(uname -m)" = aarch64 ]; then\
+RUN if [ "$(uname -m)" != x86_64 ]; then\
        for p in /tmp/patches/patches-"${VERSION}"/*.patch ; do patch -p1 < "$p" || exit 1 ; done;\
     fi
 # need to tweak u-boot config with our local settings
