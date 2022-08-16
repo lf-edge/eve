@@ -311,6 +311,7 @@ func (server *VerifierImpl) SendAttestQuote(ctx *zattest.Context) error {
 	//Increment Iteration for interface rotation
 	attestCtx.Iteration++
 	log.Tracef("Sending Quote request")
+	recordAttestationTry(attestCtx.zedagentCtx)
 
 	_, contents, senderStatus, err := trySendToController(attestReq, attestCtx.Iteration)
 	if err != nil || senderStatus != types.SenderStatusNone {
