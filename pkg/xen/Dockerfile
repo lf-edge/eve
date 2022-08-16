@@ -1,8 +1,8 @@
-FROM lfedge/eve-alpine:6.7.0 as kernel-build
+FROM lfedge/eve-alpine:145f062a40639b6c65efa36bed1c5614b873be52 as kernel-build
 
 ENV BUILD_PKGS argp-standalone automake bash bc binutils-dev bison build-base \
                curl diffutils flex git gmp-dev gnupg installkernel kmod \
-               elfutils-dev libressl-dev linux-headers ncurses-dev python3 \
+               elfutils-dev openssl-dev linux-headers ncurses-dev python3 \
                sed squashfs-tools tar xz xz-dev zlib-dev libunwind-dev
 ENV BUILD_PKGS_arm64 uboot-tools
 RUN eve-alpine-deploy.sh
