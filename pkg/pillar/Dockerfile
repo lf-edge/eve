@@ -76,7 +76,7 @@ COPY patches/* /sys-patches/
 # hadolint ignore=SC1097
 RUN set -e && for patch in /sys-patches/*.patch; do \
         echo "Applying $patch"; \
-        patch -p0 < "$patch"; \
+        patch -p0 --no-backup-if-mismatch -r /tmp/deleteme.rej < "$patch"; \
     done
 
 # we need zfs files on running system

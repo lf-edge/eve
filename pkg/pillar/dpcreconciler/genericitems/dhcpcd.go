@@ -318,8 +318,16 @@ func (c *DhcpcdConfigurator) dhcpcdCmd(op string, extras []string,
 }
 
 func (c *DhcpcdConfigurator) dhcpcdExists(ifName string) bool {
-	// XXX should we use dhcpcd -P <ifName> to get name of pidfile? Hardcoded path here
-	pidfileName := fmt.Sprintf("/run/dhcpcd-%s.pid", ifName)
+	name := "/sbin/dhcpcd"
+	args := []string{"-P", ifName}
+	out, err := base.Exec(c.Log, name, args...).CombinedOutput()
+	if err != nil {
+		err = fmt.Errorf("dhcpcd command %s failed: %s; output: %s",
+			args, err, out)
+		c.Log.Error(err)
+		return false
+	}
+	pidfileName := strings.TrimSpace(string(out))
 	val, t := c.statAndRead(pidfileName)
 	if val == "" {
 		c.Log.Functionf("dhcpcdExists(%s) not exist", ifName)
