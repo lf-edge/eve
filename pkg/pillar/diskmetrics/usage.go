@@ -69,9 +69,9 @@ func PartitionSize(log *base.LogObject, part string) (uint64, bool) {
 		return 0, false
 	}
 	res := strings.Split(string(out), "\n")
-	val, err := strconv.ParseUint(res[0], 10, 64)
+	val, err := strconv.ParseUint(strings.TrimSpace(res[0]), 10, 64)
 	if err != nil {
-		log.Errorf("parseUint(%s) failed %s\n", res[0], err)
+		log.Errorf("parseUint(%s) failed %s\n", strings.TrimSpace(res[0]), err)
 		return 0, false
 	}
 	isPart := strings.EqualFold(diskType(log, part), "part")
