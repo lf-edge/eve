@@ -1,0 +1,11 @@
+--- out/usr/lib/dhcpcd/dhcpcd-run-hooks
++++ out/usr/lib/dhcpcd/dhcpcd-run-hooks
+@@ -8,7 +8,7 @@
+ signature="$signature_base $from $ifname"
+ signature_base_end="# End of dhcpcd"
+ signature_end="$signature_base_end $from $ifname"
+-state_dir=/run/hook-state
++state_dir=/run/dhcpcd
+ _detected_init=false
+
+ : ${if_up:=false}
