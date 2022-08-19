@@ -123,14 +123,22 @@ func (ctx *DeferredContext) handleDeferred(log *base.LogObject, event time.Time,
 			//SenderStatusNone indicates no problems
 			resp, _, result, err := SendOnAllIntf(ctxWork, ctx.zedcloudCtx, item.url,
 				item.size, item.buf, ctx.iteration, item.bailOnHTTPErr)
+			// We check StatusCode before err since we do not want
+			// to exit the loop just because some message is rejected
+			// by the controller.
 			if item.bailOnHTTPErr && resp != nil &&
 				resp.StatusCode >= 400 && resp.StatusCode < 600 {
 				log.Functionf("handleDeferred: for %s ignore code %d",
 					key, resp.StatusCode)
 			} else if err != nil {
-				log.Functionf("handleDeferred: for %s failed %s",
-					key, err)
+				log.Functionf("handleDeferred: for %s status %d failed %s",
+					key, result, err)
 				exit = true
+				// Make sure we pass a non-zero result
+				// to the sentHandler.
+				if result == types.SenderStatusNone {
+					result = types.SenderStatusRefused
+				}
 			} else if result != types.SenderStatusNone {
 				log.Functionf("handleDeferred: for %s received unexpected status %d",
 					key, result)
