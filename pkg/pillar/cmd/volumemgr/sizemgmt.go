@@ -57,9 +57,8 @@ func getRemainingDiskSpace(ctxPtr *volumemgrContext) (uint64, error) {
 		}
 		// for zfs we allocate the whole space of volume, but still fill CurrentSize with real usage
 		// we should account MaxVolSize here
-		if vault.ReadPersistType() == types.PersistZFS {
-			// let's use lower verbosity as it will happen for zfs in any cases
-			log.Functionf("getRemainingDiskSpace: Volume %s is zvol, use MaxVolSize",
+		if useZVolDisk(ctxPtr, &iterVolumeStatus) {
+			log.Noticef("getRemainingDiskSpace: Volume %s is zvol, use MaxVolSize",
 				iterVolumeStatus.Key())
 			sizeToUseInCalculation = iterVolumeStatus.MaxVolSize
 		} else if iterVolumeStatus.ReadOnly {

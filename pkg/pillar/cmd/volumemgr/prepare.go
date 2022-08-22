@@ -86,8 +86,8 @@ func prepareZVol(ctx *volumemgrContext, status types.VolumeStatus) error {
 
 func prepareVolume(ctx *volumemgrContext, status types.VolumeStatus) error {
 	log.Tracef("prepareVolume: %s", status.Key())
-	if ctx.persistType != types.PersistZFS || status.IsContainer() {
-		return nil
+	if useZVolDisk(ctx, &status) {
+		return prepareZVol(ctx, status)
 	}
-	return prepareZVol(ctx, status)
+	return nil
 }

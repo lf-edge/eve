@@ -95,6 +95,14 @@ func handleVolumeDelete(ctxArg interface{}, key string,
 	log.Functionf("handleVolumeDelete(%s) Done", key)
 }
 
+// useZVolDisk returns true if we should use zvol for the provided VolumeStatus
+func useZVolDisk(ctx *volumemgrContext, status *types.VolumeStatus) bool {
+	if status.IsContainer() {
+		return false
+	}
+	return ctx.persistType == types.PersistZFS
+}
+
 func handleDeferredVolumeCreate(ctx *volumemgrContext, key string, config *types.VolumeConfig) {
 
 	log.Tracef("handleDeferredVolumeCreate(%s)", key)
@@ -122,9 +130,7 @@ func handleDeferredVolumeCreate(ctx *volumemgrContext, key string, config *types
 
 	created := false
 
-	persistFsType := ctx.persistType
-
-	if persistFsType == types.PersistZFS && !status.IsContainer() {
+	if useZVolDisk(ctx, status) {
 		zvolName := status.ZVolName()
 		if zfs.DatasetExist(log, zvolName) {
 			zVolDevice := zfs.GetZVolDeviceByDataset(zvolName)
@@ -182,7 +188,7 @@ func handleDeferredVolumeCreate(ctx *volumemgrContext, key string, config *types
 			status.TotalSize = int64(actualSize)
 			status.CurrentSize = int64(actualSize)
 		}
-		updateStatusByPersistType(status, persistFsType)
+		updateStatusByPersistType(ctx, status)
 		publishVolumeStatus(ctx, status)
 		updateVolumeRefStatus(ctx, status)
 		if err := createOrUpdateAppDiskMetrics(ctx, status); err != nil {

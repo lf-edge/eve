@@ -11,7 +11,6 @@ import (
 	zconfig "github.com/lf-edge/eve/api/go/config"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
-	"github.com/lf-edge/eve/pkg/pillar/vault"
 	uuid "github.com/satori/go.uuid"
 )
 
@@ -630,7 +629,7 @@ func doUpdateVol(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool)
 		}
 	}
 	if status.State == types.CREATING_VOLUME && status.SubState == types.VolumeSubStatePreparing {
-		if ctx.persistType == types.PersistZFS && !status.IsContainer() {
+		if useZVolDisk(ctx, status) {
 			zVolStatus := lookupZVolStatusByDataset(ctx, status.ZVolName())
 			if zVolStatus == nil {
 				// wait for ZVolStatus from zfsmanager
@@ -713,8 +712,7 @@ func doUpdateVol(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool)
 				changed = true
 			}
 		}
-		persistFsType := vault.ReadPersistType()
-		updateStatusByPersistType(status, persistFsType)
+		updateStatusByPersistType(ctx, status)
 	}
 	return changed, false
 }
@@ -877,14 +875,9 @@ func updateVolumeStatusFromContentID(ctx *volumemgrContext, contentID uuid.UUID)
 	}
 }
 
-//updateStatusByPersistType set parameters of VolumeStatus according to provided PersistType
-func updateStatusByPersistType(status *types.VolumeStatus, fsType types.PersistType) {
-	if status.ContentFormat == zconfig.Format_CONTAINER {
-		//we do not want to modify containers for now
-		return
-	}
-	switch fsType {
-	case types.PersistZFS:
+//updateStatusByPersistType set parameters of VolumeStatus according to PersistType from context
+func updateStatusByPersistType(ctx *volumemgrContext, status *types.VolumeStatus) {
+	if useZVolDisk(ctx, status) {
 		status.ContentFormat = zconfig.Format_RAW
 	}
 }
