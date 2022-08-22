@@ -7,6 +7,8 @@ package org.lfedge.eve.config;
 option go_package  = "github.com/lf-edge/eve/api/go/config";
 option java_package = "org.lfedge.eve.config";
 
+import "google/protobuf/timestamp.proto";
+
 import "config/acipherinfo.proto";
 import "config/appconfig.proto";
 import "config/baseosconfig.proto";
@@ -16,6 +18,9 @@ import "config/netconfig.proto";
 import "config/netinst.proto";
 import "config/storage.proto";
 import "config/edgeview.proto";
+
+import "certs/certs.proto";
+import "auth/auth.proto";
 
 // This is the response to a GET /api/v1/edgeDevice/config
 // The EdgeDevConfig message carries all of the device's configuration from
@@ -142,6 +147,14 @@ message EdgeDevConfig {
   string project_id = 37;
   string enterprise_name = 38;
   string enterprise_id = 39;
+
+  // Timestamp updated by controller whenever device config is modified.
+  // Used by EVE to properly order configurations that originate at the same controller
+  // but get submitted to device through different ways:
+  //     /config API vs. initial config for bootstrapping vs. USB-based config override etc.
+  // This ensures that device will not accidentally revert back to an older configuration.
+  // Does not apply to legacy override.json and usb.json mechanisms.
+  google.protobuf.Timestamp config_timestamp = 40;
 }
 
 message ConfigRequest {
@@ -152,4 +165,23 @@ message ConfigRequest {
 message ConfigResponse {
   EdgeDevConfig config = 1;
   string configHash = 2;
+}
+
+// BootstrapConfig is used to carry initial device configuration, baked into a "single-use"
+// EVE installer prepared for a specific device to bootstrap, i.e. to establish the initial
+// connectivity with the controller and onboard. This is useful if the default network
+// configuration (i.e. Ethernet connectivity with DHCP) is not applicable for access
+// to the controller.
+message BootstrapConfig {
+  // Device configuration to use for bootstrapping.
+  // Should be signed by the controller using AuthContainer (see OBJECT_SIGNING.md).
+  // Put **protobuf-encoded** (not json) EdgeDevConfig under AuthContainer.protectedPayload.
+  // Instead of AuthContainer.senderCert, use controller_certs attribute below to include
+  // the signing certificate and all intermediate certificates needed for signature
+  // verification against root_certificate. However, the corresponding hash of the signing
+  // certificate is still expected to be included in AuthContainer (senderCertHash attribute).
+  org.lfedge.eve.auth.AuthContainer signed_config = 1;
+  // Signing certificate (CERT_TYPE_CONTROLLER_SIGNING) and intermediate certificates
+  // (CERT_TYPE_CONTROLLER_INTERMEDIATE).
+  repeated org.lfedge.eve.certs.ZCert controller_certs = 2;
 }
