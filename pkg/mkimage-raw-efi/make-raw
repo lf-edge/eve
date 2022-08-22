@@ -76,9 +76,9 @@ EFI_PART_SIZE=$((36 * 1024 * 1024))
 ROOTFS_PART_SIZE=$(( 300 * 1024 * 1024 ))
 # conf partition size in bytes
 CONF_PART_SIZE=$((1024 * 1024))
-# installer inventory parition size in bytes
+# installer inventory partition size in bytes
 WIN_INVENTORY_PART_SIZE=$((40240 * 1024))
-# installer system parition size in bytes
+# installer system partition size in bytes
 INSTALLER_SYS_PART_SIZE=$(( 300 * 1024 * 1024 ))
 # sector where the first partition starts on a blank disk
 FIRST_PART_SEC=2048

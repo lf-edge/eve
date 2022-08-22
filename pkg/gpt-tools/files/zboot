@@ -30,7 +30,7 @@ usage() {
     echo "       $(basename "$0") {curpart|reset}"
     echo
     echo "Commands:"
-    echo "    partdev: return device of partion LABEL."
+    echo "    partdev: return device of partition LABEL."
     echo "    partstate: return state of partition LABEL."
     echo "    set_partstate: Set state of partition LABEL to STATE."
     echo "    curpart: return label of current root partition."
