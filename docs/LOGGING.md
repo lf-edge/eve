@@ -26,7 +26,7 @@ Logs coming from xen-tools container are of three kinds:
 * xen hypervisor logs under the name ```hypervisor```
 * each domain launched by xen-tools container also logs under the following names
   * ```guest_vm-[VM_NAME]``` logs the console output for VM_NAME domain
-  * ```guest_vm_err-[VM_NAME]``` logs the console error ouptut for VM_NAME domain
+  * ```guest_vm_err-[VM_NAME]``` logs the console error output for VM_NAME domain
   * ```qemu-dm-[VM_NAME]``` logs the qemu device model output
   * ```qdisk-[VM ID]``` logs the qdisk output
 
@@ -36,7 +36,7 @@ The following diagram shows the flow of logs from containers to newlogd and to c
 
 ![EVE Log Flow](pics/eve_newlog_flow.png)
 
-## Log Aggregation, Reformating and Compression for Persistent Log Files
+## Log Aggregation, Reformatting and Compression for Persistent Log Files
 
 All logs collected from various containers/services/kernel in the system will reach newlogd daemon. Newlogd formats the log entries and writes into temporary log files(with temporary file name suffix, e.g. 12345678) on disk in /persist/newlog/collect directory. The logs from device host side will be saved to file with name prefix with 'dev.log.' (filename dev.log.12345678) and logs from application/guest side will be saved to files with name prefix with 'app.APP-UUID.log.' (file app.APP-UUID.log.12345678) where APP-UUID is the application UUID assigned to guest application. The temporary file is kept on the disk until either the file size has exceeded 400 KBytes or the elapsed time on the file has been opened for longer than 5 minutes.
 
@@ -44,7 +44,7 @@ There is a symbolic link '/persist/newlog/collect/current.device.log' points to 
 
 When the above log file is closed either due to size or time limit has reached, it will be moved and compressed with gzip protocol into either 'devUpload' or 'appUpload' directory. The size of the gzip file is limited to 50 KBytes due to the northbound queueing configuration. If the compressed file is larger than the limit, it will be split and compressed into two separate gzip files. The gzip filename is encoded with current timestamp in Unix milliseconds, such as 'dev.log.1600831551491.gz' for device log, and with timestamp and application UUID such as 'app.62195aa9-7db4-4ac0-86d3-d8abe0ff0ea9.log.1599186248917.gz' for application logs. The metadata such as device-UUID, the image partition, and image version or app Name for application are encoded as part of the gzip metadata header along with the gzip file.
 
-Upon the device restart, any unfinished temporary log files of previous life left in /persist/newlog/collect directory will be first moved and compressed by newlogd deamon into their upload gzip directories before any current log events are written onto the disk.
+Upon the device restart, any unfinished temporary log files of previous life left in /persist/newlog/collect directory will be first moved and compressed by newlogd daemon into their upload gzip directories before any current log events are written onto the disk.
 
 Once the gzip log files are uploaded to the cloud, the gzip files still available on the device in /persist/newlog/keepSentQueue directory. For any log files are still waiting to be uploaded, they are in the '/persist/newlog/devUpload' and '/persist/newlog/appUpload' directories. In the case the network connection to the cloud is good, but the logfile has repeatedly failed to upload, it will be moved out of the 'Upload' directory to '/persist/newlog/failedUpload' directory. EVE developers who have enabled ssh to the device for debugging purposes can look at the log entries in those directories by using "zcat" utility.
 
@@ -52,18 +52,18 @@ User can use config-properties to set a log file maximum quota in Mbytes on the 
 
 ## Log export to cloud
 
-"loguploader" is a pillar service which is responsible for uploading the gzip log files to the controller. The binary data of a gzip file is the payload portion of the authentication protobuf envolope structure. This is similar to all the other EVE POST messages, except that in those messsages the payload usually is data of another protobuf structure.
+"loguploader" is a pillar service which is responsible for uploading the gzip log files to the controller. The binary data of a gzip file is the payload portion of the authentication protobuf envolope structure. This is similar to all the other EVE POST messages, except that in those messages the payload usually is data of another protobuf structure.
 
-The upload is one gzip file at a time. The "loguploader" finds the earliest timestamp from the gzip file's filename and sends the data to the controller. If the upload is sucessful, then the uploaded gzip file is moved from the directory to the /persist/newlog/keepSentQueue directory. If the upload encounters an error, it will come back to retry again. There can be several different failure cases:
+The upload is one gzip file at a time. The "loguploader" finds the earliest timestamp from the gzip file's filename and sends the data to the controller. If the upload is successful, then the uploaded gzip file is moved from the directory to the /persist/newlog/keepSentQueue directory. If the upload encounters an error, it will come back to retry again. There can be several different failure cases:
 
 1) the upload has no reply from the server and is TCP timed out
 2) the upload gets http status code of 503 indicating that the controller is undergoing an update
 3) the upload gets http status code of 4xx
 4) the upload gets other types of error
 
-For the case 1 and 2, "loguploader" will just come back to retry the same gzip file again (the earliest in timestamp). After it repeats this 3 times, the "uploader" will mark the controller as "unreachable". This "unreachable" status affects the disk space management by "newlogd" as mentioned above. For case 3, if it repeats continously for 10 times for the same gzip file, this gzip file will be moved into "/persist/newlog/failedUpload" directory, this is to prevent one bad file stops the other log files to be uploaded forever. There is no special action for case 4, the "loguploader" will come back to retry again later.
+For the case 1 and 2, "loguploader" will just come back to retry the same gzip file again (the earliest in timestamp). After it repeats this 3 times, the "uploader" will mark the controller as "unreachable". This "unreachable" status affects the disk space management by "newlogd" as mentioned above. For case 3, if it repeats continuously for 10 times for the same gzip file, this gzip file will be moved into "/persist/newlog/failedUpload" directory, this is to prevent one bad file stops the other log files to be uploaded forever. There is no special action for case 4, the "loguploader" will come back to retry again later.
 
-The uploading is controlled on a scheduled timer. When the timer fires, the "loguploader" checks both "devUpload" and "appUpload" directories, and picks file the earliest in timestamp of the gzip filename in the directory for uploading. The duration of the timer delay stays the same for 20 minutes, then it is recalculated. The current EVE implementaion calculates the timer delay based on these conditions:
+The uploading is controlled on a scheduled timer. When the timer fires, the "loguploader" checks both "devUpload" and "appUpload" directories, and picks file the earliest in timestamp of the gzip filename in the directory for uploading. The duration of the timer delay stays the same for 20 minutes, then it is recalculated. The current EVE implementation calculates the timer delay based on these conditions:
 
 * if the controller is in "unreachable" status, then the delay is set to a random in the range of 3 minutes to 15 minutes. This is mainly due to if the controller is out of reach for a while, many devices has many accumulated logs to be sent to the cloud, to space out the load in a longer duration will help the server side dealing with huge load in the initial startup stage.
 * the device boots up, the timer value is set to 90 seconds (the first 20 minutes)

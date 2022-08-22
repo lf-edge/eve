@@ -1,6 +1,6 @@
 # Booting EVE
 
-Everytime an Edge Node running EVE is powered on or rebooted, the first piece of software
+Every time an Edge Node running EVE is powered on or rebooted, the first piece of software
 that gets executed is firmware code. The job of the firmware code is to initialize the
 hardware just enough to pass control to a custom, operating system specific bootloader
 (note that given how peculiar the job of the firmware is, sometimes it doesn't even get
@@ -136,7 +136,7 @@ in grub.cfg with graphical GRUB menu to get the device to boot again.
 
 The first problem presented by a legacy PC BIOS is that it doesn't understand GPT partitioned disks,
 luckily GPT specification allows for a [Hybryd MBR/GPT](https://wiki.archlinux.org/index.php/Multiboot_USB_drive#Hybrid_UEFI_GPT_+_BIOS_GPT/MBR_boot)
-scheme and we can use the MBR boot sector to boostrap the entire sequence.
+scheme and we can use the MBR boot sector to bootstrap the entire sequence.
 
 Thus, in addition to creating a UEFI compatible `EFI System` partition every disk with EVE also gets:
 
@@ -189,7 +189,7 @@ would've been partition entry #1 on x86 becomes partition entry #11 on HiKey).
 
 The upside of HiKey, of course, is that EVE at least doesn't have to worry about all the firmware bits -- as long as it
 plays nice with HiKey's already pre-created GPT structure it simply expects HiKey's firmware to, ultimately, load up a
-proper UEFI environment and call EVE's GRUB UEFI payload as it would happen normaly. As such, HiKey presents a somewhat
+proper UEFI environment and call EVE's GRUB UEFI payload as it would happen normally. As such, HiKey presents a somewhat
 hybrid environment where as long as we're careful with GPT -- we can simply re-use our default booting scheme with UEFI.
 
 A popular Raspberry Pi ARM board, presents an extra challenge compared to HiKey. Just like HiKey it expects its firmware
