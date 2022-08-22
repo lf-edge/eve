@@ -75,12 +75,12 @@ message TpmEventLogEntry {
 
 enum AttestGPSInput {
    ATTEST_GPS_INPUT_INVALID = 0;
-   ATTEST_GPS_INPUT_PRESENT = 1; //GPS Co-ordinates are available
-   ATTEST_GPS_INPUT_ABSENT  = 2; //GPS Co-ordineates are not available/reliable
+   ATTEST_GPS_INPUT_PRESENT = 1; //GPS Coordinates are available
+   ATTEST_GPS_INPUT_ABSENT  = 2; //GPS Coordinates are not available/reliable
 }
 
 message AttestGPSCoordinates {
-   AttestGPSInput gps_input = 1; // Are the co-ordinates populated ?
+   AttestGPSInput gps_input = 1; // Are the coordinates populated ?
    double latitude = 2;          // Latitude of the device geo-location
    double longitude = 3;         // Longitude of the device geo-location
 }

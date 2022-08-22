@@ -24,7 +24,7 @@ In combination, message payloads from device to controller, or controller to dev
 - message delivery is not on a network channel
 
 Note that the endpoints and trust/certificate authorities are different for TLS and object signing. TLS is terminated at a MiTM proxy (if present) and at certain server-side load balancers. Object signing is between some specific microservcie in EVE and a specific microservice in a controller.
-And the TLS trust using the standard set of root certificate authorities are subject to many of the [concerns for the web PKI](https://www.schneier.com/academic/paperfiles/paper-pki.pdf). The object security in the V2 API is trusting a single root CA for the controller and that CA is selected when the device is intially installed.
+And the TLS trust using the standard set of root certificate authorities are subject to many of the [concerns for the web PKI](https://www.schneier.com/academic/paperfiles/paper-pki.pdf). The object security in the V2 API is trusting a single root CA for the controller and that CA is selected when the device is initially installed.
 
 ## Signing and verification
 
@@ -37,7 +37,7 @@ The `AuthContainer` wrapper is constructed by:
 1. Compute the ECDSA signature of that sha, and place it in the `signatureHash` field
 1. To identify the sender, place a truncated sha of the sender's certificate in `senderCertHash`
 1. Place the algorithm used for the truncated sha in the `algo` field. Currently it's either a SHA256-32bytes or SHA256-16bytes. Note that `senderCertHash` is just for a lookup at the receiver, hence it can be truncated to be a lot shorter without any security implications.
-1. For the case when the receiver might not be able to identify the sender using just the hash, place the full sender's certificate in the `senderCert` field. This is the base64 standard encoding of the PEM format of the certicate. (This is used for the `register` API during onboarding.)
+1. For the case when the receiver might not be able to identify the sender using just the hash, place the full sender's certificate in the `senderCert` field. This is the base64 standard encoding of the PEM format of the certificate. (This is used for the `register` API during onboarding.)
 
 The steps to verify a `AuthContainer` message wrapper are:
 
