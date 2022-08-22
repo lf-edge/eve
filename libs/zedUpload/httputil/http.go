@@ -35,7 +35,7 @@ const (
 // Resp response data from executing commands
 type Resp struct {
 	List          []string //list of images at given path
-	BodyLength    int      // Body legth in http response
+	BodyLength    int      // Body length in http response
 	ContentLength int64    // Content length in http response
 }
 

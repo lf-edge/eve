@@ -349,7 +349,7 @@ func DownloadAzureBlob(accountURL, accountName, accountKey, containerName, remot
 }
 
 // DownloadAzureBlobByChunks will process the blob download by chunks, i.e., chunks will be
-// responded back on as and hwen they recieve
+// responded back on as and when they receive
 func DownloadAzureBlobByChunks(accountURL, accountName, accountKey, containerName, remoteFile, localFile string, httpClient *http.Client) (io.ReadCloser, int64, error) {
 	p, err := newPipeline(accountName, accountKey, httpClient)
 	if err != nil {

@@ -396,7 +396,7 @@ func (s *S3ctx) UploadPart(bname, bkey string, chunk []byte, partNumber int64, u
 	return *uploadResult.ETag, uploadID, err
 }
 
-// CompleteUploadedParts is used to complete the multiple upladed parts
+// CompleteUploadedParts is used to complete the multiple uploaded parts
 func (s *S3ctx) CompleteUploadedParts(bname, bkey, uploadID string, parts []string) error {
 	completeInput := &s3.CompleteMultipartUploadInput{
 		Bucket:   &bname,
