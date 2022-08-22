@@ -1765,10 +1765,14 @@ func configToStatus(ctx *domainContext, config types.DomainConfig,
 			ds.Devtype = ""
 			need9P = true
 		} else {
+			ds.Devtype = "hdd"
+			if dc.Format == zconfig.Format_ISO {
+				// set required devtype and adjust format to raw as required by hypervisor
+				ds.Format = zconfig.Format_RAW
+				ds.Devtype = "cdrom"
+			}
 			if config.VirtualizationMode == types.LEGACY {
 				ds.Devtype = "legacy"
-			} else {
-				ds.Devtype = "hdd"
 			}
 		}
 		// map from i=1 to xvdb, 2 to xvdc etc
