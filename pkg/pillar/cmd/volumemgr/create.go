@@ -39,8 +39,6 @@ func createVdiskVolume(ctx *volumemgrContext, status types.VolumeStatus,
 
 	created := false
 
-	persistFsType := ctx.persistType
-
 	// this is the target location, where we expect the volume to be
 	filelocation := status.PathName()
 
@@ -76,17 +74,7 @@ func createVdiskVolume(ctx *volumemgrContext, status types.VolumeStatus,
 		}
 	}()
 
-	if persistFsType != types.PersistZFS {
-		if _, err := os.Stat(filelocation); err == nil {
-			errStr := fmt.Sprintf("Can not create %s for %s: exists",
-				filelocation, status.Key())
-			log.Error(errStr)
-			return created, "", errors.New(errStr)
-		}
-	}
-
-	switch persistFsType {
-	case types.PersistZFS:
+	if useZVolDisk(ctx, &status) {
 		zVolName := status.ZVolName()
 		zVolDevice := zfs.GetZVolDeviceByDataset(zVolName)
 		if zVolDevice == "" {
@@ -127,7 +115,13 @@ func createVdiskVolume(ctx *volumemgrContext, status types.VolumeStatus,
 			}
 		}
 		filelocation = zVolDevice
-	default:
+	} else {
+		if _, err := os.Stat(filelocation); err == nil {
+			errStr := fmt.Sprintf("Can not create %s for %s: exists",
+				filelocation, status.Key())
+			log.Error(errStr)
+			return created, "", errors.New(errStr)
+		}
 		if ref != "" {
 			// use the edge-containers library to extract the data we need
 			puller := registry.Puller{
