@@ -4,7 +4,7 @@ EVE needs to always be able to connect to the controller, yet the configuration 
 
 In addition some network ports might be designated to application usage, or the underlying I/O bus controllers (e.g., PCI controllers) be designated for assignment to applications. That part of the configuration can also change.
 
-Any network port configuration changes which might affect the connectivity to the controller requires care to avoid permanently loosing connectivity to the controller and become unmanageable as a result. Thus it is required to perform testing as part of a configuration change and have a way to fall back to a working port configuration.
+Any network port configuration changes which might affect the connectivity to the controller requires care to avoid permanently losing connectivity to the controller and become unmanageable as a result. Thus it is required to perform testing as part of a configuration change and have a way to fall back to a working port configuration.
 
 This is accomplished by logic to test connectivity to the controller (implemented in the Network Interface Manager [nim](../pkg/pillar/cmd/nim) with help from the [devicenetwork](../pkg/pillar/devicenetwork) package, and maintaining a list of current working and fallback configuration in ```/persist/status/nim/DevicePortConfigList/global.json```
 

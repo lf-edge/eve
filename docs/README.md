@@ -294,7 +294,7 @@ u-boot) is also possible. In all of these scenarios, we rely on GRUB
 bootloader to figure out an active partition (either on IMGA or IMGB)
 and do all the necessary steps to boot EVE residing in an active partition.
 
-Because of how heterogenous all these initial boot environments are,
+Because of how heterogeneous all these initial boot environments are,
 EVE uses a number of techniques to maintain a single image that can
 be booted in a variety of different scenarios. You can read about this
 in greater details in the [booting EVE](BOOTING.md) section of our docs.

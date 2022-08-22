@@ -272,7 +272,7 @@ To build `installer.raw`:
     3. Populates each partition with its appropriate contents:
         * `efi`: contents of `/EFI/BOOT/` from `/parts/rootfs.img`
         * `imga`: contents of `/parts/rootfs.img`
-        * `conf_win`: contents of `/parts/config.img` as partition type `EBD0A0A2-B9E5-4433-87C0-68B6B72699C7`, or Windows Data partition. Other than the partition type, `conf_win` is idential to `conf`. This is required so that this partition can be mounted on MacOS and Windows machines for users to add/change configuration on an installer image in between installs.
+        * `conf_win`: contents of `/parts/config.img` as partition type `EBD0A0A2-B9E5-4433-87C0-68B6B72699C7`, or Windows Data partition. Other than the partition type, `conf_win` is identical to `conf`. This is required so that this partition can be mounted on MacOS and Windows machines for users to add/change configuration on an installer image in between installs.
         * `persist`: contents of `/parts/persist.img` if it exists, else empty
     4. Populates the embedded boot partition with the grub `*.EFI` binary and `grub.cfg` file
     5. Validates the image.

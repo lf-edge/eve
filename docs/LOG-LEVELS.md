@@ -19,7 +19,7 @@ The current conventions in pkg/pillar code for log levels is as follows:
 - Fatal - cases where we really need to restart the agent.
 - Error - some cases of errors with the objects to be deployed but also internal errors which are not reported using the API.
 - Warning - could be resource-related issues.
-- Notice - all of the pubsub object type logging except for periodic metrics plus additional noticable events. Mapped to logrus.InfoLevel.
+- Notice - all of the pubsub object type logging except for periodic metrics plus additional noticeable events. Mapped to logrus.InfoLevel.
 - Metric - the pubsub object type logs for periodic metric changes. Mapped to logrus.DebugLevel.
 - Function for internal function-level logs. Mapped to logrus.DebugLevel.
 - Trace for more voluminous function-level logs.

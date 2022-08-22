@@ -282,7 +282,7 @@ logical label (from the device model) used as a reference. Just like in the
 [WWAN status API endpoint](#wwan-status-api-endpoint), the physical connection between
 the device and the cellular modem is described by the `physical-addrs` structure.
 
-Packet statics contain RX/TX packet/byte counters (all `uint64`) as recorded by the modem itself.
+Packet statistics contain RX/TX packet/byte counters (all `uint64`) as recorded by the modem itself.
 This may differ from the Linux kernel counters (from `networkMetric` proto message) if, for example,
 some packets were dropped by the modem.
 

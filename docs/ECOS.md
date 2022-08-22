@@ -166,7 +166,7 @@ ECI Configuration is a json file with the following schema:
     * ACKind (string -- no equivalent in OCI)
     * ACVersion (string -- no equivalent in OCI -- should be moved to manifest)
     * Name (string -- no equivalent in OCI -- should be moved to manifest)
-    * Owner (object -- owner.email owner.user is roughtly OCI's author)
+    * Owner (object -- owner.email owner.user is roughly OCI's author)
     * Labels (``map<string, string>`` -- OCI's config.label)
     * Desc (object -- no equivalent in OCI)
     * ==============
