@@ -69,6 +69,7 @@ enum Format {
   OVA   = 6;
   VHDX  = 7;
   CONTAINER = 8;
+  ISO = 9;
 }
 
 // XXX the Image will be deprecated and we will use ContentTree instead
