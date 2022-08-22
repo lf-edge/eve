@@ -76,7 +76,16 @@ The controller has TLS and signing certs, and the device has its device cert plu
 
 When using the `register` message to onboard the sequence is:
 
-- device boots up, and first sends a GET for `ControllerCerts` retrieving the payload signing and intermediate certificates used by the controller
+- device boots up
+- device checks for presence of initial network configuration in this order of preference:
+  1. bootstrap.pbuf in config partition
+       - if present, device first checks config signature against root_certificate using signing and intermediate certificates attached in bootstrap.pbuf
+       - if signature verification succeeded, (network) configuration is applied, which should open connectivity with the controller
+  2. legacy override.json (config partition) or usb.json (USB stick)
+       - if present, the (network) config is loaded and applied (no signature to verify), which should open connectivity with the controller
+  3. if no initial configuration is present, device will by default configure all ethernet ports for management and will try DHCP to get IP/DNS settings
+- device sends a GET for `ControllerCerts` retrieving the payload signing and intermediate certificates used by the controller
+  (this is done regardless if there is bootstrap config with embedded signing/intermediate certs)
 - device verifies the signing certs up to the root CA certificate the device trusts since birth
 - device sends the `register` POST call to upload it's device.cert and serial number to controller. This is signed using the onboarding certificate's priavate key and wraooed in the `AuthContainer` message
 - the controller inspects the onboarding certificate and compars serial number to determine whether this is a legitimate new device, and verifies that the `protectedPayload` is signed by using the onboarding public key.
@@ -89,7 +98,9 @@ The controller has TLS and signing certs, and the device has its device certific
 
 The sequence during boot is:
 
-- device boots up, and if it doesn't have the controllers certificates, it send a GET for `ControllerCerts` (it might also do this on every boot)
+- device boots up
+- device uses persisted network configuration to (re-)open connectivity with the controller
+- if device does not have the controller certificates, it sends a GET for `ControllerCerts` (it might also do this on every boot)
 - if the device retrieved the controller certs, then it verifies the signing certs up to the root CA certificate the device trusts since birth
 - device invokes the `ConfigRequest` API call get its EdgeDevConfig. This is signed using the device certificate and the `AuthContainer` message per above
 - the controller looks up the device certificate based on the `senderCertHash` and if found verifies that the `protectedPayload` is signed by using the device public key.
