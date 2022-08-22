@@ -8,6 +8,7 @@ import (
 	"os"
 	"time"
 
+	zconfig "github.com/lf-edge/eve/api/go/config"
 	"github.com/lf-edge/eve/pkg/pillar/tgt"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
@@ -100,7 +101,21 @@ func useZVolDisk(ctx *volumemgrContext, status *types.VolumeStatus) bool {
 	if status.IsContainer() {
 		return false
 	}
+	if status.ContentFormat == zconfig.Format_ISO {
+		return false
+	}
 	return ctx.persistType == types.PersistZFS
+}
+
+// expandableDisk returns true if we should try to expand disk to the provided max volume size
+func expandableDisk(_ *volumemgrContext, status *types.VolumeStatus) bool {
+	if status.IsContainer() {
+		return false
+	}
+	if status.ContentFormat == zconfig.Format_ISO {
+		return false
+	}
+	return true
 }
 
 func handleDeferredVolumeCreate(ctx *volumemgrContext, key string, config *types.VolumeConfig) {
