@@ -145,7 +145,7 @@ fi
 # initialized. This could happen when we run in a virtualized cloud
 # environment where the initial disk image gets resized to its proper
 # size when EVE is started (it can also happen when you're preparing a
-# live image for something like HiKey and put it dirrectly on the flash
+# live image for something like HiKey and put it directly on the flash
 # card bypassing using EVE's installer).
 #
 # The criteria we're using to determine if the disk hasn't been fully

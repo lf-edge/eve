@@ -330,7 +330,7 @@ func (client *Client) CtrListSnapshotInfo(ctx context.Context) ([]snapshots.Info
 		snapshotInfoList = append(snapshotInfoList, info)
 		return nil
 	}); err != nil {
-		return nil, fmt.Errorf("CtrListSnapshotInfo: Execption while fetching snapshot list. %s", err.Error())
+		return nil, fmt.Errorf("CtrListSnapshotInfo: Exception while fetching snapshot list. %s", err.Error())
 	}
 	return snapshotInfoList, nil
 }
@@ -348,7 +348,7 @@ func (client *Client) CtrRemoveSnapshot(ctx context.Context, snapshotID string) 
 	return nil
 }
 
-//CtrLoadContainer returns conatiner with the given `containerID`. Error is returned if there no container is found.
+//CtrLoadContainer returns container with the given `containerID`. Error is returned if there no container is found.
 func (client *Client) CtrLoadContainer(ctx context.Context, containerID string) (containerd.Container, error) {
 	if err := client.verifyCtr(ctx, true); err != nil {
 		return nil, fmt.Errorf("CtrLoadContainer: exception while verifying ctrd client: %s", err.Error())
@@ -540,7 +540,7 @@ func (client *Client) CtrStopContainer(ctx context.Context, containerID string, 
 	}
 	ctr, err := client.CtrLoadContainer(ctx, containerID)
 	if err != nil {
-		return fmt.Errorf("can't find cotainer %s (%v)", containerID, err)
+		return fmt.Errorf("can't find container %s (%v)", containerID, err)
 	}
 
 	signal, err := containerd.ParseSignal(defaultSignal)

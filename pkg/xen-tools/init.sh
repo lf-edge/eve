@@ -11,7 +11,7 @@ if [ -d /proc/xen/ ]; then
    mkdir -p /var/log/xen
    mkfifo /var/log/xen/xen-hotplug.log
 
-   # start collecting logs (make sure that FIFO remains alway open for
+   # start collecting logs (make sure that FIFO remains always open for
    # writing - so readers don't get EOF, but rather block)
    tail -f /var/log/xen/xen-hotplug.log &
    sh -c 'kill -STOP $$' 3>>/var/log/xen/xen-hotplug.log &

@@ -295,7 +295,7 @@ parseRequest(int sock,
     int byteCnt = 0;
     ifstream cmdOut;
 
-    //We expect atleast one byte to read here.
+    //We expect at least one byte to read here.
     if (size == 0) {
         response.set_response("Invalid request length:" + to_string(size));
         return failure;

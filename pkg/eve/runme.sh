@@ -15,7 +15,7 @@ dump() {
   INAME="$1"
   ONAME="$2"
 
-  # First let's see if postprocesing of a raw diks was requested
+  # First let's see if postprocessing of a raw disk was requested
   case "$FMT" in
      qcow2) qemu-img convert -c -f raw -O qcow2 "$INAME" "$INAME.qcow2"
             INAME="$INAME.qcow2"
