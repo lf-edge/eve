@@ -39,6 +39,7 @@ import (
 	"github.com/lf-edge/eve/api/go/info"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/base"
+	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
@@ -1729,6 +1730,12 @@ func triggerPublishDevInfo(ctxPtr *zedagentContext) {
 	triggerLocalDevInfoPOST(ctxPtr.getconfigCtx)
 }
 
+func triggerPublishLocationToController(ctxPtr *zedagentContext) {
+
+	log.Function("Triggered publishLocationToController")
+	flextimer.TickNow(ctxPtr.getconfigCtx.locationCloudTickerHandle)
+}
+
 func triggerPublishAllInfo(ctxPtr *zedagentContext) {
 
 	log.Function("Triggered PublishAllInfo")
@@ -1737,7 +1744,6 @@ func triggerPublishAllInfo(ctxPtr *zedagentContext) {
 	go func() {
 		// we need only the last one device info to publish
 		triggerPublishDevInfo(ctxPtr)
-		triggerPublishHwInfo(ctxPtr)
 		// trigger publish applications infos
 		for _, c := range ctxPtr.getconfigCtx.subAppInstanceStatus.GetAll() {
 			ctxPtr.TriggerObjectInfo <- infoForObjectKey{
@@ -1781,6 +1787,7 @@ func triggerPublishAllInfo(ctxPtr *zedagentContext) {
 				c.(types.AppInstMetaData).Key(),
 			}
 		}
+		triggerPublishHwInfo(ctxPtr)
 		// trigger publish edgeview infos
 		for _, c := range ctxPtr.subEdgeviewStatus.GetAll() {
 			ctxPtr.TriggerObjectInfo <- infoForObjectKey{
@@ -1788,6 +1795,7 @@ func triggerPublishAllInfo(ctxPtr *zedagentContext) {
 				c.(types.EdgeviewStatus).Key(),
 			}
 		}
+		triggerPublishLocationToController(ctxPtr)
 	}()
 }
 
