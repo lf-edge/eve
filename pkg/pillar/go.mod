@@ -33,7 +33,7 @@ require (
 	github.com/lf-edge/eve/libs/depgraph v0.0.0-20220129022022-ba04fd269658
 	github.com/lf-edge/eve/libs/reconciler v0.0.0-20220131150115-6941dbe72001
 	github.com/lf-edge/eve/libs/zedUpload v0.0.0-20210120050122-276fea8f6efd
-	github.com/moby/sys/mountinfo v0.6.0 // indirect
+	github.com/moby/sys/mountinfo v0.6.0
 	github.com/moby/term v0.0.0-20210619224110-3f7ff695adc6 // indirect
 	github.com/onsi/gomega v1.15.0
 	github.com/opencontainers/go-digest v1.0.0
