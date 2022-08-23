@@ -137,7 +137,7 @@ func (ctx *DeferredContext) handleDeferred(log *base.LogObject, event time.Time,
 				// Make sure we pass a non-zero result
 				// to the sentHandler.
 				if result == types.SenderStatusNone {
-					result = types.SenderStatusRefused
+					result = types.SenderStatusFailed
 				}
 			} else if result != types.SenderStatusNone {
 				log.Functionf("handleDeferred: for %s received unexpected status %d",

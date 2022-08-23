@@ -718,7 +718,6 @@ func SendOnIntf(workContext context.Context, ctx *ZedCloudContext, destURL strin
 				log.Errorf("Got payload for status %s: %s",
 					http.StatusText(resp.StatusCode), contents)
 			}
-			log.Tracef("received response %v\n", resp)
 			// Get caller to schedule a retry based on StatusCode
 			return resp, nil, types.SenderStatusNone, errors.New(errStr)
 		}
