@@ -48,7 +48,7 @@ func PublishHardwareInfoToZedCloud(ctx *zedagentContext) {
 	hwType := new(info.ZInfoTypes)
 	*hwType = info.ZInfoTypes_ZiHardware
 	ReportHwInfo.Ztype = *hwType
-	ReportHwInfo.DevId = *proto.String(hwInfoKey)
+	ReportHwInfo.DevId = *proto.String(devUUID.String())
 	ReportHwInfo.AtTimeStamp = ptypes.TimestampNow()
 	log.Functionf("PublishHardwareInfoToZedCloud uuid %s", hwInfoKey)
 
