@@ -293,9 +293,12 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 			swInfo.Status = bos.State.ZSwState()
 			swInfo.ShortVersion = bos.BaseOsVersion
 			swInfo.LongVersion = "" // XXX
-			if len(bos.ContentTreeStatusList) > 0 {
-				// Assume one - pick first ContentTreeStatus
-				swInfo.DownloadProgress = uint32(bos.ContentTreeStatusList[0].Progress)
+			ctInterface, _ := ctx.getconfigCtx.subContentTreeStatus.Get(bos.ContentTreeUUID)
+			if ctInterface != nil {
+				ct, ok := ctInterface.(types.ContentTreeStatus)
+				if ok {
+					swInfo.DownloadProgress = uint32(ct.Progress)
+				}
 			}
 			if !bos.ErrorTime.IsZero() {
 				log.Tracef("reportMetrics sending error time %v error %v for %s",
@@ -347,9 +350,13 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 		swInfo.Status = bos.State.ZSwState()
 		swInfo.ShortVersion = bos.BaseOsVersion
 		swInfo.LongVersion = "" // XXX
-		if len(bos.ContentTreeStatusList) > 0 {
-			// Assume one - pick first ContentTreeStatus
-			swInfo.DownloadProgress = uint32(bos.ContentTreeStatusList[0].Progress)
+		ctInterface, _ := ctx.getconfigCtx.subContentTreeStatus.Get(bos.ContentTreeUUID)
+		if ctInterface != nil {
+			ct, ok := ctInterface.(types.ContentTreeStatus)
+			if ok {
+				// Assume one - pick first ContentTreeStatus
+				swInfo.DownloadProgress = uint32(ct.Progress)
+			}
 		}
 		if !bos.ErrorTime.IsZero() {
 			log.Tracef("reportMetrics sending error time %v error %v for %s",

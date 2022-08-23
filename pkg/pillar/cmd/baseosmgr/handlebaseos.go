@@ -6,80 +6,15 @@
 package baseosmgr
 
 import (
-	"errors"
 	"fmt"
 	"strings"
 	"syscall"
 	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	"github.com/lf-edge/eve/pkg/pillar/utils"
 	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
 	"github.com/lf-edge/eve/pkg/pillar/zboot"
-	uuid "github.com/satori/go.uuid"
 )
-
-const (
-	BaseOsImageCount     = 1
-	LastImageVersionFile = types.PersistStatusDir + "/last-image-version"
-)
-
-func lookupBaseOsImageSha(ctx *baseOsMgrContext, imageSha string) *types.BaseOsConfig {
-	items := ctx.subBaseOsConfig.GetAll()
-	for _, c := range items {
-		config := c.(types.BaseOsConfig)
-		for _, ctc := range config.ContentTreeConfigList {
-			if ctc.ContentSha256 == imageSha {
-				return &config
-			}
-		}
-	}
-	return nil
-}
-
-func lookupBaseOsStatusImageSha(ctx *baseOsMgrContext, imageSha string) *types.BaseOsStatus {
-	items := ctx.pubBaseOsStatus.GetAll()
-	for _, c := range items {
-		status := c.(types.BaseOsStatus)
-		for _, ctc := range status.ContentTreeStatusList {
-			if ctc.ContentSha256 == imageSha {
-				return &status
-			}
-		}
-	}
-	return nil
-}
-
-// baseOsHandleStatusUpdateImageSha find the config based on the sha,
-// and then call baseOsHandleStatusUpdate. Just a convenience function.
-func baseOsHandleStatusUpdateImageSha(ctx *baseOsMgrContext, imageSha string) {
-
-	log.Functionf("baseOsHandleStatusUpdateImageSha for %s", imageSha)
-	config := lookupBaseOsImageSha(ctx, imageSha)
-	if config == nil {
-		log.Functionf("baseOsHandleStatusUpdateImageSha(%s) config not found",
-			imageSha)
-		status := lookupBaseOsStatusImageSha(ctx, imageSha)
-		if status != nil {
-			log.Functionf("baseOsHandleStatusUpdateImageSha(%s) found status",
-				imageSha)
-			removeBaseOsStatus(ctx, status.Key())
-		}
-		return
-	}
-	uuidStr := config.Key()
-	status := lookupBaseOsStatus(ctx, uuidStr)
-	if status == nil {
-		log.Functionf("baseOsHandleStatusUpdateImageSha(%s) no status",
-			imageSha)
-		return
-	}
-	log.Functionf("baseOsHandleStatusUpdateImageSha(%s) found %s",
-		imageSha, uuidStr)
-
-	// handle the change event for this base os config
-	baseOsHandleStatusUpdate(ctx, config, status)
-}
 
 // baseOsHandleStatusUpdateUUID find the config based on the UUID,
 // and then call baseOsHandleStatusUpdate. Just a convenience function.
@@ -181,28 +116,9 @@ func doBaseOsStatusUpdate(ctx *baseOsMgrContext, uuidStr string,
 
 	// check if the ContentSha256 and RelativeURL need to be updated
 	// we only update to latch it from empty, and if it matches exactly
-	cts := lookupContentTreeStatus(ctx, uuidStr)
+	cts := lookupContentTreeStatus(ctx, status.ContentTreeUUID)
 	log.Functionf("doBaseOsStatusUpdate(%s) ContentTreeStatus %#v", config.BaseOsVersion, cts)
 	if cts != nil {
-		if cts.ContentSha256 != "" {
-			updated := false
-			// we cannot just change it on the fly, because status.ContentTreeStatusList is
-			// []ContentTreeStatus and not []*ContentTreeStatus
-			var ctsList []types.ContentTreeStatus
-			for _, baseCts := range status.ContentTreeStatusList {
-				if baseCts.ContentID == cts.ContentID && baseCts.ContentSha256 == "" {
-					baseCts.ContentSha256 = cts.ContentSha256
-					baseCts.RelativeURL = cts.RelativeURL
-					updated = true
-				}
-				ctsList = append(ctsList, baseCts)
-			}
-			status.ContentTreeStatusList = ctsList
-			if updated {
-				log.Functionf("doBaseOsStatusUpdate(%s) Updating BaseOsStatus %#v", config.BaseOsVersion, status)
-				publishBaseOsStatus(ctx, status)
-			}
-		}
 		if cts.HasError() {
 			description := cts.ErrorDescription
 			description.ErrorEntities = []*types.ErrorEntity{{EntityID: cts.Key(), EntityType: types.ErrorEntityContentTree}}
@@ -229,7 +145,7 @@ func doBaseOsStatusUpdate(ctx *baseOsMgrContext, uuidStr string,
 		log.Functionf("doBaseOsStatusUpdate(%s) for %s found in current %s",
 			config.BaseOsVersion, uuidStr, curPartName)
 		baseOsSetPartitionInfoInStatus(ctx, status, curPartName)
-		setProgressDone(status, types.INSTALLED)
+		status.State = types.INSTALLED
 		status.Activated = true
 		return true
 	}
@@ -254,7 +170,7 @@ func doBaseOsStatusUpdate(ctx *baseOsMgrContext, uuidStr string,
 			return true
 		}
 		// Might be corrupt? XXX should we verify sha? But modified!!
-		setProgressDone(status, types.DOWNLOADED)
+		status.State = types.DOWNLOADED
 		status.Activated = false
 		changed = true
 	}
@@ -290,15 +206,6 @@ func doBaseOsStatusUpdate(ctx *baseOsMgrContext, uuidStr string,
 	log.Functionf("doBaseOsStatusUpdate(%s) done for %s",
 		config.BaseOsVersion, uuidStr)
 	return changed
-}
-
-func setProgressDone(status *types.BaseOsStatus, state types.SwState) {
-	status.State = state
-	for i := range status.ContentTreeStatusList {
-		cts := &status.ContentTreeStatusList[i]
-		cts.Progress = 100
-		cts.State = state
-	}
 }
 
 // Returns changed boolean when the status was changed
@@ -354,7 +261,7 @@ func doBaseOsActivate(ctx *baseOsMgrContext, uuidStr string,
 
 	// install the image at proper partition; dd etc
 	changed, proceed, err = installDownloadedObjects(ctx, uuidStr, status.PartitionLabel,
-		&status.ContentTreeStatusList)
+		status.ContentTreeUUID)
 	if err != nil {
 		status.SetErrorNow(err.Error())
 		changed = true
@@ -378,7 +285,7 @@ func doBaseOsActivate(ctx *baseOsMgrContext, uuidStr string,
 		}
 		zboot.SetOtherPartitionStateUpdating(log)
 		// move the state from VERIFIED to INSTALLED
-		setProgressDone(status, types.INSTALLED)
+		status.State = types.INSTALLED
 		updateAndPublishZbootStatus(ctx,
 			status.PartitionLabel, false)
 		baseOsSetPartitionInfoInStatus(ctx, status,
@@ -398,38 +305,13 @@ func doBaseOsInstall(ctx *baseOsMgrContext, uuidStr string,
 	changed := false
 	proceed := false
 
-	for i, ctc := range config.ContentTreeConfigList {
-		cts := &status.ContentTreeStatusList[i]
-		// check that the contenttreeconfig and contenttreestatus have matching content ID
-		// and matching Relative URL. However, we tolerate the mismatched URL if it is because
-		// the ContentTreeStatus had the latched hash for it but the config has no sha (the config does not get updated).
-		shaifiedURL := ctc.RelativeURL
-		matchedURL := cts.RelativeURL == ctc.RelativeURL
-		if !matchedURL && ctc.ContentSha256 == "" {
-			shaifiedURL = utils.MaybeInsertSha(ctc.RelativeURL, cts.ContentSha256)
-			matchedURL = cts.RelativeURL == shaifiedURL
-		}
-		log.Functionf("doBaseOsInstall(%s): ContentTreeStatus at position %d %#v %s", uuidStr, i, cts, shaifiedURL)
-		if !uuid.Equal(cts.ContentID, ctc.ContentID) || !matchedURL {
-			// Report to zedcloud
-			errString := fmt.Sprintf("%s, for %s, Content tree config mismatch:\n\t%s / %s\n\t%s\n\t%s\n\t%s\n\n", uuidStr,
-				config.BaseOsVersion,
-				ctc.RelativeURL, shaifiedURL, cts.RelativeURL,
-				ctc.ContentID, cts.ContentID)
-			log.Error(errString)
-			status.SetErrorNow(errString)
-			changed = true
-			return changed, proceed
-		}
-	}
-
 	// Check if we should proceed to ask volumemgr
 	changed, proceed = validatePartition(ctx, config, status)
 	if !proceed {
 		return changed, false
 	}
 	// check for the volume status change
-	c, done := checkBaseOsVolumeStatus(ctx, status.UUIDandVersion.UUID,
+	c, done := checkBaseOsVolumeStatus(ctx, status.Key(),
 		config, status)
 	changed = changed || c
 	if !done {
@@ -530,15 +412,13 @@ func validateAndAssignPartition(ctx *baseOsMgrContext,
 	return changed, proceed
 }
 
-func checkBaseOsVolumeStatus(ctx *baseOsMgrContext, baseOsUUID uuid.UUID,
+func checkBaseOsVolumeStatus(ctx *baseOsMgrContext, uuidStr string,
 	config types.BaseOsConfig,
 	status *types.BaseOsStatus) (bool, bool) {
 
-	uuidStr := baseOsUUID.String()
 	log.Functionf("checkBaseOsVolumeStatus(%s) for %s",
 		config.BaseOsVersion, uuidStr)
-	ret := checkContentTreeStatus(ctx, baseOsUUID, config.ContentTreeConfigList,
-		status.ContentTreeStatusList)
+	ret := checkContentTreeStatus(ctx, status.State, status.ContentTreeUUID)
 
 	status.State = ret.MinState
 
@@ -658,22 +538,12 @@ func doBaseOsUninstall(ctx *baseOsMgrContext, uuidStr string,
 		status.PartitionLabel = ""
 		changed = true
 	}
-	for i := range status.ContentTreeStatusList {
-		cts := &status.ContentTreeStatusList[i]
-		log.Functionf("doBaseOsUninstall(%s) for %s",
-			status.BaseOsVersion, uuidStr)
-		c := MaybeRemoveContentTreeConfig(ctx, cts.Key())
-		if c {
-			changed = true
-		}
 
-		contentStatus := lookupContentTreeStatus(ctx, cts.Key())
-		if contentStatus != nil {
-			log.Functionf("doBaseOsUninstall(%s) for %s, Content %s not yet gone;",
-				status.BaseOsVersion, uuidStr, cts.ContentID)
-			removedAll = false
-			continue
-		}
+	contentStatus := lookupContentTreeStatus(ctx, status.ContentTreeUUID)
+	if contentStatus != nil {
+		log.Functionf("doBaseOsUninstall(%s) for %s, Content %s not yet gone;",
+			status.BaseOsVersion, uuidStr, status.ContentTreeUUID)
+		removedAll = false
 	}
 
 	if !removedAll {
@@ -692,7 +562,7 @@ func doBaseOsUninstall(ctx *baseOsMgrContext, uuidStr string,
 func checkInstalledVersion(ctx *baseOsMgrContext, status types.BaseOsStatus) string {
 
 	log.Functionf("checkInstalledVersion(%s) %s %s",
-		status.UUIDandVersion.UUID.String(), status.PartitionLabel,
+		status.Key(), status.PartitionLabel,
 		status.BaseOsVersion)
 
 	if status.PartitionLabel == "" {
@@ -715,6 +585,23 @@ func checkInstalledVersion(ctx *baseOsMgrContext, status types.BaseOsStatus) str
 		return errString
 	}
 	return ""
+}
+
+func lookupBaseOsStatusesByContentID(ctx *baseOsMgrContext, contentID string) []*types.BaseOsStatus {
+
+	var statuses []*types.BaseOsStatus
+	sub := ctx.pubBaseOsStatus
+	sts := sub.GetAll()
+	for _, el := range sts {
+		status := el.(types.BaseOsStatus)
+		if status.ContentTreeUUID == contentID {
+			statuses = append(statuses, &status)
+		}
+	}
+	if len(statuses) == 0 {
+		log.Functionf("lookupBaseOsStatusesByContentID(%s) not found", contentID)
+	}
+	return statuses
 }
 
 func lookupBaseOsConfig(ctx *baseOsMgrContext, key string) *types.BaseOsConfig {
@@ -776,14 +663,11 @@ func unpublishBaseOsStatus(ctx *baseOsMgrContext, key string) {
 	pub.Unpublish(key)
 }
 
-// Check the number of image in this config
-func validateBaseOsConfig(ctx *baseOsMgrContext, config types.BaseOsConfig) error {
-
-	imageCount := len(config.ContentTreeConfigList)
-	if imageCount > BaseOsImageCount {
-		errStr := fmt.Sprintf("baseOs(%s) invalid image count %d",
-			config.BaseOsVersion, imageCount)
-		return errors.New(errStr)
+// Check content tree provided in this config
+func validateBaseOsConfig(_ *baseOsMgrContext, config types.BaseOsConfig) error {
+	if config.ContentTreeUUID == "" {
+		return fmt.Errorf("baseOs(%s) empty ContentTreeUUID",
+			config.BaseOsVersion)
 	}
 
 	return nil
@@ -1034,33 +918,6 @@ func handleOtherPartRebootReason(ctxPtr *baseOsMgrContext, status *types.BaseOsS
 			dateStr)
 		status.SetError(reason, ctxPtr.rebootTime)
 	}
-}
-
-func handleBaseOsCreate(ctxArg interface{}, key string,
-	statusArg interface{}) {
-	handleBaseOsImpl(ctxArg, key, statusArg)
-}
-
-func handleBaseOsModify(ctxArg interface{}, key string,
-	statusArg interface{}, oldStatusArg interface{}) {
-	handleBaseOsImpl(ctxArg, key, statusArg)
-}
-
-func handleBaseOsImpl(ctxArg interface{}, key string,
-	statusArg interface{}) {
-
-	ctxPtr := ctxArg.(*baseOsMgrContext)
-	baseOs := statusArg.(types.BaseOs)
-
-	handleUpdateRetryCounter(ctxPtr, baseOs.ConfigRetryUpdateCounter)
-
-	log.Functionf("handleBaseOsImpl(%s) done", key)
-}
-
-func handleBaseOsDelete(ctxArg interface{}, key string,
-	statusArg interface{}) {
-	// do nothing
-	log.Functionf("handleBaseOsDelete(%s) done", key)
 }
 
 // isImageInErrorState returns true if we try to update to not-active image without success

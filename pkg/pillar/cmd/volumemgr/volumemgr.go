@@ -47,10 +47,9 @@ var volumeFormat = make(map[string]zconfig.Format)
 
 type volumemgrContext struct {
 	agentbase.AgentBase
-	ps                         *pubsub.PubSub
-	subBaseOsContentTreeConfig pubsub.Subscription
-	subGlobalConfig            pubsub.Subscription
-	subZedAgentStatus          pubsub.Subscription
+	ps                *pubsub.PubSub
+	subGlobalConfig   pubsub.Subscription
+	subZedAgentStatus pubsub.Subscription
 
 	pubDownloaderConfig  pubsub.Publication
 	subDownloaderStatus  pubsub.Subscription
@@ -278,9 +277,8 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	ctx.pubContentTreeStatus = pubContentTreeStatus
 
 	pubVolumeStatus, err := ps.NewPublication(pubsub.PublicationOptions{
-		AgentName:  agentName,
-		AgentScope: types.AppImgObj,
-		TopicType:  types.VolumeStatus{},
+		AgentName: agentName,
+		TopicType: types.VolumeStatus{},
 	})
 	if err != nil {
 		log.Fatal(err)
@@ -288,9 +286,8 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	ctx.pubVolumeStatus = pubVolumeStatus
 
 	pubVolumeRefStatus, err := ps.NewPublication(pubsub.PublicationOptions{
-		AgentName:  agentName,
-		AgentScope: types.AppImgObj,
-		TopicType:  types.VolumeRefStatus{},
+		AgentName: agentName,
+		TopicType: types.VolumeRefStatus{},
 	})
 	if err != nil {
 		log.Fatal(err)
@@ -460,7 +457,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		WarningTime:   warningTime,
 		ErrorTime:     errorTime,
 		AgentName:     "zedmanager",
-		AgentScope:    types.AppImgObj,
 		MyAgentName:   agentName,
 		TopicImpl:     types.VolumeRefConfig{},
 		Ctx:           &ctx,
@@ -470,23 +466,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	}
 	ctx.subVolumeRefConfig = subVolumeRefConfig
 	subVolumeRefConfig.Activate()
-
-	subBaseOsContentTreeConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
-		CreateHandler: handleContentTreeCreate,
-		ModifyHandler: handleContentTreeModify,
-		DeleteHandler: handleContentTreeDelete,
-		WarningTime:   warningTime,
-		ErrorTime:     errorTime,
-		AgentName:     "baseosmgr",
-		MyAgentName:   agentName,
-		TopicImpl:     types.ContentTreeConfig{},
-		Ctx:           &ctx,
-	})
-	if err != nil {
-		log.Fatal(err)
-	}
-	ctx.subBaseOsContentTreeConfig = subBaseOsContentTreeConfig
-	subBaseOsContentTreeConfig.Activate()
 
 	subDatastoreConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		CreateHandler: handleDatastoreConfigCreate,
@@ -616,9 +595,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 
 		case change := <-ctx.subVolumeRefConfig.MsgChan():
 			ctx.subVolumeRefConfig.ProcessChange(change)
-
-		case change := <-ctx.subBaseOsContentTreeConfig.MsgChan():
-			ctx.subBaseOsContentTreeConfig.ProcessChange(change)
 
 		case change := <-ctx.subDatastoreConfig.MsgChan():
 			ctx.subDatastoreConfig.ProcessChange(change)

@@ -143,7 +143,6 @@ func parseConfig(getconfigCtx *getconfigContext, config *zconfig.EdgeDevConfig,
 
 		if source != fromBootstrap {
 			parseBaseOS(getconfigCtx, config)
-			parseBaseOsConfig(getconfigCtx, config)
 			parseNetworkInstanceConfig(getconfigCtx, config)
 			parseContentInfoConfig(getconfigCtx, config)
 			parseVolumeConfig(getconfigCtx, config)
@@ -266,76 +265,22 @@ func parseBaseOS(getconfigCtx *getconfigContext,
 			getconfigCtx.configRetryUpdateCounter = baseOS.GetRetryUpdate().GetCounter()
 		}
 	}
-	cfg := &types.BaseOs{
-		ContentTreeUUID:          baseOS.ContentTreeUuid,
-		ConfigRetryUpdateCounter: getconfigCtx.configRetryUpdateCounter,
+	cfg := &types.BaseOsConfig{
+		ContentTreeUUID:    baseOS.ContentTreeUuid,
+		BaseOsVersion:      baseOS.BaseOsVersion,
+		RetryUpdateCounter: getconfigCtx.configRetryUpdateCounter,
+		Activate:           baseOS.Activate,
 	}
-	publishBaseOs(getconfigCtx, cfg)
-}
-
-var baseOSConfigPrevConfigHash []byte
-
-func parseBaseOsConfig(getconfigCtx *getconfigContext,
-	config *zconfig.EdgeDevConfig) {
-
-	cfgOsList := config.GetBase()
-	h := sha256.New()
-	for _, os := range cfgOsList {
-		computeConfigElementSha(h, os)
-	}
-	configHash := h.Sum(nil)
-	same := bytes.Equal(configHash, baseOSConfigPrevConfigHash)
-	if same {
-		return
-	}
-	log.Functionf("parseBaseOsConfig: Applying updated config "+
-		"prevSha: % x, "+
-		"NewSha : % x, "+
-		"cfgOsList: %v",
-		baseOSConfigPrevConfigHash, configHash, cfgOsList)
-
-	baseOSConfigPrevConfigHash = configHash
-
 	// First look for deleted ones
 	items := getconfigCtx.pubBaseOsConfig.GetAll()
-	for uuidStr := range items {
-		found := false
-		for _, baseOs := range cfgOsList {
-			if baseOs.Uuidandversion.Uuid == uuidStr {
-				found = true
-				break
-			}
-		}
-		// baseOS instance not found, delete
-		if !found {
-			log.Functionf("parseBaseOsConfig: deleting %s", uuidStr)
-			getconfigCtx.pubBaseOsConfig.Unpublish(uuidStr)
+	for idStr := range items {
+		if idStr != cfg.Key() {
+			log.Functionf("parseBaseOS: deleting %s\n", idStr)
+			unpublishBaseOsConfig(getconfigCtx, idStr)
 		}
 	}
-
-	for _, cfgOs := range cfgOsList {
-		if cfgOs.GetBaseOSVersion() == "" {
-			// Empty slot - silently ignore
-			log.Tracef("parseBaseOsConfig ignoring empty %s",
-				cfgOs.Uuidandversion.Uuid)
-			continue
-		}
-		baseOs := new(types.BaseOsConfig)
-
-		baseOs.UUIDandVersion.UUID, _ = uuid.FromString(cfgOs.Uuidandversion.Uuid)
-		baseOs.UUIDandVersion.Version = cfgOs.Uuidandversion.Version
-		baseOs.Activate = cfgOs.GetActivate()
-		baseOs.BaseOsVersion = cfgOs.GetBaseOSVersion()
-		baseOs.ContentTreeConfigList = make([]types.ContentTreeConfig,
-			len(cfgOs.Drives))
-		parseContentTreeConfigList(baseOs.ContentTreeConfigList, cfgOs.Drives)
-
-		log.Tracef("parseBaseOsConfig publishing %v",
-			baseOs)
-		publishBaseOsConfig(getconfigCtx, baseOs)
-	}
-	// notify baseosmgr that we published all configs
-	signalBaseOSConfigConfigRestarted(getconfigCtx)
+	// publish new one
+	publishBaseOsConfig(getconfigCtx, cfg)
 }
 
 var networkConfigPrevConfigHash []byte
@@ -1625,31 +1570,6 @@ func publishDatastoreConfig(ctx *getconfigContext,
 	}
 }
 
-func parseContentTreeConfigList(contentTreeList []types.ContentTreeConfig, drives []*zconfig.Drive) {
-
-	var idx int = 0
-
-	for _, drive := range drives {
-		contentTree := new(types.ContentTreeConfig)
-		if drive.Image == nil {
-			log.Errorf("No drive.Image for drive %v",
-				drive)
-			// Pass on for error reporting
-			contentTree.ContentID = nilUUID
-		} else {
-			contentTree.ContentID, _ = uuid.FromString(drive.Image.Uuidandversion.Uuid)
-			contentTree.DatastoreID, _ = uuid.FromString(drive.Image.DsId)
-			contentTree.RelativeURL = drive.Image.Name
-			contentTree.Format = drive.Image.Iformat
-			contentTree.ContentSha256 = strings.ToLower(drive.Image.Sha256)
-			contentTree.MaxDownloadSize = uint64(drive.Image.SizeBytes)
-			contentTree.DisplayName = drive.Image.Name
-		}
-		contentTreeList[idx] = *contentTree
-		idx++
-	}
-}
-
 func parseVolumeRefList(volumeRefConfigList []types.VolumeRefConfig,
 	volumeRefs []*zconfig.VolumeRef) {
 
@@ -2489,18 +2409,24 @@ func publishBaseOsConfig(getconfigCtx *getconfigContext,
 
 	key := config.Key()
 	log.Tracef("publishBaseOsConfig UUID %s, %s, activate %v",
-		key, config.BaseOsVersion, config.Activate)
+		key, config.ContentTreeUUID, config.Activate)
 	pub := getconfigCtx.pubBaseOsConfig
 	pub.Publish(key, *config)
 }
 
-func publishBaseOs(getconfigCtx *getconfigContext,
-	config *types.BaseOs) {
-
-	log.Tracef("publishBaseOs ConfigRetryUpdateCounter: %d, ContentTreeUUID: %v",
-		config.ConfigRetryUpdateCounter, config.ContentTreeUUID)
-	pub := getconfigCtx.pubBaseOs
-	pub.Publish("global", *config)
+func unpublishBaseOsConfig(ctx *getconfigContext, key string) {
+	log.Tracef("unpublishBaseOsConfig(%s)", key)
+	pub := ctx.pubBaseOsConfig
+	config, _ := pub.Get(key)
+	if config == nil {
+		log.Errorf("unpublishBaseOsConfig(%s) not found", key)
+		return
+	}
+	if err := pub.Unpublish(key); err != nil {
+		log.Errorf("unpublishBaseOsConfig(%s) failed to unpublish: %s", key, err)
+		return
+	}
+	log.Tracef("unpublishBaseOsConfig(%s) done", key)
 }
 
 // Get sha256 for a subset of the protobuf message.

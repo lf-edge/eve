@@ -43,9 +43,8 @@ func initStatusCtx(t *testing.T) volumemgrContext {
 	ps := pubsub.New(&pubsub.EmptyDriver{}, logger, log)
 
 	pubVolumeStatus, err := ps.NewPublication(pubsub.PublicationOptions{
-		AgentName:  agentName,
-		AgentScope: types.AppImgObj,
-		TopicType:  types.VolumeStatus{},
+		AgentName: agentName,
+		TopicType: types.VolumeStatus{},
 	})
 	assert.Nil(t, err)
 	ctx.pubVolumeStatus = pubVolumeStatus

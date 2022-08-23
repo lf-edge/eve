@@ -123,9 +123,8 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	pubAppInstanceSummary.ClearRestarted()
 
 	pubVolumeRefConfig, err := ps.NewPublication(pubsub.PublicationOptions{
-		AgentName:  agentName,
-		AgentScope: types.AppImgObj,
-		TopicType:  types.VolumeRefConfig{},
+		AgentName: agentName,
+		TopicType: types.VolumeRefConfig{},
 	})
 	if err != nil {
 		log.Fatal(err)
@@ -207,7 +206,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	subVolumeRefStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "volumemgr",
 		MyAgentName:   agentName,
-		AgentScope:    types.AppImgObj,
 		TopicImpl:     types.VolumeRefStatus{},
 		Activate:      false,
 		Ctx:           &ctx,
