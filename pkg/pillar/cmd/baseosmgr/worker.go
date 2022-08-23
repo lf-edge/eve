@@ -17,17 +17,17 @@ const (
 
 // installWorkDescription install work we feed into the worker go routine
 type installWorkDescription struct {
-	contentID string
-	ref       string
-	target    string
+	key    string
+	ref    string
+	target string
 }
 
 // AddWorkInstall create a Work job to install the provided image to the target path
 func AddWorkInstall(ctx *baseOsMgrContext, key, ref, target string) {
 	d := installWorkDescription{
-		contentID: key,
-		ref:       ref,
-		target:    target,
+		key:    key,
+		ref:    ref,
+		target: target,
 	}
 	// Don't fail on errors to make idempotent (Submit returns an error if
 	// the work was already submitted)
@@ -72,6 +72,6 @@ func installWorker(ctxPtr interface{}, w worker.Work) worker.WorkResult {
 func processInstallWorkResult(ctxPtr interface{}, res worker.WorkResult) error {
 	ctx := ctxPtr.(*baseOsMgrContext)
 	d := res.Description.(installWorkDescription)
-	baseOsHandleStatusUpdateUUID(ctx, d.contentID)
+	baseOsHandleStatusUpdateUUID(ctx, d.key)
 	return nil
 }

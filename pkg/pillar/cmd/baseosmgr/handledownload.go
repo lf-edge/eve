@@ -11,94 +11,42 @@ import (
 	uuid "github.com/satori/go.uuid"
 )
 
-// Really a constant
-var nilUUID uuid.UUID
-
 func checkContentTreeStatus(ctx *baseOsMgrContext,
-	baseOsUUID uuid.UUID, config []types.ContentTreeConfig,
-	status []types.ContentTreeStatus) *types.RetStatus {
+	currentState types.SwState, contentID string) *types.RetStatus {
 
-	uuidStr := baseOsUUID.String()
 	ret := &types.RetStatus{}
-	log.Functionf("checkContentTreeStatus for %s", uuidStr)
+	log.Functionf("checkContentTreeStatus for %s", contentID)
 
 	ret.Changed = false
 	ret.AllErrors = ""
 	ret.MinState = types.MAXSTATE
 
-	for i, ctc := range config {
-
-		cts := &status[i]
-
-		contentID := ctc.ContentID
+	contentStatus := lookupContentTreeStatus(ctx, contentID)
+	if contentStatus != nil {
 
 		log.Functionf("checkContentTreeStatus %s, content status %v",
-			contentID, cts.State)
-		if cts.State == types.INSTALLED {
-			ret.MinState = cts.State
-			cts.Progress = 100
-			// XXX TotalSize and CurrentSize?
-			ret.Changed = true
-			log.Functionf("checkContentTreeStatus %s is already installed",
-				contentID)
-			continue
-		}
+			contentID, contentStatus.State)
 
-		c := MaybeAddContentTreeConfig(ctx, &ctc)
-		if c {
-			ret.Changed = true
-		}
-		contentStatus := lookupContentTreeStatus(ctx, ctc.Key())
-		if contentStatus == nil {
-			log.Functionf("Content tree status not found. name: %s", ctc.RelativeURL)
-			ret.MinState = types.DOWNLOADING
-			cts.State = types.DOWNLOADING
-			ret.Changed = true
-			continue
-		}
-
-		if contentStatus.FileLocation != cts.FileLocation {
-			cts.FileLocation = contentStatus.FileLocation
-			ret.Changed = true
-			log.Functionf("checkContentTreeStatus(%s) from contentStatus set FileLocation to %s",
-				contentID, contentStatus.FileLocation)
-		}
 		if ret.MinState > contentStatus.State {
 			ret.MinState = contentStatus.State
 		}
-		if contentStatus.State != cts.State {
-			log.Functionf("checkContentTreeStatus(%s) from ds set cts.State %d",
-				contentID, contentStatus.State)
-			cts.State = contentStatus.State
-			ret.Changed = true
-		}
-
-		if contentStatus.Progress != cts.Progress {
-			cts.Progress = contentStatus.Progress
-			ret.Changed = true
-		}
-		if contentStatus.TotalSize != cts.TotalSize {
-			cts.TotalSize = contentStatus.TotalSize
-			ret.Changed = true
-		}
-		if contentStatus.CurrentSize != cts.CurrentSize {
-			cts.CurrentSize = contentStatus.CurrentSize
-			ret.Changed = true
-		}
 		if contentStatus.HasError() {
-			log.Errorf("checkContentTreeStatus %s, volumemgr error, %s", uuidStr, contentStatus.Error)
-			description := contentStatus.ErrorDescription
-			description.ErrorEntities = []*types.ErrorEntity{{EntityID: contentStatus.ContentID.String(), EntityType: types.ErrorEntityContentTree}}
-			cts.SetErrorWithSourceAndDescription(description, types.ContentTreeStatus{})
+			log.Errorf("checkContentTreeStatus %s, volumemgr error, %s", contentID, contentStatus.Error)
 			ret.AllErrors = appendError(ret.AllErrors, "volumemgr", contentStatus.Error)
-			ret.ErrorTime = cts.ErrorTime
+			ret.ErrorTime = contentStatus.ErrorTime
 			ret.Changed = true
 		}
+	} else {
+		ret.MinState = types.DOWNLOADING
+		ret.Changed = true
 	}
 
 	if ret.MinState == types.MAXSTATE {
 		// No StorageStatus
 		ret.MinState = types.INITIAL
+		ret.Changed = true
+	}
+	if currentState != ret.MinState {
 		ret.Changed = true
 	}
 
@@ -107,7 +55,7 @@ func checkContentTreeStatus(ctx *baseOsMgrContext,
 
 // Note: can not do this in volumemgr since it is triggered by Activate=true
 func installDownloadedObjects(ctx *baseOsMgrContext, uuidStr, finalObjDir string,
-	status *[]types.ContentTreeStatus) (bool, bool, error) {
+	contentID string) (bool, bool, error) {
 
 	var (
 		changed bool
@@ -116,19 +64,19 @@ func installDownloadedObjects(ctx *baseOsMgrContext, uuidStr, finalObjDir string
 	)
 	log.Functionf("installDownloadedObjects(%s)", uuidStr)
 
-	for i := range *status {
-		ctsPtr := &(*status)[i]
+	status := lookupContentTreeStatus(ctx, contentID)
 
-		if ctsPtr.State == types.LOADED {
-			changed, proceed, err = installDownloadedObject(ctx, ctsPtr.ContentID,
-				finalObjDir, ctsPtr)
-			if err != nil {
-				log.Error(err)
-				return changed, proceed, err
-			}
-		}
-		if ctsPtr.State == types.INSTALLED {
-			proceed = true
+	if status == nil {
+		return changed, proceed, fmt.Errorf("installDownloadedObjects(%s) cannot found contentTree %s",
+			uuidStr, status.ContentID)
+	}
+
+	if status.State == types.LOADED {
+		changed, proceed, err = installDownloadedObject(ctx, status.ContentID,
+			finalObjDir, status)
+		if err != nil {
+			log.Error(err)
+			return changed, proceed, err
 		}
 	}
 	log.Functionf("installDownloadedObjects(%s) done %v", uuidStr, proceed)
@@ -181,8 +129,6 @@ func installDownloadedObject(ctx *baseOsMgrContext, contentID uuid.UUID, finalOb
 		}
 		changed = true
 		proceed = true
-		// if we made it here, we successfully completed the job
-		ctsPtr.State = types.INSTALLED
 		return changed, proceed, nil
 	}
 

@@ -1037,15 +1037,6 @@ func initPublications(zedagentCtx *zedagentContext) {
 	}
 	getconfigCtx.pubBaseOsConfig.ClearRestarted()
 
-	getconfigCtx.pubBaseOs, err = ps.NewPublication(pubsub.PublicationOptions{
-		AgentName: agentName,
-		TopicType: types.BaseOs{},
-	})
-	if err != nil {
-		log.Fatal(err)
-	}
-	getconfigCtx.pubBaseOs.ClearRestarted()
-
 	getconfigCtx.pubDatastoreConfig, err = ps.NewPublication(pubsub.PublicationOptions{
 		AgentName: agentName,
 		TopicType: types.DatastoreConfig{},
@@ -1257,7 +1248,6 @@ func initPostOnboardSubs(zedagentCtx *zedagentContext) {
 	getconfigCtx.subVolumeStatus, err = ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "volumemgr",
 		MyAgentName:   agentName,
-		AgentScope:    types.AppImgObj,
 		TopicImpl:     types.VolumeStatus{},
 		Activate:      true,
 		Ctx:           zedagentCtx,

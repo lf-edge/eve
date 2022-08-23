@@ -41,16 +41,14 @@ var Version = "No version specified"
 
 type baseOsMgrContext struct {
 	agentbase.AgentBase
-	pubBaseOsStatus      pubsub.Publication
-	pubContentTreeConfig pubsub.Publication
-	pubZbootStatus       pubsub.Publication
-	pubBaseOsMgrStatus   pubsub.Publication
+	pubBaseOsStatus    pubsub.Publication
+	pubZbootStatus     pubsub.Publication
+	pubBaseOsMgrStatus pubsub.Publication
 
 	subGlobalConfig      pubsub.Subscription
 	globalConfig         *types.ConfigItemValueMap
 	GCInitialized        bool
 	subBaseOsConfig      pubsub.Subscription
-	subBaseOs            pubsub.Subscription
 	subZbootConfig       pubsub.Subscription
 	subContentTreeStatus pubsub.Subscription
 	subNodeAgentStatus   pubsub.Subscription
@@ -60,8 +58,6 @@ type baseOsMgrContext struct {
 	rebootImage          string    // Image from which the last reboot happened
 	currentUpdateRetry   uint32    // UpdateRetryCounter from last retry; it will be sent for info
 	configUpdateRetry    uint32    // UpdateRetryCounter from config; to avoid loop after reboot with failed testing
-
-	baseOsConfigRestarted bool
 
 	worker worker.Worker // For background work
 	// cli options
@@ -173,9 +169,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		case change := <-ctx.subZedAgentStatus.MsgChan():
 			ctx.subZedAgentStatus.ProcessChange(change)
 
-		case change := <-ctx.subBaseOs.MsgChan():
-			ctx.subBaseOs.ProcessChange(change)
-
 		case res := <-ctx.worker.MsgChan():
 			res.Process(&ctx, true)
 
@@ -206,18 +199,11 @@ func handleBaseOsConfigCreate(ctxArg interface{}, key string, configArg interfac
 	ctx := ctxArg.(*baseOsMgrContext)
 	config := configArg.(types.BaseOsConfig)
 	status := types.BaseOsStatus{
-		UUIDandVersion: config.UUIDandVersion,
-		BaseOsVersion:  config.BaseOsVersion,
+		BaseOsVersion:   config.BaseOsVersion,
+		ContentTreeUUID: config.ContentTreeUUID,
 	}
 
-	status.ContentTreeStatusList = make([]types.ContentTreeStatus,
-		len(config.ContentTreeConfigList))
-
-	for i, ctc := range config.ContentTreeConfigList {
-		cts := &status.ContentTreeStatusList[i]
-		cts.UpdateFromContentTreeConfig(ctc)
-	}
-	// Check image count
+	// Check content tree provided
 	err := validateBaseOsConfig(ctx, config)
 	if err != nil {
 		log.Error(err)
@@ -227,6 +213,7 @@ func handleBaseOsConfigCreate(ctxArg interface{}, key string, configArg interfac
 	}
 	publishBaseOsStatus(ctx, &status)
 	baseOsHandleStatusUpdate(ctx, &config, &status)
+	handleUpdateRetryCounter(ctx, config.RetryUpdateCounter)
 }
 
 func handleBaseOsConfigModify(ctxArg interface{}, key string, configArg interface{},
@@ -241,10 +228,10 @@ func handleBaseOsConfigModify(ctxArg interface{}, key string, configArg interfac
 		return
 	}
 
-	log.Functionf("handleBaseOsConfigModify(%s) for %s Activate %v",
-		config.Key(), config.BaseOsVersion, config.Activate)
+	log.Functionf("handleBaseOsConfigModify(%s) Activate %v",
+		config.Key(), config.Activate)
 
-	// Check image count
+	// Check content tree provided
 	err := validateBaseOsConfig(ctx, config)
 	if err != nil {
 		log.Error(err)
@@ -253,27 +240,9 @@ func handleBaseOsConfigModify(ctxArg interface{}, key string, configArg interfac
 		return
 	}
 
-	// update the version field, uuids being the same
-	status.UUIDandVersion = config.UUIDandVersion
 	publishBaseOsStatus(ctx, status)
 	baseOsHandleStatusUpdate(ctx, &config, status)
-}
-
-func handleBaseOsConfigRestart(ctxArg interface{}, restartCounter int) {
-	ctx := ctxArg.(*baseOsMgrContext)
-
-	log.Functionf("handleBaseOsConfigRestart(%d)", restartCounter)
-	if restartCounter != 0 && !ctx.baseOsConfigRestarted {
-		ctx.baseOsConfigRestarted = true
-		// activate subBaseOs after BaseOsConfig data received
-		// to not hit the problem when no BaseOsConfig defined
-		// during checks for ConfigRetryUpdateCounter
-		// we do not want to miss the first config
-		// all subsequent will initiate download-install-test cycle
-		if err := ctx.subBaseOs.Activate(); err != nil {
-			log.Errorf("Failed to activate subBaseOsConfig: %s", err)
-		}
-	}
+	handleUpdateRetryCounter(ctx, config.RetryUpdateCounter)
 }
 
 // base os config delete event
@@ -341,16 +310,6 @@ func initializeSelfPublishHandles(ps *pubsub.PubSub, ctx *baseOsMgrContext) {
 	}
 	pubBaseOsStatus.ClearRestarted()
 	ctx.pubBaseOsStatus = pubBaseOsStatus
-
-	pubContentTreeConfig, err := ps.NewPublication(
-		pubsub.PublicationOptions{
-			AgentName: agentName,
-			TopicType: types.ContentTreeConfig{},
-		})
-	if err != nil {
-		log.Fatal(err)
-	}
-	ctx.pubContentTreeConfig = pubContentTreeConfig
 
 	pubZbootStatus, err := ps.NewPublication(
 		pubsub.PublicationOptions{
@@ -464,44 +423,22 @@ func initializeZedagentHandles(ps *pubsub.PubSub, ctx *baseOsMgrContext) {
 	// Look for BaseOsConfig , from zedagent
 	subBaseOsConfig, err := ps.NewSubscription(
 		pubsub.SubscriptionOptions{
-			AgentName:      "zedagent",
-			MyAgentName:    agentName,
-			TopicImpl:      types.BaseOsConfig{},
-			Activate:       false,
-			Ctx:            ctx,
-			CreateHandler:  handleBaseOsConfigCreate,
-			ModifyHandler:  handleBaseOsConfigModify,
-			DeleteHandler:  handleBaseOsConfigDelete,
-			RestartHandler: handleBaseOsConfigRestart,
-			WarningTime:    warningTime,
-			ErrorTime:      errorTime,
-		})
-	if err != nil {
-		log.Fatal(err)
-	}
-	ctx.subBaseOsConfig = subBaseOsConfig
-	subBaseOsConfig.Activate()
-
-	subBaseOs, err := ps.NewSubscription(
-		pubsub.SubscriptionOptions{
 			AgentName:     "zedagent",
 			MyAgentName:   agentName,
-			TopicImpl:     types.BaseOs{},
+			TopicImpl:     types.BaseOsConfig{},
 			Activate:      false,
 			Ctx:           ctx,
-			CreateHandler: handleBaseOsCreate,
-			ModifyHandler: handleBaseOsModify,
-			DeleteHandler: handleBaseOsDelete,
+			CreateHandler: handleBaseOsConfigCreate,
+			ModifyHandler: handleBaseOsConfigModify,
+			DeleteHandler: handleBaseOsConfigDelete,
 			WarningTime:   warningTime,
 			ErrorTime:     errorTime,
 		})
 	if err != nil {
 		log.Fatal(err)
 	}
-	// will activate subscription in handleBaseOsConfigRestart
-	// to not hit concurrence between BaseOsConfig and BaseOs
-	// during handling of ConfigRetryUpdateCounter
-	ctx.subBaseOs = subBaseOs
+	ctx.subBaseOsConfig = subBaseOsConfig
+	subBaseOsConfig.Activate()
 }
 
 func initializeVolumemgrHandles(ps *pubsub.PubSub, ctx *baseOsMgrContext) {
