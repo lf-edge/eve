@@ -715,6 +715,8 @@ func SendOnIntf(workContext context.Context, ctx *ZedCloudContext, destURL strin
 			// zedrouter probing sends 'http' to zedcloud server, expect to get status of 404, not an error
 			if resp.StatusCode != http.StatusNotFound || ctx.AgentName != "zedrouter" {
 				log.Errorln(errStr)
+				log.Errorf("Got payload for status %s: %s",
+					http.StatusText(resp.StatusCode), contents)
 			}
 			log.Tracef("received response %v\n", resp)
 			// Get caller to schedule a retry based on StatusCode
