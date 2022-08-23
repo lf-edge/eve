@@ -139,12 +139,22 @@ func objectInfoTask(ctxPtr *zedagentContext, triggerInfo <-chan infoForObjectKey
 						ctxPtr.iteration)
 					ctxPtr.iteration++
 				}
+			case info.ZInfoTypes_ZiHardware:
+				PublishHardwareInfoToZedCloud(ctxPtr)
+				ctxPtr.iteration++
 			case info.ZInfoTypes_ZiEdgeview:
 				// publish Edgeview info
 				sub := ctxPtr.subEdgeviewStatus
 				if c, err = sub.Get(infoForKeyMessage.objectKey); err == nil {
 					evStatus := c.(types.EdgeviewStatus)
 					PublishEdgeviewToZedCloud(ctxPtr, &evStatus)
+				}
+			case info.ZInfoTypes_ZiLocation:
+				locInfo := getLocationInfo(ctxPtr)
+				if locInfo != nil {
+					// Note that we use a zero iteration
+					// counter here.
+					publishLocationToController(locInfo, 0)
 				}
 			}
 			if err != nil {
