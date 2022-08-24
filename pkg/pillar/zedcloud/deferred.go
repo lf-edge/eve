@@ -196,8 +196,19 @@ func (ctx *DeferredContext) handleDeferred(log *base.LogObject, event time.Time,
 	if len(ctx.deferredItems) == 0 {
 		stopTimer(log, ctx)
 	}
-	log.Functionf("handleDeferred() done items %d", len(ctx.deferredItems))
-	return len(ctx.deferredItems) == 0
+	if len(ctx.deferredItems) == 0 {
+		log.Functionf("handleDeferred() done")
+		return true
+	}
+	log.Noticef("handleDeferred() done items %d", len(ctx.deferredItems))
+	// Log the content of the queue
+	if ctx.sentHandler != nil {
+		for _, item := range ctx.deferredItems {
+			f := *ctx.sentHandler
+			f(item.itemType, item.buf, types.SenderStatusDebug)
+		}
+	}
+	return false
 }
 
 // Replace any item for the specified key. If timer not running start it

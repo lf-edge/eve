@@ -2335,7 +2335,15 @@ func handleNodeAgentStatusDelete(ctxArg interface{}, key string,
 func getDeferredSentHandlerFunction(ctx *zedagentContext) *zedcloud.SentHandlerFunction {
 	var function zedcloud.SentHandlerFunction
 	function = func(itemType interface{}, data *bytes.Buffer, result types.SenderResult) {
-		if result == types.SenderStatusNone {
+		if result == types.SenderStatusDebug {
+			// Debug stuff
+			if el, ok := itemType.(info.ZInfoTypes); ok {
+				log.Noticef("deferred queue has INFO: %d", el)
+			}
+			if el, ok := itemType.(attest.ZAttestReqType); ok {
+				log.Noticef("deferred queue has ATTEST: %d", el)
+			}
+		} else if result == types.SenderStatusNone {
 			if data == nil {
 				return
 			}
