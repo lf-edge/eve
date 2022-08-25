@@ -272,7 +272,9 @@ qmi_wait_for_register() {
   # Make sure we are registering with the right APN.
   # Some LTE networks require explicit (and correct) APN for the registration/attach
   # procedure (for the initial EPS bearer activation).
-  qmi --wds-modify-profile="3gpp,1,apn=${APN},pdp-type=ip"
+  local PROFILE="$(qmi --wds-get-default-profile-num=3gpp)"
+  local PROFILE_NUM="$(parse_modem_attr "$PROFILE" "Default profile number")"
+  qmi --wds-modify-profile="3gpp,${PROFILE_NUM},apn=${APN}"
 
   echo "[$CDC_DEV] Waiting for the device to register on the network"
   local CMD="qmi_get_registration_status"
