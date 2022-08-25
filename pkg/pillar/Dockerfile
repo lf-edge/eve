@@ -1,7 +1,7 @@
 # Copyright (c) 2018 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
 
-FROM lfedge/eve-dom0-ztools:ff71338c79558620a3d6dd770ad0291b786e759d as zfs
+FROM lfedge/eve-dom0-ztools:99cb15ad5cdd454cf31d606bcd55dce719663109 as zfs
 RUN mkdir /out
 # copy zfs-related files from dom0-ztools using prepared list of files
 RUN while read -r x; do \
