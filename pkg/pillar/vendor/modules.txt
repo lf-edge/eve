@@ -423,6 +423,11 @@ github.com/lf-edge/eve/libs/zedUpload/types
 github.com/mattn/go-ieproxy
 # github.com/matttproud/golang_protobuf_extensions v1.0.2-0.20181231171920-c182affec369
 github.com/matttproud/golang_protobuf_extensions/pbutil
+# github.com/mdlayher/socket v0.2.0
+github.com/mdlayher/socket
+# github.com/mdlayher/vsock v1.1.1
+## explicit
+github.com/mdlayher/vsock
 # github.com/miekg/dns v1.1.41
 github.com/miekg/dns
 # github.com/mitchellh/go-homedir v1.1.0
