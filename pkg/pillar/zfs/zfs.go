@@ -191,11 +191,11 @@ func GetZFSVolumeInfo(log *base.LogObject, device string) (*types.ImgInfo, error
 		return nil, fmt.Errorf("GetDatasetByDevice returns empty for device: %s",
 			device)
 	}
-	logicalreferenced, err := GetDatasetOption(log, dataset, "logicalreferenced")
+	usedbydataset, err := GetDatasetOption(log, dataset, "usedbydataset")
 	if err != nil {
 		return nil, fmt.Errorf("GetZFSVolumeInfo GetDatasetOption failed: %s", err)
 	}
-	imgInfo.ActualSize, err = strconv.ParseUint(logicalreferenced, 10, 64)
+	imgInfo.ActualSize, err = strconv.ParseUint(usedbydataset, 10, 64)
 	if err != nil {
 		return nil, fmt.Errorf("GetZFSVolumeInfo: failed to parse referenced: %s", err)
 	}
