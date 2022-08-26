@@ -52,6 +52,10 @@ const (
 	V2TLSBaseFile = IdentityDirname + "/v2tlsbaseroot-certificates.pem"
 	// APIV1FileName - user can statically allow for API v1
 	APIV1FileName = IdentityDirname + "/Force-API-V1"
+	// BootstrapConfFileName - file to store initial device configuration for bootstrapping
+	BootstrapConfFileName = IdentityDirname + "/bootstrap-config.pb"
+	// BootstrapShaFileName - file to store SHA hash of an already ingested bootstrap config
+	BootstrapShaFileName = IngestedDirname + "/bootstrap-config.sha"
 
 	// ServerSigningCertFileName - filename for server signing leaf certificate
 	ServerSigningCertFileName = CertificateDirname + "/server-signing-cert.pem"

@@ -38,16 +38,37 @@ const (
 	maxVlanID = 4094
 )
 
-// Returns a configProcessingSkipFlag
-func parseConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigContext,
-	usingSaved bool) bool {
+func parseConfig(getconfigCtx *getconfigContext, config *zconfig.EdgeDevConfig,
+	source configSource) configProcessingRetval {
 
 	// Do not accept new commands from Local profile server while new config
 	// from the controller is being applied.
-	getconfigCtx.localCommands.Lock()
-	defer getconfigCtx.localCommands.Unlock()
+	if getconfigCtx.localCommands != nil {
+		getconfigCtx.localCommands.Lock()
+		defer getconfigCtx.localCommands.Unlock()
+	}
 
-	getconfigCtx.lastReceivedConfig = time.Now()
+	// Make sure we do not accidentally revert to an older configuration.
+	// This depends on the controller attaching config timestamp.
+	// If not provided, the check is skipped.
+	if config.ConfigTimestamp.IsValid() {
+		configTimestamp := config.ConfigTimestamp.AsTime()
+		if getconfigCtx.lastConfigTimestamp.After(configTimestamp) {
+			log.Warnf("Skipping obsolete device configuration "+
+				"(source: %v, timestamp: %v, currently applied: %v)",
+				source, configTimestamp, getconfigCtx.lastConfigTimestamp)
+			return obsoleteConfig
+		}
+		getconfigCtx.lastConfigTimestamp = configTimestamp
+	}
+
+	// Update lastReceivedConfig even if the config processing is skipped below.
+	if config.ConfigTimestamp.IsValid() {
+		getconfigCtx.lastReceivedConfig = config.ConfigTimestamp.AsTime()
+	} else {
+		getconfigCtx.lastReceivedConfig = time.Now()
+	}
+
 	ctx := getconfigCtx.zedagentCtx
 
 	// XXX - DO NOT LOG entire config till secrets are in encrypted blobs
@@ -57,7 +78,7 @@ func parseConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigContext,
 	// Process Config items even when configProcessingSkipFlag is set.
 	// Allows us to recover if the system got stuck after setting
 	// configProcessingSkipFlag
-	parseConfigItems(config, getconfigCtx)
+	parseConfigItems(getconfigCtx, config, source)
 
 	// Did MaintenanceMode change?
 	if ctx.apiMaintenanceMode != config.MaintenanceMode {
@@ -75,19 +96,19 @@ func parseConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigContext,
 		publishZedAgentStatus(ctx.getconfigCtx)
 	}
 
-	if !usingSaved {
-		rebootFlag, shutdownFlag := parseOpCmds(config, getconfigCtx)
+	if source == fromController {
+		rebootFlag, shutdownFlag := parseOpCmds(getconfigCtx, config)
 
 		// Any new reboot command?
 		if rebootFlag {
 			log.Noticeln("Reboot flag set, skipping config processing")
-			return true
+			return skipConfig
 		}
 
 		// Any new shutdown command?
 		if shutdownFlag {
 			log.Noticeln("Shutdown flag set, skipping config processing")
-			return true
+			return skipConfig
 		}
 	}
 
@@ -96,42 +117,51 @@ func parseConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigContext,
 	} else if ctx.maintenanceMode {
 		log.Noticef("parseConfig: Ignoring config due to maintenanceMode")
 	} else {
-		handleControllerCertsSha(ctx, config)
-		parseCipherContext(getconfigCtx, config)
-		parseDatastoreConfig(config, getconfigCtx)
+		if source != fromBootstrap {
+			handleControllerCertsSha(ctx, config)
+			parseCipherContext(getconfigCtx, config)
+			parseDatastoreConfig(getconfigCtx, config)
+		}
+
 		// DeviceIoList has some defaults for Usage and UsagePolicy
 		// used by systemAdapters
-		physioChanged := parseDeviceIoListConfig(config, getconfigCtx)
+		physioChanged := parseDeviceIoListConfig(getconfigCtx, config)
 		// It is important to parse Bonds before VLANs.
-		bondsChanged := parseBonds(config, getconfigCtx)
-		vlansChanged := parseVlans(config, getconfigCtx)
+		bondsChanged := parseBonds(getconfigCtx, config)
+		vlansChanged := parseVlans(getconfigCtx, config)
 		// Network objects are used for systemAdapters
-		networksChanged := parseNetworkXObjectConfig(config, getconfigCtx)
+		networksChanged := parseNetworkXObjectConfig(getconfigCtx, config)
+		sourceChanged := getconfigCtx.lastConfigSource != source
 		// system adapter configuration that we publish, depends
 		// on Physio, VLAN, Bond and Networks configuration.
 		// If any of these change, we should re-parse system adapters and
 		// publish updated configuration.
-		forceSystemAdaptersParse := physioChanged || networksChanged || vlansChanged || bondsChanged
-		parseSystemAdapterConfig(config, getconfigCtx, forceSystemAdaptersParse)
-		parseBaseOS(getconfigCtx, config)
-		parseBaseOsConfig(getconfigCtx, config)
-		parseNetworkInstanceConfig(config, getconfigCtx)
-		parseContentInfoConfig(getconfigCtx, config)
-		parseVolumeConfig(getconfigCtx, config)
+		forceSystemAdaptersParse := physioChanged || networksChanged || vlansChanged ||
+			bondsChanged || sourceChanged
+		parseSystemAdapterConfig(getconfigCtx, config, source, forceSystemAdaptersParse)
 
-		// parseProfile must be called before processing of app instances from config
-		parseProfile(getconfigCtx, config)
-		parseAppInstanceConfig(config, getconfigCtx)
+		if source != fromBootstrap {
+			parseBaseOS(getconfigCtx, config)
+			parseBaseOsConfig(getconfigCtx, config)
+			parseNetworkInstanceConfig(getconfigCtx, config)
+			parseContentInfoConfig(getconfigCtx, config)
+			parseVolumeConfig(getconfigCtx, config)
 
-		parseEvConfig(getconfigCtx, config)
+			// parseProfile must be called before processing of app instances from config
+			parseProfile(getconfigCtx, config)
+			parseAppInstanceConfig(getconfigCtx, config)
 
-		parseDisksConfig(getconfigCtx, config)
+			parseEvConfig(getconfigCtx, config)
 
-		parseEdgeNodeInfo(getconfigCtx, config)
+			parseDisksConfig(getconfigCtx, config)
 
-		getconfigCtx.lastProcessedConfig = time.Now()
+			parseEdgeNodeInfo(getconfigCtx, config)
+		}
+
+		getconfigCtx.lastProcessedConfig = getconfigCtx.lastReceivedConfig
+		getconfigCtx.lastConfigSource = source
 	}
-	return false
+	return configOK
 }
 
 // Walk published AppInstanceConfig's and set Activate=false
@@ -307,8 +337,8 @@ func parseBaseOsConfig(getconfigCtx *getconfigContext,
 
 var networkConfigPrevConfigHash []byte
 
-func parseNetworkXObjectConfig(config *zconfig.EdgeDevConfig,
-	getconfigCtx *getconfigContext) bool {
+func parseNetworkXObjectConfig(getconfigCtx *getconfigContext,
+	config *zconfig.EdgeDevConfig) bool {
 
 	h := sha256.New()
 	nets := config.GetNetworks()
@@ -512,8 +542,8 @@ func publishNetworkInstanceConfig(ctx *getconfigContext,
 
 var networkInstancePrevConfigHash []byte
 
-func parseNetworkInstanceConfig(config *zconfig.EdgeDevConfig,
-	getconfigCtx *getconfigContext) {
+func parseNetworkInstanceConfig(getconfigCtx *getconfigContext,
+	config *zconfig.EdgeDevConfig) {
 
 	networkInstances := config.GetNetworkInstances()
 
@@ -538,8 +568,8 @@ func parseNetworkInstanceConfig(config *zconfig.EdgeDevConfig,
 
 var appinstancePrevConfigHash []byte
 
-func parseAppInstanceConfig(config *zconfig.EdgeDevConfig,
-	getconfigCtx *getconfigContext) {
+func parseAppInstanceConfig(getconfigCtx *getconfigContext,
+	config *zconfig.EdgeDevConfig) {
 
 	Apps := config.GetApps()
 	h := sha256.New()
@@ -652,8 +682,8 @@ func parseAppInstanceConfig(config *zconfig.EdgeDevConfig,
 
 var systemAdaptersPrevConfigHash []byte
 
-func parseSystemAdapterConfig(config *zconfig.EdgeDevConfig,
-	getconfigCtx *getconfigContext, forceParse bool) {
+func parseSystemAdapterConfig(getconfigCtx *getconfigContext, config *zconfig.EdgeDevConfig,
+	source configSource, forceParse bool) {
 
 	sysAdapters := config.GetSystemAdapterList()
 	h := sha256.New()
@@ -689,6 +719,9 @@ func parseSystemAdapterConfig(config *zconfig.EdgeDevConfig,
 
 	portConfig := &types.DevicePortConfig{}
 	portConfig.Version = version
+	if source == fromBootstrap {
+		portConfig.Key = "bootstrap" // Instead of "zedagent".
+	}
 	var newPorts []*types.NetworkPortConfig
 	for _, sysAdapter := range sysAdapters {
 		ports, err := parseOneSystemAdapterConfig(getconfigCtx, sysAdapter, version)
@@ -735,7 +768,8 @@ func parseSystemAdapterConfig(config *zconfig.EdgeDevConfig,
 	// the change can be sent back to the controller using ctx.devicePortConfigList
 	if cmp.Equal(getconfigCtx.devicePortConfig.Ports, portConfig.Ports) &&
 		cmp.Equal(getconfigCtx.devicePortConfig.TestResults, portConfig.TestResults) &&
-		getconfigCtx.devicePortConfig.Version == portConfig.Version {
+		getconfigCtx.devicePortConfig.Version == portConfig.Version &&
+		getconfigCtx.devicePortConfig.Key == portConfig.Key {
 		log.Functionf("parseSystemAdapterConfig: DevicePortConfig - " +
 			"Done with no change")
 		return
@@ -743,9 +777,13 @@ func parseSystemAdapterConfig(config *zconfig.EdgeDevConfig,
 	log.Functionf("parseSystemAdapterConfig: version %d/%d differs",
 		getconfigCtx.devicePortConfig.Version, portConfig.Version)
 
-	// This is suboptimal after a reboot since the config will be the same
-	// yet the timestamp be new. HandleDPCModify takes care of that.
-	portConfig.TimePriority = time.Now()
+	if config.ConfigTimestamp.IsValid() {
+		portConfig.TimePriority = config.ConfigTimestamp.AsTime()
+	} else {
+		// This is suboptimal after a reboot since the config will be the same
+		// yet the timestamp be new. HandleDPCModify takes care of that.
+		portConfig.TimePriority = time.Now()
+	}
 	getconfigCtx.devicePortConfig = *portConfig
 
 	getconfigCtx.pubDevicePortConfig.Publish("zedagent", *portConfig)
@@ -1171,8 +1209,8 @@ func parseOneSystemAdapterConfig(getconfigCtx *getconfigContext,
 
 var deviceIoListPrevConfigHash []byte
 
-func parseDeviceIoListConfig(config *zconfig.EdgeDevConfig,
-	getconfigCtx *getconfigContext) bool {
+func parseDeviceIoListConfig(getconfigCtx *getconfigContext,
+	config *zconfig.EdgeDevConfig) bool {
 
 	deviceIoList := config.GetDeviceIoList()
 	h := sha256.New()
@@ -1259,7 +1297,7 @@ func parseDeviceIoListConfig(config *zconfig.EdgeDevConfig,
 
 var bondsPrevConfigHash []byte
 
-func parseBonds(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigContext) bool {
+func parseBonds(getconfigCtx *getconfigContext, config *zconfig.EdgeDevConfig) bool {
 	bonds := config.GetBonds()
 	h := sha256.New()
 	for _, bond := range bonds {
@@ -1365,7 +1403,7 @@ func parseBonds(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigContext) b
 
 var vlansPrevConfigHash []byte
 
-func parseVlans(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigContext) bool {
+func parseVlans(getconfigCtx *getconfigContext, config *zconfig.EdgeDevConfig) bool {
 	vlans := config.GetVlans()
 	h := sha256.New()
 	for _, vlan := range vlans {
@@ -1507,8 +1545,7 @@ func lookupDatastore(datastores []*zconfig.DatastoreConfig,
 
 var datastoreConfigPrevConfigHash []byte
 
-func parseDatastoreConfig(config *zconfig.EdgeDevConfig,
-	getconfigCtx *getconfigContext) {
+func parseDatastoreConfig(getconfigCtx *getconfigContext, config *zconfig.EdgeDevConfig) {
 
 	stores := config.GetDatastores()
 	h := sha256.New()
@@ -2220,7 +2257,8 @@ func parseUnderlayNetworkConfigEntry(
 
 var itemsPrevConfigHash []byte
 
-func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
+func parseConfigItems(ctx *getconfigContext, config *zconfig.EdgeDevConfig,
+	source configSource) {
 
 	items := config.GetConfigItems()
 	h := sha256.New()
@@ -2254,8 +2292,14 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 	// should default to "false".
 	// That way bringup of new hardware models can be done using an
 	// attached keyboard and monitor.
-	newGlobalConfig.SetGlobalValueBool(types.UsbAccess, false)
-	newGlobalConfig.SetGlobalValueBool(types.VgaAccess, false)
+	if source == fromBootstrap {
+		newGlobalConfig.SetGlobalValueBool(types.UsbAccess, true)
+		newGlobalConfig.SetGlobalValueBool(types.VgaAccess, true)
+	} else {
+		// from controller (live or saved)
+		newGlobalConfig.SetGlobalValueBool(types.UsbAccess, false)
+		newGlobalConfig.SetGlobalValueBool(types.VgaAccess, false)
+	}
 	newGlobalStatus := types.NewGlobalStatus()
 
 	for _, item := range items {
@@ -2275,9 +2319,9 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 	// newGlobalConfig here before checking if anything changed??
 	// Also - if we changed the Config Value based on Min / Max, we should
 	// report it to the user.
-	if !cmp.Equal(*gcPtr, newGlobalConfig) {
+	if !ctx.zedagentCtx.globalConfigPublished || !cmp.Equal(gcPtr, newGlobalConfig) {
 		log.Functionf("parseConfigItems: change %v",
-			cmp.Diff(*gcPtr, newGlobalConfig))
+			cmp.Diff(gcPtr, newGlobalConfig))
 		oldGlobalConfig := *gcPtr
 		*gcPtr = *newGlobalConfig
 
@@ -2331,6 +2375,7 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 			// Could fail if no space in filesystem
 			log.Errorf("PublishToDir for globalConfig failed %s", err)
 		}
+		ctx.zedagentCtx.globalConfigPublished = err == nil
 		triggerPublishDevInfo(ctx.zedagentCtx)
 	}
 }
@@ -2457,12 +2502,12 @@ func computeConfigElementSha(h hash.Hash, msg interface{}) {
 }
 
 // Returns reboot and shutdown flags
-func parseOpCmds(config *zconfig.EdgeDevConfig,
-	getconfigCtx *getconfigContext) (bool, bool) {
+func parseOpCmds(getconfigCtx *getconfigContext,
+	config *zconfig.EdgeDevConfig) (bool, bool) {
 
 	scheduleBackup(config.GetBackup())
-	reboot := scheduleDeviceOperation(config.GetReboot(), getconfigCtx, types.DeviceOperationReboot)
-	shutdown := scheduleDeviceOperation(config.GetShutdown(), getconfigCtx, types.DeviceOperationShutdown)
+	reboot := scheduleDeviceOperation(getconfigCtx, config.GetReboot(), types.DeviceOperationReboot)
+	shutdown := scheduleDeviceOperation(getconfigCtx, config.GetShutdown(), types.DeviceOperationShutdown)
 	return reboot, shutdown
 }
 
@@ -2546,8 +2591,8 @@ var shutdownPrevConfigHash []byte
 var shutdownPrevReturn bool
 
 // Returns operation flag
-func scheduleDeviceOperation(opsCmd *zconfig.DeviceOpsCmd,
-	getconfigCtx *getconfigContext, op types.DeviceOperation) bool {
+func scheduleDeviceOperation(getconfigCtx *getconfigContext, opsCmd *zconfig.DeviceOpsCmd,
+	op types.DeviceOperation) bool {
 
 	if opsCmd == nil {
 		removeDeviceOpsCmdConfig(op)

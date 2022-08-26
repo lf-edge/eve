@@ -10,6 +10,7 @@ PERSISTDIR=/persist
 PERSIST_CERTS=$PERSISTDIR/certs
 DEVICE_CERT_NAME="/config/device.cert.pem"
 DEVICE_KEY_NAME="/config/device.key.pem"
+BOOTSTRAP_CONFIG="${CONFIGDIR}/bootstrap-config.pb"
 PERSIST_AGENT_DEBUG=$PERSISTDIR/agentdebug
 BINDIR=/opt/zededa/bin
 TMPDIR=/persist/tmp
@@ -303,18 +304,21 @@ access_usb() {
             echo "$(date -Ins -u) mount $SPECIAL failed: $ret_code"
             return
         fi
-        # shellcheck disable=SC2066
-        for fd in "usb.json:$DPCDIR" ; do
-            file=/mnt/$(echo "$fd" | cut -f1 -d:)
-            dst=$(echo "$fd" | cut -f2 -d:)
-            if [ -f "$file" ]; then
-                echo "$(date -Ins -u) Found $file on $SPECIAL"
-                echo "$(date -Ins -u) Copying from $file to $dst"
-                cp -p "$file" "$dst"
-            else
-                echo "$(date -Ins -u) $file not found on $SPECIAL"
-            fi
-        done
+        # Apply legacy usb.json only if bootstrap-config.pb is not present.
+        if [ ! -f "$BOOTSTRAP_CONFIG" ]; then
+            # shellcheck disable=SC2066
+            for fd in "usb.json:$DPCDIR" ; do
+                file=/mnt/$(echo "$fd" | cut -f1 -d:)
+                dst=$(echo "$fd" | cut -f2 -d:)
+                if [ -f "$file" ]; then
+                    echo "$(date -Ins -u) Found $file on $SPECIAL"
+                    echo "$(date -Ins -u) Copying from $file to $dst"
+                    cp -p "$file" "$dst"
+                else
+                    echo "$(date -Ins -u) $file not found on $SPECIAL"
+                fi
+            done
+        fi
         if [ -d /mnt/identity ] && [ -f "$DEVICE_CERT_NAME" ]; then
             echo "$(date -Ins -u) Saving identity to USB stick"
             IDENTITYHASH=$(cat $CONFIGDIR/soft_serial)

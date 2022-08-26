@@ -190,8 +190,9 @@ $ poweroff -f # leave qemu
 As described in [BUILD.md](./docs/BUILD.md) and [REGISTRATION.md](./docs/REGISTRATION.md), a booting EVE looks in its config partition to determine:
 
 * the URL to a Controller
-* hostnames to add to the `/etc/hosts` file
+* [OPTIONAL] hostnames to add to the `/etc/hosts` file
 * certificates to trust
+* [OPTIONAL] initial device configuration (aka bootstrap) used only until device is onboarded
 
 When run in an emulator using `make run`, you can override the built-in `/config` partition by passing it the path of a directory to mount as that partition:
 

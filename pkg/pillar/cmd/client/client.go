@@ -687,7 +687,7 @@ func fetchCertChain(zedcloudCtx *zedcloud.ZedCloudContext, tlsConfig *tls.Config
 
 	zedcloudCtx.TlsConfig = tlsConfig
 	// verify the certificate chain
-	certBytes, err := zedcloud.VerifySigningCertChain(zedcloudCtx, contents)
+	certBytes, err := zedcloud.VerifyProtoSigningCertChain(log, contents)
 	if err != nil {
 		errStr := fmt.Sprintf("controller certificate signature verify fail, %v", err)
 		log.Errorln("fetchCertChain: " + errStr)
@@ -695,7 +695,7 @@ func fetchCertChain(zedcloudCtx *zedcloud.ZedCloudContext, tlsConfig *tls.Config
 	}
 
 	// write the signing cert to file
-	if err := zedcloud.UpdateServerCert(zedcloudCtx, certBytes); err != nil {
+	if err := zedcloud.SaveServerSigningCert(zedcloudCtx, certBytes); err != nil {
 		errStr := fmt.Sprintf("%v", err)
 		log.Errorln("fetchCertChain: " + errStr)
 		return false

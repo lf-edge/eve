@@ -174,28 +174,22 @@ sequence, the second part ensures that EVE never ends up in a situation where
 the new configuration object made it impossible to receive further configuration
 objects due to erroneous configuration provided for network interfaces.
 
-There are currently two mechanisms for delivering out-of-band configuration
+There are currently two approaches for delivering out-of-band configuration
 object to EVE:
 
 1. Installing it during the [normal EVE installation process](#installing-eve-on-edge-nodes)
 2. Providing it to a running version of EVE on a specially formatted removable
    media (USB stick, CDROM, external hard drive, etc.)
 
-Both methods start with obtaining a set of files (see the note below on how we
-are working towards making it a single file) and either putting them into the
-EVE configuration partition on the installation media (see [EVE Installation](#installing-eve-on-edge-nodes)
-for details) or using [tools/makeusbconf.sh](../tools/makeusbconf.sh) script to format
-removable media.
+For the installation-time config delivery, recent EVE versions are able to consume
+exactly the same protobuf-encoded binary blob (`EdgeDevConfig`) that is used by the Controller
+to post the device configuration. This initial device configuration is called bootstrap config
+and more detailed information on this topic can be found in [CONFIG.md](./CONFIG.md).
 
-It must be noted that currently we are still not quite there with out-of-band
-mechanism for delivery of EVE's configuration object. While ideal EVE
-implementation would simply be able to consume exactly the same protobuf encoded
-binary blob that it receives from the Controller, currently we still have to
-rely on an ad-hoc collection of configuration files that serve the same purpose.
-We expect these configuration files to go away relatively quickly, but for now
-EVE is still stuck with at least *DevicePortConfig/global.json* and it is documented in [legacy configuration](CONFIG.md).
-See [the following FAQ entry](FAQ.md) for how to manage both of these
-legacy files.
+For run-time out-of-band configuration delivery and with older EVE versions we rely on an ad-hoc
+collection of configuration files, modeled by internal Go structures, edited manually
+by users and installed from specially formatted USB sticks.
+Just like bootstrap config, this is documented in more detail in [CONFIG.md](./CONFIG.md)
 
 ### Runtime Configuration Properties
 

@@ -23,6 +23,8 @@ that deserve user attention.
 | 12  | Controller replied without TLS connection state. |
 | 13  | Controller replied without OCSP response. |
 | 14  | Failed to fetch or verify Controller certificate. |
+| 15  | Received message from the controller with invalid or missing signature. |
+| 16  | Bootstrap configuration (see [CONFIG.md](./CONFIG.md)) is not valid. |
 
 Application status is also displayed using LEDs on device model SIEMENS AG.SIMATIC IPC127E
 Uses LED3 (the one labeled as L3 MAINT) for application state.

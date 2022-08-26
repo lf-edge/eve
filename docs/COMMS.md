@@ -104,6 +104,7 @@ functions provided by the `zedcloud` package.
 * Requesting the configuration from the Controller via functions in `zedcloud`.
 * Receiving the latest correct configuration in response to its request.
 * Saving the latest correct configuration locally.
+* Loading the initial (aka bootstrap) device configuration if present (see [CONFIG.md](./CONFIG.md))
 * Informing any services of changes to their relevant configurations via [pubsub](../pkg/pillar/pubsub), which allows those services to restart or make changes in response to the updated configuration.
 
 #### loguploader

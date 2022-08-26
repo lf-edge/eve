@@ -45,7 +45,7 @@ Thereafter, the live image is available on the storage device so there's no need
 
 In general, once deployed, EVE-OS assumes a hands-free environment that does not rely on a human
 operator. No one is required to configure initial settings "at the console". Any
-ncessary configuration can be included as part of the EVE-OS image.
+necessary configuration can be included as part of the EVE-OS image.
 To find out more regarding how EVE-OS can be configured, check out the
 [configuration](CONFIG.md) documentation. The remainder of this document will
 assume that either the config partition of the EVE-OS image has the required configuration information,

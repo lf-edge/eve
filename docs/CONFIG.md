@@ -5,29 +5,62 @@ While most of EVE's configuration is done via receiving a configuration object f
 In general, EVE is trying to make sure that its controller always has the last word in tweaking any kind of configuration knobs. The following configuration files are the only exception to that rule:
 
 * `grub.cfg` - local tweaks to an [otherwise readonly grub.cfg](README.md#runtime-lifecycle)
-* `DevicePortConfig/override.json` - initial configuration for all of EVE's network interfaces (see below for details)
+* `DevicePortConfig/override.json` - initial configuration for all of EVE's network interfaces (*deprecated*, see below for details)
 * `server` - contains a FQDN of a controller and its port (e.g. controller.acme.com:123)
 * `root-certificate.pem` - contains an x509 root certificate to trust for the controller for TLS in V1 API and object signing in V2 API
 * `v2tlsbaseroot-certificates.pem` - contains the x509 root certificate to trust for the TLS to the controller when using the V2 API
 * `onboard.cert.pem` - onboarding certificate for the [initial registration](REGISTRATION.md) with the controller
 * `wpa_supplicant.conf` - a legacy way of configuring EVE's WiFi
 * `authorized_keys` - initial authorized SSH keys for accessing EVE's debug console
+* `bootstrap-config.pb`- initial device configuration used only until device is onboarded (see below for details)
 
-The initial content of these configuration files is stored in the EVE's source tree under [config](../config) folder. From there, these configuration files are baked into the EVE installer images. For the read-write bootable disk installer image these files can further be tweaked by mounting the CONFIG partition and editing those files directly on the installer image. This gives you an ability to take the default installer image and tweak it for your needs without re-building EVE from scratch (obviously this is not an option for a read-only ISO installer image). A typical workflow is to take an installer image from the official EVE build, flash it onto a USB flash drive, insert that USB flash drive into your desktop and edit file on the partition called EVE.
+The initial content of these configuration files is stored in the EVE's source tree under [config](../config) folder. From there, these configuration files are baked into the EVE installer images. For the read-write bootable disk installer image these files can further be tweaked by mounting the "EVE" partition and editing those files directly on the installer image. This gives you an ability to take the default installer image and tweak it for your needs without re-building EVE from scratch (obviously this is not an option for a read-only ISO installer image). A typical workflow is to take an installer image from the official EVE build, flash it onto a USB flash drive, insert that USB flash drive into your desktop and edit file on the partition called EVE.
 
-Once an installer has been run on an edge node, the content of the CONFIG partition found on the installer media is simply copied into the CONFIG partition on the edge node's local storage. From that point on, even though these files reside in the read-write CONFIG partition on the edge node, they can NOT be changed by the controller. The only option for tweaking these files is to have debug console access either via local terminal, remote ssh terminal or batch removable media configuration.
+Once an installer has been run on an edge node, the content of the partition with label EVE found on the installer media is simply copied into the CONFIG partition on the edge node's local storage. From that point on, these files reside in the *read-only* CONFIG partition on the edge node and can NOT be changed by the controller.
 
-## Controlling EVE behavior via batch removable media configuration
+## Bootstrap configuration
 
-EVE doesn't care how it gets its configuration objects as long as they come from the source that can be trusted. Almost always, this trusted source happens to be EVE's controller and the trust is established via TLS connection that is validated by the `root-certificate.pem`. If, for any reason, the network connection to the controller can not be established EVE can accept its configuration object on a specially formatted removable media (e.g. USB flash or hard drive). This is part of the batch removable media configuration process and it is still being actively developed.
+EVE doesn't care how it gets its configuration objects as long as they come from the source that can be trusted.
+Normally, this trusted source happens to be EVE's controller and the trust is established via TLS connection that is validated by the `v2tlsbaseroot-certificates.pem` and furthermore by controller signing configuration objects and device validating these signatures against the `root-certificate.pem`.
 
-We plan to completely transition to this way of configuring all aspects of EVE in off-line situations, but before that happens you still need to be aware of the legacy configuration management described below.
+However, in some scenarios, device might not be able to establish the initial controller connectivity using the default network configuration (for definition see "Last Resort" section in [DEVICE-CONNECTIVITY.md](./DEVICE-CONNECTIVITY.md)). For example, the network to which the device is connected may require that all traffic goes through a network proxy, otherwise it is blocked. Or the network may use static IP settings without providing DHCP service, expecting every endpoint to select and configure an appropriate IP address on its own. Or maybe device has only LTE connectivity and needs to know what APN to register into the network with.
+In such cases it is required to deliver the initial, also known as *bootstrap*, device configuration off-line. The recommended method (over some legacy mechanisms described below) is to prepare a single-use EVE installation medium, carrying the bootstrap config for the target device inside the EVE partition.
 
-## Controlling EVE behavior at boot via legacy configuration management
+The bootstrap configuration is modeled using the same Protobuf message that models device configuration delivered on-line: [EdgeDevConfig](../api/proto/config/devconfig.proto). Just like in the on-line config delivery, an instance of `EdgeDevConfig` is protobuf-encoded and put into the `AuthContainer` envelope alongside a signature (see [OBJECT-SIGNING.md](../api/OBJECT-SIGNING.md)). For the off-line signature verification (that must pass for the device to accept the configuration), it is necessary to further wrap `AuthContainer` together with the signing and all intermediary controller certificates inside [BootstrapConfig](../api/proto/config/devconfig.proto). Finally, `BootstrapConfig` should be protobuf-encoded and written in this binary format into the EVE partition of a single-use EVE installer as `bootstrap-config.pb`. During the EVE installation, this file is copied into the CONFIG partition.
+
+The format of the bootstrap configuration is rather complex and intentionally binary to disincentivise users from preparing and editing the configuration manually. Instead, it is expected that the process of preparing and exporting the bootstrap configuration is done by the controller and the tools that it provides. To bake an exported bootstrap config into a single-use EVE installer, use [eve-gen-single-use-installer.sh](../tools/eve-gen-single-use-installer.sh) script (run with no arguments to print the script usage).
+
+Currently, it is expected that the bootstrap configuration will only contain those attributes of `EdgeDevConfig` which are in one way or another related to device connectivity:
+
+* `networks`
+* `configItems`
+* `systemAdapterList`
+* `deviceIoList`
+* `vlans`
+* `bonds`
+* `config_timestamp`
+
+Anything else will be silently ignored.
+
+The above allows to configure one or multiple management interfaces, as well as non-management interfaces, and can specify static IP and DNS configuration (for environments where DHCP is not used), plus the LTE configuration. In addition, it can specify proxies using several different mechanisms (explicitly, using WPAD, etc.). [Object level encryption](./OBJECT-LEVEL-ENCRYPTION.md) is not supported inside the bootstrap config, meaning that WiFi settings with the network password have to be left out it. Currently, it is therefore not possible to onboard device with WiFi-only connectivity using this mechanism.
+
+For more information on how the network configuration is parsed and processed by EVE microservices, including topics on load spreading and failover with multiple uplink ports, please refer to [DEVICE-CONNECTIVITY.md](DEVICE-CONNECTIVITY.md).
+
+Please note that the bootstrap configuration is used and applied only once. After that, EVE records SHA256 hash of `bootstrap-config.pb` into `/persist/ingested/bootstrap-config.sha` to avoid re-application and expects to receive further configuration changes only from the controller.
+
+We plan to completely transition to this way of configuring all aspects (and not just networking) of EVE in off-line situations.
+However, in the present state, EVE is only able to receive bootstrap configuration during the installation from the installer. It is not yet supported to inject bootstrap config in later stages of device life-cycle. For example, it would be useful to recover connectivity of a device which has been moved to a different location before it could have acquired an updated configuration from the controller. Even without changing the location, device can lose connectivity if the network to which it is attached undergoes configuration changes which are incompatible with the current device network config.
+For these cases, and also with older EVE releases that do not support bootstrap config, it is necessary to use the legacy methods for off-line configuration management, described in the sections below.
+
+## *Legacy* mechanism for off-line configuration management
+
+The [bootstrap configuration](#bootstrap-configuration) described above is the preferred method for the off-line device configuration management. The previously used and now deprecated mechanism described in this section are only supported for backward-compatibility reasons. However, if the installed EVE is recent enough to support bootstrap config and the file `bootstrap-config.pb` is present in the CONFIG partition, these legacy methods are disabled and their inputs (`override.json`, `usb.json` - see below) are ignored (and the user is informed about this in device logs).
+
+**Further in this section and its subsections we assume that bootstrap configuration is not present or not supported by the used EVE version.**
 
 When the device boots the first time it determines the set of potentially usable network interfaces to use to reach the controller, as specified in [DEVICE-CONNECTIVITY last resort](DEVICE-CONNECTIVITY.md).
 
-That default configuration can be overridden by an optional file in
+That default network configuration can be overridden by an optional file in
 /config which is added when the image is built/installed.
 That file is /config/DevicePortConfig/override.json
 And further it can be overridden by a USB memory stick plugged in when the device is powered
@@ -44,7 +77,7 @@ More specifics in how this is handled, including load spreading and failover wit
 
 The above build/USB file can specify multiple management interfaces, as well as
 non-management interface, and can specify static IP and DNS configuration
-(for environments where DHCP is not used), plus WiFi and cellular modem specifics. In addition it can specify proxies using several different mechanism.
+(for environments where DHCP is not used), plus WiFi and cellular modem specifics. In addition, it can specify proxies using several different mechanisms.
 
 The build/USB file should include a TimePriority field, since this is used to determine whether the information from the file or from the controller should be applied; the more recent information is what will be used by EVE.
 
@@ -237,7 +270,11 @@ To add it during the build, in EVE's conf directory create a
 subdirectory called DevicePortConfig.
 Then add the valid json file named as global.json in that directory.
 Finally:
-make config.img; make installer.raw
+
+```shell
+make config.img
+make installer.raw
+```
 
 ### Creating USB sticks
 
