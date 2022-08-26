@@ -39,7 +39,6 @@ import (
 	"github.com/lf-edge/eve/api/go/info"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/base"
-	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
@@ -101,16 +100,19 @@ type zedagentContext struct {
 	getconfigCtx              *getconfigContext // Cross link
 	cipherCtx                 *cipherContext    // Cross link
 	attestCtx                 *attestContext    // Cross link
+	dnsCtx                    *DNSContext
 	assignableAdapters        *types.AssignableAdapters
 	subAssignableAdapters     pubsub.Subscription
 	iteration                 int
 	subNetworkInstanceStatus  pubsub.Subscription
 	subCertObjConfig          pubsub.Subscription
+	deferredChan              <-chan time.Time
 	FlowlogQueue              chan<- *flowlog.FlowMessage
 	TriggerDeviceInfo         chan<- struct{}
 	TriggerHwInfo             chan<- struct{}
 	TriggerObjectInfo         chan<- infoForObjectKey
 	zbootRestarted            bool // published by baseosmgr
+	subOnboardStatus          pubsub.Subscription
 	subBaseOsStatus           pubsub.Subscription
 	subBaseOsMgrStatus        pubsub.Subscription
 	subNetworkInstanceMetrics pubsub.Subscription
@@ -133,11 +135,22 @@ type zedagentContext struct {
 	subAppInstMetaData        pubsub.Subscription
 	subWwanMetrics            pubsub.Subscription
 	subLocationInfo           pubsub.Subscription
-	subDeviceNetworkStatus    pubsub.Subscription
 	subZFSPoolStatus          pubsub.Subscription
-	subZFSPoolMetrics         pubsub.Subscription
 	subEdgeviewStatus         pubsub.Subscription
+	subNetworkMetrics         pubsub.Subscription
+	subClientMetrics          pubsub.Subscription
+	subLoguploaderMetrics     pubsub.Subscription
+	subDownloaderMetrics      pubsub.Subscription
+	subDiagMetrics            pubsub.Subscription
+	subNimMetrics             pubsub.Subscription
+	subZRouterMetrics         pubsub.Subscription
+	subCipherMetricsDL        pubsub.Subscription
+	subCipherMetricsDM        pubsub.Subscription
+	subCipherMetricsNim       pubsub.Subscription
+	subCipherMetricsZR        pubsub.Subscription
 	zedcloudMetrics           *zedcloud.AgentMetrics
+	fatalFlag                 bool // From command line arguments
+	hangFlag                  bool // From command line arguments
 	rebootCmd                 bool
 	rebootCmdDeferred         bool
 	deviceReboot              bool // From nodeagent
@@ -216,8 +229,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	flag.Parse()
 	debug = *debugPtr
 	debugOverride = debug
-	fatalFlag := *fatalPtr
-	hangFlag := *hangPtr
 	if debugOverride {
 		logger.SetLevel(logrus.TraceLevel)
 	} else {
@@ -256,17 +267,150 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 	log.Functionf("Starting %s", agentName)
 
+	// Initialize zedagent context.
+	zedagentCtx := newContext()
+	zedagentCtx.ps = ps
+	zedagentCtx.hangFlag = *hangPtr
+	zedagentCtx.fatalFlag = *fatalPtr
+
 	flowlogQueue := make(chan *flowlog.FlowMessage, flowlogQueueCap)
 	triggerDeviceInfo := make(chan struct{}, 1)
 	triggerHwInfo := make(chan struct{}, 1)
 	triggerObjectInfo := make(chan infoForObjectKey, 1)
-	zedagentCtx := zedagentContext{
-		ps:                ps,
-		FlowlogQueue:      flowlogQueue,
-		TriggerDeviceInfo: triggerDeviceInfo,
-		TriggerHwInfo:     triggerHwInfo,
-		TriggerObjectInfo: triggerObjectInfo,
-		zedcloudMetrics:   zedcloud.NewAgentMetrics(),
+	zedagentCtx.FlowlogQueue = flowlogQueue
+	zedagentCtx.TriggerDeviceInfo = triggerDeviceInfo
+	zedagentCtx.TriggerHwInfo = triggerHwInfo
+	zedagentCtx.TriggerObjectInfo = triggerObjectInfo
+
+	// Initialize pubsub channels.
+	initializePublications(zedagentCtx)
+	initializeSubscriptions(zedagentCtx)
+
+	// upgradeconverter ensures we have a ConfigItemValueMap so we
+	// read it to get the initial values
+	item, err := zedagentCtx.pubGlobalConfig.Get("global")
+	if err != nil {
+		log.Fatalf("ConfigItemValueMap missing: %s", err)
+	}
+	zedagentCtx.globalConfig = item.(types.ConfigItemValueMap)
+	log.Functionf("initialized GlobalConfig")
+
+	// Run a periodic timer so we always update StillRunning
+	stillRunning := time.NewTicker(25 * time.Second)
+	ps.StillRunning(agentName, warningTime, errorTime)
+
+	initializeDirs()
+
+	// Apply saved radio config ASAP.
+	getconfigCtx := zedagentCtx.getconfigCtx
+	initializeRadioConfig(getconfigCtx)
+
+	// Wait until we have been onboarded aka know our own UUID.
+	// Onboarding is done by client (pillar/cmd/client).
+	waitUntilOnboarded(zedagentCtx, stillRunning)
+
+	// We know our own UUID; prepare for communication with controller
+	zedcloudCtx = initZedcloudContext(
+		zedagentCtx.globalConfig.GlobalValueInt(types.NetworkSendTimeout),
+		zedagentCtx.zedcloudMetrics)
+	// Timer for deferred sends of info messages
+	zedagentCtx.deferredChan = zedcloud.GetDeferredChan(zedcloudCtx,
+		getDeferredSentHandlerFunction(zedagentCtx), getDeferredPriorityFunctions()...)
+	// XXX defer this until we have some config from cloud or saved copy
+	getconfigCtx.pubAppInstanceConfig.SignalRestarted()
+
+	//initialize cipher processing block
+	cipherModuleInitialize(zedagentCtx)
+
+	//initialize remote attestation context
+	attestModuleInitialize(zedagentCtx)
+
+	// Pick up debug aka log level before we start real work
+	waitUntilGCReady(zedagentCtx, stillRunning)
+
+	// wait till, zboot status is ready
+	waitUntilZbootReady(zedagentCtx, stillRunning)
+
+	// wait until NIM reports Device Network Status
+	waitUntilDNSReady(zedagentCtx, stillRunning)
+
+	// Parse SMART data
+	go parseSMARTData()
+
+	// Use go routines to make sure we have wait/timeout without
+	// blocking the main select loop
+	log.Functionf("Creating %s at %s", "deviceInfoTask", agentlog.GetMyStack())
+	go deviceInfoTask(zedagentCtx, triggerDeviceInfo)
+	log.Functionf("Creating %s at %s", "objectInfoTask", agentlog.GetMyStack())
+	go objectInfoTask(zedagentCtx, triggerObjectInfo)
+	log.Functionf("Creating %s at %s", "flowLogTask", agentlog.GetMyStack())
+	go flowlogTask(zedagentCtx, flowlogQueue)
+	log.Functionf("Creating %s at %s", "hardwareInfoTask", agentlog.GetMyStack())
+	go hardwareInfoTask(zedagentCtx, triggerHwInfo)
+
+	// Publish initial device info.
+	triggerPublishDevInfo(zedagentCtx)
+
+	// Publish initial hardware info.
+	triggerPublishHwInfo(zedagentCtx)
+
+	// start the metrics reporting task
+	handleChannel := make(chan interface{})
+	log.Functionf("Creating %s at %s", "metricsTimerTask", agentlog.GetMyStack())
+	go metricsTimerTask(zedagentCtx, handleChannel)
+	metricsTickerHandle := <-handleChannel
+	getconfigCtx.metricsTickerHandle = metricsTickerHandle
+
+	// start the location reporting task
+	log.Functionf("Creating %s at %s", "locationTimerTask", agentlog.GetMyStack())
+	go locationTimerTask(zedagentCtx, handleChannel)
+	getconfigCtx.locationCloudTickerHandle = <-handleChannel
+	getconfigCtx.locationAppTickerHandle = <-handleChannel
+
+	//trigger channel for localProfile state machine
+	getconfigCtx.localProfileTrigger = make(chan Notify, 1)
+	//process saved local profile
+	processSavedProfile(getconfigCtx)
+
+	// initialize localInfo
+	initializeLocalAppInfo(getconfigCtx)
+	go localAppInfoPOSTTask(getconfigCtx)
+	initializeLocalCommands(getconfigCtx)
+
+	initializeLocalDevCmdTimestamp(getconfigCtx)
+	initializeLocalDevInfo(getconfigCtx)
+	go localDevInfoPOSTTask(getconfigCtx)
+
+	// start the config fetch tasks, when zboot status is ready
+	log.Functionf("Creating %s at %s", "configTimerTask", agentlog.GetMyStack())
+	go configTimerTask(handleChannel, getconfigCtx)
+	configTickerHandle := <-handleChannel
+	// XXX close handleChannels?
+	getconfigCtx.configTickerHandle = configTickerHandle
+
+	// start the local profile fetch tasks
+	log.Functionf("Creating %s at %s", "localProfileTimerTask", agentlog.GetMyStack())
+	go localProfileTimerTask(handleChannel, getconfigCtx)
+	localProfileTickerHandle := <-handleChannel
+	getconfigCtx.localProfileTickerHandle = localProfileTickerHandle
+
+	// start task fetching radio config from local server
+	go radioPOSTTask(getconfigCtx)
+
+	// start cipher module tasks
+	cipherModuleStart(zedagentCtx)
+
+	// start remote attestation task
+	attestModuleStart(zedagentCtx)
+
+	// Enter main zedagent event loop.
+	mainEventLoop(zedagentCtx, stillRunning) // never exits
+	return 0
+}
+
+func newContext() *zedagentContext {
+	zedagentCtx := &zedagentContext{
+		zedcloudMetrics: zedcloud.NewAgentMetrics(),
 	}
 	zedagentCtx.specMap = types.NewConfigItemSpecMap()
 	zedagentCtx.globalConfig = *types.DefaultConfigItemValueMap()
@@ -293,16 +437,539 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 	zedagentCtx.physicalIoAdapterMap = make(map[string]types.PhysicalIOAdapter)
 
-	// Publish zedagent cloud metrics
-	cloudMetricsPub, err := ps.NewPublication(
-		pubsub.PublicationOptions{
-			AgentName: agentName,
-			TopicType: types.MetricsMap{},
-		})
-	if err != nil {
-		log.Fatal(err)
+	// Pick up (mostly static) AssignableAdapters before we report
+	// any device info
+	aa := types.AssignableAdapters{}
+	zedagentCtx.assignableAdapters = &aa
+
+	// Initialize context used to get and parse device configuration.
+	getconfigCtx := &getconfigContext{
+		localServerMap: &localServerMap{},
+		// default value of currentMetricInterval
+		currentMetricInterval: zedagentCtx.globalConfig.GlobalValueInt(types.MetricInterval),
+		// edge-view configure
+		configEdgeview: &types.EdgeviewConfig{},
 	}
-	zedagentCtx.pubMetricsMap = cloudMetricsPub
+
+	cipherCtx := &cipherContext{}
+	attestCtx := &attestContext{}
+	dnsCtx := &DNSContext{}
+	zedagentCtx.dnsCtx = dnsCtx
+
+	// Cross links between contexts.
+	getconfigCtx.zedagentCtx = zedagentCtx
+	zedagentCtx.getconfigCtx = getconfigCtx
+
+	cipherCtx.zedagentCtx = zedagentCtx
+	zedagentCtx.cipherCtx = cipherCtx
+
+	attestCtx.zedagentCtx = zedagentCtx
+	zedagentCtx.attestCtx = attestCtx
+	return zedagentCtx
+}
+
+func initializeDirs() {
+	// create persistent holder directory
+	if _, err := os.Stat(types.PersistDir); err != nil {
+		log.Tracef("Create %s", types.PersistDir)
+		if err := os.MkdirAll(types.PersistDir, 0700); err != nil {
+			log.Fatal(err)
+		}
+	}
+	if _, err := os.Stat(types.CertificateDirname); err != nil {
+		log.Tracef("Create %s", types.CertificateDirname)
+		if err := os.MkdirAll(types.CertificateDirname, 0700); err != nil {
+			log.Fatal(err)
+		}
+	}
+	if _, err := os.Stat(checkpointDirname); err != nil {
+		log.Tracef("Create %s", checkpointDirname)
+		if err := os.MkdirAll(checkpointDirname, 0700); err != nil {
+			log.Fatal(err)
+		}
+	}
+}
+
+func waitUntilOnboarded(zedagentCtx *zedagentContext, stillRunning *time.Ticker) {
+	zedagentCtx.subOnboardStatus.Activate()
+	nilUUID := uuid.UUID{}
+	for devUUID == nilUUID {
+		log.Functionf("Waiting for OnboardStatus UUID")
+		select {
+		case change := <-zedagentCtx.subOnboardStatus.MsgChan():
+			zedagentCtx.subOnboardStatus.ProcessChange(change)
+		case <-stillRunning.C:
+		}
+		zedagentCtx.ps.StillRunning(agentName, warningTime, errorTime)
+	}
+}
+
+func waitUntilGCReady(zedagentCtx *zedagentContext, stillRunning *time.Ticker) {
+	getconfigCtx := zedagentCtx.getconfigCtx
+	zedagentCtx.subOnboardStatus.Activate()
+	zedagentCtx.subGlobalConfig.Activate()
+	getconfigCtx.subNodeAgentStatus.Activate()
+	for !zedagentCtx.GCInitialized {
+		log.Functionf("Waiting for GCInitialized")
+		select {
+		case change := <-zedagentCtx.subOnboardStatus.MsgChan():
+			zedagentCtx.subOnboardStatus.ProcessChange(change)
+
+		case change := <-zedagentCtx.subGlobalConfig.MsgChan():
+			zedagentCtx.subGlobalConfig.ProcessChange(change)
+
+		case change := <-getconfigCtx.subNodeAgentStatus.MsgChan():
+			getconfigCtx.subNodeAgentStatus.ProcessChange(change)
+
+		case <-stillRunning.C:
+		}
+		zedagentCtx.ps.StillRunning(agentName, warningTime, errorTime)
+	}
+	log.Functionf("processed GlobalConfig")
+}
+
+func waitUntilZbootReady(zedagentCtx *zedagentContext, stillRunning *time.Ticker) {
+	getconfigCtx := zedagentCtx.getconfigCtx
+	zedagentCtx.subOnboardStatus.Activate()
+	zedagentCtx.subZbootStatus.Activate()
+	getconfigCtx.subNodeAgentStatus.Activate()
+	for !zedagentCtx.zbootRestarted {
+		select {
+		case change := <-zedagentCtx.subOnboardStatus.MsgChan():
+			zedagentCtx.subOnboardStatus.ProcessChange(change)
+
+		case change := <-zedagentCtx.subZbootStatus.MsgChan():
+			zedagentCtx.subZbootStatus.ProcessChange(change)
+			if zedagentCtx.zbootRestarted {
+				log.Functionf("Zboot reported restarted")
+			}
+
+		case change := <-getconfigCtx.subNodeAgentStatus.MsgChan():
+			getconfigCtx.subNodeAgentStatus.ProcessChange(change)
+
+		case <-stillRunning.C:
+			// Fault injection
+			if zedagentCtx.fatalFlag {
+				log.Fatal("Requested fault injection to cause watchdog")
+			}
+		}
+		if zedagentCtx.hangFlag {
+			log.Functionf("Requested to not touch to cause watchdog")
+		} else {
+			zedagentCtx.ps.StillRunning(agentName, warningTime, errorTime)
+		}
+	}
+}
+
+func waitUntilDNSReady(zedagentCtx *zedagentContext, stillRunning *time.Ticker) {
+	getconfigCtx := zedagentCtx.getconfigCtx
+	dnsCtx := zedagentCtx.dnsCtx
+	log.Functionf("Waiting until we have DeviceNetworkStatus")
+
+	zedagentCtx.subOnboardStatus.Activate()
+	zedagentCtx.subGlobalConfig.Activate()
+	dnsCtx.subDeviceNetworkStatus.Activate()
+	zedagentCtx.subAssignableAdapters.Activate()
+	zedagentCtx.subDevicePortConfigList.Activate()
+	getconfigCtx.subNodeAgentStatus.Activate()
+	zedagentCtx.subVaultStatus.Activate()
+	zedagentCtx.subAttestQuote.Activate()
+	zedagentCtx.subEncryptedKeyFromDevice.Activate()
+	getconfigCtx.subAppNetworkStatus.Activate()
+	zedagentCtx.subWwanMetrics.Activate()
+	zedagentCtx.subLocationInfo.Activate()
+
+	for !dnsCtx.DNSinitialized {
+		log.Functionf("Waiting for DeviceNetworkStatus %v",
+			dnsCtx.DNSinitialized)
+
+		select {
+		case change := <-zedagentCtx.subOnboardStatus.MsgChan():
+			zedagentCtx.subOnboardStatus.ProcessChange(change)
+
+		case change := <-zedagentCtx.subGlobalConfig.MsgChan():
+			zedagentCtx.subGlobalConfig.ProcessChange(change)
+
+		case change := <-dnsCtx.subDeviceNetworkStatus.MsgChan():
+			dnsCtx.subDeviceNetworkStatus.ProcessChange(change)
+			if dnsCtx.triggerHandleDeferred {
+				start := time.Now()
+				zedcloud.HandleDeferred(zedcloudCtx, start, 100*time.Millisecond, false)
+				zedagentCtx.ps.CheckMaxTimeTopic(agentName, "deferredChan", start,
+					warningTime, errorTime)
+				dnsCtx.triggerHandleDeferred = false
+			}
+
+		case change := <-zedagentCtx.subAssignableAdapters.MsgChan():
+			zedagentCtx.subAssignableAdapters.ProcessChange(change)
+
+		case change := <-zedagentCtx.subDevicePortConfigList.MsgChan():
+			zedagentCtx.subDevicePortConfigList.ProcessChange(change)
+
+		case change := <-getconfigCtx.subNodeAgentStatus.MsgChan():
+			getconfigCtx.subNodeAgentStatus.ProcessChange(change)
+
+		case change := <-zedagentCtx.subVaultStatus.MsgChan():
+			zedagentCtx.subVaultStatus.ProcessChange(change)
+
+		case change := <-zedagentCtx.subAttestQuote.MsgChan():
+			zedagentCtx.subAttestQuote.ProcessChange(change)
+
+		case change := <-zedagentCtx.subEncryptedKeyFromDevice.MsgChan():
+			zedagentCtx.subEncryptedKeyFromDevice.ProcessChange(change)
+
+		case change := <-getconfigCtx.subAppNetworkStatus.MsgChan():
+			getconfigCtx.localServerMap.upToDate = false
+			getconfigCtx.subAppNetworkStatus.ProcessChange(change)
+
+		case change := <-zedagentCtx.subWwanMetrics.MsgChan():
+			zedagentCtx.subWwanMetrics.ProcessChange(change)
+
+		case change := <-zedagentCtx.subLocationInfo.MsgChan():
+			zedagentCtx.subLocationInfo.ProcessChange(change)
+
+		case change := <-zedagentCtx.deferredChan:
+			start := time.Now()
+			zedcloud.HandleDeferred(zedcloudCtx, change, 100*time.Millisecond, false)
+			zedagentCtx.ps.CheckMaxTimeTopic(agentName, "deferredChan", start,
+				warningTime, errorTime)
+
+		case <-stillRunning.C:
+			// Fault injection
+			if zedagentCtx.fatalFlag {
+				log.Fatal("Requested fault injection to cause watchdog")
+			}
+		}
+		if zedagentCtx.hangFlag {
+			log.Functionf("Requested to not touch to cause watchdog")
+		} else {
+			zedagentCtx.ps.StillRunning(agentName, warningTime, errorTime)
+		}
+	}
+}
+
+func mainEventLoop(zedagentCtx *zedagentContext, stillRunning *time.Ticker) {
+	getconfigCtx := zedagentCtx.getconfigCtx
+	dnsCtx := zedagentCtx.dnsCtx
+
+	hwInfoTiker := time.NewTicker(3 * time.Hour)
+
+	zedagentCtx.subOnboardStatus.Activate()
+	zedagentCtx.subZbootStatus.Activate()
+	zedagentCtx.subGlobalConfig.Activate()
+	getconfigCtx.subAppInstanceStatus.Activate()
+	getconfigCtx.subContentTreeStatus.Activate()
+	getconfigCtx.subVolumeStatus.Activate()
+	getconfigCtx.subDomainMetric.Activate()
+	getconfigCtx.subProcessMetric.Activate()
+	getconfigCtx.subHostMemory.Activate()
+	zedagentCtx.subBaseOsStatus.Activate()
+	zedagentCtx.subBlobStatus.Activate()
+	getconfigCtx.subNodeAgentStatus.Activate()
+	getconfigCtx.subAppNetworkStatus.Activate()
+	dnsCtx.subDeviceNetworkStatus.Activate()
+	zedagentCtx.subAssignableAdapters.Activate()
+	zedagentCtx.subNetworkMetrics.Activate()
+	zedagentCtx.subClientMetrics.Activate()
+	zedagentCtx.subLoguploaderMetrics.Activate()
+	zedagentCtx.subDiagMetrics.Activate()
+	zedagentCtx.subNimMetrics.Activate()
+	zedagentCtx.subZRouterMetrics.Activate()
+	zedagentCtx.subNewlogMetrics.Activate()
+	zedagentCtx.subDownloaderMetrics.Activate()
+	zedagentCtx.subCipherMetricsDL.Activate()
+	zedagentCtx.subCipherMetricsDM.Activate()
+	zedagentCtx.subCipherMetricsNim.Activate()
+	zedagentCtx.subCipherMetricsZR.Activate()
+	zedagentCtx.subNetworkInstanceStatus.Activate()
+	zedagentCtx.subNetworkInstanceMetrics.Activate()
+	zedagentCtx.subDevicePortConfigList.Activate()
+	zedagentCtx.subAppFlowMonitor.Activate()
+	zedagentCtx.subEdgeNodeCert.Activate()
+	zedagentCtx.subVaultStatus.Activate()
+	zedagentCtx.subAttestQuote.Activate()
+	zedagentCtx.subEncryptedKeyFromDevice.Activate()
+	zedagentCtx.subAppContainerMetrics.Activate()
+	zedagentCtx.subDiskMetric.Activate()
+	zedagentCtx.subAppDiskMetric.Activate()
+	zedagentCtx.subCapabilities.Activate()
+	zedagentCtx.subBaseOsMgrStatus.Activate()
+	zedagentCtx.subAppInstMetaData.Activate()
+	zedagentCtx.subWwanMetrics.Activate()
+	zedagentCtx.subLocationInfo.Activate()
+	zedagentCtx.subZFSPoolStatus.Activate()
+	zedagentCtx.subEdgeviewStatus.Activate()
+
+	for {
+		select {
+		case change := <-zedagentCtx.subOnboardStatus.MsgChan():
+			zedagentCtx.subOnboardStatus.ProcessChange(change)
+
+		case change := <-zedagentCtx.subZbootStatus.MsgChan():
+			zedagentCtx.subZbootStatus.ProcessChange(change)
+
+		case change := <-zedagentCtx.subGlobalConfig.MsgChan():
+			zedagentCtx.subGlobalConfig.ProcessChange(change)
+
+		case change := <-getconfigCtx.subAppInstanceStatus.MsgChan():
+			getconfigCtx.subAppInstanceStatus.ProcessChange(change)
+
+		case change := <-getconfigCtx.subContentTreeStatus.MsgChan():
+			getconfigCtx.subContentTreeStatus.ProcessChange(change)
+
+		case change := <-getconfigCtx.subVolumeStatus.MsgChan():
+			getconfigCtx.subVolumeStatus.ProcessChange(change)
+
+		case change := <-getconfigCtx.subDomainMetric.MsgChan():
+			getconfigCtx.subDomainMetric.ProcessChange(change)
+
+		case change := <-getconfigCtx.subProcessMetric.MsgChan():
+			getconfigCtx.subProcessMetric.ProcessChange(change)
+
+		case change := <-getconfigCtx.subHostMemory.MsgChan():
+			getconfigCtx.subHostMemory.ProcessChange(change)
+
+		case change := <-zedagentCtx.subBaseOsStatus.MsgChan():
+			zedagentCtx.subBaseOsStatus.ProcessChange(change)
+
+		case change := <-zedagentCtx.subBlobStatus.MsgChan():
+			zedagentCtx.subBlobStatus.ProcessChange(change)
+
+		case change := <-getconfigCtx.subNodeAgentStatus.MsgChan():
+			getconfigCtx.subNodeAgentStatus.ProcessChange(change)
+
+		case change := <-getconfigCtx.subAppNetworkStatus.MsgChan():
+			getconfigCtx.localServerMap.upToDate = false
+			getconfigCtx.subAppNetworkStatus.ProcessChange(change)
+
+		case change := <-dnsCtx.subDeviceNetworkStatus.MsgChan():
+			dnsCtx.subDeviceNetworkStatus.ProcessChange(change)
+			if dnsCtx.triggerGetConfig {
+				triggerGetConfig(getconfigCtx.configTickerHandle)
+				dnsCtx.triggerGetConfig = false
+			}
+			if dnsCtx.triggerDeviceInfo {
+				// IP/DNS in device info could have changed
+				log.Functionf("NetworkStatus triggered PublishDeviceInfo")
+				triggerPublishDevInfo(zedagentCtx)
+				dnsCtx.triggerDeviceInfo = false
+			}
+			if dnsCtx.triggerHandleDeferred {
+				start := time.Now()
+				zedcloud.HandleDeferred(zedcloudCtx, start, 100*time.Millisecond, false)
+				zedagentCtx.ps.CheckMaxTimeTopic(agentName, "deferredChan", start, warningTime, errorTime)
+				dnsCtx.triggerHandleDeferred = false
+			}
+			if dnsCtx.triggerRadioPOST {
+				triggerRadioPOST(getconfigCtx)
+				dnsCtx.triggerRadioPOST = false
+			}
+
+		case change := <-zedagentCtx.subAssignableAdapters.MsgChan():
+			zedagentCtx.subAssignableAdapters.ProcessChange(change)
+
+		case change := <-zedagentCtx.subNetworkMetrics.MsgChan():
+			zedagentCtx.subNetworkMetrics.ProcessChange(change)
+			m, err := zedagentCtx.subNetworkMetrics.Get("global")
+			if err != nil {
+				log.Errorf("subNetworkMetrics.Get failed: %s",
+					err)
+			} else {
+				networkMetrics = m.(types.NetworkMetrics)
+			}
+
+		case change := <-zedagentCtx.subClientMetrics.MsgChan():
+			zedagentCtx.subClientMetrics.ProcessChange(change)
+			m, err := zedagentCtx.subClientMetrics.Get("global")
+			if err != nil {
+				log.Errorf("subClientMetrics.Get failed: %s",
+					err)
+			} else {
+				clientMetrics = m.(types.MetricsMap)
+			}
+
+		case change := <-zedagentCtx.subLoguploaderMetrics.MsgChan():
+			zedagentCtx.subLoguploaderMetrics.ProcessChange(change)
+			m, err := zedagentCtx.subLoguploaderMetrics.Get("global")
+			if err != nil {
+				log.Errorf("subLoguploaderMetrics.Get failed: %s",
+					err)
+			} else {
+				loguploaderMetrics = m.(types.MetricsMap)
+			}
+
+		case change := <-zedagentCtx.subDiagMetrics.MsgChan():
+			zedagentCtx.subDiagMetrics.ProcessChange(change)
+			m, err := zedagentCtx.subDiagMetrics.Get("global")
+			if err != nil {
+				log.Errorf("subDiagMetrics.Get failed: %s",
+					err)
+			} else {
+				diagMetrics = m.(types.MetricsMap)
+			}
+
+		case change := <-zedagentCtx.subNimMetrics.MsgChan():
+			zedagentCtx.subNimMetrics.ProcessChange(change)
+			m, err := zedagentCtx.subNimMetrics.Get("global")
+			if err != nil {
+				log.Errorf("subNimMetrics.Get failed: %s",
+					err)
+			} else {
+				nimMetrics = m.(types.MetricsMap)
+			}
+
+		case change := <-zedagentCtx.subZRouterMetrics.MsgChan():
+			zedagentCtx.subZRouterMetrics.ProcessChange(change)
+			m, err := zedagentCtx.subZRouterMetrics.Get("global")
+			if err != nil {
+				log.Errorf("subZRouterMetrics.Get failed: %s",
+					err)
+			} else {
+				zrouterMetrics = m.(types.MetricsMap)
+			}
+
+		case change := <-zedagentCtx.subNewlogMetrics.MsgChan():
+			zedagentCtx.subNewlogMetrics.ProcessChange(change)
+			m, err := zedagentCtx.subNewlogMetrics.Get("global")
+			if err != nil {
+				log.Errorf("subNewlogMetrics.Get failed: %s",
+					err)
+			} else {
+				newlogMetrics = m.(types.NewlogMetrics)
+			}
+
+		case change := <-zedagentCtx.subDownloaderMetrics.MsgChan():
+			zedagentCtx.subDownloaderMetrics.ProcessChange(change)
+			m, err := zedagentCtx.subDownloaderMetrics.Get("global")
+			if err != nil {
+				log.Errorf("subDownloaderMetrics.Get failed: %s",
+					err)
+			} else {
+				downloaderMetrics = m.(types.MetricsMap)
+			}
+
+		case change := <-zedagentCtx.deferredChan:
+			start := time.Now()
+			zedcloud.HandleDeferred(zedcloudCtx, change, 100*time.Millisecond, false)
+			zedagentCtx.ps.CheckMaxTimeTopic(agentName, "deferredChan", start,
+				warningTime, errorTime)
+
+		case change := <-zedagentCtx.subCipherMetricsDL.MsgChan():
+			zedagentCtx.subCipherMetricsDL.ProcessChange(change)
+			m, err := zedagentCtx.subCipherMetricsDL.Get("global")
+			if err != nil {
+				log.Errorf("subCipherMetricsDL.Get failed: %s",
+					err)
+			} else {
+				cipherMetricsDL = m.(types.CipherMetrics)
+			}
+
+		case change := <-zedagentCtx.subCipherMetricsDM.MsgChan():
+			zedagentCtx.subCipherMetricsDM.ProcessChange(change)
+			m, err := zedagentCtx.subCipherMetricsDM.Get("global")
+			if err != nil {
+				log.Errorf("subCipherMetricsDM.Get failed: %s",
+					err)
+			} else {
+				cipherMetricsDM = m.(types.CipherMetrics)
+			}
+
+		case change := <-zedagentCtx.subCipherMetricsNim.MsgChan():
+			zedagentCtx.subCipherMetricsNim.ProcessChange(change)
+			m, err := zedagentCtx.subCipherMetricsNim.Get("global")
+			if err != nil {
+				log.Errorf("subCipherMetricsNim.Get failed: %s",
+					err)
+			} else {
+				cipherMetricsNim = m.(types.CipherMetrics)
+			}
+
+		case change := <-zedagentCtx.subCipherMetricsZR.MsgChan():
+			zedagentCtx.subCipherMetricsZR.ProcessChange(change)
+			m, err := zedagentCtx.subCipherMetricsZR.Get("global")
+			if err != nil {
+				log.Errorf("subCipherMetricsZR.Get failed: %s",
+					err)
+			} else {
+				cipherMetricsZR = m.(types.CipherMetrics)
+			}
+
+		case change := <-zedagentCtx.subNetworkInstanceStatus.MsgChan():
+			zedagentCtx.subNetworkInstanceStatus.ProcessChange(change)
+
+		case change := <-zedagentCtx.subNetworkInstanceMetrics.MsgChan():
+			zedagentCtx.subNetworkInstanceMetrics.ProcessChange(change)
+
+		case change := <-zedagentCtx.subDevicePortConfigList.MsgChan():
+			zedagentCtx.subDevicePortConfigList.ProcessChange(change)
+
+		case change := <-zedagentCtx.subAppFlowMonitor.MsgChan():
+			log.Tracef("FlowStats: change called")
+			zedagentCtx.subAppFlowMonitor.ProcessChange(change)
+
+		case change := <-zedagentCtx.subEdgeNodeCert.MsgChan():
+			zedagentCtx.subEdgeNodeCert.ProcessChange(change)
+
+		case change := <-zedagentCtx.subVaultStatus.MsgChan():
+			zedagentCtx.subVaultStatus.ProcessChange(change)
+
+		case change := <-zedagentCtx.subAttestQuote.MsgChan():
+			zedagentCtx.subAttestQuote.ProcessChange(change)
+
+		case change := <-zedagentCtx.subEncryptedKeyFromDevice.MsgChan():
+			zedagentCtx.subEncryptedKeyFromDevice.ProcessChange(change)
+
+		case change := <-zedagentCtx.subAppContainerMetrics.MsgChan():
+			zedagentCtx.subAppContainerMetrics.ProcessChange(change)
+
+		case change := <-zedagentCtx.subDiskMetric.MsgChan():
+			zedagentCtx.subDiskMetric.ProcessChange(change)
+
+		case change := <-zedagentCtx.subAppDiskMetric.MsgChan():
+			zedagentCtx.subAppDiskMetric.ProcessChange(change)
+
+		case change := <-zedagentCtx.subCapabilities.MsgChan():
+			zedagentCtx.subCapabilities.ProcessChange(change)
+
+		case change := <-zedagentCtx.subBaseOsMgrStatus.MsgChan():
+			zedagentCtx.subBaseOsMgrStatus.ProcessChange(change)
+
+		case change := <-zedagentCtx.subAppInstMetaData.MsgChan():
+			zedagentCtx.subAppInstMetaData.ProcessChange(change)
+
+		case change := <-zedagentCtx.subWwanMetrics.MsgChan():
+			zedagentCtx.subWwanMetrics.ProcessChange(change)
+
+		case change := <-zedagentCtx.subLocationInfo.MsgChan():
+			zedagentCtx.subLocationInfo.ProcessChange(change)
+
+		case change := <-zedagentCtx.subZFSPoolStatus.MsgChan():
+			zedagentCtx.subZFSPoolStatus.ProcessChange(change)
+			triggerPublishDevInfo(zedagentCtx)
+
+		case <-hwInfoTiker.C:
+			triggerPublishHwInfo(zedagentCtx)
+
+		case change := <-zedagentCtx.subEdgeviewStatus.MsgChan():
+			zedagentCtx.subEdgeviewStatus.ProcessChange(change)
+
+		case <-stillRunning.C:
+			// Fault injection
+			if zedagentCtx.fatalFlag {
+				log.Fatal("Requested fault injection to cause watchdog")
+			}
+		}
+		if zedagentCtx.hangFlag {
+			log.Functionf("Requested to not touch to cause watchdog")
+		} else {
+			zedagentCtx.ps.StillRunning(agentName, warningTime, errorTime)
+		}
+	}
+}
+
+func initializePublications(zedagentCtx *zedagentContext) {
+	var err error
+	ps := zedagentCtx.ps
 
 	zedagentCtx.pubGlobalConfig, err = ps.NewPublication(pubsub.PublicationOptions{
 		AgentName:  agentName,
@@ -312,68 +979,190 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	if err != nil {
 		log.Fatal(err)
 	}
-	// upgradeconverter ensures we have a ConfigItemValueMap so we
-	// read it to get the initial values
-	item, err := zedagentCtx.pubGlobalConfig.Get("global")
+
+	// Publish zedagent cloud metrics.
+	zedagentCtx.pubMetricsMap, err = ps.NewPublication(
+		pubsub.PublicationOptions{
+			AgentName: agentName,
+			TopicType: types.MetricsMap{},
+		})
 	if err != nil {
-		log.Fatalf("ConfigItemValueMap missing: %s", err)
+		log.Fatal(err)
 	}
-	zedagentCtx.globalConfig = item.(types.ConfigItemValueMap)
-	log.Functionf("initialized GlobalConfig")
+	getconfigCtx := zedagentCtx.getconfigCtx
 
-	// Run a periodic timer so we always update StillRunning
-	stillRunning := time.NewTicker(25 * time.Second)
-	ps.StillRunning(agentName, warningTime, errorTime)
-
-	initializeDirs()
-
-	// Context to pass around
-	getconfigCtx := getconfigContext{
-		localServerMap: &localServerMap{},
-		// default value of currentMetricInterval
-		currentMetricInterval: zedagentCtx.globalConfig.GlobalValueInt(types.MetricInterval),
-		// edge-view configure
-		configEdgeview: &types.EdgeviewConfig{},
-	}
-	cipherCtx := cipherContext{}
-	attestCtx := attestContext{}
-
-	// Pick up (mostly static) AssignableAdapters before we report
-	// any device info
-	aa := types.AssignableAdapters{}
-	zedagentCtx.assignableAdapters = &aa
-
-	// Cross link
-	getconfigCtx.zedagentCtx = &zedagentCtx
-	zedagentCtx.getconfigCtx = &getconfigCtx
-
-	cipherCtx.zedagentCtx = &zedagentCtx
-	zedagentCtx.cipherCtx = &cipherCtx
-
-	attestCtx.zedagentCtx = &zedagentCtx
-	zedagentCtx.attestCtx = &attestCtx
-
-	pubZedAgentStatus, err := ps.NewPublication(pubsub.PublicationOptions{
+	getconfigCtx.pubZedAgentStatus, err = ps.NewPublication(pubsub.PublicationOptions{
 		AgentName: agentName,
 		TopicType: types.ZedAgentStatus{},
 	})
 	if err != nil {
 		log.Fatal(err)
 	}
-	pubZedAgentStatus.ClearRestarted()
-	getconfigCtx.pubZedAgentStatus = pubZedAgentStatus
+	getconfigCtx.pubZedAgentStatus.ClearRestarted()
 
-	// apply saved radio config ASAP
-	initializeRadioConfig(&getconfigCtx)
+	getconfigCtx.pubPhysicalIOAdapters, err = ps.NewPublication(pubsub.PublicationOptions{
+		AgentName: agentName,
+		TopicType: types.PhysicalIOAdapterList{},
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	getconfigCtx.pubPhysicalIOAdapters.ClearRestarted()
 
-	// Wait until we have been onboarded aka know our own UUID
-	subOnboardStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+	getconfigCtx.pubDevicePortConfig, err = ps.NewPublication(pubsub.PublicationOptions{
+		AgentName: agentName,
+		TopicType: types.DevicePortConfig{},
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// Publish NetworkXObjectConfig and for outselves. XXX remove
+	getconfigCtx.pubNetworkXObjectConfig, err = ps.NewPublication(pubsub.PublicationOptions{
+		AgentName: agentName,
+		TopicType: types.NetworkXObjectConfig{},
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	getconfigCtx.pubNetworkInstanceConfig, err = ps.NewPublication(pubsub.PublicationOptions{
+		AgentName: agentName,
+		TopicType: types.NetworkInstanceConfig{},
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	getconfigCtx.pubAppInstanceConfig, err = ps.NewPublication(pubsub.PublicationOptions{
+		AgentName: agentName,
+		TopicType: types.AppInstanceConfig{},
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	getconfigCtx.pubAppInstanceConfig.ClearRestarted()
+
+	getconfigCtx.pubAppNetworkConfig, err = ps.NewPublication(pubsub.PublicationOptions{
+		AgentName: agentName,
+		TopicType: types.AppNetworkConfig{},
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	getconfigCtx.pubAppNetworkConfig.ClearRestarted()
+
+	getconfigCtx.pubBaseOsConfig, err = ps.NewPublication(pubsub.PublicationOptions{
+		AgentName: agentName,
+		TopicType: types.BaseOsConfig{},
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	getconfigCtx.pubBaseOsConfig.ClearRestarted()
+
+	getconfigCtx.pubBaseOs, err = ps.NewPublication(pubsub.PublicationOptions{
+		AgentName: agentName,
+		TopicType: types.BaseOs{},
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	getconfigCtx.pubBaseOs.ClearRestarted()
+
+	getconfigCtx.pubDatastoreConfig, err = ps.NewPublication(pubsub.PublicationOptions{
+		AgentName: agentName,
+		TopicType: types.DatastoreConfig{},
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	getconfigCtx.pubDatastoreConfig.ClearRestarted()
+
+	getconfigCtx.pubControllerCert, err = ps.NewPublication(
+		pubsub.PublicationOptions{
+			AgentName:  agentName,
+			Persistent: true,
+			TopicType:  types.ControllerCert{},
+		})
+	if err != nil {
+		log.Fatal(err)
+	}
+	getconfigCtx.pubControllerCert.ClearRestarted()
+
+	// for CipherContextStatus Publisher
+	getconfigCtx.pubCipherContext, err = ps.NewPublication(
+		pubsub.PublicationOptions{
+			AgentName:  agentName,
+			Persistent: true,
+			TopicType:  types.CipherContext{},
+		})
+	if err != nil {
+		log.Fatal(err)
+	}
+	getconfigCtx.pubCipherContext.ClearRestarted()
+
+	// for ContentTree config Publisher
+	getconfigCtx.pubContentTreeConfig, err = ps.NewPublication(
+		pubsub.PublicationOptions{
+			AgentName: agentName,
+			TopicType: types.ContentTreeConfig{},
+		})
+	if err != nil {
+		log.Fatal(err)
+	}
+	getconfigCtx.pubContentTreeConfig.ClearRestarted()
+
+	// for volume config Publisher
+	getconfigCtx.pubVolumeConfig, err = ps.NewPublication(
+		pubsub.PublicationOptions{
+			AgentName: agentName,
+			TopicType: types.VolumeConfig{},
+		})
+	if err != nil {
+		log.Fatal(err)
+	}
+	getconfigCtx.pubVolumeConfig.ClearRestarted()
+
+	// for disk config Publisher
+	getconfigCtx.pubDisksConfig, err = ps.NewPublication(
+		pubsub.PublicationOptions{
+			AgentName: agentName,
+			TopicType: types.EdgeNodeDisks{},
+		})
+	if err != nil {
+		log.Fatal(err)
+	}
+	getconfigCtx.pubDisksConfig.ClearRestarted()
+
+	// for Edge Node Info Publisher
+	getconfigCtx.pubEdgeNodeInfo, err = ps.NewPublication(
+		pubsub.PublicationOptions{
+			AgentName:  agentName,
+			TopicType:  types.EdgeNodeInfo{},
+			Persistent: true,
+		})
+	if err != nil {
+		log.Fatal(err)
+	}
+	getconfigCtx.pubEdgeNodeInfo.ClearRestarted()
+
+}
+
+// Subscriptions are returned inactive.
+func initializeSubscriptions(zedagentCtx *zedagentContext) {
+	var err error
+	ps := zedagentCtx.ps
+	getconfigCtx := zedagentCtx.getconfigCtx
+	dnsCtx := zedagentCtx.dnsCtx
+
+	zedagentCtx.subOnboardStatus, err = ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "zedclient",
 		MyAgentName:   agentName,
 		TopicImpl:     types.OnboardingStatus{},
-		Activate:      true,
+		Activate:      false,
 		Persistent:    true,
-		Ctx:           &zedagentCtx,
+		Ctx:           zedagentCtx,
 		CreateHandler: handleOnboardStatusCreate,
 		ModifyHandler: handleOnboardStatusModify,
 		WarningTime:   warningTime,
@@ -382,31 +1171,13 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	if err != nil {
 		log.Fatal(err)
 	}
-	// Wait for Onboarding to be done by client
-	nilUUID := uuid.UUID{}
-	for devUUID == nilUUID {
-		log.Functionf("Waiting for OnboardStatus UUID")
-		select {
-		case change := <-subOnboardStatus.MsgChan():
-			subOnboardStatus.ProcessChange(change)
-		case <-stillRunning.C:
-		}
-		ps.StillRunning(agentName, warningTime, errorTime)
-	}
 
-	// We know our own UUID; prepare for communication with controller
-	zedcloudCtx = handleConfigInit(
-		zedagentCtx.globalConfig.GlobalValueInt(types.NetworkSendTimeout),
-		zedagentCtx.zedcloudMetrics)
-	// Timer for deferred sends of info messages
-	deferredChan := zedcloud.GetDeferredChan(zedcloudCtx, getDeferredSentHandlerFunction(&zedagentCtx), getDeferredPriorityFunctions()...)
-
-	subAssignableAdapters, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+	zedagentCtx.subAssignableAdapters, err = ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "domainmgr",
 		MyAgentName:   agentName,
 		TopicImpl:     types.AssignableAdapters{},
 		Activate:      false,
-		Ctx:           &zedagentCtx,
+		Ctx:           zedagentCtx,
 		CreateHandler: handleAACreate,
 		ModifyHandler: handleAAModify,
 		DeleteHandler: handleAADelete,
@@ -416,182 +1187,18 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	if err != nil {
 		log.Fatal(err)
 	}
-	zedagentCtx.subAssignableAdapters = subAssignableAdapters
-	subAssignableAdapters.Activate()
-
-	pubPhysicalIOAdapters, err := ps.NewPublication(pubsub.PublicationOptions{
-		AgentName: agentName,
-		TopicType: types.PhysicalIOAdapterList{},
-	})
-	if err != nil {
-		log.Fatal(err)
-	}
-	pubPhysicalIOAdapters.ClearRestarted()
-	getconfigCtx.pubPhysicalIOAdapters = pubPhysicalIOAdapters
-
-	pubDevicePortConfig, err := ps.NewPublication(pubsub.PublicationOptions{
-		AgentName: agentName,
-		TopicType: types.DevicePortConfig{},
-	})
-	if err != nil {
-		log.Fatal(err)
-	}
-	getconfigCtx.pubDevicePortConfig = pubDevicePortConfig
-
-	// Publish NetworkXObjectConfig and for ourselves. XXX remove
-	pubNetworkXObjectConfig, err := ps.NewPublication(pubsub.PublicationOptions{
-		AgentName: agentName,
-		TopicType: types.NetworkXObjectConfig{},
-	})
-	if err != nil {
-		log.Fatal(err)
-	}
-	getconfigCtx.pubNetworkXObjectConfig = pubNetworkXObjectConfig
-
-	pubNetworkInstanceConfig, err := ps.NewPublication(pubsub.PublicationOptions{
-		AgentName: agentName,
-		TopicType: types.NetworkInstanceConfig{},
-	})
-	if err != nil {
-		log.Fatal(err)
-	}
-	getconfigCtx.pubNetworkInstanceConfig = pubNetworkInstanceConfig
-
-	pubAppInstanceConfig, err := ps.NewPublication(pubsub.PublicationOptions{
-		AgentName: agentName,
-		TopicType: types.AppInstanceConfig{},
-	})
-	if err != nil {
-		log.Fatal(err)
-	}
-	getconfigCtx.pubAppInstanceConfig = pubAppInstanceConfig
-	pubAppInstanceConfig.ClearRestarted()
-
-	pubAppNetworkConfig, err := ps.NewPublication(pubsub.PublicationOptions{
-		AgentName: agentName,
-		TopicType: types.AppNetworkConfig{},
-	})
-	if err != nil {
-		log.Fatal(err)
-	}
-	pubAppNetworkConfig.ClearRestarted()
-	getconfigCtx.pubAppNetworkConfig = pubAppNetworkConfig
-
-	// XXX defer this until we have some config from cloud or saved copy
-	pubAppInstanceConfig.SignalRestarted()
-
-	pubBaseOsConfig, err := ps.NewPublication(pubsub.PublicationOptions{
-		AgentName: agentName,
-		TopicType: types.BaseOsConfig{},
-	})
-	if err != nil {
-		log.Fatal(err)
-	}
-	pubBaseOsConfig.ClearRestarted()
-	getconfigCtx.pubBaseOsConfig = pubBaseOsConfig
-
-	pubBaseOs, err := ps.NewPublication(pubsub.PublicationOptions{
-		AgentName: agentName,
-		TopicType: types.BaseOs{},
-	})
-	if err != nil {
-		log.Fatal(err)
-	}
-	pubBaseOs.ClearRestarted()
-	getconfigCtx.pubBaseOs = pubBaseOs
-
-	pubDatastoreConfig, err := ps.NewPublication(pubsub.PublicationOptions{
-		AgentName: agentName,
-		TopicType: types.DatastoreConfig{},
-	})
-	if err != nil {
-		log.Fatal(err)
-	}
-	getconfigCtx.pubDatastoreConfig = pubDatastoreConfig
-	pubDatastoreConfig.ClearRestarted()
-
-	pubControllerCert, err := ps.NewPublication(
-		pubsub.PublicationOptions{
-			AgentName:  agentName,
-			Persistent: true,
-			TopicType:  types.ControllerCert{},
-		})
-	if err != nil {
-		log.Fatal(err)
-	}
-	pubControllerCert.ClearRestarted()
-	getconfigCtx.pubControllerCert = pubControllerCert
-
-	// for CipherContextStatus Publisher
-	pubCipherContext, err := ps.NewPublication(
-		pubsub.PublicationOptions{
-			AgentName:  agentName,
-			Persistent: true,
-			TopicType:  types.CipherContext{},
-		})
-	if err != nil {
-		log.Fatal(err)
-	}
-	pubCipherContext.ClearRestarted()
-	getconfigCtx.pubCipherContext = pubCipherContext
-
-	// for ContentTree config Publisher
-	pubContentTreeConfig, err := ps.NewPublication(
-		pubsub.PublicationOptions{
-			AgentName: agentName,
-			TopicType: types.ContentTreeConfig{},
-		})
-	if err != nil {
-		log.Fatal(err)
-	}
-	pubContentTreeConfig.ClearRestarted()
-	getconfigCtx.pubContentTreeConfig = pubContentTreeConfig
-
-	// for volume config Publisher
-	pubVolumeConfig, err := ps.NewPublication(
-		pubsub.PublicationOptions{
-			AgentName: agentName,
-			TopicType: types.VolumeConfig{},
-		})
-	if err != nil {
-		log.Fatal(err)
-	}
-	pubVolumeConfig.ClearRestarted()
-	getconfigCtx.pubVolumeConfig = pubVolumeConfig
-
-	// for disk config Publisher
-	pubDisksConfig, err := ps.NewPublication(
-		pubsub.PublicationOptions{
-			AgentName: agentName,
-			TopicType: types.EdgeNodeDisks{},
-		})
-	if err != nil {
-		log.Fatal(err)
-	}
-	pubDisksConfig.ClearRestarted()
-	getconfigCtx.pubDisksConfig = pubDisksConfig
-
-	// for Edge Node Info Publisher
-	pubEdgeNodeInfo, err := ps.NewPublication(
-		pubsub.PublicationOptions{
-			AgentName:  agentName,
-			TopicType:  types.EdgeNodeInfo{},
-			Persistent: true,
-		})
-	if err != nil {
-		log.Fatal(err)
-	}
-	pubEdgeNodeInfo.ClearRestarted()
-	getconfigCtx.pubEdgeNodeInfo = pubEdgeNodeInfo
 
 	// Look for global config such as log levels
-	subGlobalConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+	// Note that we use these handlers to process updates from
+	// the controller since the parser (in zedagent aka ourselves)
+	// merely publishes the GlobalConfig
+	zedagentCtx.subGlobalConfig, err = ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     agentName,
 		MyAgentName:   agentName,
 		TopicImpl:     types.ConfigItemValueMap{},
 		Persistent:    true,
 		Activate:      false,
-		Ctx:           &zedagentCtx,
+		Ctx:           zedagentCtx,
 		CreateHandler: handleGlobalConfigCreate,
 		ModifyHandler: handleGlobalConfigModify,
 		DeleteHandler: handleGlobalConfigDelete,
@@ -601,15 +1208,13 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	if err != nil {
 		log.Fatal(err)
 	}
-	zedagentCtx.subGlobalConfig = subGlobalConfig
-	subGlobalConfig.Activate()
 
-	subNetworkInstanceStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+	zedagentCtx.subNetworkInstanceStatus, err = ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "zedrouter",
 		MyAgentName:   agentName,
 		TopicImpl:     types.NetworkInstanceStatus{},
 		Activate:      false,
-		Ctx:           &zedagentCtx,
+		Ctx:           zedagentCtx,
 		CreateHandler: handleNetworkInstanceCreate,
 		ModifyHandler: handleNetworkInstanceModify,
 		DeleteHandler: handleNetworkInstanceDelete,
@@ -619,45 +1224,39 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	if err != nil {
 		log.Fatal(err)
 	}
-	zedagentCtx.subNetworkInstanceStatus = subNetworkInstanceStatus
-	subNetworkInstanceStatus.Activate()
 
-	subAppNetworkStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+	getconfigCtx.subAppNetworkStatus, err = ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:   "zedrouter",
 		MyAgentName: agentName,
 		TopicImpl:   types.AppNetworkStatus{},
 		Activate:    false,
-		Ctx:         &zedagentCtx,
+		Ctx:         zedagentCtx,
 		WarningTime: warningTime,
 		ErrorTime:   errorTime,
 	})
 	if err != nil {
 		log.Fatal(err)
 	}
-	getconfigCtx.subAppNetworkStatus = subAppNetworkStatus
-	subAppNetworkStatus.Activate()
 
-	subNetworkInstanceMetrics, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+	zedagentCtx.subNetworkInstanceMetrics, err = ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:   "zedrouter",
 		MyAgentName: agentName,
 		TopicImpl:   types.NetworkInstanceMetrics{},
 		Activate:    false,
-		Ctx:         &zedagentCtx,
+		Ctx:         zedagentCtx,
 		WarningTime: warningTime,
 		ErrorTime:   errorTime,
 	})
 	if err != nil {
 		log.Fatal(err)
 	}
-	zedagentCtx.subNetworkInstanceMetrics = subNetworkInstanceMetrics
-	subNetworkInstanceMetrics.Activate()
 
-	subAppFlowMonitor, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+	zedagentCtx.subAppFlowMonitor, err = ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "zedrouter",
 		MyAgentName:   agentName,
 		TopicImpl:     types.IPFlow{},
 		Activate:      false,
-		Ctx:           &zedagentCtx,
+		Ctx:           zedagentCtx,
 		CreateHandler: handleAppFlowMonitorCreate,
 		ModifyHandler: handleAppFlowMonitorModify,
 		DeleteHandler: handleAppFlowMonitorDelete,
@@ -667,16 +1266,14 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	if err != nil {
 		log.Fatal(err)
 	}
-	subAppFlowMonitor.Activate()
-	log.Functionf("FlowStats: create subFlowStatus")
 
 	// Look for AppInstanceStatus from zedmanager
-	subAppInstanceStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+	getconfigCtx.subAppInstanceStatus, err = ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "zedmanager",
 		MyAgentName:   agentName,
 		TopicImpl:     types.AppInstanceStatus{},
 		Activate:      false,
-		Ctx:           &zedagentCtx,
+		Ctx:           zedagentCtx,
 		CreateHandler: handleAppInstanceStatusCreate,
 		ModifyHandler: handleAppInstanceStatusModify,
 		DeleteHandler: handleAppInstanceStatusDelete,
@@ -686,16 +1283,14 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	if err != nil {
 		log.Fatal(err)
 	}
-	getconfigCtx.subAppInstanceStatus = subAppInstanceStatus
-	subAppInstanceStatus.Activate()
 
 	// Look for ContentTreeStatus from volumemgr
-	subContentTreeStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+	getconfigCtx.subContentTreeStatus, err = ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "volumemgr",
 		MyAgentName:   agentName,
 		TopicImpl:     types.ContentTreeStatus{},
 		Activate:      false,
-		Ctx:           &zedagentCtx,
+		Ctx:           zedagentCtx,
 		CreateHandler: handleContentTreeStatusCreate,
 		ModifyHandler: handleContentTreeStatusModify,
 		DeleteHandler: handleContentTreeStatusDelete,
@@ -705,17 +1300,15 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	if err != nil {
 		log.Fatal(err)
 	}
-	getconfigCtx.subContentTreeStatus = subContentTreeStatus
-	subContentTreeStatus.Activate()
 
 	// Look for VolumeStatus from volumemgr
-	subVolumeStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+	getconfigCtx.subVolumeStatus, err = ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "volumemgr",
 		MyAgentName:   agentName,
 		AgentScope:    types.AppImgObj,
 		TopicImpl:     types.VolumeStatus{},
 		Activate:      false,
-		Ctx:           &zedagentCtx,
+		Ctx:           zedagentCtx,
 		CreateHandler: handleVolumeStatusCreate,
 		ModifyHandler: handleVolumeStatusModify,
 		DeleteHandler: handleVolumeStatusDelete,
@@ -725,59 +1318,54 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	if err != nil {
 		log.Fatal(err)
 	}
-	getconfigCtx.subVolumeStatus = subVolumeStatus
-	subVolumeStatus.Activate()
 
 	// Look for DomainMetric from domainmgr
-	subDomainMetric, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+	getconfigCtx.subDomainMetric, err = ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:   "domainmgr",
 		MyAgentName: agentName,
 		TopicImpl:   types.DomainMetric{},
-		Activate:    true,
-		Ctx:         &zedagentCtx,
+		Activate:    false,
+		Ctx:         zedagentCtx,
 		WarningTime: warningTime,
 		ErrorTime:   errorTime,
 	})
 	if err != nil {
 		log.Fatal(err)
 	}
-	getconfigCtx.subDomainMetric = subDomainMetric
 
 	// Look for ProcessMetric from domainmgr
-	subProcessMetric, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+	getconfigCtx.subProcessMetric, err = ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:   "domainmgr",
 		MyAgentName: agentName,
 		TopicImpl:   types.ProcessMetric{},
-		Activate:    true,
-		Ctx:         &zedagentCtx,
+		Activate:    false,
+		Ctx:         zedagentCtx,
 		WarningTime: warningTime,
 		ErrorTime:   errorTime,
 	})
 	if err != nil {
 		log.Fatal(err)
 	}
-	getconfigCtx.subProcessMetric = subProcessMetric
 
-	subHostMemory, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+	getconfigCtx.subHostMemory, err = ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:   "domainmgr",
 		MyAgentName: agentName,
 		TopicImpl:   types.HostMemory{},
-		Activate:    true,
-		Ctx:         &zedagentCtx,
+		Activate:    false,
+		Ctx:         zedagentCtx,
 		WarningTime: warningTime,
 		ErrorTime:   errorTime,
 	})
 	if err != nil {
 		log.Fatal(err)
 	}
-	getconfigCtx.subHostMemory = subHostMemory
 
-	subEdgeviewStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+	zedagentCtx.subEdgeviewStatus, err = ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "edgeview",
 		MyAgentName:   agentName,
 		TopicImpl:     types.EdgeviewStatus{},
-		Activate:      true,
-		Ctx:           &zedagentCtx,
+		Activate:      false,
+		Ctx:           zedagentCtx,
 		CreateHandler: handleEdgeviewStatusCreate,
 		ModifyHandler: handleEdgeviewStatusModify,
 		WarningTime:   warningTime,
@@ -786,15 +1374,14 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	if err != nil {
 		log.Fatal(err)
 	}
-	zedagentCtx.subEdgeviewStatus = subEdgeviewStatus
 
 	// Look for zboot status
-	subZbootStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+	zedagentCtx.subZbootStatus, err = ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:      "baseosmgr",
 		MyAgentName:    agentName,
 		TopicImpl:      types.ZbootStatus{},
 		Activate:       false,
-		Ctx:            &zedagentCtx,
+		Ctx:            zedagentCtx,
 		CreateHandler:  handleZbootStatusCreate,
 		ModifyHandler:  handleZbootStatusModify,
 		DeleteHandler:  handleZbootStatusDelete,
@@ -805,16 +1392,14 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	if err != nil {
 		log.Fatal(err)
 	}
-	zedagentCtx.subZbootStatus = subZbootStatus
-	subZbootStatus.Activate()
 
 	// sub AppContainerMetrics from zedrouter
-	subAppContainerMetrics, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+	zedagentCtx.subAppContainerMetrics, err = ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "zedrouter",
 		MyAgentName:   agentName,
 		TopicImpl:     types.AppContainerMetrics{},
 		Activate:      false,
-		Ctx:           &zedagentCtx,
+		Ctx:           zedagentCtx,
 		CreateHandler: handleAppContainerMetricsCreate,
 		ModifyHandler: handleAppContainerMetricsModify,
 		WarningTime:   warningTime,
@@ -823,15 +1408,13 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	if err != nil {
 		log.Fatal(err)
 	}
-	zedagentCtx.subAppContainerMetrics = subAppContainerMetrics
-	subAppContainerMetrics.Activate()
 
-	subBaseOsStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+	zedagentCtx.subBaseOsStatus, err = ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "baseosmgr",
 		MyAgentName:   agentName,
 		TopicImpl:     types.BaseOsStatus{},
 		Activate:      false,
-		Ctx:           &zedagentCtx,
+		Ctx:           zedagentCtx,
 		CreateHandler: handleBaseOsStatusCreate,
 		ModifyHandler: handleBaseOsStatusModify,
 		DeleteHandler: handleBaseOsStatusDelete,
@@ -841,16 +1424,14 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	if err != nil {
 		log.Fatal(err)
 	}
-	zedagentCtx.subBaseOsStatus = subBaseOsStatus
-	subBaseOsStatus.Activate()
 
-	subEdgeNodeCert, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+	zedagentCtx.subEdgeNodeCert, err = ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "tpmmgr",
 		MyAgentName:   agentName,
 		TopicImpl:     types.EdgeNodeCert{},
 		Activate:      false,
 		Persistent:    true,
-		Ctx:           &zedagentCtx,
+		Ctx:           zedagentCtx,
 		CreateHandler: handleEdgeNodeCertCreate,
 		ModifyHandler: handleEdgeNodeCertModify,
 		DeleteHandler: handleEdgeNodeCertDelete,
@@ -860,15 +1441,13 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	if err != nil {
 		log.Fatal(err)
 	}
-	zedagentCtx.subEdgeNodeCert = subEdgeNodeCert
-	subEdgeNodeCert.Activate()
 
-	subVaultStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+	zedagentCtx.subVaultStatus, err = ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "vaultmgr",
 		MyAgentName:   agentName,
 		TopicImpl:     types.VaultStatus{},
 		Activate:      false,
-		Ctx:           &zedagentCtx,
+		Ctx:           zedagentCtx,
 		CreateHandler: handleVaultStatusCreate,
 		ModifyHandler: handleVaultStatusModify,
 		DeleteHandler: handleVaultStatusDelete,
@@ -878,15 +1457,13 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	if err != nil {
 		log.Fatal(err)
 	}
-	zedagentCtx.subVaultStatus = subVaultStatus
-	subVaultStatus.Activate()
 
-	subAttestQuote, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+	zedagentCtx.subAttestQuote, err = ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "tpmmgr",
 		MyAgentName:   agentName,
 		TopicImpl:     types.AttestQuote{},
 		Activate:      false,
-		Ctx:           &zedagentCtx,
+		Ctx:           zedagentCtx,
 		CreateHandler: handleAttestQuoteCreate,
 		ModifyHandler: handleAttestQuoteModify,
 		DeleteHandler: handleAttestQuoteDelete,
@@ -896,15 +1473,13 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	if err != nil {
 		log.Fatal(err)
 	}
-	zedagentCtx.subAttestQuote = subAttestQuote
-	subAttestQuote.Activate()
 
-	subEncryptedKeyFromDevice, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+	zedagentCtx.subEncryptedKeyFromDevice, err = ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "vaultmgr",
 		MyAgentName:   agentName,
 		TopicImpl:     types.EncryptedVaultKeyFromDevice{},
 		Activate:      false,
-		Ctx:           &zedagentCtx,
+		Ctx:           zedagentCtx,
 		CreateHandler: handleEncryptedKeyFromDeviceCreate,
 		ModifyHandler: handleEncryptedKeyFromDeviceModify,
 		DeleteHandler: handleEncryptedKeyFromDeviceDelete,
@@ -914,16 +1489,14 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	if err != nil {
 		log.Fatal(err)
 	}
-	zedagentCtx.subEncryptedKeyFromDevice = subEncryptedKeyFromDevice
-	subEncryptedKeyFromDevice.Activate()
 
 	// Look for nodeagent status
-	subNodeAgentStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+	getconfigCtx.subNodeAgentStatus, err = ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "nodeagent",
 		MyAgentName:   agentName,
 		TopicImpl:     types.NodeAgentStatus{},
 		Activate:      false,
-		Ctx:           &getconfigCtx,
+		Ctx:           getconfigCtx,
 		CreateHandler: handleNodeAgentStatusCreate,
 		ModifyHandler: handleNodeAgentStatusModify,
 		DeleteHandler: handleNodeAgentStatusDelete,
@@ -933,17 +1506,14 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	if err != nil {
 		log.Fatal(err)
 	}
-	getconfigCtx.subNodeAgentStatus = subNodeAgentStatus
-	subNodeAgentStatus.Activate()
 	getconfigCtx.NodeAgentStatus = &types.NodeAgentStatus{}
 
-	DNSctx := DNSContext{}
-	subDeviceNetworkStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+	dnsCtx.subDeviceNetworkStatus, err = ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "nim",
 		MyAgentName:   agentName,
 		TopicImpl:     types.DeviceNetworkStatus{},
 		Activate:      false,
-		Ctx:           &DNSctx,
+		Ctx:           dnsCtx,
 		CreateHandler: handleDNSCreate,
 		ModifyHandler: handleDNSModify,
 		DeleteHandler: handleDNSDelete,
@@ -953,16 +1523,13 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	if err != nil {
 		log.Fatal(err)
 	}
-	DNSctx.subDeviceNetworkStatus = subDeviceNetworkStatus
-	zedagentCtx.subDeviceNetworkStatus = subDeviceNetworkStatus
-	subDeviceNetworkStatus.Activate()
 
-	subDevicePortConfigList, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+	zedagentCtx.subDevicePortConfigList, err = ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "nim",
 		MyAgentName:   agentName,
 		TopicImpl:     types.DevicePortConfigList{},
 		Activate:      false,
-		Ctx:           &zedagentCtx,
+		Ctx:           zedagentCtx,
 		CreateHandler: handleDPCLCreate,
 		ModifyHandler: handleDPCLModify,
 		DeleteHandler: handleDPCLDelete,
@@ -972,16 +1539,14 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	if err != nil {
 		log.Fatal(err)
 	}
-	zedagentCtx.subDevicePortConfigList = subDevicePortConfigList
-	subDevicePortConfigList.Activate()
 	zedagentCtx.DevicePortConfigList = &types.DevicePortConfigList{}
 
-	subBlobStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+	zedagentCtx.subBlobStatus, err = ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "volumemgr",
 		MyAgentName:   agentName,
 		TopicImpl:     types.BlobStatus{},
 		Activate:      false,
-		Ctx:           &zedagentCtx,
+		Ctx:           zedagentCtx,
 		CreateHandler: handleBlobStatusCreate,
 		ModifyHandler: handleBlobStatusModify,
 		DeleteHandler: handleBlobDelete,
@@ -991,27 +1556,24 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	if err != nil {
 		log.Fatal(err)
 	}
-	zedagentCtx.subBlobStatus = subBlobStatus
-	subBlobStatus.Activate()
 
 	// Subscribe to Newlog metrics from newlogd
-	subNewlogMetrics, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+	zedagentCtx.subNewlogMetrics, err = ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName: "newlogd",
 		TopicImpl: types.NewlogMetrics{},
-		Activate:  true,
-		Ctx:       &zedagentCtx,
+		Activate:  false,
+		Ctx:       zedagentCtx,
 	})
 	if err != nil {
 		log.Fatal(err)
 	}
-	zedagentCtx.subNewlogMetrics = subNewlogMetrics
 
-	subDiskMetric, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+	zedagentCtx.subDiskMetric, err = ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "volumemgr",
 		MyAgentName:   agentName,
 		TopicImpl:     types.DiskMetric{},
 		Activate:      false,
-		Ctx:           &zedagentCtx,
+		Ctx:           zedagentCtx,
 		CreateHandler: handleDiskMetricCreate,
 		ModifyHandler: handleDiskMetricModify,
 		DeleteHandler: handleDiskMetricDelete,
@@ -1021,58 +1583,50 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	if err != nil {
 		log.Fatal(err)
 	}
-	zedagentCtx.subDiskMetric = subDiskMetric
-	subDiskMetric.Activate()
 
-	subAppDiskMetric, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+	zedagentCtx.subAppDiskMetric, err = ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:   "volumemgr",
 		MyAgentName: agentName,
 		TopicImpl:   types.AppDiskMetric{},
 		Activate:    false,
-		Ctx:         &zedagentCtx,
+		Ctx:         zedagentCtx,
 		WarningTime: warningTime,
 		ErrorTime:   errorTime,
 	})
 	if err != nil {
 		log.Fatal(err)
 	}
-	zedagentCtx.subAppDiskMetric = subAppDiskMetric
-	subAppDiskMetric.Activate()
 
-	subCapabilities, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+	zedagentCtx.subCapabilities, err = ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:   "domainmgr",
 		MyAgentName: agentName,
 		TopicImpl:   types.Capabilities{},
 		Activate:    false,
-		Ctx:         &zedagentCtx,
+		Ctx:         zedagentCtx,
 		WarningTime: warningTime,
 		ErrorTime:   errorTime,
 	})
 	if err != nil {
 		log.Fatal(err)
 	}
-	zedagentCtx.subCapabilities = subCapabilities
-	subCapabilities.Activate()
 
-	subBaseOsMgrStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+	zedagentCtx.subBaseOsMgrStatus, err = ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:   "baseosmgr",
 		MyAgentName: agentName,
 		TopicImpl:   types.BaseOSMgrStatus{},
 		Activate:    false,
-		Ctx:         &zedagentCtx,
+		Ctx:         zedagentCtx,
 		WarningTime: warningTime,
 		ErrorTime:   errorTime,
 	})
-	zedagentCtx.subBaseOsMgrStatus = subBaseOsMgrStatus
-	subBaseOsMgrStatus.Activate()
 
-	subAppInstMetaData, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+	zedagentCtx.subAppInstMetaData, err = ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "zedrouter",
 		MyAgentName:   agentName,
 		TopicImpl:     types.AppInstMetaData{},
 		Activate:      false,
 		Persistent:    true,
-		Ctx:           &zedagentCtx,
+		Ctx:           zedagentCtx,
 		CreateHandler: handleAppInstMetaDataCreate,
 		ModifyHandler: handleAppInstMetaDataModify,
 		DeleteHandler: handleAppInstMetaDataDelete,
@@ -1082,643 +1636,167 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	if err != nil {
 		log.Fatal(err)
 	}
-	zedagentCtx.subAppInstMetaData = subAppInstMetaData
-	subAppInstMetaData.Activate()
 
-	subWwanMetrics, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+	zedagentCtx.subWwanMetrics, err = ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:   "nim",
 		MyAgentName: agentName,
 		TopicImpl:   types.WwanMetrics{},
 		Activate:    false,
-		Ctx:         &zedagentCtx,
+		Ctx:         zedagentCtx,
 		WarningTime: warningTime,
 		ErrorTime:   errorTime,
 	})
 	if err != nil {
 		log.Fatal(err)
 	}
-	zedagentCtx.subWwanMetrics = subWwanMetrics
-	subWwanMetrics.Activate()
 
-	subLocationInfo, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+	zedagentCtx.subLocationInfo, err = ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:   "nim",
 		MyAgentName: agentName,
 		TopicImpl:   types.WwanLocationInfo{},
 		Activate:    false,
-		Ctx:         &zedagentCtx,
+		Ctx:         zedagentCtx,
 		WarningTime: warningTime,
 		ErrorTime:   errorTime,
 	})
 	if err != nil {
 		log.Fatal(err)
 	}
-	zedagentCtx.subLocationInfo = subLocationInfo
-	subLocationInfo.Activate()
-
-	//initialize cipher processing block
-	cipherModuleInitialize(&zedagentCtx, ps)
-
-	//initialize remote attestation context
-	attestModuleInitialize(&zedagentCtx, ps)
-
-	// Pick up debug aka log level before we start real work
-	// Note that we use these handlers to process updates from
-	// the controller since the parser (in zedagent aka ourselves)
-	// merely publishes the GlobalConfig
-	for !zedagentCtx.GCInitialized {
-		log.Functionf("Waiting for GCInitialized")
-		select {
-		case change := <-subOnboardStatus.MsgChan():
-			subOnboardStatus.ProcessChange(change)
-
-		case change := <-subGlobalConfig.MsgChan():
-			subGlobalConfig.ProcessChange(change)
-
-		case change := <-getconfigCtx.subNodeAgentStatus.MsgChan():
-			getconfigCtx.subNodeAgentStatus.ProcessChange(change)
-		}
-	}
-	log.Functionf("processed GlobalConfig")
-
-	// wait till, zboot status is ready
-	for !zedagentCtx.zbootRestarted {
-		select {
-		case change := <-subOnboardStatus.MsgChan():
-			subOnboardStatus.ProcessChange(change)
-
-		case change := <-subZbootStatus.MsgChan():
-			subZbootStatus.ProcessChange(change)
-			if zedagentCtx.zbootRestarted {
-				log.Functionf("Zboot reported restarted")
-			}
-
-		case change := <-getconfigCtx.subNodeAgentStatus.MsgChan():
-			getconfigCtx.subNodeAgentStatus.ProcessChange(change)
-
-		case <-stillRunning.C:
-			// Fault injection
-			if fatalFlag {
-				log.Fatal("Requested fault injection to cause watchdog")
-			}
-		}
-		if hangFlag {
-			log.Functionf("Requested to not touch to cause watchdog")
-		} else {
-			ps.StillRunning(agentName, warningTime, errorTime)
-		}
-	}
-
-	log.Functionf("Waiting until we have some uplinks with usable addresses")
-	for !DNSctx.DNSinitialized {
-		log.Functionf("Waiting for DeviceNetworkStatus %v",
-			DNSctx.DNSinitialized)
-
-		select {
-		case change := <-subOnboardStatus.MsgChan():
-			subOnboardStatus.ProcessChange(change)
-
-		case change := <-subGlobalConfig.MsgChan():
-			subGlobalConfig.ProcessChange(change)
-
-		case change := <-subDeviceNetworkStatus.MsgChan():
-			subDeviceNetworkStatus.ProcessChange(change)
-			if DNSctx.triggerHandleDeferred {
-				start := time.Now()
-				zedcloud.HandleDeferred(zedcloudCtx, start, 100*time.Millisecond, false)
-				ps.CheckMaxTimeTopic(agentName, "deferredChan", start, warningTime, errorTime)
-				DNSctx.triggerHandleDeferred = false
-			}
-
-		case change := <-subAssignableAdapters.MsgChan():
-			subAssignableAdapters.ProcessChange(change)
-
-		case change := <-subDevicePortConfigList.MsgChan():
-			subDevicePortConfigList.ProcessChange(change)
-
-		case change := <-getconfigCtx.subNodeAgentStatus.MsgChan():
-			subNodeAgentStatus.ProcessChange(change)
-
-		case change := <-subVaultStatus.MsgChan():
-			subVaultStatus.ProcessChange(change)
-
-		case change := <-subAttestQuote.MsgChan():
-			subAttestQuote.ProcessChange(change)
-
-		case change := <-subEncryptedKeyFromDevice.MsgChan():
-			subEncryptedKeyFromDevice.ProcessChange(change)
-
-		case change := <-getconfigCtx.subAppNetworkStatus.MsgChan():
-			getconfigCtx.localServerMap.upToDate = false
-			subAppNetworkStatus.ProcessChange(change)
-
-		case change := <-subWwanMetrics.MsgChan():
-			subWwanMetrics.ProcessChange(change)
-
-		case change := <-subLocationInfo.MsgChan():
-			subLocationInfo.ProcessChange(change)
-
-		case change := <-deferredChan:
-			start := time.Now()
-			zedcloud.HandleDeferred(zedcloudCtx, change, 100*time.Millisecond, false)
-			ps.CheckMaxTimeTopic(agentName, "deferredChan", start,
-				warningTime, errorTime)
-
-		case <-stillRunning.C:
-			// Fault injection
-			if fatalFlag {
-				log.Fatal("Requested fault injection to cause watchdog")
-			}
-		}
-		if hangFlag {
-			log.Functionf("Requested to not touch to cause watchdog")
-		} else {
-			ps.StillRunning(agentName, warningTime, errorTime)
-		}
-	}
 
 	// Subscribe to network metrics from zedrouter
-	subNetworkMetrics, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+	zedagentCtx.subNetworkMetrics, err = ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:   "zedrouter",
 		MyAgentName: agentName,
 		TopicImpl:   types.NetworkMetrics{},
-		Activate:    true,
-		Ctx:         &zedagentCtx,
+		Activate:    false,
+		Ctx:         zedagentCtx,
 	})
 	if err != nil {
 		log.Fatal(err)
 	}
+
 	// Subscribe to cloud metrics from different agents
-	subClientMetrics, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+	zedagentCtx.subClientMetrics, err = ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:   "zedclient",
 		MyAgentName: agentName,
 		TopicImpl:   types.MetricsMap{},
-		Activate:    true,
-		Ctx:         &zedagentCtx,
+		Activate:    false,
+		Ctx:         zedagentCtx,
 	})
 	if err != nil {
 		log.Fatal(err)
 	}
+
 	// cloud metrics of loguploader
-	subLoguploaderMetrics, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+	zedagentCtx.subLoguploaderMetrics, err = ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName: "loguploader",
 		TopicImpl: types.MetricsMap{},
-		Activate:  true,
-		Ctx:       &zedagentCtx,
+		Activate:  false,
+		Ctx:       zedagentCtx,
 	})
 	if err != nil {
 		log.Fatal(err)
 	}
-	subDownloaderMetrics, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+
+	zedagentCtx.subDownloaderMetrics, err = ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:   "downloader",
 		MyAgentName: agentName,
 		TopicImpl:   types.MetricsMap{},
-		Activate:    true,
-		Ctx:         &zedagentCtx,
+		Activate:    false,
+		Ctx:         zedagentCtx,
 	})
 	if err != nil {
 		log.Fatal(err)
 	}
+
 	// cloud metrics of diag
-	subDiagMetrics, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+	zedagentCtx.subDiagMetrics, err = ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName: "diag",
 		TopicImpl: types.MetricsMap{},
-		Activate:  true,
-		Ctx:       &zedagentCtx,
+		Activate:  false,
+		Ctx:       zedagentCtx,
 	})
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	// cloud metrics of nim
-	subNimMetrics, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+	zedagentCtx.subNimMetrics, err = ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName: "nim",
 		TopicImpl: types.MetricsMap{},
-		Activate:  true,
-		Ctx:       &zedagentCtx,
+		Activate:  false,
+		Ctx:       zedagentCtx,
 	})
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	// cloud metrics of zedrouter
-	subZRouterMetrics, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+	zedagentCtx.subZRouterMetrics, err = ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName: "zedrouter",
 		TopicImpl: types.MetricsMap{},
-		Activate:  true,
-		Ctx:       &zedagentCtx,
+		Activate:  false,
+		Ctx:       zedagentCtx,
 	})
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	subCipherMetricsDL, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+	zedagentCtx.subCipherMetricsDL, err = ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:   "downloader",
 		MyAgentName: agentName,
 		TopicImpl:   types.CipherMetrics{},
-		Activate:    true,
-		Ctx:         &zedagentCtx,
-	})
-	if err != nil {
-		log.Fatal(err)
-	}
-	subCipherMetricsDM, err := ps.NewSubscription(pubsub.SubscriptionOptions{
-		AgentName:   "domainmgr",
-		MyAgentName: agentName,
-		TopicImpl:   types.CipherMetrics{},
-		Activate:    true,
-		Ctx:         &zedagentCtx,
-	})
-	if err != nil {
-		log.Fatal(err)
-	}
-	subCipherMetricsNim, err := ps.NewSubscription(pubsub.SubscriptionOptions{
-		AgentName:   "nim",
-		MyAgentName: agentName,
-		TopicImpl:   types.CipherMetrics{},
-		Activate:    true,
-		Ctx:         &zedagentCtx,
-	})
-	if err != nil {
-		log.Fatal(err)
-	}
-	subCipherMetricsZR, err := ps.NewSubscription(pubsub.SubscriptionOptions{
-		AgentName:   "zedrouter",
-		MyAgentName: agentName,
-		TopicImpl:   types.CipherMetrics{},
-		Activate:    true,
-		Ctx:         &zedagentCtx,
+		Activate:    false,
+		Ctx:         zedagentCtx,
 	})
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	subZFSPoolStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+	zedagentCtx.subCipherMetricsDM, err = ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:   "domainmgr",
+		MyAgentName: agentName,
+		TopicImpl:   types.CipherMetrics{},
+		Activate:    false,
+		Ctx:         zedagentCtx,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	zedagentCtx.subCipherMetricsNim, err = ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:   "nim",
+		MyAgentName: agentName,
+		TopicImpl:   types.CipherMetrics{},
+		Activate:    false,
+		Ctx:         zedagentCtx,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	zedagentCtx.subCipherMetricsZR, err = ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:   "zedrouter",
+		MyAgentName: agentName,
+		TopicImpl:   types.CipherMetrics{},
+		Activate:    false,
+		Ctx:         zedagentCtx,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	zedagentCtx.subZFSPoolStatus, err = ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:   "zfsmanager",
 		MyAgentName: agentName,
 		TopicImpl:   types.ZFSPoolStatus{},
 		Activate:    false,
-		Ctx:         &zedagentCtx,
+		Ctx:         zedagentCtx,
 		WarningTime: warningTime,
 		ErrorTime:   errorTime,
 	})
 	if err != nil {
 		log.Fatal(err)
-	}
-	zedagentCtx.subZFSPoolStatus = subZFSPoolStatus
-	subZFSPoolStatus.Activate()
-
-	subZFSPoolMetrics, err := ps.NewSubscription(pubsub.SubscriptionOptions{
-		AgentName:   "zfsmanager",
-		MyAgentName: agentName,
-		TopicImpl:   types.ZFSPoolMetrics{},
-		Activate:    false,
-		Ctx:         &zedagentCtx,
-		WarningTime: warningTime,
-		ErrorTime:   errorTime,
-	})
-	if err != nil {
-		log.Fatal(err)
-	}
-	zedagentCtx.subZFSPoolMetrics = subZFSPoolMetrics
-	subZFSPoolMetrics.Activate()
-
-	//Parse SMART data
-	go parseSMARTData()
-
-	// Use go routines to make sure we have wait/timeout without
-	// blocking the main select loop
-	log.Functionf("Creating %s at %s", "deviceInfoTask", agentlog.GetMyStack())
-	go deviceInfoTask(&zedagentCtx, triggerDeviceInfo)
-	log.Functionf("Creating %s at %s", "objectInfoTask", agentlog.GetMyStack())
-	go objectInfoTask(&zedagentCtx, triggerObjectInfo)
-	log.Functionf("Creating %s at %s", "flowLogTask", agentlog.GetMyStack())
-	go flowlogTask(&zedagentCtx, flowlogQueue)
-	log.Functionf("Creating %s at %s", "hardwareInfoTask", agentlog.GetMyStack())
-	go hardwareInfoTask(&zedagentCtx, triggerHwInfo)
-
-	// Publish initial device info.
-	triggerPublishDevInfo(&zedagentCtx)
-
-	// Publish initial hardware info.
-	hwInfoTiker := time.NewTicker(3 * time.Hour)
-	triggerPublishHwInfo(&zedagentCtx)
-
-	// start the metrics reporting task
-	handleChannel := make(chan interface{})
-	log.Functionf("Creating %s at %s", "metricsTimerTask", agentlog.GetMyStack())
-	go metricsTimerTask(&zedagentCtx, handleChannel)
-	metricsTickerHandle := <-handleChannel
-	getconfigCtx.metricsTickerHandle = metricsTickerHandle
-
-	// start the location reporting task
-	log.Functionf("Creating %s at %s", "locationTimerTask", agentlog.GetMyStack())
-	go locationTimerTask(&zedagentCtx, handleChannel)
-	getconfigCtx.locationCloudTickerHandle = <-handleChannel
-	getconfigCtx.locationAppTickerHandle = <-handleChannel
-
-	//trigger channel for localProfile state machine
-	getconfigCtx.localProfileTrigger = make(chan Notify, 1)
-	//process saved local profile
-	processSavedProfile(&getconfigCtx)
-
-	// initialize localInfo
-	initializeLocalAppInfo(&getconfigCtx)
-	go localAppInfoPOSTTask(&getconfigCtx)
-	initializeLocalCommands(&getconfigCtx)
-
-	initializeLocalDevCmdTimestamp(&getconfigCtx)
-	initializeLocalDevInfo(&getconfigCtx)
-	go localDevInfoPOSTTask(&getconfigCtx)
-
-	// start the config fetch tasks, when zboot status is ready
-	log.Functionf("Creating %s at %s", "configTimerTask", agentlog.GetMyStack())
-	go configTimerTask(handleChannel, &getconfigCtx)
-	configTickerHandle := <-handleChannel
-	// XXX close handleChannels?
-	getconfigCtx.configTickerHandle = configTickerHandle
-
-	// start the local profile fetch tasks
-	log.Functionf("Creating %s at %s", "localProfileTimerTask", agentlog.GetMyStack())
-	go localProfileTimerTask(handleChannel, &getconfigCtx)
-	localProfileTickerHandle := <-handleChannel
-	getconfigCtx.localProfileTickerHandle = localProfileTickerHandle
-
-	// start task fetching radio config from local server
-	go radioPOSTTask(&getconfigCtx)
-
-	// start cipher module tasks
-	cipherModuleStart(&zedagentCtx)
-
-	// start remote attestation task
-	attestModuleStart(&zedagentCtx)
-
-	for {
-		select {
-		case change := <-subOnboardStatus.MsgChan():
-			subOnboardStatus.ProcessChange(change)
-
-		case change := <-subZbootStatus.MsgChan():
-			subZbootStatus.ProcessChange(change)
-
-		case change := <-subGlobalConfig.MsgChan():
-			subGlobalConfig.ProcessChange(change)
-
-		case change := <-subAppInstanceStatus.MsgChan():
-			subAppInstanceStatus.ProcessChange(change)
-
-		case change := <-subContentTreeStatus.MsgChan():
-			subContentTreeStatus.ProcessChange(change)
-
-		case change := <-subVolumeStatus.MsgChan():
-			subVolumeStatus.ProcessChange(change)
-
-		case change := <-subDomainMetric.MsgChan():
-			subDomainMetric.ProcessChange(change)
-
-		case change := <-subProcessMetric.MsgChan():
-			subProcessMetric.ProcessChange(change)
-
-		case change := <-subHostMemory.MsgChan():
-			subHostMemory.ProcessChange(change)
-
-		case change := <-subBaseOsStatus.MsgChan():
-			subBaseOsStatus.ProcessChange(change)
-
-		case change := <-subBlobStatus.MsgChan():
-			subBlobStatus.ProcessChange(change)
-
-		case change := <-getconfigCtx.subNodeAgentStatus.MsgChan():
-			subNodeAgentStatus.ProcessChange(change)
-
-		case change := <-getconfigCtx.subAppNetworkStatus.MsgChan():
-			getconfigCtx.localServerMap.upToDate = false
-			subAppNetworkStatus.ProcessChange(change)
-
-		case change := <-subDeviceNetworkStatus.MsgChan():
-			subDeviceNetworkStatus.ProcessChange(change)
-			if DNSctx.triggerGetConfig {
-				triggerGetConfig(configTickerHandle)
-				DNSctx.triggerGetConfig = false
-			}
-			if DNSctx.triggerDeviceInfo {
-				// IP/DNS in device info could have changed
-				log.Functionf("NetworkStatus triggered PublishDeviceInfo")
-				triggerPublishDevInfo(&zedagentCtx)
-				DNSctx.triggerDeviceInfo = false
-			}
-			if DNSctx.triggerHandleDeferred {
-				start := time.Now()
-				zedcloud.HandleDeferred(zedcloudCtx, start, 100*time.Millisecond, false)
-				ps.CheckMaxTimeTopic(agentName, "deferredChan", start, warningTime, errorTime)
-				DNSctx.triggerHandleDeferred = false
-			}
-			if DNSctx.triggerRadioPOST {
-				triggerRadioPOST(&getconfigCtx)
-				DNSctx.triggerRadioPOST = false
-			}
-
-		case change := <-subAssignableAdapters.MsgChan():
-			subAssignableAdapters.ProcessChange(change)
-
-		case change := <-subNetworkMetrics.MsgChan():
-			subNetworkMetrics.ProcessChange(change)
-			m, err := subNetworkMetrics.Get("global")
-			if err != nil {
-				log.Errorf("subNetworkMetrics.Get failed: %s",
-					err)
-			} else {
-				networkMetrics = m.(types.NetworkMetrics)
-			}
-
-		case change := <-subClientMetrics.MsgChan():
-			subClientMetrics.ProcessChange(change)
-			m, err := subClientMetrics.Get("global")
-			if err != nil {
-				log.Errorf("subClientMetrics.Get failed: %s",
-					err)
-			} else {
-				clientMetrics = m.(types.MetricsMap)
-			}
-
-		case change := <-subLoguploaderMetrics.MsgChan():
-			subLoguploaderMetrics.ProcessChange(change)
-			m, err := subLoguploaderMetrics.Get("global")
-			if err != nil {
-				log.Errorf("subLoguploaderMetrics.Get failed: %s",
-					err)
-			} else {
-				loguploaderMetrics = m.(types.MetricsMap)
-			}
-
-		case change := <-subDiagMetrics.MsgChan():
-			subDiagMetrics.ProcessChange(change)
-			m, err := subDiagMetrics.Get("global")
-			if err != nil {
-				log.Errorf("subDiagMetrics.Get failed: %s",
-					err)
-			} else {
-				diagMetrics = m.(types.MetricsMap)
-			}
-
-		case change := <-subNimMetrics.MsgChan():
-			subNimMetrics.ProcessChange(change)
-			m, err := subNimMetrics.Get("global")
-			if err != nil {
-				log.Errorf("subNimMetrics.Get failed: %s",
-					err)
-			} else {
-				nimMetrics = m.(types.MetricsMap)
-			}
-
-		case change := <-subZRouterMetrics.MsgChan():
-			subZRouterMetrics.ProcessChange(change)
-			m, err := subZRouterMetrics.Get("global")
-			if err != nil {
-				log.Errorf("subZRouterMetrics.Get failed: %s",
-					err)
-			} else {
-				zrouterMetrics = m.(types.MetricsMap)
-			}
-
-		case change := <-subNewlogMetrics.MsgChan():
-			subNewlogMetrics.ProcessChange(change)
-			m, err := subNewlogMetrics.Get("global")
-			if err != nil {
-				log.Errorf("subNewlogMetrics.Get failed: %s",
-					err)
-			} else {
-				newlogMetrics = m.(types.NewlogMetrics)
-			}
-
-		case change := <-subDownloaderMetrics.MsgChan():
-			subDownloaderMetrics.ProcessChange(change)
-			m, err := subDownloaderMetrics.Get("global")
-			if err != nil {
-				log.Errorf("subDownloaderMetrics.Get failed: %s",
-					err)
-			} else {
-				downloaderMetrics = m.(types.MetricsMap)
-			}
-
-		case change := <-deferredChan:
-			start := time.Now()
-			zedcloud.HandleDeferred(zedcloudCtx, change, 100*time.Millisecond, false)
-			ps.CheckMaxTimeTopic(agentName, "deferredChan", start,
-				warningTime, errorTime)
-
-		case change := <-subCipherMetricsDL.MsgChan():
-			subCipherMetricsDL.ProcessChange(change)
-			m, err := subCipherMetricsDL.Get("global")
-			if err != nil {
-				log.Errorf("subCipherMetricsDL.Get failed: %s",
-					err)
-			} else {
-				cipherMetricsDL = m.(types.CipherMetrics)
-			}
-
-		case change := <-subCipherMetricsDM.MsgChan():
-			subCipherMetricsDM.ProcessChange(change)
-			m, err := subCipherMetricsDM.Get("global")
-			if err != nil {
-				log.Errorf("subCipherMetricsDM.Get failed: %s",
-					err)
-			} else {
-				cipherMetricsDM = m.(types.CipherMetrics)
-			}
-
-		case change := <-subCipherMetricsNim.MsgChan():
-			subCipherMetricsNim.ProcessChange(change)
-			m, err := subCipherMetricsNim.Get("global")
-			if err != nil {
-				log.Errorf("subCipherMetricsNim.Get failed: %s",
-					err)
-			} else {
-				cipherMetricsNim = m.(types.CipherMetrics)
-			}
-
-		case change := <-subCipherMetricsZR.MsgChan():
-			subCipherMetricsZR.ProcessChange(change)
-			m, err := subCipherMetricsZR.Get("global")
-			if err != nil {
-				log.Errorf("subCipherMetricsZR.Get failed: %s",
-					err)
-			} else {
-				cipherMetricsZR = m.(types.CipherMetrics)
-			}
-
-		case change := <-subNetworkInstanceStatus.MsgChan():
-			subNetworkInstanceStatus.ProcessChange(change)
-
-		case change := <-subNetworkInstanceMetrics.MsgChan():
-			subNetworkInstanceMetrics.ProcessChange(change)
-
-		case change := <-subDevicePortConfigList.MsgChan():
-			subDevicePortConfigList.ProcessChange(change)
-
-		case change := <-subAppFlowMonitor.MsgChan():
-			log.Tracef("FlowStats: change called")
-			subAppFlowMonitor.ProcessChange(change)
-
-		case change := <-subEdgeNodeCert.MsgChan():
-			subEdgeNodeCert.ProcessChange(change)
-
-		case change := <-subVaultStatus.MsgChan():
-			subVaultStatus.ProcessChange(change)
-
-		case change := <-subAttestQuote.MsgChan():
-			subAttestQuote.ProcessChange(change)
-
-		case change := <-subEncryptedKeyFromDevice.MsgChan():
-			subEncryptedKeyFromDevice.ProcessChange(change)
-
-		case change := <-subAppContainerMetrics.MsgChan():
-			subAppContainerMetrics.ProcessChange(change)
-
-		case change := <-subDiskMetric.MsgChan():
-			subDiskMetric.ProcessChange(change)
-
-		case change := <-subAppDiskMetric.MsgChan():
-			subAppDiskMetric.ProcessChange(change)
-
-		case change := <-subCapabilities.MsgChan():
-			subCapabilities.ProcessChange(change)
-
-		case change := <-subBaseOsMgrStatus.MsgChan():
-			subBaseOsMgrStatus.ProcessChange(change)
-
-		case change := <-subAppInstMetaData.MsgChan():
-			subAppInstMetaData.ProcessChange(change)
-
-		case change := <-subWwanMetrics.MsgChan():
-			subWwanMetrics.ProcessChange(change)
-
-		case change := <-subLocationInfo.MsgChan():
-			subLocationInfo.ProcessChange(change)
-
-		case change := <-subZFSPoolStatus.MsgChan():
-			subZFSPoolStatus.ProcessChange(change)
-			triggerPublishDevInfo(&zedagentCtx)
-
-		case change := <-subZFSPoolMetrics.MsgChan():
-			subZFSPoolMetrics.ProcessChange(change)
-
-		case <-hwInfoTiker.C:
-			triggerPublishHwInfo(&zedagentCtx)
-
-		case change := <-subEdgeviewStatus.MsgChan():
-			subEdgeviewStatus.ProcessChange(change)
-
-		case <-stillRunning.C:
-			// Fault injection
-			if fatalFlag {
-				log.Fatal("Requested fault injection to cause watchdog")
-			}
-		}
-		if hangFlag {
-			log.Functionf("Requested to not touch to cause watchdog")
-		} else {
-			ps.StillRunning(agentName, warningTime, errorTime)
-		}
 	}
 }
 
@@ -1749,12 +1827,6 @@ func triggerPublishDevInfo(ctxPtr *zedagentContext) {
 	triggerLocalDevInfoPOST(ctxPtr.getconfigCtx)
 }
 
-func triggerPublishLocationToController(ctxPtr *zedagentContext) {
-
-	log.Function("Triggered publishLocationToController")
-	flextimer.TickNow(ctxPtr.getconfigCtx.locationCloudTickerHandle)
-}
-
 func triggerPublishAllInfo(ctxPtr *zedagentContext) {
 
 	log.Function("Triggered PublishAllInfo")
@@ -1763,6 +1835,7 @@ func triggerPublishAllInfo(ctxPtr *zedagentContext) {
 	go func() {
 		// we need only the last one device info to publish
 		triggerPublishDevInfo(ctxPtr)
+		triggerPublishHwInfo(ctxPtr)
 		// trigger publish applications infos
 		for _, c := range ctxPtr.getconfigCtx.subAppInstanceStatus.GetAll() {
 			ctxPtr.TriggerObjectInfo <- infoForObjectKey{
@@ -1806,7 +1879,6 @@ func triggerPublishAllInfo(ctxPtr *zedagentContext) {
 				c.(types.AppInstMetaData).Key(),
 			}
 		}
-		triggerPublishHwInfo(ctxPtr)
 		// trigger publish edgeview infos
 		for _, c := range ctxPtr.subEdgeviewStatus.GetAll() {
 			ctxPtr.TriggerObjectInfo <- infoForObjectKey{
@@ -1814,7 +1886,6 @@ func triggerPublishAllInfo(ctxPtr *zedagentContext) {
 				c.(types.EdgeviewStatus).Key(),
 			}
 		}
-		triggerPublishLocationToController(ctxPtr)
 	}()
 }
 
@@ -1829,29 +1900,6 @@ func handleZbootRestarted(ctxArg interface{}, restartCounter int) {
 	log.Functionf("handleZbootRestarted(%d)", restartCounter)
 	if restartCounter != 0 {
 		ctx.zbootRestarted = true
-	}
-}
-
-func initializeDirs() {
-
-	// create persistent holder directory
-	if _, err := os.Stat(types.PersistDir); err != nil {
-		log.Tracef("Create %s", types.PersistDir)
-		if err := os.MkdirAll(types.PersistDir, 0700); err != nil {
-			log.Fatal(err)
-		}
-	}
-	if _, err := os.Stat(types.CertificateDirname); err != nil {
-		log.Tracef("Create %s", types.CertificateDirname)
-		if err := os.MkdirAll(types.CertificateDirname, 0700); err != nil {
-			log.Fatal(err)
-		}
-	}
-	if _, err := os.Stat(checkpointDirname); err != nil {
-		log.Tracef("Create %s", checkpointDirname)
-		if err := os.MkdirAll(checkpointDirname, 0700); err != nil {
-			log.Fatal(err)
-		}
 	}
 }
 
@@ -2078,35 +2126,6 @@ func trimmedDPCL(dpcl types.DevicePortConfigList) types.DevicePortConfigList {
 	return dpclCopy
 }
 
-// base os status event handlers
-// Report BaseOsStatus to zedcloud
-func handleBaseOsStatusCreate(ctxArg interface{}, key string,
-	statusArg interface{}) {
-	handleBaseOsStatusImpl(ctxArg, key, statusArg)
-}
-
-func handleBaseOsStatusModify(ctxArg interface{}, key string,
-	statusArg interface{}, oldStatusArg interface{}) {
-	handleBaseOsStatusImpl(ctxArg, key, statusArg)
-}
-
-func handleBaseOsStatusImpl(ctxArg interface{}, key string,
-	statusArg interface{}) {
-
-	ctx := ctxArg.(*zedagentContext)
-	triggerPublishDevInfo(ctx)
-	log.Functionf("handleBaseOsStatusImpl(%s) done", key)
-}
-
-func handleBaseOsStatusDelete(ctxArg interface{}, key string,
-	statusArg interface{}) {
-
-	log.Functionf("handleBaseOsStatusDelete(%s)", key)
-	ctx := ctxArg.(*zedagentContext)
-	triggerPublishDevInfo(ctx)
-	log.Functionf("handleBaseOsStatusDelete(%s) done", key)
-}
-
 // vault status event handlers
 // Report VaultStatus to zedcloud
 func handleVaultStatusCreate(ctxArg interface{}, key string,
@@ -2226,39 +2245,6 @@ func handleAADelete(ctxArg interface{}, key string,
 	log.Functionf("handleAADelete() done")
 }
 
-func handleZbootStatusCreate(ctxArg interface{}, key string,
-	statusArg interface{}) {
-	handleZbootStatusImpl(ctxArg, key, statusArg)
-}
-
-func handleZbootStatusModify(ctxArg interface{}, key string,
-	statusArg interface{}, oldStatusArg interface{}) {
-	handleZbootStatusImpl(ctxArg, key, statusArg)
-}
-
-func handleZbootStatusImpl(ctxArg interface{}, key string,
-	statusArg interface{}) {
-
-	ctx := ctxArg.(*zedagentContext)
-	if !isZbootValidPartitionLabel(key) {
-		log.Errorf("handleZbootStatusImpl: invalid key %s", key)
-		return
-	}
-	log.Functionf("handleZbootStatusImpl: for %s", key)
-	// nothing to do
-	triggerPublishDevInfo(ctx)
-}
-
-func handleZbootStatusDelete(ctxArg interface{}, key string,
-	statusArg interface{}) {
-	if !isZbootValidPartitionLabel(key) {
-		log.Errorf("handleZbootStatusDelete: invalid key %s", key)
-		return
-	}
-	log.Functionf("handleZbootStatusDelete: for %s", key)
-	// Nothing to do
-}
-
 func handleNodeAgentStatusCreate(ctxArg interface{}, key string,
 	statusArg interface{}) {
 	handleNodeAgentStatusImpl(ctxArg, key, statusArg)
@@ -2354,15 +2340,7 @@ func handleNodeAgentStatusDelete(ctxArg interface{}, key string,
 func getDeferredSentHandlerFunction(ctx *zedagentContext) *zedcloud.SentHandlerFunction {
 	var function zedcloud.SentHandlerFunction
 	function = func(itemType interface{}, data *bytes.Buffer, result types.SenderResult) {
-		if result == types.SenderStatusDebug {
-			// Debug stuff
-			if el, ok := itemType.(info.ZInfoTypes); ok {
-				log.Noticef("deferred queue has INFO: %d", el)
-			}
-			if el, ok := itemType.(attest.ZAttestReqType); ok {
-				log.Noticef("deferred queue has ATTEST: %d", el)
-			}
-		} else if result == types.SenderStatusNone {
+		if result == types.SenderStatusNone {
 			if data == nil {
 				return
 			}

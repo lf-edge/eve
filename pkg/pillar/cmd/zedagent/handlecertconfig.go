@@ -18,7 +18,6 @@ import (
 	zconfig "github.com/lf-edge/eve/api/go/config"
 	"github.com/lf-edge/eve/api/go/evecommon"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
-	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 	"google.golang.org/protobuf/proto"
@@ -383,7 +382,7 @@ func sendAttestReqProtobuf(attestReq *attest.ZAttestReq, iteration int) {
 }
 
 // initialize cipher pubsub trigger handlers and channels
-func cipherModuleInitialize(ctx *zedagentContext, ps *pubsub.PubSub) {
+func cipherModuleInitialize(ctx *zedagentContext) {
 
 	// create the trigger channels
 	ctx.cipherCtx.triggerEdgeNodeCerts = make(chan struct{}, 1)
