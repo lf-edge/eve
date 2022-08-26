@@ -6,7 +6,9 @@ FROM lfedge/eve-alpine:6.7.0 as build
 ENV BUILD_PKGS gcc make patch libc-dev linux-headers tar build-base ca-certificates iptables iproute2 openssl openssl-dev
 RUN eve-alpine-deploy.sh
 
-ENV STRONGSWAN_RELEASE https://download.strongswan.org/strongswan.tar.bz2
+ENV STRONGSWAN_VERSION 5.6.3
+ENV STRONGSWAN_FILE strongswan-${STRONGSWAN_VERSION}.tar.bz2
+ENV STRONGSWAN_RELEASE https://download.strongswan.org/${STRONGSWAN_FILE}
 ENV CONFIGURE_OPTS_x86_64 --enable-aesni
 ENV CONFIGURE_OPTS --prefix=/usr \
             --sysconfdir=/etc \
@@ -52,7 +54,7 @@ RUN rm -rf /out && mkdir /out
 COPY curl-7.61.1.tar.bz2 /tmp/curl-7.61.1.tar.bz2
 RUN tar -C /tmp -xjvf /tmp/curl-7.61.1.tar.bz2 ; cd /tmp/curl-7.61.1 ; ./configure --prefix=/usr ; make  -j "$(getconf _NPROCESSORS_ONLN)" install
 
-COPY strongswan.tar.bz2 /tmp/strongswan/strongswan.tar.bz2 
+COPY ${STRONGSWAN_FILE} /tmp/strongswan/strongswan.tar.bz2
 RUN  tar --strip-components=1 -C /tmp/strongswan -xjf /tmp/strongswan/strongswan.tar.bz2
 RUN  eval ./configure $CONFIGURE_OPTS \$CONFIGURE_OPTS_`uname -m`
 RUN    make  -j "$(getconf _NPROCESSORS_ONLN)"
