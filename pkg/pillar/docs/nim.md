@@ -3,8 +3,8 @@
 ## Overview
 
 NIM manages (physical) network interfaces (Ethernet, WiFi, LTE) of a device based
-on configuration coming from various sources (controller, override, last-resort,
-persisted config).
+on configuration coming from various sources (controller, bootstrap-config.pb,
+override/usb.json, last-resort, persisted config).
 Its main goal is to preserve connectivity between the device and the controller.
 NIM verifies new configuration changes before fully committing to them.
 Moreover, it maintains one or more old but working configurations with a lower-priority,
@@ -19,10 +19,10 @@ to move to the most recent, aka the highest-priority configuration.
   * an instance of the `DevicePortConfig` struct (abbreviated to DPC)
   * contains configuration for every physical interface, except those which are
     disabled or directly assigned to applications
-  * DPC is received from different sources, such as zedagent (config from controller),
-    the `/config` partition with override DPC copied from USB stick
-    by `device-steps.sh` and even from NIM itself, which builds and publishes
-    the *last-resort* config if enabled
+  * DPC is received from different sources, such as zedagent (bootstrap config
+    or config from the controller), the `/config` partition with `override.json`,
+    specially formatted USB stick with `usb.json` and even from NIM itself,
+    which builds and publishes the *last-resort* config if enabled
 * global configuration properties
   * an instance of `ConfigItemValueMap` struct received from zedagent
   * used to determine if last-resort should be enabled, also to obtain time

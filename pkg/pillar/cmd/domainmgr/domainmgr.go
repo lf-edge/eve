@@ -364,6 +364,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	domainCtx.subGlobalConfig = subGlobalConfig
 	subGlobalConfig.Activate()
 
+	// Watch DNS to learn which ports are used for management.
 	subDeviceNetworkStatus, err := ps.NewSubscription(
 		pubsub.SubscriptionOptions{
 			AgentName:     "nim",
@@ -383,6 +384,26 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	domainCtx.subDeviceNetworkStatus = subDeviceNetworkStatus
 	subDeviceNetworkStatus.Activate()
 
+	// Subscribe to PhysicalIOAdapterList from zedagent.
+	// Do not activate until we have DNS.
+	subPhysicalIOAdapter, err := ps.NewSubscription(
+		pubsub.SubscriptionOptions{
+			AgentName:     "zedagent",
+			MyAgentName:   agentName,
+			TopicImpl:     types.PhysicalIOAdapterList{},
+			Activate:      false,
+			Ctx:           &domainCtx,
+			CreateHandler: handlePhysicalIOAdapterListCreate,
+			ModifyHandler: handlePhysicalIOAdapterListModify,
+			DeleteHandler: handlePhysicalIOAdapterListDelete,
+			WarningTime:   warningTime,
+			ErrorTime:     errorTime,
+		})
+	if err != nil {
+		log.Fatal(err)
+	}
+	domainCtx.subPhysicalIOAdapter = subPhysicalIOAdapter
+
 	// Parse any existing ConfigIntemValueMap but continue if there
 	// is none
 	for !domainCtx.GCComplete {
@@ -392,15 +413,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 			subGlobalConfig.ProcessChange(change)
 
 		case <-domainCtx.publishTicker.C:
-			start := time.Now()
-			metrics, pids := gatherProcessMetricList(&domainCtx)
-			for _, m := range metrics {
-				publishProcessMetric(&domainCtx, &m)
-			}
-			unpublishRemovedPids(&domainCtx, domainCtx.pids, pids)
-			domainCtx.pids = pids
-			ps.CheckMaxTimeTopic(agentName, "publishProcesses", start,
-				warningTime, errorTime)
+			publishProcessesHandler(&domainCtx)
 
 		case <-stillRunning.C:
 		}
@@ -432,15 +445,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 			subGlobalConfig.ProcessChange(change)
 
 		case <-domainCtx.publishTicker.C:
-			start := time.Now()
-			metrics, pids := gatherProcessMetricList(&domainCtx)
-			for _, m := range metrics {
-				publishProcessMetric(&domainCtx, &m)
-			}
-			unpublishRemovedPids(&domainCtx, domainCtx.pids, pids)
-			domainCtx.pids = pids
-			ps.CheckMaxTimeTopic(agentName, "publishProcesses", start,
-				warningTime, errorTime)
+			publishProcessesHandler(&domainCtx)
 
 		case <-stillRunning.C:
 		}
@@ -455,78 +460,28 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		capabilitiesSended = true
 	}
 
-	// Wait until we have been onboarded aka know our own UUID however we do not use the UUID
-	if err := utils.WaitForOnboarded(ps, log, agentName, warningTime, errorTime); err != nil {
-		log.Fatal(err)
-	}
-	log.Noticef("processed onboarded")
-
 	log.Functionf("Creating %s at %s", "metricsTimerTask", agentlog.GetMyStack())
 	go metricsTimerTask(&domainCtx, hyper)
 
-	// Wait for DeviceNetworkStatus to have ports and done with testing
-	// so we know the management ports and the other ports are assigned to
-	// "pciback", then we wait for assignableAdapters.
-	for len(domainCtx.deviceNetworkStatus.Ports) == 0 ||
+	// Before starting to process DomainConfig, domainmgr should (in this order):
+	//   1. wait for NIM to publish DNS to learn which ports are used for management
+	//   2. wait for PhysicalIOAdapters (from zedagent) to be processed
+	//   3. wait for NIM to finalize testing of selected DPC
+	// Note: 2. and 3. can also execute in the reverse order.
+	for !domainCtx.assignableAdapters.Initialized ||
+		len(domainCtx.deviceNetworkStatus.Ports) == 0 ||
 		domainCtx.deviceNetworkStatus.Testing {
-		log.Noticef("Waiting for DeviceNetworkStatus ports %d Testing %t",
-			len(domainCtx.deviceNetworkStatus.Ports),
-			domainCtx.deviceNetworkStatus.Testing)
+		log.Noticef("Waiting for AssignableAdapters and/or verified DPC")
 		select {
 		case change := <-subGlobalConfig.MsgChan():
 			subGlobalConfig.ProcessChange(change)
 
 		case change := <-subDeviceNetworkStatus.MsgChan():
+			wasDNSInitialized := domainCtx.DNSinitialized
 			subDeviceNetworkStatus.ProcessChange(change)
-
-		case <-domainCtx.publishTicker.C:
-			start := time.Now()
-			metrics, pids := gatherProcessMetricList(&domainCtx)
-			for _, m := range metrics {
-				publishProcessMetric(&domainCtx, &m)
+			if domainCtx.DNSinitialized && !wasDNSInitialized {
+				subPhysicalIOAdapter.Activate()
 			}
-			unpublishRemovedPids(&domainCtx, domainCtx.pids, pids)
-			domainCtx.pids = pids
-			ps.CheckMaxTimeTopic(agentName, "publishProcesses", start,
-				warningTime, errorTime)
-
-		case <-stillRunning.C:
-		}
-		ps.StillRunning(agentName, warningTime, errorTime)
-	}
-	log.Noticef("Got DeviceNetworkStatus ports %d Testing %t",
-		len(domainCtx.deviceNetworkStatus.Ports),
-		domainCtx.deviceNetworkStatus.Testing)
-
-	// Subscribe to PhysicalIOAdapterList from zedagent
-	subPhysicalIOAdapter, err := ps.NewSubscription(
-		pubsub.SubscriptionOptions{
-			AgentName:     "zedagent",
-			MyAgentName:   agentName,
-			TopicImpl:     types.PhysicalIOAdapterList{},
-			Activate:      false,
-			Ctx:           &domainCtx,
-			CreateHandler: handlePhysicalIOAdapterListCreate,
-			ModifyHandler: handlePhysicalIOAdapterListModify,
-			DeleteHandler: handlePhysicalIOAdapterListDelete,
-			WarningTime:   warningTime,
-			ErrorTime:     errorTime,
-		})
-	if err != nil {
-		log.Fatal(err)
-	}
-	domainCtx.subPhysicalIOAdapter = subPhysicalIOAdapter
-	subPhysicalIOAdapter.Activate()
-
-	// Wait for PhysicalIOAdapters to be initialized.
-	for !domainCtx.assignableAdapters.Initialized {
-		log.Noticef("Waiting for AssignableAdapters")
-		select {
-		case change := <-subGlobalConfig.MsgChan():
-			subGlobalConfig.ProcessChange(change)
-
-		case change := <-subDeviceNetworkStatus.MsgChan():
-			subDeviceNetworkStatus.ProcessChange(change)
 
 		case change := <-subEdgeNodeCert.MsgChan():
 			subEdgeNodeCert.ProcessChange(change)
@@ -535,15 +490,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 			subPhysicalIOAdapter.ProcessChange(change)
 
 		case <-domainCtx.publishTicker.C:
-			start := time.Now()
-			metrics, pids := gatherProcessMetricList(&domainCtx)
-			for _, m := range metrics {
-				publishProcessMetric(&domainCtx, &m)
-			}
-			unpublishRemovedPids(&domainCtx, domainCtx.pids, pids)
-			domainCtx.pids = pids
-			ps.CheckMaxTimeTopic(agentName, "publishProcesses", start,
-				warningTime, errorTime)
+			publishProcessesHandler(&domainCtx)
 
 		// Run stillRunning since we waiting for zedagent to deliver
 		// PhysicalIO which depends on cloud connectivity
@@ -552,6 +499,12 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		ps.StillRunning(agentName, warningTime, errorTime)
 	}
 	log.Noticef("Have %d assignable adapters", len(aa.IoBundleList))
+
+	// Wait until we have been onboarded aka know our own UUID however we do not use the UUID
+	if err := utils.WaitForOnboarded(ps, log, agentName, warningTime, errorTime); err != nil {
+		log.Fatal(err)
+	}
+	log.Noticef("device is onboarded")
 
 	if err := utils.WaitForVault(ps, log, agentName, warningTime, errorTime); err != nil {
 		log.Fatal(err)
@@ -639,20 +592,24 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 				ps.CheckMaxTimeTopic(agentName, "publishTimer", start,
 					warningTime, errorTime)
 			}
-			start = time.Now()
-			metrics, pids := gatherProcessMetricList(&domainCtx)
-			for _, m := range metrics {
-				publishProcessMetric(&domainCtx, &m)
-			}
-			unpublishRemovedPids(&domainCtx, domainCtx.pids, pids)
-			domainCtx.pids = pids
-			ps.CheckMaxTimeTopic(agentName, "publishProcesses", start,
-				warningTime, errorTime)
+			publishProcessesHandler(&domainCtx)
 
 		case <-stillRunning.C:
 		}
 		ps.StillRunning(agentName, warningTime, errorTime)
 	}
+}
+
+func publishProcessesHandler(domainCtx *domainContext) {
+	start := time.Now()
+	metrics, pids := gatherProcessMetricList(domainCtx)
+	for _, m := range metrics {
+		publishProcessMetric(domainCtx, &m)
+	}
+	unpublishRemovedPids(domainCtx, domainCtx.pids, pids)
+	domainCtx.pids = pids
+	domainCtx.ps.CheckMaxTimeTopic(agentName, "publishProcesses", start,
+		warningTime, errorTime)
 }
 
 func handleRestart(ctxArg interface{}, restartCounter int) {

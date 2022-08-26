@@ -247,14 +247,14 @@ func getCertsFromController(ctx *zedagentContext) bool {
 	}
 
 	// validate the certificate message payload
-	certBytes, ret := zedcloud.VerifySigningCertChain(zedcloudCtx, contents)
+	certBytes, ret := zedcloud.VerifyProtoSigningCertChain(log, contents)
 	if ret != nil {
 		log.Errorf("getCertsFromController: verify err %v", ret)
 		return false
 	}
 
 	// write the signing cert to file
-	if err := zedcloud.UpdateServerCert(zedcloudCtx, certBytes); err != nil {
+	if err := zedcloud.SaveServerSigningCert(zedcloudCtx, certBytes); err != nil {
 		errStr := fmt.Sprintf("%v", err)
 		log.Errorf("getCertsFromController: " + errStr)
 		return false

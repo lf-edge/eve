@@ -182,6 +182,7 @@ type zedagentContext struct {
 	remainingTestTime       time.Duration
 	physicalIoAdapterMap    map[string]types.PhysicalIOAdapter
 	globalConfig            types.ConfigItemValueMap
+	globalConfigPublished   bool // was last globalConfig successfully published
 	specMap                 types.ConfigItemSpecMap
 	globalStatus            types.GlobalStatus
 	flowLogMetrics          types.FlowlogMetrics
@@ -287,23 +288,36 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	// Initialize all zedagent publications.
 	initPublications(zedagentCtx)
 
-	// upgradeconverter ensures we have a ConfigItemValueMap so we
-	// read it to get the initial values
-	item, err := zedagentCtx.pubGlobalConfig.Get("global")
-	if err != nil {
-		log.Fatalf("ConfigItemValueMap missing: %s", err)
-	}
-	zedagentCtx.globalConfig = item.(types.ConfigItemValueMap)
-	log.Functionf("initialized GlobalConfig")
-
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)
 	ps.StillRunning(agentName, warningTime, errorTime)
 
 	initializeDirs()
 
-	// Apply saved radio config ASAP.
+	// Load bootstrap configuration if present.
 	getconfigCtx := zedagentCtx.getconfigCtx
+	maybeLoadBootstrapConfig(getconfigCtx)
+
+	// Get GlobalConfig.
+	// If not present (e.g. loading of bootstrap config failed), use default values.
+	item, err := zedagentCtx.pubGlobalConfig.Get("global")
+	if err == nil {
+		zedagentCtx.globalConfig = item.(types.ConfigItemValueMap)
+	} else {
+		log.Warnf("GlobalConfig is missing, publishing default values")
+		zedagentCtx.globalConfig = *types.DefaultConfigItemValueMap()
+		err = zedagentCtx.pubGlobalConfig.Publish("global", zedagentCtx.globalConfig)
+		if err != nil {
+			// Could fail if no space left in the filesystem.
+			log.Fatalf("Failed to publish default globalConfig: %s", err)
+		}
+	}
+	// GlobalConfig is guaranteed to have been published by this point
+	// (otherwise the log.Fatalf above exits zedagent).
+	zedagentCtx.globalConfigPublished = true
+	log.Noticef("Initialized GlobalConfig: %v", zedagentCtx.globalConfig)
+
+	// Apply saved radio config ASAP.
 	initializeRadioConfig(getconfigCtx)
 
 	// Wait until we have been onboarded aka know our own UUID.
@@ -406,7 +420,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 	// start the config fetch tasks, when zboot status is ready
 	log.Functionf("Creating %s at %s", "configTimerTask", agentlog.GetMyStack())
-	go configTimerTask(handleChannel, getconfigCtx)
+	go configTimerTask(getconfigCtx, handleChannel)
 	configTickerHandle := <-handleChannel
 	// XXX close handleChannels?
 	getconfigCtx.configTickerHandle = configTickerHandle

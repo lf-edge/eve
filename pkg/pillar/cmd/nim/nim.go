@@ -258,17 +258,21 @@ func (n *nim) run(ctx context.Context) (err error) {
 	dpcAvailTimer := time.After(dpcAvailableTimeLimit)
 
 	waitForLastResort := n.enabledLastResort
-	waitForAA := true
-
 	lastResortIsReady := func() error {
 		if err = n.subDevicePortConfigO.Activate(); err != nil {
+			return err
+		}
+		if err = n.subDevicePortConfigA.Activate(); err != nil {
 			return err
 		}
 		if err = n.subZedAgentStatus.Activate(); err != nil {
 			return err
 		}
-		err = n.subAssignableAdapters.Activate()
-		return err
+		if err = n.subAssignableAdapters.Activate(); err != nil {
+			return err
+		}
+		go n.queryControllerDNS()
+		return nil
 	}
 	if !waitForLastResort {
 		if err = lastResortIsReady(); err != nil {
@@ -320,14 +324,6 @@ func (n *nim) run(ctx context.Context) (err error) {
 
 		case change := <-n.subAssignableAdapters.MsgChan():
 			n.subAssignableAdapters.ProcessChange(change)
-			if waitForAA && n.assignableAdapters.Initialized {
-				n.Log.Noticef("Assignable Adapters are initialized")
-				if err = n.subDevicePortConfigA.Activate(); err != nil {
-					return err
-				}
-				go n.queryControllerDNS()
-				waitForAA = false
-			}
 
 		case event := <-netEvents:
 			ifChange, isIfChange := event.(netmonitor.IfChange)
@@ -808,11 +804,31 @@ func (n *nim) ingestDevicePortConfig() {
 		// Directory might not exist
 		return
 	}
+	var dpcFiles []string
 	for _, location := range locations {
-		if !location.IsDir() {
-			n.ingestDevicePortConfigFile(configDevicePortConfigDir,
-				runDevicePortConfigDir, location.Name())
+		if location.IsDir() {
+			continue
 		}
+		// Files from /config can have any name while files from an
+		// override USB stick must be named usb.json.
+		dpcFile := location.Name()
+		if !strings.HasSuffix(dpcFile, ".json") {
+			n.Log.Noticef("Ignoring %s file", dpcFile)
+			continue
+		}
+		dpcFiles = append(dpcFiles, dpcFile)
+	}
+	// Skip these legacy DPC json files if there is bootstrap config.
+	_, err = os.Stat(types.BootstrapConfFileName)
+	bootstrapExists := err == nil
+	if bootstrapExists && len(dpcFiles) > 0 {
+		n.Log.Noticef("Not ingesting DPC jsons (%v) from config partition: "+
+			"bootstrap config is present", strings.Join(dpcFiles, ", "))
+		return
+	}
+	for _, dpcFile := range dpcFiles {
+		n.ingestDevicePortConfigFile(configDevicePortConfigDir,
+			runDevicePortConfigDir, dpcFile)
 	}
 }
 
@@ -838,29 +854,21 @@ func (n *nim) ingestDevicePortConfigFile(oldDirname string, newDirname string, n
 	}
 	key := strings.TrimSuffix(name, ".json")
 	dpc.DoSanitize(n.Log, true, true, key, true, true)
-	if filename != "" {
-		// Determine ingested filename.
-		// Files from /config can have any name while files from an
-		// override USB stick must be named usb.json.
-		basename := filepath.Base(filename)
-		if !strings.HasSuffix(basename, ".json") {
-			n.Log.Noticef("Ignoring %s file", filename)
-			return
-		}
-		// Use sha to determine if file has already been ingested
-		shaFilename := filepath.Join(types.IngestedDirname, "DevicePortConfig",
-			strings.TrimSuffix(basename, ".json")) + ".sha"
-		changed, dpcSha, err := fileutils.CompareSha(filename,
-			shaFilename)
-		if err != nil {
-			n.Log.Errorf("CompareSha failed: %s", err)
-		} else if changed {
-			dpc.ShaFile = shaFilename
-			dpc.ShaValue = dpcSha
-		} else {
-			n.Log.Noticef("No change to %s", filename)
-			return
-		}
+
+	// Use sha to determine if file has already been ingested
+	basename := filepath.Base(filename)
+	shaFilename := filepath.Join(types.IngestedDirname, "DevicePortConfig",
+		strings.TrimSuffix(basename, ".json")) + ".sha"
+	changed, dpcSha, err := fileutils.CompareSha(filename,
+		shaFilename)
+	if err != nil {
+		n.Log.Errorf("CompareSha failed: %s", err)
+	} else if changed {
+		dpc.ShaFile = shaFilename
+		dpc.ShaValue = dpcSha
+	} else {
+		n.Log.Noticef("No change to %s", filename)
+		return
 	}
 
 	// Save New config to file.

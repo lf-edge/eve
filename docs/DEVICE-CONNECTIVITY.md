@@ -2,11 +2,11 @@
 
 EVE needs to always be able to connect to the controller, yet the configuration of the network ports might be both complex and changing over time.
 
-In addition some network ports might be designated to application usage, or the underlying I/O bus controllers (e.g., PCI controllers) be designated for assignment to applications. That part of the configuration can also change.
+In addition, some network ports might be designated to application usage, or the underlying I/O bus controllers (e.g., PCI controllers) be designated for assignment to applications. That part of the configuration can also change.
 
 Any network port configuration changes which might affect the connectivity to the controller requires care to avoid permanently losing connectivity to the controller and become unmanageable as a result. Thus it is required to perform testing as part of a configuration change and have a way to fall back to a working port configuration.
 
-This is accomplished by logic to test connectivity to the controller (implemented in the Network Interface Manager [nim](../pkg/pillar/cmd/nim) with help from the [devicenetwork](../pkg/pillar/devicenetwork) package, and maintaining a list of current working and fallback configuration in ```/persist/status/nim/DevicePortConfigList/global.json```
+This is accomplished by logic to test connectivity to the controller (implemented in the [DPCManager](../pkg/pillar/dpcmanager), which is part of the Network Interface Manager [nim](../pkg/pillar/cmd/nim)), and maintaining a list of current working and fallback configuration in ```/persist/status/nim/DevicePortConfigList/global.json```
 
 To handle different types of connectivity towards the controller EVE supports both load spreading and failover when it comes to maintaining connectivity to the controller.
 
@@ -19,7 +19,7 @@ That is accomplished in the below configuration, which uses the ```DevicePortCon
 
 The cost is a number between 0 and 255, with zero (the default) implying free, and less preferred ports being assigned a higher cost. Multiple ports can be assigned the same cost, in which case once failover has happened to cost N, then all uplink ports with cost N will be used for load spreading of the management traffic.
 
-Furthermore, one can set [network.download.max.cost](CONFIG-PROPERTIES.md) to a number N if is is acceptable for EVE to perform (potentially large) downloads of content and images when having failed over to uplink ports with cost N.
+Furthermore, one can set [network.download.max.cost](CONFIG-PROPERTIES.md) to a number N if it is acceptable for EVE to perform (potentially large) downloads of content and images when having failed over to uplink ports with cost N.
 
 The cost is new and will replace the free/freeUplink way to specify two levels of cost (free or paid). For compatibility reasons EVE will look at freeUplink for the SystemAdapter and PhysicalIO so that the free/paid distinction still works until the cost parameter is used by all the controller.
 
@@ -29,18 +29,26 @@ There are several sources from which nim gets the potential port configurations.
 
 ### Fresh install
 
-When EVE is installed on a device it only has the last-resort configuration specified below. This is sufficient to connect to the controller if
+When EVE is installed using a generic EVE installer without device bootstrap configuration included (see [CONFIG.md](./CONFIG.md), section "Bootstrap configuration"), it only has the last-resort configuration available (see "Last resort" section below). This is sufficient to connect to the controller if
 
 - DHCP is enabled on one of the Ethernet ports
 - WiFi is not assumed (since WiFi needs credentials)
-- If cellular connectivity is assumed, the default APN will work to connect to the network
+- If cellular connectivity is assumed, the default APN (`internet`) will work to connect to the network
 - No enterprise proxy configuration is required to be able to connect to the controller.
 
-If any of those cases apply, then a USB stick is needed to specify the initial port configuration so that the device can connect to the controller.
+If any of those assumptions is not satisfied, then it is necessary to either install EVE using a single-use EVE installer, shipped with the initial "bootstrap" configuration prepared for the target device (the preferred method) or to use one of the legacy mechanisms for off-line configuration management.
 
-### Override the configuration using a USB stick
+### Bootstrap configuration
 
-If the deployment site requires use of HTTP enterprise proxies and/or static IP configuration, then a file containing a DevicePortConfig can be placed on a USB stick prior to booting the device. Note that this requires that the USB controller is enabled using debug.enable.usb as specified in [configuration properties](CONFIG-PROPERTIES.md)
+The idea behind bootstrap config is to generalize the issue of configuration bootstrapping beyond just network configuration and also to reuse the existing proto models which are already being used between the device and the controller in the on-line mode. This means that instead of users directly editing an internal structure `DevicePortConfig` with network configuration, it is much safer and robust to simply have the controller exporting the prepared device configuration (possibly not only for networking) into a file and baking it into the EVE installation medium, avoiding any error-prone manual edits from the user in the process.
+
+In terms of configuration handling, much of the code-path is reused between the bootstrap and a config coming (on-line) from a controller. Just like in the latter case, the networking portion of the device configuration is parsed and published to nim by [zedagent](../pkg/pillar/cmd/zedagent) using ```DevicePortConfig``` type.
+
+This feature is described in much more detail in [CONFIG.md](./CONFIG.md). Even though it has some limitations in the present state, it is already the preferred method to use. Below we describe a legacy "override" method for the completeness sake, which is still supported by EVE for backward-compatibility reasons.
+
+### (Legacy) Override the configuration using a USB stick
+
+If the deployment site requires use of HTTP enterprise proxies and/or static IP configuration, then a file containing a DevicePortConfig can be placed on a USB stick prior to booting the device. Note that this requires that the USB controller is enabled using `debug.enable.usb` as specified in [configuration properties](CONFIG-PROPERTIES.md)
 
 There are examples of such configurations in [legacy EVE configuration](CONFIG.md)
 
@@ -57,9 +65,9 @@ At least one port must be set to be a management port, and that port needs to re
 
 ### Last resort
 
-Unless the network.fallback.any.eth configuration item is set to false (as specified in [configuration properties](CONFIG-PROPERTIES.md)), then there is an additional lowest priority item in the list of DevicePortConfigs, based on finding all of the Ethernet and Ethernet-like interfaces (an example of the latter is WiFi and cellular modems) which are not used exclusively by applications. The last resort configuration assumes DHCP and no enterprise proxies.
+Unless the `network.fallback.any.eth` configuration item is set to false (as specified in [configuration properties](CONFIG-PROPERTIES.md)), then there is an additional lowest priority item in the list of DevicePortConfigs, based on finding all of the Ethernet and Ethernet-like interfaces (an example of the latter is WiFi and cellular modems) which are not used exclusively by applications. The last resort configuration assumes DHCP and no enterprise proxies.
 
-Note that if static IP and/or enterprise proxies are used it is useful to set network.fallback.any.eth to false to avoid having the device try DHCP without proxies when there is some network outage.
+Note that if static IP and/or enterprise proxies are used, it is useful to set `network.fallback.any.eth` to false to avoid having the device try DHCP without proxies when there is some network outage.
 
 ## Prioritizing the list
 
@@ -67,24 +75,30 @@ The nim retains the currently working configuration, plus the following in prior
 
 1. The most recently received configuration from the controller
 1. The last known working configuration from the controller
-1. An override file from a USB stick (if any)
+1. Bootstrap config or an override file from a USB stick (if any)
 1. The last resort if so enabled
 
-This is based on comparing the TimePriority field in the configuration, where the information receive from zedagent has a TimePriority based on when it was last received or changed, and the override file should contain an explicit TimePriority field. The last resort configuration is the lowest priority with a TimePriority of Jan 1, 1970.
+This is based on comparing the TimePriority field in the `DevicePortConfig`
+Depending on the configuration source, TimePriority is determined differently:
+
+- For configuration from the controller: newer EVE versions allow the controller to specify the time when the configuration was created/updated in `EdgeDevConfig.config_timestamp` (which is then used for TimePriority); in older EVE versions `zedagent` microservice will simply set TimePriority to the time when the configuration was received from the controller.
+- For bootstrap config: the controller is expected to put the time of config creation into `EdgeDevConfig.config_timestamp` and `zedagent` will use it for TimePriority
+- For legacy override file: it should contain explicit TimePriority field entered manually by the user (this is rather error prone)
+- For the last resort: `nim` microservice assumes the lowest priority with a TimePriority of Jan 1, 1970.
 
 Once the most recent configuration received from the controller has been tested and found to be usable, then all but the (optional) last resort configuration are pruned from the above list.
 When a new configuration is received from the controller it will keep the old configuration from the controller as a fallback.
 
 ## Testing
 
-The Network Interface Manager performs two types of testing
+The Network Interface Manager (specifically its component [DPCManager](../pkg/pillar/dpcmanager)) performs two types of testing
 
 - Validate that a new configuration is working before replacing the current configuration
 - Periodically check that the existing configuration is working
 
 ### Testing a new configuration from the controller
 
-The testing is triggered by receiving a new configuration from the controller and completes when at least one of the management ports can be used to reach the controller. If there are multiple management ports in the configuration, there might be an error reported for ports which are not working (depending on the order in which the ports are tried).
+The testing is triggered by receiving a new configuration from the controller (or from a different source) and completes when at least one of the management ports can be used to reach the controller. If there are multiple management ports in the configuration, there might be an error reported for ports which are not working (depending on the order in which the ports are tried).
 
 [TBD Should we verify that the new configuration is usable for some minimum time e.g., 10 minutes before discarding the previous/fallback configuration?]
 

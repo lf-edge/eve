@@ -28,6 +28,7 @@ func applyDefaultConfigItem(ctxPtr *ucContext) error {
 	createConfigItemMapDir(ctxPtr.newConfigItemValueMapDir())
 	newConfigItemFile := ctxPtr.newConfigItemValueMapFile()
 	newExists := fileExists(newConfigItemFile)
+	bootstrapExists := fileExists(types.BootstrapConfFileName)
 
 	newConfigPtr := types.DefaultConfigItemValueMap()
 	if newExists {
@@ -46,6 +47,11 @@ func applyDefaultConfigItem(ctxPtr *ucContext) error {
 			}
 		}
 	} else {
+		if bootstrapExists {
+			log.Warnf("Not creating default %s: "+
+				"bootstrap config is present", newConfigItemFile)
+			return nil
+		}
 		log.Noticef("No existing ConfigItemValueMap; creating %s with defaults",
 			newConfigItemFile)
 	}
@@ -69,7 +75,7 @@ func applyDefaultConfigItem(ctxPtr *ucContext) error {
 }
 
 // If we have a /config/ importGlobalConfigFile then we compare its sha against
-// ingestedGlobalConfigSha and only import is different. This ensures that we only
+// ingestedGlobalConfigSha and only import if different. This ensures that we only
 // apply it once.
 func importFromConfigPartition(ctxPtr *ucContext) error {
 	var err error
@@ -79,8 +85,24 @@ func importFromConfigPartition(ctxPtr *ucContext) error {
 	persistStatusFile := ctxPtr.newConfigItemValueMapFile()
 	globalConfigExists := fileExists(importGlobalConfigFile)
 	persistedConfigExists := fileExists(persistStatusFile)
+	bootstrapExists := fileExists(types.BootstrapConfFileName)
+	authKeysExists := fileExists(baseAuthorizedKeysFile)
 
 	doImport := globalConfigExists
+
+	// Skip the legacy global.json if there is bootstrap config.
+	if bootstrapExists {
+		if doImport {
+			log.Warnf("Skipping import of %s: "+
+				"bootstrap config is present", importGlobalConfigFile)
+		}
+		if authKeysExists {
+			log.Warnf("Skipping import of %s: "+
+				"bootstrap config is present", baseAuthorizedKeysFile)
+		}
+		return nil
+	}
+
 	if doImport {
 		doImport, configSha, err = fileutils.CompareSha(importGlobalConfigFile,
 			ingestedGlobalConfigSha)
@@ -186,8 +208,7 @@ func parseFile(filename string) (*types.ConfigItemValueMap, error) {
 }
 
 func readAuthorizedKeys(filename string) (string, bool) {
-	exists := fileExists(filename)
-	if !exists {
+	if !fileExists(filename) {
 		return "", false
 	}
 
