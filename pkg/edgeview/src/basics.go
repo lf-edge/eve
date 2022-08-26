@@ -42,12 +42,23 @@ var (
 	pubsublarge   []string
 	sysopts       []string
 	logdirectory  []string
+	basics        basicItems
 )
+
+type basicItems struct {
+	uuid       string // device UUID
+	server     string // /config/server
+	release    string // EVE release
+	partition  string // device partition
+	proxy      string // proxy ip:port
+	evendpoint string // public IP informed by dispatcher
+}
 
 // all the supported options
 func initOpts() {
 	netopts = []string{
 		"acl",
+		"addhost",
 		"app",
 		"arp",
 		"connectivity",
@@ -55,6 +66,7 @@ func initOpts() {
 		"if",
 		"mdns",
 		"nslookup",
+		"showcerts",
 		"ping",
 		"route",
 		"socket",
@@ -104,6 +116,7 @@ func initOpts() {
 		"cat",
 		"cp",
 		"datastore",
+		"dmesg",
 		"download",
 		"du",
 		"hw",
@@ -206,7 +219,7 @@ func getAddrFromJWT(token string, isServer bool, instID int) (string, string, er
 	}
 
 	if jdata.Num > 1 && instID < 1 {
-		return addrport, path, fmt.Errorf("Edgeview is in multi-instance mode, inst-id(1-%d) needs to be specified", jdata.Num)
+		return addrport, path, fmt.Errorf("Edgeview is in multi-instance mode, '-inst 1-%d' needs to be specified", jdata.Num)
 	} else if jdata.Num == 1 && instID > 0 {
 		return addrport, path, fmt.Errorf("Edgeview is not in multi-instance mode, no need to specify inst-ID")
 	}
@@ -248,7 +261,7 @@ func checkClientIPMsg(msg string) bool {
 				log.Errorf("received invalid IP %v", msg)
 				return false
 			}
-			myEvEndPoint = msgs[1]
+			basics.evendpoint = msgs[1]
 			return true
 		}
 	}
@@ -282,47 +295,70 @@ func getBasics() {
 		}
 		ips = append(ips, i.ipAddr)
 	}
-	if myEvEndPoint != "" {
-		fmt.Printf("Device IPs: %v; Endpoint IP %s\n", ips, myEvEndPoint)
+	addStr := ""
+	if basics.proxy != "" {
+		addStr = " (proxy " + basics.proxy + ")"
+	}
+	if basics.evendpoint != "" {
+		fmt.Printf("Device IPs: %v; Endpoint IP %s%s\n", ips, basics.evendpoint, addStr)
 	} else {
-		fmt.Printf("Device IPs: %v\n", ips)
+		fmt.Printf("Device IPs: %v%s\n", ips, addStr)
 	}
 
-	retbytes, err := ioutil.ReadFile("/persist/status/uuid")
-	if err == nil {
-		fmt.Printf("  UUID: %s", string(retbytes))
+	if basics.uuid == "" {
+		retbytes, err := ioutil.ReadFile("/persist/status/uuid")
+		if err == nil {
+			basics.uuid = string(retbytes)
+		}
 	}
-	retbytes, err = ioutil.ReadFile("/config/server")
-	if err == nil {
+	fmt.Printf("  UUID: %s", basics.uuid)
+
+	devInfo := getDevInfo()
+	if devInfo.DeviceName != "" {
+		fmt.Printf("  Device: %s, Enterprise: %s\n", devInfo.DeviceName, devInfo.EnterpriseName)
+	}
+
+	if basics.server == "" {
+		retbytes, err := ioutil.ReadFile("/config/server")
+		if err == nil {
+			server := string(retbytes)
+			basics.server = strings.TrimSuffix(server, "\n")
+		}
+	}
+
+	if basics.server != "" {
 		var printed bool
-		serverurl := string(retbytes)
-		conts := strings.Split(serverurl, "zedcloud.")
+		conts := strings.Split(basics.server, "zedcloud.")
 		if len(conts) == 2 {
 			cont2s := strings.Split(conts[1], ".zededa.net")
 			if len(cont2s) == 2 { // color highlight the cluster name string
 				cluster := cont2s[0]
 				colorCluster := getColorStr(cluster, colorYELLOW)
-				controller := strings.Replace(serverurl, cluster, colorCluster, 1)
+				controller := strings.Replace(basics.server, cluster, colorCluster, 1)
 				fmt.Printf("  Controller: %s", controller)
 				printed = true
 			}
 		}
 		if !printed {
-			fmt.Printf("  Controller: %s", serverurl)
+			fmt.Printf("  Controller: %s", basics.server)
 		}
 	}
 
-	var release, partition string
-	retbytes, err = ioutil.ReadFile("/run/eve-release")
-	if err == nil {
-		release = string(retbytes)
-	}
-	retbytes, err = ioutil.ReadFile("/run/eve.id")
-	if err == nil {
-		partition = string(retbytes)
+	if basics.release == "" {
+		retbytes, err := ioutil.ReadFile("/run/eve-release")
+		if err == nil {
+			basics.release = string(retbytes)
+		}
 	}
 
-	fmt.Printf("  EVE-OS release %s, %s", release, partition)
+	if basics.partition == "" {
+		retbytes, err := ioutil.ReadFile("/run/eve.id")
+		if err == nil {
+			basics.partition = string(retbytes)
+		}
+	}
+
+	fmt.Printf("  EVE-OS release %s, %s", basics.release, basics.partition)
 	fmt.Printf("  Edge-View Ver: %s, JWT expires at %v\n",
 		edgeViewVersion, time.Unix(int64(evStatus.ExpireOn), 0).Format(time.RFC3339))
 	hinfo, err := host.Info()
@@ -518,17 +554,18 @@ func listRecursiveFiles(path, pattern string) ([]string, error) {
 	return jfiles, nil
 }
 
-var helpStr = `edge-view-query [ -token <session-token> ] [ -debug ] [ -inst <instance-id> ] <query string>
- options:
-  log/search-pattern [ -time <start_time>-<end_time> -json -type <app|dev> -line <num> ]
+var helpStr = `eve-edgeview [ -token <session-token> ] [ -inst <instance-id> ] <query command>
+ query options:
 `
 
 func printHelp(opt string) {
 	if opt == "" {
 		fmt.Println(helpStr)
-		fmt.Printf("  pub/ %v\n\n", pubsubopts)
 		fmt.Printf("  %v\n", netopts)
 		fmt.Printf("  %v\n", sysopts)
+		fmt.Printf("  log/search-pattern [ -time <start_time>-<end_time> -json -type <app|dev> -line <num> ]\n")
+		fmt.Printf("  pub/ %v\n", pubsubopts)
+		fmt.Printf("\n  For more detail help on EdgeView commands, see https://wiki.lfedge.org/display/EVE/EdgeView+Commands\n\n")
 	} else {
 		fmt.Printf("\n")
 		switch opt {
@@ -537,6 +574,8 @@ func printHelp(opt string) {
 			helpOn("acl[/<filter>]", "to display all filters of running and configured ACL")
 			helpExample("acl", "display all filters of ACL", true)
 			helpExample("acl/nat", "display in table nat of ACL", false)
+		case "addhost":
+			helpOn("addhost/host-name/host-IP", "to add a host entry in EdgeView container's /etc/hosts file")
 		case "app":
 			helpOn("app[/app-string]", "to display all the app or one specific app")
 			helpExample("app", "display all apps in brief", true)
@@ -546,7 +585,7 @@ func printHelp(opt string) {
 			helpExample("arp", "display all arp entries", true)
 			helpExample("arp/192.168", "display all arp entries contain 192.168 string", false)
 		case "connectivity":
-			helpOn("connectivity", "run diag on ports, and display the port config list")
+			helpOn("connectivity", "display the port config list with index")
 		case "flow":
 			helpOn("flow[/<some pattern>]", "display ip flow information in the kernel search pattern")
 			helpExample("flow/sport=53", "display all the ip flow matches source port of 53", true)
@@ -563,9 +602,13 @@ func printHelp(opt string) {
 			helpOn("nslookup[/<ip or name>]", "display domain name and dns server information")
 			helpExample("nslookup/www.amazon.com", "display DNS information on www.amazon.com", true)
 			helpExample("nslookup/8.8.8.8", "display DNS information on address 8.8.8.8", false)
+		case "showcerts":
+			helpOn("showcerts[/<url>][/proxy-addr:proxy-port]", "display TLS connection certificates of server side")
+			helpExample("showcerts/zedcloud.local.zededa.net", "display TLS certificates from the controller", true)
+			helpExample("showcerts/zedcloud.local.zededa.net/10.10.1.128:3128", "display controller TLS certificates through a proxy server", false)
 		case "ping":
 			helpOn("ping[/<ip or name>]", "ping to 8.8.8.8 from all the UP interfaces or ping a specific address")
-			helpExample("ping", "ping to 8.8.8.8 from each source IP address of the intefaces", true)
+			helpExample("ping", "ping to 8.8.8.8 from each source IP address of the interfaces", true)
 			helpExample("ping/192.168.1.1", "ping the address of 192.168.1.1", false)
 		case "route":
 			helpOn("route", "display all the ip rule and their ip table entries")
@@ -605,6 +648,8 @@ func printHelp(opt string) {
 			helpExample("cat/<path> -line <num>", "display only <num> of lines, like 'head' if <num> is positive, like 'tail' if the <num> is negative", false)
 		case "datastore":
 			helpOn("datastore", "display the device current datastore: EQDN, type, cipher information")
+		case "dmesg":
+			helpOn("dmesg", "display the device current dmesg information")
 		case "download":
 			helpOn("download", "display the download config and status during downloading operation and url stats since reboot")
 		case "du":
@@ -617,7 +662,7 @@ func printHelp(opt string) {
 		case "ls":
 			helpOn("ls/<path to filenames>", "to display the file/directory information")
 			helpExample("ls//config/device.cert.pem", "display the /config/device.cert.pem file info", true)
-			helpExample("ls//config/device*", "display all the files with prefix 'device' in /config", false)
+			helpExample("ls//config/\"device*\"", "display all the files with prefix 'device' in /config", false)
 		case "model":
 			helpOn("model", "display the hardware model information in json format")
 		case "newlog":

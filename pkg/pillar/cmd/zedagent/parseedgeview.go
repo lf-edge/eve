@@ -57,6 +57,16 @@ func parseEvConfig(ctx *getconfigContext, config *zconfig.EdgeDevConfig) {
 	}
 	evConfig.AppPolicy = app
 
+	// external side
+	ext := types.EvExtPolicy{}
+	if zcfgEv.ExtPolicy != nil {
+		ext = types.EvExtPolicy{
+			Enabled: zcfgEv.ExtPolicy.AllowExt,
+		}
+	}
+	evConfig.ExtPolicy = ext
+	evConfig.GenID = zcfgEv.GenerationId
+
 	changed := !cmp.Equal(ctx.configEdgeview, &evConfig)
 	if changed {
 		params := strings.SplitN(evConfig.JWToken, ".", 3)
@@ -274,49 +284,5 @@ func removeEvFiles() {
 	_, err = os.Stat(types.EdgeviewCfgFile)
 	if err == nil {
 		os.Remove(types.EdgeviewCfgFile)
-	}
-}
-
-// XXX temp solution to enter JWT token through edgeview.authen.jwt configitem
-// will be removed once the controllers are set up to send this through EdgeviewConfig
-func handleEdgeviewToken(gcp *types.ConfigItemValueMap) {
-	edgeviewParam := gcp.GlobalValueString(types.EdgeViewToken)
-	if _, err := os.Stat(types.EdgeviewPath); os.IsNotExist(err) {
-		if err := os.MkdirAll(types.EdgeviewPath, 0755); err != nil {
-			log.Error(err)
-			return
-		}
-	}
-
-	dev := types.EvDevPolicy{
-		Enabled: true,
-	}
-	app := types.EvAppPolicy{
-		Enabled: true,
-	}
-	ext := types.EvExtPolicy{
-		Enabled: true,
-	}
-	evConfig := types.EdgeviewConfig{
-		JWToken:   edgeviewParam,
-		DevPolicy: dev,
-		AppPolicy: app,
-		ExtPolicy: ext,
-		GenID:     1,
-	}
-
-	if edgeviewParam != "" {
-		params := strings.SplitN(edgeviewParam, ".", 3)
-		if len(params) != 3 {
-			log.Errorf("edgeview JWT token in wrong format")
-			removeEvFiles()
-		} else {
-			err := addEvFiles(evConfig, params)
-			if err != nil {
-				removeEvFiles()
-			}
-		}
-	} else {
-		removeEvFiles()
 	}
 }

@@ -5,9 +5,12 @@ package main
 
 import (
 	"bytes"
+	"compress/gzip"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/ioutil"
+	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -293,5 +296,87 @@ func getTimeSec(timeline string, now int64) (int64, int64) {
 		return ti1, ti2
 	} else {
 		return ti2, ti1
+	}
+}
+
+// uncompress the gzip log files and pack them into a single
+// json text file for device and each app logs
+func unpackLogfiles(path string, files []os.FileInfo) {
+	sfnames := make(map[string][]string)
+	for _, f := range files {
+		if strings.HasPrefix(f.Name(), "dev.log.") {
+			sfnames["dev"] = append(sfnames["dev"], f.Name())
+		} else if strings.HasPrefix(f.Name(), "app.") {
+			pname := strings.Split(f.Name(), ".log.")
+			if len(pname) != 2 {
+				continue
+			}
+			sfnames[pname[0]] = append(sfnames[pname[0]], f.Name())
+		}
+	}
+
+	if len(sfnames) == 0 {
+		fmt.Printf("len is zero for sfnames\n")
+		return
+	}
+
+	for p := range sfnames {
+		textFileName := path + "/" + p + ".log.txt"
+		sort.Strings(sfnames[p])
+		fs, err := os.Create(textFileName)
+		if err != nil {
+			fmt.Printf("can't create file %v\n", err)
+			return
+		}
+
+		for _, s := range sfnames[p] {
+			f, err := os.Open(path + "/" + s)
+			if err != nil {
+				fmt.Printf("can't open file %v\n", err)
+				continue
+			}
+
+			gs, err := gzip.NewReader(f)
+			if err != nil {
+				fmt.Printf("can't gzip decode file %v\n", err)
+				continue
+			}
+
+			buf := make([]byte, 4096)
+			for {
+				var done bool
+				n, err := gs.Read(buf)
+				if err != nil {
+					if err != io.EOF {
+						fmt.Printf("can't read gzip file %v\n", err)
+						continue
+					}
+					done = true
+				}
+
+				_, err = fs.Write(buf[:n])
+				if err != nil {
+					fmt.Printf("can't write text file %v\n", err)
+					if done {
+						break
+					}
+				}
+				if done {
+					break
+				}
+			}
+			gs.Close()
+			f.Close()
+		}
+
+		fs.Close()
+		fmt.Printf("\n uncompressed into %s\n", textFileName)
+	}
+
+	for _, f := range files {
+		err := os.Remove(path + "/" + f.Name())
+		if err != nil {
+			fmt.Printf("delete gzip file error %v\n", err)
+		}
 	}
 }

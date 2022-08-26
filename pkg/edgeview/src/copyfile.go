@@ -310,6 +310,8 @@ func untarLogfile(downloadedFile string) {
 	for _, f := range files {
 		fmt.Printf("file: %s, size %d\n", f.Name(), f.Size())
 	}
+
+	unpackLogfiles(fileCopyDir+fileStr[0], files)
 }
 
 func runCopyLogfiles(logfiles []logfiletime, time1 int64) {

@@ -25,14 +25,13 @@ import (
 )
 
 var (
-	runOnServer  bool // container running inside remote linux host
-	querytype    string
-	cmdTimeout   string
-	log          *base.LogObject
-	trigPubchan  chan bool
-	myEvEndPoint string
-	rePattern    *regexp.Regexp
-	evStatus     types.EdgeviewStatus
+	runOnServer bool // container running inside remote linux host
+	querytype   string
+	cmdTimeout  string
+	log         *base.LogObject
+	trigPubchan chan bool
+	rePattern   *regexp.Regexp
+	evStatus    types.EdgeviewStatus
 )
 
 const (
@@ -72,12 +71,32 @@ func main() {
 		runOnServer = true
 	}
 
+	initOpts()
+	setupRegexp()
+
+	if runOnServer {
+		values := flag.Args()
+		for _, cmd := range values {
+			if cmd == "techsupport" {
+				isTechSupport = true
+				break
+			}
+		}
+		if isTechSupport {
+			cmds := cmdOpt{}
+			runTechSupport(cmds, true)
+		}
+	}
+
 	pathStr := "/edge-view"
 	// if wss endpoint is not passed in, try to get it from the JWT
 	if *ptoken != "" && *wsAddr == "" {
 		addrport, path, err := getAddrFromJWT(*ptoken, *pServer, *pInst)
 		if err != nil {
 			fmt.Printf("%v\n", err)
+			if *phelpopt || *phopt {
+				printHelp("")
+			}
 			return
 		}
 		if path != "" {
@@ -85,8 +104,6 @@ func main() {
 		}
 		*wsAddr = addrport
 	}
-
-	initOpts()
 
 	var intSignal chan os.Signal
 	var fstatus fileCopyStatus
@@ -229,7 +246,6 @@ func main() {
 		}
 	}
 
-	setupRegexp()
 	if !runOnServer {
 		// client side can break the session
 		intSignal = make(chan os.Signal, 1)
@@ -298,6 +314,10 @@ func main() {
 
 		go func() {
 			defer close(done)
+			// publish stats when it starts, to let controller know edgeview is active on device
+			if edgeviewInstID <= 1 {
+				trigPubchan <- true
+			}
 			for {
 				mtype, msg, err := websocketConn.ReadMessage()
 				if err != nil {
@@ -312,11 +332,11 @@ func main() {
 				isJSON, verifyOK, message := verifyEnvelopeData(msg)
 				if !isJSON {
 					if strings.Contains(string(msg), "no device online") {
-						log.Noticef("read: peer not there yet, continue")
+						log.Tracef("read: peer not there yet, continue")
 					} else {
 						ok := checkClientIPMsg(string(msg))
 						if ok {
-							log.Noticef("My endpoint IP: %s\n", myEvEndPoint)
+							log.Tracef("My endpoint IP: %s\n", basics.evendpoint)
 						}
 					}
 					continue
@@ -329,7 +349,7 @@ func main() {
 				if mtype == websocket.TextMessage {
 					if strings.Contains(string(message), "no device online") ||
 						strings.Contains(string(message), closeMessage) {
-						log.Noticef("read: no device, continue")
+						log.Tracef("read: no device, continue")
 						continue
 					} else {
 						if isTCPServer {
@@ -374,8 +394,8 @@ func main() {
 				if edgeviewInstID > 1 {
 					instStr = fmt.Sprintf("-inst-%d", edgeviewInstID)
 				}
-				fmt.Printf("Client%s endpoint IP: %s\n", instStr, myEvEndPoint)
-				queryCmds.ClientEPAddr = myEvEndPoint
+				fmt.Printf("Client%s endpoint IP: %s\n", instStr, basics.evendpoint)
+				queryCmds.ClientEPAddr = basics.evendpoint
 			}
 		}
 		if !clientSendQuery(queryCmds) {
@@ -437,18 +457,23 @@ func main() {
 		}()
 	}
 
-	if edgeviewInstID == 1 {
+	if runOnServer && edgeviewInstID == 1 {
 		go serverEvStats()
 	}
 
+	var waitPulish bool
 	// ssh or non-ssh client wait for replies and finishes with a 'done' or gets a Ctrl-C
 	// non-ssh server will be killed when the session is expired with the script
 	for {
 		select {
 		case <-trigPubchan:
 			// not to publish the status too fast
-			pubStatusTimer = time.NewTimer(15 * time.Second)
+			if !waitPulish {
+				pubStatusTimer = time.NewTimer(15 * time.Second)
+				waitPulish = true
+			}
 		case <-pubStatusTimer.C:
+			waitPulish = false
 			doInfoPub(infoPub)
 		case <-done:
 			tcpClientSendDone()
@@ -473,7 +498,7 @@ func goRunQuery(cmds cmdOpt) {
 		}
 		closePipe(false)
 		sendCloseToWss()
-		log.Noticef("Sent %d messages, total %d bytes to websocket", wsMsgCount, wsSentBytes)
+		log.Tracef("Sent %d messages, total %d bytes to websocket", wsMsgCount, wsSentBytes)
 	}
 }
 
@@ -543,6 +568,6 @@ func sendKeepalive() {
 func setupRegexp() {
 	// allow letters, numbers,
 	// '/' for path, '.' for ip address, '@' for domain name, ':' for port; '-', '_' for filename
-	// '=' for flow match
-	rePattern = regexp.MustCompile(`^[A-Za-z0-9 =\-_.:/@]*$`)
+	// '=' for flow match, '+' for " +0x" pattern, ',' for pub/
+	rePattern = regexp.MustCompile(`^[A-Za-z0-9 =\-_.:,/@]*$`)
 }

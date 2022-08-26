@@ -1,6 +1,7 @@
 #!/bin/sh
 
 if [ -z "$EDGEVIEW_CLIENT" ]; then
+  sleep 60 # allow system to settle, no need to come up too fast
   while true;
   do
     sleep 10
@@ -33,17 +34,25 @@ if [ -z "$EDGEVIEW_CLIENT" ]; then
         sleep 2 && PID=$(pgrep /usr/bin/edge-view)
         PID=$(echo "$PID" | tr '\n' ' ')
         echo "started edge-view with pid $PID"
+      else
+        if [ -f /run/edgeview/run-techsupport ]; then
+          TechSupport="techsupport"
+          /usr/bin/edge-view -server "$TechSupport" &
+          sleep 30
+        fi
       fi
     else
-      if [ $timediff -lt 0 ]; then
+      if [ -f /run/edgeview/run-techsupport ]; then
+        sleep 10
+      elif [ $timediff -lt 0 ]; then
         kill -9 "$PID"
         echo "edge-view killed"
       else
         if [ -f /run/edgeview/edge-view-config ]; then
           NOWSUM=$(md5sum /run/edgeview/edge-view-config)
-          if [ "$NOWSUM" != "$CONFIGSUM" ]; then
-            kill -9 "$PID"
-            echo "edge-view killed"
+          if [ "$NOWSUM" != "$CONFIGSUM" ]; then # for restart, generate stack-trace for current one
+            kill -ABRT "$PID"
+            echo "edge-view killed, with stacks"
           fi
         fi
       fi

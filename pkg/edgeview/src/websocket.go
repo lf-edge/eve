@@ -12,17 +12,23 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
+	"sort"
 	"strconv"
 	"time"
 
 	"github.com/gorilla/websocket"
 )
 
-const serverCertFile = "/persist/certs/wss-server-cacert.pem"
-const maxReconnWait = 120 * 1000 // 120 seconds
+const (
+	serverCertFile = "/persist/certs/wss-server-cacert.pem"
+	maxReconnWait  = 120 * 1000 // 120 seconds
+	isEVserver     = "-EV-server"
+	invalidIndex   = 2
+)
 
 var (
 	readP         *os.File
@@ -35,16 +41,19 @@ var (
 	websocketConn *websocket.Conn
 	isTechSupport bool
 	reconnectCnt  int
+	websIndex     = invalidIndex
 )
 
 func setupWebC(hostname, token string, u url.URL, isServer bool) bool {
 	var pport int
-	var pIP string
+	var pIP, serverStr string
 	retry := 0
+	durr := 10 * 1000 // 10 sec
 	// if the device uses proxy cert, add to the container side
 	if isServer {
+		serverStr = isEVserver
 		proxyIP, proxyPort, proxyPEM := getProxy(false)
-		if len(proxyPEM) > 0 {
+		if len(proxyPEM) > 0 && basics.proxy == "" { // don't run this in re-connect cases
 			err := addPackage("/usr/sbin/update-ca-certificates", "ca-certificates")
 			if err == nil {
 				dir := "/usr/local/share/ca-certificates"
@@ -64,47 +73,64 @@ func setupWebC(hostname, token string, u url.URL, isServer bool) bool {
 			}
 		}
 		if proxyIP != "" {
+			basics.proxy = fmt.Sprintf("%s:%s", proxyIP, strconv.Itoa(proxyPort))
 			log.Noticef("proxyIP %s, port %d", proxyIP, proxyPort)
 		}
 		pport = proxyPort
 		pIP = proxyIP
 	}
 	for { // wait to be connected to the dispatcher
-		tlsDialer, err := tlsDial(isServer, pIP, pport)
-		if err != nil {
-			return false
+		var intfSrcs []net.IP
+		if isServer {
+			intfSrcs = getDefrouteIntfSrcs()
 		}
-		c, resp, err := tlsDialer.Dial(u.String(),
-			http.Header{
-				"X-Session-Token": []string{token},
-				"X-Hostname":      []string{hostname}},
-		)
-		if err != nil {
-			if resp == nil {
-				log.Noticef("dial: %v, wait for 10 sec", err)
-			} else {
-				log.Noticef("dial: %v, status code %d, wait for 10 sec", err, resp.StatusCode)
+		// walk through default route intfs if exist, and try also without specifying the source
+		// if we know the index it worked previously before disconnect, try that first
+		for idx := len(intfSrcs) - 1; idx >= -1; idx-- {
+			if websIndex != invalidIndex && websIndex < len(intfSrcs) {
+				idx = websIndex
 			}
-			time.Sleep(10 * time.Second)
-		} else {
-			websocketConn = c
-			if isServer {
-				log.Noticef("connect success to websocket server")
-			} else {
-				fmt.Printf("connect success to websocket server\n")
+			websIndex = invalidIndex
+			tlsDialer, err := tlsDial(isServer, pIP, pport, intfSrcs, idx)
+			if err != nil {
+				return false
 			}
-			break
-		}
-		retry++
-		if !isServer && retry > 1 {
-			return false
+			c, resp, err := tlsDialer.Dial(u.String(),
+				http.Header{
+					"X-Session-Token": []string{token},
+					"X-Hostname":      []string{hostname + serverStr}},
+			)
+			if err != nil {
+				if resp == nil {
+					log.Noticef("dial: %v, wait for retry, index %d, %v", err, idx, intfSrcs)
+				} else {
+					log.Noticef("dial: %v, status code %d, wait for retry", err, resp.StatusCode)
+				}
+				durr = durr * (retry + 1)
+				if durr > maxReconnWait { // delay max of 2 minutes
+					durr = maxReconnWait
+				}
+				time.Sleep(time.Duration(durr) * time.Millisecond)
+			} else {
+				websocketConn = c
+				if isServer {
+					websIndex = idx
+					log.Noticef("connect success to websocket server, index %d, %v", idx, intfSrcs)
+				} else {
+					fmt.Printf("connect success to websocket server\n")
+				}
+				return true
+			}
+			retry++
+			if !isServer && retry > 1 {
+				return false
+			}
 		}
 	}
-	return true
 }
 
 // TLS Dialer
-func tlsDial(isServer bool, pIP string, pport int) (*websocket.Dialer, error) {
+func tlsDial(isServer bool, pIP string, pport int, src []net.IP, idx int) (*websocket.Dialer, error) {
 	tlsConfig := &tls.Config{}
 
 	// if wss dispatcher server certificate file is mounted
@@ -133,8 +159,30 @@ func tlsDial(isServer bool, pIP string, pport int) (*websocket.Dialer, error) {
 		proxyURL, _ := url.Parse("http://" + pIP + ":" + strconv.Itoa(pport))
 		dialer.Proxy = http.ProxyURL(proxyURL)
 	}
+	if idx >= 0 && len(src) > 0 && idx < len(src) {
+		dialer.NetDialContext = (&net.Dialer{LocalAddr: &net.TCPAddr{IP: src[idx]}}).DialContext
+	}
 
 	return dialer, nil
+}
+
+// get source IP addresses of ipv4 default route in main table
+func getDefrouteIntfSrcs() []net.IP {
+	var srcIPs []net.IP
+	table254 := 254
+	routes := getTableIPv4Routes(table254)
+	for _, r := range routes {
+		if r.Dst == nil && r.Gw.To4() != nil && r.Src.To4() != nil {
+			srcIPs = append(srcIPs, r.Src)
+		}
+	}
+	// if we have multiple source IPs, make sure they are returned in order always
+	if len(srcIPs) > 1 {
+		sort.Slice(srcIPs, func(i, j int) bool {
+			return bytes.Compare(srcIPs[i], srcIPs[j]) < 0
+		})
+	}
+	return srcIPs
 }
 
 // hijack the stdout to buffer and later send the content through

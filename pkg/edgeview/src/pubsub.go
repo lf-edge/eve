@@ -120,6 +120,9 @@ func pubsubSvs(startDir, pubsubDir, subDir string) {
 			byteCnt = 0
 		}
 		fmt.Println(string(prettyJSON))
+		if isTechSupport {
+			closePipe(true)
+		}
 	}
 }
 

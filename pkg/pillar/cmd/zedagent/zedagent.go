@@ -2142,9 +2142,6 @@ func handleGlobalConfigImpl(ctxArg interface{}, key string,
 		mergeMaintenanceMode(ctx)
 	}
 
-	// XXX for testing edge-view
-	handleEdgeviewToken(gcp)
-
 	log.Functionf("handleGlobalConfigImpl done for %s", key)
 }
 
@@ -2436,6 +2433,5 @@ func handleEdgeviewStatusModify(ctxArg interface{}, key string,
 func handleEdgeviewStatusImpl(ctxArg interface{}, key string, statusArg interface{}) {
 	status := statusArg.(types.EdgeviewStatus)
 	ctx := ctxArg.(*zedagentContext)
-	PublishEdgeviewToZedCloud(ctx, &status, ctx.iteration)
-	ctx.iteration++
+	PublishEdgeviewToZedCloud(ctx, &status)
 }

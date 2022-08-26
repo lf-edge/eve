@@ -6,14 +6,18 @@ package main
 import (
 	"context"
 	"crypto/tls"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
 	"time"
 )
 
+var proxyRemoteHosts map[string]bool
+
 // Virtual forward proxy server for handling the https service on site
 func proxyServer(done chan struct{}, dnsIP string) *http.Server {
+	proxyRemoteHosts = make(map[string]bool)
 	server := &http.Server{
 		Addr: proxyServerEndpoint.String(),
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -45,6 +49,15 @@ func handleTunneling(w http.ResponseWriter, r *http.Request, dnsIP string) {
 	remoteHost := r.Host
 	var destConn net.Conn
 	var err error
+	if ok := proxyRemoteHosts[r.Host]; !ok {
+		proxyRemoteHosts[r.Host] = true
+		allowed := checkAndLogProxySession(r.Host)
+		if !allowed {
+			err = fmt.Errorf("host %s access not allowed by policy", r.Host)
+			http.Error(w, err.Error(), http.StatusServiceUnavailable)
+			return
+		}
+	}
 	if dnsIP != "" { // this is probably needed for internal/vpn https service with private DNS server
 		r := &net.Resolver{
 			Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
