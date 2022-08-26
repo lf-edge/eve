@@ -5,11 +5,14 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"net"
 	"net/http"
+	"net/url"
+	"os"
 	"strconv"
 	"strings"
 	"syscall"
@@ -32,7 +35,9 @@ type urlStats struct {
 
 type appIPvnc struct {
 	ipAddr    string
+	appName   string
 	vncEnable bool
+	vncPort   int
 }
 
 type intfIP struct {
@@ -116,8 +121,15 @@ func runNetwork(netw string) {
 			runmDNS(substring)
 		} else if opt == "tcp" { // tcp and proxy are special
 			setAndStartProxyTCP(substring)
+		} else if opt == "showcerts" {
+			getPeerCerts(substring)
+		} else if opt == "addhost" {
+			addEctHostEntry(substring)
 		} else {
 			fmt.Printf("\n not supported yet\n")
+		}
+		if isTechSupport {
+			closePipe(true)
 		}
 	}
 }
@@ -460,6 +472,8 @@ func getAllAppIPs() []appIPvnc {
 				ipVNC := appIPvnc{
 					ipAddr:    ipaddr,
 					vncEnable: enableVNC,
+					appName:   appInstCfg.DisplayName,
+					vncPort:   int(appInstCfg.FixedResources.VncDisplay),
 				}
 				oneAppIPs = append(oneAppIPs, ipVNC)
 			}
@@ -590,7 +604,16 @@ func runRoute() {
 			continue
 		}
 		routes := getTableIPv4Routes(rule.Table)
-		tableStr := fmt.Sprintf("\n routes in table: %d", rule.Table)
+		var tStr string
+		switch rule.Table {
+		case 253:
+			tStr = "(default)"
+		case 254:
+			tStr = "(main)"
+		case 255:
+			tStr = "(local)"
+		}
+		tableStr := fmt.Sprintf("\n routes in table: %d%s", rule.Table, tStr)
 		printColor(tableStr, colorCYAN)
 		for _, r := range routes {
 			fmt.Printf("   %s\n", r.String())
@@ -789,7 +812,7 @@ func runPing(intfStat []intfIP, server string, opt string) {
 	}
 
 	for _, iip := range intfStat {
-		if strings.HasPrefix(iip.intfName, "bn") {
+		if strings.HasPrefix(iip.intfName, "bn") || strings.HasPrefix(iip.intfName, "lo") {
 			continue
 		}
 		ipaddr := "8.8.8.8"
@@ -797,12 +820,11 @@ func runPing(intfStat []intfIP, server string, opt string) {
 		pingIPHost(ipaddr, iip.ipAddr)
 
 		// to zedcloud
-		if server == "" {
-			server = "zedcloud.canary.zededa.net"
+		if server != "" {
+			printColor("\n - ping to "+server+", source "+iip.ipAddr, colorCYAN)
+			ipa := net.ParseIP(iip.ipAddr)
+			httpsclient(server, ipa)
 		}
-		printColor("\n - ping to "+server+", source "+iip.ipAddr, colorCYAN)
-		ipa := net.ParseIP(iip.ipAddr)
-		httpsclient(server, ipa)
 
 		closePipe(true)
 	}
@@ -862,13 +884,13 @@ func httpsclient(server string, ipaddr net.IP) {
 		fmt.Printf("%v\n", err)
 		return
 	}
+	defer resp.Body.Close()
 
 	htmlData, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		fmt.Printf("%v\n", err)
 		return
 	}
-	defer resp.Body.Close()
 	fmt.Printf("%v\n", resp.Status)
 	fmt.Printf("%s", string(htmlData))
 }
@@ -965,6 +987,109 @@ func runmDNS(subStr string) {
 		return
 	}
 	<-mctx.Done()
+}
+
+func getPeerCerts(subStr string) {
+	if subStr == "" {
+		if basics.server != "" {
+			subStr = basics.server
+			if basics.proxy != "" {
+				subStr = subStr + "/" + basics.proxy
+			}
+		}
+		if subStr == "" {
+			return
+		}
+		fmt.Printf("url: %s\n", subStr)
+	}
+	serverURL := subStr
+	proxyStr1 := ""
+	if strings.Contains(subStr, "/") {
+		strs := strings.SplitN(subStr, "/", 2)
+		if len(strs) != 2 {
+			return
+		}
+		serverURL = strs[0]
+		proxyStr1 = strs[1]
+	}
+	var client http.Client
+	tlsConfig := &tls.Config{
+		InsecureSkipVerify: true,
+	}
+	transport := http.Transport{
+		TLSClientConfig: tlsConfig,
+	}
+	if proxyStr1 != "" {
+		proxyURL, err := url.Parse("http://" + proxyStr1)
+		if err != nil {
+			fmt.Printf("proxy url error %v\n", err)
+			return
+		}
+		transport.Proxy = http.ProxyURL(proxyURL)
+	}
+	client = http.Client{
+		Transport: &transport,
+	}
+	resp, err := client.Get(fmt.Sprintf("https://%s", serverURL))
+	if err != nil {
+		fmt.Printf("client get error %v\n", err)
+	}
+	if resp != nil {
+		if resp.TLS != nil {
+			for i, cert := range resp.TLS.PeerCertificates {
+				fmt.Printf("(%d) Certificate:\n", i)
+				fmt.Printf("\tData:\n")
+				fmt.Printf("\t\tVersion: %d\n", cert.Version)
+				fmt.Printf("\t\tSerial Number:\n\t\t\t%s\n", cert.SerialNumber)
+				fmt.Printf("\tSignature Algorithm: %v\n", cert.SignatureAlgorithm.String())
+				fmt.Printf("\t\tIssuer:%s\n", cert.Issuer)
+				fmt.Printf("\t\tValidity:\n")
+				fmt.Printf("\t\t\tNot Before: %v\n", cert.NotBefore)
+				fmt.Printf("\t\t\tNot After: %v\n", cert.NotAfter)
+				fmt.Printf("\t\tSubject: %v\n", cert.Subject)
+			}
+		} else {
+			fmt.Printf("resp.TLS nil\n")
+		}
+		if resp.Body != nil {
+			resp.Body.Close()
+		}
+	} else {
+		fmt.Printf("resp nil\n")
+	}
+}
+
+func addEctHostEntry(subStr string) {
+	if !strings.Contains(subStr, "/") {
+		fmt.Printf("need to have host name and IP separated by slash\n")
+		return
+	}
+
+	subs := strings.SplitN(subStr, "/", 2)
+	if len(subs) != 2 {
+		fmt.Printf("need to have host name and IP separated by slash\n")
+		return
+	}
+	hostname := subs[0]
+	hostIP := subs[1]
+	if net.ParseIP(hostIP) == nil {
+		fmt.Printf("IP address is invalid\n")
+		return
+	}
+
+	f, err := os.OpenFile("/etc/hosts", os.O_APPEND|os.O_WRONLY, 0644)
+	if err != nil {
+		fmt.Printf("open file error %v\n", err)
+		return
+	}
+	defer f.Close()
+	entry := fmt.Sprintf("%s  %s\n", hostIP, hostname)
+	if _, err := f.WriteString(entry); err != nil {
+		fmt.Printf("write file error %v\n", err)
+		return
+	}
+	// display the /etc/hosts file
+	readAFile("/etc/hosts", 0)
 }
 
 func runTCPDump(intfStat []intfIP, subStr string) {
@@ -1130,6 +1255,9 @@ func getAllIntfs() []intfIP {
 		for _, v := range foo {
 			ip, _, err := net.ParseCIDR(v.String())
 			if err != nil {
+				continue
+			}
+			if ip.To4() == nil {
 				continue
 			}
 			ifp := intfIP{

@@ -1387,7 +1387,7 @@ func PublishBlobInfoToZedCloud(ctx *zedagentContext, blobSha string, blobStatus 
 }
 
 // PublishEdgeviewToZedCloud - publish Edgeview info to controller
-func PublishEdgeviewToZedCloud(ctx *zedagentContext, evStatus *types.EdgeviewStatus, iteration int) {
+func PublishEdgeviewToZedCloud(ctx *zedagentContext, evStatus *types.EdgeviewStatus) {
 
 	log.Functionf("PublishEdgeviewToZedCloud")
 	var ReportInfo = &info.ZInfoMsg{}
@@ -1434,6 +1434,7 @@ func PublishEdgeviewToZedCloud(ctx *zedagentContext, evStatus *types.EdgeviewSta
 	zedcloud.SetDeferred(zedcloudCtx, "global", buf, size, statusURL,
 		true, info.ZInfoTypes_ZiEdgeview)
 	zedcloud.HandleDeferred(zedcloudCtx, time.Now(), 0, true)
+	ctx.iteration++
 }
 
 func appIfnameToNetworkInstance(ctx *zedagentContext,

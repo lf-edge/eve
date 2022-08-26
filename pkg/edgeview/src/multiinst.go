@@ -48,6 +48,7 @@ func doInfoPub(infoPub pubsub.Publication) {
 				}
 				evInstStats[0].Stats.CmdCountDev += s.Stats.CmdCountDev
 				evInstStats[0].Stats.CmdCountApp += s.Stats.CmdCountApp
+				evInstStats[0].Stats.CmdCountExt += s.Stats.CmdCountExt
 			}
 			err := infoPub.Publish("global", evInstStats[0].Stats)
 			if err != nil {

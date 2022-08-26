@@ -21,10 +21,12 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unsafe"
 
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/shirou/gopsutil/mem"
 	"github.com/shirou/gopsutil/process"
+	"golang.org/x/sys/unix"
 )
 
 func runSystem(cmds cmdOpt, sysOpt string) {
@@ -49,7 +51,7 @@ func runSystem(cmds cmdOpt, sysOpt string) {
 			runConfigItems()
 		} else if opt == "download" {
 			getDownload()
-		} else if strings.HasPrefix(opt, "ps/") {
+		} else if strings.HasPrefix(opt, "ps/") || opt == "ps" {
 			runPS(opt)
 		} else if strings.HasPrefix(opt, "cp/") {
 			runCopy(opt)
@@ -72,9 +74,14 @@ func runSystem(cmds cmdOpt, sysOpt string) {
 		} else if strings.HasPrefix(opt, "lastreboot") {
 			getLastReboot()
 		} else if strings.HasPrefix(opt, "techsupport") {
-			runTechSupport(cmds)
+			runTechSupport(cmds, false)
+		} else if strings.HasPrefix(opt, "dmesg") {
+			getDmesg()
 		} else {
 			fmt.Printf("opt %s: not supported yet\n", opt)
+		}
+		if isTechSupport {
+			closePipe(true)
 		}
 	}
 }
@@ -150,6 +157,60 @@ func getLogStats() {
 	fmt.Println()
 }
 
+func getDmesg() {
+	printTitle("Dmesg:", colorCYAN, false)
+	buf := make([]byte, 64*1024)
+	_, _, err := unix.Syscall(unix.SYS_SYSLOG, uintptr(3), uintptr(unsafe.Pointer(&buf[0])), uintptr(len(buf)))
+	if err == 0 {
+		size := 0
+		lines := bytes.SplitAfter(buf, []byte("\n"))
+		for _, l := range lines {
+			printDmesgLine(string(l))
+			size += len(l)
+			if size > 4096 {
+				size = 0
+				closePipe(true)
+			}
+		}
+	}
+}
+
+func printDmesgLine(line string) {
+	severity := 6 // info
+	sline := strings.SplitN(line[1:], ">", 2)
+	var bColon string
+	if len(sline) == 2 {
+		var aColon string
+		sev, err := strconv.Atoi(sline[0])
+		if err == nil {
+			severity = sev
+		}
+		sect := strings.SplitAfterN(sline[1], "]", 3)
+		if len(sect) == 3 {
+			Colons := strings.SplitAfterN(sect[2], ":", 2)
+			if len(Colons) != 2 {
+				aColon = sect[2]
+			} else {
+				bColon = Colons[0]
+				aColon = Colons[1]
+			}
+			fmt.Printf(colorCYAN, sect[0])
+			fmt.Printf(colorYELLOW, bColon)
+		} else {
+			aColon = sline[1]
+		}
+		if severity <= 3 { // Err and above
+			fmt.Printf(colorRED, aColon)
+		} else if severity <= 4 { // Warn
+			fmt.Printf(colorPURPLE, aColon)
+		} else {
+			fmt.Printf("%s", aColon)
+		}
+	} else {
+		fmt.Printf("%s", line)
+	}
+}
+
 func runDu(opt string) {
 	dirs := strings.SplitN(opt, "du/", 2)
 	if len(dirs) != 2 {
@@ -157,9 +218,6 @@ func runDu(opt string) {
 		return
 	}
 	dir := dirs[1]
-	if len(dir) < 2 {
-		fmt.Printf("%s is not valid\n", dir)
-	}
 	finfo, err := os.Stat(dir)
 	if err != nil {
 		fmt.Printf("%v\n", err)
@@ -365,7 +423,11 @@ func getLastReboot() {
 		return
 	}
 
+	now := time.Now().Unix()
 	for _, l := range files {
+		if now-l.ModTime().Unix() > 2592000 { // if files are older then 30 days
+			continue
+		}
 		var rebootFile string
 		if strings.Contains(l.Name(), "reboot-reason.log") {
 			rebootFile = "reboot-reason.log"
@@ -384,11 +446,14 @@ func getLastReboot() {
 
 	files, err = ioutil.ReadDir("/persist/newlog/panicStacks")
 	if err != nil {
-		fmt.Printf("failed to get to /persist/log\n")
+		fmt.Printf("failed to get to /persist/newlog/panicStacks\n")
 		return
 	}
 
 	for _, l := range files {
+		if now-l.ModTime().Unix() > 2592000 { // if files are older then 30 days
+			continue
+		}
 		if strings.Contains(l.Name(), "pillar-panic-stack.") {
 			fields := strings.Fields(l.Name())
 			n := len(fields)
@@ -873,9 +938,13 @@ func dispAFile(f os.FileInfo) {
 	fmt.Printf("%s, %v, %d, %s\n", f.Mode().String(), f.ModTime(), f.Size(), f.Name())
 }
 
-func runTechSupport(cmds cmdOpt) {
+func runTechSupport(cmds cmdOpt, isLocal bool) {
 	var err error
-	tsfileName := "/tmp/techsupport-tmp-" + getFileTimeStr(time.Now())
+	filedir := "/tmp/"
+	if isLocal {
+		filedir = "/run/edgeview/"
+	}
+	tsfileName := filedir + "techsupport-tmp-" + getFileTimeStr(time.Now())
 	techSuppFile, err = os.Create(tsfileName)
 	if err != nil {
 		log.Errorf("can not create techsupport file")
@@ -883,6 +952,9 @@ func runTechSupport(cmds cmdOpt) {
 	}
 	defer techSuppFile.Close()
 
+	if isLocal {
+		socketOpen = true // for closePipe() to work
+	}
 	closePipe(true)
 	isTechSupport = true
 
@@ -891,11 +963,11 @@ func runTechSupport(cmds cmdOpt) {
 	getBasics()
 
 	printTitle("\n       - network info -\n\n", colorRED, false)
-	runNetwork("route,arp,if,acl,connectivity,url,socket,app,mdns,nslookup/google.com,trace/8.8.8.8,wireless,flow")
+	runNetwork("route,arp,if,acl,connectivity,url,socket,app,mdns,nslookup/google.com,trace/8.8.8.8,wireless,flow,showcerts")
 	closePipe(true)
 
 	printTitle("\n       - system info -\n\n", colorRED, false)
-	runSystem(cmds, "hw,model,pci,usb,lastreboot,newlog,volume,app,datastore,cipher,configitem")
+	runSystem(cmds, "hw,model,pci,usb,lastreboot,newlog,volume,app,datastore,cipher,dmesg,configitem")
 	closePipe(true)
 
 	printTitle("\n       - pub/sub info -\n\n", colorRED, false)
@@ -909,7 +981,17 @@ func runTechSupport(cmds cmdOpt) {
 
 	gzipfileName, err := gzipTechSuppFile(tsfileName)
 	if err == nil {
+		if isLocal {
+			_ = os.Remove(tsfileName)
+			_ = os.Remove(types.EdgeviewPath + "run-techsupport")
+			return
+		}
 		runCopy("cp/" + gzipfileName)
+	} else {
+		log.Errorf("gzip techsupport file failed, %v", err)
+		if isLocal {
+			_ = os.Remove(types.EdgeviewPath + "run-techsupport")
+		}
 	}
 
 	_ = os.Remove(tsfileName)
@@ -965,6 +1047,22 @@ func gzipTechSuppFile(ifileName string) (string, error) {
 		return ofileName, err
 	}
 	return ofileName, nil
+}
+
+func getDevInfo() types.EdgeNodeInfo {
+	var devInfo types.EdgeNodeInfo
+	jfiles, err := listJSONFiles("/persist/status/zedagent/EdgeNodeInfo")
+	if err == nil {
+		for _, l := range jfiles {
+			retbytes1, err := ioutil.ReadFile(l)
+			if err != nil {
+				continue
+			}
+			_ = json.Unmarshal(retbytes1, &devInfo)
+
+		}
+	}
+	return devInfo
 }
 
 func splitBySize(buf []byte, size int) [][]byte {

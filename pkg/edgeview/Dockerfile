@@ -23,7 +23,7 @@ RUN go build -ldflags "-s -w" -o /out/usr/bin/edge-view . && cp edge-view-init.s
 
 FROM scratch
 COPY --from=build /out/ /
-RUN mkdir -p /tmp
+RUN mkdir -p /tmp && echo "hosts: files dns" > /etc/nsswitch.conf
 
 ENV PATH="/run/debug/usr/bin:${PATH}"
 

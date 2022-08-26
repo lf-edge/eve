@@ -144,8 +144,7 @@ func objectInfoTask(ctxPtr *zedagentContext, triggerInfo <-chan infoForObjectKey
 				sub := ctxPtr.subEdgeviewStatus
 				if c, err = sub.Get(infoForKeyMessage.objectKey); err == nil {
 					evStatus := c.(types.EdgeviewStatus)
-					PublishEdgeviewToZedCloud(ctxPtr, &evStatus, ctxPtr.iteration)
-					ctxPtr.iteration++
+					PublishEdgeviewToZedCloud(ctxPtr, &evStatus)
 				}
 			}
 			if err != nil {
