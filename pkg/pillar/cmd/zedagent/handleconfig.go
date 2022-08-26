@@ -150,7 +150,7 @@ var nilUUID uuid.UUID
 // current epoch received from controller
 var controllerEpoch int64
 
-func handleConfigInit(networkSendTimeout uint32, agentMetrics *zedcloud.AgentMetrics) *zedcloud.ZedCloudContext {
+func initZedcloudContext(networkSendTimeout uint32, agentMetrics *zedcloud.AgentMetrics) *zedcloud.ZedCloudContext {
 
 	// get the server name
 	bytes, err := ioutil.ReadFile(types.ServerFileName)

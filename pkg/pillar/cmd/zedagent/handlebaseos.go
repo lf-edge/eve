@@ -10,6 +10,68 @@ import (
 	"strings"
 )
 
+// base os status event handlers
+// Report BaseOsStatus to zedcloud
+func handleBaseOsStatusCreate(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	handleBaseOsStatusImpl(ctxArg, key, statusArg)
+}
+
+func handleBaseOsStatusModify(ctxArg interface{}, key string,
+	statusArg interface{}, oldStatusArg interface{}) {
+	handleBaseOsStatusImpl(ctxArg, key, statusArg)
+}
+
+func handleBaseOsStatusImpl(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
+	ctx := ctxArg.(*zedagentContext)
+	triggerPublishDevInfo(ctx)
+	log.Functionf("handleBaseOsStatusImpl(%s) done", key)
+}
+
+func handleBaseOsStatusDelete(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
+	log.Functionf("handleBaseOsStatusDelete(%s)", key)
+	ctx := ctxArg.(*zedagentContext)
+	triggerPublishDevInfo(ctx)
+	log.Functionf("handleBaseOsStatusDelete(%s) done", key)
+}
+
+func handleZbootStatusCreate(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	handleZbootStatusImpl(ctxArg, key, statusArg)
+}
+
+func handleZbootStatusModify(ctxArg interface{}, key string,
+	statusArg interface{}, oldStatusArg interface{}) {
+	handleZbootStatusImpl(ctxArg, key, statusArg)
+}
+
+func handleZbootStatusImpl(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
+	ctx := ctxArg.(*zedagentContext)
+	if !isZbootValidPartitionLabel(key) {
+		log.Errorf("handleZbootStatusImpl: invalid key %s", key)
+		return
+	}
+	log.Functionf("handleZbootStatusImpl: for %s", key)
+	// nothing to do
+	triggerPublishDevInfo(ctx)
+}
+
+func handleZbootStatusDelete(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	if !isZbootValidPartitionLabel(key) {
+		log.Errorf("handleZbootStatusDelete: invalid key %s", key)
+		return
+	}
+	log.Functionf("handleZbootStatusDelete: for %s", key)
+	// Nothing to do
+}
+
 // utility routines to access baseos partition status
 func isZbootValidPartitionLabel(name string) bool {
 	partitionNames := []string{"IMGA", "IMGB"}

@@ -112,7 +112,8 @@ func radioPOSTTask(ctx *getconfigContext) {
 }
 
 func getRadioStatus(ctx *getconfigContext) *profile.RadioStatus {
-	obj, err := ctx.zedagentCtx.subDeviceNetworkStatus.Get("global")
+	dnsCtx := ctx.zedagentCtx.dnsCtx
+	obj, err := dnsCtx.subDeviceNetworkStatus.Get("global")
 	if err != nil {
 		log.Error(err)
 		return nil

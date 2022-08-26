@@ -612,7 +612,7 @@ func cleanupEventLog(quoteMsg *attest.ZAttestQuote) {
 }
 
 // initialize attest pubsub trigger handlers and channels
-func attestModuleInitialize(ctx *zedagentContext, ps *pubsub.PubSub) error {
+func attestModuleInitialize(ctx *zedagentContext) error {
 	zattest.RegisterExternalIntf(&TpmAgentImpl{}, &VerifierImpl{}, &WatchdogImpl{})
 
 	if ctx.attestCtx == nil {
@@ -625,7 +625,7 @@ func attestModuleInitialize(ctx *zedagentContext, ps *pubsub.PubSub) error {
 		return err
 	}
 	ctx.attestCtx.attestFsmCtx = c
-	pubAttestNonce, err := ps.NewPublication(
+	pubAttestNonce, err := ctx.ps.NewPublication(
 		pubsub.PublicationOptions{
 			AgentName: agentName,
 			TopicType: types.AttestNonce{},
@@ -634,7 +634,7 @@ func attestModuleInitialize(ctx *zedagentContext, ps *pubsub.PubSub) error {
 		log.Fatal(err)
 	}
 	ctx.attestCtx.pubAttestNonce = pubAttestNonce
-	pubEncryptedKeyFromController, err := ps.NewPublication(
+	pubEncryptedKeyFromController, err := ctx.ps.NewPublication(
 		pubsub.PublicationOptions{
 			AgentName: agentName,
 			TopicType: types.EncryptedVaultKeyFromController{},
