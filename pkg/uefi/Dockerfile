@@ -17,8 +17,11 @@ ENV BUILD_PKGS_amd64 iasl
 ENV BUILD_PKGS_arm64 iasl
 RUN eve-alpine-deploy.sh
 
-RUN git clone --depth 1 -b edk2-stable202005 https://github.com/tianocore/edk2.git /ws
-RUN git clone --depth 1 https://github.com/riscv/opensbi.git /opensbi
+ENV EDK_COMMIT ca407c7246bf405da6d9b1b9d93e5e7f17b4b1f9
+ENV SBI_COMMIT cbaa9b0333517b3c25bea8d1c71ac8005ff1f727
+
+RUN git clone -b edk2-stable202005 https://github.com/tianocore/edk2.git /ws && git -C /ws checkout ${EDK_COMMIT}
+RUN git clone https://github.com/riscv/opensbi.git /opensbi && git -C /opensbi checkout ${SBI_COMMIT}
 WORKDIR /ws
 RUN git submodule update --init
 COPY build.sh /ws/
