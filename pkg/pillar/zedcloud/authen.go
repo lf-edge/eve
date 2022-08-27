@@ -210,8 +210,8 @@ func verifyAuthSig(ctx *ZedCloudContext, signature []byte, cert *x509.Certificat
 	return nil
 }
 
-// add an authentication envelope protobuf when sending http POST
-func addAuthentication(ctx *ZedCloudContext, b *bytes.Buffer, useOnboard bool) (*bytes.Buffer, error) {
+// AddAuthentication adds an AuthContainer and signs it
+func AddAuthentication(ctx *ZedCloudContext, b *bytes.Buffer, useOnboard bool) (*bytes.Buffer, error) {
 	var data []byte
 	if b != nil {
 		data = b.Bytes()

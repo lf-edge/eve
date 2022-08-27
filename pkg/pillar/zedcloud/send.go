@@ -506,7 +506,7 @@ func SendOnIntf(workContext context.Context, ctx *ZedCloudContext, destURL strin
 		var req *http.Request
 		var b2 *bytes.Buffer
 		if ctx.V2API && isEdgenode && !isGet {
-			b2, err = addAuthentication(ctx, b, useOnboard)
+			b2, err = AddAuthentication(ctx, b, useOnboard)
 			if err != nil {
 				log.Errorf("SendOnIntf: auth error %v\n", err)
 				return nil, nil, senderStatus, err
