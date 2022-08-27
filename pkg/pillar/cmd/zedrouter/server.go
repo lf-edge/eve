@@ -8,6 +8,7 @@
 package zedrouter
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/binary"
@@ -29,6 +30,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/iptables"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 )
 
 // Provides a json file
@@ -72,6 +74,12 @@ type wwanMetricsHandler struct {
 	ctx *zedrouterContext
 }
 
+// Provides a signing service
+type signerHandler struct {
+	ctx         *zedrouterContext
+	zedcloudCtx *zedcloud.ZedCloudContext
+}
+
 // KubeconfigFileSizeLimitInBytes holds the maximum expected size of Kubeconfig file received from k3s server appInst.
 // Note: KubeconfigFileSizeLimitInBytes should always be < AppInstMetadataResponseSizeLimitInBytes.
 const KubeconfigFileSizeLimitInBytes = 32768 // 32KB
@@ -79,6 +87,9 @@ const KubeconfigFileSizeLimitInBytes = 32768 // 32KB
 // AppInstMetadataResponseSizeLimitInBytes holds the maximum expected size of appInst metadata received in the response.
 // Note: KubeconfigFileSizeLimitInBytes should always be < AppInstMetadataResponseSizeLimitInBytes.
 const AppInstMetadataResponseSizeLimitInBytes = 35840 // 35KB
+
+// SignerMaxSize is how large objects we will sign
+const SignerMaxSize = 65535
 
 func createServer4(ctx *zedrouterContext, bridgeIP string, bridgeName string) error {
 	if bridgeIP == "" {
@@ -115,6 +126,13 @@ func createServer4(ctx *zedrouterContext, bridgeIP string, bridgeName string) er
 
 	wwanMetricsHandler := &wwanMetricsHandler{ctx: ctx}
 	mux.Handle("/eve/v1/wwan/metrics.json", wwanMetricsHandler)
+
+	zedcloudCtx := zedcloud.NewContext(log, zedcloud.ContextOptions{})
+	signerHandler := &signerHandler{
+		ctx:         ctx,
+		zedcloudCtx: &zedcloudCtx,
+	}
+	mux.Handle("/eve/v1/tpm/signer", signerHandler)
 
 	targetPort := 80
 	subnetStr := "169.254.169.254/32"
@@ -745,4 +763,53 @@ func (hdl wwanMetricsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 	w.Header().Add("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	w.Write(resp)
+}
+
+// ServeHTTP for signerHandler returns protobuf output
+func (hdl signerHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	log.Tracef("signerHandler.ServeHTTP")
+
+	if r.Method != http.MethodPost {
+		msg := "signerHandler: request method is not POST"
+		log.Error(msg)
+		http.Error(w, msg, http.StatusMethodNotAllowed)
+		return
+	}
+	// One larger to make sure we detect too large below.
+	payload, err := ioutil.ReadAll(io.LimitReader(r.Body, SignerMaxSize+1))
+	if err != nil {
+		msg := fmt.Sprintf("signerHandler: ioutil read failed: %v", err)
+		log.Errorf(msg)
+		http.Error(w, msg, http.StatusInternalServerError)
+		return
+	}
+
+	if binary.Size(payload) > SignerMaxSize {
+		msg := fmt.Sprintf("signerHandler: size exceeds limit. Expected <= %v",
+			SignerMaxSize)
+		log.Errorf(msg)
+		http.Error(w, msg, http.StatusBadRequest)
+		return
+	}
+	remoteIP := net.ParseIP(strings.Split(r.RemoteAddr, ":")[0])
+	anStatus := lookupAppNetworkStatusByAppIP(hdl.ctx, remoteIP)
+	if anStatus == nil {
+		msg := fmt.Sprintf("signerHandler: no AppNetworkStatus for %s",
+			remoteIP.String())
+		log.Errorf(msg)
+		http.Error(w, msg, http.StatusForbidden)
+		return
+	}
+
+	resp, err := zedcloud.AddAuthentication(hdl.zedcloudCtx,
+		bytes.NewBuffer(payload), false)
+	if err != nil {
+		msg := fmt.Sprintf("Failed to AddAuthentication: %v", err)
+		log.Errorf(msg)
+		http.Error(w, msg, http.StatusInternalServerError)
+		return
+	}
+	w.Header().Add("Content-Type", "application/x-proto-binary")
+	w.WriteHeader(http.StatusOK)
+	w.Write(resp.Bytes())
 }
