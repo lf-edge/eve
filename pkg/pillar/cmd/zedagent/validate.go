@@ -12,8 +12,7 @@ import (
 
 func readValidateConfig(staleConfigTime uint32,
 	validateFile string) (bool, *zconfig.EdgeDevConfig) {
-	config, _, err := readSavedProtoMessageConfig(zedcloudCtx, "https://",
-		staleConfigTime, validateFile, true)
+	config, _, err := readSavedProtoMessageConfig(staleConfigTime, validateFile, true)
 	if err != nil {
 		fmt.Printf("getconfig: %v\n", err)
 		return false, nil

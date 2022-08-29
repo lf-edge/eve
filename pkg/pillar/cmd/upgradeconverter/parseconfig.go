@@ -10,7 +10,6 @@ import (
 	"io/ioutil"
 
 	"github.com/golang/protobuf/proto"
-	zauth "github.com/lf-edge/eve/api/go/auth"
 	zconfig "github.com/lf-edge/eve/api/go/config"
 	uuid "github.com/satori/go.uuid"
 )
@@ -70,23 +69,9 @@ func readSavedProtoMessage(filename string) (*zconfig.EdgeDevConfig, error) {
 	var configResponse = &zconfig.ConfigResponse{}
 	err = proto.Unmarshal(contents, configResponse)
 	if err != nil {
-		// Try with AuthContainer
-		sm := &zauth.AuthContainer{}
-		err1 := proto.Unmarshal(contents, sm)
-		if err1 != nil {
-			log.Errorf("readSavedProtoMessage Unmarshalling ConfigResponse failed: %v",
-				err)
-			log.Errorf("readSavedProtoMessage Unmarshalling AuthContainer failed: %v",
-				err1)
-			return nil, err1
-		}
-		contents = sm.ProtectedPayload.GetPayload()
-		err = proto.Unmarshal(contents, configResponse)
-		if err != nil {
-			log.Errorf("readSavedProtoMessage Unmarshalling ConfigResponse inside AuthContainer failed: %v",
-				err)
-			return nil, err
-		}
+		log.Errorf("readSavedProtoMessage Unmarshalling failed: %v",
+			err)
+		return nil, err
 	}
 	config := configResponse.GetConfig()
 	return config, nil
