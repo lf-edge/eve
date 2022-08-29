@@ -101,8 +101,8 @@ type nodeagentContext struct {
 	deviceShutdown              bool
 	devicePoweroff              bool
 	allDomainsHalted            bool   // Progression of reboot, shutdown, etc
-	requestedRebootReason       string // Reason we will be rebooting
-	requestedBootReason         types.BootReason
+	currentRebootReason         string // Reason we are rebooting
+	currentBootReason           types.BootReason
 	lastLock                    sync.Mutex       // Ensure publish gets consistent data
 	rebootReason                string           // From last reboot
 	bootReason                  types.BootReason // From last reboot

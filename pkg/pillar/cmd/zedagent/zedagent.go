@@ -146,8 +146,8 @@ type zedagentContext struct {
 	poweroffCmdDeferred       bool
 	devicePoweroff            bool // From nodeagent
 	allDomainsHalted          bool
-	requestedRebootReason     string           // Set by zedagent
-	requestedBootReason       types.BootReason // Set by zedagent
+	currentRebootReason       string           // Set by zedagent
+	currentBootReason         types.BootReason // Set by zedagent
 	rebootReason              string           // Previous reboot from nodeagent
 	bootReason                types.BootReason // Previous reboot from nodeagent
 	rebootStack               string           // Previous reboot from nodeagent
