@@ -1,4 +1,4 @@
-// Copyright (c) 2020,2022 Zededa, Inc.
+// Copyright (c) 2020 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
 // Common code to communicate to zedcloud
@@ -23,7 +23,6 @@ import (
 	"mime"
 	"net/http"
 	"os"
-	"strings"
 
 	"github.com/golang/protobuf/proto"
 	zauth "github.com/lf-edge/eve/api/go/auth"
@@ -40,56 +39,13 @@ const (
 	hashSha256Len32 = 32 // size of 32 bytes
 )
 
-// RemoveAndVerifyAuthContainer is used to check that a correct authentication is
-// present when expected.
-// Returns the content inside the AuthContainer.
-// If skipVerify we parse the envelope but do not verify the content.
-// Caller should pass in the current SenderResult and this might return an
-// updated SenderResult
-func RemoveAndVerifyAuthContainer(ctx *ZedCloudContext, destURL string, contents []byte, skipVerify bool, senderStatus types.SenderResult) ([]byte, types.SenderResult, error) {
-	var reqURL string
-	if strings.HasPrefix(destURL, "http:") {
-		reqURL = destURL
-	} else {
-		if strings.HasPrefix(destURL, "https:") {
-			reqURL = destURL
-		} else {
-			reqURL = "https://" + destURL
-		}
-	}
-	if !ctx.V2API {
-		return contents, senderStatus, nil
-	}
-	contents, status, err := removeAndVerifyAuthContainer(ctx, contents, skipVerify)
-	if status != types.SenderStatusNone {
-		senderStatus = status
-	}
-	if err != nil {
-		var envelopeErr bool
-
-		if senderStatus == types.SenderStatusHashSizeError || senderStatus == types.SenderStatusAlgoFail {
-			// server may not support V2 envelope
-			envelopeErr = true
-		}
-		ctx.log.Errorf("RemoveAndVerifyAuthContainer verify auth error %v, V2 server %v, content len %d, url %s, senderStatus %v",
-			err, !envelopeErr, len(contents), reqURL, senderStatus)
-		if ctx.FailureFunc != nil {
-			ctx.FailureFunc(ctx.log, "", reqURL, 0, 0, true)
-		}
-		return nil, senderStatus, err
-	}
-	ctx.log.Tracef("RemoveAndVerifyAuthContainer verify auth ok, url %s", reqURL)
-	return contents, senderStatus, err
-}
-
 // given an envelope protobuf received from controller, verify the authentication
-// If skipVerify we parse the envelope but do not verify the content.
-func removeAndVerifyAuthContainer(ctx *ZedCloudContext, c []byte, skipVerify bool) ([]byte, types.SenderResult, error) {
+func verifyAuthentication(ctx *ZedCloudContext, c []byte, skipVerify bool) ([]byte, types.SenderResult, error) {
 	senderSt := types.SenderStatusNone
 	sm := &zauth.AuthContainer{}
 	err := proto.Unmarshal(c, sm)
 	if err != nil {
-		ctx.log.Errorf("removeAndVerifyAuthContainer: can not unmarshal authen content, %v\n", err)
+		ctx.log.Errorf("verifyAuthentication: can not unmarshal authen content, %v\n", err)
 		return nil, senderSt, err
 	}
 
@@ -97,16 +53,16 @@ func removeAndVerifyAuthContainer(ctx *ZedCloudContext, c []byte, skipVerify boo
 	if !skipVerify { // no verify for /certs itself
 		if len(sm.GetSenderCertHash()) != hashSha256Len16 &&
 			len(sm.GetSenderCertHash()) != hashSha256Len32 {
-			ctx.log.Errorf("removeAndVerifyAuthContainer: senderCertHash length %d\n",
+			ctx.log.Errorf("verifyAuthentication: senderCertHash length %d\n",
 				len(sm.GetSenderCertHash()))
-			err := fmt.Errorf("removeAndVerifyAuthContainer: senderCertHash length error")
+			err := fmt.Errorf("verifyAuthentication: senderCertHash length error")
 			return nil, types.SenderStatusHashSizeError, err
 		}
 
 		if ctx.serverSigningCert == nil {
 			err := getServerSigingCert(ctx)
 			if err != nil {
-				ctx.log.Errorf("removeAndVerifyAuthContainer: can not get server cert, %v\n", err)
+				ctx.log.Errorf("verifyAuthentication: can not get server cert, %v\n", err)
 				return nil, senderSt, err
 			}
 		}
@@ -114,31 +70,31 @@ func removeAndVerifyAuthContainer(ctx *ZedCloudContext, c []byte, skipVerify boo
 		switch sm.Algo {
 		case zcommon.HashAlgorithm_HASH_ALGORITHM_SHA256_32BYTES:
 			if bytes.Compare(sm.GetSenderCertHash(), ctx.serverSigningCertHash) != 0 {
-				err := fmt.Errorf("removeAndVerifyAuthContainer: local server cert hash 32bytes does not match in authen")
-				ctx.log.Errorf("removeAndVerifyAuthContainer: local server cert hash(%d) does not match in authen (%d) %v, %v",
+				err := fmt.Errorf("verifyAuthentication: local server cert hash 32bytes does not match in authen")
+				ctx.log.Errorf("verifyAuthentication: local server cert hash(%d) does not match in authen (%d) %v, %v",
 					len(ctx.serverSigningCertHash), len(sm.GetSenderCertHash()), ctx.serverSigningCertHash, sm.GetSenderCertHash())
 				return nil, types.SenderStatusCertMiss, err
 			}
 		case zcommon.HashAlgorithm_HASH_ALGORITHM_SHA256_16BYTES:
 			if bytes.Compare(sm.GetSenderCertHash(), ctx.serverSigningCertHash[:hashSha256Len16]) != 0 {
-				err := fmt.Errorf("removeAndVerifyAuthContainer: local server cert hash 16bytes does not match in authen")
-				ctx.log.Errorf("removeAndVerifyAuthContainer: local server cert hash(%d) does not match in authen (%d) %v, %v",
+				err := fmt.Errorf("verifyAuthentication: local server cert hash 16bytes does not match in authen")
+				ctx.log.Errorf("verifyAuthentication: local server cert hash(%d) does not match in authen (%d) %v, %v",
 					len(ctx.serverSigningCertHash), len(sm.GetSenderCertHash()), ctx.serverSigningCertHash, sm.GetSenderCertHash())
 				return nil, types.SenderStatusCertMiss, err
 			}
 		default:
-			ctx.log.Errorf("removeAndVerifyAuthContainer: hash algorithm is not supported\n")
-			err := fmt.Errorf("removeAndVerifyAuthContainer: hash algorithm is not supported")
+			ctx.log.Errorf("verifyAuthentication: hash algorithm is not supported\n")
+			err := fmt.Errorf("verifyAuthentication: hash algorithm is not supported")
 			return nil, types.SenderStatusAlgoFail, err
 		}
 
 		hash := ComputeSha(data)
 		err = verifyAuthSig(ctx, sm.GetSignatureHash(), ctx.serverSigningCert, hash)
 		if err != nil {
-			ctx.log.Errorf("removeAndVerifyAuthContainer: verifyAuthSig error %v\n", err)
+			ctx.log.Errorf("verifyAuthentication: verifyAuthSig error %v\n", err)
 			return nil, types.SenderStatusSignVerifyFail, err
 		}
-		ctx.log.Tracef("removeAndVerifyAuthContainer: ok\n")
+		ctx.log.Tracef("verifyAuthentication: ok\n")
 	}
 	return data, senderSt, nil
 }
