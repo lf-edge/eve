@@ -32,8 +32,6 @@ const (
 	LedBlinkRespWithoutOSCP
 	// LedBlinkInvalidControllerCert - LED indication or device failing to validate or fetch the controller certificate.
 	LedBlinkInvalidControllerCert
-	// LedBlinkInvalidAuthContainer - LED indication of message not being signed by controller.
-	LedBlinkInvalidAuthContainer
 )
 
 // String returns human-readable description of the state indicated by the particular LED blinking count.
@@ -59,8 +57,6 @@ func (c LedBlinkCount) String() string {
 		return "Response without OSCP or bad OSCP - ignored"
 	case LedBlinkInvalidControllerCert:
 		return "Failed to fetch or verify EV Controller certificate"
-	case LedBlinkInvalidAuthContainer:
-		return "Response has invalid controller signature"
 	default:
 		return fmt.Sprintf("Unsupported LED counter (%d)", c)
 	}
