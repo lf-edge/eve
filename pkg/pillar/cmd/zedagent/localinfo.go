@@ -731,8 +731,8 @@ func processReceivedDevCommands(getconfigCtx *getconfigContext, cmd *profile.Loc
 		}
 		ctx.poweroffCmd = true
 		infoStr := fmt.Sprintf("NORMAL: local profile server power off")
-		ctx.requestedRebootReason = infoStr
-		ctx.requestedBootReason = types.BootReasonPoweroffCmd
+		ctx.currentRebootReason = infoStr
+		ctx.currentBootReason = types.BootReasonPoweroffCmd
 	}
 
 	// shutdown the application instances

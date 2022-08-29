@@ -254,12 +254,11 @@ func handleDeviceCmd(ctxPtr *nodeagentContext, status types.ZedAgentStatus, op t
 		return
 	}
 	log.Functionf("handleDeviceCmd reason %s bootReason %s",
-		status.RequestedRebootReason, status.RequestedBootReason)
-	scheduleNodeOperation(ctxPtr, status.RequestedRebootReason,
-		status.RequestedBootReason, op)
+		status.RebootReason, status.BootReason.String())
+	scheduleNodeOperation(ctxPtr, status.RebootReason, status.BootReason, op)
 }
 
-func scheduleNodeOperation(ctxPtr *nodeagentContext, requestedReasonStr string, requestedBootReason types.BootReason, op types.DeviceOperation) {
+func scheduleNodeOperation(ctxPtr *nodeagentContext, reasonStr string, bootReason types.BootReason, op types.DeviceOperation) {
 	switch op {
 	case types.DeviceOperationReboot:
 		if ctxPtr.deviceReboot {
@@ -283,16 +282,16 @@ func scheduleNodeOperation(ctxPtr *nodeagentContext, requestedReasonStr string, 
 		log.Errorf("scheduleNodeOperation unknown operation: %v", op)
 		return
 	}
-	log.Functionf("scheduleNodeOperation(): current ReBootReason: %s BootReason %s",
-		requestedReasonStr, requestedBootReason.String())
+	log.Functionf("scheduleNodeOperation(): current RebootReason: %s BootReason %s",
+		reasonStr, bootReason.String())
 
 	// publish, for zedagent to pick up the event
-	// TBD:XXX make other agents subscribe NodeAgentStatus to
-	// gracefully shutdown their states, for example
+	// TBD:XXX, all other agents can subscribe to nodeagent or,
+	// status to gracefully shutdown their states, for example
 	// downloader can teardown the existing connections
 	// and clean up its temporary states etc.
-	ctxPtr.requestedRebootReason = requestedReasonStr
-	ctxPtr.requestedBootReason = requestedBootReason
+	ctxPtr.currentRebootReason = reasonStr
+	ctxPtr.currentBootReason = bootReason
 	publishNodeAgentStatus(ctxPtr)
 
 	// in any case, execute the reboot procedure
@@ -352,8 +351,8 @@ func handleNodeOperation(ctxPtr *nodeagentContext, op types.DeviceOperation) {
 
 	if op != types.DeviceOperationShutdown {
 		// set the reboot reason
-		agentlog.RebootReason(ctxPtr.requestedRebootReason,
-			ctxPtr.requestedBootReason, agentName, os.Getpid(), true)
+		agentlog.RebootReason(ctxPtr.currentRebootReason,
+			ctxPtr.currentBootReason, agentName, os.Getpid(), true)
 	}
 	// Wait for All Domains Halted
 	waitForAllDomainsHalted(ctxPtr)
