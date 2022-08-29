@@ -517,17 +517,17 @@ func (do DeviceOperation) String() string {
 
 // ZedAgentStatus :
 type ZedAgentStatus struct {
-	Name                  string
-	ConfigGetStatus       ConfigGetStatus
-	RebootCmd             bool
-	ShutdownCmd           bool
-	PoweroffCmd           bool
-	RequestedRebootReason string       // Why we will reboot
-	RequestedBootReason   BootReason   // Why we will reboot
-	MaintenanceMode       bool         // Don't run apps etc
-	ForceFallbackCounter  int          // Try image fallback when counter changes
-	CurrentProfile        string       // Current profile
-	RadioSilence          RadioSilence // Currently requested state of radio devices
+	Name                 string
+	ConfigGetStatus      ConfigGetStatus
+	RebootCmd            bool
+	ShutdownCmd          bool
+	PoweroffCmd          bool
+	RebootReason         string       // Current reason to reboot
+	BootReason           BootReason   // Current reason to reboot
+	MaintenanceMode      bool         // Don't run apps etc
+	ForceFallbackCounter int          // Try image fallback when counter changes
+	CurrentProfile       string       // Current profile
+	RadioSilence         RadioSilence // Currently requested state of radio devices
 }
 
 // Key :
