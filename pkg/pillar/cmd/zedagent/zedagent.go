@@ -185,8 +185,6 @@ type zedagentContext struct {
 
 	// Interlock with controller to ensure we get the encrypted secrets
 	publishedEdgeNodeCerts bool
-
-	attestationTryCount int
 }
 
 var debug = false
@@ -1776,12 +1774,6 @@ func triggerPublishAllInfo(ctxPtr *zedagentContext) {
 			}
 		}
 	}()
-}
-
-// This is called when we try sending an ATTEST_REQ_QUOTE
-func recordAttestationTry(ctxPtr *zedagentContext) {
-	ctxPtr.attestationTryCount++
-	log.Noticef("recordAttestationTry count %d", ctxPtr.attestationTryCount)
 }
 
 func handleZbootRestarted(ctxArg interface{}, restartCounter int) {

@@ -284,11 +284,10 @@ func getLatestConfig(url string, iteration int,
 	getconfigCtx *getconfigContext) bool {
 
 	log.Tracef("getLatestConfig(%s, %d)", url, iteration)
-	// On first boot, if we haven't yet published our certificates we defer
-	// to ensure that the controller has our certs and can add encrypted
-	// secrets to our config.
-	if getconfigCtx.zedagentCtx.bootReason == types.BootReasonFirst &&
-		!getconfigCtx.zedagentCtx.publishedEdgeNodeCerts {
+	// If we haven't yet published our certificates we defer to ensure
+	// that the controller has our certs and can add encrypted secrets to
+	// our config.
+	if !getconfigCtx.zedagentCtx.publishedEdgeNodeCerts {
 		log.Noticef("Defer fetching config until our EdgeNodeCerts have been published")
 		return false
 	}
@@ -345,8 +344,7 @@ func getLatestConfig(url string, iteration int,
 		if senderStatus == types.SenderStatusNotFound {
 			potentialUUIDUpdate(getconfigCtx)
 		}
-		if senderStatus == types.SenderStatusForbidden &&
-			ctx.attestationTryCount > 0 {
+		if senderStatus == types.SenderStatusForbidden {
 			log.Errorf("Config request is forbidden, triggering attestation again")
 			_ = restartAttestation(ctx)
 			if getconfigCtx.updateInprogress {
