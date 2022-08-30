@@ -790,16 +790,8 @@ func sendToCloud(ctx *loguploaderContext, data []byte, iter int, fName string, f
 			totalLatency := int64(ctx.metrics.Latency.AvgUploadMsec) *
 				int64(ctx.metrics.AppMetrics.NumGZipFilesSent+ctx.metrics.DevMetrics.NumGZipFilesSent)
 			filetime := time.Unix(int64(fTime/1000), 0) // convert msec to unix sec
-			if len(contents) != 0 {
-				contents, _, err = zedcloud.RemoveAndVerifyAuthContainer(ctx.zedcloudCtx,
-					logsURL, contents, false, types.SenderStatusNone)
-				if err != nil {
-					log.Errorf("RemoveAndVerifyAuthContainer failed: %s", err)
-					// Ignore response payload
-					contents = []byte{}
-				}
-			}
-
+			// Note that contents does not have an AuthContainer
+			// FIXME: documentation or code needs to change
 			if isApp {
 				ctx.metrics.AppMetrics.RecentUploadTimestamp = filetime
 				ctx.metrics.AppMetrics.NumGZipFilesSent++
