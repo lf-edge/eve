@@ -779,7 +779,8 @@ func sendToCloud(ctx *loguploaderContext, data []byte, iter int, fName string, f
 	//  - if resp is 4xx, the file maybe moved to 'failtosend' directory later
 	resp, contents, _, err := zedcloud.SendOnAllIntf(ctxWork, ctx.zedcloudCtx, logsURL, size, buf, iter, true)
 	if resp != nil {
-		if resp.StatusCode == http.StatusOK {
+		if resp.StatusCode == http.StatusOK ||
+			resp.StatusCode == http.StatusCreated {
 			latency := time.Since(startTime).Nanoseconds() / int64(time.Millisecond)
 			if ctx.metrics.Latency.MinUploadMsec == 0 || ctx.metrics.Latency.MinUploadMsec > uint32(latency) {
 				ctx.metrics.Latency.MinUploadMsec = uint32(latency)

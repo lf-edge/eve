@@ -1117,6 +1117,8 @@ func myPost(ctx *diagContext, reqURL string, ifname string,
 	switch resp.StatusCode {
 	case http.StatusOK:
 		fmt.Fprintf(outfile, "INFO: %s: %s StatusOK\n", ifname, reqURL)
+	case http.StatusCreated:
+		fmt.Fprintf(outfile, "INFO: %s: %s StatusCreated\n", ifname, reqURL)
 	case http.StatusNotModified:
 		fmt.Fprintf(outfile, "INFO: %s: %s StatusNotModified\n", ifname, reqURL)
 	default:

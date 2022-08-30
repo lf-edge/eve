@@ -152,7 +152,7 @@ func postLocalAppInfo(ctx *getconfigContext) *profile.LocalAppCmdList {
 				// Throttle sending to be about once per hour.
 				updateLocalAppInfoTicker(ctx, true)
 				return nil
-			case http.StatusOK:
+			case http.StatusOK, http.StatusCreated:
 				if len(appCmds.AppCommands) != 0 {
 					if appCmds.GetServerToken() != ctx.profileServerToken {
 						errList = append(errList,
@@ -644,7 +644,7 @@ func postLocalDevInfo(ctx *getconfigContext) *profile.LocalDevCmd {
 				// Throttle sending to be about once per hour.
 				updateLocalDevInfoTicker(ctx, true)
 				return nil
-			case http.StatusOK:
+			case http.StatusOK, http.StatusCreated:
 				if devCmd.GetServerToken() != ctx.profileServerToken {
 					errList = append(errList,
 						fmt.Sprintf("invalid token submitted by local server (%s)",

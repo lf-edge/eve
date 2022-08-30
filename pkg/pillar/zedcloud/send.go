@@ -317,7 +317,7 @@ func VerifyAllIntf(ctx *ZedCloudContext,
 			continue
 		}
 		switch resp.StatusCode {
-		case http.StatusOK, http.StatusCreated:
+		case http.StatusOK, http.StatusCreated, http.StatusNotModified, http.StatusNoContent:
 			log.Tracef("VerifyAllIntf: Zedcloud reachable via interface %s", intf)
 			intfStatusMap.RecordSuccess(intf)
 			intfSuccessCount++
@@ -705,7 +705,7 @@ func SendOnIntf(workContext context.Context, ctx *ZedCloudContext, destURL strin
 		}
 
 		switch resp.StatusCode {
-		case http.StatusOK, http.StatusCreated, http.StatusNotModified:
+		case http.StatusOK, http.StatusCreated, http.StatusNotModified, http.StatusNoContent:
 			log.Tracef("SendOnIntf to %s, response %s\n", reqUrl, resp.Status)
 			return resp, contents, senderStatus, nil
 		default:
