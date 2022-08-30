@@ -31,6 +31,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/cmd/loguploader"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/nim"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/nodeagent"
+	"github.com/lf-edge/eve/pkg/pillar/cmd/pbuf"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/tpmmgr"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/upgradeconverter"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/vaultmgr"
@@ -96,6 +97,7 @@ var (
 		"baseosmgr":        {f: baseosmgr.Run},
 		"wstunnelclient":   {f: wstunnelclient.Run},
 		"conntrack":        {f: conntrack.Run, inline: inlineAlways},
+		"pbuf":             {f: pbuf.Run, inline: inlineAlways},
 		"tpmmgr":           {f: tpmmgr.Run, inline: inlineUnlessService},
 		"vaultmgr":         {f: vaultmgr.Run, inline: inlineUnlessService},
 		"upgradeconverter": {f: upgradeconverter.Run, inline: inlineAlways},
