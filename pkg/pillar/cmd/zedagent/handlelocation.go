@@ -206,7 +206,7 @@ func publishLocationToLocalServer(ctx *getconfigContext, locInfo *info.ZInfoLoca
 			case http.StatusNotFound:
 				ctx.lpsThrottledLocation = true
 				return
-			case http.StatusOK, http.StatusNoContent:
+			case http.StatusOK, http.StatusCreated, http.StatusNoContent:
 				ctx.lpsThrottledLocation = false
 				return
 			default:

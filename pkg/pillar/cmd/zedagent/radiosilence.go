@@ -196,7 +196,7 @@ func getRadioConfig(ctx *getconfigContext, radioStatus *profile.RadioStatus) *pr
 				errList = append(errList, fmt.Sprintf("SendLocalProto: %v", err))
 				continue
 			}
-			if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
+			if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusCreated {
 				errList = append(errList, fmt.Sprintf("SendLocal: wrong response status code: %d",
 					resp.StatusCode))
 				continue

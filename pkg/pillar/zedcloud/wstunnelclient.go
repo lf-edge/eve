@@ -137,14 +137,16 @@ func (t *WSTunnelClient) TestConnection(devNetStatus *types.DeviceNetworkStatus,
 	}
 	log.Tracef("Read ping response status code: %v for ping url: %s", resp.StatusCode, pingURL)
 
-	if resp.StatusCode == http.StatusOK {
+	switch resp.StatusCode {
+	case http.StatusOK, http.StatusCreated, http.StatusNotModified:
 		url := URLPathString(t.Tunnel, zedcloudCtx.V2API, devUUID, "connection/tunnel")
 		t.DestURL = url
 		t.Dialer = dialer
 		log.Functionf("Connection test succeeded for url: %s on local address: %v, proxy: %v", url, localAddr, proxyURL)
 		return nil
+	default:
+		return err
 	}
-	return err
 }
 
 // startSession connects to configured backend on a
