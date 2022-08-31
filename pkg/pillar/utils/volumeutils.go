@@ -29,7 +29,7 @@ func GetVolumeSize(log *base.LogObject, name string) (uint64, uint64, string, bo
 	}
 	if info.Mode()&os.ModeDevice != 0 {
 		//Assume this is zfs device
-		imgInfo, err := zfs.GetZFSVolumeInfo(log, name)
+		imgInfo, err := zfs.GetZFSVolumeInfo(name)
 		if err != nil {
 			errStr := fmt.Sprintf("GetVolumeSize/GetZFSInfo failed for %s: %v",
 				name, err)

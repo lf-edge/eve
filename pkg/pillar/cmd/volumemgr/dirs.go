@@ -41,7 +41,7 @@ func initializeDatasets() {
 		types.VolumeEncryptedZFSDataset,
 	}
 	for _, datasetName := range volumeDatasets {
-		if _, err := zfs.GetDatasetOptions(log, datasetName); err != nil {
+		if !zfs.DatasetExist(log, datasetName) {
 			if output, err := zfs.CreateDataset(log, datasetName); err != nil {
 				log.Fatalf("CreateDataset failed: %s %s ", output, err)
 			}

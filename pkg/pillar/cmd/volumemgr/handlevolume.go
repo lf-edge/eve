@@ -126,7 +126,7 @@ func handleDeferredVolumeCreate(ctx *volumemgrContext, key string, config *types
 
 	if persistFsType == types.PersistZFS && !status.IsContainer() {
 		zvolName := status.ZVolName()
-		if _, err := zfs.GetDatasetOptions(log, zvolName); err == nil {
+		if zfs.DatasetExist(log, zvolName) {
 			zVolDevice := zfs.GetZVolDeviceByDataset(zvolName)
 			if zVolDevice == "" {
 				errStr := fmt.Sprintf("cannot find device for zvol %s of %s", zvolName, status.Key())
