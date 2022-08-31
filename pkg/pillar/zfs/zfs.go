@@ -5,7 +5,6 @@ package zfs
 
 import (
 	"bufio"
-	"bytes"
 	"fmt"
 	"io/ioutil"
 	"path/filepath"
@@ -25,14 +24,14 @@ import (
 
 const volBlockSize = uint64(16 * 1024)
 
-//CreateDataset creates an empty dataset
+// CreateDataset creates an empty dataset
 func CreateDataset(log *base.LogObject, dataset string) (string, error) {
 	args := []string{"create", "-p", dataset}
 	stdoutStderr, err := base.Exec(log, types.ZFSBinary, args...).CombinedOutput()
 	return string(stdoutStderr), err
 }
 
-//MountDataset mounts dataset
+// MountDataset mounts dataset
 func MountDataset(log *base.LogObject, dataset string) (string, error) {
 	args := []string{"mount", dataset}
 	stdoutStderr, err := base.Exec(log, types.ZFSBinary, args...).CombinedOutput()
@@ -69,8 +68,8 @@ func GetZfsStatusStr(log *base.LogObject, pool string) string {
 	return strings.Join(status, " ")
 }
 
-//DestroyDataset removes dataset from zfs
-//it runs 3 times in case of errors (we can hit dataset is busy)
+// DestroyDataset removes dataset from zfs
+// it runs 3 times in case of errors (we can hit dataset is busy)
 func DestroyDataset(log *base.LogObject, dataset string) (string, error) {
 	args := []string{"destroy", dataset}
 	var err error
@@ -91,41 +90,26 @@ func DestroyDataset(log *base.LogObject, dataset string) (string, error) {
 	return string(stdoutStderr), err
 }
 
-//GetDatasetOptions get dataset options from zfs
-//will return error if not exists
-func GetDatasetOptions(log *base.LogObject, dataset string) (map[string]string, error) {
-	args := []string{"get", "-Hp", "-o", "property,value", "all", dataset}
-	stdoutStderr, err := base.Exec(log, types.ZFSBinary, args...).CombinedOutput()
+// DatasetExist return true if dataset exists or false when it does not exist
+func DatasetExist(log *base.LogObject, datasetPath string) bool {
+	dataset, err := libzfs.DatasetOpen(datasetPath)
 	if err != nil {
-		return nil, fmt.Errorf("cannot obtain options of %s, output=%s, error=%s",
-			dataset, stdoutStderr, err)
+		return false
 	}
-	processedValues := make(map[string]string)
-	scanner := bufio.NewScanner(strings.NewReader(string(stdoutStderr)))
-	for scanner.Scan() {
-		err = nil
-		currentLine := scanner.Text()
-		split := strings.Split(currentLine, "\t")
-		if len(split) < 2 {
-			return nil, fmt.Errorf("cannot process line %s: not in format <key>\\t<value>", currentLine)
-		}
-		processedValues[split[0]] = split[1]
+	defer dataset.Close()
+
+	// Get one property to finally make sure that everything is in order.
+	_, err = dataset.GetProperty(libzfs.DatasetPropName)
+	if err != nil {
+		log.Errorf("DatasetExist(%s): Get property name failed. %s",
+			datasetPath, err.Error())
+		return false
 	}
-	return processedValues, nil
+
+	return true
 }
 
-//GetDatasetOption get dataset option value from zfs
-//will return error if not exists
-func GetDatasetOption(log *base.LogObject, dataset string, option string) (string, error) {
-	args := []string{"get", "-Hp", "-o", "value", option, dataset}
-	stdoutStderr, err := base.Exec(log, types.ZFSBinary, args...).CombinedOutput()
-	if err != nil {
-		return string(stdoutStderr), err
-	}
-	return strings.TrimSpace(string(stdoutStderr)), nil
-}
-
-//CreateVolumeDataset creates dataset of zvol type in zfs
+// CreateVolumeDataset creates dataset of zvol type in zfs
 func CreateVolumeDataset(log *base.LogObject, dataset string, size uint64, compression string) (string, error) {
 	alignedSize := alignUpToBlockSize(size)
 
@@ -145,28 +129,48 @@ func CreateVolumeDataset(log *base.LogObject, dataset string, size uint64, compr
 	return string(stdoutStderr), nil
 }
 
-//GetVolumesInDataset obtains volumes list from dataset
-func GetVolumesInDataset(log *base.LogObject, dataset string) ([]string, error) {
-	args := []string{"list", "-Hr",
-		"-o", "name",
-		"-t", "volume",
-		dataset}
-	stdoutStderr, err := base.Exec(log, types.ZFSBinary, args...).CombinedOutput()
-	if err != nil {
-		return nil, fmt.Errorf("GetVolumesInDataset: output=%s error=%s", stdoutStderr, err)
-	}
-	var lines []string
-	sc := bufio.NewScanner(bytes.NewReader(stdoutStderr))
-	for sc.Scan() {
-		line := strings.TrimSpace(sc.Text())
-		if line != "" {
-			lines = append(lines, line)
+func findVolumesInDataset(volumeList []string, list libzfs.Dataset) ([]string, error) {
+	for _, dataset := range list.Children {
+		pr, err := dataset.GetProperty(libzfs.DatasetPropType)
+		if err != nil {
+			return volumeList, fmt.Errorf("get property for dataset failed %v", err)
+		}
+		if pr.Value == "filesystem" {
+			volumeList, err = findVolumesInDataset(volumeList, dataset)
+			if err != nil {
+				return volumeList, fmt.Errorf("get zfs dataset for counting failed %v", err)
+			}
+		} else if pr.Value == "volume" {
+			propName, err := dataset.GetProperty(libzfs.DatasetPropName)
+			if err != nil {
+				return volumeList, err
+			}
+			volumeList = append(volumeList, propName.Value)
 		}
 	}
-	return lines, nil
+	return volumeList, nil
 }
 
-//GetDatasetByDevice returns dataset for provided device path
+// GetVolumesFromDataset obtains volumes list from dataset
+func GetVolumesFromDataset(datasetName string) ([]string, error) {
+	var volumeList []string
+
+	dataset, err := libzfs.DatasetOpen(datasetName)
+	if err != nil {
+		return volumeList,
+			fmt.Errorf("get zfs dataset for counting failed %v", err)
+	}
+	defer dataset.Close()
+
+	volumeList, err = findVolumesInDataset(volumeList, dataset)
+	if err != nil {
+		return volumeList, err
+	}
+
+	return volumeList, nil
+}
+
+// GetDatasetByDevice returns dataset for provided device path
 func GetDatasetByDevice(device string) string {
 	if !strings.HasPrefix(device, types.ZVolDevicePrefix) {
 		return ""
@@ -174,47 +178,68 @@ func GetDatasetByDevice(device string) string {
 	return strings.TrimLeft(strings.TrimLeft(device, types.ZVolDevicePrefix), "/")
 }
 
-//GetZVolDeviceByDataset return path to device for provided dataset
+// GetZVolDeviceByDataset return path to device for provided dataset
 func GetZVolDeviceByDataset(dataset string) string {
 	return filepath.Join(types.ZVolDevicePrefix, dataset)
 }
 
-//GetZFSVolumeInfo provides information for zfs device
-func GetZFSVolumeInfo(log *base.LogObject, device string) (*types.ImgInfo, error) {
+// GetZFSVolumeInfo provides information for zfs device
+func GetZFSVolumeInfo(device string) (*types.ImgInfo, error) {
 	imgInfo := types.ImgInfo{
 		Format:    "raw",
 		Filename:  device,
 		DirtyFlag: false,
 	}
-	dataset := GetDatasetByDevice(device)
-	if dataset == "" {
+	datasetFullName := GetDatasetByDevice(device)
+	if datasetFullName == "" {
 		return nil, fmt.Errorf("GetDatasetByDevice returns empty for device: %s",
 			device)
 	}
-	usedbydataset, err := GetDatasetOption(log, dataset, "usedbydataset")
+
+	// datasetFullName == persist/.../.../volume
+	dataset, err := libzfs.DatasetOpen(datasetFullName)
 	if err != nil {
-		return nil, fmt.Errorf("GetZFSVolumeInfo GetDatasetOption failed: %s", err)
+		return nil,
+			fmt.Errorf("open dataset %s error: %v", datasetFullName, err)
 	}
-	imgInfo.ActualSize, err = strconv.ParseUint(usedbydataset, 10, 64)
+	defer dataset.Close()
+
+	propUsedds, err := dataset.GetProperty(libzfs.DatasetPropUsedds)
 	if err != nil {
-		return nil, fmt.Errorf("GetZFSVolumeInfo: failed to parse referenced: %s", err)
+		return nil,
+			fmt.Errorf("get property Usedbydataset for dataset: %s failed %w",
+				datasetFullName, err)
 	}
-	volSize, err := GetDatasetOption(log, dataset, "volsize")
+	imgInfo.ActualSize, err = strconv.ParseUint(propUsedds.Value, 10, 64)
 	if err != nil {
-		return nil, fmt.Errorf("GetZFSVolumeInfo GetDatasetOption failed: %s", err)
+		return nil,
+			fmt.Errorf("GetZFSVolumeInfo: failed to parse Usedbydataset: %s", err)
 	}
-	imgInfo.VirtualSize, err = strconv.ParseUint(volSize, 10, 64)
+
+	propVolSize, err := dataset.GetProperty(libzfs.DatasetPropVolsize)
 	if err != nil {
-		return nil, fmt.Errorf("GetZFSVolumeInfo: failed to parse volsize: %s", err)
+		return nil,
+			fmt.Errorf("get property propVolSize for dataset %s failed %v",
+				datasetFullName, err)
 	}
-	volBlockSize, err := GetDatasetOption(log, dataset, "volblocksize")
+	imgInfo.VirtualSize, err = strconv.ParseUint(propVolSize.Value, 10, 64)
 	if err != nil {
-		return nil, fmt.Errorf("GetZFSVolumeInfo GetDatasetOption failed: %s", err)
+		return nil,
+			fmt.Errorf("GetZFSVolumeInfo: failed to parse volsize: %s", err)
 	}
-	imgInfo.ClusterSize, err = strconv.ParseUint(volBlockSize, 10, 64)
+
+	propVolblocksize, err := dataset.GetProperty(libzfs.DatasetPropVolblocksize)
 	if err != nil {
-		return nil, fmt.Errorf("GetZFSVolumeInfo: failed to parse volblocksize: %s", err)
+		return nil,
+			fmt.Errorf("get property propVolblocksize for dataset %s failed %v",
+				datasetFullName, err)
 	}
+	imgInfo.ClusterSize, err = strconv.ParseUint(propVolblocksize.Value, 10, 64)
+	if err != nil {
+		return nil,
+			fmt.Errorf("GetZFSVolumeInfo: failed to parse volblocksize: %s", err)
+	}
+
 	return &imgInfo, nil
 }
 
@@ -465,10 +490,10 @@ func GetZfsDiskAndStatus(disk libzfs.VDevTree) (*types.StorageDiskState, error) 
 	return rDiskStatus, nil
 }
 
-//GetDatasetUsageStat returns UsageStat for provided datasetName
-//for dataset with RefReservation it will return dataset.RefReservation as UsageStat.Total and UsageStat.Used
-//for dataset without RefReservation it will calculate UsageStat.Total as sum of dataset.Used and dataset.Available
-//and use dataset.LogicalUsed as UsageStat.Used to not count empty blocks of child zvols
+// GetDatasetUsageStat returns UsageStat for provided datasetName
+// for dataset with RefReservation it will return dataset.RefReservation as UsageStat.Total and UsageStat.Used
+// for dataset without RefReservation it will calculate UsageStat.Total as sum of dataset.Used and dataset.Available
+// and use dataset.LogicalUsed as UsageStat.Used to not count empty blocks of child zvols
 func GetDatasetUsageStat(datasetName string) (*types.UsageStat, error) {
 	var usageStat types.UsageStat
 	dataset, err := libzfs.DatasetOpen(datasetName)
