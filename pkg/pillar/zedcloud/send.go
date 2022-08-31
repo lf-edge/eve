@@ -23,13 +23,13 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/golang/protobuf/proto"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
 	logutils "github.com/lf-edge/eve/pkg/pillar/utils/logging"
 	uuid "github.com/satori/go.uuid"
 	"github.com/vishvananda/netlink"
+	"google.golang.org/protobuf/proto"
 )
 
 // ContentTypeProto : binary-encoded Protobuf content type

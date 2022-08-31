@@ -8,12 +8,12 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes"
 	"github.com/lf-edge/eve/api/go/info"
 	"github.com/lf-edge/eve/pkg/pillar/hardware"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
+	"google.golang.org/protobuf/proto"
 )
 
 func hardwareInfoTask(ctxPtr *zedagentContext, triggerHwInfo <-chan struct{}) {

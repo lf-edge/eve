@@ -7,7 +7,7 @@ index 60e0f7e..6b43261 100644
 -github.com/golang/protobuf/proto
 +## explicit
  github.com/golang/protobuf/jsonpb
-+github.com/golang/protobuf/proto
++google.golang.org/protobuf/proto
  github.com/golang/protobuf/ptypes/struct
  # github.com/pkg/errors v0.8.0
 +## explicit

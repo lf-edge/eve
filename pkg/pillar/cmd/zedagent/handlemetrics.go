@@ -16,7 +16,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes"
 	"github.com/lf-edge/eve/api/go/evecommon"
 	"github.com/lf-edge/eve/api/go/info"
@@ -28,6 +27,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 	uuid "github.com/satori/go.uuid"
 	"github.com/shirou/gopsutil/host"
+	"google.golang.org/protobuf/proto"
 )
 
 func handleDiskMetricCreate(ctxArg interface{}, key string,

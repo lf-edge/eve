@@ -55,6 +55,7 @@ require (
 	golang.org/x/sys v0.0.0-20220704084225-05e143d24a9e
 	google.golang.org/genproto v0.0.0-20220317150908-0efb43f6373e // indirect
 	google.golang.org/grpc v1.45.0
+	google.golang.org/protobuf v1.27.1
 )
 
 replace github.com/lf-edge/eve/api/go => ../../api/go

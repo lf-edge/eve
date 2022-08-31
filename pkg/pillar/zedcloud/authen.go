@@ -25,7 +25,6 @@ import (
 	"os"
 	"strings"
 
-	"github.com/golang/protobuf/proto"
 	zauth "github.com/lf-edge/eve/api/go/auth"
 	zcert "github.com/lf-edge/eve/api/go/certs"
 	zcommon "github.com/lf-edge/eve/api/go/evecommon"
@@ -33,6 +32,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
 	"github.com/satori/go.uuid"
+	"google.golang.org/protobuf/proto"
 )
 
 const (

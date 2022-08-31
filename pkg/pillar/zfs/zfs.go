@@ -13,13 +13,13 @@ import (
 	"time"
 
 	libzfs "github.com/bicomsystems/go-libzfs"
-	"github.com/golang/protobuf/proto"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/hardware"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils/disks"
 	"github.com/prometheus/procfs/blockdevice"
 	log "github.com/sirupsen/logrus"
+	"google.golang.org/protobuf/proto"
 )
 
 const volBlockSize = uint64(16 * 1024)
