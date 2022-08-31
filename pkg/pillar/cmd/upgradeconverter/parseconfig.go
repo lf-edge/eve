@@ -9,10 +9,10 @@ package upgradeconverter
 import (
 	"io/ioutil"
 
-	"github.com/golang/protobuf/proto"
 	zauth "github.com/lf-edge/eve/api/go/auth"
 	zconfig "github.com/lf-edge/eve/api/go/config"
 	uuid "github.com/satori/go.uuid"
+	"google.golang.org/protobuf/proto"
 )
 
 type parseResult struct {

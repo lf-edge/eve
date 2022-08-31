@@ -15,7 +15,6 @@ import (
 
 	"github.com/containerd/containerd/mount"
 	"github.com/eriknordmark/ipinfo"
-	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes"
 	"github.com/lf-edge/eve/api/go/evecommon"
 	"github.com/lf-edge/eve/api/go/info"
@@ -29,6 +28,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/vault"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 	"github.com/shirou/gopsutil/host"
+	"google.golang.org/protobuf/proto"
 )
 
 var (

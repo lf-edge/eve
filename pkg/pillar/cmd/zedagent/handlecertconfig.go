@@ -13,7 +13,6 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/golang/protobuf/proto"
 	"github.com/lf-edge/eve/api/go/attest"
 	zcert "github.com/lf-edge/eve/api/go/certs"
 	zconfig "github.com/lf-edge/eve/api/go/config"
@@ -22,6 +21,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
+	"google.golang.org/protobuf/proto"
 )
 
 // Cipher Information Context
