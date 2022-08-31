@@ -82,9 +82,9 @@ func gcDatasets(ctx *volumemgrContext, dataset string) {
 		return
 	}
 	log.Tracef("gcDatasets(%s)", dataset)
-	locations, err := zfs.GetVolumesInDataset(log, dataset)
+	locations, err := zfs.GetVolumesFromDataset(dataset)
 	if err != nil {
-		log.Errorf("gcDatasets: GetVolumesInDataset '%s' failed: %v",
+		log.Errorf("gcDatasets: GetVolumesFromDataset '%s' failed: %v",
 			dataset, err)
 		return
 	}
@@ -162,7 +162,7 @@ func gcPendingCreateVolume(ctx *volumemgrContext) {
 				zVolName := vcp.ZVolName()
 				// check if dataset exists
 				// assume that we should remove it as not created completely
-				if _, err := zfs.GetDatasetOptions(log, zVolName); err == nil {
+				if zfs.DatasetExist(log, zVolName) {
 					if stdoutStderr, err := zfs.DestroyDataset(log, zVolName); err != nil {
 						log.Errorf("gcPendingCreateVolume: error destroying zfs zvol at %s, error=%s, output=%s",
 							zVolName, err, stdoutStderr)
