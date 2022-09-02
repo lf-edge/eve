@@ -140,10 +140,11 @@ func collectAndPublishStorageStatus(ctxPtr *zfsContext) {
 					}
 					for _, vdev := range vdevs.Devices {
 						child := new(types.StorageChildren)
-						child.DisplayName = vdev.Name
+						child.DisplayName = vdev.Name // Not unique to VDevTypeRaidz and VDevTypeMirror
 						// If this is a RAID or mirror, look at the disks it consists of
 						if vdev.Type == libzfs.VDevTypeMirror || vdev.Type == libzfs.VDevTypeRaidz {
 							child.CurrentRaid = zfs.GetRaidTypeFromStr(vdev.Name)
+							child.GUID = vdev.GUID
 							updateCurrentRaid(child.CurrentRaid)
 							for _, disk := range vdev.Devices {
 								rDiskStatus, err := zfs.GetZfsDiskAndStatus(disk)
@@ -176,6 +177,7 @@ func collectAndPublishStorageStatus(ctxPtr *zfsContext) {
 			}
 			status.PoolName = zpoolName
 			status.PoolStatusMsg = types.PoolStatus(poolStatus + 1) // + 1 given the presence of PoolStatusUnspecified on the EVE side
+			status.PoolStatusMsgStr = zfs.GetZpoolStatusMsgStr(status.PoolStatusMsg)
 			status.ZpoolSize = zpoolSizeInByte
 			status.ZfsVersion = zfsVersion
 			status.CurrentRaid = currentRaid

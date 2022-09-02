@@ -175,6 +175,7 @@ func fillStorageChildren(children []*types.StorageChildren) []*info.StorageChild
 	for _, child := range children {
 		childInfo := new(info.StorageChildren)
 		childInfo.CurrentRaid = info.StorageRaidType(child.CurrentRaid)
+		childInfo.GUID = child.GUID
 		childInfo.DisplayName = child.DisplayName
 		for _, disk := range child.Disks {
 			diskInfo := new(info.StorageDiskState)
@@ -391,10 +392,12 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 			storageInfo.CompressionRatio = zfsPoolStatus.CompressionRatio
 			storageInfo.ZpoolSize = zfsPoolStatus.ZpoolSize
 			storageInfo.CountZvols = zfsPoolStatus.CountZvols
+			storageInfo.PoolStatusMsg = zfsPoolStatus.PoolStatusMsgStr
 			storageInfo.CollectorErrors = zfsPoolStatus.CollectorErrors
 			for _, disk := range zfsPoolStatus.Disks {
 				diskInfo := new(info.StorageDiskState)
 				diskInfo.Status = info.StorageStatus(disk.Status)
+				diskInfo.State = disk.AuxStateStr
 				if disk.DiskName != nil {
 					diskInfo.DiskName = new(evecommon.DiskDescription)
 					diskInfo.DiskName.Name = disk.DiskName.Name

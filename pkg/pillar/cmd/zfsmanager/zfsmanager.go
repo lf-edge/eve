@@ -50,6 +50,7 @@ type zfsContext struct {
 	storageStatusPub       pubsub.Publication
 	storageMetricsPub      pubsub.Publication
 	subDisksConfig         pubsub.Subscription
+	subVolumeStatus        pubsub.Subscription
 	disksProcessingTrigger chan interface{}
 	zVolDeviceEvents       *base.LockedStringMap // stores device->zVolDeviceEvent mapping to check and publish
 	zfsIterLock            sync.Mutex
@@ -137,6 +138,22 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	}
 	ctxPtr.storageMetricsPub = storageMetricsPub
 
+	// Look VolumeStatus from volumemgr to getting zVol metrics
+	subVolumeStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:   "volumemgr",
+		MyAgentName: agentName,
+		AgentScope:  types.AppImgObj,
+		TopicImpl:   types.VolumeStatus{},
+		Activate:    false,
+		Ctx:         &ctxPtr,
+		ErrorTime:   errorTime,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctxPtr.subVolumeStatus = subVolumeStatus
+	subVolumeStatus.Activate()
+
 	if err := os.MkdirAll(types.ZVolDevicePrefix, os.ModeDir); err != nil {
 		log.Fatal(err)
 	}
@@ -160,6 +177,8 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 			processZVolDeviceEvents(&ctxPtr)
 		case change := <-subDisksConfig.MsgChan():
 			subDisksConfig.ProcessChange(change)
+		case change := <-subVolumeStatus.MsgChan():
+			subVolumeStatus.ProcessChange(change)
 		case <-stillRunning.C:
 		}
 		ps.StillRunning(agentName, warningTime, errorTime)

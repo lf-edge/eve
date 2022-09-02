@@ -25,6 +25,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
+	"github.com/lf-edge/eve/pkg/pillar/vault"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 	uuid "github.com/satori/go.uuid"
 	"github.com/shirou/gopsutil/host"
@@ -628,6 +629,15 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 		}
 	}
 	ReportDeviceMetric.DormantTimeInSeconds = getDormantTime(ctx)
+
+	// Report metrics from ZFS
+	if vault.ReadPersistType() == types.PersistZFS {
+		for _, el := range ctx.subZFSPoolMetrics.GetAll() {
+			zfsPoolMetrics := el.(types.ZFSPoolMetrics)
+			ReportDeviceMetric.StorageMetrics = append(ReportDeviceMetric.StorageMetrics,
+				fillStorageMetrics(&zfsPoolMetrics))
+		}
+	}
 
 	// Report flowlog metrics.
 	ctx.flowLogMetrics.Lock()
@@ -1650,4 +1660,104 @@ func protoEncodeFlowlogCounters(counters types.FlowlogCounters) *metrics.Flowlog
 // getDormantTime returns scaled dormant time
 func getDormantTime(ctx *zedagentContext) uint64 {
 	return uint64(ctx.globalConfig.GlobalValueInt(types.MetricInterval) * dormantTimeScaleFactor)
+}
+
+func fillStorageVDevMetrics(obj *types.ZFSVDevMetrics) *zmet.StorageVDevMetrics {
+	storageVDevMetrics := new(metrics.StorageVDevMetrics)
+	storageVDevMetrics.Alloc = *proto.Uint64(obj.Alloc)
+	storageVDevMetrics.Total = *proto.Uint64(obj.Space)
+	storageVDevMetrics.DeflatedSpace = *proto.Uint64(obj.DSpace)
+	storageVDevMetrics.ReplaceableSize = *proto.Uint64(obj.RSize)
+	storageVDevMetrics.ExpandableSize = *proto.Uint64(obj.ESize)
+	storageVDevMetrics.ReadErrors = *proto.Uint64(obj.ReadErrors)
+	storageVDevMetrics.WriteErrors = *proto.Uint64(obj.WriteErrors)
+	storageVDevMetrics.ChecksumErrors = *proto.Uint64(obj.ChecksumErrors)
+	storageVDevMetrics.BytesRead = *proto.Uint64(obj.Bytes[types.ZIOTypeRead])
+	storageVDevMetrics.BytesWrite = *proto.Uint64(obj.Bytes[types.ZIOTypeWrite])
+	storageVDevMetrics.OpsCountRead = *proto.Uint64(obj.Ops[types.ZIOTypeRead])
+	storageVDevMetrics.OpsCountWrite = *proto.Uint64(obj.Ops[types.ZIOTypeWrite])
+	storageVDevMetrics.IOsInProgress = *proto.Uint64(obj.IOsInProgress)
+	storageVDevMetrics.ReadTicks = *proto.Uint64(obj.ReadTicks)
+	storageVDevMetrics.WriteTicks = *proto.Uint64(obj.WriteTicks)
+	storageVDevMetrics.IOsTotalTicks = *proto.Uint64(obj.IOsTotalTicks)
+	storageVDevMetrics.WeightedIOTicks = *proto.Uint64(obj.WeightedIOTicks)
+	return storageVDevMetrics
+}
+
+func fillStorageZVolMetrics(zvol *types.StorageZVolMetrics) *metrics.StorageVDevMetrics {
+	zvolMetrics := new(metrics.StorageVDevMetrics)
+	zvolMetrics.VolumeUUID = *proto.String(zvol.VolumeID.String())
+	zvolMetrics.BytesRead = *proto.Uint64(zvol.Metrics.Bytes[types.ZIOTypeRead])
+	zvolMetrics.BytesWrite = *proto.Uint64(zvol.Metrics.Bytes[types.ZIOTypeWrite])
+	zvolMetrics.OpsCountRead = *proto.Uint64(zvol.Metrics.Ops[types.ZIOTypeRead])
+	zvolMetrics.OpsCountWrite = *proto.Uint64(zvol.Metrics.Ops[types.ZIOTypeWrite])
+	zvolMetrics.IOsInProgress = *proto.Uint64(zvol.Metrics.IOsInProgress)
+	zvolMetrics.ReadTicks = *proto.Uint64(zvol.Metrics.ReadTicks)
+	zvolMetrics.WriteTicks = *proto.Uint64(zvol.Metrics.WriteTicks)
+	zvolMetrics.IOsTotalTicks = *proto.Uint64(zvol.Metrics.IOsTotalTicks)
+	zvolMetrics.WeightedIOTicks = *proto.Uint64(zvol.Metrics.WeightedIOTicks)
+	return zvolMetrics
+}
+
+func fillStorageDiskMetrics(disk *types.StorageDiskMetrics) *metrics.StorageDiskMetric {
+	diskMetric := new(metrics.StorageDiskMetric)
+
+	if disk.DiskName != nil {
+		diskMetric.DiskName = new(evecommon.DiskDescription)
+		diskMetric.DiskName.Name = *proto.String(disk.DiskName.Name)
+		diskMetric.DiskName.LogicalName = *proto.String(disk.DiskName.LogicalName)
+		diskMetric.DiskName.Serial = *proto.String(disk.DiskName.Serial)
+	}
+	if disk.Metrics != nil {
+		diskMetric.Metrics = fillStorageVDevMetrics(disk.Metrics)
+	}
+	return diskMetric
+}
+
+func fillStorageChildrenMetrics(childrenDataset *types.StorageChildrenMetrics) *metrics.StorageChildrenMetric {
+	storageChildren := new(metrics.StorageChildrenMetric)
+	storageChildren.GUID = *proto.Uint64(childrenDataset.GUID)
+	storageChildren.Metrics = fillStorageVDevMetrics(childrenDataset.Metrics)
+
+	for _, child := range childrenDataset.Children {
+		storageChildren.Children = append(storageChildren.Children,
+			fillStorageChildrenMetrics(child))
+	}
+
+	for _, disk := range childrenDataset.Disks {
+		storageChildren.Disks = append(storageChildren.Disks,
+			fillStorageDiskMetrics(disk))
+	}
+	return storageChildren
+}
+
+func fillStorageMetrics(zpoolMetrics *types.ZFSPoolMetrics) *metrics.StorageMetric {
+	storageMetrics := new(metrics.StorageMetric)
+	storageMetrics.PoolName = *proto.String(zpoolMetrics.PoolName)
+	tmpCollectionTime, err := ptypes.TimestampProto(zpoolMetrics.CollectionTime)
+	if err != nil {
+		log.Errorf("fillStorageMetrics: failed to convert CollectionTime %v", err)
+	}
+	storageMetrics.CollectionTime = tmpCollectionTime
+	storageMetrics.ZpoolMetrics = fillStorageVDevMetrics(zpoolMetrics.Metrics)
+
+	// Fill metrics for RAID or Mirror
+	for _, child := range zpoolMetrics.ChildrenDataset {
+		storageMetrics.ChildrenDatasets = append(storageMetrics.ChildrenDatasets,
+			fillStorageChildrenMetrics(child))
+	}
+
+	// Fill metrics for disks that are not included in the RAID or mirror
+	for _, disk := range zpoolMetrics.Disks {
+		storageMetrics.Disks = append(storageMetrics.Disks,
+			fillStorageDiskMetrics(disk))
+	}
+
+	// Fill metrics for zvols
+	for _, zvol := range zpoolMetrics.ZVols {
+		storageMetrics.Zvols = append(storageMetrics.Zvols,
+			fillStorageZVolMetrics(zvol))
+	}
+
+	return storageMetrics
 }

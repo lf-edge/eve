@@ -47,7 +47,19 @@ func collectAndPublishStorageMetrics(ctxPtr *zfsContext) {
 				continue
 			}
 
-			zfsPoolMetrics := zfs.GetAllDeviceMetricsFromZpool(vdevs)
+			zfsPoolMetrics := zfs.GetZpoolMetrics(vdevs)
+
+			// Fill metrics for zvols
+			for _, vs := range ctxPtr.subVolumeStatus.GetAll() {
+				volumeStatus := vs.(types.VolumeStatus)
+				zVolMetric, err := zfs.GetZvolMetrics(volumeStatus, zfsPoolMetrics.PoolName)
+				if err != nil {
+					// It is possible that the logical volume belongs to another zpool
+					continue
+				}
+				zfsPoolMetrics.ZVols = append(zfsPoolMetrics.ZVols, zVolMetric)
+			}
+
 			if err := ctxPtr.storageMetricsPub.Publish(zfsPoolMetrics.Key(), *zfsPoolMetrics); err != nil {
 				log.Errorf("error in publishing of storageMetrics: %s", err)
 			}
