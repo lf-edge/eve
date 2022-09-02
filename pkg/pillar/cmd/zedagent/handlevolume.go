@@ -93,6 +93,7 @@ func parseVolumeConfig(ctx *getconfigContext,
 		volumeConfig.ReadOnly = cfgVolume.GetReadonly()
 		volumeConfig.RefCount = 1
 		volumeConfig.HasNoAppReferences = checkVolumeHasNoAppReferences(ctx, cfgVolume, config)
+		volumeConfig.Target = cfgVolume.GetTarget()
 
 		// Add config submitted via local profile server.
 		addLocalVolumeConfig(ctx, volumeConfig)

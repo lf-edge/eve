@@ -72,6 +72,7 @@ func MaybeAddDomainConfig(ctx *zedmanagerContext,
 		disk.MountDir = vrs.MountDir
 		disk.DisplayName = vrs.DisplayName
 		disk.WWN = vrs.WWN
+		disk.Target = vrs.Target
 		dc.DiskConfigList = append(dc.DiskConfigList, disk)
 	}
 	// let's fill some of the default values (arguably we may want controller

@@ -36,6 +36,7 @@ func handleVolumeRefCreate(ctxArg interface{}, key string,
 			MaxVolSize:             vs.MaxVolSize,
 			WWN:                    vs.WWN,
 			VerifyOnly:             config.VerifyOnly,
+			Target:                 vs.Target,
 		}
 		if vs.HasError() {
 			description := vs.ErrorDescription
@@ -182,6 +183,7 @@ func updateVolumeRefStatus(ctx *volumemgrContext, vs *types.VolumeStatus) {
 				status.ReadOnly = vs.ReadOnly
 				status.DisplayName = vs.DisplayName
 				status.MaxVolSize = vs.MaxVolSize
+				status.Target = vs.Target
 				status.WWN = vs.WWN
 				if vs.HasError() {
 					description := vs.ErrorDescription
@@ -210,6 +212,7 @@ func updateVolumeRefStatus(ctx *volumemgrContext, vs *types.VolumeStatus) {
 				MaxVolSize:             vs.MaxVolSize,
 				WWN:                    vs.WWN,
 				VerifyOnly:             config.VerifyOnly,
+				Target:                 vs.Target,
 			}
 			if vs.HasError() {
 				description := vs.ErrorDescription
