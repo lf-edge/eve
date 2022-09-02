@@ -4,6 +4,7 @@
 syntax = "proto3";
 
 import "google/protobuf/timestamp.proto";
+import "evecommon/evecommon.proto";
 
 package org.lfedge.eve.metrics;
 option go_package  = "github.com/lf-edge/eve/api/go/metrics";
@@ -177,12 +178,81 @@ message appCpuMetric {
   uint64 total_ns = 7;                 // like 'total' but in nanoseconds. Overflow may happen after ~40 years without EVE restart
 }
 
-// StorageMetric   At the moment not used
+// StorageVDevMetrics - contains virtual device statistics from ZFS storage
+message StorageVDevMetrics {
+  // VolumeUUID (how and in ZInfoVolume.uuid)
+  // Non-empty if metrics are collected from /dev/...
+  // For example: /dev/zd* (zvol)
+  string volume_u_u_i_d = 1;
+  uint64 alloc = 2; // Space allocated (in bytes)
+  uint64 total = 3; // Total device capacity (in bytes)
+  // Deflated capacity on this device available to ZFS. (in bytes)
+  uint64 deflated_space = 4;
+  // Replaceable dev size. Displays the minimum volume
+  // required to replace this device. (in bytes)
+  uint64 replaceable_size = 5;
+  // Expandable dev size. This value determines how much space
+  // the pool can expand from this device. (in bytes)
+  uint64 expandable_size = 6;
+  uint64 read_errors = 7;     // Counter read errors.
+  uint64 write_errors = 8;    // Counter write errors.
+  uint64 checksum_errors = 9; // Counter checksum errors.
+  uint64 bytes_read = 10;      // Total number of bytes read.
+  uint64 bytes_write = 11;    // Total number of bytes write.
+  // The total number of read operations sent to
+  // the pool or device, including metadata requests.
+  uint64 ops_count_read = 12;
+  // The total number of write operations sent to the pool or device.
+  uint64 ops_count_write = 13;
+  // Number of I/Os currently in progress.
+  uint64 i_os_in_progress = 14;
+  // The total number of milliseconds spent by all reads.
+  uint64 read_ticks = 15;
+  // The total number of milliseconds spent by all writes.
+  uint64 write_ticks = 16;
+  // The number of milliseconds spent doing I/Os.
+  uint64 i_os_total_ticks = 17;
+  // weighted_io_ticks is the weighted number of milliseconds
+  // spent doing I/Os. This can also be used to estimate average
+  // queue wait time for requests.
+  uint64 weighted_i_o_ticks = 18;
+}
+
+// StorageDiskMetric - contains disk metrics from ZFS storage
+message StorageDiskMetric {
+  org.lfedge.eve.common.DiskDescription disk_name = 1;
+  StorageVDevMetrics metrics = 2;  // Metrics for the disk
+}
+
+// StorageChildren - contains child for zpool metrics
+// from ZFS storage for RAID or Mirrors
+message StorageChildrenMetric {
+  // The GUID of the child. Unique value.
+  uint64 g_u_i_d = 1;
+  // Metrics for disks included in RAID or mirror
+  repeated StorageDiskMetric disks = 2;
+  // Children of this dataset
+  repeated StorageChildrenMetric children = 3;
+  // Metrics for the whole RAID or mirror
+  StorageVDevMetrics metrics = 4;
+}
+
+// StorageMetric - contains zpool metrics including child devices
 message StorageMetric {
   string pool_name = 1;
-  // Depreated tag 2
-  // Depreated tag 3
-  // Depreated tag 4
+  // Deprecated tag 2
+  // Deprecated tag 3
+  // Deprecated tag 4
+  // Time of the collection metrics.
+  google.protobuf.Timestamp collection_time = 5;
+  // Metrics for zpool
+  StorageVDevMetrics zpool_metrics = 6;
+  // Metrics for RAID or Mirror
+  repeated StorageChildrenMetric children_datasets = 7;
+  // Metrics for disks that are not included in the RAID or mirror
+  repeated StorageDiskMetric disks = 8;
+  // Metrics for zvols
+  repeated StorageVDevMetrics zvols = 9;
 }
 
 message deviceMetric {
@@ -225,7 +295,7 @@ message deviceMetric {
   // inactive in the controller. 'dormantTimeInSeconds' is subjected to change based
   // of network connectivity.
   uint64 dormant_time_in_seconds = 22;
-  repeated StorageMetric storage_metrics = 23;
+  repeated StorageMetric storage_metrics = 23;  // Storage metrics from ZFS
 }
 
 message AclMetric {

@@ -436,6 +436,7 @@ enum StorageStatus {
 message StorageDiskState {
   org.lfedge.eve.common.DiskDescription disk_name = 1;
   StorageStatus status = 2;            // In ZFS
+  string state = 3;                   // VDev aux state
 }
 
 enum StorageRaidType {
@@ -487,7 +488,8 @@ message StorageChildren {
   StorageRaidType current_raid = 1;
   repeated StorageDiskState disks = 2;
   repeated StorageChildren children = 3;
-  string display_name = 4; // A string which can be used to organize the display
+  string display_name = 4;  // A string which can be used to organize the display. Not unique.
+  uint64 g_u_i_d = 5;       // A unique identifier for the storage object (RAID or mirror)
 }
 
 // Information about storage system
@@ -503,6 +505,7 @@ message StorageInfo {
   repeated StorageDiskState disks = 9;  // Disks lists in EVE (use in storage)
   string collector_errors = 10; // Reports errors when collecting information. Default and normal value = ""
   repeated StorageChildren children = 11; // If we have nested objects we should define them here
+  string pool_status_msg = 12;  // pool status msg
 }
 
 // Information about the system that is sent once when the system boots
