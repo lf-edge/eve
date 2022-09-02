@@ -143,6 +143,7 @@ func handleDeferredVolumeCreate(ctx *volumemgrContext, key string, config *types
 		Encrypted:               config.Encrypted,
 		DisplayName:             config.DisplayName,
 		RefCount:                config.RefCount,
+		Target:                  config.Target,
 		LastRefCountChangeTime:  time.Now(),
 		LastUse:                 time.Now(),
 		State:                   types.INITIAL,

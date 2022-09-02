@@ -549,6 +549,11 @@ func (ctx kvmContext) CreateDomConfig(domainName string, config types.DomainConf
 		if ds.Devtype == "" {
 			continue
 		}
+		if ds.Devtype == "AppCustom" {
+			// This is application custom data. It is forwarded to the VM
+			// differently - as a download url in zedrouter
+			continue
+		}
 		diskContext.DiskStatus = ds
 		if err := t.Execute(file, diskContext); err != nil {
 			return logError("can't write to config file %s (%v)", file.Name(), err)
