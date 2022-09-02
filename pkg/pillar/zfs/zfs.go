@@ -7,6 +7,7 @@ import (
 	"bufio"
 	"fmt"
 	"io/ioutil"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -410,29 +411,34 @@ func GetZfsDeviceStatusFromStr(statusStr string) types.StorageStatus {
 	return types.StorageStatusUnspecified
 }
 
-// GetZfsDeviceMetrics read libzfs.VDevStat and return metrics
-// (*types.DiskMetrics) for only one device in zfs pool.
-func GetZfsDeviceMetrics(stat libzfs.VDevStat, diskName string) *types.ZDeviceMetrics {
-	devMetrics := new(types.ZDeviceMetrics)
-	devMetrics.Alloc = stat.Alloc
-	devMetrics.Space = stat.Space
-	devMetrics.DSpace = stat.DSpace
-	devMetrics.RSize = stat.RSize
-	devMetrics.ESize = stat.ESize
-	devMetrics.ChecksumErrors = stat.ChecksumErrors
-	devMetrics.ReadErrors = stat.ReadErrors
-	devMetrics.WriteErrors = stat.WriteErrors
-	for i := 0; i < types.ZIOTypeMax; i++ {
-		devMetrics.Ops[i] = stat.Ops[i]
-		devMetrics.Bytes[i] = stat.Bytes[i]
-	}
+// GetZfsVDevMetrics read libzfs.VDevStat or /proc/diskstats
+// and return metrics (*types.DiskMetrics) for only one device in zfs pool.
+func GetZfsVDevMetrics(zStat libzfs.VDevStat, diskName string,
+	fromZfs bool) *types.ZFSVDevMetrics {
+	devMetrics := new(types.ZFSVDevMetrics)
 
-	// Only for block devices (Ex. /dev/sd*)
+	if fromZfs {
+		devMetrics.Alloc = zStat.Alloc
+		devMetrics.Space = zStat.Space
+		devMetrics.DSpace = zStat.DSpace
+		devMetrics.RSize = zStat.RSize
+		devMetrics.ESize = zStat.ESize
+		devMetrics.ChecksumErrors = zStat.ChecksumErrors
+		devMetrics.ReadErrors = zStat.ReadErrors
+		devMetrics.WriteErrors = zStat.WriteErrors
+		for i := 0; i < types.ZIOTypeMax; i++ {
+			devMetrics.Ops[i] = zStat.Ops[i]
+			devMetrics.Bytes[i] = zStat.Bytes[i]
+		}
+	}
+	// Only for block devices (Ex. /dev/sd*, /dev/zd*, /dev/nvme*...)
 	if diskName != "" {
-		shortName := filepath.Base(diskName)
+		diskWasFound := false
+		shortDiskName := filepath.Base(diskName)
 		fs, err := blockdevice.NewFS("/proc", "/sys")
 		if err != nil {
-			log.Errorf("failed to get block device stats for %s. Error:%v", diskName, err)
+			log.Errorf("failed to get block device stats for %s. Error:%v",
+				diskName, err)
 			return devMetrics
 		}
 		stats, err := fs.ProcDiskstats()
@@ -442,13 +448,32 @@ func GetZfsDeviceMetrics(stat libzfs.VDevStat, diskName string) *types.ZDeviceMe
 		}
 
 		for _, stat := range stats {
-			if shortName == stat.Info.DeviceName {
+			if shortDiskName == stat.Info.DeviceName {
+				diskWasFound = true
+				if !fromZfs { // only for zVolumes /dev/zd*
+					sectorSize, err := GetZVolSectorSize(shortDiskName)
+					if err != nil {
+						log.Errorf("failed to get sector size for %s. Error:%v",
+							shortDiskName, err)
+					}
+
+					// Other metrics for zvol (total, free, used space)
+					// are collected elsewhere.
+					devMetrics.Ops[types.ZIOTypeRead] = stat.IOStats.ReadIOs * sectorSize
+					devMetrics.Ops[types.ZIOTypeWrite] = stat.IOStats.WriteIOs * sectorSize
+					devMetrics.Bytes[types.ZIOTypeRead] = stat.IOStats.ReadSectors
+					devMetrics.Bytes[types.ZIOTypeWrite] = stat.IOStats.WriteSectors
+				}
 				devMetrics.IOsInProgress = stat.IOStats.IOsInProgress
 				devMetrics.ReadTicks = stat.IOStats.ReadTicks
 				devMetrics.WriteTicks = stat.IOStats.WriteTicks
 				devMetrics.IOsTotalTicks = stat.IOStats.IOsTotalTicks
 				devMetrics.WeightedIOTicks = stat.IOStats.WeightedIOTicks
 			}
+		}
+
+		if !diskWasFound {
+			log.Errorf("failed to get diskstats for %s from /proc/diskstats", diskName)
 		}
 	}
 	return devMetrics
@@ -486,6 +511,7 @@ func GetZfsDiskAndStatus(disk libzfs.VDevTree) (*types.StorageDiskState, error) 
 	rDiskStatus.DiskName.Name = *proto.String(diskZfsName)
 	rDiskStatus.DiskName.Serial = *proto.String(serialNumber)
 	rDiskStatus.AuxState = types.VDevAux(disk.Stat.Aux + 1) // + 1 given the presence of VDevAuxUnspecified on the EVE side
+	rDiskStatus.AuxStateStr = *proto.String(GetVDevAuxMsgStr(rDiskStatus.AuxState))
 	rDiskStatus.Status = GetZfsDeviceStatusFromStr(disk.Stat.State.String())
 	return rDiskStatus, nil
 }
@@ -546,29 +572,277 @@ func GetDatasetUsageStat(datasetName string) (*types.UsageStat, error) {
 	return &usageStat, nil
 }
 
-// GetAllDeviceMetricsFromZpool - returns metrics for all devices in zfs pool/dataset
-func GetAllDeviceMetricsFromZpool(vdev libzfs.VDevTree) *types.ZFSPoolMetrics {
-	metrics := new(types.ZFSPoolMetrics)
-	// If this is a RAID or mirror, look at the disks it consists of
-	if vdev.Type == libzfs.VDevTypeMirror ||
-		vdev.Type == libzfs.VDevTypeRaidz ||
-		vdev.Type == libzfs.VDevTypeRoot {
-		for _, disk := range vdev.Devices {
-			metrics.ChildrenDataset = append(metrics.ChildrenDataset,
-				GetAllDeviceMetricsFromZpool(disk))
-		}
-		metrics.DisplayName = vdev.Name
-		metrics.CollectionTime = time.Now()
-		metrics.Metrics = GetZfsDeviceMetrics(vdev.Stat, "")
-	} else if vdev.Type == libzfs.VDevTypeDisk {
-		diskName, err := disks.GetDiskNameByPartName(vdev.Name)
-		if err != nil {
-			log.Errorf("cannot get disk name for %s: %s", vdev.Name, err)
-			diskName = vdev.Name
-		}
-		metrics.DisplayName = diskName
-		metrics.CollectionTime = time.Now()
-		metrics.Metrics = GetZfsDeviceMetrics(vdev.Stat, vdev.Name)
+// GetZVolSectorSize return hw_sector_size for zvol
+func GetZVolSectorSize(zVolName string) (uint64, error) {
+	dataBytes, err := ioutil.ReadFile(
+		fmt.Sprintf("/sys/block/%s/queue/hw_sector_size",
+			filepath.Base(zVolName)))
+	if err != nil {
+		return 0, err
 	}
-	return metrics
+
+	sectorSizeStr := strings.TrimSpace(string(dataBytes))
+	sectorSize, err := strconv.ParseUint(sectorSizeStr, 10, 32)
+	if err != nil {
+		return 0, fmt.Errorf("failed to parse sector size: %s", err)
+	}
+
+	return sectorSize, nil
+}
+
+// GetZvolMetrics returns metrics for a zvol.
+func GetZvolMetrics(status types.VolumeStatus, poolName string) (*types.StorageZVolMetrics, error) {
+	var tmpStat libzfs.VDevStat
+	zvolMetric := new(types.StorageZVolMetrics)
+	fullZvolPath := status.ZVolName()
+
+	// Сheck fullZvolPath on poolName
+	// So far we have architecturally only one pool named "persist"
+	// and this condition should always work, since .ZVolName() refers
+	// to the paths that are written in the pillar/types/locationconsts.go
+	// file (i.e. always to "persist").
+	if !strings.HasPrefix(fullZvolPath, poolName) {
+		return nil, fmt.Errorf("zvol %s is not on pool %s", fullZvolPath, poolName)
+	}
+
+	zvolMetric.VolumeID = status.VolumeID
+	// Get device name
+	diskName, err := os.Readlink(filepath.Join("/dev/zvol", fullZvolPath))
+	if err != nil {
+		log.Errorf("cannot get disk name for zvol: %s: err:%s", fullZvolPath, err)
+		return zvolMetric, err
+	}
+
+	zvolMetric.Metrics = GetZfsVDevMetrics(tmpStat, filepath.Base(diskName), false)
+	return zvolMetric, nil
+}
+
+func getZfsDisksMetrics(disk libzfs.VDevTree) *types.StorageDiskMetrics {
+	disksMetrics := new(types.StorageDiskMetrics)
+	rootDevice, err := disks.GetRootDevice()
+	if err != nil {
+		log.Errorf("cannot get root device: %s", err)
+	}
+	// ensure that we convert from partition to device
+	diskName, err := disks.GetDiskNameByPartName(disk.Name)
+	if err != nil {
+		log.Errorf("cannot get disk name for %s: %s", disk.Name, err)
+		diskName = disk.Name
+	}
+
+	if diskName == rootDevice {
+		// if this disk is the root device, we need to use
+		// the source name with the partition number (if have)
+		diskName = disk.Name
+	}
+
+	serialNumber, err := hardware.GetSerialNumberForDisk(disk.Name)
+	if err != nil {
+		serialNumber = "unknown"
+	}
+
+	disksMetrics.DiskName = new(types.DiskDescription)
+	disksMetrics.DiskName.Name = *proto.String(diskName)
+	disksMetrics.DiskName.Serial = *proto.String(serialNumber)
+	disksMetrics.Metrics = GetZfsVDevMetrics(disk.Stat, disk.Name, true)
+	return disksMetrics
+}
+
+func getZpoolChildrenMetrics(vdev libzfs.VDevTree) *types.StorageChildrenMetrics {
+	сhildrenMetrics := new(types.StorageChildrenMetrics)
+	сhildrenMetrics.GUID = vdev.GUID
+	сhildrenMetrics.DisplayName = vdev.Name
+	сhildrenMetrics.Metrics = GetZfsVDevMetrics(vdev.Stat, "", true)
+
+	for _, vdev := range vdev.Devices {
+		if vdev.Type == libzfs.VDevTypeMirror ||
+			vdev.Type == libzfs.VDevTypeRaidz {
+			сhildrenMetrics.Children = append(сhildrenMetrics.Children,
+				getZpoolChildrenMetrics(vdev))
+		} else if vdev.Type == libzfs.VDevTypeDisk {
+			сhildrenMetrics.Disks = append(сhildrenMetrics.Disks,
+				getZfsDisksMetrics(vdev))
+		}
+	}
+
+	return сhildrenMetrics
+}
+
+// GetZpoolMetrics returns metrics for provided zpool
+func GetZpoolMetrics(vdev libzfs.VDevTree) *types.ZFSPoolMetrics {
+	zPoolMetrics := new(types.ZFSPoolMetrics)
+	// Pool always goes first in the VDevsTree
+	zPoolMetrics.PoolName = vdev.Name
+	zPoolMetrics.CollectionTime = time.Now()
+	zPoolMetrics.Metrics = GetZfsVDevMetrics(vdev.Stat, "", true)
+
+	for _, vdev := range vdev.Devices {
+		if vdev.Type == libzfs.VDevTypeMirror ||
+			vdev.Type == libzfs.VDevTypeRaidz {
+			zPoolMetrics.ChildrenDataset = append(zPoolMetrics.ChildrenDataset,
+				getZpoolChildrenMetrics(vdev))
+		} else if vdev.Type == libzfs.VDevTypeDisk {
+			zPoolMetrics.Disks = append(zPoolMetrics.Disks,
+				getZfsDisksMetrics(vdev))
+		}
+	}
+
+	return zPoolMetrics
+}
+
+// GetZpoolStatusMsgStr returns a verbose zpool status message
+// The state messages were taken as a basis
+// from the zfs/cmd/zpool/zpool_main.c file
+func GetZpoolStatusMsgStr(status types.PoolStatus) string {
+	switch status {
+	case types.PoolStatusUnspecified:
+		return "Unspecified"
+	case types.PoolStatusCorruptCache:
+		return "Corrupt /kernel/drv/zpool.cache"
+	case types.PoolStatusMissingDevR:
+		return "One or more devices with replicas are missing from the system."
+	case types.PoolStatusMissingDevNr:
+		return "One or more devices with no replicas " +
+			"are missing from the system."
+	case types.PoolStatusCorruptLabelR:
+		return "One or more devices could not be used because the label " +
+			"is missing or invalid. Sufficient replicas exist for the " +
+			"pool to continue functioning in a degraded state."
+	case types.PoolStatusCorruptLabelNr:
+		return "One or more devices could not be used because the label is " +
+			"missing or invalid. There are insufficient replicas for " +
+			"the pool to continue functioning."
+	case types.PoolStatusBadGUIDSum:
+		return "One or more devices are missing from the system."
+	case types.PoolStatusCorruptPool:
+		return "The pool metadata is corrupted and the pool cannot be opened."
+	case types.PoolStatusCorruptData:
+		return "One or more devices has experienced an error resulting " +
+			"in data corruption."
+	case types.PoolStatusFailingDev:
+		return "One or more devices has experienced an unrecoverable error."
+	case types.PoolStatusVersionNewer:
+		return "The pool has been upgraded to a newer, incompatible on-disk " +
+			"version. The pool cannot be accessed on this system."
+	case types.PoolStatusHostidMismatch:
+		return "The pool was last accessed by another system."
+	case types.PoolStatusHosidActive:
+		return "The pool is currently imported by another system."
+	case types.PoolStatusHostidRequired:
+		return "The pool has the multihost property on. It cannot be safely " +
+			"imported when the system hostid is not set."
+	case types.PoolStatusIoFailureWait:
+		return "One or more devices are faulted in response to IO failures. " +
+			"Failmode 'wait'"
+	case types.PoolStatusIoFailureContinue:
+		return "One or more devices are faulted in response to IO failures. " +
+			"Failmode 'continue'"
+	case types.PoolStatusIOFailureMMP:
+		return "The pool is suspended because multihost writes failed or " +
+			"were delayed another system could import the pool undetected."
+	case types.PoolStatusBadLog:
+		return "An intent log record cannot be read."
+	case types.PoolStatusErrata:
+		return "Errata detected"
+	case types.PoolStatusUnsupFeatRead:
+		return "The pool uses the following feature(s) not supported " +
+			"on this system"
+	case types.PoolStatusUnsupFeatWrite:
+		return "The pool can only be accessed in read-only mode on " +
+			"this system. It cannot be accessed in read-write mode " +
+			"because it uses the following feature(s) " +
+			"not supported on this system"
+	case types.PoolStatusFaultedDevR:
+		return "One or more devices are faulted in response to " +
+			"persistent errors. Sufficient replicas exist for " +
+			"the pool to continue functioning in a degraded state."
+	case types.PoolStatusFaultedDevNr:
+		return "One or more devices are faulted in response to " +
+			"persistent errors. There are insufficient replicas for " +
+			"the pool to continue functioning."
+	case types.PoolStatusVersionOlder:
+		return "The pool is formatted using a legacy on-disk version."
+	case types.PoolStatusFeatDisabled:
+		return "Some supported and requested features are not enabled " +
+			"on the pool. The pool can still be used, but some " +
+			"features are unavailable."
+	case types.PoolStatusResilvering:
+		return "One or more devices is currently being resilvered."
+	case types.PoolStatusOfflineDev:
+		return "One or more devices has been taken offline by the administrator."
+	case types.PoolStatusRemovedDev:
+		return "One or more devices has been removed by the administrator."
+	case types.PoolStatusRebuilding:
+		return "One or more devices were being resilvered."
+	case types.PoolStatusRebuildScrub:
+		return "One or more devices have been sequentially resilvered, " +
+			"scrubbing the pool is recommended."
+	case types.PoolStatusNonNativeAshift:
+		return "One or more devices are configured to use a non-native " +
+			"block size. Expect reduced performance"
+	case types.PoolStatusCompatibilityErr:
+		return "Error reading or parsing the file(s) indicated by the " +
+			"'compatibility' property."
+	case types.PoolStatusIncompatibleFeat:
+		return "One or more features are enabled on the pool despite not " +
+			"being requested by the 'compatibility' property."
+	case types.PoolStatusOk:
+		return "OK"
+	}
+
+	return "Unspecified"
+}
+
+// GetVDevAuxMsgStr returns a verbose VDev aux message
+// The state messages were taken as a basis
+// from zfs/include/sys/fs/zfs.h
+func GetVDevAuxMsgStr(state types.VDevAux) string {
+	switch state {
+	case types.VDevAuxUnspecified:
+		return "Unspecified"
+	case types.VDevAuxStatusOk:
+		return "No error."
+	case types.VDevAuxOpenFailed:
+		return "Cannot open."
+	case types.VDevAuxCorruptData:
+		return "Corrupt data. Bad label or disk contents."
+	case types.VDevAuxNoReplicas:
+		return "Insufficient number of replicas."
+	case types.VDevAuxBadGUIDSum:
+		return "VDev GUID sum doesn't match."
+	case types.VDevAuxTooSmall:
+		return "VDev size is too small."
+	case types.VDevAuxBadLabel:
+		return "The label is OK but invalid."
+	case types.VDevAuxVersionNewer:
+		return "On-disk version is too new."
+	case types.VDevAuxVersionOlder:
+		return "On-disk version is too old."
+	case types.VDevAuxUnsupFeat:
+		return "Unsupported features."
+	case types.VDevAuxSpared:
+		return "Hot spare used in another pool."
+	case types.VDevAuxErrExceeded:
+		return "Too many errors."
+	case types.VDevAuxIOFailure:
+		return "I/O failure."
+	case types.VDevAuxBadLog:
+		return "Cannot read log chain(s)."
+	case types.VDevAuxExternal:
+		return "External diagnosis or forced fault."
+	case types.VDevAuxSplitPool:
+		return "VDev was split off into another pool."
+	case types.VdevAuxBadAshift:
+		return "VDev ashift is invalid."
+	case types.VdevAuxExternalPersist:
+		return "Persistent forced fault."
+	case types.VdevAuxActive:
+		return "VDev active on a different host."
+	case types.VdevAuxChildrenOffline:
+		return "All children are offline."
+	case types.VdevAuxAshiftTooBig:
+		return "VDev's min block size is too large."
+	}
+
+	return "Unspecified"
 }

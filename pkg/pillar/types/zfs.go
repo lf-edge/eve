@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	uuid "github.com/satori/go.uuid"
 )
 
 const (
@@ -170,19 +172,6 @@ const (
 	StorageStatusSuspended   StorageStatus = 7 // A pool that is waiting for device connectivity to be restored.
 )
 
-// ZFSPoolMetrics - stores metrics for the pool including all child devices
-type ZFSPoolMetrics struct {
-	DisplayName     string            // Pool or Dataset name
-	CollectionTime  time.Time         // Time in seconds when the metrics was collected
-	Metrics         *ZDeviceMetrics   // metrics and error counters for Pool or Dataset
-	ChildrenDataset []*ZFSPoolMetrics // children datasets or devices
-}
-
-//Key for pubsub ZFSPoolMetrics
-func (s ZFSPoolMetrics) Key() string {
-	return s.DisplayName
-}
-
 // ZFSPoolStatus stores collected information about zpool
 type ZFSPoolStatus struct {
 	PoolName         string
@@ -196,9 +185,10 @@ type ZFSPoolStatus struct {
 	CollectorErrors  string
 	Children         []*StorageChildren
 	PoolStatusMsg    PoolStatus // pool status value from ZFS
+	PoolStatusMsgStr string     // pool status value from ZFS in string format
 }
 
-//Key for pubsub
+// Key for pubsub
 func (s ZFSPoolStatus) Key() string {
 	return s.PoolName
 }
@@ -225,8 +215,8 @@ const (
 	ZIOTypeMax // ZIOTypeMax value determines the number of ZIOType in this enum. (Should always be the last in this enum)
 )
 
-// ZDeviceMetrics metrics for dev from ZFS and /proc/diskstats
-type ZDeviceMetrics struct {
+// ZFSVDevMetrics metrics for VDev from ZFS and /proc/diskstats
+type ZFSVDevMetrics struct {
 	Alloc          uint64             // space allocated (in byte)
 	Space          uint64             // total capacity (in byte)
 	DSpace         uint64             // deflated capacity (in byte)
@@ -246,17 +236,62 @@ type ZDeviceMetrics struct {
 	WeightedIOTicks uint64
 }
 
-//StorageDiskState represent state of disk
+// StorageDiskState represent state of disk
 type StorageDiskState struct {
-	DiskName *DiskDescription
-	Status   StorageStatus
-	AuxState VDevAux
+	DiskName    *DiskDescription
+	Status      StorageStatus
+	AuxState    VDevAux
+	AuxStateStr string // AuxState in string format
 }
 
 // StorageChildren stores children of zfs pool
 type StorageChildren struct {
 	DisplayName string
 	CurrentRaid StorageRaidType
-	Disks       []*StorageDiskState
-	Children    []*StorageChildren
+	// GUID - a unique value for the binding.
+	// Since the DisplayName may not be unique. This may be important
+	// for accurate matching with other information.
+	// Actual case only for RAID or Mirror.
+	GUID     uint64
+	Disks    []*StorageDiskState
+	Children []*StorageChildren
+}
+
+// StorageZVolMetrics stores metrics for zvol (/dev/zd*)
+type StorageZVolMetrics struct {
+	VolumeID uuid.UUID       // From VolumeStatus.VolumeID. Ex: c546e61f-ffd9-406e-9074-8b19b417510d
+	Metrics  *ZFSVDevMetrics // Metrics for zdev from /proc/diskstats
+}
+
+// StorageDiskMetrics represent metrics of disk
+type StorageDiskMetrics struct {
+	DiskName *DiskDescription
+	Metrics  *ZFSVDevMetrics // metrics for disk from ZFS and /proc/diskstats
+}
+
+// StorageChildrenMetrics stores metrics for children of zfs pool
+type StorageChildrenMetrics struct {
+	DisplayName string
+	// GUID - a unique value for the binding.
+	// Since the DisplayName may not be unique.
+	GUID uint64
+	// Metrics from ZFS. Displays the sum of metrics from all disks it consists of.
+	Metrics  *ZFSVDevMetrics
+	Disks    []*StorageDiskMetrics
+	Children []*StorageChildrenMetrics
+}
+
+// ZFSPoolMetrics - stores metrics for the pool including all child devices
+type ZFSPoolMetrics struct {
+	PoolName        string
+	CollectionTime  time.Time                 // Time when the metrics was collected
+	Metrics         *ZFSVDevMetrics           // Metrics and error counters for zfs pool
+	ChildrenDataset []*StorageChildrenMetrics // Children metrics for datasets (RAID or Mirror)
+	Disks           []*StorageDiskMetrics     // Metrics for disks that are not included in the RAID or mirror
+	ZVols           []*StorageZVolMetrics     // Metrics for zvols from /proc/diskstats
+}
+
+//Key for pubsub ZFSPoolMetrics
+func (s ZFSPoolMetrics) Key() string {
+	return s.PoolName
 }
