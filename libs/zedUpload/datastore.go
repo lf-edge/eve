@@ -79,9 +79,16 @@ func httpClientSrcIP(localAddr net.IP, proxy *url.URL) *http.Client {
 	localTCPAddr := net.TCPAddr{IP: localAddr}
 	localUDPAddr := net.UDPAddr{IP: localAddr}
 	resolverDial := func(ctx context.Context, network, address string) (net.Conn, error) {
-		// XXX can DNS fallback to TCP? Would get a mismatched address if we do
-		d := net.Dialer{LocalAddr: &localUDPAddr}
-		return d.Dial(network, address)
+		switch network {
+		case "udp", "udp4", "udp6":
+			d := net.Dialer{LocalAddr: &localUDPAddr}
+			return d.Dial(network, address)
+		case "tcp", "tcp4", "tcp6":
+			d := net.Dialer{LocalAddr: &localTCPAddr}
+			return d.Dial(network, address)
+		default:
+			return nil, fmt.Errorf("unsupported address type: %v", network)
+		}
 	}
 	r := net.Resolver{Dial: resolverDial, PreferGo: true, StrictErrors: false}
 	webclient := &http.Client{
