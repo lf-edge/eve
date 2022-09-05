@@ -846,9 +846,16 @@ func SendLocal(ctx *ZedCloudContext, destURL string, intf string, ipSrc net.IP,
 	localUDPAddr := net.UDPAddr{IP: ipSrc}
 	resolverDial := func(ctx context.Context, network, address string) (net.Conn, error) {
 		log.Tracef("resolverDial %v %v", network, address)
-		// XXX can we fallback to TCP? Would get a mismatched address if we do
-		d := net.Dialer{LocalAddr: &localUDPAddr}
-		return d.Dial(network, address)
+		switch network {
+		case "udp", "udp4", "udp6":
+			d := net.Dialer{LocalAddr: &localUDPAddr}
+			return d.Dial(network, address)
+		case "tcp", "tcp4", "tcp6":
+			d := net.Dialer{LocalAddr: &localTCPAddr}
+			return d.Dial(network, address)
+		default:
+			return nil, fmt.Errorf("unsupported address type: %v", network)
+		}
 	}
 	r := net.Resolver{Dial: resolverDial, PreferGo: true,
 		StrictErrors: false}
