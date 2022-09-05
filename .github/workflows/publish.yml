@@ -39,8 +39,6 @@ jobs:
              # the following weird statement is here to speed up the happy path
              # if the default server is responding -- we can skip apt update
              $APT_INSTALL || { sudo apt update && $APT_INSTALL ; }
-             # we need to build our own version of cross-enabled linuxkit, while upstream is sorting things out
-             make LINUXKIT_VERSION=master LINUXKIT_SOURCE=https://github.com/rvs/linuxkit.git linuxkit
              # constraining environment for riscv64 builds
              TAG=lfedge/eve-alpine:81e6520f4f1554789eb1ac299168e72ac37d88e2-riscv64
              echo "ZARCH=riscv64" >> "$GITHUB_ENV"
