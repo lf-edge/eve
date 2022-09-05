@@ -11,7 +11,6 @@ import (
 	"net"
 	"os"
 	"os/exec"
-	"reflect"
 	"strconv"
 	"strings"
 	"syscall"
@@ -26,6 +25,8 @@ import (
 const (
 	dhcpcdStartTimeout = 3 * time.Second
 	dhcpcdStopTimeout  = 30 * time.Second
+
+	zeroIPv4Addr = "0.0.0.0"
 )
 
 // Dhcpcd : DHCP client (https://wiki.archlinux.org/title/dhcpcd).
@@ -54,7 +55,20 @@ func (c Dhcpcd) Type() string {
 // Equal is a comparison method for two equally-named Dhcpcd instances.
 func (c Dhcpcd) Equal(other depgraph.Item) bool {
 	c2 := other.(Dhcpcd)
-	return reflect.DeepEqual(c.DhcpConfig, c2.DhcpConfig)
+	// Consider two DHCP configs as equal if they result in the same set of arguments for dhcpcd.
+	// This avoids unnecessary restarts of dhcpcd (when e.g. going from override to zedagent DPC).
+	configurator := &DhcpcdConfigurator{}
+	op1, args1 := configurator.dhcpcdArgs(c.DhcpConfig)
+	op2, args2 := configurator.dhcpcdArgs(c2.DhcpConfig)
+	if op1 != op2 || len(args1) != len(args2) {
+		return false
+	}
+	for i := range args1 {
+		if args1[i] != args2[i] {
+			return false
+		}
+	}
+	return true
 }
 
 // External returns false.
@@ -94,31 +108,15 @@ func (c *DhcpcdConfigurator) Create(ctx context.Context, item depgraph.Item) err
 		ifName := client.AdapterIfName
 		config := client.DhcpConfig
 
-		// Prepare input arguments
-		var op string
-		var args []string
+		// Validate input arguments
 		switch config.Dhcp {
 		case types.DT_NONE:
+			// Nothing to do, return.
 			done(nil)
 			return
 
 		case types.DT_CLIENT:
-			op = "--request"
-			args = []string{"-f", "/dhcpcd.conf", "--noipv4ll", "-b", "-t", "0"}
-			switch config.Type {
-			case types.NtIpv4Only:
-				args = []string{"-f", "/dhcpcd.conf", "--noipv4ll", "--ipv4only", "-b", "-t", "0"}
-			case types.NtIpv6Only:
-				args = []string{"-f", "/dhcpcd.conf", "--ipv6only", "-b", "-t", "0"}
-			case types.NT_NOOP:
-			case types.NT_IPV4:
-			case types.NT_IPV6:
-			case types.NtDualStack:
-			default:
-			}
-			if config.Gateway != nil && config.Gateway.String() == "0.0.0.0" {
-				args = append(args, "--nogateway")
-			}
+			// Nothing to validate.
 
 		case types.DT_STATIC:
 			if config.AddrSubnet == "" {
@@ -138,40 +136,6 @@ func (c *DhcpcdConfigurator) Create(ctx context.Context, item depgraph.Item) err
 				done(err)
 				return
 			}
-			op = "--static"
-			args = []string{fmt.Sprintf("ip_address=%s", config.AddrSubnet)}
-			extras := []string{"-f", "/dhcpcd.conf", "-b", "-t", "0"}
-			if config.Gateway == nil || config.Gateway.String() == "0.0.0.0" {
-				extras = append(extras, "--nogateway")
-			} else if config.Gateway.String() != "" {
-				args = append(args, "--static",
-					fmt.Sprintf("routers=%s", config.Gateway.String()))
-			}
-			var dnsServers []string
-			for _, dns := range config.DnsServers {
-				dnsServers = append(dnsServers, dns.String())
-			}
-			if len(dnsServers) > 0 {
-				// dhcpcd uses a very odd space-separation for multiple DNS servers.
-				// For manual invocation one must be very careful to not forget
-				// to quote the argument so that the spaces don't make the shell
-				// break up the list into multiple args.
-				// Here we do not need quotes because we are passing the DNS server
-				// list as a single entry of the 'args' slice for exec.Command().
-				args = append(args, "--static",
-					fmt.Sprintf("domain_name_servers=%s",
-						strings.Join(dnsServers, " ")))
-			}
-			if config.DomainName != "" {
-				args = append(args, "--static",
-					fmt.Sprintf("domain_name=%s", config.DomainName))
-			}
-			if config.NtpServer != nil && !config.NtpServer.IsUnspecified() {
-				args = append(args, "--static",
-					fmt.Sprintf("ntp_servers=%s",
-						config.NtpServer.String()))
-			}
-			args = append(args, extras...)
 
 		default:
 			err := fmt.Errorf("unsupported DHCP type: %v", config.Dhcp)
@@ -179,6 +143,9 @@ func (c *DhcpcdConfigurator) Create(ctx context.Context, item depgraph.Item) err
 			done(err)
 			return
 		}
+
+		// Prepare input arguments for dhcpcd.
+		op, args := c.dhcpcdArgs(config)
 
 		// Start DHCP client.
 		if c.dhcpcdExists(client.AdapterIfName) {
@@ -295,6 +262,65 @@ func (c *DhcpcdConfigurator) Delete(ctx context.Context, item depgraph.Item) err
 // NeedsRecreate returns true because Modify is not implemented.
 func (c *DhcpcdConfigurator) NeedsRecreate(oldItem, newItem depgraph.Item) (recreate bool) {
 	return true
+}
+
+func (c *DhcpcdConfigurator) dhcpcdArgs(config types.DhcpConfig) (op string, args []string) {
+	switch config.Dhcp {
+	case types.DT_CLIENT:
+		op = "--request"
+		args = []string{"-f", "/dhcpcd.conf", "--noipv4ll", "-b", "-t", "0"}
+		switch config.Type {
+		case types.NtIpv4Only:
+			args = []string{"-f", "/dhcpcd.conf", "--noipv4ll", "--ipv4only", "-b", "-t", "0"}
+		case types.NtIpv6Only:
+			args = []string{"-f", "/dhcpcd.conf", "--ipv6only", "-b", "-t", "0"}
+		case types.NT_NOOP:
+		case types.NT_IPV4:
+		case types.NT_IPV6:
+		case types.NtDualStack:
+		default:
+		}
+		if config.Gateway != nil && config.Gateway.String() == zeroIPv4Addr {
+			args = append(args, "--nogateway")
+		}
+
+	case types.DT_STATIC:
+		op = "--static"
+		args = []string{fmt.Sprintf("ip_address=%s", config.AddrSubnet)}
+		extras := []string{"-f", "/dhcpcd.conf", "-b", "-t", "0"}
+		if config.Gateway == nil || config.Gateway.String() == zeroIPv4Addr {
+			extras = append(extras, "--nogateway")
+		} else if config.Gateway.String() != "" {
+			args = append(args, "--static",
+				fmt.Sprintf("routers=%s", config.Gateway.String()))
+		}
+		var dnsServers []string
+		for _, dns := range config.DnsServers {
+			dnsServers = append(dnsServers, dns.String())
+		}
+		if len(dnsServers) > 0 {
+			// dhcpcd uses a very odd space-separation for multiple DNS servers.
+			// For manual invocation one must be very careful to not forget
+			// to quote the argument so that the spaces don't make the shell
+			// break up the list into multiple args.
+			// Here we do not need quotes because we are passing the DNS server
+			// list as a single entry of the 'args' slice for exec.Command().
+			args = append(args, "--static",
+				fmt.Sprintf("domain_name_servers=%s",
+					strings.Join(dnsServers, " ")))
+		}
+		if config.DomainName != "" {
+			args = append(args, "--static",
+				fmt.Sprintf("domain_name=%s", config.DomainName))
+		}
+		if config.NtpServer != nil && !config.NtpServer.IsUnspecified() {
+			args = append(args, "--static",
+				fmt.Sprintf("ntp_servers=%s",
+					config.NtpServer.String()))
+		}
+		args = append(args, extras...)
+	}
+	return
 }
 
 func (c *DhcpcdConfigurator) dhcpcdCmd(op string, extras []string,
