@@ -1,0 +1,13 @@
+#!/bin/sh
+
+#
+# Kexec setup before everything else.
+#
+if cat /proc/cmdline | grep -q crashkernel; then
+    #
+    # Don't load kernel if no `crashkernel=Y@X` cmdline.
+    # This means we are on arch which does not support kdump
+    # (e.g. riscv64, arm64) or xen (see pkg/grub/rootfs.cfg)
+    #
+    kexec -p --reuse-cmdline --command-line="irqpoll nr_cpus=1 reset_devices nomodule" /boot/kernel
+fi

@@ -1,5 +1,10 @@
 #!/bin/sh
 
+if test -f /proc/vmcore; then
+    # NOOP if dump-capture kernel
+    exit 0;
+fi
+
 #Starting memlogd as part as part of a cgroup
 mkdir -p /sys/fs/cgroup/memory/eve/memlogd
 sh -c 'echo $$ > /sys/fs/cgroup/memory/eve/memlogd/tasks && /usr/bin/memlogd -daemonize -max-line-len 8192'

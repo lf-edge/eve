@@ -1,5 +1,10 @@
 #!/bin/sh
 
+if test -f /proc/vmcore; then
+    # NOOP if dump-capture kernel
+    exit 0;
+fi
+
 for p in /proc/*/exe; do
    case "$(ls -l "$p" 2>/dev/null)" in
      *memlogd|*containerd) echo -999 > "${p/exe/oom_score_adj}"
