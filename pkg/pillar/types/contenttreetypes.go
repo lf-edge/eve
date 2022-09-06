@@ -24,6 +24,7 @@ type ContentTreeConfig struct {
 	MaxDownloadSize   uint64
 	GenerationCounter int64
 	DisplayName       string
+	CustomMeta        string
 }
 
 // Key is content info UUID which will be unique

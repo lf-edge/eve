@@ -1734,6 +1734,7 @@ func configToStatus(ctx *domainContext, config types.DomainConfig,
 		ds.MountDir = dc.MountDir
 		ds.DisplayName = dc.DisplayName
 		ds.WWN = dc.WWN
+		ds.CustomMeta = dc.CustomMeta
 		// Generate Devtype for hypervisor package
 		// XXX can hypervisor look at something different?
 		if dc.Target == zconfig.Target_AppCustom {
