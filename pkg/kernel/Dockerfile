@@ -79,7 +79,11 @@ RUN make -j "$(getconf _NPROCESSORS_ONLN)" KCFLAGS="-fno-pie" && \
         ;; \
     esac && \
     cp System.map /out && \
-    ([ "${EXTRA}" = "-dbg" ] && cp vmlinux /out || true)
+    DVER=$(make kernelrelease) && \
+    DIR=linux-debug-$DVER && \
+    rsync -rv --include '*/' --include '*.dwo' --exclude '*' --prune-empty-dirs . /tmp/$DIR && \
+    cp vmlinux /tmp/$DIR && \
+    tar -cf /out/kernel-debug.tar -C /tmp $DIR
 
 # Modules
 RUN make INSTALL_MOD_PATH=/tmp/kernel-modules modules_install
