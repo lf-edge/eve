@@ -77,6 +77,7 @@ type zedrouterContext struct {
 	subLocationInfo        pubsub.Subscription
 	subWwanStatus          pubsub.Subscription
 	subWwanMetrics         pubsub.Subscription
+	subDomainStatus        pubsub.Subscription
 
 	pubUUIDPairAndIfIdxToNum pubsub.Publication
 
@@ -581,6 +582,21 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	zedrouterCtx.subWwanMetrics = subWwanMetrics
 	subWwanMetrics.Activate()
 
+	subDomainStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:   "domainmgr",
+		MyAgentName: agentName,
+		TopicImpl:   types.DomainStatus{},
+		Activate:    false,
+		Ctx:         &zedrouterCtx,
+		WarningTime: warningTime,
+		ErrorTime:   errorTime,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	zedrouterCtx.subDomainStatus = subDomainStatus
+	subDomainStatus.Activate()
+
 	cloudProbeMetricPub, err := ps.NewPublication(
 		pubsub.PublicationOptions{
 			AgentName: agentName,
@@ -691,6 +707,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 
 		case change := <-subWwanStatus.MsgChan():
 			subWwanStatus.ProcessChange(change)
+
+		case change := <-subDomainStatus.MsgChan():
+			subDomainStatus.ProcessChange(change)
 
 		case change := <-subWwanMetrics.MsgChan():
 			subWwanMetrics.ProcessChange(change)
@@ -957,6 +976,17 @@ func lookupAppNetworkConfig(ctx *zedrouterContext, key string) *types.AppNetwork
 	}
 	config := c.(types.AppNetworkConfig)
 	return &config
+}
+
+func lookupDiskStatusList(ctx *zedrouterContext, key string) []types.DiskStatus {
+	st, err := ctx.subDomainStatus.Get(key)
+	if err != nil || st == nil {
+		log.Warnf("could not find domain %s", key)
+		return nil
+	}
+
+	domainStatus := st.(types.DomainStatus)
+	return domainStatus.DiskStatusList
 }
 
 var additionalInfoDevice *types.AdditionalInfoDevice
