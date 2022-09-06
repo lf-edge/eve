@@ -12,6 +12,7 @@ init:
   - FW_TAG
   - XEN_TAG
   - GPTTOOLS_TAG
+  - KEXEC_TAG
 onboot:
    - name: rngd
      image: RNGD_TAG
