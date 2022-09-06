@@ -12,7 +12,7 @@ import (
 
 	zconfig "github.com/lf-edge/eve/api/go/config"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	"github.com/satori/go.uuid"
+	uuid "github.com/satori/go.uuid"
 )
 
 var contentInfoHash []byte
@@ -65,6 +65,7 @@ func parseContentInfoConfig(ctx *getconfigContext,
 		contentConfig.ContentSha256 = strings.ToLower(cfgContentTree.GetSha256())
 		contentConfig.MaxDownloadSize = cfgContentTree.GetMaxSizeBytes()
 		contentConfig.DisplayName = cfgContentTree.GetDisplayName()
+		contentConfig.CustomMeta = cfgContentTree.GetCustomMetaData()
 		publishContentTreeConfig(ctx, *contentConfig)
 	}
 	ctx.pubContentTreeConfig.SignalRestarted()

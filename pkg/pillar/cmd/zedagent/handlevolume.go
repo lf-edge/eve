@@ -12,7 +12,7 @@ import (
 
 	zconfig "github.com/lf-edge/eve/api/go/config"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	"github.com/satori/go.uuid"
+	uuid "github.com/satori/go.uuid"
 )
 
 var volumeHash []byte
@@ -78,10 +78,19 @@ func parseVolumeConfig(ctx *getconfigContext,
 		volumeConfig := new(types.VolumeConfig)
 		volumeConfig.VolumeID, _ = uuid.FromString(cfgVolume.GetUuid())
 		volumeOrigin := cfgVolume.GetOrigin()
+
+		var contentTreeConfig types.ContentTreeConfig
 		if volumeOrigin != nil {
 			volumeConfig.VolumeContentOriginType = volumeOrigin.GetType()
 			volumeConfig.ContentID, _ = uuid.FromString(volumeOrigin.GetDownloadContentTreeID())
+
+			ContentTreePtr, err := ctx.pubContentTreeConfig.Get(volumeOrigin.GetDownloadContentTreeID())
+			if err == nil && ContentTreePtr != nil {
+				contentTreeConfig = ContentTreePtr.(types.ContentTreeConfig)
+				volumeConfig.CustomMeta = contentTreeConfig.CustomMeta
+			}
 		}
+
 		volumeConfig.MaxVolSize = uint64(cfgVolume.GetMaxsizebytes())
 		volumeConfig.GenerationCounter = cfgVolume.GetGenerationCount()
 		if cfgVolume.GetClearText() {

@@ -28,6 +28,7 @@ type VolumeConfig struct {
 	DisplayName             string
 	HasNoAppReferences      bool
 	Target                  zconfig.Target
+	CustomMeta              string
 }
 
 // Key is volume UUID which will be unique
@@ -135,6 +136,7 @@ type VolumeStatus struct {
 	ReferenceName           string
 	WWN                     string
 	Target                  zconfig.Target
+	CustomMeta              string
 
 	ErrorAndTimeWithSource
 }
@@ -328,6 +330,7 @@ type VolumeRefStatus struct {
 	WWN                    string
 	VerifyOnly             bool
 	Target                 zconfig.Target
+	CustomMeta             string
 
 	ErrorAndTimeWithSource
 }
