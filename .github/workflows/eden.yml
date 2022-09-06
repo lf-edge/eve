@@ -57,26 +57,41 @@ jobs:
           TAG: pr${{ github.event.pull_request.number }}
           CACHE: evebuild/danger
         run: |
+          BUILD=true
           if docker pull "$CACHE:$TAG-kvm"; then
-             docker tag  "$CACHE:$TAG-kvm" "lfedge/eve:$TAG-kvm"
-             docker tag  "$CACHE:$TAG-kvm" "lfedge/eve:$TAG-kvm-amd64"
-          else
-             make -C eve V=1 PRUNE=1 pkgs
-             make -C eve V=1 ROOTFS_VERSION="$TAG" eve
-             IMAGES="$(docker images -f reference="lfedge/eve-*" -q)"
-             IMAGES="$IMAGES $(docker images -f reference="eve-build-*" -q)"
-             IMAGES="$IMAGES $(docker images -f reference="golang" -q)"
-             IMAGES="$IMAGES $(docker images -f dangling=true -q)"
-             docker rmi -f $IMAGES||echo "skip conflicts"
-             rm -rf ~/.linuxkit
+            # we should check version of pulled image
+            # since in case of build in progress we do not want to test
+            # old version pushed to docker hub
+            # version logic must be aligned with PR build workflow
+            COMMIT_ID=$(git --git-dir ./eve/.git describe --abbrev=8 --always)
+            EXPECTED_VERSION="0.0.0-$TAG-$COMMIT_ID-kvm-amd64"
+            PULLED_VERSION=$(docker run --rm "$CACHE:$TAG-kvm" version)
+            if [ "$PULLED_VERSION" = "$EXPECTED_VERSION" ]; then
+              docker tag "$CACHE:$TAG-kvm" "lfedge/eve:$TAG-kvm"
+              docker tag "$CACHE:$TAG-kvm" "lfedge/eve:$TAG-kvm-amd64"
+              BUILD=false
+            else
+              docker rmi --force "$CACHE:$TAG-kvm"
+            fi
           fi
-          echo "TAG=$TAG" >> $GITHUB_ENV
+          if [ "$BUILD" = "true" ]; then
+            make -C eve V=1 PRUNE=1 pkgs
+            make -C eve V=1 ROOTFS_VERSION="$TAG" eve
+            IMAGES="$(docker images -f reference="lfedge/eve-*" -q)"
+            IMAGES="$IMAGES $(docker images -f reference="eve-build-*" -q)"
+            IMAGES="$IMAGES $(docker images -f reference="golang" -q)"
+            IMAGES="$IMAGES $(docker images -f dangling=true -q)"
+            docker rmi -f $IMAGES||echo "skip conflicts"
+            rm -rf ~/.linuxkit
+          fi
       - name: set debug log level
         if: contains(github.event.review.body, '#eden-debug')
         run: |
           ./eden config set default --key=eve.log-level --value=debug
           ./eden config set default --key=eve.adam-log-level --value=debug
       - name: run
+        env:
+          TAG: pr${{ github.event.pull_request.number }}
         run: |
           ./eden config set default --key eve.tag --value="$TAG"
           ./eden config set default --key=eve.accel --value=false
