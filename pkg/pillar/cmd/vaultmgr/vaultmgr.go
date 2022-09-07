@@ -1092,9 +1092,12 @@ func handleVaultKeyFromControllerImpl(ctxArg interface{}, key string,
 			log.Errorf("Failed to publish Vault Key, %v", err)
 		}
 
-		//Now that vault is unlocked, run any upgrade converter handler if needed
-		//The main select loop which is waiting on ucChan event, will publish
-		//latest status of vault(s) once RunPostVaultHandlers is complete.
+		// Publish current status of vault
+		publishVaultStatus(ctx)
+
+		// Now that vault is unlocked, run any upgrade converter handler if needed
+		// The main select loop which is waiting on ucChan event, will publish
+		// latest status of vault(s) once RunPostVaultHandlers is complete.
 		log.Notice("Starting upgradeconverter(post-vault)")
 		go uc.RunPostVaultHandlers(agentName, ctx.ps, logger, log,
 			debugOverride, ctx.ucChan)
