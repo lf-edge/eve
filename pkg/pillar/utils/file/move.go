@@ -9,11 +9,13 @@ import (
 	"os"
 	"path/filepath"
 	"syscall"
+
+	"github.com/lf-edge/eve/pkg/pillar/base"
 )
 
 // MoveDir recursively move a directory tree, attempting to preserve permissions.
 // if file exists in dst (sub)directory it will be replaced
-func MoveDir(src string, dst string) error {
+func MoveDir(log *base.LogObject, src string, dst string) error {
 	src = filepath.Clean(src)
 	dst = filepath.Clean(dst)
 
@@ -43,12 +45,16 @@ func MoveDir(src string, dst string) error {
 		return fmt.Errorf("error read dst directory: %v", err)
 	}
 
+	if log != nil {
+		log.Noticef("MoveDir %d entries from %s to %s",
+			len(entries), src, dst)
+	}
 	for _, entry := range entries {
 		srcPath := filepath.Join(src, entry.Name())
 		dstPath := filepath.Join(dst, entry.Name())
 
 		if entry.IsDir() {
-			err = MoveDir(srcPath, dstPath)
+			err = MoveDir(log, srcPath, dstPath)
 			if err != nil {
 				return err
 			}
@@ -93,5 +99,14 @@ func MoveDir(src string, dst string) error {
 			}
 		}
 	}
-	return os.RemoveAll(src)
+	if log != nil {
+		log.Noticef("MoveDir deleting %d entries from %s",
+			len(entries), src)
+	}
+	err = os.RemoveAll(src)
+	if log != nil {
+		log.Noticef("MoveDir DONE %d entries from %s to %s",
+			len(entries), src, dst)
+	}
+	return err
 }
