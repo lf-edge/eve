@@ -32,7 +32,7 @@ func renameVerifiedFiles(ctxPtr *ucContext) error {
 		ctxPtr.noFlag)
 	renameFiles(srcDirRoot+"/"+types.BaseOsObj+"/verified", dstDir,
 		ctxPtr.noFlag)
-	log.Functionf("renameVerifiedFiles() DONE")
+	log.Noticef("renameVerifiedFiles() DONE")
 	return nil
 }
 

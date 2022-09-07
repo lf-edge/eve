@@ -8,6 +8,8 @@ import (
 )
 
 func moveToUserContainerd(ctxPtr *ucContext) error {
-	log.Functionf("moveToUserContainerd()")
-	return utils.MoveDir(ctxPtr.persistDir+"/containerd", ctxPtr.persistDir+"/vault/containerd")
+	log.Noticef("moveToUserContainerd()")
+	err := utils.MoveDir(log, ctxPtr.persistDir+"/containerd", ctxPtr.persistDir+"/vault/containerd")
+	log.Noticef("moveToUserContainerd() DONE")
+	return err
 }
