@@ -26,7 +26,8 @@ WORKDIR /ws
 RUN git submodule update --init
 COPY build.sh /ws/
 COPY patch /ws/patch
-RUN for p in /ws/patch/*.patch ; do patch -p1 < "$p" || exit 1 ; done
+RUN for p in /ws/patch/*.patch ; do patch -p1 < "$p"; echo "$p"; done
+RUN sed -i 's/DEFINE DEBUG_PRINT_ERROR_LEVEL = 0x8000004F/DEFINE DEBUG_PRINT_ERROR_LEVEL = 0x00000001/g' ArmVirtPkg/ArmVirt.dsc.inc
 RUN ln -s python3 /usr/bin/python
 RUN ./build.sh
 

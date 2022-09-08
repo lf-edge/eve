@@ -13,13 +13,13 @@ case $(uname -m) in
              cp /opensbi/build/platform/generic/firmware/fw_payload.bin OVMF_VARS.fd
              cp /opensbi/build/platform/generic/firmware/fw_jump.bin OVMF.fd
              ;;
-    aarch64) build -b RELEASE -t GCC5 -a AARCH64 -p ArmVirtPkg/ArmVirtQemu.dsc -D TPM2_ENABLE=TRUE -D TPM2_CONFIG_ENABLE=TRUE
-             cp Build/ArmVirtQemu-AARCH64/RELEASE_GCC5/FV/QEMU_EFI.fd OVMF.fd
-             cp Build/ArmVirtQemu-AARCH64/RELEASE_GCC5/FV/QEMU_VARS.fd OVMF_VARS.fd
+    aarch64) build -b DEBUG -t GCC5 -a AARCH64 -p ArmVirtPkg/ArmVirtQemu.dsc -D TPM2_ENABLE=TRUE -D TPM2_CONFIG_ENABLE=TRUE -D DEBUG_ON_SERIAL_PORT
+             cp Build/ArmVirtQemu-AARCH64/DEBUG_GCC5/FV/QEMU_EFI.fd OVMF.fd
+             cp Build/ArmVirtQemu-AARCH64/DEBUG_GCC5/FV/QEMU_VARS.fd OVMF_VARS.fd
              # now let's build PVH UEFI kernel
              make -C BaseTools/Source/C
-             build -b RELEASE -t GCC5 -a AARCH64  -p ArmVirtPkg/ArmVirtXen.dsc
-             cp Build/ArmVirtXen-AARCH64/RELEASE_*/FV/XEN_EFI.fd OVMF_PVH.fd
+             build -b DEBUG -t GCC5 -a AARCH64  -p ArmVirtPkg/ArmVirtXen.dsc
+             cp Build/ArmVirtXen-AARCH64/DEBUG_*/FV/XEN_EFI.fd OVMF_PVH.fd
              ;;
      x86_64) build -b RELEASE -t GCC5 -a X64 -p OvmfPkg/OvmfPkgX64.dsc -D TPM_ENABLE=TRUE -D TPM_CONFIG_ENABLE=TRUE
              cp Build/OvmfX64/RELEASE_*/FV/OVMF*.fd .
