@@ -57,7 +57,7 @@ func PublishHardwareInfoToZedCloud(ctx *zedagentContext) {
 	// Get information about disks
 	disksInfo, err := hardware.ReadSMARTinfoForDisks()
 	if err != nil {
-		log.Fatal("PublishHardwareInfoToZedCloud get information about disks failed. Error: ", err)
+		log.Error("PublishHardwareInfoToZedCloud get information about disks failed. Error: ", err)
 		return
 	}
 
@@ -74,6 +74,8 @@ func PublishHardwareInfoToZedCloud(ctx *zedagentContext) {
 		stDiskInfo.SerialNumber = *proto.String(disk.SerialNumber)
 		stDiskInfo.Model = *proto.String(disk.ModelNumber)
 		stDiskInfo.Wwn = *proto.String(fmt.Sprintf("%x", disk.Wwn))
+
+		log.Noticef("Name %s Serial %s Model %s wwn %s", stDiskInfo.DiskName, stDiskInfo.SerialNumber, stDiskInfo.Model, stDiskInfo.Wwn)
 
 		attrSmart := new(info.SmartMetric)
 		attrSmart.ReallocatedSectorCt = getSmartAttr(types.SmartAttrIDRealLocatedSectorCt, disk.SmartAttrs)
@@ -95,14 +97,16 @@ func PublishHardwareInfoToZedCloud(ctx *zedagentContext) {
 	log.Tracef("PublishHardwareInfoToZedCloud sending %v", ReportHwInfo)
 	data, err := proto.Marshal(ReportHwInfo)
 	if err != nil {
-		log.Fatal("PublishHardwareInfoToZedCloud proto marshaling error: ", err)
+		log.Error("PublishHardwareInfoToZedCloud proto marshaling error: ", err)
+		return
 	}
 
 	statusURL := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API, devUUID, "info")
 
 	buf := bytes.NewBuffer(data)
 	if buf == nil {
-		log.Fatal("PublishHardwareInfoToZedCloud malloc error")
+		log.Error("PublishHardwareInfoToZedCloud malloc error")
+		return
 	}
 	size := int64(proto.Size(ReportHwInfo))
 

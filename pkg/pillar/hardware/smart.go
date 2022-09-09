@@ -11,8 +11,13 @@ import (
 
 	smart "github.com/anatol/smart.go"
 	"github.com/jaypipes/ghw"
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/sirupsen/logrus"
 )
+
+var logger *logrus.Logger
+var log *base.LogObject
 
 // ReadSMARTinfoForDisks - сollects disks information via API,
 // returns types.DisksInformation
@@ -125,7 +130,17 @@ func GetInfoFromSATAdisk(diskName string) (*types.DiskSmartInfo, error) {
 	}
 
 	diskInfo.ModelNumber = devIdentify.ModelNumber()
+	log.Noticef("Model number before massaging %s", diskInfo.ModelNumber)
+	model := []byte(diskInfo.ModelNumber)
+	diskInfo.ModelNumber = string(massageCompatible(model))
+	log.Noticef("Model number after massaging %s", diskInfo.ModelNumber)
+
 	diskInfo.SerialNumber = devIdentify.SerialNumber()
+	log.Noticef("Serial number before massaging %s", diskInfo.SerialNumber)
+	sn := []byte(diskInfo.SerialNumber)
+	diskInfo.SerialNumber = string(massageCompatible(sn))
+	log.Noticef("Serial number after massaging %s", diskInfo.SerialNumber)
+
 	diskInfo.Wwn = devIdentify.WWN()
 	diskInfo.TimeUpdate = uint64(time.Now().Unix())
 	diskInfo.CollectingStatus = types.SmartCollectingStatusSuccess
