@@ -204,7 +204,9 @@ func maybeUpdateMetricsTimer(ctx *getconfigContext, forceUpdate bool) {
 			updateMetricsTimer(ctx, latestMetricsInterval)
 		} else {
 			// Force an immediate timeout to publish metrics.
-			flextimer.TickNow(ctx.metricsTickerHandle)
+			if ctx.metricsTickerHandle != nil {
+				flextimer.TickNow(ctx.metricsTickerHandle)
+			}
 		}
 	}
 }
