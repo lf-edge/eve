@@ -1847,6 +1847,10 @@ func triggerPublishDevInfo(ctxPtr *zedagentContext) {
 }
 
 func triggerPublishLocationToController(ctxPtr *zedagentContext) {
+	if ctxPtr.getconfigCtx.locationCloudTickerHandle == nil {
+		// Location reporting task is not yet running.
+		return
+	}
 	log.Function("Triggered publishLocationToController")
 	flextimer.TickNow(ctxPtr.getconfigCtx.locationCloudTickerHandle)
 }
