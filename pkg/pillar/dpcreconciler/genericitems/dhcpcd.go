@@ -147,10 +147,20 @@ func (c *DhcpcdConfigurator) Create(ctx context.Context, item depgraph.Item) err
 				args = append(args, "--static",
 					fmt.Sprintf("routers=%s", config.Gateway.String()))
 			}
-			// XXX do we need to calculate a list for option?
+			var dnsServers []string
 			for _, dns := range config.DnsServers {
+				dnsServers = append(dnsServers, dns.String())
+			}
+			if len(dnsServers) > 0 {
+				// dhcpcd uses a very odd space-separation for multiple DNS servers.
+				// For manual invocation one must be very careful to not forget
+				// to quote the argument so that the spaces don't make the shell
+				// break up the list into multiple args.
+				// Here we do not need quotes because we are passing the DNS server
+				// list as a single entry of the 'args' slice for exec.Command().
 				args = append(args, "--static",
-					fmt.Sprintf("domain_name_servers=%s", dns.String()))
+					fmt.Sprintf("domain_name_servers=%s",
+						strings.Join(dnsServers, " ")))
 			}
 			if config.DomainName != "" {
 				args = append(args, "--static",
