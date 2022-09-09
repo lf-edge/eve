@@ -249,9 +249,6 @@ func (m *DpcManager) getDHCPInfo(port *types.NetworkPortStatus) error {
 }
 
 func (m *DpcManager) getDNSInfo(port *types.NetworkPortStatus) error {
-	if port.Dhcp != types.DT_CLIENT {
-		return nil
-	}
 	ifIndex, exists, err := m.NetworkMonitor.GetInterfaceIndex(port.IfName)
 	if !exists {
 		return nil
