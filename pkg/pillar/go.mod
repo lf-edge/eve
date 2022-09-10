@@ -8,7 +8,7 @@ require (
 	github.com/anatol/smart.go v0.0.0-20220615232124-371056cd18c3
 	github.com/bicomsystems/go-libzfs v0.4.0
 	github.com/containerd/cgroups v1.0.3
-	github.com/containerd/containerd v1.6.1
+	github.com/containerd/containerd v1.6.6
 	github.com/containerd/typeurl v1.0.2
 	github.com/cshari-zededa/eve-tpm2-tools v0.0.4
 	github.com/digitalocean/go-qemu v0.0.0-20181112162955-dd7bb9c771b8
@@ -35,9 +35,9 @@ require (
 	github.com/lf-edge/eve/libs/zedUpload v0.0.0-20210120050122-276fea8f6efd
 	github.com/moby/sys/mountinfo v0.6.0
 	github.com/moby/term v0.0.0-20210619224110-3f7ff695adc6 // indirect
-	github.com/onsi/gomega v1.15.0
+	github.com/onsi/gomega v1.17.0
 	github.com/opencontainers/go-digest v1.0.0
-	github.com/opencontainers/image-spec v1.0.2
+	github.com/opencontainers/image-spec v1.0.3-0.20211202183452-c5a74bcca799
 	github.com/opencontainers/runtime-spec v1.0.3-0.20210326190908-1c3f411f0417
 	github.com/packetcap/go-pcap v0.0.0-20210809221331-e2e6b14e1812
 	github.com/prometheus/client_golang v1.12.1 // indirect
