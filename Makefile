@@ -615,7 +615,7 @@ proto-vendor:
 	@$(DOCKER_GO) "cd pkg/pillar ; go mod vendor" $(CURDIR) proto
 
 proto-diagram: $(GOBUILDER)
-	@$(DOCKER_GO) "/usr/local/bin/protodot -src ./api/proto/config/devconfig.proto -output devconfig && cp ~/protodot/generated/devconfig.* ./api/images && dot ./api/images/devconfig.dot -Tpng -o ./api/images/devconfig.png && echo generated ./api/images/devconfig.*" $(CURDIR) api
+	@$(DOCKER_GO) "/usr/local/bin/protodot -inc /usr/include -src ./api/proto/config/devconfig.proto -output devconfig && cp ~/protodot/generated/devconfig.* ./api/images && dot ./api/images/devconfig.dot -Tpng -o ./api/images/devconfig.png && echo generated ./api/images/devconfig.*" $(CURDIR) api
 
 .PHONY: proto-api-%
 
