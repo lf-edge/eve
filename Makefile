@@ -261,7 +261,7 @@ DOCKER_GO = _() { $(SET_X); mkdir -p $(CURDIR)/.go/src/$${3:-dummy} ; mkdir -p $
 
 PARSE_PKGS=$(if $(strip $(EVE_HASH)),EVE_HASH=)$(EVE_HASH) DOCKER_ARCH_TAG=$(DOCKER_ARCH_TAG) ./tools/parse-pkgs.sh
 LINUXKIT=$(BUILDTOOLS_BIN)/linuxkit
-LINUXKIT_VERSION=86cc42bf79fde5bba63519313da337144841b647
+LINUXKIT_VERSION=e532e7310810293cc1de7ef118ae9b85f8a03c47
 LINUXKIT_SOURCE=https://github.com/linuxkit/linuxkit.git
 LINUXKIT_OPTS=$(if $(strip $(EVE_HASH)),--hash) $(EVE_HASH) $(if $(strip $(EVE_REL)),--release) $(EVE_REL)
 LINUXKIT_PKG_TARGET=build
@@ -736,7 +736,10 @@ eve-%: pkg/%/Dockerfile build-tools $(RESCAN_DEPS)
 	$(eval LINUXKIT_BUILD_PLATFORMS := --platforms $(subst $(space),$(comma),$(strip $(LINUXKIT_BUILD_PLATFORMS_LIST))))
 	$(eval LINUXKIT_FLAGS := $(if $(filter manifest,$(LINUXKIT_PKG_TARGET)),,$(FORCE_BUILD) $(LINUXKIT_DOCKER_LOAD) $(LINUXKIT_BUILD_PLATFORMS)))
 	$(QUIET)$(LINUXKIT) $(DASH_V) pkg $(LINUXKIT_PKG_TARGET) $(LINUXKIT_OPTS) $(LINUXKIT_FLAGS) -build-yml $(call get_pkg_build_yml,$*) pkg/$*
-	$(QUIET)if [ -n "$(PRUNE)" ]; then docker image prune -f; fi
+	$(QUIET)if [ -n "$(PRUNE)" ]; then \
+  		$(LINUXKIT) pkg builder prune; \
+  		docker image prune -f; \
+  	fi
 	$(QUIET): "$@: Succeeded (intermediate for pkg/%)"
 
 images/rootfs-%.yml.in: images/rootfs.yml.in FORCE
