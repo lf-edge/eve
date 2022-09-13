@@ -665,8 +665,9 @@ shell: $(GOBUILDER)
 
 # file to store current linuxkit version
 # if version mismatch will delete linuxkit to rebuild
+# we clean all old saved versions here as well
 $(LINUXKIT).$(LINUXKIT_VERSION):
-	@rm -rf $(LINUXKIT)
+	@rm -rf $(LINUXKIT)*
 	@touch $(LINUXKIT).$(LINUXKIT_VERSION)
 # build linuxkit for the host OS, not the container OS
 $(LINUXKIT): GOOS=$(shell uname -s | tr '[A-Z]' '[a-z]')
