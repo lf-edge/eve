@@ -400,7 +400,6 @@ func sendCtxInit(ctx *loguploaderContext) {
 	}
 	// Preserve port
 	ctx.serverNameAndPort = strings.TrimSpace(string(bytes))
-	serverName := strings.Split(ctx.serverNameAndPort, ":")[0]
 
 	//set newlog url
 	zedcloudCtx := zedcloud.NewContext(log, zedcloud.ContextOptions{
@@ -418,7 +417,7 @@ func sendCtxInit(ctx *loguploaderContext) {
 		zedcloudCtx.DevSoftSerial)
 
 	// XXX need to redo this since the root certificates can change when DeviceNetworkStatus changes
-	err = zedcloud.UpdateTLSConfig(&zedcloudCtx, serverName, nil)
+	err = zedcloud.UpdateTLSConfig(&zedcloudCtx, nil)
 	if err != nil {
 		log.Fatal(err)
 	}

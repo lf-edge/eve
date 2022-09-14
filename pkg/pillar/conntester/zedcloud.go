@@ -52,7 +52,6 @@ func (t *ZedcloudConnectivityTester) TestConnectivity(
 		t.Log.Fatal(err)
 	}
 	serverNameAndPort := strings.TrimSpace(string(server))
-	serverName := strings.Split(serverNameAndPort, ":")[0]
 
 	zedcloudCtx := zedcloud.NewContext(t.Log, zedcloud.ContextOptions{
 		DevNetworkStatus: &dns,
@@ -65,7 +64,7 @@ func (t *ZedcloudConnectivityTester) TestConnectivity(
 	t.Log.Functionf("TestConnectivity: Use V2 API %v\n", zedcloud.UseV2API())
 	testURL := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API, nilUUID, "ping")
 
-	tlsConfig, err := zedcloud.GetTlsConfig(zedcloudCtx.DeviceNetworkStatus, serverName,
+	tlsConfig, err := zedcloud.GetTlsConfig(zedcloudCtx.DeviceNetworkStatus,
 		nil, &zedcloudCtx)
 	if err != nil {
 		t.Log.Functionf("TestConnectivity: " +
@@ -79,7 +78,7 @@ func (t *ZedcloudConnectivityTester) TestConnectivity(
 		}
 		clientCert := &onboardingCert
 		tlsConfig, err = zedcloud.GetTlsConfig(zedcloudCtx.DeviceNetworkStatus,
-			serverName, clientCert, &zedcloudCtx)
+			clientCert, &zedcloudCtx)
 		if err != nil {
 			err = fmt.Errorf("failed to load TLS config for talking to Zedcloud: %v", err)
 			t.Log.Functionf("TestConnectivity: %v", err)
