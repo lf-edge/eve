@@ -225,7 +225,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		log.Fatal(err)
 	}
 	serverNameAndPort = strings.TrimSpace(string(server))
-	serverName := strings.Split(serverNameAndPort, ":")[0]
 
 	var onboardCert tls.Certificate
 	var deviceCertPem []byte
@@ -239,7 +238,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 			log.Fatal(err)
 		}
 		onboardTLSConfig, err = zedcloud.GetTlsConfig(zedcloudCtx.DeviceNetworkStatus,
-			serverName, &onboardCert, &zedcloudCtx)
+			&onboardCert, &zedcloudCtx)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -256,7 +255,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		log.Fatal(err)
 	}
 	devtlsConfig, err = zedcloud.GetTlsConfig(zedcloudCtx.DeviceNetworkStatus,
-		serverName, &deviceCert, &zedcloudCtx)
+		&deviceCert, &zedcloudCtx)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -365,21 +364,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 					server, nserver)
 				server = nserver
 				serverNameAndPort = strings.TrimSpace(string(server))
-				serverName = strings.Split(serverNameAndPort, ":")[0]
-				if onboardTLSConfig != nil {
-					onboardTLSConfig, err = zedcloud.GetTlsConfig(zedcloudCtx.DeviceNetworkStatus,
-						serverName, &onboardCert, &zedcloudCtx)
-					if err != nil {
-						log.Fatal(err)
-					}
-				}
-				if devtlsConfig != nil {
-					devtlsConfig, err = zedcloud.GetTlsConfig(zedcloudCtx.DeviceNetworkStatus,
-						serverName, &deviceCert, &zedcloudCtx)
-					if err != nil {
-						log.Fatal(err)
-					}
-				}
 				// Force a refresh
 				ok := fetchCertChain(&zedcloudCtx, devtlsConfig, retryCount, true)
 				if !ok && !zedcloudCtx.NoLedManager {

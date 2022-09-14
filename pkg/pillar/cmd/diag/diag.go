@@ -885,7 +885,7 @@ func tryPing(ctx *diagContext, ifname string, reqURL string) bool {
 
 	zedcloudCtx := ctx.zedcloudCtx
 	if zedcloudCtx.TlsConfig == nil {
-		err := zedcloud.UpdateTLSConfig(zedcloudCtx, ctx.serverName, ctx.cert)
+		err := zedcloud.UpdateTLSConfig(zedcloudCtx, ctx.cert)
 		if err != nil {
 			log.Errorf("internal UpdateTLSConfig failed %v", err)
 			return false
@@ -895,7 +895,13 @@ func tryPing(ctx *diagContext, ifname string, reqURL string) bool {
 	if reqURL == "" {
 		reqURL = zedcloud.URLPathString(ctx.serverNameAndPort, zedcloudCtx.V2API, nilUUID, "ping")
 	} else {
+		// Temporarily change TLS config for the non-controller destination.
+		origSkipVerify := zedcloudCtx.TlsConfig.InsecureSkipVerify
 		zedcloudCtx.TlsConfig.InsecureSkipVerify = true
+		defer func() {
+			// Revert back the original TLS config.
+			zedcloudCtx.TlsConfig.InsecureSkipVerify = origSkipVerify
+		}()
 	}
 
 	retryCount := 0

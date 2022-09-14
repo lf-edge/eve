@@ -307,7 +307,6 @@ func initZedcloudContext(networkSendTimeout uint32, agentMetrics *zedcloud.Agent
 		log.Fatal(err)
 	}
 	serverNameAndPort = strings.TrimSpace(string(bytes))
-	serverName = strings.Split(serverNameAndPort, ":")[0]
 
 	zedcloudCtx := zedcloud.NewContext(log, zedcloud.ContextOptions{
 		DevNetworkStatus: deviceNetworkStatus,
@@ -322,7 +321,7 @@ func initZedcloudContext(networkSendTimeout uint32, agentMetrics *zedcloud.Agent
 		zedcloudCtx.DevSoftSerial, zedcloud.UseV2API())
 
 	// XXX need to redo this since the root certificates can change
-	err = zedcloud.UpdateTLSConfig(&zedcloudCtx, serverName, nil)
+	err = zedcloud.UpdateTLSConfig(&zedcloudCtx, nil)
 	if err != nil {
 		log.Fatal(err)
 	}

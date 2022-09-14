@@ -105,13 +105,11 @@ func (t *WSTunnelClient) TestConnection(devNetStatus *types.DeviceNetworkStatus,
 	log.Tracef("Testing connection to %s on local address: %v, proxy: %v", t.Tunnel, localAddr, proxyURL)
 	log.Functionf("Testing connection to %s on local address: %v, proxy: %v", t.Tunnel, localAddr, proxyURL)
 
-	serverName := strings.Split(t.TunnelServerNameAndPort, ":")[0]
-
 	zedcloudCtx := ZedCloudContext{
 		V2API: UseV2API(),
 	}
 	// zedcloudCtx V2API UseV2API()
-	tlsConfig, err := GetTlsConfig(devNetStatus, serverName, nil, &zedcloudCtx)
+	tlsConfig, err := GetTlsConfig(devNetStatus, nil, &zedcloudCtx)
 	if err != nil {
 		log.Fatal(err)
 	}

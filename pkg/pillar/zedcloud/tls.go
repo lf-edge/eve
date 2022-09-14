@@ -53,11 +53,9 @@ func GetClientCert() (tls.Certificate, error) {
 }
 
 // UpdateTLSConfig sets the TlsConfig based on current root CA certificates
-// If a server arg is specified it overrides the serverFilename content.
 // If a clientCert is specified it overrides the device*Name files.
-func UpdateTLSConfig(zedcloudCtx *ZedCloudContext, serverName string, clientCert *tls.Certificate) error {
-	tlsConfig, err := GetTlsConfig(zedcloudCtx.DeviceNetworkStatus, serverName, clientCert,
-		zedcloudCtx)
+func UpdateTLSConfig(zedcloudCtx *ZedCloudContext, clientCert *tls.Certificate) error {
+	tlsConfig, err := GetTlsConfig(zedcloudCtx.DeviceNetworkStatus, clientCert, zedcloudCtx)
 	if err != nil {
 		return err
 	}
@@ -66,19 +64,9 @@ func UpdateTLSConfig(zedcloudCtx *ZedCloudContext, serverName string, clientCert
 }
 
 // GetTlsConfig creates and returns a TlsConfig based on current root CA certificates
-// If a server arg is specified it overrides the serverFilename content.
 // If a clientCert is specified it overrides the device*Name files.
 // XXX why would ctx be nil??
-func GetTlsConfig(dns *types.DeviceNetworkStatus, serverName string, clientCert *tls.Certificate, ctx *ZedCloudContext) (*tls.Config, error) {
-	if serverName == "" {
-		// get the server name
-		bytes, err := ioutil.ReadFile(types.ServerFileName)
-		if err != nil {
-			return nil, err
-		}
-		strTrim := strings.TrimSpace(string(bytes))
-		serverName = strings.Split(strTrim, ":")[0]
-	}
+func GetTlsConfig(dns *types.DeviceNetworkStatus, clientCert *tls.Certificate, ctx *ZedCloudContext) (*tls.Config, error) {
 	if clientCert == nil {
 		deviceTLSCert, err := GetClientCert()
 		if err != nil {
@@ -167,9 +155,24 @@ func GetTlsConfig(dns *types.DeviceNetworkStatus, serverName string, clientCert 
 		ctx.PrevCertPEM = cacheProxyCerts(dns)
 	}
 
+	// Note that we do not set ServerName here (used to verify the hostname on the returned
+	// certificates and as the SNI value of the ClientHello TLS message).
+	// Instead, we let the higher-level packages like net/http [1] and gorilla/websocket [2]
+	// to set it automatically from the destination URL.
+	// Setting this manually actually breaks certificate verification when (non-transparent)
+	// network proxy listening on HTTPS is being used between the device and the destination.
+	// In that case, the first TLS handshake is being done with the proxy and it is expected
+	// that proxy presents its own certificate, with CN set to its hostname.
+	// With ServerName set to destination hostname already for this first TLS handshake,
+	// proxy cert verification would fail with:
+	//   proxyconnect tcp: x509: certificate is valid for <proxy-hostname>, not <destination-hostname>
+	// Higher-level packages first set ServerName to the proxy hostname, then for the subsequent
+	// TLS handshake they use the destination hostname.
+	//
+	// [1]: https://github.com/golang/go/blob/release-branch.go1.16/src/net/http/transport.go#L1511-L1513
+	// [2]: https://github.com/gorilla/websocket/blob/v1.5.0/client.go#L340-L342
 	tlsConfig := &tls.Config{
 		Certificates: []tls.Certificate{*clientCert},
-		ServerName:   serverName,
 		RootCAs:      caCertPool,
 		CipherSuites: []uint16{
 			tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
