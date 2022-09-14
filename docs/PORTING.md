@@ -25,26 +25,16 @@ Once you have an MVP collection of Alpine packages you need to upload them plus 
 
 ## 3. Hooking up new CPU emulation environment to Makefile and GitHub workflows
 
-The rest of the porting journey will be taken step-by-step, but it helps when each step can be facilitated by the Makefile infrastructure and CI/CD workflows so that everything is fully automated. The first package that both Makefile and CI/CD infrastructure needs to know how to publish is `pkg/alpine` which will provide a build environment for the rest of EVE. Thus, you will need to tweak [publish](../.github/workflows/publish.yml) workflow one time to accomplish a bootstrapping of the `pkg/alpine` from the bits that were published in step #1. Don't hesitate to introduce a custom section that would accomplish it once and publish `pkg/alpine` package. Once that happens you can remove that section and simply rely on the fact that a seed `pkg/alpine` is now permanently available.
+The rest of the porting journey will be taken step-by-step, but it helps when each step can be facilitated by the Makefile infrastructure and CI/CD workflows so that everything is fully automated. The first package that both Makefile and CI/CD infrastructure needs to know how to publish is `pkg/alpine-base` which will provide a build environment for `pkg/alpine`. You will need to tweak `pkg/alpine-base` to use your repository and minirootfs filesystem alongside with official published [releases](https://alpinelinux.org/releases/) as official docker image of alpine may not exist for your architecture. `pkg/alpine` should be based on top of your updated `pkg/alpine-base` to download and cache the set of packages.
 
-It is typical to constrain the set of packages being produced for the new architecture and slowly grow the number of packages until all of EVE is ported. This is accomplished by setting `PKGS` environment variable in the publish workflow. Thus, the first incarnation of your new section in `publish.yml` will likely start as:
+The last statement in the series is used to constrain the initial content of the 2nd package that must be available from Day 1: `pkg/eve`. That is the final package that all of EVE users interact with in order to produce various images.
 
-```console
-             echo "PKGS=pkg/alpine pkg/ipxe pkg/mkconf pkg/mkimage-iso-efi pkg/mkimage-raw-efi" >> "$GITHUB_ENV"
-             echo "ZARCH=riscv64" >> "$GITHUB_ENV"
-             echo "EVE_ARTIFACTS=images/docker-compose.yml" >> "$GITHUB_ENV"
-```
-
-The last statement in the series is used to constrain the initial content of the 2nd package that must be available from Day 1: `pkg/eve`. That is the final package that all of EVE users interact with in order to produce various images. It is typically advised to start with the `pkg/eve` package that is effectively just `pkg/alpine` plus one static artifact `images/docker-compose.yml` to begin with.
-
-The set of the packages `PKGS` you need to make available from the get go is `pkg/alpine` plus whatever maybe required to enable `pkg/eve`. These packages are typically very easy to port and they constitute a good testcase for making sure that `pkg/alpine` is actually functional.
+Next you should adjust the packages `PKGS` in [Makefile](../Makefile) you need to make available from the get go is `pkg/alpine` plus whatever maybe required to enable `pkg/eve`. These packages are typically very easy to port and they constitute a good testcase for making sure that `pkg/alpine` is actually functional.
 
 To sum it up, here's what the above variables do:
 
-* `PKGS` the list of the packages that is ready to be built for a new architecture (bare minimum is pkg/alpine and pkg/eve)
+* `PKGS` the list of the packages that is ready to be built for a new architecture (bare minimum is pkg/alpine-base, pkg/alpine and pkg/eve)
 * `ZARCH` explicit selection of the architecture to build for (unless you don't have to do a cross-build)
-* `EVE_ARTIFACTS` what artifacts to put into an `eve` container
-* `LK_BUILD_ARGS` overrides required for linuxkit
 
 ## 4. Porting firmware, low-level bootloader and GRUB on the new CPU
 

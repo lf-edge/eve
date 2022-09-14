@@ -1,4 +1,6 @@
-FROM lfedge/eve-alpine-base:f11c7a5dcffe1ab7b466bea7e26010a27da62b3b AS cache
+# image was bootstraped using FROM lfedge/eve-alpine-base:f11c7a5dcffe1ab7b466bea7e26010a27da62b3b AS cache
+# to update please see https://github.com/lf-edge/eve/blob/master/docs/BUILD.md#how-to-update-eve-alpine-package
+FROM lfedge/eve-alpine:145f062a40639b6c65efa36bed1c5614b873be52 AS cache
 
 ARG ALPINE_VERSION=3.16
 # this is only needed once, when this package
@@ -33,7 +35,7 @@ RUN for repo in main community testing; do \
 # set the default repository to use
 RUN cp /mirror/${ALPINE_VERSION}/rootfs/etc/apk/repositories /etc/apk && apk update
 
-FROM lfedge/eve-alpine-base:f11c7a5dcffe1ab7b466bea7e26010a27da62b3b as compactor
+FROM lfedge/eve-alpine:145f062a40639b6c65efa36bed1c5614b873be52 as compactor
 
 COPY --from=cache /etc/apk/repositories* /etc/apk/
 COPY --from=cache /etc/apk/keys /etc/apk/keys/

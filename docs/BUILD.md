@@ -420,8 +420,8 @@ Since updating content of the `lfedge/eve-alpine` package is a bit of an unusual
 
 Reliance on `lfedge/eve-alpine` archive enforces a particular structure on individual Dockerfile from EVE packages. For one, they always start with `FROM lfedge/eve-alpine:TAG` and they always produce the final output in the `FROM scratch` step (to avoid layer dependency on the large `lfedge/eve-alpine` package). In addition, `lfedge/eve-alpine` archive package defines a helper script `eve-alpine-deploy.sh` that provides and easy entry point for setting up of the build environment and the final, Alpine-based output of the build. This helper script is driven by looking up the following environment variable (which are very similar to [Requires](https://docs.fedoraproject.org/en-US/packaging-guidelines/#_dependency_types) and [BuildRequires](https://docs.fedoraproject.org/en-US/packaging-guidelines/#buildrequires) in RPMs):
 
-* PKGS, PKGS_amd64, PKGS_arm64: used to list packages required for the final binary output of the build
-* BUILD_PKGS, BUILD_PKGS_amd64, BUILD_PKGS_arm64: used to list packages required to be present for the build itself, but not in the final output
+* PKGS, PKGS_amd64, PKGS_arm64, PKGS_riscv64: used to list packages required for the final binary output of the build
+* BUILD_PKGS, BUILD_PKGS_amd64, BUILD_PKGS_arm64, BUILD_PKGS_riscv64: used to list packages required to be present for the build itself, but not in the final output
 
 The only tiny annoyance is that one should not forget an explicit `RUN eve-alpine-deploy.sh` stanza in the Dockerfile after these ENV variables are defined. Calling `eve-alpine-deploy.sh` in the RUN stanza has an effect of all the BUILD time packages getting installed in the build context and all the runtime packages getting installed in the special folder `/out` (if there are additional binary artifacts produced by the build -- they too need to be added to the `/out` folder).
 
@@ -636,11 +636,18 @@ Last but not least, is this completely necessary?
 
 ## How to update eve-alpine package
 
-Unlike a lot of other Linux distributions, Alpine Linux doesn't provide historical versions of all its packages. In fact, Alpine Linux reserves the right to update packages with security patches behind the scenes resulting in content of Alpine x.y.z repositories shifting slightly from time to time. This, obviously, goes against the principle of reproducible builds and makes our `lfedge/eve-alpine` cache serve a double function: not only it is used to speed up the build, but it also may end up being the only place on the Internet where a certain Alpine Linux package version x.y.z could be available from.
+There are two possible options of updating eve-alpine:
+
+1. Rebase eve-alpine on top of new Alpine release
+2. Update packages stored inside eve-alpine
+
+The first option requires update of eve-alpine-base image to use another minirootfs and repository and pointing eve-alpine to be based on novel eve-alpine-base using `FROM lfedge/eve-alpine-base`. This action will invalidate all stored packages inside eve-alpine and download them from repository.
+
+The second option will append package to cache. Unlike a lot of other Linux distributions, Alpine Linux doesn't provide historical versions of all its packages. In fact, Alpine Linux reserves the right to update packages with security patches behind the scenes resulting in content of Alpine x.y.z repositories shifting slightly from time to time. This, obviously, goes against the principle of reproducible builds and makes our `lfedge/eve-alpine` cache serve a double function: not only it is used to speed up the build, but it also may end up being the only place on the Internet where a certain Alpine Linux package version x.y.z could be available from.
 
 The latter aspect makes maintaining `lfedge/eve-alpine` a bit tricky, even though at its core it is simply driven by the list of packages recorded in the manifest files under [pkg/alpine/mirrors](../pkg/alpine/mirrors). Removing packages from the cache is not advisable (and should really only be done during major EVE version updates). Adding packages to the cache consists of two steps:
 
-1. adding new package names to the the right manifest file (under `pkg/alpine/mirrors/<BASE ALPINE VERSION>/[main|community]`)
+1. adding new package names to the right manifest file (under `pkg/alpine/mirrors/<BASE ALPINE VERSION>/[main|community]`)
 2. updating `FROM ... AS cache` line in [pkg/alpine/Dockerfile](../pkg/alpine/Dockerfile) to point to the last version of the cache
 
 Step #2 guarantees that all *existing* packages will simply be re-used from the previous version of the cache and *NOT* re-downloaded from the Alpine http mirrors (remember that re-downloading always runs the risk of getting a different version of the same package). Step #1, of course, will download new packages and pin them in the new version of the cache.
