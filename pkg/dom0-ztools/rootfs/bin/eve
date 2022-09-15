@@ -20,6 +20,7 @@ Welcome to EVE!
             firewall drop
             verbose on|off
             version
+            uuid
 __EOT__
   exit 1
 }
@@ -122,6 +123,10 @@ __EOT__
  version)
           v=$(cat /run/eve-release)
           echo "$v"
+          ;;
+ uuid)
+          uuid=$(cat /persist/status/uuid)
+          echo "$uuid"
           ;;
  persist) case "$2" in
                list) list_partitions
