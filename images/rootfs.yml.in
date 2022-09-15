@@ -72,3 +72,5 @@ services:
 files:
    - path: /etc/eve-release
      contents: 'EVE_VERSION'
+   - path: etc/linuxkit-eve-config.yml
+     metadata: yaml
