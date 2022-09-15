@@ -47,6 +47,7 @@ var (
 func setupWebC(hostname, token string, u url.URL, isServer bool) bool {
 	var pport int
 	var pIP, serverStr string
+	var useProxy int
 	retry := 0
 	durr := 10 * 1000 // 10 sec
 	// if the device uses proxy cert, add to the container side
@@ -84,6 +85,7 @@ func setupWebC(hostname, token string, u url.URL, isServer bool) bool {
 		if isServer {
 			intfSrcs = getDefrouteIntfSrcs()
 		}
+		useProxy++
 		// walk through default route intfs if exist, and try also without specifying the source
 		// if we know the index it worked previously before disconnect, try that first
 		for idx := len(intfSrcs) - 1; idx >= -1; idx-- {
@@ -91,7 +93,18 @@ func setupWebC(hostname, token string, u url.URL, isServer bool) bool {
 				idx = websIndex
 			}
 			websIndex = invalidIndex
-			tlsDialer, err := tlsDial(isServer, pIP, pport, intfSrcs, idx)
+			var proxyIP string
+			var proxyPort int
+			// if proxy exists, sometimes not on all the interfaces, try with and without proxy
+			// for dispatcher connection
+			if pIP != "" && useProxy%2 == 0 {
+				proxyIP = pIP
+				proxyPort = pport
+				basics.evUseProxy = true
+			} else {
+				basics.evUseProxy = false
+			}
+			tlsDialer, err := tlsDial(isServer, proxyIP, proxyPort, intfSrcs, idx)
 			if err != nil {
 				return false
 			}

@@ -51,6 +51,7 @@ type basicItems struct {
 	release    string // EVE release
 	partition  string // device partition
 	proxy      string // proxy ip:port
+	evUseProxy bool   // if proxy, and edgeview uses it
 	evendpoint string // public IP informed by dispatcher
 }
 
@@ -219,9 +220,20 @@ func getAddrFromJWT(token string, isServer bool, instID int) (string, string, er
 	}
 
 	if jdata.Num > 1 && instID < 1 {
-		return addrport, path, fmt.Errorf("Edgeview is in multi-instance mode, '-inst 1-%d' needs to be specified", jdata.Num)
+		if runOnServer {
+			return addrport, path, fmt.Errorf("Edgeview is in multi-instance mode, '-inst 1-%d' needs to be specified", jdata.Num)
+		} else {
+			warnStr := fmt.Sprintf("Edgeview is in multi-instance mode, use '-inst 1-%d', try '-inst 1' here", jdata.Num)
+			fmt.Printf("%s\n", getColorStr(warnStr, colorCYAN))
+			edgeviewInstID = 1
+		}
 	} else if jdata.Num == 1 && instID > 0 {
-		return addrport, path, fmt.Errorf("Edgeview is not in multi-instance mode, no need to specify inst-ID")
+		if runOnServer {
+			return addrport, path, fmt.Errorf("Edgeview is not in multi-instance mode, no need to specify inst-ID")
+		} else {
+			fmt.Printf("%s\n", getColorStr("Edgeview is not in multi-instance mode, instance ignored here", colorCYAN))
+			edgeviewInstID = 0
+		}
 	}
 
 	if strings.Contains(jdata.Dep, "/") {
@@ -296,7 +308,7 @@ func getBasics() {
 		ips = append(ips, i.ipAddr)
 	}
 	addStr := ""
-	if basics.proxy != "" {
+	if basics.proxy != "" && basics.evUseProxy {
 		addStr = " (proxy " + basics.proxy + ")"
 	}
 	if basics.evendpoint != "" {
