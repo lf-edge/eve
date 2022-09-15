@@ -28,7 +28,6 @@ type SubscriptionImpl struct {
 	Persistent          bool
 
 	// Private fields
-	activated    bool
 	agentName    string
 	agentScope   string
 	topic        string
@@ -51,10 +50,6 @@ func (sub *SubscriptionImpl) MsgChan() <-chan Change {
 
 // Activate starts the subscription
 func (sub *SubscriptionImpl) Activate() error {
-	if sub.activated {
-		return errors.New("already activated")
-	}
-	sub.activated = true
 	if sub.Persistent {
 		sub.populate()
 	}
@@ -63,9 +58,6 @@ func (sub *SubscriptionImpl) Activate() error {
 
 // Close stops the subscription and removes the content
 func (sub *SubscriptionImpl) Close() error {
-	if !sub.activated {
-		return errors.New("not activated")
-	}
 	sub.driver.Stop()
 	items := sub.GetAll()
 	for key := range items {
@@ -75,7 +67,6 @@ func (sub *SubscriptionImpl) Close() error {
 	}
 	handleRestart(sub, 0)
 	handleSynchronized(sub, false)
-	sub.activated = false
 	return nil
 }
 

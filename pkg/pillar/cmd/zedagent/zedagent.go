@@ -270,7 +270,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	log.Functionf("Starting %s", agentName)
 
 	// Initialize zedagent context.
-	zedagentCtx := newContext()
+	zedagentCtx := newZedagentContext()
 	zedagentCtx.ps = ps
 	zedagentCtx.hangFlag = *hangPtr
 	zedagentCtx.fatalFlag = *fatalPtr
@@ -284,9 +284,8 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	zedagentCtx.TriggerHwInfo = triggerHwInfo
 	zedagentCtx.TriggerObjectInfo = triggerObjectInfo
 
-	// Initialize pubsub channels.
-	initializePublications(zedagentCtx)
-	initializeSubscriptions(zedagentCtx)
+	// Initialize all zedagent publications.
+	initPublications(zedagentCtx)
 
 	// upgradeconverter ensures we have a ConfigItemValueMap so we
 	// read it to get the initial values
@@ -309,6 +308,25 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 	// Wait until we have been onboarded aka know our own UUID.
 	// Onboarding is done by client (pillar/cmd/client).
+	// Activate in the next step so that zedagentCtx.subOnboardStatus is set
+	// before Modify handler is called by SubscriptionImpl.populate()
+	// (only needed for persistent subs).
+	zedagentCtx.subOnboardStatus, err = ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "zedclient",
+		MyAgentName:   agentName,
+		TopicImpl:     types.OnboardingStatus{},
+		Activate:      false,
+		Persistent:    true,
+		Ctx:           zedagentCtx,
+		CreateHandler: handleOnboardStatusCreate,
+		ModifyHandler: handleOnboardStatusModify,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	zedagentCtx.subOnboardStatus.Activate()
 	waitUntilOnboarded(zedagentCtx, stillRunning)
 
 	// We know our own UUID; prepare for communication with controller
@@ -320,6 +338,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		getDeferredSentHandlerFunction(zedagentCtx), getDeferredPriorityFunctions()...)
 	// XXX defer this until we have some config from cloud or saved copy
 	getconfigCtx.pubAppInstanceConfig.SignalRestarted()
+
+	// With device UUID, zedagent is ready to initialize and activate all subscriptions.
+	initPostOnboardSubs(zedagentCtx)
 
 	//initialize cipher processing block
 	cipherModuleInitialize(zedagentCtx)
@@ -410,7 +431,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	return 0
 }
 
-func newContext() *zedagentContext {
+func newZedagentContext() *zedagentContext {
 	zedagentCtx := &zedagentContext{
 		zedcloudMetrics: zedcloud.NewAgentMetrics(),
 	}
@@ -493,7 +514,6 @@ func initializeDirs() {
 }
 
 func waitUntilOnboarded(zedagentCtx *zedagentContext, stillRunning *time.Ticker) {
-	zedagentCtx.subOnboardStatus.Activate()
 	nilUUID := uuid.UUID{}
 	for devUUID == nilUUID {
 		log.Functionf("Waiting for OnboardStatus UUID")
@@ -508,9 +528,6 @@ func waitUntilOnboarded(zedagentCtx *zedagentContext, stillRunning *time.Ticker)
 
 func waitUntilGCReady(zedagentCtx *zedagentContext, stillRunning *time.Ticker) {
 	getconfigCtx := zedagentCtx.getconfigCtx
-	zedagentCtx.subOnboardStatus.Activate()
-	zedagentCtx.subGlobalConfig.Activate()
-	getconfigCtx.subNodeAgentStatus.Activate()
 	for !zedagentCtx.GCInitialized {
 		log.Functionf("Waiting for GCInitialized")
 		select {
@@ -532,9 +549,6 @@ func waitUntilGCReady(zedagentCtx *zedagentContext, stillRunning *time.Ticker) {
 
 func waitUntilZbootReady(zedagentCtx *zedagentContext, stillRunning *time.Ticker) {
 	getconfigCtx := zedagentCtx.getconfigCtx
-	zedagentCtx.subOnboardStatus.Activate()
-	zedagentCtx.subZbootStatus.Activate()
-	getconfigCtx.subNodeAgentStatus.Activate()
 	for !zedagentCtx.zbootRestarted {
 		select {
 		case change := <-zedagentCtx.subOnboardStatus.MsgChan():
@@ -567,19 +581,6 @@ func waitUntilDNSReady(zedagentCtx *zedagentContext, stillRunning *time.Ticker) 
 	getconfigCtx := zedagentCtx.getconfigCtx
 	dnsCtx := zedagentCtx.dnsCtx
 	log.Functionf("Waiting until we have DeviceNetworkStatus")
-
-	zedagentCtx.subOnboardStatus.Activate()
-	zedagentCtx.subGlobalConfig.Activate()
-	dnsCtx.subDeviceNetworkStatus.Activate()
-	zedagentCtx.subAssignableAdapters.Activate()
-	zedagentCtx.subDevicePortConfigList.Activate()
-	getconfigCtx.subNodeAgentStatus.Activate()
-	zedagentCtx.subVaultStatus.Activate()
-	zedagentCtx.subAttestQuote.Activate()
-	zedagentCtx.subEncryptedKeyFromDevice.Activate()
-	getconfigCtx.subAppNetworkStatus.Activate()
-	zedagentCtx.subWwanMetrics.Activate()
-	zedagentCtx.subLocationInfo.Activate()
 
 	for !dnsCtx.DNSinitialized {
 		log.Functionf("Waiting for DeviceNetworkStatus %v",
@@ -655,53 +656,6 @@ func mainEventLoop(zedagentCtx *zedagentContext, stillRunning *time.Ticker) {
 	dnsCtx := zedagentCtx.dnsCtx
 
 	hwInfoTiker := time.NewTicker(3 * time.Hour)
-
-	zedagentCtx.subOnboardStatus.Activate()
-	zedagentCtx.subZbootStatus.Activate()
-	zedagentCtx.subGlobalConfig.Activate()
-	getconfigCtx.subAppInstanceStatus.Activate()
-	getconfigCtx.subContentTreeStatus.Activate()
-	getconfigCtx.subVolumeStatus.Activate()
-	getconfigCtx.subDomainMetric.Activate()
-	getconfigCtx.subProcessMetric.Activate()
-	getconfigCtx.subHostMemory.Activate()
-	zedagentCtx.subBaseOsStatus.Activate()
-	zedagentCtx.subBlobStatus.Activate()
-	getconfigCtx.subNodeAgentStatus.Activate()
-	getconfigCtx.subAppNetworkStatus.Activate()
-	dnsCtx.subDeviceNetworkStatus.Activate()
-	zedagentCtx.subAssignableAdapters.Activate()
-	zedagentCtx.subNetworkMetrics.Activate()
-	zedagentCtx.subClientMetrics.Activate()
-	zedagentCtx.subLoguploaderMetrics.Activate()
-	zedagentCtx.subDiagMetrics.Activate()
-	zedagentCtx.subNimMetrics.Activate()
-	zedagentCtx.subZRouterMetrics.Activate()
-	zedagentCtx.subNewlogMetrics.Activate()
-	zedagentCtx.subDownloaderMetrics.Activate()
-	zedagentCtx.subCipherMetricsDL.Activate()
-	zedagentCtx.subCipherMetricsDM.Activate()
-	zedagentCtx.subCipherMetricsNim.Activate()
-	zedagentCtx.subCipherMetricsZR.Activate()
-	zedagentCtx.subNetworkInstanceStatus.Activate()
-	zedagentCtx.subNetworkInstanceMetrics.Activate()
-	zedagentCtx.subDevicePortConfigList.Activate()
-	zedagentCtx.subAppFlowMonitor.Activate()
-	zedagentCtx.subEdgeNodeCert.Activate()
-	zedagentCtx.subVaultStatus.Activate()
-	zedagentCtx.subAttestQuote.Activate()
-	zedagentCtx.subEncryptedKeyFromDevice.Activate()
-	zedagentCtx.subAppContainerMetrics.Activate()
-	zedagentCtx.subDiskMetric.Activate()
-	zedagentCtx.subAppDiskMetric.Activate()
-	zedagentCtx.subCapabilities.Activate()
-	zedagentCtx.subBaseOsMgrStatus.Activate()
-	zedagentCtx.subAppInstMetaData.Activate()
-	zedagentCtx.subWwanMetrics.Activate()
-	zedagentCtx.subLocationInfo.Activate()
-	zedagentCtx.subZFSPoolStatus.Activate()
-	zedagentCtx.subZFSPoolMetrics.Activate()
-	zedagentCtx.subEdgeviewStatus.Activate()
 
 	for {
 		select {
@@ -973,7 +927,7 @@ func mainEventLoop(zedagentCtx *zedagentContext, stillRunning *time.Ticker) {
 	}
 }
 
-func initializePublications(zedagentCtx *zedagentContext) {
+func initPublications(zedagentCtx *zedagentContext) {
 	var err error
 	ps := zedagentCtx.ps
 
@@ -1023,7 +977,7 @@ func initializePublications(zedagentCtx *zedagentContext) {
 		log.Fatal(err)
 	}
 
-	// Publish NetworkXObjectConfig and for outselves. XXX remove
+	// Publish NetworkXObjectConfig and for ourselves. XXX remove
 	getconfigCtx.pubNetworkXObjectConfig, err = ps.NewPublication(pubsub.PublicationOptions{
 		AgentName: agentName,
 		TopicType: types.NetworkXObjectConfig{},
@@ -1155,34 +1109,18 @@ func initializePublications(zedagentCtx *zedagentContext) {
 
 }
 
-// Subscriptions are returned inactive.
-func initializeSubscriptions(zedagentCtx *zedagentContext) {
+// All but one zedagent subscription (subOnboardStatus) are activated
+// only after zedagent knows device UUID.
+func initPostOnboardSubs(zedagentCtx *zedagentContext) {
 	var err error
 	ps := zedagentCtx.ps
 	getconfigCtx := zedagentCtx.getconfigCtx
 	dnsCtx := zedagentCtx.dnsCtx
-
-	zedagentCtx.subOnboardStatus, err = ps.NewSubscription(pubsub.SubscriptionOptions{
-		AgentName:     "zedclient",
-		MyAgentName:   agentName,
-		TopicImpl:     types.OnboardingStatus{},
-		Activate:      false,
-		Persistent:    true,
-		Ctx:           zedagentCtx,
-		CreateHandler: handleOnboardStatusCreate,
-		ModifyHandler: handleOnboardStatusModify,
-		WarningTime:   warningTime,
-		ErrorTime:     errorTime,
-	})
-	if err != nil {
-		log.Fatal(err)
-	}
-
 	zedagentCtx.subAssignableAdapters, err = ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "domainmgr",
 		MyAgentName:   agentName,
 		TopicImpl:     types.AssignableAdapters{},
-		Activate:      false,
+		Activate:      true,
 		Ctx:           zedagentCtx,
 		CreateHandler: handleAACreate,
 		ModifyHandler: handleAAModify,
@@ -1198,6 +1136,9 @@ func initializeSubscriptions(zedagentCtx *zedagentContext) {
 	// Note that we use these handlers to process updates from
 	// the controller since the parser (in zedagent aka ourselves)
 	// merely publishes the GlobalConfig
+	// Activate in the next step so that zedagentCtx.subGlobalConfig is set
+	// before Modify handler is called by SubscriptionImpl.populate()
+	// (only needed for persistent subs).
 	zedagentCtx.subGlobalConfig, err = ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     agentName,
 		MyAgentName:   agentName,
@@ -1214,12 +1155,13 @@ func initializeSubscriptions(zedagentCtx *zedagentContext) {
 	if err != nil {
 		log.Fatal(err)
 	}
+	zedagentCtx.subGlobalConfig.Activate()
 
 	zedagentCtx.subNetworkInstanceStatus, err = ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "zedrouter",
 		MyAgentName:   agentName,
 		TopicImpl:     types.NetworkInstanceStatus{},
-		Activate:      false,
+		Activate:      true,
 		Ctx:           zedagentCtx,
 		CreateHandler: handleNetworkInstanceCreate,
 		ModifyHandler: handleNetworkInstanceModify,
@@ -1235,7 +1177,7 @@ func initializeSubscriptions(zedagentCtx *zedagentContext) {
 		AgentName:   "zedrouter",
 		MyAgentName: agentName,
 		TopicImpl:   types.AppNetworkStatus{},
-		Activate:    false,
+		Activate:    true,
 		Ctx:         zedagentCtx,
 		WarningTime: warningTime,
 		ErrorTime:   errorTime,
@@ -1248,7 +1190,7 @@ func initializeSubscriptions(zedagentCtx *zedagentContext) {
 		AgentName:   "zedrouter",
 		MyAgentName: agentName,
 		TopicImpl:   types.NetworkInstanceMetrics{},
-		Activate:    false,
+		Activate:    true,
 		Ctx:         zedagentCtx,
 		WarningTime: warningTime,
 		ErrorTime:   errorTime,
@@ -1261,7 +1203,7 @@ func initializeSubscriptions(zedagentCtx *zedagentContext) {
 		AgentName:     "zedrouter",
 		MyAgentName:   agentName,
 		TopicImpl:     types.IPFlow{},
-		Activate:      false,
+		Activate:      true,
 		Ctx:           zedagentCtx,
 		CreateHandler: handleAppFlowMonitorCreate,
 		ModifyHandler: handleAppFlowMonitorModify,
@@ -1278,7 +1220,7 @@ func initializeSubscriptions(zedagentCtx *zedagentContext) {
 		AgentName:     "zedmanager",
 		MyAgentName:   agentName,
 		TopicImpl:     types.AppInstanceStatus{},
-		Activate:      false,
+		Activate:      true,
 		Ctx:           zedagentCtx,
 		CreateHandler: handleAppInstanceStatusCreate,
 		ModifyHandler: handleAppInstanceStatusModify,
@@ -1295,7 +1237,7 @@ func initializeSubscriptions(zedagentCtx *zedagentContext) {
 		AgentName:     "volumemgr",
 		MyAgentName:   agentName,
 		TopicImpl:     types.ContentTreeStatus{},
-		Activate:      false,
+		Activate:      true,
 		Ctx:           zedagentCtx,
 		CreateHandler: handleContentTreeStatusCreate,
 		ModifyHandler: handleContentTreeStatusModify,
@@ -1313,7 +1255,7 @@ func initializeSubscriptions(zedagentCtx *zedagentContext) {
 		MyAgentName:   agentName,
 		AgentScope:    types.AppImgObj,
 		TopicImpl:     types.VolumeStatus{},
-		Activate:      false,
+		Activate:      true,
 		Ctx:           zedagentCtx,
 		CreateHandler: handleVolumeStatusCreate,
 		ModifyHandler: handleVolumeStatusModify,
@@ -1330,7 +1272,7 @@ func initializeSubscriptions(zedagentCtx *zedagentContext) {
 		AgentName:   "domainmgr",
 		MyAgentName: agentName,
 		TopicImpl:   types.DomainMetric{},
-		Activate:    false,
+		Activate:    true,
 		Ctx:         zedagentCtx,
 		WarningTime: warningTime,
 		ErrorTime:   errorTime,
@@ -1344,7 +1286,7 @@ func initializeSubscriptions(zedagentCtx *zedagentContext) {
 		AgentName:   "domainmgr",
 		MyAgentName: agentName,
 		TopicImpl:   types.ProcessMetric{},
-		Activate:    false,
+		Activate:    true,
 		Ctx:         zedagentCtx,
 		WarningTime: warningTime,
 		ErrorTime:   errorTime,
@@ -1357,7 +1299,7 @@ func initializeSubscriptions(zedagentCtx *zedagentContext) {
 		AgentName:   "domainmgr",
 		MyAgentName: agentName,
 		TopicImpl:   types.HostMemory{},
-		Activate:    false,
+		Activate:    true,
 		Ctx:         zedagentCtx,
 		WarningTime: warningTime,
 		ErrorTime:   errorTime,
@@ -1370,7 +1312,7 @@ func initializeSubscriptions(zedagentCtx *zedagentContext) {
 		AgentName:     "edgeview",
 		MyAgentName:   agentName,
 		TopicImpl:     types.EdgeviewStatus{},
-		Activate:      false,
+		Activate:      true,
 		Ctx:           zedagentCtx,
 		CreateHandler: handleEdgeviewStatusCreate,
 		ModifyHandler: handleEdgeviewStatusModify,
@@ -1386,7 +1328,7 @@ func initializeSubscriptions(zedagentCtx *zedagentContext) {
 		AgentName:      "baseosmgr",
 		MyAgentName:    agentName,
 		TopicImpl:      types.ZbootStatus{},
-		Activate:       false,
+		Activate:       true,
 		Ctx:            zedagentCtx,
 		CreateHandler:  handleZbootStatusCreate,
 		ModifyHandler:  handleZbootStatusModify,
@@ -1404,7 +1346,7 @@ func initializeSubscriptions(zedagentCtx *zedagentContext) {
 		AgentName:     "zedrouter",
 		MyAgentName:   agentName,
 		TopicImpl:     types.AppContainerMetrics{},
-		Activate:      false,
+		Activate:      true,
 		Ctx:           zedagentCtx,
 		CreateHandler: handleAppContainerMetricsCreate,
 		ModifyHandler: handleAppContainerMetricsModify,
@@ -1419,7 +1361,7 @@ func initializeSubscriptions(zedagentCtx *zedagentContext) {
 		AgentName:     "baseosmgr",
 		MyAgentName:   agentName,
 		TopicImpl:     types.BaseOsStatus{},
-		Activate:      false,
+		Activate:      true,
 		Ctx:           zedagentCtx,
 		CreateHandler: handleBaseOsStatusCreate,
 		ModifyHandler: handleBaseOsStatusModify,
@@ -1431,6 +1373,9 @@ func initializeSubscriptions(zedagentCtx *zedagentContext) {
 		log.Fatal(err)
 	}
 
+	// Activate in the next step so that zedagentCtx.subEdgeNodeCert is set
+	// before Modify handler is called by SubscriptionImpl.populate()
+	// (only needed for persistent subs).
 	zedagentCtx.subEdgeNodeCert, err = ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "tpmmgr",
 		MyAgentName:   agentName,
@@ -1447,12 +1392,13 @@ func initializeSubscriptions(zedagentCtx *zedagentContext) {
 	if err != nil {
 		log.Fatal(err)
 	}
+	zedagentCtx.subEdgeNodeCert.Activate()
 
 	zedagentCtx.subVaultStatus, err = ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "vaultmgr",
 		MyAgentName:   agentName,
 		TopicImpl:     types.VaultStatus{},
-		Activate:      false,
+		Activate:      true,
 		Ctx:           zedagentCtx,
 		CreateHandler: handleVaultStatusCreate,
 		ModifyHandler: handleVaultStatusModify,
@@ -1468,7 +1414,7 @@ func initializeSubscriptions(zedagentCtx *zedagentContext) {
 		AgentName:     "tpmmgr",
 		MyAgentName:   agentName,
 		TopicImpl:     types.AttestQuote{},
-		Activate:      false,
+		Activate:      true,
 		Ctx:           zedagentCtx,
 		CreateHandler: handleAttestQuoteCreate,
 		ModifyHandler: handleAttestQuoteModify,
@@ -1484,7 +1430,7 @@ func initializeSubscriptions(zedagentCtx *zedagentContext) {
 		AgentName:     "vaultmgr",
 		MyAgentName:   agentName,
 		TopicImpl:     types.EncryptedVaultKeyFromDevice{},
-		Activate:      false,
+		Activate:      true,
 		Ctx:           zedagentCtx,
 		CreateHandler: handleEncryptedKeyFromDeviceCreate,
 		ModifyHandler: handleEncryptedKeyFromDeviceModify,
@@ -1501,7 +1447,7 @@ func initializeSubscriptions(zedagentCtx *zedagentContext) {
 		AgentName:     "nodeagent",
 		MyAgentName:   agentName,
 		TopicImpl:     types.NodeAgentStatus{},
-		Activate:      false,
+		Activate:      true,
 		Ctx:           getconfigCtx,
 		CreateHandler: handleNodeAgentStatusCreate,
 		ModifyHandler: handleNodeAgentStatusModify,
@@ -1518,7 +1464,7 @@ func initializeSubscriptions(zedagentCtx *zedagentContext) {
 		AgentName:     "nim",
 		MyAgentName:   agentName,
 		TopicImpl:     types.DeviceNetworkStatus{},
-		Activate:      false,
+		Activate:      true,
 		Ctx:           dnsCtx,
 		CreateHandler: handleDNSCreate,
 		ModifyHandler: handleDNSModify,
@@ -1534,7 +1480,7 @@ func initializeSubscriptions(zedagentCtx *zedagentContext) {
 		AgentName:     "nim",
 		MyAgentName:   agentName,
 		TopicImpl:     types.DevicePortConfigList{},
-		Activate:      false,
+		Activate:      true,
 		Ctx:           zedagentCtx,
 		CreateHandler: handleDPCLCreate,
 		ModifyHandler: handleDPCLModify,
@@ -1551,7 +1497,7 @@ func initializeSubscriptions(zedagentCtx *zedagentContext) {
 		AgentName:     "volumemgr",
 		MyAgentName:   agentName,
 		TopicImpl:     types.BlobStatus{},
-		Activate:      false,
+		Activate:      true,
 		Ctx:           zedagentCtx,
 		CreateHandler: handleBlobStatusCreate,
 		ModifyHandler: handleBlobStatusModify,
@@ -1567,7 +1513,7 @@ func initializeSubscriptions(zedagentCtx *zedagentContext) {
 	zedagentCtx.subNewlogMetrics, err = ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName: "newlogd",
 		TopicImpl: types.NewlogMetrics{},
-		Activate:  false,
+		Activate:  true,
 		Ctx:       zedagentCtx,
 	})
 	if err != nil {
@@ -1578,7 +1524,7 @@ func initializeSubscriptions(zedagentCtx *zedagentContext) {
 		AgentName:     "volumemgr",
 		MyAgentName:   agentName,
 		TopicImpl:     types.DiskMetric{},
-		Activate:      false,
+		Activate:      true,
 		Ctx:           zedagentCtx,
 		CreateHandler: handleDiskMetricCreate,
 		ModifyHandler: handleDiskMetricModify,
@@ -1594,7 +1540,7 @@ func initializeSubscriptions(zedagentCtx *zedagentContext) {
 		AgentName:   "volumemgr",
 		MyAgentName: agentName,
 		TopicImpl:   types.AppDiskMetric{},
-		Activate:    false,
+		Activate:    true,
 		Ctx:         zedagentCtx,
 		WarningTime: warningTime,
 		ErrorTime:   errorTime,
@@ -1607,7 +1553,7 @@ func initializeSubscriptions(zedagentCtx *zedagentContext) {
 		AgentName:   "domainmgr",
 		MyAgentName: agentName,
 		TopicImpl:   types.Capabilities{},
-		Activate:    false,
+		Activate:    true,
 		Ctx:         zedagentCtx,
 		WarningTime: warningTime,
 		ErrorTime:   errorTime,
@@ -1620,12 +1566,15 @@ func initializeSubscriptions(zedagentCtx *zedagentContext) {
 		AgentName:   "baseosmgr",
 		MyAgentName: agentName,
 		TopicImpl:   types.BaseOSMgrStatus{},
-		Activate:    false,
+		Activate:    true,
 		Ctx:         zedagentCtx,
 		WarningTime: warningTime,
 		ErrorTime:   errorTime,
 	})
 
+	// Activate in the next step so that zedagentCtx.subAppInstMetaData is set
+	// before Modify handler is called by SubscriptionImpl.populate()
+	// (only needed for persistent subs).
 	zedagentCtx.subAppInstMetaData, err = ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "zedrouter",
 		MyAgentName:   agentName,
@@ -1642,12 +1591,13 @@ func initializeSubscriptions(zedagentCtx *zedagentContext) {
 	if err != nil {
 		log.Fatal(err)
 	}
+	zedagentCtx.subAppInstMetaData.Activate()
 
 	zedagentCtx.subWwanMetrics, err = ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:   "nim",
 		MyAgentName: agentName,
 		TopicImpl:   types.WwanMetrics{},
-		Activate:    false,
+		Activate:    true,
 		Ctx:         zedagentCtx,
 		WarningTime: warningTime,
 		ErrorTime:   errorTime,
@@ -1660,7 +1610,7 @@ func initializeSubscriptions(zedagentCtx *zedagentContext) {
 		AgentName:   "nim",
 		MyAgentName: agentName,
 		TopicImpl:   types.WwanLocationInfo{},
-		Activate:    false,
+		Activate:    true,
 		Ctx:         zedagentCtx,
 		WarningTime: warningTime,
 		ErrorTime:   errorTime,
@@ -1674,7 +1624,7 @@ func initializeSubscriptions(zedagentCtx *zedagentContext) {
 		AgentName:   "zedrouter",
 		MyAgentName: agentName,
 		TopicImpl:   types.NetworkMetrics{},
-		Activate:    false,
+		Activate:    true,
 		Ctx:         zedagentCtx,
 	})
 	if err != nil {
@@ -1686,7 +1636,7 @@ func initializeSubscriptions(zedagentCtx *zedagentContext) {
 		AgentName:   "zedclient",
 		MyAgentName: agentName,
 		TopicImpl:   types.MetricsMap{},
-		Activate:    false,
+		Activate:    true,
 		Ctx:         zedagentCtx,
 	})
 	if err != nil {
@@ -1697,7 +1647,7 @@ func initializeSubscriptions(zedagentCtx *zedagentContext) {
 	zedagentCtx.subLoguploaderMetrics, err = ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName: "loguploader",
 		TopicImpl: types.MetricsMap{},
-		Activate:  false,
+		Activate:  true,
 		Ctx:       zedagentCtx,
 	})
 	if err != nil {
@@ -1708,7 +1658,7 @@ func initializeSubscriptions(zedagentCtx *zedagentContext) {
 		AgentName:   "downloader",
 		MyAgentName: agentName,
 		TopicImpl:   types.MetricsMap{},
-		Activate:    false,
+		Activate:    true,
 		Ctx:         zedagentCtx,
 	})
 	if err != nil {
@@ -1719,7 +1669,7 @@ func initializeSubscriptions(zedagentCtx *zedagentContext) {
 	zedagentCtx.subDiagMetrics, err = ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName: "diag",
 		TopicImpl: types.MetricsMap{},
-		Activate:  false,
+		Activate:  true,
 		Ctx:       zedagentCtx,
 	})
 	if err != nil {
@@ -1730,7 +1680,7 @@ func initializeSubscriptions(zedagentCtx *zedagentContext) {
 	zedagentCtx.subNimMetrics, err = ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName: "nim",
 		TopicImpl: types.MetricsMap{},
-		Activate:  false,
+		Activate:  true,
 		Ctx:       zedagentCtx,
 	})
 	if err != nil {
@@ -1741,7 +1691,7 @@ func initializeSubscriptions(zedagentCtx *zedagentContext) {
 	zedagentCtx.subZRouterMetrics, err = ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName: "zedrouter",
 		TopicImpl: types.MetricsMap{},
-		Activate:  false,
+		Activate:  true,
 		Ctx:       zedagentCtx,
 	})
 	if err != nil {
@@ -1752,7 +1702,7 @@ func initializeSubscriptions(zedagentCtx *zedagentContext) {
 		AgentName:   "downloader",
 		MyAgentName: agentName,
 		TopicImpl:   types.CipherMetrics{},
-		Activate:    false,
+		Activate:    true,
 		Ctx:         zedagentCtx,
 	})
 	if err != nil {
@@ -1763,7 +1713,7 @@ func initializeSubscriptions(zedagentCtx *zedagentContext) {
 		AgentName:   "domainmgr",
 		MyAgentName: agentName,
 		TopicImpl:   types.CipherMetrics{},
-		Activate:    false,
+		Activate:    true,
 		Ctx:         zedagentCtx,
 	})
 	if err != nil {
@@ -1774,7 +1724,7 @@ func initializeSubscriptions(zedagentCtx *zedagentContext) {
 		AgentName:   "nim",
 		MyAgentName: agentName,
 		TopicImpl:   types.CipherMetrics{},
-		Activate:    false,
+		Activate:    true,
 		Ctx:         zedagentCtx,
 	})
 	if err != nil {
@@ -1785,7 +1735,7 @@ func initializeSubscriptions(zedagentCtx *zedagentContext) {
 		AgentName:   "zedrouter",
 		MyAgentName: agentName,
 		TopicImpl:   types.CipherMetrics{},
-		Activate:    false,
+		Activate:    true,
 		Ctx:         zedagentCtx,
 	})
 	if err != nil {
@@ -1796,7 +1746,7 @@ func initializeSubscriptions(zedagentCtx *zedagentContext) {
 		AgentName:   "zfsmanager",
 		MyAgentName: agentName,
 		TopicImpl:   types.ZFSPoolStatus{},
-		Activate:    false,
+		Activate:    true,
 		Ctx:         zedagentCtx,
 		WarningTime: warningTime,
 		ErrorTime:   errorTime,
@@ -1809,7 +1759,7 @@ func initializeSubscriptions(zedagentCtx *zedagentContext) {
 		AgentName:   "zfsmanager",
 		MyAgentName: agentName,
 		TopicImpl:   types.ZFSPoolMetrics{},
-		Activate:    false,
+		Activate:    true,
 		Ctx:         &zedagentCtx,
 		WarningTime: warningTime,
 		ErrorTime:   errorTime,
