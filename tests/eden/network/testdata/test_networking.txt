@@ -4,7 +4,7 @@
 [!exec:curl] stop
 [!exec:sleep] stop
 
-# This test deploys two apps into EVE and checks access between them trough network
+# This test deploys two apps into EVE and checks access between them through network
 # Inside apps there are nginx and curl services.
 #     curl try to download page provided in $url variable and save it into received-data.html file.
 #     Nginx serve $url variable content at /user-data.html endpoint and received-data.html at /received-data.html endpoint.
