@@ -59,7 +59,7 @@ type IoBundle struct {
 	Ifname string // Matching for network PCI devices e.g., "eth1"
 
 	// Attributes from controller but can also be set locally.
-	PciLong string // Specific PCI bus address in Domain:Bus:Device.Funcion syntax
+	PciLong string // Specific PCI bus address in Domain:Bus:Device.Function syntax
 	// For non-PCI devices such as the ISA serial ports we have:
 	// XXX: Why is IRQ a string?? Should convert it into Int.
 	Irq     string // E.g., "5"

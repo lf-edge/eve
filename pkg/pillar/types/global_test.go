@@ -13,7 +13,7 @@ import (
 func TestDefaultValue(t *testing.T) {
 	specMap := NewConfigItemSpecMap()
 	for _, item := range specMap.GlobalSettings {
-		t.Logf("Testing if defualt value and spec matches for %s", item.Key)
+		t.Logf("Testing if default value and spec matches for %s", item.Key)
 		defaultValue := item.DefaultValue()
 		if item.ItemType == ConfigItemTypeInt {
 			assert.Equal(t, item.IntDefault, defaultValue.IntValue)

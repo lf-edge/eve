@@ -104,8 +104,8 @@ var globalConfigDefaults = OldGlobalConfig{
 
 	NetworkSendTimeout: 120,
 
-	UsbAccess:           true, // Contoller likely to default to false
-	SshAccess:           true, // Contoller likely to default to false
+	UsbAccess:           true, // Controller likely to default to false
+	SshAccess:           true, // Controller likely to default to false
 	SshAuthorizedKeys:   "",
 	StaleConfigTime:     600,  // Use stale config for up to 10 minutes
 	DownloadGCTime:      600,  // 10 minutes

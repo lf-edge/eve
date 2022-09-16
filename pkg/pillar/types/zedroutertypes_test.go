@@ -228,7 +228,7 @@ func TestIsDPCTestable(t *testing.T) {
 			},
 			expectedValue: true,
 		},
-		"Last Succeded is after Last Failed": {
+		"Last Succeeded is after Last Failed": {
 			devicePortConfig: DevicePortConfig{
 				TestResults: TestResults{
 					LastFailed:    n,
@@ -252,7 +252,7 @@ func TestIsDPCUntested(t *testing.T) {
 		devicePortConfig DevicePortConfig
 		expectedValue    bool
 	}{
-		"Last failed and Last Succesed are 0": {
+		"Last failed and Last Succeeded are 0": {
 			devicePortConfig: DevicePortConfig{
 				TestResults: TestResults{
 					LastFailed:    time.Time{},

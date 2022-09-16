@@ -90,7 +90,7 @@ type BaseOsStatus struct {
 	PartitionLabel        string
 	PartitionDevice       string // From zboot
 	PartitionState        string // From zboot
-	// Mininum state across all steps/StorageStatus.
+	// Minimum state across all steps/StorageStatus.
 	// Error* set implies error.
 	State SwState
 	// error strings across all steps/StorageStatus
