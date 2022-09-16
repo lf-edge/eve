@@ -26,8 +26,8 @@ import (
 
 // XXX inotify seems to stop reporting any changes in some cases
 // XXX avoid by start and stop dnsmasq when we add entries
-// XXX KALYAN - We need to set this to have DHCP working wiht Network instances.
-//		Turning this flag on temporarily till we figure out whats happening.
+// XXX KALYAN - We need to set this to have DHCP working with Network instances.
+//		Turning this flag on temporarily till we figure out what's happening.
 const dnsmasqStopStart = false // XXX change? remove?
 
 const dnsmasqStatic = `
@@ -198,17 +198,17 @@ func createDnsmasqConfiglet(
 	ipv4Netmask := "255.255.255.0" // Default unless there is a Subnet
 	dhcpRange := bridgeIPAddr      // Default unless there is a DhcpRange
 
-	// By default dnsmasq advertizes a router (and we can have a
+	// By default dnsmasq advertises a router (and we can have a
 	// static router defined in the NetworkInstanceConfig).
 	// To support airgap networks we interpret gateway=0.0.0.0
-	// to not advertize ourselves as a router. Also,
+	// to not advertise ourselves as a router. Also,
 	// if there is not an explicit dns server we skip
 	// advertising that as well.
 	advertizeRouter := true
 	var router string
 
 	if netstatus.Logicallabel == "" {
-		log.Functionf("Internal switch without external port case, dnsmasq suppress router advertize\n")
+		log.Functionf("Internal switch without external port case, dnsmasq suppress router advertise\n")
 		advertizeRouter = false
 	} else if netstatus.Gateway != nil {
 		if netstatus.Gateway.IsUnspecified() {
@@ -558,7 +558,7 @@ func checkAndPublishDhcpLeases(ctx *zedrouterContext) {
 					// 1) Stop dnsmasq corresponding to this network instance
 					// 2) Remove the leases file
 					// 3) Start dnsmasq again.
-					// App will get the correct IP address atleast in the next DHCP cycle.
+					// App will get the correct IP address at least in the next DHCP cycle.
 					// XXX Should we send the leased IP also as part of app status to cloud?
 				} else {
 					ulStatus.IPAddrMisMatch = false
@@ -785,7 +785,7 @@ func lookupVifIPTrig(ctx *zedrouterContext, mac string) (net.IP, []net.IP, bool)
 	return vifTrig.IPv4Addr, vifTrig.IPv6Addrs, ipv4Up
 }
 
-// When we restart dnsmasq with smaller changes like chaging DNS server
+// When we restart dnsmasq with smaller changes like changing DNS server
 // file configuration, we should not delete the hosts configuration for
 // that has the IP address allotment information.
 func deleteOnlyDnsmasqConfiglet(bridgeName string) {

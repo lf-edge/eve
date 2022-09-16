@@ -416,7 +416,7 @@ func strongSwanVpnInactivate(vpnConfig types.VpnConfig) error {
 // misc utility routines
 func checkForClientDups(config types.StrongSwanConfig) error {
 
-	// check for atleast one pre-shared key configuration
+	// check for at least one pre-shared key configuration
 	if config.PreSharedKey == "" {
 		if len(config.ClientConfigList) == 0 {
 			return errors.New("preshared key not set")

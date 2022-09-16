@@ -502,7 +502,7 @@ func doNetworkInstanceCreate(ctx *zedrouterContext,
 
 	if status.IsIPv6() {
 		// XXX do we need same logic as for IPv4 dnsmasq to not
-		// advertize as default router? Might we need lower
+		// advertise as default router? Might we need lower
 		// radvd preference if isolated local network?
 		restartRadvdWithNewConfig(bridgeName)
 	}

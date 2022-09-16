@@ -627,7 +627,7 @@ func DNSDhcpMonitor(bn string, bnNum int, ctx *zedrouterContext, status *types.N
 		// https://github.com/google/gopacket/issues/236
 	)
 	if bnNum >= maxBridgeNumber {
-		log.Errorf("Can not snoop on brige number %d", bnNum)
+		log.Errorf("Can not snoop on bridge number %d", bnNum)
 		return
 	}
 	if status.Type == types.NetworkInstanceTypeSwitch {

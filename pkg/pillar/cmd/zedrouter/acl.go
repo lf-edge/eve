@@ -32,7 +32,7 @@ const UDPProtocol = "udp"
 // MAXACEID : Keeps 64K bits indexed by 0 to (64K - 1).
 const MAXACEID = 65535
 
-// MINACEID : IDs till 100 are reserverd for internal usage.
+// MINACEID : IDs till 100 are reserved for internal usage.
 const MINACEID = 101
 
 // Dummy interface used as a blackhole for packets marked for dropping by ACLs.
@@ -70,7 +70,7 @@ func getNextACEId(candidate int32) int32 {
 
 func allocACEId() int32 {
 	if numFreeAceIDs <= 0 {
-		log.Errorf("allocACEId: All ACE ids alread allocated")
+		log.Errorf("allocACEId: All ACE ids already allocated")
 		return -1
 	}
 	if lastAllocatedAceID == -1 {
@@ -406,7 +406,7 @@ func applyACLRules(aclArgs types.AppNetworkACLArgs,
 	return activeRules, err
 }
 
-// Returns a list of iptables commands, witout the initial "-A FORWARD"
+// Returns a list of iptables commands, without the initial "-A FORWARD"
 func aclToRules(ctx *zedrouterContext, aclArgs types.AppNetworkACLArgs, ACLs []types.ACE) (types.IPTablesRuleList, []types.ACLDepend, error) {
 
 	var rulesList types.IPTablesRuleList
@@ -1400,11 +1400,11 @@ func diffIpsets(newIpsets, oldIpsets []string) ([]string, []string, bool) {
 		}
 	}
 
-	// When the ipset did not change, lenghts of old and new ipsets should
+	// When the ipset did not change, lengths of old and new ipsets should
 	// be same and then stale ipsets list should be empty.
 
-	// In case if the ipset has changed but the lengh remained same, there
-	// will atleast be one stale entry in the old ipset that needs to be removed.
+	// In case if the ipset has changed but the length remained same, there
+	// will at least be one stale entry in the old ipset that needs to be removed.
 	if (len(newIpsets) != len(oldIpsets)) || (len(staleIpsets) != 0) {
 		restartDnsmasq = true
 	}
@@ -1622,7 +1622,7 @@ func matchACLsForPortMap(ACLs []types.ACE, ACLs1 []types.ACE) bool {
 	return false
 }
 
-// generic comparision routine for ACL match conditions
+// generic comparison routine for ACL match conditions
 func checkForMatchCondition(ace types.ACE, ace1 types.ACE, matchTypes []string) bool {
 	valueList := make([]string, len(matchTypes))
 	valueList1 := make([]string, len(matchTypes))
