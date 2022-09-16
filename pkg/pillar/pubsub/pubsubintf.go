@@ -27,7 +27,7 @@ type Publication interface {
 	GetAll() map[string]interface{}
 	// Iterate - Perform some action on all items
 	Iterate(function base.StrMapFunc)
-	// Close - delete the pubisher
+	// Close - delete the publisher
 	Close() error
 }
 
