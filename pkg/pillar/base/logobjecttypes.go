@@ -297,7 +297,7 @@ func NewSourceLogObject(logger *logrus.Logger, agentName string, agentPid int) *
 
 // NewRelationObject : Creates a relation object.
 // Supposed to be ephemeral and not retained for long.
-// Create a new object everytime a new relation needs to be expressed.
+// Create a new object every time a new relation needs to be expressed.
 // relationObjectType -> add a relation or delete an existing relation
 // fromObjType        -> Type of the source point of relation
 // fromObjName        -> Name of the source point of relation

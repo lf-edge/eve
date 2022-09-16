@@ -148,7 +148,7 @@ var tpmAgent TpmAgent
 var verifier Verifier
 var watchdog Watchdog
 
-//RegisterExternalIntf is used to fill up external interface implementaions
+//RegisterExternalIntf is used to fill up external interface implementations
 func RegisterExternalIntf(t TpmAgent, v Verifier, w Watchdog) {
 	tpmAgent = t
 	verifier = v

@@ -351,7 +351,7 @@ access_usb() {
 # Read any usb.json with DevicePortConfig, and deposit our identity
 access_usb
 
-# Update our local /etc/hosts with entries comming from /config
+# Update our local /etc/hosts with entries coming from /config
 # We append on every boot since /etc/hosts starts from read-only rootfs
 [ -f /config/hosts ] && cat /config/hosts >> /etc/hosts
 
