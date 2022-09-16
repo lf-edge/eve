@@ -21,7 +21,7 @@ import (
 )
 
 //DecryptSecretWithEcdhKey recovers plaintext from the given ciphertext
-//X, Y are the Z point co-ordinates in Ellyptic Curve Diffie Hellman(ECDH) Exchange
+//X, Y are the Z point coordinates in Ellyptic Curve Diffie Hellman(ECDH) Exchange
 //edgeNodeCert points to the certificate that Controller used to calculate the shared secret
 //iv is the Initial Value used in the ECDH exchange.
 //Sha256FromECPoint() is used as KDF on the shared secret, and the derived key is used

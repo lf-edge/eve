@@ -158,7 +158,7 @@ func (s TpmPrivateKey) Public() crypto.PublicKey {
 	return ecdsaPublicKey
 }
 
-//Sign implements cryto.PrivateKey interface
+//Sign implements crypto.PrivateKey interface
 func (s TpmPrivateKey) Sign(r io.Reader, digest []byte, opts crypto.SignerOpts) ([]byte, error) {
 	R, S, err := TpmSign(digest)
 	if err != nil {
@@ -380,7 +380,7 @@ func FetchTpmHwInfo() (string, error) {
 	return tpmHwInfo, nil
 }
 
-//FetchVaultKey retreives TPM part of the vault key
+//FetchVaultKey retrieves TPM part of the vault key
 func FetchVaultKey(log *base.LogObject) ([]byte, error) {
 	//First try to read from TPM, if it was stored earlier
 	key, err := readDiskKey()

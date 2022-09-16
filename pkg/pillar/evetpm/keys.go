@@ -38,7 +38,7 @@ func GetPrivateKeyFromFile(keyFile string) (*ecdsa.PrivateKey, error) {
 	if err != nil {
 		return nil, err
 	}
-	//Follwing logic is derived from steps in
+	//Following logic is derived from steps in
 	//https://golang.org/src/crypto/tls/tls.go:X509KeyPair()
 	var keyDERBlock *pem.Block
 	var skippedBlockTypes []string
