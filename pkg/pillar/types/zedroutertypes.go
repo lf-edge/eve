@@ -148,7 +148,7 @@ type AppNetworkStatus struct {
 	GetStatsIPAddr       net.IP
 	UnderlayNetworkList  []UnderlayNetworkStatus
 	AwaitNetworkInstance bool // If any Missing flag is set in the networks
-	// Any errros from provisioning the network
+	// Any errors from provisioning the network
 	// ErrorAndTime provides SetErrorNow() and ClearError()
 	ErrorAndTime
 }
@@ -1401,7 +1401,7 @@ func (status *DeviceNetworkStatus) MostlyEqualStatus(status2 DeviceNetworkStatus
 	return true
 }
 
-// EqualSubnet compares two subnets; silently assumes contigious masks
+// EqualSubnet compares two subnets; silently assumes contiguous masks
 func EqualSubnet(subnet1, subnet2 net.IPNet) bool {
 	if !subnet1.IP.Equal(subnet2.IP) {
 		return false
@@ -1985,7 +1985,7 @@ const (
 type ServerProbe struct {
 	ServerURL     string // include method,host,paths
 	ServerIP      net.IP
-	ProbeInterval uint32 // probe frequence in seconds
+	ProbeInterval uint32 // probe frequency in seconds
 }
 
 // ProbeInfo - per phyical port probing info
@@ -1998,7 +1998,7 @@ type ProbeInfo struct {
 	LocalAddr  net.IP
 	NhAddr     net.IP
 	FailedCnt  uint32 // continuous ping fail count, reset when ping success
-	SuccessCnt uint32 // continous ping success count, reset when ping fail
+	SuccessCnt uint32 // contiguous ping success count, reset when ping fail
 
 	Cost uint8
 	// remote host probe state
@@ -2115,7 +2115,7 @@ type NetworkXObjectConfig struct {
 	DnsNameToIPList []DnsNameToIP // Used for DNS and ACL ipset
 	Proxy           *ProxyConfig
 	WirelessCfg     WirelessConfig
-	// Any errrors from the parser
+	// Any errors from the parser
 	// ErrorAndTime provides SetErrorNow() and ClearError()
 	ErrorAndTime
 }
@@ -2510,7 +2510,7 @@ type NetworkInstanceConfig struct {
 	// For other network services - Proxy / StrongSwan etc..
 	OpaqueConfig string
 
-	// Any errrors from the parser
+	// Any errors from the parser
 	// ErrorAndTime provides SetErrorNow() and ClearError()
 	ErrorAndTime
 }

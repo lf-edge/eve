@@ -26,7 +26,7 @@ const (
 	SenderStatusAlgoFail                               // hash algorithm we don't support
 	SenderStatusHashSizeError                          // senderCertHash length error
 	SenderStatusCertUnknownAuthority                   // device may miss proxy certificate for MiTM
-	SenderStatusCertUnknownAuthorityProxy              // device configed proxy, may miss proxy certificate for MiTM
+	SenderStatusCertUnknownAuthorityProxy              // device configured proxy, may miss proxy certificate for MiTM
 	SenderStatusNotFound                               // 404 indicating device might have been deleted in controller
 	SenderStatusForbidden                              // 403 indicating integrity token might invalidated
 	SenderStatusFailed                                 // Other failure
@@ -160,7 +160,7 @@ const (
 	// Dom0MinDiskUsagePercent global setting key
 	Dom0MinDiskUsagePercent GlobalSettingKey = "storage.dom0.disk.minusage.percent"
 	// Dom0DiskUsageMaxBytes - Max disk usage for Dom0. Dom0 can use
-	//  Dom0MinDiskUsagePercent upto a max of  Dom0DiskUsageMaxBytes
+	//  Dom0MinDiskUsagePercent up to a max of  Dom0DiskUsageMaxBytes
 	Dom0DiskUsageMaxBytes GlobalSettingKey = "storage.dom0.disk.maxusagebytes"
 	// AppContainerStatsInterval - App Container Stats Collection
 	AppContainerStatsInterval GlobalSettingKey = "timer.appcontainer.stats.interval"
