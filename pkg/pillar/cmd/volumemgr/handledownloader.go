@@ -34,7 +34,7 @@ func AddOrRefcountDownloaderConfig(ctx *volumemgrContext, blob types.BlobStatus)
 		// 5. Deploy an instance, it will fail because SHA is same of
 		//    the image and downloader will look up for old datastore
 		//    id which was deleted.
-		// So, we need to update the datastore id everytime.
+		// So, we need to update the datastore id every time.
 		// For VM images, we allow changing of size in image config
 		// after creating an object. So, we need to update the size
 		// in the downloader config before publishing

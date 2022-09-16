@@ -676,7 +676,7 @@ func doUpdateVol(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool)
 				changed = true
 			}
 			if vr.Error != nil {
-				log.Errorf("doUpdate: Error recieved from the volume worker %v",
+				log.Errorf("doUpdate: Error received from the volume worker %v",
 					vr.Error)
 				status.SetErrorWithSource(vr.Error.Error(),
 					types.VolumeStatus{}, vr.ErrorTime)

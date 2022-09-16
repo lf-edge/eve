@@ -371,7 +371,7 @@ func handleLedBlinkImpl(ctxArg interface{}, key string,
 		log.Errorf("handleLedBlinkImpl: ignoring %s", key)
 		return
 	}
-	// Supress work and logging if no change
+	// Suppress work and logging if no change
 	if config.BlinkCounter == ctx.ledCounter {
 		return
 	}
@@ -952,7 +952,7 @@ func tryPostUUID(ctx *diagContext, ifname string) bool {
 			// 3) diag here for getting /config
 			// 1) is the initial getting cloud certs, 2) rely on zedagent to refetch the cloud certs
 			// if zedcloud has cert change. 3) only need to zero out the cache in zedcloudCtx and
-			// it will reacquire from the updated cert file. zedagent is the only one resposible for refetching certs.
+			// it will reacquire from the updated cert file. zedagent is the only one responsible for refetching certs.
 			zedcloud.ClearCloudCert(zedcloudCtx)
 			return false
 		}
@@ -1064,7 +1064,7 @@ func myGet(ctx *diagContext, reqURL string, ifname string,
 		fmt.Fprintf(outfile, "ERROR: %s: %s statuscode %d %s\n",
 			ifname, reqURL, resp.StatusCode,
 			http.StatusText(resp.StatusCode))
-		fmt.Fprintf(outfile, "ERRROR: %s: Received %s\n",
+		fmt.Fprintf(outfile, "ERROR: %s: Received %s\n",
 			ifname, string(contents))
 		return false, nil, nil
 	}
@@ -1125,7 +1125,7 @@ func myPost(ctx *diagContext, reqURL string, ifname string,
 		fmt.Fprintf(outfile, "ERROR: %s: %s statuscode %d %s\n",
 			ifname, reqURL, resp.StatusCode,
 			http.StatusText(resp.StatusCode))
-		fmt.Fprintf(outfile, "ERRROR: %s: Received %s\n",
+		fmt.Fprintf(outfile, "ERROR: %s: Received %s\n",
 			ifname, string(contents))
 		return false, nil, senderStatus, nil
 	}

@@ -438,7 +438,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	}
 	getconfigCtx.pubDevicePortConfig = pubDevicePortConfig
 
-	// Publish NetworkXObjectConfig and for outselves. XXX remove
+	// Publish NetworkXObjectConfig and for ourselves. XXX remove
 	pubNetworkXObjectConfig, err := ps.NewPublication(pubsub.PublicationOptions{
 		AgentName: agentName,
 		TopicType: types.NetworkXObjectConfig{},

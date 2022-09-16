@@ -347,7 +347,7 @@ func genCredentials() error {
 			log.Errorf("Writing to credentials file failed: %v", err)
 			return err
 		}
-		//Write credentials to TPM for permenant storage.
+		//Write credentials to TPM for permanent storage.
 		err = writeCredentials()
 		if err != nil {
 			log.Errorf("Writing credentials to TPM failed: %v", err)

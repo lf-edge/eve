@@ -117,7 +117,7 @@ type nodeagentContext struct {
 	configGetSuccess            bool                        // got config from controller success
 	vaultmgrReported            bool                        // got reports from vaultmgr
 
-	// Some contants.. Declared here as variables to enable unit tests
+	// Some constants.. Declared here as variables to enable unit tests
 	minRebootDelay          uint32
 	maxDomainHaltTime       uint32
 	domainHaltWaitIncrement uint32

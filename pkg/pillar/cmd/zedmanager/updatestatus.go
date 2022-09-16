@@ -1059,7 +1059,7 @@ func doInactivateHalt(ctx *zedmanagerContext,
 		return changed
 	}
 	// XXX network is still around! Need to call doInactivate in doRemove?
-	// XXX fix assymetry?
+	// XXX fix asymmetry?
 	status.Activated = false
 	status.ActivateInprogress = false
 	ctx.checkFreedResources = true

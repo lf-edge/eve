@@ -418,7 +418,7 @@ func checkDelayedStartApps(ctx *zedmanagerContext) {
 // After zedagent has waited for its config and set restarted for
 // AppInstanceConfig (which triggers this callback) we propagate a sequence of
 // restarts so that the agents don't do extra work.
-// We propagate a seqence of restarted from the zedmanager config
+// We propagate a sequence of restarted from the zedmanager config
 // to identitymgr, then from identitymgr to zedrouter,
 // and finally from zedrouter to domainmgr.
 // XXX is that sequence still needed with volumemgr in place?
