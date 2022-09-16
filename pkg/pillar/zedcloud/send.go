@@ -134,7 +134,7 @@ func GetContextForAllIntfFunctions(ctx *ZedCloudContext) (context.Context, conte
 	return context.WithTimeout(context.Background(), maxWaitDuration)
 }
 
-// Tries all interfaces (free first) until one succeeds. interation arg
+// Tries all interfaces (free first) until one succeeds. iteration arg
 // ensure load spreading across multiple interfaces.
 // Returns response for first success. Caller can not use resp.Body but can
 // use []byte contents return.
