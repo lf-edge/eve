@@ -1211,7 +1211,7 @@ func appNetworkDoActivateUnderlayNetwork(
 	if netInstStatus.Type == types.NetworkInstanceTypeSwitch {
 		if ulConfig.AccessVlanID <= 1 {
 			// No valid vlan configuration on this app adapter.
-			// There are valid vlans configured on adpaters of other apps
+			// There are valid vlans configured on adapters of other apps
 			// connected to this particular network instance.
 			// Make this adapter trunk port
 			ulStatus.Vlan.IsTrunk = true
@@ -1366,7 +1366,7 @@ func appNetworkCheckAllNetworksExist(
 		log.Errorf(errStr)
 		log.Functionf("doActivate failed: %s\n", errStr)
 
-		// App network configuration that has underlays pointing to non-existant
+		// App network configuration that has underlays pointing to non-existent
 		// network instances is invalid. Such, configuration should never come to
 		// device from cloud.
 		// But, on the device sometimes, zedrouter sees the app network configuration

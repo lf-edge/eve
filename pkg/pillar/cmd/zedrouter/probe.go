@@ -224,7 +224,7 @@ func checkNIprobeUplink(ctx *zedrouterContext, status *types.NetworkInstanceStat
 		// Try and find an interface that has unicast IP address.
 		// No link local.
 		for _, info := range status.PInfo {
-			// Pick uplink with atleast one usable IP address
+			// Pick uplink with at least one usable IP address
 			ifNameList := getIfNameListForLLOrIfname(ctx, info.IfName)
 			if len(ifNameList) != 0 {
 				for _, ifName := range ifNameList {
@@ -244,7 +244,7 @@ func checkNIprobeUplink(ctx *zedrouterContext, status *types.NetworkInstanceStat
 		}
 		if status.CurrentUplinkIntf == "" {
 			// We are not able to find a port with usable unicast IP address.
-			// Try and find a port that atleast has a local UP address.
+			// Try and find a port that at least has a local UP address.
 			for _, info := range status.PInfo {
 				ifNameList := getIfNameListForLLOrIfname(ctx, info.IfName)
 				if len(ifNameList) != 0 {
@@ -264,7 +264,7 @@ func checkNIprobeUplink(ctx *zedrouterContext, status *types.NetworkInstanceStat
 				}
 			}
 		}
-		// If none of the interfaces have valid unicast/local IP addresss just pick the first
+		// If none of the interfaces have valid unicast/local IP address just pick the first
 		if status.CurrentUplinkIntf == "" {
 			if len(status.PInfo) > 0 {
 				var port string
@@ -498,7 +498,7 @@ func probeCheckStatus(ctx *zedrouterContext, status *types.NetworkInstanceStatus
 
 // How to determine the time to switch to another interface
 // -- compare only within the same port cost
-// -- Random assign one intf intially
+// -- Random assign one intf initially
 // -- each intf has 3 types of states: both local and remote report UP, only one is UP, both are Down
 // -- try to pick and switch to the one has the highest degree of UPs
 // -- otherwise, don't switch
@@ -637,7 +637,7 @@ func getProbeRatio(netstatus *types.NetworkInstanceStatus) uint32 {
 func probeProcessReply(info *types.ProbeInfo, gotReply bool, latency int64, isLocal bool) bool {
 	var stateChange bool
 	if isLocal {
-		log.Tracef("probeProcessReply: intf %s, gw up %v, sucess count %d, down count %d, got reply %v\n",
+		log.Tracef("probeProcessReply: intf %s, gw up %v, success count %d, down count %d, got reply %v\n",
 			info.IfName, info.GatewayUP, info.SuccessCnt, info.FailedCnt, gotReply)
 		if gotReply {
 			// fast convergence treatment for local ping, if the intf has stayed down for a while
