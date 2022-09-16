@@ -29,7 +29,7 @@ silent() {
 
 confirm_erase() {
     echo ""
-    echo "This will erase $1 which containts:"
+    echo "This will erase $1 which contains:"
     lsblk "$1"
     echo ""
     while /bin/true; do
