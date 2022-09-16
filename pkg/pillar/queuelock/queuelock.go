@@ -105,7 +105,7 @@ func (hdl *Handle) NumWaiters() int {
 }
 
 // Caller must hold lock
-// Supress duplicates when adding
+// Suppress duplicates when adding
 func (hdl *Handle) enqueue(work uint) {
 	hdl.log.Functionf("enqueue(%d) %d waiting", work, len(hdl.waiting))
 	for i := range hdl.waiting {

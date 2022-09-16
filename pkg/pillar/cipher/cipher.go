@@ -98,7 +98,7 @@ func GetCipherData(ctx *DecryptCipherContext, status types.CipherBlockStatus,
 	return *cipherBlock, &clearText, err
 }
 
-// incase, processing fails for cipher information received from controller,
+// in case processing fails for cipher information received from controller,
 // try to return valid plain-text data for further processing
 // for encryption block
 func handleCipherBlockCredError(ctx *DecryptCipherContext, status *types.CipherBlockStatus,

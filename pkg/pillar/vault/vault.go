@@ -84,7 +84,7 @@ func getZfsOperInfo(log *base.LogObject) (info.DataSecAtRestStatus, string) {
 //GetOperInfo gets the current operational state of encryption tool
 func GetOperInfo(log *base.LogObject) (info.DataSecAtRestStatus, string) {
 	if !etpm.IsTpmEnabled() {
-		//No encryption on plaforms without a (working) TPM
+		//No encryption on platforms without a (working) TPM
 		log.Trace("Setting status to disabled, TPM is not in use")
 		return info.DataSecAtRestStatus_DATASEC_AT_REST_DISABLED,
 			"TPM is either absent or not in use"
