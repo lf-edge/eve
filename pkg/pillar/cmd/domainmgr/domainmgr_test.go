@@ -39,17 +39,17 @@ func TestFetchEnvVariablesFromCloudInit(t *testing.T) {
 	// be set inside container.
 	testString2 := "U1FMX1JPT1RfUEFTU1dPUkQ9JG9tZVImTmRvbVBhJCR3b3Jk"
 	// testString3 contains PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-	// environment variables which wil be set inside container.
+	// environment variables which will be set inside container.
 	testString3 := "UEFUSD0vdXNyL2xvY2FsL3NiaW46L3Vzci9sb2NhbC9iaW46L3Vzci9zYmluOi91c3IvYmluOi9zYmluOi9iaW4="
 	// testString4 contains FOO=1 2 (with space in between)
-	// environment variables which wil be set inside container.
+	// environment variables which will be set inside container.
 	testString4 := "Rk9PPTEgMg=="
 	// testString5 contains
 	// FOO1=BAR1
 	// FOO2=		[Without value]
 	// FOO3			[Only key without delimiter]
 	// FOO4=BAR4
-	// environment variables which wil be set inside container.
+	// environment variables which will be set inside container.
 	testString5 := "Rk9PMT1CQVIxCkZPTzI9CkZPTzMKRk9PND1CQVI0"
 	testFetchEnvVar := map[string]fetchEnvVar{
 		"Test env var 1": {

@@ -14,7 +14,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/zboot"
 )
 
-// node health timer funcions
+// node health timer functions
 
 // ticker function
 func handleDeviceTimers(ctxPtr *nodeagentContext) {

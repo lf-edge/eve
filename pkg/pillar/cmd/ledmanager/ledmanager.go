@@ -39,7 +39,7 @@ const (
 // State passed to handlers
 type ledManagerContext struct {
 	countChange            chan types.LedBlinkCount
-	ledCounter             types.LedBlinkCount // Supress work and logging if no change
+	ledCounter             types.LedBlinkCount // Suppress work and logging if no change
 	subGlobalConfig        pubsub.Subscription
 	subLedBlinkCounter     pubsub.Subscription
 	subDeviceNetworkStatus pubsub.Subscription
@@ -459,7 +459,7 @@ func handleLedBlinkImpl(ctxArg interface{}, key string,
 		log.Errorf("handleLedBlinkImpl: ignoring %s", key)
 		return
 	}
-	// Supress work and logging if no change
+	// Suppress work and logging if no change
 	if config.BlinkCounter == ctx.ledCounter {
 		return
 	}

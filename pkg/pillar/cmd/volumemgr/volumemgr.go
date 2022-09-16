@@ -741,7 +741,7 @@ func maybeUpdateConfigItems(ctx *volumemgrContext, newConfigItemValueMap *types.
 			min := max * 0.3
 			flextimer.UpdateRangeTicker(ctx.diskMetricsTickerHandle,
 				time.Duration(min), time.Duration(max))
-			// Force an immediate timout since timer could have decreased
+			// Force an immediate timeout since timer could have decreased
 			flextimer.TickNow(ctx.diskMetricsTickerHandle)
 		}
 	}

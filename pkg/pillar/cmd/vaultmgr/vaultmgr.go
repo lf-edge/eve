@@ -387,7 +387,7 @@ func isDirEmpty(path string) bool {
 func handleFirstUse() error {
 	//setup mountPoint for encryption
 	if _, _, err := execCmd(vault.FscryptPath, mntPointParams...); err != nil {
-		return fmt.Errorf("Error setting up mountpoint for encrption: %v", err)
+		return fmt.Errorf("Error setting up mountpoint for encryption: %v", err)
 	}
 	return nil
 }

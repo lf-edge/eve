@@ -186,7 +186,7 @@ func updateBlobFromVerifyImageStatus(vs *types.VerifyImageStatus, blob *types.Bl
 // First, check if a VerifyImageStatus exists. If so, check HasVerifierRef,
 // potentially incrementing creating or incrementing the refcount on a
 // VerifyImageConfig to trigger the generation of a VerifyImageStatus.
-// returns if the BlobStatus was changed, and thus woudl require publishing
+// returns if the BlobStatus was changed, and thus would require publishing
 func verifyBlob(ctx *volumemgrContext, blob *types.BlobStatus) bool {
 	changed := false
 

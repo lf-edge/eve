@@ -20,7 +20,7 @@ import (
 // getManifestsForBareBlob either retrieve the manifests for an existing
 // image name that wraps the blob, or create one
 func getManifestsForBareBlob(ctx *volumemgrContext, image, rootHash string, size int64) ([]*types.BlobStatus, error) {
-	// at least one decriptor must match ours
+	// at least one descriptor must match ours
 	log.Functionf("getManifestsForBareBlob(%s, %s, %d)", image, rootHash, size)
 	rootHashFull := fmt.Sprintf("%s:%s", "sha256", rootHash)
 	artifact := &registry.Artifact{
