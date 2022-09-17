@@ -38,6 +38,8 @@ message BaseOSConfig {
 
 message BaseOS {
   // UUID for ContentTree with BaseOS image
+  // DisplayName of ContentTree should contain
+  // BaseOS version
   string content_tree_uuid = 1;
 
   // retry_update
@@ -50,4 +52,7 @@ message BaseOS {
   //    concludes (Success / Error+rollback) - then trigger the retry as needed.
   DeviceOpsCmd retry_update = 2;
 
+  // if not set BaseOS will be installed,
+  // but not activated
+  bool activate = 3;
 }
