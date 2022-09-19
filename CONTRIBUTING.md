@@ -36,6 +36,15 @@ composed of the following members:
 You can reach TSC at [eve-tsc@lists.lfedge.org](mailto:eve-tsc@lists.lfedge.org)
 and also [browse the archives](https://lists.lfedge.org/g/eve-tsc).
 
+You can signup for the [eve-tsc mailing list](https://lists.lfedge.org/g/eve-tsc/)
+and [eve mailing list](https://lists.lfedge.org/g/eve)
+
+You can susbscribe to the [eve-tsc Calendar](https://lists.lfedge.org/g/eve-tsc/calendar)
+and [eve Calendar](https://lists.lfedge.org/g/eve/calendar)
+
+You can subscribe to slack channels [eve and eve-help](https://slack.lfedge.org/)
+and sign up for [eve wiki](https://wiki.lfedge.org/display/EVE/EVE)
+
 ## Providing feedback via GitHub issues
 
 A great way to contribute to the project is to send a detailed report when you
