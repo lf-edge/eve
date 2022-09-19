@@ -200,9 +200,6 @@
    See the License for the specific language governing permissions and
    limitations under the License.
 
-This product bundles libpac/duktape, which is available under the MIT
-license.  For details, see the zedpac/README.md
-
 This product bundles portions of the go net package, which is available
 under the BSD-style license. For details, see the netclone/README
 
