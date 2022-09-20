@@ -288,3 +288,10 @@ It will extract the contents of the `/persist` partition to `./tmp/persist.tgz` 
 * `type`: either `live` or `installer`. Defaults to `live`.
 * `arch`: any supported architecture, currently `arm64` or `amd64`. Defaults to `amd64`.
 
+## Device uuid
+
+The uuid of the device running eve-os can be obtained by running following command
+
+```bash
+eve uuid
+```
