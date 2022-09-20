@@ -99,7 +99,7 @@ var globalConfigDefaults = OldGlobalConfig{
 	NetworkTestDuration:       30,
 	NetworkTestInterval:       300, // 5 minutes
 	NetworkTestBetterInterval: 0,   // Disabled
-	NetworkFallbackAnyEth:     TS_ENABLED,
+	NetworkFallbackAnyEth:     TS_DISABLED,
 	NetworkTestTimeout:        15,
 
 	NetworkSendTimeout: 120,
