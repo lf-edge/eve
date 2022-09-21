@@ -35,6 +35,8 @@ const eveECOCMDOverride = "EVE_ECO_CMD"
 
 var vethScript = []string{"eve", "exec", "pillar", "/opt/zededa/bin/veth.sh"}
 
+var dhcpcdScript = []string{"eve", "exec", "pillar", "/opt/zededa/bin/dhcpcd.sh"}
+
 // ociSpec is kept private (with all the actions done by getters and setters
 // This is because we expect the implementation to still evolve quite a bit
 // for all the different task usecases
@@ -262,12 +264,17 @@ func (s *ociSpec) UpdateVifList(vifs []types.VifConfig) {
 		s.Hooks = &specs.Hooks{}
 	}
 	timeout := 60
+	s.Hooks.Poststop = append(s.Hooks.Poststop, specs.Hook{
+		Path:    eveScript,
+		Args:    append(dhcpcdScript, "down", s.name),
+		Timeout: &timeout,
+	})
 	for _, v := range vifs {
 		vifSpec := []string{"VIF_NAME=" + v.Vif, "VIF_BRIDGE=" + v.Bridge, "VIF_MAC=" + v.Mac}
 		s.Hooks.Prestart = append(s.Hooks.Prestart, specs.Hook{
 			Env:     vifSpec,
 			Path:    eveScript,
-			Args:    append(vethScript, "up", s.name, v.Vif, v.Bridge, v.Mac),
+			Args:    append(vethScript, "up", v.Vif, v.Bridge, v.Mac),
 			Timeout: &timeout,
 		})
 		s.Hooks.Poststop = append(s.Hooks.Poststop, specs.Hook{
@@ -277,6 +284,11 @@ func (s *ociSpec) UpdateVifList(vifs []types.VifConfig) {
 			Timeout: &timeout,
 		})
 	}
+	s.Hooks.Prestart = append(s.Hooks.Prestart, specs.Hook{
+		Path:    eveScript,
+		Args:    append(dhcpcdScript, "up", s.name),
+		Timeout: &timeout,
+	})
 }
 
 // UpdateFromDomain updates values in the OCI spec based on EVE DomainConfig settings
