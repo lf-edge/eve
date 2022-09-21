@@ -108,10 +108,9 @@ func gcDatasets(ctx *volumemgrContext, dataset string) {
 				log.Warnf("gcDatasets: Error deleting target for %s, error=%v",
 					key, err)
 			}
-			output, err := zfs.DestroyDataset(log, location)
-			if err != nil {
-				log.Errorf("gcDatasets: DestroyDataset '%s' failed: %v output:%s",
-					location, err, output)
+			if err := zfs.DestroyDataset(location); err != nil {
+				log.Errorf("gcDatasets: DestroyDataset '%s' failed: %v",
+					location, err)
 			}
 		}
 	}
@@ -163,9 +162,9 @@ func gcPendingCreateVolume(ctx *volumemgrContext) {
 				// check if dataset exists
 				// assume that we should remove it as not created completely
 				if zfs.DatasetExist(log, zVolName) {
-					if stdoutStderr, err := zfs.DestroyDataset(log, zVolName); err != nil {
-						log.Errorf("gcPendingCreateVolume: error destroying zfs zvol at %s, error=%s, output=%s",
-							zVolName, err, stdoutStderr)
+					if err := zfs.DestroyDataset(zVolName); err != nil {
+						log.Errorf("gcPendingCreateVolume: error destroying zfs zvol at %s, error=%s",
+							zVolName, err)
 						continue
 					}
 				}

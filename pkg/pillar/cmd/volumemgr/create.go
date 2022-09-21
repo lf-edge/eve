@@ -282,9 +282,9 @@ func destroyVdiskVolume(ctx *volumemgrContext, status types.VolumeStatus) (bool,
 		}
 		//Assume this is zfs device
 		zVolName := status.ZVolName()
-		if stdoutStderr, err := zfs.DestroyDataset(log, zVolName); err != nil {
-			errStr := fmt.Sprintf("Error destroying zfs zvol at %s, error=%v, output=%s",
-				zVolName, err, stdoutStderr)
+		if err := zfs.DestroyDataset(zVolName); err != nil {
+			errStr := fmt.Sprintf("Error destroying zfs zvol at %s, error=%v",
+				zVolName, err)
 			log.Error(errStr)
 			return created, "", errors.New(errStr)
 		}

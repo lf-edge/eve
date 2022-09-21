@@ -1,10 +1,9 @@
-// Copyright (c) 2021 Zededa, Inc.
+// Copyright (c) 2021-2022 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
 package zfs
 
 import (
-	"bufio"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -25,70 +24,88 @@ import (
 
 const volBlockSize = uint64(16 * 1024)
 
-// CreateDataset creates an empty dataset
-func CreateDataset(log *base.LogObject, dataset string) (string, error) {
-	args := []string{"create", "-p", dataset}
-	stdoutStderr, err := base.Exec(log, types.ZFSBinary, args...).CombinedOutput()
-	return string(stdoutStderr), err
+// CreateDatasets - creates all the non-existing parent datasets.
+// Datasets created in this manner are automatically mounted
+// according to the mountpoint property inherited from their parent.
+// Analogue of the "zfs create -p ..." command
+func CreateDatasets(log *base.LogObject, datasetName string) error {
+	dName := ""
+	datasetParts := strings.Split(datasetName, "/")
+	for _, el := range datasetParts {
+		dName = filepath.Join(dName, el)
+		if DatasetExist(log, dName) {
+			continue
+		} else {
+			if err := createDataset(dName); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+// createDataset create and mount an empty dataset
+func createDataset(datasetName string) error {
+	props := make(map[libzfs.Prop]libzfs.Property)
+	dataset, err := libzfs.DatasetCreate(datasetName,
+		libzfs.DatasetTypeFilesystem, props)
+	if err != nil {
+		return err
+	}
+	defer dataset.Close()
+
+	if err := MountDataset(datasetName); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // MountDataset mounts dataset
-func MountDataset(log *base.LogObject, dataset string) (string, error) {
-	args := []string{"mount", dataset}
-	stdoutStderr, err := base.Exec(log, types.ZFSBinary, args...).CombinedOutput()
-	return string(stdoutStderr), err
-}
-
-// GetZfsStatusStr returns detailed status of pool
-func GetZfsStatusStr(log *base.LogObject, pool string) string {
-	args := []string{"status", pool}
-	stdoutStderr, err := base.Exec(log, types.ZPoolBinary, args...).CombinedOutput()
+func MountDataset(datasetName string) error {
+	dataset, err := libzfs.DatasetOpen(datasetName)
 	if err != nil {
-		log.Errorf("zpool status error: %s", err)
-		return ""
+		return err
 	}
-	var status []string
-	inStatus := false
-	scanner := bufio.NewScanner(strings.NewReader(string(stdoutStderr)))
-	for scanner.Scan() {
-		text := strings.TrimSpace(scanner.Text())
-		// we expect 'status:' in the beginning to start capture output
-		if strings.HasPrefix(strings.TrimSpace(text), "status:") {
-			inStatus = true
-			text = strings.TrimPrefix(text, "status:")
-		} else
-		// status ends with 'action:' or 'config:' in the beginning of the line
-		if strings.HasPrefix(text, "action:") ||
-			strings.HasPrefix(text, "config:") {
-			break
-		}
-		if inStatus {
-			status = append(status, strings.TrimSpace(text))
-		}
+	defer dataset.Close()
+
+	mounted, where := dataset.IsMounted()
+	if mounted {
+		return fmt.Errorf("Dataset %s is already mounted at %s",
+			datasetName, where)
 	}
-	return strings.Join(status, " ")
+
+	// Mount on the same path as the name
+	if err := dataset.Mount("", 0); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // DestroyDataset removes dataset from zfs
 // it runs 3 times in case of errors (we can hit dataset is busy)
-func DestroyDataset(log *base.LogObject, dataset string) (string, error) {
-	args := []string{"destroy", dataset}
+func DestroyDataset(datasetName string) error {
 	var err error
-	var stdoutStderr []byte
-	tries := 0
-	maxTries := 3
-	for {
-		stdoutStderr, err = base.Exec(log, types.ZFSBinary, args...).CombinedOutput()
-		if err == nil {
-			return string(stdoutStderr), nil
+	var dataset libzfs.Dataset
+	for i := 0; i < 3; i++ {
+		dataset, err = libzfs.DatasetOpen(datasetName)
+		if err != nil {
+			// dataset does not exist
+			return err
 		}
-		tries++
-		if tries > maxTries {
-			break
+		defer dataset.Close()
+
+		// DestroyRecursive recursively destroy children of
+		// dataset and this dataset.
+		if err = dataset.DestroyRecursive(); err == nil {
+			return nil
 		}
 		time.Sleep(time.Second)
 	}
-	return string(stdoutStderr), err
+
+	return err
 }
 
 // DatasetExist return true if dataset exists or false when it does not exist
@@ -111,23 +128,37 @@ func DatasetExist(log *base.LogObject, datasetPath string) bool {
 }
 
 // CreateVolumeDataset creates dataset of zvol type in zfs
-func CreateVolumeDataset(log *base.LogObject, dataset string, size uint64, compression string) (string, error) {
+func CreateVolumeDataset(log *base.LogObject, datasetName string, size uint64, compression string) error {
 	alignedSize := alignUpToBlockSize(size)
 
-	args := []string{"create", "-p",
-		"-V", strconv.FormatUint(alignedSize, 10),
-		"-o", "volmode=dev",
-		"-o", fmt.Sprintf("compression=%s", compression),
-		"-o", fmt.Sprintf("volblocksize=%d", volBlockSize),
-		"-o", "logbias=throughput",
-		"-o", "redundant_metadata=most",
-		dataset}
-
-	stdoutStderr, err := base.Exec(log, types.ZFSBinary, args...).CombinedOutput()
-	if err != nil {
-		return string(stdoutStderr), err
+	// Create fs datasets if they don't exist
+	if err := CreateDatasets(log, filepath.Dir(datasetName)); err != nil {
+		return err
 	}
-	return string(stdoutStderr), nil
+
+	props := make(map[libzfs.Prop]libzfs.Property)
+	props[libzfs.DatasetPropVolsize] = libzfs.Property{
+		Value: strconv.FormatUint(alignedSize, 10)}
+	props[libzfs.DatasetPropVolblocksize] = libzfs.Property{
+		Value: strconv.FormatUint(volBlockSize, 10)}
+	props[libzfs.DatasetPropReservation] = libzfs.Property{
+		Value: strconv.FormatUint(alignedSize, 10)}
+	props[libzfs.DatasetPropVolmode] = libzfs.Property{
+		Value: "dev"}
+	props[libzfs.DatasetPropLogbias] = libzfs.Property{
+		Value: "throughput"}
+	props[libzfs.DatasetPropRedundantMetadata] = libzfs.Property{
+		Value: "most"}
+	props[libzfs.DatasetPropCompression] = libzfs.Property{
+		Value: compression}
+
+	dataset, err := libzfs.DatasetCreate(datasetName, libzfs.DatasetTypeVolume, props)
+	if err != nil {
+		return err
+	}
+	defer dataset.Close()
+
+	return nil
 }
 
 func findVolumesInDataset(volumeList []string, list libzfs.Dataset) ([]string, error) {
@@ -248,7 +279,7 @@ func alignUpToBlockSize(size uint64) uint64 {
 	return (size + volBlockSize - 1) & ^(volBlockSize - 1)
 }
 
-//RemoveVDev removes vdev from the pool
+// RemoveVDev removes vdev from the pool
 func RemoveVDev(log *base.LogObject, pool, vdev string) (string, error) {
 	args := []string{"remove", pool, vdev}
 	stdoutStderr, err := base.Exec(log, types.ZPoolBinary, args...).CombinedOutput()
@@ -258,7 +289,7 @@ func RemoveVDev(log *base.LogObject, pool, vdev string) (string, error) {
 	return strings.TrimSpace(string(stdoutStderr)), nil
 }
 
-//AttachVDev attach newVdev to existing vdev
+// AttachVDev attach newVdev to existing vdev
 func AttachVDev(log *base.LogObject, pool, vdev, newVdev string) (string, error) {
 	args := []string{"attach", pool, vdev, newVdev}
 	stdoutStderr, err := base.Exec(log, types.ZPoolBinary, args...).CombinedOutput()
@@ -268,7 +299,7 @@ func AttachVDev(log *base.LogObject, pool, vdev, newVdev string) (string, error)
 	return strings.TrimSpace(string(stdoutStderr)), nil
 }
 
-//AddVDev add newVdev to pool
+// AddVDev add newVdev to pool
 func AddVDev(log *base.LogObject, pool, vdev string) (string, error) {
 	args := []string{"add", "-f", pool, vdev}
 	stdoutStderr, err := base.Exec(log, types.ZPoolBinary, args...).CombinedOutput()
@@ -278,7 +309,7 @@ func AddVDev(log *base.LogObject, pool, vdev string) (string, error) {
 	return strings.TrimSpace(string(stdoutStderr)), nil
 }
 
-//ReplaceVDev replaces vdev from the pool
+// ReplaceVDev replaces vdev from the pool
 func ReplaceVDev(log *base.LogObject, pool, oldVdev, newVdev string) (string, error) {
 	args := []string{"replace", pool, oldVdev, newVdev}
 	stdoutStderr, err := base.Exec(log, types.ZPoolBinary, args...).CombinedOutput()

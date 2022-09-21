@@ -42,13 +42,13 @@ func initializeDatasets() {
 	}
 	for _, datasetName := range volumeDatasets {
 		if !zfs.DatasetExist(log, datasetName) {
-			if output, err := zfs.CreateDataset(log, datasetName); err != nil {
-				log.Fatalf("CreateDataset failed: %s %s ", output, err)
+			if err := zfs.CreateDatasets(log, datasetName); err != nil {
+				log.Fatalf("CreateDataset failed: %s", err)
 			}
 		} else {
-			if output, err := zfs.MountDataset(log, datasetName); err != nil {
+			if err := zfs.MountDataset(datasetName); err != nil {
 				// it may be mounted
-				log.Functionf("MountDataset failed: %s %s ", output, err)
+				log.Functionf("MountDataset failed: %s", err)
 			}
 		}
 	}
