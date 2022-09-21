@@ -108,7 +108,6 @@ EVE must be capable of supporting the following VPN implementations:
 
 Additional VPN implementations, such as wireguard, are under consideration; Pull Requests are welcome.
 
-
 ##### Mesh
 
 A `Mesh` network is an L3 network wherein a mesh has been created with zero, one or more L3 networks on other EVE devices. The `Mesh` network creates the

@@ -99,13 +99,13 @@ do the verification. Thus, the process must be:
 
 The download and verification flow for each content blob that makes up the tree is:
 
-* volumemgr requests that downloader download blobs through `DownloaderConfig` messages
-* downloader informs volumemgr of the state of a download via `DownloaderStatus` messages
+- volumemgr requests that downloader download blobs through `DownloaderConfig` messages
+- downloader informs volumemgr of the state of a download via `DownloaderStatus` messages
 
 Once download of an individual blob is complete, volumemgr can request verification.
 
-* volumemgr requests that verifier verify hashes and signatures for a blob on the filesystem via `VerifyImageConfig` messages
-* verifier informs volumemgr of the success of failure of verification, and final location of the verified file, via `VerifyImageStatus` messages
+- volumemgr requests that verifier verify hashes and signatures for a blob on the filesystem via `VerifyImageConfig` messages
+- verifier informs volumemgr of the success of failure of verification, and final location of the verified file, via `VerifyImageStatus` messages
 
 Once there is a `VerifyImageStatus` indicating a successful verification for every element of the
 content tree, volumemgr can use it to construct the volume.
@@ -117,16 +117,16 @@ A later section in this document describes the download process in detail.
 Responsibility for the locations of immutable data blobs is determined by the
 appropriate owner.
 
-* volumemgr controls the location of downloads. When it constructs a `DownloaderConfig`, it informs downloader where to place the downloader file.
-* verifier, as the sole owner of verification and disconnected from the network, controls the location of verified files and the cache for files undergoing verification. Verifier alone has the right to modify files in directories under its control.
+- volumemgr controls the location of downloads. When it constructs a `DownloaderConfig`, it informs downloader where to place the downloader file.
+- verifier, as the sole owner of verification and disconnected from the network, controls the location of verified files and the cache for files undergoing verification. Verifier alone has the right to modify files in directories under its control.
 
 Since each one controls its own location, they can change.
 
 In practice, to date, these have been the directories:
 
-* Downloads: `/persist/downloads/{appImg.obj,baseOs.obj}/pending`
-* Temporary cache for images undergoing verification: `/persist/downloads/{appImg.obj,baseOs.obj}/verifier`
-* Verified: `/persist/downloads/{appImg.obj,baseOs.obj}/verified`
+- Downloads: `/persist/downloads/{appImg.obj,baseOs.obj}/pending`
+- Temporary cache for images undergoing verification: `/persist/downloads/{appImg.obj,baseOs.obj}/verifier`
+- Verified: `/persist/downloads/{appImg.obj,baseOs.obj}/verified`
 
 ### Constructing volumes
 
@@ -159,14 +159,14 @@ yet exist, it creates the `appImgObj`. This triggers the handler `handleAppImgCr
    1. Publishes the `VolumeStatus`
    1. Calls `doUpdate()`
 1. `doUpdate()` is called by `vcCreate()` as well as any time `updateVolumeStatus()` is called. `doUpdate()` is responsible for checking the status of a volume, based on its `VolumeStatus`, and then taking next steps, if needed. It is like a "switchboard" for `VolumeStatus` updates.
-   * If the image is verified and the volume is created, we are done
-   * If the image is verified and the volume is not created, create the volume
-   * If the image is not verified, loop through each element in `VolumeStatus.Content`:
-     * If `VERIFYING`, wait for next loop
-     * If `DOWNLOADING`, wait for next loop
-     * If `DOWNLOADED`, start verification for this blob (see below)
-     * If `VERIFIED`, and has children, loop through each child and begin download+verification loop
-  * If the image is not verified and all of the children are verified:
+   - If the image is verified and the volume is created, we are done
+   - If the image is verified and the volume is not created, create the volume
+   - If the image is not verified, loop through each element in `VolumeStatus.Content`:
+     - If `VERIFYING`, wait for next loop
+     - If `DOWNLOADING`, wait for next loop
+     - If `DOWNLOADED`, start verification for this blob (see below)
+     - If `VERIFIED`, and has children, loop through each child and begin download+verification loop
+   - If the image is not verified and all of the children are verified:
      1. Mark the image as `VERIFIED`
      1. Create the volume
 
@@ -196,15 +196,15 @@ The verifier indicates its status, including completion, by publishing
 As described earlier, `doUpdate()` is like a "switchboard" for event processing.
 It is called whenever there is an update.
 
-* `handleDownloaderStatusModify`, upon receiving an event, calls `updateVolumeStatus`, which, in turn, calls `doUpdate()`.
-* `handleVerifyImageStatusModify`, upon receiving an event, calls `updateVolumeStatus`, which, in turn, calls `doUpdate()`.
+- `handleDownloaderStatusModify`, upon receiving an event, calls `updateVolumeStatus`, which, in turn, calls `doUpdate()`.
+- `handleVerifyImageStatusModify`, upon receiving an event, calls `updateVolumeStatus`, which, in turn, calls `doUpdate()`.
 
 ### Flow Summary
 
 We can visualize the application download flow, based on the above, as follows. On the left
 are subscription handlers. We do not look at anything outside of volumemgr.
 
-```
+```text
 handleAppImgCreate
    |
    |---> vcCreate

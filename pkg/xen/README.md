@@ -23,6 +23,7 @@ kernel=kernel root=/dev/sda2
 Note that you DO have to supply *some* kind of a kernel (even if you're just trying to get Xen unstuck and not interested in dom0 booting)
 
 It may actually be a good idea to rebuild Xen with the following tweak while you're at it:
+
 ```c
 --- a/xen/include/asm-x86/apic.h
 +++ b/xen/include/asm-x86/apic.h

@@ -34,28 +34,31 @@ If you are using a particular artifact, use the version provided to get your rel
 
 * For Docker images with a [semver](https://semver.org/) tag, use the tag. For example, for `lfedge/eve:8.10.0-kvm`, use `8.10.0`.
 * For Docker images with a hash commit, use the commit. For example, for `lfedge/eve:0.0.0-master-5729285b-kvm-arm64`, use `5729285b`.
-* For release artifacts, use the version on the download page. FOr example, if you downloaded from https://github.com/lf-edge/eve/releases/download/8.10.0/amd64.rootfs.img, use `8.10.0`.
+* For release artifacts, use the version on the download page. For example, if you downloaded from <https://github.com/lf-edge/eve/releases/download/8.10.0/amd64.rootfs.img>, use `8.10.0`.
 
 If you have an image for which you do not have the hash or semver version, you should be able to retrieve the version from the image itself.
 
 * For Docker images, run the `version` command.. For example:
-```
-$ docker run --rm lfedge/eve:0.0.0-master-0c6de671-kvm version
-0.0.0-master-0c6de671-kvm-arm64
-```
-* For release artifacts, mount or expand the `rootfs.img`, which is in squashfs format, and retrieve `/etc/eve-release`. For example:
-```
-$ cat /tmp/unmounted/etc/eve-release
-8.10.0-kvm-amd64
+
+```sh
+    $ docker run --rm lfedge/eve:0.0.0-master-0c6de671-kvm version
+    0.0.0-master-0c6de671-kvm-arm64
 ```
 
-With the specific release tag or commit in hand, go to this source repository https://github.com/lf-edge/eve, either on the Web or cloned locally.
+* For release artifacts, mount or expand the `rootfs.img`, which is in squashfs format, and retrieve `/etc/eve-release`. For example:
+
+```sh
+    $ cat /tmp/unmounted/etc/eve-release
+    8.10.0-kvm-amd64
+```
+
+With the specific release tag or commit in hand, go to this source repository <https://github.com/lf-edge/eve>, either on the Web or cloned locally.
 Then check out the specific commit or tag. For example:
 
 ```sh
-$ git checkout 8.10.0
-$ # OR
-$ git checkout 0c6de671
+    $ git checkout 8.10.0
+    $ # OR
+    $ git checkout 0c6de671
 ```
 
 At this point, you have the specific version of source code used to build the EVE binary distribution you are using.
@@ -68,7 +71,7 @@ and thus is available on every running eve-os device.
 
 It also is in the `lfedge/eve` container image, so you can run:
 
-```
+```sh
 $ docker run --rm lfedge/eve:<version> build_config
 # e.g.
 $ docker run --rm lfedge/eve:8.11.0 build_config
@@ -155,8 +158,6 @@ files:
      metadata: yaml
 ```
 
-
-
 The above shows each container image used in creating this EVE bootable OS image. For example, the version of pillar used is
 `lfedge/eve-pillar:17837a9fcd05c765e9a1f6707b2e48f0f1dd215b-amd64`.
 
@@ -175,13 +176,13 @@ With the specific name and tag of each OCI image in hand, you can trace the sour
 The OCI container image can be pulled from Docker Hub using `docker pull`, for example:
 
 ```sh
-docker pull lfedge/eve-pillar:17837a9fcd05c765e9a1f6707b2e48f0f1dd215b-amd64
+    docker pull lfedge/eve-pillar:17837a9fcd05c765e9a1f6707b2e48f0f1dd215b-amd64
 ```
 
 and it can be inspected using any image inspection tool, including `docker image inspect`:
 
 ```sh
-docker image inspect lfedge/eve-pillar:17837a9fcd05c765e9a1f6707b2e48f0f1dd215b-amd64
+    docker image inspect lfedge/eve-pillar:17837a9fcd05c765e9a1f6707b2e48f0f1dd215b-amd64
 ```
 
 The results of the inspection will yield information about the container image, including tags that tell which git commit
@@ -251,9 +252,9 @@ uses semver, a hash otherwise. For example, [pkg/pillar/go.mod](../pkg/pillar/go
 
 ```go
 require (
-	cloud.google.com/go/storage v1.21.0 // indirect
-	github.com/Focinfi/go-dns-resolver v1.0.0
-	github.com/anatol/smart.go v0.0.0-20220615232124-371056cd18c3
+    cloud.google.com/go/storage v1.21.0 // indirect
+    github.com/Focinfi/go-dns-resolver v1.0.0
+    github.com/anatol/smart.go v0.0.0-20220615232124-371056cd18c3
 ```
 
 Some of the above include only semver, and some include the precise git commit and date.
@@ -271,7 +272,7 @@ We will look at examples from the above `go.mod`.
 The first required module is:
 
 ```go
-	cloud.google.com/go/storage v1.21.0 // indirect
+    cloud.google.com/go/storage v1.21.0 // indirect
 ```
 
 The source is at `cloud.google.com/go/storage`. You can get the exact code used by cloning the repository and checking out the
@@ -295,7 +296,7 @@ by `h1`. For further details, see the [go modules reference](https://go.dev/ref/
 The third module is:
 
 ```go
-	github.com/anatol/smart.go v0.0.0-20220615232124-371056cd18c3
+    github.com/anatol/smart.go v0.0.0-20220615232124-371056cd18c3
 ```
 
 The source is at `github.com/anatol/smart.go`. You can get the exact code used by cloning the repository and checkout out the commit
@@ -397,20 +398,19 @@ image itself, and specifically Alpine's installed list at `/lib/apk/db/installed
 You can use any tool you like to copy files from a container image. We use a simple `docker create` then
 `docker cp` then `docker rm`.
 
-
 ```sh
-$ docker create lfedge/eve-pillar:17837a9fcd05c765e9a1f6707b2e48f0f1dd215b-amd64
-364cdf9537a77bff25379c557da7d63f4993ecd4baf9b567e745bfe855e937e7
-$ docker cp 364cdf9537a77bff25379c557da7d63f4993ecd4baf9b567e745bfe855e937e7:/lib/apk/db/installed /tmp/installed
-$ docker rm 364cdf9537a77bff25379c557da7d63f4993ecd4baf9b567e745bfe855e937e7
-364cdf9537a77bff25379c557da7d63f4993ecd4baf9b567e745bfe855e937e7
+    $ docker create lfedge/eve-pillar:17837a9fcd05c765e9a1f6707b2e48f0f1dd215b-amd64
+    364cdf9537a77bff25379c557da7d63f4993ecd4baf9b567e745bfe855e937e7
+    $ docker cp 364cdf9537a77bff25379c557da7d63f4993ecd4baf9b567e745bfe855e937e7:/lib/apk/db/installed /tmp/installed
+    $ docker rm 364cdf9537a77bff25379c557da7d63f4993ecd4baf9b567e745bfe855e937e7
+    364cdf9537a77bff25379c557da7d63f4993ecd4baf9b567e745bfe855e937e7
 ```
 
 The `installed` file's structure is described at [the official page](https://wiki.alpinelinux.org/wiki/Apk_spec#Index_Format_V2).
 
 The key parts are that each package is given in a paragraph, with blank lines separating packages. For example:
 
-```
+```text
 C:Q1aCu0LmUDoAFSOX49uHvkYC1WasQ=
 P:musl
 V:1.2.3-r0
@@ -651,73 +651,73 @@ subpackages="ip6tables $pkgname-doc $pkgname-dev $pkgname-openrc ip6tables-openr
 provides="ebtables" # for backards compat
 replaces="ebtables"
 source="https://www.netfilter.org/projects/iptables/files/iptables-$pkgver.tar.bz2
-	use-sh-iptables-apply.patch
-	iptables.initd
-	iptables.confd
-	ip6tables.confd
-	ebtables.initd
-	ebtables.confd
+    use-sh-iptables-apply.patch
+    iptables.initd
+    iptables.confd
+    ip6tables.confd
+    ebtables.initd
+    ebtables.confd
 
-	fix-xtables.patch
-	fix-u_int16_t.patch
-	"
+    fix-xtables.patch
+    fix-u_int16_t.patch
+    "
 
 build() {
-	export CFLAGS="$CFLAGS -D_GNU_SOURCE"
-	./configure \
-		--build="$CBUILD" \
-		--host="$CHOST" \
-		--prefix=/usr \
-		--mandir=/usr/share/man \
-		--sbindir=/sbin \
-		--sysconfdir=/etc \
-		--without-kernel \
-		--enable-devel \
-		--enable-libipq \
-		--enable-shared
+    export CFLAGS="$CFLAGS -D_GNU_SOURCE"
+    ./configure \
+        --build="$CBUILD" \
+        --host="$CHOST" \
+        --prefix=/usr \
+        --mandir=/usr/share/man \
+        --sbindir=/sbin \
+        --sysconfdir=/etc \
+        --without-kernel \
+        --enable-devel \
+        --enable-libipq \
+        --enable-shared
 
-	# do not use rpath
-	sed -i 's|^hardcode_libdir_flag_spec=.*|hardcode_libdir_flag_spec=""|g' libtool
-	sed -i 's|^runpath_var=LD_RUN_PATH|runpath_var=DIE_RPATH_DIE|g' libtool
+    # do not use rpath
+    sed -i 's|^hardcode_libdir_flag_spec=.*|hardcode_libdir_flag_spec=""|g' libtool
+    sed -i 's|^runpath_var=LD_RUN_PATH|runpath_var=DIE_RPATH_DIE|g' libtool
 
-	make
+    make
 }
 
 package() {
-	make -j1 install DESTDIR="$pkgdir"
+    make -j1 install DESTDIR="$pkgdir"
 
-	mkdir -p "$pkgdir"/usr/include/libiptc \
-		"$pkgdir"/usr/lib \
-		"$pkgdir"/var/lib/iptables \
-		"$pkgdir"/etc/iptables
+    mkdir -p "$pkgdir"/usr/include/libiptc \
+        "$pkgdir"/usr/lib \
+        "$pkgdir"/var/lib/iptables \
+        "$pkgdir"/etc/iptables
 
-	install -m644 include/iptables.h include/ip6tables.h \
-		"$pkgdir"/usr/include/
-	install include/libiptc/*.h "$pkgdir"/usr/include/libiptc/
+    install -m644 include/iptables.h include/ip6tables.h \
+        "$pkgdir"/usr/include/
+    install include/libiptc/*.h "$pkgdir"/usr/include/libiptc/
 
-	install -D -m755 "$srcdir"/iptables.initd "$pkgdir"/etc/init.d/iptables
-	install -D -m644 "$srcdir"/iptables.confd "$pkgdir"/etc/conf.d/iptables
-	install -D -m755 "$srcdir"/ebtables.initd "$pkgdir"/etc/init.d/ebtables
-	install -D -m644 "$srcdir"/ebtables.confd "$pkgdir"/etc/conf.d/ebtables
+    install -D -m755 "$srcdir"/iptables.initd "$pkgdir"/etc/init.d/iptables
+    install -D -m644 "$srcdir"/iptables.confd "$pkgdir"/etc/conf.d/iptables
+    install -D -m755 "$srcdir"/ebtables.initd "$pkgdir"/etc/init.d/ebtables
+    install -D -m644 "$srcdir"/ebtables.confd "$pkgdir"/etc/conf.d/ebtables
 }
 
 ip6tables() {
-	mkdir -p "$subpkgdir"
-	cd "$subpkgdir"
+    mkdir -p "$subpkgdir"
+    cd "$subpkgdir"
 
-	mkdir -p sbin \
-		var/lib/ip6tables \
-		usr/lib/xtables
+    mkdir -p sbin \
+        var/lib/ip6tables \
+        usr/lib/xtables
 
-	mv "$pkgdir"/sbin/ip6* sbin/
-	mv "$pkgdir"/usr/lib/xtables/libip6* usr/lib/xtables/
+    mv "$pkgdir"/sbin/ip6* sbin/
+    mv "$pkgdir"/usr/lib/xtables/libip6* usr/lib/xtables/
 }
 
 ip6tables_openrc() {
-	default_openrc
+    default_openrc
 
-	install -D -m755 "$srcdir"/iptables.initd "$subpkgdir"/etc/init.d/ip6tables
-	install -D -m644 "$srcdir"/ip6tables.confd "$subpkgdir"/etc/conf.d/ip6tables
+    install -D -m755 "$srcdir"/iptables.initd "$subpkgdir"/etc/init.d/ip6tables
+    install -D -m644 "$srcdir"/ip6tables.confd "$subpkgdir"/etc/conf.d/ip6tables
 }
 
 sha512sums="
