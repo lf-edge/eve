@@ -57,7 +57,7 @@ Recall that EVE's deployment model presupposes a controller that can exercise ar
 
 * The controller's network address (hostname and port) is considered immutable and can only be changed by a total reinstall of EVE
 * The controller's identity is verified by a Root CA which is also considered immutable and sealed in TPM where possible. This is used in the TLS verification for API V1 and in the object signature verification in API V2
- * The TLS identity of the controller is verified by a Root CA. This is a single Root CA in API V1 and a larger set of root CAs plus the ability to express trust in proxy certificates in API V2.
+* The TLS identity of the controller is verified by a Root CA. This is a single Root CA in API V1 and a larger set of root CAs plus the ability to express trust in proxy certificates in API V2.
 
 The principle that EVE's node forever gets bound to a fixed controller may strike some as too restrictive, but it allows a much easier reasoning about security properties and, since controller gets identified by the DNS name still allows a certain flexibility in deployment. It does, however, stand in stark contrast to EVE's fundamental guarantee of never ever requiring a "truck roll" to manage software on Edge Nodes. Unfortunately, avoiding a "truck roll" in this particular case will require us to design a comprehensive asset transfer protocol that tackles a whole host of thorny problems like:
 

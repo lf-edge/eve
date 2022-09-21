@@ -5,6 +5,7 @@
 If you are running EVE in production there is *no* way to do that. For developer
 or debug builds of EVE you can set a debug.enable.ssh property to your ssh public
 key. E.g:
+
 ```bash
 zcli edge-node update myqemu --config="debug.enable.ssh:`cat .ssh/id_rsa.pub`"
 ```

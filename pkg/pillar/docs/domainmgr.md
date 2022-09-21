@@ -13,6 +13,7 @@ Domainmgr is the interface to the hypervisor to start DomU instances:
 ## Key Input/Output
 
 Domain Manager interacts with the Cloud controller (e.g. zedcloud) indirectly using four key messages:
+
 - DomainConfig from controller is fed to domainmgr. This contains the configuration information about a DomU instance. DomainConfig is defined in `pillar/types/domainmgrtypes.go`
 - DomainStatus is fed from `domainmgr` to controller. This contains the operational information about a DomU instance. DomainStatus is defined in `pillar/types/domainmgrtypes.go`
 - DomainMetric with CPU and memory metrics for the host (dom0) and the applications

@@ -95,7 +95,7 @@ EVE periodically pulls the configuration from the controller. The configuration 
 
 The picture below provides simplified view of states and transitions for an ECO.
 
-```
+```text
                                                     restart
                                     +----------+<-----------------+
                         start       |          |                  |
@@ -163,23 +163,23 @@ Following this approach brings immediate benefit of all Docker tooling working w
 
 ECI Configuration is a json file with the following schema:
 
-    * ACKind (string -- no equivalent in OCI)
-    * ACVersion (string -- no equivalent in OCI -- should be moved to manifest)
-    * Name (string -- no equivalent in OCI -- should be moved to manifest)
-    * Owner (object -- owner.email owner.user is roughly OCI's author)
-    * Labels (``map<string, string>`` -- OCI's config.label)
-    * Desc (object -- no equivalent in OCI)
-    * ==============
-    * EnableVnc (boolean -- no equivalent in OCI)
-    * VmMode (string -- no equivalent in OCI)
-    * ==============
-    * Resources (struct -- no equivalent in OCI -- describes CPU, memory, storage requirements)
-    * Interfaces (struct -- no equivalent in OCI -- describes image interface requirements)
-    * Images (struct -- OCI's rootfs)
-    * ==============
-    * EventHandlers (we may need it for things like offline operations - certain events and what EVE should do if ECO is killed, crashed, etc.)
-    * Annotations (deprecated)
-    * Permissions (future work item to have local resources that have been granted access: set of entitlements that allows ECO to perform intended function)
+* ACKind (string -- no equivalent in OCI)
+* ACVersion (string -- no equivalent in OCI -- should be moved to manifest)
+* Name (string -- no equivalent in OCI -- should be moved to manifest)
+* Owner (object -- owner.email owner.user is roughly OCI's author)
+* Labels (``map<string, string>`` -- OCI's config.label)
+* Desc (object -- no equivalent in OCI)
+* ==============
+* EnableVnc (boolean -- no equivalent in OCI)
+* VmMode (string -- no equivalent in OCI)
+* ==============
+* Resources (struct -- no equivalent in OCI -- describes CPU, memory, storage requirements)
+* Interfaces (struct -- no equivalent in OCI -- describes image interface requirements)
+* Images (struct -- OCI's rootfs)
+* ==============
+* EventHandlers (we may need it for things like offline operations - certain events and what EVE should do if ECO is killed, crashed, etc.)
+* Annotations (deprecated)
+* Permissions (future work item to have local resources that have been granted access: set of entitlements that allows ECO to perform intended function)
 
 ## Configuration of Docker/OCI based ECOs
 

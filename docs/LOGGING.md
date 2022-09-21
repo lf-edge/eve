@@ -125,7 +125,7 @@ Same relation implementation between AppInstanceConfig and VolumeConfig can be f
 2) If it becomes mandatory to create a new key field, suffix the key name with the type of value. We currently only support ```-int64``` & ```-bool```
 suffixes for keys. Anything else shall be treated as text/string type by cloud software.
 
-# Helpful debug commands
+## Helpful debug commands
 
 1. If you are debugging a device and would like to read/tail logs directly from memlogd buffers, use the following command.
 

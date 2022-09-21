@@ -66,7 +66,7 @@ It is possible to lock them down further, and make mutating tags impossible to s
 
 ### Templated Images
 
-The other image names are templated. These are all captialized, and end in `_TAG`. For example:
+The other image names are templated. These are all capitalized, and end in `_TAG`. For example:
 
 * `RNGD_TAG`
 * `PILLAR_TAG`
@@ -80,10 +80,10 @@ from the directory [pkg/rngd](../pkg/rngd/), and `PILLAR_TAG` based on the direc
 The actual image name and tag are calculated identically to the process for the fixed tags, i.e. the git hash of the directory tree.
 The calculation is provided by running `linuxkit pkg show-tag dir/`. For example:
 
-```sh
-$ linuxkit pkg show-tag pkg/pillar
-lfedge/eve-pillar:b20146debd08bbfffb23f53fc9f5c3c4af377f67
-```
+    ```sh
+    $ linuxkit pkg show-tag pkg/pillar
+    lfedge/eve-pillar:b20146debd08bbfffb23f53fc9f5c3c4af377f67
+    ```
 
 With the template complete, every OCI container image used to compose an EVE operating system is in the generated `rootfs.yml`, each of which
 contains a hash of the state of the source at generation time.
@@ -132,9 +132,9 @@ The primary source for many software packages in Linux is the OS packaging syste
 
 For example, to install bash:
 
-```sh
-apk add bash
-```
+    ```sh
+    apk add bash
+    ```
 
 Alpine packages creates unique challenges for reproducibility. Specifically:
 
@@ -143,9 +143,9 @@ Alpine packages creates unique challenges for reproducibility. Specifically:
 
 It is possible to mitigate, but not completely solve, the above issue by adding a specific version:
 
-```sh
-apk add bash=5.1.16-r2
-```
+    ```sh
+    apk add bash=5.1.16-r2
+    ```
 
 The above does not completely solve it, as sometimes alpine packages change their bits _even for the same version_. Thus, running
 `apk add bash=5.1.16-r2` on the same base `alpine:3.16` can give different bits on different days. Alpine packages are changed "under the covers"
@@ -171,17 +171,17 @@ To make this more concrete, we will walk through a specific example, `lfedge/eve
 
 The key parts of the Dockerfile are as follows:
 
-```dockerfile
-FROM lfedge/eve-alpine:145f062a40639b6c65efa36bed1c5614b873be52 as zfs
-ENV BUILD_PKGS git patch ca-certificates util-linux build-base gettext-dev libtirpc-dev automake autoconf \
-    libtool linux-headers attr-dev e2fsprogs-dev glib-dev openssl-dev util-linux-dev coreutils
-ENV PKGS ca-certificates util-linux libintl libuuid libtirpc libblkid libcrypto1.1 zlib
-RUN eve-alpine-deploy.sh
-...
-FROM scratch
-COPY --from=zfs /out/ /
-ADD rootfs/ /
-```
+    ```dockerfile
+    FROM lfedge/eve-alpine:145f062a40639b6c65efa36bed1c5614b873be52 as zfs
+    ENV BUILD_PKGS git patch ca-certificates util-linux build-base gettext-dev libtirpc-dev automake autoconf \
+        libtool linux-headers attr-dev e2fsprogs-dev glib-dev openssl-dev util-linux-dev coreutils
+    ENV PKGS ca-certificates util-linux libintl libuuid libtirpc libblkid libcrypto1.1 zlib
+    RUN eve-alpine-deploy.sh
+    ...
+    FROM scratch
+    COPY --from=zfs /out/ /
+    ADD rootfs/ /
+    ```
 
 Note the key elements:
 
@@ -248,9 +248,9 @@ Upon running a build, the build process updates `versions.<arch>` with:
 
 Specifically, at the end of the `Dockerfile` build, the following command is run:
 
-```sh
-echo Dockerfile /lib/apk/db/installed $(find /mirror -name '*.apk' -type f) $(find /go/bin -type f) | xargs cat | sha1sum | sed 's/ .*//' | sed 's/$/-'"${TARGETARCH}"'/' > /etc/alpine-hash-arch
-```
+    ```sh
+    echo Dockerfile /lib/apk/db/installed $(find /mirror -name '*.apk' -type f) $(find /go/bin -type f) | xargs cat | sha1sum | sed 's/ .*//' | sed 's/$/-'"${TARGETARCH}"'/' > /etc/alpine-hash-arch
+    ```
 
 This creates, inside the image, a file `/etc/alpine-hash-arch` with a single line. The contents of that line are `<hash>-<arch>` where:
 
@@ -262,22 +262,22 @@ This creates, inside the image, a file `/etc/alpine-hash-arch` with a single lin
 
 For example, as of this writing, the contents of `/etc/alpine-hash-arch` on x86_64, a.k.a. amd64, are:
 
-```
-linuxkit/alpine:c9b0f6a435b663b98952d67f4c6f105c310d0a21-amd64
-```
+    ```sh
+    linuxkit/alpine:c9b0f6a435b663b98952d67f4c6f105c310d0a21-amd64
+    ```
 
 and the file [versions.x86_64](https://github.com/linuxkit/linuxkit/tree/master/tools/alpine/versions.x86_64) begins with:
 
-```
-# linuxkit/alpine:c9b0f6a435b663b98952d67f4c6f105c310d0a21-amd64
-# automatically generated list of installed packages
-abuild-3.8.0_rc4-r0
-alpine-baselayout-3.2.0-r16
-alpine-keys-2.4-r0
-apk-tools-2.12.7-r0
-argon2-libs-20190702-r1
-argp-standalone-1.3-r4
-```
+    ```sh
+    # linuxkit/alpine:c9b0f6a435b663b98952d67f4c6f105c310d0a21-amd64
+    # automatically generated list of installed packages
+    abuild-3.8.0_rc4-r0
+    alpine-baselayout-3.2.0-r16
+    alpine-keys-2.4-r0
+    apk-tools-2.12.7-r0
+    argon2-libs-20190702-r1
+    argp-standalone-1.3-r4
+    ```
 
 ## Summary
 
