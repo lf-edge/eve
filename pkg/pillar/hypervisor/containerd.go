@@ -91,7 +91,8 @@ func (ctx ctrdContext) Setup(status types.DomainStatus, config types.DomainConfi
 		return logError("setting up OCI spec for domain %s failed %v", status.DomainName, err)
 	}
 
-	vifsTaskResolv := filepath.Join(vifsDir, status.DomainName, "etc", "resolv.conf")
+	// we use patched version of dhcpcd with /etc/resolv.conf.new
+	vifsTaskResolv := filepath.Join(vifsDir, status.DomainName, "etc", "resolv.conf.new")
 	err = os.MkdirAll(filepath.Dir(vifsTaskResolv), 0755)
 	if err != nil {
 		return logError("Failed to create directory for vifs task %s with err: %s",
@@ -99,7 +100,7 @@ func (ctx ctrdContext) Setup(status types.DomainStatus, config types.DomainConfi
 	}
 	f, err := os.OpenFile(vifsTaskResolv, os.O_WRONLY|os.O_CREATE|os.O_SYNC, 0755)
 	if err != nil {
-		return logError("Failed creating empty resolv.conf file %s with err: %s", vifsTaskResolv, err)
+		return logError("Failed creating empty resolv.conf.new file %s with err: %s", vifsTaskResolv, err)
 	}
 	defer f.Close()
 

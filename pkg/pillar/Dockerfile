@@ -100,6 +100,7 @@ ADD conf/root-certificate.pem conf/server conf/server.production /opt/zededa/exa
 ADD scripts/device-steps.sh \
     scripts/handlezedserverconfig.sh \
     scripts/veth.sh \
+    scripts/dhcpcd.sh \
   /opt/zededa/bin/
 ADD conf/lisp.config.base /var/tmp/zededa/lisp.config.base
 
