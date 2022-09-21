@@ -15,7 +15,7 @@ const (
 	// ZVolDevicePrefix controlled by mdev
 	ZVolDevicePrefix = "/dev/zvol"
 
-	//ZFSSnapshotter is containerd snapshotter for zfs
+	// ZFSSnapshotter is containerd snapshotter for zfs
 	ZFSSnapshotter = "zfs"
 
 	// ZFSBinary is the zfs binary
@@ -291,7 +291,7 @@ type ZFSPoolMetrics struct {
 	ZVols           []*StorageZVolMetrics     // Metrics for zvols from /proc/diskstats
 }
 
-//Key for pubsub ZFSPoolMetrics
+// Key for pubsub ZFSPoolMetrics
 func (s ZFSPoolMetrics) Key() string {
 	return s.PoolName
 }
