@@ -126,6 +126,11 @@ message AppInstanceConfig {
   // Non-Zero value -> After EVE is ready to start application instance, wait for the
   // given amount of time before starting the respective application instance.
   uint32 start_delay_in_seconds = 19;
+
+  // service - run app instance as a service container in the host/dom0
+  // will override default capabilities with configuration
+  // defined in org.mobyproject.config label of image provided by linuxkit
+  bool service = 20;
 }
 
 // Reference to a Volume specified separately in the API
