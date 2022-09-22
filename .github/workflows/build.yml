@@ -11,12 +11,16 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build:
+  packages:
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        os: [arm64-dirty, ubuntu-20.04]
+        include:
+        - os: arm64-dirty
+          arch: arm64
+        - os: ubuntu-20.04
+          arch: amd64
     steps:
       - name: Starting Report
         run: |
@@ -32,15 +36,18 @@ jobs:
       - uses: actions/checkout@v2
         with:
           fetch-depth: 0
+      - name: ensure zstd for cache  # this should be removed once the arm64 VM includes zstd
+        if: ${{ matrix.os == 'arm64-dirty' || matrix.os == 'arm64-secure' }}
+        run: |
+          sudo apt install -y zstd
+      - name: update linuxkit cache if available
+        uses: actions/cache@v3
+        with:
+          path: ~/.linuxkit/cache
+          key: linuxkit-${{ matrix.arch }}-${{ github.sha }}
       - name: Build packages
-        env:
-          PR_ID: ${{ github.event.pull_request.number  }}
         run: |
           make V=1 PRUNE=1 pkgs
-          COMMIT_ID=$(git describe --abbrev=8 --always)
-          echo "VERSION=0.0.0-pr$PR_ID-$COMMIT_ID" >> $GITHUB_ENV
-          echo "TAG=evebuild/danger:pr$PR_ID" >> $GITHUB_ENV
-          echo "ARCH=$(uname -m | sed -e 's/x86_64/amd64/' -e 's/aarch64/arm64/')" >> "$GITHUB_ENV"
       - name: Post package report
         run: |
           echo Disk usage
@@ -49,9 +56,49 @@ jobs:
           free -m
           docker system df
           docker system df -v
-      - name: Build EVE KVM
+
+  eve:
+    needs: packages  # all packages for all platforms must be built first
+    runs-on: ubuntu-20.04
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [arm64, amd64]
+        hv: [xen, kvm]
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+      - name: update linuxkit cache for runner arch so we can get desired images
+        uses: actions/cache@v3
+        with:
+          path: ~/.linuxkit/cache
+          key: linuxkit-amd64-${{ github.sha }}
+      - name: load images we need from linuxkit cache into docker
         run: |
-          make V=1 ROOTFS_VERSION="$VERSION" HV=kvm eve  # note that this already loads it into docker
+          make cache-export-docker-load-all
+      - name: clear linuxkit cache so we can load for target arch
+        if: ${{ matrix.arch != 'amd64' }}  # because our runner arch is amd64; if that changes, this will have to change
+        run: |
+          rm -rf ~/.linuxkit
+      - name: update linuxkit cache for our arch
+        if: ${{ matrix.arch != 'amd64' }}  # because our runner arch is amd64; if that changes, this will have to change
+        uses: actions/cache@v3
+        with:
+          path: ~/.linuxkit/cache
+          key: linuxkit-${{ matrix.arch }}-${{ github.sha }}
+      - name: set environment
+        env:
+          PR_ID: ${{ github.event.pull_request.number  }}
+        run: |
+          COMMIT_ID=$(git describe --abbrev=8 --always)
+          echo "VERSION=0.0.0-pr$PR_ID-$COMMIT_ID" >> $GITHUB_ENV
+          echo "TAG=evebuild/danger:pr$PR_ID" >> $GITHUB_ENV
+          echo "ARCH=${{ matrix.arch }}" >> "$GITHUB_ENV"
+
+      - name: Build EVE ${{ matrix.hv }}-${{ matrix.arch }}
+        run: |
+          make V=1 ROOTFS_VERSION="$VERSION" HV=${{ matrix.hv }} ZARCH=${{ matrix.arch }} eve  # note that this already loads it into docker
       - name: Post eve build report
         run: |
           echo Disk usage
@@ -62,18 +109,17 @@ jobs:
           docker system df -v
       - name: Export docker container
         run: |
-          docker tag "lfedge/eve:$VERSION-kvm" "$TAG-kvm-${{ env.ARCH }}"
-          docker save "$TAG-kvm-${{ env.ARCH }}" > "eve-kvm-${{ env.ARCH }}.tar"
-      - name: Upload EVE KVM
+          make cache-export ZARCH=${{ matrix.arch }} IMAGE=lfedge/eve:$VERSION-${{ matrix.hv }} OUTFILE=eve-${{ matrix.hv }}-${{ matrix.arch }}.tar IMAGE_NAME=$TAG-${{ matrix.hv }}-${{ matrix.arch }}
+      - name: Upload EVE ${{ matrix.hv }}-${{ matrix.arch }}
         uses: actions/upload-artifact@v2
         with:
-          name: eve-kvm-${{ env.ARCH }}
-          path: eve-kvm-${{ env.ARCH }}.tar
-      - name: Clean EVE KVM
+          name: eve-${{ matrix.hv }}-${{ matrix.arch }}
+          path: eve-${{ matrix.hv }}-${{ matrix.arch }}.tar
+      - name: Clean EVE ${{ matrix.hv }}-${{ matrix.arch }}
         run: |
           make clean
-          docker rmi "$TAG-kvm-${{ env.ARCH }}" "lfedge/eve:$VERSION-kvm" "lfedge/eve:$VERSION-kvm-${{ env.ARCH }}" ||:
-      - name: Post clean eve KVM report
+          docker rmi "$TAG-${{ matrix.hv }}-${{ matrix.arch }}" "lfedge/eve:$VERSION-${{ matrix.hv }}" "lfedge/eve:$VERSION-${{ matrix.hv }}-${{ matrix.arch }}" ||:
+      - name: Post clean eve ${{ matrix.hv }}-${{ matrix.arch }} report
         run: |
           echo Disk usage
           df -h
@@ -81,26 +127,6 @@ jobs:
           free -m
           docker system df
           docker system df -v
-      - name: Build EVE XEN
-        run: |
-          make V=1 ROOTFS_VERSION="$VERSION" HV=xen eve
-      - name: Post eve build report
-        run: |
-          echo Disk usage
-          df -h
-          echo Memory
-          free -m
-          docker system df
-          docker system df -v
-      - name: Export docker container
-        run: |
-          docker tag "lfedge/eve:$VERSION-xen" "$TAG-xen-${{ env.ARCH }}"
-          docker save "$TAG-xen-${{ env.ARCH }}" > "eve-xen-${{ env.ARCH }}.tar"
-      - name: Upload EVE XEN
-        uses: actions/upload-artifact@v2
-        with:
-          name: eve-xen-${{ env.ARCH }}
-          path: eve-xen-${{ env.ARCH }}.tar
       - name: Clean
         if: ${{ always() }}
         run: |
