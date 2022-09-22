@@ -261,7 +261,7 @@ DOCKER_GO = _() { $(SET_X); mkdir -p $(CURDIR)/.go/src/$${3:-dummy} ; mkdir -p $
 
 PARSE_PKGS=$(if $(strip $(EVE_HASH)),EVE_HASH=)$(EVE_HASH) DOCKER_ARCH_TAG=$(DOCKER_ARCH_TAG) ./tools/parse-pkgs.sh
 LINUXKIT=$(BUILDTOOLS_BIN)/linuxkit
-LINUXKIT_VERSION=e532e7310810293cc1de7ef118ae9b85f8a03c47
+LINUXKIT_VERSION=d589bd18f1f4a43a4e4667e6e1d46bde5b315ed1
 LINUXKIT_SOURCE=https://github.com/linuxkit/linuxkit.git
 LINUXKIT_OPTS=$(if $(strip $(EVE_HASH)),--hash) $(EVE_HASH) $(if $(strip $(EVE_REL)),--release) $(EVE_REL)
 LINUXKIT_PKG_TARGET=build
@@ -599,7 +599,7 @@ eve: $(INSTALLER) $(EVE_ARTIFACTS) current $(RUNME) $(BUILD_YML) | $(BUILD_DIR)
 	fi
 	$(QUIET): $@: Succeeded
 
-.PHONY: image-set outfile-set cache-export
+.PHONY: image-set outfile-set cache-export cache-export-docker-load cache-export-docker-load-all
 
 image-set:
 ifndef IMAGE
@@ -611,9 +611,20 @@ ifndef OUTFILE
 	$(error OUTFILE is not set)
 endif
 
-## exports an image from the linuxkit cache to stdout; responsibility of the caller to ensure that they redirect stdout to somewhere sane
+## exports an image from the linuxkit cache to stdout
 cache-export: image-set outfile-set $(LINUXKIT)
-	$(LINUXKIT) $(DASH_V) cache export -arch $(ZARCH) -outfile $(OUTFILE) $(IMAGE)
+	$(eval IMAGE_TAG_OPT := $(if $(IMAGE_NAME),-name $(IMAGE_NAME),))
+	$(LINUXKIT) $(DASH_V) cache export -arch $(ZARCH) -outfile $(OUTFILE) $(IMAGE_TAG_OPT) $(IMAGE)
+
+## export an image from linuxkit cache and load it into docker.
+cache-export-docker-load: $(LINUXKIT)
+	TARFILE=$(shell mktemp); $(MAKE) cache-export OUTFILE=$${TARFILE}; cat $${TARFILE} | docker load
+
+%-cache-export-docker-load: $(LINUXKIT)
+	$(MAKE) cache-export-docker-load IMAGE=$(shell $(MAKE) $*-show-tag)
+
+## export list of images in PKGS_DOCKER_LOAD from linuxkit cache and load them into docker.
+cache-export-docker-load-all: $(LINUXKIT) $(addsuffix -cache-export-docker-load,$(PKGS_DOCKER_LOAD))
 
 proto-vendor:
 	@$(DOCKER_GO) "cd pkg/pillar ; go mod vendor" $(CURDIR) proto

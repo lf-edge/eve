@@ -9,13 +9,19 @@ on:
       - "[0-9]+.[0-9]+.[0-9]+"
 
 jobs:
-  build:
+  packages:
     if: github.event.repository.full_name == 'lf-edge/eve'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        os: [arm64-secure, ubuntu-20.04, ubuntu-latest]
+        include:
+          - os: arm64-secure
+            arch: arm64
+          - os: ubuntu-20.04
+            arch: amd64
+          - os: ubuntu-latest
+            arch: riscv64
     steps:
       - name: Starting Report
         run: |
@@ -33,8 +39,8 @@ jobs:
         env:
           REF: ${{ github.ref }}
         run: |
-          # we are using ubuntu-latest as our riscv64 cross build machine
-          if [ "${{ matrix.os }}" = ubuntu-latest ]; then
+          # some special installs when building for riscv64
+          if [ "${{ matrix.arch }}" = riscv64 ]; then
              APT_INSTALL="sudo apt install -y binfmt-support qemu-user-static"
              # the following weird statement is here to speed up the happy path
              # if the default server is responding -- we can skip apt update
@@ -42,7 +48,7 @@ jobs:
              # constraining environment for riscv64 builds
              echo "ZARCH=riscv64" >> "$GITHUB_ENV"
           fi
-          echo "ARCH=$(uname -m | sed -e 's/x86_64/amd64/' -e 's/aarch64/arm64/')" >> "$GITHUB_ENV"
+          echo "ARCH=${{ matrix.arch }}" >> "$GITHUB_ENV"
           echo "TAG=$(echo "$REF" | sed -e 's#^.*/##' -e 's#master#snapshot#' -e 's#main#snapshot#')" >> "$GITHUB_ENV"
       - name: Login to DockerHUB
         run: |
@@ -81,14 +87,37 @@ jobs:
           free -m
           docker system df
           docker system df -v
-      - name: Build EVE for KVM
+      - name: Clean
+        run: |
+          make clean
+          docker system prune -f -a
+          rm -rf ~/.linuxkit
+
+  # eve composition can run as a separate job, even on a separate runner, because the packages job
+  # published everything. Which means all images are already on the OCI registry.
+  eve:
+    if: github.event.repository.full_name == 'lf-edge/eve'
+    needs: packages
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [arm64, amd64]
+        hv: [kvm, xen]
+        include:
+          - arch: riscv64
+            hv: mini
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+      - name: Build EVE for ${{ matrix.arch }}-${{ matrix.hv }}
         # build #1 without push (do not push either unless both can build)
-        if: ${{ matrix.os != 'ubuntu-latest' }}
         run: |
-          rm -rf dist dist.xen
-          make -e V=1 HV=kvm eve
-          mv -f dist dist.xen
-      - name: Post eve KVM report
+          rm -rf dist dist.${{ matrix.hv }}
+          make -e V=1 HV=${{ matrix.hv }} ZARCH=${{ matrix.arch }} eve
+          mv -f dist dist.${{ matrix.hv }}
+      - name: Post eve ${{ matrix.arch }}-${{ matrix.hv }} report
         run: |
           echo Disk usage
           df -h
@@ -96,12 +125,11 @@ jobs:
           free -m
           docker system df
           docker system df -v
-      - name: Build and push EVE for Xen
+      - name: Build and push EVE for ${{ matrix.arch }}-${{ matrix.hv }}
         # since build #1 works, build and push #2
-        if: ${{ matrix.os != 'ubuntu-latest' }}
         run: |
-          make -e V=1 HV=xen LINUXKIT_PKG_TARGET=push eve
-      - name: Post eve Xen report
+          make -e V=1 HV=${{ matrix.hv }} ZARCH=${{ matrix.arch }} LINUXKIT_PKG_TARGET=push eve
+      - name: Post eve ${{ matrix.arch }}-${{ matrix.hv }} report
         run: |
           echo Disk usage
           df -h
@@ -109,21 +137,7 @@ jobs:
           free -m
           docker system df
           docker system df -v
-      - name: Build and push EVE for KVM
-        # redo build #1 with push
-        if: ${{ matrix.os != 'ubuntu-latest' }}
-        run: |
-          rm -rf dist
-          mv -f dist.xen dist
-          make -e V=1 HV=kvm LINUXKIT_PKG_TARGET=push eve
-      - name: Build EVE for riscv64
-        # special HV for riscv64
-        if: ${{ matrix.os == 'ubuntu-latest' }}
-        run: |
-          rm -rf dist dist.xen
-          make -e V=1 HV=mini LINUXKIT_PKG_TARGET=push eve
       - name: Pre clean report
-        if: ${{ always() }}
         run: |
           echo Disk usage
           df -h
@@ -132,7 +146,6 @@ jobs:
           docker system df
           docker system df -v
       - name: Clean
-        if: ${{ always() }}
         run: |
           make clean
           docker system prune -f -a
@@ -141,7 +154,7 @@ jobs:
   manifest:
     if: github.event.repository.full_name == 'lf-edge/eve'
     runs-on: ubuntu-latest
-    needs: build
+    needs: packages
     steps:
       - uses: actions/checkout@v2
         with:
