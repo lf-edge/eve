@@ -205,6 +205,17 @@ Please note, that change of environment variables require restart of the applica
 After preparation done we chroot into /mnt and run cmd from cmdline under specified user and group, output goes to
 /dev/console and is accessible from log of ECO.
 
+## Ability to override default capabilities, mounts and namespaces
+
+By default, we bootstrap OCI configuration using [oci.WithDefaultSpec](https://pkg.go.dev/github.com/containerd/containerd/oci#WithDefaultSpec) function if there is no hypervisor available on the system (or if we enforce to run as container using NOHYPER VmMode). It fit our expectations for generic ECO we want to run on EVE-OS to be isolated and has limited privileges.
+To override defaults you can set Service flag inside AppInstanceConfig.
+
+### Service config mode
+
+In this mode we will rely on prepared OCI images we build using linuxkit. Inside [build.yml](https://github.com/linuxkit/linuxkit/blob/master/docs/packages.md#package-source) of the source files of image we build using linuxkit we have `config` field, which linuxkit uses to configure various options of container. It is possible to [define](https://github.com/linuxkit/linuxkit/blob/e532e7310810293cc1de7ef118ae9b85f8a03c47/src/cmd/linuxkit/moby/config.go#L63-L104) mounts, namespaces, capabilities inside build.yml. linuxkit bundle options we define inside `build.yml` into `org.mobyproject.config` label of OCI image during package build, for example for [pkg/pillar](EVE-IMAGE-SOURCES.md#container-images-to-sources). EVE-OS will use them to configure containerd to run app instances. This mode only works for app instances based on OCI images with `org.mobyproject.config` label defined.
+
+We will enforce NOHYPER VmMode for the service to run as a container in the host/dom0.
+
 ## ECI Distribution Specification
 
 While ECIs are regular, self-contained binary files and can be distributed by any transport (http, ftp, etc.) in certain situations it is advantageous to define an optimized transport protocol that can be used specifically for ECI distribution.
