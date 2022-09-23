@@ -2,9 +2,11 @@
 #
 # Copyright (c) 2018-2022 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
+
+---
 org: lfedge
 image: eve-pillar-dev
-network: yes
+network: true
 config:
   binds:
     - /lib/modules:/lib/modules
