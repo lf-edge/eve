@@ -21,7 +21,7 @@ cp stdout pod_ps
 grep '^t1\s*' pod_ps
 grep '^t2\s*' pod_ps
 
-# Ngnix detecting
+# nginx detecting
 exec -t 1m bash get.sh t1
 stdout 'Welcome to nginx'
 exec -t 1m bash get.sh t2

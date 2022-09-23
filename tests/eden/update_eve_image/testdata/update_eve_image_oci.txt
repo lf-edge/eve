@@ -20,8 +20,15 @@
 # Use eden.lim.test for access Infos with timewait 30m
 {{$test := "test eden.lim.test -test.v -timewait 30m -test.run TestInfo"}}
 
+{{$devmodel := EdenConfig "eve.devmodel"}}
+
+{{if (eq $devmodel "ZedVirtual-4G")}}
+# Decrease update testing time, but give a time to boot in testing state
+eden controller edge-node update --config timer.test.baseimage.update=120
+{{else}}
 # Decrease update testing time
 eden controller edge-node update --config timer.test.baseimage.update=30
+{{end}}
 
 # Send command to update eveimage from OCI image
 message 'EVE update request'
@@ -30,12 +37,38 @@ eden -t 10m controller edge-node eveimage-update oci://docker.io/lfedge/eve:{{$e
 # Check stderr, it must be empty
 ! stderr .
 
-# Run monitoring of Info messages to obtain info with PartitionState inprogress or active and previously defined ShortVersion
+{{if (eq $devmodel "ZedVirtual-4G")}}
+# Run monitoring of Info messages to obtain info with PartitionState inprogress and previously defined ShortVersion
+message 'Waiting for EVE update...'
+{{$test}} -out InfoContent.dinfo.SwList[0].ShortVersion 'InfoContent.dinfo.SwList[0].PartitionState:inprogress InfoContent.dinfo.SwList[0].ShortVersion:{{ $short_version }}'
+
+# Check stdout of previous command. Expected to get previously defined ShortVersion
+stdout '{{ $short_version }}'
+
+# simulate reboot during testing
+# to jump back to the previous EVE-OS image
+eden -t 2m eve stop
+exec sleep 10
+eden -t 2m eve start
+
+message 'Waiting for EVE update...'
+# waiting for defined ShortVersion in the second SwList and first one to be active
+{{$test}} -out InfoContent.dinfo.SwList[0].ShortVersion 'InfoContent.dinfo.SwList[0].PartitionState:active InfoContent.dinfo.SwList[1].ShortVersion:{{ $short_version }}'
+
+# send retry to initiate update again
+eden -t 2m controller edge-node eveimage-update-retry
+
+{{end}}
+
+# Run monitoring of Info messages to obtain info with PartitionState active and previously defined ShortVersion
 message 'Waiting for EVE update...'
 {{$test}} -out InfoContent.dinfo.SwList[0].ShortVersion 'InfoContent.dinfo.SwList[0].PartitionState:active InfoContent.dinfo.SwList[0].ShortVersion:{{ $short_version }}'
 
 # Check stdout of previous command. Expected to get previously defined ShortVersion
 stdout '{{ $short_version }}'
+
+# Decrease update testing time
+eden controller edge-node update --config timer.test.baseimage.update=30
 
 # Reset EVE version
 test eden.escript.test -test.run TestEdenScripts/revert_eve_image_update -test.v -testdata {{EdenConfig "eden.tests"}}/update_eve_image/testdata/

@@ -42,7 +42,7 @@ stdout 't8.+library/nginx:latest.+RUNNING'
 stdout 't9.+library/nginx:latest.+RUNNING'
 stdout 't10.+library/nginx:latest.+RUNNING'
 
-# Ngnix detecting
+# nginx detecting
 exec -t 1m curl localhost:8027
 stdout 'Welcome to nginx'
 exec -t 1m curl localhost:8028

@@ -1,1 +1,1 @@
-eden pod deploy {{EdenGetEnv "external_port"}} --metadata='BENCHMARK={{EdenGetEnv "benchmark"}}' --name='{{EdenGetEnv "name"}}' --memory=2GB --cpus=2 docker://lfedge/eden-phoronix-test:83cfe07
+eden pod deploy {{EdenGetEnv "external_port"}} --metadata='BENCHMARK={{EdenGetEnv "benchmark"}}' --name='{{EdenGetEnv "name"}}' --memory=2GB --cpus=2 --volume-size=3GB docker://lfedge/eden-phoronix-test:83cfe07
