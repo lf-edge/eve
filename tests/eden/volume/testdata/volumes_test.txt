@@ -57,7 +57,7 @@ wait errorwait
 # delete old volume and check if app goes into running state
 eden -t 1m volume delete blank-vol-2
 test eden.vol.test -test.v -timewait 5m - blank-vol-2
-test eden.app.test -test.v -timewait 5m RUNNING eclient-mount
+test eden.app.test -test.v -timewait 15m RUNNING eclient-mount
 
 exec sleep 10
 

@@ -1,4 +1,4 @@
-# Test for internal TCP clien/server interconnection
+# Test for internal TCP client/server interconnection
 
 {{$test_msg := "This is a test"}}
 {{define "port"}}2223{{end}}
@@ -15,11 +15,19 @@ exec chmod 600 {{EdenConfig "eden.tests"}}/eclient/image/cert/id_rsa
 # Starting of reboot detector with a 1 reboot limit
 ! test eden.reboot.test -test.v -timewait=0 -reboot=0 -count=1 &
 
-eden pod deploy -n eclient --memory=512MB {{template "eclient_image"}} -p {{template "port"}}:22
-#eden -t 20m pod logs eclient
-#stdout 'Executing "/usr/sbin/sshd" "-D"'
+message 'Resetting of EVE'
+eden eve reset
+exec sleep 30
 
-eden pod deploy -v warning -n eserver --memory=512MB {{template "eclient_image"}}
+message 'Creating networks'
+eden network create 10.11.12.0/24 -n n1
+eden network create 10.11.13.0/24 -n n2
+
+test eden.network.test -test.v -timewait 10m ACTIVATED n1 n2
+
+eden pod deploy -n eclient --memory=512MB {{template "eclient_image"}} --networks=n1 --networks=n2 -p {{template "port"}}:22
+
+eden pod deploy -v warning -n eserver --memory=512MB --networks=n1 --networks=n2 {{template "eclient_image"}}
 
 test eden.app.test -test.v -timewait 20m RUNNING eclient eserver
 
@@ -28,8 +36,21 @@ exec -t 20m bash wait_ssh.sh
 
 eden pod ps
 cp stdout pod_ps
-exec bash eserver_ip.sh
 
+# the first try with the first eserver ip
+exec bash eserver_ip.sh 1
+exec sleep 10
+exec -t 1m bash setup_srv.sh
+exec sleep 10
+exec -t 1m bash run_srv.sh &
+exec sleep 10
+exec -t 1m bash run_client.sh
+exec sleep 10
+exec -t 1m bash get_result.sh
+stdout '{{$test_msg}}'
+
+# the second try with the second eserver ip
+exec bash eserver_ip.sh 2
 exec sleep 10
 exec -t 1m bash setup_srv.sh
 exec sleep 10
@@ -45,6 +66,11 @@ eden pod delete eserver
 
 test eden.app.test -test.v -timewait 10m - eclient eserver
 
+eden network delete n1
+eden network delete n2
+
+test eden.network.test -test.v -timewait 10m - n1 n2
+
 -- wait_ssh.sh --
 
 EDEN={{EdenConfig "eden.root"}}/{{EdenConfig "eden.bin-dist"}}/{{EdenConfig "eden.eden-bin"}}
@@ -58,8 +84,9 @@ do
 done
 
 -- eserver_ip.sh --
+IP_NUM="$1"
 EDEN={{EdenConfig "eden.root"}}/{{EdenConfig "eden.bin-dist"}}/{{EdenConfig "eden.eden-bin"}}
-echo export ESERVER_IP=$(grep '^eserver\s' pod_ps | cut -f 4) > env
+echo export ESERVER_IP=$(grep '^eserver\s' pod_ps | cut -f 4|tr -d ' '|cut -d";" -f"$IP_NUM") > env
 echo export HOST=$($EDEN eve ip) >> env
 
 -- setup_srv.sh --
@@ -83,8 +110,8 @@ echo {{template "ssh"}}$HOST "echo {{$test_msg}} | nc -N $ESERVER_IP 1234"
 -- get_result.sh --
 . ./env
 
-echo {{template "ssh"}}$HOST 'cat /tmp/out'
-{{template "ssh"}}$HOST 'cat /tmp/out'
+echo {{template "ssh"}}$HOST 'cat /tmp/out&&rm /tmp/out'
+{{template "ssh"}}$HOST 'cat /tmp/out&&rm /tmp/out'
 
 -- eden-config.yml --
 {{/* Test's config. file */}}

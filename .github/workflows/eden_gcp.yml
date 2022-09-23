@@ -95,7 +95,7 @@ jobs:
       # Use the latest version of EDEN with subset of tests from EVE-OS repo
       - name: Prepare eden
         run: |
-          EDEN_VERSION=lfedge/eden:0.7.0
+          EDEN_VERSION=lfedge/eden:0.7.2
           docker run -v $PWD:/out $EDEN_VERSION cp -a /eden/. /out/
           sudo chown -R $(whoami) .
       - name: Eden setup

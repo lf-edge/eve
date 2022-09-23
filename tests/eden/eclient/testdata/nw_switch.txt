@@ -1,4 +1,4 @@
-# Test for apllications network connectivity switching
+# Test for applications network connectivity switching
 
 {{$test_msg := "This is a test"}}
 {{define "ssh"}}ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=no -i {{EdenConfig "eden.tests"}}/eclient/image/cert/id_rsa root@{{end}}
@@ -79,7 +79,7 @@ stdout '0% packet loss'
 stdout '100% packet loss'
 exec -t 5m bash wait_ssh.sh 2223 2224
 
-message 'Resource cleanng'
+message 'Resource cleanup'
 eden pod delete ping1
 eden pod delete ping2
 eden pod delete pong

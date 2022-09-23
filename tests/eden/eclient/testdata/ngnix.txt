@@ -1,6 +1,6 @@
 # Simple test of standard `nginx` image
 
-{{$server := "ngnix"}}
+{{$server := "nginx"}}
 {{$test_msg := "Welcome to nginx!"}}
 {{define "port"}}2223{{end}}
 {{define "ssh"}}ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=no -o PasswordAuthentication=no -i {{EdenConfig "eden.tests"}}/eclient/image/cert/id_rsa -p {{template "port"}} root@{{end}}
