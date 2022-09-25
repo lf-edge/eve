@@ -8,6 +8,7 @@ packages:
   - curl
   - ca-certificates
   - gnupg
+  - zstd
 
 groups:
   - docker
