@@ -47,6 +47,7 @@ type PhysicalIOAdapter struct {
 	//  a structure OR may be even various attributes in PhysicalIO structure
 	// itself.
 	// map <string, string> cbattr = 8;
+	Vfs VFList // Used only for Physical Functions PFs
 }
 
 // PhysicalIOAdapterList - List of Physical Adapters to be used on the

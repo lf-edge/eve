@@ -649,9 +649,22 @@ func parseAppInstanceConfig(getconfigCtx *getconfigContext,
 		for _, adapter := range cfgApp.Adapters {
 			log.Tracef("Processing adapter type %d name %s",
 				adapter.Type, adapter.Name)
-			appInstance.IoAdapterList = append(appInstance.IoAdapterList,
-				types.IoAdapter{Type: types.IoType(adapter.Type),
-					Name: adapter.Name})
+			ioa := types.IoAdapter{Type: types.IoType(adapter.Type), Name: adapter.Name}
+			if ioa.Type == types.IoNetEthVF && adapter.EthVf != nil {
+				// not checking lower bound, since it's zero if VlanId is not specified
+				if adapter.EthVf.VlanId > maxVlanID {
+					log.Errorf("Incorrect VlanID %d for adapter %s", adapter.EthVf.VlanId, adapter)
+					continue
+				}
+				hwaddr, err := net.ParseMAC(adapter.EthVf.Mac)
+				if err != nil {
+					log.Errorf("Failed to parse hardware address for adapter %s: %s", adapter.Name, err)
+				}
+				ioa.EthVf = types.EthVF{
+					Mac:    hwaddr.String(),
+					VlanId: uint16(adapter.EthVf.VlanId)}
+			}
+			appInstance.IoAdapterList = append(appInstance.IoAdapterList, ioa)
 		}
 		log.Functionf("Got adapters %v", appInstance.IoAdapterList)
 
