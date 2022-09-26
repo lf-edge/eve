@@ -22,6 +22,8 @@ enum PhyIoType {
   // enum 8 is reserved for backward compatibility with controller API
   PhyIoNVMEStorage = 9;
   PhyIoSATAStorage = 10;
+  PhyIoNetEthPF = 11;
+  PhyIoNetEthVF = 12;
   PhyIoOther = 255;
 }
 

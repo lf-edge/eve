@@ -4,6 +4,7 @@
 syntax = "proto3";
 
 import "evecommon/devmodelcommon.proto";
+import "config/devcommon.proto";
 
 package org.lfedge.eve.config;
 option go_package  = "github.com/lf-edge/eve/api/go/config";
@@ -148,6 +149,18 @@ message PhysicalIO {
   // physical and logical attributes
   //    For example in WWAN to which firmware version to load etc
   map <string, string> cbattr = 8;
+
+  // list of Virtual Functions (VF) for given Physical Function (PF)
+  // only applies for PHY_IO_TYPE_PHY_IO_NET_ETH_PF
+  VfList vflist = 9;
+}
+
+message VfList {
+  // how many Virtual Functions (VF) will be created
+  uint32 vf_count = 1;
+
+  // optional configuration for given Virtual Function (VF)
+  repeated EthVF data = 2;
 }
 
 // VlanAdapter represents a single VLAN sub-interface.
