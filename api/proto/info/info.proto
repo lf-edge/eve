@@ -85,6 +85,15 @@ message ZioBundle {
 
 message IoAddresses {
   string macAddress = 1;
+  VfPublishedInfo vf_info = 2;
+}
+
+// Information published for Virtual Function (VF) created by SR-IOV
+// Used only for Virtual Functions (VFs) not Physical Functions (PFs)
+// Reference structure in pkg/pillar/assignableadapters.go VfInfo
+message VfPublishedInfo {
+  uint32 index = 1;
+  uint32 vlan_id = 2;
 }
 
 // Manufacturing info, product name, model, version etc.
