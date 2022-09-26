@@ -32,6 +32,9 @@ onboot:
    # storage-init must follow installer
    - name: storage-init
      image: STORAGE_INIT_TAG
+   # kdump goes strictly after storage-init
+   - name: kdump
+     image: KDUMP_TAG
 services:
    - name: newlogd
      image: NEWLOGD_TAG
