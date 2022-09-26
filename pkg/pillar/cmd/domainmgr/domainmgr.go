@@ -2512,6 +2512,13 @@ func handlePhysicalIOAdapterListImpl(ctxArg interface{}, key string,
 	ctx := ctxArg.(*domainContext)
 	phyIOAdapterList := configArg.(types.PhysicalIOAdapterList)
 	aa := ctx.assignableAdapters
+
+	defer func() {
+		ctx.publishAssignableAdapters()
+		log.Functionf("handlePhysicalIOAdapterListImpl() done len %d",
+			len(aa.IoBundleList))
+	}()
+
 	log.Functionf("handlePhysicalIOAdapterListImpl: current len %d, update %+v",
 		len(aa.IoBundleList), phyIOAdapterList)
 
@@ -2532,6 +2539,32 @@ func handlePhysicalIOAdapterListImpl(ctxArg interface{}, key string,
 			// We assume AddOrUpdateIoBundle will preserve any
 			// existing IsPort/IsPCIBack/UsedByUUID
 			aa.AddOrUpdateIoBundle(log, *ib)
+
+			// Adding PF before VF to have correct boot order
+			if ib.Type == types.IoNetEthPF && ib.Vfs.Count > 0 {
+				exists, ifName := types.PciLongToIfname(log, ib.PciLong)
+				if !exists {
+					log.Fatal("Failed to resolve ifname for PCI address ", ib.PciLong)
+				}
+
+				err = createVF(ifName, ib.Vfs.Count)
+				if err != nil {
+					log.Fatal("Failed to create VF for iface with PCI address", ib.PciLong)
+				}
+
+				vfs, err := getVfByTimeout(150*time.Second, ifName, ib.Vfs.Count)
+				if err != nil {
+					log.Fatal("Failed to get VF for iface ", ifName, " ", err)
+				}
+
+				for _, vf := range vfs.Data {
+					vfIb, err := createVfIoBundle(*ib, vf)
+					if err != nil {
+						log.Fatal("createVfIoBundle failed ", err)
+					}
+					aa.AddOrUpdateIoBundle(log, vfIb)
+				}
+			}
 		}
 		log.Functionf("handlePhysicalIOAdapterListImpl: initialized to get len %d",
 			len(aa.IoBundleList))
@@ -2545,9 +2578,6 @@ func handlePhysicalIOAdapterListImpl(ctxArg interface{}, key string,
 			updatePortAndPciBackIoBundle(ctx, ib)
 		}
 		aa.Initialized = true
-		ctx.publishAssignableAdapters()
-		log.Functionf("handlePhysicalIOAdapterListImpl() done len %d",
-			len(aa.IoBundleList))
 		return
 	}
 
@@ -2594,9 +2624,32 @@ func handlePhysicalIOAdapterListImpl(ctxArg interface{}, key string,
 				"- No Change", phyAdapter.Phylabel)
 		}
 	}
-	ctx.publishAssignableAdapters()
-	log.Functionf("handlePhysicalIOAdapterListImpl() done len %d",
-		len(aa.IoBundleList))
+}
+
+func createVfIoBundle(pfIb types.IoBundle, vf types.EthVF) (types.IoBundle, error) {
+	vfUserConfig := pfIb.Vfs.GetInfo(vf.Index)
+	if vfUserConfig == nil {
+		return types.IoBundle{}, fmt.Errorf("Can't find any with index %d", vf.Index)
+	}
+	vfIb := pfIb
+	vfIb.Type = types.IoNetEthVF
+	vfIb.Ifname = fmt.Sprintf("vf%d%s", vf.Index, pfIb.Ifname)
+	vfIb.Phylabel = fmt.Sprintf("vf%d%s", vf.Index, pfIb.Phylabel)
+	vfIb.Logicallabel = fmt.Sprintf("vf%d%s", vf.Index, pfIb.Logicallabel)
+	vfIb.PciLong = vf.PciLong
+	vfIb.VfParams = types.VfInfo{Index: vf.Index, VlanID: vf.VlanId, PFIface: pfIb.Ifname}
+	if vfUserConfig.Mac != "" {
+		vfIb.MacAddr = vfUserConfig.Mac
+		if err := setupVfHardwareAddr(vfIb.Ifname, vfIb.MacAddr, vf.Index); err != nil {
+			return types.IoBundle{}, fmt.Errorf("setupVfHardwareAddr failed %s", err)
+		}
+	}
+	if vfUserConfig.VlanId != 0 {
+		if err := setupVfVlan(vfIb.Ifname, vf.Index, vf.VlanId); err != nil {
+			return types.IoBundle{}, fmt.Errorf("setupVfVlan failed %s", err)
+		}
+	}
+	return vfIb, nil
 }
 
 func handlePhysicalIOAdapterListDelete(ctxArg interface{},
@@ -2689,6 +2742,9 @@ func updatePortAndPciBackIoBundle(ctx *domainContext, ib *types.IoBundle) (chang
 			}
 		}
 		if ib.Type == types.IoNVME && types.NVMEIsUsed(log, ctx.subZFSPoolStatus.GetAll(), ib.PciLong) {
+			keepInHost = true
+		}
+		if ib.Type == types.IoNetEthPF {
 			keepInHost = true
 		}
 	}
