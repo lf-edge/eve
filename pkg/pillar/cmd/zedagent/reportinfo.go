@@ -18,7 +18,6 @@ import (
 	"github.com/golang/protobuf/ptypes"
 	"github.com/lf-edge/eve/api/go/evecommon"
 	"github.com/lf-edge/eve/api/go/info"
-	"github.com/lf-edge/eve/pkg/pillar/base"
 	etpm "github.com/lf-edge/eve/pkg/pillar/evetpm"
 	"github.com/lf-edge/eve/pkg/pillar/hardware"
 	"github.com/lf-edge/eve/pkg/pillar/netclone"
@@ -28,6 +27,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/vault"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 	"github.com/shirou/gopsutil/host"
+	"golang.org/x/sys/unix"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -211,29 +211,14 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 
 	ReportDeviceInfo := new(info.ZInfoDevice)
 
-	var machineArch string
-	stdout, err := base.Exec(log, "uname", "-m").Output()
+	var uname unix.Utsname
+	err := unix.Uname(&uname)
 	if err != nil {
-		log.Errorf("uname -m failed %s", err)
+		log.Errorf("get info from uname failed %s", err)
 	} else {
-		machineArch = string(stdout)
-		ReportDeviceInfo.MachineArch = *proto.String(strings.TrimSpace(machineArch))
-	}
-
-	stdout, err = base.Exec(log, "uname", "-p").Output()
-	if err != nil {
-		log.Errorf("uname -p failed %s", err)
-	} else {
-		cpuArch := string(stdout)
-		ReportDeviceInfo.CpuArch = *proto.String(strings.TrimSpace(cpuArch))
-	}
-
-	stdout, err = base.Exec(log, "uname", "-i").Output()
-	if err != nil {
-		log.Errorf("uname -i failed %s", err)
-	} else {
-		platform := string(stdout)
-		ReportDeviceInfo.Platform = *proto.String(strings.TrimSpace(platform))
+		ReportDeviceInfo.MachineArch = *proto.String(string(uname.Machine[:]))
+		ReportDeviceInfo.CpuArch = *proto.String(string(uname.Machine[:]))
+		ReportDeviceInfo.Platform = *proto.String(string(uname.Machine[:]))
 	}
 
 	sub := ctx.getconfigCtx.subHostMemory
