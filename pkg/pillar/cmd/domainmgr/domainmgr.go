@@ -82,6 +82,7 @@ type domainContext struct {
 	subDomainConfig        pubsub.Subscription
 	pubDomainStatus        pubsub.Publication
 	subGlobalConfig        pubsub.Subscription
+	subZFSPoolStatus       pubsub.Subscription
 	pubAssignableAdapters  pubsub.Publication
 	pubDomainMetric        pubsub.Publication
 	pubHostMemory          pubsub.Publication
@@ -403,6 +404,20 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		log.Fatal(err)
 	}
 	domainCtx.subPhysicalIOAdapter = subPhysicalIOAdapter
+	subZFSPoolStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:   "zfsmanager",
+		MyAgentName: agentName,
+		TopicImpl:   types.ZFSPoolStatus{},
+		Activate:    true,
+		Ctx:         &domainCtx,
+		WarningTime: warningTime,
+		ErrorTime:   errorTime,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	domainCtx.subZFSPoolStatus = subZFSPoolStatus
+	subZFSPoolStatus.Activate()
 
 	// Parse any existing ConfigIntemValueMap but continue if there
 	// is none
@@ -489,6 +504,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		case change := <-subPhysicalIOAdapter.MsgChan():
 			subPhysicalIOAdapter.ProcessChange(change)
 
+		case change := <-subZFSPoolStatus.MsgChan():
+			subZFSPoolStatus.ProcessChange(change)
+
 		case <-domainCtx.publishTicker.C:
 			publishProcessesHandler(&domainCtx)
 
@@ -569,6 +587,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 		case change := <-subDeviceNetworkStatus.MsgChan():
 			subDeviceNetworkStatus.ProcessChange(change)
+
+		case change := <-subZFSPoolStatus.MsgChan():
+			subZFSPoolStatus.ProcessChange(change)
 
 		case change := <-subPhysicalIOAdapter.MsgChan():
 			subPhysicalIOAdapter.ProcessChange(change)
@@ -2665,6 +2686,9 @@ func updatePortAndPciBackIoBundle(ctx *domainContext, ib *types.IoBundle) (chang
 				log.Errorf("Couldn't get boot_vga statues for VGA device %s", ib.PciLong)
 				log.Error(err)
 			}
+		}
+		if ib.Type == types.IoNVME && types.NVMEIsUsed(log, ctx.subZFSPoolStatus.GetAll(), ib.PciLong) {
+			keepInHost = true
 		}
 	}
 
