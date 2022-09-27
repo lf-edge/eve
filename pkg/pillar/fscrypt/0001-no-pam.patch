@@ -1,5 +1,16 @@
+From bfcbc0de4f59d671c2a6fc73e82bc78b6a519104 Mon Sep 17 00:00:00 2001
+From: Petr Fedchenkov <giggsoff@gmail.com>
+Date: Tue, 20 Sep 2022 13:14:44 +0300
+Subject: [PATCH 1/2] no pam
+
+Signed-off-by: Petr Fedchenkov <giggsoff@gmail.com>
+---
+ actions/callback.go |  5 +++--
+ cmd/fscrypt/keys.go | 26 ++------------------------
+ 2 files changed, 5 insertions(+), 26 deletions(-)
+
 diff --git a/actions/callback.go b/actions/callback.go
-index f15893d..65ced07 100644
+index f15893d..31d7183 100644
 --- a/actions/callback.go
 +++ b/actions/callback.go
 @@ -102,8 +102,9 @@ func unwrapProtectorKey(info ProtectorInfo, keyFn KeyFunc) (*crypto.Key, error)
@@ -9,16 +20,16 @@ index f15893d..65ced07 100644
 -			retry = true
 -			continue
 +			return nil, err
-+			//retry = true
-+			//continue
++			// retry = true
++			// continue
  		default:
  			return nil, err
  		}
 diff --git a/cmd/fscrypt/keys.go b/cmd/fscrypt/keys.go
-index 872ca2a..e3304bc 100644
+index b57c01d..28171a4 100644
 --- a/cmd/fscrypt/keys.go
 +++ b/cmd/fscrypt/keys.go
-@@ -33,7 +33,6 @@ import (
+@@ -34,7 +34,6 @@ import (
  	"github.com/google/fscrypt/actions"
  	"github.com/google/fscrypt/crypto"
  	"github.com/google/fscrypt/metadata"
@@ -26,7 +37,7 @@ index 872ca2a..e3304bc 100644
  )
  
  // The file descriptor for standard input
-@@ -124,29 +123,8 @@ func makeKeyFunc(supportRetry, shouldConfirm bool, prefix string) actions.KeyFun
+@@ -153,29 +152,8 @@ func makeKeyFunc(supportRetry, shouldConfirm bool, prefix string) actions.KeyFun
  
  		switch info.Source() {
  		case metadata.SourceType_pam_passphrase:
@@ -58,3 +69,6 @@ index 872ca2a..e3304bc 100644
  
  		case metadata.SourceType_custom_passphrase:
  			prompt := fmt.Sprintf("Enter %scustom passphrase for protector %q: ",
+-- 
+2.34.1
+

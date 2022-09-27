@@ -1,0 +1,57 @@
+From a2afdd5cac69db53e8d6df055d15a186af52ebfa Mon Sep 17 00:00:00 2001
+From: Petr Fedchenkov <giggsoff@gmail.com>
+Date: Tue, 27 Sep 2022 17:17:58 +0300
+Subject: [PATCH] Do not store PolicyVersion 1
+
+We cannot downgrade to version prior v0.2.6 if we define PolicyVersion
+field because of proto will differ when we check metadata there.
+
+I can see:
+
+directory /persist/.fscrypt/protectors has incorrect permissions
+successfully read metadata from \"/persist/
+.fscrypt/policies/853459434496c676\"
+found data for policy 853459434496c676 on \"/persist\"
+options from path: padding:32 contents:AES_256_XTS filenames:AES_256_CTS
+options from mount: padding:32 contents:AES_256_XTS
+filenames:AES_256_CTS 4:1
+fscrypt status: policy 853459434496c676: system error: inconsistent
+metadata between filesystem and directory
+The metadata for this encrypted directory is in an inconsistent state.
+This most likely means the filesystem metadata is corrupted.
+
+So we have "4:1" in options from mount which come from internal proto
+unmarshalling and should not be here as proto message prior v0.2.6
+ did not contain PolicyVersion (4) field.
+
+We can safety omit PolicyVersion in case of v1 as we assume that it is
+v1 if not defined to be compatible with downgrade to versions prior v0.2
+.6.
+
+Signed-off-by: Petr Fedchenkov <giggsoff@gmail.com>
+---
+ filesystem/filesystem.go | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+diff --git a/filesystem/filesystem.go b/filesystem/filesystem.go
+index 27bfa24..78fe494 100644
+--- a/filesystem/filesystem.go
++++ b/filesystem/filesystem.go
+@@ -690,6 +690,14 @@ func (m *Mount) addMetadata(path string, md metadata.Metadata, owner *user.User)
+ 		return errors.Wrap(err, "provided metadata is invalid")
+ 	}
+ 
++	// store empty policy field in case of v1 policy
++	mdObject, ok := md.(*metadata.PolicyData)
++	if ok {
++		if mdObject.Options.PolicyVersion == 1 {
++			mdObject.Options.PolicyVersion = 0
++		}
++	}
++
+ 	data, err := proto.Marshal(md)
+ 	if err != nil {
+ 		return err
+-- 
+2.37.3
+
