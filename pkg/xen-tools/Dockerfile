@@ -1,4 +1,4 @@
-FROM lfedge/eve-uefi:a2130b68b82abfc72e520101f32a60eced2a044f as uefi-build
+FROM lfedge/eve-uefi:b66d94780b1986e13d4db082adb5630a95911089 as uefi-build
 
 FROM lfedge/eve-alpine:145f062a40639b6c65efa36bed1c5614b873be52 as runx-build
 ENV BUILD_PKGS mkinitfs gcc musl-dev e2fsprogs
