@@ -1,4 +1,4 @@
-From 4247fe457ea18f2d4c7467d431dc048b3451cb04 Mon Sep 17 00:00:00 2001
+From 05439ff5907f430a2f53459abe3cd23466185268 Mon Sep 17 00:00:00 2001
 From: Colin Xu <colin.xu@intel.com>
 Date: Thu, 27 May 2021 09:08:25 +0800
 Subject: [PATCH] OvmfPkg/PlatformGopPolicy: Add OpRegion 2.1 support.
@@ -9,7 +9,7 @@ Signed-off-by: Colin Xu <colin.xu@intel.com>
  1 file changed, 30 insertions(+), 9 deletions(-)
 
 diff --git a/OvmfPkg/PlatformGopPolicy/PlatformGopPolicy.c b/OvmfPkg/PlatformGopPolicy/PlatformGopPolicy.c
-index d94f154c0279..2df8def8e20d 100644
+index 90db053584..f204dac484 100644
 --- a/OvmfPkg/PlatformGopPolicy/PlatformGopPolicy.c
 +++ b/OvmfPkg/PlatformGopPolicy/PlatformGopPolicy.c
 @@ -93,7 +93,21 @@ GetVbtData (
@@ -83,5 +83,5 @@ index d94f154c0279..2df8def8e20d 100644
        /* Fix the checksum */
        for (UINT32 i = 0; i < ((VBT_HEADER*)mVbt)->Table_Size; i++) {
 -- 
-2.31.1
+2.25.1
 

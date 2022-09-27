@@ -1,4 +1,4 @@
-From 4b38f8f132b10c038de87b52ee6d97c84656293c Mon Sep 17 00:00:00 2001
+From d4007281ff00feef2f496dae0ab9cc3b16a163ba Mon Sep 17 00:00:00 2001
 From: Colin Xu <colin.xu@intel.com>
 Date: Thu, 27 May 2021 16:36:37 +0800
 Subject: [PATCH] OvmfPkg/PlatformPei: Reserve IGD Stolen in E820.
@@ -7,14 +7,14 @@ Read DSM info from QemuFwCfg and reserve in E820.
 
 Signed-off-by: Colin Xu <colin.xu@intel.com>
 ---
- OvmfPkg/PlatformPei/Platform.c | 46 ++++++++++++++++++++++++++++++++++
- 1 file changed, 46 insertions(+)
+ OvmfPkg/XenPlatformPei/Platform.c | 49 ++++++++++++++++++++++++++++++-
+ 1 file changed, 48 insertions(+), 1 deletion(-)
 
-diff --git a/OvmfPkg/PlatformPei/Platform.c b/OvmfPkg/PlatformPei/Platform.c
-index 96468701e3b8..4a883e965b17 100644
---- a/OvmfPkg/PlatformPei/Platform.c
-+++ b/OvmfPkg/PlatformPei/Platform.c
-@@ -457,6 +457,50 @@ ReserveEmuVariableNvStore (
+diff --git a/OvmfPkg/XenPlatformPei/Platform.c b/OvmfPkg/XenPlatformPei/Platform.c
+index 2d97a41ca7..260e80df11 100644
+--- a/OvmfPkg/XenPlatformPei/Platform.c
++++ b/OvmfPkg/XenPlatformPei/Platform.c
+@@ -388,6 +388,51 @@ ReserveEmuVariableNvStore (
    ASSERT_RETURN_ERROR (PcdStatus);
  }
  
@@ -62,18 +62,21 @@ index 96468701e3b8..4a883e965b17 100644
 +    }
 +  }
 +}
- 
++
  VOID
  DebugDumpCmos (
-@@ -705,6 +749,8 @@ InitializePlatform (
- 
-   XenDetect ();
- 
+   VOID
+@@ -436,7 +481,9 @@ InitializeXenPlatform (
+     ASSERT (FALSE);
+     CpuDeadLoop ();
+   }
+-
++  
 +  ReserveIgdStolen ();
-+
-   if (QemuFwCfgS3Enabled ()) {
-     DEBUG ((DEBUG_INFO, "S3 support was detected on QEMU\n"));
-     mS3Supported = TRUE;
++  
+   //
+   // This S3 conditional test is mainly for HVM Direct Kernel Boot since
+   // QEMU fwcfg isn't really supported other than that.
 -- 
-2.31.1
+2.25.1
 

@@ -1,4 +1,4 @@
-From 4144c27b6922fa284a32ae104a29e9d508ae1af4 Mon Sep 17 00:00:00 2001
+From 7feaa4cd6f331af4ebd9b0e470c5aae90c4aeda7 Mon Sep 17 00:00:00 2001
 From: Colin Xu <colin.xu@intel.com>
 Date: Sun, 25 Apr 2021 12:45:06 -0600
 Subject: [PATCH] OvmfPkg: add IgdAssignmentDxe
@@ -35,7 +35,7 @@ Signed-off-by: Colin Xu <colin.xu@intel.com>
 
 diff --git a/OvmfPkg/IgdAssignmentDxe/IgdAssignment.c b/OvmfPkg/IgdAssignmentDxe/IgdAssignment.c
 new file mode 100644
-index 000000000000..67f4fc8cd9ec
+index 0000000000..3b333ec6e7
 --- /dev/null
 +++ b/OvmfPkg/IgdAssignmentDxe/IgdAssignment.c
 @@ -0,0 +1,594 @@
@@ -635,7 +635,7 @@ index 000000000000..67f4fc8cd9ec
 +}
 diff --git a/OvmfPkg/IgdAssignmentDxe/IgdAssignment.inf b/OvmfPkg/IgdAssignmentDxe/IgdAssignment.inf
 new file mode 100644
-index 000000000000..241c57b6e257
+index 0000000000..2229cddffa
 --- /dev/null
 +++ b/OvmfPkg/IgdAssignmentDxe/IgdAssignment.inf
 @@ -0,0 +1,43 @@
@@ -683,29 +683,29 @@ index 000000000000..241c57b6e257
 +[Depex]
 +  TRUE
 diff --git a/OvmfPkg/OvmfPkgX64.dsc b/OvmfPkg/OvmfPkgX64.dsc
-index b80710fbdca4..565e0573b24d 100644
+index 6e68f60dc9..3a2117bc9e 100644
 --- a/OvmfPkg/OvmfPkgX64.dsc
 +++ b/OvmfPkg/OvmfPkgX64.dsc
-@@ -783,6 +783,7 @@
-   OvmfPkg/XenIoPciDxe/XenIoPciDxe.inf
-   OvmfPkg/XenBusDxe/XenBusDxe.inf
-   OvmfPkg/XenPvBlkDxe/XenPvBlkDxe.inf
+@@ -864,6 +864,7 @@
+   OvmfPkg/VirtioBlkDxe/VirtioBlk.inf
+   OvmfPkg/VirtioScsiDxe/VirtioScsi.inf
+   OvmfPkg/VirtioRngDxe/VirtioRng.inf
 +  OvmfPkg/IgdAssignmentDxe/IgdAssignment.inf
  !if $(PVSCSI_ENABLE) == TRUE
    OvmfPkg/PvScsiDxe/PvScsiDxe.inf
  !endif
 diff --git a/OvmfPkg/OvmfPkgX64.fdf b/OvmfPkg/OvmfPkgX64.fdf
-index 8da59037e5f0..00098b18d911 100644
+index 438806fba8..8475abc6e6 100644
 --- a/OvmfPkg/OvmfPkgX64.fdf
 +++ b/OvmfPkg/OvmfPkgX64.fdf
-@@ -240,6 +240,7 @@ INF  OvmfPkg/VirtioRngDxe/VirtioRng.inf
- INF  OvmfPkg/XenIoPciDxe/XenIoPciDxe.inf
- INF  OvmfPkg/XenBusDxe/XenBusDxe.inf
- INF  OvmfPkg/XenPvBlkDxe/XenPvBlkDxe.inf
+@@ -264,6 +264,7 @@ INF  OvmfPkg/Virtio10Dxe/Virtio10.inf
+ INF  OvmfPkg/VirtioBlkDxe/VirtioBlk.inf
+ INF  OvmfPkg/VirtioScsiDxe/VirtioScsi.inf
+ INF  OvmfPkg/VirtioRngDxe/VirtioRng.inf
 +INF  OvmfPkg/IgdAssignmentDxe/IgdAssignment.inf
  !if $(PVSCSI_ENABLE) == TRUE
  INF  OvmfPkg/PvScsiDxe/PvScsiDxe.inf
  !endif
 -- 
-2.31.1
+2.25.1
 

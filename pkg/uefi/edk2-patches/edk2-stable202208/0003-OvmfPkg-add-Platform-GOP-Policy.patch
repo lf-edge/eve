@@ -1,4 +1,4 @@
-From f21e0f89e27d34c16e1d1c706e007a5735afb6b5 Mon Sep 17 00:00:00 2001
+From 7b5df463165722cf4389ae32b969378817d040f6 Mon Sep 17 00:00:00 2001
 From: Colin Xu <colin.xu@intel.com>
 Date: Sun, 25 Apr 2021 12:50:17 -0600
 Subject: [PATCH] OvmfPkg: add Platform GOP Policy
@@ -26,7 +26,7 @@ Signed-off-by: Colin Xu <colin.xu@intel.com>
 
 diff --git a/OvmfPkg/Include/Protocol/PlatformGopPolicy.h b/OvmfPkg/Include/Protocol/PlatformGopPolicy.h
 new file mode 100644
-index 000000000000..e29c8690fd7c
+index 0000000000..e29c8690fd
 --- /dev/null
 +++ b/OvmfPkg/Include/Protocol/PlatformGopPolicy.h
 @@ -0,0 +1,68 @@
@@ -99,36 +99,36 @@ index 000000000000..e29c8690fd7c
 +
 +#endif
 diff --git a/OvmfPkg/OvmfPkg.dec b/OvmfPkg/OvmfPkg.dec
-index 6abde4fd9351..b46b5778e28e 100644
+index 5af76a5405..8d6eda4bcb 100644
 --- a/OvmfPkg/OvmfPkg.dec
 +++ b/OvmfPkg/OvmfPkg.dec
-@@ -136,6 +136,7 @@
-   gEfiLegacyInterruptProtocolGuid       = {0x31ce593d, 0x108a, 0x485d, {0xad, 0xb2, 0x78, 0xf2, 0x1f, 0x29, 0x66, 0xbe}}
-   gEfiVgaMiniPortProtocolGuid           = {0xc7735a2f, 0x88f5, 0x4882, {0xae, 0x63, 0xfa, 0xac, 0x8c, 0x8b, 0x86, 0xb3}}
-   gOvmfLoadedX86LinuxKernelProtocolGuid = {0xa3edc05d, 0xb618, 0x4ff6, {0x95, 0x52, 0x76, 0xd7, 0x88, 0x63, 0x43, 0xc8}}
+@@ -176,6 +176,7 @@
+   gQemuAcpiTableNotifyProtocolGuid      = {0x928939b2, 0x4235, 0x462f, {0x95, 0x80, 0xf6, 0xa2, 0xb2, 0xc2, 0x1a, 0x4f}}
+   gEfiMpInitLibMpDepProtocolGuid        = {0xbb00a5ca, 0x8ce,  0x462f, {0xa5, 0x37, 0x43, 0xc7, 0x4a, 0x82, 0x5c, 0xa4}}
+   gEfiMpInitLibUpDepProtocolGuid        = {0xa9e7cef1, 0x5682, 0x42cc, {0xb1, 0x23, 0x99, 0x30, 0x97, 0x3f, 0x4a, 0x9f}}
 +  gPlatformGOPPolicyGuid                = {0xec2e931b, 0x3281, 0x48a5, {0x81, 0x07, 0xdf, 0x8a, 0x8b, 0xed, 0x3c, 0x5d}}
  
  [PcdsFixedAtBuild]
    gUefiOvmfPkgTokenSpaceGuid.PcdOvmfPeiMemFvBase|0x0|UINT32|0
 diff --git a/OvmfPkg/OvmfPkgX64.dsc b/OvmfPkg/OvmfPkgX64.dsc
-index 565e0573b24d..f3a27f33f518 100644
+index 3a2117bc9e..b4505d09db 100644
 --- a/OvmfPkg/OvmfPkgX64.dsc
 +++ b/OvmfPkg/OvmfPkgX64.dsc
-@@ -784,6 +784,7 @@
-   OvmfPkg/XenBusDxe/XenBusDxe.inf
-   OvmfPkg/XenPvBlkDxe/XenPvBlkDxe.inf
+@@ -865,6 +865,7 @@
+   OvmfPkg/VirtioScsiDxe/VirtioScsi.inf
+   OvmfPkg/VirtioRngDxe/VirtioRng.inf
    OvmfPkg/IgdAssignmentDxe/IgdAssignment.inf
 +  OvmfPkg/PlatformGopPolicy/PlatformGopPolicy.inf
  !if $(PVSCSI_ENABLE) == TRUE
    OvmfPkg/PvScsiDxe/PvScsiDxe.inf
  !endif
 diff --git a/OvmfPkg/OvmfPkgX64.fdf b/OvmfPkg/OvmfPkgX64.fdf
-index 00098b18d911..a782f86ffec8 100644
+index 8475abc6e6..93fd4abc88 100644
 --- a/OvmfPkg/OvmfPkgX64.fdf
 +++ b/OvmfPkg/OvmfPkgX64.fdf
-@@ -241,6 +241,7 @@ INF  OvmfPkg/XenIoPciDxe/XenIoPciDxe.inf
- INF  OvmfPkg/XenBusDxe/XenBusDxe.inf
- INF  OvmfPkg/XenPvBlkDxe/XenPvBlkDxe.inf
+@@ -265,6 +265,7 @@ INF  OvmfPkg/VirtioBlkDxe/VirtioBlk.inf
+ INF  OvmfPkg/VirtioScsiDxe/VirtioScsi.inf
+ INF  OvmfPkg/VirtioRngDxe/VirtioRng.inf
  INF  OvmfPkg/IgdAssignmentDxe/IgdAssignment.inf
 +INF  OvmfPkg/PlatformGopPolicy/PlatformGopPolicy.inf
  !if $(PVSCSI_ENABLE) == TRUE
@@ -136,7 +136,7 @@ index 00098b18d911..a782f86ffec8 100644
  !endif
 diff --git a/OvmfPkg/PlatformGopPolicy/PlatformGopPolicy.c b/OvmfPkg/PlatformGopPolicy/PlatformGopPolicy.c
 new file mode 100644
-index 000000000000..d94f154c0279
+index 0000000000..90db053584
 --- /dev/null
 +++ b/OvmfPkg/PlatformGopPolicy/PlatformGopPolicy.c
 @@ -0,0 +1,206 @@
@@ -348,7 +348,7 @@ index 000000000000..d94f154c0279
 +}
 diff --git a/OvmfPkg/PlatformGopPolicy/PlatformGopPolicy.inf b/OvmfPkg/PlatformGopPolicy/PlatformGopPolicy.inf
 new file mode 100644
-index 000000000000..705b4960b8cd
+index 0000000000..2ce8de6884
 --- /dev/null
 +++ b/OvmfPkg/PlatformGopPolicy/PlatformGopPolicy.inf
 @@ -0,0 +1,50 @@
@@ -403,5 +403,5 @@ index 000000000000..705b4960b8cd
 +[Depex]
 +  TRUE
 -- 
-2.31.1
+2.25.1
 

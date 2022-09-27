@@ -1,4 +1,4 @@
-From b64249a66fa21851737348eadbf06d1f8336c825 Mon Sep 17 00:00:00 2001
+From 42b0fc4b2b4ee535a7a831df483caf5edf5e0b05 Mon Sep 17 00:00:00 2001
 From: Colin Xu <colin.xu@intel.com>
 Date: Sun, 25 Apr 2021 16:46:52 +0800
 Subject: [PATCH] OvmfPkg: Add OpRegion and VBT header definition
@@ -15,7 +15,7 @@ Signed-off-by: Colin Xu <colin.xu@intel.com>
 
 diff --git a/OvmfPkg/Include/IndustryStandard/AssignedIgd.h b/OvmfPkg/Include/IndustryStandard/AssignedIgd.h
 new file mode 100644
-index 000000000000..1543e20b08d0
+index 0000000000..4e536d136b
 --- /dev/null
 +++ b/OvmfPkg/Include/IndustryStandard/AssignedIgd.h
 @@ -0,0 +1,51 @@
@@ -72,7 +72,7 @@ index 000000000000..1543e20b08d0
 +#endif // _ASSIGNED_IGD_H_
 diff --git a/OvmfPkg/Include/IndustryStandard/IgdOpRegion.h b/OvmfPkg/Include/IndustryStandard/IgdOpRegion.h
 new file mode 100644
-index 000000000000..4e9180c86b09
+index 0000000000..816fa8edb8
 --- /dev/null
 +++ b/OvmfPkg/Include/IndustryStandard/IgdOpRegion.h
 @@ -0,0 +1,181 @@
@@ -258,5 +258,5 @@ index 000000000000..4e9180c86b09
 +
 +#endif
 -- 
-2.31.1
+2.25.1
 
