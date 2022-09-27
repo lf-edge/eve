@@ -1,27 +1,26 @@
-From 25d4d8ca06e121f44a769f29e176ab75ae07f6d4 Mon Sep 17 00:00:00 2001
+From 54fe3230d62150b5b74a379786c6627d50ab6109 Mon Sep 17 00:00:00 2001
 From: Petr Fedchenkov <giggsoff@gmail.com>
 Date: Thu, 15 Jul 2021 22:15:03 +0300
 Subject: [PATCH] patch xen PlatformPei
 
 ---
- OvmfPkg/PlatformPei/Xen.c | 4 ++++
- 1 file changed, 4 insertions(+)
+ OvmfPkg/XenPlatformPei/Xen.c | 3 +++
+ 1 file changed, 3 insertions(+)
 
-diff --git a/OvmfPkg/PlatformPei/Xen.c b/OvmfPkg/PlatformPei/Xen.c
-index 104922c..f1eae10 100644
---- a/OvmfPkg/PlatformPei/Xen.c
-+++ b/OvmfPkg/PlatformPei/Xen.c
-@@ -137,6 +137,10 @@ XenDetect (
-       mXen = TRUE;
+diff --git a/OvmfPkg/XenPlatformPei/Xen.c b/OvmfPkg/XenPlatformPei/Xen.c
+index 7f00eef11e..8f31a79d98 100644
+--- a/OvmfPkg/XenPlatformPei/Xen.c
++++ b/OvmfPkg/XenPlatformPei/Xen.c
+@@ -261,6 +261,9 @@ XenDetect (
+     if (!AsciiStrCmp ((CHAR8 *)Signature, "XenVMMXenVMM")) {
        return TRUE;
      }
 +    if (!AsciiStrCmp ((CHAR8 *) Signature, "ZenZenZenZen")) {
-+      mXen = TRUE;
 +      return TRUE;
 +    }
    }
  
    mXenLeaf = 0;
 -- 
-2.30.2
+2.25.1
 
