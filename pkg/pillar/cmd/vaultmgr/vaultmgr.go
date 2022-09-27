@@ -65,7 +65,6 @@ type vaultMgrContext struct {
 
 const (
 	agentName              = "vaultmgr"
-	keyctlPath             = "/bin/keyctl"
 	deprecatedImgVault     = types.PersistDir + "/img"
 	deprecatedCfgVault     = types.PersistDir + "/config"
 	defaultVault           = types.PersistDir + "/vault"
@@ -83,7 +82,6 @@ const (
 )
 
 var (
-	keyctlParams      = []string{"link", "@u", "@s"}
 	mntPointParams    = []string{"setup", vault.MountPoint, "--quiet"}
 	vaultStatusParams = []string{"status"}
 	debug             = false
@@ -246,13 +244,6 @@ func execCmd(command string, args ...string) (string, string, error) {
 	return stdoutStr, stderrStr, err
 }
 
-func linkKeyrings() error {
-	if _, _, err := execCmd(keyctlPath, keyctlParams...); err != nil {
-		return fmt.Errorf("Error in linking user keyring %v", err)
-	}
-	return nil
-}
-
 func retrieveTpmKey(useSealedKey bool) ([]byte, error) {
 	if useSealedKey {
 		return etpm.FetchSealedVaultKey(log)
@@ -404,7 +395,7 @@ func unlockVault(vaultPath string, cloudKeyOnlyMode, useSealedKey bool) error {
 		log.Errorf("Error unlocking vault: %v", err)
 		return err
 	}
-	return linkKeyrings()
+	return nil
 }
 
 //createVault expects an empty, existing dir at vaultPath
@@ -432,7 +423,7 @@ func createVault(vaultPath string) error {
 		log.Errorf("Encryption failed: %v, %s, %s", err, stdout, stderr)
 		return err
 	}
-	return linkKeyrings()
+	return nil
 }
 
 //Is fscrypt saying that this folder is encrypted?

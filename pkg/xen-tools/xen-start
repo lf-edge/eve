@@ -59,9 +59,6 @@ xen_info() {
 mkdir -p /run/tasks >/dev/null 2>&1
 echo running > "/run/tasks/$1"
 
-# FIXME: this really needs to be managed by runc
-keyctl link @u @s
-
 # if HVM capabilities exist, we run PV guests as PVH
 if grep -q 'type.*=.*"pv"' "$2"; then
    # shellcheck disable=SC2089

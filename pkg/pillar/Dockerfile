@@ -20,7 +20,7 @@ ENV BUILD_PKGS git gcc linux-headers libc-dev make linux-pam-dev m4 findutils go
     libintl libuuid libtirpc libblkid libcrypto1.1 zlib
 ENV PKGS alpine-baselayout musl-utils libtasn1-progs pciutils yajl xz bash iptables ip6tables iproute2 dhcpcd \
     coreutils dmidecode libbz2 libuuid ipset curl radvd ethtool util-linux e2fsprogs libcrypto1.1 xorriso \
-    qemu-img jq e2fsprogs-extra keyutils ca-certificates ip6tables-openrc iptables-openrc ipset-openrc hdparm \
+    qemu-img jq e2fsprogs-extra ca-certificates ip6tables-openrc iptables-openrc ipset-openrc hdparm \
     libintl libtirpc libblkid zlib
 RUN eve-alpine-deploy.sh
 

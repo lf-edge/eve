@@ -23,7 +23,7 @@ ENV BUILD_PKGS \
     attr-dev flex bison cmake libusb-dev
 ENV BUILD_PKGS_arm64 dtc-dev
 
-ENV PKGS alpine-baselayout musl-utils bash libaio libbz2 glib pixman yajl keyutils libusb xz-libs libuuid sudo
+ENV PKGS alpine-baselayout musl-utils bash libaio libbz2 glib pixman yajl libusb xz-libs libuuid sudo
 ENV PKGS_arm64 libfdt
 
 RUN eve-alpine-deploy.sh
