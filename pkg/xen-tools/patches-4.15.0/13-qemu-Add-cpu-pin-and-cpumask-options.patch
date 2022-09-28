@@ -1,0 +1,151 @@
+From ccfea3c5e131b3ee623aa5e4e16e13bf8d0291d2 Mon Sep 17 00:00:00 2001
+From: Nikolay Martyanov <ohmspectator@gmail.com>
+Date: Wed, 28 Sep 2022 15:47:11 +0200
+Subject: [PATCH 13/15] qemu: Add 'cpu-pin' and 'cpumask' options.
+
+Add the 'cpumask' option to set the CPU mask for the threads created by QEMU.
+The mask affects all the threads belonging to a VM: both VCPU threads and
+non-VCPU threads. If the option is not provided, it's considered to be '-1',
+which corresponds to all the available CPUs.
+The CPU mask in represented in the form "d[[,-]d]*". E.g. "0-2" or "0-2,5,6".
+CPUs start with 0. For example, the mask "0,3" would mean that only
+physical CPUs 0 and 3 are available for the VM.
+
+Add the 'cpu-pin' option to pin any VCPU thread to a specific CPU. If the
+option is set, any VCPU thread will be assigned to a CPU provided with the
+'cpumask'. If it's not provided, the VPCU threads can migrate from a CPU to a
+CPU within the set of CPUs provided by the 'cpumask' option.
+
+Signed-off-by: Nikolay Martyanov <ohmspectator@gmail.com>
+---
+ tools/qemu-xen/hw/core/machine.c   | 38 ++++++++++++++++++++++++++++++
+ tools/qemu-xen/include/hw/boards.h |  2 ++
+ tools/qemu-xen/qemu-options.hx     | 18 ++++++++++++++
+ tools/qemu-xen/softmmu/vl.c        |  4 ++++
+ 4 files changed, 62 insertions(+)
+
+diff --git a/tools/qemu-xen/hw/core/machine.c b/tools/qemu-xen/hw/core/machine.c
+index 8d1a90c..2f9993e 100644
+--- a/tools/qemu-xen/hw/core/machine.c
++++ b/tools/qemu-xen/hw/core/machine.c
+@@ -372,6 +372,35 @@ static void machine_set_graphics(Object *obj, bool value, Error **errp)
+     ms->enable_graphics = value;
+ }
+ 
++static bool machine_get_cpu_pin(Object *obj, Error **errp)
++{
++    MachineState *ms = MACHINE(obj);
++
++    return ms->cpu_pin;
++}
++
++static void machine_set_cpu_pin(Object *obj, bool value, Error **errp)
++{
++    MachineState *ms = MACHINE(obj);
++
++    ms->cpu_pin = value;
++}
++
++static char *machine_get_cpumask(Object *obj, Error **errp)
++{
++    MachineState *ms = MACHINE(obj);
++
++    return g_strdup(ms->cpumask_str);
++}
++
++static void machine_set_cpumask(Object *obj, const char *value, Error **errp)
++{
++    MachineState *ms = MACHINE(obj);
++
++    g_free(ms->cpumask_str);
++    ms->cpumask_str = g_strdup(value);
++}
++
+ static char *machine_get_firmware(Object *obj, Error **errp)
+ {
+     MachineState *ms = MACHINE(obj);
+@@ -841,6 +870,15 @@ static void machine_class_init(ObjectClass *oc, void *data)
+     object_class_property_set_description(oc, "usb",
+         "Set on/off to enable/disable usb");
+ 
++    object_class_property_add_bool(oc, "cpu-pin",
++        machine_get_cpu_pin, machine_set_cpu_pin);
++    object_class_property_set_description(oc, "cpu-pin",
++        "Set on/off to enable/disable CPU pinning");
++
++    object_class_property_add_str(oc, "cpumask",
++        machine_get_cpumask, machine_set_cpumask);
++    object_class_property_set_description(oc, "cpumask", "CPU Mask");
++
+     object_class_property_add_bool(oc, "graphics",
+         machine_get_graphics, machine_set_graphics);
+     object_class_property_set_description(oc, "graphics",
+diff --git a/tools/qemu-xen/include/hw/boards.h b/tools/qemu-xen/include/hw/boards.h
+index 426ce5f..b06f13e 100644
+--- a/tools/qemu-xen/include/hw/boards.h
++++ b/tools/qemu-xen/include/hw/boards.h
+@@ -294,6 +294,8 @@ struct MachineState {
+     char *kernel_filename;
+     char *kernel_cmdline;
+     char *initrd_filename;
++    bool cpu_pin;
++    char *cpumask_str;
+     const char *cpu_type;
+     AccelState *accelerator;
+     CPUArchIdList *possible_cpus;
+diff --git a/tools/qemu-xen/qemu-options.hx b/tools/qemu-xen/qemu-options.hx
+index 708583b..a33ee1e 100644
+--- a/tools/qemu-xen/qemu-options.hx
++++ b/tools/qemu-xen/qemu-options.hx
+@@ -509,6 +509,24 @@ SRST
+     Preallocate memory when using -mem-path.
+ ERST
+ 
++DEF("cpu-pin", 0, QEMU_OPTION_cpu_pin,
++    "-cpu-pin   pin any VPCU thread to a physical CPU\n",
++    QEMU_ARCH_ALL)
++SRST
++``-cpu-pin``
++    Pin any VCPU thread to a physical CPU.
++ERST
++
++DEF("cpumask", HAS_ARG, QEMU_OPTION_cpumask,
++    "-cpumask=value   define the set of CPUs used by the VM\n",
++    QEMU_ARCH_ALL)
++SRST
++``-cpumask=value``
++    CPU mask in form "d[[,-]d]*". E.g. "0-2" or "0-2,5,6". CPUs start with 0.
++    For example, the mask "0,3" would mean that only physical CPUs 0 and 3 are
++    available for the VM.
++ERST
++
+ DEF("k", HAS_ARG, QEMU_OPTION_k,
+     "-k language     use keyboard layout (for example 'fr' for French)\n",
+     QEMU_ARCH_ALL)
+diff --git a/tools/qemu-xen/softmmu/vl.c b/tools/qemu-xen/softmmu/vl.c
+index 4eb9d1f..c7c8abc 100644
+--- a/tools/qemu-xen/softmmu/vl.c
++++ b/tools/qemu-xen/softmmu/vl.c
+@@ -2868,6 +2868,7 @@ void qemu_init(int argc, char **argv, char **envp)
+     BlockdevOptionsQueue bdo_queue = QSIMPLEQ_HEAD_INITIALIZER(bdo_queue);
+     QemuPluginList plugin_list = QTAILQ_HEAD_INITIALIZER(plugin_list);
+     int mem_prealloc = 0; /* force preallocation of physical target memory */
++    bool cpu_pin = false;
+ 
+     os_set_line_buffering();
+ 
+@@ -3638,6 +3639,9 @@ void qemu_init(int argc, char **argv, char **envp)
+             case QEMU_OPTION_nodefaults:
+                 has_defaults = 0;
+                 break;
++	    case QEMU_OPTION_cpu_pin:
++		cpu_pin = true;
++		break;
+             case QEMU_OPTION_xen_domid:
+                 if (!(xen_available())) {
+                     error_report("Option not supported for this target");
+
+base-commit: 9c55fdd5e54c5ea4bf238cee787f13a03eac1c86
+-- 
+2.35.1
+
