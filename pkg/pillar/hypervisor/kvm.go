@@ -813,7 +813,7 @@ func (ctx kvmContext) Info(domainName string) (int, types.SwState, error) {
 }
 
 func (ctx kvmContext) Cleanup(domainName string) error {
-	if err := ctx.ctrdContext.Delete(domainName); err != nil {
+	if err := ctx.ctrdContext.Cleanup(domainName); err != nil {
 		return fmt.Errorf("couldn't cleanup task %s: %v", domainName, err)
 	}
 	if err := waitForQmp(domainName, false); err != nil {
