@@ -1,0 +1,189 @@
+From ee13ecbab30e8a0d42e9c870e9a234ebcd0f45c9 Mon Sep 17 00:00:00 2001
+From: Nikolay Martyanov <ohmspectator@gmail.com>
+Date: Wed, 28 Sep 2022 15:52:24 +0200
+Subject: [PATCH 14/15] qemu: Init CPU mask per VCPU.
+
+Signed-off-by: Nikolay Martyanov <ohmspectator@gmail.com>
+---
+ tools/qemu-xen/include/hw/boards.h   |  1 +
+ tools/qemu-xen/include/hw/core/cpu.h |  2 +
+ tools/qemu-xen/softmmu/cpus.c        | 31 +++++++++++
+ tools/qemu-xen/softmmu/vl.c          | 81 ++++++++++++++++++++++++++++
+ 4 files changed, 115 insertions(+)
+
+diff --git a/tools/qemu-xen/include/hw/boards.h b/tools/qemu-xen/include/hw/boards.h
+index b06f13e..a4b4f11 100644
+--- a/tools/qemu-xen/include/hw/boards.h
++++ b/tools/qemu-xen/include/hw/boards.h
+@@ -296,6 +296,7 @@ struct MachineState {
+     char *initrd_filename;
+     bool cpu_pin;
+     char *cpumask_str;
++    uint64_t cpumask;
+     const char *cpu_type;
+     AccelState *accelerator;
+     CPUArchIdList *possible_cpus;
+diff --git a/tools/qemu-xen/include/hw/core/cpu.h b/tools/qemu-xen/include/hw/core/cpu.h
+index 8f14573..628b31a 100644
+--- a/tools/qemu-xen/include/hw/core/cpu.h
++++ b/tools/qemu-xen/include/hw/core/cpu.h
+@@ -374,6 +374,8 @@ struct CPUState {
+     bool created;
+     bool stop;
+     bool stopped;
++    bool pinned;
++    uint64_t cpumask;
+     bool unplug;
+     bool crash_occurred;
+     bool exit_request;
+diff --git a/tools/qemu-xen/softmmu/cpus.c b/tools/qemu-xen/softmmu/cpus.c
+index a802e89..da56052 100644
+--- a/tools/qemu-xen/softmmu/cpus.c
++++ b/tools/qemu-xen/softmmu/cpus.c
+@@ -2011,6 +2011,23 @@ static void qemu_dummy_start_vcpu(CPUState *cpu)
+                        QEMU_THREAD_JOINABLE);
+ }
+ 
++static inline void cpumask_clear_bit(uint64_t *mask, uint8_t bit)
++{
++    *mask &= ~(1ul << bit);
++}
++
++static inline long cpumask_get_min_bit(uint64_t mask)
++{
++  return __builtin_ffsll(mask) - 1;
++}
++
++static long pick_pcpu(uint64_t *cpumask)
++{
++    long ret = cpumask_get_min_bit(*cpumask);
++    cpumask_clear_bit(cpumask, ret);
++    return ret;
++}
++
+ void qemu_init_vcpu(CPUState *cpu)
+ {
+     MachineState *ms = MACHINE(qdev_get_machine());
+@@ -2019,6 +2036,20 @@ void qemu_init_vcpu(CPUState *cpu)
+     cpu->nr_threads =  ms->smp.threads;
+     cpu->stopped = true;
+     cpu->random_seed = qemu_guest_random_seed_thread_part1();
++    cpu->pinned = ms->cpu_pin;
++    static uint64_t vm_cpumask;
++    uint64_t vcpu_cpumask;
++    if (!vm_cpumask)
++        vm_cpumask = ms->cpumask;
++    if (!cpu->pinned) {
++        /* If the CPUs are not pinned, assign the whole CPU mask to the VCPU */
++        vcpu_cpumask = vm_cpumask;
++    } else {
++        /* If the CPUs are pinned, pick only one CPU for this VCPU */
++        vcpu_cpumask = 1ull << pick_pcpu(&vm_cpumask);
++    }
++
++    cpu->cpumask = vcpu_cpumask;
+ 
+     if (!cpu->as) {
+         /* If the target cpu hasn't set up any address spaces itself,
+diff --git a/tools/qemu-xen/softmmu/vl.c b/tools/qemu-xen/softmmu/vl.c
+index c7c8abc..34c5a75 100644
+--- a/tools/qemu-xen/softmmu/vl.c
++++ b/tools/qemu-xen/softmmu/vl.c
+@@ -2829,6 +2829,73 @@ static void create_default_memdev(MachineState *ms, const char *path)
+                             &error_fatal);
+ }
+ 
++static inline unsigned get_max_cpu_in_mask(unsigned int cpumask)
++{
++    return (sizeof(cpumask) * BITS_PER_BYTE) - __builtin_clz(cpumask) - 1;
++}
++
++static inline void cpumask_set_bit(uint64_t *mask, uint8_t bit)
++{
++    *mask |= 1ull << bit ;
++}
++
++/* Parse d[[,-]d]* mask (0-2 or 0-2,5,6). CPUs start with 0.
++ * Return 0 in case of error, bitmask if ok
++ */
++static uint64_t cpumask_parse(const char* cpumask_str)
++{
++    uint64_t cpumask = 0;
++    const char *cur = cpumask_str;
++    bool range = false;
++
++    assert(cpumask_str != NULL);
++
++    if (strcmp(cpumask_str, "") == 0)
++        return 0;
++
++    if (cpumask_str[0] == '-') {
++        warn_report("The CPU mask cannot start with -\n");
++        return 0;
++    }
++
++    uint8_t last_set;
++    while (*cur) {
++        unsigned long num;
++        char *end;
++        if (*cur == '-') {
++            cur++;
++            range = true;
++            continue;
++        }
++        if (*cur == ',') {
++            cur++;
++            continue;
++        }
++        num = strtoul(cur, &end, 10);
++        if (num > UCHAR_MAX) {
++            warn_report ("Too big CPU number is provided! Numbers more than %d "
++                         "are not supported at the moment!\n", UCHAR_MAX);
++            return 0;
++        }
++        if (end != cur) {
++            if (num == 0 || num > sizeof(cpumask) * BITS_PER_BYTE)
++                return 0;
++            if (range) {
++                range = false;
++                for (int i = last_set + 1; i < num; i++)
++                    cpumask_set_bit(&cpumask, i);
++            }
++            cpumask_set_bit(&cpumask, num);
++            last_set = num;
++            cur = end;
++            continue;
++        }
++        warn_report("The CPU mask option is broken!\n");
++        return 0;
++    }
++    return cpumask;
++}
++
+ void qemu_init(int argc, char **argv, char **envp)
+ {
+     int i;
+@@ -4306,6 +4373,20 @@ void qemu_init(int argc, char **argv, char **envp)
+ 
+     current_machine->boot_order = boot_order;
+ 
++    current_machine->cpumask = 0;
++    if (current_machine->cpumask_str) {
++        current_machine->cpumask = cpumask_parse(current_machine->cpumask_str);
++        if (!current_machine->cpumask) {
++            warn_report ("The CPU mask option is broken, use all available CPUs\n");
++            current_machine->cpumask = ~0ull;
++        }
++    }
++    if (current_machine->cpu_pin) {
++        if (!current_machine->cpumask_str) {
++            current_machine->cpumask = ~0ull;
++        }
++    }
++
+     /* parse features once if machine provides default cpu_type */
+     current_machine->cpu_type = machine_class->default_cpu_type;
+     if (cpu_option) {
+-- 
+2.35.1
+
