@@ -179,6 +179,7 @@ func TestNewConfigItemSpecMap(t *testing.T) {
 		VgaAccess,
 		AllowAppVnc,
 		EveMemoryLimitInBytes,
+		VmmMemoryLimitInMiB,
 		IgnoreMemoryCheckForApps,
 		IgnoreDiskCheckForApps,
 		AllowLogFastupload,
