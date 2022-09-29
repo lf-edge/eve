@@ -39,6 +39,7 @@
 | force.fallback.counter | integer | 0 | forces fallback to other image if counter is changed |
 | newlog.allow.fastupload | boolean | false | allow faster upload gzip logfiles to controller |
 | memory.apps.ignore.check | boolean | false | Ignore memory usage check for Apps|
+| memory.vmm.limit.MiB | integer | 0 | Manually override how much overhead is allocated for each running VMM |
 | newlog.gzipfiles.ondisk.maxmegabytes | integer in Mbytes | 2048 | the quota for keepig newlog gzip files on device |
 | process.cloud-init.multipart | boolean | false | help VMs which do not handle mime multi-part themselves |
 | edgeview.authen.jwt | edgeview session jwt token | empty string(edgeview disabled) | format as standard JWT for websocket session for temporary testing, this configitem will be removed once controllers are setup to send EdgeViewConfig in configuration |

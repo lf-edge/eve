@@ -490,10 +490,21 @@ func (ctx kvmContext) Setup(status types.DomainStatus, config types.DomainConfig
 		return logError("failed to add kvm hypervisor loader to domain %s: %v", status.DomainName, err)
 	}
 
-	/* 2.5 % of total memory */
-	qemuOverHead := int64(config.Memory) * 1024 * 25 / 1000
-	if qemuOverHead < minQemuOverHead {
-		qemuOverHead = minQemuOverHead
+	var qemuOverHead int64
+	if globalConfig != nil {
+		VmmOverheadOverrideCfgItem, ok := globalConfig.GlobalSettings[types.VmmMemoryLimitInMiB]
+		if !ok {
+			return logError("Missing key %s", string(types.VmmMemoryLimitInMiB))
+		}
+		qemuOverHead = int64(VmmOverheadOverrideCfgItem.IntValue) * 1024 * 1024
+	}
+
+	if qemuOverHead == 0 {
+		/* Default formula - 2.5 % of total memory */
+		qemuOverHead = int64(config.Memory) * 1024 * 25 / 1000
+		if qemuOverHead < minQemuOverHead {
+			qemuOverHead = minQemuOverHead
+		}
 	}
 
 	logrus.Debugf("Qemu overhead for domain %s is %d bytes", status.DomainName, qemuOverHead)

@@ -186,6 +186,8 @@ const (
 	AllowAppVnc GlobalSettingKey = "app.allow.vnc"
 	// EveMemoryLimitInBytes global setting key
 	EveMemoryLimitInBytes GlobalSettingKey = "memory.eve.limit.bytes"
+	// How much memory overhead is allowed for VMM needs
+	VmmMemoryLimitInMiB GlobalSettingKey = "memory.vmm.limit.MiB"
 	// IgnoreMemoryCheckForApps global setting key
 	IgnoreMemoryCheckForApps GlobalSettingKey = "memory.apps.ignore.check"
 	// IgnoreDiskCheckForApps global setting key
@@ -763,6 +765,8 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	configItemSpecMap.AddIntItem(ForceFallbackCounter, 0, 0, 0xFFFFFFFF)
 	configItemSpecMap.AddIntItem(EveMemoryLimitInBytes, uint32(eveMemoryLimitInBytes),
 		uint32(eveMemoryLimitInBytes), 0xFFFFFFFF)
+	// Limit manual vmm overhead override to 1 PiB
+	configItemSpecMap.AddIntItem(VmmMemoryLimitInMiB, 0, 0, uint32(1024*1024*1024))
 	// LogRemainToSendMBytes - Default is 2 Gbytes, minimum is 10 Mbytes
 	configItemSpecMap.AddIntItem(LogRemainToSendMBytes, 2048, 10, 0xFFFFFFFF)
 	configItemSpecMap.AddIntItem(DownloadMaxPortCost, 0, 0, 255)

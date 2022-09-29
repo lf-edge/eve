@@ -1279,7 +1279,8 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 	}
 	defer file.Close()
 
-	if err := hyper.Task(status).Setup(*status, config, ctx.assignableAdapters, nil, file); err != nil {
+	globalConfig := agentlog.GetGlobalConfig(log, ctx.subGlobalConfig)
+	if err := hyper.Task(status).Setup(*status, config, ctx.assignableAdapters, globalConfig, file); err != nil {
 		log.Errorf("Failed to create DomainStatus from %v: %s",
 			config, err)
 		status.SetErrorNow(err.Error())
