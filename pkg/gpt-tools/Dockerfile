@@ -24,7 +24,7 @@ RUN ./configure && make && make install
 
 
 WORKDIR /
-RUN mkdir -p /sgdisk/patches 
+RUN mkdir -p /sgdisk/patches
 COPY gptfdisk-${GPTFDISK_VERSION}.tar.gz /sgdisk
 COPY patches/* /sgdisk/patches/
 

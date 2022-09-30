@@ -153,7 +153,7 @@ services:
      oomScoreAdj: -999
 files:
    - path: /etc/eve-release
-     contents: '0.0.0-master-12a6fb8d-kvm-amd64'     
+     contents: '0.0.0-master-12a6fb8d-kvm-amd64'
    - path: /etc/linuxkit-eve-config.yml
      metadata: yaml
 ```

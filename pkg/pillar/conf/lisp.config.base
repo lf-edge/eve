@@ -1,15 +1,15 @@
 #
 # lispers.net lisp.config file, last changed: <sample>
 #
-# (1) Only commands between the first pair of dotted lines will be processed. 
+# (1) Only commands between the first pair of dotted lines will be processed.
 #
-# (2) Any lines you find prepended with "#>>>" are errors found during command 
+# (2) Any lines you find prepended with "#>>>" are errors found during command
 #     processing.
 #
-# (3) You may comment out lines by placing a "#" in the first column of any 
+# (3) You may comment out lines by placing a "#" in the first column of any
 #     line between the section between the first pair of dotted lines.
 #
-# (4) Note the modification timestamp above is auto generated after you have 
+# (4) Note the modification timestamp above is auto generated after you have
 #     saved this file and it has been processed.
 #
 # (5) Deleting configuration can be achieved by deleting lines and restarting
@@ -18,7 +18,7 @@
 # (6) The landing web page on any device provides detailed Command and API
 #     documentation.
 #
-# (7) Any name references must follow their definitions. Examples are 
+# (7) Any name references must follow their definitions. Examples are
 #     elp-names and rle-names when referred to in static map-cache entries.
 #
 # DO NOT WRITE TO ANY OTHER PART OF THIS FILE. YOU MUST ONLY ADD, CHANGE, OR

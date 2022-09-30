@@ -72,11 +72,11 @@ case "$1" in
           ;;
    start) [ -z "$2" ] && help
           ${CTR_CMD} c ls -q | grep -q $2 && echo "ERROR: make sure to run: $0 destroy $2" && help
-          /usr/bin/service -v start $2 
+          /usr/bin/service -v start $2
           ;;
- destroy) [ -z "$2" ] && help 
+ destroy) [ -z "$2" ] && help
           ${CTR_CMD} t kill -a -s SIGKILL $2
-          ${CTR_CMD} t delete $2 
+          ${CTR_CMD} t delete $2
           ${CTR_CMD} c rm $2
           ;;
    pause) [ -z "$2" ] && help
@@ -163,6 +163,6 @@ __EOT__
                      ;;
           esac
           ;;
-       *) help 
+       *) help
           ;;
-esac 
+esac
