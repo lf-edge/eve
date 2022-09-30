@@ -38,8 +38,6 @@ message BaseOSConfig {
 
 message BaseOS {
   // UUID for ContentTree with BaseOS image
-  // DisplayName of ContentTree should contain
-  // BaseOS version
   string content_tree_uuid = 1;
 
   // retry_update
@@ -55,4 +53,6 @@ message BaseOS {
   // if not set BaseOS will be installed,
   // but not activated
   bool activate = 3;
+
+  string base_os_version = 4;
 }
