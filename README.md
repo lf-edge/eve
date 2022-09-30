@@ -38,6 +38,51 @@ EVE Docker container `lfedge/eve:<version>` is used to produce these deployment 
 
 Try running `docker run lfedge/eve` to get the most up-to-date help message.
 
+The versions in the tag of `lfedge/eve:<version>` contain information as to which hypervisor and target architecture they
+support. The options are:
+
+* architecture: `amd64`, `arm64`, `riscv64`
+* hypervisor: `kvm`, `xen`, `mini`
+
+Note that not all hypervisors are supported on all architectures.
+
+For example:
+
+* `docker run lfedge/eve:8.11.0-kvm-arm64 <command>`: installer for 8.11.0 using kvm on arm64
+* `docker run lfedge/eve:8.11.0-xen-arm64 <command>`: installer for 8.11.0 using xen on arm64
+* `docker run lfedge/eve:8.11.0-xen-amd64 <command>`: installer for 8.11.0 using xen on amd64
+* `docker run lfedge/eve:8.11.0-mini-riscv64 <command>`: installer for 8.11.0 using mini on riscv64
+
+Note that `<command>` is the appropriate command to run; leave it blank to get the help message.
+
+If you leave off the architecture it will default to whatever architecture you
+are running on.
+
+If you just use `snapshot` or `latest`, it will default to the architecture you are running on and the `kvm` hypervisor.
+
+For example:
+
+* `docker run lfedge/eve:8.11.0-kvm <command>`: installer for 8.11.0 using kvm on your architecture
+* `docker run lfedge/eve:latest <command>`: installer for latest image using kvm on your architecture
+
+Note that each docker image is built for the architecture for which it runs. Thus `lfedge/eve:8.11.0-kvm-arm64` not only
+installs an arm64 EVE image, but the docker image is intended to be run on arm64. If you are running on arm64, e.g. Mac M1,
+this works fine. If you are running on an amd64 architecture, docker normally will determine the right architecture.
+
+However, you should indicate to docker your target platform via `--platform`:
+
+```sh
+docker run --platform=linux/arm64 lfedge/eve:8.11.0-kvm-arm64
+```
+
+or
+
+```sh
+docker run --platform=linux/amd64 lfedge/eve:8.11.0-kvm-amd64
+```
+
+The above is unnecessary, but does not hurt, if you already are running on the target architecture.
+
 ### Install Dependencies
 
 The following steps are required to build and run EVE from source:
