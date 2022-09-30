@@ -13,7 +13,7 @@
 # +----------------------------+
 # |  rootfs partition w/GRUB   |
 # +----------------------------+
-# 
+#
 # In addition to producing this minimalistic (but fully functional!) layout,
 # this script is also capable of initializing a few additional partitions
 # that are required for live upgrade and configuration:
@@ -25,15 +25,15 @@
 # to be called mostly from other scripts (and also linuxkit VMs).
 # The syntax is:
 #   [-r] <img> [part1...]
-# 
+#
 # -r          use random_disk_uuids (old behavior)
-# <img>       file name of the raw disk image (we expect it to be pre-created and 
+# <img>       file name of the raw disk image (we expect it to be pre-created and
 #             sized correctly OR be an actual physical device)
 # [part1...]  list of partitions to be created: efi imga imgb conf persist
 #             Can be omitted. Default is: efi imga imgb conf persist
-# 
+#
 # On stdin, this scripts expects to receive a tarball full of partition images
-# that will be used to pre-populated actual partitions it creates. This tarball 
+# that will be used to pre-populated actual partitions it creates. This tarball
 # is going to be received from stdin and extracted into /parts folder. This means,
 # of course, that if you don't supply a tarball stream to the script you can just
 # pre-populate /parts with the same images:
@@ -70,7 +70,7 @@ IMGB_UUID=ad6871ee-31f9-4cf3-9e09-6f7a25c30053
 CONF_UUID=ad6871ee-31f9-4cf3-9e09-6f7a25c30054
 PERSIST_UUID=ad6871ee-31f9-4cf3-9e09-6f7a25c30059
 
-# EFI partition size in bytes 
+# EFI partition size in bytes
 EFI_PART_SIZE=$((36 * 1024 * 1024))
 # rootfs partition size in bytes
 ROOTFS_PART_SIZE=$(( 300 * 1024 * 1024 ))
@@ -282,7 +282,7 @@ do_persist() {
         sgdisk --partition-guid="$NUM_PART:$PERSIST_UUID" "$IMGFILE"
     fi
     dd if="$PERSIST_FILE" of="$IMGFILE" bs=1M conv=notrunc seek="$(( SEC_START * 512 ))" oflag=seek_bytes
-    
+
     eval $1=0
 }
 
@@ -359,7 +359,7 @@ fi
 
 # content of rootfs partition
 ROOTFS_IMG=/parts/rootfs.img
-# content of conf partition 
+# content of conf partition
 CONF_FILE=/parts/config.img
 # content of persist partition
 PERSIST_FILE=/parts/persist.img
@@ -386,7 +386,7 @@ case "$(sgdisk -p $IMGFILE 2>/dev/null | sed -ne '/^Number/,$s/^.* //p' | tr '\0
       echo "Found Android GPT partition table on $IMGFILE"
       for p in $(sgdisk -p $IMGFILE 2>/dev/null | sed -e '1,/cache$/d' | awk '{print $1;}') ; do
         sgdisk -d $p $IMGFILE
-      done 
+      done
       PART_OFFSET=10
       CUR_SEC=$(( ( $(sgdisk -p $IMGFILE 2>/dev/null | tail -1 | awk '{print $3;}') / 2048 + 1 ) * 2048 ))
       EMBED_BOOT_START=$(sgdisk -i 6 $IMGFILE 2>/dev/null | awk '/First sector:/{ print $3; }')

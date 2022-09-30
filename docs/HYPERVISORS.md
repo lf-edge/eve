@@ -108,4 +108,4 @@ While IOMMU tries to make hardware presented to the domain look indistinguishabl
 * [Xen spoofing](../pkg/xen-tools/patches-4.13.0/05-xen-spoofing.patch)
 * [KVM spoofing](https://forum.level1techs.com/t/the-pragmatic-neckbeard-4-kvm-and-libvirt/112397)
 
-Finally, BIOS/firmware running as part of the domain plays a big role in how well IOMMU capabilities can be utilized. EVE has an option of switching to [UEFI firmware](../pkg/uefi) from a more compact [SeaBIOS](https://seabios.org/SeaBIOS) implementation whenever needed. 
+Finally, BIOS/firmware running as part of the domain plays a big role in how well IOMMU capabilities can be utilized. EVE has an option of switching to [UEFI firmware](../pkg/uefi) from a more compact [SeaBIOS](https://seabios.org/SeaBIOS) implementation whenever needed.
