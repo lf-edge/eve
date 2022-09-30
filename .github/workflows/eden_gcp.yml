@@ -6,6 +6,34 @@ on:  # yamllint disable-line rule:truthy
       - Publish
     types:
       - completed
+  workflow_dispatch:
+    inputs:
+      test_type:
+        description: 'test type'
+        required: true
+        type: choice
+        options:
+          - PR
+          - docker
+      pr_number:
+        description: '[PR] number'
+        required: false
+        type: string
+      eve_docker_tag:
+        description: '[docker] eve tag'
+        required: false
+      eve_docker_reg:
+        description: '[docker] eve registry'
+        required: false
+        type: choice
+        options:
+          - lfedge/eve
+          - evebuild/danger
+          - custom
+      eve_docker_reg_custom:
+        description: '[docker] eve custom registry'
+        required: false
+        type: string
 
 concurrency:
   group: ${{ github.workflow }}
@@ -82,16 +110,52 @@ jobs:
         env:
           OVPN_GCP_FILE: ${{ secrets.OVPN_FILE }}
           OVPN_ROL_FILE: ${{ secrets.ROL_OVPN_CONF_BASE64 }}
+      - name: Check workflow dispatch inputs
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          if [ "${{ github.event.inputs.test_type }}" == "docker" ]; then
+            if [ -z "${{ github.event.inputs.eve_docker_tag }}" ]; then echo "::error::eve_docker_tag is empty" && exit 1; fi
+            if [ -z "${{ github.event.inputs.eve_docker_reg }}" ]; then echo "::error::eve_docker_reg is empty" && exit 1; fi
+            if [ "${{ github.event.inputs.eve_docker_reg }}" == "custom"]; then
+              if [ -z "${{ github.event.inputs.eve_docker_reg_custom }}" ]; then echo "::error::eve_docker_reg_custom is empty" && exit 1; fi
+            fi
+          fi
+          if [ "${{ github.event.inputs.test_type }}" == "PR" ]; then
+            if [ -z "${{ github.event.inputs.pr_number }}" ]; then echo "::error::pr_number is empty" && exit 1; fi
+          fi
       # We run this workflow for tags, release and default branches,
       # so we should pull required version of EVE.
-      - name: Prepare EVE
+      - name: Prepare EVE (workflow)
+        if: github.event_name == 'workflow_run'
         env:
           REF: ${{ github.event.workflow_run.head_branch }}
         run: |
           BRANCH="$(echo "$REF" | sed -e 's#^.*/##')"
           git clone ${{ github.event.repository.html_url }} eve
           git --git-dir ./eve/.git reset --hard "$BRANCH"
-          echo "TAG=$(make -C eve --no-print-directory version)" >> "$GITHUB_ENV"
+          echo "EVE_TAG=$(make -C eve --no-print-directory version)" >> "$GITHUB_ENV"
+          echo "EVE_REGISTRY=lfedge/eve" >> "$GITHUB_ENV"
+      - name: Checkout EVE (manual run)
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/checkout@v3
+        with:
+          ref: master
+          path: eve
+      - name: Prepare EVE (manual run)
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          if [ "${{ github.event.inputs.test_type }}" == "PR" ]; then
+            cd eve && git fetch origin pull/${{ github.event.inputs.pr_number }}/head && git checkout FETCH_HEAD
+            echo "EVE_TAG=pr${{ github.event.inputs.pr_number }}" >> "$GITHUB_ENV"
+            echo "EVE_REGISTRY=evebuild/danger" >> "$GITHUB_ENV"
+          else
+            echo "EVE_TAG=${{ github.event.inputs.eve_docker_tag }}" >> "$GITHUB_ENV"
+            if [ "${{ github.event.inputs.eve_docker_reg }}" == "custom" ]; then
+              echo "EVE_REGISTRY=${{ github.event.inputs.eve_docker_reg_custom }}" >> "$GITHUB_ENV"
+            else
+              echo "EVE_REGISTRY=${{ github.event.inputs.eve_docker_reg }}" >> "$GITHUB_ENV"
+            fi
+          fi
       # Use the latest version of EDEN with subset of tests from EVE-OS repo
       - name: Prepare eden
         run: |
@@ -112,7 +176,8 @@ jobs:
             tpm='true'
           fi
           ./eden config add default --devmodel="${devmodel}" --arch="${arch}"
-          ./eden config set default --key eve.tag --value="${{ env.TAG }}"
+          ./eden config set default --key eve.registry --value="${{ env.EVE_REGISTRY }}"
+          ./eden config set default --key eve.tag --value="${{ env.EVE_TAG }}"
           ./eden config set default --key eve.hv --value ${{ matrix.hv }}
           ./eden config set default --key eve.tpm --value "${tpm}"
           ./eden config set default --key adam.eve-ip --value ${{ steps.connect_vpn.outputs.tunnel_ip }}
