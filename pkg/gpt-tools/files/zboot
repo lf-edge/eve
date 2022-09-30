@@ -56,7 +56,7 @@ partno() {
 #
 curpart() {
     if [ ! $# -eq 0 ]; then
-	usage
+        usage
     fi
     lsblk -o PARTLABEL -n ${rootdev}
 }
@@ -66,7 +66,7 @@ curpart() {
 #
 partdev() {
     if [ ! $# -eq 1 ]; then
-	usage
+        usage
     fi
     cgpt find -l $1 ${rootdsk}
 }
@@ -86,16 +86,16 @@ partdevall() {
 #
 partstate() {
     if [ ! $# -eq 1 ]; then
-	usage
+        usage
     fi
     pn=$(partno $1)
     attr=$(cgpt show -i ${pn} -A ${rootdsk})
     case ${attr} in
-	0x102) state="active" ;;
-	0x13) state="updating" ;;
-	0x3) state="inprogress" ;;
-	0x0) state="unused" ;;
-	*) state="INVALID" ;;
+        0x102) state="active" ;;
+        0x13) state="updating" ;;
+        0x3) state="inprogress" ;;
+        0x0) state="unused" ;;
+        *) state="INVALID" ;;
     esac
     echo ${state}
 }
@@ -105,18 +105,18 @@ partstate() {
 #
 set_partstate() {
     if [ ! $# -eq 2 ]; then
-	usage
+        usage
     fi
 
     pn=$(partno $1)
     case $2 in
-	"active") attr=0x102 ;;
-	"updating") attr=0x13 ;;
-	"unused") attr=0 ;;
-	*)
-	    echo "Unknown state '$2'";
-	    exit 2;
-	    ;;
+        "active") attr=0x102 ;;
+        "updating") attr=0x13 ;;
+        "unused") attr=0 ;;
+        *)
+            echo "Unknown state '$2'";
+            exit 2;
+            ;;
     esac
 
     cgpt add -i ${pn} -A ${attr} ${rootdsk}
@@ -127,7 +127,7 @@ set_partstate() {
 #
 reset() {
     if [ ! $# -eq 0 ]; then
-	usage
+        usage
     fi
 
     # Warning, this does not really play nice with init
@@ -159,6 +159,5 @@ case $cmd in
     set_partstate) set_partstate "$@" ;;
     reset) reset ;;
     poweroff) poweroff ;;
-    
     *) usage ;;
 esac

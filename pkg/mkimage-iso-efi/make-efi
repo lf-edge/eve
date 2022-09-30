@@ -37,7 +37,7 @@ fi
 # headroom seems to be enough; (x+31)/32*32 rounds up to multiple of 32.
 mkfs.vfat -v -C boot.img \
         $(( ($(stat -c %s EFI/BOOT/BOOT*EFI) / 1024 + 511) \
-		/ 32 * 32 )) > /dev/null
+        / 32 * 32 )) > /dev/null
 
 mmd -i boot.img ::/EFI
 mmd -i boot.img ::/EFI/BOOT

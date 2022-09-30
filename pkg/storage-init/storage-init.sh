@@ -262,7 +262,7 @@ if P3=$(findfs PARTLABEL=P3) && [ -n "$P3" ]; then
                    if [ "$INIT_FS" = 1 ]; then
                       mkfs -t ext4 -v -F -F -O encrypt "$P3"
                    fi
-		   # Enable encryption
+                   # Enable encryption
                    tune2fs -O encrypt "$P3" && \
                    mount -t ext4 -o dirsync,noatime "$P3" $PERSISTDIR
                    ;;

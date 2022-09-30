@@ -68,32 +68,32 @@ pvcalls=`cat /proc/cmdline | grep  'pvcalls=1'`
 dhcp=`cat /proc/cmdline | grep  'dhcp=1'`
 if test "$pvcalls"
 then
-		mkdir -p /mnt/rootfs/etc
-		echo "nameserver 8.8.8.8" > /mnt/rootfs/etc/resolv.conf
-		echo "options use-vc" >> /mnt/rootfs/etc/resolv.conf
+        mkdir -p /mnt/rootfs/etc
+        echo "nameserver 8.8.8.8" > /mnt/rootfs/etc/resolv.conf
+        echo "options use-vc" >> /mnt/rootfs/etc/resolv.conf
 elif test "$ip"
 then
-	# ipv4
-	if [ "$ip" != "${ip#*[0-9].[0-9]}" ]
-	then
-		ifconfig eth0 $ip up
-		if [ "$route" ] && [ "$gw" ]
-		then
-			route add -net $route gw $gw eth0
-		fi
-		mkdir -p /mnt/rootfs/etc
-		echo "nameserver 8.8.8.8" > /mnt/rootfs/etc/resolv.conf
-	# ipv6
-	elif [ "$ip" != "${ip#*:[0-9a-fA-F]}" ]
-	then
-		ifconfig eth0 add $ip up
-		if [ "$route" ] && [ "$gw" ]
-		then
-			route -A inet6 add $route gw $gw eth0
-		fi
-		mkdir -p /mnt/rootfs/etc
-		echo "nameserver 2001:4860:4860::8888" > /mnt/rootfs/etc/resolv.conf
-	fi
+    # ipv4
+    if [ "$ip" != "${ip#*[0-9].[0-9]}" ]
+    then
+        ifconfig eth0 $ip up
+        if [ "$route" ] && [ "$gw" ]
+        then
+            route add -net $route gw $gw eth0
+        fi
+        mkdir -p /mnt/rootfs/etc
+        echo "nameserver 8.8.8.8" > /mnt/rootfs/etc/resolv.conf
+    # ipv6
+    elif [ "$ip" != "${ip#*:[0-9a-fA-F]}" ]
+    then
+        ifconfig eth0 add $ip up
+        if [ "$route" ] && [ "$gw" ]
+        then
+            route -A inet6 add $route gw $gw eth0
+        fi
+        mkdir -p /mnt/rootfs/etc
+        echo "nameserver 2001:4860:4860::8888" > /mnt/rootfs/etc/resolv.conf
+    fi
 elif test "$dhcp"
 then
     ip link set dev lo up
