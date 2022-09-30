@@ -1,10 +1,13 @@
 ^tests/integration/config.yml
+^tests/eden/eclient/testdata/maridb.txt
 ^pkg/mkimage-raw-efi/initramfs-init
 ^pkg/mkimage-raw-efi/nlplug-findfs.c
 ^pkg/pillar/rootfs/fscrypt.conf
 ^pkg/fw/
 ^pkg/debug/abuild/
 ^pkg/pillar/zedpac/
+^pkg/kvm-tools/include
+^pkg/kvm-tools/dtrace
 ^api/python/
 ^api/go/
 ^api/images/

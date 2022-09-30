@@ -31,7 +31,7 @@ RUN make -j "$(getconf _NPROCESSORS_ONLN)" && \
     case $(uname -m) in \
     x86_64) \
         cp xen.gz /out/boot/xen.gz \
-	;; \
+    ;; \
     aarch64) \
         mkimage -A arm64 -T kernel -a $XEN_UBOOT_ADDR -e $XEN_UBOOT_ADDR -C none -d xen /out/boot/xen.uboot ;\
         cp xen.efi /out/boot/ \

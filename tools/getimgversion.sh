@@ -6,9 +6,9 @@ PRINTALL=0
 
 while [ $# != 0 ]; do
     if [ $1 = "-a" ]; then
-	PRINTALL=1
+        PRINTALL=1
     else
-	ROOTFS=$1
+        ROOTFS=$1
     fi
     shift
 done
