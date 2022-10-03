@@ -60,6 +60,8 @@ type baseOsMgrContext struct {
 	currentUpdateRetry   uint32    // UpdateRetryCounter from last retry; it will be sent for info
 	configUpdateRetry    uint32    // UpdateRetryCounter from config; to avoid loop after reboot with failed testing
 
+	baseOsConfigRestarted bool
+
 	worker worker.Worker // For background work
 }
 
@@ -253,6 +255,23 @@ func handleBaseOsConfigModify(ctxArg interface{}, key string, configArg interfac
 	baseOsHandleStatusUpdate(ctx, &config, status)
 }
 
+func handleBaseOsConfigRestart(ctxArg interface{}, restartCounter int) {
+	ctx := ctxArg.(*baseOsMgrContext)
+
+	log.Functionf("handleBaseOsConfigRestart(%d)", restartCounter)
+	if restartCounter != 0 && !ctx.baseOsConfigRestarted {
+		ctx.baseOsConfigRestarted = true
+		// activate subBaseOs after BaseOsConfig data received
+		// to not hit the problem when no BaseOsConfig defined
+		// during checks for ConfigRetryUpdateCounter
+		// we do not want to miss the first config
+		// all subsequent will initiate download-install-test cycle
+		if err := ctx.subBaseOs.Activate(); err != nil {
+			log.Errorf("Failed to activate subBaseOsConfig: %s", err)
+		}
+	}
+}
+
 // base os config delete event
 func handleBaseOsConfigDeleteByStatus(ctx *baseOsMgrContext, key string,
 	status *types.BaseOsStatus) {
@@ -442,16 +461,17 @@ func initializeZedagentHandles(ps *pubsub.PubSub, ctx *baseOsMgrContext) {
 	// Look for BaseOsConfig , from zedagent
 	subBaseOsConfig, err := ps.NewSubscription(
 		pubsub.SubscriptionOptions{
-			AgentName:     "zedagent",
-			MyAgentName:   agentName,
-			TopicImpl:     types.BaseOsConfig{},
-			Activate:      false,
-			Ctx:           ctx,
-			CreateHandler: handleBaseOsConfigCreate,
-			ModifyHandler: handleBaseOsConfigModify,
-			DeleteHandler: handleBaseOsConfigDelete,
-			WarningTime:   warningTime,
-			ErrorTime:     errorTime,
+			AgentName:      "zedagent",
+			MyAgentName:    agentName,
+			TopicImpl:      types.BaseOsConfig{},
+			Activate:       false,
+			Ctx:            ctx,
+			CreateHandler:  handleBaseOsConfigCreate,
+			ModifyHandler:  handleBaseOsConfigModify,
+			DeleteHandler:  handleBaseOsConfigDelete,
+			RestartHandler: handleBaseOsConfigRestart,
+			WarningTime:    warningTime,
+			ErrorTime:      errorTime,
 		})
 	if err != nil {
 		log.Fatal(err)
@@ -475,8 +495,10 @@ func initializeZedagentHandles(ps *pubsub.PubSub, ctx *baseOsMgrContext) {
 	if err != nil {
 		log.Fatal(err)
 	}
+	// will activate subscription in handleBaseOsConfigRestart
+	// to not hit concurrence between BaseOsConfig and BaseOs
+	// during handling of ConfigRetryUpdateCounter
 	ctx.subBaseOs = subBaseOs
-	subBaseOs.Activate()
 }
 
 func initializeVolumemgrHandles(ps *pubsub.PubSub, ctx *baseOsMgrContext) {

@@ -132,3 +132,12 @@ func getZbootOtherPartition(ctx *zedagentContext) string {
 	log.Errorf("getZbootOtherPartition() not found")
 	return partName
 }
+
+func signalBaseOSConfigConfigRestarted(ctx *getconfigContext) {
+	log.Trace("signalBaseOSConfigConfigRestarted")
+	pub := ctx.pubBaseOsConfig
+	if err := pub.SignalRestarted(); err != nil {
+		log.Errorf("failed to SignalRestarted: %s", err)
+	}
+	log.Trace("signalBaseOSConfigConfigRestarted done")
+}
