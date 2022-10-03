@@ -3003,6 +3003,7 @@ CONFIG_NVMEM_SYSFS=y
 # File systems
 #
 # CONFIG_VALIDATE_FS_PARSER is not set
+CONFIG_ZFS=y
 CONFIG_FS_IOMAP=y
 # CONFIG_EXT2_FS is not set
 # CONFIG_EXT3_FS is not set

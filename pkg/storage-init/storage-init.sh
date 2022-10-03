@@ -57,43 +57,27 @@ zfs_set_arc_limits() {
 }
 
 # should be in sync with options inside installer
-zfs_module_load() {
-    zfs_options="zfs_compressed_arc_enabled=0 \
-zfs_vdev_min_auto_ashift=12 \
-zvol_request_sync=0 \
-zfs_vdev_aggregation_limit_non_rotating=$(( 1024*1024 )) \
-zfs_vdev_async_write_active_min_dirty_percent=10 \
-zfs_vdev_async_write_active_max_dirty_percent=30 \
-zfs_delay_min_dirty_percent=40 \
-zfs_delay_scale=800000 \
-zfs_dirty_data_sync_percent=15 \
-zfs_prefetch_disable=1 \
-\
-zfs_vdev_sync_read_min_active=35 \
-zfs_vdev_sync_read_max_active=35 \
-zfs_vdev_sync_write_min_active=35 \
-zfs_vdev_sync_write_max_active=35 \
-zfs_vdev_async_read_min_active=1 \
-zfs_vdev_async_read_max_active=10 \
-zfs_vdev_async_write_min_active=1 \
-zfs_vdev_async_write_max_active=10 \
-\
-zfs_smoothing_scale=50000 \
-zfs_smoothing_write=5
-"
-
-    # Disabling SC2086 because word splitting here is intended -
-    # otherwise modprobe would not recognize arguments
-    # shellcheck disable=SC2086
-    if ! modprobe zfs ${zfs_options}; then
-        echo "Failed to load ZFS module with parameters, falling back to defaults"
-        modprobe zfs
-    fi
-}
-
-zfs_module_unload() {
-    # shellcheck disable=SC2046
-    rmmod $(lsmod | grep zfs | awk '{print $1;}') || :
+zfs_set_default_parameters() {
+	zfs_set_parameter zfs_compressed_arc_enabled 0
+	zfs_set_parameter zfs_vdev_min_auto_ashift 12
+	zfs_set_parameter zvol_request_sync 0
+	zfs_set_parameter zfs_vdev_aggregation_limit_non_rotating $((1024*1024))
+	zfs_set_parameter zfs_vdev_async_write_active_min_dirty_percent 10
+	zfs_set_parameter zfs_vdev_async_write_active_max_dirty_percent 30
+	zfs_set_parameter zfs_delay_min_dirty_percent 40
+	zfs_set_parameter zfs_delay_scale 800000
+	zfs_set_parameter zfs_dirty_data_sync_percent 15
+	zfs_set_parameter zfs_prefetch_disable 1
+	zfs_set_parameter zfs_vdev_sync_read_min_active 35
+	zfs_set_parameter zfs_vdev_sync_read_max_active 35
+	zfs_set_parameter zfs_vdev_sync_write_min_active 35
+	zfs_set_parameter zfs_vdev_sync_write_max_active 35
+	zfs_set_parameter zfs_vdev_async_read_min_active 1
+	zfs_set_parameter zfs_vdev_async_read_max_active 10
+	zfs_set_parameter zfs_vdev_async_write_min_active 1
+	zfs_set_parameter zfs_vdev_async_write_max_active 10
+	zfs_set_parameter zfs_smoothing_scale 50000
+	zfs_set_parameter zfs_smoothing_write 5
 }
 
 # set sequential mdev handler to avoid add-remove-add mis-order of zvols
@@ -223,9 +207,8 @@ fi
 # We support P3 partition either formatted as ext3/4 or as part of ZFS pool
 # Priorities are: ext3, ext4, zfs
 if P3=$(findfs PARTLABEL=P3) && [ -n "$P3" ]; then
-    # Loading zfs modules to see if we have any zpools attached to the system
-    # We will unload them later (if they do unload it meands we didn't find zpools)
-    zfs_module_load
+    # Set default zfs params and check if we have any zpools attached to the system
+    zfs_set_default_parameters
 
     P3_FS_TYPE=$(blkid "$P3"| tr ' ' '\012' | awk -F= '/^TYPE/{print $2;}' | sed 's/"//g')
     if [ "$P3_FS_TYPE" = zfs_member ]; then
@@ -282,9 +265,6 @@ if P3=$(findfs PARTLABEL=P3) && [ -n "$P3" ]; then
     # deposit fs type into /run
     echo "$P3_FS_TYPE" > /run/eve.persist_type
 
-    # this is safe, since if the mount fails the following will fail too
-    zfs_module_unload
-
     if [ "$INIT_FS" = 1 ]; then
       # store file to indicate that EVE will clean vault
       # in case of no key received from controller
@@ -293,14 +273,12 @@ if P3=$(findfs PARTLABEL=P3) && [ -n "$P3" ]; then
     fi
 else
     #in case of no P3 we may have EVE persist on another disks
-    zfs_module_load
+    zfs_set_default_parameters
     set_sequential_mdev
     if chroot /hostfs zpool import -f persist; then
         echo "zfs" > /run/eve.persist_type
         zfs_adjust_features
     else
-        # shellcheck disable=SC2046
-        zfs_module_unload
         echo "$(date -Ins -u) No separate $PERSISTDIR partition"
     fi
 fi

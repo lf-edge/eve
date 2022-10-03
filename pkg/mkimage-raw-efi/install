@@ -58,39 +58,35 @@ trunc() {
   touch "$1"
 }
 
-# should be in sync with options inside storage-init
-zfs_module_load() {
-    zfs_options="zfs_compressed_arc_enabled=0 \
-zfs_vdev_min_auto_ashift=12 \
-zvol_request_sync=0 \
-zfs_vdev_aggregation_limit_non_rotating=$(( 1024*1024 )) \
-zfs_vdev_async_write_active_min_dirty_percent=10 \
-zfs_vdev_async_write_active_max_dirty_percent=30 \
-zfs_delay_min_dirty_percent=40 \
-zfs_delay_scale=800000 \
-zfs_dirty_data_sync_percent=15 \
-zfs_prefetch_disable=1 \
-\
-zfs_vdev_sync_read_min_active=35 \
-zfs_vdev_sync_read_max_active=35 \
-zfs_vdev_sync_write_min_active=35 \
-zfs_vdev_sync_write_max_active=35 \
-zfs_vdev_async_read_min_active=1 \
-zfs_vdev_async_read_max_active=10 \
-zfs_vdev_async_write_min_active=1 \
-zfs_vdev_async_write_max_active=10 \
-\
-zfs_smoothing_scale=50000 \
-zfs_smoothing_write=5
-"
+zfs_set_parameter() {
+    parameter="$1"
+    value="$2"
 
-    # Disabling SC2086 because word splitting here is intended -
-    # otherwise modprobe would not recognize arguments
-    # shellcheck disable=SC2086
-    if ! modprobe zfs ${zfs_options}; then
-        echo "Failed to load ZFS module with parameters, falling back to defaults"
-        modprobe zfs
-    fi
+    echo "${value}" > /sys/module/zfs/parameters/"${parameter}"
+}
+
+# should be in sync with options inside storage-init
+zfs_set_default_parameters() {
+	zfs_set_parameter zfs_compressed_arc_enabled 0
+	zfs_set_parameter zfs_vdev_min_auto_ashift 12
+	zfs_set_parameter zvol_request_sync 0
+	zfs_set_parameter zfs_vdev_aggregation_limit_non_rotating $((1024*1024))
+	zfs_set_parameter zfs_vdev_async_write_active_min_dirty_percent 10
+	zfs_set_parameter zfs_vdev_async_write_active_max_dirty_percent 30
+	zfs_set_parameter zfs_delay_min_dirty_percent 40
+	zfs_set_parameter zfs_delay_scale 800000
+	zfs_set_parameter zfs_dirty_data_sync_percent 15
+	zfs_set_parameter zfs_prefetch_disable 1
+	zfs_set_parameter zfs_vdev_sync_read_min_active 35
+	zfs_set_parameter zfs_vdev_sync_read_max_active 35
+	zfs_set_parameter zfs_vdev_sync_write_min_active 35
+	zfs_set_parameter zfs_vdev_sync_write_max_active 35
+	zfs_set_parameter zfs_vdev_async_read_min_active 1
+	zfs_set_parameter zfs_vdev_async_read_max_active 10
+	zfs_set_parameter zfs_vdev_async_write_min_active 1
+	zfs_set_parameter zfs_vdev_async_write_max_active 10
+	zfs_set_parameter zfs_smoothing_scale 50000
+	zfs_set_parameter zfs_smoothing_write 5
 }
 
 mounted_dev() {
@@ -176,7 +172,7 @@ collect_black_box() {
 
 # prepare_mounts_and_zfs_pool POOL_CREATION_COMMAND_SUFFIX_SUFFIX
 prepare_mounts_and_zfs_pool() {
-  zfs_module_load
+  zfs_set_default_parameters
   logmsg "Preparing ZFS pool and mounts"
   [ -e /root/sys ] || mkdir /root/sys && mount -t sysfs sysfs /root/sys
   [ -e /root/proc ] || mkdir /root/proc && mount -t proc proc /root/proc

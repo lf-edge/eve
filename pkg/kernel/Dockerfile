@@ -48,6 +48,7 @@ RUN set -e ; [ ! -d /patches-"${KERNEL_SERIES}" ] || for patch in /patches-"${KE
         patch -p1 < "$patch"; \
     done
 
+# Copy default kconfig and prepare kbuild
 RUN case $(uname -m) in \
     x86_64) \
         KERNEL_DEF_CONF=/linux/arch/x86/configs/x86_64_defconfig; \
@@ -64,31 +65,11 @@ RUN case $(uname -m) in \
         fi && \
         cat /kernel_config${EXTRA} >> ${KERNEL_DEF_CONF}; \
     fi && \
-    make defconfig && \
-    make oldconfig && \
-    if [ -z "${EXTRA}" ]; then diff -cw .config ${KERNEL_DEF_CONF}; fi
+    cp ${KERNEL_DEF_CONF} .config && \
+    cp ${KERNEL_DEF_CONF} .config.new && \
+    make prepare
 
-# Kernel
-RUN make -j "$(getconf _NPROCESSORS_ONLN)" KCFLAGS="-fno-pie" && \
-    case $(uname -m) in \
-    x86_64) \
-        cp arch/x86_64/boot/bzImage /out/kernel; \
-        ;; \
-    aarch64) \
-        cp arch/arm64/boot/Image.gz /out/kernel; \
-        ;; \
-    esac && \
-    cp System.map /out && \
-    DVER=$(make kernelrelease) && \
-    DIR=linux-debug-$DVER && \
-    rsync -rv --include '*/' --include '*.dwo' --exclude '*' --prune-empty-dirs . /tmp/$DIR && \
-    cp vmlinux /tmp/$DIR && \
-    tar -cf /out/kernel-debug.tar -C /tmp $DIR
-
-# Modules
-RUN make INSTALL_MOD_PATH=/tmp/kernel-modules modules_install
-
-# Out-of-tree, open source modules
+# Prepare built-in ZFS
 #  * ZFS on Linux
 ENV ZFS_VERSION=2.1.2
 ENV ZFS_COMMIT=zfs-${ZFS_VERSION}
@@ -108,10 +89,39 @@ RUN set -e; \
         done \
     fi
 RUN ./autogen.sh && \
-    ./configure --with-linux=/linux && \
+    ./configure \
+        --with-linux=/linux \
+        --with-linux-obj=/linux \
+        --with-config=kernel  \
+        --enable-linux-builtin && \
     ./scripts/make_gitrev.sh && \
-    make -C module -j "$(getconf _NPROCESSORS_ONLN)" && \
-    make -C module INSTALL_MOD_PATH=/tmp/kernel-modules install # cd /lib/modules && depmod -ae *
+    ./copy-builtin /linux
+
+# Verify kconfig after ZFS is prepared as built-in
+WORKDIR /linux
+RUN make defconfig && \
+    make oldconfig && \
+    diff -cw .config .config.new
+
+# Make kernel
+RUN make -j "$(getconf _NPROCESSORS_ONLN)" KCFLAGS="-fno-pie" && \
+    case $(uname -m) in \
+    x86_64) \
+        cp arch/x86_64/boot/bzImage /out/kernel; \
+        ;; \
+    aarch64) \
+        cp arch/arm64/boot/Image.gz /out/kernel; \
+        ;; \
+    esac && \
+    cp System.map /out && \
+    DVER=$(make kernelrelease) && \
+    DIR=linux-debug-$DVER && \
+    rsync -rv --include '*/' --include '*.dwo' --exclude '*' --prune-empty-dirs . /tmp/$DIR && \
+    cp vmlinux /tmp/$DIR && \
+    tar -cf /out/kernel-debug.tar -C /tmp $DIR
+
+# Modules
+RUN make INSTALL_MOD_PATH=/tmp/kernel-modules modules_install
 
 # Out-of-tree, creepy modules
 #  * Maxlinear USB (option #2 https://github.com/lipnitsk/xr/archive/master.zip)
