@@ -49,6 +49,7 @@ RUN set -e ; [ ! -d /patches-"${KERNEL_SERIES}" ] || for patch in /patches-"${KE
         patch -p1 < "$patch"; \
     done
 
+# Copy default kconfig and prepare kbuild
 RUN case $(uname -m) in \
     x86_64) \
         KERNEL_DEF_CONF=/linux/arch/x86/configs/x86_64_defconfig; \
@@ -68,11 +69,45 @@ RUN case $(uname -m) in \
         fi && \
         cat /kernel_config${EXTRA} >> ${KERNEL_DEF_CONF}; \
     fi && \
-    make defconfig && \
-    make oldconfig && \
-    if [ -z "${EXTRA}" ]; then diff -cw .config ${KERNEL_DEF_CONF}; fi
+    cp ${KERNEL_DEF_CONF} .config && \
+    cp ${KERNEL_DEF_CONF} .config.new && \
+    make prepare
 
-# Kernel
+# Prepare built-in ZFS
+#  * ZFS on Linux
+ENV ZFS_VERSION=2.1.2
+ENV ZFS_COMMIT=zfs-${ZFS_VERSION}
+ENV ZFS_REPO=https://github.com/openzfs/zfs.git
+ENV ZFS_PATCH_DIR=/patches-zfs-"${ZFS_VERSION}"
+
+WORKDIR /tmp/zfs
+
+RUN git clone --depth 1 -b ${ZFS_COMMIT} ${ZFS_REPO} .
+RUN set -e; \
+    if [ ! -d "${ZFS_PATCH_DIR}" ]; then \
+        echo "No such dir ${ZFS_PATCH_DIR}"; \
+    else \
+        for patch in "${ZFS_PATCH_DIR}"/*.patch; do \
+            echo "Applying $patch"; \
+            patch -p1 < "$patch"; \
+        done \
+    fi
+RUN ./autogen.sh && \
+    ./configure \
+        --with-linux=/linux \
+        --with-linux-obj=/linux \
+        --with-config=kernel  \
+        --enable-linux-builtin && \
+    ./scripts/make_gitrev.sh && \
+    ./copy-builtin /linux
+
+# Verify kconfig after ZFS is prepared as built-in
+WORKDIR /linux
+RUN make defconfig && \
+    make oldconfig && \
+    diff -cw .config .config.new
+
+# Make kernel
 RUN make -j "$(getconf _NPROCESSORS_ONLN)" KCFLAGS="-fno-pie" && \
     case $(uname -m) in \
     x86_64) \
@@ -94,31 +129,6 @@ RUN make -j "$(getconf _NPROCESSORS_ONLN)" KCFLAGS="-fno-pie" && \
 
 # Modules
 RUN make INSTALL_MOD_PATH=/tmp/kernel-modules modules_install
-
-# Out-of-tree, open source modules
-#  * ZFS on Linux
-ENV ZFS_VERSION=2.1.2
-ENV ZFS_COMMIT=zfs-${ZFS_VERSION}
-ENV ZFS_REPO=https://github.com/openzfs/zfs.git
-ENV ZFS_PATCH_DIR=/patches-zfs-"${ZFS_VERSION}"
-
-WORKDIR /tmp/zfs
-
-RUN git clone --depth 1 -b ${ZFS_COMMIT} ${ZFS_REPO} .
-RUN set -e; \
-    if [ ! -d "${ZFS_PATCH_DIR}" ]; then \
-        echo "No such dir ${ZFS_PATCH_DIR}"; \
-    else \
-        for patch in "${ZFS_PATCH_DIR}"/*.patch; do \
-            echo "Applying $patch"; \
-            patch -p1 < "$patch"; \
-        done \
-    fi
-RUN ./autogen.sh && \
-    ./configure --with-linux=/linux && \
-    ./scripts/make_gitrev.sh && \
-    make -C module -j "$(getconf _NPROCESSORS_ONLN)" && \
-    make -C module INSTALL_MOD_PATH=/tmp/kernel-modules install # cd /lib/modules && depmod -ae *
 
 # Out-of-tree, creepy modules
 RUN if [ "$(uname -m)" != riscv64 ]; then \
