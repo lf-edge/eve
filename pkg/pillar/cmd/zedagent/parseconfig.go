@@ -333,6 +333,8 @@ func parseBaseOsConfig(getconfigCtx *getconfigContext,
 			baseOs)
 		publishBaseOsConfig(getconfigCtx, baseOs)
 	}
+	// notify baseosmgr that we published all configs
+	signalBaseOSConfigConfigRestarted(getconfigCtx)
 }
 
 var networkConfigPrevConfigHash []byte
