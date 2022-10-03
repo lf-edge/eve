@@ -26,7 +26,7 @@ RUN set -e; \
         done \
     fi
 RUN ./autogen.sh && \
-    ./configure --with-linux=/linux \
+    ./configure \
     --prefix=/usr \
     --with-tirpc \
     --sysconfdir=/etc \
