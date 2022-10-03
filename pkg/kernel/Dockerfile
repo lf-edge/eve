@@ -121,20 +121,22 @@ RUN make -j "$(getconf _NPROCESSORS_ONLN)" KCFLAGS="-fno-pie" && \
     tar -cf /out/kernel-debug.tar -C /tmp $DIR
 
 # Modules
-RUN make INSTALL_MOD_PATH=/tmp/kernel-modules modules_install
+RUN make -j "$(getconf _NPROCESSORS_ONLN)" INSTALL_MOD_PATH=/tmp/kernel-modules modules_install
 
 # Out-of-tree, creepy modules
 #  * Maxlinear USB (option #2 https://github.com/lipnitsk/xr/archive/master.zip)
 WORKDIR /linux
 ADD https://www.maxlinear.com/document?id=21651 /tmp/xr.zip
 RUN unzip -d /tmp /tmp/xr.zip ;\
-    make -C /linux INSTALL_MOD_PATH=/tmp/kernel-modules \
-                   M=/tmp/xr_usb_serial_common_lnx-3.6-and-newer-pak \
+    make -j "$(getconf _NPROCESSORS_ONLN)" \
+         -C /linux INSTALL_MOD_PATH=/tmp/kernel-modules \
+         M=/tmp/xr_usb_serial_common_lnx-3.6-and-newer-pak \
          modules modules_install
 
 RUN git clone https://github.com/brektrou/rtl8821CU.git /tmp/rtl8821CU &&\
     (cd /tmp/rtl8821CU && git checkout 8c2226a7 ) &&\
-    make -C /tmp/rtl8821CU KSRC=/linux modules &&\
+    make -j "$(getconf _NPROCESSORS_ONLN)" \
+         -C /tmp/rtl8821CU KSRC=/linux modules &&\
     install -D -p -m 644 /tmp/rtl8821CU/8821cu.ko $(echo /tmp/kernel-modules/lib/modules/*)/kernel/drivers/net/wireless/realtek/rtl8821cu/8821cu.ko
 
 # Strip at least some of the modules to conserve space
