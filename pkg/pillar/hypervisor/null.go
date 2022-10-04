@@ -55,7 +55,8 @@ func (ctx nullContext) Task(status *types.DomainStatus) types.Task {
 	return ctx
 }
 
-func (ctx nullContext) Setup(types.DomainStatus, types.DomainConfig, *types.AssignableAdapters, *os.File) error {
+func (ctx nullContext) Setup(types.DomainStatus, types.DomainConfig,
+	*types.AssignableAdapters, *types.ConfigItemValueMap, *os.File) error {
 	return nil
 }
 
