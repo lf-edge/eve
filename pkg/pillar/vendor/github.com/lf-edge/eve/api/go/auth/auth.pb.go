@@ -76,10 +76,10 @@ type AuthContainer struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	ProtectedPayload *AuthBody `protobuf:"bytes,1,opt,name=protectedPayload,proto3" json:"protectedPayload,omitempty"` // envolope body, a marshalled protobuf data or it can be null
+	ProtectedPayload *AuthBody `protobuf:"bytes,1,opt,name=protectedPayload,proto3" json:"protectedPayload,omitempty"` // envelope body, a marshalled protobuf data or it can be null
 	// if the length of senderCertHash received is not N bytes, as described in hashAlgorithm, then the protobuf
 	// message either is not AuthContainer type, or is corrupted. Otherwise, the
-	// reciever may not have the sender's signing certificate
+	// receiver may not have the sender's signing certificate
 	Algo           evecommon.HashAlgorithm `protobuf:"varint,2,opt,name=algo,proto3,enum=org.lfedge.eve.common.HashAlgorithm" json:"algo,omitempty"` // hash algorithm used by sender Cert
 	SenderCertHash []byte                  `protobuf:"bytes,3,opt,name=senderCertHash,proto3" json:"senderCertHash,omitempty"`                       // N bytes in length, 1st N bytes of sender siging cert sha256 hash
 	SignatureHash  []byte                  `protobuf:"bytes,4,opt,name=signatureHash,proto3" json:"signatureHash,omitempty"`                         // signature of the sha256 hash of the payload

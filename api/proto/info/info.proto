@@ -442,7 +442,7 @@ message StorageDiskState {
 enum StorageRaidType {
   STORAGE_RAID_TYPE_UNSPECIFIED = 0;
   STORAGE_RAID_TYPE_RAID0 = 1;             // RAID-0
-  STORAGE_RAID_TYPE_RAID1 = 2;        	   // Mirror 
+  STORAGE_RAID_TYPE_RAID1 = 2;             // Mirror
   STORAGE_RAID_TYPE_RAID5 = 3;             // raidz1 (RAID-5)
   STORAGE_RAID_TYPE_RAID6 = 4;             // raidz2 (RAID-6)
   STORAGE_RAID_TYPE_RAID7 = 5;             // raidz3 (RAID-7)

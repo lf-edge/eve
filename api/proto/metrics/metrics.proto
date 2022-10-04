@@ -63,12 +63,12 @@ message DeviceMemoryMetric {
 
 message networkMetric {
   // iName - Set to SystemAdapter.Name which is the Logicallabel in phyio
-  string iName = 1;	// name from config; displayName for network instance
+  string iName = 1; // name from config; displayName for network instance
   // alias - Set to SystemAdapter.alias
   string alias = 20;
 
-  uint64 txBytes = 2;	// in bytes
-  uint64 rxBytes = 3;	// in bytes
+  uint64 txBytes = 2; // in bytes
+  uint64 rxBytes = 3; // in bytes
   uint64 txDrops = 4;
   uint64 rxDrops = 5;
   // deprecated = 6;
@@ -318,10 +318,10 @@ message appContainerMetric {
 }
 
 enum MetricItemType {
-  MetricItemOther = 0;		// E.g., a string like an ESSID
-  MetricItemGauge = 1;		// Goes up and down over time
-  MetricItemCounter = 2;	// Monotonically increasing (until reboot)
-  MetricItemState = 3;		// Toggles on and off; count transitions
+  MetricItemOther = 0;         // E.g., a string like an ESSID
+  MetricItemGauge = 1;         // Goes up and down over time
+  MetricItemCounter = 2;       // Monotonically increasing (until reboot)
+  MetricItemState = 3;         // Toggles on and off; count transitions
 }
 
 // Open-ended metrics from different part of the device such as LTE modem
@@ -340,23 +340,23 @@ message MetricItem {
 
 // For each partition; counts since boot
 message diskMetric {
-  string disk = 1;		// E.g., "mmcblk0p2"
-  string mountPath = 2;		// E.g., "/config"
-  uint64 readBytes = 3;		// In MB
-  uint64 writeBytes = 4;	// In MB
-  uint64 readCount = 5;		// Number of ops
-  uint64 writeCount = 6;	// Number of ops
-  uint64 total = 7;		// in MBytes; if we know the mountpath
-  uint64 used = 8;		// in MBytes; if we know the mountpath
-  uint64 free = 9;		// in MBytes; if we know the mountpath
+  string disk = 1;             // E.g., "mmcblk0p2"
+  string mountPath = 2;        // E.g., "/config"
+  uint64 readBytes = 3;        // In MB
+  uint64 writeBytes = 4;       // In MB
+  uint64 readCount = 5;        // Number of ops
+  uint64 writeCount = 6;       // Number of ops
+  uint64 total = 7;            // in MBytes; if we know the mountpath
+  uint64 used = 8;             // in MBytes; if we know the mountpath
+  uint64 free = 9;             // in MBytes; if we know the mountpath
 }
 
 message appDiskMetric {
-  string disk = 1;		// E.g., "mmcblk0p2"
-  uint64 provisioned = 2;	// in MBytes
-  uint64 used = 3;		// in MBytes
-  string diskType = 4;          // Type of disk, e.g., QCOW2, RAW etc.
-  bool dirty = 5;               // Dirty flag
+  string disk = 1;             // E.g., "mmcblk0p2"
+  uint64 provisioned = 2;      // in MBytes
+  uint64 used = 3;             // in MBytes
+  string diskType = 4;         // Type of disk, e.g., QCOW2, RAW etc.
+  bool dirty = 5;              // Dirty flag
 }
 
 message appMetric {
@@ -504,14 +504,14 @@ message ZProbeNIMetrics {         // per NI probing stats
 }
 
 message ZMetricNetworkInstance {
-  string networkID = 2;		// UUID
+  string networkID = 2;              // UUID
   string networkVersion = 3;
 
-  uint32 instType = 5;		// ZNetworkInstType
-  string displayname = 6;	// From NetworkInstance config
-  bool activated = 7;		// Forwarding enabled
+  uint32 instType = 5;               // ZNetworkInstType
+  string displayname = 6;            // From NetworkInstance config
+  bool activated = 7;                // Forwarding enabled
 
-  repeated networkMetric network = 10;	// Aggregate counters for bridge
+  repeated networkMetric network = 10;  // Aggregate counters for bridge
   ZProbeNIMetrics probeMetric = 12;     // NI uplink probing stats
   oneof InstanceContent {
     ZMetricVpn  vpnm = 20;

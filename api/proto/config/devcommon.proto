@@ -48,5 +48,5 @@ message ConfigItem {
 // for the network adapter.
 message Adapter {
   org.lfedge.eve.common.PhyIoType type = 1;
-  string name = 2;	// Short hand name such as "com" from bundle
+  string name = 2;        // Short hand name such as "com" from bundle
 }

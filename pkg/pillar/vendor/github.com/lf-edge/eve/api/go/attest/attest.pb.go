@@ -191,8 +191,8 @@ type AttestGPSInput int32
 
 const (
 	AttestGPSInput_ATTEST_GPS_INPUT_INVALID AttestGPSInput = 0
-	AttestGPSInput_ATTEST_GPS_INPUT_PRESENT AttestGPSInput = 1 //GPS Co-ordinates are available
-	AttestGPSInput_ATTEST_GPS_INPUT_ABSENT  AttestGPSInput = 2 //GPS Co-ordineates are not available/reliable
+	AttestGPSInput_ATTEST_GPS_INPUT_PRESENT AttestGPSInput = 1 //GPS Coordinates are available
+	AttestGPSInput_ATTEST_GPS_INPUT_ABSENT  AttestGPSInput = 2 //GPS Coordinates are not available/reliable
 )
 
 // Enum value maps for AttestGPSInput.
@@ -786,7 +786,7 @@ type AttestGPSCoordinates struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	GpsInput  AttestGPSInput `protobuf:"varint,1,opt,name=gps_input,json=gpsInput,proto3,enum=org.lfedge.eve.attest.AttestGPSInput" json:"gps_input,omitempty"` // Are the co-ordinates populated ?
+	GpsInput  AttestGPSInput `protobuf:"varint,1,opt,name=gps_input,json=gpsInput,proto3,enum=org.lfedge.eve.attest.AttestGPSInput" json:"gps_input,omitempty"` // Are the coordinates populated ?
 	Latitude  float64        `protobuf:"fixed64,2,opt,name=latitude,proto3" json:"latitude,omitempty"`                                                          // Latitude of the device geo-location
 	Longitude float64        `protobuf:"fixed64,3,opt,name=longitude,proto3" json:"longitude,omitempty"`                                                        // Longitude of the device geo-location
 }

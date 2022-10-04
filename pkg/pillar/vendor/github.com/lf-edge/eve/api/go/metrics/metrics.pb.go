@@ -772,7 +772,7 @@ func (x *CellularPacketStats) GetTx() *NetworkStats {
 	return nil
 }
 
-// Failures and successes for commuication to zedcloud
+// Failures and successes for communication to zedcloud
 // for each management port
 type ZedcloudMetric struct {
 	state         protoimpl.MessageState
@@ -2461,7 +2461,7 @@ type LogMetric struct {
 	//
 	// 4xx response for a device event bundle does not make sense, unless
 	// there is a programming error in EVE code that sends device event bundles to cloud.
-	// But, app instances can disappear from cloud and any futher logs sent by EVE to cloud
+	// But, app instances can disappear from cloud and any further logs sent by EVE to cloud
 	// will result in a 4xx response back.
 	// Any time an app log bundle gets rejected with 4xx response from cloud, num4xxResponses
 	// should be incremented by the number of events present in that rejected bundle.
