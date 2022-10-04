@@ -287,7 +287,7 @@ func Pull(registry, repo, localFile, username, apiKey string, client *http.Clien
 	// create a local file to write the output
 	// this uses the v1/tarball to write it, which is fully compatible with docker save.
 	// However, it is missing the "repositories" file, so we add it.
-	// Eventially, we may want to move to an entire cache of the registry in the
+	// Eventually, we may want to move to an entire cache of the registry in the
 	// OCI layout format.
 	go func() {
 		// we do not need to catch the return error, because tarball.WithProgress sends error updates on channels
