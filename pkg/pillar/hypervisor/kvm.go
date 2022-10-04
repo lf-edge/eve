@@ -450,7 +450,8 @@ func (ctx kvmContext) Task(status *types.DomainStatus) types.Task {
 	}
 }
 
-func (ctx kvmContext) Setup(status types.DomainStatus, config types.DomainConfig, aa *types.AssignableAdapters, file *os.File) error {
+func (ctx kvmContext) Setup(status types.DomainStatus, config types.DomainConfig,
+	aa *types.AssignableAdapters, globalConfig *types.ConfigItemValueMap, file *os.File) error {
 
 	diskStatusList := status.DiskStatusList
 	domainName := status.DomainName
