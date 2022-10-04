@@ -373,7 +373,7 @@ touch "$WATCHDOG_FILE/nim.touch"
 # receiving those messages on the console.
 mkfifo /run/diag.pipe
 (while true; do cat; done) < /run/diag.pipe >/dev/console 2>&1 &
-$BINDIR/diag -f -o /run/diag.pipe runAsService &
+$BINDIR/diag -f -o /run/diag.pipe &
 
 # Need a special check (and slower booting) if the device has no hardware clock
 if [ -c /dev/rtc ] || [ -c /dev/rtc0 ]; then
@@ -534,7 +534,7 @@ else
 fi
 
 echo "$(date -Ins -u) Starting tpmmgr as a service agent"
-$BINDIR/tpmmgr runAsService &
+$BINDIR/tpmmgr &
 wait_for_touch tpmmgr
 touch "$WATCHDOG_FILE/tpmmgr.touch"
 
@@ -552,7 +552,7 @@ for AGENT in $AGENTS1; do
 done
 
 # Start vaultmgr as a service
-$BINDIR/vaultmgr runAsService &
+$BINDIR/vaultmgr &
 wait_for_touch vaultmgr
 touch "$WATCHDOG_FILE/vaultmgr.touch"
 
