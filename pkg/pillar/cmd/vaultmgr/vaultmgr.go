@@ -866,12 +866,115 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	} else {
 		logger.SetLevel(logrus.InfoLevel)
 	}
-	if len(flag.Args()) == 0 {
-		log.Error("Insufficient arguments")
-		return 1
+
+	// if any args defined, will run command inline and return
+	if len(flag.Args()) > 0 {
+		return runInline(flag.Args()[0], flag.Args()[1:])
 	}
 
-	switch flag.Args()[0] {
+	log.Functionf("Starting %s\n", agentName)
+
+	if err := pidfile.CheckAndCreatePidfile(log, agentName); err != nil {
+		log.Fatal(err)
+	}
+	// Run a periodic timer so we always update StillRunning
+	stillRunning := time.NewTicker(15 * time.Second)
+	ps.StillRunning(agentName, warningTime, errorTime)
+
+	// Context to pass around
+	ctx := vaultMgrContext{
+		ps:     ps,
+		ucChan: make(chan struct{}),
+	}
+
+	// Look for global config such as log levels
+	subGlobalConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "zedagent",
+		MyAgentName:   agentName,
+		TopicImpl:     types.ConfigItemValueMap{},
+		Persistent:    true,
+		Activate:      false,
+		Ctx:           &ctx,
+		CreateHandler: handleGlobalConfigCreate,
+		ModifyHandler: handleGlobalConfigModify,
+		DeleteHandler: handleGlobalConfigDelete,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctx.subGlobalConfig = subGlobalConfig
+	subGlobalConfig.Activate()
+
+	// Look for encrypted vault key coming from Controller
+	subVaultKeyFromController, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "zedagent",
+		MyAgentName:   agentName,
+		TopicImpl:     types.EncryptedVaultKeyFromController{},
+		Activate:      false,
+		Ctx:           &ctx,
+		CreateHandler: handleVaultKeyFromControllerCreate,
+		ModifyHandler: handleVaultKeyFromControllerModify,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	ctx.subVaultKeyFromController = subVaultKeyFromController
+	subVaultKeyFromController.Activate()
+
+	// Pick up debug aka log level before we start real work
+	for !ctx.GCInitialized {
+		log.Functionf("waiting for GCInitialized")
+		select {
+		case change := <-subGlobalConfig.MsgChan():
+			subGlobalConfig.ProcessChange(change)
+		case <-stillRunning.C:
+		}
+		ps.StillRunning(agentName, warningTime, errorTime)
+	}
+	log.Functionf("processed GlobalConfig")
+
+	// initialize publishing handles
+	initializeSelfPublishHandles(ps, &ctx)
+	if err := setupDefaultVault(&ctx); err != nil {
+		log.Errorf("setupDefaultVault failed, err: %v", err)
+		publishVaultStatus(&ctx)
+	}
+	if ctx.defaultVaultUnlocked || !etpm.IsTpmEnabled() {
+		// Now that vault is unlocked, run any upgrade converter handler if needed
+		// In case of non-TPM platforms, we do this irrespective of
+		// defaultVaultUnlocked
+		log.Notice("Starting upgradeconverter(post-vault)")
+		go uc.RunPostVaultHandlers(agentName, ps, logger, log,
+			debugOverride, ctx.ucChan)
+	}
+
+	// publish vault key to Controller, if required
+	if err := publishVaultKey(&ctx, types.DefaultVaultName); err != nil {
+		log.Errorf("Failed to publish Vault Key, %v", err)
+	}
+
+	for {
+		select {
+		case change := <-subVaultKeyFromController.MsgChan():
+			subVaultKeyFromController.ProcessChange(change)
+		case <-stillRunning.C:
+			ps.StillRunning(agentName, warningTime, errorTime)
+		case <-ctx.ucChan:
+			log.Notice("upgradeconverter(post-vault) Completed")
+			ctx.vaultUCDone = true
+			// Publish current status of vault
+			publishVaultStatus(&ctx)
+		}
+	}
+}
+
+func runInline(command string, _ []string) int {
+	switch command {
 	case "setupDeprecatedVaults":
 		persistFsType := vault.ReadPersistType()
 		switch persistFsType {
@@ -880,112 +983,12 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 				log.Error(err)
 				return 1
 			}
-			//We don't have deprecated vaults on ZFS
+			// We don't have deprecated vaults on ZFS
 		default:
 			log.Functionf("Ignoring request to setup vaults on unsupported %s filesystem", persistFsType)
 		}
-	case "runAsService":
-		log.Functionf("Starting %s\n", agentName)
-
-		if err := pidfile.CheckAndCreatePidfile(log, agentName); err != nil {
-			log.Fatal(err)
-		}
-		// Run a periodic timer so we always update StillRunning
-		stillRunning := time.NewTicker(15 * time.Second)
-		ps.StillRunning(agentName, warningTime, errorTime)
-
-		// Context to pass around
-		ctx := vaultMgrContext{
-			ps:     ps,
-			ucChan: make(chan struct{}),
-		}
-
-		// Look for global config such as log levels
-		subGlobalConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
-			AgentName:     "zedagent",
-			MyAgentName:   agentName,
-			TopicImpl:     types.ConfigItemValueMap{},
-			Persistent:    true,
-			Activate:      false,
-			Ctx:           &ctx,
-			CreateHandler: handleGlobalConfigCreate,
-			ModifyHandler: handleGlobalConfigModify,
-			DeleteHandler: handleGlobalConfigDelete,
-			WarningTime:   warningTime,
-			ErrorTime:     errorTime,
-		})
-		if err != nil {
-			log.Fatal(err)
-		}
-		ctx.subGlobalConfig = subGlobalConfig
-		subGlobalConfig.Activate()
-
-		// Look for encrypted vault key coming from Controller
-		subVaultKeyFromController, err := ps.NewSubscription(pubsub.SubscriptionOptions{
-			AgentName:     "zedagent",
-			MyAgentName:   agentName,
-			TopicImpl:     types.EncryptedVaultKeyFromController{},
-			Activate:      false,
-			Ctx:           &ctx,
-			CreateHandler: handleVaultKeyFromControllerCreate,
-			ModifyHandler: handleVaultKeyFromControllerModify,
-			WarningTime:   warningTime,
-			ErrorTime:     errorTime,
-		})
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		ctx.subVaultKeyFromController = subVaultKeyFromController
-		subVaultKeyFromController.Activate()
-
-		// Pick up debug aka log level before we start real work
-		for !ctx.GCInitialized {
-			log.Functionf("waiting for GCInitialized")
-			select {
-			case change := <-subGlobalConfig.MsgChan():
-				subGlobalConfig.ProcessChange(change)
-			case <-stillRunning.C:
-			}
-			ps.StillRunning(agentName, warningTime, errorTime)
-		}
-		log.Functionf("processed GlobalConfig")
-
-		// initialize publishing handles
-		initializeSelfPublishHandles(ps, &ctx)
-		if err := setupDefaultVault(&ctx); err != nil {
-			log.Errorf("setupDefaultVault failed, err: %v", err)
-			publishVaultStatus(&ctx)
-		}
-		if ctx.defaultVaultUnlocked || !etpm.IsTpmEnabled() {
-			//Now that vault is unlocked, run any upgrade converter handler if needed
-			//In case of non-TPM platforms, we do this irrespective of
-			//defaultVaultUnlocked
-			log.Notice("Starting upgradeconverter(post-vault)")
-			go uc.RunPostVaultHandlers(agentName, ps, logger, log,
-				debugOverride, ctx.ucChan)
-		}
-
-		//publish vault key to Controller, if required
-		if err := publishVaultKey(&ctx, types.DefaultVaultName); err != nil {
-			log.Errorf("Failed to publish Vault Key, %v", err)
-		}
-
-		for {
-			select {
-			case change := <-subVaultKeyFromController.MsgChan():
-				subVaultKeyFromController.ProcessChange(change)
-			case <-stillRunning.C:
-				ps.StillRunning(agentName, warningTime, errorTime)
-			case <-ctx.ucChan:
-				log.Notice("upgradeconverter(post-vault) Completed")
-				ctx.vaultUCDone = true
-				//Publish current status of vault
-				publishVaultStatus(&ctx)
-			}
-		}
 	default:
-		log.Errorf("Unknown argument %s", flag.Args()[0])
+		log.Errorf("Unknown command %s", command)
 		return 1
 	}
 	return 0

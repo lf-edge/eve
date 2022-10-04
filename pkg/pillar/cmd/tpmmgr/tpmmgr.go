@@ -1374,7 +1374,6 @@ func initializeDirs() {
 func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) int {
 	logger = loggerArg
 	log = logArg
-	var err error
 	debugPtr := flag.Bool("d", false, "Debug flag")
 	flag.Parse()
 	debug = *debugPtr
@@ -1384,17 +1383,142 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	} else {
 		logger.SetLevel(logrus.InfoLevel)
 	}
-	if len(flag.Args()) == 0 {
-		log.Error("Insufficient arguments")
-		return 1
+
+	// if any args defined, will run command inline and return
+	if len(flag.Args()) > 0 {
+		return runInline(flag.Args()[0], flag.Args()[1:])
 	}
 
-	switch flag.Args()[0] {
+	log.Functionf("Starting %s", agentName)
+
+	// Create required directories if not present
+	initializeDirs()
+
+	if err := pidfile.CheckAndCreatePidfile(log, agentName); err != nil {
+		log.Fatal(err)
+	}
+
+	// Run a periodic timer so we always update StillRunning
+	stillRunning := time.NewTicker(15 * time.Second)
+	ps.StillRunning(agentName, warningTime, errorTime)
+
+	// Context to pass around
+	ctx := tpmMgrContext{}
+
+	// Look for global config such as log levels
+	subGlobalConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "zedagent",
+		MyAgentName:   agentName,
+		TopicImpl:     types.ConfigItemValueMap{},
+		Persistent:    true,
+		Activate:      false,
+		Ctx:           &ctx,
+		CreateHandler: handleGlobalConfigCreate,
+		ModifyHandler: handleGlobalConfigModify,
+		DeleteHandler: handleGlobalConfigDelete,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctx.subGlobalConfig = subGlobalConfig
+	subGlobalConfig.Activate()
+
+	pubAttestQuote, err := ps.NewPublication(
+		pubsub.PublicationOptions{
+			AgentName: agentName,
+			TopicType: types.AttestQuote{},
+		})
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctx.pubAttestQuote = pubAttestQuote
+	subAttestNonce, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "zedagent",
+		MyAgentName:   agentName,
+		TopicImpl:     types.AttestNonce{},
+		Activate:      false,
+		Ctx:           &ctx,
+		CreateHandler: handleAttestNonceCreate,
+		ModifyHandler: handleAttestNonceModify,
+		DeleteHandler: handleAttestNonceDelete,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctx.subAttestNonce = subAttestNonce
+	subAttestNonce.Activate()
+
+	pubEdgeNodeCert, err := ps.NewPublication(
+		pubsub.PublicationOptions{
+			AgentName:  agentName,
+			Persistent: true,
+			TopicType:  types.EdgeNodeCert{},
+		})
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctx.pubEdgeNodeCert = pubEdgeNodeCert
+
+	// publish ECDH cert
+	publishEdgeNodeCertToController(&ctx, ecdhCertFile, types.CertTypeEcdhXchange,
+		etpm.IsTpmEnabled() && !etpm.FileExists(etpm.EcdhKeyFile), nil)
+
+	// publish attestation quote cert
+	publishEdgeNodeCertToController(&ctx, quoteCertFile, types.CertTypeRestrictSigning,
+		etpm.IsTpmEnabled() && !etpm.FileExists(quoteKeyFile), nil)
+
+	ekCertMetaData, err := getEkCertMetaData()
+	if err == nil {
+		publishEdgeNodeCertToController(&ctx, EkCertFile, types.CertTypeEk, true,
+			ekCertMetaData)
+	} else {
+		log.Errorf("ekCertMetaData failed: %v", err)
+	}
+
+	// Pick up debug aka log level before we start real work
+	for !ctx.GCInitialized {
+		log.Functionf("waiting for GCInitialized")
+		select {
+		case change := <-subGlobalConfig.MsgChan():
+			subGlobalConfig.ProcessChange(change)
+		case <-stillRunning.C:
+		}
+		ps.StillRunning(agentName, warningTime, errorTime)
+	}
+	log.Functionf("processed GlobalConfig")
+
+	if etpm.IsTpmEnabled() && !etpm.FileExists(etpm.TpmCredentialsFileName) {
+		err := readCredentials()
+		if err != nil {
+			// this indicates that we are in a very bad state
+			log.Errorf("TPM is enabled, but credential file is absent: %v", err)
+			return 1
+		}
+	}
+	for {
+		select {
+		case change := <-subGlobalConfig.MsgChan():
+			subGlobalConfig.ProcessChange(change)
+		case change := <-ctx.subAttestNonce.MsgChan():
+			ctx.subAttestNonce.ProcessChange(change)
+		case <-stillRunning.C:
+			ps.StillRunning(agentName, warningTime, errorTime)
+		}
+	}
+}
+
+func runInline(command string, args []string) int {
+	var err error
+	switch command {
 	case "createDeviceCert":
-		//Create required directories if not present
+		// Create required directories if not present
 		initializeDirs()
 		if err = genCredentials(); err != nil {
-			//No need for Fatal, caller will take action based on return code.
+			// No need for Fatal, caller will take action based on return code.
 			log.Errorf("Error in generating credentials: %v", err)
 			return 1
 		}
@@ -1403,211 +1527,88 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		if err = readDeviceCert(); err == nil {
 			log.Noticef("readDeviceCert success, re-using key and cert")
 			return 0
-
 		}
-		log.Errorf("readDeviceCert failed %s, generating new key and cert",
-			err)
-		pubkey, err := createDeviceKey()
+		log.Errorf("readDeviceCert failed %s, generating new key and cert", err)
+		pubKey, err := createDeviceKey()
 		if err != nil {
-			//No need for Fatal, caller will take action based on return code.
+			// No need for Fatal, caller will take action based on return code.
 			log.Errorf("Error in creating device primary key: %v ", err)
 			return 1
 		}
-		if err := createDeviceCertOnTpm(pubkey); err != nil {
+		if err = createDeviceCertOnTpm(pubKey); err != nil {
 			log.Errorf("Failed to create TPM device cert: %v", err)
 			return 1
 		}
 		// Write to /config/device.cert.pem and backup to TPM NVRAW
 		if err = writeDeviceCert(); err != nil {
-			//No need for Fatal, caller will take action based on return code.
+			// No need for Fatal, caller will take action based on return code.
 			log.Errorf("Failed to backup device cert in TPM NVRAM: %v",
 				err)
 			return 1
 		}
-		if err := createOtherKeys(true); err != nil {
-			//No need for Fatal, caller will take action based on return code.
+		if err = createOtherKeys(true); err != nil {
+			// No need for Fatal, caller will take action based on return code.
 			log.Errorf("Error in creating other keys: %v ", err)
 			return 1
 		}
-
 	case "createSoftDeviceCert":
-		//Create required directories if not present
+		// Create required directories if not present
 		initializeDirs()
-		if err := createDeviceCertSoft(); err != nil {
+		if err = createDeviceCertSoft(); err != nil {
 			log.Errorf("Failed to create soft device cert: %v", err)
 			return 1
 		}
 
 	case "readCredentials":
 		if err = readCredentials(); err != nil {
-			//No need for Fatal, caller will take action based on return code.
+			// No need for Fatal, caller will take action based on return code.
 			log.Errorf("Error in reading credentials: %v", err)
 			return 1
 		}
 
 	case "genCredentials":
 		if err = genCredentials(); err != nil {
-			//No need for Fatal, caller will take action based on return code.
+			// No need for Fatal, caller will take action based on return code.
 			log.Errorf("Error in generating credentials: %v", err)
 			return 1
 		}
 	case "saveTpmInfo":
-		//nolint:gomnd // very straightforward for anyone to understand why "2" is used here
-		if len(flag.Args()) != 2 {
+		if len(args) < 1 {
 			log.Error("Insufficient arguments. Usage: tpmmgr saveTpmInfo filePath")
-
 			return 1
 		}
-
-		if err := saveTpmInfo(flag.Args()[1]); err != nil {
+		if err = saveTpmInfo(args[0]); err != nil {
 			log.Errorf("saveTpmInfo failed: %v", err)
-		}
-	case "runAsService":
-		log.Functionf("Starting %s", agentName)
-
-		//Create required directories if not present
-		initializeDirs()
-
-		if err := pidfile.CheckAndCreatePidfile(log, agentName); err != nil {
-			log.Fatal(err)
-		}
-
-		// Run a periodic timer so we always update StillRunning
-		stillRunning := time.NewTicker(15 * time.Second)
-		ps.StillRunning(agentName, warningTime, errorTime)
-
-		// Context to pass around
-		ctx := tpmMgrContext{}
-
-		// Look for global config such as log levels
-		subGlobalConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
-			AgentName:     "zedagent",
-			MyAgentName:   agentName,
-			TopicImpl:     types.ConfigItemValueMap{},
-			Persistent:    true,
-			Activate:      false,
-			Ctx:           &ctx,
-			CreateHandler: handleGlobalConfigCreate,
-			ModifyHandler: handleGlobalConfigModify,
-			DeleteHandler: handleGlobalConfigDelete,
-			WarningTime:   warningTime,
-			ErrorTime:     errorTime,
-		})
-		if err != nil {
-			log.Fatal(err)
-		}
-		ctx.subGlobalConfig = subGlobalConfig
-		subGlobalConfig.Activate()
-
-		pubAttestQuote, err := ps.NewPublication(
-			pubsub.PublicationOptions{
-				AgentName: agentName,
-				TopicType: types.AttestQuote{},
-			})
-		if err != nil {
-			log.Fatal(err)
-		}
-		ctx.pubAttestQuote = pubAttestQuote
-		subAttestNonce, err := ps.NewSubscription(pubsub.SubscriptionOptions{
-			AgentName:     "zedagent",
-			MyAgentName:   agentName,
-			TopicImpl:     types.AttestNonce{},
-			Activate:      false,
-			Ctx:           &ctx,
-			CreateHandler: handleAttestNonceCreate,
-			ModifyHandler: handleAttestNonceModify,
-			DeleteHandler: handleAttestNonceDelete,
-			WarningTime:   warningTime,
-			ErrorTime:     errorTime,
-		})
-		if err != nil {
-			log.Fatal(err)
-		}
-		ctx.subAttestNonce = subAttestNonce
-		subAttestNonce.Activate()
-
-		pubEdgeNodeCert, err := ps.NewPublication(
-			pubsub.PublicationOptions{
-				AgentName:  agentName,
-				Persistent: true,
-				TopicType:  types.EdgeNodeCert{},
-			})
-		if err != nil {
-			log.Fatal(err)
-		}
-		ctx.pubEdgeNodeCert = pubEdgeNodeCert
-
-		//publish ECDH cert
-		publishEdgeNodeCertToController(&ctx, ecdhCertFile, types.CertTypeEcdhXchange,
-			etpm.IsTpmEnabled() && !etpm.FileExists(etpm.EcdhKeyFile), nil)
-
-		//publish attestation quote cert
-		publishEdgeNodeCertToController(&ctx, quoteCertFile, types.CertTypeRestrictSigning,
-			etpm.IsTpmEnabled() && !etpm.FileExists(quoteKeyFile), nil)
-
-		ekCertMetaData, err := getEkCertMetaData()
-		if err == nil {
-			publishEdgeNodeCertToController(&ctx, EkCertFile, types.CertTypeEk, true,
-				ekCertMetaData)
-		} else {
-			log.Errorf("ekCertMetaData failed: %v", err)
-		}
-
-		// Pick up debug aka log level before we start real work
-		for !ctx.GCInitialized {
-			log.Functionf("waiting for GCInitialized")
-			select {
-			case change := <-subGlobalConfig.MsgChan():
-				subGlobalConfig.ProcessChange(change)
-			case <-stillRunning.C:
-			}
-			ps.StillRunning(agentName, warningTime, errorTime)
-		}
-		log.Functionf("processed GlobalConfig")
-
-		if etpm.IsTpmEnabled() && !etpm.FileExists(etpm.TpmCredentialsFileName) {
-			err := readCredentials()
-			if err != nil {
-				//this indicates that we are in a very bad state
-				log.Errorf("TPM is enabled, but credential file is absent: %v", err)
-				return 1
-			}
-		}
-		for {
-			select {
-			case change := <-subGlobalConfig.MsgChan():
-				subGlobalConfig.ProcessChange(change)
-			case change := <-ctx.subAttestNonce.MsgChan():
-				ctx.subAttestNonce.ProcessChange(change)
-			case <-stillRunning.C:
-				ps.StillRunning(agentName, warningTime, errorTime)
-			}
 		}
 	case "printCapability":
 		printCapability()
 	case "printPCRs":
 		printPCRs()
 	case "testTpmEcdhSupport":
-		testTpmEcdhSupport()
-	case "testEcdhAES":
-		if err = testEcdhAES(); err != nil {
+		if err := testTpmEcdhSupport(); err != nil {
 			fmt.Printf("failed with error %v", err)
 		} else {
-			fmt.Printf("test passed")
+			fmt.Print("test passed")
+		}
+	case "testEcdhAES":
+		if err := testEcdhAES(); err != nil {
+			fmt.Printf("failed with error %v", err)
+		} else {
+			fmt.Print("test passed")
 		}
 	case "testEncryptDecrypt":
-		if err = testEncryptDecrypt(); err != nil {
+		if err := testEncryptDecrypt(); err != nil {
 			fmt.Printf("failed with error %v", err)
 		} else {
-			fmt.Printf("test passed")
+			fmt.Print("test passed")
 		}
 	case "createCerts":
-		//Create required directories if not present
+		// Create required directories if not present
 		initializeDirs()
 
 		// Create additional security keys if already not created,
 		// followed by security certificates
-		if err = createOtherKeys(false); err != nil {
+		if err := createOtherKeys(false); err != nil {
 			log.Errorf("Error in creating other keys: %v ", err)
 			return 1
 		}
@@ -1626,8 +1627,8 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 			return 1
 		}
 	default:
-		//No need for Fatal, caller will take action based on return code.
-		log.Errorf("Unknown argument %s", flag.Args()[0])
+		// No need for Fatal, caller will take action based on return code.
+		log.Errorf("Unknown command %s", command)
 		return 1
 	}
 	return 0

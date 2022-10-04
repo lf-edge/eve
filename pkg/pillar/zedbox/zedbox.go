@@ -62,8 +62,8 @@ const (
 type zedboxInline uint8
 
 const (
-	inlineNone          zedboxInline = iota
-	inlineUnlessService              // Unless "runAsService" in args
+	inlineNone   zedboxInline = iota
+	inlineIfArgs              // if we call with args provided, will run inline
 	inlineAlways
 )
 
@@ -77,7 +77,7 @@ var (
 	entrypoints = map[string]entrypoint{
 		"client":           {f: client.Run, inline: inlineAlways},
 		"command":          {f: command.Run},
-		"diag":             {f: diag.Run, inline: inlineUnlessService},
+		"diag":             {f: diag.Run},
 		"domainmgr":        {f: domainmgr.Run},
 		"downloader":       {f: downloader.Run},
 		"executor":         {f: executor.Run},
@@ -98,8 +98,8 @@ var (
 		"wstunnelclient":   {f: wstunnelclient.Run},
 		"conntrack":        {f: conntrack.Run, inline: inlineAlways},
 		"pbuf":             {f: pbuf.Run, inline: inlineAlways},
-		"tpmmgr":           {f: tpmmgr.Run, inline: inlineUnlessService},
-		"vaultmgr":         {f: vaultmgr.Run, inline: inlineUnlessService},
+		"tpmmgr":           {f: tpmmgr.Run, inline: inlineIfArgs},
+		"vaultmgr":         {f: vaultmgr.Run, inline: inlineIfArgs},
 		"upgradeconverter": {f: upgradeconverter.Run, inline: inlineAlways},
 		"watcher":          {f: watcher.Run},
 		"zfsmanager":       {f: zfsmanager.Run},
@@ -114,17 +114,13 @@ func main() {
 	if sep, ok := entrypoints[basename]; ok {
 		logger, log = agentlog.Init(basename)
 		inline := false
-		if sep.inline == inlineAlways {
+		switch sep.inline {
+		case inlineAlways:
 			inline = true
-		} else if sep.inline == inlineUnlessService {
-			inline = true
-			for _, arg := range os.Args {
-				if arg == "runAsService" {
-					log.Functionf("Found runAsService for %s",
-						basename)
-					inline = false
-					break
-				}
+		case inlineIfArgs:
+			flag.Parse()
+			if len(flag.Args()) != 0 {
+				inline = true
 			}
 		}
 		retval := runService(basename, sep, inline)
