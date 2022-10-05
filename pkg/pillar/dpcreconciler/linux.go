@@ -254,11 +254,23 @@ func (r *LinuxDpcReconciler) watcher(netEvents <-chan netmonitor.Event) {
 							PhysicalIoSG, "interface added/deleted", true)
 					}
 				}
+				if ev.Deleted {
+					changed := r.updateCurrentRoutes(r.prevArgs.DPC)
+					if changed {
+						r.addPendingReconcile(
+							L3SG, "interface delete triggered route change", true)
+					}
+				}
 			case netmonitor.AddrChange:
 				changed := r.updateCurrentAdapterAddrs(r.prevArgs.DPC)
 				if changed {
 					r.addPendingReconcile(L3SG, "address change", true)
 				}
+				changed = r.updateCurrentRoutes(r.prevArgs.DPC)
+				if changed {
+					r.addPendingReconcile(L3SG, "address change triggered route change", true)
+				}
+
 			case netmonitor.DNSInfoChange:
 				newGlobalCfg := r.getIntendedGlobalCfg(r.prevArgs.DPC)
 				prevGlobalCfg := r.intendedState.SubGraph(GlobalSG)
@@ -585,7 +597,8 @@ func (r *LinuxDpcReconciler) updateCurrentState(args Args) (changed bool) {
 		// Initialize only subgraphs with external items.
 		addrsSG := dg.InitArgs{Name: AdapterAddrsSG}
 		adaptersSG := dg.InitArgs{Name: AdaptersSG, Subgraphs: []dg.InitArgs{addrsSG}}
-		l3SG := dg.InitArgs{Name: L3SG, Subgraphs: []dg.InitArgs{adaptersSG}}
+		routesSG := dg.InitArgs{Name: RoutesSG}
+		l3SG := dg.InitArgs{Name: L3SG, Subgraphs: []dg.InitArgs{adaptersSG, routesSG}}
 		physIoSG := dg.InitArgs{Name: PhysicalIoSG}
 		graph := dg.InitArgs{Name: GraphName, Subgraphs: []dg.InitArgs{physIoSG, l3SG}}
 		r.currentState = dg.New(graph)
@@ -595,6 +608,9 @@ func (r *LinuxDpcReconciler) updateCurrentState(args Args) (changed bool) {
 		changed = true
 	}
 	if addrsChanged := r.updateCurrentAdapterAddrs(args.DPC); addrsChanged {
+		changed = true
+	}
+	if routesChanged := r.updateCurrentRoutes(args.DPC); routesChanged {
 		changed = true
 	}
 	return changed
@@ -678,6 +694,50 @@ func (r *LinuxDpcReconciler) updateCurrentAdapterAddrs(
 	prevSG := dg.GetSubGraph(r.currentState, sgPath)
 	if len(prevSG.DiffItems(currentAddrs)) > 0 {
 		prevSG.EditParentGraph().PutSubGraph(currentAddrs)
+		return true
+	}
+	return false
+}
+
+func (r *LinuxDpcReconciler) updateCurrentRoutes(dpc types.DevicePortConfig) (changed bool) {
+	sgPath := dg.NewSubGraphPath(L3SG, RoutesSG)
+	currentRoutes := dg.New(dg.InitArgs{Name: RoutesSG})
+	for _, port := range dpc.Ports {
+		ifIndex, found, err := r.NetworkMonitor.GetInterfaceIndex(port.IfName)
+		if err != nil {
+			r.Log.Errorf("updateCurrentRoutes: failed to get ifIndex for %s: %v",
+				port.IfName, err)
+			continue
+		}
+		if !found {
+			continue
+		}
+		table := devicenetwork.BaseRTIndex + ifIndex
+		routes, err := r.NetworkMonitor.ListRoutes(netmonitor.RouteFilters{
+			FilterByTable: true,
+			Table:         table,
+			FilterByIf:    true,
+			IfIndex:       ifIndex,
+		})
+		if err != nil {
+			r.Log.Errorf("updateCurrentRoutes: ListRoutes failed for ifIndex %d: %v",
+				ifIndex, err)
+			continue
+		}
+		for _, rt := range routes {
+			currentRoutes.PutItem(linux.Route{
+				Route:         rt.Data.(netlink.Route),
+				AdapterIfName: port.IfName,
+				AdapterLL:     port.Logicallabel,
+			}, &reconciler.ItemStateData{
+				State:         reconciler.ItemStateCreated,
+				LastOperation: reconciler.OperationCreate,
+			})
+		}
+	}
+	prevSG := dg.GetSubGraph(r.currentState, sgPath)
+	if len(prevSG.DiffItems(currentRoutes)) > 0 {
+		prevSG.EditParentGraph().PutSubGraph(currentRoutes)
 		return true
 	}
 	return false

@@ -162,7 +162,10 @@ func (g *graph) DiffItems(graph2 GraphR) (diff []ItemRef) {
 	for i < end1 && j < end2 {
 		n1 := g.root.sortedNodes[i]
 		n2 := g2.root.sortedNodes[j]
-		pathCmp := n1.path.Compare(n2.path)
+		// Compare relative paths (w.r.t. g and g2), not absolute paths.
+		n1Path := n1.path.TrimPrefix(g.pathFromRoot)
+		n2Path := n2.path.TrimPrefix(g2.pathFromRoot)
+		pathCmp := n1Path.Compare(n2Path)
 		idCmp := n1.itemRef().Compare(n2.itemRef())
 		if pathCmp == -1 || (pathCmp == 0 && idCmp == -1) {
 			diffMap[n1.itemRef()] = struct{}{}

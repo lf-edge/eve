@@ -734,7 +734,7 @@ func TestDiffItems(test *testing.T) {
 		},
 	}
 	g2 := New(initArgs)
-	t.Expect(g1).ToNot(BeNil())
+	t.Expect(g2).ToNot(BeNil())
 
 	diff := g1.DiffItems(g2)
 	t.Expect(diff).ToNot(ContainItem(itemA))
@@ -750,6 +750,68 @@ func TestDiffItems(test *testing.T) {
 	t.Expect(diff).To(ContainItem(itemC))
 	t.Expect(diff).To(ContainItem(itemD))
 	t.Expect(diff).To(HaveLen(4))
+
+	// Graph3:
+	// - mostly like Graph2 but with a different path to the root,
+	//   which should not make any difference
+	// Items & Subgraphs: [[A B [E'] [C]]]
+	itemA = mockItem{
+		name:     "A",
+		itemType: "type1",
+		attrs:    mockItemAttrs{intAttr: 10, strAttr: "abc"},
+	}
+	itemB = mockItem{
+		name:     "B",
+		itemType: "type1",
+		attrs:    mockItemAttrs{boolAttr: true}, // like in Graph1
+	}
+	itemC = mockItem{
+		name:     "C",
+		itemType: "type1",
+	}
+	itemE = mockItem{
+		name:     "E",
+		itemType: "type2",
+		attrs:    mockItemAttrs{boolAttr: true}, // different
+	}
+	initArgs = InitArgs{
+		Name:  "RootGraph3",
+		Subgraphs: []InitArgs{
+			{
+				Name: "Graph3",
+				Items: []Item{itemA, itemB},
+				Subgraphs: []InitArgs{
+					{
+						Name:  "SubGraph1",
+						Items: []Item{itemE},
+					},
+					{
+						Name:  "SubGraph2",
+						Items: []Item{itemC},
+					},
+				},
+			},
+		},
+	}
+	g3Root := New(initArgs)
+	t.Expect(g3Root).ToNot(BeNil())
+	g3 := g3Root.SubGraph("Graph3")
+	t.Expect(g3).ToNot(BeNil())
+
+	diff = g3.DiffItems(g1)
+	t.Expect(diff).ToNot(ContainItem(itemA))
+	t.Expect(diff).ToNot(ContainItem(itemB))
+	t.Expect(diff).To(ContainItem(itemC)) // different subgraph
+	t.Expect(diff).To(ContainItem(itemD)) // not in g3
+	t.Expect(diff).To(ContainItem(itemE)) // not in g1
+	t.Expect(diff).To(HaveLen(3))
+
+	diff = g3.DiffItems(g2)
+	t.Expect(diff).ToNot(ContainItem(itemA))
+	t.Expect(diff).To(ContainItem(itemB)) // different attributes
+	t.Expect(diff).ToNot(ContainItem(itemC))
+	t.Expect(diff).To(ContainItem(itemE)) // different attributes
+	t.Expect(diff).To(HaveLen(2))
 }
 
 func TestDotExporter(test *testing.T) {
