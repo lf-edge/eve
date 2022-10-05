@@ -7,8 +7,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"reflect"
-
 	"github.com/lf-edge/eve/libs/depgraph"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/dpcreconciler/genericitems"
@@ -58,7 +56,7 @@ func (r Route) Type() string {
 // Equal is a comparison method for two equally-named route instances.
 func (r Route) Equal(other depgraph.Item) bool {
 	r2 := other.(Route)
-	return reflect.DeepEqual(r.Route, r2.Route)
+	return r.Route.Equal(r2.Route)
 }
 
 // External returns false.
