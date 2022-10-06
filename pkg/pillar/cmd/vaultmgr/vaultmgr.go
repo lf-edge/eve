@@ -45,6 +45,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/utils"
 	"github.com/lf-edge/eve/pkg/pillar/vault"
 	"github.com/lf-edge/eve/pkg/pillar/zfs"
 	"github.com/sirupsen/logrus"
@@ -933,6 +934,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		ps.StillRunning(agentName, warningTime, errorTime)
 	}
 	log.Functionf("processed GlobalConfig")
+
+	utils.WaitForFile(ps, log, agentName, warningTime, errorTime, types.CertsGeneratedFileName)
+	log.Functionf("done waiting for certificates")
 
 	// initialize publishing handles
 	initializeSelfPublishHandles(ps, &ctx)

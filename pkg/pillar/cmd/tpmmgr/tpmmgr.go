@@ -31,6 +31,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/utils"
 	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
 	uuid "github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
@@ -1464,6 +1465,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	}
 	ctx.pubEdgeNodeCert = pubEdgeNodeCert
 
+	utils.WaitForFile(ps, log, agentName, warningTime, errorTime, types.CertsGeneratedFileName)
+	log.Functionf("done waiting for certificates")
+
 	// publish ECDH cert
 	publishEdgeNodeCertToController(&ctx, ecdhCertFile, types.CertTypeEcdhXchange,
 		etpm.IsTpmEnabled() && !fileutils.FileExists(etpm.EcdhKeyFile), nil)
@@ -1627,6 +1631,12 @@ func runInline(command string, args []string) int {
 			log.Errorf("Error in creating Endorsement Key Certificate: %v", err)
 			return 1
 		}
+		if err := fileutils.DirSync(types.CertificateDirname); err != nil {
+			log.Errorf("Failed to sync dir %s: %v", types.CertificateDirname, err)
+			return 1
+		}
+		// touch the file to indicate that certs generation process is done
+		base.TouchFile(log, types.CertsGeneratedFileName)
 	default:
 		// No need for Fatal, caller will take action based on return code.
 		log.Errorf("Unknown command %s", command)

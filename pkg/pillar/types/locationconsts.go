@@ -3,7 +3,9 @@
 
 package types
 
-import "strings"
+import (
+	"strings"
+)
 
 const (
 	// TmpDirname - used for files fed into pubsub as global subscriptions
@@ -59,6 +61,9 @@ const (
 
 	// ServerSigningCertFileName - filename for server signing leaf certificate
 	ServerSigningCertFileName = CertificateDirname + "/server-signing-cert.pem"
+
+	// CertsGeneratedFileName indicates that we are done with certificates generation
+	CertsGeneratedFileName = CertificateDirname + "/generated"
 
 	// ShareCertDirname - directory to place private proxy server certificates
 	ShareCertDirname = "/usr/local/share/ca-certificates"
