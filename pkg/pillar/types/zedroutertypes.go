@@ -1443,6 +1443,20 @@ func (status DeviceNetworkStatus) HasErrors() bool {
 	return false
 }
 
+// GetPortAddrInfo returns address info for a given interface and its IP address.
+func (status DeviceNetworkStatus) GetPortAddrInfo(ifname string, addr net.IP) *AddrInfo {
+	portStatus := status.GetPortByIfName(ifname)
+	if portStatus == nil {
+		return nil
+	}
+	for i := range portStatus.AddrInfoList {
+		if portStatus.AddrInfoList[i].Addr.Equal(addr) {
+			return &portStatus.AddrInfoList[i]
+		}
+	}
+	return nil
+}
+
 func rotate(arr []string, amount int) []string {
 	if len(arr) == 0 {
 		return []string{}
@@ -1454,50 +1468,58 @@ func rotate(arr []string, amount int) []string {
 // GetMgmtPortsSortedCost returns all management ports sorted by port cost
 // rotation causes rotation/round-robin within each cost
 func GetMgmtPortsSortedCost(globalStatus DeviceNetworkStatus, rotation int) []string {
-	return getMgmtPortsSortedCostImpl(globalStatus, rotation,
-		PortCostMax, false)
+	return getPortsSortedCostImpl(globalStatus, rotation,
+		PortCostMax, true, false)
+}
+
+// GetAllPortsSortedCost returns all ports (management and app shared) sorted by port cost.
+// Rotation causes rotation/round-robin within each cost.
+func GetAllPortsSortedCost(globalStatus DeviceNetworkStatus, rotation int) []string {
+	return getPortsSortedCostImpl(globalStatus, rotation,
+		PortCostMax, false, false)
 }
 
 // GetMgmtPortsSortedCostWithoutFailed returns all management ports sorted by
 // port cost ignoring ports with failures.
 // rotation causes rotation/round-robin within each cost
 func GetMgmtPortsSortedCostWithoutFailed(globalStatus DeviceNetworkStatus, rotation int) []string {
-	return getMgmtPortsSortedCostImpl(globalStatus, rotation,
-		PortCostMax, true)
+	return getPortsSortedCostImpl(globalStatus, rotation,
+		PortCostMax, true, true)
 }
 
-// getMgmtPortsSortedCostImpl returns all management ports sorted by port cost
+// getPortsSortedCostImpl returns all ports sorted by port cost
 // up to and including the maxCost
-func getMgmtPortsSortedCostImpl(globalStatus DeviceNetworkStatus, rotation int, maxCost uint8, dropFailed bool) []string {
+func getPortsSortedCostImpl(globalStatus DeviceNetworkStatus, rotation int, maxCost uint8,
+	mgmtOnly, dropFailed bool) []string {
 	ifnameList := []string{}
 	costList := getPortCostListImpl(globalStatus, maxCost)
 	for _, cost := range costList {
 		ifnameList = append(ifnameList,
-			getMgmtPortsImpl(globalStatus, rotation, true, cost, dropFailed)...)
+			getPortsImpl(globalStatus, rotation, true, cost, mgmtOnly, dropFailed)...)
 	}
 	return ifnameList
 }
 
 // GetMgmtPortsAny returns all management ports
 func GetMgmtPortsAny(globalStatus DeviceNetworkStatus, rotation int) []string {
-	return getMgmtPortsImpl(globalStatus, rotation, false, 0, false)
+	return getPortsImpl(globalStatus, rotation, false, 0, true, false)
 }
 
 // GetMgmtPortsByCost returns all management ports with a given port cost
 func GetMgmtPortsByCost(globalStatus DeviceNetworkStatus, cost uint8) []string {
-	return getMgmtPortsImpl(globalStatus, 0, true, cost, false)
+	return getPortsImpl(globalStatus, 0, true, cost, true, false)
 }
 
 // Returns the IfNames.
-func getMgmtPortsImpl(globalStatus DeviceNetworkStatus, rotation int,
-	matchCost bool, cost uint8, dropFailed bool) []string {
+func getPortsImpl(globalStatus DeviceNetworkStatus, rotation int,
+	matchCost bool, cost uint8, mgmtOnly, dropFailed bool) []string {
 
 	var ifnameList []string
 	for _, us := range globalStatus.Ports {
 		if matchCost && us.Cost != cost {
 			continue
 		}
-		if globalStatus.Version >= DPCIsMgmt &&
+		if mgmtOnly && globalStatus.Version >= DPCIsMgmt &&
 			!us.IsMgmt {
 			continue
 		}
@@ -1719,8 +1741,8 @@ func getLocalAddrListImpl(globalStatus DeviceNetworkStatus,
 	var ignoreErrors bool
 	if ifname == "" {
 		// Get interfaces in cost order
-		ifnameList = getMgmtPortsSortedCostImpl(globalStatus, 0,
-			maxCost, false)
+		ifnameList = getPortsSortedCostImpl(globalStatus, 0,
+			maxCost, true, false)
 		// If we are looking across all interfaces, then We ignore errors
 		// since we get them if there are no addresses on a ports
 		ignoreErrors = true

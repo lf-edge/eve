@@ -102,8 +102,9 @@ func getPacFile(log *base.LogObject, url string,
 	// Avoid using a proxy to fetch the wpad.dat; 15 second timeout
 	const allowProxy = false
 	const useOnboard = false
-	resp, contents, _, err := zedcloud.SendOnIntf(context.Background(), &zedcloudCtx, url, ifname, 0, nil,
-		allowProxy, useOnboard)
+	resp, contents, _, err := zedcloud.SendOnIntf(
+		context.Background(), &zedcloudCtx, url, ifname, 0, nil,
+		allowProxy, useOnboard, false)
 	if err != nil {
 		return "", err
 	}
