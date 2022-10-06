@@ -18,9 +18,7 @@ ZTMPDIR=/run/global
 DPCDIR=$ZTMPDIR/DevicePortConfig
 FIRSTBOOTFILE=$ZTMPDIR/first-boot
 FIRSTBOOT=
-AGENTS0="zedagent ledmanager nim nodeagent domainmgr loguploader"
-AGENTS1="zedmanager zedrouter downloader verifier baseosmgr wstunnelclient volumemgr watcher zfsmanager"
-AGENTS="$AGENTS0 $AGENTS1"
+AGENTS="diag zedagent ledmanager nim nodeagent domainmgr loguploader tpmmgr vaultmgr zedmanager zedrouter downloader verifier baseosmgr wstunnelclient volumemgr watcher zfsmanager"
 TPM_DEVICE_PATH="/dev/tpmrm0"
 SECURITYFSPATH=/sys/kernel/security
 PATH=$BINDIR:$PATH
@@ -250,40 +248,11 @@ echo "$(date -Ins -u) device-steps: Starting upgradeconverter (pre-vault)"
 $BINDIR/upgradeconverter pre-vault
 echo "$(date -Ins -u) device-steps: upgradeconverter (pre-vault) Completed"
 
-# Start zedagent to make sure we have a ConfigItemValueMap publisher
-echo "$(date -Ins -u) Starting zedagent"
-$BINDIR/zedagent &
-wait_for_touch zedagent
-
-touch "$WATCHDOG_FILE/zedagent.touch"
-
 # BlinkCounter 1 means we have started; might not yet have IP addresses
 # client/selfRegister and zedagent update this when the found at least
 # one free uplink with IP address(s)
 mkdir -p "$ZTMPDIR/LedBlinkCounter"
 echo '{"BlinkCounter": 1}' > "$ZTMPDIR/LedBlinkCounter/ledconfig.json"
-
-# If ledmanager is already running we don't have to start it.
-# TBD: Should we start it earlier before wwan and wlan services?
-if ! pgrep ledmanager >/dev/null; then
-    echo "$(date -Ins -u) Starting ledmanager"
-    $BINDIR/ledmanager &
-    wait_for_touch ledmanager
-fi
-
-# Start domainmgr to setup USB hid/storage based on onboarding status
-# and config item
-echo "$(date -Ins -u) Starting domainmgr"
-$BINDIR/domainmgr &
-wait_for_touch domainmgr
-
-echo "$(date -Ins -u) Starting nodeagent"
-$BINDIR/nodeagent &
-wait_for_touch nodeagent
-
-touch "$WATCHDOG_FILE/nodeagent.touch" \
-      "$WATCHDOG_FILE/ledmanager.touch" \
-      "$WATCHDOG_FILE/domainmgr.touch"
 
 mkdir -p $DPCDIR
 
@@ -359,21 +328,34 @@ access_usb
 # We append on every boot since /etc/hosts starts from read-only rootfs
 [ -f /config/hosts ] && cat /config/hosts >> /etc/hosts
 
-# Get IP addresses
-echo "$(date -Ins -u) Starting nim"
-$BINDIR/nim &
-wait_for_touch nim
+echo "$(date -Ins -u) Starting services"
 
-# Add nim to watchdog
-touch "$WATCHDOG_FILE/nim.touch"
+for AGENT in $AGENTS; do
+    echo "$(date -Ins -u) Starting $AGENT"
+    if [ "$AGENT" = "diag" ]; then
+      # Print diag output forever on changes
+      # NOTE: it is safe to do either kill -STOP or an outright
+      # kill -9 on the following cat process if you want to stop
+      # receiving those messages on the console.
+      mkfifo /run/diag.pipe
+      (while true; do cat; done) < /run/diag.pipe >/dev/console 2>&1 &
+      $BINDIR/diag -f -o /run/diag.pipe &
+    else
+      $BINDIR/"$AGENT" &
+    fi
+done
 
-# Print diag output forever on changes
-# NOTE: it is safe to do either kill -STOP or an outright
-# kill -9 on the following cat process if you want to stop
-# receiving those messages on the console.
-mkfifo /run/diag.pipe
-(while true; do cat; done) < /run/diag.pipe >/dev/console 2>&1 &
-$BINDIR/diag -f -o /run/diag.pipe &
+# Now run watchdog for agents
+for AGENT in $AGENTS; do
+    if [ "$AGENT" = "diag" ]; then
+      # we do not use touch for diag
+      continue
+    fi
+    wait_for_touch "$AGENT"
+    touch "$WATCHDOG_FILE/$AGENT.touch"
+done
+
+echo "$(date -Ins -u) Starting services done"
 
 # Need a special check (and slower booting) if the device has no hardware clock
 if [ -c /dev/rtc ] || [ -c /dev/rtc0 ]; then
@@ -532,34 +514,6 @@ if ! grep -q "$uuid" /etc/hosts; then
 else
     echo "$(date -Ins -u) Found $uuid in /etc/hosts"
 fi
-
-echo "$(date -Ins -u) Starting tpmmgr as a service agent"
-$BINDIR/tpmmgr &
-wait_for_touch tpmmgr
-touch "$WATCHDOG_FILE/tpmmgr.touch"
-
-if ! pgrep loguploader >/dev/null; then
-    echo "$(date -Ins -u) Starting loguploader"
-    $BINDIR/loguploader &
-    wait_for_touch loguploader
-    touch "$WATCHDOG_FILE/loguploader.touch"
-fi
-
-for AGENT in $AGENTS1; do
-    echo "$(date -Ins -u) Starting $AGENT"
-    $BINDIR/"$AGENT" &
-    wait_for_touch "$AGENT"
-done
-
-# Start vaultmgr as a service
-$BINDIR/vaultmgr &
-wait_for_touch vaultmgr
-touch "$WATCHDOG_FILE/vaultmgr.touch"
-
-# Now run watchdog for all agents
-for AGENT in $AGENTS; do
-    touch "$WATCHDOG_FILE/$AGENT.touch"
-done
 
 echo "$(date -Ins -u) Initial setup done"
 
