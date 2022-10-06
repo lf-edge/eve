@@ -43,7 +43,7 @@ func (m *DpcManager) updateDNS() {
 	m.deviceNetStatus.Testing = m.dpcVerify.inProgress
 	m.deviceNetStatus.CurrentIndex = m.dpcList.CurrentIndex
 	m.deviceNetStatus.RadioSilence = m.radioSilence
-	oldPorts := m.deviceNetStatus.Ports
+	oldDNS := m.deviceNetStatus
 	m.deviceNetStatus.Ports = make([]types.NetworkPortStatus, len(dpc.Ports))
 	for ix, port := range dpc.Ports {
 		m.deviceNetStatus.Ports[ix].IfName = port.IfName
@@ -161,7 +161,7 @@ func (m *DpcManager) updateDNS() {
 		for addrIdx := range port.AddrInfoList {
 			// Need pointer since we are going to modify
 			ai := &port.AddrInfoList[addrIdx]
-			oai := lookupPortStatusAddr(oldPorts, port.IfName, ai.Addr)
+			oai := oldDNS.GetPortAddrInfo(port.IfName, ai.Addr)
 			if oai == nil {
 				continue
 			}
@@ -266,22 +266,6 @@ func (m *DpcManager) getDNSInfo(port *types.NetworkPortStatus) error {
 	// XXX just pick first since have one DomainName slot
 	if len(dnsInfo.Domains) > 0 {
 		port.DomainName = dnsInfo.Domains[0]
-	}
-	return nil
-}
-
-func lookupPortStatusAddr(ports []types.NetworkPortStatus,
-	ifname string, addr net.IP) *types.AddrInfo {
-
-	for _, port := range ports {
-		if port.IfName != ifname {
-			continue
-		}
-		for _, ai := range port.AddrInfoList {
-			if ai.Addr.Equal(addr) {
-				return &ai
-			}
-		}
 	}
 	return nil
 }

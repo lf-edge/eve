@@ -1054,7 +1054,7 @@ func myGet(ctx *diagContext, reqURL string, ifname string,
 	const allowProxy = true
 	// No verification of AuthContainer for this GET
 	resp, contents, senderStatus, err := zedcloud.SendOnIntf(context.Background(), zedcloudCtx,
-		reqURL, ifname, 0, nil, allowProxy, ctx.usingOnboardCert)
+		reqURL, ifname, 0, nil, allowProxy, ctx.usingOnboardCert, false)
 	if err != nil {
 		switch senderStatus {
 		case types.SenderStatusUpgrade:
@@ -1118,7 +1118,7 @@ func myPost(ctx *diagContext, reqURL string, ifname string,
 	}
 	const allowProxy = true
 	resp, contents, senderStatus, err := zedcloud.SendOnIntf(context.Background(), zedcloudCtx,
-		reqURL, ifname, reqlen, b, allowProxy, ctx.usingOnboardCert)
+		reqURL, ifname, reqlen, b, allowProxy, ctx.usingOnboardCert, false)
 	if err != nil {
 		switch senderStatus {
 		case types.SenderStatusUpgrade:

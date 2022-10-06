@@ -170,7 +170,8 @@ func SendOnAllIntf(ctxWork context.Context, ctx *ZedCloudContext, url string, re
 
 	for _, intf := range intfs {
 		const useOnboard = false
-		resp, contents, status, err := SendOnIntf(ctxWork, ctx, url, intf, reqlen, b, allowProxy, useOnboard)
+		resp, contents, status, err := SendOnIntf(ctxWork, ctx, url, intf, reqlen, b,
+			allowProxy, useOnboard, false)
 		// this changes original boolean logic a little in V2 API, basically the last status non-zero enum would
 		// overwrite the previous one in the loop if they are differ
 		if status != types.SenderStatusNone {
@@ -220,13 +221,30 @@ func SendOnAllIntf(ctxWork context.Context, ctx *ZedCloudContext, url string, re
 	return nil, nil, senderStatus, err
 }
 
-// VerifyAllIntf
-// We try with free interfaces in first iteration.
-//      We test interfaces in sequence and as soon as we find the first working
-//      interface, we stop. Other interfaces are not tested.
-// If we find enough free interfaces through
-// which cloud connectivity can be achieved, we won't test non-free interfaces.
-// Otherwise we test non-free interfaces also.
+// VerifyAllIntf : verify the state of connectivity for *all* uplink interfaces.
+// The interfaces are tested in the order of decreasing priority (i.e. increasing
+// cost). Until we find enough working management interfaces (the limit is currently
+// hard-coded to 1 working mgmt interface), every iterated management interface
+// undergoes full end-to-end testing. First we run local checks:
+//  * Does interface (i.e. link) exist in the kernel?
+//  * Does interface have a routable IP address?
+//  * Is there any DNS server associated with the interface?
+//  * If there is a proxy config, is it valid?
+//  * If this is a wwan interface, is the modem connected and are there any errors
+//    reported by the wwan microservice?
+//  * etc.
+// Additionally, for the full interface testing we run an HTTP GET request for the provided
+// URL to test connectivity with a remote endpoint (typically controller).
+// Once we find enough working management interfaces, the remaining interfaces (of lower
+// priority, higher cost) are only verified using the aforementioned local checks.
+// Non-management interfaces (i.e. app-shared) are always tested using local checks only,
+// we never run HTTP requests for these types of interfaces.
+// The idea is to limit the amount or completely avoid generating traffic for interfaces
+// (of potentially higher cost) which are currently not going to be used by EVE for
+// connectivity with the controller. At the same time we want to provide at least some
+// status for all interfaces and avoid publishing old and potentially obsolete interface
+// state data.
+//
 // We return a bool remoteTemporaryFailure for the cases when we reached
 // the controller but it is overloaded, or has certificate issues.
 // Return Values:
@@ -236,10 +254,10 @@ func SendOnAllIntf(ctxWork context.Context, ctx *ZedCloudContext, url string, re
 //       error  - indicates details of Errors
 //    IntfStatusMap - This status for each interface verified.
 //      Includes entries for all interfaces that were tested.
-//      If an intf is success, Error == "" Else - Set to appropriate Error
+//      If an intf is success, Error == "", else - Set to appropriate Error
 //      ErrorTime will always be set for the interface.
 func VerifyAllIntf(ctx *ZedCloudContext,
-	url string, successCount uint,
+	url string, requiredSuccessCount uint,
 	iteration int) (bool, bool, types.IntfStatusMap, error) {
 
 	log := ctx.log
@@ -251,47 +269,52 @@ func VerifyAllIntf(ctx *ZedCloudContext,
 	// Map of per-interface errors
 	intfStatusMap := *types.NewIntfStatusMap()
 
-	if successCount <= 0 {
-		// No need to test. Just return true.
-		return true, remoteTemporaryFailure, intfStatusMap, nil
-	}
+	// This will be set to the cost of the most expensive mgmt interface
+	// that was needed to achieve requiredSuccessCount.
+	var workingMgmtCost uint8
 
-	// For non-mgmt (i.e. app-shared) ports, the presence of a valid IP address
-	// along with DNS server and gateway is good enough for us to deem them as Success.
-	// We do not test non-mgmt ports periodically, which makes it not possible to clear
-	// any old errors on them. Here we check for presence of valid IP/DNS on non-mgmt
-	// ports and accordingly mark their status.
-	for _, port := range ctx.DeviceNetworkStatus.Ports {
-		if port.IsMgmt {
-			continue
-		}
-
-		if port.HasIPAndDNS() {
-			intfStatusMap.RecordSuccess(port.IfName)
-		}
-	}
-
-	intfs := types.GetMgmtPortsSortedCost(*ctx.DeviceNetworkStatus, iteration)
-	if len(intfs) == 0 {
-		err := fmt.Errorf("Can not connect to %s: No management interfaces",
-			url)
-		log.Error(err.Error())
-		return false, remoteTemporaryFailure, intfStatusMap, err
-	}
-
+	intfs := types.GetAllPortsSortedCost(*ctx.DeviceNetworkStatus, iteration)
 	ctxWork, cancel := GetContextForAllIntfFunctions(ctx)
 	defer cancel()
 
+	// Always iterate through *all* uplink interfaces, never break out of the loop.
+	// However, some of the interfaces might be verified only using local checks
+	// (aka dry-run).
 	for _, intf := range intfs {
-		if intfSuccessCount >= successCount {
-			// We have enough uplinks with cloud connectivity working.
-			break
+		portStatus := types.GetPort(*ctx.DeviceNetworkStatus, intf)
+		// If we have enough uplinks with cloud connectivity, then the remaining
+		// interfaces (some of which might not be free) are verified using
+		// only local checks, without generating any traffic.
+		// Local-only checks are also always applied for non-management interfaces
+		// (i.e. app-shared).
+		dryRun := !portStatus.IsMgmt || intfSuccessCount >= requiredSuccessCount
+		// For LTE connectivity start by checking locally available state information
+		// as provided by the wwan microservice. If an error is detected, report
+		// it immediately rather than trying to access the URL and generating
+		// traffic.
+		if portStatus.WirelessStatus.WType == types.WirelessTypeCellular {
+			wwanStatus := portStatus.WirelessStatus.Cellular
+			if wwanStatus.ConfigError != "" {
+				intfStatusMap.RecordFailure(intf, wwanStatus.ConfigError)
+				continue
+			}
+			if wwanStatus.Module.OpMode != types.WwanOpModeConnected {
+				intfStatusMap.RecordFailure(intf,
+					fmt.Sprintf("modem %s is not connected, current state: %s",
+						wwanStatus.Module.Name, wwanStatus.Module.OpMode))
+				continue
+			}
+			if wwanStatus.ProbeError != "" {
+				intfStatusMap.RecordFailure(intf, wwanStatus.ProbeError)
+				continue
+			}
 		}
 		// This VerifyAllIntf() is called for "ping" url only, it does
 		// not have return envelope verifying check after the call nor
 		// does it check other values of status.
 		const useOnboard = false
-		resp, _, status, err := SendOnIntf(ctxWork, ctx, url, intf, 0, nil, allowProxy, useOnboard)
+		resp, _, status, err := SendOnIntf(ctxWork, ctx, url, intf, 0, nil,
+			allowProxy, useOnboard, dryRun)
 		switch status {
 		case types.SenderStatusRefused, types.SenderStatusCertInvalid:
 			remoteTemporaryFailure = true
@@ -316,10 +339,30 @@ func VerifyAllIntf(ctx *ZedCloudContext,
 			intfStatusMap.RecordFailure(intf, err.Error())
 			continue
 		}
+		if dryRun {
+			// If this is a management interface with the same cost as the last
+			// needed working mgmt interface, then do not overshadow results
+			// of the last full end-to-end test (test that included sending a request
+			// to the remote URL) with a (successful) dry-run test (only local checks).
+			// Instead, we let the next iterations of VerifyAllIntf to eventually
+			// get to this interface through rotations and re-test it fully
+			// (or cheaper interface(s) will start working and this interface will be
+			// relegated to dry-run testing only).
+			if !portStatus.IsMgmt || portStatus.Cost > workingMgmtCost {
+				intfStatusMap.RecordSuccess(intf)
+			}
+			if portStatus.IsMgmt {
+				intfSuccessCount++
+			}
+			continue
+		}
 		switch resp.StatusCode {
 		case http.StatusOK, http.StatusCreated, http.StatusNotModified, http.StatusNoContent:
 			log.Tracef("VerifyAllIntf: Zedcloud reachable via interface %s", intf)
 			intfStatusMap.RecordSuccess(intf)
+			if intfSuccessCount < requiredSuccessCount {
+				workingMgmtCost = portStatus.Cost
+			}
 			intfSuccessCount++
 		default:
 			err = fmt.Errorf("controller with URL %s returned status code %d (%s)",
@@ -333,6 +376,15 @@ func VerifyAllIntf(ctx *ZedCloudContext,
 			continue
 		}
 	}
+	if requiredSuccessCount <= 0 {
+		// No need for working mgmt interface. Just return true.
+		return true, remoteTemporaryFailure, intfStatusMap, nil
+	}
+	if len(types.GetMgmtPortsAny(*ctx.DeviceNetworkStatus, 0)) == 0 {
+		err := fmt.Errorf("Can not connect to %s: No management interfaces", url)
+		log.Error(err.Error())
+		return false, remoteTemporaryFailure, intfStatusMap, err
+	}
 	if intfSuccessCount == 0 {
 		errStr := fmt.Sprintf("All attempts to connect to %s failed: %v",
 			url, attempts)
@@ -343,10 +395,10 @@ func VerifyAllIntf(ctx *ZedCloudContext,
 		}
 		return false, remoteTemporaryFailure, intfStatusMap, err
 	}
-	if intfSuccessCount < successCount {
+	if intfSuccessCount < requiredSuccessCount {
 		errStr := fmt.Sprintf("Not enough Ports (%d) against required count %d"+
 			" to reach %s; last failed with: %v",
-			intfSuccessCount, successCount, url, attempts)
+			intfSuccessCount, requiredSuccessCount, url, attempts)
 		log.Errorln(errStr)
 		err := &SendError{
 			Err:      errors.New(errStr),
@@ -358,7 +410,7 @@ func VerifyAllIntf(ctx *ZedCloudContext,
 	return true, remoteTemporaryFailure, intfStatusMap, nil
 }
 
-// Tries all source addresses on interface until one succeeds.
+// SendOnIntf : Tries all source addresses on interface until one succeeds.
 // Returns response for first success. Caller can not use resp.Body but can
 // use []byte contents return.
 // If we get a http response, we return that even if it was an error
@@ -367,7 +419,11 @@ func VerifyAllIntf(ctx *ZedCloudContext,
 // the controller but it is overloaded, or has certificate issues.
 // The caller is responsible to handle any required AuthContainer by calling
 // RemoveAndVerifyAuthContainer
-func SendOnIntf(workContext context.Context, ctx *ZedCloudContext, destURL string, intf string, reqlen int64, b *bytes.Buffer, allowProxy bool, useOnboard bool) (*http.Response, []byte, types.SenderResult, error) {
+// Enable dryRun to just perform all pre-send interface checks without actually
+// sending any data.
+func SendOnIntf(workContext context.Context, ctx *ZedCloudContext, destURL string,
+	intf string, reqlen int64, b *bytes.Buffer, allowProxy, useOnboard,
+	dryRun bool) (*http.Response, []byte, types.SenderResult, error) {
 
 	log := ctx.log
 	var reqUrl string
@@ -404,7 +460,7 @@ func SendOnIntf(workContext context.Context, ctx *ZedCloudContext, destURL strin
 		reqUrl, intf, addrCount, reqlen)
 
 	if addrCount == 0 {
-		if ctx.FailureFunc != nil {
+		if ctx.FailureFunc != nil && !dryRun {
 			ctx.FailureFunc(log, intf, reqUrl, 0, 0, false)
 		}
 		// Determine a specific failure for intf
@@ -446,9 +502,11 @@ func SendOnIntf(workContext context.Context, ctx *ZedCloudContext, destURL strin
 			TLSClientConfig: ctx.TlsConfig,
 		}
 	}
-	// Since we recreate the transport on each call there is no benefit
-	// to keeping the connections open.
-	defer transport.CloseIdleConnections()
+	if !dryRun {
+		// Since we recreate the transport on each call there is no benefit
+		// to keeping the connections open.
+		defer transport.CloseIdleConnections()
+	}
 
 	// Note that if an explicit HTTPS proxy addressed by an IP address is used,
 	// EVE does not need to perform any domain name resolution.
@@ -456,7 +514,7 @@ func SendOnIntf(workContext context.Context, ctx *ZedCloudContext, destURL strin
 	// not by EVE.
 	dnsServers := types.GetDNSServers(*ctx.DeviceNetworkStatus, intf)
 	if len(dnsServers) == 0 && !usedProxyWithIP {
-		if ctx.FailureFunc != nil {
+		if ctx.FailureFunc != nil && !dryRun {
 			ctx.FailureFunc(log, intf, reqUrl, 0, 0, false)
 		}
 		err = &types.DNSNotAvail{
@@ -468,6 +526,12 @@ func SendOnIntf(workContext context.Context, ctx *ZedCloudContext, destURL strin
 
 	var attempts []SendAttempt
 	var sessionResume bool
+
+	if dryRun {
+		// Do not actually send the request.
+		// Return nil response and nil error back to the caller.
+		return nil, nil, types.SenderStatusNone, nil
+	}
 
 	// Try all addresses
 	for retryCount := 0; retryCount < addrCount; retryCount += 1 {

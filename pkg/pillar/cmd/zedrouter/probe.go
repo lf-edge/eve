@@ -399,7 +399,9 @@ func launchHostProbe(ctx *zedrouterContext) {
 						const allowProxy = true
 						const useOnboard = false
 						// No verification of AuthContainer in this reachability probe
-						resp, _, _, err := zedcloud.SendOnIntf(context.Background(), &zcloudCtx, remoteURL, info.IfName, 0, nil, allowProxy, useOnboard)
+						resp, _, _, err := zedcloud.SendOnIntf(
+							context.Background(), &zcloudCtx, remoteURL, info.IfName,
+							0, nil, allowProxy, useOnboard, false)
 						if err != nil {
 							log.Tracef("launchHostProbe: send on intf %s, err %v\n", info.IfName, err)
 						}

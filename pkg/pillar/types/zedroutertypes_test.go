@@ -433,11 +433,13 @@ func TestGetPortCostList(t *testing.T) {
 	}
 }
 
+// TestGetMgmtPortsSortedCost covers both GetMgmtPortsSortedCost and GetAllPortsSortedCost.
 func TestGetMgmtPortsSortedCost(t *testing.T) {
 	testMatrix := map[string]struct {
 		deviceNetworkStatus DeviceNetworkStatus
 		rotate              int
-		expectedValue       []string
+		expectedMgmtValue   []string
+		expectedAllValue    []string
 	}{
 		"Test single": {
 			deviceNetworkStatus: DeviceNetworkStatus{
@@ -448,7 +450,8 @@ func TestGetMgmtPortsSortedCost(t *testing.T) {
 						Cost:   0},
 				},
 			},
-			expectedValue: []string{"port1"},
+			expectedMgmtValue: []string{"port1"},
+			expectedAllValue:  []string{"port1"},
 		},
 		"Test single rotate": {
 			deviceNetworkStatus: DeviceNetworkStatus{
@@ -459,12 +462,14 @@ func TestGetMgmtPortsSortedCost(t *testing.T) {
 						Cost:   0},
 				},
 			},
-			rotate:        14,
-			expectedValue: []string{"port1"},
+			rotate:            14,
+			expectedMgmtValue: []string{"port1"},
+			expectedAllValue:  []string{"port1"},
 		},
 		"Test empty": {
 			deviceNetworkStatus: DeviceNetworkStatus{},
-			expectedValue:       []string{},
+			expectedMgmtValue:   []string{},
+			expectedAllValue:    []string{},
 		},
 		"Test no management": {
 			deviceNetworkStatus: DeviceNetworkStatus{
@@ -475,8 +480,9 @@ func TestGetMgmtPortsSortedCost(t *testing.T) {
 						Cost:   0},
 				},
 			},
-			rotate:        14,
-			expectedValue: []string{},
+			rotate:            14,
+			expectedMgmtValue: []string{},
+			expectedAllValue:  []string{"port1"},
 		},
 		"Test duplicates": {
 			deviceNetworkStatus: DeviceNetworkStatus{
@@ -496,7 +502,8 @@ func TestGetMgmtPortsSortedCost(t *testing.T) {
 						Cost:   1},
 				},
 			},
-			expectedValue: []string{"port2", "port4", "port1", "port3"},
+			expectedMgmtValue: []string{"port2", "port4", "port1", "port3"},
+			expectedAllValue:  []string{"port2", "port4", "port1", "port3"},
 		},
 		"Test duplicates rotate": {
 			deviceNetworkStatus: DeviceNetworkStatus{
@@ -516,8 +523,9 @@ func TestGetMgmtPortsSortedCost(t *testing.T) {
 						Cost:   1},
 				},
 			},
-			rotate:        1,
-			expectedValue: []string{"port4", "port2", "port3", "port1"},
+			rotate:            1,
+			expectedMgmtValue: []string{"port4", "port2", "port3", "port1"},
+			expectedAllValue:  []string{"port4", "port2", "port3", "port1"},
 		},
 		"Test duplicates some management": {
 			deviceNetworkStatus: DeviceNetworkStatus{
@@ -537,7 +545,8 @@ func TestGetMgmtPortsSortedCost(t *testing.T) {
 						Cost:   1},
 				},
 			},
-			expectedValue: []string{"port4", "port3"},
+			expectedMgmtValue: []string{"port4", "port3"},
+			expectedAllValue:  []string{"port2", "port4", "port1", "port3"},
 		},
 		"Test reverse": {
 			deviceNetworkStatus: DeviceNetworkStatus{
@@ -554,7 +563,8 @@ func TestGetMgmtPortsSortedCost(t *testing.T) {
 						Cost:   0},
 				},
 			},
-			expectedValue: []string{"port3", "port2", "port1"},
+			expectedMgmtValue: []string{"port3", "port2", "port1"},
+			expectedAllValue:  []string{"port3", "port2", "port1"},
 		},
 		"Test reverse some management": {
 			deviceNetworkStatus: DeviceNetworkStatus{
@@ -571,13 +581,16 @@ func TestGetMgmtPortsSortedCost(t *testing.T) {
 						Cost:   0},
 				},
 			},
-			expectedValue: []string{"port3", "port1"},
+			expectedMgmtValue: []string{"port3", "port1"},
+			expectedAllValue:  []string{"port3", "port2", "port1"},
 		},
 	}
 	for testname, test := range testMatrix {
 		t.Logf("Running test case %s", testname)
 		value := GetMgmtPortsSortedCost(test.deviceNetworkStatus, test.rotate)
-		assert.Equal(t, test.expectedValue, value)
+		assert.Equal(t, test.expectedMgmtValue, value)
+		value = GetAllPortsSortedCost(test.deviceNetworkStatus, test.rotate)
+		assert.Equal(t, test.expectedAllValue, value)
 	}
 }
 
