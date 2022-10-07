@@ -68,7 +68,8 @@ RUN [ -z "$GOARCH" ] || export CC=$(echo /*-cross/bin/*-gcc) ;\
 WORKDIR /
 
 RUN if [ ${DEV} = "y" ]; then \
-    CGO_ENABLED=0 go get -ldflags "-s -w -extldflags '-static'" github.com/go-delve/delve/cmd/dlv@v1.8.3 && \
+    unset GOFLAGS && \
+    CGO_ENABLED=0 go install -ldflags "-s -w -extldflags '-static'" github.com/go-delve/delve/cmd/dlv@v1.9.1 && \
     cp /root/go/bin/dlv /out/opt; \
 fi
 
