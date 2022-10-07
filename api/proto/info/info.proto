@@ -691,6 +691,7 @@ enum AttestationState {
 enum AppInstMetaDataType {
   APP_INST_META_DATA_TYPE_NONE = 0;
   APP_INST_META_DATA_TYPE_KUBE_CONFIG = 1;
+  APP_INST_META_DATA_TYPE_CUSTOM_STATUS = 2;
 }
 
 
