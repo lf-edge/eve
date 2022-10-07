@@ -1,0 +1,37 @@
+#!/bin/sh
+#
+# Copyright (c) 2022 Zededa, Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+set_module_parameter() {
+    module="$1"
+    parameter="$2"
+    value="$3"
+
+    echo "${value}" > /sys/module/"${module}"/parameters/"${parameter}"
+}
+
+zfs_set_default_parameters() {
+    set_module_parameter zfs zfs_compressed_arc_enabled 0
+    set_module_parameter zfs zfs_vdev_min_auto_ashift 12
+    set_module_parameter zfs zvol_request_sync 0
+    set_module_parameter zfs zfs_vdev_aggregation_limit_non_rotating $((1024*1024))
+    set_module_parameter zfs zfs_vdev_async_write_active_min_dirty_percent 10
+    set_module_parameter zfs zfs_vdev_async_write_active_max_dirty_percent 30
+    set_module_parameter zfs zfs_delay_min_dirty_percent 40
+    set_module_parameter zfs zfs_delay_scale 800000
+    set_module_parameter zfs zfs_dirty_data_sync_percent 15
+    set_module_parameter zfs zfs_prefetch_disable 1
+    set_module_parameter zfs zfs_vdev_sync_read_min_active 35
+    set_module_parameter zfs zfs_vdev_sync_read_max_active 35
+    set_module_parameter zfs zfs_vdev_sync_write_min_active 35
+    set_module_parameter zfs zfs_vdev_sync_write_max_active 35
+    set_module_parameter zfs zfs_vdev_async_read_min_active 1
+    set_module_parameter zfs zfs_vdev_async_read_max_active 10
+    set_module_parameter zfs zfs_vdev_async_write_min_active 1
+    set_module_parameter zfs zfs_vdev_async_write_max_active 10
+    set_module_parameter zfs zfs_smoothing_scale 50000
+    set_module_parameter zfs zfs_smoothing_write 5
+}
+
+zfs_set_default_parameters
