@@ -111,6 +111,10 @@ do_version() {
   echo /bits/*.squash | sed -e 's#/bits/rootfs-##' -e 's#.squash##' >&3
 }
 
+do_build_config() {
+  unsquashfs -cat /bits/rootfs.img /etc/linuxkit-eve-config.yml >&3
+}
+
 do_live() {
   PART_SPEC="efi conf imga"
   # each live image is expected to have a soft serial number that
