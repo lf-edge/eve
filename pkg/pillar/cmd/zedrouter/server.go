@@ -80,6 +80,16 @@ type signerHandler struct {
 	zedcloudCtx *zedcloud.ZedCloudContext
 }
 
+// AppInfoHandler provides information about available patches for the application
+type AppInfoHandler struct {
+	ctx *zedrouterContext
+}
+
+// AppCustomBlobsHandler serves the AppCustom binary blobs
+type AppCustomBlobsHandler struct {
+	ctx *zedrouterContext
+}
+
 // KubeconfigFileSizeLimitInBytes holds the maximum expected size of Kubeconfig file received from k3s server appInst.
 // Note: KubeconfigFileSizeLimitInBytes should always be < AppInstMetadataResponseSizeLimitInBytes.
 const KubeconfigFileSizeLimitInBytes = 32768 // 32KB
@@ -126,6 +136,12 @@ func createServer4(ctx *zedrouterContext, bridgeIP string, bridgeName string) er
 
 	wwanMetricsHandler := &wwanMetricsHandler{ctx: ctx}
 	mux.Handle("/eve/v1/wwan/metrics.json", wwanMetricsHandler)
+
+	AppInfoHandler := &AppInfoHandler{ctx: ctx}
+	mux.Handle("/eve/v1/app/info.json", AppInfoHandler)
+
+	AppCustomBlobsHandler := &AppCustomBlobsHandler{ctx: ctx}
+	mux.Handle("/eve/app-custom-blobs/", AppCustomBlobsHandler)
 
 	zedcloudCtx := zedcloud.NewContext(log, zedcloud.ContextOptions{})
 	signerHandler := &signerHandler{
@@ -812,4 +828,85 @@ func (hdl signerHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Add("Content-Type", "application/x-proto-binary")
 	w.WriteHeader(http.StatusOK)
 	w.Write(resp.Bytes())
+}
+
+func (hdl AppInfoHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	log.Tracef("wwanAppInfoHandler.ServeHTTP")
+	w.Header().Add("Content-Type", "application/json")
+
+	remoteIP := net.ParseIP(strings.Split(r.RemoteAddr, ":")[0])
+	anStatus := lookupAppNetworkStatusByAppIP(hdl.ctx, remoteIP)
+	if anStatus == nil {
+		log.Errorf("Could not find network instance by ip %v", remoteIP)
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("not found"))
+		return
+	}
+
+	diskStatusList := lookupDiskStatusList(hdl.ctx, anStatus.UUIDandVersion.UUID.String())
+
+	var appInfo types.AppInfo
+	for _, st := range diskStatusList {
+		if st.Devtype != "AppCustom" {
+			continue
+		}
+
+		blob := types.AppBlobsAvailable{
+			CustomMeta:  st.CustomMeta,
+			DownloadURL: fmt.Sprintf("http://169.254.169.254/eve/app-custom-blobs/%s", st.DisplayName),
+		}
+
+		appInfo.AppBlobs = append(appInfo.AppBlobs, blob)
+	}
+
+	resp, _ := json.Marshal(appInfo)
+	w.WriteHeader(http.StatusOK)
+	w.Write(resp)
+}
+
+func (hdl AppCustomBlobsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	blobName := path.Base(r.URL.Path)
+
+	remoteIP := net.ParseIP(strings.Split(r.RemoteAddr, ":")[0])
+	anStatus := lookupAppNetworkStatusByAppIP(hdl.ctx, remoteIP)
+	if anStatus == nil {
+		log.Errorf("Could not find network instance by ip %v", remoteIP)
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("not found"))
+		return
+	}
+
+	diskStatusList := lookupDiskStatusList(hdl.ctx, anStatus.UUIDandVersion.UUID.String())
+
+	var blobFileLocation string
+	for _, st := range diskStatusList {
+		if st.Devtype != "AppCustom" {
+			continue
+		}
+
+		if st.DisplayName == blobName {
+			blobFileLocation = st.FileLocation
+			break
+		}
+	}
+
+	if blobFileLocation == "" {
+		http.Error(w, r.RequestURI, http.StatusNotFound)
+		return
+	}
+
+	f, err := os.Open(blobFileLocation)
+	if err != nil {
+		http.Error(w, r.RequestURI, http.StatusNotFound)
+		return
+	}
+	defer f.Close()
+	fi, err := f.Stat()
+	if err != nil {
+		http.Error(w, r.RequestURI, http.StatusNotFound)
+		return
+	}
+	modTime := fi.ModTime()
+
+	http.ServeContent(w, r, blobFileLocation, modTime, f)
 }
