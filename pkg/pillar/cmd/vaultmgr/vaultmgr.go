@@ -46,6 +46,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/vault"
+	"github.com/lf-edge/eve/pkg/pillar/zfs"
 	"github.com/sirupsen/logrus"
 	"google.golang.org/protobuf/proto"
 )
@@ -321,11 +322,11 @@ func deriveVaultKey(cloudKeyOnlyMode, useSealedKey bool) ([]byte, error) {
 	return tpmKey, nil
 }
 
-//stageKey is responsible for talking to TPM and Controller
-//and preparing the key for accessing the vault
+// stageKey is responsible for talking to TPM and Controller
+// and preparing the key for accessing the vault
 func stageKey(cloudKeyOnlyMode, useSealedKey bool, keyDirName string, keyFileName string) error {
 	//Create a tmpfs file to pass the secret to fscrypt
-	if _, _, err := execCmd("mkdir", keyDirName); err != nil {
+	if err := os.MkdirAll(keyDirName, 755); err != nil {
 		return fmt.Errorf("Error creating keyDir %s %v", keyDirName, err)
 	}
 
@@ -739,10 +740,9 @@ func setupDefaultVault(ctx *vaultMgrContext) error {
 		if os.IsNotExist(err) {
 			//No TPM or TPM lacks required features
 			if persistFsType == types.PersistZFS {
-				args := getCreateParams(defaultSecretDataset, false)
-				if stdOut, stdErr, err := execCmd(types.ZFSBinary, args...); err != nil {
-					return fmt.Errorf("error creating zfs vault %s, error=%v, %s, %s",
-						defaultVault, err, stdOut, stdErr)
+				if err := zfs.CreateDataset(defaultSecretDataset); err != nil {
+					return fmt.Errorf("error creating zfs vault %s, error=%v",
+						defaultVault, err)
 				}
 				return nil
 			}
@@ -820,16 +820,12 @@ func publishZfsVaultStatus(ctx *vaultMgrContext, vaultName, vaultPath string) {
 		status.Status = zfsEncryptStatus
 		status.SetErrorNow(zfsEncryptError)
 	} else {
-		datasetStatus, err := vault.CheckOperStatus(log, vaultPath)
-		if err == nil {
-			log.Functionf("checkOperStatus returns %s for %s", datasetStatus, vaultPath)
-			datasetStatus = processOperStatus(datasetStatus)
-		}
-		if datasetStatus != "" {
-			log.Errorf("Status failed, %s", datasetStatus)
+		if err := vault.CheckOperStatus(log, vaultPath); err != nil {
+			log.Errorf("Status failed, %s", err)
 			status.Status = info.DataSecAtRestStatus_DATASEC_AT_REST_ERROR
-			status.SetErrorNow(datasetStatus)
+			status.SetErrorNow(err.Error())
 		} else {
+			log.Functionf("checkOperStatus returns ok for %s", vaultPath)
 			status.Status = info.DataSecAtRestStatus_DATASEC_AT_REST_ENABLED
 		}
 	}

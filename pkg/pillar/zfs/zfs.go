@@ -36,7 +36,7 @@ func CreateDatasets(log *base.LogObject, datasetName string) error {
 		if DatasetExist(log, dName) {
 			continue
 		} else {
-			if err := createDataset(dName); err != nil {
+			if err := CreateDataset(dName); err != nil {
 				return err
 			}
 		}
@@ -45,8 +45,8 @@ func CreateDatasets(log *base.LogObject, datasetName string) error {
 	return nil
 }
 
-// createDataset create and mount an empty dataset
-func createDataset(datasetName string) error {
+// CreateDataset create and mount an empty dataset
+func CreateDataset(datasetName string) error {
 	props := make(map[libzfs.Prop]libzfs.Property)
 	dataset, err := libzfs.DatasetCreate(datasetName,
 		libzfs.DatasetTypeFilesystem, props)
@@ -55,11 +55,28 @@ func createDataset(datasetName string) error {
 	}
 	defer dataset.Close()
 
-	if err := MountDataset(datasetName); err != nil {
+	return MountDataset(datasetName)
+}
+
+// CreateVaultDataset create and mount an empty vault dataset
+func CreateVaultDataset(datasetName, zfsKeyFile string) error {
+	props := make(map[libzfs.Prop]libzfs.Property)
+
+	props[libzfs.DatasetPropEncryption] = libzfs.Property{
+		Value: "aes-256-gcm"}
+	props[libzfs.DatasetPropKeyLocation] = libzfs.Property{
+		Value: "file://" + zfsKeyFile}
+	props[libzfs.DatasetPropKeyFormat] = libzfs.Property{
+		Value: "raw"}
+
+	dataset, err := libzfs.DatasetCreate(datasetName,
+		libzfs.DatasetTypeFilesystem, props)
+	if err != nil {
 		return err
 	}
+	defer dataset.Close()
 
-	return nil
+	return MountDataset(datasetName)
 }
 
 // MountDataset mounts dataset
@@ -77,11 +94,24 @@ func MountDataset(datasetName string) error {
 	}
 
 	// Mount on the same path as the name
-	if err := dataset.Mount("", 0); err != nil {
+	return dataset.Mount("", 0)
+}
+
+// UnmountDataset unmount this filesystem and any children
+// inheriting the mountpoint property.
+func UnmountDataset(datasetName string) error {
+	dataset, err := libzfs.DatasetOpen(datasetName)
+	if err != nil {
 		return err
 	}
+	defer dataset.Close()
 
-	return nil
+	mounted, _ := dataset.IsMounted()
+	if !mounted {
+		return nil
+	}
+
+	return dataset.UnmountAll(0)
 }
 
 // DestroyDataset removes dataset from zfs
@@ -213,6 +243,25 @@ func GetDatasetByDevice(device string) string {
 // GetZVolDeviceByDataset return path to device for provided dataset
 func GetZVolDeviceByDataset(dataset string) string {
 	return filepath.Join(types.ZVolDevicePrefix, dataset)
+}
+
+// GetDatasetKeyStatus returns status of dataset key or error
+func GetDatasetKeyStatus(datasetName string) (string, error) {
+	dataset, err := libzfs.DatasetOpen(datasetName)
+	if err != nil {
+		return "", err
+	}
+	defer dataset.Close()
+
+	keyStatus, err := dataset.GetProperty(libzfs.DatasetPropKeyStatus)
+	if err != nil {
+		return "",
+			fmt.Errorf("DatasetExist(%s): Get property KeyStatus failed. %s",
+				datasetName, err.Error())
+
+	}
+
+	return keyStatus.Value, nil
 }
 
 // GetZFSVolumeInfo provides information for zfs device
