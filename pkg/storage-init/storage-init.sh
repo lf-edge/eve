@@ -56,30 +56,6 @@ zfs_set_arc_limits() {
     zfs_set_parameter zfs_dirty_data_max "${zfs_dirty_data_max}"
 }
 
-# should be in sync with options inside installer
-zfs_set_default_parameters() {
-	zfs_set_parameter zfs_compressed_arc_enabled 0
-	zfs_set_parameter zfs_vdev_min_auto_ashift 12
-	zfs_set_parameter zvol_request_sync 0
-	zfs_set_parameter zfs_vdev_aggregation_limit_non_rotating $((1024*1024))
-	zfs_set_parameter zfs_vdev_async_write_active_min_dirty_percent 10
-	zfs_set_parameter zfs_vdev_async_write_active_max_dirty_percent 30
-	zfs_set_parameter zfs_delay_min_dirty_percent 40
-	zfs_set_parameter zfs_delay_scale 800000
-	zfs_set_parameter zfs_dirty_data_sync_percent 15
-	zfs_set_parameter zfs_prefetch_disable 1
-	zfs_set_parameter zfs_vdev_sync_read_min_active 35
-	zfs_set_parameter zfs_vdev_sync_read_max_active 35
-	zfs_set_parameter zfs_vdev_sync_write_min_active 35
-	zfs_set_parameter zfs_vdev_sync_write_max_active 35
-	zfs_set_parameter zfs_vdev_async_read_min_active 1
-	zfs_set_parameter zfs_vdev_async_read_max_active 10
-	zfs_set_parameter zfs_vdev_async_write_min_active 1
-	zfs_set_parameter zfs_vdev_async_write_max_active 10
-	zfs_set_parameter zfs_smoothing_scale 50000
-	zfs_set_parameter zfs_smoothing_write 5
-}
-
 # set sequential mdev handler to avoid add-remove-add mis-order of zvols
 set_sequential_mdev() {
   echo >/dev/mdev.seq
@@ -207,9 +183,6 @@ fi
 # We support P3 partition either formatted as ext3/4 or as part of ZFS pool
 # Priorities are: ext3, ext4, zfs
 if P3=$(findfs PARTLABEL=P3) && [ -n "$P3" ]; then
-    # Set default zfs params and check if we have any zpools attached to the system
-    zfs_set_default_parameters
-
     P3_FS_TYPE=$(blkid "$P3"| tr ' ' '\012' | awk -F= '/^TYPE/{print $2;}' | sed 's/"//g')
     if [ "$P3_FS_TYPE" = zfs_member ]; then
        # zfs_member is part of zfs type
@@ -273,7 +246,6 @@ if P3=$(findfs PARTLABEL=P3) && [ -n "$P3" ]; then
     fi
 else
     #in case of no P3 we may have EVE persist on another disks
-    zfs_set_default_parameters
     set_sequential_mdev
     if chroot /hostfs zpool import -f persist; then
         echo "zfs" > /run/eve.persist_type
