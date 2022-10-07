@@ -63,15 +63,16 @@ At this point, you have the specific version of source code used to build the EV
 ## Binary to Builder Configuration
 
 The specific configuration used to build this distribution of EVE is distributed inside the EVE OS image.
-The actual configuration is available in binary `rootfs.img`, specifically in `/etc/linuxkit-eve-config.yaml`. 
+The actual configuration is available in binary `rootfs.img`, specifically in `/etc/linuxkit-eve-config.yaml`,
+and thus is available on every running eve-os device.
 
-For example, you can run:
+It also is in the `lfedge/eve` container image, so you can run:
 
 ```
-$ docker run --rm --entrypoint=cat lfedge/eve:0.0.0-master-0c6de671-kvm /etc/linuxkit-config-version.yaml
+$ docker run --rm lfedge/eve:<version> build_config
+# e.g.
+$ docker run --rm lfedge/eve:8.11.0 build_config
 ```
-
-Or use `docker create`, followed by `docker cp` and `docker rm`.
 
 A sample configuration is:
 
