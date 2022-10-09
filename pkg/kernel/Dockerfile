@@ -39,7 +39,7 @@ RUN KERNEL_VERSION="$(eval echo \$KERNEL_VERSION_"$(uname -m)")" && KERNEL_MAJOR
     curl -fsSLO ${KERNEL_PGP2_SIGN} && \
     gpg2 --verify linux-${KERNEL_VERSION}.tar.sign linux-${KERNEL_VERSION}.tar && \
     cat linux-${KERNEL_VERSION}.tar | tar --absolute-names -x && mv /linux-${KERNEL_VERSION} /linux && \
-    rm -rf /out && mkdir /out && echo "KERNEL_SOURCE=${KERNEL_SOURCE}" > /out/kernel-source-info
+    rm -rf /out && mkdir /out && echo "KERNEL_SOURCE=${KERNEL_SOURCE}" > /out/kernel-source-info && echo "KERNEL_SOURCE=${KERNEL_SOURCE}"
 
 # Apply local patches
 WORKDIR /linux
