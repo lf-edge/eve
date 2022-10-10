@@ -23,6 +23,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	zauth "github.com/lf-edge/eve/api/go/auth"
 	zcert "github.com/lf-edge/eve/api/go/certs"
@@ -514,6 +515,20 @@ func VerifySigningCertChain(log *base.LogObject, certs []*zcert.ZCert) ([]byte, 
 			}
 		}
 	}
+
+	// verify date range of certificates
+	for _, cert := range certs {
+		realCert, err := x509.ParseCertificate(cert.Cert)
+		if err != nil {
+			errStr := fmt.Sprintf("certificate PEM parse fail")
+			log.Errorln("verifySignature: " + errStr)
+			return nil, err
+		}
+		if !verifyx509TimeStamps(log, realCert) {
+			return nil, errors.New("Cert not in valid time")
+		}
+	}
+
 	log.Tracef("VerifySigningCertChain: success\n")
 	return sigCertBytes, nil
 }
@@ -560,6 +575,82 @@ func verifySignature(log *base.LogObject, certByte []byte, interm *x509.CertPool
 		return errors.New(errStr)
 	}
 	return nil
+}
+
+func verifyx509TimeStamps(log *base.LogObject, realCert *x509.Certificate) bool {
+	rightNow := time.Now()
+	notBefore := realCert.NotBefore
+	notAfter := realCert.NotAfter
+	certName := realCert.Subject
+	certValid := true
+	// HACK for compilation test DUMMY thresholds
+	type configInfo struct {
+		// only need to define thresholds to
+		//  inform and warn the owners
+		infoThreshold time.Duration
+		warnThreshold time.Duration
+	}
+
+	type certStatus uint8
+	const (
+		allCertsAreValid certStatus = iota
+		aCertIsInfo
+		aCertIsWarn
+		aCertIsINVALID
+	)
+
+	type statusInfo struct {
+		CertStatus certStatus
+	}
+
+	// assume default will be 60 days before for Info
+	//  and 30 days for the Warning
+	var SystemConfig = configInfo{time.Hour * 24 * 60,
+		time.Hour * 24 * 30}
+
+	var CurrCertStatus = statusInfo{allCertsAreValid}
+	// HACK end
+
+	// verify the NotBefore, and NotAfter
+	if rightNow.After(notBefore) {
+		// Cert is active (after NotBefore date)
+		//  process thresholds
+		validDuration := notAfter.Sub(rightNow)
+		switch {
+		case validDuration < 0:
+			log.Errorf("%s: expired %v ago",
+				certName,
+				-validDuration)
+			certValid = false
+			CurrCertStatus.CertStatus = aCertIsINVALID
+		case validDuration < SystemConfig.warnThreshold:
+			log.Warnf("%s: expires in %v (%v days or less)",
+				certName,
+				validDuration,
+				SystemConfig.warnThreshold/24)
+			if CurrCertStatus.CertStatus < aCertIsWarn {
+				CurrCertStatus.CertStatus = aCertIsWarn
+			}
+		case validDuration < SystemConfig.infoThreshold:
+			log.Noticef("%s: expires in %v (%v Days or less)",
+				certName,
+				validDuration,
+				SystemConfig.infoThreshold/24)
+			if CurrCertStatus.CertStatus < aCertIsWarn {
+				CurrCertStatus.CertStatus = aCertIsWarn
+			}
+		default:
+			log.Errorf("%s: %v until it expires",
+				certName, validDuration)
+		}
+	} else {
+		// Current date is notBefore the Cert is valid
+		log.Errorf("%s: not yet valid, for %v",
+			certName, notBefore.Sub(rightNow))
+		certValid = false
+		CurrCertStatus.CertStatus = aCertIsINVALID
+	}
+	return certValid
 }
 
 // SaveServerSigningCert saves server (i.e. controller) signing certificate into the persist

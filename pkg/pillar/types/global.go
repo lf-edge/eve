@@ -160,6 +160,9 @@ const (
 	MetricInterval GlobalSettingKey = "timer.metric.interval"
 	// DiskScanMetricInterval global setting key
 	DiskScanMetricInterval GlobalSettingKey = "timer.metric.diskscan.interval"
+	// CertExpireInfo and CertExpireWarn global thresholds (in days)
+	CertExpireInfo GlobalSettingKey = "timer.metric.certinfolog"
+	CertExpireWarn GlobalSettingKey = "timer.metric.certwarnlog"
 	// ResetIfCloudGoneTime global setting key
 	ResetIfCloudGoneTime GlobalSettingKey = "timer.reboot.no.network"
 	// FallbackIfCloudGoneTime global setting key
@@ -805,6 +808,13 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	// Need to be careful about max value. Controller may use metric message to
 	// update status of device (online / suspect etc ).
 	configItemSpecMap.AddIntItem(MetricInterval, 60, 5, HourInSec)
+	// thresholds to log info then warn for x509 certificates
+	//  default is to log Info at 60 days before expiry, and Warn at 30
+	configItemSpecMap.AddIntItem(CertExpireInfo, 60*24*HourInSec, 24*HourInSec, 365*24*HourInSec)
+	configItemSpecMap.AddIntItem(CertExpireWarn, 30*24*HourInSec, 24*HourInSec, 365*24*HourInSec)
+	//  ? Do we need to specify frequency of logging for each of the
+	//    two levels -- that is, more frequent logging say hourly for
+	//    the Warn level ?
 	// timer.reboot.no.network (seconds) - reboot after no cloud connectivity
 	// Max designed to allow the option of never rebooting even if device
 	//  can't connect to the cloud
