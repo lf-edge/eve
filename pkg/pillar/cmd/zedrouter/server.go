@@ -53,9 +53,14 @@ type openstackHandler struct {
 	ctx *zedrouterContext
 }
 
-// Provides k3s cluster kubeconfig
-type kubeConfigHandler struct {
-	ctx *zedrouterContext
+// Let's application to report various metadata back to the cloud. At the
+// moment used for:
+//   - k3s cluster kubeconfig
+//   - reporting custom application status
+type appInstMetaHandler struct {
+	ctx             *zedrouterContext
+	maxResponseLen  int
+	publishDataType types.AppInstMetaDataType
 }
 
 // Provides geographic location of the device.
@@ -125,7 +130,11 @@ func createServer4(ctx *zedrouterContext, bridgeIP string, bridgeName string) er
 	mux.Handle("/openstack", openstackHandler)
 	mux.Handle("/openstack/", openstackHandler)
 
-	kubeConfigHandler := &kubeConfigHandler{ctx: ctx}
+	kubeConfigHandler := &appInstMetaHandler{
+		ctx:             ctx,
+		maxResponseLen:  KubeconfigFileSizeLimitInBytes,
+		publishDataType: types.AppInstMetaDataTypeKubeConfig,
+	}
 	mux.Handle("/eve/v1/kubeconfig", kubeConfigHandler)
 
 	locationInfoHandler := &locationInfoHandler{ctx: ctx}
@@ -657,15 +666,15 @@ func (hdl openstackHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 // ServeHTTP for kubeConfigHandler provides cluster kube config
-func (hdl kubeConfigHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (hdl appInstMetaHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		msg := "kube config handler: request method is not Post"
+		msg := "appInstMetaHandler: request method is not Post"
 		log.Error(msg)
 		http.Error(w, msg, http.StatusMethodNotAllowed)
 		return
 	}
 	if r.Header.Get("Content-Type") != "application/json" {
-		msg := "kube config handler: Content-Type header is not application/json"
+		msg := "appInstMetaHandler: Content-Type header is not application/json"
 		log.Error(msg)
 		http.Error(w, msg, http.StatusUnsupportedMediaType)
 		return
@@ -673,15 +682,15 @@ func (hdl kubeConfigHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	kubeConfig, err := ioutil.ReadAll(io.LimitReader(r.Body, AppInstMetadataResponseSizeLimitInBytes))
 	if err != nil {
-		msg := fmt.Sprintf("kube config handler: ioutil read failed: %v", err)
+		msg := fmt.Sprintf("appInstMetaHandler: ioutil read failed: %v", err)
 		log.Errorf(msg)
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
 
-	if binary.Size(kubeConfig) > KubeconfigFileSizeLimitInBytes {
-		msg := fmt.Sprintf("kube config handler: kubeconfig size exceeds limit. Expected <= %v, actual size: %v",
-			KubeconfigFileSizeLimitInBytes, binary.Size(kubeConfig))
+	if binary.Size(kubeConfig) > hdl.maxResponseLen {
+		msg := fmt.Sprintf("appInstMetaHandler: kubeconfig size exceeds limit. Expected <= %v, actual size: %v",
+			hdl.maxResponseLen, binary.Size(kubeConfig))
 		log.Errorf(msg)
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
@@ -689,7 +698,7 @@ func (hdl kubeConfigHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	remoteIP := net.ParseIP(strings.Split(r.RemoteAddr, ":")[0])
 	anStatus := lookupAppNetworkStatusByAppIP(hdl.ctx, remoteIP)
 	if anStatus == nil {
-		msg := fmt.Sprintf("kube config handler: no AppNetworkStatus for %s", remoteIP.String())
+		msg := fmt.Sprintf("appInstMetaHandler: no AppNetworkStatus for %s", remoteIP.String())
 		log.Errorf(msg)
 		http.Error(w, http.StatusText(http.StatusNoContent), http.StatusNoContent)
 		return
@@ -698,7 +707,7 @@ func (hdl kubeConfigHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	var appInstMetaData = &types.AppInstMetaData{
 		AppInstUUID: anStatus.UUIDandVersion.UUID,
 		Data:        kubeConfig,
-		Type:        types.AppInstMetaDataTypeKubeConfig,
+		Type:        hdl.publishDataType,
 	}
 
 	publishAppInstMetadata(hdl.ctx, appInstMetaData)
