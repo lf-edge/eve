@@ -3200,6 +3200,7 @@ type AppInstMetaDataType uint8
 const (
 	AppInstMetaDataTypeNone AppInstMetaDataType = iota // enum for app inst metadata type
 	AppInstMetaDataTypeKubeConfig
+	AppInstMetaDataCustomStatus
 )
 
 // AppInstMetaData : App Instance Metadata

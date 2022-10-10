@@ -137,6 +137,14 @@ func createServer4(ctx *zedrouterContext, bridgeIP string, bridgeName string) er
 	}
 	mux.Handle("/eve/v1/kubeconfig", kubeConfigHandler)
 
+	AppCustomStatusHandler := &appInstMetaHandler{
+		ctx: ctx,
+		// For now use the same limit as Kubeconfig
+		maxResponseLen:  KubeconfigFileSizeLimitInBytes,
+		publishDataType: types.AppInstMetaDataCustomStatus,
+	}
+	mux.Handle("/eve/v1/app/appCustomStatus", AppCustomStatusHandler)
+
 	locationInfoHandler := &locationInfoHandler{ctx: ctx}
 	mux.Handle("/eve/v1/location.json", locationInfoHandler)
 
