@@ -56,6 +56,8 @@ type attestContext struct {
 	SkipEscrow bool
 	//Iteration keeps track of retry count
 	Iteration int
+	// Started indicates that attest module was started
+	Started bool
 	//EventLogEntries are the TPM EventLog entries
 	EventLogEntries []eventlog.Event
 	//EventLogParseErr stores any error that happened during EventLog parsing
@@ -659,6 +661,7 @@ func attestModuleStart(ctx *zedagentContext) error {
 	log.Functionf("Creating %s at %s", "attestFsmCtx.EnterEventLoop",
 		agentlog.GetMyStack())
 	go ctx.attestCtx.attestFsmCtx.EnterEventLoop()
+	ctx.attestCtx.Started = true
 	zattest.Kickstart(ctx.attestCtx.attestFsmCtx)
 
 	// Add .touch file to watchdog config
@@ -795,6 +798,10 @@ func handleEncryptedKeyFromDeviceImpl(ctxArg interface{}, key string,
 
 	if attestCtx.attestFsmCtx == nil {
 		log.Fatalf("[ATTEST] Uninitialized access to attestFsmCtx")
+	}
+	if !attestCtx.Started {
+		log.Warnf("Skip triggering attest state machine before entering main loop")
+		return
 	}
 	//Trigger event on the state machine
 	zattest.InternalEscrowDataRecvd(attestCtx.attestFsmCtx)
