@@ -3211,7 +3211,7 @@ type AppInstMetaData struct {
 
 // Key : App Instance Metadata unique key
 func (data AppInstMetaData) Key() string {
-	return data.AppInstUUID.String()
+	return data.AppInstUUID.String() + "-" + string(data.Type)
 }
 
 // Bitmap :
