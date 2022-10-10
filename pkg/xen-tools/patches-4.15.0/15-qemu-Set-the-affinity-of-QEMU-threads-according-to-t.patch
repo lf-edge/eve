@@ -1,4 +1,4 @@
-From b043f147ba3cdd24791955d1c4c9bf6ed0e223ff Mon Sep 17 00:00:00 2001
+From 086bd5f84c5a41ba76586eec1570997c0775b78c Mon Sep 17 00:00:00 2001
 From: Nikolay Martyanov <ohmspectator@gmail.com>
 Date: Wed, 28 Sep 2022 16:01:48 +0200
 Subject: [PATCH 15/15] qemu: Set the affinity of QEMU threads according to the
@@ -42,7 +42,7 @@ index da56052..000df00 100644
          qemu_cond_wait(&qemu_cpu_cond, &qemu_global_mutex);
      }
 diff --git a/tools/qemu-xen/util/qemu-thread-posix.c b/tools/qemu-xen/util/qemu-thread-posix.c
-index b4c2359..f19ca60 100644
+index b4c2359..44975eb 100644
 --- a/tools/qemu-xen/util/qemu-thread-posix.c
 +++ b/tools/qemu-xen/util/qemu-thread-posix.c
 @@ -17,6 +17,8 @@
@@ -82,9 +82,9 @@ index b4c2359..f19ca60 100644
 +        cur_pcpu += 1;
 +    }
 +
-+    /* Count the size of the necessary CPU_SET k*/
++    /* Count the size of the necessary CPU_SET */
 +    max_pcpu = get_max_cpu_in_mask(cpumask);
-+    cpu_set_size = max_pcpu / BITS_PER_BYTE + 1;
++    cpu_set_size = DIV_ROUND_UP(max_pcpu, BITS_PER_BYTE);
 +
 +    err = pthread_setaffinity_np(thread->thread, cpu_set_size, &cpu_set);
 +
