@@ -71,7 +71,7 @@ var (
 )
 
 type nodeagentContext struct {
-	agentBaseContext            agentbase.Context
+	agentbase.AgentBase
 	GCInitialized               bool // Received initial GlobalConfig
 	globalConfig                *types.ConfigItemValueMap
 	subGlobalConfig             pubsub.Subscription
@@ -123,10 +123,7 @@ type nodeagentContext struct {
 	domainHaltWaitIncrement uint32
 }
 
-var debug = false
-var debugOverride bool // From command line arg
-
-func newNodeagentContext(ps *pubsub.PubSub, logger *logrus.Logger, log *base.LogObject) *nodeagentContext {
+func newNodeagentContext(_ *pubsub.PubSub, _ *logrus.Logger, _ *base.LogObject) *nodeagentContext {
 	nodeagentCtx := nodeagentContext{}
 	nodeagentCtx.minRebootDelay = minRebootDelay
 	nodeagentCtx.maxDomainHaltTime = maxDomainHaltTime
@@ -143,30 +140,10 @@ func newNodeagentContext(ps *pubsub.PubSub, logger *logrus.Logger, log *base.Log
 	nodeagentCtx.tickerTimer = time.NewTicker(duration)
 	nodeagentCtx.configGetStatus = types.ConfigGetFail
 
-	nodeagentCtx.agentBaseContext.PubSub = ps
-	nodeagentCtx.agentBaseContext.Logger = logger
-	nodeagentCtx.agentBaseContext.Log = log
-	nodeagentCtx.agentBaseContext.ErrorTime = errorTime
-	nodeagentCtx.agentBaseContext.AgentName = agentName
-	nodeagentCtx.agentBaseContext.WarningTime = warningTime
-
 	curpart := agentlog.EveCurrentPartition()
 	nodeagentCtx.curPart = strings.TrimSpace(curpart)
-	nodeagentCtx.agentBaseContext.NeedWatchdog = true
 	nodeagentCtx.vaultOperational = types.TS_NONE
 	return &nodeagentCtx
-}
-
-func (ctxPtr *nodeagentContext) AgentBaseContext() *agentbase.Context {
-	return &ctxPtr.agentBaseContext
-}
-
-func (ctxPtr *nodeagentContext) AddAgentSpecificCLIFlags() {
-	return
-}
-
-func (ctxPtr *nodeagentContext) ProcessAgentSpecificCLIFlags() {
-	return
 }
 
 // Global to make log calls easier
@@ -175,9 +152,11 @@ var log *base.LogObject
 // Run : nodeagent run entry function
 func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) int {
 	log = logArg
-	ctxPtr := newNodeagentContext(ps, loggerArg, logArg)
 
-	agentbase.Run(ctxPtr)
+	ctxPtr := newNodeagentContext(ps, loggerArg, logArg)
+	agentbase.Init(ctxPtr, loggerArg, logArg, agentName,
+		agentbase.WithPidFile(),
+		agentbase.WithWatchdog(ps, warningTime, errorTime))
 
 	// Look for global config such as log levels
 	subGlobalConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
@@ -420,9 +399,8 @@ func handleGlobalConfigImpl(ctxArg interface{}, key string,
 		return
 	}
 	log.Functionf("handleGlobalConfigImpl for %s", key)
-	var gcp *types.ConfigItemValueMap
-	debug, gcp = agentlog.HandleGlobalConfig(log, ctxPtr.subGlobalConfig, agentName,
-		debugOverride, ctxPtr.agentBaseContext.Logger)
+	_, gcp := agentlog.HandleGlobalConfig(log, ctxPtr.subGlobalConfig, agentName,
+		ctxPtr.CLIParams().DebugOverride, ctxPtr.Logger())
 	if gcp != nil {
 		ctxPtr.globalConfig = gcp
 		ctxPtr.GCInitialized = true
@@ -439,8 +417,8 @@ func handleGlobalConfigDelete(ctxArg interface{},
 		return
 	}
 	log.Functionf("handleGlobalConfigDelete for %s", key)
-	debug, _ = agentlog.HandleGlobalConfig(log, ctxPtr.subGlobalConfig, agentName,
-		debugOverride, ctxPtr.agentBaseContext.Logger)
+	_, _ = agentlog.HandleGlobalConfig(log, ctxPtr.subGlobalConfig, agentName,
+		ctxPtr.CLIParams().DebugOverride, ctxPtr.Logger())
 	ctxPtr.globalConfig = types.DefaultConfigItemValueMap()
 	log.Functionf("handleGlobalConfigDelete done for %s", key)
 }
@@ -633,7 +611,7 @@ func handleInstallationLog(ctx *nodeagentContext) {
 		buf := make([]byte, 0, maxReadSize)
 		scanner.Buffer(buf, maxReadSize)
 		// installerLog is logger with modified source and zeroed pid
-		installerLog := base.NewSourceLogObject(ctx.agentBaseContext.Logger, "installer", 0)
+		installerLog := base.NewSourceLogObject(ctx.Logger(), "installer", 0)
 		for scanner.Scan() {
 			installerLog.Noticeln(scanner.Text())
 		}
