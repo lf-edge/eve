@@ -849,12 +849,15 @@ func publishVaultStatus(ctx *vaultMgrContext) {
 }
 
 //Run is the entrypoint for running vaultmgr as a standalone program
-func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) int {
+func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, arguments []string) int {
 	logger = loggerArg
 	log = logArg
 
-	debugPtr := flag.Bool("d", false, "Debug flag")
-	flag.Parse()
+	flagSet := flag.NewFlagSet(agentName, flag.ExitOnError)
+	debugPtr := flagSet.Bool("d", false, "Debug flag")
+	if err := flagSet.Parse(arguments); err != nil {
+		log.Fatal(err)
+	}
 	debug = *debugPtr
 	debugOverride = debug
 	if debugOverride {
@@ -864,8 +867,8 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	}
 
 	// if any args defined, will run command inline and return
-	if len(flag.Args()) > 0 {
-		return runInline(flag.Args()[0], flag.Args()[1:])
+	if len(flagSet.Args()) > 0 {
+		return runInline(flagSet.Args()[0], flagSet.Args()[1:])
 	}
 
 	log.Functionf("Starting %s\n", agentName)

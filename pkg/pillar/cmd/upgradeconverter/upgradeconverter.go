@@ -13,6 +13,8 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+const agentName = "upgradeconverter"
+
 //UCPhase tells us which phase we are in
 type UCPhase uint32
 
@@ -133,7 +135,7 @@ var logger *logrus.Logger
 var log *base.LogObject
 
 // Run - runs the main upgradeconverter process
-func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) int {
+func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, arguments []string) int {
 	logger = loggerArg
 	log = logArg
 	ctx := &ucContext{agentName: "upgradeconverter",
@@ -142,10 +144,13 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		persistStatusDir: types.PersistStatusDir,
 		ps:               ps,
 	}
-	debugPtr := flag.Bool("d", false, "Debug flag")
-	persistPtr := flag.String("p", "/persist", "persist directory")
-	noFlagPtr := flag.Bool("n", false, "Don't do anything just log flag")
-	flag.Parse()
+	flagSet := flag.NewFlagSet(agentName, flag.ExitOnError)
+	debugPtr := flagSet.Bool("d", false, "Debug flag")
+	persistPtr := flagSet.String("p", "/persist", "persist directory")
+	noFlagPtr := flagSet.Bool("n", false, "Don't do anything just log flag")
+	if err := flagSet.Parse(arguments); err != nil {
+		log.Fatal(err)
+	}
 	ctx.debugOverride = *debugPtr
 	ctx.persistDir = *persistPtr // XXX remove? Or use for tests?
 	ctx.noFlag = *noFlagPtr
@@ -160,14 +165,14 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	log.Functionf("Starting %s\n", ctx.agentName)
 
 	phase := UCPhasePreVault
-	if len(flag.Args()) != 0 {
-		switch flag.Args()[0] {
+	if len(flagSet.Args()) != 0 {
+		switch flagSet.Args()[0] {
 		case "pre-vault":
 			phase = UCPhasePreVault
 		case "post-vault":
 			phase = UCPhasePostVault
 		default:
-			log.Errorf("Unknown argument %s, running pre-vault phase", flag.Args()[0])
+			log.Errorf("Unknown argument %s, running pre-vault phase", flagSet.Args()[0])
 		}
 	}
 	runPhase(ctx, phase)

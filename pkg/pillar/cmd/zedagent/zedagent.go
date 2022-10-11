@@ -219,17 +219,20 @@ type infoForObjectKey struct {
 	objectKey string
 }
 
-func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) int {
+func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, arguments []string) int {
 	logger = loggerArg
 	log = logArg
 	var err error
-	versionPtr := flag.Bool("v", false, "Version")
-	debugPtr := flag.Bool("d", false, "Debug flag")
-	parsePtr := flag.String("p", "", "parse checkpoint file")
-	validatePtr := flag.Bool("V", false, "validate UTF-8 in checkpoint")
-	fatalPtr := flag.Bool("F", false, "Cause log.Fatal fault injection")
-	hangPtr := flag.Bool("H", false, "Cause watchdog .touch fault injection")
-	flag.Parse()
+	flagSet := flag.NewFlagSet(agentName, flag.ExitOnError)
+	versionPtr := flagSet.Bool("v", false, "Version")
+	debugPtr := flagSet.Bool("d", false, "Debug flag")
+	parsePtr := flagSet.String("p", "", "parse checkpoint file")
+	validatePtr := flagSet.Bool("V", false, "validate UTF-8 in checkpoint")
+	fatalPtr := flagSet.Bool("F", false, "Cause log.Fatal fault injection")
+	hangPtr := flagSet.Bool("H", false, "Cause watchdog .touch fault injection")
+	if err := flagSet.Parse(arguments); err != nil {
+		log.Fatal(err)
+	}
 	debug = *debugPtr
 	debugOverride = debug
 	if debugOverride {
@@ -240,7 +243,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	parse := *parsePtr
 	validate := *validatePtr
 	if *versionPtr {
-		fmt.Printf("%s: %s\n", os.Args[0], Version)
+		fmt.Printf("%s: %s\n", agentName, Version)
 		return 0
 	}
 	if validate && parse == "" {

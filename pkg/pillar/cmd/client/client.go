@@ -80,14 +80,17 @@ var (
 	log               *base.LogObject
 )
 
-func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) int { //nolint:gocyclo
+func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, arguments []string) int { //nolint:gocyclo
 	logger = loggerArg
 	log = logArg
-	versionPtr := flag.Bool("v", false, "Version")
-	debugPtr := flag.Bool("d", false, "Debug flag")
-	noPidPtr := flag.Bool("p", false, "Do not check for running client")
-	maxRetriesPtr := flag.Int("r", 0, "Max retries")
-	flag.Parse()
+	flagSet := flag.NewFlagSet(agentName, flag.ExitOnError)
+	versionPtr := flagSet.Bool("v", false, "Version")
+	debugPtr := flagSet.Bool("d", false, "Debug flag")
+	noPidPtr := flagSet.Bool("p", false, "Do not check for running client")
+	maxRetriesPtr := flagSet.Int("r", 0, "Max retries")
+	if err := flagSet.Parse(arguments); err != nil {
+		log.Fatal(err)
+	}
 
 	versionFlag := *versionPtr
 	debug = *debugPtr
@@ -99,9 +102,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	}
 	noPidFlag := *noPidPtr
 	maxRetries := *maxRetriesPtr
-	args := flag.Args()
+	args := flagSet.Args()
 	if versionFlag {
-		fmt.Printf("%s: %s\n", os.Args[0], Version)
+		fmt.Printf("%s: %s\n", agentName, Version)
 		return 0
 	}
 	if !noPidFlag {
@@ -119,7 +122,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 			operations[op] = true
 		} else {
 			log.Errorf("Unknown arg %s", op)
-			log.Fatal("Usage: " + os.Args[0] +
+			log.Fatal("Usage: " + agentName +
 				"[-o] [<operations>...]")
 		}
 	}

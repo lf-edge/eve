@@ -150,13 +150,14 @@ func newNodeagentContext(_ *pubsub.PubSub, _ *logrus.Logger, _ *base.LogObject) 
 var log *base.LogObject
 
 // Run : nodeagent run entry function
-func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) int {
+func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, arguments []string) int {
 	log = logArg
 
 	ctxPtr := newNodeagentContext(ps, loggerArg, logArg)
 	agentbase.Init(ctxPtr, loggerArg, logArg, agentName,
 		agentbase.WithPidFile(),
-		agentbase.WithWatchdog(ps, warningTime, errorTime))
+		agentbase.WithWatchdog(ps, warningTime, errorTime),
+		agentbase.WithArguments(arguments))
 
 	// Look for global config such as log levels
 	subGlobalConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{

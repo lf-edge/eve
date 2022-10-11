@@ -120,16 +120,19 @@ var hyper hypervisor.Hypervisor // Current hypervisor
 var logger *logrus.Logger
 var log *base.LogObject
 
-func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) int {
+func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, arguments []string) int {
 	logger = loggerArg
 	log = logArg
 	var err error
 	handlersInit()
 	allHypervisors, enabledHypervisors := hypervisor.GetAvailableHypervisors()
-	versionPtr := flag.Bool("v", false, "Version")
-	debugPtr := flag.Bool("d", false, "Debug flag")
-	hypervisorPtr := flag.String("h", enabledHypervisors[0], fmt.Sprintf("Current hypervisor %+q", allHypervisors))
-	flag.Parse()
+	flagSet := flag.NewFlagSet(agentName, flag.ExitOnError)
+	versionPtr := flagSet.Bool("v", false, "Version")
+	debugPtr := flagSet.Bool("d", false, "Debug flag")
+	hypervisorPtr := flagSet.String("h", enabledHypervisors[0], fmt.Sprintf("Current hypervisor %+q", allHypervisors))
+	if err := flagSet.Parse(arguments); err != nil {
+		log.Fatal(err)
+	}
 	debug = *debugPtr
 	debugOverride = debug
 	if debugOverride {
@@ -138,7 +141,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		logger.SetLevel(logrus.InfoLevel)
 	}
 	if *versionPtr {
-		fmt.Printf("%s: %s\n", os.Args[0], Version)
+		fmt.Printf("%s: %s\n", agentName, Version)
 		return 0
 	}
 	hyper, err = hypervisor.GetHypervisor(*hypervisorPtr)

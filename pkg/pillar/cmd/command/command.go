@@ -62,7 +62,7 @@ var (
 )
 
 // Run is the main aka only entrypoint
-func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) int {
+func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, arguments []string) int {
 	logger = loggerArg
 	log = logArg
 	// Report nano timestamps
@@ -71,13 +71,16 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	}
 	logger.SetFormatter(&formatter)
 
-	debugPtr := flag.Bool("d", false, "Debug flag")
-	quietPtr := flag.Bool("q", false, "Quiet flag")
-	timeLimitPtr := flag.Uint("t", 200, "Maximum time to wait for command")
-	combinedPtr := flag.Bool("c", false, "Combine stdout and stderr")
-	environPtr := flag.String("e", "", "set single environment variable with name=val syntax")
-	dontWaitPtr := flag.Bool("W", false, "don't wait for result")
-	flag.Parse()
+	flagSet := flag.NewFlagSet(agentName, flag.ExitOnError)
+	debugPtr := flagSet.Bool("d", false, "Debug flag")
+	quietPtr := flagSet.Bool("q", false, "Quiet flag")
+	timeLimitPtr := flagSet.Uint("t", 200, "Maximum time to wait for command")
+	combinedPtr := flagSet.Bool("c", false, "Combine stdout and stderr")
+	environPtr := flagSet.String("e", "", "set single environment variable with name=val syntax")
+	dontWaitPtr := flagSet.Bool("W", false, "don't wait for result")
+	if err := flagSet.Parse(arguments); err != nil {
+		log.Fatal(err)
+	}
 	timeLimit = *timeLimitPtr
 	combinedOutput = *combinedPtr
 	dontWait = *dontWaitPtr

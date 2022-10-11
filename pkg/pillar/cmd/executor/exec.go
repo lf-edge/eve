@@ -10,7 +10,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"os"
 	"os/exec"
 	"syscall"
 	"time"
@@ -54,16 +53,19 @@ var logger *logrus.Logger
 var log *base.LogObject
 
 // Run is the main aka only entrypoint
-func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) int {
+func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, arguments []string) int {
 	logger = loggerArg
 	log = logArg
-	versionPtr := flag.Bool("v", false, "Version")
-	debugPtr := flag.Bool("d", false, "Debug flag")
-	timeLimitPtr := flag.Uint("t", 120, "Maximum time to wait for command")
-	fatalPtr := flag.Bool("F", false, "Cause log.Fatal fault injection")
-	panicPtr := flag.Bool("P", false, "Cause golang panic fault injection")
-	hangPtr := flag.Bool("H", false, "Cause watchdog .touch fault injection")
-	flag.Parse()
+	flagSet := flag.NewFlagSet(agentName, flag.ExitOnError)
+	versionPtr := flagSet.Bool("v", false, "Version")
+	debugPtr := flagSet.Bool("d", false, "Debug flag")
+	timeLimitPtr := flagSet.Uint("t", 120, "Maximum time to wait for command")
+	fatalPtr := flagSet.Bool("F", false, "Cause log.Fatal fault injection")
+	panicPtr := flagSet.Bool("P", false, "Cause golang panic fault injection")
+	hangPtr := flagSet.Bool("H", false, "Cause watchdog .touch fault injection")
+	if err := flagSet.Parse(arguments); err != nil {
+		log.Fatal(err)
+	}
 	fatalFlag := *fatalPtr
 	panicFlag := *panicPtr
 	hangFlag := *hangPtr
@@ -77,7 +79,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	}
 	execCtx.timeLimit = *timeLimitPtr
 	if *versionPtr {
-		fmt.Printf("%s: %s\n", os.Args[0], Version)
+		fmt.Printf("%s: %s\n", agentName, Version)
 		return 0
 	}
 	if err := pidfile.CheckAndCreatePidfile(log, agentName); err != nil {

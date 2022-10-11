@@ -69,7 +69,7 @@ const (
 
 // The function returns an exit value
 type entrypoint struct {
-	f      func(*pubsub.PubSub, *logrus.Logger, *base.LogObject) int
+	f      func(*pubsub.PubSub, *logrus.Logger, *base.LogObject, []string) int
 	inline zedboxInline
 }
 
@@ -144,18 +144,19 @@ func main() {
 }
 
 func runService(serviceName string, sep entrypoint, inline bool) int {
+	arguments := os.Args[1:]
 	if inline {
 		log.Functionf("Running inline command %s args: %+v",
-			serviceName, os.Args[1:])
+			serviceName, arguments)
 		ps := pubsub.New(
 			&socketdriver.SocketDriver{Logger: logger, Log: log},
 			logger, log)
-		return sep.f(ps, logger, log)
+		return sep.f(ps, logger, log, arguments)
 	}
 	// Notify zedbox binary to start the agent/service
 	sericeInitStatus := types.ServiceInitStatus{
 		ServiceName: serviceName,
-		CmdArgs:     os.Args,
+		CmdArgs:     arguments,
 	}
 	log.Functionf("Notifying zedbox to start service %s with args %v",
 		sericeInitStatus.ServiceName, sericeInitStatus.CmdArgs)
@@ -171,10 +172,13 @@ func runService(serviceName string, sep entrypoint, inline bool) int {
 }
 
 // runZedbox is the built-in starting of the main process
-func runZedbox(ps *pubsub.PubSub, logger *logrus.Logger, log *base.LogObject) int {
+func runZedbox(ps *pubsub.PubSub, logger *logrus.Logger, log *base.LogObject, arguments []string) int {
 	//Start zedbox
-	debugPtr := flag.Bool("d", false, "Debug flag")
-	flag.Parse()
+	flagSet := flag.NewFlagSet(agentName, flag.ExitOnError)
+	debugPtr := flagSet.Bool("d", false, "Debug flag")
+	if err := flagSet.Parse(arguments); err != nil {
+		log.Fatal(err)
+	}
 	debug := *debugPtr
 	if debug {
 		logger.SetLevel(logrus.TraceLevel)
@@ -229,9 +233,7 @@ func handleService(serviceName string, cmdArgs []string) {
 			serviceName)
 	}
 	log.Functionf("zedbox: Starting %s", serviceName)
-	flag.CommandLine = flag.NewFlagSet(os.Args[0], flag.ExitOnError)
-	os.Args = cmdArgs
-	go startAgentAndDone(sep, serviceName, srvPs, srvLogger, srvLog)
+	go startAgentAndDone(sep, serviceName, srvPs, srvLogger, srvLog, cmdArgs)
 	log.Functionf("zedbox: Started %s",
 		serviceName)
 }
@@ -239,9 +241,9 @@ func handleService(serviceName string, cmdArgs []string) {
 // startAgentAndDone starts the given agent. Writes the return/exit value to
 // <agentName>.done file should the agent return.
 func startAgentAndDone(sep entrypoint, agentName string, srvPs *pubsub.PubSub,
-	srvLogger *logrus.Logger, srvLog *base.LogObject) {
+	srvLogger *logrus.Logger, srvLog *base.LogObject, cmdArgs []string) {
 
-	retval := sep.f(srvPs, srvLogger, srvLog)
+	retval := sep.f(srvPs, srvLogger, srvLog, cmdArgs)
 
 	ret := strconv.Itoa(retval)
 	if err := ioutil.WriteFile(fmt.Sprintf("/run/%s.done", agentName),
