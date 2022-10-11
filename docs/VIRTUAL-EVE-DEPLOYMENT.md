@@ -44,12 +44,13 @@ References:
 ####Sample VBoxManage script to create an EVE-OS VM
 ```sh
 VBoxManage createvm --name [vm-name] --ostype Linux_64 --register
-VBoxManage modifyvm [vm-name] --cpus 1 --memory 1024 --nic1 nat --hwvirtex on --vtxvpid on --firmware efi
+VBoxManage modifyvm [vm-name] --cpus [cpucount] --memory [memorysize] --nic1 nat --nic1 nat --hwvirtex on --vtxvpid on --vtxux on --firmware efi --nested-hw-virt on
 VBoxManage createhd --filename "[path]\[disk-name].vdi" --size [size in MiB units] --format VDI
-VBoxManage storagectl [vm-name] --name "IDE Controller" --add ide --controller PIIX4
-VBoxManage storageattach [vm-name] --storagectl "IDE Controller" --port 0 --device 0 --type hdd --medium "[path]\[disk-name].vdi"
-VBoxManage storageattach [vm-name] --storagectl "IDE Controller" --port 1 --device 0 --type dvddrive --medium "[path]\installer.iso"
+VBoxManage storagectl [vm-name] --name "SATA Controller" --add sata --controller IntelAhci
+VBoxManage storageattach [vm-name] --storagectl "SATA Controller" --port 0 --device 0 --type hdd --medium "[path]\[disk-name].vdi"
+VBoxManage storageattach [vm-name] --storagectl "SATA Controller" --port 1 --device 0 --type dvddrive --medium "[path]\installer.iso"
 VBoxManage modifyvm [vm-name] --boot1 dvd --boot2 disk --boot3 none --boot4 none
+VBoxManage startvm [vm-name]
 ```
 
 **Sample VBoxManage script to detach installer.iso and then power the EVE-OS VM back on**
