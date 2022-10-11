@@ -12,15 +12,18 @@ As per the [deployment](DEPLOYMENT.md) document, EVE-OS is known to run under:
 * [VMware Workstation Pro](https://www.vmware.com/products/workstation-pro.html)
 * [Google Cloud Platform (GCP) Compute Engine](https://cloud.google.com/compute)
 
-This document will cover some important notes and instructions for running EVE-OS on the following virtualization platforms:
+> **_NOTE:_** In order to deploy applications into the EVE-OS VM, the virtualization platform will need to have nested virtualization enabled
+
+This document will cover some important notes and instructions for running EVE-OS on x86 architectures for the following virtualization platforms:
 1. [VirtualBox and VMware](#deploying-in-virtualbox-and-vmware)
 2. [GCP Compute Engine](#deploying-in-gcp)
 
 ## Deploying in VirtualBox and VMware
 
 Prerequisites for deploying EVE-OS in a virtual machine are as follows:
-1. EFI-compatible virtualization platform
-2. A machine with [docker](https://docs.docker.com/engine/install/) installed to generate EVE-OS installer ISO image
+1. Host systems that run AMD and Intel CPUs with nested virtualization support
+2. EFI-compatible virtualization platform
+3. A machine with [docker](https://docs.docker.com/engine/install/) installed to generate EVE-OS installer ISO image
 
 Follow these steps to create EVE-OS as a virtual machine:
 1. Create an EVE-OS installer ISO image: ```docker run lfedge/eve:<eve-os-version>-kvm-amd64 installer_iso > installer.iso``` 
