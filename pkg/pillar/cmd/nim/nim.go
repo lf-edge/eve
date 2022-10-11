@@ -65,6 +65,8 @@ type nim struct {
 	Logger *logrus.Logger
 	PubSub *pubsub.PubSub
 
+	arguments []string
+
 	// CLI args
 	debug         bool
 	debugOverride bool // from command line arg
@@ -114,13 +116,14 @@ type nim struct {
 }
 
 // Run - Main function - invoked from zedbox.go
-func Run(ps *pubsub.PubSub, logger *logrus.Logger, log *base.LogObject) int {
+func Run(ps *pubsub.PubSub, logger *logrus.Logger, log *base.LogObject, arguments []string) int {
 	nim := &nim{
-		Log:    log,
-		PubSub: ps,
-		Logger: logger,
+		Log:       log,
+		PubSub:    ps,
+		Logger:    logger,
+		arguments: arguments,
 	}
-	if err := nim.init(); err != nil {
+	if err := nim.init(arguments); err != nil {
 		log.Fatal(err)
 	}
 	if err := nim.run(context.Background()); err != nil {
@@ -129,10 +132,10 @@ func Run(ps *pubsub.PubSub, logger *logrus.Logger, log *base.LogObject) int {
 	return 0
 }
 
-func (n *nim) init() (err error) {
+func (n *nim) init(arguments []string) (err error) {
 	n.processArgs()
 	if n.version {
-		fmt.Printf("%s: %s\n", os.Args[0], Version)
+		fmt.Printf("%s: %s\n", agentName, Version)
 		return nil
 	}
 	if err = iptables.Init(n.Log); err != nil {
@@ -369,10 +372,13 @@ func (n *nim) run(ctx context.Context) (err error) {
 }
 
 func (n *nim) processArgs() {
-	versionPtr := flag.Bool("v", false, "Print Version of the agent.")
-	debugPtr := flag.Bool("d", false, "Set Debug level")
-	stdoutPtr := flag.Bool("s", false, "Use stdout")
-	flag.Parse()
+	flagSet := flag.NewFlagSet(agentName, flag.ExitOnError)
+	versionPtr := flagSet.Bool("v", false, "Print Version of the agent.")
+	debugPtr := flagSet.Bool("d", false, "Set Debug level")
+	stdoutPtr := flagSet.Bool("s", false, "Use stdout")
+	if err := flagSet.Parse(n.arguments); err != nil {
+		n.Log.Fatal(err)
+	}
 
 	n.debug = *debugPtr
 	n.debugOverride = n.debug

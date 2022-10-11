@@ -29,24 +29,29 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+var agentName = "ipcmonitor"
+
 var debugOverride bool // From command line arg
 
 var logger *logrus.Logger
 var log *base.LogObject
 
-func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) int {
+func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, arguments []string) int {
 	logger = loggerArg
 	log = logArg
-	agentNamePtr := flag.String("a", "zedrouter",
+	flagSet := flag.NewFlagSet(agentName, flag.ExitOnError)
+	agentNamePtr := flagSet.String("a", "zedrouter",
 		"Agent name")
-	agentScopePtr := flag.String("s", "", "agentScope")
-	topicPtr := flag.String("t", "DeviceNetworkStatus",
+	agentScopePtr := flagSet.String("s", "", "agentScope")
+	topicPtr := flagSet.String("t", "DeviceNetworkStatus",
 		"topic")
-	debugPtr := flag.Bool("d", false, "Debug flag")
-	persistentPtr := flag.Bool("P", false, "Persistent flag")
-	formatPtr := flag.String("f", "go", "format flag, defaults to 'go', supports: 'go', 'json'")
-	flag.Parse()
-	agentName := *agentNamePtr
+	debugPtr := flagSet.Bool("d", false, "Debug flag")
+	persistentPtr := flagSet.Bool("P", false, "Persistent flag")
+	formatPtr := flagSet.String("f", "go", "format flag, defaults to 'go', supports: 'go', 'json'")
+	if err := flagSet.Parse(arguments); err != nil {
+		log.Fatal(err)
+	}
+	agentName = *agentNamePtr
 	agentScope := *agentScopePtr
 	topic := *topicPtr
 	debugOverride = *debugPtr

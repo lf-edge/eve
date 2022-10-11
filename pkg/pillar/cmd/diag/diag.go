@@ -83,18 +83,21 @@ var nilUUID uuid.UUID
 var logger *logrus.Logger
 var log *base.LogObject
 
-func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) int {
+func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, arguments []string) int {
 	logger = loggerArg
 	log = logArg
 	var err error
-	versionPtr := flag.Bool("v", false, "Version")
-	debugPtr := flag.Bool("d", false, "Debug flag")
-	foreverPtr := flag.Bool("f", false, "Forever flag")
-	pacContentsPtr := flag.Bool("p", false, "Print PAC file contents")
-	simulateDnsFailurePtr := flag.Bool("D", false, "simulateDnsFailure flag")
-	simulatePingFailurePtr := flag.Bool("P", false, "simulatePingFailure flag")
-	outputFilePtr := flag.String("o", "", "file or device for output")
-	flag.Parse()
+	flagSet := flag.NewFlagSet(agentName, flag.ExitOnError)
+	versionPtr := flagSet.Bool("v", false, "Version")
+	debugPtr := flagSet.Bool("d", false, "Debug flag")
+	foreverPtr := flagSet.Bool("f", false, "Forever flag")
+	pacContentsPtr := flagSet.Bool("p", false, "Print PAC file contents")
+	simulateDnsFailurePtr := flagSet.Bool("D", false, "simulateDnsFailure flag")
+	simulatePingFailurePtr := flagSet.Bool("P", false, "simulatePingFailure flag")
+	outputFilePtr := flagSet.String("o", "", "file or device for output")
+	if err := flagSet.Parse(arguments); err != nil {
+		log.Fatal(err)
+	}
 	debug = *debugPtr
 	debugOverride = debug
 	if debugOverride {
@@ -106,7 +109,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	simulatePingFailure = *simulatePingFailurePtr
 	outputFile := *outputFilePtr
 	if *versionPtr {
-		fmt.Printf("%s: %s\n", os.Args[0], Version)
+		fmt.Printf("%s: %s\n", agentName, Version)
 		return 0
 	}
 	if outputFile != "" {

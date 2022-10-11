@@ -15,24 +15,29 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
+const agentName = "pbuf"
+
 var debug bool
 var logger *logrus.Logger
 var log *base.LogObject
 
 // Run is our main function called by zedbox
-func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) int {
+func Run(_ *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, arguments []string) int {
 	logger = loggerArg
 	log = logArg
-	debugPtr := flag.Bool("d", false, "Debug flag")
-	typePtr := flag.String("t", "AuthContainer", "Type to decode")
-	flag.Parse()
+	flagSet := flag.NewFlagSet(agentName, flag.ExitOnError)
+	debugPtr := flagSet.Bool("d", false, "Debug flag")
+	typePtr := flagSet.String("t", "AuthContainer", "Type to decode")
+	if err := flagSet.Parse(arguments); err != nil {
+		log.Fatal(err)
+	}
 	debug = *debugPtr
 	if debug {
 		logger.SetLevel(logrus.DebugLevel)
 	} else {
 		logger.SetLevel(logrus.InfoLevel)
 	}
-	for _, arg := range flag.Args() {
+	for _, arg := range flagSet.Args() {
 		log.Noticef("Handling %s type %s", arg, *typePtr)
 		buf, err := ioutil.ReadFile(arg)
 		if err != nil {

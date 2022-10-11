@@ -41,16 +41,19 @@ var logger *logrus.Logger
 var log *base.LogObject
 
 // Run is the main aka only entrypoint
-func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) int {
+func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, arguments []string) int {
 	logger = loggerArg
 	log = logArg
 	ctx := faultContext{}
-	debugPtr := flag.Bool("d", false, "Debug flag")
-	fatalPtr := flag.Bool("F", false, "Cause log.Fatal fault injection")
-	panicPtr := flag.Bool("P", false, "Cause golang panic fault injection")
-	hangPtr := flag.Bool("H", false, "Cause watchdog .touch fault injection")
-	hwPtr := flag.Bool("W", false, "Cause hardware watchdog fault injection")
-	flag.Parse()
+	flagSet := flag.NewFlagSet(agentName, flag.ExitOnError)
+	debugPtr := flagSet.Bool("d", false, "Debug flag")
+	fatalPtr := flagSet.Bool("F", false, "Cause log.Fatal fault injection")
+	panicPtr := flagSet.Bool("P", false, "Cause golang panic fault injection")
+	hangPtr := flagSet.Bool("H", false, "Cause watchdog .touch fault injection")
+	hwPtr := flagSet.Bool("W", false, "Cause hardware watchdog fault injection")
+	if err := flagSet.Parse(arguments); err != nil {
+		log.Fatal(err)
+	}
 	fatalFlag := *fatalPtr
 	panicFlag := *panicPtr
 	hangFlag := *hangPtr

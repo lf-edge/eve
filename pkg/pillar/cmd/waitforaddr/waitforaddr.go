@@ -9,7 +9,6 @@ package waitforaddr
 import (
 	"flag"
 	"fmt"
-	"os"
 	"time"
 
 	"github.com/google/go-cmp/cmp"
@@ -43,13 +42,16 @@ var debugOverride bool // From command line arg
 var logger *logrus.Logger
 var log *base.LogObject
 
-func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) int {
+func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, arguments []string) int {
 	logger = loggerArg
 	log = logArg
-	versionPtr := flag.Bool("v", false, "Version")
-	debugPtr := flag.Bool("d", false, "Debug flag")
-	noPidPtr := flag.Bool("p", false, "Do not check for running agent")
-	flag.Parse()
+	flagSet := flag.NewFlagSet(agentName, flag.ExitOnError)
+	versionPtr := flagSet.Bool("v", false, "Version")
+	debugPtr := flagSet.Bool("d", false, "Debug flag")
+	noPidPtr := flagSet.Bool("p", false, "Do not check for running agent")
+	if err := flagSet.Parse(arguments); err != nil {
+		log.Fatal(err)
+	}
 	debug = *debugPtr
 	debugOverride = debug
 	if debugOverride {
@@ -59,7 +61,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	}
 	noPidFlag := *noPidPtr
 	if *versionPtr {
-		fmt.Printf("%s: %s\n", os.Args[0], Version)
+		fmt.Printf("%s: %s\n", agentName, Version)
 		return 0
 	}
 	if !noPidFlag {

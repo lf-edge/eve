@@ -20,6 +20,10 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+const (
+	agentName = "hardwaremodel"
+)
+
 // Set from Makefile
 var Version = "No version specified"
 
@@ -62,15 +66,18 @@ func hwFp(log *base.LogObject, outputFile string) {
 var logger *logrus.Logger
 var log *base.LogObject
 
-func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) int {
+func Run(_ *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, arguments []string) int {
 	logger = loggerArg
 	log = logArg
-	debugPtr := flag.Bool("d", false, "Debug flag")
-	versionPtr := flag.Bool("v", false, "Version")
-	cPtr := flag.Bool("c", false, "No CRLF")
-	hwPtr := flag.Bool("f", false, "Fingerprint hardware")
-	outputFilePtr := flag.String("o", "/dev/tty", "file or device for output")
-	flag.Parse()
+	flagSet := flag.NewFlagSet(agentName, flag.ExitOnError)
+	debugPtr := flagSet.Bool("d", false, "Debug flag")
+	versionPtr := flagSet.Bool("v", false, "Version")
+	cPtr := flagSet.Bool("c", false, "No CRLF")
+	hwPtr := flagSet.Bool("f", false, "Fingerprint hardware")
+	outputFilePtr := flagSet.String("o", "/dev/tty", "file or device for output")
+	if err := flagSet.Parse(arguments); err != nil {
+		log.Fatal(err)
+	}
 	outputFile := *outputFilePtr
 	if *debugPtr {
 		logger.SetLevel(logrus.TraceLevel)
@@ -78,7 +85,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 		logger.SetLevel(logrus.InfoLevel)
 	}
 	if *versionPtr {
-		fmt.Printf("%s: %s\n", os.Args[0], Version)
+		fmt.Printf("%s: %s\n", agentName, Version)
 		return 0
 	}
 	if *hwPtr {

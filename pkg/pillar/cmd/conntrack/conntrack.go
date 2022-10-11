@@ -16,20 +16,25 @@ import (
 	"github.com/vishvananda/netlink"
 )
 
+const agentName = "conntrack"
+
 var logger *logrus.Logger
 var log *base.LogObject
 
-func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) int {
+func Run(_ *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, arguments []string) int {
 	logger = loggerArg
 	log = logArg
-	delFlow := flag.Bool("D", false, "Delete flow")
-	delSrcIP := flag.String("s", "", "Delete flow with source IP")
-	delProto := flag.Int("p", 0, "Delete flow with protocol ID")
-	delFamily := flag.String("f", "", "Delete flow with ipv6")
-	delPort := flag.Int("P", 0, "Delete flow with port number")
-	delMark := flag.Int("m", 0, "Delete flow with Mark number")
-	markMask := flag.Int("mask", 0, "Delete flow with Mark mask")
-	flag.Parse()
+	flagSet := flag.NewFlagSet(agentName, flag.ExitOnError)
+	delFlow := flagSet.Bool("D", false, "Delete flow")
+	delSrcIP := flagSet.String("s", "", "Delete flow with source IP")
+	delProto := flagSet.Int("p", 0, "Delete flow with protocol ID")
+	delFamily := flagSet.String("f", "", "Delete flow with ipv6")
+	delPort := flagSet.Int("P", 0, "Delete flow with port number")
+	delMark := flagSet.Int("m", 0, "Delete flow with Mark number")
+	markMask := flagSet.Int("mask", 0, "Delete flow with Mark mask")
+	if err := flagSet.Parse(arguments); err != nil {
+		log.Fatal(err)
+	}
 
 	// conntrack [-D <-s address> [-p proto][-P port][-m Mark]]
 	if *delFlow {
