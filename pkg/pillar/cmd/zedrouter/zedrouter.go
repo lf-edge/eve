@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/lf-edge/eve/pkg/pillar/agentbase"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/cipher"
@@ -51,6 +52,7 @@ const (
 var Version = "No version specified"
 
 type zedrouterContext struct {
+	agentbase.AgentBase
 	// Legacy data plane enable/disable flag
 	legacyDataPlane bool
 
@@ -110,6 +112,13 @@ type zedrouterContext struct {
 	decryptCipherContext cipher.DecryptCipherContext
 	pubAppInstMetaData   pubsub.Publication
 	publishTicker        *flextimer.FlexTickerHandle
+	// cli options
+	versionPtr *bool
+}
+
+// AddAgentSpecificCLIFlags adds CLI options
+func (ctx *zedrouterContext) AddAgentSpecificCLIFlags(flagSet *flag.FlagSet) {
+	ctx.versionPtr = flagSet.Bool("v", false, "Version")
 }
 
 var debug = false
@@ -120,27 +129,34 @@ var log *base.LogObject
 func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, arguments []string) int {
 	logger = loggerArg
 	log = logArg
-	flagSet := flag.NewFlagSet(agentName, flag.ExitOnError)
-	versionPtr := flagSet.Bool("v", false, "Version")
-	debugPtr := flagSet.Bool("d", false, "Debug flag")
-	if err := flagSet.Parse(arguments); err != nil {
-		log.Fatal(err)
+
+	// Pick up (mostly static) AssignableAdapters before we process
+	// any Routes; Pbr needs to know which network adapters are assignable
+
+	aa := types.AssignableAdapters{}
+	zedrouterCtx := zedrouterContext{
+		legacyDataPlane:    false,
+		assignableAdapters: &aa,
+		agentStartTime:     time.Now(),
+		dnsServers:         make(map[string][]net.IP),
+		aclog:              agentlog.CustomLogInit(logrus.InfoLevel),
+		NLaclMap:           make(map[uuid.UUID]map[string]types.ULNetworkACLs),
+		flowPublishMap:     make(map[string]time.Time),
+		zedcloudMetrics:    zedcloud.NewAgentMetrics(),
+		cipherMetrics:      cipher.NewAgentMetrics(agentName),
 	}
-	debug = *debugPtr
+	agentbase.Init(&zedrouterCtx, logger, log, agentName,
+		agentbase.WithArguments(arguments))
+
+	debug = zedrouterCtx.CLIParams().DebugOverride
 	debugOverride = debug
-	if debugOverride {
-		logger.SetLevel(logrus.TraceLevel)
-	} else {
-		logger.SetLevel(logrus.InfoLevel)
-	}
-	if *versionPtr {
+	if *zedrouterCtx.versionPtr {
 		fmt.Printf("%s: %s\n", agentName, Version)
 		return 0
 	}
 	if err := pidfile.CheckAndCreatePidfile(log, agentName); err != nil {
 		log.Fatal(err)
 	}
-	log.Functionf("Starting %s\n", agentName)
 
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)
@@ -170,22 +186,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 
 	// Create the dummy interface used to re-direct DROP/REJECT packets.
 	createFlowMonDummyInterface()
-
-	// Pick up (mostly static) AssignableAdapters before we process
-	// any Routes; Pbr needs to know which network adapters are assignable
-
-	aa := types.AssignableAdapters{}
-	zedrouterCtx := zedrouterContext{
-		legacyDataPlane:    false,
-		assignableAdapters: &aa,
-		agentStartTime:     time.Now(),
-		dnsServers:         make(map[string][]net.IP),
-		aclog:              agentlog.CustomLogInit(logrus.InfoLevel),
-		NLaclMap:           make(map[uuid.UUID]map[string]types.ULNetworkACLs),
-		flowPublishMap:     make(map[string]time.Time),
-		zedcloudMetrics:    zedcloud.NewAgentMetrics(),
-		cipherMetrics:      cipher.NewAgentMetrics(agentName),
-	}
 
 	subDeviceNetworkStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "nim",

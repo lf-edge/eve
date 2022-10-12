@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/lf-edge/eve/pkg/pillar/agentbase"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
@@ -31,51 +32,46 @@ var Version = "No version specified"
 
 // Context for handleDNSModify
 type DNSContext struct {
+	agentbase.AgentBase
 	deviceNetworkStatus    types.DeviceNetworkStatus
 	usableAddressCount     int
 	DNSinitialized         bool // Received DeviceNetworkStatus
 	subDeviceNetworkStatus pubsub.Subscription
+	// cli options
+	versionPtr *bool
+	noPidPtr   *bool
 }
 
-var debug = false
-var debugOverride bool // From command line arg
+// AddAgentSpecificCLIFlags adds CLI options
+func (ctx *DNSContext) AddAgentSpecificCLIFlags(flagSet *flag.FlagSet) {
+	ctx.versionPtr = flagSet.Bool("v", false, "Version")
+	ctx.noPidPtr = flagSet.Bool("p", false, "Do not check for running agent")
+}
+
 var logger *logrus.Logger
 var log *base.LogObject
 
 func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, arguments []string) int {
 	logger = loggerArg
 	log = logArg
-	flagSet := flag.NewFlagSet(agentName, flag.ExitOnError)
-	versionPtr := flagSet.Bool("v", false, "Version")
-	debugPtr := flagSet.Bool("d", false, "Debug flag")
-	noPidPtr := flagSet.Bool("p", false, "Do not check for running agent")
-	if err := flagSet.Parse(arguments); err != nil {
-		log.Fatal(err)
-	}
-	debug = *debugPtr
-	debugOverride = debug
-	if debugOverride {
-		logger.SetLevel(logrus.TraceLevel)
-	} else {
-		logger.SetLevel(logrus.InfoLevel)
-	}
-	noPidFlag := *noPidPtr
-	if *versionPtr {
+
+	DNSctx := DNSContext{}
+	agentbase.Init(&DNSctx, logger, log, agentName,
+		agentbase.WithArguments(arguments))
+
+	if *DNSctx.versionPtr {
 		fmt.Printf("%s: %s\n", agentName, Version)
 		return 0
 	}
-	if !noPidFlag {
+	if !*DNSctx.noPidPtr {
 		if err := pidfile.CheckAndCreatePidfile(log, agentName); err != nil {
 			log.Fatal(err)
 		}
 	}
-	log.Functionf("Starting %s\n", agentName)
 
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)
 	ps.StillRunning(agentName, warningTime, errorTime)
-
-	DNSctx := DNSContext{}
 
 	subDeviceNetworkStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "nim",

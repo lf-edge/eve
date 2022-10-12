@@ -10,9 +10,9 @@ import (
 	"os"
 	"time"
 
+	"github.com/lf-edge/eve/pkg/pillar/agentbase"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/base"
-	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
@@ -28,13 +28,27 @@ const (
 
 // Any state used by handlers goes here
 type faultContext struct {
+	agentbase.AgentBase
 	subGlobalConfig pubsub.Subscription
 	GCInitialized   bool
 
-	// CLI args
 	debug         bool
 	debugOverride bool // From command line arg
 	timeLimit     uint // In seconds
+
+	// CLI args
+	fatalPtr *bool
+	panicPtr *bool
+	hangPtr  *bool
+	hwPtr    *bool
+}
+
+// AddAgentSpecificCLIFlags adds CLI options
+func (ctxPtr *faultContext) AddAgentSpecificCLIFlags(flagSet *flag.FlagSet) {
+	ctxPtr.fatalPtr = flagSet.Bool("F", false, "Cause log.Fatal fault injection")
+	ctxPtr.panicPtr = flagSet.Bool("P", false, "Cause golang panic fault injection")
+	ctxPtr.hangPtr = flagSet.Bool("H", false, "Cause watchdog .touch fault injection")
+	ctxPtr.hwPtr = flagSet.Bool("W", false, "Cause hardware watchdog fault injection")
 }
 
 var logger *logrus.Logger
@@ -45,30 +59,17 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	logger = loggerArg
 	log = logArg
 	ctx := faultContext{}
-	flagSet := flag.NewFlagSet(agentName, flag.ExitOnError)
-	debugPtr := flagSet.Bool("d", false, "Debug flag")
-	fatalPtr := flagSet.Bool("F", false, "Cause log.Fatal fault injection")
-	panicPtr := flagSet.Bool("P", false, "Cause golang panic fault injection")
-	hangPtr := flagSet.Bool("H", false, "Cause watchdog .touch fault injection")
-	hwPtr := flagSet.Bool("W", false, "Cause hardware watchdog fault injection")
-	if err := flagSet.Parse(arguments); err != nil {
-		log.Fatal(err)
-	}
-	fatalFlag := *fatalPtr
-	panicFlag := *panicPtr
-	hangFlag := *hangPtr
-	hwFlag := *hwPtr
-	ctx.debug = *debugPtr
-	ctx.debugOverride = *debugPtr
-	if ctx.debugOverride {
-		logger.SetLevel(logrus.TraceLevel)
-	} else {
-		logger.SetLevel(logrus.InfoLevel)
-	}
-	if err := pidfile.CheckAndCreatePidfile(log, agentName); err != nil {
-		log.Fatal(err)
-	}
-	log.Functionf("Starting %s", agentName)
+	agentbase.Init(&ctx, logger, log, agentName,
+		agentbase.WithPidFile(),
+		agentbase.WithWatchdog(ps, warningTime, errorTime),
+		agentbase.WithArguments(arguments))
+
+	fatalFlag := *ctx.fatalPtr
+	panicFlag := *ctx.panicPtr
+	hangFlag := *ctx.hangPtr
+	hwFlag := *ctx.hwPtr
+	ctx.debug = ctx.CLIParams().DebugOverride
+	ctx.debugOverride = ctx.debug
 
 	// Sanity checks
 	if hwFlag {
@@ -78,7 +79,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	}
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)
-	ps.StillRunning(agentName, warningTime, errorTime)
 
 	ps.RegisterFileWatchdog(agentName)
 

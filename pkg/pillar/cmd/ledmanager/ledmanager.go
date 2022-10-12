@@ -21,6 +21,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/lf-edge/eve/pkg/pillar/agentbase"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/diskmetrics"
@@ -38,6 +39,7 @@ const (
 
 // State passed to handlers
 type ledManagerContext struct {
+	agentbase.AgentBase
 	countChange            chan types.LedBlinkCount
 	ledCounter             types.LedBlinkCount // Suppress work and logging if no change
 	subGlobalConfig        pubsub.Subscription
@@ -51,6 +53,17 @@ type ledManagerContext struct {
 	GCInitialized          bool
 	blinkSendStop          chan string // Used by sender to stop the running forever blink routine
 	blinkRecvStop          chan string // Sender waits for the ack.
+	// cli options
+	versionPtr *bool
+	fatalPtr   *bool
+	hangPtr    *bool
+}
+
+// AddAgentSpecificCLIFlags adds CLI options
+func (ctxPtr *ledManagerContext) AddAgentSpecificCLIFlags(flagSet *flag.FlagSet) {
+	ctxPtr.versionPtr = flagSet.Bool("v", false, "Version")
+	ctxPtr.fatalPtr = flagSet.Bool("F", false, "Cause log.Fatal fault injection")
+	ctxPtr.hangPtr = flagSet.Bool("H", false, "Cause watchdog .touch fault injection")
 }
 
 // DisplayFunc takes an argument which can be the name of a LED or display
@@ -242,24 +255,18 @@ var appStatusArgs []string
 func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, arguments []string) int {
 	logger = loggerArg
 	log = logArg
-	flagSet := flag.NewFlagSet(agentName, flag.ExitOnError)
-	versionPtr := flagSet.Bool("v", false, "Version")
-	debugPtr := flagSet.Bool("d", false, "Debug")
-	fatalPtr := flagSet.Bool("F", false, "Cause log.Fatal fault injection")
-	hangPtr := flagSet.Bool("H", false, "Cause watchdog .touch fault injection")
-	if err := flagSet.Parse(arguments); err != nil {
-		log.Fatal(err)
+
+	ctx := ledManagerContext{
+		countChange: make(chan types.LedBlinkCount),
 	}
-	debug = *debugPtr
+	agentbase.Init(&ctx, logger, log, agentName,
+		agentbase.WithArguments(arguments))
+
+	debug = ctx.CLIParams().DebugOverride
 	debugOverride = debug
-	fatalFlag := *fatalPtr
-	hangFlag := *hangPtr
-	if debugOverride {
-		logger.SetLevel(logrus.TraceLevel)
-	} else {
-		logger.SetLevel(logrus.InfoLevel)
-	}
-	if *versionPtr {
+	fatalFlag := *ctx.fatalPtr
+	hangFlag := *ctx.hangPtr
+	if *ctx.versionPtr {
 		fmt.Printf("%s: %s\n", agentName, Version)
 		return 0
 	}
@@ -316,10 +323,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	if initFunc != nil {
 		initFunc(arg)
 	}
-
-	// Any state needed by handler functions
-	ctx := ledManagerContext{}
-	ctx.countChange = make(chan types.LedBlinkCount)
 
 	if appStatusDisplayFunc != nil {
 		executeAppStatusDisplayFunc(&ctx, appStatusArgs, false, "off") // turn off at the start

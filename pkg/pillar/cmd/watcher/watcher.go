@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/lf-edge/eve/pkg/pillar/agentbase"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
@@ -25,6 +26,7 @@ const (
 )
 
 type watcherContext struct {
+	agentbase.AgentBase
 	ps              *pubsub.PubSub
 	subGlobalConfig pubsub.Subscription
 	subHostMemory   pubsub.Subscription
@@ -34,6 +36,13 @@ type watcherContext struct {
 	pubDiskNotification   pubsub.Publication
 
 	GCInitialized bool
+	// cli options
+	versionPtr *bool
+}
+
+// AddAgentSpecificCLIFlags adds CLI options
+func (ctx *watcherContext) AddAgentSpecificCLIFlags(flagSet *flag.FlagSet) {
+	ctx.versionPtr = flagSet.Bool("v", false, "Version")
 }
 
 // Version :
@@ -50,31 +59,22 @@ var log *base.LogObject
 func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, arguments []string) int {
 	logger = loggerArg
 	log = logArg
-	flagSet := flag.NewFlagSet(agentName, flag.ExitOnError)
-	versionPtr := flagSet.Bool("v", false, "Version")
-	debugPtr := flagSet.Bool("d", false, "Debug flag")
-	if err := flagSet.Parse(arguments); err != nil {
-		log.Fatal(err)
+
+	ctx := watcherContext{
+		ps: ps,
 	}
-	debug = *debugPtr
+	agentbase.Init(&ctx, logger, log, agentName,
+		agentbase.WithArguments(arguments))
+
+	debug = ctx.CLIParams().DebugOverride
 	debugOverride = debug
-	if debugOverride {
-		logger.SetLevel(logrus.TraceLevel)
-	} else {
-		logger.SetLevel(logrus.InfoLevel)
-	}
-	if *versionPtr {
+	if *ctx.versionPtr {
 		fmt.Printf("%s: %s\n", agentName, Version)
 		return 0
 	}
 	if err := pidfile.CheckAndCreatePidfile(log, agentName); err != nil {
 		log.Fatal(err)
 	}
-
-	ctx := watcherContext{
-		ps: ps,
-	}
-	log.Functionf("Starting %s", agentName)
 
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)

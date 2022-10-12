@@ -25,6 +25,7 @@ import (
 
 	"github.com/google/go-tpm/tpm2"
 	"github.com/google/go-tpm/tpmutil"
+	"github.com/lf-edge/eve/pkg/pillar/agentbase"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	etpm "github.com/lf-edge/eve/pkg/pillar/evetpm"
@@ -36,12 +37,20 @@ import (
 )
 
 type tpmMgrContext struct {
+	agentbase.AgentBase
 	subGlobalConfig pubsub.Subscription
 	subAttestNonce  pubsub.Subscription
 	pubAttestQuote  pubsub.Publication
 	pubEdgeNodeCert pubsub.Publication
 	globalConfig    *types.ConfigItemValueMap
 	GCInitialized   bool // GlobalConfig initialized
+	// cli options
+	args []string
+}
+
+// ProcessAgentSpecificCLIFlags process received CLI options
+func (ctxPtr *tpmMgrContext) ProcessAgentSpecificCLIFlags(flagSet *flag.FlagSet) {
+	ctxPtr.args = flagSet.Args()
 }
 
 const (
@@ -1374,25 +1383,19 @@ func initializeDirs() {
 func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, arguments []string) int {
 	logger = loggerArg
 	log = logArg
-	flagSet := flag.NewFlagSet(agentName, flag.ExitOnError)
-	debugPtr := flagSet.Bool("d", false, "Debug flag")
-	if err := flagSet.Parse(arguments); err != nil {
-		log.Fatal(err)
-	}
-	debug = *debugPtr
+
+	// Context to pass around
+	ctx := tpmMgrContext{}
+	agentbase.Init(&ctx, logger, log, agentName,
+		agentbase.WithArguments(arguments))
+
+	debug = ctx.CLIParams().DebugOverride
 	debugOverride = debug
-	if debugOverride {
-		logger.SetLevel(logrus.TraceLevel)
-	} else {
-		logger.SetLevel(logrus.InfoLevel)
-	}
 
 	// if any args defined, will run command inline and return
-	if len(flagSet.Args()) > 0 {
-		return runInline(flagSet.Args()[0], flagSet.Args()[1:])
+	if len(ctx.args) > 0 {
+		return runInline(ctx.args[0], ctx.args[1:])
 	}
-
-	log.Functionf("Starting %s", agentName)
 
 	// Create required directories if not present
 	initializeDirs()
@@ -1404,9 +1407,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(15 * time.Second)
 	ps.StillRunning(agentName, warningTime, errorTime)
-
-	// Context to pass around
-	ctx := tpmMgrContext{}
 
 	// Look for global config such as log levels
 	subGlobalConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{

@@ -4,16 +4,15 @@
 package zfsmanager
 
 import (
-	"flag"
 	"os"
 	"path/filepath"
 	"sync"
 	"time"
 
 	"github.com/fsnotify/fsnotify"
+	"github.com/lf-edge/eve/pkg/pillar/agentbase"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
-	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
@@ -33,10 +32,8 @@ const (
 )
 
 var (
-	debug         bool
-	debugOverride bool
-	logger        *logrus.Logger
-	log           *base.LogObject
+	logger *logrus.Logger
+	log    *base.LogObject
 )
 
 type zVolDeviceEvent struct {
@@ -45,6 +42,7 @@ type zVolDeviceEvent struct {
 }
 
 type zfsContext struct {
+	agentbase.AgentBase
 	ps                     *pubsub.PubSub
 	zVolStatusPub          pubsub.Publication
 	storageStatusPub       pubsub.Publication
@@ -60,28 +58,19 @@ type zfsContext struct {
 func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, arguments []string) int {
 	logger = loggerArg
 	log = logArg
-	flagSet := flag.NewFlagSet(agentName, flag.ExitOnError)
-	debugPtr := flagSet.Bool("d", false, "Debug flag")
-	if err := flagSet.Parse(arguments); err != nil {
-		log.Fatal(err)
-	}
-	debug = *debugPtr
-	debugOverride = debug
-	if debugOverride {
-		logger.SetLevel(logrus.DebugLevel)
-	} else {
-		logger.SetLevel(logrus.InfoLevel)
-	}
 
-	if err := pidfile.CheckAndCreatePidfile(log, agentName); err != nil {
-		log.Fatal(err)
+	ctxPtr := zfsContext{
+		ps:                     ps,
+		disksProcessingTrigger: make(chan interface{}, 1),
+		zVolDeviceEvents:       base.NewLockedStringMap(),
 	}
+	agentbase.Init(&ctxPtr, logger, log, agentName,
+		agentbase.WithPidFile(),
+		agentbase.WithWatchdog(ps, warningTime, errorTime),
+		agentbase.WithArguments(arguments))
 
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(stillRunningInterval)
-	ps.StillRunning(agentName, warningTime, errorTime)
-
-	ctxPtr := zfsContext{ps: ps, disksProcessingTrigger: make(chan interface{}, 1), zVolDeviceEvents: base.NewLockedStringMap()}
 
 	if err := utils.WaitForVault(ps, log, agentName, warningTime, errorTime); err != nil {
 		log.Fatal(err)

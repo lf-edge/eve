@@ -23,6 +23,7 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	zconfig "github.com/lf-edge/eve/api/go/config"
+	"github.com/lf-edge/eve/pkg/pillar/agentbase"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/cas"
@@ -69,6 +70,7 @@ func isPort(ctx *domainContext, ifname string) bool {
 
 // Information for handleCreate/Modify/Delete
 type domainContext struct {
+	agentbase.AgentBase
 	ps *pubsub.PubSub
 	// The isPort function is called by different goroutines
 	// hence we serialize the calls on a mutex.
@@ -107,6 +109,16 @@ type domainContext struct {
 	// From global config setting
 	processCloudInitMultiPart bool
 	publishTicker             flextimer.FlexTickerHandle
+	// cli options
+	versionPtr    *bool
+	hypervisorPtr *string
+}
+
+// AddAgentSpecificCLIFlags adds CLI options
+func (ctx *domainContext) AddAgentSpecificCLIFlags(flagSet *flag.FlagSet) {
+	ctx.versionPtr = flagSet.Bool("v", false, "Version")
+	allHypervisors, enabledHypervisors := hypervisor.GetAvailableHypervisors()
+	ctx.hypervisorPtr = flagSet.String("h", enabledHypervisors[0], fmt.Sprintf("Current hypervisor %+q", allHypervisors))
 }
 
 func (ctx *domainContext) publishAssignableAdapters() {
@@ -123,28 +135,36 @@ var log *base.LogObject
 func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, arguments []string) int {
 	logger = loggerArg
 	log = logArg
+
+	// These settings can be overridden by GlobalConfig
+	// Note that if this device has never connected to the controller
+	// usbAccess is set to true. Once it connects it will get the default
+	// from the controller which is likely to be false. That is persisted
+	// hence will be overridden in handleGlobalConfig below.
+	// This helps onboarding new hardware by making keyboard etc available
+	domainCtx := domainContext{
+		ps:                  ps,
+		usbAccess:           true,
+		vgaAccess:           true,
+		domainBootRetryTime: 600,
+		pids:                make(map[int32]bool),
+		cipherMetrics:       cipher.NewAgentMetrics(agentName),
+		metricInterval:      10,
+	}
+	agentbase.Init(&domainCtx, logger, log, agentName,
+		agentbase.WithArguments(arguments))
+
 	var err error
 	handlersInit()
-	allHypervisors, enabledHypervisors := hypervisor.GetAvailableHypervisors()
-	flagSet := flag.NewFlagSet(agentName, flag.ExitOnError)
-	versionPtr := flagSet.Bool("v", false, "Version")
-	debugPtr := flagSet.Bool("d", false, "Debug flag")
-	hypervisorPtr := flagSet.String("h", enabledHypervisors[0], fmt.Sprintf("Current hypervisor %+q", allHypervisors))
-	if err := flagSet.Parse(arguments); err != nil {
-		log.Fatal(err)
-	}
-	debug = *debugPtr
+
+	debug = domainCtx.CLIParams().DebugOverride
 	debugOverride = debug
-	if debugOverride {
-		logger.SetLevel(logrus.TraceLevel)
-	} else {
-		logger.SetLevel(logrus.InfoLevel)
-	}
-	if *versionPtr {
+
+	if *domainCtx.versionPtr {
 		fmt.Printf("%s: %s\n", agentName, Version)
 		return 0
 	}
-	hyper, err = hypervisor.GetHypervisor(*hypervisorPtr)
+	hyper, err = hypervisor.GetHypervisor(*domainCtx.hypervisorPtr)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -181,22 +201,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		if err := os.MkdirAll(ciDirname, 0700); err != nil {
 			log.Fatal(err)
 		}
-	}
-
-	// These settings can be overridden by GlobalConfig
-	// Note that if this device has never connected to the controller
-	// usbAccess is set to true. Once it connects it will get the default
-	// from the controller which is likely to be false. That is persisted
-	// hence will be overridden in handleGlobalConfig below.
-	// This helps onboarding new hardware by making keyboard etc available
-	domainCtx := domainContext{
-		ps:                  ps,
-		usbAccess:           true,
-		vgaAccess:           true,
-		domainBootRetryTime: 600,
-		pids:                make(map[int32]bool),
-		cipherMetrics:       cipher.NewAgentMetrics(agentName),
-		metricInterval:      10,
 	}
 
 	// Publish metrics for zedagent every 10 seconds and

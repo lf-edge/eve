@@ -38,6 +38,7 @@ import (
 
 	attest "github.com/lf-edge/eve/api/go/attest"
 	"github.com/lf-edge/eve/api/go/info"
+	"github.com/lf-edge/eve/pkg/pillar/agentbase"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	uc "github.com/lf-edge/eve/pkg/pillar/cmd/upgradeconverter"
@@ -52,6 +53,7 @@ import (
 )
 
 type vaultMgrContext struct {
+	agentbase.AgentBase
 	pubVaultStatus            pubsub.Publication
 	pubVaultKeyFromDevice     pubsub.Publication
 	pubVaultConfig            pubsub.Publication
@@ -62,6 +64,13 @@ type vaultMgrContext struct {
 	vaultUCDone               bool
 	ps                        *pubsub.PubSub
 	ucChan                    chan struct{}
+	// cli options
+	args []string
+}
+
+// ProcessAgentSpecificCLIFlags process received CLI options
+func (ctxPtr *vaultMgrContext) ProcessAgentSpecificCLIFlags(flagSet *flag.FlagSet) {
+	ctxPtr.args = flagSet.Args()
 }
 
 const (
@@ -853,22 +862,20 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	logger = loggerArg
 	log = logArg
 
-	flagSet := flag.NewFlagSet(agentName, flag.ExitOnError)
-	debugPtr := flagSet.Bool("d", false, "Debug flag")
-	if err := flagSet.Parse(arguments); err != nil {
-		log.Fatal(err)
+	// Context to pass around
+	ctx := vaultMgrContext{
+		ps:     ps,
+		ucChan: make(chan struct{}),
 	}
-	debug = *debugPtr
+	agentbase.Init(&ctx, logger, log, agentName,
+		agentbase.WithArguments(arguments))
+
+	debug = ctx.CLIParams().DebugOverride
 	debugOverride = debug
-	if debugOverride {
-		logger.SetLevel(logrus.TraceLevel)
-	} else {
-		logger.SetLevel(logrus.InfoLevel)
-	}
 
 	// if any args defined, will run command inline and return
-	if len(flagSet.Args()) > 0 {
-		return runInline(flagSet.Args()[0], flagSet.Args()[1:])
+	if len(ctx.args) > 0 {
+		return runInline(ctx.args[0], ctx.args[1:])
 	}
 
 	log.Functionf("Starting %s\n", agentName)
@@ -879,12 +886,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(15 * time.Second)
 	ps.StillRunning(agentName, warningTime, errorTime)
-
-	// Context to pass around
-	ctx := vaultMgrContext{
-		ps:     ps,
-		ucChan: make(chan struct{}),
-	}
 
 	// Look for global config such as log levels
 	subGlobalConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{

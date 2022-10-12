@@ -23,6 +23,7 @@ import (
 	"net"
 	"strings"
 
+	"github.com/lf-edge/eve/pkg/pillar/agentbase"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
@@ -31,7 +32,26 @@ import (
 
 var agentName = "ipcmonitor"
 
-var debugOverride bool // From command line arg
+type ipcMonitorAgentState struct {
+	agentbase.AgentBase
+	// cli options
+	agentNamePtr  *string
+	agentScopePtr *string
+	topicPtr      *string
+	persistentPtr *bool
+	formatPtr     *string
+}
+
+// AddAgentSpecificCLIFlags adds CLI options
+func (state *ipcMonitorAgentState) AddAgentSpecificCLIFlags(flagSet *flag.FlagSet) {
+	state.agentNamePtr = flagSet.String("a", "zedrouter",
+		"Agent name")
+	state.agentScopePtr = flagSet.String("s", "", "agentScope")
+	state.topicPtr = flagSet.String("t", "DeviceNetworkStatus",
+		"topic")
+	state.persistentPtr = flagSet.Bool("P", false, "Persistent flag")
+	state.formatPtr = flagSet.String("f", "go", "format flag, defaults to 'go', supports: 'go', 'json'")
+}
 
 var logger *logrus.Logger
 var log *base.LogObject
@@ -39,32 +59,19 @@ var log *base.LogObject
 func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, arguments []string) int {
 	logger = loggerArg
 	log = logArg
-	flagSet := flag.NewFlagSet(agentName, flag.ExitOnError)
-	agentNamePtr := flagSet.String("a", "zedrouter",
-		"Agent name")
-	agentScopePtr := flagSet.String("s", "", "agentScope")
-	topicPtr := flagSet.String("t", "DeviceNetworkStatus",
-		"topic")
-	debugPtr := flagSet.Bool("d", false, "Debug flag")
-	persistentPtr := flagSet.Bool("P", false, "Persistent flag")
-	formatPtr := flagSet.String("f", "go", "format flag, defaults to 'go', supports: 'go', 'json'")
-	if err := flagSet.Parse(arguments); err != nil {
-		log.Fatal(err)
-	}
-	agentName = *agentNamePtr
-	agentScope := *agentScopePtr
-	topic := *topicPtr
-	debugOverride = *debugPtr
-	if debugOverride {
-		logger.SetLevel(logrus.TraceLevel)
-	} else {
-		logger.SetLevel(logrus.InfoLevel)
-	}
-	if *persistentPtr {
+
+	state := ipcMonitorAgentState{}
+	agentbase.Init(&state, logger, log, agentName,
+		agentbase.WithArguments(arguments))
+
+	agentName = *state.agentNamePtr
+	agentScope := *state.agentScopePtr
+	topic := *state.topicPtr
+	if *state.persistentPtr {
 		testPersistent(ps, agentName, agentScope, topic)
 		return 0
 	}
-	format := *formatPtr
+	format := *state.formatPtr
 
 	name := nameString(agentName, agentScope, topic)
 	sockName := fmt.Sprintf("/run/%s.sock", name)

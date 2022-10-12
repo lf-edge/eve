@@ -8,12 +8,12 @@
 package downloader
 
 import (
-	"flag"
 	"fmt"
 	"os"
 	"time"
 
 	"github.com/lf-edge/eve/libs/zedUpload"
+	"github.com/lf-edge/eve/pkg/pillar/agentbase"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/cipher"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
@@ -51,27 +51,24 @@ var (
 func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, arguments []string) int {
 	logger = loggerArg
 	log = logArg
-	flagSet := flag.NewFlagSet(agentName, flag.ExitOnError)
-	versionPtr := flagSet.Bool("v", false, "Version")
-	debugPtr := flagSet.Bool("d", false, "Debug flag")
-	if err := flagSet.Parse(arguments); err != nil {
-		log.Fatal(err)
+
+	// Any state needed by handler functions
+	ctx := downloaderContext{
+		zedcloudMetrics: zedcloud.NewAgentMetrics(),
+		cipherMetrics:   cipher.NewAgentMetrics(agentName),
 	}
-	debug = *debugPtr
+	agentbase.Init(&ctx, logger, log, agentName,
+		agentbase.WithArguments(arguments))
+
+	debug = ctx.CLIParams().DebugOverride
 	debugOverride = debug
-	if debugOverride {
-		logger.SetLevel(logrus.TraceLevel)
-	} else {
-		logger.SetLevel(logrus.InfoLevel)
-	}
-	if *versionPtr {
+	if *ctx.versionPtr {
 		fmt.Printf("%s: %s\n", agentName, Version)
 		return 0
 	}
 	if err := pidfile.CheckAndCreatePidfile(log, agentName); err != nil {
 		log.Fatal(err)
 	}
-	log.Functionf("Starting %s", agentName)
 
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)
@@ -99,12 +96,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	min := max * 0.3
 	publishTimer := flextimer.NewRangeTicker(time.Duration(min),
 		time.Duration(max))
-
-	// Any state needed by handler functions
-	ctx := downloaderContext{
-		zedcloudMetrics: zedcloud.NewAgentMetrics(),
-		cipherMetrics:   cipher.NewAgentMetrics(agentName),
-	}
 
 	// set up any state needed by handler functions
 	err = ctx.registerHandlers(ps)

@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/lf-edge/eve/pkg/pillar/agentbase"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
@@ -39,6 +40,7 @@ const (
 var Version = "No version specified"
 
 type baseOsMgrContext struct {
+	agentbase.AgentBase
 	pubBaseOsStatus      pubsub.Publication
 	pubContentTreeConfig pubsub.Publication
 	pubZbootStatus       pubsub.Publication
@@ -62,6 +64,13 @@ type baseOsMgrContext struct {
 	baseOsConfigRestarted bool
 
 	worker worker.Worker // For background work
+	// cli options
+	versionPtr *bool
+}
+
+// AddAgentSpecificCLIFlags adds CLI options
+func (ctxPtr *baseOsMgrContext) AddAgentSpecificCLIFlags(flagSet *flag.FlagSet) {
+	ctxPtr.versionPtr = flagSet.Bool("v", false, "Version")
 }
 
 var debug = false
@@ -72,20 +81,17 @@ var log *base.LogObject
 func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, arguments []string) int {
 	logger = loggerArg
 	log = logArg
-	flagSet := flag.NewFlagSet(agentName, flag.ExitOnError)
-	versionPtr := flagSet.Bool("v", false, "Version")
-	debugPtr := flagSet.Bool("d", false, "Debug flag")
-	if err := flagSet.Parse(arguments); err != nil {
-		log.Fatal(err)
+
+	// Context to pass around
+	ctx := baseOsMgrContext{
+		globalConfig: types.DefaultConfigItemValueMap(),
 	}
-	debug = *debugPtr
+	agentbase.Init(&ctx, logger, log, agentName,
+		agentbase.WithArguments(arguments))
+
+	debug = ctx.CLIParams().DebugOverride
 	debugOverride = debug
-	if debugOverride {
-		logger.SetLevel(logrus.TraceLevel)
-	} else {
-		logger.SetLevel(logrus.InfoLevel)
-	}
-	if *versionPtr {
+	if *ctx.versionPtr {
 		fmt.Printf("%s: %s\n", agentName, Version)
 		return 0
 	}
@@ -93,16 +99,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		log.Fatal(err)
 	}
 
-	log.Functionf("Starting %s", agentName)
-
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)
 	ps.StillRunning(agentName, warningTime, errorTime)
-
-	// Context to pass around
-	ctx := baseOsMgrContext{
-		globalConfig: types.DefaultConfigItemValueMap(),
-	}
 
 	// initialize publishing handles
 	initializeSelfPublishHandles(ps, &ctx)

@@ -44,6 +44,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/lf-edge/eve/pkg/pillar/agentbase"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/execlib"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
@@ -61,6 +62,25 @@ var (
 	log            *base.LogObject
 )
 
+type commandAgentState struct {
+	agentbase.AgentBase
+	// cli options
+	quietPtr     *bool
+	timeLimitPtr *uint
+	combinedPtr  *bool
+	environPtr   *string
+	dontWaitPtr  *bool
+}
+
+// AddAgentSpecificCLIFlags adds CLI options
+func (ctx *commandAgentState) AddAgentSpecificCLIFlags(flagSet *flag.FlagSet) {
+	ctx.quietPtr = flagSet.Bool("q", false, "Quiet flag")
+	ctx.timeLimitPtr = flagSet.Uint("t", 200, "Maximum time to wait for command")
+	ctx.combinedPtr = flagSet.Bool("c", false, "Combine stdout and stderr")
+	ctx.environPtr = flagSet.String("e", "", "set single environment variable with name=val syntax")
+	ctx.dontWaitPtr = flagSet.Bool("W", false, "don't wait for result")
+}
+
 // Run is the main aka only entrypoint
 func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, arguments []string) int {
 	logger = loggerArg
@@ -71,29 +91,20 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	}
 	logger.SetFormatter(&formatter)
 
-	flagSet := flag.NewFlagSet(agentName, flag.ExitOnError)
-	debugPtr := flagSet.Bool("d", false, "Debug flag")
-	quietPtr := flagSet.Bool("q", false, "Quiet flag")
-	timeLimitPtr := flagSet.Uint("t", 200, "Maximum time to wait for command")
-	combinedPtr := flagSet.Bool("c", false, "Combine stdout and stderr")
-	environPtr := flagSet.String("e", "", "set single environment variable with name=val syntax")
-	dontWaitPtr := flagSet.Bool("W", false, "don't wait for result")
-	if err := flagSet.Parse(arguments); err != nil {
-		log.Fatal(err)
-	}
-	timeLimit = *timeLimitPtr
-	combinedOutput = *combinedPtr
-	dontWait = *dontWaitPtr
-	if *environPtr != "" {
+	// Context to pass around
+	ctx := commandAgentState{}
+	agentbase.Init(&ctx, logger, log, agentName,
+		agentbase.WithArguments(arguments))
+
+	timeLimit = *ctx.timeLimitPtr
+	combinedOutput = *ctx.combinedPtr
+	dontWait = *ctx.dontWaitPtr
+	if *ctx.environPtr != "" {
 		// XXX Syntax to add multiple? This is just for testing
-		environ = append(environ, *environPtr)
+		environ = append(environ, *ctx.environPtr)
 	}
-	if *quietPtr {
-		logger.SetLevel(logrus.WarnLevel)
-	} else if *debugPtr {
-		logger.SetLevel(logrus.TraceLevel)
-	} else {
-		logger.SetLevel(logrus.InfoLevel)
+	if *ctx.quietPtr {
+		loggerArg.SetLevel(logrus.WarnLevel)
 	}
 
 	hdl, err := execlib.New(ps, log, agentName, "executor")
