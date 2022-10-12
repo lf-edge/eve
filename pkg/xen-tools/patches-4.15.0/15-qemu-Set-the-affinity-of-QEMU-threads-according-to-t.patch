@@ -1,4 +1,4 @@
-From 086bd5f84c5a41ba76586eec1570997c0775b78c Mon Sep 17 00:00:00 2001
+From e6e6e65185832d17f2d5f298ae16e78a3c6422fd Mon Sep 17 00:00:00 2001
 From: Nikolay Martyanov <ohmspectator@gmail.com>
 Date: Wed, 28 Sep 2022 16:01:48 +0200
 Subject: [PATCH 15/15] qemu: Set the affinity of QEMU threads according to the
