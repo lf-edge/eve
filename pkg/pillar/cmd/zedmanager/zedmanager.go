@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/lf-edge/eve/pkg/pillar/agentbase"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
@@ -35,6 +36,7 @@ var Version = "No version specified"
 
 // State used by handlers
 type zedmanagerContext struct {
+	agentbase.AgentBase
 	subAppInstanceConfig  pubsub.Subscription
 	subAppInstanceStatus  pubsub.Subscription // zedmanager both publishes and subscribes to AppInstanceStatus
 	pubAppInstanceStatus  pubsub.Publication
@@ -56,6 +58,13 @@ type zedmanagerContext struct {
 	currentTotalMemoryMB  uint64
 	// The time from which the configured applications delays should be counted
 	delayBaseTime time.Time
+	// cli options
+	versionPtr *bool
+}
+
+// AddAgentSpecificCLIFlags adds CLI options
+func (ctx *zedmanagerContext) AddAgentSpecificCLIFlags(flagSet *flag.FlagSet) {
+	ctx.versionPtr = flagSet.Bool("v", false, "Version")
 }
 
 var debug = false
@@ -66,36 +75,28 @@ var log *base.LogObject
 func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, arguments []string) int {
 	logger = loggerArg
 	log = logArg
-	flagSet := flag.NewFlagSet(agentName, flag.ExitOnError)
-	versionPtr := flagSet.Bool("v", false, "Version")
-	debugPtr := flagSet.Bool("d", false, "Debug flag")
-	if err := flagSet.Parse(arguments); err != nil {
-		log.Fatal(err)
+
+	// Any state needed by handler functions
+	ctx := zedmanagerContext{
+		globalConfig: types.DefaultConfigItemValueMap(),
 	}
-	debug = *debugPtr
+	agentbase.Init(&ctx, logger, log, agentName,
+		agentbase.WithArguments(arguments))
+
+	debug = ctx.CLIParams().DebugOverride
 	debugOverride = debug
-	if debugOverride {
-		logger.SetLevel(logrus.TraceLevel)
-	} else {
-		logger.SetLevel(logrus.InfoLevel)
-	}
-	if *versionPtr {
+	if *ctx.versionPtr {
 		fmt.Printf("%s: %s\n", agentName, Version)
 		return 0
 	}
 	if err := pidfile.CheckAndCreatePidfile(log, agentName); err != nil {
 		log.Fatal(err)
 	}
-	log.Functionf("Starting %s", agentName)
 
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)
 	ps.StillRunning(agentName, warningTime, errorTime)
 
-	// Any state needed by handler functions
-	ctx := zedmanagerContext{
-		globalConfig: types.DefaultConfigItemValueMap(),
-	}
 	// Create publish before subscribing and activating subscriptions
 	pubAppInstanceStatus, err := ps.NewPublication(pubsub.PublicationOptions{
 		AgentName: agentName,

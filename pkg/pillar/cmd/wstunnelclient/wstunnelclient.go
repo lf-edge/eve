@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/lf-edge/eve/pkg/pillar/agentbase"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
@@ -41,6 +42,7 @@ type DNSContext struct {
 }
 
 type wstunnelclientContext struct {
+	agentbase.AgentBase
 	subGlobalConfig      pubsub.Subscription
 	GCInitialized        bool
 	subAppInstanceConfig pubsub.Subscription
@@ -49,6 +51,14 @@ type wstunnelclientContext struct {
 	dnsContext           *DNSContext
 	devUUID              uuid.UUID
 	// XXX add any output from scanAIConfigs()?
+
+	// cli options
+	versionPtr *bool
+}
+
+// AddAgentSpecificCLIFlags adds CLI options
+func (ctx *wstunnelclientContext) AddAgentSpecificCLIFlags(flagSet *flag.FlagSet) {
+	ctx.versionPtr = flagSet.Bool("v", false, "Version")
 }
 
 var debug = false
@@ -59,28 +69,20 @@ var log *base.LogObject
 func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, arguments []string) int {
 	logger = loggerArg
 	log = logArg
-	flagSet := flag.NewFlagSet(agentName, flag.ExitOnError)
-	versionPtr := flagSet.Bool("v", false, "Version")
-	debugPtr := flagSet.Bool("d", false, "Debug flag")
-	if err := flagSet.Parse(arguments); err != nil {
-		log.Fatal(err)
-	}
-	debug = *debugPtr
+
+	wscCtx := wstunnelclientContext{}
+	agentbase.Init(&wscCtx, logger, log, agentName,
+		agentbase.WithArguments(arguments))
+
+	debug = wscCtx.CLIParams().DebugOverride
 	debugOverride = debug
-	if debugOverride {
-		logger.SetLevel(logrus.TraceLevel)
-	} else {
-		logger.SetLevel(logrus.InfoLevel)
-	}
-	if *versionPtr {
+	if *wscCtx.versionPtr {
 		fmt.Printf("%s: %s\n", agentName, Version)
 		return 0
 	}
 	if err := pidfile.CheckAndCreatePidfile(log, agentName); err != nil {
 		log.Fatal(err)
 	}
-
-	log.Functionf("Starting %s\n", agentName)
 
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)
@@ -89,8 +91,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	DNSctx := DNSContext{
 		deviceNetworkStatus: &types.DeviceNetworkStatus{},
 	}
-
-	wscCtx := wstunnelclientContext{}
 
 	// Look for global config such as log levels
 	subGlobalConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{

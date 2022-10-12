@@ -18,6 +18,7 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/lf-edge/eve/api/go/register"
+	"github.com/lf-edge/eve/pkg/pillar/agentbase"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
@@ -59,6 +60,7 @@ var Version = "No version specified"
 //
 
 type clientContext struct {
+	agentbase.AgentBase
 	subDeviceNetworkStatus pubsub.Subscription
 	deviceNetworkStatus    *types.DeviceNetworkStatus
 	usableAddressCount     int
@@ -68,6 +70,31 @@ type clientContext struct {
 	zedcloudCtx            *zedcloud.ZedCloudContext
 	getCertsTimer          *time.Timer
 	zedcloudMetrics        *zedcloud.AgentMetrics
+	// cli options
+	operations    map[string]bool
+	versionPtr    *bool
+	noPidPtr      *bool
+	maxRetriesPtr *int
+}
+
+// AddAgentSpecificCLIFlags adds CLI options
+func (ctxPtr *clientContext) AddAgentSpecificCLIFlags(flagSet *flag.FlagSet) {
+	ctxPtr.versionPtr = flagSet.Bool("v", false, "Version")
+	ctxPtr.noPidPtr = flagSet.Bool("p", false, "Do not check for running client")
+	ctxPtr.maxRetriesPtr = flagSet.Int("r", 0, "Max retries")
+}
+
+// ProcessAgentSpecificCLIFlags process received CLI options
+func (ctxPtr *clientContext) ProcessAgentSpecificCLIFlags(flagSet *flag.FlagSet) {
+	for _, op := range flagSet.Args() {
+		if _, ok := ctxPtr.operations[op]; ok {
+			ctxPtr.operations[op] = true
+		} else {
+			log.Errorf("Unknown arg %s", op)
+			log.Fatal("Usage: " + agentName +
+				"[-o] [<operations>...]")
+		}
+	}
 }
 
 var (
@@ -83,47 +110,30 @@ var (
 func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, arguments []string) int { //nolint:gocyclo
 	logger = loggerArg
 	log = logArg
-	flagSet := flag.NewFlagSet(agentName, flag.ExitOnError)
-	versionPtr := flagSet.Bool("v", false, "Version")
-	debugPtr := flagSet.Bool("d", false, "Debug flag")
-	noPidPtr := flagSet.Bool("p", false, "Do not check for running client")
-	maxRetriesPtr := flagSet.Int("r", 0, "Max retries")
-	if err := flagSet.Parse(arguments); err != nil {
-		log.Fatal(err)
+
+	clientCtx := clientContext{
+		deviceNetworkStatus: &types.DeviceNetworkStatus{},
+		globalConfig:        types.DefaultConfigItemValueMap(),
+		zedcloudMetrics:     zedcloud.NewAgentMetrics(),
+		operations: map[string]bool{
+			"selfRegister": false,
+			"getUuid":      false,
+		},
 	}
 
-	versionFlag := *versionPtr
-	debug = *debugPtr
+	agentbase.Init(&clientCtx, logger, log, agentName,
+		agentbase.WithArguments(arguments))
+
+	debug = clientCtx.CLIParams().DebugOverride
 	debugOverride = debug
-	if debugOverride {
-		logger.SetLevel(logrus.TraceLevel)
-	} else {
-		logger.SetLevel(logrus.InfoLevel)
-	}
-	noPidFlag := *noPidPtr
-	maxRetries := *maxRetriesPtr
-	args := flagSet.Args()
-	if versionFlag {
+	maxRetries := *clientCtx.maxRetriesPtr
+	if *clientCtx.versionPtr {
 		fmt.Printf("%s: %s\n", agentName, Version)
 		return 0
 	}
-	if !noPidFlag {
+	if !*clientCtx.noPidPtr {
 		if err := pidfile.CheckAndCreatePidfile(log, agentName); err != nil {
 			log.Fatal(err)
-		}
-	}
-	log.Functionf("Starting %s", agentName)
-	operations := map[string]bool{
-		"selfRegister": false,
-		"getUuid":      false,
-	}
-	for _, op := range args {
-		if _, ok := operations[op]; ok {
-			operations[op] = true
-		} else {
-			log.Errorf("Unknown arg %s", op)
-			log.Fatal("Usage: " + agentName +
-				"[-o] [<operations>...]")
 		}
 	}
 
@@ -151,12 +161,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		oldHardwaremodel = status.HardwareModel
 		log.Noticef("Found existing UUID %s and model %s",
 			oldUUID, oldHardwaremodel)
-	}
-
-	clientCtx := clientContext{
-		deviceNetworkStatus: &types.DeviceNetworkStatus{},
-		globalConfig:        types.DefaultConfigItemValueMap(),
-		zedcloudMetrics:     zedcloud.NewAgentMetrics(),
 	}
 
 	// Look for global config such as log levels
@@ -231,7 +235,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	var deviceCertPem []byte
 	var gotServerCerts bool
 
-	if operations["selfRegister"] {
+	if clientCtx.operations["selfRegister"] {
 		var err error
 		onboardCert, err = tls.LoadX509KeyPair(types.OnboardCertName,
 			types.OnboardKeyName)
@@ -303,7 +307,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 				serverNameAndPort)
 		}
 
-		if !gotRegister && operations["selfRegister"] {
+		if !gotRegister && clientCtx.operations["selfRegister"] {
 			done = selfRegister(&zedcloudCtx, onboardTLSConfig, deviceCertPem, retryCount)
 			if done {
 				gotRegister = true
@@ -313,7 +317,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 				log.Errorf("Failed to register at %s. Wrong URL? Not activated?",
 					serverNameAndPort)
 			}
-			if !done && operations["getUuid"] {
+			if !done && clientCtx.operations["getUuid"] {
 				// Check if getUUid succeeds
 				done, devUUID, hardwaremodel = doGetUUID(&clientCtx, devtlsConfig, retryCount)
 				if done {
@@ -322,7 +326,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 				}
 			}
 		}
-		if !gotUUID && operations["getUuid"] {
+		if !gotUUID && clientCtx.operations["getUuid"] {
 			done, devUUID, hardwaremodel = doGetUUID(&clientCtx, devtlsConfig, retryCount)
 			if done {
 				log.Noticef("getUUID succeeded; selfRegister no longer needed")
@@ -401,7 +405,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 			// Unlikely to have a network outage during that
 			// upgrade *and* require an override.
 			if clientCtx.networkState != types.DPCStateSuccess &&
-				operations["getUuid"] && oldUUID != nilUUID {
+				clientCtx.operations["getUuid"] && oldUUID != nilUUID {
 
 				log.Noticef("Already have a UUID %s; declaring success",
 					oldUUID.String())

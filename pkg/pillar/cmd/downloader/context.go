@@ -4,7 +4,10 @@
 package downloader
 
 import (
+	"flag"
+
 	"github.com/lf-edge/eve/libs/zedUpload"
+	"github.com/lf-edge/eve/pkg/pillar/agentbase"
 	"github.com/lf-edge/eve/pkg/pillar/cipher"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
@@ -12,6 +15,7 @@ import (
 )
 
 type downloaderContext struct {
+	agentbase.AgentBase
 	decryptCipherContext     cipher.DecryptCipherContext
 	dCtx                     *zedUpload.DronaCtx
 	subDeviceNetworkStatus   pubsub.Subscription
@@ -28,6 +32,13 @@ type downloaderContext struct {
 	cipherMetrics            *cipher.AgentMetrics
 	GCInitialized            bool
 	downloadMaxPortCost      uint8
+	// cli options
+	versionPtr *bool
+}
+
+// AddAgentSpecificCLIFlags adds CLI options
+func (ctx *downloaderContext) AddAgentSpecificCLIFlags(flagSet *flag.FlagSet) {
+	ctx.versionPtr = flagSet.Bool("v", false, "Version")
 }
 
 func (ctx *downloaderContext) registerHandlers(ps *pubsub.PubSub) error {

@@ -20,6 +20,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/lf-edge/eve/pkg/pillar/agentbase"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
@@ -49,12 +50,20 @@ var Version = "No version specified"
 
 // Any state used by handlers goes here
 type verifierContext struct {
+	agentbase.AgentBase
 	ps                   *pubsub.PubSub
 	subVerifyImageConfig pubsub.Subscription
 	pubVerifyImageStatus pubsub.Publication
 	subGlobalConfig      pubsub.Subscription
 
 	GCInitialized bool
+	// cli options
+	versionPtr *bool
+}
+
+// AddAgentSpecificCLIFlags adds CLI options
+func (ctx *verifierContext) AddAgentSpecificCLIFlags(flagSet *flag.FlagSet) {
+	ctx.versionPtr = flagSet.Bool("v", false, "Version")
 }
 
 var debug = false
@@ -65,20 +74,15 @@ var log *base.LogObject
 func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, arguments []string) int {
 	logger = loggerArg
 	log = logArg
-	flagSet := flag.NewFlagSet(agentName, flag.ExitOnError)
-	versionPtr := flagSet.Bool("v", false, "Version")
-	debugPtr := flagSet.Bool("d", false, "Debug flag")
-	if err := flagSet.Parse(arguments); err != nil {
-		log.Fatal(err)
-	}
-	debug = *debugPtr
+
+	// Any state needed by handler functions
+	ctx := verifierContext{ps: ps}
+	agentbase.Init(&ctx, logger, log, agentName,
+		agentbase.WithArguments(arguments))
+
+	debug = ctx.CLIParams().DebugOverride
 	debugOverride = debug
-	if debugOverride {
-		logger.SetLevel(logrus.TraceLevel)
-	} else {
-		logger.SetLevel(logrus.InfoLevel)
-	}
-	if *versionPtr {
+	if *ctx.versionPtr {
 		fmt.Printf("%s: %s\n", agentName, Version)
 		return 0
 	}
@@ -86,14 +90,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		log.Fatal(err)
 	}
 
-	log.Functionf("Starting %s", agentName)
-
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)
 	ps.StillRunning(agentName, warningTime, errorTime)
-
-	// Any state needed by handler functions
-	ctx := verifierContext{ps: ps}
 
 	// Set up our publications before the subscriptions so ctx is set
 	pubVerifyImageStatus, err := ps.NewPublication(

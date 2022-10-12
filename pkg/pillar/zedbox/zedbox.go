@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/lf-edge/eve/pkg/pillar/agentbase"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/baseosmgr"
@@ -44,7 +45,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/cmd/zedmanager"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/zedrouter"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/zfsmanager"
-	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub/reverse"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub/socketdriver"
@@ -174,23 +174,12 @@ func runService(serviceName string, sep entrypoint, inline bool) int {
 // runZedbox is the built-in starting of the main process
 func runZedbox(ps *pubsub.PubSub, logger *logrus.Logger, log *base.LogObject, arguments []string) int {
 	//Start zedbox
-	flagSet := flag.NewFlagSet(agentName, flag.ExitOnError)
-	debugPtr := flagSet.Bool("d", false, "Debug flag")
-	if err := flagSet.Parse(arguments); err != nil {
-		log.Fatal(err)
-	}
-	debug := *debugPtr
-	if debug {
-		logger.SetLevel(logrus.TraceLevel)
-	} else {
-		logger.SetLevel(logrus.InfoLevel)
-	}
-	stillRunning := time.NewTicker(15 * time.Second)
+	state := &agentbase.AgentBase{}
+	agentbase.Init(state, logger, log, agentName,
+		agentbase.WithPidFile(),
+		agentbase.WithArguments(arguments))
 
-	log.Functionf("Starting %s", agentName)
-	if err := pidfile.CheckAndCreatePidfile(log, agentName); err != nil {
-		log.Fatal(err)
-	}
+	stillRunning := time.NewTicker(15 * time.Second)
 
 	subChan := reverse.NewSubscriber(log, agentName,
 		types.ServiceInitStatus{})

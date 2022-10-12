@@ -37,6 +37,7 @@ import (
 	"github.com/lf-edge/eve/api/go/attest"
 	"github.com/lf-edge/eve/api/go/flowlog"
 	"github.com/lf-edge/eve/api/go/info"
+	"github.com/lf-edge/eve/pkg/pillar/agentbase"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
@@ -97,6 +98,7 @@ type DNSContext struct {
 }
 
 type zedagentContext struct {
+	agentbase.AgentBase
 	ps                        *pubsub.PubSub
 	getconfigCtx              *getconfigContext // Cross link
 	cipherCtx                 *cipherContext    // Cross link
@@ -205,6 +207,21 @@ type zedagentContext struct {
 	publishedEdgeNodeCerts bool
 
 	attestationTryCount int
+	// cli options
+	versionPtr  *bool
+	parsePtr    *string
+	validatePtr *bool
+	fatalPtr    *bool
+	hangPtr     *bool
+}
+
+// AddAgentSpecificCLIFlags adds CLI options
+func (zedagentCtx *zedagentContext) AddAgentSpecificCLIFlags(flagSet *flag.FlagSet) {
+	zedagentCtx.versionPtr = flagSet.Bool("v", false, "Version")
+	zedagentCtx.parsePtr = flagSet.String("p", "", "parse checkpoint file")
+	zedagentCtx.validatePtr = flagSet.Bool("V", false, "validate UTF-8 in checkpoint")
+	zedagentCtx.fatalPtr = flagSet.Bool("F", false, "Cause log.Fatal fault injection")
+	zedagentCtx.hangPtr = flagSet.Bool("H", false, "Cause watchdog .touch fault injection")
 }
 
 var debug = false
@@ -222,27 +239,17 @@ type infoForObjectKey struct {
 func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, arguments []string) int {
 	logger = loggerArg
 	log = logArg
+
+	zedagentCtx := &zedagentContext{}
+	agentbase.Init(zedagentCtx, logger, log, agentName,
+		agentbase.WithArguments(arguments))
+
 	var err error
-	flagSet := flag.NewFlagSet(agentName, flag.ExitOnError)
-	versionPtr := flagSet.Bool("v", false, "Version")
-	debugPtr := flagSet.Bool("d", false, "Debug flag")
-	parsePtr := flagSet.String("p", "", "parse checkpoint file")
-	validatePtr := flagSet.Bool("V", false, "validate UTF-8 in checkpoint")
-	fatalPtr := flagSet.Bool("F", false, "Cause log.Fatal fault injection")
-	hangPtr := flagSet.Bool("H", false, "Cause watchdog .touch fault injection")
-	if err := flagSet.Parse(arguments); err != nil {
-		log.Fatal(err)
-	}
-	debug = *debugPtr
+	debug = zedagentCtx.CLIParams().DebugOverride
 	debugOverride = debug
-	if debugOverride {
-		logger.SetLevel(logrus.TraceLevel)
-	} else {
-		logger.SetLevel(logrus.InfoLevel)
-	}
-	parse := *parsePtr
-	validate := *validatePtr
-	if *versionPtr {
+	parse := *zedagentCtx.parsePtr
+	validate := *zedagentCtx.validatePtr
+	if *zedagentCtx.versionPtr {
 		fmt.Printf("%s: %s\n", agentName, Version)
 		return 0
 	}
@@ -271,13 +278,11 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		log.Fatal(err)
 	}
 
-	log.Functionf("Starting %s", agentName)
-
 	// Initialize zedagent context.
-	zedagentCtx := newZedagentContext()
+	zedagentCtx.init()
 	zedagentCtx.ps = ps
-	zedagentCtx.hangFlag = *hangPtr
-	zedagentCtx.fatalFlag = *fatalPtr
+	zedagentCtx.hangFlag = *zedagentCtx.hangPtr
+	zedagentCtx.fatalFlag = *zedagentCtx.fatalPtr
 
 	flowlogQueue := make(chan *flowlog.FlowMessage, flowlogQueueCap)
 	triggerDeviceInfo := make(chan struct{}, 1)
@@ -448,10 +453,8 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	return 0
 }
 
-func newZedagentContext() *zedagentContext {
-	zedagentCtx := &zedagentContext{
-		zedcloudMetrics: zedcloud.NewAgentMetrics(),
-	}
+func (zedagentCtx *zedagentContext) init() {
+	zedagentCtx.zedcloudMetrics = zedcloud.NewAgentMetrics()
 	zedagentCtx.specMap = types.NewConfigItemSpecMap()
 	zedagentCtx.globalConfig = *types.DefaultConfigItemValueMap()
 	zedagentCtx.globalStatus.ConfigItems = make(
@@ -505,7 +508,6 @@ func newZedagentContext() *zedagentContext {
 
 	attestCtx.zedagentCtx = zedagentCtx
 	zedagentCtx.attestCtx = attestCtx
-	return zedagentCtx
 }
 
 func initializeDirs() {

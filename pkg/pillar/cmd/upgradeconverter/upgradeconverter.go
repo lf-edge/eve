@@ -6,8 +6,8 @@ package upgradeconverter
 import (
 	"flag"
 
+	"github.com/lf-edge/eve/pkg/pillar/agentbase"
 	"github.com/lf-edge/eve/pkg/pillar/base"
-	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/sirupsen/logrus"
@@ -69,6 +69,7 @@ var postVaultconversionHandlers = []ConversionHandler{
 }
 
 type ucContext struct {
+	agentbase.AgentBase
 	agentName     string
 	debugOverride bool
 	noFlag        bool
@@ -78,44 +79,59 @@ type ucContext struct {
 	persistConfigDir string
 	persistStatusDir string
 	ps               *pubsub.PubSub
+	// cli options
+	persistPtr *string
+	noFlagPtr  *bool
+	args       []string
 }
 
-func (ctx ucContext) oldConfigItemValueMapDir() string {
+// AddAgentSpecificCLIFlags adds CLI options
+func (ctx *ucContext) AddAgentSpecificCLIFlags(flagSet *flag.FlagSet) {
+	ctx.persistPtr = flagSet.String("p", types.PersistDir, "persist directory")
+	ctx.noFlagPtr = flagSet.Bool("n", false, "Don't do anything just log flag")
+}
+
+// ProcessAgentSpecificCLIFlags process received CLI options
+func (ctx *ucContext) ProcessAgentSpecificCLIFlags(flagSet *flag.FlagSet) {
+	ctx.args = flagSet.Args()
+}
+
+func (ctx *ucContext) oldConfigItemValueMapDir() string {
 	return ctx.persistConfigDir + "/ConfigItemValueMap/"
 }
-func (ctx ucContext) oldConfigItemValueMapFile() string {
+func (ctx *ucContext) oldConfigItemValueMapFile() string {
 	return ctx.oldConfigItemValueMapDir() + "/global.json"
 }
-func (ctx ucContext) globalConfigDir() string {
+func (ctx *ucContext) globalConfigDir() string {
 	return ctx.persistConfigDir + "/GlobalConfig"
 }
-func (ctx ucContext) globalConfigFile() string {
+func (ctx *ucContext) globalConfigFile() string {
 	return ctx.globalConfigDir() + "/global.json"
 }
-func (ctx ucContext) newConfigItemValueMapDir() string {
+func (ctx *ucContext) newConfigItemValueMapDir() string {
 	return ctx.persistStatusDir + "/zedagent/ConfigItemValueMap/"
 }
-func (ctx ucContext) newConfigItemValueMapFile() string {
+func (ctx *ucContext) newConfigItemValueMapFile() string {
 	return ctx.newConfigItemValueMapDir() + "/global.json"
 }
 
 // Old location for volumes
-func (ctx ucContext) imgDir() string {
+func (ctx *ucContext) imgDir() string {
 	return ctx.persistDir + "/img/"
 }
 
 // Old location for volumes
-func (ctx ucContext) preparedDir() string {
+func (ctx *ucContext) preparedDir() string {
 	return ctx.persistDir + "/runx/pods/prepared/"
 }
 
 // New location for volumes
-func (ctx ucContext) volumesDir() string {
+func (ctx *ucContext) volumesDir() string {
 	return ctx.persistDir + "/vault/volumes/"
 }
 
 // checkpoint file for EdgeDevConfig
-func (ctx ucContext) configCheckpointFile() string {
+func (ctx *ucContext) configCheckpointFile() string {
 	return ctx.persistDir + "/checkpoint/lastconfig"
 }
 
@@ -144,35 +160,23 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		persistStatusDir: types.PersistStatusDir,
 		ps:               ps,
 	}
-	flagSet := flag.NewFlagSet(agentName, flag.ExitOnError)
-	debugPtr := flagSet.Bool("d", false, "Debug flag")
-	persistPtr := flagSet.String("p", "/persist", "persist directory")
-	noFlagPtr := flagSet.Bool("n", false, "Don't do anything just log flag")
-	if err := flagSet.Parse(arguments); err != nil {
-		log.Fatal(err)
-	}
-	ctx.debugOverride = *debugPtr
-	ctx.persistDir = *persistPtr // XXX remove? Or use for tests?
-	ctx.noFlag = *noFlagPtr
-	if ctx.debugOverride {
-		logger.SetLevel(logrus.TraceLevel)
-	} else {
-		logger.SetLevel(logrus.InfoLevel)
-	}
-	if err := pidfile.CheckAndCreatePidfile(log, ctx.agentName); err != nil {
-		log.Fatal(err)
-	}
-	log.Functionf("Starting %s\n", ctx.agentName)
+	agentbase.Init(ctx, logger, log, agentName,
+		agentbase.WithPidFile(),
+		agentbase.WithArguments(arguments))
+
+	ctx.debugOverride = ctx.CLIParams().DebugOverride
+	ctx.persistDir = *ctx.persistPtr // XXX remove? Or use for tests?
+	ctx.noFlag = *ctx.noFlagPtr
 
 	phase := UCPhasePreVault
-	if len(flagSet.Args()) != 0 {
-		switch flagSet.Args()[0] {
+	if len(ctx.args) != 0 {
+		switch ctx.args[0] {
 		case "pre-vault":
 			phase = UCPhasePreVault
 		case "post-vault":
 			phase = UCPhasePostVault
 		default:
-			log.Errorf("Unknown argument %s, running pre-vault phase", flagSet.Args()[0])
+			log.Errorf("Unknown argument %s, running pre-vault phase", ctx.args[0])
 		}
 	}
 	runPhase(ctx, phase)

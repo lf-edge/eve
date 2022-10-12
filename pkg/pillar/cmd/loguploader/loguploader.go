@@ -6,7 +6,6 @@ package loguploader
 import (
 	"bytes"
 	"encoding/json"
-	"flag"
 	"fmt"
 	"io/ioutil"
 	"math/rand"
@@ -18,11 +17,11 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/lf-edge/eve/api/go/logs"
+	"github.com/lf-edge/eve/pkg/pillar/agentbase"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	"github.com/lf-edge/eve/pkg/pillar/hardware"
-	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	utils "github.com/lf-edge/eve/pkg/pillar/utils/file"
@@ -73,6 +72,7 @@ type resp4xxlogfile struct {
 }
 
 type loguploaderContext struct {
+	agentbase.AgentBase
 	devUUID                uuid.UUID
 	globalConfig           *types.ConfigItemValueMap
 	zedcloudCtx            *zedcloud.ZedCloudContext
@@ -93,31 +93,21 @@ type loguploaderContext struct {
 func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, arguments []string) int {
 	logger = loggerArg
 	log = logArg
-	flagSet := flag.NewFlagSet(agentName, flag.ExitOnError)
-	debugPtr := flagSet.Bool("d", false, "Debug flag")
-	if err := flagSet.Parse(arguments); err != nil {
-		log.Fatal(err)
-	}
-	debug = *debugPtr
-	debugOverride = debug
-	if debugOverride {
-		logger.SetLevel(logrus.DebugLevel)
-	} else {
-		logger.SetLevel(logrus.InfoLevel)
-	}
-
-	if err := pidfile.CheckAndCreatePidfile(log, agentName); err != nil {
-		log.Fatal(err)
-	}
-
-	// Run a periodic timer so we always update StillRunning
-	stillRunning := time.NewTicker(stillRunningInerval)
-	ps.StillRunning(agentName, warningTime, errorTime)
 
 	loguploaderCtx := loguploaderContext{
 		globalConfig:    types.DefaultConfigItemValueMap(),
 		zedcloudMetrics: zedcloud.NewAgentMetrics(),
 	}
+	agentbase.Init(&loguploaderCtx, logger, log, agentName,
+		agentbase.WithPidFile(),
+		agentbase.WithWatchdog(ps, warningTime, errorTime),
+		agentbase.WithArguments(arguments))
+
+	debug = loguploaderCtx.CLIParams().DebugOverride
+	debugOverride = debug
+
+	// Run a periodic timer so we always update StillRunning
+	stillRunning := time.NewTicker(stillRunningInerval)
 
 	// Wait until we have been onboarded aka know our own UUID
 	subOnboardStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{

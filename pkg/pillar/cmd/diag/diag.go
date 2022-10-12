@@ -23,6 +23,7 @@ import (
 	"github.com/eriknordmark/ipinfo"
 	"github.com/google/go-cmp/cmp"
 	eveuuid "github.com/lf-edge/eve/api/go/eveuuid"
+	"github.com/lf-edge/eve/pkg/pillar/agentbase"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/devicenetwork"
@@ -45,6 +46,7 @@ const (
 
 // State passed to handlers
 type diagContext struct {
+	agentbase.AgentBase
 	DeviceNetworkStatus     *types.DeviceNetworkStatus
 	DevicePortConfigList    *types.DevicePortConfigList
 	usableAddressCount      int
@@ -69,6 +71,23 @@ type diagContext struct {
 	cert                    *tls.Certificate
 	usingOnboardCert        bool
 	devUUID                 uuid.UUID
+	// cli options
+	versionPtr             *bool
+	foreverPtr             *bool
+	pacContentsPtr         *bool
+	simulateDNSFailurePtr  *bool
+	simulatePingFailurePtr *bool
+	outputFilePtr          *string
+}
+
+// AddAgentSpecificCLIFlags adds CLI options
+func (ctxPtr *diagContext) AddAgentSpecificCLIFlags(flagSet *flag.FlagSet) {
+	ctxPtr.versionPtr = flagSet.Bool("v", false, "Version")
+	ctxPtr.foreverPtr = flagSet.Bool("f", false, "Forever flag")
+	ctxPtr.pacContentsPtr = flagSet.Bool("p", false, "Print PAC file contents")
+	ctxPtr.simulateDNSFailurePtr = flagSet.Bool("D", false, "simulateDnsFailure flag")
+	ctxPtr.simulatePingFailurePtr = flagSet.Bool("P", false, "simulatePingFailure flag")
+	ctxPtr.outputFilePtr = flagSet.String("o", "", "file or device for output")
 }
 
 // Set from Makefile
@@ -86,29 +105,24 @@ var log *base.LogObject
 func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, arguments []string) int {
 	logger = loggerArg
 	log = logArg
+	ctx := diagContext{
+		globalConfig:    types.DefaultConfigItemValueMap(),
+		zedcloudMetrics: zedcloud.NewAgentMetrics(),
+	}
+	agentbase.Init(&ctx, logger, log, agentName,
+		agentbase.WithArguments(arguments))
+
+	ctx.forever = *ctx.foreverPtr
+	ctx.pacContents = *ctx.pacContentsPtr
+
 	var err error
-	flagSet := flag.NewFlagSet(agentName, flag.ExitOnError)
-	versionPtr := flagSet.Bool("v", false, "Version")
-	debugPtr := flagSet.Bool("d", false, "Debug flag")
-	foreverPtr := flagSet.Bool("f", false, "Forever flag")
-	pacContentsPtr := flagSet.Bool("p", false, "Print PAC file contents")
-	simulateDnsFailurePtr := flagSet.Bool("D", false, "simulateDnsFailure flag")
-	simulatePingFailurePtr := flagSet.Bool("P", false, "simulatePingFailure flag")
-	outputFilePtr := flagSet.String("o", "", "file or device for output")
-	if err := flagSet.Parse(arguments); err != nil {
-		log.Fatal(err)
-	}
-	debug = *debugPtr
+
+	debug = ctx.CLIParams().DebugOverride
 	debugOverride = debug
-	if debugOverride {
-		logger.SetLevel(logrus.TraceLevel)
-	} else {
-		logger.SetLevel(logrus.InfoLevel)
-	}
-	simulateDnsFailure = *simulateDnsFailurePtr
-	simulatePingFailure = *simulatePingFailurePtr
-	outputFile := *outputFilePtr
-	if *versionPtr {
+	simulateDnsFailure = *ctx.simulateDNSFailurePtr
+	simulatePingFailure = *ctx.simulatePingFailurePtr
+	outputFile := *ctx.outputFilePtr
+	if *ctx.versionPtr {
 		fmt.Printf("%s: %s\n", agentName, Version)
 		return 0
 	}
@@ -117,13 +131,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		if err != nil {
 			log.Fatal(err)
 		}
-	}
-	log.Functionf("Starting %s", agentName)
-	ctx := diagContext{
-		forever:         *foreverPtr,
-		pacContents:     *pacContentsPtr,
-		globalConfig:    types.DefaultConfigItemValueMap(),
-		zedcloudMetrics: zedcloud.NewAgentMetrics(),
 	}
 	ctx.DeviceNetworkStatus = &types.DeviceNetworkStatus{}
 	ctx.DevicePortConfigList = &types.DevicePortConfigList{}

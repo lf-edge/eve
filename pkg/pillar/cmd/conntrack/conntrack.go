@@ -9,6 +9,7 @@ import (
 	"net"
 	"syscall"
 
+	"github.com/lf-edge/eve/pkg/pillar/agentbase"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	filters "github.com/lf-edge/eve/pkg/pillar/conntrack"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
@@ -21,24 +22,40 @@ const agentName = "conntrack"
 var logger *logrus.Logger
 var log *base.LogObject
 
+type connTrackAgentState struct {
+	agentbase.AgentBase
+	// cli options
+	delFlow   *bool
+	delSrcIP  *string
+	delProto  *int
+	delFamily *string
+	delPort   *int
+	delMark   *int
+	markMask  *int
+}
+
+// AddAgentSpecificCLIFlags adds CLI options
+func (state *connTrackAgentState) AddAgentSpecificCLIFlags(flagSet *flag.FlagSet) {
+	state.delFlow = flagSet.Bool("D", false, "Delete flow")
+	state.delSrcIP = flagSet.String("s", "", "Delete flow with source IP")
+	state.delProto = flagSet.Int("p", 0, "Delete flow with protocol ID")
+	state.delFamily = flagSet.String("f", "", "Delete flow with ipv6")
+	state.delPort = flagSet.Int("P", 0, "Delete flow with port number")
+	state.delMark = flagSet.Int("m", 0, "Delete flow with Mark number")
+	state.markMask = flagSet.Int("mask", 0, "Delete flow with Mark mask")
+}
+
 func Run(_ *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, arguments []string) int {
 	logger = loggerArg
 	log = logArg
-	flagSet := flag.NewFlagSet(agentName, flag.ExitOnError)
-	delFlow := flagSet.Bool("D", false, "Delete flow")
-	delSrcIP := flagSet.String("s", "", "Delete flow with source IP")
-	delProto := flagSet.Int("p", 0, "Delete flow with protocol ID")
-	delFamily := flagSet.String("f", "", "Delete flow with ipv6")
-	delPort := flagSet.Int("P", 0, "Delete flow with port number")
-	delMark := flagSet.Int("m", 0, "Delete flow with Mark number")
-	markMask := flagSet.Int("mask", 0, "Delete flow with Mark mask")
-	if err := flagSet.Parse(arguments); err != nil {
-		log.Fatal(err)
-	}
+
+	ctx := connTrackAgentState{}
+	agentbase.Init(&ctx, logger, log, agentName,
+		agentbase.WithArguments(arguments))
 
 	// conntrack [-D <-s address> [-p proto][-P port][-m Mark]]
-	if *delFlow {
-		if *delSrcIP != "" {
+	if *ctx.delFlow {
+		if *ctx.delSrcIP != "" {
 			var proto uint8
 			var src net.IP
 			var port uint16
@@ -46,22 +63,22 @@ func Run(_ *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, arg
 			var mark, mask uint32
 
 			family = syscall.AF_INET
-			src = net.ParseIP(*delSrcIP)
-			if *delProto != 0 {
-				proto = uint8(*delProto)
+			src = net.ParseIP(*ctx.delSrcIP)
+			if *ctx.delProto != 0 {
+				proto = uint8(*ctx.delProto)
 			}
-			if *delFamily == "ipv6" {
+			if *ctx.delFamily == "ipv6" {
 				family = syscall.AF_INET6
 			}
-			if *delPort != 0 {
-				port = uint16(*delPort)
+			if *ctx.delPort != 0 {
+				port = uint16(*ctx.delPort)
 			}
-			if *delMark != 0 {
-				mark = uint32(*delMark)
+			if *ctx.delMark != 0 {
+				mark = uint32(*ctx.delMark)
 			}
 			mask = 0xFFFFFFFF
-			if *markMask != 0 {
-				mask = uint32(*markMask)
+			if *ctx.markMask != 0 {
+				mask = uint32(*ctx.markMask)
 			}
 
 			number, err := netlink.ConntrackDeleteFilter(netlink.ConntrackTable, family,

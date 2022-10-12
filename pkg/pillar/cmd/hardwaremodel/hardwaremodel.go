@@ -10,6 +10,7 @@ import (
 	"io/ioutil"
 	"os"
 
+	"github.com/lf-edge/eve/pkg/pillar/agentbase"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/hardware"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
@@ -26,6 +27,24 @@ const (
 
 // Set from Makefile
 var Version = "No version specified"
+
+// Any state used by handlers goes here
+type hardwareModelAgentState struct {
+	agentbase.AgentBase
+	// cli options
+	versionPtr    *bool
+	cPtr          *bool
+	hwPtr         *bool
+	outputFilePtr *string
+}
+
+// AddAgentSpecificCLIFlags adds CLI options
+func (state *hardwareModelAgentState) AddAgentSpecificCLIFlags(flagSet *flag.FlagSet) {
+	state.versionPtr = flagSet.Bool("v", false, "Version")
+	state.cPtr = flagSet.Bool("c", false, "No CRLF")
+	state.hwPtr = flagSet.Bool("f", false, "Fingerprint hardware")
+	state.outputFilePtr = flagSet.String("o", "/dev/tty", "file or device for output")
+}
 
 type info interface {
 	Class() string
@@ -69,31 +88,22 @@ var log *base.LogObject
 func Run(_ *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, arguments []string) int {
 	logger = loggerArg
 	log = logArg
-	flagSet := flag.NewFlagSet(agentName, flag.ExitOnError)
-	debugPtr := flagSet.Bool("d", false, "Debug flag")
-	versionPtr := flagSet.Bool("v", false, "Version")
-	cPtr := flagSet.Bool("c", false, "No CRLF")
-	hwPtr := flagSet.Bool("f", false, "Fingerprint hardware")
-	outputFilePtr := flagSet.String("o", "/dev/tty", "file or device for output")
-	if err := flagSet.Parse(arguments); err != nil {
-		log.Fatal(err)
-	}
-	outputFile := *outputFilePtr
-	if *debugPtr {
-		logger.SetLevel(logrus.TraceLevel)
-	} else {
-		logger.SetLevel(logrus.InfoLevel)
-	}
-	if *versionPtr {
+
+	state := hardwareModelAgentState{}
+	agentbase.Init(&state, logger, log, agentName,
+		agentbase.WithArguments(arguments))
+
+	outputFile := *state.outputFilePtr
+	if *state.versionPtr {
 		fmt.Printf("%s: %s\n", agentName, Version)
 		return 0
 	}
-	if *hwPtr {
+	if *state.hwPtr {
 		hwFp(log, outputFile)
 		return 0
 	}
 	model := hardware.GetHardwareModelNoOverride(log)
-	if *cPtr {
+	if *state.cPtr {
 		b := []byte(fmt.Sprintf("%s", model))
 		err := ioutil.WriteFile(outputFile, b, 0644)
 		if err != nil {

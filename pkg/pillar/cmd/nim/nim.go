@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/lf-edge/eve/pkg/pillar/agentbase"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/cipher"
@@ -61,17 +62,19 @@ var Version = "No version specified"
 // Maintains old configuration with a lower-priority, but always tries to move
 // to the most recent aka highest priority configuration.
 type nim struct {
+	agentbase.AgentBase
 	Log    *base.LogObject
 	Logger *logrus.Logger
 	PubSub *pubsub.PubSub
 
-	arguments []string
-
-	// CLI args
 	debug         bool
 	debugOverride bool // from command line arg
 	useStdout     bool
 	version       bool
+
+	// CLI args
+	stdoutPtr  *bool
+	versionPtr *bool
 
 	// NIM components
 	connTester     *conntester.ZedcloudConnectivityTester
@@ -115,15 +118,31 @@ type nim struct {
 	lastResort         *types.DevicePortConfig
 }
 
+// AddAgentSpecificCLIFlags adds CLI options
+func (n *nim) AddAgentSpecificCLIFlags(flagSet *flag.FlagSet) {
+	n.versionPtr = flagSet.Bool("v", false, "Print Version of the agent.")
+	n.stdoutPtr = flagSet.Bool("s", false, "Use stdout")
+}
+
+// ProcessAgentSpecificCLIFlags process received CLI options
+func (n *nim) ProcessAgentSpecificCLIFlags(_ *flag.FlagSet) {
+	n.debug = n.CLIParams().DebugOverride
+	n.debugOverride = n.debug
+	n.useStdout = *n.stdoutPtr
+	n.version = *n.versionPtr
+}
+
 // Run - Main function - invoked from zedbox.go
 func Run(ps *pubsub.PubSub, logger *logrus.Logger, log *base.LogObject, arguments []string) int {
 	nim := &nim{
-		Log:       log,
-		PubSub:    ps,
-		Logger:    logger,
-		arguments: arguments,
+		Log:    log,
+		PubSub: ps,
+		Logger: logger,
 	}
-	if err := nim.init(arguments); err != nil {
+	agentbase.Init(nim, logger, log, agentName,
+		agentbase.WithArguments(arguments))
+
+	if err := nim.init(); err != nil {
 		log.Fatal(err)
 	}
 	if err := nim.run(context.Background()); err != nil {
@@ -132,8 +151,7 @@ func Run(ps *pubsub.PubSub, logger *logrus.Logger, log *base.LogObject, argument
 	return 0
 }
 
-func (n *nim) init(arguments []string) (err error) {
-	n.processArgs()
+func (n *nim) init() (err error) {
 	if n.version {
 		fmt.Printf("%s: %s\n", agentName, Version)
 		return nil
@@ -369,26 +387,6 @@ func (n *nim) run(ctx context.Context) (err error) {
 		}
 		n.PubSub.StillRunning(agentName, warningTime, errorTime)
 	}
-}
-
-func (n *nim) processArgs() {
-	flagSet := flag.NewFlagSet(agentName, flag.ExitOnError)
-	versionPtr := flagSet.Bool("v", false, "Print Version of the agent.")
-	debugPtr := flagSet.Bool("d", false, "Set Debug level")
-	stdoutPtr := flagSet.Bool("s", false, "Use stdout")
-	if err := flagSet.Parse(n.arguments); err != nil {
-		n.Log.Fatal(err)
-	}
-
-	n.debug = *debugPtr
-	n.debugOverride = n.debug
-	n.useStdout = *stdoutPtr
-	if n.debugOverride {
-		logrus.SetLevel(logrus.TraceLevel)
-	} else {
-		logrus.SetLevel(logrus.InfoLevel)
-	}
-	n.version = *versionPtr
 }
 
 func (n *nim) initPublications() (err error) {

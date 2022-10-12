@@ -12,6 +12,7 @@ import (
 	"time"
 
 	zconfig "github.com/lf-edge/eve/api/go/config"
+	"github.com/lf-edge/eve/pkg/pillar/agentbase"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/cas"
@@ -46,6 +47,7 @@ var Version = "No version specified"
 var volumeFormat = make(map[string]zconfig.Format)
 
 type volumemgrContext struct {
+	agentbase.AgentBase
 	ps                         *pubsub.PubSub
 	subBaseOsContentTreeConfig pubsub.Subscription
 	subGlobalConfig            pubsub.Subscription
@@ -95,6 +97,13 @@ type volumemgrContext struct {
 
 	persistType types.PersistType
 	useVHost    bool //indicates that we want to use vhost
+	// cli options
+	versionPtr *bool
+}
+
+// AddAgentSpecificCLIFlags adds CLI options
+func (ctxPtr *volumemgrContext) AddAgentSpecificCLIFlags(flagSet *flag.FlagSet) {
+	ctxPtr.versionPtr = flagSet.Bool("v", false, "Version")
 }
 
 var debug = false
@@ -106,26 +115,7 @@ var log *base.LogObject
 func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, arguments []string) int {
 	logger = loggerArg
 	log = logArg
-	flagSet := flag.NewFlagSet(agentName, flag.ExitOnError)
-	versionPtr := flagSet.Bool("v", false, "Version")
-	debugPtr := flagSet.Bool("d", false, "Debug flag")
-	if err := flagSet.Parse(arguments); err != nil {
-		log.Fatal(err)
-	}
-	debug = *debugPtr
-	debugOverride = debug
-	if debugOverride {
-		logger.SetLevel(logrus.TraceLevel)
-	} else {
-		logger.SetLevel(logrus.InfoLevel)
-	}
-	if *versionPtr {
-		fmt.Printf("%s: %s\n", agentName, Version)
-		return 0
-	}
-	if err := pidfile.CheckAndCreatePidfile(log, agentName); err != nil {
-		log.Fatal(err)
-	}
+
 	// These settings can be overridden by GlobalConfig
 	ctx := volumemgrContext{
 		ps:                 ps,
@@ -134,8 +124,18 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		globalConfig:       types.DefaultConfigItemValueMap(),
 		persistType:        vault.ReadPersistType(),
 	}
+	agentbase.Init(&ctx, logger, log, agentName,
+		agentbase.WithArguments(arguments))
 
-	log.Functionf("Starting %s", agentName)
+	debug = ctx.CLIParams().DebugOverride
+	debugOverride = debug
+	if *ctx.versionPtr {
+		fmt.Printf("%s: %s\n", agentName, Version)
+		return 0
+	}
+	if err := pidfile.CheckAndCreatePidfile(log, agentName); err != nil {
+		log.Fatal(err)
+	}
 
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)

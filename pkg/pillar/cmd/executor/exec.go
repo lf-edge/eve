@@ -14,6 +14,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/lf-edge/eve/pkg/pillar/agentbase"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
@@ -34,6 +35,7 @@ var Version = "No version specified"
 
 // Any state used by handlers goes here
 type executorContext struct {
+	agentbase.AgentBase
 	subTmpConfig      pubsub.Subscription
 	subCommandConfig  pubsub.Subscription
 	subVerifierConfig pubsub.Subscription
@@ -43,10 +45,25 @@ type executorContext struct {
 	subGlobalConfig pubsub.Subscription
 	GCInitialized   bool
 
-	// CLI args
 	debug         bool
 	debugOverride bool // From command line arg
 	timeLimit     uint // In seconds
+
+	// CLI args
+	versionPtr   *bool
+	timeLimitPtr *uint // In seconds
+	fatalPtr     *bool
+	panicPtr     *bool
+	hangPtr      *bool
+}
+
+// AddAgentSpecificCLIFlags adds CLI options
+func (ctxPtr *executorContext) AddAgentSpecificCLIFlags(flagSet *flag.FlagSet) {
+	ctxPtr.versionPtr = flagSet.Bool("v", false, "Version")
+	ctxPtr.timeLimitPtr = flagSet.Uint("t", 120, "Maximum time to wait for command")
+	ctxPtr.fatalPtr = flagSet.Bool("F", false, "Cause log.Fatal fault injection")
+	ctxPtr.panicPtr = flagSet.Bool("P", false, "Cause golang panic fault injection")
+	ctxPtr.hangPtr = flagSet.Bool("H", false, "Cause watchdog .touch fault injection")
 }
 
 var logger *logrus.Logger
@@ -56,36 +73,24 @@ var log *base.LogObject
 func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, arguments []string) int {
 	logger = loggerArg
 	log = logArg
-	flagSet := flag.NewFlagSet(agentName, flag.ExitOnError)
-	versionPtr := flagSet.Bool("v", false, "Version")
-	debugPtr := flagSet.Bool("d", false, "Debug flag")
-	timeLimitPtr := flagSet.Uint("t", 120, "Maximum time to wait for command")
-	fatalPtr := flagSet.Bool("F", false, "Cause log.Fatal fault injection")
-	panicPtr := flagSet.Bool("P", false, "Cause golang panic fault injection")
-	hangPtr := flagSet.Bool("H", false, "Cause watchdog .touch fault injection")
-	if err := flagSet.Parse(arguments); err != nil {
-		log.Fatal(err)
-	}
-	fatalFlag := *fatalPtr
-	panicFlag := *panicPtr
-	hangFlag := *hangPtr
 	execCtx := executorContext{}
-	execCtx.debug = *debugPtr
+	agentbase.Init(&execCtx, logger, log, agentName,
+		agentbase.WithArguments(arguments))
+
+	fatalFlag := *execCtx.fatalPtr
+	panicFlag := *execCtx.panicPtr
+	hangFlag := *execCtx.hangPtr
+	execCtx.debug = execCtx.CLIParams().DebugOverride
 	execCtx.debugOverride = execCtx.debug
-	if execCtx.debugOverride {
-		logger.SetLevel(logrus.TraceLevel)
-	} else {
-		logger.SetLevel(logrus.InfoLevel)
-	}
-	execCtx.timeLimit = *timeLimitPtr
-	if *versionPtr {
+	execCtx.timeLimit = *execCtx.timeLimitPtr
+
+	if *execCtx.versionPtr {
 		fmt.Printf("%s: %s\n", agentName, Version)
 		return 0
 	}
 	if err := pidfile.CheckAndCreatePidfile(log, agentName); err != nil {
 		log.Fatal(err)
 	}
-	log.Functionf("Starting %s", agentName)
 
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)
