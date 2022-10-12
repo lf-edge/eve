@@ -1,4 +1,4 @@
-From ee13ecbab30e8a0d42e9c870e9a234ebcd0f45c9 Mon Sep 17 00:00:00 2001
+From 15ca400172894c128cb4ff2916fe8c882205b587 Mon Sep 17 00:00:00 2001
 From: Nikolay Martyanov <ohmspectator@gmail.com>
 Date: Wed, 28 Sep 2022 15:52:24 +0200
 Subject: [PATCH 14/15] qemu: Init CPU mask per VCPU.
@@ -8,8 +8,8 @@ Signed-off-by: Nikolay Martyanov <ohmspectator@gmail.com>
  tools/qemu-xen/include/hw/boards.h   |  1 +
  tools/qemu-xen/include/hw/core/cpu.h |  2 +
  tools/qemu-xen/softmmu/cpus.c        | 31 +++++++++++
- tools/qemu-xen/softmmu/vl.c          | 81 ++++++++++++++++++++++++++++
- 4 files changed, 115 insertions(+)
+ tools/qemu-xen/softmmu/vl.c          | 80 ++++++++++++++++++++++++++++
+ 4 files changed, 114 insertions(+)
 
 diff --git a/tools/qemu-xen/include/hw/boards.h b/tools/qemu-xen/include/hw/boards.h
 index b06f13e..a4b4f11 100644
@@ -86,7 +86,7 @@ index a802e89..da56052 100644
      if (!cpu->as) {
          /* If the target cpu hasn't set up any address spaces itself,
 diff --git a/tools/qemu-xen/softmmu/vl.c b/tools/qemu-xen/softmmu/vl.c
-index c7c8abc..34c5a75 100644
+index c7c8abc..0222c6c 100644
 --- a/tools/qemu-xen/softmmu/vl.c
 +++ b/tools/qemu-xen/softmmu/vl.c
 @@ -2829,6 +2829,73 @@ static void create_default_memdev(MachineState *ms, const char *path)
@@ -163,7 +163,7 @@ index c7c8abc..34c5a75 100644
  void qemu_init(int argc, char **argv, char **envp)
  {
      int i;
-@@ -4306,6 +4373,20 @@ void qemu_init(int argc, char **argv, char **envp)
+@@ -4306,6 +4373,19 @@ void qemu_init(int argc, char **argv, char **envp)
  
      current_machine->boot_order = boot_order;
  
@@ -171,7 +171,6 @@ index c7c8abc..34c5a75 100644
 +    if (current_machine->cpumask_str) {
 +        current_machine->cpumask = cpumask_parse(current_machine->cpumask_str);
 +        if (!current_machine->cpumask) {
-+            warn_report ("The CPU mask option is broken, use all available CPUs\n");
 +            current_machine->cpumask = ~0ull;
 +        }
 +    }
