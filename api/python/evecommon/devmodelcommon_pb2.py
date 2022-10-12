@@ -20,7 +20,7 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   syntax='proto3',
   serialized_options=b'\n\025org.lfedge.eve.commonB\016DevModelCommonP\001Z\'github.com/lf-edge/eve/api/go/evecommon',
   create_key=_descriptor._internal_create_key,
-  serialized_pb=b'\n\x1e\x65vecommon/devmodelcommon.proto\x12\x15org.lfedge.eve.common*\xc7\x01\n\tPhyIoType\x12\r\n\tPhyIoNoop\x10\x00\x12\x0f\n\x0bPhyIoNetEth\x10\x01\x12\x0c\n\x08PhyIoUSB\x10\x02\x12\x0c\n\x08PhyIoCOM\x10\x03\x12\x0e\n\nPhyIoAudio\x10\x04\x12\x10\n\x0cPhyIoNetWLAN\x10\x05\x12\x10\n\x0cPhyIoNetWWAN\x10\x06\x12\r\n\tPhyIoHDMI\x10\x07\x12\x14\n\x10PhyIoNVMEStorage\x10\t\x12\x14\n\x10PhyIoSATAStorage\x10\n\x12\x0f\n\nPhyIoOther\x10\xff\x01*\xa0\x01\n\x10PhyIoMemberUsage\x12\x12\n\x0ePhyIoUsageNone\x10\x00\x12\x19\n\x15PhyIoUsageMgmtAndApps\x10\x01\x12\x14\n\x10PhyIoUsageShared\x10\x02\x12\x17\n\x13PhyIoUsageDedicated\x10\x03\x12\x16\n\x12PhyIoUsageDisabled\x10\x04\x12\x16\n\x12PhyIoUsageMgmtOnly\x10\x05\x42R\n\x15org.lfedge.eve.commonB\x0e\x44\x65vModelCommonP\x01Z\'github.com/lf-edge/eve/api/go/evecommonb\x06proto3'
+  serialized_pb=b'\n\x1e\x65vecommon/devmodelcommon.proto\x12\x15org.lfedge.eve.common*\xed\x01\n\tPhyIoType\x12\r\n\tPhyIoNoop\x10\x00\x12\x0f\n\x0bPhyIoNetEth\x10\x01\x12\x0c\n\x08PhyIoUSB\x10\x02\x12\x0c\n\x08PhyIoCOM\x10\x03\x12\x0e\n\nPhyIoAudio\x10\x04\x12\x10\n\x0cPhyIoNetWLAN\x10\x05\x12\x10\n\x0cPhyIoNetWWAN\x10\x06\x12\r\n\tPhyIoHDMI\x10\x07\x12\x14\n\x10PhyIoNVMEStorage\x10\t\x12\x14\n\x10PhyIoSATAStorage\x10\n\x12\x11\n\rPhyIoNetEthPF\x10\x0b\x12\x11\n\rPhyIoNetEthVF\x10\x0c\x12\x0f\n\nPhyIoOther\x10\xff\x01*\xa0\x01\n\x10PhyIoMemberUsage\x12\x12\n\x0ePhyIoUsageNone\x10\x00\x12\x19\n\x15PhyIoUsageMgmtAndApps\x10\x01\x12\x14\n\x10PhyIoUsageShared\x10\x02\x12\x17\n\x13PhyIoUsageDedicated\x10\x03\x12\x16\n\x12PhyIoUsageDisabled\x10\x04\x12\x16\n\x12PhyIoUsageMgmtOnly\x10\x05\x42R\n\x15org.lfedge.eve.commonB\x0e\x44\x65vModelCommonP\x01Z\'github.com/lf-edge/eve/api/go/evecommonb\x06proto3'
 )
 
 _PHYIOTYPE = _descriptor.EnumDescriptor(
@@ -81,7 +81,17 @@ _PHYIOTYPE = _descriptor.EnumDescriptor(
       type=None,
       create_key=_descriptor._internal_create_key),
     _descriptor.EnumValueDescriptor(
-      name='PhyIoOther', index=10, number=255,
+      name='PhyIoNetEthPF', index=10, number=11,
+      serialized_options=None,
+      type=None,
+      create_key=_descriptor._internal_create_key),
+    _descriptor.EnumValueDescriptor(
+      name='PhyIoNetEthVF', index=11, number=12,
+      serialized_options=None,
+      type=None,
+      create_key=_descriptor._internal_create_key),
+    _descriptor.EnumValueDescriptor(
+      name='PhyIoOther', index=12, number=255,
       serialized_options=None,
       type=None,
       create_key=_descriptor._internal_create_key),
@@ -89,7 +99,7 @@ _PHYIOTYPE = _descriptor.EnumDescriptor(
   containing_type=None,
   serialized_options=None,
   serialized_start=58,
-  serialized_end=257,
+  serialized_end=295,
 )
 _sym_db.RegisterEnumDescriptor(_PHYIOTYPE)
 
@@ -134,8 +144,8 @@ _PHYIOMEMBERUSAGE = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=260,
-  serialized_end=420,
+  serialized_start=298,
+  serialized_end=458,
 )
 _sym_db.RegisterEnumDescriptor(_PHYIOMEMBERUSAGE)
 
@@ -150,6 +160,8 @@ PhyIoNetWWAN = 6
 PhyIoHDMI = 7
 PhyIoNVMEStorage = 9
 PhyIoSATAStorage = 10
+PhyIoNetEthPF = 11
+PhyIoNetEthVF = 12
 PhyIoOther = 255
 PhyIoUsageNone = 0
 PhyIoUsageMgmtAndApps = 1
