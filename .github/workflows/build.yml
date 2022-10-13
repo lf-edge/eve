@@ -70,10 +70,16 @@ jobs:
         with:
           fetch-depth: 0
       - name: update linuxkit cache for runner arch so we can get desired images
+        id: cache_for_docker
         uses: actions/cache@v3
         with:
           path: ~/.linuxkit/cache
           key: linuxkit-amd64-${{ github.sha }}
+      - name: Fail if cache miss
+        uses: actions/github-script@v6
+        if: steps.cache_for_docker.outputs.cache-hit != 'true'
+        with:
+          script: core.setFailed('Cache hit failed for loading packages. Please rerun all jobs, including "packages", not just "eve".')
       - name: load images we need from linuxkit cache into docker
         run: |
           make cache-export-docker-load-all
@@ -82,11 +88,17 @@ jobs:
         run: |
           rm -rf ~/.linuxkit
       - name: update linuxkit cache for our arch
+        id: cache_for_packages
         if: ${{ matrix.arch != 'amd64' }}  # because our runner arch is amd64; if that changes, this will have to change
         uses: actions/cache@v3
         with:
           path: ~/.linuxkit/cache
           key: linuxkit-${{ matrix.arch }}-${{ github.sha }}
+      - name: Fail if cache miss
+        uses: actions/github-script@v6
+        if: ${{ matrix.arch != 'amd64' && steps.cache_for_packages.outputs.cache-hit != 'true' }}  # because our runner arch is amd64; if that changes, this will have to change
+        with:
+          script: core.setFailed('Cache hit failed for loading packages. Please rerun all jobs, including "packages", not just "eve".')
       - name: set environment
         env:
           PR_ID: ${{ github.event.pull_request.number  }}
