@@ -20,7 +20,7 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   syntax='proto3',
   serialized_options=b'\n\025org.lfedge.eve.configZ$github.com/lf-edge/eve/api/go/config',
   create_key=_descriptor._internal_create_key,
-  serialized_pb=b'\n\x0f\x63onfig/vm.proto\x12\x15org.lfedge.eve.config\"\xfb\x02\n\x08VmConfig\x12\x0e\n\x06kernel\x18\x01 \x01(\t\x12\x0f\n\x07ramdisk\x18\x02 \x01(\t\x12\x0e\n\x06memory\x18\x03 \x01(\r\x12\x0e\n\x06maxmem\x18\x04 \x01(\r\x12\r\n\x05vcpus\x18\x05 \x01(\r\x12\x0f\n\x07maxcpus\x18\x06 \x01(\r\x12\x0f\n\x07rootdev\x18\x07 \x01(\t\x12\x11\n\textraargs\x18\x08 \x01(\t\x12\x12\n\nbootloader\x18\t \x01(\t\x12\x0c\n\x04\x63pus\x18\n \x01(\t\x12\x12\n\ndevicetree\x18\x0b \x01(\t\x12\r\n\x05\x64tdev\x18\x0c \x03(\t\x12\x0c\n\x04irqs\x18\r \x03(\r\x12\r\n\x05iomem\x18\x0e \x03(\t\x12\x39\n\x12virtualizationMode\x18\x0f \x01(\x0e\x32\x1d.org.lfedge.eve.config.VmMode\x12\x11\n\tenableVnc\x18\x10 \x01(\x08\x12\x12\n\nvncDisplay\x18\x11 \x01(\r\x12\x11\n\tvncPasswd\x18\x12 \x01(\t\x12\x13\n\x0b\x64isableLogs\x18\x13 \x01(\x08*G\n\x06VmMode\x12\x06\n\x02PV\x10\x00\x12\x07\n\x03HVM\x10\x01\x12\n\n\x06\x46iller\x10\x02\x12\x07\n\x03\x46ML\x10\x03\x12\x0b\n\x07NOHYPER\x10\x04\x12\n\n\x06LEGACY\x10\x05\x42=\n\x15org.lfedge.eve.configZ$github.com/lf-edge/eve/api/go/configb\x06proto3'
+  serialized_pb=b'\n\x0f\x63onfig/vm.proto\x12\x15org.lfedge.eve.config\"\x8c\x03\n\x08VmConfig\x12\x0e\n\x06kernel\x18\x01 \x01(\t\x12\x0f\n\x07ramdisk\x18\x02 \x01(\t\x12\x0e\n\x06memory\x18\x03 \x01(\r\x12\x0e\n\x06maxmem\x18\x04 \x01(\r\x12\r\n\x05vcpus\x18\x05 \x01(\r\x12\x0f\n\x07maxcpus\x18\x06 \x01(\r\x12\x0f\n\x07rootdev\x18\x07 \x01(\t\x12\x11\n\textraargs\x18\x08 \x01(\t\x12\x12\n\nbootloader\x18\t \x01(\t\x12\x0c\n\x04\x63pus\x18\n \x01(\t\x12\x12\n\ndevicetree\x18\x0b \x01(\t\x12\r\n\x05\x64tdev\x18\x0c \x03(\t\x12\x0c\n\x04irqs\x18\r \x03(\r\x12\r\n\x05iomem\x18\x0e \x03(\t\x12\x39\n\x12virtualizationMode\x18\x0f \x01(\x0e\x32\x1d.org.lfedge.eve.config.VmMode\x12\x11\n\tenableVnc\x18\x10 \x01(\x08\x12\x12\n\nvncDisplay\x18\x11 \x01(\r\x12\x11\n\tvncPasswd\x18\x12 \x01(\t\x12\x13\n\x0b\x64isableLogs\x18\x13 \x01(\x08\x12\x0f\n\x07pin_cpu\x18\x14 \x01(\x08*G\n\x06VmMode\x12\x06\n\x02PV\x10\x00\x12\x07\n\x03HVM\x10\x01\x12\n\n\x06\x46iller\x10\x02\x12\x07\n\x03\x46ML\x10\x03\x12\x0b\n\x07NOHYPER\x10\x04\x12\n\n\x06LEGACY\x10\x05\x42=\n\x15org.lfedge.eve.configZ$github.com/lf-edge/eve/api/go/configb\x06proto3'
 )
 
 _VMMODE = _descriptor.EnumDescriptor(
@@ -63,8 +63,8 @@ _VMMODE = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=424,
-  serialized_end=495,
+  serialized_start=441,
+  serialized_end=512,
 )
 _sym_db.RegisterEnumDescriptor(_VMMODE)
 
@@ -219,6 +219,13 @@ _VMCONFIG = _descriptor.Descriptor(
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+    _descriptor.FieldDescriptor(
+      name='pin_cpu', full_name='org.lfedge.eve.config.VmConfig.pin_cpu', index=19,
+      number=20, type=8, cpp_type=7, label=1,
+      has_default_value=False, default_value=False,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
   ],
   extensions=[
   ],
@@ -232,7 +239,7 @@ _VMCONFIG = _descriptor.Descriptor(
   oneofs=[
   ],
   serialized_start=43,
-  serialized_end=422,
+  serialized_end=439,
 )
 
 _VMCONFIG.fields_by_name['virtualizationMode'].enum_type = _VMMODE
