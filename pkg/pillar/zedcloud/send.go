@@ -479,8 +479,12 @@ func SendOnIntf(workContext context.Context, ctx *ZedCloudContext, destURL strin
 		log.Tracef("Connecting to %s using intf %s source %v\n",
 			reqUrl, intf, localTCPAddr)
 		var dnsIsAvail bool
+		// fromDNSCache will remain true after the request if the domain name resolution
+		// used IP address cached in /etc/hosts (see pillar/cmd/nim/controllerdns.go)
+		fromDNSCache := true
 		resolverDial := func(ctx context.Context, network, address string) (net.Conn, error) {
 			log.Tracef("resolverDial %v %v", network, address)
+			fromDNSCache = false
 			ip := net.ParseIP(strings.Split(address, ":")[0])
 			for _, dnsServer := range dnsServers {
 				if dnsServer != nil && dnsServer.Equal(ip) {
@@ -580,7 +584,7 @@ func SendOnIntf(workContext context.Context, ctx *ZedCloudContext, destURL strin
 		apiCallStartTime := time.Now()
 		resp, err := client.Do(req)
 		if err != nil {
-			if !dnsIsAvail {
+			if !fromDNSCache && !dnsIsAvail {
 				attempt.Err = &types.DNSNotAvail{IfName: intf}
 			} else if cf, cert := isCertFailure(err); cf {
 				// XXX can we ever get this from a proxy?
