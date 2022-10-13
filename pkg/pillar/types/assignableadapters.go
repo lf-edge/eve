@@ -222,12 +222,12 @@ const (
 	IoNetWWAN IoType = 6
 	IoHDMI    IoType = 7
 	// enum 8 is reserved for backward compatibility with controller API
-	PhyIoNVMEStorage IoType = 9
-	PhyIoSATAStorage IoType = 10
-	IoNetEthPF       IoType = 11
-	IoNetEthVF       IoType = 12
-	IoNVME           IoType = 255
-	IoOther          IoType = 255
+	IoNVMEStorage IoType = 9
+	IoSATAStorage IoType = 10
+	IoNetEthPF    IoType = 11
+	IoNetEthVF    IoType = 12
+	IoNVME        IoType = 255
+	IoOther       IoType = 255
 )
 
 // IsNet checks if the type is any of the networking types.
