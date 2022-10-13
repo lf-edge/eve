@@ -96,8 +96,8 @@ func getVfByTimeout(timeout time.Duration, device string, expectedVfCount uint8)
 	c := asyncGetVF(toCtx, device, expectedVfCount)
 	for {
 		select {
-		case ans := <-c:
-			return ans, nil
+		case answer := <-c:
+			return answer, nil
 		case <-toCtx.Done():
 			return nil, fmt.Errorf("getVfByTimeout reached timeout %v", timeout)
 		}
