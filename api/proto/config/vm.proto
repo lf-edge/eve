@@ -41,4 +41,13 @@ message VmConfig {
   uint32 vncDisplay = 17;
   string vncPasswd = 18;
   bool disableLogs = 19;
+  // Set if the VM should run in a mode with pinned CPUs.
+  // In this case any VCPU thread created by QEMU runs on a dedicated physical
+  // CPU. All the other QEMU threads will be limited to run on the physical
+  // CPUs defined by CPU mask. The CPU mask is provided with the 'cpus' field,
+  // defined above. If the CPU mask is not set, the physical CPUs to be used
+  // for running QEMU threads are picked automatically by Pillar: it just takes
+  // that amount of available physical CPUs that is defined with the 'vcpus'
+  // parameter defined above.
+  bool pin_cpu = 20;
 }
