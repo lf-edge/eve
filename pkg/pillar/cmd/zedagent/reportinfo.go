@@ -134,9 +134,7 @@ func objectInfoTask(ctxPtr *zedagentContext, triggerInfo <-chan infoForObjectKey
 				sub := ctxPtr.subAppInstMetaData
 				if c, err = sub.Get(infoForKeyMessage.objectKey); err == nil {
 					appInstMetaData := c.(types.AppInstMetaData)
-					uuidStr := appInstMetaData.Key()
-					PublishAppInstMetaDataToZedCloud(ctxPtr, uuidStr, &appInstMetaData, appInstMetaData.Type,
-						ctxPtr.iteration)
+					PublishAppInstMetaDataToZedCloud(ctxPtr, &appInstMetaData, false)
 					ctxPtr.iteration++
 				}
 			case info.ZInfoTypes_ZiHardware:
@@ -647,9 +645,11 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 
 // PublishAppInstMetaDataToZedCloud is called when an appInst reports its Metadata to EVE.
 // AppInst metadata is relayed to the controller to be processed further.
-func PublishAppInstMetaDataToZedCloud(ctx *zedagentContext, appInstID string, appInstMetadata *types.AppInstMetaData,
-	metadataType types.AppInstMetaDataType, iteration int) {
-	log.Functionf("PublishAppInstMetaDataToZedCloud: appInstID: %v", appInstID)
+func PublishAppInstMetaDataToZedCloud(ctx *zedagentContext, appInstMetadata *types.AppInstMetaData, isDelete bool) {
+
+	metadataType := appInstMetadata.Type
+	appInstId := appInstMetadata.AppInstUUID.String()
+	log.Functionf("PublishAppInstMetaDataToZedCloud: appInstID: %v", appInstId)
 	var ReportInfo = &info.ZInfoMsg{}
 
 	contentType := new(info.ZInfoTypes)
@@ -659,11 +659,10 @@ func PublishAppInstMetaDataToZedCloud(ctx *zedagentContext, appInstID string, ap
 	ReportInfo.AtTimeStamp = ptypes.TimestampNow()
 
 	ReportAppInstMetaData := new(info.ZInfoAppInstMetaData)
-	ReportAppInstMetaData.Uuid = appInstID
+	ReportAppInstMetaData.Uuid = appInstId
 	ReportAppInstMetaData.Type = info.AppInstMetaDataType(metadataType)
 
-	// if appInstMetadata == nil, then it denotes that the appInstMetadata is deleted.
-	if appInstMetadata != nil {
+	if !isDelete {
 		// The Data size is expected to be <= 32KB. We have a check for that in zedrouter.
 		ReportAppInstMetaData.Data = appInstMetadata.Data
 	}
@@ -681,7 +680,7 @@ func PublishAppInstMetaDataToZedCloud(ctx *zedagentContext, appInstID string, ap
 	}
 	statusURL := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API, devUUID, "info")
 
-	deferKey := "appInstMetadataInfo:" + appInstID
+	deferKey := "appInstMetadataInfo:" + appInstMetadata.Key()
 
 	buf := bytes.NewBuffer(data)
 	if buf == nil {

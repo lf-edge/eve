@@ -20,8 +20,7 @@ func handleAppInstMetaDataModify(ctxArg interface{}, key string,
 func handleAppInstMetaDataDelete(ctxArg interface{}, key string, statusArg interface{}) {
 	appInstMetaData := statusArg.(types.AppInstMetaData)
 	ctx := ctxArg.(*zedagentContext)
-	uuidStr := appInstMetaData.Key()
-	PublishAppInstMetaDataToZedCloud(ctx, uuidStr, nil, appInstMetaData.Type, ctx.iteration)
+	PublishAppInstMetaDataToZedCloud(ctx, &appInstMetaData, true)
 	ctx.iteration++
 }
 
@@ -29,7 +28,6 @@ func handleAppInstMetaDataImpl(ctxArg interface{}, key string, statusArg interfa
 
 	appInstMetaData := statusArg.(types.AppInstMetaData)
 	ctx := ctxArg.(*zedagentContext)
-	uuidStr := appInstMetaData.Key()
-	PublishAppInstMetaDataToZedCloud(ctx, uuidStr, &appInstMetaData, appInstMetaData.Type, ctx.iteration)
+	PublishAppInstMetaDataToZedCloud(ctx, &appInstMetaData, false)
 	ctx.iteration++
 }
