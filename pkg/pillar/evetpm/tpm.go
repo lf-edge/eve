@@ -23,6 +23,7 @@ import (
 	"github.com/lf-edge/eve/api/go/info"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	utils "github.com/lf-edge/eve/pkg/pillar/utils/file"
 )
 
 const (
@@ -212,16 +213,10 @@ func TpmSign(digest []byte) (*big.Int, *big.Int, error) {
 	return sig.ECC.R, sig.ECC.S, nil
 }
 
-//FileExists returns true if a file with name filename is found
-func FileExists(filename string) bool {
-	_, err := os.Stat(filename)
-	return err == nil
-}
-
 //IsTpmEnabled checks if TPM is being used by software for creating device cert
 // Note that this must not be called before the device certificate has been generated
 func IsTpmEnabled() bool {
-	return FileExists(types.DeviceCertName) && !FileExists(types.DeviceKeyName)
+	return utils.FileExists(types.DeviceCertName) && !utils.FileExists(types.DeviceKeyName)
 }
 
 //GetRandom returns a random []byte of requested length

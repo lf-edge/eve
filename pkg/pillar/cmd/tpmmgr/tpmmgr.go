@@ -31,6 +31,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
 	uuid "github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
 )
@@ -580,7 +581,7 @@ func testEcdhAES() error {
 	}
 
 	isTpm := true
-	if !etpm.IsTpmEnabled() || etpm.FileExists(etpm.EcdhKeyFile) {
+	if !etpm.IsTpmEnabled() || fileutils.FileExists(etpm.EcdhKeyFile) {
 		isTpm = false
 	}
 
@@ -619,7 +620,7 @@ func testEncryptDecrypt() error {
 
 func createQuoteCert() error {
 	// certificate is already created
-	if etpm.FileExists(quoteCertFile) {
+	if fileutils.FileExists(quoteCertFile) {
 		return nil
 	}
 	// try TPM
@@ -636,7 +637,7 @@ func createQuoteCert() error {
 }
 
 func createEkCert() error {
-	if etpm.FileExists(EkCertFile) {
+	if fileutils.FileExists(EkCertFile) {
 		// certificate is already created
 		return nil
 	}
@@ -648,7 +649,7 @@ func createEkCert() error {
 
 func createEkCertOnTpm() error {
 	//Check if we already have the certificate
-	if !etpm.FileExists(EkCertFile) {
+	if !fileutils.FileExists(EkCertFile) {
 		//Cert is not present, generate new one
 		rw, err := tpm2.OpenTPM(etpm.TpmDevicePath)
 		if err != nil {
@@ -743,7 +744,7 @@ func createDeviceCertTemplate() *x509.Certificate {
 // the certificate is self-signed using the device private key
 func createDeviceCertOnTpm(pubkey crypto.PublicKey) error {
 	//Check if we already have the certificate
-	if etpm.FileExists(types.DeviceCertName) {
+	if fileutils.FileExists(types.DeviceCertName) {
 		return nil
 	}
 
@@ -902,7 +903,7 @@ func createEkTemplate(deviceCert x509.Certificate) x509.Certificate {
 
 func createQuoteCertOnTpm() error {
 	//Check if we already have the certificate
-	if !etpm.FileExists(quoteCertFile) {
+	if !fileutils.FileExists(quoteCertFile) {
 		//Cert is not present, generate new one
 		rw, err := tpm2.OpenTPM(etpm.TpmDevicePath)
 		if err != nil {
@@ -1078,7 +1079,7 @@ func getQuoteCert(certPath string) ([]byte, error) {
 
 func createEcdhCert() error {
 	// certificate is already created
-	if etpm.FileExists(ecdhCertFile) {
+	if fileutils.FileExists(ecdhCertFile) {
 		return nil
 	}
 	// try TPM
@@ -1096,7 +1097,7 @@ func createEcdhCert() error {
 
 func createEcdhCertOnTpm() error {
 	//Check if we already have the certificate
-	if !etpm.FileExists(ecdhCertFile) {
+	if !fileutils.FileExists(ecdhCertFile) {
 		//Cert is not present, generate new one
 		rw, err := tpm2.OpenTPM(etpm.TpmDevicePath)
 		if err != nil {
@@ -1287,7 +1288,7 @@ func getCertHash(cert []byte, hashAlgo types.CertHashType) ([]byte, error) {
 
 func publishEdgeNodeCertToController(ctx *tpmMgrContext, certFile string, certType types.CertType, isTpm bool, metaDataItems []types.CertMetaData) {
 	log.Functionf("publishEdgeNodeCertToController started")
-	if !etpm.FileExists(certFile) {
+	if !fileutils.FileExists(certFile) {
 		log.Errorf("publishEdgeNodeCertToController failed: no cert file of type: %v", certType)
 		return
 	}
@@ -1465,11 +1466,11 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 
 	// publish ECDH cert
 	publishEdgeNodeCertToController(&ctx, ecdhCertFile, types.CertTypeEcdhXchange,
-		etpm.IsTpmEnabled() && !etpm.FileExists(etpm.EcdhKeyFile), nil)
+		etpm.IsTpmEnabled() && !fileutils.FileExists(etpm.EcdhKeyFile), nil)
 
 	// publish attestation quote cert
 	publishEdgeNodeCertToController(&ctx, quoteCertFile, types.CertTypeRestrictSigning,
-		etpm.IsTpmEnabled() && !etpm.FileExists(quoteKeyFile), nil)
+		etpm.IsTpmEnabled() && !fileutils.FileExists(quoteKeyFile), nil)
 
 	ekCertMetaData, err := getEkCertMetaData()
 	if err == nil {
@@ -1491,7 +1492,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	}
 	log.Functionf("processed GlobalConfig")
 
-	if etpm.IsTpmEnabled() && !etpm.FileExists(etpm.TpmCredentialsFileName) {
+	if etpm.IsTpmEnabled() && !fileutils.FileExists(etpm.TpmCredentialsFileName) {
 		err := readCredentials()
 		if err != nil {
 			// this indicates that we are in a very bad state

@@ -198,3 +198,9 @@ func ReadSavedCounter(log *base.LogObject, fileName string) (uint32, bool) {
 	}
 	return 0, false
 }
+
+// FileExists returns true if a file with name filename is found
+func FileExists(filename string) bool {
+	_, err := os.Stat(filename)
+	return err == nil
+}
