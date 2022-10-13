@@ -216,9 +216,9 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 	if err != nil {
 		log.Errorf("get info from uname failed %s", err)
 	} else {
-		ReportDeviceInfo.MachineArch = *proto.String(string(uname.Machine[:]))
-		ReportDeviceInfo.CpuArch = *proto.String(string(uname.Machine[:]))
-		ReportDeviceInfo.Platform = *proto.String(string(uname.Machine[:]))
+		ReportDeviceInfo.MachineArch = *proto.String(unix.ByteSliceToString(uname.Machine[:]))
+		ReportDeviceInfo.CpuArch = *proto.String(unix.ByteSliceToString(uname.Machine[:]))
+		ReportDeviceInfo.Platform = *proto.String(unix.ByteSliceToString(uname.Machine[:]))
 	}
 
 	sub := ctx.getconfigCtx.subHostMemory
