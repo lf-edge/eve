@@ -11,6 +11,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/containerd"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	utils "github.com/lf-edge/eve/pkg/pillar/utils/file"
 	uuid "github.com/satori/go.uuid"
 )
 
@@ -171,4 +172,32 @@ func WaitForUserContainerd(ps *pubsub.PubSub, log *base.LogObject, agentName str
 	}
 	stillRunning.Stop()
 	return nil
+}
+
+// WaitForFile waits for file with defined filename exists
+func WaitForFile(ps *pubsub.PubSub, log *base.LogObject, agentName string, warningTime, errorTime time.Duration, filename string) {
+	// return if file exists
+	if utils.FileExists(filename) {
+		return
+	}
+	stillRunning := time.NewTicker(25 * time.Second)
+	ps.StillRunning(agentName, warningTime, errorTime)
+	checkTicker := time.NewTicker(5 * time.Second)
+	waitingStart := time.Now()
+	done := false
+
+	log.Noticeln("WaitForFile initialized")
+
+	for !done {
+		select {
+		case <-checkTicker.C:
+			if utils.FileExists(filename) {
+				done = true
+			}
+		case <-stillRunning.C:
+		}
+		ps.StillRunning(agentName, warningTime, errorTime)
+		ps.CheckMaxTimeTopic(agentName, "WaitForFile", waitingStart, warningTime, errorTime)
+	}
+	stillRunning.Stop()
 }
