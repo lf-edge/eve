@@ -25,19 +25,12 @@ package vaultmgr
 import (
 	"bytes"
 	"crypto/sha256"
-	"errors"
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"os"
-	"os/exec"
-	"path/filepath"
-	"regexp"
-	"strings"
 	"time"
 
-	attest "github.com/lf-edge/eve/api/go/attest"
-	"github.com/lf-edge/eve/api/go/info"
+	"github.com/lf-edge/eve/api/go/attest"
 	"github.com/lf-edge/eve/pkg/pillar/agentbase"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/base"
@@ -74,206 +67,19 @@ func (ctxPtr *vaultMgrContext) ProcessAgentSpecificCLIFlags(flagSet *flag.FlagSe
 }
 
 const (
-	agentName              = "vaultmgr"
-	keyctlPath             = "/bin/keyctl"
-	deprecatedImgVault     = types.PersistDir + "/img"
-	deprecatedCfgVault     = types.PersistDir + "/config"
-	defaultVault           = types.PersistDir + "/vault"
-	oldKeyDir              = "/TmpVaultDir1"
-	oldKeyFile             = oldKeyDir + "/protector.key"
-	keyDir                 = "/TmpVaultDir2"
-	keyFile                = keyDir + "/protector.key"
-	protectorPrefix        = "TheVaultKey"
-	vaultKeyLen            = 32 //bytes
-	vaultHalfKeyLen        = 16 //bytes
-	deprecatedCfgVaultName = "Configuration Data Store"
+	agentName = "vaultmgr"
 	// Time limits for event loop handlers
 	errorTime   = 3 * time.Minute
 	warningTime = 40 * time.Second
 )
 
 var (
-	keyctlParams      = []string{"link", "@u", "@s"}
-	mntPointParams    = []string{"setup", vault.MountPoint, "--quiet"}
-	vaultStatusParams = []string{"status"}
 	logger            *logrus.Logger
 	log               *base.LogObject
 	vaultConfig       types.VaultConfig
 	vaultConfigInited bool
+	handler           vault.Handler
 )
-
-func getEncryptParams(vaultPath string) []string {
-	args := []string{"encrypt", vaultPath, "--key=" + keyFile,
-		"--source=raw_key", "--name=" + protectorPrefix + filepath.Base(vaultPath),
-		"--user=root"}
-	return args
-}
-
-func getUnlockParams(vaultPath string) []string {
-	args := []string{"unlock", vaultPath, "--key=" + keyFile,
-		"--user=root"}
-	return args
-}
-
-func getStatusParams(vaultPath string) []string {
-	args := vaultStatusParams
-	return append(args, vaultPath)
-}
-
-func getChangeProtectorParams(protectorID string) []string {
-	args := []string{"metadata", "change-passphrase", "--key=" + keyFile,
-		"--old-key=" + oldKeyFile, "--source=raw_key",
-		"--protector=" + vault.MountPoint + ":" + protectorID}
-	return args
-}
-
-func getRemoveProtectorParams(protectorID string) []string {
-	args := []string{"metadata", "destroy", "--protector=" + vault.MountPoint + ":" + protectorID, "--quiet", "--force"}
-	return args
-}
-
-func getRemovePolicyParams(policyID string) []string {
-	args := []string{"metadata", "destroy", "--policy=" + vault.MountPoint + ":" + policyID, "--quiet", "--force"}
-	return args
-}
-
-func getProtectorIDByName(vaultPath string) ([][]string, error) {
-	stdOut, _, err := execCmd(vault.FscryptPath, vault.StatusParams...)
-	if err != nil {
-		return nil, err
-	}
-	patternStr := fmt.Sprintf("([[:xdigit:]]+)  No      raw key protector \"%s\"",
-		protectorPrefix+filepath.Base(vaultPath))
-	protector := regexp.MustCompile(patternStr)
-	return protector.FindAllStringSubmatch(stdOut, -1), nil
-}
-
-func getPolicyIDByProtectorID(protectID string) ([][]string, error) {
-	stdOut, _, err := execCmd(vault.FscryptPath, vault.StatusParams...)
-	if err != nil {
-		return nil, err
-	}
-	patternStr := fmt.Sprintf("([[:xdigit:]]+)  No        %s", protectID)
-	policy := regexp.MustCompile(patternStr)
-	return policy.FindAllStringSubmatch(stdOut, -1), nil
-}
-
-func removeProtectorIfAny(vaultPath string) error {
-	protectorID, err := getProtectorIDByName(vaultPath)
-	if err == nil && len(protectorID) == 0 {
-		//No protector found, nothing to be done.
-		return nil
-	}
-	if err == nil {
-		log.Functionf("Removing protectorID %s for vaultPath %s", protectorID[0][1], vaultPath)
-		args := getRemoveProtectorParams(protectorID[0][1])
-		if stdOut, stdErr, err := execCmd(vault.FscryptPath, args...); err != nil {
-			log.Errorf("Error changing protector key: %v, %v, %v", err, stdOut, stdErr)
-			return err
-		}
-		policyID, err := getPolicyIDByProtectorID(protectorID[0][1])
-		if err == nil {
-			log.Functionf("Removing policyID %s for vaultPath %s", policyID[0][1], vaultPath)
-			args := getRemovePolicyParams(policyID[0][1])
-			if stdOut, stdErr, err := execCmd(vault.FscryptPath, args...); err != nil {
-				log.Errorf("Error changing policy key: %v, %v, %v", err, stdOut, stdErr)
-				return err
-			}
-		}
-	}
-	return nil
-}
-
-func getProtectorID(vaultPath string) ([][]string, error) {
-	args := getStatusParams(vaultPath)
-	stdOut, _, err := execCmd(vault.FscryptPath, args...)
-	if err != nil {
-		return nil, err
-	}
-	protector := regexp.MustCompile(`([[:xdigit:]]+)  No      raw key protector`)
-	return protector.FindAllStringSubmatch(stdOut, -1), nil
-}
-
-//changeProtector is used on deprecated vaults. It is used for migrating them
-//to TPM based keys, from cloudOnlyKey (which was a bug introduced in the late
-//2019). We still need to keep cloudKeyOnly for some more time, till we migrate
-//all the deprecated vaults to TPM based keys, depending on how old the image
-//from which we are getting upgraded is.
-func changeProtector(vaultPath string) error {
-	protectorID, err := getProtectorID(vaultPath)
-	if protectorID != nil {
-		//cloudKeyOnlyMode=true, useSealedKey=false
-		if err := stageKey(true, false, oldKeyDir, oldKeyFile); err != nil {
-			return err
-		}
-		defer unstageKey(oldKeyDir, oldKeyFile)
-		//cloudKeyOnlyMode=false, useSealedKey=false
-		if err := stageKey(false, false, keyDir, keyFile); err != nil {
-			return err
-		}
-		defer unstageKey(keyDir, keyFile)
-
-		//Note on power failure at this point:
-		//If there is a power outage after the execCmd call
-		//the key would have moved to TPM based key - which is expected
-		//
-		//If there is a power outage before the execCmd call - the key would
-		//not have moved to TPM based key - which will trigger the post-reboot
-		//session to try changeProtector again.
-		//
-		//We expect fscrypt to handle the case where there is a power outage during
-		//the execCmd call
-		//
-
-		if stdOut, stdErr, err := execCmd(vault.FscryptPath,
-			getChangeProtectorParams(protectorID[0][1])...); err != nil {
-			log.Errorf("Error changing protector key: %v", err)
-			log.Trace(stdOut)
-			log.Trace(stdErr)
-			return err
-		}
-		log.Functionf("Changed key for protector %s", (protectorID[0][1]))
-	}
-	return err
-}
-
-//Error values
-var (
-	ErrInvalKeyLen = errors.New("Unexpected key length")
-)
-
-func execCmd(command string, args ...string) (string, string, error) {
-	var stdout, stderr bytes.Buffer
-
-	cmd := exec.Command(command, args...)
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-
-	err := cmd.Run()
-	stdoutStr, stderrStr := stdout.String(), stderr.String()
-	return stdoutStr, stderrStr, err
-}
-
-func linkKeyrings() error {
-	if _, _, err := execCmd(keyctlPath, keyctlParams...); err != nil {
-		return fmt.Errorf("Error in linking user keyring %v", err)
-	}
-	return nil
-}
-
-func retrieveTpmKey(useSealedKey bool) ([]byte, error) {
-	if useSealedKey {
-		return etpm.FetchSealedVaultKey(log)
-	}
-	return etpm.FetchVaultKey(log)
-}
-
-//retrieveCloudKey is to support pre-5.6.2 devices, remove once devices move to 5.6.2
-func retrieveCloudKey() ([]byte, error) {
-	//For now, return a dummy key, until controller support is ready.
-	cloudKey := []byte("foobarfoobarfoobarfoobarfoobarfo")
-	return cloudKey, nil
-}
 
 //publishVaultConfig: publishes vault config and also updates in memory vaultConfig
 func publishVaultConfig(ctx *vaultMgrContext, tpmKeyOnly bool) {
@@ -285,325 +91,6 @@ func publishVaultConfig(ctx *vaultMgrContext, tpmKeyOnly bool) {
 	pub := ctx.pubVaultConfig
 	pub.Publish(key, config)
 	vaultConfig = config
-}
-
-func mergeKeys(key1 []byte, key2 []byte) ([]byte, error) {
-	if len(key1) != vaultKeyLen ||
-		len(key2) != vaultKeyLen {
-		return nil, ErrInvalKeyLen
-	}
-
-	//merge first half of key1 with second half of key2
-	v1 := vaultHalfKeyLen
-	v2 := vaultKeyLen
-	mergedKey := []byte("")
-	mergedKey = append(mergedKey, key1[0:v1]...)
-	mergedKey = append(mergedKey, key2[v1:v2]...)
-	log.Function("Merging keys")
-	return mergedKey, nil
-}
-
-//cloudKeyOnlyMode is set when the key is used only from cloud, and not from TPM.
-func deriveVaultKey(cloudKeyOnlyMode, useSealedKey bool) ([]byte, error) {
-	//First fetch Cloud Key
-	cloudKey, err := retrieveCloudKey()
-	if err != nil {
-		return nil, err
-	}
-	//For pre 5.6.2 devices, remove once devices move to 5.6.2
-	if cloudKeyOnlyMode {
-		log.Functionf("Using cloud key")
-		return cloudKey, nil
-	}
-	tpmKey, err := retrieveTpmKey(useSealedKey)
-	if err != nil {
-		return nil, err
-	}
-
-	tpmKeyOnlyMode := vaultConfig.TpmKeyOnly
-	if tpmKeyOnlyMode == false {
-		log.Notice("Calling mergeKeys")
-		return mergeKeys(tpmKey, cloudKey)
-	}
-	log.Notice("Using TPM key only")
-	return tpmKey, nil
-}
-
-// stageKey is responsible for talking to TPM and Controller
-// and preparing the key for accessing the vault
-func stageKey(cloudKeyOnlyMode, useSealedKey bool, keyDirName string, keyFileName string) error {
-	//Create a tmpfs file to pass the secret to fscrypt
-	if err := os.MkdirAll(keyDirName, 755); err != nil {
-		return fmt.Errorf("Error creating keyDir %s %v", keyDirName, err)
-	}
-
-	if _, _, err := execCmd("mount", "-t", "tmpfs", "tmpfs", keyDirName); err != nil {
-		return fmt.Errorf("Error mounting tmpfs on keyDir %s: %v", keyDirName, err)
-	}
-
-	vaultKey, err := deriveVaultKey(cloudKeyOnlyMode, useSealedKey)
-	if err != nil {
-		log.Errorf("Error deriving key for accessing the vault: %v", err)
-		unstageKey(keyDirName, keyFileName)
-		return err
-	}
-	if err := ioutil.WriteFile(keyFileName, vaultKey, 0700); err != nil {
-		return fmt.Errorf("Error creating keyFile: %v", err)
-	}
-	return nil
-}
-
-func unstageKey(keyDirName string, keyFileName string) {
-	_, err := os.Stat(keyFileName)
-	if !os.IsNotExist(err) {
-		//Shred the tmpfs file, and remove it
-		if _, _, err := execCmd("shred", "--remove", keyFileName); err != nil {
-			log.Errorf("Error shredding keyFile %s: %v", keyFileName, err)
-			return
-		}
-	}
-	if _, _, err := execCmd("umount", keyDirName); err != nil {
-		log.Errorf("Error unmounting %s: %v", keyDirName, err)
-		return
-	}
-	if _, _, err := execCmd("rm", "-rf", keyDirName); err != nil {
-		log.Errorf("Error removing keyDir %s : %v", keyDirName, err)
-		return
-	}
-	return
-}
-
-func isDirEmpty(path string) bool {
-	if f, err := os.Open(path); err == nil {
-		files, err := f.Readdirnames(0)
-		if err != nil {
-			log.Errorf("Error reading dir contents: %v", err)
-			return false
-		}
-		if len(files) == 0 {
-			log.Tracef("No files in %s", path)
-			return true
-		}
-		log.Tracef("Dir is not empty at %s", path)
-		return false
-	}
-	log.Tracef("Dir not exist %s - consider empty", path)
-	return true
-}
-
-//handleFirstUse sets up mountpoint for the first time use
-func handleFirstUse() error {
-	//setup mountPoint for encryption
-	if _, _, err := execCmd(vault.FscryptPath, mntPointParams...); err != nil {
-		return fmt.Errorf("Error setting up mountpoint for encryption: %v", err)
-	}
-	return nil
-}
-
-//cloudKeyOnlyMode and useSealedKey are passed to stageKey
-func unlockVault(vaultPath string, cloudKeyOnlyMode, useSealedKey bool) error {
-	if err := stageKey(cloudKeyOnlyMode, useSealedKey, keyDir, keyFile); err != nil {
-		return err
-	}
-	defer unstageKey(keyDir, keyFile)
-
-	//Unlock vault for access
-	if _, _, err := execCmd(vault.FscryptPath, getUnlockParams(vaultPath)...); err != nil {
-		log.Errorf("Error unlocking vault: %v", err)
-		return err
-	}
-	return linkKeyrings()
-}
-
-//createVault expects an empty, existing dir at vaultPath
-func createVault(vaultPath string) error {
-	if !etpm.IsTpmEnabled() || !etpm.PCRBankSHA256Enabled() {
-		log.Noticef("Ignoring vault create request on no-TPM(%v) or no-PCR (%v) platform",
-			!etpm.IsTpmEnabled(), !etpm.PCRBankSHA256Enabled())
-		return nil
-	}
-	if err := removeProtectorIfAny(vaultPath); err != nil {
-		return err
-	}
-	if err := etpm.WipeOutStaleSealedKeyIfAny(); err != nil {
-		return err
-	}
-	//We never create deprecated vaults, so -
-	//cloudKeyOnlyMode=false, useSealedKey=true
-	if err := stageKey(false, true, keyDir, keyFile); err != nil {
-		return err
-	}
-	defer unstageKey(keyDir, keyFile)
-
-	//Encrypt vault, and unlock it for accessing
-	if stdout, stderr, err := execCmd(vault.FscryptPath, getEncryptParams(vaultPath)...); err != nil {
-		log.Errorf("Encryption failed: %v, %s, %s", err, stdout, stderr)
-		return err
-	}
-	return linkKeyrings()
-}
-
-//Is fscrypt saying that this folder is encrypted?
-func isFscryptEnabled(vaultPath string) bool {
-	args := getStatusParams(vaultPath)
-	_, _, err := execCmd(vault.FscryptPath, args...)
-	return err == nil
-}
-
-//if deprecated is set, only unlock will be attempted, and creation of the vault will be skipped
-func setupVault(vaultPath string, deprecated bool) error {
-	_, err := os.Stat(vaultPath)
-	if os.IsNotExist(err) && deprecated {
-		log.Functionf("vault %s is marked deprecated, so not creating a new vault", vaultPath)
-		return nil
-	}
-	if err != nil && !deprecated {
-		//Create vault dir
-		if err := os.MkdirAll(vaultPath, 755); err != nil {
-			return err
-		}
-	}
-	args := getStatusParams(vaultPath)
-	if stdOut, stdErr, err := execCmd(vault.FscryptPath, args...); err != nil {
-		log.Functionf("%v, %v, %v", stdOut, stdErr, err)
-		if !isDirEmpty(vaultPath) || deprecated {
-			//Don't disturb existing installations
-			log.Functionf("Not disturbing non-empty or deprecated vault(%s), deprecated=%v",
-				vaultPath, deprecated)
-			return nil
-		}
-		return createVault(vaultPath)
-	}
-	//Already setup for encryption, go for unlocking
-	log.Functionf("Unlocking %s", vaultPath)
-	//cloudKeyOnlyMode = false, useSealedKey=false if deprecated, true otherwise
-	if err := unlockVault(vaultPath, false, !deprecated); err != nil {
-		if !deprecated {
-			//skip any sort of fallback for non-deprecated vaults
-			return err
-		}
-		//XXX: This is to support some very old releases (< 5.6.2 )
-		//We unlock them using fallback mode, and then migrate the keys
-		//to use TPM based key
-		log.Noticef("Unlocking using fallback mode: %s", vaultPath)
-		//cloudKeyOnlyMode=true, useSealedKey=false,
-		//for fallback mode on deprecated vault
-		if err := unlockVault(vaultPath, true, false); err != nil {
-			return err
-		}
-		log.Noticef("Migrating keys to TPM %s", vaultPath)
-		return changeProtector(vaultPath)
-	}
-	log.Noticef("Successfully unlocked %s", vaultPath)
-	return nil
-}
-
-func setupFscryptEnv() error {
-	//Check if /persist is already setup for encryption
-	if _, _, err := execCmd(vault.FscryptPath, vault.StatusParams...); err != nil {
-		//Not yet setup, set it up for the first use
-		return handleFirstUse()
-	}
-	return nil
-}
-
-func publishUnknownVaultStatus(ctx *vaultMgrContext, vaultName string) {
-
-	status := types.VaultStatus{}
-	status.Name = vaultName
-	status.ConversionComplete = ctx.vaultUCDone
-	status.Status = info.DataSecAtRestStatus_DATASEC_AT_REST_DISABLED
-	status.SetErrorNow("Unsupported filesystem")
-
-	key := status.Key()
-	log.Tracef("Publishing VaultStatus %s\n", key)
-	pub := ctx.pubVaultStatus
-	pub.Publish(key, status)
-}
-
-func publishFscryptVaultStatus(ctx *vaultMgrContext,
-	vaultName string, vaultPath string,
-	fscryptStatus info.DataSecAtRestStatus,
-	fscryptError string) {
-	status := types.VaultStatus{}
-	status.Name = vaultName
-	status.ConversionComplete = ctx.vaultUCDone
-
-	if etpm.PCRBankSHA256Enabled() {
-		status.PCRStatus = info.PCRStatus_PCR_ENABLED
-	} else {
-		status.PCRStatus = info.PCRStatus_PCR_DISABLED
-	}
-
-	if fscryptStatus != info.DataSecAtRestStatus_DATASEC_AT_REST_ENABLED {
-		status.Status = fscryptStatus
-		status.SetErrorNow(fscryptError)
-	} else {
-		args := getStatusParams(vaultPath)
-		if stdOut, stdErr, err := execCmd(vault.FscryptPath, args...); err != nil {
-			log.Errorf("Status failed, %v, %v, %v", err, stdOut, stdErr)
-			//check further on few things like PCR bank, non-empty dir etc
-			//which are not errors per se, and other agents can use vault
-			//folder in those cases
-			if !etpm.PCRBankSHA256Enabled() {
-				status.Status = info.DataSecAtRestStatus_DATASEC_AT_REST_DISABLED
-				status.SetErrorNow("No PCR-SHA256 bank available")
-			} else if !isDirEmpty(vaultPath) {
-				status.Status = info.DataSecAtRestStatus_DATASEC_AT_REST_DISABLED
-				status.SetErrorNow("Directory is not empty")
-			} else {
-				status.Status = info.DataSecAtRestStatus_DATASEC_AT_REST_ERROR
-				status.SetErrorNow(stdOut + stdErr)
-			}
-		} else {
-			sealedKeyType := etpm.CompareLegacyandSealedKey()
-			switch sealedKeyType {
-			case etpm.SealedKeyTypeReused, etpm.SealedKeyTypeNew:
-				status.ClearError()
-			default:
-				status.SetErrorNow(sealedKeyType.String())
-			}
-			if strings.Contains(stdOut, "Unlocked: Yes") {
-				status.Status = info.DataSecAtRestStatus_DATASEC_AT_REST_ENABLED
-			} else {
-				status.Status = info.DataSecAtRestStatus_DATASEC_AT_REST_ERROR
-				status.SetErrorNow("Vault key unavailable")
-			}
-		}
-	}
-	key := status.Key()
-	log.Tracef("Publishing VaultStatus %s\n", key)
-	pub := ctx.pubVaultStatus
-	pub.Publish(key, status)
-}
-
-func fetchFscryptStatus() (info.DataSecAtRestStatus, string) {
-	_, err := os.Stat(vault.FscryptConfFile)
-	if err == nil {
-		if _, _, err := execCmd(vault.FscryptPath, vault.StatusParams...); err != nil {
-			//fscrypt is setup, but not being used
-			log.Trace("Setting status to Error")
-			return info.DataSecAtRestStatus_DATASEC_AT_REST_ERROR,
-				"Initialization failure"
-		} else {
-			//fscrypt is setup , and being used on /persist
-			log.Trace("Setting status to Enabled")
-			return info.DataSecAtRestStatus_DATASEC_AT_REST_ENABLED, ""
-		}
-	} else {
-		_, err := os.Stat(etpm.TpmDevicePath)
-		if err != nil {
-			//This is due to lack of TPM
-			log.Trace("Setting status to disabled, TPM is not in use")
-			return info.DataSecAtRestStatus_DATASEC_AT_REST_DISABLED,
-				"No active TPM found, but needed for key generation"
-		} else {
-			//This is due to ext3 partition
-			log.Trace("setting status to disabled, ext3 partition")
-			return info.DataSecAtRestStatus_DATASEC_AT_REST_DISABLED,
-				"File system is incompatible, needs a disruptive upgrade"
-		}
-	}
 }
 
 func initializeSelfPublishHandles(ps *pubsub.PubSub, ctx *vaultMgrContext) {
@@ -653,48 +140,11 @@ func initializeSelfPublishHandles(ps *pubsub.PubSub, ctx *vaultMgrContext) {
 	ctx.pubVaultConfig = pubVaultConfig
 }
 
-func setupDeprecatedVaultsOnExt4(ignoreDefaultVault bool) error {
-	if err := setupFscryptEnv(); err != nil {
-		return fmt.Errorf("Error in setting up fscrypt environment: %s",
-			err)
-	}
-	if err := setupVault(deprecatedImgVault, true); err != nil {
-		return fmt.Errorf("Error in setting up vault %s:%v", deprecatedImgVault, err)
-	}
-	if err := setupVault(deprecatedCfgVault, true); err != nil {
-		return fmt.Errorf("Error in setting up vault %s %v", deprecatedCfgVault, err)
-	}
-	return nil
-}
-
-//setup vaults on ext4, using fscrypt
-func setupDefaultVaultOnExt4() error {
-	if err := setupVault(defaultVault, false); err != nil {
-		return fmt.Errorf("Error in setting up vault %s:%v", defaultVault, err)
-	}
-	return nil
-}
-
-//setup vaults on zfs, using zfs native encryption support
-func setupDefaultVaultOnZfs() error {
-	if err := setupZfsVault(defaultSecretDataset); err != nil {
-		return fmt.Errorf("Error in setting up ZFS vault %s:%v", defaultSecretDataset, err)
-	}
-	return nil
-}
-
-// remove vaults from ext4
-func removeDefaultVaultOnExt4() error {
-	if err := os.RemoveAll(defaultVault); err != nil {
-		return fmt.Errorf("error in clean up vault %s: %w", defaultVault, err)
-	}
-	return nil
-}
-
 // checkAndPublishVaultConfig: If vault config is not yet initialized
 // Checks if defaultVault/defaultSecretDataset exists and if not publishes the vault config TmpKeyOnly = true
 // If those directories exists, then publishes the vault config TmpKeyOnly = false
-func checkAndPublishVaultConfig(ctx *vaultMgrContext) {
+// Function returns TmpKeyOnly value
+func checkAndPublishVaultConfig(ctx *vaultMgrContext) bool {
 	// We do not have vault config, publish it
 	if vaultConfigInited == false {
 		persistFsType := vault.ReadPersistType()
@@ -702,12 +152,12 @@ func checkAndPublishVaultConfig(ctx *vaultMgrContext) {
 
 		switch persistFsType {
 		case types.PersistExt4:
-			_, err := os.Stat(defaultVault)
+			_, err := os.Stat(types.SealedDirName)
 			if os.IsNotExist(err) {
 				tpmKeyOnly = true
 			}
 		case types.PersistZFS:
-			if err := checkKeyStatus(defaultSecretDataset); err != nil {
+			if _, err := zfs.GetDatasetKeyStatus(types.SealedDataset); err != nil {
 				tpmKeyOnly = true
 			}
 		default:
@@ -715,144 +165,9 @@ func checkAndPublishVaultConfig(ctx *vaultMgrContext) {
 				persistFsType)
 		}
 		publishVaultConfig(ctx, tpmKeyOnly)
+		return tpmKeyOnly
 	}
-}
-
-// removeDefaultVault removes previously created vault
-func removeDefaultVault(_ *vaultMgrContext) error {
-	persistFsType := vault.ReadPersistType()
-
-	switch persistFsType {
-	case types.PersistExt4:
-		if err := removeDefaultVaultOnExt4(); err != nil {
-			return err
-		}
-	case types.PersistZFS:
-		if err := removeDefaultVaultOnZfs(); err != nil {
-			return err
-		}
-	case types.PersistExt3, types.PersistUnknown:
-		log.Noticef("unsupported %s filesystem, ignoring vault remove",
-			persistFsType)
-	}
-	return nil
-}
-
-// setupDefaultVault sets up default vault, based on the current filesystem
-// On non-TPM platforms, it just creates the directory (if absent)
-func setupDefaultVault(ctx *vaultMgrContext) error {
-	persistFsType := vault.ReadPersistType()
-	if !etpm.IsTpmEnabled() {
-		_, err := os.Stat(defaultVault)
-		if os.IsNotExist(err) {
-			//No TPM or TPM lacks required features
-			if persistFsType == types.PersistZFS {
-				if err := zfs.CreateDataset(defaultSecretDataset); err != nil {
-					return fmt.Errorf("error creating zfs vault %s, error=%v",
-						defaultVault, err)
-				}
-				return nil
-			}
-			//Vault is just a plain folder in those cases
-			return os.MkdirAll(defaultVault, 755)
-		}
-		if err == nil && isFscryptEnabled(defaultVault) {
-			//old versions of EVE created vault on TPM platforms
-			//irrespective of their PCR/ECDSA capabilities
-			//which is a bug. At the very best, we can just unlock it
-			//just to keep the encryption ON. No sealing/attestation support
-			//in these cases
-			return setupVault(defaultVault, true)
-		}
-		return err
-	}
-
-	// TPM is enabled. Check if defaultVault directory exists, if not set vaultconfig
-	checkAndPublishVaultConfig(ctx)
-
-	switch persistFsType {
-	case types.PersistExt4:
-		if err := setupDefaultVaultOnExt4(); err != nil {
-			return err
-		}
-		//Log the type of key used for unlocking default vault
-		log.Noticef("%s unlocked using key type %s", defaultVault,
-			etpm.CompareLegacyandSealedKey().String())
-	case types.PersistZFS:
-		if err := setupDefaultVaultOnZfs(); err != nil {
-			return err
-		}
-		//Log the type of key used for unlocking default vault
-		log.Noticef("%s unlocked using key type %s", defaultVault,
-			etpm.CompareLegacyandSealedKey().String())
-	default:
-		log.Noticef("unsupported %s filesystem, ignoring vault setup",
-			persistFsType)
-	}
-	ctx.defaultVaultUnlocked = true
-	return nil
-}
-
-func publishAllFscryptVaultStatus(ctx *vaultMgrContext) {
-	fscryptStatus, fscryptErr := vault.GetOperInfo(log)
-	publishFscryptVaultStatus(ctx, types.DefaultVaultName, defaultVault,
-		fscryptStatus, fscryptErr)
-
-	// Don't try if it isn't there
-	_, err := os.Stat(deprecatedCfgVault)
-	if os.IsNotExist(err) {
-		return
-	}
-	publishFscryptVaultStatus(ctx, deprecatedCfgVaultName, deprecatedCfgVault,
-		fscryptStatus, fscryptErr)
-}
-
-func publishAllZfsVaultStatus(ctx *vaultMgrContext) {
-	//XXX: till Controller deprecates handling status of persist/config, keep sending
-	publishZfsVaultStatus(ctx, types.DefaultVaultName, defaultSecretDataset)
-	// Don't try if it isn't there
-	_, err := os.Stat(deprecatedCfgVault)
-	if os.IsNotExist(err) {
-		return
-	}
-	publishZfsVaultStatus(ctx, deprecatedCfgVaultName, defaultCfgSecretDataset)
-}
-
-func publishZfsVaultStatus(ctx *vaultMgrContext, vaultName, vaultPath string) {
-	status := types.VaultStatus{}
-	status.Name = vaultName
-	status.ConversionComplete = ctx.vaultUCDone
-	zfsEncryptStatus, zfsEncryptError := vault.GetOperInfo(log)
-	if zfsEncryptStatus != info.DataSecAtRestStatus_DATASEC_AT_REST_ENABLED {
-		status.Status = zfsEncryptStatus
-		status.SetErrorNow(zfsEncryptError)
-	} else {
-		if err := vault.CheckOperStatus(log, vaultPath); err != nil {
-			log.Errorf("Status failed, %s", err)
-			status.Status = info.DataSecAtRestStatus_DATASEC_AT_REST_ERROR
-			status.SetErrorNow(err.Error())
-		} else {
-			log.Functionf("checkOperStatus returns ok for %s", vaultPath)
-			status.Status = info.DataSecAtRestStatus_DATASEC_AT_REST_ENABLED
-		}
-	}
-	key := status.Key()
-	log.Tracef("Publishing VaultStatus %s\n", key)
-	pub := ctx.pubVaultStatus
-	pub.Publish(key, status)
-}
-
-func publishVaultStatus(ctx *vaultMgrContext) {
-	persistFsType := vault.ReadPersistType()
-	switch persistFsType {
-	case types.PersistExt4:
-		publishAllFscryptVaultStatus(ctx)
-	case types.PersistZFS:
-		publishAllZfsVaultStatus(ctx)
-	default:
-		log.Warnf("Ignoring unknown filesystem type %s", persistFsType)
-		publishUnknownVaultStatus(ctx, types.DefaultVaultName)
-	}
+	return vaultConfig.TpmKeyOnly
 }
 
 //Run is the entrypoint for running vaultmgr as a standalone program
@@ -867,6 +182,8 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	}
 	agentbase.Init(&ctx, logger, log, agentName,
 		agentbase.WithArguments(arguments))
+
+	handler = vault.GetHandler(log)
 
 	// if any args defined, will run command inline and return
 	if len(ctx.args) > 0 {
@@ -935,9 +252,16 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 
 	// initialize publishing handles
 	initializeSelfPublishHandles(ps, &ctx)
-	if err := setupDefaultVault(&ctx); err != nil {
+	if etpm.IsTpmEnabled() {
+		// TPM is enabled. Check if defaultVault directory exists, if not set vaultconfig
+		tpmKeyOnlyMode := checkAndPublishVaultConfig(&ctx)
+		handler.SetHandlerOptions(vault.HandlerOptions{TpmKeyOnlyMode: tpmKeyOnlyMode})
+	}
+	if err := handler.SetupDefaultVault(); err != nil {
 		log.Errorf("setupDefaultVault failed, err: %v", err)
-		publishVaultStatus(&ctx)
+		getAndPublishAllVaultStatuses(&ctx)
+	} else {
+		ctx.defaultVaultUnlocked = true
 	}
 	if ctx.defaultVaultUnlocked || !etpm.IsTpmEnabled() {
 		// Now that vault is unlocked, run any upgrade converter handler if needed
@@ -963,7 +287,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 			log.Notice("upgradeconverter(post-vault) Completed")
 			ctx.vaultUCDone = true
 			// Publish current status of vault
-			publishVaultStatus(&ctx)
+			getAndPublishAllVaultStatuses(&ctx)
 		}
 	}
 }
@@ -971,16 +295,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 func runInline(command string, _ []string) int {
 	switch command {
 	case "setupDeprecatedVaults":
-		persistFsType := vault.ReadPersistType()
-		switch persistFsType {
-		case types.PersistExt4:
-			if err := setupDeprecatedVaultsOnExt4(true); err != nil {
-				log.Error(err)
-				return 1
-			}
-			// We don't have deprecated vaults on ZFS
-		default:
-			log.Functionf("Ignoring request to setup vaults on unsupported %s filesystem", persistFsType)
+		if err := handler.SetupDeprecatedVaults(); err != nil {
+			log.Error(err)
+			return 1
 		}
 	default:
 		log.Errorf("Unknown command %s", command)
@@ -1091,25 +408,15 @@ func handleVaultKeyFromControllerImpl(ctxArg interface{}, key string,
 		}
 		log.Noticef("Sealed key in TPM, unlocking %s", types.DefaultVaultName)
 
-		if vault.ReadPersistType() == types.PersistZFS {
-			err = unlockZfsVault(defaultSecretDataset)
-			if err != nil {
-				log.Errorf("Failed to unlock zfs vault after receiving Controller key, %v",
-					err)
-				return
-			}
-		} else {
-			//cloudKeyOnlyMode=false, useSealedKey=true
-			err = unlockVault(defaultVault, false, true)
-			if err != nil {
-				log.Errorf("Failed to unlock vault after receiving Controller key, %v",
-					err)
-				return
-			}
+		err = handler.UnlockDefaultVault()
+		if err != nil {
+			log.Errorf("Failed to unlock zfs vault after receiving Controller key, %v",
+				err)
+			return
 		}
 
 		//Log the type of key used for unlocking default vault
-		log.Noticef("%s unlocked using key type %s", defaultVault,
+		log.Noticef("%s unlocked using key type %s", types.DefaultVaultName,
 			etpm.CompareLegacyandSealedKey().String())
 	} else {
 		// We are here if we receive no keys from controller
@@ -1126,17 +433,18 @@ func handleVaultKeyFromControllerImpl(ctxArg interface{}, key string,
 		// which indicates that we receive no keys from the controller,
 		// than we cannot unlock the vault.
 		// Try to remove and re-create default vault now
-		if err := removeDefaultVault(ctx); err != nil {
+		if err := handler.RemoveDefaultVault(); err != nil {
 			log.Errorf("Failed to remove vault after receiving dummy Controller key: %v", err)
 			return
 		}
 		log.Warnln("default vault removed")
-		if err := setupDefaultVault(ctx); err != nil {
+		if err := handler.SetupDefaultVault(); err != nil {
 			log.Errorf("setupDefaultVault failed, err: %v", err)
-			publishVaultStatus(ctx)
+			getAndPublishAllVaultStatuses(ctx)
 			return
 		}
-		log.Noticef("%s re-created", defaultVault)
+		ctx.defaultVaultUnlocked = true
+		log.Noticef("%s re-created", types.DefaultVaultName)
 	}
 
 	// Mark the default vault as unlocked
@@ -1148,7 +456,7 @@ func handleVaultKeyFromControllerImpl(ctxArg interface{}, key string,
 	}
 
 	// Publish current status of vault
-	publishVaultStatus(ctx)
+	getAndPublishAllVaultStatuses(ctx)
 
 	// Now that vault is unlocked, run any upgrade converter handler if needed
 	// The main select loop which is waiting on ucChan event, will publish
@@ -1167,7 +475,7 @@ func publishVaultKey(ctx *vaultMgrContext, vaultName string) error {
 			log.Errorf("Vault is not yet unlocked, waiting for Controller key")
 			return nil
 		}
-		keyBytes, err := retrieveTpmKey(true)
+		keyBytes, err := etpm.FetchSealedVaultKey(log)
 		if err != nil {
 			return fmt.Errorf("Failed to retrieve key from TPM %v", err)
 		}
@@ -1199,4 +507,20 @@ func publishVaultKey(ctx *vaultMgrContext, vaultName string) error {
 	pub := ctx.pubVaultKeyFromDevice
 	pub.Publish(key, keyFromDevice)
 	return nil
+}
+
+func getAndPublishAllVaultStatuses(ctx *vaultMgrContext) {
+	statuses := handler.GetVaultStatuses()
+	for _, status := range statuses {
+		// adjust ConversionComplete field with information from context
+		status.ConversionComplete = ctx.vaultUCDone
+		publishVaultStatus(ctx, *status)
+	}
+}
+
+func publishVaultStatus(ctx *vaultMgrContext, status types.VaultStatus) {
+	key := status.Key()
+	log.Tracef("Publishing VaultStatus %s\n", key)
+	pub := ctx.pubVaultStatus
+	pub.Publish(key, status)
 }
