@@ -99,14 +99,14 @@ func processDisks(ctx *zfsContext) error {
 		return nil
 	}
 	disksConfig := disksConfigInterface.(types.EdgeNodeDisks)
-	persistPool, err := libzfs.PoolOpen(vault.DefaultZpool)
+	persistPool, err := libzfs.PoolOpen(types.PersistPool)
 	if err != nil {
 		return fmt.Errorf("cannot open pool: %s", err)
 	}
 	disksStateProcessing(disksConfig, persistPool)
 	persistPool.Close()
 	// re-read pool to grab changes after disksStateProcessing
-	persistPool, err = libzfs.PoolOpen(vault.DefaultZpool)
+	persistPool, err = libzfs.PoolOpen(types.PersistPool)
 	if err != nil {
 		return fmt.Errorf("cannot open pool: %s", err)
 	}
@@ -129,7 +129,7 @@ func disksStateProcessing(disks types.EdgeNodeDisks, pool libzfs.Pool) {
 			if oldDevState != nil && diskCfg.Disk.Name != "" {
 				// if we found device oldDevName, replace it
 				log.Functionf("replacing %s with %s, old stat %s", diskCfg.OldDisk.Name, diskCfg.Disk.Name, oldDevState.String())
-				if stdout, err := zfs.ReplaceVDev(log, vault.DefaultZpool, diskCfg.OldDisk.Name, diskCfg.Disk.Name); err != nil {
+				if stdout, err := zfs.ReplaceVDev(log, types.PersistPool, diskCfg.OldDisk.Name, diskCfg.Disk.Name); err != nil {
 					log.Errorf("cannot replace %s with %s: %s %s", diskCfg.OldDisk.Name, diskCfg.Disk.Name, stdout, err)
 					continue
 				}
@@ -165,7 +165,7 @@ func disksStateProcessing(disks types.EdgeNodeDisks, pool libzfs.Pool) {
 					continue
 				}
 			case types.EdgeNodeDiskConfigTypeUnused:
-				if stdout, err := zfs.RemoveVDev(log, vault.DefaultZpool, diskCfg.Disk.Name); err != nil {
+				if stdout, err := zfs.RemoveVDev(log, types.PersistPool, diskCfg.Disk.Name); err != nil {
 					log.Errorf("cannot remove %s: %s %s", diskCfg.Disk.Name, stdout, err)
 				}
 			}
@@ -213,7 +213,7 @@ func disksLayoutRaid0Process(vdevTree libzfs.VDevTree, disks []types.EdgeNodeDis
 			if diskName == "" {
 				if len(el.Disks) > 0 {
 					// we add first device here as a new vdev to attach needed disks to it later
-					if stdout, err := zfs.AddVDev(log, vault.DefaultZpool, el.Disks[0].Disk.Name); err != nil {
+					if stdout, err := zfs.AddVDev(log, types.PersistPool, el.Disks[0].Disk.Name); err != nil {
 						log.Errorf("cannot add %s: %s %s", el.Disks[0].Disk.Name, stdout, err)
 					} else {
 						diskName = el.Disks[0].Disk.Name
@@ -231,7 +231,7 @@ func disksLayoutRaid0Process(vdevTree libzfs.VDevTree, disks []types.EdgeNodeDis
 					if devState := getVDevState(vdevTree, dsk.Disk.Name); devState != nil {
 						continue
 					}
-					if stdout, err := zfs.AttachVDev(log, vault.DefaultZpool, diskName, dsk.Disk.Name); err != nil {
+					if stdout, err := zfs.AttachVDev(log, types.PersistPool, diskName, dsk.Disk.Name); err != nil {
 						log.Errorf("cannot attach %s to %s: %s %s", dsk.Disk.Name, diskName, stdout, err)
 					}
 				}

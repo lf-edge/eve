@@ -100,6 +100,10 @@ const (
 var (
 	// PersistDataset - parent dataset
 	PersistDataset = strings.TrimLeft(PersistDir, "/")
+	// PersistPool - parent pool
+	PersistPool = PersistDataset
+	// SealedDataset - dataset sealed under TPM PCRs
+	SealedDataset = PersistDataset + "/vault"
 	// PersistReservedDataset - reserved dataset
 	PersistReservedDataset = PersistDataset + "/reserved"
 	//VolumeClearZFSDataset - dataset to create volumes without encryption
