@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -e
+
 yq() {
   docker run --rm -i -v "${PWD}":/workdir mikefarah/yq "$@"
 }
@@ -18,11 +20,16 @@ process-image-template() {
     IFS='-' read -r -a bits <<< "${flags}"
 
     for bit in "${bits[@]}"; do
+        template_data=""
         case "${bit}" in
             dev)
-                yq eval -i '(.services[] | select(.name == "pillar").image) |= "PILLAR_DEV_TAG"' "${out_templ_path}"
+                template_data="$(yq eval '(.services[] | select(.name == "pillar").image) |= "PILLAR_DEV_TAG"' "${out_templ_path}")"
                 ;;
         esac
+
+        if [ "${template_data}" != "" ]; then
+            echo "${template_data}" > "${out_templ_path}"
+        fi
     done
 }
 
