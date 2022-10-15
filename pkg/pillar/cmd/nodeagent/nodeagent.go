@@ -400,7 +400,7 @@ func handleGlobalConfigImpl(ctxArg interface{}, key string,
 		return
 	}
 	log.Functionf("handleGlobalConfigImpl for %s", key)
-	_, gcp := agentlog.HandleGlobalConfig(log, ctxPtr.subGlobalConfig, agentName,
+	gcp := agentlog.HandleGlobalConfig(log, ctxPtr.subGlobalConfig, agentName,
 		ctxPtr.CLIParams().DebugOverride, ctxPtr.Logger())
 	if gcp != nil {
 		ctxPtr.globalConfig = gcp
@@ -418,7 +418,7 @@ func handleGlobalConfigDelete(ctxArg interface{},
 		return
 	}
 	log.Functionf("handleGlobalConfigDelete for %s", key)
-	_, _ = agentlog.HandleGlobalConfig(log, ctxPtr.subGlobalConfig, agentName,
+	agentlog.HandleGlobalConfig(log, ctxPtr.subGlobalConfig, agentName,
 		ctxPtr.CLIParams().DebugOverride, ctxPtr.Logger())
 	ctxPtr.globalConfig = types.DefaultConfigItemValueMap()
 	log.Functionf("handleGlobalConfigDelete done for %s", key)

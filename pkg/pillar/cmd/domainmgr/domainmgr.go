@@ -126,8 +126,6 @@ func (ctx *domainContext) publishAssignableAdapters() {
 	ctx.pubAssignableAdapters.Publish("global", *ctx.assignableAdapters)
 }
 
-var debug = false
-var debugOverride bool          // From command line arg
 var hyper hypervisor.Hypervisor // Current hypervisor
 var logger *logrus.Logger
 var log *base.LogObject
@@ -156,9 +154,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 
 	var err error
 	handlersInit()
-
-	debug = domainCtx.CLIParams().DebugOverride
-	debugOverride = debug
 
 	if *domainCtx.versionPtr {
 		fmt.Printf("%s: %s\n", agentName, Version)
@@ -2233,9 +2228,8 @@ func handleGlobalConfigImpl(ctxArg interface{}, key string,
 		return
 	}
 	log.Functionf("handleGlobalConfigImpl for %s", key)
-	var gcp *types.ConfigItemValueMap
-	debug, gcp = agentlog.HandleGlobalConfig(log, ctx.subGlobalConfig, agentName,
-		debugOverride, logger)
+	gcp := agentlog.HandleGlobalConfig(log, ctx.subGlobalConfig, agentName,
+		ctx.CLIParams().DebugOverride, logger)
 	if gcp != nil {
 		if gcp.GlobalValueInt(types.DomainBootRetryTime) != 0 {
 			ctx.domainBootRetryTime = gcp.GlobalValueInt(types.DomainBootRetryTime)
@@ -2283,8 +2277,8 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 		return
 	}
 	log.Functionf("handleGlobalConfigDelete for %s", key)
-	debug, _ = agentlog.HandleGlobalConfig(log, ctx.subGlobalConfig, agentName,
-		debugOverride, logger)
+	agentlog.HandleGlobalConfig(log, ctx.subGlobalConfig, agentName,
+		ctx.CLIParams().DebugOverride, logger)
 	log.Functionf("handleGlobalConfigDelete done for %s", key)
 }
 

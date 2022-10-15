@@ -67,10 +67,8 @@ type nim struct {
 	Logger *logrus.Logger
 	PubSub *pubsub.PubSub
 
-	debug         bool
-	debugOverride bool // from command line arg
-	useStdout     bool
-	version       bool
+	useStdout bool
+	version   bool
 
 	// CLI args
 	stdoutPtr  *bool
@@ -126,8 +124,6 @@ func (n *nim) AddAgentSpecificCLIFlags(flagSet *flag.FlagSet) {
 
 // ProcessAgentSpecificCLIFlags process received CLI options
 func (n *nim) ProcessAgentSpecificCLIFlags(_ *flag.FlagSet) {
-	n.debug = n.CLIParams().DebugOverride
-	n.debugOverride = n.debug
 	n.useStdout = *n.stdoutPtr
 	n.version = *n.versionPtr
 }
@@ -653,9 +649,8 @@ func (n *nim) handleGlobalConfigImpl(key string) {
 		n.Log.Functionf("handleGlobalConfigImpl: ignoring %s", key)
 		return
 	}
-	var gcp *types.ConfigItemValueMap
-	n.debug, gcp = agentlog.HandleGlobalConfig(n.Log, n.subGlobalConfig, agentName,
-		n.debugOverride, n.Logger)
+	gcp := agentlog.HandleGlobalConfig(n.Log, n.subGlobalConfig, agentName,
+		n.CLIParams().DebugOverride, n.Logger)
 	n.applyGlobalConfig(gcp)
 }
 
@@ -664,8 +659,8 @@ func (n *nim) handleGlobalConfigDelete(_ interface{}, key string, _ interface{})
 		n.Log.Functionf("handleGlobalConfigDelete: ignoring %s", key)
 		return
 	}
-	n.debug, _ = agentlog.HandleGlobalConfig(n.Log, n.subGlobalConfig, agentName,
-		n.debugOverride, n.Logger)
+	agentlog.HandleGlobalConfig(n.Log, n.subGlobalConfig, agentName,
+		n.CLIParams().DebugOverride, n.Logger)
 	n.applyGlobalConfig(types.DefaultConfigItemValueMap())
 }
 

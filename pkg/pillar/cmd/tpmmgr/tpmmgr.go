@@ -172,10 +172,8 @@ var (
 			CurveID: tpm2.CurveNISTP256,
 		},
 	}
-	debug         = false
-	debugOverride bool // From command line arg
-	logger        *logrus.Logger
-	log           *base.LogObject
+	logger *logrus.Logger
+	log    *base.LogObject
 )
 
 var toGoCurve = map[tpm2.EllipticCurve]elliptic.Curve{
@@ -1389,9 +1387,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	agentbase.Init(&ctx, logger, log, agentName,
 		agentbase.WithArguments(arguments))
 
-	debug = ctx.CLIParams().DebugOverride
-	debugOverride = debug
-
 	// if any args defined, will run command inline and return
 	if len(ctx.args) > 0 {
 		return runInline(ctx.args[0], ctx.args[1:])
@@ -1656,9 +1651,8 @@ func handleGlobalConfigImpl(ctxArg interface{}, key string,
 		return
 	}
 	log.Functionf("handleGlobalConfigImpl for %s", key)
-	var gcp *types.ConfigItemValueMap
-	debug, gcp = agentlog.HandleGlobalConfig(log, ctx.subGlobalConfig, agentName,
-		debugOverride, logger)
+	gcp := agentlog.HandleGlobalConfig(log, ctx.subGlobalConfig, agentName,
+		ctx.CLIParams().DebugOverride, logger)
 	if gcp != nil {
 		ctx.GCInitialized = true
 	}
@@ -1674,8 +1668,8 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 		return
 	}
 	log.Functionf("handleGlobalConfigDelete for %s", key)
-	debug, _ = agentlog.HandleGlobalConfig(log, ctx.subGlobalConfig, agentName,
-		debugOverride, logger)
+	agentlog.HandleGlobalConfig(log, ctx.subGlobalConfig, agentName,
+		ctx.CLIParams().DebugOverride, logger)
 	log.Functionf("handleGlobalConfigDelete done for %s", key)
 }
 

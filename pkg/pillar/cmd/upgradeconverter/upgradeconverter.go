@@ -70,9 +70,8 @@ var postVaultconversionHandlers = []ConversionHandler{
 
 type ucContext struct {
 	agentbase.AgentBase
-	agentName     string
-	debugOverride bool
-	noFlag        bool
+	agentName string
+	noFlag    bool
 
 	// FilePaths. These are defined here instead of consts for easier unit tests
 	persistDir       string
@@ -164,7 +163,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		agentbase.WithPidFile(),
 		agentbase.WithArguments(arguments))
 
-	ctx.debugOverride = ctx.CLIParams().DebugOverride
 	ctx.persistDir = *ctx.persistPtr // XXX remove? Or use for tests?
 	ctx.noFlag = *ctx.noFlagPtr
 

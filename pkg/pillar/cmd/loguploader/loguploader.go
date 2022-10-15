@@ -54,8 +54,6 @@ const (
 
 var (
 	deviceNetworkStatus = &types.DeviceNetworkStatus{}
-	debug               bool
-	debugOverride       bool
 	backoffEnabled      bool // when received 429 code, before backoffTimeout expires, not use the normal upload scheduling
 	logger              *logrus.Logger
 	log                 *base.LogObject
@@ -102,9 +100,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		agentbase.WithPidFile(),
 		agentbase.WithWatchdog(ps, warningTime, errorTime),
 		agentbase.WithArguments(arguments))
-
-	debug = loguploaderCtx.CLIParams().DebugOverride
-	debugOverride = debug
 
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(stillRunningInerval)
@@ -536,9 +531,8 @@ func handleGlobalConfigImp(ctxArg interface{}, key string, statusArg interface{}
 		return
 	}
 	log.Tracef("handleGlobalConfigModify for %s", key)
-	var gcp *types.ConfigItemValueMap
-	debug, gcp = agentlog.HandleGlobalConfig(log, ctx.subGlobalConfig, agentName,
-		debugOverride, logger)
+	gcp := agentlog.HandleGlobalConfig(log, ctx.subGlobalConfig, agentName,
+		ctx.CLIParams().DebugOverride, logger)
 	if gcp != nil {
 		ctx.globalConfig = gcp
 		enabled := gcp.GlobalValueBool(types.AllowLogFastupload)
@@ -561,8 +555,8 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string, statusArg interfac
 		return
 	}
 	log.Tracef("handleGlobalConfigDelete for %s", key)
-	debug, _ = agentlog.HandleGlobalConfig(log, ctx.subGlobalConfig, agentName,
-		debugOverride, logger)
+	agentlog.HandleGlobalConfig(log, ctx.subGlobalConfig, agentName,
+		ctx.CLIParams().DebugOverride, logger)
 	ctx.globalConfig = types.DefaultConfigItemValueMap()
 	log.Tracef("handleGlobalConfigDelete done for %s", key)
 }
