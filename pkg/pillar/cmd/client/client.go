@@ -98,8 +98,6 @@ func (ctxPtr *clientContext) ProcessAgentSpecificCLIFlags(flagSet *flag.FlagSet)
 }
 
 var (
-	debug             = false
-	debugOverride     bool // From command line arg
 	serverNameAndPort string
 	onboardTLSConfig  *tls.Config
 	devtlsConfig      *tls.Config
@@ -124,8 +122,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	agentbase.Init(&clientCtx, logger, log, agentName,
 		agentbase.WithArguments(arguments))
 
-	debug = clientCtx.CLIParams().DebugOverride
-	debugOverride = debug
 	maxRetries := *clientCtx.maxRetriesPtr
 	if *clientCtx.versionPtr {
 		fmt.Printf("%s: %s\n", agentName, Version)
@@ -787,9 +783,8 @@ func handleGlobalConfigImpl(ctxArg interface{}, key string,
 		return
 	}
 	log.Functionf("handleGlobalConfigImpl for %s", key)
-	var gcp *types.ConfigItemValueMap
-	debug, gcp = agentlog.HandleGlobalConfig(log, ctx.subGlobalConfig, agentName,
-		debugOverride, logger)
+	gcp := agentlog.HandleGlobalConfig(log, ctx.subGlobalConfig, agentName,
+		ctx.CLIParams().DebugOverride, logger)
 	if gcp != nil {
 		ctx.globalConfig = gcp
 	}
@@ -805,8 +800,8 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 		return
 	}
 	log.Functionf("handleGlobalConfigDelete for %s", key)
-	debug, _ = agentlog.HandleGlobalConfig(log, ctx.subGlobalConfig, agentName,
-		debugOverride, logger)
+	agentlog.HandleGlobalConfig(log, ctx.subGlobalConfig, agentName,
+		ctx.CLIParams().DebugOverride, logger)
 	*ctx.globalConfig = *types.DefaultConfigItemValueMap()
 	log.Functionf("handleGlobalConfigDelete done for %s", key)
 }

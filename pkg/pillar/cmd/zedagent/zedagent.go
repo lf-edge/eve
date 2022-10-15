@@ -224,8 +224,6 @@ func (zedagentCtx *zedagentContext) AddAgentSpecificCLIFlags(flagSet *flag.FlagS
 	zedagentCtx.hangPtr = flagSet.Bool("H", false, "Cause watchdog .touch fault injection")
 }
 
-var debug = false
-var debugOverride bool // From command line arg
 var logger *logrus.Logger
 var log *base.LogObject
 var zedcloudCtx *zedcloud.ZedCloudContext
@@ -245,8 +243,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		agentbase.WithArguments(arguments))
 
 	var err error
-	debug = zedagentCtx.CLIParams().DebugOverride
-	debugOverride = debug
 	parse := *zedagentCtx.parsePtr
 	validate := *zedagentCtx.validatePtr
 	if *zedagentCtx.versionPtr {
@@ -2176,9 +2172,8 @@ func handleGlobalConfigImpl(ctxArg interface{}, key string,
 		return
 	}
 	log.Functionf("handleGlobalConfigImpl for %s", key)
-	var gcp *types.ConfigItemValueMap
-	debug, gcp = agentlog.HandleGlobalConfig(log, ctx.subGlobalConfig, agentName,
-		debugOverride, logger)
+	gcp := agentlog.HandleGlobalConfig(log, ctx.subGlobalConfig, agentName,
+		ctx.CLIParams().DebugOverride, logger)
 	if gcp != nil {
 		ctx.globalConfig = *gcp
 		ctx.GCInitialized = true
@@ -2198,8 +2193,8 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 		return
 	}
 	log.Functionf("handleGlobalConfigDelete for %s", key)
-	debug, _ = agentlog.HandleGlobalConfig(log, ctx.subGlobalConfig, agentName,
-		debugOverride, logger)
+	agentlog.HandleGlobalConfig(log, ctx.subGlobalConfig, agentName,
+		ctx.CLIParams().DebugOverride, logger)
 	ctx.globalConfig = *types.DefaultConfigItemValueMap()
 	log.Functionf("handleGlobalConfigDelete done for %s", key)
 }

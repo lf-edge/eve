@@ -106,8 +106,6 @@ func (ctxPtr *volumemgrContext) AddAgentSpecificCLIFlags(flagSet *flag.FlagSet) 
 	ctxPtr.versionPtr = flagSet.Bool("v", false, "Version")
 }
 
-var debug = false
-var debugOverride bool // From command line arg
 var logger *logrus.Logger
 var log *base.LogObject
 
@@ -127,8 +125,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	agentbase.Init(&ctx, logger, log, agentName,
 		agentbase.WithArguments(arguments))
 
-	debug = ctx.CLIParams().DebugOverride
-	debugOverride = debug
 	if *ctx.versionPtr {
 		fmt.Printf("%s: %s\n", agentName, Version)
 		return 0
@@ -662,9 +658,8 @@ func handleGlobalConfigImpl(ctxArg interface{}, key string,
 		return
 	}
 	log.Functionf("handleGlobalConfigImpl for %s", key)
-	var gcp *types.ConfigItemValueMap
-	debug, gcp = agentlog.HandleGlobalConfig(log, ctx.subGlobalConfig, agentName,
-		debugOverride, logger)
+	gcp := agentlog.HandleGlobalConfig(log, ctx.subGlobalConfig, agentName,
+		ctx.CLIParams().DebugOverride, logger)
 	if gcp != nil {
 		maybeUpdateConfigItems(ctx, gcp)
 		ctx.globalConfig = gcp
@@ -682,8 +677,8 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 		return
 	}
 	log.Functionf("handleGlobalConfigDelete for %s", key)
-	debug, _ = agentlog.HandleGlobalConfig(log, ctx.subGlobalConfig, agentName,
-		debugOverride, logger)
+	agentlog.HandleGlobalConfig(log, ctx.subGlobalConfig, agentName,
+		ctx.CLIParams().DebugOverride, logger)
 	*ctx.globalConfig = *types.DefaultConfigItemValueMap()
 	log.Functionf("handleGlobalConfigDelete done for %s", key)
 }

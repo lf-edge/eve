@@ -93,8 +93,6 @@ func (ctxPtr *diagContext) AddAgentSpecificCLIFlags(flagSet *flag.FlagSet) {
 // Set from Makefile
 var Version = "No version specified"
 
-var debug = false
-var debugOverride bool // From command line arg
 var simulateDnsFailure = false
 var simulatePingFailure = false
 var outfile = os.Stdout
@@ -117,8 +115,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 
 	var err error
 
-	debug = ctx.CLIParams().DebugOverride
-	debugOverride = debug
 	simulateDnsFailure = *ctx.simulateDNSFailurePtr
 	simulatePingFailure = *ctx.simulatePingFailurePtr
 	outputFile := *ctx.outputFilePtr
@@ -1170,9 +1166,8 @@ func handleGlobalConfigImpl(ctxArg interface{}, key string,
 		return
 	}
 	log.Functionf("handleGlobalConfigImpl for %s", key)
-	var gcp *types.ConfigItemValueMap
-	debug, gcp = agentlog.HandleGlobalConfig(log, ctx.subGlobalConfig, agentName,
-		debugOverride, logger)
+	gcp := agentlog.HandleGlobalConfig(log, ctx.subGlobalConfig, agentName,
+		ctx.CLIParams().DebugOverride, logger)
 	if gcp != nil {
 		ctx.globalConfig = gcp
 	}
@@ -1189,8 +1184,8 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 		return
 	}
 	log.Functionf("handleGlobalConfigDelete for %s", key)
-	debug, _ = agentlog.HandleGlobalConfig(log, ctx.subGlobalConfig, agentName,
-		debugOverride, logger)
+	agentlog.HandleGlobalConfig(log, ctx.subGlobalConfig, agentName,
+		ctx.CLIParams().DebugOverride, logger)
 	*ctx.globalConfig = *types.DefaultConfigItemValueMap()
 	log.Functionf("handleGlobalConfigDelete done for %s", key)
 }

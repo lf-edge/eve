@@ -121,8 +121,6 @@ func (ctx *zedrouterContext) AddAgentSpecificCLIFlags(flagSet *flag.FlagSet) {
 	ctx.versionPtr = flagSet.Bool("v", false, "Version")
 }
 
-var debug = false
-var debugOverride bool // From command line arg
 var logger *logrus.Logger
 var log *base.LogObject
 
@@ -148,8 +146,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	agentbase.Init(&zedrouterCtx, logger, log, agentName,
 		agentbase.WithArguments(arguments))
 
-	debug = zedrouterCtx.CLIParams().DebugOverride
-	debugOverride = debug
 	if *zedrouterCtx.versionPtr {
 		fmt.Printf("%s: %s\n", agentName, Version)
 		return 0
@@ -2053,9 +2049,8 @@ func handleGlobalConfigImpl(ctxArg interface{}, key string,
 		return
 	}
 	log.Functionf("handleGlobalConfigImpl for %s\n", key)
-	var gcp *types.ConfigItemValueMap
-	debug, gcp = agentlog.HandleGlobalConfig(log, ctx.subGlobalConfig, agentName,
-		debugOverride, logger)
+	gcp := agentlog.HandleGlobalConfig(log, ctx.subGlobalConfig, agentName,
+		ctx.CLIParams().DebugOverride, logger)
 	if gcp != nil {
 		ctx.GCInitialized = true
 		ctx.appStatsInterval = gcp.GlobalValueInt(types.AppContainerStatsInterval)
@@ -2084,8 +2079,8 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 		return
 	}
 	log.Functionf("handleGlobalConfigDelete for %s\n", key)
-	debug, _ = agentlog.HandleGlobalConfig(log, ctx.subGlobalConfig, agentName,
-		debugOverride, logger)
+	agentlog.HandleGlobalConfig(log, ctx.subGlobalConfig, agentName,
+		ctx.CLIParams().DebugOverride, logger)
 	gcp := *types.DefaultConfigItemValueMap()
 	ctx.appStatsInterval = gcp.GlobalValueInt(types.AppContainerStatsInterval)
 	log.Functionf("handleGlobalConfigDelete done for %s\n", key)

@@ -32,9 +32,7 @@ type faultContext struct {
 	subGlobalConfig pubsub.Subscription
 	GCInitialized   bool
 
-	debug         bool
-	debugOverride bool // From command line arg
-	timeLimit     uint // In seconds
+	timeLimit uint // In seconds
 
 	// CLI args
 	fatalPtr *bool
@@ -68,8 +66,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	panicFlag := *ctx.panicPtr
 	hangFlag := *ctx.hangPtr
 	hwFlag := *ctx.hwPtr
-	ctx.debug = ctx.CLIParams().DebugOverride
-	ctx.debugOverride = ctx.debug
 
 	// Sanity checks
 	if hwFlag {
@@ -161,9 +157,8 @@ func handleGlobalConfigImpl(ctxArg interface{}, key string,
 		return
 	}
 	log.Functionf("handleGlobalConfigImpl for %s", key)
-	var gcp *types.ConfigItemValueMap
-	ctx.debug, gcp = agentlog.HandleGlobalConfig(log, ctx.subGlobalConfig, agentName,
-		ctx.debugOverride, logger)
+	gcp := agentlog.HandleGlobalConfig(log, ctx.subGlobalConfig, agentName,
+		ctx.CLIParams().DebugOverride, logger)
 	if gcp != nil {
 		ctx.GCInitialized = true
 	}
@@ -179,7 +174,7 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 		return
 	}
 	log.Functionf("handleGlobalConfigDelete for %s", key)
-	ctx.debug, _ = agentlog.HandleGlobalConfig(log, ctx.subGlobalConfig, agentName,
-		ctx.debugOverride, logger)
+	agentlog.HandleGlobalConfig(log, ctx.subGlobalConfig, agentName,
+		ctx.CLIParams().DebugOverride, logger)
 	log.Functionf("handleGlobalConfigDelete done for %s", key)
 }
