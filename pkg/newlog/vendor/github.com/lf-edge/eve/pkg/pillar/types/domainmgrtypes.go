@@ -32,7 +32,7 @@ type DomainConfig struct {
 	VmConfig
 	GPUConfig      string
 	DiskConfigList []DiskConfig
-	VifList        []VifInfo
+	VifList        []VifConfig
 	IoAdapterList  []IoAdapter
 
 	// XXX: to be deprecated, use CipherBlockStatus instead
@@ -230,7 +230,8 @@ const (
 
 // Task represents any runnable entity on EVE
 type Task interface {
-	Setup(DomainStatus, DomainConfig, *AssignableAdapters, *os.File) error
+	Setup(DomainStatus, DomainConfig, *AssignableAdapters,
+		*ConfigItemValueMap, *os.File) error
 	Create(string, string, *DomainConfig) (int, error)
 	Start(string) error
 	Stop(string, bool) error
@@ -358,13 +359,19 @@ type VlanInfo struct {
 	SwitchUplink string
 }
 
-type VifInfo struct {
-	Bridge  string
-	Vif     string
-	VifUsed string // Has -emu in name in Status if appropriate
-	Mac     string
+// VifConfig configure vif
+type VifConfig struct {
+	Bridge string
+	Vif    string
+	Mac    string
 
 	Vlan VlanInfo
+}
+
+// VifInfo store info about vif
+type VifInfo struct {
+	VifConfig
+	VifUsed string // Has -emu in name in Status if appropriate
 }
 
 // DomainManager will pass these to the xen xl config file

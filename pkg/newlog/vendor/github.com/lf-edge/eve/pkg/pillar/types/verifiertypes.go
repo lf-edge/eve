@@ -173,7 +173,7 @@ func (status VerifyImageStatus) LogDelete(logBase *base.LogObject) {
 		AddField("filelocation", status.FileLocation).
 		Noticef("VerifyImage status delete")
 
-	base.DeleteLogObject(logObject, status.LogKey())
+	base.DeleteLogObject(logBase, status.LogKey())
 }
 
 // LogKey :

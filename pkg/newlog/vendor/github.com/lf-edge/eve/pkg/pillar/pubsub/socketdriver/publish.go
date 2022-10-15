@@ -42,10 +42,19 @@ type Publisher struct {
 	rootDir        string
 }
 
+const maxFileName = 255
+
 // Publish publish a key-value pair
 func (s *Publisher) Publish(key string, item []byte) error {
 	if len(item) == 0 {
 		return fmt.Errorf("empty content published for %s/%s", s.name, key)
+	}
+	if strings.Contains(key, "/") {
+		return fmt.Errorf("key(%s) must not contain slashes", key)
+	}
+	if len(key+".json") > maxFileName {
+		return fmt.Errorf("key(%s) exceed maximum filename limit of %d bytes: %d",
+			key, maxFileName, len(key+".json"))
 	}
 	fileName := s.dirName + "/" + key + ".json"
 	s.log.Tracef("Publish writing %s\n", fileName)

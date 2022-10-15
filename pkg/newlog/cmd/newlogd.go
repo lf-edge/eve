@@ -482,7 +482,7 @@ func handleGlobalConfigImp(ctxArg interface{}, key string, statusArg interface{}
 		log.Tracef("handleGlobalConfigModify: ignoring %s", key)
 		return
 	}
-	debug, gcp := agentlog.HandleGlobalConfig(log, subGlobalConfig, agentName, false, logger)
+	gcp := agentlog.HandleGlobalConfig(log, subGlobalConfig, agentName, false, logger)
 
 	if gcp != nil {
 		enabled := gcp.GlobalValueBool(types.AllowLogFastupload)
@@ -501,7 +501,7 @@ func handleGlobalConfigImp(ctxArg interface{}, key string, statusArg interface{}
 			limitGzipFilesMbyts = uint32(persistMbytes / 10)
 		}
 	}
-	log.Tracef("handleGlobalConfigModify done for %s, debug set %v, fastupload enabled %v", key, debug, enableFastUpload)
+	log.Tracef("handleGlobalConfigModify done for %s, fastupload enabled %v", key, enableFastUpload)
 }
 
 // getKmessages - goroutine to get from /dev/kmsg

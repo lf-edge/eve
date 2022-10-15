@@ -15,7 +15,7 @@ type ExecConfig struct {
 	Args      []string
 	Environ   []string
 	TimeLimit uint // In seconds; zero means server default
-	Combined  bool // Combined Ouput - stdout and stderr
+	Combined  bool // Combined Output - stdout and stderr
 	DontWait  bool // Caller doesn't want result
 }
 

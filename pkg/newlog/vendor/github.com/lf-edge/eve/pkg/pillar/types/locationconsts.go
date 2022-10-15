@@ -29,11 +29,11 @@ const (
 	PersistDebugDir = PersistDir + "/agentdebug"
 	// PersistInstallerDir - location for installer output
 	PersistInstallerDir = PersistDir + "/installer"
+	// IngestedDirname - location for shas of files we pulled from /config
+	IngestedDirname = PersistDir + "/ingested"
 
 	// IdentityDirname - Config dir
 	IdentityDirname = "/config"
-	// SelfRegFile - name of self-register-filed file
-	SelfRegFile = IdentityDirname + "/self-register-failed"
 	// ServerFileName - server file
 	ServerFileName = IdentityDirname + "/server"
 	// DeviceCertName - device certificate
@@ -52,6 +52,10 @@ const (
 	V2TLSBaseFile = IdentityDirname + "/v2tlsbaseroot-certificates.pem"
 	// APIV1FileName - user can statically allow for API v1
 	APIV1FileName = IdentityDirname + "/Force-API-V1"
+	// BootstrapConfFileName - file to store initial device configuration for bootstrapping
+	BootstrapConfFileName = IdentityDirname + "/bootstrap-config.pb"
+	// BootstrapShaFileName - file to store SHA hash of an already ingested bootstrap config
+	BootstrapShaFileName = IngestedDirname + "/bootstrap-config.sha"
 
 	// ServerSigningCertFileName - filename for server signing leaf certificate
 	ServerSigningCertFileName = CertificateDirname + "/server-signing-cert.pem"
@@ -94,6 +98,10 @@ const (
 )
 
 var (
+	// PersistDataset - parent dataset
+	PersistDataset = strings.TrimLeft(PersistDir, "/")
+	// PersistReservedDataset - reserved dataset
+	PersistReservedDataset = PersistDataset + "/reserved"
 	//VolumeClearZFSDataset - dataset to create volumes without encryption
 	VolumeClearZFSDataset = strings.TrimLeft(VolumeClearDirName, "/")
 	//VolumeEncryptedZFSDataset - dataset to create volumes with encryption
