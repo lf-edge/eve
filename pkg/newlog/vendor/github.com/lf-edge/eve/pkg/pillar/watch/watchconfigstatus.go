@@ -3,7 +3,7 @@
 
 // Determine differences in terms of the set of files in the configDir
 // vs. the statusDir.
-// On startup report the intial files in configDir as "modified" and report any
+// On startup report the initial files in configDir as "modified" and report any
 // which exist in statusDir but not in configDir as "deleted". Then watch for
 // modifications or deletions in configDir.
 // Caller needs to determine whether there are actual content modifications

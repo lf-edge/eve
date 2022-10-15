@@ -26,9 +26,11 @@ const (
 	SenderStatusAlgoFail                               // hash algorithm we don't support
 	SenderStatusHashSizeError                          // senderCertHash length error
 	SenderStatusCertUnknownAuthority                   // device may miss proxy certificate for MiTM
-	SenderStatusCertUnknownAuthorityProxy              // device configed proxy, may miss proxy certificate for MiTM
+	SenderStatusCertUnknownAuthorityProxy              // device configured proxy, may miss proxy certificate for MiTM
 	SenderStatusNotFound                               // 404 indicating device might have been deleted in controller
 	SenderStatusForbidden                              // 403 indicating integrity token might invalidated
+	SenderStatusFailed                                 // Other failure
+	SenderStatusDebug                                  // Not a failure
 )
 
 const (
@@ -158,7 +160,7 @@ const (
 	// Dom0MinDiskUsagePercent global setting key
 	Dom0MinDiskUsagePercent GlobalSettingKey = "storage.dom0.disk.minusage.percent"
 	// Dom0DiskUsageMaxBytes - Max disk usage for Dom0. Dom0 can use
-	//  Dom0MinDiskUsagePercent upto a max of  Dom0DiskUsageMaxBytes
+	//  Dom0MinDiskUsagePercent up to a max of  Dom0DiskUsageMaxBytes
 	Dom0DiskUsageMaxBytes GlobalSettingKey = "storage.dom0.disk.maxusagebytes"
 	// AppContainerStatsInterval - App Container Stats Collection
 	AppContainerStatsInterval GlobalSettingKey = "timer.appcontainer.stats.interval"
@@ -184,6 +186,8 @@ const (
 	AllowAppVnc GlobalSettingKey = "app.allow.vnc"
 	// EveMemoryLimitInBytes global setting key
 	EveMemoryLimitInBytes GlobalSettingKey = "memory.eve.limit.bytes"
+	// How much memory overhead is allowed for VMM needs
+	VmmMemoryLimitInMiB GlobalSettingKey = "memory.vmm.limit.MiB"
 	// IgnoreMemoryCheckForApps global setting key
 	IgnoreMemoryCheckForApps GlobalSettingKey = "memory.apps.ignore.check"
 	// IgnoreDiskCheckForApps global setting key
@@ -761,6 +765,8 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	configItemSpecMap.AddIntItem(ForceFallbackCounter, 0, 0, 0xFFFFFFFF)
 	configItemSpecMap.AddIntItem(EveMemoryLimitInBytes, uint32(eveMemoryLimitInBytes),
 		uint32(eveMemoryLimitInBytes), 0xFFFFFFFF)
+	// Limit manual vmm overhead override to 1 PiB
+	configItemSpecMap.AddIntItem(VmmMemoryLimitInMiB, 0, 0, uint32(1024*1024*1024))
 	// LogRemainToSendMBytes - Default is 2 Gbytes, minimum is 10 Mbytes
 	configItemSpecMap.AddIntItem(LogRemainToSendMBytes, 2048, 10, 0xFFFFFFFF)
 	configItemSpecMap.AddIntItem(DownloadMaxPortCost, 0, 0, 255)

@@ -12,7 +12,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/base"
 )
 
-// ControllerCert : controller certicate
+// ControllerCert : controller certificate
 // config received from controller
 type ControllerCert struct {
 	HashAlgo zcommon.HashAlgorithm

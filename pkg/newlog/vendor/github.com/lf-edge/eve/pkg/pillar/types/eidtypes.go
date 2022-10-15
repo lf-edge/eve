@@ -1,7 +1,7 @@
 // Copyright (c) 2017 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-// Type defintions for interface from Zedmanager to IdentityMgr for EID
+// Type definitions for interface from Zedmanager to IdentityMgr for EID
 // allocation and status
 
 package types

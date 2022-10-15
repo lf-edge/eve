@@ -105,6 +105,7 @@ const (
 	VolumeSubStatePreparing
 	VolumeSubStatePrepareDone
 	VolumeSubStateCreated
+	VolumeSubStateDeleting
 )
 
 // VolumeStatus is response from volumemgr about status of volumes

@@ -114,9 +114,8 @@ func LogLevel(gc *types.ConfigItemValueMap, agentName string) string {
 
 // HandleGlobalConfig updates the LogLevel setting in the passed in logger
 // based on GlobalConfig and debugOverride
-// Returns the debug bool
 func HandleGlobalConfig(log *base.LogObject, sub pubsub.Subscription, agentName string,
-	debugOverride bool, logger *logrus.Logger) (bool, *types.ConfigItemValueMap) {
+	debugOverride bool, logger *logrus.Logger) *types.ConfigItemValueMap {
 
 	log.Functionf("HandleGlobalConfig(%s, %v)\n", agentName, debugOverride)
 	return handleGlobalConfigImpl(log, sub, agentName, debugOverride, true,
@@ -124,13 +123,11 @@ func HandleGlobalConfig(log *base.LogObject, sub pubsub.Subscription, agentName 
 }
 
 func handleGlobalConfigImpl(log *base.LogObject, sub pubsub.Subscription, agentName string,
-	debugOverride bool, allowDefault bool, logger *logrus.Logger) (bool, *types.ConfigItemValueMap) {
+	debugOverride bool, allowDefault bool, logger *logrus.Logger) *types.ConfigItemValueMap {
 	level := logrus.InfoLevel
-	debug := false
 	gcp := GetGlobalConfig(log, sub)
 	log.Functionf("handleGlobalConfigImpl: gcp %+v\n", gcp)
 	if debugOverride {
-		debug = true
 		level = logrus.TraceLevel
 		log.Functionf("handleGlobalConfigImpl: debugOverride set. set loglevel to debug")
 	} else if loglevel, ok, def := getLogLevelImpl(log, sub, agentName, allowDefault); ok {
@@ -142,9 +139,6 @@ func handleGlobalConfigImpl(log *base.LogObject, sub pubsub.Subscription, agentN
 			log.Functionf("HandleGlobalConfigImpl: level %v\n",
 				level)
 		}
-		if level == logrus.TraceLevel {
-			debug = true
-		}
 		if def {
 			// XXX hack to set default logger
 			logrus.SetLevel(level)
@@ -154,5 +148,5 @@ func handleGlobalConfigImpl(log *base.LogObject, sub pubsub.Subscription, agentN
 	}
 	log.Functionf("handleGlobalConfigImpl: Setting loglevel to %s", level)
 	logger.SetLevel(level)
-	return debug, gcp
+	return gcp
 }

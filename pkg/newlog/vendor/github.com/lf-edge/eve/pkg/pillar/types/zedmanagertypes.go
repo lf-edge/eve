@@ -43,7 +43,7 @@ type UUIDandVersion struct {
 // application instance. Note that we can have different versions
 // configured for the same UUID, hence the key is the UUIDandVersion
 // We assume the elements in StorageConfig should be installed, but activation
-// (advertize the EID in lisp and boot the guest) is driven by the Activate
+// (advertise the EID in lisp and boot the guest) is driven by the Activate
 // attribute.
 type AppInstanceConfig struct {
 	UUIDandVersion UUIDandVersion
@@ -163,13 +163,11 @@ type AppInstanceStatus struct {
 	PurgeInprogress     Inprogress
 	PurgeStartedAt      time.Time
 
-	// Mininum state across all steps and all StorageStatus.
+	// Minimum state across all steps and all StorageStatus.
 	// Error* set implies error.
 	State          SwState
 	MissingNetwork bool // If some Network UUID not found
 	MissingMemory  bool // Waiting for memory
-
-	EffectiveActivate bool //set here effective activate after profile check and apply
 
 	// All error strings across all steps and all StorageStatus
 	// ErrorAndTimeWithSource provides SetError, SetErrrorWithSource, etc

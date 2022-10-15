@@ -82,5 +82,5 @@
 // which was passed to it at startup. These changes are in the format of
 // `pubsub.Change`, which encapsulates the change operation, key and value.
 //
-// See the documentation for the `DriverSubscriber` interface ot learn more.
+// See the documentation for the `DriverSubscriber` interface to learn more.
 package pubsub

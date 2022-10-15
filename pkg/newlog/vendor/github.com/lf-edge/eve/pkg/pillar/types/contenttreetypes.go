@@ -90,7 +90,7 @@ func (config ContentTreeConfig) LogDelete(logBase *base.LogObject) {
 		AddField("max-download-size-int64", config.MaxDownloadSize).
 		Noticef("Content tree config delete")
 
-	base.DeleteLogObject(logObject, config.LogKey())
+	base.DeleteLogObject(logBase, config.LogKey())
 }
 
 // LogKey :
