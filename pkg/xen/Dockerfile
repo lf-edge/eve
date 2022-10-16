@@ -1,7 +1,7 @@
 FROM lfedge/eve-alpine:145f062a40639b6c65efa36bed1c5614b873be52 as kernel-build
 
 ENV BUILD_PKGS argp-standalone automake bash bc binutils-dev bison build-base \
-               curl diffutils flex git gmp-dev gnupg installkernel kmod \
+               diffutils flex git gmp-dev gnupg installkernel kmod \
                elfutils-dev openssl-dev linux-headers ncurses-dev python3 \
                sed squashfs-tools tar xz xz-dev zlib-dev libunwind-dev
 ENV BUILD_PKGS_arm64 uboot-tools
@@ -13,9 +13,9 @@ ENV XEN_SOURCE=https://downloads.xenproject.org/release/xen/${XEN_VERSION}/xen-$
 
 # Download and verify xen
 #TODO: verify Xen
-RUN \
-    [ -f "$(basename ${XEN_SOURCE})" ] || curl -fsSLO "${XEN_SOURCE}" && \
-    tar --absolute-names -xz < "$(basename ${XEN_SOURCE})" && mv "/xen-${XEN_VERSION}" /xen
+# hadolint ignore=DL3020
+ADD ${XEN_SOURCE} /xen.tar.gz
+RUN [ -f "$(basename ${XEN_SOURCE})" ] || tar --absolute-names -xz < /xen.tar.gz && mv "/xen-${XEN_VERSION}" /xen
 
 WORKDIR /xen/xen
 COPY *.patch arch /tmp/

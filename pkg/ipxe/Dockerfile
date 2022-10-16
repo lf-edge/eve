@@ -1,11 +1,13 @@
 FROM lfedge/eve-alpine:145f062a40639b6c65efa36bed1c5614b873be52 AS build
 
-ENV BUILD_PKGS patch curl make gcc perl util-linux-dev git mtools linux-headers musl-dev xz-dev
+ENV BUILD_PKGS patch make gcc perl util-linux-dev git mtools linux-headers musl-dev xz-dev
 # bash xorriso coreutils syslinux
 RUN eve-alpine-deploy.sh
 
 WORKDIR /ws
-RUN git clone --depth 1 -b v1.21.1 https://github.com/ipxe/ipxe.git .
+ADD https://github.com/ipxe/ipxe/tarball/v1.21.1 /ipxe.tgz
+RUN tar -zxvf /ipxe.tgz  --strip-components=1 && \
+    rm /ipxe.tgz
 
 COPY embedded.cfg src/embedded.cfg
 COPY *patch /tmp/

@@ -12,7 +12,7 @@ uniq = $(if $1,$(firstword $1) $(call uniq,$(filter-out $(firstword $1),$1)))
 
 # you are not supposed to tweak these variables -- they are effectively R/O
 HV_DEFAULT=kvm
-GOVER ?= 1.18.5
+GOVER ?= 1.19.2
 PKGBASE=github.com/lf-edge/eve
 GOMODULE=$(PKGBASE)/pkg/pillar
 GOTREE=$(CURDIR)/pkg/pillar
@@ -261,7 +261,7 @@ DOCKER_GO = _() { $(SET_X); mkdir -p $(CURDIR)/.go/src/$${3:-dummy} ; mkdir -p $
 
 PARSE_PKGS=$(if $(strip $(EVE_HASH)),EVE_HASH=)$(EVE_HASH) DOCKER_ARCH_TAG=$(DOCKER_ARCH_TAG) ./tools/parse-pkgs.sh
 LINUXKIT=$(BUILDTOOLS_BIN)/linuxkit
-LINUXKIT_VERSION=d589bd18f1f4a43a4e4667e6e1d46bde5b315ed1
+LINUXKIT_VERSION=f8947c6ae6c518da585e515fbd75b4e0747f714e
 LINUXKIT_SOURCE=https://github.com/linuxkit/linuxkit.git
 LINUXKIT_OPTS=$(if $(strip $(EVE_HASH)),--hash) $(EVE_HASH) $(if $(strip $(EVE_REL)),--release) $(EVE_REL)
 LINUXKIT_PKG_TARGET=build

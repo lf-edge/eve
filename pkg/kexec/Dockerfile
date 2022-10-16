@@ -6,8 +6,10 @@ ENV PKGS xz-libs util-linux elfutils-dev libbz2
 RUN eve-alpine-deploy.sh
 
 # Build kexec-tools
-WORKDIR /tmp/kexec/kexec-tools-2.0.23
-RUN curl -L https://mirrors.edge.kernel.org/pub/linux/utils/kernel/kexec/kexec-tools-2.0.23.tar.gz | tar -C .. -xzvf -
+ENV KEXEC_VERSION=2.0.23
+WORKDIR /tmp/kexec/kexec-tools-${KEXEC_VERSION}
+ADD https://mirrors.edge.kernel.org/pub/linux/utils/kernel/kexec/kexec-tools-2.0.23.tar.gz /tmp/kexec/kexec-tools.tgz
+RUN tar -C .. -xzvf ../kexec-tools.tgz && rm -f ../kexec-tools.tgz
 RUN ./configure --prefix /usr && \
     make && \
     make DESTDIR=/out install

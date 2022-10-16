@@ -1,6 +1,5 @@
 image: eve-edgeview
 org: lfedge
-network: yes
 config:
   binds:
     - /:/hostfs:ro

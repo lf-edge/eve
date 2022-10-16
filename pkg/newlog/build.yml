@@ -1,6 +1,5 @@
 image: eve-newlog
 org: lfedge
-network: yes
 config:
   binds:
     - /dev:/dev

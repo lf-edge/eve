@@ -1,0 +1,8 @@
+# linuxkit build template 
+#
+# SPDX-License-Identifier: Apache-2.0
+org: lfedge
+image: eve-fscrypt
+# we allow network in building fscrypt because we need it to downlaod go modules,
+# and it is limited to just this single target output.
+network: yes

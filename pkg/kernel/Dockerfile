@@ -1,49 +1,66 @@
 # This file must be kept as much in sync with pkg/new-kernel/Dockerfile as posisble
-FROM lfedge/eve-alpine:145f062a40639b6c65efa36bed1c5614b873be52 AS kernel-build
+FROM lfedge/eve-alpine:145f062a40639b6c65efa36bed1c5614b873be52 AS kernel-build-base
 
 ENV BUILD_PKGS \
-    argp-standalone automake bash bc binutils-dev bison build-base curl \
+    argp-standalone automake bash bc binutils-dev bison build-base \
     diffutils flex git gmp-dev gnupg installkernel kmod elfutils-dev    \
     linux-headers libunwind-dev mpc1-dev mpfr-dev ncurses-dev findutils \
     openssl-dev patch rsync sed squashfs-tools tar xz xz-dev zlib-dev openssl \
     attr-dev autoconf file coreutils libtirpc-dev libtool util-linux-dev
 RUN eve-alpine-deploy.sh
 
-ARG KERNEL_VERSION_aarch64=5.10.121
-ARG KERNEL_VERSION_x86_64=5.10.121
-ARG KERNEL_SOURCE
-ARG KERNEL_SHA256_SUMS
-ARG KERNEL_PGP2_SIGN
+# set versions for arm64
+FROM kernel-build-base AS kernel-build-arm64
+ARG KERNEL_VERSION_arm64=5.10.121
+# this has to be specified separately because of dockerfile limitations
+ARG KERNEL_MAJOR=5
+ENV KERNEL_VERSION=${KERNEL_VERSION_arm64}
+ENV KERNEL_MAJOR=${KERNEL_MAJOR}
 
-# The only variable that is used everywhere is KERNEL_SERIES, so we stick it into env
-SHELL ["/bin/sh", "-c", "export KERNEL_SERIES=$(eval echo \\$KERNEL_VERSION_$(uname -m) | sed -e 's#.[^.]*$#.x#') ; /bin/sh -c \"$1\"", "-" ]
+# set versions for amd64
+FROM kernel-build-base AS kernel-build-amd64
+ARG KERNEL_VERSION_amd64=5.10.121
+# this has to be specified separately because of dockerfile limitations
+ARG KERNEL_MAJOR=5
+ENV KERNEL_VERSION=${KERNEL_VERSION_amd64}
+ENV KERNEL_MAJOR=${KERNEL_MAJOR}
+
+# build for all arches
+# hadolint ignore=DL3006
+FROM kernel-build-${TARGETARCH} AS kernel-build
 
 # We copy the entire directory. This copies some unneeded files, but
 # allows us to check for the existence /patches-${KERNEL_SERIES} to
 # build kernels without patches.
 COPY / /
 
+ARG KERNEL_SOURCE=https://www.kernel.org/pub/linux/kernel/v${KERNEL_MAJOR}.x/linux-${KERNEL_VERSION}.tar.xz
+ARG KERNEL_SHA256_SUMS=https://www.kernel.org/pub/linux/kernel/v${KERNEL_MAJOR}.x/sha256sums.asc
+ARG KERNEL_PGP2_SIGN=https://www.kernel.org/pub/linux/kernel/v${KERNEL_MAJOR}.x/linux-${KERNEL_VERSION}.tar.sign
+
 # Download and verify kernel
 # PGP keys: 589DA6B1 (greg@kroah.com) & 6092693E (autosigner@kernel.org) & 00411886 (torvalds@linux-foundation.org)
-RUN KERNEL_VERSION="$(eval echo \$KERNEL_VERSION_"$(uname -m)")" && KERNEL_MAJOR="$(echo "$KERNEL_VERSION" | cut -f1 -d.)" && \
-    KERNEL_SOURCE=${KERNEL_SOURCE:-https://www.kernel.org/pub/linux/kernel/v${KERNEL_MAJOR}.x/linux-${KERNEL_VERSION}.tar.xz} && \
-    KERNEL_SHA256_SUMS=${KERNEL_SHA256_SUMS:-https://www.kernel.org/pub/linux/kernel/v${KERNEL_MAJOR}.x/sha256sums.asc} && \
-    KERNEL_PGP2_SIGN=${KERNEL_PGP2_SIGN:-https://www.kernel.org/pub/linux/kernel/v${KERNEL_MAJOR}.x/linux-${KERNEL_VERSION}.tar.sign} && \
-    curl -fsSLO ${KERNEL_SHA256_SUMS} && \
-    gpg2 -q --import keys.asc && \
+# hadolint ignore=DL3020
+ADD ${KERNEL_SHA256_SUMS} sha256sums.asc
+# hadolint ignore=DL3020
+ADD ${KERNEL_PGP2_SIGN} linux-${KERNEL_VERSION}.tar.sign
+# hadolint ignore=DL3020
+ADD ${KERNEL_SOURCE} /tmp/linux-${KERNEL_VERSION}.tar.xz
+
+RUN gpg2 -q --import keys.asc && \
     gpg2 --verify sha256sums.asc && \
     KERNEL_SHA256=$(grep linux-${KERNEL_VERSION}.tar.xz sha256sums.asc | cut -d ' ' -f 1) && \
-    [ -f linux-${KERNEL_VERSION}.tar.xz ] || curl -fsSLO ${KERNEL_SOURCE} && \
+    [ -f linux-${KERNEL_VERSION}.tar.xz ] || mv /tmp/linux-${KERNEL_VERSION}.tar.xz . && \
     echo "${KERNEL_SHA256}  linux-${KERNEL_VERSION}.tar.xz" | sha256sum -c - && \
     xz -d linux-${KERNEL_VERSION}.tar.xz && \
-    curl -fsSLO ${KERNEL_PGP2_SIGN} && \
     gpg2 --verify linux-${KERNEL_VERSION}.tar.sign linux-${KERNEL_VERSION}.tar && \
     cat linux-${KERNEL_VERSION}.tar | tar --absolute-names -x && mv /linux-${KERNEL_VERSION} /linux && \
     rm -rf /out && mkdir /out && echo "KERNEL_SOURCE=${KERNEL_SOURCE}" > /out/kernel-source-info
 
 # Apply local patches
 WORKDIR /linux
-RUN set -e ; [ ! -d /patches-"${KERNEL_SERIES}" ] || for patch in /patches-"${KERNEL_SERIES}"/*.patch; do \
+RUN set -e ; KERNEL_SERIES=${KERNEL_VERSION%.*}.x; \
+    [ ! -d /patches-"${KERNEL_SERIES}" ] || for patch in /patches-"${KERNEL_SERIES}"/*.patch; do \
         echo "Applying $patch"; \
         patch -p1 < "$patch"; \
     done
@@ -57,6 +74,7 @@ RUN case $(uname -m) in \
         KERNEL_DEF_CONF=/linux/arch/arm64/configs/defconfig; \
         ;; \
     esac  && \
+    KERNEL_SERIES=${KERNEL_VERSION%.*}.x; \
     cp /kernel_config-${KERNEL_SERIES}-$(uname -m) ${KERNEL_DEF_CONF}; \
     if [ -n "${EXTRA}" ]; then \
         sed -i "s/CONFIG_LOCALVERSION=\"-linuxkit\"/CONFIG_LOCALVERSION=\"-linuxkit${EXTRA}\"/" ${KERNEL_DEF_CONF}; \
@@ -73,12 +91,15 @@ RUN case $(uname -m) in \
 #  * ZFS on Linux
 ENV ZFS_VERSION=2.1.2
 ENV ZFS_COMMIT=zfs-${ZFS_VERSION}
-ENV ZFS_REPO=https://github.com/openzfs/zfs.git
+ENV ZFS_REPO=https://github.com/openzfs/zfs
 ENV ZFS_PATCH_DIR=/patches-zfs-"${ZFS_VERSION}"
 
 WORKDIR /tmp/zfs
 
-RUN git clone --depth 1 -b ${ZFS_COMMIT} ${ZFS_REPO} .
+# hadolint ignore=DL3020
+ADD ${ZFS_REPO}/tarball/${ZFS_COMMIT} /zfs.tgz
+RUN tar -zxvf /zfs.tgz --strip-components=1 && \
+    rm /zfs.tgz
 RUN set -e; \
     if [ ! -d "${ZFS_PATCH_DIR}" ]; then \
         echo "No such dir ${ZFS_PATCH_DIR}"; \
@@ -133,10 +154,14 @@ RUN unzip -d /tmp /tmp/xr.zip ;\
          M=/tmp/xr_usb_serial_common_lnx-3.6-and-newer-pak \
          modules modules_install
 
-RUN git clone https://github.com/brektrou/rtl8821CU.git /tmp/rtl8821CU &&\
-    (cd /tmp/rtl8821CU && git checkout 8c2226a7 ) &&\
-    make -j "$(getconf _NPROCESSORS_ONLN)" \
-         -C /tmp/rtl8821CU KSRC=/linux modules &&\
+WORKDIR /tmp/rtl8821CU
+ADD https://github.com/brektrou/rtl8821CU/tarball/8c2226a7 /tmp/rtl8821CU.tgz
+RUN tar -zxvf /tmp/rtl8821CU.tgz  --strip-components=1 && \
+    rm /tmp/rtl8821CU.tgz
+
+WORKDIR /linux
+RUN make -j "$(getconf _NPROCESSORS_ONLN)" \
+    -C /tmp/rtl8821CU KSRC=/linux modules && \
     install -D -p -m 644 /tmp/rtl8821CU/8821cu.ko $(echo /tmp/kernel-modules/lib/modules/*)/kernel/drivers/net/wireless/realtek/rtl8821cu/8821cu.ko
 
 # Strip at least some of the modules to conserve space

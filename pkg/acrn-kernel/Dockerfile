@@ -1,7 +1,7 @@
 FROM lfedge/eve-alpine:145f062a40639b6c65efa36bed1c5614b873be52 as kernel-build
 
 ENV BUILD_PKGS \
-    argp-standalone automake bash bc binutils-dev bison build-base curl \
+    argp-standalone automake bash bc binutils-dev bison build-base \
     diffutils flex git gmp-dev gnupg installkernel kmod openssl-dev    \
     linux-headers ncurses-dev python3 findutils sed squashfs-tools tar  \
     xz xz-dev zlib-dev openssl lz4 lz4-libs elfutils-libelf elfutils-dev
@@ -11,9 +11,10 @@ RUN eve-alpine-deploy.sh
 # Download acrn-kernel
 ENV KERNEL_VERSION acrn-2019w39.3-150000p
 ENV KERNEL_SOURCE=https://github.com/projectacrn/acrn-kernel/archive/${KERNEL_VERSION}.tar.gz
-RUN \
-    [ -f "$(basename ${KERNEL_SOURCE})" ] || curl -fsSLO "${KERNEL_SOURCE}" && \
-    tar --absolute-names -xz < "$(basename ${KERNEL_SOURCE})" && mv "/acrn-kernel-${KERNEL_VERSION}" /acrn-kernel
+
+# hadolint ignore=DL3020
+ADD ${KERNEL_SOURCE} /kernel.tar.gz
+RUN tar --absolute-names -xz < /kernel.tar.gz && mv "/acrn-kernel-${KERNEL_VERSION}" /acrn-kernel
 RUN ls -l /acrn-kernel
 
 # Apply local patches

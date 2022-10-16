@@ -1,9 +1,9 @@
 FROM lfedge/eve-alpine:145f062a40639b6c65efa36bed1c5614b873be52 as build
-# Building qemu in strip-down mirovm only mode: curl
+# Building qemu in strip-down mirovm only mode:
 # qemu 5.1 dependencies: python3 glib-dev pixman-dev
 # qemu 5.2+ dependencies: py3-setuptools bash perl
 # ninja dependencies: cmake g++
-ENV BUILD_PKGS gcc make libc-dev binutils-dev patch libaio-dev zlib-dev zlib-static linux-headers libvncserver-dev curl python3 glib-dev pixman-dev py3-setuptools bash perl cmake g++
+ENV BUILD_PKGS gcc make libc-dev binutils-dev patch libaio-dev zlib-dev zlib-static linux-headers libvncserver-dev python3 glib-dev pixman-dev py3-setuptools bash perl cmake g++
 ENV BUILD_PKGS_arm64 dtc dtc-dev
 # libgcc, pixman and glib are required for qemu
 # it maybe possible to get rid of libgcc & pixman
@@ -27,16 +27,20 @@ RUN patch -p1 < /0001-Makefile-Update-bfd-detection.patch ;\
 
 # building ninja
 WORKDIR /ninja-1.10.1
-# hadolint ignore=DL4006
-RUN curl -L https://github.com/ninja-build/ninja/archive/v1.10.1.tar.gz | tar -C / -xzf -
+ADD https://github.com/ninja-build/ninja/archive/v1.10.1.tar.gz /ninja.tar.gz
+# hadolint ignore=DL3059
+RUN tar -C / -xzf /ninja.tar.gz
+# hadolint ignore=DL3059
 RUN cmake -Bbuild-cmake -H.
+# hadolint ignore=DL3059
 RUN cmake --build build-cmake
+# hadolint ignore=DL3059
 RUN cmake --install build-cmake --prefix /usr
 
 # building qemu
 WORKDIR /qemu-5.2.0
-# hadolint ignore=DL4006
-RUN curl https://download.qemu.org/qemu-5.2.0.tar.xz | tar -C / -xJf -
+ADD https://download.qemu.org/qemu-5.2.0.tar.xz /qemu-5.2.0.tar.xz
+RUN tar -C / -xJf /qemu-5.2.0.tar.xz
 
 COPY i386-softmmu.mak default-configs/devices/i386-softmmu.mak
 COPY meson.build hw/acpi/meson.build

@@ -13,9 +13,10 @@ ENV PKGS alpine-baselayout musl-utils
 RUN eve-alpine-deploy.sh
 
 WORKDIR /
-RUN wget https://ftpmirror.gnu.org/autoconf-archive/autoconf-archive-2019.01.06.tar.xz && \
-    wget https://ftpmirror.gnu.org/autoconf-archive/autoconf-archive-2019.01.06.tar.xz.sig && \
-    gpg2 -q --keyserver keyserver.ubuntu.com --recv-keys 99089D72 && \
+ADD https://ftpmirror.gnu.org/autoconf-archive/autoconf-archive-2019.01.06.tar.xz /autoconf-archive-2019.01.06.tar.xz
+ADD https://ftpmirror.gnu.org/autoconf-archive/autoconf-archive-2019.01.06.tar.xz.sig /autoconf-archive-2019.01.06.tar.xz.sig
+ADD http://keyserver.ubuntu.com/pks/lookup?op=get&search=0x99089D72 /import-key.asc
+RUN gpg2 -q --import /import-key.asc && \
     gpg2 -q --verify autoconf-archive-2019.01.06.tar.xz.sig
 
 #Build autoconf-archive
@@ -24,17 +25,25 @@ WORKDIR /autoconf-archive-2019.01.06
 RUN ./configure --datarootdir=/usr/share/ && \
     make && make install
 
-WORKDIR /
-RUN git clone --branch=2.3.1 https://github.com/tpm2-software/tpm2-tss
 WORKDIR /tpm2-tss
+ADD https://github.com/tpm2-software/tpm2-tss/tarball/2.3.1 /tpm2-tss.tgz
+RUN tar -zxvf /tpm2-tss.tgz --strip-components=1 && \
+    rm /tpm2-tss.tgz
 RUN ./bootstrap && \
     ./configure --disable-dependency-tracking && \
     make && \
     make install
 
-WORKDIR /
-RUN git clone --branch=4.0.1-rc0 https://github.com/tpm2-software/tpm2-tools
 WORKDIR /tpm2-tools
+ADD https://github.com/tpm2-software/tpm2-tools/tarball/4.0.1-rc0 /tpm2-tools.tgz
+RUN tar -zxvf /tpm2-tools.tgz  --strip-components=1 && \
+    rm /tpm2-tools.tgz
+
+# because various builds assume this is in a git repo
+RUN git config --global user.name "Your Name"; \
+    git config --global user.email "you@example.com"; \
+    git init . && git add . && git commit -m "init"
+
 COPY patch-tpm2-tools.diff .
 RUN patch -p1 < patch-tpm2-tools.diff && \
     ./bootstrap && ./configure && make

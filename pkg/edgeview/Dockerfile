@@ -4,6 +4,7 @@ ENV PKGS alpine-baselayout musl-utils iproute2 iptables
 RUN eve-alpine-deploy.sh
 
 COPY src/  /edge-view/.
+COPY vendor  /edge-view/vendor
 COPY go.mod /edge-view/.
 COPY go.sum /edge-view/.
 COPY vendor /edge-view/vendor
