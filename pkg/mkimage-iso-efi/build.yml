@@ -1,3 +1,2 @@
 image: eve-mkimage-iso-efi
 org: lfedge
-network: true

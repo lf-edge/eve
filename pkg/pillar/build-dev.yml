@@ -6,7 +6,6 @@
 ---
 org: lfedge
 image: eve-pillar-dev
-network: true
 config:
   binds:
     - /lib/modules:/lib/modules

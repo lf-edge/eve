@@ -1,3 +1,2 @@
 org: lfedge
 image: eve-mkrootfs-ext4
-network: true

@@ -10,12 +10,14 @@ COPY /patches /
 #  * ZFS on Linux
 ENV ZFS_VERSION=2.1.2
 ENV ZFS_COMMIT=zfs-${ZFS_VERSION}
-ENV ZFS_REPO=https://github.com/openzfs/zfs.git
+ENV ZFS_REPO=https://github.com/openzfs/zfs
 ENV ZFS_PATCH_DIR=/patches-zfs-"${ZFS_VERSION}"
 
 WORKDIR /tmp/zfs
 
-RUN git clone --depth 1 -b ${ZFS_COMMIT} ${ZFS_REPO} .
+ADD ${ZFS_REPO}/tarball/${ZFS_COMMIT}/ zfs.tgz
+RUN tar -zxvf zfs.tgz  --strip-components=1 && \
+    rm zfs.tgz
 RUN set -e; \
     if [ ! -d "${ZFS_PATCH_DIR}" ]; then \
         echo "No such dir ${ZFS_PATCH_DIR}"; \
@@ -52,4 +54,5 @@ RUN cp -r /tmp/zfs-out/* /out
 
 FROM scratch
 COPY --from=zfs /out/ /
+# hadolint ignore=DL3020
 ADD rootfs/ /
