@@ -1,4 +1,6 @@
-FROM lfedge/eve-alpine:145f062a40639b6c65efa36bed1c5614b873be52 as grub-build
+# syntax=docker/dockerfile-upstream:master-labs
+
+FROM lfedge/eve-alpine:145f062a40639b6c65efa36bed1c5614b873be52 as grub-build-base
 ENV BUILD_PKGS automake \
                make \
                bison \
@@ -23,66 +25,94 @@ RUN eve-alpine-deploy.sh
 ENV GRUB_MODULES_PORT="part_gpt fat ext2 iso9660 squash4 gzio linux acpi normal cpio crypto disk boot crc64 \
 search_disk_uuid search_part_label search_label xzio xfs video gfxterm serial gptprio chain probe reboot regexp smbios \
 part_msdos cat echo test configfile loopback"
-ENV GRUB_MODULES_i386_pc="multiboot multiboot2 biosdisk gpt verify"
-ENV GRUB_MODULES_x86_64="multiboot multiboot2 efi_uga efi_gop linuxefi gpt verify gcry_sha256 measurefs"
-ENV GRUB_MODULES_aarch64="xen_boot efi_gop gpt"
-ENV GRUB_MODULES_riscv64=""
-ENV GRUB_COMMIT=71f9e4ac44142af52c3fc1860436cf9e432bf764
-ENV GRUB_TAG_riscv64=2.06
-ENV GRUB_TAG_aarch64=2.06
 
-ENV GRUB_REPO=https://git.savannah.gnu.org/git/grub.git
+FROM grub-build-base AS grub-build-amd64
+ENV GRUB_MODULES="multiboot multiboot2 efi_uga efi_gop linuxefi gpt verify gcry_sha256 measurefs"
+ENV GRUB_MODULES_i386_pc="multiboot multiboot2 biosdisk gpt verify"
+ENV GRUB_COMMIT=71f9e4ac44142af52c3fc1860436cf9e432bf764
+ENV GRUB_PATCHES=patches
+# colon separates a platform from an additional option.
+# this is far from perfect, but it works for now.
+ENV GRUB_PLATFORM="efi pc:--disable-efiemu"
+
+FROM grub-build-base AS grub-build-arm64
+ENV GRUB_MODULES="xen_boot efi_gop gpt"
+ENV GRUB_COMMIT=2.06
+ENV GRUB_PATCHES="patches-${GRUB_COMMIT} patches-aarch64-${GRUB_COMMIT}"
+ENV GRUB_PLATFORM=efi
+
+FROM grub-build-base AS grub-build-riscv64
+ENV GRUB_MODULES=""
+ENV GRUB_COMMIT=2.06
+ENV GRUB_PATCHES="patches-${GRUB_COMMIT} patches-riscv64-${GRUB_COMMIT}"
+ENV GRUB_PLATFORM=efi
+
+FROM grub-build-base AS grub-build-i386
+ENV GRUB_MODULES="multiboot multiboot2 biosdisk gpt verify"
+ENV GRUB_COMMIT=71f9e4ac44142af52c3fc1860436cf9e432bf764
+ENV GRUB_PATCHES="patches-${GRUB_COMMIT}"
+ENV GRUB_PLATFORM=efi
+
+# hadolint ignore=DL3006
+FROM grub-build-${TARGETARCH} AS grub-build
+
+ENV GRUB_REPO=https://git.savannah.gnu.org/cgit/grub.git
 
 COPY / /
 # because python is not available
 RUN ln -s python3 /usr/bin/python && \
     mkdir /grub-lib
 
-# hadolint ignore=DL3003
+ADD ${GRUB_REPO}/snapshot/grub-${GRUB_COMMIT}.tar.gz /grub.tar.gz
+ENV GNULIB_REVISION=d271f868a8df9bbec29049d01e056481b7a1a263
+ADD --keep-git-dir git://git.sv.gnu.org/gnulib#${GNULIB_REVISION} /gnulib
+
+# the below does a weird init of a git repo, because we are not cloning the
+# repo, yet we need to be in a repo to apply patches with `git am`.
+# hadolint ignore=DL3003,SC2086
 RUN if [ ! -d "grub" ]; then \
-        git clone ${GRUB_REPO} \
-        && cd /grub \
-        && git config --add user.email a@b.c \
-        && git config user.name a \
-        && if [ "$(uname -m)" != x86_64 ]; then \
-            GRUB_COMMIT="$(git show-ref -s tags/grub-"$(eval echo "\$GRUB_TAG_$(uname -m)")")"; \
-        fi \
-        && git checkout -b grub-build "$GRUB_COMMIT" \
-        && if [ "$(uname -m)" != x86_64 ]; then \
-            rm -rf /patches \
-            && mv /patches-"$(eval echo "\$GRUB_TAG_$(uname -m)")" /patches \
-            && cp /patches-"$(uname -m)"-"$(eval echo "\$GRUB_TAG_$(uname -m)")"/* /patches/; \
-        fi \
-        && git am /patches/* \
-        && (./bootstrap || ./autogen.sh) ; \
+        tar -xzf /grub.tar.gz; \
+        mv "grub-${GRUB_COMMIT}" grub; \
+        rm -f /grub.tar.gz; \
+        cd grub; \
+        mkdir -p /apply/patches; \
+        for dir in ${GRUB_PATCHES}; do \
+            cp -r /${dir}/* /apply/patches; \
+        done; \
+        git config --global user.name "Your Name"; \
+        git config --global user.email "you@example.com"; \
+        git init . && git add . && git commit -m "init"; \
+        git am /apply/patches/*; \
+        (./bootstrap --gnulib-srcdir=/gnulib  || ./autogen.sh) ; \
     fi
 
 
 WORKDIR /grub
 
-ENV BUILD_GRUB="set -e && \
-  if [ -f Makefile ]; then make distclean; fi && \
-  ./configure --disable-werror --libdir=/grub-lib --with-platform=\${GRUB_PLATFORM} CFLAGS='-Os -Wno-unused-value' && \
-  make -j $(getconf _NPROCESSORS_ONLN) && \
-  make install"
-
-ENV GRUB_PLATFORM=efi
-RUN eval $BUILD_GRUB
-RUN if [ "$(uname -m)" = x86_64 ]; then GRUB_PLATFORM="pc --disable-efiemu" && eval "$BUILD_GRUB" ; fi
-
+# hadolint ignore=SC2046
+RUN set -e; for p in ${GRUB_PLATFORM}; do \
+      platform=${p%%:*}; \
+      begin=$(( ${#platform} + 1 )); \
+      opt=${p:${begin}}; \
+      [ -f Makefile ] && make distclean; \
+      ./configure --disable-werror --libdir=/grub-lib --with-platform="${platform}" ${opt} CFLAGS='-Os -Wno-unused-value'; \
+      make -j $(getconf _NPROCESSORS_ONLN); \
+      make install; \
+    done
 
 COPY embedded.cfg /
 
 # create the grub core image
-RUN case $(uname -m) in \
+# hadolint ignore=SC2086
+RUN case "$(uname -m)" in \
   x86_64) \
-    ./grub-mkimage -O x86_64-efi -d /grub-lib/grub/x86_64-efi -o /grub-lib/BOOTX64.EFI -p /EFI/BOOT ${GRUB_MODULES_PORT} ${GRUB_MODULES_x86_64} &&\
+    ./grub-mkimage -O x86_64-efi -d /grub-lib/grub/x86_64-efi -o /grub-lib/BOOTX64.EFI -p /EFI/BOOT ${GRUB_MODULES_PORT} ${GRUB_MODULES} &&\
     ./grub-mkimage -O i386-pc -d /grub-lib/grub/i386-pc -o /grub-lib/BOOT.pc -p /EFI/BOOT -c /embedded.cfg ${GRUB_MODULES_PORT} ${GRUB_MODULES_i386_pc} && \
     cp /grub-lib/grub/i386-pc/boot.img /grub-lib/BOOT.img ;;\
   aarch64) \
-    ./grub-mkimage -O arm64-efi -d /grub-lib/grub/arm64-efi -o /grub-lib/BOOTAA64.EFI -p /EFI/BOOT ${GRUB_MODULES_PORT} ${GRUB_MODULES_aarch64} ;; \
+    ./grub-mkimage -O arm64-efi -d /grub-lib/grub/arm64-efi -o /grub-lib/BOOTAA64.EFI -p /EFI/BOOT ${GRUB_MODULES_PORT} ${GRUB_MODULES} ;; \
   riscv64) \
-     ./grub-mkimage -O riscv64-efi -d /grub-lib/grub/riscv64-efi -o /grub-lib/BOOTRISCV64.EFI -p /EFI/BOOT ${GRUB_MODULES_PORT} ${GRUB_MODULES_riscv64} ;;\
+     ./grub-mkimage -O riscv64-efi -d /grub-lib/grub/riscv64-efi -o /grub-lib/BOOTRISCV64.EFI -p /EFI/BOOT ${GRUB_MODULES_PORT} ${GRUB_MODULES} ;;\
   esac
 
 FROM scratch

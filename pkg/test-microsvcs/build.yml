@@ -1,3 +1,2 @@
 org: lfedge
 image: eve-test-microsvcs
-network: yes

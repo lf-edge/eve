@@ -1,3 +1,2 @@
 org: lfedge
 image: eve-grub
-network: true

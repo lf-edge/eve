@@ -1,6 +1,5 @@
 image: eve-wlan
 org: lfedge
-network: yes
 config:
   binds:
     - /lib/modules:/lib/modules

@@ -1,18 +1,20 @@
 FROM lfedge/eve-alpine:145f062a40639b6c65efa36bed1c5614b873be52 as build
 
-ENV BUILD_PKGS curl tar make
+ENV BUILD_PKGS tar make
 RUN eve-alpine-deploy.sh
 
 ENV WIRELESS_REGDB_VERSION 2022.06.06
 ENV WIRELESS_REGDB_REPO https://mirrors.edge.kernel.org/pub/software/network/wireless-regdb/wireless-regdb
+ADD ${WIRELESS_REGDB_REPO}-${WIRELESS_REGDB_VERSION}.tar.gz /wireless-regdb.tar.gz
 RUN mkdir /wireless-regdb &&\
-    curl -fsSL ${WIRELESS_REGDB_REPO}-${WIRELESS_REGDB_VERSION}.tar.gz | tar -xz --strip-components=1 -C /wireless-regdb &&\
+    tar -xz --strip-components=1 -C /wireless-regdb -f /wireless-regdb.tar.gz &&\
     cp /wireless-regdb/regulatory.db /wireless-regdb/regulatory.db.p7s /lib/firmware
 
 ENV LINUX_FIRMWARE_VERSION 20220708
 ENV LINUX_FIRMWARE_URL https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/snapshot/linux-firmware
+ADD ${LINUX_FIRMWARE_URL}-${LINUX_FIRMWARE_VERSION}.tar.gz /linux-firmware.tar.gz
 RUN mkdir /linux-firmware &&\
-    curl -fsSL ${LINUX_FIRMWARE_URL}-${LINUX_FIRMWARE_VERSION}.tar.gz | tar -xz --strip-components=1 -C /linux-firmware &&\
+    tar -xz --strip-components=1 -C /linux-firmware -f /linux-firmware.tar.gz &&\
     make -C /linux-firmware FIRMWAREDIR="/lib/firmware" install
 
 # patch merged, but not released, remove this when update LINUX_FIRMWARE_VERSION
@@ -30,18 +32,19 @@ RUN ln -s ../cypress/cyfmac43430-sdio.bin /lib/firmware/brcm/brcmfmac43430-sdio.
 
 ENV RPI_FIRMWARE_VERSION 2c8f665254899a52260788dd902083bb57a99738
 ENV RPI_FIRMWARE_URL https://github.com/RPi-Distro/firmware-nonfree/archive
+ADD ${RPI_FIRMWARE_URL}/${RPI_FIRMWARE_VERSION}.tar.gz /rpifirmware.tar.gz
 RUN mkdir /rpi-firmware &&\
-    curl -fsSL ${RPI_FIRMWARE_URL}/${RPI_FIRMWARE_VERSION}.tar.gz | tar -xz --strip-components=1 -C /rpi-firmware &&\
+    tar -xz --strip-components=1 -C /rpi-firmware -f /rpifirmware.tar.gz &&\
     cp -a /rpi-firmware/debian/config/brcm80211/brcm/brcmfmac43436* /lib/firmware/brcm
 
 ENV RPI_BT_FIRMWARE_VERSION e7fd166981ab4bb9a36c2d1500205a078a35714d
 ENV RPI_BT_FIRMWARE_URL https://github.com/RPi-Distro/bluez-firmware/raw
 
 WORKDIR /lib/firmware/brcm
-RUN curl -fsSL ${RPI_BT_FIRMWARE_URL}/${RPI_BT_FIRMWARE_VERSION}/broadcom/BCM43430A1.hcd -O &&\
-    curl -fsSL ${RPI_BT_FIRMWARE_URL}/${RPI_BT_FIRMWARE_VERSION}/broadcom/BCM4345C0.hcd -O &&\
-    curl -fsSL ${RPI_BT_FIRMWARE_URL}/${RPI_BT_FIRMWARE_VERSION}/broadcom/BCM43430B0.hcd -O &&\
-    curl -fsSL ${RPI_BT_FIRMWARE_URL}/${RPI_BT_FIRMWARE_VERSION}/broadcom/BCM4345C5.hcd -O
+ADD ${RPI_BT_FIRMWARE_URL}/${RPI_BT_FIRMWARE_VERSION}/broadcom/BCM43430A1.hcd .
+ADD ${RPI_BT_FIRMWARE_URL}/${RPI_BT_FIRMWARE_VERSION}/broadcom/BCM4345C0.hcd .
+ADD ${RPI_BT_FIRMWARE_URL}/${RPI_BT_FIRMWARE_VERSION}/broadcom/BCM43430B0.hcd .
+ADD ${RPI_BT_FIRMWARE_URL}/${RPI_BT_FIRMWARE_VERSION}/broadcom/BCM4345C5.hcd .
 
 FROM lfedge/eve-alpine:145f062a40639b6c65efa36bed1c5614b873be52 as compactor
 ENTRYPOINT []

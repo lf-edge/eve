@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile-upstream:master-labs
 # Instructions for this package are taken from:
 #   https://wiki.ubuntu.com/UEFI/EDK2
 #   https://wiki.linaro.org/LEG/UEFIforQEMU
@@ -10,47 +11,70 @@
 #   ./uefi-tools/edk2-build.sh -b DEBUG -b RELEASE all
 #
 FROM lfedge/eve-alpine:145f062a40639b6c65efa36bed1c5614b873be52 as build
-ENV BUILD_PKGS curl make gcc g++ python3 libuuid nasm util-linux-dev bash git util-linux patch
+ENV BUILD_PKGS make gcc g++ python3 libuuid nasm util-linux-dev bash git util-linux patch
 ENV BUILD_PKGS_amd64 iasl
 ENV BUILD_PKGS_arm64 iasl
 RUN eve-alpine-deploy.sh
 RUN ln -s python3 /usr/bin/python
 
-ENV EDK_VERSION_aarch64 edk2-stable202208
-ENV EDK_COMMIT_aarch64 edk2-stable202208
-
-ENV EDK_VERSION_x86_64 edk2-stable202005
-ENV EDK_COMMIT_x86_64 ca407c7246bf405da6d9b1b9d93e5e7f17b4b1f9
-
-ENV SBI_COMMIT cbaa9b0333517b3c25bea8d1c71ac8005ff1f727
-
 COPY edk2-patches /edk2-patches
-RUN if [ "$(uname -m)" != riscv64 ]; then \
-        git clone -b "$(eval echo \$EDK_VERSION_"$(uname -m)")" https://github.com/tianocore/edk2.git /edk2 && \
-        git -C /edk2 checkout "$(eval echo \$EDK_COMMIT_"$(uname -m)")" && \
-        git -C /edk2 submodule update --init; \
-    fi
-RUN set -e ; [ ! -d /edk2 ] ||  [ ! -d /edk2-patches/"$(eval echo \$EDK_VERSION_"$(uname -m)")" ] || \
-        for patch in /edk2-patches/"$(eval echo \$EDK_VERSION_"$(uname -m)")"/*.patch; do \
+
+FROM build AS build-arm64-versions
+
+ENV EDK_VERSION edk2-stable202208
+ENV EDK_COMMIT ba0e0e4c6a174b71b18ccd6e47319cc45878893c
+
+# FIXME: we should be building Raspbery Pi 4 UEFI implementations
+COPY rpi /rpi
+
+FROM build AS build-amd64-versions
+
+ENV EDK_VERSION edk2-stable202005
+ENV EDK_COMMIT ca407c7246bf405da6d9b1b9d93e5e7f17b4b1f9
+
+FROM build-${TARGETARCH}-versions AS build-edk2
+
+WORKDIR /edk2
+ADD --keep-git-dir=true https://github.com/tianocore/edk2.git#${EDK_COMMIT} /edk2
+
+RUN set -e ; [ ! -d /edk2 ] ||  [ ! -d /edk2-patches/${EDK_VERSION} ] || \
+        for patch in /edk2-patches/${EDK_VERSION}/*.patch; do \
             echo "Applying $patch"; \
             patch -d /edk2 -p1 < "$patch" || exit 1 ; \
         done
 
-RUN if [ "$(uname -m)" = riscv64 ]; then \
-        git clone https://github.com/riscv/opensbi.git /opensbi && \
-        git -C /opensbi checkout ${SBI_COMMIT}; \
-    fi
+FROM build-edk2 AS build-amd64
+
+FROM build-edk2 AS build-arm64
+
+FROM build AS build-riscv64
+
+ENV SBI_COMMIT cbaa9b0333517b3c25bea8d1c71ac8005ff1f727
+ADD https://github.com/riscv/opensbi/tarball/${SBI_COMMIT} /opensbi.tgz
+
+WORKDIR /opensbi
+RUN tar -zxvf /opensbi.tgz  --strip-components=1 && \
+    rm /opensbi.tgz
+
+FROM build-${TARGETARCH} AS build-interim
 
 WORKDIR /edk2
 COPY build.sh /edk2/
 RUN ./build.sh
 
-# now create an out dir for all the artifacts
-RUN rm -rf /out && mkdir /out && cp /edk2/OVMF*.fd /out && if [ "$(uname -m)" = x86_64 ]; then cp /edk2/*.rom /out/ ;fi
+# create an out dir for all the artifacts
+RUN rm -rf /out && mkdir /out && cp /edk2/OVMF*.fd /out
 
-# FIXME: we should be building Raspbery Pi 4 UEFI implementations
-COPY rpi /tmp/rpi
-RUN if [ "$(uname -m)" = aarch64 ]; then cp -r /tmp/rpi /out/ ;fi
+# some architecture specific cases. There probably is a cleaner dockerfile-native way to do this.
+RUN case $(uname -m) in \
+    x86_64) \
+        cp /edk2/*.rom /out/ \
+        ;; \
+    aarch64) \
+        cp -r /rpi /out/ \
+        ;; \
+    esac
+
 
 FROM scratch
-COPY --from=build /out/* /
+COPY --from=build-interim /out/* /

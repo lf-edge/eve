@@ -1,6 +1,5 @@
 image: eve-debug
 org: lfedge
-network: yes
 config:
   pid: host
   net: host

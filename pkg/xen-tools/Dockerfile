@@ -1,3 +1,5 @@
+# syntax=docker/dockerfile-upstream:master-labs
+
 FROM lfedge/eve-uefi:b66d94780b1986e13d4db082adb5630a95911089 as uefi-build
 
 FROM lfedge/eve-alpine:145f062a40639b6c65efa36bed1c5614b873be52 as runx-build
@@ -19,7 +21,7 @@ ENV BUILD_PKGS \
     gcc make libc-dev dev86 xz-dev perl bash python3-dev \
     gettext iasl util-linux-dev ncurses-dev glib-dev \
     pixman-dev libaio-dev yajl-dev argp-standalone \
-    linux-headers git patch texinfo curl tar libcap-ng-dev \
+    linux-headers git patch texinfo tar libcap-ng-dev \
     attr-dev flex bison cmake libusb-dev
 ENV BUILD_PKGS_arm64 dtc-dev
 
@@ -38,9 +40,9 @@ ENV LIBURING_VERSION 0.7
 ENV LIBURING_SOURCE=https://git.kernel.dk/cgit/liburing/snapshot/liburing-${LIBURING_VERSION}.tar.bz2
 
 # Download and verify liburing
-RUN \
-    [ -f "$(basename ${LIBURING_SOURCE})" ] || curl -fsSLO "${LIBURING_SOURCE}" && \
-    tar --absolute-names -xj < "$(basename ${LIBURING_SOURCE})" && mv "/liburing-${LIBURING_VERSION}" /liburing
+# hadolint ignore=DL3020
+ADD ${LIBURING_SOURCE} /liburing.tar.bz2
+RUN tar --absolute-names -xj < /liburing.tar.bz2 && mv "/liburing-${LIBURING_VERSION}" /liburing
 
 WORKDIR /liburing
 RUN ./configure --prefix=/usr
@@ -50,6 +52,7 @@ RUN make src && make install DESTDIR=/out && make install
 RUN rm -rf /out/usr/man
 RUN strip /out/usr/lib/* || :
 
+# When changing this version, also update SEABIOS_UPSTREAM_REVISION to whatever is in `Config.mk` in the xen source
 ENV XEN_VERSION 4.15.0
 ENV XEN_SOURCE=https://downloads.xenproject.org/release/xen/${XEN_VERSION}/xen-${XEN_VERSION}.tar.gz
 ENV EXTRA_QEMUU_CONFIGURE_ARGS="--enable-libusb --enable-linux-aio \
@@ -60,14 +63,23 @@ WORKDIR /
 
 # Download and verify xen
 #TODO: verify Xen
-RUN \
-    [ -f "$(basename ${XEN_SOURCE})" ] || curl -fsSLO "${XEN_SOURCE}" && \
-    tar --absolute-names -xz < "$(basename ${XEN_SOURCE})" && mv "/xen-${XEN_VERSION}" /xen
+# hadolint ignore=DL3020
+ADD ${XEN_SOURCE} /xen.tar.gz
+RUN [ -f "$(basename ${XEN_SOURCE})" ] || tar --absolute-names -xz < /xen.tar.gz && mv "/xen-${XEN_VERSION}" /xen
 
 # Apply local patches
 COPY patches-${XEN_VERSION} /patches
 WORKDIR /xen
 RUN cat /patches/*.patch /patches/"$(uname -m)"/*.patch | patch -p1
+
+# we will need this to build xen; without it, it will try and download directly
+# Note that Xen's `configure` command uses this env variable SEABIOS_UPSTREAM_URL to find the seabios source.
+ENV SEABIOS_UPSTREAM_URL /seabios.git
+# this revision should be kept in sync with the XEN_VERSION by reading `Config.mk` in the xen source
+ENV SEABIOS_UPSTREAM_REVISION rel-1.14.0
+ADD --keep-git-dir git://xenbits.xen.org/seabios.git#${SEABIOS_UPSTREAM_REVISION} ${SEABIOS_UPSTREAM_URL}
+# we need this because it will complain about ambiguous refs
+RUN git config --global core.warnambiguousrefs false
 
 RUN mkdir -p /out
 

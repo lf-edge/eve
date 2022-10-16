@@ -1,20 +1,26 @@
+# syntax=docker/dockerfile-upstream:master-labs
 FROM lfedge/eve-alpine:145f062a40639b6c65efa36bed1c5614b873be52 AS kernel-build
 
 ENV BUILD_PKGS \
     gcc make libc-dev dev86 xz-dev perl bash python3-dev gettext iasl         \
     util-linux-dev ncurses-dev glib-dev pixman-dev libaio-dev yajl-dev        \
-    argp-standalone linux-headers git patch texinfo curl tar bash socat       \
+    argp-standalone linux-headers git patch texinfo tar bash socat       \
     openssh python3 libc-dev openssl-dev openssl libpciaccess libpciaccess-dev\
-    bsd-compat-headers libusb libusb-dev gnu-efi-dev py3-pip
+    bsd-compat-headers libusb libusb-dev gnu-efi-dev py3-setuptools
 RUN eve-alpine-deploy.sh
 
-RUN pip3 install kconfiglib==12.14.1
+# RUN pip3 install will not work with no network connection. Some day, ADD may support
+# pip3, but for now, we can replicate it using git clone
+#RUN pip3 install kconfiglib==12.14.1
+ADD --keep-git-dir=true https://github.com/ulfalizer/Kconfiglib.git#v12.14.1 /kconfiglib
+RUN cd /kconfiglib && python3 setup.py install
 
 ENV ACRN_VERSION 1.3
 ENV ACRN_SOURCE=https://github.com/projectacrn/acrn-hypervisor/archive/v${ACRN_VERSION}.tar.gz
-RUN \
-    [ -f "$(basename ${ACRN_SOURCE})" ] || curl -fsSLO "${ACRN_SOURCE}" && \
-    tar --absolute-names -xz < "$(basename ${ACRN_SOURCE})" && mv "/acrn-hypervisor-${ACRN_VERSION}" /acrn-hypervisor
+
+# hadolint ignore=DL3020
+ADD ${ACRN_SOURCE} /acrn.tar.gz
+RUN tar --absolute-names -xz < /acrn.tar.gz && mv "/acrn-hypervisor-${ACRN_VERSION}" /acrn-hypervisor
 RUN ls -l /acrn-hypervisor
 # Apply local patches
 COPY patches-${ACRN_VERSION} /patches
