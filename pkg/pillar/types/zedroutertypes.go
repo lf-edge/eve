@@ -942,9 +942,9 @@ const (
 )
 
 type ProxyEntry struct {
-	Type   NetworkProxyType
-	Server string
-	Port   uint32
+	Type   NetworkProxyType `json:"type"`
+	Server string           `json:"server"`
+	Port   uint32           `json:"port"`
 }
 
 type ProxyConfig struct {
@@ -3330,7 +3330,10 @@ type WwanNetworkConfig struct {
 	LogicalLabel string        `json:"logical-label"`
 	PhysAddrs    WwanPhysAddrs `json:"physical-addrs"`
 	// XXX Multiple APNs are not yet supported.
-	Apns  []string  `json:"apns"`
+	Apns []string `json:"apns"`
+	// Proxies configured for the cellular network.
+	Proxies []ProxyEntry `json:"proxies"`
+	// Probe used to detect broken connection.
 	Probe WwanProbe `json:"probe"`
 	// Some LTE modems have GNSS receiver integrated and can be used
 	// for device location tracking.
@@ -3359,6 +3362,14 @@ func (wnc WwanNetworkConfig) Equal(wnc2 WwanNetworkConfig) bool {
 	if wnc.Probe.Address != wnc2.Probe.Address ||
 		wnc.Probe.Disable != wnc2.Probe.Disable {
 		return false
+	}
+	if len(wnc.Proxies) != len(wnc2.Proxies) {
+		return false
+	}
+	for i := range wnc.Proxies {
+		if wnc.Proxies[i] != wnc2.Proxies[i] {
+			return false
+		}
 	}
 	if wnc.LocationTracking != wnc2.LocationTracking {
 		return false
