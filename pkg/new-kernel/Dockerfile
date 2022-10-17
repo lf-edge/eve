@@ -40,7 +40,11 @@ RUN KERNEL_VERSION="$(eval echo \$KERNEL_VERSION_"$(uname -m)")" && KERNEL_MAJOR
     curl -fsSLO ${KERNEL_PGP2_SIGN} && \
     gpg2 --verify linux-${KERNEL_VERSION}.tar.sign linux-${KERNEL_VERSION}.tar && \
     cat linux-${KERNEL_VERSION}.tar | tar --absolute-names -x && mv /linux-${KERNEL_VERSION} /linux && \
-    rm -rf /out && mkdir /out && echo "KERNEL_SOURCE=${KERNEL_SOURCE}" > /out/kernel-source-info
+    rm -rf /out && mkdir /out && echo "KERNEL_SOURCE=${KERNEL_SOURCE}" > /out/kernel-source-info && \
+    echo "KERNEL_SOURCE=${KERNEL_SOURCE}" && \
+    echo ${KERNEL_SOURCE} >>/out/source-info && \
+    echo ${KERNEL_SHA256_SUMS} >>/out/source-info && \
+    echo ${KERNEL_PGP2_SIGN} >>/out/source-info
 
 # Apply local patches
 WORKDIR /linux
@@ -100,7 +104,8 @@ ENV ZFS_PATCH_DIR=/patches-zfs-"${ZFS_VERSION}"
 
 WORKDIR /tmp/zfs
 
-RUN git clone --depth 1 -b ${ZFS_COMMIT} ${ZFS_REPO} .
+RUN git clone --depth 1 -b ${ZFS_COMMIT} ${ZFS_REPO} . && \
+    echo "git ${ZFS_REPO} ${ZFS_COMMIT}" >>/out/source-info
 RUN set -e; \
     if [ ! -d "${ZFS_PATCH_DIR}" ]; then \
         echo "No such dir ${ZFS_PATCH_DIR}"; \
@@ -120,6 +125,7 @@ RUN ./autogen.sh && \
 RUN if [ "$(uname -m)" != riscv64 ]; then \
        git clone https://github.com/brektrou/rtl8821CU.git /tmp/rtl8821CU &&\
        (cd /tmp/rtl8821CU && git checkout 8c2226a7 ) &&\
+    echo "git https://github.com/brektrou/rtl8821CU.git 8c2226a7" >>/out/source-info &&\
        make -C /tmp/rtl8821CU KSRC=/linux modules &&\
        install -D -p -m 644 /tmp/rtl8821CU/8821cu.ko $(echo /tmp/kernel-modules/lib/modules/*)/kernel/drivers/net/wireless/realtek/rtl8821cu/8821cu.ko ;\
      fi

@@ -27,7 +27,8 @@ RUN su builder -c 'cd /musl && abuild checksum && abuild -r'
 RUN apk add -p /out --allow-untrusted /home/builder/packages/*/musl-1.2*.apk
 
 # hadolint ignore=DL4006
-RUN curl -L https://www.ezix.org/software/files/lshw-B.${LSHW_VERSION}.tar.gz | tar xzvf -
+RUN SOURCE=https://www.ezix.org/software/files/lshw-B.${LSHW_VERSION}.tar.gz && curl -L ${SOURCE} | tar xzvf - && \
+    echo ${SOURCE} >>/out/source-info
 
 COPY lshw/ lshw-B.${LSHW_VERSION}/
 
@@ -42,7 +43,8 @@ RUN for patch in fix-musl-sc_long_bit.patch wrapper-for-basename.patch 155652295
 # building hexedit
 WORKDIR /tmp/hexedit/hexedit-1.5
 # hadolint ignore=DL4006
-RUN curl -L https://github.com/pixel/hexedit/archive/refs/tags/1.5.tar.gz | tar -C .. -xzvf -
+RUN SOURCE=https://github.com/pixel/hexedit/archive/refs/tags/1.5.tar.gz && curl -L ${SOURCE} | tar -C .. -xzvf - && \
+    echo ${SOURCE} >>/out/source-info
 RUN ./autogen.sh && ./configure && make DESTDIR=/out install
 
 # tweaking various bit

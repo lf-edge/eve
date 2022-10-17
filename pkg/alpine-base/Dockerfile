@@ -17,6 +17,7 @@ RUN case $(uname -m) in \
       ;; \
     esac && \
     wget -q -O /tmp/rootfs.tar.gz "$ROOTFS_URL" && \
+    echo "$ROOTFS_URL" >>source-info && \
     tar xzf /tmp/rootfs.tar.gz && \
     if [ "$(uname -m)" = "riscv64" ] ; then \
         wget -q -P etc/apk/keys \
@@ -25,6 +26,7 @@ RUN case $(uname -m) in \
         echo "$ROOT_URL/v3.16/main" > etc/apk/repositories && \
         echo "$ROOT_URL/v3.16/community" >> etc/apk/repositories && \
         echo "$ROOT_URL" > etc/apk/cache.url; \
+        echo "$ROOT_URL" >>source-info; \
     fi
 
 FROM scratch

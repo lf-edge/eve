@@ -26,8 +26,12 @@ ENV SBI_COMMIT cbaa9b0333517b3c25bea8d1c71ac8005ff1f727
 
 COPY edk2-patches /edk2-patches
 RUN if [ "$(uname -m)" != riscv64 ]; then \
-        git clone -b "$(eval echo \$EDK_VERSION_"$(uname -m)")" https://github.com/tianocore/edk2.git /edk2 && \
-        git -C /edk2 checkout "$(eval echo \$EDK_COMMIT_"$(uname -m)")" && \
+        export REPO="https://github.com/tianocore/edk2.git"; \
+        export BRANCH="$(eval echo \$EDK_VERSION_"$(uname -m)")"; \
+        export COMMIT="$(eval echo \$EDK_COMMIT_"$(uname -m)")"; \
+        git clone -b ${BRANCH} ${REPO} /edk2 && \
+        git -C /edk2 checkout ${COMMIT} && \
+        echo "git ${REPO} ${BRANCH} ${COMMIT}" >>/source-info && \
         git -C /edk2 submodule update --init; \
     fi
 RUN set -e ; [ ! -d /edk2 ] ||  [ ! -d /edk2-patches/"$(eval echo \$EDK_VERSION_"$(uname -m)")" ] || \
@@ -38,7 +42,8 @@ RUN set -e ; [ ! -d /edk2 ] ||  [ ! -d /edk2-patches/"$(eval echo \$EDK_VERSION_
 
 RUN if [ "$(uname -m)" = riscv64 ]; then \
         git clone https://github.com/riscv/opensbi.git /opensbi && \
-        git -C /opensbi checkout ${SBI_COMMIT}; \
+        git -C /opensbi checkout ${SBI_COMMIT} && \
+        echo "git https://github.com/riscv/opensbi.git ${SBI_COMMIT}" >>/source-info ; \
     fi
 
 WORKDIR /edk2
@@ -54,3 +59,4 @@ RUN if [ "$(uname -m)" = aarch64 ]; then cp -r /tmp/rpi /out/ ;fi
 
 FROM scratch
 COPY --from=build /out/* /
+COPY --from=build /source-info /

@@ -13,7 +13,8 @@ ENV TARGET_x86_64 qemu-x86_64_defconfig
 ENV TARGET_aarch64 rpi_4_defconfig
 ENV TARGET_riscv64 qemu-riscv64_smode_defconfig
 
-RUN curl -fsSL ${SOURCE_URL} | tar -C / -xzf - && mv /u-boot* /u-boot
+RUN curl -fsSL ${SOURCE_URL} | tar -C / -xzf - && mv /u-boot* /u-boot && \
+    echo ${SOURCE_URL} >>/source-info
 
 WORKDIR /u-boot
 # FIXME: we need to get to the bottom of this weird workaround on x86/Alpine
@@ -41,6 +42,7 @@ RUN if [ "$(uname -m)" = aarch64 ]; then \
           scripts/dtc/dtc -@ -I dts -O dtb -o "${i/.dts/.dtbo}" "$i" && rm "$i"     ;\
        done                                                                         ;\
        cp -r /tmp/rpi/* /boot                                                       ;\
+       echo ${RAPBERRY_FIRMWARE_BLOBS} >>/out/source-info                           ;\
     fi
 
 FROM scratch

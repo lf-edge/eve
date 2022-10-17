@@ -25,7 +25,7 @@ RUN set -e && for patch in /patches/*.patch; do \
     done
 
 # build acrn-kernel
-RUN rm -rf /out && mkdir /out
+RUN rm -rf /out && mkdir /out && echo ${KERNEL_SOURCE} >>/out/source-info
 RUN if [ "$(uname -m)" = "x86_64" ] ; then \
     cp kernel_config_uefi_sos .config && \
     make olddefconfig && \

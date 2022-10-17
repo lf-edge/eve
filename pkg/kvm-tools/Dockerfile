@@ -14,6 +14,7 @@ RUN eve-alpine-deploy.sh
 ENV KVMTOOL_VERSION=90b2d3adadf218dfc6bdfdfcefe269843360223c
 
 ADD  https://git.kernel.org/pub/scm/linux/kernel/git/will/kvmtool.git/snapshot/kvmtool-${KVMTOOL_VERSION}.tar.gz /kvmtool.tar.gz
+RUN echo https://git.kernel.org/pub/scm/linux/kernel/git/will/kvmtool.git/snapshot/kvmtool-${KVMTOOL_VERSION}.tar.gz >>/out/source-info
 COPY *.patch /
 
 RUN tar xzvf kvmtool.tar.gz > /dev/null 2>&1 ;\
@@ -28,7 +29,9 @@ RUN patch -p1 < /0001-Makefile-Update-bfd-detection.patch ;\
 # building ninja
 WORKDIR /ninja-1.10.1
 # hadolint ignore=DL4006
-RUN curl -L https://github.com/ninja-build/ninja/archive/v1.10.1.tar.gz | tar -C / -xzf -
+RUN SOURCE=https://github.com/ninja-build/ninja/archive/v1.10.1.tar.gz && curl -L ${SOURCE} | tar -C / -xzf - && \
+    echo ${SOURCE} >>/source-info
+
 RUN cmake -Bbuild-cmake -H.
 RUN cmake --build build-cmake
 RUN cmake --install build-cmake --prefix /usr
@@ -36,7 +39,8 @@ RUN cmake --install build-cmake --prefix /usr
 # building qemu
 WORKDIR /qemu-5.2.0
 # hadolint ignore=DL4006
-RUN curl https://download.qemu.org/qemu-5.2.0.tar.xz | tar -C / -xJf -
+RUN SOURCE=https://download.qemu.org/qemu-5.2.0.tar.xz && curl ${SOURCE} | tar -C / -xJf - && \
+    echo ${SOURCE} >>/out/source-info
 
 COPY i386-softmmu.mak default-configs/devices/i386-softmmu.mak
 COPY meson.build hw/acpi/meson.build

@@ -16,7 +16,8 @@ WORKDIR /
 RUN wget https://ftpmirror.gnu.org/autoconf-archive/autoconf-archive-2019.01.06.tar.xz && \
     wget https://ftpmirror.gnu.org/autoconf-archive/autoconf-archive-2019.01.06.tar.xz.sig && \
     gpg2 -q --keyserver keyserver.ubuntu.com --recv-keys 99089D72 && \
-    gpg2 -q --verify autoconf-archive-2019.01.06.tar.xz.sig
+    gpg2 -q --verify autoconf-archive-2019.01.06.tar.xz.sig && \
+    echo https://ftpmirror.gnu.org/autoconf-archive/autoconf-archive-2019.01.06.tar.xz >>/out/source-info
 
 #Build autoconf-archive
 RUN tar -xvf autoconf-archive-2019.01.06.tar.xz
@@ -25,7 +26,8 @@ RUN ./configure --datarootdir=/usr/share/ && \
     make && make install
 
 WORKDIR /
-RUN git clone --branch=2.3.1 https://github.com/tpm2-software/tpm2-tss
+RUN git clone --branch=2.3.1 https://github.com/tpm2-software/tpm2-tss && \
+    echo "git https://github.com/tpm2-software/tpm2-tss 2.3.1" >>/out/source-info
 WORKDIR /tpm2-tss
 RUN ./bootstrap && \
     ./configure --disable-dependency-tracking && \
@@ -33,7 +35,8 @@ RUN ./bootstrap && \
     make install
 
 WORKDIR /
-RUN git clone --branch=4.0.1-rc0 https://github.com/tpm2-software/tpm2-tools
+RUN git clone --branch=4.0.1-rc0 https://github.com/tpm2-software/tpm2-tools && \
+    echo "git https://github.com/tpm2-software/tpm2-tools 4.0.1-rc0" >>/out/source-info
 WORKDIR /tpm2-tools
 COPY patch-tpm2-tools.diff .
 RUN patch -p1 < patch-tpm2-tools.diff && \

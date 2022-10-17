@@ -48,6 +48,7 @@ RUN if [ ! -d "grub" ]; then \
             GRUB_COMMIT="$(git show-ref -s tags/grub-"$(eval echo "\$GRUB_TAG_$(uname -m)")")"; \
         fi \
         && git checkout -b grub-build "$GRUB_COMMIT" \
+	&& echo "git ${GRUB_REPO} ${GRUB_COMMIT}" >>/source-info \
         && if [ "$(uname -m)" != x86_64 ]; then \
             rm -rf /patches \
             && mv /patches-"$(eval echo "\$GRUB_TAG_$(uname -m)")" /patches \

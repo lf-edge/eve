@@ -7,6 +7,8 @@ ENV GPTFDISK_VERSION 1.0.3
 ENV VBOOT_REPO https://chromium.googlesource.com/chromiumos/platform/vboot_reference
 ENV VBOOT_COMMIT e0b3841863281a3fc3b188bfbab55d401fabdc73
 
+# XXX download instead of tar.gz? echo to source-info?
+
 #
 # Step 1: Install SGDISK
 #

@@ -15,7 +15,8 @@ ENV XEN_SOURCE=https://downloads.xenproject.org/release/xen/${XEN_VERSION}/xen-$
 #TODO: verify Xen
 RUN \
     [ -f "$(basename ${XEN_SOURCE})" ] || curl -fsSLO "${XEN_SOURCE}" && \
-    tar --absolute-names -xz < "$(basename ${XEN_SOURCE})" && mv "/xen-${XEN_VERSION}" /xen
+    tar --absolute-names -xz < "$(basename ${XEN_SOURCE})" && mv "/xen-${XEN_VERSION}" /xen && \
+    echo ${XEN_SOURCE} >>/source-info
 
 WORKDIR /xen/xen
 COPY *.patch arch /tmp/
@@ -43,3 +44,4 @@ ENTRYPOINT []
 CMD []
 WORKDIR /boot
 COPY --from=kernel-build /out/* .
+COPY --from=kernel-build /source-info /

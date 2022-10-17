@@ -9,6 +9,7 @@ RUN eve-alpine-deploy.sh
 ENV STRONGSWAN_VERSION 5.6.3
 ENV STRONGSWAN_FILE strongswan-${STRONGSWAN_VERSION}.tar.bz2
 ENV STRONGSWAN_RELEASE https://download.strongswan.org/${STRONGSWAN_FILE}
+# XXX download instead of local tar file?
 ENV CONFIGURE_OPTS_x86_64 --enable-aesni
 ENV CONFIGURE_OPTS --prefix=/usr \
             --sysconfdir=/etc \
@@ -58,7 +59,7 @@ COPY ${STRONGSWAN_FILE} /tmp/strongswan/strongswan.tar.bz2
 RUN  tar --strip-components=1 -C /tmp/strongswan -xjf /tmp/strongswan/strongswan.tar.bz2
 RUN  eval ./configure $CONFIGURE_OPTS \$CONFIGURE_OPTS_`uname -m`
 RUN    make  -j "$(getconf _NPROCESSORS_ONLN)"
-RUN    make install DESTDIR=/out
+RUN    make install DESTDIR=/out && echo "${STRONGSWAN_RELEASE}" >>/out/source-info
 
 FROM scratch
 ENTRYPOINT []

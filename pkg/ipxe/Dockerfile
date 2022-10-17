@@ -5,7 +5,8 @@ ENV BUILD_PKGS patch curl make gcc perl util-linux-dev git mtools linux-headers 
 RUN eve-alpine-deploy.sh
 
 WORKDIR /ws
-RUN git clone --depth 1 -b v1.21.1 https://github.com/ipxe/ipxe.git .
+RUN git clone --depth 1 -b v1.21.1 https://github.com/ipxe/ipxe.git . &&\
+    echo "git https://github.com/ipxe/ipxe.git v1.21.1" >>/source-info
 
 COPY embedded.cfg src/embedded.cfg
 COPY *patch /tmp/
@@ -25,3 +26,4 @@ RUN rm /ws/src/bin*/*.*.*
 
 FROM scratch
 COPY --from=build /ws/src/bin*/ipxe.* /
+COPY --from=build /source-info /

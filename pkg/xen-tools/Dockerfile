@@ -40,7 +40,8 @@ ENV LIBURING_SOURCE=https://git.kernel.dk/cgit/liburing/snapshot/liburing-${LIBU
 # Download and verify liburing
 RUN \
     [ -f "$(basename ${LIBURING_SOURCE})" ] || curl -fsSLO "${LIBURING_SOURCE}" && \
-    tar --absolute-names -xj < "$(basename ${LIBURING_SOURCE})" && mv "/liburing-${LIBURING_VERSION}" /liburing
+    tar --absolute-names -xj < "$(basename ${LIBURING_SOURCE})" && mv "/liburing-${LIBURING_VERSION}" /liburing && \
+    echo ${LIBURING_SOURCE} >>/out/source-info
 
 WORKDIR /liburing
 RUN ./configure --prefix=/usr
@@ -62,7 +63,8 @@ WORKDIR /
 #TODO: verify Xen
 RUN \
     [ -f "$(basename ${XEN_SOURCE})" ] || curl -fsSLO "${XEN_SOURCE}" && \
-    tar --absolute-names -xz < "$(basename ${XEN_SOURCE})" && mv "/xen-${XEN_VERSION}" /xen
+    tar --absolute-names -xz < "$(basename ${XEN_SOURCE})" && mv "/xen-${XEN_VERSION}" /xen && \
+    echo ${XEN_SOURCE} >>/out/source-info
 
 # Apply local patches
 COPY patches-${XEN_VERSION} /patches

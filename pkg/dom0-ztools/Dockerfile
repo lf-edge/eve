@@ -15,7 +15,9 @@ ENV ZFS_PATCH_DIR=/patches-zfs-"${ZFS_VERSION}"
 
 WORKDIR /tmp/zfs
 
-RUN git clone --depth 1 -b ${ZFS_COMMIT} ${ZFS_REPO} .
+RUN git clone --depth 1 -b ${ZFS_COMMIT} ${ZFS_REPO} . && \
+    echo "git ${ZFS_REPO} ${ZFS_COMMIT}" >>/out/source-info
+
 RUN set -e; \
     if [ ! -d "${ZFS_PATCH_DIR}" ]; then \
         echo "No such dir ${ZFS_PATCH_DIR}"; \

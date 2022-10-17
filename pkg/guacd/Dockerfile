@@ -5,7 +5,9 @@ RUN eve-alpine-deploy.sh
 
 ENV GUACD_VERSION=1.0.0
 
-ADD http://apache.org/dyn/closer.cgi?action=download&filename=guacamole/${GUACD_VERSION}/source/guacamole-server-${GUACD_VERSION}.tar.gz /${GUACD_VERSION}.tar.gz
+ADD https://apache.org/dyn/closer.cgi?action=download&filename=guacamole/${GUACD_VERSION}/source/guacamole-server-${GUACD_VERSION}.tar.gz /${GUACD_VERSION}.tar.gz
+RUN echo https://apache.org/dyn/closer.cgi?action=download&filename=guacamole/${GUACD_VERSION}/source/guacamole-server-${GUACD_VERSION}.tar.gz >>/out/source-info
+# XXX download uuid pkg? source-info?
 ADD uuid-1.6.2.tar.gz /
 COPY patches /patches
 

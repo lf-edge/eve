@@ -27,7 +27,8 @@ RUN eve-alpine-deploy.sh
 WORKDIR /go/src/github.com/google
 RUN git clone https://github.com/google/fscrypt
 WORKDIR /go/src/github.com/google/fscrypt
-RUN git reset --hard b41569d397d3e66099cde07d8eef36b2f42dd0ec
+RUN git reset --hard b41569d397d3e66099cde07d8eef36b2f42dd0ec && \
+    echo "git https://github.com/google/fscrypt b41569d397d3e66099cde07d8eef36b2f42dd0ec" >>/out/source-info
 COPY fscrypt/* ./
 RUN patch -p1 < patch01-no-pam.diff && \
     patch -p1 < patch02-rotate-raw-key.diff && \
@@ -45,7 +46,8 @@ ENV GO111MODULE=on
 ENV CGO_ENABLED=1
 ARG GOARCH=
 ARG CROSS_GCC=https://musl.cc/aarch64-linux-musleabi-cross.tgz
-RUN [ -z "$GOARCH" ] || wget -q -O - $CROSS_GCC | tar -C / -xzvf -
+RUN [ -z "$GOARCH" ] || wget -q -O - $CROSS_GCC | tar -C / -xzvf - && \
+    echo "${CROSS_GCC}" >>/out/source-info
 
 ADD ./  /pillar/
 

@@ -14,7 +14,8 @@ ENV ACRN_VERSION 1.3
 ENV ACRN_SOURCE=https://github.com/projectacrn/acrn-hypervisor/archive/v${ACRN_VERSION}.tar.gz
 RUN \
     [ -f "$(basename ${ACRN_SOURCE})" ] || curl -fsSLO "${ACRN_SOURCE}" && \
-    tar --absolute-names -xz < "$(basename ${ACRN_SOURCE})" && mv "/acrn-hypervisor-${ACRN_VERSION}" /acrn-hypervisor
+    tar --absolute-names -xz < "$(basename ${ACRN_SOURCE})" && mv "/acrn-hypervisor-${ACRN_VERSION}" /acrn-hypervisor && \
+    echo "${ACRN_SOURCE}" >>/out/source-info
 RUN ls -l /acrn-hypervisor
 # Apply local patches
 COPY patches-${ACRN_VERSION} /patches

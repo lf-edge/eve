@@ -14,29 +14,35 @@ RUN git clone https://github.com/inotify-tools/inotify-tools
 RUN git clone https://github.com/npat-efault/picocom.git
 
 WORKDIR /json-c
-RUN git checkout ed54353d && ./autogen.sh && ./configure && make install
+RUN git checkout ed54353d && ./autogen.sh && ./configure && make install && \
+    echo "git https://github.com/json-c/json-c.git ed54353d" >>/out/source-info
 
 WORKDIR /libubox
-RUN git checkout 7da66430 && cmake . -DBUILD_LUA=OFF -DBUILD_EXAMPLES=OFF && make install
+RUN git checkout 7da66430 && cmake . -DBUILD_LUA=OFF -DBUILD_EXAMPLES=OFF && make install && \
+    echo "git https://git.openwrt.org/project/libubox.git 7da66430" >>/out/source-info
 
 WORKDIR /libmbim
-RUN git checkout 1.24.2
+RUN git checkout 1.24.2 && \
+    echo "git https://gitlab.freedesktop.org/mobile-broadband/libmbim 1.24.2" >>/out/source-info
 COPY patches/libmbim/*.patch /tmp/patches/libmbim/
 RUN for patch in /tmp/patches/libmbim/*.patch ; do patch -p1 < "$patch" ; done
 RUN ./autogen.sh && ./configure --prefix=/usr && make && make install
 
 WORKDIR /libqmi
-RUN git checkout 1.26.2
+RUN git checkout 1.26.2 && \
+    echo "git https://gitlab.freedesktop.org/mobile-broadband/libqmi 1.26.2" >>/out/source-info
 COPY patches/libqmi/*.patch /tmp/patches/libqmi/
 RUN for patch in /tmp/patches/libqmi/*.patch ; do patch -p1 < "$patch" ; done
 RUN ./autogen.sh --without-udev && ./configure --prefix=/usr --without-udev --enable-mbim-qmux && make && make install
 
 WORKDIR /inotify-tools
-RUN git checkout 3.20.11.0 && ./autogen.sh && ./configure --prefix=/usr && make && make install
+RUN git checkout 3.20.11.0 && ./autogen.sh && ./configure --prefix=/usr && make && make install && \
+    echo "git https://github.com/inotify-tools/inotify-tools 3.20.11.0" >>/out/source-info
 
 WORKDIR /picocom
 # Need this patch to build with musl: https://github.com/npat-efault/picocom/commit/1acf1ddabaf3576b4023c4f6f09c5a3e4b086fb8
-RUN git checkout 1acf1ddabaf3576b && make && strip picocom && cp picocom /usr/bin/
+RUN git checkout 1acf1ddabaf3576b && make && strip picocom && cp picocom /usr/bin/ && \
+    echo "git https://github.com/npat-efault/picocom.git 1acf1ddabaf3576b" >>/out/source-info
 
 RUN strip /usr/bin/*cli /usr/libexec/*proxy /usr/lib/libmbim*.so.* /usr/lib/libqmi*.so.* /usr/lib/libinotifytools*.so.*
 
