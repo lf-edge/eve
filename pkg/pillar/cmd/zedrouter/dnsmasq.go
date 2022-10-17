@@ -39,8 +39,6 @@ quiet-dhcp6
 no-hosts
 no-ping
 bogus-priv
-stop-dns-rebind
-rebind-localhost-ok
 neg-ttl=10
 dhcp-ttl=600
 `
