@@ -426,26 +426,17 @@ func SendOnIntf(workContext context.Context, ctx *ZedCloudContext, destURL strin
 		log.Trace(err)
 		return nil, nil, senderStatus, err
 	}
-	dnsServers := types.GetDNSServers(*ctx.DeviceNetworkStatus, intf)
-	if len(dnsServers) == 0 {
-		if ctx.FailureFunc != nil {
-			ctx.FailureFunc(log, intf, reqUrl, 0, 0, false)
-		}
-		err = &types.DNSNotAvail{
-			IfName: intf,
-		}
-		log.Trace(err)
-		return nil, nil, senderStatus, err
-	}
 
 	// Get the transport header with proxy information filled
 	proxyUrl, err := LookupProxy(ctx.log, ctx.DeviceNetworkStatus, intf, reqUrl)
 	var transport *http.Transport
-	var usedProxy bool
+	var usedProxy, usedProxyWithIP bool
 	if err == nil && proxyUrl != nil && allowProxy {
 		log.Tracef("sendOnIntf: For input URL %s, proxy found is %s",
 			reqUrl, proxyUrl.String())
 		usedProxy = true
+		host := strings.Split(proxyUrl.Host, ":")[0]
+		usedProxyWithIP = net.ParseIP(host) != nil
 		transport = &http.Transport{
 			TLSClientConfig: ctx.TlsConfig,
 			Proxy:           http.ProxyURL(proxyUrl),
@@ -458,6 +449,22 @@ func SendOnIntf(workContext context.Context, ctx *ZedCloudContext, destURL strin
 	// Since we recreate the transport on each call there is no benefit
 	// to keeping the connections open.
 	defer transport.CloseIdleConnections()
+
+	// Note that if an explicit HTTPS proxy addressed by an IP address is used,
+	// EVE does not need to perform any domain name resolution.
+	// The resolution of the controller's domain name is performed by the proxy,
+	// not by EVE.
+	dnsServers := types.GetDNSServers(*ctx.DeviceNetworkStatus, intf)
+	if len(dnsServers) == 0 && !usedProxyWithIP {
+		if ctx.FailureFunc != nil {
+			ctx.FailureFunc(log, intf, reqUrl, 0, 0, false)
+		}
+		err = &types.DNSNotAvail{
+			IfName: intf,
+		}
+		log.Trace(err)
+		return nil, nil, senderStatus, err
+	}
 
 	var attempts []SendAttempt
 	var sessionResume bool
