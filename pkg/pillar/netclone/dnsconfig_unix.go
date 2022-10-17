@@ -11,20 +11,15 @@
 // /etc/resolv.conf
 // Exporting the DnsReadConfig() and the Servers and Search fields in
 // the struct
+// Not publishing localhost as the default DNS server (not run by EVE).
 package netclone
 
 // Was: package net
 
 import (
 	"net"
-	"os"
 	"sync/atomic"
 	"time"
-)
-
-var (
-	defaultNS   = []string{"127.0.0.1:53", "[::1]:53"}
-	getHostname = os.Hostname // variable for testing
 )
 
 type dnsConfig struct {
@@ -50,8 +45,6 @@ func DnsReadConfig(filename string) *dnsConfig {
 	}
 	file, err := open(filename)
 	if err != nil {
-		conf.Servers = defaultNS
-		conf.Search = dnsDefaultSearch()
 		conf.err = err
 		return conf
 	}
@@ -59,8 +52,6 @@ func DnsReadConfig(filename string) *dnsConfig {
 	if fi, err := file.file.Stat(); err == nil {
 		conf.mtime = fi.ModTime()
 	} else {
-		conf.Servers = defaultNS
-		conf.Search = dnsDefaultSearch()
 		conf.err = err
 		return conf
 	}
@@ -135,12 +126,6 @@ func DnsReadConfig(filename string) *dnsConfig {
 			conf.unknownOpt = true
 		}
 	}
-	if len(conf.Servers) == 0 {
-		conf.Servers = defaultNS
-	}
-	if len(conf.Search) == 0 {
-		conf.Search = dnsDefaultSearch()
-	}
 	return conf
 }
 
@@ -153,18 +138,6 @@ func (c *dnsConfig) serverOffset() uint32 {
 		return atomic.AddUint32(&c.soffset, 1) - 1 // return 0 to start
 	}
 	return 0
-}
-
-func dnsDefaultSearch() []string {
-	hn, err := getHostname()
-	if err != nil {
-		// best effort
-		return nil
-	}
-	if i := byteIndex(hn, '.'); i >= 0 && i < len(hn)-1 {
-		return []string{ensureRooted(hn[i+1:])}
-	}
-	return nil
 }
 
 func hasPrefix(s, prefix string) bool {
