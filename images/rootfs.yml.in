@@ -26,7 +26,7 @@ onboot:
       - CAP_NET_ADMIN
   - name: modprobe
     image: linuxkit/modprobe:v0.5
-    command: ["/bin/sh", "-c", "modprobe -a nct6775 w83627hf_wdt hpwdt wlcore_sdio wl18xx br_netfilter dwc3 rk808 rk808-regulator smsc75xx cp210x nicvf tpm_tis_spi rtc_rx8010 gpio_pca953x leds_siemens_ipc127 upboard-fpga pinctrl-upboard leds-upboard xhci_tegra 2>/dev/null || :"]
+    command: ["/bin/sh", "-c", "modprobe -a nct6775 w83627hf_wdt hpwdt wlcore_sdio wl18xx br_netfilter dwc3 rk808 rk808-regulator smsc75xx cp210x nicvf tpm_tis_spi rtc_rx8010 os-em32x regmap-i2c gpio_pca953x leds_gpio leds_siemens_ipc127 upboard-fpga pinctrl-upboard leds-upboard xhci_tegra 2>/dev/null || :"]
   # If you change the order of storage-init don't forget to
   # change 003-installer in pkg/mkimage-raw-efi accordingly:
   # storage-init must follow installer
