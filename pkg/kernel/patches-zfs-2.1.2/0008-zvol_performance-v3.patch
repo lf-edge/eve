@@ -1,0 +1,115 @@
+diff --git a/include/sys/dsl_pool.h b/include/sys/dsl_pool.h
+index 8249bb8fc63..58fcae65db5 100644
+--- a/include/sys/dsl_pool.h
++++ b/include/sys/dsl_pool.h
+@@ -158,6 +158,7 @@ int dsl_pool_sync_context(dsl_pool_t *dp);
+ uint64_t dsl_pool_adjustedsize(dsl_pool_t *dp, zfs_space_check_t slop_policy);
+ uint64_t dsl_pool_unreserved_space(dsl_pool_t *dp,
+     zfs_space_check_t slop_policy);
++uint64_t dsl_pool_deferred_space(dsl_pool_t *dp);
+ void dsl_pool_dirty_space(dsl_pool_t *dp, int64_t space, dmu_tx_t *tx);
+ void dsl_pool_undirty_space(dsl_pool_t *dp, int64_t space, uint64_t txg);
+ void dsl_free(dsl_pool_t *dp, uint64_t txg, const blkptr_t *bpp);
+diff --git a/module/zfs/dsl_dir.c b/module/zfs/dsl_dir.c
+index 84caace4dba..d59aab3a423 100644
+--- a/module/zfs/dsl_dir.c
++++ b/module/zfs/dsl_dir.c
+@@ -1262,6 +1262,7 @@ dsl_dir_tempreserve_impl(dsl_dir_t *dd, uint64_t asize, boolean_t netfree,
+ 	uint64_t quota;
+ 	struct tempreserve *tr;
+ 	int retval;
++	uint64_t ext_quota;
+ 	uint64_t ref_rsrv;
+ 
+ top_of_function:
+@@ -1304,8 +1305,14 @@ top_of_function:
+ 	/*
+ 	 * If this transaction will result in a net free of space,
+ 	 * we want to let it through.
++	 *
++	 * We don't verify quota for the ZVOL, as the quota mechanism
++	 * is not implemented currently for ZVOLs.
++	 * The quota size is actuall the size of the ZVOL.
++	 * The ZVOL size quota is already implied by the size of the volume.
+ 	 */
+-	if (ignorequota || netfree || dsl_dir_phys(dd)->dd_quota == 0)
++	if (ignorequota || netfree || dsl_dir_phys(dd)->dd_quota == 0 ||
++	    dmu_objset_type(tx->tx_objset) == DMU_OST_ZVOL)
+ 		quota = UINT64_MAX;
+ 	else
+ 		quota = dsl_dir_phys(dd)->dd_quota;
+@@ -1320,7 +1327,6 @@ top_of_function:
+ 	 * we're very close to full, this will allow a steady trickle of
+ 	 * removes to get through.
+ 	 */
+-	uint64_t deferred = 0;
+ 	if (dd->dd_parent == NULL) {
+ 		uint64_t avail = dsl_pool_unreserved_space(dd->dd_pool,
+ 		    (netfree) ?
+@@ -1335,13 +1341,30 @@ top_of_function:
+ 	/*
+ 	 * If they are requesting more space, and our current estimate
+ 	 * is over quota, they get to try again unless the actual
+-	 * on-disk is over quota and there are no pending changes (which
+-	 * may free up space for us).
++	 * on-disk is over quota and there are no pending changes
++	 * or deferred frees (which may free up space for us).
+ 	 */
+-	if (used_on_disk + est_inflight >= quota) {
+-		if (est_inflight > 0 || used_on_disk < quota ||
+-		    (retval == ENOSPC && used_on_disk < quota + deferred))
+-			retval = ERESTART;
++	ext_quota = quota >> 5;
++	if (quota == UINT64_MAX)
++		ext_quota = 0;
++
++	if (used_on_disk >= quota) {
++		/* Quota exceeded */
++		mutex_exit(&dd->dd_lock);
++		DMU_TX_STAT_BUMP(dmu_tx_quota);
++		return (retval);
++	} else if (used_on_disk + est_inflight >= quota + ext_quota) {
++		if (est_inflight > 0 || used_on_disk < quota) {
++			retval = SET_ERROR(ERESTART);
++		} else {
++			ASSERT3U(used_on_disk, >=, quota);
++
++			if (retval == ENOSPC && (used_on_disk - quota) <
++			    dsl_pool_deferred_space(dd->dd_pool)) {
++				retval = SET_ERROR(ERESTART);
++			}
++		}
++
+ 		dprintf_dd(dd, "failing: used=%lluK inflight = %lluK "
+ 		    "quota=%lluK tr=%lluK err=%d\n",
+ 		    (u_longlong_t)used_on_disk>>10,
+@@ -1377,10 +1400,9 @@ top_of_function:
+ 		ignorequota = (dsl_dir_phys(dd)->dd_head_dataset_obj == 0);
+ 		first = B_FALSE;
+ 		goto top_of_function;
+-
+-	} else {
+-		return (0);
+ 	}
++
++	return (0);
+ }
+ 
+ /*
+diff --git a/module/zfs/dsl_pool.c b/module/zfs/dsl_pool.c
+index e66c136a9e0..b389fc4f8fb 100644
+--- a/module/zfs/dsl_pool.c
++++ b/module/zfs/dsl_pool.c
+@@ -893,6 +893,12 @@ dsl_pool_unreserved_space(dsl_pool_t *dp, zfs_space_check_t slop_policy)
+ 	return (quota);
+ }
+ 
++uint64_t
++dsl_pool_deferred_space(dsl_pool_t *dp)
++{
++	return (metaslab_class_get_deferred(spa_normal_class(dp->dp_spa)));
++}
++
+ boolean_t
+ dsl_pool_need_dirty_delay(dsl_pool_t *dp)
+ {
