@@ -2,6 +2,7 @@
 # shellcheck disable=SC2039
 # shellcheck disable=SC2155
 # shellcheck disable=SC2034 # Constants defined here are used by sourced wwan-qmi.sh and wwan-mbim.sh
+# shellcheck disable=SC3043
 # set -x
 
 # Currently our message bus is files in /run
@@ -29,7 +30,7 @@ UNAVAIL_SIGNAL_METRIC=$(printf "%d" 0x7FFFFFFF) # max int32
 DEFAULT_APN="internet"
 DEFAULT_PROBE_ADDR="8.8.8.8"
 
-IPV4_REGEXP='[0-9]\+\.[0-9]\+\.[0-9]\+\.[0-9]\+'
+IPV4_REGEXP='^[0-9]\+\.[0-9]\+\.[0-9]\+\.[0-9]\+$'
 
 SRC="$(cd "$(dirname "$0")" || exit 1; pwd)"
 # shellcheck source=./pkg/wwan/usr/bin/wwan-qmi.sh
@@ -226,30 +227,101 @@ bringup_iface() {
   # NOTE we may want to disable /proc/sys/net/ipv4/conf/default/rp_filter instead
   #      Verify it by cat /proc/net/netstat | awk '{print $80}'
   ip route add default via "$GW" dev "$IFACE" metric 65000
-  mkdir "$BBS/resolv.conf" || :
-  cat > "$BBS/resolv.conf/${IFACE}.dhcp" <<__EOT__
-nameserver $DNS1
-nameserver $DNS2
-__EOT__
+  mkdir -p "$BBS/resolv.conf"
+  local RESOLV_CONF="$BBS/resolv.conf/${IFACE}.dhcp"
+  : > "$RESOLV_CONF"
+  for DNS in "$DNS1" "$DNS2"; do
+    if [ -n "$DNS" ]; then
+      # The sole purpose of this route is to make sure that DNS probing,
+      # done by probe_connectivity() using nslookup, uses interface wwan0
+      # and not some other interface with a default route.
+      # nslookup does not allow to specify source IP address. We could use dig
+      # instead (with `-b <IP>` arg), but that requires to bring bind-tools
+      # into eve-alpine with all its dependencies.
+      # The route should not cause any harm since EVE uses separate per-interface
+      # routing tables instead of the main table.
+      ip route add "$DNS" via "$GW" dev "$IFACE"
+      echo "nameserver $DNS" >> "$RESOLV_CONF"
+    fi
+  done
 }
 
-probe() {
+bringdown_iface() {
+  # Truncate resolv.conf if it exists.
+  local RESOLV_CONF="$BBS/resolv.conf/${IFACE}.dhcp"
+  if [ -f "$RESOLV_CONF" ]; then
+    : > "$RESOLV_CONF"
+  fi
+  # Remove IP address and routes from the interface.
+  ip addr flush dev "$IFACE"
+}
+
+check_connectivity() {
+  # First check the connectivity status as reported by the modem.
+  if [ "$("${PROTOCOL}_get_op_mode")" != "online-and-connected" ]; then
+    return 1
+  fi
+  # (optionally) Check connectivity by communicating with a remote endpoint.
+  probe_connectivity
+}
+
+probe_connectivity() {
   if [ "$PROBE_DISABLED" = "true" ]; then
     # probing disabled, skip it
-    unset PROBE_ERROR
     return 0
   fi
+  if [ -n "$PROBE_ADDR" ]; then
+    # User-configured ICMP probe address.
+    PROBE_ERROR="$(icmp_probe "$PROBE_ADDR")"
+    return
+  fi
+  # Default probing behaviour (not configured by user).
+  # First try endpoints from inside the LTE network:
+  #  - TCP handshake with an IP-addressed proxy
+  #  - DNS request to a DNS server provided by the LTE network
+  # As a last resort, try ping to Google DNS (can be blocked by firewall).
+  if "${PROTOCOL}_get_ip_settings"; then
+    # Try TCP handshake with an IP-addressed proxy.
+    while read -r PROXY; do
+      [ -z "$PROXY" ] && continue
+      local SERVER="$(parse_json_attr "$PROXY" "server")"
+      local PORT="$(parse_json_attr "$PROXY" "port")"
+      if echo "$SERVER" | grep -q "$IPV4_REGEXP"; then
+        if nc -w 5 -s "$IP" -z -n "$SERVER" "$PORT" >/dev/null 2>&1; then
+          return 0
+        fi
+      fi
+    done <<__EOT__
+$(echo "$PROXIES" | jq -c '.[]' 2>/dev/null)
+__EOT__
+    # Try DNS query (for the root domain to get only small-sized response).
+    for DNS in "$DNS1" "$DNS2"; do
+      if [ -n "$DNS" ]; then
+        if nslookup -retry=1 -timeout=5 -type=a . "$DNS" >/dev/null 2>&1; then
+          return 0
+        fi
+      fi
+    done
+  fi
+  # Try to ping Google DNS.
+  # This is a last-resort probing option.
+  # In a private LTE network ICMP requests headed towards public DNS servers
+  # may be blocked by the firewall and thus produce probing false negatives.
+  PROBE_ERROR="$(icmp_probe "$DEFAULT_PROBE_ADDR")"
+}
+
+icmp_probe() {
+  local PROBE_ADDR="$1"
   # ping is supposed to return 0 even if just a single packet out of 3 gets through
   local PROBE_OUTPUT
   if PROBE_OUTPUT="$(ping -W 20 -w 20 -c 3 -I "$IFACE" "$PROBE_ADDR" 2>&1)"; then
-    unset PROBE_ERROR
     return 0
   else
-    PROBE_ERROR="$(printf "%s" "$PROBE_OUTPUT" | grep "packet loss")"
+    local PROBE_ERROR="$(printf "%s" "$PROBE_OUTPUT" | grep "packet loss")"
     if [ -z "$PROBE_ERROR" ]; then
       PROBE_ERROR="$PROBE_OUTPUT"
     fi
-    PROBE_ERROR="Failed to ping $PROBE_ADDR via $IFACE: $PROBE_ERROR"
+    echo "Failed to ping $PROBE_ADDR via $IFACE: $PROBE_ERROR"
     return 1
   fi
 }
@@ -394,7 +466,7 @@ event_stream | while read -r EVENT; do
     PROBE="$(parse_json_attr "$NETWORK" "probe")"
     PROBE_DISABLED="$(parse_json_attr "$PROBE" "disable")"
     PROBE_ADDR="$(parse_json_attr "$PROBE" "address")"
-    PROBE_ADDR="${PROBE_ADDR:-$DEFAULT_PROBE_ADDR}"
+    PROXIES="$(parse_json_attr "$NETWORK" "proxies")"
     APN="$(parse_json_attr "$NETWORK" "apns[0]")" # FIXME XXX limited to a single APN for now
     APN="${APN:-$DEFAULT_APN}"
     LOC_TRACKING="$(parse_json_attr "$NETWORK" "\"location-tracking\"")"
@@ -436,9 +508,10 @@ event_stream | while read -r EVENT; do
 
     # reflect updated config or just probe the current status
     if [ "$RADIO_SILENCE" != "true" ]; then
-      if [ "$CONFIG_CHANGE" = "y" ] || ! probe; then
+      if [ "$CONFIG_CHANGE" = "y" ] || ! check_connectivity; then
         echo "[$CDC_DEV] Restarting connection (APN=${APN}, interface=${IFACE})"
         {
+          bringdown_iface                 &&\
           "${PROTOCOL}_stop_network"      &&\
           "${PROTOCOL}_toggle_rf" on      &&\
           "${PROTOCOL}_wait_for_sim"      &&\
@@ -466,6 +539,8 @@ event_stream | while read -r EVENT; do
         else
           if ! wait_for radio-off "${PROTOCOL}_get_op_mode"; then
             CONFIG_ERROR="Timeout waiting for radio to turn off"
+          else
+            bringdown_iface
           fi
         fi
       fi
@@ -526,6 +601,8 @@ __EOT__
       else
         if ! wait_for radio-off "${PROTOCOL}_get_op_mode"; then
           CONFIG_ERROR="Timeout waiting for radio to turn off"
+        else
+          bringdown_iface
         fi
       fi
     fi
