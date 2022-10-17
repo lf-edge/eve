@@ -1,10 +1,11 @@
---- images/rootfs.yml.in	2022-11-08 16:23:13.977367851 +0000
-+++ images/rootfs-mini.yml.in	2022-11-08 16:23:14.237364855 +0000
-@@ -1,83 +1,21 @@
+--- images/rootfs.yml.in	2022-11-16 02:45:51.161684144 +0000
++++ images/rootfs-mini.yml.in	2022-11-16 03:12:52.057096766 +0000
+@@ -1,85 +1,20 @@
  kernel:
 -  image: KERNEL_TAG
+-  cmdline: "rootdelay=3"
 +  image: NEW_KERNEL_TAG
-   cmdline: "rootdelay=3"
++  cmdline: rootdelay=3
  init:
 -  - linuxkit/init:8f1e6a0747acbbb4d7e24dc98f97faa8d1c6cec7
 -  - linuxkit/runc:f01b88c7033180d50ae43562d72707c6881904e4
@@ -30,10 +31,10 @@
 -      - CAP_NET_ADMIN
 -  - name: modprobe
 -    image: linuxkit/modprobe:v0.5
--    command: ["/bin/sh", "-c", "modprobe -a nct6775 w83627hf_wdt hpwdt wlcore_sdio wl18xx br_netfilter dwc3 rk808 rk808-regulator smsc75xx cp210x nicvf tpm_tis_spi rtc_rx8010 gpio_pca953x leds_siemens_ipc127 upboard-fpga pinctrl-upboard leds-upboard xhci_tegra 2>/dev/null || :"]
-   # If you change the order of storage-init don't forget to
-   # change 003-installer in pkg/mkimage-raw-efi accordingly:
-   # storage-init must follow installer
+-    command: ["/bin/sh", "-c", "modprobe -a nct6775 w83627hf_wdt hpwdt wlcore_sdio wl18xx br_netfilter dwc3 rk808 rk808-regulator smsc75xx cp210x nicvf tpm_tis_spi rtc_rx8010 os-em32x regmap-i2c gpio_pca953x leds_gpio leds_siemens_ipc127 upboard-fpga pinctrl-upboard leds-upboard xhci_tegra 2>/dev/null || :"]
+-  # If you change the order of storage-init don't forget to
+-  # change 003-installer in pkg/mkimage-raw-efi accordingly:
+-  # storage-init must follow installer
    - name: storage-init
      image: STORAGE_INIT_TAG
 -  # kdump goes strictly after storage-init
@@ -84,4 +85,7 @@
 -    oomScoreAdj: -999
  files:
    - path: /etc/eve-release
-     contents: 'EVE_VERSION'
+-    contents: 'EVE_VERSION'
++    contents: EVE_VERSION
+   - path: etc/linuxkit-eve-config.yml
+     metadata: yaml
