@@ -631,7 +631,7 @@ https://git.alpinelinux.org/aports/tree/main/${PACKAGENAME}/APKBUILD?id=${COMMIT
 For our example, that is:
 
 ```sh
-https://git.alpinelinux.org/aports/tree/main/ip6tables/APKBUILD?id=e7e60a9e6ff8cc55b004dac6392b75e4993518da
+https://git.alpinelinux.org/aports/tree/main/iptables/APKBUILD?id=e7e60a9e6ff8cc55b004dac6392b75e4993518da
 ```
 
 The file there shows:
