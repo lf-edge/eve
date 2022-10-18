@@ -15,6 +15,10 @@ RUN echo "mtools_skip_check=1" >> etc/mtools.conf
 RUN mkdir -p efifs parts root bits config persist opt/pillar opt/debug lib/modules run sys
 COPY make-raw install grub.cfg.in UsbInvocationScript.txt ./
 
+# Before changing something here please take a look into the
+# images/rootfs.yml.in onboot section: the installer should
+# precede the storage-init container.
+#
 # now lets create an edge container
 # FIXME: 003-installer? why not linuxkit build?
 WORKDIR /eco/media/root-rw/root/containers/onboot/003-installer
