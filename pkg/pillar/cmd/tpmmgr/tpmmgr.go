@@ -32,6 +32,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/utils"
 	uuid "github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
 )
@@ -1402,6 +1403,13 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(15 * time.Second)
 	ps.StillRunning(agentName, warningTime, errorTime)
+
+	// Wait until we have been onboarded aka know our own UUID, but we don't use the UUID
+	err := utils.WaitForOnboarded(ps, log, agentName, warningTime, errorTime)
+	if err != nil {
+		log.Fatal(err)
+	}
+	log.Functionf("processed onboarded")
 
 	// Look for global config such as log levels
 	subGlobalConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{

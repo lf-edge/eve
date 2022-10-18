@@ -90,6 +90,13 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	stillRunning := time.NewTicker(25 * time.Second)
 	ps.StillRunning(agentName, warningTime, errorTime)
 
+	// Wait until we have been onboarded aka know our own UUID, but we don't use the UUID
+	err := utils.WaitForOnboarded(ps, log, agentName, warningTime, errorTime)
+	if err != nil {
+		log.Fatal(err)
+	}
+	log.Functionf("processed onboarded")
+
 	// Set up our publications before the subscriptions so ctx is set
 	pubVerifyImageStatus, err := ps.NewPublication(
 		pubsub.PublicationOptions{
