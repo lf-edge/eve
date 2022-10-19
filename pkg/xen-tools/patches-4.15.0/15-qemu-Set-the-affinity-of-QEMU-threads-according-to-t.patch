@@ -1,8 +1,8 @@
-From e6e6e65185832d17f2d5f298ae16e78a3c6422fd Mon Sep 17 00:00:00 2001
+From f241d0b1bda7e3b9ceffc5d958aafa54a335c517 Mon Sep 17 00:00:00 2001
 From: Nikolay Martyanov <ohmspectator@gmail.com>
 Date: Wed, 28 Sep 2022 16:01:48 +0200
-Subject: [PATCH 15/15] qemu: Set the affinity of QEMU threads according to the
- CPU mask options.
+Subject: [PATCH] qemu: Set the affinity of QEMU threads according to the CPU
+ mask options.
 
 Signed-off-by: Nikolay Martyanov <ohmspectator@gmail.com>
 ---
@@ -42,7 +42,7 @@ index da56052..000df00 100644
          qemu_cond_wait(&qemu_cpu_cond, &qemu_global_mutex);
      }
 diff --git a/tools/qemu-xen/util/qemu-thread-posix.c b/tools/qemu-xen/util/qemu-thread-posix.c
-index b4c2359..44975eb 100644
+index b4c2359..f716855 100644
 --- a/tools/qemu-xen/util/qemu-thread-posix.c
 +++ b/tools/qemu-xen/util/qemu-thread-posix.c
 @@ -17,6 +17,8 @@
@@ -84,7 +84,7 @@ index b4c2359..44975eb 100644
 +
 +    /* Count the size of the necessary CPU_SET */
 +    max_pcpu = get_max_cpu_in_mask(cpumask);
-+    cpu_set_size = DIV_ROUND_UP(max_pcpu, BITS_PER_BYTE);
++    cpu_set_size = DIV_ROUND_UP(max_pcpu + 1, BITS_PER_BYTE);
 +
 +    err = pthread_setaffinity_np(thread->thread, cpu_set_size, &cpu_set);
 +
@@ -95,6 +95,8 @@ index b4c2359..44975eb 100644
  void qemu_thread_create(QemuThread *thread, const char *name,
                         void *(*start_routine)(void*),
                         void *arg, int mode)
+
+base-commit: 15ca400172894c128cb4ff2916fe8c882205b587
 -- 
 2.35.1
 
