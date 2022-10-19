@@ -116,17 +116,31 @@ In both cases of calling the register API the factory can choose the granularity
 
 ## Encrypted Data Store
 
-EVE provides a security capability that would enable various scenarios of storing sensitive information on the built-in storage of the Edge Node where EVE is running, while providing reasonable protections from this information leaking outside of the running EVE instance. Note, that we're not proposing an end-to-end encryption solution here, but rather designing a capability that would mitigate some of the attack vectors based on physical possession of the Edge Node. The data itself, while protected in-flight by the transport level security mechanism such as TLS, is expected to be un-encrypted before it lands on the Edge Node.
+EVE provides a security capability to enable storing sensitive information on the built-in storage of the Edge Node where EVE is running, while providing reasonable protections from this information leaking outside of the running EVE instance. Note that this is not an end-to-end encryption solution, but rather a capability that mitigates some of the attack vectors based on physical possession of the Edge Node. The data itself, while protected in-flight by the transport level security mechanism such as TLS, is expected to be un-encrypted before it lands on the Edge Node.
 
-One big driving factor for this is protecting Edge Containers and the Data Volumes they utilize. We expect a high number of Edge Containers deployed by EVE's users to receive and process business sensitive information from sensors and the Cloud.  Data collected and processed by these Edge Containers is stored in their virtual storage, which is backed by the hardware storage on the EVE platform. It is important that even if the secondary storage drive is stolen, the data remains secure.  For this reason, data should be in encrypted form when it is stored.
+One big driving factor for this is protecting Edge Containers and the Data Volumes they utilize. We expect a high number of Edge Containers deployed by EVE's users to receive and process business sensitive information from sensors and the Cloud.  Data collected and processed by these Edge Containers is stored in their virtual storage, which is backed by the hardware storage on the EVE platform. It is important that even if the storage drive or entire device is stolen, the data remains secure.  For this reason, data should be in encrypted form when it is stored.
 
-For more details, please consider [Encrypting Sensitive Information at Rest at the Edge](https://wiki.lfedge.org/display/EVE/Encrypting+Sensitive+Information+at+Rest+at+the+Edge) design proposal.
+See [Encrypting Sensitive Information at Rest at the Edge](https://wiki.lfedge.org/display/EVE/Encrypting+Sensitive+Information+at+Rest+at+the+Edge) design specification.
 
-This storage encryption key is sealed into TPM using PCR values. This means that the key can only be retrieved from TPM when the firmware and software booting sequence has not changed. In addition, a TPM-encrypted copy of the storage encryption key is saved with the Controller. This is done so that after an EVE/firmware upgrade, the device will fail to unseal the key from TPM (because its PCRs have changed), and after proving that the device software is trustworthy (via PCR quote etc), the controller will provide that encrypted backup to the device, and the TPM on the device will decrypt it thereby being able to both access the application data volumes and seal the storage encryption key under the new TPM PCR values.
+The storage encryption _location_ is in `/persist/vault/`, and encompasses application content and volumes.
 
-Thus, in the above mechanism, the storage key is not not known to the controller since it is encrypted using a TPM based key. To this effect, the vault key itself is encrypted using a TPM based key. To decrypt the key, one has to be on the same device with access to the same TPM, and the firmware+software on that device has to pass the remote attestation check in the controller.
+The storage encryption _mechanism_ uses standard filesystem encryption, fscrypt for the ext4 file system and native ZFS encryption for the ZFS file system.
 
-For more details, please refer to [Measured Boot and Remote Attestation](https://wiki.lfedge.org/display/EVE/Measured+Boot+and+Remote+Attestation) design specification.
+This storage encryption _key_ is symmetric and generated solely on the edge device using a TPM, and then sealed into TPM using PCR values. This means that
+the key can only be retrieved from TPM when the firmware and software booting sequence has not changed. The encryption key is not written to disk storage,
+and must be retrieved on each boot from the TPM, which is available only if the PCR values are identical, i.e. the boot chain is unchanged.
+
+When a system upgrades, by definition the boot process changes, leading to different values in the PCRs. and the TPM will not be able to unseal the encryption key.
+To handle this scenario, the "encrypted backup key" mechanism is used. This mechanism is similar to Network-Based Disk Encryption (NBDE) and Shamir Secret Sharing. It
+requires participation of both parties, controller and device, to use the backup key.
+
+1. When the vault encryption key is generated, in addition to sealing the key to PCRs, it also is encrypted using regular TPM encryption, i.e. not sealed to PCR values. Because it is encrypted using the TPM, but not stored in the TPM, it is not available on the device by itself either.
+1. The encrypted copy of the key is sent to the controller. Because it is encrypted using the TPM, the controller cannot read the key either. At this point, neither controller nor device by itself can read the backup key.
+1. When the system upgrades, the controller validates via remote attestation that the new PCR values are acceptable, and then sends the encrypted key to the device.
+1. The device decrypts the key using the TPM. It now has a valid vault decryption key, which it seals to the new PCR values.
+
+To decrypt the key, one has to be on the same device with access to the same TPM, and the firmware+software on that device has to pass the
+[remote attestation](https://wiki.lfedge.org/display/EVE/Measured+Boot+and+Remote+Attestation) check in the controller.
 
 ## Secure Overlay Network
 
