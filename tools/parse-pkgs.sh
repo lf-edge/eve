@@ -115,6 +115,7 @@ KVMTOOLS_TAG=${KVMTOOLS_TAG}
 IPXE_TAG=${IPXE_TAG}
 KEXEC_TAG=${KEXEC_TAG}
 KDUMP_TAG=${KDUMP_TAG}
+SGX_TAG=${SGX_TAG}
 EOF
 }
 
@@ -164,6 +165,7 @@ KVMTOOLS_TAG=$(linuxkit_tag pkg/kvm-tools)
 IPXE_TAG=$(linuxkit_tag pkg/ipxe)
 KEXEC_TAG=$(linuxkit_tag pkg/kexec)
 KDUMP_TAG=$(linuxkit_tag pkg/kdump)
+SGX_TAG=$(linuxkit_tag pkg/sgx)
 
 # Synthetic tags: the following tags are based on hashing
 # the contents of all the Dockerfile.in that we can find.

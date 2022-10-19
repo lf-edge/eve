@@ -139,6 +139,17 @@ RUN git clone https://github.com/brektrou/rtl8821CU.git /tmp/rtl8821CU &&\
          -C /tmp/rtl8821CU KSRC=/linux modules &&\
     install -D -p -m 644 /tmp/rtl8821CU/8821cu.ko $(echo /tmp/kernel-modules/lib/modules/*)/kernel/drivers/net/wireless/realtek/rtl8821cu/8821cu.ko
 
+RUN if [ "$(uname -m)" = x86_64 ]; then  \
+        git clone https://github.com/intel/linux-sgx-driver /tmp/linux-sgx-driver &&\
+        (cd /tmp/linux-sgx-driver && git checkout sgx_driver_2.14 ) &&\
+        make -j "$(getconf _NPROCESSORS_ONLN)" \
+             -C /linux M=/tmp/linux-sgx-driver \
+             modules &&\
+        make -C /linux INSTALL_MOD_PATH=/tmp/kernel-modules \
+             M=/tmp/linux-sgx-driver \
+             modules_install; \
+    fi
+
 # Strip at least some of the modules to conserve space
 RUN if [ "$(uname -m)" = aarch64 ];then strip --strip-debug `find /tmp/kernel-modules/lib/modules -name \*.ko` ;fi
 

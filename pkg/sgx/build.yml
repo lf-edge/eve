@@ -1,0 +1,14 @@
+org: lfedge
+image: eve-sgx
+network: yes
+config:
+  binds:
+    - /dev:/dev
+    - /run:/run
+    - /:/hostfs:rshared,rbind
+  rootfsPropagation: shared
+  capabilities:
+    - all
+  devices:
+    - path: all
+      type: a

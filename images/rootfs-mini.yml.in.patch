@@ -1,6 +1,6 @@
 --- images/rootfs.yml.in	2022-06-24 08:41:44.000000000 +0300
 +++ images/rootfs-mini.yml.in	2022-06-24 08:45:15.000000000 +0300
-@@ -1,81 +1,21 @@
+@@ -1,83 +1,21 @@
  kernel:
 -  image: KERNEL_TAG
 +  image: NEW_KERNEL_TAG
@@ -39,6 +39,8 @@
 -   # kdump goes strictly after storage-init
 -   - name: kdump
 -     image: KDUMP_TAG
+-   - name: sgx
+-     image: SGX_TAG
  services:
 -   - name: newlogd
 -     image: NEWLOGD_TAG
