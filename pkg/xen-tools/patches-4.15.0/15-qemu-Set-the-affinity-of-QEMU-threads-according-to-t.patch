@@ -1,15 +1,15 @@
-From f241d0b1bda7e3b9ceffc5d958aafa54a335c517 Mon Sep 17 00:00:00 2001
+From f6861fa011836c9101977e2b0ad1aadaf8d45a57 Mon Sep 17 00:00:00 2001
 From: Nikolay Martyanov <ohmspectator@gmail.com>
 Date: Wed, 28 Sep 2022 16:01:48 +0200
-Subject: [PATCH] qemu: Set the affinity of QEMU threads according to the CPU
- mask options.
+Subject: [PATCH 15/15] qemu: Set the affinity of QEMU threads according to the
+ CPU mask options.
 
 Signed-off-by: Nikolay Martyanov <ohmspectator@gmail.com>
 ---
  tools/qemu-xen/include/qemu/thread.h    |  2 ++
- tools/qemu-xen/softmmu/cpus.c           |  6 +++++
- tools/qemu-xen/util/qemu-thread-posix.c | 36 +++++++++++++++++++++++++
- 3 files changed, 44 insertions(+)
+ tools/qemu-xen/softmmu/cpus.c           |  6 ++++
+ tools/qemu-xen/util/qemu-thread-posix.c | 37 +++++++++++++++++++++++++
+ 3 files changed, 45 insertions(+)
 
 diff --git a/tools/qemu-xen/include/qemu/thread.h b/tools/qemu-xen/include/qemu/thread.h
 index 4baf4d1..3d1a76e 100644
@@ -42,7 +42,7 @@ index da56052..000df00 100644
          qemu_cond_wait(&qemu_cpu_cond, &qemu_global_mutex);
      }
 diff --git a/tools/qemu-xen/util/qemu-thread-posix.c b/tools/qemu-xen/util/qemu-thread-posix.c
-index b4c2359..f716855 100644
+index b4c2359..c404ff4 100644
 --- a/tools/qemu-xen/util/qemu-thread-posix.c
 +++ b/tools/qemu-xen/util/qemu-thread-posix.c
 @@ -17,6 +17,8 @@
@@ -54,12 +54,13 @@ index b4c2359..f716855 100644
  static bool name_threads;
  
  void qemu_thread_naming(bool enable)
-@@ -523,6 +525,40 @@ static void *qemu_thread_start(void *args)
+@@ -523,6 +525,41 @@ static void *qemu_thread_start(void *args)
      return r;
  }
  
 +static inline unsigned get_max_cpu_in_mask(unsigned int cpumask)
 +{
++    assert(cpumask != 0);
 +    return (sizeof (cpumask) * BITS_PER_BYTE) - __builtin_clz (cpumask) - 1;
 +}
 +
@@ -95,8 +96,6 @@ index b4c2359..f716855 100644
  void qemu_thread_create(QemuThread *thread, const char *name,
                         void *(*start_routine)(void*),
                         void *arg, int mode)
-
-base-commit: 15ca400172894c128cb4ff2916fe8c882205b587
 -- 
 2.35.1
 
