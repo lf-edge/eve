@@ -2315,6 +2315,22 @@ func parseConfigItems(ctx *getconfigContext, config *zconfig.EdgeDevConfig,
 		newGlobalConfig.SetGlobalValueBool(types.UsbAccess, false)
 		newGlobalConfig.SetGlobalValueBool(types.VgaAccess, false)
 	}
+	// Default value of NetworkFallbackAnyEth (aka lastresort network config)
+	// depends on how the device was installed. If a single-use EVE installer
+	// was used, the lastresort is by default disabled because the intended network
+	// configuration is available right from the first boot, even before onboarding.
+	// Still, it is possible to (explicitly) enable lastresort inside the bootstrap
+	// config even if it is not recommended (falling back to lastresort and marking
+	// all ethernet interfaces for management can create all sorts of problems).
+	// Without bootstrap config, device will by default enable lastresort at least until
+	// it onboards and obtains the intended config from the controller. This can be avoided
+	// by disabling lastresort and providing an alternative network configuration using
+	// (deprecated) override json files (global.json and override.json or usb.json).
+	_, err := os.Stat(types.BootstrapConfFileName)
+	bootstrapExists := err == nil
+	if bootstrapExists {
+		newGlobalConfig.SetGlobalValueTriState(types.NetworkFallbackAnyEth, types.TS_DISABLED)
+	}
 	newGlobalStatus := types.NewGlobalStatus()
 
 	for _, item := range items {

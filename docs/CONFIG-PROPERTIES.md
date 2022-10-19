@@ -24,7 +24,7 @@
 | timer.port.testinterval | timer in seconds | 300 | retest the current port config |
 | timer.port.timeout | timer in seconds | 15 | time for each http/send |
 | timer.port.testbetterinterval | timer in seconds | 600 | test a higher prio port config |
-| network.fallback.any.eth | "enabled" or "disabled" | enabled | if no connectivity try any Ethernet, WiFi, or LTE |
+| network.fallback.any.eth | "enabled" or "disabled" | enabled (disabled if device was installed with [bootstrap config](CONFIG.md) included) | if no connectivity try any Ethernet, WiFi, or LTE |
 | network.download.max.cost | 0-255 | 0 | [max port cost for download](DEVICE-CONNECTIVITY.md) to avoid e.g., LTE ports |
 | debug.enable.usb | boolean | false | allow USB e.g. keyboards on device |
 | debug.enable.vga | boolean | false | allow VGA console on device |
