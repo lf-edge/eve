@@ -1,4 +1,4 @@
-From 15ca400172894c128cb4ff2916fe8c882205b587 Mon Sep 17 00:00:00 2001
+From bea4aaef5c4dd309799055da9c5d7036579b89e9 Mon Sep 17 00:00:00 2001
 From: Nikolay Martyanov <ohmspectator@gmail.com>
 Date: Wed, 28 Sep 2022 15:52:24 +0200
 Subject: [PATCH 14/15] qemu: Init CPU mask per VCPU.
@@ -7,9 +7,9 @@ Signed-off-by: Nikolay Martyanov <ohmspectator@gmail.com>
 ---
  tools/qemu-xen/include/hw/boards.h   |  1 +
  tools/qemu-xen/include/hw/core/cpu.h |  2 +
- tools/qemu-xen/softmmu/cpus.c        | 31 +++++++++++
- tools/qemu-xen/softmmu/vl.c          | 80 ++++++++++++++++++++++++++++
- 4 files changed, 114 insertions(+)
+ tools/qemu-xen/softmmu/cpus.c        | 31 ++++++++++++
+ tools/qemu-xen/softmmu/vl.c          | 75 ++++++++++++++++++++++++++++
+ 4 files changed, 109 insertions(+)
 
 diff --git a/tools/qemu-xen/include/hw/boards.h b/tools/qemu-xen/include/hw/boards.h
 index b06f13e..a4b4f11 100644
@@ -86,18 +86,13 @@ index a802e89..da56052 100644
      if (!cpu->as) {
          /* If the target cpu hasn't set up any address spaces itself,
 diff --git a/tools/qemu-xen/softmmu/vl.c b/tools/qemu-xen/softmmu/vl.c
-index c7c8abc..0222c6c 100644
+index c7c8abc..f514f59 100644
 --- a/tools/qemu-xen/softmmu/vl.c
 +++ b/tools/qemu-xen/softmmu/vl.c
-@@ -2829,6 +2829,73 @@ static void create_default_memdev(MachineState *ms, const char *path)
+@@ -2829,6 +2829,68 @@ static void create_default_memdev(MachineState *ms, const char *path)
                              &error_fatal);
  }
  
-+static inline unsigned get_max_cpu_in_mask(unsigned int cpumask)
-+{
-+    return (sizeof(cpumask) * BITS_PER_BYTE) - __builtin_clz(cpumask) - 1;
-+}
-+
 +static inline void cpumask_set_bit(uint64_t *mask, uint8_t bit)
 +{
 +    *mask |= 1ull << bit ;
@@ -163,7 +158,7 @@ index c7c8abc..0222c6c 100644
  void qemu_init(int argc, char **argv, char **envp)
  {
      int i;
-@@ -4306,6 +4373,19 @@ void qemu_init(int argc, char **argv, char **envp)
+@@ -4306,6 +4368,19 @@ void qemu_init(int argc, char **argv, char **envp)
  
      current_machine->boot_order = boot_order;
  
