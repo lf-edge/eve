@@ -2423,9 +2423,8 @@ func createCloudInitISO(ctx *domainContext,
 		if err != nil {
 			log.Fatalf("createCloudInitISO failed %s", err)
 		}
-		metafile.WriteString(fmt.Sprintf("instance-id: %s/%s\n",
-			config.UUIDandVersion.UUID.String(),
-			config.UUIDandVersion.Version))
+		metafile.WriteString(fmt.Sprintf("instance-id: %s\n",
+			config.UUIDandVersion.UUID.String()))
 		metafile.WriteString(fmt.Sprintf("local-hostname: %s\n",
 			config.UUIDandVersion.UUID.String()))
 		metafile.Close()
