@@ -1,6 +1,7 @@
 package hypervisor
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"github.com/digitalocean/go-qemu/qmp"
@@ -95,7 +96,7 @@ func qmpEventHandler(listenerSocket, executorSocket string) {
 	}
 	defer monitor.Disconnect()
 
-	eventChan, err := monitor.Events()
+	eventChan, err := monitor.Events(context.Background())
 	if err != nil {
 		logrus.Errorf("qmpEventHandler: Exception while getting event channel from listenerSocket: %s. %s", listenerSocket, err.Error())
 		return

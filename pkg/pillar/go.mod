@@ -11,7 +11,8 @@ require (
 	github.com/containerd/containerd v1.6.6
 	github.com/containerd/typeurl v1.0.2
 	github.com/cshari-zededa/eve-tpm2-tools v0.0.4
-	github.com/digitalocean/go-qemu v0.0.0-20181112162955-dd7bb9c771b8
+	github.com/digitalocean/go-libvirt v0.0.0-20221020193630-0d0212f5ead2 // indirect
+	github.com/digitalocean/go-qemu v0.0.0-20220826173844-d5f5e3ceed89
 	github.com/docker/docker v20.10.17+incompatible
 	github.com/eriknordmark/ipinfo v0.0.0-20190220084921-7ee0839158f9
 	github.com/fsnotify/fsnotify v1.5.1
@@ -38,16 +39,16 @@ require (
 	github.com/opencontainers/runtime-spec v1.0.3-0.20210326190908-1c3f411f0417
 	github.com/packetcap/go-pcap v0.0.0-20221020071412-2b2e94010282
 	github.com/prometheus/procfs v0.7.3
-	github.com/rackn/gohai v0.0.0-20190321191141-5053e7f1fa36
+	github.com/robertkrimen/otto v0.0.0-20221011175642-09fc211e5ab1 // indirect
 	github.com/satori/go.uuid v1.2.1-0.20180404165556-75cca531ea76
 	github.com/shirou/gopsutil v0.0.0-20190901111213-e4ec7b275ada
 	github.com/sirupsen/logrus v1.8.1
-	github.com/stretchr/testify v1.7.2
+	github.com/stretchr/testify v1.8.0
 	github.com/tatsushid/go-fastping v0.0.0-20160109021039-d7bb493dee3e
 	github.com/vishvananda/netlink v1.1.1-0.20210924202909-187053b97868
 	golang.org/x/crypto v0.0.0-20220525230936-793ad666bf5e
-	golang.org/x/net v0.0.0-20220225172249-27dd8689420f
-	golang.org/x/sys v0.0.0-20220704084225-05e143d24a9e
+	golang.org/x/net v0.0.0-20220722155237-a158d28d115b
+	golang.org/x/sys v0.0.0-20220722155257-8c9f86f7a55f
 	google.golang.org/genproto v0.0.0-20220317150908-0efb43f6373e // indirect
 	google.golang.org/grpc v1.45.0
 	google.golang.org/protobuf v1.27.1

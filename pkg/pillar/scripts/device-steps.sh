@@ -300,7 +300,6 @@ access_usb() {
             [ ! -f $CONFIGDIR/v2tlsbaseroot-certificates.pem ] || cp -p $CONFIGDIR/v2tlsbaseroot-certificates.pem "$IDENTITYDIR"
             [ ! -f $CONFIGDIR/soft_serial ] || cp -p $CONFIGDIR/soft_serial "$IDENTITYDIR"
             $BINDIR/hardwaremodel -c -o "$IDENTITYDIR/hardwaremodel.dmi"
-            $BINDIR/hardwaremodel -f -o "$IDENTITYDIR/hardwaremodel.txt"
             sync
         fi
         if [ -d /mnt/dump ]; then
