@@ -16,9 +16,12 @@ package qmp
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net"
+	"os"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -32,6 +35,9 @@ import (
 type SocketMonitor struct {
 	// QEMU version reported by a connected monitor socket.
 	Version *Version
+
+	// QEMU QMP capabiltiies reported by a connected monitor socket.
+	Capabilities []string
 
 	// Underlying connection
 	c net.Conn
@@ -98,6 +104,9 @@ func (mon *SocketMonitor) Disconnect() error {
 	atomic.StoreInt32(mon.listeners, 0)
 	err := mon.c.Close()
 
+	for range mon.stream {
+	}
+
 	return err
 }
 
@@ -118,6 +127,7 @@ func (mon *SocketMonitor) Connect() error {
 		return err
 	}
 	mon.Version = &ban.QMP.Version
+	mon.Capabilities = ban.QMP.Capabilities
 
 	// Issue capabilities handshake
 	cmd := Command{Execute: qmpCapabilities}
@@ -149,7 +159,7 @@ func (mon *SocketMonitor) Connect() error {
 // Events streams QEMU QMP Events.
 // Events should only be called once per Socket.  If used with a qemu.Domain,
 // qemu.Domain.Events should be called to retrieve events instead.
-func (mon *SocketMonitor) Events() (<-chan Event, error) {
+func (mon *SocketMonitor) Events(context.Context) (<-chan Event, error) {
 	atomic.AddInt32(mon.listeners, 1)
 	return mon.events, nil
 }
@@ -193,13 +203,45 @@ func (mon *SocketMonitor) listen(r io.Reader, events chan<- Event, stream chan<-
 // For a list of available QAPI commands, see:
 //	http://git.qemu.org/?p=qemu.git;a=blob;f=qapi-schema.json;hb=HEAD
 func (mon *SocketMonitor) Run(command []byte) ([]byte, error) {
+	// Just call RunWithFile with no file
+	return mon.RunWithFile(command, nil)
+}
+
+// RunWithFile behaves like Run but allows for passing a file through out-of-band data.
+func (mon *SocketMonitor) RunWithFile(command []byte, file *os.File) ([]byte, error) {
 	// Only allow a single command to be run at a time to ensure that responses
 	// to a command cannot be mixed with responses from another command
 	mon.mu.Lock()
 	defer mon.mu.Unlock()
 
-	if _, err := mon.c.Write(command); err != nil {
-		return nil, err
+	if file == nil {
+		// Just send a normal command through.
+		if _, err := mon.c.Write(command); err != nil {
+			return nil, err
+		}
+	} else {
+		unixConn, ok := mon.c.(*net.UnixConn)
+		if !ok {
+			return nil, fmt.Errorf("RunWithFile only works with unix monitor sockets")
+		}
+
+		oobSupported := false
+		for _, capability := range mon.Capabilities {
+			if capability == "oob" {
+				oobSupported = true
+				break
+			}
+		}
+
+		if !oobSupported {
+			return nil, fmt.Errorf("The QEMU server doesn't support oob (needed for RunWithFile)")
+		}
+
+		// Send the command along with the file descriptor.
+		oob := getUnixRights(file)
+		if _, _, err := unixConn.WriteMsgUnix(command, oob, nil); err != nil {
+			return nil, err
+		}
 	}
 
 	// Wait for a response or error to our command
@@ -223,6 +265,7 @@ func (mon *SocketMonitor) Run(command []byte) ([]byte, error) {
 // banner is a wrapper type around a Version.
 type banner struct {
 	QMP struct {
+		Capabilities []string `json:"capabilities"`
 		Version Version `json:"version"`
 	} `json:"QMP"`
 }

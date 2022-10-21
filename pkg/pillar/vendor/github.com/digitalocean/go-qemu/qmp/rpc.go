@@ -15,6 +15,7 @@
 package qmp
 
 import (
+	"context"
 	"encoding/json"
 	"net"
 
@@ -54,23 +55,23 @@ func (rpc *LibvirtRPCMonitor) Disconnect() error {
 	return rpc.l.Disconnect()
 }
 
-// Events streams QEMU QMP Events.
+// Events streams QEMU QMP Events until the provided context is cancelled.
 // If a problem is encountered setting up the event monitor connection
 // an error will be returned. Errors encountered during streaming will
 // cause the returned event channel to be closed.
-func (rpc *LibvirtRPCMonitor) Events() (<-chan Event, error) {
-	events, err := rpc.l.Events(rpc.Domain)
+func (rpc *LibvirtRPCMonitor) Events(ctx context.Context) (<-chan Event, error) {
+	events, err := rpc.l.SubscribeQEMUEvents(ctx, rpc.Domain)
 	if err != nil {
 		return nil, err
 	}
 
 	c := make(chan Event)
 	go func() {
+		defer close(c)
 		// process events
 		for e := range events {
 			qe, err := qmpEvent(&e)
 			if err != nil {
-				close(c)
 				break
 			}
 
