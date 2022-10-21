@@ -267,6 +267,7 @@ type DomainStatus struct {
 	TriedCount         int
 	// ErrorAndTime provides SetErrorNow() and ClearError()
 	ErrorAndTime
+	ConfigFailed   bool
 	BootFailed     bool
 	AdaptersFailed bool
 	OCIConfigDir   string            // folder holding an OCI Image config for this domain (empty string means no config)
