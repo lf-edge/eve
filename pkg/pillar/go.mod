@@ -36,7 +36,7 @@ require (
 	github.com/opencontainers/go-digest v1.0.0
 	github.com/opencontainers/image-spec v1.0.3-0.20211202183452-c5a74bcca799
 	github.com/opencontainers/runtime-spec v1.0.3-0.20210326190908-1c3f411f0417
-	github.com/packetcap/go-pcap v0.0.0-20210809221331-e2e6b14e1812
+	github.com/packetcap/go-pcap v0.0.0-20221020071412-2b2e94010282
 	github.com/prometheus/procfs v0.7.3
 	github.com/rackn/gohai v0.0.0-20190321191141-5053e7f1fa36
 	github.com/satori/go.uuid v1.2.1-0.20180404165556-75cca531ea76
