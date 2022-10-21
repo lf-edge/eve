@@ -912,9 +912,50 @@ func verifyStatus(ctx *domainContext, status *types.DomainStatus) {
 }
 
 func maybeRetry(ctx *domainContext, status *types.DomainStatus) {
-
+	maybeRetryConfig(ctx, status)
 	maybeRetryBoot(ctx, status)
 	maybeRetryAdapters(ctx, status)
+}
+
+// Retry in case of previous configuration errors
+func maybeRetryConfig(ctx *domainContext, status *types.DomainStatus) {
+	if !status.ConfigFailed {
+		return
+	}
+	config := lookupDomainConfig(ctx, status.Key())
+	if config == nil {
+		// Odd to have status but no config
+		log.Errorf("maybeRetryConfig(%s) no DomainConfig",
+			status.Key())
+		return
+	}
+	status.ConfigFailed = false
+	status.PendingModify = true
+	publishDomainStatus(ctx, status)
+	// Update disks based on any change to volumes
+	if err := configToStatus(ctx, *config, status); err != nil {
+		log.Errorf("Failed to update DomainStatus from %v: %s",
+			config, err)
+		// will retry again later
+		status.ConfigFailed = true
+		status.PendingModify = false
+		status.SetErrorDescription(types.ErrorDescription{Error: err.Error()})
+		publishDomainStatus(ctx, status)
+		return
+	}
+	if status.HasError() {
+		log.Noticef("maybeRetryConfig(%s) clearing existing error: %s",
+			status.Key(), status.Error)
+		status.ClearError()
+	}
+	if config.Activate && !status.Activated && status.State != types.BROKEN {
+		updateStatusFromConfig(status, *config)
+		doActivate(ctx, *config, status)
+	} else if !config.Activate {
+		updateStatusFromConfig(status, *config)
+	}
+	status.PendingModify = false
+	publishDomainStatus(ctx, status)
 }
 
 // Retry a boot after a failure.
@@ -1110,6 +1151,8 @@ func handleCreate(ctx *domainContext, key string, config *types.DomainConfig) {
 		log.Errorf("Failed to create DomainStatus from %v: %s",
 			config, err)
 		status.PendingAdd = false
+		// will retry in maybeRetryConfig
+		status.ConfigFailed = true
 		status.SetErrorNow(err.Error())
 		publishDomainStatus(ctx, &status)
 		return
@@ -1938,6 +1981,8 @@ func handleModify(ctx *domainContext, key string,
 		if err := configToStatus(ctx, *config, status); err != nil {
 			log.Errorf("Failed to update DomainStatus from %v: %s",
 				config, err)
+			// will retry in maybeRetryConfig
+			status.ConfigFailed = true
 			status.PendingModify = false
 			status.SetErrorNow(err.Error())
 			publishDomainStatus(ctx, status)
@@ -1966,6 +2011,8 @@ func handleModify(ctx *domainContext, key string,
 		if err := configToStatus(ctx, *config, status); err != nil {
 			log.Errorf("Failed to update DomainStatus from %v: %s",
 				config, err)
+			// will retry in maybeRetryConfig
+			status.ConfigFailed = true
 			status.PendingModify = false
 			status.SetErrorNow(err.Error())
 			publishDomainStatus(ctx, status)
