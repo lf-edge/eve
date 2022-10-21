@@ -494,7 +494,7 @@ github.com/opencontainers/selinux/go-selinux
 github.com/opencontainers/selinux/go-selinux/label
 github.com/opencontainers/selinux/pkg/pwalk
 github.com/opencontainers/selinux/pkg/pwalkdir
-# github.com/packetcap/go-pcap v0.0.0-20210809221331-e2e6b14e1812
+# github.com/packetcap/go-pcap v0.0.0-20221020071412-2b2e94010282
 ## explicit
 github.com/packetcap/go-pcap
 github.com/packetcap/go-pcap/filter
