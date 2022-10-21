@@ -19,7 +19,6 @@ import (
 	"time"
 
 	"github.com/lf-edge/eve/libs/zedUpload/types"
-	logutils "github.com/lf-edge/eve/pkg/pillar/utils/logging"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/net/html"
 )
@@ -202,12 +201,12 @@ func ExecCmd(ctx context.Context, cmd, host, remoteFile, localFile string, objSi
 			if err != nil {
 				// skip the error from http *net.DNSError has the suffix of "no suitable address found"
 				// for a cleaner error string output for http download failure
-				if !logutils.IsNoSuitableAddrErr(err) {
+				if !IsNoSuitableAddrErr(err) {
 					appendToErrorList(attempt, fmt.Errorf("client.Do failed: %s", err))
 				} else {
 					if !NoSuitableAddrFound {
 						NoSuitableAddrFound = true
-						appendToErrorList(attempt, fmt.Errorf(logutils.NoSuitableAddrStr))
+						appendToErrorList(attempt, fmt.Errorf(NoSuitableAddrStr))
 					}
 				}
 				continue
