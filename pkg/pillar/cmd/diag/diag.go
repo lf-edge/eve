@@ -846,12 +846,26 @@ func tryLookupIP(ctx *diagContext, ifname string) bool {
 				ifname, ctx.serverName, err)
 			return false
 		}
+		dnsServers := types.GetDNSServers(*ctx.DeviceNetworkStatus, ifname)
+		if len(dnsServers) == 0 {
+			fmt.Fprintf(outfile, "ERROR: %s: DNS lookup of %s not possible: no DNS servers available\n",
+				ifname, ctx.serverName)
+			return false
+		}
 		localUDPAddr := net.UDPAddr{IP: localAddr}
 		log.Tracef("tryLookupIP: using intf %s source %v", ifname, localUDPAddr)
 		resolverDial := func(ctx context.Context, network, address string) (net.Conn, error) {
 			log.Tracef("resolverDial %v %v", network, address)
-			d := net.Dialer{LocalAddr: &localUDPAddr}
-			return d.Dial(network, address)
+			// Try only DNS servers associated with this interface.
+			ip := net.ParseIP(strings.Split(address, ":")[0])
+			for _, dnsServer := range dnsServers {
+				if dnsServer != nil && dnsServer.Equal(ip) {
+					d := net.Dialer{LocalAddr: &localUDPAddr}
+					return d.Dial(network, address)
+				}
+			}
+			return nil, fmt.Errorf("DNS server %s is from a different network, skipping",
+				ip.String())
 		}
 		r := net.Resolver{Dial: resolverDial, PreferGo: true,
 			StrictErrors: false}
