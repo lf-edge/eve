@@ -156,8 +156,8 @@ github.com/Code-Hex/vz v0.0.4/go.mod h1:UeHKXSv3hP7BzU6IaVE/a7VHSHUHpqbS3oVko4O5
 github.com/DataDog/datadog-go v3.2.0+incompatible/go.mod h1:LButxg5PwREeZtORoXG3tL4fMGNddJ+vMq1mwgfaqoQ=
 github.com/Djarvur/go-err113 v0.0.0-20200410182137-af658d038157/go.mod h1:4UJr5HIiMZrwgkSPdsjy2uOQExX/WEILpIrO9UPGuXs=
 github.com/Djarvur/go-err113 v0.1.0/go.mod h1:4UJr5HIiMZrwgkSPdsjy2uOQExX/WEILpIrO9UPGuXs=
-github.com/Focinfi/go-dns-resolver v1.0.0 h1:jirsf1vQX9p3BBPZFKFbYEB359/cCu8ihL0OlmYSAzk=
-github.com/Focinfi/go-dns-resolver v1.0.0/go.mod h1:DDoAgG4IEfaLksj8/CrTwT1Y/T1tJ2Hg4jznkTL8W0g=
+github.com/Focinfi/go-dns-resolver v1.0.1 h1:fSNrahh/8Ge06z6HtTEbagPy/WGdV2O1VOEm9+S9vds=
+github.com/Focinfi/go-dns-resolver v1.0.1/go.mod h1:DDoAgG4IEfaLksj8/CrTwT1Y/T1tJ2Hg4jznkTL8W0g=
 github.com/GoogleCloudPlatform/cloudsql-proxy v0.0.0-20191009163259-e802c2cb94ae/go.mod h1:mjwGPas4yKduTyubHvD1Atl9r1rUq8DfVy+gkVvZ+oo=
 github.com/GoogleCloudPlatform/k8s-cloud-provider v0.0.0-20190822182118-27a4ced34534/go.mod h1:iroGtC8B3tQiqtds1l+mgk/BBOrxbqjH+eUfFQYRc14=
 github.com/Knetic/govaluate v3.0.1-0.20171022003610-9aa49832a739+incompatible/go.mod h1:r7JcOSlj0wfOMncg0iLm8Leh48TZaKVeNIfJntJ2wa0=

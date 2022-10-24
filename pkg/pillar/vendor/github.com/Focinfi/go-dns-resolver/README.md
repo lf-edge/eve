@@ -33,7 +33,7 @@ func main() {
   dns.Config.RetryTimes = uint(4)
 
   // Simple usage
-  if results, err := dns.Exchange("google.com", "119.29.29.29", typeA); err == nil {
+  if results, err := dns.Exchange("google.com", "119.29.29.29", dns.TypeA); err == nil {
     for _, r := range results {
       log.Println(r.Record, r.Type, r.Ttl, r.Priority, r.Content)
     }
