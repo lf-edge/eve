@@ -20,7 +20,7 @@ github.com/Azure/azure-storage-blob-go/azblob
 # github.com/Azure/go-ansiterm v0.0.0-20210617225240-d185dfc1b5a1
 github.com/Azure/go-ansiterm
 github.com/Azure/go-ansiterm/winterm
-# github.com/Focinfi/go-dns-resolver v1.0.0
+# github.com/Focinfi/go-dns-resolver v1.0.1
 ## explicit
 github.com/Focinfi/go-dns-resolver
 # github.com/Microsoft/go-winio v0.5.2

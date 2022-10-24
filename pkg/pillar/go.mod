@@ -4,7 +4,7 @@ go 1.16
 
 require (
 	cloud.google.com/go/storage v1.21.0 // indirect
-	github.com/Focinfi/go-dns-resolver v1.0.0
+	github.com/Focinfi/go-dns-resolver v1.0.1
 	github.com/anatol/smart.go v0.0.0-20220615232124-371056cd18c3
 	github.com/bicomsystems/go-libzfs v0.4.0
 	github.com/containerd/cgroups v1.0.3
