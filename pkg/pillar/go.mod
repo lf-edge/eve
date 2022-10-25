@@ -26,7 +26,7 @@ require (
 	github.com/grandcat/zeroconf v1.0.0
 	github.com/jackwakefield/gopac v1.0.2
 	github.com/jaypipes/ghw v0.8.0
-	github.com/lf-edge/edge-containers v0.0.0-20220320131500-9d9f95d81e2c
+	github.com/lf-edge/edge-containers v0.0.0-20221025050409-93c34bebadd2
 	github.com/lf-edge/eve/api/go v0.0.0-00010101000000-000000000000
 	github.com/lf-edge/eve/libs/depgraph v0.0.0-20220129022022-ba04fd269658
 	github.com/lf-edge/eve/libs/reconciler v0.0.0-20220131150115-6941dbe72001

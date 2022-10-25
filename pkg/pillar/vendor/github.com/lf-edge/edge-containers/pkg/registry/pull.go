@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
 
 	ctrcontent "github.com/containerd/containerd/content"
 	"github.com/containerd/containerd/images"
@@ -159,13 +158,13 @@ func findConfig(ctx context.Context, provider ctrcontent.Provider, os, arch stri
 			var (
 				conf   ocispec.Image
 				reader ctrcontent.ReaderAt
-				data   []byte
 			)
 			reader, err = provider.ReaderAt(ctx, d)
 			if err != nil {
 				continue
 			}
-			data, err = ioutil.ReadAll(content.NewReaderAtWrapper(reader))
+			data := make([]byte, d.Size)
+			_, err = io.ReadFull(content.NewReaderAtWrapper(reader), data)
 			if err != nil {
 				continue
 			}
