@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"reflect"
 	"strings"
 	"time"
 
@@ -91,6 +92,18 @@ type IoBundle struct {
 	KeepInHost bool
 	Error      string
 	ErrorTime  time.Time
+
+	// Only used in PhyIoNetEthPF
+	Vfs VFList
+	// Only used in PhyIoNetEthVF
+	VfParams VfInfo
+}
+
+// VfInfo Stores information about Virtual Function (VF)
+type VfInfo struct {
+	Index   uint8
+	VlanID  uint16
+	PFIface string
 }
 
 // Really a constant
@@ -156,6 +169,10 @@ func (ib IoBundle) HasAdapterChanged(log *base.LogObject, phyAdapter PhysicalIOA
 		log.Functionf("Usage changed from %d to %d", ib.Usage, phyAdapter.Usage)
 		return true
 	}
+	if !reflect.DeepEqual(phyAdapter.Vfs, ib.Vfs) {
+		log.Functionf("Vfs changed from %v to %v", ib.Vfs, phyAdapter.Vfs)
+		return true
+	}
 	return false
 }
 
@@ -174,6 +191,10 @@ func IoBundleFromPhyAdapter(log *base.LogObject, phyAdapter PhysicalIOAdapter) *
 	ib.Ioports = phyAdapter.Phyaddr.Ioports
 	ib.Serial = phyAdapter.Phyaddr.Serial
 	ib.Usage = phyAdapter.Usage
+	// We're making deep copy
+	ib.Vfs.Data = make([]EthVF, len(phyAdapter.Vfs.Data))
+	copy(ib.Vfs.Data, phyAdapter.Vfs.Data)
+	ib.Vfs.Count = phyAdapter.Vfs.Count
 	// Guard against models without ifname for network adapters
 	if ib.Type.IsNet() && ib.Ifname == "" {
 		log.Warnf("phyAdapter IsNet without ifname: phylabel %s logicallabel %s",
@@ -200,8 +221,13 @@ const (
 	IoNetWLAN IoType = 5
 	IoNetWWAN IoType = 6
 	IoHDMI    IoType = 7
-	IoNVME    IoType = 255
-	IoOther   IoType = 255
+	// enum 8 is reserved for backward compatibility with controller API
+	IoNVMEStorage IoType = 9
+	IoSATAStorage IoType = 10
+	IoNetEthPF    IoType = 11
+	IoNetEthVF    IoType = 12
+	IoNVME        IoType = 255
+	IoOther       IoType = 255
 )
 
 // IsNet checks if the type is any of the networking types.

@@ -3200,6 +3200,7 @@ type AppInstMetaDataType uint8
 const (
 	AppInstMetaDataTypeNone AppInstMetaDataType = iota // enum for app inst metadata type
 	AppInstMetaDataTypeKubeConfig
+	AppInstMetaDataCustomStatus
 )
 
 // AppInstMetaData : App Instance Metadata
@@ -3211,7 +3212,7 @@ type AppInstMetaData struct {
 
 // Key : App Instance Metadata unique key
 func (data AppInstMetaData) Key() string {
-	return data.AppInstUUID.String()
+	return data.AppInstUUID.String() + "-" + string(data.Type)
 }
 
 // Bitmap :
@@ -3702,3 +3703,15 @@ const (
 	// LocReliabilityHigh : high reliability
 	LocReliabilityHigh LocReliability = "high"
 )
+
+// AppBlobsAvailable provides a list of AppCustom blobs which has been provided
+// from the cloud
+type AppBlobsAvailable struct {
+	CustomMeta  string
+	DownloadURL string
+}
+
+// AppInfo provides various information to the application
+type AppInfo struct {
+	AppBlobs []AppBlobsAvailable
+}
