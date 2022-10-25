@@ -1,0 +1,5 @@
+#!/bin/sh
+
+# to be able to modify later
+cp /etc/hosts /run
+touch /run/hostname

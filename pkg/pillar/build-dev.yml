@@ -13,6 +13,8 @@ config:
     - /dev:/dev
     - /etc/resolv.conf:/etc/resolv.conf
     - /run:/run
+    - /run/hosts:/etc/hosts
+    - /run/hostname:/etc/hostname
     - /config:/config
     - /:/hostfs
     - /persist:/persist:rshared,rbind
