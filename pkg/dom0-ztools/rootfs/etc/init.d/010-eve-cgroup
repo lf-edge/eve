@@ -66,7 +66,9 @@ if [ -z "${ctrd_cgroup_cpus_limit}" ]; then
 fi
 
 CGROUPS="cpuset cpu cpuacct blkio memory devices freezer net_cls perf_event net_prio hugetlb pids systemd "
-EVESRVICES="sshd edgeview wwan wlan lisp guacd pillar vtpm watchdog xen-tools newlogd "
+EVESRVICES="sshd edgeview wwan wlan lisp guacd pillar vtpm watchdog xen-tools newlogd \
+zedagent ledmanager domainmgr nodeagent nim loguploader tpmmgr diag vaultmgr \
+zedmanager zedrouter downloader verifier baseosmgr wstunnelclient volumemgr watcher zfsmanager "
 
 #Creating eve cgroup which will be parent/dom0 cgroup
 for cg in $CGROUPS; do

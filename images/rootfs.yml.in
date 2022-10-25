@@ -35,6 +35,9 @@ onboot:
    # kdump goes strictly after storage-init
    - name: kdump
      image: KDUMP_TAG
+   - name: pillar-onboot
+     image: PILLAR_TAG
+     command: ["/opt/zededa/bin/onboot.sh"]
 services:
    - name: newlogd
      image: NEWLOGD_TAG
@@ -64,6 +67,96 @@ services:
      image: PILLAR_TAG
      cgroupsPath: /eve/services/pillar
      oomScoreAdj: -999
+   - name: zedagent
+     image: PILLAR_TAG
+     cgroupsPath: /eve/services/zedagent
+     oomScoreAdj: -999
+     command: ["/opt/zededa/bin/agent-start.sh", "zedagent"]
+   - name: ledmanager
+     image: PILLAR_TAG
+     cgroupsPath: /eve/services/ledmanager
+     oomScoreAdj: -999
+     command: ["/opt/zededa/bin/agent-start.sh", "ledmanager"]
+   - name: domainmgr
+     image: PILLAR_TAG
+     cgroupsPath: /eve/services/domainmgr
+     oomScoreAdj: -999
+     command: ["/opt/zededa/bin/agent-start.sh", "domainmgr"]
+   - name: nodeagent
+     image: PILLAR_TAG
+     cgroupsPath: /eve/services/nodeagent
+     oomScoreAdj: -999
+     command: ["/opt/zededa/bin/agent-start.sh", "nodeagent"]
+   - name: nim
+     image: PILLAR_TAG
+     cgroupsPath: /eve/services/nim
+     oomScoreAdj: -999
+     command: ["/opt/zededa/bin/agent-start.sh", "nim"]
+   - name: loguploader
+     image: PILLAR_TAG
+     cgroupsPath: /eve/services/loguploader
+     oomScoreAdj: -999
+     command: ["/opt/zededa/bin/agent-start.sh", "loguploader"]
+   - name: tpmmgr
+     image: PILLAR_TAG
+     cgroupsPath: /eve/services/tpmmgr
+     oomScoreAdj: -999
+     command: ["/opt/zededa/bin/agent-start.sh", "tpmmgr"]
+   - name: diag
+     image: PILLAR_TAG
+     cgroupsPath: /eve/services/diag
+     oomScoreAdj: -999
+     command: ["/opt/zededa/bin/agent-start.sh", "diag", "-f", "-o", "/dev/console"]
+   - name: vaultmgr
+     image: PILLAR_TAG
+     cgroupsPath: /eve/services/vaultmgr
+     oomScoreAdj: -999
+     command: ["/opt/zededa/bin/agent-start.sh", "vaultmgr"]
+   - name: zedmanager
+     image: PILLAR_TAG
+     cgroupsPath: /eve/services/zedmanager
+     oomScoreAdj: -999
+     command: ["/opt/zededa/bin/agent-start.sh", "zedmanager"]
+   - name: zedrouter
+     image: PILLAR_TAG
+     cgroupsPath: /eve/services/zedrouter
+     oomScoreAdj: -999
+     command: ["/opt/zededa/bin/agent-start.sh", "zedrouter"]
+   - name: downloader
+     image: PILLAR_TAG
+     cgroupsPath: /eve/services/downloader
+     oomScoreAdj: -999
+     command: ["/opt/zededa/bin/agent-start.sh", "downloader"]
+   - name: verifier
+     image: PILLAR_TAG
+     cgroupsPath: /eve/services/verifier
+     oomScoreAdj: -999
+     command: ["/opt/zededa/bin/agent-start.sh", "verifier"]
+   - name: baseosmgr
+     image: PILLAR_TAG
+     cgroupsPath: /eve/services/baseosmgr
+     oomScoreAdj: -999
+     command: ["/opt/zededa/bin/agent-start.sh", "baseosmgr"]
+   - name: wstunnelclient
+     image: PILLAR_TAG
+     cgroupsPath: /eve/services/wstunnelclient
+     oomScoreAdj: -999
+     command: ["/opt/zededa/bin/agent-start.sh", "wstunnelclient"]
+   - name: volumemgr
+     image: PILLAR_TAG
+     cgroupsPath: /eve/services/volumemgr
+     oomScoreAdj: -999
+     command: ["/opt/zededa/bin/agent-start.sh", "volumemgr"]
+   - name: watcher
+     image: PILLAR_TAG
+     cgroupsPath: /eve/services/watcher
+     oomScoreAdj: -999
+     command: ["/opt/zededa/bin/agent-start.sh", "watcher"]
+   - name: zfsmanager
+     image: PILLAR_TAG
+     cgroupsPath: /eve/services/zfsmanager
+     oomScoreAdj: -999
+     command: ["/opt/zededa/bin/agent-start.sh", "zfsmanager"]
    - name: vtpm
      image: VTPM_TAG
      cgroupsPath: /eve/services/vtpm
