@@ -402,7 +402,7 @@ github.com/klauspost/compress/zstd
 github.com/klauspost/compress/zstd/internal/xxhash
 # github.com/kr/fs v0.1.0
 github.com/kr/fs
-# github.com/lf-edge/edge-containers v0.0.0-20220320131500-9d9f95d81e2c
+# github.com/lf-edge/edge-containers v0.0.0-20221025050409-93c34bebadd2
 ## explicit
 github.com/lf-edge/edge-containers/pkg/registry
 github.com/lf-edge/edge-containers/pkg/resolver
