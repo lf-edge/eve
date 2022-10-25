@@ -27,6 +27,8 @@ type VolumeConfig struct {
 	Encrypted               bool
 	DisplayName             string
 	HasNoAppReferences      bool
+	Target                  zconfig.Target
+	CustomMeta              string
 }
 
 // Key is volume UUID which will be unique
@@ -133,6 +135,8 @@ type VolumeStatus struct {
 	PreReboot               bool // Was volume last use prior to device reboot?
 	ReferenceName           string
 	WWN                     string
+	Target                  zconfig.Target
+	CustomMeta              string
 
 	ErrorAndTimeWithSource
 }
@@ -325,6 +329,8 @@ type VolumeRefStatus struct {
 	PendingAdd             bool // Flag to identify whether volume ref config published or not
 	WWN                    string
 	VerifyOnly             bool
+	Target                 zconfig.Target
+	CustomMeta             string
 
 	ErrorAndTimeWithSource
 }
