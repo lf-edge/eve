@@ -86,6 +86,12 @@ type Client struct {
 	contentStore content.Store
 }
 
+// GetServicesNamespace returns ctrdServicesNamespace
+// The value is used to define the cgroups path of the EVE services
+func GetServicesNamespace() string {
+	return ctrdServicesNamespace
+}
+
 func init() {
 	logrus.Info("Containerd Init")
 	// see if we need to use zfs snapshotter based on what flavor of storage persist partition is

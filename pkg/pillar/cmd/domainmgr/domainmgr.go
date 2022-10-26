@@ -15,11 +15,13 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/containerd/cgroups"
 	"github.com/google/go-cmp/cmp"
 	zconfig "github.com/lf-edge/eve/api/go/config"
 	"github.com/lf-edge/eve/pkg/pillar/agentbase"
@@ -36,6 +38,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/sema"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
+	"github.com/opencontainers/runtime-spec/specs-go"
 	uuid "github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
 	"github.com/vishvananda/netlink"
@@ -1112,6 +1115,24 @@ func lookupDomainConfig(ctx *domainContext, key string) *types.DomainConfig {
 	}
 	config := c.(types.DomainConfig)
 	return &config
+}
+
+func setCgroupCpuset(config *types.DomainConfig) error {
+	cgroupName := filepath.Join(containerd.GetServicesNamespace(), config.GetTaskName())
+	cgroupPath := cgroups.StaticPath(cgroupName)
+	controller, err := cgroups.Load(cgroups.V1, cgroupPath)
+	if err != nil {
+		// It's still not an error, since the path may still not exist
+		log.Warnf("Failed to find cgroups directory for %s", config.DisplayName)
+		return nil
+	}
+	err = controller.Update(&specs.LinuxResources{CPU: &specs.LinuxCPU{Cpus: config.VmConfig.CPUs}})
+	if err != nil {
+		log.Warnf("Failed to update CPU set for %s", config.DisplayName)
+		return err
+	}
+	log.Functionf("Adjust the cgroups cpuset of %s to %s", config.DisplayName, config.VmConfig.CPUs)
+	return nil
 }
 
 func handleCreate(ctx *domainContext, key string, config *types.DomainConfig) {
