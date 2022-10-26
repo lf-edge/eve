@@ -1414,9 +1414,9 @@ func EqualSubnet(subnet1, subnet2 net.IPNet) bool {
 // GetPortByIfName - Get Port Status for port with given Ifname
 func (status *DeviceNetworkStatus) GetPortByIfName(
 	ifname string) *NetworkPortStatus {
-	for _, portStatus := range status.Ports {
-		if portStatus.IfName == ifname {
-			return &portStatus
+	for i := range status.Ports {
+		if status.Ports[i].IfName == ifname {
+			return &status.Ports[i]
 		}
 	}
 	return nil
@@ -1425,9 +1425,9 @@ func (status *DeviceNetworkStatus) GetPortByIfName(
 // GetPortByLogicallabel - Get Port Status for port with given label
 func (status *DeviceNetworkStatus) GetPortByLogicallabel(
 	label string) *NetworkPortStatus {
-	for _, portStatus := range status.Ports {
-		if portStatus.Logicallabel == label {
-			return &portStatus
+	for i := range status.Ports {
+		if status.Ports[i].Logicallabel == label {
+			return &status.Ports[i]
 		}
 	}
 	return nil

@@ -133,7 +133,7 @@ func (m *DpcManager) updateDNS() {
 		// We always redo this since we don't know what has changed
 		// from the previous DeviceNetworkStatus.
 		err = devicenetwork.CheckAndGetNetworkProxy(
-			m.Log, &m.deviceNetStatus.Ports[ix], m.ZedcloudMetrics)
+			m.Log, &m.deviceNetStatus, port.IfName, m.ZedcloudMetrics)
 		if err != nil {
 			err = fmt.Errorf("updateDNS: CheckAndGetNetworkProxy failed for %s: %v",
 				port.IfName, err)
