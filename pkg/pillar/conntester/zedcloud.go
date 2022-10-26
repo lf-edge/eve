@@ -91,9 +91,9 @@ func (t *ZedcloudConnectivityTester) TestConnectivity(
 	}
 	zedcloudCtx.TlsConfig = tlsConfig
 	for ix := range dns.Ports {
-		err = devicenetwork.CheckAndGetNetworkProxy(t.Log, &dns.Ports[ix], t.Metrics)
+		ifName := dns.Ports[ix].IfName
+		err = devicenetwork.CheckAndGetNetworkProxy(t.Log, &dns, ifName, t.Metrics)
 		if err != nil {
-			ifName := dns.Ports[ix].IfName
 			err = fmt.Errorf("failed to get network proxy for interface %s: %v",
 				ifName, err)
 			t.Log.Errorf("TestConnectivity: %v", err)

@@ -17,10 +17,15 @@ import (
 )
 
 // Download a wpad file if so configured
-func CheckAndGetNetworkProxy(log *base.LogObject, portStatus *types.NetworkPortStatus,
-	metrics *zedcloud.AgentMetrics) error {
+func CheckAndGetNetworkProxy(log *base.LogObject, dns *types.DeviceNetworkStatus,
+	ifname string, metrics *zedcloud.AgentMetrics) error {
 
-	ifname := portStatus.IfName
+	portStatus := dns.GetPortByIfName(ifname)
+	if portStatus == nil {
+		errStr := fmt.Sprintf("Missing port status for interface %s", ifname)
+		log.Errorln(errStr)
+		return errors.New(errStr)
+	}
 	proxyConfig := &portStatus.ProxyConfig
 
 	log.Tracef("CheckAndGetNetworkProxy(%s): enable %v, url %s\n",
@@ -38,7 +43,7 @@ func CheckAndGetNetworkProxy(log *base.LogObject, portStatus *types.NetworkPortS
 		return nil
 	}
 	if proxyConfig.NetworkProxyURL != "" {
-		pac, err := getPacFile(log, proxyConfig.NetworkProxyURL, ifname, metrics)
+		pac, err := getPacFile(log, proxyConfig.NetworkProxyURL, dns, ifname, metrics)
 		if err != nil {
 			errStr := fmt.Sprintf("Failed to fetch %s for %s: %s",
 				proxyConfig.NetworkProxyURL, ifname, err)
@@ -61,7 +66,7 @@ func CheckAndGetNetworkProxy(log *base.LogObject, portStatus *types.NetworkPortS
 	// in DomainName until we succeed
 	for {
 		url := fmt.Sprintf("http://wpad.%s/wpad.dat", dn)
-		pac, err := getPacFile(log, url, ifname, metrics)
+		pac, err := getPacFile(log, url, dns, ifname, metrics)
 		if err == nil {
 			proxyConfig.Pacfile = pac
 			proxyConfig.WpadURL = url
@@ -91,13 +96,14 @@ func CheckAndGetNetworkProxy(log *base.LogObject, portStatus *types.NetworkPortS
 	}
 }
 
-func getPacFile(log *base.LogObject, url string,
+func getPacFile(log *base.LogObject, url string, dns *types.DeviceNetworkStatus,
 	ifname string, metrics *zedcloud.AgentMetrics) (string, error) {
 
 	zedcloudCtx := zedcloud.NewContext(log, zedcloud.ContextOptions{
-		Timeout:      15,
-		AgentName:    "wpad",
-		AgentMetrics: metrics,
+		Timeout:          15,
+		AgentName:        "wpad",
+		AgentMetrics:     metrics,
+		DevNetworkStatus: dns,
 	})
 	// Avoid using a proxy to fetch the wpad.dat; 15 second timeout
 	const allowProxy = false
