@@ -318,6 +318,7 @@ func (s *ociSpec) UpdateFromDomain(dom *types.DomainConfig) {
 		s.Linux.Resources.Memory.Limit = &m
 		s.Linux.Resources.CPU.Period = &p
 		s.Linux.Resources.CPU.Quota = &q
+		s.Linux.Resources.CPU.Cpus = dom.VmConfig.CPUs
 
 		s.Linux.CgroupsPath = fmt.Sprintf("/%s/%s", ctrdServicesNamespace, dom.GetTaskName())
 	}
