@@ -219,6 +219,7 @@ type VmConfig struct {
 	VncDisplay         uint32
 	VncPasswd          string
 	DisableLogs        bool
+	CPUsPinned         bool
 }
 
 type VmMode uint8
