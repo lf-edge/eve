@@ -102,6 +102,7 @@ type zedrouterContext struct {
 	disableDHCPAllOnesNetMask bool
 	flowPublishMap            map[string]time.Time
 	metricInterval            uint32 // In seconds
+	iptablesInitialized       bool   // iptablesInitialized from nim
 
 	zedcloudMetrics *zedcloud.AgentMetrics
 	cipherMetrics   *cipher.AgentMetrics
@@ -885,9 +886,6 @@ func handleInit() {
 	dnsmasqInitDirs()
 	// Need to make sure we don't have any stale leases
 	dnsmasqClearLeases()
-
-	// Setup initial iptables rules
-	dropEscapedFlows()
 
 	// ipsets which are independent of config
 	createDefaultIpset()
@@ -2177,6 +2175,14 @@ func handleDNSImpl(ctxArg interface{}, key string,
 		return
 	}
 	log.Functionf("handleDNSImpl for %s\n", key)
+
+	// if we received DeviceNetworkStatus it indicates that default iptables chains allocated
+	if !ctx.iptablesInitialized {
+		// Setup initial iptables rules
+		dropEscapedFlows()
+		ctx.iptablesInitialized = true
+	}
+
 	// Ignore test status and timestamps
 	if ctx.deviceNetworkStatus.MostlyEqual(status) {
 		log.Functionf("handleDNSImpl no change\n")
