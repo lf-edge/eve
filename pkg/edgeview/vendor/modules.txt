@@ -1,0 +1,111 @@
+# github.com/StackExchange/wmi v0.0.0-20190523213315-cbe66965904d
+github.com/StackExchange/wmi
+# github.com/cenkalti/backoff v2.2.1+incompatible
+github.com/cenkalti/backoff
+# github.com/eriknordmark/ipinfo v0.0.0-20190220084921-7ee0839158f9
+github.com/eriknordmark/ipinfo
+# github.com/fsnotify/fsnotify v1.5.1
+github.com/fsnotify/fsnotify
+# github.com/go-ole/go-ole v1.2.4
+github.com/go-ole/go-ole
+github.com/go-ole/go-ole/oleutil
+# github.com/google/go-cmp v0.5.7
+github.com/google/go-cmp/cmp
+github.com/google/go-cmp/cmp/internal/diff
+github.com/google/go-cmp/cmp/internal/flags
+github.com/google/go-cmp/cmp/internal/function
+github.com/google/go-cmp/cmp/internal/value
+# github.com/google/go-containerregistry v0.8.0
+github.com/google/go-containerregistry/pkg/v1/types
+# github.com/gorilla/websocket v1.4.2
+## explicit
+github.com/gorilla/websocket
+# github.com/grandcat/zeroconf v1.0.0
+## explicit
+github.com/grandcat/zeroconf
+# github.com/lf-edge/eve/api/go v0.0.0-20220629080033-b2471c507920 => github.com/lf-edge/eve/api/go v0.0.0-20220822214905-7a5b0a24ad8f
+## explicit
+github.com/lf-edge/eve/api/go/certs
+github.com/lf-edge/eve/api/go/config
+github.com/lf-edge/eve/api/go/evecommon
+github.com/lf-edge/eve/api/go/info
+github.com/lf-edge/eve/api/go/logs
+# github.com/lf-edge/eve/pkg/pillar v0.0.0-20221025082440-d8005e30e22d
+## explicit
+github.com/lf-edge/eve/pkg/pillar/base
+github.com/lf-edge/eve/pkg/pillar/flextimer
+github.com/lf-edge/eve/pkg/pillar/pubsub
+github.com/lf-edge/eve/pkg/pillar/pubsub/socketdriver
+github.com/lf-edge/eve/pkg/pillar/types
+github.com/lf-edge/eve/pkg/pillar/utils/file
+github.com/lf-edge/eve/pkg/pillar/utils/logging
+github.com/lf-edge/eve/pkg/pillar/watch
+# github.com/miekg/dns v1.1.41
+github.com/miekg/dns
+# github.com/satori/go.uuid v1.2.1-0.20180404165556-75cca531ea76
+## explicit
+github.com/satori/go.uuid
+# github.com/shirou/gopsutil v0.0.0-20190901111213-e4ec7b275ada
+## explicit
+github.com/shirou/gopsutil/cpu
+github.com/shirou/gopsutil/disk
+github.com/shirou/gopsutil/host
+github.com/shirou/gopsutil/internal/common
+github.com/shirou/gopsutil/mem
+github.com/shirou/gopsutil/net
+github.com/shirou/gopsutil/process
+# github.com/shirou/w32 v0.0.0-20160930032740-bb4de0191aa4
+github.com/shirou/w32
+# github.com/sirupsen/logrus v1.8.1
+## explicit
+github.com/sirupsen/logrus
+# github.com/tatsushid/go-fastping v0.0.0-20160109021039-d7bb493dee3e
+## explicit
+github.com/tatsushid/go-fastping
+# github.com/vishvananda/netlink v1.1.1-0.20210924202909-187053b97868
+## explicit
+github.com/vishvananda/netlink
+github.com/vishvananda/netlink/nl
+# github.com/vishvananda/netns v0.0.0-20210104183010-2eb08e3e575f
+github.com/vishvananda/netns
+# golang.org/x/net v0.0.0-20220722155237-a158d28d115b
+golang.org/x/net/bpf
+golang.org/x/net/icmp
+golang.org/x/net/internal/iana
+golang.org/x/net/internal/socket
+golang.org/x/net/ipv4
+golang.org/x/net/ipv6
+# golang.org/x/sys v0.0.0-20220722155257-8c9f86f7a55f
+## explicit
+golang.org/x/sys/internal/unsafeheader
+golang.org/x/sys/unix
+golang.org/x/sys/windows
+# google.golang.org/protobuf v1.27.1
+google.golang.org/protobuf/encoding/prototext
+google.golang.org/protobuf/encoding/protowire
+google.golang.org/protobuf/internal/descfmt
+google.golang.org/protobuf/internal/descopts
+google.golang.org/protobuf/internal/detrand
+google.golang.org/protobuf/internal/encoding/defval
+google.golang.org/protobuf/internal/encoding/messageset
+google.golang.org/protobuf/internal/encoding/tag
+google.golang.org/protobuf/internal/encoding/text
+google.golang.org/protobuf/internal/errors
+google.golang.org/protobuf/internal/filedesc
+google.golang.org/protobuf/internal/filetype
+google.golang.org/protobuf/internal/flags
+google.golang.org/protobuf/internal/genid
+google.golang.org/protobuf/internal/impl
+google.golang.org/protobuf/internal/order
+google.golang.org/protobuf/internal/pragma
+google.golang.org/protobuf/internal/set
+google.golang.org/protobuf/internal/strs
+google.golang.org/protobuf/internal/version
+google.golang.org/protobuf/proto
+google.golang.org/protobuf/reflect/protoreflect
+google.golang.org/protobuf/reflect/protoregistry
+google.golang.org/protobuf/runtime/protoiface
+google.golang.org/protobuf/runtime/protoimpl
+google.golang.org/protobuf/types/known/timestamppb
+# github.com/lf-edge/eve/api/go => github.com/lf-edge/eve/api/go v0.0.0-20220822214905-7a5b0a24ad8f
+# github.com/lf-edge/eve/libs/depgraph => github.com/lf-edge/eve/libs/depgraph v0.0.0-20220629080033-b2471c507920
