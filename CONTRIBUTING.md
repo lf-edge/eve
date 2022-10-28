@@ -29,9 +29,13 @@ composed of the following members:
 
 * Avi Deitcher <avi@deitcher.net>
 * Erik Nordmark <erik@zededa.com>
+* Roman Shaposhnik <rvs@apache.org>
+
+while the following members remain as Emeritus TSC (you can find out more about
+the Emeritus status [here](https://wiki.lfedge.org/display/EVE/Community):
+
 * Gianluca Guida <glguida@gmail.com>
 * Gopi Krishna Kodali <gkodali@zededa.com>
-* Roman Shaposhnik <rvs@zededa.com>
 
 You can reach TSC at [eve-tsc@lists.lfedge.org](mailto:eve-tsc@lists.lfedge.org)
 and also [browse the archives](https://lists.lfedge.org/g/eve-tsc).
