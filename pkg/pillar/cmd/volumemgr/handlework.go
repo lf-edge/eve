@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/volumehandlers"
 	"github.com/lf-edge/eve/pkg/pillar/worker"
 )
 
@@ -159,11 +160,14 @@ func volumeWorker(ctxPtr interface{}, w worker.Work) worker.WorkResult {
 
 	vcp := types.VolumeCreatePendingFromVolumeStatus(d.status)
 
+	handler := volumehandlers.GetVolumeHandler(log, ctx, &d.status)
+
 	if d.create {
 		//set or update pending create operation
 		_ = ctx.pubVolumeCreatePending.Publish(vcp.Key(), vcp)
-		volumeCreated, fileLocation, err = createVolume(ctx, d.status)
+		fileLocation, err = handler.CreateVolume()
 		if err == nil {
+			volumeCreated = true
 			//in case of no error remove pending create operation
 			_ = ctx.pubVolumeCreatePending.Unpublish(vcp.Key())
 		}
@@ -173,7 +177,13 @@ func volumeWorker(ctxPtr interface{}, w worker.Work) worker.WorkResult {
 			// so remove pending create operation if exists
 			_ = ctx.pubVolumeCreatePending.Unpublish(vcp.Key())
 		}
-		volumeCreated, fileLocation, err = destroyVolume(ctx, d.status)
+		if d.status.FileLocation != "" {
+			volumeCreated = d.status.State == types.CREATED_VOLUME
+			fileLocation, err = handler.DestroyVolume()
+			if err == nil {
+				volumeCreated = false
+			}
+		}
 	}
 	d.VolumeCreated = volumeCreated
 	if volumeCreated {
@@ -246,7 +256,7 @@ func casIngestWorker(ctxPtr interface{}, w worker.Work) worker.WorkResult {
 func volumePrepareWorker(ctxPtr interface{}, w worker.Work) worker.WorkResult {
 	ctx := ctxPtr.(*volumemgrContext)
 	d := w.Description.(volumeWorkDescription)
-	err := prepareVolume(ctx, d.status)
+	err := volumehandlers.GetVolumeHandler(log, ctx, &d.status).PrepareVolume()
 	result := worker.WorkResult{
 		Key:         w.Key,
 		Description: d,
@@ -272,7 +282,7 @@ func processVolumeWorkResult(ctxPtr interface{}, res worker.WorkResult) error {
 			AddWorkDestroy(ctx, &d.status)
 		}
 	} else {
-		status := lookupVolumeStatus(ctx, d.status.Key())
+		status := ctx.LookupVolumeStatus(d.status.Key())
 		if status == nil {
 			log.Functionf("processVolumeWorkResult for %v, VolumeStatus not found", d.status.Key())
 			return nil

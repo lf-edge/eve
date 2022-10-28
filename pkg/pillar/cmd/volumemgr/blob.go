@@ -382,14 +382,13 @@ func resolveManifestSize(ctx *volumemgrContext, blob types.BlobStatus) int64 {
 	return size
 }
 
-// lookupBlobStatus look for a BlobStatus. Does not attempt to recreate one
+// LookupBlobStatus look for a BlobStatus. Does not attempt to recreate one
 // from VerifyImageStatus
-func lookupBlobStatus(ctx *volumemgrContext, blobSha string) *types.BlobStatus {
-
+func (ctxPtr *volumemgrContext) LookupBlobStatus(blobSha string) *types.BlobStatus {
 	if blobSha == "" {
 		return nil
 	}
-	pub := ctx.pubBlobStatus
+	pub := ctxPtr.pubBlobStatus
 	s, _ := pub.Get(blobSha)
 	if s == nil {
 		log.Tracef("lookupBlobStatus(%s) not found", blobSha)
@@ -407,7 +406,7 @@ func lookupOrCreateBlobStatus(ctx *volumemgrContext, blobSha string) *types.Blob
 		return nil
 	}
 	// Does it already exist?
-	blob := lookupBlobStatus(ctx, blobSha)
+	blob := ctx.LookupBlobStatus(blobSha)
 	if blob != nil {
 		return blob
 	}
@@ -494,7 +493,7 @@ func unpublishBlobStatus(ctx *volumemgrContext, blobs ...*types.BlobStatus) {
 		}
 		//If blob is loaded, then remove it from CAS
 		if blob.State == types.LOADED {
-			if err := ctx.casClient.RemoveBlob(checkAndCorrectBlobHash(blob.Sha256)); err != nil {
+			if err := ctx.casClient.RemoveBlob(cas.CheckAndCorrectBlobHash(blob.Sha256)); err != nil {
 				err := fmt.Errorf("unpublishBlobStatus: Exception while removing loaded blob %s: %s",
 					blob.Sha256, err.Error())
 				log.Errorf(err.Error())
@@ -537,7 +536,7 @@ func populateInitBlobStatus(ctx *volumemgrContext) {
 			log.Functionf("populateInitBlobStatus: blob %s in CAS could not get mediaType", blobInfo.Digest)
 			continue
 		}
-		if lookupBlobStatus(ctx, blobInfo.Digest) == nil {
+		if ctx.LookupBlobStatus(blobInfo.Digest) == nil {
 			log.Functionf("populateInitBlobStatus: Found blob %s in CAS", blobInfo.Digest)
 			blobStatus := &types.BlobStatus{
 				Sha256:                 strings.TrimPrefix(blobInfo.Digest, "sha256:"),
@@ -606,11 +605,6 @@ func gcImagesFromCAS(ctx *volumemgrContext) {
 			}
 		}
 	}
-}
-
-// checkAndCorrectBlobHash checks if the blobHash has hash algo sha256 as prefix. If not then it'll prepend it.
-func checkAndCorrectBlobHash(blobHash string) string {
-	return fmt.Sprintf("sha256:%s", strings.TrimPrefix(blobHash, "sha256:"))
 }
 
 // lookupImageCAS check if an image reference exists

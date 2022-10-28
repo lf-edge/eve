@@ -38,7 +38,7 @@ func handleContentTreeModify(ctxArg interface{}, key string,
 	log.Functionf("handleContentTreeModify(%s)", key)
 	config := configArg.(types.ContentTreeConfig)
 	ctx := ctxArg.(*volumemgrContext)
-	status := lookupContentTreeStatus(ctx, config.Key())
+	status := ctx.LookupContentTreeStatus(config.Key())
 	if status == nil {
 		log.Fatalf("Missing ContentTreeStatus for %s", config.Key())
 	}
@@ -52,7 +52,7 @@ func handleContentTreeDelete(ctxArg interface{}, key string,
 	log.Functionf("handleContentTreeDelete(%s)", key)
 	config := configArg.(types.ContentTreeConfig)
 	ctx := ctxArg.(*volumemgrContext)
-	status := lookupContentTreeStatus(ctx, config.Key())
+	status := ctx.LookupContentTreeStatus(config.Key())
 	if status == nil {
 		log.Fatalf("Missing ContentTreeStatus for %s", config.Key())
 	}
@@ -91,10 +91,10 @@ func unpublishContentTreeStatus(ctx *volumemgrContext, status *types.ContentTree
 	log.Tracef("unpublishContentTreeStatus(%s) Done", key)
 }
 
-func lookupContentTreeStatus(ctx *volumemgrContext, key string) *types.ContentTreeStatus {
-
+// LookupContentTreeStatus returns ContentTreeStatus based on key
+func (ctxPtr *volumemgrContext) LookupContentTreeStatus(key string) *types.ContentTreeStatus {
 	log.Tracef("lookupContentTreeStatus(%s)", key)
-	pub := ctx.pubContentTreeStatus
+	pub := ctxPtr.pubContentTreeStatus
 	c, _ := pub.Get(key)
 	if c == nil {
 		log.Tracef("lookupContentTreeStatus(%s) not found", key)
@@ -103,13 +103,6 @@ func lookupContentTreeStatus(ctx *volumemgrContext, key string) *types.ContentTr
 	status := c.(types.ContentTreeStatus)
 	log.Tracef("lookupContentTreeStatus(%s) Done", key)
 	return &status
-}
-
-// lookupContentTreeStatusAny assumes there is one CT with the key and looks
-// for all objTypes
-func lookupContentTreeStatusAny(ctx *volumemgrContext, key string) *types.ContentTreeStatus {
-
-	return lookupContentTreeStatus(ctx, key)
 }
 
 func getAllContentTreeStatus(ctx *volumemgrContext) map[string]*types.ContentTreeStatus {
@@ -144,7 +137,7 @@ func lookupContentTreeConfig(ctx *volumemgrContext, key string) *types.ContentTr
 func createContentTreeStatus(ctx *volumemgrContext, config types.ContentTreeConfig) *types.ContentTreeStatus {
 
 	log.Functionf("createContentTreeStatus for %v", config.ContentID)
-	status := lookupContentTreeStatus(ctx, config.Key())
+	status := ctx.LookupContentTreeStatus(config.Key())
 	if status == nil {
 		// need to save the datastore type
 		var datastoreType string
@@ -211,7 +204,7 @@ func createContentTreeStatus(ctx *volumemgrContext, config types.ContentTreeConf
 func AddBlobsToContentTreeStatus(ctx *volumemgrContext, status *types.ContentTreeStatus, blobShas ...string) error {
 	log.Functionf("AddBlobsToContentTreeStatus(%s): for blobs %v", status.ContentID, blobShas)
 	for _, blobSha := range blobShas {
-		blobStatus := lookupBlobStatus(ctx, blobSha)
+		blobStatus := ctx.LookupBlobStatus(blobSha)
 		if blobStatus == nil {
 			err := fmt.Errorf("AddBlobsToContentTreeStatus(%s): No BlobStatus found for blobHash: %s",
 				status.ContentID.String(), blobSha)
@@ -236,7 +229,7 @@ func AddBlobsToContentTreeStatus(ctx *volumemgrContext, status *types.ContentTre
 func RemoveAllBlobsFromContentTreeStatus(ctx *volumemgrContext, status *types.ContentTreeStatus, blobShas ...string) {
 	log.Functionf("RemoveAllBlobsFromContentTreeStatus(%s): for blobs %v", status.ContentID, blobShas)
 	for _, blobSha := range status.Blobs {
-		blobStatus := lookupBlobStatus(ctx, blobSha)
+		blobStatus := ctx.LookupBlobStatus(blobSha)
 		if blobStatus == nil {
 			err := fmt.Errorf("RemoveAllBlobsFromContentTreeStatus(%s): No BlobStatus found for blobHash: %s",
 				status.ContentID.String(), blobSha)

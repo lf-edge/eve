@@ -8,79 +8,84 @@
 package volumemgr
 
 import (
-	"errors"
 	"fmt"
 	"io/ioutil"
 	"os"
-	"path"
+	"path/filepath"
+	"strconv"
 	"strings"
 
 	zconfig "github.com/lf-edge/eve/api/go/config"
-	"github.com/lf-edge/eve/pkg/pillar/tgt"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/volumehandlers"
 	"github.com/lf-edge/eve/pkg/pillar/zfs"
+	uuid "github.com/satori/go.uuid"
 )
 
-// populateExistingVolumesFormat iterates over the directory and takes format
+// populateExistingVolumesFormatObjects iterates over the directory and takes format
 // from the name of the volume and prepares map of it
-func populateExistingVolumesFormat(dirName string) {
+func populateExistingVolumesFormatObjects(_ *volumemgrContext, dirName string) {
 
-	log.Functionf("populateExistingVolumesFormat(%s)", dirName)
+	log.Functionf("populateExistingVolumesFormatObjects(%s)", dirName)
 	locations, err := ioutil.ReadDir(dirName)
 	if err != nil {
-		log.Errorf("populateExistingVolumesFormat: read directory '%s' failed: %v",
+		log.Errorf("populateExistingVolumesFormatObjects: read directory '%s' failed: %v",
 			dirName, err)
 		return
 	}
 	for _, location := range locations {
-		key, format, _, err := getVolumeKeyAndFormat(dirName, location.Name())
+		tempStatus, err := getVolumeStatusByLocation(filepath.Join(dirName, location.Name()))
 		if err != nil {
 			log.Error(err)
 			continue
 		}
-		volumeFormat[key] = zconfig.Format(zconfig.Format_value[format])
+		volumeFormat[tempStatus.Key()] = tempStatus.ContentFormat
 	}
-	log.Functionf("populateExistingVolumesFormat(%s) Done", dirName)
+	log.Functionf("populateExistingVolumesFormatObjects(%s) Done", dirName)
+}
+
+// populateExistingVolumesFormatDatasets iterates over the dataset and takes format
+// from the name of the volume and prepares map of it
+func populateExistingVolumesFormatDatasets(_ *volumemgrContext, dataset string) {
+
+	log.Functionf("populateExistingVolumesFormatDatasets(%s)", dataset)
+	locations, err := zfs.GetVolumesFromDataset(dataset)
+	if err != nil {
+		log.Errorf("populateExistingVolumesFormatDatasets: GetVolumesFromDataset '%s' failed: %v",
+			dataset, err)
+		return
+	}
+	for _, location := range locations {
+		tempStatus, err := getVolumeStatusByLocation(location)
+		if err != nil {
+			log.Error(err)
+			continue
+		}
+		volumeFormat[tempStatus.Key()] = tempStatus.ContentFormat
+	}
+	log.Functionf("populateExistingVolumesFormatDatasets(%s) Done", dataset)
 }
 
 // Periodic garbage collection looking at RefCount=0 files in the unknown
 // Others have their delete handler.
 func gcObjects(ctx *volumemgrContext, dirName string) {
-
 	log.Tracef("gcObjects(%s)", dirName)
-	locations, err := ioutil.ReadDir(dirName)
+	locationsFileInfo, err := ioutil.ReadDir(dirName)
 	if err != nil {
 		log.Errorf("gcObjects: read directory '%s' failed: %v",
 			dirName, err)
 		return
 	}
-	for _, location := range locations {
-		filelocation := path.Join(dirName, location.Name())
-		key, format, _, err := getVolumeKeyAndFormat(dirName, location.Name())
-		if err != nil {
-			log.Error(err)
-			deleteFile(filelocation)
-			continue
-		}
-		vs := lookupVolumeStatus(ctx, key)
-		if vs == nil {
-			log.Functionf("gcObjects: Found unused volume %s. Deleting it.",
-				filelocation)
-			if format == "CONTAINER" {
-				_ = ctx.casClient.RemoveContainerRootDir(filelocation)
-			} else {
-				deleteFile(filelocation)
-			}
-		}
+	var locations []string
+	for _, location := range locationsFileInfo {
+		locations = append(locations, filepath.Join(dirName, location.Name()))
 	}
+	gcVolumes(ctx, locations)
 	log.Tracef("gcObjects(%s) Done", dirName)
 }
 
 // Periodic garbage collection of children datasets in provided zfs dataset
 func gcDatasets(ctx *volumemgrContext, dataset string) {
-	if ctx.persistType != types.PersistZFS {
-		return
-	}
 	log.Tracef("gcDatasets(%s)", dataset)
 	locations, err := zfs.GetVolumesFromDataset(dataset)
 	if err != nil {
@@ -88,100 +93,119 @@ func gcDatasets(ctx *volumemgrContext, dataset string) {
 			dataset, err)
 		return
 	}
+	gcVolumes(ctx, locations)
+	log.Tracef("gcDatasets(%s) Done", dataset)
+}
+
+func gcVolumes(ctx *volumemgrContext, locations []string) {
 	for _, location := range locations {
-		key := types.ZVolNameToKey(location)
-		vs := lookupVolumeStatus(ctx, key)
+		tempVolumeStatus, err := getVolumeStatusByLocation(location)
+		if err != nil {
+			log.Errorf("gcVolumes: getVolumeStatusByLocation '%s' failed: %v",
+				location, err)
+			continue
+		}
+		vs := ctx.LookupVolumeStatus(tempVolumeStatus.Key())
 		if vs == nil {
-			log.Functionf("gcDatasets: Found unused volume %s. Deleting it.",
+			log.Functionf("gcVolumes: Found unused volume %s. Deleting it.",
 				location)
-			serial, err := tgt.GetSerialTarget(key)
-			if err != nil {
-				log.Warnf("gcDatasets: Error obtaining serial from target for %s, error=%v",
-					key, err)
-			} else {
-				if err := tgt.VHostDeleteIBlock(fmt.Sprintf("naa.%s", serial)); err != nil {
-					log.Warnf("gcDatasets: Error deleting vhost for %s, error=%v",
-						key, err)
-				}
-			}
-			if err := tgt.TargetDeleteIBlock(key); err != nil {
-				log.Warnf("gcDatasets: Error deleting target for %s, error=%v",
-					key, err)
-			}
-			if err := zfs.DestroyDataset(location); err != nil {
-				log.Errorf("gcDatasets: DestroyDataset '%s' failed: %v",
+			if _, err := volumehandlers.GetVolumeHandler(log, ctx, tempVolumeStatus).DestroyVolume(); err != nil {
+				log.Errorf("gcVolumes: destroyVolume '%s' failed: %v",
 					location, err)
 			}
 		}
 	}
-	log.Tracef("gcDatasets(%s) Done", dataset)
 }
 
-func getVolumeKeyAndFormat(dirName, name string) (key string, format string, tmp bool, err error) {
-	filelocation := path.Join(dirName, name)
-	keyAndFormat := strings.Split(name, ".")
-	switch {
-	case len(keyAndFormat) == 2:
-		key, format, tmp, err = keyAndFormat[0], strings.ToUpper(keyAndFormat[1]), false, nil
-	case len(keyAndFormat) == 3 && keyAndFormat[2] == "tmp":
-		key, format, tmp, err = keyAndFormat[0], strings.ToUpper(keyAndFormat[1]), true, nil
-	default:
-		errStr := fmt.Sprintf("getVolumeKeyAndFormat: Found unknown format volume %s.",
-			filelocation)
-		key, format, tmp, err = "", "", false, errors.New(errStr)
-	}
-	return key, format, tmp, err
-}
+func getVolumeStatusByLocation(location string) (*types.VolumeStatus, error) {
+	var encrypted bool
+	var parsedFormat int32
+	var volumeIDAndGeneration string
 
-func deleteFile(filelocation string) {
-	log.Functionf("deleteFile: Deleting %s", filelocation)
-	if err := os.RemoveAll(filelocation); err != nil {
-		log.Errorf("Failed to delete file %s. Error: %s",
-			filelocation, err.Error())
+	// assume it is zvol
+	if strings.HasPrefix(location, types.VolumeEncryptedZFSDataset) || strings.HasPrefix(location, types.VolumeClearZFSDataset) {
+		encrypted = strings.HasPrefix(location, types.VolumeEncryptedZFSDataset)
+		volumeIDAndGeneration = filepath.Base(location)
+		parsedFormat = int32(zconfig.Format_RAW)
+	} else {
+		encrypted = strings.HasPrefix(location, types.SealedDirName)
+		keyAndFormat := strings.Split(filepath.Base(location), ".")
+		if len(keyAndFormat) != 2 {
+			return nil, fmt.Errorf("found unknown format volume %s", location)
+		}
+		volumeIDAndGeneration = keyAndFormat[0]
+		ok := false
+		parsedFormat, ok = zconfig.Format_value[strings.ToUpper(keyAndFormat[1])]
+		if !ok {
+			return nil, fmt.Errorf("found unknown format volume %s", location)
+		}
+		volumeIDAndGeneration = strings.ReplaceAll(volumeIDAndGeneration, "#", ".")
 	}
+
+	generation := strings.Split(volumeIDAndGeneration, ".")
+	volUUID, err := uuid.FromString(generation[0])
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse VolumeID: %s", err)
+	}
+	if len(generation) == 1 {
+		return nil, fmt.Errorf("cannot extract generation from zVolName")
+	}
+	// we cannot extract LocalGenerationCounter from the zVolName
+	// assume it is zero
+	generationCounter, err := strconv.ParseInt(generation[1], 10, 64)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse GenerationCounter: %s", err)
+	}
+	vs := types.VolumeStatus{
+		VolumeID:          volUUID,
+		Encrypted:         encrypted,
+		GenerationCounter: generationCounter,
+		ContentFormat:     zconfig.Format(parsedFormat),
+		FileLocation:      location,
+	}
+	return &vs, nil
 }
 
 // gcPendingCreateVolume remove volumes not created on previous boot
 func gcPendingCreateVolume(ctx *volumemgrContext) {
 	log.Trace("gcPendingCreateVolume")
-	for _, obj := range ctx.pubVolumeCreatePending.GetAll() {
-		vcp := obj.(types.VolumeCreatePending)
-		if vcp.IsContainer() {
-			// check if directory accessible
-			// assume that we should remove it as not created completely
-			if _, err := os.Stat(vcp.PathName()); err == nil {
-				if err := ctx.casClient.RemoveContainerRootDir(vcp.PathName()); err != nil {
-					log.Errorf("gcPendingCreateVolume: error removing container root dir: %s", err)
-					continue
-				}
-			}
-		} else {
-			switch ctx.persistType {
-			case types.PersistZFS:
-				zVolName := vcp.ZVolName()
-				// check if dataset exists
-				// assume that we should remove it as not created completely
-				if zfs.DatasetExist(log, zVolName) {
-					if err := zfs.DestroyDataset(zVolName); err != nil {
-						log.Errorf("gcPendingCreateVolume: error destroying zfs zvol at %s, error=%s",
-							zVolName, err)
-						continue
-					}
-				}
-			default:
-				// check if file accessible
-				// assume that we should remove it as not created completely
-				if _, err := os.Stat(vcp.PathName()); err == nil {
-					if err := os.Remove(vcp.PathName()); err != nil {
-						log.Errorf("gcPendingCreateVolume: error deleting volume: %s", err)
-						continue
-					}
-				}
-			}
-		}
+
+	// to not repeat the logic
+	unpublish := func(vcp types.VolumeCreatePending) {
 		if err := ctx.pubVolumeCreatePending.Unpublish(vcp.Key()); err != nil {
 			log.Errorf("gcPendingCreateVolume: cannot unpublish %s: %s", vcp.Key(), err)
 		}
+	}
+
+	for _, obj := range ctx.pubVolumeCreatePending.GetAll() {
+		vcp := obj.(types.VolumeCreatePending)
+		var location string
+		// check for zvol
+		zVolDevice := zfs.GetZVolDeviceByDataset(vcp.ZVolName())
+		fi, err := os.Stat(zVolDevice)
+		if err == nil && fi.Mode()&os.ModeDevice != 0 {
+			location = vcp.ZVolName()
+		} else {
+			_, err := os.Stat(vcp.PathName())
+			if err != nil {
+				log.Errorf("gcPendingCreateVolume: cannot get file status %s: %s", vcp.Key(), err)
+				unpublish(vcp)
+				continue
+			}
+			location = vcp.PathName()
+		}
+		tempVolumeStatus, err := getVolumeStatusByLocation(location)
+		if err != nil {
+			log.Errorf("gcPendingCreateVolume: cannot get volume status %s: %s", vcp.Key(), err)
+			unpublish(vcp)
+			continue
+		}
+		if _, err := volumehandlers.GetVolumeHandler(log, ctx, tempVolumeStatus).DestroyVolume(); err != nil {
+			log.Errorf("gcPendingCreateVolume: error destroyVolume: %s", err)
+			unpublish(vcp)
+			continue
+		}
+		unpublish(vcp)
 	}
 	log.Trace("gcPendingCreateVolume done")
 }

@@ -18,7 +18,7 @@ func handleVolumeRefCreate(ctxArg interface{}, key string,
 		log.Fatalf("VolumeRefStatus exists at handleVolumeRefCreate for %s", key)
 	}
 	needUpdateVol := false
-	vs := lookupVolumeStatus(ctx, config.VolumeKey())
+	vs := ctx.LookupVolumeStatus(config.VolumeKey())
 	if vs != nil {
 		updateVolumeStatusRefCount(ctx, vs)
 		publishVolumeStatus(ctx, vs)
@@ -90,7 +90,7 @@ func handleVolumeRefModify(ctxArg interface{}, key string,
 		needUpdateVol = true
 	}
 	publishVolumeRefStatus(ctx, status)
-	vs := lookupVolumeStatus(ctx, config.VolumeKey())
+	vs := ctx.LookupVolumeStatus(config.VolumeKey())
 	if vs != nil {
 		if needUpdateVol {
 			doUpdateVol(ctx, vs)
@@ -112,7 +112,7 @@ func handleVolumeRefDelete(ctxArg interface{}, key string,
 	config := configArg.(types.VolumeRefConfig)
 	ctx := ctxArg.(*volumemgrContext)
 	unpublishVolumeRefStatus(ctx, config.Key())
-	vs := lookupVolumeStatus(ctx, config.VolumeKey())
+	vs := ctx.LookupVolumeStatus(config.VolumeKey())
 	if vs != nil {
 		updateVolumeStatusRefCount(ctx, vs)
 		publishVolumeStatus(ctx, vs)

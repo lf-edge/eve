@@ -95,11 +95,15 @@ type volumemgrContext struct {
 	volumeConfigCreateDeferredMap map[string]*types.VolumeConfig
 
 	persistType types.PersistType
-	useVHost    bool //indicates that we want to use vhost
 
-	capabilitiesProcessed bool // indicates that we received information about capabilities
+	capabilities *types.Capabilities
+
 	// cli options
 	versionPtr *bool
+}
+
+func (ctxPtr *volumemgrContext) GetCasClient() cas.CAS {
+	return ctxPtr.casClient
 }
 
 // AddAgentSpecificCLIFlags adds CLI options
@@ -194,7 +198,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	}
 
 	// wait for capabilities
-	for !ctx.capabilitiesProcessed {
+	for ctx.capabilities == nil {
 		log.Functionf("waiting for Capabilities")
 		select {
 		case change := <-subCapabilities.MsgChan():
@@ -208,7 +212,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		log.Errorf("cannot close subCapabilities: %v", err)
 	}
 	log.Functionf("processed Capabilities")
-	log.Functionf("will use vhost: %t", ctx.useVHost)
 
 	if err := utils.WaitForVault(ps, log, agentName, warningTime, errorTime); err != nil {
 		log.Fatal(err)
@@ -223,15 +226,18 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	if ctx.persistType == types.PersistZFS {
 		// create datasets for volumes
 		initializeDatasets()
+		// Iterate over volume datasets and prepares map of
+		// volume's content format with the volume key
+		populateExistingVolumesFormatDatasets(&ctx, types.VolumeEncryptedZFSDataset)
+		populateExistingVolumesFormatDatasets(&ctx, types.VolumeClearZFSDataset)
 	} else {
 		// create the directories
 		initializeDirs()
 	}
-
 	// Iterate over volume directory and prepares map of
 	// volume's content format with the volume key
-	populateExistingVolumesFormat(volumeEncryptedDirName)
-	populateExistingVolumesFormat(volumeClearDirName)
+	populateExistingVolumesFormatObjects(&ctx, volumeEncryptedDirName)
+	populateExistingVolumesFormatObjects(&ctx, volumeClearDirName)
 
 	// Create the background worker
 	ctx.worker = worker.NewPool(log, &ctx, 20, map[string]worker.Handler{
@@ -630,8 +636,10 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 			start := time.Now()
 			gcObjects(&ctx, volumeEncryptedDirName)
 			gcObjects(&ctx, volumeClearDirName)
-			gcDatasets(&ctx, types.VolumeEncryptedZFSDataset)
-			gcDatasets(&ctx, types.VolumeClearZFSDataset)
+			if ctx.persistType == types.PersistZFS {
+				gcDatasets(&ctx, types.VolumeEncryptedZFSDataset)
+				gcDatasets(&ctx, types.VolumeClearZFSDataset)
+			}
 			if !ctx.initGced {
 				gcUnusedInitObjects(&ctx)
 				ctx.initGced = true
@@ -804,7 +812,14 @@ func handleCapabilitiesImpl(ctxArg interface{}, _ string,
 	statusArg interface{}) {
 
 	ctx := ctxArg.(*volumemgrContext)
-	status := statusArg.(types.Capabilities)
-	ctx.useVHost = status.UseVHost
-	ctx.capabilitiesProcessed = true
+	status, ok := statusArg.(types.Capabilities)
+	if !ok {
+		log.Fatalf("Unexpected type from subCapabilities: %T", statusArg)
+	}
+	ctx.capabilities = &status
+}
+
+// GetCapabilities returns stored capabilities
+func (ctxPtr *volumemgrContext) GetCapabilities() *types.Capabilities {
+	return ctxPtr.capabilities
 }

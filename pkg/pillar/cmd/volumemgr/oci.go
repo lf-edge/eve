@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	v1 "github.com/google/go-containerregistry/pkg/v1"
+	"github.com/lf-edge/eve/pkg/pillar/cas"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 )
 
@@ -22,7 +23,7 @@ func resolveIndex(ctx *volumemgrContext, blob *types.BlobStatus) (*v1.Descriptor
 	var index *v1.IndexManifest
 	//If the blob is loaded, then read the blob from CAS else read the verified image of the blob
 	if blob.State == types.LOADED {
-		blobHash := checkAndCorrectBlobHash(blob.Sha256)
+		blobHash := cas.CheckAndCorrectBlobHash(blob.Sha256)
 		// try it as an index and as a straight manifest
 		reader, err := ctx.casClient.ReadBlob(ctrdCtx, blobHash)
 		if err != nil {
@@ -74,7 +75,7 @@ func resolveManifestChildren(ctx *volumemgrContext, blob *types.BlobStatus) (int
 
 	//If the blob is loaded, then read the blob from CAS else read the verified image of the blob
 	if blob.State == types.LOADED {
-		blobHash := checkAndCorrectBlobHash(blob.Sha256)
+		blobHash := cas.CheckAndCorrectBlobHash(blob.Sha256)
 		// try it as an index and as a straight manifest
 		reader, err := ctx.casClient.ReadBlob(ctrdCtx, blobHash)
 		if err != nil {

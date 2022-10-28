@@ -45,13 +45,6 @@ func (status VolumeCreatePending) ZVolName() string {
 		status.GenerationCounter+status.LocalGenerationCounter)
 }
 
-// ZVolNameToKey returns key for volumestatus for provided zVolName
-func ZVolNameToKey(zVolName string) string {
-	split := strings.Split(zVolName, "/")
-	lastPart := split[len(split)-1]
-	return strings.ReplaceAll(lastPart, ".", "#")
-}
-
 // ZVolStatus specifies the needed information for zfs volume
 type ZVolStatus struct {
 	Dataset string

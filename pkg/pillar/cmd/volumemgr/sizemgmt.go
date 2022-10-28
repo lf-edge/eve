@@ -5,14 +5,10 @@ package volumemgr
 
 import (
 	"fmt"
-	"strings"
 
-	"github.com/containerd/containerd/mount"
 	"github.com/lf-edge/eve/pkg/pillar/diskmetrics"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	"github.com/lf-edge/eve/pkg/pillar/vault"
-	"github.com/lf-edge/eve/pkg/pillar/zfs"
-	"github.com/shirou/gopsutil/disk"
+	"github.com/lf-edge/eve/pkg/pillar/volumehandlers"
 )
 
 // getRemainingDiskSpace returns how many bytes remain for volume
@@ -44,47 +40,16 @@ func getRemainingDiskSpace(ctxPtr *volumemgrContext) (uint64, error) {
 				iterVolumeStatus.Key(), iterVolumeStatus.State)
 			continue
 		}
-		sizeToUseInCalculation := uint64(iterVolumeStatus.CurrentSize)
-		hasNoAppReferences := false
-		cfg := lookupVolumeConfig(ctxPtr, iterVolumeStatus.Key())
-		if cfg == nil {
-			// we have no config with this volume, so it cannot have app references
-			log.Noticef("getRemainingDiskSpace: Volume %s not found in VolumeConfigs, assume no app references",
-				iterVolumeStatus.Key())
-			hasNoAppReferences = true
-		} else {
-			hasNoAppReferences = cfg.HasNoAppReferences
-		}
-		// for zfs we allocate the whole space of volume, but still fill CurrentSize with real usage
-		// we should account MaxVolSize here
-		if useZVolDisk(ctxPtr, &iterVolumeStatus) {
-			log.Noticef("getRemainingDiskSpace: Volume %s is zvol, use MaxVolSize",
-				iterVolumeStatus.Key())
-			sizeToUseInCalculation = iterVolumeStatus.MaxVolSize
-		} else if iterVolumeStatus.ReadOnly {
-			// it is ReadOnly and will not grow
-			log.Noticef("getRemainingDiskSpace: Volume %s is ReadOnly, use CurrentSize",
-				iterVolumeStatus.Key())
-		} else if hasNoAppReferences {
-			// it has no apps pointing onto it in new config
-			log.Noticef("getRemainingDiskSpace: Volume %s has no app references, use CurrentSize",
-				iterVolumeStatus.Key())
-		} else {
-			// use MaxVolSize in other cases
-			log.Noticef("getRemainingDiskSpace: Use MaxVolSize for Volume %s",
-				iterVolumeStatus.Key())
-			sizeToUseInCalculation = iterVolumeStatus.MaxVolSize
-		}
-		totalDiskSize += sizeToUseInCalculation
+		totalDiskSize += volumehandlers.GetVolumeHandler(log, ctxPtr, &iterVolumeStatus).UsageFromStatus()
 	}
-	deviceDiskUsage, err := persistUsageStat(ctxPtr)
+	deviceDiskUsage, err := diskmetrics.PersistUsageStat(log)
 	if err != nil {
 		err := fmt.Errorf("Failed to get diskUsage for /persist. err: %s", err)
 		log.Error(err)
 		return 0, err
 	}
 	deviceDiskSize := deviceDiskUsage.Total
-	diskReservedForDom0 := dom0DiskReservedSize(ctxPtr, deviceDiskSize)
+	diskReservedForDom0 := diskmetrics.Dom0DiskReservedSize(log, ctxPtr.globalConfig, deviceDiskSize)
 	var allowedDeviceDiskSize uint64
 	if deviceDiskSize < diskReservedForDom0 {
 		err = fmt.Errorf("Total Disk Size(%d) <=  diskReservedForDom0(%d)",
@@ -98,77 +63,4 @@ func getRemainingDiskSpace(ctxPtr *volumemgrContext) (uint64, error) {
 	} else {
 		return allowedDeviceDiskSize - totalDiskSize, nil
 	}
-}
-
-func dom0DiskReservedSize(ctxPtr *volumemgrContext, deviceDiskSize uint64) uint64 {
-	dom0MinDiskUsagePercent := ctxPtr.globalConfig.GlobalValueInt(
-		types.Dom0MinDiskUsagePercent)
-	diskReservedForDom0 := uint64(float64(deviceDiskSize) *
-		(float64(dom0MinDiskUsagePercent) * 0.01))
-	maxDom0DiskSize := uint64(ctxPtr.globalConfig.GlobalValueInt(
-		types.Dom0DiskUsageMaxBytes))
-	if diskReservedForDom0 > maxDom0DiskSize {
-		log.Tracef("diskSizeReservedForDom0 - diskReservedForDom0 adjusted to "+
-			"maxDom0DiskSize (%d)", maxDom0DiskSize)
-		diskReservedForDom0 = maxDom0DiskSize
-	}
-	return diskReservedForDom0
-}
-
-// persistUsageStat returns usage stat for persist
-// We need to handle ZFS differently since the mounted /persist does not indicate
-// usage of zvols and snapshots
-// Note that we subtract usage of persist/reserved dataset (about 20% of persist capacity)
-func persistUsageStat(_ *volumemgrContext) (*types.UsageStat, error) {
-	if vault.ReadPersistType() != types.PersistZFS {
-		deviceDiskUsage, err := disk.Usage(types.PersistDir)
-		if err != nil {
-			return nil, err
-		}
-		usageStat := &types.UsageStat{
-			Total: deviceDiskUsage.Total,
-			Used:  deviceDiskUsage.Used,
-			Free:  deviceDiskUsage.Free,
-		}
-		return usageStat, nil
-	}
-	usageStat, err := zfs.GetDatasetUsageStat(types.PersistDataset)
-	if err != nil {
-		return nil, err
-	}
-	usageStatReserved, err := zfs.GetDatasetUsageStat(types.PersistReservedDataset)
-	if err != nil {
-		log.Errorf("GetDatasetUsageStat: %s", err)
-	} else {
-		// subtract reserved dataset Total from persist Total
-		// we use LogicalUsed for usageStat.Total of persist for usageStat.Free calculation
-		// so need to subtract
-		usageStat.Free -= usageStatReserved.Total
-		usageStat.Total -= usageStatReserved.Total
-	}
-	return usageStat, nil
-}
-
-// dirUsage calculates usage of directory
-// it checks if provided directory is zfs mountpoint and take usage from zfs in that case
-func dirUsage(_ *volumemgrContext, dir string) (uint64, error) {
-	if vault.ReadPersistType() != types.PersistZFS || !strings.HasPrefix(dir, types.PersistDir) {
-		return diskmetrics.SizeFromDir(log, dir)
-	}
-	mi, err := mount.Lookup(dir)
-	if err != nil {
-		// Lookup do not return error in case of dir is not mountpoint
-		// it returns the longest found parent mountpoint for provided dir
-		log.Errorf("dirUsage: Lookup returns error (%s), fallback to SizeFromDir", err)
-		return diskmetrics.SizeFromDir(log, dir)
-	}
-	// if it is zfs mountpoint and we mount exactly the directory of interest (not parent folder)
-	if mi.FSType == types.PersistZFS.String() && mi.Mountpoint == dir {
-		usageStat, err := zfs.GetDatasetUsageStat(strings.TrimPrefix(dir, "/"))
-		if err != nil {
-			return 0, err
-		}
-		return usageStat.Used, nil
-	}
-	return diskmetrics.SizeFromDir(log, dir)
 }

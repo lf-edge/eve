@@ -1466,8 +1466,8 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 			}
 		default:
 			// assume everything else to be disk formats
-			_, _, format, _, err := utils.GetVolumeSize(log, ctx.casClient, ds.FileLocation)
-			if err == nil && format != strings.ToLower(ds.Format.String()) {
+			format, err := utils.GetVolumeFormat(log, ds.FileLocation)
+			if err == nil && format != ds.Format {
 				err = fmt.Errorf("Disk format mismatch, format in config %v and output of qemu-img/zfs get %v\n"+
 					"Note: Format mismatch may be because of disk corruption also.",
 					ds.Format, format)
