@@ -5,15 +5,11 @@ package volumemgr
 
 import (
 	"fmt"
-	"os"
 	"time"
 
-	zconfig "github.com/lf-edge/eve/api/go/config"
-	"github.com/lf-edge/eve/pkg/pillar/tgt"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	"github.com/lf-edge/eve/pkg/pillar/utils"
 	"github.com/lf-edge/eve/pkg/pillar/vault"
-	"github.com/lf-edge/eve/pkg/pillar/zfs"
+	"github.com/lf-edge/eve/pkg/pillar/volumehandlers"
 )
 
 func handleVolumeCreate(ctxArg interface{}, key string,
@@ -43,7 +39,7 @@ func handleVolumeModify(ctxArg interface{}, key string,
 		//update deferred creation if exists
 		ctx.volumeConfigCreateDeferredMap[key] = &config
 	} else {
-		status := lookupVolumeStatus(ctx, config.Key())
+		status := ctx.LookupVolumeStatus(config.Key())
 		if status == nil {
 			log.Fatalf("status doesn't exist at handleVolumeModify for %s", config.Key())
 		}
@@ -91,7 +87,7 @@ func handleVolumeDelete(ctxArg interface{}, key string,
 		//remove deferred creation if exists
 		delete(ctx.volumeConfigCreateDeferredMap, key)
 	} else {
-		status := lookupVolumeStatus(ctx, config.Key())
+		status := ctx.LookupVolumeStatus(config.Key())
 		if status == nil {
 			log.Functionf("handleVolumeDelete for %v, VolumeStatus not found", key)
 			return
@@ -103,32 +99,10 @@ func handleVolumeDelete(ctxArg interface{}, key string,
 	log.Functionf("handleVolumeDelete(%s) Done", key)
 }
 
-// useZVolDisk returns true if we should use zvol for the provided VolumeStatus
-func useZVolDisk(ctx *volumemgrContext, status *types.VolumeStatus) bool {
-	if status.IsContainer() {
-		return false
-	}
-	if status.ContentFormat == zconfig.Format_ISO {
-		return false
-	}
-	return ctx.persistType == types.PersistZFS
-}
-
-// expandableDisk returns true if we should try to expand disk to the provided max volume size
-func expandableDisk(_ *volumemgrContext, status *types.VolumeStatus) bool {
-	if status.IsContainer() {
-		return false
-	}
-	if status.ContentFormat == zconfig.Format_ISO {
-		return false
-	}
-	return true
-}
-
 func handleDeferredVolumeCreate(ctx *volumemgrContext, key string, config *types.VolumeConfig) {
 
 	log.Tracef("handleDeferredVolumeCreate(%s)", key)
-	status := lookupVolumeStatus(ctx, config.Key())
+	status := ctx.LookupVolumeStatus(config.Key())
 	if status != nil {
 		log.Fatalf("status exists at handleVolumeCreate for %s", config.Key())
 	}
@@ -152,47 +126,15 @@ func handleDeferredVolumeCreate(ctx *volumemgrContext, key string, config *types
 	updateVolumeStatusRefCount(ctx, status)
 	status.ContentFormat = volumeFormat[status.Key()]
 
-	created := false
-
-	if useZVolDisk(ctx, status) {
-		zvolName := status.ZVolName()
-		if zfs.DatasetExist(log, zvolName) {
-			zVolDevice := zfs.GetZVolDeviceByDataset(zvolName)
-			if zVolDevice == "" {
-				errStr := fmt.Sprintf("cannot find device for zvol %s of %s", zvolName, status.Key())
-				status.SetError(errStr, time.Now())
-				publishVolumeStatus(ctx, status)
-				updateVolumeRefStatus(ctx, status)
-				if err := createOrUpdateAppDiskMetrics(ctx, status); err != nil {
-					log.Errorf("handleDeferredVolumeCreate(%s): exception while publishing diskmetric. %s", key, err.Error())
-				}
-				return
-			}
-			created = true
-			status.FileLocation = zVolDevice
-			if ctx.useVHost && !tgt.CheckTargetIBlock(status.Key()) {
-				log.Functionf("generating target and vhost for %s", status.Key())
-				wwn, err := createTargetVhost(zVolDevice, status)
-				if err != nil {
-					log.Errorf("handleDeferredVolumeCreate(%s) name %s: createTargetVhost: %v",
-						status.Key(), status.DisplayName, err)
-					errStr := fmt.Sprintf("createTargetVhost volume %s: %v",
-						status.DisplayName, err)
-					status.SetError(errStr, time.Now())
-					publishVolumeStatus(ctx, status)
-					updateVolumeRefStatus(ctx, status)
-					if err := createOrUpdateAppDiskMetrics(ctx, status); err != nil {
-						log.Errorf("handleDeferredVolumeCreate(%s): exception while publishing diskmetric. %s", key, err.Error())
-					}
-				}
-				status.WWN = wwn
-			}
+	created, err := volumehandlers.GetVolumeHandler(log, ctx, status).Populate()
+	if err != nil {
+		status.SetError(err.Error(), time.Now())
+		publishVolumeStatus(ctx, status)
+		updateVolumeRefStatus(ctx, status)
+		if err := createOrUpdateAppDiskMetrics(ctx, status); err != nil {
+			log.Errorf("handleDeferredVolumeCreate(%s): exception while publishing diskmetric. %s", key, err.Error())
 		}
-	} else {
-		if _, err := os.Stat(status.PathName()); err == nil {
-			created = true
-			status.FileLocation = status.PathName()
-		}
+		return
 	}
 
 	if created {
@@ -200,7 +142,7 @@ func handleDeferredVolumeCreate(ctx *volumemgrContext, key string, config *types
 		status.Progress = 100
 		status.SubState = types.VolumeSubStateCreated
 		status.CreateTime = time.Now()
-		actualSize, maxSize, _, _, err := utils.GetVolumeSize(log, ctx.casClient, status.FileLocation)
+		actualSize, maxSize, _, _, err := volumehandlers.GetVolumeHandler(log, ctx, status).GetVolumeDetails()
 		if err != nil {
 			log.Error(err)
 		} else {
@@ -212,7 +154,6 @@ func handleDeferredVolumeCreate(ctx *volumemgrContext, key string, config *types
 			status.TotalSize = int64(actualSize)
 			status.CurrentSize = int64(actualSize)
 		}
-		updateStatusByPersistType(ctx, status)
 		publishVolumeStatus(ctx, status)
 		updateVolumeRefStatus(ctx, status)
 		if err := createOrUpdateAppDiskMetrics(ctx, status); err != nil {
@@ -268,11 +209,10 @@ func unpublishVolumeStatus(ctx *volumemgrContext,
 	log.Tracef("unpublishVolumeStatus(%s) Done", key)
 }
 
-func lookupVolumeStatus(ctx *volumemgrContext,
-	key string) *types.VolumeStatus {
-
+// LookupVolumeStatus returns VolumeStatus based on key
+func (ctxPtr *volumemgrContext) LookupVolumeStatus(key string) *types.VolumeStatus {
 	log.Tracef("lookupVolumeStatus(%s)", key)
-	pub := ctx.pubVolumeStatus
+	pub := ctxPtr.pubVolumeStatus
 	c, _ := pub.Get(key)
 	if c == nil {
 		log.Tracef("lookupVolumeStatus(%s) not found", key)
@@ -296,11 +236,10 @@ func getAllVolumeStatus(ctx *volumemgrContext) []*types.VolumeStatus {
 	return retList
 }
 
-func lookupVolumeConfig(ctx *volumemgrContext,
-	key string) *types.VolumeConfig {
-
+// LookupVolumeConfig returns VolumeConfig based on key
+func (ctxPtr *volumemgrContext) LookupVolumeConfig(key string) *types.VolumeConfig {
 	log.Tracef("lookupVolumeConfig(%s)", key)
-	sub := ctx.subVolumeConfig
+	sub := ctxPtr.subVolumeConfig
 	c, _ := sub.Get(key)
 	if c == nil {
 		log.Tracef("lookupVolumeConfig(%s) not found", key)
@@ -370,7 +309,7 @@ func maybeSpaceAvailable(ctx *volumemgrContext) {
 		if status.State >= types.CREATING_VOLUME {
 			continue
 		}
-		if vc := lookupVolumeConfig(ctx, status.Key()); vc == nil {
+		if vc := ctx.LookupVolumeConfig(status.Key()); vc == nil {
 			continue
 		}
 		changed, _ := doUpdateVol(ctx, &status)
@@ -389,7 +328,7 @@ func maybeSpaceAvailable(ctx *volumemgrContext) {
 func updateVolumeStatusRefCount(ctx *volumemgrContext, vs *types.VolumeStatus) {
 	log.Tracef("updateVolumeStatusRefCount(%s)", vs.Key())
 	var vcRefCount, vrcRefCount uint
-	vc := lookupVolumeConfig(ctx, vs.Key())
+	vc := ctx.LookupVolumeConfig(vs.Key())
 	if vc == nil {
 		log.Functionf("updateVolumeStatusRefCount: VolumeConfig not present for %s", vs.Key())
 	} else {
@@ -468,7 +407,8 @@ func handleZVolStatusCreate(ctxArg interface{}, key string, configArg interface{
 	log.Functionf("handleZVolStatusCreate for %s, done", key)
 }
 
-func lookupZVolStatusByDataset(ctxPtr *volumemgrContext, dataset string) *types.ZVolStatus {
+// LookupZVolStatusByDataset returns ZVolStatus based on dataset
+func (ctxPtr *volumemgrContext) LookupZVolStatusByDataset(dataset string) *types.ZVolStatus {
 	for _, s := range ctxPtr.subZVolStatus.GetAll() {
 		zVolStatus := s.(types.ZVolStatus)
 		if zVolStatus.Dataset == dataset {

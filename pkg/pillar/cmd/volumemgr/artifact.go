@@ -57,8 +57,7 @@ func getManifestsForBareBlob(ctx *volumemgrContext, image, rootHash string, size
 	}
 
 	//Adding config blob to blobStatuses list
-	configBlobStatus := lookupBlobStatus(ctx,
-		strings.Replace(desc[0].Digest.String(), "sha256:", "", 1))
+	configBlobStatus := ctx.LookupBlobStatus(strings.Replace(desc[0].Digest.String(), "sha256:", "", 1))
 	if configBlobStatus != nil {
 		blobStatuses = append(blobStatuses, configBlobStatus)
 	}

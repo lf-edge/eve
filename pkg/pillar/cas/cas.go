@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/lf-edge/edge-containers/pkg/resolver"
 	"github.com/lf-edge/eve/pkg/pillar/types"
@@ -145,6 +146,11 @@ type casDesc struct {
 
 var knownCASHandlers = map[string]casDesc{
 	"containerd": {constructor: newContainerdCAS},
+}
+
+// CheckAndCorrectBlobHash checks if the blobHash has hash algo sha256 as prefix. If not then it'll prepend it.
+func CheckAndCorrectBlobHash(blobHash string) string {
+	return fmt.Sprintf("sha256:%s", strings.TrimPrefix(blobHash, "sha256:"))
 }
 
 // NewCAS returns new CAS object with a new client of underlying implementor(selectedCAS).

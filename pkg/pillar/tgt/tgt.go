@@ -88,9 +88,14 @@ func TargetCreateIBlock(dev, tgtName, serial string) error {
 	return nil
 }
 
-// GenerateNaaSerial generates naa serial
-func GenerateNaaSerial() string {
+// generateSerial generates naa serial
+func generateSerial() string {
 	return fmt.Sprintf("%s%09x", naaPrefix, rand.Uint32())
+}
+
+// GetNaaSerial returns prefixed serial
+func GetNaaSerial(serial string) string {
+	return fmt.Sprintf("naa.%s", serial)
 }
 
 // VHostCreateIBlock - Create vHost fabric
@@ -145,7 +150,7 @@ func CheckVHostIBlock(tgtName string) bool {
 		logrus.Errorf("CheckVHostIBlock (%s): %v", tgtName, err)
 		return false
 	}
-	vhostRoot := filepath.Join(tgtPath, "vhost", fmt.Sprintf("naa.%s", serial), "tpgt_1")
+	vhostRoot := filepath.Join(tgtPath, "vhost", GetNaaSerial(serial), "tpgt_1")
 	vhostLun := filepath.Join(vhostRoot, "lun", "lun_0")
 	if _, err := os.Stat(filepath.Join(vhostLun, "iblock")); err == nil {
 		return true
@@ -185,4 +190,30 @@ func TargetDeleteIBlock(tgtName string) error {
 		return fmt.Errorf("error delete tgt: %v", err)
 	}
 	return nil
+}
+
+// CreateTargetVhost creates target and vhost for device using information from VolumeStatus
+// and returns wwn to use for mounting
+func CreateTargetVhost(device string, key string) (string, error) {
+	serial := generateSerial()
+	wwn := GetNaaSerial(serial)
+	err := TargetCreateIBlock(device, key, serial)
+	if err != nil {
+		return "", fmt.Errorf("TargetCreateFileIODev(%s, %s, %s): %w",
+			device, key, serial, err)
+	}
+	if !CheckVHostIBlock(key) {
+		err = VHostCreateIBlock(key, wwn)
+		if err != nil {
+			errString := fmt.Sprintf("VHostCreateIBlock: %v", err)
+			err = VHostDeleteIBlock(wwn)
+			if err != nil {
+				errString = fmt.Sprintf("%s; VHostDeleteIBlock: %v",
+					errString, err)
+			}
+			return "", fmt.Errorf("VHostCreateIBlock(%s, %s): %s",
+				key, wwn, errString)
+		}
+	}
+	return wwn, nil
 }

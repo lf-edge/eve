@@ -43,6 +43,20 @@ func GetDiskVirtualSize(log *base.LogObject, diskfile string) (uint64, error) {
 	return imgInfo.VirtualSize, nil
 }
 
+// CheckResizeDisk returns size and indicates do we need to resize disk to be at least maxsizebytes
+func CheckResizeDisk(log *base.LogObject, diskfile string, maxsizebytes uint64) (uint64, bool, error) {
+	vSize, err := GetDiskVirtualSize(log, diskfile)
+	if err != nil {
+		return 0, false, err
+	}
+	if vSize > maxsizebytes {
+		log.Warnf("Virtual size (%d) of provided volume(%s) is larger than provided MaxVolSize (%d). "+
+			"Will use virtual size.", vSize, diskfile, maxsizebytes)
+		return vSize, false, nil
+	}
+	return maxsizebytes, vSize != maxsizebytes, nil
+}
+
 // ResizeImg calls qemu-img to resize disk file to new size
 func ResizeImg(ctx context.Context, log *base.LogObject, diskfile string, newsize uint64) error {
 	if _, err := os.Stat(diskfile); err != nil {

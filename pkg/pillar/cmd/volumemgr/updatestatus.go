@@ -11,6 +11,7 @@ import (
 	zconfig "github.com/lf-edge/eve/api/go/config"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
+	"github.com/lf-edge/eve/pkg/pillar/volumehandlers"
 	uuid "github.com/satori/go.uuid"
 )
 
@@ -442,7 +443,7 @@ func doUpdateVol(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool)
 	if vrc != nil {
 		verifyOnly = vrc.VerifyOnly
 	} else {
-		vc := lookupVolumeConfig(ctx, status.Key())
+		vc := ctx.LookupVolumeConfig(status.Key())
 		if vc != nil && !vc.HasNoAppReferences {
 			log.Functionf("doUpdateVol(%s) name %s has app references but no VolumeRefConfig found",
 				status.Key(), status.DisplayName)
@@ -517,7 +518,7 @@ func doUpdateVol(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool)
 			return changed, false
 		}
 	case zconfig.VolumeContentOriginType_VCOT_DOWNLOAD:
-		ctStatus := lookupContentTreeStatusAny(ctx, status.ContentID.String())
+		ctStatus := ctx.LookupContentTreeStatus(status.ContentID.String())
 		if ctStatus == nil {
 			// Content tree not yet available
 			log.Errorf("doUpdateVol(%s) name %s: waiting for content tree status %v",
@@ -629,25 +630,16 @@ func doUpdateVol(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool)
 		}
 	}
 	if status.State == types.CREATING_VOLUME && status.SubState == types.VolumeSubStatePreparing {
-		if useZVolDisk(ctx, status) {
-			zVolStatus := lookupZVolStatusByDataset(ctx, status.ZVolName())
-			if zVolStatus == nil {
-				// wait for ZVolStatus from zfsmanager
-				return changed, false
-			}
-			if ctx.useVHost {
-				wwn, err := createTargetVhost(zVolStatus.Device, status)
-				if err != nil {
-					log.Errorf("doUpdateVol(%s) name %s: %v",
-						status.Key(), status.DisplayName, err)
-					errStr := fmt.Sprintf("createTargetVhost for volume %s: %v",
-						status.DisplayName, err)
-					status.SetErrorWithSource(errStr, types.VolumeStatus{}, time.Now())
-					changed = true
-					return changed, false
-				}
-				status.WWN = wwn
-			}
+		prepared, err := volumehandlers.GetVolumeHandler(log, ctx, status).HandlePrepared()
+		if err != nil {
+			log.Errorf("doUpdateVol(%s) name %s: %v",
+				status.Key(), status.DisplayName, err)
+			status.SetErrorWithSource(err.Error(), types.VolumeStatus{}, time.Now())
+			changed = true
+			return changed, false
+		}
+		if !prepared {
+			return changed, false
 		}
 		status.SubState = types.VolumeSubStatePrepareDone
 		changed = true
@@ -692,6 +684,17 @@ func doUpdateVol(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool)
 		}
 	}
 	if status.State == types.CREATING_VOLUME && status.SubState == types.VolumeSubStateCreated {
+		created, err := volumehandlers.GetVolumeHandler(log, ctx, status).HandleCreated()
+		if err != nil {
+			log.Errorf("doUpdateVol(%s) name %s: %v",
+				status.Key(), status.DisplayName, err)
+			status.SetErrorWithSource(err.Error(), types.VolumeStatus{}, time.Now())
+			changed = true
+			return changed, false
+		}
+		if !created {
+			return changed, false
+		}
 		if !status.HasError() {
 			status.State = types.CREATED_VOLUME
 			status.CreateTime = time.Now()
@@ -699,20 +702,6 @@ func doUpdateVol(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool)
 		changed = true
 		// Work is done
 		DeleteWorkCreate(ctx, status)
-		if status.MaxVolSize == 0 {
-			_, maxVolSize, _, _, err := utils.GetVolumeSize(log, ctx.casClient, status.FileLocation)
-			if err != nil {
-				log.Error(err)
-			} else if maxVolSize != status.MaxVolSize {
-				log.Functionf("doUpdateVol: MaxVolSize update from  %d to %d for %s",
-
-					status.MaxVolSize, maxVolSize,
-					status.FileLocation)
-				status.MaxVolSize = maxVolSize
-				changed = true
-			}
-		}
-		updateStatusByPersistType(ctx, status)
 	}
 	return changed, false
 }
@@ -872,12 +861,5 @@ func updateVolumeStatusFromContentID(ctx *volumemgrContext, contentID uuid.UUID)
 	}
 	if !found {
 		log.Warnf("XXX updateVolumeStatusFromContentID(%s) NOT FOUND", contentID)
-	}
-}
-
-// updateStatusByPersistType set parameters of VolumeStatus according to PersistType from context
-func updateStatusByPersistType(ctx *volumemgrContext, status *types.VolumeStatus) {
-	if useZVolDisk(ctx, status) {
-		status.ContentFormat = zconfig.Format_RAW
 	}
 }

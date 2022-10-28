@@ -22,7 +22,7 @@ func TestIsErrorSourceOnPubSub(t *testing.T) {
 	log.Functionf("set error %s", status.Error)
 	ctx := initStatusCtx(t)
 	publishVolumeStatus(&ctx, status)
-	status = lookupVolumeStatus(&ctx, status.Key())
+	status = ctx.LookupVolumeStatus(status.Key())
 	assert.True(t, status.HasError())
 	assert.True(t, status.IsErrorSource(types.ContentTreeStatus{}),
 		"Pubsub error source type: %T", status.ErrorSourceType)

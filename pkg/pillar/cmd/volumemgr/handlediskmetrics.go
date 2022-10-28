@@ -12,7 +12,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/diskmetrics"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	"github.com/lf-edge/eve/pkg/pillar/utils"
+	"github.com/lf-edge/eve/pkg/pillar/volumehandlers"
 	"github.com/shirou/gopsutil/disk"
 )
 
@@ -163,7 +163,7 @@ func createOrUpdateDiskMetrics(ctx *volumemgrContext) {
 		var err error
 		if path == types.PersistDir {
 			// dedicated handler for PersistDir as we have to use PersistType dependent calculations
-			u, err = persistUsageStat(ctx)
+			u, err = diskmetrics.PersistUsageStat(log)
 			if err != nil {
 				// Happens e.g., if we don't have a /persist
 				log.Errorf("createOrUpdateDiskMetrics: persistUsageStat: %s", err)
@@ -203,7 +203,7 @@ func createOrUpdateDiskMetrics(ctx *volumemgrContext) {
 	log.Tracef("createOrUpdateDiskMetrics: persistUsage %d, elapse sec %v", persistUsage, time.Since(startPubTime).Seconds())
 
 	for _, path := range types.ReportDirPaths {
-		usage, err := dirUsage(ctx, path)
+		usage, err := diskmetrics.DirUsage(log, path)
 		log.Tracef("createOrUpdateDiskMetrics: ReportDirPath %s usage %d err %v", path, usage, err)
 		if err != nil {
 			// Do not report
@@ -225,7 +225,7 @@ func createOrUpdateDiskMetrics(ctx *volumemgrContext) {
 	log.Tracef("createOrUpdateDiskMetrics: DirPaths in persist, elapse sec %v", time.Since(startPubTime).Seconds())
 
 	for _, path := range types.AppPersistPaths {
-		usage, err := dirUsage(ctx, path)
+		usage, err := diskmetrics.DirUsage(log, path)
 		log.Tracef("createOrUpdateDiskMetrics: AppPersistPath %s usage %d err %v", path, usage, err)
 		if err != nil {
 			// Do not report
@@ -258,7 +258,7 @@ func createOrUpdateAppDiskMetrics(ctx *volumemgrContext, volumeStatus *types.Vol
 		// Nothing we can do? XXX can we retrieve size from CAS?
 		return nil
 	}
-	actualSize, maxSize, diskType, dirtyFlag, err := utils.GetVolumeSize(log, ctx.casClient, volumeStatus.FileLocation)
+	actualSize, maxSize, diskType, dirtyFlag, err := volumehandlers.GetVolumeHandler(log, ctx, volumeStatus).GetVolumeDetails()
 	if err != nil {
 		err = fmt.Errorf("createOrUpdateAppDiskMetrics(%s, %s): exception while getting volume size. %s",
 			volumeStatus.VolumeID, volumeStatus.FileLocation, err)
