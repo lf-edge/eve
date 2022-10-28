@@ -1552,13 +1552,14 @@ func initPostOnboardSubs(zedagentCtx *zedagentContext) {
 	}
 
 	zedagentCtx.subAppDiskMetric, err = ps.NewSubscription(pubsub.SubscriptionOptions{
-		AgentName:   "volumemgr",
-		MyAgentName: agentName,
-		TopicImpl:   types.AppDiskMetric{},
-		Activate:    true,
-		Ctx:         zedagentCtx,
-		WarningTime: warningTime,
-		ErrorTime:   errorTime,
+		AgentName:     "volumemgr",
+		MyAgentName:   agentName,
+		TopicImpl:     types.AppDiskMetric{},
+		Activate:      true,
+		Ctx:           zedagentCtx,
+		CreateHandler: handleAppDiskMetricCreate,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
 	})
 	if err != nil {
 		log.Fatal(err)
