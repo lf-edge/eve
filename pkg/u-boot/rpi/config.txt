@@ -23,10 +23,6 @@ enable_uart=1
 # Disable warning overlays as they don't work well together with linux's graphical output
 avoid_warnings=1
 
-# This overlay fixes divergences between the RPi device tree and what
-# upstream provides
-dtoverlay=raspberrypi-rpi
-
 # overscan is only needed on old TV sets and if analog gear is in the chain (e.g. DPI)
 disable_overscan=1
 

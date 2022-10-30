@@ -5,7 +5,7 @@ RUN eve-alpine-deploy.sh
 
 SHELL ["/bin/bash", "-eo", "pipefail", "-c"]
 
-ENV VERSION v2021.10
+ENV VERSION v2022.10
 ENV SOURCE_URL https://github.com/u-boot/u-boot/archive/${VERSION}.tar.gz
 ENV RASPBERRY_FIRMWARE_BLOBS_VERSION 1.20211007
 ENV RASPBERRY_FIRMWARE_BLOBS https://github.com/raspberrypi/firmware/raw/${RASPBERRY_FIRMWARE_BLOBS_VERSION}
@@ -60,6 +60,9 @@ RUN make -j "$(getconf _NPROCESSORS_ONLN)"
 
 # export a final set of u-boot artifacts into /boot
 RUN cp /u-boot/u-boot.bin /boot
+RUN if [ "$(uname -m)" = aarch64 ]; then \
+          cp /u-boot/arch/arm/dts/bcm2711-rpi-4-b.dtb /boot          ;\
+       fi
 
 FROM scratch
 ENTRYPOINT []
