@@ -1,5 +1,5 @@
 ARG GOVER=1.18.5
-FROM golang:${GOVER}-alpine
+FROM docker.io/golang:${GOVER}-alpine
 ARG USER
 ARG GROUP
 ARG UID
