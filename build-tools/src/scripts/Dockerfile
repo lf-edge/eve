@@ -28,3 +28,4 @@ RUN mv /go/bin/* /usr/bin
 ENV HOME /home/${USER}
 ENV GOFLAGS=-mod=vendor
 ENV GO111MODULE=on
+ENV GOCACHE=/tmp
