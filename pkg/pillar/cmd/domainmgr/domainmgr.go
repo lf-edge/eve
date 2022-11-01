@@ -15,7 +15,6 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
-	"path"
 	"strconv"
 	"strings"
 	"sync"
@@ -50,10 +49,9 @@ const (
 	ciDirname  = runDirname + "/cloudinit" // For cloud-init images
 
 	// Time limits for event loop handlers
-	errorTime           = 3 * time.Minute
-	warningTime         = 40 * time.Second
-	containerRootfsPath = "rootfs/"
-	casClientType       = "containerd"
+	errorTime     = 3 * time.Minute
+	warningTime   = 40 * time.Second
+	casClientType = "containerd"
 )
 
 // Really a constant
@@ -1295,7 +1293,7 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 			// do nothing
 		case zconfig.Format_CONTAINER:
 			snapshotID := containerd.GetSnapshotID(ds.FileLocation)
-			if err := ctx.casClient.MountSnapshot(snapshotID, getRoofFsPath(ds.FileLocation)); err != nil {
+			if err := ctx.casClient.MountSnapshot(snapshotID, cas.GetRoofFsPath(ds.FileLocation)); err != nil {
 				err := fmt.Errorf("doActivate: Failed mount snapshot: %s for %s. Error %s",
 					snapshotID, config.UUIDandVersion.UUID, err)
 				log.Error(err.Error())
@@ -1304,7 +1302,7 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 			}
 		default:
 			// assume everything else to be disk formats
-			_, _, format, _, err := utils.GetVolumeSize(log, ds.FileLocation)
+			_, _, format, _, err := utils.GetVolumeSize(log, ctx.casClient, ds.FileLocation)
 			if err == nil && format != strings.ToLower(ds.Format.String()) {
 				err = fmt.Errorf("Disk format mismatch, format in config %v and output of qemu-img/zfs get %v\n"+
 					"Note: Format mismatch may be because of disk corruption also.",
@@ -3149,10 +3147,6 @@ func handleIBDelete(ctx *domainContext, phylabel string) {
 	log.Noticef("handleIBDelete(%s) done len %d", phylabel,
 		len(ctx.assignableAdapters.IoBundleList))
 	checkIoBundleAll(ctx)
-}
-
-func getRoofFsPath(rootPath string) string {
-	return path.Join(rootPath, containerRootfsPath)
 }
 
 func getAndPublishCapabilities(capabilitiesInfoPub pubsub.Publication) error {

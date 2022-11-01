@@ -88,6 +88,12 @@ type CAS interface {
 	//MountSnapshot: mounts the snapshot on the given target path
 	//Arg 'snapshotID' should be of format <algo>:<hash> (currently supporting only sha256:<hash>).
 	MountSnapshot(snapshotID, targetPath string) error
+	// SnapshotUsage returns current usage of snapshot in bytes
+	// We create snapshots for every layer of image and one active snapshot on top of them
+	// which presents the writable layer to store modified files
+	// If parents defined also adds usage of all parents of provided snapshot,
+	// not only the top active one
+	SnapshotUsage(snapshotID string, parents bool) (int64, error)
 	//ListSnapshots: returns a list of snapshotIDs where each entry is of format <algo>:<hash> (currently supporting only sha256:<hash>).
 	ListSnapshots() ([]string, error)
 	//ListSnapshots: removes a snapshot matching the given 'snapshotID'.

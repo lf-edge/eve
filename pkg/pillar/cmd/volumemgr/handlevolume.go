@@ -200,7 +200,7 @@ func handleDeferredVolumeCreate(ctx *volumemgrContext, key string, config *types
 		status.Progress = 100
 		status.SubState = types.VolumeSubStateCreated
 		status.CreateTime = time.Now()
-		actualSize, maxSize, _, _, err := utils.GetVolumeSize(log, status.FileLocation)
+		actualSize, maxSize, _, _, err := utils.GetVolumeSize(log, ctx.casClient, status.FileLocation)
 		if err != nil {
 			log.Error(err)
 		} else {

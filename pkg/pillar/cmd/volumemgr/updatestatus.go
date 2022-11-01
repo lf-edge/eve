@@ -700,7 +700,7 @@ func doUpdateVol(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool)
 		// Work is done
 		DeleteWorkCreate(ctx, status)
 		if status.MaxVolSize == 0 {
-			_, maxVolSize, _, _, err := utils.GetVolumeSize(log, status.FileLocation)
+			_, maxVolSize, _, _, err := utils.GetVolumeSize(log, ctx.casClient, status.FileLocation)
 			if err != nil {
 				log.Error(err)
 			} else if maxVolSize != status.MaxVolSize {
