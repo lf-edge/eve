@@ -335,6 +335,19 @@ func (client *Client) CtrListSnapshotInfo(ctx context.Context) ([]snapshots.Info
 	return snapshotInfoList, nil
 }
 
+// CtrGetSnapshotUsage returns snapshot's usage for snapshotID present in containerd's snapshot store
+func (client *Client) CtrGetSnapshotUsage(ctx context.Context, snapshotID string) (*snapshots.Usage, error) {
+	if err := client.verifyCtr(ctx, true); err != nil {
+		return nil, fmt.Errorf("CtrListSnapshotInfo: exception while verifying ctrd client: %s", err.Error())
+	}
+	snapshotter := client.ctrdClient.SnapshotService(defaultSnapshotter)
+	su, err := snapshotter.Usage(ctx, snapshotID)
+	if err != nil {
+		return nil, fmt.Errorf("CtrGetSnapshotUsage: Exception while fetching snapshot usage: %s", err.Error())
+	}
+	return &su, nil
+}
+
 //CtrRemoveSnapshot removed snapshot by ID from containerd
 func (client *Client) CtrRemoveSnapshot(ctx context.Context, snapshotID string) error {
 	if err := client.verifyCtr(ctx, true); err != nil {

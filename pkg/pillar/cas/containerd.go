@@ -24,6 +24,7 @@ import (
 	"github.com/opencontainers/go-digest"
 	"golang.org/x/sys/unix"
 
+	snapshot "github.com/containerd/containerd/snapshots"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 	v1types "github.com/google/go-containerregistry/pkg/v1/types"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
@@ -45,6 +46,73 @@ const (
 
 type containerdCAS struct {
 	ctrdClient *containerd.Client
+}
+
+// SnapshotUsage returns current usage of snapshot in bytes
+// We create snapshots for every layer of image and one active snapshot on top of them
+// which presents the writable layer to store modified files
+// If parents defined also adds usage of all parents of provided snapshot,
+// not only the top active one
+func (c *containerdCAS) SnapshotUsage(snapshotID string, parents bool) (int64, error) {
+	ctrdCtx, done := c.ctrdClient.CtrNewUserServicesCtx()
+	defer done()
+	var size int64
+	snapshots := []string{snapshotID}
+	if parents {
+		snapshotInfoList, err := c.ctrdClient.CtrListSnapshotInfo(ctrdCtx)
+		if err != nil {
+			return 0, fmt.Errorf("SnapshotUsage: Exception while fetching snapshots: %s. %s", snapshotID, err)
+		}
+		getSnapshotInfoByID := func(snapshotID string) *snapshot.Info {
+			for _, snap := range snapshotInfoList {
+				if snap.Name == snapshotID {
+					return &snap
+				}
+			}
+			return nil
+		}
+		checkAlreadyInList := func(snapshotID string) bool {
+			for _, el := range snapshots {
+				if el == snapshotID {
+					return true
+				}
+			}
+			return false
+		}
+		currentSnapshotInfo := getSnapshotInfoByID(snapshotID)
+		if currentSnapshotInfo == nil {
+			return 0, fmt.Errorf("SnapshotUsage: Exception while fetching snapshot info: %s not found", snapshotID)
+		}
+		for {
+			parentSnapshotID := currentSnapshotInfo.Parent
+			if parentSnapshotID == "" {
+				// no parent snapshot, assume it is root, we are done
+				break
+			}
+			// check if already added to the list
+			// which is not expected and indicates that we have
+			// circular reference in info list
+			if checkAlreadyInList(parentSnapshotID) {
+				return 0, fmt.Errorf("SnapshotUsage: Exception while fetching parent snapshots of %s: circular reference",
+					snapshotID)
+			}
+			snapshots = append(snapshots, parentSnapshotID)
+			// try to get info for parent snapshot
+			currentSnapshotInfo = getSnapshotInfoByID(parentSnapshotID)
+			if currentSnapshotInfo == nil {
+				return 0, fmt.Errorf("SnapshotUsage: Exception while fetching parent snapshots of %s: %s not found",
+					snapshotID, parentSnapshotID)
+			}
+		}
+	}
+	for _, snap := range snapshots {
+		su, err := c.ctrdClient.CtrGetSnapshotUsage(ctrdCtx, snap)
+		if err != nil {
+			return 0, fmt.Errorf("SnapshotUsage: Exception while fetching usage of snapshot: %s. %s", snapshotID, err)
+		}
+		size += su.Size
+	}
+	return size, nil
 }
 
 //CheckBlobExists: returns true if the blob exists. Arg 'blobHash' should be of format sha256:<hash>.
@@ -632,7 +700,7 @@ func (c *containerdCAS) PrepareContainerRootDir(rootPath, reference, rootBlobSha
 // UnmountContainerRootDir unmounts container's rootPath
 func (c *containerdCAS) UnmountContainerRootDir(rootPath string, force bool) error {
 	// check if mounted before proceed
-	mounted, err := mountinfo.Mounted(filepath.Join(rootPath, containerRootfsPath))
+	mounted, err := mountinfo.Mounted(GetRoofFsPath(rootPath))
 	if !mounted || errors.Is(err, os.ErrNotExist) {
 		return nil
 	}
@@ -640,7 +708,7 @@ func (c *containerdCAS) UnmountContainerRootDir(rootPath string, force bool) err
 	if force {
 		flag = unix.MNT_FORCE
 	}
-	if err := mount.Unmount(filepath.Join(rootPath, containerRootfsPath), flag); err != nil {
+	if err := mount.Unmount(GetRoofFsPath(rootPath), flag); err != nil {
 		err = fmt.Errorf("UnmountContainerRootDir: exception while unmounting: %v/%v. %v",
 			rootPath, containerRootfsPath, err)
 		logrus.Error(err.Error())
@@ -940,4 +1008,9 @@ func getJSON(x interface{}) (string, error) {
 		return "", fmt.Errorf("getJSON: Exception while marshalling container spec JSON. %v", err)
 	}
 	return fmt.Sprint(string(b)), nil
+}
+
+// GetRoofFsPath returns rootfs path
+func GetRoofFsPath(rootPath string) string {
+	return filepath.Join(rootPath, containerRootfsPath)
 }
