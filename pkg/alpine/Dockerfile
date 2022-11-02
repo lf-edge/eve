@@ -11,7 +11,7 @@ ARG ALPINE_VERSION=3.16
 # Copy Dockerfile so we can include it in the hash
 COPY Dockerfile abuild.conf /etc/
 COPY mirrors /tmp/mirrors/
-COPY build-cache.sh /bin/
+COPY build-cache.sh build-aports.sh /bin/
 
 # install abuild for signing (which requires gcc as well)
 RUN apk add --no-cache abuild gcc sudo
@@ -31,6 +31,16 @@ RUN for repo in main community testing; do \
         if [ -n "$packages" ]; then build-cache.sh "$p" "/mirror/$(dirname "$p")" "$packages"; fi \
       done \
     done
+
+# setting up building account
+RUN adduser -G abuild -D builder || :
+RUN su builder -c 'abuild-keygen -a -n'
+
+COPY --chown=builder:abuild aports/ /aports
+RUN build-aports.sh ${ALPINE_VERSION}
+
+# cleanup
+RUN deluser --remove-home builder && rm -rf /aports
 
 # set the default repository to use
 RUN cp /mirror/${ALPINE_VERSION}/rootfs/etc/apk/repositories /etc/apk && apk update

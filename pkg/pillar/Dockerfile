@@ -12,28 +12,19 @@ RUN while read -r x; do \
         fi \
     done < /etc/zfs-files
 
-FROM lfedge/eve-alpine:145f062a40639b6c65efa36bed1c5614b873be52 as build
+FROM lfedge/eve-alpine:4a737e2f73d10a498a504501c6b567c4732fd270 as build
 
 ARG DEV=n
 
 ENV BUILD_PKGS git gcc linux-headers libc-dev make linux-pam-dev m4 findutils go util-linux make patch wget \
-    libintl libuuid libtirpc libblkid libcrypto1.1 zlib
+    libintl libuuid libtirpc libblkid libcrypto1.1 zlib eve-fscrypt
 ENV PKGS alpine-baselayout musl-utils libtasn1-progs pciutils yajl xz bash iptables ip6tables iproute2 dhcpcd \
     coreutils dmidecode libbz2 libuuid ipset curl radvd ethtool util-linux e2fsprogs libcrypto1.1 xorriso \
     qemu-img jq e2fsprogs-extra keyutils ca-certificates ip6tables-openrc iptables-openrc ipset-openrc hdparm \
     libintl libtirpc libblkid zlib
 RUN eve-alpine-deploy.sh
 
-WORKDIR /go/src/github.com/google
-RUN git clone https://github.com/google/fscrypt
-WORKDIR /go/src/github.com/google/fscrypt
-RUN git reset --hard b41569d397d3e66099cde07d8eef36b2f42dd0ec
-COPY fscrypt/* ./
-RUN patch -p1 < patch01-no-pam.diff && \
-    patch -p1 < patch02-rotate-raw-key.diff && \
-    patch -p1 < patch03-vendor.diff && \
-    patch -p1 < patch04-goConv.diff && \
-    make && make DESTDIR=/out/opt/zededa/bin install
+RUN mkdir -p /out/opt/zededa/bin && cp /usr/bin/fscrypt /out/opt/zededa/bin/
 
 # we need zfs files during build
 COPY --from=zfs /out /

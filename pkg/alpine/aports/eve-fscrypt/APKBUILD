@@ -1,0 +1,52 @@
+pkgname=eve-fscrypt
+_pkgver=b41569d
+pkgver=0.2.5
+pkgrel=0
+pkgdesc="fscrypt package"
+url="https://github.com/google/fscrypt"
+arch="all !riscv64"
+license="Apache-2.0"
+options="!check"
+depends=""
+makedepends="go findutils linux-pam-dev m4"
+source="$pkgname-$pkgver.tar.gz::https://github.com/google/fscrypt/tarball/$_pkgver
+	patch01-no-pam.patch
+	patch02-rotate-raw-key.patch
+	patch03-vendor.patch
+	patch04-goConv.patch
+	"
+builddir="$srcdir/src/github.com/google/$pkgname"
+
+prepare() {
+	export GOPATH="$srcdir"
+
+	mkdir -p "$(dirname $builddir)"
+	mv "$srcdir"/google-fscrypt-${_pkgver} "$builddir"/
+
+	default_prepare
+}
+
+build() {
+	msg2 "Prepare GOPATH and GOBIN..."
+	export GOPATH="$srcdir"
+	export GOBIN="$GOPATH/bin"
+
+	msg2 "Building $pkgname..."
+
+	make
+}
+
+package() {
+    make PREFIX="$pkgdir"/usr install
+}
+
+cleanup_srcdir() {
+	go clean -modcache
+	default_cleanup_srcdir
+}
+
+sha512sums="ec72cce4d794a82676ddeac8a21efcae5b39e25ac5ebf41227a0623915e7d55e0369ddf99ea75a48947428fadc73412db26084b6bee0322e82f64029637d9f17  fscrypt-0.3.3.tar.gz
+3d9f9640df3b2305ae1bb17116f871bffa81f356ad747b8c2a311e6691da24fce7fc82a62d710c4052057e4371b1bcdec8f9eda8366addc7786c41331aa7949e  patch01-no-pam.patch
+e017b29cbf157d9362068ea71068aa6b9beb11a0ffdda2a68dc3c55590befcbe94854bcf60e63ced1c6baee8706047c698b78702a85f239c3236ee6ec3748984  patch02-rotate-raw-key.patch
+b70259a162da1820aa2ef80c93d0a3f25120b283e370f4eda80042b68eda31b775cbb7e34b4855330522b32de386dd534e2d0ce76d48a44851582c9377c7ec0e  patch03-vendor.patch
+5747a4e0186e673c1261a8a380e869c6533d4102903299cf2f1950e95271bdf758de81113dfd8f87eebd787e45beed74bd0c2e925068ce7bc51d665712efc2ad  patch04-goConv.patch"
