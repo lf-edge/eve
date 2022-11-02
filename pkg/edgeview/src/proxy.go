@@ -10,14 +10,15 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"sync"
 	"time"
 )
 
-var proxyRemoteHosts map[string]bool
+var remoteMap sync.Map
 
 // Virtual forward proxy server for handling the https service on site
 func proxyServer(done chan struct{}, dnsIP string) *http.Server {
-	proxyRemoteHosts = make(map[string]bool)
+	cleanPrevRemoteMap()
 	server := &http.Server{
 		Addr: proxyServerEndpoint.String(),
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -48,16 +49,13 @@ func proxyServer(done chan struct{}, dnsIP string) *http.Server {
 func handleTunneling(w http.ResponseWriter, r *http.Request, dnsIP string) {
 	remoteHost := r.Host
 	var destConn net.Conn
-	var err error
-	if ok := proxyRemoteHosts[r.Host]; !ok {
-		proxyRemoteHosts[r.Host] = true
-		allowed := checkAndLogProxySession(r.Host)
-		if !allowed {
-			err = fmt.Errorf("host %s access not allowed by policy", r.Host)
-			http.Error(w, err.Error(), http.StatusServiceUnavailable)
-			return
-		}
+
+	err := checkAppPolicyAllow(r.Host)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusServiceUnavailable)
+		return
 	}
+
 	if dnsIP != "" { // this is probably needed for internal/vpn https service with private DNS server
 		r := &net.Resolver{
 			Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
@@ -119,4 +117,28 @@ func copyHeader(dst, src http.Header) {
 			dst.Add(k, v)
 		}
 	}
+}
+
+func checkAppPolicyAllow(host string) error {
+	var allowed bool
+	isAllowed, ok := remoteMap.Load(host)
+	if ok {
+		allowed = *isAllowed.(*bool)
+	} else {
+		allowed = checkAndLogProxySession(host)
+		remoteMap.Store(host, &allowed)
+	}
+	if !allowed {
+		err := fmt.Errorf("host %s access not allowed by policy", host)
+		return err
+	}
+	return nil
+}
+
+// when proxy is launched, cleanup of previous remote-map if any exists
+func cleanPrevRemoteMap() {
+	remoteMap.Range(func(key interface{}, value interface{}) bool {
+		remoteMap.Delete(key)
+		return true
+	})
 }
