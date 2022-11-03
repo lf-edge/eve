@@ -31,7 +31,7 @@ jobs:
           df -h
           echo Memory
           free -m
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
         with:
           fetch-depth: 0
 
@@ -108,7 +108,7 @@ jobs:
           - arch: riscv64
             hv: mini
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
         with:
           fetch-depth: 0
       - name: Login to DockerHUB
@@ -160,7 +160,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: packages
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
         with:
           fetch-depth: 0
       - name: Login to DockerHUB

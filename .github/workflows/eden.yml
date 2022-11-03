@@ -39,7 +39,7 @@ jobs:
           sudo add-apt-repository ppa:stefanberger/swtpm-jammy
           sudo apt install -y qemu-utils qemu-system-x86 jq swtpm
       - name: get eve
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
         with:
           path: 'eve'
       - name: prepare eden
@@ -140,7 +140,7 @@ jobs:
           echo "::endgroup::"
       - name: Store raw test results
         if: ${{ always() }}
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         with:
           name: eden-report-tpm-${{ matrix.tpm }}-${{ matrix.fs }}
           path: |

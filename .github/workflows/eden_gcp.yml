@@ -82,13 +82,13 @@ jobs:
           sudo apt install -y qemu binfmt-support qemu-user-static qemu-system-x86 qemu-system-aarch64 qemu-utils openvpn curl jq
       - name: GCP Set up Google Cloud SDK
         if: matrix.backend == 'gcp'
-        uses: google-github-actions/setup-gcloud@v0.5.0
+        uses: google-github-actions/setup-gcloud@v0.6.3
         with:
           project_id: ${{ secrets.GCP_PROJECT_ID }}
       - id: 'gcpauth'
         if: matrix.backend == 'gcp'
         name: GCP Auth to Google Cloud SDK
-        uses: google-github-actions/auth@v0.4.1
+        uses: google-github-actions/auth@v0.8.3
         with:
           project_id: ${{ secrets.GCP_PROJECT_ID }}
           credentials_json: ${{ secrets.GCP_SA_KEY }}
@@ -278,7 +278,7 @@ jobs:
           ROL_PROJECT: ${{ secrets.ROL_PROJECT }}
       - name: Store raw test results
         if: ${{ always() }}
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         with:
           name: eden-report-${{ matrix.backend }}-${{ matrix.hv }}-${{ matrix.fs }}
           path: |

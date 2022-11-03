@@ -10,7 +10,7 @@ jobs:
   test:
     runs-on: ubuntu-20.04
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
         with:
           ref: ${{ github.event.pull_request.head.sha }}
 
@@ -24,7 +24,7 @@ jobs:
           test-results: dist/amd64/results.json
       - name: Store raw test results
         if: ${{ always() }}
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         with:
           name: 'test-report'
           path: ${{ github.workspace }}/dist
