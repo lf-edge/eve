@@ -1,0 +1,19 @@
+image: eve-measure-config
+org: lfedge
+
+config:
+  binds:
+    - /:/hostfs
+    - /lib/modules:/lib/modules
+    - /dev:/dev
+    - /run:/run
+    - /var:/var
+    - /persist:/persist:rshared,rbind
+    - /config:/config:rshared,rbind
+    - /containers:/containers:rshared,rbind
+  rootfsPropagation: shared
+  capabilities:
+    - all
+  devices:
+    - path: all
+      type: a

@@ -35,6 +35,8 @@ onboot:
    # kdump goes strictly after storage-init
    - name: kdump
      image: KDUMP_TAG
+   - name: measure-config
+     image: MEASURE_CONFIG_TAG
 services:
    - name: newlogd
      image: NEWLOGD_TAG
