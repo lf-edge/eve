@@ -6,10 +6,12 @@
 WATCHDOG_PID=/run/watchdog/pid
 WATCHDOG_FILE=/run/watchdog/file
 CONFIGDIR=/config
+CONFIGDIR_PERSIST=/tmp/config_persist
 PERSISTDIR=/persist
 PERSIST_CERTS=$PERSISTDIR/certs
 DEVICE_CERT_NAME="/config/device.cert.pem"
 DEVICE_KEY_NAME="/config/device.key.pem"
+TPM_CREDENTIAL="/config/tpm_credential"
 BOOTSTRAP_CONFIG="${CONFIGDIR}/bootstrap-config.pb"
 PERSIST_AGENT_DEBUG=$PERSISTDIR/agentdebug
 BINDIR=/opt/zededa/bin
@@ -433,7 +435,9 @@ else
 fi
 if [ ! -s "$DEVICE_CERT_NAME" ]; then
     echo "$(date -Ins -u) Generating a device key pair and self-signed cert (using TPM if available)"
-    mount -o remount,flush,dirsync,noatime,rw /config
+    mount -o remount,rw $CONFIGDIR
+    mkdir -p $CONFIGDIR_PERSIST
+    mount -t vfat -o flush,dirsync,noatime,rw "$CONFIGDEV" $CONFIGDIR_PERSIST
     if [ -c $TPM_DEVICE_PATH ] && ! [ -f $DEVICE_KEY_NAME ]; then
         echo "$(date -Ins -u) TPM device is present and allowed, creating TPM based device key"
         if ! $BINDIR/tpmmgr createDeviceCert; then
@@ -443,6 +447,18 @@ if [ ! -s "$DEVICE_CERT_NAME" ]; then
     else
         $BINDIR/tpmmgr createSoftDeviceCert
     fi
+
+    # copy certificates, device key and generated TPM credentials from /config to persist config
+    if [ -f $DEVICE_CERT_NAME ]; then
+        cp $DEVICE_CERT_NAME $CONFIGDIR_PERSIST
+    fi
+    if [ -f $TPM_CREDENTIAL ]; then
+        cp $TPM_CREDENTIAL $CONFIGDIR_PERSIST
+    fi
+    if [ -f $DEVICE_KEY_NAME ]; then
+        cp $DEVICE_KEY_NAME $CONFIGDIR_PERSIST
+    fi
+
     # Reduce chance that we register with controller and crash before
     # the filesystem has persisted /config/device.*.pem
     # If we have a TPM we can we can recover the certificate from NVRAM
@@ -452,8 +468,9 @@ if [ ! -s "$DEVICE_CERT_NAME" ]; then
     sleep 10
     sync
     blockdev --flushbufs "$CONFIGDEV"
-    echo "$(date -Ins -u) Making /config read-only again"
-    mount -o remount,flush,ro /config
+    echo "$(date -Ins -u) Unmount persist config and make in-memory config read-only again"
+    mount -o remount,ro $CONFIGDIR
+    umount $CONFIGDIR_PERSIST
     # Did we fail to generate a certificate?
     if [ ! -s "$DEVICE_CERT_NAME" ]; then
         echo "$(date -Ins -u) Failed to generate a device certificate. Done" | tee /dev/console
