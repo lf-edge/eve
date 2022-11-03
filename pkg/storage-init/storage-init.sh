@@ -70,6 +70,7 @@ zfs_adjust_features() {
 
 PERSISTDIR=/persist
 CONFIGDIR=/config
+CONFIGDIR_PERSIST=/tmp/config_ro
 SMART_DETAILS_FILE=$PERSISTDIR/SMART_details.json
 SMART_DETAILS_PREVIOUS_FILE=$PERSISTDIR/SMART_details_previous.json
 
@@ -81,9 +82,17 @@ if CONFIG=$(findfs PARTLABEL=CONFIG) && [ -n "$CONFIG" ]; then
     if ! fsck.vfat -y "$CONFIG"; then
         echo "$(date -Ins -u) fsck.vfat $CONFIG failed"
     fi
-    if ! mount -t vfat -o ro,iocharset=iso8859-1 "$CONFIG" $CONFIGDIR; then
+    # we have found a config device, now copy its content to RAM
+    mkdir -p $CONFIGDIR_PERSIST
+    if ! mount -t vfat -o ro,iocharset=iso8859-1 "$CONFIG" $CONFIGDIR_PERSIST; then
         echo "$(date -Ins -u) mount $CONFIG failed"
     fi
+
+    mount -t tmpfs -o rw,nosuid,nodev,noexec,relatime,size=256k,mode=755 tmpfs $CONFIGDIR
+    echo "$(date -Ins -u) Create a copy of CONFIG partition in RAM"
+    cp -r $CONFIGDIR_PERSIST/* $CONFIGDIR
+    umount "$CONFIG"
+    mount -o remount,ro $CONFIGDIR
 else
     echo "$(date -Ins -u) No separate $CONFIGDIR partition"
 fi
