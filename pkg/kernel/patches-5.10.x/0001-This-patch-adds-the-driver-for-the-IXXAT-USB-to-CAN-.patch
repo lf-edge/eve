@@ -1,7 +1,7 @@
-From 09a481d0bdc94da0d84935287d0f0801fff4e6a7 Mon Sep 17 00:00:00 2001
+From fe412506e05a193a7c2715d399df5754428babda Mon Sep 17 00:00:00 2001
 From: Florian Ferg <flfe@xxxxxxxxxxxxxxx>
 Date: Sat, 31 Oct 2020 19:50:37 -0400
-Subject: [PATCH 01/10] This patch adds the driver for the IXXAT USB-to-CAN
+Subject: [PATCH 01/21] This patch adds the driver for the IXXAT USB-to-CAN
  interfaces. There is an adapter for the older communication layer cl1 and
  another adapter for the newer communication layer cl2.
 
@@ -2480,5 +2480,5 @@ index 000000000000..e57b435dd457
 +
 +#endif /* IXXAT_USB_CORE_H */
 -- 
-2.34.1
+2.25.1
 

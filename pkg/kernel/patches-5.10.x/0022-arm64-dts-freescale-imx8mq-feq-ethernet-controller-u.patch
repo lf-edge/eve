@@ -1,0 +1,67 @@
+From 9d08655a67f2b9c7661f4705c892d6ea4133ff9b Mon Sep 17 00:00:00 2001
+From: Aleksandrov Dmitriy <goodmobiledevices@gmail.com>
+Date: Fri, 4 Nov 2022 06:54:46 -0100
+Subject: [PATCH 22/22] arm64: dts: freescale: imx8mq: feq: ethernet controller
+ upstream from bsp
+
+Signed-off-by: Aleksandrov Dmitriy <goodmobiledevices@gmail.com>
+---
+ arch/arm64/boot/dts/freescale/imx8mq-evk.dts |  3 +--
+ arch/arm64/boot/dts/freescale/imx8mq.dtsi    | 18 ++++++++++++++++++
+ 2 files changed, 19 insertions(+), 2 deletions(-)
+
+diff --git a/arch/arm64/boot/dts/freescale/imx8mq-evk.dts b/arch/arm64/boot/dts/freescale/imx8mq-evk.dts
+index 4bc0fd20e2fd..2547eaf1de48 100644
+--- a/arch/arm64/boot/dts/freescale/imx8mq-evk.dts
++++ b/arch/arm64/boot/dts/freescale/imx8mq-evk.dts
+@@ -151,8 +151,7 @@ mdio {
+ 		ethphy0: ethernet-phy@0 {
+ 			compatible = "ethernet-phy-ieee802.3-c22";
+ 			reg = <0>;
+-			reset-gpios = <&gpio1 9 GPIO_ACTIVE_LOW>;
+-			reset-assert-us = <10000>;
++			at803x,eee-disabled;
+ 		};
+ 	};
+ };
+diff --git a/arch/arm64/boot/dts/freescale/imx8mq.dtsi b/arch/arm64/boot/dts/freescale/imx8mq.dtsi
+index 2811cf9a8b0a..b469de82c37b 100644
+--- a/arch/arm64/boot/dts/freescale/imx8mq.dtsi
++++ b/arch/arm64/boot/dts/freescale/imx8mq.dtsi
+@@ -558,6 +558,10 @@ ocotp: efuse@30350000 {
+ 				cpu_speed_grade: speed-grade@10 {
+ 					reg = <0x10 4>;
+ 				};
++				
++				fec_mac_address: mac-address@640 {
++					reg = <0x90 6>;
++				};
+ 			};
+ 
+ 			anatop: syscon@30360000 {
+@@ -1090,8 +1094,22 @@ fec1: ethernet@30be0000 {
+ 				         <&clk IMX8MQ_CLK_ENET_PHY_REF>;
+ 				clock-names = "ipg", "ahb", "ptp",
+ 				              "enet_clk_ref", "enet_out";
++				assigned-clocks = <&clk IMX8MQ_CLK_ENET_AXI>,
++						  <&clk IMX8MQ_CLK_ENET_TIMER>,
++						  <&clk IMX8MQ_CLK_ENET_REF>,
++						  <&clk IMX8MQ_CLK_ENET_PHY_REF>;
++				assigned-clock-parents = <&clk IMX8MQ_SYS1_PLL_266M>,
++							 <&clk IMX8MQ_SYS2_PLL_100M>,
++							 <&clk IMX8MQ_SYS2_PLL_125M>,
++							 <&clk IMX8MQ_SYS2_PLL_50M>;
++				assigned-clock-rates = <0>, <100000000>, <125000000>, <0>;
+ 				fsl,num-tx-queues = <3>;
+ 				fsl,num-rx-queues = <3>;
++				nvmem-cells = <&fec_mac_address>;
++				nvmem-cell-names = "mac-address";
++				nvmem_macaddr_swap;
++				fsl,stop-mode = <&iomuxc_gpr 0x10 3>;
++				fsl,wakeup_irq = <2>;
+ 				status = "disabled";
+ 			};
+ 		};
+-- 
+2.25.1
+

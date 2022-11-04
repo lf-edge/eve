@@ -1,7 +1,7 @@
-From a44975c2f2c7497b24c3de826f3f3da489515d7d Mon Sep 17 00:00:00 2001
+From ce70b6843e596029ff938b9586da3ab4ec63ae10 Mon Sep 17 00:00:00 2001
 From: Roman Shaposhnik <rvs@apache.org>
 Date: Thu, 15 Apr 2021 16:49:37 +0000
-Subject: [PATCH 07/10] Support for Siemens IPC127 MMIO GPIO-driven LEDS
+Subject: [PATCH 07/21] Support for Siemens IPC127 MMIO GPIO-driven LEDS
 
 This simply introduces a tiny LED driver based on the MMIO GPIO
 registers described in user's manual. It would be nice to find
@@ -256,5 +256,5 @@ index 000000000000..59a474820a5b
 +MODULE_LICENSE("GPL v2");
 +MODULE_ALIAS("platform:leds_siemens_ipc127");
 -- 
-2.34.1
+2.25.1
 

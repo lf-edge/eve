@@ -1,0 +1,40 @@
+From b09df5cbdcd5a5506d1910995f36e29024ba7ff8 Mon Sep 17 00:00:00 2001
+From: Heiner Kallweit <hkallweit1@gmail.com>
+Date: Wed, 7 Apr 2021 17:52:45 +0200
+Subject: [PATCH 17/22] net: fec: use mac-managed PHY PM
+
+Use the new mac_managed_pm flag to work around an issue with KSZ8081 PHY
+that becomes unstable when a soft reset is triggered during aneg.
+
+Reported-by: Joakim Zhang <qiangqing.zhang@nxp.com>
+Tested-by: Joakim Zhang <qiangqing.zhang@nxp.com>
+Signed-off-by: Heiner Kallweit <hkallweit1@gmail.com>
+Signed-off-by: Jakub Kicinski <kuba@kernel.org>
+---
+ drivers/net/ethernet/freescale/fec_main.c | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/drivers/net/ethernet/freescale/fec_main.c b/drivers/net/ethernet/freescale/fec_main.c
+index 8fe063a041be..c780c80fcaeb 100644
+--- a/drivers/net/ethernet/freescale/fec_main.c
++++ b/drivers/net/ethernet/freescale/fec_main.c
+@@ -2050,6 +2050,8 @@ static int fec_enet_mii_probe(struct net_device *ndev)
+ 	fep->link = 0;
+ 	fep->full_duplex = 0;
+ 
++	phy_dev->mac_managed_pm = 1;
++
+ 	phy_attached_info(phy_dev);
+ 
+ 	return 0;
+@@ -3903,6 +3905,7 @@ static int __maybe_unused fec_resume(struct device *dev)
+ 		netif_device_attach(ndev);
+ 		netif_tx_unlock_bh(ndev);
+ 		napi_enable(&fep->napi);
++		phy_init_hw(ndev->phydev);
+ 		phy_start(ndev->phydev);
+ 	}
+ 	rtnl_unlock();
+-- 
+2.25.1
+

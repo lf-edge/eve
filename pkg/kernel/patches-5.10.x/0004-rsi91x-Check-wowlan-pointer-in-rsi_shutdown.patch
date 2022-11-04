@@ -1,7 +1,7 @@
-From 7f906a163405e163db8d69dbb17ea7eb675baf46 Mon Sep 17 00:00:00 2001
+From 88c67a9ac832b71f71f71e58ead791d53d8d9bdf Mon Sep 17 00:00:00 2001
 From: Sergey Temerkhanov <s.temerkhanov@gmail.com>
 Date: Wed, 26 Aug 2020 00:02:19 +0300
-Subject: [PATCH 04/10] rsi91x: Check wowlan pointer in rsi_shutdown
+Subject: [PATCH 04/21] rsi91x: Check wowlan pointer in rsi_shutdown
 
 Check wowlan pointer before calling rsi_config_wowlan to
 prevent erroneous configuration attempts
@@ -25,5 +25,5 @@ index 8108f941ccd3..31e46af66f0b 100644
  	}
  
 -- 
-2.34.1
+2.25.1
 

@@ -1,7 +1,7 @@
-From 3294f16d10cd57655e7409c048086e1cb4dca08a Mon Sep 17 00:00:00 2001
+From bfd44c1477fa7c8d81e6b7239775faabfe8d7ed7 Mon Sep 17 00:00:00 2001
 From: Mikhail Malyshev <mikem@zededa.com>
 Date: Thu, 16 Dec 2021 11:29:26 +0100
-Subject: [PATCH 10/10] Quirk for brocken INTx on Euresys Grablink Full XR
+Subject: [PATCH 10/21] Quirk for brocken INTx on Euresys Grablink Full XR
 
 Signed-off-by: Mikhail Malyshev <mikem@zededa.com>
 ---
@@ -22,5 +22,5 @@ index 91a01300df69..3f08951753dc 100644
  /*
   * Realtek RTL8169 PCI Gigabit Ethernet Controller (rev 10)
 -- 
-2.34.1
+2.25.1
 

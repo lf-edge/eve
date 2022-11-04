@@ -1,7 +1,7 @@
-From 2ad246a23807d835322a6692487a9295ca505228 Mon Sep 17 00:00:00 2001
+From 8ddd8f44e4087094b4b8fe24a6a999facdb50ad3 Mon Sep 17 00:00:00 2001
 From: Hariharasubramanian C S <cshari@zededa.com>
 Date: Mon, 23 Nov 2020 11:21:45 +0530
-Subject: [PATCH 05/10] add acs overrides for linux kernel version 5.4.51
+Subject: [PATCH 05/21] add acs overrides for linux kernel version 5.4.51
 
 This particular patch was taken from:
 https://gitlab.com/Queuecumber/linux-acs-override/-/blob/master/workspaces/5.4/acso.patch
@@ -197,5 +197,5 @@ index 1be2894ada70..91a01300df69 100644
  };
  
 -- 
-2.34.1
+2.25.1
 

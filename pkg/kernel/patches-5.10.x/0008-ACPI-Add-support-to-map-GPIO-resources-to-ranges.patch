@@ -1,7 +1,7 @@
-From 11b9a1fef102b276d25417ecf3bb660042988534 Mon Sep 17 00:00:00 2001
+From af6ac858f227da4192e4f2b126de4d8a7f54b037 Mon Sep 17 00:00:00 2001
 From: Carlos Calderon <carlos.calderon@emutex.com>
 Date: Wed, 20 Feb 2019 16:49:37 +0000
-Subject: [PATCH 08/10] ACPI: Add support to map GPIO resources to ranges
+Subject: [PATCH 08/21] ACPI: Add support to map GPIO resources to ranges
 
 All of this is selectively taken from:
     https://github.com/AaeonCM/meta-up-board/tree/warrior/recipes-kernel/linux/files
@@ -2189,5 +2189,5 @@ index e7834d98207f..8ffd5ae8708c 100644
  			  int num_regs);
  int regmap_parse_val(struct regmap *map, const void *buf,
 -- 
-2.34.1
+2.25.1
 

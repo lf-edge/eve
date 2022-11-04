@@ -1,7 +1,7 @@
-From 62e0b1695fa5ee079d6115c1c9c0af31a61da656 Mon Sep 17 00:00:00 2001
+From a42560e52a1934a075a959eb021f9eaf15d41ad2 Mon Sep 17 00:00:00 2001
 From: Roman Shaposhnik <rvs@apache.org>
 Date: Sun, 1 Nov 2020 01:41:51 -0500
-Subject: [PATCH 06/10] add raspberry pi uno device tree
+Subject: [PATCH 06/21] add raspberry pi uno device tree
 
 ---
  arch/arm/boot/dts/Makefile                    |   1 +
@@ -224,5 +224,5 @@ index 000000000000..c3d25f522be8
 +       };
 +};
 -- 
-2.34.1
+2.25.1
 
