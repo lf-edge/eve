@@ -73,7 +73,7 @@ func (ctx ctrdContext) setupSpec(status *types.DomainStatus, config *types.Domai
 	if err := spec.UpdateFromVolume(volume); err != nil {
 		return nil, err
 	}
-	spec.UpdateFromDomain(config)
+	spec.UpdateFromDomain(config, status)
 	spec.UpdateMounts(status.DiskStatusList)
 	spec.UpdateVifList(config.VifList)
 	spec.UpdateEnvVar(status.EnvVariables)

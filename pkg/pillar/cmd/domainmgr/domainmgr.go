@@ -884,8 +884,13 @@ func runHandler(ctx *domainContext, key string, configChannel <-chan Notify, cpu
 					continue
 				}
 				config := c.(types.DomainConfig)
+				status := lookupDomainStatus(ctx, key)
+				if status == nil {
+					log.Errorf("No Status for %s", config.DisplayName)
+					continue
+				}
 				if !config.VmConfig.CPUsPinned {
-					if err := updateNonPinnedCPUs(ctx, &config); err != nil {
+					if err = updateNonPinnedCPUs(ctx, &config, status); err != nil {
 						log.Warnf("failed to redistribute CPUs in %s", config.DisplayName)
 					}
 				}
@@ -1189,7 +1194,7 @@ func lookupDomainConfig(ctx *domainContext, key string) *types.DomainConfig {
 	return &config
 }
 
-func setCgroupCpuset(config *types.DomainConfig) error {
+func setCgroupCpuset(config *types.DomainConfig, status *types.DomainStatus) error {
 	cgroupName := filepath.Join(containerd.GetServicesNamespace(), config.GetTaskName())
 	cgroupPath := cgroups.StaticPath(cgroupName)
 	controller, err := cgroups.Load(cgroups.V1, cgroupPath)
@@ -1198,12 +1203,12 @@ func setCgroupCpuset(config *types.DomainConfig) error {
 		log.Warnf("Failed to find cgroups directory for %s", config.DisplayName)
 		return nil
 	}
-	err = controller.Update(&specs.LinuxResources{CPU: &specs.LinuxCPU{Cpus: config.VmConfig.CPUs}})
+	err = controller.Update(&specs.LinuxResources{CPU: &specs.LinuxCPU{Cpus: status.VmConfig.CPUs}})
 	if err != nil {
 		log.Warnf("Failed to update CPU set for %s", config.DisplayName)
 		return err
 	}
-	log.Functionf("Adjust the cgroups cpuset of %s to %s", config.DisplayName, config.VmConfig.CPUs)
+	log.Functionf("Adjust the cgroups cpuset of %s to %s", config.DisplayName, status.VmConfig.CPUs)
 	return nil
 }
 
@@ -1228,29 +1233,26 @@ func addToMask(cpu int, s *string) {
 	}
 }
 
-func updateNonPinnedCPUs(ctx *domainContext, config *types.DomainConfig) error {
-	config.VmConfig.CPUs = constructNonPinnedCpumaskString(ctx)
-	err := setCgroupCpuset(config)
+func updateNonPinnedCPUs(ctx *domainContext, config *types.DomainConfig, status *types.DomainStatus) error {
+	status.VmConfig.CPUs = constructNonPinnedCpumaskString(ctx)
+	err := setCgroupCpuset(config, status)
 	if err != nil {
 		return errors.New("failed to redistribute CPUs between VMs, can affect the inter-VM isolation")
 	}
 	return nil
 }
 
-func assignCPUs(ctx *domainContext, config *types.DomainConfig) error {
+func assignCPUs(ctx *domainContext, config *types.DomainConfig, status *types.DomainStatus) error {
 	if config.VmConfig.CPUsPinned { // Pin the CPU
 		cpusToAssign, err := ctx.cpuAllocator.Allocate(config.UUIDandVersion.UUID, config.VCpus)
 		if err != nil {
 			return errors.New("failed to allocate necessary amount of CPUs")
 		}
 		for _, cpu := range cpusToAssign {
-			addToMask(cpu, &config.VmConfig.CPUs)
-			if err != nil {
-				return errors.New("failed to reassign CPUs between the Applications")
-			}
+			addToMask(cpu, &status.VmConfig.CPUs)
 		}
 	} else { // VM has no pinned CPUs, assign all the CPUs from the shared set
-		config.VmConfig.CPUs = constructNonPinnedCpumaskString(ctx)
+		status.VmConfig.CPUs = constructNonPinnedCpumaskString(ctx)
 	}
 	return nil
 }
@@ -1277,6 +1279,8 @@ func handleCreate(ctx *domainContext, key string, config *types.DomainConfig) {
 		VmConfig:           config.VmConfig,
 		Service:            config.Service,
 	}
+
+	status.VmConfig.CPUs = ""
 
 	// Note that the -emu interface doesn't exist until after boot of the domU, but we
 	// initialize the VifList here with the VifUsed.
@@ -1393,14 +1397,14 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 	log.Functionf("doActivate(%v) for %s",
 		config.UUIDandVersion, config.DisplayName)
 
-	if err := assignCPUs(ctx, &config); err != nil {
+	if err := assignCPUs(ctx, &config, status); err != nil {
 		log.Warnf("failed to assign CPUs for %s", config.DisplayName)
 		errDescription := types.ErrorDescription{Error: err.Error()}
 		status.SetErrorDescription(errDescription)
 		publishDomainStatus(ctx, status)
 		return
 	}
-	log.Functionf("CPUs for %s assigned: %s", config.DisplayName, config.VmConfig.CPUs)
+	log.Functionf("CPUs for %s assigned: %s", config.DisplayName, status.VmConfig.CPUs)
 
 	if errDescription := reserveAdapters(ctx, config); errDescription != nil {
 		log.Errorf("Failed to reserve adapters for %s: %s",
@@ -1506,7 +1510,7 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 		publishDomainStatus(ctx, status)
 		time.Sleep(5 * time.Second)
 	}
-	if err := setCgroupCpuset(&config); err != nil {
+	if err := setCgroupCpuset(&config, status); err != nil {
 		log.Errorf("Failed to set CPUs for %s: %s", config.DisplayName, err)
 		errDescription := types.ErrorDescription{Error: err.Error()}
 		status.SetErrorDescription(errDescription)
