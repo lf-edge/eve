@@ -1845,6 +1845,13 @@ func doInactivate(ctx *domainContext, status *types.DomainStatus, impatient bool
 			log.Errorln("unmountContainers failed after retry with force flag")
 		}
 	}
+	if status.VmConfig.CPUsPinned {
+		if err := ctx.cpuAllocator.Free(status.UUIDandVersion.UUID); err != nil {
+			log.Warnf("Failed to free for %s: %s", status.DisplayName, err)
+		}
+		triggerCPUNotification()
+	}
+	status.VmConfig.CPUs = ""
 	releaseAdapters(ctx, status.IoAdapterList, status.UUIDandVersion.UUID,
 		status)
 	status.IoAdapterList = nil
