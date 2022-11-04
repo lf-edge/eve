@@ -61,7 +61,7 @@ type OCISpec interface {
 	AddLoader(string) error
 	AdjustMemLimit(types.DomainConfig, int64)
 	UpdateVifList([]types.VifConfig)
-	UpdateFromDomain(*types.DomainConfig)
+	UpdateFromDomain(dom *types.DomainConfig, status *types.DomainStatus)
 	UpdateFromVolume(string) error
 	UpdateMounts([]types.DiskStatus) error
 	UpdateEnvVar(map[string]string)
@@ -299,7 +299,7 @@ func (s *ociSpec) UpdateVifList(vifs []types.VifConfig) {
 }
 
 // UpdateFromDomain updates values in the OCI spec based on EVE DomainConfig settings
-func (s *ociSpec) UpdateFromDomain(dom *types.DomainConfig) {
+func (s *ociSpec) UpdateFromDomain(dom *types.DomainConfig, status *types.DomainStatus) {
 	// update cgroup resource constraints for CPU and memory
 	if s.Linux != nil {
 		if s.Linux.Resources == nil {
@@ -318,7 +318,7 @@ func (s *ociSpec) UpdateFromDomain(dom *types.DomainConfig) {
 		s.Linux.Resources.Memory.Limit = &m
 		s.Linux.Resources.CPU.Period = &p
 		s.Linux.Resources.CPU.Quota = &q
-		s.Linux.Resources.CPU.Cpus = dom.VmConfig.CPUs
+		s.Linux.Resources.CPU.Cpus = status.VmConfig.CPUs
 
 		s.Linux.CgroupsPath = fmt.Sprintf("/%s/%s", ctrdServicesNamespace, dom.GetTaskName())
 	}

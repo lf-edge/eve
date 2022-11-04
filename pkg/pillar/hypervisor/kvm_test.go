@@ -95,7 +95,7 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
 
 	t.Run("amd64", func(t *testing.T) {
 		conf.Seek(0, 0)
-		if err := kvmIntel.CreateDomConfig("test", config, disks, &aa, conf); err != nil {
+		if err := kvmIntel.CreateDomConfig("test", config, types.DomainStatus{}, disks, &aa, conf); err != nil {
 			t.Errorf("CreateDomConfig failed %v", err)
 		}
 		defer os.Truncate(conf.Name(), 0)
@@ -357,7 +357,7 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
 	config.VirtualizationMode = types.FML
 	t.Run("amd64-fml", func(t *testing.T) {
 		conf.Seek(0, 0)
-		if err := kvmIntel.CreateDomConfig("test", config, disks, &aa, conf); err != nil {
+		if err := kvmIntel.CreateDomConfig("test", config, types.DomainStatus{}, disks, &aa, conf); err != nil {
 			t.Errorf("CreateDomConfig failed %v", err)
 		}
 		defer os.Truncate(conf.Name(), 0)
@@ -619,7 +619,7 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
 	config.VirtualizationMode = types.HVM
 	t.Run("arm64", func(t *testing.T) {
 		conf.Seek(0, 0)
-		if err := kvmArm.CreateDomConfig("test", config, disks, &aa, conf); err != nil {
+		if err := kvmArm.CreateDomConfig("test", config, types.DomainStatus{}, disks, &aa, conf); err != nil {
 			t.Errorf("CreateDomConfig failed %v", err)
 		}
 		defer os.Truncate(conf.Name(), 0)
@@ -937,7 +937,7 @@ func TestCreateDomConfig(t *testing.T) {
 
 	t.Run("amd64", func(t *testing.T) {
 		conf.Seek(0, 0)
-		if err := kvmIntel.CreateDomConfig("test", config, disks, &aa, conf); err != nil {
+		if err := kvmIntel.CreateDomConfig("test", config, types.DomainStatus{}, disks, &aa, conf); err != nil {
 			t.Errorf("CreateDomConfig failed %v", err)
 		}
 		defer os.Truncate(conf.Name(), 0)
@@ -1232,7 +1232,7 @@ func TestCreateDomConfig(t *testing.T) {
 	config.VirtualizationMode = types.LEGACY
 	t.Run("amd64-legacy", func(t *testing.T) {
 		conf.Seek(0, 0)
-		if err := kvmIntel.CreateDomConfig("test", config, disksLegacy, &aa, conf); err != nil {
+		if err := kvmIntel.CreateDomConfig("test", config, types.DomainStatus{}, disksLegacy, &aa, conf); err != nil {
 			t.Errorf("CreateDomConfig failed %v", err)
 		}
 		defer os.Truncate(conf.Name(), 0)
@@ -1545,7 +1545,7 @@ func TestCreateDomConfig(t *testing.T) {
 			PciLong:         "0000:f4:00.0",
 			UsedByUUID:      config.UUIDandVersion.UUID,
 		})
-		if err := kvmIntel.CreateDomConfig("test", config, disks, &aa, conf); err != nil {
+		if err := kvmIntel.CreateDomConfig("test", config, types.DomainStatus{}, disks, &aa, conf); err != nil {
 			t.Errorf("CreateDomConfig failed %v", err)
 		}
 		aa.IoBundleList = aa.IoBundleList[:len(aa.IoBundleList)-1]
@@ -1856,7 +1856,7 @@ func TestCreateDomConfig(t *testing.T) {
 	config.VirtualizationMode = types.HVM
 	t.Run("arm64", func(t *testing.T) {
 		conf.Seek(0, 0)
-		if err := kvmArm.CreateDomConfig("test", config, disks, &aa, conf); err != nil {
+		if err := kvmArm.CreateDomConfig("test", config, types.DomainStatus{}, disks, &aa, conf); err != nil {
 			t.Errorf("CreateDomConfig failed %v", err)
 		}
 		defer os.Truncate(conf.Name(), 0)
