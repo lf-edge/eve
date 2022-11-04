@@ -1277,6 +1277,7 @@ func handleCreate(ctx *domainContext, key string, config *types.DomainConfig) {
 		VmConfig:           config.VmConfig,
 		Service:            config.Service,
 	}
+
 	// Note that the -emu interface doesn't exist until after boot of the domU, but we
 	// initialize the VifList here with the VifUsed.
 	status.VifList = fillVifUsed(config.VifList)
@@ -1391,6 +1392,15 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 
 	log.Functionf("doActivate(%v) for %s",
 		config.UUIDandVersion, config.DisplayName)
+
+	if err := assignCPUs(ctx, &config); err != nil {
+		log.Warnf("failed to assign CPUs for %s", config.DisplayName)
+		errDescription := types.ErrorDescription{Error: err.Error()}
+		status.SetErrorDescription(errDescription)
+		publishDomainStatus(ctx, status)
+		return
+	}
+	log.Functionf("CPUs for %s assigned: %s", config.DisplayName, config.VmConfig.CPUs)
 
 	if errDescription := reserveAdapters(ctx, config); errDescription != nil {
 		log.Errorf("Failed to reserve adapters for %s: %s",
