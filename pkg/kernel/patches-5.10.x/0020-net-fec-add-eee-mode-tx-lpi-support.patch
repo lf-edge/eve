@@ -1,0 +1,174 @@
+From 68acbeac51ebb51bd8f2ddf22dcea096e989db91 Mon Sep 17 00:00:00 2001
+From: Fugang Duan <fugang.duan@nxp.com>
+Date: Wed, 28 Jul 2021 19:52:00 +0800
+Subject: [PATCH 20/22] net: fec: add eee mode tx lpi support
+
+The i.MX8MQ ENET version support IEEE802.3az eee mode, add
+eee mode tx lpi enable to support ethtool interface.
+
+usage:
+1. set sleep and wake timer to 5ms:
+ethtool --set-eee eth0 eee on tx-lpi on tx-timer 5000
+2. check the eee mode:
+~# ethtool --show-eee eth0
+EEE Settings for eth0:
+        EEE status: enabled - active
+        Tx LPI: 5000 (us)
+        Supported EEE link modes:  100baseT/Full
+                                   1000baseT/Full
+        Advertised EEE link modes:  100baseT/Full
+                                    1000baseT/Full
+        Link partner advertised EEE link modes:  100baseT/Full
+
+Note: For realtime case and IEEE1588 ptp case, it should disable
+EEE mode.
+
+Signed-off-by: Fugang Duan <fugang.duan@nxp.com>
+Signed-off-by: Joakim Zhang <qiangqing.zhang@nxp.com>
+Signed-off-by: David S. Miller <davem@davemloft.net>
+---
+ drivers/net/ethernet/freescale/fec.h      |  6 ++
+ drivers/net/ethernet/freescale/fec_main.c | 89 +++++++++++++++++++++++
+ 2 files changed, 95 insertions(+)
+
+diff --git a/drivers/net/ethernet/freescale/fec.h b/drivers/net/ethernet/freescale/fec.h
+index a032b39a0a17..c63480857854 100644
+--- a/drivers/net/ethernet/freescale/fec.h
++++ b/drivers/net/ethernet/freescale/fec.h
+@@ -77,6 +77,8 @@
+ #define FEC_R_DES_ACTIVE_2	0x1e8 /* Rx descriptor active for ring 2 */
+ #define FEC_X_DES_ACTIVE_2	0x1ec /* Tx descriptor active for ring 2 */
+ #define FEC_QOS_SCHEME		0x1f0 /* Set multi queues Qos scheme */
++#define FEC_LPI_SLEEP		0x1f4 /* Set IEEE802.3az LPI Sleep Ts time */
++#define FEC_LPI_WAKE		0x1f8 /* Set IEEE802.3az LPI Wake Tw time */
+ #define FEC_MIIGSK_CFGR		0x300 /* MIIGSK Configuration reg */
+ #define FEC_MIIGSK_ENR		0x308 /* MIIGSK Enable reg */
+ 
+@@ -605,6 +607,10 @@ struct fec_enet_private {
+ 	unsigned int tx_time_itr;
+ 	unsigned int itr_clk_rate;
+ 
++	/* tx lpi eee mode */
++	struct ethtool_eee eee;
++	unsigned int clk_ref_rate;
++
+ 	u32 rx_copybreak;
+ 
+ 	/* ptp clock period in ns*/
+diff --git a/drivers/net/ethernet/freescale/fec_main.c b/drivers/net/ethernet/freescale/fec_main.c
+index ed2aed35291c..2cce866d7f9b 100644
+--- a/drivers/net/ethernet/freescale/fec_main.c
++++ b/drivers/net/ethernet/freescale/fec_main.c
+@@ -2711,6 +2711,92 @@ static int fec_enet_set_tunable(struct net_device *netdev,
+ 	return ret;
+ }
+ 
++/* LPI Sleep Ts count base on tx clk (clk_ref).
++ * The lpi sleep cnt value = X us / (cycle_ns).
++ */
++static int fec_enet_us_to_tx_cycle(struct net_device *ndev, int us)
++{
++	struct fec_enet_private *fep = netdev_priv(ndev);
++
++	return us * (fep->clk_ref_rate / 1000) / 1000;
++}
++
++static int fec_enet_eee_mode_set(struct net_device *ndev, bool enable)
++{
++	struct fec_enet_private *fep = netdev_priv(ndev);
++	struct ethtool_eee *p = &fep->eee;
++	unsigned int sleep_cycle, wake_cycle;
++	int ret = 0;
++
++	if (enable) {
++		ret = phy_init_eee(ndev->phydev, 0);
++		if (ret)
++			return ret;
++
++		sleep_cycle = fec_enet_us_to_tx_cycle(ndev, p->tx_lpi_timer);
++		wake_cycle = sleep_cycle;
++	} else {
++		sleep_cycle = 0;
++		wake_cycle = 0;
++	}
++
++	p->tx_lpi_enabled = enable;
++	p->eee_enabled = enable;
++	p->eee_active = enable;
++
++	writel(sleep_cycle, fep->hwp + FEC_LPI_SLEEP);
++	writel(wake_cycle, fep->hwp + FEC_LPI_WAKE);
++
++	return 0;
++}
++
++static int
++fec_enet_get_eee(struct net_device *ndev, struct ethtool_eee *edata)
++{
++	struct fec_enet_private *fep = netdev_priv(ndev);
++	struct ethtool_eee *p = &fep->eee;
++
++	if (!(fep->quirks & FEC_QUIRK_HAS_EEE))
++		return -EOPNOTSUPP;
++
++	if (!netif_running(ndev))
++		return -ENETDOWN;
++
++	edata->eee_enabled = p->eee_enabled;
++	edata->eee_active = p->eee_active;
++	edata->tx_lpi_timer = p->tx_lpi_timer;
++	edata->tx_lpi_enabled = p->tx_lpi_enabled;
++
++	return phy_ethtool_get_eee(ndev->phydev, edata);
++}
++
++static int
++fec_enet_set_eee(struct net_device *ndev, struct ethtool_eee *edata)
++{
++	struct fec_enet_private *fep = netdev_priv(ndev);
++	struct ethtool_eee *p = &fep->eee;
++	int ret = 0;
++
++	if (!(fep->quirks & FEC_QUIRK_HAS_EEE))
++		return -EOPNOTSUPP;
++
++	if (!netif_running(ndev))
++		return -ENETDOWN;
++
++	p->tx_lpi_timer = edata->tx_lpi_timer;
++
++	if (!edata->eee_enabled || !edata->tx_lpi_enabled ||
++	    !edata->tx_lpi_timer)
++		ret = fec_enet_eee_mode_set(ndev, false);
++	else
++		ret = fec_enet_eee_mode_set(ndev, true);
++
++	if (ret)
++		return ret;
++
++	return phy_ethtool_set_eee(ndev->phydev, edata);
++}
++
+ static void
+ fec_enet_get_wol(struct net_device *ndev, struct ethtool_wolinfo *wol)
+ {
+@@ -2771,6 +2857,8 @@ static const struct ethtool_ops fec_enet_ethtool_ops = {
+ 	.set_tunable		= fec_enet_set_tunable,
+ 	.get_wol		= fec_enet_get_wol,
+ 	.set_wol		= fec_enet_set_wol,
++	.get_eee		= fec_enet_get_eee,
++	.set_eee		= fec_enet_set_eee,
+ 	.get_link_ksettings	= phy_ethtool_get_link_ksettings,
+ 	.set_link_ksettings	= phy_ethtool_set_link_ksettings,
+ };
+@@ -3707,6 +3795,7 @@ fec_probe(struct platform_device *pdev)
+ 	fep->clk_ref = devm_clk_get(&pdev->dev, "enet_clk_ref");
+ 	if (IS_ERR(fep->clk_ref))
+ 		fep->clk_ref = NULL;
++	fep->clk_ref_rate = clk_get_rate(fep->clk_ref);
+ 
+ 	fep->bufdesc_ex = fep->quirks & FEC_QUIRK_HAS_BUFDESC_EX;
+ 	fep->clk_ptp = devm_clk_get(&pdev->dev, "ptp");
+-- 
+2.25.1
+

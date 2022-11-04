@@ -1,0 +1,70 @@
+From 62dbd7ecbb923a34d9c29bc94da722a501b2f361 Mon Sep 17 00:00:00 2001
+From: Heiner Kallweit <hkallweit1@gmail.com>
+Date: Wed, 7 Apr 2021 17:51:56 +0200
+Subject: [PATCH 16/22] net: phy: make PHY PM ops a no-op if MAC driver manages
+ PHY PM
+
+Resume callback of the PHY driver is called after the one for the MAC
+driver. The PHY driver resume callback calls phy_init_hw(), and this is
+potentially problematic if the MAC driver calls phy_start() in its resume
+callback. One issue was reported with the fec driver and a KSZ8081 PHY
+which seems to become unstable if a soft reset is triggered during aneg.
+
+The new flag allows MAC drivers to indicate that they take care of
+suspending/resuming the PHY. Then the MAC PM callbacks can handle
+any dependency between MAC and PHY PM.
+
+Signed-off-by: Heiner Kallweit <hkallweit1@gmail.com>
+Signed-off-by: Jakub Kicinski <kuba@kernel.org>
+---
+ drivers/net/phy/phy_device.c | 6 ++++++
+ include/linux/phy.h          | 2 ++
+ 2 files changed, 8 insertions(+)
+
+diff --git a/drivers/net/phy/phy_device.c b/drivers/net/phy/phy_device.c
+index d2f6d8107595..b9f774fa7645 100644
+--- a/drivers/net/phy/phy_device.c
++++ b/drivers/net/phy/phy_device.c
+@@ -273,6 +273,9 @@ static __maybe_unused int mdio_bus_phy_suspend(struct device *dev)
+ {
+ 	struct phy_device *phydev = to_phy_device(dev);
+ 
++	if (phydev->mac_managed_pm)
++		return 0;
++
+ 	/* We must stop the state machine manually, otherwise it stops out of
+ 	 * control, possibly with the phydev->lock held. Upon resume, netdev
+ 	 * may call phy routines that try to grab the same lock, and that may
+@@ -294,6 +297,9 @@ static __maybe_unused int mdio_bus_phy_resume(struct device *dev)
+ 	struct phy_device *phydev = to_phy_device(dev);
+ 	int ret;
+ 
++	if (phydev->mac_managed_pm)
++		return 0;
++
+ 	if (!phydev->suspended_by_mdio_bus)
+ 		goto no_resume;
+ 
+diff --git a/include/linux/phy.h b/include/linux/phy.h
+index 08725a262f32..1ef279d32098 100644
+--- a/include/linux/phy.h
++++ b/include/linux/phy.h
+@@ -484,6 +484,7 @@ struct macsec_ops;
+  * @sysfs_links: Internal boolean tracking sysfs symbolic links setup/removal.
+  * @loopback_enabled: Set true if this PHY has been loopbacked successfully.
+  * @downshifted_rate: Set true if link speed has been downshifted.
++ * @mac_managed_pm: Set true if MAC driver takes of suspending/resuming PHY
+  * @state: State of the PHY for management purposes
+  * @dev_flags: Device-specific flags used by the PHY driver.
+  * @irq: IRQ number of the PHY's interrupt (-1 if none)
+@@ -557,6 +558,7 @@ struct phy_device {
+ 	unsigned sysfs_links:1;
+ 	unsigned loopback_enabled:1;
+ 	unsigned downshifted_rate:1;
++	unsigned mac_managed_pm:1;
+ 
+ 	unsigned autoneg:1;
+ 	/* The most recently read link state */
+-- 
+2.25.1
+

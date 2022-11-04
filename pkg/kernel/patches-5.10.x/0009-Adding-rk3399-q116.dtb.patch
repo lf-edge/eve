@@ -1,7 +1,7 @@
-From 54021576332330e0773eb769b5d6927eb074eca5 Mon Sep 17 00:00:00 2001
+From 61831a1b2d743b8d5ebbd1f33d8bade996d618dd Mon Sep 17 00:00:00 2001
 From: Roman Shaposhnik <rvs@apache.org>
 Date: Sun, 1 Nov 2020 01:41:51 -0500
-Subject: [PATCH 09/10] Adding rk3399-q116.dtb
+Subject: [PATCH 09/21] Adding rk3399-q116.dtb
 
 ---
  arch/arm64/boot/dts/rockchip/Makefile         |    2 +
@@ -1348,5 +1348,5 @@ index 000000000000..f1474c847b47
 +	};
 +};
 -- 
-2.34.1
+2.25.1
 

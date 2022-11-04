@@ -1,0 +1,72 @@
+From 0eb93b443100b98e7e2fe0e1c8c32673fdb6e952 Mon Sep 17 00:00:00 2001
+From: Geert Uytterhoeven <geert@linux-m68k.org>
+Date: Tue, 2 Feb 2021 14:06:50 +0100
+Subject: [PATCH 15/22] net: fec: Silence M5272 build warnings
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+If CONFIG_M5272=y:
+
+    drivers/net/ethernet/freescale/fec_main.c: In function ‘fec_restart’:
+    drivers/net/ethernet/freescale/fec_main.c:948:6: warning: unused variable ‘val’ [-Wunused-variable]
+      948 |  u32 val;
+	  |      ^~~
+    drivers/net/ethernet/freescale/fec_main.c: In function ‘fec_get_mac’:
+    drivers/net/ethernet/freescale/fec_main.c:1667:28: warning: unused variable ‘pdata’ [-Wunused-variable]
+     1667 |  struct fec_platform_data *pdata = dev_get_platdata(&fep->pdev->dev);
+	  |                            ^~~~~
+
+Fix this by moving the variable declarations inside the existing #ifdef
+blocks.
+
+Signed-off-by: Geert Uytterhoeven <geert@linux-m68k.org>
+Reviewed-by: Guenter Roeck <linux@roeck-us.net>
+Link: https://lore.kernel.org/r/20210202130650.865023-1-geert@linux-m68k.org
+Signed-off-by: Jakub Kicinski <kuba@kernel.org>
+---
+ drivers/net/ethernet/freescale/fec_main.c | 7 ++++---
+ 1 file changed, 4 insertions(+), 3 deletions(-)
+
+diff --git a/drivers/net/ethernet/freescale/fec_main.c b/drivers/net/ethernet/freescale/fec_main.c
+index 5cc145d46629..8fe063a041be 100644
+--- a/drivers/net/ethernet/freescale/fec_main.c
++++ b/drivers/net/ethernet/freescale/fec_main.c
+@@ -947,7 +947,6 @@ static void
+ fec_restart(struct net_device *ndev)
+ {
+ 	struct fec_enet_private *fep = netdev_priv(ndev);
+-	u32 val;
+ 	u32 temp_mac[2];
+ 	u32 rcntl = OPT_FRAME_SIZE | 0x04;
+ 	u32 ecntl = 0x2; /* ETHEREN */
+@@ -999,7 +998,8 @@ fec_restart(struct net_device *ndev)
+ 
+ #if !defined(CONFIG_M5272)
+ 	if (fep->quirks & FEC_QUIRK_HAS_RACC) {
+-		val = readl(fep->hwp + FEC_RACC);
++		u32 val = readl(fep->hwp + FEC_RACC);
++
+ 		/* align IP header */
+ 		val |= FEC_RACC_SHIFT16;
+ 		if (fep->csum_flags & FLAG_RX_CSUM_ENABLED)
+@@ -1666,7 +1666,6 @@ static int fec_enet_rx_napi(struct napi_struct *napi, int budget)
+ static void fec_get_mac(struct net_device *ndev)
+ {
+ 	struct fec_enet_private *fep = netdev_priv(ndev);
+-	struct fec_platform_data *pdata = dev_get_platdata(&fep->pdev->dev);
+ 	unsigned char *iap, tmpaddr[ETH_ALEN];
+ 
+ 	/*
+@@ -1697,6 +1696,8 @@ static void fec_get_mac(struct net_device *ndev)
+ 		if (FEC_FLASHMAC)
+ 			iap = (unsigned char *)FEC_FLASHMAC;
+ #else
++		struct fec_platform_data *pdata = dev_get_platdata(&fep->pdev->dev);
++
+ 		if (pdata)
+ 			iap = (unsigned char *)&pdata->mac;
+ #endif
+-- 
+2.25.1
+

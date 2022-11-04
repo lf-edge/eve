@@ -1,7 +1,7 @@
-From 30a52f11cbee9a84bb52f5b247b04b4e4f5bb2f8 Mon Sep 17 00:00:00 2001
+From 791ad47c11dbfc11ad13137d200a33e2feaf98f1 Mon Sep 17 00:00:00 2001
 From: Stefano Stabellini <sstabellini@kernel.org>
 Date: Thu, 17 Dec 2020 18:27:32 -0800
-Subject: [PATCH 02/10] Xen SMBIOS property add
+Subject: [PATCH 02/21] Xen SMBIOS property add
 
 ---
  arch/arm/xen/enlighten.c | 8 ++++++++
@@ -41,5 +41,5 @@ index 8ad576ecd0f1..2a7ec6552f22 100644
  
  static int __init xen_guest_init(void)
 -- 
-2.34.1
+2.25.1
 

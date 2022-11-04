@@ -1,0 +1,70 @@
+From cd531a59602a292d7b9ea70dd7fec071cbf28a5f Mon Sep 17 00:00:00 2001
+From: Laurent Badel <laurentbadel@eaton.com>
+Date: Mon, 25 Jan 2021 11:07:45 +0100
+Subject: [PATCH 13/21] net: fec: Fix temporary RMII clock reset on link up
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+﻿fec_restart() does a hard reset of the MAC module when the link status
+changes to up. This temporarily resets the R_CNTRL register which controls
+the MII mode of the ENET_OUT clock. In the case of RMII, the clock
+frequency momentarily drops from 50MHz to 25MHz until the register is
+reconfigured. Some link partners do not tolerate this glitch and
+invalidate the link causing failure to establish a stable link when using
+PHY polling mode. Since as per IEEE802.3 the criteria for link validity
+are PHY-specific, what the partner should tolerate cannot be assumed, so
+avoid resetting the MII clock by using software reset instead of hardware
+reset when the link is up. This is generally relevant only if the SoC
+provides the clock to an external PHY and the PHY is configured for RMII.
+
+Signed-off-by: Laurent Badel <laurentbadel@eaton.com>
+Signed-off-by: Jakub Kicinski <kuba@kernel.org>
+---
+ drivers/net/ethernet/freescale/fec.h      | 5 +++++
+ drivers/net/ethernet/freescale/fec_main.c | 6 ++++--
+ 2 files changed, 9 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/net/ethernet/freescale/fec.h b/drivers/net/ethernet/freescale/fec.h
+index 6ea98af63b34..e1b80801c779 100644
+--- a/drivers/net/ethernet/freescale/fec.h
++++ b/drivers/net/ethernet/freescale/fec.h
+@@ -465,6 +465,11 @@ struct bufdesc_ex {
+  */
+ #define FEC_QUIRK_CLEAR_SETUP_MII	(1 << 17)
+ 
++/* Some link partners do not tolerate the momentary reset of the REF_CLK
++ * frequency when the RNCTL register is cleared by hardware reset.
++ */
++#define FEC_QUIRK_NO_HARD_RESET		(1 << 18)
++
+ struct bufdesc_prop {
+ 	int qid;
+ 	/* Address of Rx and Tx buffers */
+diff --git a/drivers/net/ethernet/freescale/fec_main.c b/drivers/net/ethernet/freescale/fec_main.c
+index d8bdaf2e5365..5cc145d46629 100644
+--- a/drivers/net/ethernet/freescale/fec_main.c
++++ b/drivers/net/ethernet/freescale/fec_main.c
+@@ -102,7 +102,8 @@ static const struct fec_devinfo fec_imx27_info = {
+ static const struct fec_devinfo fec_imx28_info = {
+ 	.quirks = FEC_QUIRK_ENET_MAC | FEC_QUIRK_SWAP_FRAME |
+ 		  FEC_QUIRK_SINGLE_MDIO | FEC_QUIRK_HAS_RACC |
+-		  FEC_QUIRK_HAS_FRREG | FEC_QUIRK_CLEAR_SETUP_MII,
++		  FEC_QUIRK_HAS_FRREG | FEC_QUIRK_CLEAR_SETUP_MII |
++		  FEC_QUIRK_NO_HARD_RESET,
+ };
+ 
+ static const struct fec_devinfo fec_imx6q_info = {
+@@ -955,7 +956,8 @@ fec_restart(struct net_device *ndev)
+ 	 * For i.MX6SX SOC, enet use AXI bus, we use disable MAC
+ 	 * instead of reset MAC itself.
+ 	 */
+-	if (fep->quirks & FEC_QUIRK_HAS_AVB) {
++	if (fep->quirks & FEC_QUIRK_HAS_AVB ||
++	    ((fep->quirks & FEC_QUIRK_NO_HARD_RESET) && fep->link)) {
+ 		writel(0, fep->hwp + FEC_ECNTRL);
+ 	} else {
+ 		writel(1, fep->hwp + FEC_ECNTRL);
+-- 
+2.25.1
+
