@@ -738,17 +738,32 @@ func xenCfgFilename(appNum int) string {
 // Notify simple struct to pass notification messages
 type Notify struct{}
 
+type channels struct {
+	configChannel chan<- Notify
+	cpuChannel    chan<- Notify
+}
+
 // We have one goroutine per provisioned domU object.
 // Channel is used to send notifications about config (add and updates)
 // Channel is closed when the object is deleted
 // The go-routine owns writing status for the object
 // The key in the map is the objects Key() - UUID in this case
-type handlers map[string]chan<- Notify
+type handlers map[string]channels
 
 var handlerMap handlers
 
 func handlersInit() {
 	handlerMap = make(handlers)
+}
+
+func triggerCPUNotification() {
+	for _, handler := range handlerMap {
+		select {
+		case handler.cpuChannel <- Notify{}:
+		default:
+			log.Warnf("Already sent a CPU Notify...")
+		}
+	}
 }
 
 // Wrappers around handleCreate, handleModify, and handleDelete
@@ -764,7 +779,7 @@ func handleDomainModify(ctxArg interface{}, key string, configArg interface{},
 		log.Fatalf("handleDomainModify called on config that does not exist")
 	}
 	select {
-	case h <- Notify{}:
+	case h.configChannel <- Notify{}:
 		log.Functionf("handleDomainModify(%s) sent notify", key)
 	default:
 		// handler is slow
@@ -781,13 +796,15 @@ func handleDomainCreate(ctxArg interface{}, key string, configArg interface{}) {
 	if ok {
 		log.Fatalf("handleDomainCreate called on config that already exists")
 	}
-	h1 := make(chan Notify, 1)
+	hConfig := make(chan Notify, 1)
+	hCPU := make(chan Notify, 1)
+	h1 := channels{configChannel: hConfig, cpuChannel: hCPU}
 	handlerMap[config.Key()] = h1
 	log.Functionf("Creating %s at %s", "runHandler", agentlog.GetMyStack())
-	go runHandler(ctx, key, h1)
+	go runHandler(ctx, key, hConfig, hCPU)
 	h = h1
 	select {
-	case h <- Notify{}:
+	case h.configChannel <- Notify{}:
 		log.Functionf("handleDomainCreate(%s) sent notify", key)
 	default:
 		// Shouldn't happen since we just created channel
@@ -809,8 +826,9 @@ func handleDomainDelete(ctxArg interface{}, key string,
 	// Do we have a channel/goroutine?
 	h, ok := handlerMap[key]
 	if ok {
-		log.Functionf("Closing channel")
-		close(h)
+		log.Functionf("Closing channels")
+		close(h.cpuChannel)
+		close(h.configChannel)
 		delete(handlerMap, key)
 	} else {
 		log.Tracef("handleDomainDelete: unknown %s", key)
@@ -821,7 +839,7 @@ func handleDomainDelete(ctxArg interface{}, key string,
 
 // Server for each domU
 // Runs timer every 30 seconds to update status
-func runHandler(ctx *domainContext, key string, c <-chan Notify) {
+func runHandler(ctx *domainContext, key string, configChannel <-chan Notify, cpuChannel <-chan Notify) {
 
 	log.Functionf("runHandler starting")
 
@@ -834,7 +852,7 @@ func runHandler(ctx *domainContext, key string, c <-chan Notify) {
 	closed := false
 	for !closed {
 		select {
-		case _, ok := <-c:
+		case _, ok := <-configChannel:
 			if ok {
 				sub := ctx.subDomainConfig
 				c, err := sub.Get(key)
@@ -856,6 +874,21 @@ func runHandler(ctx *domainContext, key string, c <-chan Notify) {
 					handleDelete(ctx, key, status)
 				}
 				closed = true
+			}
+		case _, ok := <-cpuChannel:
+			if ok {
+				sub := ctx.subDomainConfig
+				c, err := sub.Get(key)
+				if err != nil {
+					log.Errorf("runHandler no config for %s", key)
+					continue
+				}
+				config := c.(types.DomainConfig)
+				if !config.VmConfig.CPUsPinned {
+					if err := updateNonPinnedCPUs(ctx, &config); err != nil {
+						log.Warnf("failed to redistribute CPUs in %s", config.DisplayName)
+					}
+				}
 			}
 		case <-ticker.C:
 			log.Tracef("runHandler(%s) timer", key)
