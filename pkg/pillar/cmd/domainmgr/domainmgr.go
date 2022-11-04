@@ -1174,6 +1174,54 @@ func setCgroupCpuset(config *types.DomainConfig) error {
 	return nil
 }
 
+// constructNonPinnedCpumaskString returns a cpumask that contains at least CPUs reserved for the system
+// services. Hence, it can never be empty.
+func constructNonPinnedCpumaskString(ctx *domainContext) string {
+	result := ""
+	for _, cpu := range ctx.cpuAllocator.GetAllFree() {
+		addToMask(cpu, &result)
+	}
+	return result
+}
+
+func addToMask(cpu int, s *string) {
+	if s == nil {
+		return
+	}
+	if *s == "" {
+		*s = fmt.Sprintf("%d", cpu)
+	} else {
+		*s = fmt.Sprintf("%s,%d", *s, cpu)
+	}
+}
+
+func updateNonPinnedCPUs(ctx *domainContext, config *types.DomainConfig) error {
+	config.VmConfig.CPUs = constructNonPinnedCpumaskString(ctx)
+	err := setCgroupCpuset(config)
+	if err != nil {
+		return errors.New("failed to redistribute CPUs between VMs, can affect the inter-VM isolation")
+	}
+	return nil
+}
+
+func assignCPUs(ctx *domainContext, config *types.DomainConfig) error {
+	if config.VmConfig.CPUsPinned { // Pin the CPU
+		cpusToAssign, err := ctx.cpuAllocator.Allocate(config.UUIDandVersion.UUID, config.VCpus)
+		if err != nil {
+			return errors.New("failed to allocate necessary amount of CPUs")
+		}
+		for _, cpu := range cpusToAssign {
+			addToMask(cpu, &config.VmConfig.CPUs)
+			if err != nil {
+				return errors.New("failed to reassign CPUs between the Applications")
+			}
+		}
+	} else { // VM has no pinned CPUs, assign all the CPUs from the shared set
+		config.VmConfig.CPUs = constructNonPinnedCpumaskString(ctx)
+	}
+	return nil
+}
+
 func handleCreate(ctx *domainContext, key string, config *types.DomainConfig) {
 
 	log.Functionf("handleCreate(%v) for %s",
