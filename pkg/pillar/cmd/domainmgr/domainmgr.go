@@ -30,6 +30,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/cas"
 	"github.com/lf-edge/eve/pkg/pillar/cipher"
 	"github.com/lf-edge/eve/pkg/pillar/containerd"
+	"github.com/lf-edge/eve/pkg/pillar/cpuallocator"
 	"github.com/lf-edge/eve/pkg/pillar/devicenetwork"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	"github.com/lf-edge/eve/pkg/pillar/hypervisor"
@@ -113,6 +114,8 @@ type domainContext struct {
 	// cli options
 	versionPtr    *bool
 	hypervisorPtr *string
+	// CPUs management
+	cpuAllocator *cpuallocator.CPUAllocator
 }
 
 // AddAgentSpecificCLIFlags adds CLI options
@@ -162,6 +165,20 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	}
 	hyper, err = hypervisor.GetHypervisor(*domainCtx.hypervisorPtr)
 	if err != nil {
+		log.Fatal(err)
+	}
+
+	resources, err := hyper.GetHostCPUMem()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	cpusReserved, err := getReservedCPUsNum()
+	if err != nil {
+		log.Warnf("Failed to get reserved CPU number, use 1 by default: %s", err)
+	}
+
+	if domainCtx.cpuAllocator, err = cpuallocator.Init(int(resources.Ncpus), cpusReserved); err != nil {
 		log.Fatal(err)
 	}
 
