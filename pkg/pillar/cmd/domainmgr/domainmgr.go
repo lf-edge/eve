@@ -1506,6 +1506,16 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 		publishDomainStatus(ctx, status)
 		time.Sleep(5 * time.Second)
 	}
+	if err := setCgroupCpuset(&config); err != nil {
+		log.Errorf("Failed to set CPUs for %s: %s", config.DisplayName, err)
+		errDescription := types.ErrorDescription{Error: err.Error()}
+		status.SetErrorDescription(errDescription)
+		publishDomainStatus(ctx, status)
+	}
+	if config.CPUsPinned {
+		triggerCPUNotification()
+	}
+
 	status.BootFailed = false
 	doActivateTail(ctx, status, domainID)
 }
