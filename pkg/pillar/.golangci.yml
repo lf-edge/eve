@@ -28,6 +28,7 @@ linters:
     - gocyclo           # Too opinionated on existing code
     - maligned          # Too opinionated on existing structs
     - nestif            # Too opinionated on existing code
+    - exhaustruct       # Too opinionated on existing code
 
 issues:
   max-issues-per-linter: 0
