@@ -30,7 +30,7 @@ if [ -z "${dom0_cgroup_memory_limit}" ]; then
     dom0_cgroup_memory_limit=$dom0_cgroup_memory_soft_limit
 fi
 
-if [ -z "${dom0_cgroup_cpus_limit}" ]; then
+if [ -z "${dom0_cgroup_cpus_limit}" ] || [ "${dom0_cgroup_cpus_limit}" = "0" ]; then
     echo "Setting default value of $default_cgroup_cpus_limit for dom0_cgroup_cpus_limit"
     dom0_cgroup_cpus_limit=$default_cgroup_cpus_limit
 fi
@@ -45,7 +45,7 @@ if [ -z "${eve_cgroup_memory_limit}" ]; then
     eve_cgroup_memory_limit=$eve_cgroup_memory_soft_limit
 fi
 
-if [ -z "${eve_cgroup_cpus_limit}" ]; then
+if [ -z "${eve_cgroup_cpus_limit}" ] || [ "${eve_cgroup_cpus_limit}" = "0" ]; then
     echo "Setting default value of $default_cgroup_cpus_limit for eve_cgroup_cpus_limit"
     eve_cgroup_cpus_limit=$default_cgroup_cpus_limit
 fi
@@ -60,7 +60,7 @@ if [ -z "${ctrd_cgroup_memory_limit}" ]; then
     ctrd_cgroup_memory_limit=$ctrd_cgroup_memory_soft_limit
 fi
 
-if [ -z "${ctrd_cgroup_cpus_limit}" ]; then
+if [ -z "${ctrd_cgroup_cpus_limit}" ] || [ "${ctrd_cgroup_cpus_limit}" = "0" ]; then
     echo "Setting default value of $default_cgroup_cpus_limit for ctrd_cgroup_cpus_limit"
     ctrd_cgroup_cpus_limit=$default_cgroup_cpus_limit
 fi
@@ -97,7 +97,7 @@ fi
 /bin/echo $dom0_cgroup_memory_soft_limit > /sys/fs/cgroup/memory/eve/memory.soft_limit_in_bytes
 #Value that we are trying to update should not be greater than the existing value in cgroup system.
 if [ -n "${existingCPULimit}" ] && [ "$existingCPULimit" -ge "$dom0_cgroup_cpus_limit" ]; then
-    /bin/echo "0-$dom0_cgroup_cpus_limit" > /sys/fs/cgroup/cpuset/eve/cpuset.cpus
+    /bin/echo "0-$((dom0_cgroup_cpus_limit-1))" > /sys/fs/cgroup/cpuset/eve/cpuset.cpus
 fi
 
 /bin/echo $ctrd_cgroup_memory_limit > /sys/fs/cgroup/memory/eve/containerd/memory.limit_in_bytes
@@ -106,13 +106,13 @@ fi
 /bin/echo $eve_cgroup_memory_limit > /sys/fs/cgroup/memory/eve/services/memory.limit_in_bytes
 /bin/echo $eve_cgroup_memory_soft_limit > /sys/fs/cgroup/memory/eve/services/memory.soft_limit_in_bytes
 if [ -n "${existingCPULimit}" ] && [ "$existingCPULimit" -ge "$eve_cgroup_cpus_limit" ]; then
-    /bin/echo "0-$eve_cgroup_cpus_limit" > /sys/fs/cgroup/cpuset/eve/services/cpuset.cpus
+    /bin/echo "0-$((eve_cgroup_cpus_limit-1))" > /sys/fs/cgroup/cpuset/eve/services/cpuset.cpus
 fi
 
 for srv in $EVESRVICES; do
     /bin/echo $eve_cgroup_memory_limit > /sys/fs/cgroup/memory/eve/services/"${srv}"/memory.limit_in_bytes
     /bin/echo $eve_cgroup_memory_soft_limit > /sys/fs/cgroup/memory/eve/services/"${srv}"/memory.soft_limit_in_bytes
     if [ -n "${existingCPULimit}" ] && [ "$existingCPULimit" -ge "$eve_cgroup_cpus_limit" ]; then
-        /bin/echo "0-$eve_cgroup_cpus_limit" > /sys/fs/cgroup/cpuset/eve/services/"${srv}"/cpuset.cpus
+        /bin/echo "0-$((eve_cgroup_cpus_limit-1))" > /sys/fs/cgroup/cpuset/eve/services/"${srv}"/cpuset.cpus
     fi
 done

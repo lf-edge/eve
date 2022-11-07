@@ -83,6 +83,30 @@ func getAllDiskMetrics(ctx *zedagentContext) []*types.DiskMetric {
 	return retList
 }
 
+func handleAppDiskMetricCreate(ctxArg interface{}, key string, _ interface{}) {
+	ctx := ctxArg.(*zedagentContext)
+
+	// if AppDiskMetric create event come after VolumeStatus available
+	// we should publish updated numbers based on AppDiskMetric
+	volumeStatusList := ctx.getconfigCtx.subVolumeStatus.GetAll()
+	for _, s := range volumeStatusList {
+		volumeStatus, ok := s.(types.VolumeStatus)
+		if !ok {
+			log.Error("unexpected type in subVolumeStatus")
+			continue
+		}
+		if volumeStatus.FileLocation == "" {
+			continue
+		}
+		if key != types.PathToKey(volumeStatus.FileLocation) {
+			continue
+		}
+		uuidStr := volumeStatus.VolumeID.String()
+		PublishVolumeToZedCloud(ctx, uuidStr, &volumeStatus, ctx.iteration)
+	}
+	log.Functionf("handleAppDiskMetricCreate: %s", key)
+}
+
 func lookupAppDiskMetric(ctx *zedagentContext, diskPath string) *types.AppDiskMetric {
 	diskPath = types.PathToKey(diskPath)
 	sub := ctx.subAppDiskMetric
@@ -1297,7 +1321,8 @@ func PublishVolumeToZedCloud(ctx *zedagentContext, uuid string,
 			VolumeResourcesInfo := new(info.VolumeResources)
 			err := getVolumeResourcesInfo(ctx, volStatus, VolumeResourcesInfo)
 			if err != nil {
-				log.Errorf("getVolumeResourceInfo(%s) failed %v",
+				// will be published in handleAppDiskMetricCreate
+				log.Functionf("getVolumeResourceInfo(%s) failed %v",
 					volStatus.VolumeID, err)
 			} else {
 				ReportVolumeInfo.Resources = VolumeResourcesInfo

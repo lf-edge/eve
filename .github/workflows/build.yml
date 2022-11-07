@@ -35,6 +35,7 @@ jobs:
       - name: Clear repository
         run: |
           sudo rm -fr "$GITHUB_WORKSPACE" && mkdir "$GITHUB_WORKSPACE"
+          rm -fr ~/.linuxkit
       - uses: actions/checkout@v3
         with:
           fetch-depth: 0

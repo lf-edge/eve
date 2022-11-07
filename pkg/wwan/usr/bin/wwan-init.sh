@@ -266,13 +266,14 @@ check_connectivity() {
 }
 
 probe_connectivity() {
+  unset PROBE_ERROR
   if [ "$PROBE_DISABLED" = "true" ]; then
     # probing disabled, skip it
     return 0
   fi
   if [ -n "$PROBE_ADDR" ]; then
     # User-configured ICMP probe address.
-    PROBE_ERROR="$(icmp_probe "$PROBE_ADDR")"
+    add_probe_error "$(icmp_probe "$PROBE_ADDR")"
     return
   fi
   # Default probing behaviour (not configured by user).
@@ -290,6 +291,7 @@ probe_connectivity() {
         if nc -w 5 -s "$IP" -z -n "$SERVER" "$PORT" >/dev/null 2>&1; then
           return 0
         fi
+        add_probe_error "TCP handshake with proxy $SERVER:$PORT failed"
       fi
     done <<__EOT__
 $(echo "$PROXIES" | jq -c '.[]' 2>/dev/null)
@@ -300,6 +302,7 @@ __EOT__
         if nslookup -retry=1 -timeout=5 -type=a . "$DNS" >/dev/null 2>&1; then
           return 0
         fi
+        add_probe_error "DNS query sent to $DNS failed"
       fi
     done
   fi
@@ -307,7 +310,18 @@ __EOT__
   # This is a last-resort probing option.
   # In a private LTE network ICMP requests headed towards public DNS servers
   # may be blocked by the firewall and thus produce probing false negatives.
-  PROBE_ERROR="$(icmp_probe "$DEFAULT_PROBE_ADDR")"
+  add_probe_error "$(icmp_probe "$DEFAULT_PROBE_ADDR")"
+}
+
+add_probe_error() {
+  if [ -z "$1" ]; then
+    return
+  fi
+  if [ -n "$PROBE_ERROR" ]; then
+    PROBE_ERROR="$PROBE_ERROR; $1"
+  else
+    PROBE_ERROR="$1"
+  fi
 }
 
 icmp_probe() {
@@ -529,7 +543,7 @@ event_stream | while read -r EVENT; do
         fi
         # retry probe to update PROBE_ERROR
         sleep 3
-        probe
+        probe_connectivity
       fi
     else # Radio-silence is ON
       if [ "$("${PROTOCOL}_get_op_mode")" != "radio-off" ]; then
