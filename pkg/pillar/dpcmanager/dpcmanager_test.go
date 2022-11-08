@@ -310,6 +310,12 @@ func globalConfig() types.ConfigItemValueMap {
 	return *gcp
 }
 
+func globalConfigWithLastresort() types.ConfigItemValueMap {
+	gcp := globalConfig()
+	gcp.SetGlobalValueTriState(types.NetworkFallbackAnyEth, types.TS_ENABLED)
+	return gcp
+}
+
 func mockEth0() netmonitor.MockInterface {
 	eth0 := netmonitor.MockInterface{
 		Attrs: netmonitor.IfAttrs{
@@ -762,7 +768,7 @@ func TestDPCFallback(test *testing.T) {
 	networkMonitor.AddOrUpdateInterface(eth0)
 
 	// Apply global config first.
-	dpcManager.UpdateGCP(globalConfig())
+	dpcManager.UpdateGCP(globalConfigWithLastresort())
 
 	// Apply "lastresort" DPC with single ethernet port.
 	aa := makeAA(selectedIntfs{eth0: true})
@@ -898,7 +904,7 @@ func TestDPCWithMultipleEths(test *testing.T) {
 		errors.New("failed to connect over eth1"))
 
 	// Apply global config first.
-	dpcManager.UpdateGCP(globalConfig())
+	dpcManager.UpdateGCP(globalConfigWithLastresort())
 
 	// Apply last-resort DPC with two ethernet ports.
 	aa := makeAA(selectedIntfs{eth0: true, eth1: true})
@@ -977,7 +983,7 @@ func TestDNS(test *testing.T) {
 		errors.New("failed to connect over eth1"))
 
 	// Apply global config first.
-	dpcManager.UpdateGCP(globalConfig())
+	dpcManager.UpdateGCP(globalConfigWithLastresort())
 
 	// Apply last-resort DPC with two ethernet ports.
 	aa := makeAA(selectedIntfs{eth0: true, eth1: true})
@@ -1407,7 +1413,7 @@ func TestDeleteDPC(test *testing.T) {
 	dpcManager.UpdateAA(aa)
 
 	// Apply global config.
-	dpcManager.UpdateGCP(globalConfig())
+	dpcManager.UpdateGCP(globalConfigWithLastresort())
 
 	// Apply "lastresort" DPC.
 	timePrio1 := time.Time{}

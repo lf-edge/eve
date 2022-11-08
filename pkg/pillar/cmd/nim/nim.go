@@ -89,6 +89,7 @@ type nim struct {
 	subDevicePortConfigS  pubsub.Subscription
 	subZedAgentStatus     pubsub.Subscription
 	subAssignableAdapters pubsub.Subscription
+	subOnboardStatus      pubsub.Subscription
 
 	// Publications
 	pubDummyDevicePortConfig pubsub.Publication // For logging
@@ -250,6 +251,9 @@ func (n *nim) run(ctx context.Context) (err error) {
 	if err = n.subDevicePortConfigS.Activate(); err != nil {
 		return err
 	}
+	if err = n.subOnboardStatus.Activate(); err != nil {
+		return err
+	}
 
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(stillRunTime)
@@ -272,6 +276,37 @@ func (n *nim) run(ctx context.Context) (err error) {
 	// This is mainly to handle the case when for whatever reason the device
 	// has lost /persist/status/nim/DevicePortConfigList
 	dpcAvailTimer := time.After(dpcAvailableTimeLimit)
+
+	if !n.enabledLastResort {
+		// Even if lastresort DPC is disabled by config, it can be forcefully used
+		// until NIM obtains any proper network config (from controller or bootstrap config
+		// or override/usb json).
+		//  * Before onboarding, we can easily determine if there is going to be any network
+		//    config available. If there is neither bootstrap device config nor any network
+		//    config override inside the /config partition or inside an (already plugged in)
+		//    USB stick, then device has no source of network configuration (currently)
+		//    available. The only exception is if the user is planning to insert USB stick
+		//    with usb.json *later*, but this cannot be predicted.
+		//    In order to not prolong onboarding in situations where the use of lastresort
+		//    is expected (ethernet + DHCP scenarios; often relied upon in lab/testing cases),
+		//    we will forcefully enable lastresort immediately if the above conditions for
+		//    missing network config source are satisfied. If the user later inserts a USB
+		//    stick with usb.json or the device onboards using lastresort and obtains a proper
+		//    config from the controller, the lastresort DPC will be unpublished (unless it is
+		//    enabled explicitly by config - by default it is disabled).
+		//  * After onboarding, it is expected that device always keeps and persists
+		//    at least the latest and the last working DPC, so it should never run out of
+		//    network configurations. But should device loose all of its /persist partition,
+		//    e.g. due to replacing or wiping the single disk where /persist lives, NIM will
+		//    notice that even after one minute of runtime (when dpcAvailTimer fires) there
+		//    is still no network config available and it will forcefully enable lastresort.
+		if !n.isDeviceOnboarded() &&
+			len(n.listPublishedDPCs(runDevicePortConfigDir)) == 0 &&
+			!fileutils.FileExists(n.Log, types.BootstrapConfFileName) {
+			n.forceLastResort = true
+			n.reevaluateLastResortDPC()
+		}
+	}
 
 	waitForLastResort := n.enabledLastResort
 	lastResortIsReady := func() error {
@@ -341,6 +376,9 @@ func (n *nim) run(ctx context.Context) (err error) {
 		case change := <-n.subAssignableAdapters.MsgChan():
 			n.subAssignableAdapters.ProcessChange(change)
 
+		case change := <-n.subOnboardStatus.MsgChan():
+			n.subOnboardStatus.ProcessChange(change)
+
 		case event := <-netEvents:
 			ifChange, isIfChange := event.(netmonitor.IfChange)
 			if isIfChange {
@@ -371,8 +409,7 @@ func (n *nim) run(ctx context.Context) (err error) {
 				n.Log.Noticef("DPC Manager has no network config to work with "+
 					"even after %v, enabling lastresort unconditionally", dpcAvailableTimeLimit)
 				n.forceLastResort = true
-				n.enabledLastResort = true
-				n.updateLastResortDPC("lastresort forcefully enabled")
+				n.reevaluateLastResortDPC()
 			}
 
 		case <-ctx.Done():
@@ -632,6 +669,19 @@ func (n *nim) initSubscriptions() (err error) {
 		return err
 	}
 
+	// To determine if device is onboarded
+	n.subOnboardStatus, err = n.PubSub.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:   "zedclient",
+		MyAgentName: agentName,
+		TopicImpl:   types.OnboardingStatus{},
+		Activate:    false,
+		WarningTime: warningTime,
+		ErrorTime:   errorTime,
+		Persistent:  true,
+	})
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -679,18 +729,7 @@ func (n *nim) applyGlobalConfig(gcp *types.ConfigItemValueMap) {
 	n.dpcManager.UpdateGCP(n.globalConfig)
 	timeout := gcp.GlobalValueInt(types.NetworkTestTimeout)
 	n.connTester.TestTimeout = time.Second * time.Duration(timeout)
-	fallbackAnyEth := gcp.GlobalValueTriState(types.NetworkFallbackAnyEth)
-	enableLastResort := fallbackAnyEth == types.TS_ENABLED
-	enableLastResort = enableLastResort || n.forceLastResort
-	if n.enabledLastResort != enableLastResort {
-		if enableLastResort {
-			n.updateLastResortDPC("lastresort enabled by global config")
-			n.enabledLastResort = true
-		} else {
-			n.removeLastResortDPC()
-			n.enabledLastResort = false
-		}
-	}
+	n.reevaluateLastResortDPC()
 	n.gcInitialized = true
 }
 
@@ -737,6 +776,12 @@ func (n *nim) handleDPCImpl(key string, configArg interface{}, fromFile bool) {
 			return
 		}
 	}
+	// Lastresort DPC is allowed to be forcefully used only until NIM receives
+	// any (proper) network configuration.
+	if dpc.Key != dpcmanager.LastResortKey {
+		n.forceLastResort = false
+		n.reevaluateLastResortDPC()
+	}
 	n.dpcManager.AddDPC(dpc)
 }
 
@@ -763,7 +808,7 @@ func (n *nim) handleAssignableAdaptersImpl(key string, configArg interface{}) {
 	n.assignableAdapters = assignableAdapters
 	n.dpcManager.UpdateAA(n.assignableAdapters)
 	if n.enabledLastResort {
-		n.updateLastResortDPC("assignable adapters changed")
+		n.publishLastResortDPC("assignable adapters changed")
 	}
 }
 
@@ -789,20 +834,24 @@ func (n *nim) handleZedAgentStatusImpl(_ string, statusArg interface{}) {
 	n.dpcManager.UpdateRadioSilence(zedagentStatus.RadioSilence)
 }
 
-// ingestPortConfig reads all json files in configDevicePortConfigDir, ensures
-// they have a TimePriority, and adds a ShaFile and Shavalue to them and then writes to
-// runDevicePortConfigDir.
-// If a file has already been ingested (based on finding the sha of the file content
-// being in /persist/ingested/DevicePortConfig/<key>.sha), it is ignored.
-// Otherwise the ShaFile and Shavalue is used to write the sha for the new file to avoid
-// re-application of the same config.
-func (n *nim) ingestDevicePortConfig() {
-	locations, err := ioutil.ReadDir(configDevicePortConfigDir)
+func (n *nim) isDeviceOnboarded() bool {
+	obj, err := n.subOnboardStatus.Get("global")
+	if err != nil {
+		return false
+	}
+	status, ok := obj.(types.OnboardingStatus)
+	if !ok {
+		return false
+	}
+	return status.DeviceUUID != nilUUID
+}
+
+func (n *nim) listPublishedDPCs(directory string) (dpcFilePaths []string) {
+	locations, err := ioutil.ReadDir(directory)
 	if err != nil {
 		// Directory might not exist
 		return
 	}
-	var dpcFiles []string
 	for _, location := range locations {
 		if location.IsDir() {
 			continue
@@ -811,11 +860,23 @@ func (n *nim) ingestDevicePortConfig() {
 		// override USB stick must be named usb.json.
 		dpcFile := location.Name()
 		if !strings.HasSuffix(dpcFile, ".json") {
-			n.Log.Noticef("Ignoring %s file", dpcFile)
+			n.Log.Noticef("Ignoring %s file (not DPC)", dpcFile)
 			continue
 		}
-		dpcFiles = append(dpcFiles, dpcFile)
+		dpcFilePaths = append(dpcFilePaths, dpcFile)
 	}
+	return dpcFilePaths
+}
+
+// ingestPortConfig reads all json files in configDevicePortConfigDir, ensures
+// they have a TimePriority, and adds a ShaFile and Shavalue to them and then writes to
+// runDevicePortConfigDir.
+// If a file has already been ingested (based on finding the sha of the file content
+// being in /persist/ingested/DevicePortConfig/<key>.sha), it is ignored.
+// Otherwise the ShaFile and Shavalue is used to write the sha for the new file to avoid
+// re-application of the same config.
+func (n *nim) ingestDevicePortConfig() {
+	dpcFiles := n.listPublishedDPCs(configDevicePortConfigDir)
 	// Skip these legacy DPC json files if there is bootstrap config.
 	if fileutils.FileExists(n.Log, types.BootstrapConfFileName) && len(dpcFiles) > 0 {
 		n.Log.Noticef("Not ingesting DPC jsons (%v) from config partition: "+
@@ -882,8 +943,34 @@ func (n *nim) ingestDevicePortConfigFile(oldDirname string, newDirname string, n
 	}
 }
 
-func (n *nim) updateLastResortDPC(reason string) {
-	n.Log.Functionf("updateLastResortDPC")
+// reevaluateLastResortDPC re-evaluates the current state of Last resort DPC.
+// If the config or the overall situation around DPC availability changed since
+// the last call, an already enabled lastresort could be disabled and vice versa.
+// The function applies a potential change in the intended state of lastresort
+// by (un)publishing lastresort DPC (notification will be delivered to NIM itself
+// and further propagated to DPCManager).
+// Note that the function also updates n.enabledLastResort, signaling the current
+// (intended) state of Last resort DPC.
+func (n *nim) reevaluateLastResortDPC() {
+	fallbackAnyEth := n.globalConfig.GlobalValueTriState(types.NetworkFallbackAnyEth)
+	enabledByConfig := fallbackAnyEth == types.TS_ENABLED
+	enableLastResort := enabledByConfig || n.forceLastResort
+	if n.enabledLastResort != enableLastResort {
+		if enableLastResort {
+			reason := "lastresort enabled by global config"
+			if !enabledByConfig {
+				reason = "lastresort forcefully enabled"
+			}
+			n.publishLastResortDPC(reason)
+		} else {
+			n.removeLastResortDPC()
+		}
+	}
+	n.enabledLastResort = enableLastResort
+}
+
+func (n *nim) publishLastResortDPC(reason string) {
+	n.Log.Functionf("publishLastResortDPC")
 	dpc, err := n.makeLastResortDPC()
 	if err != nil {
 		n.Log.Error(err)
@@ -892,7 +979,7 @@ func (n *nim) updateLastResortDPC(reason string) {
 	if n.lastResort != nil && n.lastResort.MostlyEqual(&dpc) {
 		return
 	}
-	n.Log.Noticef("Updating last-resort DPC, reason: %v", reason)
+	n.Log.Noticef("Publishing last-resort DPC, reason: %v", reason)
 	if err := n.pubDevicePortConfig.Publish(dpcmanager.LastResortKey, dpc); err != nil {
 		n.Log.Errorf("Failed to publish last-resort DPC: %v", err)
 		return
@@ -1000,7 +1087,7 @@ func (n *nim) processInterfaceChange(ifChange netmonitor.IfChange) {
 	includePort := n.includeLastResortPort(ifChange.Attrs)
 	port := n.lastResort.GetPortByIfName(ifChange.Attrs.IfName)
 	if port == nil && includePort {
-		n.updateLastResortDPC(fmt.Sprintf("interface %s should be included",
+		n.publishLastResortDPC(fmt.Sprintf("interface %s should be included",
 			ifChange.Attrs.IfName))
 	}
 }
