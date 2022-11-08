@@ -1,15 +1,15 @@
---- images/rootfs.yml.in
-+++ images/rootfs-adam-kvm.yml.in
-@@ -33,6 +33,12 @@
-      image: NEWLOGD_TAG
-      cgroupsPath: /eve/services/newlogd
-      oomScoreAdj: -999
-+   - name: adam
-+     image: lfedge/adam:latest
-+     binds:
-+        - /var/persist:/persist
-+        - /var/config:/config
-+     command: ["/bin/eve-embedded.sh"]
-    - name: edgeview
-      image: EDGEVIEW_TAG
-      cgroupsPath: /eve/services/eve-edgeview
+--- images/rootfs.yml.in	2022-11-08 16:06:30.892878441 +0000
++++ images/rootfs-kvm-adam.yml.in	2022-11-08 16:14:01.275725894 +0000
+@@ -42,6 +42,12 @@
+     image: NEWLOGD_TAG
+     cgroupsPath: /eve/services/newlogd
+     oomScoreAdj: -999
++  - name: adam
++    image: lfedge/adam:latest
++    binds:
++       - /var/persist:/persist
++       - /var/config:/config
++    command: ["/bin/eve-embedded.sh"]    
+   - name: edgeview
+     image: EDGEVIEW_TAG
+     cgroupsPath: /eve/services/eve-edgeview
