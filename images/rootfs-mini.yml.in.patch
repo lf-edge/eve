@@ -1,6 +1,6 @@
---- images/rootfs.yml.in	2022-06-24 08:41:44.000000000 +0300
-+++ images/rootfs-mini.yml.in	2022-06-24 08:45:15.000000000 +0300
-@@ -1,81 +1,21 @@
+--- images/rootfs.yml.in	2022-11-08 16:23:13.977367851 +0000
++++ images/rootfs-mini.yml.in	2022-11-08 16:23:14.237364855 +0000
+@@ -1,83 +1,21 @@
  kernel:
 -  image: KERNEL_TAG
 +  image: NEW_KERNEL_TAG
@@ -18,68 +18,70 @@
    - GPTTOOLS_TAG
 -  - KEXEC_TAG
  onboot:
--   - name: rngd
--     image: RNGD_TAG
--     command: ["/sbin/rngd", "-1"]
--   - name: sysctl
--     image: linuxkit/sysctl:v0.5
--     binds:
--        - /etc/sysctl.d:/etc/sysctl.d
--     capabilities:
--        - CAP_SYS_ADMIN
--        - CAP_NET_ADMIN
--   - name: modprobe
--     image: linuxkit/modprobe:v0.5
--     command: ["/bin/sh", "-c", "modprobe -a nct6775 w83627hf_wdt hpwdt wlcore_sdio wl18xx br_netfilter dwc3 rk808 rk808-regulator smsc75xx cp210x nicvf tpm_tis_spi rtc_rx8010 gpio_pca953x leds_siemens_ipc127 upboard-fpga pinctrl-upboard leds-upboard xhci_tegra 2>/dev/null || :"]
-    # If you change the order of storage-init don't forget to
-    # change 003-installer in pkg/mkimage-raw-efi accordingly:
-    # storage-init must follow installer
-    - name: storage-init
-      image: STORAGE_INIT_TAG
--   # kdump goes strictly after storage-init
--   - name: kdump
--     image: KDUMP_TAG
+-  - name: rngd
+-    image: RNGD_TAG
+-    command: ["/sbin/rngd", "-1"]
+-  - name: sysctl
+-    image: linuxkit/sysctl:v0.5
+-    binds:
+-      - /etc/sysctl.d:/etc/sysctl.d
+-    capabilities:
+-      - CAP_SYS_ADMIN
+-      - CAP_NET_ADMIN
+-  - name: modprobe
+-    image: linuxkit/modprobe:v0.5
+-    command: ["/bin/sh", "-c", "modprobe -a nct6775 w83627hf_wdt hpwdt wlcore_sdio wl18xx br_netfilter dwc3 rk808 rk808-regulator smsc75xx cp210x nicvf tpm_tis_spi rtc_rx8010 gpio_pca953x leds_siemens_ipc127 upboard-fpga pinctrl-upboard leds-upboard xhci_tegra 2>/dev/null || :"]
+   # If you change the order of storage-init don't forget to
+   # change 003-installer in pkg/mkimage-raw-efi accordingly:
+   # storage-init must follow installer
+   - name: storage-init
+     image: STORAGE_INIT_TAG
+-  # kdump goes strictly after storage-init
+-  - name: kdump
+-    image: KDUMP_TAG
+-  - name: measure-config
+-    image: MEASURE_CONFIG_TAG
  services:
--   - name: newlogd
--     image: NEWLOGD_TAG
--     cgroupsPath: /eve/services/newlogd
--     oomScoreAdj: -999
--   - name: edgeview
--     image: EDGEVIEW_TAG
--     cgroupsPath: /eve/services/eve-edgeview
--     oomScoreAdj: -800
-    - name: debug
-      image: DEBUG_TAG
-      cgroupsPath: /eve/services/debug
-      oomScoreAdj: -999
--   - name: wwan
--     image: WWAN_TAG
--     cgroupsPath: /eve/services/wwan
--     oomScoreAdj: -999
--   - name: wlan
--     image: WLAN_TAG
--     cgroupsPath: /eve/services/wlan
--     oomScoreAdj: -999
--   - name: guacd
--     image: GUACD_TAG
--     cgroupsPath: /eve/services/guacd
--     oomScoreAdj: -999
--   - name: pillar
--     image: PILLAR_TAG
--     cgroupsPath: /eve/services/pillar
--     oomScoreAdj: -999
--   - name: vtpm
--     image: VTPM_TAG
--     cgroupsPath: /eve/services/vtpm
--     oomScoreAdj: -999
--   - name: watchdog
--     image: WATCHDOG_TAG
--     cgroupsPath: /eve/services/watchdog
--     oomScoreAdj: -1000
--   - name: xen-tools
--     image: XENTOOLS_TAG
--     cgroupsPath: /eve/services/xen-tools
--     oomScoreAdj: -999
+-  - name: newlogd
+-    image: NEWLOGD_TAG
+-    cgroupsPath: /eve/services/newlogd
+-    oomScoreAdj: -999
+-  - name: edgeview
+-    image: EDGEVIEW_TAG
+-    cgroupsPath: /eve/services/eve-edgeview
+-    oomScoreAdj: -800
+   - name: debug
+     image: DEBUG_TAG
+     cgroupsPath: /eve/services/debug
+     oomScoreAdj: -999
+-  - name: wwan
+-    image: WWAN_TAG
+-    cgroupsPath: /eve/services/wwan
+-    oomScoreAdj: -999
+-  - name: wlan
+-    image: WLAN_TAG
+-    cgroupsPath: /eve/services/wlan
+-    oomScoreAdj: -999
+-  - name: guacd
+-    image: GUACD_TAG
+-    cgroupsPath: /eve/services/guacd
+-    oomScoreAdj: -999
+-  - name: pillar
+-    image: PILLAR_TAG
+-    cgroupsPath: /eve/services/pillar
+-    oomScoreAdj: -999
+-  - name: vtpm
+-    image: VTPM_TAG
+-    cgroupsPath: /eve/services/vtpm
+-    oomScoreAdj: -999
+-  - name: watchdog
+-    image: WATCHDOG_TAG
+-    cgroupsPath: /eve/services/watchdog
+-    oomScoreAdj: -1000
+-  - name: xen-tools
+-    image: XENTOOLS_TAG
+-    cgroupsPath: /eve/services/xen-tools
+-    oomScoreAdj: -999
  files:
-    - path: /etc/eve-release
-      contents: 'EVE_VERSION'
+   - path: /etc/eve-release
+     contents: 'EVE_VERSION'

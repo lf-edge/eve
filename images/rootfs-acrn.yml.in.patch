@@ -1,5 +1,5 @@
---- images/rootfs.yml.in	2022-06-24 10:36:01.021218466 +0300
-+++ images/rootfs-acrn.yml.in	2022-06-24 10:50:32.399494792 +0300
+--- images/rootfs.yml.in	2022-11-08 16:23:13.977367851 +0000
++++ images/rootfs-acrn.yml.in	2022-11-08 16:23:14.065366837 +0000
 @@ -1,5 +1,5 @@
  kernel:
 -  image: KERNEL_TAG
@@ -14,5 +14,5 @@
 -  - XEN_TAG
 +  - ACRN_TAG
    - GPTTOOLS_TAG
+   - KEXEC_TAG
  onboot:
-    - name: rngd
