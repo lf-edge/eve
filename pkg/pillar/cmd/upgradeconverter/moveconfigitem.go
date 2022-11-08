@@ -13,8 +13,8 @@ func moveConfigItemValueMap(ctxPtr *ucContext) error {
 	createConfigItemMapDir(ctxPtr.newConfigItemValueMapDir())
 	newFile := ctxPtr.newConfigItemValueMapFile()
 	oldFile := ctxPtr.oldConfigItemValueMapFile()
-	newExists := fileExists(newFile)
-	oldExists := fileExists(oldFile)
+	newExists := fileutils.FileExists(log, newFile)
+	oldExists := fileutils.FileExists(log, oldFile)
 
 	if oldExists {
 		if newExists {

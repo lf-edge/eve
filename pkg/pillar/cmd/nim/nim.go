@@ -9,7 +9,6 @@ import (
 	"flag"
 	"fmt"
 	"io/ioutil"
-	"os"
 	"path"
 	"path/filepath"
 	"strings"
@@ -818,9 +817,7 @@ func (n *nim) ingestDevicePortConfig() {
 		dpcFiles = append(dpcFiles, dpcFile)
 	}
 	// Skip these legacy DPC json files if there is bootstrap config.
-	_, err = os.Stat(types.BootstrapConfFileName)
-	bootstrapExists := err == nil
-	if bootstrapExists && len(dpcFiles) > 0 {
+	if fileutils.FileExists(n.Log, types.BootstrapConfFileName) && len(dpcFiles) > 0 {
 		n.Log.Noticef("Not ingesting DPC jsons (%v) from config partition: "+
 			"bootstrap config is present", strings.Join(dpcFiles, ", "))
 		return

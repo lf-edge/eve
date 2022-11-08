@@ -22,7 +22,7 @@ import (
 func convertPersistVolumes(ctxPtr *ucContext) error {
 	log.Functionf("convertPersistVolumes()")
 	checkpointFile := ctxPtr.configCheckpointFile()
-	if !fileExists(checkpointFile) {
+	if !fileutils.FileExists(log, checkpointFile) {
 		// This error always happens on first boot of a device.
 		// In that case there is nothing to convert.
 		errStr := fmt.Sprintf("No checkpoint file in %s", checkpointFile)
@@ -44,9 +44,9 @@ func convertPersistVolumes(ctxPtr *ucContext) error {
 	oldVMVolumesDir := ctxPtr.imgDir()
 	oldOCIVolumesDir := ctxPtr.preparedDir()
 	newVolumesDir := ctxPtr.volumesDir()
-	newExists := dirExists(newVolumesDir)
-	oldVMExists := dirExists(oldVMVolumesDir)
-	oldOCIExists := dirExists(oldOCIVolumesDir)
+	newExists := fileutils.DirExists(log, newVolumesDir)
+	oldVMExists := fileutils.DirExists(log, oldVMVolumesDir)
+	oldOCIExists := fileutils.DirExists(log, oldOCIVolumesDir)
 	if !newExists {
 		log.Functionf("Creating new %s", newVolumesDir)
 		if err := os.MkdirAll(newVolumesDir, 0700); err != nil {

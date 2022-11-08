@@ -538,7 +538,7 @@ func handleLastRebootReason(ctx *nodeagentContext) {
 		rebootTime = time.Now()
 		dateStr := rebootTime.Format(time.RFC3339Nano)
 		var reason string
-		if fileExists(firstbootFile) {
+		if fileutils.FileExists(log, firstbootFile) {
 			reason = fmt.Sprintf("NORMAL: First boot of device - at %s",
 				dateStr)
 			if bootReason == types.BootReasonNone {
@@ -570,7 +570,7 @@ func handleLastRebootReason(ctx *nodeagentContext) {
 		rebootStack = ""
 	}
 	// remove the first boot file, if it is present
-	if fileExists(firstbootFile) {
+	if fileutils.FileExists(log, firstbootFile) {
 		os.Remove(firstbootFile)
 	}
 
@@ -602,7 +602,7 @@ func handleLastRebootReason(ctx *nodeagentContext) {
 // send log from installation to the controller
 // and remove file after small timeout to not send them after reboot
 func handleInstallationLog(ctx *nodeagentContext) {
-	if fileExists(installLogSendReq) {
+	if fileutils.FileExists(log, installLogSendReq) {
 		f, err := os.Open(installLog)
 		if err != nil {
 			log.Errorf("cannot open installation log: %s", err)
@@ -657,11 +657,6 @@ func incrementRestartCounter() uint32 {
 		log.Errorf("incrementRestartCounter write: %s", err)
 	}
 	return restartCounter
-}
-
-func fileExists(filename string) bool {
-	_, err := os.Stat(filename)
-	return err == nil
 }
 
 // publish nodeagent status

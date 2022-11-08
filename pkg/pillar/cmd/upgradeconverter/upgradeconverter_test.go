@@ -17,6 +17,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub/socketdriver"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
 	uuid "github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
@@ -60,7 +61,7 @@ func newConfigItemValueMap() types.ConfigItemValueMap {
 func createJSONFile(config interface{}, file string) {
 
 	parentDir := filepath.Dir(file)
-	if !fileExists(parentDir) {
+	if !fileutils.DirExists(log, parentDir) {
 		err := os.MkdirAll(parentDir, 0700)
 		if err != nil {
 			log.Fatalf("Failed to create Dir: %s", parentDir)
@@ -97,7 +98,7 @@ func configItemValueMapFromFile(file string) *types.ConfigItemValueMap {
 }
 
 func checkNoDir(t *testing.T, dir string) {
-	if fileExists(dir) {
+	if fileutils.DirExists(log, dir) {
 		t.Fatalf("***Dir %s Still Present. Expected it to be deleted.", dir)
 	}
 }

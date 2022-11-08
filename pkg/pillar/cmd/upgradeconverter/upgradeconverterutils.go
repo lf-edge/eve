@@ -8,31 +8,6 @@ import (
 	"time"
 )
 
-func fileExists(filename string) bool {
-	_, err := os.Stat(filename)
-	if err == nil {
-		return true
-	}
-	if os.IsNotExist(err) {
-		return false
-	}
-	log.Errorf("***File %s May or May Not exist. Err: %s", filename, err)
-	return false
-}
-
-func dirExists(dirname string) bool {
-	fi, err := os.Stat(dirname)
-	if err == nil {
-		return fi.IsDir()
-	}
-	if os.IsNotExist(err) {
-		return false
-	}
-	log.Errorf("***Directory %s may or may not exist. Err: %s",
-		dirname, err)
-	return false
-}
-
 func fileTimeStamp(filename string) (time.Time, error) {
 	file, err := os.Stat(filename)
 	if err != nil {

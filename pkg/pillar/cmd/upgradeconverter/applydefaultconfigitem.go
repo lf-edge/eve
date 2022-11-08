@@ -27,8 +27,8 @@ const (
 func applyDefaultConfigItem(ctxPtr *ucContext) error {
 	createConfigItemMapDir(ctxPtr.newConfigItemValueMapDir())
 	newConfigItemFile := ctxPtr.newConfigItemValueMapFile()
-	newExists := fileExists(newConfigItemFile)
-	bootstrapExists := fileExists(types.BootstrapConfFileName)
+	newExists := fileutils.FileExists(log, newConfigItemFile)
+	bootstrapExists := fileutils.FileExists(log, types.BootstrapConfFileName)
 
 	newConfigPtr := types.DefaultConfigItemValueMap()
 	if newExists {
@@ -83,10 +83,10 @@ func importFromConfigPartition(ctxPtr *ucContext) error {
 	var configSha, authorizedKeysSha []byte
 
 	persistStatusFile := ctxPtr.newConfigItemValueMapFile()
-	globalConfigExists := fileExists(importGlobalConfigFile)
-	persistedConfigExists := fileExists(persistStatusFile)
-	bootstrapExists := fileExists(types.BootstrapConfFileName)
-	authKeysExists := fileExists(baseAuthorizedKeysFile)
+	globalConfigExists := fileutils.FileExists(log, importGlobalConfigFile)
+	persistedConfigExists := fileutils.FileExists(log, persistStatusFile)
+	bootstrapExists := fileutils.FileExists(log, types.BootstrapConfFileName)
+	authKeysExists := fileutils.FileExists(log, baseAuthorizedKeysFile)
 
 	doImport := globalConfigExists
 
@@ -208,7 +208,7 @@ func parseFile(filename string) (*types.ConfigItemValueMap, error) {
 }
 
 func readAuthorizedKeys(filename string) (string, bool) {
-	if !fileExists(filename) {
+	if !fileutils.FileExists(log, filename) {
 		return "", false
 	}
 

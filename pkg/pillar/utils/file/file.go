@@ -20,6 +20,37 @@ import (
 
 const maxCounterReadSize = 16384 // Max size of counter file
 
+// FileExists checks file existence.
+func FileExists(log *base.LogObject, filename string) bool {
+	_, err := os.Stat(filename)
+	if err == nil {
+		return true
+	}
+	if os.IsNotExist(err) {
+		return false
+	}
+	if log != nil {
+		log.Errorf("File %s may or may not exist. Err: %s", filename, err)
+	}
+	return false
+}
+
+// DirExists checks directory existence.
+func DirExists(log *base.LogObject, dirname string) bool {
+	fi, err := os.Stat(dirname)
+	if err == nil {
+		return fi.IsDir()
+	}
+	if os.IsNotExist(err) {
+		return false
+	}
+	if log != nil {
+		log.Errorf("Directory %s may or may not exist. Err: %s",
+			dirname, err)
+	}
+	return false
+}
+
 // DirSync flushes changes made to a directory.
 func DirSync(dirName string) error {
 	f, err := os.OpenFile(dirName, os.O_RDONLY, 0755)
