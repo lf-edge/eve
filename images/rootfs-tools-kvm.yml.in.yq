@@ -1,0 +1,1 @@
+.services |= .+ [{"name": "kvm-tools","image": "KVMTOOLS_TAG", "cgroupsPath": "/eve/services/kvmtool"}]
