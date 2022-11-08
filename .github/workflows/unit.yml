@@ -19,7 +19,7 @@ jobs:
           make test
       - name: Report test results as Annotations
         if: ${{ always() }}
-        uses: guyarb/golang-test-annoations@v0.1
+        uses: guyarb/golang-test-annoations@v0.6.0
         with:
           test-results: dist/amd64/results.json
       - name: Store raw test results
