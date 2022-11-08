@@ -9,6 +9,7 @@ import (
 	"os"
 
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
 )
 
 func createConfigItemMapDir(configItemMapDir string) {
@@ -55,12 +56,12 @@ func delOldGlobalConfigDir(ctxPtr *ucContext) error {
 
 func convertGlobalConfig(ctxPtr *ucContext) error {
 	oldGlobalConfigFile := ctxPtr.globalConfigFile()
-	oldExists := fileExists(oldGlobalConfigFile)
+	oldExists := fileutils.FileExists(log, oldGlobalConfigFile)
 	if oldExists {
 		createConfigItemMapDir(ctxPtr.oldConfigItemValueMapDir())
 	}
 	newGlobalConfigFile := ctxPtr.oldConfigItemValueMapFile()
-	newExists := fileExists(newGlobalConfigFile)
+	newExists := fileutils.FileExists(log, newGlobalConfigFile)
 
 	var newConfigPtr *types.ConfigItemValueMap
 

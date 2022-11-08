@@ -320,7 +320,6 @@ func (m *DpcManager) compressDPCL() {
 				if err != nil {
 					m.Log.Errorf("SaveShaInFile %s failed: %s", dpc.ShaFile, err)
 				} else {
-
 					m.Log.Noticef("Updated %s for %d", dpc.ShaFile, i)
 				}
 			}

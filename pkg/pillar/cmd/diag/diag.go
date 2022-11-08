@@ -30,6 +30,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/hardware"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 	uuid "github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
@@ -186,15 +187,15 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 
 	log.Functionf("diag Run: Use V2 API %v", zedcloudCtx.V2API)
 
-	if fileExists(types.DeviceCertName) {
+	if fileutils.FileExists(log, types.DeviceCertName) {
 		// Load device cert
 		cert, err := zedcloud.GetClientCert()
 		if err != nil {
 			log.Fatal(err)
 		}
 		ctx.cert = &cert
-	} else if fileExists(types.OnboardCertName) &&
-		fileExists(types.OnboardKeyName) {
+	} else if fileutils.FileExists(log, types.OnboardCertName) &&
+		fileutils.FileExists(log, types.OnboardKeyName) {
 		cert, err := tls.LoadX509KeyPair(types.OnboardCertName,
 			types.OnboardKeyName)
 		if err != nil {
@@ -327,7 +328,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		if !ctx.forever && ctx.gotDNS && ctx.gotBC && ctx.gotDPCList {
 			break
 		}
-		if ctx.usingOnboardCert && fileExists(types.DeviceCertName) {
+		if ctx.usingOnboardCert && fileutils.FileExists(log, types.DeviceCertName) {
 			fmt.Fprintf(outfile, "WARNING: Switching from onboard to device cert\n")
 			// Load device cert
 			cert, err := zedcloud.GetClientCert()
@@ -350,11 +351,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		}
 	}
 	return 0
-}
-
-func fileExists(filename string) bool {
-	_, err := os.Stat(filename)
-	return err == nil
 }
 
 func handleLedBlinkCreate(ctxArg interface{}, key string,

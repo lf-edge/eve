@@ -193,14 +193,9 @@ const (
 // vlans, bonds, etc.).
 func maybeLoadBootstrapConfig(getconfigCtx *getconfigContext) {
 	//  Check if bootstrap config has been already loaded.
-	if _, err := os.Stat(types.BootstrapConfFileName); err != nil {
-		if os.IsNotExist(err) {
-			// No bootstrap config to read
-			return
-		}
-		// Potentially there is a problem reading bootstrap config,
-		// but continue and try anyway.
-		log.Errorf("Failed to stat bootstrap config: %v", err)
+	if !fileutils.FileExists(log, types.BootstrapConfFileName) {
+		// No bootstrap config to read
+		return
 	}
 	changed, configSha, err := fileutils.CompareSha(
 		types.BootstrapConfFileName, types.BootstrapShaFileName)
