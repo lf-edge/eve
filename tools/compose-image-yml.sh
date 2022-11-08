@@ -3,7 +3,7 @@
 set -e
 
 yq() {
-  docker run --rm -i -v "${PWD}":/workdir mikefarah/yq "$@"
+  docker run -i --rm  -v "${PWD}/":/workdir zededa/yq -y "$@"
 }
 
 process-image-template() {
@@ -20,17 +20,16 @@ process-image-template() {
     IFS='-' read -r -a bits <<< "${flags}"
 
     for bit in "${bits[@]}"; do
-        template_data=""
         case "${bit}" in
             dev)
-                template_data="$(yq eval '(.services[] | select(.name == "pillar").image) |= "PILLAR_DEV_TAG"' "${out_templ_path}")"
+                yq '(.services[] | select(.name == "pillar").image) |= "PILLAR_DEV_TAG"' "${out_templ_path}"
                 ;;
         esac
-
-        if [ "${template_data}" != "" ]; then
-            echo "${template_data}" > "${out_templ_path}"
-        fi
     done
+}
+
+patch_version() {
+    docker run -i --rm  -v "${PWD}/":/workdir zededa/yq -i -y --arg version "$1" '(.files[] | select(.contents == "EVE_VERSION")).contents |= $version' "$2"
 }
 
 main() {
@@ -38,13 +37,13 @@ main() {
     local out_templ_path="$2"
     local eve_version="$3"
 
-    if [ -e "${out_templ_path}".patch ]; then
-        patch -p0 -o "${out_templ_path}".sed < "${out_templ_path}".patch || exit 1
+    if [ -e "${out_templ_path}".yq ]; then
+        yq -f "${out_templ_path}".yq "${base_templ_path}"  >  "${out_templ_path}"  || exit 1
     else
-        cp "${base_templ_path}" "${out_templ_path}".sed
+        cp "${base_templ_path}" "${out_templ_path}"
     fi
 
-    sed "s/EVE_VERSION/${eve_version}/g" < "${out_templ_path}".sed > "${out_templ_path}"
+    patch_version "${eve_version}" "${out_templ_path}"
 
     process-image-template "${out_templ_path}" "${eve_version}"
 }

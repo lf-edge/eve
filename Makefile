@@ -776,8 +776,8 @@ eve-%: pkg/%/Dockerfile build-tools $(RESCAN_DEPS)
 images/rootfs-%.yml.in: images/rootfs.yml.in FORCE
 	$(QUITE)tools/compose-image-yml.sh $< $@ "$(ROOTFS_VERSION)-$*-$(ZARCH)"
 
-images-patches := $(wildcard images/*.patch)
-test-images-patches: $(images-patches:%.patch=%)
+images-patches := $(wildcard images/*.yq)
+test-images-patches: $(images-patches:%.yq=%)
 
 $(ROOTFS_FULL_NAME)-adam-kvm-$(ZARCH).$(ROOTFS_FORMAT): $(ROOTFS_FULL_NAME)-kvm-adam-$(ZARCH).$(ROOTFS_FORMAT)
 $(ROOTFS_FULL_NAME)-kvm-adam-$(ZARCH).$(ROOTFS_FORMAT): fullname-rootfs $(SSH_KEY)

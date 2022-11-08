@@ -1,0 +1,4 @@
+   limit(1; .services | to_entries[] | select(.value.name == "newlogd") | .key + 1) as $idx
+   | .services |= .[0:$idx] +
+                  [{name: "adam", image: "lfedge/adam:latest", binds: ["/var/persist:/persist", "/var/config:/config"], command: ["/bin/eve-embedded.sh"]}] +
+                  .[$idx:]
