@@ -265,8 +265,10 @@ func (m *DpcManager) ingestDPCList() (dpclPresentAtBoot bool) {
 	}
 	m.dpcList = dpcl
 	m.Log.Functionf("Sanitized DPCL %v", dpcl)
-	m.compressAndPublishDPCL()
 	m.dpcList.CurrentIndex = -1 // No known working one
+	// Publish without compressing - this early in the init sequence we do not know
+	// if lastresort is enabled. The list will be compressed later during DPC verification.
+	m.publishDPCL()
 	m.Log.Functionf("Published DPCL %v", m.dpcList)
 	m.Log.Functionf("IngestDPCList len %d", len(m.dpcList.PortConfigList))
 	return dpclPresentAtBoot
@@ -311,7 +313,7 @@ func (m *DpcManager) compressDPCL() {
 				m.Log.Tracef("compressDPCL: Retaining last resort. i = %d, dpc: %+v",
 					i, dpc)
 				newConfig = append(newConfig, dpc)
-				// last resort also found.. discard all remaining entries
+				continue
 			}
 			m.Log.Noticef("compressDPCL: Ignoring - i = %d, dpc: %+v", i, dpc)
 			// Update any ShaFile with Shavalue

@@ -65,9 +65,9 @@ At least one port must be set to be a management port, and that port needs to re
 
 ### Last resort
 
-Unless the `network.fallback.any.eth` configuration item is set to false (as specified in [configuration properties](CONFIG-PROPERTIES.md)), then there is an additional lowest priority item in the list of DevicePortConfigs, based on finding all of the Ethernet and Ethernet-like interfaces (an example of the latter is WiFi and cellular modems) which are not used exclusively by applications. The last resort configuration assumes DHCP and no enterprise proxies.
+If `network.fallback.any.eth` [configuration property](CONFIG-PROPERTIES.md) is set to `enabled` (by default it is disabled), then there is an additional lowest priority item in the list of DevicePortConfigs, called "Last resort" DPC (pubsub key `lastresort`), based on finding all of the Ethernet and Ethernet-like interfaces (an example of the latter is WiFi and cellular modems) which are not used exclusively by applications. The last resort configuration assumes DHCP and no enterprise proxies.
 
-Note that if static IP and/or enterprise proxies are used, it is useful to set `network.fallback.any.eth` to false to avoid having the device try DHCP without proxies when there is some network outage.
+However, independent of the above property setting, if the device has no source of network configuration available (no bootstrap, override or persisted config), then EVE will use the Last resort *forcefully*. This, for example, happens when device boots for the very first time, without [bootstrap config](#bootstrap-configuration) or the (legacy) network config override being provided. In that case, device may remain stuck with no connectivity indefinitely (unless the user plugs in a USB stick with a network config later), therefore EVE will try to use Last resort to see if it can provide connectivity with the controller. Once device obtains a proper network config (from the controller or a USB stick), EVE will stop using Last resort forcefully and will keep this network config inside `DevicePortConfigList` only if and as long as it is enabled explicitly by the config (`network.fallback.any.eth` is `enabled`).
 
 ## Prioritizing the list
 
@@ -76,7 +76,7 @@ The nim retains the currently working configuration, plus the following in prior
 1. The most recently received configuration from the controller
 1. The last known working configuration from the controller
 1. Bootstrap config or an override file from a USB stick (if any)
-1. The last resort if so enabled
+1. The last resort if enabled, or (used forcefully) if there is no network config available (e.g. first boot without bootstrap config or config override file)
 
 This is based on comparing the TimePriority field in the `DevicePortConfig`
 Depending on the configuration source, TimePriority is determined differently:
@@ -86,7 +86,7 @@ Depending on the configuration source, TimePriority is determined differently:
 - For legacy override file: it should contain explicit TimePriority field entered manually by the user (this is rather error prone)
 - For the last resort: `nim` microservice assumes the lowest priority with a TimePriority of Jan 1, 1970.
 
-Once the most recent configuration received from the controller has been tested and found to be usable, then all but the (optional) last resort configuration are pruned from the above list.
+Once the most recent configuration received from the controller has been tested and found to be usable, then all but the (optional) last resort configuration are pruned from the above list. If Last resort is disabled (which is the default), it will be pruned from the list as well.
 When a new configuration is received from the controller it will keep the old configuration from the controller as a fallback.
 
 ## Testing

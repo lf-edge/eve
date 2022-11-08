@@ -782,7 +782,7 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	configItemSpecMap.AddBoolItem(ProcessCloudInitMultiPart, false)
 
 	// Add TriState Items
-	configItemSpecMap.AddTriStateItem(NetworkFallbackAnyEth, TS_ENABLED)
+	configItemSpecMap.AddTriStateItem(NetworkFallbackAnyEth, TS_DISABLED)
 	configItemSpecMap.AddTriStateItem(MaintenanceMode, TS_NONE)
 
 	// Add String Items
