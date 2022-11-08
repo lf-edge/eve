@@ -29,6 +29,7 @@ linters:
     - maligned          # Too opinionated on existing structs
     - nestif            # Too opinionated on existing code
     - exhaustruct       # Too opinionated on existing code
+    - nosnakecase       # Uppercase with underscores is in some cases used for enum values
 
 issues:
   max-issues-per-linter: 0
