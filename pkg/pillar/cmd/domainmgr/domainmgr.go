@@ -115,7 +115,8 @@ type domainContext struct {
 	versionPtr    *bool
 	hypervisorPtr *string
 	// CPUs management
-	cpuAllocator *cpuallocator.CPUAllocator
+	cpuAllocator        *cpuallocator.CPUAllocator
+	cpuPinningSupported bool
 }
 
 // AddAgentSpecificCLIFlags adds CLI options
@@ -167,6 +168,12 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	caps, err := hyper.GetCapabilities()
+	if err != nil {
+		log.Fatal(err)
+	}
+	domainCtx.cpuPinningSupported = caps.CPUPinning
 
 	resources, err := hyper.GetHostCPUMem()
 	if err != nil {
@@ -877,6 +884,9 @@ func runHandler(ctx *domainContext, key string, configChannel <-chan Notify, cpu
 			}
 		case _, ok := <-cpuChannel:
 			if ok {
+				if !ctx.cpuPinningSupported {
+					continue
+				}
 				sub := ctx.subDomainConfig
 				c, err := sub.Get(key)
 				if err != nil {
@@ -1397,14 +1407,16 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 	log.Functionf("doActivate(%v) for %s",
 		config.UUIDandVersion, config.DisplayName)
 
-	if err := assignCPUs(ctx, &config, status); err != nil {
-		log.Warnf("failed to assign CPUs for %s", config.DisplayName)
-		errDescription := types.ErrorDescription{Error: err.Error()}
-		status.SetErrorDescription(errDescription)
-		publishDomainStatus(ctx, status)
-		return
+	if ctx.cpuPinningSupported {
+		if err := assignCPUs(ctx, &config, status); err != nil {
+			log.Warnf("failed to assign CPUs for %s", config.DisplayName)
+			errDescription := types.ErrorDescription{Error: err.Error()}
+			status.SetErrorDescription(errDescription)
+			publishDomainStatus(ctx, status)
+			return
+		}
+		log.Functionf("CPUs for %s assigned: %s", config.DisplayName, status.VmConfig.CPUs)
 	}
-	log.Functionf("CPUs for %s assigned: %s", config.DisplayName, status.VmConfig.CPUs)
 
 	if errDescription := reserveAdapters(ctx, config); errDescription != nil {
 		log.Errorf("Failed to reserve adapters for %s: %s",
@@ -1510,14 +1522,16 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 		publishDomainStatus(ctx, status)
 		time.Sleep(5 * time.Second)
 	}
-	if err := setCgroupCpuset(&config, status); err != nil {
-		log.Errorf("Failed to set CPUs for %s: %s", config.DisplayName, err)
-		errDescription := types.ErrorDescription{Error: err.Error()}
-		status.SetErrorDescription(errDescription)
-		publishDomainStatus(ctx, status)
-	}
-	if config.CPUsPinned {
-		triggerCPUNotification()
+	if ctx.cpuPinningSupported {
+		if err := setCgroupCpuset(&config, status); err != nil {
+			log.Errorf("Failed to set CPUs for %s: %s", config.DisplayName, err)
+			errDescription := types.ErrorDescription{Error: err.Error()}
+			status.SetErrorDescription(errDescription)
+			publishDomainStatus(ctx, status)
+		}
+		if config.CPUsPinned {
+			triggerCPUNotification()
+		}
 	}
 
 	status.BootFailed = false
@@ -1849,13 +1863,15 @@ func doInactivate(ctx *domainContext, status *types.DomainStatus, impatient bool
 			log.Errorln("unmountContainers failed after retry with force flag")
 		}
 	}
-	if status.VmConfig.CPUsPinned {
-		if err := ctx.cpuAllocator.Free(status.UUIDandVersion.UUID); err != nil {
-			log.Warnf("Failed to free for %s: %s", status.DisplayName, err)
+	if ctx.cpuPinningSupported {
+		if status.VmConfig.CPUsPinned {
+			if err := ctx.cpuAllocator.Free(status.UUIDandVersion.UUID); err != nil {
+				log.Warnf("Failed to free for %s: %s", status.DisplayName, err)
+			}
+			triggerCPUNotification()
 		}
-		triggerCPUNotification()
+		status.VmConfig.CPUs = ""
 	}
-	status.VmConfig.CPUs = ""
 	releaseAdapters(ctx, status.IoAdapterList, status.UUIDandVersion.UUID,
 		status)
 	status.IoAdapterList = nil
