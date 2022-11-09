@@ -36,6 +36,7 @@ jobs:
         run: |
           sudo rm -fr "$GITHUB_WORKSPACE" && mkdir "$GITHUB_WORKSPACE"
           rm -fr ~/.linuxkit
+          docker system prune --all --force --volumes
       - uses: actions/checkout@v3
         with:
           fetch-depth: 0
