@@ -187,12 +187,15 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	log.Functionf("user containerd ready")
 
 	_, enabledHVs := hypervisor.GetAvailableHypervisors()
-	for _, el := range enabledHVs {
-		if el == hypervisor.KVMHypervisorName {
-			ctx.useVHost = true
-			break
-		}
+	hyper, err := hypervisor.GetHypervisor(enabledHVs[0])
+	if err != nil {
+		log.Fatal(err)
 	}
+	caps, err := hyper.GetCapabilities()
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctx.useVHost = caps.UseVHost
 	log.Functionf("will use vhost: %t", ctx.useVHost)
 
 	if ctx.persistType == types.PersistZFS {
