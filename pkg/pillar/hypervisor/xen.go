@@ -73,6 +73,8 @@ func (ctx xenContext) GetCapabilities() (*types.Capabilities, error) {
 	ctx.capabilities = &types.Capabilities{
 		HWAssistedVirtualization: vtx,
 		IOVirtualization:         vtd,
+		CPUPinning:               false,
+		UseVHost:                 false,
 	}
 	return ctx.capabilities, nil
 }

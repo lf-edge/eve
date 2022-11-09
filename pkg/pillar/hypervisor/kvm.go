@@ -426,6 +426,8 @@ func (ctx kvmContext) GetCapabilities() (*types.Capabilities, error) {
 	ctx.capabilities = &types.Capabilities{
 		HWAssistedVirtualization: true,
 		IOVirtualization:         vtd,
+		CPUPinning:               true,
+		UseVHost:                 true,
 	}
 	return ctx.capabilities, nil
 }
