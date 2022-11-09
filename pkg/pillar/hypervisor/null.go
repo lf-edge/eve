@@ -33,6 +33,8 @@ func (ctx nullContext) GetCapabilities() (*types.Capabilities, error) {
 	return &types.Capabilities{
 		HWAssistedVirtualization: false,
 		IOVirtualization:         false,
+		CPUPinning:               false,
+		UseVHost:                 false,
 	}, nil
 }
 

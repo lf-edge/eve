@@ -526,4 +526,6 @@ func (hm HostMemory) LogKey() string {
 type Capabilities struct {
 	HWAssistedVirtualization bool // VMX/SVM for amd64 or Arm virtualization extensions for arm64
 	IOVirtualization         bool // I/O Virtualization support
+	CPUPinning               bool // CPU Pinning support
+	UseVHost                 bool // vHost support
 }
