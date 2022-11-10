@@ -3,7 +3,7 @@
 set -e
 
 yq() {
-  docker run -i --rm  -v "${PWD}/":/workdir zededa/yq -y "$@"
+  docker run -i --rm  -v "${PWD}/":/workdir intoiter/yq:3.1.0 -y "$@"
 }
 
 process-image-template() {
@@ -29,7 +29,7 @@ process-image-template() {
 }
 
 patch_version() {
-    docker run -i --rm  -v "${PWD}/":/workdir zededa/yq -i -y --arg version "$1" '(.files[] | select(.contents == "EVE_VERSION")).contents |= $version' "$2"
+    docker run -i --rm  -v "${PWD}/":/workdir intoiter/yq:3.1.0 -i -y --arg version "$1" '(.files[] | select(.contents == "EVE_VERSION")).contents |= $version' "$2"
 }
 
 main() {
