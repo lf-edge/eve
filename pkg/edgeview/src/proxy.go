@@ -121,15 +121,16 @@ func copyHeader(dst, src http.Header) {
 
 func checkAppPolicyAllow(host string) error {
 	var allowed bool
+	var errmsg string
 	isAllowed, ok := remoteMap.Load(host)
 	if ok {
 		allowed = *isAllowed.(*bool)
 	} else {
-		allowed = checkAndLogProxySession(host)
+		allowed, errmsg = checkAndLogProxySession(host)
 		remoteMap.Store(host, &allowed)
 	}
 	if !allowed {
-		err := fmt.Errorf("host %s access not allowed by policy", host)
+		err := fmt.Errorf("host %s access not allowed by policy: %s", host, errmsg)
 		return err
 	}
 	return nil
