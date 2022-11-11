@@ -15,6 +15,14 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/types"
 )
 
+const (
+	devPolicyErr = "EVE policy not allow"
+	appPolicyErr = "App policy not allow"
+	extPolicyErr = "External policy not allow"
+	vncPolicyErr = "App VNC access must be enabled"
+	tcpSyntaxErr = "TCP syntax error"
+)
+
 var (
 	devIntfIPs []string
 	appIntfIPs []appIPvnc
@@ -97,7 +105,7 @@ func getCMDString(cmds cmdOpt) string {
 	return ""
 }
 
-func checkCmdPolicy(cmds cmdOpt, evStatus *types.EdgeviewStatus) bool {
+func checkCmdPolicy(cmds cmdOpt, evStatus *types.EdgeviewStatus) (bool, string) {
 	// log the incoming edge-view command from client
 	var instStr string
 	if edgeviewInstID > 0 {
@@ -108,7 +116,7 @@ func checkCmdPolicy(cmds cmdOpt, evStatus *types.EdgeviewStatus) bool {
 		(cmds.Network != "" && !strings.HasPrefix(cmds.Network, "tcp/")) {
 		if !devPolicy.Enabled {
 			log.Noticef("device cmds: %v, not allowed by policy", getCMDString(cmds))
-			return false
+			return false, devPolicyErr
 		}
 		evStatus.CmdCountDev++
 	}
@@ -117,12 +125,12 @@ func checkCmdPolicy(cmds cmdOpt, evStatus *types.EdgeviewStatus) bool {
 	if cmds.Network != "" && strings.HasPrefix(cmds.Network, "tcp/") {
 		opts := strings.SplitN(cmds.Network, "tcp/", 2)
 		if len(opts) != 2 {
-			return false
+			return false, tcpSyntaxErr
 		}
-		ok, names := checkTCPPolicy(opts[1], evStatus)
+		ok, names, errmsg := checkTCPPolicy(opts[1], evStatus)
 		if !ok {
-			log.Noticef("TCP option %s, not allowed by policy", opts[1])
-			return false
+			log.Noticef("TCP option %s, not allowed by policy %s", opts[1], errmsg)
+			return false, errmsg
 		}
 		appNames = names
 	}
@@ -134,20 +142,20 @@ func checkCmdPolicy(cmds cmdOpt, evStatus *types.EdgeviewStatus) bool {
 	logObj := log.CloneAndAddField("obj_type", "newlog-gen-event").
 		AddField("obj_name", "edgeview-cmd")
 	logObj.Noticef("recv[ep%s:%s] cmd: %v%s", instStr, cmds.ClientEPAddr, getCMDString(cmds), appNames)
-	return true
+	return true, ""
 }
 
-func checkTCPPolicy(tcpOpts string, evStatus *types.EdgeviewStatus) (bool, string) {
+func checkTCPPolicy(tcpOpts string, evStatus *types.EdgeviewStatus) (bool, string, string) {
 	devIntfIPs = getAllLocalAddr()
 	appIntfIPs = getAllAppIPs()
 	appName := ""
 	if strings.Contains(tcpOpts, "/") {
 		params := strings.Split(tcpOpts, "/")
 		for _, ipport := range params {
-			ok, name := checkIPportPolicy(ipport, evStatus)
+			ok, name, errmsg := checkIPportPolicy(ipport, evStatus)
 			if !ok {
-				log.Noticef("tcp cmds: %s, not allowed by policy", ipport)
-				return false, ""
+				log.Noticef("tcp cmds: %s, not allowed by policy %s", ipport, errmsg)
+				return false, "", errmsg
 			}
 			if appName == "" {
 				appName = name
@@ -156,14 +164,14 @@ func checkTCPPolicy(tcpOpts string, evStatus *types.EdgeviewStatus) (bool, strin
 			}
 		}
 	} else {
-		ok, name := checkIPportPolicy(tcpOpts, evStatus)
+		ok, name, errmsg := checkIPportPolicy(tcpOpts, evStatus)
 		if !ok {
 			log.Noticef("tcp cmds: %s, not allowed by policy", tcpOpts)
-			return false, ""
+			return false, "", errmsg
 		}
 		appName = name
 	}
-	return true, appName
+	return true, appName, ""
 }
 
 // checkIPportPolicy - check for individual tcp param
@@ -172,16 +180,16 @@ func checkTCPPolicy(tcpOpts string, evStatus *types.EdgeviewStatus) (bool, strin
 // proxy endpoint will be determined at connection time
 // One TCP cmd with multiple address:port, count for multiple access
 // E.g. tcp/proxy/localhost:22/10.1.0.102:5901 count access for device 1, and app 2
-func checkIPportPolicy(tcpOpt string, evStatus *types.EdgeviewStatus) (bool, string) {
+func checkIPportPolicy(tcpOpt string, evStatus *types.EdgeviewStatus) (bool, string, string) {
 	if strings.HasPrefix(tcpOpt, "proxy") {
 		// 'proxy' sessions will be check at connect time
-		return true, ""
+		return true, "", ""
 	}
 	var appName string
 	if strings.Contains(tcpOpt, ":") {
 		opts := strings.Split(tcpOpt, ":")
 		if len(opts) != 2 {
-			return false, ""
+			return false, "", tcpSyntaxErr
 		}
 		ipaddr := opts[0]
 		ipport := opts[1]
@@ -189,14 +197,16 @@ func checkIPportPolicy(tcpOpt string, evStatus *types.EdgeviewStatus) (bool, str
 		// check console access for apps first
 		isAppConsole, allowVNC, name := checkAppConsole(ipaddr, ipport)
 		if isAppConsole {
-			if !allowVNC || !appPolicy.Enabled {
-				return false, ""
+			if !appPolicy.Enabled {
+				return false, "", appPolicyErr
+			} else if !allowVNC {
+				return false, "", vncPolicyErr
 			}
 			evStatus.CmdCountApp++
 			appName = name
 		} else if isAddrDevice { // device side of IP
 			if !devPolicy.Enabled {
-				return false, ""
+				return false, "", devPolicyErr
 			} else {
 				evStatus.CmdCountDev++
 			}
@@ -204,18 +214,18 @@ func checkIPportPolicy(tcpOpt string, evStatus *types.EdgeviewStatus) (bool, str
 			isAddrApps, vncEnable, name := checkAddrApps(ipaddr)
 			if isAddrApps {
 				if !appPolicy.Enabled {
-					return false, ""
+					return false, "", appPolicyErr
 				} else {
 					if !vncEnable {
 						log.Noticef("checkIPportPolicy: vnc not enabled")
-						return false, ""
+						return false, "", vncPolicyErr
 					}
 					evStatus.CmdCountApp++
 					appName = name
 				}
 			} else { // external to the device and app
 				if !extPolicy.Enabled {
-					return false, ""
+					return false, "", extPolicyErr
 				} else {
 					evStatus.CmdCountExt++
 				}
@@ -223,10 +233,10 @@ func checkIPportPolicy(tcpOpt string, evStatus *types.EdgeviewStatus) (bool, str
 			}
 		}
 	} else {
-		return false, ""
+		return false, "", tcpSyntaxErr
 	}
 
-	return true, appName
+	return true, appName, ""
 }
 
 func checkAddrLocal(addr string) bool {
@@ -277,7 +287,7 @@ func checkAddrApps(addr string) (bool, bool, string) {
 	return false, false, ""
 }
 
-func checkAndLogProxySession(host string) bool {
+func checkAndLogProxySession(host string) (bool, string) {
 	hostIP := host
 	if strings.Contains(host, ":") {
 		items := strings.SplitN(host, ":", 2)
@@ -289,14 +299,16 @@ func checkAndLogProxySession(host string) bool {
 	content := host
 	isAddrApps, vncEnable, appName := checkAddrApps(hostIP)
 	if isAddrApps {
-		if !appPolicy.Enabled || !vncEnable {
-			return false
+		if !appPolicy.Enabled {
+			return false, appPolicyErr
+		} else if !vncEnable {
+			return false, vncPolicyErr
 		}
 		content = content + "(app)"
 		evStatus.CmdCountApp++
 	} else {
 		if !extPolicy.Enabled {
-			return false
+			return false, extPolicyErr
 		}
 		content = content + "(ext)"
 		evStatus.CmdCountExt++
@@ -315,5 +327,5 @@ func checkAndLogProxySession(host string) bool {
 		AddField("obj_name", "edgeview-cmd")
 	logObj.Noticef("recv%s: proxy connection to %s %s", instStr, content, appName)
 
-	return true
+	return true, ""
 }

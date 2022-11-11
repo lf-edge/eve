@@ -364,9 +364,9 @@ func main() {
 						continue
 					} else {
 						// check the query commands against defined policy
-						ok := checkCmdPolicy(recvCmds, &evStatus)
+						ok, errmsg := checkCmdPolicy(recvCmds, &evStatus)
 						if !ok {
-							_ = addEnvelopeAndWriteWss([]byte("cmd policy check failed"), true)
+							_ = addEnvelopeAndWriteWss([]byte("cmd policy check failed: "+errmsg), true)
 							sendCloseToWss()
 							continue
 						}

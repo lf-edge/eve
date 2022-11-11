@@ -236,15 +236,18 @@ func getAddrFromJWT(token string, isServer bool, instID int) (string, string, er
 		}
 	}
 
-	if strings.Contains(jdata.Dep, "/") {
-		urls := strings.SplitN(jdata.Dep, "/", 2)
+	// remove the https:// prefix if exists
+	jdataDep := strings.TrimPrefix(jdata.Dep, "https://")
+	jdataDep = strings.TrimPrefix(jdataDep, "http://")
+	if strings.Contains(jdataDep, "/") {
+		urls := strings.SplitN(jdataDep, "/", 2)
 		if len(urls) != 2 {
 			return addrport, path, fmt.Errorf("JWT url invalid")
 		}
 		addrport = urls[0]
 		path = "/" + urls[1]
 	} else {
-		addrport = jdata.Dep
+		addrport = jdataDep
 	}
 
 	evStatus.ExpireOn = jdata.Exp
