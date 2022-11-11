@@ -37,6 +37,10 @@ onboot:
     image: KDUMP_TAG
   - name: measure-config
     image: MEASURE_CONFIG_TAG
+  # onboot part of pillar to prepare services to start
+  - name: pillar-onboot
+    image: PILLAR_TAG
+    command: ["/opt/zededa/bin/onboot.sh"]
 services:
   - name: newlogd
     image: NEWLOGD_TAG

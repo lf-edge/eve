@@ -97,6 +97,7 @@ COPY --from=strongswan / /final
 # the default /config (since that is expected to be an empty mount point)
 ADD conf/root-certificate.pem conf/server conf/server.production /final/opt/zededa/examples/config/
 ADD scripts/device-steps.sh \
+    scripts/onboot.sh \
     scripts/handlezedserverconfig.sh \
     scripts/veth.sh \
     scripts/dhcpcd.sh \
