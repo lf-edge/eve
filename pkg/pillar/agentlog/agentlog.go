@@ -575,13 +575,12 @@ func spoofStdFDs(log *base.LogObject, agentName string) *os.File {
 		log.Fatalf("spoofStdFDs: Failed opening stdout file %s with err: %s", stdOutFile, err)
 	}
 
-	fd2, err := syscall.Dup(int(os.Stdout.Fd()))
+	fd2, err := syscall.Dup(syscall.Stdout)
 	if err != nil {
 		log.Fatalf("spoofStdFDs: Error duplicating Stdout: %s", err)
 	}
-	originalStdout, err := os.OpenFile(fmt.Sprintf("/dev/fd/%d", fd2),
-		os.O_WRONLY|os.O_CREATE|os.O_SYNC, 0755)
-	if err != nil {
+	originalStdout := os.NewFile(uintptr(fd2), "originalStdout")
+	if originalStdout == nil {
 		log.Fatalf("spoofStdFDs: Error opening duplicate stdout with fd: %v", fd2)
 	}
 	// replace stdout
