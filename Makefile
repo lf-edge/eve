@@ -336,6 +336,16 @@ test: $(LINUXKIT) test-images-patches | $(DIST)
 	$(QUIET)$(DOCKER_GO) "gotestsum --jsonfile $(DOCKER_DIST)/results.json --junitfile $(DOCKER_DIST)/results.xml" $(GOTREE) $(GOMODULE)
 	$(QUIET): $@: Succeeded
 
+# wrap command into DOCKER_GO and propagate it to the pillar's Makefile
+# for example make pillar-fmt will run docker container based on
+# build-tools/src/scripts/Dockerfile
+# mount pkg/pillar into it
+# and will run make fmt
+pillar-%: $(GOBUILDER) | $(DIST)
+	@echo Running make $* on pillar
+	$(QUIET)$(DOCKER_GO) "make $*" $(GOTREE)
+	$(QUIET): $@: Succeeded
+
 clean:
 	rm -rf $(DIST) images/*.yml
 
