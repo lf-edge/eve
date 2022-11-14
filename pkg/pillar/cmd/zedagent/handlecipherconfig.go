@@ -75,6 +75,7 @@ func parseCipherContext(ctx *getconfigContext,
 
 // parseCipherBlock : will collate all the relevant information
 // ciphercontext will be used to get the certs and encryption schemes
+// should be run after parseCipherContext
 func parseCipherBlock(ctx *getconfigContext, key string,
 	cfgCipherBlock *zconfig.CipherBlock) types.CipherBlockStatus {
 
@@ -101,6 +102,20 @@ func parseCipherBlock(ctx *getconfigContext, key string,
 	}
 	log.Functionf("%s, marking cipher as true", key)
 	cipherBlock.IsCipher = true
+
+	// get CipherContext and embed it into CipherBlockStatus to avoid potential races
+	cipherBlockContextInterface, _ := ctx.pubCipherContext.Get(cipherBlock.CipherContextID)
+	if cipherBlockContextInterface != nil {
+		if context, ok := cipherBlockContextInterface.(types.CipherContext); ok {
+			cipherBlock.CipherContext = &context
+		} else {
+			log.Fatalf("parseCipherBlock(%s): Unexpected pub type %T",
+				key, cipherBlockContextInterface)
+		}
+	} else {
+		log.Warnf("parseCipherBlock(%s): config discrepancy: CipherContext %s not found",
+			key, cipherBlock.CipherContextID)
+	}
 
 	log.Functionf("parseCipherBlock(%s) done", key)
 	return cipherBlock
