@@ -186,9 +186,10 @@ const (
 )
 
 // Load bootstrap config provided that:
-//  - it exists
-//  - has not been loaded before (incl. previous device boots)
-//  - has valid controller signature
+//   - it exists
+//   - has not been loaded before (incl. previous device boots)
+//   - has valid controller signature
+//
 // The function will only load and publish global config items (publishes default values
 // if empty set is configured) and items related to networking (system adapters, networks,
 // vlans, bonds, etc.).

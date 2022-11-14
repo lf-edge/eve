@@ -201,12 +201,12 @@ func metricsTimerTask(ctx *zedagentContext, handleChannel chan interface{}) {
 
 // maybeUpdateMetricsTimer is responsible of calling updateMetricsTimer.
 // This method handles 2 scenarios:
-// 1. Current metrics publish interval > new metrics publish interval in GlobalConfig
+//  1. Current metrics publish interval > new metrics publish interval in GlobalConfig
 //     For instance, if currentMetricInterval = 300s and latestMetricTickerInterval = 200s,
 //     the controller will be expecting a metrics every 300s. So increasing the frequency
 //     immediately to 200s will not result in controller marking the edge-node as suspect
 //     in between.
-// 2. Current metrics publish interval < new metrics publish interval in GlobalConfig
+//  2. Current metrics publish interval < new metrics publish interval in GlobalConfig
 //     For instance, if currentMetricInterval = 200s and latestMetricTickerInterval = 300s,
 //     the controller will be expecting a metrics every 200s. So decreasing the frequency to
 //     300s can result in controller marking the edge-node as suspect in between. To avoid this,

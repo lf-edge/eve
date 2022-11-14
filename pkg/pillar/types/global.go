@@ -63,7 +63,8 @@ func NewGlobalStatus() *GlobalStatus {
 }
 
 // setItemValue - Sets value for the key. Expects a valid key. asserts if
-//  the key is not found.
+//
+//	the key is not found.
 func (gs *GlobalStatus) setItemValue(key, value string) {
 	item := gs.ConfigItems[key]
 	item.Value = value
@@ -367,7 +368,8 @@ func (specMap *ConfigItemSpecMap) AddAgentSettingStringItem(key AgentSettingKey,
 }
 
 // parseAgentSettingKey
-//  Returns AgentName, AgentSettingKey, error ( nil if success )
+//
+//	Returns AgentName, AgentSettingKey, error ( nil if success )
 func parseAgentSettingKey(key string) (string, AgentSettingKey, error) {
 	// Check new Agent Key Setting
 	re := regexp.MustCompile(agentSettingKeyPattern)
@@ -420,8 +422,9 @@ func (specMap *ConfigItemSpecMap) parseAgentItem(
 }
 
 // ParseItem - Parses the Key/Value pair into a ConfigItem and updates
-//  newConfigMap. If there is a Parse error, it copies the corresponding value
-//  from oldConfigMap
+//
+//	newConfigMap. If there is a Parse error, it copies the corresponding value
+//	from oldConfigMap
 func (specMap *ConfigItemSpecMap) ParseItem(newConfigMap *ConfigItemValueMap,
 	oldConfigMap *ConfigItemValueMap,
 	key string, value string) (ConfigItemValue, error) {

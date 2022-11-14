@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 )
 
-//GetDiskNameByPartName returns disk name /dev/sda for part name /dev/sda1 if exists
+// GetDiskNameByPartName returns disk name /dev/sda for part name /dev/sda1 if exists
 // inside we resolve symlink for dev for example
 // /dev/sda9 -> /sys/class/block/mmcblk1p9 ->
 // ../../devices/platform/emmc2bus/fe340000.mmc/mmc_host/mmc1/mmc1:0001/block/mmcblk1/mmcblk1p9
@@ -43,7 +43,7 @@ func GetDiskNameByPartName(name string) (string, error) {
 	return "", fmt.Errorf("%s is not a device", pathToDev)
 }
 
-//GetRootDevice returns device EVE booted from, i.e. /dev/sda
+// GetRootDevice returns device EVE booted from, i.e. /dev/sda
 func GetRootDevice() (string, error) {
 	link, err := filepath.EvalSymlinks("/dev/root")
 	if err != nil {

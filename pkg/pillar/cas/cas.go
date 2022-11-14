@@ -9,7 +9,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/types"
 )
 
-//BlobInfo holds the info of a blob present in CAS's blob store
+// BlobInfo holds the info of a blob present in CAS's blob store
 type BlobInfo struct {
 	//Digest to identify the blob uniquely. The format will/should be <algo>:<hash> (currently supporting only sha256:<hash>).
 	Digest string

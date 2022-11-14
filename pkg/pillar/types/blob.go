@@ -147,7 +147,7 @@ func (status BlobStatus) LogKey() string {
 	return string(base.BlobStatusLogType) + "-" + status.Key()
 }
 
-//GetDownloadedPercentage returns blob's downloaded %
+// GetDownloadedPercentage returns blob's downloaded %
 func (status BlobStatus) GetDownloadedPercentage() uint32 {
 	if status.CurrentSize > 0 && status.TotalSize > 0 {
 		return uint32((status.CurrentSize / status.TotalSize) * 100)

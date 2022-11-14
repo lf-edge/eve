@@ -875,7 +875,7 @@ func updateVolumeStatusFromContentID(ctx *volumemgrContext, contentID uuid.UUID)
 	}
 }
 
-//updateStatusByPersistType set parameters of VolumeStatus according to PersistType from context
+// updateStatusByPersistType set parameters of VolumeStatus according to PersistType from context
 func updateStatusByPersistType(ctx *volumemgrContext, status *types.VolumeStatus) {
 	if useZVolDisk(ctx, status) {
 		status.ContentFormat = zconfig.Format_RAW

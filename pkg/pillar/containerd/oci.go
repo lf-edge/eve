@@ -383,7 +383,8 @@ func (s *ociSpec) UpdateFromVolume(volume string) error {
 
 // UpdateFromImageConfig updates values in the OCI spec based
 // on the values provided in the Image Config section as per:
-//    https://github.com/opencontainers/image-spec/blob/master/config.md
+//
+//	https://github.com/opencontainers/image-spec/blob/master/config.md
 func (s *ociSpec) updateFromImageConfig(config v1.ImageConfig) error {
 	// the following gets into our extensions of the Spec, these
 	// values will be missing if we serialize the spec into JSON and

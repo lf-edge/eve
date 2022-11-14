@@ -158,8 +158,8 @@ func getLocalProfileConfig(getconfigCtx *getconfigContext, localServerURL string
 	return nil, fmt.Errorf("getLocalProfileConfig: all attempts failed: %s", strings.Join(errList, ";"))
 }
 
-//saveOrTouchReceivedLocalProfile updates modification time of received LocalProfile in case of no changes
-//or updates content of received LocalProfile in case of changes or no checkpoint file
+// saveOrTouchReceivedLocalProfile updates modification time of received LocalProfile in case of no changes
+// or updates content of received LocalProfile in case of changes or no checkpoint file
 func saveOrTouchReceivedLocalProfile(getconfigCtx *getconfigContext, localProfile *profile.LocalProfile) {
 	if getconfigCtx.localProfile == localProfile.GetLocalProfile() &&
 		getconfigCtx.profileServerToken == localProfile.GetServerToken() &&
@@ -176,8 +176,8 @@ func saveOrTouchReceivedLocalProfile(getconfigCtx *getconfigContext, localProfil
 	return
 }
 
-//parseProfile process local and global profile configuration
-//must be called before processing of app instances from config
+// parseProfile process local and global profile configuration
+// must be called before processing of app instances from config
 func parseProfile(ctx *getconfigContext, config *zconfig.EdgeDevConfig) {
 	log.Functionf("parseProfile start: globalProfile: %s localProfile: %s",
 		ctx.globalProfile, ctx.localProfile)
@@ -204,7 +204,7 @@ func parseProfile(ctx *getconfigContext, config *zconfig.EdgeDevConfig) {
 		ctx.globalProfile, ctx.currentProfile)
 }
 
-//determineCurrentProfile return current profile based on localProfile, globalProfile
+// determineCurrentProfile return current profile based on localProfile, globalProfile
 func determineCurrentProfile(ctx *getconfigContext) string {
 	if ctx.localProfile == "" {
 		return ctx.globalProfile
@@ -212,7 +212,7 @@ func determineCurrentProfile(ctx *getconfigContext) string {
 	return ctx.localProfile
 }
 
-//triggerGetLocalProfile notifies task to reload local profile from profileServer
+// triggerGetLocalProfile notifies task to reload local profile from profileServer
 func triggerGetLocalProfile(ctx *getconfigContext) {
 	log.Functionf("triggerGetLocalProfile")
 	select {
@@ -274,7 +274,7 @@ func getLocalProfile(ctx *getconfigContext, skipFetch bool) string {
 	return localProfile
 }
 
-//processSavedProfile reads saved local profile and set it
+// processSavedProfile reads saved local profile and set it
 func processSavedProfile(ctx *getconfigContext) {
 	localProfile, err := readSavedLocalProfile(ctx)
 	if err != nil {

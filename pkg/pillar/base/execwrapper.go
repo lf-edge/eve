@@ -22,7 +22,7 @@ const (
 	timeOutLimit    = 100
 )
 
-//Command holds the necessary data to execute command
+// Command holds the necessary data to execute command
 type Command struct {
 	command   *exec.Cmd
 	log       *LogObject
@@ -134,13 +134,13 @@ func (c *Command) execCommand() ([]byte, error) {
 	}
 }
 
-//WithContext set context for command
+// WithContext set context for command
 func (c *Command) WithContext(ctx context.Context) *Command {
 	c.ctx = ctx
 	return c
 }
 
-//Exec returns Command object
+// Exec returns Command object
 func Exec(log *LogObject, command string, arg ...string) *Command {
 	return &Command{
 		command:   exec.Command(command, arg...),
@@ -149,7 +149,7 @@ func Exec(log *LogObject, command string, arg ...string) *Command {
 	}
 }
 
-//updateAgentTouchFile updates agent's touch file under /run/
+// updateAgentTouchFile updates agent's touch file under /run/
 func updateAgentTouchFile(log *LogObject, agentName string) {
 	if agentName == "" {
 		if log != nil {
@@ -186,7 +186,7 @@ func updateAgentTouchFile(log *LogObject, agentName string) {
 	}
 }
 
-//getAgentName parses stacktrace and returns involved agent under /pillar/cmd.
+// getAgentName parses stacktrace and returns involved agent under /pillar/cmd.
 func getAgentName() string {
 	stackTrace := strings.Split(string(debug.Stack()), "\n")
 	var methodName, file, agent, resultAgentName string

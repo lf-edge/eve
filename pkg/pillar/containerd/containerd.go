@@ -133,7 +133,7 @@ func NewContainerdClient(user bool) (*Client, error) {
 	return &c, nil
 }
 
-//CloseClient closes containerd client
+// CloseClient closes containerd client
 func (client *Client) CloseClient() error {
 	if err := client.verifyCtr(nil, false); err != nil {
 		return fmt.Errorf("CloseClient: exception while verifying ctrd client: %s", err.Error())
@@ -147,7 +147,7 @@ func (client *Client) CloseClient() error {
 	return nil
 }
 
-//CtrWriteBlob reads the blob as raw data from `reader` and writes it into containerd.
+// CtrWriteBlob reads the blob as raw data from `reader` and writes it into containerd.
 // Accepts a custom context. If ctx is nil, then default context will be used.
 func (client *Client) CtrWriteBlob(ctx context.Context, blobHash string, expectedSize uint64, reader io.Reader) error {
 	if err := client.verifyCtr(ctx, true); err != nil {
@@ -172,7 +172,7 @@ func (client *Client) CtrWriteBlob(ctx context.Context, blobHash string, expecte
 	return nil
 }
 
-//CtrUpdateBlobInfo updates blobs info
+// CtrUpdateBlobInfo updates blobs info
 func (client *Client) CtrUpdateBlobInfo(ctx context.Context, updatedContentInfo content.Info, updatedFields []string) error {
 	if err := client.verifyCtr(ctx, true); err != nil {
 		return fmt.Errorf("CtrUpdateBlobInfo: exception while verifying ctrd client: %s", err.Error())
@@ -184,7 +184,7 @@ func (client *Client) CtrUpdateBlobInfo(ctx context.Context, updatedContentInfo 
 	return nil
 }
 
-//CtrReadBlob return a reader for the blob with given blobHash. Error is returned if no blob is found for the blobHash
+// CtrReadBlob return a reader for the blob with given blobHash. Error is returned if no blob is found for the blobHash
 func (client *Client) CtrReadBlob(ctx context.Context, blobHash string) (io.Reader, error) {
 	if err := client.verifyCtr(ctx, true); err != nil {
 		return nil, fmt.Errorf("CtrReadBlob: exception while verifying ctrd client: %s", err.Error())
@@ -201,7 +201,7 @@ func (client *Client) CtrReadBlob(ctx context.Context, blobHash string) (io.Read
 	return content.NewReader(readerAt), nil
 }
 
-//CtrGetBlobInfo returns a bolb's info as content.Info
+// CtrGetBlobInfo returns a bolb's info as content.Info
 func (client *Client) CtrGetBlobInfo(ctx context.Context, blobHash string) (content.Info, error) {
 	if err := client.verifyCtr(ctx, true); err != nil {
 		return content.Info{}, fmt.Errorf("CtrReadBlob: exception while verifying ctrd client: %s", err.Error())
@@ -209,7 +209,7 @@ func (client *Client) CtrGetBlobInfo(ctx context.Context, blobHash string) (cont
 	return client.contentStore.Info(ctx, digest.Digest(blobHash))
 }
 
-//CtrListBlobInfo returns a list of blob infos as []content.Info
+// CtrListBlobInfo returns a list of blob infos as []content.Info
 func (client *Client) CtrListBlobInfo(ctx context.Context) ([]content.Info, error) {
 	if err := client.verifyCtr(ctx, true); err != nil {
 		return nil, fmt.Errorf("CtrListBlobInfo: exception while verifying ctrd client: %s", err.Error())
@@ -225,7 +225,7 @@ func (client *Client) CtrListBlobInfo(ctx context.Context) ([]content.Info, erro
 	return infos, nil
 }
 
-//CtrDeleteBlob deletes blob with the given blobHash
+// CtrDeleteBlob deletes blob with the given blobHash
 func (client *Client) CtrDeleteBlob(ctx context.Context, blobHash string) error {
 	if err := client.verifyCtr(ctx, true); err != nil {
 		return fmt.Errorf("CtrDeleteBlob: exception while verifying ctrd client: %s", err.Error())
@@ -233,7 +233,7 @@ func (client *Client) CtrDeleteBlob(ctx context.Context, blobHash string) error 
 	return client.contentStore.Delete(ctx, digest.Digest(blobHash))
 }
 
-//CtrCreateImage create an image in containerd's image store
+// CtrCreateImage create an image in containerd's image store
 func (client *Client) CtrCreateImage(ctx context.Context, image images.Image) (images.Image, error) {
 	if err := client.verifyCtr(ctx, true); err != nil {
 		return images.Image{}, fmt.Errorf("CtrCreateImage: exception while verifying ctrd client: %s", err.Error())
@@ -241,7 +241,7 @@ func (client *Client) CtrCreateImage(ctx context.Context, image images.Image) (i
 	return client.ctrdClient.ImageService().Create(ctx, image)
 }
 
-//CtrLoadImage reads image as raw data from `reader` and loads it into containerd
+// CtrLoadImage reads image as raw data from `reader` and loads it into containerd
 func (client *Client) CtrLoadImage(ctx context.Context, reader *os.File) ([]images.Image, error) {
 	if err := client.verifyCtr(ctx, true); err != nil {
 		return nil, fmt.Errorf("CtrLoadImage: exception while verifying ctrd client: %s", err.Error())
@@ -254,7 +254,7 @@ func (client *Client) CtrLoadImage(ctx context.Context, reader *os.File) ([]imag
 	return imgs, nil
 }
 
-//CtrGetImage returns image object for the reference. Returns error if no image is found for the reference.
+// CtrGetImage returns image object for the reference. Returns error if no image is found for the reference.
 func (client *Client) CtrGetImage(ctx context.Context, reference string) (containerd.Image, error) {
 	if err := client.verifyCtr(ctx, true); err != nil {
 		return nil, fmt.Errorf("CtrGetImage: exception while verifying ctrd client: %s", err.Error())
@@ -267,7 +267,7 @@ func (client *Client) CtrGetImage(ctx context.Context, reference string) (contai
 	return image, nil
 }
 
-//CtrListImages returns a list of images object from ontainerd's image store
+// CtrListImages returns a list of images object from ontainerd's image store
 func (client *Client) CtrListImages(ctx context.Context) ([]images.Image, error) {
 	if err := client.verifyCtr(ctx, true); err != nil {
 		return nil, fmt.Errorf("CtrListImages: exception while verifying ctrd client: %s", err.Error())
@@ -275,7 +275,7 @@ func (client *Client) CtrListImages(ctx context.Context) ([]images.Image, error)
 	return client.ctrdClient.ImageService().List(ctx)
 }
 
-//CtrUpdateImage updates the files provided in fieldpaths of the image in containerd'd image store
+// CtrUpdateImage updates the files provided in fieldpaths of the image in containerd'd image store
 func (client *Client) CtrUpdateImage(ctx context.Context, image images.Image, fieldpaths ...string) (images.Image, error) {
 	if err := client.verifyCtr(ctx, true); err != nil {
 		return images.Image{}, fmt.Errorf("CtrUpdateImage: exception while verifying ctrd client: %s", err.Error())
@@ -283,7 +283,7 @@ func (client *Client) CtrUpdateImage(ctx context.Context, image images.Image, fi
 	return client.ctrdClient.ImageService().Update(ctx, image, fieldpaths...)
 }
 
-//CtrDeleteImage deletes an image with the given reference
+// CtrDeleteImage deletes an image with the given reference
 func (client *Client) CtrDeleteImage(ctx context.Context, reference string) error {
 	if err := client.verifyCtr(ctx, true); err != nil {
 		return fmt.Errorf("CtrDeleteImage: exception while verifying ctrd client: %s", err.Error())
@@ -291,7 +291,7 @@ func (client *Client) CtrDeleteImage(ctx context.Context, reference string) erro
 	return client.ctrdClient.ImageService().Delete(ctx, reference)
 }
 
-//CtrPrepareSnapshot creates snapshot for the given image
+// CtrPrepareSnapshot creates snapshot for the given image
 func (client *Client) CtrPrepareSnapshot(ctx context.Context, snapshotID string, image containerd.Image) ([]mount.Mount, error) {
 	if err := client.verifyCtr(ctx, true); err != nil {
 		return nil, fmt.Errorf("CtrPrepareSnapshot: exception while verifying ctrd client: %s", err.Error())
@@ -309,7 +309,7 @@ func (client *Client) CtrPrepareSnapshot(ctx context.Context, snapshotID string,
 	return snapshotter.Prepare(ctx, snapshotID, parent, snapshots.WithLabels(labels))
 }
 
-//CtrMountSnapshot mounts the snapshot with snapshotID on the given targetPath.
+// CtrMountSnapshot mounts the snapshot with snapshotID on the given targetPath.
 func (client *Client) CtrMountSnapshot(ctx context.Context, snapshotID, targetPath string) error {
 	if err := client.verifyCtr(ctx, true); err != nil {
 		return fmt.Errorf("CtrMountSnapshot: exception while verifying ctrd client: %s", err.Error())
@@ -325,7 +325,7 @@ func (client *Client) CtrMountSnapshot(ctx context.Context, snapshotID, targetPa
 	return mounts[0].Mount(targetPath)
 }
 
-//CtrListSnapshotInfo returns a list of all snapshot's info present in containerd's snapshot store.
+// CtrListSnapshotInfo returns a list of all snapshot's info present in containerd's snapshot store.
 func (client *Client) CtrListSnapshotInfo(ctx context.Context) ([]snapshots.Info, error) {
 	if err := client.verifyCtr(ctx, true); err != nil {
 		return nil, fmt.Errorf("CtrListSnapshotInfo: exception while verifying ctrd client: %s", err.Error())
@@ -354,7 +354,7 @@ func (client *Client) CtrGetSnapshotUsage(ctx context.Context, snapshotID string
 	return &su, nil
 }
 
-//CtrRemoveSnapshot removed snapshot by ID from containerd
+// CtrRemoveSnapshot removed snapshot by ID from containerd
 func (client *Client) CtrRemoveSnapshot(ctx context.Context, snapshotID string) error {
 	if err := client.verifyCtr(ctx, true); err != nil {
 		return fmt.Errorf("CtrRemoveSnapshot: exception while verifying ctrd client: %s", err.Error())
@@ -367,7 +367,7 @@ func (client *Client) CtrRemoveSnapshot(ctx context.Context, snapshotID string) 
 	return nil
 }
 
-//CtrLoadContainer returns container with the given `containerID`. Error is returned if there no container is found.
+// CtrLoadContainer returns container with the given `containerID`. Error is returned if there no container is found.
 func (client *Client) CtrLoadContainer(ctx context.Context, containerID string) (containerd.Container, error) {
 	if err := client.verifyCtr(ctx, true); err != nil {
 		return nil, fmt.Errorf("CtrLoadContainer: exception while verifying ctrd client: %s", err.Error())
@@ -379,7 +379,7 @@ func (client *Client) CtrLoadContainer(ctx context.Context, containerID string) 
 	return container, err
 }
 
-//CtrListContainerIds returns a list of all known container IDs
+// CtrListContainerIds returns a list of all known container IDs
 func (client *Client) CtrListContainerIds(ctx context.Context) ([]string, error) {
 	if err := client.verifyCtr(ctx, true); err != nil {
 		return nil, fmt.Errorf("CtrListContainerIds: exception while verifying ctrd client: %s", err.Error())
@@ -395,7 +395,7 @@ func (client *Client) CtrListContainerIds(ctx context.Context) ([]string, error)
 	return res, nil
 }
 
-//CtrListContainer returns a list of containerd.Container ibjects
+// CtrListContainer returns a list of containerd.Container ibjects
 func (client *Client) CtrListContainer(ctx context.Context) ([]containerd.Container, error) {
 	if err := client.verifyCtr(ctx, true); err != nil {
 		return nil, fmt.Errorf("CtrListContainer: exception while verifying ctrd client: %s", err.Error())
@@ -605,7 +605,7 @@ func (client *Client) CtrDeleteContainer(ctx context.Context, containerID string
 	return ctr.Delete(ctx)
 }
 
-//CtrGetAnnotations gets annotations for defined containerID
+// CtrGetAnnotations gets annotations for defined containerID
 func (client *Client) CtrGetAnnotations(ctx context.Context, containerID string) (map[string]string, error) {
 	if err := client.verifyCtr(ctx, true); err != nil {
 		return nil, fmt.Errorf("CtrGetAnnotations: exception while verifying ctrd client: %s", err.Error())
@@ -785,7 +785,7 @@ func getSavedImageInfo(containerPath string) (ocispec.Image, error) {
 	return image, nil
 }
 
-//verifyCtr verifies is containerd client and context(if verifyCtx is true) .
+// verifyCtr verifies is containerd client and context(if verifyCtx is true) .
 func (client *Client) verifyCtr(ctx context.Context, verifyCtx bool) error {
 	if client.ctrdClient == nil {
 		return fmt.Errorf("verifyCtr: Containerd client is nil")
@@ -870,7 +870,7 @@ func GetSnapshotID(rootpath string) string {
 	return snapshotID
 }
 
-//UnpackClientImage unpacks given client image into containerd.
+// UnpackClientImage unpacks given client image into containerd.
 func (client *Client) UnpackClientImage(clientImage containerd.Image) error {
 	logrus.Infof("UnpackClientImage: for image :%s", clientImage.Name())
 	ctrdCtx, done := client.CtrNewUserServicesCtx()
@@ -887,7 +887,7 @@ func (client *Client) UnpackClientImage(clientImage containerd.Image) error {
 	return nil
 }
 
-//StartUserContainerdInstance execute user containerd instance in goroutine
+// StartUserContainerdInstance execute user containerd instance in goroutine
 func StartUserContainerdInstance() error {
 	name := "/usr/bin/containerd"
 	args := []string{"--config", "/etc/containerd/user.toml"}

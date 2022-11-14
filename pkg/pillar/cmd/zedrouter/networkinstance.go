@@ -24,8 +24,9 @@ import (
 
 // isSharedPortLabel
 // port names "uplink" and "freeuplink" are actually built in labels
-//	we used for ports used by Dom0 itself to reach the cloud. But
-//      these can also be shared by the applications.
+//
+//		we used for ports used by Dom0 itself to reach the cloud. But
+//	     these can also be shared by the applications.
 func isSharedPortLabel(label string) bool {
 	// XXX - I think we can get rid of these built-in labels (uplink/freeuplink).
 	//	This will be cleaned up as part of support for deviceConfig
@@ -40,11 +41,14 @@ func isSharedPortLabel(label string) bool {
 }
 
 // checkPortAvailable
+//
 //	A port can be used for NetworkInstance if the following are satisfied:
 //	a) Port should be part of Device Port Config
 //	b) For type switch, port should not be part of any other
-// 			Network Instance
+//			Network Instance
+//
 // Any device, which is not a port, cannot be used in network instance
+//
 //	and can only be assigned as a directAttach device.
 func checkPortAvailable(
 	ctx *zedrouterContext,
@@ -84,7 +88,8 @@ func disableIcmpRedirects(bridgeName string) {
 }
 
 // doCreateBridge
-//		returns (error, bridgeMac-string)
+//
+//	returns (error, bridgeMac-string)
 func doCreateBridge(bridgeName string, bridgeNum int,
 	status *types.NetworkInstanceStatus) (error, string) {
 
@@ -137,6 +142,7 @@ func doCreateBridge(bridgeName string, bridgeNum int,
 
 // doLookupBridge is used for switch network instance where nim
 // has created the bridge. All such NIs have an external port.
+//
 //	returns (bridgeName, bridgeMac-string, error)
 func doLookupBridge(ctx *zedrouterContext,
 	status *types.NetworkInstanceStatus) (string, string, error) {
@@ -870,6 +876,7 @@ func recordIPAssignment(ctx *zedrouterContext,
 }
 
 // releaseIPv4
+//
 //	XXX TODO - This should be a method in NetworkInstanceSm
 func releaseIPv4FromNetworkInstance(ctx *zedrouterContext,
 	status *types.NetworkInstanceStatus,
@@ -1020,7 +1027,8 @@ func setBridgeIPAddr(
 }
 
 // updateBridgeIPAddr
-// 	Called a bridge service has been added/updated/deleted
+//
+//	Called a bridge service has been added/updated/deleted
 func updateBridgeIPAddr(
 	ctx *zedrouterContext,
 	status *types.NetworkInstanceStatus) {
@@ -1042,7 +1050,8 @@ func updateBridgeIPAddr(
 }
 
 // maybeUpdateBridgeIPAddr
-// 	Find ifname as a bridge Port and see if it can be updated
+//
+//	Find ifname as a bridge Port and see if it can be updated
 func maybeUpdateBridgeIPAddr(
 	ctx *zedrouterContext,
 	ifname string) {
@@ -1315,9 +1324,10 @@ func getSwitchIPv4Addr(bridgeIndex int) (string, bool) {
 // Get a list of IfNames to the ones we have an ifIndex for.
 // In the case where the port maps to multiple underlying ports
 // (For Ex: uplink), only include ports that have an ifindex.
-//	If there is no such port with ifindex, then retain the whole list.
-//	NetworkInstance creation will fail when programming default routes
-//  and iptable rules in that case - and that should be fine.
+//
+//		If there is no such port with ifindex, then retain the whole list.
+//		NetworkInstance creation will fail when programming default routes
+//	 and iptable rules in that case - and that should be fine.
 func getIfNameListForLLOrIfname(
 	ctx *zedrouterContext,
 	llOrIfname string) []string {
@@ -1859,8 +1869,10 @@ func strongswanNetworkInstanceInactivate(ctx *zedrouterContext,
 }
 
 // labelToIfNames
+//
 //	XXX - Probably should move this to ZedRouter.go as a method
 //		of zedRouterContext
+//
 // Expand the generic names, and return the interface names.
 // Does not verify the existence of the logicallabels/interfaces
 func labelToIfNames(ctx *zedrouterContext, llOrIfname string) []string {

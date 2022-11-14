@@ -3,7 +3,7 @@
 
 package hypervisor
 
-//ACRNHypervisorName is a name of acrn hypervisor
+// ACRNHypervisorName is a name of acrn hypervisor
 const ACRNHypervisorName = "acrn"
 
 type acrnContext struct {

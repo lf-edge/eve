@@ -489,7 +489,7 @@ const (
 	ConfigGetReadSaved
 )
 
-//DeviceOperation is an operation on device
+// DeviceOperation is an operation on device
 type DeviceOperation uint8
 
 const (

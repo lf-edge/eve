@@ -1063,8 +1063,8 @@ func handleBaseOsDelete(ctxArg interface{}, key string,
 	log.Functionf("handleBaseOsDelete(%s) done", key)
 }
 
-//isImageInErrorState returns true if we try to update to not-active image without success
-//also returns ZbootStatus
+// isImageInErrorState returns true if we try to update to not-active image without success
+// also returns ZbootStatus
 func isImageInErrorState(ctxPtr *baseOsMgrContext) (bool, *types.ZbootStatus) {
 	curPartName := zboot.GetCurrentPartition()
 	partStatus := getZbootStatus(ctxPtr, curPartName)

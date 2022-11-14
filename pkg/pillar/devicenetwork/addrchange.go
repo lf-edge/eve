@@ -12,9 +12,9 @@ import (
 
 // Returns a channel for link updates
 // Caller then does this in select loop:
+//
 //	case change := <-linkChanges:
 //		changed := devicenetwork.LinkChange(change)
-//
 func LinkChangeInit(log *base.LogObject) chan netlink.LinkUpdate {
 
 	log.Functionf("LinkChangeInit()\n")
@@ -39,9 +39,9 @@ func LinkChangeInit(log *base.LogObject) chan netlink.LinkUpdate {
 
 // Returns a channel for route updates
 // Caller then does this in select loop:
+//
 //	case change := <-routeChanges:
 //		PbrHandleRouteChange(..., change)
-//
 func RouteChangeInit(log *base.LogObject) chan netlink.RouteUpdate {
 
 	log.Functionf("RouteChangeInit()\n")

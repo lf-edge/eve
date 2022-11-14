@@ -27,7 +27,8 @@ import (
 // XXX inotify seems to stop reporting any changes in some cases
 // XXX avoid by start and stop dnsmasq when we add entries
 // XXX KALYAN - We need to set this to have DHCP working with Network instances.
-//		Turning this flag on temporarily till we figure out what's happening.
+//
+//	Turning this flag on temporarily till we figure out what's happening.
 const dnsmasqStopStart = false // XXX change? remove?
 
 const dnsmasqStatic = `
@@ -407,7 +408,8 @@ func RemoveDirContent(dir string) error {
 }
 
 // Run this:
-//    ${DMDIR}/dnsmasq -b -C /run/zedrouter/dnsmasq.${BRIDGENAME}.conf
+//
+//	${DMDIR}/dnsmasq -b -C /run/zedrouter/dnsmasq.${BRIDGENAME}.conf
 func startDnsmasq(bridgeName string) {
 
 	log.Functionf("startDnsmasq(%s)\n", bridgeName)

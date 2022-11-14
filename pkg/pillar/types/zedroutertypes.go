@@ -284,7 +284,8 @@ func (acMetric AppContainerMetrics) LogKey() string {
 }
 
 // IntfStatusMap - Used to return per-interface test results (success and failures)
-//  ifName is used as the key
+//
+//	ifName is used as the key
 type IntfStatusMap struct {
 	// StatusMap -> Key: ifname, Value: TestResults
 	StatusMap map[string]TestResults
@@ -1954,6 +1955,7 @@ func LogicallabelToIfName(deviceNetworkStatus *DeviceNetworkStatus,
 }
 
 // IsAnyPortInPciBack
+//
 //	Checks if any of the Ports are part of IO bundles which are in PCIback.
 //	If true, it also returns the ifName ( NOT bundle name )
 //	Also returns whether it is currently used by an application by
@@ -2504,8 +2506,9 @@ const (
 )
 
 // NetworkInstanceConfig
-//		Config Object for NetworkInstance
-// 		Extracted from the protobuf NetworkInstanceConfig
+//
+//	Config Object for NetworkInstance
+//	Extracted from the protobuf NetworkInstanceConfig
 type NetworkInstanceConfig struct {
 	UUIDandVersion
 	DisplayName string
@@ -2600,8 +2603,9 @@ const (
 )
 
 // NetworkInstanceStatus
-//		Config Object for NetworkInstance
-// 		Extracted from the protobuf NetworkInstanceConfig
+//
+//	Config Object for NetworkInstance
+//	Extracted from the protobuf NetworkInstanceConfig
 type NetworkInstanceStatus struct {
 	NetworkInstanceConfig
 	// Make sure the Activate from the config isn't exposed as a boolean

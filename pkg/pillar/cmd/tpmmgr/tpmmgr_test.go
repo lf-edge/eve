@@ -105,7 +105,7 @@ const (
 	testDeviceKeyFile     = "test_device.key.pem"
 )
 
-//Test ECDH key exchange and a symmetric cipher based on ECDH, with software based keys
+// Test ECDH key exchange and a symmetric cipher based on ECDH, with software based keys
 func TestSoftEcdh(t *testing.T) {
 	//Redirect ECDH cert/key files to test files
 	ecdhCertFile = testEcdhCertFile
@@ -129,7 +129,7 @@ func TestSoftEcdh(t *testing.T) {
 	}
 }
 
-//Test ECDH key exchange and a symmetric cipher based on ECDH, with software based keys
+// Test ECDH key exchange and a symmetric cipher based on ECDH, with software based keys
 func TestGetPrivateKeyFromFile(t *testing.T) {
 	err := ioutil.WriteFile(testEcdhKeyFile, []byte(ecdhKeyPem), 0644)
 	if err != nil {

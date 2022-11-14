@@ -43,7 +43,7 @@ func GetDiskVirtualSize(log *base.LogObject, diskfile string) (uint64, error) {
 	return imgInfo.VirtualSize, nil
 }
 
-//ResizeImg calls qemu-img to resize disk file to new size
+// ResizeImg calls qemu-img to resize disk file to new size
 func ResizeImg(ctx context.Context, log *base.LogObject, diskfile string, newsize uint64) error {
 	if _, err := os.Stat(diskfile); err != nil {
 		return err
@@ -58,7 +58,7 @@ func ResizeImg(ctx context.Context, log *base.LogObject, diskfile string, newsiz
 	return nil
 }
 
-//CreateImg creates empty diskfile with defined format and size
+// CreateImg creates empty diskfile with defined format and size
 func CreateImg(ctx context.Context, log *base.LogObject, diskfile string, format string, size uint64) error {
 	output, err := base.Exec(log, "/usr/bin/qemu-img", "create", "-f", format, diskfile,
 		strconv.FormatUint(size, 10)).WithContext(ctx).CombinedOutput()
@@ -70,7 +70,7 @@ func CreateImg(ctx context.Context, log *base.LogObject, diskfile string, format
 	return nil
 }
 
-//RolloutImgToBlock do conversion of diskfile to outputFile with defined format
+// RolloutImgToBlock do conversion of diskfile to outputFile with defined format
 func RolloutImgToBlock(ctx context.Context, log *base.LogObject, diskfile, outputFile, outputFormat string) error {
 	if _, err := os.Stat(diskfile); err != nil {
 		return err

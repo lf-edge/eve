@@ -28,7 +28,7 @@ import (
 	"golang.org/x/crypto/ocsp"
 )
 
-//GetClientCert prepares tls.Certificate to connect to the cloud Controller
+// GetClientCert prepares tls.Certificate to connect to the cloud Controller
 func GetClientCert() (tls.Certificate, error) {
 	if !etpm.IsTpmEnabled() {
 		//Not a TPM capable device, return openssl certificate

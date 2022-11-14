@@ -94,7 +94,7 @@ func lookupAppDiskMetric(ctx *volumemgrContext, key string) *types.AppDiskMetric
 	return &status
 }
 
-//diskMetricsTimerTask calculates and publishes disk metrics periodically
+// diskMetricsTimerTask calculates and publishes disk metrics periodically
 func diskMetricsTimerTask(ctx *volumemgrContext, handleChannel chan interface{}) {
 	log.Functionln("starting report diskMetricsTimerTask timer task")
 	createOrUpdateDiskMetrics(ctx)
@@ -127,7 +127,7 @@ func diskMetricsTimerTask(ctx *volumemgrContext, handleChannel chan interface{})
 	}
 }
 
-//createOrUpdateDiskMetrics creates or updates metrics for all disks, mountpaths and volumeStatuses
+// createOrUpdateDiskMetrics creates or updates metrics for all disks, mountpaths and volumeStatuses
 func createOrUpdateDiskMetrics(ctx *volumemgrContext) {
 	log.Functionf("createOrUpdateDiskMetrics")
 	var diskMetricList []*types.DiskMetric

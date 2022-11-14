@@ -277,7 +277,8 @@ func (testPtr *parseItemTestEntry) configItemValue(
 }
 
 // Verify Expected value is same as Actual value - both returned
-//  value as well as one in newGlobalConfig
+//
+//	value as well as one in newGlobalConfig
 func (testPtr *parseItemTestEntry) verifyEntry(t *testing.T, testname string,
 	newGlobalConfig *ConfigItemValueMap, val ConfigItemValue) {
 	// Verify Expected value is same as Actual value - both returned
@@ -382,9 +383,10 @@ func TestParseGlobalItem(t *testing.T) {
 }
 
 // Test ParseItem for Agent Settings
-//  Verify both new and Legacy settings are parsed correctly
-//  Verify Unknown settings ( New and Legacy ) are rejected
-//  Verify Invalid Values for known settings are rejected and old value retained
+//
+//	Verify both new and Legacy settings are parsed correctly
+//	Verify Unknown settings ( New and Legacy ) are rejected
+//	Verify Invalid Values for known settings are rejected and old value retained
 func TestParseAgentItem(t *testing.T) {
 	// logrus.SetLevel(logrus.TraceLevel)
 	specMap := NewConfigItemSpecMap()

@@ -115,8 +115,8 @@ func processDisks(ctx *zfsContext) error {
 	return nil
 }
 
-//disksStateProcessing iterate over disks and adjust its state accordingly to the config
-//we expect that zfs will handle conflicts between order of calls
+// disksStateProcessing iterate over disks and adjust its state accordingly to the config
+// we expect that zfs will handle conflicts between order of calls
 func disksStateProcessing(disks types.EdgeNodeDisks, pool libzfs.Pool) {
 	vdevTree, err := pool.VDevTree()
 	if err != nil {
@@ -178,7 +178,7 @@ func disksStateProcessing(disks types.EdgeNodeDisks, pool libzfs.Pool) {
 	}
 }
 
-//disksLayoutProcessing iterate over disks and adjust pool layout accordingly to the config
+// disksLayoutProcessing iterate over disks and adjust pool layout accordingly to the config
 func disksLayoutProcessing(disks types.EdgeNodeDisks, pool libzfs.Pool) {
 	vdevTree, err := pool.VDevTree()
 	if err != nil {
@@ -195,8 +195,8 @@ func disksLayoutProcessing(disks types.EdgeNodeDisks, pool libzfs.Pool) {
 	}
 }
 
-//disksLayoutRaid0Process ensure layout for batch of top-level vdevs in pool
-//we support raid0 of unspecified (single disk) and raid1 (mirror of disks) layout here
+// disksLayoutRaid0Process ensure layout for batch of top-level vdevs in pool
+// we support raid0 of unspecified (single disk) and raid1 (mirror of disks) layout here
 func disksLayoutRaid0Process(vdevTree libzfs.VDevTree, disks []types.EdgeNodeDisks) {
 	for _, el := range disks {
 		switch el.ArrayType {

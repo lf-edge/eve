@@ -54,7 +54,7 @@ func CheckProcessExists(log *base.LogObject, agentName string) (bool, string) {
 	return false, fmt.Sprintf("no running process found for agent %s", agentName)
 }
 
-//CheckAndCreatePidfile check if old process is not running and create new pid file
+// CheckAndCreatePidfile check if old process is not running and create new pid file
 func CheckAndCreatePidfile(log *base.LogObject, agentName string) error {
 	if exists, description := CheckProcessExists(log, agentName); exists {
 		return fmt.Errorf("checkAndCreatePidfile: %s", description)

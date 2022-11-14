@@ -185,7 +185,7 @@ var toGoCurve = map[tpm2.EllipticCurve]elliptic.Curve{
 	tpm2.CurveNISTP521: elliptic.P521(),
 }
 
-//Helps creating various keys, according to the supplied template, and hierarchy
+// Helps creating various keys, according to the supplied template, and hierarchy
 func createKey(keyHandle, ownerHandle tpmutil.Handle, template tpm2.Public, overwrite bool) error {
 	rw, err := tpm2.OpenTPM(etpm.TpmDevicePath)
 	if err != nil {
@@ -541,7 +541,7 @@ func testTpmEcdhSupport() error {
 	return nil
 }
 
-//Test ECDH key exchange and a symmetric cipher based on ECDH
+// Test ECDH key exchange and a symmetric cipher based on ECDH
 func testEcdhAES() error {
 	//Simulate Controller generating an ephemeral key
 	privateA, publicAX, publicAY, err := elliptic.GenerateKey(elliptic.P256(), rand.Reader)
@@ -1368,7 +1368,7 @@ func saveTpmInfo(filename string) error {
 	return ioutil.WriteFile(filename, []byte(info), 0600)
 }
 
-//Create required directories, if not already created
+// Create required directories, if not already created
 func initializeDirs() {
 	if _, err := os.Stat(types.CertificateDirname); err != nil {
 		log.Tracef("Create %s", types.CertificateDirname)
@@ -1379,6 +1379,7 @@ func initializeDirs() {
 }
 
 // Run is the entry point for tpmmgr, from zedbox
+//
 //nolint:funlen,gocognit,gocyclo
 func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, arguments []string) int {
 	logger = loggerArg

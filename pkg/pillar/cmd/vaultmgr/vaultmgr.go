@@ -82,7 +82,7 @@ var (
 	handler           vault.Handler
 )
 
-//publishVaultConfig: publishes vault config and also updates in memory vaultConfig
+// publishVaultConfig: publishes vault config and also updates in memory vaultConfig
 func publishVaultConfig(ctx *vaultMgrContext, tpmKeyOnly bool) {
 	config := types.VaultConfig{}
 	config.TpmKeyOnly = tpmKeyOnly
@@ -171,7 +171,7 @@ func checkAndPublishVaultConfig(ctx *vaultMgrContext) bool {
 	return vaultConfig.TpmKeyOnly
 }
 
-//Run is the entrypoint for running vaultmgr as a standalone program
+// Run is the entrypoint for running vaultmgr as a standalone program
 func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, arguments []string) int {
 	logger = loggerArg
 	log = logArg

@@ -1888,7 +1888,8 @@ func handleZbootRestarted(ctxArg interface{}, restartCounter int) {
 }
 
 // handleAppInstanceStatusCreate - Handle AIS create. Publish ZInfoApp
-//  and ZInfoDevice to the cloud.
+//
+//	and ZInfoDevice to the cloud.
 func handleAppInstanceStatusCreate(ctxArg interface{}, key string,
 	statusArg interface{}) {
 	status := statusArg.(types.AppInstanceStatus)

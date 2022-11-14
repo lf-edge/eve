@@ -320,8 +320,9 @@ func allDomainsHalted(ctxPtr *nodeagentContext) bool {
 }
 
 // waitForAllDomainsHalted
-//  blocks till all domains are halted. Should only be invoked from
-//  a thread.
+//
+//	blocks till all domains are halted. Should only be invoked from
+//	a thread.
 func waitForAllDomainsHalted(ctxPtr *nodeagentContext) {
 
 	var totalWaitTime uint32
