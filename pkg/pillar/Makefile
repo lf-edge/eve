@@ -83,5 +83,8 @@ fmt:
 fmt-check:
 	@gofmt -l $(GOFILES)
 
+fmt-check-details:
+	@gofmt -d $(GOFILES)
+
 vet:
 	go vet ./...
