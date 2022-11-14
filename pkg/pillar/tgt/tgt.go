@@ -50,7 +50,7 @@ func waitForFile(fileName string) error {
 	}
 }
 
-//CheckTargetIBlock check target iblock exists
+// CheckTargetIBlock check target iblock exists
 func CheckTargetIBlock(tgtName string) bool {
 	targetRoot := filepath.Join(iBlockPath, tgtName)
 	if _, err := os.Stat(targetRoot); err == nil {
@@ -88,7 +88,7 @@ func TargetCreateIBlock(dev, tgtName, serial string) error {
 	return nil
 }
 
-//GenerateNaaSerial generates naa serial
+// GenerateNaaSerial generates naa serial
 func GenerateNaaSerial() string {
 	return fmt.Sprintf("%s%09x", naaPrefix, rand.Uint32())
 }
@@ -123,7 +123,7 @@ func VHostCreateIBlock(tgtName, wwn string) error {
 	return nil
 }
 
-//GetSerialTarget returns serial from target
+// GetSerialTarget returns serial from target
 func GetSerialTarget(tgtName string) (string, error) {
 	targetRoot := filepath.Join(iBlockPath, tgtName)
 	//it returns something like "T10 VPD Unit Serial Number: 5001405043a8fbf4"
@@ -138,7 +138,7 @@ func GetSerialTarget(tgtName string) (string, error) {
 	return parts[len(parts)-1], nil
 }
 
-//CheckVHostIBlock check target vhost exists
+// CheckVHostIBlock check target vhost exists
 func CheckVHostIBlock(tgtName string) bool {
 	serial, err := GetSerialTarget(tgtName)
 	if err != nil {

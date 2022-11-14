@@ -39,8 +39,8 @@ var (
 	throttledLocalDevInfo bool
 )
 
-//updateLocalAppInfoTicker sets ticker options to the initial value
-//if throttle set, will use localAppInfoPOSTThrottledInterval as interval
+// updateLocalAppInfoTicker sets ticker options to the initial value
+// if throttle set, will use localAppInfoPOSTThrottledInterval as interval
 func updateLocalAppInfoTicker(ctx *getconfigContext, throttle bool) {
 	interval := float64(localAppInfoPOSTInterval)
 	if throttle {
@@ -503,8 +503,8 @@ func touchLocalCommands() {
 	touchSavedConfig(savedLocalCommandsFile)
 }
 
-//updateLocalDevInfoTicker sets ticker options to the initial value
-//if throttle set, will use localDevInfoPOSTThrottledInterval as interval
+// updateLocalDevInfoTicker sets ticker options to the initial value
+// if throttle set, will use localDevInfoPOSTThrottledInterval as interval
 func updateLocalDevInfoTicker(ctx *getconfigContext, throttle bool) {
 	interval := float64(localDevInfoPOSTInterval)
 	if throttle {

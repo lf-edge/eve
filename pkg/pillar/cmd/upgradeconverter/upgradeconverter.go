@@ -15,18 +15,18 @@ import (
 
 const agentName = "upgradeconverter"
 
-//UCPhase tells us which phase we are in
+// UCPhase tells us which phase we are in
 type UCPhase uint32
 
-//Different UCPhase phases we support
+// Different UCPhase phases we support
 const (
 	UCPhasePreVault UCPhase = iota + 0
 	UCPhasePostVault
 )
 
-//preVaultconversionHandlers run before vault is ready
-//Any handler that interacts with types.SealedDirName
-//should be in postVaultconversionHandlers
+// preVaultconversionHandlers run before vault is ready
+// Any handler that interacts with types.SealedDirName
+// should be in postVaultconversionHandlers
 var preVaultconversionHandlers = []ConversionHandler{
 	{
 		description: "Convert Global Settings to new format",
@@ -50,9 +50,9 @@ var preVaultconversionHandlers = []ConversionHandler{
 	},
 }
 
-//postVaultconversionHandlers run after vault is setup
-//Any handler that is not related to types.SealedDirName
-//should be in preVaultconversionHandlers
+// postVaultconversionHandlers run after vault is setup
+// Any handler that is not related to types.SealedDirName
+// should be in preVaultconversionHandlers
 var postVaultconversionHandlers = []ConversionHandler{
 	{
 		description: "Move volumes to /persist/vault",
@@ -190,11 +190,11 @@ type ConversionHandler struct {
 	handlerFunc HandlerFunc
 }
 
-//RunPostVaultHandlers invokes postVaultconversionHandlers
-//and notifies the caller through the provided ucChan channel
-//the channel is useful for calling from other agent modules
-//without missing watchdog, by spawning this as a task, and
-//select()ing for its completion
+// RunPostVaultHandlers invokes postVaultconversionHandlers
+// and notifies the caller through the provided ucChan channel
+// the channel is useful for calling from other agent modules
+// without missing watchdog, by spawning this as a task, and
+// select()ing for its completion
 func RunPostVaultHandlers(moduleName string,
 	ps *pubsub.PubSub,
 	loggerArg *logrus.Logger,
@@ -213,11 +213,11 @@ func RunPostVaultHandlers(moduleName string,
 	ucChan <- struct{}{}
 }
 
-//RunPreVaultHandlers invokes preVaultconversionHandlers
-//and notifies the caller through the provided ucChan channel
-//the channel is useful for calling from other agent modules
-//without missing watchdog, by spawning this as a task, and
-//select()ing for its completion
+// RunPreVaultHandlers invokes preVaultconversionHandlers
+// and notifies the caller through the provided ucChan channel
+// the channel is useful for calling from other agent modules
+// without missing watchdog, by spawning this as a task, and
+// select()ing for its completion
 func RunPreVaultHandlers(moduleName string,
 	ps *pubsub.PubSub,
 	loggerArg *logrus.Logger,
@@ -236,7 +236,7 @@ func RunPreVaultHandlers(moduleName string,
 	ucChan <- struct{}{}
 }
 
-//helper to invoke handlers according to the phase supplied
+// helper to invoke handlers according to the phase supplied
 func runPhase(ctx *ucContext, phase UCPhase) {
 	switch phase {
 	case UCPhasePreVault:

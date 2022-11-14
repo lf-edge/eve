@@ -116,7 +116,7 @@ func (e *SendError) Unwrap() error {
 
 var nilUUID = uuid.UUID{}
 
-//GetContextForAllIntfFunctions returns context with timeout to use with AllIntf functions
+// GetContextForAllIntfFunctions returns context with timeout to use with AllIntf functions
 // it uses 3 times of defined NetworkSendTimeout
 // and limits max wait up to MaxWaitForRequests
 func GetContextForAllIntfFunctions(ctx *ZedCloudContext) (context.Context, context.CancelFunc) {
@@ -226,13 +226,14 @@ func SendOnAllIntf(ctxWork context.Context, ctx *ZedCloudContext, url string, re
 // cost). Until we find enough working management interfaces (the limit is currently
 // hard-coded to 1 working mgmt interface), every iterated management interface
 // undergoes full end-to-end testing. First we run local checks:
-//  * Does interface (i.e. link) exist in the kernel?
-//  * Does interface have a routable IP address?
-//  * Is there any DNS server associated with the interface?
-//  * If there is a proxy config, is it valid?
-//  * If this is a wwan interface, is the modem connected and are there any errors
-//    reported by the wwan microservice?
-//  * etc.
+//   - Does interface (i.e. link) exist in the kernel?
+//   - Does interface have a routable IP address?
+//   - Is there any DNS server associated with the interface?
+//   - If there is a proxy config, is it valid?
+//   - If this is a wwan interface, is the modem connected and are there any errors
+//     reported by the wwan microservice?
+//   - etc.
+//
 // Additionally, for the full interface testing we run an HTTP GET request for the provided
 // URL to test connectivity with a remote endpoint (typically controller).
 // Once we find enough working management interfaces, the remaining interfaces (of lower
@@ -248,14 +249,15 @@ func SendOnAllIntf(ctxWork context.Context, ctx *ZedCloudContext, url string, re
 // We return a bool remoteTemporaryFailure for the cases when we reached
 // the controller but it is overloaded, or has certificate issues.
 // Return Values:
-//    success/Failure, remoteTemporaryFailure, error, intfStatusMap
-//    If Failure,
-//       remoteTemporaryFailure - indicates if it is a remote failure
-//       error  - indicates details of Errors
-//    IntfStatusMap - This status for each interface verified.
-//      Includes entries for all interfaces that were tested.
-//      If an intf is success, Error == "", else - Set to appropriate Error
-//      ErrorTime will always be set for the interface.
+//
+//	success/Failure, remoteTemporaryFailure, error, intfStatusMap
+//	If Failure,
+//	   remoteTemporaryFailure - indicates if it is a remote failure
+//	   error  - indicates details of Errors
+//	IntfStatusMap - This status for each interface verified.
+//	  Includes entries for all interfaces that were tested.
+//	  If an intf is success, Error == "", else - Set to appropriate Error
+//	  ErrorTime will always be set for the interface.
 func VerifyAllIntf(ctx *ZedCloudContext,
 	url string, requiredSuccessCount uint,
 	iteration int) (bool, bool, types.IntfStatusMap, error) {
@@ -810,7 +812,7 @@ func SendOnIntf(workContext context.Context, ctx *ZedCloudContext, destURL strin
 	return nil, nil, senderStatus, err
 }
 
-//SendLocal uses local routes to request the data
+// SendLocal uses local routes to request the data
 func SendLocal(ctx *ZedCloudContext, destURL string, intf string, ipSrc net.IP,
 	reqlen int64, b *bytes.Buffer, reqContentType string) (*http.Response, []byte, error) {
 

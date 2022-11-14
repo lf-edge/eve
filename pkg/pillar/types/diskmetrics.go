@@ -11,14 +11,14 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/base"
 )
 
-//ReportDiskPaths Report disk usage for these paths
+// ReportDiskPaths Report disk usage for these paths
 var ReportDiskPaths = []string{
 	"/",
 	IdentityDirname,
 	PersistDir,
 }
 
-//ReportDirPaths  Report directory usage for these paths
+// ReportDirPaths  Report directory usage for these paths
 var ReportDirPaths = []string{
 	PersistDir + "/downloads", // XXX old to be removed
 	PersistDir + "/img",       // XXX old to be removed
@@ -32,7 +32,7 @@ var ReportDirPaths = []string{
 	PersistDir + "/checkpoint",
 }
 
-//AppPersistPaths  Application-related files live here
+// AppPersistPaths  Application-related files live here
 // XXX do we need to exclude the ContentTrees used for eve image update?
 // If so how do we tell them apart
 var AppPersistPaths = []string{
@@ -42,7 +42,7 @@ var AppPersistPaths = []string{
 	SealedDirName + "/verifier",
 }
 
-//DiskMetric holds metrics data per disk
+// DiskMetric holds metrics data per disk
 type DiskMetric struct {
 	DiskPath   string
 	ReadBytes  uint64 // Value in Bytes. Number read Bytes.
@@ -115,7 +115,7 @@ func (status DiskMetric) LogKey() string {
 	return string(base.DiskMetricType) + "-" + status.Key()
 }
 
-//AppDiskMetric hold metrics data per appInstance volume
+// AppDiskMetric hold metrics data per appInstance volume
 type AppDiskMetric struct {
 	DiskPath         string
 	ProvisionedBytes uint64 // Value in Bytes. Total number of allotted Bytes for the disk.
@@ -192,7 +192,7 @@ type ImgInfo struct {
 	DirtyFlag   bool   `json:"dirty-flag"`
 }
 
-//UsageStat stores usage information about directory
+// UsageStat stores usage information about directory
 type UsageStat struct {
 	Total uint64
 	Used  uint64

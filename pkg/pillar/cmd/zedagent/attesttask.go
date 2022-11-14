@@ -31,13 +31,13 @@ const (
 	maxQuotePayloadSize     = 63488 // 62KB
 )
 
-//TpmAgentImpl implements zattest.TpmAgent interface
+// TpmAgentImpl implements zattest.TpmAgent interface
 type TpmAgentImpl struct{}
 
-//VerifierImpl implements zattest.Verifier interface
+// VerifierImpl implements zattest.Verifier interface
 type VerifierImpl struct{}
 
-//WatchdogImpl implements zattest.Watchdog interface
+// WatchdogImpl implements zattest.Watchdog interface
 type WatchdogImpl struct{}
 
 // Attest Information Context
@@ -71,7 +71,7 @@ const (
 	EventLogPath = "/sys/kernel/security/tpm0/binary_bios_measurements"
 )
 
-//One shot send, if fails, return an error to the state machine to retry later
+// One shot send, if fails, return an error to the state machine to retry later
 func trySendToController(attestReq *attest.ZAttestReq, iteration int) (*http.Response, []byte, types.SenderResult, error) {
 	log.Noticef("trySendToController type %d", attestReq.ReqType)
 	data, err := proto.Marshal(attestReq)
@@ -95,8 +95,8 @@ func trySendToController(attestReq *attest.ZAttestReq, iteration int) (*http.Res
 	return resp, contents, senderStatus, err
 }
 
-//setAttestErrorAndTriggerInfo sets errorDescription on zattest.Context,
-//triggers publishing of device info
+// setAttestErrorAndTriggerInfo sets errorDescription on zattest.Context,
+// triggers publishing of device info
 func setAttestErrorAndTriggerInfo(ctx *zattest.Context, errorDescription types.ErrorDescription) {
 	ctx.SetErrorDescription(errorDescription)
 	attestCtx, ok := ctx.OpaqueCtx.(*attestContext)
@@ -107,7 +107,7 @@ func setAttestErrorAndTriggerInfo(ctx *zattest.Context, errorDescription types.E
 	triggerPublishDevInfo(attestCtx.zedagentCtx)
 }
 
-//SendNonceRequest implements SendNonceRequest method of zattest.Verifier
+// SendNonceRequest implements SendNonceRequest method of zattest.Verifier
 func (server *VerifierImpl) SendNonceRequest(ctx *zattest.Context) error {
 	if ctx.OpaqueCtx == nil {
 		log.Fatalf("[ATTEST] Uninitialized access to OpaqueCtx")
@@ -206,7 +206,7 @@ func combineBiosFields(biosVendor, biosVersion, biosReleaseDate string) string {
 	return biosStr
 }
 
-//encodeVersions fetches EVE, UEFI versions
+// encodeVersions fetches EVE, UEFI versions
 func encodeVersions(quoteMsg *attest.ZAttestQuote) error {
 	quoteMsg.Versions = make([]*attest.AttestVersionInfo, 0)
 	eveVersion := new(attest.AttestVersionInfo)
@@ -234,7 +234,7 @@ func encodeVersions(quoteMsg *attest.ZAttestQuote) error {
 	return nil
 }
 
-//encodePCRValues encodes PCR values from types.AttestQuote into attest.ZAttestQuote
+// encodePCRValues encodes PCR values from types.AttestQuote into attest.ZAttestQuote
 func encodePCRValues(internalQuote *types.AttestQuote, quoteMsg *attest.ZAttestQuote) error {
 	quoteMsg.PcrValues = make([]*attest.TpmPCRValue, 0)
 	for _, pcr := range internalQuote.PCRs {
@@ -256,7 +256,7 @@ func encodePCRValues(internalQuote *types.AttestQuote, quoteMsg *attest.ZAttestQ
 	return nil
 }
 
-//SendAttestQuote implements SendAttestQuote method of zattest.Verifier
+// SendAttestQuote implements SendAttestQuote method of zattest.Verifier
 func (server *VerifierImpl) SendAttestQuote(ctx *zattest.Context) error {
 	if ctx.OpaqueCtx == nil {
 		log.Fatalf("[ATTEST] Uninitialized access to OpaqueCtx")
@@ -430,7 +430,7 @@ func (server *VerifierImpl) SendAttestQuote(ctx *zattest.Context) error {
 	}
 }
 
-//SendAttestEscrow implements SendAttestEscrow method of zattest.Verifier
+// SendAttestEscrow implements SendAttestEscrow method of zattest.Verifier
 func (server *VerifierImpl) SendAttestEscrow(ctx *zattest.Context) error {
 	if ctx.OpaqueCtx == nil {
 		log.Fatalf("[ATTEST] Uninitialized access to OpaqueCtx")
@@ -547,7 +547,7 @@ func (server *VerifierImpl) SendAttestEscrow(ctx *zattest.Context) error {
 	}
 }
 
-//SendInternalQuoteRequest implements SendInternalQuoteRequest method of zattest.TpmAgent
+// SendInternalQuoteRequest implements SendInternalQuoteRequest method of zattest.TpmAgent
 func (agent *TpmAgentImpl) SendInternalQuoteRequest(ctx *zattest.Context) error {
 	if ctx.OpaqueCtx == nil {
 		log.Fatalf("[ATTEST] Uninitialized access to OpaqueCtx")
@@ -567,15 +567,15 @@ func (agent *TpmAgentImpl) SendInternalQuoteRequest(ctx *zattest.Context) error 
 	return nil
 }
 
-//PunchWatchdog implements PunchWatchdog method of zattest.Watchdog
+// PunchWatchdog implements PunchWatchdog method of zattest.Watchdog
 func (wd *WatchdogImpl) PunchWatchdog(ctx *zattest.Context) error {
 	log.Trace("[ATTEST] Punching watchdog")
 	ctx.PubSub.StillRunning(attestWdName, warningTime, errorTime)
 	return nil
 }
 
-//parseTpmEventLog parses TPM Event Log and stores it given attestContext
-//any error during parsing is stored in EventLogParseErr
+// parseTpmEventLog parses TPM Event Log and stores it given attestContext
+// any error during parsing is stored in EventLogParseErr
 func parseTpmEventLog(attestCtx *attestContext) {
 	events, err := eventlog.ParseEvents(EventLogPath)
 	attestCtx.EventLogEntries = events
@@ -604,7 +604,7 @@ func encodeEventLog(attestCtx *attestContext, quoteMsg *attest.ZAttestQuote) err
 	return nil
 }
 
-//cleanupEventLog removes event binary data from EventLog which exceed size limit
+// cleanupEventLog removes event binary data from EventLog which exceed size limit
 func cleanupEventLog(quoteMsg *attest.ZAttestQuote) {
 	for _, el := range quoteMsg.EventLog {
 		if el.EventBinarySize > eventLogBinarySizeLimit {
@@ -855,7 +855,7 @@ func unpublishAttestNonce(ctx *attestContext) {
 	log.Tracef("[ATTEST] unpublishAttestNonce done for %s", key)
 }
 
-//helper to set IntegrityToken
+// helper to set IntegrityToken
 func storeIntegrityToken(token []byte) {
 	if len(token) == 0 {
 		log.Warnf("[ATTEST] Received empty integrity token")
@@ -866,12 +866,12 @@ func storeIntegrityToken(token []byte) {
 	}
 }
 
-//helper to get IntegrityToken
+// helper to get IntegrityToken
 func readIntegrityToken() ([]byte, error) {
 	return ioutil.ReadFile(types.ITokenFile)
 }
 
-//trigger restart event in attesation FSM
+// trigger restart event in attesation FSM
 func restartAttestation(zedagentCtx *zedagentContext) error {
 	if zedagentCtx.attestCtx == nil {
 		log.Fatalf("[ATTEST] Uninitialized access to attestCtx")

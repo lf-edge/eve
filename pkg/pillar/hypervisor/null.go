@@ -12,7 +12,7 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-//NullHypervisorName is a name of null hypervisor
+// NullHypervisorName is a name of null hypervisor
 const NullHypervisorName = "null"
 
 type domState struct {
@@ -118,7 +118,7 @@ func (ctx nullContext) Delete(domainName string) error {
 	return nil
 }
 
-//Cleanup is noop for null hypervisor
+// Cleanup is noop for null hypervisor
 func (ctx nullContext) Cleanup(_ string) error {
 	return nil
 }

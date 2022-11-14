@@ -50,11 +50,11 @@ type DeferredContext struct {
 	iteration              int
 }
 
-//TypePriorityCheckFunction returns true in case of find type with high priority
+// TypePriorityCheckFunction returns true in case of find type with high priority
 type TypePriorityCheckFunction func(itemType interface{}) bool
 
-//SentHandlerFunction allow doing something with data if it was handled
-//result indicates sending result
+// SentHandlerFunction allow doing something with data if it was handled
+// result indicates sending result
 type SentHandlerFunction func(itemType interface{}, data *bytes.Buffer, result types.SenderResult)
 
 // GetDeferredChan creates and returns a channel to the caller
@@ -215,7 +215,8 @@ func (ctx *DeferredContext) handleDeferred(log *base.LogObject, event time.Time,
 // SetDeferred uses the key for identifying the channel. Please note that
 // for deviceUUID key is used for attestUrl, which is not the same for
 // other Urls, where in other caes, the key is very specific for the object
-//  and object type
+//
+//	and object type
 func SetDeferred(zedcloudCtx *ZedCloudContext, key string, buf *bytes.Buffer,
 	size int64, url string, bailOnHTTPErr bool, itemType interface{}) {
 

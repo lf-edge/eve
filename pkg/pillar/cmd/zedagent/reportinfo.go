@@ -957,7 +957,7 @@ func encodeSystemAdapterInfo(ctx *zedagentContext) *info.SystemAdapterInfo {
 	return sainfo
 }
 
-//getDataSecAtRestInfo prepares status related to Data security at Rest
+// getDataSecAtRestInfo prepares status related to Data security at Rest
 func getDataSecAtRestInfo(ctx *zedagentContext) *info.DataSecAtRest {
 	subVaultStatus := ctx.subVaultStatus
 	ReportDataSecAtRestInfo := new(info.DataSecAtRest)

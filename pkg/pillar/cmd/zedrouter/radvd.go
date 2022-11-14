@@ -35,6 +35,7 @@ interface %s {
 
 // Create the radvd config file for the overlay
 // Would be more polite to return an error then to Fatal
+//
 //	olIfname - Overlay Interface Name
 func createRadvdConfiglet(cfgPathname string, olIfname string) {
 
@@ -56,7 +57,8 @@ func deleteRadvdConfiglet(cfgPathname string) {
 }
 
 // Run this:
-//    radvd -u radvd -C /run/zedrouter/radvd.${OLIFNAME}.conf -p /run/radvd.${OLIFNAME}.pid
+//
+//	radvd -u radvd -C /run/zedrouter/radvd.${OLIFNAME}.conf -p /run/radvd.${OLIFNAME}.pid
 func startRadvd(cfgPathname string, olIfname string) {
 
 	log.Tracef("startRadvd: %s\n", cfgPathname)

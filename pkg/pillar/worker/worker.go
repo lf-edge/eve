@@ -296,7 +296,7 @@ func (w *Single) deletePendingLocked(key string) {
 	delete(w.workMap, key)
 }
 
-//  lookupResultLocked assumes caller holds lock
+// lookupResultLocked assumes caller holds lock
 func (w *Single) lookupResultLocked(key string) *WorkResult {
 	if res, ok := w.resultMap[key]; ok {
 		return &res

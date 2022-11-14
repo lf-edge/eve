@@ -1881,7 +1881,7 @@ func doInactivate(ctx *domainContext, status *types.DomainStatus, impatient bool
 		status.UUIDandVersion, status.DisplayName)
 }
 
-//unmountContainers process provided diskStatusList and unmount all disks with Format_CONTAINER
+// unmountContainers process provided diskStatusList and unmount all disks with Format_CONTAINER
 func unmountContainers(ctx *domainContext, diskStatusList []types.DiskStatus, force bool) bool {
 	done := true
 	for _, ds := range diskStatusList {

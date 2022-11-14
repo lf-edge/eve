@@ -6,9 +6,11 @@ package iptables
 // Connection mark is used to remember for a given flow to which application it belongs
 // and which ACE was applied.
 // The 32 bits of a connmark are used as follows:
-//  +------------------------+---------------+------------------+
-//  | Application ID (8bits) | Action (1bit) | ACE ID (23 bits) |
-//  +------------------------+---------------+------------------+
+//
+//	+------------------------+---------------+------------------+
+//	| Application ID (8bits) | Action (1bit) | ACE ID (23 bits) |
+//	+------------------------+---------------+------------------+
+//
 // where: Drop action = 1; Allow action = 0
 const (
 	// AppIDMask : bits of the connection mark allocated to store application ID.

@@ -74,7 +74,7 @@ func GetPrivateKeyFromFile(keyFile string) (*ecdsa.PrivateKey, error) {
 	}
 }
 
-//GetPublicKeyFromCert gets public key from a X.509 cert
+// GetPublicKeyFromCert gets public key from a X.509 cert
 func GetPublicKeyFromCert(certFile string) (crypto.PublicKey, error) {
 	//read public key from ecdh certificate
 	certBytes, err := ioutil.ReadFile(certFile)

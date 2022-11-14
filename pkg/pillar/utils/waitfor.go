@@ -14,7 +14,7 @@ import (
 	uuid "github.com/satori/go.uuid"
 )
 
-//Context is a helper struct used to pass around in pubsub handlers
+// Context is a helper struct used to pass around in pubsub handlers
 type Context struct {
 	Initialized bool
 }

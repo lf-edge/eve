@@ -8,7 +8,7 @@
 //
 // The API is not subject to the Go 1 compatibility promise and may change at
 // any time.
-//package httpproxy
+// package httpproxy
 package zedcloud
 
 import (

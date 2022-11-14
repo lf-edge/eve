@@ -115,7 +115,7 @@ func (c *containerdCAS) SnapshotUsage(snapshotID string, parents bool) (int64, e
 	return size, nil
 }
 
-//CheckBlobExists: returns true if the blob exists. Arg 'blobHash' should be of format sha256:<hash>.
+// CheckBlobExists: returns true if the blob exists. Arg 'blobHash' should be of format sha256:<hash>.
 func (c *containerdCAS) CheckBlobExists(blobHash string) bool {
 	ctrdCtx, done := c.ctrdClient.CtrNewUserServicesCtx()
 	defer done()
@@ -123,9 +123,9 @@ func (c *containerdCAS) CheckBlobExists(blobHash string) bool {
 	return err == nil
 }
 
-//GetBlobInfo: returns BlobInfo of type BlobInfo for the given blobHash.
+// GetBlobInfo: returns BlobInfo of type BlobInfo for the given blobHash.
 // Arg 'blobHash' should be of format sha256:<hash>.
-//Returns error if no blob is found for the given 'blobHash'.
+// Returns error if no blob is found for the given 'blobHash'.
 func (c *containerdCAS) GetBlobInfo(blobHash string) (*BlobInfo, error) {
 	ctrdCtx, done := c.ctrdClient.CtrNewUserServicesCtx()
 	defer done()
@@ -141,7 +141,7 @@ func (c *containerdCAS) GetBlobInfo(blobHash string) (*BlobInfo, error) {
 	}, nil
 }
 
-//ListBlobInfo: returns list of BlobInfo for all the blob present in CAS
+// ListBlobInfo: returns list of BlobInfo for all the blob present in CAS
 func (c *containerdCAS) ListBlobInfo() ([]*BlobInfo, error) {
 	ctrdCtx, done := c.ctrdClient.CtrNewUserServicesCtx()
 	defer done()
@@ -377,10 +377,10 @@ func (c *containerdCAS) IngestBlob(ctx context.Context, blobs ...types.BlobStatu
 	return loadedBlobs, nil
 }
 
-//UpdateBlobInfo updates BlobInfo of a blob in CAS.
-//Arg is BlobInfo type struct in which BlobInfo.Digest is mandatory, and other field are to be filled
+// UpdateBlobInfo updates BlobInfo of a blob in CAS.
+// Arg is BlobInfo type struct in which BlobInfo.Digest is mandatory, and other field are to be filled
 // only if its needed to be updated
-//Returns error is no blob is found match blobInfo.Digest
+// Returns error is no blob is found match blobInfo.Digest
 func (c *containerdCAS) UpdateBlobInfo(blobInfo BlobInfo) error {
 	ctrdCtx, done := c.ctrdClient.CtrNewUserServicesCtx()
 	defer done()
@@ -423,9 +423,9 @@ func (c *containerdCAS) UpdateBlobInfo(blobInfo BlobInfo) error {
 	return nil
 }
 
-//ReadBlob: returns a reader to consume the raw data of the blob which matches the given arg 'blobHash'.
-//Returns error if no blob is found for the given 'blobHash'.
-//Arg 'blobHash' should be of format sha256:<hash>.
+// ReadBlob: returns a reader to consume the raw data of the blob which matches the given arg 'blobHash'.
+// Returns error if no blob is found for the given 'blobHash'.
+// Arg 'blobHash' should be of format sha256:<hash>.
 func (c *containerdCAS) ReadBlob(ctrdCtx context.Context, blobHash string) (io.Reader, error) {
 	reader, err := c.ctrdClient.CtrReadBlob(ctrdCtx, blobHash)
 	if err != nil {
@@ -435,9 +435,9 @@ func (c *containerdCAS) ReadBlob(ctrdCtx context.Context, blobHash string) (io.R
 	return reader, nil
 }
 
-//RemoveBlob: removes a blob which matches the given arg 'blobHash'.
-//To keep this method idempotent, no error is returned if the given arg 'blobHash' does not match any blob.
-//Arg 'blobHash' should be of format sha256:<hash>.
+// RemoveBlob: removes a blob which matches the given arg 'blobHash'.
+// To keep this method idempotent, no error is returned if the given arg 'blobHash' does not match any blob.
+// Arg 'blobHash' should be of format sha256:<hash>.
 func (c *containerdCAS) RemoveBlob(blobHash string) error {
 	ctrdCtx, done := c.ctrdClient.CtrNewUserServicesCtx()
 	defer done()
@@ -448,9 +448,9 @@ func (c *containerdCAS) RemoveBlob(blobHash string) error {
 	return nil
 }
 
-//Children: returns a list of child blob hashes if the given arg 'blobHash' belongs to a
+// Children: returns a list of child blob hashes if the given arg 'blobHash' belongs to a
 // index or a manifest blob, else an empty list is returned.
-//Format of returned blob hash list and arg 'blobHash' is sha256:<hash>.
+// Format of returned blob hash list and arg 'blobHash' is sha256:<hash>.
 func (c *containerdCAS) Children(blobHash string) ([]string, error) {
 	ctrdCtx, done := c.ctrdClient.CtrNewUserServicesCtx()
 	defer done()
@@ -477,9 +477,9 @@ func (c *containerdCAS) Children(blobHash string) ([]string, error) {
 	return childBlobSha256, nil
 }
 
-//CreateImage: creates a reference which points to a blob with 'blobHash'. 'blobHash' must belong to a index blob
-//Arg 'blobHash' should be of format sha256:<hash>.
-//Returns error if no blob is found matching the given 'blobHash' or if the given 'blobHash' does not belong to an index.
+// CreateImage: creates a reference which points to a blob with 'blobHash'. 'blobHash' must belong to a index blob
+// Arg 'blobHash' should be of format sha256:<hash>.
+// Returns error if no blob is found matching the given 'blobHash' or if the given 'blobHash' does not belong to an index.
 func (c *containerdCAS) CreateImage(reference, mediaType, blobHash string) error {
 	ctrdCtx, done := c.ctrdClient.CtrNewUserServicesCtx()
 	defer done()
@@ -508,7 +508,7 @@ func (c *containerdCAS) CreateImage(reference, mediaType, blobHash string) error
 	return nil
 }
 
-//GetImageHash: returns a blob hash of format sha256:<hash> which the given 'reference' is pointing to.
+// GetImageHash: returns a blob hash of format sha256:<hash> which the given 'reference' is pointing to.
 // Returns error if the given 'reference' is not found.
 func (c *containerdCAS) GetImageHash(reference string) (string, error) {
 	ctrdCtx, done := c.ctrdClient.CtrNewUserServicesCtx()
@@ -521,7 +521,7 @@ func (c *containerdCAS) GetImageHash(reference string) (string, error) {
 	return image.Target().Digest.String(), nil
 }
 
-//ListImages: returns a list of references
+// ListImages: returns a list of references
 func (c *containerdCAS) ListImages() ([]string, error) {
 	ctrdCtx, done := c.ctrdClient.CtrNewUserServicesCtx()
 	defer done()
@@ -538,8 +538,8 @@ func (c *containerdCAS) ListImages() ([]string, error) {
 	return imageNameList, nil
 }
 
-//RemoveImage removes an reference from CAS
-//To keep this method idempotent, no error  is returned if the given 'reference' is not found.
+// RemoveImage removes an reference from CAS
+// To keep this method idempotent, no error  is returned if the given 'reference' is not found.
 func (c *containerdCAS) RemoveImage(reference string) error {
 	ctrdCtx, done := c.ctrdClient.CtrNewUserServicesCtx()
 	defer done()
@@ -550,10 +550,10 @@ func (c *containerdCAS) RemoveImage(reference string) error {
 	return nil
 }
 
-//ReplaceImage: replaces the blob hash to which the given 'reference' is pointing to with the given 'blobHash'.
-//Returns error if the given 'reference' or a blob matching the given arg 'blobHash' is not found.
-//Returns if the given 'blobHash' does not belong to an index.
-//Arg 'blobHash' should be of format sha256:<hash>.
+// ReplaceImage: replaces the blob hash to which the given 'reference' is pointing to with the given 'blobHash'.
+// Returns error if the given 'reference' or a blob matching the given arg 'blobHash' is not found.
+// Returns if the given 'blobHash' does not belong to an index.
+// Arg 'blobHash' should be of format sha256:<hash>.
 func (c *containerdCAS) ReplaceImage(reference, mediaType, blobHash string) error {
 	ctrdCtx, done := c.ctrdClient.CtrNewUserServicesCtx()
 	defer done()
@@ -576,8 +576,8 @@ func (c *containerdCAS) ReplaceImage(reference, mediaType, blobHash string) erro
 	return nil
 }
 
-//CreateSnapshotForImage: creates an snapshot with the given snapshotID for the given 'reference'
-//Arg 'snapshotID' should be of format sha256:<hash>.
+// CreateSnapshotForImage: creates an snapshot with the given snapshotID for the given 'reference'
+// Arg 'snapshotID' should be of format sha256:<hash>.
 func (c *containerdCAS) CreateSnapshotForImage(snapshotID, reference string) error {
 	ctrdCtx, done := c.ctrdClient.CtrNewUserServicesCtx()
 	defer done()
@@ -598,8 +598,8 @@ func (c *containerdCAS) CreateSnapshotForImage(snapshotID, reference string) err
 	return nil
 }
 
-//MountSnapshot: mounts the snapshot on the given target path
-//Arg 'snapshotID' should be of format sha256:<hash>.
+// MountSnapshot: mounts the snapshot on the given target path
+// Arg 'snapshotID' should be of format sha256:<hash>.
 func (c *containerdCAS) MountSnapshot(snapshotID, targetPath string) error {
 	ctrdCtx, done := c.ctrdClient.CtrNewUserServicesCtx()
 	defer done()
@@ -610,7 +610,7 @@ func (c *containerdCAS) MountSnapshot(snapshotID, targetPath string) error {
 	return nil
 }
 
-//ListSnapshots: returns a list of snapshotIDs where each entry is of format sha256:<hash>.
+// ListSnapshots: returns a list of snapshotIDs where each entry is of format sha256:<hash>.
 func (c *containerdCAS) ListSnapshots() ([]string, error) {
 	ctrdCtx, done := c.ctrdClient.CtrNewUserServicesCtx()
 	defer done()
@@ -625,9 +625,9 @@ func (c *containerdCAS) ListSnapshots() ([]string, error) {
 	return snapshotIDList, nil
 }
 
-//ListSnapshots: removes a snapshot matching the given 'snapshotID'.
-//Arg 'snapshotID' should be of format sha256:<hash>.
-//To keep this method idempotent, no error  is returned if the given 'snapshotID' is not found.
+// ListSnapshots: removes a snapshot matching the given 'snapshotID'.
+// Arg 'snapshotID' should be of format sha256:<hash>.
+// To keep this method idempotent, no error  is returned if the given 'snapshotID' is not found.
 func (c *containerdCAS) RemoveSnapshot(snapshotID string) error {
 	ctrdCtx, done := c.ctrdClient.CtrNewUserServicesCtx()
 	defer done()
@@ -642,7 +642,9 @@ func (c *containerdCAS) RemoveSnapshot(snapshotID string) error {
 // This effectively voids any kind of caching, but on the flip side frees us
 // from cache invalidation. Additionally this API should deposit an OCI config json file and image name
 // next to the rootfs so that the effective structure becomes:
-//    rootPath/rootfs, rootPath/image-config.json
+//
+//	rootPath/rootfs, rootPath/image-config.json
+//
 // The rootPath is expected to end in a basename that becomes the snapshotID
 func (c *containerdCAS) PrepareContainerRootDir(rootPath, reference, rootBlobSha string) error {
 	//Step 1: On device restart, the existing bundle is not deleted, we need to delete the
@@ -809,7 +811,7 @@ func (c *containerdCAS) Resolver(ctrdCtx context.Context) (resolver.ResolverClos
 	return c.ctrdClient.Resolver(ctrdCtx)
 }
 
-//CloseClient closes the containerd CAS client initialized while calling `NewCAS()`
+// CloseClient closes the containerd CAS client initialized while calling `NewCAS()`
 func (c *containerdCAS) CloseClient() error {
 	if err := c.ctrdClient.CloseClient(); err != nil {
 		err = fmt.Errorf("CloseClient: Exception while closinn %s CAS client: %s", casClientType, err.Error())
@@ -825,7 +827,7 @@ func (c *containerdCAS) CtrNewUserServicesCtx() (context.Context, context.Cancel
 	return c.ctrdClient.CtrNewUserServicesCtx()
 }
 
-//newContainerdCAS: constructor for containerd CAS
+// newContainerdCAS: constructor for containerd CAS
 func newContainerdCAS() CAS {
 	ctrdClient, err := containerd.NewContainerdClient(true)
 	if err != nil {
@@ -834,7 +836,7 @@ func newContainerdCAS() CAS {
 	return &containerdCAS{ctrdClient: ctrdClient}
 }
 
-//getIndexManifest: returns a indexManifest by parsing the given blobSha256
+// getIndexManifest: returns a indexManifest by parsing the given blobSha256
 func getIndexManifest(c *containerdCAS, blobSha256 string) (*v1.IndexManifest, error) {
 	ctrdCtx, done := c.ctrdClient.CtrNewUserServicesCtx()
 	defer done()
@@ -850,7 +852,7 @@ func getIndexManifest(c *containerdCAS, blobSha256 string) (*v1.IndexManifest, e
 	return index, nil
 }
 
-//getManifestFromIndex: returns Manifest for the current architecture from IndexManifest
+// getManifestFromIndex: returns Manifest for the current architecture from IndexManifest
 func getManifestFromIndex(c *containerdCAS, indexManifest *v1.IndexManifest) (*v1.Manifest, error) {
 	manifestSha256, err := getManifestBlobSha256FromIndex(indexManifest)
 	if err != nil {
@@ -859,7 +861,7 @@ func getManifestFromIndex(c *containerdCAS, indexManifest *v1.IndexManifest) (*v
 	return getManifest(c, manifestSha256)
 }
 
-//getManifest: returns manifest as type v1.Manifest byr parsing the given blobSha256
+// getManifest: returns manifest as type v1.Manifest byr parsing the given blobSha256
 func getManifest(c *containerdCAS, blobSha256 string) (*v1.Manifest, error) {
 	ctrdCtx, done := c.ctrdClient.CtrNewUserServicesCtx()
 	defer done()
@@ -875,7 +877,7 @@ func getManifest(c *containerdCAS, blobSha256 string) (*v1.Manifest, error) {
 	return manifest, nil
 }
 
-//getManifestBlobSha256FromIndex: return blobSha256 of an manifest for the current architecture
+// getManifestBlobSha256FromIndex: return blobSha256 of an manifest for the current architecture
 func getManifestBlobSha256FromIndex(indexManifest *v1.IndexManifest) (string, error) {
 	if indexManifest.Manifests == nil {
 		return "", fmt.Errorf("getManifestBlobSha256FromIndex: No manifests found in index")
@@ -888,7 +890,7 @@ func getManifestBlobSha256FromIndex(indexManifest *v1.IndexManifest) (string, er
 	return "", fmt.Errorf("getManifestBlobSha256FromIndex: No manifest found in the Index for arch: %s", runtime.GOARCH)
 }
 
-//isNotFoundError: returns true if the given error is a "not found" error
+// isNotFoundError: returns true if the given error is a "not found" error
 func isNotFoundError(err error) bool {
 	return strings.HasSuffix(err.Error(), "not found")
 }
@@ -902,7 +904,7 @@ func getBlobSize(c *containerdCAS, blobHash string) (int64, error) {
 	return info.Size, nil
 }
 
-//getImageConfig returns imageConfig for a reference
+// getImageConfig returns imageConfig for a reference
 func getImageConfig(c *containerdCAS, reference string) (*ocispec.Image, error) {
 	index := ocispec.Index{}
 	manifests := ocispec.Manifest{}

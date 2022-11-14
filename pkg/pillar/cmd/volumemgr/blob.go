@@ -116,7 +116,7 @@ func downloadBlob(ctx *volumemgrContext, blob *types.BlobStatus) bool {
 	return changed
 }
 
-//AddRefToBlobStatus adds the refObject as an reference to the blobs in the given blob list.
+// AddRefToBlobStatus adds the refObject as an reference to the blobs in the given blob list.
 func AddRefToBlobStatus(ctx *volumemgrContext, blobStatus ...*types.BlobStatus) {
 	for _, blob := range blobStatus {
 		blob.RefCount++
@@ -127,7 +127,7 @@ func AddRefToBlobStatus(ctx *volumemgrContext, blobStatus ...*types.BlobStatus) 
 	}
 }
 
-//RemoveRefFromBlobStatus removes the reference from the blobs in the given blob list.
+// RemoveRefFromBlobStatus removes the reference from the blobs in the given blob list.
 func RemoveRefFromBlobStatus(ctx *volumemgrContext, blobStatus ...*types.BlobStatus) {
 	for _, blob := range blobStatus {
 		if blob.RefCount == 0 {
@@ -515,7 +515,7 @@ func unpublishBlobStatus(ctx *volumemgrContext, blobs ...*types.BlobStatus) {
 	}
 }
 
-//populateInitBlobStatus fetches all blob present in CAS and publishes a BlobStatus for them
+// populateInitBlobStatus fetches all blob present in CAS and publishes a BlobStatus for them
 func populateInitBlobStatus(ctx *volumemgrContext) {
 	blobInfoList, err := ctx.casClient.ListBlobInfo()
 	if err != nil {
@@ -570,7 +570,7 @@ func setBlobTypeFromContentType(blob *types.BlobStatus, contentType string) bool
 	return true
 }
 
-//gcBlobStatus gc all blob object which doesn't have any reference
+// gcBlobStatus gc all blob object which doesn't have any reference
 func gcBlobStatus(ctx *volumemgrContext) {
 	log.Functionf("gcBlobStatus")
 	pub := ctx.pubBlobStatus
@@ -583,7 +583,7 @@ func gcBlobStatus(ctx *volumemgrContext) {
 	}
 }
 
-//gcImagesFromCAS gc all unused images from CAS
+// gcImagesFromCAS gc all unused images from CAS
 func gcImagesFromCAS(ctx *volumemgrContext) {
 	log.Functionf("gcImagesFromCAS")
 	contentIDAndContentTreeStatus := getAllContentTreeStatus(ctx)
@@ -608,7 +608,7 @@ func gcImagesFromCAS(ctx *volumemgrContext) {
 	}
 }
 
-//checkAndCorrectBlobHash checks if the blobHash has hash algo sha256 as prefix. If not then it'll prepend it.
+// checkAndCorrectBlobHash checks if the blobHash has hash algo sha256 as prefix. If not then it'll prepend it.
 func checkAndCorrectBlobHash(blobHash string) string {
 	return fmt.Sprintf("sha256:%s", strings.TrimPrefix(blobHash, "sha256:"))
 }

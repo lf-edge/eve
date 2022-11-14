@@ -6,7 +6,8 @@ package iptables
 // ControlProtocolMarkingIDMap : Map describing the control flow
 // marking values that we intend to use.
 // XXX Only used by nim currently hence no concurrency.
-//     But LockedStringMap would be better.
+//
+//	But LockedStringMap would be better.
 var ControlProtocolMarkingIDMap = map[string]string{
 	// INPUT flows for HTTP, SSH & GUACAMOLE
 	"in_http_ssh_guacamole": "1",

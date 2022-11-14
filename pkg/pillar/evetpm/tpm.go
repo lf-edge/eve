@@ -74,11 +74,11 @@ const (
 	vaultKeyLength = 32 //Bytes
 )
 
-//PCRBank256Status stores info about support for
-//SHA256 PCR bank on this device
+// PCRBank256Status stores info about support for
+// SHA256 PCR bank on this device
 type PCRBank256Status uint32
 
-//Different values for PCRBank256Status
+// Different values for PCRBank256Status
 const (
 	PCRBank256StatusUnknown PCRBank256Status = iota + 0
 	PCRBank256StatusSupported
@@ -97,11 +97,11 @@ var (
 	DiskKeySealingPCRs = tpm2.PCRSelection{Hash: tpm2.AlgSHA1, PCRs: []int{0, 1, 2, 3, 4, 6, 7, 8, 9, 13}}
 )
 
-//SealedKeyType holds different types of sealed key
-//defined below
+// SealedKeyType holds different types of sealed key
+// defined below
 type SealedKeyType uint32
 
-//Different sealed key types, for logging purposes
+// Different sealed key types, for logging purposes
 const (
 	SealedKeyTypeUnknown     SealedKeyType = iota + 0 //Invalid
 	SealedKeyTypeReused                               //Sealed key is cloned from legacy key
@@ -109,7 +109,7 @@ const (
 	SealedKeyTypeUnprotected                          //Sealed key is not available, using legacy key
 )
 
-//String returns verbose string for SealedKeyType value
+// String returns verbose string for SealedKeyType value
 func (s SealedKeyType) String() string {
 	switch s {
 	case SealedKeyTypeUnknown:
@@ -125,12 +125,12 @@ func (s SealedKeyType) String() string {
 	}
 }
 
-//TpmPrivateKey is Custom implementation of crypto.PrivateKey interface
+// TpmPrivateKey is Custom implementation of crypto.PrivateKey interface
 type TpmPrivateKey struct {
 	PublicKey crypto.PublicKey
 }
 
-//Helper structure to pack ecdsa signature for ASN1 encoding
+// Helper structure to pack ecdsa signature for ASN1 encoding
 type ecdsaSignature struct {
 	R, S *big.Int
 }
@@ -142,7 +142,7 @@ func SetDevicePublicKey(pubkey crypto.PublicKey) {
 	myDevicePublicKey = pubkey
 }
 
-//Public implements crypto.PrivateKey interface
+// Public implements crypto.PrivateKey interface
 func (s TpmPrivateKey) Public() crypto.PublicKey {
 	if myDevicePublicKey != nil {
 		ecdsaPublicKey := myDevicePublicKey.(*ecdsa.PublicKey)
@@ -159,7 +159,7 @@ func (s TpmPrivateKey) Public() crypto.PublicKey {
 	return ecdsaPublicKey
 }
 
-//Sign implements crypto.PrivateKey interface
+// Sign implements crypto.PrivateKey interface
 func (s TpmPrivateKey) Sign(r io.Reader, digest []byte, opts crypto.SignerOpts) ([]byte, error) {
 	R, S, err := TpmSign(digest)
 	if err != nil {
@@ -168,7 +168,7 @@ func (s TpmPrivateKey) Sign(r io.Reader, digest []byte, opts crypto.SignerOpts) 
 	return asn1.Marshal(ecdsaSignature{R, S})
 }
 
-//ReadOwnerCrdl returns credential specific to this device
+// ReadOwnerCrdl returns credential specific to this device
 func ReadOwnerCrdl() (string, error) {
 	tpmOwnerPasswdBytes, err := ioutil.ReadFile(TpmCredentialsFileName)
 	if err != nil {
@@ -181,8 +181,8 @@ func ReadOwnerCrdl() (string, error) {
 	return tpmOwnerPasswd, nil
 }
 
-//TpmSign is used by external packages to get a digest signed by
-//device key in TPM
+// TpmSign is used by external packages to get a digest signed by
+// device key in TPM
 func TpmSign(digest []byte) (*big.Int, *big.Int, error) {
 
 	rw, err := tpm2.OpenTPM(TpmDevicePath)
@@ -213,14 +213,14 @@ func TpmSign(digest []byte) (*big.Int, *big.Int, error) {
 	return sig.ECC.R, sig.ECC.S, nil
 }
 
-//IsTpmEnabled checks if TPM is being used by software for creating device cert
+// IsTpmEnabled checks if TPM is being used by software for creating device cert
 // Note that this must not be called before the device certificate has been generated
 func IsTpmEnabled() bool {
 	return fileutils.FileExists(nil, types.DeviceCertName) &&
 		!fileutils.FileExists(nil, types.DeviceKeyName)
 }
 
-//GetRandom returns a random []byte of requested length
+// GetRandom returns a random []byte of requested length
 func GetRandom(numBytes uint16) ([]byte, error) {
 	rw, err := tpm2.OpenTPM(TpmDevicePath)
 	if err != nil {
@@ -230,7 +230,7 @@ func GetRandom(numBytes uint16) ([]byte, error) {
 	return tpm2.GetRandom(rw, numBytes)
 }
 
-//GetModelName combines vendor1 and vendor2 values into a string
+// GetModelName combines vendor1 and vendor2 values into a string
 func GetModelName(vendorValue1 uint32, vendorValue2 uint32) string {
 	uintToByteArr := func(value uint32) []byte {
 		get8 := func(val uint32, offset uint32) uint8 {
@@ -250,7 +250,7 @@ func GetModelName(vendorValue1 uint32, vendorValue2 uint32) string {
 	return string(model)
 }
 
-//GetFirmwareVersion converts v1, v2 values from TPM properties to string
+// GetFirmwareVersion converts v1, v2 values from TPM properties to string
 func GetFirmwareVersion(v1 uint32, v2 uint32) string {
 	get16 := func(val uint32, offset uint32) uint16 {
 		return uint16((val >> ((1 - offset) * 16)) & 0xFFFF)
@@ -259,7 +259,7 @@ func GetFirmwareVersion(v1 uint32, v2 uint32) string {
 		get16(v2, 0), get16(v2, 1))
 }
 
-//GetTpmProperty fetches a given property id, and returns it as uint32
+// GetTpmProperty fetches a given property id, and returns it as uint32
 func GetTpmProperty(propID tpm2.TPMProp) (uint32, error) {
 
 	rw, err := tpm2.OpenTPM(TpmDevicePath)
@@ -280,7 +280,7 @@ func GetTpmProperty(propID tpm2.TPMProp) (uint32, error) {
 	return prop.Value, nil
 }
 
-//FetchTpmSwStatus returns states reflecting SW usage of TPM
+// FetchTpmSwStatus returns states reflecting SW usage of TPM
 func FetchTpmSwStatus() info.HwSecurityModuleStatus {
 	_, err := os.Stat(TpmDevicePath)
 	if err != nil {
@@ -296,10 +296,10 @@ func FetchTpmSwStatus() info.HwSecurityModuleStatus {
 	return info.HwSecurityModuleStatus_DISABLED
 }
 
-//Refer to https://trustedcomputinggroup.org/wp-content/uploads/TCG-TPM-Vendor-ID-Registry-Version-1.01-Revision-1.00.pdf
-//These byte sequences in uint32 format is actually ASCII representation of TPM
-//vendor ID. Since they are abbreviated names, we are having a map here to show
-//a more verbose form of vendor name
+// Refer to https://trustedcomputinggroup.org/wp-content/uploads/TCG-TPM-Vendor-ID-Registry-Version-1.01-Revision-1.00.pdf
+// These byte sequences in uint32 format is actually ASCII representation of TPM
+// vendor ID. Since they are abbreviated names, we are having a map here to show
+// a more verbose form of vendor name
 var vendorRegistry = map[uint32]string{
 	0x414D4400: "AMD",
 	0x41544D4C: "Atmel",
@@ -324,7 +324,7 @@ var vendorRegistry = map[uint32]string{
 	0x474F4F47: "Google",
 }
 
-//till we have next version of go-tpm released, use this
+// till we have next version of go-tpm released, use this
 const (
 	tpmPropertyManufacturer tpm2.TPMProp = 0x105
 	tpmPropertyVendorStr1   tpm2.TPMProp = 0x106
@@ -333,7 +333,7 @@ const (
 	tpmPropertyFirmVer2     tpm2.TPMProp = 0x10c
 )
 
-//FetchTpmHwInfo returns TPM Hardware properties in a string
+// FetchTpmHwInfo returns TPM Hardware properties in a string
 func FetchTpmHwInfo() (string, error) {
 
 	//If we had done this earlier, return the last result
@@ -376,7 +376,7 @@ func FetchTpmHwInfo() (string, error) {
 	return tpmHwInfo, nil
 }
 
-//FetchVaultKey retrieves TPM part of the vault key
+// FetchVaultKey retrieves TPM part of the vault key
 func FetchVaultKey(log *base.LogObject) ([]byte, error) {
 	//First try to read from TPM, if it was stored earlier
 	key, err := readDiskKey()
@@ -460,7 +460,7 @@ func readDiskKey() ([]byte, error) {
 	return keyBytes, nil
 }
 
-//FetchSealedVaultKey fetches Vault key sealed into TPM2.0
+// FetchSealedVaultKey fetches Vault key sealed into TPM2.0
 func FetchSealedVaultKey(log *base.LogObject) ([]byte, error) {
 	if !PCRBankSHA256Enabled() {
 		//On platforms without PCR Bank SHA256, we can't
@@ -537,7 +537,7 @@ func FetchSealedVaultKey(log *base.LogObject) ([]byte, error) {
 	return UnsealDiskKey(DiskKeySealingPCRs)
 }
 
-//SealDiskKey seals key into TPM2.0, with provided PCRs
+// SealDiskKey seals key into TPM2.0, with provided PCRs
 func SealDiskKey(key []byte, pcrSel tpm2.PCRSelection) error {
 	rw, err := tpm2.OpenTPM(TpmDevicePath)
 	if err != nil {
@@ -633,7 +633,7 @@ func isLegacyKeyPresent() bool {
 	return err == nil
 }
 
-//UnsealDiskKey unseals key from TPM2.0
+// UnsealDiskKey unseals key from TPM2.0
 func UnsealDiskKey(pcrSel tpm2.PCRSelection) ([]byte, error) {
 	rw, err := tpm2.OpenTPM(TpmDevicePath)
 	if err != nil {
@@ -673,7 +673,7 @@ func UnsealDiskKey(pcrSel tpm2.PCRSelection) ([]byte, error) {
 	return key, nil
 }
 
-//PolicyPCRSession prepares TPM2 Auth Policy session, with PCR as the policy
+// PolicyPCRSession prepares TPM2 Auth Policy session, with PCR as the policy
 func PolicyPCRSession(rw io.ReadWriteCloser, pcrSel tpm2.PCRSelection) (tpmutil.Handle, []byte, error) {
 	session, _, err := tpm2.StartAuthSession(
 		rw,
@@ -704,7 +704,7 @@ func PolicyPCRSession(rw io.ReadWriteCloser, pcrSel tpm2.PCRSelection) (tpmutil.
 	return session, policy, nil
 }
 
-//TestSealUnseal tests TPM2.0 Seal and Unseal commands
+// TestSealUnseal tests TPM2.0 Seal and Unseal commands
 func TestSealUnseal() error {
 	dataToSeal := []byte("secret")
 	if err := SealDiskKey(dataToSeal, DiskKeySealingPCRs); err != nil {
@@ -720,8 +720,8 @@ func TestSealUnseal() error {
 	return nil
 }
 
-//CompareLegacyandSealedKey compares legacy and sealed keys
-//to record if we are using a new key for sealed vault
+// CompareLegacyandSealedKey compares legacy and sealed keys
+// to record if we are using a new key for sealed vault
 func CompareLegacyandSealedKey() SealedKeyType {
 	if !isSealedKeyPresent() {
 		return SealedKeyTypeUnprotected
@@ -745,8 +745,8 @@ func CompareLegacyandSealedKey() SealedKeyType {
 	return SealedKeyTypeNew
 }
 
-//WipeOutStaleSealedKeyIfAny checks and deletes
-//sealed vault key
+// WipeOutStaleSealedKeyIfAny checks and deletes
+// sealed vault key
 func WipeOutStaleSealedKeyIfAny() error {
 	rw, err := tpm2.OpenTPM(TpmDevicePath)
 	if err != nil {
@@ -763,8 +763,8 @@ func WipeOutStaleSealedKeyIfAny() error {
 	return nil
 }
 
-//PCRBankSHA256Enabled checks if SHA256 PCR Bank is
-//enabled
+// PCRBankSHA256Enabled checks if SHA256 PCR Bank is
+// enabled
 func PCRBankSHA256Enabled() bool {
 	//Check if we have cached it already, if not fetch, store and return
 	if pcrBank256Status == PCRBank256StatusUnknown {

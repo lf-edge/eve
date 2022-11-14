@@ -206,8 +206,8 @@ func createContentTreeStatus(ctx *volumemgrContext, config types.ContentTreeConf
 	return status
 }
 
-//AddBlobsToContentTreeStatus adds blob to ContentTreeStatus.Blobs also increments RefCount of the respective BlobStatus.
-//NOTE: This should be the only method to add blobs into ContentTreeStatus.Blobs
+// AddBlobsToContentTreeStatus adds blob to ContentTreeStatus.Blobs also increments RefCount of the respective BlobStatus.
+// NOTE: This should be the only method to add blobs into ContentTreeStatus.Blobs
 func AddBlobsToContentTreeStatus(ctx *volumemgrContext, status *types.ContentTreeStatus, blobShas ...string) error {
 	log.Functionf("AddBlobsToContentTreeStatus(%s): for blobs %v", status.ContentID, blobShas)
 	for _, blobSha := range blobShas {
@@ -230,9 +230,9 @@ func AddBlobsToContentTreeStatus(ctx *volumemgrContext, status *types.ContentTre
 	return nil
 }
 
-//RemoveAllBlobsFromContentTreeStatus removes all the blob from ContentTreeStatus.Blobs also decrements RefCount of the
+// RemoveAllBlobsFromContentTreeStatus removes all the blob from ContentTreeStatus.Blobs also decrements RefCount of the
 // respective BlobStatus.
-//NOTE: This should be the only method to remove blobs from ContentTreeStatus.Blobs
+// NOTE: This should be the only method to remove blobs from ContentTreeStatus.Blobs
 func RemoveAllBlobsFromContentTreeStatus(ctx *volumemgrContext, status *types.ContentTreeStatus, blobShas ...string) {
 	log.Functionf("RemoveAllBlobsFromContentTreeStatus(%s): for blobs %v", status.ContentID, blobShas)
 	for _, blobSha := range status.Blobs {

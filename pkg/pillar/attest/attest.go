@@ -13,13 +13,13 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/types"
 )
 
-//Event represents an event in the attest state machine
+// Event represents an event in the attest state machine
 type Event int
 
-//State represents a state in the attest state machine
+// State represents a state in the attest state machine
 type State int
 
-//Events
+// Events
 const (
 	EventInitialize Event = iota + 0
 	EventNonceRecvd
@@ -36,7 +36,7 @@ const (
 	EventRestart
 )
 
-//States
+// States
 const (
 	StateNone               State = iota + 0 //State when (Re)Starting attestation
 	StateNonceWait                           //Waiting for response from Controller for Nonce request
@@ -49,7 +49,7 @@ const (
 	StateAny                                 //Not a real state per se. helps defining wildcard transitions(below)
 )
 
-//String returns human readable equivalent of an Event
+// String returns human readable equivalent of an Event
 func (event Event) String() string {
 	switch event {
 	case EventInitialize:
@@ -83,7 +83,7 @@ func (event Event) String() string {
 	}
 }
 
-//String returns human readable string of a State
+// String returns human readable string of a State
 func (state State) String() string {
 	switch state {
 	case StateNone:
@@ -109,21 +109,21 @@ func (state State) String() string {
 	}
 }
 
-//Verifier needs to be implemented by the consumer of this package
-//It contains interface definitions for interacting with attestation server
+// Verifier needs to be implemented by the consumer of this package
+// It contains interface definitions for interacting with attestation server
 type Verifier interface {
 	SendNonceRequest(ctx *Context) error
 	SendAttestQuote(ctx *Context) error
 	SendAttestEscrow(ctx *Context) error
 }
 
-//TpmAgent needs to be implemented by the consumer of this package
-//It contains interface definitions for interacting with TPM manager
+// TpmAgent needs to be implemented by the consumer of this package
+// It contains interface definitions for interacting with TPM manager
 type TpmAgent interface {
 	SendInternalQuoteRequest(ctx *Context) error
 }
 
-//Various error codes to be returned to this package from external interfaces
+// Various error codes to be returned to this package from external interfaces
 var (
 	ErrControllerReqFailed = errors.New("Controller Request Failed")
 	ErrControllerError     = errors.New("Response from Controller has issues")
@@ -136,26 +136,26 @@ var (
 	ErrNoVerifier          = errors.New("No verifier support in Controller")
 )
 
-//Watchdog needs to be implemented by the consumer of this package
-//It contains interface definition for punching watchdog (not having it is okay)
+// Watchdog needs to be implemented by the consumer of this package
+// It contains interface definition for punching watchdog (not having it is okay)
 type Watchdog interface {
 	PunchWatchdog(ctx *Context) error
 }
 
-//External interfaces to the state machine
-//For unit-testing, these will be redirected to their mock versions.
+// External interfaces to the state machine
+// For unit-testing, these will be redirected to their mock versions.
 var tpmAgent TpmAgent
 var verifier Verifier
 var watchdog Watchdog
 
-//RegisterExternalIntf is used to fill up external interface implementations
+// RegisterExternalIntf is used to fill up external interface implementations
 func RegisterExternalIntf(t TpmAgent, v Verifier, w Watchdog) {
 	tpmAgent = t
 	verifier = v
 	watchdog = w
 }
 
-//Context has all the runtime context required to run this state machine
+// Context has all the runtime context required to run this state machine
 type Context struct {
 	PubSub                *pubsub.PubSub
 	log                   *base.LogObject
@@ -171,13 +171,13 @@ type Context struct {
 	types.ErrorAndTime
 }
 
-//Transition represents an event triggered from a state
+// Transition represents an event triggered from a state
 type Transition struct {
 	event Event
 	state State
 }
 
-//New returns a new instance of the state machine
+// New returns a new instance of the state machine
 func New(ps *pubsub.PubSub, log *base.LogObject, retryTime, watchdogTickerTime time.Duration, opaque interface{}) (*Context, error) {
 	return &Context{
 		PubSub:             ps,
@@ -191,20 +191,20 @@ func New(ps *pubsub.PubSub, log *base.LogObject, retryTime, watchdogTickerTime t
 	}, nil
 }
 
-//Initialize initializes the new instance of state machine
+// Initialize initializes the new instance of state machine
 func (ctx *Context) Initialize() error {
 	return nil
 }
 
-//GetState returns current state
+// GetState returns current state
 func (ctx *Context) GetState() State {
 	return ctx.state
 }
 
-//EventHandler represents a handler function for a Transition
+// EventHandler represents a handler function for a Transition
 type EventHandler func(*Context) error
 
-//the state machine
+// the state machine
 var transitions = map[Transition]EventHandler{
 	{EventInitialize, StateNone}:                        handleInitializeAtNone,                        //goes to NonceWait
 	{EventRestart, StateNone}:                           handleRestartAtNone,                           //goes to NonceWait
@@ -235,7 +235,7 @@ var transitions = map[Transition]EventHandler{
 	{EventInternalEscrowRecvd, StateAny}: handleInternalEscrowRecvdAtAnyOther, //stays in the same state
 }
 
-//some helpers
+// some helpers
 func triggerSelfEvent(ctx *Context, event Event) error {
 	go func() {
 		ctx.eventTrigger <- event
@@ -243,22 +243,22 @@ func triggerSelfEvent(ctx *Context, event Event) error {
 	return nil
 }
 
-//Kickstart starts the state machine with EventInitialize
+// Kickstart starts the state machine with EventInitialize
 func Kickstart(ctx *Context) {
 	ctx.eventTrigger <- EventInitialize
 }
 
-//RestartAttestation adds EventRestart event to the fsm
+// RestartAttestation adds EventRestart event to the fsm
 func RestartAttestation(ctx *Context) {
 	ctx.eventTrigger <- EventRestart
 }
 
-//InternalQuoteRecvd adds EventInternalQuoteRecvd to the fsm
+// InternalQuoteRecvd adds EventInternalQuoteRecvd to the fsm
 func InternalQuoteRecvd(ctx *Context) {
 	ctx.eventTrigger <- EventInternalQuoteRecvd
 }
 
-//InternalEscrowDataRecvd adds EventInternalEscrowRecvd to the fsm
+// InternalEscrowDataRecvd adds EventInternalEscrowRecvd to the fsm
 func InternalEscrowDataRecvd(ctx *Context) {
 	ctx.eventTrigger <- EventInternalEscrowRecvd
 }
@@ -275,7 +275,7 @@ func startNewRetryTimer(ctx *Context) error {
 	return nil
 }
 
-//The event handlers
+// The event handlers
 func handleInitializeAtNone(ctx *Context) error {
 	ctx.log.Trace("handleInitializeAtNone")
 	ctx.state = StateNonceWait
@@ -429,9 +429,9 @@ func handleInternalEscrowRecvdAtInternalEscrowWait(ctx *Context) error {
 	return handleAttestSuccessfulAtAttestWait(ctx)
 }
 
-//handleInternalEscrowRecvdAtAnyOther handles EventInternalEscrowRecvd
-//at any other state, other than StateInternalQuoteWait.
-//for StateInternalQuoteWait, we have handleInternalEscrowRecvdAtInternalEscrowWait
+// handleInternalEscrowRecvdAtAnyOther handles EventInternalEscrowRecvd
+// at any other state, other than StateInternalQuoteWait.
+// for StateInternalQuoteWait, we have handleInternalEscrowRecvdAtInternalEscrowWait
 func handleInternalEscrowRecvdAtAnyOther(ctx *Context) error {
 	ctx.log.Trace("handleInternalEscrowRecvdAtAnyOther")
 	switch ctx.state {
@@ -513,7 +513,7 @@ func punchWatchdog(ctx *Context) {
 	}
 }
 
-//EnterEventLoop is the eternel event loop for the state machine
+// EnterEventLoop is the eternel event loop for the state machine
 func (ctx *Context) EnterEventLoop() {
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(ctx.watchdogTickerTime * time.Second)

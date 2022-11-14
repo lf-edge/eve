@@ -40,7 +40,7 @@ func hardwareInfoTask(ctxPtr *zedagentContext, triggerHwInfo <-chan struct{}) {
 	}
 }
 
-//PublishHardwareInfoToZedCloud send ZInfoHardware message
+// PublishHardwareInfoToZedCloud send ZInfoHardware message
 func PublishHardwareInfoToZedCloud(ctx *zedagentContext) {
 	var ReportHwInfo = &info.ZInfoMsg{}
 	hwInfoKey := devUUID.String() + "hwinfo"

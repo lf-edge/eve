@@ -3,26 +3,26 @@
 
 package types
 
-//EdgeNodeDiskDescription stores information to identify disk
+// EdgeNodeDiskDescription stores information to identify disk
 type EdgeNodeDiskDescription struct {
 	Name        string
 	LogicalName string
 	Serial      string
 }
 
-//EdgeNodeDisks stores expected layout of disks
+// EdgeNodeDisks stores expected layout of disks
 type EdgeNodeDisks struct {
 	Disks     []EdgeNodeDiskConfig
 	ArrayType EdgeNodeDiskArrayType
 	Children  []EdgeNodeDisks
 }
 
-//Key for pubsub
+// Key for pubsub
 func (EdgeNodeDisks) Key() string {
 	return "global"
 }
 
-//EdgeNodeDiskConfigType should be in sync with api
+// EdgeNodeDiskConfigType should be in sync with api
 type EdgeNodeDiskConfigType int32
 
 // enum should be in sync with api
@@ -36,7 +36,7 @@ const (
 	EdgeNodeDiskConfigTypeUnused                                    // removed from zfs/app-direct
 )
 
-//EdgeNodeDiskArrayType should be in sync with api
+// EdgeNodeDiskArrayType should be in sync with api
 type EdgeNodeDiskArrayType int32
 
 // enum should be in sync with api
@@ -48,7 +48,7 @@ const (
 	EdgeNodeDiskArrayTypeRAID6       EdgeNodeDiskArrayType = 4 // raidz2
 )
 
-//EdgeNodeDiskConfig disk configuration
+// EdgeNodeDiskConfig disk configuration
 type EdgeNodeDiskConfig struct {
 	Disk    EdgeNodeDiskDescription
 	OldDisk *EdgeNodeDiskDescription

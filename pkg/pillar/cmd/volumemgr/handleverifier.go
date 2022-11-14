@@ -241,7 +241,7 @@ func handleVerifyImageStatusDelete(ctxArg interface{}, key string,
 	log.Functionf("handleVerifyImageStatusDelete done for %s", key)
 }
 
-//gcVerifyImageConfig marks all VerifyImageConfig with refCount = 0 as expired
+// gcVerifyImageConfig marks all VerifyImageConfig with refCount = 0 as expired
 func gcVerifyImageConfig(ctx *volumemgrContext) {
 	verifyImageConfigMap := ctx.pubVerifyImageConfig.GetAll()
 

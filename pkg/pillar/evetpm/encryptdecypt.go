@@ -20,12 +20,12 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/types"
 )
 
-//DecryptSecretWithEcdhKey recovers plaintext from the given ciphertext
-//X, Y are the Z point coordinates in Ellyptic Curve Diffie Hellman(ECDH) Exchange
-//edgeNodeCert points to the certificate that Controller used to calculate the shared secret
-//iv is the Initial Value used in the ECDH exchange.
-//Sha256FromECPoint() is used as KDF on the shared secret, and the derived key is used
-//in AESDecrypt(), to apply the cipher on ciphertext, and recover plaintext
+// DecryptSecretWithEcdhKey recovers plaintext from the given ciphertext
+// X, Y are the Z point coordinates in Ellyptic Curve Diffie Hellman(ECDH) Exchange
+// edgeNodeCert points to the certificate that Controller used to calculate the shared secret
+// iv is the Initial Value used in the ECDH exchange.
+// Sha256FromECPoint() is used as KDF on the shared secret, and the derived key is used
+// in AESDecrypt(), to apply the cipher on ciphertext, and recover plaintext
 func DecryptSecretWithEcdhKey(log *base.LogObject, X, Y *big.Int, edgeNodeCert *types.EdgeNodeCert,
 	iv, ciphertext, plaintext []byte) error {
 	if (X == nil) || (Y == nil) || (edgeNodeCert == nil) {
@@ -39,7 +39,7 @@ func DecryptSecretWithEcdhKey(log *base.LogObject, X, Y *big.Int, edgeNodeCert *
 	return AESDecrypt(plaintext, ciphertext, decryptKey[:], iv)
 }
 
-//getDecryptKey : uses the given params to construct the AES decryption Key
+// getDecryptKey : uses the given params to construct the AES decryption Key
 func getDecryptKey(log *base.LogObject, X, Y *big.Int, edgeNodeCert *types.EdgeNodeCert) ([32]byte, error) {
 	block, _ := pem.Decode(edgeNodeCert.Cert)
 	cert, err := x509.ParseCertificate(block.Bytes)
@@ -61,8 +61,8 @@ func getDecryptKey(log *base.LogObject, X, Y *big.Int, edgeNodeCert *types.EdgeN
 	return deriveSessionKey(X, Y, pubKey)
 }
 
-//AESEncrypt encrypts plaintext, and returns it in ciphertext
-//by using the key and initial value given. Uses a AES CFB cipher.
+// AESEncrypt encrypts plaintext, and returns it in ciphertext
+// by using the key and initial value given. Uses a AES CFB cipher.
 func AESEncrypt(ciphertext, plaintext, key, iv []byte) error {
 	aesBlockEncrypter, err := aes.NewCipher([]byte(key))
 	if err != nil {
@@ -73,8 +73,8 @@ func AESEncrypt(ciphertext, plaintext, key, iv []byte) error {
 	return nil
 }
 
-//AESDecrypt decrypts ciphertext, and returns it in plaintext
-//using the key and initial value given. Uses AES CFB cipher.
+// AESDecrypt decrypts ciphertext, and returns it in plaintext
+// using the key and initial value given. Uses AES CFB cipher.
 func AESDecrypt(plaintext, ciphertext, key, iv []byte) error {
 	aesBlockDecrypter, err := aes.NewCipher([]byte(key))
 	if err != nil {
@@ -130,8 +130,8 @@ func Sha256FromECPoint(X, Y *big.Int, pubKey *ecdsa.PublicKey) ([32]byte, error)
 	return sha256.Sum256(bytes), nil
 }
 
-//deriveSessionKey derives a ECDH shared secret based on
-//ECDH private key, and the provided public key
+// deriveSessionKey derives a ECDH shared secret based on
+// ECDH private key, and the provided public key
 func deriveSessionKey(X, Y *big.Int, publicKey *ecdsa.PublicKey) ([32]byte, error) {
 	rw, err := tpm2.OpenTPM(TpmDevicePath)
 	if err != nil {
@@ -148,9 +148,9 @@ func deriveSessionKey(X, Y *big.Int, publicKey *ecdsa.PublicKey) ([32]byte, erro
 	return Sha256FromECPoint(z.X(), z.Y(), publicKey)
 }
 
-//deriveEncryptDecryptKey is a helper function to parse device cert
-//extract the ECC points from its public key, and call deriveSessionKey
-//with those ECC points
+// deriveEncryptDecryptKey is a helper function to parse device cert
+// extract the ECC points from its public key, and call deriveSessionKey
+// with those ECC points
 func deriveEncryptDecryptKey() ([32]byte, error) {
 	publicKey, err := GetPublicKeyFromCert(types.DeviceCertName)
 	if err != nil {
@@ -168,10 +168,10 @@ func deriveEncryptDecryptKey() ([32]byte, error) {
 	return EncryptDecryptKey, nil
 }
 
-//EncryptDecryptUsingTpm uses AES key to encrypt/decrypt a given secret
-//The AES key is derived from a seed, which is further derived from device certificate
-//and ECDH private key, which is protected inside the TPM. IOW, to decrypt secret successfully,
-//one will need to be on the same device.
+// EncryptDecryptUsingTpm uses AES key to encrypt/decrypt a given secret
+// The AES key is derived from a seed, which is further derived from device certificate
+// and ECDH private key, which is protected inside the TPM. IOW, to decrypt secret successfully,
+// one will need to be on the same device.
 func EncryptDecryptUsingTpm(in []byte, encrypt bool) ([]byte, error) {
 	key, err := deriveEncryptDecryptKey()
 	if err != nil {

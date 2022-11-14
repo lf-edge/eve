@@ -318,8 +318,8 @@ func maybeNameHasSha(name string) string {
 	return ""
 }
 
-//checkAndUpdateResolveConfig fires modify handler for ResolveConfig
-//we need to call it in case of no DatastoreConfig found
+// checkAndUpdateResolveConfig fires modify handler for ResolveConfig
+// we need to call it in case of no DatastoreConfig found
 func checkAndUpdateResolveConfig(ctx *downloaderContext, dsID uuid.UUID) {
 	log.Functionf("checkAndUpdateResolveConfig for %s", dsID)
 	resolveStatuses := ctx.pubResolveStatus.GetAll()

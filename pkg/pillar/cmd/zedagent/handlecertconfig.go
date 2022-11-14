@@ -418,7 +418,7 @@ func handleControllerCertsSha(ctx *zedagentContext,
 	}
 }
 
-//  controller certificate pull trigger function
+// controller certificate pull trigger function
 func triggerControllerCertEvent(ctxPtr *zedagentContext) {
 
 	log.Function("Trigger for Controller Certs")
@@ -430,7 +430,7 @@ func triggerControllerCertEvent(ctxPtr *zedagentContext) {
 	}
 }
 
-//  edge node certificate post trigger function
+// edge node certificate post trigger function
 func triggerEdgeNodeCertEvent(ctxPtr *zedagentContext) {
 
 	log.Function("Trigger Edge Node Certs publish")

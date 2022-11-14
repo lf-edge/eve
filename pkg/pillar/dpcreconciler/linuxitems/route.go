@@ -71,9 +71,9 @@ func (r Route) String() string {
 }
 
 // Dependencies of a network route are:
-//  - the "via" adapter must exist and be UP
-//  - the "via" adapter must have an IP address assigned from the subnet
-//    of the route gateway.
+//   - the "via" adapter must exist and be UP
+//   - the "via" adapter must have an IP address assigned from the subnet
+//     of the route gateway.
 func (r Route) Dependencies() (deps []depgraph.Dependency) {
 	return []depgraph.Dependency{
 		{
