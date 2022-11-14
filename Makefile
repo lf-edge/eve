@@ -290,8 +290,8 @@ endif
 # We are currently filtering out a few packages from bulk builds
 # since they are not getting published in Docker HUB
 PKGS_$(ZARCH)=$(shell ls -d pkg/* | grep -Ev "eve|test-microsvcs|alpine")
-PKGS_riscv64=pkg/ipxe pkg/mkconf pkg/mkimage-iso-efi pkg/grub     \
-             pkg/mkimage-raw-efi pkg/uefi pkg/u-boot pkg/grub pkg/new-kernel \
+PKGS_riscv64=pkg/ipxe pkg/mkconf pkg/mkimage-iso-efi pkg/grub \
+             pkg/mkimage-raw-efi pkg/uefi pkg/u-boot pkg/new-kernel \
 	     pkg/debug pkg/dom0-ztools pkg/gpt-tools pkg/storage-init pkg/mkrootfs-squash
 # alpine-base and alpine must be the first packages to build
 PKGS=pkg/alpine $(PKGS_$(ZARCH))
@@ -299,6 +299,17 @@ PKGS=pkg/alpine $(PKGS_$(ZARCH))
 # to update please see https://github.com/lf-edge/eve/blob/master/docs/BUILD.md#how-to-update-eve-alpine-package
 # if you want to bootstrap eve-alpine again, uncomment the line below
 # PKGS:=pkg/alpine-base $(PKGS)
+
+# define packages dependencies to build them in order
+# we set pkg/alpine as the first in list, so no need to define it here
+# note that duplicates will removed automatically later
+# as we use that list as target dependencies
+DEPS_pkg/pillar=pkg/dnsmasq pkg/dom0-ztools pkg/fscrypt pkg/gpt-tools pkg/strongswan
+DEPS_pkg/xen-tools=pkg/uefi
+
+# resolve packages build order
+# we put dependencies before the package which need them
+PKGS:=$(foreach pkg,$(PKGS),$(if $(DEPS_$(pkg)),$(DEPS_$(pkg)) $(pkg),$(pkg)))
 
 # these are the packages that, when built, also need to be loaded into docker
 # if you need a pkg to be loaded into docker, in addition to the lkt cache, add it here
@@ -576,12 +587,8 @@ $(LIVE).parallels: $(LIVE).raw
 pkgs: RESCAN_DEPS=
 pkgs: FORCE_BUILD=
 pkgs: build-tools $(PKGS)
-	@echo Done building packages
+	@echo Done building packages $(PKGS)
 
-pkg/pillar: pkg/dnsmasq pkg/strongswan pkg/gpt-tools pkg/dom0-ztools eve-pillar
-	$(QUIET): $@: Succeeded
-pkg/xen-tools: pkg/uefi eve-xen-tools
-	$(QUIET): $@: Succeeded
 pkg/%: eve-% FORCE
 	$(QUIET): $@: Succeeded
 
