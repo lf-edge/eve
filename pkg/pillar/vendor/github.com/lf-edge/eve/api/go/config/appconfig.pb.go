@@ -223,6 +223,9 @@ type AppInstanceConfig struct {
 	// will override default capabilities with configuration
 	// defined in org.mobyproject.config label of image provided by linuxkit
 	Service bool `protobuf:"varint,20,opt,name=service,proto3" json:"service,omitempty"`
+	// All changes to the cloud-init config are tracked using this version field -
+	// once the version is changed cloud-init tool restarts in a guest.
+	CloudInitVersion uint32 `protobuf:"varint,21,opt,name=cloud_init_version,json=cloudInitVersion,proto3" json:"cloud_init_version,omitempty"`
 }
 
 func (x *AppInstanceConfig) Reset() {
@@ -381,6 +384,13 @@ func (x *AppInstanceConfig) GetService() bool {
 		return x.Service
 	}
 	return false
+}
+
+func (x *AppInstanceConfig) GetCloudInitVersion() uint32 {
+	if x != nil {
+		return x.CloudInitVersion
+	}
+	return 0
 }
 
 // Reference to a Volume specified separately in the API

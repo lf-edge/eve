@@ -131,6 +131,10 @@ message AppInstanceConfig {
   // will override default capabilities with configuration
   // defined in org.mobyproject.config label of image provided by linuxkit
   bool service = 20;
+
+  // All changes to the cloud-init config are tracked using this version field -
+  // once the version is changed cloud-init tool restarts in a guest.
+  uint32 cloud_init_version = 21;
 }
 
 // Reference to a Volume specified separately in the API
