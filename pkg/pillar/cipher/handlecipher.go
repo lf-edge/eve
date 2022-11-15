@@ -28,7 +28,6 @@ type DecryptCipherContext struct {
 	AgentName         string
 	AgentMetrics      *AgentMetrics
 	SubControllerCert pubsub.Subscription
-	SubCipherContext  pubsub.Subscription
 	SubEdgeNodeCert   pubsub.Subscription
 }
 
@@ -46,37 +45,15 @@ func lookupControllerCert(ctx *DecryptCipherContext, key string) *types.Controll
 	return &status
 }
 
-// look up or get embedded cipher context
-// firstly we will try to lookup published CipherContext
-// if there is no published CipherContext we will fallback to embedded
-// if both not found will log and return nil
-func lookupOrGetCipherContext(ctx *DecryptCipherContext, cipherBlock types.CipherBlockStatus) *types.CipherContext {
-	ctx.Log.Functionf("lookupOrGetCipherContext(%s)", cipherBlock.CipherBlockID)
-	cipherContext := lookupCipherContext(ctx, cipherBlock.CipherContextID)
-	if cipherContext != nil {
-		return cipherContext
-	}
-	ctx.Log.Warnf("lookupOrGetCipherContext(%s) failed to lookup CipherContext", cipherBlock.CipherBlockID)
+// get embedded cipher context
+func getCipherContext(ctx *DecryptCipherContext, cipherBlock types.CipherBlockStatus) *types.CipherContext {
+	ctx.Log.Functionf("getCipherContext(%s)", cipherBlock.CipherBlockID)
 	if cipherBlock.CipherContext != nil {
-		ctx.Log.Functionf("lookupOrGetCipherContext(%s) use embedded CipherContext", cipherBlock.CipherBlockID)
+		ctx.Log.Functionf("getCipherContext(%s) use embedded CipherContext", cipherBlock.CipherBlockID)
 		return cipherBlock.CipherContext
 	}
-	ctx.Log.Errorf("lookupOrGetCipherContext(%s) embedded or published CipherContext not found", cipherBlock.CipherBlockID)
+	ctx.Log.Errorf("getCipherContext(%s) embedded CipherContext not found", cipherBlock.CipherBlockID)
 	return nil
-}
-
-// look up cipher context
-func lookupCipherContext(ctx *DecryptCipherContext, key string) *types.CipherContext {
-	ctx.Log.Functionf("lookupCipherContext(%s)\n", key)
-	sub := ctx.SubCipherContext
-	item, err := sub.Get(key)
-	if err != nil {
-		ctx.Log.Errorf("lookupCipherContext(%s) not found\n", key)
-		return nil
-	}
-	status := item.(types.CipherContext)
-	ctx.Log.Functionf("lookupCipherContext(%s) done\n", key)
-	return &status
 }
 
 // look up edge node cert
@@ -97,7 +74,7 @@ func getDeviceCert(ctx *DecryptCipherContext,
 	cipherBlock types.CipherBlockStatus) ([]byte, error) {
 
 	ctx.Log.Functionf("getDeviceCert for %s\n", cipherBlock.CipherBlockID)
-	cipherContext := lookupOrGetCipherContext(ctx, cipherBlock)
+	cipherContext := getCipherContext(ctx, cipherBlock)
 	if cipherContext == nil {
 		errStr := fmt.Sprintf("cipher context %s not found\n",
 			cipherBlock.CipherContextID)
@@ -152,7 +129,7 @@ func DecryptCipherBlock(ctx *DecryptCipherContext,
 	if len(cipherBlock.CipherData) == 0 {
 		return []byte{}, errors.New("Invalid Cipher Payload")
 	}
-	cipherContext := lookupOrGetCipherContext(ctx, cipherBlock)
+	cipherContext := getCipherContext(ctx, cipherBlock)
 	if cipherContext == nil {
 		errStr := fmt.Sprintf("cipher context %s not found\n",
 			cipherBlock.CipherContextID)

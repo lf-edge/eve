@@ -16,6 +16,15 @@ import (
 
 var cipherCtxHash []byte
 
+// invalidateCipherContextDependenciesList function clear stored hashes for objects
+// which have parseCipherBlock inside
+// to re-run parse* functions on change of CipherContexts
+func invalidateCipherContextDependenciesList() {
+	appinstancePrevConfigHash = []byte{}
+	networkConfigPrevConfigHash = []byte{}
+	datastoreConfigPrevConfigHash = []byte{}
+}
+
 // cipher context parsing routine
 func parseCipherContext(ctx *getconfigContext,
 	config *zconfig.EdgeDevConfig) {
@@ -38,9 +47,10 @@ func parseCipherContext(ctx *getconfigContext,
 
 	cipherCtxHash = newHash
 
+	invalidateCipherContextDependenciesList()
+
 	// First look for deleted ones
-	items := ctx.pubCipherContext.GetAll()
-	for idStr := range items {
+	for idStr := range ctx.cipherContexts {
 		found := false
 		for _, cfgCipherContext := range cfgCipherContextList {
 			if cfgCipherContext.GetContextId() == idStr {
@@ -51,7 +61,7 @@ func parseCipherContext(ctx *getconfigContext,
 		// cipherContext not found, delete
 		if !found {
 			log.Functionf("parseCipherContext: deleting %s", idStr)
-			unpublishCipherContext(ctx, idStr)
+			delete(ctx.cipherContexts, idStr)
 		}
 	}
 
@@ -68,7 +78,7 @@ func parseCipherContext(ctx *getconfigContext,
 			DeviceCertHash:     cfgCipherContext.GetDeviceCertHash(),
 			ControllerCertHash: cfgCipherContext.GetControllerCertHash(),
 		}
-		publishCipherContext(ctx, context)
+		ctx.cipherContexts[context.Key()] = context
 	}
 	log.Functionf("parsing cipher context done")
 }
@@ -76,8 +86,7 @@ func parseCipherContext(ctx *getconfigContext,
 // parseCipherBlock : will collate all the relevant information
 // ciphercontext will be used to get the certs and encryption schemes
 // should be run after parseCipherContext
-func parseCipherBlock(ctx *getconfigContext, key string,
-	cfgCipherBlock *zconfig.CipherBlock) types.CipherBlockStatus {
+func parseCipherBlock(ctx *getconfigContext, key string, cfgCipherBlock *zconfig.CipherBlock) types.CipherBlockStatus {
 
 	log.Functionf("parseCipherBlock(%s) started", key)
 	if cfgCipherBlock == nil {
@@ -104,40 +113,18 @@ func parseCipherBlock(ctx *getconfigContext, key string,
 	cipherBlock.IsCipher = true
 
 	// get CipherContext and embed it into CipherBlockStatus to avoid potential races
-	cipherBlockContextInterface, _ := ctx.pubCipherContext.Get(cipherBlock.CipherContextID)
-	if cipherBlockContextInterface != nil {
-		if context, ok := cipherBlockContextInterface.(types.CipherContext); ok {
-			cipherBlock.CipherContext = &context
-		} else {
-			log.Fatalf("parseCipherBlock(%s): Unexpected pub type %T",
-				key, cipherBlockContextInterface)
+	for _, cfgCipherContext := range ctx.cipherContexts {
+		if cfgCipherContext.ContextID != cipherBlock.CipherContextID {
+			continue
 		}
-	} else {
+		cipherBlock.CipherContext = &cfgCipherContext
+	}
+
+	if cipherBlock.CipherContext == nil {
 		log.Warnf("parseCipherBlock(%s): config discrepancy: CipherContext %s not found",
 			key, cipherBlock.CipherContextID)
 	}
 
 	log.Functionf("parseCipherBlock(%s) done", key)
 	return cipherBlock
-}
-
-func publishCipherContext(ctx *getconfigContext,
-	status types.CipherContext) {
-	key := status.Key()
-	log.Tracef("publishCipherContext(%s)", key)
-	pub := ctx.pubCipherContext
-	pub.Publish(key, status)
-	log.Tracef("publishCipherContext(%s) done", key)
-}
-
-func unpublishCipherContext(ctx *getconfigContext, key string) {
-	log.Tracef("unpublishCipherContext(%s)", key)
-	pub := ctx.pubCipherContext
-	c, _ := pub.Get(key)
-	if c == nil {
-		log.Errorf("unpublishCipherContext(%s) not found", key)
-		return
-	}
-	pub.Unpublish(key)
-	log.Tracef("unpublishCipherContext(%s) done", key)
 }

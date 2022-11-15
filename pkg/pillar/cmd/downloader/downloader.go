@@ -164,10 +164,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 			ctx.decryptCipherContext.SubEdgeNodeCert.ProcessChange(change)
 			log.Noticef("Processed EdgeNodeCert")
 
-		case change := <-ctx.decryptCipherContext.SubCipherContext.MsgChan():
-			ctx.decryptCipherContext.SubCipherContext.ProcessChange(change)
-			log.Noticef("Processed CipherContext")
-
 		case change := <-ctx.subGlobalConfig.MsgChan():
 			ctx.subGlobalConfig.ProcessChange(change)
 

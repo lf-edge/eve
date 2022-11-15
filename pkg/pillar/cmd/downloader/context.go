@@ -79,23 +79,6 @@ func (ctx *downloaderContext) registerHandlers(ps *pubsub.PubSub) error {
 	ctx.decryptCipherContext.SubEdgeNodeCert = subEdgeNodeCert
 	subEdgeNodeCert.Activate()
 
-	// Look for cipher context which will be used for decryption
-	subCipherContext, err := ps.NewSubscription(pubsub.SubscriptionOptions{
-		AgentName:   "zedagent",
-		MyAgentName: agentName,
-		TopicImpl:   types.CipherContext{},
-		Activate:    false,
-		Ctx:         ctx,
-		WarningTime: warningTime,
-		ErrorTime:   errorTime,
-		Persistent:  true,
-	})
-	if err != nil {
-		log.Fatal(err)
-	}
-	ctx.decryptCipherContext.SubCipherContext = subCipherContext
-	subCipherContext.Activate()
-
 	// Look for global config such as log levels
 	subGlobalConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "zedagent",

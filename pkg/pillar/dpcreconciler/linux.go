@@ -149,7 +149,6 @@ type LinuxDpcReconciler struct {
 	AgentName            string
 	NetworkMonitor       netmonitor.NetworkMonitor // mandatory
 	SubControllerCert    pubsub.Subscription
-	SubCipherContext     pubsub.Subscription
 	SubEdgeNodeCert      pubsub.Subscription
 	PubCipherBlockStatus pubsub.Publication
 	CipherMetrics        *cipher.AgentMetrics
@@ -1164,8 +1163,7 @@ func (r *LinuxDpcReconciler) getIntendedWlanConfig(
 }
 
 func (r *LinuxDpcReconciler) getWifiCredentials(wifi types.WifiConfig) (types.EncryptionBlock, error) {
-	decryptAvailable := r.SubControllerCert != nil &&
-		r.SubCipherContext != nil && r.SubEdgeNodeCert != nil
+	decryptAvailable := r.SubControllerCert != nil && r.SubEdgeNodeCert != nil
 	if !wifi.CipherBlockStatus.IsCipher || !decryptAvailable {
 		if !wifi.CipherBlockStatus.IsCipher {
 			r.Log.Functionf("%s, wifi config cipherblock is not present\n", wifi.SSID)
@@ -1191,7 +1189,6 @@ func (r *LinuxDpcReconciler) getWifiCredentials(wifi types.WifiConfig) (types.En
 			AgentName:         r.AgentName,
 			AgentMetrics:      r.CipherMetrics,
 			SubControllerCert: r.SubControllerCert,
-			SubCipherContext:  r.SubCipherContext,
 			SubEdgeNodeCert:   r.SubEdgeNodeCert,
 		},
 		wifi.CipherBlockStatus)

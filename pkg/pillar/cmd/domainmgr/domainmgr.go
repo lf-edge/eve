@@ -353,23 +353,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	domainCtx.decryptCipherContext.SubEdgeNodeCert = subEdgeNodeCert
 	subEdgeNodeCert.Activate()
 
-	// Look for cipher context which will be used for decryption
-	subCipherContext, err := ps.NewSubscription(pubsub.SubscriptionOptions{
-		AgentName:   "zedagent",
-		MyAgentName: agentName,
-		TopicImpl:   types.CipherContext{},
-		Activate:    false,
-		Ctx:         &domainCtx,
-		WarningTime: warningTime,
-		ErrorTime:   errorTime,
-		Persistent:  true,
-	})
-	if err != nil {
-		log.Fatal(err)
-	}
-	domainCtx.decryptCipherContext.SubCipherContext = subCipherContext
-	subCipherContext.Activate()
-
 	// Look for global config such as log levels
 	subGlobalConfig, err := ps.NewSubscription(
 		pubsub.SubscriptionOptions{
@@ -602,9 +585,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 
 		case change := <-subEdgeNodeCert.MsgChan():
 			subEdgeNodeCert.ProcessChange(change)
-
-		case change := <-subCipherContext.MsgChan():
-			subCipherContext.ProcessChange(change)
 
 		case change := <-subGlobalConfig.MsgChan():
 			subGlobalConfig.ProcessChange(change)

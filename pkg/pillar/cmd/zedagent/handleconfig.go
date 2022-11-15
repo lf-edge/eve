@@ -88,7 +88,6 @@ type getconfigContext struct {
 	pubDatastoreConfig        pubsub.Publication
 	pubNetworkInstanceConfig  pubsub.Publication
 	pubControllerCert         pubsub.Publication
-	pubCipherContext          pubsub.Publication
 	subContentTreeStatus      pubsub.Subscription
 	pubContentTreeConfig      pubsub.Publication
 	subVolumeStatus           pubsub.Subscription
@@ -141,6 +140,8 @@ type getconfigContext struct {
 	currentMetricInterval uint32
 
 	configEdgeview *types.EdgeviewConfig // edge-view config save
+
+	cipherContexts map[string]types.CipherContext
 }
 
 // current devUUID from OnboardingStatus
