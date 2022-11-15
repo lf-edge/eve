@@ -261,7 +261,7 @@ DOCKER_GO = _() { $(SET_X); mkdir -p $(CURDIR)/.go/src/$${3:-dummy} ; mkdir -p $
 
 PARSE_PKGS=$(if $(strip $(EVE_HASH)),EVE_HASH=)$(EVE_HASH) DOCKER_ARCH_TAG=$(DOCKER_ARCH_TAG) ./tools/parse-pkgs.sh
 LINUXKIT=$(BUILDTOOLS_BIN)/linuxkit
-LINUXKIT_VERSION=4f23407838366e362d2615f6c781d99de6d32ddc
+LINUXKIT_VERSION=bbd62314edf03b8e947536511c1286df65b1e0ff
 LINUXKIT_SOURCE=https://github.com/linuxkit/linuxkit.git
 LINUXKIT_OPTS=$(if $(strip $(EVE_HASH)),--hash) $(EVE_HASH) $(if $(strip $(EVE_REL)),--release) $(EVE_REL)
 LINUXKIT_PKG_TARGET=build
@@ -756,8 +756,6 @@ eve-%: pkg/%/Dockerfile build-tools $(RESCAN_DEPS)
 	$(eval LINUXKIT_BUILD_PLATFORMS_LIST := $(call uniq,linux/$(ZARCH) $(if $(filter $(PKGS_HOSTARCH),$*),linux/$(HOSTARCH),)))
 	$(eval LINUXKIT_BUILD_PLATFORMS := --platforms $(subst $(space),$(comma),$(strip $(LINUXKIT_BUILD_PLATFORMS_LIST))))
 	$(eval LINUXKIT_FLAGS := $(if $(filter manifest,$(LINUXKIT_PKG_TARGET)),,$(FORCE_BUILD) $(LINUXKIT_DOCKER_LOAD) $(LINUXKIT_BUILD_PLATFORMS)))
-	$(QUIET)# ensures that we either pull it down or build it when we want to push
-	$(if $(filter push,$(LINUXKIT_PKG_TARGET)),$(QUIET)$(LINUXKIT) pkg build --pull $(LINUXKIT_BUILD_PLATFORMS) -build-yml $(call get_pkg_build_yml,$*) pkg/$*,)
 	$(QUIET)$(LINUXKIT) $(DASH_V) pkg $(LINUXKIT_PKG_TARGET) $(LINUXKIT_OPTS) $(LINUXKIT_FLAGS) -build-yml $(call get_pkg_build_yml,$*) pkg/$*
 	$(QUIET)if [ -n "$(PRUNE)" ]; then \
   		$(LINUXKIT) pkg builder prune; \
