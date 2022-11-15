@@ -41,6 +41,7 @@ func initGetConfigCtx(g *GomegaWithT) *getconfigContext {
 		zedagentCtx: &zedagentContext{
 			physicalIoAdapterMap: make(map[string]types.PhysicalIOAdapter),
 		},
+		cipherContexts: make(map[string]types.CipherContext),
 	}
 	// cleanup between tests
 	deviceIoListPrevConfigHash = nil

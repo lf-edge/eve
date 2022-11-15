@@ -82,7 +82,6 @@ type nim struct {
 	// Subscriptions
 	subGlobalConfig       pubsub.Subscription
 	subControllerCert     pubsub.Subscription
-	subCipherContext      pubsub.Subscription
 	subEdgeNodeCert       pubsub.Subscription
 	subDevicePortConfigA  pubsub.Subscription
 	subDevicePortConfigO  pubsub.Subscription
@@ -183,7 +182,6 @@ func (n *nim) init() (err error) {
 		AgentName:            agentName,
 		NetworkMonitor:       linuxNetMonitor,
 		SubControllerCert:    n.subControllerCert,
-		SubCipherContext:     n.subCipherContext,
 		SubEdgeNodeCert:      n.subEdgeNodeCert,
 		PubCipherBlockStatus: n.pubCipherBlockStatus,
 		CipherMetrics:        n.cipherMetrics,
@@ -243,9 +241,6 @@ func (n *nim) run(ctx context.Context) (err error) {
 		return err
 	}
 	if err = n.subEdgeNodeCert.Activate(); err != nil {
-		return err
-	}
-	if err = n.subCipherContext.Activate(); err != nil {
 		return err
 	}
 	if err = n.subDevicePortConfigS.Activate(); err != nil {
@@ -340,9 +335,6 @@ func (n *nim) run(ctx context.Context) (err error) {
 
 		case change := <-n.subEdgeNodeCert.MsgChan():
 			n.subEdgeNodeCert.ProcessChange(change)
-
-		case change := <-n.subCipherContext.MsgChan():
-			n.subCipherContext.ProcessChange(change)
 
 		case change := <-n.subGlobalConfig.MsgChan():
 			n.subGlobalConfig.ProcessChange(change)
@@ -570,20 +562,6 @@ func (n *nim) initSubscriptions() (err error) {
 		Persistent:  true,
 		WarningTime: warningTime,
 		ErrorTime:   errorTime,
-	})
-	if err != nil {
-		return err
-	}
-
-	// Look for cipher context which will be used for decryption
-	n.subCipherContext, err = n.PubSub.NewSubscription(pubsub.SubscriptionOptions{
-		AgentName:   "zedagent",
-		MyAgentName: agentName,
-		TopicImpl:   types.CipherContext{},
-		Activate:    false,
-		WarningTime: warningTime,
-		ErrorTime:   errorTime,
-		Persistent:  true,
 	})
 	if err != nil {
 		return err
