@@ -59,10 +59,12 @@ jobs:
              docker login -u "${{ secrets.RELEASE_DOCKERHUB_ACCOUNT }}" --password-stdin
       - name: Build packages
         run: |
+          SUCCESS=
           # sadly, our build sometimes times out on network access
           # and running out of disk space: re-trying for 3 times
           for i in 1 2 3; do
              if make -e V=1 LINUXKIT_PKG_TARGET=push PRUNE=1 pkgs; then
+                SUCCESS=true
                 break
              else
                 # the most likely reason for 'make pkgs' to fail is
@@ -73,6 +75,7 @@ jobs:
                 docker system prune -f || :
              fi
           done
+          if [ -z "$SUCCESS" ]; then echo "::error::failed to build and push packages" && exit 1; fi
       - name: Post package report
         run: |
           echo Disk usage
