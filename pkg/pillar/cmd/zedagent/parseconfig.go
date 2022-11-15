@@ -633,6 +633,7 @@ func parseAppInstanceConfig(getconfigCtx *getconfigContext,
 		appInstance.MetaDataType = types.MetaDataType(cfgApp.MetaDataType)
 		appInstance.Delay = time.Duration(cfgApp.StartDelayInSeconds) * time.Second
 		appInstance.Service = cfgApp.Service
+		appInstance.CloudInitVersion = cfgApp.CloudInitVersion
 		appInstance.FixedResources.CPUsPinned = cfgApp.Fixedresources.PinCpu
 
 		appInstance.VolumeRefConfigList = make([]types.VolumeRefConfig,

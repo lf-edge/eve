@@ -81,6 +81,10 @@ type AppInstanceConfig struct {
 	// Service flag indicates that we want to start app instance
 	// with options defined in org.mobyproject.config label of image provided by linuxkit
 	Service bool
+
+	// All changes to the cloud-init config are tracked using this version field -
+	// once the version is changed cloud-init tool restarts in a guest.
+	CloudInitVersion uint32
 }
 
 type AppInstanceOpsCmd struct {
