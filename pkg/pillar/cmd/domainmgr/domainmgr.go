@@ -2622,6 +2622,27 @@ func cloudInitISOFileLocation(ctx *domainContext, uuid uuid.UUID) string {
 		ciDirname, uuid.String())
 }
 
+func getCloudInitVersion(config types.DomainConfig) string {
+	//
+	// `CloudInitVersion` is a proper field for cloud-init config tracking,
+	// but this field was introduced long after the cloud-init feature
+	// implemented and in order to keep backwards compatibility with old
+	// configuration we return `UUIDandVersion.Version` as it was before
+	// if `CloudInitVersion` is zeroed (thus does not exist).
+	//
+	// Why we need a separate version field? According to the spec
+	// `UUIDandVersion.Version` is increased for each change of the application
+	// config so even an application restart from the controller side leads
+	// to the version increase, which in its turn leads to the config-init tool
+	// restart on the guest side and this behavior is catastrophic.
+	//
+	if config.CloudInitVersion > 0 {
+		return fmt.Sprintf("%d", config.CloudInitVersion)
+	}
+
+	return config.UUIDandVersion.Version
+}
+
 // Create a isofs with user-data and meta-data and add it to DiskStatus
 // We do this in domainmgr and keep it in /run (and not volumemgr and /persist)
 // since it 1) potentially contains confidential info like passwords,
@@ -2658,7 +2679,7 @@ func createCloudInitISO(ctx *domainContext,
 		}
 		metafile.WriteString(fmt.Sprintf("instance-id: %s/%s\n",
 			config.UUIDandVersion.UUID.String(),
-			config.UUIDandVersion.Version))
+			getCloudInitVersion(config)))
 		metafile.WriteString(fmt.Sprintf("local-hostname: %s\n",
 			config.UUIDandVersion.UUID.String()))
 		metafile.Close()
