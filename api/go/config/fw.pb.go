@@ -231,9 +231,10 @@ type ACE struct {
 	unknownFields protoimpl.UnknownFields
 
 	// multiple matches here is for various fields of 6 tuples
-	//  for example
-	//     1) host=www.example.com & port=http
-	//     2) ip=8.8.8.8 & port=53 & proto=UDP
+	//
+	//	for example
+	//	   1) host=www.example.com & port=http
+	//	   2) ip=8.8.8.8 & port=53 & proto=UDP
 	Matches []*ACEMatch `protobuf:"bytes,1,rep,name=matches,proto3" json:"matches,omitempty"`
 	// Expect only single action...repeated here is
 	// for future work.

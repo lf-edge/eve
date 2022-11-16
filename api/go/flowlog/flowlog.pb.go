@@ -422,7 +422,7 @@ func (x *DnsRequest) GetAclNum() int32 {
 	return 0
 }
 
-// This is the request payload for POST /api/v1/edgeDevice/flowlog
+//  This is the request payload for POST /api/v1/edgeDevice/flowlog
 // FlowMessage carries device logs to the controller.
 // The message is assumed to be protected by a TLS session bound to the
 // device certificate.

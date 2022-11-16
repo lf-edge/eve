@@ -72,8 +72,8 @@ func (HashAlgorithm) EnumDescriptor() ([]byte, []int) {
 	return file_evecommon_evecommon_proto_rawDescGZIP(), []int{0}
 }
 
-//DiskDescription describes disk
-//we can use different data to locate disk in the system
+// DiskDescription describes disk
+// we can use different data to locate disk in the system
 type DiskDescription struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache

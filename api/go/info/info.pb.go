@@ -78,7 +78,6 @@ func (DepMetricItemType) EnumDescriptor() ([]byte, []int) {
 	return file_info_info_proto_rawDescGZIP(), []int{0}
 }
 
-//
 // Broadly there are two types
 // Info : information that is discovered/rarely changes
 // Metrics: information that gets updated periodically
@@ -1681,6 +1680,7 @@ type DeprecatedMetricItem struct {
 	Key  string            `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`
 	Type DepMetricItemType `protobuf:"varint,2,opt,name=type,proto3,enum=org.lfedge.eve.info.DepMetricItemType" json:"type,omitempty"`
 	// Types that are assignable to MetricItemValue:
+	//
 	//	*DeprecatedMetricItem_BoolValue
 	//	*DeprecatedMetricItem_Uint32Value
 	//	*DeprecatedMetricItem_Uint64Value
@@ -6054,6 +6054,7 @@ type ZInfoNetworkInstance struct {
 	Ipv4Eid            bool                     `protobuf:"varint,26,opt,name=ipv4Eid,proto3" json:"ipv4Eid,omitempty"`          // Track if this is a CryptoEid with IPv4 EIDs
 	AssignedAdapters   []*ZioBundle             `protobuf:"bytes,30,rep,name=assignedAdapters,proto3" json:"assignedAdapters,omitempty"`
 	// Types that are assignable to InfoContent:
+	//
 	//	*ZInfoNetworkInstance_Vinfo
 	InfoContent isZInfoNetworkInstance_InfoContent `protobuf_oneof:"InfoContent"`
 	NetworkErr  []*ErrorInfo                       `protobuf:"bytes,40,rep,name=networkErr,proto3" json:"networkErr,omitempty"`
@@ -6378,13 +6379,14 @@ type ZInfoVolume struct {
 	Usage       *UsageInfo       `protobuf:"bytes,3,opt,name=usage,proto3" json:"usage,omitempty"`
 	Resources   *VolumeResources `protobuf:"bytes,4,opt,name=resources,proto3" json:"resources,omitempty"`
 	// Allowed States:
-	//    UNSPECIFIED
-	//    INITIAL
-	//    CREATED_VOLUME  ( Terminal State )
-	//    DOWNLOADING
-	//    VERIFYING
-	//    LOADING
-	//    ERROR    ( Terminal State )
+	//
+	//	UNSPECIFIED
+	//	INITIAL
+	//	CREATED_VOLUME  ( Terminal State )
+	//	DOWNLOADING
+	//	VERIFYING
+	//	LOADING
+	//	ERROR    ( Terminal State )
 	State              ZSwState   `protobuf:"varint,5,opt,name=state,proto3,enum=org.lfedge.eve.info.ZSwState" json:"state,omitempty"`
 	ProgressPercentage uint32     `protobuf:"varint,6,opt,name=progressPercentage,proto3" json:"progressPercentage,omitempty"` // 0-100% Use depends on state i.e., download vs. verification vs. volume creation
 	VolumeErr          *ErrorInfo `protobuf:"bytes,7,opt,name=volumeErr,proto3" json:"volumeErr,omitempty"`
@@ -6541,13 +6543,14 @@ type ZInfoContentTree struct {
 	Resources   *ContentResources `protobuf:"bytes,4,opt,name=resources,proto3" json:"resources,omitempty"`
 	Usage       *UsageInfo        `protobuf:"bytes,5,opt,name=usage,proto3" json:"usage,omitempty"`
 	// Allowed States:
-	//    UNSPECIFIED
-	//    INITIAL
-	//    DOWNLOADING
-	//    VERIFYING
-	//    LOADING
-	//    LOADED   ( Terminal State )
-	//    ERROR    ( Terminal State )
+	//
+	//	UNSPECIFIED
+	//	INITIAL
+	//	DOWNLOADING
+	//	VERIFYING
+	//	LOADING
+	//	LOADED   ( Terminal State )
+	//	ERROR    ( Terminal State )
 	State              ZSwState   `protobuf:"varint,6,opt,name=state,proto3,enum=org.lfedge.eve.info.ZSwState" json:"state,omitempty"`
 	ProgressPercentage uint32     `protobuf:"varint,7,opt,name=progressPercentage,proto3" json:"progressPercentage,omitempty"` // 0-100% Depending on state if it is download or verification
 	Err                *ErrorInfo `protobuf:"bytes,8,opt,name=err,proto3" json:"err,omitempty"`
@@ -6666,13 +6669,14 @@ type ZInfoBlob struct {
 	Resources *ContentResources `protobuf:"bytes,2,opt,name=resources,proto3" json:"resources,omitempty"`
 	Usage     *UsageInfo        `protobuf:"bytes,3,opt,name=usage,proto3" json:"usage,omitempty"`
 	// Allowed States:
-	//    UNSPECIFIED
-	//    INITIAL
-	//    DOWNLOADING
-	//    VERIFYING
-	//    LOADING
-	//    LOADED   ( Terminal State )
-	//    ERROR    ( Terminal State )
+	//
+	//	UNSPECIFIED
+	//	INITIAL
+	//	DOWNLOADING
+	//	VERIFYING
+	//	LOADING
+	//	LOADED   ( Terminal State )
+	//	ERROR    ( Terminal State )
 	State              ZSwState   `protobuf:"varint,4,opt,name=state,proto3,enum=org.lfedge.eve.info.ZSwState" json:"state,omitempty"`
 	ProgressPercentage uint32     `protobuf:"varint,5,opt,name=progressPercentage,proto3" json:"progressPercentage,omitempty"` // 0-100% Depending on state if it is download or verification
 	Err                *ErrorInfo `protobuf:"bytes,6,opt,name=err,proto3" json:"err,omitempty"`
@@ -6800,7 +6804,7 @@ func (x *ZInfoBlobList) GetBlob() []*ZInfoBlob {
 	return nil
 }
 
-// This is the request payload for POST /api/v1/edgeDevice/info
+//  This is the request payload for POST /api/v1/edgeDevice/info
 // ZInfoMsg carries event-triggered state changes for one object (a device,
 // an app instance, or a network instance). As such the messages are retransmitted
 // until they make it to the controller, however subsequent state change to the
@@ -6814,6 +6818,7 @@ type ZInfoMsg struct {
 	Ztype ZInfoTypes `protobuf:"varint,1,opt,name=ztype,proto3,enum=org.lfedge.eve.info.ZInfoTypes" json:"ztype,omitempty"`
 	DevId string     `protobuf:"bytes,2,opt,name=devId,proto3" json:"devId,omitempty"`
 	// Types that are assignable to InfoContent:
+	//
 	//	*ZInfoMsg_Dinfo
 	//	*ZInfoMsg_Ainfo
 	//	*ZInfoMsg_Niinfo

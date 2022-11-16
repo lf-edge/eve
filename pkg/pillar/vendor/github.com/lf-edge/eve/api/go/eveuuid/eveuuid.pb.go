@@ -61,7 +61,7 @@ func (*UuidRequest) Descriptor() ([]byte, []int) {
 	return file_eveuuid_eveuuid_proto_rawDescGZIP(), []int{0}
 }
 
-// This is the response payload for POST /api/v2/edgeDevice/uuid
+//  This is the response payload for POST /api/v2/edgeDevice/uuid
 // The message is assumed to be protected by signing envelope
 type UuidResponse struct {
 	state         protoimpl.MessageState
