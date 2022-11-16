@@ -136,7 +136,7 @@ func (ZCertType) EnumDescriptor() ([]byte, []int) {
 	return file_certs_certs_proto_rawDescGZIP(), []int{1}
 }
 
-// This is the response payload for GET /api/v1/edgeDevice/certs
+//  This is the response payload for GET /api/v1/edgeDevice/certs
 // or /api/v2/edgeDevice/certs
 // ZControllerCert carries a set of X.509 certificate and their properties
 // from Controller to EVE.

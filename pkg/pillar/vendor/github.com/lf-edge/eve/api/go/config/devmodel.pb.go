@@ -191,7 +191,9 @@ type SystemAdapter struct {
 	unknownFields protoimpl.UnknownFields
 
 	// name - Name of the Network Interface. This is the Port Name
-	//  used in Info / Metrics / flowlog etc. Name cannot be changed.
+	//
+	//	used in Info / Metrics / flowlog etc. Name cannot be changed.
+	//
 	// This will be the Network Port name.
 	Name string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
 	// DEPRECATED by cost below
@@ -364,12 +366,13 @@ func (x *PhyIOUsagePolicy) GetFreeUplink() bool {
 }
 
 // PhysicalIO:
-//    Absolute low level description of physical buses and ports that are
-//    available on given platform.
-//    Collection of these IOs, constitute what we would call as hardware
-//    model. Each physical IO is manageable and visible to EVE software, and
-//    it can be further configured to either provide IP connectivity or
-//    directly be given to workloads
+//
+//	Absolute low level description of physical buses and ports that are
+//	available on given platform.
+//	Collection of these IOs, constitute what we would call as hardware
+//	model. Each physical IO is manageable and visible to EVE software, and
+//	it can be further configured to either provide IP connectivity or
+//	directly be given to workloads
 type PhysicalIO struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
@@ -385,16 +388,21 @@ type PhysicalIO struct {
 	// "ifname": the address is a string for a network interface like "eth1"
 	// "serial": the address is a Linux serial port alias such as "/dev/ttyS2"
 	// "irq": the address is a number such as "5". This can be a comma
-	//    separated list of integers or even a range of integers. Hence using
-	//    a string to address this.
+	//
+	//	separated list of integers or even a range of integers. Hence using
+	//	a string to address this.
+	//
 	// "ioports": the address is a string such as "2f8-2ff"
 	// "usbaddr": the address is a USB of the form of "1:2.3"
 	// If the type is PhyIoNet*, then there needs to be an "ifname" physaddr.
 	Phyaddrs map[string]string `protobuf:"bytes,3,rep,name=phyaddrs,proto3" json:"phyaddrs,omitempty" protobuf_key:"bytes,1,opt,name=key,proto3" protobuf_val:"bytes,2,opt,name=value,proto3"`
 	// logicallabel - provides the ability to model designer to refer
-	//    the physicalIO port to using more friendly name
+	//
+	//	the physicalIO port to using more friendly name
+	//
 	// For example Eth0->Mgmt0
-	//  or USBA->ConfigDiskA etc
+	//
+	//	or USBA->ConfigDiskA etc
 	Logicallabel string `protobuf:"bytes,4,opt,name=logicallabel,proto3" json:"logicallabel,omitempty"`
 	// assigngrp
 	// Assignment Group, is unique label that is applied across PhysicalIOs
@@ -411,15 +419,18 @@ type PhysicalIO struct {
 	// be set.
 	Assigngrp string `protobuf:"bytes,5,opt,name=assigngrp,proto3" json:"assigngrp,omitempty"`
 	// usage - indicates the role of adapter ( mgmt / blocked / app-direct
-	//    etc. )
+	//
+	//	etc. )
 	Usage evecommon.PhyIoMemberUsage `protobuf:"varint,6,opt,name=usage,proto3,enum=org.lfedge.eve.common.PhyIoMemberUsage" json:"usage,omitempty"`
 	// usagePolicy - Policy Object used to further refine the usage.
 	// For example, specify if this should be only used as fallback?
-	//    Or used as the primary uplink? Allow App traffic? restrict
-	//    app traffic?? etc..
+	//
+	//	Or used as the primary uplink? Allow App traffic? restrict
+	//	app traffic?? etc..
 	UsagePolicy *PhyIOUsagePolicy `protobuf:"bytes,7,opt,name=usagePolicy,proto3" json:"usagePolicy,omitempty"`
 	// physical and logical attributes
-	//    For example in WWAN to which firmware version to load etc
+	//
+	//	For example in WWAN to which firmware version to load etc
 	Cbattr map[string]string `protobuf:"bytes,8,rep,name=cbattr,proto3" json:"cbattr,omitempty" protobuf_key:"bytes,1,opt,name=key,proto3" protobuf_val:"bytes,2,opt,name=value,proto3"`
 	// list of Virtual Functions (VF) for given Physical Function (PF)
 	// only applies for PHY_IO_TYPE_PHY_IO_NET_ETH_PF
@@ -683,6 +694,7 @@ type BondAdapter struct {
 	// Method by which link failures and recoveries are detected.
 	//
 	// Types that are assignable to Monitoring:
+	//
 	//	*BondAdapter_Mii
 	//	*BondAdapter_Arp
 	Monitoring isBondAdapter_Monitoring `protobuf_oneof:"monitoring"`

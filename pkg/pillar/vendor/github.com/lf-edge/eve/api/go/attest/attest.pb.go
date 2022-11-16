@@ -134,7 +134,7 @@ func (ZAttestRespType) EnumDescriptor() ([]byte, []int) {
 	return file_attest_attest_proto_rawDescGZIP(), []int{1}
 }
 
-//Hash algo used in digests, and PCR Extend operations
+// Hash algo used in digests, and PCR Extend operations
 type TpmHashAlgo int32
 
 const (
@@ -435,7 +435,7 @@ func (AttestStorageKeysResponseCode) EnumDescriptor() ([]byte, []int) {
 	return file_attest_attest_proto_rawDescGZIP(), []int{7}
 }
 
-// This is the request payload for POST /api/v2/edgeDevice/id/<uuid>/attest
+//  This is the request payload for POST /api/v2/edgeDevice/id/<uuid>/attest
 // The message is assumed to be protected by signing envelope
 type ZAttestReq struct {
 	state         protoimpl.MessageState
@@ -508,7 +508,7 @@ func (x *ZAttestReq) GetStorageKeys() *AttestStorageKeys {
 	return nil
 }
 
-// This is the response payload for POST /api/v2/edgeDevice/id/<uuid>/attest
+//  This is the response payload for POST /api/v2/edgeDevice/id/<uuid>/attest
 // The message is assumed to be protected by signing envelope
 type ZAttestResponse struct {
 	state         protoimpl.MessageState
@@ -628,7 +628,7 @@ func (x *ZAttestNonceResp) GetNonce() []byte {
 	return nil
 }
 
-//A hash algo, and corresponding digest derived using that algo
+// A hash algo, and corresponding digest derived using that algo
 type TpmEventDigest struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
@@ -684,8 +684,8 @@ func (x *TpmEventDigest) GetDigest() []byte {
 	return nil
 }
 
-//Taken from
-//5.2 Crypto Agile Log Entry Format, from https://trustedcomputinggroup.org/wp-content/uploads/EFI-Protocol-Specification-rev13-160330final.pdf
+// Taken from
+// 5.2 Crypto Agile Log Entry Format, from https://trustedcomputinggroup.org/wp-content/uploads/EFI-Protocol-Specification-rev13-160330final.pdf
 type TpmEventLogEntry struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
@@ -844,9 +844,9 @@ func (x *AttestGPSCoordinates) GetLongitude() float64 {
 	return 0
 }
 
-//examples
-//ATTEST_VERSION_TYPE_EVE, "5.6.1-amd64"
-//ATTEST_VERSION_TYPE_FIRMWARE, "American Megatrends Inc.-5.12"
+// examples
+// ATTEST_VERSION_TYPE_EVE, "5.6.1-amd64"
+// ATTEST_VERSION_TYPE_FIRMWARE, "American Megatrends Inc.-5.12"
 type AttestVersionInfo struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
@@ -902,7 +902,7 @@ func (x *AttestVersionInfo) GetVersion() string {
 	return ""
 }
 
-//Holds one single PCR value from TPM, from a particular hash bank
+// Holds one single PCR value from TPM, from a particular hash bank
 type TpmPCRValue struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
@@ -966,8 +966,8 @@ func (x *TpmPCRValue) GetValue() []byte {
 	return nil
 }
 
-//attestData is taken from
-//TPMS_ATTEST Table 2:123) in https://trustedcomputinggroup.org/wp-content/uploads/TPM-Rev-2.0-Part-2-Structures-01.38.pdf
+// attestData is taken from
+// TPMS_ATTEST Table 2:123) in https://trustedcomputinggroup.org/wp-content/uploads/TPM-Rev-2.0-Part-2-Structures-01.38.pdf
 type ZAttestQuote struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
@@ -1174,7 +1174,7 @@ func (x *ZAttestQuoteResp) GetKeys() []*AttestVolumeKey {
 	return nil
 }
 
-//Encrypted data to save and retrievable post successful attestation
+// Encrypted data to save and retrievable post successful attestation
 type AttestStorageKeys struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache

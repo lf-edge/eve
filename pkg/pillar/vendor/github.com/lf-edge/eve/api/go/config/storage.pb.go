@@ -1177,12 +1177,12 @@ func (x *Volume) GetTarget() Target {
 	return Target_TgtUnknown
 }
 
-//DiskConfig describe desired configuration of disk
-//If we want change state to online/offline we should define its state
-//If we want to add disk we should define it here and set DiskConfigType to online or offline
-//If we want to remove disk we should set its state to unused or appdirect
-//If we want to replace disk we should fill old_disk to be replaced with disk
-//Progress of operation is expected to be available in info messages
+// DiskConfig describe desired configuration of disk
+// If we want change state to online/offline we should define its state
+// If we want to add disk we should define it here and set DiskConfigType to online or offline
+// If we want to remove disk we should set its state to unused or appdirect
+// If we want to replace disk we should fill old_disk to be replaced with disk
+// Progress of operation is expected to be available in info messages
 type DiskConfig struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
@@ -1247,15 +1247,15 @@ func (x *DiskConfig) GetDiskConfig() DiskConfigType {
 	return DiskConfigType_DISK_CONFIG_TYPE_UNSPECIFIED
 }
 
-//DisksConfig is a configuration of disks
-//We expect information about disks to be filled and will try to adjust disks states accordingly
-//All disks defined in disks field expected to have array type defined in array_type
-//To support nested topologies we can use children field
+// DisksConfig is a configuration of disks
+// We expect information about disks to be filled and will try to adjust disks states accordingly
+// All disks defined in disks field expected to have array type defined in array_type
+// To support nested topologies we can use children field
 //
-//For example to use stripe of two pairs of mirrored disks we should define
-//DisksConfig without disks with array_type DISKS_ARRAY_TYPE_RAID0
-//with two children with properly defined disks inside and with array_type DISKS_ARRAY_TYPE_RAID1
-//and empty children
+// For example to use stripe of two pairs of mirrored disks we should define
+// DisksConfig without disks with array_type DISKS_ARRAY_TYPE_RAID0
+// with two children with properly defined disks inside and with array_type DISKS_ARRAY_TYPE_RAID1
+// and empty children
 type DisksConfig struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
