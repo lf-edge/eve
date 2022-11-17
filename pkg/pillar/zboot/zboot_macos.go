@@ -13,3 +13,8 @@ func zbootMount(devname string, target string, fstype string,
 	// Dummy function to allow compilation on OSX
 	return nil
 }
+
+func zbootUnmount(target string, retry bool) (err error) {
+	// Dummy function to allow compilation on OSX
+	return nil
+}

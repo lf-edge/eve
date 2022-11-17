@@ -521,12 +521,17 @@ func getVersion(log *base.LogObject, part string, verFilename string) (string, e
 		log.Noticef("Mounted %s on %s", devname, target)
 		defer func() {
 			log.Noticef("Unmount(%s)", target)
-			err := syscall.Unmount(target, 0)
-			if err != nil {
-				errStr := fmt.Sprintf("Unmount of %s failed: %s", target, err)
-				logrus.Error(errStr)
-			} else {
-				log.Noticef("Unmounted %s", target)
+			for i := 0; i < 10; i++ {
+				err := zbootUnmount(target, i > 0)
+				if err != nil {
+					errStr := fmt.Sprintf("Unmount of %s %d failed: %s",
+						target, i, err)
+					logrus.Error(errStr)
+					time.Sleep(time.Second)
+				} else {
+					log.Noticef("Unmounted %s", target)
+					break
+				}
 			}
 		}()
 		filename := fmt.Sprintf("%s/%s",
