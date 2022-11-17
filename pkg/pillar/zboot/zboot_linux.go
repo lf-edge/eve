@@ -20,3 +20,8 @@ func zbootMount(devname string, target string, fstype string,
 	}
 	return syscall.Mount(devname, target, fstype, flagsLinux, data)
 }
+
+func zbootUnmount(target string, retry bool) (err error) {
+	// Maybe we need to feed some MNT_ flags in here. TBD.
+	return syscall.Unmount(target, 0)
+}
