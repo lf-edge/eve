@@ -20,6 +20,10 @@ over_voltage=0
 # Fix mini UART input frequency, and setup/enable up the UART.
 enable_uart=1
 
+# Uncomment dtoverlay=raspberrypi-uno-220 if you use advantech uno-220 board,
+# this overlay overwrites the SMBIOS information.
+#dtoverlay=raspberrypi-uno-220
+
 # Disable warning overlays as they don't work well together with linux's graphical output
 avoid_warnings=1
 
