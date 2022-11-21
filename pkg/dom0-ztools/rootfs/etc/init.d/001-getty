@@ -1,0 +1,14 @@
+#!/bin/sh
+
+# we override content of https://github.com/linuxkit/linuxkit/blob/master/pkg/getty/etc/init.d/001-getty
+# with conditional behavior
+# if we see getty in kernel command line
+# we will start getty
+
+if cat /proc/cmdline | grep -q getty; then
+  export INITGETTY=true
+  export INSECURE=true
+  /usr/bin/rungetty.sh
+else
+  echo "no getty"
+fi
