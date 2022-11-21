@@ -78,8 +78,12 @@ conditional or looping statements).
 Second stage GRUB is expected to do all the [heavy lifting](../pkg/grub/rootfs.cfg) of actually booting
 an EVE instance and because it resides in IMGA or IMGB partitions it can easily be upgraded and patched.
 Behavior of this stage of boot process is controlled by a read-only grub.cfg under {IMGA,IMGB}/EFI/BOOT/
-but it can further be tweaked by the grub.cfg overrides on the CONFIG partition. Note that an override
-grub.cfg is expected to be a [complete override](../pkg/grub/rootfs.cfg#L143) and anyone constructing
+but it can further be tweaked by the grub.cfg overrides on the CONFIG partition. The content of
+CONFIG partition mounted using tmpfs mount. In order to mount partition itself you can use
+`eve config mount <mountpoint>` command. To unmount config partition you can use `eve config unmount`.
+Modification of files in CONFIG partition may affect booting process
+and invalidate TPM measurements. Note that an override grub.cfg is expected
+to be a [complete override](../pkg/grub/rootfs.cfg#L143) and anyone constructing
 its content is expected to be familiar with the overall flow of read-only grub.cfg.
 
 Options to use in grub.cfg on the CONFIG partition are defined below. Most options may be defined in the format
