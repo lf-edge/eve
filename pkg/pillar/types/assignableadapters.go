@@ -22,6 +22,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	zcommon "github.com/lf-edge/eve/api/go/evecommon"
 	"github.com/lf-edge/eve/pkg/pillar/base"
+	"github.com/lf-edge/eve/pkg/pillar/sriov"
 	uuid "github.com/satori/go.uuid"
 	"github.com/shirou/gopsutil/disk"
 )
@@ -94,7 +95,7 @@ type IoBundle struct {
 	ErrorTime  time.Time
 
 	// Only used in PhyIoNetEthPF
-	Vfs VFList
+	Vfs sriov.VFList
 	// Only used in PhyIoNetEthVF
 	VfParams VfInfo
 }
@@ -192,7 +193,7 @@ func IoBundleFromPhyAdapter(log *base.LogObject, phyAdapter PhysicalIOAdapter) *
 	ib.Serial = phyAdapter.Phyaddr.Serial
 	ib.Usage = phyAdapter.Usage
 	// We're making deep copy
-	ib.Vfs.Data = make([]EthVF, len(phyAdapter.Vfs.Data))
+	ib.Vfs.Data = make([]sriov.EthVF, len(phyAdapter.Vfs.Data))
 	copy(ib.Vfs.Data, phyAdapter.Vfs.Data)
 	ib.Vfs.Count = phyAdapter.Vfs.Count
 	// Guard against models without ifname for network adapters
