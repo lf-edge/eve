@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/lf-edge/eve/pkg/pillar/base"
+	"github.com/lf-edge/eve/pkg/pillar/sriov"
 	uuid "github.com/satori/go.uuid"
 )
 
@@ -91,8 +92,8 @@ type AppInstanceOpsCmd struct {
 // IoAdapter specifies that a group of ports should be assigned
 type IoAdapter struct {
 	Type  IoType
-	Name  string // Short hand name such as "COM1" or "eth1-2"
-	EthVf EthVF  // Applies only to the VF IoType
+	Name  string      // Short hand name such as "COM1" or "eth1-2"
+	EthVf sriov.EthVF // Applies only to the VF IoType
 }
 
 // LogCreate :

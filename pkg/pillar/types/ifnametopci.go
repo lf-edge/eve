@@ -16,6 +16,7 @@ import (
 	"strings"
 
 	"github.com/lf-edge/eve/pkg/pillar/base"
+	"github.com/lf-edge/eve/pkg/pillar/sriov"
 	"github.com/vishvananda/netlink"
 )
 
@@ -87,6 +88,23 @@ func ifNameToPci(log *base.LogObject, ifName string) (string, error) {
 		}
 	}
 	return target, fmt.Errorf("Not PCI %s", target)
+}
+
+// Returns the long PCI IDs for Virtual function
+func vfIfNameToPci(ifName string) (string, error) {
+	index, parentIface, err := sriov.ParseVfIfaceName(ifName)
+	if err != nil {
+		return "", err
+	}
+	vfList, err := sriov.GetVf(parentIface)
+	if err != nil {
+		return "", err
+	}
+	vfIface := vfList.GetInfo(index)
+	if vfIface == nil {
+		return "", fmt.Errorf("Could not obtain information for %d vf for iface %s", index, parentIface)
+	}
+	return vfIface.PciLong, nil
 }
 
 // PCILongToShort returns the PCI ID without the domain id
@@ -182,14 +200,19 @@ func PciLongToIfname(log *base.LogObject, long string) (bool, string) {
 // Checks if PCI ID exists on system. Returns null strings for non-PCI
 // devices since we can't check if they exist.
 // This can handle aliases like Ifname.
-func IoBundleToPci(log *base.LogObject, ib *IoBundle) (string, error) {
-
+func IoBundleToPci(log *base.LogObject, ib *IoBundle) (string, error) { //nolint:gocyclo
 	var long string
 	if ib.PciLong != "" {
 		long = ib.PciLong
 		// Check if model matches
 		if ib.Ifname != "" {
-			l, err := ifNameToPci(log, ib.Ifname)
+			var l string
+			var err error
+			if ib.Type == IoNetEthVF {
+				l, err = vfIfNameToPci(ib.Ifname)
+			} else {
+				l, err = ifNameToPci(log, ib.Ifname)
+			}
 			rename := false
 			if err == nil {
 				if long != l {
@@ -211,9 +234,16 @@ func IoBundleToPci(log *base.LogObject, ib *IoBundle) (string, error) {
 		}
 	} else if ib.Ifname != "" {
 		var err error
-		long, err = ifNameToPci(log, ib.Ifname)
-		if err != nil {
-			return long, err
+		if ib.Type == IoNetEthVF {
+			long, err = vfIfNameToPci(ib.Ifname)
+			if err != nil {
+				return long, err
+			}
+		} else {
+			long, err = ifNameToPci(log, ib.Ifname)
+			if err != nil {
+				return long, err
+			}
 		}
 	} else {
 		return "", nil

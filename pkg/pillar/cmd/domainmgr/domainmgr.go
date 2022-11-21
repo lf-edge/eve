@@ -37,6 +37,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/sema"
+	"github.com/lf-edge/eve/pkg/pillar/sriov"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
 	"github.com/opencontainers/runtime-spec/specs-go"
@@ -2785,12 +2786,12 @@ func handlePhysicalIOAdapterListImpl(ctxArg interface{}, key string,
 					log.Fatal("Failed to resolve ifname for PCI address ", ib.PciLong)
 				}
 
-				err = createVF(ifName, ib.Vfs.Count)
+				err = sriov.CreateVF(ifName, ib.Vfs.Count)
 				if err != nil {
 					log.Fatal("Failed to create VF for iface with PCI address", ib.PciLong)
 				}
 
-				vfs, err := getVfByTimeout(150*time.Second, ifName, ib.Vfs.Count)
+				vfs, err := sriov.GetVfByTimeout(150*time.Second, ifName, ib.Vfs.Count)
 				if err != nil {
 					log.Fatal("Failed to get VF for iface ", ifName, " ", err)
 				}
@@ -2864,26 +2865,26 @@ func handlePhysicalIOAdapterListImpl(ctxArg interface{}, key string,
 	}
 }
 
-func createVfIoBundle(pfIb types.IoBundle, vf types.EthVF) (types.IoBundle, error) {
+func createVfIoBundle(pfIb types.IoBundle, vf sriov.EthVF) (types.IoBundle, error) {
 	vfUserConfig := pfIb.Vfs.GetInfo(vf.Index)
 	if vfUserConfig == nil {
 		return types.IoBundle{}, fmt.Errorf("Can't find any with index %d", vf.Index)
 	}
 	vfIb := pfIb
 	vfIb.Type = types.IoNetEthVF
-	vfIb.Ifname = fmt.Sprintf("vf%d%s", vf.Index, pfIb.Ifname)
-	vfIb.Phylabel = fmt.Sprintf("vf%d%s", vf.Index, pfIb.Phylabel)
-	vfIb.Logicallabel = fmt.Sprintf("vf%d%s", vf.Index, pfIb.Logicallabel)
+	vfIb.Ifname = sriov.GetVfIfaceName(vf.Index, pfIb.Ifname)
+	vfIb.Phylabel = sriov.GetVfIfaceName(vf.Index, pfIb.Phylabel)
+	vfIb.Logicallabel = sriov.GetVfIfaceName(vf.Index, pfIb.Logicallabel)
 	vfIb.PciLong = vf.PciLong
-	vfIb.VfParams = types.VfInfo{Index: vf.Index, VlanID: vf.VlanId, PFIface: pfIb.Ifname}
+	vfIb.VfParams = types.VfInfo{Index: vf.Index, VlanID: vf.VlanID, PFIface: pfIb.Ifname}
 	if vfUserConfig.Mac != "" {
 		vfIb.MacAddr = vfUserConfig.Mac
-		if err := setupVfHardwareAddr(vfIb.Ifname, vfIb.MacAddr, vf.Index); err != nil {
+		if err := sriov.SetupVfHardwareAddr(vfIb.Ifname, vfIb.MacAddr, vf.Index); err != nil {
 			return types.IoBundle{}, fmt.Errorf("setupVfHardwareAddr failed %s", err)
 		}
 	}
-	if vfUserConfig.VlanId != 0 {
-		if err := setupVfVlan(vfIb.Ifname, vf.Index, vf.VlanId); err != nil {
+	if vfUserConfig.VlanID != 0 {
+		if err := sriov.SetupVfVlan(vfIb.Ifname, vf.Index, vf.VlanID); err != nil {
 			return types.IoBundle{}, fmt.Errorf("setupVfVlan failed %s", err)
 		}
 	}

@@ -19,6 +19,7 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	zconfig "github.com/lf-edge/eve/api/go/config"
+	"github.com/lf-edge/eve/pkg/pillar/sriov"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
 	uuid "github.com/satori/go.uuid"
@@ -662,9 +663,9 @@ func parseAppInstanceConfig(getconfigCtx *getconfigContext,
 				if err != nil {
 					log.Errorf("Failed to parse hardware address for adapter %s: %s", adapter.Name, err)
 				}
-				ioa.EthVf = types.EthVF{
+				ioa.EthVf = sriov.EthVF{
 					Mac:    hwaddr.String(),
-					VlanId: uint16(adapter.EthVf.VlanId)}
+					VlanID: uint16(adapter.EthVf.VlanId)}
 			}
 			appInstance.IoAdapterList = append(appInstance.IoAdapterList, ioa)
 		}
