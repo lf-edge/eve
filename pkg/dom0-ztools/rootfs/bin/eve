@@ -17,6 +17,8 @@ Welcome to EVE!
             destroy <service>
             persist list
             persist attach <disk>
+            config mount <mountpoint>
+            config unmount
             firewall drop
             verbose on|off
             version
@@ -49,6 +51,35 @@ create_new_p3_part() {
   /usr/bin/sgdisk --new "$num_p3_part":"$sec_start":"$sec_end" \
                   --typecode="$num_p3_part":7dcc9ef1-b744-454a-b6ee-c15af7e3eea9 \
                   --change-name="$num_p3_part":'P3' "$1"
+}
+
+mount_partlabel() {
+  PARTLABEL="$1"
+  if [ -z "$2" ]; then
+    echo "ERROR: no mountpoint provided" && help
+  fi
+  MOUNTPOINT="$2"
+  if ! mkdir -p "$MOUNTPOINT"; then
+     echo "ERROR: failed to ensure $MOUNTPOINT" && exit 1
+  fi
+  MOUNT_DEV=$(/sbin/findfs PARTLABEL="$PARTLABEL")
+  if [ -z "$MOUNT_DEV" ]; then
+    echo "ERROR: no device with PARTLABEL=$PARTLABEL found" && exit 1
+  fi
+  if ! mount -t vfat -o rw,iocharset=iso8859-1 "$MOUNT_DEV" "$MOUNTPOINT"; then
+     echo "ERROR: mount $MOUNT_DEV on $MOUNTPOINT failed" && exit 1
+  fi
+}
+
+unmount_partlabel() {
+  PARTLABEL="$1"
+  MOUNT_DEV=$(/sbin/findfs PARTLABEL="$PARTLABEL")
+  if [ -z "$MOUNT_DEV" ]; then
+    echo "ERROR: no device with PARTLABEL=$PARTLABEL found" && exit 1
+  fi
+  if ! umount "$MOUNT_DEV"; then
+     echo "ERROR: umount $MOUNT_DEV failed" && exit 1
+  fi
 }
 
 case "$1" in
@@ -160,6 +191,15 @@ __EOT__
                      list_partitions
                      ;;
                   *) help
+                     ;;
+          esac
+          ;;
+ config) case "$2" in
+               mount) mount_partlabel "CONFIG" "$3"
+                     ;;
+               unmount) unmount_partlabel "CONFIG"
+                     ;;
+               *) help
                      ;;
           esac
           ;;
