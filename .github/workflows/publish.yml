@@ -116,22 +116,7 @@ jobs:
         run: |
           echo "${{ secrets.RELEASE_DOCKERHUB_TOKEN }}" |\
              docker login -u "${{ secrets.RELEASE_DOCKERHUB_ACCOUNT }}" --password-stdin
-      - name: Build EVE for ${{ matrix.arch }}-${{ matrix.hv }}
-        # build #1 without push (do not push either unless both can build)
-        run: |
-          rm -rf dist dist.${{ matrix.hv }}
-          make -e V=1 HV=${{ matrix.hv }} ZARCH=${{ matrix.arch }} eve
-          mv -f dist dist.${{ matrix.hv }}
-      - name: Post eve ${{ matrix.arch }}-${{ matrix.hv }} report
-        run: |
-          echo Disk usage
-          df -h
-          echo Memory
-          free -m
-          docker system df
-          docker system df -v
       - name: Build and push EVE for ${{ matrix.arch }}-${{ matrix.hv }}
-        # since build #1 works, build and push #2
         run: |
           make -e V=1 HV=${{ matrix.hv }} ZARCH=${{ matrix.arch }} LINUXKIT_PKG_TARGET=push eve
       - name: Post eve ${{ matrix.arch }}-${{ matrix.hv }} report
