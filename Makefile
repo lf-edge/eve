@@ -267,7 +267,8 @@ LINUXKIT_OPTS=$(if $(strip $(EVE_HASH)),--hash) $(EVE_HASH) $(if $(strip $(EVE_R
 LINUXKIT_PKG_TARGET=build
 LINUXKIT_PATCHES_DIR=tools/linuxkit/patches
 RESCAN_DEPS=FORCE
-FORCE_BUILD=--force
+# set FORCE_BUILD to --force to enforce rebuild
+FORCE_BUILD=
 
 # we use the following block to assign correct tag to the Docker registry artifact
 ifeq ($(LINUXKIT_PKG_TARGET),push)
@@ -584,7 +585,6 @@ $(LIVE).parallels: $(LIVE).raw
 
 # top-level linuxkit packages targets, note the one enforcing ordering between packages
 pkgs: RESCAN_DEPS=
-pkgs: FORCE_BUILD=
 pkgs: build-tools $(PKGS)
 	@echo Done building packages
 
