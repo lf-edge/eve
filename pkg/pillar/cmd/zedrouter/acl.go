@@ -948,6 +948,12 @@ func aceToRules(ctx *zedrouterContext, aclArgs types.AppNetworkACLArgs,
 			inArgs = append(inArgs, add...)
 		}
 		if action.PortMap {
+			if aclArgs.NIType == types.NetworkInstanceTypeSwitch {
+				errStr := fmt.Sprintf("PortMap not supported on switch network instance: %+v",
+					ace)
+				log.Errorln(errStr)
+				return nil, nil, errors.New(errStr)
+			}
 			actionCount += 1
 			// Generate NAT and ACCEPT rules based on protocol,
 			// lport, and TargetPort
