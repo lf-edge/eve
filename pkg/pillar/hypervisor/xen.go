@@ -266,7 +266,7 @@ func (ctx xenContext) CreateDomConfig(domainName string, config types.DomainConf
 	if maxCpus == 0 {
 		maxCpus = vCpus
 	}
-	file.WriteString(fmt.Sprintf("maxcpus = %d\n", maxCpus))
+	file.WriteString(fmt.Sprintf("maxvcpus = %d\n", maxCpus))
 	if config.CPUs != "" {
 		file.WriteString(fmt.Sprintf("cpus = \"%s\"\n", config.CPUs))
 	}
