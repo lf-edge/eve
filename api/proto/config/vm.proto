@@ -26,11 +26,21 @@ message VmConfig {
   string ramdisk = 2;
   uint32 memory = 3;
   uint32 maxmem = 4;
+  // The amount of the VCPUs in the VM.
   uint32 vcpus = 5;
+  // In the case of the Xen hypervisor - the maximal amount of the VCPUs
+  // available to the VM. Can be greater than `vcpus` (the VCPUs online on the
+  // VM start). If the field is not set, it is initialized by EVE to the value
+  // in the `vcpus` field.
   uint32 maxcpus = 6;
   string rootdev = 7;
   string extraargs = 8;
   string bootloader = 9;
+  // Currently is not handled by EVE.
+  // CPU mask of the CPUs assigned to the VM. Represented in the form
+  // "d[[,-]d]*". E.g. "0-2" or "0-2,5,6". CPUs start with 0. For example, the
+  // mask "0,3" would mean that only physical CPUs 0 and 3 are available for
+  // the VM.
   string cpus = 10;
   string devicetree = 11;
   repeated string dtdev = 12;
