@@ -90,15 +90,25 @@ type VmConfig struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	Kernel             string   `protobuf:"bytes,1,opt,name=kernel,proto3" json:"kernel,omitempty"`
-	Ramdisk            string   `protobuf:"bytes,2,opt,name=ramdisk,proto3" json:"ramdisk,omitempty"`
-	Memory             uint32   `protobuf:"varint,3,opt,name=memory,proto3" json:"memory,omitempty"`
-	Maxmem             uint32   `protobuf:"varint,4,opt,name=maxmem,proto3" json:"maxmem,omitempty"`
-	Vcpus              uint32   `protobuf:"varint,5,opt,name=vcpus,proto3" json:"vcpus,omitempty"`
-	Maxcpus            uint32   `protobuf:"varint,6,opt,name=maxcpus,proto3" json:"maxcpus,omitempty"`
-	Rootdev            string   `protobuf:"bytes,7,opt,name=rootdev,proto3" json:"rootdev,omitempty"`
-	Extraargs          string   `protobuf:"bytes,8,opt,name=extraargs,proto3" json:"extraargs,omitempty"`
-	Bootloader         string   `protobuf:"bytes,9,opt,name=bootloader,proto3" json:"bootloader,omitempty"`
+	Kernel  string `protobuf:"bytes,1,opt,name=kernel,proto3" json:"kernel,omitempty"`
+	Ramdisk string `protobuf:"bytes,2,opt,name=ramdisk,proto3" json:"ramdisk,omitempty"`
+	Memory  uint32 `protobuf:"varint,3,opt,name=memory,proto3" json:"memory,omitempty"`
+	Maxmem  uint32 `protobuf:"varint,4,opt,name=maxmem,proto3" json:"maxmem,omitempty"`
+	// The amount of the VCPUs in the VM.
+	Vcpus uint32 `protobuf:"varint,5,opt,name=vcpus,proto3" json:"vcpus,omitempty"`
+	// In the case of the Xen hypervisor - the maximal amount of the VCPUs
+	// available to the VM. Can be greater than `vcpus` (the VCPUs online on the
+	// VM start). If the field is not set, it is initialized by EVE to the value
+	// in the `vcpus` field.
+	Maxcpus    uint32 `protobuf:"varint,6,opt,name=maxcpus,proto3" json:"maxcpus,omitempty"`
+	Rootdev    string `protobuf:"bytes,7,opt,name=rootdev,proto3" json:"rootdev,omitempty"`
+	Extraargs  string `protobuf:"bytes,8,opt,name=extraargs,proto3" json:"extraargs,omitempty"`
+	Bootloader string `protobuf:"bytes,9,opt,name=bootloader,proto3" json:"bootloader,omitempty"`
+	// Currently is not handled by EVE.
+	// CPU mask of the CPUs assigned to the VM. Represented in the form
+	// "d[[,-]d]*". E.g. "0-2" or "0-2,5,6". CPUs start with 0. For example, the
+	// mask "0,3" would mean that only physical CPUs 0 and 3 are available for
+	// the VM.
 	Cpus               string   `protobuf:"bytes,10,opt,name=cpus,proto3" json:"cpus,omitempty"`
 	Devicetree         string   `protobuf:"bytes,11,opt,name=devicetree,proto3" json:"devicetree,omitempty"`
 	Dtdev              []string `protobuf:"bytes,12,rep,name=dtdev,proto3" json:"dtdev,omitempty"`
