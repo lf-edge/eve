@@ -1,8 +1,12 @@
 *.swp
+.idea/
+.vscode/
 obj
 dist/
 build-tools/bin/
 images/*.yml
+images/rootfs-*.yml.in
+images/*.yml.in.sed
 .go/
 tags
 tmp/
