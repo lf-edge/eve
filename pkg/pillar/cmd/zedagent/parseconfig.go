@@ -625,6 +625,7 @@ func parseAppInstanceConfig(getconfigCtx *getconfigContext,
 		appInstance.FixedResources.Memory = int(cfgApp.Fixedresources.Memory)
 		appInstance.FixedResources.RootDev = cfgApp.Fixedresources.Rootdev
 		appInstance.FixedResources.VCpus = int(cfgApp.Fixedresources.Vcpus)
+		appInstance.FixedResources.MaxCpus = int(cfgApp.Fixedresources.Maxcpus)
 		appInstance.FixedResources.VirtualizationMode = types.VmMode(cfgApp.Fixedresources.VirtualizationMode)
 		appInstance.FixedResources.EnableVnc = cfgApp.Fixedresources.EnableVnc
 		appInstance.FixedResources.VncDisplay = cfgApp.Fixedresources.VncDisplay
