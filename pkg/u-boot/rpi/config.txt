@@ -24,6 +24,13 @@ enable_uart=1
 # this overlay overwrites the SMBIOS information.
 #dtoverlay=raspberrypi-uno-220
 
+# This overlay adds support for the slb9670 tpm module to uboot
+# Some boards can have different ce(address), we can set ce by param,
+# for most popular TPM modules that based on slb9670 we use default ce param value (0x01),
+# but for advantech uno-220 we need to set ce to 0x00
+# https://github.com/Advantech-IIoT/UNO-220-POE-/tree/master/srcs/dtbo/tpm#notes
+dtoverlay=bcm2711-spi-tpm-slb9670,ce=0x01
+
 # Disable warning overlays as they don't work well together with linux's graphical output
 avoid_warnings=1
 
