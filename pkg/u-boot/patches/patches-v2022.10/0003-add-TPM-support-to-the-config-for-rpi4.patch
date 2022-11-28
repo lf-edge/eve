@@ -1,0 +1,28 @@
+From 5a6603ad90b622207f1421f4a46aa3c96d61f6b8 Mon Sep 17 00:00:00 2001
+From: Aleksandrov Dmitriy <goodmobiledevices@gmail.com>
+Date: Sun, 30 Oct 2022 18:20:19 -0100
+Subject: [PATCH] add TPM support to the config for rpi4
+
+Signed-off-by: Aleksandrov Dmitriy <goodmobiledevices@gmail.com>
+---
+ configs/rpi_4_defconfig | 7 +++++++
+ 1 file changed, 7 insertions(+)
+
+diff --git a/configs/rpi_4_defconfig b/configs/rpi_4_defconfig
+index 1163750558..50adbe9fa2 100644
+--- a/configs/rpi_4_defconfig
++++ b/configs/rpi_4_defconfig
+@@ -65,3 +65,10 @@ CONFIG_VIDEO_BCM2835=y
+ CONFIG_CONSOLE_SCROLL_LINES=10
+ CONFIG_PHYS_TO_BUS=y
+ CONFIG_OF_LIBFDT_OVERLAY=y
++CONFIG_SPI=y
++CONFIG_DM_SPI=y
++CONFIG_SOFT_SPI=y
++CONFIG_TPM=y
++CONFIG_TPM_V2=y
++CONFIG_TPM2_TIS_SPI=y
++CONFIG_CMD_TPM=y
+-- 
+2.25.1
+
