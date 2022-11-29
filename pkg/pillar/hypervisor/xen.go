@@ -6,15 +6,17 @@ package hypervisor
 import (
 	"errors"
 	"fmt"
+	"io/ioutil"
+	"os"
+	"path/filepath"
+	"runtime"
+	"strconv"
+	"strings"
+
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/shirou/gopsutil/cpu"
 	"github.com/shirou/gopsutil/mem"
 	"github.com/sirupsen/logrus"
-	"io/ioutil"
-	"os"
-	"runtime"
-	"strconv"
-	"strings"
 )
 
 const (
@@ -517,8 +519,21 @@ func (ctx xenContext) Delete(domainName string) (result error) {
 	return nil
 }
 
-// Cleanup removes containerd-shim
+// getTaskStateFilePath returns file where xen-start puts state of domain
+// must be aligned with xen-start logic
+func (ctx xenContext) getTaskStateFilePath(domainName string) string {
+	return filepath.Join("/run/tasks", domainName)
+}
+
+// Cleanup removes stale files and containerd-shim
 func (ctx xenContext) Cleanup(domainName string) error {
+	defer func() {
+		// the file should come from xen-start after subsequent start
+		err := os.RemoveAll(ctx.getTaskStateFilePath(domainName))
+		if err != nil {
+			logrus.Errorf("cleanup tasks file %s: %v", domainName, err)
+		}
+	}()
 	if err := ctx.ctrdContext.Cleanup(domainName); err != nil {
 		return fmt.Errorf("couldn't cleanup task %s: %v", domainName, err)
 	}
@@ -529,7 +544,7 @@ func (ctx xenContext) Info(domainName string) (int, types.SwState, error) {
 	// first we ask for the task status
 	effectiveDomainID, effectiveDomainState, err := ctx.ctrdContext.Info(domainName)
 	if err != nil || effectiveDomainState != types.RUNNING {
-		status, err := ioutil.ReadFile("/run/tasks/" + domainName)
+		status, err := ioutil.ReadFile(ctx.getTaskStateFilePath(domainName))
 		if err != nil {
 			status = []byte("file not read")
 		}
@@ -540,7 +555,7 @@ func (ctx xenContext) Info(domainName string) (int, types.SwState, error) {
 	}
 
 	// if task is alive, we augment task status with finer grained details from xl info
-	status, err := ioutil.ReadFile("/run/tasks/" + domainName)
+	status, err := ioutil.ReadFile(ctx.getTaskStateFilePath(domainName))
 	if err != nil {
 		logrus.Errorf("couldn't read task status file: %v", err)
 		status = []byte("running") // assigning default state as we weren't able to read status file
