@@ -1,0 +1,393 @@
+From 9a2fcd5853e49f9d482f967211345f62041b1b3d Mon Sep 17 00:00:00 2001
+From: Mikhail Malyshev <mikem@zededa.com>
+Date: Fri, 1 Jul 2022 15:22:08 +0200
+Subject: [PATCH 11/11] Add measurefs command
+
+The command will calculate a hash over entire file system data using
+requested algorithm and extend requested PCR register
+
+For now only squash4 and FAT support it
+---
+ grub-core/Makefile.core.def    |   5 ++
+ grub-core/commands/measurefs.c | 140 +++++++++++++++++++++++++++++++++
+ grub-core/fs/fat.c             |  72 +++++++++++++++++
+ grub-core/fs/squash4.c         |  77 ++++++++++++++++++
+ include/grub/fs.h              |   3 +
+ 5 files changed, 297 insertions(+)
+ create mode 100644 grub-core/commands/measurefs.c
+
+diff --git a/grub-core/Makefile.core.def b/grub-core/Makefile.core.def
+index 9d5736b4a..549f22996 100644
+--- a/grub-core/Makefile.core.def
++++ b/grub-core/Makefile.core.def
+@@ -2552,3 +2552,8 @@ module = {
+   common = commands/i386/wrmsr.c;
+   enable = x86;
+ };
++module = {
++  name = measurefs;
++  common = commands/measurefs.c;
++  enable = efi;
++};
+diff --git a/grub-core/commands/measurefs.c b/grub-core/commands/measurefs.c
+new file mode 100644
+index 000000000..0cf8a9dc2
+--- /dev/null
++++ b/grub-core/commands/measurefs.c
+@@ -0,0 +1,140 @@
++/* measurefs.c - command to calculate FS hash and extend a PCR  */
++/*
++ *  GRUB  --  GRand Unified Bootloader
++ *  Copyright (C) 2003,2005,2007,2008  Free Software Foundation, Inc.
++ *
++ *  GRUB is free software: you can redistribute it and/or modify
++ *  it under the terms of the GNU General Public License as published by
++ *  the Free Software Foundation, either version 3 of the License, or
++ *  (at your option) any later version.
++ *
++ *  GRUB is distributed in the hope that it will be useful,
++ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
++ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ *  GNU General Public License for more details.
++ *
++ *  You should have received a copy of the GNU General Public License
++ *  along with GRUB.  If not, see <http://www.gnu.org/licenses/>.
++ */
++
++#include <grub/device.h>
++#include <grub/fs.h>
++#include <grub/env.h>
++#include <grub/partition.h>
++#include <grub/i18n.h>
++#include <grub/extcmd.h>
++#include <grub/mm.h>
++
++#include <grub/crypto.h>
++#include <grub/tpm.h>
++
++GRUB_MOD_LICENSE ("GPLv3+");
++
++static const struct grub_arg_option options[] =
++  {
++    {"pcr", 'p', 0, N_("Select PCR register index to measure into. Default 9"), 0, ARG_TYPE_INT},    
++    {"hash", 'h', 0, N_("Hash type. Default sha256"), 0, ARG_TYPE_STRING},    
++    {0, 0, 0, 0, 0, 0}
++  };
++
++static grub_err_t
++grub_cmd_measurefs (grub_extcmd_context_t ctxt, int argc, char **args)
++{
++    struct grub_arg_list *state = ctxt->state;
++    grub_device_t dev;
++    grub_fs_t fs;
++    grub_err_t err = GRUB_ERR_NONE;
++
++    char* name = NULL;
++    int pcr = GRUB_BINARY_PCR;
++    char* hashalg = "sha256";
++    GRUB_PROPERLY_ALIGNED_ARRAY (result, GRUB_CRYPTO_MAX_MDLEN);
++    char* result_str = NULL;
++    int result_len;
++    int j;
++
++    if (argc > 0) {
++        name = args[0];
++    } else {
++        err = grub_error (GRUB_ERR_BAD_ARGUMENT, N_("device name expected"));
++        goto error_no_close;
++    }
++
++    // PCR index
++    if (state[0].set) {
++        pcr = grub_strtoul (state[0].arg, 0, 10);
++    }
++
++    // name of hash algorithm
++    if (state[1].set) {
++        hashalg = state[1].arg;
++    }
++
++    grub_printf("measurefs: Measuring %s into PCR-%d\n", name, pcr);
++
++    dev = grub_device_open(name);
++
++    if (!dev) {
++        err = grub_errno;
++        goto error_no_close;
++    }
++
++    if (dev->disk == NULL && dev->net != NULL) {
++        err = grub_error (GRUB_ERR_BAD_DEVICE,  N_("Network devices [`%s'] are not supported"), name);
++        goto error;
++    }
++
++    fs = grub_fs_probe (dev);
++
++    if (!fs) {
++        err = grub_error (GRUB_ERR_BAD_FS,  N_("cannot find a filesystem on `%s'"), name);
++        goto error;
++    }
++
++    grub_dprintf("measurefs", "FS: %s\n", fs->name);
++
++    if (fs->digest) {
++        err = fs->digest(dev, hashalg, &result, &result_len);
++
++        if (err == GRUB_ERR_NONE) {
++            // each byte is 2 chars + zero terminator
++            result_str = grub_malloc(result_len * 2 + 1);
++            if (result_str == NULL) {
++                err = GRUB_ERR_OUT_OF_MEMORY;
++                goto error;
++            }
++
++            for (j = 0; j < result_len; j++)
++                grub_snprintf(result_str + j * 2, 3, "%02x", ((grub_uint8_t *) result)[j]);
++            
++            char *desc = grub_xasprintf("%s %s", fs->name, result_str);
++            if (!desc)
++	        return GRUB_ERR_OUT_OF_MEMORY;
++
++            err = grub_tpm_measure(result, result_len, pcr, desc);
++
++            grub_free(result_str);
++        }
++    } else {
++        grub_printf("measurefs: FS %s doesn't support digest()\n", fs->name);
++    }        
++
++error:
++    grub_device_close(dev);
++error_no_close:    
++    return err;
++}
++
++static grub_extcmd_t cmd;
++
++GRUB_MOD_INIT(cat)
++{
++  cmd = grub_register_extcmd ("measurefs", grub_cmd_measurefs, 0,
++      N_("DEVICE"), N_("Calculates partition digest and extends specified PCR"),
++      options);
++}
++
++GRUB_MOD_FINI(cat)
++{
++  grub_unregister_extcmd (cmd);
++}
+diff --git a/grub-core/fs/fat.c b/grub-core/fs/fat.c
+index 09e9b381d..3f7177c9c 100644
+--- a/grub-core/fs/fat.c
++++ b/grub-core/fs/fat.c
+@@ -34,6 +34,8 @@
+ #endif
+ #include <grub/fshelp.h>
+ #include <grub/i18n.h>
++#include <grub/crypto.h>
++#include <grub/partition.h>
+ 
+ GRUB_MOD_LICENSE ("GPLv3+");
+ 
+@@ -1284,6 +1286,75 @@ grub_disk_addr_t
+ }
+ #endif
+ 
++static grub_err_t 
++grub_fat_digest  (grub_device_t device, char* hashalg, void *result, int* len)
++{
++#define BUF_SIZE 4096
++#define BUF_SIZE_SEC (BUF_SIZE / GRUB_DISK_SECTOR_SIZE)
++
++  const gcry_md_spec_t *hash = NULL;
++  grub_err_t err = GRUB_ERR_NONE;
++  int sector = 0;
++  int sectors_to_read;
++  int size = BUF_SIZE;
++
++  void *context = NULL;
++  grub_uint8_t *readbuf = NULL;
++
++  hash = grub_crypto_lookup_md_by_name(hashalg);
++
++  if (!hash) {
++    err =  grub_error (GRUB_ERR_BAD_ARGUMENT, "unknown hash algorithm");
++    goto exit_no_free;
++  }
++
++  readbuf = grub_malloc (BUF_SIZE);
++  context = grub_zalloc (hash->contextsize);
++
++  if (!readbuf || !context) {
++    err = grub_errno;
++    goto exit;
++  }
++
++  hash->init (context);
++
++  sectors_to_read = device->disk->partition->len;
++
++  grub_dprintf("fat", "Size of partition in bytes: %d\n", sectors_to_read * GRUB_DISK_SECTOR_SIZE);
++
++  while(sectors_to_read > 0 ) {
++    if (sectors_to_read > BUF_SIZE_SEC) {
++      sectors_to_read -= BUF_SIZE_SEC;
++    } else {
++      size = sectors_to_read * GRUB_DISK_SECTOR_SIZE;
++      sectors_to_read = 0;
++    }
++    err = grub_disk_read (device->disk, sector, 0, size, readbuf);
++    if (err != GRUB_ERR_NONE) {
++      goto exit;
++    }
++    hash->write (context, readbuf, size);
++
++    sector += BUF_SIZE_SEC;
++  }
++  
++  hash->final (context);
++  if (err == GRUB_ERR_NONE) {
++    grub_memcpy (result, hash->read (context), hash->mdlen);
++    *len = hash->mdlen;
++  } else {
++    *len = 0;
++  }
++  
++exit:
++  if (readbuf)
++    grub_free (readbuf);
++  if (context)
++    grub_free (context);
++exit_no_free:
++  return err;
++}
++
+ static struct grub_fs grub_fat_fs =
+   {
+ #ifdef MODE_EXFAT
+@@ -1297,6 +1368,7 @@ static struct grub_fs grub_fat_fs =
+     .fs_close = grub_fat_close,
+     .fs_label = grub_fat_label,
+     .fs_uuid = grub_fat_uuid,
++    .digest = grub_fat_digest,
+ #ifdef GRUB_UTIL
+ #ifdef MODE_EXFAT
+     /* ExFAT BPB is 30 larger than FAT32 one.  */
+diff --git a/grub-core/fs/squash4.c b/grub-core/fs/squash4.c
+index 6dd731e23..861d46fab 100644
+--- a/grub-core/fs/squash4.c
++++ b/grub-core/fs/squash4.c
+@@ -28,6 +28,8 @@
+ #include <grub/deflate.h>
+ #include <grub/safemath.h>
+ #include <minilzo.h>
++#include <grub/crypto.h>
++#include <grub/partition.h>
+ 
+ #include "xz.h"
+ #include "xz_stream.h"
+@@ -1015,6 +1017,80 @@ grub_squash_mtime (grub_device_t dev, grub_int64_t *tm)
+   return GRUB_ERR_NONE;
+ } 
+ 
++static grub_err_t 
++grub_squash_digest  (grub_device_t device, char* hashalg, void *result, int* len)
++{
++#define BUF_SIZE 4096
++
++  struct grub_squash_data *data = NULL;
++  const gcry_md_spec_t *hash = NULL;
++  grub_err_t err = GRUB_ERR_NONE;
++  int size = BUF_SIZE;
++  int sector = 0;
++  int bytes_to_read;
++
++  void *context = NULL;
++  grub_uint8_t *readbuf = NULL;
++
++  /* get superblock */
++  data = squash_mount (device->disk);
++  if (!data) {
++    err = grub_errno;
++    goto exit_no_free;
++  }
++
++  hash = grub_crypto_lookup_md_by_name(hashalg);
++
++  if (!hash) {
++    err = grub_error (GRUB_ERR_BAD_ARGUMENT, "unknown hash algorithm");
++    goto exit_no_free;
++  }
++
++  readbuf = grub_malloc (BUF_SIZE);
++  context = grub_zalloc (hash->contextsize);   
++
++  if (!readbuf || !context) {
++    err = grub_errno;
++    goto exit;
++  }
++
++  hash->init (context);
++
++  bytes_to_read = grub_le_to_cpu32(data->sb.total_size);
++
++  grub_dprintf("squash4", "Size of squash4 data: %d\n", bytes_to_read);
++
++  while(bytes_to_read > 0 ) {
++    if (bytes_to_read < BUF_SIZE) {
++      size = bytes_to_read;
++      bytes_to_read = 0;
++    } else {
++      bytes_to_read -= BUF_SIZE;
++    }
++    err = grub_disk_read (device->disk, sector, 0, size, readbuf);
++    if (err != GRUB_ERR_NONE) {
++      err = grub_errno;
++      goto exit;
++    }
++    sector += BUF_SIZE / GRUB_DISK_SECTOR_SIZE;
++    hash->write (context, readbuf, size);
++  }
++  hash->final (context);
++
++  if (err == GRUB_ERR_NONE) {
++    grub_memcpy (result, hash->read (context), hash->mdlen);
++    *len = hash->mdlen;
++  } else {
++    *len = 0;
++  }
++  
++exit:
++  grub_free (readbuf);
++  grub_free (context);
++exit_no_free:  
++  return err;
++}
++
+ static struct grub_fs grub_squash_fs =
+   {
+     .name = "squash4",
+@@ -1023,6 +1099,7 @@ static struct grub_fs grub_squash_fs =
+     .fs_read = grub_squash_read,
+     .fs_close = grub_squash_close,
+     .fs_mtime = grub_squash_mtime,
++    .digest = grub_squash_digest,
+ #ifdef GRUB_UTIL
+     .reserved_first_sector = 0,
+     .blocklist_install = 0,
+diff --git a/include/grub/fs.h b/include/grub/fs.h
+index 026bc3bb8..f0d5c79ca 100644
+--- a/include/grub/fs.h
++++ b/include/grub/fs.h
+@@ -83,6 +83,9 @@ struct grub_fs
+   /* Get writing time of filesystem. */
+   grub_err_t (*fs_mtime) (grub_device_t device, grub_int64_t *timebuf);
+ 
++  /* Calculate a digest of the entire partition content */
++  grub_err_t (*digest) (grub_device_t device, char* hashalg, void *result, int* len);
++
+ #ifdef GRUB_UTIL
+   /* Determine sectors available for embedding.  */
+   grub_err_t (*fs_embed) (grub_device_t device, unsigned int *nsectors,
+-- 
+2.25.1
+
