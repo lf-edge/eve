@@ -36,7 +36,7 @@ ENV GRUB_PATCHES=patches
 ENV GRUB_PLATFORM="efi pc:--disable-efiemu"
 
 FROM grub-build-base AS grub-build-arm64
-ENV GRUB_MODULES="xen_boot efi_gop gpt"
+ENV GRUB_MODULES="xen_boot efi_gop gpt gcry_sha256 measurefs"
 ENV GRUB_COMMIT=2.06
 ENV GRUB_PATCHES="patches-${GRUB_COMMIT} patches-aarch64-${GRUB_COMMIT}"
 ENV GRUB_PLATFORM=efi
