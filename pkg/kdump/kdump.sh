@@ -25,10 +25,17 @@ if test -f /proc/vmcore; then
     while read -r line; do echo "$line" > /dev/kmsg; done < /tmp/backtrace
     echo ">>>>>>>>>> Crashed kernel dmesg END <<<<<<<<<<" > /dev/kmsg
 
+    TS=$(date +%Y-%m-%d-%H-%M-%S)
+
     # Collect a minimal kernel dump for security reasons
-    KDUMP_PATH="$DIR/kcrash-$(date +%Y-%m-%d-%H-%M-%S).dump"
+    KDUMP_PATH="$DIR/kdump-$TS.dump"
     makedumpfile -d 31 /proc/vmcore "$KDUMP_PATH" > /dev/null 2>&1
     echo "kdump collected: $KDUMP_PATH" > /dev/kmsg
+
+    # Collect dmesg
+    DMESG_PATH="$DIR/dmesg-$TS.log"
+    cp /tmp/dmesg "$DMESG_PATH"
+    echo "dmesg collected: $DMESG_PATH" > /dev/kmsg
 
     # Prepare reboot-reason, reboot-stack and boot-reason
     echo "kernel panic, kdump collected: $KDUMP_PATH" > /persist/reboot-reason
