@@ -25,7 +25,7 @@ if test -f /proc/vmcore; then
     while read -r line; do echo "$line" > /dev/kmsg; done < /tmp/backtrace
     echo ">>>>>>>>>> Crashed kernel dmesg END <<<<<<<<<<" > /dev/kmsg
 
-    TS=$(date +%Y-%m-%d-%H-%M-%S)
+    TS=$(date -Is)
 
     # Collect a minimal kernel dump for security reasons
     KDUMP_PATH="$DIR/kdump-$TS.dump"
