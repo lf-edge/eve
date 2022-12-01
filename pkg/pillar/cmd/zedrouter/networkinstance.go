@@ -1239,6 +1239,13 @@ func doNetworkInstanceActivate(ctx *zedrouterContext,
 	if status.Type == types.NetworkInstanceTypeSwitch {
 		// switched NI is not probed and does not have a CurrentUplinkIntf
 		status.IfNameList = getIfNameListForLLOrIfname(ctx, status.Logicallabel)
+		if len(status.IfNameList) > 1 {
+			err := fmt.Errorf("Name %s maps to more than one (%d) interfaces",
+				status.Logicallabel, len(status.IfNameList))
+			log.Errorf("NetworkInstance(%s-%s): %s",
+				status.DisplayName, status.UUID, err)
+			return err
+		}
 	} else {
 		status.IfNameList = getIfNameListForLLOrIfname(ctx, status.CurrentUplinkIntf)
 	}
