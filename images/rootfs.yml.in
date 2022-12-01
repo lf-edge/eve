@@ -37,6 +37,9 @@ onboot:
     image: KDUMP_TAG
   - name: measure-config
     image: MEASURE_CONFIG_TAG
+  # If you change the order of pillar-onboot don't forget to
+  # change /containers/onboot/006-pillar-onboot/lower in pkg/mkimage-raw-efi accordingly:
+  # 006-pillar-onboot must follow the order number of pillar-onboot
   # onboot part of pillar to prepare services to start
   - name: pillar-onboot
     image: PILLAR_TAG
