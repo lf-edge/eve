@@ -150,6 +150,7 @@ pkgconf
 ppp
 protobuf-dev
 py3-appdirs
+py3-cffi
 py3-distlib
 py3-elftools
 py3-packaging
