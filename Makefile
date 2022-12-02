@@ -75,9 +75,9 @@ endif
 
 REPO_BRANCH=$(shell git rev-parse --abbrev-ref HEAD | tr / _)
 REPO_SHA=$(shell git describe --match '$$^' --abbrev=8 --always --dirty)
-REPO_TAG=$(shell git describe --always | grep -E '[0-9]*\.[0-9]*\.[0-9]*' || echo snapshot)
+REPO_TAG=$(shell git describe --always --tags | grep -E '[0-9]*\.[0-9]*\.[0-9]*' || echo snapshot)
 REPO_DIRTY_TAG=$(if $(findstring -dirty,$(REPO_SHA)),-$(shell date -u +"%Y-%m-%d.%H.%M"))
-EVE_TREE_TAG = $(shell git describe --abbrev=8 --always --dirty)
+EVE_TREE_TAG = $(shell git describe --abbrev=8 --always --dirty --tags)
 
 ifeq ($(DEV),y)
 	DEV_TAG:=-dev
