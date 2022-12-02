@@ -92,6 +92,7 @@ type domainContext struct {
 	pubHostMemory          pubsub.Publication
 	pubProcessMetric       pubsub.Publication
 	pubCipherBlockStatus   pubsub.Publication
+	pubCapabilities        pubsub.Publication
 	cipherMetrics          *cipher.AgentMetrics
 	usbAccess              bool
 	vgaAccess              bool
@@ -166,26 +167,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	}
 	hyper, err = hypervisor.GetHypervisor(*domainCtx.hypervisorPtr)
 	if err != nil {
-		log.Fatal(err)
-	}
-
-	caps, err := hyper.GetCapabilities()
-	if err != nil {
-		log.Fatal(err)
-	}
-	domainCtx.cpuPinningSupported = caps.CPUPinning
-
-	resources, err := hyper.GetHostCPUMem()
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	cpusReserved, err := getReservedCPUsNum()
-	if err != nil {
-		log.Warnf("Failed to get reserved CPU number, use 1 by default: %s", err)
-	}
-
-	if domainCtx.cpuAllocator, err = cpuallocator.Init(int(resources.Ncpus), cpusReserved); err != nil {
 		log.Fatal(err)
 	}
 
@@ -315,6 +296,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	if err != nil {
 		log.Fatal(err)
 	}
+	domainCtx.pubCapabilities = capabilitiesInfoPub
 
 	// Look for controller certs which will be used for decryption
 	subControllerCert, err := ps.NewSubscription(pubsub.SubscriptionOptions{
@@ -478,11 +460,13 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	}
 	log.Noticef("processed GlobalConfig")
 
-	capabilitiesSended := false
-	if err := getAndPublishCapabilities(capabilitiesInfoPub); err != nil {
+	capabilitiesSent := false
+	capabilitiesTicker := time.NewTicker(5 * time.Second)
+	if err := getAndPublishCapabilities(&domainCtx, hyper); err != nil {
 		log.Warnf("getAndPublishCapabilities: %v", err)
 	} else {
-		capabilitiesSended = true
+		capabilitiesSent = true
+		capabilitiesTicker.Stop()
 	}
 
 	log.Functionf("Creating %s at %s", "metricsTimerTask", agentlog.GetMyStack())
@@ -492,10 +476,13 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	//   1. wait for NIM to publish DNS to learn which ports are used for management
 	//   2. wait for PhysicalIOAdapters (from zedagent) to be processed
 	//   3. wait for NIM to finalize testing of selected DPC
+	//   4. wait for capabilities information from hypervisor
 	// Note: 2. and 3. can also execute in the reverse order.
+	// Note: 4 may come in any order
 	for !domainCtx.assignableAdapters.Initialized ||
 		len(domainCtx.deviceNetworkStatus.Ports) == 0 ||
-		domainCtx.deviceNetworkStatus.Testing {
+		domainCtx.deviceNetworkStatus.Testing ||
+		!capabilitiesSent {
 		log.Noticef("Waiting for AssignableAdapters and/or verified DPC")
 		select {
 		case change := <-subGlobalConfig.MsgChan():
@@ -520,6 +507,14 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		case <-domainCtx.publishTicker.C:
 			publishProcessesHandler(&domainCtx)
 
+		case <-capabilitiesTicker.C:
+			if err := getAndPublishCapabilities(&domainCtx, hyper); err != nil {
+				log.Warnf("getAndPublishCapabilities: %v", err)
+			} else {
+				capabilitiesSent = true
+				capabilitiesTicker.Stop()
+			}
+
 		// Run stillRunning since we waiting for zedagent to deliver
 		// PhysicalIO which depends on cloud connectivity
 		case <-stillRunning.C:
@@ -527,6 +522,27 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		ps.StillRunning(agentName, warningTime, errorTime)
 	}
 	log.Noticef("Have %d assignable adapters", len(aa.IoBundleList))
+
+	// at that stage we should have Capabilities published
+	caps, err := lookupCapabilities(&domainCtx)
+	if err != nil {
+		log.Fatal(err)
+	}
+	domainCtx.cpuPinningSupported = caps.CPUPinning
+
+	resources, err := hyper.GetHostCPUMem()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	cpusReserved, err := getReservedCPUsNum()
+	if err != nil {
+		log.Warnf("Failed to get reserved CPU number, use 1 by default: %s", err)
+	}
+
+	if domainCtx.cpuAllocator, err = cpuallocator.Init(int(resources.Ncpus), cpusReserved); err != nil {
+		log.Fatal(err)
+	}
 
 	// Wait until we have been onboarded aka know our own UUID however we do not use the UUID
 	if err := utils.WaitForOnboarded(ps, log, agentName, warningTime, errorTime); err != nil {
@@ -609,17 +625,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 			}
 			ps.CheckMaxTimeTopic(agentName, "publishTimer", start,
 				warningTime, errorTime)
-			if !capabilitiesSended {
-				//retry get and publish capabilities if we have errors previously
-				start = time.Now()
-				if err := getAndPublishCapabilities(capabilitiesInfoPub); err != nil {
-					log.Warnf("getAndPublishCapabilities: %v", err)
-				} else {
-					capabilitiesSended = true
-				}
-				ps.CheckMaxTimeTopic(agentName, "publishTimer", start,
-					warningTime, errorTime)
-			}
 			publishProcessesHandler(&domainCtx)
 
 		case <-stillRunning.C:
@@ -2023,11 +2028,11 @@ func reserveAdapters(ctx *domainContext, config types.DomainConfig) *types.Error
 	defer ctx.publishAssignableAdapters()
 
 	hasIOVirtualization := true
-	c, err := hyper.GetCapabilities()
+	capabilities, err := lookupCapabilities(ctx)
 	if err != nil {
-		logrus.Errorf("cannot check capabilities: %v", err)
+		log.Errorf("cannot check capabilities: %v", err)
 	} else {
-		hasIOVirtualization = c.IOVirtualization
+		hasIOVirtualization = capabilities.IOVirtualization
 	}
 
 	for _, adapter := range config.IoAdapterList {
@@ -3338,10 +3343,22 @@ func handleIBDelete(ctx *domainContext, phylabel string) {
 	checkIoBundleAll(ctx)
 }
 
-func getAndPublishCapabilities(capabilitiesInfoPub pubsub.Publication) error {
+func getAndPublishCapabilities(ctx *domainContext, hyper hypervisor.Hypervisor) error {
 	capabilities, err := hyper.GetCapabilities()
 	if err != nil {
 		return fmt.Errorf("cannot get capabilities: %v", err)
 	}
-	return capabilitiesInfoPub.Publish("global", *capabilities)
+	return ctx.pubCapabilities.Publish("global", *capabilities)
+}
+
+func lookupCapabilities(ctx *domainContext) (*types.Capabilities, error) {
+	c, err := ctx.pubCapabilities.Get("global")
+	if err != nil {
+		return nil, fmt.Errorf("cannot lookup capabilities: %w", err)
+	}
+	capabilities, ok := c.(types.Capabilities)
+	if !ok {
+		log.Fatalf("Unexpected type from pubCapabilities: %T", c)
+	}
+	return &capabilities, nil
 }
