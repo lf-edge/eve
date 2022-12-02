@@ -17,7 +17,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/cas"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
-	"github.com/lf-edge/eve/pkg/pillar/hypervisor"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
@@ -97,6 +96,8 @@ type volumemgrContext struct {
 
 	persistType types.PersistType
 	useVHost    bool //indicates that we want to use vhost
+
+	capabilitiesProcessed bool // indicates that we received information about capabilities
 	// cli options
 	versionPtr *bool
 }
@@ -176,6 +177,39 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	}
 	log.Functionf("processed GlobalConfig")
 
+	// Look for capabilities
+	subCapabilities, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "domainmgr",
+		MyAgentName:   agentName,
+		TopicImpl:     types.Capabilities{},
+		Activate:      true,
+		Ctx:           &ctx,
+		CreateHandler: handleCapabilitiesCreate,
+		ModifyHandler: handleCapabilitiesModify,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// wait for capabilities
+	for !ctx.capabilitiesProcessed {
+		log.Functionf("waiting for Capabilities")
+		select {
+		case change := <-subCapabilities.MsgChan():
+			subCapabilities.ProcessChange(change)
+		case <-stillRunning.C:
+		}
+		ps.StillRunning(agentName, warningTime, errorTime)
+	}
+	// we do not expect any changes in capabilities
+	if err := subCapabilities.Close(); err != nil {
+		log.Errorf("cannot close subCapabilities: %v", err)
+	}
+	log.Functionf("processed Capabilities")
+	log.Functionf("will use vhost: %t", ctx.useVHost)
+
 	if err := utils.WaitForVault(ps, log, agentName, warningTime, errorTime); err != nil {
 		log.Fatal(err)
 	}
@@ -185,18 +219,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		log.Fatal(err)
 	}
 	log.Functionf("user containerd ready")
-
-	_, enabledHVs := hypervisor.GetAvailableHypervisors()
-	hyper, err := hypervisor.GetHypervisor(enabledHVs[0])
-	if err != nil {
-		log.Fatal(err)
-	}
-	caps, err := hyper.GetCapabilities()
-	if err != nil {
-		log.Fatal(err)
-	}
-	ctx.useVHost = caps.UseVHost
-	log.Functionf("will use vhost: %t", ctx.useVHost)
 
 	if ctx.persistType == types.PersistZFS {
 		// create datasets for volumes
@@ -766,4 +788,23 @@ func maybeUpdateConfigItems(ctx *volumemgrContext, newConfigItemValueMap *types.
 			ctx.deferDelete = time.NewTicker(duration * time.Second)
 		}
 	}
+}
+
+func handleCapabilitiesCreate(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	handleCapabilitiesImpl(ctxArg, key, statusArg)
+}
+
+func handleCapabilitiesModify(ctxArg interface{}, key string,
+	statusArg, _ interface{}) {
+	handleCapabilitiesImpl(ctxArg, key, statusArg)
+}
+
+func handleCapabilitiesImpl(ctxArg interface{}, _ string,
+	statusArg interface{}) {
+
+	ctx := ctxArg.(*volumemgrContext)
+	status := statusArg.(types.Capabilities)
+	ctx.useVHost = status.UseVHost
+	ctx.capabilitiesProcessed = true
 }
