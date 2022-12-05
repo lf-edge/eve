@@ -205,8 +205,14 @@ do_rootfs() {
         esac
     fi
 
-    # Copy rootfs to image A
-    dd if=$IMG of=$IMGFILE bs=1M conv=notrunc seek="$(( SEC_START * 512 ))" oflag=seek_bytes
+    if [ -n "$IMG" ]; then
+      # Copy rootfs
+      dd if="$IMG" of="$IMGFILE" bs=1M conv=notrunc seek="$(( SEC_START * 512 ))" oflag=seek_bytes
+    else
+      # clean first block of partition
+      # to avoid mounting of stale data
+      dd if=/dev/zero of="$IMGFILE" bs=512 count=1 conv=notrunc seek="$(( SEC_START * 512 ))" oflag=seek_bytes
+    fi
 
     eval $1=$(( $SEC_END + 1))
 }
@@ -216,8 +222,8 @@ do_imga() {
 }
 
 do_imgb() {
-    # for now we are not initializing IMGB - hence passing /dev/null
-    do_rootfs $1 IMGB /dev/null
+    # for now we are wiping IMGB - hence not passing the source
+    do_rootfs $1 IMGB
 }
 
 do_vfat() {
