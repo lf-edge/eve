@@ -6,7 +6,12 @@ if test -f /proc/vmcore; then
     #
     # We are in dump capture kernel, nice.
     #
-    MAX=5
+
+    # Maximum number of kernel dumps and dmesgs we keep in the folder.
+    # After each kernel crash 2 files are generated: dump and dmesg,
+    # so the divide MAX on number of files to get total number of
+    # kernel crashes which we keep persist.
+    MAX=10
     DIR=/persist/kcrashes
 
     # Create a folder
