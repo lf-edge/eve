@@ -33,7 +33,8 @@ After successfully loading the dump-capture kernel as previously described in th
 EVE-OS has a `kdump` container that checks for `/proc/vmcore` and generates a minimal crash dump by calling the makedumpfile tool. The `kdump` container is part of the linuxkit onboot process and is run strictly after the storage is initialized. The minimal kernel dump collection includes the following steps:
 
 * Minimal kernel dump will be generated in the `/persist/kcrashes` folder.
-* Only 5 fresh kernel dumps is stored in the folder, old dumps are deleted.
+* Dmesg (kernel ring buffer) of the crashed kernel will be saved in the `/persist/kcrashes` folder.
+* Only 5 fresh kernel dumps and dmesgs are stored in the folder, old files are deleted.
 * Kernel panic message from the crashed system buffer is redirected to the EVE-OS /persist/reboot-stack file and to the tty console in order to show it on the connected monitor for debug purposes.
 * Reboot reason string "kernel panic, kdump collected: $KDUMP_PATH" is redirected to the EVE-OS /persist/reboot-reason file.
 * After the crash dump is created, the kernel will be rebooted according to the `/proc/sys/kernel/panic` timeout configuration value.
