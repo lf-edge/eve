@@ -4,7 +4,7 @@
 {{define "port"}}2223{{end}}
 {{define "virtio_iface"}}enp3s0{{end}}
 {{define "passthrough_iface"}}enp4s0{{end}}
-{{define "ssh"}}ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=no -o PasswordAuthentication=no -i {{EdenConfig "eden.tests"}}/eclient/image/cert/id_rsa -p {{template "port"}} ubuntu@{{end}}
+{{define "ssh"}}ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=no -o PasswordAuthentication=no -i {{EdenConfig "eden.tests"}}/eclient/image/cert/id_rsa ubuntu@FWD_IP -p FWD_PORT{{end}}
 
 [!exec:bash] stop
 [!exec:sleep] stop
@@ -73,8 +73,8 @@ eden -t 2m eve start
 
 -- deploy.sh --
 
-NETWORK=$1
-PORT=$2
+NETWORK={{template "network"}}
+PORT={{template "port"}}
 EDEN={{EdenConfig "eden.root"}}/{{EdenConfig "eden.bin-dist"}}/{{EdenConfig "eden.eden-bin"}}
 
 IMG="https://cloud-images.ubuntu.com/releases/focal/release-20210510/ubuntu-20.04-server-cloudimg-amd64.img"
@@ -84,26 +84,23 @@ $EDEN pod deploy -n app --networks=${NETWORK} --acl=${NETWORK}:github.com -p ${P
 -- ssh.sh --
 
 EDEN={{EdenConfig "eden.root"}}/{{EdenConfig "eden.bin-dist"}}/{{EdenConfig "eden.eden-bin"}}
-HOST=$($EDEN eve ip)
 for i in `seq 20`
 do
  sleep 20
  # Test SSH-access to VM
- echo $i\) {{template "ssh"}}$HOST grep Ubuntu /etc/issue
- {{template "ssh"}}$HOST grep Ubuntu /etc/issue && break
+ echo $i\) $EDEN sdn fwd eth0 {{template "port"}} -- {{template "ssh"}} grep Ubuntu /etc/issue
+ $EDEN sdn fwd eth0 {{template "port"}} -- {{template "ssh"}} grep Ubuntu /etc/issue && break
 done
 
 -- reboot.sh --
 
 EDEN={{EdenConfig "eden.root"}}/{{EdenConfig "eden.bin-dist"}}/{{EdenConfig "eden.eden-bin"}}
-HOST=$($EDEN eve ip)
-echo {{template "ssh"}}$HOST 'sudo shutdown -r +1 &>/dev/null &'
-{{template "ssh"}}$HOST 'sudo shutdown -r +1 &>/dev/null &'
+echo $EDEN sdn fwd eth0 {{template "port"}} -- {{template "ssh"}} 'sudo shutdown -r +1 &>/dev/null &'
+$EDEN sdn fwd eth0 {{template "port"}} -- {{template "ssh"}} 'sudo shutdown -r +1 &>/dev/null &'
 
 -- check_passthrough.sh --
 
 EDEN={{EdenConfig "eden.root"}}/{{EdenConfig "eden.bin-dist"}}/{{EdenConfig "eden.eden-bin"}}
-HOST=$($EDEN eve ip)
 
 CMDS="
 uptime -s;
@@ -121,8 +118,8 @@ ping -c 5 -I {{template "passthrough_iface"}} github.com || exit;
 ping -c 5 -I {{template "passthrough_iface"}} google.com || exit;
 touch /tmp/passthrough-checked
 "
-echo {{template "ssh"}}$HOST "$CMDS"
-{{template "ssh"}}$HOST "$CMDS"
+echo $EDEN sdn fwd eth0 {{template "port"}} -- {{template "ssh"}} "$CMDS"
+$EDEN sdn fwd eth0 {{template "port"}} -- {{template "ssh"}} "$CMDS"
 
 -- devmodel.json --
 

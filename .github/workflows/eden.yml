@@ -47,7 +47,7 @@ jobs:
           if [ -f ${{ github.workspace }}/eve/tests/eden/eden-version ]; then
             EDEN_VERSION=$(cat ${{ github.workspace }}/eve/tests/eden/eden-version)
           else
-            EDEN_VERSION=lfedge/eden:0.7.2
+            EDEN_VERSION=lfedge/eden:0.8.0
           fi
           docker run -v $PWD:/out $EDEN_VERSION cp -a /eden/. /out/
           sudo chown -R $(whoami) .

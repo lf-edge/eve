@@ -8,10 +8,6 @@
 #eden start
 #eden eve onboard
 
-# Get redirected SSH port
-eden config get --key eve.hostfwd
-cp stdout eve.hostfwd
-
 # SSH login to EVE and getting issue
 exec -t 2m bash ssh.sh
 cp stdout issue
@@ -31,11 +27,4 @@ test:
 
 -- ssh.sh --
 EDEN={{EdenConfig "eden.root"}}/{{EdenConfig "eden.bin-dist"}}/{{EdenConfig "eden.eden-bin"}}
-PORT=`cat eve.hostfwd | sed 's/.*[^0-9]\([0-9]*\)":"22[^0-9].*/\1/'`
-[ -n "$PORT" ] && [ "$PORT" -eq "$PORT" ] 2>/dev/null
-if [ $? -ne 0 ]; then
-   PORT=22
-fi
-CERT=`echo {{EdenConfig "eden.root"}}/{{EdenConfig "eden.ssh-key"}} | sed 's/\.pub$//'`
-HOST=$($EDEN eve ip)
-until ssh -o ConnectTimeout=5 -oStrictHostKeyChecking=no -i $CERT -p $PORT root@$HOST cat /hostfs/etc/issue; do sleep 10; done
+until $EDEN eve ssh cat /hostfs/etc/issue; do sleep 10; done

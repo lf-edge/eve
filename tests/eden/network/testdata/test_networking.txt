@@ -120,8 +120,8 @@ EDEN={{EdenConfig "eden.root"}}/{{EdenConfig "eden.bin-dist"}}/{{EdenConfig "ede
 
 echo "waiting for the second app response"
 
-address=http://$($EDEN pod ps|grep app2|grep -o -E '([0-9]{1,3}[\.]){3}[0-9]{1,3}:8027')/received-data.html
-until curl $address | grep {{$test_data}}; do sleep 3; done
+address=http://FWD_IP:FWD_PORT/received-data.html
+until $EDEN sdn fwd eth0 8027 -- curl $address | grep {{$test_data}}; do sleep 3; done
 
 -- app3.sh --
 #!/bin/sh
@@ -142,14 +142,13 @@ EDEN={{EdenConfig "eden.root"}}/{{EdenConfig "eden.bin-dist"}}/{{EdenConfig "ede
 
 echo "waiting for the third app response"
 
-address=http://$($EDEN pod ps|grep app3|grep -o -E '([0-9]{1,3}[\.]){3}[0-9]{1,3}:8028')/received-data.html
-until curl $address; do sleep 3; done
+address=http://FWD_IP:FWD_PORT/received-data.html
+until $EDEN sdn fwd eth0 8028 -- curl $address; do sleep 3; done
 
 echo "sleep for 10 seconds"
 sleep 10
 
-address=http://$($EDEN pod ps|grep app3|grep -o -E '([0-9]{1,3}[\.]){3}[0-9]{1,3}:8028')/received-data.html
-until curl $address; do sleep 3; done
+until $EDEN sdn fwd eth0 8028 -- curl $address; do sleep 3; done
 
 -- eden-config.yml --
 {{/* Test's config file */}}

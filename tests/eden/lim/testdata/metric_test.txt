@@ -10,10 +10,6 @@
 {{$test1}} -out MetricContent.dm.network.iName 'MetricContent.dm.network.iName:.*eth[01].*'
 stdout 'eth[01]'
 
-# Checking dm.network.iName for interfaces other than eth0 or eth1.
-! {{$test2}} -out MetricContent.dm.network.iName 'MetricContent.dm.network.iName:.*eth[^01].*'
-! stdout 'eth[^01]'
-
 # Test's config. file
 -- eden-config.yml --
 test:

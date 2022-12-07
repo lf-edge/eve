@@ -1,7 +1,7 @@
 # Simple test of Audio device after reboot of guest
 
 {{define "port"}}2223{{end}}
-{{define "ssh"}} ssh -oServerAliveInterval=10 -oConnectTimeout=10 -oStrictHostKeyChecking=no -oPasswordAuthentication=no -i {{EdenConfig "eden.tests"}}/eclient/image/cert/id_rsa -p {{template "port"}} ubuntu@$HOST {{end}}
+{{define "ssh"}} ssh -oServerAliveInterval=10 -oConnectTimeout=10 -oStrictHostKeyChecking=no -oPasswordAuthentication=no -i {{EdenConfig "eden.tests"}}/eclient/image/cert/id_rsa ubuntu@FWD_IP -p FWD_PORT{{end}}
 
 [!exec:bash] stop
 [!exec:sleep] stop
@@ -10,10 +10,10 @@
 # Starting of eve reboot detector with a 1 reboot limit
 ! test eden.reboot.test -test.v -timewait=0 -reboot=0 -count=1 &
 
-exec -t 20m bash deploy.sh {{template "port"}}
+exec -t 20m bash deploy.sh
 test eden.app.test -test.v -timewait 30m RUNNING eclient
 
-exec -t 20m bash ssh.sh {{template "port"}}
+exec -t 20m bash ssh.sh
 stdout 'Ubuntu'
 
 # Audio device passthrough setup
@@ -71,30 +71,26 @@ test:
         model: {{EdenConfig "eve.devmodel"}}
 
 -- deploy.sh --
-port=$1
 EDEN={{EdenConfig "eden.root"}}/{{EdenConfig "eden.bin-dist"}}/{{EdenConfig "eden.eden-bin"}}
 
 IMG="https://cloud-images.ubuntu.com/releases/focal/release-20210510/ubuntu-20.04-server-cloudimg-amd64.img"
 PUB_KEY="$( cat {{EdenConfig "eden.tests"}}/eclient/image/cert/id_rsa.pub )"
-$EDEN pod deploy -n eclient --memory=1GB  ${IMG} -p $port:22 --metadata="#cloud-config\nssh_authorized_keys:\n - $PUB_KEY mykey@host"
+$EDEN pod deploy -n eclient --memory=1GB  ${IMG} -p {{template "port"}}:22 --metadata="#cloud-config\nssh_authorized_keys:\n - $PUB_KEY mykey@host"
 
 
 -- ssh.sh --
-port=$1
 EDEN={{EdenConfig "eden.root"}}/{{EdenConfig "eden.bin-dist"}}/{{EdenConfig "eden.eden-bin"}}
-HOST=$($EDEN eve ip)
 
 for i in `seq 20`
 do
-sleep 20
-# Test SSH-access to VM
-echo $i\) {{template "ssh"}} grep Ubuntu /etc/issue
-{{template "ssh"}} grep Ubuntu /etc/issue && break
+  sleep 20
+  # Test SSH-access to VM
+  echo $i\) $EDEN sdn fwd eth0 {{template "port"}} -- {{template "ssh"}} grep Ubuntu /etc/issue
+  $EDEN sdn fwd eth0 {{template "port"}} -- {{template "ssh"}} grep Ubuntu /etc/issue && break
 done
 
 -- set_audio.sh --
 EDEN={{EdenConfig "eden.root"}}/{{EdenConfig "eden.bin-dist"}}/{{EdenConfig "eden.eden-bin"}}
-HOST=$($EDEN eve ip)
 CNF=eve.cfg
 
 $EDEN controller edge-node get-config --file $CNF
@@ -106,29 +102,25 @@ $EDEN controller edge-node set-config --file $CNF.new
 
 -- get_reboot_time.sh --
 EDEN={{EdenConfig "eden.root"}}/{{EdenConfig "eden.bin-dist"}}/{{EdenConfig "eden.eden-bin"}}
-HOST=$($EDEN eve ip)
 
-echo {{template "ssh"}} uptime -s
-{{template "ssh"}} uptime -s
+echo $EDEN sdn fwd eth0 {{template "port"}} -- {{template "ssh"}} uptime -s
+$EDEN sdn fwd eth0 {{template "port"}} -- {{template "ssh"}} uptime -s
 
 -- get_soundcard.sh --
 EDEN={{EdenConfig "eden.root"}}/{{EdenConfig "eden.bin-dist"}}/{{EdenConfig "eden.eden-bin"}}
-HOST=$($EDEN eve ip)
 
-echo {{template "ssh"}} aplay -L
-{{template "ssh"}} aplay -L
+echo $EDEN sdn fwd eth0 {{template "port"}} -- {{template "ssh"}} aplay -L
+$EDEN sdn fwd eth0 {{template "port"}} -- {{template "ssh"}} aplay -L
 
 -- reboot.sh --
 EDEN={{EdenConfig "eden.root"}}/{{EdenConfig "eden.bin-dist"}}/{{EdenConfig "eden.eden-bin"}}
-HOST=$($EDEN eve ip)
 
-echo {{template "ssh"}} 'sudo shutdown -r +1 &>/dev/null &'
-{{template "ssh"}} 'sudo shutdown -r +1 &>/dev/null &'
+echo $EDEN sdn fwd eth0 {{template "port"}} -- {{template "ssh"}} 'sudo shutdown -r +1 &>/dev/null &'
+$EDEN sdn fwd eth0 {{template "port"}} -- {{template "ssh"}} 'sudo shutdown -r +1 &>/dev/null &'
 
 -- install_drivers.sh --
 EDEN={{EdenConfig "eden.root"}}/{{EdenConfig "eden.bin-dist"}}/{{EdenConfig "eden.eden-bin"}}
-HOST=$($EDEN eve ip)
 
-echo {{template "ssh"}} 'sudo apt update && sudo apt-get install -y linux-modules-extra-`uname -r` alsa-utils'
-{{template "ssh"}} 'sudo apt update && sudo apt-get install -y linux-modules-extra-`uname -r` alsa-utils'
+echo $EDEN sdn fwd eth0 {{template "port"}} -- {{template "ssh"}} 'sudo apt update && sudo apt-get install -y linux-modules-extra-`uname -r` alsa-utils'
+$EDEN sdn fwd eth0 {{template "port"}} -- {{template "ssh"}} 'sudo apt update && sudo apt-get install -y linux-modules-extra-`uname -r` alsa-utils'
 

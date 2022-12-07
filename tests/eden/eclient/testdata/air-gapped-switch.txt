@@ -6,7 +6,7 @@
 {{define "port2"}}2224{{end}}
 {{define "mac2"}}00:01:02:03:04:02{{end}}
 {{define "ip2"}}11.12.13.12{{end}}
-{{define "ssh"}}ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=no -i {{EdenConfig "eden.tests"}}/eclient/image/cert/id_rsa root@{{end}}
+{{define "ssh"}}ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=no -i {{EdenConfig "eden.tests"}}/eclient/image/cert/id_rsa root@FWD_IP -p FWD_PORT{{end}}
 {{define "eclient_image"}}docker://{{EdenConfig "eden.eclient.image"}}:{{EdenConfig "eden.eclient.tag"}}{{end}}
 
 [!exec:bash] stop
@@ -70,45 +70,40 @@ eden network ls
 
 -- wait_ssh.sh --
 EDEN={{EdenConfig "eden.root"}}/{{EdenConfig "eden.bin-dist"}}/{{EdenConfig "eden.eden-bin"}}
-HOST=$($EDEN eve ip)
 for p in $*
 do
   for i in `seq 20`
   do
     # Test SSH-access to container
-    echo {{template "ssh"}}$HOST -p $p grep -q Ubuntu /etc/issue
-    {{template "ssh"}}$HOST -p $p grep -q Ubuntu /etc/issue && break
+    echo $EDEN sdn fwd eth0 $p -- {{template "ssh"}} grep -q Ubuntu /etc/issue
+    $EDEN sdn fwd eth0 $p -- {{template "ssh"}} grep -q Ubuntu /etc/issue && break
     sleep 10
   done
 done
 
 -- prepare1.sh --
 EDEN={{EdenConfig "eden.root"}}/{{EdenConfig "eden.bin-dist"}}/{{EdenConfig "eden.eden-bin"}}
-HOST=$($EDEN eve ip)
 
-echo {{template "ssh"}}$HOST -p {{template "port1"}} ip a add {{template "ip1"}}/24 dev eth1
-{{template "ssh"}}$HOST -p {{template "port1"}} ip a add {{template "ip1"}}/24 dev eth1
+echo $EDEN sdn fwd eth0 {{template "port1"}} -- {{template "ssh"}} ip a add {{template "ip1"}}/24 dev eth1
+$EDEN sdn fwd eth0 {{template "port1"}} -- {{template "ssh"}} ip a add {{template "ip1"}}/24 dev eth1
 
-echo {{template "ssh"}}$HOST -p {{template "port1"}} ip a
-{{template "ssh"}}$HOST -p {{template "port1"}} ip a
+echo $EDEN sdn fwd eth0 {{template "port1"}} -- {{template "ssh"}} ip a
+$EDEN sdn fwd eth0 {{template "port1"}} -- {{template "ssh"}} ip a
 
 -- prepare2.sh --
 EDEN={{EdenConfig "eden.root"}}/{{EdenConfig "eden.bin-dist"}}/{{EdenConfig "eden.eden-bin"}}
-HOST=$($EDEN eve ip)
 
-echo {{template "ssh"}}$HOST -p {{template "port2"}} ip a add {{template "ip2"}}/24 dev eth1
-{{template "ssh"}}$HOST -p {{template "port2"}} ip a add {{template "ip2"}}/24 dev eth1
+echo $EDEN sdn fwd eth0 {{template "port2"}} -- {{template "ssh"}} ip a add {{template "ip2"}}/24 dev eth1
+$EDEN sdn fwd eth0 {{template "port2"}} -- {{template "ssh"}} ip a add {{template "ip2"}}/24 dev eth1
 
-echo {{template "ssh"}}$HOST -p {{template "port2"}} ip a
-{{template "ssh"}}$HOST -p {{template "port2"}} ip a
-
+echo $EDEN sdn fwd eth0 {{template "port2"}} -- {{template "ssh"}} ip a
+$EDEN sdn fwd eth0 {{template "port2"}} -- {{template "ssh"}} ip a
 
 -- ping.sh --
 EDEN={{EdenConfig "eden.root"}}/{{EdenConfig "eden.bin-dist"}}/{{EdenConfig "eden.eden-bin"}}
-HOST=$($EDEN eve ip)
 
-echo {{template "ssh"}}$HOST -p {{template "port1"}} ping -I eth1 -c 10 {{template "ip2"}}
-{{template "ssh"}}$HOST -p {{template "port1"}} ping -I eth1 -c 10 {{template "ip2"}}
+echo $EDEN sdn fwd eth0 {{template "port1"}} -- {{template "ssh"}} ping -I eth1 -c 10 {{template "ip2"}}
+$EDEN sdn fwd eth0 {{template "port1"}} -- {{template "ssh"}} ping -I eth1 -c 10 {{template "ip2"}}
 
 -- eden-config.yml --
 {{/* Test's config. file */}}

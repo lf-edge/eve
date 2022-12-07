@@ -20,6 +20,7 @@
 # The application providing DHCP services for multiple VLANs requires netadmin capabilities, otherwise
 # it is not permitted to create VLAN sub-interfaces. For security reasons, EVE does not allow to grant these
 # capabilities to native containers, therefore it is required to deploy apps as VMs-in-Containers for this test to pass.
+# TODO: rewrite test to use DHCP provided by SDN
 exec -t 2m bash check_vm_support.sh
 source .env
 [!env:with_hw_virt] skip 'Missing HW-assisted virtualization capability'
@@ -144,11 +145,10 @@ done
 APP=$1
 PORT=$2
 EDEN={{EdenConfig "eden.root"}}/{{EdenConfig "eden.bin-dist"}}/{{EdenConfig "eden.eden-bin"}}
-HOST=$($EDEN eve ip)
 
-address=http://${HOST}:${PORT}/ifconfig.html
-until curl -m 10 $address | grep -q LOOPBACK; do sleep 3; done
-curl -m 10 $address
+address=http://FWD_IP:FWD_PORT/ifconfig.html
+until $EDEN sdn fwd eth0 $PORT -- curl -m 10 $address | grep -q LOOPBACK; do sleep 3; done
+$EDEN sdn fwd eth0 $PORT -- curl -m 10 $address
 
 -- wait_and_get_ip.sh --
 #!/bin/sh
@@ -156,11 +156,10 @@ curl -m 10 $address
 APP=$1
 PORT=$2
 EDEN={{EdenConfig "eden.root"}}/{{EdenConfig "eden.bin-dist"}}/{{EdenConfig "eden.eden-bin"}}
-HOST=$($EDEN eve ip)
 
 function get_ip {
-    address=http://${HOST}:${PORT}/ifconfig.html
-    ifconfig=$(curl -m 10 $address) || return 1
+    address=http://FWD_IP:FWD_PORT/ifconfig.html
+    ifconfig=$($EDEN sdn fwd eth0 $PORT -- curl -m 10 $address) || return 1
     if [ -z "$ifconfig" ]; then
         return 1
     fi
@@ -183,20 +182,19 @@ until get_ip; do sleep 3; done
 APP=$1
 PORT=$2
 EDEN={{EdenConfig "eden.root"}}/{{EdenConfig "eden.bin-dist"}}/{{EdenConfig "eden.eden-bin"}}
-HOST=$($EDEN eve ip)
 
-address=http://${HOST}:${PORT}/received-data.html
+address=http://FWD_IP:FWD_PORT/received-data.html
 
 # wait at most 1 minute for received-data.html to be available
 for i in `seq 12`
 do
     sleep 5
-    recv_data=$(curl -m 10 $address)
+    recv_data=$($EDEN sdn fwd eth0 $PORT -- curl -m 10 $address)
     if [ ! -z "$recv_data" ]; then
         break
     fi
 done
-curl -m 10 $address
+$EDEN sdn fwd eth0 $PORT -- curl -m 10 $address
 
 -- eden-config.yml --
 {{/* Test's config file */}}

@@ -3,7 +3,7 @@
 {{$server := "mariadb"}}
 {{$test_msg := "MariaDB [(none)]> "}}
 {{define "port"}}2223{{end}}
-{{define "ssh"}}ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=no -o PasswordAuthentication=no -i {{EdenConfig "eden.tests"}}/eclient/image/cert/id_rsa -p {{template "port"}} root@{{end}}
+{{define "ssh"}}ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=no -o PasswordAuthentication=no -i {{EdenConfig "eden.tests"}}/eclient/image/cert/id_rsa root@FWD_IP -p FWD_PORT{{end}}
 {{define "eclient_image"}}docker://{{EdenConfig "eden.eclient.image"}}:{{EdenConfig "eden.eclient.tag"}}{{end}}
 
 [!exec:bash] stop
@@ -46,71 +46,73 @@ test eden.app.test -test.v -timewait 10m - eclient {{$server}}
 
 -- wait_ssh.sh --
 EDEN={{EdenConfig "eden.root"}}/{{EdenConfig "eden.bin-dist"}}/{{EdenConfig "eden.eden-bin"}}
-HOST=$($EDEN eve ip)
 for i in `seq 20`
 do
   sleep 20
   # Test SSH-access to container
-  echo {{template "ssh"}}$HOST grep -q Ubuntu /etc/issue
-  {{template "ssh"}}$HOST grep -q Ubuntu /etc/issue && break
+  echo $EDEN sdn fwd eth0 {{template "port"}} -- {{template "ssh"}} grep -q Ubuntu /etc/issue
+  $EDEN sdn fwd eth0 {{template "port"}} -- {{template "ssh"}} grep -q Ubuntu /etc/issue && break
 done
 
 -- server_ip.sh --
 EDEN={{EdenConfig "eden.root"}}/{{EdenConfig "eden.bin-dist"}}/{{EdenConfig "eden.eden-bin"}}
 echo export ESERVER_IP=$(grep "^$1\s" pod_ps | awk '{print $4}') > env
-echo export HOST=$($EDEN eve ip) >> env
 
 -- wait_db.sh --
 . ./env
+EDEN={{EdenConfig "eden.root"}}/{{EdenConfig "eden.bin-dist"}}/{{EdenConfig "eden.eden-bin"}}
 
-until {{template "ssh"}}$HOST "echo 'SHOW DATABASES;' | mysql --user=root --password='adam&eve' --host=$ESERVER_IP"
+until $EDEN sdn fwd eth0 {{template "port"}} -- {{template "ssh"}} "echo 'SHOW DATABASES;' | mysql --user=root --password='adam&eve' --host=$ESERVER_IP"
 do
    sleep 10
 done
 
 -- run_client.sh --
 . ./env
+EDEN={{EdenConfig "eden.root"}}/{{EdenConfig "eden.bin-dist"}}/{{EdenConfig "eden.eden-bin"}}
 
-echo {{template "ssh"}}$HOST 'cat > /tmp/mariadb.sql' < mariadb.in
-{{template "ssh"}}$HOST 'cat > /tmp/mariadb.sql' < mariadb.in
+echo $EDEN sdn fwd eth0 {{template "port"}} -- {{template "ssh"}} 'cat > /tmp/mariadb.sql' < mariadb.in
+$EDEN sdn fwd eth0 {{template "port"}} -- {{template "ssh"}} 'cat > /tmp/mariadb.sql' < mariadb.in
 sleep 10
-echo {{template "ssh"}}$HOST "mysql --user=root --password='adam&eve' --host=$ESERVER_IP < /tmp/mariadb.sql > /tmp/mariadb.out"
-{{template "ssh"}}$HOST "mysql --user=root --password='adam&eve' --host=$ESERVER_IP < /tmp/mariadb.sql > /tmp/mariadb.out"
+echo $EDEN sdn fwd eth0 {{template "port"}} -- {{template "ssh"}} "mysql --user=root --password='adam&eve' --host=$ESERVER_IP < /tmp/mariadb.sql > /tmp/mariadb.out"
+$EDEN sdn fwd eth0 {{template "port"}} -- {{template "ssh"}} "mysql --user=root --password='adam&eve' --host=$ESERVER_IP < /tmp/mariadb.sql > /tmp/mariadb.out"
 sleep 10
-echo {{template "ssh"}}$HOST 'cat /tmp/mariadb.out'
-{{template "ssh"}}$HOST 'cat /tmp/mariadb.out' > out
+echo $EDEN sdn fwd eth0 {{template "port"}} -- {{template "ssh"}} 'cat /tmp/mariadb.out'
+$EDEN sdn fwd eth0 {{template "port"}} -- {{template "ssh"}} 'cat /tmp/mariadb.out' > out
 
 -- sysbench-read.sh --
 . ./env
+EDEN={{EdenConfig "eden.root"}}/{{EdenConfig "eden.bin-dist"}}/{{EdenConfig "eden.eden-bin"}}
 
 BENCH_OPTS="/usr/share/sysbench/oltp_read_only.lua --threads=2 --tables=5 --table-size=100000"
 DRIVER_OPTS="--mysql-host=$ESERVER_IP --mysql-user=root --mysql-password='adam&eve' --mysql-port=3306"
 OPTS="$BENCH_OPTS $DRIVER_OPTS"
 
-echo {{template "ssh"}}$HOST "sysbench $OPTS prepare"
-{{template "ssh"}}$HOST "sysbench $OPTS prepare"
+echo $EDEN sdn fwd eth0 {{template "port"}} -- {{template "ssh"}} "sysbench $OPTS prepare"
+$EDEN sdn fwd eth0 {{template "port"}} -- {{template "ssh"}} "sysbench $OPTS prepare"
 
-echo {{template "ssh"}}$HOST "sysbench $OPTS --range_selects=off --db-ps-mode=disable run"
-{{template "ssh"}}$HOST "sysbench $OPTS --range_selects=off --db-ps-mode=disable run"
+echo $EDEN sdn fwd eth0 {{template "port"}} -- {{template "ssh"}} "sysbench $OPTS --range_selects=off --db-ps-mode=disable run"
+$EDEN sdn fwd eth0 {{template "port"}} -- {{template "ssh"}} "sysbench $OPTS --range_selects=off --db-ps-mode=disable run"
 
-echo {{template "ssh"}}$HOST "sysbench $OPTS --range_selects=off --db-ps-mode=disable cleanup"
-{{template "ssh"}}$HOST "sysbench $OPTS --range_selects=off --db-ps-mode=disable cleanup"
+echo $EDEN sdn fwd eth0 {{template "port"}} -- {{template "ssh"}} "sysbench $OPTS --range_selects=off --db-ps-mode=disable cleanup"
+$EDEN sdn fwd eth0 {{template "port"}} -- {{template "ssh"}} "sysbench $OPTS --range_selects=off --db-ps-mode=disable cleanup"
 
 -- sysbench-read-write.sh --
 . ./env
+EDEN={{EdenConfig "eden.root"}}/{{EdenConfig "eden.bin-dist"}}/{{EdenConfig "eden.eden-bin"}}
 
 BENCH_OPTS="/usr/share/sysbench/oltp_read_write.lua --threads=2 --tables=5 --table-size=100000"
 DRIVER_OPTS="--mysql-host=$ESERVER_IP --mysql-user=root --mysql-password='adam&eve' --mysql-port=3306"
 OPTS="$BENCH_OPTS $DRIVER_OPTS"
 
-echo {{template "ssh"}}$HOST "sysbench $OPTS prepare"
-{{template "ssh"}}$HOST "sysbench $OPTS prepare"
+echo $EDEN sdn fwd eth0 {{template "port"}} -- {{template "ssh"}} "sysbench $OPTS prepare"
+$EDEN sdn fwd eth0 {{template "port"}} -- {{template "ssh"}} "sysbench $OPTS prepare"
 
-echo {{template "ssh"}}$HOST "sysbench $OPTS --delete_inserts=10 --index_updates=10 --non_index_updates=10 --db-ps-mode=disable run"
-{{template "ssh"}}$HOST "sysbench $OPTS --delete_inserts=10 --index_updates=10 --non_index_updates=10 --db-ps-mode=disable run"
+echo $EDEN sdn fwd eth0 {{template "port"}} -- {{template "ssh"}} "sysbench $OPTS --delete_inserts=10 --index_updates=10 --non_index_updates=10 --db-ps-mode=disable run"
+$EDEN sdn fwd eth0 {{template "port"}} -- {{template "ssh"}} "sysbench $OPTS --delete_inserts=10 --index_updates=10 --non_index_updates=10 --db-ps-mode=disable run"
 
-echo {{template "ssh"}}$HOST "sysbench $OPTS --delete_inserts=10 --index_updates=10 --non_index_updates=10 --db-ps-mode=disable cleanup"
-{{template "ssh"}}$HOST "sysbench $OPTS --delete_inserts=10 --index_updates=10 --non_index_updates=10 --db-ps-mode=disable cleanup"
+echo $EDEN sdn fwd eth0 {{template "port"}} -- {{template "ssh"}} "sysbench $OPTS --delete_inserts=10 --index_updates=10 --non_index_updates=10 --db-ps-mode=disable cleanup"
+$EDEN sdn fwd eth0 {{template "port"}} -- {{template "ssh"}} "sysbench $OPTS --delete_inserts=10 --index_updates=10 --non_index_updates=10 --db-ps-mode=disable cleanup"
 
 -- mariadb.in --
 CREATE DATABASE bookstore;

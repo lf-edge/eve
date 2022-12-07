@@ -1,4 +1,4 @@
-eden -t 2m start
+eden -t 5m start
 eden status
 stdout 'Adam.* status:.* running'
 stdout 'Redis.* status:.* running'
