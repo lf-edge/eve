@@ -154,23 +154,44 @@ EVE builds one of two bootable images using linuxkit, depending on if you are bu
 
 For a live bootable image, named `live.img`, we create the following dependencies in order:
 
-1. `rootfs.img`
-2. `config.img`
-3. `live.raw`
-4. `live.qcow2`
+1. `rootfs.tar`
+2. `rootfs.img`
+3. `config.img`
+4. `live.raw`
+5. `live.qcow2`
+
+#### `rootfs.tar`
+
+This is the rootfs filesystem in a tar file.
+It is a temporary artifact which is used as input into security and bill-of-materials scanners,
+and is then consumed to create other artifacts, and then can be removed. To build it:
+
+1. Verify the existence of the linuxkit builder configuration file `images/rootfs.yml`. See notes on [generating yml](#generating-yml).
+1. Call `makerootfs.sh tar -y images/rootfs.yml -t path/to/rootfs.tar [-a <arch>]`, which will build an image for the target architecture `<arch>` using `linuxkit` with a tar output format using `images/rootfs.yml` as the configuration file, saving the output to `path/to/rootfs.tar`.
+
+When done with any later builds, you can remove the temporary artifact `path/to/rootfs.tar`.
+
+When run with `make rootfstar` or `make rootfs`, this will build the rootfs tar file:
+
+* For the default architecture;
+* Saving the tar file to `dist/<arch>/<path-from-commit-and-version-and-date>/`
 
 #### rootfs.img
 
 `rootfs.img` is a bootable root filesystem. To build it:
 
-1. Verify the existence of the linuxkit builder configuration file `images/rootfs.yml`. See notes on [generating yml](#generating-yml).
-2. Call `makerootfs.sh images/rootfs.yml rootfs.img <format> <arch>`, which will:
-    1. Build an image for the target architecture `<arch>` using `linuxkit` with a tar output format using `images/rootfs.yml` as the configuration file.
-    2. Pipe the contents of the tar image to a docker container from either `mkrootfs-ext4` or `mkrootfs-squash`, depending on desired output format.
-    3. `mkrootfs-*` takes the contents of the tar image, modifies `grub.cf`, builds it into an ext4 filesystem image, and streams it to stdout.
-    4. Direct the output to the targeted filename, in this case `rootfs.img`.
+1. Verify the existence of the rootfs tar file from the previous stage.
+1. Call `makerootfs.sh imagefromtar -i path/to/rootfs.img -t path/to/rootfs.tar -f <format>`, which will:
+    1. Pipe the contents of the tar image to a docker container from either `mkrootfs-ext4` or `mkrootfs-squash`, depending on desired output format.
+    2. `mkrootfs-*` takes the contents of the tar image, modifies `grub.cfg`, builds it into an ext4 filesystem image, and streams it to stdout.
+    3. Direct the output to the targeted filename, in this case `path/to/rootfs.img`.
 
-We now have `rootfs.img`.
+We now have `path/to/rootfs.img`.
+
+If you will not need any of the interim steps, you can run `makerootfs.sh image -y images/rootfs.yml -f <format> -a <arch> -i path/to/rootfs.img`, which combines:
+
+1. Creating the tar
+1. Creating the disk image
 
 #### config.img
 
@@ -253,7 +274,7 @@ To build `rootfs_installer.img`:
 2. Call `makerootfs.sh images/installer.yml rootfs_installer.img <format> <arch>`, which will:
     1. Build an image for the target architecture `<arch>` using `linuxkit` with a tar output format using `images/installer.yml` as the configuration file..
     2. Pipe the contents of the tar image to a docker container from either `mkrootfs-ext4` or `mkrootfs-squash`, depending on desired output format.
-    3. `mkrootfs-*` takes the contents of the tar image, modifies `grub.cf`, builds it into an ext4 filesystem image, and streams it to stdout.
+    3. `mkrootfs-*` takes the contents of the tar image, modifies `grub.cfg`, builds it into an ext4 or squasfhs filesystem image, and streams it to stdout.
     4. Direct the output to the targeted filename, in this case `rootfs_installer.img`.
 
 #### Installer: installer.raw
