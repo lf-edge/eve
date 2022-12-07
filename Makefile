@@ -138,6 +138,8 @@ ROOTFS=$(INSTALLER)/rootfs
 ROOTFS_FULL_NAME=$(INSTALLER)/rootfs-$(ROOTFS_VERSION)
 ROOTFS_COMPLETE=$(ROOTFS_FULL_NAME)-%-$(ZARCH).$(ROOTFS_FORMAT)
 ROOTFS_IMG=$(ROOTFS).img
+# ROOTFS_TAR is in BUILD_DIR, not installer, so it does not get installed
+ROOTFS_TAR=$(BUILD_DIR)/rootfs.tar
 CONFIG_IMG=$(INSTALLER)/config.img
 INITRD_IMG=$(INSTALLER)/initrd.img
 INSTALLER_IMG=$(INSTALLER)/installer.img
@@ -269,6 +271,8 @@ LINUXKIT_PATCHES_DIR=tools/linuxkit/patches
 RESCAN_DEPS=FORCE
 # set FORCE_BUILD to --force to enforce rebuild
 FORCE_BUILD=
+
+SYFT_VERSION:=v0.62.3
 
 # we use the following block to assign correct tag to the Docker registry artifact
 ifeq ($(LINUXKIT_PKG_TARGET),push)
@@ -525,7 +529,9 @@ installer-img: $(INSTALLER_IMG)
 kernel: $(KERNEL_IMG)
 config: $(CONFIG_IMG)		; $(QUIET): "$@: Succeeded, CONFIG_IMG=$(CONFIG_IMG)"
 ssh-key: $(SSH_KEY)
-rootfs: $(ROOTFS_IMG) current
+rootfs: $(ROOTFS_TAR) $(ROOTFS_IMG) current
+rootfs.tar: $(ROOTFS_TAR)
+rootfstar: $(ROOTFS_TAR)
 live: $(LIVE_IMG) $(BIOS_IMG) current	; $(QUIET): "$@: Succeeded, LIVE_IMG=$(LIVE_IMG)"
 live-%: $(LIVE).%		; $(QUIET): "$@: Succeeded, LIVE=$(LIVE)"
 installer: $(INSTALLER_IMG)
@@ -549,9 +555,14 @@ $(ROOTFS)-%.img: $(ROOTFS_IMG)
 	@rm -f $@ && ln -s $(notdir $<) $@
 	$(QUIET): $@: Succeeded
 
-$(ROOTFS_IMG): images/rootfs-$(HV).yml | $(INSTALLER)
+$(ROOTFS_TAR): images/rootfs-$(HV).yml | $(INSTALLER)
 	$(QUIET): $@: Begin
-	./tools/makerootfs.sh $< $@ $(ROOTFS_FORMAT) $(ZARCH)
+	./tools/makerootfs.sh tar -y $< -t $@ -a $(ZARCH)
+	$(QUIET): $@: Succeeded
+
+$(ROOTFS_IMG): $(ROOTFS_TAR) | $(INSTALLER)
+	$(QUIET): $@: Begin
+	./tools/makerootfs.sh imagefromtar -t $(ROOTFS_TAR) -i $@ -f $(ROOTFS_FORMAT) -a $(ZARCH)
 	@echo "size of $@ is $$(wc -c < "$@")B"
 	@[ $$(wc -c < "$@") -gt $$(( 250 * 1024 * 1024 )) ] && \
 	        echo "ERROR: size of $@ is greater than 250MB (bigger than allocated partition)" && exit 1 || :
