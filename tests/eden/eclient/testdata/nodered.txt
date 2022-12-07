@@ -24,10 +24,9 @@ test eden.app.test -test.v -timewait 10m - nodered
 
 -- wait_curl.sh --
 EDEN={{EdenConfig "eden.root"}}/{{EdenConfig "eden.bin-dist"}}/{{EdenConfig "eden.eden-bin"}}
-HOST=$($EDEN eve ip)
-PORT={{template "port"}}
-echo "curl $HOST:$PORT"
-until curl "$HOST:$PORT" | grep {{template "test_msg"}}; do sleep 5; done
+
+echo $EDEN sdn fwd eth0 {{template "port"}} -- curl FWD_IP:FWD_PORT
+until $EDEN sdn fwd eth0 {{template "port"}} -- curl FWD_IP:FWD_PORT | grep {{template "test_msg"}}; do sleep 5; done
 
 -- eden-config.yml --
 test:

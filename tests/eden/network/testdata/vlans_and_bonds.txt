@@ -4,6 +4,8 @@
 [!exec:curl] stop
 [!exec:sleep] stop
 
+skip 'TODO: completely rewrite this test for Eden-SDN'
+
 {{$srvimage := "docker://lfedge/eden-docker-test:83cfe07"}}
 {{define "ssh"}}ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=no -o PasswordAuthentication=no -i {{EdenConfig "eden.tests"}}/eclient/image/cert/id_rsa root@{{end}}
 {{define "eclient_image"}}docker://{{EdenConfig "eden.eclient.image"}}:{{EdenConfig "eden.eclient.tag"}}{{end}}
@@ -202,9 +204,9 @@ function get_ip {
     if [ -z "$ifconfig" ]; then
         return 1
     fi
-    interfaces=$(echo "$ifconfig" | grep "^\w" | grep -v LOOPBACK | cut -d: -f1)
+    interfaces=$(echo "$ifconfig" | grep "^\w" | grep -iv LOOPBACK | cut -d' ' -f1 | cut -d':' -f 1)
     eth1=$(echo "$interfaces" | awk 'NR==2')
-    IP=$(echo "$ifconfig" | grep "^${eth1}: " -A 1 | awk '/inet / {print $2}' | cut -d"/" -f1)
+    IP=$(echo "$ifconfig" | grep "^${eth1}" -A 1 | grep 'inet ' | sed 's/addr://' | awk '/inet / {print $2}')
     if [ ! -z "$IP" ]; then
         echo "IP address of $APP is: $IP"
         echo "${APP}_ip=$IP" >.env

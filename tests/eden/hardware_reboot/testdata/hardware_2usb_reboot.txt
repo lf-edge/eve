@@ -2,7 +2,7 @@
 # Works only on KVM
 
 {{define "port"}}2223{{end}}
-{{define "ssh"}} ssh -oServerAliveInterval=10 -oConnectTimeout=10 -oStrictHostKeyChecking=no -oPasswordAuthentication=no -i {{EdenConfig "eden.tests"}}/eclient/image/cert/id_rsa -p {{template "port"}} root@$HOST {{end}}
+{{define "ssh"}} ssh -oServerAliveInterval=10 -oConnectTimeout=10 -oStrictHostKeyChecking=no -oPasswordAuthentication=no -i {{EdenConfig "eden.tests"}}/eclient/image/cert/id_rsa root@FWD_IP -p FWD_PORT{{end}}
 {{define "eclient_image"}}docker://{{EdenConfig "eden.eclient.image"}}:{{EdenConfig "eden.eclient.tag"}}{{end}}
 
 [!exec:bash] stop
@@ -16,15 +16,15 @@ eden pod deploy -n eclient --memory=512MB {{template "eclient_image"}} -p {{temp
 
 test eden.app.test -test.v -timewait 20m RUNNING eclient
 
-exec -t 20m bash ssh.sh {{template "port"}}
+exec -t 20m bash ssh.sh
 stdout 'Ubuntu'
 
 # Check usb_1
-exec -t 20m bash get-lshw.sh {{template "port"}}
+exec -t 20m bash get-lshw.sh
 stdout '1024B QEMU HARDDISK'
 
 # Check usb_2
-exec -t 20m bash get-lshw.sh {{template "port"}}
+exec -t 20m bash get-lshw.sh
 stdout '10MB QEMU HARDDISK'
 
 exec -t 5m bash get_reboot_time.sh
@@ -38,11 +38,11 @@ exec -t 20m bash ssh.sh
 stdout 'Ubuntu'
 
 # Check usb_1
-exec -t 20m bash get-lshw.sh {{template "port"}}
+exec -t 20m bash get-lshw.sh
 stdout '1024B QEMU HARDDISK'
 
 # Check usb_2
-exec -t 20m bash get-lshw.sh {{template "port"}}
+exec -t 20m bash get-lshw.sh
 stdout '10MB QEMU HARDDISK'
 
 exec -t 5m bash get_reboot_time.sh
@@ -64,36 +64,30 @@ test:
         model: {{EdenConfig "eve.devmodel"}}
 
 -- ssh.sh --
-port=$1
 EDEN={{EdenConfig "eden.root"}}/{{EdenConfig "eden.bin-dist"}}/{{EdenConfig "eden.eden-bin"}}
-HOST=$($EDEN eve ip)
 
 for i in `seq 20`
 do
-sleep 20
-# Test SSH-access to container
-echo $i\) {{template "ssh"}} grep Ubuntu /etc/issue
-{{template "ssh"}} grep Ubuntu /etc/issue && break
+  sleep 20
+  # Test SSH-access to container
+  echo $i\) $EDEN sdn fwd eth0 {{template "port"}} -- {{template "ssh"}} grep Ubuntu /etc/issue
+  $EDEN sdn fwd eth0 {{template "port"}} -- {{template "ssh"}} grep Ubuntu /etc/issue && break
 done
-
 
 -- get_reboot_time.sh --
 EDEN={{EdenConfig "eden.root"}}/{{EdenConfig "eden.bin-dist"}}/{{EdenConfig "eden.eden-bin"}}
-HOST=$($EDEN eve ip)
 
-echo {{template "ssh"}} uptime -s
-{{template "ssh"}} uptime -s
+echo $EDEN sdn fwd eth0 {{template "port"}} -- {{template "ssh"}} uptime -s
+$EDEN sdn fwd eth0 {{template "port"}} -- {{template "ssh"}} uptime -s
 
 -- get-lshw.sh --
-port=$1
 EDEN={{EdenConfig "eden.root"}}/{{EdenConfig "eden.bin-dist"}}/{{EdenConfig "eden.eden-bin"}}
-HOST=$($EDEN eve ip)
- echo {{template "ssh"}} lshw -businfo
- {{template "ssh"}} lshw -businfo
+
+echo $EDEN sdn fwd eth0 {{template "port"}} -- {{template "ssh"}} lshw -businfo
+$EDEN sdn fwd eth0 {{template "port"}} -- {{template "ssh"}} lshw -businfo
 
 -- reboot.sh --
 EDEN={{EdenConfig "eden.root"}}/{{EdenConfig "eden.bin-dist"}}/{{EdenConfig "eden.eden-bin"}}
-HOST=$($EDEN eve ip)
 
-echo {{template "ssh"}} reboot
-{{template "ssh"}} reboot
+echo $EDEN sdn fwd eth0 {{template "port"}} -- {{template "ssh"}} reboot
+$EDEN sdn fwd eth0 {{template "port"}} -- {{template "ssh"}} reboot

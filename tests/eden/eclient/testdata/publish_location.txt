@@ -10,7 +10,7 @@
 {{define "token"}}server_token_123{{end}}
 {{define "location_file"}}/mnt/location.json{{end}}
 {{define "network"}}n1{{end}}
-{{define "ssh"}}ssh -q -o ConnectTimeout=10 -o StrictHostKeyChecking=no -o PasswordAuthentication=no -i {{EdenConfig "eden.tests"}}/eclient/image/cert/id_rsa root@{{end}}
+{{define "ssh"}}ssh -q -o ConnectTimeout=10 -o StrictHostKeyChecking=no -o PasswordAuthentication=no -i {{EdenConfig "eden.tests"}}/eclient/image/cert/id_rsa root@FWD_IP -p FWD_PORT{{end}}
 {{define "eclient_image"}}docker://{{EdenConfig "eden.eclient.image"}}:{{EdenConfig "eden.eclient.tag"}}{{end}}
 
 [!exec:bash] stop
@@ -127,23 +127,21 @@ exec sleep 30
 
 -- wait-ssh.sh --
 EDEN={{EdenConfig "eden.root"}}/{{EdenConfig "eden.bin-dist"}}/{{EdenConfig "eden.eden-bin"}}
-HOST=$($EDEN eve ip)
 for p in $*
 do
   for i in `seq 20`
   do
     sleep 20
     # Test SSH-access to container
-    echo {{template "ssh"}}$HOST -p $p grep -q Ubuntu /etc/issue
-    {{template "ssh"}}$HOST -p $p grep -q Ubuntu /etc/issue && break
+    echo $EDEN sdn fwd eth0 $p -- {{template "ssh"}} grep -q Ubuntu /etc/issue
+    $EDEN sdn fwd eth0 $p -- {{template "ssh"}} grep -q Ubuntu /etc/issue && break
   done
 done
 
 -- local-manager-start.sh --
 EDEN={{EdenConfig "eden.root"}}/{{EdenConfig "eden.bin-dist"}}/{{EdenConfig "eden.eden-bin"}}
-HOST=$($EDEN eve ip)
 ARGS="--token={{template "token"}}"
-{{template "ssh"}}$HOST -p {{template "mngr_port"}} "/root/local_manager $ARGS &>/proc/1/fd/1 &"
+$EDEN sdn fwd eth0 {{template "mngr_port"}} -- {{template "ssh"}} "/root/local_manager $ARGS &>/proc/1/fd/1 &"
 
 -- get-app-ip.sh --
 EDEN={{EdenConfig "eden.root"}}/{{EdenConfig "eden.bin-dist"}}/{{EdenConfig "eden.eden-bin"}}
@@ -157,7 +155,6 @@ ALT="$3"
 TIME="$4"
 
 EDEN={{EdenConfig "eden.root"}}/{{EdenConfig "eden.bin-dist"}}/{{EdenConfig "eden.eden-bin"}}
-HOST=$($EDEN eve ip)
 CONFIG="{
   \"logical-label\": \"wwan0\",
   \"latitude\": $LAT,
@@ -174,11 +171,10 @@ echo "$CONFIG" | $EDEN eve ssh 'cat > /run/wwan/location.json'
 EXPTIME="$1"
 
 EDEN={{EdenConfig "eden.root"}}/{{EdenConfig "eden.bin-dist"}}/{{EdenConfig "eden.eden-bin"}}
-HOST=$($EDEN eve ip)
 
 # Wait until Local Profile server receives it.
 while true; do
-  LOCATION="$({{template "ssh"}}$HOST -p {{template "mngr_port"}} "cat {{template "location_file"}}")"
+  LOCATION="$($EDEN sdn fwd eth0 {{template "mngr_port"}} -- {{template "ssh"}} "cat {{template "location_file"}}")"
   TIMESTAMP="$(echo "$LOCATION" | jq '."utcTimestamp"')"
   if [ "$TIMESTAMP" = "$EXPTIME" ]; then
     echo "$LOCATION"
@@ -191,11 +187,10 @@ done
 EXPTIME="$1"
 
 EDEN={{EdenConfig "eden.root"}}/{{EdenConfig "eden.bin-dist"}}/{{EdenConfig "eden.eden-bin"}}
-HOST=$($EDEN eve ip)
 
 # Wait until app is able to receive it.
 while true; do
-  LOCATION="$({{template "ssh"}}$HOST -p {{template "app_port"}} "curl -s 169.254.169.254/eve/v1/location.json")"
+  LOCATION="$($EDEN sdn fwd eth0 {{template "app_port"}} -- {{template "ssh"}} "curl -s 169.254.169.254/eve/v1/location.json")"
   TIMESTAMP="$(echo "$LOCATION" | jq '."utc-timestamp"')"
   if [ "$TIMESTAMP" = "$EXPTIME" ]; then
     echo "$LOCATION" | jq
@@ -208,7 +203,6 @@ done
 EXPTIME="$1"
 
 EDEN={{EdenConfig "eden.root"}}/{{EdenConfig "eden.bin-dist"}}/{{EdenConfig "eden.eden-bin"}}
-HOST=$($EDEN eve ip)
 
 while true;
 do

@@ -11,7 +11,7 @@
 {{define "radio_silence_counter_file"}}/mnt/radio-silence-counter{{end}}
 {{define "radio_status_file"}}/mnt/radio-status.json{{end}}
 {{define "network"}}n1{{end}}
-{{define "ssh"}}ssh -q -o ConnectTimeout=10 -o StrictHostKeyChecking=no -o PasswordAuthentication=no -i {{EdenConfig "eden.tests"}}/eclient/image/cert/id_rsa root@{{end}}
+{{define "ssh"}}ssh -q -o ConnectTimeout=10 -o StrictHostKeyChecking=no -o PasswordAuthentication=no -i {{EdenConfig "eden.tests"}}/eclient/image/cert/id_rsa root@FWD_IP -p FWD_PORT{{end}}
 {{define "eclient_image"}}docker://{{EdenConfig "eden.eclient.image"}}:{{EdenConfig "eden.eclient.tag"}}{{end}}
 
 [!exec:bash] stop
@@ -73,26 +73,24 @@ test eden.network.test -test.v -timewait 10m - {{template "network"}}
 
 -- wait-ssh.sh --
 EDEN={{EdenConfig "eden.root"}}/{{EdenConfig "eden.bin-dist"}}/{{EdenConfig "eden.eden-bin"}}
-HOST=$($EDEN eve ip)
 for p in $*
 do
   for i in `seq 20`
   do
     sleep 20
     # Test SSH-access to container
-    echo {{template "ssh"}}$HOST -p $p grep -q Ubuntu /etc/issue
-    {{template "ssh"}}$HOST -p $p grep -q Ubuntu /etc/issue && break
+    echo $EDEN sdn fwd eth0 $p -- {{template "ssh"}} grep -q Ubuntu /etc/issue
+    $EDEN sdn fwd eth0 $p -- {{template "ssh"}} grep -q Ubuntu /etc/issue && break
   done
 done
 
 -- local-manager-start.sh --
 EDEN={{EdenConfig "eden.root"}}/{{EdenConfig "eden.bin-dist"}}/{{EdenConfig "eden.eden-bin"}}
-HOST=$($EDEN eve ip)
 ARGS="--token={{template "token"}}"
 ARGS="$ARGS --radio-silence={{template "radio_silence_config_file"}}"
 ARGS="$ARGS --radio-silence-counter={{template "radio_silence_counter_file"}}"
 ARGS="$ARGS --radio-status={{template "radio_status_file"}}"
-{{template "ssh"}}$HOST -p {{template "port"}} "/root/local_manager $ARGS &>/proc/1/fd/1 &"
+$EDEN sdn fwd eth0 {{template "port"}} -- {{template "ssh"}} "/root/local_manager $ARGS &>/proc/1/fd/1 &"
 
 -- get-app-ip.sh --
 EDEN={{EdenConfig "eden.root"}}/{{EdenConfig "eden.bin-dist"}}/{{EdenConfig "eden.eden-bin"}}
@@ -101,7 +99,6 @@ echo app_ip=$IP>>.env
 
 -- toggle-radio-silence.sh --
 EDEN={{EdenConfig "eden.root"}}/{{EdenConfig "eden.bin-dist"}}/{{EdenConfig "eden.eden-bin"}}
-HOST=$($EDEN eve ip)
 CMDS="
 prev_counter=\$(cat {{template "radio_silence_counter_file"}})
 prev_counter=\${prev_counter:-0}
@@ -114,11 +111,10 @@ while true; do
     sleep 5
 done
 "
-{{template "ssh"}}$HOST -p {{template "port"}} "$CMDS"
+$EDEN sdn fwd eth0 {{template "port"}} -- {{template "ssh"}} "$CMDS"
 
 -- wait-radio-status.sh --
 EDEN={{EdenConfig "eden.root"}}/{{EdenConfig "eden.bin-dist"}}/{{EdenConfig "eden.eden-bin"}}
-HOST=$($EDEN eve ip)
 CMDS="
 until test -f {{template "radio_status_file"}}; do sleep 5; done
 echo \"{{template "radio_status_file"}} file found\"
@@ -138,7 +134,7 @@ while true; do
 done
 "
 
-{{template "ssh"}}$HOST -p {{template "port"}} "$CMDS"
+$EDEN sdn fwd eth0 {{template "port"}} -- {{template "ssh"}} "$CMDS"
 
 -- eden-config.yml --
 {{/* Test's config file */}}

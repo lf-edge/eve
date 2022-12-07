@@ -62,7 +62,9 @@ test:
         onboard-cert: {{EdenConfigPath "eve.cert"}}
         serial: "{{EdenConfig "eve.serial"}}"
         model: {{EdenConfig "eve.devmodel"}}
+
 -- get.sh --
-address=`grep "^$1"'\s*' pod_ps | cut -f 5`
-until curl $address; do sleep 5; done
+EDEN={{EdenConfig "eden.root"}}/{{EdenConfig "eden.bin-dist"}}/{{EdenConfig "eden.eden-bin"}}
+PORT=`grep "^$1"'\s*' pod_ps | awk '{print $5}' | cut -d ":" -f 2`
+until $EDEN sdn fwd eth0 $PORT -- curl FWD_IP:FWD_PORT; do sleep 5; done
 

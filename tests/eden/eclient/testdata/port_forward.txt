@@ -2,7 +2,7 @@
 
 {{$test_msg := "Port forward tests"}}
 {{$devmodel := EdenConfig "eve.devmodel"}}
-{{define "ssh"}}ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=no -i {{EdenConfig "eden.tests"}}/eclient/image/cert/id_rsa root@{{end}}
+{{define "ssh"}}ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=no -i {{EdenConfig "eden.tests"}}/eclient/image/cert/id_rsa root@FWD_IP -p FWD_PORT{{end}}
 {{define "eclient_image"}}docker://{{EdenConfig "eden.eclient.image"}}:{{EdenConfig "eden.eclient.tag"}}{{end}}
 
 [!exec:bash] stop
@@ -37,14 +37,15 @@ message 'SCENARIO 1: Waiting for apps to enter RUNNING state'
 test eden.app.test -test.v -timewait 20m RUNNING app1 app2
 
 message 'SCENARIO 1: Checking accessibility'
-exec -t 5m bash wait_ssh.sh 2223 2224
+exec -t 5m bash wait_ssh.sh eth0 2223
+exec -t 5m bash wait_ssh.sh eth0 2224
 
 eden eve status
 cp stdout eve_status
 
 message 'SCENARIO 1: Testing port map connectivity between apps'
 exec sleep 20
-exec -t 1m bash test_connectivity.sh 2223 2224
+exec -t 1m bash test_connectivity.sh eth0 2223 eth0 2224
 stdout 'Ubuntu'
 
 {{if or (eq $devmodel "ZedVirtual-4G") (eq $devmodel "VBox") }}
@@ -52,12 +53,14 @@ message 'SCENARIO 1: Simulating network outage'
 eden eve link down
 # keep link down long enough for EVE to notice and un-configure port maps
 exec sleep 60
-! exec -t 1m bash check_ssh.sh 2223 2224
+! exec -t 1m bash check_ssh.sh eth0 2223
+! exec -t 1m bash check_ssh.sh eth1 2224
 eden eve link up
 # give EVE some time to recover (largely depends on the DHCP server)
 exec sleep 20
-exec -t 5m bash wait_ssh.sh 2223 2224
-exec -t 1m bash test_connectivity.sh 2223 2224
+exec -t 5m bash wait_ssh.sh eth0 2223
+exec -t 5m bash wait_ssh.sh eth0 2224
+exec -t 1m bash test_connectivity.sh eth0 2223 eth0 2224
 stdout 'Ubuntu'
 {{end}}
 
@@ -100,26 +103,29 @@ message 'SCENARIO 2: Waiting for apps to enter RUNNING state'
 test eden.app.test -test.v -timewait 20m RUNNING app1 app2
 
 message 'SCENARIO 2: Checking accessibility'
-exec -t 5m bash wait_ssh.sh 2223 2234
+exec -t 5m bash wait_ssh.sh eth0 2223
+exec -t 5m bash wait_ssh.sh eth1 2234
 
 eden eve status
 cp stdout eve_status
 
 message 'SCENARIO 2: Testing port map connectivity between apps'
 exec sleep 20
-exec -t 1m bash test_connectivity.sh 2234 2223
+exec -t 1m bash test_connectivity.sh eth0 2223 eth1 2234
 stdout 'Ubuntu'
 
 message 'SCENARIO 2: Simulating network outage'
 eden eve link down
 # keep link down long enough for EVE to notice and un-configure port maps
 exec sleep 60
-! exec -t 1m bash check_ssh.sh 2223 2234
+! exec -t 1m bash check_ssh.sh eth0 2223
+! exec -t 1m bash check_ssh.sh eth1 2234
 eden eve link up
 # give EVE some time to recover (largely depends on the DHCP server)
 exec sleep 20
-exec -t 5m bash wait_ssh.sh 2223 2234
-exec -t 1m bash test_connectivity.sh 2234 2223
+exec -t 5m bash wait_ssh.sh eth0 2223
+exec -t 5m bash wait_ssh.sh eth1 2234
+exec -t 1m bash test_connectivity.sh eth0 2223 eth1 2234
 stdout 'Ubuntu'
 
 message 'SCENARIO 2: Resource cleaning'
@@ -144,37 +150,37 @@ eden network ls
 
 -- wait_ssh.sh --
 EDEN={{EdenConfig "eden.root"}}/{{EdenConfig "eden.bin-dist"}}/{{EdenConfig "eden.eden-bin"}}
-HOST=$($EDEN eve ip)
+IFNAME=$1
+PORT=$2
 
-for p in $*
+for i in `seq 20`
 do
-  for i in `seq 20`
-  do
-    sleep 20
-    # Test SSH-access to container
-    echo timeout 10s {{template "ssh"}}$HOST -p $p grep -q Ubuntu /etc/issue
-    timeout 10s {{template "ssh"}}$HOST -p $p grep -q Ubuntu /etc/issue && break
-  done
+  sleep 20
+  # Test SSH-access to container
+  echo $EDEN sdn fwd $IFNAME $PORT -- timeout 30s {{template "ssh"}} grep -q Ubuntu /etc/issue
+  $EDEN sdn fwd $IFNAME $PORT -- timeout 30s {{template "ssh"}} grep -q Ubuntu /etc/issue && break
 done
 
 -- check_ssh.sh --
 EDEN={{EdenConfig "eden.root"}}/{{EdenConfig "eden.bin-dist"}}/{{EdenConfig "eden.eden-bin"}}
-HOST=$($EDEN eve ip)
+IFNAME=$1
+PORT=$2
 
-for p in $*
-do
-  echo {{template "ssh"}}$HOST -p $p grep -q Ubuntu /etc/issue
-  {{template "ssh"}}$HOST -p $p grep -q Ubuntu /etc/issue || exit
-done
+echo $EDEN sdn fwd $IFNAME $PORT -- {{template "ssh"}} grep -q Ubuntu /etc/issue
+$EDEN sdn fwd $IFNAME $PORT -- {{template "ssh"}} grep -q Ubuntu /etc/issue || exit
 
 -- test_connectivity.sh --
 EDEN={{EdenConfig "eden.root"}}/{{EdenConfig "eden.bin-dist"}}/{{EdenConfig "eden.eden-bin"}}
-HOST=$($EDEN eve ip)
-EVE_IP=$({{template "ssh"}}$HOST -p $2 sh /root/get_eve_ip.sh)
+IFNAME1=$1
+PORT1=$2
+IFNAME2=$3
+PORT2=$4
+
+EVE_IP=$($EDEN sdn fwd $IFNAME2 $PORT2 -- {{template "ssh"}} sh /root/get_eve_ip.sh)
 echo "$EVE_IP"
 
-echo {{template "ssh"}}$HOST -p $1 sh /root/portmap_test.sh $EVE_IP $2
-{{template "ssh"}}$HOST -p $1 sh /root/portmap_test.sh $EVE_IP $2
+echo $EDEN sdn fwd $IFNAME1 $PORT1 -- {{template "ssh"}} sh /root/portmap_test.sh $EVE_IP $PORT2
+$EDEN sdn fwd $IFNAME1 $PORT1 -- {{template "ssh"}} sh /root/portmap_test.sh $EVE_IP $PORT2
 
 -- eden-config.yml --
 {{/* Test's config. file */}}

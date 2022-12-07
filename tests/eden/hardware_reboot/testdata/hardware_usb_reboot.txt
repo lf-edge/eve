@@ -1,40 +1,42 @@
 # Simple test of USB passthrough functionality after reboot of guest
 
 {{$port := "2223"}}
+{{define "ssh"}}ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=no -o PasswordAuthentication=no -i {{EdenConfig "eden.tests"}}/eclient/image/cert/id_rsa ubuntu@FWD_IP -p FWD_PORT{{end}}
 
 [!exec:bash] stop
 [!exec:sleep] stop
 [!exec:ssh] stop
 
+
 eden pod deploy -n n11 --memory=1GB https://cloud-images.ubuntu.com/releases/groovy/release-20210108/ubuntu-20.10-server-cloudimg-amd64.img --metadata='#cloud-config\nssh_authorized_keys:\n - ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQDOLVxfqzHzozOOBzbgLEAU66vTztBvIyKe9NH3ILb1f2gjlAKaPCinkDNH8m2bbbsccPfNWCuAKxNPN4ZWnXkYP0BnQKVnJxtES519PgyZLk6NlTzC4lsSJxWbkLOwV/3gjqBA7u+MQ+erJLFZQRUwtDq8LY2P0pQIsEiYFJi/SUjifADnBHhb3MXTWrxbRdiga8UH5Ksbz1HTBSGx0jwiaylsgN8qKs6N7TNMIYtGO1YZE9aMEFNHIW3zC5D5bzTBBa44FHtURXhLg6lVHXaPvBAUU5Q6QH9iyVxVNRQqO5EHO1Th0h0+lgWkRDFuVSu3gl/QR1MbRvRa10i/44jSnhQtuBZGS7Av7/Ef0ESymBp+4m2wBFFJQ6PpIZ2uu9iEVGFv2EbL0/gabOgjWauLlaCSG1PKG3p64C4qNvvXbMzfvsX1+yVLPw+Q59R5y3Q66wFpCrsd2OO5Cfp3WpGH51j8C7j6UWQAhXXDv+rdsu4VoJWCk8ulnZ1PRnLFHh3tw9VkESTXVxIo8BjxsbFiUWcMoXm6Nr3QnBGISRlDDutJ0ycxgZFjpLVpHCZLpM+NsVBiLIZ8Y3AHGaxW5vtD/oJAg2fc9APf0mwTMEEjeC0QCOgl5AijWxdaJFk3sXUqPp63oFKnIv7g//bSQ20Vuqor2JV8JaGDBExsMzZO4Q== mykey@host' -p {{$port}}:22 --adapters USB2:2
 
 test eden.app.test -test.v -timewait 20m RUNNING n11
 
-exec -t 20m bash ssh.sh {{$port}}
+exec -t 20m bash ssh.sh
 stdout 'Ubuntu'
 
-exec -t 20m bash get-lshw.sh {{$port}}
+exec -t 20m bash get-lshw.sh
 stdout 'QEMU USB HARDDRIVE'
 
-exec -t 20m bash get-lshw.sh {{$port}}
+exec -t 20m bash get-lshw.sh
 cp stdout before_reboot
 
 # get last reboot time
-exec -t 20m bash get-last-reboot-time.sh {{$port}}
+exec -t 20m bash get-last-reboot-time.sh
 cp stdout timestamp1
 
 # reboot from guest
-exec -t 20m bash reboot.sh {{$port}}
+exec -t 20m bash reboot.sh
 exec sleep 5m
 
-exec -t 20m bash ssh.sh {{$port}}
+exec -t 20m bash ssh.sh
 stdout 'Ubuntu'
 
-exec -t 20m bash get-lshw.sh {{$port}}
+exec -t 20m bash get-lshw.sh
 cp stdout after_reboot
 
 # get last reboot time
-exec -t 20m bash get-last-reboot-time.sh {{$port}}
+exec -t 20m bash get-last-reboot-time.sh
 cp stdout timestamp2
 
 # comparison of lshw output
@@ -59,34 +61,29 @@ test:
         model: {{EdenConfig "eve.devmodel"}}
 
 -- ssh.sh --
-port=$1
 EDEN={{EdenConfig "eden.root"}}/{{EdenConfig "eden.bin-dist"}}/{{EdenConfig "eden.eden-bin"}}
-HOST=$($EDEN eve ip)
 for i in `seq 20`
 do
  sleep 20
  # Test SSH-access to container
- echo $i\) ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=no -o PasswordAuthentication=no -i {{EdenConfig "eden.tests"}}/eclient/image/cert/id_rsa -p $port ubuntu@$HOST grep Ubuntu /etc/issue
- ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=no -o PasswordAuthentication=no -i {{EdenConfig "eden.tests"}}/eclient/image/cert/id_rsa -p $port ubuntu@$HOST grep Ubuntu /etc/issue && break
+ echo $i\) $EDEN sdn fwd eth0 {{$port}} -- {{template "ssh"}} grep Ubuntu /etc/issue
+ $EDEN sdn fwd eth0 {{$port}} -- grep Ubuntu /etc/issue && break
 done
 
 -- get-lshw.sh --
-port=$1
 EDEN={{EdenConfig "eden.root"}}/{{EdenConfig "eden.bin-dist"}}/{{EdenConfig "eden.eden-bin"}}
-HOST=$($EDEN eve ip)
- echo ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=no -o PasswordAuthentication=no -i {{EdenConfig "eden.tests"}}/eclient/image/cert/id_rsa -p $port ubuntu@$HOST lsusb
- ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=no -o PasswordAuthentication=no -i {{EdenConfig "eden.tests"}}/eclient/image/cert/id_rsa -p $port ubuntu@$HOST lsusb
+
+echo $EDEN sdn fwd eth0 {{$port}} -- {{template "ssh"}} lsusb
+$EDEN sdn fwd eth0 {{$port}} -- {{template "ssh"}} lsusb
 
 -- get-last-reboot-time.sh --
-port=$1
 EDEN={{EdenConfig "eden.root"}}/{{EdenConfig "eden.bin-dist"}}/{{EdenConfig "eden.eden-bin"}}
-HOST=$($EDEN eve ip)
- echo ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=no -o PasswordAuthentication=no -i {{EdenConfig "eden.tests"}}/eclient/image/cert/id_rsa -p $port ubuntu@$HOST last -n 1 --time-format iso reboot | head -1 | awk '{print $5}'
- ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=no -o PasswordAuthentication=no -i {{EdenConfig "eden.tests"}}/eclient/image/cert/id_rsa -p $port ubuntu@$HOST last -n 1 --time-format iso reboot | head -1 | awk '{print $5}'
+
+echo $EDEN sdn fwd eth0 {{$port}} -- {{template "ssh"}} last -n 1 --time-format iso reboot | head -1 | awk '{print $5}'
+$EDEN sdn fwd eth0 {{$port}} -- {{template "ssh"}} last -n 1 --time-format iso reboot | head -1 | awk '{print $5}'
 
 -- reboot.sh --
-port=$1
 EDEN={{EdenConfig "eden.root"}}/{{EdenConfig "eden.bin-dist"}}/{{EdenConfig "eden.eden-bin"}}
-HOST=$($EDEN eve ip)
- echo ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=no -o PasswordAuthentication=no -i {{EdenConfig "eden.tests"}}/eclient/image/cert/id_rsa -p $port ubuntu@$HOST 'sudo shutdown -r +1 &>/dev/null &'
- ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=no -o PasswordAuthentication=no -i {{EdenConfig "eden.tests"}}/eclient/image/cert/id_rsa -p $port ubuntu@$HOST 'sudo shutdown -r +1 &>/dev/null &'
+
+echo $EDEN sdn fwd eth0 {{$port}} -- {{template "ssh"}} 'sudo shutdown -r +1 &>/dev/null &'
+$EDEN sdn fwd eth0 {{$port}} -- {{template "ssh"}} 'sudo shutdown -r +1 &>/dev/null &'

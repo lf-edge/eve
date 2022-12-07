@@ -43,14 +43,18 @@ test:
 
 EDEN={{EdenConfig "eden.root"}}/{{EdenConfig "eden.bin-dist"}}/{{EdenConfig "eden.eden-bin"}}
 
-address=http://$($EDEN eve ip):8028
+function fwd_curl {
+  $EDEN sdn fwd eth0 8028 -- curl "$@"
+}
 
-until curl -s $address/fledge/ping | grep green; do sleep 10; done
+address=http://FWD_IP:FWD_PORT
 
-curl -s $address/fledge/ping -o result1
+until fwd_curl -s $address/fledge/ping | grep green; do sleep 10; done
 
-curl -d '{"name":"flircamera","type":"south","plugin":"FlirAX8","enabled":true,"config":{"address":{"value":"{{EdenGetEnv "CAMERA_IP"}}"},"port":{"value":"{{EdenGetEnv "CAMERA_PORT"}}"}}}' -X POST $address/fledge/service
+fwd_curl -s $address/fledge/ping -o result1
 
-until curl -s $address/fledge/ping |grep "dataRead\": [^0]"; do sleep 10; done
+fwd_curl -d '{"name":"flircamera","type":"south","plugin":"FlirAX8","enabled":true,"config":{"address":{"value":"{{EdenGetEnv "CAMERA_IP"}}"},"port":{"value":"{{EdenGetEnv "CAMERA_PORT"}}"}}}' -X POST $address/fledge/service
 
-until curl -s $address/fledge/asset/AX8/summary?seconds=60 -o result2; do sleep 10; done
+until fwd_curl -s $address/fledge/ping |grep "dataRead\": [^0]"; do sleep 10; done
+
+until fwd_curl -s $address/fledge/asset/AX8/summary?seconds=60 -o result2; do sleep 10; done

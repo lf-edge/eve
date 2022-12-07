@@ -2,7 +2,7 @@
 
 {{define "profile_server_token"}}server_token_123{{end}}
 {{define "profile_server_file"}}/mnt/profile{{end}}
-{{define "ssh"}}ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=no -o PasswordAuthentication=no -i {{EdenConfig "eden.tests"}}/eclient/image/cert/id_rsa root@{{end}}
+{{define "ssh"}}ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=no -o PasswordAuthentication=no -i {{EdenConfig "eden.tests"}}/eclient/image/cert/id_rsa root@FWD_IP -p FWD_PORT{{end}}
 {{define "eclient_image"}}docker://{{EdenConfig "eden.eclient.image"}}:{{EdenConfig "eden.eclient.tag"}}{{end}}
 
 [!exec:bash] stop
@@ -132,27 +132,25 @@ test eden.app.test -test.v -timewait 15m - app-profile-1 app-profile-2 app-profi
 -- wait_ssh.sh --
 
 EDEN={{EdenConfig "eden.root"}}/{{EdenConfig "eden.bin-dist"}}/{{EdenConfig "eden.eden-bin"}}
-HOST=$($EDEN eve ip)
+
 for p in $*
 do
   for i in `seq 20`
   do
     sleep 20
     # Test SSH-access to container
-    echo {{template "ssh"}}$HOST -p $p grep -q Ubuntu /etc/issue
-    {{template "ssh"}}$HOST -p $p grep -q Ubuntu /etc/issue && break
+    echo $EDEN sdn fwd eth0 $p -- {{template "ssh"}} grep -q Ubuntu /etc/issue
+    $EDEN sdn fwd eth0 $p -- {{template "ssh"}} grep -q Ubuntu /etc/issue && break
   done
 done
 
 -- local-manager-start.sh --
 EDEN={{EdenConfig "eden.root"}}/{{EdenConfig "eden.bin-dist"}}/{{EdenConfig "eden.eden-bin"}}
-HOST=$($EDEN eve ip)
-{{template "ssh"}}$HOST -p $1 '/root/local_manager --token={{template "profile_server_token"}} --profile={{template "profile_server_file"}} &>/proc/1/fd/1 &'
+$EDEN sdn fwd eth0 $1 -- {{template "ssh"}} '/root/local_manager --token={{template "profile_server_token"}} --profile={{template "profile_server_file"}} &>/proc/1/fd/1 &'
 
 -- local-manager-profile.sh --
 EDEN={{EdenConfig "eden.root"}}/{{EdenConfig "eden.bin-dist"}}/{{EdenConfig "eden.eden-bin"}}
-HOST=$($EDEN eve ip)
-{{template "ssh"}}$HOST -p $1 "echo $2>{{template "profile_server_file"}}"
+$EDEN sdn fwd eth0 $1 -- {{template "ssh"}} "echo $2>{{template "profile_server_file"}}"
 
 -- eden-config.yml --
 {{/* Test's config file */}}

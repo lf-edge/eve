@@ -7,7 +7,7 @@
 {{define "dev_info_status_file"}}/mnt/dev-info-status.json{{end}}
 {{define "dev_cmd_file"}}/mnt/dev-command.json{{end}}
 {{define "network"}}n1{{end}}
-{{define "ssh"}}ssh -q -o ConnectTimeout=10 -o StrictHostKeyChecking=no -o PasswordAuthentication=no -i {{EdenConfig "eden.tests"}}/eclient/image/cert/id_rsa root@{{end}}
+{{define "ssh"}}ssh -q -o ConnectTimeout=10 -o StrictHostKeyChecking=no -o PasswordAuthentication=no -i {{EdenConfig "eden.tests"}}/eclient/image/cert/id_rsa root@FWD_IP -p FWD_PORT{{end}}
 {{define "eclient_image"}}docker://{{EdenConfig "eden.eclient.image"}}:{{EdenConfig "eden.eclient.tag"}}{{end}}
 
 [!exec:bash] stop
@@ -63,13 +63,12 @@ exec -t 5m bash wait-ssh.sh {{template "app_port"}}
 exec -t 10m bash wait-for-dev-state.sh ONLINE
 
 # STEP 4: Request for shutdown. Check that app1 stops before local_manager
-exec -t 10m bash wait-for-app-state.sh app1 HALTED &app1halted&
+exec -t 15m bash wait-for-app-state.sh app1 HALTED &app1halted&
 exec -t 1m bash put-devinfo-cmd.sh COMMAND_SHUTDOWN &
-exec -t 5m bash wait-for-dev-state.sh SHUTTING_DOWN
+exec -t 5m bash wait-for-dev-state.sh SHUTTING_DOWN &
 # Could it already have HALTED? Match HALTING or HALTED
 exec -t 5m bash wait-for-app-state.sh app1 HALT
-exec -t 1m bash get-appinfo-status.sh local-manager
-stdout 'RUNNING'
+exec -t 2m bash wait-for-app-state.sh local-manager RUNNING &
 wait app1halted
 
 # Did local-manager halt? Can't check by asking local-manager
@@ -112,11 +111,10 @@ skip 'The rest of the test is supported only on QEMU'
 
 # STEP 6: Request for poweroff. Check that app1 stops before local_manager
 exec -t 1m bash put-devinfo-cmd.sh COMMAND_SHUTDOWN_POWEROFF &
-exec -t 5m bash wait-for-dev-state.sh POWERING_OFF
+exec -t 5m bash wait-for-dev-state.sh POWERING_OFF &
 # Could it already have HALTED? Match HALTING or HALTED
 exec -t 5m bash wait-for-app-state.sh app1 HALT
-exec -t 1m bash get-appinfo-status.sh local-manager
-stdout 'RUNNING'
+exec -t 2m bash wait-for-app-state.sh local-manager RUNNING &
 exec -t 5m bash wait-for-app-state.sh app1 HALTED
 
 # Did local-manager halt? Can't check by asking local-manager
@@ -127,10 +125,13 @@ exec -t 1m bash eden-pod-ps.sh local-manager
 # STEP 7: Check qemu process is gone aka powered off
 exec sleep 120
 eden eve status
-stdout 'process not running'
+stdout 'EVE.*process not running'
 
 # STEP 8: Restart EVE; check apps come up
 message 'Restart EVE'
+# EVE VM is stopped but SDN VM (if used) is still running - stop it.
+eden eve stop
+exec sleep 10
 eden eve start
 exec sleep 30
 
@@ -152,24 +153,22 @@ exec sleep 10
 
 -- wait-ssh.sh --
 EDEN={{EdenConfig "eden.root"}}/{{EdenConfig "eden.bin-dist"}}/{{EdenConfig "eden.eden-bin"}}
-HOST=$($EDEN eve ip)
 for p in $*
 do
   for i in `seq 20`
   do
     sleep 30
     # Test SSH-access to container
-    echo {{template "ssh"}}$HOST -p $p grep -q Ubuntu /etc/issue
-    {{template "ssh"}}$HOST -p $p grep -q Ubuntu /etc/issue && break
+    echo $EDEN sdn fwd eth0 $p -- {{template "ssh"}} grep -q Ubuntu /etc/issue
+    $EDEN sdn fwd eth0 $p -- {{template "ssh"}} grep -q Ubuntu /etc/issue && break
   done
 done
 
 -- local-manager-start.sh --
 EDEN={{EdenConfig "eden.root"}}/{{EdenConfig "eden.bin-dist"}}/{{EdenConfig "eden.eden-bin"}}
-HOST=$($EDEN eve ip)
 ARGS="--token={{template "token"}}"
 while true; do
-    {{template "ssh"}}$HOST -p {{template "mngr_port"}} "/root/local_manager $ARGS &>/proc/1/fd/1 &" && break
+    $EDEN sdn fwd eth0 {{template "mngr_port"}} -- {{template "ssh"}} "/root/local_manager $ARGS &>/proc/1/fd/1 &" && break
     sleep 5
 done
 
@@ -183,32 +182,14 @@ EDEN={{EdenConfig "eden.root"}}/{{EdenConfig "eden.bin-dist"}}/{{EdenConfig "ede
 line=$($EDEN pod ps | grep $1)
 echo line
 
--- get-appinfo-status.sh --
-EDEN={{EdenConfig "eden.root"}}/{{EdenConfig "eden.bin-dist"}}/{{EdenConfig "eden.eden-bin"}}
-HOST=$($EDEN eve ip)
-APP="$1"
-CMDS="
-until test -f {{template "app_info_status_file"}}; do sleep 5; done
-sleep 2
-cat {{template "app_info_status_file"}}
-"
-
-OUTPUT="$({{template "ssh"}}$HOST -p {{template "mngr_port"}} "$CMDS")"
-if [ -n "$APP" ]; then
-    echo "$OUTPUT" | jq --arg APP "$APP" '.appsInfo[] | select(.name==$APP)'
-else
-    echo "$OUTPUT"
-fi
-
 -- wait-for-app-state.sh --
 APP="${1}"
 EXPSTATE="${2}"
 
 EDEN={{EdenConfig "eden.root"}}/{{EdenConfig "eden.bin-dist"}}/{{EdenConfig "eden.eden-bin"}}
-HOST=$($EDEN eve ip)
 
 while true; do
-    APPINFO="$({{template "ssh"}}$HOST -p {{template "mngr_port"}} "cat {{template "app_info_status_file"}}")"
+    APPINFO="$($EDEN sdn fwd eth0 {{template "mngr_port"}} -- {{template "ssh"}} "cat {{template "app_info_status_file"}}")"
     APPINFO="$(echo "$APPINFO" | jq --arg APP "$APP" '.appsInfo[] | select(.name==$APP)')"
     echo "$APPINFO" | grep "$EXPSTATE" && break
     sleep 1
@@ -216,30 +197,28 @@ done
 
 -- get-devinfo-status.sh --
 EDEN={{EdenConfig "eden.root"}}/{{EdenConfig "eden.bin-dist"}}/{{EdenConfig "eden.eden-bin"}}
-HOST=$($EDEN eve ip)
 CMDS="
 until test -f {{template "dev_info_status_file"}}; do sleep 5; done
 sleep 2
 cat {{template "dev_info_status_file"}}
 "
 
-OUTPUT="$({{template "ssh"}}$HOST -p {{template "mngr_port"}} "$CMDS")"
+OUTPUT="$($EDEN sdn fwd eth0 {{template "mngr_port"}} -- {{template "ssh"}} "$CMDS")"
 echo "$OUTPUT"
 
-OUTPUT="$({{template "ssh"}}$HOST -p {{template "mngr_port"}} "$CMDS")"
+OUTPUT="$($EDEN sdn fwd eth0 {{template "mngr_port"}} -- {{template "ssh"}} "$CMDS")"
 echo "$OUTPUT"
 
 -- put-devinfo-cmd.sh --
 CMD="${1:-COMMAND_UNSPECIFIED}"
 
 EDEN={{EdenConfig "eden.root"}}/{{EdenConfig "eden.bin-dist"}}/{{EdenConfig "eden.eden-bin"}}
-HOST=$($EDEN eve ip)
 CONFIG="{\"command\": \"$CMD\"}"
 echo "$CONFIG"
 
 while true; do
-    echo "$CONFIG" | {{template "ssh"}}$HOST -p {{template "mngr_port"}} 'cat > {{template "dev_cmd_file"}}'
-    DEV_CMD_FILE_CONTENT="$({{template "ssh"}}$HOST -p {{template "mngr_port"}} "cat {{template "dev_cmd_file"}}")"
+    echo "$CONFIG" | $EDEN sdn fwd eth0 {{template "mngr_port"}} -- {{template "ssh"}} 'cat > {{template "dev_cmd_file"}}'
+    DEV_CMD_FILE_CONTENT="$($EDEN sdn fwd eth0 {{template "mngr_port"}} -- {{template "ssh"}} "cat {{template "dev_cmd_file"}}")"
     echo "$DEV_CMD_FILE_CONTENT" | grep "$CMD" && break
     sleep 1
 done
@@ -248,10 +227,9 @@ done
 EXPSTATE="${1}"
 
 EDEN={{EdenConfig "eden.root"}}/{{EdenConfig "eden.bin-dist"}}/{{EdenConfig "eden.eden-bin"}}
-HOST=$($EDEN eve ip)
 
 while true; do
-    DEVINFO="$({{template "ssh"}}$HOST -p {{template "mngr_port"}} "cat {{template "dev_info_status_file"}}")"
+    DEVINFO="$($EDEN sdn fwd eth0 {{template "mngr_port"}} -- {{template "ssh"}} "cat {{template "dev_info_status_file"}}")"
     echo "$DEVINFO" | grep "$EXPSTATE" && break
     sleep 1
 done

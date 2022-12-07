@@ -6,7 +6,7 @@
 {{define "app_info_status_file"}}/mnt/app-info-status.json{{end}}
 {{define "app_cmd_file"}}/mnt/app-command.json{{end}}
 {{define "network"}}n1{{end}}
-{{define "ssh"}}ssh -q -o ConnectTimeout=10 -o StrictHostKeyChecking=no -o PasswordAuthentication=no -i {{EdenConfig "eden.tests"}}/eclient/image/cert/id_rsa root@{{end}}
+{{define "ssh"}}ssh -q -o ConnectTimeout=10 -o StrictHostKeyChecking=no -o PasswordAuthentication=no -i {{EdenConfig "eden.tests"}}/eclient/image/cert/id_rsa root@FWD_IP -p FWD_PORT{{end}}
 {{define "eclient_image"}}docker://{{EdenConfig "eden.eclient.image"}}:{{EdenConfig "eden.eclient.tag"}}{{end}}
 
 [!exec:bash] stop
@@ -151,23 +151,21 @@ test eden.network.test -test.v -timewait 10m - {{template "network"}}
 
 -- wait-ssh.sh --
 EDEN={{EdenConfig "eden.root"}}/{{EdenConfig "eden.bin-dist"}}/{{EdenConfig "eden.eden-bin"}}
-HOST=$($EDEN eve ip)
 for p in $*
 do
   for i in `seq 20`
   do
     sleep 20
     # Test SSH-access to container
-    echo {{template "ssh"}}$HOST -p $p grep -q Ubuntu /etc/issue
-    {{template "ssh"}}$HOST -p $p grep -q Ubuntu /etc/issue && break
+    echo $EDEN sdn fwd eth0 $p -- {{template "ssh"}} grep -q Ubuntu /etc/issue
+    $EDEN sdn fwd eth0 $p -- {{template "ssh"}} grep -q Ubuntu /etc/issue && break
   done
 done
 
 -- local-manager-start.sh --
 EDEN={{EdenConfig "eden.root"}}/{{EdenConfig "eden.bin-dist"}}/{{EdenConfig "eden.eden-bin"}}
-HOST=$($EDEN eve ip)
 ARGS="--token={{template "token"}}"
-{{template "ssh"}}$HOST -p {{template "mngr_port"}} "/root/local_manager $ARGS &>/proc/1/fd/1 &"
+$EDEN sdn fwd eth0 {{template "mngr_port"}} -- {{template "ssh"}} "/root/local_manager $ARGS &>/proc/1/fd/1 &"
 
 -- get-app-ip.sh --
 EDEN={{EdenConfig "eden.root"}}/{{EdenConfig "eden.bin-dist"}}/{{EdenConfig "eden.eden-bin"}}
@@ -176,7 +174,6 @@ echo app_ip=$IP>>.env
 
 -- get-appinfo-status.sh --
 EDEN={{EdenConfig "eden.root"}}/{{EdenConfig "eden.bin-dist"}}/{{EdenConfig "eden.eden-bin"}}
-HOST=$($EDEN eve ip)
 APP="$1"
 CMDS="
 until test -f {{template "app_info_status_file"}}; do sleep 5; done
@@ -184,7 +181,7 @@ sleep 2
 cat {{template "app_info_status_file"}}
 "
 
-OUTPUT="$({{template "ssh"}}$HOST -p {{template "mngr_port"}} "$CMDS")"
+OUTPUT="$($EDEN sdn fwd eth0 {{template "mngr_port"}} -- {{template "ssh"}} "$CMDS")"
 if [ -n "$APP" ]; then
     echo "$OUTPUT" | jq --arg APP "$APP" '.appsInfo[] | select(.name==$APP)'
 else
@@ -197,12 +194,11 @@ TIMESTAMP="${2:-0}"
 CMD="${3:-COMMAND_UNSPECIFIED}"
 
 EDEN={{EdenConfig "eden.root"}}/{{EdenConfig "eden.bin-dist"}}/{{EdenConfig "eden.eden-bin"}}
-HOST=$($EDEN eve ip)
 CONFIG="{\"displayname\": \"$DN\", \"timestamp\": $TIMESTAMP, \"command\": \"$CMD\"}"
 
 while true; do
-    echo "$CONFIG" | {{template "ssh"}}$HOST -p {{template "mngr_port"}} 'cat > {{template "app_cmd_file"}}'
-    APP_CMD_FILE_CONTENT="$({{template "ssh"}}$HOST -p {{template "mngr_port"}} "cat {{template "app_cmd_file"}}")"
+    echo "$CONFIG" | $EDEN sdn fwd eth0 {{template "mngr_port"}} -- {{template "ssh"}} 'cat > {{template "app_cmd_file"}}'
+    APP_CMD_FILE_CONTENT="$($EDEN sdn fwd eth0 {{template "mngr_port"}} -- {{template "ssh"}} "cat {{template "app_cmd_file"}}")"
     echo "$APP_CMD_FILE_CONTENT" | grep "$CMD" && break
     sleep 1
 done
@@ -212,10 +208,9 @@ APP="${1}"
 EXPSTATE="${2}"
 
 EDEN={{EdenConfig "eden.root"}}/{{EdenConfig "eden.bin-dist"}}/{{EdenConfig "eden.eden-bin"}}
-HOST=$($EDEN eve ip)
 
 while true; do
-    APPINFO="$({{template "ssh"}}$HOST -p {{template "mngr_port"}} "cat {{template "app_info_status_file"}}")"
+    APPINFO="$($EDEN sdn fwd eth0 {{template "mngr_port"}} -- {{template "ssh"}} "cat {{template "app_info_status_file"}}")"
     APPINFO="$(echo "$APPINFO" | jq --arg APP "$APP" '.appsInfo[] | select(.name==$APP)')"
     echo "$APPINFO" | grep "$EXPSTATE" && break
     sleep 1
@@ -225,17 +220,15 @@ done
 FILEPATH="${1}"
 
 EDEN={{EdenConfig "eden.root"}}/{{EdenConfig "eden.bin-dist"}}/{{EdenConfig "eden.eden-bin"}}
-HOST=$($EDEN eve ip)
 
-{{template "ssh"}}$HOST -p {{template "app_port"}} "touch \"$FILEPATH\""
+$EDEN sdn fwd eth0 {{template "app_port"}} -- {{template "ssh"}} "touch \"$FILEPATH\""
 
 -- file-exists-in-app1.sh --
 FILEPATH="${1}"
 
 EDEN={{EdenConfig "eden.root"}}/{{EdenConfig "eden.bin-dist"}}/{{EdenConfig "eden.eden-bin"}}
-HOST=$($EDEN eve ip)
 
-{{template "ssh"}}$HOST -p {{template "app_port"}} "test -f \"$FILEPATH\""
+$EDEN sdn fwd eth0 {{template "app_port"}} -- {{template "ssh"}} "test -f \"$FILEPATH\""
 
 -- wait-for-volume.sh --
 APP="${1}"

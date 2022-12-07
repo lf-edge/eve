@@ -51,5 +51,4 @@ sleep 60
 
 echo "waiting for the test results"
 
-address=http://$($EDEN pod ps|grep app1|grep -o -E '([0-9]{1,3}[\.]){3}[0-9]{1,3}:8027')
-until curl -s $address -o result; do sleep 30; done
+until $EDEN sdn fwd eth0 8027 -- curl -s FWD_IP:FWD_PORT -o result; do sleep 30; done
