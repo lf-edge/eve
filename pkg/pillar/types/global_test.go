@@ -177,6 +177,7 @@ func TestNewConfigItemSpecMap(t *testing.T) {
 		// Bool Items
 		UsbAccess,
 		VgaAccess,
+		ConsoleAccess,
 		AllowAppVnc,
 		EveMemoryLimitInBytes,
 		VmmMemoryLimitInMiB,

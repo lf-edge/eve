@@ -5,6 +5,7 @@ init:
   - linuxkit/init:8f1e6a0747acbbb4d7e24dc98f97faa8d1c6cec7
   - linuxkit/runc:f01b88c7033180d50ae43562d72707c6881904e4
   - linuxkit/containerd:de1b18eed76a266baa3092e5c154c84f595e56da
+  # pillar's logic rely on existence of getty and /etc/init.d/001-getty inside
   - linuxkit/getty:v0.5
   - linuxkit/memlogd:v0.5
   - DOM0ZTOOLS_TAG

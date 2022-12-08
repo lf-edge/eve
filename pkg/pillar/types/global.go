@@ -206,6 +206,8 @@ const (
 	// String Items
 	// SSHAuthorizedKeys global setting key
 	SSHAuthorizedKeys GlobalSettingKey = "debug.enable.ssh"
+	// ConsoleAccess global setting key
+	ConsoleAccess GlobalSettingKey = "debug.enable.console"
 	// DefaultLogLevel global setting key
 	DefaultLogLevel GlobalSettingKey = "debug.default.loglevel"
 	// DefaultRemoteLogLevel global setting key
@@ -783,6 +785,7 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	configItemSpecMap.AddBoolItem(AllowLogFastupload, false)
 	configItemSpecMap.AddBoolItem(DisableDHCPAllOnesNetMask, false)
 	configItemSpecMap.AddBoolItem(ProcessCloudInitMultiPart, false)
+	configItemSpecMap.AddBoolItem(ConsoleAccess, true) // Controller likely default to false
 
 	// Add TriState Items
 	configItemSpecMap.AddTriStateItem(NetworkFallbackAnyEth, TS_DISABLED)

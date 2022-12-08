@@ -2302,7 +2302,7 @@ func parseConfigItems(ctx *getconfigContext, config *zconfig.EdgeDevConfig,
 	//  value or retain the previous value.
 	gcPtr := &ctx.zedagentCtx.globalConfig
 	newGlobalConfig := types.DefaultConfigItemValueMap()
-	// Note: UsbAccess and VgaAccess are special in that they has two defaults.
+	// Note: UsbAccess, VgaAccess and ConsoleAccess are special in that they has two defaults.
 	// When the device first boots the default is "true" as specified
 	// in the DefaultConfigItemValueMap. But when connecting to the
 	// controller, if the controller does not include the item, it
@@ -2312,10 +2312,12 @@ func parseConfigItems(ctx *getconfigContext, config *zconfig.EdgeDevConfig,
 	if source == fromBootstrap {
 		newGlobalConfig.SetGlobalValueBool(types.UsbAccess, true)
 		newGlobalConfig.SetGlobalValueBool(types.VgaAccess, true)
+		newGlobalConfig.SetGlobalValueBool(types.ConsoleAccess, true)
 	} else {
 		// from controller (live or saved)
 		newGlobalConfig.SetGlobalValueBool(types.UsbAccess, false)
 		newGlobalConfig.SetGlobalValueBool(types.VgaAccess, false)
+		newGlobalConfig.SetGlobalValueBool(types.ConsoleAccess, false)
 	}
 	newGlobalStatus := types.NewGlobalStatus()
 

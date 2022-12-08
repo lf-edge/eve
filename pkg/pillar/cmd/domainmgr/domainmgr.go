@@ -95,12 +95,15 @@ type domainContext struct {
 	pubCipherBlockStatus   pubsub.Publication
 	pubCapabilities        pubsub.Publication
 	cipherMetrics          *cipher.AgentMetrics
-	usbAccess              bool
-	vgaAccess              bool
 	createSema             *sema.Semaphore
 	GCComplete             bool
-	setInitialUsbAccess    bool
-	setInitialVgaAccess    bool
+
+	usbAccess               bool
+	setInitialUsbAccess     bool
+	vgaAccess               bool
+	setInitialVgaAccess     bool
+	consoleAccess           bool
+	setInitialConsoleAccess bool
 
 	GCInitialized       bool
 	domainBootRetryTime uint32 // In seconds
@@ -443,6 +446,14 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		domainCtx.vgaAccess = true
 		updateVgaAccess(&domainCtx)
 		domainCtx.setInitialVgaAccess = true
+	}
+
+	if !domainCtx.setInitialConsoleAccess {
+		log.Functionf("GCComplete but not setInitialConsoleAccess => first boot")
+		// Enable Console
+		domainCtx.consoleAccess = true
+		updateConsoleAccess(&domainCtx)
+		domainCtx.setInitialConsoleAccess = true
 	}
 
 	// Pick up debug aka log level before we start real work
@@ -2472,6 +2483,13 @@ func handleGlobalConfigImpl(ctxArg interface{}, key string,
 			updateVgaAccess(ctx)
 			ctx.setInitialVgaAccess = true
 		}
+		if gcp.GlobalValueBool(types.ConsoleAccess) != ctx.consoleAccess ||
+			!ctx.setInitialConsoleAccess {
+
+			ctx.consoleAccess = gcp.GlobalValueBool(types.ConsoleAccess)
+			updateConsoleAccess(ctx)
+			ctx.setInitialConsoleAccess = true
+		}
 		metricInterval := gcp.GlobalValueInt(types.MetricInterval)
 		if metricInterval != 0 && ctx.metricInterval != metricInterval {
 			// adjust publishTicker interval if metricInterval changed
@@ -3227,6 +3245,14 @@ func updateVgaAccess(ctx *domainContext) {
 	// that do not enable output upon HDMI cable attachment
 	updatePortAndPciBackIoBundleAll(ctx)
 	checkIoBundleAll(ctx)
+}
+
+func updateConsoleAccess(ctx *domainContext) {
+	log.Functionf("updateConsoleAccess(%t)", ctx.consoleAccess)
+	// FIXME: explore the way to stop getty/login
+	if ctx.consoleAccess {
+		startGetty(log)
+	}
 }
 
 // Track which ones of these are loaded
