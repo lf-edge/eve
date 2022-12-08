@@ -80,6 +80,8 @@ CONF_PART_SIZE=$((1024 * 1024))
 WIN_INVENTORY_PART_SIZE=$((40240 * 1024))
 # installer system partition size in bytes
 INSTALLER_SYS_PART_SIZE=$(( 300 * 1024 * 1024 ))
+# imx8 boot blob size in bytes
+IMX8_BLOB_SIZE=$(( 8 * 1024 * 1024 ))
 # sector where the first partition starts on a blank disk
 FIRST_PART_SEC=2048
 
@@ -379,11 +381,20 @@ INITRD_IMG=/parts/initrd.img
 INSTALLER_IMG=/parts/installer.img
 # GRUB cfg override for our installer
 INSTALLER_GRUB_CFG=/parts/grub.cfg
+# IMX8 flash blob that needs write to image with 33k offset
+IMX8_BLOB=/parts/imx8-flash.bin
 
 # offset in the GPT partition table from which we can start our numbering
 PART_OFFSET=0
 # starting sector for our portion of the disk
 CUR_SEC="$FIRST_PART_SEC"
+
+if [ -f "$IMX8_BLOB" ]; then
+  # For imx8 boards we need write boot blob with 33kb offset.
+  IMX_BLOB_END_SEC=$(( IMX8_BLOB_SIZE / 512 ))
+  CUR_SEC="$IMX_BLOB_END_SEC"
+  dd if="$IMX8_BLOB" of="$IMGFILE" bs=1024 seek=33 conv=notrunc
+fi
 
 # Lets see if GPT partition exists and it is one of the
 # kinds we recognize
