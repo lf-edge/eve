@@ -29,6 +29,7 @@
 | debug.enable.usb | boolean | false | allow USB e.g. keyboards on device |
 | debug.enable.vga | boolean | false | allow VGA console on device |
 | debug.enable.ssh | authorized ssh key | empty string(ssh disabled) | allow ssh to EVE |
+| debug.enable.console | boolean | false | allow console access to EVE (reboot required to disable) |
 | debug.default.loglevel | string | info | min level saved in files on device |
 | debug.default.remote.loglevel | string | warning | min level sent to controller |
 | storage.dom0.disk.minusage.percent | integer percent | 20 | min. percent of persist partition reserved for dom0 |
