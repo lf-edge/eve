@@ -1,0 +1,53 @@
+From 3209fb3d95ed82421c7d969688758e8645fab851 Mon Sep 17 00:00:00 2001
+From: Aleksandrov Dmitriy <goodmobiledevices@gmail.com>
+Date: Wed, 2 Nov 2022 23:06:20 -0100
+Subject: [PATCH] borad: imx8mq-evk: add smbios dt node and config
+
+Signed-off-by: Aleksandrov Dmitriy <goodmobiledevices@gmail.com>
+---
+ arch/arm/dts/imx8mq-evk.dts  | 18 ++++++++++++++++++
+ configs/imx8mq_evk_defconfig |  2 ++
+ 2 files changed, 20 insertions(+)
+
+diff --git a/arch/arm/dts/imx8mq-evk.dts b/arch/arm/dts/imx8mq-evk.dts
+index de709088e5..9ad98bcd6e 100644
+--- a/arch/arm/dts/imx8mq-evk.dts
++++ b/arch/arm/dts/imx8mq-evk.dts
+@@ -11,6 +11,24 @@
+ / {
+ 	model = "NXP i.MX8MQ EVK";
+ 	compatible = "fsl,imx8mq-evk", "fsl,imx8mq";
++
++	sysinfo {
++		compatible = "u-boot,sysinfo-smbios";
++		smbios {
++			system {
++				manufacturer = "fsl";
++				product = "imx8mq-evk";
++			};
++			baseboard {
++				manufacturer = "fsl";
++				product = "imx8mq-evk";
++			};
++			chassis {
++				manufacturer = "fsl";
++				product = "imx8mq-evk";
++			};
++		};
++	};
+ 
+ 	chosen {
+ 		bootargs = "console=ttymxc0,115200 earlycon=ec_imx6q,0x30860000,115200";
+diff --git a/configs/imx8mq_evk_defconfig b/configs/imx8mq_evk_defconfig
+index dc2c5003f2..802fa920de 100644
+--- a/configs/imx8mq_evk_defconfig
++++ b/configs/imx8mq_evk_defconfig
+@@ -169,3 +169,5 @@ CONFIG_TEE=y
+ CONFIG_EFI_ESRT=y
+ CONFIG_EFI_HAVE_CAPSULE_UPDATE=y
+ CONFIG_FIT_SIGNATURE=y
++CONFIG_SYSINFO=y
++CONFIG_SYSINFO_SMBIOS=y
+-- 
+2.25.1
+
