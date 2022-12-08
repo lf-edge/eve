@@ -48,7 +48,7 @@ dump() {
 
 do_help() {
 cat <<__EOT__
-Usage: docker run [-v <option>] lfedge/eve [-f <fmt>] version|rootfs|live|installer_raw|installer_iso|installer_net
+Usage: docker run [-v <option>] lfedge/eve [-f <fmt>] [-p <platform>] [--accept-license] version|rootfs|live|installer_raw|installer_iso|installer_net
 
 The artifact will be produced on stdout, so don't forget to redirect
 it to a file or use the /out option below.
@@ -92,6 +92,22 @@ docker run --rm lfedge/eve -f qcow2 installer_iso > eve-iso.img
 
 The two raw formats "live" and "installer_raw" support an optional
 last argument specifying the size of the image in Mb.
+
+Optionally you can specify platform:
+
+ -p <platform>
+
+This specifies a platform for this image: none (default),
+imx8mq_evk are all valid options.
+
+Example:
+docker run --rm lfedge/eve -f raw -p imx8mq_evk live > live.raw
+
+In some cases, you will have to agree to a license when creating 
+EVE-OS images. To do this, use the --accept-license option.
+
+Example:
+docker run --rm lfedge/eve -f raw -p imx8mq_evk --accept-license live > live.raw
 __EOT__
   exit 0
 }
@@ -172,6 +188,19 @@ do_sbom() {
   cat /bits/*.spdx.json >&3
 }
 
+prepare_for_platform() {
+    case "$PLATFORM" in
+    imx8mq_evk) #shellcheck disable=SC2039
+	    cat /bits/bsp-imx/NXP-EULA-LICENSE.txt
+		[ -n "$ACCEPT" ] || bail "You need to read and accept the EULA before you can continue. Use the --accept-license argument."
+        cp /bits/bsp-imx/"$PLATFORM"-flash.bin /bits/imx8-flash.bin
+        ;;
+    *) #shellcheck disable=SC2039
+	    break
+        ;;
+    esac
+}
+
 # Lets' parse global options first
 while true; do
    case "$1" in
@@ -184,6 +213,19 @@ while true; do
           shift
           [ "$FMT" != "raw" ] && [ "$FMT" != "gcp" ] && [ "$FMT" != "qcow2" ] && [ "$FMT" != "parallels" ] && [ "$FMT" != "vdi" ] && bail "Unknown format: $FMT"
           ;;
+     -p*) #shellcheck disable=SC2039,SC3060
+          PLATFORM="${1/-p/}"
+          if [ -z "$PLATFORM" ]; then
+             PLATFORM="$2"
+             shift
+          fi
+          shift
+          [ "$PLATFORM" != "none" ] && [ "$PLATFORM" != "imx8mq_evk" ] && bail "Unknown platform: $PLATFORM"
+          ;;
+	 --accept-license*) #shellcheck disable=SC2039,SC3060
+	      ACCEPT=1
+          shift
+          ;;
        *) break
           ;;
    esac
@@ -191,6 +233,9 @@ done
 
 # If we were not told to do anything, print help and exit with success
 [ $# -eq 0 ] && do_help
+
+# Prepare some files for selected platform
+prepare_for_platform
 
 # Let's see what was it that we were asked to do
 ACTION="do_$1"

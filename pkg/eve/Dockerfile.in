@@ -3,6 +3,8 @@ ENV PKGS qemu-img tar u-boot-tools coreutils dosfstools
 RUN eve-alpine-deploy.sh
 
 # hadolint ignore=DL3006
+FROM BSP_IMX_TAG as bsp-imx
+# hadolint ignore=DL3006
 FROM MKISO_TAG as iso
 # hadolint ignore=DL3006
 FROM IPXE_TAG as ipxe
@@ -17,6 +19,7 @@ COPY --from=iso / /
 COPY --from=raw / /
 COPY --from=ipxe / /
 COPY --from=tools /out/ /
+COPY --from=bsp-imx / /
 COPY installer /bits
 COPY runme.sh /
 RUN mkdir /in /out
