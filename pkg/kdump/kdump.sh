@@ -44,7 +44,7 @@ if test -f /proc/vmcore; then
 
     # Prepare reboot-reason, reboot-stack and boot-reason
     echo "kernel panic, kdump collected: $KDUMP_PATH" > /persist/reboot-reason
-    cat /tmp/backtrace > /persist/reboot-stack
+    cat /tmp/dmesg > /persist/reboot-stack
     echo "BootReasonKernel" > /persist/boot-reason
 
     # Simulate the default reboot after panic kernel behaviour
