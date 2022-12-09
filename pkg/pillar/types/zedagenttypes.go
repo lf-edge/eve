@@ -264,7 +264,7 @@ const (
 	BootReasonOOM                // OOM causing process to be killed
 	BootReasonWatchdogHung       // Software watchdog due stuck agent
 	BootReasonWatchdogPid        // Software watchdog due to e.g., golang panic
-	BootReasonKernel             // TBD how we detect this
+	BootReasonKernel             // Set by dump-capture kernel, see docs/KERNEL-DUMPS.md and pkg/kdump/kdump.sh for details
 	BootReasonPowerFail          // Known power failure e.g., from disk controller S.M.A.R.T counter increase
 	BootReasonUnknown            // Could be power failure, kernel panic, or hardware watchdog
 	BootReasonVaultFailure       // Vault was not ready within the expected time
