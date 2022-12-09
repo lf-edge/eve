@@ -1598,7 +1598,7 @@ func getPersistSpace() uint64 {
 func getSyslogMsg(loggerChan chan inputEntry) {
 
 	sysfmt := regexp.MustCompile("<([0-9]+)>(.{15}|.{25}) (.*?): (.*)")
-	conn, err := listenUnix()
+	conn, err := listenDevLog()
 	if err != nil {
 		log.Error(err)
 		return
@@ -1626,8 +1626,9 @@ func getSyslogMsg(loggerChan chan inputEntry) {
 	}
 }
 
-//func listenUnix() (net.PacketConn, error) {
-func listenUnix() (*net.UnixConn, error) {
+// listenDevLog() - substitute /dev/log with our AF_UNIX socket and open it
+//                  for listening
+func listenDevLog() (*net.UnixConn, error) {
 	UnixPath := "/dev/log"
 	os.Remove(UnixPath)
 	a, err := net.ResolveUnixAddr("unixgram", UnixPath)
