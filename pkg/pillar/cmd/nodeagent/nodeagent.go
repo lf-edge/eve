@@ -584,10 +584,19 @@ func handleLastRebootReason(ctx *nodeagentContext) {
 	// if reboot stack size crosses max size, truncate
 	if len(rebootStack) > maxJSONAttributeSize {
 		runes := bytes.Runes([]byte(rebootStack))
-		if len(runes) > maxJSONAttributeSize {
-			runes = runes[:maxRebootStackSize]
+		sz := len(runes)
+		// Repeat the check for runes
+		if sz > maxJSONAttributeSize {
+			// Get the tail of the stack, because stack grows down and in
+			// case of truncation it is important to see the beginning of
+			// it (bottom) rather then the end (top).
+			runes = runes[sz-maxRebootStackSize : sz]
+			rebootStack = fmt.Sprintf("...\n%v", string(runes))
+		} else {
+			// It is quite possible bytes array size is beyond the max, but
+			// runes size is less. We ignore this and assume it is not so
+			// important.
 		}
-		rebootStack = fmt.Sprintf("Truncated stack: %v", string(runes))
 	}
 	rebootImage := agentlog.GetRebootImage(log)
 	if rebootImage != "" {
