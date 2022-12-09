@@ -910,39 +910,15 @@ func writelogEntry(stats *statsLogFile, logline string) int {
 	return len
 }
 
-type logDirectoryType int
-
-const (
-	keepSentDirType logDirectoryType = iota
-	uploadAppDirType
-	uploadDevDirType
-	failSendDIrType
-)
-
-func (dirType logDirectoryType) getPath() string {
-	switch dirType {
-	case keepSentDirType:
-		return keepSentDir
-	case uploadAppDirType:
-		return uploadAppDir
-	case uploadDevDirType:
-		return uploadDevDir
-	case failSendDIrType:
-		return failSendDIr
-	}
-	return ""
-}
-
 type gfileStats struct {
 	isSent   bool
-	dirType  logDirectoryType
+	logDir   string
 	filename string
 	filesize int64
 }
 
-func checkDirGZFiles(sfiles map[string]gfileStats, dirType logDirectoryType) ([]string, int64, error) {
+func checkDirGZFiles(sfiles map[string]gfileStats, logDir string) ([]string, int64, error) {
 	var sizes int64
-	logDir := dirType.getPath()
 	dir, err := os.Open(logDir)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -978,7 +954,7 @@ func checkDirGZFiles(sfiles map[string]gfileStats, dirType logDirectoryType) ([]
 				filename: fname,
 				filesize: fsize,
 				isSent:   alreadySent,
-				dirType:  dirType,
+				logDir:   logDir,
 			}
 			sizes += fsize
 			fname2 := strings.TrimSuffix(fname, ".gz")
@@ -999,19 +975,19 @@ func checkKeepQuota() {
 	maxSize := int64(limitGzipFilesMbyts * 1000000)
 	sfiles := make(map[string]gfileStats)
 
-	key0, size0, err := checkDirGZFiles(sfiles, keepSentDirType)
+	key0, size0, err := checkDirGZFiles(sfiles, keepSentDir)
 	if err != nil {
 		log.Errorf("checkKeepQuota: keepSentDir %v", err)
 	}
-	key1, size1, err := checkDirGZFiles(sfiles, uploadAppDirType)
+	key1, size1, err := checkDirGZFiles(sfiles, uploadAppDir)
 	if err != nil {
 		log.Errorf("checkKeepQuota: AppDir %v", err)
 	}
-	key2, size2, err := checkDirGZFiles(sfiles, uploadDevDirType)
+	key2, size2, err := checkDirGZFiles(sfiles, uploadDevDir)
 	if err != nil {
 		log.Errorf("checkKeepQuota: DevDir %v", err)
 	}
-	key3, size3, err := checkDirGZFiles(sfiles, failSendDIrType)
+	key3, size3, err := checkDirGZFiles(sfiles, failSendDIr)
 	if err != nil && !os.IsNotExist(err) {
 		log.Errorf("checkKeepQuota: FailToSendDir %v", err)
 	}
@@ -1034,7 +1010,7 @@ func checkKeepQuota() {
 				continue
 			}
 			fs := sfiles[key]
-			filePath := filepath.Join(fs.dirType.getPath(), fs.filename)
+			filePath := filepath.Join(fs.logDir, fs.filename)
 			if _, err := os.Stat(filePath); err != nil {
 				continue
 			}
