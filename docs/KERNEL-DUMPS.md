@@ -35,8 +35,10 @@ EVE-OS has a `kdump` container that checks for `/proc/vmcore` and generates a mi
 * Minimal kernel dump will be generated in the `/persist/kcrashes` folder.
 * Dmesg (kernel ring buffer) of the crashed kernel will be saved in the `/persist/kcrashes` folder.
 * Only 5 fresh kernel dumps and dmesgs are stored in the folder, old files are deleted.
-* Kernel panic message from the crashed system buffer is redirected to the EVE-OS /persist/reboot-stack file and to the tty console in order to show it on the connected monitor for debug purposes.
-* Reboot reason string "kernel panic, kdump collected: $KDUMP_PATH" is redirected to the EVE-OS /persist/reboot-reason file.
+* The whole dmesg from the crashed system buffer is written to the EVE-OS `/persist/reboot-stack` file.
+* Only kernel panic message from the crashed system buffer is redirected to the tty console in order to show it on the connected monitor for debug purposes.
+* Boot reason string "BootReasonKernel" is written to the EVE-OS `/persist/boot-reason` file.
+* Reboot reason string "kernel panic, kdump collected: $KDUMP_PATH" is written to the EVE-OS `/persist/reboot-reason` file.
 * After the crash dump is created, the kernel will be rebooted according to the `/proc/sys/kernel/panic` timeout configuration value.
 
 As was mentioned earlier `makedumpfile` generates minimal kernel dump which excludes zeroed, cache, private, free and user-space memory pages. This is done not only to minimize the resulting dump file, but also for security reasons: customer data does not leak.
