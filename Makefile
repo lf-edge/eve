@@ -300,7 +300,7 @@ endif
 # since they are not getting published in Docker HUB
 PKGS_$(ZARCH)=$(shell ls -d pkg/* | grep -Ev "eve|test-microsvcs|alpine")
 PKGS_riscv64=pkg/ipxe pkg/mkconf pkg/mkimage-iso-efi pkg/grub     \
-             pkg/mkimage-raw-efi pkg/uefi pkg/u-boot pkg/grub pkg/new-kernel \
+             pkg/mkimage-raw-efi pkg/uefi pkg/u-boot pkg/cross-compilers pkg/new-kernel \
 	     pkg/debug pkg/dom0-ztools pkg/gpt-tools pkg/storage-init pkg/mkrootfs-squash \
 		 pkg/bsp-imx
 # alpine-base and alpine must be the first packages to build
@@ -314,8 +314,8 @@ PKGS=pkg/alpine $(PKGS_$(ZARCH))
 # if you need a pkg to be loaded into docker, in addition to the lkt cache, add it here
 PKGS_DOCKER_LOAD=mkconf mkimage-iso-efi mkimage-raw-efi mkrootfs-ext4 mkrootfs-squash
 # these packages should exists for HOSTARCH as well as for ZARCH
-# alpine-base and alpine are dependencies for others
-PKGS_HOSTARCH=alpine-base alpine $(PKGS_DOCKER_LOAD)
+# alpine-base, alpine and cross-compilers are dependencies for others
+PKGS_HOSTARCH=alpine-base alpine cross-compilers $(PKGS_DOCKER_LOAD)
 # Top-level targets
 
 all: help

@@ -62,6 +62,7 @@ iproute2-minimal
 ipset
 ipset-openrc
 iptables
+isl-dev
 jpeg
 jpeg-dev
 jq
@@ -177,6 +178,7 @@ yajl-dev
 zfs
 zfs-dev
 zfs-udev
+zip
 zlib
 zlib-dev
 zlib-static
