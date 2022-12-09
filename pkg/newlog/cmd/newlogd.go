@@ -51,7 +51,7 @@ const (
 	uploadDevDir = types.NewlogUploadDevDir
 	uploadAppDir = types.NewlogUploadAppDir
 	keepSentDir  = types.NewlogKeepSentQueueDir
-	failSendDIr  = types.NewlogDir + "/failedUpload"
+	failSendDir  = types.NewlogDir + "/failedUpload"
 	panicFileDir = types.NewlogDir + "/panicStacks"
 	symlinkFile  = collectDir + "/current.device.log"
 	tmpSymlink   = collectDir + "/tmp-sym.dev.log"
@@ -987,7 +987,7 @@ func checkKeepQuota() {
 	if err != nil {
 		log.Errorf("checkKeepQuota: DevDir %v", err)
 	}
-	key3, size3, err := checkDirGZFiles(sfiles, failSendDIr)
+	key3, size3, err := checkDirGZFiles(sfiles, failSendDir)
 	if err != nil && !os.IsNotExist(err) {
 		log.Errorf("checkKeepQuota: FailToSendDir %v", err)
 	}
