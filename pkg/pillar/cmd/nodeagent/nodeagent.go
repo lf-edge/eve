@@ -523,14 +523,21 @@ func handleLastRebootReason(ctx *nodeagentContext) {
 	}
 
 	agentlog.DiscardBootReason(log)
-	// Make sure we log the reboot stack
+	// Make sure we log the reboot stack or dmesg
 	if len(rebootStack) > 0 {
-		log.Warnf("Found RebootStack %d bytes", len(rebootStack))
 		lines := strings.Split(rebootStack, "\n")
-		log.Warnf("Found RebootStack %d bytes %d lines",
-			len(rebootStack), len(lines))
+
+		// Tag each line for easy grep
+		var tag string
+		if bootReason == types.BootReasonKernel {
+			tag = "dmesg"
+		} else {
+			tag = "stack"
+		}
+		log.Warnf("[%s] found reboot-stack content: %d bytes %d lines",
+			tag, len(rebootStack), len(lines))
 		for i, l := range lines {
-			log.Warnf("[%d]: %s", i, l)
+			log.Warnf("[%s #%d]: %s", tag, i, l)
 		}
 	}
 	// still no rebootReason? set the default
@@ -554,7 +561,7 @@ func handleLastRebootReason(ctx *nodeagentContext) {
 					dateStr)
 				bootReason = types.BootReasonPowerFail
 			} else {
-				reason = fmt.Sprintf("Reboot reason - kernel crash - at %s",
+				reason = fmt.Sprintf("Reboot reason - kernel crash (no kdump) - at %s",
 					dateStr)
 				bootReason = types.BootReasonKernel
 			}
