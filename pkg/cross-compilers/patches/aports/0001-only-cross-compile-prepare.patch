@@ -1,0 +1,27 @@
+From 8340b586f7dad1b3aab299c9d1b2a31c2fa37274 Mon Sep 17 00:00:00 2001
+From: Petr Fedchenkov <giggsoff@gmail.com>
+Date: Fri, 9 Dec 2022 14:06:55 +0300
+Subject: [PATCH] only cross-compile prepare
+
+Signed-off-by: Petr Fedchenkov <giggsoff@gmail.com>
+---
+ scripts/bootstrap.sh | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/scripts/bootstrap.sh b/scripts/bootstrap.sh
+index 8af1db858a..f4662a30a6 100755
+--- a/scripts/bootstrap.sh
++++ b/scripts/bootstrap.sh
+@@ -99,6 +99,9 @@ CTARGET=$TARGET_ARCH BOOTSTRAP=nobase APKBUILD=$(apkbuildname gcc) abuild -r
+ # Cross build-base
+ CTARGET=$TARGET_ARCH BOOTSTRAP=nobase APKBUILD=$(apkbuildname build-base) abuild -r
+ 
++# only prepare cross compiler
++exit 0
++
+ msg "Cross building base system"
+ 
+ # Implicit dependencies for early targets
+-- 
+2.37.2
+

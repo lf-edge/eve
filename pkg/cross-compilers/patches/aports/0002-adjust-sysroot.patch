@@ -1,0 +1,26 @@
+From b0e5cb97c00dbfd799c705596a1e29c047924ce1 Mon Sep 17 00:00:00 2001
+From: Petr Fedchenkov <giggsoff@gmail.com>
+Date: Fri, 9 Dec 2022 17:44:25 +0300
+Subject: [PATCH] adjust sysroot
+
+Signed-off-by: Petr Fedchenkov <giggsoff@gmail.com>
+---
+ main/gcc/APKBUILD | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/main/gcc/APKBUILD b/main/gcc/APKBUILD
+index f0ec4ee18c..0425c56aa2 100644
+--- a/main/gcc/APKBUILD
++++ b/main/gcc/APKBUILD
+@@ -307,7 +307,7 @@ build() {
+ 	esac
+ 
+ 	[ "$CBUILD" != "$CHOST"   ] && _cross_configure="--disable-bootstrap"
+-	[ "$CHOST"  != "$CTARGET" ] && _cross_configure="--disable-bootstrap --with-sysroot=$CBUILDROOT"
++	[ "$CHOST"  != "$CTARGET" ] && _cross_configure="--disable-bootstrap --with-build-sysroot=$CBUILDROOT --with-sysroot=/usr/$CTARGET"
+ 
+ 	case "$BOOTSTRAP" in
+ 	nolibc)	_bootstrap_configure="--with-newlib --disable-shared --enable-threads=no" ;;
+-- 
+2.37.2
+
