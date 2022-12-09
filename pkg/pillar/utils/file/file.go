@@ -188,7 +188,7 @@ func ReadWithMaxSize(log *base.LogObject, filename string, maxReadSize int) ([]b
 	}
 	defer f.Close()
 	r := bufio.NewReader(f)
-	content := make([]byte, maxReadSize)
+	content := make([]byte, maxReadSize+1)
 	n, err := r.Read(content)
 	if err != nil {
 		err = fmt.Errorf("ReadWithMaxSize %s failed: %v", filename, err)
@@ -197,13 +197,14 @@ func ReadWithMaxSize(log *base.LogObject, filename string, maxReadSize int) ([]b
 		}
 		return nil, err
 	}
-	if n == maxReadSize {
+	if n > maxReadSize {
 		err = fmt.Errorf("ReadWithMaxSize %s truncated after %d bytes",
 			filename, maxReadSize)
+		n = maxReadSize
 	} else {
 		err = nil
 	}
-	return content[0:n], err
+	return content[:n], err
 }
 
 // ReadSavedCounter returns counter value from provided file
