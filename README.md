@@ -380,6 +380,12 @@ In Jetson nano, from January 22, 2021, it became possible to save the u-boot to 
 3. Build a live image `make ZARCH=arm64 HV=kvm live-raw` (Only KVM is supported)
 4. Flash the `dist/arm64/current/live.raw` live EVE image onto your SD card by [following these instructions](#how-to-write-eve-image-and-installer-onto-an-sd-card-or-an-installer-medium)
 
+## How to use on a i.MX 8MQuad Evaluation Kit ARM board
+
+1. Set SW801 to 1100 for switch boot device to SD card.
+2. Build a live image `make ZARCH=arm64 HV=kvm PLATFORM=imx8mq_evk live-raw` (Only KVM is supported)
+3. Flash the `dist/arm64/current/live.raw` live EVE image onto your SD card by [following these instructions](#how-to-write-eve-image-and-installer-onto-an-sd-card-or-an-installer-medium)
+
 ## How to use on an AMD board
 
 The following steps have been tested on Intel UP Squared Board (AAEON UP-APL01) and the bootable USB Disk containing the installer image has been made on Ubuntu 16.04:
