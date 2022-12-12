@@ -4,7 +4,7 @@ ENV BUILD_PKGS \
     argp-standalone automake bash bc binutils-dev bison build-base \
     diffutils flex git gmp-dev gnupg installkernel kmod openssl-dev    \
     linux-headers ncurses-dev python3 findutils sed squashfs-tools tar  \
-    xz xz-dev zlib-dev openssl lz4 lz4-libs elfutils-libelf elfutils-dev
+    xz xz-dev zlib-dev openssl lz4 lz4-libs libelf elfutils-dev
 RUN eve-alpine-deploy.sh
 
 

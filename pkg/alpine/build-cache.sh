@@ -17,7 +17,8 @@ shift 2
 [ ! -d "$CACHE" ] && mkdir -p "$CACHE"
 
 # check for existing packages in the cache: we NEVER overwrite packages
-for p in "$@"; do
+#shellcheck disable=SC2068
+for p in ${@}; do
   [ -f "$(echo "$CACHE/${p}"-[0-9]*)" ] || PKGS="$PKGS $p"
 done
 

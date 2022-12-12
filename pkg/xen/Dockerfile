@@ -4,7 +4,7 @@ ENV BUILD_PKGS argp-standalone automake bash bc binutils-dev bison build-base \
                diffutils flex git gmp-dev gnupg installkernel kmod \
                elfutils-dev openssl-dev linux-headers ncurses-dev python3 \
                sed squashfs-tools tar xz xz-dev zlib-dev libunwind-dev
-ENV BUILD_PKGS_arm64 uboot-tools
+ENV BUILD_PKGS_arm64 u-boot-tools
 RUN eve-alpine-deploy.sh
 
 ENV XEN_UBOOT_ADDR 0x81000000

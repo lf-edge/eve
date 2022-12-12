@@ -15,7 +15,7 @@ bsd-compat-headers
 build-base
 busybox
 ca-certificates
-ca-certificates-cacert
+ca-certificates-bundle
 cairo
 cairo-dev
 cmake
@@ -34,7 +34,6 @@ dtc-dev
 e2fsprogs
 e2fsprogs-extra
 elfutils-dev
-elfutils-libelf
 ethtool
 file
 findutils
@@ -70,6 +69,7 @@ kmod
 kmod-dev
 libaio-dev
 libarchive-tools
+libelf
 libtasn1-progs
 libbz2
 libc-dev
@@ -157,7 +157,7 @@ swig
 tar
 tcpdump
 texinfo
-uboot-tools
+u-boot-tools
 usbutils
 util-linux
 util-linux-dev
