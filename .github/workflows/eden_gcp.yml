@@ -124,16 +124,23 @@ jobs:
             if [ -z "${{ github.event.inputs.pr_number }}" ]; then echo "::error::pr_number is empty" && exit 1; fi
           fi
       # We run this workflow for tags, release and default branches,
-      # so we should pull required version of EVE
-      # actions/checkout supports information from workflow_run
+      # so we should pull required branch here
+      # in case of workflow_dispatch ref will be empty (will point onto main branch)
       - name: Checkout EVE
         uses: actions/checkout@v3
         with:
           fetch-depth: 0
           path: eve
+          ref: '${{ github.event.workflow_run.head_branch }}'
+      - name: Force fetch annotated tags (workaround)
+        # Workaround for https://github.com/actions/checkout/issues/290
+        run: |
+          git --git-dir ./eve/.git fetch --force --tags
+      # we want to test the same commit as we publish during workflow_run
       - name: Prepare EVE (workflow)
         if: github.event_name == 'workflow_run'
         run: |
+          git --git-dir ./eve/.git reset --hard '${{ github.event.workflow_run.head_sha }}'
           echo "EVE_TAG=$(make -C eve --no-print-directory version)" >> "$GITHUB_ENV"
           echo "EVE_REGISTRY=lfedge/eve" >> "$GITHUB_ENV"
       - name: Prepare EVE (manual run)
