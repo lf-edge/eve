@@ -48,6 +48,7 @@ gmp-dev
 gnu-efi-dev
 gnupg
 gnutls
+gnutls-dev
 grep
 gtk-doc
 hdparm
@@ -135,6 +136,7 @@ ppp
 protobuf-dev
 py3-appdirs
 py3-distlib
+py3-elftools
 py3-packaging
 py3-parsing
 py3-requests
