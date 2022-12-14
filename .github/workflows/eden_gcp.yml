@@ -106,7 +106,7 @@ jobs:
           echo "$OVPN_ROL_FILE" | base64 -d > ./config_rol.ovpn
           sudo openvpn --config ./config_${{ matrix.backend }}.ovpn --daemon
           until ip -f inet addr show tun0; do sleep 5; ip a; done
-          echo ::set-output name=tunnel_ip::$(ip -f inet addr show tun0 | sed -En -e 's/.*inet ([0-9.]+).*/\1/p')
+          echo "tunnel_ip=$(ip -f inet addr show tun0 | sed -En -e 's/.*inet ([0-9.]+).*/\1/p')" >> $GITHUB_OUTPUT
         env:
           OVPN_GCP_FILE: ${{ secrets.OVPN_FILE }}
           OVPN_ROL_FILE: ${{ secrets.ROL_OVPN_CONF_BASE64 }}
@@ -141,6 +141,7 @@ jobs:
         if: github.event_name == 'workflow_run'
         run: |
           git --git-dir ./eve/.git reset --hard '${{ github.event.workflow_run.head_sha }}'
+          git --git-dir ./eve/.git clean -f -x -d
           echo "EVE_TAG=$(make -C eve --no-print-directory version)" >> "$GITHUB_ENV"
           echo "EVE_REGISTRY=lfedge/eve" >> "$GITHUB_ENV"
       - name: Prepare EVE (manual run)
@@ -216,7 +217,7 @@ jobs:
         timeout-minutes: 60
         run: |
           rent_id=$(./eden rol rent create -p "$ROL_PROJECT" -m raspberry --model pi_4_model_b_8gb -n GHAction-${{ github.run_number }}-snapshot-${{ matrix.hv }}-${{ matrix.fs }})
-          echo ::set-output name=id::$(echo $rent_id)
+          echo "id=$rent_id" >> $GITHUB_OUTPUT
           until [[ "$(./eden rol rent get -p "$ROL_PROJECT" -i $rent_id | jq -r .machineState)" == "Ready" ]]; do sleep 10; echo "Waiting for EVE to load"; done
         env:
           ROL_API_URL: ${{ secrets.ROL_API_URL }}
