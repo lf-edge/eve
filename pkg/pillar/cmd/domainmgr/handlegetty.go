@@ -40,17 +40,14 @@ func startGetty(log *base.LogObject) {
 		log.Noticeln("getty started in init")
 		return
 	}
-	args := []string{"/hostfs", "/bin/sh", "-c", "INSECURE=true /usr/bin/rungetty.sh"}
+	// INITGETTY option will run the script in background
+	args := []string{"/hostfs", "/bin/sh", "-c", "INITGETTY=true INSECURE=true /usr/bin/rungetty.sh"}
 	cmd := exec.Command("chroot", args...)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	if err := cmd.Start(); err != nil {
+	if err := cmd.Run(); err != nil {
 		log.Fatalf("failed to start getty: %v", err)
 	}
 	log.Noticeln("getty started")
 	gettyStarted = true
-	go func() {
-		err := cmd.Wait()
-		log.Fatalf("getty stopped: %v", err)
-	}()
 }
