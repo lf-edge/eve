@@ -3,7 +3,7 @@
 set -e
 
 yq() {
-  docker run -i --rm  -v "${PWD}/":/workdir intoiter/yq:3.1.0 -y "$@"
+  docker run -i --rm -v "${PWD}/":/workdir intoiter/yq:3.1.0 -i -y "$@"
 }
 
 process-image-template() {
@@ -22,14 +22,16 @@ process-image-template() {
     for bit in "${bits[@]}"; do
         case "${bit}" in
             dev)
-                yq '(.services[] | select(.name == "pillar").image) |= "PILLAR_DEV_TAG"' "${out_templ_path}"
+                yq '(.onboot[] | select(.image == "PILLAR_TAG").image) |= "PILLAR_DEV_TAG"' "${out_templ_path}"
+                yq '(.services[] | select(.image == "PILLAR_TAG").image) |= "PILLAR_DEV_TAG"' "${out_templ_path}"
                 ;;
         esac
     done
 }
 
 patch_version() {
-    docker run -i --rm  -v "${PWD}/":/workdir intoiter/yq:3.1.0 -i -y --arg version "$1" '(.files[] | select(.contents == "EVE_VERSION")).contents |= $version' "$2"
+    # shellcheck disable=SC2016
+    yq --arg version "$1" '(.files[] | select(.contents == "EVE_VERSION")).contents |= $version' "$2"
 }
 
 main() {
@@ -37,10 +39,9 @@ main() {
     local out_templ_path="$2"
     local eve_version="$3"
 
+    cp "${base_templ_path}" "${out_templ_path}"
     if [ -e "${out_templ_path}".yq ]; then
-        yq -f "${out_templ_path}".yq "${base_templ_path}"  >  "${out_templ_path}"  || exit 1
-    else
-        cp "${base_templ_path}" "${out_templ_path}"
+        yq -f "${out_templ_path}".yq "${out_templ_path}" || exit 1
     fi
 
     patch_version "${eve_version}" "${out_templ_path}"
