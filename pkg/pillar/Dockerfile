@@ -18,7 +18,7 @@ FROM lfedge/eve-alpine:145f062a40639b6c65efa36bed1c5614b873be52 as build
 ARG DEV=n
 
 ENV BUILD_PKGS git gcc linux-headers libc-dev make linux-pam-dev m4 findutils go util-linux make patch \
-    libintl libuuid libtirpc libblkid libcrypto1.1 zlib
+    libintl libuuid libtirpc libblkid libcrypto1.1 zlib tar
 ENV PKGS alpine-baselayout musl-utils libtasn1-progs pciutils yajl xz bash iptables ip6tables iproute2 dhcpcd \
     coreutils dmidecode libbz2 libuuid ipset curl radvd ethtool util-linux e2fsprogs libcrypto1.1 xorriso \
     qemu-img jq e2fsprogs-extra keyutils ca-certificates ip6tables-openrc iptables-openrc ipset-openrc hdparm \
@@ -61,11 +61,17 @@ RUN [ -z "$GOARCH" ] || export CC=$(echo /*-cross/bin/*-gcc) ;\
 
 WORKDIR /
 
+ENV DELVE_VERSION 1.20.1
+ENV DELVE_SOURCE=https://github.com/go-delve/delve/archive/refs/tags/v${DELVE_VERSION}.tar.gz
+# hadolint ignore=DL3020
+ADD ${DELVE_SOURCE} /delve.tar.gz
 RUN if [ ${DEV} = "y" ]; then \
-    unset GOFLAGS && \
-    CGO_ENABLED=0 go install -ldflags "-s -w -extldflags '-static'" github.com/go-delve/delve/cmd/dlv@v1.9.1 && \
-    cp /root/go/bin/dlv /out/opt; \
+    tar --absolute-names -xz < /delve.tar.gz && \
+    cd "/delve-${DELVE_VERSION}" &&  \
+    GOFLAGS= CGO_ENABLED=0 GOBIN=/out/opt go install -ldflags "-s -w -extldflags '-static'" github.com/go-delve/delve/cmd/dlv ; \
 fi
+
+WORKDIR /
 
 COPY patches/* /sys-patches/
 # hadolint ignore=SC1097
