@@ -229,6 +229,11 @@ func doUpdateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus)
 				currentSize, totalSize, status.Progress)
 		}
 
+		if len(status.Blobs) == 0 {
+			log.Errorf("doUpdateContentTree(%s) name %s: blobs array is empty",
+				status.Key(), status.DisplayName)
+			return changed, false
+		}
 		rootBlob := lookupOrCreateBlobStatus(ctx, status.Blobs[0])
 		if rootBlob == nil {
 			log.Errorf("doUpdateContentTree(%s) name %s: could not find BlobStatus(%s)",
