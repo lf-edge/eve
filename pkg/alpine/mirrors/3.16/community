@@ -17,5 +17,6 @@ py3-pytoml
 py3-retrying
 py3-tomli
 py3-webencodings
+py3-pycryptodome
 sudo
 tini
