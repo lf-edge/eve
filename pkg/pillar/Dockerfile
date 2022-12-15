@@ -1,6 +1,6 @@
 # Copyright (c) 2018 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
-FROM lfedge/eve-fscrypt:d5e104001ebf23fdaddd4305fe1ddc00dab42cf1 as fscrypt
+FROM lfedge/eve-fscrypt:0b7cc0d9d620e47fc54e21d56cb8a5cd224f9c9b as fscrypt
 
 FROM lfedge/eve-dom0-ztools:417d4ff6a57d2317c9e65166274b0ea6f6da16e2 as zfs
 RUN mkdir /out

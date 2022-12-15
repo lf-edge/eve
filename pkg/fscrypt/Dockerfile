@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile-upstream:master-labs
+# syntax=docker/dockerfile-upstream:1.5.0-rc2-labs
 
 # SPDX-License-Identifier: Apache-2.0
 

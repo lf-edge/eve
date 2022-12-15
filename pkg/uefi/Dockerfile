@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile-upstream:master-labs
+# syntax=docker/dockerfile-upstream:1.5.0-rc2-labs
 # Instructions for this package are taken from:
 #   https://wiki.ubuntu.com/UEFI/EDK2
 #   https://wiki.linaro.org/LEG/UEFIforQEMU
