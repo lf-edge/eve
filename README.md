@@ -167,7 +167,7 @@ make live
 ```
 
 This will download the relevant docker images from docker hub and create a bootable
-image `dist/<ARCH>/live.img`.
+image `dist/<ARCH>/current/live.img`.
 
 Since almost all developer workflow is driven by the Makefile, it may be useful
 to familiarize yourself with various Makefile targets that Project EVE offers.
@@ -275,9 +275,9 @@ Since a full Raspberry Pi 4 support is only available in upstream Linux kernels 
 
 1. Make sure you have a clean build directory (since this is a non-standard build) `rm -rf dist/arm64`
 2. Build a live image `make ZARCH=arm64 HV=kvm live-raw` (or `make ZARCH=arm64 HV=xen live-raw` if you want XEN by default)
-3. Flash the `dist/arm64/live.raw` live EVE image onto your SD card by [following these instructions](#how-to-write-eve-image-and-installer-onto-an-sd-card-or-an-installer-medium)
+3. Flash the `dist/arm64/current/live.raw` live EVE image onto your SD card by [following these instructions](#how-to-write-eve-image-and-installer-onto-an-sd-card-or-an-installer-medium)
 
-Once your Raspberry Pi 4 is happily running an EVE image you can start using EVE controller for further updates (so that you don't ever have to take an SD card out of your board). Build your rootfs by running `make ZARCH=arm64 HV=xen rootfs` (or `make ZARCH=arm64 HV=kvm rootfs` if you want KVM by default) and give resulting `dist/arm64/installer/rootfs.img` to the controller.
+Once your Raspberry Pi 4 is happily running an EVE image you can start using EVE controller for further updates (so that you don't ever have to take an SD card out of your board). Build your rootfs by running `make ZARCH=arm64 HV=xen rootfs` (or `make ZARCH=arm64 HV=kvm rootfs` if you want KVM by default) and give resulting `dist/arm64/current/installer/rootfs.img` to the controller.
 
 ## How to use on an HiKey ARM board
 
@@ -285,7 +285,7 @@ Unlike Raspberry Pi boards, HiKey boards come with a built-in flash, so we will 
 
 1. Start by cloning EVE git repository `git clone https://github.com/lf-edge/eve.git`
 2. Build an installer image `cd eve ; make ZARCH=arm64 installer`
-3. Flash the `dist/arm64/installer.raw` onto the USB stick by [following these instructions](#how-to-write-eve-image-and-installer-onto-an-sd-card-or-an-installer-medium)
+3. Flash the `dist/arm64/current/installer.raw` onto the USB stick by [following these instructions](#how-to-write-eve-image-and-installer-onto-an-sd-card-or-an-installer-medium)
 
 Since by default HiKey is using WiFi for all its networking, you will also
 have to provide SSID and password for your WiFi network. On Mac OS X you
@@ -361,7 +361,7 @@ on Mac OS X:
 vi conf/wpa_supplicant.conf
   # put your WIFI passwords in and/or add your own networks
 make ZARCH=arm64 MEDIA_SIZE=8192 live
-sudo dd if=dist/arm64/live.raw of=/dev/rdiskXXX bs=1m
+sudo dd if=dist/arm64/current/live.raw of=/dev/rdiskXXX bs=1m
 ```
 
 Then you can boot into a live system from triggering UEFI shell like shown
@@ -378,7 +378,7 @@ In Jetson nano, from January 22, 2021, it became possible to save the u-boot to 
 1. Follow steps in [instruction](https://github.com/lf-edge/eve/blob/master/boards/nvidia/jetson/) for flash jetson boot flow partitions to qspi.
 2. Make sure you have a clean build directory (since this is a non-standard build) `rm -rf dist/arm64`
 3. Build a live image `make ZARCH=arm64 HV=kvm live-raw` (Only KVM is supported)
-4. Flash the `dist/arm64/live.raw` live EVE image onto your SD card by [following these instructions](#how-to-write-eve-image-and-installer-onto-an-sd-card-or-an-installer-medium)
+4. Flash the `dist/arm64/current/live.raw` live EVE image onto your SD card by [following these instructions](#how-to-write-eve-image-and-installer-onto-an-sd-card-or-an-installer-medium)
 
 ## How to use on an AMD board
 
@@ -386,7 +386,7 @@ The following steps have been tested on Intel UP Squared Board (AAEON UP-APL01) 
 
 1. Start by cloning EVE git repository `git clone https://github.com/lf-edge/eve.git`
 2. Build an installer image `cd eve ; make ZARCH=amd64 installer`
-3. Flash the `dist/amd64/installer.raw` onto the USB stick by [following these instructions](#how-to-write-eve-image-and-installer-onto-an-sd-card-or-an-installer-medium)
+3. Flash the `dist/amd64/current/installer.raw` onto the USB stick by [following these instructions](#how-to-write-eve-image-and-installer-onto-an-sd-card-or-an-installer-medium)
 4. Now plug the USB Disk on your UP Squared Board and the installer should now replace the existing OS on the UP Squared board with EVE
 
 You will see an installation sequence scroll on screen and the output that indicates a successful install will look like this:
