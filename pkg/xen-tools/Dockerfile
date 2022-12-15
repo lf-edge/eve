@@ -1,6 +1,6 @@
-# syntax=docker/dockerfile-upstream:master-labs
+# syntax=docker/dockerfile-upstream:1.5.0-rc2-labs
 
-FROM lfedge/eve-uefi:b66d94780b1986e13d4db082adb5630a95911089 as uefi-build
+FROM lfedge/eve-uefi:d821658883d6748d8bbf0d6640c62288e3ce8c6f as uefi-build
 
 FROM lfedge/eve-alpine:145f062a40639b6c65efa36bed1c5614b873be52 as runx-build
 ENV BUILD_PKGS mkinitfs gcc musl-dev e2fsprogs
