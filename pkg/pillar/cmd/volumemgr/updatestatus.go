@@ -115,6 +115,16 @@ func doUpdateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus)
 			if len(status.Blobs) == 0 {
 				AddBlobsToContentTreeStatus(ctx, status, rootBlob.Sha256)
 			}
+		} else {
+			// Not an OCI registry, thus must have a valid sha256
+			if status.ContentSha256 == "" {
+				err := fmt.Sprintf("doUpdateContentTree(%s) name %s: no content sha256 defined",
+					status.Key(), status.DisplayName)
+				log.Errorf(err)
+				status.SetErrorDescription(types.ErrorDescription{Error: err})
+				changed = true
+				return changed, false
+			}
 		}
 
 		// at this point, we at least are downloading
