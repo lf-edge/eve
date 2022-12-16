@@ -12,14 +12,16 @@ if test -f /proc/vmcore; then
     # so the divide MAX on number of files to get total number of
     # kernel crashes which we keep persist.
     MAX=10
+    # Number of generated files
+    N=2
     DIR=/persist/kcrashes
 
     # Create a folder
     mkdir $DIR > /dev/null 2<&1
 
-    # Keep $MAX-1 fresh dumps
+    # Keep $MAX-$N fresh dumps, $N files will be generated
     # shellcheck disable=SC2012
-    ls -t $DIR | tail -n +$MAX | xargs --no-run-if-empty -I '{}' rm $DIR/{}
+    ls -t $DIR | tail -n +$((MAX+1-N)) | xargs --no-run-if-empty -I '{}' rm $DIR/{}
 
     # Get kernel panic from the dmesg of a crashed kernel
     makedumpfile --dump-dmesg /proc/vmcore /tmp/dmesg > /dev/null
