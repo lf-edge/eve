@@ -47,6 +47,10 @@ if test -f /proc/vmcore; then
     cat /tmp/dmesg > /persist/reboot-stack
     echo "BootReasonKernel" > /persist/boot-reason
 
+    # Umount and flush block buffers
+    umount /persist
+    sync
+
     # Simulate the default reboot after panic kernel behaviour
     TIMEOUT=$(cat /proc/sys/kernel/panic)
     if [ "$TIMEOUT" -gt 0 ]; then
@@ -58,7 +62,6 @@ if test -f /proc/vmcore; then
     fi
 
     # Reboot immediately
-    umount /persist
     echo b > /proc/sysrq-trigger
 
     # Unreachable line
