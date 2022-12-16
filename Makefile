@@ -699,7 +699,8 @@ release:
 	    git merge origin/master ;\
 	 else \
 	    git checkout master -b $$BRANCH && echo zedcloud.zededa.net > conf/server &&\
-	    git commit -m"Setting default server to prod" conf/server ;\
+	    sed 's/set_getty/# set_getty/g' -i conf/grub.cfg &&\
+	    git commit -m"Setting default server to prod and disable console" conf/server conf/grub.cfg ;\
 	 fi || bail "Can't create $$BRANCH branch" ;\
 	 git tag -a -m"Release $$X.$$Y.$$Z" $$X.$$Y.$$Z &&\
 	 echo "Done tagging $$X.$$Y.$$Z release. Check the branch with git log and then run" &&\
