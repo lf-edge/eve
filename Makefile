@@ -647,29 +647,37 @@ proto-api-%: $(GOBUILDER)
 	@$(DOCKER_GO) "protoc -I./proto --$(*)_out=$(PROTOC_OUT_OPTS)./$* \
 		proto/*/*.proto" $(CURDIR)/api api
 
-patch:
-	@if ! echo $(REPO_BRANCH) | grep -Eq '^[0-9]+\.[0-9]+$$'; then echo "ERROR: must be on a release branch X.Y"; exit 1; fi
-	@if ! echo $(EVE_TREE_TAG) | grep -Eq '^$(REPO_BRANCH).[0-9]+-'; then echo "ERROR: can't find previous release's tag X.Y.Z"; exit 1; fi
-	@TAG=$(REPO_BRANCH).$$((`echo $(EVE_TREE_TAG) | sed -e 's#-.*$$##' | cut -f3 -d.` + 1))  &&\
-	 git tag -a -m"Release $$TAG" $$TAG                                                      &&\
-	 echo "Done tagging $$TAG patch release. Check the branch with git log and then run"     &&\
-	 echo "  git push origin $(REPO_BRANCH) $$TAG"
+check-patch-%:
+	@if ! echo $* | grep -Eq '^[0-9]+\.[0-9]+$$'; then echo "ERROR: must be on a release branch X.Y"; exit 1; fi
+	@if ! echo $(EVE_TREE_TAG) | grep -Eq '^$*.[0-9]+-'; then echo "ERROR: can't find previous release's tag X.Y.Z"; exit 1; fi
+
+patch-%: check-patch-%
+	@$(eval PATCH_TAG:=$*.$(shell echo $$((`echo $(EVE_TREE_TAG) | sed -e 's#-.*$$##' | cut -f3 -d.` + 1))))
+
+patch-%-stable: patch-%
+	@$(eval PATCH_TAG:=$(PATCH_TAG)-lts)
+
+patch: patch-$(REPO_BRANCH)
+	@git tag -a -m"Release $(PATCH_TAG)" $(PATCH_TAG)
+	@echo "Done tagging $(PATCH_TAG) patch release. Check the branch with git log and then run"
+	@echo "  git push origin $(REPO_BRANCH) $(PATCH_TAG)"
 
 release:
 	@bail() { echo "ERROR: $$@" ; exit 1 ; } ;\
 	 X=`echo $(VERSION) | cut -s -d. -f1` ; Y=`echo $(VERSION) | cut -s -d. -f2` ; Z=`echo $(VERSION) | cut -s -d. -f3` ;\
+	 if echo $$Z | grep -Eq '[0-9]+-lts'; then BRANCH=$$X.$$Y-stable; else BRANCH=$$X.$$Y; fi ;\
 	 [ -z "$$X" -o -z "$$Y" -o -z "$$Z" ] && bail "VERSION missing (or incorrect). Re-run as: make VERSION=x.y.z $@" ;\
 	 (git fetch && [ `git diff origin/master..master | wc -l` -eq 0 ]) || bail "origin/master is different from master" ;\
-	 if git checkout $$X.$$Y 2>/dev/null ; then \
-	    echo "WARNING: branch $$X.$$Y already exists: you may want to run make patch instead" ;\
+	 if git checkout $$BRANCH 2>/dev/null ; then \
+	    echo "WARNING: branch $$BRANCH already exists: you may want to run make patch instead" ;\
 	    git merge origin/master ;\
 	 else \
-	    git checkout master -b $$X.$$Y && echo zedcloud.zededa.net > conf/server &&\
+	    git checkout master -b $$BRANCH && echo zedcloud.zededa.net > conf/server &&\
 	    git commit -m"Setting default server to prod" conf/server ;\
-	 fi || bail "Can't create $$X.$$Y branch" ;\
+	 fi || bail "Can't create $$BRANCH branch" ;\
 	 git tag -a -m"Release $$X.$$Y.$$Z" $$X.$$Y.$$Z &&\
 	 echo "Done tagging $$X.$$Y.$$Z release. Check the branch with git log and then run" &&\
-	 echo "  git push origin $$X.$$Y $$X.$$Y.$$Z"
+	 echo "  git push origin $$BRANCH $$X.$$Y.$$Z"
 
 shell: $(GOBUILDER)
 	$(QUIET)DOCKER_GO_ARGS=-t ; $(DOCKER_GO) bash $(GOTREE) $(GOMODULE)
