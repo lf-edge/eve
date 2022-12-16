@@ -1,0 +1,412 @@
+#!/bin/sh
+# shellcheck shell=dash
+#
+# This script is an entry point for a standalone verification.
+# It is expected to probe for the destination verification
+# media and arrange for source files to be in /parts. Some
+# of these files will be supplied from outside of the container
+# in /bits, some will be constructed on the fly depending
+# on settings that were passed via kernel command line:
+#   eve_nuke_disks
+#   eve_install_disk
+#   eve_persist_disk
+#   eve_install_server
+#
+BAIL_FINAL_CMD=${BAIL_FINAL_CMD:-"exit 1"}
+[ -n "$DEBUG" ] && set -x
+
+# This is a temp file to capture various stages of install
+# the contents of this file are saved to $REPORT/verification.log
+# After the USB install, users can see the verification status under /Volumes/INVENTORY/<serial#>/verification.log
+LOGFILE_DIR="/run"
+LOGFILE="$LOGFILE_DIR/verification.log"
+# logs to both console and a file.
+logmsg() {
+   local MSG
+   local TIME
+   MSG="$*"
+   TIME=$(date +"%F %T")
+   echo "$TIME : $MSG" | tee -a $LOGFILE >/dev/console 2>&1
+}
+
+bail() {
+   if mount_part INVENTORY "$(root_dev)" /run/INVENTORY -t vfat -o iocharset=iso8859-1; then
+      collect_black_box /run/INVENTORY 2>/dev/null
+   fi
+   logmsg "$*"
+   $BAIL_FINAL_CMD
+}
+
+trunc() {
+  rm "$1"
+  touch "$1"
+}
+
+mounted_dev() {
+   local STAT
+   STAT=$(stat -c '%d' "$1" )
+   # shellcheck disable=SC2035
+   DEV=$(cd /sys/block && grep -l '^'$(( STAT / 256 )):$(( STAT % 256 ))'$' */dev */*/dev 2>/dev/null | sed -ne 's#\([^/]*\)/dev#\1#p')
+   [ -e "/dev/$DEV" ] || DEV=null
+   echo "$DEV"
+}
+
+root_dev() {
+   local MAJOR
+   local MINOR
+   local DEV
+   if [ -L /dev/root ] ; then
+      DEV=$(readlink -f /dev/root)
+      MAJOR=$(( 0x$(stat -c '%t' "$DEV") + 0 ))
+      MINOR=$(( 0x$(stat -c '%T' "$DEV") + 0 ))
+   else
+      MAJOR=$(( $(stat -c '%d' /bits ) / 256))
+      MINOR=$(( $(stat -c '%d' /bits ) - MAJOR * 256 ))
+   fi
+   DEV_MM="$MAJOR:$MINOR"
+   # shellcheck disable=SC2035
+   (cd /sys/block && grep -l '^'$DEV_MM'$' */dev */*/dev 2>/dev/null || echo null/) | cut -f1 -d/
+}
+
+# find_part LABEL BLOCK_DEV
+# BLOCK_DEV is expected to be devicename only (ie sda not /dev/sda)
+find_part() {
+   local LABEL="$1"
+   local BLOCK_DEV="$2"
+   PARTS=$(lsblk -anl -o "NAME,PARTLABEL" /dev/"$BLOCK_DEV" 2>/dev/null | sed -ne "/$LABEL"'$/s#'"[[:space:]]*$LABEL##p")
+   for p in $PARTS ; do
+      [ -f "/sys/block/$BLOCK_DEV/$p/dev" ] && echo "$p" && exit 0
+   done
+}
+
+# mount_part PART_NAME DISK TARGET [mount opts]
+mount_part() {
+   local PART="$1"
+   local DISK="$2"
+   local TARGET="$3"
+   local ID
+   shift 3
+
+   logmsg "mount_part PART = $PART DISK = $DISK TARGET = $TARGET"
+   ID="$(find_part "$PART" "$DISK")"
+   [ -z "$ID" ] && return 1
+
+   mkdir -p "$TARGET"
+   mount "$@" "/dev/$ID" "$TARGET"
+}
+
+# run command in a chroot with system mount points provisioned
+ctr_run() {
+   local SYS_DIRS="/sys /proc /dev"
+   local DIR="$1"
+   shift
+   for d in $SYS_DIRS; do mount --bind "$d" "$DIR/$d"; done
+   chroot "$DIR" "$@"
+   for d in $SYS_DIRS; do umount "$DIR/$d"; done
+}
+
+# run binary from pillar
+pillar_run() {
+  binary="$1"
+  shift
+  LD_LIBRARY_PATH=/opt/pillar/lib:/opt/pillar/usr/lib /opt/pillar/opt/zededa/bin/"$binary" "$@"
+}
+
+# collect_black_box FOLDER_TO_PUT_BLACK_BOX
+collect_black_box() {
+   lsblk > "$1/lsblk.txt"
+   dmesg > "$1/dmesg.txt"
+   tar -C /proc -cjf "$1/procfs.tar.bz2" cpuinfo meminfo
+   tar -C /sys -cjf "$1/sysfs.tar.bz2" .
+   tar -C /config -cjf "$1/config.tar.bz2" .
+   tar -C /persist -cjf "$1/persist.tar.bz2" status newlog log config checkpoint certs agentdebug
+   pillar_run tpmmgr saveTpmInfo "$1"/tpminfo.txt
+}
+
+zfs_umount() {
+  umount -R /persist ||:
+  chroot /root zfs unmount persist ||:
+  umount /root/sys ||:
+  umount /root/proc ||:
+  umount /root/dev ||:
+}
+
+logmsg "EVE-OS verification started"
+# make rootfs of verification container and / writable
+mount -o remount,rw /dev/loop0 /
+mount -o remount,rw /containers/onboot/003-installer/rootfs
+# do this just in case
+modprobe usbhid && modprobe usbkbd
+# clean partition tables on disks defined to nuke
+if grep -q eve_nuke_disks /proc/cmdline; then
+  NUKE_DISKS=$(</proc/cmdline tr ' ' '\012' | sed -ne '/^eve_nuke_disks=/s#^.*=##p')
+  printf '%s' "Nuking partition tables on:"
+  for dev in $(echo "$NUKE_DISKS" | tr ',' ' '); do
+      printf ' %s' "$dev"
+      dd if=/dev/zero of="/dev/$dev" bs=512 count=34 >/dev/null 2>&1
+      logmsg "Nuked partition tables on $dev"
+  done
+  sync; sleep 5; sync
+  echo " done!"
+fi
+
+# lets see if we're told on which disk to install...
+INSTALL_DEV=$(tr ' ' '\012' < /proc/cmdline | sed -ne '/^eve_install_disk=/s#^.*=##p')
+
+# ...if not we will try to guess, and...
+if [ -z "$INSTALL_DEV" ] ; then
+   # now lets see what sources of verification material are there
+   ROOT_DEV=$(root_dev)
+   # we sort disks by transport, so it will be sorted with order nvme->sata->usb
+   FREE_DISKS_ALL=$(lsblk -anlb -o "TYPE,NAME,SIZE,TRAN" | grep "^disk"| sort -k4 | awk '$3 { print $2;}' | grep -v "${ROOT_DEV:-$^}")
+   for d in $FREE_DISKS_ALL; do
+      [ -e "/sys/devices/virtual/block/$d" ] || FREE_DISKS="$FREE_DISKS $d"
+   done
+
+   # if there's more than one free disk, install on the first one but warn about all of them
+   echo "$FREE_DISKS" | awk '{ if (NF > 1) { printf("WARNING: found multiple free disks %s, installing on the first one\n", $0); } }'
+   # shellcheck disable=SC2086
+   INSTALL_DEV=$(set ${FREE_DISKS:-""} ; echo "$1")
+fi
+
+logmsg "Installing EVE-OS on device $INSTALL_DEV"
+# ...if we didn't find a single free disk - bail
+[ -z "$INSTALL_DEV" ] && bail "FATAL: didn't find a single free disk"
+
+# we allow for P3 partition to reside on a separate disk
+INSTALL_PERSIST=$(</proc/cmdline tr ' ' '\012' | sed -ne '/^eve_persist_disk=/s#^.*=##p')
+INSTALL_PERSIST=${INSTALL_PERSIST:-$INSTALL_DEV}
+
+logmsg "Installing persist on disk(s) $INSTALL_PERSIST"
+# now lets figure out whether we have verification material
+CONFIG_PART=$(find_part CONFIG "$(root_dev)")
+CONFIG_PART="${CONFIG_PART:+"/dev/"}${CONFIG_PART:-"/bits/config.img"}"
+if [ -e "$CONFIG_PART" ]; then
+   dd if="$CONFIG_PART" of=/parts/config.img bs=1M
+else
+   mkfs.vfat -v -n CONFIG -C /parts/config.img 1024
+   mcopy -i /parts/config.img -s /config/* ::/
+fi
+# the only thing we override in /config for now is server
+tr ' ' '\012' < /proc/cmdline | sed -ne '/^eve_install_server=/s#^.*=##p' > /parts/eve_install_server
+[ ! -s /parts/eve_install_server ] || mcopy -i /parts/config.img -o /parts/eve_install_server ::/server
+
+if [ -s /parts/eve_install_server ]; then
+   EVE_INSTALL_SERVER=$(cat /parts/eve_install_server)
+   logmsg "EVE install server : $EVE_INSTALL_SERVER"
+fi
+
+# if there's something in /bits -- that's the ultimate source
+ln -s /bits/* /parts 2>/dev/null
+
+# and now a few measures of last resort
+[ -e /parts/rootfs.img ] || ln -s "/dev/$(mounted_dev /root)" /parts/rootfs.img
+[ -e /parts/EFI ] || ln -s /root/EFI /parts/EFI
+[ -e /parts/boot ] || ln -s /root/boot /parts/boot
+
+# finally lets see if we were given any overrides
+for i in rootfs config persist; do
+   grep -q "eve_install_skip_$i" /proc/cmdline && trunc "/parts/$i.img"
+done
+
+MULTIPLE_DISKS=false
+
+MAKE_RAW_PARTS="efi imga imgb conf persist"
+
+logmsg "Installing ext4 filesystem, MULTIPLE_DISKS = $MULTIPLE_DISKS"
+# do the install (unless we're only here to collect the black box)
+# shellcheck disable=SC2086
+grep -q eve_blackbox /proc/cmdline || /make-raw "/dev/$INSTALL_DEV" "$MAKE_RAW_PARTS"
+
+P3="$(find_part P3 "$INSTALL_DEV")"
+[ -z "$P3" ] && bail "verification failed. Cannot found P3. Entering shell..."
+# attempt to zero the first and last 5Mb of the P3 (to get rid of any residual prior data)
+dd if=/dev/zero of="/dev/$P3" bs=512 count=10240 2>/dev/null
+dd if=/dev/zero of="/dev/$P3" bs=512 seek=$(( $(blockdev --getsz "/dev/$P3") - 10240 )) count=10240 2>/dev/null
+# Use -F option twice, to avoid any user confirmation in mkfs
+mkfs -t ext4 -v -F -F -O encrypt "/dev/$P3"
+mkdir -p /persist
+# now the disk is ready - mount partitions
+mount_part P3 "$INSTALL_DEV" /persist 2>/dev/null
+
+# Note that /config is read only once the verification is done
+if mount_part CONFIG "$INSTALL_DEV" /config -t vfat -o iocharset=iso8859-1; then
+   # uuidgen | sed -e 's#^.*-##'
+   SOFT_SERIAL=$(tr ' ' '\012' < /proc/cmdline | sed -n '/eve_soft_serial=/s#eve_soft_serial=##p')
+   [ -n "$SOFT_SERIAL" ] || [ ! -f /config/soft_serial ] || SOFT_SERIAL=$(cat /config/soft_serial)
+   SOFT_SERIAL=${SOFT_SERIAL:-$(uuidgen)}
+   logmsg "SOFT_SERIAL = $SOFT_SERIAL"
+   grep -q eve_blackbox /proc/cmdline || echo "$SOFT_SERIAL" > /config/soft_serial
+fi
+
+REPORT=
+# collect information about the node
+if mount_part INVENTORY "$(root_dev)" /run/INVENTORY -t vfat -o iocharset=iso8859-1; then
+   REPORT="/run/INVENTORY/$(cat /config/soft_serial 2>/dev/null)"
+   logmsg "EVE-OS verification will store report to USB inside /INVENTORY/$(cat /config/soft_serial 2>/dev/null)"
+else
+   REPORT="/persist/verification"
+   logmsg "EVE-OS verification will store report to $REPORT"
+fi
+
+mkdir -p "$REPORT"
+
+# first lets look at hardware model
+dmidecode > "$REPORT/hardwaremodel.txt"
+
+# try to generate model json file
+ctr_run /opt/debug spec.sh > "$REPORT/controller-model.json"
+ctr_run /opt/debug spec.sh -v > "$REPORT/controller-model-verbose.json"
+
+# Save to help figure out if RTC is not in UTC
+(hwclock -v -u; date -Is -u ) > "$REPORT/clock"
+
+# The creation of the 4 key pairs on the TPM below can take significant
+# time. Make sure a hardware watchdog will not fire.
+wdctl
+watchdog -F /dev/watchdog &
+
+TPM_DEVICE_PATH="/dev/tpmrm0"
+DEVICE_CERT_NAME="/config/device.cert.pem"
+DEVICE_KEY_NAME="/config/device.key.pem"
+
+# The device cert generation needs the current time. Some hardware
+# doesn't have a battery-backed clock so we check the year makes some sense
+# In that case we defer until first boot of EVE to run ntp and generate
+# the device certificate
+YEAR=$(date +%Y)
+if [ "$YEAR" -gt 2020 ] && [ ! -f $DEVICE_CERT_NAME ]; then
+   if [ -c $TPM_DEVICE_PATH ] && ! [ -f $DEVICE_KEY_NAME ]; then
+      logmsg "Generating TPM device certificate"
+      if ! pillar_run tpmmgr createDeviceCert; then
+         logmsg "Failed generating device certificate on TPM; fallback to soft"
+         # The future existence of /config/device.key.pem indicates not using TPM
+         sync
+      else
+         logmsg "Generated a TPM device certificate"
+         if ! pillar_run tpmmgr createCerts; then
+            logmsg "Failed to create additional certificates on TPM"
+         fi
+      fi
+   else
+      logmsg "No TPM; Generating soft device certificate"
+   fi
+   if [ ! -f $DEVICE_CERT_NAME ]; then
+      if ! pillar_run tpmmgr createSoftDeviceCert; then
+         logmsg "Failed to generate soft device certificate"
+      elif ! pillar_run tpmmgr createSoftCerts; then
+         logmsg "Failed to create additional certificates"
+      fi
+   fi
+   sync
+   mount -o remount,flush,readonly /config
+   sleep 5
+fi
+# Collect the device cert
+if [ -f $DEVICE_CERT_NAME ] && [ -n "$REPORT" ]; then
+   cat $DEVICE_CERT_NAME > "$REPORT/device.cert.pem"
+fi
+
+# finally check whether we are collecting a black box
+if [ -n "$REPORT" ]; then
+   # then we can collect our black box
+   grep -q eve_blackbox /proc/cmdline && collect_black_box "$REPORT" 2>/dev/null
+fi
+
+# if we store report to USB copy verification.log to persist explicitly
+if [ ! -d "/persist/verification" ]; then
+  mkdir "/persist/verification"
+  cat $LOGFILE > "/persist/verification/verification.log"
+fi
+
+#extract basic info
+/usr/bin/hw-probe -all --show --verbose --check-extended --save $REPORT > "$REPORT/summary.log"
+
+#storage device benchmarking
+mkdir "$REPORT/storage-performance/"
+for i in $(lsblk -anlb -o "TYPE,NAME,SIZE" | grep "^disk" | awk '$3 { print $2;}'); do
+   echo  "Verifying disk /dev/$i"
+   #if dd if="/dev/$i" of=/dev/null bs=512 count=34 >/dev/null 2>&1; then
+   # echo "Read from device $i succeeded" >> "$REPORT/storage-check.log"
+   #else
+   #   echo "Read from device $i failed" >> "$REPORT/storage-check.log"
+   #fi
+   /usr/bin/fio --filename="/dev/$i" --direct=1 --rw=randread --bs=4k --ioengine=libaio --runtime=10 --numjobs=4 --time_based --name=test --filesize=10M > "$REPORT/storage-performance/$i.log"
+   cat "$REPORT/storage-performance/$i.log"
+done
+
+#networking benchmarking
+dhclient
+nics=$(ifconfig -a | grep eth | awk '{print $1}')
+mkdir "$REPORT/networking-checks/"
+
+for nic in $nics
+do
+   ifconfig "$nic" up
+   #check dhcp
+   if curl "www.google.com" > /dev/null 2>&1; then
+      echo "Network connectivity successful" > "$REPORT/networking-checks/dhcp-$nic.log";
+      echo "$nic with dhcp is working properly" >> "$REPORT/summary.log";
+   else
+      echo "Network connectivity failed" > "$REPORT/networking-checks/dhcp-$nic.log";
+      echo "$nic with dhcp is NOT working properly" >> "$REPORT/summary.log";
+   fi
+
+   network=$(ip a show "$nic" | awk '/inet / {print $2}' | cut -d"." -f1-3)
+   # Loop through all possible IP addresses in the network range
+   for ip in $(seq 1 255)
+   do
+      # Check if the IP address is available
+      if ! ping -c1 -W1 "$network.$ip" > /dev/null 2>&1; then
+         ip route add default via "$network.$ip" dev "$nic"
+         break
+      fi
+   done
+
+   #check static
+   if curl "www.google.com" > /dev/null 2>&1; then
+      echo "Network connectivity successful" > "$REPORT/networking-checks/static-$nic.log";
+      echo "$nic with static configuration is working properly" >> "$REPORT/summary.log";
+   else
+      echo "Network connectivity failed" > "$REPORT/networking-checks/static-$nic.log";
+      echo "$nic with static configuration is NOT working" >> "$REPORT/summary.log";
+   fi
+done
+
+#Testing qemu and passthrough
+qemu_exec=/usr/bin/qemu-system-$(uname -m)
+machine=$($qemu_exec -machine help | awk '{if (NR==2) print $1}')
+$qemu_exec -m 1024 -smp 2 -display none -serial mon:stdio -global ICH9-LPC.noreboot=false \
+   -watchdog-action reset -rtc base=utc,clock=rt -machine "$machine" -cpu SandyBridge \
+   -drive file=/ubuntu-22.04-minimal-cloudimg-amd64.img,format=qcow2 &
+
+# shellcheck disable=SC2181
+if [ "$?" -eq 0 ]; then
+   kill %1
+   echo "start VM success" > "$REPORT/guest-checks.log"
+   echo "Start of an edge application successful" >> "$REPORT/summary.log";
+else
+   echo "start VM failed" > "$REPORT/guest-checks.log"
+   echo "Start of an edge application failed" >> "$REPORT/summary.log";
+fi
+
+tpm2_pcrread >> "$REPORT/summary.log"
+
+cat "$REPORT/summary.log"
+
+if [ -n "$REPORT" ]; then
+   # Copy the LOGFILE under REPORT"
+   logmsg "EVE-OS verification completed, device will now poweroff"
+   cat $LOGFILE > "$REPORT/verification.log"
+fi
+
+# lets hope this is enough to flush the caches
+sync; sleep 5; sync
+
+# we need a copy of these in tmpfs so that a block device with rootfs can be yanked
+cp /sbin/poweroff /sbin/reboot /bin/sleep /run
+# we also maybe asked to reboot after install
+
+#echo "NOTICE: Device will now reboot." >/dev/console
+/run/sleep 5
+/run/poweroff -f

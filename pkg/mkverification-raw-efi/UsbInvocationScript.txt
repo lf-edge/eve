@@ -1,0 +1,2 @@
+usb_disable_secure_boot noreset;
+usb_one_time_boot usb nolog;
