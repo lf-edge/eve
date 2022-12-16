@@ -1,0 +1,487 @@
+#!/bin/sh
+# shellcheck shell=dash
+#
+# This script creates a raw disk image partitioned with GPT partition table
+# and set up for UEFI boot sequence with a GRUB UEFI payload and a default
+# grub.cfg attempting to chainload GRUB from one of the actual rootfs
+# partitions. This means that at the very minimum the output of this script
+# will produce a disk that looks like:
+#
+# +----------------------------+
+# |  UEFI partition            |
+# |   w/ GRUB + grub.cfg       |
+# +----------------------------+
+# |  rootfs partition w/GRUB   |
+# +----------------------------+
+#
+# In addition to producing this minimalistic (but fully functional!) layout,
+# this script is also capable of initializing a few additional partitions
+# that are required for live upgrade and configuration:
+#   * 2nd rootfs partition
+#   * /config partition
+#   * /persist partition
+#
+# The script CLI UX is really not user friendly for now, since it is expected
+# to be called mostly from other scripts (and also linuxkit VMs).
+# The syntax is:
+#   [-r] <img> [part1...]
+#
+# -r          use random_disk_uuids (old behavior)
+# <img>       file name of the raw disk image (we expect it to be pre-created and
+#             sized correctly OR be an actual physical device)
+# [part1...]  list of partitions to be created: efi imga imgb conf persist
+#             Can be omitted. Default is: efi imga imgb conf persist
+#
+# On stdin, this scripts expects to receive a tarball full of partition images
+# that will be used to pre-populated actual partitions it creates. This tarball
+# is going to be received from stdin and extracted into /parts folder. This means,
+# of course, that if you don't supply a tarball stream to the script you can just
+# pre-populate /parts with the same images:
+#   * rootfs*.img for rootfs partition
+#   * config.tar for config partition
+#
+set -e
+[ -n "$DEBUG" ] && set -x
+
+IMGFILE=$1
+shift
+PARTS=${*:-"efi imga imgb conf persist"}
+
+# This is the only partition type that PARTITION_TYPE_USR_X86_64
+# grub-core/commands/gptprio.c code will pay attention to
+PARTITION_TYPE_USR_X86_64=5dfbf5f4-2848-4bac-aa5e-0d9a20b745a6
+
+# The static UUIDs for the disk and the partitions
+# Also in install and storage-init.sh
+DISK_UUID=ad6871ee-31f9-4cf3-9e09-6f7a25c30050
+EFI_UUID=ad6871ee-31f9-4cf3-9e09-6f7a25c30051
+IMGA_UUID=ad6871ee-31f9-4cf3-9e09-6f7a25c30052
+IMGB_UUID=ad6871ee-31f9-4cf3-9e09-6f7a25c30053
+CONF_UUID=ad6871ee-31f9-4cf3-9e09-6f7a25c30054
+PERSIST_UUID=ad6871ee-31f9-4cf3-9e09-6f7a25c30059
+
+# EFI partition size in bytes
+EFI_PART_SIZE=$((36 * 1024 * 1024))
+# rootfs partition size in bytes
+ROOTFS_PART_SIZE=$(( 600 * 1024 * 1024 ))
+# conf partition size in bytes
+CONF_PART_SIZE=$((1024 * 1024))
+# installer inventory partition size in bytes
+WIN_INVENTORY_PART_SIZE=$((40240 * 1024))
+# installer system partition size in bytes
+VERIFICATION_SYS_PART_SIZE=$(( 600 * 1024 * 1024 ))
+# imx8 boot blob size in bytes
+IMX8_BLOB_SIZE=$(( 8 * 1024 * 1024 ))
+# sector where the first partition starts on a blank disk
+FIRST_PART_SEC=2048
+
+sgdisk() {
+  # filter out annoying messages we can't get rid of:
+  #   https://github.com/kini/gptfdisk/blob/master/diskio-unix.cc#L153
+  local OUT
+  local RET
+  OUT=$(/usr/bin/sgdisk "$@" 2>&1)
+  RET=$?
+  echo "$OUT" | grep -Ev "$(echo '^Disk device is
+when determining sector size! Setting sector size to 512
+Warning: The kernel is still using the old partition table
+The new table will be used at the next reboot or after you
+run partprobe.*or kpartx
+The operation has completed successfully.' | tr '\012' '|')$^" || :
+  return $RET
+}
+
+cp_with_backup() {
+  # shellcheck disable=SC2155
+  local MD5_SUM=$(md5sum "$2" | cut -f1 -d\  )
+  [ -f "$2"."$MD5_SUM" ] || cp "$2" "$2"."$MD5_SUM"
+  # shellcheck disable=SC2181
+  [ $? -eq 0 ] && cp "$1" "$2"
+}
+
+grow_part() {
+  # (x+1024)/1024*1024 rounds up to multiple of 1024KB, or 2048
+  # sectors some firmwares get confused if the partitions are not
+  # aligned on 2048 blocks we will round up to the nearest multiple of
+  # 2048 blocks since each block is 512 bytes, we want the size to be
+  # a multiple of 2048 blocks * 512 bytes = 1048576 bytes = 1024KB
+  # The output is in sectors though, hence the final * 2
+  local IMAGE_SIZE_KB=$(( ( ( ($2 + 1024-1) / 1024 ) + 1024-1) / 1024 * 1024))
+  echo $(( $1 + 2 * IMAGE_SIZE_KB - 1))
+}
+
+dir2vfat() {
+  # <img name> dir2vfat <dir> <image size> [label]
+  # shellcheck disable=SC2155
+  local IMG=$(mktemp -u -p /tmp/data)
+  local LABEL=${3:-EVE}
+  local FORCE_FAT32="-F32"
+  # FAT32 can only reside on disks larger than 33Mb
+  [ "$2" -lt 33792 ] && FORCE_FAT32="-v"
+  (rm -rf /tmp/data
+   mkdir /tmp/data
+   mkfs.vfat "$FORCE_FAT32" -v -n "$LABEL" -C "$IMG" "$2"
+   mcopy -i "$IMG" -s "$1"/* ::/ ) >&2
+  echo "$IMG"
+}
+
+mkefifs() {
+  rm -rf /efifs/*
+  cp -Lr "$EFI_DIR" /efifs/EFI
+}
+
+do_system_vfat_part() {
+  eval local SEC_START=\$"$1"
+  # shellcheck disable=SC2086
+  # shellcheck disable=SC2155
+  local SEC_END=$(grow_part $SEC_START $2)
+  local NUM_PART=$(( PART_OFFSET + 1 ))
+
+  PROTECTIVE_MBR_LIST="$PROTECTIVE_MBR_LIST$NUM_PART:"
+
+  # Create a partition
+  sgdisk --new "$NUM_PART:$SEC_START:$SEC_END" --typecode="$NUM_PART:ef00" --change-name="$NUM_PART":'EFI System' \
+         --attributes "$NUM_PART:set:2" "$IMGFILE"
+
+  #   ...copy EFI fs to EFI partition
+  dd if="$(dir2vfat /efifs $(( (SEC_END - SEC_START) / 2)))" of="$IMGFILE" bs=1M conv=notrunc seek="$(( SEC_START * 512 ))" oflag=seek_bytes
+
+  eval "$1=$((SEC_END + 1))"
+}
+
+do_efi() {
+  local NUM_PART=$(( PART_OFFSET + 1 ))
+  mkefifs
+  sed -e 's#@PATH_TO_GRUB@#'"$(cd /efifs; echo EFI/BOOT/BOOT*EFI)"'#' < /grub.cfg.in > /efifs/EFI/BOOT/grub.cfg
+  cp -r "$BOOT_DIR"/* /efifs/ 2>/dev/null || :
+  do_system_vfat_part "$1" "$EFI_PART_SIZE"
+  if [ -z "$RANDOM_DISK_UUIDS" ]; then
+      sgdisk --partition-guid="$NUM_PART:$EFI_UUID" "$IMGFILE"
+  fi
+}
+
+do_verification() {
+  mkefifs
+  # Copy bootloaders to usb root
+  cp -r "$BOOT_DIR"/* /efifs/ 2>/dev/null || :
+  # Copy bootloaders to boot folder for installer
+  mkdir -p /efifs/boot && cp -r "$BOOT_DIR"/* /efifs/boot/ 2>/dev/null
+  cp "$INSTALLER_GRUB_CFG" /efifs/EFI/BOOT/grub.cfg
+  cp "$PERSIST_FILE" "$INITRD_IMG" "$ROOTFS_IMG" "$VERIFICATION_IMG" /UsbInvocationScript.txt /efifs
+  touch /efifs/boot/.boot_repository
+  od -An -x -N 16 /dev/random | tr -d ' ' > /efifs/boot/.uuid
+  do_system_vfat_part "$1" "$VERIFICATION_SYS_PART_SIZE"
+}
+
+do_rootfs() {
+    eval SEC_START=\$"$1"
+    # shellcheck disable=SC2086
+    # shellcheck disable=SC2155
+    local SEC_END=$(grow_part $SEC_START $ROOTFS_PART_SIZE)
+    local NUM_PART
+    LABEL="$2"
+    IMG="$3"
+
+    case $LABEL in
+      IMGA) NUM_PART=$(( PART_OFFSET + 2 ))
+            EXTRA_ATTR="--attributes=$NUM_PART:set:56 --attributes=$NUM_PART:set:49"
+            ;;
+      IMGB) NUM_PART=$(( PART_OFFSET + 3 ))
+            ;;
+    esac
+
+    # Calculate partition size and add a partition
+    sgdisk --new "$NUM_PART:$SEC_START:$SEC_END" \
+           --typecode="$NUM_PART:$PARTITION_TYPE_USR_X86_64" \
+           --change-name="$NUM_PART:$LABEL" "$EXTRA_ATTR" "$IMGFILE"
+
+    if [ -z "$RANDOM_DISK_UUIDS" ]; then
+        case $LABEL in
+            IMGA) sgdisk --partition-guid="$NUM_PART:$IMGA_UUID" "$IMGFILE"
+                  ;;
+            IMGB) sgdisk --partition-guid="$NUM_PART:$IMGB_UUID" "$IMGFILE"
+            ;;
+        esac
+    fi
+
+    if [ -n "$IMG" ]; then
+      # Copy rootfs
+      dd if="$IMG" of="$IMGFILE" bs=1M conv=notrunc seek="$(( SEC_START * 512 ))" oflag=seek_bytes
+    else
+      # clean first block of partition
+      # to avoid mounting of stale data
+      dd if=/dev/zero of="$IMGFILE" bs=512 count=1 conv=notrunc seek="$(( SEC_START * 512 ))" oflag=seek_bytes
+    fi
+
+    # shellcheck disable=SC2086
+    eval $1=$(( SEC_END + 1))
+}
+
+do_imga() {
+    do_rootfs "$1" IMGA "$ROOTFS_IMG"
+}
+
+do_imgb() {
+    # for now we are wiping IMGB - hence not passing the source
+    do_rootfs "$1" IMGB
+}
+
+do_vfat() {
+    eval local SEC_START=\$"$1"
+    # shellcheck disable=SC2086
+    # shellcheck disable=SC2155
+    local SEC_END=$(grow_part $SEC_START $CONF_PART_SIZE)
+    local NUM_PART=$(( PART_OFFSET + 4 ))
+    local PART_TYPE="$2"
+
+    sgdisk --new "$NUM_PART:$SEC_START:$SEC_END" \
+           --typecode="$NUM_PART:$PART_TYPE" \
+           --change-name="$NUM_PART:CONFIG" "$IMGFILE"
+
+    dd if="$CONF_FILE" of="$IMGFILE" bs=1M conv=notrunc seek="$(( SEC_START * 512 ))" oflag=seek_bytes
+
+    # shellcheck disable=SC2086
+    eval $1=$(( SEC_END + 1))
+}
+
+do_conf() {
+    do_vfat "$1" 13307e62-cd9c-4920-8f9b-91b45828b798
+    if [ -z "$RANDOM_DISK_UUIDS" ]; then
+        local NUM_PART=$(( PART_OFFSET + 4 ))
+        sgdisk --partition-guid="$NUM_PART:$CONF_UUID" "$IMGFILE"
+    fi
+}
+
+do_conf_win() {
+    do_vfat "$1" EBD0A0A2-B9E5-4433-87C0-68B6B72699C7
+}
+
+do_inventory_win() {
+    eval local SEC_START=\$"$1"
+    # shellcheck disable=SC2155
+    local SEC_END=$(grow_part "$SEC_START" "$WIN_INVENTORY_PART_SIZE")
+    local NUM_PART=$(( PART_OFFSET + 5 ))
+    local PART_TYPE=EBD0A0A2-B9E5-4433-87C0-68B6B72699C7
+
+    PROTECTIVE_MBR_LIST="$PROTECTIVE_MBR_LIST$(( PART_OFFSET + 4 )):$NUM_PART:"
+
+    sgdisk --new "$NUM_PART:$SEC_START:$SEC_END" \
+           --typecode="$NUM_PART:$PART_TYPE" \
+           --change-name="$NUM_PART:INVENTORY" "$IMGFILE"
+
+    # shellcheck disable=SC2046
+    dd if=$(dir2vfat $(mktemp -d) $(( (SEC_END - SEC_START) / 2)) INVENTORY) of="$IMGFILE" bs=1M conv=notrunc seek="$(( SEC_START * 512 ))" oflag=seek_bytes
+
+    eval "$1=$(( SEC_END + 1))"
+}
+
+do_persist() {
+    eval SEC_START=\$"$1"
+    # Persistent Purgeable Partition.  It is set at partition
+    # number 9 to reserve the first 8 partitions to system types.
+    local NUM_PART=$(( PART_OFFSET + 9 ))
+    # P3 takes all space available
+    local SEC_END=0
+
+    sgdisk --new "$NUM_PART:$SEC_START:$SEC_END" \
+           --typecode="$NUM_PART":5f24425a-2dfa-11e8-a270-7b663faccc2c \
+           --change-name="$NUM_PART":'P3' "$IMGFILE"
+
+    if [ -z "$RANDOM_DISK_UUIDS" ]; then
+        sgdisk --partition-guid="$NUM_PART:$PERSIST_UUID" "$IMGFILE"
+    fi
+    dd if="$PERSIST_FILE" of="$IMGFILE" bs=1M conv=notrunc seek="$(( SEC_START * 512 ))" oflag=seek_bytes
+
+    eval "$1"=0
+}
+
+do_usb_conf() {
+    eval local SEC_START=\$"$1"
+    # shellcheck disable=SC2155
+    local SEC_END=$(sgdisk -E "$IMGFILE")
+    local NUM_PART=$(( PART_OFFSET + 1 ))
+    local PART_TYPE=EBD0A0A2-B9E5-4433-87C0-68B6B72699C7
+    local FAT_SIZE=$(( SEC_END - SEC_START ))
+
+    sgdisk --new "$NUM_PART:$SEC_START:$SEC_END" \
+           --typecode="$NUM_PART:$PART_TYPE" \
+           --change-name="$NUM_PART:DevicePortConfig" "$IMGFILE"
+
+    mformat -i "${IMGFILE}@@$(( SEC_START * 512 ))" -h $(( FAT_SIZE / 65535 + 1 )) -t 1 -s 65535 -l EVEDPC ::
+    mcopy -i "${IMGFILE}@@$(( SEC_START * 512 ))" /parts/* ::/
+
+    eval "$1=$(( SEC_END + 1))"
+}
+
+# This function deploys GRUB stage1 into MBR (sector 0) and GRUB stage2 into the gap between
+# where GPT ends and first partition begins (sector 34 - sector FIRST_PART_SEC). It relies
+# on the knowledge of where GRUB implementation stores the value for the 1st and 2nd sectors
+# of stage2 (see the seek offsets for dd below). Whenever GRUB version changes there's a chance
+# these offsets may change and will have to be adjusted accordingly as per:
+#   * grub-core/boot/i386/pc/boot.S kernel_sector
+#   * grub-core/boot/i386/pc/diskboot.S blocklist_default_start
+# NOTE: theoretically one can patch grub-install to do this, but it requires much more hoop jumping
+deploy_legacy_grub() {
+    # put GRUB stage1 loader into the MBR (don't overwrite MBR partition table -- hence size 446 not 512)
+    dd if=/efifs/EFI/BOOT/BOOT.img of="$IMGFILE" bs=446 count=1 conv=noerror,sync,notrunc
+    # embed GRUB stage2 into the gap between the end of GPT (sector 34) and start of the first partition (FIRST_PART_SEC)
+    dd if=/efifs/EFI/BOOT/BOOT.pc of="$IMGFILE" bs=512 seek=34 conv=noerror,sync,notrunc
+    # update locations where stage1 and stage2 store the value of the first (34 == \042)...
+    printf '\042' | dd of="$IMGFILE" bs=1 seek=92 count=1 conv=noerror,sync,notrunc
+    # ...and 2nd (35 == \043) sector of where stage2 is located on disk
+    printf '\043' | dd of="$IMGFILE" bs=1 seek=$((34 * 512 + 500)) count=1 conv=noerror,sync,notrunc
+}
+
+adjust_protective_mbr() {
+    # Since sgdisk by default puts protective partition first, we need to swap the
+    # order to make some legacy BIOS implementations happy. Strictly speaking, this
+    # goes against good recommendations of how to build a protective MBR for the GPT
+    # but it doesn't seem to cause any troubles and it helps with compatibility.
+    # On top of that we need to mark 1st MBR partition bootable and vfat type to
+    # make legacy BIOSes real happy:
+    (fdisk "$IMGFILE" > /dev/null <<__EOT__
+M
+a
+1
+t
+1
+c
+w
+q
+__EOT__
+    ) || :
+    # the : above is here to make sure fdisk doesn't get too upset about us not using
+    # an actual device, but a file instead. In the ideal world, we would be able to
+    # catch other errors, but this particular usecase of fdisk is so trivial, that we
+    # shouldn't be too concerned about missing much.
+}
+
+
+
+#
+# Extract partitions from stdin if /parts not exists or empty
+#
+if [ ! -d /parts ] || [ -z "$(ls -A -- /parts)" ]; then
+   mkdir -p /parts
+   (cd /parts ; bsdtar xzf -)
+fi
+
+# content of rootfs partition
+ROOTFS_IMG=/parts/rootfs.img
+# content of conf partition
+CONF_FILE=/parts/config.img
+# content of persist partition
+PERSIST_FILE=/parts/persist.img
+# EFI boot directory
+EFI_DIR=/parts/EFI
+# early bootloader directory (optional)
+BOOT_DIR=/parts/boot
+# content of initrd installer image (optional)
+INITRD_IMG=/parts/initrd.img
+# content of verification ECO (optional)
+VERIFICATION_IMG=/parts/verification.img
+# GRUB cfg override for our installer
+INSTALLER_GRUB_CFG=/parts/grub.cfg
+# IMX8 flash blob that needs to be written to image
+IMX8_BLOB=/parts/imx8-flash.bin
+# IMX8 configuration file with flashing parameters
+IMX8_CONF=/parts/imx8-flash.conf
+
+# offset in the GPT partition table from which we can start our numbering
+PART_OFFSET=0
+# starting sector for our portion of the disk
+CUR_SEC="$FIRST_PART_SEC"
+
+if [ -f "$IMX8_BLOB" ] && [ -f "$IMX8_CONF" ]; then
+  # For imx8 boards we need to write boot blob with the specified offset
+  IMX_BLOB_END_SEC=$(( IMX8_BLOB_SIZE / 512 ))
+  CUR_SEC="$IMX_BLOB_END_SEC"
+  IMG_SEEK=$(cat $IMX8_CONF | sed "/^#/d" | grep "^offset.*" | tr -d '[:space:]' | sed "s/offset=\(.*\)/\1/")
+  # If offset was not specified, use 32 as default
+  [ -z "$IMG_SEEK" ] && IMG_SEEK=32
+  # Write blob to image file
+  dd if="$IMX8_BLOB" of="$IMGFILE" bs=1024 seek=$IMG_SEEK conv=notrunc
+fi
+
+# Lets see if GPT partition exists and it is one of the
+# kinds we recognize
+case "$(sgdisk -p "$IMGFILE" 2>/dev/null | sed -ne '/^Number/,$s/^.* //p' | tr '\012' ' ')" in
+  "Name vrl vrl_backup mcuimage fastboot nvme boot reserved cache"*)
+      echo "Found Android GPT partition table on $IMGFILE"
+      for p in $(sgdisk -p "$IMGFILE" 2>/dev/null | sed -e '1,/cache$/d' | awk '{print $1;}') ; do
+        sgdisk -d "$p" "$IMGFILE"
+      done
+      PART_OFFSET=10
+      # shellcheck disable=SC2034
+      CUR_SEC=$(( ( $(sgdisk -p "$IMGFILE" 2>/dev/null | tail -1 | awk '{print $3;}') / 2048 + 1 ) * 2048 ))
+      EMBED_BOOT_START=$(sgdisk -i 6 "$IMGFILE" 2>/dev/null | awk '/First sector:/{ print $3; }')
+      EMBED_BOOT_SIZE=$(sgdisk -i 6 "$IMGFILE" 2>/dev/null | awk '/Partition size:/{ print $3; }')
+      ;;
+  "Name System IMGA IMGB CONFIG P3"*)
+      echo "Found EVE GPT partition table on $IMGFILE"
+      # apparently sgdisk -Z doesn't clear MBR and keeps complaining
+      dd if=/dev/zero of="$IMGFILE" bs=512 count=1 conv=notrunc
+      sgdisk -Z --clear "$IMGFILE" 2>/dev/null || :
+      ;;
+   *) echo "Unknown (or unrecognizable) GPT partition table on $IMGFILE"
+      # apparently sgdisk -Z doesn't clear MBR and keeps complaining
+      dd if=/dev/zero of="$IMGFILE" bs=512 count=1 conv=notrunc
+      sgdisk -Z --clear "$IMGFILE" 2>/dev/null || :
+      ;;
+esac
+
+if [ -z "$RANDOM_DISK_UUIDS" ]; then
+  sgdisk --disk-guid="$DISK_UUID" "$IMGFILE"
+fi
+
+for p in $PARTS ; do
+  eval do_"$p" CUR_SEC
+done
+
+if [ "$PARTS" = usb_conf ]; then
+  # Validate the health of our creation
+  sgdisk -v "$IMGFILE"
+  exit 0
+fi
+
+# Create a hybrid MBR to allow booting on legacy BIOS PC systems and ARM boards that
+# look for bootloaders in the first entry of the MBR
+sgdisk -h"${PROTECTIVE_MBR_LIST}EE" "$IMGFILE"
+
+# if we happen to be building an x86 image - deploy legacy GRUB into the GPT gap
+if [ -e /efifs/EFI/BOOT/BOOT.pc ]; then
+   deploy_legacy_grub
+fi
+
+# Update embedded boot partition with our own bootloader - this only happens if
+# we noticed a recognizable GPT structure and we are ADDING ourselves to it,
+# as opposed to replacing the entire GPT with our own structure (currently this
+# only happens for HiKey but the approach of using partitions to store firmware
+# blobs on flash is fairly common on ARM so we expect to see others as well)
+# On the other hand...
+GRUB_IMG="$(echo /efifs/EFI/BOOT/BOOT*.EFI)"
+# shellcheck disable=SC2086
+# shellcheck disable=SC2166
+if [ ${EMBED_BOOT_START:-0} -gt 0 -a ${EMBED_BOOT_SIZE:-0} -gt 0 -a -f "$GRUB_IMG" ] ; then
+  if mount "$IMGFILE /mnt -o loop,offset=$(( EMBED_BOOT_START * 512 )),sizelimit=$(( EMBED_BOOT_SIZE * 512 ))" ; then
+     # shellcheck disable=SC2010
+     FASTBOOT=$(cd /mnt/EFI/BOOT/ ; ls | grep -i '^fastboot.efi$')
+     # shellcheck disable=SC2091
+     # shellcheck disable=SC2086
+     if $(set ${FASTBOOT:-. .} ; test $# -eq 1) ; then
+        cp_with_backup "$GRUB_IMG" "/mnt/EFI/BOOT/$FASTBOOT"
+        (echo 'set root=hd0,gpt11' ; echo 'configfile /efi/boot/grub.cfg') > /tmp/grub.cfg
+        cp_with_backup /tmp/grub.cfg /mnt/EFI/BOOT/grub.cfg
+     fi
+  fi
+  umount /mnt || :
+else
+  # ...if we're NOT adding ourselves to an existing GPT - assume we own protective MBR
+  # as well and can adjust it accordingly to maximize our chances of booting on something
+  # like Raspberry Pi (which is pretty strict about how the first entry in the MBR partition
+  # table needs to look like)
+  adjust_protective_mbr
+fi
+
+# Validate the health of our creation
+sgdisk -v "$IMGFILE"

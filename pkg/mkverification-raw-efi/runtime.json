@@ -1,0 +1,24 @@
+{
+    "cgroups": [],
+    "mounts": [
+        {
+            "destination": "/containers/onboot/003-installer/rootfs",
+            "source": "/containers/onboot/003-installer/rootfs",
+            "options": [
+                "bind"
+            ]
+        }
+    ],
+    "mkdir": [],
+    "interfaces": [],
+    "bindNS": {
+        "cgroup": "",
+        "ipc": "",
+        "mnt": "",
+        "net": "",
+        "pid": "",
+        "user": "",
+        "uts": ""
+    },
+    "namespace": ""
+}
