@@ -1,0 +1,32 @@
+FROM lfedge/eve-alpine:145f062a40639b6c65efa36bed1c5614b873be52 as tools
+ENV PKGS qemu-img tar u-boot-tools coreutils dosfstools
+RUN eve-alpine-deploy.sh
+
+# hadolint ignore=DL3006
+FROM MKISO_TAG as iso
+# hadolint ignore=DL3006
+FROM IPXE_TAG as ipxe
+# hadolint ignore=DL3006
+FROM MKVERIFICATION_TAG as raw
+# we need to get rid of embedded initrd & verification.img since we will get them from outside
+RUN rm /initrd.img /verification.img
+# hadolint ignore=DL3006
+FROM MKCONF_TAG as conf
+
+COPY --from=iso / /
+COPY --from=raw / /
+COPY --from=ipxe / /
+COPY --from=tools /out/ /
+COPY verification /bits
+COPY runme.sh /
+RUN mkdir /in /out
+
+
+# These labels indicate where each component type is.
+# These must be updated if we change filenames or locations.
+# The annotations to be used are available at https://github.com/lf-edge/edge-containers/blob/master/docs/annotations.md
+LABEL org.lfedge.eci.artifact.root="/bits/rootfs.img"
+LABEL org.lfedge.eci.artifact.initrd="/bits/initrd.img"
+
+WORKDIR /bits
+ENTRYPOINT ["/runme.sh"]
