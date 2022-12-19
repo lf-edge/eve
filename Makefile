@@ -149,6 +149,8 @@ IPXE_IMG=$(INSTALLER)/ipxe.efi
 EFI_PART=$(INSTALLER)/EFI
 BOOT_PART=$(INSTALLER)/boot
 
+SBOM=$(ROOTFS).spdx.json
+
 DEVICETREE_DTB_amd64=
 DEVICETREE_DTB_arm64=$(DIST)/dtb/eve.dtb
 DEVICETREE_DTB=$(DEVICETREE_DTB_$(ZARCH))
@@ -272,7 +274,8 @@ RESCAN_DEPS=FORCE
 # set FORCE_BUILD to --force to enforce rebuild
 FORCE_BUILD=
 
-SYFT_VERSION:=v0.62.3
+SYFT_VERSION:=v0.63.0
+SYFT_IMAGE:=docker.io/anchore/syft:$(SYFT_VERSION)
 
 # we use the following block to assign correct tag to the Docker registry artifact
 ifeq ($(LINUXKIT_PKG_TARGET),push)
@@ -532,6 +535,7 @@ ssh-key: $(SSH_KEY)
 rootfs: $(ROOTFS_TAR) $(ROOTFS_IMG) current
 rootfs.tar: $(ROOTFS_TAR)
 rootfstar: $(ROOTFS_TAR)
+sbom: $(SBOM)
 live: $(LIVE_IMG) $(BIOS_IMG) current	; $(QUIET): "$@: Succeeded, LIVE_IMG=$(LIVE_IMG)"
 live-%: $(LIVE).%		; $(QUIET): "$@: Succeeded, LIVE=$(LIVE)"
 installer: $(INSTALLER_IMG)
@@ -566,6 +570,19 @@ $(ROOTFS_IMG): $(ROOTFS_TAR) | $(INSTALLER)
 	@echo "size of $@ is $$(wc -c < "$@")B"
 	@[ $$(wc -c < "$@") -gt $$(( 250 * 1024 * 1024 )) ] && \
 	        echo "ERROR: size of $@ is greater than 250MB (bigger than allocated partition)" && exit 1 || :
+	$(QUIET): $@: Succeeded
+
+$(SBOM): $(ROOTFS_TAR) | $(INSTALLER)
+	$(QUIET): $@: Begin
+	$(eval TMP_ROOTDIR := $(shell mktemp -d))
+	# this is a bit of a hack, but we need to extract the rootfs tar to a directory, and it fails if
+	# we try to extract character devices, block devices or pipes, so we just exclude the dir.
+	# when syft supports reading straight from a tar archive with duplicate entries,
+	# this all can go away, and we can read the rootfs.tar
+	# see https://github.com/anchore/syft/issues/1400
+	tar xf $< -C $(TMP_ROOTDIR) --exclude "dev/*"
+	docker run -v $(TMP_ROOTDIR):/rootdir:ro $(SYFT_IMAGE) -o spdx-json /rootdir > $@
+	rm -rf $(TMP_ROOTDIR)
 	$(QUIET): $@: Succeeded
 
 $(LIVE).raw: $(BOOT_PART) $(EFI_PART) $(ROOTFS_IMG) $(CONFIG_IMG) $(PERSIST_IMG) | $(INSTALLER)
@@ -609,7 +626,7 @@ pkg/%: eve-% FORCE
 $(RUNME) $(BUILD_YML):
 	cp pkg/eve/$(@F) $@
 
-EVE_ARTIFACTS=$(BIOS_IMG) $(EFI_PART) $(CONFIG_IMG) $(PERSIST_IMG) $(INITRD_IMG) $(INSTALLER_IMG) $(ROOTFS_IMG) fullname-rootfs $(BOOT_PART)
+EVE_ARTIFACTS=$(BIOS_IMG) $(EFI_PART) $(CONFIG_IMG) $(PERSIST_IMG) $(INITRD_IMG) $(INSTALLER_IMG) $(ROOTFS_IMG) $(SBOM) fullname-rootfs $(BOOT_PART)
 eve: $(INSTALLER) $(EVE_ARTIFACTS) current $(RUNME) $(BUILD_YML) | $(BUILD_DIR)
 	$(QUIET): "$@: Begin: EVE_REL=$(EVE_REL), HV=$(HV), LINUXKIT_PKG_TARGET=$(LINUXKIT_PKG_TARGET)"
 	cp images/*.yml $|

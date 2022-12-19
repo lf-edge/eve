@@ -168,6 +168,10 @@ __EOT__
   dump /output.net installer.net
 }
 
+do_sbom() {
+  cat /bits/*.spdx.json >&3
+}
+
 # Lets' parse global options first
 while true; do
    case "$1" in
