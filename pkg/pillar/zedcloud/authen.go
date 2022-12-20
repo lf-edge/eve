@@ -528,8 +528,6 @@ func VerifySigningCertChain(log *base.LogObject, certs []*zcert.ZCert) ([]byte, 
 			return nil, errors.New("Cert not in valid time")
 		}
 	}
-
-	log.Tracef("VerifySigningCertChain: success\n")
 	return sigCertBytes, nil
 }
 
@@ -605,8 +603,11 @@ func verifyx509TimeStamps(log *base.LogObject, realCert *x509.Certificate) bool 
 
 	// assume default will be 60 days before for Info
 	//  and 30 days for the Warning
-	var SystemConfig = configInfo{time.Hour * 24 * 60,
-		time.Hour * 24 * 30}
+	// the DaysConfig should come from an admin modifiable
+	// info table ...
+	var DaysConfig = configInfo{60, 30}
+	var SystemConfig = configInfo{time.Hour * 24 * DaysConfig.infoThreshold,
+		time.Hour * 24 * DaysConfig.warnThreshold}
 
 	var CurrCertStatus = statusInfo{allCertsAreValid}
 	// HACK end
@@ -640,7 +641,7 @@ func verifyx509TimeStamps(log *base.LogObject, realCert *x509.Certificate) bool 
 				CurrCertStatus.CertStatus = aCertIsWarn
 			}
 		default:
-			log.Errorf("%s: %v until it expires",
+			log.Tracef("%s: %v until it expires",
 				certName, validDuration)
 		}
 	} else {

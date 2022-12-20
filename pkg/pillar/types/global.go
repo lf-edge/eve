@@ -161,8 +161,8 @@ const (
 	// DiskScanMetricInterval global setting key
 	DiskScanMetricInterval GlobalSettingKey = "timer.metric.diskscan.interval"
 	// CertExpireInfo and CertExpireWarn global thresholds (in days)
-	CertExpireInfo GlobalSettingKey = "timer.metric.certinfolog"
-	CertExpireWarn GlobalSettingKey = "timer.metric.certwarnlog"
+	CertExpireInfo GlobalSettingKey = "timer.certcheck.infolog"
+	CertExpireWarn GlobalSettingKey = "timer.certcheck.warnlog"
 	// ResetIfCloudGoneTime global setting key
 	ResetIfCloudGoneTime GlobalSettingKey = "timer.reboot.no.network"
 	// FallbackIfCloudGoneTime global setting key
@@ -810,8 +810,8 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	configItemSpecMap.AddIntItem(MetricInterval, 60, 5, HourInSec)
 	// thresholds to log info then warn for x509 certificates
 	//  default is to log Info at 60 days before expiry, and Warn at 30
-	configItemSpecMap.AddIntItem(CertExpireInfo, 60*24*HourInSec, 24*HourInSec, 365*24*HourInSec)
-	configItemSpecMap.AddIntItem(CertExpireWarn, 30*24*HourInSec, 24*HourInSec, 365*24*HourInSec)
+	configItemSpecMap.AddIntItem(CertExpireInfo, 60, 1, 365)
+	configItemSpecMap.AddIntItem(CertExpireWarn, 30, 1, 365)
 	//  ? Do we need to specify frequency of logging for each of the
 	//    two levels -- that is, more frequent logging say hourly for
 	//    the Warn level ?
