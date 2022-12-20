@@ -12,6 +12,8 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -80,6 +82,7 @@ type CustomWriter struct {
 	writtenBytes        int64
 	offset              int64
 	partInd             int64
+	maxPartSize         int64
 }
 
 func (r *CustomWriter) Write(p []byte) (int, error) {
@@ -95,6 +98,13 @@ func (r *CustomWriter) WriteAt(p []byte, off int64) (int, error) {
 	}
 	r.writtenBytes += int64(n)
 	r.writerGlobalOptions.donePartsLock.Lock()
+	// it is quite unexpected but nice to check
+	if r.writtenBytes > r.maxPartSize {
+		// invalidating part
+		r.writerGlobalOptions.upSize.DoneParts.SetPartSize(r.partInd, 0)
+		r.writerGlobalOptions.donePartsLock.Unlock()
+		return 0, fmt.Errorf("written (%d) more than expected (%d)", r.writtenBytes, r.maxPartSize)
+	}
 	r.writerGlobalOptions.upSize.DoneParts.SetPartSize(r.partInd, r.writtenBytes)
 	r.writerGlobalOptions.donePartsLock.Unlock()
 	// Got the length have read (or means has uploaded), and you can construct your message
@@ -220,6 +230,7 @@ func getNeededParts(cWriterOptions *writerOptions, bname, bkey string, doneParts
 				partInd:             i,
 				offset:              S3PartSize*i + currentPartSize,
 				writtenBytes:        currentPartSize,
+				maxPartSize:         S3PartSize,
 			},
 			bname: bname,
 			bkey:  bkey,
@@ -228,6 +239,8 @@ func getNeededParts(cWriterOptions *writerOptions, bname, bkey string, doneParts
 		}
 		if i == partsCount-1 {
 			part.size = size - (partsCount-1)*S3PartSize - currentPartSize
+			// adjust maxPartSize for last part to the remaining size
+			part.cWriter.maxPartSize = size - (partsCount-1)*S3PartSize
 		}
 		if part.size > 0 {
 			needed = append(needed, part)
@@ -263,6 +276,21 @@ func (s *S3ctx) DownloadFile(fname, bname, bkey string,
 		}
 	}
 
+	// if PartSize differ from saved clean doneParts
+	// we may hit this in case of S3PartSize change or from different type of datastore
+	if doneParts.PartSize != S3PartSize {
+		// log only if parts provided
+		if len(doneParts.Parts) > 0 {
+			if s.log != nil {
+				s.log.Warnf("DownloadFile: stored PartSize (%d) is different from expected (%d), assume DownloadedParts are broken",
+					doneParts.PartSize, S3PartSize)
+			}
+		}
+		doneParts = types.DownloadedParts{
+			PartSize: S3PartSize,
+		}
+	}
+
 	if len(doneParts.Parts) > 0 {
 		fd, err = os.OpenFile(fname, os.O_RDWR, 0666)
 		if err != nil {
@@ -291,6 +319,17 @@ func (s *S3ctx) DownloadFile(fname, bname, bkey string,
 
 	ch := make(chan *partS3, S3Concurrency)
 	neededPart := getNeededParts(cWriterOpts, bname, bkey, doneParts, bsize)
+	var retryParts []string
+	for _, el := range neededPart {
+		if el.cWriter.writtenBytes > 0 {
+			retryParts = append(retryParts, strconv.FormatInt(el.cWriter.partInd, 10))
+		}
+	}
+	if len(retryParts) > 0 {
+		if s.log != nil {
+			s.log.Infof("DownloadFile: Will continue download parts: %s", strings.Join(retryParts, ","))
+		}
+	}
 	//create goroutines to download parts in parallel
 	for c := 0; c < S3Concurrency; c++ {
 		wg.Add(1)

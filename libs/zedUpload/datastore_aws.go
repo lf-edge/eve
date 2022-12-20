@@ -145,6 +145,9 @@ func (ep *AwsTransportMethod) processS3Upload(req *DronaRequest) (error, int) {
 	if req.cancelContext != nil {
 		sc = sc.WithContext(req.cancelContext)
 	}
+	if req.logger != nil {
+		sc = sc.WithLogger(req.logger)
+	}
 
 	location, err := sc.UploadFile(req.objloc, ep.bucket, req.name, false, prgChan)
 	if len(location) > 0 {
@@ -166,6 +169,9 @@ func (ep *AwsTransportMethod) processS3Download(req *DronaRequest) (error, int) 
 		if req.cancelContext != nil {
 			s = s.WithContext(req.cancelContext)
 		}
+		if req.logger != nil {
+			s = s.WithLogger(req.logger)
+		}
 		if s != nil {
 			err, length := s.GetObjectSize(ep.bucket, req.name)
 			if err == nil {
@@ -181,6 +187,9 @@ func (ep *AwsTransportMethod) processS3Download(req *DronaRequest) (error, int) 
 	}
 	if req.cancelContext != nil {
 		sc = sc.WithContext(req.cancelContext)
+	}
+	if req.logger != nil {
+		sc = sc.WithLogger(req.logger)
 	}
 	doneParts, err := sc.DownloadFile(req.objloc, ep.bucket, req.name, req.sizelimit, req.doneParts, prgChan)
 	req.doneParts = doneParts
@@ -206,6 +215,9 @@ func (ep *AwsTransportMethod) processS3DownloadByChunks(req *DronaRequest) error
 	if req.cancelContext != nil {
 		sc = sc.WithContext(req.cancelContext)
 	}
+	if req.logger != nil {
+		sc = sc.WithLogger(req.logger)
+	}
 	readCloser, size, err := sc.DownloadFileByChunks(req.objloc, ep.bucket, req.name)
 	if err != nil {
 		return err
@@ -227,6 +239,9 @@ func (ep *AwsTransportMethod) processS3Delete(req *DronaRequest) error {
 	if s3ctx != nil {
 		if req.cancelContext != nil {
 			s3ctx = s3ctx.WithContext(req.cancelContext)
+		}
+		if req.logger != nil {
+			s3ctx = s3ctx.WithLogger(req.logger)
 		}
 		err = s3ctx.DeleteObject(ep.bucket, req.name)
 	} else {
@@ -258,6 +273,9 @@ func (ep *AwsTransportMethod) processS3List(req *DronaRequest) ([]string, error,
 	if req.cancelContext != nil {
 		sc = sc.WithContext(req.cancelContext)
 	}
+	if req.logger != nil {
+		sc = sc.WithLogger(req.logger)
+	}
 
 	list, err := sc.ListImages(ep.bucket, prgChan)
 	if err != nil {
@@ -278,6 +296,9 @@ func (ep *AwsTransportMethod) processS3ObjectMetaData(req *DronaRequest) (int64,
 	}
 	if req.cancelContext != nil {
 		sc = sc.WithContext(req.cancelContext)
+	}
+	if req.logger != nil {
+		sc = sc.WithLogger(req.logger)
 	}
 
 	size, remoteFileMD5, err := sc.GetObjectMetaData(ep.bucket, req.name)
@@ -317,6 +338,9 @@ func (ep *AwsTransportMethod) processMultipartUpload(req *DronaRequest) (string,
 	if req.cancelContext != nil {
 		s3ctx = s3ctx.WithContext(req.cancelContext)
 	}
+	if req.logger != nil {
+		s3ctx = s3ctx.WithLogger(req.logger)
+	}
 	return s3ctx.UploadPart(ep.bucket, req.localName, req.Adata, req.PartID, req.UploadID)
 
 }
@@ -326,6 +350,9 @@ func (ep *AwsTransportMethod) completeMultipartUpload(req *DronaRequest) error {
 	if req.cancelContext != nil {
 		s3ctx = s3ctx.WithContext(req.cancelContext)
 	}
+	if req.logger != nil {
+		s3ctx = s3ctx.WithLogger(req.logger)
+	}
 	return s3ctx.CompleteUploadedParts(ep.bucket, req.localName, req.UploadID, req.Blocks)
 }
 
@@ -333,6 +360,9 @@ func (ep *AwsTransportMethod) generateSignedURL(req *DronaRequest) (string, erro
 	s3ctx := zedAWS.NewAwsCtx(ep.token, ep.apiKey, ep.region, ep.hClient)
 	if req.cancelContext != nil {
 		s3ctx = s3ctx.WithContext(req.cancelContext)
+	}
+	if req.logger != nil {
+		s3ctx = s3ctx.WithLogger(req.logger)
 	}
 	return s3ctx.GetSignedURL(ep.bucket, req.localName, req.Duration)
 }

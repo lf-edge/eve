@@ -95,6 +95,8 @@ type DronaRequest struct {
 
 	//downloaded parts indexes
 	doneParts types.DownloadedParts
+
+	logger types.Logger
 }
 
 // Return object local name
@@ -354,4 +356,10 @@ func (req *DronaRequest) WithDoneParts(doneParts types.DownloadedParts) *DronaRe
 // GetDoneParts returns already downloaded parts indexes
 func (req *DronaRequest) GetDoneParts() types.DownloadedParts {
 	return req.doneParts
+}
+
+// WithLogger sets logger
+func (req *DronaRequest) WithLogger(logger types.Logger) *DronaRequest {
+	req.logger = logger
+	return req
 }

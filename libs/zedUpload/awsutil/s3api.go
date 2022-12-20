@@ -15,6 +15,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/aws/aws-sdk-go/service/s3/s3manager"
+	"github.com/lf-edge/eve/libs/zedUpload/types"
 )
 
 const (
@@ -32,6 +33,7 @@ type S3ctx struct {
 	dn  *s3manager.Downloader
 	up  *s3manager.Uploader
 	ctx context.Context
+	log types.Logger
 }
 
 type S3CredProvider struct {
@@ -87,6 +89,12 @@ func NewAwsCtx(id, secret, region string, hctx *http.Client) *S3ctx {
 // WithContext can be used to pass a context e.g., for cancellation
 func (s *S3ctx) WithContext(cancelContext context.Context) *S3ctx {
 	s.ctx = cancelContext
+	return s
+}
+
+// WithLogger pass logs to logger
+func (s *S3ctx) WithLogger(logger types.Logger) *S3ctx {
+	s.log = logger
 	return s
 }
 
