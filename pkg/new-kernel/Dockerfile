@@ -1,41 +1,98 @@
 # This file must be kept as much in sync with pkg/kernel/Dockerfile as possible
-FROM lfedge/eve-alpine:145f062a40639b6c65efa36bed1c5614b873be52 as kernel-build-base
+# use the same set of packages for simplicity
+ARG BUILD_PKGS_BASE="argp-standalone automake bash bc binutils-dev bison build-base \
+                     diffutils flex git gmp-dev gnupg installkernel kmod elfutils-dev    \
+                     linux-headers libunwind-dev mpc1-dev mpfr-dev ncurses-dev findutils \
+                     openssl-dev patch rsync sed squashfs-tools tar xz xz-dev zlib-dev openssl \
+                     attr-dev autoconf file coreutils libtirpc-dev libtool util-linux-dev"
 
-ENV BUILD_PKGS \
-    argp-standalone automake bash bc binutils-dev bison build-base \
-    diffutils flex git gmp-dev gnupg installkernel kmod elfutils-dev    \
-    linux-headers libunwind-dev mpc1-dev mpfr-dev ncurses-dev findutils \
-    openssl-dev patch rsync sed squashfs-tools tar xz xz-dev zlib-dev openssl \
-    attr-dev autoconf file coreutils libtirpc-dev libtool util-linux-dev
+# we use the same image in several places
+ARG EVE_ALPINE_IMAGE=lfedge/eve-alpine:b8b32c8353e50d7131d9ddc912581d14923806b0
+
+# hadolint ignore=DL3006
+FROM ${EVE_ALPINE_IMAGE} as kernel-build-base-native
+ARG BUILD_PKGS_BASE
+RUN BUILD_PKGS="${BUILD_PKGS_BASE}" eve-alpine-deploy.sh
+
+# use build platform as a base image for cross-compilation
+# hadolint ignore=DL3006,DL3029
+FROM --platform=${BUILDPLATFORM} ${EVE_ALPINE_IMAGE} as kernel-build-base-cross
+ARG BUILD_PKGS_BASE
+RUN BUILD_PKGS="${BUILD_PKGS_BASE}" eve-alpine-deploy.sh
+
+# hadolint ignore=DL3029
+FROM --platform=${BUILDPLATFORM} lfedge/eve-cross-compilers:2a1d062fce410865e7024a83de327a68e52db26c AS cross-compilers
+
+# will use several packages from target arch and copy them to sysroot
+# hadolint ignore=DL3006
+FROM ${EVE_ALPINE_IMAGE} AS cross-compile-libs
+ENV PKGS musl-dev libgcc
 RUN eve-alpine-deploy.sh
 
+# adjust TARGET_ARCH for cross-compiler
+FROM kernel-build-base-cross AS kernel-cross-target-arm64
+ENV TARGET_ARCH=aarch64
+FROM kernel-build-base-cross AS kernel-cross-target-riscv64
+ENV TARGET_ARCH=riscv64
+
+# install cross-compile packages and libs for target
+# hadolint ignore=DL3006
+FROM kernel-cross-target-${TARGETARCH} AS kernel-cross-build-target
+ENV CROSS_COMPILE_ENV="${TARGET_ARCH}"-alpine-linux-musl-
+COPY --from=cross-compilers /packages /packages
+# hadolint ignore=DL3018
+RUN apk add --no-cache --allow-untrusted -X /packages build-base-"${TARGET_ARCH}"
+COPY --from=cross-compile-libs /out/ /usr/"${TARGET_ARCH}"-alpine-linux-musl/
+
+# support cross compile from amd64 and arm64 for now
+FROM kernel-cross-build-target AS kernel-target-arm64-build-amd64
+FROM kernel-cross-build-target AS kernel-target-riscv64-build-amd64
+FROM kernel-cross-build-target AS kernel-target-amd64-build-arm64
+FROM kernel-cross-build-target AS kernel-target-riscv64-build-arm64
+
+# use kernel-build-base-native image as a base for the rest of target and build archs
+FROM kernel-build-base-native AS kernel-target-amd64-build-amd64
+FROM kernel-build-base-native AS kernel-target-amd64-build-riscv64
+FROM kernel-build-base-native AS kernel-target-arm64-build-arm64
+FROM kernel-build-base-native AS kernel-target-arm64-build-riscv64
+FROM kernel-build-base-native AS kernel-target-riscv64-build-riscv64
+
 # set versions for arm64
-FROM kernel-build-base AS kernel-build-arm64
+# hadolint ignore=DL3006
+FROM kernel-target-${TARGETARCH}-build-${BUILDARCH} AS kernel-target-arm64
 ARG KERNEL_VERSION_arm64=5.15.46
 # this has to be specified separately because of dockerfile limitations
 ARG KERNEL_MAJOR=5
 ENV KERNEL_VERSION=${KERNEL_VERSION_arm64}
 ENV KERNEL_MAJOR=${KERNEL_MAJOR}
+ENV KERNEL_ARCH=arm64
+ENV KERNEL_DEFCONFIG=defconfig
 
 # set versions for amd64
-FROM kernel-build-base AS kernel-build-amd64
+# hadolint ignore=DL3006
+FROM kernel-target-${TARGETARCH}-build-${BUILDARCH} AS kernel-target-amd64
 ARG KERNEL_VERSION_amd64=5.15.46
 # this has to be specified separately because of dockerfile limitations
 ARG KERNEL_MAJOR=5
 ENV KERNEL_VERSION=${KERNEL_VERSION_amd64}
 ENV KERNEL_MAJOR=${KERNEL_MAJOR}
+ENV KERNEL_ARCH=x86
+ENV KERNEL_DEFCONFIG=x86_64_defconfig
 
 # set versions for riscv64
-FROM kernel-build-base AS kernel-build-riscv64
+# hadolint ignore=DL3006
+FROM kernel-target-${TARGETARCH}-build-${BUILDARCH} AS kernel-target-riscv64
 ARG KERNEL_VERSION_riscv64=5.15.46
 # this has to be specified separately because of dockerfile limitations
 ARG KERNEL_MAJOR=5
 ENV KERNEL_VERSION=${KERNEL_VERSION_riscv64}
 ENV KERNEL_MAJOR=${KERNEL_MAJOR}
+ENV KERNEL_ARCH=riscv
+ENV KERNEL_DEFCONFIG=defconfig
 
 # build for all arches
 # hadolint ignore=DL3006
-FROM kernel-build-${TARGETARCH} AS kernel-build
+FROM kernel-target-${TARGETARCH} AS kernel-build
 
 # We copy the entire directory. This copies some unneeded files, but
 # allows us to check for the existence /patches-${KERNEL_SERIES} to
@@ -69,36 +126,28 @@ RUN gpg2 -q --import keys.asc && \
 
 # Apply local patches
 WORKDIR /linux
-RUN set -e ; KERNEL_SERIES=${KERNEL_VERSION%.*}.x; \
+RUN set -e ; KERNEL_SERIES="${KERNEL_VERSION%.*}".x; \
     [ ! -d /patches-"${KERNEL_SERIES}" ] || for patch in /patches-"${KERNEL_SERIES}"/*.patch; do \
         echo "Applying $patch"; \
         patch -p1 < "$patch"; \
     done
 
 # Copy default kconfig and prepare kbuild
-RUN case $(uname -m) in \
-    x86_64) \
-        KERNEL_DEF_CONF=/linux/arch/x86/configs/x86_64_defconfig; \
-        ;; \
-    aarch64) \
-        KERNEL_DEF_CONF=/linux/arch/arm64/configs/defconfig; \
-        ;; \
-    riscv64) \
-        KERNEL_DEF_CONF=/linux/arch/riscv/configs/defconfig; \
-        ;; \
-    esac  && \
-    KERNEL_SERIES=${KERNEL_VERSION%.*}.x; \
-    cp /kernel_config-${KERNEL_SERIES}-$(uname -m) ${KERNEL_DEF_CONF}; \
+# hadolint ignore=SC2086
+RUN KERNEL_DEF_CONF="/linux/arch/${KERNEL_ARCH}/configs/${KERNEL_DEFCONFIG}"; \
+    KERNEL_SERIES="${KERNEL_VERSION%.*}".x; \
+    cp /kernel_config-"${KERNEL_SERIES}"-"${TARGET_ARCH}" "${KERNEL_DEF_CONF}"; \
     if [ -n "${EXTRA}" ]; then \
-        sed -i "s/CONFIG_LOCALVERSION=\"-linuxkit\"/CONFIG_LOCALVERSION=\"-linuxkit${EXTRA}\"/" ${KERNEL_DEF_CONF}; \
+        sed -i "s/CONFIG_LOCALVERSION=\"-linuxkit\"/CONFIG_LOCALVERSION=\"-linuxkit${EXTRA}\"/" "${KERNEL_DEF_CONF}"; \
         if [ "${EXTRA}" = "-dbg" ]; then \
-            sed -i 's/CONFIG_PANIC_ON_OOPS=y/# CONFIG_PANIC_ON_OOPS is not set/' ${KERNEL_DEF_CONF}; \
+            sed -i 's/CONFIG_PANIC_ON_OOPS=y/# CONFIG_PANIC_ON_OOPS is not set/' "${KERNEL_DEF_CONF}"; \
         fi && \
-        cat /kernel_config${EXTRA} >> ${KERNEL_DEF_CONF}; \
+        cat /kernel_config"${EXTRA}" >> "${KERNEL_DEF_CONF}"; \
     fi && \
-    cp ${KERNEL_DEF_CONF} .config && \
-    cp ${KERNEL_DEF_CONF} .config.new && \
-    make prepare
+    sed -i "s/CONFIG_CC_VERSION_TEXT=\"gcc/CONFIG_CC_VERSION_TEXT=\"${CROSS_COMPILE_ENV}gcc/" "${KERNEL_DEF_CONF}" && \
+    cp "${KERNEL_DEF_CONF}" .config && \
+    cp "${KERNEL_DEF_CONF}" .config.new && \
+    make CROSS_COMPILE="${CROSS_COMPILE_ENV}" ARCH="${KERNEL_ARCH}" prepare
 
 # Prepare built-in ZFS
 #  * ZFS on Linux
@@ -123,23 +172,24 @@ RUN set -e; \
         done \
     fi
 RUN ./autogen.sh && \
-    ./configure \
+    CROSS_COMPILE="${CROSS_COMPILE_ENV}" ARCH="${KERNEL_ARCH}" ./configure \
         --with-linux=/linux \
         --with-linux-obj=/linux \
         --with-config=kernel  \
-        --enable-linux-builtin && \
+        --enable-linux-builtin  \
+        --host="${TARGET_ARCH}"-linux-musl --build="${BUILD_ARCH}"-linux-musl && \
     ./scripts/make_gitrev.sh && \
     ./copy-builtin /linux
 
 # Verify kconfig after ZFS is prepared as built-in
 WORKDIR /linux
-RUN make defconfig && \
-    make oldconfig && \
+RUN make CROSS_COMPILE="${CROSS_COMPILE_ENV}" ARCH="${KERNEL_ARCH}" "${KERNEL_DEFCONFIG}" && \
+    make CROSS_COMPILE="${CROSS_COMPILE_ENV}" ARCH="${KERNEL_ARCH}" oldconfig && \
     diff -cw .config .config.new
 
 # Make kernel
-RUN make -j "$(getconf _NPROCESSORS_ONLN)" KCFLAGS="-fno-pie" && \
-    case $(uname -m) in \
+RUN make -j "$(getconf _NPROCESSORS_ONLN)" CROSS_COMPILE="${CROSS_COMPILE_ENV}" ARCH="${KERNEL_ARCH}" KCFLAGS="-fno-pie" && \
+    case ${TARGET_ARCH} in \
     x86_64) \
         cp arch/x86_64/boot/bzImage /out/kernel; \
         ;; \
@@ -158,7 +208,7 @@ RUN make -j "$(getconf _NPROCESSORS_ONLN)" KCFLAGS="-fno-pie" && \
     tar -cf /out/kernel-debug.tar -C /tmp $DIR
 
 # Modules
-RUN make -j "$(getconf _NPROCESSORS_ONLN)" INSTALL_MOD_PATH=/tmp/kernel-modules modules_install
+RUN make -j "$(getconf _NPROCESSORS_ONLN)" CROSS_COMPILE="${CROSS_COMPILE_ENV}" ARCH="${KERNEL_ARCH}" INSTALL_MOD_PATH=/tmp/kernel-modules modules_install
 
 # Out-of-tree, creepy modules
 WORKDIR /tmp/rtl8821CU
@@ -167,18 +217,18 @@ RUN tar -zxvf /tmp/rtl8821CU.tgz --strip-components=1 && \
     rm /tmp/rtl8821CU.tgz
 
 WORKDIR /linux
-RUN if [ "$(uname -m)" != riscv64 ]; then \
-        make -j "$(getconf _NPROCESSORS_ONLN)" -C /tmp/rtl8821CU KSRC=/linux modules && \
+RUN if [ "${TARGET_ARCH}" != riscv64 ]; then \
+        make -j "$(getconf _NPROCESSORS_ONLN)" -C /tmp/rtl8821CU KSRC=/linux CROSS_COMPILE="${CROSS_COMPILE_ENV}" ARCH="${KERNEL_ARCH}" modules && \
         install -D -p -m 644 /tmp/rtl8821CU/8821cu.ko $(echo /tmp/kernel-modules/lib/modules/*)/kernel/drivers/net/wireless/realtek/rtl8821cu/8821cu.ko ;\
     fi
 
 WORKDIR /linux
 
 # Strip at least some of the modules to conserve space
-RUN [ "$(uname -m)" = x86_64 ] || strip --strip-debug `find /tmp/kernel-modules/lib/modules -name \*.ko`
+RUN [ "${TARGET_ARCH}" = x86_64 ] || "${CROSS_COMPILE_ENV}strip" --strip-debug `find /tmp/kernel-modules/lib/modules -name \*.ko`
 
 # Device Tree Blobs
-RUN [ "$(uname -m)" = x86_64 ] || make INSTALL_DTBS_PATH=/tmp/kernel-modules/boot/dtb dtbs_install
+RUN [ "${TARGET_ARCH}" = x86_64 ] || make INSTALL_DTBS_PATH=/tmp/kernel-modules/boot/dtb CROSS_COMPILE="${CROSS_COMPILE_ENV}" ARCH="${KERNEL_ARCH}" dtbs_install
 
 # Package all the modules up
 RUN ( DVER=$(basename $(find /tmp/kernel-modules/lib/modules/ -mindepth 1 -maxdepth 1)) && \
@@ -189,7 +239,7 @@ RUN ( DVER=$(basename $(find /tmp/kernel-modules/lib/modules/ -mindepth 1 -maxde
 
 # Headers (userspace API)
 RUN mkdir -p /tmp/kernel-headers/usr && \
-    make INSTALL_HDR_PATH=/tmp/kernel-headers/usr headers_install && \
+    make INSTALL_HDR_PATH=/tmp/kernel-headers/usr CROSS_COMPILE="${CROSS_COMPILE_ENV}" ARCH="${KERNEL_ARCH}" headers_install && \
     ( cd /tmp/kernel-headers && tar cf /out/kernel-headers.tar usr )
 
 # Headers (kernel development)
