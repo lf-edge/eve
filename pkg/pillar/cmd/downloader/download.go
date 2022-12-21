@@ -128,13 +128,13 @@ func download(ctx *downloaderContext, trType zedUpload.SyncTransportType,
 	// create Request
 	req := dEndPoint.NewRequest(syncOp, filename, locFilename,
 		int64(maxsize), true, respChan)
-	req = req.WithDoneParts(downloadedParts)
 	if req == nil {
 		return "", cancel, errors.New("NewRequest failed")
 	}
-
+	req = req.WithDoneParts(downloadedParts)
 	req = req.WithCancel(context.Background())
 	defer req.Cancel()
+	req = req.WithLogger(logger)
 
 	// Tell caller where we can be cancelled
 	cancelChan := make(chan Notify, 1)
