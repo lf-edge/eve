@@ -434,10 +434,6 @@ func doDelete(ctx *downloaderContext, key string, filename string,
 
 	deletePath(filename)
 	deletePath(filename + progressFileSuffix)
-
-	status.State = types.INITIAL
-
-	publishDownloaderStatus(ctx, status)
 }
 
 // perform download of the object, by reserving storage
@@ -481,6 +477,7 @@ func handleDelete(ctx *downloaderContext, key string,
 	doDelete(ctx, key, status.Target, status)
 
 	status.PendingDelete = false
+	status.State = types.INITIAL
 	publishDownloaderStatus(ctx, status)
 
 	// Write out what we modified to DownloaderStatus aka delete
