@@ -461,7 +461,39 @@ func doDownload(ctx *downloaderContext, config types.DownloaderConfig, status *t
 	}
 	log.Tracef("Found datastore(%s) for %s", config.DatastoreID.String(), config.Name)
 
-	handleSyncOp(ctx, status.Key(), config, status, dst, receiveChan)
+	dsCtx, err := constructDatastoreContext(ctx, config.Name, config.NameIsURL, *dst)
+	if err != nil {
+		errStr := fmt.Sprintf("Will retry in %v: %s failed: %s",
+			retryTime, config.Name, err)
+		status.HandleDownloadFail(errStr, retryTime, false)
+		publishDownloaderStatus(ctx, status)
+		log.Errorf("doDownload(%s): deferred with %v", config.Name, err)
+		return
+	}
+
+	status.State = types.DOWNLOADING
+	// save the name of the Target filename to our status. In theory, this can be
+	// derived, but it is good for the status to say where it *is*, as opposed to
+	// config, which says where it *should be*
+	status.Target = config.Target
+	publishDownloaderStatus(ctx, status)
+
+	cancelled, errStr := handleSyncOp(ctx, status.Key(), config, status,
+		dst, dsCtx, receiveChan)
+
+	if errStr != "" {
+		log.Errorf("doDownload(%s): failed with %s", status.Name, errStr)
+		status.HandleDownloadFail(errStr, retryTime, cancelled)
+	} else {
+		// We do not clear any status.RetryCount, etc. The caller
+		// should look at State == DOWNLOADED to determine it is done.
+		status.ClearError()
+		status.ModTime = time.Now()
+		status.State = types.DOWNLOADED
+		status.Progress = 100 // Just in case
+		status.ClearPendingStatus()
+	}
+	publishDownloaderStatus(ctx, status)
 }
 
 func handleDelete(ctx *downloaderContext, key string,
