@@ -417,22 +417,23 @@ func handleModify(ctx *downloaderContext, key string,
 	log.Functionf("handleModify done for %s", config.Name)
 }
 
+func deletePath(path string) {
+	if _, err := os.Stat(path); err == nil {
+		log.Functionf("Deleting %s", path)
+		if err := os.RemoveAll(path); err != nil {
+			log.Errorf("Failed to remove %s: err %s",
+				path, err)
+		}
+	}
+}
+
 func doDelete(ctx *downloaderContext, key string, filename string,
 	status *types.DownloaderStatus) {
 
 	log.Functionf("doDelete(%s) for %s", status.ImageSha256, status.Name)
 
-	if _, err := os.Stat(filename); err == nil {
-		log.Functionf("Deleting %s", filename)
-		if err := os.RemoveAll(filename); err != nil {
-			log.Errorf("Failed to remove %s: err %s",
-				filename, err)
-		}
-		if err := os.RemoveAll(filename + progressFileSuffix); err != nil {
-			log.Errorf("Failed to remove %s: err %s",
-				filename, err)
-		}
-	}
+	deletePath(filename)
+	deletePath(filename + progressFileSuffix)
 
 	status.State = types.INITIAL
 
