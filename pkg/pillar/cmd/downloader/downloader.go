@@ -436,6 +436,37 @@ func doDelete(ctx *downloaderContext, key string, filename string,
 	deletePath(filename + progressFileSuffix)
 }
 
+type datastoreConfAndCtx struct {
+	id   uuid.UUID
+	conf *types.DatastoreConfig
+	ctx  *types.DatastoreContext
+}
+
+// prepareDatastoresList() - lookup datastore by its UUID and construct a context.
+//                           returns null and an error if any of the operations fail
+func prepareDatastoresList(ctx *downloaderContext, dlconf types.DownloaderConfig,
+	dsids []uuid.UUID) ([]datastoreConfAndCtx, error) {
+
+	list := make([]datastoreConfAndCtx, len(dsids))
+	for i, dsid := range dsids {
+		conf, err := utils.LookupDatastoreConfig(ctx.subDatastoreConfig, dsid)
+		if err != nil {
+			return nil, err
+		}
+		dsCtx, err := constructDatastoreContext(ctx, dlconf.Name, dlconf.NameIsURL, *conf)
+		if err != nil {
+			return []datastoreConfAndCtx{}, err
+		}
+
+		log.Tracef("Found datastore(%s) and constructed context for %s",
+			dsid.String(), dlconf.Name)
+
+		list[i] = datastoreConfAndCtx{dsid, conf, dsCtx}
+	}
+
+	return list, nil
+}
+
 // perform download of the object, by reserving storage
 func doDownload(ctx *downloaderContext, config types.DownloaderConfig, status *types.DownloaderStatus,
 	receiveChan chan<- CancelChannel) {
@@ -450,20 +481,12 @@ func doDownload(ctx *downloaderContext, config types.DownloaderConfig, status *t
 		return
 	}
 
-	dst, err := utils.LookupDatastoreConfig(ctx.subDatastoreConfig, config.DatastoreID)
-	if dst == nil {
-		errStr := fmt.Sprintf("Will retry when datastore available: %s",
-			err.Error())
-		status.HandleDownloadFail(errStr, retryTime, false)
-		publishDownloaderStatus(ctx, status)
-		log.Errorf("doDownload(%s): deferred with %v", config.Name, err)
-		return
-	}
-	log.Tracef("Found datastore(%s) for %s", config.DatastoreID.String(), config.Name)
+	//TODO: will be used the real list of IDS in the following patches
+	dsids := []uuid.UUID{config.DatastoreID}
 
-	dsCtx, err := constructDatastoreContext(ctx, config.Name, config.NameIsURL, *dst)
+	dslist, err := prepareDatastoresList(ctx, config, dsids)
 	if err != nil {
-		errStr := fmt.Sprintf("Will retry in %v: %s failed: %s",
+		errStr := fmt.Sprintf("Retry download in %v: %s failed: %s",
 			retryTime, config.Name, err)
 		status.HandleDownloadFail(errStr, retryTime, false)
 		publishDownloaderStatus(ctx, status)
@@ -479,7 +502,7 @@ func doDownload(ctx *downloaderContext, config types.DownloaderConfig, status *t
 	publishDownloaderStatus(ctx, status)
 
 	cancelled, errStr := handleSyncOp(ctx, status.Key(), config, status,
-		dst, dsCtx, receiveChan)
+		dslist[0].conf, dslist[0].ctx, receiveChan)
 
 	if errStr != "" {
 		log.Errorf("doDownload(%s): failed with %s", status.Name, errStr)
