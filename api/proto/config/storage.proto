@@ -129,7 +129,7 @@ message Drive {
 // ZInfoContentTree message
 message ContentTree {
   string uuid = 1;
-  string dsId  = 2; // UUID for DatastoreConfig
+  string dsId  = 2; // Deprecated; You need to check the ds_ids_list
   string URL = 3;   // URL to append to datastore dpath
   Format iformat = 4;
 
@@ -155,6 +155,11 @@ message ContentTree {
   // appear in the restAPI endpoint available at http://169.254.169.254. So user
   // application can read that data and treat the blob accordingly.
   string custom_meta_data = 10;
+
+  // List of DatastoreConfig UUIDs, that must have the same content. In case of
+  // network failure, the download process can fallback to the next datastore
+  // in the list.
+  repeated string ds_ids_list = 11;
 }
 
 // The protocol that the task will use to access the Volume
