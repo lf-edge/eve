@@ -52,6 +52,14 @@ func collectAndPublishStorageMetrics(ctxPtr *zfsContext) {
 			// Fill metrics for zvols
 			for _, vs := range ctxPtr.subVolumeStatus.GetAll() {
 				volumeStatus := vs.(types.VolumeStatus)
+				if volumeStatus.State < types.CREATING_VOLUME {
+					// we did not go to creating of volume, nothing to measure
+					continue
+				}
+				if !volumeStatus.UseZVolDisk(vault.ReadPersistType()) {
+					// we do not create zvol for that volumeStatus
+					continue
+				}
 				zVolMetric, err := zfs.GetZvolMetrics(volumeStatus, zfsPoolMetrics.PoolName)
 				if err != nil {
 					// It is possible that the logical volume belongs to another zpool

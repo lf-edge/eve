@@ -4,7 +4,6 @@
 package volumehandlers
 
 import (
-	zconfig "github.com/lf-edge/eve/api/go/config"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/cas"
 	"github.com/lf-edge/eve/pkg/pillar/types"
@@ -44,17 +43,6 @@ type VolumeMgr interface {
 	GetCasClient() cas.CAS
 }
 
-// useZVolDisk returns true if we should use zvol for the provided VolumeStatus
-func useZVolDisk(status *types.VolumeStatus) bool {
-	if status.IsContainer() {
-		return false
-	}
-	if status.ContentFormat == zconfig.Format_ISO {
-		return false
-	}
-	return vault.ReadPersistType() == types.PersistZFS
-}
-
 func useVhost(log *base.LogObject, volumeManager VolumeMgr) bool {
 	caps := volumeManager.GetCapabilities()
 	if caps == nil {
@@ -70,7 +58,7 @@ func GetVolumeHandler(log *base.LogObject, volumeManager VolumeMgr, status *type
 	if status.IsContainer() {
 		return &volumeHandlerContainer{common}
 	}
-	if useZVolDisk(status) {
+	if status.UseZVolDisk(vault.ReadPersistType()) {
 		return &volumeHandlerZVol{commonVolumeHandler: common, useVHost: useVhost(log, volumeManager)}
 	}
 	return &volumeHandlerFile{common}
