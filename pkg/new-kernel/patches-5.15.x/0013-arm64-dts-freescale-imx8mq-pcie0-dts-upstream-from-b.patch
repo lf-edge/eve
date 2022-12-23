@@ -1,0 +1,78 @@
+From a6db1dfaaa65f47a5f04c014c57656a803c2566d Mon Sep 17 00:00:00 2001
+From: Aleksandrov Dmitriy <goodmobiledevices@gmail.com>
+Date: Fri, 23 Dec 2022 11:32:57 +0300
+Subject: [PATCH] arm64: dts: freescale: imx8mq: pcie0 dts upstream from bsp
+
+Signed-off-by: Aleksandrov Dmitriy <goodmobiledevices@gmail.com>
+---
+ arch/arm64/boot/dts/freescale/imx8mq-evk.dts |  9 +++++++++
+ arch/arm64/boot/dts/freescale/imx8mq.dtsi    | 10 ++++++----
+ include/dt-bindings/reset/imx8mq-reset.h     |  4 +++-
+ 3 files changed, 18 insertions(+), 5 deletions(-)
+
+diff --git a/arch/arm64/boot/dts/freescale/imx8mq-evk.dts b/arch/arm64/boot/dts/freescale/imx8mq-evk.dts
+index b83df77195ec..28d2bcbc98eb 100644
+--- a/arch/arm64/boot/dts/freescale/imx8mq-evk.dts
++++ b/arch/arm64/boot/dts/freescale/imx8mq-evk.dts
+@@ -318,6 +318,15 @@ &pcie0 {
+ 		 <&clk IMX8MQ_CLK_PCIE1_PHY>,
+ 		 <&pcie0_refclk>;
+ 	clock-names = "pcie", "pcie_aux", "pcie_phy", "pcie_bus";
++	assigned-clocks = <&clk IMX8MQ_CLK_PCIE1_AUX>,
++			  <&clk IMX8MQ_CLK_PCIE1_PHY>,
++			  <&clk IMX8MQ_CLK_PCIE1_CTRL>;
++	assigned-clock-rates = <10000000>, <100000000>, <250000000>;
++	assigned-clock-parents = <&clk IMX8MQ_SYS2_PLL_50M>,
++				 <&clk IMX8MQ_SYS2_PLL_100M>,
++				 <&clk IMX8MQ_SYS2_PLL_250M>;
++	hard-wired = <1>;
++	l1ss-disabled;
+ 	vph-supply = <&vgen5_reg>;
+ 	status = "okay";
+ };
+diff --git a/arch/arm64/boot/dts/freescale/imx8mq.dtsi b/arch/arm64/boot/dts/freescale/imx8mq.dtsi
+index fd38092bb247..cc7e6c59dbdd 100644
+--- a/arch/arm64/boot/dts/freescale/imx8mq.dtsi
++++ b/arch/arm64/boot/dts/freescale/imx8mq.dtsi
+@@ -1469,8 +1469,9 @@ pcie0: pcie@33800000 {
+ 			          0x82000000 0 0x18000000 0x18000000 0 0x07f00000>; /* non-prefetchable memory */
+ 			num-lanes = <1>;
+ 			num-viewport = <4>;
+-			interrupts = <GIC_SPI 122 IRQ_TYPE_LEVEL_HIGH>;
+-			interrupt-names = "msi";
++			interrupts = <GIC_SPI 122 IRQ_TYPE_LEVEL_HIGH>,
++					<GIC_SPI 127 IRQ_TYPE_LEVEL_HIGH>; /* eDMA */
++			interrupt-names = "msi", "dma";
+ 			#interrupt-cells = <1>;
+ 			interrupt-map-mask = <0 0 0 0x7>;
+ 			interrupt-map = <0 0 0 1 &gic GIC_SPI 125 IRQ_TYPE_LEVEL_HIGH>,
+@@ -1482,8 +1483,9 @@ pcie0: pcie@33800000 {
+ 			power-domains = <&pgc_pcie>;
+ 			resets = <&src IMX8MQ_RESET_PCIEPHY>,
+ 			         <&src IMX8MQ_RESET_PCIE_CTRL_APPS_EN>,
+-			         <&src IMX8MQ_RESET_PCIE_CTRL_APPS_TURNOFF>;
+-			reset-names = "pciephy", "apps", "turnoff";
++			         <&src IMX8MQ_RESET_PCIE_CTRL_APPS_CLK_REQ>,
++				     <&src IMX8MQ_RESET_PCIE_CTRL_APPS_TURNOFF>;
++			reset-names = "pciephy", "apps", "clkreq", "turnoff";
+ 			assigned-clocks = <&clk IMX8MQ_CLK_PCIE1_CTRL>,
+ 			                  <&clk IMX8MQ_CLK_PCIE1_PHY>,
+ 			                  <&clk IMX8MQ_CLK_PCIE1_AUX>;
+diff --git a/include/dt-bindings/reset/imx8mq-reset.h b/include/dt-bindings/reset/imx8mq-reset.h
+index 705870693ec2..5d201c000bc0 100644
+--- a/include/dt-bindings/reset/imx8mq-reset.h
++++ b/include/dt-bindings/reset/imx8mq-reset.h
+@@ -61,7 +61,9 @@
+ #define IMX8MQ_RESET_SW_M4C_RST			50
+ #define IMX8MQ_RESET_SW_M4P_RST			51
+ #define IMX8MQ_RESET_M4_ENABLE			52
++#define IMX8MQ_RESET_PCIE_CTRL_APPS_CLK_REQ	53	/* i.MX8M PCIe CTL CLK REQ */
++#define IMX8MQ_RESET_PCIE2_CTRL_APPS_CLK_REQ	54	/* i.MX8M PCIe CTL CLK REQ */
+ 
+-#define IMX8MQ_RESET_NUM			53
++#define IMX8MQ_RESET_NUM			55
+ 
+ #endif
+-- 
+2.34.1
+
