@@ -1,0 +1,9 @@
+# Generated output
+*.out
+*.test
+
+# Fuzzing
+corpus/
+crashers/
+suppressions/
+netfilter-fuzz.zip
