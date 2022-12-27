@@ -102,18 +102,20 @@ func (config ContentTreeConfig) LogKey() string {
 
 // ContentTreeStatus is response from volumemgr about status of content tree
 type ContentTreeStatus struct {
-	ContentID         uuid.UUID
-	DatastoreID       uuid.UUID
-	DatastoreIDList   []uuid.UUID
-	DatastoreType     string
-	RelativeURL       string
-	Format            zconfig.Format
-	ContentSha256     string
-	MaxDownloadSize   uint64
-	GenerationCounter int64
-	DisplayName       string
-	HasResolverRef    bool
-	State             SwState
+	ContentID             uuid.UUID
+	DatastoreID           uuid.UUID
+	DatastoreIDList       []uuid.UUID
+	DatastoreTypesList    []string
+	AllDatastoresResolved bool
+	IsOCIRegistry         bool
+	RelativeURL           string
+	Format                zconfig.Format
+	ContentSha256         string
+	MaxDownloadSize       uint64
+	GenerationCounter     int64
+	DisplayName           string
+	HasResolverRef        bool
+	State                 SwState
 	// XXX RefCount not needed?
 	// RefCount                uint
 	// LastRefCountChangeTime  time.Time
@@ -143,14 +145,6 @@ func (status ContentTreeStatus) ResolveKey() string {
 // IsContainer will return true if content tree is of container type
 func (status ContentTreeStatus) IsContainer() bool {
 	if status.Format == zconfig.Format_CONTAINER {
-		return true
-	}
-	return false
-}
-
-// IsOCIRegistry will return true if datastore is an OCI registry
-func (status ContentTreeStatus) IsOCIRegistry() bool {
-	if status.DatastoreType == zconfig.DsType_DsContainerRegistry.String() {
 		return true
 	}
 	return false
