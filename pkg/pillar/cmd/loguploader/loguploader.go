@@ -763,10 +763,13 @@ func sendToCloud(ctx *loguploaderContext, data []byte, iter int, fName string, f
 	// otherwise have to retry the same file later:
 	//  - if resp is nil, or it's 'StatusServiceUnavailable', mark as serviceUnavailabe
 	//  - if resp is 4xx, the file maybe moved to 'failtosend' directory later
-	resp, contents, _, err := zedcloud.SendOnAllIntf(ctxWork, ctx.zedcloudCtx, logsURL, size, buf, iter, true)
-	if resp != nil {
-		if resp.StatusCode == http.StatusOK ||
-			resp.StatusCode == http.StatusCreated {
+	const bailOnHTTPErr = false
+	const withNetTrace = false
+	rv, err := zedcloud.SendOnAllIntf(
+		ctxWork, ctx.zedcloudCtx, logsURL, size, buf, iter, bailOnHTTPErr, withNetTrace)
+	if rv.HTTPResp != nil {
+		if rv.HTTPResp.StatusCode == http.StatusOK ||
+			rv.HTTPResp.StatusCode == http.StatusCreated {
 			latency := time.Since(startTime).Nanoseconds() / int64(time.Millisecond)
 			if ctx.metrics.Latency.MinUploadMsec == 0 || ctx.metrics.Latency.MinUploadMsec > uint32(latency) {
 				ctx.metrics.Latency.MinUploadMsec = uint32(latency)
@@ -784,7 +787,7 @@ func sendToCloud(ctx *loguploaderContext, data []byte, iter int, fName string, f
 				ctx.metrics.AppMetrics.NumGZipFilesSent++
 				ctx.metrics.AppMetrics.LastGZipFileSendTime = startTime
 			} else {
-				updateserverload(ctx, contents)
+				updateserverload(ctx, rv.RespContents)
 				ctx.metrics.DevMetrics.RecentUploadTimestamp = filetime
 				ctx.metrics.DevMetrics.NumGZipFilesSent++
 				ctx.metrics.DevMetrics.LastGZipFileSendTime = startTime
@@ -795,13 +798,13 @@ func sendToCloud(ctx *loguploaderContext, data []byte, iter int, fName string, f
 
 			ctx.metrics.TotalBytesUpload += uint64(size)
 			log.Tracef("sendToCloud: sent ok, file time %v, latency %d, content %s",
-				filetime, latency, string(contents))
+				filetime, latency, string(rv.RespContents))
 		} else {
-			if resp.StatusCode == http.StatusServiceUnavailable { // status code 503
+			if rv.HTTPResp.StatusCode == http.StatusServiceUnavailable { // status code 503
 				serviceUnavailable = true
-			} else if isResp4xx(resp.StatusCode) {
+			} else if isResp4xx(rv.HTTPResp.StatusCode) {
 				// status code 429
-				if resp.StatusCode == http.StatusTooManyRequests {
+				if rv.HTTPResp.StatusCode == http.StatusTooManyRequests {
 					lastBackOff := ctx.metrics.LastTooManyReqTime
 					ctx.metrics.LastTooManyReqTime = time.Now()
 					ctx.metrics.NumTooManyRequest++
@@ -829,12 +832,12 @@ func sendToCloud(ctx *loguploaderContext, data []byte, iter int, fName string, f
 				handle4xxlogfile(ctx, fName, isApp)
 			}
 			sentFailed = true
-			log.Tracef("sendToCloud: sent failed, content %s", string(contents))
+			log.Tracef("sendToCloud: sent failed, content %s", string(rv.RespContents))
 		}
 	} else {
 		serviceUnavailable = true
 		sentFailed = true
-		log.Tracef("sendToCloud: sent failed no resp, content %s", string(contents))
+		log.Tracef("sendToCloud: sent failed no resp, content %s", string(rv.RespContents))
 	}
 	if sentFailed {
 		if isApp {

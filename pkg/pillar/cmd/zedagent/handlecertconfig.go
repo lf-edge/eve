@@ -206,10 +206,12 @@ func getCertsFromController(ctx *zedagentContext) bool {
 	ctxWork, cancel := zedcloud.GetContextForAllIntfFunctions(zedcloudCtx)
 	defer cancel()
 
-	resp, contents, senderStatus, err := zedcloud.SendOnAllIntf(ctxWork, zedcloudCtx,
-		certURL, 0, nil, 0, false)
+	const bailOnHTTPErr = false
+	const withNetTracing = false
+	rv, err := zedcloud.SendOnAllIntf(ctxWork, zedcloudCtx, certURL, 0, nil, 0,
+		bailOnHTTPErr, withNetTracing)
 	if err != nil {
-		switch senderStatus {
+		switch rv.Status {
 		case types.SenderStatusUpgrade:
 			log.Functionf("getCertsFromController: Controller upgrade in progress")
 		case types.SenderStatusRefused:
@@ -224,22 +226,21 @@ func getCertsFromController(ctx *zedagentContext) bool {
 		return false
 	}
 
-	switch resp.StatusCode {
+	switch rv.HTTPResp.StatusCode {
 	case http.StatusOK:
-		log.Functionf("getCertsFromController: status %s", resp.Status)
+		log.Functionf("getCertsFromController: status %d", rv.Status)
 	default:
 		log.Errorf("getCertsFromController: failed, statuscode %d %s",
-			resp.StatusCode, http.StatusText(resp.StatusCode))
+			rv.HTTPResp.StatusCode, http.StatusText(rv.HTTPResp.StatusCode))
 		return false
 	}
 
-	if err := zedcloud.ValidateProtoContentType(certURL, resp); err != nil {
+	if err := zedcloud.ValidateProtoContentType(certURL, rv.HTTPResp); err != nil {
 		log.Errorf("getCertsFromController: resp header error")
 		return false
 	}
-	if len(contents) > 0 {
-		contents, senderStatus, err = zedcloud.RemoveAndVerifyAuthContainer(zedcloudCtx,
-			certURL, contents, true, senderStatus)
+	if len(rv.RespContents) > 0 {
+		err = zedcloud.RemoveAndVerifyAuthContainer(zedcloudCtx, &rv, true)
 		if err != nil {
 			log.Errorf("RemoveAndVerifyAuthContainer failed: %s", err)
 			return false
@@ -247,7 +248,7 @@ func getCertsFromController(ctx *zedagentContext) bool {
 	}
 
 	// validate the certificate message payload
-	certBytes, ret := zedcloud.VerifyProtoSigningCertChain(log, contents)
+	certBytes, ret := zedcloud.VerifyProtoSigningCertChain(log, rv.RespContents)
 	if ret != nil {
 		log.Errorf("getCertsFromController: verify err %v", ret)
 		return false
@@ -261,7 +262,7 @@ func getCertsFromController(ctx *zedagentContext) bool {
 	}
 
 	// manage the certificates through pubsub
-	parseControllerCerts(ctx, contents)
+	parseControllerCerts(ctx, rv.RespContents)
 
 	log.Functionf("getCertsFromController: success")
 	return true
@@ -377,7 +378,7 @@ func sendAttestReqProtobuf(attestReq *attest.ZAttestReq, iteration int) {
 	//If there are no failures and defers we'll send this message,
 	//but if there is a queue we'll retry sending the highest priority message.
 	zedcloud.SetDeferred(zedcloudCtx, deferKey, buf, size, attestURL,
-		false, attestReq.ReqType)
+		false, false, attestReq.ReqType)
 	zedcloud.HandleDeferred(zedcloudCtx, time.Now(), 0, true)
 }
 

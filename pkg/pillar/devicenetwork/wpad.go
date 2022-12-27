@@ -108,13 +108,14 @@ func getPacFile(log *base.LogObject, url string, dns *types.DeviceNetworkStatus,
 	// Avoid using a proxy to fetch the wpad.dat; 15 second timeout
 	const allowProxy = false
 	const useOnboard = false
-	resp, contents, _, err := zedcloud.SendOnIntf(
+	const withNetTracing = false
+	rv, err := zedcloud.SendOnIntf(
 		context.Background(), &zedcloudCtx, url, ifname, 0, nil,
-		allowProxy, useOnboard, false)
+		allowProxy, useOnboard, withNetTracing, false)
 	if err != nil {
 		return "", err
 	}
-	contentType := resp.Header.Get("Content-Type")
+	contentType := rv.HTTPResp.Header.Get("Content-Type")
 	if contentType == "" {
 		errStr := fmt.Sprintf("%s no content-type\n", url)
 		return "", errors.New(errStr)
@@ -127,8 +128,8 @@ func getPacFile(log *base.LogObject, url string, dns *types.DeviceNetworkStatus,
 	switch mimeType {
 	case "application/x-ns-proxy-autoconfig":
 		log.Functionf("getPacFile(%s): fetched from URL %s: %s\n",
-			ifname, url, string(contents))
-		encoded := base64.StdEncoding.EncodeToString(contents)
+			ifname, url, string(rv.RespContents))
+		encoded := base64.StdEncoding.EncodeToString(rv.RespContents)
 		return encoded, nil
 	default:
 		errStr := fmt.Sprintf("Incorrect mime-type %s from %s",

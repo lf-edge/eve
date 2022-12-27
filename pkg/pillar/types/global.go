@@ -12,12 +12,12 @@ import (
 	"github.com/sirupsen/logrus" // OK for logrus.Fatal
 )
 
-// SenderResult - Enum name for return extra sender results from SendOnAllIntf
-type SenderResult uint8
+// SenderStatus - Enum to further clarify the reason for failed SendOnAllIntf/SendOnIntf
+type SenderStatus uint8
 
 // Enum of http extra status for 'rtf'
 const (
-	SenderStatusNone                      SenderResult = iota
+	SenderStatusNone                      SenderStatus = iota
 	SenderStatusRefused                                // ECNNREFUSED
 	SenderStatusUpgrade                                // 503 indicating controller upgrade in progress
 	SenderStatusCertInvalid                            // Server cert expired or NotBefore; device might have wrong time
@@ -223,6 +223,14 @@ const (
 
 	// XXX temp for testing edge-view
 	EdgeViewToken GlobalSettingKey = "edgeview.authen.jwt"
+
+	// NetDumpEnable : enable publishing of network diagnostics (as tgz archives to /persist/netdump).
+	NetDumpEnable GlobalSettingKey = "netdump.enable"
+	// NetDumpTopicPubInterval : how frequently (in seconds) can be netdumps of the same topic published.
+	NetDumpTopicPubInterval GlobalSettingKey = "netdump.topic.publish.interval"
+	// NetDumpTopicMaxCount : maximum number of netdumps that can be published (persisted)
+	// for each topic. The oldest netdump is unpublished should a new netdump exceed the limit.
+	NetDumpTopicMaxCount GlobalSettingKey = "netdump.topic.maxcount"
 )
 
 // AgentSettingKey - keys for per-agent settings
@@ -807,6 +815,11 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	// XXX temp edgeview setting
 	configItemSpecMap.AddStringItem(EdgeViewToken, "", blankValidator)
 
+	// Add NetDump settings
+	configItemSpecMap.AddBoolItem(NetDumpEnable, true)
+	// Default NetDumpTopicPubInterval is increased to one day after onboarding.
+	configItemSpecMap.AddIntItem(NetDumpTopicPubInterval, HourInSec, 60, 0xFFFFFFFF)
+	configItemSpecMap.AddIntItem(NetDumpTopicMaxCount, 10, 1, 0xFFFFFFFF)
 	return configItemSpecMap
 }
 

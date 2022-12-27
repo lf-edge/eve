@@ -147,13 +147,14 @@ func publishLocationToController(locInfo *info.ZInfoLocation, iteration int) {
 	size := int64(proto.Size(infoMsg))
 
 	const bailOnHTTPErr = false
+	const withNetTrace = false
 	ctxWork, cancel := zedcloud.GetContextForAllIntfFunctions(zedcloudCtx)
 	defer cancel()
-	_, _, rtf, err := zedcloud.SendOnAllIntf(ctxWork, zedcloudCtx, infoURL,
-		size, buf, iteration, bailOnHTTPErr)
+	rv, err := zedcloud.SendOnAllIntf(ctxWork, zedcloudCtx, infoURL,
+		size, buf, iteration, bailOnHTTPErr, withNetTrace)
 	if err != nil {
 		// Hopefully next timeout will be more successful
-		log.Errorf("publishLocationToController: failed (status %d): %v", rtf, err)
+		log.Errorf("publishLocationToController: failed (status %d): %v", rv.Status, err)
 		return
 	}
 }

@@ -195,6 +195,9 @@ func TestNewConfigItemSpecMap(t *testing.T) {
 		DisableDHCPAllOnesNetMask,
 		ProcessCloudInitMultiPart,
 		EdgeViewToken,
+		NetDumpEnable,
+		NetDumpTopicMaxCount,
+		NetDumpTopicPubInterval,
 	}
 	if len(specMap.GlobalSettings) != len(gsKeys) {
 		t.Errorf("GlobalSettings has more (%d) than expected keys (%d)",

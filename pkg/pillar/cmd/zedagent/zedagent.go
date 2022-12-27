@@ -41,6 +41,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
+	"github.com/lf-edge/eve/pkg/pillar/netdump"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
@@ -213,6 +214,12 @@ type zedagentContext struct {
 	validatePtr *bool
 	fatalPtr    *bool
 	hangPtr     *bool
+
+	// Netdump
+	netDumper            *netdump.NetDumper // nil if netdump is disabled
+	netdumpInterval      time.Duration
+	lastConfigNetdumpPub time.Time // last call to publishConfigNetdump
+	lastInfoNetdumpPub   time.Time // last call to publishInfoNetdump
 }
 
 // AddAgentSpecificCLIFlags adds CLI options
@@ -2160,6 +2167,35 @@ func handleGlobalConfigImpl(ctxArg interface{}, key string,
 		ctx.GCInitialized = true
 		ctx.gcpMaintenanceMode = gcp.GlobalValueTriState(types.MaintenanceMode)
 		mergeMaintenanceMode(ctx)
+		// (Re-)Initialize netdump
+		netDumper := ctx.netDumper
+		netdumpEnabled := gcp.GlobalValueBool(types.NetDumpEnable)
+		if netdumpEnabled {
+			if netDumper == nil {
+				netDumper = &netdump.NetDumper{}
+				// Determine when was the last time zedagent published netdump
+				// for /config and /info.
+				var err error
+				ctx.lastConfigNetdumpPub, err = netDumper.LastPublishAt(
+					netDumpConfigOKTopic, netDumpConfigFailTopic)
+				if err != nil {
+					log.Warn(err)
+				}
+				ctx.lastInfoNetdumpPub, err = netDumper.LastPublishAt(
+					netDumpInfoOKTopic, netDumpInfoFailTopic)
+				if err != nil {
+					log.Warn(err)
+				}
+			}
+			ctx.netdumpInterval = time.Second *
+				time.Duration(gcp.GlobalValueInt(types.NetDumpTopicPubInterval))
+			maxCount := gcp.GlobalValueInt(types.NetDumpTopicMaxCount)
+			netDumper.MaxDumpsPerTopic = int(maxCount)
+		} else {
+			netDumper = nil
+		}
+		// Assign at the end to avoid race condition with configTimerTask.
+		ctx.netDumper = netDumper
 	}
 
 	log.Functionf("handleGlobalConfigImpl done for %s", key)
@@ -2313,7 +2349,14 @@ func handleNodeAgentStatusDelete(ctxArg interface{}, key string,
 
 func getDeferredSentHandlerFunction(ctx *zedagentContext) *zedcloud.SentHandlerFunction {
 	var function zedcloud.SentHandlerFunction
-	function = func(itemType interface{}, data *bytes.Buffer, result types.SenderResult) {
+	function = func(itemType interface{}, data *bytes.Buffer, result types.SenderStatus, traces []netdump.TracedNetRequest) {
+		if el, ok := itemType.(info.ZInfoTypes); ok && len(traces) > 0 {
+			for i := range traces {
+				reqName := traces[i].RequestName
+				traces[i].RequestName = el.String() + "-" + reqName
+			}
+			publishInfoNetdump(ctx, result, traces)
+		}
 		if result == types.SenderStatusDebug {
 			// Debug stuff
 			if el, ok := itemType.(info.ZInfoTypes); ok {

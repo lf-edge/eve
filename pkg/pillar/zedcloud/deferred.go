@@ -7,12 +7,13 @@ package zedcloud
 
 import (
 	"bytes"
-	"github.com/lf-edge/eve/pkg/pillar/types"
 	"sync"
 	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
+	"github.com/lf-edge/eve/pkg/pillar/netdump"
+	"github.com/lf-edge/eve/pkg/pillar/types"
 )
 
 // Example usage:
@@ -27,12 +28,13 @@ import (
 // or AddDeferred to build a queue for each key
 
 type deferredItem struct {
-	itemType      interface{}
-	key           string
-	buf           *bytes.Buffer
-	size          int64
-	url           string
-	bailOnHTTPErr bool // Return 4xx and 5xx without trying other interfaces
+	itemType       interface{}
+	key            string
+	buf            *bytes.Buffer
+	size           int64
+	url            string
+	bailOnHTTPErr  bool // Return 4xx and 5xx without trying other interfaces
+	withNetTracing bool
 }
 
 const maxTimeToHandleDeferred = time.Minute
@@ -55,7 +57,9 @@ type TypePriorityCheckFunction func(itemType interface{}) bool
 
 // SentHandlerFunction allow doing something with data if it was handled
 // result indicates sending result
-type SentHandlerFunction func(itemType interface{}, data *bytes.Buffer, result types.SenderResult)
+type SentHandlerFunction func(
+	itemType interface{}, data *bytes.Buffer, result types.SenderStatus,
+	traces []netdump.TracedNetRequest)
 
 // GetDeferredChan creates and returns a channel to the caller
 // We always keep a flextimer running so that we can return
@@ -121,32 +125,31 @@ func (ctx *DeferredContext) handleDeferred(log *base.LogObject, event time.Time,
 			}
 
 			//SenderStatusNone indicates no problems
-			resp, _, result, err := SendOnAllIntf(ctxWork, ctx.zedcloudCtx, item.url,
-				item.size, item.buf, ctx.iteration, item.bailOnHTTPErr)
+			rv, err := SendOnAllIntf(ctxWork, ctx.zedcloudCtx, item.url,
+				item.size, item.buf, ctx.iteration, item.bailOnHTTPErr, item.withNetTracing)
 			// We check StatusCode before err since we do not want
 			// to exit the loop just because some message is rejected
 			// by the controller.
-			if item.bailOnHTTPErr && resp != nil &&
-				resp.StatusCode >= 400 && resp.StatusCode < 600 {
+			if item.bailOnHTTPErr && rv.HTTPResp != nil &&
+				rv.HTTPResp.StatusCode >= 400 && rv.HTTPResp.StatusCode < 600 {
 				log.Functionf("handleDeferred: for %s ignore code %d",
-					key, resp.StatusCode)
+					key, rv.HTTPResp.StatusCode)
 			} else if err != nil {
 				log.Functionf("handleDeferred: for %s status %d failed %s",
-					key, result, err)
+					key, rv.Status, err)
 				exit = true
-				// Make sure we pass a non-zero result
-				// to the sentHandler.
-				if result == types.SenderStatusNone {
-					result = types.SenderStatusFailed
+				// Make sure we pass a non-zero result to the sentHandler.
+				if rv.Status == types.SenderStatusNone {
+					rv.Status = types.SenderStatusFailed
 				}
-			} else if result != types.SenderStatusNone {
+			} else if rv.Status != types.SenderStatusNone {
 				log.Functionf("handleDeferred: for %s received unexpected status %d",
-					key, result)
+					key, rv.Status)
 				exit = true
 			}
 			if ctx.sentHandler != nil {
 				f := *ctx.sentHandler
-				f(item.itemType, item.buf, result)
+				f(item.itemType, item.buf, rv.Status, rv.TracedReqs)
 			}
 
 			//try with another interface next time
@@ -205,7 +208,7 @@ func (ctx *DeferredContext) handleDeferred(log *base.LogObject, event time.Time,
 	if ctx.sentHandler != nil {
 		for _, item := range ctx.deferredItems {
 			f := *ctx.sentHandler
-			f(item.itemType, item.buf, types.SenderStatusDebug)
+			f(item.itemType, item.buf, types.SenderStatusDebug, nil)
 		}
 	}
 	return false
@@ -218,13 +221,15 @@ func (ctx *DeferredContext) handleDeferred(log *base.LogObject, event time.Time,
 //
 //	and object type
 func SetDeferred(zedcloudCtx *ZedCloudContext, key string, buf *bytes.Buffer,
-	size int64, url string, bailOnHTTPErr bool, itemType interface{}) {
+	size int64, url string, bailOnHTTPErr, withNetTracing bool, itemType interface{}) {
 
-	zedcloudCtx.deferredCtx.setDeferred(zedcloudCtx, key, buf, size, url, bailOnHTTPErr, itemType)
+	zedcloudCtx.deferredCtx.setDeferred(zedcloudCtx, key, buf, size, url, bailOnHTTPErr,
+		withNetTracing, itemType)
 }
 
 func (ctx *DeferredContext) setDeferred(zedcloudCtx *ZedCloudContext,
-	key string, buf *bytes.Buffer, size int64, url string, bailOnHTTPErr bool, itemType interface{}) {
+	key string, buf *bytes.Buffer, size int64, url string, bailOnHTTPErr,
+	withNetTracing bool, itemType interface{}) {
 	ctx.lock.Lock()
 	defer ctx.lock.Unlock()
 
@@ -235,12 +240,13 @@ func (ctx *DeferredContext) setDeferred(zedcloudCtx *ZedCloudContext,
 		startTimer(log, ctx)
 	}
 	item := deferredItem{
-		key:           key,
-		itemType:      itemType,
-		buf:           buf,
-		size:          size,
-		url:           url,
-		bailOnHTTPErr: bailOnHTTPErr,
+		key:            key,
+		itemType:       itemType,
+		buf:            buf,
+		size:           size,
+		url:            url,
+		bailOnHTTPErr:  bailOnHTTPErr,
+		withNetTracing: withNetTracing,
 	}
 	found := false
 	ind := 0

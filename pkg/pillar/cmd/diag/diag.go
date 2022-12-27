@@ -41,8 +41,9 @@ const (
 	agentName  = "diag"
 	maxRetries = 5
 	// Time limits for event loop handlers
-	errorTime   = 3 * time.Minute
-	warningTime = 40 * time.Second
+	errorTime      = 3 * time.Minute
+	warningTime    = 40 * time.Second
+	withNetTracing = false
 )
 
 // State passed to handlers
@@ -1049,10 +1050,10 @@ func myGet(ctx *diagContext, reqURL string, ifname string,
 	}
 	const allowProxy = true
 	// No verification of AuthContainer for this GET
-	resp, contents, senderStatus, err := zedcloud.SendOnIntf(context.Background(), zedcloudCtx,
-		reqURL, ifname, 0, nil, allowProxy, ctx.usingOnboardCert, false)
+	rv, err := zedcloud.SendOnIntf(context.Background(), zedcloudCtx, reqURL, ifname,
+		0, nil, allowProxy, ctx.usingOnboardCert, withNetTracing, false)
 	if err != nil {
-		switch senderStatus {
+		switch rv.Status {
 		case types.SenderStatusUpgrade:
 			fmt.Fprintf(outfile, "ERROR: %s: get %s Controller upgrade in progress\n",
 				ifname, reqURL)
@@ -1075,25 +1076,25 @@ func myGet(ctx *diagContext, reqURL string, ifname string,
 		return false, nil, nil
 	}
 
-	switch resp.StatusCode {
+	switch rv.HTTPResp.StatusCode {
 	case http.StatusOK:
 		fmt.Fprintf(outfile, "INFO: %s: %s StatusOK\n", ifname, reqURL)
-		return true, resp, contents
+		return true, rv.HTTPResp, rv.RespContents
 	case http.StatusNotModified:
 		fmt.Fprintf(outfile, "INFO: %s: %s StatusNotModified\n", ifname, reqURL)
-		return true, resp, contents
+		return true, rv.HTTPResp, rv.RespContents
 	default:
 		fmt.Fprintf(outfile, "ERROR: %s: %s statuscode %d %s\n",
-			ifname, reqURL, resp.StatusCode,
-			http.StatusText(resp.StatusCode))
+			ifname, reqURL, rv.HTTPResp.StatusCode,
+			http.StatusText(rv.HTTPResp.StatusCode))
 		fmt.Fprintf(outfile, "ERROR: %s: Received %s\n",
-			ifname, string(contents))
+			ifname, string(rv.RespContents))
 		return false, nil, nil
 	}
 }
 
 func myPost(ctx *diagContext, reqURL string, ifname string,
-	retryCount int, reqlen int64, b *bytes.Buffer) (bool, *http.Response, types.SenderResult, []byte) {
+	retryCount int, reqlen int64, b *bytes.Buffer) (bool, *http.Response, types.SenderStatus, []byte) {
 
 	zedcloudCtx := ctx.zedcloudCtx
 	var preqURL string
@@ -1113,10 +1114,10 @@ func myPost(ctx *diagContext, reqURL string, ifname string,
 			ifname, proxyURL.String(), reqURL)
 	}
 	const allowProxy = true
-	resp, contents, senderStatus, err := zedcloud.SendOnIntf(context.Background(), zedcloudCtx,
-		reqURL, ifname, reqlen, b, allowProxy, ctx.usingOnboardCert, false)
+	rv, err := zedcloud.SendOnIntf(context.Background(), zedcloudCtx,
+		reqURL, ifname, reqlen, b, allowProxy, ctx.usingOnboardCert, withNetTracing, false)
 	if err != nil {
-		switch senderStatus {
+		switch rv.Status {
 		case types.SenderStatusUpgrade:
 			fmt.Fprintf(outfile, "ERROR: %s: post %s Controller upgrade in progress\n",
 				ifname, reqURL)
@@ -1133,10 +1134,10 @@ func myPost(ctx *diagContext, reqURL string, ifname string,
 			fmt.Fprintf(outfile, "ERROR: %s: post %s failed: %s\n",
 				ifname, reqURL, err)
 		}
-		return false, nil, senderStatus, nil
+		return false, nil, rv.Status, nil
 	}
 
-	switch resp.StatusCode {
+	switch rv.HTTPResp.StatusCode {
 	case http.StatusOK:
 		fmt.Fprintf(outfile, "INFO: %s: %s StatusOK\n", ifname, reqURL)
 	case http.StatusCreated:
@@ -1145,22 +1146,21 @@ func myPost(ctx *diagContext, reqURL string, ifname string,
 		fmt.Fprintf(outfile, "INFO: %s: %s StatusNotModified\n", ifname, reqURL)
 	default:
 		fmt.Fprintf(outfile, "ERROR: %s: %s statuscode %d %s\n",
-			ifname, reqURL, resp.StatusCode,
-			http.StatusText(resp.StatusCode))
+			ifname, reqURL, rv.HTTPResp.StatusCode,
+			http.StatusText(rv.HTTPResp.StatusCode))
 		fmt.Fprintf(outfile, "ERROR: %s: Received %s\n",
-			ifname, string(contents))
-		return false, nil, senderStatus, nil
+			ifname, string(rv.RespContents))
+		return false, nil, rv.Status, nil
 	}
-	if len(contents) > 0 {
-		contents, senderStatus, err = zedcloud.RemoveAndVerifyAuthContainer(zedcloudCtx,
-			reqURL, contents, false, senderStatus)
+	if len(rv.RespContents) > 0 {
+		err = zedcloud.RemoveAndVerifyAuthContainer(zedcloudCtx, &rv, false)
 		if err != nil {
 			fmt.Fprintf(outfile, "ERROR: %s: %s RemoveAndVerifyAuthContainer  %s\n",
 				ifname, reqURL, err)
-			return false, nil, senderStatus, nil
+			return false, nil, rv.Status, nil
 		}
 	}
-	return true, resp, senderStatus, contents
+	return true, rv.HTTPResp, rv.Status, rv.RespContents
 }
 
 func handleGlobalConfigCreate(ctxArg interface{}, key string,

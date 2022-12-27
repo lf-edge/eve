@@ -17,9 +17,11 @@ import (
 	"time"
 
 	zconfig "github.com/lf-edge/eve/api/go/config"
+	"github.com/lf-edge/eve/libs/nettrace"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	"github.com/lf-edge/eve/pkg/pillar/hardware"
+	"github.com/lf-edge/eve/pkg/pillar/netdump"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
@@ -28,6 +30,13 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 	uuid "github.com/satori/go.uuid"
 	"google.golang.org/protobuf/proto"
+)
+
+const (
+	// Topic for zedagent netdumps of successful config retrievals.
+	netDumpConfigOKTopic = agentName + "-config-ok"
+	// Topic for zedagent netdumps of failed config retrievals.
+	netDumpConfigFailTopic = agentName + "-config-fail"
 )
 
 // This is set once at init time and not changed
@@ -311,6 +320,20 @@ func initZedcloudContext(networkSendTimeout uint32, agentMetrics *zedcloud.Agent
 		Serial:           hardware.GetProductSerial(log),
 		SoftSerial:       hardware.GetSoftSerial(log),
 		AgentName:        agentName,
+		// Enable all net traces but packet capture, which is already covered
+		// by NIM (for the ping request).
+		NetTraceOpts: []nettrace.TraceOpt{
+			&nettrace.WithLogging{
+				CustomLogger: &base.LogrusWrapper{Log: log},
+			},
+			&nettrace.WithConntrack{},
+			&nettrace.WithSockTrace{},
+			&nettrace.WithDNSQueryTrace{},
+			&nettrace.WithHTTPReqTrace{
+				// Hide secrets stored inside values of header fields.
+				HeaderFields: nettrace.HdrFieldsOptValueLenOnly,
+			},
+		},
 	})
 
 	log.Functionf("Configure Get Device Serial %s, Soft Serial %s, Use V2 API %v", zedcloudCtx.DevSerial,
@@ -331,7 +354,8 @@ func configTimerTask(getconfigCtx *getconfigContext, handleChannel chan interfac
 	ctx := getconfigCtx.zedagentCtx
 	configUrl := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API, devUUID, "config")
 	iteration := 0
-	retVal := getLatestConfig(getconfigCtx, configUrl, iteration)
+	withNetTracing := traceNextConfigReq(ctx)
+	retVal, tracedReqs := getLatestConfig(getconfigCtx, configUrl, iteration, withNetTracing)
 	configProcessingSkipFlag := retVal == skipConfig
 	if configProcessingSkipFlag != getconfigCtx.configProcessingSkipFlag {
 		getconfigCtx.configProcessingSkipFlag = configProcessingSkipFlag
@@ -339,6 +363,9 @@ func configTimerTask(getconfigCtx *getconfigContext, handleChannel chan interfac
 	}
 	getconfigCtx.localServerMap.upToDate = false
 	publishZedAgentStatus(getconfigCtx)
+	if withNetTracing {
+		publishConfigNetdump(ctx, retVal, tracedReqs)
+	}
 
 	configInterval := ctx.globalConfig.GlobalValueInt(types.ConfigInterval)
 	interval := time.Duration(configInterval) * time.Second
@@ -371,8 +398,10 @@ func configTimerTask(getconfigCtx *getconfigContext, handleChannel chan interfac
 			// In case devUUID changed we re-generate
 			configUrl = zedcloud.URLPathString(serverNameAndPort,
 				zedcloudCtx.V2API, devUUID, "config")
-			retVal := getLatestConfig(getconfigCtx, configUrl, iteration)
-			configProcessingSkipFlag := retVal == skipConfig
+			withNetTracing = traceNextConfigReq(ctx)
+			retVal, tracedReqs = getLatestConfig(
+				getconfigCtx, configUrl, iteration, withNetTracing)
+			configProcessingSkipFlag = retVal == skipConfig
 			if configProcessingSkipFlag != getconfigCtx.configProcessingSkipFlag {
 				getconfigCtx.configProcessingSkipFlag = configProcessingSkipFlag
 				triggerPublishDevInfo(ctx)
@@ -381,6 +410,9 @@ func configTimerTask(getconfigCtx *getconfigContext, handleChannel chan interfac
 			ctx.ps.CheckMaxTimeTopic(wdName, "getLastestConfig", start,
 				warningTime, errorTime)
 			publishZedAgentStatus(getconfigCtx)
+			if withNetTracing {
+				publishConfigNetdump(ctx, retVal, tracedReqs)
+			}
 
 		case <-tickerInfo.C:
 			start := time.Now()
@@ -426,7 +458,7 @@ func updateConfigTimer(configInterval uint32, tickerHandle interface{}) {
 // We use the iteration argument to start at a different point each time.
 // Returns a configProcessingSkipFlag
 func getLatestConfig(getconfigCtx *getconfigContext, url string,
-	iteration int) configProcessingRetval {
+	iteration int, withNetTracing bool) (configProcessingRetval, []netdump.TracedNetRequest) {
 
 	log.Tracef("getLatestConfig(%s, %d)", url, iteration)
 	// On first boot, if we haven't yet published our certificates we defer
@@ -435,7 +467,7 @@ func getLatestConfig(getconfigCtx *getconfigContext, url string,
 	if getconfigCtx.zedagentCtx.bootReason == types.BootReasonFirst &&
 		!getconfigCtx.zedagentCtx.publishedEdgeNodeCerts {
 		log.Noticef("Defer fetching config until our EdgeNodeCerts have been published")
-		return defferConfig
+		return defferConfig, nil
 	}
 	ctx := getconfigCtx.zedagentCtx
 	const bailOnHTTPErr = false // For 4xx and 5xx HTTP errors we try other interfaces
@@ -445,16 +477,17 @@ func getLatestConfig(getconfigCtx *getconfigContext, url string,
 	b, cr, err := generateConfigRequest(getconfigCtx)
 	if err != nil {
 		// XXX	fatal?
-		return configReqFailed
+		return configReqFailed, nil
 	}
 	buf := bytes.NewBuffer(b)
 	size := int64(proto.Size(cr))
 	ctxWork, cancel := zedcloud.GetContextForAllIntfFunctions(zedcloudCtx)
 	defer cancel()
-	resp, contents, senderStatus, err := zedcloud.SendOnAllIntf(ctxWork, zedcloudCtx, url, size, buf, iteration, bailOnHTTPErr)
+	rv, err := zedcloud.SendOnAllIntf(
+		ctxWork, zedcloudCtx, url, size, buf, iteration, bailOnHTTPErr, withNetTracing)
 	if err != nil {
 		newCount := types.LedBlinkConnectingToController
-		switch senderStatus {
+		switch rv.Status {
 		case types.SenderStatusUpgrade:
 			log.Functionf("getLatestConfig : Controller upgrade in progress")
 		case types.SenderStatusRefused:
@@ -470,7 +503,7 @@ func getLatestConfig(getconfigCtx *getconfigContext, url string,
 		default:
 			log.Errorf("getLatestConfig  failed: %s", err)
 		}
-		switch senderStatus {
+		switch rv.Status {
 		case types.SenderStatusUpgrade, types.SenderStatusRefused, types.SenderStatusCertInvalid, types.SenderStatusNotFound:
 			newCount = types.LedBlinkConnectedToController // Almost connected to controller!
 			// Don't treat as upgrade failure
@@ -487,10 +520,10 @@ func getLatestConfig(getconfigCtx *getconfigContext, url string,
 			utils.UpdateLedManagerConfig(log, newCount)
 			getconfigCtx.ledBlinkCount = newCount
 		}
-		if senderStatus == types.SenderStatusNotFound {
+		if rv.Status == types.SenderStatusNotFound {
 			potentialUUIDUpdate(getconfigCtx)
 		}
-		if senderStatus == types.SenderStatusForbidden &&
+		if rv.Status == types.SenderStatusForbidden &&
 			ctx.attestationTryCount > 0 {
 			log.Errorf("Config request is forbidden, triggering attestation again")
 			_ = restartAttestation(ctx)
@@ -516,23 +549,23 @@ func getLatestConfig(getconfigCtx *getconfigContext, url string,
 					checkpointDirname+"/lastconfig", false)
 				if err != nil {
 					log.Errorf("getconfig: %v", err)
-					return invalidConfig
+					return invalidConfig, rv.TracedReqs
 				}
 				if config != nil {
 					log.Noticef("Using saved config dated %s",
 						ts.Format(time.RFC3339Nano))
 					getconfigCtx.readSavedConfig = true
 					getconfigCtx.configGetStatus = types.ConfigGetReadSaved
-					return inhaleDeviceConfig(getconfigCtx, config, savedConfig)
+					return inhaleDeviceConfig(getconfigCtx, config, savedConfig), rv.TracedReqs
 				}
 			}
 		}
 		publishZedAgentStatus(getconfigCtx)
-		return configReqFailed
+		return configReqFailed, rv.TracedReqs
 	}
 
-	if resp.StatusCode == http.StatusNotModified {
-		log.Tracef("StatusNotModified len %d", len(contents))
+	if rv.HTTPResp.StatusCode == http.StatusNotModified {
+		log.Tracef("StatusNotModified len %d", len(rv.RespContents))
 		// Inform ledmanager about config received from cloud
 		utils.UpdateLedManagerConfig(log, types.LedBlinkOnboarded)
 		getconfigCtx.ledBlinkCount = types.LedBlinkOnboarded
@@ -546,38 +579,37 @@ func getLatestConfig(getconfigCtx *getconfigContext, url string,
 		log.Tracef("Configuration from zedcloud is unchanged")
 		// Update modification time since checked by readSavedConfig
 		touchReceivedProtoMessage()
-		return configOK
+		return configOK, rv.TracedReqs
 	}
 
-	if err := zedcloud.ValidateProtoContentType(url, resp); err != nil {
+	if err := zedcloud.ValidateProtoContentType(url, rv.HTTPResp); err != nil {
 		log.Errorln("validateProtoMessage: ", err)
 		// Inform ledmanager about cloud connectivity
 		utils.UpdateLedManagerConfig(log, types.LedBlinkConnectedToController)
 		getconfigCtx.ledBlinkCount = types.LedBlinkConnectedToController
 		publishZedAgentStatus(getconfigCtx)
-		return invalidConfig
+		return invalidConfig, rv.TracedReqs
 	}
 
-	var configContents []byte
-	configContents, senderStatus, err = zedcloud.RemoveAndVerifyAuthContainer(zedcloudCtx,
-		url, contents, false, senderStatus)
+	authWrappedRV := rv
+	err = zedcloud.RemoveAndVerifyAuthContainer(zedcloudCtx, &rv, false)
 	if err != nil {
 		log.Errorf("RemoveAndVerifyAuthContainer failed: %s", err)
 		// Inform ledmanager about problem
 		utils.UpdateLedManagerConfig(log, types.LedBlinkInvalidAuthContainer)
 		getconfigCtx.ledBlinkCount = types.LedBlinkInvalidAuthContainer
 		publishZedAgentStatus(getconfigCtx)
-		return invalidConfig
+		return invalidConfig, rv.TracedReqs
 	}
 
-	changed, config, err := readConfigResponseProtoMessage(resp, configContents)
+	changed, config, err := readConfigResponseProtoMessage(rv.HTTPResp, rv.RespContents)
 	if err != nil {
 		log.Errorln("readConfigResponseProtoMessage: ", err)
 		// Inform ledmanager about cloud connectivity
 		utils.UpdateLedManagerConfig(log, types.LedBlinkConnectedToController)
 		getconfigCtx.ledBlinkCount = types.LedBlinkConnectedToController
 		publishZedAgentStatus(getconfigCtx)
-		return invalidConfig
+		return invalidConfig, rv.TracedReqs
 	}
 
 	// Inform ledmanager about config received from cloud
@@ -594,11 +626,13 @@ func getLatestConfig(getconfigCtx *getconfigContext, url string,
 		log.Tracef("Configuration from zedcloud is unchanged")
 		// Update modification time since checked by readSavedConfig
 		touchReceivedProtoMessage()
-		return configOK
+		return configOK, rv.TracedReqs
 	}
-	saveReceivedProtoMessage(contents)
 
-	return inhaleDeviceConfig(getconfigCtx, config, fromController)
+	// Save configuration wrapped in AuthContainer.
+	saveReceivedProtoMessage(authWrappedRV.RespContents)
+
+	return inhaleDeviceConfig(getconfigCtx, config, fromController), rv.TracedReqs
 }
 
 func saveReceivedProtoMessage(contents []byte) {
@@ -680,14 +714,19 @@ func readSavedProtoMessageConfig(zedcloudCtx *zedcloud.ZedCloudContext, URL stri
 		log.Errorln("readSavedProtoMessageConfig", err)
 		return nil, ts, err
 	}
-	configContents, _, err := zedcloud.RemoveAndVerifyAuthContainer(zedcloudCtx,
-		URL, contents, false, types.SenderStatusNone)
+	restoredSendRV := zedcloud.SendRetval{
+		ReqURL:       URL,
+		RespContents: contents,
+		// Other fields are not needed to restore for RemoveAndVerifyAuthContainer().
+	}
+	err = zedcloud.RemoveAndVerifyAuthContainer(
+		zedcloudCtx, &restoredSendRV, false)
 	if err != nil {
 		log.Errorf("RemoveAndVerifyAuthContainer failed: %s", err)
 		return nil, ts, err
 	}
 	var configResponse = &zconfig.ConfigResponse{}
-	err = proto.Unmarshal(configContents, configResponse)
+	err = proto.Unmarshal(restoredSendRV.RespContents, configResponse)
 	if err != nil {
 		log.Errorf("readSavedProtoMessageConfig Unmarshalling failed: %v",
 			err)
@@ -949,4 +988,57 @@ func updateHasLocalServer(ctx *getconfigContext) {
 			checkAndPublishAppInstanceConfig(ctx, aic)
 		}
 	}
+}
+
+// Is network tracing enabled (for any request)?
+func isNettraceEnabled(ctx *zedagentContext) bool {
+	if ctx.netDumper == nil || ctx.netdumpInterval == 0 {
+		return false
+	}
+	// Trace only if the highest priority DPC is currently being applied
+	// and is reported by nim as working. Otherwise, we have netdumps from nim
+	// available for connectivity troubleshooting.
+	if deviceNetworkStatus == nil ||
+		deviceNetworkStatus.Testing ||
+		deviceNetworkStatus.CurrentIndex != 0 ||
+		deviceNetworkStatus.State != types.DPCStateSuccess {
+		return false
+	}
+	return true
+}
+
+// Function decides if the next call to SendOnAllIntf for /config request should be traced
+// and netdump published at the end (see libs/nettrace and pkg/pillar/netdump).
+func traceNextConfigReq(ctx *zedagentContext) bool {
+	if !isNettraceEnabled(ctx) {
+		return false
+	}
+	return ctx.lastConfigNetdumpPub.IsZero() ||
+		time.Since(ctx.lastConfigNetdumpPub) >= ctx.netdumpInterval
+}
+
+// Publish netdump containing traces of executed config requests.
+func publishConfigNetdump(ctx *zedagentContext,
+	configRV configProcessingRetval, tracedConfigReqs []netdump.TracedNetRequest) {
+	netDumper := ctx.netDumper
+	if netDumper == nil {
+		return
+	}
+	var topic string
+	switch configRV {
+	case configOK:
+		topic = netDumpConfigOKTopic
+	case defferConfig:
+		// There was no actual /config request so there is nothing interesting to publish.
+		return
+	default:
+		topic = netDumpConfigFailTopic
+	}
+	filename, err := netDumper.Publish(topic, tracedConfigReqs...)
+	if err != nil {
+		log.Warnf("Failed to publish netdump for topic %s: %v", topic, err)
+	} else {
+		log.Noticef("Published netdump for topic %s: %s", topic, filename)
+	}
+	ctx.lastConfigNetdumpPub = time.Now()
 }

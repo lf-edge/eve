@@ -307,6 +307,7 @@ func globalConfig() types.ConfigItemValueMap {
 	gcp.SetGlobalValueInt(types.NetworkGeoRedoTime, 3)
 	gcp.SetGlobalValueInt(types.LocationCloudInterval, 10)
 	gcp.SetGlobalValueInt(types.LocationAppInterval, 2)
+	gcp.SetGlobalValueBool(types.NetDumpEnable, false)
 	return *gcp
 }
 
