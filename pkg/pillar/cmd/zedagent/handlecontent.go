@@ -17,6 +17,35 @@ import (
 
 var contentInfoHash []byte
 
+// stringsToUuids() - converts list of strings to a list of uuids,
+//                    returns a list with a nil uuid and a last error if
+//                    conversion fails
+func stringsToUuids(strings []string) ([]uuid.UUID, error) {
+	list := make([]uuid.UUID, len(strings))
+	for i, str := range strings {
+		var err error
+		list[i], err = uuid.FromString(str)
+		if err != nil {
+			log.Errorf("stringsToUuids(): error parsing UUID '%s' index %d, %v\n",
+				str, i, err)
+			return []uuid.UUID{nilUUID}, err
+		}
+	}
+
+	return list, nil
+}
+
+// getDatastoreIDList() - returns list of datastores UUIDs
+func getDatastoreIDList(contentTree *zconfig.ContentTree) ([]uuid.UUID, error) {
+	idsStrList := contentTree.GetDsIdsList()
+	if len(idsStrList) == 0 {
+		// Compatibility with the old controller, which does not support
+		// list of datastores
+		idsStrList = []string{contentTree.GetDsId()}
+	}
+	return stringsToUuids(idsStrList)
+}
+
 // content info parsing routine
 func parseContentInfoConfig(ctx *getconfigContext,
 	config *zconfig.EdgeDevConfig) {
@@ -60,6 +89,7 @@ func parseContentInfoConfig(ctx *getconfigContext,
 		contentConfig := new(types.ContentTreeConfig)
 		contentConfig.ContentID, _ = uuid.FromString(cfgContentTree.GetUuid())
 		contentConfig.DatastoreID, _ = uuid.FromString(cfgContentTree.GetDsId())
+		contentConfig.DatastoreIDList, _ = getDatastoreIDList(cfgContentTree)
 		contentConfig.RelativeURL = cfgContentTree.GetURL()
 		contentConfig.Format = cfgContentTree.GetIformat()
 		contentConfig.ContentSha256 = strings.ToLower(cfgContentTree.GetSha256())

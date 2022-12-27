@@ -16,6 +16,8 @@ import (
 type BlobStatus struct {
 	// DatastoreID ID of the datastore where the blob can be retrieved
 	DatastoreID uuid.UUID
+	// DatastoreIDList list of datastores where the blob can be retrieved
+	DatastoreIDList []uuid.UUID
 	// RelativeURL URL relative to the root of the datastore
 	RelativeURL string
 	// Sha256 the sha of the blob
