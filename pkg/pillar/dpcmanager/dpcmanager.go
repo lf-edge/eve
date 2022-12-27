@@ -14,6 +14,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/conntester"
 	"github.com/lf-edge/eve/pkg/pillar/dpcreconciler"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
+	"github.com/lf-edge/eve/pkg/pillar/netdump"
 	"github.com/lf-edge/eve/pkg/pillar/netmonitor"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
@@ -122,6 +123,11 @@ type DpcManager struct {
 	geoRedoInterval       time.Duration
 	geoRetryInterval      time.Duration
 	lastPublishedLocInfo  types.WwanLocationInfo
+
+	// Netdump
+	netDumper       *netdump.NetDumper // nil if netdump is disabled
+	netdumpInterval time.Duration
+	lastNetdumpPub  time.Time // last call to publishNetdump
 }
 
 // Watchdog : methods used by DpcManager to interact with Watchdog.
@@ -535,8 +541,31 @@ func (m *DpcManager) updateGCP(ctx context.Context, gcp types.ConfigItemValueMap
 		m.geoRetryInterval = geoRetryInterval
 	}
 	m.geoRedoInterval = geoRedoInterval
-	m.reconcileStatus = m.DpcReconciler.Reconcile(ctx, m.reconcilerArgs())
 
+	// (Re-)Initialize netdump
+	netDumper := m.netDumper
+	netdumpEnabled := gcp.GlobalValueBool(types.NetDumpEnable)
+	if netdumpEnabled {
+		if netDumper == nil {
+			netDumper = &netdump.NetDumper{}
+			// Determine when was the last time DPCManager published anything.
+			var err error
+			m.lastNetdumpPub, err = netDumper.LastPublishAt(
+				m.netDumpOKTopic(), m.netDumpFailTopic())
+			if err != nil {
+				m.Log.Warn(err)
+			}
+		}
+		m.netdumpInterval = time.Second *
+			time.Duration(gcp.GlobalValueInt(types.NetDumpTopicPubInterval))
+		maxCount := gcp.GlobalValueInt(types.NetDumpTopicMaxCount)
+		netDumper.MaxDumpsPerTopic = int(maxCount)
+	} else {
+		netDumper = nil
+	}
+	m.netDumper = netDumper
+
+	m.reconcileStatus = m.DpcReconciler.Reconcile(ctx, m.reconcilerArgs())
 	// If we have persisted DPCs then go ahead and pick a working one
 	// with the highest priority, do not wait for dpcTestTimer to fire.
 	if firstGCP && m.currentDPC() == nil && len(m.dpcList.PortConfigList) > 0 {

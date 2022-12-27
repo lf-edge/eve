@@ -20,7 +20,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 	"google.golang.org/protobuf/proto"
 	"io/ioutil"
-	"net/http"
 	"reflect"
 	"strings"
 )
@@ -72,7 +71,7 @@ const (
 )
 
 // One shot send, if fails, return an error to the state machine to retry later
-func trySendToController(attestReq *attest.ZAttestReq, iteration int) (*http.Response, []byte, types.SenderResult, error) {
+func trySendToController(attestReq *attest.ZAttestReq, iteration int) (zedcloud.SendRetval, error) {
 	log.Noticef("trySendToController type %d", attestReq.ReqType)
 	data, err := proto.Marshal(attestReq)
 	if err != nil {
@@ -85,14 +84,15 @@ func trySendToController(attestReq *attest.ZAttestReq, iteration int) (*http.Res
 		devUUID, "attest")
 	ctxWork, cancel := zedcloud.GetContextForAllIntfFunctions(zedcloudCtx)
 	defer cancel()
-	resp, contents, senderStatus, err := zedcloud.SendOnAllIntf(ctxWork,
-		zedcloudCtx, attestURL, size, buf, iteration, true)
-	if err != nil || len(contents) == 0 {
-		return resp, contents, senderStatus, err
+	const bailOnHTTPErr = true
+	const withNetTracing = false
+	rv, err := zedcloud.SendOnAllIntf(ctxWork, zedcloudCtx, attestURL, size, buf,
+		iteration, bailOnHTTPErr, withNetTracing)
+	if err != nil || len(rv.RespContents) == 0 {
+		return rv, err
 	}
-	contents, senderStatus, err = zedcloud.RemoveAndVerifyAuthContainer(zedcloudCtx,
-		attestURL, contents, false, senderStatus)
-	return resp, contents, senderStatus, err
+	err = zedcloud.RemoveAndVerifyAuthContainer(zedcloudCtx, &rv, false)
+	return rv, err
 }
 
 // setAttestErrorAndTriggerInfo sets errorDescription on zattest.Context,
@@ -135,11 +135,11 @@ func (server *VerifierImpl) SendNonceRequest(ctx *zattest.Context) error {
 	attestCtx.Iteration++
 	log.Tracef("Sending Nonce request %v", attestReq)
 
-	_, contents, senderStatus, err := trySendToController(attestReq, attestCtx.Iteration)
-	if err != nil || senderStatus != types.SenderStatusNone {
+	rv, err := trySendToController(attestReq, attestCtx.Iteration)
+	if err != nil || rv.Status != types.SenderStatusNone {
 		errorDescription := types.ErrorDescription{
 			Error: fmt.Sprintf("[ATTEST] Error %v, senderStatus %v",
-				err, senderStatus),
+				err, rv.Status),
 		}
 		log.Error(errorDescription.Error)
 		setAttestErrorAndTriggerInfo(ctx, errorDescription)
@@ -147,7 +147,7 @@ func (server *VerifierImpl) SendNonceRequest(ctx *zattest.Context) error {
 	}
 
 	attestResp := &attest.ZAttestResponse{}
-	if err := proto.Unmarshal(contents, attestResp); err != nil {
+	if err := proto.Unmarshal(rv.RespContents, attestResp); err != nil {
 		errorDescription := types.ErrorDescription{
 			Error: fmt.Sprintf("[ATTEST] Error %v in Unmarshaling nonce response", err),
 		}
@@ -317,11 +317,11 @@ func (server *VerifierImpl) SendAttestQuote(ctx *zattest.Context) error {
 	log.Tracef("Sending Quote request")
 	recordAttestationTry(attestCtx.zedagentCtx)
 
-	_, contents, senderStatus, err := trySendToController(attestReq, attestCtx.Iteration)
-	if err != nil || senderStatus != types.SenderStatusNone {
+	rv, err := trySendToController(attestReq, attestCtx.Iteration)
+	if err != nil || rv.Status != types.SenderStatusNone {
 		errorDescription := types.ErrorDescription{
 			Error: fmt.Sprintf("[ATTEST] Error %v, senderStatus %v",
-				err, senderStatus),
+				err, rv.Status),
 		}
 		log.Error(errorDescription.Error)
 		setAttestErrorAndTriggerInfo(ctx, errorDescription)
@@ -329,7 +329,7 @@ func (server *VerifierImpl) SendAttestQuote(ctx *zattest.Context) error {
 	}
 
 	attestResp := &attest.ZAttestResponse{}
-	if err := proto.Unmarshal(contents, attestResp); err != nil {
+	if err := proto.Unmarshal(rv.RespContents, attestResp); err != nil {
 		errorDescription := types.ErrorDescription{
 			Error: fmt.Sprintf("[ATTEST] Error %v in Unmarshaling quote response", err),
 		}
@@ -472,17 +472,17 @@ func (server *VerifierImpl) SendAttestEscrow(ctx *zattest.Context) error {
 	attestCtx.Iteration++
 	log.Noticef("[ATTEST] Sending Escrow data len %d", len(key.Key))
 
-	_, contents, senderStatus, err := trySendToController(attestReq, attestCtx.Iteration)
-	if err != nil || senderStatus != types.SenderStatusNone {
+	rv, err := trySendToController(attestReq, attestCtx.Iteration)
+	if err != nil || rv.Status != types.SenderStatusNone {
 		errorDescription := types.ErrorDescription{
-			Error: fmt.Sprintf("[ATTEST] Error %v, senderStatus %v", err, senderStatus),
+			Error: fmt.Sprintf("[ATTEST] Error %v, senderStatus %v", err, rv.Status),
 		}
 		log.Error(errorDescription.Error)
 		setAttestErrorAndTriggerInfo(ctx, errorDescription)
 		return zattest.ErrControllerReqFailed
 	}
 	attestResp := &attest.ZAttestResponse{}
-	if err := proto.Unmarshal(contents, attestResp); err != nil {
+	if err := proto.Unmarshal(rv.RespContents, attestResp); err != nil {
 		errorDescription := types.ErrorDescription{
 			Error: fmt.Sprintf("[ATTEST] Error %v in Unmarshaling storage keys response", err),
 		}

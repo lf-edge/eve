@@ -43,49 +43,53 @@ const (
 
 // RemoveAndVerifyAuthContainer is used to check that a correct authentication is
 // present when expected.
-// Returns the content inside the AuthContainer.
-// If skipVerify we parse the envelope but do not verify the content.
-// Caller should pass in the current SenderResult and this might return an
-// updated SenderResult
-func RemoveAndVerifyAuthContainer(ctx *ZedCloudContext, destURL string, contents []byte, skipVerify bool, senderStatus types.SenderResult) ([]byte, types.SenderResult, error) {
+// Modifies SendRetval received from SendOnAllIntf or SendOnIntf:
+//   - SendRetval.RespContent is unwrapped to contain the content of the AuthContainer
+//   - SendRetval.Status is potentially updated to reflect the result of auth verification
+//
+// If skipVerify we remove the envelope but do not verify the signature.
+func RemoveAndVerifyAuthContainer(
+	ctx *ZedCloudContext, sendRV *SendRetval, skipVerify bool) error {
 	var reqURL string
-	if strings.HasPrefix(destURL, "http:") {
-		reqURL = destURL
+	if strings.HasPrefix(sendRV.ReqURL, "http:") {
+		reqURL = sendRV.ReqURL
 	} else {
-		if strings.HasPrefix(destURL, "https:") {
-			reqURL = destURL
+		if strings.HasPrefix(sendRV.ReqURL, "https:") {
+			reqURL = sendRV.ReqURL
 		} else {
-			reqURL = "https://" + destURL
+			reqURL = "https://" + sendRV.ReqURL
 		}
 	}
 	if !ctx.V2API {
-		return contents, senderStatus, nil
+		return nil
 	}
-	contents, status, err := removeAndVerifyAuthContainer(ctx, contents, skipVerify)
+	contents, status, err := removeAndVerifyAuthContainer(ctx, sendRV.RespContents, skipVerify)
 	if status != types.SenderStatusNone {
-		senderStatus = status
+		sendRV.Status = status
 	}
 	if err != nil {
 		var envelopeErr bool
-
-		if senderStatus == types.SenderStatusHashSizeError || senderStatus == types.SenderStatusAlgoFail {
+		if sendRV.Status == types.SenderStatusHashSizeError ||
+			sendRV.Status == types.SenderStatusAlgoFail {
 			// server may not support V2 envelope
 			envelopeErr = true
 		}
-		ctx.log.Errorf("RemoveAndVerifyAuthContainer verify auth error %v, V2 server %v, content len %d, url %s, senderStatus %v",
-			err, !envelopeErr, len(contents), reqURL, senderStatus)
+		ctx.log.Errorf("RemoveAndVerifyAuthContainer verify auth error %v, "+
+			"V2 server %v, content len %d, url %s, senderStatus %v",
+			err, !envelopeErr, len(contents), reqURL, sendRV.Status)
 		if ctx.FailureFunc != nil {
 			ctx.FailureFunc(ctx.log, "", reqURL, 0, 0, true)
 		}
-		return nil, senderStatus, err
+		return err
 	}
+	sendRV.RespContents = contents
 	ctx.log.Tracef("RemoveAndVerifyAuthContainer verify auth ok, url %s", reqURL)
-	return contents, senderStatus, err
+	return nil
 }
 
 // given an envelope protobuf received from controller, verify the authentication
 // If skipVerify we parse the envelope but do not verify the content.
-func removeAndVerifyAuthContainer(ctx *ZedCloudContext, c []byte, skipVerify bool) ([]byte, types.SenderResult, error) {
+func removeAndVerifyAuthContainer(ctx *ZedCloudContext, c []byte, skipVerify bool) ([]byte, types.SenderStatus, error) {
 	senderSt := types.SenderStatusNone
 	sm := &zauth.AuthContainer{}
 	err := proto.Unmarshal(c, sm)
@@ -114,7 +118,7 @@ func removeAndVerifyAuthContainer(ctx *ZedCloudContext, c []byte, skipVerify boo
 }
 
 // VerifyAuthContainer verifies the integrity of the payload inside AuthContainer.
-func VerifyAuthContainer(ctx *ZedCloudContext, sm *zauth.AuthContainer) (types.SenderResult, error) {
+func VerifyAuthContainer(ctx *ZedCloudContext, sm *zauth.AuthContainer) (types.SenderStatus, error) {
 	if len(sm.GetSenderCertHash()) != hashSha256Len16 &&
 		len(sm.GetSenderCertHash()) != hashSha256Len32 {
 		err := fmt.Errorf("VerifyAuthContainer: unexpected senderCertHash length (%d)",

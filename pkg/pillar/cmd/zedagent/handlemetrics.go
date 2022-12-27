@@ -1214,7 +1214,7 @@ func PublishAppInfoToZedCloud(ctx *zedagentContext, uuid string,
 	//If there are no failures and defers we'll send this message,
 	//but if there is a queue we'll retry sending the highest priority message.
 	zedcloud.SetDeferred(zedcloudCtx, uuid, buf, size, statusUrl,
-		true, info.ZInfoTypes_ZiApp)
+		true, false, info.ZInfoTypes_ZiApp)
 	zedcloud.HandleDeferred(zedcloudCtx, time.Now(), 0, true)
 }
 
@@ -1284,7 +1284,7 @@ func PublishContentInfoToZedCloud(ctx *zedagentContext, uuid string,
 	//If there are no failures and defers we'll send this message,
 	//but if there is a queue we'll retry sending the highest priority message.
 	zedcloud.SetDeferred(zedcloudCtx, uuid, buf, size, statusURL,
-		true, info.ZInfoTypes_ZiContentTree)
+		true, false, info.ZInfoTypes_ZiContentTree)
 	zedcloud.HandleDeferred(zedcloudCtx, time.Now(), 0, true)
 }
 
@@ -1363,7 +1363,7 @@ func PublishVolumeToZedCloud(ctx *zedagentContext, uuid string,
 	//If there are no failures and defers we'll send this message,
 	//but if there is a queue we'll retry sending the highest priority message.
 	zedcloud.SetDeferred(zedcloudCtx, uuid, buf, size, statusURL,
-		true, info.ZInfoTypes_ZiVolume)
+		true, false, info.ZInfoTypes_ZiVolume)
 	zedcloud.HandleDeferred(zedcloudCtx, time.Now(), 0, true)
 }
 
@@ -1422,7 +1422,7 @@ func PublishBlobInfoToZedCloud(ctx *zedagentContext, blobSha string, blobStatus 
 	//If there are no failures and defers we'll send this message,
 	//but if there is a queue we'll retry sending the highest priority message.
 	zedcloud.SetDeferred(zedcloudCtx, blobSha, buf, size, statusURL,
-		true, info.ZInfoTypes_ZiBlobList)
+		true, false, info.ZInfoTypes_ZiBlobList)
 	zedcloud.HandleDeferred(zedcloudCtx, time.Now(), 0, true)
 }
 
@@ -1472,7 +1472,7 @@ func PublishEdgeviewToZedCloud(ctx *zedagentContext, evStatus *types.EdgeviewSta
 	//If there are no failures and defers we'll send this message,
 	//but if there is a queue we'll retry sending the highest priority message.
 	zedcloud.SetDeferred(zedcloudCtx, "global", buf, size, statusURL,
-		true, info.ZInfoTypes_ZiEdgeview)
+		true, false, info.ZInfoTypes_ZiEdgeview)
 	zedcloud.HandleDeferred(zedcloudCtx, time.Now(), 0, true)
 	ctx.iteration++
 }
@@ -1509,23 +1509,24 @@ func SendProtobuf(url string, buf *bytes.Buffer, size int64,
 	iteration int) error {
 
 	const bailOnHTTPErr = true // For 4xx and 5xx HTTP errors we don't try other interfaces
+	const withNetTrace = false
 	ctxWork, cancel := zedcloud.GetContextForAllIntfFunctions(zedcloudCtx)
 	defer cancel()
-	resp, _, _, err := zedcloud.SendOnAllIntf(ctxWork, zedcloudCtx, url,
-		size, buf, iteration, bailOnHTTPErr)
-	if resp != nil {
-		switch resp.StatusCode {
+	rv, err := zedcloud.SendOnAllIntf(ctxWork, zedcloudCtx, url,
+		size, buf, iteration, bailOnHTTPErr, withNetTrace)
+	if rv.HTTPResp != nil {
+		switch rv.HTTPResp.StatusCode {
 		// XXX Some controller gives a generic 400 which should be fixed
 		case http.StatusBadRequest:
 			log.Warnf("XXX SendProtoBuf: %s silently ignore code %d %s",
-				url, resp.StatusCode, http.StatusText(resp.StatusCode))
+				url, rv.HTTPResp.StatusCode, http.StatusText(rv.HTTPResp.StatusCode))
 			return nil
 
 		case http.StatusNotFound, http.StatusGone:
 			// Assume the resource is gone in the controller
 
 			log.Functionf("SendProtoBuf: %s silently ignore code %d %s",
-				url, resp.StatusCode, http.StatusText(resp.StatusCode))
+				url, rv.HTTPResp.StatusCode, http.StatusText(rv.HTTPResp.StatusCode))
 			return nil
 		}
 	}
@@ -1546,13 +1547,14 @@ func SendMetricsProtobuf(ctx *getconfigContext, ReportMetrics *metrics.ZMetricMs
 	size := int64(proto.Size(ReportMetrics))
 	metricsUrl := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API, devUUID, "metrics")
 	const bailOnHTTPErr = false
+	const withNetTrace = false
 	ctxWork, cancel := zedcloud.GetContextForAllIntfFunctions(zedcloudCtx)
 	defer cancel()
-	_, _, rtf, err := zedcloud.SendOnAllIntf(ctxWork, zedcloudCtx, metricsUrl,
-		size, buf, iteration, bailOnHTTPErr)
+	rv, err := zedcloud.SendOnAllIntf(ctxWork, zedcloudCtx, metricsUrl,
+		size, buf, iteration, bailOnHTTPErr, withNetTrace)
 	if err != nil {
 		// Hopefully next timeout will be more successful
-		log.Errorf("SendMetricsProtobuf status %d failed: %s", rtf, err)
+		log.Errorf("SendMetricsProtobuf status %d failed: %s", rv.Status, err)
 		return
 	} else {
 		maybeUpdateMetricsTimer(ctx, true)

@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/lf-edge/eve/pkg/pillar/netdump"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 )
 
@@ -44,8 +45,8 @@ func (t *MockConnectivityTester) SetConnectivityError(dpcKey, ifName string, err
 }
 
 // TestConnectivity simulates connectivity test.
-func (t *MockConnectivityTester) TestConnectivity(
-	dns types.DeviceNetworkStatus) (intfStatusMap types.IntfStatusMap, err error) {
+func (t *MockConnectivityTester) TestConnectivity(dns types.DeviceNetworkStatus,
+	withNetTrace bool) (intfStatusMap types.IntfStatusMap, tracedReqs []netdump.TracedNetRequest, err error) {
 	t.Lock()
 	defer t.Unlock()
 
@@ -62,7 +63,7 @@ func (t *MockConnectivityTester) TestConnectivity(
 	intfs := types.GetMgmtPortsSortedCost(dns, t.iteration)
 	if len(intfs) == 0 {
 		err = errors.New("no management interfaces")
-		return intfStatusMap, err
+		return intfStatusMap, nil, err
 	}
 
 	for _, ifName := range intfs {
@@ -114,16 +115,16 @@ func (t *MockConnectivityTester) TestConnectivity(
 		err = fmt.Errorf("not enough working ports (%d); failed with: %v",
 			successCount, errorList)
 		if len(portsNotReady) > 0 {
-			return intfStatusMap, &PortsNotReady{
+			return intfStatusMap, nil, &PortsNotReady{
 				WrappedErr: err,
 				Ports:      portsNotReady,
 			}
 		}
 		if nonRtfErrs || rtfErr == nil {
-			return intfStatusMap, err
+			return intfStatusMap, nil, err
 		}
 		// RTF error(s) only.
-		return intfStatusMap, rtfErr
+		return intfStatusMap, nil, rtfErr
 	}
-	return intfStatusMap, nil
+	return intfStatusMap, nil, nil
 }

@@ -398,15 +398,17 @@ func launchHostProbe(ctx *zedrouterContext) {
 						startTime := time.Now()
 						const allowProxy = true
 						const useOnboard = false
+						const withNetTracing = false
 						// No verification of AuthContainer in this reachability probe
-						resp, _, _, err := zedcloud.SendOnIntf(
+						rv, err := zedcloud.SendOnIntf(
 							context.Background(), &zcloudCtx, remoteURL, info.IfName,
-							0, nil, allowProxy, useOnboard, false)
+							0, nil, allowProxy, useOnboard, withNetTracing, false)
 						if err != nil {
 							log.Tracef("launchHostProbe: send on intf %s, err %v\n", info.IfName, err)
 						}
-						if resp != nil {
-							log.Tracef("launchHostProbe: server %s status code %d\n", serverNameAndPort, resp.StatusCode)
+						if rv.HTTPResp != nil {
+							log.Tracef("launchHostProbe: server %s status code %d\n",
+								serverNameAndPort, rv.HTTPResp.StatusCode)
 							//
 							// isRemoteResp.isRemoteReply = (resp.StatusCode == 200)
 							// make it any reply is good

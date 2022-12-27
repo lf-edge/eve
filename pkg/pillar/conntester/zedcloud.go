@@ -11,9 +11,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/lf-edge/eve/libs/nettrace"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/devicenetwork"
 	"github.com/lf-edge/eve/pkg/pillar/hardware"
+	"github.com/lf-edge/eve/pkg/pillar/netdump"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 	uuid "github.com/satori/go.uuid"
@@ -39,8 +41,8 @@ type ZedcloudConnectivityTester struct {
 
 // TestConnectivity uses VerifyAllIntf from the zedcloud package, which
 // tries to call the "ping" API of the controller.
-func (t *ZedcloudConnectivityTester) TestConnectivity(
-	dns types.DeviceNetworkStatus) (types.IntfStatusMap, error) {
+func (t *ZedcloudConnectivityTester) TestConnectivity(dns types.DeviceNetworkStatus,
+	withNetTrace bool) (types.IntfStatusMap, []netdump.TracedNetRequest, error) {
 
 	t.iteration++
 	intfStatusMap := *types.NewIntfStatusMap()
@@ -60,6 +62,7 @@ func (t *ZedcloudConnectivityTester) TestConnectivity(
 		Serial:           hardware.GetProductSerial(t.Log),
 		SoftSerial:       hardware.GetSoftSerial(t.Log),
 		AgentName:        t.AgentName,
+		NetTraceOpts:     t.netTraceOpts(dns),
 	})
 	t.Log.Functionf("TestConnectivity: Use V2 API %v\n", zedcloud.UseV2API())
 	testURL := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API, nilUUID, "ping")
@@ -74,7 +77,7 @@ func (t *ZedcloudConnectivityTester) TestConnectivity(
 		if err != nil {
 			err = fmt.Errorf("onboarding certificate cannot be loaded: %v", err)
 			t.Log.Functionf("TestConnectivity: %v\n", err)
-			return intfStatusMap, err
+			return intfStatusMap, nil, err
 		}
 		clientCert := &onboardingCert
 		tlsConfig, err = zedcloud.GetTlsConfig(zedcloudCtx.DeviceNetworkStatus,
@@ -82,7 +85,7 @@ func (t *ZedcloudConnectivityTester) TestConnectivity(
 		if err != nil {
 			err = fmt.Errorf("failed to load TLS config for talking to Zedcloud: %v", err)
 			t.Log.Functionf("TestConnectivity: %v", err)
-			return intfStatusMap, err
+			return intfStatusMap, nil, err
 		}
 	}
 
@@ -98,15 +101,25 @@ func (t *ZedcloudConnectivityTester) TestConnectivity(
 				ifName, err)
 			t.Log.Errorf("TestConnectivity: %v", err)
 			intfStatusMap.RecordFailure(ifName, err.Error())
-			return intfStatusMap, err
+			return intfStatusMap, nil, err
 		}
 	}
-	cloudReachable, rtf, tempIntfStatusMap, err := zedcloud.VerifyAllIntf(
-		&zedcloudCtx, testURL, requiredSuccessCount, t.iteration)
-	intfStatusMap.SetOrUpdateFromMap(tempIntfStatusMap)
+	rv, err := zedcloud.VerifyAllIntf(&zedcloudCtx, testURL, requiredSuccessCount,
+		t.iteration, withNetTrace)
+	intfStatusMap.SetOrUpdateFromMap(rv.IntfStatusMap)
 	t.Log.Tracef("TestConnectivity: intfStatusMap = %+v", intfStatusMap)
+	for i := range rv.TracedReqs {
+		// Differentiate ping tests from google tests.
+		reqName := rv.TracedReqs[i].RequestName
+		rv.TracedReqs[i].RequestName = "ping-" + reqName
+	}
+	if withNetTrace {
+		if (!rv.CloudReachable || err != nil) && !rv.RemoteTempFailure {
+			rv.TracedReqs = append(rv.TracedReqs, t.tryGoogleWithTracing(dns)...)
+		}
+	}
 	if err != nil {
-		if rtf {
+		if rv.RemoteTempFailure {
 			err = &RemoteTemporaryFailure{
 				Endpoint:   serverNameAndPort,
 				WrappedErr: err,
@@ -120,17 +133,17 @@ func (t *ZedcloudConnectivityTester) TestConnectivity(
 			}
 		}
 		t.Log.Errorf("TestConnectivity: %v", err)
-		return intfStatusMap, err
+		return intfStatusMap, rv.TracedReqs, err
 	}
 
 	t.prevTLSConfig = zedcloudCtx.TlsConfig
-	if cloudReachable {
+	if rv.CloudReachable {
 		t.Log.Functionf("TestConnectivity: uplink test SUCCEEDED for URL: %s", testURL)
-		return intfStatusMap, nil
+		return intfStatusMap, rv.TracedReqs, nil
 	}
 	err = fmt.Errorf("uplink test FAILED for URL: %s", testURL)
 	t.Log.Errorf("TestConnectivity: %v, intfStatusMap: %+v", err, intfStatusMap)
-	return intfStatusMap, err
+	return intfStatusMap, rv.TracedReqs, err
 }
 
 func (t *ZedcloudConnectivityTester) getPortsNotReady(
@@ -156,4 +169,62 @@ func (t *ZedcloudConnectivityTester) getPortsNotReady(
 		}
 	}
 	return ports
+}
+
+// Enable all net traces, including packet capture - ping and google.com requests
+// are quite small.
+func (t *ZedcloudConnectivityTester) netTraceOpts(
+	dns types.DeviceNetworkStatus) []nettrace.TraceOpt {
+	return []nettrace.TraceOpt{
+		&nettrace.WithLogging{
+			CustomLogger: &base.LogrusWrapper{Log: t.Log},
+		},
+		&nettrace.WithConntrack{},
+		&nettrace.WithSockTrace{},
+		&nettrace.WithDNSQueryTrace{},
+		&nettrace.WithHTTPReqTrace{
+			// Hide secrets stored inside values of header fields.
+			HeaderFields: nettrace.HdrFieldsOptValueLenOnly,
+		},
+		&nettrace.WithPacketCapture{
+			Interfaces:  types.GetMgmtPortsAny(dns, 0),
+			IncludeICMP: true,
+			IncludeARP:  true,
+		},
+	}
+}
+
+// If net tracing is enabled and the controller connectivity test fails, we try to access
+// google.com over HTTP and HTTPS and include collected traces in the output.
+// This can help to determine if the issue is with the Internet access or with
+// something specific to the controller.
+func (t *ZedcloudConnectivityTester) tryGoogleWithTracing(
+	dns types.DeviceNetworkStatus) (tracedReqs []netdump.TracedNetRequest) {
+	const bailOnHTTPErr = true
+	const withNetTracing = true
+	zedcloudCtx := zedcloud.NewContext(t.Log, zedcloud.ContextOptions{
+		DevNetworkStatus: &dns,
+		Timeout:          uint32(t.TestTimeout.Seconds()),
+		AgentName:        t.AgentName,
+		NetTraceOpts:     t.netTraceOpts(dns),
+	})
+	ctxWork, cancel := zedcloud.GetContextForAllIntfFunctions(&zedcloudCtx)
+	defer cancel()
+	tests := []struct {
+		url  string
+		name string
+	}{
+		{url: "http://www.google.com", name: "google.com-over-http"},
+		{url: "https://www.google.com", name: "google.com-over-https"},
+	}
+	for _, test := range tests {
+		rv, _ := zedcloud.SendOnAllIntf(ctxWork, &zedcloudCtx, test.url, 0, nil,
+			t.iteration, bailOnHTTPErr, withNetTracing)
+		for i := range rv.TracedReqs {
+			reqName := rv.TracedReqs[i].RequestName
+			rv.TracedReqs[i].RequestName = test.name + "-" + reqName
+		}
+		tracedReqs = append(tracedReqs, rv.TracedReqs...)
+	}
+	return tracedReqs
 }

@@ -181,7 +181,7 @@ func prepareAndPublishNetworkInstanceInfoMsg(ctx *zedagentContext,
 	//If there are no failures and defers we'll send this message,
 	//but if there is a queue we'll retry sending the highest priority message.
 	zedcloud.SetDeferred(zedcloudCtx, uuid, buf, size, statusURL,
-		true, zinfo.ZInfoTypes_ZiNetworkInstance)
+		true, false, zinfo.ZInfoTypes_ZiNetworkInstance)
 	zedcloud.HandleDeferred(zedcloudCtx, time.Now(), 0, true)
 }
 
@@ -626,13 +626,14 @@ func publishFlowMessage(flowMsg *flowlog.FlowMessage, iteration int) error {
 
 	flowlogURL := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API, devUUID, "flowlog")
 	const bailOnHTTPErr = false
+	const withNetTrace = false
 	ctxWork, cancel := zedcloud.GetContextForAllIntfFunctions(zedcloudCtx)
 	defer cancel()
-	_, _, rtf, err := zedcloud.SendOnAllIntf(ctxWork, zedcloudCtx, flowlogURL,
-		size, buf, iteration, bailOnHTTPErr)
+	rv, err := zedcloud.SendOnAllIntf(ctxWork, zedcloudCtx, flowlogURL,
+		size, buf, iteration, bailOnHTTPErr, withNetTrace)
 	if err != nil {
 		err = fmt.Errorf("publishFlowMessage: SendOnAllIntf failed with %d: %s",
-			rtf, err)
+			rv.Status, err)
 		return err
 	}
 	saveSentFlowProtoMessage(data)

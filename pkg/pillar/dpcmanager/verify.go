@@ -227,15 +227,37 @@ func (m *DpcManager) verifyDPC(ctx context.Context) (status types.DPCState) {
 
 	// Check cloud connectivity.
 	m.updateDNS()
-	intfStatusMap, err := m.ConnTester.TestConnectivity(m.deviceNetStatus)
+	withNetTrace := m.traceNextConnTest()
+	intfStatusMap, tracedProbes, err := m.ConnTester.TestConnectivity(
+		m.deviceNetStatus, withNetTrace)
 	// Use TestResults to update the DevicePortConfigList and DeviceNetworkStatus
 	// Note that the TestResults will at least have an updated timestamp
 	// for one of the ports.
 	dpc.UpdatePortStatusFromIntfStatusMap(intfStatusMap)
-	_ = m.PubDummyDevicePortConfig.Publish(dpc.PubKey(), *dpc)
-	m.publishDPCL()
 	m.deviceNetStatus.UpdatePortStatusFromIntfStatusMap(intfStatusMap)
-	m.publishDNS()
+	defer func() {
+		// Publish DPCL, DNS and potentially also netdump at the end when dpc.State
+		// is determined.
+		_ = m.PubDummyDevicePortConfig.Publish(dpc.PubKey(), *dpc) // for logging
+		m.publishDPCL()
+		m.deviceNetStatus.State = dpc.State
+		m.publishDNS()
+		if withNetTrace {
+			var cloudConnWorks bool
+			switch dpc.State {
+			case types.DPCStateFail, types.DPCStateFailWithIPAndDNS:
+				cloudConnWorks = false
+			case types.DPCStateSuccess:
+				cloudConnWorks = true
+			default:
+				// DpcManager is waiting for something (IP address, DNS server, etc.)
+				// Do not publish recorded traces (will be done later when the waiting
+				// has ended).
+				return
+			}
+			m.publishNetdump(cloudConnWorks, tracedProbes)
+		}
+	}()
 
 	if err == nil {
 		if m.checkIfMgmtPortsHaveIPandDNS() {
@@ -362,7 +384,9 @@ func (m *DpcManager) testConnectivityToCloud(ctx context.Context) error {
 		return err
 	}
 
-	intfStatusMap, err := m.ConnTester.TestConnectivity(m.deviceNetStatus)
+	withNetTrace := m.traceNextConnTest()
+	intfStatusMap, tracedProbes, err := m.ConnTester.TestConnectivity(
+		m.deviceNetStatus, withNetTrace)
 	dpc.UpdatePortStatusFromIntfStatusMap(intfStatusMap)
 	if err == nil {
 		dpc.State = types.DPCStateSuccess
@@ -375,12 +399,19 @@ func (m *DpcManager) testConnectivityToCloud(ctx context.Context) error {
 	if err == nil {
 		m.Log.Functionf("testConnectivityToCloud: Device cloud connectivity test passed.")
 		m.dpcVerify.cloudConnWorks = true
+		if withNetTrace {
+			m.publishNetdump(true, tracedProbes)
+		}
 		// Restart DPC test timer for next slot.
 		m.dpcTestTimer = time.NewTimer(m.dpcTestInterval)
 		return nil
 	}
 
 	_, rtf := err.(*conntester.RemoteTemporaryFailure)
+	if withNetTrace {
+		m.publishNetdump(rtf, tracedProbes)
+	}
+
 	if !m.dpcVerify.cloudConnWorks && !rtf {
 		// If previous cloud connectivity test also failed, it means
 		// that the current DPC configuration stopped working.

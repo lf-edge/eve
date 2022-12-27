@@ -41,6 +41,7 @@ const (
 	errorTime             = 3 * time.Minute
 	warningTime           = 40 * time.Second
 	bailOnHTTPErr         = false // For 4xx and 5xx HTTP errors we try other interfaces
+	withNetTrace          = false
 	uuidFileName          = types.PersistStatusDir + "/uuid"
 	hardwaremodelFileName = types.PersistStatusDir + "/hardwaremodel"
 )
@@ -483,18 +484,18 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 }
 
 // Post something without a return type.
-// Returns true when done; false when retry
-// the third return value is the extra send status, for Cert Miss status for example
+// Returns true when done; false when retry.
 func myPost(zedcloudCtx *zedcloud.ZedCloudContext, tlsConfig *tls.Config,
-	requrl string, skipVerify bool, retryCount int, reqlen int64, b *bytes.Buffer) (bool, *http.Response, types.SenderResult, []byte) {
+	requrl string, skipVerify bool, retryCount int,
+	reqlen int64, b *bytes.Buffer) (done bool, rv zedcloud.SendRetval) {
 
 	zedcloudCtx.TlsConfig = tlsConfig
 	ctxWork, cancel := zedcloud.GetContextForAllIntfFunctions(zedcloudCtx)
 	defer cancel()
-	resp, contents, senderStatus, err := zedcloud.SendOnAllIntf(ctxWork, zedcloudCtx,
-		requrl, reqlen, b, retryCount, bailOnHTTPErr)
+	rv, err := zedcloud.SendOnAllIntf(ctxWork, zedcloudCtx, requrl, reqlen, b, retryCount,
+		bailOnHTTPErr, withNetTrace)
 	if err != nil {
-		switch senderStatus {
+		switch rv.Status {
 		case types.SenderStatusUpgrade:
 			log.Functionf("Controller upgrade in progress")
 		case types.SenderStatusRefused:
@@ -512,10 +513,10 @@ func myPost(zedcloudCtx *zedcloud.ZedCloudContext, tlsConfig *tls.Config,
 		default:
 			log.Error(err)
 		}
-		return false, resp, senderStatus, contents
+		return false, rv
 	}
 
-	switch resp.StatusCode {
+	switch rv.HTTPResp.StatusCode {
 	case http.StatusOK:
 		if !zedcloudCtx.NoLedManager {
 			// Inform ledmanager about existence in cloud
@@ -535,8 +536,8 @@ func myPost(zedcloudCtx *zedcloud.ZedCloudContext, tlsConfig *tls.Config,
 		}
 		log.Errorf("%s StatusConflict", requrl)
 		// Retry until fixed
-		log.Errorf("%s", string(contents))
-		return false, resp, senderStatus, contents
+		log.Errorf("%s", string(rv.RespContents))
+		return false, rv
 	case http.StatusNotFound, http.StatusUnauthorized, http.StatusNotModified:
 		// Caller needs to handle
 		if !zedcloudCtx.NoLedManager {
@@ -544,7 +545,7 @@ func myPost(zedcloudCtx *zedcloud.ZedCloudContext, tlsConfig *tls.Config,
 			utils.UpdateLedManagerConfig(log,
 				types.LedBlinkConnectedToController)
 		}
-		return false, resp, senderStatus, contents
+		return false, rv
 	default:
 		if !zedcloudCtx.NoLedManager {
 			// Inform ledmanager about cloud connectivity
@@ -552,34 +553,33 @@ func myPost(zedcloudCtx *zedcloud.ZedCloudContext, tlsConfig *tls.Config,
 				types.LedBlinkConnectedToController)
 		}
 		log.Errorf("%s statuscode %d %s",
-			requrl, resp.StatusCode,
-			http.StatusText(resp.StatusCode))
-		log.Errorf("%s", string(contents))
-		return false, resp, senderStatus, contents
+			requrl, rv.Status,
+			http.StatusText(rv.HTTPResp.StatusCode))
+		log.Errorf("%s", string(rv.RespContents))
+		return false, rv
 	}
 
-	contentType := resp.Header.Get("Content-Type")
+	contentType := rv.HTTPResp.Header.Get("Content-Type")
 	if contentType == "" {
 		log.Errorf("%s no content-type", requrl)
-		return false, resp, senderStatus, contents
+		return false, rv
 	}
 	mimeType, _, err := mime.ParseMediaType(contentType)
 	if err != nil {
 		log.Errorf("%s ParseMediaType failed %v", requrl, err)
-		return false, resp, senderStatus, contents
+		return false, rv
 	}
 	switch mimeType {
 	case "application/x-proto-binary", "application/json", "text/plain":
-		log.Tracef("Received reply %s", string(contents))
+		log.Tracef("Received reply %s", string(rv.RespContents))
 	default:
 		log.Errorln("Incorrect Content-Type " + mimeType)
-		return false, resp, senderStatus, contents
+		return false, rv
 	}
-	if len(contents) == 0 {
-		return true, resp, senderStatus, contents
+	if len(rv.RespContents) == 0 {
+		return true, rv
 	}
-	contents, senderStatus, err = zedcloud.RemoveAndVerifyAuthContainer(zedcloudCtx,
-		requrl, contents, skipVerify, senderStatus)
+	err = zedcloud.RemoveAndVerifyAuthContainer(zedcloudCtx, &rv, skipVerify)
 	if err != nil {
 		if !zedcloudCtx.NoLedManager {
 			utils.UpdateLedManagerConfig(log,
@@ -587,9 +587,9 @@ func myPost(zedcloudCtx *zedcloud.ZedCloudContext, tlsConfig *tls.Config,
 		}
 		log.Errorf("RemoveAndVerifyAuthContainer failed: %s",
 			err)
-		return false, resp, senderStatus, contents
+		return false, rv
 	}
-	return true, resp, senderStatus, contents
+	return true, rv
 }
 
 // Returns true when done; false when retry
@@ -614,17 +614,16 @@ func selfRegister(zedcloudCtx *zedcloud.ZedCloudContext, tlsConfig *tls.Config, 
 	}
 	// in V2 API, register does not send UUID string
 	requrl := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API, nilUUID, "register")
-	done, resp, _, contents := myPost(zedcloudCtx, tlsConfig,
-		requrl, false, retryCount,
+	done, rv := myPost(zedcloudCtx, tlsConfig, requrl, false, retryCount,
 		int64(len(b)), bytes.NewBuffer(b))
-	if resp != nil && resp.StatusCode == http.StatusNotModified {
+	if rv.HTTPResp != nil && rv.HTTPResp.StatusCode == http.StatusNotModified {
 		if !zedcloudCtx.NoLedManager {
 			// Inform ledmanager about brokenness
 			utils.UpdateLedManagerConfig(log, types.LedBlinkOnboardingFailure)
 		}
 		log.Errorf("%s StatusNotModified", requrl)
 		// Retry until fixed
-		log.Errorf("%s", string(contents))
+		log.Errorf("%s", string(rv.RespContents))
 		done = false
 	}
 
@@ -634,10 +633,6 @@ func selfRegister(zedcloudCtx *zedcloud.ZedCloudContext, tlsConfig *tls.Config, 
 // fetch V2 certs from cloud, return GotCloudCerts and ServerIsV1 boolean
 // if got certs, the leaf is saved to types.ServerSigningCertFileName file
 func fetchCertChain(zedcloudCtx *zedcloud.ZedCloudContext, tlsConfig *tls.Config, retryCount int, force bool) bool {
-	var resp *http.Response
-	var contents []byte
-	var done bool
-
 	if !force {
 		_, err := os.Stat(types.ServerSigningCertFileName)
 		if err == nil {
@@ -653,20 +648,26 @@ func fetchCertChain(zedcloudCtx *zedcloud.ZedCloudContext, tlsConfig *tls.Config
 	zedcloudCtx.NoLedManager = true
 
 	// currently there is no data included for the request, same as myGet()
-	done, resp, _, contents = myPost(zedcloudCtx, tlsConfig, requrl, true, retryCount, 0, nil)
+	done, rv := myPost(zedcloudCtx, tlsConfig, requrl, true, retryCount, 0, nil)
 	zedcloudCtx.NoLedManager = savedNoLedManager
-	if resp != nil {
-		log.Functionf("client fetchCertChain done %v, resp-code %d, content len %d", done, resp.StatusCode, len(contents))
-		if resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusUnauthorized ||
-			resp.StatusCode == http.StatusNotImplemented || resp.StatusCode == http.StatusBadRequest {
+	if rv.HTTPResp != nil {
+		log.Functionf("client fetchCertChain done %v, resp-code %d, content len %d",
+			done, rv.HTTPResp.StatusCode, len(rv.RespContents))
+		if rv.HTTPResp.StatusCode == http.StatusNotFound ||
+			rv.HTTPResp.StatusCode == http.StatusUnauthorized ||
+			rv.HTTPResp.StatusCode == http.StatusNotImplemented ||
+			rv.HTTPResp.StatusCode == http.StatusBadRequest {
 			// cloud server does not support V2 API
-			log.Functionf("client fetchCertChain: server %s does not support V2 API", serverNameAndPort)
+			log.Functionf("client fetchCertChain: server %s does not support V2 API",
+				serverNameAndPort)
 			return false
 		}
 		// catch default return status, if not done, will return false later
-		log.Functionf("client fetchCertChain: server %s return status %s, done %v", serverNameAndPort, resp.Status, done)
+		log.Functionf("client fetchCertChain: server %s return status %s, done %v",
+			serverNameAndPort, rv.HTTPResp.Status, done)
 	} else {
-		log.Functionf("client fetchCertChain done %v, resp null, content len %d", done, len(contents))
+		log.Functionf("client fetchCertChain done %v, resp null, content len %d",
+			done, len(rv.RespContents))
 	}
 	if !done {
 		return false
@@ -674,7 +675,7 @@ func fetchCertChain(zedcloudCtx *zedcloud.ZedCloudContext, tlsConfig *tls.Config
 
 	zedcloudCtx.TlsConfig = tlsConfig
 	// verify the certificate chain
-	certBytes, err := zedcloud.VerifyProtoSigningCertChain(log, contents)
+	certBytes, err := zedcloud.VerifyProtoSigningCertChain(log, rv.RespContents)
 	if err != nil {
 		errStr := fmt.Sprintf("controller certificate signature verify fail, %v", err)
 		log.Errorln("fetchCertChain: " + errStr)
@@ -701,33 +702,28 @@ func doGetUUID(ctx *clientContext, tlsConfig *tls.Config,
 
 func doGetUUIDNew(ctx *clientContext, tlsConfig *tls.Config,
 	retryCount int) (bool, uuid.UUID, string) {
-	var resp *http.Response
-	var contents []byte
-	var senderStatus types.SenderResult
-
 	zedcloudCtx := ctx.zedcloudCtx
 
 	// get UUID does not have UUID string in V2 API
 	requrl := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API, nilUUID, "uuid")
-	var done bool
 	b, err := generateUUIDRequest()
 	if err != nil {
 		log.Errorln(err)
 		return false, nilUUID, ""
 	}
-	done, resp, senderStatus, contents = myPost(zedcloudCtx, tlsConfig, requrl, false, retryCount,
+	done, rv := myPost(zedcloudCtx, tlsConfig, requrl, false, retryCount,
 		int64(len(b)), bytes.NewBuffer(b))
 	if !done {
 		// This may be due to the cloud cert file is stale, since the hash does not match.
 		// acquire new cert chain.
-		if senderStatus == types.SenderStatusCertMiss {
+		if rv.Status == types.SenderStatusCertMiss {
 			ctx.getCertsTimer = time.NewTimer(time.Second)
 			log.Functionf("doGetUUID: Cert miss. Setup timer to acquire")
 		}
 		return false, nilUUID, ""
 	}
 	log.Functionf("doGetUUID: client getUUID ok")
-	devUUID, hardwaremodel, err := parseUUIDResponse(resp, contents)
+	devUUID, hardwaremodel, err := parseUUIDResponse(rv.HTTPResp, rv.RespContents)
 	if err == nil {
 		// Inform ledmanager about config received from cloud
 		if !zedcloudCtx.NoLedManager {
@@ -735,8 +731,8 @@ func doGetUUIDNew(ctx *clientContext, tlsConfig *tls.Config,
 		}
 		// If successfully connected to the controller, log the peer certificates,
 		// can be used to detect if it's a MiTM proxy
-		if resp != nil && resp.TLS != nil {
-			for i, cert := range resp.TLS.PeerCertificates {
+		if rv.HTTPResp != nil && rv.HTTPResp.TLS != nil {
+			for i, cert := range rv.HTTPResp.TLS.PeerCertificates {
 				log.Noticef("Peer certificate:(%d) Issuer: %s, Subject: %s, NotAfter: %v",
 					i, cert.Issuer, cert.Subject, cert.NotAfter)
 			}

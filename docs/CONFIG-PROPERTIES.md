@@ -44,6 +44,9 @@
 | newlog.gzipfiles.ondisk.maxmegabytes | integer in Mbytes | 2048 | the quota for keepig newlog gzip files on device |
 | process.cloud-init.multipart | boolean | false | help VMs which do not handle mime multi-part themselves |
 | edgeview.authen.jwt | edgeview session jwt token | empty string(edgeview disabled) | format as standard JWT for websocket session for temporary testing, this configitem will be removed once controllers are setup to send EdgeViewConfig in configuration |
+| netdump.enable | boolean | true | enable publishing of network diagnostics (as tgz archives to /persist/netdump) |
+| netdump.topic.publish.interval | integer in seconds | 1 hour pre-onboarding, 1 day post-onboarding | how frequently (in seconds) can be netdumps of the same topic published |
+| netdump.topic.maxcount | integer | 10 | maximum number of netdumps that can be published (persisted) for each topic. The oldest netdump is unpublished should a new netdump exceed the limit.
 
 In addition, there can be per-agent settings.
 The Per-agent settings begin with "agent.*agentname*.*setting*"

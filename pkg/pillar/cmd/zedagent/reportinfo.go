@@ -21,6 +21,7 @@ import (
 	etpm "github.com/lf-edge/eve/pkg/pillar/evetpm"
 	"github.com/lf-edge/eve/pkg/pillar/hardware"
 	"github.com/lf-edge/eve/pkg/pillar/netclone"
+	"github.com/lf-edge/eve/pkg/pillar/netdump"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
 	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
@@ -29,6 +30,13 @@ import (
 	"github.com/shirou/gopsutil/host"
 	"golang.org/x/sys/unix"
 	"google.golang.org/protobuf/proto"
+)
+
+const (
+	// Topic for zedagent netdumps of successful info msg publications.
+	netDumpInfoOKTopic = agentName + "-info-ok"
+	// Topic for zedagent netdumps of failed info msg publications.
+	netDumpInfoFailTopic = agentName + "-info-fail"
 )
 
 var (
@@ -638,8 +646,9 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 	//We queue the message and then get the highest priority message to send.
 	//If there are no failures and defers we'll send this message,
 	//but if there is a queue we'll retry sending the highest priority message.
+	withNetTracing := traceNextInfoReq(ctx)
 	zedcloud.SetDeferred(zedcloudCtx, deviceUUID, buf, size,
-		statusUrl, true, info.ZInfoTypes_ZiDevice)
+		statusUrl, true, withNetTracing, info.ZInfoTypes_ZiDevice)
 	zedcloud.HandleDeferred(zedcloudCtx, time.Now(), 0, true)
 }
 
@@ -691,7 +700,8 @@ func PublishAppInstMetaDataToZedCloud(ctx *zedagentContext, appInstMetadata *typ
 	//We queue the message and then get the highest priority message to send.
 	//If there are no failures and defers we'll send this message,
 	//but if there is a queue we'll retry sending the highest priority message.
-	zedcloud.SetDeferred(zedcloudCtx, deferKey, buf, size, statusURL, true, info.ZInfoTypes_ZiAppInstMetaData)
+	zedcloud.SetDeferred(zedcloudCtx, deferKey, buf, size, statusURL, true,
+		false, info.ZInfoTypes_ZiAppInstMetaData)
 	zedcloud.HandleDeferred(zedcloudCtx, time.Now(), 0, true)
 }
 
@@ -1114,4 +1124,40 @@ func isUpdating(ctx *zedagentContext) bool {
 		return false
 	}
 	return false
+}
+
+// Function decides if the next call to SendOnAllIntf for /info request should be traced
+// and netdump published at the end (see libs/nettrace and pkg/pillar/netdump).
+func traceNextInfoReq(ctx *zedagentContext) bool {
+	if !isNettraceEnabled(ctx) {
+		return false
+	}
+	return ctx.lastInfoNetdumpPub.IsZero() ||
+		time.Since(ctx.lastInfoNetdumpPub) >= ctx.netdumpInterval
+}
+
+// Publish netdump containing traces of executed /info requests.
+func publishInfoNetdump(ctx *zedagentContext,
+	result types.SenderStatus, tracedInfoReqs []netdump.TracedNetRequest) {
+	netDumper := ctx.netDumper
+	if netDumper == nil {
+		return
+	}
+	var topic string
+	switch result {
+	case types.SenderStatusNone:
+		topic = netDumpInfoOKTopic
+	case types.SenderStatusDebug:
+		// There was no actual /info request so there is nothing interesting to publish.
+		return
+	default:
+		topic = netDumpInfoFailTopic
+	}
+	filename, err := netDumper.Publish(topic, tracedInfoReqs...)
+	if err != nil {
+		log.Warnf("Failed to publish netdump for topic %s: %v", topic, err)
+	} else {
+		log.Noticef("Published netdump for topic %s: %s", topic, filename)
+	}
+	ctx.lastInfoNetdumpPub = time.Now()
 }

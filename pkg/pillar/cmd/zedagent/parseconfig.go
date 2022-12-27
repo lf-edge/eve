@@ -2309,15 +2309,20 @@ func parseConfigItems(ctx *getconfigContext, config *zconfig.EdgeDevConfig,
 	// should default to "false".
 	// That way bringup of new hardware models can be done using an
 	// attached keyboard and monitor.
+	// Similarly, NetDumpTopicPubInterval is shorter before onboarding to obtain
+	// network diagnostics more often for the sake of initial controller connectivity
+	// troubleshooting.
 	if source == fromBootstrap {
 		newGlobalConfig.SetGlobalValueBool(types.UsbAccess, true)
 		newGlobalConfig.SetGlobalValueBool(types.VgaAccess, true)
 		newGlobalConfig.SetGlobalValueBool(types.ConsoleAccess, true)
+		newGlobalConfig.SetGlobalValueInt(types.NetDumpTopicPubInterval, types.HourInSec)
 	} else {
 		// from controller (live or saved)
 		newGlobalConfig.SetGlobalValueBool(types.UsbAccess, false)
 		newGlobalConfig.SetGlobalValueBool(types.VgaAccess, false)
 		newGlobalConfig.SetGlobalValueBool(types.ConsoleAccess, false)
+		newGlobalConfig.SetGlobalValueInt(types.NetDumpTopicPubInterval, 24*types.HourInSec)
 	}
 	newGlobalStatus := types.NewGlobalStatus()
 

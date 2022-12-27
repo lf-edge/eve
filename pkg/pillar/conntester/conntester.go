@@ -5,6 +5,8 @@ package conntester
 
 import (
 	"fmt"
+
+	"github.com/lf-edge/eve/pkg/pillar/netdump"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 )
 
@@ -12,8 +14,10 @@ import (
 // It is not required for ConnectivityTester to be thread-safe.
 type ConnectivityTester interface {
 	// TestConnectivity returns nil error if connectivity test has passed.
-	// Additionally it returns test result for each tested device network interface.
-	TestConnectivity(dns types.DeviceNetworkStatus) (types.IntfStatusMap, error)
+	// Additionally, it returns test result for each tested device network interface
+	// and network traces of executed probes if withNetTrace was enabled.
+	TestConnectivity(dns types.DeviceNetworkStatus,
+		withNetTrace bool) (types.IntfStatusMap, []netdump.TracedNetRequest, error)
 }
 
 // RemoteTemporaryFailure can be returned by TestConnectivity to indicate that test failed
