@@ -18,6 +18,7 @@ import (
 type ContentTreeConfig struct {
 	ContentID         uuid.UUID
 	DatastoreID       uuid.UUID
+	DatastoreIDList   []uuid.UUID
 	RelativeURL       string
 	Format            zconfig.Format // this is the format of the content tree itself, not necessarily of the datastore
 	ContentSha256     string
@@ -103,6 +104,7 @@ func (config ContentTreeConfig) LogKey() string {
 type ContentTreeStatus struct {
 	ContentID         uuid.UUID
 	DatastoreID       uuid.UUID
+	DatastoreIDList   []uuid.UUID
 	DatastoreType     string
 	RelativeURL       string
 	Format            zconfig.Format
@@ -160,9 +162,11 @@ func (status ContentTreeStatus) ReferenceID() string {
 }
 
 // UpdateFromContentTreeConfig sets up ContentTreeStatus based on ContentTreeConfig struct
+// Be aware: don't expect all fields are updated from the config
 func (status *ContentTreeStatus) UpdateFromContentTreeConfig(config ContentTreeConfig) {
 	status.ContentID = config.ContentID
 	status.DatastoreID = config.DatastoreID
+	status.DatastoreIDList = config.DatastoreIDList
 	status.RelativeURL = config.RelativeURL
 	status.Format = config.Format
 	status.ContentSha256 = config.ContentSha256
