@@ -164,7 +164,9 @@ access_usb() {
             if ! $BINDIR/tpmmgr saveTpmInfo $TPMINFOTEMPFILE; then
                 echo "$(date -Ins -u) saveTpmInfo failed" > $TPMINFOTEMPFILE
             fi
-            if tar cf /mnt/dump/diag1.tar /persist/status/ /var/run/ /persist/log "/persist/newlog" $TPMINFOTEMPFILE; then
+            NETDUMPDIR="/persist/netdump"
+            [ -d "$NETDUMPDIR" ] || NETDUMPDIR=""
+            if tar cf /mnt/dump/diag1.tar /persist/status/ /var/run/ /persist/log /persist/newlog $NETDUMPDIR $TPMINFOTEMPFILE; then
                 mv /mnt/dump/diag1.tar /mnt/dump/diag.tar
             else
                 rm -f /mnt/dump/diag1.tar
