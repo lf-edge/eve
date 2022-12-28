@@ -265,3 +265,10 @@ You need to extract needed files with something like `docker run lfedge/eve:late
 You will see a set of files in the current directory to locate into you tftp server to boot Raspberry from it. Also, you should set dhcp-boot option of your
 dhcp server to `ipxe.efi` (actually, it will use configuration from `ipxe.efi.cfg`). Files `kernel`, `initrd.img` and `initrd.bits`
 should be available via HTTP/HTTPs and you need to modify `ipxe.efi.cfg` with location of those files.
+
+## Console access
+
+Access via console is enabled during initial bootstrap and will be disabled after first reboot of onboarded edge node.
+In order to have access via console you can set a `debug.enable.console` property to true as specified in [configuration properties](CONFIG-PROPERTIES.md).
+If you need console to debug some problem you can enable it for one boot of edge node from grub menu (`Set Boot Options`->`enable getty`).
+For development builds you can put `set_getty` line into `conf/grub.cfg` file.
