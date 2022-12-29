@@ -674,3 +674,143 @@ The latter aspect makes maintaining `lfedge/eve-alpine` a bit tricky, even thoug
 Step #2 guarantees that all _existing_ packages will simply be re-used from the previous version of the cache and _NOT_ re-downloaded from the Alpine http mirrors (remember that re-downloading always runs the risk of getting a different version of the same package). Step #1, of course, will download new packages and pin them in the new version of the cache.
 
 If the above seems a bit confusing, don't despair: here's an [actual example](../../../commit/1340c1b6981ed3219f78a7a0209ff9222a0dacdf) of adding 4 new packages `libfdt`, `dtc`, `dtc-dev` and `uboot-tools` to the `lfedge/eve-alpine` cache.
+
+## Cross-compilation support
+
+### cross-compilers package
+
+In order to enable cross-compilation we add `pkg/cross-compilers` which contains `binutils`, `gcc` and `g++` prepared with target architecture different from host one.
+
+Cross-compilers support matrix are inside the following table (`Y` - supported, `N` - not supported, `-` - not expected).
+
+| target arch | x86_64 host | aarch64 host | riscv64 host |
+|-------------|:-----------:|:------------:|:------------:|
+|    x86_64   |      -      |      Y       |      N       |
+|   aarch64   |      Y      |      -       |      N       |
+|   riscv64   |      Y      |      Y       |      -       |
+
+The package use [aports](https://gitlab.alpinelinux.org/alpine/aports) repository as a base to build cross-compilers
+with the same revision as used for eve-alpine package. It helps us to use the same versions of tools with the same configuration and patches applied.
+Only two patches applied to aports repository:
+
+1. [0001-only-cross-compile-prepare.patch](.../pkg/cross-compilers/patches/aports/0001-only-cross-compile-prepare.patch) - allow us to use the bootstrap script provided in repo and stops the process of bootstrap right after preparing of cross-compilers
+2. [0002-adjust-sysroot.patch](.../pkg/cross-compilers/patches/aports/0002-adjust-sysroot.patch) - modifies sysroot configured during building of gcc to be pointed onto reasonable directory (e.g. `/usr/riscv64-alpine-linux-musl` instead of `/home/builder/sysroot-riscv64` bootstrap process use internally)
+
+Note that cross-compiler packages inside aports are not distributed and involved in the bootstrap process only, so patches are not expected to be upstreamed.
+
+The build process of the image is quite time-consuming, but we need to rebuild it only in case of moving onto the next alpine release, e.g. from `3.16` to `3.17`, when we will update gcc/binutils.
+Update of packages inside `eve-alpine` without moving to the next Alpine release will not affect versions of gcc as we reuse them from cache.
+
+Building of cross-compilers for `riscv64` host architecture is not supported now because of no `gcc-gnat` available (additional patches required).
+
+### Enabling of cross-compilation
+
+Cross-compilation support depends on compilers we use and ways of configuring compilers. The implementation of the process is quite varied and may not be possible. We should support both cases: native and cross-compilation for all targets.
+The main reason of enabling cross-compilation is to speedup build for another target architecture and acceleration can reach orders of magnitude.
+It is not reasonable to enable cross-compilation in all packages as it complicate the logic, only for ones which consume significant time.
+
+In order to cross compile, you need the following at compile time:
+
+* env vars, specifically:
+  * `BUILDARCH` - the architecture in go format for where you are building, e.g. amd64 or arm64
+  * `BUILD_ARCH` - the architecture in uname format for where you are building, e.g. x86_64 or aarch64
+  * `TARGETARCH` - the architecture in go format for the platform you are targeting, e.g. amd64 or arm64
+  * `TARGET_ARCH` - the architecture in uname format for the platform you are targeting, e.g. x86_64 or aarch64
+  * `CROSS_COMPILE_ENV` - cross-compiler prefix to use in `CC` with gcc suffix or in `CROSS_COMPILE` env variable
+* compilers in your build architecture that can compile binaries for your target architecture
+  * `gcc`/`g++`/`binutils` with cross-compilation support - provided by `lfedge/eve-cross-compilers`
+  * libraries for the target architecture - natively from `eve-alpine` for the target architecture
+
+Below we provide step-by-step processes for cross-compilation in Dockerfile, each step of which provides one or more of the requirements:
+
+1. Add another base eve-alpine image with `--platform=${BUILDPLATFORM}`. This way we enforce builder to use the same platform we are running on (not the target platform):
+
+    ```dockerfile
+    ARG BUILD_PKGS_BASE="git gcc linux-headers libc-dev make linux-pam-dev m4 findutils go util-linux make patch \
+                         libintl libuuid libtirpc libblkid libcrypto1.1 zlib tar"
+    # native base image
+    FROM lfedge/eve-alpine:e0280f097450d1f53dd483ab98acd7c7cf2273ce as build-native
+    ARG BUILD_PKGS_BASE
+    RUN BUILD_PKGS="${BUILD_PKGS_BASE}" eve-alpine-deploy.sh
+    # cross-compile base image
+    FROM --platform=${BUILDPLATFORM} lfedge/eve-alpine:e0280f097450d1f53dd483ab98acd7c7cf2273ce as build-cross
+    ARG BUILD_PKGS_BASE
+    RUN BUILD_PKGS="${BUILD_PKGS_BASE}" eve-alpine-deploy.sh
+    ```
+
+2. Use cross-compilers image for the host platform to install packages from it later:
+
+    ```dockerfile
+    FROM --platform=${BUILDPLATFORM} lfedge/eve-cross-compilers:e39535ae301b2b64e900e434ef197612cb3a6fa9 AS cross-compilers
+    ```
+
+3. Add libraries required to build for the target platform:
+
+    ```dockerfile
+    FROM lfedge/eve-alpine:e0280f097450d1f53dd483ab98acd7c7cf2273ce AS cross-compile-libs
+    ENV PKGS musl-dev libgcc libintl libuuid libtirpc libblkid
+    RUN eve-alpine-deploy.sh
+    ```
+
+4. Adjust `TARGET_ARCH` environment variable for cross-compiler:
+
+    ```dockerfile
+    FROM build-cross AS build-cross-target-arm64
+    ENV TARGET_ARCH=aarch64
+    FROM build-cross AS build-cross-target-amd64
+    ENV TARGET_ARCH=x86_64
+    ```
+
+5. Install cross-compilers and copy libraries into your image:
+
+    ```dockerfile
+    FROM build-cross-target-${TARGETARCH} AS build-cross-target
+    ENV CROSS_COMPILE_ENV="${TARGET_ARCH}"-alpine-linux-musl-
+    COPY --from=cross-compilers /packages /packages
+    RUN apk add --no-cache --allow-untrusted -X /packages build-base-"${TARGET_ARCH}"
+    COPY --from=cross-compile-libs /out/ /usr/"${TARGET_ARCH}"-alpine-linux-musl/
+    ```
+
+6. Chain images to use the same notation for cross and native cases:
+
+    ```dockerfile
+    # cross-compilers
+    FROM build-cross-target AS target-arm64-build-amd64
+    FROM build-cross-target AS target-amd64-build-arm64
+    # native
+    FROM build-native AS target-amd64-build-amd64
+    FROM build-native AS target-arm64-build-arm64
+    ```
+
+7. Use cross compilation (here we put go sample that uses cgo):
+
+    ```dockerfile
+    FROM target-${TARGETARCH}-build-${BUILDARCH} AS build
+    ARG TARGETARCH
+    ENV GOFLAGS=-mod=vendor
+    ENV GO111MODULE=on
+    ENV CGO_ENABLED=1
+    ENV GOOS=linux
+    # define target arch
+    ENV GOARCH=${TARGETARCH}
+    # define cross-compiler to use
+    ENV CC=${CROSS_COMPILE_ENV}gcc
+    # ADD / /
+    # RUN go build .
+    ```
+
+8. Copy out build artifacts into the image based on target arch. Do not forget to install runtime libraries there.
+
+Note that `BUILD_ARCH` and `TARGET_ARCH` environment variables are set in eve-alpine image to be aligned with its arch (e.g. `x86_64` for `adm64`), so we need to override them only for cross-compilation.
+`BUILDARCH` and `TARGETARCH` exposed by build system itself.
+
+The whole flow looks like this:
+
+* For native builds, e.g. amd64 -> amd64, stage `build` inherits from `target-amd64-build-amd64`, which inherits from `build-native`, which is just `eve-alpine`.
+* For cross-compile builds, e.g. amd64 (host) -> arm64 (target):
+  * Stage `build` inherits from `target-arm64-build-amd64`, which inherits from `build-cross-target`
+  * Stage `build-cross-target`:
+    * installs the cross-compilers for host (amd64) and target (arm64) arch combination from `cross-compilers` image. We use `TARGET_ARCH` there to compose the package name notation `build-base-aarch64` to install.
+    * installs the target arch libraries from `cross-compile-libs`, which is based on `eve-alpine` for the `TARGETARCH`
+    * sets `CROSS_COMPILE_ENV="${TARGET_ARCH}"-alpine-linux-musl-` environment variable to use later as cross-compile prefix
+    * inherits from `build-cross-target-${TARGETARCH}`, which adjust the `TARGET_ARCH` environment variable and inherits from `build-cross` stage based on `eve-alpine`
