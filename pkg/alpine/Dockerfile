@@ -44,8 +44,20 @@ COPY eve-alpine-deploy.sh go-compile.sh /bin/
 
 RUN apk update && apk upgrade -a
 
+# define arch-specific envs
+FROM scratch as final-amd64
+ENV BUILD_ARCH=x86_64
+ENV TARGET_ARCH=x86_64
+FROM scratch as final-arm64
+ENV BUILD_ARCH=aarch64
+ENV TARGET_ARCH=aarch64
+FROM scratch as final-riscv64
+ENV BUILD_ARCH=riscv64
+ENV TARGET_ARCH=riscv64
+
 # we merge layers in previous step
 # so we should avoid large possible diff
-FROM scratch
+# hadolint ignore=DL3006
+FROM final-${TARGETARCH}
 COPY --from=compactor / /
 CMD ["/bin/sh"]
