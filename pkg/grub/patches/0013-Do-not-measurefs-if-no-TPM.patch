@@ -1,0 +1,86 @@
+From 387ea6b9a9299e8a5d5e7496ee7f58a3e9a41115 Mon Sep 17 00:00:00 2001
+From: Petr Fedchenkov <giggsoff@gmail.com>
+Date: Fri, 30 Dec 2022 12:27:09 +0300
+Subject: [PATCH] Do not measurefs if no TPM
+
+Signed-off-by: Petr Fedchenkov <giggsoff@gmail.com>
+---
+ grub-core/commands/measurefs.c |  3 +++
+ grub-core/kern/efi/tpm.c       | 10 ++++++++++
+ grub-core/kern/i386/pc/tpm.c   |  7 +++++++
+ include/grub/tpm.h             |  5 +++++
+ 4 files changed, 25 insertions(+)
+
+diff --git a/grub-core/commands/measurefs.c b/grub-core/commands/measurefs.c
+index 1d085dc79..f1e535be8 100644
+--- a/grub-core/commands/measurefs.c
++++ b/grub-core/commands/measurefs.c
+@@ -40,6 +40,9 @@ static const struct grub_arg_option options[] =
+ static grub_err_t
+ grub_cmd_measurefs (grub_extcmd_context_t ctxt, int argc, char **args)
+ {
++    if (!grub_tpm_device_present ())
++        return 0;
++
+     struct grub_arg_list *state = ctxt->state;
+     grub_device_t dev;
+     grub_fs_t fs;
+diff --git a/grub-core/kern/efi/tpm.c b/grub-core/kern/efi/tpm.c
+index ed40f9802..e10054e31 100644
+--- a/grub-core/kern/efi/tpm.c
++++ b/grub-core/kern/efi/tpm.c
+@@ -280,3 +280,13 @@ grub_tpm_log_event(unsigned char *buf, grub_size_t size, grub_uint8_t pcr,
+     return grub_tpm2_log_event(tpm_handle, buf, size, pcr, description);
+   }
+ }
++
++char
++grub_tpm_device_present () {
++  grub_efi_handle_t tpm_handle;
++  grub_efi_uint8_t protocol_version;
++
++  if (!grub_tpm_handle_find(&tpm_handle, &protocol_version))
++    return 0;
++  return 1;
++}
+diff --git a/grub-core/kern/i386/pc/tpm.c b/grub-core/kern/i386/pc/tpm.c
+index f6f264aff..b22e20b8a 100644
+--- a/grub-core/kern/i386/pc/tpm.c
++++ b/grub-core/kern/i386/pc/tpm.c
+@@ -143,3 +143,10 @@ grub_tpm_log_event(unsigned char *buf, grub_size_t size, grub_uint8_t pcr,
+ 
+ 	return 0;
+ }
++
++char
++grub_tpm_device_present () {
++    if (!tpm_present())
++        return 0;
++    return 1;
++}
+diff --git a/include/grub/tpm.h b/include/grub/tpm.h
+index 972a5edc8..e77ac01d3 100644
+--- a/include/grub/tpm.h
++++ b/include/grub/tpm.h
+@@ -74,6 +74,7 @@ grub_err_t grub_tpm_execute(PassThroughToTPM_InputParamBlock *inbuf,
+ 			    PassThroughToTPM_OutputParamBlock *outbuf);
+ grub_err_t grub_tpm_log_event(unsigned char *buf, grub_size_t size,
+ 			      grub_uint8_t pcr, const char *description);
++char EXPORT_FUNC(grub_tpm_device_present) (void);
+ #else
+ static inline grub_err_t grub_tpm_execute(
+ 	PassThroughToTPM_InputParamBlock *inbuf __attribute__ ((unused)),
+@@ -89,6 +90,10 @@ static inline grub_err_t grub_tpm_log_event(
+ {
+ 	return 0;
+ };
++static inline char grub_tpm_device_present ()
++{
++    return 0;
++};
+ #endif
+ 
+ #endif
+-- 
+2.37.2
+
