@@ -47,12 +47,6 @@ ENV GRUB_COMMIT=2.06
 ENV GRUB_PATCHES="patches-${GRUB_COMMIT} patches-riscv64-${GRUB_COMMIT}"
 ENV GRUB_PLATFORM=efi
 
-FROM grub-build-base AS grub-build-i386
-ENV GRUB_MODULES="multiboot multiboot2 biosdisk gpt verify"
-ENV GRUB_COMMIT=71f9e4ac44142af52c3fc1860436cf9e432bf764
-ENV GRUB_PATCHES="patches-${GRUB_COMMIT}"
-ENV GRUB_PLATFORM=efi
-
 # hadolint ignore=DL3006
 FROM grub-build-${TARGETARCH} AS grub-build
 
@@ -71,21 +65,20 @@ ADD --keep-git-dir git://git.sv.gnu.org/gnulib#${GNULIB_REVISION} /gnulib
 # repo, yet we need to be in a repo to apply patches with `git am`.
 # hadolint ignore=DL3003,SC2086
 RUN if [ ! -d "grub" ]; then \
-        tar -xzf /grub.tar.gz; \
-        mv "grub-${GRUB_COMMIT}" grub; \
-        rm -f /grub.tar.gz; \
-        cd grub; \
-        mkdir -p /apply/patches; \
+        tar -xzf /grub.tar.gz && \
+        mv "grub-${GRUB_COMMIT}" grub && \
+        rm -f /grub.tar.gz && \
+        cd grub && \
+        mkdir -p /apply/patches && \
         for dir in ${GRUB_PATCHES}; do \
             cp -r /${dir}/* /apply/patches; \
-        done; \
-        git config --global user.name "Your Name"; \
-        git config --global user.email "you@example.com"; \
-        git init . && git add . && git commit -m "init"; \
-        git am /apply/patches/*; \
-        (./bootstrap --gnulib-srcdir=/gnulib  || ./autogen.sh) ; \
+        done && \
+        git config --global user.name "Your Name" && \
+        git config --global user.email "you@example.com" && \
+        git init . && git add . && git commit -m "init" && \
+        git am /apply/patches/* && \
+        (./bootstrap --gnulib-srcdir=/gnulib || ./autogen.sh); \
     fi
-
 
 WORKDIR /grub
 
@@ -94,7 +87,7 @@ RUN set -e; for p in ${GRUB_PLATFORM}; do \
       platform=${p%%:*}; \
       begin=$(( ${#platform} + 1 )); \
       opt=${p:${begin}}; \
-      [ -f Makefile ] && make distclean; \
+      if [ -f Makefile ]; then make distclean; fi; \
       ./configure --disable-werror --libdir=/grub-lib --with-platform="${platform}" ${opt} CFLAGS='-Os -Wno-unused-value'; \
       make -j $(getconf _NPROCESSORS_ONLN); \
       make install; \
