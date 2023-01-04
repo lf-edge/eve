@@ -48,7 +48,7 @@ func operationGS(t *testing.T, objloc string, objkey string, operation zedUpload
 	dEndPoint, err := ctx.NewSyncerDest(zedUpload.SyncGSTr, "", gsBucket, gsAuth)
 	if err == nil && dEndPoint != nil {
 		// use custom http client for testing same behaviour as in EVE
-		_ = dEndPoint.WithSrcIPSelection(net.ParseIP("0.0.0.0"))
+		_ = dEndPoint.WithSrcIP(net.ParseIP("0.0.0.0"))
 		// create Request
 		req := dEndPoint.NewRequest(operation, objkey, objloc, 0, true, respChan)
 		if req != nil {

@@ -7,11 +7,11 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"net"
-	"net/http"
 	"net/url"
 	"strings"
 	"time"
 
+	"github.com/lf-edge/eve/libs/nettrace"
 	ociutil "github.com/lf-edge/eve/libs/zedUpload/ociutil"
 	"github.com/lf-edge/eve/libs/zedUpload/types"
 )
@@ -29,7 +29,7 @@ type OCITransportMethod struct {
 
 	failPostTime time.Time
 	ctx          *DronaCtx
-	hClient      *http.Client
+	hClientWrap  *httpClientWrapper
 }
 
 // Action perform an action using this method, one of
@@ -76,58 +76,43 @@ func (ep *OCITransportMethod) Open() error {
 
 // Close unsupported
 func (ep *OCITransportMethod) Close() error {
-	return nil
+	return ep.hClientWrap.close()
 }
 
-// WithSrcIPSelection use the specific ip as source address for this connection
-func (ep *OCITransportMethod) WithSrcIPSelection(localAddr net.IP) error {
-	ep.hClient = httpClientSrcIP(localAddr, nil)
-	return nil
+// WithSrcIP : use the specific IP as source address for this connection.
+func (ep *OCITransportMethod) WithSrcIP(localAddr net.IP) error {
+	return ep.hClientWrap.withSrcIP(localAddr)
 }
 
-// WithSrcIPAndProxySelection use the specific ip as source address for this
-// connection and transit through the specific proxy URL
-func (ep *OCITransportMethod) WithSrcIPAndProxySelection(localAddr net.IP,
-	proxy *url.URL) error {
-	ep.hClient = httpClientSrcIP(localAddr, proxy)
-	return nil
+// WithProxy : connect via the provided proxy URL.
+func (ep *OCITransportMethod) WithProxy(proxy *url.URL) error {
+	return ep.hClientWrap.withProxy(proxy)
 }
 
-// WithSrcIPAndHTTPSCerts append certs for the datastore access
-func (ep *OCITransportMethod) WithSrcIPAndHTTPSCerts(localAddr net.IP, certs [][]byte) error {
-	client := httpClientSrcIP(localAddr, nil)
-	client, err := httpClientAddCerts(client, certs)
-	if err != nil {
-		return err
-	}
-	ep.hClient = client
-	return nil
+// WithTrustedCerts : run requests with these certificates added as trusted.
+func (ep *OCITransportMethod) WithTrustedCerts(certs [][]byte) error {
+	return ep.hClientWrap.withTrustedCerts(certs)
 }
 
-// WithSrcIPAndProxyAndHTTPSCerts append certs for the datastore access
-func (ep *OCITransportMethod) WithSrcIPAndProxyAndHTTPSCerts(localAddr net.IP, proxy *url.URL, certs [][]byte) error {
-	client := httpClientSrcIP(localAddr, proxy)
-	client, err := httpClientAddCerts(client, certs)
-	if err != nil {
-		return err
-	}
-	ep.hClient = client
-	return nil
-}
-
-// WithBindIntf bind to specific interface for this connection
+// WithBindIntf : bind to specific interface for this connection
 func (ep *OCITransportMethod) WithBindIntf(intf string) error {
-	localAddr := getSrcIpFromInterface(intf)
-	if localAddr == nil {
-		return fmt.Errorf("failed to get the address for intf")
-	}
-	ep.hClient = httpClientSrcIP(localAddr, nil)
-	return nil
+	return ep.hClientWrap.withBindIntf(intf)
 }
 
-// WithLogging enable logging, not yet supported
+// WithLogging enables or disables logging.
 func (ep *OCITransportMethod) WithLogging(onoff bool) error {
 	return nil
+}
+
+// WithNetTracing enables network tracing.
+func (ep *OCITransportMethod) WithNetTracing(opts ...nettrace.TraceOpt) error {
+	return ep.hClientWrap.withNetTracing(opts...)
+}
+
+// GetNetTrace returns collected network trace and packet captures.
+func (ep *OCITransportMethod) GetNetTrace(description string) (
+	nettrace.AnyNetTrace, []nettrace.PacketCapture, error) {
+	return ep.hClientWrap.getNetTrace(description)
 }
 
 // processUpload artifact upload to OCI registry
@@ -151,9 +136,14 @@ func (ep *OCITransportMethod) processDownload(req *DronaRequest) (int64, string,
 	if req.ackback {
 		go statsUpdater(req, ep.ctx, prgChan)
 	}
+	hClient, err := ep.hClientWrap.unwrap()
+	if err != nil {
+		return size, contentType, err
+	}
 
 	// Pull down the blob as is and save it to a file named for the hash
-	size, contentType, err = ociutil.PullBlob(ep.registry, ep.path, req.ImageSha256, req.objloc, ep.uname, ep.apiKey, req.sizelimit, ep.hClient, prgChan)
+	size, contentType, err = ociutil.PullBlob(ep.registry, ep.path, req.ImageSha256,
+		req.objloc, ep.uname, ep.apiKey, req.sizelimit, hClient, prgChan)
 	// zedUpload's job is to download a blob from an OCI registry. Done.
 	return size, contentType, err
 }
@@ -170,7 +160,11 @@ func (ep *OCITransportMethod) processList(req *DronaRequest) ([]string, error) {
 	if req.ackback {
 		go statsUpdater(req, ep.ctx, prgChan)
 	}
-	return ociutil.Tags(ep.registry, ep.path, ep.uname, ep.apiKey, ep.hClient, prgChan)
+	hClient, err := ep.hClientWrap.unwrap()
+	if err != nil {
+		return nil, err
+	}
+	return ociutil.Tags(ep.registry, ep.path, ep.uname, ep.apiKey, hClient, prgChan)
 }
 
 // processObjectMetaData Artifact Metadata from OCI registry
@@ -189,7 +183,12 @@ func (ep *OCITransportMethod) processObjectMetaData(req *DronaRequest) (string, 
 	if req.ackback {
 		go statsUpdater(req, ep.ctx, prgChan)
 	}
-	_, imageManifest, size, err = ociutil.Manifest(ep.registry, ep.path, ep.uname, ep.apiKey, ep.hClient, prgChan)
+	hClient, err := ep.hClientWrap.unwrap()
+	if err != nil {
+		return imageSha256, size, err
+	}
+	_, imageManifest, size, err = ociutil.Manifest(ep.registry, ep.path, ep.uname,
+		ep.apiKey, hClient, prgChan)
 	if err != nil {
 		return imageSha256, 0, err
 	}
@@ -203,7 +202,8 @@ func (ep *OCITransportMethod) getContext() *DronaCtx {
 }
 
 // NewRequest create a new DronaRequest with this OCITransportMethod as the endpoint
-func (ep *OCITransportMethod) NewRequest(opType SyncOpType, objname, objloc string, sizelimit int64, ackback bool, reply chan *DronaRequest) *DronaRequest {
+func (ep *OCITransportMethod) NewRequest(opType SyncOpType, objname, objloc string,
+	sizelimit int64, ackback bool, reply chan *DronaRequest) *DronaRequest {
 	dR := &DronaRequest{}
 	dR.syncEp = ep
 	dR.operation = opType

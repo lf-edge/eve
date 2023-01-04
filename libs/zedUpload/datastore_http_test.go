@@ -53,7 +53,7 @@ func operationHTTP(t *testing.T, objloc string, objkey string, url, dir string, 
 			if err != nil {
 				return true, err.Error()
 			}
-			err = dEndPoint.WithSrcIPSelection(lIP)
+			err = dEndPoint.WithSrcIP(lIP)
 			if err != nil {
 				return true, err.Error()
 			}
