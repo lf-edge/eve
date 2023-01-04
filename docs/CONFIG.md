@@ -302,35 +302,3 @@ tools/makeusbconf.sh -d -i -f ~/usb.json -s 8000 usb.img
 and then separately copied to the raw USB disk device.
 
 Use [tools/makeusbconf.bat](../tools/makeusbconf.bat) for Windows OS. It will ask you for USB device to use.
-
-### Troubleshooting
-
-The blinking pattern can be extracted from the shell using
-
-```bash
-cat /run/global/LedBlinkCounter/ledconfig.json
-```
-
-If the device does not have any usable IP addresses it will be 1,
-if IP address but no cloud connectivity it will be 2,
-if the cloud responds (even if it is an http error e.g, if the device is not yet
-onboarded), it will be 3, and if a GET of /config works it will be 4.
-
-One can test the connectivity to the controller using
-
-```bash
-    /opt/zededa/bin/diag
-```
-
-The logs for the onboarding attempts are in the [directories](./LOGGING.md) under ```/persist/newlog/``` with a source field set to `client`.
-
-If there are no IP addresses, the logs for network interface manager can help, which have a source field set to `nim`.
-
-The ```/persist/status/nim/DevicePortConfigList/global.json``` contains the set
-of DevicePortConfig which have been tried, any errors, last time they succeeded
-and failed, etc. This is quite useful in a proxy or static IP setup, since there
-can be IP routing issues, DNS issues, WPAD, or proxy issues.
-
-If there is no console (display and keyboard) to run diag or look at these files,
-the ```mkush.sh -d``` above can be used to get the diagnostics deposited on the
-USB stick for inspection.
