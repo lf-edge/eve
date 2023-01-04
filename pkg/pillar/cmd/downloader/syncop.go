@@ -13,8 +13,11 @@ import (
 	"time"
 
 	zconfig "github.com/lf-edge/eve/api/go/config"
+	"github.com/lf-edge/eve/libs/nettrace"
 	"github.com/lf-edge/eve/libs/zedUpload"
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/cipher"
+	"github.com/lf-edge/eve/pkg/pillar/netdump"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	logutils "github.com/lf-edge/eve/pkg/pillar/utils/logging"
 )
@@ -24,14 +27,17 @@ func handleSyncOp(ctx *downloaderContext, key string,
 	config types.DownloaderConfig, status *types.DownloaderStatus,
 	dst *types.DatastoreConfig, receiveChan chan<- CancelChannel) {
 	var (
-		err                                                    error
-		errStr, locFilename, locDirname, remoteName, serverURL string
-		syncOp                                                 zedUpload.SyncOpType = zedUpload.SyncOpDownload
-		trType                                                 zedUpload.SyncTransportType
-		auth                                                   *zedUpload.AuthInput
-		cancelled                                              bool
-		contentType                                            string
-		addrCount                                              int
+		err                     error
+		errStr                  string
+		locFilename, locDirname string
+		remoteName, serverURL   string
+		syncOp                  zedUpload.SyncOpType = zedUpload.SyncOpDownload
+		trType                  zedUpload.SyncTransportType
+		auth                    *zedUpload.AuthInput
+		cancelled               bool
+		contentType             string
+		addrCount               int
+		tracedReqs              []netdump.TracedNetRequest
 	)
 
 	// the target filename, where to place the download, is provided in config.
@@ -210,11 +216,40 @@ func handleSyncOp(ctx *downloaderContext, key string,
 			return
 		}
 	}
+	// Note that network tracing of image downloads over SFTP is not supported.
+	withNetTracing := ctx.netDumper != nil && !dsLocal && trType != zedUpload.SyncSftpTr
+	var traceOpts []nettrace.TraceOpt
+	if withNetTracing {
+		// Avoid socket trace for download. Otherwise, it would increase
+		// the size of the resulting netdump considerably.
+		traceOpts = []nettrace.TraceOpt{
+			&nettrace.WithLogging{
+				CustomLogger: &base.LogrusWrapper{Log: log},
+			},
+			&nettrace.WithConntrack{},
+			&nettrace.WithDNSQueryTrace{},
+			&nettrace.WithHTTPReqTrace{
+				// Do not disclose sensitive data stored inside headers,
+				// record only their length.
+				HeaderFields: nettrace.HdrFieldsOptValueLenOnly,
+			},
+		}
+		if ctx.netdumpWithPCAP {
+			traceOpts = append(traceOpts, &nettrace.WithPacketCapture{
+				Interfaces:        types.GetMgmtPortsAny(ctx.deviceNetworkStatus, 0),
+				TotalSizeLimit:    pcapSizeLimit,
+				IncludeICMP:       true,
+				IncludeARP:        true,
+				TCPWithoutPayload: true, // Exclude TCP segments carrying downloaded data.
+			})
+		}
+	}
 
 	// Loop through all interfaces until a success
 	for addrIndex := 0; addrIndex < addrCount; addrIndex++ {
 		var ifname string
 		var ipSrc net.IP
+		var tracedReq netdump.TracedNetRequest
 		if !dsLocal {
 			ipSrc, err = types.GetLocalAddrNoLinkLocalWithCost(ctx.deviceNetworkStatus,
 				addrIndex, "", downloadMaxPortCost)
@@ -241,10 +276,14 @@ func handleSyncOp(ctx *downloaderContext, key string,
 			status: status,
 		}
 		downloadStartTime := time.Now()
-		contentType, cancelled, err = download(ctx, trType, st, syncOp, serverURL, auth,
-			dsPath, dsCtx.Region,
+		contentType, cancelled, tracedReq, err = download(ctx, trType, st, syncOp,
+			serverURL, auth, dsPath, dsCtx.Region,
 			config.Size, ifname, ipSrc, remoteName, locFilename, dst.DsCertPEM,
-			receiveChan)
+			withNetTracing, traceOpts, receiveChan)
+		if withNetTracing {
+			tracedReq.RequestName = fmt.Sprintf("download-addr%d", addrIndex)
+			tracedReqs = append(tracedReqs, tracedReq)
+		}
 		if err != nil {
 			if cancelled {
 				log.Errorf("download %s cancelled", serverURL)
@@ -280,6 +319,9 @@ func handleSyncOp(ctx *downloaderContext, key string,
 			log.Noticef("updated sizes at end to %d/%d",
 				size, size)
 		}
+		if withNetTracing {
+			publishNetdump(ctx, true, tracedReqs)
+		}
 		handleSyncOpResponse(ctx, config, status,
 			locFilename, key, "", cancelled, cleanOnError)
 		return
@@ -292,6 +334,9 @@ func handleSyncOp(ctx *downloaderContext, key string,
 	if !cancelled {
 		log.Errorf("All source IP addresses failed. All errors:%s",
 			errStr)
+	}
+	if withNetTracing {
+		publishNetdump(ctx, false, tracedReqs)
 	}
 	handleSyncOpResponse(ctx, config, status, locFilename,
 		key, errStr, cancelled, cleanOnError)
