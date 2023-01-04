@@ -32,6 +32,7 @@ const (
 	errorTime          = 3 * time.Minute
 	warningTime        = 40 * time.Second
 	downloaderBasePath = types.SealedDirName + "/" + agentName
+	pcapSizeLimit      = 1 << 26 // 64MB size limit for .pcap
 )
 
 // Go doesn't like this as a constant

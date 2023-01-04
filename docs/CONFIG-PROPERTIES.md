@@ -48,6 +48,7 @@
 | netdump.enable | boolean | true | enable publishing of network diagnostics (as tgz archives to /persist/netdump) |
 | netdump.topic.publish.interval | integer in seconds | 1 hour pre-onboarding, 1 day post-onboarding | how frequently (in seconds) can be netdumps of the same topic published |
 | netdump.topic.maxcount | integer | 10 | maximum number of netdumps that can be published (persisted) for each topic. The oldest netdump is unpublished should a new netdump exceed the limit.
+| netdump.downloader.with.pcap | boolean | false | include packet captures inside netdumps for download requests. However, even if enabled, TCP segments carrying non-empty payload (i.e. content which is being downloaded) are excluded and the overall PCAP size is limited to 64MB. |
 
 In addition, there can be per-agent settings.
 The Per-agent settings begin with "agent.*agentname*.*setting*"

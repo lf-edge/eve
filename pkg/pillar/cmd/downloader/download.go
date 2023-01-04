@@ -12,8 +12,10 @@ import (
 	"os"
 	"time"
 
+	"github.com/lf-edge/eve/libs/nettrace"
 	"github.com/lf-edge/eve/libs/zedUpload"
 	"github.com/lf-edge/eve/libs/zedUpload/types"
+	"github.com/lf-edge/eve/pkg/pillar/netdump"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 )
 
@@ -60,13 +62,12 @@ func saveDownloadedParts(locFilename string, downloadedParts types.DownloadedPar
 func download(ctx *downloaderContext, trType zedUpload.SyncTransportType,
 	status Status, syncOp zedUpload.SyncOpType, downloadURL string,
 	auth *zedUpload.AuthInput, dpath, region string, maxsize uint64, ifname string,
-	ipSrc net.IP, filename, locFilename string, certs [][]byte,
-	receiveChan chan<- CancelChannel) (string, bool, error) {
+	ipSrc net.IP, filename, locFilename string, certs [][]byte, withNetTracing bool,
+	traceOpts []nettrace.TraceOpt, receiveChan chan<- CancelChannel) (
+	reqType string, cancel bool, tracedReq netdump.TracedNetRequest, err error) {
 
 	// create Endpoint
 	var dEndPoint zedUpload.DronaEndPoint
-	var err error
-	var cancel bool
 	switch trType {
 	case zedUpload.SyncHttpTr, zedUpload.SyncSftpTr:
 		dEndPoint, err = ctx.dCtx.NewSyncerDest(trType, downloadURL, dpath, auth)
@@ -84,35 +85,98 @@ func download(ctx *downloaderContext, trType zedUpload.SyncTransportType,
 	}
 	if err != nil {
 		log.Errorf("NewSyncerDest failed: %s", err)
-		return "", cancel, err
+		return "", cancel, tracedReq, err
+	}
+	defer dEndPoint.Close()
+
+	// Configure the network client.
+	err = dEndPoint.WithSrcIP(ipSrc)
+	if err != nil {
+		// If we failed to set source IP, then just log error and still try to download.
+		// This behaviour is primarily because zedUpload package does not support statically
+		// selected source IP for SFTP datastore and historically we would simply ignore this
+		// limitation and continue with whatever source address was dynamically selected.
+		// With other (currently supported) datastore types this call will not fail.
+		log.Errorf("Set source IP failed: %s", err)
+		err = nil
+	}
+	if len(certs) > 0 {
+		log.Functionf("%s: Set trusted certs", trType)
+		err = dEndPoint.WithTrustedCerts(certs)
+		if err != nil {
+			log.Errorf("Set trusted certificates failed: %s", err)
+			return "", cancel, tracedReq, err
+		}
 	}
 	// check for proxies on the selected management port interface
 	proxyLookupURL := zedcloud.IntfLookupProxyCfg(log, &ctx.deviceNetworkStatus, ifname, downloadURL, trType)
 	proxyURL, err := zedcloud.LookupProxy(log, &ctx.deviceNetworkStatus, ifname, proxyLookupURL)
-	if err == nil {
-		if proxyURL != nil {
-			log.Functionf("%s: Using proxy %s", trType, proxyURL.String())
-			if len(certs) > 0 {
-				log.Functionf("%s: Set server certs", trType)
-				err = dEndPoint.WithSrcIPAndProxyAndHTTPSCerts(ipSrc, proxyURL, certs)
-			} else {
-				err = dEndPoint.WithSrcIPAndProxySelection(ipSrc, proxyURL)
-			}
-		} else {
-			if len(certs) > 0 {
-				log.Functionf("%s: Set server certs", trType)
-				err = dEndPoint.WithSrcIPAndHTTPSCerts(ipSrc, certs)
-			} else {
-				err = dEndPoint.WithSrcIPSelection(ipSrc)
-			}
-		}
-		if err != nil {
-			log.Errorf("Set source IP failed: %s", err)
-			return "", cancel, err
-		}
-	} else {
+	if err != nil {
 		log.Errorf("Lookup Proxy failed: %s", err)
-		return "", cancel, err
+		return "", cancel, tracedReq, err
+	}
+	if proxyURL != nil {
+		log.Functionf("%s: Using proxy %s", trType, proxyURL.String())
+		err = dEndPoint.WithProxy(proxyURL)
+		if err != nil {
+			log.Errorf("Set proxy failed: %s", err)
+			return "", cancel, tracedReq, err
+		}
+	}
+
+	downloadedParts := loadDownloadedParts(locFilename)
+	downloadedPartsHash := downloadedParts.Hash()
+	preDownloadParts := downloadedParts
+
+	// If the download request is being traced and PCAP is enabled, the function
+	// will wait just a little bit at the end to capture all the packets.
+	const pcapDelay = 250 * time.Millisecond
+	var withPCAP bool
+	if withNetTracing {
+		for _, traceOpt := range traceOpts {
+			if _, ok := traceOpt.(*nettrace.WithPacketCapture); ok {
+				withPCAP = true
+				break
+			}
+		}
+	}
+
+	if withNetTracing {
+		err = dEndPoint.WithNetTracing(traceOpts...)
+		if err != nil {
+			// Just log warning and disable network tracing.
+			log.Warnf("Failed to enable network tracing: %s", err)
+			err = nil
+			withNetTracing = false
+		} else {
+			// Obtain and set netTrace at the end.
+			// (but before Close(), which is below on the defer stack)
+			defer func() {
+				if withPCAP {
+					time.Sleep(pcapDelay)
+				}
+				description := fmt.Sprintf("%v download URL: %s, dpath: %s, "+
+					"region: %s, filename: %s, maxsize: %d, ifname: %s, ipSrc: %v, "+
+					"locFilename: %s", trType, downloadURL, dpath, region, filename, maxsize,
+					ifname, ipSrc, locFilename)
+				// Use err2 to not change the return value of err.
+				preDownloadProg, err2 := json.Marshal(preDownloadParts)
+				if err2 == nil {
+					description += ", pre-download progress: " + string(preDownloadProg)
+				}
+				postDownloadProg, err2 := json.Marshal(downloadedParts)
+				if err2 == nil {
+					description += ", post-download progress: " + string(postDownloadProg)
+				}
+				netTrace, pcaps, err2 := dEndPoint.GetNetTrace(description)
+				if err2 != nil {
+					log.Warnf("Failed to get network trace: %v", err2)
+				} else {
+					tracedReq.NetTrace = netTrace
+					tracedReq.PacketCaptures = pcaps
+				}
+			}()
+		}
 	}
 
 	var respChan = make(chan *zedUpload.DronaRequest)
@@ -122,14 +186,11 @@ func download(ctx *downloaderContext, trType zedUpload.SyncTransportType,
 		trType, dpath, region, filename, downloadURL, maxsize, ifname, ipSrc,
 		locFilename)
 
-	downloadedParts := loadDownloadedParts(locFilename)
-	downloadedPartsHash := downloadedParts.Hash()
-
 	// create Request
 	req := dEndPoint.NewRequest(syncOp, filename, locFilename,
 		int64(maxsize), true, respChan)
 	if req == nil {
-		return "", cancel, errors.New("NewRequest failed")
+		return "", cancel, tracedReq, errors.New("NewRequest failed")
 	}
 	req = req.WithDoneParts(downloadedParts)
 	req = req.WithCancel(context.Background())
@@ -179,7 +240,7 @@ func download(ctx *downloaderContext, trType zedUpload.SyncTransportType,
 				errStr := fmt.Sprintf("Size '%v' provided in image config of '%s' is incorrect.\nDownload status (%v / %v). Aborting the download",
 					totalSize, resp.GetLocalName(), currentSize, totalSize)
 				log.Errorln(errStr)
-				return "", cancel, errors.New(errStr)
+				return "", cancel, tracedReq, errors.New(errStr)
 			}
 			// Did anything change since last update?
 			change := status.Progress(progress, currentSize,
@@ -191,7 +252,7 @@ func download(ctx *downloaderContext, trType zedUpload.SyncTransportType,
 						time.Since(lastProgress),
 						currentSize, totalSize)
 					log.Error(err)
-					return "", cancel, err
+					return "", cancel, tracedReq, err
 				}
 			} else {
 				lastProgress = time.Now()
@@ -204,18 +265,18 @@ func download(ctx *downloaderContext, trType zedUpload.SyncTransportType,
 			_, err = resp.GetUpStatus()
 		}
 		if resp.IsError() {
-			return "", cancel, err
+			return "", cancel, tracedReq, err
 		}
 		log.Functionf("Done for %v size %d",
 			resp.GetLocalName(), resp.GetAsize())
-		return req.GetContentType(), cancel, nil
+		return req.GetContentType(), cancel, tracedReq, nil
 	}
 	// if we got here, channel was closed
 	// range ends on a closed channel, which is the equivalent of "!ok"
 	errStr := fmt.Sprintf("respChan EOF for <%s>, <%s>, <%s>",
 		dpath, region, filename)
 	log.Errorln(errStr)
-	return "", cancel, errors.New(errStr)
+	return "", cancel, tracedReq, errors.New(errStr)
 }
 
 // objectMetaData resolves a tag to a sha and returns the sha
@@ -241,15 +302,16 @@ func objectMetadata(ctx *downloaderContext, trType zedUpload.SyncTransportType,
 		log.Errorf("NewSyncerDest failed: %s", err)
 		return sha256, cancel, err
 	}
+	defer dEndPoint.Close()
+
+	// Configure the network client.
+	dEndPoint.WithSrcIP(ipSrc)
 	// check for proxies on the selected management port interface
 	proxyLookupURL := zedcloud.IntfLookupProxyCfg(log, &ctx.deviceNetworkStatus, ifname, downloadURL, trType)
-
 	proxyURL, err := zedcloud.LookupProxy(log, &ctx.deviceNetworkStatus, ifname, proxyLookupURL)
 	if err == nil && proxyURL != nil {
 		log.Functionf("%s: Using proxy %s", trType, proxyURL.String())
-		dEndPoint.WithSrcIPAndProxySelection(ipSrc, proxyURL)
-	} else {
-		dEndPoint.WithSrcIPSelection(ipSrc)
+		dEndPoint.WithProxy(proxyURL)
 	}
 
 	var respChan = make(chan *zedUpload.DronaRequest)

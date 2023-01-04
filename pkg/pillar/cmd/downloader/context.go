@@ -9,6 +9,7 @@ import (
 	"github.com/lf-edge/eve/libs/zedUpload"
 	"github.com/lf-edge/eve/pkg/pillar/agentbase"
 	"github.com/lf-edge/eve/pkg/pillar/cipher"
+	"github.com/lf-edge/eve/pkg/pillar/netdump"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
@@ -32,6 +33,8 @@ type downloaderContext struct {
 	cipherMetrics            *cipher.AgentMetrics
 	GCInitialized            bool
 	downloadMaxPortCost      uint8
+	netDumper                *netdump.NetDumper // nil if netdump is disabled
+	netdumpWithPCAP          bool
 	// cli options
 	versionPtr *bool
 }

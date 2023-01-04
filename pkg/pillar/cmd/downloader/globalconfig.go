@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
+	"github.com/lf-edge/eve/pkg/pillar/netdump"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 )
 
@@ -39,6 +40,20 @@ func handleGlobalConfigImpl(ctxArg interface{}, key string,
 			maxStalledTime = time.Duration(gcp.GlobalValueInt(types.DownloadStalledTime)) * time.Second
 		}
 		ctx.downloadMaxPortCost = uint8(gcp.GlobalValueInt(types.DownloadMaxPortCost))
+		// (Re-)Initialize netdump
+		netDumper := ctx.netDumper
+		netdumpEnabled := gcp.GlobalValueBool(types.NetDumpEnable)
+		if netdumpEnabled {
+			if netDumper == nil {
+				netDumper = &netdump.NetDumper{}
+			}
+			maxCount := gcp.GlobalValueInt(types.NetDumpTopicMaxCount)
+			netDumper.MaxDumpsPerTopic = int(maxCount)
+		} else {
+			netDumper = nil
+		}
+		ctx.netdumpWithPCAP = gcp.GlobalValueBool(types.NetDumpDownloaderPCAP)
+		ctx.netDumper = netDumper
 		ctx.GCInitialized = true
 	}
 	log.Functionf("handleGlobalConfigImpl done for %s", key)

@@ -231,6 +231,10 @@ const (
 	// NetDumpTopicMaxCount : maximum number of netdumps that can be published (persisted)
 	// for each topic. The oldest netdump is unpublished should a new netdump exceed the limit.
 	NetDumpTopicMaxCount GlobalSettingKey = "netdump.topic.maxcount"
+	// NetDumpDownloaderPCAP : Enable to include packet captures inside netdumps for
+	// download requests. However, even if enabled, TCP segments carrying non-empty payload
+	// (i.e. content which is being downloaded) are excluded.
+	NetDumpDownloaderPCAP GlobalSettingKey = "netdump.downloader.with.pcap"
 )
 
 // AgentSettingKey - keys for per-agent settings
@@ -820,6 +824,7 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	// Default NetDumpTopicPubInterval is increased to one day after onboarding.
 	configItemSpecMap.AddIntItem(NetDumpTopicPubInterval, HourInSec, 60, 0xFFFFFFFF)
 	configItemSpecMap.AddIntItem(NetDumpTopicMaxCount, 10, 1, 0xFFFFFFFF)
+	configItemSpecMap.AddBoolItem(NetDumpDownloaderPCAP, false)
 	return configItemSpecMap
 }
 
