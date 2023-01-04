@@ -137,3 +137,238 @@ The device reports the status of all of the device connectivity using [SystemAda
 
 - A new SystemAdapter configuration was tested, but none of the management ports could be used to connect to the controller. In that case a failure is reported by setting lastError in DevicePortStatus and the currentIndex is set to the currently used DevicePortStatus in the list. Note that lastFailed and lastSucceeded can be used to see if a configuration has succeeded in the past or always failed.
 - A particular management port could not be used to reach the controller. In that case the ErrorInfo for the particular DevicePort is set to indicate the error and timestamp.
+
+## Troubleshooting
+
+There are multiple sources of information that provide a picture of the current or a past
+state of device connectivity and when combined and investigated together can help to determine
+or narrow down the root cause of any connectivity issue.
+
+### LED Indication
+
+Being physically present next to a device, the current state of the device wrt. controller
+connectivity and onboarding procedure can be determined based on the blinking pattern of an LED.
+To indicate a given state, LED blinks one or more times quickly in a row, then pauses for 1200ms
+and repeats continuously. By counting the number of successive blinks one may determine the current
+state of the edge device.
+
+For example, if a device does not have any usable IP addresses it will blink once per iteration,
+twice if it has IP address(es) but still no cloud connectivity, three times if device has connected
+to the controller but it is not yet onboarded.
+
+Which LED is used to indicate state progression depends on the device model.
+For a full list of blinking (and color) patterns and to learn which LED is used for indication
+in a particular device model, please refer to [LED-INDICATION.md](./LED-INDICATION.md).
+
+For a remotely accessed device (via iLO, ssh, edgeview, etc.), the blinking pattern can be extracted
+from the shell using:
+
+```bash
+cat /run/global/LedBlinkCounter/ledconfig.json
+
+# Returns for example:
+{"BlinkCounter":4}
+```
+
+### Diag microservice
+
+[Diag microservice](../pkg/pillar/cmd/diag) is responsible for managing diagnostic services
+on the device, and reporting to console for debugging if there are any issues.
+It informs about which network configuration (aka `DevicePortConfig`) is currently being used,
+what is the status of connectivity between the device and the controller and whether the device
+has already onboarded. Diag also prints the list of physical network adapters visible to EVE
+(i.e. not assigned to applications) with their assigned IP addresses, associated DNS servers
+and proxy config (if any). Finally, it also outputs results of some connectivity checks that
+it performs, including `/ping` request to the controller and `GET google.com` request, both
+performed via each management interface.
+It does not send this information to the Controller or to the log, however. One must access
+the device console to have this information printed on the stdout. Should this diag output
+interfere with other work performed via the console, disable the printing of diagnostics
+with `eve verbose off`.
+
+### Connectivity-Related Logs
+
+The progression and outcome of [network configuration testing](#testing) is logged with messages
+prefixed with `DPC verify:` (not that DPC is abbreviation for `DevicePortConfig`, which is a Go
+structure holding configuration for all management and app-shared interfaces). These messages
+can explain why a particular device is not using the latest configuration but instead has fallen
+back to a previous one. These logs are quite concise yet pack enough information to tell when
+a device performed testing, what was the reason to trigger it (was it periodic or config/state
+changed?), how the testing progressed (e.g. how long did the device waited for IP addresses?)
+and what was the outcome (did the latest network configuration passed the test and if not what
+error did the connectivity check returned).
+It is not necessary to enable debug logs - the most important messages related to DPC testing
+are logged with log levels `info`, `warning` or `error`.
+
+For concrete examples of `DPC verify` logs, please refer to [nim.md](../pkg/pillar/docs/nim.md),
+section "Logs". That document also explains the topic of DPC reconciliation, i.e. synchronization
+between the intended and the current network config and how it is presented in the logs
+(spoiler alert: search for `DPC Reconciler` in the logs). This can be useful to look into
+if there is a suspicion that the root cause of a connectivity issue is device not being able
+to apply some configuration items (e.g. failed to start DHCP client).
+
+The onboarding procedure is from the device side executed by the [client microservice](../pkg/pillar/cmd/client).
+Hence, to learn the state and the progression of the device onboarding, search for logs with
+a source field set to `client`.
+
+### Connectivity-Related Files
+
+EVE uses [pubsub](./IPC.md) for communication between its microservices. Currently published
+messages are stored in files either persistently under the `/persist` partition or non-persistently
+under the `/run` directory.
+When connected to a device via console, ssh or edgeview, one may read these files to learn
+the current config/state/metrics as published by EVE microservices.
+
+For device connectivity, the particularly interesting topics are those published by Network
+Interface Manager (NIM for short):
+
+-`/persist/status/nim/DevicePortConfigList/global.json`: contains the set of DevicePortConfig-s
+ (configurations for mgmt and app-shared ports) which are currently known to the device
+ (the latest highest-priority DPC plus some persisted previous configs). These configs are sorted
+ in priority-decreasing order, i.e. the latest config is at the index 0. Additionally, there is
+ a field `CurrentIndex`, pointing to the currently applied DPC. Each DPC entry summarizes
+ the outcome of [testing](#testing) with fields: `LastFailed` (time of the last failed test),
+ `LastSucceeded` (time of the last successful test) and `State` (connectivity state determined
+ by the last test). `State` is an enum value but in this file presented with its integer representation.
+ To learn what a given `State` number means, look for the `DPCState` enum in
+ [zedroutertypes.go](../pkg/pillar/types/zedroutertypes.go).
+- `/run/nim/DeviceNetworkStatus/global.json`: contains state information for the currently applied
+ DPC. For every port it shows the currently assigned IP addresses, DNS servers, IP-based geolocation
+ info, MAC address, administrative status (up/down), WiFi/cellular-specific details for wireless
+ interfaces and more.
+
+Additionally, NIM outputs the current and the intended state of the configuration into
+`/run/nim-current-state.dot` and `/run/nim-intended-state.dot`, respectively.
+This is updated on every change.
+The content of the files is a [DOT](https://graphviz.org/doc/info/lang.html) description
+of the dependency graph modeling the respective state (config items have dependencies between
+them which decide the order at which they can be applied).
+Copy the content of one of the files and use an online service
+`https://dreampuf.github.io/GraphvizOnline` to plot the graph. Alternatively, generate
+an SVG image locally with:
+`dot -Tsvg ./nim-current-state.dot -o nim-current-state.svg`
+(similarly for the intended state)
+
+Some more pubsub topics from other microservices worth looking at during device connectivity
+troubleshooting:
+
+- `/run/zedagent/DevicePortConfig/zedagent.json`: currently published DPC from zedagent (either
+ coming from the controller or from a bootstrap config, see [CONFIG.md](./CONFIG.md)).
+- `/run/zedagent/PhysicalIOAdapterList/zedagent.json`: list of physical IO adapters, published
+ from zedagent but ultimately coming from the device model. This includes network adapters
+ with their specification (PCI addresses, kernel interface names, etc.).
+- `/run/domainmgr/AssignableAdapters/global.json`: the spec and state of physical IO adapters
+ after being processed by [domainmgr microservice](../pkg/pillar/cmd/domainmgr). This means after
+ each was assigned to the corresponding domain and available to be used either by NIM (for mgmt or
+ as app-shared) or by an app (as app-direct). NIM waits for `AssignableAdapters` before applying
+ DPC config. Change in `AssignableAdapters` can also trigger DPC re-testing or unblock NIM
+ to apply a given DPC (e.g. a particular port is finally available in dom0).
+- `/persist/status/zedclient/OnboardingStatus/global.json`: the status of the onboarding procedure.
+ Once device is onboarded, `DeviceUUID` field will be non-empty and contain the assigned
+ device UUID (also printed to `/persist/status/uuid`).
+
+Finally, the [wwan microservice](../pkg/wwan), managing the [cellular connectivity](./WIRELESS.md),
+is a shell script outside of the pillar container, not using pubsub for IPC. Instead, it exchanges
+wwan config, status and metrics with NIM simply by reading/writing files located under `/run/wwan`
+directory:
+
+- `config.json` is published by NIM and may contain configuration for a cellular modem.
+- `status.json` and `metrics.json` are published by wwan microservice to inform NIM about the current
+ cellular connectivity status and to publish packet/byte counters, respectively.
+- `resolv.conf/<interface-name>.dhcp` contains the list of nameservers that should be used with
+ a given wwan interface (published by wwan to NIM and further via `DeviceNetworkStatus` to other
+ microservices, like downloader)
+
+### Netdump and Nettrace
+
+EVE performs all communication with the controller over the HTTP protocol using the [http.Client](https://pkg.go.dev/net/http#Client)
+for Go. Additionally, the same protocol and the client are typically also used to download EVE/app
+images from data stores. Given all that, it is useful to be able to obtain diagnostics from HTTP
+requests processing as done by `http.Client` and use it for connectivity troubleshooting.
+For exactly this purpose we implemented [nettrace package](../libs/nettrace/README.md),
+which internally wraps and injects hooks into `http.Client` to monitor and record a summary of
+all important network operations that happen behind the scenes during request processing at different
+layers of the network stacks, denoted as "network traces" (or just collectively denoted as "network trace"
+to avoid overusing the plural form). This would include all successful and also failed TCP and TLS
+handshakes, DNS queries, reused connections, HTTP redirects, socked read/write operations, etc.
+All of this is typically hidden behind the `http.Client` implementation and only a single error
+value with limited information is available when a request fails.
+Moreover, `nettrace` allows to capture conntrack entries as well as all packets of traced TCP
+connections and UDP "exchanges" for more in-depth analysis. For example, with a conntrack entry attached,
+it is possible to tell for a given TCP/UDP traffic which ACL rule (configured by EVE as iptables rule)
+was applied.
+
+Network tracing comes with an additional overhead and the output can be quite large. Therefore,
+we must be careful about how often are network traces obtained and how do we publish them.
+For example, logging network trace as a single message is not an option. Instead, EVE publishes
+network traces inside Tar/GZip archives, labeled as "netdumps" and stored persistently under
+`/persist/netdump` directory.
+This is done by the [netdump package](../pkg/pillar/netdump), which additionally adds some more files
+into each archive to capture the config/state of the device connectivity at the moment of the publication.
+All this information combined allows to troubleshoot a connectivity issue (between device
+and the controller or a data-store) even after it is no longer reproducible.
+
+Every netdump package contains:
+
+- `eve` directory with snapshots of pubsub publications related to device connectivity (such as
+ `DevicePortConfigList`, `DeviceNetworkStatus`, `AssignableAdapters`), DOT files projecting the
+ intended and the current network config as dependency graphs, wwan config/status/metrics and also
+ files with basic info like the EVE and Golang versions. For more info on these files, please see
+ [the section above](#connectivity-related-files),
+- `linux` directory with the output from networking-related commands like `ip`, `arp`, `iptables`,
+ `netstat`, etc.
+- `requests` directory with attached network traces and packet captures (if enabled) collected for
+ HTTP requests run by EVE. This can be for example request to get device config or just to ping
+ the controller, or to download an image. Note that EVE can make multiple attempts for every request,
+ trying every port and local IP address. Every attempt will have separate trace under its own subdirectory
+ named `<request-name>-<interface>-<attempt-index>`
+
+Every netdump is published into a topic, represented by its name and by default limited in size to 10
+netdumps at most ([configurable](./CONFIG-PROPERTIES.md) by `netdump.topic.maxcount`). The oldest
+netdump of a topic is unpublished (removed from `/persist/netdump`) should a new netdump exceed the limit.
+Topics are used to separate different microservices and even to split successful and failed requests
+from each other. Topic name is therefore typically `<microservice>-<ok|fail>`. For troubleshooting
+purposes, netdumps of failed requests are obviously more useful, but having a trace of a "good run"
+can be useful to compare and find differences. Published netdump filename is a concatenation of the
+topic name with a publication timestamp plus the `.tgz` extension, for example:
+`downloader-fail-2023-01-03T14-25-04.tgz`, `nim-ok-2023-01-03T13-30-36`, etc.
+
+Not all microservices that communicate over the network are traced and contribute with netdumps.
+Currently traced HTTP requests are:
+
+- `/ping` request done by NIM to verify connectivity for the *latest* DPC (testing of older DPCs
+ is never traced). Packet capture is also enabled and the obtained pcap files are included in
+ the published netdumps. To limit the overhead associated with tracing and packet capture,
+ NIM is only allowed to enable them and produce netdump at most once per day ([configurable](./CONFIG-PROPERTIES.md)
+ by `netdump.topic.publish.interval`). However, before device is fully onboarded this interval
+ is lowered to one netdump per hour to get more frequent diagnostics for initial connectivity
+ troubleshooting.
+- `/config` and `/info` requests done by zedagent to obtain device configuration and publish info
+ messages, respectively. Packet capture is not enabled in this case. Follows the same interval
+ as given by `netdump.topic.publish.interval`. For `/info` requests, tracing only covers publication
+ of the `ZInfoDevice` message.
+ Moreover, tracing is enabled only if the highest priority DPC is currently being applied
+ and is reported by NIM as working. Otherwise, we will eventually get `nim-fail*` netdump
+ which should be sufficient for connectivity troubleshooting. The purpose of zedagent netdumps
+ is to debug issues specific to `/config` an `/info` requests (which are essential to keep the device
+ remotely manageable).
+ Netdumps are published separately into topics `zedagent-config-<ok|fail>`
+ and `zedagent-info-<ok|fail>`.
+- *every* download request performed by [downloader](../pkg/pillar/cmd/downloader) using the HTTP
+ protocol is traced and netdump is published into the topic `downloader-ok` or `downloader-fail`,
+ depending on the outcome of the download process. By default, this does not include any packet
+ captures. However, a limited PCAP can be enabled with config option `netdump.downloader.with.pcap`.
+ Limited in the sense that it will not include TCP segments carrying non-empty payload (i.e. packets
+ with the downloaded data). On the other hand, included will be all UDP traffic (DNS requests),
+ TCP SYN, RST and FIN packets as well as ACK packets without data piggybacking (sufficient to tell
+ where a download process got "broken"). The total PCAP size is limited to 64MB (packets past this
+ limit will not be included).
+
+In order to troubleshoot a present or a past connectivity issue, it is necessary to locate and obtain
+the appropriate netdump from the affected device (locate by microservice aka topic name and look for
+the closest timestamp). Without a remote connectivity to the device, it is possible to dump all
+diagnostics to a USB stick. See [CONFIG.md](./CONFIG.md), section "Creating USB sticks".
+With this method, the entire `/persist/netdump` directory will be copied over.
+If device is remotely accessible, published netdumps can be listed and copied over ssh (if enabled
+by config), edgeview (`ls` + `cp` commands; to download all netdumps at once use: `tar//persist/netdump`)
+or using a remote console if available.
