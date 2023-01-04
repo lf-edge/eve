@@ -7,15 +7,16 @@ import (
 	"bytes"
 	"fmt"
 	"net"
-	"net/http"
 	"net/url"
 
 	"time"
 
+	"github.com/lf-edge/eve/libs/nettrace"
 	azure "github.com/lf-edge/eve/libs/zedUpload/azureutil"
 	"github.com/lf-edge/eve/libs/zedUpload/types"
 )
 
+// Action : execute selected action targeting Azure datastore.
 func (ep *AzureTransportMethod) Action(req *DronaRequest) error {
 	var err error
 	var size int
@@ -66,58 +67,53 @@ func (ep *AzureTransportMethod) Open() error {
 }
 
 func (ep *AzureTransportMethod) Close() error {
-	return nil
+	return ep.hClientWrap.close()
 }
 
-// WithSrcIPSelection use the specific ip as source address for this connection
-func (ep *AzureTransportMethod) WithSrcIPSelection(localAddr net.IP) error {
-	ep.hClient = httpClientSrcIP(localAddr, nil)
-	return nil
+// WithSrcIP : use the specific IP as source address for this connection.
+func (ep *AzureTransportMethod) WithSrcIP(localAddr net.IP) error {
+	return ep.hClientWrap.withSrcIP(localAddr)
 }
 
-// WithSrcIPAndProxySelection use the specific ip as source address for this
-// connection and connect via the provided proxy URL
-func (ep *AzureTransportMethod) WithSrcIPAndProxySelection(localAddr net.IP,
-	proxy *url.URL) error {
-	ep.hClient = httpClientSrcIP(localAddr, proxy)
-	return nil
+// WithProxy : connect via the provided proxy URL.
+func (ep *AzureTransportMethod) WithProxy(proxy *url.URL) error {
+	return ep.hClientWrap.withProxy(proxy)
 }
 
-// WithSrcIPAndHTTPSCerts append certs for the datastore access
-func (ep *AzureTransportMethod) WithSrcIPAndHTTPSCerts(localAddr net.IP, certs [][]byte) error {
-	client := httpClientSrcIP(localAddr, nil)
-	client, err := httpClientAddCerts(client, certs)
-	if err != nil {
-		return err
-	}
-	ep.hClient = client
-	return nil
+// WithTrustedCerts : run requests with these certificates added as trusted.
+func (ep *AzureTransportMethod) WithTrustedCerts(certs [][]byte) error {
+	return ep.hClientWrap.withTrustedCerts(certs)
 }
 
-// WithSrcIPAndProxyAndHTTPSCerts takes a proxy and proxy certs
-func (ep *AzureTransportMethod) WithSrcIPAndProxyAndHTTPSCerts(localAddr net.IP, proxy *url.URL, certs [][]byte) error {
-	client := httpClientSrcIP(localAddr, proxy)
-	client, err := httpClientAddCerts(client, certs)
-	if err != nil {
-		return err
-	}
-	ep.hClient = client
-	return nil
-}
-
-// bind to specific interface for this connection
+// WithBindIntf : bind to specific interface for this connection
 func (ep *AzureTransportMethod) WithBindIntf(intf string) error {
-	return fmt.Errorf("not supported")
+	return ep.hClientWrap.withBindIntf(intf)
 }
 
+// WithLogging enables or disables logging.
 func (ep *AzureTransportMethod) WithLogging(onoff bool) error {
 	return nil
 }
 
+// WithNetTracing enables network tracing.
+func (ep *AzureTransportMethod) WithNetTracing(opts ...nettrace.TraceOpt) error {
+	return ep.hClientWrap.withNetTracing(opts...)
+}
+
+// GetNetTrace returns collected network trace and packet captures.
+func (ep *AzureTransportMethod) GetNetTrace(description string) (
+	nettrace.AnyNetTrace, []nettrace.PacketCapture, error) {
+	return ep.hClientWrap.getNetTrace(description)
+}
+
 // File upload to Azure Blob Datastore
 func (ep *AzureTransportMethod) processAzureUpload(req *DronaRequest) (string, error) {
+	hClient, err := ep.hClientWrap.unwrap()
+	if err != nil {
+		return "", err
+	}
 	file := req.name
-	loc, err := azure.UploadAzureBlob(ep.aurl, ep.acName, ep.acKey, ep.container, file, req.objloc, ep.hClient)
+	loc, err := azure.UploadAzureBlob(ep.aurl, ep.acName, ep.acKey, ep.container, file, req.objloc, hClient)
 	if err != nil {
 		return loc, err
 	}
@@ -126,13 +122,18 @@ func (ep *AzureTransportMethod) processAzureUpload(req *DronaRequest) (string, e
 
 // File download from Azure Blob Datastore
 func (ep *AzureTransportMethod) processAzureDownload(req *DronaRequest) error {
+	hClient, err := ep.hClientWrap.unwrap()
+	if err != nil {
+		return err
+	}
 	file := req.name
 	prgChan := make(types.StatsNotifChan)
 	defer close(prgChan)
 	if req.ackback {
 		go statsUpdater(req, ep.ctx, prgChan)
 	}
-	doneParts, err := azure.DownloadAzureBlob(ep.aurl, ep.acName, ep.acKey, ep.container, file, req.objloc, req.sizelimit, ep.hClient, req.doneParts, prgChan)
+	doneParts, err := azure.DownloadAzureBlob(ep.aurl, ep.acName, ep.acKey, ep.container,
+		file, req.objloc, req.sizelimit, hClient, req.doneParts, prgChan)
 	req.doneParts = doneParts
 	if err != nil {
 		return err
@@ -142,7 +143,11 @@ func (ep *AzureTransportMethod) processAzureDownload(req *DronaRequest) error {
 
 // File delete from Azure Blob Datastore
 func (ep *AzureTransportMethod) processAzureBlobDelete(req *DronaRequest) error {
-	err := azure.DeleteAzureBlob(ep.aurl, ep.acName, ep.acKey, ep.container, req.name, ep.hClient)
+	hClient, err := ep.hClientWrap.unwrap()
+	if err != nil {
+		return err
+	}
+	err = azure.DeleteAzureBlob(ep.aurl, ep.acName, ep.acKey, ep.container, req.name, hClient)
 	//log.Printf("Azure Blob delete status: %v", status)
 	return err
 }
@@ -151,7 +156,11 @@ func (ep *AzureTransportMethod) processAzureBlobDelete(req *DronaRequest) error 
 func (ep *AzureTransportMethod) processAzureBlobList(req *DronaRequest) ([]string, error, int) {
 	var csize int
 	var img []string
-	img, err := azure.ListAzureBlob(ep.aurl, ep.acName, ep.acKey, ep.container, ep.hClient)
+	hClient, err := ep.hClientWrap.unwrap()
+	if err != nil {
+		return img, err, csize
+	}
+	img, err = azure.ListAzureBlob(ep.aurl, ep.acName, ep.acKey, ep.container, hClient)
 	if err != nil {
 		return img, err, csize
 	}
@@ -159,7 +168,11 @@ func (ep *AzureTransportMethod) processAzureBlobList(req *DronaRequest) ([]strin
 }
 
 func (ep *AzureTransportMethod) processAzureBlobMetaData(req *DronaRequest) (int64, string, error) {
-	size, md5, err := azure.GetAzureBlobMetaData(ep.aurl, ep.acName, ep.acKey, ep.container, req.name, ep.hClient)
+	hClient, err := ep.hClientWrap.unwrap()
+	if err != nil {
+		return 0, "", err
+	}
+	size, md5, err := azure.GetAzureBlobMetaData(ep.aurl, ep.acName, ep.acKey, ep.container, req.name, hClient)
 	if err != nil {
 		return 0, "", err
 	}
@@ -171,11 +184,21 @@ func (ep *AzureTransportMethod) getContext() *DronaCtx {
 }
 
 func (ep *AzureTransportMethod) processAzureUploadByChunks(req *DronaRequest) error {
-	return azure.UploadPartByChunk(ep.aurl, ep.acName, ep.acKey, ep.container, req.localName, req.UploadID, ep.hClient, bytes.NewReader(req.Adata))
+	hClient, err := ep.hClientWrap.unwrap()
+	if err != nil {
+		return err
+	}
+	return azure.UploadPartByChunk(ep.aurl, ep.acName, ep.acKey, ep.container,
+		req.localName, req.UploadID, hClient, bytes.NewReader(req.Adata))
 }
 
 func (ep *AzureTransportMethod) processAzureDownloadByChunks(req *DronaRequest) error {
-	readCloser, size, err := azure.DownloadAzureBlobByChunks(ep.aurl, ep.acName, ep.acKey, ep.container, req.name, req.objloc, ep.hClient)
+	hClient, err := ep.hClientWrap.unwrap()
+	if err != nil {
+		return err
+	}
+	readCloser, size, err := azure.DownloadAzureBlobByChunks(ep.aurl, ep.acName, ep.acKey,
+		ep.container, req.name, req.objloc, hClient)
 	if err != nil {
 		return err
 	}
@@ -190,11 +213,21 @@ func (ep *AzureTransportMethod) processAzureDownloadByChunks(req *DronaRequest) 
 }
 
 func (ep *AzureTransportMethod) processGenerateBlobSasURI(req *DronaRequest) (string, error) {
-	return azure.GenerateBlobSasURI(ep.aurl, ep.acName, ep.acKey, ep.container, req.localName, ep.hClient, req.Duration)
+	hClient, err := ep.hClientWrap.unwrap()
+	if err != nil {
+		return "", err
+	}
+	return azure.GenerateBlobSasURI(ep.aurl, ep.acName, ep.acKey, ep.container,
+		req.localName, hClient, req.Duration)
 }
 
 func (ep *AzureTransportMethod) processPutBlockListIntoBlob(req *DronaRequest) error {
-	return azure.UploadBlockListToBlob(ep.aurl, ep.acName, ep.acKey, ep.container, req.localName, ep.hClient, req.Blocks)
+	hClient, err := ep.hClientWrap.unwrap()
+	if err != nil {
+		return err
+	}
+	return azure.UploadBlockListToBlob(ep.aurl, ep.acName, ep.acKey, ep.container,
+		req.localName, hClient, req.Blocks)
 }
 
 func (ep *AzureTransportMethod) NewRequest(opType SyncOpType, objname, objloc string, sizelimit int64, ackback bool, reply chan *DronaRequest) *DronaRequest {
@@ -227,5 +260,5 @@ type AzureTransportMethod struct {
 
 	failPostTime time.Time
 	ctx          *DronaCtx
-	hClient      *http.Client
+	hClientWrap  *httpClientWrapper
 }
