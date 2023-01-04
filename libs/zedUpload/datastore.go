@@ -4,20 +4,16 @@
 package zedUpload
 
 import (
-	"context"
-	"crypto/tls"
-	"crypto/x509"
 	"fmt"
 	"net"
-	"net/http"
 	"net/url"
 	"sync"
 	"time"
 
+	"github.com/lf-edge/eve/libs/nettrace"
 	"github.com/lf-edge/eve/libs/zedUpload/types"
 )
 
-//
 // Sync Operation type
 type SyncOpType int
 
@@ -40,7 +36,6 @@ const (
 	FailPostTimeout   = 2 * time.Minute
 )
 
-//
 // Sync Transport Type
 type SyncTransportType string
 
@@ -53,91 +48,25 @@ const (
 	SyncOCIRegistryTr SyncTransportType = "oci"
 )
 
-//
 // Interface for various transport implementation
-//
 type DronaEndPoint interface {
 	getContext() *DronaCtx
 	NewRequest(SyncOpType, string, string, int64, bool, chan *DronaRequest) *DronaRequest
 	Open() error
 	Action(req *DronaRequest) error
 	Close() error
-	WithSrcIPSelection(localAddr net.IP) error
-	WithSrcIPAndHTTPSCerts(localAddr net.IP, certs [][]byte) error
-	WithSrcIPAndProxySelection(localAddr net.IP, proxy *url.URL) error
-	WithSrcIPAndProxyAndHTTPSCerts(localAddr net.IP, proxy *url.URL, certs [][]byte) error
+	WithSrcIP(localAddr net.IP) error
+	WithTrustedCerts(certs [][]byte) error
+	WithProxy(proxy *url.URL) error
 	WithBindIntf(intf string) error
 	WithLogging(onoff bool) error
-}
-
-// use the specific ip as source address for this connection
-func httpClientSrcIP(localAddr net.IP, proxy *url.URL) *http.Client {
-	// You also need to do this to make it work and not give you a
-	// "mismatched local address type ip"
-	// This will make the ResolveIPAddr a TCPAddr without needing to
-	// say what SRC port number to use.
-	localTCPAddr := net.TCPAddr{IP: localAddr}
-	localUDPAddr := net.UDPAddr{IP: localAddr}
-	resolverDial := func(ctx context.Context, network, address string) (net.Conn, error) {
-		switch network {
-		case "udp", "udp4", "udp6":
-			d := net.Dialer{LocalAddr: &localUDPAddr}
-			return d.Dial(network, address)
-		case "tcp", "tcp4", "tcp6":
-			d := net.Dialer{LocalAddr: &localTCPAddr}
-			return d.Dial(network, address)
-		default:
-			return nil, fmt.Errorf("unsupported address type: %v", network)
-		}
-	}
-	r := net.Resolver{Dial: resolverDial, PreferGo: true, StrictErrors: false}
-	webclient := &http.Client{
-		Transport: &http.Transport{
-			Proxy: http.ProxyURL(proxy),
-			DialContext: (&net.Dialer{
-				Resolver:  &r,
-				LocalAddr: &localTCPAddr,
-				Timeout:   30 * time.Second,
-				KeepAlive: 30 * time.Second,
-				DualStack: true,
-			}).DialContext,
-			MaxIdleConns:          100,
-			IdleConnTimeout:       90 * time.Second,
-			TLSHandshakeTimeout:   10 * time.Second,
-			ExpectContinueTimeout: 1 * time.Second,
-		},
-	}
-
-	return webclient
-}
-
-func httpClientAddCerts(client *http.Client, certs [][]byte) (*http.Client, error) {
-	if client == nil || len(certs) == 0 {
-		return client, nil
-	}
-	caCertPool := x509.NewCertPool()
-	for _, pem := range certs {
-		if !caCertPool.AppendCertsFromPEM(pem) {
-			return client, fmt.Errorf("Failed to append datastore certs")
-		}
-	}
-	client.Transport.(*http.Transport).TLSClientConfig = &tls.Config{RootCAs: caCertPool}
-	return client, nil
-}
-
-// given interface get the ip
-func getSrcIpFromInterface(intf string) net.IP {
-	ief, err := net.InterfaceByName(intf)
-	if err == nil {
-		addrs, err := ief.Addrs()
-		if err == nil {
-			localAddr, _, err := net.ParseCIDR(addrs[0].String())
-			if err == nil {
-				return localAddr
-			}
-		}
-	}
-	return nil
+	WithNetTracing(opts ...nettrace.TraceOpt) error
+	// GetNetTrace : if network tracing is enabled (WithNetTracing() was called),
+	// this method returns trace of all network operations performed up to this point,
+	// possibly also accompanied by per-interface packet captures (only if enabled by
+	// tracing options).
+	GetNetTrace(description string) (
+		nettrace.AnyNetTrace, []nettrace.PacketCapture, error)
 }
 
 type DronaCtx struct {
@@ -154,7 +83,7 @@ type DronaCtx struct {
 	quitChan chan bool
 }
 
-//Keep working till we are told otherwise
+// Keep working till we are told otherwise
 func (ctx *DronaCtx) ListenAndServe() {
 	for {
 		select {
@@ -192,7 +121,8 @@ func (ctx *DronaCtx) handleQuit() error {
 }
 
 // postSize:
-//  post the progress report we haven't completed the download/upload yet
+//
+//	post the progress report we haven't completed the download/upload yet
 func (ctx *DronaCtx) postSize(req *DronaRequest, size, asize int64) {
 	req.updateOsize(size)
 	req.updateAsize(asize)
@@ -200,15 +130,16 @@ func (ctx *DronaCtx) postSize(req *DronaRequest, size, asize int64) {
 }
 
 // postChunk:
-//  post the chunk data which is downloaded from the respective datastore
+//
+//	post the chunk data which is downloaded from the respective datastore
 func (ctx *DronaCtx) postChunk(req *DronaRequest, chunkDetail ChunkData) {
 	req.chunkInfoChan <- chunkDetail
 	req.result <- req
 }
 
 // postResponse:
-//   make sure the reply is always sent back
 //
+//	make sure the reply is always sent back
 func (ctx *DronaCtx) postResponse(req *DronaRequest, status error) {
 	// status is already set up by action, we just have to set processed flag
 	req.setProcessed()
@@ -239,6 +170,7 @@ func (ctx *DronaCtx) NewSyncerDest(tr SyncTransportType, UrlOrRegion, PathOrBkt 
 			syncEp.token = auth.Uname
 			syncEp.apiKey = auth.Password
 		}
+		syncEp.hClientWrap = &httpClientWrapper{}
 		syncEp.failPostTime = time.Now()
 		return syncEp, nil
 	case SyncAzureTr:
@@ -248,6 +180,7 @@ func (ctx *DronaCtx) NewSyncerDest(tr SyncTransportType, UrlOrRegion, PathOrBkt 
 			syncEp.acName = auth.Uname
 			syncEp.acKey = auth.Password
 		}
+		syncEp.hClientWrap = &httpClientWrapper{}
 		syncEp.failPostTime = time.Now()
 		return syncEp, nil
 	case SyncHttpTr:
@@ -255,6 +188,7 @@ func (ctx *DronaCtx) NewSyncerDest(tr SyncTransportType, UrlOrRegion, PathOrBkt 
 		if auth != nil {
 			syncEp.authType = auth.AuthType
 		}
+		syncEp.hClientWrap = &httpClientWrapper{}
 		syncEp.failPostTime = time.Now()
 		return syncEp, nil
 	case SyncSftpTr:
@@ -273,6 +207,7 @@ func (ctx *DronaCtx) NewSyncerDest(tr SyncTransportType, UrlOrRegion, PathOrBkt 
 			syncEp.uname = auth.Uname
 			syncEp.apiKey = auth.Password
 		}
+		syncEp.hClientWrap = &httpClientWrapper{}
 		syncEp.failPostTime = time.Now()
 		return syncEp, nil
 	case SyncGSTr:
@@ -281,6 +216,7 @@ func (ctx *DronaCtx) NewSyncerDest(tr SyncTransportType, UrlOrRegion, PathOrBkt 
 			syncEp.projectID = auth.Uname
 			syncEp.apiKey = auth.Password
 		}
+		syncEp.hClientWrap = &httpClientWrapper{}
 		syncEp.failPostTime = time.Now()
 		return syncEp, nil
 	default:
@@ -290,7 +226,6 @@ func (ctx *DronaCtx) NewSyncerDest(tr SyncTransportType, UrlOrRegion, PathOrBkt 
 }
 
 // NewDronaCtx
-//
 func NewDronaCtx(name string, noHandlers int) (*DronaCtx, error) {
 	dSync := DronaCtx{}
 

@@ -6,16 +6,16 @@ package zedUpload
 import (
 	"fmt"
 	"net"
-	"net/http"
 	"net/url"
 	"os"
 	"time"
 
+	"github.com/lf-edge/eve/libs/nettrace"
 	zedGS "github.com/lf-edge/eve/libs/zedUpload/gsutil"
 	"github.com/lf-edge/eve/libs/zedUpload/types"
 )
 
-//Action do the operation with Google Storage datastore
+// Action do the operation with Google Storage datastore
 func (ep *GsTransportMethod) Action(req *DronaRequest) error {
 	var err error
 	var size int
@@ -57,65 +57,50 @@ func (ep *GsTransportMethod) Action(req *DronaRequest) error {
 	return err
 }
 
-//Open not implemented
+// Open not implemented
 func (ep *GsTransportMethod) Open() error {
 	return nil
 }
 
-//Close not implemented
+// Close not implemented
 func (ep *GsTransportMethod) Close() error {
-	return nil
+	return ep.hClientWrap.close()
 }
 
-// WithSrcIPSelection use the specific ip as source address for this connection
-func (ep *GsTransportMethod) WithSrcIPSelection(localAddr net.IP) error {
-	ep.hClient = httpClientSrcIP(localAddr, nil)
-	return nil
+// WithSrcIP : use the specific IP as source address for this connection.
+func (ep *GsTransportMethod) WithSrcIP(localAddr net.IP) error {
+	return ep.hClientWrap.withSrcIP(localAddr)
 }
 
-// WithSrcIPAndProxySelection use the specific ip as source address for this
-// connection and connect via the provided proxy URL
-func (ep *GsTransportMethod) WithSrcIPAndProxySelection(localAddr net.IP,
-	proxy *url.URL) error {
-	ep.hClient = httpClientSrcIP(localAddr, proxy)
-	return nil
+// WithProxy : connect via the provided proxy URL.
+func (ep *GsTransportMethod) WithProxy(proxy *url.URL) error {
+	return ep.hClientWrap.withProxy(proxy)
 }
 
-// WithSrcIPAndHTTPSCerts append certs for the datastore access
-func (ep *GsTransportMethod) WithSrcIPAndHTTPSCerts(localAddr net.IP, certs [][]byte) error {
-	client := httpClientSrcIP(localAddr, nil)
-	client, err := httpClientAddCerts(client, certs)
-	if err != nil {
-		return err
-	}
-	ep.hClient = client
-	return nil
+// WithTrustedCerts : run requests with these certificates added as trusted.
+func (ep *GsTransportMethod) WithTrustedCerts(certs [][]byte) error {
+	return ep.hClientWrap.withTrustedCerts(certs)
 }
 
-// WithSrcIPAndProxyAndHTTPSCerts takes a proxy and proxy certs
-func (ep *GsTransportMethod) WithSrcIPAndProxyAndHTTPSCerts(localAddr net.IP, proxy *url.URL, certs [][]byte) error {
-	client := httpClientSrcIP(localAddr, proxy)
-	client, err := httpClientAddCerts(client, certs)
-	if err != nil {
-		return err
-	}
-	ep.hClient = client
-	return nil
-}
-
-//WithBindIntf bind to specific interface for this connection
+// WithBindIntf : bind to specific interface for this connection
 func (ep *GsTransportMethod) WithBindIntf(intf string) error {
-	localAddr := getSrcIpFromInterface(intf)
-	if localAddr != nil {
-		ep.hClient = httpClientSrcIP(localAddr, nil)
-		return nil
-	}
-	return fmt.Errorf("failed to get the address for intf")
+	return ep.hClientWrap.withBindIntf(intf)
 }
 
-//WithLogging enables logging
+// WithLogging enables or disables logging.
 func (ep *GsTransportMethod) WithLogging(onoff bool) error {
 	return nil
+}
+
+// WithNetTracing enables network tracing.
+func (ep *GsTransportMethod) WithNetTracing(opts ...nettrace.TraceOpt) error {
+	return ep.hClientWrap.withNetTracing(opts...)
+}
+
+// GetNetTrace returns collected network trace and packet captures.
+func (ep *GsTransportMethod) GetNetTrace(description string) (
+	nettrace.AnyNetTrace, []nettrace.PacketCapture, error) {
+	return ep.hClientWrap.getNetTrace(description)
 }
 
 // File upload to Google Storage Datastore
@@ -129,8 +114,12 @@ func (ep *GsTransportMethod) processGSUpload(req *DronaRequest) (int, error) {
 	if req.ackback {
 		go statsUpdater(req, ep.ctx, prgChan)
 	}
+	hClient, err := ep.hClientWrap.unwrap()
+	if err != nil {
+		return 0, err
+	}
 
-	sc, err := zedGS.NewGsCtx(req.cancelContext, ep.projectID, ep.apiKey, ep.hClient, true)
+	sc, err := zedGS.NewGsCtx(req.cancelContext, ep.projectID, ep.apiKey, hClient, true)
 	if err != nil {
 		return 0, err
 	}
@@ -146,7 +135,11 @@ func (ep *GsTransportMethod) processGSUpload(req *DronaRequest) (int, error) {
 // File download from Google Storage Datastore
 func (ep *GsTransportMethod) processGSDownload(req *DronaRequest) (int, error) {
 	var csize int
-	s, err := zedGS.NewGsCtx(req.cancelContext, ep.projectID, ep.apiKey, ep.hClient, false)
+	hClient, err := ep.hClientWrap.unwrap()
+	if err != nil {
+		return 0, err
+	}
+	s, err := zedGS.NewGsCtx(req.cancelContext, ep.projectID, ep.apiKey, hClient, false)
 	if err != nil {
 		return 0, err
 	}
@@ -179,8 +172,11 @@ func (ep *GsTransportMethod) processGSDownload(req *DronaRequest) (int, error) {
 
 // File delete from Google Storage Datastore
 func (ep *GsTransportMethod) processGSDelete(req *DronaRequest) error {
-	var err error
-	gsctx, err := zedGS.NewGsCtx(req.cancelContext, ep.projectID, ep.apiKey, ep.hClient, true)
+	hClient, err := ep.hClientWrap.unwrap()
+	if err != nil {
+		return err
+	}
+	gsctx, err := zedGS.NewGsCtx(req.cancelContext, ep.projectID, ep.apiKey, hClient, true)
 	if err != nil {
 		return err
 	}
@@ -202,7 +198,11 @@ func (ep *GsTransportMethod) processGSList(req *DronaRequest) ([]string, int, er
 	if req.ackback {
 		go statsUpdater(req, ep.ctx, prgChan)
 	}
-	sc, err := zedGS.NewGsCtx(req.cancelContext, ep.projectID, ep.apiKey, ep.hClient, false)
+	hClient, err := ep.hClientWrap.unwrap()
+	if err != nil {
+		return s, 0, err
+	}
+	sc, err := zedGS.NewGsCtx(req.cancelContext, ep.projectID, ep.apiKey, hClient, false)
 	if err != nil {
 		return s, 0, err
 	}
@@ -215,9 +215,13 @@ func (ep *GsTransportMethod) processGSList(req *DronaRequest) ([]string, int, er
 	return list, csize, err
 }
 
-//Verify Uploaded Object Size and MD5 sum
+// Verify Uploaded Object Size and MD5 sum
 func (ep *GsTransportMethod) processGSObjectMetaData(req *DronaRequest) (int64, string, error) {
-	sc, err := zedGS.NewGsCtx(req.cancelContext, ep.projectID, ep.apiKey, ep.hClient, false)
+	hClient, err := ep.hClientWrap.unwrap()
+	if err != nil {
+		return 0, "", err
+	}
+	sc, err := zedGS.NewGsCtx(req.cancelContext, ep.projectID, ep.apiKey, hClient, false)
 	if err != nil {
 		return 0, "", err
 	}
@@ -232,7 +236,7 @@ func (ep *GsTransportMethod) processGSObjectMetaData(req *DronaRequest) (int64, 
 	return size, remoteFileMD5, err
 }
 
-//NewRequest returns DronaRequest for provided options
+// NewRequest returns DronaRequest for provided options
 func (ep *GsTransportMethod) NewRequest(opType SyncOpType, objname, objloc string, sizelimit int64, ackback bool, reply chan *DronaRequest) *DronaRequest {
 	dR := &DronaRequest{}
 	dR.syncEp = ep
@@ -255,7 +259,7 @@ func (ep *GsTransportMethod) getContext() *DronaCtx {
 	return ep.ctx
 }
 
-//GsTransportMethod stores data needed to communicate with Google Cloud Storage
+// GsTransportMethod stores data needed to communicate with Google Cloud Storage
 type GsTransportMethod struct {
 	transport SyncTransportType
 	projectID string
@@ -266,5 +270,5 @@ type GsTransportMethod struct {
 
 	failPostTime time.Time
 	ctx          *DronaCtx
-	hClient      *http.Client
+	hClientWrap  *httpClientWrapper
 }
