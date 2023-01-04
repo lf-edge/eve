@@ -6,10 +6,10 @@ package zedUpload
 import (
 	"fmt"
 	"net"
-	"net/http"
 	"net/url"
 	"time"
 
+	"github.com/lf-edge/eve/libs/nettrace"
 	zedHttp "github.com/lf-edge/eve/libs/zedUpload/httputil"
 	"github.com/lf-edge/eve/libs/zedUpload/types"
 )
@@ -23,9 +23,10 @@ type HttpTransportMethod struct {
 
 	failPostTime time.Time
 	ctx          *DronaCtx
-	hClient      *http.Client
+	hClientWrap  *httpClientWrapper
 }
 
+// Action : execute selected action targeting HTTP datastore.
 func (ep *HttpTransportMethod) Action(req *DronaRequest) error {
 	var err error
 	var size int
@@ -63,52 +64,43 @@ func (ep *HttpTransportMethod) Open() error {
 }
 
 func (ep *HttpTransportMethod) Close() error {
-	return nil
+	return ep.hClientWrap.close()
 }
 
-// WithSrcIPSelection use the specific ip as source address for this connection
-func (ep *HttpTransportMethod) WithSrcIPSelection(localAddr net.IP) error {
-	ep.hClient = httpClientSrcIP(localAddr, nil)
-	return nil
+// WithSrcIP : use the specific IP as source address for this connection.
+func (ep *HttpTransportMethod) WithSrcIP(localAddr net.IP) error {
+	return ep.hClientWrap.withSrcIP(localAddr)
 }
 
-// WithSrcIPAndProxySelection use the specific ip as source address for this
-// connection and connect via the provided proxy URL
-func (ep *HttpTransportMethod) WithSrcIPAndProxySelection(localAddr net.IP,
-	proxy *url.URL) error {
-	ep.hClient = httpClientSrcIP(localAddr, proxy)
-	return nil
+// WithProxy : connect via the provided proxy URL.
+func (ep *HttpTransportMethod) WithProxy(proxy *url.URL) error {
+	return ep.hClientWrap.withProxy(proxy)
 }
 
-// WithSrcIPAndHTTPSCerts append certs for the datastore access
-func (ep *HttpTransportMethod) WithSrcIPAndHTTPSCerts(localAddr net.IP, certs [][]byte) error {
-	client := httpClientSrcIP(localAddr, nil)
-	client, err := httpClientAddCerts(client, certs)
-	if err != nil {
-		return err
-	}
-	ep.hClient = client
-	return nil
+// WithTrustedCerts : run requests with these certificates added as trusted.
+func (ep *HttpTransportMethod) WithTrustedCerts(certs [][]byte) error {
+	return ep.hClientWrap.withTrustedCerts(certs)
 }
 
-// WithSrcIPAndProxyAndHTTPSCerts takes a proxy and proxy certs
-func (ep *HttpTransportMethod) WithSrcIPAndProxyAndHTTPSCerts(localAddr net.IP, proxy *url.URL, certs [][]byte) error {
-	client := httpClientSrcIP(localAddr, proxy)
-	client, err := httpClientAddCerts(client, certs)
-	if err != nil {
-		return err
-	}
-	ep.hClient = client
-	return nil
-}
-
-// bind to specific interface for this connection
+// WithBindIntf : bind to specific interface for this connection
 func (ep *HttpTransportMethod) WithBindIntf(intf string) error {
-	return fmt.Errorf("not supported")
+	return ep.hClientWrap.withBindIntf(intf)
 }
 
+// WithLogging enables or disables logging.
 func (ep *HttpTransportMethod) WithLogging(onoff bool) error {
 	return nil
+}
+
+// WithNetTracing enables network tracing.
+func (ep *HttpTransportMethod) WithNetTracing(opts ...nettrace.TraceOpt) error {
+	return ep.hClientWrap.withNetTracing(opts...)
+}
+
+// GetNetTrace returns collected network trace and packet captures.
+func (ep *HttpTransportMethod) GetNetTrace(description string) (
+	nettrace.AnyNetTrace, []nettrace.PacketCapture, error) {
+	return ep.hClientWrap.getNetTrace(description)
 }
 
 // File upload to HTTP Datastore
@@ -119,7 +111,12 @@ func (ep *HttpTransportMethod) processHttpUpload(req *DronaRequest) (error, int)
 	if req.ackback {
 		go statsUpdater(req, ep.ctx, prgChan)
 	}
-	stats, resp := zedHttp.ExecCmd(req.cancelContext, "post", postUrl, req.name, req.objloc, req.sizelimit, prgChan, ep.hClient)
+	hClient, err := ep.hClientWrap.unwrap()
+	if err != nil {
+		return err, 0
+	}
+	stats, resp := zedHttp.ExecCmd(req.cancelContext, "post", postUrl, req.name,
+		req.objloc, req.sizelimit, prgChan, hClient)
 	return stats.Error, resp.BodyLength
 }
 
@@ -134,7 +131,12 @@ func (ep *HttpTransportMethod) processHttpDownload(req *DronaRequest) (error, in
 	if req.ackback {
 		go statsUpdater(req, ep.ctx, prgChan)
 	}
-	stats, resp := zedHttp.ExecCmd(req.cancelContext, "get", file, "", req.objloc, req.sizelimit, prgChan, ep.hClient)
+	hClient, err := ep.hClientWrap.unwrap()
+	if err != nil {
+		return err, 0
+	}
+	stats, resp := zedHttp.ExecCmd(req.cancelContext, "get", file, "",
+		req.objloc, req.sizelimit, prgChan, hClient)
 	return stats.Error, resp.BodyLength
 }
 
@@ -151,7 +153,12 @@ func (ep *HttpTransportMethod) processHttpList(req *DronaRequest) ([]string, err
 	if req.ackback {
 		go statsUpdater(req, ep.ctx, prgChan)
 	}
-	stats, resp := zedHttp.ExecCmd(req.cancelContext, "ls", listUrl, "", "", req.sizelimit, prgChan, ep.hClient)
+	hClient, err := ep.hClientWrap.unwrap()
+	if err != nil {
+		return nil, err
+	}
+	stats, resp := zedHttp.ExecCmd(req.cancelContext, "ls", listUrl, "", "",
+		req.sizelimit, prgChan, hClient)
 	return resp.List, stats.Error
 }
 
@@ -166,14 +173,20 @@ func (ep *HttpTransportMethod) processHttpObjectMetaData(req *DronaRequest) (err
 	if req.ackback {
 		go statsUpdater(req, ep.ctx, prgChan)
 	}
-	stats, resp := zedHttp.ExecCmd(req.cancelContext, "meta", file, "", req.objloc, req.sizelimit, prgChan, ep.hClient)
+	hClient, err := ep.hClientWrap.unwrap()
+	if err != nil {
+		return err, 0
+	}
+	stats, resp := zedHttp.ExecCmd(req.cancelContext, "meta", file, "", req.objloc,
+		req.sizelimit, prgChan, hClient)
 	return stats.Error, resp.ContentLength
 }
 func (ep *HttpTransportMethod) getContext() *DronaCtx {
 	return ep.ctx
 }
 
-func (ep *HttpTransportMethod) NewRequest(opType SyncOpType, objname, objloc string, sizelimit int64, ackback bool, reply chan *DronaRequest) *DronaRequest {
+func (ep *HttpTransportMethod) NewRequest(opType SyncOpType, objname, objloc string,
+	sizelimit int64, ackback bool, reply chan *DronaRequest) *DronaRequest {
 	dR := &DronaRequest{}
 	dR.syncEp = ep
 	dR.operation = opType

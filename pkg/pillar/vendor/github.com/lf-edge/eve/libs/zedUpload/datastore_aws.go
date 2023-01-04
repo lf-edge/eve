@@ -6,18 +6,17 @@ package zedUpload
 import (
 	"fmt"
 	"net"
-	"net/http"
 	"net/url"
 	"os"
 	"strings"
 	"time"
 
+	"github.com/lf-edge/eve/libs/nettrace"
 	zedAWS "github.com/lf-edge/eve/libs/zedUpload/awsutil"
 	"github.com/lf-edge/eve/libs/zedUpload/types"
 )
 
-//
-//
+// Action : execute selected action targeting AWS datastore.
 func (ep *AwsTransportMethod) Action(req *DronaRequest) error {
 	var err error
 	var size int
@@ -71,57 +70,43 @@ func (ep *AwsTransportMethod) Open() error {
 }
 
 func (ep *AwsTransportMethod) Close() error {
-	return nil
+	return ep.hClientWrap.close()
 }
 
-// WithSrcIPSelection use the specific ip as source address for this connection
-func (ep *AwsTransportMethod) WithSrcIPSelection(localAddr net.IP) error {
-	ep.hClient = httpClientSrcIP(localAddr, nil)
-	return nil
+// WithSrcIP : use the specific IP as source address for this connection.
+func (ep *AwsTransportMethod) WithSrcIP(localAddr net.IP) error {
+	return ep.hClientWrap.withSrcIP(localAddr)
 }
 
-// WithSrcIPAndProxySelection use the specific ip as source address for this
-// connection and connect via the provided proxy URL
-func (ep *AwsTransportMethod) WithSrcIPAndProxySelection(localAddr net.IP,
-	proxy *url.URL) error {
-	ep.hClient = httpClientSrcIP(localAddr, proxy)
-	return nil
+// WithProxy : connect via the provided proxy URL.
+func (ep *AwsTransportMethod) WithProxy(proxy *url.URL) error {
+	return ep.hClientWrap.withProxy(proxy)
 }
 
-// WithSrcIPAndHTTPSCerts append certs for the datastore access
-func (ep *AwsTransportMethod) WithSrcIPAndHTTPSCerts(localAddr net.IP, certs [][]byte) error {
-	client := httpClientSrcIP(localAddr, nil)
-	client, err := httpClientAddCerts(client, certs)
-	if err != nil {
-		return err
-	}
-	ep.hClient = client
-	return nil
+// WithTrustedCerts : run requests with these certificates added as trusted.
+func (ep *AwsTransportMethod) WithTrustedCerts(certs [][]byte) error {
+	return ep.hClientWrap.withTrustedCerts(certs)
 }
 
-// WithSrcIPAndProxyAndHTTPSCerts takes a proxy and proxy certs
-func (ep *AwsTransportMethod) WithSrcIPAndProxyAndHTTPSCerts(localAddr net.IP, proxy *url.URL, certs [][]byte) error {
-	client := httpClientSrcIP(localAddr, proxy)
-	client, err := httpClientAddCerts(client, certs)
-	if err != nil {
-		return err
-	}
-	ep.hClient = client
-	return nil
-}
-
-// bind to specific interface for this connection
+// WithBindIntf : bind to specific interface for this connection
 func (ep *AwsTransportMethod) WithBindIntf(intf string) error {
-	localAddr := getSrcIpFromInterface(intf)
-	if localAddr != nil {
-		ep.hClient = httpClientSrcIP(localAddr, nil)
-		return nil
-	}
-	return fmt.Errorf("failed to get the address for intf")
+	return ep.hClientWrap.withBindIntf(intf)
 }
 
+// WithLogging enables or disables logging.
 func (ep *AwsTransportMethod) WithLogging(onoff bool) error {
 	return nil
+}
+
+// WithNetTracing enables network tracing.
+func (ep *AwsTransportMethod) WithNetTracing(opts ...nettrace.TraceOpt) error {
+	return ep.hClientWrap.withNetTracing(opts...)
+}
+
+// GetNetTrace returns collected network trace and packet captures.
+func (ep *AwsTransportMethod) GetNetTrace(description string) (
+	nettrace.AnyNetTrace, []nettrace.PacketCapture, error) {
+	return ep.hClientWrap.getNetTrace(description)
 }
 
 // File upload to AWS S3 Datastore
@@ -135,10 +120,14 @@ func (ep *AwsTransportMethod) processS3Upload(req *DronaRequest) (error, int) {
 	if req.ackback {
 		go statsUpdater(req, ep.ctx, prgChan)
 	}
+	hClient, err := ep.hClientWrap.unwrap()
+	if err != nil {
+		return err, 0
+	}
 
 	// FiXME: strings.TrimSuffix needs to go away once final soultion is done.
 	// upload, always the compression file.
-	sc := zedAWS.NewAwsCtx(ep.token, ep.apiKey, ep.region, ep.hClient)
+	sc := zedAWS.NewAwsCtx(ep.token, ep.apiKey, ep.region, hClient)
 	if sc == nil {
 		return fmt.Errorf("unable to create S3 context"), 0
 	}
@@ -163,9 +152,13 @@ func (ep *AwsTransportMethod) processS3Download(req *DronaRequest) (error, int) 
 	pwd := strings.TrimSuffix(ep.apiKey, "\n")
 	prgChan := make(types.StatsNotifChan)
 	defer close(prgChan)
+	hClient, err := ep.hClientWrap.unwrap()
+	if err != nil {
+		return err, 0
+	}
 
 	if req.ackback {
-		s := zedAWS.NewAwsCtx(ep.token, pwd, ep.region, ep.hClient)
+		s := zedAWS.NewAwsCtx(ep.token, pwd, ep.region, hClient)
 		if req.cancelContext != nil {
 			s = s.WithContext(req.cancelContext)
 		}
@@ -181,7 +174,7 @@ func (ep *AwsTransportMethod) processS3Download(req *DronaRequest) (error, int) 
 		go statsUpdater(req, ep.ctx, prgChan)
 	}
 
-	sc := zedAWS.NewAwsCtx(ep.token, pwd, ep.region, ep.hClient)
+	sc := zedAWS.NewAwsCtx(ep.token, pwd, ep.region, hClient)
 	if sc == nil {
 		return fmt.Errorf("unable to create S3 context"), 0
 	}
@@ -207,8 +200,12 @@ func (ep *AwsTransportMethod) processS3Download(req *DronaRequest) (error, int) 
 }
 
 func (ep *AwsTransportMethod) processS3DownloadByChunks(req *DronaRequest) error {
+	hClient, err := ep.hClientWrap.unwrap()
+	if err != nil {
+		return err
+	}
 	pwd := strings.TrimSuffix(ep.apiKey, "\n")
-	sc := zedAWS.NewAwsCtx(ep.token, pwd, ep.region, ep.hClient)
+	sc := zedAWS.NewAwsCtx(ep.token, pwd, ep.region, hClient)
 	if sc == nil {
 		return fmt.Errorf("unable to create S3 context")
 	}
@@ -234,8 +231,11 @@ func (ep *AwsTransportMethod) processS3DownloadByChunks(req *DronaRequest) error
 
 // File delete from AWS S3 Datastore
 func (ep *AwsTransportMethod) processS3Delete(req *DronaRequest) error {
-	var err error
-	s3ctx := zedAWS.NewAwsCtx(ep.token, ep.apiKey, ep.region, ep.hClient)
+	hClient, err := ep.hClientWrap.unwrap()
+	if err != nil {
+		return err
+	}
+	s3ctx := zedAWS.NewAwsCtx(ep.token, ep.apiKey, ep.region, hClient)
 	if s3ctx != nil {
 		if req.cancelContext != nil {
 			s3ctx = s3ctx.WithContext(req.cancelContext)
@@ -266,7 +266,12 @@ func (ep *AwsTransportMethod) processS3List(req *DronaRequest) ([]string, error,
 	if req.ackback {
 		go statsUpdater(req, ep.ctx, prgChan)
 	}
-	sc := zedAWS.NewAwsCtx(ep.token, pwd, ep.region, ep.hClient)
+
+	hClient, err := ep.hClientWrap.unwrap()
+	if err != nil {
+		return s, err, 0
+	}
+	sc := zedAWS.NewAwsCtx(ep.token, pwd, ep.region, hClient)
 	if sc == nil {
 		return s, fmt.Errorf("unable to create S3 context"), 0
 	}
@@ -287,10 +292,14 @@ func (ep *AwsTransportMethod) processS3List(req *DronaRequest) ([]string, error,
 	return list, err, csize
 }
 
-//Verify Uploaded Object Size and MD5 sum
+// Verify Uploaded Object Size and MD5 sum
 func (ep *AwsTransportMethod) processS3ObjectMetaData(req *DronaRequest) (int64, string, error) {
+	hClient, err := ep.hClientWrap.unwrap()
+	if err != nil {
+		return 0, "", err
+	}
 	pwd := strings.TrimSuffix(ep.apiKey, "\n")
-	sc := zedAWS.NewAwsCtx(ep.token, pwd, ep.region, ep.hClient)
+	sc := zedAWS.NewAwsCtx(ep.token, pwd, ep.region, hClient)
 	if sc == nil {
 		return 0, "", fmt.Errorf("unable to create S3 context")
 	}
@@ -334,7 +343,11 @@ func (ep *AwsTransportMethod) getContext() *DronaCtx {
 }
 
 func (ep *AwsTransportMethod) processMultipartUpload(req *DronaRequest) (string, string, error) {
-	s3ctx := zedAWS.NewAwsCtx(ep.token, ep.apiKey, ep.region, ep.hClient)
+	hClient, err := ep.hClientWrap.unwrap()
+	if err != nil {
+		return "", "", err
+	}
+	s3ctx := zedAWS.NewAwsCtx(ep.token, ep.apiKey, ep.region, hClient)
 	if req.cancelContext != nil {
 		s3ctx = s3ctx.WithContext(req.cancelContext)
 	}
@@ -346,7 +359,11 @@ func (ep *AwsTransportMethod) processMultipartUpload(req *DronaRequest) (string,
 }
 
 func (ep *AwsTransportMethod) completeMultipartUpload(req *DronaRequest) error {
-	s3ctx := zedAWS.NewAwsCtx(ep.token, ep.apiKey, ep.region, ep.hClient)
+	hClient, err := ep.hClientWrap.unwrap()
+	if err != nil {
+		return err
+	}
+	s3ctx := zedAWS.NewAwsCtx(ep.token, ep.apiKey, ep.region, hClient)
 	if req.cancelContext != nil {
 		s3ctx = s3ctx.WithContext(req.cancelContext)
 	}
@@ -357,7 +374,11 @@ func (ep *AwsTransportMethod) completeMultipartUpload(req *DronaRequest) error {
 }
 
 func (ep *AwsTransportMethod) generateSignedURL(req *DronaRequest) (string, error) {
-	s3ctx := zedAWS.NewAwsCtx(ep.token, ep.apiKey, ep.region, ep.hClient)
+	hClient, err := ep.hClientWrap.unwrap()
+	if err != nil {
+		return "", err
+	}
+	s3ctx := zedAWS.NewAwsCtx(ep.token, ep.apiKey, ep.region, hClient)
 	if req.cancelContext != nil {
 		s3ctx = s3ctx.WithContext(req.cancelContext)
 	}
@@ -378,5 +399,5 @@ type AwsTransportMethod struct {
 
 	failPostTime time.Time
 	ctx          *DronaCtx
-	hClient      *http.Client
+	hClientWrap  *httpClientWrapper
 }

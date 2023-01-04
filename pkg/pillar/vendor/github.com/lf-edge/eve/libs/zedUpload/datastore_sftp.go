@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/lf-edge/eve/libs/nettrace"
 	sftp "github.com/lf-edge/eve/libs/zedUpload/sftputil"
 	"github.com/lf-edge/eve/libs/zedUpload/types"
 )
@@ -41,8 +42,7 @@ type SftpTransportMethod struct {
 	ctx *DronaCtx
 }
 
-//
-//
+// Action : execute selected action targeting SFTP datastore.
 func (ep *SftpTransportMethod) Action(req *DronaRequest) error {
 	var err error
 	var size int
@@ -83,35 +83,40 @@ func (ep *SftpTransportMethod) Close() error {
 	return nil
 }
 
-// WithSrcIPSelection use the specific ip as source address for this connection
-func (ep *SftpTransportMethod) WithSrcIPSelection(localAddr net.IP) error {
-	return nil
-}
-
-// WithSrcIPAndProxySelection use the specific ip as source address for this
-// connection and connect via the provided proxy URL
-func (ep *SftpTransportMethod) WithSrcIPAndProxySelection(localAddr net.IP,
-	proxy *url.URL) error {
+// WithSrcIP is not supported.
+func (ep *SftpTransportMethod) WithSrcIP(localAddr net.IP) error {
 	return fmt.Errorf("not supported")
 }
 
-// WithSrcIPAndHTTPSCerts append certs for the datastore access
-func (ep *SftpTransportMethod) WithSrcIPAndHTTPSCerts(localAddr net.IP, certs [][]byte) error {
+// WithProxy is not supported.
+func (ep *SftpTransportMethod) WithProxy(proxy *url.URL) error {
 	return fmt.Errorf("not supported")
 }
 
-// WithSrcIPAndProxyAndHTTPSCerts takes a proxy and proxy certs
-func (ep *SftpTransportMethod) WithSrcIPAndProxyAndHTTPSCerts(localAddr net.IP, proxy *url.URL, certs [][]byte) error {
+// WithTrustedCerts is not supported.
+func (ep *SftpTransportMethod) WithTrustedCerts(certs [][]byte) error {
 	return fmt.Errorf("not supported")
 }
 
-// bind to specific interface for this connection
+// WithBindIntf is not supported.
 func (ep *SftpTransportMethod) WithBindIntf(intf string) error {
 	return fmt.Errorf("not supported")
 }
 
+// WithLogging enables or disables logging.
 func (ep *SftpTransportMethod) WithLogging(onoff bool) error {
 	return nil
+}
+
+// WithNetTracing is not supported.
+func (ep *SftpTransportMethod) WithNetTracing(opts ...nettrace.TraceOpt) error {
+	return fmt.Errorf("not supported")
+}
+
+// GetNetTrace is not supported.
+func (ep *SftpTransportMethod) GetNetTrace(description string) (
+	nettrace.AnyNetTrace, []nettrace.PacketCapture, error) {
+	return nil, nil, fmt.Errorf("not supported")
 }
 
 // File upload to SFTP Datastore
