@@ -4,6 +4,7 @@
 package types
 
 import (
+	"strings"
 	"time"
 
 	"github.com/google/go-cmp/cmp"
@@ -82,8 +83,11 @@ func (status BlobStatus) LogCreate(logBase *base.LogObject) {
 	if logObject == nil {
 		return
 	}
+
+	uuids := strings.Join(UuidsToStrings(status.DatastoreIDList), ",")
+
 	logObject.CloneAndAddField("state", status.State.String()).
-		AddField("datastoreid-uuid", status.DatastoreID).
+		AddField("datastoreid-uuids", uuids).
 		AddField("size-int64", status.Size).
 		AddField("blobtype-string", status.MediaType).
 		AddField("refcount-int64", status.RefCount).

@@ -13,7 +13,7 @@ func MaybeAddResolveConfig(ctx *volumemgrContext, cs types.ContentTreeStatus) {
 
 	log.Functionf("MaybeAddResolveConfig for %s", cs.ContentID)
 	resolveConfig := types.ResolveConfig{
-		DatastoreID: cs.DatastoreID,
+		DatastoreID: cs.DatastoreIDList[0],
 		Name:        cs.RelativeURL,
 		Counter:     uint32(cs.GenerationCounter),
 	}
@@ -103,7 +103,7 @@ func handleResolveStatusImpl(ctxArg interface{}, key string,
 		status := cs.(types.ContentTreeStatus)
 		if !status.HasResolverRef ||
 			status.RelativeURL != rs.Name ||
-			status.DatastoreID != rs.DatastoreID {
+			status.DatastoreIDList[0] != rs.DatastoreID {
 			continue
 		}
 		log.Functionf("Updating SHA for content tree: %v",

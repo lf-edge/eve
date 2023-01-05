@@ -454,3 +454,13 @@ func (info AppInterfaceToNum) LogDelete(logBase *base.LogObject) {
 func (info AppInterfaceToNum) LogKey() string {
 	return string(base.AppInterfaceToNumLogType) + "-" + info.Key()
 }
+
+// UuidsToStrings converts list of uuids to a list of strings
+func UuidsToStrings(uuids []uuid.UUID) []string {
+	list := make([]string, len(uuids))
+	for i, uuid := range uuids {
+		list[i] = uuid.String()
+	}
+
+	return list
+}
