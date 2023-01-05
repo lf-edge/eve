@@ -274,7 +274,6 @@ func getBlobChildren(ctx *volumemgrContext, blob *types.BlobStatus) []*types.Blo
 		if existingChild == nil {
 			return []*types.BlobStatus{
 				{
-					DatastoreID:            blob.DatastoreID,
 					DatastoreIDList:        blob.DatastoreIDList,
 					RelativeURL:            replaceSha(blob.RelativeURL, manifest.Digest),
 					Sha256:                 strings.ToLower(manifest.Digest.Hex),
@@ -286,7 +285,6 @@ func getBlobChildren(ctx *volumemgrContext, blob *types.BlobStatus) []*types.Blo
 		} else if existingChild.State == types.LOADED {
 			// Need to update DatastoreIDList and RelativeURL if the blob is already loaded into CAS,
 			// because if any child blob is not downloaded already, then we would need the below data.
-			existingChild.DatastoreID = blob.DatastoreID
 			existingChild.DatastoreIDList = blob.DatastoreIDList
 			existingChild.RelativeURL = replaceSha(blob.RelativeURL, manifest.Digest)
 		}
@@ -314,7 +312,6 @@ func getBlobChildren(ctx *volumemgrContext, blob *types.BlobStatus) []*types.Blo
 				} else {
 					log.Functionf("getBlobChildren(%s): creating a new BlobStatus for child %s", blob.Sha256, childHash)
 					blobChildren = append(blobChildren, &types.BlobStatus{
-						DatastoreID:            blob.DatastoreID,
 						DatastoreIDList:        blob.DatastoreIDList,
 						RelativeURL:            replaceSha(blob.RelativeURL, child.Digest),
 						Sha256:                 childHash,
