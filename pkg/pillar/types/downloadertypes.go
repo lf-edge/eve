@@ -5,6 +5,7 @@ package types
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/go-cmp/cmp"
@@ -36,8 +37,9 @@ func (config DownloaderConfig) LogCreate(logBase *base.LogObject) {
 	if logObject == nil {
 		return
 	}
+	uuids := strings.Join(UuidsToStrings(config.DatastoreIDList), ",")
 	logObject.CloneAndAddField("target", config.Target).
-		AddField("datastore-id", config.DatastoreID).
+		AddField("datastore-ids", uuids).
 		AddField("refcount-int64", config.RefCount).
 		AddField("size-int64", config.Size).
 		Noticef("Download config create")
@@ -52,17 +54,20 @@ func (config DownloaderConfig) LogModify(logBase *base.LogObject, old interface{
 	if !ok {
 		logObject.Clone().Fatalf("LogModify: Old object interface passed is not of DownloaderConfig type")
 	}
+	uuids := strings.Join(UuidsToStrings(config.DatastoreIDList), ",")
+	oldUuids := strings.Join(UuidsToStrings(oldConfig.DatastoreIDList), ",")
+
 	if oldConfig.Target != config.Target ||
-		oldConfig.DatastoreID != config.DatastoreID ||
+		oldUuids != uuids ||
 		oldConfig.RefCount != config.RefCount ||
 		oldConfig.Size != config.Size {
 
 		logObject.CloneAndAddField("target", config.Target).
-			AddField("datastore-id", config.DatastoreID).
+			AddField("datastore-ids", uuids).
 			AddField("refcount-int64", config.RefCount).
 			AddField("size-int64", config.Size).
 			AddField("old-target", oldConfig.Target).
-			AddField("old-datastore-id", oldConfig.DatastoreID).
+			AddField("old-datastore-ids", oldUuids).
 			AddField("old-refcount-int64", oldConfig.RefCount).
 			AddField("old-size-int64", oldConfig.Size).
 			Noticef("Download config modify")
@@ -77,8 +82,9 @@ func (config DownloaderConfig) LogModify(logBase *base.LogObject, old interface{
 func (config DownloaderConfig) LogDelete(logBase *base.LogObject) {
 	logObject := base.EnsureLogObject(logBase, base.DownloaderConfigLogType, config.Name,
 		nilUUID, config.LogKey())
+	uuids := strings.Join(UuidsToStrings(config.DatastoreIDList), ",")
 	logObject.CloneAndAddField("target", config.Target).
-		AddField("datastore-id", config.DatastoreID).
+		AddField("datastore-ids", uuids).
 		AddField("refcount-int64", config.RefCount).
 		AddField("size-int64", config.Size).
 		Noticef("Download config delete")
