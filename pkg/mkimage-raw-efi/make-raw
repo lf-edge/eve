@@ -381,19 +381,25 @@ INITRD_IMG=/parts/initrd.img
 INSTALLER_IMG=/parts/installer.img
 # GRUB cfg override for our installer
 INSTALLER_GRUB_CFG=/parts/grub.cfg
-# IMX8 flash blob that needs write to image with 33k offset
+# IMX8 flash blob that needs to be written to image
 IMX8_BLOB=/parts/imx8-flash.bin
+# IMX8 configuration file with flashing parameters
+IMX8_CONF=/parts/imx8-flash.conf
 
 # offset in the GPT partition table from which we can start our numbering
 PART_OFFSET=0
 # starting sector for our portion of the disk
 CUR_SEC="$FIRST_PART_SEC"
 
-if [ -f "$IMX8_BLOB" ]; then
-  # For imx8 boards we need write boot blob with 33kb offset.
+if [ -f "$IMX8_BLOB" ] && [ -f "$IMX8_CONF" ]; then
+  # For imx8 boards we need to write boot blob with the specified offset
   IMX_BLOB_END_SEC=$(( IMX8_BLOB_SIZE / 512 ))
   CUR_SEC="$IMX_BLOB_END_SEC"
-  dd if="$IMX8_BLOB" of="$IMGFILE" bs=1024 seek=33 conv=notrunc
+  IMG_SEEK=$(cat $IMX8_CONF | sed "/^#/d" | grep "^offset.*" | tr -d '[:space:]' | sed "s/offset=\(.*\)/\1/")
+  # If offset was not specified, use 32 as default
+  [ -z "$IMG_SEEK" ] && IMG_SEEK=32
+  # Write blob to image file
+  dd if="$IMX8_BLOB" of="$IMGFILE" bs=1024 seek=$IMG_SEEK conv=notrunc
 fi
 
 # Lets see if GPT partition exists and it is one of the
