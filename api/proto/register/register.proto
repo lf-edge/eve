@@ -20,18 +20,3 @@ message ZRegisterMsg {
   string serial = 3;
   string softSerial = 4;
 }
-
-// XXX is this used? Not in client.go; deprecate
-enum ZRegisterResult {
-  ZRegNone         = 0;
-  ZRegSuccess      = 1;
-  ZRegNotActive    = 2;
-  ZRegAlreadyDone  = 3;
-  ZRegDeviceNA     = 4;
-  ZRegFailed       = 5;
-}
-
-// XXX is this used? Not in client.go; deprecate
-message ZRegisterResp {
-  ZRegisterResult result = 2;
-}
