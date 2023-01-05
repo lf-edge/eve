@@ -1,0 +1,60 @@
+From 69074cf413469dbb49e146c88556002d8e67703c Mon Sep 17 00:00:00 2001
+From: Troy Kisky <troy.kisky@boundarydevices.com>
+Date: Sat, 4 Jun 2022 11:39:19 -0700
+Subject: [PATCH 1/6] arm: dts: imx8mp-u-boot: select correct bl31
+
+Signed-off-by: Troy Kisky <troy.kisky@boundarydevices.com>
+---
+ arch/arm/dts/imx8mp-u-boot.dtsi | 25 ++++++++++++++++++++++++-
+ 1 file changed, 24 insertions(+), 1 deletion(-)
+
+diff --git a/arch/arm/dts/imx8mp-u-boot.dtsi b/arch/arm/dts/imx8mp-u-boot.dtsi
+index 120c4c4dbb1..6d31e206c03 100644
+--- a/arch/arm/dts/imx8mp-u-boot.dtsi
++++ b/arch/arm/dts/imx8mp-u-boot.dtsi
+@@ -124,10 +124,29 @@
+ 					entry = <0x970000>;
+ 
+ 					atf_blob: blob-ext {
+-						filename = "bl31.bin";
++#ifdef CONFIG_OPTEE_FIRMWARE_SET
++						filename = "bl31-tee-iMX8MP.bin";
++#else
++						filename = "bl31-iMX8MP.bin";
++#endif
+ 					};
+ 				};
+ 
++#ifdef CONFIG_OPTEE_FIRMWARE_SET
++				tee {
++					description = "TEE firmware";
++					type = "firmware";
++					arch = "arm64";
++					compression = "none";
++					load = <0x56000000>;
++					entry = <0x56000000>;
++
++					tee_blob: blob-ext {
++						filename = CONFIG_OPTEE_FIRMWARE;
++					};
++				};
++#endif
++
+ 				fdt {
+ 					description = "NAME";
+ 					type = "flat_dt";
+@@ -145,7 +164,11 @@
+ 				conf {
+ 					description = "NAME";
+ 					firmware = "uboot";
++#ifdef CONFIG_OPTEE_FIRMWARE_SET
++					loadables = "atf", "tee";
++#else
+ 					loadables = "atf";
++#endif
+ 					fdt = "fdt";
+ 				};
+ 			};
+-- 
+2.35.1
+

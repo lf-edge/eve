@@ -1,0 +1,36 @@
+From 0f2e1fd5bc5d64538bdc4c04e51db693db3e4c1d Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Ren=C3=AA=20de=20Souza=20Pinto?= <rene@renesp.com.br>
+Date: Wed, 4 Jan 2023 19:46:56 +0100
+Subject: [PATCH 5/6] arm: dts: imx8mp-u-boot: Revert bl31 filename
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Revert bl31 filename to:
+- bl31.bin (ATF)
+- bl31-tee.bin (ATF + OPTEE)
+
+Signed-off-by: Renê de Souza Pinto <rene@renesp.com.br>
+---
+ arch/arm/dts/imx8mp-u-boot.dtsi | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/arch/arm/dts/imx8mp-u-boot.dtsi b/arch/arm/dts/imx8mp-u-boot.dtsi
+index 9f3beaf1086..17daef31a27 100644
+--- a/arch/arm/dts/imx8mp-u-boot.dtsi
++++ b/arch/arm/dts/imx8mp-u-boot.dtsi
+@@ -125,9 +125,9 @@
+ 
+ 					atf_blob: blob-ext {
+ #ifdef CONFIG_OPTEE_FIRMWARE_SET
+-						filename = "bl31-tee-iMX8MP.bin";
++						filename = "bl31-tee.bin";
+ #else
+-						filename = "bl31-iMX8MP.bin";
++						filename = "bl31.bin";
+ #endif
+ 					};
+ 				};
+-- 
+2.35.1
+

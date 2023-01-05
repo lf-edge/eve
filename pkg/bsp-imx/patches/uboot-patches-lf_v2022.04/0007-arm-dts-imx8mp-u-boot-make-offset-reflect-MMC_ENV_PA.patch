@@ -1,0 +1,39 @@
+From c4f02a3b97ca3fec6de8c08c78b5030b6bb73be3 Mon Sep 17 00:00:00 2001
+From: Troy Kisky <troy.kisky@boundarydevices.com>
+Date: Thu, 8 Sep 2022 16:48:20 -0700
+Subject: [PATCH 2/6] arm: dts: imx8mp-u-boot: make offset reflect MMC_ENV_PART
+
+Signed-off-by: Troy Kisky <troy.kisky@boundarydevices.com>
+---
+ arch/arm/dts/imx8mp-u-boot.dtsi | 15 ++++++++++++++-
+ 1 file changed, 14 insertions(+), 1 deletion(-)
+
+diff --git a/arch/arm/dts/imx8mp-u-boot.dtsi b/arch/arm/dts/imx8mp-u-boot.dtsi
+index 6d31e206c03..9f3beaf1086 100644
+--- a/arch/arm/dts/imx8mp-u-boot.dtsi
++++ b/arch/arm/dts/imx8mp-u-boot.dtsi
+@@ -186,7 +186,20 @@
+ 
+ 		uboot: blob-ext@2 {
+ 			filename = "u-boot.itb";
+-			offset = <0x58000>;
++			/* imx8mm's offset is 0x57c00 because its programming starts at 0x8400, even for hw partition */
++#ifdef CONFIG_SPL_BOOTROM_SUPPORT
++			offset = <0x58000>;	/* Bootrom handles the changing offset */
++#else
++#if CONFIG_SYS_MMCSD_RAW_MODE_U_BOOT_SECTOR == 0x300
++#if CONFIG_SYS_MMC_ENV_PART == 0
++			offset = <0x58000>;	/* Programming starts at 0x8000 */
++#else
++			offset = <0x60000>;	/* Programming starts at 0x0 */
++#endif
++#else
++#error Offset needs modified,  CONFIG_SYS_MMCSD_RAW_MODE_U_BOOT_SECTOR * 0x200 - start offset
++#endif
++#endif
+ 		};
+ 	};
+ };
+-- 
+2.35.1
+
