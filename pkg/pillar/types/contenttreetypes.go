@@ -18,7 +18,6 @@ import (
 // which might need to be downloaded and verified
 type ContentTreeConfig struct {
 	ContentID         uuid.UUID
-	DatastoreID       uuid.UUID
 	DatastoreIDList   []uuid.UUID
 	RelativeURL       string
 	Format            zconfig.Format // this is the format of the content tree itself, not necessarily of the datastore
@@ -109,7 +108,6 @@ func (config ContentTreeConfig) LogKey() string {
 // ContentTreeStatus is response from volumemgr about status of content tree
 type ContentTreeStatus struct {
 	ContentID             uuid.UUID
-	DatastoreID           uuid.UUID
 	DatastoreIDList       []uuid.UUID
 	DatastoreTypesList    []string
 	AllDatastoresResolved bool
@@ -166,7 +164,6 @@ func (status ContentTreeStatus) ReferenceID() string {
 // Be aware: don't expect all fields are updated from the config
 func (status *ContentTreeStatus) UpdateFromContentTreeConfig(config ContentTreeConfig) {
 	status.ContentID = config.ContentID
-	status.DatastoreID = config.DatastoreID
 	status.DatastoreIDList = config.DatastoreIDList
 	status.RelativeURL = config.RelativeURL
 	status.Format = config.Format

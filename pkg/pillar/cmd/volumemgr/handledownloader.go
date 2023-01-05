@@ -58,7 +58,6 @@ func AddOrRefcountDownloaderConfig(ctx *volumemgrContext, blob types.BlobStatus)
 	// try to reserve storage, must be released on error
 	size := blob.Size
 	n := types.DownloaderConfig{
-		DatastoreID:     blob.DatastoreID,
 		DatastoreIDList: blob.DatastoreIDList,
 		Name:            blob.RelativeURL,
 		ImageSha256:     blob.Sha256,

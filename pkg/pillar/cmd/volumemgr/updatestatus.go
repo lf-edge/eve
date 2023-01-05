@@ -102,7 +102,6 @@ func doUpdateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus)
 			rootBlob := lookupOrCreateBlobStatus(ctx, status.ContentSha256)
 			if rootBlob == nil {
 				rootBlob = &types.BlobStatus{
-					DatastoreID:            status.DatastoreID,
 					DatastoreIDList:        status.DatastoreIDList,
 					RelativeURL:            status.RelativeURL,
 					Sha256:                 status.ContentSha256,
@@ -117,7 +116,6 @@ func doUpdateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus)
 			} else if rootBlob.State == types.LOADED {
 				//Need to update DatastoreIDList and RelativeURL if the blob is already loaded into CAS,
 				// because if any child blob is not downloaded, then we would need the below data.
-				rootBlob.DatastoreID = status.DatastoreID
 				rootBlob.DatastoreIDList = status.DatastoreIDList
 				rootBlob.RelativeURL = status.RelativeURL
 				log.Functionf("doUpdateContentTree: publishing loaded root BlobStatus (%s) for content tree (%s)",
