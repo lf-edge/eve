@@ -1,0 +1,32 @@
+From 8bf24918e94c07b1eb1d4e2213059aaa0e7aed05 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Ren=C3=AA=20de=20Souza=20Pinto?= <rene@renesp.com.br>
+Date: Fri, 6 Jan 2023 15:30:50 +0100
+Subject: [PATCH] configs: Add custom default boot command for Pollux board
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Add a custom default boot command for Pollux board. The command boots
+from SD Card using EFI and loads Pollux device tree from EFI partition.
+
+Signed-off-by: Renê de Souza Pinto <rene@renesp.com.br>
+---
+ configs/phycore-imx8mp_defconfig | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/configs/phycore-imx8mp_defconfig b/configs/phycore-imx8mp_defconfig
+index 77697e66c21..dccffbac970 100644
+--- a/configs/phycore-imx8mp_defconfig
++++ b/configs/phycore-imx8mp_defconfig
+@@ -25,7 +25,7 @@ CONFIG_SPL_LOAD_FIT=y
+ # CONFIG_USE_SPL_FIT_GENERATOR is not set
+ CONFIG_OF_SYSTEM_SETUP=y
+ CONFIG_USE_BOOTCOMMAND=y
+-CONFIG_BOOTCOMMAND="mmc dev ${mmcdev}; if mmc rescan; then if run loadimage; then run mmcboot; else run netboot; fi; fi;"
++CONFIG_BOOTCOMMAND="mmc dev ${mmcdev} ; fatload mmc ${mmcdev}:1 ${fdt_addr} /imx8mp-phyboard-pollux-rdk.dtb ; fatload mmc ${mmcdev}:1 ${loadaddr} /EFI/BOOT/BOOTAA64.EFI ; bootefi ${loadaddr} ${fdt_addr}"
+ CONFIG_DEFAULT_FDT_FILE="oftree"
+ CONFIG_BOARD_LATE_INIT=y
+ CONFIG_SPL_BOARD_INIT=y
+-- 
+2.35.1
+
