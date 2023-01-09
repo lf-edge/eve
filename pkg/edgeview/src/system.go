@@ -4,6 +4,7 @@
 package main
 
 import (
+	"archive/tar"
 	"bufio"
 	"bytes"
 	"compress/gzip"
@@ -28,6 +29,22 @@ import (
 	"github.com/shirou/gopsutil/process"
 	"golang.org/x/sys/unix"
 )
+
+const (
+	tarMaxBytes = 512000000 // max tar directory of 512 Mbytes data
+	tarTmpDir   = "/persist/tmp/"
+)
+
+var tarBlockDirs = []string{
+	"/persist/clear",
+	"/persist/vault",
+	"/run/domainmgr/cloudinit",
+}
+
+var tarBlockFileSuffix = []string{
+	".key.pem",
+	".key",
+}
 
 func runSystem(cmds cmdOpt, sysOpt string) {
 	opts, err := checkOpts(sysOpt, sysopts)
@@ -77,6 +94,8 @@ func runSystem(cmds cmdOpt, sysOpt string) {
 			runTechSupport(cmds, false)
 		} else if strings.HasPrefix(opt, "dmesg") {
 			getDmesg()
+		} else if strings.HasPrefix(opt, "tar/") {
+			getTarFile(opt)
 		} else {
 			fmt.Printf("opt %s: not supported yet\n", opt)
 		}
@@ -815,6 +834,18 @@ func runCat(opt string, line int) {
 		return
 	}
 
+	ok := checkBlockedDirs(path)
+	if !ok {
+		fmt.Printf("directory is blocked for file display: %s\n", path)
+		return
+	}
+
+	ok = checkBlockedFileSuffix(path)
+	if !ok {
+		fmt.Printf("file %s can not be displayed\n", path)
+		return
+	}
+
 	if fi.IsDir() {
 		fmt.Printf("can not cat a directory\n")
 		return
@@ -936,6 +967,193 @@ func readAFile(path string, extraline int) {
 
 func dispAFile(f os.FileInfo) {
 	fmt.Printf("%s, %v, %d, %s\n", f.Mode().String(), f.ModTime(), f.Size(), f.Name())
+}
+
+func getTarFile(opt string) {
+	execCmd := strings.SplitN(opt, "tar/", 2)
+	if len(execCmd) != 2 {
+		fmt.Printf("tar needs a / and path input\n")
+		return
+	}
+	source := filepath.Clean(execCmd[1])
+	printColor(" - tar cmd: "+source, colorCYAN)
+	closePipe(true)
+
+	fi, err := os.Stat(source)
+	if err != nil {
+		fmt.Printf("find directory error: %v\n", err)
+		return
+	}
+
+	if !fi.IsDir() {
+		fmt.Printf("the path %s is not a directory\n", source)
+		return
+	}
+
+	ok := checkBlockedDirs(source)
+	if !ok {
+		fmt.Printf("the directory %s can not be tarred\n", source)
+		return
+	}
+
+	// check the directory size not to exceed the max
+	sizeBytes := du(source, fi)
+	if sizeBytes > tarMaxBytes {
+		fmt.Printf("directory size %d, exceeds maximum %d\n", sizeBytes, tarMaxBytes)
+		return
+	}
+	dirs := strings.Split(source, "/")
+	if _, err := os.Stat(tarTmpDir); err != nil && os.IsNotExist(err) {
+		if err := os.MkdirAll(tarTmpDir, 0755); err != nil {
+			fmt.Printf("can not create %s\n", tarTmpDir)
+			return
+		}
+	}
+	targzfileName := tarTmpDir
+	for _, d := range dirs {
+		if d == "" {
+			continue
+		}
+		targzfileName = targzfileName + d + "."
+	}
+	targzfileName = targzfileName + strconv.FormatInt(time.Now().Unix(), 10) + ".tar"
+	archiveName := filepath.Base(targzfileName)
+	targzfileName = targzfileName + ".gz"
+
+	targzFile, err := os.Create(targzfileName)
+	if err != nil {
+		log.Errorf("can not create tar file")
+		return
+	}
+
+	err = createArchive(source, archiveName, targzFile)
+	targzFile.Close()
+	if err != nil {
+		_ = os.Remove(targzfileName)
+		log.Errorf("tar oper error: %v", err)
+		return
+	}
+
+	// copy the <name>.tar.gz file back to the user
+	runCopy("cp/" + targzfileName)
+	_ = os.Remove(targzfileName)
+}
+
+func createArchive(source, archiveName string, buf io.Writer) error {
+	gzipWriter := gzip.NewWriter(buf)
+	gzipWriter.Name = archiveName
+	defer gzipWriter.Close()
+
+	tarball := tar.NewWriter(gzipWriter)
+	defer tarball.Close()
+
+	baseDir := filepath.Base(source)
+	err := filepath.Walk(source,
+		func(path string, info os.FileInfo, err error) error {
+			if err != nil {
+				return err
+			}
+			// skip file with suffix of '.key.pem' or '.key'
+			ok := checkBlockedFileSuffix(info.Name())
+			if !ok {
+				return nil
+			}
+
+			// some files like socket type, can not be tarred
+			if info.Size() == 0 && !info.Mode().IsRegular() {
+				return nil
+			}
+			header, err := tar.FileInfoHeader(info, info.Name())
+			if err != nil {
+				return err
+			}
+
+			header.Name = filepath.Join(baseDir, strings.TrimPrefix(path, source))
+			if err := tarball.WriteHeader(header); err != nil {
+				return err
+			}
+
+			if info.IsDir() {
+				// skip if it is part of the blocked directories
+				if !checkBlockedDirs(filepath.Join(path, info.Name())) {
+					return filepath.SkipDir
+				}
+				return nil
+			}
+
+			// skip symlink files
+			if info.Mode()&os.ModeSymlink == os.ModeSymlink {
+				return nil
+			}
+
+			file, err := os.Open(path)
+			if err != nil {
+				return err
+			}
+			defer file.Close()
+
+			_, err = io.Copy(tarball, file)
+			return err
+		})
+	return err
+}
+
+// ungzipFile - runs on the client side
+func ungzipFile(fname string) {
+	source := fileCopyDir + fname
+	reader, err := os.Open(source)
+	if err != nil {
+		fmt.Printf("ungzip open error %v\n", err)
+		return
+	}
+	defer reader.Close()
+
+	archive, err := gzip.NewReader(reader)
+	if err != nil {
+		fmt.Printf("ungzip error %v\n", err)
+		return
+	}
+	defer archive.Close()
+
+	target := filepath.Join(fileCopyDir, archive.Name)
+	writer, err := os.Create(target)
+	if err != nil {
+		fmt.Printf("ungzip create file error %v\n", err)
+		return
+	}
+	defer writer.Close()
+
+	_, err = io.Copy(writer, archive)
+	if err != nil {
+		fmt.Printf("ungzip copy error %v\n", err)
+		return
+	}
+	ifile, err := os.Stat(target)
+	if err == nil {
+		fmt.Printf("tar file (size %d) generated: %s\n", ifile.Size(), target)
+	}
+	_ = os.Remove(source)
+}
+
+// checkBlockedDirs - return false if the dirName is in blocked list
+func checkBlockedDirs(dirName string) bool {
+	for _, d := range tarBlockDirs {
+		d1 := strings.TrimPrefix(d, "/") // handle without leading '/' in front
+		if strings.HasPrefix(dirName, d) || strings.HasPrefix(dirName, d1) {
+			return false
+		}
+	}
+	return true
+}
+
+// checkBlockedFileSuffix - return false if the fileName suffix in blocked list
+func checkBlockedFileSuffix(fileName string) bool {
+	for _, f := range tarBlockFileSuffix {
+		if strings.HasSuffix(fileName, f) {
+			return false
+		}
+	}
+	return true
 }
 
 func runTechSupport(cmds cmdOpt, isLocal bool) {
