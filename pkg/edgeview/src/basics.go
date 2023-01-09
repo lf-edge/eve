@@ -129,6 +129,7 @@ func initOpts() {
 		"ps",
 		"cipher",
 		"usb",
+		"tar",
 		"techsupport",
 		"top",
 		"volume",
@@ -694,6 +695,9 @@ func printHelp(opt string) {
 			helpOn("cipher", "display cipher information on datastore, device and controller certificates, etc.")
 		case "usb":
 			helpOn("usb", "display the lsusb information on device")
+		case "tar":
+			helpOn("tar/<path to directory>", "to generate a tarfile of the directory")
+			helpExample("tar//persist/agentdebug", "download the tarfile persist.agentdebug.<time>.tar of that directory", true)
 		case "techsupport":
 			helpOn("techsupport", "show tech-support, run various edgeview commands with output downloaded in a compressed file")
 		case "volume":

@@ -7,6 +7,7 @@ config:
     - /run:/run:ro
     - /run/edgeview:/run/edgeview
     - /persist:/persist:ro
+    - /persist/tmp:/persist/tmp
     - /config:/config:ro
     - /etc/resolv.conf:/etc/resolv.conf:ro
     - /proc:/host/proc:ro

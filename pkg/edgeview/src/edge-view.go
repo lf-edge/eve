@@ -57,7 +57,6 @@ type cmdOpt struct {
 
 func main() {
 	pInst := flag.Int("inst", 0, "instance ID (1-5)")
-	wsAddr := flag.String("ws", "", "http service address")
 	phelpopt := flag.Bool("help", false, "command-line help")
 	phopt := flag.Bool("h", false, "command-line help")
 	pServer := flag.Bool("server", false, "service edge-view queries")
@@ -88,10 +87,10 @@ func main() {
 		}
 	}
 
-	pathStr := "/edge-view"
-	// if wss endpoint is not passed in, try to get it from the JWT
-	if *ptoken != "" && *wsAddr == "" {
-		addrport, path, err := getAddrFromJWT(*ptoken, *pServer, *pInst)
+	var wsAddr, pathStr string
+	if *ptoken != "" {
+		var err error
+		wsAddr, pathStr, err = getAddrFromJWT(*ptoken, *pServer, *pInst)
 		if err != nil {
 			fmt.Printf("%v\n", err)
 			if *phelpopt || *phopt {
@@ -99,10 +98,9 @@ func main() {
 			}
 			return
 		}
-		if path != "" {
-			pathStr = path
-		}
-		*wsAddr = addrport
+	} else {
+		fmt.Printf("-token option is needed\n")
+		return
 	}
 
 	var intSignal chan os.Signal
@@ -168,16 +166,6 @@ func main() {
 		return
 	}
 
-	if *wsAddr == "" {
-		fmt.Printf("wss address:port needs to be specified when '-token' is used\n")
-		return
-	}
-
-	if *ptoken == "" {
-		fmt.Printf("-token option is needed\n")
-		return
-	}
-
 	// query option syntax checks
 	if pqueryopt != "" {
 		if strings.HasPrefix(pqueryopt, "log/") {
@@ -194,7 +182,7 @@ func main() {
 				return
 			}
 			if logopt == cpLogFileString {
-				isCopy = true
+				fstatus.cType = copyLogFiles
 			}
 		} else if strings.HasPrefix(pqueryopt, "pub/") {
 			pubs := strings.SplitN(pqueryopt, "pub/", 2)
@@ -223,7 +211,10 @@ func main() {
 			pnetopt = pqueryopt
 		} else if strings.HasPrefix(pqueryopt, "cp/") {
 			psysopt = pqueryopt
-			isCopy = true
+			fstatus.cType = copySingleFile
+		} else if strings.HasPrefix(pqueryopt, "tar/") {
+			psysopt = pqueryopt
+			fstatus.cType = copyTarFiles
 		} else {
 			_, err := checkOpts(pqueryopt, netopts)
 			if err != nil {
@@ -241,7 +232,7 @@ func main() {
 			}
 
 			if psysopt == "techsupport" {
-				isCopy = true
+				fstatus.cType = copyTechSupport
 			}
 		}
 	}
@@ -251,7 +242,7 @@ func main() {
 		intSignal = make(chan os.Signal, 1)
 		signal.Notify(intSignal, os.Interrupt)
 	}
-	urlWSS := url.URL{Scheme: "wss", Host: *wsAddr, Path: pathStr}
+	urlWSS := url.URL{Scheme: "wss", Host: wsAddr, Path: pathStr}
 
 	var done chan struct{}
 	var tokenHash16 string
@@ -428,9 +419,9 @@ func main() {
 				if strings.Contains(string(message), closeMessage) {
 					done <- struct{}{}
 					break
-				} else if isCopy {
+				} else if fstatus.cType != unknownCopy {
 					recvCopyFile(message, &fstatus, mtype)
-					if mtype == websocket.TextMessage && isCopy && fstatus.f != nil {
+					if mtype == websocket.TextMessage && fstatus.cType != unknownCopy && fstatus.f != nil {
 						defer fstatus.f.Close()
 					}
 				} else if isTCPClient {

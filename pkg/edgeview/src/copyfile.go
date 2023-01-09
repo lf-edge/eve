@@ -24,8 +24,17 @@ const (
 	fileCopyDir      = "/download/"
 )
 
+type copyType int
+
+const (
+	unknownCopy copyType = iota
+	copySingleFile
+	copyLogFiles
+	copyTarFiles
+	copyTechSupport
+)
+
 var (
-	isCopy     bool // client side
 	isSvrCopy  bool // server side
 	copyMsgChn chan []byte
 	lastPerc   int64
@@ -42,6 +51,7 @@ type copyFile struct {
 
 type fileCopyStatus struct {
 	gotFileInfo bool
+	cType       copyType
 	filename    string
 	fileSize    int64
 	fileHash    string
@@ -61,6 +71,18 @@ func runCopy(opt string) {
 	info, err := os.Stat(file)
 	if err != nil {
 		fmt.Printf("os stat error %v\n", err)
+		return
+	}
+
+	ok := checkBlockedDirs(file)
+	if !ok {
+		fmt.Printf("directory is blocked for file copy: %s\n", file)
+		return
+	}
+
+	ok = checkBlockedFileSuffix(info.Name())
+	if !ok {
+		fmt.Printf("file %s can not be copied\n", file)
 		return
 	}
 
@@ -183,7 +205,7 @@ func recvCopyFile(msg []byte, fstatus *fileCopyStatus, mtype int) {
 		fstatus.modTime = time.Unix(info.ModTsec, 0)
 		fstatus.buf = make([]byte, info.Size)
 
-		fmt.Printf("file: name %s, size %d\n", fstatus.filename, fstatus.fileSize)
+		fmt.Printf(" transfer file: name %s, size %d\n", fstatus.filename, fstatus.fileSize)
 
 		_, err = os.Stat(fileCopyDir)
 		if err != nil {
@@ -211,14 +233,14 @@ func recvCopyFile(msg []byte, fstatus *fileCopyStatus, mtype int) {
 	}
 	if mtype == websocket.TextMessage {
 		fmt.Printf("recv text msg, exit\n")
-		isCopy = false
+		fstatus.cType = unknownCopy
 		fstatus.f.Close()
 		return
 	}
 
 	n, err := fstatus.f.Write(msg)
 	if err != nil {
-		isCopy = false
+		fstatus.cType = unknownCopy
 		fstatus.f.Close()
 		fmt.Printf("file write error: %v\n", err)
 		return
@@ -235,11 +257,16 @@ func recvCopyFile(msg []byte, fstatus *fileCopyStatus, mtype int) {
 			if err != nil {
 				fmt.Printf("modify file time: %v\n", err)
 			}
-			untarLogfile(fstatus.filename)
+			if fstatus.cType == copyTarFiles {
+				ungzipFile(fstatus.filename)
+			} else if fstatus.cType == copyLogFiles {
+				untarLogfile(fstatus.filename)
+			}
 		} else {
 			fmt.Printf("\n file sha256 different. %s, should be %s\n", shaStr, fstatus.fileHash)
 		}
-		sendCopyDone("done", nil)
+		sendCopyDone(closeMessage, nil)
+		fstatus.cType = unknownCopy
 	}
 }
 
@@ -278,15 +305,9 @@ func sendCopyDone(context string, err error) {
 	if err != nil {
 		fmt.Printf("sign and write error: %v\n", err)
 	}
-	isCopy = false
 }
 
 func untarLogfile(downloadedFile string) {
-	if !strings.HasPrefix(downloadedFile, "logfiles-") || !strings.HasSuffix(downloadedFile, ".tar") {
-		fmt.Printf("\n file saved at %s\n\n", fileCopyDir+downloadedFile)
-		return
-	}
-
 	cmdStr := "cd " + fileCopyDir + "; tar xvf " + downloadedFile
 	untarCmd := exec.Command("sh", "-c", cmdStr)
 	err := untarCmd.Run()
