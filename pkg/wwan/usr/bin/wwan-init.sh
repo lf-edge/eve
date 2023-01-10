@@ -64,6 +64,10 @@ parse_json_attr() {
   echo "$JSON" | jq -rc ".$JSON_PATH | select (.!=null)"
 }
 
+join_lines_with_semicolon() {
+  cat - | sed ':a;N;$!ba;s/\n/; /g'
+}
+
 mod_reload() {
   local RLIST
   for mod in "$@" ; do
@@ -538,7 +542,7 @@ event_stream | while read -r EVENT; do
         } 2>/tmp/wwan.stderr
         RV=$?
         if [ $RV -ne 0 ]; then
-          CONFIG_ERROR="$(sort -u < /tmp/wwan.stderr)"
+          CONFIG_ERROR="$(sort -u < /tmp/wwan.stderr | join_lines_with_semicolon)"
           CONFIG_ERROR="${CONFIG_ERROR:-(Re)Connection attempt failed with rv=$RV}"
         fi
         # retry probe to update PROBE_ERROR
@@ -549,7 +553,7 @@ event_stream | while read -r EVENT; do
       if [ "$("${PROTOCOL}_get_op_mode")" != "radio-off" ]; then
         echo "[$CDC_DEV] Trying to disable radio (APN=${APN}, interface=${IFACE})"
         if ! "${PROTOCOL}_toggle_rf" off 2>/tmp/wwan.stderr; then
-          CONFIG_ERROR="$(cat /tmp/wwan.stderr)"
+          CONFIG_ERROR="$(join_lines_with_semicolon </tmp/wwan.stderr)"
         else
           if ! wait_for radio-off "${PROTOCOL}_get_op_mode"; then
             CONFIG_ERROR="Timeout waiting for radio to turn off"

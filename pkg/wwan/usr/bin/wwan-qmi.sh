@@ -2,26 +2,69 @@
 # shellcheck disable=SC2039
 # shellcheck disable=SC2155
 # shellcheck disable=SC2034
+# shellcheck disable=SC3043
 
-qmi() {
+qmi_raw() {
   timeout -s KILL "$LTESTAT_TIMEOUT" qmicli -p -d "/dev/$CDC_DEV" "$@"
 }
 
+# qmi function is an extension to qmi_raw, handling allocation and release of the client ID.
+# Args: <service> <method> [extra args...]
+# Where <method> should be without the "--<service>-" prefix,
+# i.e. instead of "--nas-network-scan" pass "network-scan"
+qmi() {
+  local SERVICE="$1"
+  local METHOD="$2"
+  shift 2
+
+  local CID=""
+  local MANUAL_CID_RELEASE="--client-no-release-cid"
+  if [ "$SERVICE" = "wds" ] && [ "$METHOD" = "stop-network" ]; then
+    # Use CID already allocated and preserved from "wds start-network".
+    CID="$(cat "${BBS}/cid_${IFACE}.json" 2>/dev/null)"
+    # "wds stop-network" releases CID automatically.
+    unset MANUAL_CID_RELEASE
+  else
+    # Allocate Client ID to use for the QMI command.
+    if ! OUTPUT="$(qmi_raw "${MANUAL_CID_RELEASE}" "--${SERVICE}-noop")"; then
+      return 1
+    fi
+    CID="$(parse_modem_attr "$OUTPUT" "CID")"
+  fi
+  if [ -z "$CID" ]; then
+    echo "Received empty allocated client ID for service $SERVICE" >&2
+    return 1
+  fi
+  # Run requested QMI command.
+  qmi_raw --client-cid "${CID}" "${MANUAL_CID_RELEASE}" "--${SERVICE}-${METHOD}" "$@"
+  RV="$?"
+  # "wds start-network" is a special case where CID should not be released
+  # after the command return, but instead kept allocated until "wds stop-network",
+  # see: https://lists.freedesktop.org/archives/libqmi-devel/2017-September/002425.html
+  if [ "$RV" -eq 0 ] && [ "$SERVICE" = "wds" ] && [ "$METHOD" = "start-network" ]; then
+    echo "$CID" | mbus_publish "cid_$IFACE"
+  elif [ -n "$MANUAL_CID_RELEASE" ]; then
+    # Release Client ID.
+    qmi_raw --client-cid "${CID}" "--${SERVICE}-noop" 2>/dev/null 2>&1
+  fi
+  return "$RV"
+}
+
 qmi_get_packet_stats() {
-  local STATS="$(qmi --wds-get-packet-statistics)"
-  local TXP=$(parse_modem_attr "$STATS" "TX packets OK")
-  local TXB=$(parse_modem_attr "$STATS" "TX bytes OK")
-  local TXD=$(parse_modem_attr "$STATS" "TX packets dropped")
-  local RXP=$(parse_modem_attr "$STATS" "RX packets OK")
-  local RXB=$(parse_modem_attr "$STATS" "RX bytes OK")
-  local RXD=$(parse_modem_attr "$STATS" "RX packets dropped")
+  local STATS="$(qmi wds get-packet-statistics)"
+  local TXP="$(parse_modem_attr "$STATS" "TX packets OK")"
+  local TXB="$(parse_modem_attr "$STATS" "TX bytes OK")"
+  local TXD="$(parse_modem_attr "$STATS" "TX packets dropped")"
+  local RXP="$(parse_modem_attr "$STATS" "RX packets OK")"
+  local RXB="$(parse_modem_attr "$STATS" "RX bytes OK")"
+  local RXD="$(parse_modem_attr "$STATS" "RX packets dropped")"
   json_struct \
     "$(json_attr tx-bytes "${TXB:-0}")" "$(json_attr tx-packets "${TXP:-0}")" "$(json_attr tx-drops "${TXD:-0}")" \
     "$(json_attr rx-bytes "${RXB:-0}")" "$(json_attr rx-packets "${RXP:-0}")" "$(json_attr rx-drops "${RXD:-0}")"
 }
 
 qmi_get_signal_info() {
-  local INFO="$(qmi --nas-get-signal-info)"
+  local INFO="$(qmi nas get-signal-info)"
   local RSSI="$(parse_modem_attr "$INFO" "RSSI" " dBm")"
   local RSRQ="$(parse_modem_attr "$INFO" "RSRQ" " dB")"
   local RSRP="$(parse_modem_attr "$INFO" "RSRP" " dBm")"
@@ -39,12 +82,12 @@ qmi_get_signal_info() {
 }
 
 qmi_get_packet_state() {
-  qmi --wds-get-packet-service-status | sed -n "s/.*Connection status: '\(.*\)'/\1/p"
+  qmi wds get-packet-service-status | sed -n "s/.*Connection status: '\(.*\)'/\1/p"
 }
 
 # qmi_get_op_mode returns one of: "" (aka unspecified), "online", "online-and-connected", "radio-off", "offline", "unrecognized"
 qmi_get_op_mode() {
-  local OP_MODE="$(parse_modem_attr "$(qmi --dms-get-operating-mode)" "Mode")"
+  local OP_MODE="$(parse_modem_attr "$(qmi dms get-operating-mode)" "Mode")"
   case "$OP_MODE" in
     "online")
       if [ "$(qmi_get_packet_state)" = "connected" ]; then
@@ -63,19 +106,19 @@ qmi_get_op_mode() {
 }
 
 qmi_get_imei() {
-  parse_modem_attr "$(qmi --dms-get-ids)" "IMEI"
+  parse_modem_attr "$(qmi dms get-ids)" "IMEI"
 }
 
 qmi_get_modem_model() {
-  parse_modem_attr "$(qmi --dms-get-model)" "Model"
+  parse_modem_attr "$(qmi dms get-model)" "Model"
 }
 
 qmi_get_modem_revision() {
-  parse_modem_attr "$(qmi --dms-get-revision)" "Revision"
+  parse_modem_attr "$(qmi dms get-revision)" "Revision"
 }
 
 qmi_get_serving_system() {
-  local INFO="$(qmi --nas-get-serving-system)"
+  local INFO="$(qmi nas get-serving-system)"
   local REGSTATE="$(parse_modem_attr "$INFO" "Registration state")"
   if [ "$REGSTATE" != "registered" ]; then
     return 1
@@ -99,7 +142,7 @@ qmi_get_serving_system() {
 
 qmi_get_providers() {
   local PROVIDERS
-  if ! PROVIDERS="$(qmi --nas-network-scan)"; then
+  if ! PROVIDERS="$(qmi nas network-scan)"; then
     # Alternative to listing all providers is to return info at least
     # for the current provider.
     SERVING="$(qmi_get_serving_system)"
@@ -156,7 +199,7 @@ qmi_get_sim_iccid() {
   local OUTPUT
   # Get ICCID from User Identity Module (UIM).
   # Please refer to ETSI/3GPP "TS 102 221" section 13.2 for the coding of this EF.
-  if ! OUTPUT="$(qmi --uim-read-transparent=0x3F00,0x2FE2)"; then
+  if ! OUTPUT="$(qmi uim read-transparent "0x3F00,0x2FE2")"; then
     return 1
   fi
   printf "%s" "$OUTPUT" | awk '
@@ -178,7 +221,7 @@ qmi_get_sim_imsi() {
   local OUTPUT
   # Get IMSI from User Identity Module (UIM).
   # Please refer to ETSI/3GPP "TS 31.102" section 4.2.2 for the coding of this EF.
-  if ! OUTPUT="$(qmi --uim-read-transparent=0x3F00,0x7FFF,0x6F07)"; then
+  if ! OUTPUT="$(qmi uim read-transparent "0x3F00,0x7FFF,0x6F07")"; then
     return 1
   fi
   printf "%s" "$OUTPUT" | awk '
@@ -213,7 +256,7 @@ qmi_get_sim_cards() {
 }
 
 qmi_get_ip_settings() {
-  if ! SETTINGS="$(qmi --wds-get-current-settings)"; then
+  if ! SETTINGS="$(qmi wds get-current-settings)"; then
     return 1
   fi
   IP=$(parse_modem_attr "$SETTINGS" "IPv4 address")
@@ -230,18 +273,17 @@ qmi_start_network() {
   echo Y > "/sys/class/net/$IFACE/qmi/raw_ip"
   ip link set "$IFACE" up
 
-  qmi --wds-reset
-  if ! OUTPUT="$(qmi --wds-start-network="ip-type=4,apn=${APN}" --client-no-release-cid)"; then
+  qmi wds reset
+  if ! OUTPUT="$(qmi wds start-network "ip-type=4,apn=${APN}")"; then
     return 1
   fi
 
   parse_modem_attr "$OUTPUT" "Packet data handle" | mbus_publish "pdh_$IFACE"
-  parse_modem_attr "$OUTPUT" "CID" | mbus_publish "cid_$IFACE"
 }
 
 qmi_get_sim_status() {
   # FIXME: limited to a single SIM card
-  parse_modem_attr "$(qmi --uim-get-card-status)" "Application state" | head -n 1
+  parse_modem_attr "$(qmi uim get-card-status)" "Application state" | head -n 1
 }
 
 qmi_wait_for_sim() {
@@ -265,16 +307,16 @@ qmi_wait_for_wds() {
 }
 
 qmi_get_registration_status() {
-  parse_modem_attr "$(qmi --nas-get-serving-system)" "Registration state"
+  parse_modem_attr "$(qmi nas get-serving-system)" "Registration state"
 }
 
 qmi_wait_for_register() {
   # Make sure we are registering with the right APN.
   # Some LTE networks require explicit (and correct) APN for the registration/attach
   # procedure (for the initial EPS bearer activation).
-  local PROFILE="$(qmi --wds-get-default-profile-num=3gpp)"
+  local PROFILE="$(qmi wds get-default-profile-num "3gpp")"
   local PROFILE_NUM="$(parse_modem_attr "$PROFILE" "Default profile number")"
-  qmi --wds-modify-profile="3gpp,${PROFILE_NUM},apn=${APN}"
+  qmi wds modify-profile "3gpp,${PROFILE_NUM},apn=${APN}"
 
   echo "[$CDC_DEV] Waiting for the device to register on the network"
   local CMD="qmi_get_registration_status"
@@ -286,7 +328,7 @@ qmi_wait_for_register() {
 }
 
 qmi_get_ip_address() {
-  parse_modem_attr "$(qmi --wds-get-current-settings)" "IPv4 address"
+  parse_modem_attr "$(qmi wds get-current-settings)" "IPv4 address"
 }
 
 qmi_wait_for_settings() {
@@ -301,22 +343,21 @@ qmi_wait_for_settings() {
 
 qmi_stop_network() {
   local PDH="$(cat "${BBS}/pdh_${IFACE}.json" 2>/dev/null)"
-  local CID="$(cat "${BBS}/cid_${IFACE}.json" 2>/dev/null)"
 
-  if ! qmi --wds-stop-network="$PDH" --client-cid="$CID"; then
+  if ! qmi wds stop-network "$PDH"; then
     # If qmicli failed to stop the network, reset operating mode of the modem.
-    qmi --dms-set-operating-mode=low-power
+    qmi dms set-operating-mode=low-power
     sleep 1
-    qmi --dms-set-operating-mode=online
+    qmi dms set-operating-mode=online
   fi
 }
 
 qmi_toggle_rf() {
   if [ "$1" = "off" ]; then
     echo "[$CDC_DEV] Disabling RF"
-    qmi --dms-set-operating-mode=persistent-low-power
+    qmi dms set-operating-mode=persistent-low-power
   else
     echo "[$CDC_DEV] Enabling RF"
-    qmi --dms-set-operating-mode=online
+    qmi dms set-operating-mode=online
   fi
 }
