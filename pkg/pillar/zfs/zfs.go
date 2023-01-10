@@ -157,6 +157,36 @@ func DatasetExist(log *base.LogObject, datasetPath string) bool {
 	return true
 }
 
+// SetReserved sets the reserved percentage. The datasetName is the
+// parent (e.g., "persist").
+func SetReserved(datasetName string, percentage uint64) error {
+	usageStat, err := GetDatasetUsageStat(datasetName)
+	if err != nil {
+		log.Errorf("SetReserved get for %s failed: %s", datasetName, err)
+		return err
+	}
+	datasetName += "/reserved"
+	usageStatReserved, err := GetDatasetUsageStat(datasetName)
+	if err != nil {
+		log.Errorf("SetReserved get for %s failed: %s", datasetName, err)
+		return err
+	}
+	reservation := usageStat.Total * percentage / 100
+	log.Infof("Reserving %d current %d",
+		reservation, usageStatReserved.Total)
+	if reservation == usageStatReserved.Total {
+		return nil
+	}
+	dataset, err := libzfs.DatasetOpen(datasetName)
+	if err != nil {
+		return err
+	}
+	defer dataset.Close()
+	err = dataset.SetProperty(libzfs.DatasetPropRefreservation,
+		strconv.FormatUint(reservation, 10))
+	return err
+}
+
 // CreateVolumeDataset creates dataset of zvol type in zfs
 func CreateVolumeDataset(log *base.LogObject, datasetName string, size uint64, compression string) error {
 	alignedSize := alignUpToBlockSize(size)

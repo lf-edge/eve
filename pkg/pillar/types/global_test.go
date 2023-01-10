@@ -171,6 +171,7 @@ func TestNewConfigItemSpecMap(t *testing.T) {
 		AppContainerStatsInterval,
 		VaultReadyCutOffTime,
 		Dom0DiskUsageMaxBytes,
+		StorageZfsReserved,
 		ForceFallbackCounter,
 		LogRemainToSendMBytes,
 		DownloadMaxPortCost,
