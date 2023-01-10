@@ -11,11 +11,13 @@ import (
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/lf-edge/eve/pkg/pillar/agentbase"
+	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
+	"github.com/lf-edge/eve/pkg/pillar/vault"
 	"github.com/lf-edge/eve/pkg/pillar/zfs"
 	"github.com/sirupsen/logrus"
 )
@@ -44,6 +46,7 @@ type zVolDeviceEvent struct {
 type zfsContext struct {
 	agentbase.AgentBase
 	ps                     *pubsub.PubSub
+	subGlobalConfig        pubsub.Subscription
 	zVolStatusPub          pubsub.Publication
 	storageStatusPub       pubsub.Publication
 	storageMetricsPub      pubsub.Publication
@@ -52,6 +55,8 @@ type zfsContext struct {
 	disksProcessingTrigger chan interface{}
 	zVolDeviceEvents       *base.LockedStringMap // stores device->zVolDeviceEvent mapping to check and publish
 	zfsIterLock            sync.Mutex
+	globalConfig           *types.ConfigItemValueMap
+	GCInitialized          bool
 }
 
 // Run - an zfs run
@@ -59,12 +64,13 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	logger = loggerArg
 	log = logArg
 
-	ctxPtr := zfsContext{
+	ctxPtr := &zfsContext{
 		ps:                     ps,
 		disksProcessingTrigger: make(chan interface{}, 1),
 		zVolDeviceEvents:       base.NewLockedStringMap(),
+		globalConfig:           types.DefaultConfigItemValueMap(),
 	}
-	agentbase.Init(&ctxPtr, logger, log, agentName,
+	agentbase.Init(ctxPtr, logger, log, agentName,
 		agentbase.WithPidFile(),
 		agentbase.WithWatchdog(ps, warningTime, errorTime),
 		agentbase.WithArguments(arguments))
@@ -95,13 +101,45 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	}
 	ctxPtr.zVolStatusPub = zVolStatusPub
 
+	// Look for global config such as log levels
+	subGlobalConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "zedagent",
+		MyAgentName:   agentName,
+		TopicImpl:     types.ConfigItemValueMap{},
+		Persistent:    true,
+		Activate:      false,
+		Ctx:           ctxPtr,
+		CreateHandler: handleGlobalConfigCreate,
+		ModifyHandler: handleGlobalConfigModify,
+		DeleteHandler: handleGlobalConfigDelete,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctxPtr.subGlobalConfig = subGlobalConfig
+	subGlobalConfig.Activate()
+
+	// Pick up debug aka log level before we start real work
+	for !ctxPtr.GCInitialized {
+		log.Functionf("waiting for GCInitialized")
+		select {
+		case change := <-subGlobalConfig.MsgChan():
+			subGlobalConfig.ProcessChange(change)
+		case <-stillRunning.C:
+		}
+		ps.StillRunning(agentName, warningTime, errorTime)
+	}
+	log.Functionf("processed GlobalConfig")
+
 	// Look for disks config
 	subDisksConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "zedagent",
 		MyAgentName:   agentName,
 		TopicImpl:     types.EdgeNodeDisks{},
 		Activate:      false,
-		Ctx:           &ctxPtr,
+		Ctx:           ctxPtr,
 		CreateHandler: handleDisksConfigCreate,
 		ModifyHandler: handleDisksConfigModify,
 		WarningTime:   warningTime,
@@ -144,7 +182,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		AgentScope:  types.AppImgObj,
 		TopicImpl:   types.VolumeStatus{},
 		Activate:    false,
-		Ctx:         &ctxPtr,
+		Ctx:         ctxPtr,
 		ErrorTime:   errorTime,
 	})
 	if err != nil {
@@ -157,13 +195,13 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		log.Fatal(err)
 	}
 
-	go processDisksTask(&ctxPtr)
+	go processDisksTask(ctxPtr)
 
-	go deviceWatcher(&ctxPtr)
+	go deviceWatcher(ctxPtr)
 
-	go storageStatusPublisher(&ctxPtr)
+	go storageStatusPublisher(ctxPtr)
 
-	go storageMetricsPublisher(&ctxPtr)
+	go storageMetricsPublisher(ctxPtr)
 
 	max := float64(zvolsProcessingInterval)
 	min := max * 0.3
@@ -172,8 +210,10 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 
 	for {
 		select {
+		case change := <-subGlobalConfig.MsgChan():
+			subGlobalConfig.ProcessChange(change)
 		case <-devicesProcessTicker.C:
-			processZVolDeviceEvents(&ctxPtr)
+			processZVolDeviceEvents(ctxPtr)
 		case change := <-subDisksConfig.MsgChan():
 			subDisksConfig.ProcessChange(change)
 		case change := <-subVolumeStatus.MsgChan():
@@ -293,6 +333,70 @@ func deviceWatcher(ctxPtr *zfsContext) {
 			ctxPtr.zVolDeviceEvents.Store(fileName, zVolDeviceEvent{
 				delete: true,
 			})
+		}
+	}
+}
+
+func handleGlobalConfigCreate(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	handleGlobalConfigImpl(ctxArg, key, statusArg)
+}
+
+func handleGlobalConfigModify(ctxArg interface{}, key string,
+	statusArg interface{}, oldStatusArg interface{}) {
+	handleGlobalConfigImpl(ctxArg, key, statusArg)
+}
+
+func handleGlobalConfigImpl(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
+	ctx := ctxArg.(*zfsContext)
+	if key != "global" {
+		log.Functionf("handleGlobalConfigImpl: ignoring %s", key)
+		return
+	}
+	log.Functionf("handleGlobalConfigImpl for %s", key)
+	gcp := agentlog.HandleGlobalConfig(log, ctx.subGlobalConfig, agentName,
+		ctx.CLIParams().DebugOverride, logger)
+	if gcp != nil {
+		maybeUpdateConfigItems(ctx, gcp)
+		ctx.globalConfig = gcp
+		ctx.GCInitialized = true
+	}
+	log.Functionf("handleGlobalConfigImpl done for %s", key)
+}
+
+func handleGlobalConfigDelete(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
+	ctx := ctxArg.(*zfsContext)
+	if key != "global" {
+		log.Functionf("handleGlobalConfigDelete: ignoring %s", key)
+		return
+	}
+	log.Functionf("handleGlobalConfigDelete for %s", key)
+	agentlog.HandleGlobalConfig(log, ctx.subGlobalConfig, agentName,
+		ctx.CLIParams().DebugOverride, logger)
+	*ctx.globalConfig = *types.DefaultConfigItemValueMap()
+	log.Functionf("handleGlobalConfigDelete done for %s", key)
+}
+
+func maybeUpdateConfigItems(ctx *zfsContext, newConfigItemValueMap *types.ConfigItemValueMap) {
+	log.Functionf("maybeUpdateConfigItems")
+	oldConfigItemValueMap := ctx.globalConfig
+
+	if vault.ReadPersistType() != types.PersistZFS {
+		return
+	}
+	newStorageZfsReserved := newConfigItemValueMap.GlobalValueInt(types.StorageZfsReserved)
+	oldStorageZfsReserved := oldConfigItemValueMap.GlobalValueInt(types.StorageZfsReserved)
+	if oldStorageZfsReserved != newStorageZfsReserved {
+		log.Noticef("StorageZfsReserved changed from %d to %d",
+			oldStorageZfsReserved, newStorageZfsReserved)
+		err := zfs.SetReserved(types.PersistDataset,
+			uint64(newStorageZfsReserved))
+		if err != nil {
+			log.Errorf("SetReserved failed: %s", err)
 		}
 	}
 }

@@ -33,6 +33,7 @@
 | debug.default.loglevel | string | info | min level saved in files on device |
 | debug.default.remote.loglevel | string | warning | min level sent to controller |
 | storage.dom0.disk.minusage.percent | integer percent | 20 | min. percent of persist partition reserved for dom0 |
+| storage.zfs.reserved.percent | integer percent | 20 | min. percent of persist partition reserved for zfs performance |
 | storage.apps.ignore.disk.check | boolean | false | Ignore disk usage check for Apps. Allows apps to create images bigger than available disk|
 | timer.appcontainer.stats.interval | integer in seconds | 300 | collect application container stats |
 | timer.vault.ready.cutoff | integer in seconds | 300 | reboot after inaccessible vault |

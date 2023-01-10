@@ -163,6 +163,8 @@ const (
 	// Dom0DiskUsageMaxBytes - Max disk usage for Dom0. Dom0 can use
 	//  Dom0MinDiskUsagePercent up to a max of  Dom0DiskUsageMaxBytes
 	Dom0DiskUsageMaxBytes GlobalSettingKey = "storage.dom0.disk.maxusagebytes"
+	// StorageZfsReserved is the percentage reserved in a ZFS pool
+	StorageZfsReserved GlobalSettingKey = "storage.zfs.reserved.percent"
 	// AppContainerStatsInterval - App Container Stats Collection
 	AppContainerStatsInterval GlobalSettingKey = "timer.appcontainer.stats.interval"
 	// VaultReadyCutOffTime global setting key
@@ -767,7 +769,9 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	// Dom0DiskUsageMaxBytes - Default is 2GB, min is 100MB
 	configItemSpecMap.AddIntItem(Dom0DiskUsageMaxBytes, 2*1024*1024*1024,
 		100*1024*1024, 0xFFFFFFFF)
+	configItemSpecMap.AddIntItem(StorageZfsReserved, 20, 1, 99)
 	configItemSpecMap.AddIntItem(ForceFallbackCounter, 0, 0, 0xFFFFFFFF)
+
 	configItemSpecMap.AddIntItem(EveMemoryLimitInBytes, uint32(eveMemoryLimitInBytes),
 		uint32(eveMemoryLimitInBytes), 0xFFFFFFFF)
 	// Limit manual vmm overhead override to 1 PiB
