@@ -234,6 +234,12 @@ var mToF = []modelToFuncs{
 		arg:         "upboard:blue:",
 	},
 	{
+		model:       "Axiomtek Co., Ltd.EM320",
+		initFunc:    InitLedCmd,
+		displayFunc: ExecuteLedCmd,
+		arg:         "blue:status-0",
+	},
+	{
 		// Last in table as a default
 		model:       "",
 		initFunc:    InitForceDiskCmd,
