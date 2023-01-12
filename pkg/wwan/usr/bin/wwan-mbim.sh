@@ -4,7 +4,7 @@
 # shellcheck disable=SC2034
 
 mbim() {
-  timeout -s KILL "$LTESTAT_TIMEOUT" mbimcli -p -d "/dev/$CDC_DEV" "$@"
+  timeout -s INT -k 5 "$LTESTAT_TIMEOUT" mbimcli -p -d "/dev/$CDC_DEV" "$@"
 }
 
 mbim_get_packet_stats() {
