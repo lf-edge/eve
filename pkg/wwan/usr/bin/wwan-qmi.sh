@@ -4,7 +4,7 @@
 # shellcheck disable=SC2034
 
 qmi() {
-  timeout -s KILL "$LTESTAT_TIMEOUT" qmicli -p -d "/dev/$CDC_DEV" "$@"
+  timeout -s INT -k 5 "$LTESTAT_TIMEOUT" qmicli -p -d "/dev/$CDC_DEV" "$@"
 }
 
 qmi_get_packet_stats() {
