@@ -19,6 +19,7 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	zconfig "github.com/lf-edge/eve/api/go/config"
+	"github.com/lf-edge/eve/pkg/pillar/objtonum"
 	"github.com/lf-edge/eve/pkg/pillar/sriov"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
@@ -2081,10 +2082,14 @@ func parseIpspec(ipspec *zconfig.Ipspec,
 			config.Gateway.String())
 	}
 	addressesInRange := config.DhcpRange.Size()
-	// we cannot use more than types.BitMapMax IPs for dynamic allocation
-	// and should keep some place in the end for static IPs assignment
-	if addressesInRange > types.BitMapMax {
-		config.DhcpRange.End = types.AddToIP(config.DhcpRange.Start, types.BitMapMax)
+	// Currently, we cannot use more than ByteAllocatorMaxNum IPs for dynamic allocation
+	// (i.e. 256 at maximum) and should keep some place in the end for static IPs
+	// assignment.
+	// XXX Later we could implement NumberAllocator with larger capacity (larger than
+	// what ByteAllocator can provide) and use it for network instances
+	// that require bigger subnets.
+	if addressesInRange > objtonum.ByteAllocatorMaxNum {
+		config.DhcpRange.End = types.AddToIP(config.DhcpRange.Start, objtonum.ByteAllocatorMaxNum)
 	}
 	return nil
 }

@@ -45,7 +45,7 @@ var preVaultconversionHandlers = []ConversionHandler{
 		handlerFunc: applyDefaultConfigItem,
 	},
 	{
-		description: "Move UUIDPairToNumKey to UUIDPairAndIfIdxToNumKey",
+		description: "Move UUIDPairToNum to AppInterfaceToNum",
 		handlerFunc: convertUUIDPairToNum,
 	},
 }

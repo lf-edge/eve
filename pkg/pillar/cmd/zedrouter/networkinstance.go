@@ -194,7 +194,12 @@ func networkInstanceBridgeDelete(
 	if status.BridgeNum != 0 {
 		status.BridgeName = ""
 		status.BridgeNum = 0
-		bridgeNumFree(ctx, status.UUID, true)
+		bridgeNumKey := types.UuidToNumKey{UUID: status.UUID}
+		err := ctx.bridgeNumAllocator.Free(bridgeNumKey, false)
+		if err != nil {
+			log.Errorf("failed to free number allocated for network instance bridge %s: %v",
+				status.UUID, err)
+		}
 	}
 }
 
@@ -310,7 +315,7 @@ func handleNetworkInstanceCreate(
 			VlanMap:       make(map[uint32]uint32),
 		},
 	}
-	appNumOnUNetBaseCreate(status.UUID)
+	getOrAddAppIntfAllocator(ctx, status.UUID)
 	status.ChangeInProgress = types.ChangeInProgressTypeCreate
 
 	// Any error from parser?
@@ -392,8 +397,9 @@ func maybeNetworkInstanceDelete(ctx *zedrouterContext, status *types.NetworkInst
 		return false
 	}
 
-	// Any remaining appNumOnUNet references?
-	count := appNumOnUNetRefCount(ctx, status.UUID)
+	// Any remaining numbers allocated to application interfaces on this network instance?
+	allocator := getOrAddAppIntfAllocator(ctx, status.UUID)
+	count, _ := allocator.AllocatedCount()
 	log.Noticef("maybeNetworkInstanceDelete(%s) refcount %d Vifs: %+v",
 		status.Key(), count, status.Vifs)
 	if count != 0 {
@@ -421,11 +427,16 @@ func doNetworkInstanceCreate(ctx *zedrouterContext,
 	}
 
 	// Allocate bridgeNum.
-	bridgeNum := bridgeNumAllocate(ctx, status.UUID)
+	bridgeNumKey := types.UuidToNumKey{UUID: status.UUID}
+	bridgeNum, err := ctx.bridgeNumAllocator.GetOrAllocate(bridgeNumKey)
+	if err != nil {
+		err = fmt.Errorf("failed to allocate number for network instance bridge %s: %v",
+			status.UUID, err)
+		return err
+	}
 	status.BridgeNum = bridgeNum
 	bridgeMac := ""
 	var bridgeName string
-	var err error
 
 	switch status.Type {
 	case types.NetworkInstanceTypeLocal, types.NetworkInstanceTypeCloud:
@@ -1447,7 +1458,11 @@ func doNetworkInstanceDelete(
 		}
 	}
 	networkInstanceBridgeDelete(ctx, status)
-	appNumOnUNetBaseDelete(ctx, status.UUID)
+	err := delAppIntfAllocator(ctx, status.UUID)
+	if err != nil {
+		// Should be unreachable.
+		log.Fatal(err)
+	}
 }
 
 func lookupNetworkInstanceConfig(ctx *zedrouterContext, key string) *types.NetworkInstanceConfig {

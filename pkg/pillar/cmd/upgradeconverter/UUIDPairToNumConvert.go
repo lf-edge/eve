@@ -42,17 +42,17 @@ func convertUUIDPairToNum(ctxPtr *ucContext) error {
 	}
 	defer pubUUIDPairToNum.Close()
 
-	pubUUIDPairAndIfIdxToNum, err := ctxPtr.ps.NewPublication(pubsub.PublicationOptions{
+	pubAppInterfaceToNum, err := ctxPtr.ps.NewPublication(pubsub.PublicationOptions{
 		AgentName:  "zedrouter",
 		Persistent: true,
-		TopicType:  types.UUIDPairAndIfIdxToNum{},
+		TopicType:  types.AppInterfaceToNum{},
 	})
 
 	if err != nil {
 		log.Error(err)
 		return err
 	}
-	defer pubUUIDPairAndIfIdxToNum.Close()
+	defer pubAppInterfaceToNum.Close()
 
 	items := pubUUIDPairToNum.GetAll()
 	if len(items) == 0 {
@@ -62,10 +62,11 @@ func convertUUIDPairToNum(ctxPtr *ucContext) error {
 
 	log.Tracef("UUIDPairToNum found %d", len(items))
 
-	// if we have UUIDPairToNum assume that we should remove old items and recreate them
-	olditems := pubUUIDPairAndIfIdxToNum.GetAll()
+	// if we have some AppInterfaceToNum publications assume that we should remove
+	// old items and recreate them.
+	olditems := pubAppInterfaceToNum.GetAll()
 	for key := range olditems {
-		err = pubUUIDPairAndIfIdxToNum.Unpublish(key)
+		err = pubAppInterfaceToNum.Unpublish(key)
 		if err != nil {
 			log.Error(err)
 		}
@@ -73,18 +74,20 @@ func convertUUIDPairToNum(ctxPtr *ucContext) error {
 
 	for _, item := range items {
 		uptn := item.(UUIDPairToNum)
-		upitn := types.UUIDPairAndIfIdxToNum{
-			BaseID:      uptn.BaseID,
-			AppID:       uptn.AppID,
+		appifnum := types.AppInterfaceToNum{
+			AppInterfaceKey: types.AppInterfaceKey{
+				NetInstID: uptn.BaseID,
+				AppID:     uptn.AppID,
+				IfIdx:     0,
+			},
 			Number:      uptn.Number,
 			NumType:     uptn.NumType,
 			CreateTime:  uptn.CreateTime,
 			LastUseTime: uptn.LastUseTime,
 			InUse:       uptn.InUse,
-			IfIdx:       0,
 		}
 		// publish new allocator
-		err = pubUUIDPairAndIfIdxToNum.Publish(upitn.Key(), upitn)
+		err = pubAppInterfaceToNum.Publish(appifnum.Key(), appifnum)
 		if err != nil {
 			log.Error(err)
 			continue
