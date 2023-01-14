@@ -9,7 +9,6 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	"github.com/lf-edge/eve/pkg/pillar/uuidtonum"
 	"github.com/satori/go.uuid"
 )
 
@@ -764,10 +763,13 @@ func purgeCmdDone(ctx *zedmanagerContext, config types.AppInstanceConfig,
 		config.Key(), len(status.VolumeRefStatusList), len(newVrs))
 	status.VolumeRefStatusList = newVrs
 	// Update persistent counter
-	uuidtonum.UuidToNumAllocate(log, ctx.pubUuidToNum,
-		status.UUIDandVersion.UUID,
-		int(config.PurgeCmd.Counter+config.LocalPurgeCmd.Counter),
-		false, "purgeCmdCounter")
+	mapKey := types.UuidToNumKey{UUID: config.UUIDandVersion.UUID}
+	purgeCounter := int(config.PurgeCmd.Counter + config.LocalPurgeCmd.Counter)
+	err := ctx.appToPurgeCounterMap.Assign(mapKey, purgeCounter, false)
+	if err != nil {
+		log.Errorf("Failed to update persisted purge counter for app %s-%s: %v",
+			config.DisplayName, config.UUIDandVersion.UUID, err)
+	}
 	return changed
 }
 

@@ -404,7 +404,8 @@ func Test_ApplyDefaultConfigItem(t *testing.T) {
 	}
 }
 
-// Test_ConvertUUIDPairToNum verifies conversion from UUIDPairToNum to UUIDPairAndIfIdxToNum
+// Test_ConvertUUIDPairToNum verifies conversion from UUIDPairToNum to AppInterfaceToNum
+// (previously called UUIDPairAndIfIdxToNum)
 func Test_ConvertUUIDPairToNum(t *testing.T) {
 	logrus.SetLevel(logrus.DebugLevel)
 	log = base.NewSourceLogObject(logrus.StandardLogger(), "test", 1234)
@@ -417,10 +418,10 @@ func Test_ConvertUUIDPairToNum(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	pubUUIDPairAndIfIdxToNum, err := ctxPtr.ps.NewPublication(pubsub.PublicationOptions{
+	pubAppInterfaceToNum, err := ctxPtr.ps.NewPublication(pubsub.PublicationOptions{
 		AgentName:  "zedrouter",
 		Persistent: true,
-		TopicType:  types.UUIDPairAndIfIdxToNum{},
+		TopicType:  types.AppInterfaceToNum{},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -433,12 +434,13 @@ func Test_ConvertUUIDPairToNum(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	numType := "num-type1"
 	//it should be converted
 	uptn := UUIDPairToNum{
 		BaseID:      baseID,
 		AppID:       appID,
 		Number:      0,
-		NumType:     "",
+		NumType:     numType,
 		CreateTime:  time.Now(),
 		LastUseTime: time.Now(),
 		InUse:       false,
@@ -448,17 +450,19 @@ func Test_ConvertUUIDPairToNum(t *testing.T) {
 		t.Fatal(err)
 	}
 	// it should be removed
-	uptin := types.UUIDPairAndIfIdxToNum{
-		BaseID:      uuid.UUID{},
-		AppID:       uuid.UUID{},
+	appifnum := types.AppInterfaceToNum{
+		AppInterfaceKey: types.AppInterfaceKey{
+			NetInstID: uuid.UUID{},
+			AppID:     uuid.UUID{},
+			IfIdx:     0,
+		},
 		Number:      0,
 		NumType:     "",
 		CreateTime:  time.Now().Add(time.Hour),
 		LastUseTime: time.Now().Add(time.Hour),
 		InUse:       false,
-		IfIdx:       0,
 	}
-	err = pubUUIDPairAndIfIdxToNum.Publish(uptin.Key(), uptin)
+	err = pubAppInterfaceToNum.Publish(appifnum.Key(), appifnum)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -468,7 +472,7 @@ func Test_ConvertUUIDPairToNum(t *testing.T) {
 		t.Fatal(err)
 	}
 	// we are done with persist publishing, close publisher
-	err = pubUUIDPairAndIfIdxToNum.Close()
+	err = pubAppInterfaceToNum.Close()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -489,30 +493,31 @@ func Test_ConvertUUIDPairToNum(t *testing.T) {
 	}
 	// Verify that a second publish gets the data
 	// filled in.
-	pubUUIDPairAndIfIdxToNum, err = ctxPtr.ps.NewPublication(pubsub.PublicationOptions{
+	pubAppInterfaceToNum, err = ctxPtr.ps.NewPublication(pubsub.PublicationOptions{
 		AgentName:  "zedrouter",
 		Persistent: true,
-		TopicType:  types.UUIDPairAndIfIdxToNum{},
+		TopicType:  types.AppInterfaceToNum{},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	oldUUIDs := pubUUIDPairToNum.GetAll()
-	if len(oldUUIDs) > 0 {
-		t.Fatalf("unexpected UUIDPairToNum count (expected 0): %d", len(oldUUIDs))
+	oldMappings := pubUUIDPairToNum.GetAll()
+	if len(oldMappings) > 0 {
+		t.Fatalf("unexpected UUIDPairToNum count (expected 0): %d", len(oldMappings))
 	}
-	newUUIDs := pubUUIDPairAndIfIdxToNum.GetAll()
-	if len(newUUIDs) != 1 {
-		t.Fatalf("unexpected UUIDPairAndIfIdxToNum count (expected 1): %d", len(newUUIDs))
+	newMappings := pubAppInterfaceToNum.GetAll()
+	if len(newMappings) != 1 {
+		t.Fatalf("unexpected AppInterfaceToNum count (expected 1): %d", len(newMappings))
 	}
-	for _, v := range newUUIDs {
-		val, ok := v.(types.UUIDPairAndIfIdxToNum)
+	for _, v := range newMappings {
+		val, ok := v.(types.AppInterfaceToNum)
 		if !ok {
-			t.Fatal("cannot cast interface to UUIDPairAndIfIdxToNum")
+			t.Fatal("cannot cast interface to AppInterfaceToNum")
 		}
 		assert.Equal(t, val.AppID, appID)
-		assert.Equal(t, val.BaseID, baseID)
+		assert.Equal(t, val.NetInstID, baseID)
 		assert.Equal(t, val.IfIdx, uint32(0))
+		assert.Equal(t, val.NumType, numType)
 		if !val.CreateTime.Equal(uptn.CreateTime) {
 			t.Fatalf("CreateTime mismatch: %s vs %s", val.CreateTime, uptn.CreateTime)
 		}

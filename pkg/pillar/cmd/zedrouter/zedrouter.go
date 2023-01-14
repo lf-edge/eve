@@ -27,6 +27,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/cipher"
 	"github.com/lf-edge/eve/pkg/pillar/devicenetwork"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
+	"github.com/lf-edge/eve/pkg/pillar/objtonum"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
@@ -72,14 +73,17 @@ type zedrouterContext struct {
 	ready                  bool
 	subGlobalConfig        pubsub.Subscription
 	GCInitialized          bool
-	pubUuidToNum           pubsub.Publication
 	dhcpLeases             []dnsmasqLease
 	subLocationInfo        pubsub.Subscription
 	subWwanStatus          pubsub.Subscription
 	subWwanMetrics         pubsub.Subscription
 	subDomainStatus        pubsub.Subscription
 
-	pubUUIDPairAndIfIdxToNum pubsub.Publication
+	// number allocators
+	appNumAllocator     *objtonum.Allocator
+	bridgeNumAllocator  *objtonum.Allocator
+	appIntfNumPublisher *objtonum.ObjNumPublisher
+	appIntfNumAllocator map[string]*objtonum.Allocator // key: network instance UUID as string
 
 	// NetworkInstance
 	subNetworkInstanceConfig  pubsub.Subscription
@@ -162,26 +166,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 
 	handleInit()
 
-	pubUuidToNum, err := ps.NewPublication(pubsub.PublicationOptions{
-		AgentName:  agentName,
-		Persistent: true,
-		TopicType:  types.UuidToNum{},
-	})
-	if err != nil {
-		log.Fatal(err)
-	}
-	pubUuidToNum.ClearRestarted()
-
-	pubUUIDPairAndIfIdxToNum, err := ps.NewPublication(pubsub.PublicationOptions{
-		AgentName:  agentName,
-		Persistent: true,
-		TopicType:  types.UUIDPairAndIfIdxToNum{},
-	})
-	if err != nil {
-		log.Fatal(err)
-	}
-	pubUUIDPairAndIfIdxToNum.ClearRestarted()
-
 	// Create the dummy interface used to re-direct DROP/REJECT packets.
 	createFlowMonDummyInterface()
 
@@ -260,8 +244,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	subEdgeNodeInfo.Activate()
 
 	zedrouterCtx.deviceNetworkStatus = &types.DeviceNetworkStatus{}
-	zedrouterCtx.pubUuidToNum = pubUuidToNum
-	zedrouterCtx.pubUUIDPairAndIfIdxToNum = pubUUIDPairAndIfIdxToNum
 
 	// Create publish before subscribing and activating subscriptions
 	// Also need to do this before we wait for IP addresses since
@@ -416,9 +398,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	}
 	log.Functionf("processed onboarded")
 
-	appNumAllocatorInit(&zedrouterCtx)
-	bridgeNumAllocatorInit(&zedrouterCtx)
-	appNumOnUNetInit(&zedrouterCtx)
+	initNumberAllocators(&zedrouterCtx, ps)
 
 	// Before we process any NetworkInstances we want to know the
 	// assignable adapters.
@@ -645,9 +625,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 			time.Since(zedrouterCtx.receivedConfigTime) > 5*time.Minute {
 
 			start := time.Now()
-			bridgeNumAllocatorGC(&zedrouterCtx)
-			appNumAllocatorGC(&zedrouterCtx)
-			appNumMapOnUNetGC(&zedrouterCtx)
+			gcNumAllocators(&zedrouterCtx)
 			zedrouterCtx.triggerNumGC = false
 			ps.CheckMaxTimeTopic(agentName, "allocatorGC", start,
 				warningTime, errorTime)
@@ -810,9 +788,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		if zedrouterCtx.triggerNumGC &&
 			time.Since(zedrouterCtx.receivedConfigTime) > 5*time.Minute {
 			start := time.Now()
-			bridgeNumAllocatorGC(&zedrouterCtx)
-			appNumAllocatorGC(&zedrouterCtx)
-			appNumMapOnUNetGC(&zedrouterCtx)
+			gcNumAllocators(&zedrouterCtx)
 			zedrouterCtx.triggerNumGC = false
 			ps.CheckMaxTimeTopic(agentName, "allocatorGC", start,
 				warningTime, errorTime)
@@ -984,21 +960,27 @@ func handleAppNetworkCreate(ctxArg interface{}, key string, configArg interface{
 	log.Functionf("handleAppAppNetworkCreate(%v) for %s\n",
 		config.UUIDandVersion, config.DisplayName)
 
-	// Pick a local number to identify the application instance
-	// Used for IP addresses as well bridge and file names.
-	appNum := appNumAllocate(ctx, config.UUIDandVersion.UUID, false)
-
 	// Start by marking with PendingAdd
 	status := types.AppNetworkStatus{
 		UUIDandVersion: config.UUIDandVersion,
-		AppNum:         appNum,
 		PendingAdd:     true,
 		DisplayName:    config.DisplayName,
 	}
+
+	// Pick a local number to identify the application instance
+	// Used for IP addresses as well bridge and file names.
+	appNumKey := types.UuidToNumKey{UUID: config.UUIDandVersion.UUID}
+	appNum, err := ctx.appNumAllocator.GetOrAllocate(appNumKey)
+	if err != nil {
+		addError(ctx, &status, "handleAppNetworkCreate", err)
+		return
+	}
+	status.AppNum = appNum
 	publishAppNetworkStatus(ctx, &status)
 
 	// allocate application numbers on underlay network
-	if err := appNumsOnUNetAllocate(ctx, &config); err != nil {
+	err = allocateAppIntfNums(ctx, config.UUIDandVersion.UUID, config.UnderlayNetworkList)
+	if err != nil {
 		addError(ctx, &status, "handleAppNetworkCreate", err)
 		return
 	}
@@ -1511,8 +1493,8 @@ func getUlAddrs(ctx *zedrouterContext,
 			return "", errors.New(errStr)
 		}
 	} else {
-		// get the app number for the underlay network entry
-		appNum, err := appNumOnUNetGet(ctx, networkID, appID, ulStatus.IfIdx)
+		// Get the app number for the underlay network entry.
+		appNum, err := getAppIntfNum(ctx, networkID, appID, ulStatus.IfIdx)
 		if err != nil {
 			errStr := fmt.Sprintf("App Number get failed: %v", err)
 			log.Errorf("getUlAddrs(%s): app(%s) fail: %s",
@@ -1826,16 +1808,19 @@ func doAppNetworkModifyUNetAppNum(
 	oldNetworkID := ulStatus.Network
 	ifIdx := ulConfig.IfIdx
 	oldIfIdx := ulStatus.IfIdx
-	// release the app number on old network
-	if _, err := appNumOnUNetGet(ctx, oldNetworkID, appID, oldIfIdx); err == nil {
-		appNumOnUNetFree(ctx, oldNetworkID, appID, oldIfIdx, true)
+
+	// Try to release the app number on the old network.
+	err := freeAppIntfNum(ctx, oldNetworkID, appID, oldIfIdx)
+	if err != nil {
+		log.Error(err)
+		// Continue anyway...
 	}
-	// allocate an app number on new network
-	isStatic := (ulConfig.AppIPAddr != nil)
-	if _, err := appNumOnUNetAllocate(ctx, networkID, appID,
-		isStatic, ifIdx, false); err != nil {
-		log.Errorf("appNumsOnUNetAllocate(%s, %s): fail: %s",
-			networkID.String(), appID.String(), err)
+
+	// Allocate an app number on the new network.
+	withStaticIP := ulConfig.AppIPAddr != nil
+	err = allocateAppIntfNum(ctx, networkID, appID, ifIdx, withStaticIP)
+	if err != nil {
+		log.Error(err)
 		return err
 	}
 	return nil
@@ -1877,8 +1862,13 @@ func handleDelete(ctx *zedrouterContext, key string,
 	// Write out what we modified to AppNetworkStatus aka delete
 	unpublishAppNetworkStatus(ctx, status)
 
-	appNumFree(ctx, status.UUIDandVersion.UUID, true)
-	appNumsOnUNetFree(ctx, status)
+	appNumKey := types.UuidToNumKey{UUID: status.UUIDandVersion.UUID}
+	err := ctx.appNumAllocator.Free(appNumKey, false)
+	if err != nil {
+		log.Errorf("failed to free number allocated to app %s: %v",
+			status.UUIDandVersion.UUID, err)
+	}
+	freeAppIntfNums(ctx, status)
 	// Did this free up any last references against any Network Instance Status?
 	for ulNum := 0; ulNum < len(status.UnderlayNetworkList); ulNum++ {
 		ulStatus := &status.UnderlayNetworkList[ulNum]

@@ -17,11 +17,11 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
+	"github.com/lf-edge/eve/pkg/pillar/objtonum"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
-	"github.com/lf-edge/eve/pkg/pillar/uuidtonum"
 	"github.com/sirupsen/logrus"
 )
 
@@ -52,7 +52,7 @@ type zedmanagerContext struct {
 	subHostMemory         pubsub.Subscription
 	subZedAgentStatus     pubsub.Subscription
 	globalConfig          *types.ConfigItemValueMap
-	pubUuidToNum          pubsub.Publication
+	appToPurgeCounterMap  objtonum.Map
 	GCInitialized         bool
 	checkFreedResources   bool // Set when app instance has !Activated
 	currentProfile        string
@@ -151,16 +151,14 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	ctx.pubDomainConfig = pubDomainConfig
 	pubDomainConfig.ClearRestarted()
 
-	pubUuidToNum, err := ps.NewPublication(pubsub.PublicationOptions{
-		AgentName:  agentName,
-		Persistent: true,
-		TopicType:  types.UuidToNum{},
-	})
+	// Persist purge counter for each application.
+	mapPublisher, err := objtonum.NewObjNumPublisher(
+		log, ps, agentName, true, &types.UuidToNum{})
 	if err != nil {
 		log.Fatal(err)
 	}
-	ctx.pubUuidToNum = pubUuidToNum
-	pubUuidToNum.ClearRestarted()
+	ctx.appToPurgeCounterMap = objtonum.NewPublishedMap(
+		log, mapPublisher, "purgeCmdCounter", objtonum.AllKeys)
 
 	// Look for global config such as log levels
 	subGlobalConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
@@ -595,8 +593,8 @@ func handleCreate(ctxArg interface{}, key string,
 
 	// Do we have a PurgeCmd counter from before the reboot?
 	// Note that purgeCmdCounter is a sum of the remote and the local purge counter.
-	persistedCounter, err := uuidtonum.UuidToNumGet(log, ctx.pubUuidToNum,
-		config.UUIDandVersion.UUID, "purgeCmdCounter")
+	mapKey := types.UuidToNumKey{UUID: config.UUIDandVersion.UUID}
+	persistedCounter, _, err := ctx.appToPurgeCounterMap.Get(mapKey)
 	configCounter := int(config.PurgeCmd.Counter + config.LocalPurgeCmd.Counter)
 	if err == nil {
 		if persistedCounter == configCounter {
@@ -615,9 +613,11 @@ func handleCreate(ctxArg interface{}, key string,
 		// Save this PurgeCmd.Counter as the baseline
 		log.Functionf("handleCreate(%v) for %s saving purge counter %d",
 			config.UUIDandVersion, config.DisplayName, configCounter)
-		uuidtonum.UuidToNumAllocate(log, ctx.pubUuidToNum,
-			config.UUIDandVersion.UUID, configCounter,
-			true, "purgeCmdCounter")
+		err = ctx.appToPurgeCounterMap.Assign(mapKey, configCounter, true)
+		if err != nil {
+			log.Errorf("Failed to persist purge counter for app %s-%s: %v",
+				config.DisplayName, config.UUIDandVersion.UUID, err)
+		}
 	}
 
 	status.VolumeRefStatusList = make([]types.VolumeRefStatus,
@@ -782,7 +782,12 @@ func handleDelete(ctx *zedmanagerContext, key string,
 
 	removeAIStatus(ctx, status)
 	// Remove the recorded PurgeCmd Counter
-	uuidtonum.UuidToNumDelete(log, ctx.pubUuidToNum, status.UUIDandVersion.UUID)
+	mapKey := types.UuidToNumKey{UUID: status.UUIDandVersion.UUID}
+	err := ctx.appToPurgeCounterMap.Delete(mapKey, false)
+	if err != nil {
+		log.Warnf("Failed to delete persisted purge counter for app %s-%s: %v",
+			status.DisplayName, status.UUIDandVersion.UUID, err)
+	}
 	log.Functionf("handleDelete done for %s", status.DisplayName)
 }
 

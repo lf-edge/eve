@@ -3241,29 +3241,6 @@ func (data AppInstMetaData) Key() string {
 	return data.AppInstUUID.String() + "-" + string(data.Type)
 }
 
-// Bitmap :
-// Bitmap of the reserved and allocated resources
-// Keeps 256 bits indexed by 0 to 255.
-type Bitmap [32]byte
-
-// IsSet :
-// Test the bit value
-func (bits *Bitmap) IsSet(i int) bool {
-	return bits[i/8]&(1<<uint(7-i%8)) != 0
-}
-
-// Set :
-// Set the bit value
-func (bits *Bitmap) Set(i int) {
-	bits[i/8] |= 1 << uint(7-i%8)
-}
-
-// Clear :
-// Clear the bit value
-func (bits *Bitmap) Clear(i int) {
-	bits[i/8] &^= 1 << uint(7-i%8)
-}
-
 // AddToIP :
 func AddToIP(ip net.IP, addition int) net.IP {
 	if addr := ip.To4(); addr != nil {
@@ -3311,14 +3288,11 @@ func GetIPBroadcast(subnet net.IPNet) net.IP {
 	return net.IP{}
 }
 
-// PS. Any change to BitMapMax, must be
-// reflected in the BitMap Size(32 bytes)
 // At the MinSubnetSize there is room for one app instance (.0 being reserved,
 // .3 broadcast, .1 is the bridgeIPAddr, and .2 is usable).
 const (
-	BitMapMax       = 255 // with 0 base, its 256
-	MinSubnetSize   = 4   // minimum Subnet Size
-	LargeSubnetSize = 16  // for determining default Dhcp Range
+	MinSubnetSize   = 4  // minimum Subnet Size
+	LargeSubnetSize = 16 // for determining default Dhcp Range
 )
 
 // WwanConfig is published by nim and consumed by the wwan service.
