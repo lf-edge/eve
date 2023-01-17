@@ -419,39 +419,44 @@ SWTPM_Y:
 	swtpm socket --daemon --terminate --tpmstate dir=$(CURRENT_SWTPM) --ctrl type=unixio,path=$(CURRENT_SWTPM)/swtpm-sock --log file=$(CURRENT_SWTPM)/swtpm.log,level=20 --pid file=$(CURRENT_SWTPM)/swtpm.pid --tpm2
 SWTPM:=SWTPM_$(TPM:%=Y)
 
+# patch /conf/grub.cfg for developer's builds to enable getty
+GETTY:
+	echo "Enabling GETTY in grub.cfg"
+	grep -qxF 'set_getty' $(CONF_DIR)/grub.cfg || echo 'set_getty' >> $(CONF_DIR)/grub.cfg
+
 # run-installer
 #
 # This creates an image equivalent to live.img (called target.img)
 # through the installer. It's the long road to live.img. Good for
 # testing.
 #
-run-installer-iso: $(BIOS_IMG) $(DEVICETREE_DTB) $(SWTPM)
+run-installer-iso: $(BIOS_IMG) $(DEVICETREE_DTB) $(SWTPM) GETTY
 	qemu-img create -f ${IMG_FORMAT} $(TARGET_IMG) ${MEDIA_SIZE}M
 	$(QEMU_SYSTEM) -drive file=$(TARGET_IMG),format=$(IMG_FORMAT) -cdrom $(INSTALLER).iso -boot d $(QEMU_OPTS)
 
-run-installer-raw: $(BIOS_IMG) $(DEVICETREE_DTB) $(SWTPM)
+run-installer-raw: $(BIOS_IMG) $(DEVICETREE_DTB) $(SWTPM) GETTY
 	qemu-img create -f ${IMG_FORMAT} $(TARGET_IMG) ${MEDIA_SIZE}M
 	$(QEMU_SYSTEM) -drive file=$(TARGET_IMG),format=$(IMG_FORMAT) -drive file=$(INSTALLER).raw,format=raw $(QEMU_OPTS)
 
 run-installer-net: QEMU_TFTP_OPTS=,tftp=$(dir $(IPXE_IMG)),bootfile=$(notdir $(IPXE_IMG))
-run-installer-net: $(BIOS_IMG) $(IPXE_IMG) $(DEVICETREE_DTB) $(SWTPM)
+run-installer-net: $(BIOS_IMG) $(IPXE_IMG) $(DEVICETREE_DTB) $(SWTPM) GETTY
 	tar -C $(INSTALLER) -xvf $(INSTALLER).net || :
 	qemu-img create -f ${IMG_FORMAT} $(TARGET_IMG) ${MEDIA_SIZE}M
 	$(QEMU_SYSTEM) -drive file=$(TARGET_IMG),format=$(IMG_FORMAT) $(QEMU_OPTS)
 
 # run MUST NOT change the current dir; it depends on the output being correct from a previous build
-run-live run: $(BIOS_IMG) $(DEVICETREE_DTB) $(SWTPM)
+run-live run: $(BIOS_IMG) $(DEVICETREE_DTB) $(SWTPM) GETTY
 	$(QEMU_SYSTEM) $(QEMU_OPTS) -drive file=$(CURRENT_IMG),format=$(IMG_FORMAT),id=uefi-disk
 
-run-target: $(BIOS_IMG) $(DEVICETREE_DTB) $(SWTPM)
+run-target: $(BIOS_IMG) $(DEVICETREE_DTB) $(SWTPM) GETTY
 	$(QEMU_SYSTEM) $(QEMU_OPTS) -drive file=$(TARGET_IMG),format=$(IMG_FORMAT)
 
-run-rootfs: $(BIOS_IMG) $(UBOOT_IMG) $(EFI_PART) $(DEVICETREE_DTB) $(SWTPM)
+run-rootfs: $(BIOS_IMG) $(UBOOT_IMG) $(EFI_PART) $(DEVICETREE_DTB) $(SWTPM) GETTY
 	(echo 'set devicetree="(hd0,msdos1)/eve.dtb"' ; echo 'set rootfs_root=/dev/vdb' ; echo 'set root=hd1' ; echo 'export rootfs_root' ; echo 'export devicetree' ; echo 'configfile /EFI/BOOT/grub.cfg' ) > $(EFI_PART)/BOOT/grub.cfg
 	$(QEMU_SYSTEM) $(QEMU_OPTS) -drive file=$(ROOTFS_IMG),format=raw -drive file=fat:rw:$(EFI_PART)/..,label=CONFIG,id=uefi-disk,format=vvfat
 	$(QUIET): $@: Succeeded
 
-run-grub: $(BIOS_IMG) $(UBOOT_IMG) $(EFI_PART) $(DEVICETREE_DTB) $(SWTPM)
+run-grub: $(BIOS_IMG) $(UBOOT_IMG) $(EFI_PART) $(DEVICETREE_DTB) $(SWTPM)  GETTY
 	[ -f $(EFI_PART)/BOOT/grub.cfg ] && mv $(EFI_PART)/BOOT/grub.cfg $(EFI_PART)/BOOT/grub.cfg.$(notdir $(shell mktemp))
 	$(QEMU_SYSTEM) $(QEMU_OPTS) -drive format=vvfat,id=uefi-disk,label=EVE,file=fat:rw:$(EFI_PART)/..
 	$(QUIET): $@: Succeeded
