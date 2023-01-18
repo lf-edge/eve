@@ -1,4 +1,4 @@
-From 2faf4cfdfff91465b80c4a9bc4e63f0ba5e39e44 Mon Sep 17 00:00:00 2001
+From 9149573ec3ea8e4052d179b612308e8defb888b9 Mon Sep 17 00:00:00 2001
 From: Mikhail Malyshev <mikem@zededa.com>
 Date: Wed, 31 Aug 2022 15:21:26 +0200
 Subject: [PATCH] Add support for LEDs on Operational Services EM320 device
@@ -46,7 +46,7 @@ index 5f823f7eff45..7fa580e6c2ba 100644
 +
 diff --git a/drivers/platform/x86/os-em32x.c b/drivers/platform/x86/os-em32x.c
 new file mode 100644
-index 000000000000..df00aa6235ff
+index 000000000000..c18c20562cdc
 --- /dev/null
 +++ b/drivers/platform/x86/os-em32x.c
 @@ -0,0 +1,194 @@
@@ -112,25 +112,25 @@ index 000000000000..df00aa6235ff
 +	},
 +	{
 +		.name = "blue:status-0",
-+		.gpio = 4,
++		.gpio = 7,
 +		.default_trigger = "default-off",
 +		.active_low = 1,
 +	},
 +	{
 +		.name = "blue:status-1",
-+		.gpio = 5,
-+		.default_trigger = "default-off",
-+		.active_low = 1,
-+	},
-+	{
-+		.name = "blue:status-2",
 +		.gpio = 6,
 +		.default_trigger = "default-off",
 +		.active_low = 1,
 +	},
 +	{
++		.name = "blue:status-2",
++		.gpio = 5,
++		.default_trigger = "default-off",
++		.active_low = 1,
++	},
++	{
 +		.name = "blue:status-3",
-+		.gpio = 7,
++		.gpio = 4,
 +		.default_trigger = "default-off",
 +		.active_low = 1,
 +	},
