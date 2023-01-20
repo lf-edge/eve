@@ -2899,6 +2899,8 @@ func createVfIoBundle(pfIb types.IoBundle, vf sriov.EthVF) (types.IoBundle, erro
 	vfIb.Ifname = sriov.GetVfIfaceName(vf.Index, pfIb.Ifname)
 	vfIb.Phylabel = sriov.GetVfIfaceName(vf.Index, pfIb.Phylabel)
 	vfIb.Logicallabel = sriov.GetVfIfaceName(vf.Index, pfIb.Logicallabel)
+	// Don't inherit the parent's AssignmentGroup since VFs will be part of another IOMMU group.
+	vfIb.AssignmentGroup = sriov.GetVfIfaceName(vf.Index, pfIb.AssignmentGroup)
 	vfIb.PciLong = vf.PciLong
 	vfIb.VfParams = types.VfInfo{Index: vf.Index, VlanID: vf.VlanID, PFIface: pfIb.Ifname}
 	if vfUserConfig.Mac != "" {
