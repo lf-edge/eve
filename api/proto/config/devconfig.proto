@@ -22,6 +22,11 @@ import "config/edgeview.proto";
 import "certs/certs.proto";
 import "auth/auth.proto";
 
+message LOCConfig {
+  // If set indicates URL of the Local Operator Console (LOC)
+  string loc_url = 1;
+}
+
 // This is the response to a GET /api/v1/edgeDevice/config
 // The EdgeDevConfig message carries all of the device's configuration from
 // the controller to the device.
@@ -155,6 +160,9 @@ message EdgeDevConfig {
   // This ensures that device will not accidentally revert back to an older configuration.
   // Does not apply to legacy override.json and usb.json mechanisms.
   google.protobuf.Timestamp config_timestamp = 40;
+
+  // Configuration of the Local Operator Console (LOC)
+  LOCConfig loc_config = 41;
 }
 
 message ConfigRequest {
