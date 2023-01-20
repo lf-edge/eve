@@ -1249,6 +1249,46 @@ func parseDeviceIoListConfig(getconfigCtx *getconfigContext,
 					"key: %s, value: %s", key, value)
 			}
 		}
+
+		if ioDevicePtr.Vflist != nil && ioDevicePtr.Vflist.VfCount > 0 {
+			port.Vfs.Count = uint8(ioDevicePtr.Vflist.VfCount)
+			port.Vfs.Data = make([]sriov.EthVF, ioDevicePtr.Vflist.VfCount)
+
+			valid := true
+			for i, vf := range ioDevicePtr.Vflist.Data {
+				// not checking lower bound, since it's zero if VlanId is not specified
+				if vf.VlanId > maxVlanID {
+					log.Errorf("Incorrect VlanID %d for PhysicalIO %s", vf.VlanId, ioDevicePtr)
+					valid = false
+					break
+				}
+
+				port.Vfs.Data[i] = sriov.EthVF{
+					Index:  uint8(vf.Index),
+					Mac:    vf.Mac,
+					VlanID: uint16(vf.VlanId),
+				}
+			}
+			if !valid {
+				continue
+			}
+			// Generate unspecified VFs
+			if len(port.Vfs.Data) != int(ioDevicePtr.Vflist.VfCount) {
+				set := map[int]struct{}{}
+				for _, d := range port.Vfs.Data {
+					set[int(d.Index)] = struct{}{}
+				}
+				for i := 0; i < int(ioDevicePtr.Vflist.VfCount); i++ {
+					if _, ok := set[i]; ok {
+						continue
+					}
+					port.Vfs.Data = append(port.Vfs.Data, sriov.EthVF{
+						Index: uint8(i),
+					})
+				}
+			}
+		}
+
 		phyIoAdapterList.AdapterList = append(phyIoAdapterList.AdapterList,
 			port)
 		getconfigCtx.zedagentCtx.physicalIoAdapterMap[port.Logicallabel] = port

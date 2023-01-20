@@ -4,15 +4,17 @@
 package zedagent
 
 import (
-	. "github.com/onsi/gomega"
-	"github.com/sirupsen/logrus"
 	"sort"
 	"testing"
+
+	. "github.com/onsi/gomega"
+	"github.com/sirupsen/logrus"
 
 	zconfig "github.com/lf-edge/eve/api/go/config"
 	zcommon "github.com/lf-edge/eve/api/go/evecommon"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
+	"github.com/lf-edge/eve/pkg/pillar/sriov"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 )
 
@@ -1131,4 +1133,124 @@ func TestInvalidLowerLayerReferences(t *testing.T) {
 	dpc = portConfig.(types.DevicePortConfig)
 	g.Expect(dpc.HasError()).To(BeFalse())
 	g.Expect(dpc.Ports).To(HaveLen(2))
+}
+
+func TestParseSRIOV(t *testing.T) {
+	g := NewGomegaWithT(t)
+	getconfigCtx := initGetConfigCtx(g)
+
+	config := &zconfig.EdgeDevConfig{
+		DeviceIoList: []*zconfig.PhysicalIO{
+			{
+				Ptype:        zcommon.PhyIoType_PhyIoNetEthPF,
+				Phylabel:     "ethernet0",
+				Logicallabel: "shopfloor",
+				Assigngrp:    "eth-grp-1",
+				Phyaddrs: map[string]string{
+					"ifname":  "eth0",
+					"pcilong": "0000:f4:00.0",
+				},
+				Usage: zcommon.PhyIoMemberUsage_PhyIoUsageMgmtAndApps,
+				Vflist: &zconfig.VfList{
+					VfCount: 2,
+					Data: []*zconfig.EthVF{
+						{
+							Index: 0,
+						},
+						{
+							Index: 1,
+						},
+					},
+				},
+			},
+			{
+				Ptype:        zcommon.PhyIoType_PhyIoNetEth,
+				Phylabel:     "no_ethVF",
+				Logicallabel: "warehouse",
+				Assigngrp:    "eth-grp-2",
+				Phyaddrs: map[string]string{
+					"ifname":  "eth1",
+					"pcilong": "0000:05:00.0",
+				},
+				Usage: zcommon.PhyIoMemberUsage_PhyIoUsageMgmtAndApps,
+			},
+			{
+				Ptype:        zcommon.PhyIoType_PhyIoNetEth,
+				Phylabel:     "bad_vlan_id",
+				Logicallabel: "warehouse",
+				Assigngrp:    "eth-grp-2",
+				Phyaddrs: map[string]string{
+					"ifname":  "eth1",
+					"pcilong": "0000:05:00.0",
+				},
+				Usage: zcommon.PhyIoMemberUsage_PhyIoUsageMgmtAndApps,
+				Vflist: &zconfig.VfList{
+					VfCount: 1,
+					Data: []*zconfig.EthVF{
+						{
+							Index:  0,
+							VlanId: 5000,
+						},
+					},
+				},
+			},
+			{
+				Ptype:        zcommon.PhyIoType_PhyIoNetEth,
+				Phylabel:     "mismatch_len",
+				Logicallabel: "warehouse",
+				Assigngrp:    "eth-grp-2",
+				Phyaddrs: map[string]string{
+					"ifname":  "eth1",
+					"pcilong": "0000:05:00.0",
+				},
+				Usage: zcommon.PhyIoMemberUsage_PhyIoUsageMgmtAndApps,
+				Vflist: &zconfig.VfList{
+					VfCount: 2,
+					Data: []*zconfig.EthVF{
+						{
+							Index:  1,
+							VlanId: 2,
+						},
+					},
+				},
+			},
+		},
+	}
+
+	parseDeviceIoListConfig(getconfigCtx, config)
+
+	physicalIOs, err := getconfigCtx.pubPhysicalIOAdapters.Get("zedagent")
+	g.Expect(err).To(BeNil())
+	ios, ok := physicalIOs.(types.PhysicalIOAdapterList)
+	g.Expect(ok).To(BeTrue())
+	g.Expect(ios.Initialized).To(BeTrue())
+	// One less because the invalid cases will cause them to be skipped.
+	g.Expect(ios.AdapterList).To(HaveLen(len(config.DeviceIoList) - 1))
+	g.Expect(ios.AdapterList[0].Vfs).To(BeEquivalentTo(
+		sriov.VFList{
+			Count: 2,
+			Data: []sriov.EthVF{
+				{
+					Index: 0,
+				},
+				{
+					Index: 1,
+				},
+			},
+		},
+	))
+	g.Expect(ios.AdapterList[1].Vfs).To(BeEquivalentTo(sriov.VFList{}))
+	// Unspecified VFs will be generated.
+	g.Expect(ios.AdapterList[2].Vfs).To(BeEquivalentTo(sriov.VFList{
+		Count: 2,
+		Data: []sriov.EthVF{
+			{
+				Index:  1,
+				VlanID: 2,
+			},
+			{
+				Index: 0,
+			},
+		},
+	}))
 }
