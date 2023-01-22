@@ -17,7 +17,6 @@ import (
 
 	"github.com/google/go-tpm/tpm2"
 	"github.com/google/go-tpm/tpmutil"
-	"github.com/lf-edge/eve/pkg/pillar/evetpm"
 )
 
 const (
@@ -89,7 +88,7 @@ func sha256sumString(s string) [32]byte {
 	return sha256.Sum256([]byte(s))
 }
 
-func measureFileContent(filePath string, tpm io.ReadWriter, tpmPassword string) (*tpmEvent, error) {
+func measureFileContent(filePath string, tpm io.ReadWriter) (*tpmEvent, error) {
 	hash, err := sha256sumForFile(filePath)
 
 	if err != nil {
@@ -101,7 +100,7 @@ func measureFileContent(filePath string, tpm io.ReadWriter, tpmPassword string) 
 	// it seems PCRExtend expects a hash not data itself.
 	eventDataHash := sha256sumString(eventData)
 
-	err = tpm2.PCRExtend(tpm, configPCRHandle, tpm2.AlgSHA256, eventDataHash[:], tpmPassword)
+	err = tpm2.PCREvent(tpm, configPCRHandle, eventDataHash[:])
 
 	if err != nil {
 		return nil, fmt.Errorf("cannot measure %s. couldn't extend PCR: %v", filePath, err)
@@ -116,12 +115,12 @@ func measureFileContent(filePath string, tpm io.ReadWriter, tpmPassword string) 
 	return &tpmEvent{eventData, pcr}, nil
 }
 
-func measureFilePath(filePath string, tpm io.ReadWriter, tpmPassword string, exist bool) (*tpmEvent, error) {
+func measureFilePath(filePath string, tpm io.ReadWriter, exist bool) (*tpmEvent, error) {
 	eventData := fmt.Sprintf("file:%s exist:%t", filePath, exist)
 	// it seems PCRExtend expects a hash not data itself.
 	eventDataHash := sha256sumString(eventData)
 
-	err := tpm2.PCRExtend(tpm, configPCRHandle, tpm2.AlgSHA256, eventDataHash[:], tpmPassword)
+	err := tpm2.PCREvent(tpm, configPCRHandle, eventDataHash[:])
 
 	if err != nil {
 		return nil, fmt.Errorf("cannot measure path %s. couldn't extend PCR: %v", filePath, err)
@@ -134,29 +133,6 @@ func measureFilePath(filePath string, tpm io.ReadWriter, tpmPassword string, exi
 	}
 
 	return &tpmEvent{eventData, pcr}, nil
-}
-
-func getTPMCredentials(readFromFile bool) (string, error) {
-	var password string
-	var err error
-
-	if readFromFile {
-		password, err = evetpm.ReadOwnerCrdl()
-
-		// on the first run /config/tpm_credential may not exist
-		// but this is not a problem. In this case TPM is accessible
-		// without a password
-		if os.IsNotExist(err) {
-			return "", nil
-		}
-
-		// for any other error just return it
-		if err != nil {
-			return "", err
-		}
-	}
-
-	return password, err
 }
 
 func getFileMap() (map[string]fileInfo, error) {
@@ -207,7 +183,7 @@ func getSortedFileList(files map[string]fileInfo) []string {
 	return keys
 }
 
-func measureConfig(tpm io.ReadWriter, password string) error {
+func measureConfig(tpm io.ReadWriter) error {
 	files, err := getFileMap()
 
 	if err != nil {
@@ -225,12 +201,12 @@ func measureConfig(tpm io.ReadWriter, password string) error {
 
 		if info.exist {
 			if info.measureContent {
-				event, err = measureFileContent(file, tpm, password)
+				event, err = measureFileContent(file, tpm)
 			} else {
-				event, err = measureFilePath(file, tpm, password, true)
+				event, err = measureFilePath(file, tpm, true)
 			}
 		} else {
-			event, err = measureFilePath(file, tpm, password, false)
+			event, err = measureFilePath(file, tpm, false)
 		}
 		if err != nil {
 			return fmt.Errorf("cannot measure %s: %v", file, err)
@@ -263,18 +239,7 @@ func main() {
 	}
 	defer tpm.Close()
 
-	// now we measure config just after UEFI has finished its part
-	// the session is not encrypted until pillar is started and we
-	// must not use the password from tpm_credential so pass 'false'
-	// But it may be changed in future if the code is moved to other
-	// application
-	password, err := getTPMCredentials(false)
-
-	if err != nil {
-		log.Fatalf("couldn't read TPM credentials: %v\n", err)
-	}
-
-	err = measureConfig(tpm, password)
+	err = measureConfig(tpm)
 
 	if err != nil {
 		log.Fatal(err)
