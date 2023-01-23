@@ -1,0 +1,34 @@
+From 4382f4df183cc9d1937dc33f920a67182f40ac93 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Ren=C3=AA=20de=20Souza=20Pinto?= <rene@renesp.com.br>
+Date: Mon, 23 Jan 2023 17:12:08 +0100
+Subject: [PATCH 38/40] arm64: dts: freescale: Remove pcie-designware
+ compatible driver
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+On i.IMX8MP, PCIe support is provided by pcie-imx6 driver. Remove
+pcie-designware compatible driver so we can compile the kernel with both
+drivers enabled.
+
+Signed-off-by: Renê de Souza Pinto <rene@renesp.com.br>
+---
+ arch/arm64/boot/dts/freescale/imx8mp.dtsi | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/arch/arm64/boot/dts/freescale/imx8mp.dtsi b/arch/arm64/boot/dts/freescale/imx8mp.dtsi
+index 98650b526fc3..ddc53a43ecfd 100644
+--- a/arch/arm64/boot/dts/freescale/imx8mp.dtsi
++++ b/arch/arm64/boot/dts/freescale/imx8mp.dtsi
+@@ -2132,7 +2132,7 @@ gpmi: gpmi-nand@33002000{
+ 		};
+ 
+ 		pcie: pcie@33800000 {
+-			compatible = "fsl,imx8mp-pcie", "snps,dw-pcie";
++			compatible = "fsl,imx8mp-pcie";
+ 			reg = <0x33800000 0x400000>, <0x1ff00000 0x80000>;
+ 			reg-names = "dbi", "config";
+ 			#address-cells = <3>;
+-- 
+2.39.0
+

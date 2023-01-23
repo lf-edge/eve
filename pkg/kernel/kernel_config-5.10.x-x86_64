@@ -3568,6 +3568,7 @@ CONFIG_VGA_ARB_MAX_GPUS=16
 #
 # end of ARM devices
 
+# CONFIG_IMX8MP_HDMI_PAVI is not set
 # CONFIG_DRM_XEN is not set
 CONFIG_DRM_PANEL_ORIENTATION_QUIRKS=y
 
@@ -4486,6 +4487,7 @@ CONFIG_IRQ_REMAP=y
 #
 # i.MX SoC drivers
 #
+# CONFIG_SECVIO_SC is not set
 # end of i.MX SoC drivers
 
 #

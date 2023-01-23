@@ -1,0 +1,34 @@
+From f2474cf69280c72b5d24a3d7423a949e94868bd6 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Ren=C3=AA=20de=20Souza=20Pinto?= <rene@renesp.com.br>
+Date: Thu, 2 Feb 2023 11:26:03 +0100
+Subject: [PATCH 40/40] arm64: dts: Reduce amount of cma area in i.MX8MP
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+EVE starts dom0 with a maximum memory of 800M, so the cma (contiguous
+allocation area) must be reduced to a value under this maximum.
+
+This commit reduces cma to 500M.
+
+Signed-off-by: Renê de Souza Pinto <rene@renesp.com.br>
+---
+ arch/arm64/boot/dts/freescale/imx8mp.dtsi | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/arch/arm64/boot/dts/freescale/imx8mp.dtsi b/arch/arm64/boot/dts/freescale/imx8mp.dtsi
+index ddc53a43ecfd..ecf6f78a716d 100644
+--- a/arch/arm64/boot/dts/freescale/imx8mp.dtsi
++++ b/arch/arm64/boot/dts/freescale/imx8mp.dtsi
+@@ -186,7 +186,7 @@ ocram: ocram@900000 {
+ 		linux,cma {
+ 			compatible = "shared-dma-pool";
+ 			reusable;
+-			size = <0 0x3c000000>;
++			size = <0 0x1f400000>;
+ 			alloc-ranges = <0 0x40000000 0 0xC0000000>;
+ 			linux,cma-default;
+ 		};
+-- 
+2.39.0
+
