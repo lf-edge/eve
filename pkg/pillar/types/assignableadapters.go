@@ -234,7 +234,7 @@ const (
 // IsNet checks if the type is any of the networking types.
 func (ioType IoType) IsNet() bool {
 	switch ioType {
-	case IoNetEth, IoNetWLAN, IoNetWWAN:
+	case IoNetEth, IoNetWLAN, IoNetWWAN, IoNetEthPF, IoNetEthVF:
 		return true
 	default:
 		return false
