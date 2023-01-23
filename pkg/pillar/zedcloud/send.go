@@ -10,6 +10,7 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -941,9 +942,18 @@ func SendOnIntf(workContext context.Context, ctx *ZedCloudContext, destURL strin
 			rv.RespContents = contents
 			return rv, nil
 		default:
-			errStr := fmt.Sprintf("SendOnIntf to %s reqlen %d statuscode %d %s",
+			maxlen := 256
+			if maxlen > len(contents) {
+				maxlen = len(contents)
+			}
+
+			hexdump := hex.Dump(bytes.TrimSpace(contents[:maxlen]))
+			// remove trailing newline from hex.Dump
+			hexdump = strings.TrimSuffix(hexdump, "\n")
+
+			errStr := fmt.Sprintf("SendOnIntf to %s reqlen %d statuscode %d %s body:\n%s",
 				reqURL, reqlen, resp.StatusCode,
-				http.StatusText(resp.StatusCode))
+				http.StatusText(resp.StatusCode), hexdump)
 			// zedrouter probing sends 'http' to zedcloud server, expect to get status of 404, not an error
 			if resp.StatusCode != http.StatusNotFound || ctx.AgentName != "zedrouter" {
 				log.Errorln(errStr)
