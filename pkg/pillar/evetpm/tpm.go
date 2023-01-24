@@ -15,7 +15,6 @@ import (
 	"io/ioutil"
 	"math/big"
 	"os"
-	"reflect"
 	"unsafe"
 
 	"github.com/google/go-tpm/tpm2"
@@ -702,22 +701,6 @@ func PolicyPCRSession(rw io.ReadWriteCloser, pcrSel tpm2.PCRSelection) (tpmutil.
 		return session, nil, fmt.Errorf("Unable to get policy digest: %v", err)
 	}
 	return session, policy, nil
-}
-
-// TestSealUnseal tests TPM2.0 Seal and Unseal commands
-func TestSealUnseal() error {
-	dataToSeal := []byte("secret")
-	if err := SealDiskKey(dataToSeal, DiskKeySealingPCRs); err != nil {
-		return err
-	}
-	unsealedData, err := UnsealDiskKey(DiskKeySealingPCRs)
-	if err != nil {
-		return err
-	}
-	if !reflect.DeepEqual(dataToSeal, unsealedData) {
-		return fmt.Errorf("want %v, but got %v", dataToSeal, unsealedData)
-	}
-	return nil
 }
 
 // CompareLegacyandSealedKey compares legacy and sealed keys
