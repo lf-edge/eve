@@ -206,14 +206,20 @@ func download(ctx *downloaderContext, trType zedUpload.SyncTransportType,
 	go func() {
 		select {
 		case <-doneChan:
+			log.Functionf("doneChan")
 			// remove cancel channel
 			receiveChan <- nil
-		case <-cancelChan:
-			cancel = true
-			errStr := fmt.Sprintf("cancelled by user: <%s>, <%s>, <%s>",
-				dpath, region, filename)
-			log.Error(errStr)
-			_ = req.Cancel()
+		case _, ok := <-cancelChan:
+			if ok {
+				cancel = true
+				errStr := fmt.Sprintf("cancelled by user: <%s>, <%s>, <%s>",
+					dpath, region, filename)
+				log.Error(errStr)
+				_ = req.Cancel()
+			} else {
+				log.Warnf("cancelChan closed")
+				return
+			}
 		}
 	}()
 
@@ -339,14 +345,20 @@ func objectMetadata(ctx *downloaderContext, trType zedUpload.SyncTransportType,
 	go func() {
 		select {
 		case <-doneChan:
+			log.Functionf("doneChan")
 			// remove cancel channel
 			receiveChan <- nil
-		case <-cancelChan:
-			cancel = true
-			errStr := fmt.Sprintf("cancelled by user: <%s>, <%s>, <%s>",
-				dpath, region, filename)
-			log.Error(errStr)
-			_ = req.Cancel()
+		case _, ok := <-cancelChan:
+			if ok {
+				cancel = true
+				errStr := fmt.Sprintf("cancelled by user: <%s>, <%s>, <%s>",
+					dpath, region, filename)
+				log.Error(errStr)
+				_ = req.Cancel()
+			} else {
+				log.Warnf("cancelChan closed")
+				return
+			}
 		}
 	}()
 

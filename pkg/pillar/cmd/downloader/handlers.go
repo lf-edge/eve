@@ -100,13 +100,15 @@ func (d *downloadHandler) create(ctxArg interface{},
 	go func() {
 		for ch := range receiveChan {
 			if h.currentCancelChan != nil && ch != nil {
-				log.Noticef("downloadHandler(%s) received updated cancelChan %v",
-					key, ch)
+				log.Noticef("downloadHandler(%s) received updated cancelChan %v old %v",
+					key, ch, h.currentCancelChan)
 			}
-			if h.currentCancelChan != nil {
-				close(h.currentCancelChan)
+			if ch != h.currentCancelChan {
+				if h.currentCancelChan != nil {
+					close(h.currentCancelChan)
+				}
+				h.currentCancelChan = ch
 			}
-			h.currentCancelChan = ch
 		}
 		if h.currentCancelChan != nil {
 			log.Noticef("downloadHandler(%s) receiveChan func done", key)
