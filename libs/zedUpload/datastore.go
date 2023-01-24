@@ -12,6 +12,7 @@ import (
 
 	"github.com/lf-edge/eve/libs/nettrace"
 	"github.com/lf-edge/eve/libs/zedUpload/types"
+	"github.com/sirupsen/logrus"
 )
 
 // Sync Operation type
@@ -87,10 +88,16 @@ type DronaCtx struct {
 func (ctx *DronaCtx) ListenAndServe() {
 	for {
 		select {
-		case req := <-ctx.reqChan:
-			_ = ctx.handleRequest(req)
-
+		case req, ok := <-ctx.reqChan:
+			if ok {
+				logrus.Infof("ListenAndServe got request")
+				_ = ctx.handleRequest(req)
+			} else {
+				logrus.Infof("ListenAndServe reqChan closed")
+				return
+			}
 		case <-ctx.quitChan:
+			logrus.Infof("ListenAndServe quitChan")
 			_ = ctx.handleQuit()
 			return
 		}
