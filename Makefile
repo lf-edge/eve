@@ -115,7 +115,7 @@ INSTALLER=$(BUILD_DIR)/installer
 BUILD_DIR=$(DIST)/$(ROOTFS_VERSION)
 CURRENT_DIR=$(DIST)/current
 CURRENT_IMG=$(CURRENT_DIR)/live.$(IMG_FORMAT)
-CURRENT_SWTPM=$(CURRENT_DIR)/swtpm
+CURRENT_SWTPM=/tmp/swtpm
 CURRENT_INSTALLER=$(CURRENT_DIR)/installer
 INSTALLER_IMG=$(INSTALLER).$(INSTALLER_IMG_FORMAT)
 INSTALLER_FIRMWARE_DIR=$(INSTALLER)/firmware
@@ -213,8 +213,8 @@ QEMU_TPM_DEVICE_riscv64=tpm-tis
 QEMU_OPTS_TPM_Y_$(ZARCH)=-chardev socket,id=chrtpm,path=$(CURRENT_SWTPM)/swtpm-sock -tpmdev emulator,id=tpm0,chardev=chrtpm -device $(QEMU_TPM_DEVICE_$(ZARCH)),tpmdev=tpm0
 QEMU_OPTS_TPM=$(QEMU_OPTS_TPM_$(TPM:%=Y)_$(ZARCH))
 
-QEMU_OPTS_amd64=-smbios type=1,serial=31415926
-QEMU_OPTS_arm64=-smbios type=1,serial=31415926 -drive file=fat:rw:$(dir $(DEVICETREE_DTB)),label=QEMU_DTB,format=vvfat
+QEMU_OPTS_amd64=-smbios type=1,serial=shahshah
+QEMU_OPTS_arm64=-smbios type=1,serial=shahshah -drive file=fat:rw:$(dir $(DEVICETREE_DTB)),label=QEMU_DTB,format=vvfat
 QEMU_OPTS_riscv64=-kernel $(UBOOT_IMG)/u-boot.bin -device virtio-blk,drive=uefi-disk
 QEMU_OPTS_COMMON= -m $(QEMU_MEMORY) -smp 4 -display none $(QEMU_OPTS_BIOS) \
         -serial mon:stdio      \
