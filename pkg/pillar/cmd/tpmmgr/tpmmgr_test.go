@@ -208,7 +208,7 @@ func TestSealUnseal(t *testing.T) {
 	if err != nil {
 		t.Skip("TPM is not available, skipping the test.")
 	}
-	
+
 	dataToSeal := []byte("secret")
 	if err := etpm.SealDiskKey(dataToSeal, etpm.DiskKeySealingPCRs); err != nil {
 		t.Errorf("Seal operation failed with err: %v", err)
