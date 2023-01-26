@@ -317,7 +317,7 @@ github.com/fsnotify/fsnotify
 # github.com/ghodss/yaml v1.0.0
 ## explicit
 github.com/ghodss/yaml
-# github.com/go-ole/go-ole v1.2.4
+# github.com/go-ole/go-ole v1.2.6
 ## explicit; go 1.12
 github.com/go-ole/go-ole
 github.com/go-ole/go-ole/oleutil
@@ -617,8 +617,8 @@ github.com/robertkrimen/otto/token
 # github.com/satori/go.uuid v1.2.1-0.20180404165556-75cca531ea76
 ## explicit
 github.com/satori/go.uuid
-# github.com/shirou/gopsutil v0.0.0-20190901111213-e4ec7b275ada
-## explicit; go 1.12
+# github.com/shirou/gopsutil v3.21.11+incompatible
+## explicit
 github.com/shirou/gopsutil/cpu
 github.com/shirou/gopsutil/disk
 github.com/shirou/gopsutil/host
@@ -626,13 +626,10 @@ github.com/shirou/gopsutil/internal/common
 github.com/shirou/gopsutil/mem
 github.com/shirou/gopsutil/net
 github.com/shirou/gopsutil/process
-# github.com/shirou/w32 v0.0.0-20160930032740-bb4de0191aa4
-## explicit
-github.com/shirou/w32
 # github.com/sirupsen/logrus v1.9.0
 ## explicit; go 1.13
 github.com/sirupsen/logrus
-# github.com/stretchr/testify v1.8.0
+# github.com/stretchr/testify v1.8.1
 ## explicit; go 1.13
 github.com/stretchr/testify/assert
 # github.com/surma/gocpio v1.0.2-0.20160926205914-fcb68777e7dc
@@ -647,6 +644,12 @@ github.com/ti-mo/conntrack
 # github.com/ti-mo/netfilter v0.3.1
 ## explicit; go 1.12
 github.com/ti-mo/netfilter
+# github.com/tklauser/go-sysconf v0.3.11
+## explicit; go 1.13
+github.com/tklauser/go-sysconf
+# github.com/tklauser/numcpus v0.6.0
+## explicit; go 1.13
+github.com/tklauser/numcpus
 # github.com/vbatts/tar-split v0.11.2
 ## explicit; go 1.15
 github.com/vbatts/tar-split/archive/tar
@@ -666,6 +669,9 @@ github.com/xeipuuv/gojsonreference
 # github.com/xeipuuv/gojsonschema v1.2.0
 ## explicit
 github.com/xeipuuv/gojsonschema
+# github.com/yusufpapurcu/wmi v1.2.2
+## explicit; go 1.16
+github.com/yusufpapurcu/wmi
 # go.opencensus.io v0.23.0
 ## explicit; go 1.13
 go.opencensus.io
