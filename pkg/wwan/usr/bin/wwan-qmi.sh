@@ -241,7 +241,7 @@ qmi_start_network() {
 
 qmi_get_sim_status() {
   # FIXME: limited to a single SIM card
-  parse_modem_attr "$(qmi --uim-get-card-status)" "Application state" | head -n 1
+  parse_modem_attr "$(qmi --uim-get-card-status | grep ready)" "Application state" | head -n 1
 }
 
 qmi_wait_for_sim() {
