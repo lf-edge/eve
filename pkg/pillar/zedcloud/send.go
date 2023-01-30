@@ -42,20 +42,22 @@ const ContentTypeProto = "application/x-proto-binary"
 // independent of how many management interfaces and source IP addresses we try
 const MaxWaitForRequests = 4 * time.Minute
 
-// ZedCloudContent is set up by NewContext() below
+// ZedCloudContext is set up by NewContext() below
+// revive:disable-next-line Needs to be fixed in other files as well, which then lets new yetus warnings arise
 type ZedCloudContext struct {
 	DeviceNetworkStatus *types.DeviceNetworkStatus
-	TlsConfig           *tls.Config
-	FailureFunc         func(log *base.LogObject, intf string, url string, reqLen int64, respLen int64, authFail bool)
-	SuccessFunc         func(log *base.LogObject, intf string, url string, reqLen int64, respLen int64, timeSpent int64, resume bool)
-	NoLedManager        bool // Don't call UpdateLedManagerConfig
-	DevUUID             uuid.UUID
-	DevSerial           string
-	DevSoftSerial       string
-	NetworkSendTimeout  uint32 // In seconds
-	V2API               bool   // XXX Needed?
-	AgentName           string // the agent process name
-	NetTraceOpts        []nettrace.TraceOpt
+	// revive:disable-next-line
+	TlsConfig          *tls.Config
+	FailureFunc        func(log *base.LogObject, intf string, url string, reqLen int64, respLen int64, authFail bool)
+	SuccessFunc        func(log *base.LogObject, intf string, url string, reqLen int64, respLen int64, timeSpent int64, resume bool)
+	NoLedManager       bool // Don't call UpdateLedManagerConfig
+	DevUUID            uuid.UUID
+	DevSerial          string
+	DevSoftSerial      string
+	NetworkSendTimeout uint32 // In seconds
+	V2API              bool   // XXX Needed?
+	AgentName          string // the agent process name
+	NetTraceOpts       []nettrace.TraceOpt
 	// V2 related items
 	PrevCertPEM           [][]byte // cached proxy certs for later comparison
 	onBoardCert           *tls.Certificate
@@ -463,21 +465,21 @@ func SendOnIntf(workContext context.Context, ctx *ZedCloudContext, destURL strin
 
 	log := ctx.log
 	var rv SendRetval
-	var reqUrl string
+	var reqURL string
 	var useTLS, isEdgenode, isGet bool
 
 	if strings.HasPrefix(destURL, "http:") {
-		reqUrl = destURL
+		reqURL = destURL
 		useTLS = false
 	} else {
 		if strings.HasPrefix(destURL, "https:") {
-			reqUrl = destURL
+			reqURL = destURL
 		} else {
-			reqUrl = "https://" + destURL
+			reqURL = "https://" + destURL
 		}
 		useTLS = true
 	}
-	rv.ReqURL = reqUrl
+	rv.ReqURL = reqURL
 
 	if strings.Contains(destURL, "/edgedevice/") {
 		isEdgenode = true
@@ -494,24 +496,24 @@ func SendOnIntf(workContext context.Context, ctx *ZedCloudContext, destURL strin
 		return rv, err
 	}
 	log.Tracef("Connecting to %s using intf %s #sources %d reqlen %d\n",
-		reqUrl, intf, addrCount, reqlen)
+		reqURL, intf, addrCount, reqlen)
 
 	if addrCount == 0 {
 		if ctx.FailureFunc != nil && !dryRun {
-			ctx.FailureFunc(log, intf, reqUrl, 0, 0, false)
+			ctx.FailureFunc(log, intf, reqURL, 0, 0, false)
 		}
 		// Determine a specific failure for intf
 		link, err := netlink.LinkByName(intf)
 		if err != nil {
 			errStr := fmt.Sprintf("Link not found to connect to %s using intf %s: %s",
-				reqUrl, intf, err)
+				reqURL, intf, err)
 			log.Traceln(errStr)
 			return rv, errors.New(errStr)
 		}
 		attrs := link.Attrs()
 		if attrs.OperState != netlink.OperUp {
 			errStr := fmt.Sprintf("Link not up to connect to %s using intf %s: %s",
-				reqUrl, intf, attrs.OperState.String())
+				reqURL, intf, attrs.OperState.String())
 			log.Traceln(errStr)
 			return rv, errors.New(errStr)
 		}
@@ -531,16 +533,16 @@ func SendOnIntf(workContext context.Context, ctx *ZedCloudContext, destURL strin
 	}
 
 	// Get the transport header with proxy information filled
-	proxyUrl, err := LookupProxy(ctx.log, ctx.DeviceNetworkStatus, intf, reqUrl)
+	proxyURL, err := LookupProxy(ctx.log, ctx.DeviceNetworkStatus, intf, reqURL)
 	var usedProxy, usedProxyWithIP bool
-	if err == nil && proxyUrl != nil && allowProxy {
+	if err == nil && proxyURL != nil && allowProxy {
 		log.Tracef("sendOnIntf: For input URL %s, proxy found is %s",
-			reqUrl, proxyUrl.String())
+			reqURL, proxyURL.String())
 		usedProxy = true
-		host := strings.Split(proxyUrl.Host, ":")[0]
+		host := strings.Split(proxyURL.Host, ":")[0]
 		usedProxyWithIP = net.ParseIP(host) != nil
 		clientConfig.TLSClientConfig = ctx.TlsConfig
-		clientConfig.Proxy = http.ProxyURL(proxyUrl)
+		clientConfig.Proxy = http.ProxyURL(proxyURL)
 	} else {
 		clientConfig.TLSClientConfig = ctx.TlsConfig
 	}
@@ -552,7 +554,7 @@ func SendOnIntf(workContext context.Context, ctx *ZedCloudContext, destURL strin
 	dnsServers := types.GetDNSServers(*ctx.DeviceNetworkStatus, intf)
 	if len(dnsServers) == 0 && !usedProxyWithIP {
 		if ctx.FailureFunc != nil && !dryRun {
-			ctx.FailureFunc(log, intf, reqUrl, 0, 0, false)
+			ctx.FailureFunc(log, intf, reqURL, 0, 0, false)
 		}
 		err = &types.DNSNotAvail{
 			IfName: intf,
@@ -607,7 +609,7 @@ func SendOnIntf(workContext context.Context, ctx *ZedCloudContext, destURL strin
 	}
 
 	// Try all addresses
-	for retryCount := 0; retryCount < addrCount; retryCount += 1 {
+	for retryCount := 0; retryCount < addrCount; retryCount++ {
 		localAddr, err := types.GetLocalAddrAnyNoLinkLocal(*ctx.DeviceNetworkStatus,
 			retryCount, intf)
 		if err != nil {
@@ -630,15 +632,15 @@ func SendOnIntf(workContext context.Context, ctx *ZedCloudContext, destURL strin
 				return rv, err
 			}
 			reqlen = int64(b2.Len())
-			log.Tracef("SendOnIntf: add auth for %s\n", reqUrl)
+			log.Tracef("SendOnIntf: add auth for %s\n", reqURL)
 		} else {
 			b2 = b
 		}
 
 		if b2 != nil {
-			req, err = http.NewRequest("POST", reqUrl, b2)
+			req, err = http.NewRequest("POST", reqURL, b2)
 		} else {
-			req, err = http.NewRequest("GET", reqUrl, nil)
+			req, err = http.NewRequest("GET", reqURL, nil)
 		}
 		if err != nil {
 			log.Errorf("NewRequest failed %s\n", err)
@@ -693,7 +695,7 @@ func SendOnIntf(workContext context.Context, ctx *ZedCloudContext, destURL strin
 		}
 		req = req.WithContext(httptrace.WithClientTrace(workContext, trace))
 		log.Tracef("SendOnIntf: req method %s, isget %v, url %s",
-			req.Method, isGet, reqUrl)
+			req.Method, isGet, reqURL)
 		apiCallStartTime := time.Now()
 
 		// Prepare the HTTP client.
@@ -724,13 +726,13 @@ func SendOnIntf(workContext context.Context, ctx *ZedCloudContext, destURL strin
 			}
 			tracedReqName = fmt.Sprintf("%s-%d", intf, retryCount)
 			tracedReqDescr = fmt.Sprintf("%s %s via %s src IP %v",
-				reqMethod, reqUrl, intf, localAddr)
+				reqMethod, reqURL, intf, localAddr)
 		} else {
 			fromDNSCache = true // set to false by resolverDial below
 			localTCPAddr := net.TCPAddr{IP: localAddr}
 			localUDPAddr := net.UDPAddr{IP: localAddr}
 			log.Tracef("Connecting to %s using intf %s source %v\n",
-				reqUrl, intf, localTCPAddr)
+				reqURL, intf, localTCPAddr)
 			resolverDial := func(ctx context.Context, network, address string) (net.Conn, error) {
 				log.Tracef("resolverDial %v %v", network, address)
 				fromDNSCache = false
@@ -889,7 +891,7 @@ func SendOnIntf(workContext context.Context, ctx *ZedCloudContext, destURL strin
 					utils.UpdateLedManagerConfig(log, types.LedBlinkRespWithoutTLS)
 				}
 				if ctx.FailureFunc != nil {
-					ctx.FailureFunc(log, intf, reqUrl, reqlen,
+					ctx.FailureFunc(log, intf, reqURL, reqlen,
 						resplen, false)
 				}
 				continue
@@ -901,10 +903,10 @@ func SendOnIntf(workContext context.Context, ctx *ZedCloudContext, destURL strin
 				if connState.OCSPResponse == nil {
 					// XXX remove debug check
 					log.Tracef("no OCSP response for %s\n",
-						reqUrl)
+						reqURL)
 				}
 				errStr := fmt.Sprintf("OCSP stapled check failed for %s",
-					reqUrl)
+					reqURL)
 
 				//XXX OSCP is not implemented in cloud side so
 				// commenting out it for now.
@@ -915,7 +917,7 @@ func SendOnIntf(workContext context.Context, ctx *ZedCloudContext, destURL strin
 						utils.UpdateLedManagerConfig(log, types.LedBlinkRespWithoutOSCP)
 					}
 					if ctx.FailureFunc != nil {
-						ctx.FailureFunc(log, intf, reqUrl,
+						ctx.FailureFunc(log, intf, reqURL,
 							reqlen, resplen, false)
 					}
 					attempt.Err = errors.New(errStr)
@@ -929,18 +931,18 @@ func SendOnIntf(workContext context.Context, ctx *ZedCloudContext, destURL strin
 		// success since we care about the connectivity to the cloud.
 		totalTimeMillis := int64(time.Since(apiCallStartTime) / time.Millisecond)
 		if ctx.SuccessFunc != nil {
-			ctx.SuccessFunc(log, intf, reqUrl, reqlen, resplen, totalTimeMillis, sessionResume)
+			ctx.SuccessFunc(log, intf, reqURL, reqlen, resplen, totalTimeMillis, sessionResume)
 		}
 
 		switch resp.StatusCode {
 		case http.StatusOK, http.StatusCreated, http.StatusNotModified, http.StatusNoContent:
-			log.Tracef("SendOnIntf to %s, response %s\n", reqUrl, resp.Status)
+			log.Tracef("SendOnIntf to %s, response %s\n", reqURL, resp.Status)
 			rv.HTTPResp = resp
 			rv.RespContents = contents
 			return rv, nil
 		default:
 			errStr := fmt.Sprintf("SendOnIntf to %s reqlen %d statuscode %d %s",
-				reqUrl, reqlen, resp.StatusCode,
+				reqURL, reqlen, resp.StatusCode,
 				http.StatusText(resp.StatusCode))
 			// zedrouter probing sends 'http' to zedcloud server, expect to get status of 404, not an error
 			if resp.StatusCode != http.StatusNotFound || ctx.AgentName != "zedrouter" {
@@ -955,10 +957,10 @@ func SendOnIntf(workContext context.Context, ctx *ZedCloudContext, destURL strin
 		}
 	}
 	if ctx.FailureFunc != nil {
-		ctx.FailureFunc(log, intf, reqUrl, 0, 0, false)
+		ctx.FailureFunc(log, intf, reqURL, 0, 0, false)
 	}
 	errStr := fmt.Sprintf("All attempts to connect to %s failed: %v",
-		reqUrl, attempts)
+		reqURL, attempts)
 	log.Errorln(errStr)
 	err = &SendError{
 		Err:      errors.New(errStr),
