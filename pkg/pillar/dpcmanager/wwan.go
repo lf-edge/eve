@@ -306,7 +306,7 @@ func (m *DpcManager) reloadWwanLocationInfo() {
 }
 
 // react to changed radio-silence configuration
-func (m *DpcManager) updateRadioSilence(ctx context.Context, newRS types.RadioSilence) {
+func (m *DpcManager) doUpdateRadioSilence(ctx context.Context, newRS types.RadioSilence) {
 	var errMsgs []string
 	if !newRS.ChangeRequestedAt.After(m.radioSilence.ChangeRequestedAt) {
 		return

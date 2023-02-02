@@ -21,7 +21,7 @@ func (m *DpcManager) currentDPC() *types.DevicePortConfig {
 	return &m.dpcList.PortConfigList[m.dpcList.CurrentIndex]
 }
 
-func (m *DpcManager) addDPC(ctx context.Context, dpc types.DevicePortConfig) {
+func (m *DpcManager) doAddDPC(ctx context.Context, dpc types.DevicePortConfig) {
 	mgmtCount := dpc.CountMgmtPorts()
 	if mgmtCount == 0 {
 		// This DPC will be ignored when we check IsDPCUsable which
@@ -45,7 +45,7 @@ func (m *DpcManager) addDPC(ctx context.Context, dpc types.DevicePortConfig) {
 	numDNSServers := types.CountDNSServers(m.deviceNetStatus, "")
 	if !configChanged && ipAddrCount > 0 && numDNSServers > 0 &&
 		m.dpcList.CurrentIndex != -1 {
-		m.Log.Functionf("addDPC: Config already current. No changes to process\n")
+		m.Log.Functionf("doAddDPC: Config already current. No changes to process\n")
 		return
 	}
 
@@ -54,10 +54,10 @@ func (m *DpcManager) addDPC(ctx context.Context, dpc types.DevicePortConfig) {
 	m.restartVerify(ctx, fmt.Sprintf("new DPC (%s/%v)", dpc.Key, dpc.TimePriority))
 }
 
-func (m *DpcManager) delDPC(ctx context.Context, dpc types.DevicePortConfig) {
+func (m *DpcManager) doDelDPC(ctx context.Context, dpc types.DevicePortConfig) {
 	configChanged := m.updateDPCListAndPublish(dpc, true)
 	if !configChanged {
-		m.Log.Functionf("delDPC: System current. No change detected.\n")
+		m.Log.Functionf("doDelDPC: System current. No change detected.\n")
 		return
 	}
 	m.restartVerify(ctx, fmt.Sprintf("removed DPC (%s/%v)", dpc.Key, dpc.TimePriority))

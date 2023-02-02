@@ -649,13 +649,15 @@ func (n *nim) initSubscriptions() (err error) {
 
 	// To determine if device is onboarded
 	n.subOnboardStatus, err = n.PubSub.NewSubscription(pubsub.SubscriptionOptions{
-		AgentName:   "zedclient",
-		MyAgentName: agentName,
-		TopicImpl:   types.OnboardingStatus{},
-		Activate:    false,
-		WarningTime: warningTime,
-		ErrorTime:   errorTime,
-		Persistent:  true,
+		AgentName:     "zedclient",
+		MyAgentName:   agentName,
+		TopicImpl:     types.OnboardingStatus{},
+		Activate:      false,
+		CreateHandler: n.handleOnboardStatusCreate,
+		ModifyHandler: n.handleOnboardStatusModify,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+		Persistent:    true,
 	})
 	if err != nil {
 		return err
@@ -810,6 +812,19 @@ func (n *nim) handleZedAgentStatusModify(_ interface{}, key string, statusArg, _
 func (n *nim) handleZedAgentStatusImpl(_ string, statusArg interface{}) {
 	zedagentStatus := statusArg.(types.ZedAgentStatus)
 	n.dpcManager.UpdateRadioSilence(zedagentStatus.RadioSilence)
+}
+
+func (n *nim) handleOnboardStatusCreate(_ interface{}, key string, statusArg interface{}) {
+	n.handleOnboardStatusImpl(key, statusArg)
+}
+
+func (n *nim) handleOnboardStatusModify(_ interface{}, key string, statusArg, _ interface{}) {
+	n.handleOnboardStatusImpl(key, statusArg)
+}
+
+func (n *nim) handleOnboardStatusImpl(_ string, statusArg interface{}) {
+	status := statusArg.(types.OnboardingStatus)
+	n.dpcManager.UpdateDevUUID(status.DeviceUUID)
 }
 
 func (n *nim) isDeviceOnboarded() bool {

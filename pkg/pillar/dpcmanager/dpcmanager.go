@@ -95,6 +95,7 @@ type DpcManager struct {
 	hasGlobalCfg     bool
 	radioSilence     types.RadioSilence
 	enableLastResort bool
+	devUUID          uuid.UUID
 	// Boot-time configuration
 	dpclPresentAtBoot bool
 
@@ -187,14 +188,16 @@ const (
 	commandUpdateGCP
 	commandUpdateAA
 	commandUpdateRS
+	commandUpdateDevUUID
 )
 
 type inputCommand struct {
-	cmd command
-	dpc types.DevicePortConfig   // for inputCmdAddDPC
-	gcp types.ConfigItemValueMap // for inputCmdUpdateGCP
-	aa  types.AssignableAdapters // for inputCmdUpdateAA
-	rs  types.RadioSilence       // for inputCmdUpdateRS
+	cmd     command
+	dpc     types.DevicePortConfig   // for commandAddDPC and commandDelDPC
+	gcp     types.ConfigItemValueMap // for commandUpdateGCP
+	aa      types.AssignableAdapters // for commandUpdateAA
+	rs      types.RadioSilence       // for commandUpdateRS
+	devUUID uuid.UUID                // for commandUpdateDevUUID
 }
 
 type dpcVerify struct {
@@ -261,15 +264,17 @@ func (m *DpcManager) run(ctx context.Context) {
 			case commandUndefined:
 				m.Log.Warn("DpcManager: Received undefined command")
 			case commandAddDPC:
-				m.addDPC(ctx, inputCmd.dpc)
+				m.doAddDPC(ctx, inputCmd.dpc)
 			case commandDelDPC:
-				m.delDPC(ctx, inputCmd.dpc)
+				m.doDelDPC(ctx, inputCmd.dpc)
 			case commandUpdateGCP:
-				m.updateGCP(ctx, inputCmd.gcp)
+				m.doUpdateGCP(ctx, inputCmd.gcp)
 			case commandUpdateAA:
-				m.updateAA(ctx, inputCmd.aa)
+				m.doUpdateAA(ctx, inputCmd.aa)
 			case commandUpdateRS:
-				m.updateRadioSilence(ctx, inputCmd.rs)
+				m.doUpdateRadioSilence(ctx, inputCmd.rs)
+			case commandUpdateDevUUID:
+				m.doUpdateDevUUID(ctx, inputCmd.devUUID)
 			}
 			m.resumeVerifyIfAsyncDone(ctx)
 
@@ -475,12 +480,20 @@ func (m *DpcManager) UpdateRadioSilence(rs types.RadioSilence) {
 	}
 }
 
+// UpdateDevUUID : apply an update of the UUID assigned to the device by the controller.
+func (m *DpcManager) UpdateDevUUID(devUUID uuid.UUID) {
+	m.inputCommands <- inputCommand{
+		cmd:     commandUpdateDevUUID,
+		devUUID: devUUID,
+	}
+}
+
 // GetDNS returns device network state information.
 func (m *DpcManager) GetDNS() types.DeviceNetworkStatus {
 	return m.deviceNetStatus
 }
 
-func (m *DpcManager) updateGCP(ctx context.Context, gcp types.ConfigItemValueMap) {
+func (m *DpcManager) doUpdateGCP(ctx context.Context, gcp types.ConfigItemValueMap) {
 	firstGCP := !m.hasGlobalCfg
 	m.globalCfg = gcp
 	m.hasGlobalCfg = true
@@ -541,29 +554,7 @@ func (m *DpcManager) updateGCP(ctx context.Context, gcp types.ConfigItemValueMap
 		m.geoRetryInterval = geoRetryInterval
 	}
 	m.geoRedoInterval = geoRedoInterval
-
-	// (Re-)Initialize netdump
-	netDumper := m.netDumper
-	netdumpEnabled := gcp.GlobalValueBool(types.NetDumpEnable)
-	if netdumpEnabled {
-		if netDumper == nil {
-			netDumper = &netdump.NetDumper{}
-			// Determine when was the last time DPCManager published anything.
-			var err error
-			m.lastNetdumpPub, err = netDumper.LastPublishAt(
-				m.netDumpOKTopic(), m.netDumpFailTopic())
-			if err != nil {
-				m.Log.Warn(err)
-			}
-		}
-		m.netdumpInterval = time.Second *
-			time.Duration(gcp.GlobalValueInt(types.NetDumpTopicPubInterval))
-		maxCount := gcp.GlobalValueInt(types.NetDumpTopicMaxCount)
-		netDumper.MaxDumpsPerTopic = int(maxCount)
-	} else {
-		netDumper = nil
-	}
-	m.netDumper = netDumper
+	m.reinitNetdumper()
 
 	m.reconcileStatus = m.DpcReconciler.Reconcile(ctx, m.reconcilerArgs())
 	// If we have persisted DPCs then go ahead and pick a working one
@@ -573,7 +564,7 @@ func (m *DpcManager) updateGCP(ctx context.Context, gcp types.ConfigItemValueMap
 	}
 }
 
-func (m *DpcManager) updateAA(ctx context.Context, adapters types.AssignableAdapters) {
+func (m *DpcManager) doUpdateAA(ctx context.Context, adapters types.AssignableAdapters) {
 	m.adapters = adapters
 	// In case a verification is in progress and is waiting for return from pciback
 	if dpc := m.currentDPC(); dpc != nil {
@@ -592,4 +583,41 @@ func (m *DpcManager) resumeVerifyIfAsyncDone(ctx context.Context) {
 			m.runVerify(ctx, "async ops no longer in progress")
 		}
 	}
+}
+
+func (m *DpcManager) doUpdateDevUUID(ctx context.Context, newUUID uuid.UUID) {
+	m.devUUID = newUUID
+	// Netdumper uses different publish period after onboarding.
+	m.reinitNetdumper()
+}
+
+func (m *DpcManager) reinitNetdumper() {
+	gcp := m.globalCfg
+	netDumper := m.netDumper
+	netdumpEnabled := gcp.GlobalValueBool(types.NetDumpEnable)
+	if netdumpEnabled {
+		if netDumper == nil {
+			netDumper = &netdump.NetDumper{}
+			// Determine when was the last time DPCManager published anything.
+			var err error
+			m.lastNetdumpPub, err = netDumper.LastPublishAt(
+				m.netDumpOKTopic(), m.netDumpFailTopic())
+			if err != nil {
+				m.Log.Warn(err)
+			}
+		}
+		isOnboarded := m.devUUID != nilUUID
+		if isOnboarded {
+			m.netdumpInterval = time.Second *
+				time.Duration(gcp.GlobalValueInt(types.NetDumpTopicPostOnboardInterval))
+		} else {
+			m.netdumpInterval = time.Second *
+				time.Duration(gcp.GlobalValueInt(types.NetDumpTopicPreOnboardInterval))
+		}
+		maxCount := gcp.GlobalValueInt(types.NetDumpTopicMaxCount)
+		netDumper.MaxDumpsPerTopic = int(maxCount)
+	} else {
+		netDumper = nil
+	}
+	m.netDumper = netDumper
 }

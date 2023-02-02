@@ -31,6 +31,7 @@ type downloaderContext struct {
 	subGlobalConfig          pubsub.Subscription
 	zedcloudMetrics          *zedcloud.AgentMetrics
 	cipherMetrics            *cipher.AgentMetrics
+	globalConfig             types.ConfigItemValueMap
 	GCInitialized            bool
 	downloadMaxPortCost      uint8
 	netDumper                *netdump.NetDumper // nil if netdump is disabled

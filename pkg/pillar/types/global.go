@@ -226,8 +226,14 @@ const (
 
 	// NetDumpEnable : enable publishing of network diagnostics (as tgz archives to /persist/netdump).
 	NetDumpEnable GlobalSettingKey = "netdump.enable"
-	// NetDumpTopicPubInterval : how frequently (in seconds) can be netdumps of the same topic published.
-	NetDumpTopicPubInterval GlobalSettingKey = "netdump.topic.publish.interval"
+	// NetDumpTopicPreOnboardInterval : how frequently (in seconds) can be netdumps
+	// of the same topic published.
+	// This interval applies *only until* device is onboarded.
+	NetDumpTopicPreOnboardInterval GlobalSettingKey = "netdump.topic.preonboard.interval"
+	// NetDumpTopicPostOnboardInterval : how frequently (in seconds) can be netdumps
+	// of the same topic published.
+	// This interval applies *after* device is onboarded.
+	NetDumpTopicPostOnboardInterval GlobalSettingKey = "netdump.topic.postonboard.interval"
 	// NetDumpTopicMaxCount : maximum number of netdumps that can be published (persisted)
 	// for each topic. The oldest netdump is unpublished should a new netdump exceed the limit.
 	NetDumpTopicMaxCount GlobalSettingKey = "netdump.topic.maxcount"
@@ -821,8 +827,8 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 
 	// Add NetDump settings
 	configItemSpecMap.AddBoolItem(NetDumpEnable, true)
-	// Default NetDumpTopicPubInterval is increased to one day after onboarding.
-	configItemSpecMap.AddIntItem(NetDumpTopicPubInterval, HourInSec, 60, 0xFFFFFFFF)
+	configItemSpecMap.AddIntItem(NetDumpTopicPreOnboardInterval, HourInSec, 60, 0xFFFFFFFF)
+	configItemSpecMap.AddIntItem(NetDumpTopicPostOnboardInterval, 24*HourInSec, 60, 0xFFFFFFFF)
 	configItemSpecMap.AddIntItem(NetDumpTopicMaxCount, 10, 1, 0xFFFFFFFF)
 	configItemSpecMap.AddBoolItem(NetDumpDownloaderPCAP, false)
 	return configItemSpecMap
