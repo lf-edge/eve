@@ -3485,9 +3485,10 @@ type WwanCellModule struct {
 
 // WwanSimCard contains SIM card information.
 type WwanSimCard struct {
-	Name  string `json:"name,omitempty"`
-	ICCID string `json:"iccid"`
-	IMSI  string `json:"imsi"`
+	Name   string `json:"name,omitempty"`
+	ICCID  string `json:"iccid"`
+	IMSI   string `json:"imsi"`
+	Status string `json:"status"`
 }
 
 // WwanProvider contains information about a cellular connectivity provider.

@@ -208,7 +208,9 @@ qmi_get_sim_cards() {
     echo "[]"
     return 1
   fi
-  SIM="$(json_struct "$(json_str_attr "iccid" "$ICCID")" "$(json_str_attr "imsi" "$IMSI")")\n"
+  # Don't error out if this is empty
+  local STATUS="$(qmi_get_sim_status)"
+  local SIM="$(json_struct "$(json_str_attr "iccid" "$ICCID")" "$(json_str_attr "imsi" "$IMSI")" "$(json_str_attr "status" "$STATUS")")\n"
   printf "%b" "$SIM" | json_array
 }
 

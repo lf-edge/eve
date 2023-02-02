@@ -893,6 +893,15 @@ func encodeCellModuleInfo(wwanModule types.WwanCellModule) *info.ZCellularModule
 	}
 }
 
+func simStatusToState(status string) info.ZSimcardState {
+	switch status {
+	case "ready", "initialized":
+		return info.ZSimcardState_Z_SIMCARD_STATE_ACTIVE
+	default:
+		return info.ZSimcardState_Z_SIMCARD_STATE_INVALID
+	}
+}
+
 func encodeSimCards(cellModule string, wwanSimCards []types.WwanSimCard) (simCards []*info.ZSimcardInfo) {
 	for _, simCard := range wwanSimCards {
 		simCards = append(simCards, &info.ZSimcardInfo{
@@ -900,7 +909,7 @@ func encodeSimCards(cellModule string, wwanSimCards []types.WwanSimCard) (simCar
 			CellModuleName: cellModule,
 			Imsi:           simCard.IMSI,
 			Iccid:          simCard.ICCID,
-			// TODO SIM card state
+			State:          simStatusToState(simCard.Status),
 		})
 	}
 	return simCards
