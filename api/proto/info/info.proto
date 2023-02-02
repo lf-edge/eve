@@ -832,6 +832,41 @@ message ZInfoStorage {
   bool storageLocation = 4; // Storage location for app disks, images etc.
 }
 
+// Type of the snapshot creation reason
+enum SnapshotType {
+  SNAPSHOT_TYPE_UNSPECIFIED = 0;
+  SNAPSHOT_TYPE_APP_UPDATE = 1; // Snapshot created as a result of an application update
+}
+
+// Per snapshot information
+message ZInfoSnapshot {
+  // identifier for the snapshot, required
+  // The format of the ID is a standard UUIDv4.
+  // Should be unique within the app instance. If the snapshot creation was
+  // triggered on the Controller side, the Controller should have generate the
+  // ID, so here the device just sends it back. If the snapshot creation was
+  // triggered locally, the Controller doesn't know the ID, so EVE should
+  // generate it and report back to the Controller.
+  string id = 1;
+  // an app instance configuration id and version, optional
+  // EVE needs to send these fields only in the cases when the snapshot was
+  // triggered locally. In this case, the fields contain the value of the
+  // EdgeDevConfig.id field that has come from the Controller with the latest
+  // received EdgeDevConfig message. The field in that message is described in
+  // the `devconfig.proto` file and has the UUIDandVersion type. It contains
+  // both the id and the version of the configuration.
+  // In this message EVE has to send the id and the version of the
+  // configuration in two different fields, because the UUIDandVersion type
+  // is not available here.
+  string config_id = 2;
+  // see the comment for the config_id field
+  string config_version = 3;
+  // a timestamp when the snapshot was created
+  google.protobuf.Timestamp create_time = 4;
+  // a reason for the snapshot creation
+  SnapshotType type = 5;
+}
+
 message ZInfoApp {
   string AppID = 1;
   string appVersion = 2;
@@ -850,6 +885,7 @@ message ZInfoApp {
   ZSwState state = 15;
   repeated ZInfoNetwork network = 16;       // up/down; allocated IP
   repeated string volumeRefs = 17;          // volume UUIDs
+  repeated ZInfoSnapshot snapshots = 18;    // optional field, used to send list of snapshots on device
 }
 
 // ipSec state information
