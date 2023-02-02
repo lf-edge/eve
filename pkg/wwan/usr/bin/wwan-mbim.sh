@@ -116,8 +116,9 @@ mbim_get_sim_cards() {
   local ICCID=$(parse_modem_attr "$SUBSCRIBER" "SIM ICCID")
   # Remove trailing Fs that modem may add as a padding.
   ICCID="$(echo "$ICCID" | tr -d "F")"
-  local IMSI=$(parse_modem_attr "$SUBSCRIBER" "Subscriber ID")
-  SIM="$(json_struct "$(json_str_attr "iccid" "$ICCID")" "$(json_str_attr "imsi" "$IMSI")")\n"
+  local IMSI="$(parse_modem_attr "$SUBSCRIBER" "Subscriber ID")"
+  local STATUS="$(parse_modem_attr "$SUBSCRIBER" "Ready state")"
+  SIM="$(json_struct "$(json_str_attr "iccid" "$ICCID")" "$(json_str_attr "imsi" "$IMSI")" "$(json_str_attr "status" "$STATUS")")\n"
   printf "%b" "$SIM" | json_array
 }
 
