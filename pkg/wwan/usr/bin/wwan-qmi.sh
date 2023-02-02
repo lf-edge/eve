@@ -240,8 +240,31 @@ qmi_start_network() {
 }
 
 qmi_get_sim_status() {
-  # FIXME: limited to a single SIM card
-  parse_modem_attr "$(qmi --uim-get-card-status)" "Application state" | head -n 1
+  # Get full state...
+  local STATE="$(qmi --uim-get-card-status)"
+  # The Primary GW stores which application is ready, if any...
+  local SLOT_AND_APP="$(parse_modem_attr "$STATE" "Primary GW")"
+  # Ensure format of the Primary GW...
+  if ! echo "$SLOT_AND_APP" | grep -q slot; then
+    echo "not-ready"
+    return 1
+  fi
+  # Ensure app and slot are numbers...
+  local SLOT="$(echo "$SLOT_AND_APP" | sed 's/^.*slot \([0-9]*\),.*$/\1/')"
+  if ! echo "$SLOT" | grep -Eq "^[0-9]+$"; then
+    echo "not-ready"
+    return 1
+  fi
+  local APP="$(echo "$SLOT_AND_APP" | sed 's/^.*slot .* application \([0-9]*\)$/\1/')"
+  if ! echo "$APP" | grep -Eq "^[0-9]+$"; then
+    echo "not-ready"
+    return 1
+  fi
+  # Print only the requested application and print the Application state.
+  # This works by printing all lines between the desired slot and the next slot (if there is one),
+  # and then printing all lines between the desired application and the next one. Once we have
+  # printed the lines containing only the desired application, we parse the Application state from it.
+  parse_modem_attr "$(echo "$STATE" | sed -n "/Slot \[$SLOT\]/,/Slot \[/p" | sed -n "/Application \[$APP\]/,/Application \[/p")" "Application state"
 }
 
 qmi_wait_for_sim() {
