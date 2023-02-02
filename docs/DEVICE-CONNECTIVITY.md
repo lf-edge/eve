@@ -339,14 +339,15 @@ Currently traced HTTP requests are:
 - `/ping` request done by NIM to verify connectivity for the *latest* DPC (testing of older DPCs
  is never traced). Packet capture is also enabled and the obtained pcap files are included in
  the published netdumps. To limit the overhead associated with tracing and packet capture,
- NIM is only allowed to enable them and produce netdump at most once per day ([configurable](./CONFIG-PROPERTIES.md)
- by `netdump.topic.publish.interval`). However, before device is fully onboarded this interval
- is lowered to one netdump per hour to get more frequent diagnostics for initial connectivity
- troubleshooting.
+ NIM is only allowed to enable them and produce netdump at most once per hour *before onboarding*
+ and once per day *after onboarding* ([configurable](./CONFIG-PROPERTIES.md)
+ by `netdump.topic.preonboard.interval` and `netdump.topic.postonboard.interval`, respectively).
+ The pre-onboard interval is intentionally lower (by default) to get more frequent diagnostics
+ for initial connectivity troubleshooting.
 - `/config` and `/info` requests done by zedagent to obtain device configuration and publish info
- messages, respectively. Packet capture is not enabled in this case. Follows the same interval
- as given by `netdump.topic.publish.interval`. For `/info` requests, tracing only covers publication
- of the `ZInfoDevice` message.
+ messages, respectively. Packet capture is not enabled in this case. Netdump is produced at the interval
+ as given by `netdump.topic.postonboard.interval` (`/config` and `/info` requests are not run before
+ onboarding). For `/info` requests, tracing only covers publication of the `ZInfoDevice` message.
  Moreover, tracing is enabled only if the highest priority DPC is currently being applied
  and is reported by NIM as working. Otherwise, we will eventually get `nim-fail*` netdump
  which should be sufficient for connectivity troubleshooting. The purpose of zedagent netdumps

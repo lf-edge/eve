@@ -353,6 +353,8 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	}
 	zedagentCtx.subOnboardStatus.Activate()
 	waitUntilOnboarded(zedagentCtx, stillRunning)
+	// Netdumper uses different publish period after onboarding.
+	reinitNetdumper(zedagentCtx)
 
 	// We know our own UUID; prepare for communication with controller
 	zedcloudCtx = initZedcloudContext(
@@ -2167,35 +2169,7 @@ func handleGlobalConfigImpl(ctxArg interface{}, key string,
 		ctx.GCInitialized = true
 		ctx.gcpMaintenanceMode = gcp.GlobalValueTriState(types.MaintenanceMode)
 		mergeMaintenanceMode(ctx)
-		// (Re-)Initialize netdump
-		netDumper := ctx.netDumper
-		netdumpEnabled := gcp.GlobalValueBool(types.NetDumpEnable)
-		if netdumpEnabled {
-			if netDumper == nil {
-				netDumper = &netdump.NetDumper{}
-				// Determine when was the last time zedagent published netdump
-				// for /config and /info.
-				var err error
-				ctx.lastConfigNetdumpPub, err = netDumper.LastPublishAt(
-					netDumpConfigOKTopic, netDumpConfigFailTopic)
-				if err != nil {
-					log.Warn(err)
-				}
-				ctx.lastInfoNetdumpPub, err = netDumper.LastPublishAt(
-					netDumpInfoOKTopic, netDumpInfoFailTopic)
-				if err != nil {
-					log.Warn(err)
-				}
-			}
-			ctx.netdumpInterval = time.Second *
-				time.Duration(gcp.GlobalValueInt(types.NetDumpTopicPubInterval))
-			maxCount := gcp.GlobalValueInt(types.NetDumpTopicMaxCount)
-			netDumper.MaxDumpsPerTopic = int(maxCount)
-		} else {
-			netDumper = nil
-		}
-		// Assign at the end to avoid race condition with configTimerTask.
-		ctx.netDumper = netDumper
+		reinitNetdumper(ctx)
 	}
 
 	log.Functionf("handleGlobalConfigImpl done for %s", key)
@@ -2213,6 +2187,7 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 	agentlog.HandleGlobalConfig(log, ctx.subGlobalConfig, agentName,
 		ctx.CLIParams().DebugOverride, logger)
 	ctx.globalConfig = *types.DefaultConfigItemValueMap()
+	reinitNetdumper(ctx)
 	log.Functionf("handleGlobalConfigDelete done for %s", key)
 }
 
@@ -2472,4 +2447,42 @@ func handleEdgeviewStatusImpl(ctxArg interface{}, key string, statusArg interfac
 	status := statusArg.(types.EdgeviewStatus)
 	ctx := ctxArg.(*zedagentContext)
 	PublishEdgeviewToZedCloud(ctx, &status)
+}
+
+func reinitNetdumper(ctx *zedagentContext) {
+	gcp := ctx.globalConfig
+	netDumper := ctx.netDumper
+	netdumpEnabled := gcp.GlobalValueBool(types.NetDumpEnable)
+	if netdumpEnabled {
+		if netDumper == nil {
+			netDumper = &netdump.NetDumper{}
+			// Determine when was the last time zedagent published netdump
+			// for /config and /info.
+			var err error
+			ctx.lastConfigNetdumpPub, err = netDumper.LastPublishAt(
+				netDumpConfigOKTopic, netDumpConfigFailTopic)
+			if err != nil {
+				log.Warn(err)
+			}
+			ctx.lastInfoNetdumpPub, err = netDumper.LastPublishAt(
+				netDumpInfoOKTopic, netDumpInfoFailTopic)
+			if err != nil {
+				log.Warn(err)
+			}
+		}
+		isOnboarded := devUUID != nilUUID
+		if isOnboarded {
+			ctx.netdumpInterval = time.Second *
+				time.Duration(gcp.GlobalValueInt(types.NetDumpTopicPostOnboardInterval))
+		} else {
+			ctx.netdumpInterval = time.Second *
+				time.Duration(gcp.GlobalValueInt(types.NetDumpTopicPreOnboardInterval))
+		}
+		maxCount := gcp.GlobalValueInt(types.NetDumpTopicMaxCount)
+		netDumper.MaxDumpsPerTopic = int(maxCount)
+	} else {
+		netDumper = nil
+	}
+	// Assign at the end to avoid race condition with configTimerTask.
+	ctx.netDumper = netDumper
 }

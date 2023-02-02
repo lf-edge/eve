@@ -40,21 +40,9 @@ func handleGlobalConfigImpl(ctxArg interface{}, key string,
 			maxStalledTime = time.Duration(gcp.GlobalValueInt(types.DownloadStalledTime)) * time.Second
 		}
 		ctx.downloadMaxPortCost = uint8(gcp.GlobalValueInt(types.DownloadMaxPortCost))
-		// (Re-)Initialize netdump
-		netDumper := ctx.netDumper
-		netdumpEnabled := gcp.GlobalValueBool(types.NetDumpEnable)
-		if netdumpEnabled {
-			if netDumper == nil {
-				netDumper = &netdump.NetDumper{}
-			}
-			maxCount := gcp.GlobalValueInt(types.NetDumpTopicMaxCount)
-			netDumper.MaxDumpsPerTopic = int(maxCount)
-		} else {
-			netDumper = nil
-		}
-		ctx.netdumpWithPCAP = gcp.GlobalValueBool(types.NetDumpDownloaderPCAP)
-		ctx.netDumper = netDumper
+		ctx.globalConfig = *gcp
 		ctx.GCInitialized = true
+		reinitNetdumper(ctx)
 	}
 	log.Functionf("handleGlobalConfigImpl done for %s", key)
 }
@@ -70,5 +58,24 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 	log.Functionf("handleGlobalConfigDelete for %s", key)
 	agentlog.HandleGlobalConfig(log, ctx.subGlobalConfig, agentName,
 		ctx.CLIParams().DebugOverride, logger)
+	ctx.globalConfig = *types.DefaultConfigItemValueMap()
+	reinitNetdumper(ctx)
 	log.Functionf("handleGlobalConfigDelete done for %s", key)
+}
+
+func reinitNetdumper(ctx *downloaderContext) {
+	gcp := ctx.globalConfig
+	netDumper := ctx.netDumper
+	netdumpEnabled := gcp.GlobalValueBool(types.NetDumpEnable)
+	if netdumpEnabled {
+		if netDumper == nil {
+			netDumper = &netdump.NetDumper{}
+		}
+		maxCount := gcp.GlobalValueInt(types.NetDumpTopicMaxCount)
+		netDumper.MaxDumpsPerTopic = int(maxCount)
+	} else {
+		netDumper = nil
+	}
+	ctx.netdumpWithPCAP = gcp.GlobalValueBool(types.NetDumpDownloaderPCAP)
+	ctx.netDumper = netDumper
 }
