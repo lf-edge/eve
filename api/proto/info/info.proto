@@ -348,15 +348,6 @@ message ZInfoDeviceTasks {
   // deprecated 3
 }
 
-enum ZSimcardState {
-  Z_SIMCARD_STATE_INVALID     = 0;
-  Z_SIMCARD_STATE_ASSIGNED    = 1;
-  Z_SIMCARD_STATE_PROVISIONED = 2;
-  Z_SIMCARD_STATE_ACTIVE      = 3;
-  Z_SIMCARD_STATE_SUSPENDED   = 4;
-  Z_SIMCARD_STATE_CANCELLED   = 5;
-}
-
 message ZSimcardInfo {
   // Name is a SIM card identifier. For example ICCID if available.
   // Guaranteed to be unique only in the scope of the edge node.
@@ -365,7 +356,8 @@ message ZSimcardInfo {
   string cell_module_name = 2;
   string imsi = 3;
   string iccid = 4;
-  ZSimcardState state = 5;
+  reserved 5;  // legacy sim card status enum
+  string state = 6;
 }
 
 message ZCellularModuleInfo {
