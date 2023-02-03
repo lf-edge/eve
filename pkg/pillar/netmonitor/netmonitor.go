@@ -73,6 +73,7 @@ type Route struct {
 // RouteChange : a route was added or removed.
 type RouteChange struct {
 	Route
+	Added   bool
 	Deleted bool
 }
 

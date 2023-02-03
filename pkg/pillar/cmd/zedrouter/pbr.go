@@ -14,22 +14,17 @@ import (
 	"syscall"
 
 	"github.com/lf-edge/eve/pkg/pillar/iptables"
+	"github.com/lf-edge/eve/pkg/pillar/netmonitor"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/vishvananda/netlink"
 )
 
 var baseTableIndex = 500 // Number tables from here + ifindex
 
-// Call before setting up routeChanges, addrChanges, and linkChanges
-func PbrInit(ctx *zedrouterContext) {
-
-	log.Tracef("PbrInit()\n")
-}
-
 // PbrRouteAddAll adds all the routes for the bridgeName table to the specific port
 // Separately we handle changes in PbrRouteChange
 // XXX used by networkinstance only
-func PbrRouteAddAll(bridgeName string, port string) error {
+func PbrRouteAddAll(ctx *zedrouterContext, bridgeName string, port string) error {
 	log.Functionf("PbrRouteAddAll(%s, %s)\n", bridgeName, port)
 
 	// for airgap internal switch case
@@ -37,63 +32,61 @@ func PbrRouteAddAll(bridgeName string, port string) error {
 		log.Functionf("PbrRouteAddAll: for internal switch, skip for ACL and Route installation\n")
 		return nil
 	}
-
-	ifindex, err := IfnameToIndex(log, port)
+	portIndex, exists, err := ctx.networkMonitor.GetInterfaceIndex(port)
 	if err != nil {
-		errStr := fmt.Sprintf("IfnameToIndex(%s) failed: %s",
-			port, err)
-		log.Errorln(errStr)
-		return errors.New(errStr)
+		err = fmt.Errorf("GetInterfaceIndex(%s) failed: %w", port, err)
+		log.Error(err)
+		return err
 	}
-	link, err := netlink.LinkByName(bridgeName)
+	if !exists {
+		err = fmt.Errorf("GetInterfaceIndex(%s) failed: port does not exist", port)
+		log.Error(err)
+		return err
+	}
+	routes, err := ctx.networkMonitor.ListRoutes(netmonitor.RouteFilters{
+		FilterByTable: true,
+		Table:         getDefaultRouteTable(),
+		FilterByIf:    true,
+		IfIndex:       portIndex,
+	})
 	if err != nil {
-		errStr := fmt.Sprintf("LinkByName(%s) failed: %s",
-			bridgeName, err)
-		log.Errorln(errStr)
-		return errors.New(errStr)
+		err = fmt.Errorf("ListRoutes(%s) failed: %w", port, err)
+		log.Error(err)
+		return err
 	}
-	index := link.Attrs().Index
+	brIndex, exists, err := ctx.networkMonitor.GetInterfaceIndex(bridgeName)
+	if err != nil {
+		err = fmt.Errorf("GetInterfaceIndex(%s) failed: %w", bridgeName, err)
+		log.Error(err)
+		return err
+	}
+	if !exists {
+		err = fmt.Errorf("GetInterfaceIndex(%s) failed: bridge does not exist", bridgeName)
+		log.Error(err)
+		return err
+	}
 	// Add the lowest-prio default-drop route.
 	// The route is used to drop all packets otherwise not matched by any route
 	// and prevent them from escaping the NI-specific routing table.
-	err = AddDefaultDropRoute(index, true)
+	err = AddDefaultDropRoute(ctx, brIndex, true)
 	if err != nil {
 		errStr := fmt.Sprintf("Failed to add default-drop route: %s", err)
 		log.Errorln(errStr)
 	}
-	routes := getAllIPv4Routes(ifindex)
-	if routes == nil {
-		log.Warnf("PbrRouteAddAll(%s, %s) no routes",
-			bridgeName, port)
-		return nil
-	}
-	// Add to ifindex specific table
-	ifindex, err = IfnameToIndex(log, bridgeName)
-	if err != nil {
-		errStr := fmt.Sprintf("IfnameToIndex(%s) failed: %s",
-			bridgeName, err)
-		log.Errorln(errStr)
-		return errors.New(errStr)
-	}
-	// XXX do they differ? Yes
-	if index != ifindex {
-		log.Warnf("XXX Different ifindex vs index %d vs %x",
-			ifindex, index)
-		ifindex = index
-	}
-	MyTable := baseTableIndex + ifindex
+	brTable := baseTableIndex + brIndex
 	for _, rt := range routes {
-		myrt := rt
-		myrt.Table = MyTable
+		// TODO: accessing Linux specific route definition.
+		// This will have to go to Linux-specific zedrouter section
+		// (will be done later in refactoring).
+		copiedRt := rt.Data.(netlink.Route)
+		copiedRt.Table = brTable
 		// Clear any RTNH_F_LINKDOWN etc flags since add doesn't like them
-		if rt.Flags != 0 {
-			myrt.Flags = 0
-		}
+		copiedRt.Flags = 0
 		log.Functionf("PbrRouteAddAll(%s, %s) adding %v\n",
-			bridgeName, port, myrt)
-		if err := netlink.RouteAdd(&myrt); err != nil {
+			bridgeName, port, copiedRt)
+		if err := netlink.RouteAdd(&copiedRt); err != nil {
 			errStr := fmt.Sprintf("Failed to add %v to %d: %s",
-				myrt, myrt.Table, err)
+				copiedRt, copiedRt.Table, err)
 			log.Errorln(errStr)
 			return errors.New(errStr)
 		}
@@ -105,7 +98,7 @@ func PbrRouteAddAll(bridgeName string, port string) error {
 // Separately we handle changes in PbrRouteChange
 // XXX used by networkinstance only
 // XXX can't we flush the table?
-func PbrRouteDeleteAll(bridgeName string, port string) error {
+func PbrRouteDeleteAll(ctx *zedrouterContext, bridgeName string, port string) error {
 	log.Functionf("PbrRouteDeleteAll(%s, %s)\n", bridgeName, port)
 
 	// for airgap internal switch case
@@ -113,47 +106,60 @@ func PbrRouteDeleteAll(bridgeName string, port string) error {
 		log.Functionf("PbrRouteDeleteAll: for internal switch, skip for ACL and Route deletion\n")
 		return nil
 	}
-
-	ifindex, err := IfnameToIndex(log, port)
+	portIndex, exists, err := ctx.networkMonitor.GetInterfaceIndex(port)
 	if err != nil {
-		errStr := fmt.Sprintf("IfnameToIndex(%s) failed: %s",
-			port, err)
-		log.Errorln(errStr)
-		return errors.New(errStr)
+		err = fmt.Errorf("GetInterfaceIndex(%s) failed: %w", port, err)
+		log.Error(err)
+		return err
 	}
-	routes := getAllIPv4Routes(ifindex)
-	if routes == nil {
-		log.Warnf("PbrRouteDeleteAll(%s, %s) no routes",
-			bridgeName, port)
-		return nil
+	if !exists {
+		err = fmt.Errorf("GetInterfaceIndex(%s) failed: port does not exist", port)
+		log.Error(err)
+		return err
 	}
-	// Remove from ifindex specific table
-	ifindex, err = IfnameToIndex(log, bridgeName)
+	routes, err := ctx.networkMonitor.ListRoutes(netmonitor.RouteFilters{
+		FilterByTable: true,
+		Table:         getDefaultRouteTable(),
+		FilterByIf:    true,
+		IfIndex:       portIndex,
+	})
 	if err != nil {
-		errStr := fmt.Sprintf("IfnameToIndex(%s) failed: %s",
-			bridgeName, err)
-		log.Errorln(errStr)
-		return errors.New(errStr)
+		err = fmt.Errorf("ListRoutes(%s) failed: %w", port, err)
+		log.Error(err)
+		return err
 	}
-	MyTable := baseTableIndex + ifindex
+	// Remove from bridge specific table
+	brIndex, exists, err := ctx.networkMonitor.GetInterfaceIndex(bridgeName)
+	if err != nil {
+		err = fmt.Errorf("GetInterfaceIndex(%s) failed: %w", bridgeName, err)
+		log.Error(err)
+		return err
+	}
+	if !exists {
+		err = fmt.Errorf("GetInterfaceIndex(%s) failed: bridge does not exist", bridgeName)
+		log.Error(err)
+		return err
+	}
+	brTable := baseTableIndex + brIndex
 	for _, rt := range routes {
-		myrt := rt
-		myrt.Table = MyTable
+		// TODO: accessing Linux specific route definition.
+		// This will have to go to Linux-specific zedrouter section
+		// (will be done later in refactoring).
+		copiedRt := rt.Data.(netlink.Route)
+		copiedRt.Table = brTable
 		// Clear any RTNH_F_LINKDOWN etc flags since del might not like them
-		if rt.Flags != 0 {
-			myrt.Flags = 0
-		}
+		copiedRt.Flags = 0
 		log.Functionf("PbrRouteDeleteAll(%s, %s) deleting %v\n",
-			bridgeName, port, myrt)
-		if err := netlink.RouteDel(&myrt); err != nil {
+			bridgeName, port, copiedRt)
+		if err := netlink.RouteDel(&copiedRt); err != nil {
 			errStr := fmt.Sprintf("Failed to delete %v from %d: %s",
-				myrt, myrt.Table, err)
+				copiedRt, copiedRt.Table, err)
 			log.Errorln(errStr)
 			// We continue to try to delete all
 		}
 	}
 	// Delete the lowest-prio default-drop route.
-	err = DelDefaultDropRoute(ifindex, true)
+	err = DelDefaultDropRoute(ctx, brIndex, true)
 	if err != nil {
 		errStr := fmt.Sprintf("Failed to delete default-drop route: %s", err)
 		log.Errorln(errStr)
@@ -164,86 +170,96 @@ func PbrRouteDeleteAll(bridgeName string, port string) error {
 // Handle a route change
 func PbrRouteChange(ctx *zedrouterContext,
 	deviceNetworkStatus *types.DeviceNetworkStatus,
-	change netlink.RouteUpdate) {
+	change netmonitor.RouteChange) {
 
-	rt := change.Route
+	// TODO: accessing Linux specific route definition.
+	// This will have to go to Linux-specific zedrouter section
+	// (will be done later in refactoring).
+	rt := change.Route.Data.(netlink.Route)
 	if rt.Table != getDefaultRouteTable() {
 		// Ignore since we will not add to other table
 		return
 	}
 	op := "NONE"
-	if change.Type == getRouteUpdateTypeDELROUTE() {
+	if change.Deleted {
 		op = "DELROUTE"
-	} else if change.Type == getRouteUpdateTypeNEWROUTE() {
+	} else if change.Added {
 		op = "NEWROUTE"
 	}
-	ifname, linkType, err := IfindexToName(log, rt.LinkIndex)
+	// We are interested in routes created/deleted for a port or a network
+	// instance bridge.
+	ifIndex := change.IfIndex
+	attrs, err := ctx.networkMonitor.GetInterfaceAttrs(ifIndex)
 	if err != nil {
-		log.Errorf("PbrRouteChange IfindexToName failed for %d: %s: route %v\n",
-			rt.LinkIndex, err, rt)
+		log.Errorf("GetInterfaceAttrs failed for %d: %s: route %v\n",
+			ifIndex, err, rt)
 		return
 	}
-	if linkType != "bridge" && !types.IsL3Port(*deviceNetworkStatus, ifname) {
+	ifName := attrs.IfName
+	if !isNIBridge(ctx, ifName) && !types.IsL3Port(*deviceNetworkStatus, ifName) {
 		// Ignore
-		log.Functionf("PbrRouteChange ignore %s: neither bridge nor port. route %v\n",
-			ifname, rt)
+		log.Functionf("PbrRouteChange ignore %s: "+
+			"neither network instance bridge nor port. route %v\n",
+			attrs.IfName, rt)
 		return
 	}
-	log.Tracef("RouteChange(%d/%s) %s %+v", rt.LinkIndex, ifname, op, rt)
+	log.Tracef("RouteChange(%d/%s) %s %+v", ifIndex, ifName, op, rt)
 
-	// Add to ifindex specific table and to any bridges used by network instances
-	myrt := rt
-	myrt.Table = baseTableIndex + rt.LinkIndex
+	// Add to any network instance specific table associated with this interface.
+	// Do not touch port-specific table, however - that one is under NIM management!
+	copiedRt := rt
 	// Clear any RTNH_F_LINKDOWN etc flags since add doesn't like them
-	if myrt.Flags != 0 {
-		myrt.Flags = 0
-	}
-	if change.Type == getRouteUpdateTypeDELROUTE() {
+	copiedRt.Flags = 0
+	if change.Deleted {
 		log.Functionf("Received route del %v\n", rt)
-		if linkType == "bridge" {
-			log.Functionf("Apply route del to bridge %s", ifname)
-			if err := netlink.RouteDel(&myrt); err != nil {
+		if isNIBridge(ctx, ifName) {
+			log.Functionf("Apply route del for NI bridge %s", ifName)
+			copiedRt.Table = baseTableIndex + ifIndex
+			if err := netlink.RouteDel(&copiedRt); err != nil {
 				log.Errorf("Failed to remove %v from %d: %s\n",
-					myrt, myrt.Table, err)
+					copiedRt, copiedRt.Table, err)
 			}
-		}
-		// find all bridges for network instances and del for them
-		indicies := getAllNIindices(ctx, ifname)
-		if len(indicies) != 0 {
-			log.Functionf("Apply route del to %v", indicies)
-		}
-		for _, ifindex := range indicies {
-			myrt.Table = baseTableIndex + ifindex
-			if err := netlink.RouteDel(&myrt); err != nil {
-				log.Errorf("Failed to remove %v from %d: %s\n",
-					myrt, myrt.Table, err)
+		} else { // L3 port
+			// Find all network instances using this port.
+			indexes := getAllNIindices(ctx, ifName)
+			if len(indexes) != 0 {
+				log.Functionf("Apply route del to %v", indexes)
 			}
-		}
-	} else if change.Type == getRouteUpdateTypeNEWROUTE() {
-		log.Functionf("Received route add %v\n", rt)
-		if linkType == "bridge" {
-			log.Functionf("Apply route add to bridge %s", ifname)
-			if err := netlink.RouteAdd(&myrt); err != nil {
-				// XXX ditto for ENXIO?? for del?
-				if isErrno(err, syscall.EEXIST) {
-					log.Functionf("Failed to add %v to %d: %s\n",
-						myrt, myrt.Table, err)
-				} else {
-					log.Errorf("Failed to add %v to %d: %s\n",
-						myrt, myrt.Table, err)
+			for _, brIndex := range indexes {
+				copiedRt.Table = baseTableIndex + brIndex
+				if err := netlink.RouteDel(&copiedRt); err != nil {
+					log.Errorf("Failed to remove %v from %d: %s\n",
+						copiedRt, copiedRt.Table, err)
 				}
 			}
 		}
-		// find all bridges for network instances and add for them
-		indicies := getAllNIindices(ctx, ifname)
-		if len(indicies) != 0 {
-			log.Functionf("Apply route add to %v", indicies)
-		}
-		for _, ifindex := range indicies {
-			myrt.Table = baseTableIndex + ifindex
-			if err := netlink.RouteAdd(&myrt); err != nil {
-				log.Errorf("Failed to add %v to %d: %s\n",
-					myrt, myrt.Table, err)
+	} else if change.Added {
+		log.Functionf("Received route add %v\n", rt)
+		if isNIBridge(ctx, ifName) {
+			log.Functionf("Apply route add to NI bridge %s", ifName)
+			copiedRt.Table = baseTableIndex + ifIndex
+			if err := netlink.RouteAdd(&copiedRt); err != nil {
+				// XXX ditto for ENXIO?? for del?
+				if isErrno(err, syscall.EEXIST) {
+					log.Functionf("Failed to add %v to %d: %s\n",
+						copiedRt, copiedRt.Table, err)
+				} else {
+					log.Errorf("Failed to add %v to %d: %s\n",
+						copiedRt, copiedRt.Table, err)
+				}
+			}
+		} else { // L3 port
+			// Find all network instances using this port.
+			indexes := getAllNIindices(ctx, ifName)
+			if len(indexes) != 0 {
+				log.Functionf("Apply route add to %v", indexes)
+			}
+			for _, brIndex := range indexes {
+				copiedRt.Table = baseTableIndex + brIndex
+				if err := netlink.RouteAdd(&copiedRt); err != nil {
+					log.Errorf("Failed to add %v to %d: %s\n",
+						copiedRt, copiedRt.Table, err)
+				}
 			}
 		}
 	}
@@ -258,51 +274,12 @@ func isErrno(err error, errno syscall.Errno) bool {
 	return e1 == errno
 }
 
-func AddOverlayRuleAndRoute(bridgeName string, iifIndex int,
-	oifIndex int, ipnet *net.IPNet) error {
-	log.Tracef("AddOverlayRuleAndRoute: IIF index %d, Prefix %s, OIF index %d",
-		iifIndex, ipnet.String(), oifIndex)
-
-	r := netlink.NewRule()
-	myTable := baseTableIndex + iifIndex
-	r.Table = myTable
-	r.IifName = bridgeName
-	r.Priority = 10000
-	if ipnet.IP.To4() != nil {
-		r.Family = syscall.AF_INET
-	} else {
-		r.Family = syscall.AF_INET6
-	}
-
-	// Avoid duplicate rules
-	_ = netlink.RuleDel(r)
-
-	// Add rule
-	if err := netlink.RuleAdd(r); err != nil {
-		errStr := fmt.Sprintf("AddOverlayRuleAndRoute: RuleAdd %v failed with %s", r, err)
-		log.Errorln(errStr)
-		return errors.New(errStr)
-	}
-
-	// Add a the required route to new table that we created above.
-
-	// Setup a route for the current network's subnet to point out of the given oifIndex
-	rt := netlink.Route{Dst: ipnet, LinkIndex: oifIndex, Table: myTable, Flags: 0}
-	if err := netlink.RouteAdd(&rt); err != nil {
-		errStr := fmt.Sprintf("AddOverlayRuleAndRoute: RouteAdd %s failed: %s",
-			ipnet.String(), err)
-		log.Errorln(errStr)
-		return errors.New(errStr)
-	}
-	return nil
-}
-
 // AddFwMarkRuleToDummy : Create an ip rule that sends packets marked by a Drop ACE
 // out of interface with given index.
-func AddFwMarkRuleToDummy(iifIndex int) error {
+func AddFwMarkRuleToDummy(ctx *zedrouterContext, ifIndex int) error {
 
 	r := netlink.NewRule()
-	myTable := baseTableIndex + iifIndex
+	myTable := baseTableIndex + ifIndex
 	r.Table = myTable
 	r.Mark = iptables.AceDropAction
 	r.Mask = iptables.AceActionMask
@@ -323,7 +300,7 @@ func AddFwMarkRuleToDummy(iifIndex int) error {
 	}
 
 	// Add default route that points to dummy interface.
-	err := AddDefaultDropRoute(iifIndex, false)
+	err := AddDefaultDropRoute(ctx, ifIndex, false)
 	if err != nil {
 		errStr := fmt.Sprintf("AddFwMarkRuleToDummy: AddDefaultDropRoute failed: %s", err)
 		log.Errorln(errStr)
@@ -334,8 +311,8 @@ func AddFwMarkRuleToDummy(iifIndex int) error {
 
 // AddDefaultDropRoute : Add default route dropping packets either by sending them
 // into the dummy interface or by using an unreachable destination.
-func AddDefaultDropRoute(ifIndex int, unreachable bool) error {
-	route, err := makeDefaultDropRoute(ifIndex, unreachable)
+func AddDefaultDropRoute(ctx *zedrouterContext, ifIndex int, unreachable bool) error {
+	route, err := makeDefaultDropRoute(ctx, ifIndex, unreachable)
 	if err != nil {
 		return err
 	}
@@ -343,15 +320,16 @@ func AddDefaultDropRoute(ifIndex int, unreachable bool) error {
 }
 
 // DelDefaultDropRoute : Delete previously added default route dropping packets.
-func DelDefaultDropRoute(ifIndex int, unreachable bool) error {
-	route, err := makeDefaultDropRoute(ifIndex, unreachable)
+func DelDefaultDropRoute(ctx *zedrouterContext, ifIndex int, unreachable bool) error {
+	route, err := makeDefaultDropRoute(ctx, ifIndex, unreachable)
 	if err != nil {
 		return err
 	}
 	return netlink.RouteDel(route)
 }
 
-func makeDefaultDropRoute(ifIndex int, unreachable bool) (*netlink.Route, error) {
+func makeDefaultDropRoute(
+	ctx *zedrouterContext, ifIndex int, unreachable bool) (*netlink.Route, error) {
 	var (
 		routeType    int
 		outLinkIndex int
@@ -359,11 +337,15 @@ func makeDefaultDropRoute(ifIndex int, unreachable bool) (*netlink.Route, error)
 	if unreachable {
 		routeType = unix.RTN_UNREACHABLE
 	} else {
-		link, err := netlink.LinkByName(dummyIntfName)
+		var err error
+		var exists bool
+		outLinkIndex, exists, err = ctx.networkMonitor.GetInterfaceIndex(dummyIntfName)
+		if !exists {
+			return nil, errors.New("dummy interface does not exist")
+		}
 		if err != nil {
 			return nil, fmt.Errorf("failed to get dummy interface: %w", err)
 		}
-		outLinkIndex = link.Attrs().Index
 	}
 
 	_, dst, err := net.ParseCIDR("0.0.0.0/0")
@@ -383,4 +365,10 @@ func makeDefaultDropRoute(ifIndex int, unreachable bool) (*netlink.Route, error)
 		Table:     baseTableIndex + ifIndex,
 		Type:      routeType,
 	}, nil
+}
+
+// TODO: make this part of the interface between the generic and the network stack
+// specific part of zedrouter.
+func getDefaultRouteTable() int {
+	return syscall.RT_TABLE_MAIN
 }

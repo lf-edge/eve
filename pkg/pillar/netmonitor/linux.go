@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/lf-edge/eve/pkg/pillar/base"
@@ -23,17 +24,28 @@ import (
 const (
 	netlinkSubBufSize = 128 * 1024 // bytes
 	eventChanBufSize  = 64         // number of events
+
+	// Give subscriber some time to receive notification.
+	// This is used despite the fact that the subscription channel
+	// is buffered, in order to not lose any notification during bursts
+	// of events (e.g. after node reboot).
+	publishTimeout = 3 * time.Second
 )
 
 // LinuxNetworkMonitor implements NetworkMonitor for the Linux network stack.
 type LinuxNetworkMonitor struct {
-	sync.Mutex
 	Log *base.LogObject
 
-	initialized bool
-	eventSubs   []subscriber
+	// Subscribers (watching network events)
+	eventSubs []subscriber
+	// Cache and the list of subscribers are protected by separate locks
+	// so that publishing will not get delayed by a subscriber trying to obtain
+	// cached data during event processing.
+	subsLock sync.Mutex
 
 	// Cache
+	cacheLock      sync.Mutex
+	initialized    bool
 	ifNameToIndex  map[string]int
 	ifIndexToAttrs map[int]IfAttrs
 	ifIndexToAddrs map[int]ifAddrs
@@ -88,8 +100,8 @@ func (m *LinuxNetworkMonitor) ListInterfaces() (ifNames []string, err error) {
 
 // GetInterfaceIndex returns index of the interface.
 func (m *LinuxNetworkMonitor) GetInterfaceIndex(ifName string) (ifIndex int, exists bool, err error) {
-	m.Lock()
-	defer m.Unlock()
+	m.cacheLock.Lock()
+	defer m.cacheLock.Unlock()
 	if !m.initialized {
 		m.init()
 	}
@@ -110,8 +122,8 @@ func (m *LinuxNetworkMonitor) GetInterfaceIndex(ifName string) (ifIndex int, exi
 
 // GetInterfaceAttrs returns interface attributes.
 func (m *LinuxNetworkMonitor) GetInterfaceAttrs(ifIndex int) (attrs IfAttrs, err error) {
-	m.Lock()
-	defer m.Unlock()
+	m.cacheLock.Lock()
+	defer m.cacheLock.Unlock()
 	if !m.initialized {
 		m.init()
 	}
@@ -148,8 +160,8 @@ func (m *LinuxNetworkMonitor) ifAttrsFromLink(link netlink.Link) IfAttrs {
 // GetInterfaceAddrs returns IP addresses and the HW address assigned
 // to the interface.
 func (m *LinuxNetworkMonitor) GetInterfaceAddrs(ifIndex int) ([]*net.IPNet, net.HardwareAddr, error) {
-	m.Lock()
-	defer m.Unlock()
+	m.cacheLock.Lock()
+	defer m.cacheLock.Unlock()
 	if !m.initialized {
 		m.init()
 	}
@@ -184,8 +196,8 @@ func (m *LinuxNetworkMonitor) GetInterfaceAddrs(ifIndex int) ([]*net.IPNet, net.
 // GetInterfaceDNSInfo returns DNS info for the interface obtained
 // from resolv.conf file.
 func (m *LinuxNetworkMonitor) GetInterfaceDNSInfo(ifIndex int) (info DNSInfo, err error) {
-	m.Lock()
-	defer m.Unlock()
+	m.cacheLock.Lock()
+	defer m.cacheLock.Unlock()
 	if !m.initialized {
 		m.init()
 	}
@@ -229,8 +241,8 @@ func (m *LinuxNetworkMonitor) parseDNSInfo(resolvConf string) (info DNSInfo) {
 // GetInterfaceDHCPInfo returns DHCP info for the interface obtained
 // from dhcpcd.
 func (m *LinuxNetworkMonitor) GetInterfaceDHCPInfo(ifIndex int) (info DHCPInfo, err error) {
-	m.Lock()
-	defer m.Unlock()
+	m.cacheLock.Lock()
+	defer m.cacheLock.Unlock()
 	if !m.initialized {
 		m.init()
 	}
@@ -306,8 +318,8 @@ func (m *LinuxNetworkMonitor) GetInterfaceDHCPInfo(ifIndex int) (info DHCPInfo, 
 // GetInterfaceDefaultGWs return a list of IP addresses of default gateways
 // used by the given interface. This is based on routes from the main routing table.
 func (m *LinuxNetworkMonitor) GetInterfaceDefaultGWs(ifIndex int) (gws []net.IP, err error) {
-	m.Lock()
-	defer m.Unlock()
+	m.cacheLock.Lock()
+	defer m.cacheLock.Unlock()
 	if !m.initialized {
 		m.init()
 	}
@@ -351,7 +363,6 @@ func (m *LinuxNetworkMonitor) ListRoutes(filters RouteFilters) (routes []Route, 
 		fflags |= netlink.RT_FILTER_OIF
 		filter.LinkIndex = filters.IfIndex
 	}
-	// XXX is AF_UNSPEC ok?
 	nlRoutes, err := netlink.RouteListFiltered(syscall.AF_UNSPEC, &filter, fflags)
 	if err != nil {
 		err = fmt.Errorf("netlink.RouteListFiltered failed: %v", err)
@@ -371,11 +382,13 @@ func (m *LinuxNetworkMonitor) ListRoutes(filters RouteFilters) (routes []Route, 
 
 // WatchEvents allows to subscribe to watch for events from the Linux network stack.
 func (m *LinuxNetworkMonitor) WatchEvents(ctx context.Context, subName string) <-chan Event {
-	m.Lock()
-	defer m.Unlock()
+	m.cacheLock.Lock()
 	if !m.initialized {
 		m.init()
 	}
+	m.cacheLock.Unlock()
+	m.subsLock.Lock()
+	defer m.subsLock.Unlock()
 	sub := subscriber{
 		name:   subName,
 		events: make(chan Event, eventChanBufSize),
@@ -387,8 +400,8 @@ func (m *LinuxNetworkMonitor) WatchEvents(ctx context.Context, subName string) <
 
 // ClearCache clears cached state data.
 func (m *LinuxNetworkMonitor) ClearCache() {
-	m.Lock()
-	defer m.Unlock()
+	m.cacheLock.Lock()
+	defer m.cacheLock.Unlock()
 	if !m.initialized {
 		return
 	}
@@ -438,8 +451,7 @@ func (m *LinuxNetworkMonitor) watcher() {
 				continue
 			}
 			lastIfChange[ifIndex] = event
-			m.Lock()
-			m.publishEvent(event)
+			m.cacheLock.Lock()
 			// Clear previously cached attributes.
 			delete(m.ifIndexToAttrs, ifIndex)
 			// If added or deleted, remove this interface from the cache altogether.
@@ -453,7 +465,8 @@ func (m *LinuxNetworkMonitor) watcher() {
 				delete(m.ifIndexToDNS, ifIndex)
 				delete(m.ifIndexToDHCP, ifIndex)
 			}
-			m.Unlock()
+			m.cacheLock.Unlock()
+			m.publishEvent(event)
 
 		case addrUpdate, ok := <-addrChan:
 			if !ok {
@@ -466,12 +479,12 @@ func (m *LinuxNetworkMonitor) watcher() {
 				IfAddress: &addrUpdate.LinkAddress,
 				Deleted:   !addrUpdate.NewAddr,
 			}
-			m.Lock()
-			m.publishEvent(event)
+			m.cacheLock.Lock()
 			// Remove cached addresses for this interface.
 			delete(m.ifIndexToAddrs, addrUpdate.LinkIndex)
 			delete(m.ifIndexToDHCP, addrUpdate.LinkIndex)
-			m.Unlock()
+			m.cacheLock.Unlock()
+			m.publishEvent(event)
 
 		case routeChange, ok := <-routeChan:
 			if !ok {
@@ -487,15 +500,16 @@ func (m *LinuxNetworkMonitor) watcher() {
 					Table:   routeChange.Table,
 					Data:    routeChange.Route,
 				},
+				Added:   routeChange.Type == syscall.RTM_NEWROUTE,
 				Deleted: routeChange.Type == syscall.RTM_DELROUTE,
 			}
-			m.Lock()
+			m.cacheLock.Lock()
 			if routeChange.Table == syscall.RT_TABLE_MAIN && routeChange.Dst == nil {
 				// The set of default gateways have changed -> remove cached entries.
 				delete(m.ifIndexToGWs, routeChange.LinkIndex)
 			}
+			m.cacheLock.Unlock()
 			m.publishEvent(event)
-			m.Unlock()
 
 		case dnsChange := <-dnsWatcher.Events:
 			switch dnsChange.Op {
@@ -515,21 +529,22 @@ func (m *LinuxNetworkMonitor) watcher() {
 				if dnsChange.Op != fsnotify.Remove {
 					event.Info = m.parseDNSInfo(dnsChange.Name)
 				}
-				m.Lock()
+				m.cacheLock.Lock()
 				if dnsChange.Op == fsnotify.Remove {
 					delete(m.ifIndexToDNS, ifIndex)
 				} else {
 					m.ifIndexToDNS[ifIndex] = event.Info
 				}
+				m.cacheLock.Unlock()
 				m.publishEvent(event)
-				m.Unlock()
 			}
 		}
 	}
 }
 
-// This method is run with the monitor in the locked state.
 func (m *LinuxNetworkMonitor) publishEvent(ev Event) {
+	m.subsLock.Lock()
+	defer m.subsLock.Unlock()
 	var activeSubs []subscriber
 	for _, sub := range m.eventSubs {
 		select {
@@ -541,9 +556,9 @@ func (m *LinuxNetworkMonitor) publishEvent(ev Event) {
 		}
 		select {
 		case sub.events <- ev:
-		default:
-			m.Log.Warnf("failed to deliver event %+v to subscriber %s",
-				ev, sub.name)
+		case <-time.After(publishTimeout):
+			m.Log.Warnf("Failed to deliver event %+v to subscriber %s: timeout (%v)",
+				ev, sub.name, publishTimeout)
 		}
 		activeSubs = append(activeSubs, sub)
 	}
@@ -557,6 +572,7 @@ func (m *LinuxNetworkMonitor) linkSubscribe(doneChan chan struct{}) chan netlink
 	}
 	linkOpts := netlink.LinkSubscribeOptions{
 		ErrorCallback: linkErrFunc,
+		ListExisting:  true, // XXX: currently required by zedrouter (later will be removed)
 	}
 	if err := netlink.LinkSubscribeWithOptions(
 		linkChan, doneChan, linkOpts); err != nil {
@@ -588,6 +604,7 @@ func (m *LinuxNetworkMonitor) routeSubscribe(doneChan chan struct{}) chan netlin
 	}
 	routeOpts := netlink.RouteSubscribeOptions{
 		ErrorCallback: routeErrFunc,
+		ListExisting:  true, // XXX: currently required by zedrouter (later will be removed)
 	}
 	if err := netlink.RouteSubscribeWithOptions(
 		routeChan, doneChan, routeOpts); err != nil {

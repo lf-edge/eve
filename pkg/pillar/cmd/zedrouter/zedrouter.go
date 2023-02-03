@@ -10,6 +10,7 @@
 package zedrouter
 
 import (
+	"context"
 	"crypto/sha256"
 	"errors"
 	"flag"
@@ -27,6 +28,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/cipher"
 	"github.com/lf-edge/eve/pkg/pillar/devicenetwork"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
+	"github.com/lf-edge/eve/pkg/pillar/netmonitor"
 	"github.com/lf-edge/eve/pkg/pillar/objtonum"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
@@ -63,8 +65,8 @@ type zedrouterContext struct {
 	subAppNetworkConfig   pubsub.Subscription
 	subAppNetworkConfigAg pubsub.Subscription // From zedagent for dom0
 	subAppInstanceConfig  pubsub.Subscription // From zedagent to cleanup appInstMetadata
-
-	pubAppNetworkStatus pubsub.Publication
+	pubAppNetworkStatus   pubsub.Publication
+	networkMonitor        netmonitor.NetworkMonitor
 
 	assignableAdapters     *types.AssignableAdapters
 	subAssignableAdapters  pubsub.Subscription
@@ -148,6 +150,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		flowPublishMap:     make(map[string]time.Time),
 		zedcloudMetrics:    zedcloud.NewAgentMetrics(),
 		cipherMetrics:      cipher.NewAgentMetrics(agentName),
+		networkMonitor:     &netmonitor.LinuxNetworkMonitor{Log: log},
 	}
 	agentbase.Init(&zedrouterCtx, logger, log, agentName,
 		agentbase.WithArguments(arguments))
@@ -165,9 +168,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	ps.StillRunning(agentName, warningTime, errorTime)
 
 	handleInit()
-
-	// Create the dummy interface used to re-direct DROP/REJECT packets.
-	createFlowMonDummyInterface()
 
 	subDeviceNetworkStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "nim",
@@ -570,10 +570,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		log.Fatal(err)
 	}
 
-	PbrInit(&zedrouterCtx)
-	routeChanges := devicenetwork.RouteChangeInit(log)
-	linkChanges := devicenetwork.LinkChangeInit(log)
-
 	interval := time.Duration(zedrouterCtx.metricInterval) * time.Second
 	max := float64(interval) / publishTickerDivider
 	min := max * 0.3
@@ -592,6 +588,12 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 
 	zedrouterCtx.appNetCreateTimer = time.NewTimer(1 * time.Second)
 	zedrouterCtx.appNetCreateTimer.Stop()
+
+	// Start watching for link and route changes.
+	netEvents := zedrouterCtx.networkMonitor.WatchEvents(context.TODO(), "zedrouter")
+
+	// Create the dummy interface used to re-direct DROP/REJECT packets.
+	createFlowMonDummyInterface(&zedrouterCtx)
 
 	zedrouterCtx.ready = true
 	log.Functionf("zedrouterCtx.ready\n")
@@ -676,37 +678,31 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		case change := <-subEdgeNodeInfo.MsgChan():
 			subEdgeNodeInfo.ProcessChange(change)
 
-		case change, ok := <-linkChanges:
+		case event := <-netEvents:
 			start := time.Now()
-			if !ok {
-				log.Errorf("linkChanges closed\n")
-				linkChanges = devicenetwork.LinkChangeInit(log)
-				break
+			switch ev := event.(type) {
+			case netmonitor.IfChange:
+				ifName := ev.Attrs.IfName
+				if ev.Deleted {
+					// XXX For now keeping this as it was (in removed PbrLinkChange),
+					// but it will be refactored and go away.
+					// Currently, zedrouter will also try to update port-specific
+					// routing tables which, however, are under NIM management
+					// (resulting in "trying to delete already removed route" errors and other
+					// potential issues).
+					rt := baseTableIndex + ev.Attrs.IfIndex
+					devicenetwork.FlushRoutesTable(log, rt, 0)
+					devicenetwork.FlushRules(log, ev.Attrs.IfIndex)
+				}
+				if !types.IsMgmtPort(*zedrouterCtx.deviceNetworkStatus, ifName) {
+					// Even if ethN isn't individually assignable,
+					// it could be used for a bridge.
+					maybeUpdateBridgeIPAddr(&zedrouterCtx, ifName)
+				}
+			case netmonitor.RouteChange:
+				PbrRouteChange(&zedrouterCtx, zedrouterCtx.deviceNetworkStatus, ev)
 			}
-			ifname := PbrLinkChange(zedrouterCtx.deviceNetworkStatus,
-				change)
-			if ifname != "" &&
-				!types.IsMgmtPort(*zedrouterCtx.deviceNetworkStatus,
-					ifname) {
-				log.Tracef("linkChange(%s) not mgmt port\n", ifname)
-				// Even if ethN isn't individually assignable, it
-				// could be used for a bridge.
-				maybeUpdateBridgeIPAddr(
-					&zedrouterCtx, ifname)
-			}
-			ps.CheckMaxTimeTopic(agentName, "linkChanges", start,
-				warningTime, errorTime)
-
-		case change, ok := <-routeChanges:
-			start := time.Now()
-			if !ok {
-				log.Errorf("routeChanges closed\n")
-				routeChanges = devicenetwork.RouteChangeInit(log)
-				break
-			}
-			PbrRouteChange(&zedrouterCtx,
-				zedrouterCtx.deviceNetworkStatus, change)
-			ps.CheckMaxTimeTopic(agentName, "routeChanges", start,
+			ps.CheckMaxTimeTopic(agentName, "netEvents", start,
 				warningTime, errorTime)
 
 		case <-zedrouterCtx.publishTicker.C:
