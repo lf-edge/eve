@@ -594,6 +594,10 @@ func getLatestConfig(getconfigCtx *getconfigContext, url string,
 	err = zedcloud.RemoveAndVerifyAuthContainer(zedcloudCtx, &rv, false)
 	if err != nil {
 		log.Errorf("RemoveAndVerifyAuthContainer failed: %s", err)
+		if rv.Status == types.SenderStatusCertMiss {
+			// trigger to acquire new controller certs from cloud
+			triggerControllerCertEvent(ctx)
+		}
 		// Inform ledmanager about problem
 		utils.UpdateLedManagerConfig(log, types.LedBlinkInvalidAuthContainer)
 		getconfigCtx.ledBlinkCount = types.LedBlinkInvalidAuthContainer
