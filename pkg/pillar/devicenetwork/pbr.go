@@ -38,7 +38,6 @@ func FlushRoutesTable(log *base.LogObject, table int, ifindex int) {
 	if ifindex != 0 {
 		fflags |= netlink.RT_FILTER_OIF
 	}
-	// XXX if AF_UNSPEC ok?
 	routes, err := netlink.RouteListFiltered(syscall.AF_UNSPEC,
 		&filter, fflags)
 	if err != nil {

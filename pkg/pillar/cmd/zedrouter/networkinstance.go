@@ -1304,7 +1304,7 @@ func doNetworkInstanceActivate(ctx *zedrouterContext,
 			if status.Type == types.NetworkInstanceTypeSwitch {
 				// Start meta-data server if the bridge corresponding
 				// to switch network instance has a valid IPv4 address
-				bridgeAddr, found := getSwitchIPv4Addr(status.BridgeIfindex)
+				bridgeAddr, found := getSwitchIPv4Addr(ctx, status.BridgeIfindex)
 				if found {
 					status.MetaDataServerIP = bridgeAddr
 					err = createServer4(ctx, bridgeAddr, status.BridgeName)
@@ -1325,8 +1325,8 @@ func doNetworkInstanceActivate(ctx *zedrouterContext,
 	return err
 }
 
-func getSwitchIPv4Addr(bridgeIndex int) (string, bool) {
-	addrs, _, _, err := devicenetwork.GetIPAddrs(log, bridgeIndex)
+func getSwitchIPv4Addr(ctx *zedrouterContext, bridgeIndex int) (string, bool) {
+	addrs, _, err := ctx.networkMonitor.GetInterfaceAddrs(bridgeIndex)
 	if err == nil {
 		for _, addr := range addrs {
 			if addr.IP.IsLinkLocalUnicast() {
@@ -1343,9 +1343,9 @@ func getSwitchIPv4Addr(bridgeIndex int) (string, bool) {
 // In the case where the port maps to multiple underlying ports
 // (For Ex: uplink), only include ports that have an ifindex.
 //
-//		If there is no such port with ifindex, then retain the whole list.
-//		NetworkInstance creation will fail when programming default routes
-//	 and iptable rules in that case - and that should be fine.
+// If there is no such port with ifindex, then retain the whole list.
+// NetworkInstance creation will fail when programming default routes
+// and iptable rules in that case - and that should be fine.
 func getIfNameListForLLOrIfname(
 	ctx *zedrouterContext,
 	llOrIfname string) []string {
@@ -1355,21 +1355,12 @@ func getIfNameListForLLOrIfname(
 
 	filteredList := make([]string, 0)
 	for _, ifName := range ifNameList {
+		// It is perfectly normal for DNS to list ports which do not actually
+		// exist (and have error reported).
 		dnsPort := ctx.deviceNetworkStatus.GetPortByIfName(ifName)
 		if dnsPort != nil {
-			// XXX - We have a bug in MakeDeviceNetworkStatus where we are allowing
-			//	a device without the corresponding linux interface. We can
-			//	remove this check for ifindex here when the MakeDeviceStatus
-			//	is fixed.
-			// XXX That bug has been fixed. Retest without this code?
-			ifIndex, err := IfnameToIndex(log, ifName)
-			if err == nil {
-				log.Functionf("ifName %s, ifindex: %d added to filteredList",
-					ifName, ifIndex)
+			if _, exists, _ := ctx.networkMonitor.GetInterfaceIndex(ifName); exists {
 				filteredList = append(filteredList, ifName)
-			} else {
-				log.Functionf("ifIndex not found for ifName(%s) - err: %s",
-					ifName, err.Error())
 			}
 		} else {
 			log.Functionf("DeviceNetworkStatus not found for ifName(%s)",
@@ -1690,7 +1681,7 @@ func natActivate(ctx *zedrouterContext,
 			log.Errorf("IptableCmd failed: %s", err)
 			return err
 		}
-		err = PbrRouteAddAll(status.BridgeName, a)
+		err = PbrRouteAddAll(ctx, status.BridgeName, a)
 		if err != nil {
 			log.Errorf("PbrRouteAddAll for Bridge(%s) and interface %s failed. "+
 				"Err: %s", status.BridgeName, a, err)
@@ -1725,7 +1716,7 @@ func natInactivate(ctx *zedrouterContext,
 		net.ParseIP(status.BridgeIPAddr), devicenetwork.PbrNatOutGatewayPrio)
 	devicenetwork.DelSourceRule(log, status.BridgeIfindex, status.Subnet, true, devicenetwork.PbrNatOutPrio)
 	devicenetwork.DelInwardSourceRule(log, status.BridgeIfindex, status.Subnet, true, devicenetwork.PbrNatInPrio)
-	err = PbrRouteDeleteAll(status.BridgeName, oldUplinkIntf)
+	err = PbrRouteDeleteAll(ctx, status.BridgeName, oldUplinkIntf)
 	if err != nil {
 		log.Errorf("natInactivate: PbrRouteDeleteAll failed %s\n", err)
 	}
@@ -1922,6 +1913,22 @@ func vifNameToBridgeName(ctx *zedrouterContext, vifName string) string {
 		}
 	}
 	return ""
+}
+
+// Returns true if ifName references network instance bridge.
+func isNIBridge(ctx *zedrouterContext, ifName string) bool {
+	pub := ctx.pubNetworkInstanceStatus
+	if pub == nil {
+		return false
+	}
+	instanceItems := pub.GetAll()
+	for _, st := range instanceItems {
+		status := st.(types.NetworkInstanceStatus)
+		if status.BridgeName == ifName {
+			return true
+		}
+	}
+	return false
 }
 
 // Get All ifindices for the Network Instances which are using ifname

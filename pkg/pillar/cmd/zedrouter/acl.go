@@ -1693,10 +1693,10 @@ func executeIPTablesRule(operation string, rule types.IPTablesRule) error {
 	return err
 }
 
-func createFlowMonDummyInterface() {
+func createFlowMonDummyInterface(ctx *zedrouterContext) {
 	// Check if our dummy interface already exits.
-	link, err := netlink.LinkByName(dummyIntfName)
-	if link != nil {
+	_, exists, _ := ctx.networkMonitor.GetInterfaceIndex(dummyIntfName)
+	if exists {
 		log.Functionf("createFlowMonDummyInterface: %s already present", dummyIntfName)
 		return
 	}
@@ -1731,7 +1731,7 @@ func createFlowMonDummyInterface() {
 	}
 
 	iifIndex := slink.Attrs().Index
-	err = AddFwMarkRuleToDummy(iifIndex)
+	err := AddFwMarkRuleToDummy(ctx, iifIndex)
 	if err != nil {
 		log.Errorf("createFlowMonDummyInterface: FwMark rule for %s failed: %s",
 			dummyIntfName, err)
