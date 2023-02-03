@@ -9,8 +9,8 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
-	"io/ioutil"
 	"net"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -596,7 +596,7 @@ func infoUpCount(info types.ProbeInfo) int {
 func getSystemURL() string {
 	var remoteURL string
 	if serverNameAndPort == "" {
-		server, err := ioutil.ReadFile(types.ServerFileName)
+		server, err := os.ReadFile(types.ServerFileName)
 		if err == nil {
 			serverNameAndPort = strings.TrimSpace(string(server))
 		}

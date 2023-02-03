@@ -19,7 +19,7 @@ import (
 )
 
 // SizeFromDir performs a du -s equivalent operation.
-// Didn't use ioutil.ReadDir and filepath.Walk because they sort (quick_sort) all files per directory
+// Didn't use os.ReadDir and filepath.Walk because they sort (quick_sort) all files per directory
 // which is an unnecessary costly operation.
 func SizeFromDir(log *base.LogObject, dirname string) (uint64, error) {
 	var totalUsed uint64

@@ -6,7 +6,7 @@ package wstunnelclient
 import (
 	"flag"
 	"fmt"
-	"io/ioutil"
+	"os"
 	"strings"
 
 	"time"
@@ -146,7 +146,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	wscCtx.subAppInstanceConfig = subAppInstanceConfig
 
 	//get server name
-	bytes, err := ioutil.ReadFile(types.ServerFileName)
+	bytes, err := os.ReadFile(types.ServerFileName)
 	if err != nil {
 		log.Fatal(err)
 	}

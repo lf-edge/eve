@@ -7,7 +7,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"os"
 	"strings"
 	"time"
 
@@ -49,7 +49,7 @@ func (t *ZedcloudConnectivityTester) TestConnectivity(dns types.DeviceNetworkSta
 	t.Log.Tracef("TestConnectivity() requiredSuccessCount %d, iteration %d",
 		requiredSuccessCount, t.iteration)
 
-	server, err := ioutil.ReadFile(types.ServerFileName)
+	server, err := os.ReadFile(types.ServerFileName)
 	if err != nil {
 		t.Log.Fatal(err)
 	}

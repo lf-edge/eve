@@ -5,7 +5,6 @@ package hypervisor
 
 import (
 	"fmt"
-	"io/ioutil"
 	"os"
 	"runtime"
 	"strings"
@@ -655,7 +654,7 @@ func (ctx kvmContext) CreateDomConfig(domainName string, config types.DomainConf
 				pciPTContext.Xvga = true
 			}
 			vendorFile := sysfsPciDevices + pa.pciLong + "/vendor"
-			if vendor, err := ioutil.ReadFile(vendorFile); err == nil {
+			if vendor, err := os.ReadFile(vendorFile); err == nil {
 				// check for Intel vendor
 				if strings.TrimSpace(strings.TrimSuffix(string(vendor), "\n")) == "0x8086" {
 					if pciPTContext.Xvga {
@@ -868,20 +867,20 @@ func (ctx kvmContext) PCIReserve(long string) error {
 	}
 
 	//map vfio-pci as the driver_override for the device
-	if err := ioutil.WriteFile(overrideFile, []byte("vfio-pci"), 0644); err != nil {
+	if err := os.WriteFile(overrideFile, []byte("vfio-pci"), 0644); err != nil {
 		return logError("driver_override failure for PCI device %s: %v",
 			long, err)
 	}
 
 	//Unbind the current driver, whatever it is, if there is one
 	if _, err := os.Stat(unbindFile); err == nil {
-		if err := ioutil.WriteFile(unbindFile, []byte(long), 0644); err != nil {
+		if err := os.WriteFile(unbindFile, []byte(long), 0644); err != nil {
 			return logError("unbind failure for PCI device %s: %v",
 				long, err)
 		}
 	}
 
-	if err := ioutil.WriteFile(sysfsPciDriversProbe, []byte(long), 0644); err != nil {
+	if err := os.WriteFile(sysfsPciDriversProbe, []byte(long), 0644); err != nil {
 		return logError("drivers_probe failure for PCI device %s: %v",
 			long, err)
 	}
@@ -896,14 +895,14 @@ func (ctx kvmContext) PCIRelease(long string) error {
 	unbindFile := sysfsPciDevices + long + "/driver/unbind"
 
 	//Write Empty string, to clear driver_override for the device
-	if err := ioutil.WriteFile(overrideFile, []byte("\n"), 0644); err != nil {
+	if err := os.WriteFile(overrideFile, []byte("\n"), 0644); err != nil {
 		logrus.Fatalf("driver_override failure for PCI device %s: %v",
 			long, err)
 	}
 
 	//Unbind vfio-pci, if unbind file is present
 	if _, err := os.Stat(unbindFile); err == nil {
-		if err := ioutil.WriteFile(unbindFile, []byte(long), 0644); err != nil {
+		if err := os.WriteFile(unbindFile, []byte(long), 0644); err != nil {
 			logrus.Fatalf("unbind failure for PCI device %s: %v",
 				long, err)
 		}
@@ -911,7 +910,7 @@ func (ctx kvmContext) PCIRelease(long string) error {
 
 	//Write PCI DDDD:BB:DD.FF to /sys/bus/pci/drivers_probe,
 	//as a best-effort to bring back original driver
-	if err := ioutil.WriteFile(sysfsPciDriversProbe, []byte(long), 0644); err != nil {
+	if err := os.WriteFile(sysfsPciDriversProbe, []byte(long), 0644); err != nil {
 		logrus.Fatalf("drivers_probe failure for PCI device %s: %v",
 			long, err)
 	}

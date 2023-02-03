@@ -6,7 +6,7 @@ package agentlog
 import (
 	"fmt"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	"io/ioutil"
+	"os"
 	"strings"
 )
 
@@ -28,7 +28,7 @@ func EveVersion() string {
 }
 
 func readEveVersion(fileName string) string {
-	version, err := ioutil.ReadFile(fileName)
+	version, err := os.ReadFile(fileName)
 	if err != nil {
 		// Note: can be called from log hook hence no log calls.
 		fmt.Printf("readEveVersion: Error reading EVE version from file %s", fileName)
@@ -51,7 +51,7 @@ func EveCurrentPartition() string {
 }
 
 func readCurrentPartition(fileName string) string {
-	curpart, err := ioutil.ReadFile(fileName)
+	curpart, err := os.ReadFile(fileName)
 	if err != nil {
 		fmt.Printf("readCurrentPartition: Error reading current partition from file %s",
 			fileName)

@@ -8,7 +8,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net"
 	"net/http"
 	"net/url"
@@ -249,7 +248,7 @@ func (wsc *WSConnection) handleRequests() {
 		// SetReadLimit on the websocket. We have to do this because we want to handle
 		// the request in a goroutine (see "go process..Request" calls below) and the
 		// websocket doesn't allow us to have multiple goroutines reading...
-		request, err := ioutil.ReadAll(reader)
+		request, err := io.ReadAll(reader)
 		if err != nil {
 			log.Tracef("[id=%d] WS cannot read request message Error: %s", id, err.Error())
 			break

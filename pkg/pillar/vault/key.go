@@ -6,7 +6,6 @@ package vault
 import (
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"os"
 
 	"github.com/lf-edge/eve/pkg/pillar/base"
@@ -79,7 +78,7 @@ func stageKey(log *base.LogObject, cloudKeyOnlyMode, useSealedKey, tpmKeyOnlyMod
 		unstageKey(log, keyDirName, keyFileName)
 		return nil, err
 	}
-	if err := ioutil.WriteFile(keyFileName, vaultKey, 0700); err != nil {
+	if err := os.WriteFile(keyFileName, vaultKey, 0700); err != nil {
 		unstageKey(log, keyDirName, keyFileName)
 		return nil, fmt.Errorf("error creating keyFile: %v", err)
 	}

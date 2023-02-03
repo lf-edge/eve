@@ -17,7 +17,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"math/big"
 	"os"
 	"reflect"
@@ -286,7 +285,7 @@ func writeDeviceCert() error {
 		log.Tracef("NVUndefineSpace failed: %v", err)
 	}
 
-	deviceCertBytes, err := ioutil.ReadFile(types.DeviceCertName)
+	deviceCertBytes, err := os.ReadFile(types.DeviceCertName)
 	if err != nil {
 		log.Errorf("Failed to read device cert file: %v", err)
 		return err
@@ -332,7 +331,7 @@ func readDeviceCert() error {
 		return err
 	}
 
-	err = ioutil.WriteFile(types.DeviceCertName, deviceCertBytes, 0644)
+	err = os.WriteFile(types.DeviceCertName, deviceCertBytes, 0644)
 	if err != nil {
 		log.Errorf("Writing to device cert file failed: %v", err)
 		return err
@@ -351,7 +350,7 @@ func genCredentials() error {
 			return err
 		}
 		//Write uuid to credentials file for faster access
-		err = ioutil.WriteFile(etpm.TpmCredentialsFileName, []byte(id.String()), 0644)
+		err = os.WriteFile(etpm.TpmCredentialsFileName, []byte(id.String()), 0644)
 		if err != nil {
 			log.Errorf("Writing to credentials file failed: %v", err)
 			return err
@@ -380,7 +379,7 @@ func writeCredentials() error {
 		log.Tracef("NVUndefineSpace failed: %v", err)
 	}
 
-	tpmCredentialBytes, err := ioutil.ReadFile(etpm.TpmCredentialsFileName)
+	tpmCredentialBytes, err := os.ReadFile(etpm.TpmCredentialsFileName)
 	if err != nil {
 		log.Errorf("Failed to read credentials file: %v", err)
 		return err
@@ -425,7 +424,7 @@ func readCredentials() error {
 		return err
 	}
 
-	err = ioutil.WriteFile(etpm.TpmCredentialsFileName, tpmCredentialBytes, 0644)
+	err = os.WriteFile(etpm.TpmCredentialsFileName, tpmCredentialBytes, 0644)
 	if err != nil {
 		log.Errorf("Writing to credentials file failed: %v", err)
 		return err
@@ -550,7 +549,7 @@ func testEcdhAES() error {
 	}
 
 	//read public key from ecdh certificate
-	certBytes, err := ioutil.ReadFile(ecdhCertFile)
+	certBytes, err := os.ReadFile(ecdhCertFile)
 	if err != nil {
 		fmt.Printf("error in reading ecdh cert file: %v", err)
 		return err
@@ -665,7 +664,7 @@ func createEkCertOnTpm() error {
 		}
 		defer rw.Close()
 
-		deviceCertBytes, err := ioutil.ReadFile(types.DeviceCertName)
+		deviceCertBytes, err := os.ReadFile(types.DeviceCertName)
 		if err != nil {
 			return err
 		}
@@ -710,7 +709,7 @@ func createEkCertOnTpm() error {
 			return fmt.Errorf("empty bytes after encoding to PEM")
 		}
 
-		err = ioutil.WriteFile(EkCertFile, certBytes, 0644)
+		err = os.WriteFile(EkCertFile, certBytes, 0644)
 		if err != nil {
 			return err
 		}
@@ -800,7 +799,7 @@ func createDeviceCertOnTpm(pubkey crypto.PublicKey) error {
 		return fmt.Errorf("empty bytes after encoding to PEM")
 	}
 
-	err = ioutil.WriteFile(types.DeviceCertName, certBytes, 0644)
+	err = os.WriteFile(types.DeviceCertName, certBytes, 0644)
 	if err != nil {
 		return err
 	}
@@ -859,10 +858,10 @@ func createDeviceCertSoft() error {
 }
 
 func writeDeviceCertToFile(certBytes, keyBytes []byte) error {
-	if err := ioutil.WriteFile(types.DeviceKeyName, keyBytes, 0600); err != nil {
+	if err := os.WriteFile(types.DeviceKeyName, keyBytes, 0600); err != nil {
 		return err
 	}
-	return ioutil.WriteFile(types.DeviceCertName, certBytes, 0644)
+	return os.WriteFile(types.DeviceCertName, certBytes, 0644)
 }
 
 func createOtherKeys(override bool) error {
@@ -919,7 +918,7 @@ func createQuoteCertOnTpm() error {
 		}
 		defer rw.Close()
 
-		deviceCertBytes, err := ioutil.ReadFile(types.DeviceCertName)
+		deviceCertBytes, err := os.ReadFile(types.DeviceCertName)
 		if err != nil {
 			return err
 		}
@@ -964,7 +963,7 @@ func createQuoteCertOnTpm() error {
 			return fmt.Errorf("empty bytes after encoding to PEM")
 		}
 
-		err = ioutil.WriteFile(quoteCertFile, certBytes, 0644)
+		err = os.WriteFile(quoteCertFile, certBytes, 0644)
 		if err != nil {
 			return err
 		}
@@ -1014,7 +1013,7 @@ func createQuoteCertSoft() error {
 		return fmt.Errorf("Failed to generate software ECDSA key pair: %v", err)
 	}
 
-	deviceCertBytes, err := ioutil.ReadFile(types.DeviceCertName)
+	deviceCertBytes, err := os.ReadFile(types.DeviceCertName)
 	if err != nil {
 		return fmt.Errorf("Failed to read device cert file: %v", err)
 	}
@@ -1068,17 +1067,17 @@ func createQuoteCertSoft() error {
 }
 
 func writeQuoteCertToFile(certBytes, keyBytes []byte) error {
-	if err := ioutil.WriteFile(quoteKeyFile, keyBytes, 0644); err != nil {
+	if err := os.WriteFile(quoteKeyFile, keyBytes, 0644); err != nil {
 		return err
 	}
-	if err := ioutil.WriteFile(quoteCertFile, certBytes, 0644); err != nil {
+	if err := os.WriteFile(quoteCertFile, certBytes, 0644); err != nil {
 		return err
 	}
 	return nil
 }
 
 func getQuoteCert(certPath string) ([]byte, error) {
-	certBytes, err := ioutil.ReadFile(certPath)
+	certBytes, err := os.ReadFile(certPath)
 	if err != nil {
 		return nil, fmt.Errorf("Failed to read Quote certificate: %v", err)
 	}
@@ -1113,7 +1112,7 @@ func createEcdhCertOnTpm() error {
 		}
 		defer rw.Close()
 
-		deviceCertBytes, err := ioutil.ReadFile(types.DeviceCertName)
+		deviceCertBytes, err := os.ReadFile(types.DeviceCertName)
 		if err != nil {
 			return err
 		}
@@ -1158,7 +1157,7 @@ func createEcdhCertOnTpm() error {
 			return fmt.Errorf("empty bytes after encoding to PEM")
 		}
 
-		err = ioutil.WriteFile(ecdhCertFile, certBytes, 0644)
+		err = os.WriteFile(ecdhCertFile, certBytes, 0644)
 		if err != nil {
 			return err
 		}
@@ -1208,7 +1207,7 @@ func createEcdhCertSoft() error {
 		return fmt.Errorf("Failed to generate software ECDSA key pair: %v", err)
 	}
 
-	deviceCertBytes, err := ioutil.ReadFile(types.DeviceCertName)
+	deviceCertBytes, err := os.ReadFile(types.DeviceCertName)
 	if err != nil {
 		return fmt.Errorf("Failed to read device cert file: %v", err)
 	}
@@ -1262,10 +1261,10 @@ func createEcdhCertSoft() error {
 }
 
 func writeEcdhCertToFile(certBytes, keyBytes []byte) error {
-	if err := ioutil.WriteFile(etpm.EcdhKeyFile, keyBytes, 0644); err != nil {
+	if err := os.WriteFile(etpm.EcdhKeyFile, keyBytes, 0644); err != nil {
 		return err
 	}
-	return ioutil.WriteFile(ecdhCertFile, certBytes, 0644)
+	return os.WriteFile(ecdhCertFile, certBytes, 0644)
 }
 
 func publishEdgeNodeCert(ctx *tpmMgrContext, config types.EdgeNodeCert) {
@@ -1277,7 +1276,7 @@ func publishEdgeNodeCert(ctx *tpmMgrContext, config types.EdgeNodeCert) {
 }
 
 func readEdgeNodeCert(certPath string) ([]byte, error) {
-	certBytes, err := ioutil.ReadFile(certPath)
+	certBytes, err := os.ReadFile(certPath)
 	if err != nil {
 		return nil, fmt.Errorf("readEdgeNodeCert failed with error: %v", err)
 	}
@@ -1365,7 +1364,7 @@ func saveTpmInfo(filename string) error {
 		return err
 	}
 
-	return ioutil.WriteFile(filename, []byte(info), 0600)
+	return os.WriteFile(filename, []byte(info), 0600)
 }
 
 // Create required directories, if not already created

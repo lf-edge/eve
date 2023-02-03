@@ -7,7 +7,7 @@ package upgradeconverter
 // app instances and their drives and the volumes
 
 import (
-	"io/ioutil"
+	"os"
 
 	zauth "github.com/lf-edge/eve/api/go/auth"
 	zconfig "github.com/lf-edge/eve/api/go/config"
@@ -62,7 +62,7 @@ func parseConfig(checkpointFile string) (parseResult, error) {
 }
 
 func readSavedProtoMessage(filename string) (*zconfig.EdgeDevConfig, error) {
-	contents, err := ioutil.ReadFile(filename)
+	contents, err := os.ReadFile(filename)
 	if err != nil {
 		log.Errorln("readSavedProtoMessage", err)
 		return nil, err

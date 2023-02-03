@@ -15,7 +15,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
 	stdlog "log"
 	"net"
 	"net/http"
@@ -688,9 +687,9 @@ func (hdl appInstMetaHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	kubeConfig, err := ioutil.ReadAll(io.LimitReader(r.Body, AppInstMetadataResponseSizeLimitInBytes))
+	kubeConfig, err := io.ReadAll(io.LimitReader(r.Body, AppInstMetadataResponseSizeLimitInBytes))
 	if err != nil {
-		msg := fmt.Sprintf("appInstMetaHandler: ioutil read failed: %v", err)
+		msg := fmt.Sprintf("appInstMetaHandler: ReadAll failed: %v", err)
 		log.Errorf(msg)
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
@@ -809,9 +808,9 @@ func (hdl signerHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// One larger to make sure we detect too large below.
-	payload, err := ioutil.ReadAll(io.LimitReader(r.Body, SignerMaxSize+1))
+	payload, err := io.ReadAll(io.LimitReader(r.Body, SignerMaxSize+1))
 	if err != nil {
-		msg := fmt.Sprintf("signerHandler: ioutil read failed: %v", err)
+		msg := fmt.Sprintf("signerHandler: ReadAll failed: %v", err)
 		log.Errorf(msg)
 		http.Error(w, msg, http.StatusInternalServerError)
 		return

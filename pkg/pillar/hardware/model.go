@@ -18,7 +18,6 @@ package hardware
 
 import (
 	"bytes"
-	"io/ioutil"
 	"os"
 	"regexp"
 	"strings"
@@ -101,7 +100,7 @@ func getOverride(log *base.LogObject, filename string) string {
 	if _, err := os.Stat(filename); err != nil {
 		return ""
 	}
-	contents, err := ioutil.ReadFile(filename)
+	contents, err := os.ReadFile(filename)
 	if err != nil {
 		log.Errorf("getOverride(%s) failed: %s\n", filename, err)
 		return ""
@@ -114,7 +113,7 @@ const controlChars = "\x00\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0a\x0b\x0c\x0d\x
 func GetCompatible(log *base.LogObject) string {
 	compatible := ""
 	if _, err := os.Stat(compatibleFile); err == nil {
-		contents, err := ioutil.ReadFile(compatibleFile)
+		contents, err := os.ReadFile(compatibleFile)
 		if err != nil {
 			log.Errorf("GetCompatible(%s) failed %s\n",
 				compatibleFile, err)
@@ -128,7 +127,7 @@ func GetCompatible(log *base.LogObject) string {
 func getCPUSerial(log *base.LogObject) string {
 	serial := ""
 	if _, err := os.Stat(cpuInfoFile); err == nil {
-		contents, err := ioutil.ReadFile(cpuInfoFile)
+		contents, err := os.ReadFile(cpuInfoFile)
 		if err != nil {
 			log.Errorf("getCPUSerial(%s) failed %s\n",
 				cpuInfoFile, err)

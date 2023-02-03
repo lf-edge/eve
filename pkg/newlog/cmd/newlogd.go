@@ -11,7 +11,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net"
 	"os"
 	"path"
@@ -686,7 +685,7 @@ func getSourceFromMsg(msg string) (string, string, string) {
 }
 
 func startTmpfile(dirname, filename string, isApp bool) *os.File {
-	tmpFile, err := ioutil.TempFile(dirname, filename)
+	tmpFile, err := os.CreateTemp(dirname, filename)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -1152,7 +1151,7 @@ func (w *countingWriter) Write(p []byte) (n int, err error) {
 
 func prepareGzipToOutTempFile(gzipDirName string, fHdr fileChanInfo, now time.Time) (*gzip.Writer, *countingWriter, *os.File) {
 	// open output file
-	oTmpFile, err := ioutil.TempFile(gzipDirName, tmpPrefix)
+	oTmpFile, err := os.CreateTemp(gzipDirName, tmpPrefix)
 	if err != nil {
 		log.Fatal("prepareGzipToOutTempFile: create tmp file failed ", err)
 	}
@@ -1250,7 +1249,7 @@ func getAppuuidFromLogfile(tmplogfileInfo fileChanInfo) string {
 
 // at bootup, move the collected log files from previous life
 func findMovePrevLogFiles(movefile chan fileChanInfo) string {
-	files, err := ioutil.ReadDir(collectDir)
+	files, err := os.ReadDir(collectDir)
 	if err != nil {
 		log.Fatal("findMovePrevLogFiles: read dir ", err)
 	}
@@ -1271,8 +1270,9 @@ func findMovePrevLogFiles(movefile chan fileChanInfo) string {
 			prevLogFile := collectDir + "/" + f.Name()
 			fileinfo.tmpfile = prevLogFile
 			fileinfo.isApp = isApp
-			fileinfo.inputSize = int32(f.Size())
-
+			if info, err := f.Info(); err == nil {
+				fileinfo.inputSize = int32(info.Size())
+			}
 			movefile <- fileinfo
 		}
 	}
@@ -1379,7 +1379,7 @@ func getEveInfo() {
 }
 
 func cleanGzipTempfiles(dir string) {
-	gfiles, err := ioutil.ReadDir(dir)
+	gfiles, err := os.ReadDir(dir)
 	if err == nil {
 		for _, f := range gfiles {
 			if !f.IsDir() && strings.HasPrefix(f.Name(), tmpPrefix) && len(f.Name()) > len(tmpPrefix) {
@@ -1497,7 +1497,7 @@ func cleanPanicFileDir() {
 		return
 	}
 
-	files, err := ioutil.ReadDir(panicFileDir)
+	files, err := os.ReadDir(panicFileDir)
 	if err != nil {
 		log.Error(err)
 		return
@@ -1627,7 +1627,8 @@ func getSyslogMsg(loggerChan chan inputEntry) {
 }
 
 // listenDevLog() - substitute /dev/log with our AF_UNIX socket and open it
-//                  for listening
+//
+//	for listening
 func listenDevLog() (*net.UnixConn, error) {
 	UnixPath := "/dev/log"
 	os.Remove(UnixPath)

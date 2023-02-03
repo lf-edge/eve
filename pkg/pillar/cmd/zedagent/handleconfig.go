@@ -6,7 +6,6 @@ package zedagent
 import (
 	"bytes"
 	"fmt"
-	"io/ioutil"
 	"net"
 	"net/http"
 	"net/url"
@@ -222,7 +221,7 @@ func maybeLoadBootstrapConfig(getconfigCtx *getconfigContext) {
 	}
 
 	// Load file content.
-	contents, err := ioutil.ReadFile(types.BootstrapConfFileName)
+	contents, err := os.ReadFile(types.BootstrapConfFileName)
 	if err != nil {
 		log.Errorf("Failed to read bootstrap config: %v", err)
 		indicateInvalidBootstrapConfig(getconfigCtx)
@@ -307,7 +306,7 @@ func indicateInvalidBootstrapConfig(getconfigCtx *getconfigContext) {
 func initZedcloudContext(networkSendTimeout uint32, agentMetrics *zedcloud.AgentMetrics) *zedcloud.ZedCloudContext {
 
 	// get the server name
-	bytes, err := ioutil.ReadFile(types.ServerFileName)
+	bytes, err := os.ReadFile(types.ServerFileName)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -756,7 +755,7 @@ func readSavedConfig(staleTime uint32,
 		log.Errorln(errStr)
 		return nil, info.ModTime(), nil
 	}
-	contents, err := ioutil.ReadFile(filename)
+	contents, err := os.ReadFile(filename)
 	if err != nil {
 		log.Errorln("readSavedConfig", err)
 		return nil, info.ModTime(), err

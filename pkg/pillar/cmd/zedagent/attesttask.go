@@ -9,6 +9,10 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"os"
+	"reflect"
+	"strings"
+
 	eventlog "github.com/cshari-zededa/eve-tpm2-tools/eventlog"
 	"github.com/lf-edge/eve/api/go/attest"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
@@ -19,9 +23,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/vault"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 	"google.golang.org/protobuf/proto"
-	"io/ioutil"
-	"reflect"
-	"strings"
 )
 
 const (
@@ -211,7 +212,7 @@ func encodeVersions(quoteMsg *attest.ZAttestQuote) error {
 	quoteMsg.Versions = make([]*attest.AttestVersionInfo, 0)
 	eveVersion := new(attest.AttestVersionInfo)
 	eveVersion.VersionType = attest.AttestVersionType_ATTEST_VERSION_TYPE_EVE
-	eveRelease, err := ioutil.ReadFile(types.EveVersionFile)
+	eveRelease, err := os.ReadFile(types.EveVersionFile)
 	if err != nil {
 		return err
 	}
@@ -860,7 +861,7 @@ func storeIntegrityToken(token []byte) {
 	if len(token) == 0 {
 		log.Warnf("[ATTEST] Received empty integrity token")
 	}
-	err := ioutil.WriteFile(types.ITokenFile, token, 644)
+	err := os.WriteFile(types.ITokenFile, token, 644)
 	if err != nil {
 		log.Fatalf("Failed to store integrity token, err: %v", err)
 	}
@@ -868,7 +869,7 @@ func storeIntegrityToken(token []byte) {
 
 // helper to get IntegrityToken
 func readIntegrityToken() ([]byte, error) {
-	return ioutil.ReadFile(types.ITokenFile)
+	return os.ReadFile(types.ITokenFile)
 }
 
 // trigger restart event in attesation FSM

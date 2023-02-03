@@ -12,7 +12,6 @@ import (
 	"encoding/pem"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"math/big"
 	"os"
 	"unsafe"
@@ -147,7 +146,7 @@ func (s TpmPrivateKey) Public() crypto.PublicKey {
 		ecdsaPublicKey := myDevicePublicKey.(*ecdsa.PublicKey)
 		return ecdsaPublicKey
 	}
-	clientCertBytes, err := ioutil.ReadFile(types.DeviceCertName)
+	clientCertBytes, err := os.ReadFile(types.DeviceCertName)
 	if err != nil {
 		return nil
 	}
@@ -169,7 +168,7 @@ func (s TpmPrivateKey) Sign(r io.Reader, digest []byte, opts crypto.SignerOpts) 
 
 // ReadOwnerCrdl returns credential specific to this device
 func ReadOwnerCrdl() (string, error) {
-	tpmOwnerPasswdBytes, err := ioutil.ReadFile(TpmCredentialsFileName)
+	tpmOwnerPasswdBytes, err := os.ReadFile(TpmCredentialsFileName)
 	if err != nil {
 		return "", err
 	}
@@ -281,8 +280,7 @@ func GetTpmProperty(propID tpm2.TPMProp) (uint32, error) {
 
 // FetchTpmSwStatus returns states reflecting SW usage of TPM
 func FetchTpmSwStatus() info.HwSecurityModuleStatus {
-	_, err := os.Stat(TpmDevicePath)
-	if err != nil {
+	if _, err := os.Stat(TpmDevicePath); err != nil {
 		//No TPM found on this system
 		return info.HwSecurityModuleStatus_NOTFOUND
 	}
@@ -341,8 +339,7 @@ func FetchTpmHwInfo() (string, error) {
 	}
 
 	//Take care of non-TPM platforms
-	_, err := os.Stat(TpmDevicePath)
-	if err != nil {
+	if _, err := os.Stat(TpmDevicePath); err != nil {
 		tpmHwInfo = "Not Available"
 		return tpmHwInfo, nil
 	}

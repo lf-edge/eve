@@ -9,7 +9,6 @@ package volumemgr
 
 import (
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -27,7 +26,7 @@ import (
 func populateExistingVolumesFormatObjects(_ *volumemgrContext, dirName string) {
 
 	log.Functionf("populateExistingVolumesFormatObjects(%s)", dirName)
-	locations, err := ioutil.ReadDir(dirName)
+	locations, err := os.ReadDir(dirName)
 	if err != nil {
 		log.Errorf("populateExistingVolumesFormatObjects: read directory '%s' failed: %v",
 			dirName, err)
@@ -70,7 +69,7 @@ func populateExistingVolumesFormatDatasets(_ *volumemgrContext, dataset string) 
 // Others have their delete handler.
 func gcObjects(ctx *volumemgrContext, dirName string) {
 	log.Tracef("gcObjects(%s)", dirName)
-	locationsFileInfo, err := ioutil.ReadDir(dirName)
+	locationsFileInfo, err := os.ReadDir(dirName)
 	if err != nil {
 		log.Errorf("gcObjects: read directory '%s' failed: %v",
 			dirName, err)

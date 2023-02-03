@@ -10,7 +10,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"os"
 	"strings"
 
 	"github.com/lf-edge/eve/pkg/pillar/types"
@@ -34,7 +34,7 @@ func SetECDHPrivateKeyFile(filename string) {
 
 // GetPrivateKeyFromFile reads a private key file on a device with no TPM
 func GetPrivateKeyFromFile(keyFile string) (*ecdsa.PrivateKey, error) {
-	keyPEMBlock, err := ioutil.ReadFile(keyFile)
+	keyPEMBlock, err := os.ReadFile(keyFile)
 	if err != nil {
 		return nil, err
 	}
@@ -77,7 +77,7 @@ func GetPrivateKeyFromFile(keyFile string) (*ecdsa.PrivateKey, error) {
 // GetPublicKeyFromCert gets public key from a X.509 cert
 func GetPublicKeyFromCert(certFile string) (crypto.PublicKey, error) {
 	//read public key from ecdh certificate
-	certBytes, err := ioutil.ReadFile(certFile)
+	certBytes, err := os.ReadFile(certFile)
 	if err != nil {
 		fmt.Printf("error in reading ecdh cert file: %v", err)
 		return nil, err

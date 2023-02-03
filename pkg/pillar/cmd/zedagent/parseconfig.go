@@ -10,7 +10,6 @@ import (
 	"errors"
 	"fmt"
 	"hash"
-	"io/ioutil"
 	"net"
 	"os"
 	"sort"
@@ -2546,7 +2545,7 @@ func readDeviceOpsCmdConfig(op types.DeviceOperation) *types.DeviceOpsCmd {
 	}
 	log.Tracef("readDeviceOpsCmdConfig - reading %s", fileName)
 
-	b, err := ioutil.ReadFile(fileName)
+	b, err := os.ReadFile(fileName)
 	if err == nil {
 		cfg := types.DeviceOpsCmd{}
 		err = json.Unmarshal(b, &cfg)

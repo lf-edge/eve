@@ -6,7 +6,6 @@ package hypervisor
 import (
 	"fmt"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	"io/ioutil"
 	"os"
 	"testing"
 )
@@ -49,7 +48,7 @@ func TestPCIAssignments(t *testing.T) {
 
 func TestBasicNullDomainWorkflow(t *testing.T) {
 	// t.Logf("Running test case")
-	conf, err := ioutil.TempFile("", "config")
+	conf, err := os.CreateTemp("", "config")
 	if err != nil {
 		t.Errorf("Can't create config file for a domain %v", err)
 	} else {

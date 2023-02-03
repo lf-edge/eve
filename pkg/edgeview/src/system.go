@@ -15,7 +15,6 @@ import (
 	"encoding/pem"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -107,7 +106,7 @@ func runSystem(cmds cmdOpt, sysOpt string) {
 
 // getLogStats - in 'runSystem'
 func getLogStats() {
-	retData1, err := ioutil.ReadFile("/run/newlogd/NewlogMetrics/global.json")
+	retData1, err := os.ReadFile("/run/newlogd/NewlogMetrics/global.json")
 	if err == nil {
 		prettyJSON, err := formatJSON(retData1)
 		if err == nil {
@@ -126,7 +125,7 @@ func getLogStats() {
 
 	printColor(" log file directories:\n", colorCYAN)
 	for _, d := range logdirectory {
-		files, err := ioutil.ReadDir(d)
+		files, err := os.ReadDir(d)
 		if err != nil {
 			continue
 		}
@@ -315,7 +314,7 @@ func getVolume() {
 	}
 
 	for _, line := range jfiles {
-		retbytes, err := ioutil.ReadFile(line)
+		retbytes, err := os.ReadFile(line)
 		if err != nil {
 			continue
 		}
@@ -339,7 +338,7 @@ func getVolume() {
 			if foundfile == "" {
 				continue
 			}
-			retbytes, err := ioutil.ReadFile(foundfile)
+			retbytes, err := os.ReadFile(foundfile)
 			if err != nil {
 				continue
 			}
@@ -348,7 +347,7 @@ func getVolume() {
 			fmt.Printf("   name: %s, ID %s, RefCount: %d \n", vol1.DisplayName, vol1.VolumeID.String(), vol1.RefCount)
 
 			printColor("\n content tree config: "+vol1.ContentID.String(), colorBLUE)
-			retbytes, err = ioutil.ReadFile("/run/zedagent/ContentTreeConfig/" + vol1.ContentID.String() + ".json")
+			retbytes, err = os.ReadFile("/run/zedagent/ContentTreeConfig/" + vol1.ContentID.String() + ".json")
 			var cont types.ContentTreeConfig
 			_ = json.Unmarshal(retbytes, &cont)
 			fmt.Printf("   url: %s, format: %s, sha: %s\n", cont.RelativeURL, cont.Format, cont.ContentSha256)
@@ -366,10 +365,10 @@ func getSysApp() {
 		return
 	}
 	for _, s := range jfiles {
-		retbytes, _ := ioutil.ReadFile(s)
+		retbytes, _ := os.ReadFile(s)
 		status := strings.TrimSuffix(string(retbytes), "\n")
 		appuuid := doAppNet(status, "", true)
-		retbytes, err := ioutil.ReadFile("/run/domainmgr/DomainMetric/" + appuuid + ".json")
+		retbytes, err := os.ReadFile("/run/domainmgr/DomainMetric/" + appuuid + ".json")
 		if err == nil {
 			var metric types.DomainMetric
 			_ = json.Unmarshal(retbytes, &metric)
@@ -377,7 +376,7 @@ func getSysApp() {
 				metric.CPUTotalNs, metric.UsedMemory, metric.AvailableMemory)
 		}
 
-		retbytes, err = ioutil.ReadFile("/run/zedmanager/DomainConfig/" + appuuid + ".json")
+		retbytes, err = os.ReadFile("/run/zedmanager/DomainConfig/" + appuuid + ".json")
 		if err != nil {
 			continue
 		}
@@ -397,7 +396,7 @@ func getDataStore() {
 
 	printColor(" - DataStore:", colorCYAN)
 	for _, l := range jfiles {
-		retbytes1, err := ioutil.ReadFile(l)
+		retbytes1, err := os.ReadFile(l)
 		if err != nil {
 			continue
 		}
@@ -436,7 +435,7 @@ func getHW() {
 }
 
 func getLastReboot() {
-	files, err := ioutil.ReadDir("/persist/log")
+	files, err := os.ReadDir("/persist/log")
 	if err != nil {
 		fmt.Printf("failed to get to /persist/log\n")
 		return
@@ -444,7 +443,12 @@ func getLastReboot() {
 
 	now := time.Now().Unix()
 	for _, l := range files {
-		if now-l.ModTime().Unix() > 2592000 { // if files are older then 30 days
+		info, err := l.Info()
+		if err != nil {
+			fmt.Printf("failed to get file '%s' info: %v\n", l.Name(), err)
+			continue
+		}
+		if now-info.ModTime().Unix() > 2592000 { // if files are older then 30 days
 			continue
 		}
 		var rebootFile string
@@ -463,14 +467,19 @@ func getLastReboot() {
 		}
 	}
 
-	files, err = ioutil.ReadDir("/persist/newlog/panicStacks")
+	files, err = os.ReadDir("/persist/newlog/panicStacks")
 	if err != nil {
 		fmt.Printf("failed to get to /persist/newlog/panicStacks\n")
 		return
 	}
 
 	for _, l := range files {
-		if now-l.ModTime().Unix() > 2592000 { // if files are older then 30 days
+		info, err := l.Info()
+		if err != nil {
+			fmt.Printf("failed to get file '%s' info: %v\n", l.Name(), err)
+			continue
+		}
+		if now-info.ModTime().Unix() > 2592000 { // if files are older then 30 days
 			continue
 		}
 		if strings.Contains(l.Name(), "pillar-panic-stack.") {
@@ -479,7 +488,7 @@ func getLastReboot() {
 			if n < 1 {
 				continue
 			}
-			retbytes, err := ioutil.ReadFile("/persist/newlog/panicStacks/" + fields[n-1])
+			retbytes, err := os.ReadFile("/persist/newlog/panicStacks/" + fields[n-1])
 			if err != nil {
 				break
 			}
@@ -524,11 +533,13 @@ func runPCI() {
 
 func getCipher() {
 	path := "/persist/certs"
-	files, err := ioutil.ReadDir(path)
+	files, err := os.ReadDir(path)
 	if err == nil {
 		printColor(" - /persist/certs:\n", colorCYAN)
 		for _, f := range files {
-			fmt.Printf("file: %s, size %d\n", path+f.Name(), f.Size())
+			if info, err := f.Info(); err == nil {
+				fmt.Printf("file: %s, size %d\n", path+f.Name(), info.Size())
+			}
 		}
 	}
 
@@ -540,7 +551,7 @@ func getCipher() {
 	}
 
 	printColor(" - Additional CA-Certificates:\n", colorCYAN)
-	files, err = ioutil.ReadDir("/etc/ssl/certs")
+	files, err = os.ReadDir("/etc/ssl/certs")
 	if err == nil {
 		for _, f := range files {
 			if !strings.Contains(f.Name(), "/usr/local/share") {
@@ -554,7 +565,7 @@ func getCipher() {
 	if err == nil {
 		printColor("\n - DataStore Config:", colorCYAN)
 		for _, l := range jfiles {
-			retbytes1, err := ioutil.ReadFile(l)
+			retbytes1, err := os.ReadFile(l)
 			if err != nil {
 				continue
 			}
@@ -575,7 +586,7 @@ func getCipher() {
 	if err == nil {
 		printColor("\n - Domainmgr CipherBlock:", colorCYAN)
 		for _, l := range jfiles {
-			retbytes1, err := ioutil.ReadFile(l)
+			retbytes1, err := os.ReadFile(l)
 			if err != nil {
 				continue
 			}
@@ -595,7 +606,7 @@ func getCipher() {
 	if err == nil {
 		printColor("\n - TPMmgr Edgenode Certs:", colorCYAN)
 		for _, l := range jfiles {
-			retbytes1, err := ioutil.ReadFile(l)
+			retbytes1, err := os.ReadFile(l)
 			if err != nil {
 				continue
 			}
@@ -612,7 +623,7 @@ func getCipher() {
 	if err == nil {
 		printColor("\n - Cipher Context:", colorCYAN)
 		for _, l := range jfiles {
-			retbytes1, err := ioutil.ReadFile(l)
+			retbytes1, err := os.ReadFile(l)
 			if err != nil {
 				continue
 			}
@@ -629,7 +640,7 @@ func getCipher() {
 	if err == nil {
 		printColor("\n - Controller Certs:", colorCYAN)
 		for _, l := range jfiles {
-			retbytes1, err := ioutil.ReadFile(l)
+			retbytes1, err := os.ReadFile(l)
 			if err != nil {
 				continue
 			}
@@ -694,7 +705,7 @@ func runConfigItems() {
 
 func getConfigItems() types.ConfigItemValueMap {
 	var cfgItem types.ConfigItemValueMap
-	retbytes, err := ioutil.ReadFile("/persist/status/zedagent/ConfigItemValueMap/global.json")
+	retbytes, err := os.ReadFile("/persist/status/zedagent/ConfigItemValueMap/global.json")
 	if err != nil {
 		return cfgItem
 	}
@@ -892,7 +903,7 @@ func runLs(opt string) {
 	}
 
 	if fi.IsDir() {
-		files, err := ioutil.ReadDir(path)
+		files, err := os.ReadDir(path)
 		if err != nil {
 			fmt.Printf("read dir failed. %v\n", err)
 			return
@@ -914,7 +925,9 @@ func runLs(opt string) {
 					continue
 				}
 			}
-			dispAFile(file)
+			if info, err := file.Info(); err == nil {
+				dispAFile(info)
+			}
 		}
 	} else {
 		dispAFile(fi)
@@ -928,7 +941,7 @@ func readAFile(path string, extraline int) {
 		return
 	}
 
-	buf, err := ioutil.ReadAll(f)
+	buf, err := io.ReadAll(f)
 	if err != nil {
 		fmt.Printf("%v\n", err)
 		return
@@ -1227,7 +1240,7 @@ func gzipTechSuppFile(ifileName string) (string, error) {
 	}
 
 	reader := bufio.NewReader(ifile)
-	content, _ := ioutil.ReadAll(reader)
+	content, _ := io.ReadAll(reader)
 
 	tmpfiles := strings.Split(ifileName, "-tmp-")
 	if len(tmpfiles) != 2 {
@@ -1272,7 +1285,7 @@ func getDevInfo() types.EdgeNodeInfo {
 	jfiles, err := listJSONFiles("/persist/status/zedagent/EdgeNodeInfo")
 	if err == nil {
 		for _, l := range jfiles {
-			retbytes1, err := ioutil.ReadFile(l)
+			retbytes1, err := os.ReadFile(l)
 			if err != nil {
 				continue
 			}

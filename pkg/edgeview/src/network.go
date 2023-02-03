@@ -8,7 +8,7 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net"
 	"net/http"
 	"net/url"
@@ -78,7 +78,7 @@ func runNetwork(netw string) {
 			intfStat = getAllIntfs()
 		}
 		if opt == "ping" || opt == "trace" {
-			retbytes, err := ioutil.ReadFile("/config/server")
+			retbytes, err := os.ReadFile("/config/server")
 			if err != nil {
 				continue
 			}
@@ -161,7 +161,7 @@ func doAppNet(status, appstr string, isSummary bool) string {
 
 	for _, item := range appStatus.UnderlayNetworkList {
 		niUUID := item.Network.String()
-		retbytes, err := ioutil.ReadFile("/run/zedrouter/NetworkInstanceStatus/" + niUUID + ".json")
+		retbytes, err := os.ReadFile("/run/zedrouter/NetworkInstanceStatus/" + niUUID + ".json")
 		if err != nil {
 			continue
 		}
@@ -198,7 +198,7 @@ func doAppNet(status, appstr string, isSummary bool) string {
 					if !strings.HasPrefix(l, "dhcp-hosts.") {
 						continue
 					}
-					retbytes, err := ioutil.ReadFile(l)
+					retbytes, err := os.ReadFile(l)
 					if err == nil {
 						if strings.Contains(string(retbytes), item.Mac) {
 							fmt.Printf("%s\n", l)
@@ -208,7 +208,7 @@ func doAppNet(status, appstr string, isSummary bool) string {
 				}
 			}
 
-			retbytes, err := ioutil.ReadFile("/run/zedrouter/dnsmasq.leases/" + item.Bridge)
+			retbytes, err := os.ReadFile("/run/zedrouter/dnsmasq.leases/" + item.Bridge)
 			if err == nil {
 				printColor("\n - dnsmasq lease files\n", colorGREEN)
 				lines := strings.Split(string(retbytes), "\n")
@@ -251,7 +251,7 @@ func doAppNet(status, appstr string, isSummary bool) string {
 	}
 
 	appUUIDStr := appStatus.UUIDandVersion.UUID.String()
-	retbytes, err := ioutil.ReadFile("/run/domainmgr/DomainStatus/" + appUUIDStr + ".json")
+	retbytes, err := os.ReadFile("/run/domainmgr/DomainStatus/" + appUUIDStr + ".json")
 	if err == nil {
 		printColor("\n  - domain status:", colorGREEN)
 		var domainS types.DomainStatus
@@ -297,7 +297,7 @@ func getAppNetTable(ipaddr string, niStatus *types.NetworkInstanceStatus) {
 
 // getVifStats - in 'doAppNet'
 func getVifStats(vifStr string) {
-	retbytes, err := ioutil.ReadFile("/run/zedrouter/NetworkMetrics/global.json")
+	retbytes, err := os.ReadFile("/run/zedrouter/NetworkMetrics/global.json")
 	if err != nil {
 		return
 	}
@@ -401,7 +401,7 @@ func getPortCfg(opt string, isPrint bool) []string {
 	if isPrint {
 		fmt.Printf("\n - device port configure:\n")
 	}
-	outbytes, err := ioutil.ReadFile("/run/zedagent/DevicePortConfig/zedagent.json")
+	outbytes, err := os.ReadFile("/run/zedagent/DevicePortConfig/zedagent.json")
 	if err != nil {
 		return mgmtIntf
 	}
@@ -447,7 +447,7 @@ func getAllAppIPs() []appIPvnc {
 
 	var allAppIPs []appIPvnc
 	for _, s := range jfiles {
-		retbytes1, err := ioutil.ReadFile(s)
+		retbytes1, err := os.ReadFile(s)
 		if err != nil {
 			continue
 		}
@@ -455,7 +455,7 @@ func getAllAppIPs() []appIPvnc {
 		appIPs, appUUID := getAppIPs(status)
 		var oneAppIPs []appIPvnc
 		if len(appIPs) > 0 {
-			retbytes1, err := ioutil.ReadFile("/run/zedagent/AppInstanceConfig/" + appUUID.String() + ".json")
+			retbytes1, err := os.ReadFile("/run/zedagent/AppInstanceConfig/" + appUUID.String() + ".json")
 			if err != nil {
 				log.Errorf("getAllAppIPs: run appinstcfg %v", err)
 				continue
@@ -502,7 +502,7 @@ func getConnectivity() {
 			fmt.Printf("  override.json:\n")
 		}
 		for _, f := range jfiles {
-			retbytes1, err := ioutil.ReadFile(f)
+			retbytes1, err := os.ReadFile(f)
 			if err != nil {
 				fmt.Printf("error: %v\n", err)
 			} else {
@@ -511,7 +511,7 @@ func getConnectivity() {
 		}
 	}
 
-	retbytes, err := ioutil.ReadFile("/persist/status/nim/DevicePortConfigList/global.json")
+	retbytes, err := os.ReadFile("/persist/status/nim/DevicePortConfigList/global.json")
 	if err != nil {
 		return
 	}
@@ -651,7 +651,7 @@ func getTables(rules string) []string {
 }
 
 func getMetricsMap(path string, stats *urlStats, isPrint bool) {
-	retbytes, err := ioutil.ReadFile(path + "global.json")
+	retbytes, err := os.ReadFile(path + "global.json")
 	if err != nil {
 		return
 	}
@@ -745,7 +745,7 @@ func showAppDetail(substring string) {
 		return
 	}
 	for _, s := range jfiles {
-		retbytes1, err := ioutil.ReadFile(s)
+		retbytes1, err := os.ReadFile(s)
 		if err != nil {
 			continue
 		}
@@ -834,7 +834,7 @@ func getProxy(needPrint bool) (string, int, [][]byte) {
 	proxyIP := ""
 	proxyPort := 0
 	proxyPEM := [][]byte{}
-	retbytes, err := ioutil.ReadFile("/run/zedagent/DevicePortConfig/zedagent.json")
+	retbytes, err := os.ReadFile("/run/zedagent/DevicePortConfig/zedagent.json")
 	if err != nil {
 		return proxyIP, proxyPort, proxyPEM
 	}
@@ -886,7 +886,7 @@ func httpsclient(server string, ipaddr net.IP) {
 	}
 	defer resp.Body.Close()
 
-	htmlData, err := ioutil.ReadAll(resp.Body)
+	htmlData, err := io.ReadAll(resp.Body)
 	if err != nil {
 		fmt.Printf("%v\n", err)
 		return
@@ -1169,7 +1169,7 @@ func runWireless() {
 	args := []string{"wlan0"}
 	_, _ = runCmd(prog, args, true)
 
-	retbytes, err := ioutil.ReadFile("/run/wlan/wpa_supplicant.conf")
+	retbytes, err := os.ReadFile("/run/wlan/wpa_supplicant.conf")
 	if err == nil {
 		printTitle(" wpa_supplicant.conf:", colorCYAN, false)
 		lines := strings.Split(string(retbytes), "\n")
@@ -1189,7 +1189,7 @@ func runWireless() {
 	}
 
 	printTitle("\n wwan config", colorCYAN, false)
-	retbytes, err = ioutil.ReadFile("/run/wwan/config.json")
+	retbytes, err = os.ReadFile("/run/wwan/config.json")
 	if err != nil {
 		return
 	}
@@ -1201,7 +1201,7 @@ func runWireless() {
 	fmt.Printf("%+v\n", wwancfg)
 
 	printTitle("\n wwan metrics", colorCYAN, false)
-	retbytes, err = ioutil.ReadFile("/run/wwan/metrics.json")
+	retbytes, err = os.ReadFile("/run/wwan/metrics.json")
 	if err == nil {
 		prettyJSON, err := formatJSON(retbytes)
 		if err == nil {
@@ -1210,7 +1210,7 @@ func runWireless() {
 	}
 
 	printTitle("\n wwan status", colorCYAN, false)
-	retbytes, err = ioutil.ReadFile("/run/wwan/status.json")
+	retbytes, err = os.ReadFile("/run/wwan/status.json")
 	if err == nil {
 		prettyJSON, err := formatJSON(retbytes)
 		if err == nil {

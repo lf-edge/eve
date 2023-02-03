@@ -6,7 +6,6 @@ package upgradeconverter
 // Look for old VM and OCI volumes in /persist
 
 import (
-	"io/ioutil"
 	"os"
 	"time"
 
@@ -29,7 +28,7 @@ func scanDir(dirName string, isContainer bool) []oldVolume {
 	log.Tracef("scanDir(%s)", dirName)
 	var old []oldVolume
 
-	locations, err := ioutil.ReadDir(dirName)
+	locations, err := os.ReadDir(dirName)
 	if err != nil {
 		log.Errorf("scanDir: read directory '%s' failed: %v",
 			dirName, err)

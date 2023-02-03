@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -235,7 +234,7 @@ func startAgentAndDone(sep entrypoint, agentName string, srvPs *pubsub.PubSub,
 	retval := sep.f(srvPs, srvLogger, srvLog, cmdArgs)
 
 	ret := strconv.Itoa(retval)
-	if err := ioutil.WriteFile(fmt.Sprintf("/run/%s.done", agentName),
+	if err := os.WriteFile(fmt.Sprintf("/run/%s.done", agentName),
 		[]byte(ret), 0700); err != nil {
 		log.Fatalf("Error write done file: %v", err)
 	}

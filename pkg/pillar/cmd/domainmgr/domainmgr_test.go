@@ -11,7 +11,6 @@ package domainmgr
 import (
 	"encoding/base64"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -402,7 +401,7 @@ func TestHandleMimeMultipart(t *testing.T) {
 			expectFail:      true,
 		},
 	}
-	dir, err := ioutil.TempDir("", "domainmgr_test")
+	dir, err := os.MkdirTemp("", "domainmgr_test")
 	assert.Nil(t, err)
 	if err != nil {
 		return

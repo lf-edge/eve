@@ -13,7 +13,6 @@ package containerd
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path"
 	"path/filepath"
@@ -132,7 +131,7 @@ func (s *ociSpec) AddLoader(volume string) error {
 		// inside UpdateFromVolume for the next boot on restart of app
 
 		// create mountpoints manifest
-		if err := ioutil.WriteFile(filepath.Join(volumeRoot, "mountPoints"),
+		if err := os.WriteFile(filepath.Join(volumeRoot, "mountPoints"),
 			[]byte(s.Annotations[eveOCIMountPointsLabel]), 0644); err != nil {
 			return err
 		}
@@ -152,7 +151,7 @@ func (s *ociSpec) AddLoader(volume string) error {
 				envContent = envContent + fmt.Sprintf("export %s\n", e)
 			}
 		}
-		if err := ioutil.WriteFile(filepath.Join(volumeRoot, "environment"), []byte(envContent), 0644); err != nil {
+		if err := os.WriteFile(filepath.Join(volumeRoot, "environment"), []byte(envContent), 0644); err != nil {
 			return err
 		}
 
@@ -163,13 +162,13 @@ func (s *ociSpec) AddLoader(volume string) error {
 			execpathQuoted = append(execpathQuoted, fmt.Sprintf("\"%s\"", s))
 		}
 		execpath := strings.Join(execpathQuoted, " ")
-		if err := ioutil.WriteFile(filepath.Join(volumeRoot, "cmdline"),
+		if err := os.WriteFile(filepath.Join(volumeRoot, "cmdline"),
 			[]byte(execpath), 0644); err != nil {
 			return err
 		}
 
 		ug := fmt.Sprintf("%d %d", s.Process.User.UID, s.Process.User.GID)
-		if err := ioutil.WriteFile(filepath.Join(volumeRoot, "ug"),
+		if err := os.WriteFile(filepath.Join(volumeRoot, "ug"),
 			[]byte(ug), 0644); err != nil {
 			return err
 		}

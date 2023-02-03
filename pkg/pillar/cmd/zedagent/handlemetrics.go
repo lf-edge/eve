@@ -10,8 +10,8 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
-	"io/ioutil"
 	"net/http"
+	"os"
 	"runtime"
 	"strings"
 	"time"
@@ -941,7 +941,7 @@ func getSecurityInfo(ctx *zedagentContext) *info.SecurityInfo {
 	si := new(info.SecurityInfo)
 	// Deterime sha of the root CA cert used for object signing and
 	// encryption
-	caCert1, err := ioutil.ReadFile(types.RootCertFileName)
+	caCert1, err := os.ReadFile(types.RootCertFileName)
 	if err != nil {
 		log.Error(err)
 	} else {
@@ -952,7 +952,7 @@ func getSecurityInfo(ctx *zedagentContext) *info.SecurityInfo {
 	// Add the sha of the root CAs used for TLS
 	// Note that we have the sha in a logical symlink so we
 	// just read that file.
-	line, err := ioutil.ReadFile(types.V2TLSCertShaFilename)
+	line, err := os.ReadFile(types.V2TLSCertShaFilename)
 	if err != nil {
 		log.Error(err)
 	} else {

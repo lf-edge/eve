@@ -5,7 +5,6 @@ package zfs
 
 import (
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -400,7 +399,7 @@ func ReplaceVDev(log *base.LogObject, pool, oldVdev, newVdev string) (string, er
 
 // GetZfsVersion return zfs kernel module version
 func GetZfsVersion() (string, error) {
-	dataBytes, err := ioutil.ReadFile("/hostfs/sys/module/zfs/version")
+	dataBytes, err := os.ReadFile("/hostfs/sys/module/zfs/version")
 	if err != nil {
 		return "", err
 	}
@@ -684,7 +683,7 @@ func GetDatasetUsageStat(datasetName string) (*types.UsageStat, error) {
 
 // GetZVolSectorSize return hw_sector_size for zvol
 func GetZVolSectorSize(zVolName string) (uint64, error) {
-	dataBytes, err := ioutil.ReadFile(
+	dataBytes, err := os.ReadFile(
 		fmt.Sprintf("/sys/block/%s/queue/hw_sector_size",
 			filepath.Base(zVolName)))
 	if err != nil {

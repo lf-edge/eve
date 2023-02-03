@@ -6,7 +6,6 @@ package linuxitems
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"reflect"
 	"strings"
@@ -121,7 +120,7 @@ func (c *WlanConfigurator) installWifiConfig(config []WifiConfig) error {
 			return err
 		}
 	}
-	tmpfile, err := ioutil.TempFile(devicenetwork.RunWlanDir, devicenetwork.WpaTempname)
+	tmpfile, err := os.CreateTemp(devicenetwork.RunWlanDir, devicenetwork.WpaTempname)
 	if err != nil {
 		err = fmt.Errorf("failed to create temporary file %s/%s: %v",
 			devicenetwork.RunWlanDir, devicenetwork.WpaTempname, err)

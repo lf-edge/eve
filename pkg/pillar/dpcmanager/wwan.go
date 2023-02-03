@@ -7,7 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"os"
 	"reflect"
 	"strings"
@@ -75,7 +75,7 @@ func (w *wwanWatcher) LoadStatus() (status types.WwanStatus, err error) {
 		return status, err
 	}
 	defer statusFile.Close()
-	statusBytes, err := ioutil.ReadAll(statusFile)
+	statusBytes, err := io.ReadAll(statusFile)
 	if err != nil {
 		w.Log.Errorf("Failed to read file %s: %v", devicenetwork.WwanStatusPath, err)
 		return status, err
@@ -95,7 +95,7 @@ func (w *wwanWatcher) LoadMetrics() (metrics types.WwanMetrics, err error) {
 		return metrics, err
 	}
 	defer metricsFile.Close()
-	metricsBytes, err := ioutil.ReadAll(metricsFile)
+	metricsBytes, err := io.ReadAll(metricsFile)
 	if err != nil {
 		w.Log.Errorf("Failed to read file %s: %v", devicenetwork.WwanMetricsPath, err)
 		return metrics, err
@@ -116,7 +116,7 @@ func (w *wwanWatcher) LoadLocationInfo() (locInfo types.WwanLocationInfo, err er
 		return locInfo, err
 	}
 	defer locFile.Close()
-	locBytes, err := ioutil.ReadAll(locFile)
+	locBytes, err := io.ReadAll(locFile)
 	if err != nil {
 		w.Log.Errorf("Failed to read file %s: %v", filepath, err)
 		return locInfo, err

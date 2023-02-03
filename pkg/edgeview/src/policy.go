@@ -7,7 +7,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"strconv"
 	"strings"
@@ -34,7 +33,7 @@ var (
 func initPolicy() error {
 	_, err := os.Stat(types.EdgeviewCfgFile)
 	if err == nil {
-		data, err := ioutil.ReadFile(types.EdgeviewCfgFile)
+		data, err := os.ReadFile(types.EdgeviewCfgFile)
 		if err != nil {
 			log.Errorf("can not read policy file: %v", err)
 			return err

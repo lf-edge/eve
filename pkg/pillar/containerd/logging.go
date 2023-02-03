@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net"
 	"os"
 	"path/filepath"
@@ -80,7 +79,7 @@ func (f *nullLog) Path(n string) string {
 
 // Open a log file for the named service.
 func (f *nullLog) Open(n string) (io.WriteCloser, error) {
-	return nullWriterCloser{ioutil.Discard}, nil
+	return nullWriterCloser{io.Discard}, nil
 }
 
 // Dump copies logs to the console.

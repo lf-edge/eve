@@ -12,7 +12,7 @@
 package watch
 
 import (
-	"io/ioutil"
+	"os"
 	"path"
 	"strings"
 	"time"
@@ -30,7 +30,7 @@ func watchReadDir(log *base.LogObject, configDir string, fileChanges chan<- stri
 
 	foundRestart := false
 	foundRestarted := false
-	files, err := ioutil.ReadDir(configDir)
+	files, err := os.ReadDir(configDir)
 	if err != nil {
 		log.Fatalf("***watchReadDir - Failed to read Directory %s . err: %s",
 			configDir, err)

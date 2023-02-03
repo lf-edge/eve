@@ -11,7 +11,6 @@ package containerd
 import (
 	"fmt"
 	uuid "github.com/satori/go.uuid"
-	"io/ioutil"
 	"os"
 	"path"
 	"path/filepath"
@@ -66,7 +65,7 @@ func TestSaveSnapshotID(t *testing.T) {
 			} else {
 				snapshotIDFile := path.Join(tt.args.newRootpath, snapshotIDFile)
 				expectedSnapshotID := snapshotID
-				snapshotID, err := ioutil.ReadFile(snapshotIDFile)
+				snapshotID, err := os.ReadFile(snapshotIDFile)
 				if err != nil {
 					t.Errorf("TestSaveSnapshotID: exception while reading %s file %s %v",
 						snapshotIDFile, snapshotIDFile, err)
@@ -89,7 +88,7 @@ func TestGetSnapshotID(t *testing.T) {
 	}
 
 	filename := filepath.Join(newTempRootPath, snapshotIDFile)
-	if err := ioutil.WriteFile(filename, []byte(snapshotID), 0644); err != nil {
+	if err := os.WriteFile(filename, []byte(snapshotID), 0644); err != nil {
 		t.Errorf("TestGetSnapshotID: exception while saving %s: %s", filename, err.Error())
 	}
 	type args struct {

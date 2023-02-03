@@ -20,7 +20,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"strconv"
 	"strings"
@@ -208,7 +207,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	fileToRead := "/persist/fault-injection/readfile"
 	if _, err := os.Stat(fileToRead); err == nil {
 		log.Warnf("Reading %s", fileToRead)
-		content, err := ioutil.ReadFile(fileToRead)
+		content, err := os.ReadFile(fileToRead)
 		if err != nil {
 			log.Error(err)
 		} else {
@@ -668,7 +667,7 @@ func incrementRestartCounter() uint32 {
 		}
 	}
 	b := []byte(fmt.Sprintf("%d", restartCounter+1))
-	err := ioutil.WriteFile(restartCounterFile, b, 0644)
+	err := os.WriteFile(restartCounterFile, b, 0644)
 	if err != nil {
 		log.Errorf("incrementRestartCounter write: %s", err)
 	}

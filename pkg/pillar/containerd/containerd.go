@@ -9,7 +9,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"math/rand"
 	"os"
 	"os/exec"
@@ -775,7 +774,7 @@ func prepareProcess(pid int, VifList []types.VifInfo) error {
 func getSavedImageInfo(containerPath string) (ocispec.Image, error) {
 	var image ocispec.Image
 
-	data, err := ioutil.ReadFile(filepath.Join(containerPath, imageConfigFilename))
+	data, err := os.ReadFile(filepath.Join(containerPath, imageConfigFilename))
 	if err != nil {
 		return image, err
 	}
@@ -840,7 +839,7 @@ func newServiceCtxWithLease(ctrdClient *containerd.Client, namespace string) (co
 func SaveSnapshotID(oldRootpath, newRootpath string) error {
 	snapshotID := filepath.Base(oldRootpath)
 	filename := filepath.Join(newRootpath, snapshotIDFile)
-	if err := ioutil.WriteFile(filename, []byte(snapshotID), 0644); err != nil {
+	if err := os.WriteFile(filename, []byte(snapshotID), 0644); err != nil {
 		err = fmt.Errorf("SaveSnapshotID: Save snapshotID %s failed: %s", snapshotID, err)
 		logrus.Error(err.Error())
 		return err
@@ -856,7 +855,7 @@ func SaveSnapshotID(oldRootpath, newRootpath string) error {
 func GetSnapshotID(rootpath string) string {
 	filename := filepath.Join(rootpath, snapshotIDFile)
 	if _, err := os.Stat(filename); err == nil {
-		cont, err := ioutil.ReadFile(filename)
+		cont, err := os.ReadFile(filename)
 		if err == nil {
 			snapshotID := string(cont)
 			logrus.Infof("GetSnapshotID read %s from %s",

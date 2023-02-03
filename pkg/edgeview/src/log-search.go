@@ -9,7 +9,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"sort"
 	"strconv"
@@ -110,7 +109,7 @@ func runLogSearch(cmds cmdOpt) {
 func walkLogDirs(t1, t2, now int64) []logfiletime {
 	var getfiles []logfiletime
 
-	files, err := ioutil.ReadDir("/persist/newlog")
+	files, err := os.ReadDir("/persist/newlog")
 	if err != nil {
 		fmt.Printf("read /persist/newlog error %v\n", err)
 		return getfiles
@@ -130,13 +129,17 @@ func walkLogDirs(t1, t2, now int64) []logfiletime {
 		if strings.Contains(dir.Name(), "appUpload") && querytype == "dev" {
 			continue
 		}
-		files1, err := ioutil.ReadDir("/persist/newlog/" + dir.Name())
+		files1, err := os.ReadDir("/persist/newlog/" + dir.Name())
 		if err != nil {
 			continue
 		}
 		var groupfiles []string
 		for _, f := range files1 {
-			if f.ModTime().Unix() > t1 || f.ModTime().Unix() < t2 {
+			info, err := f.Info()
+			if err != nil {
+				continue
+			}
+			if info.ModTime().Unix() > t1 || info.ModTime().Unix() < t2 {
 				continue
 			}
 			groupfiles = append(groupfiles, f.Name())
@@ -178,7 +181,7 @@ func walkLogDirs(t1, t2, now int64) []logfiletime {
 }
 
 func searchLiveLogs(pattern string, now int64, typeStr string, idx *int, logjson bool) {
-	files, err := ioutil.ReadDir("/persist/newlog/collect")
+	files, err := os.ReadDir("/persist/newlog/collect")
 	if err != nil {
 		fmt.Printf("read /persist/newlog/collect error %v\n", err)
 		return
@@ -194,7 +197,7 @@ func searchLiveLogs(pattern string, now int64, typeStr string, idx *int, logjson
 }
 
 func searchCurrentLogs(pattern, path, typeStr string, now int64, idx *int, logjson bool) {
-	contents, err := ioutil.ReadFile(path)
+	contents, err := os.ReadFile(path)
 	if err != nil {
 		fmt.Printf("read %s file error: %v\n", path, err)
 	}
@@ -301,7 +304,7 @@ func getTimeSec(timeline string, now int64) (int64, int64) {
 
 // uncompress the gzip log files and pack them into a single
 // json text file for device and each app logs
-func unpackLogfiles(path string, files []os.FileInfo) {
+func unpackLogfiles(path string, files []os.DirEntry) {
 	sfnames := make(map[string][]string)
 	for _, f := range files {
 		if strings.HasPrefix(f.Name(), "dev.log.") {

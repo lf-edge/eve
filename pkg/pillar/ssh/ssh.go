@@ -11,7 +11,6 @@
 package ssh
 
 import (
-	"io/ioutil"
 	"os"
 
 	"github.com/lf-edge/eve/pkg/pillar/base"
@@ -25,7 +24,7 @@ const (
 func UpdateSshAuthorizedKeys(log *base.LogObject, authorizedKeys string) {
 
 	log.Functionf("UpdateSshAuthorizedKeys: %s", authorizedKeys)
-	tmpfile, err := ioutil.TempFile(runDir, "ak")
+	tmpfile, err := os.CreateTemp(runDir, "ak")
 	if err != nil {
 		log.Errorln("TempFile ", err)
 		return
