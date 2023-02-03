@@ -6,7 +6,6 @@ package sriov
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
 	"net"
 	"os"
 	"path/filepath"
@@ -80,7 +79,7 @@ func GetVf(device string) (*VFList, error) { //nolint:gocyclo
 	}
 
 	if devInfo.IsDir() && (os.IsNotExist(err) || physfnInfo.Mode()&os.ModeSymlink == 0) {
-		devices, err := ioutil.ReadDir(devPath)
+		devices, err := os.ReadDir(devPath)
 		if err != nil {
 			return nil, fmt.Errorf("vfInfo failed. Cannot obtain list of %s directory. Error %w", devPath, err)
 		}

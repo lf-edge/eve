@@ -8,7 +8,7 @@ package domainmgr
 
 import (
 	"fmt"
-	"io/ioutil"
+	"os"
 	"path"
 	"strconv"
 	"strings"
@@ -99,7 +99,7 @@ func getWatchedPids() (map[int32]bool, error) {
 
 func getWatchedPidsFromDir(wDirname string, pDirname string) (map[int32]bool, error) {
 	pids := make(map[int32]bool)
-	locations, err := ioutil.ReadDir(wDirname)
+	locations, err := os.ReadDir(wDirname)
 	if err != nil {
 		return pids, err
 	}
@@ -119,7 +119,7 @@ func getWatchedPidsFromDir(wDirname string, pDirname string) (map[int32]bool, er
 		}
 		pidFile := path.Join(pDirname, location.Name())
 
-		pidBytes, err := ioutil.ReadFile(pidFile)
+		pidBytes, err := os.ReadFile(pidFile)
 		if err != nil {
 			log.Errorf("pidFile %s read error %v", pidFile, err)
 			continue

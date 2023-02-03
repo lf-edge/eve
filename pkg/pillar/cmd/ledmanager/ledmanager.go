@@ -14,7 +14,6 @@ package ledmanager
 import (
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"regexp"
 	"strings"
@@ -537,9 +536,9 @@ var diskRepeatCount int // Based on time for 200ms
 
 // InitDellCmd prepares "Cloud LED" on Dell IoT gateways by enabling GPIO endpoint
 func InitDellCmd(ledName string) {
-	err := ioutil.WriteFile("/sys/class/gpio/export", []byte("346"), 0644)
+	err := os.WriteFile("/sys/class/gpio/export", []byte("346"), 0644)
 	if err == nil {
-		if err = ioutil.WriteFile("/sys/class/gpio/gpio346/direction", []byte("out"), 0644); err == nil {
+		if err = os.WriteFile("/sys/class/gpio/gpio346/direction", []byte("out"), 0644); err == nil {
 			log.Functionf("Enabled Dell Cloud LED")
 			return
 		}
@@ -645,7 +644,7 @@ func InitLedCmd(ledName string) {
 	log.Functionf("InitLedCmd(%s)", ledName)
 	triggerFilename := fmt.Sprintf("/sys/class/leds/%s/trigger", ledName)
 	b := []byte("none")
-	err := ioutil.WriteFile(triggerFilename, b, 0644)
+	err := os.WriteFile(triggerFilename, b, 0644)
 	if err != nil {
 		log.Error(err, triggerFilename)
 	}
@@ -752,7 +751,7 @@ func doLedAction(ledName string, turnon bool) {
 	} else {
 		brightnessFilename = fmt.Sprintf("/sys/class/leds/%s/brightness", ledName)
 	}
-	err := ioutil.WriteFile(brightnessFilename, b, 0644)
+	err := os.WriteFile(brightnessFilename, b, 0644)
 	if err != nil {
 		log.Trace(err, brightnessFilename)
 	}
@@ -769,7 +768,7 @@ func doLedBlink(ledName string) {
 	} else {
 		brightnessFilename = fmt.Sprintf("/sys/class/leds/%s/brightness", ledName)
 	}
-	err := ioutil.WriteFile(brightnessFilename, b, 0644)
+	err := os.WriteFile(brightnessFilename, b, 0644)
 	if err != nil {
 		if printOnce {
 			log.Error(err, brightnessFilename)
@@ -781,7 +780,7 @@ func doLedBlink(ledName string) {
 	}
 	time.Sleep(200 * time.Millisecond)
 	b = []byte("0")
-	err = ioutil.WriteFile(brightnessFilename, b, 0644)
+	err = os.WriteFile(brightnessFilename, b, 0644)
 	if err != nil {
 		log.Trace(err, brightnessFilename)
 	}

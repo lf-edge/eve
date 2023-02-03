@@ -7,7 +7,6 @@ package tgt
 
 import (
 	"fmt"
-	"io/ioutil"
 	"math/rand"
 	"os"
 	"path/filepath"
@@ -70,19 +69,19 @@ func TargetCreateIBlock(dev, tgtName, serial string) error {
 		return fmt.Errorf("error waitForFile: %v", err)
 	}
 	controlCommand := fmt.Sprintf("udev_path=%s", dev)
-	if err := ioutil.WriteFile(filepath.Join(targetRoot, "control"), []byte(controlCommand), 0660); err != nil {
+	if err := os.WriteFile(filepath.Join(targetRoot, "control"), []byte(controlCommand), 0660); err != nil {
 		return fmt.Errorf("error set control: %v", err)
 	}
-	if err := ioutil.WriteFile(filepath.Join(targetRoot, "wwn", "vpd_unit_serial"), []byte(serial), 0660); err != nil {
+	if err := os.WriteFile(filepath.Join(targetRoot, "wwn", "vpd_unit_serial"), []byte(serial), 0660); err != nil {
 		return fmt.Errorf("error set vpd_unit_serial: %v", err)
 	}
 	if err := waitForFile(filepath.Join(targetRoot, "enable")); err != nil {
 		return fmt.Errorf("error waitForFile: %v", err)
 	}
-	if err := ioutil.WriteFile(filepath.Join(targetRoot, "enable"), []byte("1"), 0660); err != nil {
+	if err := os.WriteFile(filepath.Join(targetRoot, "enable"), []byte("1"), 0660); err != nil {
 		return fmt.Errorf("error set enable: %v", err)
 	}
-	if err := ioutil.WriteFile(filepath.Join(targetRoot, "attrib", "emulate_tpu"), []byte("1"), 0660); err != nil {
+	if err := os.WriteFile(filepath.Join(targetRoot, "attrib", "emulate_tpu"), []byte("1"), 0660); err != nil {
 		return fmt.Errorf("error set emulate_tpu: %v", err)
 	}
 	return nil
@@ -111,13 +110,13 @@ func VHostCreateIBlock(tgtName, wwn string) error {
 		return fmt.Errorf("cannot create vhost: %v", err)
 	}
 	controlCommand := "scsi_host_id=1,scsi_channel_id=0,scsi_target_id=0,scsi_lun_id=0"
-	if err := ioutil.WriteFile(filepath.Join(targetRoot, "control"), []byte(controlCommand), 0660); err != nil {
+	if err := os.WriteFile(filepath.Join(targetRoot, "control"), []byte(controlCommand), 0660); err != nil {
 		return fmt.Errorf("error set control: %v", err)
 	}
 	if err := waitForFile(filepath.Join(vhostRoot, "nexus")); err != nil {
 		return fmt.Errorf("error waitForFile: %v", err)
 	}
-	if err := ioutil.WriteFile(filepath.Join(vhostRoot, "nexus"), []byte(wwn), 0660); err != nil {
+	if err := os.WriteFile(filepath.Join(vhostRoot, "nexus"), []byte(wwn), 0660); err != nil {
 		return fmt.Errorf("error set nexus: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(vhostLun, "iblock")); os.IsNotExist(err) {
@@ -132,7 +131,7 @@ func VHostCreateIBlock(tgtName, wwn string) error {
 func GetSerialTarget(tgtName string) (string, error) {
 	targetRoot := filepath.Join(iBlockPath, tgtName)
 	//it returns something like "T10 VPD Unit Serial Number: 5001405043a8fbf4"
-	serial, err := ioutil.ReadFile(filepath.Join(targetRoot, "wwn", "vpd_unit_serial"))
+	serial, err := os.ReadFile(filepath.Join(targetRoot, "wwn", "vpd_unit_serial"))
 	if err != nil {
 		return "", fmt.Errorf("GetSerialTarget for %s: %s", targetRoot, err)
 	}

@@ -4,7 +4,6 @@
 package upgradeconverter
 
 import (
-	"io/ioutil"
 	"os"
 	"strings"
 
@@ -46,7 +45,7 @@ func renameFiles(srcDir string, dstDir string, noFlag bool) {
 			return
 		}
 	}
-	locations, err := ioutil.ReadDir(srcDir)
+	locations, err := os.ReadDir(srcDir)
 	if err != nil {
 		// Some old directories might not exist
 		if !os.IsNotExist(err) {
@@ -60,7 +59,7 @@ func renameFiles(srcDir string, dstDir string, noFlag bool) {
 		dstFile := dstDir + "/" + sha
 		// Find single file in srcDir
 		innerDir := srcDir + "/" + location.Name()
-		files, err := ioutil.ReadDir(innerDir)
+		files, err := os.ReadDir(innerDir)
 		if err != nil {
 			log.Errorf("renameFiles: read directory '%s' failed: %v",
 				innerDir, err)

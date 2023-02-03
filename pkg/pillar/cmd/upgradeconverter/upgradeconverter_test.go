@@ -6,7 +6,6 @@ package upgradeconverter
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"testing"
@@ -73,7 +72,7 @@ func createJSONFile(config interface{}, file string) {
 		log.Fatalf("createJSONFile: failed to marshall. err %s\n config: %+v",
 			err, config)
 	}
-	err = ioutil.WriteFile(file, configJSON, 0644)
+	err = os.WriteFile(file, configJSON, 0644)
 	if err != nil {
 		log.Fatalf("createJSONFile: failed to write file err %s", err)
 	}
@@ -82,7 +81,7 @@ func createJSONFile(config interface{}, file string) {
 
 func configItemValueMapFromFile(file string) *types.ConfigItemValueMap {
 	var newConfig types.ConfigItemValueMap
-	cfgJSON, err := ioutil.ReadFile(file)
+	cfgJSON, err := os.ReadFile(file)
 	if err != nil {
 		log.Errorf("***configItemValueMapFromFile - Failed to read from %s. "+
 			"Err: %s", file, err)
@@ -107,15 +106,15 @@ func ucContextForTest() *ucContext {
 	//log.SetLevel(log.TraceLevel)
 	var err error
 	ctxPtr := &ucContext{}
-	ctxPtr.persistDir, err = ioutil.TempDir("", "PersistDir")
+	ctxPtr.persistDir, err = os.MkdirTemp("", "PersistDir")
 	if err != nil {
 		log.Fatalf("Failed to create persistDir. err: %s", err)
 	}
-	ctxPtr.persistConfigDir, err = ioutil.TempDir("", "PersistConfigDir")
+	ctxPtr.persistConfigDir, err = os.MkdirTemp("", "PersistConfigDir")
 	if err != nil {
 		log.Fatalf("Failed to create persistConfigDir. err: %s", err)
 	}
-	ctxPtr.persistStatusDir, err = ioutil.TempDir("", "PersistStatusDir")
+	ctxPtr.persistStatusDir, err = os.MkdirTemp("", "PersistStatusDir")
 	if err != nil {
 		log.Fatalf("Failed to create persistStatusDir. err: %s", err)
 	}

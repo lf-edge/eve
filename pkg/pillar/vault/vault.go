@@ -6,7 +6,6 @@ package vault
 import (
 	"bytes"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -36,7 +35,7 @@ func GetOperationalInfo(log *base.LogObject) (info.DataSecAtRestStatus, string) 
 // ReadPersistType returns the persist filesystem
 func ReadPersistType() types.PersistType {
 	persistFsType := ""
-	pBytes, err := ioutil.ReadFile(evePersistTypeFile)
+	pBytes, err := os.ReadFile(evePersistTypeFile)
 	if err == nil {
 		persistFsType = strings.TrimSpace(string(pBytes))
 	}

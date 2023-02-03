@@ -5,7 +5,6 @@ package pubsub_test
 
 import (
 	"fmt"
-	"io/ioutil"
 	"os"
 	"testing"
 	"time"
@@ -19,7 +18,7 @@ import (
 
 func TestRestarted(t *testing.T) {
 	// Run in a unique directory
-	rootPath, err := ioutil.TempDir("", "restarted_test")
+	rootPath, err := os.MkdirTemp("", "restarted_test")
 	if err != nil {
 		t.Fatalf("TempDir failed: %s", err)
 	}

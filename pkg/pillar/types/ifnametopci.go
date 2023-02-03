@@ -9,7 +9,6 @@ package types
 import (
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path"
 	"regexp"
@@ -175,7 +174,7 @@ func PciLongToIfname(log *base.LogObject, long string) (bool, string) {
 		return false, ""
 	}
 	devPath := pciPath + "/" + long + "/net"
-	locations, err := ioutil.ReadDir(devPath)
+	locations, err := os.ReadDir(devPath)
 	if err != nil {
 		log.Errorf("Dir %s is missing", devPath)
 		return false, ""
@@ -288,7 +287,7 @@ func PCIIsBootVga(log *base.LogObject, long string) (bool, error) {
 	log.Functionf("PCIIsBootVga %s", long)
 
 	bootVgaFile := pciPath + "/" + long + "/boot_vga"
-	if isBoot, err := ioutil.ReadFile(bootVgaFile); err != nil {
+	if isBoot, err := os.ReadFile(bootVgaFile); err != nil {
 		return false, err
 	} else {
 		return strings.TrimSpace(strings.TrimSuffix(string(isBoot), "\n")) == "1", err

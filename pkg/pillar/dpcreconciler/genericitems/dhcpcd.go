@@ -7,7 +7,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"net"
 	"os"
 	"os/exec"
@@ -396,7 +395,7 @@ func (c *DhcpcdConfigurator) statAndRead(filename string) (string, time.Time) {
 		// File doesn't exist
 		return "", time.Time{}
 	}
-	content, err := ioutil.ReadFile(filename)
+	content, err := os.ReadFile(filename)
 	if err != nil {
 		return "", fi.ModTime()
 	}

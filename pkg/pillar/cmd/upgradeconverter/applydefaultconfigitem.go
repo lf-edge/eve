@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"strings"
 
@@ -192,7 +191,7 @@ func parseFile(filename string) (*types.ConfigItemValueMap, error) {
 		return nil, fmt.Errorf("Failed to open file %s. Err: %s", filename, err)
 	}
 
-	byteValue, err := ioutil.ReadAll(file)
+	byteValue, err := io.ReadAll(file)
 	if err != nil {
 		return nil, fmt.Errorf("***Failed to read file %s. Err: %s",
 			filename, err)

@@ -7,7 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"strings"
 	"time"
 
@@ -113,7 +113,7 @@ func createManifestsForBareBlob(artifact *registry.Artifact) ([]*types.BlobStatu
 	}
 	defer reader.Close()
 
-	configBytes, err := ioutil.ReadAll(reader)
+	configBytes, err := io.ReadAll(reader)
 	if err != nil {
 		return nil, fmt.Errorf("getManifestsForBlob: Exception while reading config bytes: %s",
 			err.Error())

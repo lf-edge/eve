@@ -4,7 +4,6 @@
 package pubsub_test
 
 import (
-	"io/ioutil"
 	"os"
 	"testing"
 	"time"
@@ -23,7 +22,7 @@ type largeItem struct {
 
 func TestCheckMaxSize(t *testing.T) {
 	// Run in a unique directory
-	rootPath, err := ioutil.TempDir("", "checkmaxsize_test")
+	rootPath, err := os.MkdirTemp("", "checkmaxsize_test")
 	if err != nil {
 		t.Fatalf("TempDir failed: %s", err)
 	}

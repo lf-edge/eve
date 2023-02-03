@@ -9,7 +9,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -323,13 +322,15 @@ func untarLogfile(downloadedFile string) {
 	}
 	logSaveDir := fileCopyDir + fileStr[0]
 	fmt.Printf("\n log files saved at %s\n\n", logSaveDir)
-	files, err := ioutil.ReadDir(logSaveDir)
+	files, err := os.ReadDir(logSaveDir)
 	if err != nil {
 		fmt.Printf("read %s error, %v\n", logSaveDir, err)
 		return
 	}
 	for _, f := range files {
-		fmt.Printf("file: %s, size %d\n", f.Name(), f.Size())
+		if info, err := f.Info(); err == nil {
+			fmt.Printf("file: %s, size %d\n", f.Name(), info.Size())
+		}
 	}
 
 	unpackLogfiles(fileCopyDir+fileStr[0], files)

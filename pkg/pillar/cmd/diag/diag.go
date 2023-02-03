@@ -12,7 +12,6 @@ import (
 	"encoding/base64"
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"net"
 	"net/http"
 	"os"
@@ -164,7 +163,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	}
 	log.Functionf("processed GlobalConfig")
 
-	server, err := ioutil.ReadFile(types.ServerFileName)
+	server, err := os.ReadFile(types.ServerFileName)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -340,7 +339,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 			ctx.usingOnboardCert = false
 		}
 		// Check in case /config/server changes while running
-		nserver, err := ioutil.ReadFile(types.ServerFileName)
+		nserver, err := os.ReadFile(types.ServerFileName)
 		if err != nil {
 			log.Error(err)
 		} else if len(nserver) != 0 && string(server) != string(nserver) {

@@ -4,7 +4,6 @@
 package pubsub_test
 
 import (
-	"io/ioutil"
 	"os"
 	"runtime"
 	"testing"
@@ -26,7 +25,7 @@ type context struct {
 
 func TestUnsubscribe(t *testing.T) {
 	// Run in a unique directory
-	rootPath, err := ioutil.TempDir("", "unsubscribe_test")
+	rootPath, err := os.MkdirTemp("", "unsubscribe_test")
 	if err != nil {
 		t.Fatalf("TempDir failed: %s", err)
 	}

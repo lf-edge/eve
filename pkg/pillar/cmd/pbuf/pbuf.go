@@ -5,7 +5,6 @@ package pbuf
 
 import (
 	"flag"
-	"io/ioutil"
 	"os"
 
 	zauth "github.com/lf-edge/eve/api/go/auth"
@@ -44,7 +43,7 @@ func Run(_ *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, arg
 
 	for _, arg := range state.args {
 		log.Noticef("Handling %s type %s", arg, *state.typePtr)
-		buf, err := ioutil.ReadFile(arg)
+		buf, err := os.ReadFile(arg)
 		if err != nil {
 			log.Errorf("Read failed: %s", err)
 			continue

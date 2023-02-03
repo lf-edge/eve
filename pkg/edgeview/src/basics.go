@@ -10,7 +10,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net"
 	"os"
 	"os/exec"
@@ -201,7 +200,7 @@ func getAddrFromJWT(token string, isServer bool, instID int) (string, string, er
 
 	var uuidStr string
 	if isServer {
-		retbytes, err := ioutil.ReadFile("/persist/status/uuid")
+		retbytes, err := os.ReadFile("/persist/status/uuid")
 		if err == nil {
 			uuidStr = strings.TrimSuffix(string(retbytes), "\n")
 		}
@@ -322,7 +321,7 @@ func getBasics() {
 	}
 
 	if basics.uuid == "" {
-		retbytes, err := ioutil.ReadFile("/persist/status/uuid")
+		retbytes, err := os.ReadFile("/persist/status/uuid")
 		if err == nil {
 			basics.uuid = string(retbytes)
 		}
@@ -335,7 +334,7 @@ func getBasics() {
 	}
 
 	if basics.server == "" {
-		retbytes, err := ioutil.ReadFile("/config/server")
+		retbytes, err := os.ReadFile("/config/server")
 		if err == nil {
 			server := string(retbytes)
 			basics.server = strings.TrimSuffix(server, "\n")
@@ -361,14 +360,14 @@ func getBasics() {
 	}
 
 	if basics.release == "" {
-		retbytes, err := ioutil.ReadFile("/run/eve-release")
+		retbytes, err := os.ReadFile("/run/eve-release")
 		if err == nil {
 			basics.release = string(retbytes)
 		}
 	}
 
 	if basics.partition == "" {
-		retbytes, err := ioutil.ReadFile("/run/eve.id")
+		retbytes, err := os.ReadFile("/run/eve.id")
 		if err == nil {
 			basics.partition = string(retbytes)
 		}
@@ -459,7 +458,7 @@ func runPipeCmds(prog1 string, arg1 []string, prog2 string, arg2 []string) (stri
 		c1.Wait()
 	}()
 	c2.Wait()
-	out, err := ioutil.ReadAll(&b2)
+	out, err := io.ReadAll(&b2)
 	if err != nil {
 		reOpenPipe(true)
 		return "", err
@@ -517,7 +516,7 @@ func getFileTimeStr(t1 time.Time) string {
 }
 
 func listJSONFiles(path string) ([]string, error) {
-	files, err := ioutil.ReadDir(path)
+	files, err := os.ReadDir(path)
 	if err != nil {
 		return nil, err
 	}

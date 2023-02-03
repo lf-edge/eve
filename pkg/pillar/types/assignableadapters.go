@@ -13,7 +13,6 @@ package types
 
 import (
 	"fmt"
-	"io/ioutil"
 	"os"
 	"reflect"
 	"strings"
@@ -496,7 +495,7 @@ func getDeviceNameFromPciID(pciID string) (string, error) {
 	// e.g., ls /sys/bus/pci/devices/<pciID>/nvme/
 	//  -> nvme0
 	deviceName := ""
-	nvmePath, err := ioutil.ReadDir(sysfsPciDevices + pciID + "/nvme")
+	nvmePath, err := os.ReadDir(sysfsPciDevices + pciID + "/nvme")
 	if err != nil {
 		return "", err
 	}

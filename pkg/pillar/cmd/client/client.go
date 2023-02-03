@@ -9,7 +9,6 @@ import (
 	"encoding/base64"
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"mime"
 	"net/http"
 	"os"
@@ -221,7 +220,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 
 	ticker := flextimer.NewExpTicker(time.Second, maxDelay, 0.0)
 
-	server, err := ioutil.ReadFile(types.ServerFileName)
+	server, err := os.ReadFile(types.ServerFileName)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -244,7 +243,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 			log.Fatal(err)
 		}
 		// Load device text cert for upload
-		deviceCertPem, err = ioutil.ReadFile(types.DeviceCertName)
+		deviceCertPem, err = os.ReadFile(types.DeviceCertName)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -357,7 +356,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 
 		case <-ticker.C:
 			// Check in case /config/server changes while running
-			nserver, err := ioutil.ReadFile(types.ServerFileName)
+			nserver, err := os.ReadFile(types.ServerFileName)
 			if err != nil {
 				log.Error(err)
 			} else if len(nserver) != 0 && string(server) != string(nserver) {
@@ -439,7 +438,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		}
 		if doWrite {
 			b := []byte(fmt.Sprintf("%s\n", devUUID))
-			err = ioutil.WriteFile(uuidFileName, b, 0644)
+			err = os.WriteFile(uuidFileName, b, 0644)
 			if err != nil {
 				log.Errorf("WriteFile %s failed: %v",
 					uuidFileName, err)
@@ -465,7 +464,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 			// Write/update file for ledmanager
 			// Note that no CRLF
 			b := []byte(hardwaremodel)
-			err = ioutil.WriteFile(hardwaremodelFileName, b, 0644)
+			err = os.WriteFile(hardwaremodelFileName, b, 0644)
 			if err != nil {
 				log.Errorf("WriteFile %s failed: %v",
 					hardwaremodelFileName, err)

@@ -11,7 +11,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"os"
 
 	zconfig "github.com/lf-edge/eve/api/go/config"
 	zcommon "github.com/lf-edge/eve/api/go/evecommon"
@@ -82,7 +82,7 @@ func getDeviceCert(ctx *DecryptCipherContext,
 		return []byte{}, errors.New(errStr)
 	}
 	// TBD:XXX as of now, only one
-	certBytes, err := ioutil.ReadFile(types.DeviceCertName)
+	certBytes, err := os.ReadFile(types.DeviceCertName)
 	if err != nil {
 		errStr := fmt.Sprintf("getDeviceCert failed while reading device certificate: %v",
 			err)

@@ -18,7 +18,6 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"math/big"
 	"mime"
 	"net/http"
@@ -166,7 +165,7 @@ func VerifyAuthContainer(ctx *ZedCloudContext, sm *zauth.AuthContainer) (types.S
 }
 
 func loadSavedServerSigningCert(ctx *ZedCloudContext) error {
-	certBytes, err := ioutil.ReadFile(types.ServerSigningCertFileName)
+	certBytes, err := os.ReadFile(types.ServerSigningCertFileName)
 	if err != nil {
 		ctx.log.Errorf("loadSavedServerSigningCert: can not read in server cert file, %v\n", err)
 		return err
@@ -300,7 +299,7 @@ func getMyDevCert(ctx *ZedCloudContext, isOnboard bool) (tls.Certificate, error)
 				return cert, err
 			}
 
-			onboardCertpem, err := ioutil.ReadFile(types.OnboardCertName)
+			onboardCertpem, err := os.ReadFile(types.OnboardCertName)
 			if err != nil {
 				ctx.log.Tracef("getMyDevCert: get onboard certbytes error %v\n", err)
 				return cert, err
@@ -537,7 +536,7 @@ func verifySignature(log *base.LogObject, certByte []byte, interm *x509.CertPool
 
 	// Get the root certificate from file
 	signingRoots := x509.NewCertPool()
-	caCert, err := ioutil.ReadFile(types.RootCertFileName)
+	caCert, err := os.ReadFile(types.RootCertFileName)
 	if err != nil {
 		errStr := fmt.Sprintf("root certificate read fail, %v", err)
 		log.Errorln("verifySignature: " + errStr)

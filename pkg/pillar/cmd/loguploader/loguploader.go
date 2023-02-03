@@ -7,7 +7,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"math/rand"
 	"net/http"
 	"os"
@@ -393,7 +392,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 
 func sendCtxInit(ctx *loguploaderContext) {
 	//get server name
-	bytes, err := ioutil.ReadFile(types.ServerFileName)
+	bytes, err := os.ReadFile(types.ServerFileName)
 	if err != nil {
 		log.Fatalf("sendCtxInit: Failed to read ServerFileName(%s). Err: %s",
 			types.ServerFileName, err)
@@ -565,7 +564,7 @@ func doFetchSend(ctx *loguploaderContext, zipDir string, iter *int) int {
 		log.Tracef("doFetchSend: can't stats %s", zipDir)
 		return 0
 	}
-	files, err := ioutil.ReadDir(zipDir)
+	files, err := os.ReadDir(zipDir)
 	if err != nil {
 		log.Fatal("doFetchSend: read dir failed", err)
 	}
@@ -933,7 +932,7 @@ func handle4xxlogfile(ctx *loguploaderContext, fName string, isApp bool) {
 		}
 		dstFile = failSendDir + "/" + fName
 
-		files, err := ioutil.ReadDir(failSendDir)
+		files, err := os.ReadDir(failSendDir)
 		if err != nil {
 			log.Fatal("handle4xxlogfile: read dir ", err)
 		}

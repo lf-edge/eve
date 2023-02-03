@@ -9,7 +9,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"os/exec"
 	"strings"
@@ -485,7 +484,7 @@ func getVersion(log *base.LogObject, part string, verFilename string) (string, e
 
 	if part == GetCurrentPartition() {
 		filename := verFilename
-		version, err := ioutil.ReadFile(filename)
+		version, err := os.ReadFile(filename)
 		if err != nil {
 			log.Errorln(err)
 			return "", err
@@ -497,7 +496,7 @@ func getVersion(log *base.LogObject, part string, verFilename string) (string, e
 	} else {
 		verFilename = otherPartVersionFile
 		devname := GetPartitionDevname(part)
-		target, err := ioutil.TempDir("/run/baseosmgr", "tmpmnt")
+		target, err := os.MkdirTemp("/run/baseosmgr", "tmpmnt")
 		if err != nil {
 			log.Errorln(err)
 			return "", err
@@ -536,7 +535,7 @@ func getVersion(log *base.LogObject, part string, verFilename string) (string, e
 		}()
 		filename := fmt.Sprintf("%s/%s",
 			target, verFilename)
-		version, err := ioutil.ReadFile(filename)
+		version, err := os.ReadFile(filename)
 		if err != nil {
 			log.Warn(err)
 			return "", err

@@ -7,7 +7,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"os"
 	"strings"
 )
 
@@ -53,7 +53,7 @@ func runPubsub(pubStr string) {
 			printColor("\n pubsub in: "+sdir, colorBLUE)
 
 			if subdir != "" {
-				files, err := ioutil.ReadDir(sdir + pubsubdir)
+				files, err := os.ReadDir(sdir + pubsubdir)
 				if err != nil {
 					continue
 				}
@@ -105,7 +105,7 @@ func pubsubSvs(startDir, pubsubDir, subDir string) {
 			printpath = newdir + path
 		}
 		fmt.Printf("   service: %s\n", paths[len(paths)-1])
-		retData, err := ioutil.ReadFile(f)
+		retData, err := os.ReadFile(f)
 		if err != nil {
 			continue
 		}

@@ -7,7 +7,6 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -104,7 +103,7 @@ func WriteRenameWithBackup(fileName string, b []byte) error {
 func writeRename(fileName string, b []byte, withBackup bool) error {
 	dirName := filepath.Dir(fileName)
 	// Do atomic rename to avoid partially written files
-	tmpfile, err := ioutil.TempFile(dirName, "tmp")
+	tmpfile, err := os.CreateTemp(dirName, "tmp")
 	if err != nil {
 		errStr := fmt.Sprintf("WriteRename(%s): %s",
 			fileName, err)

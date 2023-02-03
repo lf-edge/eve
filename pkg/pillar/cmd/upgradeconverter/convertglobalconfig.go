@@ -5,7 +5,7 @@ package upgradeconverter
 
 import (
 	"encoding/json"
-	"io/ioutil"
+	"io"
 	"os"
 
 	"github.com/lf-edge/eve/pkg/pillar/types"
@@ -97,7 +97,7 @@ func convertGlobalConfig(ctxPtr *ucContext) error {
 	if err != nil {
 		log.Fatalf("Failed to marshall new global config err %s", err)
 	}
-	err = ioutil.WriteFile(newGlobalConfigFile, data, 0644)
+	err = os.WriteFile(newGlobalConfigFile, data, 0644)
 	if err != nil {
 		log.Fatalf("Failed to Save NewConfig. err %s", err)
 	}
@@ -114,7 +114,7 @@ func newConfigFromOld(globalConfigFile string) *types.ConfigItemValueMap {
 		return types.DefaultConfigItemValueMap()
 	}
 
-	byteValue, err := ioutil.ReadAll(file)
+	byteValue, err := io.ReadAll(file)
 	if err != nil {
 		log.Errorf("***Failed to read file %s. Err: %s",
 			globalConfigFile, err)

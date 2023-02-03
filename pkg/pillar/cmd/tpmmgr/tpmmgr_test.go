@@ -9,7 +9,6 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"reflect"
 	"testing"
@@ -113,13 +112,13 @@ func TestSoftEcdh(t *testing.T) {
 	ecdhKeyFile := testEcdhKeyFile
 	etpm.SetECDHPrivateKeyFile(ecdhKeyFile)
 
-	err := ioutil.WriteFile(ecdhCertFile, []byte(ecdhCertPem), 0644)
+	err := os.WriteFile(ecdhCertFile, []byte(ecdhCertPem), 0644)
 	if err != nil {
 		t.Errorf("Failed to create test certificate file: %v", err)
 	}
 	defer os.Remove(ecdhCertFile)
 
-	err = ioutil.WriteFile(ecdhKeyFile, []byte(ecdhKeyPem), 0644)
+	err = os.WriteFile(ecdhKeyFile, []byte(ecdhKeyPem), 0644)
 	if err != nil {
 		t.Errorf("Failed to create test key file: %v", err)
 	}
@@ -132,19 +131,19 @@ func TestSoftEcdh(t *testing.T) {
 
 // Test ECDH key exchange and a symmetric cipher based on ECDH, with software based keys
 func TestGetPrivateKeyFromFile(t *testing.T) {
-	err := ioutil.WriteFile(testEcdhKeyFile, []byte(ecdhKeyPem), 0644)
+	err := os.WriteFile(testEcdhKeyFile, []byte(ecdhKeyPem), 0644)
 	if err != nil {
 		t.Errorf("Failed to create test ecdh key file: %v", err)
 	}
 	defer os.Remove(testEcdhKeyFile)
 
-	err = ioutil.WriteFile(testDeviceKeyFile, []byte(deviceKeyPem), 0644)
+	err = os.WriteFile(testDeviceKeyFile, []byte(deviceKeyPem), 0644)
 	if err != nil {
 		t.Errorf("Failed to create test device key file: %v", err)
 	}
 	defer os.Remove(testDeviceKeyFile)
 
-	err = ioutil.WriteFile(testEcdhKeyLegacyFile, []byte(ecdhKeyPemLegacy), 0644)
+	err = os.WriteFile(testEcdhKeyLegacyFile, []byte(ecdhKeyPemLegacy), 0644)
 	if err != nil {
 		t.Errorf("Failed to create test ecdh legacy key file: %v", err)
 	}

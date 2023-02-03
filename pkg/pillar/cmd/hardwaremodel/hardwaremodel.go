@@ -6,7 +6,7 @@ package hardwaremodel
 import (
 	"flag"
 	"fmt"
-	"io/ioutil"
+	"os"
 
 	"github.com/lf-edge/eve/pkg/pillar/agentbase"
 	"github.com/lf-edge/eve/pkg/pillar/base"
@@ -57,14 +57,14 @@ func Run(_ *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, arg
 	model := hardware.GetHardwareModelNoOverride(log)
 	if *state.cPtr {
 		b := []byte(fmt.Sprintf("%s", model))
-		err := ioutil.WriteFile(outputFile, b, 0644)
+		err := os.WriteFile(outputFile, b, 0644)
 		if err != nil {
 			log.Fatal("WriteFile", err, outputFile)
 		}
 
 	} else {
 		b := []byte(fmt.Sprintf("%s\n", model))
-		err := ioutil.WriteFile(outputFile, b, 0644)
+		err := os.WriteFile(outputFile, b, 0644)
 		if err != nil {
 			log.Fatal("WriteFile", err, outputFile)
 		}

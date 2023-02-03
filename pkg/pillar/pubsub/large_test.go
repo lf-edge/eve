@@ -5,7 +5,6 @@ package pubsub
 
 import (
 	"encoding/json"
-	"io/ioutil"
 	"os"
 	"reflect"
 	"strings"
@@ -28,7 +27,7 @@ func TestRemoveAndAddLarge(t *testing.T) {
 	logger := logrus.StandardLogger()
 	log := base.NewSourceLogObject(logger, "test", 1234)
 	// Run in a unique directory
-	rootPath, err := ioutil.TempDir("", "remove_large_test")
+	rootPath, err := os.MkdirTemp("", "remove_large_test")
 	if err != nil {
 		t.Fatalf("TempDir failed: %s", err)
 	}
@@ -121,7 +120,7 @@ func TestRemoveAndAddLargeWithArray(t *testing.T) {
 	logger := logrus.StandardLogger()
 	log := base.NewSourceLogObject(logger, "test", 1234)
 	// Run in a unique directory
-	rootPath, err := ioutil.TempDir("", "remove_large_test_with_array")
+	rootPath, err := os.MkdirTemp("", "remove_large_test_with_array")
 	if err != nil {
 		t.Fatalf("TempDir failed: %s", err)
 	}

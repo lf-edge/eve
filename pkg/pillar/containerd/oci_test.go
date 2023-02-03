@@ -6,7 +6,6 @@ package containerd
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"os"
 	"path"
@@ -363,21 +362,21 @@ func TestOciSpec(t *testing.T) {
 		t.Errorf("failed to create default OCI spec %v", err)
 	}
 
-	tmpfile, err := ioutil.TempFile("/tmp", "oci_spec*.json")
+	tmpfile, err := os.CreateTemp("/tmp", "oci_spec*.json")
 	if err != nil {
 		t.Errorf("failed to create tmpfile %v", err)
 	} else {
 		defer os.Remove(tmpfile.Name())
 	}
 
-	tmpdir, err := ioutil.TempDir("/tmp", "volume")
+	tmpdir, err := os.MkdirTemp("/tmp", "volume")
 	if err != nil {
 		t.Errorf("failed to create tmpdir %v", err)
 	} else {
 		defer os.RemoveAll(tmpdir)
 	}
 
-	if ioutil.WriteFile(tmpdir+"/image-config.json", []byte(imageConfig), 0777) != nil {
+	if os.WriteFile(tmpdir+"/image-config.json", []byte(imageConfig), 0777) != nil {
 		t.Errorf("failed to write to temp file %s", tmpdir+"/image-config.json")
 	}
 
@@ -475,7 +474,7 @@ func TestCreateMountPointExecEnvFiles(t *testing.T) {
     ]
 }`
 	//create a temp dir to hold resulting files
-	dir, _ := ioutil.TempDir("/tmp", "podfiles")
+	dir, _ := os.MkdirTemp("/tmp", "podfiles")
 	rootDir := path.Join(dir, "runx")
 	rootFsDir := path.Join(rootDir, "rootfs")
 	podPath := path.Join(dir, imageConfigFilename)
@@ -488,11 +487,11 @@ func TestCreateMountPointExecEnvFiles(t *testing.T) {
 	}
 
 	// now create a fake pod file...
-	if err := ioutil.WriteFile(podPath, []byte(content), 0644); err != nil {
+	if err := os.WriteFile(podPath, []byte(content), 0644); err != nil {
 		t.Errorf("failed to write to a pod file %v", err)
 	}
 	// ...and a loader runtime spec
-	if err := ioutil.WriteFile(rsPath, []byte(loaderRuntimeSpec), 0644); err != nil {
+	if err := os.WriteFile(rsPath, []byte(loaderRuntimeSpec), 0644); err != nil {
 		t.Errorf("failed to write to a runtime spec file %v", err)
 	}
 
@@ -515,7 +514,7 @@ func TestCreateMountPointExecEnvFiles(t *testing.T) {
 
 	execpathStr := "\"/bin/sh\""
 	cmdlineFile := path.Join(rootDir, "cmdline")
-	cmdline, err := ioutil.ReadFile(cmdlineFile)
+	cmdline, err := os.ReadFile(cmdlineFile)
 	if err != nil {
 		t.Errorf("createMountPointExecEnvFiles failed to create cmdline file %s %v", cmdlineFile, err)
 	}
@@ -525,7 +524,7 @@ func TestCreateMountPointExecEnvFiles(t *testing.T) {
 
 	mountFile := path.Join(rootDir, "mountPoints")
 	mountExpected := ""
-	mounts, err := ioutil.ReadFile(mountFile)
+	mounts, err := os.ReadFile(mountFile)
 	if err != nil {
 		t.Errorf("createMountPointExecEnvFiles failed to create mountPoints file %s %v", mountFile, err)
 	}
@@ -534,7 +533,7 @@ func TestCreateMountPointExecEnvFiles(t *testing.T) {
 	}
 
 	envFile := path.Join(rootDir, "environment")
-	envActual, err := ioutil.ReadFile(envFile)
+	envActual, err := os.ReadFile(envFile)
 	// start with WORKDIR
 	envExpect := "export WORKDIR=\"/data\"\nexport PATH=\"/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin\"\n"
 	if err != nil {
@@ -632,11 +631,11 @@ func TestPrepareMount(t *testing.T) {
 	}
 
 	filename := filepath.Join(oldTempRootPath, imageConfigFilename)
-	if err := ioutil.WriteFile(filename, []byte(imageConfig), 0644); err != nil {
+	if err := os.WriteFile(filename, []byte(imageConfig), 0644); err != nil {
 		t.Errorf("TestPrepareMount: exception while saving %s: %s", filename, err.Error())
 	}
 	filename = filepath.Join(oldTempRootPath, "tmp", ociRuntimeSpecFilename)
-	if err := ioutil.WriteFile(filename, []byte(loaderRuntimeSpec), 0644); err != nil {
+	if err := os.WriteFile(filename, []byte(loaderRuntimeSpec), 0644); err != nil {
 		t.Errorf("TestPrepareMount: exception while saving %s: %s", filename, err.Error())
 	}
 
@@ -698,7 +697,7 @@ func TestPrepareMount(t *testing.T) {
 			} else {
 				cmdlineFile := path.Join(tt.args.containerPath, "cmdline")
 				expectedCmdLine := "\"/start.sh\""
-				cmdline, err := ioutil.ReadFile(cmdlineFile)
+				cmdline, err := os.ReadFile(cmdlineFile)
 				if err != nil {
 					t.Errorf("TestPrepareMount: exception while reading cmdline file %s %v", cmdlineFile, err)
 				}
@@ -709,7 +708,7 @@ func TestPrepareMount(t *testing.T) {
 
 				mountFile := path.Join(tt.args.containerPath, "mountPoints")
 				expectedMounts := ""
-				mounts, err := ioutil.ReadFile(mountFile)
+				mounts, err := os.ReadFile(mountFile)
 				if err != nil {
 					t.Errorf("TestPrepareMount: exception while reading mountPoints file %s %v", mountFile, err)
 				}
@@ -722,7 +721,7 @@ func TestPrepareMount(t *testing.T) {
 				expectedEnv := "export WORKDIR=\"/\"\n" +
 					"export PATH=\"/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin\"\n" +
 					"export ENV1=\"VAL1\"\n"
-				env, err := ioutil.ReadFile(envFile)
+				env, err := os.ReadFile(envFile)
 				if err != nil {
 					t.Errorf("TestPrepareMount: exception while reading environment file %s %v", envFile, err)
 				}
@@ -813,13 +812,13 @@ func TestAddLoader(t *testing.T) {
 	spec1 := deepCopy(specTemplate).(ociSpec)
 	spec2 := deepCopy(specTemplate).(ociSpec)
 
-	tmpdir, err := ioutil.TempDir("/tmp", "volume")
+	tmpdir, err := os.MkdirTemp("/tmp", "volume")
 	if err != nil {
 		log.Fatalf("failed to create tmpdir %v", err)
 	} else {
 		defer os.RemoveAll(tmpdir)
 	}
-	if err := ioutil.WriteFile(filepath.Join(tmpdir, ociRuntimeSpecFilename), []byte(loaderRuntimeSpec), 0666); err != nil {
+	if err := os.WriteFile(filepath.Join(tmpdir, ociRuntimeSpecFilename), []byte(loaderRuntimeSpec), 0666); err != nil {
 		log.Fatalf("failed to create tmpfile %v", err)
 	}
 

@@ -28,7 +28,6 @@ import (
 	"encoding/pem"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"math/big"
 	"os"
@@ -108,9 +107,9 @@ func main() {
 	//then this config file will be updated
 
 	//read disk image from local file and compute sha256 of the image...
-	diskImage, err := ioutil.ReadFile(localImageDirname + "/cirros-0.3.5-x86_64-disk.img")
+	diskImage, err := os.ReadFile(localImageDirname + "/cirros-0.3.5-x86_64-disk.img")
 
-	//diskImage, err := ioutil.ReadFile("/var/tmp/zedmanager/downloads/verified/e137062a4dfbb4c225971b67781bc52183d14517170e16a3841d16f962ae7470/http:__download.cirros-cloud.net_0.3.5_cirros-0.3.5-x86_64-disk.img.e137062a4dfbb4c225971b67781bc52183d14517170e16a3841d16f962ae7470")
+	//diskImage, err := os.ReadFile("/var/tmp/zedmanager/downloads/verified/e137062a4dfbb4c225971b67781bc52183d14517170e16a3841d16f962ae7470/http:__download.cirros-cloud.net_0.3.5_cirros-0.3.5-x86_64-disk.img.e137062a4dfbb4c225971b67781bc52183d14517170e16a3841d16f962ae7470")
 	if err != nil {
 		fmt.Println(err)
 	}
@@ -127,14 +126,14 @@ func main() {
 		if err != nil {
 			fmt.Println("err: ", err)
 		}
-		serverPrivateKey, err = ioutil.ReadFile(localBaseDirname + "/server_private_key")
+		serverPrivateKey, err = os.ReadFile(localBaseDirname + "/server_private_key")
 		if err != nil {
 			fmt.Println(err)
 		}
 
 	} else {
-		serverPrivateKey, err = ioutil.ReadFile(localCertificateDirname + "/server.key.pem")
-		err = ioutil.WriteFile(localBaseDirname+"/server_private_key", serverPrivateKey, 0644)
+		serverPrivateKey, err = os.ReadFile(localCertificateDirname + "/server.key.pem")
+		err = os.WriteFile(localBaseDirname+"/server_private_key", serverPrivateKey, 0644)
 		if err != nil {
 			fmt.Println(err)
 		}
@@ -240,7 +239,7 @@ func UpdateConfigFile(config VerifierConfig, configDirname string) {
 	}
 	//fmt.Println(b)
 
-	err = ioutil.WriteFile(configDirname+"/testCf.json", b, 0644)
+	err = os.WriteFile(configDirname+"/testCf.json", b, 0644)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -252,7 +251,7 @@ func urlToSafename(url string, sha string) string {
 }
 func InvokeDeviceCodeForVerification(configDirname, imageDirname, certificateDirname, rootCertFileName string, signature []byte) {
 	configFile := configDirname + "/testCf.json"
-	cb, err := ioutil.ReadFile(configFile)
+	cb, err := os.ReadFile(configFile)
 	if err != nil {
 		log.Printf("%s for %s\n", err, configFile)
 	}
@@ -268,7 +267,7 @@ func InvokeDeviceCodeForVerification(configDirname, imageDirname, certificateDir
 	//and signature verification...
 
 	serverCertName := config.SignatureKey
-	serverCertificate, err := ioutil.ReadFile(certificateDirname + "/" + serverCertName)
+	serverCertificate, err := os.ReadFile(certificateDirname + "/" + serverCertName)
 	if err != nil {
 		fmt.Println(err)
 	}
@@ -290,7 +289,7 @@ func InvokeDeviceCodeForVerification(configDirname, imageDirname, certificateDir
 	roots := x509.NewCertPool()
 
 	//read the root cerificates from /usr/local/etc/zededa...
-	rootCertificate, err := ioutil.ReadFile(rootCertFileName)
+	rootCertificate, err := os.ReadFile(rootCertFileName)
 	if err != nil {
 		fmt.Println(err)
 	}
@@ -304,7 +303,7 @@ func InvokeDeviceCodeForVerification(configDirname, imageDirname, certificateDir
 	for c := 0; c < length; c++ {
 
 		fmt.Println(certificateNameInChain[c])
-		certNameFromChain, err := ioutil.ReadFile(certificateDirname + "/" + certificateNameInChain[c])
+		certNameFromChain, err := os.ReadFile(certificateDirname + "/" + certificateNameInChain[c])
 		if err != nil {
 			fmt.Println(err)
 		}
@@ -327,9 +326,9 @@ func InvokeDeviceCodeForVerification(configDirname, imageDirname, certificateDir
 	//and compute sha256 of the image...
 
 	destinationImgDir := imageDirname + "/" + imgSha + "/" + safeName
-	diskImg, err := ioutil.ReadFile(destinationImgDir)
+	diskImg, err := os.ReadFile(destinationImgDir)
 
-	//diskImage, err := ioutil.ReadFile("/var/tmp/zedmanager/downloads/verified/e137062a4dfbb4c225971b67781bc52183d14517170e16a3841d16f962ae7470/http:__download.cirros-cloud.net_0.3.5_cirros-0.3.5-x86_64-disk.img.e137062a4dfbb4c225971b67781bc52183d14517170e16a3841d16f962ae7470")
+	//diskImage, err := os.ReadFile("/var/tmp/zedmanager/downloads/verified/e137062a4dfbb4c225971b67781bc52183d14517170e16a3841d16f962ae7470/http:__download.cirros-cloud.net_0.3.5_cirros-0.3.5-x86_64-disk.img.e137062a4dfbb4c225971b67781bc52183d14517170e16a3841d16f962ae7470")
 	if err != nil {
 		fmt.Println(err)
 	}

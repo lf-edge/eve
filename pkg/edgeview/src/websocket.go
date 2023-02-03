@@ -11,7 +11,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net"
 	"net/http"
 	"net/url"
@@ -150,7 +149,7 @@ func tlsDial(isServer bool, pIP string, pport int, src []net.IP, idx int) (*webs
 	_, err0 := os.Stat(serverCertFile)
 	if err0 == nil {
 		caCertPool := x509.NewCertPool()
-		caCert, err := ioutil.ReadFile(serverCertFile)
+		caCert, err := os.ReadFile(serverCertFile)
 		if err != nil {
 			log.Errorf("can not read server cert file, %v", err)
 			return nil, err

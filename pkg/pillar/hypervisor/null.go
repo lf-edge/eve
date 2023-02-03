@@ -6,7 +6,6 @@ package hypervisor
 import (
 	"fmt"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	"io/ioutil"
 	"os"
 
 	"github.com/sirupsen/logrus"
@@ -43,7 +42,7 @@ func newNull() Hypervisor {
 		doms:       map[string]*domState{},
 		domCounter: 0,
 		PCI:        map[string]bool{}}
-	if dir, err := ioutil.TempDir("", "null_domains"); err == nil {
+	if dir, err := os.MkdirTemp("", "null_domains"); err == nil {
 		res.tempDir = dir
 	}
 	return res
@@ -77,7 +76,7 @@ func (ctx nullContext) Create(domainName string, cfgFilename string, config *typ
 		return 0, fmt.Errorf("Null Domain create failed to create domain descriptor %v\n", err)
 	}
 
-	configContent, err := ioutil.ReadFile(cfgFilename)
+	configContent, err := os.ReadFile(cfgFilename)
 	if err != nil {
 		return 0, fmt.Errorf("Null Domain create failed to read cfgFilename %s %v\n", cfgFilename, err)
 	}

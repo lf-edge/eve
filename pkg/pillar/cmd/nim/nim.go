@@ -8,7 +8,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"io/ioutil"
+	"os"
 	"path"
 	"path/filepath"
 	"strings"
@@ -825,7 +825,7 @@ func (n *nim) isDeviceOnboarded() bool {
 }
 
 func (n *nim) listPublishedDPCs(directory string) (dpcFilePaths []string) {
-	locations, err := ioutil.ReadDir(directory)
+	locations, err := os.ReadDir(directory)
 	if err != nil {
 		// Directory might not exist
 		return

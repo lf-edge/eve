@@ -14,7 +14,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"mime"
 	"net"
 	"net/http"
@@ -1086,7 +1085,7 @@ func SendLocal(ctx *ZedCloudContext, destURL string, intf string, ipSrc net.IP,
 		return nil, nil, errors.New(errStr)
 	}
 
-	contents, err := ioutil.ReadAll(resp.Body)
+	contents, err := io.ReadAll(resp.Body)
 	if err != nil {
 		resp.Body.Close()
 		resp.Body = nil

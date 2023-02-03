@@ -4,7 +4,6 @@
 package downloader
 
 import (
-	"io/ioutil"
 	"os"
 	"path"
 	"path/filepath"
@@ -38,7 +37,7 @@ func createDownloadDirs() {
 func clearInProgressDownloadDirs(ctx *downloaderContext) {
 	// get files
 	dirName := getPendingDir()
-	files, err := ioutil.ReadDir(dirName)
+	files, err := os.ReadDir(dirName)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return

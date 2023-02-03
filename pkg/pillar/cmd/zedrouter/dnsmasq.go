@@ -9,7 +9,6 @@ import (
 	"bufio"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net"
 	"os"
 	"strconv"
@@ -58,7 +57,7 @@ func dnsmasqLeasePath(bridgeName string) string {
 func dnsmasqBridgeNames() []string {
 	var bridgeNames []string
 
-	locations, err := ioutil.ReadDir(dnsmasqLeaseDir)
+	locations, err := os.ReadDir(dnsmasqLeaseDir)
 	if err != nil {
 		log.Error(err)
 		return bridgeNames
@@ -392,7 +391,7 @@ func deleteDnsmasqConfiglet(bridgeName string) {
 }
 
 func RemoveDirContent(dir string) error {
-	files, err := ioutil.ReadDir(dir)
+	files, err := os.ReadDir(dir)
 	if err != nil {
 		return err
 	}
@@ -434,7 +433,7 @@ func stopDnsmasq(bridgeName string, printOnError bool, delConfiglet bool) {
 
 	log.Functionf("stopDnsmasq(%s)\n", bridgeName)
 	pidfile := fmt.Sprintf("/run/dnsmasq.%s.pid", bridgeName)
-	pidByte, err := ioutil.ReadFile(pidfile)
+	pidByte, err := os.ReadFile(pidfile)
 	if err != nil {
 		log.Errorf("stopDnsmasq: pid file read error %v\n", err)
 		return

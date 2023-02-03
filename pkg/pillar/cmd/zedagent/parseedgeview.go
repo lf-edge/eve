@@ -8,7 +8,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"strconv"
 	"strings"
@@ -89,7 +88,7 @@ func parseEvConfig(ctx *getconfigContext, config *zconfig.EdgeDevConfig) {
 }
 
 func verifyJWT(params []string) error {
-	certBytes, err := ioutil.ReadFile(types.ServerSigningCertFileName)
+	certBytes, err := os.ReadFile(types.ServerSigningCertFileName)
 	if err != nil {
 		log.Errorf("can not read signing cert: %v", err)
 		return err
@@ -167,7 +166,7 @@ func addEvFiles(evConfig types.EdgeviewConfig, params []string) error {
 	}
 
 	// create jwt token file
-	f, err := ioutil.TempFile(types.EdgeviewPath, "Edgeview-Config")
+	f, err := os.CreateTemp(types.EdgeviewPath, "Edgeview-Config")
 	if err != nil {
 		log.Errorf("file create failed: %v", err)
 		return err

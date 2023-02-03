@@ -5,7 +5,6 @@ package utils
 
 import (
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"syscall"
@@ -40,7 +39,7 @@ func MoveDir(log *base.LogObject, src string, dst string) error {
 		return fmt.Errorf("error creating dst directory: %v", err)
 	}
 
-	entries, err := ioutil.ReadDir(src)
+	entries, err := os.ReadDir(src)
 	if err != nil {
 		return fmt.Errorf("error read dst directory: %v", err)
 	}
@@ -52,14 +51,17 @@ func MoveDir(log *base.LogObject, src string, dst string) error {
 	for _, entry := range entries {
 		srcPath := filepath.Join(src, entry.Name())
 		dstPath := filepath.Join(dst, entry.Name())
-
+		info, err := entry.Info()
+		if err != nil {
+			return fmt.Errorf("failed to get file '%s' info: %w", entry.Name(), err)
+		}
 		if entry.IsDir() {
 			err = MoveDir(log, srcPath, dstPath)
 			if err != nil {
 				return err
 			}
 		} else {
-			if entry.Mode()&os.ModeSymlink != 0 {
+			if info.Mode()&os.ModeSymlink != 0 {
 				link, err := os.Readlink(srcPath)
 				if err != nil {
 					return fmt.Errorf("error readlink file: %v", err)

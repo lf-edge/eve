@@ -4,7 +4,6 @@
 package socketdriver_test
 
 import (
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"testing"
@@ -32,7 +31,7 @@ func (mockPubSub) DetermineDiffs(pubsub.LocalCollection) []string {
 
 func TestRecovery(t *testing.T) {
 	// Run in a unique directory.
-	rootPath, err := ioutil.TempDir("", "recovery_test")
+	rootPath, err := os.MkdirTemp("", "recovery_test")
 	if err != nil {
 		t.Fatalf("TempDir failed: %s", err)
 	}
@@ -107,7 +106,7 @@ func TestRecovery(t *testing.T) {
 	assert.Equal(t, items["global"], []byte(`{"field":"abcdef"}`))
 
 	// Simulate reboot and the persisted file getting emptied.
-	err = ioutil.WriteFile(filePath, nil, file.Mode())
+	err = os.WriteFile(filePath, nil, file.Mode())
 	if err != nil {
 		t.Fatal(err)
 	}

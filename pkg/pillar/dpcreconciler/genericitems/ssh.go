@@ -6,7 +6,6 @@ package genericitems
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
 	"os"
 
 	"github.com/lf-edge/eve/libs/depgraph"
@@ -81,9 +80,9 @@ func (c *SSHAuthKeysConfigurator) Delete(ctx context.Context, item depgraph.Item
 
 func (c *SSHAuthKeysConfigurator) writeSSHAuthKeys(keys string) error {
 	c.Log.Functionf("writeSSHAuthKeys: %s", keys)
-	tmpfile, err := ioutil.TempFile(runDir, "ak")
+	tmpfile, err := os.CreateTemp(runDir, "ak")
 	if err != nil {
-		err = fmt.Errorf("ioutil.TempFile(%s) failed: %v", runDir, err)
+		err = fmt.Errorf("os.CreateTemp(%s) failed: %v", runDir, err)
 		c.Log.Error(err)
 		return err
 	}

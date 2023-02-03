@@ -6,7 +6,6 @@ package nim
 import (
 	"bytes"
 	"fmt"
-	"io/ioutil"
 	"net"
 	"os"
 	"time"
@@ -31,9 +30,9 @@ func (n *nim) queryControllerDNS() {
 	var ipaddrCached string
 
 	if _, err := os.Stat(etcHostFileName); err == nil {
-		etchosts, err = ioutil.ReadFile(etcHostFileName)
+		etchosts, err = os.ReadFile(etcHostFileName)
 		if err == nil {
-			controllerServer, _ = ioutil.ReadFile(types.ServerFileName)
+			controllerServer, _ = os.ReadFile(types.ServerFileName)
 			controllerServer = bytes.TrimSuffix(controllerServer, []byte("\n"))
 			if bytes.Contains(controllerServer, []byte(":")) {
 				serverport := bytes.Split(controllerServer, []byte(":"))
@@ -94,7 +93,7 @@ func (n *nim) controllerDNSCache(etchosts, controllerServer []byte, ipaddrCached
 	}
 
 	var nameServers []string
-	dnsServer, _ := ioutil.ReadFile(resolvFileName)
+	dnsServer, _ := os.ReadFile(resolvFileName)
 	dnsRes := bytes.Split(dnsServer, []byte("\n"))
 	for _, d := range dnsRes {
 		d1 := bytes.Split(d, []byte("nameserver "))
@@ -158,7 +157,7 @@ func (n *nim) controllerDNSCache(etchosts, controllerServer []byte, ipaddrCached
 	}
 
 	ipaddrCached = ""
-	err := ioutil.WriteFile(tmpHostFileName, newhosts, 0644)
+	err := os.WriteFile(tmpHostFileName, newhosts, 0644)
 	if err == nil {
 		if err := os.Rename(tmpHostFileName, etcHostFileName); err != nil {
 			n.Log.Errorf("can not rename /etc/hosts file %v", err)

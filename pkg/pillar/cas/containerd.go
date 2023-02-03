@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -282,7 +281,7 @@ func (c *containerdCAS) IngestBlob(ctx context.Context, blobs ...types.BlobStatu
 		switch {
 		case blob.IsIndex():
 			// read it in so we can process it
-			data, err := ioutil.ReadAll(contentReader)
+			data, err := io.ReadAll(contentReader)
 			if err != nil {
 				err = fmt.Errorf("IngestBlob(%s): could not read data at %s: %+s",
 					blob.Sha256, blobFile, err.Error())
@@ -301,7 +300,7 @@ func (c *containerdCAS) IngestBlob(ctx context.Context, blobs ...types.BlobStatu
 			indexHash = sha
 		case blob.IsManifest():
 			// read it in so we can process it
-			data, err := ioutil.ReadAll(contentReader)
+			data, err := io.ReadAll(contentReader)
 			if err != nil {
 				err = fmt.Errorf("IngestBlob(%s): could not read data at %s: %+s",
 					blob.Sha256, blobFile, err.Error())
@@ -690,7 +689,7 @@ func (c *containerdCAS) PrepareContainerRootDir(rootPath, reference, rootBlobSha
 		logrus.Errorf(err.Error())
 		return err
 	}
-	if err := ioutil.WriteFile(filepath.Join(rootPath, imageConfigFilename), []byte(clientImageSpecJSON), 0666); err != nil {
+	if err := os.WriteFile(filepath.Join(rootPath, imageConfigFilename), []byte(clientImageSpecJSON), 0666); err != nil {
 		err = fmt.Errorf("PrepareContainerRootDir: Exception while writing image info to %v/%v. %v",
 			rootPath, imageConfigFilename, err)
 		logrus.Errorf(err.Error())
@@ -928,7 +927,7 @@ func getImageConfig(c *containerdCAS, reference string) (*ocispec.Image, error) 
 		logrus.Errorf(err.Error())
 		return nil, err
 	}
-	blobData, err := ioutil.ReadAll(blobReader)
+	blobData, err := io.ReadAll(blobReader)
 	if err != nil {
 		err = fmt.Errorf("getImageConfig: could not read blobdata %s for reference %s: %+s",
 			imageParentHash, reference, err.Error())
@@ -960,7 +959,7 @@ func getImageConfig(c *containerdCAS, reference string) (*ocispec.Image, error) 
 					return nil, err
 				}
 				//Step 3.1.3: Read the manifest data
-				blobData, err = ioutil.ReadAll(blobReader)
+				blobData, err = io.ReadAll(blobReader)
 				if err != nil {
 					err = fmt.Errorf("getImageConfig: could not parsr manifestBlob %s for reference %s: %+s",
 						m.Digest.String(), reference, err.Error())
@@ -987,7 +986,7 @@ func getImageConfig(c *containerdCAS, reference string) (*ocispec.Image, error) 
 		logrus.Errorf(err.Error())
 		return nil, err
 	}
-	blobData, err = ioutil.ReadAll(blobReader)
+	blobData, err = io.ReadAll(blobReader)
 	if err != nil {
 		err = fmt.Errorf("getImageConfig: could not read config blobdata %s for reference %s: %+s",
 			configHash, reference, err.Error())

@@ -6,7 +6,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
-	"io/ioutil"
+	"io"
 	"net/http"
 
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
@@ -68,7 +68,7 @@ func evStatsHandler(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case "POST":
 		var localStats evLocalStats
-		content, err := ioutil.ReadAll(r.Body)
+		content, err := io.ReadAll(r.Body)
 		if err != nil {
 			log.Errorf("stats server read error: %v", err)
 			return

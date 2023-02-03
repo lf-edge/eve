@@ -14,7 +14,6 @@ package verifier
 import (
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path"
 	"strings"
@@ -629,7 +628,7 @@ func populateInitialStatusFromVerified(ctx *verifierContext,
 	log.Functionf("populateInitialStatusFromVerified(%s, %s)", objDirname,
 		parentDirname)
 
-	locations, err := ioutil.ReadDir(objDirname)
+	locations, err := os.ReadDir(objDirname)
 
 	if err != nil {
 		log.Fatal(err)

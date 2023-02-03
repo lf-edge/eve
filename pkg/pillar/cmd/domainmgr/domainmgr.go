@@ -13,7 +13,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -2658,7 +2657,7 @@ func createCloudInitISO(ctx *domainContext,
 
 	fileName := cloudInitISOFileLocation(ctx, config.UUIDandVersion.UUID)
 
-	dir, err := ioutil.TempDir("", "cloud-init")
+	dir, err := os.MkdirTemp("", "cloud-init")
 	if err != nil {
 		log.Fatalf("createCloudInitISO failed %s", err)
 	}

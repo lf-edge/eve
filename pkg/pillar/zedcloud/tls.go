@@ -14,7 +14,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -36,7 +35,7 @@ func GetClientCert() (tls.Certificate, error) {
 	}
 
 	// TPM capable device, return TPM bcased certificate
-	deviceCertBytes, err := ioutil.ReadFile(types.DeviceCertName)
+	deviceCertBytes, err := os.ReadFile(types.DeviceCertName)
 	if err != nil {
 		return tls.Certificate{}, err
 	}
@@ -92,7 +91,7 @@ func GetTlsConfig(dns *types.DeviceNetworkStatus, clientCert *tls.Certificate, c
 	if ctx != nil && ctx.V2API {
 		log := ctx.log
 		// Load the well-known CAs
-		line, err := ioutil.ReadFile(types.V2TLSCertShaFilename)
+		line, err := os.ReadFile(types.V2TLSCertShaFilename)
 		if err != nil {
 			return nil, err
 		}
@@ -103,7 +102,7 @@ func GetTlsConfig(dns *types.DeviceNetworkStatus, clientCert *tls.Certificate, c
 			return nil, errors.New(errStr)
 		}
 		v2RootFilename := types.CertificateDirname + "/" + sha
-		caCert, err := ioutil.ReadFile(v2RootFilename)
+		caCert, err := os.ReadFile(v2RootFilename)
 		if err != nil {
 			return nil, err
 		}
@@ -135,7 +134,7 @@ func GetTlsConfig(dns *types.DeviceNetworkStatus, clientCert *tls.Certificate, c
 	}
 
 	// Also append the v1's private signed root-cert
-	caCert1, err := ioutil.ReadFile(types.RootCertFileName)
+	caCert1, err := os.ReadFile(types.RootCertFileName)
 	if err != nil {
 		return nil, err
 	}
@@ -251,7 +250,7 @@ func UpdateTLSProxyCerts(ctx *ZedCloudContext) bool {
 
 		// previous certs we have are different, lets rebuild from beginning
 		caCertPool = x509.NewCertPool()
-		line, err := ioutil.ReadFile(types.V2TLSCertShaFilename)
+		line, err := os.ReadFile(types.V2TLSCertShaFilename)
 		if err != nil {
 			errStr := fmt.Sprintf("Failed to read V2TLSCertShaFilename")
 			log.Errorf(errStr)
@@ -264,7 +263,7 @@ func UpdateTLSProxyCerts(ctx *ZedCloudContext) bool {
 			return false
 		}
 		v2RootFilename := types.CertificateDirname + "/" + sha
-		caCert, err := ioutil.ReadFile(v2RootFilename)
+		caCert, err := os.ReadFile(v2RootFilename)
 		if err != nil {
 			errStr := fmt.Sprintf("Failed to read v2RootFilename")
 			log.Errorf(errStr)

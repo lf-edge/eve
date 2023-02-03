@@ -6,7 +6,6 @@ package hypervisor
 import (
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -544,7 +543,7 @@ func (ctx xenContext) Info(domainName string) (int, types.SwState, error) {
 	// first we ask for the task status
 	effectiveDomainID, effectiveDomainState, err := ctx.ctrdContext.Info(domainName)
 	if err != nil || effectiveDomainState != types.RUNNING {
-		status, err := ioutil.ReadFile(ctx.getTaskStateFilePath(domainName))
+		status, err := os.ReadFile(ctx.getTaskStateFilePath(domainName))
 		if err != nil {
 			status = []byte("file not read")
 		}
@@ -555,7 +554,7 @@ func (ctx xenContext) Info(domainName string) (int, types.SwState, error) {
 	}
 
 	// if task is alive, we augment task status with finer grained details from xl info
-	status, err := ioutil.ReadFile(ctx.getTaskStateFilePath(domainName))
+	status, err := os.ReadFile(ctx.getTaskStateFilePath(domainName))
 	if err != nil {
 		logrus.Errorf("couldn't read task status file: %v", err)
 		status = []byte("running") // assigning default state as we weren't able to read status file
