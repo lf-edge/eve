@@ -147,6 +147,7 @@ func TestNewConfigItemSpecMap(t *testing.T) {
 	gsKeys := []GlobalSettingKey{
 		// Int Items
 		ConfigInterval,
+		CertInterval,
 		MetricInterval,
 		LocationCloudInterval,
 		LocationAppInterval,
