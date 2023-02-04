@@ -10,7 +10,9 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"io/ioutil"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/lf-edge/eve/api/go/attest"
@@ -18,6 +20,7 @@ import (
 	zconfig "github.com/lf-edge/eve/api/go/config"
 	"github.com/lf-edge/eve/api/go/evecommon"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
+	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 	"google.golang.org/protobuf/proto"
@@ -170,7 +173,7 @@ func handleEdgeNodeCertDelete(ctxArg interface{}, key string,
 func controllerCertsTask(ctx *zedagentContext, triggerCerts <-chan struct{}) {
 
 	log.Functionln("starting controller certificate fetch task")
-	getCertsFromController(ctx)
+	getCertsFromController(ctx, "initial")
 
 	wdName := agentName + "ccerts"
 
@@ -179,11 +182,26 @@ func controllerCertsTask(ctx *zedagentContext, triggerCerts <-chan struct{}) {
 	ctx.ps.StillRunning(wdName, warningTime, errorTime)
 	ctx.ps.RegisterFileWatchdog(wdName)
 
+	// Run a timer for extra safety when controller certificates are updated
+	certInterval := ctx.globalConfig.GlobalValueInt(types.CertInterval)
+	interval := time.Duration(certInterval) * time.Second
+	max := float64(interval)
+	min := max * 0.3
+	periodicTicker := flextimer.NewRangeTicker(time.Duration(min),
+		time.Duration(max))
+	ctx.getconfigCtx.configTickerHandle = periodicTicker
+
 	for {
 		select {
 		case <-triggerCerts:
 			start := time.Now()
-			getCertsFromController(ctx)
+			getCertsFromController(ctx, "triggered")
+			ctx.ps.CheckMaxTimeTopic(wdName, "publishCerts", start,
+				warningTime, errorTime)
+
+		case <-periodicTicker.C:
+			start := time.Now()
+			getCertsFromController(ctx, "periodic")
 			ctx.ps.CheckMaxTimeTopic(wdName, "publishCerts", start,
 				warningTime, errorTime)
 
@@ -193,13 +211,16 @@ func controllerCertsTask(ctx *zedagentContext, triggerCerts <-chan struct{}) {
 	}
 }
 
-// prepare the certs list proto message
-func getCertsFromController(ctx *zedagentContext) bool {
+// fetch and verify the controller certificates. Returns true if there
+// was a verified update.
+func getCertsFromController(ctx *zedagentContext, desc string) bool {
+	log.Functionf("getCertsFromController started for %s", desc)
 	certURL := zedcloud.URLPathString(serverNameAndPort,
 		zedcloudCtx.V2API, nilUUID, "certs")
 
 	// not V2API
 	if !zedcloud.UseV2API() {
+		log.Noticef("getCertsFromController not V2API!")
 		return false
 	}
 
@@ -211,13 +232,13 @@ func getCertsFromController(ctx *zedagentContext) bool {
 	if err != nil {
 		switch senderStatus {
 		case types.SenderStatusUpgrade:
-			log.Functionf("getCertsFromController: Controller upgrade in progress")
+			log.Noticef("getCertsFromController: Controller upgrade in progress")
 		case types.SenderStatusRefused:
-			log.Functionf("getCertsFromController: Controller returned ECONNREFUSED")
+			log.Noticef("getCertsFromController: Controller returned ECONNREFUSED")
 		case types.SenderStatusCertInvalid:
 			log.Warnf("getCertsFromController: Controller certificate invalid time")
 		case types.SenderStatusCertMiss:
-			log.Functionf("getCertsFromController: Controller certificate miss")
+			log.Noticef("getCertsFromController: Controller certificate miss")
 		default:
 			log.Errorf("getCertsFromController failed: %s", err)
 		}
@@ -253,6 +274,16 @@ func getCertsFromController(ctx *zedagentContext) bool {
 		return false
 	}
 
+	// Did the certificate change?
+	_, err = os.Stat(types.ServerSigningCertFileName)
+	if err == nil {
+		oldCertBytes, err := ioutil.ReadFile(types.ServerSigningCertFileName)
+		if err == nil && bytes.Equal(oldCertBytes, certBytes) {
+			log.Functionf("getCertsFromController: unchanged cert")
+			return false
+		}
+	}
+
 	// write the signing cert to file
 	if err := zedcloud.SaveServerSigningCert(zedcloudCtx, certBytes); err != nil {
 		errStr := fmt.Sprintf("%v", err)
@@ -263,7 +294,7 @@ func getCertsFromController(ctx *zedagentContext) bool {
 	// manage the certificates through pubsub
 	parseControllerCerts(ctx, contents)
 
-	log.Functionf("getCertsFromController: success")
+	log.Noticef("getCertsFromController: success for %s", desc)
 	return true
 }
 
@@ -411,7 +442,7 @@ func handleControllerCertsSha(ctx *zedagentContext,
 
 	certHash := config.GetControllercertConfighash()
 	if certHash != ctx.cipherCtx.cfgControllerCertHash {
-		log.Functionf("handleControllerCertsSha trigger due to controller %v vs current %v",
+		log.Noticef("handleControllerCertsSha trigger due to controller %v vs current %v",
 			certHash, ctx.cipherCtx.cfgControllerCertHash)
 		ctx.cipherCtx.cfgControllerCertHash = certHash
 		triggerControllerCertEvent(ctx)
@@ -421,7 +452,7 @@ func handleControllerCertsSha(ctx *zedagentContext,
 // controller certificate pull trigger function
 func triggerControllerCertEvent(ctxPtr *zedagentContext) {
 
-	log.Function("Trigger for Controller Certs")
+	log.Noticef("Trigger for Controller Certs")
 	select {
 	case ctxPtr.cipherCtx.triggerControllerCerts <- struct{}{}:
 		// Do nothing more
