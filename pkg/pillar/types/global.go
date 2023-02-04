@@ -118,6 +118,8 @@ const (
 	// Int Items
 	// ConfigInterval global setting key
 	ConfigInterval GlobalSettingKey = "timer.config.interval"
+	// CertInterval global setting key; check for controller cert update
+	CertInterval GlobalSettingKey = "timer.cert.interval"
 	// MetricInterval global setting key
 	MetricInterval GlobalSettingKey = "timer.metric.interval"
 	// DiskScanMetricInterval global setting key
@@ -753,6 +755,9 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	// too long to get next config and is practically unreachable for any config
 	// changes or reboot through cloud.
 	configItemSpecMap.AddIntItem(ConfigInterval, 60, 5, HourInSec)
+	// Additional safety to periodically fetch the controller certificate
+	// Useful for odd cases when the triggered updates do not work.
+	configItemSpecMap.AddIntItem(CertInterval, 24*HourInSec, 60, 0xFFFFFFFF)
 	// timer.metric.diskscan.interval (seconds)
 	// Shorter interval can lead to device scanning the disk frequently which is a costly operation.
 	configItemSpecMap.AddIntItem(DiskScanMetricInterval, 300, 5, HourInSec)

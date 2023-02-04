@@ -4,6 +4,7 @@
 | ---- | ---- | ------- | ----------- |
 | app.allow.vnc | boolean | false | allow access to the app using the VNC tcp port |
 | timer.config.interval | integer in seconds | 60 | how frequently device gets config |
+| timer.cert.interval | integer in seconds | 1 day (24*3600) | how frequently device checks for new controller certificates |
 | timer.metric.interval  | integer in seconds | 60 | how frequently device reports metrics |
 | timer.metric.diskscan.interval  | integer in seconds | 300 | how frequently device should scan the disk for metrics |
 | timer.location.cloud.interval | integer in seconds | 1 hour | how frequently device reports geographic location information to controller |
