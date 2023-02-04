@@ -2347,6 +2347,8 @@ func parseConfigItems(ctx *getconfigContext, config *zconfig.EdgeDevConfig,
 		// Set GlobalStatus Values from GlobalConfig.
 		oldConfigInterval := oldGlobalConfig.GlobalValueInt(types.ConfigInterval)
 		newConfigInterval := newGlobalConfig.GlobalValueInt(types.ConfigInterval)
+		oldCertInterval := oldGlobalConfig.GlobalValueInt(types.CertInterval)
+		newCertInterval := newGlobalConfig.GlobalValueInt(types.CertInterval)
 
 		oldMetricInterval := oldGlobalConfig.GlobalValueInt(types.MetricInterval)
 		newMetricInterval := newGlobalConfig.GlobalValueInt(types.MetricInterval)
@@ -2365,6 +2367,11 @@ func parseConfigItems(ctx *getconfigContext, config *zconfig.EdgeDevConfig,
 				"ConfigInterval", oldConfigInterval, newConfigInterval)
 			updateConfigTimer(newConfigInterval, ctx.configTickerHandle)
 			updateConfigTimer(newConfigInterval, ctx.localProfileTickerHandle)
+		}
+		if newCertInterval != oldCertInterval {
+			log.Functionf("parseConfigItems: %s change from %d to %d",
+				"CertInterval", oldCertInterval, newCertInterval)
+			updateCertTimer(newCertInterval, ctx.certTickerHandle)
 		}
 		if newMetricInterval != oldMetricInterval {
 			log.Functionf("parseConfigItems: %s change from %d to %d",
