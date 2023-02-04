@@ -65,6 +65,7 @@ type getconfigContext struct {
 	updateInprogress          bool
 	readSavedConfig           bool // Did we already read it?
 	configTickerHandle        interface{}
+	certTickerHandle          interface{}
 	metricsTickerHandle       interface{}
 	locationCloudTickerHandle interface{}
 	locationAppTickerHandle   interface{}
@@ -276,6 +277,25 @@ func updateConfigTimer(configInterval uint32, tickerHandle interface{}) {
 	flextimer.TickNow(tickerHandle)
 }
 
+// Called when globalConfig changes
+// Assumes the caller has verifier that the interval has changed
+func updateCertTimer(configInterval uint32, tickerHandle interface{}) {
+
+	if tickerHandle == nil {
+		// Happens if we have a GlobalConfig setting in /persist/
+		log.Warnf("updateConfigTimer: no certTickerHandle yet")
+		return
+	}
+	interval := time.Duration(configInterval) * time.Second
+	log.Functionf("updateCertTimer() change to %v", interval)
+	max := float64(interval)
+	min := max * 0.3
+	flextimer.UpdateRangeTicker(tickerHandle,
+		time.Duration(min), time.Duration(max))
+	// Force an immediate timeout since timer could have decreased
+	flextimer.TickNow(tickerHandle)
+}
+
 // Start by trying the all the free management ports and then all the non-free
 // until one succeeds in communicating with the cloud.
 // We use the iteration argument to start at a different point each time.
@@ -335,6 +355,7 @@ func getLatestConfig(url string, iteration int,
 			}
 		case types.SenderStatusCertMiss:
 			// trigger to acquire new controller certs from cloud
+			log.Noticef("SenderStatusCertMiss trigger")
 			triggerControllerCertEvent(ctx)
 		}
 		if getconfigCtx.ledBlinkCount == types.LedBlinkOnboarded {
@@ -419,8 +440,9 @@ func getLatestConfig(url string, iteration int,
 		url, contents, false, senderStatus)
 	if err != nil {
 		log.Errorf("RemoveAndVerifyAuthContainer failed: %s", err)
-		if rv.Status == types.SenderStatusCertMiss {
+		if senderStatus == types.SenderStatusCertMiss {
 			// trigger to acquire new controller certs from cloud
+			log.Noticef("SenderStatusCertMiss trigger")
 			triggerControllerCertEvent(ctx)
 		}
 		// Inform ledmanager about problem
