@@ -571,6 +571,8 @@ func SaveServerSigningCert(ctx *ZedCloudContext, certByte []byte) error {
 		ctx.log.Errorf("SaveServerSignCert: %v", err)
 		return err
 	}
+	// Clear cached
+	ClearCloudCert(ctx)
 	return nil
 }
 
