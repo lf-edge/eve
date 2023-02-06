@@ -489,6 +489,23 @@ All of these packages are published regularly to the dockerhub registry, so it i
 
 **Note:** The net effect of this is that if you try to build `rootfs.img` or `installer.img` and reference a package that is _not_ published on the docker hub or available as a local image, it will _not_ try to build it locally for you; this functionality is not available in linuxkit. Instead, it will simply fail. You _must_ build the package and at least have it available in your local cache for the `rootfs.img` or `installer.img` build to succeed.
 
+#### Building packages with runtime stats
+
+Packages (currently Pillar) support collecting runtime memory and cpu statistics offered by Golang runtime. Collected statistics collected are sent over UDP to a [statsd](https://github.com/statsd/statsd) daemon running outside of EVE. To enable this, change the `RSTATS_ENDPOINT` (statsd endpoint) and `RSTATS_TAG` (the custom string used for tagging collected stats) inside `pkg/pillar/build-rstats.yml` to a proper value, then build:
+
+```shell
+make pkg/pillar RSTATS=y
+```
+
+To see the result, before running the image run statsd and graphite, for example:
+
+```shell
+docker pull graphiteapp/graphite-statsd
+docker run -p 8080:80 -p 8125:8125/udp --rm --name statsd graphiteapp/graphite-statsd
+```
+
+While the EVE is running, navigate to `http://IP:8080/dashboard` and find the result under `stats.gauges`.
+
 ## Summary of Build Process
 
 This section provides an overview of the processes used to create the

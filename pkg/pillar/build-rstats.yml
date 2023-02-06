@@ -1,0 +1,27 @@
+# linuxkit build template
+#
+# Copyright (c) 2018 Zededa, Inc.
+# SPDX-License-Identifier: Apache-2.0
+org: lfedge
+image: eve-pillar
+config:
+  binds:
+    - /lib/modules:/lib/modules
+    - /dev:/dev
+    - /etc/resolv.conf:/etc/resolv.conf
+    - /run:/run
+    - /config:/config
+    - /:/hostfs
+    - /persist:/persist:rshared,rbind
+    - /usr/bin/containerd:/usr/bin/containerd
+  capabilities:
+    - all
+  pid: host
+  rootfsPropagation: shared
+  devices:
+    - path: all
+      type: a
+buildArgs:
+  - RSTATS=y
+  - RSTATS_TAG=pillar
+  - RSTATS_ENDPOINT=localhost:8125

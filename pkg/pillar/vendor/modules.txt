@@ -626,6 +626,9 @@ github.com/shirou/gopsutil/internal/common
 github.com/shirou/gopsutil/mem
 github.com/shirou/gopsutil/net
 github.com/shirou/gopsutil/process
+# github.com/shjala/gostats v0.0.0-20230215094906-69a32327600f
+## explicit; go 1.19
+github.com/shjala/gostats
 # github.com/sirupsen/logrus v1.9.0
 ## explicit; go 1.13
 github.com/sirupsen/logrus

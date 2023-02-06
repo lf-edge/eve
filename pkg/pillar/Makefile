@@ -32,10 +32,18 @@ $(DISTDIR):
 
 build: $(APPS) $(APPS1)
 
+TAGS=
+ifeq ($(RSTATS),y)
+	TAGS:=-tags rstats
+endif
 
 LDFLAGS=-X=main.Version=$(BUILD_VERSION)
 ifneq ($(DEV),y)
 	LDFLAGS+=-s -w
+endif
+ifeq ($(RSTATS),y)
+	LDFLAGS+=-X=github.com/lf-edge/eve/pkg/pillar/rstats.Endpoint=$(RSTATS_ENDPOINT)
+	LDFLAGS+=-X=github.com/lf-edge/eve/pkg/pillar/rstats.Tag=$(RSTATS_TAG)
 endif
 LDFLAGS:=-ldflags "$(LDFLAGS)"
 
@@ -47,7 +55,7 @@ endif
 $(APPS): $(DISTDIR)/$(APPS)
 $(DISTDIR)/$(APPS): $(DISTDIR)
 	@echo "Building $@"
-	GO111MODULE=on GOOS=linux go build -mod=vendor $(GCFLAGS) $(LDFLAGS) -o $@ ./$(@F)
+	GO111MODULE=on GOOS=linux go build -mod=vendor $(TAGS) $(GCFLAGS) $(LDFLAGS) -o $@ ./$(@F)
 
 $(APPS1): $(DISTDIR)
 	@echo $@
