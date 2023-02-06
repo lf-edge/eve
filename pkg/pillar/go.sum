@@ -1493,6 +1493,10 @@ github.com/shirou/gopsutil v0.0.0-20190901111213-e4ec7b275ada/go.mod h1:WWnYX4lz
 github.com/shirou/gopsutil v3.21.11+incompatible h1:+1+c1VGhc88SSonWP6foOcLhvnKlUeu/erjjvaPEYiI=
 github.com/shirou/gopsutil v3.21.11+incompatible/go.mod h1:5b4v6he4MtMOwMlS0TUMTu2PcXUg8+E1lC7eC3UO/RA=
 github.com/shirou/w32 v0.0.0-20160930032740-bb4de0191aa4/go.mod h1:qsXQc7+bwAM3Q1u/4XEfrquwF8Lw7D7y5cD8CuHnfIc=
+github.com/shjala/gostats v0.0.0-20230208150848-bc4811238713 h1:b7M6nocrTUmfLY+Q81aPQaohVyE6ZzGzL0qDK34liYA=
+github.com/shjala/gostats v0.0.0-20230208150848-bc4811238713/go.mod h1:q+gDX7TvIEKrYhu+O5JscT71IIlSi8cxMl5hfxp538I=
+github.com/shjala/gostats v0.0.0-20230215094906-69a32327600f h1:LO/+1189h3P6S3ZPoDhaUpBPvnaYGbic+6M7+bNxu0A=
+github.com/shjala/gostats v0.0.0-20230215094906-69a32327600f/go.mod h1:q+gDX7TvIEKrYhu+O5JscT71IIlSi8cxMl5hfxp538I=
 github.com/shurcooL/go v0.0.0-20180423040247-9e1955d9fb6e/go.mod h1:TDJrrUr11Vxrven61rcy3hJMUqaf/CLWYhHNPmT14Lk=
 github.com/shurcooL/go-goon v0.0.0-20170922171312-37c2f522c041/go.mod h1:N5mDOmsrJOB+vfqUK+7DmDyjhSLIIBnXo9lvZJj3MWQ=
 github.com/shurcooL/sanitized_anchor_name v1.0.0/go.mod h1:1NzhyTcUVG4SuEtjjoZeVRXNmyL/1OwPU0+IJeTBvfc=

@@ -66,6 +66,11 @@ FROM target-${TARGETARCH}-build-${BUILDARCH} AS build
 ARG DEV=n
 ARG TARGETARCH
 
+# building with runtime stats
+ARG RSTATS=n
+ARG RSTATS_ENDPOINT=
+ARG RSTATS_TAG=
+
 # we need zfs files during build
 COPY --from=zfs /out /
 
@@ -91,7 +96,7 @@ RUN set -e && for patch in ../patches/*.patch; do \
 RUN --mount=type=cache,target=/root/.cache/go-build echo "Running go vet" && go vet ./... && \
     echo "Running go fmt" && ERR="$(find . -name \*.go | grep -v /vendor/ | xargs gofmt -d -e -l -s)" && \
        if [ -n "$ERR" ] ; then printf 'go fmt Failed - ERR: %s' "$ERR" ; exit 1 ; fi && \
-       make DEV="$DEV" DISTDIR=/final/opt/zededa/bin build
+       make DEV="$DEV" RSTATS=$RSTATS RSTATS_ENDPOINT=$RSTATS_ENDPOINT RSTATS_TAG=$RSTATS_TAG DISTDIR=/final/opt/zededa/bin build
 
 WORKDIR /
 
