@@ -29,6 +29,7 @@ import (
 const (
 	compatibleFile    = "/proc/device-tree/compatible"
 	cpuInfoFile       = "/proc/cpuinfo"
+	socSerialFile     = "/sys/devices/soc0/serial_number"
 	modelOverrideFile = types.PersistStatusDir + "/hardwaremodel"
 	softSerialFile    = types.IdentityDirname + "/soft_serial"
 )
@@ -138,6 +139,14 @@ func getCPUSerial(log *base.LogObject) string {
 			}
 		}
 	}
+	if serial == "" {
+		if _, err := os.Stat(socSerialFile); err == nil {
+			contents, err := os.ReadFile(socSerialFile)
+			if err == nil {
+				serial = strings.TrimSuffix(string(contents), "\n")
+			}
+		}
+	}
 	return serial
 }
 
@@ -170,8 +179,9 @@ func GetProductSerial(log *base.LogObject) string {
 			err)
 		serial = []byte{}
 	}
-	if string(serial) != "" {
-		return strings.TrimSuffix(string(serial), "\n")
+	strserial := strings.TrimSuffix(string(serial), "\n")
+	if strserial != "" && strserial != "Not Specified" {
+		return strserial
 	} else {
 		return getCPUSerial(log)
 	}
