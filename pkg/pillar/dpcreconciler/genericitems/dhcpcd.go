@@ -298,6 +298,10 @@ func (c *DhcpcdConfigurator) dhcpcdArgs(config types.DhcpConfig) (op string, arg
 		for _, dns := range config.DnsServers {
 			dnsServers = append(dnsServers, dns.String())
 		}
+		if config.DomainName != "" {
+			args = append(args, "--static",
+				fmt.Sprintf("domain_name=%s", config.DomainName))
+		}
 		if len(dnsServers) > 0 {
 			// dhcpcd uses a very odd space-separation for multiple DNS servers.
 			// For manual invocation one must be very careful to not forget
@@ -308,10 +312,6 @@ func (c *DhcpcdConfigurator) dhcpcdArgs(config types.DhcpConfig) (op string, arg
 			args = append(args, "--static",
 				fmt.Sprintf("domain_name_servers=%s",
 					strings.Join(dnsServers, " ")))
-		}
-		if config.DomainName != "" {
-			args = append(args, "--static",
-				fmt.Sprintf("domain_name=%s", config.DomainName))
 		}
 		if config.NtpServer != nil && !config.NtpServer.IsUnspecified() {
 			args = append(args, "--static",
