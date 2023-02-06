@@ -173,7 +173,7 @@ func handleEdgeNodeCertDelete(ctxArg interface{}, key string,
 func controllerCertsTask(ctx *zedagentContext, triggerCerts <-chan struct{}) {
 
 	log.Functionln("starting controller certificate fetch task")
-	getCertsFromController(ctx, "initial")
+	retry := !getCertsFromController(ctx, "initial")
 
 	wdName := agentName + "ccerts"
 
@@ -182,37 +182,57 @@ func controllerCertsTask(ctx *zedagentContext, triggerCerts <-chan struct{}) {
 	ctx.ps.StillRunning(wdName, warningTime, errorTime)
 	ctx.ps.RegisterFileWatchdog(wdName)
 
-	// Run a timer for extra safety when controller certificates are updated
+	// Run a timer for extra safety to handle controller certificates updates
+	// If we failed with the initial we have a short timer, otherwise
+	// the configurable one.
+	const shortTime = 120 // Two minutes
 	certInterval := ctx.globalConfig.GlobalValueInt(types.CertInterval)
+	if retry {
+		log.Noticef("Initial getCertsFromController failed; switching to short timer")
+		certInterval = shortTime
+	}
 	interval := time.Duration(certInterval) * time.Second
 	max := float64(interval)
 	min := max * 0.3
 	periodicTicker := flextimer.NewRangeTicker(time.Duration(min),
 		time.Duration(max))
-	ctx.getconfigCtx.configTickerHandle = periodicTicker
+	ctx.getconfigCtx.certTickerHandle = periodicTicker
 
 	for {
+		success := true
 		select {
 		case <-triggerCerts:
 			start := time.Now()
-			getCertsFromController(ctx, "triggered")
+			success = getCertsFromController(ctx, "triggered")
 			ctx.ps.CheckMaxTimeTopic(wdName, "publishCerts", start,
 				warningTime, errorTime)
 
 		case <-periodicTicker.C:
 			start := time.Now()
-			getCertsFromController(ctx, "periodic")
+			success = getCertsFromController(ctx, "periodic")
 			ctx.ps.CheckMaxTimeTopic(wdName, "publishCerts", start,
 				warningTime, errorTime)
 
 		case <-stillRunning.C:
 		}
 		ctx.ps.StillRunning(wdName, warningTime, errorTime)
+		if retry && success {
+			log.Noticef("getCertsFromController succeeded; switching to long timer %d seconds",
+				ctx.globalConfig.GlobalValueInt(types.CertInterval))
+			updateCertTimer(ctx.globalConfig.GlobalValueInt(types.CertInterval),
+				ctx.getconfigCtx.certTickerHandle)
+			retry = false
+		} else if !retry && !success {
+			log.Noticef("getCertsFromController failed; switching to short timer")
+			updateCertTimer(shortTime,
+				ctx.getconfigCtx.certTickerHandle)
+			retry = true
+		}
 	}
 }
 
 // fetch and verify the controller certificates. Returns true if there
-// was a verified update.
+// was a verified update or the fetched certs are unchanged.
 func getCertsFromController(ctx *zedagentContext, desc string) bool {
 	log.Functionf("getCertsFromController started for %s", desc)
 	certURL := zedcloud.URLPathString(serverNameAndPort,
@@ -281,7 +301,7 @@ func getCertsFromController(ctx *zedagentContext, desc string) bool {
 		oldCertBytes, err := ioutil.ReadFile(types.ServerSigningCertFileName)
 		if err == nil && bytes.Equal(oldCertBytes, certBytes) {
 			log.Functionf("getCertsFromController: unchanged cert")
-			return false
+			return true // Succeeded
 		}
 	}
 
