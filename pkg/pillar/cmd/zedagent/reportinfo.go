@@ -1096,7 +1096,8 @@ func getState(ctx *zedagentContext) info.ZDeviceState {
 	if ctx.poweroffCmd || ctx.devicePoweroff {
 		return info.ZDeviceState_ZDEVICE_STATE_POWERING_OFF
 	}
-	if ctx.getconfigCtx != nil && ctx.getconfigCtx.configReceived {
+	if ctx.getconfigCtx != nil && (ctx.getconfigCtx.configReceived ||
+		ctx.getconfigCtx.readSavedConfig) {
 		return info.ZDeviceState_ZDEVICE_STATE_ONLINE
 	}
 	return info.ZDeviceState_ZDEVICE_STATE_BOOTING
