@@ -424,7 +424,7 @@ func updateConfigTimer(configInterval uint32, tickerHandle interface{}) {
 }
 
 // Called when globalConfig changes
-// Assumes the caller has verifier that the interval has changed
+// Assumes the caller has verified that the interval has changed
 func updateCertTimer(configInterval uint32, tickerHandle interface{}) {
 
 	if tickerHandle == nil {
