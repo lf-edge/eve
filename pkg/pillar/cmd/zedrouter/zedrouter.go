@@ -10,6 +10,7 @@
 package zedrouter
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"errors"
@@ -1125,6 +1126,51 @@ func appNetworkDoActivateAllUnderlayNetworks(
 	return nil
 }
 
+func compareIPVersion(a, b net.IP) bool {
+	return (a.To4() == nil) == (b.To4() == nil)
+}
+
+func checkIPRange(start, middle, end net.IP) {
+	if start == nil {
+		log.Warnf("no range check without start address")
+		return
+	}
+
+	if middle == nil && end == nil {
+		return
+	}
+	if middle == nil && end != nil {
+		if !compareIPVersion(start, end) {
+			log.Warnf("IPv6 and IPv4 mixed: %s, %s", start.String(), end.String())
+			return
+		}
+
+		if bytes.Compare(start, end) > 0 {
+			log.Warnf("start %s > end %s", start.String(), end.String())
+			return
+		}
+	}
+	if middle != nil && end != nil {
+		if !compareIPVersion(start, middle) || !compareIPVersion(middle, end) {
+			log.Warnf("IPv6 and IPv4 mixed: %s, %s, %s", start.String(), middle.String(), end.String())
+			return
+		}
+
+		if bytes.Compare(start, middle) > 0 {
+			log.Warnf("start %s > middle %s", start.String(), middle.String())
+			return
+		}
+		if bytes.Compare(start, end) > 0 {
+			log.Warnf("start %s > end %s", start.String(), end.String())
+			return
+		}
+		if bytes.Compare(middle, end) > 0 {
+			log.Warnf("middle %s > end %s", middle.String(), end.String())
+			return
+		}
+	}
+}
+
 func appNetworkDoActivateUnderlayNetwork(
 	ctx *zedrouterContext,
 	config types.AppNetworkConfig,
@@ -1253,6 +1299,7 @@ func appNetworkDoActivateUnderlayNetwork(
 	setNetworkACLRules(ctx, appID, ulStatus.Name, ruleList)
 
 	if appIPAddr != "" {
+		checkIPRange(netInstStatus.DhcpRange.Start, net.ParseIP(appIPAddr), netInstStatus.DhcpRange.End)
 		// XXX clobber any IPv6 EID entry since same name
 		// but that's probably OK since we're doing IPv4 EIDs
 		addhostDnsmasq(bridgeName, appMac, appIPAddr,
