@@ -7,6 +7,7 @@ package zedrouter
 
 import (
 	"bufio"
+	"bytes"
 	"fmt"
 	"io"
 	"net"
@@ -140,20 +141,53 @@ func createDnsmasqConfiglet(
 	dhcphostsDir := dnsmasqDhcpHostDir(bridgeName)
 	ensureDir(dhcphostsDir)
 
-	file.WriteString(dnsmasqStatic)
+	createDnsmasqConfigletToWriter(file, ctx, bridgeName, bridgeIPAddr, netstatus, hostsDir, ipsetHosts, uplink, dnsServers, ntpServers)
+}
+
+func dhcpv4RangeConfig(start, end net.IP) (string, error) {
+	var dhcpRange string
+
+	if start != nil {
+		if end == nil {
+			dhcpRange = fmt.Sprintf("%s,static", start.String())
+		} else {
+			if bytes.Compare(start, end) > 0 {
+				return dhcpRange, fmt.Errorf("createDnsmasqConfigletToWriter: invalid dhcp-range %s-%s",
+					start.String(), end.String())
+			}
+			// full dhcp-range is not possible with static, see https://thekelleys.org.uk/dnsmasq/docs/dnsmasq-man.html
+			// "dhcp-range=[tag:<tag>[,tag:<tag>],][set:<tag>,]<start-addr>[,<end-addr>|<mode>[,<netmask>[,<broadcast>]]][,<lease time>]"
+			dhcpRange = fmt.Sprintf("%s,%s", start.String(), end.String())
+		}
+	}
+
+	return dhcpRange, nil
+}
+
+func createDnsmasqConfigletToWriter(
+	buffer io.Writer,
+	ctx *zedrouterContext,
+	bridgeName string, bridgeIPAddr string,
+	netstatus *types.NetworkInstanceStatus, hostsDir string,
+	ipsetHosts []string, uplink string,
+	dnsServers []net.IP, ntpServers []net.IP) {
+
+	io.WriteString(buffer, dnsmasqStatic)
+
+	dhcphostsDir := dnsmasqDhcpHostDir(bridgeName)
 
 	// XXX look at zedrouter loglevel; perhaps we should introduce a
 	// separate logger for dnsmasq or per bridge to have more fine-grained
 	// control
 	switch logger.GetLevel() {
 	case logrus.TraceLevel:
-		file.WriteString("log-queries\n")
-		file.WriteString("log-dhcp\n")
+		io.WriteString(buffer, "log-queries\n")
+		io.WriteString(buffer, "log-dhcp\n")
 	case logrus.DebugLevel:
-		file.WriteString("log-dhcp\n")
+		io.WriteString(buffer, "log-dhcp\n")
 	}
 
-	file.WriteString(fmt.Sprintf("dhcp-leasefile=%s\n",
+	io.WriteString(buffer, fmt.Sprintf("dhcp-leasefile=%s\n",
 		dnsmasqLeasePath(bridgeName)))
 
 	// Pick file where dnsmasq should send DNS read upstream
@@ -161,40 +195,39 @@ func createDnsmasqConfiglet(
 	// If we have an uplink but no dnsServers for it, then we let
 	// dnsmasq use the host's /etc/resolv.conf
 	if uplink == "" {
-		file.WriteString("no-resolv\n")
+		io.WriteString(buffer, "no-resolv\n")
 	} else if len(dnsServers) != 0 {
 		for _, s := range dnsServers {
-			file.WriteString(fmt.Sprintf("server=%s@%s\n", s, uplink))
+			io.WriteString(buffer, fmt.Sprintf("server=%s@%s\n", s, uplink))
 		}
-		file.WriteString("no-resolv\n")
+		io.WriteString(buffer, "no-resolv\n")
 	}
 
 	for _, host := range ipsetHosts {
 		ipsetBasename := hostIpsetBasename(host)
-		file.WriteString(fmt.Sprintf("ipset=/%s/ipv4.%s,ipv6.%s\n",
+		io.WriteString(buffer, fmt.Sprintf("ipset=/%s/ipv4.%s,ipv6.%s\n",
 			host, ipsetBasename, ipsetBasename))
 	}
-	file.WriteString(fmt.Sprintf("pid-file=/run/dnsmasq.%s.pid\n",
+	io.WriteString(buffer, fmt.Sprintf("pid-file=/run/dnsmasq.%s.pid\n",
 		bridgeName))
-	file.WriteString(fmt.Sprintf("interface=%s\n", bridgeName))
+	io.WriteString(buffer, fmt.Sprintf("interface=%s\n", bridgeName))
 	isIPv6 := false
 	if bridgeIPAddr != "" {
 		ip := net.ParseIP(bridgeIPAddr)
 		if ip == nil {
-			log.Fatalf("createDnsmasqConfiglet failed to parse IP %s",
+			log.Fatalf("createDnsmasqConfigletToWriter failed to parse IP %s",
 				bridgeIPAddr)
 		}
 		isIPv6 = (ip.To4() == nil)
-		file.WriteString(fmt.Sprintf("listen-address=%s\n",
+		io.WriteString(buffer, fmt.Sprintf("listen-address=%s\n",
 			bridgeIPAddr))
 	} else {
 		// XXX error if there is no bridgeIPAddr?
 	}
-	file.WriteString(fmt.Sprintf("hostsdir=%s\n", hostsDir))
-	file.WriteString(fmt.Sprintf("dhcp-hostsdir=%s\n", dhcphostsDir))
+	io.WriteString(buffer, fmt.Sprintf("hostsdir=%s\n", hostsDir))
+	io.WriteString(buffer, fmt.Sprintf("dhcp-hostsdir=%s\n", dhcphostsDir))
 
 	ipv4Netmask := "255.255.255.0" // Default unless there is a Subnet
-	dhcpRange := bridgeIPAddr      // Default unless there is a DhcpRange
 
 	// By default dnsmasq advertises a router (and we can have a
 	// static router defined in the NetworkInstanceConfig).
@@ -221,10 +254,10 @@ func createDnsmasqConfiglet(
 	}
 	if netstatus.DomainName != "" {
 		if isIPv6 {
-			file.WriteString(fmt.Sprintf("dhcp-option=option:domain-search,%s\n",
+			io.WriteString(buffer, fmt.Sprintf("dhcp-option=option:domain-search,%s\n",
 				netstatus.DomainName))
 		} else {
-			file.WriteString(fmt.Sprintf("dhcp-option=option:domain-name,%s\n",
+			io.WriteString(buffer, fmt.Sprintf("dhcp-option=option:domain-name,%s\n",
 				netstatus.DomainName))
 		}
 	}
@@ -235,11 +268,11 @@ func createDnsmasqConfiglet(
 		for _, srvIP := range netstatus.DnsServers {
 			addrList = append(addrList, srvIP.String())
 		}
-		file.WriteString(fmt.Sprintf("dhcp-option=option:dns-server,%s\n",
+		io.WriteString(buffer, fmt.Sprintf("dhcp-option=option:dns-server,%s\n",
 			strings.Join(addrList, ",")))
 	}
 	if netstatus.NtpServer != nil {
-		file.WriteString(fmt.Sprintf("dhcp-option=option:ntp-server,%s\n",
+		io.WriteString(buffer, fmt.Sprintf("dhcp-option=option:ntp-server,%s\n",
 			netstatus.NtpServer.String()))
 	} else {
 		ntpStr := ""
@@ -247,7 +280,7 @@ func createDnsmasqConfiglet(
 			ntpStr += "," + s.String()
 		}
 		if len(ntpStr) != 0 {
-			file.WriteString("dhcp-option=option:ntp-server" + ntpStr + "\n")
+			io.WriteString(buffer, "dhcp-option=option:ntp-server"+ntpStr+"\n")
 		}
 	}
 	if netstatus.Subnet.IP != nil {
@@ -257,45 +290,46 @@ func createDnsmasqConfiglet(
 		if advertizeRouter && !ctx.disableDHCPAllOnesNetMask {
 			// Network prefix "255.255.255.255" will force packets to go through
 			// dom0 virtual router that makes the packets pass through ACLs and flow log.
-			file.WriteString(fmt.Sprintf("dhcp-option=option:netmask,%s\n",
+			io.WriteString(buffer, fmt.Sprintf("dhcp-option=option:netmask,%s\n",
 				"255.255.255.255"))
 		} else {
-			file.WriteString(fmt.Sprintf("dhcp-option=option:netmask,%s\n",
+			io.WriteString(buffer, fmt.Sprintf("dhcp-option=option:netmask,%s\n",
 				ipv4Netmask))
 		}
 	}
 	if advertizeRouter {
 		// IPv6 XXX needs to be handled in radvd
 		if !isIPv6 {
-			file.WriteString(fmt.Sprintf("dhcp-option=option:router,%s\n",
+			io.WriteString(buffer, fmt.Sprintf("dhcp-option=option:router,%s\n",
 				router))
 			if !ctx.disableDHCPAllOnesNetMask {
-				file.WriteString(fmt.Sprintf("dhcp-option=option:classless-static-route,%s/32,%s,%s,%s,%s,%s\n",
+				io.WriteString(buffer, fmt.Sprintf("dhcp-option=option:classless-static-route,%s/32,%s,%s,%s,%s,%s\n",
 					router, "0.0.0.0",
 					"0.0.0.0/0", router,
 					netstatus.Subnet.String(), router))
 			}
 		}
 	} else {
-		log.Functionf("createDnsmasqConfiglet: no router\n")
+		log.Functionf("createDnsmasqConfigletToWriter: no router\n")
 		if !isIPv6 {
-			file.WriteString(fmt.Sprintf("dhcp-option=option:router\n"))
+			io.WriteString(buffer, fmt.Sprintf("dhcp-option=option:router\n"))
 		}
 		if !advertizeDns {
 			// Handle isolated network by making sure
 			// we are not a DNS server. Can be overridden
 			// with the DnsServers above
-			log.Functionf("createDnsmasqConfiglet: no DNS server\n")
-			file.WriteString(fmt.Sprintf("dhcp-option=option:dns-server\n"))
+			log.Functionf("createDnsmasqConfigletToWriter: no DNS server\n")
+			io.WriteString(buffer, fmt.Sprintf("dhcp-option=option:dns-server\n"))
 		}
 	}
-	if netstatus.DhcpRange.Start != nil {
-		dhcpRange = netstatus.DhcpRange.Start.String()
-	}
 	if isIPv6 {
-		file.WriteString(fmt.Sprintf("dhcp-range=::,static,0,60m\n"))
+		io.WriteString(buffer, "dhcp-range=::static,0,60m\n")
 	} else {
-		file.WriteString(fmt.Sprintf("dhcp-range=%s,static,%s,60m\n",
+		dhcpRange, err := dhcpv4RangeConfig(netstatus.DhcpRange.Start, netstatus.DhcpRange.End)
+		if err != nil {
+			log.Fatalf("dhcpv4RangeConfigLine failed with %+v", err)
+		}
+		io.WriteString(buffer, fmt.Sprintf("dhcp-range=%s,%s,60m\n",
 			dhcpRange, ipv4Netmask))
 	}
 }
@@ -310,7 +344,8 @@ func addhostDnsmasq(bridgeName string, appMac string, appIPAddr string,
 	}
 	ip := net.ParseIP(appIPAddr)
 	if ip == nil {
-		log.Fatalf("addhostDnsmasq failed to parse IP %s", appIPAddr)
+		log.Warnf("addhostDnsmasq failed to parse IP %s", appIPAddr)
+		return
 	}
 	isIPv6 := (ip.To4() == nil)
 	suffix := ".inet"
