@@ -25,7 +25,7 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   syntax='proto3',
   serialized_options=b'\n\025org.lfedge.eve.configZ$github.com/lf-edge/eve/api/go/config',
   create_key=_descriptor._internal_create_key,
-  serialized_pb=b'\n\x16\x63onfig/appconfig.proto\x12\x15org.lfedge.eve.config\x1a\x18\x63onfig/acipherinfo.proto\x1a\x16\x63onfig/devcommon.proto\x1a\x14\x63onfig/storage.proto\x1a\x0f\x63onfig/vm.proto\x1a\x16\x63onfig/netconfig.proto\"2\n\x0eInstanceOpsCmd\x12\x0f\n\x07\x63ounter\x18\x02 \x01(\r\x12\x0f\n\x07opsTime\x18\x04 \x01(\t\"\x8f\x06\n\x11\x41ppInstanceConfig\x12=\n\x0euuidandversion\x18\x01 \x01(\x0b\x32%.org.lfedge.eve.config.UUIDandVersion\x12\x13\n\x0b\x64isplayname\x18\x02 \x01(\t\x12\x37\n\x0e\x66ixedresources\x18\x03 \x01(\x0b\x32\x1f.org.lfedge.eve.config.VmConfig\x12,\n\x06\x64rives\x18\x04 \x03(\x0b\x32\x1c.org.lfedge.eve.config.Drive\x12\x10\n\x08\x61\x63tivate\x18\x05 \x01(\x08\x12\x39\n\ninterfaces\x18\x06 \x03(\x0b\x32%.org.lfedge.eve.config.NetworkAdapter\x12\x30\n\x08\x61\x64\x61pters\x18\x07 \x03(\x0b\x32\x1e.org.lfedge.eve.config.Adapter\x12\x36\n\x07restart\x18\t \x01(\x0b\x32%.org.lfedge.eve.config.InstanceOpsCmd\x12\x34\n\x05purge\x18\n \x01(\x0b\x32%.org.lfedge.eve.config.InstanceOpsCmd\x12\x10\n\x08userData\x18\x0b \x01(\t\x12\x15\n\rremoteConsole\x18\x0c \x01(\x08\x12\x36\n\ncipherData\x18\r \x01(\x0b\x32\".org.lfedge.eve.config.CipherBlock\x12\x1a\n\x12\x63ollectStatsIPAddr\x18\x0f \x01(\t\x12\x37\n\rvolumeRefList\x18\x10 \x03(\x0b\x32 .org.lfedge.eve.config.VolumeRef\x12\x39\n\x0cmetaDataType\x18\x11 \x01(\x0e\x32#.org.lfedge.eve.config.MetaDataType\x12\x14\n\x0cprofile_list\x18\x12 \x03(\t\x12\x1e\n\x16start_delay_in_seconds\x18\x13 \x01(\r\x12\x0f\n\x07service\x18\x14 \x01(\x08\x12\x1a\n\x12\x63loud_init_version\x18\x15 \x01(\r\"E\n\tVolumeRef\x12\x0c\n\x04uuid\x18\x01 \x01(\t\x12\x17\n\x0fgenerationCount\x18\x02 \x01(\x03\x12\x11\n\tmount_dir\x18\x03 \x01(\t*f\n\x0cMetaDataType\x12\x11\n\rMetaDataDrive\x10\x00\x12\x10\n\x0cMetaDataNone\x10\x01\x12\x15\n\x11MetaDataOpenStack\x10\x02\x12\x1a\n\x16MetaDataDriveMultipart\x10\x03\x42=\n\x15org.lfedge.eve.configZ$github.com/lf-edge/eve/api/go/configb\x06proto3'
+  serialized_pb=b'\n\x16\x63onfig/appconfig.proto\x12\x15org.lfedge.eve.config\x1a\x18\x63onfig/acipherinfo.proto\x1a\x16\x63onfig/devcommon.proto\x1a\x14\x63onfig/storage.proto\x1a\x0f\x63onfig/vm.proto\x1a\x16\x63onfig/netconfig.proto\"2\n\x0eInstanceOpsCmd\x12\x0f\n\x07\x63ounter\x18\x02 \x01(\r\x12\x0f\n\x07opsTime\x18\x04 \x01(\t\"R\n\x11\x41vailableSnapshot\x12\n\n\x02id\x18\x01 \x01(\t\x12\x31\n\x04type\x18\x02 \x01(\x0e\x32#.org.lfedge.eve.config.SnapshotType\"\xc4\x01\n\x0eSnapshotConfig\x12\x17\n\x0f\x61\x63tive_snapshot\x18\x01 \x01(\t\x12;\n\x0crollback_cmd\x18\x02 \x01(\x0b\x32%.org.lfedge.eve.config.InstanceOpsCmd\x12\x15\n\rmax_snapshots\x18\x03 \x01(\r\x12\x45\n\x13\x61vailable_snapshots\x18\x04 \x03(\x0b\x32(.org.lfedge.eve.config.AvailableSnapshot\"\xc8\x06\n\x11\x41ppInstanceConfig\x12=\n\x0euuidandversion\x18\x01 \x01(\x0b\x32%.org.lfedge.eve.config.UUIDandVersion\x12\x13\n\x0b\x64isplayname\x18\x02 \x01(\t\x12\x37\n\x0e\x66ixedresources\x18\x03 \x01(\x0b\x32\x1f.org.lfedge.eve.config.VmConfig\x12,\n\x06\x64rives\x18\x04 \x03(\x0b\x32\x1c.org.lfedge.eve.config.Drive\x12\x10\n\x08\x61\x63tivate\x18\x05 \x01(\x08\x12\x39\n\ninterfaces\x18\x06 \x03(\x0b\x32%.org.lfedge.eve.config.NetworkAdapter\x12\x30\n\x08\x61\x64\x61pters\x18\x07 \x03(\x0b\x32\x1e.org.lfedge.eve.config.Adapter\x12\x36\n\x07restart\x18\t \x01(\x0b\x32%.org.lfedge.eve.config.InstanceOpsCmd\x12\x34\n\x05purge\x18\n \x01(\x0b\x32%.org.lfedge.eve.config.InstanceOpsCmd\x12\x10\n\x08userData\x18\x0b \x01(\t\x12\x15\n\rremoteConsole\x18\x0c \x01(\x08\x12\x36\n\ncipherData\x18\r \x01(\x0b\x32\".org.lfedge.eve.config.CipherBlock\x12\x1a\n\x12\x63ollectStatsIPAddr\x18\x0f \x01(\t\x12\x37\n\rvolumeRefList\x18\x10 \x03(\x0b\x32 .org.lfedge.eve.config.VolumeRef\x12\x39\n\x0cmetaDataType\x18\x11 \x01(\x0e\x32#.org.lfedge.eve.config.MetaDataType\x12\x14\n\x0cprofile_list\x18\x12 \x03(\t\x12\x1e\n\x16start_delay_in_seconds\x18\x13 \x01(\r\x12\x0f\n\x07service\x18\x14 \x01(\x08\x12\x1a\n\x12\x63loud_init_version\x18\x15 \x01(\r\x12\x37\n\x08snapshot\x18\x16 \x01(\x0b\x32%.org.lfedge.eve.config.SnapshotConfig\"E\n\tVolumeRef\x12\x0c\n\x04uuid\x18\x01 \x01(\t\x12\x17\n\x0fgenerationCount\x18\x02 \x01(\x03\x12\x11\n\tmount_dir\x18\x03 \x01(\t*f\n\x0cMetaDataType\x12\x11\n\rMetaDataDrive\x10\x00\x12\x10\n\x0cMetaDataNone\x10\x01\x12\x15\n\x11MetaDataOpenStack\x10\x02\x12\x1a\n\x16MetaDataDriveMultipart\x10\x03*K\n\x0cSnapshotType\x12\x1d\n\x19SNAPSHOT_TYPE_UNSPECIFIED\x10\x00\x12\x1c\n\x18SNAPSHOT_TYPE_APP_UPDATE\x10\x01\x42=\n\x15org.lfedge.eve.configZ$github.com/lf-edge/eve/api/go/configb\x06proto3'
   ,
   dependencies=[config_dot_acipherinfo__pb2.DESCRIPTOR,config_dot_devcommon__pb2.DESCRIPTOR,config_dot_storage__pb2.DESCRIPTOR,config_dot_vm__pb2.DESCRIPTOR,config_dot_netconfig__pb2.DESCRIPTOR,])
 
@@ -59,16 +59,44 @@ _METADATATYPE = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=1071,
-  serialized_end=1173,
+  serialized_start=1411,
+  serialized_end=1513,
 )
 _sym_db.RegisterEnumDescriptor(_METADATATYPE)
 
 MetaDataType = enum_type_wrapper.EnumTypeWrapper(_METADATATYPE)
+_SNAPSHOTTYPE = _descriptor.EnumDescriptor(
+  name='SnapshotType',
+  full_name='org.lfedge.eve.config.SnapshotType',
+  filename=None,
+  file=DESCRIPTOR,
+  create_key=_descriptor._internal_create_key,
+  values=[
+    _descriptor.EnumValueDescriptor(
+      name='SNAPSHOT_TYPE_UNSPECIFIED', index=0, number=0,
+      serialized_options=None,
+      type=None,
+      create_key=_descriptor._internal_create_key),
+    _descriptor.EnumValueDescriptor(
+      name='SNAPSHOT_TYPE_APP_UPDATE', index=1, number=1,
+      serialized_options=None,
+      type=None,
+      create_key=_descriptor._internal_create_key),
+  ],
+  containing_type=None,
+  serialized_options=None,
+  serialized_start=1515,
+  serialized_end=1590,
+)
+_sym_db.RegisterEnumDescriptor(_SNAPSHOTTYPE)
+
+SnapshotType = enum_type_wrapper.EnumTypeWrapper(_SNAPSHOTTYPE)
 MetaDataDrive = 0
 MetaDataNone = 1
 MetaDataOpenStack = 2
 MetaDataDriveMultipart = 3
+SNAPSHOT_TYPE_UNSPECIFIED = 0
+SNAPSHOT_TYPE_APP_UPDATE = 1
 
 
 
@@ -108,6 +136,98 @@ _INSTANCEOPSCMD = _descriptor.Descriptor(
   ],
   serialized_start=162,
   serialized_end=212,
+)
+
+
+_AVAILABLESNAPSHOT = _descriptor.Descriptor(
+  name='AvailableSnapshot',
+  full_name='org.lfedge.eve.config.AvailableSnapshot',
+  filename=None,
+  file=DESCRIPTOR,
+  containing_type=None,
+  create_key=_descriptor._internal_create_key,
+  fields=[
+    _descriptor.FieldDescriptor(
+      name='id', full_name='org.lfedge.eve.config.AvailableSnapshot.id', index=0,
+      number=1, type=9, cpp_type=9, label=1,
+      has_default_value=False, default_value=b"".decode('utf-8'),
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+    _descriptor.FieldDescriptor(
+      name='type', full_name='org.lfedge.eve.config.AvailableSnapshot.type', index=1,
+      number=2, type=14, cpp_type=8, label=1,
+      has_default_value=False, default_value=0,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+  ],
+  extensions=[
+  ],
+  nested_types=[],
+  enum_types=[
+  ],
+  serialized_options=None,
+  is_extendable=False,
+  syntax='proto3',
+  extension_ranges=[],
+  oneofs=[
+  ],
+  serialized_start=214,
+  serialized_end=296,
+)
+
+
+_SNAPSHOTCONFIG = _descriptor.Descriptor(
+  name='SnapshotConfig',
+  full_name='org.lfedge.eve.config.SnapshotConfig',
+  filename=None,
+  file=DESCRIPTOR,
+  containing_type=None,
+  create_key=_descriptor._internal_create_key,
+  fields=[
+    _descriptor.FieldDescriptor(
+      name='active_snapshot', full_name='org.lfedge.eve.config.SnapshotConfig.active_snapshot', index=0,
+      number=1, type=9, cpp_type=9, label=1,
+      has_default_value=False, default_value=b"".decode('utf-8'),
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+    _descriptor.FieldDescriptor(
+      name='rollback_cmd', full_name='org.lfedge.eve.config.SnapshotConfig.rollback_cmd', index=1,
+      number=2, type=11, cpp_type=10, label=1,
+      has_default_value=False, default_value=None,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+    _descriptor.FieldDescriptor(
+      name='max_snapshots', full_name='org.lfedge.eve.config.SnapshotConfig.max_snapshots', index=2,
+      number=3, type=13, cpp_type=3, label=1,
+      has_default_value=False, default_value=0,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+    _descriptor.FieldDescriptor(
+      name='available_snapshots', full_name='org.lfedge.eve.config.SnapshotConfig.available_snapshots', index=3,
+      number=4, type=11, cpp_type=10, label=3,
+      has_default_value=False, default_value=[],
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+  ],
+  extensions=[
+  ],
+  nested_types=[],
+  enum_types=[
+  ],
+  serialized_options=None,
+  is_extendable=False,
+  syntax='proto3',
+  extension_ranges=[],
+  oneofs=[
+  ],
+  serialized_start=299,
+  serialized_end=495,
 )
 
 
@@ -252,6 +372,13 @@ _APPINSTANCECONFIG = _descriptor.Descriptor(
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+    _descriptor.FieldDescriptor(
+      name='snapshot', full_name='org.lfedge.eve.config.AppInstanceConfig.snapshot', index=19,
+      number=22, type=11, cpp_type=10, label=1,
+      has_default_value=False, default_value=None,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
   ],
   extensions=[
   ],
@@ -264,8 +391,8 @@ _APPINSTANCECONFIG = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=215,
-  serialized_end=998,
+  serialized_start=498,
+  serialized_end=1338,
 )
 
 
@@ -310,10 +437,13 @@ _VOLUMEREF = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=1000,
-  serialized_end=1069,
+  serialized_start=1340,
+  serialized_end=1409,
 )
 
+_AVAILABLESNAPSHOT.fields_by_name['type'].enum_type = _SNAPSHOTTYPE
+_SNAPSHOTCONFIG.fields_by_name['rollback_cmd'].message_type = _INSTANCEOPSCMD
+_SNAPSHOTCONFIG.fields_by_name['available_snapshots'].message_type = _AVAILABLESNAPSHOT
 _APPINSTANCECONFIG.fields_by_name['uuidandversion'].message_type = config_dot_devcommon__pb2._UUIDANDVERSION
 _APPINSTANCECONFIG.fields_by_name['fixedresources'].message_type = config_dot_vm__pb2._VMCONFIG
 _APPINSTANCECONFIG.fields_by_name['drives'].message_type = config_dot_storage__pb2._DRIVE
@@ -324,10 +454,14 @@ _APPINSTANCECONFIG.fields_by_name['purge'].message_type = _INSTANCEOPSCMD
 _APPINSTANCECONFIG.fields_by_name['cipherData'].message_type = config_dot_acipherinfo__pb2._CIPHERBLOCK
 _APPINSTANCECONFIG.fields_by_name['volumeRefList'].message_type = _VOLUMEREF
 _APPINSTANCECONFIG.fields_by_name['metaDataType'].enum_type = _METADATATYPE
+_APPINSTANCECONFIG.fields_by_name['snapshot'].message_type = _SNAPSHOTCONFIG
 DESCRIPTOR.message_types_by_name['InstanceOpsCmd'] = _INSTANCEOPSCMD
+DESCRIPTOR.message_types_by_name['AvailableSnapshot'] = _AVAILABLESNAPSHOT
+DESCRIPTOR.message_types_by_name['SnapshotConfig'] = _SNAPSHOTCONFIG
 DESCRIPTOR.message_types_by_name['AppInstanceConfig'] = _APPINSTANCECONFIG
 DESCRIPTOR.message_types_by_name['VolumeRef'] = _VOLUMEREF
 DESCRIPTOR.enum_types_by_name['MetaDataType'] = _METADATATYPE
+DESCRIPTOR.enum_types_by_name['SnapshotType'] = _SNAPSHOTTYPE
 _sym_db.RegisterFileDescriptor(DESCRIPTOR)
 
 InstanceOpsCmd = _reflection.GeneratedProtocolMessageType('InstanceOpsCmd', (_message.Message,), {
@@ -336,6 +470,20 @@ InstanceOpsCmd = _reflection.GeneratedProtocolMessageType('InstanceOpsCmd', (_me
   # @@protoc_insertion_point(class_scope:org.lfedge.eve.config.InstanceOpsCmd)
   })
 _sym_db.RegisterMessage(InstanceOpsCmd)
+
+AvailableSnapshot = _reflection.GeneratedProtocolMessageType('AvailableSnapshot', (_message.Message,), {
+  'DESCRIPTOR' : _AVAILABLESNAPSHOT,
+  '__module__' : 'config.appconfig_pb2'
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.config.AvailableSnapshot)
+  })
+_sym_db.RegisterMessage(AvailableSnapshot)
+
+SnapshotConfig = _reflection.GeneratedProtocolMessageType('SnapshotConfig', (_message.Message,), {
+  'DESCRIPTOR' : _SNAPSHOTCONFIG,
+  '__module__' : 'config.appconfig_pb2'
+  # @@protoc_insertion_point(class_scope:org.lfedge.eve.config.SnapshotConfig)
+  })
+_sym_db.RegisterMessage(SnapshotConfig)
 
 AppInstanceConfig = _reflection.GeneratedProtocolMessageType('AppInstanceConfig', (_message.Message,), {
   'DESCRIPTOR' : _APPINSTANCECONFIG,
