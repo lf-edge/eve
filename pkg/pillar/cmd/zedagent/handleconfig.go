@@ -496,7 +496,12 @@ func getLatestConfig(getconfigCtx *getconfigContext, url string,
 			log.Errorf("getLatestConfig  failed: %s", err)
 		}
 		switch senderStatus {
-		case types.SenderStatusUpgrade, types.SenderStatusRefused, types.SenderStatusCertInvalid, types.SenderStatusNotFound:
+		case types.SenderStatusCertInvalid:
+			// trigger to acquire new controller certs from cloud
+			log.Noticef("%s trigger", senderStatus.String())
+			triggerControllerCertEvent(ctx)
+			fallthrough
+		case types.SenderStatusUpgrade, types.SenderStatusRefused, types.SenderStatusNotFound:
 			newCount = types.LedBlinkConnectedToController // Almost connected to controller!
 			// Don't treat as upgrade failure
 			if getconfigCtx.updateInprogress {
@@ -505,7 +510,7 @@ func getLatestConfig(getconfigCtx *getconfigContext, url string,
 			}
 		case types.SenderStatusCertMiss:
 			// trigger to acquire new controller certs from cloud
-			log.Noticef("SenderStatusCertMiss trigger")
+			log.Noticef("%s trigger", senderStatus.String())
 			triggerControllerCertEvent(ctx)
 		}
 		if getconfigCtx.ledBlinkCount == types.LedBlinkOnboarded {
@@ -589,9 +594,10 @@ func getLatestConfig(getconfigCtx *getconfigContext, url string,
 		url, contents, false, senderStatus)
 	if err != nil {
 		log.Errorf("RemoveAndVerifyAuthContainer failed: %s", err)
-		if rv.Status == types.SenderStatusCertMiss {
+		switch senderStatus {
+		case types.SenderStatusCertMiss, types.SenderStatusCertInvalid:
 			// trigger to acquire new controller certs from cloud
-			log.Noticef("SenderStatusCertMiss trigger")
+			log.Noticef("%s trigger", senderStatus.String())
 			triggerControllerCertEvent(ctx)
 		}
 		// Inform ledmanager about problem
