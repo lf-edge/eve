@@ -21,7 +21,7 @@ The 'query-edgeview.sh' is an example of running the `lfedge/eve-edgeview` docke
 
 the 'Makefile' supports in pkg/edgeview directory:
 
-(1) `make eve-edge-view` to build the `lfedge/eve-edgeview:latest` docker container;
+(1) `make eve-edgeview` to build the `lfedge/eve-edgeview:latest` docker container;
 
 (2) `make wss-server` to build a golang program for 'edgeview' websocket dispatcher. It needs to be run this compile on a Linux server if the websocket dispatcher will run in the same architecture;
 
