@@ -352,10 +352,9 @@ func initZedcloudContext(networkSendTimeout uint32, agentMetrics *zedcloud.Agent
 // Run a periodic fetch of the config
 func configTimerTask(getconfigCtx *getconfigContext, handleChannel chan interface{}) {
 	ctx := getconfigCtx.zedagentCtx
-	configUrl := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API, devUUID, "config")
 	iteration := 0
 	withNetTracing := traceNextConfigReq(ctx)
-	retVal, tracedReqs := getLatestConfig(getconfigCtx, configUrl, iteration, withNetTracing)
+	retVal, tracedReqs := getLatestConfig(getconfigCtx, iteration, withNetTracing)
 	configProcessingSkipFlag := retVal == skipConfig
 	if configProcessingSkipFlag != getconfigCtx.configProcessingSkipFlag {
 		getconfigCtx.configProcessingSkipFlag = configProcessingSkipFlag
@@ -395,12 +394,9 @@ func configTimerTask(getconfigCtx *getconfigContext, handleChannel chan interfac
 		case <-ticker.C:
 			start := time.Now()
 			iteration += 1
-			// In case devUUID changed we re-generate
-			configUrl = zedcloud.URLPathString(serverNameAndPort,
-				zedcloudCtx.V2API, devUUID, "config")
 			withNetTracing = traceNextConfigReq(ctx)
 			retVal, tracedReqs = getLatestConfig(
-				getconfigCtx, configUrl, iteration, withNetTracing)
+				getconfigCtx, iteration, withNetTracing)
 			configProcessingSkipFlag = retVal == skipConfig
 			if configProcessingSkipFlag != getconfigCtx.configProcessingSkipFlag {
 				getconfigCtx.configProcessingSkipFlag = configProcessingSkipFlag
@@ -476,8 +472,11 @@ func updateCertTimer(configInterval uint32, tickerHandle interface{}) {
 // until one succeeds in communicating with the cloud.
 // We use the iteration argument to start at a different point each time.
 // Returns a configProcessingSkipFlag
-func getLatestConfig(getconfigCtx *getconfigContext, url string,
-	iteration int, withNetTracing bool) (configProcessingRetval, []netdump.TracedNetRequest) {
+func getLatestConfig(getconfigCtx *getconfigContext, iteration int,
+	withNetTracing bool) (configProcessingRetval, []netdump.TracedNetRequest) {
+
+	// In case devUUID changed we re-generate
+	url := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API, devUUID, "config")
 
 	log.Tracef("getLatestConfig(%s, %d)", url, iteration)
 	// On first boot, if we haven't yet published our certificates we defer
