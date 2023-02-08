@@ -494,8 +494,7 @@ func getLatestConfig(getconfigCtx *getconfigContext, iteration int,
 	getconfigCtx.configGetStatus = types.ConfigGetFail
 	b, cr, err := generateConfigRequest(getconfigCtx)
 	if err != nil {
-		// XXX	fatal?
-		return configReqFailed, nil
+		log.Fatal(err)
 	}
 	buf := bytes.NewBuffer(b)
 	size := int64(proto.Size(cr))
@@ -578,9 +577,17 @@ func getLatestConfig(getconfigCtx *getconfigContext, iteration int,
 				if config != nil {
 					log.Noticef("Using saved config dated %s",
 						ts.Format(time.RFC3339Nano))
+
+					cfgRetval := inhaleDeviceConfig(getconfigCtx, config, savedConfig)
+					if cfgRetval != configOK {
+						log.Errorf("inhaleDeviceConfig failed: %d", cfgRetval)
+						return cfgRetval, rv.TracedReqs
+					}
+
 					getconfigCtx.readSavedConfig = true
 					getconfigCtx.configGetStatus = types.ConfigGetReadSaved
-					return inhaleDeviceConfig(getconfigCtx, config, savedConfig), rv.TracedReqs
+
+					return configOK, rv.TracedReqs
 				}
 			}
 		}
@@ -642,27 +649,34 @@ func getLatestConfig(getconfigCtx *getconfigContext, iteration int,
 		return invalidConfig, rv.TracedReqs
 	}
 
-	// Inform ledmanager about config received from cloud
-	utils.UpdateLedManagerConfig(log, types.LedBlinkOnboarded)
-	getconfigCtx.ledBlinkCount = types.LedBlinkOnboarded
-
-	if !getconfigCtx.configReceived {
-		getconfigCtx.configReceived = true
-	}
-	getconfigCtx.configGetStatus = types.ConfigGetSuccess
-	publishZedAgentStatus(getconfigCtx)
-
+	cfgRetval := configOK
 	if !changed {
 		log.Tracef("Configuration from zedcloud is unchanged")
 		// Update modification time since checked by readSavedConfig
 		touchReceivedProtoMessage()
-		return configOK, rv.TracedReqs
+		goto cfgReceived
 	}
+
+	cfgRetval = inhaleDeviceConfig(getconfigCtx, config, fromController)
+	if cfgRetval != configOK {
+		log.Errorf("inhaleDeviceConfig failed: %d", cfgRetval)
+		return cfgRetval, rv.TracedReqs
+	}
+
+	// Inform ledmanager about config received from cloud
+	utils.UpdateLedManagerConfig(log, types.LedBlinkOnboarded)
+	getconfigCtx.ledBlinkCount = types.LedBlinkOnboarded
+
+	getconfigCtx.configGetStatus = types.ConfigGetSuccess
+	publishZedAgentStatus(getconfigCtx)
 
 	// Save configuration wrapped in AuthContainer.
 	saveReceivedProtoMessage(authWrappedRV.RespContents)
 
-	return inhaleDeviceConfig(getconfigCtx, config, fromController), rv.TracedReqs
+cfgReceived:
+	getconfigCtx.configReceived = true
+
+	return configOK, rv.TracedReqs
 }
 
 func saveReceivedProtoMessage(contents []byte) {
