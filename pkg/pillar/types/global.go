@@ -31,6 +31,38 @@ const (
 	SenderStatusForbidden                              // 403 indicating integrity token might invalidated
 )
 
+// String prints ASCII
+func (status SenderResult) String() string {
+	switch status {
+	case SenderStatusNone:
+		return "SenderStatusNone"
+	case SenderStatusRefused:
+		return "SenderStatusRefused"
+	case SenderStatusUpgrade:
+		return "SenderStatusUpgrade"
+	case SenderStatusCertInvalid:
+		return "SenderStatusCertInvalid"
+	case SenderStatusCertMiss:
+		return "SenderStatusCertMiss"
+	case SenderStatusSignVerifyFail:
+		return "SenderStatusSignVerifyFail"
+	case SenderStatusAlgoFail:
+		return "SenderStatusAlgoFail"
+	case SenderStatusHashSizeError:
+		return "SenderStatusHashSizeError"
+	case SenderStatusCertUnknownAuthority:
+		return "SenderStatusCertUnknownAuthority"
+	case SenderStatusCertUnknownAuthorityProxy:
+		return "SenderStatusCertUnknownAuthorityProxy"
+	case SenderStatusNotFound:
+		return "SenderStatusNotFound"
+	case SenderStatusForbidden:
+		return "SenderStatusForbidden"
+	default:
+		return fmt.Sprintf("Unknown status %d", status)
+	}
+}
+
 const (
 	// MinuteInSec is number of seconds in a minute
 	MinuteInSec = 60
