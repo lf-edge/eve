@@ -9,7 +9,7 @@ ARG GID
 # this must be an ARG so it doesn't carry through post-build phase
 ARG all_proxy
 # hadolint ignore=DL3018
-RUN apk add --no-cache openssh-client git gcc linux-headers libc-dev util-linux libpcap-dev bash vim make protobuf protobuf-dev sudo tar curl graphviz ttf-freefont patch
+RUN apk add --no-cache openssh-client git gcc linux-headers libc-dev util-linux libpcap-dev bash vim make protobuf protobuf-dev sudo tar curl graphviz ttf-freefont patch dnsmasq
 # we need updated libraries, here we use the same version as for eve/alpine
 # hadolint ignore=DL3018
 RUN apk --no-cache --repository https://dl-cdn.alpinelinux.org/alpine/v3.16/main add -U --upgrade zfs-dev zfs-libs
