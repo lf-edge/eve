@@ -1,0 +1,48 @@
+From f9c9f508ac5673f7944d00cd5adbe102890fb59c Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Ren=C3=AA=20de=20Souza=20Pinto?= <rene@renesp.com.br>
+Date: Wed, 11 Jan 2023 14:59:34 +0100
+Subject: [PATCH 14/17] configs: Remove config options for Advantech's EPC3720
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Remove options that are not needed to boot EVE or that are causing build
+failures.
+
+Signed-off-by: Renê de Souza Pinto <rene@renesp.com.br>
+---
+ configs/imx8mp_rsb3720a1_6G_defconfig | 13 -------------
+ 1 file changed, 13 deletions(-)
+
+diff --git a/configs/imx8mp_rsb3720a1_6G_defconfig b/configs/imx8mp_rsb3720a1_6G_defconfig
+index fe60b819e7d..e3c0a74088e 100644
+--- a/configs/imx8mp_rsb3720a1_6G_defconfig
++++ b/configs/imx8mp_rsb3720a1_6G_defconfig
+@@ -84,16 +84,6 @@ CONFIG_REGMAP=y
+ CONFIG_SYSCON=y
+ CONFIG_CLK_COMPOSITE_CCF=y
+ CONFIG_CLK_IMX8MP=y
+-CONFIG_DFU_TFTP=y
+-CONFIG_DFU_MMC=y
+-CONFIG_DFU_RAM=y
+-CONFIG_DFU_SF=y
+-CONFIG_UDP_FUNCTION_FASTBOOT=y
+-CONFIG_FASTBOOT_BUF_ADDR=0x42800000
+-CONFIG_FASTBOOT_BUF_SIZE=0x5000000
+-CONFIG_FASTBOOT_FLASH=y
+-CONFIG_FASTBOOT_UUU_SUPPORT=y
+-CONFIG_FASTBOOT_FLASH_MMC_DEV=2
+ CONFIG_MXC_GPIO=y
+ CONFIG_DM_PCA953X=y
+ CONFIG_DM_I2C=y
+@@ -150,7 +140,4 @@ CONFIG_LZO=y
+ CONFIG_BZIP2=y
+ CONFIG_OF_LIBFDT_OVERLAY=y
+ CONFIG_EFI_SET_TIME=y
+-CONFIG_EFI_RUNTIME_UPDATE_CAPSULE=y
+-CONFIG_EFI_CAPSULE_ON_DISK=y
+-CONFIG_EFI_CAPSULE_FIRMWARE_FIT=y
+ CONFIG_EFI_SECURE_BOOT=y
+-- 
+2.39.1
+

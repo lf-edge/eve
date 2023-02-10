@@ -1,0 +1,85 @@
+From b90a60af24e92118079d8d28273df14efd52e909 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Ren=C3=AA=20de=20Souza=20Pinto?= <rene@renesp.com.br>
+Date: Wed, 11 Jan 2023 14:33:10 +0100
+Subject: [PATCH 13/17] dts: Add mcu_rdc node to imx8mp-rsb3720-a1-u-boot.dtsi
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Add mcu_rdc node to device tree file of Advantech's EPC3720 board:
+imx8mp-rsb3720-a1-u-boot.dtsi.
+
+Signed-off-by: Renê de Souza Pinto <rene@renesp.com.br>
+---
+ arch/arm/dts/imx8mp-rsb3720-a1-u-boot.dtsi | 48 ++++++++++++++++++++++
+ 1 file changed, 48 insertions(+)
+
+diff --git a/arch/arm/dts/imx8mp-rsb3720-a1-u-boot.dtsi b/arch/arm/dts/imx8mp-rsb3720-a1-u-boot.dtsi
+index 2848b24f655..307c833cf4e 100644
+--- a/arch/arm/dts/imx8mp-rsb3720-a1-u-boot.dtsi
++++ b/arch/arm/dts/imx8mp-rsb3720-a1-u-boot.dtsi
+@@ -4,6 +4,7 @@
+  * Copyright 2022 Linaro
+  */
+ 
++#include "imx8mp-sec-def.h"
+ #include "imx8mp-u-boot.dtsi"
+ 
+ / {
+@@ -19,6 +20,53 @@
+ 			method = "smc";
+ 		};
+ 	};
++
++	mcu_rdc {
++		compatible = "imx8m,mcu_rdc";
++			    /* rdc config when MCU starts
++			     * master
++			     *   SDMA3p --> domain 1
++			     *   SDMA3b --> domian 1
++			     *   SDMA3_SPBA2  --> domian 1
++			     * peripheral:
++			     *   SAI3   --> Only Domian 1 can access
++			     *   UART4  --> Only Domian 1 can access
++			     *   GPT1   --> Only Domian 1 can access
++			     *   SDMA3  --> Only Domian 1 can access
++			     *   I2C3   --> Only Domian 1 can access
++			     * memory:
++			     *   TCM    --> Only Domian 1 can access (0x7E0000~0x81FFFF)
++			     *   DDR    --> Only Domian 1 can access (0x80000000~0x81000000)
++			     * end.
++			     */
++		start-config = <
++			    RDC_MDA  RDC_MDA_SDMA3p DID1 0x0 0x0
++			    RDC_MDA  RDC_MDA_ENET1_TX DID1 0x0 0x0
++			    RDC_MDA  RDC_MDA_ENET1_RX DID1 0x0 0x0
++			    RDC_MDA  RDC_MDA_SDMA3b DID1 0x0 0x0
++			    RDC_MDA  RDC_MDA_SDMA3_SPBA2 DID1 0x0 0x0
++			    RDC_PDAP RDC_PDAP_ENET1 PDAP_D0D1_ACCESS 0x0 0x0
++			    RDC_PDAP RDC_PDAP_SAI3  PDAP_D1_ACCESS 0x0 0x0
++			    RDC_PDAP RDC_PDAP_UART4 PDAP_D1_ACCESS 0x0 0x0
++			    RDC_PDAP RDC_PDAP_GPT1  PDAP_D1_ACCESS 0x0 0x0
++			    RDC_PDAP RDC_PDAP_SDMA3 PDAP_D1_ACCESS 0x0 0x0
++			    RDC_PDAP RDC_PDAP_I2C3  PDAP_D1_ACCESS 0x0 0x0
++			    RDC_MEM_REGION 22 TCM_START TCM_END MEM_D1_ACCESS
++			    RDC_MEM_REGION 39 M4_DDR_START M4_DDR_END MEM_D1_ACCESS
++			    0x0      0x0            0x0  0x0 0x0
++			  >;
++			    /* rdc config when MCU stops
++			     * memory:
++			     *   TCM    --> domain 0/1 can access (0x7E0000~0x81FFFF)
++			     *   DDR    --> domain 0/1 can access (0x80000000~0x81000000)
++			     * end.
++			     */
++		stop-config = <
++			    RDC_MEM_REGION 22 TCM_START TCM_END MEM_D0D1_ACCESS
++			    RDC_MEM_REGION 39 M4_DDR_START M4_DDR_END MEM_D0D1_ACCESS
++			    0x0      0x0            0x0  0x0 0x0
++			  >;
++	};
+ };
+ 
+ &iomuxc {
+-- 
+2.39.1
+

@@ -1,0 +1,61 @@
+From f87eab4b21306b75e003902c6dcb106a45b90b4f Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Ren=C3=AA=20de=20Souza=20Pinto?= <rene@renesp.com.br>
+Date: Wed, 11 Jan 2023 15:09:35 +0100
+Subject: [PATCH 15/17] arch: arm: dts: Add SMBIOS information for Advantech's
+ board
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+- Add device tree node for Advantechs's EPC3720 device with SMBIOS
+  information.
+- Enable SMBIOS in imx8mp_rsb3720a1_6G_defconfig
+
+Signed-off-by: Renê de Souza Pinto <rene@renesp.com.br>
+---
+ arch/arm/dts/imx8mp-rsb3720-a1.dts    | 18 ++++++++++++++++++
+ configs/imx8mp_rsb3720a1_6G_defconfig |  2 ++
+ 2 files changed, 20 insertions(+)
+
+diff --git a/arch/arm/dts/imx8mp-rsb3720-a1.dts b/arch/arm/dts/imx8mp-rsb3720-a1.dts
+index 1ef1c0c99ef..d360c0215b9 100644
+--- a/arch/arm/dts/imx8mp-rsb3720-a1.dts
++++ b/arch/arm/dts/imx8mp-rsb3720-a1.dts
+@@ -18,6 +18,24 @@
+ 		rtc1 = &snvs_rtc;
+ 	};
+ 
++	sysinfo {
++		compatible = "u-boot,sysinfo-smbios";
++		smbios {
++			system {
++				manufacturer = "advantech";
++				product = "imx8mp_rsb3720a1";
++			};
++			baseboard {
++				manufacturer = "advantech";
++				product = "imx8mp_rsb3720a1";
++			};
++			chassis {
++				manufacturer = "advantech";
++				product = "imx8mp_rsb3720a1";
++			};
++		};
++	};
++
+ 	chosen {
+ 		stdout-path = &uart3;
+ 	};
+diff --git a/configs/imx8mp_rsb3720a1_6G_defconfig b/configs/imx8mp_rsb3720a1_6G_defconfig
+index e3c0a74088e..24fb1de1db7 100644
+--- a/configs/imx8mp_rsb3720a1_6G_defconfig
++++ b/configs/imx8mp_rsb3720a1_6G_defconfig
+@@ -141,3 +141,5 @@ CONFIG_BZIP2=y
+ CONFIG_OF_LIBFDT_OVERLAY=y
+ CONFIG_EFI_SET_TIME=y
+ CONFIG_EFI_SECURE_BOOT=y
++CONFIG_SYSINFO=y
++CONFIG_SYSINFO_SMBIOS=y
+-- 
+2.39.1
+
