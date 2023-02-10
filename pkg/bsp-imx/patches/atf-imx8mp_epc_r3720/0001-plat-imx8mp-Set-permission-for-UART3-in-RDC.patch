@@ -1,0 +1,33 @@
+From 8a6235715bcda751244ab8b19845e3cc9a650956 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Ren=C3=AA=20de=20Souza=20Pinto?= <rene@renesp.com.br>
+Date: Fri, 10 Feb 2023 16:15:45 +0100
+Subject: [PATCH] plat: imx8mp: Set permission for UART3 in RDC
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Advantech EPC-R3720 uses UART3 as default output console (instead of
+UART2), this commit sets the corresponding permission in the Resource
+Domain Controller (RDC).
+
+Signed-off-by: Renê de Souza Pinto <rene@renesp.com.br>
+---
+ plat/imx/imx8m/imx8mp/imx8mp_bl31_setup.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/plat/imx/imx8m/imx8mp/imx8mp_bl31_setup.c b/plat/imx/imx8m/imx8mp/imx8mp_bl31_setup.c
+index 29c875437..80f75888f 100644
+--- a/plat/imx/imx8m/imx8mp/imx8mp_bl31_setup.c
++++ b/plat/imx/imx8m/imx8mp/imx8mp_bl31_setup.c
+@@ -50,7 +50,7 @@ static const struct imx_rdc_cfg rdc[] = {
+ 	RDC_MDAn(RDC_MDA_M7, DID1),
+ 
+ 	/* peripherals domain permission */
+-	RDC_PDAPn(RDC_PDAP_UART2, D0R | D0W),
++	RDC_PDAPn(RDC_PDAP_UART3, D0R | D0W),
+ 	RDC_PDAPn(RDC_PDAP_WDOG1, D0R | D0W),
+ 	RDC_PDAPn(RDC_PDAP_RDC, D0R | D0W | D1R),
+ 
+-- 
+2.39.1
+
