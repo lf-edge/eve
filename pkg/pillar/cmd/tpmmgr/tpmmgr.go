@@ -1,4 +1,4 @@
-// Copyright (c) 2018-2019 Zededa, Inc.
+// Copyright (c) 2018-2023 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
 package tpmmgr
@@ -78,7 +78,10 @@ var (
 	//on devices without a TPM
 	quoteKeyFile = types.CertificateDirname + "/attest.key.pem"
 
-	pcrSelection     = tpm2.PCRSelection{Hash: tpm2.AlgSHA1, PCRs: []int{7}}
+	// this PCRSelections is used as an entropy to generate keys and the selection
+	// of PCRs do not matter as well as the contents but PCR[7] is not changed often
+	// on our devices
+	pcrSelection     = tpm2.PCRSelection{Hash: tpm2.AlgSHA256, PCRs: []int{7}}
 	pcrListForQuote  = tpm2.PCRSelection{Hash: tpm2.AlgSHA256, PCRs: []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}}
 	defaultKeyParams = tpm2.Public{
 		Type:    tpm2.AlgECC,
