@@ -116,6 +116,7 @@ type getconfigContext struct {
 	localProfileTrigger       chan Notify
 	localServerMap            *localServerMap
 	lastDevCmdTimestamp       uint64 // From lastDevCmdTimestampFile
+	locConfig                 *types.LOCConfig
 
 	// parsed L2 adapters
 	vlans []L2Adapter
