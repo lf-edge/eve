@@ -473,11 +473,8 @@ func updateCertTimer(configInterval uint32, tickerHandle interface{}) {
 // until one succeeds in communicating with the cloud.
 // We use the iteration argument to start at a different point each time.
 // Returns a configProcessingSkipFlag
-func getLatestConfig(getconfigCtx *getconfigContext, iteration int,
-	withNetTracing bool) (configProcessingRetval, []netdump.TracedNetRequest) {
-
-	// In case devUUID changed we re-generate
-	url := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API, devUUID, "config")
+func requestConfigByURL(getconfigCtx *getconfigContext, url string,
+	iteration int, withNetTracing bool) (configProcessingRetval, []netdump.TracedNetRequest) {
 
 	log.Tracef("getLatestConfig(%s, %d)", url, iteration)
 	// On first boot, if we haven't yet published our certificates we defer
@@ -678,6 +675,39 @@ cfgReceived:
 	getconfigCtx.configReceived = true
 
 	return configOK, rv.TracedReqs
+}
+
+// Returns true if attempt to get a configuration has failed, but initial
+// configuration was received (either from the controller, either successfully
+// read from the file)
+func needRequestLocConfig(getconfigCtx *getconfigContext,
+	rv configProcessingRetval) bool {
+
+	return (rv != configOK && getconfigCtx.locConfig != nil)
+}
+
+func getLatestConfig(getconfigCtx *getconfigContext, iteration int,
+	withNetTracing bool) (configProcessingRetval, []netdump.TracedNetRequest) {
+
+	url := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API,
+		devUUID, "config")
+
+	rv, tracedReqs := requestConfigByURL(getconfigCtx, url,
+		iteration, withNetTracing)
+
+	// Request configuration from the LOC
+	if needRequestLocConfig(getconfigCtx, rv) {
+		locURL := getconfigCtx.locConfig.LocURL
+		url = zedcloud.URLPathString(locURL, zedcloudCtx.V2API, devUUID, "config")
+
+		// If LOC configuration is outdated, then we get @obsoleteConfig
+		// return value (see parseConfig() for details) and we repeat on
+		// the next fetch attempt
+		rv, tracedReqs = requestConfigByURL(getconfigCtx, url,
+			iteration, withNetTracing)
+	}
+
+	return rv, tracedReqs
 }
 
 func saveReceivedProtoMessage(contents []byte) {
