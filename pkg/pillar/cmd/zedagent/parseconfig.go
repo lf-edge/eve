@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"hash"
 	"net"
+	"net/url"
 	"os"
 	"sort"
 	"strings"
@@ -74,6 +75,10 @@ func parseConfig(getconfigCtx *getconfigContext, config *zconfig.EdgeDevConfig,
 
 	// XXX - DO NOT LOG entire config till secrets are in encrypted blobs
 	//log.Tracef("parseConfig: EdgeDevConfig: %v", *config)
+
+	// Prepare LOC structure before everything to be ready to
+	// publish info
+	parseLocConfig(getconfigCtx, config)
 
 	// Look for timers and other settings in configItems
 	// Process Config items even when configProcessingSkipFlag is set.
@@ -2510,6 +2515,27 @@ func parseOpCmds(getconfigCtx *getconfigContext,
 	reboot := scheduleDeviceOperation(getconfigCtx, config.GetReboot(), types.DeviceOperationReboot)
 	shutdown := scheduleDeviceOperation(getconfigCtx, config.GetShutdown(), types.DeviceOperationShutdown)
 	return reboot, shutdown
+}
+
+func isLocConfigValid(locConfig *zconfig.LOCConfig) bool {
+	if locConfig == nil || len(locConfig.LocUrl) == 0 {
+		return false
+	}
+	_, err := url.Parse(locConfig.LocUrl)
+	return err == nil
+}
+
+// parseLocConfig() - assign LOC config only if URL is valid
+func parseLocConfig(getconfigCtx *getconfigContext,
+	config *zconfig.EdgeDevConfig) {
+	locConfig := config.GetLocConfig()
+	if isLocConfigValid(locConfig) {
+		getconfigCtx.locConfig = &types.LOCConfig{
+			LocURL: locConfig.LocUrl,
+		}
+	} else {
+		getconfigCtx.locConfig = nil
+	}
 }
 
 func removeDeviceOpsCmdConfig(op types.DeviceOperation) {
