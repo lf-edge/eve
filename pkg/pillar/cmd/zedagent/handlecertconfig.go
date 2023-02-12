@@ -10,9 +10,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
-	"io/ioutil"
 	"net/http"
-	"os"
 	"time"
 
 	"github.com/lf-edge/eve/api/go/attest"
@@ -41,13 +39,14 @@ type cipherContext struct {
 var controllerCertHash []byte
 
 // parse and update controller certs
-func parseControllerCerts(ctx *zedagentContext, contents []byte) {
+func parseControllerCerts(ctx *zedagentContext, contents []byte) (changed bool, err error) {
 	log.Functionf("Started parsing controller certs")
 	cfgConfig := &zcert.ZControllerCert{}
-	err := proto.Unmarshal(contents, cfgConfig)
+	err = proto.Unmarshal(contents, cfgConfig)
 	if err != nil {
-		log.Errorf("parseControllerCerts(): Unmarshal error %v", err)
-		return
+		err = fmt.Errorf("parseControllerCerts(): Unmarshal error %w", err)
+		log.Error(err)
+		return false, err
 	}
 
 	cfgCerts := cfgConfig.GetCerts()
@@ -57,7 +56,7 @@ func parseControllerCerts(ctx *zedagentContext, contents []byte) {
 	}
 	newHash := h.Sum(nil)
 	if bytes.Equal(newHash, controllerCertHash) {
-		return
+		return false, nil
 	}
 	log.Functionf("parseControllerCerts: Applying updated config "+
 		"Last Sha: % x, "+
@@ -83,6 +82,7 @@ func parseControllerCerts(ctx *zedagentContext, contents []byte) {
 		if !found {
 			log.Functionf("parseControllerCerts: deleting %s", config.Key())
 			unpublishControllerCert(ctx.getconfigCtx, config.Key())
+			changed = true
 		}
 	}
 
@@ -98,9 +98,11 @@ func parseControllerCerts(ctx *zedagentContext, contents []byte) {
 				CertHash: cfgConfig.GetCertHash(),
 			}
 			publishControllerCert(ctx.getconfigCtx, *cert)
+			changed = true
 		}
 	}
 	log.Functionf("parsing controller certs done")
+	return changed, nil
 }
 
 // look up controller cert
@@ -231,9 +233,10 @@ func controllerCertsTask(ctx *zedagentContext, triggerCerts <-chan struct{}) {
 	}
 }
 
-// fetch and verify the controller certificates. Returns true if there
-// was a verified update or the fetched certs are unchanged.
-func getCertsFromController(ctx *zedagentContext, desc string) bool {
+// Fetch and verify the controller certificates. Returns true if certificates have
+// not changed or the update was successfully applied.
+// False is returned if the function failed to fetch/verify/unmarshal certs.
+func getCertsFromController(ctx *zedagentContext, desc string) (success bool) {
 	log.Functionf("getCertsFromController started for %s", desc)
 	certURL := zedcloud.URLPathString(serverNameAndPort,
 		zedcloudCtx.V2API, nilUUID, "certs")
@@ -289,31 +292,28 @@ func getCertsFromController(ctx *zedagentContext, desc string) bool {
 	}
 
 	// validate the certificate message payload
-	certBytes, ret := zedcloud.VerifyProtoSigningCertChain(log, rv.RespContents)
+	signingCertBytes, ret := zedcloud.VerifyProtoSigningCertChain(log, rv.RespContents)
 	if ret != nil {
 		log.Errorf("getCertsFromController: verify err %v", ret)
 		return false
 	}
 
-	// Did the certificate change?
-	_, err = os.Stat(types.ServerSigningCertFileName)
-	if err == nil {
-		oldCertBytes, err := ioutil.ReadFile(types.ServerSigningCertFileName)
-		if err == nil && bytes.Equal(oldCertBytes, certBytes) {
-			log.Functionf("getCertsFromController: unchanged cert")
-			return true // Succeeded
-		}
+	// manage the certificates through pubsub
+	changed, err := parseControllerCerts(ctx, rv.RespContents)
+	if err != nil {
+		// Note that err is already logged.
+		return false
+	}
+	if !changed {
+		return true
 	}
 
 	// write the signing cert to file
-	if err := zedcloud.SaveServerSigningCert(zedcloudCtx, certBytes); err != nil {
+	if err := zedcloud.SaveServerSigningCert(zedcloudCtx, signingCertBytes); err != nil {
 		errStr := fmt.Sprintf("%v", err)
 		log.Errorf("getCertsFromController: " + errStr)
 		return false
 	}
-
-	// manage the certificates through pubsub
-	parseControllerCerts(ctx, rv.RespContents)
 
 	log.Noticef("getCertsFromController: success for %s", desc)
 	return true
