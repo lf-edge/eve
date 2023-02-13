@@ -24,6 +24,7 @@ const (
 	TpmDevicePath   = "/dev/tpmrm0"
 	configPCRIndex  = 14
 	configPCRHandle = tpmutil.Handle(tpm2.PCRFirst + configPCRIndex)
+	emptyPassword   = ""
 )
 
 type fileInfo struct {
@@ -96,12 +97,8 @@ func measureFileContent(filePath string, tpm io.ReadWriter) (*tpmEvent, error) {
 	}
 
 	eventData := fmt.Sprintf("file:%s hash:%s", filePath, hash)
-
-	// it seems PCRExtend expects a hash not data itself.
 	eventDataHash := sha256sumString(eventData)
-
-	err = tpm2.PCREvent(tpm, configPCRHandle, eventDataHash[:])
-
+	err = tpm2.PCRExtend(tpm, configPCRHandle, tpm2.AlgSHA256, eventDataHash[:], emptyPassword)
 	if err != nil {
 		return nil, fmt.Errorf("cannot measure %s. couldn't extend PCR: %v", filePath, err)
 	}
@@ -117,11 +114,8 @@ func measureFileContent(filePath string, tpm io.ReadWriter) (*tpmEvent, error) {
 
 func measureFilePath(filePath string, tpm io.ReadWriter, exist bool) (*tpmEvent, error) {
 	eventData := fmt.Sprintf("file:%s exist:%t", filePath, exist)
-	// it seems PCRExtend expects a hash not data itself.
 	eventDataHash := sha256sumString(eventData)
-
-	err := tpm2.PCREvent(tpm, configPCRHandle, eventDataHash[:])
-
+	err := tpm2.PCRExtend(tpm, configPCRHandle, tpm2.AlgSHA256, eventDataHash[:], emptyPassword)
 	if err != nil {
 		return nil, fmt.Errorf("cannot measure path %s. couldn't extend PCR: %v", filePath, err)
 	}
