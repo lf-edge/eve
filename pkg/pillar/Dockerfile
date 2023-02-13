@@ -88,10 +88,10 @@ RUN set -e && for patch in ../patches/*.patch; do \
     done
 
 # hadolint ignore=DL4006
-RUN echo "Running go vet" && go vet ./... && \
-    echo "Running go fmt" && ERR=$(gofmt -e -l -s $(find . -name \*.go | grep -v /vendor/)) && \
-       if [ -n "$ERR" ] ; then echo "go fmt Failed - ERR: "$ERR ; exit 1 ; fi && \
-    make DEV=$DEV DISTDIR=/final/opt/zededa/bin build
+RUN --mount=type=cache,target=/root/.cache/go-build echo "Running go vet" && go vet ./... && \
+    echo "Running go fmt" && ERR="$(find . -name \*.go | grep -v /vendor/ | xargs gofmt -d -e -l -s)" && \
+       if [ -n "$ERR" ] ; then printf 'go fmt Failed - ERR: %s' "$ERR" ; exit 1 ; fi && \
+       make DEV="$DEV" DISTDIR=/final/opt/zededa/bin build
 
 WORKDIR /
 
@@ -99,7 +99,7 @@ ENV DELVE_VERSION 1.20.1
 ENV DELVE_SOURCE=https://github.com/go-delve/delve/archive/refs/tags/v${DELVE_VERSION}.tar.gz
 # hadolint ignore=DL3020
 ADD ${DELVE_SOURCE} /delve.tar.gz
-RUN if [ ${DEV} = "y" ]; then \
+RUN --mount=type=cache,target=/root/.cache/go-build if [ ${DEV} = "y" ]; then \
     tar --absolute-names -xz < /delve.tar.gz && \
     cd "/delve-${DELVE_VERSION}" &&  \
     GOFLAGS= CGO_ENABLED=0 go build -ldflags "-s -w -extldflags '-static'" github.com/go-delve/delve/cmd/dlv && \
