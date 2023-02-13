@@ -626,6 +626,7 @@ enum APICapability {
   API_CAPABILITY_START_DELAY_IN_SECONDS = 3; // start_delay_in_seconds supported
   // Coming soon:
   // API_CAPABILITY_EDGEVIEW = 4; // edgeview and edgeview.token supported
+  API_CAPABILITY_VOLUME_SNAPSHOTS = 5; // Volume snapshots supported
   // Add new values as new EdgeDevConfig API features are implemented
 }
 
