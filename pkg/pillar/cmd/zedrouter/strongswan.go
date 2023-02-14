@@ -682,8 +682,8 @@ func strongSwanConfigGet(ctx *zedrouterContext,
 
 	var err error
 	var ifname string
-	if status.CurrentUplinkIntf != "" {
-		ifname, _ = getUplink(ctx, status.CurrentUplinkIntf)
+	if status.SelectedUplinkIntf != "" {
+		ifname, _ = getUplink(ctx, status.SelectedUplinkIntf)
 	} else {
 		ifname, err = getUplink(ctx, status.Logicallabel)
 		if err != nil {

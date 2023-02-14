@@ -1423,12 +1423,36 @@ func (status *DeviceNetworkStatus) GetPortByIfName(
 	return nil
 }
 
-// GetPortByLogicallabel - Get Port Status for port with given label
-func (status *DeviceNetworkStatus) GetPortByLogicallabel(
-	label string) *NetworkPortStatus {
+// GetPortsByLogicallabel - Get Port Status for all ports matching the given label.
+func (status *DeviceNetworkStatus) GetPortsByLogicallabel(
+	label string) (ports []*NetworkPortStatus) {
+	// Check for shared labels first.
+	switch label {
+	case UplinkLabel:
+		for i := range status.Ports {
+			if status.Version >= DPCIsMgmt && !status.Ports[i].IsMgmt {
+				continue
+			}
+			ports = append(ports, &status.Ports[i])
+		}
+		return ports
+	case FreeUplinkLabel:
+		for i := range status.Ports {
+			if status.Version >= DPCIsMgmt && !status.Ports[i].IsMgmt {
+				continue
+			}
+			if status.Ports[i].Cost > 0 {
+				continue
+			}
+			ports = append(ports, &status.Ports[i])
+		}
+		return ports
+	}
+	// Label is referencing single port.
 	for i := range status.Ports {
 		if status.Ports[i].Logicallabel == label {
-			return &status.Ports[i]
+			ports = append(ports, &status.Ports[i])
+			return ports
 		}
 	}
 	return nil
@@ -1995,55 +2019,6 @@ const (
 	MST_LAST = 255
 )
 
-// CurrIntfStatusType - enum for probe current uplink intf UP/Down status
-type CurrIntfStatusType uint8
-
-// CurrentIntf status
-const (
-	CurrIntfNone CurrIntfStatusType = iota
-	CurrIntfDown
-	CurrIntfUP
-)
-
-// ServerProbe - remote probe info configured from the cloud
-type ServerProbe struct {
-	ServerURL     string // include method,host,paths
-	ServerIP      net.IP
-	ProbeInterval uint32 // probe frequency in seconds
-}
-
-// ProbeInfo - per phyical port probing info
-type ProbeInfo struct {
-	IfName    string
-	IsPresent bool // for GC purpose
-	TransDown bool // local up long time, transition to down
-	// local nexthop probe state
-	GatewayUP  bool // local nexthop is in UP state
-	LocalAddr  net.IP
-	NhAddr     net.IP
-	FailedCnt  uint32 // continuous ping fail count, reset when ping success
-	SuccessCnt uint32 // contiguous ping success count, reset when ping fail
-
-	Cost uint8
-	// remote host probe state
-	RemoteHostUP    bool   // remote host is in UP state
-	FailedProbeCnt  uint32 // continuous remote ping fail count, reset when ping success
-	SuccessProbeCnt uint32 // continuous remote ping success count, reset when ping fail
-	AveLatency      int64  // average delay in msec
-}
-
-// NetworkInstanceProbeStatus - probe status per network instance
-type NetworkInstanceProbeStatus struct {
-	PConfig           ServerProbe          // user configuration for remote server
-	NeedIntfUpdate    bool                 // flag to indicate the CurrentUpLinkIntf status has changed
-	PrevUplinkIntf    string               // previously used uplink interface
-	CurrentUplinkIntf string               // decided by local/remote probing
-	ProgUplinkIntf    string               // Currently programmed uplink interface for app traffic
-	CurrIntfUP        CurrIntfStatusType   // the current picked interface can be up or down
-	TriggerCnt        uint32               // number of times Uplink change triggered
-	PInfo             map[string]ProbeInfo // per physical port eth0, eth1 probing state
-}
-
 type DhcpType uint8
 
 const (
@@ -2342,25 +2317,25 @@ type VlanMetrics struct {
 
 // ProbeMetrics - NI probe metrics
 type ProbeMetrics struct {
-	CurrUplinkIntf  string             // the uplink interface probing picks
-	RemoteEndpoint  string             // remote either URL or IP address
-	LocalPingIntvl  uint32             // local ping interval in seconds
-	RemotePingIntvl uint32             // remote probing interval in seconds
-	UplinkNumber    uint32             // number of possible uplink interfaces
-	IntfProbeStats  []ProbeIntfMetrics // per dom0 intf uplink probing metrics
+	SelectedUplinkIntf string             // the uplink interface that probing picked
+	RemoteEndpoints    []string           // remote IP/URL addresses used for probing
+	LocalPingIntvl     uint32             // local ping interval in seconds
+	RemotePingIntvl    uint32             // remote probing interval in seconds
+	UplinkCount        uint32             // number of possible uplink interfaces
+	IntfProbeStats     []ProbeIntfMetrics // per dom0 intf uplink probing metrics
 }
 
 // ProbeIntfMetrics - per dom0 network uplink interface probing
 type ProbeIntfMetrics struct {
-	IntfName        string // dom0 uplink interface name
-	NexthopGw       net.IP // interface local ping nexthop address
-	GatewayUP       bool   // Is local gateway in UP status
-	RmoteStatusUP   bool   // Is remote endpoint in UP status
-	GatewayUPCnt    uint32 // local ping UP count
-	GatewayDownCnt  uint32 // local ping DOWN count
-	RemoteUPCnt     uint32 // remote probe UP count
-	RemoteDownCnt   uint32 // remote probe DOWN count
-	LatencyToRemote uint32 // probe latency to remote in msec
+	IntfName        string   // dom0 uplink interface name
+	NexthopIPs      []net.IP // interface local next-hop address(es) used for probing
+	NexthopUP       bool     // Is local next-hop in UP status
+	RemoteUP        bool     // Is remote endpoint in UP status
+	NexthopUPCnt    uint32   // local ping UP count
+	NexthopDownCnt  uint32   // local ping DOWN count
+	RemoteUPCnt     uint32   // remote probe UP count
+	RemoteDownCnt   uint32   // remote probe DOWN count
+	LatencyToRemote uint32   // probe latency to remote in msec
 }
 
 func (metrics NetworkInstanceMetrics) Key() string {
@@ -2592,6 +2567,44 @@ func (config *NetworkInstanceConfig) IsIPv6() bool {
 	return false
 }
 
+// WithUplinkProbing returns true if the network instance is eligible for uplink
+// probing (see pkg/pillar/uplinkprober).
+// Uplink probing is performed only for L3 networks with non-empty "shared" uplink
+// label, matching a subset of uplink ports.
+// Even if a network instance is eligible for probing as determined by this method,
+// the actual process of connectivity probing may still be inactive if there are
+// no uplink ports available that match the label.
+func (config *NetworkInstanceConfig) WithUplinkProbing() bool {
+	switch config.Type {
+	case NetworkInstanceTypeLocal, NetworkInstanceTypeCloud:
+		return IsSharedPortLabel(config.Logicallabel)
+	default:
+		return false
+	}
+}
+
+const (
+	// UplinkLabel references all management interfaces.
+	UplinkLabel = "uplink"
+	// FreeUplinkLabel references all management interfaces with 0 cost.
+	FreeUplinkLabel = "freeuplink"
+)
+
+// IsSharedPortLabel : returns true if the logical label references multiple
+// ports.
+// Currently used labels are:
+//   - "uplink": any management interface
+//   - "freeuplink": any management interface with 0 cost
+func IsSharedPortLabel(label string) bool {
+	switch label {
+	case UplinkLabel:
+		return true
+	case FreeUplinkLabel:
+		return true
+	}
+	return false
+}
+
 type ChangeInProgressType int32
 
 const (
@@ -2624,7 +2637,8 @@ type NetworkInstanceStatus struct {
 	OpaqueStatus string
 	VpnStatus    *VpnStatus
 
-	NetworkInstanceProbeStatus
+	SelectedUplinkIntf string // Decided by local/remote probing
+	ProgUplinkIntf     string // Currently programmed uplink interface for app traffic
 }
 
 // LogCreate :
