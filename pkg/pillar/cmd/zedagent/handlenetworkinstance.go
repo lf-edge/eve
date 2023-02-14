@@ -82,7 +82,7 @@ func prepareAndPublishNetworkInstanceInfoMsg(ctx *zedagentContext,
 	if !deleted {
 		info.Displayname = status.DisplayName
 		info.InstType = uint32(status.Type)
-		info.CurrentUplinkIntf = status.CurrentUplinkIntf
+		info.CurrentUplinkIntf = status.SelectedUplinkIntf
 
 		if !status.ErrorTime.IsZero() {
 			errInfo := new(zinfo.ErrorInfo)

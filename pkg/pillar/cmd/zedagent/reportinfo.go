@@ -437,10 +437,11 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 	// We report all the ports in DeviceNetworkStatus
 	labelList := types.ReportLogicallabels(*deviceNetworkStatus)
 	for _, label := range labelList {
-		p := deviceNetworkStatus.GetPortByLogicallabel(label)
-		if p == nil {
+		ports := deviceNetworkStatus.GetPortsByLogicallabel(label)
+		if len(ports) == 0 {
 			continue
 		}
+		p := ports[0]
 		ReportDeviceNetworkInfo := encodeNetInfo(*p)
 		// XXX rename DevName to Logicallabel in proto file
 		ReportDeviceNetworkInfo.DevName = *proto.String(label)
@@ -947,10 +948,11 @@ func encodeSystemAdapterInfo(ctx *zedagentContext) *info.SystemAdapterInfo {
 			}
 			dps.Ports[j] = encodeNetworkPortConfig(ctx, &p)
 			if i == dpcl.CurrentIndex && p.WirelessCfg.WType == types.WirelessTypeCellular {
-				portStatus := deviceNetworkStatus.GetPortByLogicallabel(p.Logicallabel)
-				if portStatus == nil {
+				ports := deviceNetworkStatus.GetPortsByLogicallabel(p.Logicallabel)
+				if len(ports) == 0 {
 					continue
 				}
+				portStatus := ports[0]
 				wwanStatus := portStatus.WirelessStatus.Cellular
 				var simCards []string
 				for _, simCard := range wwanStatus.SimCards {

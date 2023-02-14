@@ -341,10 +341,11 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 	labelList := types.ReportLogicallabels(*deviceNetworkStatus)
 	for _, label := range labelList {
 		var metric *types.NetworkMetric
-		p := deviceNetworkStatus.GetPortByLogicallabel(label)
-		if p == nil {
+		ports := deviceNetworkStatus.GetPortsByLogicallabel(label)
+		if len(ports) == 0 {
 			continue
 		}
+		p := ports[0]
 		if !p.IsL3Port {
 			// metrics for ports from lower layers are not reported
 			continue
@@ -1166,7 +1167,7 @@ func PublishAppInfoToZedCloud(ctx *zedagentContext, uuid string,
 					networkInfo.NtpServers = append(networkInfo.NtpServers, niStatus.NtpServer.String())
 				} else {
 					ntpServers := types.GetNTPServers(*deviceNetworkStatus,
-						niStatus.CurrentUplinkIntf)
+						niStatus.SelectedUplinkIntf)
 					for _, server := range ntpServers {
 						networkInfo.NtpServers = append(networkInfo.NtpServers, server.String())
 					}
@@ -1677,8 +1678,37 @@ func protoEncodeNetworkInstanceMetricProto(status types.NetworkInstanceMetrics) 
 	default:
 		protoEncodeGenericInstanceMetric(status, metric)
 	}
-
+	metric.ProbeMetric = protoEncodeProbeMetrics(status.ProbeMetrics)
 	return metric
+}
+
+func protoEncodeProbeMetrics(probeMetrics types.ProbeMetrics) *metrics.ZProbeNIMetrics {
+	protoMetrics := &metrics.ZProbeNIMetrics{
+		CurrentIntf:    probeMetrics.SelectedUplinkIntf,
+		RemoteEndpoint: strings.Join(probeMetrics.RemoteEndpoints, ", "),
+		PingIntv:       probeMetrics.LocalPingIntvl,
+		RemotePingIntv: probeMetrics.RemotePingIntvl,
+		UplinkCnt:      probeMetrics.UplinkCount,
+	}
+	for _, intfStats := range probeMetrics.IntfProbeStats {
+		var nextHops []string
+		for _, nh := range intfStats.NexthopIPs {
+			nextHops = append(nextHops, nh.String())
+		}
+		protoMetrics.IntfMetric = append(protoMetrics.IntfMetric,
+			&metrics.ZProbeNIMetrics_ZProbeIntfMetric{
+				IntfName:           intfStats.IntfName,
+				GatewayNexhtop:     strings.Join(nextHops, ", "),
+				GatewayUP:          intfStats.NexthopUP,
+				RemoteHostUP:       intfStats.RemoteUP,
+				NexthopUpCount:     intfStats.NexthopUPCnt,
+				NexthopDownCount:   intfStats.NexthopDownCnt,
+				RemoteUpCount:      intfStats.RemoteUPCnt,
+				RemoteDownCount:    intfStats.RemoteDownCnt,
+				RemoteProbeLatency: intfStats.LatencyToRemote,
+			})
+	}
+	return protoMetrics
 }
 
 func protoEncodeFlowlogCounters(counters types.FlowlogCounters) *metrics.FlowlogCounters {

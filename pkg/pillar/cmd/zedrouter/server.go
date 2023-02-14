@@ -541,14 +541,14 @@ func getExternalIPForApp(ctx *zedrouterContext, remoteIP net.IP) (net.IP, int) {
 			remoteIP.String())
 		return net.IP{}, http.StatusNotFound
 	}
-	if netstatus.CurrentUplinkIntf == "" {
-		log.Warnf("No CurrentUplinkIntf for %s",
+	if netstatus.SelectedUplinkIntf == "" {
+		log.Warnf("No SelectedUplinkIntf for %s",
 			remoteIP.String())
 		// Nothing to report */
 		return net.IP{}, http.StatusNoContent
 	}
 	ip, err := types.GetLocalAddrAnyNoLinkLocal(*ctx.deviceNetworkStatus,
-		0, netstatus.CurrentUplinkIntf)
+		0, netstatus.SelectedUplinkIntf)
 	if err != nil {
 		log.Errorf("No externalIP for %s: %s",
 			remoteIP.String(), err)
