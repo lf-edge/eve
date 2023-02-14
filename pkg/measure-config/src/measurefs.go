@@ -24,6 +24,8 @@ const (
 	TpmDevicePath   = "/dev/tpmrm0"
 	configPCRIndex  = 14
 	configPCRHandle = tpmutil.Handle(tpm2.PCRFirst + configPCRIndex)
+	//PCREvent (TPM2_PCR_Event) supports event size of maximum 1024 bytes.
+	maxEventDataSize = 1024
 )
 
 type fileInfo struct {
@@ -34,6 +36,13 @@ type fileInfo struct {
 type tpmEvent struct {
 	data string
 	pcr  []byte
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 // we do not measure content of following files
@@ -84,52 +93,33 @@ func sha256sumForFile(filePath string) (string, error) {
 	return hex.EncodeToString(hash.Sum(nil)), nil
 }
 
-func sha256sumString(s string) [32]byte {
-	return sha256.Sum256([]byte(s))
-}
-
-func measureFileContent(filePath string, tpm io.ReadWriter) (*tpmEvent, error) {
-	hash, err := sha256sumForFile(filePath)
-
-	if err != nil {
-		return nil, fmt.Errorf("cannot measure %s :%v", filePath, err)
+func performMeasurement(filePath string, tpm io.ReadWriter, exist bool, content bool) (*tpmEvent, error) {
+	var eventData string
+	if content {
+		hash, err := sha256sumForFile(filePath)
+		if err != nil {
+			return nil, fmt.Errorf("cannot measure %s :%v", filePath, err)
+		}
+		eventData = fmt.Sprintf("file:%s exist:true content-hash:%s", filePath, hash)
+	} else {
+		eventData = fmt.Sprintf("file:%s exist:%t", filePath, exist)
 	}
 
-	eventData := fmt.Sprintf("file:%s hash:%s", filePath, hash)
-
-	// it seems PCRExtend expects a hash not data itself.
-	eventDataHash := sha256sumString(eventData)
-
-	err = tpm2.PCREvent(tpm, configPCRHandle, eventDataHash[:])
-
-	if err != nil {
-		return nil, fmt.Errorf("cannot measure %s. couldn't extend PCR: %v", filePath, err)
+	// Loop over the data and if it is larger than 1024 (max size PCREvent consumes)
+	// break it into 1024 bytes chunks, otherwise just loop once and pass data to PCREvent.
+	for offset, length := 0, 0; offset < len(eventData); offset += length {
+		length = min(maxEventDataSize, len(eventData)-offset)
+		// PCREvent internally hashes the data with all supported algorithms
+		// associated with the PCR banks, and extends them all before return.
+		err := tpm2.PCREvent(tpm, configPCRHandle, []byte(eventData[offset:offset+length]))
+		if err != nil {
+			return nil, fmt.Errorf("cannot measure %s. couldn't extend PCR: %v", filePath, err)
+		}
 	}
 
 	pcr, err := readConfigPCR(tpm)
-
 	if err != nil {
 		return nil, fmt.Errorf("cannot measure %s. couldn't read PCR: %v", filePath, err)
-	}
-
-	return &tpmEvent{eventData, pcr}, nil
-}
-
-func measureFilePath(filePath string, tpm io.ReadWriter, exist bool) (*tpmEvent, error) {
-	eventData := fmt.Sprintf("file:%s exist:%t", filePath, exist)
-	// it seems PCRExtend expects a hash not data itself.
-	eventDataHash := sha256sumString(eventData)
-
-	err := tpm2.PCREvent(tpm, configPCRHandle, eventDataHash[:])
-
-	if err != nil {
-		return nil, fmt.Errorf("cannot measure path %s. couldn't extend PCR: %v", filePath, err)
-	}
-
-	pcr, err := readConfigPCR(tpm)
-
-	if err != nil {
-		return nil, fmt.Errorf("cannot measure path %s. couldn't read PCR: %v", filePath, err)
 	}
 
 	return &tpmEvent{eventData, pcr}, nil
@@ -201,19 +191,21 @@ func measureConfig(tpm io.ReadWriter) error {
 
 		if info.exist {
 			if info.measureContent {
-				event, err = measureFileContent(file, tpm)
+				event, err = performMeasurement(file, tpm, true, true)
 			} else {
-				event, err = measureFilePath(file, tpm, true)
+				event, err = performMeasurement(file, tpm, true, false)
 			}
 		} else {
-			event, err = measureFilePath(file, tpm, false)
+			event, err = performMeasurement(file, tpm, false, false)
 		}
 		if err != nil {
 			return fmt.Errorf("cannot measure %s: %v", file, err)
 		}
 		//Now we have a new value of PCR and an event
-		//TODO: add events to the event log
-		// for now just print our measurements to boot log
+		//TODO: add events to the event log, if event data exceeds 1024 bytes,
+		// make sure to break it into 1024 bytes chunks with added indicators
+		// (e.g. part n of m) to be able to reconstruct the even data for validation.
+		// for now we just print our measurements to boot log.
 		log.Printf("%s pcr:%s", event.data, hex.EncodeToString(event.pcr))
 	}
 	return nil
