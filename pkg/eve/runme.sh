@@ -103,7 +103,7 @@ imx8mq_evk are all valid options.
 Example:
 docker run --rm lfedge/eve -f raw -p imx8mq_evk live > live.raw
 
-In some cases, you will have to agree to a license when creating 
+In some cases, you will have to agree to a license when creating
 EVE-OS images. To do this, use the --accept-license option.
 
 Example:
@@ -191,12 +191,12 @@ do_sbom() {
 prepare_for_platform() {
     case "$PLATFORM" in
     imx8mq_evk) #shellcheck disable=SC2039
-	    cat /bits/bsp-imx/NXP-EULA-LICENSE.txt
-		[ -n "$ACCEPT" ] || bail "You need to read and accept the EULA before you can continue. Use the --accept-license argument."
+        cat /bits/bsp-imx/NXP-EULA-LICENSE.txt
+        [ -n "$ACCEPT" ] || bail "You need to read and accept the EULA before you can continue. Use the --accept-license argument."
         cp /bits/bsp-imx/"$PLATFORM"-flash.bin /bits/imx8-flash.bin
         ;;
-    *) #shellcheck disable=SC2039
-	    break
+    *) #shellcheck disable=SC2039,SC2104
+        break
         ;;
     esac
 }
@@ -204,7 +204,7 @@ prepare_for_platform() {
 # Lets' parse global options first
 while true; do
    case "$1" in
-     -f*) #shellcheck disable=SC2039
+     -f*) #shellcheck disable=SC2039,SC3060
           FMT="${1/-f/}"
           if [ -z "$FMT" ]; then
              FMT="$2"
@@ -222,8 +222,8 @@ while true; do
           shift
           [ "$PLATFORM" != "none" ] && [ "$PLATFORM" != "imx8mq_evk" ] && bail "Unknown platform: $PLATFORM"
           ;;
-	 --accept-license*) #shellcheck disable=SC2039,SC3060
-	      ACCEPT=1
+     --accept-license*) #shellcheck disable=SC2039,SC3060
+          ACCEPT=1
           shift
           ;;
        *) break
@@ -239,7 +239,7 @@ prepare_for_platform
 
 # Let's see what was it that we were asked to do
 ACTION="do_$1"
-#shellcheck disable=SC2039
+#shellcheck disable=SC2039,SC3045
 [ "$(type -t "$ACTION")" = "$ACTION" ] || bail "Error: unsupported command '$1' - use 'help' command for more information."
 shift
 
