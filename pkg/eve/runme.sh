@@ -190,10 +190,11 @@ do_sbom() {
 
 prepare_for_platform() {
     case "$PLATFORM" in
-    imx8mq_evk) #shellcheck disable=SC2039
+    imx8m*) #shellcheck disable=SC2039
         cat /bits/bsp-imx/NXP-EULA-LICENSE.txt
         [ -n "$ACCEPT" ] || bail "You need to read and accept the EULA before you can continue. Use the --accept-license argument."
         cp /bits/bsp-imx/"$PLATFORM"-flash.bin /bits/imx8-flash.bin
+        [ -n "$(ls /bits/bsp-imx/*.dtb 2> /dev/null)" ] && cp /bits/bsp-imx/*.dtb /bits/boot
         ;;
     *) #shellcheck disable=SC2039,SC2104
         break
@@ -220,7 +221,9 @@ while true; do
              shift
           fi
           shift
-          [ "$PLATFORM" != "none" ] && [ "$PLATFORM" != "imx8mq_evk" ] && bail "Unknown platform: $PLATFORM"
+          #shellcheck disable=SC3057
+          BASEPLATFORM="${PLATFORM:0:5}"
+          [ "$PLATFORM" != "none" ] && [ "$BASEPLATFORM" != "imx8m" ] && bail "Unknown platform: $PLATFORM"
           ;;
      --accept-license*) #shellcheck disable=SC2039,SC3060
           ACCEPT=1
