@@ -16,7 +16,7 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-func hardwareInfoTask(ctxPtr *zedagentContext, triggerHwInfo <-chan struct{}) {
+func hardwareInfoTask(ctxPtr *zedagentContext, triggerHwInfo <-chan destinationBitset) {
 	wdName := agentName + "hwinfo"
 
 	stillRunning := time.NewTicker(30 * time.Second)
@@ -25,11 +25,11 @@ func hardwareInfoTask(ctxPtr *zedagentContext, triggerHwInfo <-chan struct{}) {
 
 	for {
 		select {
-		case <-triggerHwInfo:
+		case dest := <-triggerHwInfo:
 			start := time.Now()
 			log.Function("HardwareInfoTask got message")
 
-			PublishHardwareInfoToZedCloud(ctxPtr)
+			PublishHardwareInfoToZedCloud(ctxPtr, dest)
 			ctxPtr.iteration++
 			log.Function("HardwareInfoTask done with message")
 			ctxPtr.ps.CheckMaxTimeTopic(wdName, "PublishHardwareInfo", start,
@@ -41,7 +41,7 @@ func hardwareInfoTask(ctxPtr *zedagentContext, triggerHwInfo <-chan struct{}) {
 }
 
 // PublishHardwareInfoToZedCloud send ZInfoHardware message
-func PublishHardwareInfoToZedCloud(ctx *zedagentContext) {
+func PublishHardwareInfoToZedCloud(ctx *zedagentContext, dest destinationBitset) {
 	var ReportHwInfo = &info.ZInfoMsg{}
 	hwInfoKey := devUUID.String() + "hwinfo"
 	bailOnHTTPErr := true

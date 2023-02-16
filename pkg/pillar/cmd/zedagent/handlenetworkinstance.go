@@ -43,7 +43,7 @@ func handleNetworkInstanceImpl(ctxArg interface{}, key string,
 		log.Errorf("Received NetworkInstance error %s",
 			status.Error)
 	}
-	prepareAndPublishNetworkInstanceInfoMsg(ctx, status, false)
+	prepareAndPublishNetworkInstanceInfoMsg(ctx, status, false, AllDest)
 	log.Functionf("handleNetworkInstanceImpl(%s) done", key)
 }
 
@@ -53,7 +53,7 @@ func handleNetworkInstanceDelete(ctxArg interface{}, key string,
 	log.Functionf("handleNetworkInstanceDelete(%s)", key)
 	status := statusArg.(types.NetworkInstanceStatus)
 	ctx := ctxArg.(*zedagentContext)
-	prepareAndPublishNetworkInstanceInfoMsg(ctx, status, true)
+	prepareAndPublishNetworkInstanceInfoMsg(ctx, status, true, AllDest)
 	log.Functionf("handleNetworkInstanceDelete(%s) done", key)
 }
 
@@ -65,7 +65,7 @@ func handleNetworkInstanceDelete(ctxArg interface{}, key string,
 // (indicating deletion) would make is explicit
 // and easy for the cloud process.
 func prepareAndPublishNetworkInstanceInfoMsg(ctx *zedagentContext,
-	status types.NetworkInstanceStatus, deleted bool) {
+	status types.NetworkInstanceStatus, deleted bool, dest destinationBitset) {
 
 	infoMsg := &zinfo.ZInfoMsg{}
 	infoType := new(zinfo.ZInfoTypes)

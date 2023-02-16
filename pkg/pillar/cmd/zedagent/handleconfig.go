@@ -907,7 +907,7 @@ func inhaleDeviceConfig(getconfigCtx *getconfigContext, config *zconfig.EdgeDevC
 		if controllerEpoch != newControllerEpoch {
 			log.Noticef("Controller epoch changed from %d to %d", controllerEpoch, newControllerEpoch)
 			controllerEpoch = newControllerEpoch
-			triggerPublishAllInfo(getconfigCtx.zedagentCtx)
+			triggerPublishAllInfo(getconfigCtx.zedagentCtx, AllDest)
 		}
 	}
 
