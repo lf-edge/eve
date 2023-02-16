@@ -48,8 +48,8 @@ SSH_PORT=2222
 SSH_PROXY=-L6000:localhost:6000
 # ssh key to be used for getting into an EVE instance
 SSH_KEY=$(CONF_DIR)/ssh.key
-# Use QEMU H/W accelearation (any non-empty value will trigger using it)
-ACCEL=
+# Disable QEMU H/W acceleration (any non-empty value will trigger using it)
+NOACCEL=
 # Use TPM device (any non-empty value will trigger using it), i.e. 'make TPM=y run'
 TPM=
 # Prune dangling images after build of package to reduce disk usage (any non-empty value will trigger using it)
@@ -189,6 +189,11 @@ QEMU_SYSTEM_amd64=qemu-system-x86_64
 QEMU_SYSTEM_riscv64=qemu-system-riscv64
 QEMU_SYSTEM=$(QEMU_SYSTEM_$(ZARCH))
 
+ifeq ($(NOACCEL),)
+ACCEL=1
+else
+ACCEL=
+endif
 QEMU_ACCEL_Y_Darwin_amd64=-machine q35,accel=hvf,usb=off -cpu kvm64,kvmclock=off
 QEMU_ACCEL_Y_Linux_amd64=-machine q35,accel=kvm,usb=off,dump-guest-core=off -cpu host,invtsc=on,kvmclock=off -machine kernel-irqchip=split -device intel-iommu,intremap=on,caching-mode=on,aw-bits=48
 # -machine virt,gic_version=3
