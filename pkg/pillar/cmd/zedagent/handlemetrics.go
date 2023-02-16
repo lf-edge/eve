@@ -102,7 +102,8 @@ func handleAppDiskMetricCreate(ctxArg interface{}, key string, _ interface{}) {
 			continue
 		}
 		uuidStr := volumeStatus.VolumeID.String()
-		PublishVolumeToZedCloud(ctx, uuidStr, &volumeStatus, ctx.iteration)
+		PublishVolumeToZedCloud(ctx, uuidStr, &volumeStatus,
+			ctx.iteration, AllDest)
 	}
 	log.Functionf("handleAppDiskMetricCreate: %s", key)
 }
@@ -1082,7 +1083,7 @@ func encodeNetworkPortConfig(ctx *zedagentContext,
 // containing only the UUID to inform zedcloud about the delete.
 func PublishAppInfoToZedCloud(ctx *zedagentContext, uuid string,
 	aiStatus *types.AppInstanceStatus,
-	aa *types.AssignableAdapters, iteration int) {
+	aa *types.AssignableAdapters, iteration int, dest destinationBitset) {
 	log.Functionf("PublishAppInfoToZedCloud uuid %s", uuid)
 	var ReportInfo = &info.ZInfoMsg{}
 
@@ -1223,7 +1224,7 @@ func PublishAppInfoToZedCloud(ctx *zedagentContext, uuid string,
 // When content tree Status is nil it means a delete and we send a message
 // containing only the UUID to inform zedcloud about the delete.
 func PublishContentInfoToZedCloud(ctx *zedagentContext, uuid string,
-	ctStatus *types.ContentTreeStatus, iteration int) {
+	ctStatus *types.ContentTreeStatus, iteration int, dest destinationBitset) {
 
 	log.Functionf("PublishContentInfoToZedCloud uuid %s", uuid)
 	var ReportInfo = &info.ZInfoMsg{}
@@ -1293,7 +1294,7 @@ func PublishContentInfoToZedCloud(ctx *zedagentContext, uuid string,
 // When volume status is nil it means a delete and we send a message
 // containing only the UUID to inform zedcloud about the delete.
 func PublishVolumeToZedCloud(ctx *zedagentContext, uuid string,
-	volStatus *types.VolumeStatus, iteration int) {
+	volStatus *types.VolumeStatus, iteration int, dest destinationBitset) {
 
 	log.Functionf("PublishVolumeToZedCloud uuid %s", uuid)
 	var ReportInfo = &info.ZInfoMsg{}
@@ -1371,7 +1372,8 @@ func PublishVolumeToZedCloud(ctx *zedagentContext, uuid string,
 // PublishBlobInfoToZedCloud is called per change, hence needs to try over all management ports
 // When blob Status is nil it means a delete and we send a message
 // containing only the UUID to inform zedcloud about the delete.
-func PublishBlobInfoToZedCloud(ctx *zedagentContext, blobSha string, blobStatus *types.BlobStatus, iteration int) {
+func PublishBlobInfoToZedCloud(ctx *zedagentContext, blobSha string,
+	blobStatus *types.BlobStatus, iteration int, dest destinationBitset) {
 	log.Functionf("PublishBlobInfoToZedCloud blobSha %v", blobSha)
 	var ReportInfo = &info.ZInfoMsg{}
 
@@ -1428,7 +1430,8 @@ func PublishBlobInfoToZedCloud(ctx *zedagentContext, blobSha string, blobStatus 
 }
 
 // PublishEdgeviewToZedCloud - publish Edgeview info to controller
-func PublishEdgeviewToZedCloud(ctx *zedagentContext, evStatus *types.EdgeviewStatus) {
+func PublishEdgeviewToZedCloud(ctx *zedagentContext,
+	evStatus *types.EdgeviewStatus, dest destinationBitset) {
 
 	log.Functionf("PublishEdgeviewToZedCloud")
 	var ReportInfo = &info.ZInfoMsg{}

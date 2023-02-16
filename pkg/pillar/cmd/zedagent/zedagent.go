@@ -40,7 +40,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/agentbase"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/base"
-	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	"github.com/lf-edge/eve/pkg/pillar/netdump"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
@@ -111,8 +110,9 @@ type zedagentContext struct {
 	subNetworkInstanceStatus  pubsub.Subscription
 	subCertObjConfig          pubsub.Subscription
 	flowlogQueue              chan<- *flowlog.FlowMessage
-	triggerDeviceInfo         chan<- struct{}
-	triggerHwInfo             chan<- struct{}
+	triggerDeviceInfo         chan<- destinationBitset
+	triggerHwInfo             chan<- destinationBitset
+	triggerLocationInfo       chan<- destinationBitset
 	triggerObjectInfo         chan<- infoForObjectKey
 	zbootRestarted            bool // published by baseosmgr
 	subOnboardStatus          pubsub.Subscription
@@ -282,6 +282,7 @@ func queueInfoToDest(ctx *zedagentContext, dest destinationBitset,
 type infoForObjectKey struct {
 	infoType  info.ZInfoTypes
 	objectKey string
+	infoDest  destinationBitset
 }
 
 func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, arguments []string) int {
@@ -314,12 +315,14 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	zedagentCtx.fatalFlag = *zedagentCtx.fatalPtr
 
 	flowlogQueue := make(chan *flowlog.FlowMessage, flowlogQueueCap)
-	triggerDeviceInfo := make(chan struct{}, 1)
-	triggerHwInfo := make(chan struct{}, 1)
+	triggerDeviceInfo := make(chan destinationBitset, 1)
+	triggerHwInfo := make(chan destinationBitset, 1)
+	triggerLocationInfo := make(chan destinationBitset, 1)
 	triggerObjectInfo := make(chan infoForObjectKey, 1)
 	zedagentCtx.flowlogQueue = flowlogQueue
 	zedagentCtx.triggerDeviceInfo = triggerDeviceInfo
 	zedagentCtx.triggerHwInfo = triggerHwInfo
+	zedagentCtx.triggerLocationInfo = triggerLocationInfo
 	zedagentCtx.triggerObjectInfo = triggerObjectInfo
 
 	// Initialize all zedagent publications.
@@ -464,7 +467,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 
 	// start the location reporting task
 	log.Functionf("Creating %s at %s", "locationTimerTask", agentlog.GetMyStack())
-	go locationTimerTask(zedagentCtx, handleChannel)
+	go locationTimerTask(zedagentCtx, handleChannel, triggerLocationInfo)
 	getconfigCtx.locationCloudTickerHandle = <-handleChannel
 	getconfigCtx.locationAppTickerHandle = <-handleChannel
 
@@ -1851,11 +1854,11 @@ func initPostOnboardSubs(zedagentCtx *zedagentContext) {
 	}
 }
 
-func triggerPublishHwInfo(ctxPtr *zedagentContext) {
+func triggerPublishHwInfoToDest(ctxPtr *zedagentContext, dest destinationBitset) {
 
 	log.Function("Triggered PublishHardwareInfo")
 	select {
-	case ctxPtr.triggerHwInfo <- struct{}{}:
+	case ctxPtr.triggerHwInfo <- dest:
 		// Do nothing more
 	default:
 		// This occurs if we are already trying to send a hardware info
@@ -1864,42 +1867,53 @@ func triggerPublishHwInfo(ctxPtr *zedagentContext) {
 	}
 }
 
-func triggerPublishDevInfo(ctxPtr *zedagentContext) {
+func triggerPublishHwInfo(ctxPtr *zedagentContext) {
+	triggerPublishHwInfoToDest(ctxPtr, AllDest)
+}
+
+func triggerPublishDevInfoToDest(ctxPtr *zedagentContext, dest destinationBitset) {
 
 	log.Function("Triggered PublishDeviceInfo")
 	select {
-	case ctxPtr.triggerDeviceInfo <- struct{}{}:
+	case ctxPtr.triggerDeviceInfo <- dest:
 		// Do nothing more
 	default:
 		// This occurs if we are already trying to send a device info
 		// and we get a second and third trigger before that is complete.
 		log.Warnf("Failed to send on PublishDeviceInfo")
 	}
-	triggerLocalDevInfoPOST(ctxPtr.getconfigCtx)
+	if dest&LPSDest != 0 {
+		triggerLocalDevInfoPOST(ctxPtr.getconfigCtx)
+	}
 }
 
-func triggerPublishLocationToController(ctxPtr *zedagentContext) {
+func triggerPublishDevInfo(ctxPtr *zedagentContext) {
+	triggerPublishDevInfoToDest(ctxPtr, AllDest)
+}
+
+func triggerPublishLocationToDest(ctxPtr *zedagentContext, dest destinationBitset) {
 	if ctxPtr.getconfigCtx.locationCloudTickerHandle == nil {
 		// Location reporting task is not yet running.
 		return
 	}
-	log.Function("Triggered publishLocationToController")
-	flextimer.TickNow(ctxPtr.getconfigCtx.locationCloudTickerHandle)
+	log.Function("Triggered publishLocation")
+	ctxPtr.triggerLocationInfo <- dest
 }
 
-func triggerPublishAllInfo(ctxPtr *zedagentContext) {
+func triggerPublishAllInfo(ctxPtr *zedagentContext, dest destinationBitset) {
 
 	log.Function("Triggered PublishAllInfo")
 	// we use goroutine since every publish operation can take a long time
 	// and will block sending on TriggerObjectInfo channel
 	go func() {
 		// we need only the last one device info to publish
-		triggerPublishDevInfo(ctxPtr)
+		triggerPublishDevInfoToDest(ctxPtr, dest)
 		// trigger publish applications infos
 		for _, c := range ctxPtr.getconfigCtx.subAppInstanceStatus.GetAll() {
 			ctxPtr.triggerObjectInfo <- infoForObjectKey{
 				info.ZInfoTypes_ZiApp,
 				c.(types.AppInstanceStatus).Key(),
+				dest,
 			}
 		}
 		// trigger publish network instance infos
@@ -1908,6 +1922,7 @@ func triggerPublishAllInfo(ctxPtr *zedagentContext) {
 			ctxPtr.triggerObjectInfo <- infoForObjectKey{
 				info.ZInfoTypes_ZiNetworkInstance,
 				(&niStatus).Key(),
+				dest,
 			}
 		}
 		// trigger publish volume infos
@@ -1915,6 +1930,7 @@ func triggerPublishAllInfo(ctxPtr *zedagentContext) {
 			ctxPtr.triggerObjectInfo <- infoForObjectKey{
 				info.ZInfoTypes_ZiVolume,
 				c.(types.VolumeStatus).Key(),
+				dest,
 			}
 		}
 		// trigger publish content tree infos
@@ -1922,6 +1938,7 @@ func triggerPublishAllInfo(ctxPtr *zedagentContext) {
 			ctxPtr.triggerObjectInfo <- infoForObjectKey{
 				info.ZInfoTypes_ZiContentTree,
 				c.(types.ContentTreeStatus).Key(),
+				dest,
 			}
 		}
 		// trigger publish blob infos
@@ -1929,6 +1946,7 @@ func triggerPublishAllInfo(ctxPtr *zedagentContext) {
 			ctxPtr.triggerObjectInfo <- infoForObjectKey{
 				info.ZInfoTypes_ZiBlobList,
 				c.(types.BlobStatus).Key(),
+				dest,
 			}
 		}
 		// trigger publish appInst metadata infos
@@ -1936,17 +1954,19 @@ func triggerPublishAllInfo(ctxPtr *zedagentContext) {
 			ctxPtr.triggerObjectInfo <- infoForObjectKey{
 				info.ZInfoTypes_ZiAppInstMetaData,
 				c.(types.AppInstMetaData).Key(),
+				dest,
 			}
 		}
-		triggerPublishHwInfo(ctxPtr)
+		triggerPublishHwInfoToDest(ctxPtr, dest)
 		// trigger publish edgeview infos
 		for _, c := range ctxPtr.subEdgeviewStatus.GetAll() {
 			ctxPtr.triggerObjectInfo <- infoForObjectKey{
 				info.ZInfoTypes_ZiEdgeview,
 				c.(types.EdgeviewStatus).Key(),
+				dest,
 			}
 		}
-		triggerPublishLocationToController(ctxPtr)
+		triggerPublishLocationToDest(ctxPtr, dest)
 	}()
 }
 
@@ -1974,7 +1994,7 @@ func handleAppInstanceStatusCreate(ctxArg interface{}, key string,
 	ctx := ctxArg.(*zedagentContext)
 	uuidStr := status.Key()
 	PublishAppInfoToZedCloud(ctx, uuidStr, &status, ctx.assignableAdapters,
-		ctx.iteration)
+		ctx.iteration, AllDest)
 	triggerPublishDevInfo(ctx)
 	processAppCommandStatus(ctx.getconfigCtx, status)
 	triggerLocalAppInfoPOST(ctx.getconfigCtx)
@@ -1993,7 +2013,7 @@ func handleAppInstanceStatusModify(ctxArg interface{}, key string,
 	ctx := ctxArg.(*zedagentContext)
 	uuidStr := status.Key()
 	PublishAppInfoToZedCloud(ctx, uuidStr, &status, ctx.assignableAdapters,
-		ctx.iteration)
+		ctx.iteration, AllDest)
 	processAppCommandStatus(ctx.getconfigCtx, status)
 	triggerLocalAppInfoPOST(ctx.getconfigCtx)
 	ctx.iteration++
@@ -2007,7 +2027,7 @@ func handleAppInstanceStatusDelete(ctxArg interface{}, key string,
 	uuidStr := key
 	log.Functionf("handleAppInstanceStatusDelete(%s)", key)
 	PublishAppInfoToZedCloud(ctx, uuidStr, nil, ctx.assignableAdapters,
-		ctx.iteration)
+		ctx.iteration, AllDest)
 	triggerPublishDevInfo(ctx)
 	triggerLocalAppInfoPOST(ctx.getconfigCtx)
 	ctx.iteration++
@@ -2508,7 +2528,7 @@ func handleOnboardStatusImpl(ctxArg interface{}, key string,
 			}
 		}
 		// Re-publish all objects with new device UUID
-		triggerPublishAllInfo(ctx.getconfigCtx.zedagentCtx)
+		triggerPublishAllInfo(ctx.getconfigCtx.zedagentCtx, AllDest)
 	}
 }
 
@@ -2524,7 +2544,7 @@ func handleEdgeviewStatusModify(ctxArg interface{}, key string,
 func handleEdgeviewStatusImpl(ctxArg interface{}, key string, statusArg interface{}) {
 	status := statusArg.(types.EdgeviewStatus)
 	ctx := ctxArg.(*zedagentContext)
-	PublishEdgeviewToZedCloud(ctx, &status)
+	PublishEdgeviewToZedCloud(ctx, &status, AllDest)
 }
 
 func reinitNetdumper(ctx *zedagentContext) {

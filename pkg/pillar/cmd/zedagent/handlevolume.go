@@ -180,7 +180,7 @@ func handleVolumeStatusImpl(ctxArg interface{}, key string,
 	status := statusArg.(types.VolumeStatus)
 	ctx := ctxArg.(*zedagentContext)
 	uuidStr := status.VolumeID.String()
-	PublishVolumeToZedCloud(ctx, uuidStr, &status, ctx.iteration)
+	PublishVolumeToZedCloud(ctx, uuidStr, &status, ctx.iteration, AllDest)
 	ctx.iteration++
 }
 
@@ -190,6 +190,6 @@ func handleVolumeStatusDelete(ctxArg interface{},
 	status := statusArg.(types.VolumeStatus)
 	ctx := ctxArg.(*zedagentContext)
 	uuidStr := status.VolumeID.String()
-	PublishVolumeToZedCloud(ctx, uuidStr, nil, ctx.iteration)
+	PublishVolumeToZedCloud(ctx, uuidStr, nil, ctx.iteration, AllDest)
 	ctx.iteration++
 }

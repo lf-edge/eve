@@ -141,7 +141,7 @@ func handleContentTreeStatusImpl(ctxArg interface{}, key string,
 	status := statusArg.(types.ContentTreeStatus)
 	ctx := ctxArg.(*zedagentContext)
 	uuidStr := status.Key()
-	PublishContentInfoToZedCloud(ctx, uuidStr, &status, ctx.iteration)
+	PublishContentInfoToZedCloud(ctx, uuidStr, &status, ctx.iteration, AllDest)
 	ctx.iteration++
 }
 
@@ -150,6 +150,6 @@ func handleContentTreeStatusDelete(ctxArg interface{}, key string,
 
 	ctx := ctxArg.(*zedagentContext)
 	uuidStr := key
-	PublishContentInfoToZedCloud(ctx, uuidStr, nil, ctx.iteration)
+	PublishContentInfoToZedCloud(ctx, uuidStr, nil, ctx.iteration, AllDest)
 	ctx.iteration++
 }
