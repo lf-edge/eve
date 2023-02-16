@@ -234,6 +234,50 @@ var logger *logrus.Logger
 var log *base.LogObject
 var zedcloudCtx *zedcloud.ZedCloudContext
 
+// Destination bitset as unsigned integer
+type destinationBitset uint
+
+// Destination types, where info should be sent
+const (
+	ControllerDest destinationBitset = 1
+	LPSDest                          = 2
+	LOCDest                          = 4
+	AllDest                          = ControllerDest | LPSDest | LOCDest
+)
+
+// queueInfoToDest - queues "info" requests according to the specified
+//                   destination. Deferred event queue runs to a completion
+//                   from this context, but deferred periodic queue will
+//                   be executed later by timer from a separate goroutine.
+func queueInfoToDest(ctx *zedagentContext, dest destinationBitset,
+	key string, buf *bytes.Buffer, size int64, bailOnHTTPErr,
+	withNetTracing bool, itemType interface{}) {
+
+	locConfig := ctx.getconfigCtx.locConfig
+
+	if dest&ControllerDest != 0 {
+		url := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API,
+			devUUID, "info")
+		const ignoreErr = false
+		zedcloudCtx.DeferredEventCtx.SetDeferred(key, buf, size, url,
+			bailOnHTTPErr, withNetTracing, ignoreErr, itemType)
+	}
+	if dest&LOCDest != 0 && locConfig != nil {
+		url := zedcloud.URLPathString(locConfig.LocURL, zedcloudCtx.V2API,
+			devUUID, "info")
+		// Ignore errors for all the LOC info messages
+		const ignoreErr = true
+		zedcloudCtx.DeferredPeriodicCtx.SetDeferred(key, buf, size, url,
+			bailOnHTTPErr, withNetTracing, ignoreErr, itemType)
+		// Run to a completion from the goroutine
+		zedcloudCtx.DeferredPeriodicCtx.KickTimer()
+	}
+	if dest&ControllerDest != 0 {
+		// Run to a completion at least 1 request from this execution context
+		zedcloudCtx.DeferredEventCtx.HandleDeferred(time.Now(), 0, true)
+	}
+}
+
 // object to trigger sending of info with infoType for objectKey
 type infoForObjectKey struct {
 	infoType  info.ZInfoTypes
