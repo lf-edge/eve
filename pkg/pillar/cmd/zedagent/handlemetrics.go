@@ -165,10 +165,10 @@ func encodeTestResults(tr types.TestResults) *info.ErrorInfo {
 	return errInfo
 }
 
-// Run a periodic post of the metrics
-func metricsTimerTask(ctx *zedagentContext, handleChannel chan interface{}) {
+// Run a periodic post of the metrics and info to an LOC if we have one
+func metricsAndInfoTimerTask(ctx *zedagentContext, handleChannel chan interface{}) {
 	iteration := 0
-	log.Functionln("starting report metrics timer task")
+	log.Functionln("starting report metrics/info timer task")
 	publishMetrics(ctx, iteration)
 
 	interval := time.Duration(ctx.globalConfig.GlobalValueInt(types.MetricInterval)) * time.Second
@@ -193,6 +193,12 @@ func metricsTimerTask(ctx *zedagentContext, handleChannel chan interface{}) {
 			publishMetrics(ctx, iteration)
 			ctx.ps.CheckMaxTimeTopic(wdName, "publishMetrics", start,
 				warningTime, errorTime)
+
+			locConfig := ctx.getconfigCtx.locConfig
+			if locConfig != nil {
+				// Publish all info by timer only for LOC
+				triggerPublishAllInfo(ctx, LOCDest)
+			}
 
 		case <-stillRunning.C:
 		}
