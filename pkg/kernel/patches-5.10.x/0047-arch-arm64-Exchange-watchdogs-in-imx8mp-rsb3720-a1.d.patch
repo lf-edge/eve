@@ -1,0 +1,43 @@
+From f0e089efa50ed6ab2d45f85d4775a1c6aab1dad0 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Ren=C3=AA=20de=20Souza=20Pinto?= <rene@renesp.com.br>
+Date: Thu, 23 Feb 2023 18:27:34 +0100
+Subject: [PATCH 47/47] arch: arm64: Exchange watchdogs in
+ imx8mp-rsb3720-a1.dts
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Reset is working faster with internal watchdog then with the external one
+present in the EPC-R3720's board. This commit enables the internal watchdog
+and disables the external one.
+
+Signed-off-by: Renê de Souza Pinto <rene@renesp.com.br>
+---
+ arch/arm64/boot/dts/freescale/imx8mp-rsb3720-a1.dts | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/arch/arm64/boot/dts/freescale/imx8mp-rsb3720-a1.dts b/arch/arm64/boot/dts/freescale/imx8mp-rsb3720-a1.dts
+index 4d510bc51a72..ba639a4fcd9d 100644
+--- a/arch/arm64/boot/dts/freescale/imx8mp-rsb3720-a1.dts
++++ b/arch/arm64/boot/dts/freescale/imx8mp-rsb3720-a1.dts
+@@ -391,7 +391,7 @@ wdt: msp430g2202@29 {
+                 pinctrl-0 = <&pinctrl_wdt_en_1 &pinctrl_wdt_ping_1>;
+                 wdt-en = <&gpio3 19 0>;
+                 wdt-ping = <&gpio4 20 0>;
+-                status = "okay";
++                status = "disabled";
+         };
+ };
+ 
+@@ -721,7 +721,7 @@ &wdog1 {
+ 	pinctrl-names = "default";
+ 	pinctrl-0 = <&pinctrl_wdog>;
+ 	fsl,ext-reset-output;
+-	status = "disabled";
++	status = "okay";
+ };
+ 
+ &iomuxc {
+-- 
+2.39.2
+
