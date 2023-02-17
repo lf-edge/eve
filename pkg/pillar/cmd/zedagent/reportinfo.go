@@ -165,7 +165,7 @@ func objectInfoTask(ctxPtr *zedagentContext, triggerInfo <-chan infoForObjectKey
 				if locInfo != nil {
 					// Note that we use a zero iteration
 					// counter here.
-					publishLocationToDest(locInfo, 0, infoDest)
+					publishLocationToDest(ctxPtr, locInfo, 0, infoDest)
 				}
 			}
 			if err != nil {
