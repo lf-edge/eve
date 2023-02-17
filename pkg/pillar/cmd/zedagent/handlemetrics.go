@@ -1204,7 +1204,6 @@ func PublishAppInfoToZedCloud(ctx *zedagentContext, uuid string,
 	if err != nil {
 		log.Fatal("PublishAppInfoToZedCloud proto marshaling error: ", err)
 	}
-	statusUrl := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API, devUUID, "info")
 
 	buf := bytes.NewBuffer(data)
 	if buf == nil {
@@ -1215,9 +1214,8 @@ func PublishAppInfoToZedCloud(ctx *zedagentContext, uuid string,
 	//We queue the message and then get the highest priority message to send.
 	//If there are no failures and defers we'll send this message,
 	//but if there is a queue we'll retry sending the highest priority message.
-	zedcloudCtx.DeferredEventCtx.SetDeferred(uuid, buf, size, statusUrl,
-		true, false, false, info.ZInfoTypes_ZiApp)
-	zedcloudCtx.DeferredEventCtx.HandleDeferred(time.Now(), 0, true)
+	queueInfoToDest(ctx, dest, uuid, buf, size, true, false,
+		info.ZInfoTypes_ZiApp)
 }
 
 // PublishContentInfoToZedCloud is called per change, hence needs to try over all management ports
@@ -1274,7 +1272,6 @@ func PublishContentInfoToZedCloud(ctx *zedagentContext, uuid string,
 	if err != nil {
 		log.Fatal("PublishContentInfoToZedCloud proto marshaling error: ", err)
 	}
-	statusURL := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API, devUUID, "info")
 
 	buf := bytes.NewBuffer(data)
 	if buf == nil {
@@ -1285,9 +1282,8 @@ func PublishContentInfoToZedCloud(ctx *zedagentContext, uuid string,
 	//We queue the message and then get the highest priority message to send.
 	//If there are no failures and defers we'll send this message,
 	//but if there is a queue we'll retry sending the highest priority message.
-	zedcloudCtx.DeferredEventCtx.SetDeferred(uuid, buf, size, statusURL,
-		true, false, false, info.ZInfoTypes_ZiContentTree)
-	zedcloudCtx.DeferredEventCtx.HandleDeferred(time.Now(), 0, true)
+	queueInfoToDest(ctx, dest, uuid, buf, size, true, false,
+		info.ZInfoTypes_ZiContentTree)
 }
 
 // PublishVolumeToZedCloud is called per change, hence needs to try over all management ports
@@ -1353,7 +1349,6 @@ func PublishVolumeToZedCloud(ctx *zedagentContext, uuid string,
 	if err != nil {
 		log.Fatal("PublishVolumeToZedCloud proto marshaling error: ", err)
 	}
-	statusURL := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API, devUUID, "info")
 
 	buf := bytes.NewBuffer(data)
 	if buf == nil {
@@ -1364,9 +1359,8 @@ func PublishVolumeToZedCloud(ctx *zedagentContext, uuid string,
 	//We queue the message and then get the highest priority message to send.
 	//If there are no failures and defers we'll send this message,
 	//but if there is a queue we'll retry sending the highest priority message.
-	zedcloudCtx.DeferredEventCtx.SetDeferred(uuid, buf, size, statusURL,
-		true, false, false, info.ZInfoTypes_ZiVolume)
-	zedcloudCtx.DeferredEventCtx.HandleDeferred(time.Now(), 0, true)
+	queueInfoToDest(ctx, dest, uuid, buf, size, true, false,
+		info.ZInfoTypes_ZiVolume)
 }
 
 // PublishBlobInfoToZedCloud is called per change, hence needs to try over all management ports
@@ -1413,7 +1407,6 @@ func PublishBlobInfoToZedCloud(ctx *zedagentContext, blobSha string,
 	if err != nil {
 		log.Fatal("PublishBlobInfoToZedCloud proto marshaling error: ", err)
 	}
-	statusURL := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API, devUUID, "info")
 
 	buf := bytes.NewBuffer(data)
 	if buf == nil {
@@ -1424,9 +1417,8 @@ func PublishBlobInfoToZedCloud(ctx *zedagentContext, blobSha string,
 	//We queue the message and then get the highest priority message to send.
 	//If there are no failures and defers we'll send this message,
 	//but if there is a queue we'll retry sending the highest priority message.
-	zedcloudCtx.DeferredEventCtx.SetDeferred(blobSha, buf, size, statusURL,
-		true, false, false, info.ZInfoTypes_ZiBlobList)
-	zedcloudCtx.DeferredEventCtx.HandleDeferred(time.Now(), 0, true)
+	queueInfoToDest(ctx, dest, blobSha, buf, size, true, false,
+		info.ZInfoTypes_ZiBlobList)
 }
 
 // PublishEdgeviewToZedCloud - publish Edgeview info to controller
@@ -1464,7 +1456,6 @@ func PublishEdgeviewToZedCloud(ctx *zedagentContext,
 	if err != nil {
 		log.Fatal("PublishEdgeviewToZedCloud proto marshaling error: ", err)
 	}
-	statusURL := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API, devUUID, "info")
 
 	buf := bytes.NewBuffer(data)
 	if buf == nil {
@@ -1475,9 +1466,8 @@ func PublishEdgeviewToZedCloud(ctx *zedagentContext,
 	//We queue the message and then get the highest priority message to send.
 	//If there are no failures and defers we'll send this message,
 	//but if there is a queue we'll retry sending the highest priority message.
-	zedcloudCtx.DeferredEventCtx.SetDeferred("global", buf, size, statusURL,
-		true, false, false, info.ZInfoTypes_ZiEdgeview)
-	zedcloudCtx.DeferredEventCtx.HandleDeferred(time.Now(), 0, true)
+	queueInfoToDest(ctx, dest, "global", buf, size, true, false,
+		info.ZInfoTypes_ZiEdgeview)
 	ctx.iteration++
 }
 
