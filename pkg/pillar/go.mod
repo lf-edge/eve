@@ -6,8 +6,8 @@ require (
 	github.com/Focinfi/go-dns-resolver v1.0.1
 	github.com/anatol/smart.go v0.0.0-20220615232124-371056cd18c3
 	github.com/bicomsystems/go-libzfs v0.4.0
-	github.com/containerd/cgroups v1.0.3
-	github.com/containerd/containerd v1.6.12
+	github.com/containerd/cgroups v1.0.4
+	github.com/containerd/containerd v1.6.18
 	github.com/containerd/typeurl v1.0.2
 	github.com/cshari-zededa/eve-tpm2-tools v0.0.4
 	github.com/digitalocean/go-qemu v0.0.0-20220826173844-d5f5e3ceed89
@@ -60,7 +60,7 @@ require (
 	github.com/Azure/azure-storage-blob-go v0.14.0 // indirect
 	github.com/Azure/go-ansiterm v0.0.0-20210617225240-d185dfc1b5a1 // indirect
 	github.com/Microsoft/go-winio v0.5.2 // indirect
-	github.com/Microsoft/hcsshim v0.9.5 // indirect
+	github.com/Microsoft/hcsshim v0.9.6 // indirect
 	github.com/StackExchange/wmi v0.0.0-20190523213315-cbe66965904d // indirect
 	github.com/aws/aws-sdk-go v1.44.82 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
