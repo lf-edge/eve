@@ -12,7 +12,6 @@ import (
 	"github.com/lf-edge/eve/api/go/info"
 	"github.com/lf-edge/eve/pkg/pillar/hardware"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -98,17 +97,14 @@ func PublishHardwareInfoToZedCloud(ctx *zedagentContext, dest destinationBitset)
 		log.Fatal("PublishHardwareInfoToZedCloud proto marshaling error: ", err)
 	}
 
-	statusURL := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API, devUUID, "info")
-
 	buf := bytes.NewBuffer(data)
 	if buf == nil {
 		log.Fatal("PublishHardwareInfoToZedCloud malloc error")
 	}
 	size := int64(proto.Size(ReportHwInfo))
 
-	zedcloudCtx.DeferredEventCtx.SetDeferred(hwInfoKey, buf, size, statusURL,
-		bailOnHTTPErr, false, false, info.ZInfoTypes_ZiHardware)
-	zedcloudCtx.DeferredEventCtx.HandleDeferred(time.Now(), 0, true)
+	queueInfoToDest(ctx, dest, hwInfoKey, buf, size, bailOnHTTPErr, false,
+		info.ZInfoTypes_ZiHardware)
 }
 
 func getSmartAttr(id int, diskData []*types.DAttrTable) *info.SmartAttr {

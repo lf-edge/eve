@@ -170,7 +170,7 @@ func prepareAndPublishNetworkInstanceInfoMsg(ctx *zedagentContext,
 	if err != nil {
 		log.Fatal("Publish NetworkInstance proto marshaling error: ", err)
 	}
-	statusURL := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API, devUUID, "info")
+
 	buf := bytes.NewBuffer(data)
 	if buf == nil {
 		log.Fatal("malloc error")
@@ -180,9 +180,8 @@ func prepareAndPublishNetworkInstanceInfoMsg(ctx *zedagentContext,
 	//We queue the message and then get the highest priority message to send.
 	//If there are no failures and defers we'll send this message,
 	//but if there is a queue we'll retry sending the highest priority message.
-	zedcloudCtx.DeferredEventCtx.SetDeferred(uuid, buf, size, statusURL,
-		true, false, false, zinfo.ZInfoTypes_ZiNetworkInstance)
-	zedcloudCtx.DeferredEventCtx.HandleDeferred(time.Now(), 0, true)
+	queueInfoToDest(ctx, dest, uuid, buf, size, true, false,
+		zinfo.ZInfoTypes_ZiNetworkInstance)
 }
 
 func fillVpnInfo(info *zinfo.ZInfoNetworkInstance, vpnStatus *types.VpnStatus) {

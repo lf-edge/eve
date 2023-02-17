@@ -26,7 +26,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/utils"
 	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
 	"github.com/lf-edge/eve/pkg/pillar/vault"
-	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 	"github.com/shirou/gopsutil/host"
 	"golang.org/x/sys/unix"
 	"google.golang.org/protobuf/proto"
@@ -649,8 +648,6 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext, dest destinationBitset) {
 		log.Fatal("PublishDeviceInfoToZedCloud proto marshaling error: ", err)
 	}
 
-	statusUrl := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API, devUUID, "info")
-
 	buf := bytes.NewBuffer(data)
 	if buf == nil {
 		log.Fatal("malloc error")
@@ -661,9 +658,8 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext, dest destinationBitset) {
 	//If there are no failures and defers we'll send this message,
 	//but if there is a queue we'll retry sending the highest priority message.
 	withNetTracing := traceNextInfoReq(ctx)
-	zedcloudCtx.DeferredEventCtx.SetDeferred(deviceUUID, buf, size,
-		statusUrl, true, withNetTracing, false, info.ZInfoTypes_ZiDevice)
-	zedcloudCtx.DeferredEventCtx.HandleDeferred(time.Now(), 0, true)
+	queueInfoToDest(ctx, dest, deviceUUID, buf, size, true, withNetTracing,
+		info.ZInfoTypes_ZiDevice)
 }
 
 // PublishAppInstMetaDataToZedCloud is called when an appInst reports its Metadata to EVE.
@@ -703,8 +699,6 @@ func PublishAppInstMetaDataToZedCloud(ctx *zedagentContext,
 	if err != nil {
 		log.Fatal("PublishAppInstMetaDataToZedCloud proto marshaling error: ", err)
 	}
-	statusURL := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API, devUUID, "info")
-
 	deferKey := "appInstMetadataInfo:" + appInstMetadata.Key()
 
 	buf := bytes.NewBuffer(data)
@@ -716,9 +710,8 @@ func PublishAppInstMetaDataToZedCloud(ctx *zedagentContext,
 	//We queue the message and then get the highest priority message to send.
 	//If there are no failures and defers we'll send this message,
 	//but if there is a queue we'll retry sending the highest priority message.
-	zedcloudCtx.DeferredEventCtx.SetDeferred(deferKey, buf, size, statusURL, true,
-		false, false, info.ZInfoTypes_ZiAppInstMetaData)
-	zedcloudCtx.DeferredEventCtx.HandleDeferred(time.Now(), 0, true)
+	queueInfoToDest(ctx, dest, deferKey, buf, size, true, false,
+		info.ZInfoTypes_ZiAppInstMetaData)
 }
 
 // Convert the implementation details to the user-friendly userStatus and subStatus*
