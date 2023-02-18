@@ -49,7 +49,7 @@ readHdr (char *buf)
     google::protobuf::uint32 size;
     google::protobuf::io::ArrayInputStream arrayStrm(buf,CODED_STRM_HDR_LEN);
     CodedInputStream CodedStrmInput(&arrayStrm);
-    CodedStrmInput.ReadVarint32(&size);
+    CodedStrmInput.ReadLittleEndian32(&size);
     return size;
 }
 
@@ -107,7 +107,7 @@ sendResponse (int sock, eve_tools::EveTPMResponse &response)
         rc = failure;
         goto cleanup_and_exit;
     }
-    coded_output->WriteVarint32(response.ByteSize());
+    coded_output->WriteLittleEndian32(response.ByteSize() + sizeof(google::protobuf::uint32));
     if (!response.SerializeToCodedStream(coded_output)) {
         cerr << "Serialization error" << std::endl;
         rc = failure;
@@ -313,10 +313,10 @@ parseRequest(int sock,
     //Convert CodedSInputStream into Protobuf fields
     google::protobuf::io::ArrayInputStream arrayStrm(payload, size+CODED_STRM_HDR_LEN);
     CodedInputStream CodedStrmInput(&arrayStrm);
-    CodedStrmInput.ReadVarint32(&size);
+    CodedStrmInput.ReadLittleEndian32(&size);
     google::protobuf::io::CodedInputStream::Limit msgLimit =
         CodedStrmInput.PushLimit(size);
-    if (!request.ParseFromCodedStream(&CodedStrmInput)) {
+    if (!request.ParseFromCodedStream(&CodedStrmInput) || !CodedStrmInput.ConsumedEntireMessage()) {
         cerr << "Incorrect CodedStream format or read error" << std::endl;
         response.set_response("Incorrect request format");
         return failure;
