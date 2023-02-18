@@ -260,23 +260,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		fmt.Printf("Setting -V requires -p\n")
 		return 1
 	}
-	if parse != "" {
-		res, config := readValidateConfig(
-			types.DefaultConfigItemValueMap().GlobalValueInt(types.StaleConfigTime), parse)
-		if !res {
-			fmt.Printf("Failed to parse %s\n", parse)
-			return 1
-		}
-		fmt.Printf("parsed proto <%v>\n", config)
-		if validate {
-			valid := validateConfigUTF8(config)
-			if !valid {
-				fmt.Printf("Found some invalid UTF-8\n")
-				return 1
-			}
-		}
-		return 0
-	}
 	if err := pidfile.CheckAndCreatePidfile(log, agentName); err != nil {
 		log.Fatal(err)
 	}
@@ -352,7 +335,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		log.Fatal(err)
 	}
 	zedagentCtx.subOnboardStatus.Activate()
-	waitUntilOnboarded(zedagentCtx, stillRunning)
+	if parse == "" {
+		waitUntilOnboarded(zedagentCtx, stillRunning)
+	}
 	// Netdumper uses different publish period after onboarding.
 	reinitNetdumper(zedagentCtx)
 
@@ -360,6 +345,25 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	zedcloudCtx = initZedcloudContext(
 		zedagentCtx.globalConfig.GlobalValueInt(types.NetworkSendTimeout),
 		zedagentCtx.zedcloudMetrics)
+
+	if parse != "" {
+		res, config := readValidateConfig(
+			types.DefaultConfigItemValueMap().GlobalValueInt(types.StaleConfigTime), parse)
+		if !res {
+			fmt.Printf("Failed to parse %s\n", parse)
+			return 1
+		}
+		fmt.Printf("parsed proto <%v>\n", config)
+		if validate {
+			valid := validateConfigUTF8(config)
+			if !valid {
+				fmt.Printf("Found some invalid UTF-8\n")
+				return 1
+			}
+		}
+		return 0
+	}
+
 	// Timer for deferred sends of info messages
 	zedagentCtx.deferredChan = zedcloud.GetDeferredChan(zedcloudCtx,
 		getDeferredSentHandlerFunction(zedagentCtx), getDeferredPriorityFunctions()...)
