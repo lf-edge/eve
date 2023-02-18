@@ -246,8 +246,13 @@ RUN mkdir -p /tmp/kernel-headers/usr && \
 RUN DVER=$(basename $(find /tmp/kernel-modules/lib/modules/ -mindepth 1 -maxdepth 1)) && \
     dir=/tmp/usr/src/linux-headers-$DVER && \
     mkdir -p $dir && \
-    cp /linux/.config $dir && \
-    cp /linux/Module.symvers $dir && \
+    for f in .config \
+            Module.symvers \
+            tools/bpf/resolve_btfids/resolve_btfids \
+            tools/objtool/objtool; do \
+        mkdir -p $dir/$(dirname $f) && \
+        cp $f $dir/$f; \
+    done && \
     find . -path './include/*' -prune -o \
            -path './arch/*/include' -prune -o \
            -path './scripts/*' -prune -o \
