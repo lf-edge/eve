@@ -12,7 +12,7 @@ require (
 	github.com/pkg/sftp v1.12.0
 	github.com/sirupsen/logrus v1.9.0
 	golang.org/x/crypto v0.1.0
-	golang.org/x/net v0.4.0
+	golang.org/x/net v0.7.0
 	golang.org/x/oauth2 v0.0.0-20210819190943-2bc19b11175f
 	google.golang.org/api v0.57.0
 )
