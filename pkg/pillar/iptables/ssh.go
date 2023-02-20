@@ -22,8 +22,7 @@ var ControlProtocolMarkingIDMap = map[string]string{
 	"app_dhcp": "6",
 	// App initiated TCP/UDP flows towards dom0 for DNS
 	"app_dns": "7",
-	// VPN control packets
-	"in_vpn_control": "8",
+	// 8 : deprecated (previously: VPN control packets)
 	// ICMP and ICMPv6
 	"in_icmp": "9",
 	// DHCP packets originating from outside

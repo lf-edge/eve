@@ -48,10 +48,6 @@ updates:
     schedule:
       interval: "monthly"
   - package-ecosystem: "docker"
-    directory: "/pkg/strongswan"
-    schedule:
-      interval: "monthly"
-  - package-ecosystem: "docker"
     directory: "/pkg/uefi"
     schedule:
       interval: "monthly"

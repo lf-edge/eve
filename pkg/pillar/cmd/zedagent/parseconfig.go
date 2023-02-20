@@ -376,24 +376,6 @@ func publishNetworkInstanceConfig(ctx *getconfigContext,
 	log.Functionf("Publish NetworkInstance Config: %+v", networkInstances)
 
 	unpublishDeletedNetworkInstanceConfig(ctx, networkInstances)
-	// check we do not have more than one VPN network instance
-	vpnCount := 0
-	for _, netInstApiCfg := range networkInstances {
-		if oCfg := netInstApiCfg.Cfg; oCfg != nil {
-			opaqueCfg := oCfg.GetOconfig()
-			if opaqueCfg != "" {
-				opaqueType := oCfg.GetType()
-				if opaqueType == zconfig.ZNetworkOpaqueConfigType_ZNetOConfigVPN {
-					vpnCount++
-				}
-			}
-		}
-	}
-
-	if vpnCount > 1 {
-		log.Errorf("publishNetworkInstanceConfig(): more than one VPN instance configuration")
-		return
-	}
 
 	for _, apiConfigEntry := range networkInstances {
 		id, err := uuid.FromString(apiConfigEntry.Uuidandversion.Uuid)
@@ -423,8 +405,7 @@ func publishNetworkInstanceConfig(ctx *getconfigContext,
 		}
 		networkInstanceConfig.IpType = types.AddressType(apiConfigEntry.IpType)
 
-		switch networkInstanceConfig.Type {
-		case types.NetworkInstanceTypeSwitch:
+		if networkInstanceConfig.Type == types.NetworkInstanceTypeSwitch {
 			// XXX controller should send AddressTypeNone type for switch
 			// network instances
 			if networkInstanceConfig.IpType != types.AddressTypeNone {
@@ -438,33 +419,6 @@ func publishNetworkInstanceConfig(ctx *getconfigContext,
 			}
 			ctx.pubNetworkInstanceConfig.Publish(networkInstanceConfig.UUID.String(),
 				networkInstanceConfig)
-
-		// FIXME:XXX set encap flag, when the dummy interface
-		// is tested for the VPN
-		case types.NetworkInstanceTypeCloud:
-			// if opaque config not set, flag it
-			if apiConfigEntry.Cfg == nil {
-				log.Errorf("Network instance %s %s, %v, opaque not set",
-					networkInstanceConfig.UUID.String(),
-					networkInstanceConfig.DisplayName,
-					networkInstanceConfig.IpType)
-			} else {
-				ocfg := apiConfigEntry.Cfg
-				if ocfg.Type != zconfig.ZNetworkOpaqueConfigType_ZNetOConfigVPN {
-					log.Errorf("Network instance %s %s, %v invalid config",
-						networkInstanceConfig.UUID.String(),
-						networkInstanceConfig.DisplayName,
-						networkInstanceConfig.IpType)
-				}
-				networkInstanceConfig.OpaqueConfig = ocfg.Oconfig
-			}
-			// if not IPv4 type, flag it
-			if networkInstanceConfig.IpType != types.AddressTypeIPV4 {
-				log.Errorf("Network instance %s %s, %v not IPv4 type",
-					networkInstanceConfig.UUID.String(),
-					networkInstanceConfig.DisplayName,
-					networkInstanceConfig.IpType)
-			}
 		}
 
 		// other than switch-type(l2)

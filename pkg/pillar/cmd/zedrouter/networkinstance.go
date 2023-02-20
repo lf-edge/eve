@@ -6,7 +6,6 @@
 package zedrouter
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
@@ -461,7 +460,7 @@ func doNetworkInstanceCreate(ctx *zedrouterContext,
 	var bridgeName string
 
 	switch status.Type {
-	case types.NetworkInstanceTypeLocal, types.NetworkInstanceTypeCloud:
+	case types.NetworkInstanceTypeLocal:
 		bridgeName = fmt.Sprintf("bn%d", bridgeNum)
 		status.BridgeName = bridgeName
 		if err, bridgeMac = doCreateBridge(bridgeName, bridgeNum, status); err != nil {
@@ -545,15 +544,6 @@ func doNetworkInstanceCreate(ctx *zedrouterContext,
 		// radvd preference if isolated local network?
 		restartRadvdWithNewConfig(bridgeName)
 	}
-
-	switch status.Type {
-	case types.NetworkInstanceTypeCloud:
-		err := vpnCreate(ctx, status)
-		if err != nil {
-			return err
-		}
-	default:
-	}
 	return nil
 }
 
@@ -575,8 +565,6 @@ func doNetworkInstanceSanityCheck(
 	case types.NetworkInstanceTypeLocal:
 		// Do nothing
 	case types.NetworkInstanceTypeSwitch:
-		// Do nothing
-	case types.NetworkInstanceTypeCloud:
 		// Do nothing
 	default:
 		err := fmt.Sprintf("Instance type %d not supported", status.Type)
@@ -1302,9 +1290,6 @@ func doNetworkInstanceActivate(ctx *zedrouterContext,
 	case types.NetworkInstanceTypeLocal:
 		err = natActivate(ctx, status)
 
-	case types.NetworkInstanceTypeCloud:
-		err = vpnActivate(ctx, status)
-
 	default:
 		errStr := fmt.Sprintf("doNetworkInstanceActivate: NetworkInstance %d not yet supported",
 			status.Type)
@@ -1411,8 +1396,6 @@ func doNetworkInstanceInactivate(
 	switch status.Type {
 	case types.NetworkInstanceTypeLocal:
 		natInactivate(ctx, status, false)
-	case types.NetworkInstanceTypeCloud:
-		vpnInactivate(ctx, status)
 	case types.NetworkInstanceTypeSwitch:
 		portName := "k" + status.BridgeName
 		link, _ := netlink.LinkByName(portName)
@@ -1443,8 +1426,6 @@ func doNetworkInstanceDelete(
 		// Nothing to do.
 	case types.NetworkInstanceTypeLocal:
 		natDelete(status)
-	case types.NetworkInstanceTypeCloud:
-		vpnDelete(ctx, status)
 	default:
 		log.Errorf("NetworkInstance(%s-%s): Type %d not yet supported",
 			status.DisplayName, status.UUID, status.Type)
@@ -1537,14 +1518,6 @@ func createNetworkInstanceMetrics(ctx *zedrouterContext,
 
 	niMetrics.VlanMetrics.NumTrunkPorts = status.NumTrunkPorts
 	niMetrics.VlanMetrics.VlanCounts = status.VlanMap
-	switch status.Type {
-	case types.NetworkInstanceTypeCloud:
-		if strongSwanVpnStatusGet(ctx, status, &niMetrics) {
-			publishNetworkInstanceStatus(ctx, status)
-		}
-	default:
-	}
-
 	return &niMetrics
 }
 
@@ -1809,107 +1782,6 @@ func lookupNetworkInstanceStatusByAppIP(ctx *zedrouterContext,
 	return nil
 }
 
-// ==== Vpn
-func vpnCreate(ctx *zedrouterContext,
-	status *types.NetworkInstanceStatus) error {
-	if status.OpaqueConfig == "" {
-		return errors.New("Vpn network instance create, invalid config")
-	}
-	return strongswanNetworkInstanceCreate(ctx, status)
-}
-
-func vpnActivate(ctx *zedrouterContext,
-	status *types.NetworkInstanceStatus) error {
-	if status.OpaqueConfig == "" {
-		return errors.New("Vpn network instance activate, invalid config")
-	}
-	return strongswanNetworkInstanceActivate(ctx, status)
-}
-
-func vpnInactivate(ctx *zedrouterContext,
-	status *types.NetworkInstanceStatus) {
-
-	strongswanNetworkInstanceInactivate(ctx, status)
-}
-
-func vpnDelete(ctx *zedrouterContext,
-	status *types.NetworkInstanceStatus) {
-
-	strongswanNetworkInstanceDestroy(ctx, status)
-}
-
-func strongswanNetworkInstanceCreate(ctx *zedrouterContext,
-	status *types.NetworkInstanceStatus) error {
-
-	log.Functionf("Vpn network instance create: %s\n", status.DisplayName)
-
-	// parse and structure the config
-	vpnConfig, err := strongSwanConfigGet(ctx, status)
-	if err != nil {
-		log.Warnf("Vpn network instance create: %v\n", err.Error())
-		return err
-	}
-
-	// stringify and store in status
-	bytes, err := json.Marshal(vpnConfig)
-	if err != nil {
-		log.Errorf("Vpn network instance create: %v\n", err.Error())
-		return err
-	}
-
-	status.OpaqueStatus = string(bytes)
-	if err := strongSwanVpnCreate(vpnConfig); err != nil {
-		log.Errorf("Vpn network instance create: %v\n", err.Error())
-		return err
-	}
-	return nil
-}
-
-func strongswanNetworkInstanceDestroy(ctx *zedrouterContext,
-	status *types.NetworkInstanceStatus) {
-
-	log.Functionf("Vpn network instance delete: %s\n", status.DisplayName)
-	vpnConfig, err := strongSwanVpnStatusParse(status.OpaqueStatus)
-	if err != nil {
-		log.Warnf("Vpn network instance delete: %v\n", err.Error())
-	}
-
-	if err := strongSwanVpnDelete(vpnConfig); err != nil {
-		log.Warnf("Vpn network instance delete: %v\n", err.Error())
-	}
-}
-
-func strongswanNetworkInstanceActivate(ctx *zedrouterContext,
-	status *types.NetworkInstanceStatus) error {
-
-	log.Functionf("Vpn network instance activate: %s\n", status.DisplayName)
-	vpnConfig, err := strongSwanVpnStatusParse(status.OpaqueStatus)
-	if err != nil {
-		log.Warnf("Vpn network instance activate: %v\n", err.Error())
-		return err
-	}
-
-	if err := strongSwanVpnActivate(vpnConfig); err != nil {
-		log.Errorf("Vpn network instance activate: %v\n", err.Error())
-		return err
-	}
-	return nil
-}
-
-func strongswanNetworkInstanceInactivate(ctx *zedrouterContext,
-	status *types.NetworkInstanceStatus) {
-
-	log.Functionf("Vpn network instance inactivate: %s\n", status.DisplayName)
-	vpnConfig, err := strongSwanVpnStatusParse(status.OpaqueStatus)
-	if err != nil {
-		log.Warnf("Vpn network instance inactivate: %v\n", err.Error())
-	}
-
-	if err := strongSwanVpnInactivate(vpnConfig); err != nil {
-		log.Warnf("Vpn network instance inactivate: %v\n", err.Error())
-	}
-}
-
 func vifNameToBridgeName(ctx *zedrouterContext, vifName string) string {
 
 	pub := ctx.pubNetworkInstanceStatus
@@ -2048,58 +1920,6 @@ func doNetworkInstanceFallback(
 		}
 	case types.NetworkInstanceTypeSwitch:
 		// NA for switch network instance.
-	case types.NetworkInstanceTypeCloud:
-		// XXX Add support for Cloud network instance
-		if status.Activated {
-			vpnInactivate(ctx, status)
-		}
-		vpnDelete(ctx, status)
-		vpnCreate(ctx, status)
-		if status.Activated {
-			vpnActivate(ctx, status)
-		}
-		status.ProgUplinkIntf = status.SelectedUplinkIntf
-
-		// Use dns server received from DHCP for the current uplink
-		bridgeName := status.BridgeName
-		hostsDirpath := runDirname + "/hosts." + bridgeName
-		deleteOnlyDnsmasqConfiglet(bridgeName)
-		stopDnsmasq(bridgeName, false, false)
-
-		if status.BridgeIPAddr != "" {
-			dnsServers := types.GetDNSServers(*ctx.deviceNetworkStatus,
-				status.SelectedUplinkIntf)
-			ntpServers := types.GetNTPServers(*ctx.deviceNetworkStatus,
-				status.SelectedUplinkIntf)
-			createDnsmasqConfiglet(ctx, bridgeName,
-				status.BridgeIPAddr, status,
-				hostsDirpath, status.BridgeIPSets,
-				status.SelectedUplinkIntf, dnsServers, ntpServers)
-			startDnsmasq(bridgeName)
-		}
-
-		// Go through the list of all application connected to this network instance
-		// and clear conntrack flows corresponding to them.
-		apps := ctx.pubAppNetworkStatus.GetAll()
-		// Find all app instances that use this network and purge flows
-		// that correspond to these applications.
-		for _, app := range apps {
-			appNetworkStatus := app.(types.AppNetworkStatus)
-			for i := range appNetworkStatus.UnderlayNetworkList {
-				ulStatus := &appNetworkStatus.UnderlayNetworkList[i]
-				if uuid.Equal(ulStatus.Network, status.UUID) {
-					config := lookupAppNetworkConfig(ctx, appNetworkStatus.Key())
-					ipsets := compileAppInstanceIpsets(ctx, config.UnderlayNetworkList)
-					ulConfig := &config.UnderlayNetworkList[i]
-					// This should take care of re-programming any ACL rules that
-					// use input match on uplinks.
-					// XXX no change in config
-					doAppNetworkModifyUNetAcls(ctx, &appNetworkStatus,
-						ulConfig, ulConfig, ulStatus, ipsets, true)
-				}
-			}
-			publishAppNetworkStatus(ctx, &appNetworkStatus)
-		}
 	}
 	publishNetworkInstanceStatus(ctx, status)
 	return err

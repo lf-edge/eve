@@ -195,8 +195,7 @@ func (p *UplinkProber) StartNIProbing(niConfig types.NetworkInstanceConfig) (
 		return initialStatus, fmt.Errorf("cannot probe NI (%s) with non-shared label (%s)",
 			niConfig.UUID, niConfig.Logicallabel)
 	}
-	if niConfig.Type != types.NetworkInstanceTypeLocal &&
-		niConfig.Type != types.NetworkInstanceTypeCloud {
+	if niConfig.Type != types.NetworkInstanceTypeLocal {
 		return initialStatus, fmt.Errorf("unsupported NI (%s) type (%v) for probing",
 			niConfig.UUID, niConfig.Type)
 	}

@@ -1154,7 +1154,7 @@ func aceToRules(ctx *zedrouterContext, aclArgs types.AppNetworkACLArgs,
 			outActions = append(outActions, []string{"-j", "DROP"}...)
 			inActions = append(inActions, []string{"-j", "DROP"}...)
 		} else {
-			// Local/VPN NI.
+			// Local NI.
 			// Log but do not drop. Instead, it will be routed to a dummy
 			// interface to leave conntrack behind for flow-logging.
 			inActions = append(inActions, inLog...)
@@ -1190,8 +1190,6 @@ func aceToRules(ctx *zedrouterContext, aclArgs types.AppNetworkACLArgs,
 				" programmed due to ACL ID allocation failure",
 				aclRule4.Table, aclRule4.Chain, aclRule4.Rule, aclRule4.Action)
 		}
-	case types.NetworkInstanceTypeCloud:
-		fallthrough
 	case types.NetworkInstanceTypeSwitch:
 		if aclRule4.RuleID != -1 {
 			aclRule4.Table = "mangle"

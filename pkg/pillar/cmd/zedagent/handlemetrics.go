@@ -1671,13 +1671,7 @@ func protoEncodeNetworkInstanceMetricProto(status types.NetworkInstanceMetrics) 
 	vlanInfo := new(zmet.VlanInfo)
 	vlanInfo.NumTrunkPorts = status.VlanMetrics.NumTrunkPorts
 	vlanInfo.VlanCounts = status.VlanMetrics.VlanCounts
-	switch status.Type {
-	case types.NetworkInstanceTypeCloud:
-		protoEncodeVpnInstanceMetric(status, metric)
-
-	default:
-		protoEncodeGenericInstanceMetric(status, metric)
-	}
+	protoEncodeGenericInstanceMetric(status, metric)
 	metric.ProbeMetric = protoEncodeProbeMetrics(status.ProbeMetrics)
 	return metric
 }

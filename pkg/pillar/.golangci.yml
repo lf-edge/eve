@@ -33,6 +33,7 @@ linters:
     - nonamedreturns    # Named return is not a bad practice
     - cyclop            # Raises warnings even for relatively simple functions
     - ireturn           # Returning interfaces is a common practise for constructors in defensive programming
+    - exhaustive        # Complains even if struct has default branch
 
 issues:
   max-issues-per-linter: 0
