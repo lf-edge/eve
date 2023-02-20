@@ -11,3 +11,4 @@ images/*.yml.in.sed
 tags
 tmp/
 mkdocs.yml
+yetus-output/

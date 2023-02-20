@@ -365,11 +365,13 @@ clean:
 
 yetus:
 	@echo Running yetus
-	docker run -it --rm -v $(CURDIR):/src:delegated -v /tmp:/tmp ghcr.io/apache/yetus:0.14.1 \
+	mkdir -p yetus-output
+	docker run -it --rm -v $(CURDIR):/src:delegated,z ghcr.io/apache/yetus:0.14.1 \
 		--basedir=/src \
 		--dirty-workspace \
 		--empty-patch \
-		--plugins=all
+		--plugins=all \
+		--patch-dir=/src/yetus-output
 
 build-tools: $(LINUXKIT)
 	@echo Done building $<
