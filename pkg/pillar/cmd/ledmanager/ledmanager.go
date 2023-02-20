@@ -241,6 +241,13 @@ var mToF = []modelToFuncs{
 		arg:         "blue:status-0",
 	},
 	{
+		model:       "advantech.imx8mp_rsb3720a1.*",
+		regexp:      true,
+		initFunc:    InitLedCmd,
+		displayFunc: ExecuteLedCmd,
+		arg:         "user",
+	},
+	{
 		// Last in table as a default
 		model:       "",
 		initFunc:    InitForceDiskCmd,
