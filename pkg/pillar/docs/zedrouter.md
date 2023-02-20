@@ -22,8 +22,6 @@ All network instances have firewall rules aka access control lists which are imp
 
 Local network instances which have a specified external port are provisioned with iptables NAT rules for outbound connectivity plus any inbound connectivity specified in the firewall rules.
 
-Cloud network instances have additional configuration to set up strongSWAN IPsec VPN connectivity between the bridge and the cloud.
-
 ## Vifs
 
 When an AppNetworkConfig specifies that an application instance should be attached to a particular network instance then zedrouter will provision a unique MAC address for that vif, provision dnsmasq with an IP address and a DNS hostname for the vif,  create the iptables rules based on the firewall rules including any ip sets, and add the vif to the bridge.

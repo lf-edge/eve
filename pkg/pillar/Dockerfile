@@ -113,7 +113,6 @@ fi
 
 FROM lfedge/eve-fscrypt:0b7cc0d9d620e47fc54e21d56cb8a5cd224f9c9b as fscrypt
 FROM lfedge/eve-dnsmasq:3af908d86a95a627c729e09b1b125bf8de7fadcb as dnsmasq
-FROM lfedge/eve-strongswan:3f426e1c9fe2bbeb324a61c33b861c37459f616a as strongswan
 FROM lfedge/eve-gpt-tools:ab2e9f924e22709b4e08ebedd6d3c6a2882d071e as gpttools
 
 # collector collects everything together and then does any processing like stripping binaries.
@@ -142,7 +141,6 @@ COPY --from=zfs /out /out
 COPY --from=fscrypt /opt/zededa/bin /out/opt/zededa/bin
 COPY --from=gpttools / /out
 COPY --from=dnsmasq /usr/sbin/dnsmasq /out/opt/zededa/bin/dnsmasq
-COPY --from=strongswan / /out
 # we use final directory and move the line to the bottom
 # to avoid conflicts and speedup re-builds
 COPY --from=build /final /out

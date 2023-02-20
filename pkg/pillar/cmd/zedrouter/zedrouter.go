@@ -928,8 +928,6 @@ func lookupDiskStatusList(ctx *zedrouterContext, key string) []types.DiskStatus 
 	return domainStatus.DiskStatusList
 }
 
-var additionalInfoDevice *types.AdditionalInfoDevice
-
 func handleAppNetworkCreate(ctxArg interface{}, key string, configArg interface{}) {
 	ctx := ctxArg.(*zedrouterContext)
 	config := configArg.(types.AppNetworkConfig)
@@ -1344,7 +1342,7 @@ func generateAppMac(appUUID uuid.UUID, ulNum int, appNum int, netInstStatus *typ
 		appMac = fmt.Sprintf("02:16:3e:%02x:%02x:%02x",
 			hash[0], hash[1], hash[2])
 
-	case types.NetworkInstanceTypeLocal, types.NetworkInstanceTypeCloud:
+	case types.NetworkInstanceTypeLocal:
 		// Room to handle multiple underlays in 5th byte
 		appMac = fmt.Sprintf("00:16:3e:00:%02x:%02x",
 			ulNum, appNum)

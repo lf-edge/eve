@@ -1355,16 +1355,6 @@ func (r *LinuxDpcReconciler) getIntendedACLs(
 			"-j", "CONNMARK", "--set-mark", iptables.ControlProtocolMarkingIDMap["in_http_ssh_guacamole"]},
 		Description: "Mark VNC traffic",
 	}
-	markIpsec := linux.IptablesRule{
-		Args: []string{"-p", "tcp", "--match", "multiport", "--dports", "4500,500",
-			"-j", "CONNMARK", "--set-mark", iptables.ControlProtocolMarkingIDMap["in_vpn_control"]},
-		Description: "Mark IPsec traffic",
-	}
-	markEsp := linux.IptablesRule{
-		Args: []string{"-p", "esp",
-			"-j", "CONNMARK", "--set-mark", iptables.ControlProtocolMarkingIDMap["in_vpn_control"]},
-		Description: "Mark ESP traffic",
-	}
 	markIcmpV4 := linux.IptablesRule{
 		Args: []string{"-p", "icmp",
 			"-j", "CONNMARK", "--set-mark", iptables.ControlProtocolMarkingIDMap["in_icmp"]},
@@ -1381,7 +1371,7 @@ func (r *LinuxDpcReconciler) getIntendedACLs(
 		Description: "Mark DHCP traffic",
 	}
 	mangleV4Rules := []linux.IptablesRule{
-		markSSHAndGuacamole, markVnc, markIpsec, markEsp, markIcmpV4, markDhcp,
+		markSSHAndGuacamole, markVnc, markIcmpV4, markDhcp,
 	}
 	mangleV6Rules := []linux.IptablesRule{
 		markSSHAndGuacamole, markVnc, markIcmpV6,

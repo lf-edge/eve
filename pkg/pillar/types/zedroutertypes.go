@@ -2286,26 +2286,12 @@ func (instanceInfo *NetworkInstanceInfo) AddVif(log *base.LogObject,
 	instanceInfo.Vifs = append(instanceInfo.Vifs, info)
 }
 
-type NetworkServiceType uint8
-
-const (
-	NST_FIRST NetworkServiceType = iota
-	NST_STRONGSWAN
-	NST_LISP
-	NST_BRIDGE
-	NST_NAT // Default?
-	NST_LB  // What is this?
-	// XXX Add a NST_L3/NST_ROUTER to describe IP forwarding?
-	NST_LAST = 255
-)
-
 type NetworkInstanceMetrics struct {
 	UUIDandVersion UUIDandVersion
 	DisplayName    string
 	Type           NetworkInstanceType
 	NetworkMetrics NetworkMetrics
 	ProbeMetrics   ProbeMetrics
-	VpnMetrics     *VpnMetrics
 	VlanMetrics    VlanMetrics
 }
 
@@ -2576,7 +2562,7 @@ func (config *NetworkInstanceConfig) IsIPv6() bool {
 // no uplink ports available that match the label.
 func (config *NetworkInstanceConfig) WithUplinkProbing() bool {
 	switch config.Type {
-	case NetworkInstanceTypeLocal, NetworkInstanceTypeCloud:
+	case NetworkInstanceTypeLocal:
 		return IsSharedPortLabel(config.Logicallabel)
 	default:
 		return false
@@ -2633,9 +2619,6 @@ type NetworkInstanceStatus struct {
 	Server4Running bool // Did we start the server?
 
 	NetworkInstanceInfo
-
-	OpaqueStatus string
-	VpnStatus    *VpnStatus
 
 	SelectedUplinkIntf string // Decided by local/remote probing
 	ProgUplinkIntf     string // Currently programmed uplink interface for app traffic
@@ -2856,182 +2839,6 @@ type ACEAction struct {
 
 	PortMap    bool // Is port mapping part of action?
 	TargetPort int  // Internal port
-}
-
-// Retrieved from geolocation service for device underlay connectivity
-type AdditionalInfoDevice struct {
-	UnderlayIP string
-	Hostname   string `json:",omitempty"` // From reverse DNS
-	City       string `json:",omitempty"`
-	Region     string `json:",omitempty"`
-	Country    string `json:",omitempty"`
-	Loc        string `json:",omitempty"` // Lat and long as string
-	Org        string `json:",omitempty"` // From AS number
-}
-
-// Tie the Application EID back to the device
-type AdditionalInfoApp struct {
-	DisplayName string
-	DeviceEID   net.IP
-	DeviceIID   uint32
-	UnderlayIP  string
-	Hostname    string `json:",omitempty"` // From reverse DNS
-}
-
-// Input Opaque Config
-type StrongSwanConfig struct {
-	VpnRole          string
-	PolicyBased      bool
-	IsClient         bool
-	VpnGatewayIpAddr string
-	VpnSubnetBlock   string
-	VpnLocalIpAddr   string
-	VpnRemoteIpAddr  string
-	PreSharedKey     string
-	LocalSubnetBlock string
-	ClientConfigList []VpnClientConfig
-}
-
-// structure for internal handling
-type VpnConfig struct {
-	VpnRole          string
-	PolicyBased      bool
-	IsClient         bool
-	PortConfig       NetLinkConfig
-	AppLinkConfig    NetLinkConfig
-	GatewayConfig    NetLinkConfig
-	ClientConfigList []VpnClientConfig
-}
-
-type NetLinkConfig struct {
-	IfName      string
-	IpAddr      string
-	SubnetBlock string
-}
-
-type VpnClientConfig struct {
-	IpAddr       string
-	SubnetBlock  string
-	PreSharedKey string
-	TunnelConfig VpnTunnelConfig
-}
-
-type VpnTunnelConfig struct {
-	Name         string
-	Key          string
-	Mtu          string
-	Metric       string
-	LocalIpAddr  string
-	RemoteIpAddr string
-}
-
-type VpnState uint8
-
-const (
-	VPN_INVALID VpnState = iota
-	VPN_INITIAL
-	VPN_CONNECTING
-	VPN_ESTABLISHED
-	VPN_INSTALLED
-	VPN_REKEYED
-	VPN_DELETED  VpnState = 10
-	VPN_MAXSTATE VpnState = 255
-)
-
-type VpnLinkInfo struct {
-	SubNet    string // connecting subnet
-	SpiId     string // security parameter index
-	Direction bool   // 0 - in, 1 - out
-	PktStats  PktStats
-}
-
-type VpnLinkStatus struct {
-	Id         string
-	Name       string
-	ReqId      string
-	InstTime   uint64 // installation time
-	ExpTime    uint64 // expiry time
-	RekeyTime  uint64 // rekey time
-	EspInfo    string
-	State      VpnState
-	LInfo      VpnLinkInfo
-	RInfo      VpnLinkInfo
-	MarkDelete bool
-}
-
-type VpnEndPoint struct {
-	Id     string // ipsec id
-	IpAddr string // end point ip address
-	Port   uint32 // udp port
-}
-
-type VpnConnStatus struct {
-	Id         string   // ipsec connection id
-	Name       string   // connection name
-	State      VpnState // vpn state
-	Version    string   // ike version
-	Ikes       string   // ike parameters
-	EstTime    uint64   // established time
-	ReauthTime uint64   // reauth time
-	LInfo      VpnEndPoint
-	RInfo      VpnEndPoint
-	Links      []*VpnLinkStatus
-	StartLine  uint32
-	EndLine    uint32
-	MarkDelete bool
-}
-
-type VpnStatus struct {
-	Version            string    // strongswan package version
-	UpTime             time.Time // service start time stamp
-	IpAddrs            string    // listening ip addresses, can be multiple
-	ActiveVpnConns     []*VpnConnStatus
-	StaleVpnConns      []*VpnConnStatus
-	ActiveTunCount     uint32
-	ConnectingTunCount uint32
-	PolicyBased        bool
-}
-
-type PktStats struct {
-	Pkts  uint64
-	Bytes uint64
-}
-
-type LinkPktStats struct {
-	InPkts  PktStats
-	OutPkts PktStats
-}
-
-type VpnLinkMetrics struct {
-	SubNet string // connecting subnet
-	SpiId  string // security parameter index
-}
-
-type VpnEndPointMetrics struct {
-	IpAddr   string // end point ip address
-	LinkInfo VpnLinkMetrics
-	PktStats PktStats
-}
-
-type VpnConnMetrics struct {
-	Id        string // ipsec connection id
-	Name      string // connection name
-	EstTime   uint64 // established time
-	Type      NetworkServiceType
-	NIType    NetworkInstanceType
-	LEndPoint VpnEndPointMetrics
-	REndPoint VpnEndPointMetrics
-}
-
-type VpnMetrics struct {
-	UpTime     time.Time // service start time stamp
-	DataStat   LinkPktStats
-	IkeStat    LinkPktStats
-	NatTStat   LinkPktStats
-	EspStat    LinkPktStats
-	ErrStat    LinkPktStats
-	PhyErrStat LinkPktStats
-	VpnConns   []*VpnConnMetrics
 }
 
 // IPTuple :

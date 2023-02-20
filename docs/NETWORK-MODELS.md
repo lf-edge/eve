@@ -55,18 +55,12 @@ L3 networks are isolated local networks with their own IP space and services. Th
 * All packets sent into the network may have their layer 2 frames modified, if required by the network
 * All networks connected off-device, such as via NICs, do not directly connect to the off-device network, but instead have some network "proxying" or "connectivity" service that connects; see details below.
 
-The difference between the different L3 networks, and thus the higher-level types of networks offered by EVE, depend on the connectivity to the off-device networking world. There are
-several types.
+Currently, the only natively supported L3 network is a NAT-based _Local_ Network Instance.
+The idea is that anything more advanced (VPN, network mesh, etc.) should be provided by an application.
 
-* Local: Either no off-device connectivity, or one port fronted via NAT.
-* Cloud: Off-device connectivity via an IPSec VPN to a cloud provider's VPC.
-* Mesh: Off-device connectivity via a LISP mesh to other devices.
+##### Local Network Instance
 
-As described above, all of these use L3, may modify L2 frames, and provide IPAM services.
-
-##### Local
-
-A `Local` network is the simplest L3 network. It may have:
+A `Local` network is the simplest and the only natively supported L3 network. It may have:
 
 * 1, 2 or any number of ECOs on the device connected.
 * 0 or 1 ports off-device connected. If 0, then the ECOs can communicate with each other over this network, but nowhere else. If 1, then EVE places a NAT between the local network and the port, enabling the ECOs to communicate with whatever is on the other side of the port, with all communications NATted.
@@ -81,44 +75,3 @@ If an EVE device is instructed to connect ECOs via L3, it should do the followin
    * Set up NAT
    * Connect the designated port to the NAT
    * Connect the NAT to the bridge
-
-##### Cloud
-
-A `Cloud` network is an L3 network with a VPN connection. It may have:
-
-* 1, 2 or any number of ECOs on the device connected.
-
-In addition, it has an IPSec VPN connected to a remote endpoint, usually in a VPC in a cloud provider, although technically the VPN remote end could be anywhere. There is
-just one port active, which serves the VPN, although it can have more ports dedicated to the VPN to serve as standby.
-
-This enables the ECOs on the device to communicate with each other, identically to a `Local` network, and also over the VPN to the remote end.
-
-There is no connection directly to the off-device network; remote access is available solely through the VPN.
-
-If an EVE device is instructed to connect ECOs to a remote VPN endpoint, it should do the following:
-
-1. Verify that there is at least one port allocated to the network over which the VPN can connect to the remote endpoint
-1. Set up the VPN connection
-1. Set up an L3 network on the device using a Linux bridge
-1. Connect all ECOs which have this `Cloud` network enabled to the bridge, as well as the VPN connection
-
-EVE must be capable of supporting the following VPN implementations:
-
-* IPSec
-
-Additional VPN implementations, such as wireguard, are under consideration; Pull Requests are welcome.
-
-##### Mesh
-
-A `Mesh` network is an L3 network wherein a mesh has been created with zero, one or more L3 networks on other EVE devices. The `Mesh` network creates the
-impression of a single large L3 network encompassing all of the ECOs on all of the EVE devices that participate in the mesh.
-
-It may have:
-
-* 1, 2 or any number of ECOs on the device connected.
-* 1, 2 or any number of ECOs on any number of other devices connected.
-
-Unlike the `Local` network, which has a NAT connection off-device, and unlike the `Cloud` network, which has a VPN connection to a remote VPN endpoint, the `Mesh` network links all
-of the ECOs which participate to communicate over L3.
-
-There is no connection directly to the off-device network; remote access is available solely through the mesh network.
