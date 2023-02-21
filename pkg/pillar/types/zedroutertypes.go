@@ -135,6 +135,20 @@ func (status AppNetworkStatus) AwaitingNetwork() bool {
 	return status.AwaitNetworkInstance
 }
 
+// GetULStatusForNI returns UnderlayNetworkStatus for every application VIF
+// connected to the given network instance (there can be multiple interfaces connected
+// to the same network instance).
+func (status AppNetworkStatus) GetULStatusForNI(netUUID uuid.UUID) []*UnderlayNetworkStatus {
+	var uls []*UnderlayNetworkStatus
+	for i := range status.UnderlayNetworkList {
+		ul := &status.UnderlayNetworkList[i]
+		if ul.Network == netUUID {
+			uls = append(uls, ul)
+		}
+	}
+	return uls
+}
+
 // Indexed by UUID
 type AppNetworkStatus struct {
 	UUIDandVersion UUIDandVersion
@@ -2712,9 +2726,10 @@ type IPTablesRuleList []IPTablesRule
  * on all member virtual interface including the bridge.
  */
 func (status *NetworkInstanceStatus) UpdateNetworkMetrics(log *base.LogObject,
-	nms *NetworkMetrics) *NetworkMetric {
+	nms *NetworkMetrics) (brNetMetric *NetworkMetric) {
 
-	netMetric := NetworkMetric{IfName: status.BridgeName}
+	brNetMetric = &NetworkMetric{IfName: status.BridgeName}
+	status.VifMetricMap = make(map[string]NetworkMetric) // clear previous metrics
 	for _, vif := range status.Vifs {
 		metric, found := nms.LookupNetworkMetrics(vif.Name)
 		if !found {
@@ -2725,20 +2740,20 @@ func (status *NetworkInstanceStatus) UpdateNetworkMetrics(log *base.LogObject,
 		status.VifMetricMap[vif.Name] = metric
 	}
 	for _, metric := range status.VifMetricMap {
-		netMetric.TxBytes += metric.TxBytes
-		netMetric.RxBytes += metric.RxBytes
-		netMetric.TxPkts += metric.TxPkts
-		netMetric.RxPkts += metric.RxPkts
-		netMetric.TxErrors += metric.TxErrors
-		netMetric.RxErrors += metric.RxErrors
-		netMetric.TxDrops += metric.TxDrops
-		netMetric.RxDrops += metric.RxDrops
-		netMetric.TxAclDrops += metric.TxAclDrops
-		netMetric.RxAclDrops += metric.RxAclDrops
-		netMetric.TxAclRateLimitDrops += metric.TxAclRateLimitDrops
-		netMetric.RxAclRateLimitDrops += metric.RxAclRateLimitDrops
+		brNetMetric.TxBytes += metric.TxBytes
+		brNetMetric.RxBytes += metric.RxBytes
+		brNetMetric.TxPkts += metric.TxPkts
+		brNetMetric.RxPkts += metric.RxPkts
+		brNetMetric.TxErrors += metric.TxErrors
+		brNetMetric.RxErrors += metric.RxErrors
+		brNetMetric.TxDrops += metric.TxDrops
+		brNetMetric.RxDrops += metric.RxDrops
+		brNetMetric.TxAclDrops += metric.TxAclDrops
+		brNetMetric.RxAclDrops += metric.RxAclDrops
+		brNetMetric.TxAclRateLimitDrops += metric.TxAclRateLimitDrops
+		brNetMetric.RxAclRateLimitDrops += metric.RxAclRateLimitDrops
 	}
-	return &netMetric
+	return brNetMetric
 }
 
 /*
@@ -2852,11 +2867,22 @@ type IPTuple struct {
 
 // FlowScope :
 type FlowScope struct {
-	UUID      uuid.UUID
-	Intf      string
-	Localintf string
-	NetUUID   uuid.UUID
-	Sequence  string // used internally for limit and pkt size per app/bn
+	AppUUID        uuid.UUID
+	NetAdapterName string // logical name for VIF (set by controller in NetworkAdapter.Name)
+	BrIfName       string
+	NetUUID        uuid.UUID
+	Sequence       string // used internally for limit and pkt size per app/bn
+}
+
+// Key identifies flow.
+func (fs FlowScope) Key() string {
+	// Use adapter name instead of NI UUID because application can be connected to the same
+	// network instance with multiple interfaces.
+	key := fs.AppUUID.String() + "-" + fs.NetAdapterName
+	if fs.Sequence != "" {
+		key += "-" + fs.Sequence
+	}
+	return key
 }
 
 // ACLActionType - action
@@ -2900,7 +2926,7 @@ type IPFlow struct {
 
 // Key :
 func (flows IPFlow) Key() string {
-	return flows.Scope.UUID.String() + flows.Scope.NetUUID.String() + flows.Scope.Sequence
+	return flows.Scope.Key()
 }
 
 // LogCreate : we treat IPFlow as Metrics for logging
@@ -2939,56 +2965,6 @@ func (flows IPFlow) LogDelete(logBase *base.LogObject) {
 // LogKey :
 func (flows IPFlow) LogKey() string {
 	return string(base.IPFlowLogType) + "-" + flows.Key()
-}
-
-// VifIPTrig - structure contains Mac Address
-type VifIPTrig struct {
-	MacAddr   string
-	IPv4Addr  net.IP
-	IPv6Addrs []net.IP
-}
-
-// Key - VifIPTrig key function
-func (vifIP VifIPTrig) Key() string {
-	return vifIP.MacAddr
-}
-
-// LogCreate :
-func (vifIP VifIPTrig) LogCreate(logBase *base.LogObject) {
-	logObject := base.NewLogObject(logBase, base.VifIPTrigLogType, "",
-		nilUUID, vifIP.LogKey())
-	if logObject == nil {
-		return
-	}
-	logObject.Noticef("Vif IP trig create")
-}
-
-// LogModify :
-func (vifIP VifIPTrig) LogModify(logBase *base.LogObject, old interface{}) {
-	logObject := base.EnsureLogObject(logBase, base.VifIPTrigLogType, "",
-		nilUUID, vifIP.LogKey())
-
-	oldVifIP, ok := old.(VifIPTrig)
-	if !ok {
-		logObject.Clone().Fatalf("LogModify: Old object interface passed is not of VifIPTrig type")
-	}
-	// XXX remove?
-	logObject.CloneAndAddField("diff", cmp.Diff(oldVifIP, vifIP)).
-		Noticef("Vif IP trig modify")
-}
-
-// LogDelete :
-func (vifIP VifIPTrig) LogDelete(logBase *base.LogObject) {
-	logObject := base.EnsureLogObject(logBase, base.VifIPTrigLogType, "",
-		nilUUID, vifIP.LogKey())
-	logObject.Noticef("Vif IP trig delete")
-
-	base.DeleteLogObject(logBase, vifIP.LogKey())
-}
-
-// LogKey :
-func (vifIP VifIPTrig) LogKey() string {
-	return string(base.VifIPTrigLogType) + "-" + vifIP.Key()
 }
 
 // OnboardingStatus - UUID, etc. advertised by client process
