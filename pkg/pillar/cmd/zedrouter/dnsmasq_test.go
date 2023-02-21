@@ -491,7 +491,7 @@ no-ping
 bogus-priv
 neg-ttl=10
 dhcp-ttl=600
-dhcp-leasefile=/run/zedrouter/dnsmasq.leases//br0
+dhcp-leasefile=/run/zedrouter/dnsmasq.leases/br0
 server=1.1.1.1@up0
 server=141.1.1.1@up0
 server=208.67.220.220@up0

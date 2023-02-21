@@ -268,9 +268,9 @@ func protoEncodeAppFlowMonitorProto(ipflow types.IPFlow) *flowlog.FlowMessage {
 
 	// ScopeInfo fill in
 	pScope := new(flowlog.ScopeInfo)
-	pScope.Uuid = ipflow.Scope.UUID.String()
-	pScope.Intf = ipflow.Scope.Intf
-	pScope.LocalIntf = ipflow.Scope.Localintf
+	pScope.Uuid = ipflow.Scope.AppUUID.String()
+	pScope.Intf = ipflow.Scope.NetAdapterName
+	pScope.LocalIntf = ipflow.Scope.BrIfName
 	pScope.NetInstUUID = ipflow.Scope.NetUUID.String()
 	pflows.Scope = pScope
 

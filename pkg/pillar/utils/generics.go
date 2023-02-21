@@ -27,3 +27,30 @@ func EqualSlicesFn[Type any](list1, list2 []Type, equal func(a, b Type) bool) bo
 	}
 	return true
 }
+
+// FilterDuplicates return a new slice with duplicate entries removed.
+// This function can be used if slice items are comparable
+// (operator "==" can be used).
+func FilterDuplicates[Type comparable](list []Type) (filtered []Type) {
+	return FilterDuplicatesFn(list, func(a, b Type) bool {
+		return a == b
+	})
+}
+
+// FilterDuplicatesFn return a new slice with duplicate entries removed.
+// Two slice items are compared using the provided "equal" callback.
+func FilterDuplicatesFn[Type any](list []Type, equal func(a, b Type) bool) (filtered []Type) {
+	for _, item := range list {
+		var duplicate bool
+		for _, prevItem := range filtered {
+			if equal(item, prevItem) {
+				duplicate = true
+				break
+			}
+		}
+		if !duplicate {
+			filtered = append(filtered, item)
+		}
+	}
+	return
+}
