@@ -1,0 +1,15 @@
+Doesn't look for new version on inte to avoid privacy issuesIndex: lshw-02.14/src/core/version.cc
+===================================================================
+Index: lshw/src/core/version.cc
+===================================================================
+--- lshw.orig/src/core/version.cc
++++ lshw/src/core/version.cc
+@@ -89,6 +89,8 @@ const char * checkupdates()
+ {
+   static char *latest = NULL;
+ 
++  return NULL;
++
+   if(!latest)
+     latest = txtquery(PACKAGE, "ezix.org", NULL);
+ 

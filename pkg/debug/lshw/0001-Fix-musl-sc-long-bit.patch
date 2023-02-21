@@ -1,0 +1,28 @@
+From a8ee7fe106efee6240ff9172a00fe9492c383244 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Ren=C3=AA=20de=20Souza=20Pinto?= <rene@renesp.com.br>
+Date: Tue, 21 Feb 2023 15:16:16 +0100
+Subject: [PATCH 1/5] Fix musl sc long bit
+
+---
+ src/core/abi.cc | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/src/core/abi.cc b/src/core/abi.cc
+index adff7b5..c7c74c0 100644
+--- a/src/core/abi.cc
++++ b/src/core/abi.cc
+@@ -21,7 +21,11 @@ bool scan_abi(hwNode & system)
+ {
+   // are we compiled as 32- or 64-bit process ?
+   long sc = sysconf(LONG_BIT);
++#ifdef _SC_LONG_BIT
+   if(sc==-1) sc = sysconf(_SC_LONG_BIT);
++#else
++  if(sc==-1) sc = (CHAR_BIT * sizeof(long));
++#endif
+   if(sc!=-1) system.setWidth(sc);
+ 
+   pushd(PROC_SYS);
+-- 
+2.39.1
+

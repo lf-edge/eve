@@ -1,0 +1,45 @@
+From 4d2c8e3975a5322479fd1554f7670ac4b28f5a11 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Ren=C3=AA=20de=20Souza=20Pinto?= <rene@renesp.com.br>
+Date: Wed, 22 Feb 2023 11:31:23 +0100
+Subject: [PATCH] core: osutils: Fix std::length_error
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+When calling lshw on ARM platforms, the following error is happening:
+
+~# lshw
+terminate called after throwing an instance of 'std::length_error'
+  what():  basic_string::_M_create
+Aborted
+
+This commit provides the error handling for the exception in order to avoid
+terminate the program.
+
+Signed-off-by: Renê de Souza Pinto <rene@renesp.com.br>
+---
+ src/core/osutils.cc | 8 +++++++-
+ 1 file changed, 7 insertions(+), 1 deletion(-)
+
+diff --git a/src/core/osutils.cc b/src/core/osutils.cc
+index b369f88..b0ee079 100644
+--- a/src/core/osutils.cc
++++ b/src/core/osutils.cc
+@@ -180,7 +180,13 @@ const string & def)
+     result = "";
+ 
+     while ((count = read(fd, buffer, sizeof(buffer))) > 0)
+-      result += string(buffer, count);
++      try {
++        result = result.append(buffer, count);
++      } catch (const std::length_error& le) {
++        result = def;
++        fprintf(stderr, "String length error: %s\n", le.what());
++        break;
++      }
+ 
+     close(fd);
+   }
+-- 
+2.39.1
+

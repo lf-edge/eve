@@ -1,14 +1,14 @@
-From 15565229509455527de9ce7cbb9530e2b31d043b Mon Sep 17 00:00:00 2001
+From ed59b29cb534bdb73774510d52b5fccb6a4ebae2 Mon Sep 17 00:00:00 2001
 From: Lyonel Vincent <lyonel@ezix.org>
 Date: Wed, 27 May 2020 01:07:16 +0200
-Subject: [PATCH] clean-up JSON output
+Subject: [PATCH 3/5] clean-up JSON output
 
 ---
  src/core/hw.cc | 29 +++++++++++++++++++++++++----
  1 file changed, 25 insertions(+), 4 deletions(-)
 
 diff --git a/src/core/hw.cc b/src/core/hw.cc
-index ab345fe..6aea7cf 100644
+index 4522c1a..32987f4 100644
 --- a/src/core/hw.cc
 +++ b/src/core/hw.cc
 @@ -1650,13 +1650,20 @@ string hwNode::asJSON(unsigned level)
@@ -54,6 +54,9 @@ index ab345fe..6aea7cf 100644
 +      }
 +  }
 +
-   if (::enabled("output:list") && level == 0)
+   if (level == 0)
    {
-     out << endl << "]" << endl;
+     out.seekp(-2, std::ios_base::end);
+-- 
+2.39.1
+
