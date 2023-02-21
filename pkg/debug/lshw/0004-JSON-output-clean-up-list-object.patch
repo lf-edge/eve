@@ -1,7 +1,7 @@
-From 2b1c730b493d647bbab4854713571458e82a81e7 Mon Sep 17 00:00:00 2001
+From 78e87b0d8e4aa57aae85bc756c78ec47357697d9 Mon Sep 17 00:00:00 2001
 From: Lyonel Vincent <lyonel@ezix.org>
 Date: Tue, 26 May 2020 01:00:37 +0200
-Subject: [PATCH] JSON output clean-up (list/object)
+Subject: [PATCH 4/5] JSON output clean-up (list/object)
 
 ---
  src/core/hw.cc | 5 ++---
@@ -9,7 +9,7 @@ Subject: [PATCH] JSON output clean-up (list/object)
  2 files changed, 3 insertions(+), 3 deletions(-)
 
 diff --git a/src/core/hw.cc b/src/core/hw.cc
-index aca424c..ab345fe 100644
+index 32987f4..9efebc0 100644
 --- a/src/core/hw.cc
 +++ b/src/core/hw.cc
 @@ -1400,7 +1400,7 @@ string hwNode::asJSON(unsigned level)
@@ -21,8 +21,8 @@ index aca424c..ab345fe 100644
    {
      out << "[" << endl;
    }
-@@ -1665,9 +1665,8 @@ string hwNode::asJSON(unsigned level)
-     out << "}";
+@@ -1686,9 +1686,8 @@ string hwNode::asJSON(unsigned level)
+       }
    }
  
 -  if (level == 0)
@@ -44,3 +44,6 @@ index 219a008..571b1c3 100644
    disable("output:json");
    disable("output:db");
    disable("output:xml");
+-- 
+2.39.1
+

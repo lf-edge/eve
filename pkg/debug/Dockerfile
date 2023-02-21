@@ -37,10 +37,10 @@ COPY lshw/ lshw-B.${LSHW_VERSION}/
 
 WORKDIR /lshw-B.${LSHW_VERSION}
 
-# order is important
-RUN for patch in fix-musl-sc_long_bit.patch wrapper-for-basename.patch 15565229509455527de9ce7cbb9530e2b31d043b.patch\
- 2b1c730b493d647bbab4854713571458e82a81e7.patch; do patch -p1 < $patch; done &&\
- make -C src RPM_OPT_FLAGS=-DNONLS static &&\
+RUN for patch in *.patch; do \
+   patch -p1 < "$patch"; \
+ done && \
+ make -C src RPM_OPT_FLAGS=-DNONLS static && \
  cp src/lshw-static /out/usr/bin/lshw && strip /out/usr/bin/lshw
 
 # building hexedit

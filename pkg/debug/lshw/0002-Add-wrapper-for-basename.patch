@@ -1,7 +1,7 @@
-From 49a2c103c7d1127045ced8e8c887279a36a3f357 Mon Sep 17 00:00:00 2001
+From 5c5379a65c0fb063d2162ade4c9c9b9761a1ed30 Mon Sep 17 00:00:00 2001
 From: Felix Janda <felix.janda@posteo.de>
 Date: Wed, 12 Apr 2017 21:29:11 -0400
-Subject: [PATCH 1/2] Add wrapper for basename
+Subject: [PATCH 2/5] Add wrapper for basename
 
 basename comes in two variants. A GNU and a POSIX version. Currently,
 the GNU version is mostly used, but this breaks compilation on systems
@@ -14,13 +14,13 @@ argument, similarly to dirname, a wrapper is needed.
  src/core/osutils.h  |  1 +
  src/core/pci.cc     |  4 ++--
  src/core/sysfs.cc   |  8 ++++----
- 5 files changed, 19 insertions(+), 8 deletions(-)
+ 4 files changed, 17 insertions(+), 6 deletions(-)
 
 diff --git a/src/core/osutils.cc b/src/core/osutils.cc
-index e93b79e..1624ab1 100644
+index f023a46..b369f88 100644
 --- a/src/core/osutils.cc
 +++ b/src/core/osutils.cc
-@@ -426,6 +426,16 @@ string dirname(const string & path)
+@@ -455,6 +455,16 @@ string dirname(const string & path)
    return result;
  }
  
@@ -50,10 +50,10 @@ index 549258e..55f5548 100644
  
  size_t splitlines(const std::string & s,
 diff --git a/src/core/pci.cc b/src/core/pci.cc
-index d1625cf..1163ad2 100644
+index 21b9033..e38b12c 100644
 --- a/src/core/pci.cc
 +++ b/src/core/pci.cc
-@@ -1131,9 +1131,9 @@ bool scan_pci(hwNode & n)
+@@ -1172,9 +1172,9 @@ bool scan_pci(hwNode & n)
            string drivername = readlink(string(devices[i]->d_name)+"/driver");
            string modulename = readlink(string(devices[i]->d_name)+"/driver/module");
  
@@ -66,10 +66,10 @@ index d1625cf..1163ad2 100644
            if(exists(string(devices[i]->d_name)+"/rom"))
            {
 diff --git a/src/core/sysfs.cc b/src/core/sysfs.cc
-index 97dbab5..0fc4855 100644
+index 32d6564..e45e806 100644
 --- a/src/core/sysfs.cc
 +++ b/src/core/sysfs.cc
-@@ -99,7 +99,7 @@ static string sysfs_getbustype(const string & path)
+@@ -100,7 +100,7 @@ static string sysfs_getbustype(const string & path)
    {
      devname =
        string(fs.path + "/bus/") + string(namelist[i]->d_name) +
@@ -78,7 +78,7 @@ index 97dbab5..0fc4855 100644
  
      if (samefile(devname, path))
        return string(namelist[i]->d_name);
-@@ -139,7 +139,7 @@ static string sysfstobusinfo(const string & path)
+@@ -151,7 +151,7 @@ static string sysfstobusinfo(const string & path)
  
    if (bustype == "virtio")
    {
@@ -87,7 +87,7 @@ index 97dbab5..0fc4855 100644
      if (name.compare(0, 6, "virtio") == 0)
        return "virtio@" + name.substr(6);
      else
-@@ -207,7 +207,7 @@ string entry::driver() const
+@@ -240,7 +240,7 @@ string entry::driver() const
    string driverlink = This->devpath + "/driver";
    if (!exists(driverlink))
      return "";
@@ -96,7 +96,7 @@ index 97dbab5..0fc4855 100644
  }
  
  
-@@ -288,7 +288,7 @@ string entry::name_in_class(const string & classname) const
+@@ -328,7 +328,7 @@ string entry::name_in_class(const string & classname) const
  
  string entry::name() const
  {
@@ -105,3 +105,6 @@ index 97dbab5..0fc4855 100644
  }
  
  
+-- 
+2.39.1
+
