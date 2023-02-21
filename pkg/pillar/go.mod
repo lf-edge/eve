@@ -27,7 +27,7 @@ require (
 	github.com/lf-edge/edge-containers v0.0.0-20221025050409-93c34bebadd2
 	github.com/lf-edge/eve/api/go v0.0.0-00010101000000-000000000000
 	github.com/lf-edge/eve/libs/depgraph v0.0.0-20220129022022-ba04fd269658
-	github.com/lf-edge/eve/libs/nettrace v0.0.0-00010101000000-000000000000
+	github.com/lf-edge/eve/libs/nettrace v0.0.0-20230219061744-883547fe7978
 	github.com/lf-edge/eve/libs/reconciler v0.0.0-20220131150115-6941dbe72001
 	github.com/lf-edge/eve/libs/zedUpload v0.0.0-20210120050122-276fea8f6efd
 	github.com/linuxkit/linuxkit/src/cmd/linuxkit v0.0.0-20220913135124-e532e7310810
@@ -150,5 +150,3 @@ replace github.com/lf-edge/eve/libs/zedUpload => ../../libs/zedUpload
 replace github.com/lf-edge/eve/libs/depgraph => ../../libs/depgraph
 
 replace github.com/lf-edge/eve/libs/reconciler => ../../libs/reconciler
-
-replace github.com/lf-edge/eve/libs/nettrace => ../../libs/nettrace
