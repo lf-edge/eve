@@ -866,6 +866,8 @@ message ZInfoSnapshot {
   google.protobuf.Timestamp create_time = 4;
   // a reason for the snapshot creation
   SnapshotType type = 5;
+  // an error that happened during the snapshot handling (creation/deletion/rollback)
+  ErrorInfo snap_err = 6;
 }
 
 message ZInfoApp {
