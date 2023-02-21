@@ -1,6 +1,6 @@
 module github.com/lf-edge/eve/libs/zedUpload
 
-go 1.15
+go 1.18
 
 require (
 	cloud.google.com/go/storage v1.17.0
@@ -8,7 +8,7 @@ require (
 	github.com/Azure/azure-storage-blob-go v0.14.0
 	github.com/aws/aws-sdk-go v1.35.35
 	github.com/google/go-containerregistry v0.6.0
-	github.com/lf-edge/eve/libs/nettrace v0.0.0-00010101000000-000000000000
+	github.com/lf-edge/eve/libs/nettrace v0.0.0-20230219061744-883547fe7978
 	github.com/pkg/sftp v1.12.0
 	github.com/sirupsen/logrus v1.9.0
 	golang.org/x/crypto v0.1.0
@@ -17,6 +17,43 @@ require (
 	google.golang.org/api v0.57.0
 )
 
-replace github.com/lf-edge/eve/api/go => ../../api/go
+require (
+	cloud.google.com/go v0.94.1 // indirect
+	github.com/containerd/stargz-snapshotter/estargz v0.7.0 // indirect
+	github.com/docker/cli v20.10.7+incompatible // indirect
+	github.com/docker/distribution v2.7.1+incompatible // indirect
+	github.com/docker/docker v20.10.7+incompatible // indirect
+	github.com/docker/docker-credential-helpers v0.6.3 // indirect
+	github.com/golang-design/lockfree v0.0.1 // indirect
+	github.com/golang/groupcache v0.0.0-20200121045136-8c9f03a8e57e // indirect
+	github.com/golang/protobuf v1.5.2 // indirect
+	github.com/golang/snappy v0.0.3 // indirect
+	github.com/google/go-cmp v0.5.9 // indirect
+	github.com/google/gopacket v1.1.19 // indirect
+	github.com/google/uuid v1.3.0 // indirect
+	github.com/googleapis/gax-go/v2 v2.1.0 // indirect
+	github.com/jmespath/go-jmespath v0.4.0 // indirect
+	github.com/josharian/native v1.0.0 // indirect
+	github.com/klauspost/compress v1.13.0 // indirect
+	github.com/kr/fs v0.1.0 // indirect
+	github.com/lithammer/shortuuid/v4 v4.0.0 // indirect
+	github.com/mattn/go-ieproxy v0.0.1 // indirect
+	github.com/mdlayher/netlink v1.7.1 // indirect
+	github.com/mdlayher/socket v0.4.0 // indirect
+	github.com/opencontainers/go-digest v1.0.0 // indirect
+	github.com/opencontainers/image-spec v1.0.1 // indirect
+	github.com/packetcap/go-pcap v0.0.0-20221020071412-2b2e94010282 // indirect
+	github.com/pkg/errors v0.9.1 // indirect
+	github.com/ti-mo/conntrack v0.4.0 // indirect
+	github.com/ti-mo/netfilter v0.3.1 // indirect
+	go.opencensus.io v0.23.0 // indirect
+	golang.org/x/sync v0.1.0 // indirect
+	golang.org/x/sys v0.5.0 // indirect
+	golang.org/x/text v0.7.0 // indirect
+	google.golang.org/appengine v1.6.7 // indirect
+	google.golang.org/genproto v0.0.0-20210921142501-181ce0d877f6 // indirect
+	google.golang.org/grpc v1.40.0 // indirect
+	google.golang.org/protobuf v1.27.1 // indirect
+)
 
-replace github.com/lf-edge/eve/libs/nettrace => ../nettrace
+replace github.com/lf-edge/eve/api/go => ../../api/go
