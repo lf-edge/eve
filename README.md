@@ -12,6 +12,10 @@ EVE supports both ARM and Intel architectures and requires hardware-assisted vir
 
 To get its job done, EVE leverages a lot of great open source projects: [Xen Project](https://xenproject.org/), [Linuxkit](https://github.com/linuxkit/linuxkit) and [Alpine Linux](https://alpinelinux.org/) just to name a few. All of that functionality is being orchestrated by the Go microservices available under [pkg/pillar](pkg/pillar). Why pillar? Well, because pillar is the kind of a monolith we need to break out into true, individual microservices under [pkg/](pkg/).
 
+## Download EVE
+
+EVE LTS: [Download latest LTS](https://github.com/lf-edge/eve/releases/latest)
+
 ## How to use EVE with a controller (recommended)
 
 EVE-OS can be used with the opensource [Adam controller](https://github.com/lf-edge/adam) by following the instructions at [Eden](https://github.com/lf-edge/eden).
@@ -468,4 +472,8 @@ You may be wondering why do we have a container-based architecture for a Xen-cen
 
 In addition to that, while we plan to build a fully disagregated system (with even device drivers running in their separate domains) right now we are just getting started and having containers as a first step towards full disagreagation seems like a very convenient stepping stone.
 
-Let us know what you think by filing GitHub issues, and feel free to send us pull requests if something doesn't quite work.
+Let us know what you think by filing GitHub [issues](https://github.com/lf-edge/eve/issues/new/choose), and feel free to send us pull requests if something doesn't quite work.
+
+## License
+
+Distributed under the Apache License 2.0. See [LICENSE.txt](https://github.com/lf-edge/eve/blob/master/LICENSE) for more information.
