@@ -1,37 +1,44 @@
 # github.com/StackExchange/wmi v0.0.0-20190523213315-cbe66965904d
+## explicit
 github.com/StackExchange/wmi
 # github.com/cenkalti/backoff v2.2.1+incompatible
+## explicit
 github.com/cenkalti/backoff
 # github.com/eriknordmark/ipinfo v0.0.0-20190220084921-7ee0839158f9
+## explicit
 github.com/eriknordmark/ipinfo
 # github.com/fsnotify/fsnotify v1.5.1
+## explicit; go 1.20
 github.com/fsnotify/fsnotify
 # github.com/go-ole/go-ole v1.2.4
+## explicit; go 1.20
 github.com/go-ole/go-ole
 github.com/go-ole/go-ole/oleutil
 # github.com/google/go-cmp v0.5.7
+## explicit; go 1.20
 github.com/google/go-cmp/cmp
 github.com/google/go-cmp/cmp/internal/diff
 github.com/google/go-cmp/cmp/internal/flags
 github.com/google/go-cmp/cmp/internal/function
 github.com/google/go-cmp/cmp/internal/value
 # github.com/google/go-containerregistry v0.8.0
+## explicit; go 1.20
 github.com/google/go-containerregistry/pkg/v1/types
 # github.com/gorilla/websocket v1.4.2
-## explicit
+## explicit; go 1.20
 github.com/gorilla/websocket
 # github.com/grandcat/zeroconf v1.0.0
-## explicit
+## explicit; go 1.20
 github.com/grandcat/zeroconf
 # github.com/lf-edge/eve/api/go v0.0.0-20220629080033-b2471c507920 => github.com/lf-edge/eve/api/go v0.0.0-20220822214905-7a5b0a24ad8f
-## explicit
+## explicit; go 1.20
 github.com/lf-edge/eve/api/go/certs
 github.com/lf-edge/eve/api/go/config
 github.com/lf-edge/eve/api/go/evecommon
 github.com/lf-edge/eve/api/go/info
 github.com/lf-edge/eve/api/go/logs
 # github.com/lf-edge/eve/pkg/pillar v0.0.0-20221025082440-d8005e30e22d
-## explicit
+## explicit; go 1.20
 github.com/lf-edge/eve/pkg/pillar/base
 github.com/lf-edge/eve/pkg/pillar/flextimer
 github.com/lf-edge/eve/pkg/pillar/pubsub
@@ -41,12 +48,13 @@ github.com/lf-edge/eve/pkg/pillar/utils/file
 github.com/lf-edge/eve/pkg/pillar/utils/logging
 github.com/lf-edge/eve/pkg/pillar/watch
 # github.com/miekg/dns v1.1.41
+## explicit; go 1.20
 github.com/miekg/dns
 # github.com/satori/go.uuid v1.2.1-0.20180404165556-75cca531ea76
 ## explicit
 github.com/satori/go.uuid
 # github.com/shirou/gopsutil v0.0.0-20190901111213-e4ec7b275ada
-## explicit
+## explicit; go 1.20
 github.com/shirou/gopsutil/cpu
 github.com/shirou/gopsutil/disk
 github.com/shirou/gopsutil/host
@@ -55,20 +63,23 @@ github.com/shirou/gopsutil/mem
 github.com/shirou/gopsutil/net
 github.com/shirou/gopsutil/process
 # github.com/shirou/w32 v0.0.0-20160930032740-bb4de0191aa4
+## explicit
 github.com/shirou/w32
 # github.com/sirupsen/logrus v1.8.1
-## explicit
+## explicit; go 1.20
 github.com/sirupsen/logrus
 # github.com/tatsushid/go-fastping v0.0.0-20160109021039-d7bb493dee3e
 ## explicit
 github.com/tatsushid/go-fastping
 # github.com/vishvananda/netlink v1.1.1-0.20210924202909-187053b97868
-## explicit
+## explicit; go 1.20
 github.com/vishvananda/netlink
 github.com/vishvananda/netlink/nl
 # github.com/vishvananda/netns v0.0.0-20210104183010-2eb08e3e575f
+## explicit; go 1.20
 github.com/vishvananda/netns
 # golang.org/x/net v0.0.0-20220722155237-a158d28d115b
+## explicit; go 1.20
 golang.org/x/net/bpf
 golang.org/x/net/icmp
 golang.org/x/net/internal/iana
@@ -76,11 +87,12 @@ golang.org/x/net/internal/socket
 golang.org/x/net/ipv4
 golang.org/x/net/ipv6
 # golang.org/x/sys v0.0.0-20220722155257-8c9f86f7a55f
-## explicit
+## explicit; go 1.20
 golang.org/x/sys/internal/unsafeheader
 golang.org/x/sys/unix
 golang.org/x/sys/windows
 # google.golang.org/protobuf v1.27.1
+## explicit; go 1.9
 google.golang.org/protobuf/encoding/prototext
 google.golang.org/protobuf/encoding/protowire
 google.golang.org/protobuf/internal/descfmt

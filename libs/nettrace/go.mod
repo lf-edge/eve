@@ -1,6 +1,6 @@
 module github.com/lf-edge/eve/libs/nettrace
 
-go 1.18
+go 1.20
 
 require (
 	github.com/golang-design/lockfree v0.0.1

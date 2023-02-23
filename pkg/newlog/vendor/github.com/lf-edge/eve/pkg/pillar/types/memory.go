@@ -4,7 +4,7 @@
 package types
 
 import (
-	"io/ioutil"
+	"os"
 	"strconv"
 	"strings"
 )
@@ -34,7 +34,7 @@ func GetZFSArcMaxSizeInBytes() (uint64, error) {
 }
 
 func readUint64File(filename string) (uint64, error) {
-	dataBytes, err := ioutil.ReadFile(filename)
+	dataBytes, err := os.ReadFile(filename)
 	if err != nil {
 		return 0, err
 	}

@@ -1,6 +1,6 @@
 module github.com/lf-edge/eve/libs/reconciler
 
-go 1.15
+go 1.20
 
 replace github.com/lf-edge/eve/libs/depgraph => ../depgraph
 

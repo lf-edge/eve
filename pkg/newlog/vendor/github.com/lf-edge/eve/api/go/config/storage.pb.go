@@ -871,7 +871,7 @@ type ContentTree struct {
 	unknownFields protoimpl.UnknownFields
 
 	Uuid    string `protobuf:"bytes,1,opt,name=uuid,proto3" json:"uuid,omitempty"`
-	DsId    string `protobuf:"bytes,2,opt,name=dsId,proto3" json:"dsId,omitempty"` // UUID for DatastoreConfig
+	DsId    string `protobuf:"bytes,2,opt,name=dsId,proto3" json:"dsId,omitempty"` // Deprecated; You need to check the ds_ids_list
 	URL     string `protobuf:"bytes,3,opt,name=URL,proto3" json:"URL,omitempty"`   // URL to append to datastore dpath
 	Iformat Format `protobuf:"varint,4,opt,name=iformat,proto3,enum=org.lfedge.eve.config.Format" json:"iformat,omitempty"`
 	// The sha is for the top blob of the ContentTree
@@ -893,6 +893,10 @@ type ContentTree struct {
 	// appear in the restAPI endpoint available at http://169.254.169.254. So user
 	// application can read that data and treat the blob accordingly.
 	CustomMetaData string `protobuf:"bytes,10,opt,name=custom_meta_data,json=customMetaData,proto3" json:"custom_meta_data,omitempty"`
+	// List of DatastoreConfig UUIDs, that must have the same content. In case of
+	// network failure, the download process can fallback to the next datastore
+	// in the list.
+	DsIdsList []string `protobuf:"bytes,11,rep,name=ds_ids_list,json=dsIdsList,proto3" json:"ds_ids_list,omitempty"`
 }
 
 func (x *ContentTree) Reset() {
@@ -995,6 +999,13 @@ func (x *ContentTree) GetCustomMetaData() string {
 		return x.CustomMetaData
 	}
 	return ""
+}
+
+func (x *ContentTree) GetDsIdsList() []string {
+	if x != nil {
+		return x.DsIdsList
+	}
+	return nil
 }
 
 type VolumeContentOrigin struct {
@@ -1177,12 +1188,12 @@ func (x *Volume) GetTarget() Target {
 	return Target_TgtUnknown
 }
 
-//DiskConfig describe desired configuration of disk
-//If we want change state to online/offline we should define its state
-//If we want to add disk we should define it here and set DiskConfigType to online or offline
-//If we want to remove disk we should set its state to unused or appdirect
-//If we want to replace disk we should fill old_disk to be replaced with disk
-//Progress of operation is expected to be available in info messages
+// DiskConfig describe desired configuration of disk
+// If we want change state to online/offline we should define its state
+// If we want to add disk we should define it here and set DiskConfigType to online or offline
+// If we want to remove disk we should set its state to unused or appdirect
+// If we want to replace disk we should fill old_disk to be replaced with disk
+// Progress of operation is expected to be available in info messages
 type DiskConfig struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
@@ -1247,15 +1258,15 @@ func (x *DiskConfig) GetDiskConfig() DiskConfigType {
 	return DiskConfigType_DISK_CONFIG_TYPE_UNSPECIFIED
 }
 
-//DisksConfig is a configuration of disks
-//We expect information about disks to be filled and will try to adjust disks states accordingly
-//All disks defined in disks field expected to have array type defined in array_type
-//To support nested topologies we can use children field
+// DisksConfig is a configuration of disks
+// We expect information about disks to be filled and will try to adjust disks states accordingly
+// All disks defined in disks field expected to have array type defined in array_type
+// To support nested topologies we can use children field
 //
-//For example to use stripe of two pairs of mirrored disks we should define
-//DisksConfig without disks with array_type DISKS_ARRAY_TYPE_RAID0
-//with two children with properly defined disks inside and with array_type DISKS_ARRAY_TYPE_RAID1
-//and empty children
+// For example to use stripe of two pairs of mirrored disks we should define
+// DisksConfig without disks with array_type DISKS_ARRAY_TYPE_RAID0
+// with two children with properly defined disks inside and with array_type DISKS_ARRAY_TYPE_RAID1
+// and empty children
 type DisksConfig struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
@@ -1392,7 +1403,7 @@ var file_config_storage_proto_rawDesc = []byte{
 	0x2e, 0x54, 0x61, 0x72, 0x67, 0x65, 0x74, 0x52, 0x06, 0x74, 0x61, 0x72, 0x67, 0x65, 0x74, 0x12,
 	0x22, 0x0a, 0x0c, 0x6d, 0x61, 0x78, 0x73, 0x69, 0x7a, 0x65, 0x62, 0x79, 0x74, 0x65, 0x73, 0x18,
 	0x0a, 0x20, 0x01, 0x28, 0x03, 0x52, 0x0c, 0x6d, 0x61, 0x78, 0x73, 0x69, 0x7a, 0x65, 0x62, 0x79,
-	0x74, 0x65, 0x73, 0x22, 0xf3, 0x02, 0x0a, 0x0b, 0x43, 0x6f, 0x6e, 0x74, 0x65, 0x6e, 0x74, 0x54,
+	0x74, 0x65, 0x73, 0x22, 0x93, 0x03, 0x0a, 0x0b, 0x43, 0x6f, 0x6e, 0x74, 0x65, 0x6e, 0x74, 0x54,
 	0x72, 0x65, 0x65, 0x12, 0x12, 0x0a, 0x04, 0x75, 0x75, 0x69, 0x64, 0x18, 0x01, 0x20, 0x01, 0x28,
 	0x09, 0x52, 0x04, 0x75, 0x75, 0x69, 0x64, 0x12, 0x12, 0x0a, 0x04, 0x64, 0x73, 0x49, 0x64, 0x18,
 	0x02, 0x20, 0x01, 0x28, 0x09, 0x52, 0x04, 0x64, 0x73, 0x49, 0x64, 0x12, 0x10, 0x0a, 0x03, 0x55,
@@ -1415,7 +1426,9 @@ var file_config_storage_proto_rawDesc = []byte{
 	0x67, 0x65, 0x6e, 0x65, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x43, 0x6f, 0x75, 0x6e, 0x74, 0x12,
 	0x28, 0x0a, 0x10, 0x63, 0x75, 0x73, 0x74, 0x6f, 0x6d, 0x5f, 0x6d, 0x65, 0x74, 0x61, 0x5f, 0x64,
 	0x61, 0x74, 0x61, 0x18, 0x0a, 0x20, 0x01, 0x28, 0x09, 0x52, 0x0e, 0x63, 0x75, 0x73, 0x74, 0x6f,
-	0x6d, 0x4d, 0x65, 0x74, 0x61, 0x44, 0x61, 0x74, 0x61, 0x22, 0x8f, 0x01, 0x0a, 0x13, 0x56, 0x6f,
+	0x6d, 0x4d, 0x65, 0x74, 0x61, 0x44, 0x61, 0x74, 0x61, 0x12, 0x1e, 0x0a, 0x0b, 0x64, 0x73, 0x5f,
+	0x69, 0x64, 0x73, 0x5f, 0x6c, 0x69, 0x73, 0x74, 0x18, 0x0b, 0x20, 0x03, 0x28, 0x09, 0x52, 0x09,
+	0x64, 0x73, 0x49, 0x64, 0x73, 0x4c, 0x69, 0x73, 0x74, 0x22, 0x8f, 0x01, 0x0a, 0x13, 0x56, 0x6f,
 	0x6c, 0x75, 0x6d, 0x65, 0x43, 0x6f, 0x6e, 0x74, 0x65, 0x6e, 0x74, 0x4f, 0x72, 0x69, 0x67, 0x69,
 	0x6e, 0x12, 0x42, 0x0a, 0x04, 0x74, 0x79, 0x70, 0x65, 0x18, 0x01, 0x20, 0x01, 0x28, 0x0e, 0x32,
 	0x2e, 0x2e, 0x6f, 0x72, 0x67, 0x2e, 0x6c, 0x66, 0x65, 0x64, 0x67, 0x65, 0x2e, 0x65, 0x76, 0x65,

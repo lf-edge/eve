@@ -1,6 +1,6 @@
 module github.com/lf-edge/eve/pkg/pillar
 
-go 1.18
+go 1.20
 
 require (
 	github.com/Focinfi/go-dns-resolver v1.0.1

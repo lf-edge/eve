@@ -27,7 +27,8 @@ const (
 	stackFile      = "reboot-stack"
 	rebootImage    = "reboot-image"
 	bootReasonFile = "boot-reason"
-	maxReadSize    = 16384 // From files in /persist
+	readSize16k    = 16 << 10  // From files in /persist
+	readSize512k   = 512 << 10 // Kernel dmesg
 )
 
 var savedRebootReason = "unknown"
@@ -335,7 +336,7 @@ func RebootReason(reason string, bootReason types.BootReason, agentName string,
 	if bootReason != types.BootReasonNone {
 		filename = "/persist/" + bootReasonFile
 		brString := bootReason.String()
-		b, _ := fileutils.ReadWithMaxSize(nil, filename, maxReadSize)
+		b, _ := fileutils.ReadWithMaxSize(nil, filename, readSize16k)
 		if len(b) != 0 {
 			// Note: can not use log here since we are called from a log hook!
 			fmt.Printf("not replacing BootReason %s with %s\n",
@@ -375,27 +376,30 @@ func RebootStack(log *base.LogObject, stacks string, agentName string, agentPid 
 }
 
 // GetRebootReason returns the RebootReason string together with
-// its timestamp plus the reboot stack
-// We limit the size we read to 16k for both of those.
+// its timestamp plus the reboot stack. We limit the size we read
+// to 16k for the RebootReason and to 512k for the stack, because
+// in case of a kernel crash, the stack file contains the whole
+// dmesg, which kernel buffer is limited to some reasonable value
+// below 512k.
 func GetRebootReason(log *base.LogObject) (string, time.Time, string) {
 	reasonFilename := fmt.Sprintf("%s/%s", types.PersistDir, reasonFile)
 	stackFilename := fmt.Sprintf("%s/%s", types.PersistDir, stackFile)
-	reason, ts, _ := fileutils.StatAndRead(log, reasonFilename, maxReadSize)
-	stack, _, _ := fileutils.StatAndRead(log, stackFilename, maxReadSize)
+	reason, ts, _ := fileutils.StatAndRead(log, reasonFilename, readSize16k)
+	stack, _, _ := fileutils.StatAndRead(log, stackFilename, readSize512k)
 	return reason, ts, stack
 }
 
 // GetBootReason returns the BootReason enum, which is stored as a string in /persist, together with its timestamp
 func GetBootReason(log *base.LogObject) (types.BootReason, time.Time) {
 	reasonFilename := fmt.Sprintf("%s/%s", types.PersistDir, bootReasonFile)
-	reason, ts, _ := fileutils.StatAndRead(log, reasonFilename, maxReadSize)
+	reason, ts, _ := fileutils.StatAndRead(log, reasonFilename, readSize16k)
 	return types.BootReasonFromString(reason), ts
 }
 
 // GetRebootImage : Image from which the reboot happened
 func GetRebootImage(log *base.LogObject) string {
 	rebootFilename := fmt.Sprintf("%s/%s", types.PersistDir, rebootImage)
-	image, _, _ := fileutils.StatAndRead(log, rebootFilename, maxReadSize)
+	image, _, _ := fileutils.StatAndRead(log, rebootFilename, readSize16k)
 	return image
 }
 
@@ -575,13 +579,12 @@ func spoofStdFDs(log *base.LogObject, agentName string) *os.File {
 		log.Fatalf("spoofStdFDs: Failed opening stdout file %s with err: %s", stdOutFile, err)
 	}
 
-	fd2, err := syscall.Dup(int(os.Stdout.Fd()))
+	fd2, err := syscall.Dup(syscall.Stdout)
 	if err != nil {
 		log.Fatalf("spoofStdFDs: Error duplicating Stdout: %s", err)
 	}
-	originalStdout, err := os.OpenFile(fmt.Sprintf("/dev/fd/%d", fd2),
-		os.O_WRONLY|os.O_CREATE|os.O_SYNC, 0755)
-	if err != nil {
+	originalStdout := os.NewFile(uintptr(fd2), "originalStdout")
+	if originalStdout == nil {
 		log.Fatalf("spoofStdFDs: Error opening duplicate stdout with fd: %v", fd2)
 	}
 	// replace stdout

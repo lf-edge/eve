@@ -1,6 +1,6 @@
 module github.com/lf-edge/eve/libs/zedUpload
 
-go 1.18
+go 1.20
 
 require (
 	cloud.google.com/go/storage v1.17.0

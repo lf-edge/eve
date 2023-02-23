@@ -7,7 +7,6 @@ package pidfile
 
 import (
 	"fmt"
-	"io/ioutil"
 	"os"
 	"strconv"
 	"syscall"
@@ -23,7 +22,7 @@ func writeMyPid(filename string) error {
 	pid := os.Getpid()
 	pidStr := fmt.Sprintf("%d", pid)
 	b := []byte(pidStr)
-	return ioutil.WriteFile(filename, b, 0644)
+	return os.WriteFile(filename, b, 0644)
 }
 
 // CheckProcessExists returns true if agent process is running
@@ -35,7 +34,7 @@ func CheckProcessExists(log *base.LogObject, agentName string) (bool, string) {
 	}
 	log.Functionf("CheckProcessExists: found %s\n", filename)
 	// Check if process still exists
-	b, err := ioutil.ReadFile(filename)
+	b, err := os.ReadFile(filename)
 	if err != nil {
 		log.Fatalf("CheckProcessExists: %s", err)
 	}
@@ -54,7 +53,7 @@ func CheckProcessExists(log *base.LogObject, agentName string) (bool, string) {
 	return false, fmt.Sprintf("no running process found for agent %s", agentName)
 }
 
-//CheckAndCreatePidfile check if old process is not running and create new pid file
+// CheckAndCreatePidfile check if old process is not running and create new pid file
 func CheckAndCreatePidfile(log *base.LogObject, agentName string) error {
 	if exists, description := CheckProcessExists(log, agentName); exists {
 		return fmt.Errorf("checkAndCreatePidfile: %s", description)

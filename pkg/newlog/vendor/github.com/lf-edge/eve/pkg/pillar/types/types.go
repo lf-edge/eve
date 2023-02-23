@@ -11,6 +11,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/lf-edge/eve/api/go/info"
 	"github.com/lf-edge/eve/pkg/pillar/base"
+	"github.com/lf-edge/eve/pkg/pillar/objtonum"
 	"github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus" // OK for logrus.Fatal
 )
@@ -178,20 +179,71 @@ func (state SwState) ZSwState() info.ZSwState {
 	return info.ZSwState_INITIAL
 }
 
-// Used to retain UUID to integer maps across reboots.
-// Used for appNum and bridgeNum
+// UuidToNumKey is used as a reference to an object with an allocated number stored
+// inside UuidToNum.
+type UuidToNumKey struct {
+	UUID uuid.UUID
+}
+
+// Key returns string representation of the key.
+func (k UuidToNumKey) Key() string {
+	return k.UUID.String()
+}
+
+// UuidToNum is used to store number allocated for an object with UUID.
+// Currently used for appNum and bridgeNum (number types).
 type UuidToNum struct {
-	UUID        uuid.UUID
+	UuidToNumKey
 	Number      int
-	NumType     string // For logging
+	NumType     string
 	CreateTime  time.Time
 	LastUseTime time.Time
 	InUse       bool
 }
 
-// Key is the key in pubsub
-func (info UuidToNum) Key() string {
-	return info.UUID.String()
+// New is used by objtonum.ObjNumPublisher.
+func (info *UuidToNum) New(objKey objtonum.ObjKey) objtonum.ObjNumContainer {
+	key, ok := objKey.(UuidToNumKey)
+	if !ok {
+		panic(fmt.Sprintf("invalid key type: %T vs. expected UuidToNumKey", objKey))
+	}
+	return &UuidToNum{
+		UuidToNumKey: key,
+		LastUseTime:  time.Now(),
+		CreateTime:   time.Now(),
+	}
+}
+
+// GetKey is used by objtonum.ObjNumPublisher.
+func (info *UuidToNum) GetKey() objtonum.ObjKey {
+	return info.UuidToNumKey
+}
+
+// SetNumber is used by objtonum.ObjNumPublisher.
+func (info *UuidToNum) SetNumber(number int, numberType string) {
+	info.Number = number
+	info.NumType = numberType
+	info.LastUseTime = time.Now()
+}
+
+// GetNumber is used by objtonum.ObjNumPublisher.
+func (info *UuidToNum) GetNumber() (number int, numberType string) {
+	return info.Number, info.NumType
+}
+
+// GetTimestamps is used by objtonum.ObjNumPublisher.
+func (info *UuidToNum) GetTimestamps() (createdAt time.Time, lastUpdatedAt time.Time) {
+	return info.CreateTime, info.LastUseTime
+}
+
+// SetReservedOnly is used by objtonum.ObjNumPublisher.
+func (info *UuidToNum) SetReservedOnly(reservedOnly bool) {
+	info.InUse = !reservedOnly
+}
+
+// IsReservedOnly is used by objtonum.ObjNumPublisher.
+func (info *UuidToNum) IsReservedOnly() bool {
+	return !info.InUse
 }
 
 // LogCreate :
@@ -273,18 +325,46 @@ func FormatTriState(state TriState) string {
 	return ""
 }
 
-//UEvent stores information about uevent comes from kernel
+// UEvent stores information about uevent comes from kernel
 type UEvent struct {
 	Action string
 	Obj    string
 	Env    map[string]string
 }
 
-// UUIDPairAndIfIdxToNum used for appNum on network instance
+// AppInterfaceKey uniquely references application interface.
+type AppInterfaceKey struct {
+	// NetInstID : UUID of the network instance to which the interface is connected.
+	// Previously it was called BaseID, which was rather unspecific and a bit confusing.
+	// In order to not break EVE upgrades, the json tag is set to use this old field name.
+	NetInstID uuid.UUID `json:"BaseID"`
+	// AppID : UUID of the application
+	AppID uuid.UUID
+	// IfIdx : interface index among interfaces of this app on this network instance.
+	// First has index 0, next 1, etc.
+	IfIdx uint32
+}
+
+// Key returns string representation of the key.
+func (info AppInterfaceKey) Key() string {
+	return fmt.Sprintf("%s-%s-%d",
+		info.NetInstID.String(), info.AppID.String(), info.IfIdx)
+}
+
+// AppInterfaceToNum is used to store number assigned to an application interface.
+// The number is unique only within the network instance where the interface
+// is connected to. It is used to generate an IP address for the interface.
+type AppInterfaceToNum = UUIDPairAndIfIdxToNum
+
+// UUIDPairAndIfIdxToNum is a legacy name for a structure holding number allocated
+// to an application interface. Because this name is rather unspecific and quite
+// clumsy, we now use the AppInterfaceToNum alias instead.
+// However, in order to not break EVE upgrades (by changing pubsub topic name),
+// we continue using this name for the underlying structure.
+// Do NOT use this type name anywhere else in pillar anymore, use AppInterfaceToNum
+// instead.
 type UUIDPairAndIfIdxToNum struct {
-	BaseID      uuid.UUID
-	AppID       uuid.UUID
-	IfIdx       uint32
+	AppInterfaceKey
 	Number      int
 	NumType     string
 	CreateTime  time.Time
@@ -292,50 +372,95 @@ type UUIDPairAndIfIdxToNum struct {
 	InUse       bool
 }
 
-// Key is the key in pubsub
-func (info UUIDPairAndIfIdxToNum) Key() string {
-	return UUIDPairAndIfIdxToNumKey(info.BaseID, info.AppID, info.IfIdx)
+// New is used by objtonum.ObjNumPublisher.
+func (info *AppInterfaceToNum) New(objKey objtonum.ObjKey) objtonum.ObjNumContainer {
+	key, ok := objKey.(AppInterfaceKey)
+	if !ok {
+		panic(fmt.Sprintf("invalid key type: %T vs. expected AppInterfaceKey", objKey))
+	}
+	return &AppInterfaceToNum{
+		AppInterfaceKey: key,
+		LastUseTime:     time.Now(),
+		CreateTime:      time.Now(),
+	}
 }
 
-// UUIDPairAndIfIdxToNumKey is the index key
-func UUIDPairAndIfIdxToNumKey(baseID, appID uuid.UUID, ifIdx uint32) string {
-	return fmt.Sprintf("%s-%s-%d", baseID.String(), appID.String(), ifIdx)
+// GetKey is used by objtonum.ObjNumPublisher.
+func (info *AppInterfaceToNum) GetKey() objtonum.ObjKey {
+	return info.AppInterfaceKey
+}
+
+// SetNumber is used by objtonum.ObjNumPublisher.
+func (info *AppInterfaceToNum) SetNumber(number int, numberType string) {
+	info.Number = number
+	info.NumType = numberType
+	info.LastUseTime = time.Now()
+}
+
+// GetNumber is used by objtonum.ObjNumPublisher.
+func (info *AppInterfaceToNum) GetNumber() (number int, numberType string) {
+	return info.Number, info.NumType
+}
+
+// GetTimestamps is used by objtonum.ObjNumPublisher.
+func (info *AppInterfaceToNum) GetTimestamps() (createdAt time.Time, lastUpdatedAt time.Time) {
+	return info.CreateTime, info.LastUseTime
+}
+
+// SetReservedOnly is used by objtonum.ObjNumPublisher.
+func (info *AppInterfaceToNum) SetReservedOnly(reservedOnly bool) {
+	info.InUse = !reservedOnly
+}
+
+// IsReservedOnly is used by objtonum.ObjNumPublisher.
+func (info *AppInterfaceToNum) IsReservedOnly() bool {
+	return !info.InUse
 }
 
 // LogCreate :
-func (info UUIDPairAndIfIdxToNum) LogCreate(logBase *base.LogObject) {
-	logObject := base.NewLogObject(logBase, base.UUIDPairToNumAndIfIdxLogType, "",
-		info.BaseID, info.LogKey())
+func (info AppInterfaceToNum) LogCreate(logBase *base.LogObject) {
+	logObject := base.NewLogObject(logBase, base.AppInterfaceToNumLogType, "",
+		info.NetInstID, info.LogKey())
 	if logObject == nil {
 		return
 	}
-	logObject.Noticef("UUIDPairAndIfIdxToNum info create")
+	logObject.Noticef("AppInterfaceToNum info create")
 }
 
 // LogModify :
-func (info UUIDPairAndIfIdxToNum) LogModify(logBase *base.LogObject, old interface{}) {
-	logObject := base.EnsureLogObject(logBase, base.UUIDPairToNumAndIfIdxLogType, "",
-		info.BaseID, info.LogKey())
+func (info AppInterfaceToNum) LogModify(logBase *base.LogObject, old interface{}) {
+	logObject := base.EnsureLogObject(logBase, base.AppInterfaceToNumLogType, "",
+		info.NetInstID, info.LogKey())
 
-	oldInfo, ok := old.(UUIDPairAndIfIdxToNum)
+	oldInfo, ok := old.(AppInterfaceToNum)
 	if !ok {
-		logObject.Clone().Fatalf("LogModify: Old object interface passed is not of UUIDPairAndIfIdxToNum type")
+		logObject.Clone().Fatalf("LogModify: Old object interface passed is not of AppInterfaceToNum type")
 	}
 	// XXX remove?
 	logObject.CloneAndAddField("diff", cmp.Diff(oldInfo, info)).
-		Noticef("UUIDPairAndIfIdxToNum info modify")
+		Noticef("AppInterfaceToNum info modify")
 }
 
 // LogDelete :
-func (info UUIDPairAndIfIdxToNum) LogDelete(logBase *base.LogObject) {
-	logObject := base.EnsureLogObject(logBase, base.UUIDPairToNumAndIfIdxLogType, "",
-		info.BaseID, info.LogKey())
-	logObject.Noticef("UUIDPairAndIfIdxToNum info delete")
+func (info AppInterfaceToNum) LogDelete(logBase *base.LogObject) {
+	logObject := base.EnsureLogObject(logBase, base.AppInterfaceToNumLogType, "",
+		info.NetInstID, info.LogKey())
+	logObject.Noticef("AppInterfaceToNum info delete")
 
 	base.DeleteLogObject(logBase, info.LogKey())
 }
 
 // LogKey :
-func (info UUIDPairAndIfIdxToNum) LogKey() string {
-	return string(base.UUIDPairToNumAndIfIdxLogType) + "-" + info.Key()
+func (info AppInterfaceToNum) LogKey() string {
+	return string(base.AppInterfaceToNumLogType) + "-" + info.Key()
+}
+
+// UuidsToStrings converts list of uuids to a list of strings
+func UuidsToStrings(uuids []uuid.UUID) []string {
+	list := make([]string, len(uuids))
+	for i, uuid := range uuids {
+		list[i] = uuid.String()
+	}
+
+	return list
 }
