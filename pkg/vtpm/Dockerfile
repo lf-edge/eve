@@ -10,7 +10,7 @@
 # d) extracting only required bits from tpm2-tss and tpm2-tools
 #    and the server
 
-#Build TPM2-TSS and TPM2-TOOLS
+FROM lfedge/eve-dom0-ztools:0e2f436441764689b37aeeffeb4bea64c3c5a46e as dom0
 FROM lfedge/eve-alpine:1f7685f95a475c6bbe682f0b976f12180b6c8726 as build
 ENV BUILD_PKGS linux-headers git gcc g++ autoconf automake libtool doxygen make \
                openssl-dev protobuf-dev gnupg curl-dev patch json-c json-c-dev \
@@ -18,6 +18,7 @@ ENV BUILD_PKGS linux-headers git gcc g++ autoconf automake libtool doxygen make 
 ENV PKGS alpine-baselayout musl-utils libcurl
 RUN eve-alpine-deploy.sh
 
+#Build TPM2-TSS and TPM2-TOOLS
 WORKDIR /
 ADD https://ftp.gnu.org/gnu/autoconf-archive/autoconf-archive-2019.01.06.tar.xz /autoconf-archive-2019.01.06.tar.xz
 ADD https://ftp.gnu.org/gnu/autoconf-archive/autoconf-archive-2019.01.06.tar.xz.sig /autoconf-archive-2019.01.06.tar.xz.sig
@@ -62,9 +63,15 @@ RUN cp libtss2-tctildr.so.0 libtss2-rc.so.0 libtss2-mu.so.0 libtss2-esys.so.0 \
        libtss2-sys.so.1 libtss2-tcti-device.so.0 libtss2-tcti-device.so.0.0.0 \
        /out/usr/local/lib/
 
+# setup vtpm permissions
+WORKDIR /
+# copy group/passwd from dom0 image to be able to use names insdead of ids.
+COPY --from=dom0 /etc/group /etc/group
+COPY --from=dom0 /etc/passwd /etc/passwd
+RUN mkdir /out/jail && chown vtpm:vtpm /out/jail
+
 #Pull a selected set of artifacts into the final stage.
 FROM scratch
-
 COPY --from=build /out/ /
 COPY init.sh /usr/bin/
 ENTRYPOINT []

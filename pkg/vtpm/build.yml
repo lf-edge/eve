@@ -1,6 +1,8 @@
 image: eve-vtpm
 org: lfedge
 config:
+  uid: vtpm
+  gid: vtpm
   binds:
     - /dev:/dev
     - /run:/run
