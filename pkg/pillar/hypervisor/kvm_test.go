@@ -704,7 +704,7 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
 #  addr = "0x1"
 
 [device "video0"]
-  driver = "ramfb"
+  driver = "virtio-gpu-pci"
 
 [device "pci.2"]
   driver = "pcie-root-port"
@@ -1941,7 +1941,7 @@ func TestCreateDomConfig(t *testing.T) {
 #  addr = "0x1"
 
 [device "video0"]
-  driver = "ramfb"
+  driver = "virtio-gpu-pci"
 
 [device "pci.2"]
   driver = "pcie-root-port"
