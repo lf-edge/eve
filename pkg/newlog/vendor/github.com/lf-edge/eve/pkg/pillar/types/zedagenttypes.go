@@ -14,28 +14,24 @@ import (
 	uuid "github.com/satori/go.uuid"
 )
 
-// This is what we assume will come from the ZedControl for base OS.
-// Note that we can have different versions  configured for the
-// same UUID, hence the key is the UUIDandVersion  We assume the
-// elements in ContentTreeConfig should be installed, but activation
+// BaseOsConfig is what we assume will come from the ZedControl for base OS.
+// We assume ContentTreeUUID should be installed, but activation
 // is driven by the Activate attribute.
-
 type BaseOsConfig struct {
-	UUIDandVersion        UUIDandVersion
-	BaseOsVersion         string // From GetShortVersion
-	ContentTreeConfigList []ContentTreeConfig
-	RetryCount            int32
-	Activate              bool
+	BaseOsVersion      string
+	ContentTreeUUID    string
+	RetryUpdateCounter uint32
+	Activate           bool
 }
 
 func (config BaseOsConfig) Key() string {
-	return config.UUIDandVersion.UUID.String()
+	return config.ContentTreeUUID
 }
 
 // LogCreate :
 func (config BaseOsConfig) LogCreate(logBase *base.LogObject) {
 	logObject := base.NewLogObject(logBase, base.BaseOsConfigLogType, config.BaseOsVersion,
-		config.UUIDandVersion.UUID, config.LogKey())
+		nilUUID, config.LogKey())
 	if logObject == nil {
 		return
 	}
@@ -46,7 +42,7 @@ func (config BaseOsConfig) LogCreate(logBase *base.LogObject) {
 // LogModify :
 func (config BaseOsConfig) LogModify(logBase *base.LogObject, old interface{}) {
 	logObject := base.EnsureLogObject(logBase, base.BaseOsConfigLogType, config.BaseOsVersion,
-		config.UUIDandVersion.UUID, config.LogKey())
+		nilUUID, config.LogKey())
 
 	oldConfig, ok := old.(BaseOsConfig)
 	if !ok {
@@ -68,7 +64,7 @@ func (config BaseOsConfig) LogModify(logBase *base.LogObject, old interface{}) {
 // LogDelete :
 func (config BaseOsConfig) LogDelete(logBase *base.LogObject) {
 	logObject := base.EnsureLogObject(logBase, base.BaseOsConfigLogType, config.BaseOsVersion,
-		config.UUIDandVersion.UUID, config.LogKey())
+		nilUUID, config.LogKey())
 	logObject.CloneAndAddField("activate", config.Activate).
 		Noticef("BaseOs config delete")
 
@@ -80,16 +76,15 @@ func (config BaseOsConfig) LogKey() string {
 	return string(base.BaseOsConfigLogType) + "-" + config.BaseOsVersion
 }
 
-// Indexed by UUIDandVersion as above
+// BaseOsStatus indexed by ContentTreeUUID as above
 type BaseOsStatus struct {
-	UUIDandVersion        UUIDandVersion
-	BaseOsVersion         string
-	Activated             bool
-	TooEarly              bool // Failed since previous was inprogress/test
-	ContentTreeStatusList []ContentTreeStatus
-	PartitionLabel        string
-	PartitionDevice       string // From zboot
-	PartitionState        string // From zboot
+	BaseOsVersion   string
+	Activated       bool
+	TooEarly        bool // Failed since previous was inprogress/test
+	ContentTreeUUID string
+	PartitionLabel  string
+	PartitionDevice string // From zboot
+	PartitionState  string // From zboot
 	// Minimum state across all steps/StorageStatus.
 	// Error* set implies error.
 	State SwState
@@ -99,13 +94,13 @@ type BaseOsStatus struct {
 }
 
 func (status BaseOsStatus) Key() string {
-	return status.UUIDandVersion.UUID.String()
+	return status.ContentTreeUUID
 }
 
 // LogCreate :
 func (status BaseOsStatus) LogCreate(logBase *base.LogObject) {
 	logObject := base.NewLogObject(logBase, base.BaseOsStatusLogType, status.BaseOsVersion,
-		status.UUIDandVersion.UUID, status.LogKey())
+		nilUUID, status.LogKey())
 	if logObject == nil {
 		return
 	}
@@ -116,7 +111,7 @@ func (status BaseOsStatus) LogCreate(logBase *base.LogObject) {
 // LogModify :
 func (status BaseOsStatus) LogModify(logBase *base.LogObject, old interface{}) {
 	logObject := base.EnsureLogObject(logBase, base.BaseOsStatusLogType, status.BaseOsVersion,
-		status.UUIDandVersion.UUID, status.LogKey())
+		nilUUID, status.LogKey())
 
 	oldStatus, ok := old.(BaseOsStatus)
 	if !ok {
@@ -145,7 +140,7 @@ func (status BaseOsStatus) LogModify(logBase *base.LogObject, old interface{}) {
 // LogDelete :
 func (status BaseOsStatus) LogDelete(logBase *base.LogObject) {
 	logObject := base.EnsureLogObject(logBase, base.BaseOsStatusLogType, status.BaseOsVersion,
-		status.UUIDandVersion.UUID, status.LogKey())
+		nilUUID, status.LogKey())
 	logObject.CloneAndAddField("state", status.State.String()).
 		Noticef("BaseOs status delete")
 
@@ -264,7 +259,7 @@ const (
 	BootReasonOOM                // OOM causing process to be killed
 	BootReasonWatchdogHung       // Software watchdog due stuck agent
 	BootReasonWatchdogPid        // Software watchdog due to e.g., golang panic
-	BootReasonKernel             // TBD how we detect this
+	BootReasonKernel             // Set by dump-capture kernel, see docs/KERNEL-DUMPS.md and pkg/kdump/kdump.sh for details
 	BootReasonPowerFail          // Known power failure e.g., from disk controller S.M.A.R.T counter increase
 	BootReasonUnknown            // Could be power failure, kernel panic, or hardware watchdog
 	BootReasonVaultFailure       // Vault was not ready within the expected time
@@ -489,7 +484,7 @@ const (
 	ConfigGetReadSaved
 )
 
-//DeviceOperation is an operation on device
+// DeviceOperation is an operation on device
 type DeviceOperation uint8
 
 const (
@@ -583,12 +578,6 @@ type DeviceOpsCmd struct {
 // BaseOSMgrStatus : for sending from baseosmgr
 type BaseOSMgrStatus struct {
 	CurrentRetryUpdateCounter uint32 // CurrentRetryUpdateCounter from baseosmgr
-}
-
-// BaseOs : copy of zconfig.BaseOS
-type BaseOs struct {
-	ContentTreeUUID          string
-	ConfigRetryUpdateCounter uint32
 }
 
 // RadioSilence : used in ZedAgentStatus to record the *requested* state of radio devices.

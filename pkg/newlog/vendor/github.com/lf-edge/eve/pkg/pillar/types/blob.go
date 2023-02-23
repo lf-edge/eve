@@ -4,6 +4,7 @@
 package types
 
 import (
+	"strings"
 	"time"
 
 	"github.com/google/go-cmp/cmp"
@@ -14,8 +15,8 @@ import (
 
 // BlobStatus status of a downloaded blob
 type BlobStatus struct {
-	// DatastoreID ID of the datastore where the blob can be retrieved
-	DatastoreID uuid.UUID
+	// DatastoreIDList list of datastores where the blob can be retrieved
+	DatastoreIDList []uuid.UUID
 	// RelativeURL URL relative to the root of the datastore
 	RelativeURL string
 	// Sha256 the sha of the blob
@@ -80,8 +81,11 @@ func (status BlobStatus) LogCreate(logBase *base.LogObject) {
 	if logObject == nil {
 		return
 	}
+
+	uuids := strings.Join(UuidsToStrings(status.DatastoreIDList), ",")
+
 	logObject.CloneAndAddField("state", status.State.String()).
-		AddField("datastoreid-uuid", status.DatastoreID).
+		AddField("datastoreid-uuids", uuids).
 		AddField("size-int64", status.Size).
 		AddField("blobtype-string", status.MediaType).
 		AddField("refcount-int64", status.RefCount).
@@ -147,7 +151,7 @@ func (status BlobStatus) LogKey() string {
 	return string(base.BlobStatusLogType) + "-" + status.Key()
 }
 
-//GetDownloadedPercentage returns blob's downloaded %
+// GetDownloadedPercentage returns blob's downloaded %
 func (status BlobStatus) GetDownloadedPercentage() uint32 {
 	if status.CurrentSize > 0 && status.TotalSize > 0 {
 		return uint32((status.CurrentSize / status.TotalSize) * 100)

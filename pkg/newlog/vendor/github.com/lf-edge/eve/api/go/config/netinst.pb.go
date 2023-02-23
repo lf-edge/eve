@@ -480,19 +480,21 @@ type NetworkInstanceConfig struct {
 	// instType - Type of network instance ( local, bridge etc )
 	InstType ZNetworkInstType `protobuf:"varint,4,opt,name=instType,proto3,enum=org.lfedge.eve.config.ZNetworkInstType" json:"instType,omitempty"`
 	// activate
-	//  - True by default. If set to false ( deactivate), the network instance
-	//    configuration is downloaded to the device, but the network instance
-	//    itself is not created on the device.
+	//   - True by default. If set to false ( deactivate), the network instance
+	//     configuration is downloaded to the device, but the network instance
+	//     itself is not created on the device.
 	Activate bool `protobuf:"varint,5,opt,name=activate,proto3" json:"activate,omitempty"`
 	// port - Only a single port is supported.
-	//    This is used as the external connection for the network instance.
-	//    This can be a physical (eth0 ) or logical port (vlan 0).
-	//    The port name comes from DeviceConfig ( When it is supported in future).
-	//    If the user needs multiple physical ports, Device config should be
-	//    used to create a label for multiple physical ports.
+	//
+	//	This is used as the external connection for the network instance.
+	//	This can be a physical (eth0 ) or logical port (vlan 0).
+	//	The port name comes from DeviceConfig ( When it is supported in future).
+	//	If the user needs multiple physical ports, Device config should be
+	//	used to create a label for multiple physical ports.
 	Port *Adapter `protobuf:"bytes,20,opt,name=port,proto3" json:"port,omitempty"`
 	// cfg - Used to pass some feature-specific configuration to the
-	//       network instance. For Ex: Lisp, StriongSwan etc
+	//
+	//	network instance. For Ex: Lisp, StriongSwan etc
 	Cfg *NetworkInstanceOpaqueConfig `protobuf:"bytes,30,opt,name=cfg,proto3" json:"cfg,omitempty"`
 	// type of ipSpec
 	IpType AddressType `protobuf:"varint,39,opt,name=ipType,proto3,enum=org.lfedge.eve.config.AddressType" json:"ipType,omitempty"`

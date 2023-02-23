@@ -135,7 +135,7 @@ func (x *LogEntry) GetFunction() string {
 	return ""
 }
 
-// This is the request payload for POST /api/v1/edgeDevice/logs
+//  This is the request payload for POST /api/v1/edgeDevice/logs
 // ZInfoMsg carries device logs to the controller.
 // The messages need to be retransmitted until they make it to the controller.
 // The message is assumed to be protected by a TLS session bound to the
@@ -219,7 +219,7 @@ func (x *LogBundle) GetEveVersion() string {
 	return ""
 }
 
-// This is the request payload for POST /api/v1/edgeDevice/apps/instances/id/<app-instance-uuid>/logs
+//  This is the request payload for POST /api/v1/edgeDevice/apps/instances/id/<app-instance-uuid>/logs
 type AppInstanceLogBundle struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache

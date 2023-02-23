@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/lf-edge/eve/pkg/pillar/base"
+	"github.com/lf-edge/eve/pkg/pillar/sriov"
 	uuid "github.com/satori/go.uuid"
 )
 
@@ -81,6 +82,10 @@ type AppInstanceConfig struct {
 	// Service flag indicates that we want to start app instance
 	// with options defined in org.mobyproject.config label of image provided by linuxkit
 	Service bool
+
+	// All changes to the cloud-init config are tracked using this version field -
+	// once the version is changed cloud-init tool restarts in a guest.
+	CloudInitVersion uint32
 }
 
 type AppInstanceOpsCmd struct {
@@ -91,8 +96,8 @@ type AppInstanceOpsCmd struct {
 // IoAdapter specifies that a group of ports should be assigned
 type IoAdapter struct {
 	Type  IoType
-	Name  string // Short hand name such as "COM1" or "eth1-2"
-	EthVf EthVF  // Applies only to the VF IoType
+	Name  string      // Short hand name such as "COM1" or "eth1-2"
+	EthVf sriov.EthVF // Applies only to the VF IoType
 }
 
 // LogCreate :

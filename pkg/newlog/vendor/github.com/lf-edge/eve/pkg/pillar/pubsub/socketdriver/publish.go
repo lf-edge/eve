@@ -7,7 +7,6 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"net"
 	"os"
 	"strconv"
@@ -104,7 +103,7 @@ func (s *Publisher) Load() (map[string][]byte, int, error) {
 
 	s.log.Tracef("Load(%s)\n", s.name)
 
-	files, err := ioutil.ReadDir(dirName)
+	files, err := os.ReadDir(dirName)
 	if err != nil {
 		// Drive on?
 		s.log.Error(err)
@@ -114,7 +113,7 @@ func (s *Publisher) Load() (map[string][]byte, int, error) {
 		if !strings.HasSuffix(file.Name(), ".json") {
 			if file.Name() == "restarted" {
 				statusFile := dirName + "/" + file.Name()
-				sb, err := ioutil.ReadFile(statusFile)
+				sb, err := os.ReadFile(statusFile)
 				if err != nil {
 					s.log.Errorf("Load: %s for %s\n", err, statusFile)
 					continue
@@ -142,7 +141,7 @@ func (s *Publisher) Load() (map[string][]byte, int, error) {
 
 		s.log.Tracef("Load found key %s file %s\n", key, statusFile)
 
-		sb, err := ioutil.ReadFile(statusFile)
+		sb, err := os.ReadFile(statusFile)
 		if err != nil {
 			s.log.Errorf("Load: %s for %s\n", err, statusFile)
 			continue
@@ -184,7 +183,7 @@ func (s *Publisher) Load() (map[string][]byte, int, error) {
 func (s *Publisher) recoverFromBackup(key string) ([]byte, error) {
 	origFileName := s.dirName + "/" + key + ".json"
 	backupFileName := origFileName + ".bak"
-	bakData, err := ioutil.ReadFile(backupFileName)
+	bakData, err := os.ReadFile(backupFileName)
 	if err != nil {
 		err = fmt.Errorf("failed to read backup file %s: %w", backupFileName, err)
 		return nil, err

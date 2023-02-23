@@ -98,7 +98,7 @@ func (config VolumeConfig) LogKey() string {
 	return string(base.VolumeConfigLogType) + "-" + config.Key()
 }
 
-//volumeSubState is type for defining additional statuses for VolumeStatus
+// volumeSubState is type for defining additional statuses for VolumeStatus
 type volumeSubState uint8
 
 // Enum of volumeSubState variants

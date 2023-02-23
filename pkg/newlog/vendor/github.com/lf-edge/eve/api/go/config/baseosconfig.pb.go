@@ -192,12 +192,12 @@ type BaseOS struct {
 	ContentTreeUuid string `protobuf:"bytes,1,opt,name=content_tree_uuid,json=contentTreeUuid,proto3" json:"content_tree_uuid,omitempty"`
 	// retry_update
 	// Retry the BaseOs update if the update failed previously.
-	// 1) If this image is in FAILED state, retry the image update.
-	// 2) If this image is already active and fully installed (PartitionState = UPDATED),
-	//    Do nothing. Just update the baseos_update_counter in Info message.
-	// 3) If this image is same as active image, but status is NOT yet UPDATED, or
-	//    if the update to this image is in progress, wait till the update
-	//    concludes (Success / Error+rollback) - then trigger the retry as needed.
+	//  1. If this image is in FAILED state, retry the image update.
+	//  2. If this image is already active and fully installed (PartitionState = UPDATED),
+	//     Do nothing. Just update the baseos_update_counter in Info message.
+	//  3. If this image is same as active image, but status is NOT yet UPDATED, or
+	//     if the update to this image is in progress, wait till the update
+	//     concludes (Success / Error+rollback) - then trigger the retry as needed.
 	RetryUpdate *DeviceOpsCmd `protobuf:"bytes,2,opt,name=retry_update,json=retryUpdate,proto3" json:"retry_update,omitempty"`
 	// if not set BaseOS will be installed,
 	// but not activated

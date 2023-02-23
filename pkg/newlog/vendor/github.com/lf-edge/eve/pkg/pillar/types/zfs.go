@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	zconfig "github.com/lf-edge/eve/api/go/config"
 	uuid "github.com/satori/go.uuid"
 )
 
@@ -45,11 +46,15 @@ func (status VolumeCreatePending) ZVolName() string {
 		status.GenerationCounter+status.LocalGenerationCounter)
 }
 
-// ZVolNameToKey returns key for volumestatus for provided zVolName
-func ZVolNameToKey(zVolName string) string {
-	split := strings.Split(zVolName, "/")
-	lastPart := split[len(split)-1]
-	return strings.ReplaceAll(lastPart, ".", "#")
+// UseZVolDisk returns true if we should use zvol for the provided VolumeStatus and PersistType
+func (status VolumeStatus) UseZVolDisk(persistType PersistType) bool {
+	if status.IsContainer() {
+		return false
+	}
+	if status.ContentFormat == zconfig.Format_ISO {
+		return false
+	}
+	return persistType == PersistZFS
 }
 
 // ZVolStatus specifies the needed information for zfs volume

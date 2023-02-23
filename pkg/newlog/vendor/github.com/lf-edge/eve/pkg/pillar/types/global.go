@@ -12,12 +12,12 @@ import (
 	"github.com/sirupsen/logrus" // OK for logrus.Fatal
 )
 
-// SenderResult - Enum name for return extra sender results from SendOnAllIntf
-type SenderResult uint8
+// SenderStatus - Enum to further clarify the reason for failed SendOnAllIntf/SendOnIntf
+type SenderStatus uint8
 
 // Enum of http extra status for 'rtf'
 const (
-	SenderStatusNone                      SenderResult = iota
+	SenderStatusNone                      SenderStatus = iota
 	SenderStatusRefused                                // ECNNREFUSED
 	SenderStatusUpgrade                                // 503 indicating controller upgrade in progress
 	SenderStatusCertInvalid                            // Server cert expired or NotBefore; device might have wrong time
@@ -32,6 +32,42 @@ const (
 	SenderStatusFailed                                 // Other failure
 	SenderStatusDebug                                  // Not a failure
 )
+
+// String prints ASCII
+func (status SenderStatus) String() string {
+	switch status {
+	case SenderStatusNone:
+		return "SenderStatusNone"
+	case SenderStatusRefused:
+		return "SenderStatusRefused"
+	case SenderStatusUpgrade:
+		return "SenderStatusUpgrade"
+	case SenderStatusCertInvalid:
+		return "SenderStatusCertInvalid"
+	case SenderStatusCertMiss:
+		return "SenderStatusCertMiss"
+	case SenderStatusSignVerifyFail:
+		return "SenderStatusSignVerifyFail"
+	case SenderStatusAlgoFail:
+		return "SenderStatusAlgoFail"
+	case SenderStatusHashSizeError:
+		return "SenderStatusHashSizeError"
+	case SenderStatusCertUnknownAuthority:
+		return "SenderStatusCertUnknownAuthority"
+	case SenderStatusCertUnknownAuthorityProxy:
+		return "SenderStatusCertUnknownAuthorityProxy"
+	case SenderStatusNotFound:
+		return "SenderStatusNotFound"
+	case SenderStatusForbidden:
+		return "SenderStatusForbidden"
+	case SenderStatusFailed:
+		return "SenderStatusFailed"
+	case SenderStatusDebug:
+		return "SenderStatusDebug"
+	default:
+		return fmt.Sprintf("Unknown status %d", status)
+	}
+}
 
 const (
 	// MinuteInSec is number of seconds in a minute
@@ -63,7 +99,8 @@ func NewGlobalStatus() *GlobalStatus {
 }
 
 // setItemValue - Sets value for the key. Expects a valid key. asserts if
-//  the key is not found.
+//
+//	the key is not found.
 func (gs *GlobalStatus) setItemValue(key, value string) {
 	item := gs.ConfigItems[key]
 	item.Value = value
@@ -117,6 +154,8 @@ const (
 	// Int Items
 	// ConfigInterval global setting key
 	ConfigInterval GlobalSettingKey = "timer.config.interval"
+	// CertInterval global setting key; check for controller cert update
+	CertInterval GlobalSettingKey = "timer.cert.interval"
 	// MetricInterval global setting key
 	MetricInterval GlobalSettingKey = "timer.metric.interval"
 	// DiskScanMetricInterval global setting key
@@ -162,6 +201,8 @@ const (
 	// Dom0DiskUsageMaxBytes - Max disk usage for Dom0. Dom0 can use
 	//  Dom0MinDiskUsagePercent up to a max of  Dom0DiskUsageMaxBytes
 	Dom0DiskUsageMaxBytes GlobalSettingKey = "storage.dom0.disk.maxusagebytes"
+	// StorageZfsReserved is the percentage reserved in a ZFS pool
+	StorageZfsReserved GlobalSettingKey = "storage.zfs.reserved.percent"
 	// AppContainerStatsInterval - App Container Stats Collection
 	AppContainerStatsInterval GlobalSettingKey = "timer.appcontainer.stats.interval"
 	// VaultReadyCutOffTime global setting key
@@ -205,6 +246,8 @@ const (
 	// String Items
 	// SSHAuthorizedKeys global setting key
 	SSHAuthorizedKeys GlobalSettingKey = "debug.enable.ssh"
+	// ConsoleAccess global setting key
+	ConsoleAccess GlobalSettingKey = "debug.enable.console"
 	// DefaultLogLevel global setting key
 	DefaultLogLevel GlobalSettingKey = "debug.default.loglevel"
 	// DefaultRemoteLogLevel global setting key
@@ -218,6 +261,24 @@ const (
 
 	// XXX temp for testing edge-view
 	EdgeViewToken GlobalSettingKey = "edgeview.authen.jwt"
+
+	// NetDumpEnable : enable publishing of network diagnostics (as tgz archives to /persist/netdump).
+	NetDumpEnable GlobalSettingKey = "netdump.enable"
+	// NetDumpTopicPreOnboardInterval : how frequently (in seconds) can be netdumps
+	// of the same topic published.
+	// This interval applies *only until* device is onboarded.
+	NetDumpTopicPreOnboardInterval GlobalSettingKey = "netdump.topic.preonboard.interval"
+	// NetDumpTopicPostOnboardInterval : how frequently (in seconds) can be netdumps
+	// of the same topic published.
+	// This interval applies *after* device is onboarded.
+	NetDumpTopicPostOnboardInterval GlobalSettingKey = "netdump.topic.postonboard.interval"
+	// NetDumpTopicMaxCount : maximum number of netdumps that can be published (persisted)
+	// for each topic. The oldest netdump is unpublished should a new netdump exceed the limit.
+	NetDumpTopicMaxCount GlobalSettingKey = "netdump.topic.maxcount"
+	// NetDumpDownloaderPCAP : Enable to include packet captures inside netdumps for
+	// download requests. However, even if enabled, TCP segments carrying non-empty payload
+	// (i.e. content which is being downloaded) are excluded.
+	NetDumpDownloaderPCAP GlobalSettingKey = "netdump.downloader.with.pcap"
 )
 
 // AgentSettingKey - keys for per-agent settings
@@ -367,7 +428,8 @@ func (specMap *ConfigItemSpecMap) AddAgentSettingStringItem(key AgentSettingKey,
 }
 
 // parseAgentSettingKey
-//  Returns AgentName, AgentSettingKey, error ( nil if success )
+//
+//	Returns AgentName, AgentSettingKey, error ( nil if success )
 func parseAgentSettingKey(key string) (string, AgentSettingKey, error) {
 	// Check new Agent Key Setting
 	re := regexp.MustCompile(agentSettingKeyPattern)
@@ -420,8 +482,9 @@ func (specMap *ConfigItemSpecMap) parseAgentItem(
 }
 
 // ParseItem - Parses the Key/Value pair into a ConfigItem and updates
-//  newConfigMap. If there is a Parse error, it copies the corresponding value
-//  from oldConfigMap
+//
+//	newConfigMap. If there is a Parse error, it copies the corresponding value
+//	from oldConfigMap
 func (specMap *ConfigItemSpecMap) ParseItem(newConfigMap *ConfigItemValueMap,
 	oldConfigMap *ConfigItemValueMap,
 	key string, value string) (ConfigItemValue, error) {
@@ -728,6 +791,9 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	// too long to get next config and is practically unreachable for any config
 	// changes or reboot through cloud.
 	configItemSpecMap.AddIntItem(ConfigInterval, 60, 5, HourInSec)
+	// Additional safety to periodically fetch the controller certificate
+	// Useful for odd cases when the triggered updates do not work.
+	configItemSpecMap.AddIntItem(CertInterval, 24*HourInSec, 60, 0xFFFFFFFF)
 	// timer.metric.diskscan.interval (seconds)
 	// Shorter interval can lead to device scanning the disk frequently which is a costly operation.
 	configItemSpecMap.AddIntItem(DiskScanMetricInterval, 300, 5, HourInSec)
@@ -762,7 +828,9 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	// Dom0DiskUsageMaxBytes - Default is 2GB, min is 100MB
 	configItemSpecMap.AddIntItem(Dom0DiskUsageMaxBytes, 2*1024*1024*1024,
 		100*1024*1024, 0xFFFFFFFF)
+	configItemSpecMap.AddIntItem(StorageZfsReserved, 20, 1, 99)
 	configItemSpecMap.AddIntItem(ForceFallbackCounter, 0, 0, 0xFFFFFFFF)
+
 	configItemSpecMap.AddIntItem(EveMemoryLimitInBytes, uint32(eveMemoryLimitInBytes),
 		uint32(eveMemoryLimitInBytes), 0xFFFFFFFF)
 	// Limit manual vmm overhead override to 1 PiB
@@ -780,9 +848,10 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	configItemSpecMap.AddBoolItem(AllowLogFastupload, false)
 	configItemSpecMap.AddBoolItem(DisableDHCPAllOnesNetMask, false)
 	configItemSpecMap.AddBoolItem(ProcessCloudInitMultiPart, false)
+	configItemSpecMap.AddBoolItem(ConsoleAccess, true) // Controller likely default to false
 
 	// Add TriState Items
-	configItemSpecMap.AddTriStateItem(NetworkFallbackAnyEth, TS_ENABLED)
+	configItemSpecMap.AddTriStateItem(NetworkFallbackAnyEth, TS_DISABLED)
 	configItemSpecMap.AddTriStateItem(MaintenanceMode, TS_NONE)
 
 	// Add String Items
@@ -797,6 +866,12 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	// XXX temp edgeview setting
 	configItemSpecMap.AddStringItem(EdgeViewToken, "", blankValidator)
 
+	// Add NetDump settings
+	configItemSpecMap.AddBoolItem(NetDumpEnable, true)
+	configItemSpecMap.AddIntItem(NetDumpTopicPreOnboardInterval, HourInSec, 60, 0xFFFFFFFF)
+	configItemSpecMap.AddIntItem(NetDumpTopicPostOnboardInterval, 24*HourInSec, 60, 0xFFFFFFFF)
+	configItemSpecMap.AddIntItem(NetDumpTopicMaxCount, 10, 1, 0xFFFFFFFF)
+	configItemSpecMap.AddBoolItem(NetDumpDownloaderPCAP, false)
 	return configItemSpecMap
 }
 

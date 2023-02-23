@@ -102,12 +102,14 @@ var (
 	PersistDataset = strings.TrimLeft(PersistDir, "/")
 	// PersistPool - parent pool
 	PersistPool = PersistDataset
+	// ClearDataset - dataset which is not encrypted
+	ClearDataset = strings.TrimLeft(ClearDirName, "/")
 	// SealedDataset - dataset sealed under TPM PCRs
-	SealedDataset = PersistDataset + "/vault"
+	SealedDataset = strings.TrimLeft(SealedDirName, "/")
 	// PersistReservedDataset - reserved dataset
 	PersistReservedDataset = PersistDataset + "/reserved"
 	//VolumeClearZFSDataset - dataset to create volumes without encryption
-	VolumeClearZFSDataset = strings.TrimLeft(VolumeClearDirName, "/")
+	VolumeClearZFSDataset = ClearDataset + "/volumes"
 	//VolumeEncryptedZFSDataset - dataset to create volumes with encryption
-	VolumeEncryptedZFSDataset = strings.TrimLeft(VolumeEncryptedDirName, "/")
+	VolumeEncryptedZFSDataset = SealedDataset + "/volumes"
 )
