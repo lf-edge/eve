@@ -1,11 +1,10 @@
 # github.com/google/go-tpm v0.3.3
-## explicit; go 1.20
+## explicit; go 1.12
 github.com/google/go-tpm/tpm2
 github.com/google/go-tpm/tpmutil
 github.com/google/go-tpm/tpmutil/tbs
-# golang.org/x/sys v0.0.0-20210629170331-7dc0b73dc9fb
-## explicit; go 1.20
-golang.org/x/sys/internal/unsafeheader
+# golang.org/x/sys v0.1.0
+## explicit; go 1.17
 golang.org/x/sys/unix
 # github.com/lf-edge/eve/api/go => github.com/lf-edge/eve/api/go v0.0.0-20221108162354-969f3cba94d8
 # github.com/lf-edge/eve/libs/depgraph => github.com/lf-edge/eve/libs/depgraph v0.0.0-20221108162354-969f3cba94d8

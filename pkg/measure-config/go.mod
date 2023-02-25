@@ -8,4 +8,4 @@ replace github.com/lf-edge/eve/libs/depgraph => github.com/lf-edge/eve/libs/depg
 
 require github.com/google/go-tpm v0.3.3
 
-require golang.org/x/sys v0.0.0-20210629170331-7dc0b73dc9fb // indirect
+require golang.org/x/sys v0.1.0 // indirect
