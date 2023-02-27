@@ -1,6 +1,6 @@
 # Bringing EVE up on new hardware
 
-EVE-OS currently supports x86 and ARM Edge Nodes. It works best when hardware assisted virtualization is available (ideally from existing [Alpine Linux](https://alpinelinux.org) support for the hardware), but it can run with reduced functionality on pretty much anything supported by the Linux kernel. Bringing EVE-OS up on a new hardware configuration typically involves:
+EVE-OS currently supports x86 and ARM Edge Nodes. It works best when minimum [hardware security requirement](SECURITY-HARDWARE.md) is met and hardware assisted virtualization is available (ideally from existing [Alpine Linux](https://alpinelinux.org) support for the hardware), but it can run with reduced functionality on pretty much anything supported by the Linux kernel. Bringing EVE-OS up on a new hardware configuration typically involves:
 
 0. Confirming that Alpine Linux supports the processor architecture.
 1. For ARM boards, figuring out the right device trees

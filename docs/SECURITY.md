@@ -155,3 +155,7 @@ In addition, the LISP map server can provide ability to limit access to the mapp
 ## Details on keys and certificates
 
 These details are specified in [KEYS-AND-CERTS](KEYS-AND-CERTS.md).
+
+## Hardware Security
+
+These details are specified in [Hardware Security Recommendation](SECURITY-HARDWARE.md).
