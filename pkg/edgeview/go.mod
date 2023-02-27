@@ -16,7 +16,7 @@ require (
 	github.com/sirupsen/logrus v1.8.1
 	github.com/tatsushid/go-fastping v0.0.0-20160109021039-d7bb493dee3e
 	github.com/vishvananda/netlink v1.1.1-0.20210924202909-187053b97868
-	golang.org/x/sys v0.0.0-20220722155257-8c9f86f7a55f
+	golang.org/x/sys v0.5.0
 )
 
 require (
@@ -30,6 +30,6 @@ require (
 	github.com/miekg/dns v1.1.41 // indirect
 	github.com/shirou/w32 v0.0.0-20160930032740-bb4de0191aa4 // indirect
 	github.com/vishvananda/netns v0.0.0-20210104183010-2eb08e3e575f // indirect
-	golang.org/x/net v0.0.0-20220722155237-a158d28d115b // indirect
+	golang.org/x/net v0.7.0 // indirect
 	google.golang.org/protobuf v1.27.1 // indirect
 )
