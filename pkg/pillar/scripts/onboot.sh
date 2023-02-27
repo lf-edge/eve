@@ -170,4 +170,7 @@ echo '{"BlinkCounter": 1}' > "$ZTMPDIR/LedBlinkCounter/ledconfig.json"
 
 mkdir -p $DPCDIR
 
+# Block loading kernel module at arbitrary time
+echo 1 > /proc/sys/kernel/modules_disabled
+
 echo "$(date -Ins -u) onboot.sh done"
