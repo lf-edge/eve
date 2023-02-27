@@ -453,7 +453,8 @@ type datastoreConfAndCtx struct {
 }
 
 // prepareDatastoresList() - lookup datastore by its UUID and construct a context.
-//                           returns null and an error if any of the operations fail
+//
+//	returns null and an error if any of the operations fail
 func prepareDatastoresList(ctx *downloaderContext, dlconf types.DownloaderConfig,
 	dsids []uuid.UUID) ([]datastoreConfAndCtx, error) {
 

@@ -772,7 +772,8 @@ func updateStatusByBlob(ctx *volumemgrContext, sha ...string) {
 }
 
 // setDatastoreTypeByID() - sets datastore type looking for a matching datastore by
-//                          an ID. Returns 'true' if status was changed
+//
+//	an ID. Returns 'true' if status was changed
 func setDatastoreTypeByID(ds types.DatastoreConfig, status *types.ContentTreeStatus) bool {
 	nr := len(status.DatastoreIDList)
 	found := false
