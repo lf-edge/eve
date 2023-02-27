@@ -135,10 +135,11 @@ func lookupContentTreeConfig(ctx *volumemgrContext, key string) *types.ContentTr
 }
 
 // populateDatastoreFields() - populate all datastore related fields traversing
-//                             all datastore IDs list. Type of the found datastore
-//                             is stored into the types list. Mark the whole
-//                             status as resolved if all the datastores were
-//                             successfully found.
+//
+//	all datastore IDs list. Type of the found datastore
+//	is stored into the types list. Mark the whole
+//	status as resolved if all the datastores were
+//	successfully found.
 func populateDatastoreFields(ctx *volumemgrContext, config types.ContentTreeConfig,
 	status *types.ContentTreeStatus) {
 

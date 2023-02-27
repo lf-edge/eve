@@ -18,8 +18,9 @@ import (
 var contentInfoHash []byte
 
 // stringsToUuids() - converts list of strings to a list of uuids,
-//                    returns a list with a nil uuid and a last error if
-//                    conversion fails
+//
+//	returns a list with a nil uuid and a last error if
+//	conversion fails
 func stringsToUuids(strings []string) ([]uuid.UUID, error) {
 	list := make([]uuid.UUID, len(strings))
 	for i, str := range strings {
