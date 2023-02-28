@@ -33,6 +33,7 @@ type deferredItem struct {
 	size          int64
 	url           string
 	bailOnHTTPErr bool // Return 4xx and 5xx without trying other interfaces
+	ignoreErr     bool
 }
 
 const maxTimeToHandleDeferred = time.Minute
@@ -130,11 +131,11 @@ func (ctx *DeferredContext) handleDeferred(log *base.LogObject, event time.Time,
 			} else if err != nil {
 				log.Functionf("handleDeferred: for %s failed %s",
 					key, err)
-				exit = true
+				exit = !item.ignoreErr
 			} else if result != types.SenderStatusNone {
 				log.Functionf("handleDeferred: for %s received unexpected status %d",
 					key, result)
-				exit = true
+				exit = !item.ignoreErr
 			}
 			if ctx.sentHandler != nil {
 				f := *ctx.sentHandler
@@ -192,19 +193,21 @@ func (ctx *DeferredContext) handleDeferred(log *base.LogObject, event time.Time,
 	return len(ctx.deferredItems) == 0
 }
 
-// Replace any item for the specified key. If timer not running start it
-// SetDeferred uses the key for identifying the channel. Please note that
-// for deviceUUID key is used for attestUrl, which is not the same for
-// other Urls, where in other caes, the key is very specific for the object
-//  and object type
+// SetDeferred sets or replaces any item for the specified key and
+// starts the timer. Key is used for identifying the channel. Please
+// note that for deviceUUID key is used for attestUrl, which is not the
+// same for other Urls, where in other case, the key is very specific
+// for the object. If @ignoreErr is true the queue processing is not
+// stopped on any error and will continue, although all errors will be
+// passed to @sentHandler callback (see the CreateDeferredCtx()).
 func SetDeferred(zedcloudCtx *ZedCloudContext, key string, buf *bytes.Buffer,
-	size int64, url string, bailOnHTTPErr bool, itemType interface{}) {
+	size int64, url string, bailOnHTTPErr bool, ignoreErr bool, itemType interface{}) {
 
-	zedcloudCtx.deferredCtx.setDeferred(zedcloudCtx, key, buf, size, url, bailOnHTTPErr, itemType)
+	zedcloudCtx.deferredCtx.setDeferred(zedcloudCtx, key, buf, size, url, bailOnHTTPErr, ignoreErr, itemType)
 }
 
 func (ctx *DeferredContext) setDeferred(zedcloudCtx *ZedCloudContext,
-	key string, buf *bytes.Buffer, size int64, url string, bailOnHTTPErr bool, itemType interface{}) {
+	key string, buf *bytes.Buffer, size int64, url string, bailOnHTTPErr bool, ignoreErr bool, itemType interface{}) {
 	ctx.lock.Lock()
 	defer ctx.lock.Unlock()
 
@@ -221,6 +224,7 @@ func (ctx *DeferredContext) setDeferred(zedcloudCtx *ZedCloudContext,
 		size:          size,
 		url:           url,
 		bailOnHTTPErr: bailOnHTTPErr,
+		ignoreErr:     ignoreErr,
 	}
 	found := false
 	ind := 0

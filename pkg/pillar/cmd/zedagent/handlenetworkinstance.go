@@ -181,7 +181,7 @@ func prepareAndPublishNetworkInstanceInfoMsg(ctx *zedagentContext,
 	//If there are no failures and defers we'll send this message,
 	//but if there is a queue we'll retry sending the highest priority message.
 	zedcloud.SetDeferred(zedcloudCtx, uuid, buf, size, statusURL,
-		true, zinfo.ZInfoTypes_ZiNetworkInstance)
+		true, false, zinfo.ZInfoTypes_ZiNetworkInstance)
 	zedcloud.HandleDeferred(zedcloudCtx, time.Now(), 0, true)
 }
 

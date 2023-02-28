@@ -1175,7 +1175,7 @@ func PublishAppInfoToZedCloud(ctx *zedagentContext, uuid string,
 	//If there are no failures and defers we'll send this message,
 	//but if there is a queue we'll retry sending the highest priority message.
 	zedcloud.SetDeferred(zedcloudCtx, uuid, buf, size, statusUrl,
-		true, info.ZInfoTypes_ZiApp)
+		true, false, info.ZInfoTypes_ZiApp)
 	zedcloud.HandleDeferred(zedcloudCtx, time.Now(), 0, true)
 }
 
@@ -1245,7 +1245,7 @@ func PublishContentInfoToZedCloud(ctx *zedagentContext, uuid string,
 	//If there are no failures and defers we'll send this message,
 	//but if there is a queue we'll retry sending the highest priority message.
 	zedcloud.SetDeferred(zedcloudCtx, uuid, buf, size, statusURL,
-		true, info.ZInfoTypes_ZiContentTree)
+		true, false, info.ZInfoTypes_ZiContentTree)
 	zedcloud.HandleDeferred(zedcloudCtx, time.Now(), 0, true)
 }
 
@@ -1323,7 +1323,7 @@ func PublishVolumeToZedCloud(ctx *zedagentContext, uuid string,
 	//If there are no failures and defers we'll send this message,
 	//but if there is a queue we'll retry sending the highest priority message.
 	zedcloud.SetDeferred(zedcloudCtx, uuid, buf, size, statusURL,
-		true, info.ZInfoTypes_ZiVolume)
+		true, false, info.ZInfoTypes_ZiVolume)
 	zedcloud.HandleDeferred(zedcloudCtx, time.Now(), 0, true)
 }
 
@@ -1382,7 +1382,7 @@ func PublishBlobInfoToZedCloud(ctx *zedagentContext, blobSha string, blobStatus 
 	//If there are no failures and defers we'll send this message,
 	//but if there is a queue we'll retry sending the highest priority message.
 	zedcloud.SetDeferred(zedcloudCtx, blobSha, buf, size, statusURL,
-		true, info.ZInfoTypes_ZiBlobList)
+		true, false, info.ZInfoTypes_ZiBlobList)
 	zedcloud.HandleDeferred(zedcloudCtx, time.Now(), 0, true)
 }
 
@@ -1432,7 +1432,7 @@ func PublishEdgeviewToZedCloud(ctx *zedagentContext, evStatus *types.EdgeviewSta
 	//If there are no failures and defers we'll send this message,
 	//but if there is a queue we'll retry sending the highest priority message.
 	zedcloud.SetDeferred(zedcloudCtx, "global", buf, size, statusURL,
-		true, info.ZInfoTypes_ZiEdgeview)
+		true, false, info.ZInfoTypes_ZiEdgeview)
 	zedcloud.HandleDeferred(zedcloudCtx, time.Now(), 0, true)
 }
 
