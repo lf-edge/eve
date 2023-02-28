@@ -25,22 +25,22 @@ ADD --keep-git-dir=true https://gitlab.freedesktop.org/mobile-broadband/libmbim.
 WORKDIR /libmbim
 COPY patches/libmbim/*.patch /tmp/patches/libmbim/
 RUN for patch in /tmp/patches/libmbim/*.patch ; do patch -p1 < "$patch" ; done
-RUN ./autogen.sh && ./configure --prefix=/usr && make && make install
+RUN ./autogen.sh && ./configure --prefix=/usr && make -j "$(getconf _NPROCESSORS_ONLN)" && make install
 
 ADD --keep-git-dir=true https://gitlab.freedesktop.org/mobile-broadband/libqmi.git#${LIBQMI_COMMIT} /libqmi
 WORKDIR /libqmi
 COPY patches/libqmi/*.patch /tmp/patches/libqmi/
 RUN for patch in /tmp/patches/libqmi/*.patch ; do patch -p1 < "$patch" ; done
-RUN ./autogen.sh --without-udev && ./configure --prefix=/usr --without-udev --enable-mbim-qmux && make && make install
+RUN ./autogen.sh --without-udev && ./configure --prefix=/usr --without-udev --enable-mbim-qmux && make -j "$(getconf _NPROCESSORS_ONLN)" && make install
 
 ADD --keep-git-dir=true https://github.com/inotify-tools/inotify-tools.git#${INOTIFY_TOOLS_COMMIT} /inotify-tools
 WORKDIR /inotify-tools
-RUN ./autogen.sh && ./configure --prefix=/usr && make && make install
+RUN ./autogen.sh && ./configure --prefix=/usr && make -j "$(getconf _NPROCESSORS_ONLN)" && make install
 
 ADD --keep-git-dir=true https://github.com/npat-efault/picocom.git#${PICOCOM_COMMIT} /picocom
 WORKDIR /picocom
 # Need this patch to build with musl: https://github.com/npat-efault/picocom/commit/1acf1ddabaf3576b4023c4f6f09c5a3e4b086fb8
-RUN make && strip picocom && cp picocom /usr/bin/
+RUN make -j "$(getconf _NPROCESSORS_ONLN)" && strip picocom && cp picocom /usr/bin/
 
 RUN strip /usr/bin/*cli /usr/libexec/*proxy /usr/lib/libmbim*.so.* /usr/lib/libqmi*.so.* /usr/lib/libinotifytools*.so.*
 

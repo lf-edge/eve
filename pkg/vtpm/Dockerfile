@@ -23,7 +23,7 @@ RUN gpg2 -q --import /import-key.asc && \
 RUN tar -xvf autoconf-archive-2019.01.06.tar.xz
 WORKDIR /autoconf-archive-2019.01.06
 RUN ./configure --datarootdir=/usr/share/ && \
-    make && make install
+    make -j "$(getconf _NPROCESSORS_ONLN)" && make install
 
 WORKDIR /tpm2-tss
 ADD https://github.com/tpm2-software/tpm2-tss/tarball/2.3.1 /tpm2-tss.tgz
@@ -31,7 +31,7 @@ RUN tar -zxvf /tpm2-tss.tgz --strip-components=1 && \
     rm /tpm2-tss.tgz
 RUN ./bootstrap && \
     ./configure --disable-dependency-tracking && \
-    make && \
+    make -j "$(getconf _NPROCESSORS_ONLN)" && \
     make install
 
 WORKDIR /tpm2-tools
@@ -55,7 +55,7 @@ RUN cp tools/.libs/tpm2_* /out/usr/bin/
 #The vTPM server
 COPY ./ /vtpm_server
 WORKDIR /vtpm_server
-RUN make && cp vtpm_server /out/usr/bin/
+RUN make -j "$(getconf _NPROCESSORS_ONLN)" && cp vtpm_server /out/usr/bin/
 
 # install dependencies
 WORKDIR /usr/lib

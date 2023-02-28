@@ -31,7 +31,7 @@ RUN rm -rf /out && mkdir /out
 RUN if [ "$(uname -m)" = "x86_64" ] ; then \
     cp kernel_config_uefi_sos .config && \
     make olddefconfig && \
-    make -j4 && \
+    make -j "$(getconf _NPROCESSORS_ONLN)" && \
     cp arch/x86_64/boot/bzImage /out/kernel && \
     cp System.map /out ;\
 fi
