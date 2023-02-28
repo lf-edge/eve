@@ -33,7 +33,7 @@ RUN \
 ENV CONFIGURE_OPTS "--disable-nfs"
 
 RUN \
-    CPPFLAGS=-I/usr/include/tirpc ./configure ${CONFIGURE_OPTS} && make && make install DESTDIR=/out
+    CPPFLAGS=-I/usr/include/tirpc ./configure ${CONFIGURE_OPTS} && make -j "$(getconf _NPROCESSORS_ONLN)" && make install DESTDIR=/out
 
 FROM scratch
 WORKDIR /

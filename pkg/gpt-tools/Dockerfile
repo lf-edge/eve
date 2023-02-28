@@ -20,7 +20,7 @@ RUN tar xvzf popt-${POPT_VERSION}.tar.gz
 WORKDIR /popt/popt-${POPT_VERSION}
 COPY patches/popt* /popt
 RUN for patch in /popt/*patch ; do patch -p1 < $patch ; done
-RUN ./configure && make && make install
+RUN ./configure && make -j "$(getconf _NPROCESSORS_ONLN)" && make install
 
 
 WORKDIR /

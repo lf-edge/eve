@@ -11,7 +11,7 @@ WORKDIR /tmp/kexec/kexec-tools-${KEXEC_VERSION}
 ADD https://mirrors.edge.kernel.org/pub/linux/utils/kernel/kexec/kexec-tools-2.0.23.tar.gz /tmp/kexec/kexec-tools.tgz
 RUN tar -C .. -xzvf ../kexec-tools.tgz && rm -f ../kexec-tools.tgz
 RUN ./configure --prefix /usr && \
-    make && \
+    make -j "$(getconf _NPROCESSORS_ONLN)" && \
     make DESTDIR=/out install
 
 FROM scratch

@@ -16,7 +16,7 @@ RUN patch -p1 < patch01-no-pam.diff && \
     patch -p1 < patch02-rotate-raw-key.diff && \
     patch -p1 < patch03-vendor.diff && \
     patch -p1 < patch04-goConv.diff && \
-    make && make DESTDIR=/out/opt/zededa/bin install
+    make -j "$(getconf _NPROCESSORS_ONLN)" && make DESTDIR=/out/opt/zededa/bin install
 
 FROM scratch
 COPY --from=build /out/opt/zededa/bin /opt/zededa/bin

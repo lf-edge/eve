@@ -9,7 +9,7 @@ ADD http://apache.org/dyn/closer.cgi?action=download&filename=guacamole/${GUACD_
 ADD uuid-1.6.2.tar.gz /
 COPY patches /patches
 
-RUN cd /uuid-1.6.2 ; ./configure --prefix=/usr/ && make && make install
+RUN cd /uuid-1.6.2 ; ./configure --prefix=/usr/ && make -j "$(getconf _NPROCESSORS_ONLN)" && make install
 
 RUN tar xzvf ${GUACD_VERSION}.tar.gz ;\
     cd /guacamole-server-${GUACD_VERSION} ;\
@@ -18,7 +18,7 @@ RUN tar xzvf ${GUACD_VERSION}.tar.gz ;\
             patch -p1 < "$patch"; \
         done;\
     ./configure --prefix=/usr/ --with-vnc --disable-guacenc --disable-dependency-tracking && \
-     make && make install
+     make -j "$(getconf _NPROCESSORS_ONLN)" && make install
 
 FROM scratch
 
