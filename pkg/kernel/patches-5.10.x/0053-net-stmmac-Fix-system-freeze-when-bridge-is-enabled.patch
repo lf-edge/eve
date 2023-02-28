@@ -1,0 +1,52 @@
+From bcc4df7c57271ffc85d6ffe0d28624c55f5ff401 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Ren=C3=AA=20de=20Souza=20Pinto?= <rene@renesp.com.br>
+Date: Thu, 2 Mar 2023 11:22:07 +0100
+Subject: [PATCH 53/54] net: stmmac: Fix system freeze when bridge is enabled
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+On i.MX8M Plus platform an issue with bridge mode is observed, causing
+the whole system to freeze because register access is performed while
+clocks are disabled. As a workaround, lets keep clocks enabled on this
+platform.
+
+This bug was observed with two NXP i.MX8M Plus devices:
+
+- Phytec phyboard-POLLUX
+- Advantech EPC-R3720
+
+The BUG can be reproducible by creating a simple bridge and assign the EQOS
+interface to it. During the configuration, system will freeze with no error
+message. The interface works flawlessly without bridge configuration.
+
+Signed-off-by: Renê de Souza Pinto <rene@renesp.com.br>
+---
+ drivers/net/ethernet/stmicro/stmmac/stmmac_main.c | 7 +++++++
+ 1 file changed, 7 insertions(+)
+
+diff --git a/drivers/net/ethernet/stmicro/stmmac/stmmac_main.c b/drivers/net/ethernet/stmicro/stmmac/stmmac_main.c
+index 45f37c116ef5..cafc3bf23399 100644
+--- a/drivers/net/ethernet/stmicro/stmmac/stmmac_main.c
++++ b/drivers/net/ethernet/stmicro/stmmac/stmmac_main.c
+@@ -5219,10 +5219,17 @@ int stmmac_dvr_probe(struct device *device,
+ 	stmmac_init_fs(ndev);
+ #endif
+ 
++/* On i.MX8M Plus platform an issue with bridge mode is observed, causing
++ * the whole system to freeze because register access is performed while
++ * clocks are disabled. As a workaround, lets keep clocks enabled on this
++ * platform.
++ */
++#ifndef CONFIG_ARCH_MXC
+ 	/* Let pm_runtime_put() disable the clocks.
+ 	 * If CONFIG_PM is not enabled, the clocks will stay powered.
+ 	 */
+ 	pm_runtime_put(device);
++#endif
+ 
+ 	return ret;
+ 
+-- 
+2.39.2
+

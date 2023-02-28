@@ -1,0 +1,34 @@
+From 58e0e48a398e87a4b61e3599b7052875c6d39fcc Mon Sep 17 00:00:00 2001
+From: Kai-Heng Feng <kai.heng.feng@canonical.com>
+Date: Fri, 14 Jan 2022 15:14:30 +0800
+Subject: [PATCH 51/54] net: stmmac: Fix "Unbalanced pm_runtime_enable!"
+ warning
+
+If the device is PCI based like intel-eth-pci, pm_runtime_enable() is
+already called by pci_pm_init().
+
+So only pm_runtime_enable() when it's not already enabled.
+
+Signed-off-by: Kai-Heng Feng <kai.heng.feng@canonical.com>
+Signed-off-by: David S. Miller <davem@davemloft.net>
+---
+ drivers/net/ethernet/stmicro/stmmac/stmmac_main.c | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/net/ethernet/stmicro/stmmac/stmmac_main.c b/drivers/net/ethernet/stmicro/stmmac/stmmac_main.c
+index 7678008c7044..45f37c116ef5 100644
+--- a/drivers/net/ethernet/stmicro/stmmac/stmmac_main.c
++++ b/drivers/net/ethernet/stmicro/stmmac/stmmac_main.c
+@@ -5179,7 +5179,8 @@ int stmmac_dvr_probe(struct device *device,
+ 
+ 	pm_runtime_get_noresume(device);
+ 	pm_runtime_set_active(device);
+-	pm_runtime_enable(device);
++	if (!pm_runtime_enabled(device))
++		pm_runtime_enable(device);
+ 
+ 	if (priv->hw->pcs != STMMAC_PCS_TBI &&
+ 	    priv->hw->pcs != STMMAC_PCS_RTBI) {
+-- 
+2.39.2
+
