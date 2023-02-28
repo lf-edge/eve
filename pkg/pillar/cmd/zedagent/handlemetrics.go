@@ -1214,9 +1214,9 @@ func PublishAppInfoToZedCloud(ctx *zedagentContext, uuid string,
 	//We queue the message and then get the highest priority message to send.
 	//If there are no failures and defers we'll send this message,
 	//but if there is a queue we'll retry sending the highest priority message.
-	zedcloud.SetDeferred(zedcloudCtx, uuid, buf, size, statusUrl,
+	zedcloudCtx.DeferredEventCtx.SetDeferred(uuid, buf, size, statusUrl,
 		true, false, info.ZInfoTypes_ZiApp)
-	zedcloud.HandleDeferred(zedcloudCtx, time.Now(), 0, true)
+	zedcloudCtx.DeferredEventCtx.HandleDeferred(time.Now(), 0, true)
 }
 
 // PublishContentInfoToZedCloud is called per change, hence needs to try over all management ports
@@ -1284,9 +1284,9 @@ func PublishContentInfoToZedCloud(ctx *zedagentContext, uuid string,
 	//We queue the message and then get the highest priority message to send.
 	//If there are no failures and defers we'll send this message,
 	//but if there is a queue we'll retry sending the highest priority message.
-	zedcloud.SetDeferred(zedcloudCtx, uuid, buf, size, statusURL,
+	zedcloudCtx.DeferredEventCtx.SetDeferred(uuid, buf, size, statusURL,
 		true, false, info.ZInfoTypes_ZiContentTree)
-	zedcloud.HandleDeferred(zedcloudCtx, time.Now(), 0, true)
+	zedcloudCtx.DeferredEventCtx.HandleDeferred(time.Now(), 0, true)
 }
 
 // PublishVolumeToZedCloud is called per change, hence needs to try over all management ports
@@ -1363,9 +1363,9 @@ func PublishVolumeToZedCloud(ctx *zedagentContext, uuid string,
 	//We queue the message and then get the highest priority message to send.
 	//If there are no failures and defers we'll send this message,
 	//but if there is a queue we'll retry sending the highest priority message.
-	zedcloud.SetDeferred(zedcloudCtx, uuid, buf, size, statusURL,
+	zedcloudCtx.DeferredEventCtx.SetDeferred(uuid, buf, size, statusURL,
 		true, false, info.ZInfoTypes_ZiVolume)
-	zedcloud.HandleDeferred(zedcloudCtx, time.Now(), 0, true)
+	zedcloudCtx.DeferredEventCtx.HandleDeferred(time.Now(), 0, true)
 }
 
 // PublishBlobInfoToZedCloud is called per change, hence needs to try over all management ports
@@ -1422,9 +1422,9 @@ func PublishBlobInfoToZedCloud(ctx *zedagentContext, blobSha string, blobStatus 
 	//We queue the message and then get the highest priority message to send.
 	//If there are no failures and defers we'll send this message,
 	//but if there is a queue we'll retry sending the highest priority message.
-	zedcloud.SetDeferred(zedcloudCtx, blobSha, buf, size, statusURL,
+	zedcloudCtx.DeferredEventCtx.SetDeferred(blobSha, buf, size, statusURL,
 		true, false, info.ZInfoTypes_ZiBlobList)
-	zedcloud.HandleDeferred(zedcloudCtx, time.Now(), 0, true)
+	zedcloudCtx.DeferredEventCtx.HandleDeferred(time.Now(), 0, true)
 }
 
 // PublishEdgeviewToZedCloud - publish Edgeview info to controller
@@ -1472,9 +1472,9 @@ func PublishEdgeviewToZedCloud(ctx *zedagentContext, evStatus *types.EdgeviewSta
 	//We queue the message and then get the highest priority message to send.
 	//If there are no failures and defers we'll send this message,
 	//but if there is a queue we'll retry sending the highest priority message.
-	zedcloud.SetDeferred(zedcloudCtx, "global", buf, size, statusURL,
+	zedcloudCtx.DeferredEventCtx.SetDeferred("global", buf, size, statusURL,
 		true, false, info.ZInfoTypes_ZiEdgeview)
-	zedcloud.HandleDeferred(zedcloudCtx, time.Now(), 0, true)
+	zedcloudCtx.DeferredEventCtx.HandleDeferred(time.Now(), 0, true)
 	ctx.iteration++
 }
 

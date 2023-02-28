@@ -110,7 +110,6 @@ type zedagentContext struct {
 	iteration                 int
 	subNetworkInstanceStatus  pubsub.Subscription
 	subCertObjConfig          pubsub.Subscription
-	deferredChan              <-chan time.Time
 	FlowlogQueue              chan<- *flowlog.FlowMessage
 	TriggerDeviceInfo         chan<- struct{}
 	TriggerHwInfo             chan<- struct{}
@@ -365,7 +364,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	}
 
 	// Timer for deferred sends of info messages
-	zedagentCtx.deferredChan = zedcloud.GetDeferredChan(zedcloudCtx,
+	zedcloudCtx.DeferredEventCtx = zedcloud.CreateDeferredCtx(zedcloudCtx,
 		getDeferredSentHandlerFunction(zedagentCtx), getDeferredPriorityFunctions()...)
 	// XXX defer this until we have some config from cloud or saved copy
 	getconfigCtx.pubAppInstanceConfig.SignalRestarted()
@@ -626,9 +625,10 @@ func waitUntilDNSReady(zedagentCtx *zedagentContext, stillRunning *time.Ticker) 
 			dnsCtx.subDeviceNetworkStatus.ProcessChange(change)
 			if dnsCtx.triggerHandleDeferred {
 				start := time.Now()
-				zedcloud.HandleDeferred(zedcloudCtx, start, 100*time.Millisecond, false)
-				zedagentCtx.ps.CheckMaxTimeTopic(agentName, "deferredChan", start,
-					warningTime, errorTime)
+				zedcloudCtx.DeferredEventCtx.HandleDeferred(
+					start, 100*time.Millisecond, false)
+				zedagentCtx.ps.CheckMaxTimeTopic(agentName, "deferredEventChan",
+					start, warningTime, errorTime)
 				dnsCtx.triggerHandleDeferred = false
 			}
 
@@ -660,10 +660,11 @@ func waitUntilDNSReady(zedagentCtx *zedagentContext, stillRunning *time.Ticker) 
 		case change := <-zedagentCtx.subLocationInfo.MsgChan():
 			zedagentCtx.subLocationInfo.ProcessChange(change)
 
-		case change := <-zedagentCtx.deferredChan:
+		case change := <-zedcloudCtx.DeferredEventCtx.Ticker.C:
 			start := time.Now()
-			zedcloud.HandleDeferred(zedcloudCtx, change, 100*time.Millisecond, false)
-			zedagentCtx.ps.CheckMaxTimeTopic(agentName, "deferredChan", start,
+			zedcloudCtx.DeferredEventCtx.HandleDeferred(
+				change, 100*time.Millisecond, false)
+			zedagentCtx.ps.CheckMaxTimeTopic(agentName, "deferredEventCtx", start,
 				warningTime, errorTime)
 
 		case <-stillRunning.C:
@@ -742,8 +743,10 @@ func mainEventLoop(zedagentCtx *zedagentContext, stillRunning *time.Ticker) {
 			}
 			if dnsCtx.triggerHandleDeferred {
 				start := time.Now()
-				zedcloud.HandleDeferred(zedcloudCtx, start, 100*time.Millisecond, false)
-				zedagentCtx.ps.CheckMaxTimeTopic(agentName, "deferredChan", start, warningTime, errorTime)
+				zedcloudCtx.DeferredEventCtx.HandleDeferred(
+					start, 100*time.Millisecond, false)
+				zedagentCtx.ps.CheckMaxTimeTopic(agentName,
+					"deferredEventCtx", start, warningTime, errorTime)
 				dnsCtx.triggerHandleDeferred = false
 			}
 			if dnsCtx.triggerRadioPOST {
@@ -834,11 +837,12 @@ func mainEventLoop(zedagentCtx *zedagentContext, stillRunning *time.Ticker) {
 				downloaderMetrics = m.(types.MetricsMap)
 			}
 
-		case change := <-zedagentCtx.deferredChan:
+		case change := <-zedcloudCtx.DeferredEventCtx.Ticker.C:
 			start := time.Now()
-			zedcloud.HandleDeferred(zedcloudCtx, change, 100*time.Millisecond, false)
-			zedagentCtx.ps.CheckMaxTimeTopic(agentName, "deferredChan", start,
-				warningTime, errorTime)
+			zedcloudCtx.DeferredEventCtx.HandleDeferred(
+				change, 100*time.Millisecond, false)
+			zedagentCtx.ps.CheckMaxTimeTopic(agentName, "deferredEventCtx",
+				start, warningTime, errorTime)
 
 		case change := <-zedagentCtx.subCipherMetricsDL.MsgChan():
 			zedagentCtx.subCipherMetricsDL.ProcessChange(change)
@@ -2427,7 +2431,7 @@ func handleOnboardStatusImpl(ctxArg interface{}, key string,
 		ctx.getconfigCtx.subAppInstanceStatus != nil {
 		if zedcloudCtx != nil && oldUUID != nilUUID {
 			// remove old deferred attest if exists
-			zedcloud.RemoveDeferred(zedcloudCtx, "attest:"+oldUUID.String())
+			zedcloudCtx.DeferredEventCtx.RemoveDeferred("attest:" + oldUUID.String())
 			if ctx.cipherCtx != nil && ctx.cipherCtx.triggerEdgeNodeCerts != nil {
 				// Re-publish certificates with new device UUID
 				triggerEdgeNodeCertEvent(ctx.getconfigCtx.zedagentCtx)
