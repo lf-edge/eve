@@ -366,6 +366,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	// Timer for deferred sends of info messages
 	zedcloudCtx.DeferredEventCtx = zedcloud.CreateDeferredCtx(zedcloudCtx,
 		getDeferredSentHandlerFunction(zedagentCtx), getDeferredPriorityFunctions()...)
+	zedcloudCtx.DeferredPeriodicCtx = zedcloud.CreateDeferredCtx(zedcloudCtx, nil)
 	// XXX defer this until we have some config from cloud or saved copy
 	getconfigCtx.pubAppInstanceConfig.SignalRestarted()
 
@@ -389,6 +390,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 
 	// Parse SMART data
 	go parseSMARTData()
+
+	// Handle deferred requests from periodic queue
+	go handleDeferredPeriodicTask(zedagentCtx)
 
 	// Use go routines to make sure we have wait/timeout without
 	// blocking the main select loop
@@ -678,6 +682,28 @@ func waitUntilDNSReady(zedagentCtx *zedagentContext, stillRunning *time.Ticker) 
 		} else {
 			zedagentCtx.ps.StillRunning(agentName, warningTime, errorTime)
 		}
+	}
+}
+
+func handleDeferredPeriodicTask(zedagentCtx *zedagentContext) {
+	wdName := agentName + "devinfo"
+
+	// Run a periodic timer so we always update StillRunning
+	stillRunning := time.NewTicker(25 * time.Second)
+	zedagentCtx.ps.StillRunning(wdName, warningTime, errorTime)
+	zedagentCtx.ps.RegisterFileWatchdog(wdName)
+
+	for {
+		select {
+		case change := <-zedcloudCtx.DeferredPeriodicCtx.Ticker.C:
+			start := time.Now()
+			zedcloudCtx.DeferredPeriodicCtx.HandleDeferred(
+				change, 100*time.Millisecond, false)
+			zedagentCtx.ps.CheckMaxTimeTopic(agentName, "deferredPeriodicCtx",
+				start, warningTime, errorTime)
+		case <-stillRunning.C:
+		}
+		zedagentCtx.ps.StillRunning(wdName, warningTime, errorTime)
 	}
 }
 

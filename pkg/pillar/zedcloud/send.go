@@ -69,6 +69,7 @@ type ZedCloudContext struct {
 	onBoardCertBytes      []byte
 	log                   *base.LogObject
 	DeferredEventCtx      *DeferredContext
+	DeferredPeriodicCtx   *DeferredContext
 }
 
 // ContextOptions - options to be passed at NewContext
