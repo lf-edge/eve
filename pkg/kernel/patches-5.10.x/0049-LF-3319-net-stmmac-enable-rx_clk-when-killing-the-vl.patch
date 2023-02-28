@@ -1,0 +1,70 @@
+From 40a52d2dca6dced768a4783bba9e1f239dcc7f92 Mon Sep 17 00:00:00 2001
+From: Shenwei Wang <shenwei.wang@nxp.com>
+Date: Tue, 9 Feb 2021 11:06:48 -0600
+Subject: [PATCH 49/54] LF-3319 net: stmmac: enable rx_clk when killing the
+ vlan
+
+when killing the vlan, the rx_clk from the phy need to be enabled.
+The patch checks the phy's status before killing the vlan. If the phy
+is stopped, enable it, remove the vlan, and then stop the phy.
+
+Reviewed-by: Frank Li <frank.li@nxp.com>
+Signed-off-by: Shenwei Wang <shenwei.wang@nxp.com>
+Acked-by: Jason Liu <jason.hui.liu@nxp.com>
+---
+ drivers/net/ethernet/stmicro/stmmac/stmmac.h      |  1 +
+ drivers/net/ethernet/stmicro/stmmac/stmmac_main.c | 12 +++++++++++-
+ 2 files changed, 12 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/net/ethernet/stmicro/stmmac/stmmac.h b/drivers/net/ethernet/stmicro/stmmac/stmmac.h
+index 617c960cfb5a..40a67ea9661f 100644
+--- a/drivers/net/ethernet/stmicro/stmmac/stmmac.h
++++ b/drivers/net/ethernet/stmicro/stmmac/stmmac.h
+@@ -188,6 +188,7 @@ struct stmmac_priv {
+ 
+ 	struct phylink_config phylink_config;
+ 	struct phylink *phylink;
++	bool is_phy_started;
+ 
+ 	struct stmmac_extra_stats xstats ____cacheline_aligned_in_smp;
+ 	struct stmmac_safety_stats sstats;
+diff --git a/drivers/net/ethernet/stmicro/stmmac/stmmac_main.c b/drivers/net/ethernet/stmicro/stmmac/stmmac_main.c
+index 4c52cad32a6b..3366886983b0 100644
+--- a/drivers/net/ethernet/stmicro/stmmac/stmmac_main.c
++++ b/drivers/net/ethernet/stmicro/stmmac/stmmac_main.c
+@@ -2919,6 +2919,7 @@ static int stmmac_open(struct net_device *dev)
+ 	phylink_start(priv->phylink);
+ 	/* We may have called phylink_speed_down before */
+ 	phylink_speed_up(priv->phylink);
++	priv->is_phy_started = true;
+ 
+ 	/* Request the IRQ lines */
+ 	ret = request_irq(dev->irq, stmmac_interrupt,
+@@ -2996,6 +2997,7 @@ static int stmmac_release(struct net_device *dev)
+ 	/* Stop and disconnect the PHY */
+ 	phylink_stop(priv->phylink);
+ 	phylink_disconnect_phy(priv->phylink);
++	priv->is_phy_started = false;
+ 
+ 	stmmac_disable_all_queues(priv);
+ 
+@@ -4718,7 +4720,15 @@ static int stmmac_vlan_rx_kill_vid(struct net_device *ndev, __be16 proto, u16 vi
+ 	clear_bit(vid, priv->active_vlans);
+ 
+ 	if (priv->hw->num_vlan) {
+-		ret = stmmac_del_hw_vlan_rx_fltr(priv, ndev, priv->hw, proto, vid);
++		if (priv->is_phy_started == false) {
++			stmmac_init_phy(ndev);
++			phylink_start(priv->phylink);
++			ret = stmmac_del_hw_vlan_rx_fltr(priv, ndev, priv->hw, proto, vid);
++			phylink_stop(priv->phylink);
++			phylink_disconnect_phy(priv->phylink);
++		} else {
++			ret = stmmac_del_hw_vlan_rx_fltr(priv, ndev, priv->hw, proto, vid);
++		}
+ 		if (ret)
+ 			goto del_vlan_error;
+ 	}
+-- 
+2.39.2
+

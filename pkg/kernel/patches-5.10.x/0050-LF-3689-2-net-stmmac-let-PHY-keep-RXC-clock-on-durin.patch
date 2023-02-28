@@ -1,0 +1,35 @@
+From fcb8af2b251a5db2db2928f138466e9b7be7e3f7 Mon Sep 17 00:00:00 2001
+From: Joakim Zhang <qiangqing.zhang@nxp.com>
+Date: Wed, 7 Apr 2021 17:44:31 +0800
+Subject: [PATCH 50/54] LF-3689-2 net: stmmac: let PHY keep RXC clock on during
+ LPI
+
+i.MX EQOS MAC RX logic depends on RXC clock from PHY, so let PHY keep
+RXC clock on during LPI, otherwise RXC clock would stop when PHY in LPI.
+AR8031 PHY doesn't implement this feature, RTL8211FD PHY does.
+
+This patch fixes below error log during suspend/resume test with WoL enabled.
+imx-dwmac 30bf0000.ethernet eth0: Timeout accessing MAC_VLAN_Tag_Filter
+
+Reviewed-by: Jun Li <jun.li@nxp.com>
+Signed-off-by: Joakim Zhang <qiangqing.zhang@nxp.com>
+---
+ drivers/net/ethernet/stmicro/stmmac/stmmac_main.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/net/ethernet/stmicro/stmmac/stmmac_main.c b/drivers/net/ethernet/stmicro/stmmac/stmmac_main.c
+index 3366886983b0..7678008c7044 100644
+--- a/drivers/net/ethernet/stmicro/stmmac/stmmac_main.c
++++ b/drivers/net/ethernet/stmicro/stmmac/stmmac_main.c
+@@ -1059,7 +1059,7 @@ static void stmmac_mac_link_up(struct phylink_config *config,
+ 
+ 	stmmac_mac_set(priv, priv->ioaddr, true);
+ 	if (phy && priv->dma_cap.eee) {
+-		priv->eee_active = phy_init_eee(phy, 1) >= 0;
++		priv->eee_active = phy_init_eee(phy, 0) >= 0;
+ 		priv->eee_enabled = stmmac_eee_init(priv);
+ 		priv->tx_lpi_enabled = priv->eee_enabled;
+ 		stmmac_set_eee_pls(priv, priv->hw, true);
+-- 
+2.39.2
+
