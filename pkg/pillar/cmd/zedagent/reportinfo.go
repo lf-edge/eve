@@ -656,7 +656,7 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 	//but if there is a queue we'll retry sending the highest priority message.
 	withNetTracing := traceNextInfoReq(ctx)
 	zedcloudCtx.DeferredEventCtx.SetDeferred(deviceUUID, buf, size,
-		statusUrl, true, withNetTracing, info.ZInfoTypes_ZiDevice)
+		statusUrl, true, withNetTracing, false, info.ZInfoTypes_ZiDevice)
 	zedcloudCtx.DeferredEventCtx.HandleDeferred(time.Now(), 0, true)
 }
 
@@ -709,7 +709,7 @@ func PublishAppInstMetaDataToZedCloud(ctx *zedagentContext, appInstMetadata *typ
 	//If there are no failures and defers we'll send this message,
 	//but if there is a queue we'll retry sending the highest priority message.
 	zedcloudCtx.DeferredEventCtx.SetDeferred(deferKey, buf, size, statusURL, true,
-		false, info.ZInfoTypes_ZiAppInstMetaData)
+		false, false, info.ZInfoTypes_ZiAppInstMetaData)
 	zedcloudCtx.DeferredEventCtx.HandleDeferred(time.Now(), 0, true)
 }
 

@@ -106,8 +106,8 @@ func PublishHardwareInfoToZedCloud(ctx *zedagentContext) {
 	}
 	size := int64(proto.Size(ReportHwInfo))
 
-	zedcloudCtx.DeferredEventCtx.SetDeferred(hwInfoKey, buf, size,
-		statusURL, bailOnHTTPErr, false, info.ZInfoTypes_ZiHardware)
+	zedcloudCtx.DeferredEventCtx.SetDeferred(hwInfoKey, buf, size, statusURL,
+		bailOnHTTPErr, false, false, info.ZInfoTypes_ZiHardware)
 	zedcloudCtx.DeferredEventCtx.HandleDeferred(time.Now(), 0, true)
 }
 

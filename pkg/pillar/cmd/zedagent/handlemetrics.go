@@ -1215,7 +1215,7 @@ func PublishAppInfoToZedCloud(ctx *zedagentContext, uuid string,
 	//If there are no failures and defers we'll send this message,
 	//but if there is a queue we'll retry sending the highest priority message.
 	zedcloudCtx.DeferredEventCtx.SetDeferred(uuid, buf, size, statusUrl,
-		true, false, info.ZInfoTypes_ZiApp)
+		true, false, false, info.ZInfoTypes_ZiApp)
 	zedcloudCtx.DeferredEventCtx.HandleDeferred(time.Now(), 0, true)
 }
 
@@ -1285,7 +1285,7 @@ func PublishContentInfoToZedCloud(ctx *zedagentContext, uuid string,
 	//If there are no failures and defers we'll send this message,
 	//but if there is a queue we'll retry sending the highest priority message.
 	zedcloudCtx.DeferredEventCtx.SetDeferred(uuid, buf, size, statusURL,
-		true, false, info.ZInfoTypes_ZiContentTree)
+		true, false, false, info.ZInfoTypes_ZiContentTree)
 	zedcloudCtx.DeferredEventCtx.HandleDeferred(time.Now(), 0, true)
 }
 
@@ -1364,7 +1364,7 @@ func PublishVolumeToZedCloud(ctx *zedagentContext, uuid string,
 	//If there are no failures and defers we'll send this message,
 	//but if there is a queue we'll retry sending the highest priority message.
 	zedcloudCtx.DeferredEventCtx.SetDeferred(uuid, buf, size, statusURL,
-		true, false, info.ZInfoTypes_ZiVolume)
+		true, false, false, info.ZInfoTypes_ZiVolume)
 	zedcloudCtx.DeferredEventCtx.HandleDeferred(time.Now(), 0, true)
 }
 
@@ -1423,7 +1423,7 @@ func PublishBlobInfoToZedCloud(ctx *zedagentContext, blobSha string, blobStatus 
 	//If there are no failures and defers we'll send this message,
 	//but if there is a queue we'll retry sending the highest priority message.
 	zedcloudCtx.DeferredEventCtx.SetDeferred(blobSha, buf, size, statusURL,
-		true, false, info.ZInfoTypes_ZiBlobList)
+		true, false, false, info.ZInfoTypes_ZiBlobList)
 	zedcloudCtx.DeferredEventCtx.HandleDeferred(time.Now(), 0, true)
 }
 
@@ -1473,7 +1473,7 @@ func PublishEdgeviewToZedCloud(ctx *zedagentContext, evStatus *types.EdgeviewSta
 	//If there are no failures and defers we'll send this message,
 	//but if there is a queue we'll retry sending the highest priority message.
 	zedcloudCtx.DeferredEventCtx.SetDeferred("global", buf, size, statusURL,
-		true, false, info.ZInfoTypes_ZiEdgeview)
+		true, false, false, info.ZInfoTypes_ZiEdgeview)
 	zedcloudCtx.DeferredEventCtx.HandleDeferred(time.Now(), 0, true)
 	ctx.iteration++
 }

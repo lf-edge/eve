@@ -34,6 +34,7 @@ type deferredItem struct {
 	url            string
 	bailOnHTTPErr  bool // Return 4xx and 5xx without trying other interfaces
 	withNetTracing bool
+	ignoreErr      bool
 }
 
 const maxTimeToHandleDeferred = time.Minute
@@ -137,7 +138,7 @@ func (ctx *DeferredContext) HandleDeferred(event time.Time,
 			} else if err != nil {
 				log.Functionf("handleDeferred: for %s status %d failed %s",
 					key, rv.Status, err)
-				exit = true
+				exit = !item.ignoreErr
 				// Make sure we pass a non-zero result to the sentHandler.
 				if rv.Status == types.SenderStatusNone {
 					rv.Status = types.SenderStatusFailed
@@ -145,7 +146,7 @@ func (ctx *DeferredContext) HandleDeferred(event time.Time,
 			} else if rv.Status != types.SenderStatusNone {
 				log.Functionf("handleDeferred: for %s received unexpected status %d",
 					key, rv.Status)
-				exit = true
+				exit = !item.ignoreErr
 			}
 			if ctx.sentHandler != nil {
 				f := *ctx.sentHandler
@@ -218,10 +219,12 @@ func (ctx *DeferredContext) HandleDeferred(event time.Time,
 // starts the timer. Key is used for identifying the channel. Please
 // note that for deviceUUID key is used for attestUrl, which is not the
 // same for other Urls, where in other case, the key is very specific
-// for the object
+// for the object. If @ignoreErr is true the queue processing is not
+// stopped on any error and will continue, although all errors will be
+// passed to @sentHandler callback (see the CreateDeferredCtx()).
 func (ctx *DeferredContext) SetDeferred(
 	key string, buf *bytes.Buffer, size int64, url string, bailOnHTTPErr,
-	withNetTracing bool, itemType interface{}) {
+	withNetTracing, ignoreErr bool, itemType interface{}) {
 	ctx.lock.Lock()
 	defer ctx.lock.Unlock()
 
@@ -239,6 +242,7 @@ func (ctx *DeferredContext) SetDeferred(
 		url:            url,
 		bailOnHTTPErr:  bailOnHTTPErr,
 		withNetTracing: withNetTracing,
+		ignoreErr:      ignoreErr,
 	}
 	found := false
 	ind := 0
