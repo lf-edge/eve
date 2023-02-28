@@ -106,9 +106,9 @@ func PublishHardwareInfoToZedCloud(ctx *zedagentContext) {
 	}
 	size := int64(proto.Size(ReportHwInfo))
 
-	zedcloud.SetDeferred(zedcloudCtx, hwInfoKey, buf, size,
+	zedcloudCtx.DeferredEventCtx.SetDeferred(hwInfoKey, buf, size,
 		statusURL, bailOnHTTPErr, false, info.ZInfoTypes_ZiHardware)
-	zedcloud.HandleDeferred(zedcloudCtx, time.Now(), 0, true)
+	zedcloudCtx.DeferredEventCtx.HandleDeferred(time.Now(), 0, true)
 }
 
 func getSmartAttr(id int, diskData []*types.DAttrTable) *info.SmartAttr {

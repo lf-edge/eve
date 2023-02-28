@@ -655,9 +655,9 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 	//If there are no failures and defers we'll send this message,
 	//but if there is a queue we'll retry sending the highest priority message.
 	withNetTracing := traceNextInfoReq(ctx)
-	zedcloud.SetDeferred(zedcloudCtx, deviceUUID, buf, size,
+	zedcloudCtx.DeferredEventCtx.SetDeferred(deviceUUID, buf, size,
 		statusUrl, true, withNetTracing, info.ZInfoTypes_ZiDevice)
-	zedcloud.HandleDeferred(zedcloudCtx, time.Now(), 0, true)
+	zedcloudCtx.DeferredEventCtx.HandleDeferred(time.Now(), 0, true)
 }
 
 // PublishAppInstMetaDataToZedCloud is called when an appInst reports its Metadata to EVE.
@@ -708,9 +708,9 @@ func PublishAppInstMetaDataToZedCloud(ctx *zedagentContext, appInstMetadata *typ
 	//We queue the message and then get the highest priority message to send.
 	//If there are no failures and defers we'll send this message,
 	//but if there is a queue we'll retry sending the highest priority message.
-	zedcloud.SetDeferred(zedcloudCtx, deferKey, buf, size, statusURL, true,
+	zedcloudCtx.DeferredEventCtx.SetDeferred(deferKey, buf, size, statusURL, true,
 		false, info.ZInfoTypes_ZiAppInstMetaData)
-	zedcloud.HandleDeferred(zedcloudCtx, time.Now(), 0, true)
+	zedcloudCtx.DeferredEventCtx.HandleDeferred(time.Now(), 0, true)
 }
 
 // Convert the implementation details to the user-friendly userStatus and subStatus*

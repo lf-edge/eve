@@ -180,9 +180,9 @@ func prepareAndPublishNetworkInstanceInfoMsg(ctx *zedagentContext,
 	//We queue the message and then get the highest priority message to send.
 	//If there are no failures and defers we'll send this message,
 	//but if there is a queue we'll retry sending the highest priority message.
-	zedcloud.SetDeferred(zedcloudCtx, uuid, buf, size, statusURL,
+	zedcloudCtx.DeferredEventCtx.SetDeferred(uuid, buf, size, statusURL,
 		true, false, zinfo.ZInfoTypes_ZiNetworkInstance)
-	zedcloud.HandleDeferred(zedcloudCtx, time.Now(), 0, true)
+	zedcloudCtx.DeferredEventCtx.HandleDeferred(time.Now(), 0, true)
 }
 
 func fillVpnInfo(info *zinfo.ZInfoNetworkInstance, vpnStatus *types.VpnStatus) {
