@@ -232,7 +232,7 @@ func handleAppFlowMonitorImpl(ctxArg interface{}, key string,
 
 	// publish protobuf-encoded flowlog to zedcloud
 	select {
-	case ctx.FlowlogQueue <- pflows:
+	case ctx.flowlogQueue <- pflows:
 	default:
 		log.Errorf("Flowlog queue is full, dropping flowlog entry: %+v", pflows.Scope)
 		ctx.flowLogMetrics.Lock()
