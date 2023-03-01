@@ -110,10 +110,10 @@ type zedagentContext struct {
 	iteration                 int
 	subNetworkInstanceStatus  pubsub.Subscription
 	subCertObjConfig          pubsub.Subscription
-	FlowlogQueue              chan<- *flowlog.FlowMessage
-	TriggerDeviceInfo         chan<- struct{}
-	TriggerHwInfo             chan<- struct{}
-	TriggerObjectInfo         chan<- infoForObjectKey
+	flowlogQueue              chan<- *flowlog.FlowMessage
+	triggerDeviceInfo         chan<- struct{}
+	triggerHwInfo             chan<- struct{}
+	triggerObjectInfo         chan<- infoForObjectKey
 	zbootRestarted            bool // published by baseosmgr
 	subOnboardStatus          pubsub.Subscription
 	subBaseOsStatus           pubsub.Subscription
@@ -317,10 +317,10 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	triggerDeviceInfo := make(chan struct{}, 1)
 	triggerHwInfo := make(chan struct{}, 1)
 	triggerObjectInfo := make(chan infoForObjectKey, 1)
-	zedagentCtx.FlowlogQueue = flowlogQueue
-	zedagentCtx.TriggerDeviceInfo = triggerDeviceInfo
-	zedagentCtx.TriggerHwInfo = triggerHwInfo
-	zedagentCtx.TriggerObjectInfo = triggerObjectInfo
+	zedagentCtx.flowlogQueue = flowlogQueue
+	zedagentCtx.triggerDeviceInfo = triggerDeviceInfo
+	zedagentCtx.triggerHwInfo = triggerHwInfo
+	zedagentCtx.triggerObjectInfo = triggerObjectInfo
 
 	// Initialize all zedagent publications.
 	initPublications(zedagentCtx)
@@ -1855,7 +1855,7 @@ func triggerPublishHwInfo(ctxPtr *zedagentContext) {
 
 	log.Function("Triggered PublishHardwareInfo")
 	select {
-	case ctxPtr.TriggerHwInfo <- struct{}{}:
+	case ctxPtr.triggerHwInfo <- struct{}{}:
 		// Do nothing more
 	default:
 		// This occurs if we are already trying to send a hardware info
@@ -1868,7 +1868,7 @@ func triggerPublishDevInfo(ctxPtr *zedagentContext) {
 
 	log.Function("Triggered PublishDeviceInfo")
 	select {
-	case ctxPtr.TriggerDeviceInfo <- struct{}{}:
+	case ctxPtr.triggerDeviceInfo <- struct{}{}:
 		// Do nothing more
 	default:
 		// This occurs if we are already trying to send a device info
@@ -1897,7 +1897,7 @@ func triggerPublishAllInfo(ctxPtr *zedagentContext) {
 		triggerPublishDevInfo(ctxPtr)
 		// trigger publish applications infos
 		for _, c := range ctxPtr.getconfigCtx.subAppInstanceStatus.GetAll() {
-			ctxPtr.TriggerObjectInfo <- infoForObjectKey{
+			ctxPtr.triggerObjectInfo <- infoForObjectKey{
 				info.ZInfoTypes_ZiApp,
 				c.(types.AppInstanceStatus).Key(),
 			}
@@ -1905,35 +1905,35 @@ func triggerPublishAllInfo(ctxPtr *zedagentContext) {
 		// trigger publish network instance infos
 		for _, c := range ctxPtr.subNetworkInstanceStatus.GetAll() {
 			niStatus := c.(types.NetworkInstanceStatus)
-			ctxPtr.TriggerObjectInfo <- infoForObjectKey{
+			ctxPtr.triggerObjectInfo <- infoForObjectKey{
 				info.ZInfoTypes_ZiNetworkInstance,
 				(&niStatus).Key(),
 			}
 		}
 		// trigger publish volume infos
 		for _, c := range ctxPtr.getconfigCtx.subVolumeStatus.GetAll() {
-			ctxPtr.TriggerObjectInfo <- infoForObjectKey{
+			ctxPtr.triggerObjectInfo <- infoForObjectKey{
 				info.ZInfoTypes_ZiVolume,
 				c.(types.VolumeStatus).Key(),
 			}
 		}
 		// trigger publish content tree infos
 		for _, c := range ctxPtr.getconfigCtx.subContentTreeStatus.GetAll() {
-			ctxPtr.TriggerObjectInfo <- infoForObjectKey{
+			ctxPtr.triggerObjectInfo <- infoForObjectKey{
 				info.ZInfoTypes_ZiContentTree,
 				c.(types.ContentTreeStatus).Key(),
 			}
 		}
 		// trigger publish blob infos
 		for _, c := range ctxPtr.subBlobStatus.GetAll() {
-			ctxPtr.TriggerObjectInfo <- infoForObjectKey{
+			ctxPtr.triggerObjectInfo <- infoForObjectKey{
 				info.ZInfoTypes_ZiBlobList,
 				c.(types.BlobStatus).Key(),
 			}
 		}
 		// trigger publish appInst metadata infos
 		for _, c := range ctxPtr.subAppInstMetaData.GetAll() {
-			ctxPtr.TriggerObjectInfo <- infoForObjectKey{
+			ctxPtr.triggerObjectInfo <- infoForObjectKey{
 				info.ZInfoTypes_ZiAppInstMetaData,
 				c.(types.AppInstMetaData).Key(),
 			}
@@ -1941,7 +1941,7 @@ func triggerPublishAllInfo(ctxPtr *zedagentContext) {
 		triggerPublishHwInfo(ctxPtr)
 		// trigger publish edgeview infos
 		for _, c := range ctxPtr.subEdgeviewStatus.GetAll() {
-			ctxPtr.TriggerObjectInfo <- infoForObjectKey{
+			ctxPtr.triggerObjectInfo <- infoForObjectKey{
 				info.ZInfoTypes_ZiEdgeview,
 				c.(types.EdgeviewStatus).Key(),
 			}
