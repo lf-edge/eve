@@ -283,6 +283,11 @@ func (ctx *DeferredContext) RemoveDeferred(key string) {
 	}
 }
 
+// KickTimer kicks the timer for immediate execution
+func (ctx *DeferredContext) KickTimer() {
+	ctx.Ticker.TickNow()
+}
+
 // Try every minute backoff to every 15 minutes
 func startTimer(log *base.LogObject, ctx *DeferredContext) {
 
