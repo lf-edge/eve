@@ -40,19 +40,19 @@ RUN eve-alpine-deploy.sh
 # we need zfs files during build
 COPY --from=zfs / /
 
-# adjust TARGET_ARCH for cross-compiler
+# adjust EVE_TARGET_ARCH for cross-compiler
 FROM build-cross AS build-cross-target-arm64
-ENV TARGET_ARCH=aarch64
+ENV EVE_TARGET_ARCH=aarch64
 FROM build-cross AS build-cross-target-amd64
-ENV TARGET_ARCH=x86_64
+ENV EVE_TARGET_ARCH=x86_64
 
 # hadolint ignore=DL3006
 FROM build-cross-target-${TARGETARCH} AS build-cross-target
-ENV CROSS_COMPILE_ENV="${TARGET_ARCH}"-alpine-linux-musl-
+ENV CROSS_COMPILE_ENV="${EVE_TARGET_ARCH}"-alpine-linux-musl-
 COPY --from=cross-compilers /packages /packages
 # hadolint ignore=DL3018
-RUN apk add --no-cache --allow-untrusted -X /packages build-base-"${TARGET_ARCH}"
-COPY --from=cross-compile-libs /out/ /usr/"${TARGET_ARCH}"-alpine-linux-musl/
+RUN apk add --no-cache --allow-untrusted -X /packages build-base-"${EVE_TARGET_ARCH}"
+COPY --from=cross-compile-libs /out/ /usr/"${EVE_TARGET_ARCH}"-alpine-linux-musl/
 
 # cross-compilers
 FROM build-cross-target AS target-arm64-build-amd64
