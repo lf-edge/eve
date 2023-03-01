@@ -1214,7 +1214,7 @@ func PublishAppInfoToZedCloud(ctx *zedagentContext, uuid string,
 	//We queue the message and then get the highest priority message to send.
 	//If there are no failures and defers we'll send this message,
 	//but if there is a queue we'll retry sending the highest priority message.
-	queueInfoToDest(ctx, dest, uuid, buf, size, true, false,
+	queueInfoToDest(ctx, dest, uuid, buf, size, true, false, false,
 		info.ZInfoTypes_ZiApp)
 }
 
@@ -1282,7 +1282,7 @@ func PublishContentInfoToZedCloud(ctx *zedagentContext, uuid string,
 	//We queue the message and then get the highest priority message to send.
 	//If there are no failures and defers we'll send this message,
 	//but if there is a queue we'll retry sending the highest priority message.
-	queueInfoToDest(ctx, dest, uuid, buf, size, true, false,
+	queueInfoToDest(ctx, dest, uuid, buf, size, true, false, false,
 		info.ZInfoTypes_ZiContentTree)
 }
 
@@ -1359,7 +1359,7 @@ func PublishVolumeToZedCloud(ctx *zedagentContext, uuid string,
 	//We queue the message and then get the highest priority message to send.
 	//If there are no failures and defers we'll send this message,
 	//but if there is a queue we'll retry sending the highest priority message.
-	queueInfoToDest(ctx, dest, uuid, buf, size, true, false,
+	queueInfoToDest(ctx, dest, uuid, buf, size, true, false, false,
 		info.ZInfoTypes_ZiVolume)
 }
 
@@ -1417,7 +1417,7 @@ func PublishBlobInfoToZedCloud(ctx *zedagentContext, blobSha string,
 	//We queue the message and then get the highest priority message to send.
 	//If there are no failures and defers we'll send this message,
 	//but if there is a queue we'll retry sending the highest priority message.
-	queueInfoToDest(ctx, dest, blobSha, buf, size, true, false,
+	queueInfoToDest(ctx, dest, blobSha, buf, size, true, false, false,
 		info.ZInfoTypes_ZiBlobList)
 }
 
@@ -1466,7 +1466,7 @@ func PublishEdgeviewToZedCloud(ctx *zedagentContext,
 	//We queue the message and then get the highest priority message to send.
 	//If there are no failures and defers we'll send this message,
 	//but if there is a queue we'll retry sending the highest priority message.
-	queueInfoToDest(ctx, dest, "global", buf, size, true, false,
+	queueInfoToDest(ctx, dest, "global", buf, size, true, false, false,
 		info.ZInfoTypes_ZiEdgeview)
 	ctx.iteration++
 }

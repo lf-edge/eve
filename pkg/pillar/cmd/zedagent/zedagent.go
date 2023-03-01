@@ -249,17 +249,24 @@ const (
 //                   destination. Deferred event queue runs to a completion
 //                   from this context, but deferred periodic queue will
 //                   be executed later by timer from a separate goroutine.
+//                   @forcePeriodic forces all deferred requests to be added
+//                   to the deferred queue and errors will be ignored.
 func queueInfoToDest(ctx *zedagentContext, dest destinationBitset,
 	key string, buf *bytes.Buffer, size int64, bailOnHTTPErr,
-	withNetTracing bool, itemType interface{}) {
+	withNetTracing, forcePeriodic bool, itemType interface{}) {
 
 	locConfig := ctx.getconfigCtx.locConfig
 
 	if dest&ControllerDest != 0 {
 		url := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API,
 			devUUID, "info")
-		const ignoreErr = false
-		zedcloudCtx.DeferredEventCtx.SetDeferred(key, buf, size, url,
+		// Ignore all errors in case of periodic
+		ignoreErr := forcePeriodic
+		deferredCtx := zedcloudCtx.DeferredEventCtx
+		if forcePeriodic {
+			deferredCtx = zedcloudCtx.DeferredPeriodicCtx
+		}
+		deferredCtx.SetDeferred(key, buf, size, url,
 			bailOnHTTPErr, withNetTracing, ignoreErr, itemType)
 	}
 	if dest&LOCDest != 0 && locConfig != nil {
@@ -269,12 +276,14 @@ func queueInfoToDest(ctx *zedagentContext, dest destinationBitset,
 		const ignoreErr = true
 		zedcloudCtx.DeferredPeriodicCtx.SetDeferred(key, buf, size, url,
 			bailOnHTTPErr, withNetTracing, ignoreErr, itemType)
-		// Run to a completion from the goroutine
-		zedcloudCtx.DeferredPeriodicCtx.KickTimer()
 	}
-	if dest&ControllerDest != 0 {
+	if dest&ControllerDest != 0 && !forcePeriodic {
 		// Run to a completion at least 1 request from this execution context
 		zedcloudCtx.DeferredEventCtx.HandleDeferred(time.Now(), 0, true)
+	}
+	if (dest&LOCDest != 0 && locConfig != nil) || forcePeriodic {
+		// Run to a completion from the goroutine
+		zedcloudCtx.DeferredPeriodicCtx.KickTimer()
 	}
 }
 

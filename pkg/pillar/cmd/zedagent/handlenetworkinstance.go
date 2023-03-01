@@ -174,7 +174,7 @@ func prepareAndPublishNetworkInstanceInfoMsg(ctx *zedagentContext,
 	//We queue the message and then get the highest priority message to send.
 	//If there are no failures and defers we'll send this message,
 	//but if there is a queue we'll retry sending the highest priority message.
-	queueInfoToDest(ctx, dest, uuid, buf, size, true, false,
+	queueInfoToDest(ctx, dest, uuid, buf, size, true, false, false,
 		zinfo.ZInfoTypes_ZiNetworkInstance)
 }
 
