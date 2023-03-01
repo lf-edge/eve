@@ -103,7 +103,7 @@ func PublishHardwareInfoToZedCloud(ctx *zedagentContext, dest destinationBitset)
 	}
 	size := int64(proto.Size(ReportHwInfo))
 
-	queueInfoToDest(ctx, dest, hwInfoKey, buf, size, bailOnHTTPErr, false,
+	queueInfoToDest(ctx, dest, hwInfoKey, buf, size, bailOnHTTPErr, false, false,
 		info.ZInfoTypes_ZiHardware)
 }
 
