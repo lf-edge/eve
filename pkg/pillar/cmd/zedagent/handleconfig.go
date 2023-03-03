@@ -138,8 +138,6 @@ type getconfigContext struct {
 	// This information is persisted under /persist/checkpoint/localcommands
 	localCommands *types.LocalCommands
 
-	callProcessLocalProfileServerChange bool //did we already call processLocalProfileServerChange
-
 	configRetryUpdateCounter uint32 // received from config
 
 	// Frequency in seconds at which metrics is published to the controller.
