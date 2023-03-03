@@ -10,7 +10,6 @@ require (
 	github.com/containerd/containerd v1.6.18
 	github.com/containerd/typeurl v1.0.2
 	github.com/cshari-zededa/eve-tpm2-tools v0.0.4
-	github.com/digineo/go-dhclient v1.0.2
 	github.com/digitalocean/go-qemu v0.0.0-20220826173844-d5f5e3ceed89
 	github.com/docker/docker v20.10.17+incompatible
 	github.com/eriknordmark/ipinfo v0.0.0-20190220084921-7ee0839158f9
@@ -23,14 +22,12 @@ require (
 	github.com/google/gopacket v1.1.19
 	github.com/gorilla/websocket v1.4.2
 	github.com/grandcat/zeroconf v1.0.0
+	github.com/insomniacslk/dhcp v0.0.0-20221215072855-de60144f33f8
 	github.com/jackwakefield/gopac v1.0.2
 	github.com/jaypipes/ghw v0.8.0
 	github.com/lf-edge/edge-containers v0.0.0-20221025050409-93c34bebadd2
 	github.com/lf-edge/eve/api/go v0.0.0-00010101000000-000000000000
-	github.com/lf-edge/eve/libs/depgraph v0.0.0-20220129022022-ba04fd269658
-	github.com/lf-edge/eve/libs/nettrace v0.0.0-20230219061744-883547fe7978
-	github.com/lf-edge/eve/libs/reconciler v0.0.0-20220131150115-6941dbe72001
-	github.com/lf-edge/eve/libs/zedUpload v0.0.0-20210120050122-276fea8f6efd
+	github.com/lf-edge/eve/libs v0.0.0-20230303013136-e890ce9ee8a3
 	github.com/linuxkit/linuxkit/src/cmd/linuxkit v0.0.0-20220913135124-e532e7310810
 	github.com/moby/sys/mountinfo v0.6.0
 	github.com/onsi/gomega v1.24.2
@@ -50,7 +47,7 @@ require (
 	golang.org/x/net v0.7.0
 	golang.org/x/sys v0.5.0
 	google.golang.org/grpc v1.47.0
-	google.golang.org/protobuf v1.28.0
+	google.golang.org/protobuf v1.28.1
 )
 
 require (
@@ -93,7 +90,6 @@ require (
 	github.com/google/uuid v1.3.0 // indirect
 	github.com/googleapis/gax-go/v2 v2.1.1 // indirect
 	github.com/gorilla/mux v1.8.0 // indirect
-	github.com/insomniacslk/dhcp v0.0.0-20221215072855-de60144f33f8 // indirect
 	github.com/jaypipes/pcidb v0.6.0 // indirect
 	github.com/jmespath/go-jmespath v0.4.0 // indirect
 	github.com/josharian/native v1.0.1-0.20221213033349-c1e37c09b531 // indirect
@@ -149,9 +145,3 @@ require (
 )
 
 replace github.com/lf-edge/eve/api/go => ../../api/go
-
-replace github.com/lf-edge/eve/libs/zedUpload => ../../libs/zedUpload
-
-replace github.com/lf-edge/eve/libs/depgraph => ../../libs/depgraph
-
-replace github.com/lf-edge/eve/libs/reconciler => ../../libs/reconciler

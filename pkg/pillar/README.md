@@ -57,3 +57,29 @@ State transitions of the particular ObjectStatus should be written in one place 
 
 Actions may be sync (they must be executable in limited time and not depends on another, for example, check file or directory existence, touch file, make directory and so on) and async. The second variant is done by [worker](./worker/doc.go) package. Worker instance has limited job queue and parallel workers in pool.
 Package worker provides utilities for creating background workers to perform tasks, that need to be queued up or will take a long time to run. In both cases, upon completion, actions call function with state transitions to toggle states if required.
+
+## Local Dependencies
+
+In general, pillar depends on its own directory and subdirectories, and external packages,
+which can be found in `go.mod`. It also vendors its dependencies, which can be
+updated with `go mod vendor`.
+
+In addition, pillar depends upon [eve libraries from this repository](../../libs).
+These libraries are their own go module. They **must** be treated like any other external
+module, imported via a fully pathed import, e.g. `go get github.com/lf-edge/eve/libs@master`.
+
+It is imperative **not** to use `replace` directives in `go.mod` to point to
+local paths, e.g.
+
+```go
+replace github.com/lf-edge/eve/libs => ../../libs
+```
+
+These will break various dependency chains and make it difficult to track what was included
+and licensing in final compiled binaries.
+
+During local development _only_, you can use the above `replace` directives to test local changes
+to `libs/` and their downstream impact. However, when testing is complete, do _not_ commit
+the `replace` directive. Instead, commit the `libs` changes, merge them in, and then
+update the dependency here in pillar's `go.mod` like any other external dependency with
+explicit versioning.

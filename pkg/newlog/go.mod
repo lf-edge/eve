@@ -7,7 +7,7 @@ require (
 	github.com/golang/protobuf v1.5.2
 	github.com/google/go-cmp v0.5.9
 	github.com/lf-edge/eve/api/go v0.0.0-20220616105859-8b9463e1561b
-	github.com/lf-edge/eve/pkg/pillar v0.0.0-20221025082440-d8005e30e22d
+	github.com/lf-edge/eve/pkg/pillar v0.0.0-20230303013136-e890ce9ee8a3
 	github.com/sirupsen/logrus v1.9.0
 )
 
@@ -22,13 +22,7 @@ require (
 	github.com/vishvananda/netns v0.0.0-20210104183010-2eb08e3e575f // indirect
 	github.com/yusufpapurcu/wmi v1.2.2 // indirect
 	golang.org/x/sys v0.5.0 // indirect
-	google.golang.org/protobuf v1.28.0 // indirect
+	google.golang.org/protobuf v1.28.1 // indirect
 )
 
 replace github.com/lf-edge/eve/api/go => ../../api/go
-
-replace github.com/lf-edge/eve/pkg/pillar => ../pillar
-
-replace github.com/lf-edge/eve/libs/reconciler => ../../libs/reconciler
-
-replace github.com/lf-edge/eve/libs/depgraph => ../../libs/depgraph
