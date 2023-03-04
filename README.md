@@ -1,5 +1,7 @@
 # EVE is Edge Virtualization Engine
 
+[![OpenSSF Best Practices](https://bestpractices.coreinfrastructure.org/projects/4746/badge)](https://bestpractices.coreinfrastructure.org/projects/4746)
+[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/lf-edge/eve/badge)](https://api.securityscorecards.dev/projects/github.com/lf-edge/eve)
 [![Publish](https://github.com/lf-edge/eve/actions/workflows/publish.yml/badge.svg?branch=master)](https://github.com/lf-edge/eve/actions/workflows/publish.yml)
 [![Goreport](https://goreportcard.com/badge/github.com/lf-edge/eve)](https://goreportcard.com/report/github.com/lf-edge/eve)
 [![Godoc](https://godoc.org/github.com/lf-edge/eve/pkg/pillar?status.svg)](https://godoc.org/github.com/lf-edge/eve/pkg/pillar)
