@@ -1,0 +1,42 @@
+From 0358687c36c545ae1de0f53d8d56b129055e1fe0 Mon Sep 17 00:00:00 2001
+From: Dmitrii Aleksandrov <goodmobiledevices@gmail.com>
+Date: Mon, 6 Mar 2023 21:36:05 +0300
+Subject: [PATCH] add smbios node to dt for orange pi 3 lts
+
+Signed-off-by: Dmitrii Aleksandrov <goodmobiledevices@gmail.com>
+---
+ arch/arm/dts/sun50i-h6-orangepi-3-lts.dts | 18 ++++++++++++++++++
+ 1 file changed, 18 insertions(+)
+
+diff --git a/arch/arm/dts/sun50i-h6-orangepi-3-lts.dts b/arch/arm/dts/sun50i-h6-orangepi-3-lts.dts
+index 60312785db..010b7a4113 100644
+--- a/arch/arm/dts/sun50i-h6-orangepi-3-lts.dts
++++ b/arch/arm/dts/sun50i-h6-orangepi-3-lts.dts
+@@ -13,6 +13,24 @@
+ / {
+ 	model = "OrangePi 3 LTS";
+ 	compatible = "xunlong,orangepi-3-lts", "allwinner,sun50i-h6";
++	
++	sysinfo {
++		compatible = "u-boot,sysinfo-smbios";
++		smbios {
++			system {
++				manufacturer = "xunlong";
++				product = "orangepi-3-lts";
++			};
++			baseboard {
++				manufacturer = "xunlong";
++				product = "orangepi-3-lts";
++			};
++			chassis {
++				manufacturer = "xunlong";
++				product = "orangepi-3-lts";
++			};
++		};
++	};
+ 
+ 	aliases {
+ 		serial0 = &uart0;
+-- 
+2.34.1
+

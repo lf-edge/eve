@@ -1,0 +1,24 @@
+From d72f85863cb4798a9627429aecb0bc322a1aa326 Mon Sep 17 00:00:00 2001
+From: Dmitrii Aleksandrov <goodmobiledevices@gmail.com>
+Date: Tue, 7 Mar 2023 05:54:33 +0300
+Subject: [PATCH] configs: add sysinfo smbios for orange pi 3 lts
+
+Signed-off-by: Dmitrii Aleksandrov <goodmobiledevices@gmail.com>
+---
+ configs/orangepi_3_lts_defconfig | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/configs/orangepi_3_lts_defconfig b/configs/orangepi_3_lts_defconfig
+index 8a24b5190a..c36b70b781 100644
+--- a/configs/orangepi_3_lts_defconfig
++++ b/configs/orangepi_3_lts_defconfig
+@@ -18,3 +18,5 @@ CONFIG_R_I2C_ENABLE=y
+ # CONFIG_SPL_DOS_PARTITION is not set
+ # CONFIG_SPL_ISO_PARTITION is not set
+ # CONFIG_SPL_EFI_PARTITION is not set
++CONFIG_SYSINFO=y
++CONFIG_SYSINFO_SMBIOS=y
+\ No newline at end of file
+-- 
+2.34.1
+
