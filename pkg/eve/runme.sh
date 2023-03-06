@@ -193,7 +193,8 @@ prepare_for_platform() {
     imx8m*) #shellcheck disable=SC2039
         cat /bits/bsp-imx/NXP-EULA-LICENSE.txt
         [ -n "$ACCEPT" ] || bail "You need to read and accept the EULA before you can continue. Use the --accept-license argument."
-        cp /bits/bsp-imx/"$PLATFORM"-flash.bin /bits/imx8-flash.bin
+        cp /bits/bsp-imx/"$PLATFORM"-flash.bin /bits/flash.bin
+		cp /bits/bsp-imx/"$PLATFORM"-flash.conf /bits/flash.conf
         [ -n "$(ls /bits/bsp-imx/*.dtb 2> /dev/null)" ] && cp /bits/bsp-imx/*.dtb /bits/boot
         ;;
     *) #shellcheck disable=SC2039,SC2104

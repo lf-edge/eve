@@ -608,8 +608,8 @@ $(LIVE).raw: $(BOOT_PART) $(EFI_PART) $(ROOTFS_IMG) $(CONFIG_IMG) $(PERSIST_IMG)
 	@[ "$(PLATFORM)" != "${PLATFORM/imx/}" ] && \
 		cp $(INSTALLER)/bsp-imx/NXP-EULA-LICENSE.txt $(INSTALLER)/NXP-EULA-LICENSE.txt && \
 		cp $(INSTALLER)/bsp-imx/NXP-EULA-LICENSE.txt $(BUILD_DIR)/NXP-EULA-LICENSE.txt && \
-		cp $(INSTALLER)/bsp-imx/"$(PLATFORM)"-flash.bin $(INSTALLER)/imx8-flash.bin && \
-		cp $(INSTALLER)/bsp-imx/"$(PLATFORM)"-flash.conf $(INSTALLER)/imx8-flash.conf && \
+		cp $(INSTALLER)/bsp-imx/"$(PLATFORM)"-flash.bin $(INSTALLER)/flash.bin && \
+		cp $(INSTALLER)/bsp-imx/"$(PLATFORM)"-flash.conf $(INSTALLER)/flash.conf && \
 		cp $(INSTALLER)/bsp-imx/*.dtb $(INSTALLER)/boot  || :
 	./tools/makeflash.sh -C 350 $| $@ $(PART_SPEC)
 	$(QUIET): $@: Succeeded

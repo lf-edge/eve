@@ -80,8 +80,8 @@ CONF_PART_SIZE=$((1024 * 1024))
 WIN_INVENTORY_PART_SIZE=$((40240 * 1024))
 # installer system partition size in bytes
 INSTALLER_SYS_PART_SIZE=$(( 300 * 1024 * 1024 ))
-# imx8 boot blob size in bytes
-IMX8_BLOB_SIZE=$(( 8 * 1024 * 1024 ))
+# Boot blob size in bytes
+BOOT_BLOB_SIZE=$(( 8 * 1024 * 1024 ))
 # sector where the first partition starts on a blank disk
 FIRST_PART_SEC=2048
 
@@ -381,25 +381,25 @@ INITRD_IMG=/parts/initrd.img
 INSTALLER_IMG=/parts/installer.img
 # GRUB cfg override for our installer
 INSTALLER_GRUB_CFG=/parts/grub.cfg
-# IMX8 flash blob that needs to be written to image
-IMX8_BLOB=/parts/imx8-flash.bin
-# IMX8 configuration file with flashing parameters
-IMX8_CONF=/parts/imx8-flash.conf
+# Boot flash blob that needs to be written to image
+BOOT_BLOB=/parts/flash.bin
+# Boot configuration file with flashing parameters
+BOOT_BLOB_CONF=/parts/flash.conf
 
 # offset in the GPT partition table from which we can start our numbering
 PART_OFFSET=0
 # starting sector for our portion of the disk
 CUR_SEC="$FIRST_PART_SEC"
 
-if [ -f "$IMX8_BLOB" ] && [ -f "$IMX8_CONF" ]; then
-  # For imx8 boards we need to write boot blob with the specified offset
-  IMX_BLOB_END_SEC=$(( IMX8_BLOB_SIZE / 512 ))
-  CUR_SEC="$IMX_BLOB_END_SEC"
-  IMG_SEEK=$(cat $IMX8_CONF | sed "/^#/d" | grep "^offset.*" | tr -d '[:space:]' | sed "s/offset=\(.*\)/\1/")
+if [ -f "$BOOT_BLOB" ] && [ -f "$BOOT_BLOB_CONF" ]; then
+  # For some boards we need to write boot blob with the specified offset
+  BOOT_BLOB_END_SEC=$(( BOOT_BLOB_SIZE / 512 ))
+  CUR_SEC="$BOOT_BLOB_END_SEC"
+  IMG_SEEK=$(cat $BOOT_BLOB_CONF | sed "/^#/d" | grep "^offset.*" | tr -d '[:space:]' | sed "s/offset=\(.*\)/\1/")
   # If offset was not specified, use 32 as default
   [ -z "$IMG_SEEK" ] && IMG_SEEK=32
   # Write blob to image file
-  dd if="$IMX8_BLOB" of="$IMGFILE" bs=1024 seek=$IMG_SEEK conv=notrunc
+  dd if="$BOOT_BLOB" of="$IMGFILE" bs=1024 seek=$IMG_SEEK conv=notrunc
 fi
 
 # Lets see if GPT partition exists and it is one of the
