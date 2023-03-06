@@ -13,15 +13,20 @@ COPY Dockerfile abuild.conf /etc/
 COPY mirrors /tmp/mirrors/
 COPY build-cache.sh /bin/
 
+RUN mkdir -vp "/mirror/edge/$(apk --print-arch)"
+# download newest go=1.20.1 from alpine/edge repository
+RUN wget -q "http://dl-cdn.alpinelinux.org/alpine/edge/community/$(apk --print-arch)/go-1.20.1-r0.apk" -O "/mirror/edge/$(apk --print-arch)/go-1.20.1-r0.apk"
 # install abuild for signing (which requires gcc as well)
 RUN apk add --no-cache abuild gcc sudo
 
 # install a new key into /etc/apk/keys
+# hadolint ignore=DL3059
 RUN abuild-keygen -a -i -n
 
 # create all the mirrors
 WORKDIR /tmp/mirrors
 RUN [ -f /etc/apk/repositories.upstream ] || mv /etc/apk/repositories /etc/apk/repositories.upstream
+# hadolint ignore=DL3059
 RUN [ -f /etc/apk/cache.url ] || echo https://dl-cdn.alpinelinux.org/alpine > /etc/apk/cache.url
 RUN for repo in main community testing; do \
       for p in */"$repo"; do \
@@ -33,9 +38,11 @@ RUN for repo in main community testing; do \
     done
 
 # set the default repository to use
-RUN cp /mirror/${ALPINE_VERSION}/rootfs/etc/apk/repositories /etc/apk && apk update
+RUN cp /mirror/${ALPINE_VERSION}/rootfs/etc/apk/repositories /etc/apk
+RUN cat /mirror/edge/rootfs/etc/apk/repositories >> /etc/apk/repositories
+RUN apk update
 
-FROM lfedge/eve-alpine:145f062a40639b6c65efa36bed1c5614b873be52 as compactor
+FROM lfedge/eve-alpine:145f062a40639b6c65efa36bed1c5614b873be52 AS compactor
 
 COPY --from=cache /etc/apk/repositories* /etc/apk/
 COPY --from=cache /etc/apk/keys /etc/apk/keys/

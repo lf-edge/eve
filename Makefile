@@ -12,7 +12,7 @@ uniq = $(if $1,$(firstword $1) $(call uniq,$(filter-out $(firstword $1),$1)))
 
 # you are not supposed to tweak these variables -- they are effectively R/O
 HV_DEFAULT=kvm
-GOVER ?= 1.19.2
+GOVER ?= 1.20.1
 PKGBASE=github.com/lf-edge/eve
 GOMODULE=$(PKGBASE)/pkg/pillar
 GOTREE=$(CURDIR)/pkg/pillar
