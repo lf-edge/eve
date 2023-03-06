@@ -7,7 +7,7 @@ ARG BUILD_PKGS_BASE="argp-standalone automake bash bc binutils-dev bison build-b
                      attr-dev autoconf file coreutils libtirpc-dev libtool util-linux-dev"
 
 # we use the same image in several places
-ARG EVE_ALPINE_IMAGE=lfedge/eve-alpine:b8b32c8353e50d7131d9ddc912581d14923806b0
+ARG EVE_ALPINE_IMAGE=lfedge/eve-alpine:9fb9b9cbf7d90066a70e4704d04a6fe248ff52bb
 
 # hadolint ignore=DL3006
 FROM ${EVE_ALPINE_IMAGE} as kernel-build-base-native
