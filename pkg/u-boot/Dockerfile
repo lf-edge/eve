@@ -53,9 +53,7 @@ FROM build-${TARGETARCH} AS build
 COPY config /tmp/
 RUN cat /tmp/config >> "configs/${TARGET}"
 # generate default config for the target
-# hadolint ignore=DL3059,SC2086
-RUN make $TARGET
-# hadolint ignore=DL3059
+RUN make "$TARGET"
 RUN make -j "$(getconf _NPROCESSORS_ONLN)"
 
 # export a final set of u-boot artifacts into /boot
