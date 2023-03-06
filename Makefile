@@ -798,16 +798,14 @@ cache-export-docker-load: $(LINUXKIT)
 ## will skip image if not found in cache
 cache-export-docker-load-all: $(LINUXKIT) $(addsuffix -cache-export-docker-load,$(PKGS_DOCKER_LOAD))
 
-proto-vendor:
-	@$(DOCKER_GO) "cd pkg/pillar ; go mod vendor" $(CURDIR) proto
-
 proto-diagram: $(GOBUILDER)
 	@$(DOCKER_GO) "/usr/local/bin/protodot -inc /usr/include -src ./api/proto/config/devconfig.proto -output devconfig && cp ~/protodot/generated/devconfig.* ./api/images && dot ./api/images/devconfig.dot -Tpng -o ./api/images/devconfig.png && echo generated ./api/images/devconfig.*" $(CURDIR) api
 
 .PHONY: proto-api-%
 
 proto: $(GOBUILDER) api/go api/python proto-diagram
-	@echo Done building protobuf, you may want to vendor it into pillar by running proto-vendor
+	@echo Done building protobuf, you may want to vendor it into your packages, e.g. `pkg/pillar`.
+	@echo See ./api/go/README.md for more information.
 
 api/go: PROTOC_OUT_OPTS=paths=source_relative:
 api/go: proto-api-go

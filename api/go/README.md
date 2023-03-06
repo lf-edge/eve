@@ -21,8 +21,21 @@ To build, go to the root directory of this repository and:
 make proto
 ```
 
-To vendor the result into pillar (or any other go pacakge), go to the root directory of this repository and:
+To vendor the result into a downstream dependency, e.g. pillar, do the following:
 
+1. Commit the changes to this directory.
+1. Open a Pull Request and merge it in.
+1. Go to the root directory of the downstream dependency and:
 ```bash
-make proto-vendor
+go get -u github.com/lf-edge/eve/api/go@master
+go mod vendor
 ```
+
+For temporary testing _only_ you can reference the local copy of the generated code by adding the following
+to the end of your `go.mod`:
+
+```go
+replace github.com/lf-edge/eve/api/go => ../../api/go
+```
+
+Do **not** commit the `replace` line to your changes, as they will **not** be accepted into a PR.
