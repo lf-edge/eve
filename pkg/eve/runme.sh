@@ -98,7 +98,7 @@ Optionally you can specify platform:
  -p <platform>
 
 This specifies a platform for this image: none (default),
-imx8mq_evk are all valid options.
+imx8mq_evk and opi3_lts are all valid options.
 
 Example:
 docker run --rm lfedge/eve -f raw -p imx8mq_evk live > live.raw
@@ -194,8 +194,12 @@ prepare_for_platform() {
         cat /bits/bsp-imx/NXP-EULA-LICENSE.txt
         [ -n "$ACCEPT" ] || bail "You need to read and accept the EULA before you can continue. Use the --accept-license argument."
         cp /bits/bsp-imx/"$PLATFORM"-flash.bin /bits/flash.bin
-		cp /bits/bsp-imx/"$PLATFORM"-flash.conf /bits/flash.conf
+        cp /bits/bsp-imx/"$PLATFORM"-flash.conf /bits/flash.conf
         [ -n "$(ls /bits/bsp-imx/*.dtb 2> /dev/null)" ] && cp /bits/bsp-imx/*.dtb /bits/boot
+        ;;
+    opi3_lts) #shellcheck disable=SC2039
+        cp /bits/bsp-sunxi/"$PLATFORM"-flash.bin /bits/flash.bin
+        cp /bits/bsp-sunxi/"$PLATFORM"-flash.conf /bits/flash.conf
         ;;
     *) #shellcheck disable=SC2039,SC2104
         break
@@ -224,7 +228,7 @@ while true; do
           shift
           #shellcheck disable=SC3057
           BASEPLATFORM="${PLATFORM:0:5}"
-          [ "$PLATFORM" != "none" ] && [ "$BASEPLATFORM" != "imx8m" ] && bail "Unknown platform: $PLATFORM"
+          [ "$PLATFORM" != "none" ] && [ "$PLATFORM" != "opi3_lts" ]  && [ "$BASEPLATFORM" != "imx8m" ] && bail "Unknown platform: $PLATFORM"
           ;;
      --accept-license*) #shellcheck disable=SC2039,SC3060
           ACCEPT=1
