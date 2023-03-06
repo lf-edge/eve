@@ -80,7 +80,7 @@ ENV UBOOT_FILES_imx8mp_pollux "flash.bin"
 ENV UBOOT_CONFIG_imx8mp_pollux "phycore-imx8mp"
 ENV UBOOT_DTB_imx8mp_pollux "arch/arm/dts/imx8mp-phyboard-pollux-rdk.dtb"
 ENV FLASH_OFFSET_imx8mp_pollux "32"
-# hadolint ignore=DL3059,SC2086
+# hadolint ignore=SC2086
 RUN for target in ${UBOOT_TARGETS}; do \
         make clean && rm -rf bl31.bin && \
         cp "$(eval echo \$ATF_"${target}")"-bl31.bin bl31.bin && \

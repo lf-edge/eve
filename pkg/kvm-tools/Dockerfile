@@ -28,13 +28,9 @@ RUN patch -p1 < /0001-Makefile-Update-bfd-detection.patch ;\
 # building ninja
 WORKDIR /ninja-1.10.1
 ADD https://github.com/ninja-build/ninja/archive/v1.10.1.tar.gz /ninja.tar.gz
-# hadolint ignore=DL3059
 RUN tar -C / -xzf /ninja.tar.gz
-# hadolint ignore=DL3059
 RUN cmake -Bbuild-cmake -H.
-# hadolint ignore=DL3059
 RUN cmake --build build-cmake
-# hadolint ignore=DL3059
 RUN cmake --install build-cmake --prefix /usr
 
 # building qemu
