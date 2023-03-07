@@ -2,7 +2,6 @@
 # shellcheck disable=SC2039
 # shellcheck disable=SC2155
 # shellcheck disable=SC2034 # Constants defined here are used by sourced wwan-qmi.sh and wwan-mbim.sh
-# shellcheck disable=SC3043
 # set -x
 
 # Currently our message bus is files in /run
