@@ -82,18 +82,24 @@ import (
 //	|  |                                                                                  |  |
 //	|  +----------------------------------------------------------------------------------+  |
 //	|                                                                                        |
-//	|                      *-------------------------------------------*                     |
-//	|                      |                  ACLs                     |                     |
-//	|                      |                                           |                     |
-//	|                      |           +--------------+                |                     |
-//	|                      |           |  SSHAuthKeys |                |                     |
-//	|                      |           |  (singleton) |                |                     |
-//	|                      |           +--------------+                |                     |
-//	|                      | +---------------+  +---------------+      |                     |
-//	|                      | | IptablesChain |  | IptablesChain | ...  |                     |
-//	|                      | +---------------+  +---------------+      |                     |
-//	|                      +-------------------------------------------+                     |
-//	|                                                                                        |
+//	|  +----------------------------------------------------------------------------------+  |
+//	|  |                                       ACLs                                       |  |
+//	|  |                                                                                  |  |
+//	|  |                                +---------------+                                 |  |
+//	|  |                                |  SSHAuthKeys  |                                 |  |
+//	|  |                                |  (singleton)  |                                 |  |
+//	|  |                                +---------------+                                 |  |
+//	|  |     +--------------------------------+    +--------------------------------+     |  |
+//	|  |     |           IPv4Rules            |    |           IPv6Rules            |     |  |
+//	|  |     |                                |    |                                |     |  |
+//	|  |     |      +---------------+         |    |      +---------------+         |     |  |
+//	|  |     |      | IptablesChain | ...     |    |      | IptablesChain | ...     |     |  |
+//	|  |     |      +---------------+         |    |      +---------------+         |     |  |
+//	|  |     |      +---------------+         |    |      +---------------+         |     |  |
+//	|  |     |      | IptablesRule  | ...     |    |      | IptablesRule  | ...     |     |  |
+//	|  |     |      +---------------+         |    |      +---------------+         |     |  |
+//	|  |     +--------------------------------+    +--------------------------------+     |  |
+//	|  +----------------------------------------------------------------------------------+  |
 //	+----------------------------------------------------------------------------------------+
 const (
 	// GraphName : name of the graph with the managed state as a whole.
@@ -120,6 +126,10 @@ const (
 	ArpsSG = "ARPs"
 	// ACLsSG : sub-graph with device-wide ACLs.
 	ACLsSG = "ACLs"
+	// IPv4ACLsSG : sub-graph of ACLsSG with IPv4 rules.
+	IPv4ACLsSG = "IPv4Rules"
+	// IPv6ACLsSG : sub-graph of ACLsSG with IPv6 rules.
+	IPv6ACLsSG = "IPv6Rules"
 )
 
 const (
@@ -193,15 +203,25 @@ func (r *LinuxDpcReconciler) GetCurrentState() dg.GraphR {
 	return r.currentState
 }
 
+// GetIntendedState : get the intended state (read-only).
+// Exported only for unit-testing purposes.
+func (r *LinuxDpcReconciler) GetIntendedState() dg.GraphR {
+	return r.intendedState
+}
+
 func (r *LinuxDpcReconciler) init() (startWatcher func()) {
 	r.Lock()
 	if r.initialized {
 		r.Log.Fatal("Already initialized")
 	}
 	registry := &reconciler.DefaultRegistry{}
-	err := generic.RegisterItems(r.Log, registry)
-	err = linux.RegisterItems(r.Log, registry, r.NetworkMonitor)
-	if err != nil {
+	if err := generic.RegisterItems(r.Log, registry); err != nil {
+		r.Log.Fatal(err)
+	}
+	if err := linux.RegisterItems(r.Log, registry, r.NetworkMonitor); err != nil {
+		r.Log.Fatal(err)
+	}
+	if err := iptables.RegisterItems(r.Log, registry); err != nil {
 		r.Log.Fatal(err)
 	}
 	r.registry = registry
@@ -1264,39 +1284,133 @@ func (r *LinuxDpcReconciler) getIntendedACLs(
 		Description: "Device-wide ACLs",
 	}
 	intendedACLs := dg.New(graphArgs)
-	var filterV4Rules, filterV6Rules []linux.IptablesRule
+	graphArgs = dg.InitArgs{
+		Name:        IPv4ACLsSG,
+		Description: "IPv4 Device-Wide ACL rules",
+	}
+	intendedIPv4ACLs := dg.New(graphArgs)
+	intendedACLs.PutSubGraph(intendedIPv4ACLs)
+	graphArgs = dg.InitArgs{
+		Name:        IPv6ACLsSG,
+		Description: "IPv6 Device-Wide ACL rules",
+	}
+	intendedIPv6ACLs := dg.New(graphArgs)
+	intendedACLs.PutSubGraph(intendedIPv6ACLs)
+
+	// Create chains for both device-wide ACLs as well as for application ACLs.
+	// Link them from top-level chains, with app ACLs always preceding device ACLs.
+	// Do this only for chains which are actually used.
+	usedChains := map[iptables.Chain]struct{ devACLs, appACLs bool }{
+		{Table: "raw", ChainName: "PREROUTING"}:     {devACLs: false, appACLs: true},
+		{Table: "filter", ChainName: "INPUT"}:       {devACLs: true, appACLs: true},
+		{Table: "filter", ChainName: "FORWARD"}:     {devACLs: false, appACLs: true},
+		{Table: "mangle", ChainName: "PREROUTING"}:  {devACLs: true, appACLs: true},
+		{Table: "mangle", ChainName: "POSTROUTING"}: {devACLs: false, appACLs: true},
+		{Table: "mangle", ChainName: "OUTPUT"}:      {devACLs: true, appACLs: false},
+		{Table: "nat", ChainName: "PREROUTING"}:     {devACLs: false, appACLs: true},
+		{Table: "nat", ChainName: "POSTROUTING"}:    {devACLs: false, appACLs: true},
+	}
+
+	const (
+		appTraverseRuleLabel = "Traverse application ACLs"
+		devTraverseRuleLabel = "Traverse device-wide ACLs"
+	)
+	for chain, usedFor := range usedChains {
+		for _, forIPv6 := range []bool{true, false} {
+			subgraph := intendedIPv4ACLs
+			if forIPv6 {
+				subgraph = intendedIPv6ACLs
+			}
+			if usedFor.appACLs {
+				subgraph.PutItem(iptables.Chain{
+					ChainName: chain.ChainName + iptables.AppChainSuffix,
+					Table:     chain.Table,
+					ForIPv6:   forIPv6,
+				}, nil)
+				var appliedBefore []string
+				if usedFor.devACLs {
+					appliedBefore = append(appliedBefore, devTraverseRuleLabel)
+				}
+				subgraph.PutItem(iptables.Rule{
+					RuleLabel:     appTraverseRuleLabel,
+					Table:         chain.Table,
+					ChainName:     chain.ChainName,
+					ForIPv6:       forIPv6,
+					AppliedBefore: appliedBefore,
+					Target:        chain.ChainName + iptables.AppChainSuffix,
+				}, nil)
+			}
+			if usedFor.devACLs {
+				subgraph.PutItem(iptables.Chain{
+					ChainName: chain.ChainName + iptables.DeviceChainSuffix,
+					Table:     chain.Table,
+					ForIPv6:   forIPv6,
+				}, nil)
+				subgraph.PutItem(iptables.Rule{
+					RuleLabel: devTraverseRuleLabel,
+					Table:     chain.Table,
+					ChainName: chain.ChainName,
+					ForIPv6:   forIPv6,
+					Target:    chain.ChainName + iptables.DeviceChainSuffix,
+				}, nil)
+			}
+		}
+	}
+
+	var filterV4Rules, filterV6Rules []iptables.Rule
 
 	// Ports which are always blocked.
-	block8080 := linux.IptablesRule{
-		Args:        []string{"-p", "tcp", "--dport", "8080", "-j", "REJECT", "--reject-with", "tcp-reset"},
+	block8080 := iptables.Rule{
+		RuleLabel:   "Port 8080",
+		MatchOpts:   []string{"-p", "tcp", "--dport", "8080"},
+		Target:      "REJECT",
+		TargetOpts:  []string{"--reject-with", "tcp-reset"},
 		Description: "Port 8080 is always blocked",
 	}
 	filterV4Rules = append(filterV4Rules, block8080)
 	filterV6Rules = append(filterV6Rules, block8080)
 
 	// Allow Guacamole.
-	allowGuacamoleV4 := linux.IptablesRule{
-		Args:        []string{"-p", "tcp", "-s", "127.0.0.1", "-d", "127.0.0.1", "--dport", "4822", "-j", "ACCEPT"},
-		Description: "Local Guacamole traffic is always allowed",
+	const (
+		localGuacamoleRuleLabel  = "Local Guacamole"
+		remoteGuacamoleRuleLabel = "Remote Guacamole"
+	)
+	allowGuacamoleDescr := "Local Guacamole traffic is always allowed " +
+		"(provides console and VDI services to running VMs and containers)"
+	allowLocalGuacamoleV4 := iptables.Rule{
+		RuleLabel:     localGuacamoleRuleLabel,
+		MatchOpts:     []string{"-p", "tcp", "-s", "127.0.0.1", "-d", "127.0.0.1", "--dport", "4822"},
+		Target:        "ACCEPT",
+		AppliedBefore: []string{remoteGuacamoleRuleLabel},
+		Description:   allowGuacamoleDescr,
 	}
-	allowGuacamoleV6 := linux.IptablesRule{
-		Args:        []string{"-p", "tcp", "-s", "::1", "-d", "::1", "--dport", "4822", "-j", "ACCEPT"},
-		Description: "Local Guacamole traffic is always allowed",
+	allowLocalGuacamoleV6 := iptables.Rule{
+		RuleLabel:     localGuacamoleRuleLabel,
+		MatchOpts:     []string{"-p", "tcp", "-s", "::1", "-d", "::1", "--dport", "4822"},
+		Target:        "ACCEPT",
+		AppliedBefore: []string{remoteGuacamoleRuleLabel},
+		Description:   allowGuacamoleDescr,
 	}
-	blockNonLocalGuacamole := linux.IptablesRule{
-		Args:        []string{"-p", "tcp", "--dport", "4822", "-j", "REJECT", "--reject-with", "tcp-reset"},
-		Description: "Block non-local Guacamole traffic",
+	blockNonLocalGuacamole := iptables.Rule{
+		RuleLabel:   remoteGuacamoleRuleLabel,
+		MatchOpts:   []string{"-p", "tcp", "--dport", "4822"},
+		Target:      "REJECT",
+		TargetOpts:  []string{"--reject-with", "tcp-reset"},
+		Description: "Block attempts to connect to Guacamole server from outside",
 	}
-	filterV4Rules = append(filterV4Rules, allowGuacamoleV4, blockNonLocalGuacamole)
-	filterV6Rules = append(filterV6Rules, allowGuacamoleV6, blockNonLocalGuacamole)
+	filterV4Rules = append(filterV4Rules, allowLocalGuacamoleV4, blockNonLocalGuacamole)
+	filterV6Rules = append(filterV6Rules, allowLocalGuacamoleV6, blockNonLocalGuacamole)
 
 	// Allow/block SSH access.
 	gcpSSHAuthKeys := gcp.GlobalValueString(types.SSHAuthorizedKeys)
 	intendedACLs.PutItem(generic.SSHAuthKeys{Keys: gcpSSHAuthKeys}, nil)
 	gcpAllowSSH := gcp.GlobalValueString(types.SSHAuthorizedKeys) != ""
-	blockSSH := linux.IptablesRule{
-		Args:        []string{"-p", "tcp", "--dport", "22", "-j", "REJECT", "--reject-with", "tcp-reset"},
-		Description: "Block SSH",
+	blockSSH := iptables.Rule{
+		RuleLabel:   "Block SSH",
+		MatchOpts:   []string{"-p", "tcp", "--dport", "22"},
+		Target:      "REJECT",
+		TargetOpts:  []string{"--reject-with", "tcp-reset"},
+		Description: "SSH access is not allowed by device config",
 	}
 	if !gcpAllowSSH {
 		filterV4Rules = append(filterV4Rules, blockSSH)
@@ -1304,152 +1418,227 @@ func (r *LinuxDpcReconciler) getIntendedACLs(
 	}
 
 	// Allow/block VNC access.
-	allowLocalVNCv4 := linux.IptablesRule{
-		Args: []string{"-p", "tcp", "-s", "127.0.0.1", "-d", "127.0.0.1",
-			"--dport", "5900:5999", "-j", "ACCEPT"},
+	const (
+		localVNCRuleLabel  = "Local VNC"
+		remoteVNCRuleLabel = "Remote VNC"
+	)
+	gcpAllowRemoteVNC := gcp.GlobalValueBool(types.AllowAppVnc)
+	allowLocalVNCv4 := iptables.Rule{
+		RuleLabel: localVNCRuleLabel,
+		MatchOpts: []string{"-p", "tcp", "-s", "127.0.0.1", "-d", "127.0.0.1",
+			"--dport", "5900:5999"},
+		Target:      "ACCEPT",
 		Description: "Local VNC traffic is always allowed",
 	}
-	allowLocalVNCv6 := linux.IptablesRule{
-		Args: []string{"-p", "tcp", "-s", "::1", "-d", "::1",
-			"--dport", "5900:5999", "-j", "ACCEPT"},
+	allowLocalVNCv6 := iptables.Rule{
+		RuleLabel: localVNCRuleLabel,
+		MatchOpts: []string{"-p", "tcp", "-s", "::1", "-d", "::1",
+			"--dport", "5900:5999"},
+		Target:      "ACCEPT",
 		Description: "Local VNC traffic is always allowed",
+	}
+	if !gcpAllowRemoteVNC {
+		// Remote VNC rules block any VNC traffic (incl. local), meaning that Local VNC
+		// rules must precede them to work correctly.
+		allowLocalVNCv4.AppliedBefore = []string{remoteVNCRuleLabel}
+		allowLocalVNCv6.AppliedBefore = []string{remoteVNCRuleLabel}
 	}
 	filterV4Rules = append(filterV4Rules, allowLocalVNCv4)
 	filterV6Rules = append(filterV6Rules, allowLocalVNCv6)
-	gcpAllowRemoteVNC := gcp.GlobalValueBool(types.AllowAppVnc)
 	if !gcpAllowRemoteVNC {
-		blockRemoteVNC := linux.IptablesRule{
-			Args: []string{"-p", "tcp", "--dport", "5900:5999",
-				"-j", "REJECT", "--reject-with", "tcp-reset"},
-			Description: "Block VNC traffic originating from outside",
+		blockRemoteVNC := iptables.Rule{
+			RuleLabel:  remoteVNCRuleLabel,
+			MatchOpts:  []string{"-p", "tcp", "--dport", "5900:5999"},
+			Target:     "REJECT",
+			TargetOpts: []string{"--reject-with", "tcp-reset"},
+			Description: "VNC traffic originating from outside is not allowed " +
+				"by device config",
 		}
 		filterV4Rules = append(filterV4Rules, blockRemoteVNC)
 		filterV6Rules = append(filterV6Rules, blockRemoteVNC)
 	}
 
-	// Collect filtering rules.
-	intendedACLs.PutItem(linux.IptablesChain{
-		ChainName:  "INPUT" + iptables.DeviceChainSuffix,
-		Table:      "filter",
-		ForIPv6:    false,
-		Rules:      filterV4Rules,
-		PreCreated: true,
-	}, nil)
-	intendedACLs.PutItem(linux.IptablesChain{
-		ChainName:  "INPUT" + iptables.DeviceChainSuffix,
-		Table:      "filter",
-		ForIPv6:    true,
-		Rules:      filterV6Rules,
-		PreCreated: true,
-	}, nil)
+	// Submit filtering rules.
+	for _, filterV4Rule := range filterV4Rules {
+		filterV4Rule.ChainName = "INPUT" + iptables.DeviceChainSuffix
+		filterV4Rule.Table = "filter"
+		filterV4Rule.ForIPv6 = false
+		intendedIPv4ACLs.PutItem(filterV4Rule, nil)
+	}
+	for _, filterV6Rule := range filterV6Rules {
+		filterV6Rule.ChainName = "INPUT" + iptables.DeviceChainSuffix
+		filterV6Rule.Table = "filter"
+		filterV6Rule.ForIPv6 = true
+		intendedIPv6ACLs.PutItem(filterV6Rule, nil)
+	}
 
-	// Mark incoming control-flow traffic.
+	// Mark ingress control-flow traffic.
 	// For connections originating from outside we use App ID = 0.
-	markSSHAndGuacamole := linux.IptablesRule{
-		Args: []string{"-p", "tcp", "--match", "multiport", "--dports", "22,4822",
-			"-j", "CONNMARK", "--set-mark", iptables.ControlProtocolMarkingIDMap["in_http_ssh_guacamole"]},
-		Description: "Mark SSH and Guacamole traffic",
+	markSSHAndGuacamole := iptables.Rule{
+		RuleLabel:   "SSH and Guacamole mark",
+		MatchOpts:   []string{"-p", "tcp", "--match", "multiport", "--dports", "22,4822"},
+		Target:      "CONNMARK",
+		TargetOpts:  []string{"--set-mark", iptables.ControlProtocolMarkingIDMap["in_http_ssh_guacamole"]},
+		Description: "Mark ingress SSH and Guacamole traffic",
 	}
-	markVnc := linux.IptablesRule{
-		Args: []string{"-p", "tcp", "--match", "multiport", "--dports", "5900:5999",
-			"-j", "CONNMARK", "--set-mark", iptables.ControlProtocolMarkingIDMap["in_http_ssh_guacamole"]},
-		Description: "Mark VNC traffic",
+	markVnc := iptables.Rule{
+		RuleLabel:   "VNC mark",
+		MatchOpts:   []string{"-p", "tcp", "--match", "multiport", "--dports", "5900:5999"},
+		Target:      "CONNMARK",
+		TargetOpts:  []string{"--set-mark", iptables.ControlProtocolMarkingIDMap["in_vnc"]},
+		Description: "Mark ingress VNC traffic",
 	}
-	markIcmpV4 := linux.IptablesRule{
-		Args: []string{"-p", "icmp",
-			"-j", "CONNMARK", "--set-mark", iptables.ControlProtocolMarkingIDMap["in_icmp"]},
-		Description: "Mark ICMP traffic",
+	markIcmpV4 := iptables.Rule{
+		RuleLabel:   "ICMP mark",
+		MatchOpts:   []string{"-p", "icmp"},
+		Target:      "CONNMARK",
+		TargetOpts:  []string{"--set-mark", iptables.ControlProtocolMarkingIDMap["in_icmp"]},
+		Description: "Mark ingress ICMP traffic",
 	}
-	markIcmpV6 := linux.IptablesRule{
-		Args: []string{"-p", "icmpv6",
-			"-j", "CONNMARK", "--set-mark", iptables.ControlProtocolMarkingIDMap["in_icmp"]},
-		Description: "Mark ICMPv6 traffic",
+	markIcmpV6 := iptables.Rule{
+		RuleLabel:   "ICMPv6 traffic",
+		MatchOpts:   []string{"-p", "icmpv6"},
+		Target:      "CONNMARK",
+		TargetOpts:  []string{"--set-mark", iptables.ControlProtocolMarkingIDMap["in_icmp"]},
+		Description: "Mark ingress ICMPv6 traffic",
 	}
-	markDhcp := linux.IptablesRule{
-		Args: []string{"-p", "udp", "--dport", "bootps:bootpc",
-			"-j", "CONNMARK", "--set-mark", iptables.ControlProtocolMarkingIDMap["in_dhcp"]},
-		Description: "Mark DHCP traffic",
+	markDhcp := iptables.Rule{
+		RuleLabel:   "DHCP mark",
+		MatchOpts:   []string{"-p", "udp", "--dport", "bootps:bootpc"},
+		Target:      "CONNMARK",
+		TargetOpts:  []string{"--set-mark", iptables.ControlProtocolMarkingIDMap["in_dhcp"]},
+		Description: "Mark ingress DHCP traffic",
 	}
-	mangleV4Rules := []linux.IptablesRule{
+	protoMarkV4Rules := []iptables.Rule{
 		markSSHAndGuacamole, markVnc, markIcmpV4, markDhcp,
 	}
-	mangleV6Rules := []linux.IptablesRule{
+	protoMarkV6Rules := []iptables.Rule{
 		markSSHAndGuacamole, markVnc, markIcmpV6,
 	}
 
-	// Mark incoming traffic not matched by the rules above with the DROP action.
-	const dropIncomingChain = "drop-incoming"
-	incomingDefDrop := iptables.GetConnmark(0, iptables.DefaultDropAceID, true)
-	incomingDefDropStr := strconv.FormatUint(uint64(incomingDefDrop), 10)
-	incomingDefDropRules := []linux.IptablesRule{
-		{Args: []string{"-j", "CONNMARK", "--restore-mark"}},
-		{Args: []string{"-m", "mark", "!", "--mark", "0", "-j", "ACCEPT"}},
-		{Args: []string{"-j", "MARK", "--set-mark", incomingDefDropStr}},
-		{Args: []string{"-j", "CONNMARK", "--save-mark"}},
+	// Mark ingress traffic not matched by the rules above with the DROP action.
+	// Create a separate chain for marking.
+	const dropIngressChain = "drop-ingress"
+	intendedIPv4ACLs.PutItem(iptables.Chain{
+		ChainName: dropIngressChain,
+		Table:     "mangle",
+		ForIPv6:   false,
+	}, nil)
+	intendedIPv6ACLs.PutItem(iptables.Chain{
+		ChainName: dropIngressChain,
+		Table:     "mangle",
+		ForIPv6:   true,
+	}, nil)
+	ingressDefDrop := iptables.GetConnmark(0, iptables.DefaultDropAceID, true)
+	ingressDefDropStr := strconv.FormatUint(uint64(ingressDefDrop), 10)
+	ingressDefDropRules := []iptables.Rule{
+		{
+			RuleLabel:  "Restore ingress mark",
+			Target:     "CONNMARK",
+			TargetOpts: []string{"--restore-mark"},
+		},
+		{
+			RuleLabel: "Accept marked ingress",
+			MatchOpts: []string{"-m", "mark", "!", "--mark", "0"},
+			Target:    "ACCEPT",
+		},
+		{
+			RuleLabel:  "Default ingress mark",
+			Target:     "MARK",
+			TargetOpts: []string{"--set-mark", ingressDefDropStr},
+		},
+		{
+			RuleLabel:  "Save ingress mark",
+			Target:     "CONNMARK",
+			TargetOpts: []string{"--save-mark"},
+		},
 	}
-	intendedACLs.PutItem(linux.IptablesChain{
-		ChainName:  dropIncomingChain,
-		Table:      "mangle",
-		ForIPv6:    false,
-		Rules:      incomingDefDropRules,
-		PreCreated: false,
-	}, nil)
-	intendedACLs.PutItem(linux.IptablesChain{
-		ChainName:  dropIncomingChain,
-		Table:      "mangle",
-		ForIPv6:    true,
-		Rules:      incomingDefDropRules,
-		PreCreated: false,
-	}, nil)
-	for _, port := range dpc.Ports {
-		dropIncomingRule := linux.IptablesRule{
-			Args: []string{"-i", port.IfName, "-j", dropIncomingChain},
+	for i, rule := range ingressDefDropRules {
+		rule.ChainName = dropIngressChain
+		rule.Table = "mangle"
+		// Keep exact order.
+		if i < len(ingressDefDropRules)-1 {
+			rule.AppliedBefore = []string{ingressDefDropRules[i+1].RuleLabel}
 		}
-		mangleV4Rules = append(mangleV4Rules, dropIncomingRule)
-		mangleV6Rules = append(mangleV6Rules, dropIncomingRule)
+		rule.ForIPv6 = false
+		intendedIPv4ACLs.PutItem(rule, nil)
+		rule.ForIPv6 = true
+		intendedIPv6ACLs.PutItem(rule, nil)
+	}
+	// Send everything UNMARKED coming through a device port to "drop-ingress" chain,
+	// i.e. these rules are below protoMarkV4Rules/protoMarkV6Rules
+	var dropMarkRules []iptables.Rule
+	for _, port := range dpc.Ports {
+		dropIngressRule := iptables.Rule{
+			RuleLabel: fmt.Sprintf("Ingress from %s", port.IfName),
+			MatchOpts: []string{"-i", port.IfName},
+			Target:    dropIngressChain,
+		}
+		dropMarkRules = append(dropMarkRules, dropIngressRule)
+	}
+
+	// Submit rules marking ingress traffic.
+	for _, markV4Rule := range protoMarkV4Rules {
+		markV4Rule.ChainName = "PREROUTING" + iptables.DeviceChainSuffix
+		markV4Rule.Table = "mangle"
+		markV4Rule.ForIPv6 = false
+		for _, dropMarkRule := range dropMarkRules {
+			markV4Rule.AppliedBefore = append(markV4Rule.AppliedBefore, dropMarkRule.RuleLabel)
+		}
+		intendedIPv4ACLs.PutItem(markV4Rule, nil)
+	}
+	for _, markV6Rule := range protoMarkV6Rules {
+		markV6Rule.ChainName = "PREROUTING" + iptables.DeviceChainSuffix
+		markV6Rule.Table = "mangle"
+		markV6Rule.ForIPv6 = true
+		for _, dropMarkRule := range dropMarkRules {
+			markV6Rule.AppliedBefore = append(markV6Rule.AppliedBefore, dropMarkRule.RuleLabel)
+		}
+		intendedIPv6ACLs.PutItem(markV6Rule, nil)
+	}
+	for _, markRule := range dropMarkRules {
+		markRule.ChainName = "PREROUTING" + iptables.DeviceChainSuffix
+		markRule.Table = "mangle"
+		markRule.ForIPv6 = false
+		intendedIPv4ACLs.PutItem(markRule, nil)
+		markRule.ForIPv6 = true
+		intendedIPv6ACLs.PutItem(markRule, nil)
 	}
 
 	// Mark all un-marked local traffic generated by local services.
-	outputV4Rules := []linux.IptablesRule{
-		{Args: []string{"-j", "CONNMARK", "--restore-mark"}},
-		{Args: []string{"-m", "mark", "!", "--mark", "0", "-j", "ACCEPT"}},
-		{Args: []string{"-j", "MARK", "--set-mark", iptables.ControlProtocolMarkingIDMap["out_all"]}},
-		{Args: []string{"-j", "CONNMARK", "--save-mark"}},
+	outputRules := []iptables.Rule{
+		{
+			RuleLabel:  "Restore egress mark",
+			Target:     "CONNMARK",
+			TargetOpts: []string{"--restore-mark"},
+		},
+		{
+			RuleLabel: "Accept marked egress",
+			MatchOpts: []string{"-m", "mark", "!", "--mark", "0"},
+			Target:    "ACCEPT",
+		},
+		{
+			RuleLabel:  "Default egress mark",
+			Target:     "MARK",
+			TargetOpts: []string{"--set-mark", iptables.ControlProtocolMarkingIDMap["out_all"]},
+		},
+		{
+			RuleLabel:  "Save egress mark",
+			Target:     "CONNMARK",
+			TargetOpts: []string{"--save-mark"},
+		},
 	}
-	outputV6Rules := []linux.IptablesRule{
-		{Args: []string{"-j", "CONNMARK", "--set-mark", iptables.ControlProtocolMarkingIDMap["out_all"]}},
+	for i, outputRule := range outputRules {
+		outputRule.ChainName = "OUTPUT" + iptables.DeviceChainSuffix
+		outputRule.Table = "mangle"
+		// Keep exact order.
+		if i < len(outputRules)-1 {
+			outputRule.AppliedBefore = []string{outputRules[i+1].RuleLabel}
+		}
+		outputRule.ForIPv6 = false
+		intendedIPv4ACLs.PutItem(outputRule, nil)
+		outputRule.ForIPv6 = true
+		intendedIPv6ACLs.PutItem(outputRule, nil)
 	}
-
-	// Collect marking rules.
-	intendedACLs.PutItem(linux.IptablesChain{
-		ChainName:    "PREROUTING" + iptables.DeviceChainSuffix,
-		Table:        "mangle",
-		ForIPv6:      false,
-		Rules:        mangleV4Rules,
-		PreCreated:   true,
-		RefersChains: []string{dropIncomingChain},
-	}, nil)
-	intendedACLs.PutItem(linux.IptablesChain{
-		ChainName:    "PREROUTING" + iptables.DeviceChainSuffix,
-		Table:        "mangle",
-		ForIPv6:      true,
-		Rules:        mangleV6Rules,
-		PreCreated:   true,
-		RefersChains: []string{dropIncomingChain},
-	}, nil)
-	intendedACLs.PutItem(linux.IptablesChain{
-		ChainName:  "OUTPUT" + iptables.DeviceChainSuffix,
-		Table:      "mangle",
-		ForIPv6:    false,
-		Rules:      outputV4Rules,
-		PreCreated: true,
-	}, nil)
-	intendedACLs.PutItem(linux.IptablesChain{
-		ChainName:  "OUTPUT" + iptables.DeviceChainSuffix,
-		Table:      "mangle",
-		ForIPv6:    true,
-		Rules:      outputV6Rules,
-		PreCreated: true,
-	}, nil)
 	return intendedACLs
 }

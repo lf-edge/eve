@@ -23,70 +23,20 @@ const (
 	AppChainSuffix = "-apps"
 )
 
-// Init : prepare iptables for use by EVE. Specifically, NIM and zedrouter
-// use iptables to implement network ACLs.
-func Init(log *base.LogObject) (err error) {
-	// Pre-create chains separating device-wide ACLs from app-scoped ACLs.
-	// Note that app-ACLs are put before device-wide ACLs!
-	usedChains := map[string][]string{ // table -> chains
-		"filter": {"INPUT", "FORWARD", "OUTPUT"},
-		"mangle": {"INPUT", "FORWARD", "OUTPUT", "PREROUTING", "POSTROUTING"},
-		"raw":    {"PREROUTING"},
-		"nat":    {"PREROUTING", "POSTROUTING"},
-	}
-	for table, chains := range usedChains {
-		for _, chain := range chains {
-			// Flush rules from the previous run.
-			err = IptableCmd(log, "-t", table, "-F", chain)
-			if err != nil {
-				return err
-			}
-			err = Ip6tableCmd(log, "-t", table, "-F", chain)
-			if err != nil {
-				return err
-			}
-			// Create sub-chain for app ACLs.
-			err = IptableCmd(log, "-t", table, "-N", chain+AppChainSuffix)
-			if err != nil {
-				return err
-			}
-			err = IptableCmd(log, "-t", table, "-A", chain, "-j", chain+AppChainSuffix)
-			if err != nil {
-				return err
-			}
-			err = Ip6tableCmd(log, "-t", table, "-N", chain+AppChainSuffix)
-			if err != nil {
-				return err
-			}
-			err = Ip6tableCmd(log, "-t", table, "-A", chain, "-j", chain+AppChainSuffix)
-			if err != nil {
-				return err
-			}
-			// Create sub-chain for device ACLs.
-			err = IptableCmd(log, "-t", table, "-N", chain+DeviceChainSuffix)
-			if err != nil {
-				return err
-			}
-			err = IptableCmd(log, "-t", table, "-A", chain, "-j", chain+DeviceChainSuffix)
-			if err != nil {
-				return err
-			}
-			err = Ip6tableCmd(log, "-t", table, "-N", chain+DeviceChainSuffix)
-			if err != nil {
-				return err
-			}
-			err = Ip6tableCmd(log, "-t", table, "-A", chain, "-j", chain+DeviceChainSuffix)
-			if err != nil {
-				return err
-			}
-		}
-	}
-	return nil
+const (
+	iptablesCmd  = "iptables"
+	ip6tablesCmd = "ip6tables"
+)
+
+type iptablesFnType func(log *base.LogObject, args ...string) error
+
+var iptablesFn = map[string]iptablesFnType{
+	iptablesCmd:  IptableCmd,
+	ip6tablesCmd: Ip6tableCmd,
 }
 
 // IptableCmdOut logs the command string if log is set
 func IptableCmdOut(log *base.LogObject, args ...string) (string, error) {
-	cmd := "iptables"
 	var out []byte
 	var err error
 	// XXX as long as zedagent also calls iptables we need to
@@ -96,10 +46,10 @@ func IptableCmdOut(log *base.LogObject, args ...string) (string, error) {
 	args[0] = "-w"
 	args[1] = "5"
 	if log != nil {
-		log.Functionf("Calling command %s %v\n", cmd, args)
-		out, err = base.Exec(log, cmd, args...).CombinedOutput()
+		log.Functionf("Calling command %s %v\n", iptablesCmd, args)
+		out, err = base.Exec(log, iptablesCmd, args...).CombinedOutput()
 	} else {
-		out, err = base.Exec(log, cmd, args...).Output()
+		out, err = base.Exec(log, iptablesCmd, args...).Output()
 	}
 	if err != nil {
 		errStr := fmt.Sprintf("iptables command %s failed %s output %s",
@@ -120,7 +70,6 @@ func IptableCmd(log *base.LogObject, args ...string) error {
 
 // Ip6tableCmdOut logs the command string if log is set
 func Ip6tableCmdOut(log *base.LogObject, args ...string) (string, error) {
-	cmd := "ip6tables"
 	var out []byte
 	var err error
 	// XXX as long as zedagent also calls iptables we need to
@@ -130,10 +79,10 @@ func Ip6tableCmdOut(log *base.LogObject, args ...string) (string, error) {
 	args[0] = "-w"
 	args[1] = "5"
 	if log != nil {
-		log.Functionf("Calling command %s %v\n", cmd, args)
-		out, err = base.Exec(log, cmd, args...).CombinedOutput()
+		log.Functionf("Calling command %s %v\n", ip6tablesCmd, args)
+		out, err = base.Exec(log, ip6tablesCmd, args...).CombinedOutput()
 	} else {
-		out, err = base.Exec(log, cmd, args...).Output()
+		out, err = base.Exec(log, ip6tablesCmd, args...).Output()
 	}
 	if err != nil {
 		errStr := fmt.Sprintf("ip6tables command %s failed %s output %s",

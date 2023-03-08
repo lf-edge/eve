@@ -23,6 +23,7 @@ import (
 	dpcrec "github.com/lf-edge/eve/pkg/pillar/dpcreconciler"
 	generic "github.com/lf-edge/eve/pkg/pillar/dpcreconciler/genericitems"
 	linux "github.com/lf-edge/eve/pkg/pillar/dpcreconciler/linuxitems"
+	"github.com/lf-edge/eve/pkg/pillar/iptables"
 	"github.com/lf-edge/eve/pkg/pillar/netmonitor"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 )
@@ -53,6 +54,21 @@ func printCurrentState() {
 	currentState := dpcReconciler.GetCurrentState()
 	dotExporter := &dg.DotExporter{CheckDeps: true}
 	dot, _ := dotExporter.Export(currentState)
+	fmt.Println(dot)
+}
+
+func printIntendedState() {
+	intendedState := dpcReconciler.GetIntendedState()
+	dotExporter := &dg.DotExporter{CheckDeps: true}
+	dot, _ := dotExporter.Export(intendedState)
+	fmt.Println(dot)
+}
+
+func printCombinedState() {
+	currentState := dpcReconciler.GetCurrentState()
+	intendedState := dpcReconciler.GetIntendedState()
+	dotExporter := &dg.DotExporter{CheckDeps: true}
+	dot, _ := dotExporter.ExportTransition(currentState, intendedState)
 	fmt.Println(dot)
 }
 
@@ -129,11 +145,12 @@ func TestReconcileWithEmptyArgs(test *testing.T) {
 	t.Expect(status.RS.ConfigError).To(BeEmpty())
 	t.Expect(status.DNS.Error).To(BeNil())
 	t.Expect(status.DNS.Servers).To(BeEmpty())
-	t.Expect(itemCountWithType(linux.IPtablesChainTypename)).To(Equal(4))
-	t.Expect(itemCountWithType(linux.IP6tablesChainTypename)).To(Equal(4))
 	t.Expect(itemCountWithType(linux.LocalIPRuleTypename)).To(Equal(1))
-	filterChain := dg.Reference(linux.IptablesChain{Table: "filter", ChainName: "INPUT-device"})
-	t.Expect(itemDescription(filterChain)).To(ContainSubstring("Block SSH"))
+	t.Expect(itemCountWithType(iptables.ChainV4Typename)).To(Equal(11))
+	t.Expect(itemCountWithType(iptables.ChainV6Typename)).To(Equal(11))
+	t.Expect(itemCountWithType(iptables.RuleV4Typename)).To(Equal(28))
+	t.Expect(itemCountWithType(iptables.RuleV6Typename)).To(Equal(27)) // without markDhcp
+	t.Expect(itemIsCreatedWithLabel("Block SSH")).To(BeTrue())
 
 	// Enable SSH access
 	gcp := types.DefaultConfigItemValueMap()
@@ -141,7 +158,7 @@ func TestReconcileWithEmptyArgs(test *testing.T) {
 	ctx = reconciler.MockRun(context.Background())
 	status = dpcReconciler.Reconcile(ctx, dpcrec.Args{GCP: *gcp})
 	t.Expect(status.Error).To(BeNil())
-	t.Expect(itemDescription(filterChain)).ToNot(ContainSubstring("Block SSH"))
+	t.Expect(itemIsCreatedWithLabel("Block SSH")).To(BeFalse())
 
 	// Nothing changed - nothing to reconcile.
 	ctx = reconciler.MockRun(context.Background())
