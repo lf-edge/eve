@@ -763,6 +763,10 @@ func writelogFile(logChan <-chan inputEntry, moveChan chan fileChanInfo) {
 				appM = getAppStatsMap(appuuid)
 			}
 			timeS := getPtypeTimestamp(entry.timestamp)
+			if timeS == nil {
+				// Can't parse timestamp, silently drop the entry
+				break
+			}
 			mapLog := logs.LogEntry{
 				Severity:  entry.severity,
 				Source:    entry.source,
@@ -1578,7 +1582,7 @@ func getDevTop10Inputs() {
 func getPtypeTimestamp(timeStr string) *timestamp.Timestamp {
 	t, err := time.Parse(time.RFC3339, timeStr)
 	if err != nil {
-		log.Fatal(err)
+		return nil
 	}
 	tt := &timestamp.Timestamp{Seconds: t.Unix(), Nanos: int32(t.Nanosecond())}
 	return tt
