@@ -247,7 +247,7 @@ func recvServerData(mtype int, message []byte) {
 	}
 
 	mid := jmsg.MappingID - 1
-	if len(tcpConnM) < int(mid) {
+	if len(tcpConnM) <= int(mid) {
 		fmt.Printf("tcpConnMap size %d, can not have index %d\n", len(tcpConnM), mid)
 		return
 	}
@@ -527,6 +527,10 @@ func recvClientData(mtype int, message []byte) {
 	}
 
 	mid := jmsg.MappingID - 1
+	if len(tcpConnM) <= int(mid) {
+		log.Errorf("receive tcp mapping incorrect ID: %d", mid)
+		return
+	}
 	myChan, ok := tcpConnM[mid].Get(int(jmsg.ChanNum))
 	if !ok || myChan.closed {
 		log.Tracef("tcpConnMap(%d) has no chan %d on server, launch", mid, jmsg.ChanNum)

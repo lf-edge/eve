@@ -896,26 +896,34 @@ func httpsclient(server string, ipaddr net.IP) {
 }
 
 func getFlow(subStr string) {
-	connT, err := netlink.ConntrackTableList(netlink.ConntrackTable, syscall.AF_INET)
-	if err != nil {
-		fmt.Printf("can not get flow: %v\n", err)
-		return
-	}
-	i := 0
-	for _, entry := range connT {
-		connStr := entry.String()
-		oline := connStr
-		if subStr != "" {
-			if !strings.Contains(connStr, subStr) {
-				continue
-			}
-			colorPattern := getColorStr(subStr, colorYELLOW)
-			oline = strings.ReplaceAll(oline, subStr, colorPattern)
+	afs := [2]netlink.InetFamily{syscall.AF_INET, syscall.AF_INET6}
+	for _, af := range afs {
+		connT, err := netlink.ConntrackTableList(netlink.ConntrackTable, af)
+		if err != nil {
+			fmt.Printf("can not get flow: %v\n", err)
+			continue
 		}
-		fmt.Printf("%v\n", oline)
-		i++
-		if i%20 == 0 {
-			closePipe(true)
+		if af == syscall.AF_INET {
+			printColor("\nflow for IPv4\n", colorGREEN)
+		} else {
+			printColor("\nflow for IPv6\n", colorGREEN)
+		}
+		i := 0
+		for _, entry := range connT {
+			connStr := entry.String()
+			oline := connStr
+			if subStr != "" {
+				if !strings.Contains(connStr, subStr) {
+					continue
+				}
+				colorPattern := getColorStr(subStr, colorYELLOW)
+				oline = strings.ReplaceAll(oline, subStr, colorPattern)
+			}
+			fmt.Printf("%v\n", oline)
+			i++
+			if i%20 == 0 {
+				closePipe(true)
+			}
 		}
 	}
 }
