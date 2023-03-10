@@ -1,4 +1,4 @@
-module github.com/edge-view
+module github.com/lf-edge/eve/pkg/edgeview
 
 go 1.20
 
