@@ -730,9 +730,9 @@ In order to cross compile, you need the following at compile time:
 
 * env vars, specifically:
   * `BUILDARCH` - the architecture in go format for where you are building, e.g. amd64 or arm64
-  * `BUILD_ARCH` - the architecture in uname format for where you are building, e.g. x86_64 or aarch64
+  * `EVE_BUILD_ARCH` - the architecture in uname format for where you are building, e.g. x86_64 or aarch64
   * `TARGETARCH` - the architecture in go format for the platform you are targeting, e.g. amd64 or arm64
-  * `TARGET_ARCH` - the architecture in uname format for the platform you are targeting, e.g. x86_64 or aarch64
+  * `EVE_TARGET_ARCH` - the architecture in uname format for the platform you are targeting, e.g. x86_64 or aarch64
   * `CROSS_COMPILE_ENV` - cross-compiler prefix to use in `CC` with gcc suffix or in `CROSS_COMPILE` env variable
 * compilers in your build architecture that can compile binaries for your target architecture
   * `gcc`/`g++`/`binutils` with cross-compilation support - provided by `lfedge/eve-cross-compilers`
@@ -769,23 +769,23 @@ Below we provide step-by-step processes for cross-compilation in Dockerfile, eac
     RUN eve-alpine-deploy.sh
     ```
 
-4. Adjust `TARGET_ARCH` environment variable for cross-compiler:
+4. Adjust `EVE_TARGET_ARCH` environment variable for cross-compiler:
 
     ```dockerfile
     FROM build-cross AS build-cross-target-arm64
-    ENV TARGET_ARCH=aarch64
+    ENV EVE_TARGET_ARCH=aarch64
     FROM build-cross AS build-cross-target-amd64
-    ENV TARGET_ARCH=x86_64
+    ENV EVE_TARGET_ARCH=x86_64
     ```
 
 5. Install cross-compilers and copy libraries into your image:
 
     ```dockerfile
     FROM build-cross-target-${TARGETARCH} AS build-cross-target
-    ENV CROSS_COMPILE_ENV="${TARGET_ARCH}"-alpine-linux-musl-
+    ENV CROSS_COMPILE_ENV="${EVE_TARGET_ARCH}"-alpine-linux-musl-
     COPY --from=cross-compilers /packages /packages
-    RUN apk add --no-cache --allow-untrusted -X /packages build-base-"${TARGET_ARCH}"
-    COPY --from=cross-compile-libs /out/ /usr/"${TARGET_ARCH}"-alpine-linux-musl/
+    RUN apk add --no-cache --allow-untrusted -X /packages build-base-"${EVE_TARGET_ARCH}"
+    COPY --from=cross-compile-libs /out/ /usr/"${EVE_TARGET_ARCH}"-alpine-linux-musl/
     ```
 
 6. Chain images to use the same notation for cross and native cases:
@@ -818,7 +818,7 @@ Below we provide step-by-step processes for cross-compilation in Dockerfile, eac
 
 8. Copy out build artifacts into the image based on target arch. Do not forget to install runtime libraries there.
 
-Note that `BUILD_ARCH` and `TARGET_ARCH` environment variables are set in eve-alpine image to be aligned with its arch (e.g. `x86_64` for `adm64`), so we need to override them only for cross-compilation.
+Note that `EVE_BUILD_ARCH` and `EVE_TARGET_ARCH` environment variables are set in eve-alpine image to be aligned with its arch (e.g. `x86_64` for `adm64`), so we need to override them only for cross-compilation.
 `BUILDARCH` and `TARGETARCH` exposed by build system itself.
 
 The whole flow looks like this:
@@ -827,7 +827,7 @@ The whole flow looks like this:
 * For cross-compile builds, e.g. amd64 (host) -> arm64 (target):
   * Stage `build` inherits from `target-arm64-build-amd64`, which inherits from `build-cross-target`
   * Stage `build-cross-target`:
-    * installs the cross-compilers for host (amd64) and target (arm64) arch combination from `cross-compilers` image. We use `TARGET_ARCH` there to compose the package name notation `build-base-aarch64` to install.
+    * installs the cross-compilers for host (amd64) and target (arm64) arch combination from `cross-compilers` image. We use `EVE_TARGET_ARCH` there to compose the package name notation `build-base-aarch64` to install.
     * installs the target arch libraries from `cross-compile-libs`, which is based on `eve-alpine` for the `TARGETARCH`
-    * sets `CROSS_COMPILE_ENV="${TARGET_ARCH}"-alpine-linux-musl-` environment variable to use later as cross-compile prefix
-    * inherits from `build-cross-target-${TARGETARCH}`, which adjust the `TARGET_ARCH` environment variable and inherits from `build-cross` stage based on `eve-alpine`
+    * sets `CROSS_COMPILE_ENV="${EVE_TARGET_ARCH}"-alpine-linux-musl-` environment variable to use later as cross-compile prefix
+    * inherits from `build-cross-target-${TARGETARCH}`, which adjust the `EVE_TARGET_ARCH` environment variable and inherits from `build-cross` stage based on `eve-alpine`
