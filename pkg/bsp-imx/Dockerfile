@@ -1,14 +1,62 @@
 # syntax=docker/dockerfile-upstream:1.5.0-rc2-labs
-FROM lfedge/eve-alpine:9fb9b9cbf7d90066a70e4704d04a6fe248ff52bb as build-base
-RUN mkdir /bsp
 
-FROM build-base AS build-amd64
-FROM build-base AS build-riscv64
-FROM build-base AS build-arm64
-ENV BUILD_PKGS bash binutils-dev build-base bc bison flex openssl-dev util-linux-dev swig gnutls-dev perl python3 python3-dev py3-setuptools py3-pycryptodome py3-elftools
+# use the same set of packages for simplicity
+ARG BUILD_PKGS_BASE="bash binutils-dev build-base bc bison flex openssl-dev util-linux-dev swig gnutls-dev perl python3 python3-dev py3-setuptools py3-pycryptodome py3-elftools"
+
+# we use the same image in several places
+ARG EVE_ALPINE_IMAGE=lfedge/eve-alpine:9fb9b9cbf7d90066a70e4704d04a6fe248ff52bb
+
+# hadolint ignore=DL3006
+FROM ${EVE_ALPINE_IMAGE} as build-native
+ARG BUILD_PKGS_BASE
+RUN BUILD_PKGS="${BUILD_PKGS_BASE}" eve-alpine-deploy.sh
+
+# hadolint ignore=DL3006,DL3029
+FROM --platform=${BUILDPLATFORM} ${EVE_ALPINE_IMAGE} as build-cross
+ARG BUILD_PKGS_BASE
+RUN BUILD_PKGS="${BUILD_PKGS_BASE}" eve-alpine-deploy.sh
+
+# hadolint ignore=DL3029
+FROM --platform=${BUILDPLATFORM} lfedge/eve-cross-compilers:2a1d062fce410865e7024a83de327a68e52db26c AS cross-compilers
+
+# will use several packages from target arch and copy them to sysroot
+# hadolint ignore=DL3006
+FROM ${EVE_ALPINE_IMAGE} AS cross-compile-libs
+ENV PKGS musl-dev libgcc libintl libuuid libtirpc libblkid
 RUN eve-alpine-deploy.sh
 
+# adjust EVE_TARGET_ARCH for cross-compiler
+FROM build-cross AS build-cross-target-amd64
+ENV EVE_TARGET_ARCH=x86_64
+FROM build-cross AS build-cross-target-arm64
+ENV EVE_TARGET_ARCH=aarch64
+FROM build-cross AS build-cross-target-riscv64
+ENV EVE_TARGET_ARCH=riscv64
+
+# hadolint ignore=DL3006
+FROM build-cross-target-${TARGETARCH} AS build-cross-target
+ENV CROSS_COMPILE_ENV="${EVE_TARGET_ARCH}"-alpine-linux-musl-
+COPY --from=cross-compilers /packages /packages
+# hadolint ignore=DL3018
+RUN apk add --no-cache --allow-untrusted -X /packages build-base-"${EVE_TARGET_ARCH}"
+COPY --from=cross-compile-libs /out/ /usr/"${EVE_TARGET_ARCH}"-alpine-linux-musl/
+
+# cross-compilers
+FROM build-cross-target AS target-arm64-build-amd64
+FROM build-cross-target AS target-amd64-build-arm64
+FROM build-cross-target AS target-riscv64-build-amd64
+FROM build-cross-target AS target-riscv64-build-arm64
+# native
+FROM build-native AS target-amd64-build-amd64
+FROM build-native AS target-arm64-build-arm64
+FROM build-native AS target-riscv6-build-riscv64
+
+# hadolint ignore=DL3006
+FROM target-${TARGETARCH}-build-${BUILDARCH} AS build
+
 SHELL ["/bin/bash", "-eo", "pipefail", "-c"]
+
+RUN mkdir /bsp
 
 ENV UBOOT_TARGETS "imx8mq_evk imx8mp_pollux imx8mp_epc_r3720"
 ENV ATF_TARGETS "imx8mq_evk imx8mp_pollux imx8mp_epc_r3720"
@@ -45,6 +93,7 @@ ADD https://github.com/nxp-imx/imx-atf.git#${ATF_COMMIT_imx8mp_pollux} ${ATF_SRC
 ADD https://github.com/nxp-imx/imx-atf.git#${ATF_COMMIT_imx8mp_epc_r3720} ${ATF_SRC_imx8mp_epc_r3720}
 # hadolint ignore=DL3003,SC2086
 RUN for t in ${ATF_TARGETS}; do \
+        [ "$EVE_TARGET_ARCH" != "aarch64" ] && break ;\
         target=$(eval echo \$ATF_${t}) ;\
         repo=$(eval echo \$ATF_SRC_${t}) ;\
         uartbase=$(eval echo \$ATF_UART_${t}) ;\
@@ -53,6 +102,7 @@ RUN for t in ${ATF_TARGETS}; do \
          [ -d "$patchdir" ] && for p in "${patchdir}"/*.patch ; do patch -p1 < "$p"; done ;\
          make clean && \
          make -j "$(getconf _NPROCESSORS_ONLN)" \
+            CROSS_COMPILE="${CROSS_COMPILE_ENV}" \
             IMX_BOOT_UART_BASE="${uartbase}" \
             PLAT=${target} \
             bl31 ;\
@@ -112,10 +162,14 @@ ENV FLASH_OFFSET_imx8mp_epc_r3720 "32"
 
 # hadolint ignore=SC2086
 RUN for target in ${UBOOT_TARGETS}; do \
-        make clean && rm -rf bl31.bin && \
+        [ "$EVE_TARGET_ARCH" != "aarch64" ] && break ;\
+        make CROSS_COMPILE="${CROSS_COMPILE_ENV}" clean && \
+            rm -rf bl31.bin && \
         cp "${target}"-bl31.bin bl31.bin && \
-        make "$(eval echo \$UBOOT_CONFIG_${target})"_defconfig && \
-        make -j "$(getconf _NPROCESSORS_ONLN)" ;\
+        make CROSS_COMPILE="${CROSS_COMPILE_ENV}" \
+            "$(eval echo \$UBOOT_CONFIG_${target})"_defconfig && \
+        make CROSS_COMPILE="${CROSS_COMPILE_ENV}" \
+            -j "$(getconf _NPROCESSORS_ONLN)" ;\
         for file in "$(eval echo \$UBOOT_FILES_"${target}")"; do \
             cp $file /bsp/${target}-${file} ;\
         done;\
@@ -126,10 +180,8 @@ RUN for target in ${UBOOT_TARGETS}; do \
         [ -f "$udtb" ] && cp $udtb /bsp/ ;\
     done
 
-# hadolint ignore=DL3006
-FROM build-${TARGETARCH} AS bsp-imx-build
-
 FROM scratch
 ENTRYPOINT []
 CMD []
-COPY --from=bsp-imx-build /bsp /bsp-imx
+COPY --from=build /bsp /bsp-imx
+
