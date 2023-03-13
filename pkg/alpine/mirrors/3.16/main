@@ -1,4 +1,6 @@
 abuild
+acl
+acpi
 alpine-baselayout
 alpine-keys
 apk-tools
@@ -23,7 +25,10 @@ coreutils
 cryptsetup-dev
 curl
 curl-dev
+dbus
+dbus-libs
 dev86
+dhclient
 dhcpcd
 diffutils
 dmidecode
@@ -35,6 +40,7 @@ e2fsprogs
 e2fsprogs-extra
 elfutils-dev
 ethtool
+eudev-dev
 file
 findutils
 flex
@@ -56,6 +62,7 @@ iasl
 installkernel
 ip6tables
 ip6tables-openrc
+iperf3
 iptables-openrc
 iproute2
 iproute2-minimal
@@ -66,6 +73,8 @@ isl-dev
 jpeg
 jpeg-dev
 jq
+json-c
+json-c-dev
 keyutils
 kmod
 kmod-dev
@@ -78,6 +87,8 @@ libc-dev
 libc-utils
 libcap-ng-dev
 libcrypto1.1
+libdrm
+libdrm-dev
 libestr-dev
 libfastjson-dev
 libfdt
@@ -107,6 +118,7 @@ libxrandr-dev
 libxtst-dev
 linux-headers
 linux-pam-dev
+lm-sensors
 lvm2
 lz4
 lz4-libs
@@ -124,6 +136,8 @@ musl-utils
 nasm
 ncurses-dev
 nettle
+net-snmp
+numactl-dev
 openssh
 openssl
 openssl-dev
@@ -152,6 +166,7 @@ scanelf
 sed
 sgdisk
 smartmontools
+snappy
 socat
 squashfs-tools
 ssl_client
@@ -164,6 +179,7 @@ u-boot-tools
 usbutils
 util-linux
 util-linux-dev
+vde2-libs
 vim
 wget
 wireless-tools
