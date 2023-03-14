@@ -595,7 +595,7 @@ func getMemlogMsg(logChan chan inputEntry, panicFileChan chan []byte) {
 		if !isApp && logInfo.Source == "" {
 			logInfo.Source = sourceName
 		}
-		if logInfo.Time == "" && strings.HasSuffix(msgTime, "Z") {
+		if logInfo.Time == "" {
 			logInfo.Time = msgTime
 		}
 		if logInfo.Pid != 0 {
@@ -762,7 +762,7 @@ func writelogFile(logChan <-chan inputEntry, moveChan chan fileChanInfo) {
 			if appuuid != "" {
 				appM = getAppStatsMap(appuuid)
 			}
-			timeS := getPtypeTimestamp(entry.timestamp)
+			timeS, _ := getPtypeTimestamp(entry.timestamp)
 			mapLog := logs.LogEntry{
 				Severity:  entry.severity,
 				Source:    entry.source,
@@ -1575,13 +1575,13 @@ func getDevTop10Inputs() {
 	devSourceBytes = base.NewLockedStringMap()
 }
 
-func getPtypeTimestamp(timeStr string) *timestamp.Timestamp {
+func getPtypeTimestamp(timeStr string) (*timestamp.Timestamp, error) {
 	t, err := time.Parse(time.RFC3339, timeStr)
 	if err != nil {
-		log.Fatal(err)
+		t = time.Unix(0, 0)
 	}
 	tt := &timestamp.Timestamp{Seconds: t.Unix(), Nanos: int32(t.Nanosecond())}
-	return tt
+	return tt, err
 }
 
 // get total MBytes in '/persist' partition on device
