@@ -764,10 +764,6 @@ func writelogFile(logChan <-chan inputEntry, moveChan chan fileChanInfo) {
 
 		case entry := <-logChan:
 			appuuid := checkAppEntry(&entry)
-			var appM statsLogFile
-			if appuuid != "" {
-				appM = getAppStatsMap(appuuid)
-			}
 			timeS, _ := getPtypeTimestamp(entry.timestamp)
 			mapLog := logs.LogEntry{
 				Severity:  entry.severity,
@@ -782,13 +778,11 @@ func writelogFile(logChan <-chan inputEntry, moveChan chan fileChanInfo) {
 			mapJentry, _ := json.Marshal(&mapLog)
 			logline := string(mapJentry) + "\n"
 			if appuuid != "" {
+				appM := getAppStatsMap(appuuid)
 				len := writelogEntry(&appM, logline)
-
 				logmetrics.AppMetrics.NumBytesWrite += uint64(len)
-				appStatsMap[appuuid] = appM
 
 				trigMoveToGzip(fileinfo, &appM, appuuid, moveChan, false)
-
 			} else {
 				len := writelogEntry(&devStats, logline)
 				updateDevInputlogStats(entry.source, uint64(len))
