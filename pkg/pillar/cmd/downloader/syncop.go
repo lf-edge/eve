@@ -81,7 +81,7 @@ func handleSyncOp(ctx *downloaderContext, key string,
 		// get the name of the repository and the URL for the registry
 		serverURL, remoteName, err = ociRepositorySplit(dsCtx.DownloadURL)
 		if err != nil {
-			errStr = fmt.Sprintf("invalid OCI registry URL: %s", serverURL)
+			errStr = fmt.Sprintf("invalid OCI registry URL: %s", err.Error())
 		}
 	case zconfig.DsType_DsS3.String():
 		auth = &zedUpload.AuthInput{
