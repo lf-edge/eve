@@ -15,11 +15,12 @@ func ociRepositorySplit(image string) (string, string, error) {
 	var registry, path string
 	imageURL, err := url.Parse(image)
 	if err != nil {
-		return registry, path, fmt.Errorf("invalid image URL: %v", err)
+		return registry, path, fmt.Errorf("invalid image URL: %s, %v", image, err)
 	}
 
 	if imageURL.Scheme != "docker" && imageURL.Scheme != "oci" {
-		return registry, path, fmt.Errorf("unknown OCI registry scheme %s", imageURL.Scheme)
+		return registry, path, fmt.Errorf("unknown OCI registry scheme %s, original URL: %s", imageURL.Scheme,
+			image)
 	}
 
 	// remove any leading slash on the path, as that can mess things up
