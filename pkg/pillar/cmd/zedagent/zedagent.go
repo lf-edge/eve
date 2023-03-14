@@ -246,11 +246,12 @@ const (
 )
 
 // queueInfoToDest - queues "info" requests according to the specified
-//                   destination. Deferred event queue runs to a completion
-//                   from this context, but deferred periodic queue will
-//                   be executed later by timer from a separate goroutine.
-//                   @forcePeriodic forces all deferred requests to be added
-//                   to the deferred queue and errors will be ignored.
+//
+//	destination. Deferred event queue runs to a completion
+//	from this context, but deferred periodic queue will
+//	be executed later by timer from a separate goroutine.
+//	@forcePeriodic forces all deferred requests to be added
+//	to the deferred queue and errors will be ignored.
 func queueInfoToDest(ctx *zedagentContext, dest destinationBitset,
 	key string, buf *bytes.Buffer, size int64, bailOnHTTPErr,
 	withNetTracing, forcePeriodic bool, itemType interface{}) {
