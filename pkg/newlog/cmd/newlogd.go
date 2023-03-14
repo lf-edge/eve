@@ -568,24 +568,30 @@ func getMemlogMsg(logChan chan inputEntry, panicFileChan chan []byte) {
 			continue
 		}
 		sourceName, msgTime, origMsg := getSourceFromMsg(string(bytes))
-		logInfo, ok := agentlog.ParseLoginfo(origMsg)
 
 		var pidStr string
 		var isApp bool
-
-		if strings.Contains(string(bytes), "guest_vm") {
-			logmetrics.AppMetrics.NumInputEvent++
+		var jsonOK bool
+		var logInfo agentlog.Loginfo
+		if strings.Contains(sourceName, "guest_vm") {
+			isApp = true
 			logInfo.Source = sourceName
 			logInfo.Msg = origMsg
-			isApp = true
-		} else if logInfo.Containername != "" {
+			jsonOK = true
+			logmetrics.AppMetrics.NumInputEvent++
+		} else {
+			logInfo, jsonOK = agentlog.ParseLoginfo(origMsg)
+		}
+
+		if logInfo.Containername != "" {
 			logmetrics.AppMetrics.NumInputEvent++
 			isApp = true
 		} else {
 			logInfo.Msg = origMsg
 			logmetrics.DevMetrics.NumInputEvent++
 		}
-		if !ok {
+
+		if !jsonOK {
 			// not in json or right json format, try to reformat
 			logInfo = repaireMsg(origMsg, msgTime, sourceName)
 		}
