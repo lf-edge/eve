@@ -542,6 +542,11 @@ func parseAppInstanceConfig(getconfigCtx *getconfigContext,
 		appInstance.CloudInitVersion = cfgApp.CloudInitVersion
 		appInstance.FixedResources.CPUsPinned = cfgApp.Fixedresources.PinCpu
 
+		// Parse the snapshot related fields
+		if cfgApp.Snapshot != nil {
+			parseSnapshotConfig(&appInstance.Snapshot, cfgApp.Snapshot)
+		}
+
 		appInstance.VolumeRefConfigList = make([]types.VolumeRefConfig,
 			len(cfgApp.VolumeRefList))
 		parseVolumeRefList(appInstance.VolumeRefConfigList, cfgApp.GetVolumeRefList())
@@ -600,6 +605,24 @@ func parseAppInstanceConfig(getconfigCtx *getconfigContext,
 
 		// Verify that it fits and if not publish with error
 		checkAndPublishAppInstanceConfig(getconfigCtx, appInstance)
+	}
+}
+
+func parseSnapshotConfig(appInstanceSnapshot *types.SnapshotConfig, cfgAppSnapshot *zconfig.SnapshotConfig) {
+	appInstanceSnapshot.ActiveSnapshot = cfgAppSnapshot.ActiveSnapshot
+	appInstanceSnapshot.MaxSnapshots = cfgAppSnapshot.MaxSnapshots
+	if cfgAppSnapshot.RollbackCmd != nil {
+		appInstanceSnapshot.RollbackCmd.ApplyTime = cfgAppSnapshot.RollbackCmd.OpsTime
+		appInstanceSnapshot.RollbackCmd.Counter = cfgAppSnapshot.RollbackCmd.Counter
+	}
+	appInstanceSnapshot.Snapshots = make([]types.SnapshotDesc, len(cfgAppSnapshot.Snapshots))
+	parseSnapshots(appInstanceSnapshot.Snapshots, cfgAppSnapshot.Snapshots)
+}
+
+func parseSnapshots(snapshots []types.SnapshotDesc, cfgSnapshots []*zconfig.SnapshotDesc) {
+	for i, cfgSnapshot := range cfgSnapshots {
+		snapshots[i].SnapshotID = cfgSnapshot.Id
+		snapshots[i].SnapshotType = types.SnapshotType(cfgSnapshot.Type)
 	}
 }
 
