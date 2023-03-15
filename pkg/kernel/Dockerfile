@@ -7,7 +7,7 @@ ARG BUILD_PKGS_BASE="argp-standalone automake bash bc binutils-dev bison build-b
                      attr-dev autoconf file coreutils libtirpc-dev libtool util-linux-dev"
 
 # we use the same image in several places
-ARG EVE_ALPINE_IMAGE=lfedge/eve-alpine:b8b32c8353e50d7131d9ddc912581d14923806b0
+ARG EVE_ALPINE_IMAGE=lfedge/eve-alpine:9fb9b9cbf7d90066a70e4704d04a6fe248ff52bb
 
 # hadolint ignore=DL3006
 FROM ${EVE_ALPINE_IMAGE} as kernel-build-base-native
@@ -29,20 +29,20 @@ FROM ${EVE_ALPINE_IMAGE} AS cross-compile-libs
 ENV PKGS musl-dev libgcc
 RUN eve-alpine-deploy.sh
 
-# adjust TARGET_ARCH for cross-compiler
+# adjust EVE_TARGET_ARCH for cross-compiler
 FROM kernel-build-base-cross AS kernel-cross-target-amd64
-ENV TARGET_ARCH=x86_64
+ENV EVE_TARGET_ARCH=x86_64
 FROM kernel-build-base-cross AS kernel-cross-target-arm64
-ENV TARGET_ARCH=aarch64
+ENV EVE_TARGET_ARCH=aarch64
 
 # install cross-compile packages and libs for target
 # hadolint ignore=DL3006
 FROM kernel-cross-target-${TARGETARCH} AS kernel-cross-build-target
-ENV CROSS_COMPILE_ENV="${TARGET_ARCH}"-alpine-linux-musl-
+ENV CROSS_COMPILE_ENV="${EVE_TARGET_ARCH}"-alpine-linux-musl-
 COPY --from=cross-compilers /packages /packages
 # hadolint ignore=DL3018
-RUN apk add --no-cache --allow-untrusted -X /packages build-base-"${TARGET_ARCH}"
-COPY --from=cross-compile-libs /out/ /usr/"${TARGET_ARCH}"-alpine-linux-musl/
+RUN apk add --no-cache --allow-untrusted -X /packages build-base-"${EVE_TARGET_ARCH}"
+COPY --from=cross-compile-libs /out/ /usr/"${EVE_TARGET_ARCH}"-alpine-linux-musl/
 
 # support cross compile from amd64 and arm64 for now
 FROM kernel-cross-build-target AS kernel-target-arm64-build-amd64
@@ -118,7 +118,7 @@ RUN set -e ; KERNEL_SERIES="${KERNEL_VERSION%.*}".x; \
 # hadolint ignore=SC2086
 RUN KERNEL_DEF_CONF="/linux/arch/${KERNEL_ARCH}/configs/${KERNEL_DEFCONFIG}"; \
     KERNEL_SERIES="${KERNEL_VERSION%.*}".x; \
-    cp /kernel_config-"${KERNEL_SERIES}"-"${TARGET_ARCH}" "${KERNEL_DEF_CONF}"; \
+    cp /kernel_config-"${KERNEL_SERIES}"-"${EVE_TARGET_ARCH}" "${KERNEL_DEF_CONF}"; \
     if [ -n "${EXTRA}" ]; then \
         sed -i "s/CONFIG_LOCALVERSION=\"-linuxkit\"/CONFIG_LOCALVERSION=\"-linuxkit${EXTRA}\"/" "${KERNEL_DEF_CONF}"; \
         if [ "${EXTRA}" = "-dbg" ]; then \
@@ -159,7 +159,7 @@ RUN ./autogen.sh && \
         --with-linux-obj=/linux \
         --with-config=kernel  \
         --enable-linux-builtin \
-        --host="${TARGET_ARCH}"-linux-musl --build="${BUILD_ARCH}"-linux-musl && \
+        --host="${EVE_TARGET_ARCH}"-linux-musl --build="${EVE_BUILD_ARCH}"-linux-musl && \
     ./scripts/make_gitrev.sh && \
     ./copy-builtin /linux
 
@@ -171,7 +171,7 @@ RUN make CROSS_COMPILE="${CROSS_COMPILE_ENV}" ARCH="${KERNEL_ARCH}" "${KERNEL_DE
 
 # Make kernel
 RUN make -j "$(getconf _NPROCESSORS_ONLN)" CROSS_COMPILE="${CROSS_COMPILE_ENV}" ARCH="${KERNEL_ARCH}" KCFLAGS="-fno-pie" && \
-    case ${TARGET_ARCH} in \
+    case ${EVE_TARGET_ARCH} in \
     x86_64) \
         cp arch/x86_64/boot/bzImage /out/kernel; \
         ;; \
@@ -210,10 +210,10 @@ RUN make -j "$(getconf _NPROCESSORS_ONLN)" CROSS_COMPILE="${CROSS_COMPILE_ENV}" 
     install -D -p -m 644 /tmp/rtl8821CU/8821cu.ko $(echo /tmp/kernel-modules/lib/modules/*)/kernel/drivers/net/wireless/realtek/rtl8821cu/8821cu.ko
 
 # Strip at least some of the modules to conserve space
-RUN if [ "${TARGET_ARCH}" = aarch64 ];then "${CROSS_COMPILE_ENV}strip" --strip-debug `find /tmp/kernel-modules/lib/modules -name \*.ko` ;fi
+RUN if [ "${EVE_TARGET_ARCH}" = aarch64 ];then "${CROSS_COMPILE_ENV}strip" --strip-debug `find /tmp/kernel-modules/lib/modules -name \*.ko` ;fi
 
 # Device Tree Blobs
-RUN if [ "${TARGET_ARCH}" = aarch64 ];then make INSTALL_DTBS_PATH=/tmp/kernel-modules/boot/dtb CROSS_COMPILE="${CROSS_COMPILE_ENV}" ARCH="${KERNEL_ARCH}" dtbs_install ;fi
+RUN if [ "${EVE_TARGET_ARCH}" = aarch64 ];then make INSTALL_DTBS_PATH=/tmp/kernel-modules/boot/dtb CROSS_COMPILE="${CROSS_COMPILE_ENV}" ARCH="${KERNEL_ARCH}" dtbs_install ;fi
 
 # Package all the modules up
 RUN ( DVER=$(basename $(find /tmp/kernel-modules/lib/modules/ -mindepth 1 -maxdepth 1)) && \

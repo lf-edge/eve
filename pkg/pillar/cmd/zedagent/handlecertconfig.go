@@ -428,9 +428,9 @@ func sendAttestReqProtobuf(attestReq *attest.ZAttestReq, iteration int) {
 	//We queue the message and then get the highest priority message to send.
 	//If there are no failures and defers we'll send this message,
 	//but if there is a queue we'll retry sending the highest priority message.
-	zedcloud.SetDeferred(zedcloudCtx, deferKey, buf, size, attestURL,
-		false, false, attestReq.ReqType)
-	zedcloud.HandleDeferred(zedcloudCtx, time.Now(), 0, true)
+	zedcloudCtx.DeferredEventCtx.SetDeferred(deferKey, buf, size, attestURL,
+		false, false, false, attestReq.ReqType)
+	zedcloudCtx.DeferredEventCtx.HandleDeferred(time.Now(), 0, true)
 }
 
 // initialize cipher pubsub trigger handlers and channels

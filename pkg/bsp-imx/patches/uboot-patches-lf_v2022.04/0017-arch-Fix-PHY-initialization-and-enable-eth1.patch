@@ -1,0 +1,109 @@
+From 08f5600145fda5295267e5fb2eeb0e6795516dd3 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Ren=C3=AA=20de=20Souza=20Pinto?= <rene@renesp.com.br>
+Date: Wed, 8 Feb 2023 16:47:54 +0100
+Subject: [PATCH 17/17] arch: Fix PHY initialization and enable eth1
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+eth0 interface controlled by fec driver cannot be initialized, returning
+the following error message:
+
+"Could not get PHY for FEC0: addr 4"
+
+This commit fixes this error and adds eth1 interface to the device tree
+(eqos). Changes were based on the code of the following repository:
+
+Repository: https://github.com/ADVANTECH-Corp/uboot-imx.git
+Revision:   f07f42bd3628da66d72cd845c0d06844c844d79d
+
+Tested on an Advantech's EPC-R3720, both eth0 and eth1 are working
+correctly.
+
+Signed-off-by: Renê de Souza Pinto <rene@renesp.com.br>
+---
+ arch/arm/dts/imx8mp-rsb3720-a1-u-boot.dtsi |  7 +++++++
+ arch/arm/dts/imx8mp-rsb3720-a1.dts         | 23 ++++++++++++++++++++--
+ include/configs/imx8mp_rsb3720.h           |  4 ++--
+ 3 files changed, 30 insertions(+), 4 deletions(-)
+
+diff --git a/arch/arm/dts/imx8mp-rsb3720-a1-u-boot.dtsi b/arch/arm/dts/imx8mp-rsb3720-a1-u-boot.dtsi
+index 307c833cf4e..3c2517a79ab 100644
+--- a/arch/arm/dts/imx8mp-rsb3720-a1-u-boot.dtsi
++++ b/arch/arm/dts/imx8mp-rsb3720-a1-u-boot.dtsi
+@@ -182,6 +182,13 @@
+ 	assigned-clock-parents = <&clk IMX8MP_SYS_PLL1_400M>;
+ };
+ 
++&eqos {
++	compatible = "fsl,imx-eqos";
++	/delete-property/ assigned-clocks;
++	/delete-property/ assigned-clock-parents;
++	/delete-property/ assigned-clock-rates;
++};
++
+ &binman {
+ 	itb {
+ 		fit {
+diff --git a/arch/arm/dts/imx8mp-rsb3720-a1.dts b/arch/arm/dts/imx8mp-rsb3720-a1.dts
+index d360c0215b9..5d660d19c15 100644
+--- a/arch/arm/dts/imx8mp-rsb3720-a1.dts
++++ b/arch/arm/dts/imx8mp-rsb3720-a1.dts
+@@ -170,6 +170,25 @@
+ 	status = "okay";
+ };
+ 
++&eqos {
++	pinctrl-names = "default";
++	pinctrl-0 = <&pinctrl_eqos>;
++	phy-mode = "rgmii-id";
++	phy-handle = <&ethphy0>;
++	status = "okay";
++
++	mdio {
++		compatible = "snps,dwmac-mdio";
++		#address-cells = <1>;
++		#size-cells = <0>;
++
++		ethphy0: ethernet-phy@1 {
++			compatible = "ethernet-phy-ieee802.3-c22";
++			reg = <1>;
++		};
++	};
++};
++
+ &fec {
+ 	pinctrl-names = "default";
+ 	pinctrl-0 = <&pinctrl_fec>;
+@@ -182,9 +201,9 @@
+ 		#address-cells = <1>;
+ 		#size-cells = <0>;
+ 
+-		ethphy1: ethernet-phy@4 {
++		ethphy1: ethernet-phy@1 {
+ 			compatible = "ethernet-phy-ieee802.3-c22";
+-			reg = <4>;
++			reg = <1>;
+ 			at803x,eee-disabled;
+ 			at803x,vddio-1p8v;
+ 		};
+diff --git a/include/configs/imx8mp_rsb3720.h b/include/configs/imx8mp_rsb3720.h
+index ac4a7d0cb30..802519931c7 100644
+--- a/include/configs/imx8mp_rsb3720.h
++++ b/include/configs/imx8mp_rsb3720.h
+@@ -63,10 +63,10 @@
+ #define CONFIG_ETHPRIME                 "eth1" /* Set eqos to primary since we use its MDIO */
+ 
+ #define CONFIG_FEC_XCV_TYPE             RGMII
+-#define CONFIG_FEC_MXC_PHYADDR          4
++#define CONFIG_FEC_MXC_PHYADDR          1
+ #define FEC_QUIRK_ENET_MAC
+ 
+-#define DWC_NET_PHYADDR			4
++#define DWC_NET_PHYADDR                 1
+ #ifdef CONFIG_DWC_ETH_QOS
+ #define CONFIG_SYS_NONCACHED_MEMORY     (1 * SZ_1M)     /* 1M */
+ #endif
+-- 
+2.39.1
+

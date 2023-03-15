@@ -1,0 +1,31 @@
+From 22ed1aa027f7374e88690f26c2e337be9c0a86c7 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Ren=C3=AA=20de=20Souza=20Pinto?= <rene@renesp.com.br>
+Date: Wed, 22 Feb 2023 15:17:22 +0100
+Subject: [PATCH] configs: imx8mp_rsb3720.h: Set eth0 as primary interface
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Set eth0 (LAN1) as the primary ethernet interface.
+
+Signed-off-by: Renê de Souza Pinto <rene@renesp.com.br>
+---
+ include/configs/imx8mp_rsb3720.h | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/include/configs/imx8mp_rsb3720.h b/include/configs/imx8mp_rsb3720.h
+index 802519931c7..752b27ba1ea 100644
+--- a/include/configs/imx8mp_rsb3720.h
++++ b/include/configs/imx8mp_rsb3720.h
+@@ -60,7 +60,7 @@
+ /* ENET Config */
+ /* ENET1 */
+ #if defined(CONFIG_CMD_NET)
+-#define CONFIG_ETHPRIME                 "eth1" /* Set eqos to primary since we use its MDIO */
++#define CONFIG_ETHPRIME                 "eth0"
+ 
+ #define CONFIG_FEC_XCV_TYPE             RGMII
+ #define CONFIG_FEC_MXC_PHYADDR          1
+-- 
+2.39.1
+

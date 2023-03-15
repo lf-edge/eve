@@ -116,6 +116,7 @@ type getconfigContext struct {
 	localProfileTrigger       chan Notify
 	localServerMap            *localServerMap
 	lastDevCmdTimestamp       uint64 // From lastDevCmdTimestampFile
+	locConfig                 *types.LOCConfig
 
 	// parsed L2 adapters
 	vlans []L2Adapter
@@ -136,8 +137,6 @@ type getconfigContext struct {
 	// localCommands : list of commands requested from a local server.
 	// This information is persisted under /persist/checkpoint/localcommands
 	localCommands *types.LocalCommands
-
-	callProcessLocalProfileServerChange bool //did we already call processLocalProfileServerChange
 
 	configRetryUpdateCounter uint32 // received from config
 
@@ -352,10 +351,9 @@ func initZedcloudContext(networkSendTimeout uint32, agentMetrics *zedcloud.Agent
 // Run a periodic fetch of the config
 func configTimerTask(getconfigCtx *getconfigContext, handleChannel chan interface{}) {
 	ctx := getconfigCtx.zedagentCtx
-	configUrl := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API, devUUID, "config")
 	iteration := 0
 	withNetTracing := traceNextConfigReq(ctx)
-	retVal, tracedReqs := getLatestConfig(getconfigCtx, configUrl, iteration, withNetTracing)
+	retVal, tracedReqs := getLatestConfig(getconfigCtx, iteration, withNetTracing)
 	configProcessingSkipFlag := retVal == skipConfig
 	if configProcessingSkipFlag != getconfigCtx.configProcessingSkipFlag {
 		getconfigCtx.configProcessingSkipFlag = configProcessingSkipFlag
@@ -395,12 +393,9 @@ func configTimerTask(getconfigCtx *getconfigContext, handleChannel chan interfac
 		case <-ticker.C:
 			start := time.Now()
 			iteration += 1
-			// In case devUUID changed we re-generate
-			configUrl = zedcloud.URLPathString(serverNameAndPort,
-				zedcloudCtx.V2API, devUUID, "config")
 			withNetTracing = traceNextConfigReq(ctx)
 			retVal, tracedReqs = getLatestConfig(
-				getconfigCtx, configUrl, iteration, withNetTracing)
+				getconfigCtx, iteration, withNetTracing)
 			configProcessingSkipFlag = retVal == skipConfig
 			if configProcessingSkipFlag != getconfigCtx.configProcessingSkipFlag {
 				getconfigCtx.configProcessingSkipFlag = configProcessingSkipFlag
@@ -476,7 +471,7 @@ func updateCertTimer(configInterval uint32, tickerHandle interface{}) {
 // until one succeeds in communicating with the cloud.
 // We use the iteration argument to start at a different point each time.
 // Returns a configProcessingSkipFlag
-func getLatestConfig(getconfigCtx *getconfigContext, url string,
+func requestConfigByURL(getconfigCtx *getconfigContext, url string,
 	iteration int, withNetTracing bool) (configProcessingRetval, []netdump.TracedNetRequest) {
 
 	log.Tracef("getLatestConfig(%s, %d)", url, iteration)
@@ -495,8 +490,7 @@ func getLatestConfig(getconfigCtx *getconfigContext, url string,
 	getconfigCtx.configGetStatus = types.ConfigGetFail
 	b, cr, err := generateConfigRequest(getconfigCtx)
 	if err != nil {
-		// XXX	fatal?
-		return configReqFailed, nil
+		log.Fatal(err)
 	}
 	buf := bytes.NewBuffer(b)
 	size := int64(proto.Size(cr))
@@ -579,9 +573,17 @@ func getLatestConfig(getconfigCtx *getconfigContext, url string,
 				if config != nil {
 					log.Noticef("Using saved config dated %s",
 						ts.Format(time.RFC3339Nano))
+
+					cfgRetval := inhaleDeviceConfig(getconfigCtx, config, savedConfig)
+					if cfgRetval != configOK {
+						log.Errorf("inhaleDeviceConfig failed: %d", cfgRetval)
+						return cfgRetval, rv.TracedReqs
+					}
+
 					getconfigCtx.readSavedConfig = true
 					getconfigCtx.configGetStatus = types.ConfigGetReadSaved
-					return inhaleDeviceConfig(getconfigCtx, config, savedConfig), rv.TracedReqs
+
+					return configOK, rv.TracedReqs
 				}
 			}
 		}
@@ -643,27 +645,67 @@ func getLatestConfig(getconfigCtx *getconfigContext, url string,
 		return invalidConfig, rv.TracedReqs
 	}
 
-	// Inform ledmanager about config received from cloud
-	utils.UpdateLedManagerConfig(log, types.LedBlinkOnboarded)
-	getconfigCtx.ledBlinkCount = types.LedBlinkOnboarded
-
-	if !getconfigCtx.configReceived {
-		getconfigCtx.configReceived = true
-	}
-	getconfigCtx.configGetStatus = types.ConfigGetSuccess
-	publishZedAgentStatus(getconfigCtx)
-
+	cfgRetval := configOK
 	if !changed {
 		log.Tracef("Configuration from zedcloud is unchanged")
 		// Update modification time since checked by readSavedConfig
 		touchReceivedProtoMessage()
-		return configOK, rv.TracedReqs
+		goto cfgReceived
 	}
+
+	cfgRetval = inhaleDeviceConfig(getconfigCtx, config, fromController)
+	if cfgRetval != configOK {
+		log.Errorf("inhaleDeviceConfig failed: %d", cfgRetval)
+		return cfgRetval, rv.TracedReqs
+	}
+
+	// Inform ledmanager about config received from cloud
+	utils.UpdateLedManagerConfig(log, types.LedBlinkOnboarded)
+	getconfigCtx.ledBlinkCount = types.LedBlinkOnboarded
+
+	getconfigCtx.configGetStatus = types.ConfigGetSuccess
+	publishZedAgentStatus(getconfigCtx)
 
 	// Save configuration wrapped in AuthContainer.
 	saveReceivedProtoMessage(authWrappedRV.RespContents)
 
-	return inhaleDeviceConfig(getconfigCtx, config, fromController), rv.TracedReqs
+cfgReceived:
+	getconfigCtx.configReceived = true
+
+	return configOK, rv.TracedReqs
+}
+
+// Returns true if attempt to get a configuration has failed, but initial
+// configuration was received (either from the controller, either successfully
+// read from the file)
+func needRequestLocConfig(getconfigCtx *getconfigContext,
+	rv configProcessingRetval) bool {
+
+	return (rv != configOK && getconfigCtx.locConfig != nil)
+}
+
+func getLatestConfig(getconfigCtx *getconfigContext, iteration int,
+	withNetTracing bool) (configProcessingRetval, []netdump.TracedNetRequest) {
+
+	url := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API,
+		devUUID, "config")
+
+	rv, tracedReqs := requestConfigByURL(getconfigCtx, url,
+		iteration, withNetTracing)
+
+	// Request configuration from the LOC
+	if needRequestLocConfig(getconfigCtx, rv) {
+		locURL := getconfigCtx.locConfig.LocURL
+		url = zedcloud.URLPathString(locURL, zedcloudCtx.V2API, devUUID, "config")
+
+		// If LOC configuration is outdated, then we get @obsoleteConfig
+		// return value (see parseConfig() for details) and we repeat on
+		// the next fetch attempt
+		rv, tracedReqs = requestConfigByURL(getconfigCtx, url,
+			iteration, withNetTracing)
+	}
+
+	return rv, tracedReqs
 }
 
 func saveReceivedProtoMessage(contents []byte) {
@@ -863,7 +905,7 @@ func inhaleDeviceConfig(getconfigCtx *getconfigContext, config *zconfig.EdgeDevC
 		if controllerEpoch != newControllerEpoch {
 			log.Noticef("Controller epoch changed from %d to %d", controllerEpoch, newControllerEpoch)
 			controllerEpoch = newControllerEpoch
-			triggerPublishAllInfo(getconfigCtx.zedagentCtx)
+			triggerPublishAllInfo(getconfigCtx.zedagentCtx, AllDest)
 		}
 	}
 

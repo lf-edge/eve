@@ -43,7 +43,7 @@ func handleNetworkInstanceImpl(ctxArg interface{}, key string,
 		log.Errorf("Received NetworkInstance error %s",
 			status.Error)
 	}
-	prepareAndPublishNetworkInstanceInfoMsg(ctx, status, false)
+	prepareAndPublishNetworkInstanceInfoMsg(ctx, status, false, AllDest)
 	log.Functionf("handleNetworkInstanceImpl(%s) done", key)
 }
 
@@ -53,7 +53,7 @@ func handleNetworkInstanceDelete(ctxArg interface{}, key string,
 	log.Functionf("handleNetworkInstanceDelete(%s)", key)
 	status := statusArg.(types.NetworkInstanceStatus)
 	ctx := ctxArg.(*zedagentContext)
-	prepareAndPublishNetworkInstanceInfoMsg(ctx, status, true)
+	prepareAndPublishNetworkInstanceInfoMsg(ctx, status, true, AllDest)
 	log.Functionf("handleNetworkInstanceDelete(%s) done", key)
 }
 
@@ -65,7 +65,7 @@ func handleNetworkInstanceDelete(ctxArg interface{}, key string,
 // (indicating deletion) would make is explicit
 // and easy for the cloud process.
 func prepareAndPublishNetworkInstanceInfoMsg(ctx *zedagentContext,
-	status types.NetworkInstanceStatus, deleted bool) {
+	status types.NetworkInstanceStatus, deleted bool, dest destinationBitset) {
 
 	infoMsg := &zinfo.ZInfoMsg{}
 	infoType := new(zinfo.ZInfoTypes)
@@ -164,7 +164,7 @@ func prepareAndPublishNetworkInstanceInfoMsg(ctx *zedagentContext,
 	if err != nil {
 		log.Fatal("Publish NetworkInstance proto marshaling error: ", err)
 	}
-	statusURL := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API, devUUID, "info")
+
 	buf := bytes.NewBuffer(data)
 	if buf == nil {
 		log.Fatal("malloc error")
@@ -174,9 +174,8 @@ func prepareAndPublishNetworkInstanceInfoMsg(ctx *zedagentContext,
 	//We queue the message and then get the highest priority message to send.
 	//If there are no failures and defers we'll send this message,
 	//but if there is a queue we'll retry sending the highest priority message.
-	zedcloud.SetDeferred(zedcloudCtx, uuid, buf, size, statusURL,
-		true, false, zinfo.ZInfoTypes_ZiNetworkInstance)
-	zedcloud.HandleDeferred(zedcloudCtx, time.Now(), 0, true)
+	queueInfoToDest(ctx, dest, uuid, buf, size, true, false, false,
+		zinfo.ZInfoTypes_ZiNetworkInstance)
 }
 
 func protoEncodeGenericInstanceMetric(status types.NetworkInstanceMetrics,
@@ -232,7 +231,7 @@ func handleAppFlowMonitorImpl(ctxArg interface{}, key string,
 
 	// publish protobuf-encoded flowlog to zedcloud
 	select {
-	case ctx.FlowlogQueue <- pflows:
+	case ctx.flowlogQueue <- pflows:
 	default:
 		log.Errorf("Flowlog queue is full, dropping flowlog entry: %+v", pflows.Scope)
 		ctx.flowLogMetrics.Lock()

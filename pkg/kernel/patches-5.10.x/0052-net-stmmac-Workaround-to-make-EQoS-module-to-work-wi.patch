@@ -1,0 +1,66 @@
+From 3475c481c08b9d43472389f3bde36731cf4d6be0 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Ren=C3=AA=20de=20Souza=20Pinto?= <rene@renesp.com.br>
+Date: Tue, 28 Feb 2023 15:03:01 +0100
+Subject: [PATCH 52/54] net: stmmac: Workaround to make EQoS module to work
+ with bridge mode
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+This patch was taken from:
+
+https://community.nxp.com/t5/i-MX-Processors-Knowledge-Base/Workaround-for-issue-Bridge-mode-on-EQoS-module-will-not-work/ta-p/1559302
+
+The following explanation is given:
+
+"When eqos module(eth1) is added to the bridge using brctl, it will first
+set eth1 to promiscuous mode and then set the VLAN for this bridge with a
+filter VID value of 1.  Before adding Intel's patch, there is no problem:
+
+c89f44ff10fd net: stmmac: Add support for VLAN promiscuous mode
+
+However, when Intel's patch sets up the filter, if it finds that the
+promiscuous mode is turned on, it will turn off the VLAN Tag function. And
+it adds a judgment on whether promiscuous mode has been turned on in the
+function of configuring VID. Returns an error if promiscuous mode is found.
+Because the patch has turned off the VLAN tag function when promiscuous
+mode is enabled, which conflicts with continuing to configure the VID."
+
+Signed-off-by: Renê de Souza Pinto <rene@renesp.com.br>
+---
+ drivers/net/ethernet/stmicro/stmmac/dwmac4_core.c | 12 ------------
+ 1 file changed, 12 deletions(-)
+
+diff --git a/drivers/net/ethernet/stmicro/stmmac/dwmac4_core.c b/drivers/net/ethernet/stmicro/stmmac/dwmac4_core.c
+index 16c538cfaf59..a892dc2929fd 100644
+--- a/drivers/net/ethernet/stmicro/stmmac/dwmac4_core.c
++++ b/drivers/net/ethernet/stmicro/stmmac/dwmac4_core.c
+@@ -450,12 +450,6 @@ static int dwmac4_add_hw_vlan_rx_fltr(struct net_device *dev,
+ 	if (vid > 4095)
+ 		return -EINVAL;
+ 
+-	if (hw->promisc) {
+-		netdev_err(dev,
+-			   "Adding VLAN in promisc mode not supported\n");
+-		return -EPERM;
+-	}
+-
+ 	/* Single Rx VLAN Filter */
+ 	if (hw->num_vlan == 1) {
+ 		/* For single VLAN filter, VID 0 means VLAN promiscuous */
+@@ -505,12 +499,6 @@ static int dwmac4_del_hw_vlan_rx_fltr(struct net_device *dev,
+ {
+ 	int i, ret = 0;
+ 
+-	if (hw->promisc) {
+-		netdev_err(dev,
+-			   "Deleting VLAN in promisc mode not supported\n");
+-		return -EPERM;
+-	}
+-
+ 	/* Single Rx VLAN Filter */
+ 	if (hw->num_vlan == 1) {
+ 		if ((hw->vlan_filter[0] & GMAC_VLAN_TAG_VID) == vid) {
+-- 
+2.39.2
+

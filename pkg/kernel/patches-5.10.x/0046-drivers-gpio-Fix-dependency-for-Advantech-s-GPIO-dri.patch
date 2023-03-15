@@ -1,0 +1,37 @@
+From a29af4be8be7cd587d50e2dd2f8517a2bf7ae9fb Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Ren=C3=AA=20de=20Souza=20Pinto?= <rene@renesp.com.br>
+Date: Mon, 20 Feb 2023 11:11:02 +0100
+Subject: [PATCH 46/47] drivers: gpio: Fix dependency for Advantech's GPIO
+ driver in Kconfig
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Adds missed dependency of ARCH_ADVANTECH in Kconfig file for Advantech's
+GPIO device driver.
+
+Signed-off-by: Renê de Souza Pinto <rene@renesp.com.br>
+---
+ drivers/gpio/Kconfig              | 1 +
+ drivers/gpio/gpio-set-direction.c | 0
+ 2 files changed, 1 insertion(+)
+ mode change 100755 => 100644 drivers/gpio/gpio-set-direction.c
+
+diff --git a/drivers/gpio/Kconfig b/drivers/gpio/Kconfig
+index 3b8f353ff282..f3977ce9bb90 100644
+--- a/drivers/gpio/Kconfig
++++ b/drivers/gpio/Kconfig
+@@ -435,6 +435,7 @@ config GPIO_SCU
+ 
+ config GPIO_ARCH_ADVANTECH
+ 	def_bool y
++	depends on ARCH_ADVANTECH
+ 	depends on GPIOLIB
+ 	help
+ 		Set GPIO direction.
+diff --git a/drivers/gpio/gpio-set-direction.c b/drivers/gpio/gpio-set-direction.c
+old mode 100755
+new mode 100644
+-- 
+2.39.2
+

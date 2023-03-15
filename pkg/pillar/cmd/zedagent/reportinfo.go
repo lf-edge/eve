@@ -26,7 +26,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/utils"
 	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
 	"github.com/lf-edge/eve/pkg/pillar/vault"
-	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 	"github.com/shirou/gopsutil/host"
 	"golang.org/x/sys/unix"
 	"google.golang.org/protobuf/proto"
@@ -45,7 +44,7 @@ var (
 	maxSmartCtlSize = 65536 // Limit size of smartctl output files
 )
 
-func deviceInfoTask(ctxPtr *zedagentContext, triggerDeviceInfo <-chan struct{}) {
+func deviceInfoTask(ctxPtr *zedagentContext, triggerDeviceInfo <-chan destinationBitset) {
 	wdName := agentName + "devinfo"
 
 	// Run a periodic timer so we always update StillRunning
@@ -55,11 +54,11 @@ func deviceInfoTask(ctxPtr *zedagentContext, triggerDeviceInfo <-chan struct{}) 
 
 	for {
 		select {
-		case <-triggerDeviceInfo:
+		case dest := <-triggerDeviceInfo:
 			start := time.Now()
 			log.Function("deviceInfoTask got message")
 
-			PublishDeviceInfoToZedCloud(ctxPtr)
+			PublishDeviceInfoToZedCloud(ctxPtr, dest)
 			ctxPtr.iteration++
 			log.Function("deviceInfoTask done with message")
 			ctxPtr.ps.CheckMaxTimeTopic(wdName, "PublishDeviceInfo", start,
@@ -83,6 +82,7 @@ func objectInfoTask(ctxPtr *zedagentContext, triggerInfo <-chan infoForObjectKey
 		select {
 		case infoForKeyMessage := <-triggerInfo:
 			infoType := infoForKeyMessage.infoType
+			infoDest := infoForKeyMessage.infoDest
 			log.Functionf("objectInfoTask got message for %s", infoType.String())
 			start := time.Now()
 			var err error
@@ -90,7 +90,7 @@ func objectInfoTask(ctxPtr *zedagentContext, triggerInfo <-chan infoForObjectKey
 			switch infoType {
 			case info.ZInfoTypes_ZiDevice:
 				// publish device info
-				PublishDeviceInfoToZedCloud(ctxPtr)
+				PublishDeviceInfoToZedCloud(ctxPtr, infoDest)
 				ctxPtr.iteration++
 			case info.ZInfoTypes_ZiApp:
 				// publish application info
@@ -99,7 +99,7 @@ func objectInfoTask(ctxPtr *zedagentContext, triggerInfo <-chan infoForObjectKey
 					appStatus := c.(types.AppInstanceStatus)
 					uuidStr := appStatus.Key()
 					PublishAppInfoToZedCloud(ctxPtr, uuidStr, &appStatus, ctxPtr.assignableAdapters,
-						ctxPtr.iteration)
+						ctxPtr.iteration, infoDest)
 					ctxPtr.iteration++
 				}
 			case info.ZInfoTypes_ZiNetworkInstance:
@@ -107,7 +107,8 @@ func objectInfoTask(ctxPtr *zedagentContext, triggerInfo <-chan infoForObjectKey
 				sub := ctxPtr.subNetworkInstanceStatus
 				if c, err = sub.Get(infoForKeyMessage.objectKey); err == nil {
 					niStatus := c.(types.NetworkInstanceStatus)
-					prepareAndPublishNetworkInstanceInfoMsg(ctxPtr, niStatus, false)
+					prepareAndPublishNetworkInstanceInfoMsg(ctxPtr, niStatus,
+						false, infoDest)
 					ctxPtr.iteration++
 				}
 			case info.ZInfoTypes_ZiVolume:
@@ -116,7 +117,8 @@ func objectInfoTask(ctxPtr *zedagentContext, triggerInfo <-chan infoForObjectKey
 				if c, err = sub.Get(infoForKeyMessage.objectKey); err == nil {
 					volumeStatus := c.(types.VolumeStatus)
 					uuidStr := volumeStatus.VolumeID.String()
-					PublishVolumeToZedCloud(ctxPtr, uuidStr, &volumeStatus, ctxPtr.iteration)
+					PublishVolumeToZedCloud(ctxPtr, uuidStr, &volumeStatus,
+						ctxPtr.iteration, infoDest)
 					ctxPtr.iteration++
 				}
 			case info.ZInfoTypes_ZiContentTree:
@@ -125,7 +127,8 @@ func objectInfoTask(ctxPtr *zedagentContext, triggerInfo <-chan infoForObjectKey
 				if c, err = sub.Get(infoForKeyMessage.objectKey); err == nil {
 					ctStatus := c.(types.ContentTreeStatus)
 					uuidStr := ctStatus.Key()
-					PublishContentInfoToZedCloud(ctxPtr, uuidStr, &ctStatus, ctxPtr.iteration)
+					PublishContentInfoToZedCloud(ctxPtr, uuidStr, &ctStatus,
+						ctxPtr.iteration, infoDest)
 					ctxPtr.iteration++
 				}
 			case info.ZInfoTypes_ZiBlobList:
@@ -134,7 +137,8 @@ func objectInfoTask(ctxPtr *zedagentContext, triggerInfo <-chan infoForObjectKey
 				if c, err = sub.Get(infoForKeyMessage.objectKey); err == nil {
 					blobStatus := c.(types.BlobStatus)
 					uuidStr := blobStatus.Key()
-					PublishBlobInfoToZedCloud(ctxPtr, uuidStr, &blobStatus, ctxPtr.iteration)
+					PublishBlobInfoToZedCloud(ctxPtr, uuidStr, &blobStatus,
+						ctxPtr.iteration, infoDest)
 					ctxPtr.iteration++
 				}
 			case info.ZInfoTypes_ZiAppInstMetaData:
@@ -142,25 +146,26 @@ func objectInfoTask(ctxPtr *zedagentContext, triggerInfo <-chan infoForObjectKey
 				sub := ctxPtr.subAppInstMetaData
 				if c, err = sub.Get(infoForKeyMessage.objectKey); err == nil {
 					appInstMetaData := c.(types.AppInstMetaData)
-					PublishAppInstMetaDataToZedCloud(ctxPtr, &appInstMetaData, false)
+					PublishAppInstMetaDataToZedCloud(ctxPtr, &appInstMetaData,
+						false, infoDest)
 					ctxPtr.iteration++
 				}
 			case info.ZInfoTypes_ZiHardware:
-				PublishHardwareInfoToZedCloud(ctxPtr)
+				PublishHardwareInfoToZedCloud(ctxPtr, infoDest)
 				ctxPtr.iteration++
 			case info.ZInfoTypes_ZiEdgeview:
 				// publish Edgeview info
 				sub := ctxPtr.subEdgeviewStatus
 				if c, err = sub.Get(infoForKeyMessage.objectKey); err == nil {
 					evStatus := c.(types.EdgeviewStatus)
-					PublishEdgeviewToZedCloud(ctxPtr, &evStatus)
+					PublishEdgeviewToZedCloud(ctxPtr, &evStatus, infoDest)
 				}
 			case info.ZInfoTypes_ZiLocation:
 				locInfo := getLocationInfo(ctxPtr)
 				if locInfo != nil {
 					// Note that we use a zero iteration
 					// counter here.
-					publishLocationToController(locInfo, 0)
+					publishLocationToDest(ctxPtr, locInfo, 0, infoDest)
 				}
 			}
 			if err != nil {
@@ -201,7 +206,7 @@ func fillStorageChildren(children []*types.StorageChildren) []*info.StorageChild
 }
 
 // PublishDeviceInfoToZedCloud This function is called per change, hence needs to try over all management ports
-func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
+func PublishDeviceInfoToZedCloud(ctx *zedagentContext, dest destinationBitset) {
 	aa := ctx.assignableAdapters
 	subBaseOsStatus := ctx.subBaseOsStatus
 
@@ -643,8 +648,6 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 		log.Fatal("PublishDeviceInfoToZedCloud proto marshaling error: ", err)
 	}
 
-	statusUrl := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API, devUUID, "info")
-
 	buf := bytes.NewBuffer(data)
 	if buf == nil {
 		log.Fatal("malloc error")
@@ -655,14 +658,15 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 	//If there are no failures and defers we'll send this message,
 	//but if there is a queue we'll retry sending the highest priority message.
 	withNetTracing := traceNextInfoReq(ctx)
-	zedcloud.SetDeferred(zedcloudCtx, deviceUUID, buf, size,
-		statusUrl, true, withNetTracing, info.ZInfoTypes_ZiDevice)
-	zedcloud.HandleDeferred(zedcloudCtx, time.Now(), 0, true)
+	queueInfoToDest(ctx, dest, deviceUUID, buf, size, true, withNetTracing, false,
+		info.ZInfoTypes_ZiDevice)
 }
 
 // PublishAppInstMetaDataToZedCloud is called when an appInst reports its Metadata to EVE.
 // AppInst metadata is relayed to the controller to be processed further.
-func PublishAppInstMetaDataToZedCloud(ctx *zedagentContext, appInstMetadata *types.AppInstMetaData, isDelete bool) {
+func PublishAppInstMetaDataToZedCloud(ctx *zedagentContext,
+	appInstMetadata *types.AppInstMetaData, isDelete bool,
+	dest destinationBitset) {
 
 	metadataType := appInstMetadata.Type
 	appInstId := appInstMetadata.AppInstUUID.String()
@@ -695,8 +699,6 @@ func PublishAppInstMetaDataToZedCloud(ctx *zedagentContext, appInstMetadata *typ
 	if err != nil {
 		log.Fatal("PublishAppInstMetaDataToZedCloud proto marshaling error: ", err)
 	}
-	statusURL := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API, devUUID, "info")
-
 	deferKey := "appInstMetadataInfo:" + appInstMetadata.Key()
 
 	buf := bytes.NewBuffer(data)
@@ -708,9 +710,8 @@ func PublishAppInstMetaDataToZedCloud(ctx *zedagentContext, appInstMetadata *typ
 	//We queue the message and then get the highest priority message to send.
 	//If there are no failures and defers we'll send this message,
 	//but if there is a queue we'll retry sending the highest priority message.
-	zedcloud.SetDeferred(zedcloudCtx, deferKey, buf, size, statusURL, true,
-		false, info.ZInfoTypes_ZiAppInstMetaData)
-	zedcloud.HandleDeferred(zedcloudCtx, time.Now(), 0, true)
+	queueInfoToDest(ctx, dest, deferKey, buf, size, true, false, false,
+		info.ZInfoTypes_ZiAppInstMetaData)
 }
 
 // Convert the implementation details to the user-friendly userStatus and subStatus*

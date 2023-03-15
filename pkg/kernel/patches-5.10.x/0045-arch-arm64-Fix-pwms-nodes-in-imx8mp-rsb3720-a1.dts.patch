@@ -1,0 +1,40 @@
+From 16562a3326f3ef7b27efaa0227f27be6a95df462 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Ren=C3=AA=20de=20Souza=20Pinto?= <rene@renesp.com.br>
+Date: Thu, 16 Feb 2023 18:31:15 +0100
+Subject: [PATCH 45/47] arch: arm64: Fix pwms nodes in imx8mp-rsb3720-a1.dts
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Add missing item (polarity) to pwms nodes.
+
+Signed-off-by: Renê de Souza Pinto <rene@renesp.com.br>
+---
+ arch/arm64/boot/dts/freescale/imx8mp-rsb3720-a1.dts | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/arch/arm64/boot/dts/freescale/imx8mp-rsb3720-a1.dts b/arch/arm64/boot/dts/freescale/imx8mp-rsb3720-a1.dts
+index 24648a88466c..4d510bc51a72 100644
+--- a/arch/arm64/boot/dts/freescale/imx8mp-rsb3720-a1.dts
++++ b/arch/arm64/boot/dts/freescale/imx8mp-rsb3720-a1.dts
+@@ -84,7 +84,7 @@ sound-hdmi {
+ 
+ 	lvds_backlight0: lvds_backlight@0 {
+ 		compatible = "pwm-backlight";
+-		pwms = <&pwm2 0 5000000>;
++		pwms = <&pwm2 0 5000000 0>;
+ 		status = "disabled";
+ 
+ 		brightness-levels = < 0  1  2  3  4  5  6  7  8  9
+@@ -103,7 +103,7 @@ lvds_backlight0: lvds_backlight@0 {
+ 
+ 	lvds_backlight1: lvds_backlight@1 {
+ 		compatible = "pwm-backlight";
+-		pwms = <&pwm3 0 5000000>;
++		pwms = <&pwm3 0 5000000 0>;
+ 		status = "disabled";
+ 
+ 		brightness-levels = < 0  1  2  3  4  5  6  7  8  9
+-- 
+2.39.2
+

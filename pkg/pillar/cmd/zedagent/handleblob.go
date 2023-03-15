@@ -28,7 +28,7 @@ func handleBlobStatusImpl(ctxArg interface{}, key string,
 	status := statusArg.(types.BlobStatus)
 	ctx := ctxArg.(*zedagentContext)
 	uuidStr := status.Key()
-	PublishBlobInfoToZedCloud(ctx, uuidStr, &status, ctx.iteration)
+	PublishBlobInfoToZedCloud(ctx, uuidStr, &status, ctx.iteration, AllDest)
 	ctx.iteration++
 }
 
@@ -36,6 +36,6 @@ func handleBlobDelete(ctxArg interface{}, key string, statusArg interface{}) {
 	status := statusArg.(types.BlobStatus)
 	ctx := ctxArg.(*zedagentContext)
 	uuidStr := status.Key()
-	PublishBlobInfoToZedCloud(ctx, uuidStr, nil, ctx.iteration)
+	PublishBlobInfoToZedCloud(ctx, uuidStr, nil, ctx.iteration, AllDest)
 	ctx.iteration++
 }

@@ -28,7 +28,8 @@ const (
 )
 
 // Run a periodic post of the location information.
-func locationTimerTask(ctx *zedagentContext, handleChannel chan interface{}) {
+func locationTimerTask(ctx *zedagentContext, handleChannel chan interface{},
+	triggerLocationInfo chan destinationBitset) {
 	var cloudIteration int
 
 	// Ticker for periodic publishing to the controller.
@@ -59,28 +60,11 @@ func locationTimerTask(ctx *zedagentContext, handleChannel chan interface{}) {
 	for {
 		select {
 		case <-cloudTicker.C:
-			locInfo := getLocationInfo(ctx)
-			if locInfo == nil {
-				// Not available.
-				break
-			}
-			start := time.Now()
-			cloudIteration++
-			publishLocationToController(locInfo, cloudIteration)
-			ctx.ps.CheckMaxTimeTopic(wdName, "publishLocationToController", start,
-				warningTime, errorTime)
-
+			publishLocation(ctx, &cloudIteration, wdName, ControllerDest)
+		case dest := <-triggerLocationInfo:
+			publishLocation(ctx, &cloudIteration, wdName, dest)
 		case <-appTicker.C:
-			locInfo := getLocationInfo(ctx)
-			if locInfo == nil {
-				// Not available.
-				break
-			}
-			start := time.Now()
-			publishLocationToLocalServer(ctx.getconfigCtx, locInfo)
-			ctx.ps.CheckMaxTimeTopic(wdName, "publishLocationToLocalServer", start,
-				warningTime, errorTime)
-
+			publishLocation(ctx, &cloudIteration, wdName, LPSDest)
 		case <-stillRunning.C:
 		}
 		ctx.ps.StillRunning(wdName, warningTime, errorTime)
@@ -121,8 +105,31 @@ func updateLocationAppTimer(ctx *getconfigContext, appInterval uint32) {
 	flextimer.TickNow(ctx.locationAppTickerHandle)
 }
 
-func publishLocationToController(locInfo *info.ZInfoLocation, iteration int) {
-	log.Functionf("publishLocationToController: iteration %d", iteration)
+func publishLocation(ctx *zedagentContext, iter *int, wdName string,
+	dest destinationBitset) {
+	locInfo := getLocationInfo(ctx)
+	if locInfo == nil {
+		// Not available.
+		return
+	}
+	if dest&(ControllerDest|LOCDest) != 0 {
+		*iter++
+		start := time.Now()
+		publishLocationToDest(ctx, locInfo, *iter, dest)
+		ctx.ps.CheckMaxTimeTopic(wdName, "publishLocationToDest", start,
+			warningTime, errorTime)
+	}
+	if dest&LPSDest != 0 {
+		start := time.Now()
+		publishLocationToLocalServer(ctx.getconfigCtx, locInfo)
+		ctx.ps.CheckMaxTimeTopic(wdName, "publishLocationToLocalServer", start,
+			warningTime, errorTime)
+	}
+}
+
+func publishLocationToDest(ctx *zedagentContext, locInfo *info.ZInfoLocation,
+	iteration int, dest destinationBitset) {
+	log.Functionf("publishLocationToDest: iteration %d", iteration)
 	infoMsg := &info.ZInfoMsg{
 		Ztype: info.ZInfoTypes_ZiLocation,
 		DevId: devUUID.String(),
@@ -132,14 +139,11 @@ func publishLocationToController(locInfo *info.ZInfoLocation, iteration int) {
 		AtTimeStamp: ptypes.TimestampNow(),
 	}
 
-	log.Functionf("publishLocationToController: sending %v", infoMsg)
+	log.Functionf("publishLocationToDest: sending %v", infoMsg)
 	data, err := proto.Marshal(infoMsg)
 	if err != nil {
-		log.Fatal("publishLocationToController: proto marshaling error: ", err)
+		log.Fatal("publishLocationToDest: proto marshaling error: ", err)
 	}
-	infoURL := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API,
-		devUUID, "info")
-
 	buf := bytes.NewBuffer(data)
 	if buf == nil {
 		log.Fatal("malloc error")
@@ -148,15 +152,13 @@ func publishLocationToController(locInfo *info.ZInfoLocation, iteration int) {
 
 	const bailOnHTTPErr = false
 	const withNetTrace = false
-	ctxWork, cancel := zedcloud.GetContextForAllIntfFunctions(zedcloudCtx)
-	defer cancel()
-	rv, err := zedcloud.SendOnAllIntf(ctxWork, zedcloudCtx, infoURL,
-		size, buf, iteration, bailOnHTTPErr, withNetTrace)
-	if err != nil {
-		// Hopefully next timeout will be more successful
-		log.Errorf("publishLocationToController: failed (status %d): %v", rv.Status, err)
-		return
-	}
+	key := "location:" + devUUID.String()
+
+	// Even for the controller destination we can't stall the queue on error,
+	// because this is recurring call, so set @forcePeriodic to true
+	forcePeriodic := true
+	queueInfoToDest(ctx, dest, key, buf, size, bailOnHTTPErr, withNetTrace,
+		forcePeriodic, info.ZInfoTypes_ZiLocation)
 }
 
 func publishLocationToLocalServer(ctx *getconfigContext, locInfo *info.ZInfoLocation) {

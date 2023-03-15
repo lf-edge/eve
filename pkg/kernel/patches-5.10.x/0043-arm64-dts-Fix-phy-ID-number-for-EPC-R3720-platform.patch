@@ -1,0 +1,35 @@
+From dd5825c2679004740ec870cbf23008727f9fadfa Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Ren=C3=AA=20de=20Souza=20Pinto?= <rene@renesp.com.br>
+Date: Mon, 13 Feb 2023 20:31:03 +0100
+Subject: [PATCH 43/47] arm64: dts: Fix phy ID number for EPC-R3720 platform.
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Fixes phy ID number on fec node to 1 for Advantech's EPC-R3720 platform.
+
+Signed-off-by: Renê de Souza Pinto <rene@renesp.com.br>
+---
+ arch/arm64/boot/dts/freescale/imx8mp-rsb3720-a1.dts | 5 ++---
+ 1 file changed, 2 insertions(+), 3 deletions(-)
+
+diff --git a/arch/arm64/boot/dts/freescale/imx8mp-rsb3720-a1.dts b/arch/arm64/boot/dts/freescale/imx8mp-rsb3720-a1.dts
+index ecd36c8a1708..24648a88466c 100644
+--- a/arch/arm64/boot/dts/freescale/imx8mp-rsb3720-a1.dts
++++ b/arch/arm64/boot/dts/freescale/imx8mp-rsb3720-a1.dts
+@@ -218,10 +218,9 @@ &fec {
+ 	mdio {
+ 		#address-cells = <1>;
+ 		#size-cells = <0>;
+-
+-		ethphy1: ethernet-phy@4 {
++		ethphy1: ethernet-phy@1 {
+ 			compatible = "ethernet-phy-ieee802.3-c22";
+-			reg = <4>;
++			reg = <1>;
+ 			at803x,eee-disabled;
+ 			at803x,vddio-1p8v;
+ 		};
+-- 
+2.39.2
+
