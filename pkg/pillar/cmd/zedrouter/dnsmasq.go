@@ -114,7 +114,7 @@ func dnsmasqDhcpHostDir(bridgeName string) string {
 // Also called when we need to update the ipsets
 func createDnsmasqConfiglet(
 	ctx *zedrouterContext,
-	bridgeName string, bridgeIPAddr string,
+	bridgeName string, bridgeIPAddr net.IP,
 	netstatus *types.NetworkInstanceStatus, hostsDir string,
 	ipsetHosts []string, uplink string,
 	dnsServers []net.IP, ntpServers []net.IP) {
@@ -167,7 +167,7 @@ func dhcpv4RangeConfig(start, end net.IP) (string, error) {
 func createDnsmasqConfigletToWriter(
 	buffer io.Writer,
 	ctx *zedrouterContext,
-	bridgeName string, bridgeIPAddr string,
+	bridgeName string, bridgeIPAddr net.IP,
 	netstatus *types.NetworkInstanceStatus, hostsDir string,
 	ipsetHosts []string, uplink string,
 	dnsServers []net.IP, ntpServers []net.IP) {
@@ -212,13 +212,8 @@ func createDnsmasqConfigletToWriter(
 		bridgeName))
 	io.WriteString(buffer, fmt.Sprintf("interface=%s\n", bridgeName))
 	isIPv6 := false
-	if bridgeIPAddr != "" {
-		ip := net.ParseIP(bridgeIPAddr)
-		if ip == nil {
-			log.Fatalf("createDnsmasqConfigletToWriter failed to parse IP %s",
-				bridgeIPAddr)
-		}
-		isIPv6 = (ip.To4() == nil)
+	if !isEmptyIP(bridgeIPAddr) {
+		isIPv6 = bridgeIPAddr.To4() == nil
 		io.WriteString(buffer, fmt.Sprintf("listen-address=%s\n",
 			bridgeIPAddr))
 	} else {
@@ -247,8 +242,8 @@ func createDnsmasqConfigletToWriter(
 		} else {
 			router = netstatus.Gateway.String()
 		}
-	} else if bridgeIPAddr != "" {
-		router = bridgeIPAddr
+	} else if !isEmptyIP(bridgeIPAddr) {
+		router = bridgeIPAddr.String()
 	} else {
 		advertizeRouter = false
 	}
@@ -607,7 +602,7 @@ func checkAndPublishDhcpLeases(ctx *zedrouterContext) {
 }
 
 func isEmptyIP(ip net.IP) bool {
-	return ip.Equal(net.IP{})
+	return ip == nil || ip.Equal(net.IP{})
 }
 
 func ipListEqual(one []net.IP, two []string) bool {

@@ -99,7 +99,9 @@ func prepareAndPublishNetworkInstanceInfoMsg(ctx *zedagentContext,
 
 		info.BridgeNum = uint32(status.BridgeNum)
 		info.BridgeName = status.BridgeName
-		info.BridgeIPAddr = status.BridgeIPAddr
+		if len(status.BridgeIPAddr) > 0 {
+			info.BridgeIPAddr = status.BridgeIPAddr.String()
+		}
 
 		for mac, addrs := range status.IPAssignments {
 			assignment := new(zinfo.ZmetIPAssignmentEntry)

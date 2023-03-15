@@ -512,17 +512,17 @@ func doNetworkInstanceCreate(ctx *zedrouterContext,
 	createHostsConfiglet(hostsDirpath,
 		status.DnsNameToIPList)
 
-	if status.BridgeIPAddr != "" {
+	if !isEmptyIP(status.BridgeIPAddr) {
 		// XXX arbitrary name "router"!!
 		addToHostsConfiglet(hostsDirpath, "router",
-			[]string{status.BridgeIPAddr})
+			[]string{status.BridgeIPAddr.String()})
 	}
 
 	// Start clean
 	deleteDnsmasqConfiglet(bridgeName)
 	stopDnsmasq(bridgeName, false, false)
 
-	if status.BridgeIPAddr != "" {
+	if !isEmptyIP(status.BridgeIPAddr) {
 		dnsServers := types.GetDNSServers(*ctx.deviceNetworkStatus,
 			status.SelectedUplinkIntf)
 		ntpServers := types.GetNTPServers(*ctx.deviceNetworkStatus,
@@ -810,9 +810,11 @@ func restartDnsmasq(ctx *zedrouterContext, status *types.NetworkInstanceStatus) 
 	stopDnsmasq(bridgeName, false, true)
 
 	hostsDirpath := runDirname + "/hosts." + bridgeName
-	// XXX arbitrary name "router"!!
-	addToHostsConfiglet(hostsDirpath, "router",
-		[]string{status.BridgeIPAddr})
+	if !isEmptyIP(status.BridgeIPAddr) {
+		// XXX arbitrary name "router"!!
+		addToHostsConfiglet(hostsDirpath, "router",
+			[]string{status.BridgeIPAddr.String()})
+	}
 
 	// Use existing BridgeIPSets
 	dnsServers := types.GetDNSServers(*ctx.deviceNetworkStatus,
@@ -930,19 +932,22 @@ func getPrefixLenForBridgeIP(
 }
 
 func doConfigureIpAddrOnInterface(
-	ipAddr string,
+	ipAddr net.IP,
 	prefixLen int,
 	link netlink.Link) error {
 
-	ipAddr = fmt.Sprintf("%s/%d", ipAddr, prefixLen)
+	maskBits := net.IPv4len * 8
+	if ipAddr.To4() == nil {
+		maskBits = net.IPv6len * 8
+	}
+	addr := &netlink.Addr{
+		IPNet: &net.IPNet{
+			IP:   ipAddr,
+			Mask: net.CIDRMask(prefixLen, maskBits),
+		},
+	}
 
 	//    ip addr add ${ipAddr}/N dev ${bridgeName}
-	addr, err := netlink.ParseAddr(ipAddr)
-	if err != nil {
-		errStr := fmt.Sprintf("ParseAddr %s failed: %s", ipAddr, err)
-		log.Errorln(errStr)
-		return errors.New(errStr)
-	}
 	if err := netlink.AddrAdd(link, addr); err != nil {
 		errStr := fmt.Sprintf("AddrAdd %s failed: %s", ipAddr, err)
 		log.Errorln(errStr)
@@ -965,19 +970,14 @@ func setBridgeIPAddr(
 		return nil
 	}
 
-	status.BridgeIPAddr = ""
+	status.BridgeIPAddr = nil
 	if status.Subnet.IP == nil || status.DhcpRange.Start == nil ||
 		status.Gateway == nil {
 		log.Functionf("setBridgeIPAddr: Don't have a IP address for %s\n",
 			status.Key())
 		return nil
 	}
-	ipAddr := status.Gateway.String()
-	if ipAddr == "" {
-		log.Functionf("setBridgeIPAddr: Don't have a IP address for %s\n",
-			status.Key())
-		return nil
-	}
+	ipAddr := status.Gateway
 
 	// Get the linux interface with the attributes.
 	// This is used to add an IP Address below.
@@ -1006,7 +1006,6 @@ func setBridgeIPAddr(
 		return errors.New(errStr)
 	}
 	if status.Gateway != nil {
-		ipAddr = status.Gateway.String()
 		addrs := types.AssignedAddrs{IPv4Addr: status.Gateway}
 		status.IPAssignments[bridgeMac.String()] = addrs
 	}
@@ -1035,8 +1034,7 @@ func setBridgeIPAddr(
 	}
 
 	status.BridgeIPAddr = ipAddr
-	addr := net.ParseIP(ipAddr)
-	recordIPAssignment(ctx, status, addr, bridgeMac.String())
+	recordIPAssignment(ctx, status, ipAddr, bridgeMac.String())
 	log.Functionf("Published NetworkStatus. BridgeIpAddr: %s\n",
 		status.BridgeIPAddr)
 	// Create new radvd configuration and restart radvd if ipv6
@@ -1062,7 +1060,8 @@ func updateBridgeIPAddr(
 		log.Functionf("updateBridgeIPAddr: %s\n", err)
 		return
 	}
-	if status.BridgeIPAddr != old && status.BridgeIPAddr != "" {
+	if !isEmptyIP(status.BridgeIPAddr) &&
+		(isEmptyIP(old) || !status.BridgeIPAddr.Equal(old)) {
 		log.Functionf("updateBridgeIPAddr(%s) restarting dnsmasq\n",
 			status.Key())
 		restartDnsmasq(ctx, status)
@@ -1101,31 +1100,31 @@ func handleMetaDataServerChange(ctx *zedrouterContext, dnstatus *types.DeviceNet
 			continue
 		}
 		addr, err := types.GetLocalAddrAnyNoLinkLocal(*dnstatus, 0, status.BridgeName)
-		if addr.String() == status.MetaDataServerIP {
+		if !isEmptyIP(status.MetaDataServerIP) && status.MetaDataServerIP.Equal(addr) {
 			continue
 		}
-		if (err != nil || (addr.String() == "" && status.MetaDataServerIP != "")) &&
+		if (err != nil || (isEmptyIP(addr) && !isEmptyIP(status.MetaDataServerIP))) &&
 			status.Server4Running == true {
 			// Bridge had a valid IP and it is gone now
 			deleteServer4(ctx, status.MetaDataServerIP, status.BridgeName)
 			status.Server4Running = false
-			status.MetaDataServerIP = ""
 			log.Functionf("Deleted meta data server with IP %s on bridge %s",
 				status.MetaDataServerIP, status.BridgeName)
+			status.MetaDataServerIP = nil
 			ctx.pubNetworkInstanceStatus.Publish(status.Key(), status)
 			continue
 		}
-		if status.MetaDataServerIP != "" && status.Server4Running == true {
+		if !isEmptyIP(status.MetaDataServerIP) && status.Server4Running == true {
 			// Stop any currently running meta-data server
 			deleteServer4(ctx, status.MetaDataServerIP, status.BridgeName)
-			status.MetaDataServerIP = ""
 			log.Functionf("Deleted meta data server with IP %s on bridge %s",
 				status.MetaDataServerIP, status.BridgeName)
+			status.MetaDataServerIP = nil
 			status.Server4Running = false
 		}
-		if addr.String() != "" {
+		if !isEmptyIP(addr) {
 			// Start new meta-data server
-			status.MetaDataServerIP = addr.String()
+			status.MetaDataServerIP = addr
 			err := createServer4(ctx, status.MetaDataServerIP, status.BridgeName)
 			if err == nil {
 				status.Server4Running = true
@@ -1330,17 +1329,17 @@ func doNetworkInstanceActivate(ctx *zedrouterContext,
 	return err
 }
 
-func getSwitchIPv4Addr(ctx *zedrouterContext, bridgeIndex int) (string, bool) {
+func getSwitchIPv4Addr(ctx *zedrouterContext, bridgeIndex int) (net.IP, bool) {
 	addrs, _, err := ctx.networkMonitor.GetInterfaceAddrs(bridgeIndex)
 	if err == nil {
 		for _, addr := range addrs {
 			if addr.IP.IsLinkLocalUnicast() {
 				continue
 			}
-			return addr.String(), true
+			return addr.IP, true
 		}
 	}
-	return "", false
+	return nil, false
 }
 
 // getIfNameListForLLorIfname takes a logicallabel or a ifname
@@ -1432,7 +1431,7 @@ func doNetworkInstanceDelete(
 	}
 	if status.Server4Running {
 		deleteServer4(ctx, status.MetaDataServerIP, status.BridgeName)
-		status.MetaDataServerIP = ""
+		status.MetaDataServerIP = nil
 		status.Server4Running = false
 	}
 	doBridgeAclsDelete(ctx, status)
@@ -1449,7 +1448,7 @@ func doNetworkInstanceDelete(
 		if err != nil {
 			log.Fatal("ParseMAC failed: ", status.BridgeMac, err)
 		}
-		if status.BridgeIPAddr != "" {
+		if !isEmptyIP(status.BridgeIPAddr) {
 			releaseIPv4FromNetworkInstance(ctx, status, mac)
 		}
 	}
@@ -1691,7 +1690,7 @@ func natActivate(ctx *zedrouterContext,
 			return err
 		}
 		devicenetwork.AddGatewaySourceRule(log, status.Subnet,
-			net.ParseIP(status.BridgeIPAddr), devicenetwork.PbrNatOutGatewayPrio)
+			status.BridgeIPAddr, devicenetwork.PbrNatOutGatewayPrio)
 		devicenetwork.AddSourceRule(log, status.BridgeIfindex, status.Subnet, true, devicenetwork.PbrNatOutPrio)
 		devicenetwork.AddInwardSourceRule(log, status.BridgeIfindex, status.Subnet, true, devicenetwork.PbrNatInPrio)
 	}
@@ -1715,7 +1714,7 @@ func natInactivate(ctx *zedrouterContext,
 		log.Errorf("natInactivate: iptableCmd failed %s\n", err)
 	}
 	devicenetwork.DelGatewaySourceRule(log, status.Subnet,
-		net.ParseIP(status.BridgeIPAddr), devicenetwork.PbrNatOutGatewayPrio)
+		status.BridgeIPAddr, devicenetwork.PbrNatOutGatewayPrio)
 	devicenetwork.DelSourceRule(log, status.BridgeIfindex, status.Subnet, true, devicenetwork.PbrNatOutPrio)
 	devicenetwork.DelInwardSourceRule(log, status.BridgeIfindex, status.Subnet, true, devicenetwork.PbrNatInPrio)
 	err = PbrRouteDeleteAll(ctx, status.BridgeName, oldUplinkIntf)
@@ -1883,7 +1882,7 @@ func doNetworkInstanceFallback(
 		deleteOnlyDnsmasqConfiglet(bridgeName)
 		stopDnsmasq(bridgeName, false, false)
 
-		if status.BridgeIPAddr != "" {
+		if !isEmptyIP(status.BridgeIPAddr) {
 			dnsServers := types.GetDNSServers(*ctx.deviceNetworkStatus,
 				status.SelectedUplinkIntf)
 			ntpServers := types.GetNTPServers(*ctx.deviceNetworkStatus,

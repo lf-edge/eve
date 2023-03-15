@@ -105,8 +105,8 @@ const AppInstMetadataResponseSizeLimitInBytes = 35840 // 35KB
 // SignerMaxSize is how large objects we will sign
 const SignerMaxSize = 65535
 
-func createServer4(ctx *zedrouterContext, bridgeIP string, bridgeName string) error {
-	if bridgeIP == "" {
+func createServer4(ctx *zedrouterContext, bridgeIP net.IP, bridgeName string) error {
+	if isEmptyIP(bridgeIP) {
 		err := fmt.Errorf("can't run meta-data server on %s: no bridgeIP", bridgeName)
 		log.Warn(err)
 		return err
@@ -187,7 +187,7 @@ func createServer4(ctx *zedrouterContext, bridgeIP string, bridgeName string) er
 	return nil
 }
 
-func deleteServer4(ctx *zedrouterContext, bridgeIP string, bridgeName string) {
+func deleteServer4(ctx *zedrouterContext, bridgeIP net.IP, bridgeName string) {
 	log.Noticef("deleteServer4(%s %s)", bridgeIP, bridgeName)
 	keepGoing := decrementDoneChanRefcount(bridgeName, bridgeIP)
 	if keepGoing {
@@ -234,17 +234,17 @@ type doneChanVal struct {
 
 var mapToDoneChan = make(map[doneChanKey]doneChanVal)
 
-func setDoneChan(bridgeName string, bridgeIP string, doneChan chan<- struct{},
+func setDoneChan(bridgeName string, bridgeIP net.IP, doneChan chan<- struct{},
 	ackChan <-chan struct{}) {
-	key := doneChanKey{bridgeName: bridgeName, bridgeIP: bridgeIP}
+	key := doneChanKey{bridgeName: bridgeName, bridgeIP: bridgeIP.String()}
 	if _, exists := mapToDoneChan[key]; exists {
 		log.Fatalf("setDoneChan: key already exists %+v", key)
 	}
 	mapToDoneChan[key] = doneChanVal{doneChan: doneChan, ackChan: ackChan, refCount: 1}
 }
 
-func getDoneChan(bridgeName string, bridgeIP string) (chan<- struct{}, <-chan struct{}, bool) {
-	key := doneChanKey{bridgeName: bridgeName, bridgeIP: bridgeIP}
+func getDoneChan(bridgeName string, bridgeIP net.IP) (chan<- struct{}, <-chan struct{}, bool) {
+	key := doneChanKey{bridgeName: bridgeName, bridgeIP: bridgeIP.String()}
 	val, exists := mapToDoneChan[key]
 	if !exists {
 		log.Errorf("getDoneChan: key does not exist %+v", key)
@@ -254,8 +254,8 @@ func getDoneChan(bridgeName string, bridgeIP string) (chan<- struct{}, <-chan st
 	return val.doneChan, val.ackChan, exists
 }
 
-func incrementDoneChanRefcount(bridgeName string, bridgeIP string) bool {
-	key := doneChanKey{bridgeName: bridgeName, bridgeIP: bridgeIP}
+func incrementDoneChanRefcount(bridgeName string, bridgeIP net.IP) bool {
+	key := doneChanKey{bridgeName: bridgeName, bridgeIP: bridgeIP.String()}
 	val, exists := mapToDoneChan[key]
 	if !exists {
 		log.Functionf("incrementDoneChanRefcount: Done chan does not exist yet for Bridge %s, IP %s",
@@ -272,8 +272,8 @@ func incrementDoneChanRefcount(bridgeName string, bridgeIP string) bool {
 }
 
 // Returns false if the caller should continue to stop/destroy the http meta-data server
-func decrementDoneChanRefcount(bridgeName string, bridgeIP string) bool {
-	key := doneChanKey{bridgeName: bridgeName, bridgeIP: bridgeIP}
+func decrementDoneChanRefcount(bridgeName string, bridgeIP net.IP) bool {
+	key := doneChanKey{bridgeName: bridgeName, bridgeIP: bridgeIP.String()}
 	val, exists := mapToDoneChan[key]
 	if !exists {
 		log.Fatalf("decrementDoneChanRefcount: Done chan does not exist yet for Bridge %s, IP %s",
@@ -302,17 +302,17 @@ func getTCP(match string) string {
 	return string(output)
 }
 
-func runServer(mux http.Handler, network string, ipaddr string,
+func runServer(mux http.Handler, network string, ipaddr net.IP,
 	doneChan <-chan struct{}, ackChan chan<- struct{}) {
 
 	w := logger.Writer()
 	defer w.Close()
 	srv := http.Server{
-		Addr:         ipaddr + ":80",
+		Addr:         ipaddr.String() + ":80",
 		Handler:      mux,
 		ReadTimeout:  5 * time.Second,
 		WriteTimeout: 5 * time.Second,
-		ErrorLog:     stdlog.New(w, "http server("+ipaddr+"): ", 0),
+		ErrorLog:     stdlog.New(w, fmt.Sprintf("http server(%v): ", ipaddr), 0),
 	}
 	// No need for http keepalives for the cloud-init API endpoints
 	srv.SetKeepAlivesEnabled(false)
