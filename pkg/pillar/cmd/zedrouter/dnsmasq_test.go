@@ -33,7 +33,7 @@ func init() {
 type dnsmasqConfigletParams struct {
 	ctx          *zedrouterContext
 	bridgeName   string
-	bridgeIPAddr string
+	bridgeIPAddr net.IP
 	netstatus    *types.NetworkInstanceStatus
 	hostsDir     string
 	ipsetHosts   []string
@@ -46,7 +46,7 @@ func exampleDnsmasqConfigletParams() dnsmasqConfigletParams {
 	var dcp dnsmasqConfigletParams
 
 	dcp.bridgeName = "br0"
-	dcp.bridgeIPAddr = "10.0.0.1"
+	dcp.bridgeIPAddr = net.IP{10, 0, 0, 1}
 
 	var netstatus types.NetworkInstanceStatus
 	netstatus.DhcpRange.Start = net.IP{10, 0, 0, 2}
@@ -67,7 +67,9 @@ func exampleDnsmasqConfigletParams() dnsmasqConfigletParams {
 func runCreateDnsmasqConfiglet(dcp dnsmasqConfigletParams) string {
 	var buf bytes.Buffer
 
-	createDnsmasqConfigletToWriter(&buf, dcp.ctx, dcp.bridgeName, dcp.bridgeIPAddr, dcp.netstatus, dcp.hostsDir, dcp.ipsetHosts, dcp.uplink, dcp.dnsServers, dcp.ntpServers)
+	createDnsmasqConfigletToWriter(&buf, dcp.ctx, dcp.bridgeName, dcp.bridgeIPAddr,
+		dcp.netstatus, dcp.hostsDir, dcp.ipsetHosts, dcp.uplink, dcp.dnsServers,
+		dcp.ntpServers)
 
 	return buf.String()
 }

@@ -2055,7 +2055,7 @@ type UnderlayNetworkStatus struct {
 	ACLs int // drop ACLs field from UnderlayNetworkConfig
 	VifInfo
 	BridgeMac         net.HardwareAddr
-	BridgeIPAddr      string   // The address for DNS/DHCP service in zedrouter
+	BridgeIPAddr      net.IP   // The address for DNS/DHCP service in zedrouter
 	AllocatedIPv4Addr string   // Assigned to domU
 	AllocatedIPv6List []string // IPv6 addresses assigned to domU
 	IPv4Assigned      bool     // Set to true once DHCP has assigned it to domU
@@ -2201,7 +2201,7 @@ type AssignedAddrs struct {
 type NetworkInstanceInfo struct {
 	BridgeNum     int
 	BridgeName    string // bn<N>
-	BridgeIPAddr  string
+	BridgeIPAddr  net.IP
 	BridgeMac     string
 	BridgeIfindex int
 
@@ -2233,7 +2233,7 @@ type NetworkInstanceInfo struct {
 	NumTrunkPorts uint32
 
 	// IP address on which the meta-data server listens
-	MetaDataServerIP string
+	MetaDataServerIP net.IP
 }
 
 func (instanceInfo *NetworkInstanceInfo) IsVifInBridge(
@@ -2674,7 +2674,7 @@ type AppNetworkACLArgs struct {
 	IPVer      int
 	BridgeName string
 	VifName    string
-	BridgeIP   string
+	BridgeIP   net.IP
 	AppIP      string
 	UpLinks    []string // List of ifnames
 	NIType     NetworkInstanceType

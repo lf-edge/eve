@@ -355,19 +355,14 @@ func clearUDPFlows(aclArgs types.AppNetworkACLArgs, ACLs []types.ACE) {
 }
 
 // If no valid bridgeIP we assume IPv4
-func determineIPVer(isMgmt bool, bridgeIP string) int {
+func determineIPVer(isMgmt bool, bridgeIP net.IP) int {
 	if isMgmt {
 		return 6
 	}
-	if bridgeIP == "" {
+	if isEmptyIP(bridgeIP) {
 		return 4
 	}
-	ip := net.ParseIP(bridgeIP)
-	if ip == nil {
-		log.Fatalf("determineIPVer: ParseIP %s failed\n",
-			bridgeIP)
-	}
-	if ip.To4() == nil {
+	if bridgeIP.To4() == nil {
 		return 6
 	} else {
 		return 4
@@ -421,9 +416,13 @@ func aclToRules(ctx *zedrouterContext, aclArgs types.AppNetworkACLArgs, ACLs []t
 	aclRule3.IPVer = aclArgs.IPVer
 	aclRule4.IPVer = aclArgs.IPVer
 	aclRule5.IPVer = aclArgs.IPVer
+	var bridgeIP string
+	if !isEmptyIP(aclArgs.BridgeIP) {
+		bridgeIP = aclArgs.BridgeIP.String()
+	}
 	// XXX should we check isMgmt instead of bridgeIP?
 	if aclArgs.IPVer == 6 {
-		if aclArgs.BridgeIP != "" && aclArgs.NIType != types.NetworkInstanceTypeSwitch {
+		if bridgeIP != "" && aclArgs.NIType != types.NetworkInstanceTypeSwitch {
 			// Need to allow local communication */
 			// Only allow dhcp, dns (tcp/udp), and icmp6/nd
 			// Note that sufficient for src or dst to be local
@@ -434,10 +433,10 @@ func aclToRules(ctx *zedrouterContext, aclArgs types.AppNetworkACLArgs, ACLs []t
 				"--match-set", "ipv6.local", "src", "-p", "ipv6-icmp"}
 			aclRule2.Action = []string{"-j", "ACCEPT"}
 			aclRule3.Rule = []string{"-i", aclArgs.BridgeName, "-d",
-				aclArgs.BridgeIP, "-p", "ipv6-icmp"}
+				bridgeIP, "-p", "ipv6-icmp"}
 			aclRule3.Action = []string{"-j", "ACCEPT"}
 			aclRule4.Rule = []string{"-i", aclArgs.BridgeName, "-s",
-				aclArgs.BridgeIP, "-p", "ipv6-icmp"}
+				bridgeIP, "-p", "ipv6-icmp"}
 			aclRule4.Action = []string{"-j", "ACCEPT"}
 			rulesList = append(rulesList, aclRule1, aclRule2, aclRule3, aclRule4)
 
@@ -447,24 +446,24 @@ func aclToRules(ctx *zedrouterContext, aclArgs types.AppNetworkACLArgs, ACLs []t
 			aclRule2.Rule = []string{"-i", aclArgs.BridgeName, "-m", "set",
 				"--match-set", "ipv6.local", "src", "-p", "udp", "--sport", "dhcpv6-server"}
 			aclRule2.Action = []string{"-j", "ACCEPT"}
-			aclRule3.Rule = []string{"-i", aclArgs.BridgeName, "-d", aclArgs.BridgeIP,
+			aclRule3.Rule = []string{"-i", aclArgs.BridgeName, "-d", bridgeIP,
 				"-p", "udp", "--dport", "dhcpv6-server"}
 			aclRule3.Action = []string{"-j", "ACCEPT"}
-			aclRule4.Rule = []string{"-i", aclArgs.BridgeName, "-s", aclArgs.BridgeIP,
+			aclRule4.Rule = []string{"-i", aclArgs.BridgeName, "-s", bridgeIP,
 				"-p", "udp", "--sport", "dhcpv6-server"}
 			aclRule4.Action = []string{"-j", "ACCEPT"}
 			rulesList = append(rulesList, aclRule1, aclRule2, aclRule3, aclRule4)
 
-			aclRule1.Rule = []string{"-i", aclArgs.BridgeName, "-d", aclArgs.BridgeIP,
+			aclRule1.Rule = []string{"-i", aclArgs.BridgeName, "-d", bridgeIP,
 				"-p", "udp", "--dport", "domain"}
 			aclRule1.Action = []string{"-j", "ACCEPT"}
-			aclRule2.Rule = []string{"-i", aclArgs.BridgeName, "-s", aclArgs.BridgeIP,
+			aclRule2.Rule = []string{"-i", aclArgs.BridgeName, "-s", bridgeIP,
 				"-p", "udp", "--sport", "domain"}
 			aclRule2.Action = []string{"-j", "ACCEPT"}
-			aclRule3.Rule = []string{"-i", aclArgs.BridgeName, "-d", aclArgs.BridgeIP,
+			aclRule3.Rule = []string{"-i", aclArgs.BridgeName, "-d", bridgeIP,
 				"-p", "tcp", "--dport", "domain"}
 			aclRule3.Action = []string{"-j", "ACCEPT"}
-			aclRule4.Rule = []string{"-i", aclArgs.BridgeName, "-s", aclArgs.BridgeIP,
+			aclRule4.Rule = []string{"-i", aclArgs.BridgeName, "-s", bridgeIP,
 				"-p", "tcp", "--sport", "domain"}
 			aclRule4.Action = []string{"-j", "ACCEPT"}
 			rulesList = append(rulesList, aclRule1, aclRule2, aclRule3, aclRule4)
@@ -539,7 +538,7 @@ func aclToRules(ctx *zedrouterContext, aclArgs types.AppNetworkACLArgs, ACLs []t
 	// If we have a bridge service then bridgeIP might be "".
 	if aclArgs.IPVer == 4 {
 		if aclArgs.NIType != types.NetworkInstanceTypeSwitch &&
-			aclArgs.BridgeIP != "" {
+			bridgeIP != "" {
 			// Need to allow local communication */
 			// Only allow dhcp and dns (tcp/udp)
 			// Note that sufficient for src or dst to be local
@@ -549,24 +548,24 @@ func aclToRules(ctx *zedrouterContext, aclArgs types.AppNetworkACLArgs, ACLs []t
 			aclRule2.Rule = []string{"-i", aclArgs.BridgeName, "-m", "set",
 				"--match-set", "ipv4.local", "src", "-p", "udp", "--sport", "bootps"}
 			aclRule2.Action = []string{"-j", "ACCEPT"}
-			aclRule3.Rule = []string{"-i", aclArgs.BridgeName, "-d", aclArgs.BridgeIP,
+			aclRule3.Rule = []string{"-i", aclArgs.BridgeName, "-d", bridgeIP,
 				"-p", "udp", "--dport", "bootps"}
 			aclRule3.Action = []string{"-j", "ACCEPT"}
-			aclRule4.Rule = []string{"-i", aclArgs.BridgeName, "-s", aclArgs.BridgeIP,
+			aclRule4.Rule = []string{"-i", aclArgs.BridgeName, "-s", bridgeIP,
 				"-p", "udp", "--sport", "bootps"}
 			aclRule4.Action = []string{"-j", "ACCEPT"}
 			rulesList = append(rulesList, aclRule1, aclRule2, aclRule3, aclRule4)
 
-			aclRule1.Rule = []string{"-i", aclArgs.BridgeName, "-d", aclArgs.BridgeIP,
+			aclRule1.Rule = []string{"-i", aclArgs.BridgeName, "-d", bridgeIP,
 				"-p", "udp", "--dport", "domain"}
 			aclRule1.Action = []string{"-j", "ACCEPT"}
-			aclRule2.Rule = []string{"-i", aclArgs.BridgeName, "-s", aclArgs.BridgeIP,
+			aclRule2.Rule = []string{"-i", aclArgs.BridgeName, "-s", bridgeIP,
 				"-p", "udp", "--sport", "domain"}
 			aclRule2.Action = []string{"-j", "ACCEPT"}
-			aclRule3.Rule = []string{"-i", aclArgs.BridgeName, "-d", aclArgs.BridgeIP,
+			aclRule3.Rule = []string{"-i", aclArgs.BridgeName, "-d", bridgeIP,
 				"-p", "tcp", "--dport", "domain"}
 			aclRule3.Action = []string{"-j", "ACCEPT"}
-			aclRule4.Rule = []string{"-i", aclArgs.BridgeName, "-s", aclArgs.BridgeIP,
+			aclRule4.Rule = []string{"-i", aclArgs.BridgeName, "-s", bridgeIP,
 				"-p", "tcp", "--sport", "domain"}
 			aclRule4.Action = []string{"-j", "ACCEPT"}
 			rulesList = append(rulesList, aclRule1, aclRule2, aclRule3, aclRule4)
@@ -590,7 +589,7 @@ func aclToRules(ctx *zedrouterContext, aclArgs types.AppNetworkACLArgs, ACLs []t
 			aclRule5.ActionChainName = chainName
 			rulesList = append(rulesList, aclRule5)
 
-			aclRule5.Rule = []string{"-i", aclArgs.BridgeName, "-d", aclArgs.BridgeIP,
+			aclRule5.Rule = []string{"-i", aclArgs.BridgeName, "-d", bridgeIP,
 				"-p", "udp", "--dport", "domain"}
 			chainName = fmt.Sprintf("proto-%s-%s-%d",
 				aclArgs.BridgeName, aclArgs.VifName, 7)
@@ -599,7 +598,7 @@ func aclToRules(ctx *zedrouterContext, aclArgs types.AppNetworkACLArgs, ACLs []t
 			aclRule5.ActionChainName = chainName
 			rulesList = append(rulesList, aclRule5)
 
-			aclRule5.Rule = []string{"-i", aclArgs.BridgeName, "-d", aclArgs.BridgeIP,
+			aclRule5.Rule = []string{"-i", aclArgs.BridgeName, "-d", bridgeIP,
 				"-p", "tcp", "--dport", "domain"}
 			chainName = fmt.Sprintf("proto-%s-%s-%d",
 				aclArgs.BridgeName, aclArgs.VifName, 7)
@@ -1084,7 +1083,7 @@ func aceToRules(ctx *zedrouterContext, aclArgs types.AppNetworkACLArgs,
 			aclRule2.Chain = "POSTROUTING"
 			aclRule2.Rule = []string{"-o", aclArgs.BridgeName, "-p", protocol,
 				"--dport", targetPort, "-m", "physdev", "!", "--physdev-is-bridged"}
-			aclRule2.Action = []string{"-j", "SNAT", "--to-source", aclArgs.BridgeIP}
+			aclRule2.Action = []string{"-j", "SNAT", "--to-source", aclArgs.BridgeIP.String()}
 			aclRule2.IsPortMapRule = true
 			aclRule2.IsUserConfigured = true
 			rulesList = append(rulesList, aclRule2)

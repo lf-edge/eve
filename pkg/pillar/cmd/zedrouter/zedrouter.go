@@ -1296,7 +1296,7 @@ func appNetworkDoActivateUnderlayNetwork(
 	newIpsets, staleIpsets, restartDnsmasq := diffIpsets(ipsets,
 		netInstStatus.BridgeIPSets)
 
-	if restartDnsmasq && ulStatus.BridgeIPAddr != "" {
+	if restartDnsmasq && !isEmptyIP(ulStatus.BridgeIPAddr) {
 		stopDnsmasq(bridgeName, true, false)
 		dnsServers := types.GetDNSServers(*ctx.deviceNetworkStatus,
 			netInstStatus.SelectedUplinkIntf)
@@ -1772,7 +1772,7 @@ func doAppNetworkModifyUNetAcls(
 	newIpsets, staleIpsets, restartDnsmasq := diffIpsets(ipsets,
 		netstatus.BridgeIPSets)
 
-	if restartDnsmasq && ulStatus.BridgeIPAddr != "" {
+	if restartDnsmasq && !isEmptyIP(ulStatus.BridgeIPAddr) {
 		hostsDirpath := runDirname + "/hosts." + bridgeName
 		stopDnsmasq(bridgeName, true, false)
 		dnsServers := types.GetDNSServers(*ctx.deviceNetworkStatus,
@@ -2018,7 +2018,7 @@ func appNetworkDoInactivateUnderlayNetwork(
 	newIpsets, staleIpsets, restartDnsmasq := diffIpsets(ipsets,
 		netstatus.BridgeIPSets)
 
-	if restartDnsmasq && ulStatus.BridgeIPAddr != "" {
+	if restartDnsmasq && !isEmptyIP(ulStatus.BridgeIPAddr) {
 		stopDnsmasq(bridgeName, true, false)
 		dnsServers := types.GetDNSServers(*ctx.deviceNetworkStatus,
 			netstatus.SelectedUplinkIntf)
