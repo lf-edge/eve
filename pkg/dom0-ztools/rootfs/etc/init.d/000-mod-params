@@ -35,4 +35,6 @@ zfs_set_default_parameters() {
     set_module_parameter zfs zfs_smoothing_write 5
 }
 
+# Load ZFS and set parameters
+modprobe zfs
 zfs_set_default_parameters
