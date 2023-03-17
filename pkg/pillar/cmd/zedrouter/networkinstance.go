@@ -1359,20 +1359,20 @@ func getIfNameListForLLOrIfname(
 	for _, port := range ports {
 		ifNameList = append(ifNameList, port.IfName)
 	}
+	if len(ifNameList) == 0 {
+		// llOrIfname is perhaps not a logical label but already an interface name.
+		if ctx.deviceNetworkStatus.GetPortByIfName(llOrIfname) != nil {
+			ifNameList = append(ifNameList, llOrIfname)
+		}
+	}
 	log.Functionf("ifNameList: %+v", ifNameList)
 
 	filteredList := make([]string, 0)
 	for _, ifName := range ifNameList {
 		// It is perfectly normal for DNS to list ports which do not actually
 		// exist (and have error reported).
-		dnsPort := ctx.deviceNetworkStatus.GetPortByIfName(ifName)
-		if dnsPort != nil {
-			if _, exists, _ := ctx.networkMonitor.GetInterfaceIndex(ifName); exists {
-				filteredList = append(filteredList, ifName)
-			}
-		} else {
-			log.Functionf("DeviceNetworkStatus not found for ifName(%s)",
-				ifName)
+		if _, exists, _ := ctx.networkMonitor.GetInterfaceIndex(ifName); exists {
+			filteredList = append(filteredList, ifName)
 		}
 	}
 	if len(filteredList) > 0 {
