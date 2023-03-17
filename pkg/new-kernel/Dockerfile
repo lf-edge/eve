@@ -148,39 +148,7 @@ RUN KERNEL_DEF_CONF="/linux/arch/${KERNEL_ARCH}/configs/${KERNEL_DEFCONFIG}"; \
     cp "${KERNEL_DEF_CONF}" .config.new && \
     make CROSS_COMPILE="${CROSS_COMPILE_ENV}" ARCH="${KERNEL_ARCH}" prepare
 
-# Prepare built-in ZFS
-#  * ZFS on Linux
-ENV ZFS_VERSION=2.1.2
-ENV ZFS_COMMIT=zfs-${ZFS_VERSION}
-ENV ZFS_REPO=https://github.com/openzfs/zfs
-ENV ZFS_PATCH_DIR=/patches-zfs-"${ZFS_VERSION}"
-
-WORKDIR /tmp/zfs
-
-# hadolint ignore=DL3020
-ADD ${ZFS_REPO}/tarball/${ZFS_COMMIT} /zfs.tgz
-RUN tar -zxvf /zfs.tgz --strip-components=1 && \
-    rm /zfs.tgz
-RUN set -e; \
-    if [ ! -d "${ZFS_PATCH_DIR}" ]; then \
-        echo "No such dir ${ZFS_PATCH_DIR}"; \
-    else \
-        for patch in "${ZFS_PATCH_DIR}"/*.patch; do \
-            echo "Applying $patch"; \
-            patch -p1 < "$patch"; \
-        done \
-    fi
-RUN ./autogen.sh && \
-    CROSS_COMPILE="${CROSS_COMPILE_ENV}" ARCH="${KERNEL_ARCH}" ./configure \
-        --with-linux=/linux \
-        --with-linux-obj=/linux \
-        --with-config=kernel  \
-        --enable-linux-builtin  \
-        --host="${EVE_TARGET_ARCH}"-linux-musl --build="${EVE_BUILD_ARCH}"-linux-musl && \
-    ./scripts/make_gitrev.sh && \
-    ./copy-builtin /linux
-
-# Verify kconfig after ZFS is prepared as built-in
+# Verify kconfig after `make prepare` call
 WORKDIR /linux
 RUN make CROSS_COMPILE="${CROSS_COMPILE_ENV}" ARCH="${KERNEL_ARCH}" "${KERNEL_DEFCONFIG}"
 RUN make CROSS_COMPILE="${CROSS_COMPILE_ENV}" ARCH="${KERNEL_ARCH}" oldconfig
@@ -209,6 +177,38 @@ RUN make -j "$(getconf _NPROCESSORS_ONLN)" CROSS_COMPILE="${CROSS_COMPILE_ENV}" 
 
 # Modules
 RUN make -j "$(getconf _NPROCESSORS_ONLN)" CROSS_COMPILE="${CROSS_COMPILE_ENV}" ARCH="${KERNEL_ARCH}" INSTALL_MOD_PATH=/tmp/kernel-modules modules_install
+
+
+# Out-of-tree, open source modules
+#  * ZFS on Linux
+ENV ZFS_VERSION=2.1.2
+ENV ZFS_COMMIT=zfs-${ZFS_VERSION}
+ENV ZFS_REPO=https://github.com/openzfs/zfs
+ENV ZFS_PATCH_DIR=/patches-zfs-"${ZFS_VERSION}"
+
+WORKDIR /tmp/zfs
+
+# hadolint ignore=DL3020
+ADD ${ZFS_REPO}/tarball/${ZFS_COMMIT} /zfs.tgz
+RUN tar -zxvf /zfs.tgz --strip-components=1 && \
+    rm /zfs.tgz
+RUN set -e; \
+    if [ ! -d "${ZFS_PATCH_DIR}" ]; then \
+        echo "No such dir ${ZFS_PATCH_DIR}"; \
+    else \
+        for patch in "${ZFS_PATCH_DIR}"/*.patch; do \
+            echo "Applying $patch"; \
+            patch -p1 < "$patch"; \
+        done \
+    fi
+RUN ./autogen.sh && \
+    CROSS_COMPILE="${CROSS_COMPILE_ENV}" ARCH="${KERNEL_ARCH}" ./configure \
+        --with-linux=/linux \
+        --host="${EVE_TARGET_ARCH}"-linux-musl --build="${EVE_BUILD_ARCH}"-linux-musl && \
+    ./scripts/make_gitrev.sh && \
+    make -C module -j "$(getconf _NPROCESSORS_ONLN)" CROSS_COMPILE="${CROSS_COMPILE_ENV}" ARCH="${KERNEL_ARCH}" && \
+    make -C module INSTALL_MOD_PATH=/tmp/kernel-modules install
+
 
 # Out-of-tree, creepy modules
 WORKDIR /tmp/rtl8821CU
