@@ -189,20 +189,6 @@ RUN make -j "$(getconf _NPROCESSORS_ONLN)" CROSS_COMPILE="${CROSS_COMPILE_ENV}" 
 RUN make -j "$(getconf _NPROCESSORS_ONLN)" CROSS_COMPILE="${CROSS_COMPILE_ENV}" ARCH="${KERNEL_ARCH}" INSTALL_MOD_PATH=/tmp/kernel-modules modules_install
 
 # Out-of-tree, creepy modules
-#  * Maxlinear USB (option #2 https://github.com/lipnitsk/xr/archive/master.zip)
-WORKDIR /linux
-ADD https://www.maxlinear.com/document?id=21651 /tmp/xr.zip
-RUN unzip -d /tmp /tmp/xr.zip ;\
-    make -j "$(getconf _NPROCESSORS_ONLN)" CROSS_COMPILE="${CROSS_COMPILE_ENV}" ARCH="${KERNEL_ARCH}" \
-         -C /linux INSTALL_MOD_PATH=/tmp/kernel-modules \
-         M=/tmp/xr_usb_serial_common_lnx-3.6-and-newer-pak \
-         modules
-
-RUN make CROSS_COMPILE="${CROSS_COMPILE_ENV}" ARCH="${KERNEL_ARCH}" \
-         -C /linux INSTALL_MOD_PATH=/tmp/kernel-modules \
-         M=/tmp/xr_usb_serial_common_lnx-3.6-and-newer-pak \
-         modules_install
-
 WORKDIR /tmp/rtl8821CU
 ADD https://github.com/brektrou/rtl8821CU/tarball/8c2226a7 /tmp/rtl8821CU.tgz
 RUN tar -zxvf /tmp/rtl8821CU.tgz  --strip-components=1 && \
