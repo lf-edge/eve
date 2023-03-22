@@ -4,9 +4,38 @@
 # helps to debug and resolve EVE issues.
 #
 
+# Script version, don't forget to bump up once something is changed
+VERSION=1
+
 DATE=$(date -Is)
-INFO_DIR="eve-info-$DATE"
+INFO_DIR="eve-info-v$VERSION-$DATE"
 TARBALL_FILE="/persist/$INFO_DIR.tar.gz"
+
+usage()
+{
+    echo "Usage: collect-info.sh [-v] [-h]"
+    echo "       -h   show this help"
+    echo "       -v   show the script version"
+    exit 1
+}
+
+while getopts "vh" o; do
+    case "$o" in
+        h)
+            usage
+            ;;
+        v)
+            echo "v$VERSION"
+            exit 0
+            ;;
+        :)
+            usage
+            ;;
+        *)
+            usage
+            ;;
+    esac
+done
 
 # Create temporary dir
 TMP_DIR=$(mktemp -d)
