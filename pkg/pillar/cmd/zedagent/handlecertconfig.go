@@ -262,8 +262,12 @@ func getCertsFromController(ctx *zedagentContext, desc string) (success bool) {
 			log.Noticef("getCertsFromController: Controller returned ECONNREFUSED")
 		case types.SenderStatusCertInvalid:
 			log.Warnf("getCertsFromController: Controller certificate invalid time")
+			log.Noticef("%s trigger", rv.Status.String())
+			triggerControllerCertEvent(ctx)
 		case types.SenderStatusCertMiss:
 			log.Noticef("getCertsFromController: Controller certificate miss")
+			log.Noticef("%s trigger", rv.Status.String())
+			triggerControllerCertEvent(ctx)
 		default:
 			log.Errorf("getCertsFromController failed: %s", err)
 		}
@@ -276,6 +280,12 @@ func getCertsFromController(ctx *zedagentContext, desc string) (success bool) {
 	default:
 		log.Errorf("getCertsFromController: failed, statuscode %d %s",
 			rv.HTTPResp.StatusCode, http.StatusText(rv.HTTPResp.StatusCode))
+		switch rv.Status {
+		case types.SenderStatusCertMiss, types.SenderStatusCertInvalid:
+			// trigger to acquire new controller certs from cloud
+			log.Noticef("%s trigger", rv.Status.String())
+			triggerControllerCertEvent(ctx)
+		}
 		return false
 	}
 
@@ -295,6 +305,12 @@ func getCertsFromController(ctx *zedagentContext, desc string) (success bool) {
 	signingCertBytes, ret := zedcloud.VerifyProtoSigningCertChain(log, rv.RespContents)
 	if ret != nil {
 		log.Errorf("getCertsFromController: verify err %v", ret)
+		switch rv.Status {
+		case types.SenderStatusCertMiss, types.SenderStatusCertInvalid:
+			// trigger to acquire new controller certs from cloud
+			log.Noticef("%s trigger", rv.Status.String())
+			triggerControllerCertEvent(ctx)
+		}
 		return false
 	}
 
