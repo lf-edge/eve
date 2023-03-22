@@ -35,6 +35,7 @@ ADD --chown=builder:abuild https://dev.alpinelinux.org/~nenolod/gcc-${GCC_VERSIO
 RUN for patch in /home/builder/patches/*patch ; do patch -p1 < "$patch" ; done
 RUN [ "riscv64" = "${EVE_BUILD_ARCH}" ] || sh -x ./scripts/bootstrap.sh "riscv64"
 RUN [ "aarch64" = "${EVE_BUILD_ARCH}" ] || sh -x ./scripts/bootstrap.sh "aarch64"
+RUN [ "armhf" = "${EVE_BUILD_ARCH}" ] || sh -x ./scripts/bootstrap.sh "armhf"
 RUN [ "x86_64" = "${EVE_BUILD_ARCH}" ] || sh -x ./scripts/bootstrap.sh "x86_64"
 
 RUN rm -rf /home/builder/packages/main/"${EVE_BUILD_ARCH}"/gcc-pass2*
@@ -42,6 +43,7 @@ RUN cp -r /home/builder/packages/main/"${EVE_BUILD_ARCH}" /packages/
 
 FROM build-base as build-amd64
 FROM build-base as build-arm64
+FROM build-base as build-armhf
 # we do not support cross-compilers for riscv64 host
 # as gcc-gnat is not available on riscv64
 # we cannot build cross-compilers without additional patches
