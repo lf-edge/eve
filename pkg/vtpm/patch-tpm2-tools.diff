@@ -1,5 +1,5 @@
 diff --git a/Makefile.am b/Makefile.am
-index 13b23dcd..e75eb091 100644
+index 5e53f62..717eb3a 100644
 --- a/Makefile.am
 +++ b/Makefile.am
 @@ -14,7 +14,7 @@ include src_vars.mk
@@ -11,9 +11,9 @@ index 13b23dcd..e75eb091 100644
  
  AM_CFLAGS := \
      $(INCLUDE_DIRS) $(EXTRA_CFLAGS) $(TSS2_ESYS_CFLAGS) $(TSS2_MU_CFLAGS) \
-@@ -105,9 +105,9 @@ bin_PROGRAMS = \
-     tools/tpm2_verifysignature
+@@ -40,9 +40,9 @@ bin_PROGRAMS += tools/fapi/tss2
  
+ endif
  
 -noinst_LIBRARIES = $(LIB_COMMON)
 -lib_libcommon_a_SOURCES = $(LIB_SRC)
@@ -21,24 +21,6 @@ index 13b23dcd..e75eb091 100644
 +lib_LTLIBRARIES = $(LIB_COMMON)
 +lib_libcommon_la_SOURCES = $(LIB_SRC)
 +lib_libcommon_la_CFLAGS = -fPIC -shared $(AM_CFLAGS)
- TOOL_SRC := tools/tpm2_tool.c tools/tpm2_tool.h
  
- tools_misc_tpm2_checkquote_SOURCES = tools/misc/tpm2_checkquote.c $(TOOL_SRC)
-diff --git a/tools/tpm2_import.c b/tools/tpm2_import.c
-index b782edeb..ee8aea4b 100644
---- a/tools/tpm2_import.c
-+++ b/tools/tpm2_import.c
-@@ -583,13 +583,6 @@ static tool_rc tpm_import(ESYS_CONTEXT *ectx) {
-         return tool_rc_general_error;
-     }
- 
--public.publicArea.authPolicy.size = sizeof(public.publicArea.authPolicy.buffer);
--    result = files_load_bytes_from_path(ctx.policy,
--        public.publicArea.authPolicy.buffer,
--            &public.publicArea.authPolicy.size);
--    if (!result) {
--        return tool_rc_general_error;
--    }
- 
-     rc = tpm2_import(ectx, &ctx.parent.object, &enc_key, &public, &duplicate,
-             &encrypted_seed, &sym_alg, &imported_private);
+ tools_fapi_tss2_CFLAGS = $(FAPI_CFLAGS) -DTSS2_TOOLS_MAX="$(words $(tss2_tools))"
+ tools_fapi_tss2_LDFLAGS = $(EXTRA_LDFLAGS) $(TSS2_FAPI_LIBS)

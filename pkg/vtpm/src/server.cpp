@@ -58,14 +58,12 @@ readHdr (char *buf)
 std::list<string> allowed_commands = {
 "tpm2_getcap",
 "tpm2_readpublic",
-"tpm2_startauthsession",
 "tpm2_policysecret",
+"tpm2_startauthsession",
 "tpm2_activatecredential",
 "tpm2_flushcontext",
-"tpm2_startauthsession",
-"tpm2_policysecret",
+"tpm2_selftest",
 "tpm2_import",
-"tpm2_flushcontext",
 "tpm2_load",
 "tpm2_hmac",
 "tpm2_hash",
@@ -201,13 +199,17 @@ prepareCommand(string cmd,
     istringstream fullCmd(cmd);
 
     fullCmd >> cmdAlone;
-    cmdWithPath = BIN_PATH + cmdAlone;
+    cmdAlone.erase(0, cmdAlone.find("_") + 1); // +1 for size of "_"
+    cmdWithPath = BIN_PATH + string("tpm2");
 
-    cmdArgs[i++] = cmdWithPath.c_str();
+    cmdArgs[i++] = strdup(cmdWithPath.c_str());
+    cmdArgs[i++] = strdup(cmdAlone.c_str());
     while (fullCmd >> args[i] && i < (MAX_ARGS - 1)) {
-        cmdArgs[i] = args[i].c_str();
+        cmdArgs[i] = strdup(args[i].c_str());
         i++;
     }
+    cmdArgs[i] = NULL;
+
     if (i == (MAX_ARGS - 1)) {
         cerr << "More than acceptable number of args" << std::endl;
         response.set_response("Too many arguments");
@@ -222,8 +224,14 @@ prepareCommand(string cmd,
       cout << cmdArgs[j++] << " ";
     }
     cout << std::endl;
+    return rc;
 
 cleanup_and_exit:
+    for (int i = 0; cmdArgs[i]; i++) {
+        free((void *)cmdArgs[i]);
+        cmdArgs[i] = NULL;
+    }
+
     return rc;
 }
 
@@ -336,7 +344,7 @@ handleRequest (int sock, google::protobuf::uint32 size)
     eve_tools::EveTPMRequest request;
     eve_tools::EveTPMResponse response;
     int byteCnt = 0, rc = success;
-    const char *cmdArgs[MAX_ARGS];
+    const char *cmdArgs[MAX_ARGS+1];
     ifstream cmdOut;
 
     if (parseRequest(sock, size, request, response, payload) < 0) {
@@ -443,6 +451,13 @@ cleanup_and_exit:
     if (cmdOut) {
         cmdOut.close();
     }
+
+    // clean up the duplicate strings memory
+    if (cmdArgs[0] != NULL) {
+        for (int i=0; cmdArgs[i]; i++)
+            free((void *)cmdArgs[i]);
+    }
+
     // Remove the working directory
     rmClientWorkingDir(clientWorkingDir.c_str());
     return rc;
