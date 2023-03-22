@@ -69,7 +69,8 @@ const (
 )
 
 //One shot send, if fails, return an error to the state machine to retry later
-func trySendToController(attestReq *attest.ZAttestReq, iteration int) (*http.Response, []byte, types.SenderResult, error) {
+func trySendToController(attestReq *attest.ZAttestReq, attestCtx *attestContext) (*http.Response, []byte, types.SenderResult, error) {
+	log.Noticef("trySendToController type %d", attestReq.ReqType)
 	data, err := proto.Marshal(attestReq)
 	if err != nil {
 		log.Fatal("SendInfoProtobufStr proto marshaling error: ", err)
@@ -82,12 +83,19 @@ func trySendToController(attestReq *attest.ZAttestReq, iteration int) (*http.Res
 	ctxWork, cancel := zedcloud.GetContextForAllIntfFunctions(zedcloudCtx)
 	defer cancel()
 	resp, contents, senderStatus, err := zedcloud.SendOnAllIntf(ctxWork,
-		zedcloudCtx, attestURL, size, buf, iteration, true)
+		zedcloudCtx, attestURL, size, buf, attestCtx.Iteration, true)
 	if err != nil || len(contents) == 0 {
-		return resp, contents, senderStatus, err
+		// Error case handled below
+	} else {
+		contents, senderStatus, err = zedcloud.RemoveAndVerifyAuthContainer(zedcloudCtx,
+			attestURL, contents, false, senderStatus)
 	}
-	contents, senderStatus, err = zedcloud.RemoveAndVerifyAuthContainer(zedcloudCtx,
-		attestURL, contents, false, senderStatus)
+	switch senderStatus {
+	case types.SenderStatusCertMiss, types.SenderStatusCertInvalid:
+		// trigger to acquire new controller certs from cloud
+		log.Noticef("%s trigger", senderStatus.String())
+		triggerControllerCertEvent(attestCtx.zedagentCtx)
+	}
 	return resp, contents, senderStatus, err
 }
 
@@ -131,7 +139,7 @@ func (server *VerifierImpl) SendNonceRequest(ctx *zattest.Context) error {
 	attestCtx.Iteration++
 	log.Tracef("Sending Nonce request %v", attestReq)
 
-	_, contents, senderStatus, err := trySendToController(attestReq, attestCtx.Iteration)
+	_, contents, senderStatus, err := trySendToController(attestReq, attestCtx)
 	if err != nil || senderStatus != types.SenderStatusNone {
 		errorDescription := types.ErrorDescription{
 			Error: fmt.Sprintf("[ATTEST] Error %v, senderStatus %v",
@@ -313,7 +321,7 @@ func (server *VerifierImpl) SendAttestQuote(ctx *zattest.Context) error {
 	log.Tracef("Sending Quote request")
 	recordAttestationTry(attestCtx.zedagentCtx)
 
-	_, contents, senderStatus, err := trySendToController(attestReq, attestCtx.Iteration)
+	_, contents, senderStatus, err := trySendToController(attestReq, attestCtx)
 	if err != nil || senderStatus != types.SenderStatusNone {
 		errorDescription := types.ErrorDescription{
 			Error: fmt.Sprintf("[ATTEST] Error %v, senderStatus %v",
@@ -453,7 +461,7 @@ func (server *VerifierImpl) SendAttestEscrow(ctx *zattest.Context) error {
 	attestCtx.Iteration++
 	log.Tracef("Sending Escrow data")
 
-	_, contents, senderStatus, err := trySendToController(attestReq, attestCtx.Iteration)
+	_, contents, senderStatus, err := trySendToController(attestReq, attestCtx)
 	if err != nil || senderStatus != types.SenderStatusNone {
 		errorDescription := types.ErrorDescription{
 			Error: fmt.Sprintf("[ATTEST] Error %v, senderStatus %v", err, senderStatus),
