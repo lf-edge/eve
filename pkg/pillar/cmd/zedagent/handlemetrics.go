@@ -1569,11 +1569,13 @@ func sendMetricsProtobuf(ctx *getconfigContext,
 		devUUID, "metrics")
 	sendMetricsProtobufByURL(ctx, url, ReportMetrics, iteration)
 
+	locConfig := ctx.locConfig
+
 	// Repeat metrics for LOC as well
-	if ctx.locConfig != nil {
+	if locConfig != nil {
 		// Don't block current execution context
 		go func() {
-			url := zedcloud.URLPathString(ctx.locConfig.LocURL, zedcloudCtx.V2API,
+			url := zedcloud.URLPathString(locConfig.LocURL, zedcloudCtx.V2API,
 				devUUID, "metrics")
 			sendMetricsProtobufByURL(ctx, url, ReportMetrics, iteration)
 		}()
