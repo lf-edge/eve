@@ -1,0 +1,42 @@
+From bb56bdcf90b736524a44e37b7758fb752cbc2441 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Ren=C3=AA=20de=20Souza=20Pinto?= <rene@renesp.com.br>
+Date: Thu, 23 Mar 2023 14:55:35 +0100
+Subject: [PATCH 20/20] configs: Enable OPTEE image loading
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Enable OPTEE image loading for the following i.MX8MP platforms:
+
+- phycore-POLLUX board
+- Advantech EPC-R3720
+
+Signed-off-by: Renê de Souza Pinto <rene@renesp.com.br>
+---
+ configs/imx8mp_rsb3720a1_6G_defconfig | 2 ++
+ configs/phycore-imx8mp_defconfig      | 2 ++
+ 2 files changed, 4 insertions(+)
+
+diff --git a/configs/imx8mp_rsb3720a1_6G_defconfig b/configs/imx8mp_rsb3720a1_6G_defconfig
+index b7329a30043..33bc53bdd55 100644
+--- a/configs/imx8mp_rsb3720a1_6G_defconfig
++++ b/configs/imx8mp_rsb3720a1_6G_defconfig
+@@ -144,3 +144,5 @@ CONFIG_EFI_SET_TIME=y
+ CONFIG_EFI_SECURE_BOOT=y
+ CONFIG_SYSINFO=y
+ CONFIG_SYSINFO_SMBIOS=y
++CONFIG_OPTEE_FIRMWARE_SET=y
++CONFIG_OPTEE_FIRMWARE="tee.bin"
+diff --git a/configs/phycore-imx8mp_defconfig b/configs/phycore-imx8mp_defconfig
+index dccffbac970..68048bf5ed9 100644
+--- a/configs/phycore-imx8mp_defconfig
++++ b/configs/phycore-imx8mp_defconfig
+@@ -113,3 +113,5 @@ CONFIG_DM_THERMAL=y
+ CONFIG_IMX_WATCHDOG=y
+ CONFIG_SYSINFO=y
+ CONFIG_SYSINFO_SMBIOS=y
++CONFIG_OPTEE_FIRMWARE_SET=y
++CONFIG_OPTEE_FIRMWARE="tee.bin"
+-- 
+2.39.2
+
