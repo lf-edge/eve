@@ -506,7 +506,7 @@ docker run -p 8080:80 -p 8125:8125/udp --rm --name statsd graphiteapp/graphite-s
 
 While the EVE is running, navigate to `http://IP:8080/dashboard` and find the result under `stats.gauges`.
 
-#### Kernel versioning
+#### Reproducible Kernel build and versioning
 
 Kernel packages ("pkg/kernel" and "pkg/new-kernel") are configured to produce a bit-by-bit reproducible kernel, to this end a `build.yml` is generated at build time to set the following variables to a static value:
 
@@ -518,7 +518,43 @@ KCONFIG_NOTIMESTAMP=true
 
 In addition, both `KBUILD_BUILD_TIMESTAMP` and `SOURCE_DATE_EPOCH` variables are set to the last commit date of the respective package, This configuration results in having a static version string (`/proc/version`) on every build. In case there is uncommitted changes in the kernel(s) directory, kernel gets build normally without any static time.
 
-This process can be used to compare eve images that are build in a trusted environment vs CI, making sure the automated build process is intact and not malicious or compromised.
+This process can be used to compare eve images that are build in a trusted environment vs CI, making sure the automated build process is intact and not malicious or compromised. For this purpose, you can use [rootfs-diff.sh](../tools/rootfs-diff.sh) to compare two builds. The script accepts the path of the mounted rootfs.img files (you need to mount a RW overlay on top; check the comments on the script), ideally you should see no output after the diff is finished:
+
+```bash
+$ rootfs-diff.sh /tmp/rfs-one/ tmp/rfs-two/
+[1] Removing the signing key from kernel...
+[1] Removing the signature form kernel modules...
+[2] Removing the signing key from kernel...
+[2] Removing the signature form kernel modules...
+[*] Diffing the two rootfs...
+$
+```
+
+But in case the two builds differ, the script outputs a list of files:
+
+```bash
+$ rootfs-diff.sh /tmp/rfs-one/ tmp/rfs-two/
+[1] Removing the signing key from kernel...
+[1] Removing the signature form kernel modules...
+[2] Removing the signing key from kernel...
+[2] Removing the signature form kernel modules...
+[*] Diffing the two rootfs...
+Files /tmp/rfs-one/boot/kernel and /tmp/rfs-two/boot/kernel differ
+Files /tmp/rfs-one/lib/modules/5.10.121-default/kernel/net/can/can.ko and /tmp/rfs-two/lib/modules/5.10.121-default/kernel/net/can/can.ko differ
+$
+```
+
+#### Buil-time kernel module signing
+
+EVE kernel is configured to only load signed kernel modules, the module signing happens automatically during the build with a build-time generated throw-away key. But if you are willing to sign the modules using your own key, generate a key:
+
+```shell
+openssl req -new -nodes -utf8 -sha256 -days 36500 -batch -x509 \
+   -config x509.genkey -outform PEM -out kernel_key.pem \
+   -keyout kernel_key.pem
+```
+
+and place the `.pem` file in the `/eve/pkg/kernel/certs` directory. You can respectively change the `x509.genkey` template too.
 
 ## Summary of Build Process
 
