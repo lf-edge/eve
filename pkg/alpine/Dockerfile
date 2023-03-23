@@ -1,6 +1,6 @@
 # image was bootstraped using FROM lfedge/eve-alpine-base:f11c7a5dcffe1ab7b466bea7e26010a27da62b3b AS cache
 # to update please see https://github.com/lf-edge/eve/blob/master/docs/BUILD.md#how-to-update-eve-alpine-package
-FROM lfedge/eve-alpine:145f062a40639b6c65efa36bed1c5614b873be52 AS cache
+FROM lfedge/eve-alpine:9fb9b9cbf7d90066a70e4704d04a6fe248ff52bb AS cache
 
 ARG ALPINE_VERSION=3.16
 # this is only needed once, when this package
@@ -13,9 +13,6 @@ COPY Dockerfile abuild.conf /etc/
 COPY mirrors /tmp/mirrors/
 COPY build-cache.sh /bin/
 
-RUN mkdir -vp "/mirror/edge/$(apk --print-arch)"
-# download newest go=1.20.1 from alpine/edge repository
-RUN wget -q "http://dl-cdn.alpinelinux.org/alpine/edge/community/$(apk --print-arch)/go-1.20.1-r0.apk" -O "/mirror/edge/$(apk --print-arch)/go-1.20.1-r0.apk"
 # install abuild for signing (which requires gcc as well)
 RUN apk add --no-cache abuild gcc sudo
 
@@ -53,14 +50,14 @@ RUN apk update && apk upgrade -a
 
 # define arch-specific envs
 FROM scratch as final-amd64
-ENV EVE_BUILD_ARCH=x86_64
-ENV EVE_TARGET_ARCH=x86_64
+ENV BUILD_ARCH=x86_64
+ENV TARGET_ARCH=x86_64
 FROM scratch as final-arm64
-ENV EVE_BUILD_ARCH=aarch64
-ENV EVE_TARGET_ARCH=aarch64
+ENV BUILD_ARCH=aarch64
+ENV TARGET_ARCH=aarch64
 FROM scratch as final-riscv64
-ENV EVE_BUILD_ARCH=riscv64
-ENV EVE_TARGET_ARCH=riscv64
+ENV BUILD_ARCH=riscv64
+ENV TARGET_ARCH=riscv64
 
 # we merge layers in previous step
 # so we should avoid large possible diff

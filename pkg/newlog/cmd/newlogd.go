@@ -568,24 +568,30 @@ func getMemlogMsg(logChan chan inputEntry, panicFileChan chan []byte) {
 			continue
 		}
 		sourceName, msgTime, origMsg := getSourceFromMsg(string(bytes))
-		logInfo, ok := agentlog.ParseLoginfo(origMsg)
 
 		var pidStr string
 		var isApp bool
-
-		if strings.Contains(string(bytes), "guest_vm") {
-			logmetrics.AppMetrics.NumInputEvent++
+		var jsonOK bool
+		var logInfo agentlog.Loginfo
+		if strings.Contains(sourceName, "guest_vm") {
+			isApp = true
 			logInfo.Source = sourceName
 			logInfo.Msg = origMsg
-			isApp = true
-		} else if logInfo.Containername != "" {
+			jsonOK = true
+			logmetrics.AppMetrics.NumInputEvent++
+		} else {
+			logInfo, jsonOK = agentlog.ParseLoginfo(origMsg)
+		}
+
+		if logInfo.Containername != "" {
 			logmetrics.AppMetrics.NumInputEvent++
 			isApp = true
 		} else {
 			logInfo.Msg = origMsg
 			logmetrics.DevMetrics.NumInputEvent++
 		}
-		if !ok {
+
+		if !jsonOK {
 			// not in json or right json format, try to reformat
 			logInfo = repaireMsg(origMsg, msgTime, sourceName)
 		}
@@ -595,7 +601,7 @@ func getMemlogMsg(logChan chan inputEntry, panicFileChan chan []byte) {
 		if !isApp && logInfo.Source == "" {
 			logInfo.Source = sourceName
 		}
-		if logInfo.Time == "" && strings.HasSuffix(msgTime, "Z") {
+		if logInfo.Time == "" {
 			logInfo.Time = msgTime
 		}
 		if logInfo.Pid != 0 {
@@ -762,7 +768,7 @@ func writelogFile(logChan <-chan inputEntry, moveChan chan fileChanInfo) {
 			if appuuid != "" {
 				appM = getAppStatsMap(appuuid)
 			}
-			timeS := getPtypeTimestamp(entry.timestamp)
+			timeS, _ := getPtypeTimestamp(entry.timestamp)
 			mapLog := logs.LogEntry{
 				Severity:  entry.severity,
 				Source:    entry.source,
@@ -1575,13 +1581,13 @@ func getDevTop10Inputs() {
 	devSourceBytes = base.NewLockedStringMap()
 }
 
-func getPtypeTimestamp(timeStr string) *timestamp.Timestamp {
+func getPtypeTimestamp(timeStr string) (*timestamp.Timestamp, error) {
 	t, err := time.Parse(time.RFC3339, timeStr)
 	if err != nil {
-		log.Fatal(err)
+		t = time.Unix(0, 0)
 	}
 	tt := &timestamp.Timestamp{Seconds: t.Unix(), Nanos: int32(t.Nanosecond())}
-	return tt
+	return tt, err
 }
 
 // get total MBytes in '/persist' partition on device

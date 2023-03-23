@@ -315,6 +315,8 @@ The cryptographic hash of the zip file for the contents is `0nVT/S4r4gSyJNb/74vZ
 hash of the `go.mod` file is `F486dIGdTbYMmAj8dtlVbjQasL8WS7lhnijBk4wJmKQ=`. The above is base64-encoded sha256 sum, as indicated
 by `h1`. For further details, see the [go modules reference](https://go.dev/ref/mod).
 
+There is an example of a script which determines the go pkgref from the content of the go.sum files and downloads the source code in [tools/go-sum-to-src.sh](../tools/go-sum-to-src.sh). See comment in the script for its usage.
+
 ### External sources
 
 Some of the container image sources may require external software from the Internet. For example, [pkg/fw](../pkg/fw) needs to
@@ -631,7 +633,7 @@ https://git.alpinelinux.org/aports/tree/main/${PACKAGENAME}/APKBUILD?id=${COMMIT
 For our example, that is:
 
 ```sh
-https://git.alpinelinux.org/aports/tree/main/ip6tables/APKBUILD?id=e7e60a9e6ff8cc55b004dac6392b75e4993518da
+https://git.alpinelinux.org/aports/tree/main/iptables/APKBUILD?id=e7e60a9e6ff8cc55b004dac6392b75e4993518da
 ```
 
 The file there shows:
@@ -740,3 +742,7 @@ for our purposes are:
 * Any referenced versions or commits used in that URL: `pkgver=1.8.8`
 
 The above is a reference to the original root source code for the binaries distributed.
+
+There is an example of a script which follows the above description to download the APKBUILD files, and any patches, as well as any http and https references i.e., the complete source for the underlying package plus the alpine build recipe in [tools/get-alpine-pkg-source.sh](../tools/get-alpine-pkg-source.sh). See comment in the script for its usage.
+
+The kernel is built from source using [pkg/kernel/Dockerfile](../pkg/kernel/Dockerfile). There is a script to collect the source code used for the kernel build (and in general, extract source code from Docker ADD commands). See comments in [tools/get-kernel-source.sh](../tools/get-kernel-source.sh) for the usage.

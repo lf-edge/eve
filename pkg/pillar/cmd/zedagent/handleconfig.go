@@ -988,8 +988,7 @@ func updateLocalServerMap(getconfigCtx *getconfigContext, localServerURL string)
 	for _, entry := range appNetworkStatuses {
 		appNetworkStatus := entry.(types.AppNetworkStatus)
 		for _, ulStatus := range appNetworkStatus.UnderlayNetworkList {
-			bridgeIP := net.ParseIP(ulStatus.BridgeIPAddr)
-			if bridgeIP == nil {
+			if len(ulStatus.BridgeIPAddr) == 0 {
 				continue
 			}
 			if localServerIP != nil {
@@ -997,7 +996,7 @@ func updateLocalServerMap(getconfigCtx *getconfigContext, localServerURL string)
 				if ulStatus.AllocatedIPv4Addr == localServerIP.String() {
 					srvAddr := localServerAddr{
 						localServerAddr: localServerURL,
-						bridgeIP:        bridgeIP,
+						bridgeIP:        ulStatus.BridgeIPAddr,
 						appUUID:         appNetworkStatus.UUIDandVersion.UUID,
 					}
 					srvMap.servers[ulStatus.Bridge] = append(srvMap.servers[ulStatus.Bridge], srvAddr)
@@ -1019,7 +1018,7 @@ func updateLocalServerMap(getconfigCtx *getconfigContext, localServerURL string)
 							localServerURLReplaced, ulStatus.Bridge)
 						srvAddr := localServerAddr{
 							localServerAddr: localServerURLReplaced,
-							bridgeIP:        bridgeIP,
+							bridgeIP:        ulStatus.BridgeIPAddr,
 							appUUID:         appNetworkStatus.UUIDandVersion.UUID,
 						}
 						srvMap.servers[ulStatus.Bridge] = append(srvMap.servers[ulStatus.Bridge], srvAddr)

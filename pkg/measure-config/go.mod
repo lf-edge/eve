@@ -1,4 +1,4 @@
-module github.com/measure-config
+module github.com/lf-edge/eve/pkg/measure-config
 
 go 1.20
 

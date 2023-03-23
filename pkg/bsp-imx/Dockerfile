@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile-upstream:1.5.0-rc2-labs
-FROM lfedge/eve-alpine:8e3ddd8016f778932e9c204a3ec195ed74d1600a as build-base
+FROM lfedge/eve-alpine:9fb9b9cbf7d90066a70e4704d04a6fe248ff52bb as build-base
 RUN mkdir /bsp
 
 FROM build-base AS build-amd64

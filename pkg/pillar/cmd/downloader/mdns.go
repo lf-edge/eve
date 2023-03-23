@@ -119,7 +119,7 @@ func findLocalDsSrc(niItems map[string]interface{}, hostip net.IP) (ifname strin
 	for _, item := range niItems {
 		status := item.(types.NetworkInstanceStatus)
 		if status.IsIpAssigned(hostip) {
-			return status.BridgeName, net.ParseIP(status.BridgeIPAddr)
+			return status.BridgeName, status.BridgeIPAddr
 		}
 	}
 	return "", nil

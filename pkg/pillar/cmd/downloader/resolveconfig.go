@@ -231,7 +231,7 @@ func resolveTagsToHash(ctx *downloaderContext, rc types.ResolveConfig,
 		// get the name of the repository and the URL for the registry
 		serverURL, remoteName, err = ociRepositorySplit(dsCtx.DownloadURL)
 		if err != nil {
-			errStr = fmt.Sprintf("invalid OCI registry URL: %s", serverURL)
+			errStr = fmt.Sprintf("invalid OCI registry URL: %s", err.Error())
 		}
 
 	default:

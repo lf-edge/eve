@@ -22,7 +22,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/dpcmanager"
 	"github.com/lf-edge/eve/pkg/pillar/dpcreconciler"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
-	"github.com/lf-edge/eve/pkg/pillar/iptables"
 	"github.com/lf-edge/eve/pkg/pillar/netmonitor"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
@@ -150,9 +149,6 @@ func (n *nim) init() (err error) {
 	if n.version {
 		fmt.Printf("%s: %s\n", agentName, Version)
 		return nil
-	}
-	if err = iptables.Init(n.Log); err != nil {
-		return err
 	}
 
 	n.cipherMetrics = cipher.NewAgentMetrics(agentName)
