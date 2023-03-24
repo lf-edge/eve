@@ -32,7 +32,8 @@ import (
 	etpm "github.com/lf-edge/eve/pkg/pillar/evetpm"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
-	"github.com/satori/go.uuid"
+	uuid "github.com/satori/go.uuid"
+	"github.com/sirupsen/logrus"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -515,21 +516,24 @@ func VerifySigningCertChain(log *base.LogObject, certs []*zcert.ZCert) ([]byte, 
 			}
 		}
 	}
-
-	// verify date range of certificates
-	for _, cert := range certs {
-		realCert, err := x509.ParseCertificate(cert.Cert)
-		if err != nil {
-			errStr := fmt.Sprintf("certificate PEM parse fail")
-			log.Errorln("verifySignature: " + errStr)
-			return nil, err
-		}
-		if !verifyx509TimeStamps(log, realCert) {
-			return nil, errors.New("Cert not in valid time")
-		}
-	}
 	return sigCertBytes, nil
 }
+
+type certStatus uint8
+
+const (
+	allCertsAreValid certStatus = iota
+	aCertIsInfo
+	aCertIsWarn
+	aCertIsINVALID
+)
+
+var (
+	lastCertTimeCheck time.Time
+	CurCertStatus     = allCertsAreValid
+	certInfoThreshold = 30
+	certWarnThreshold = 15
+)
 
 func verifySignature(log *base.LogObject, certByte []byte, interm *x509.CertPool) error {
 
@@ -572,86 +576,44 @@ func verifySignature(log *base.LogObject, certByte []byte, interm *x509.CertPool
 		log.Errorln("verifySignature: " + errStr)
 		return errors.New(errStr)
 	}
-	return nil
-}
 
-func verifyx509TimeStamps(log *base.LogObject, realCert *x509.Certificate) bool {
-	rightNow := time.Now()
-	notBefore := realCert.NotBefore
-	notAfter := realCert.NotAfter
-	certName := realCert.Subject
-	certValid := true
-	// HACK for compilation test DUMMY thresholds
-	type configInfo struct {
-		// only need to define thresholds to
-		//  inform and warn the owners
-		infoThreshold time.Duration
-		warnThreshold time.Duration
-	}
+	// verify cert validity dates against thresholds
+	now := time.Now()
+	oneDay := time.Hour * 24
+	if now.After(lastCertTimeCheck.Add(oneDay)) {
+		lastCertTimeCheck = now
 
-	type certStatus uint8
-	const (
-		allCertsAreValid certStatus = iota
-		aCertIsInfo
-		aCertIsWarn
-		aCertIsINVALID
-	)
+		notAfter := leafcert.NotAfter
+		warnT := now.Add(oneDay * time.Duration(certWarnThreshold))
+		infoT := now.Add(oneDay * time.Duration(certInfoThreshold))
 
-	type statusInfo struct {
-		CertStatus certStatus
-	}
-
-	// assume default will be 60 days before for Info
-	//  and 30 days for the Warning
-	// the DaysConfig should come from an admin modifiable
-	// info table ...
-	var DaysConfig = configInfo{60, 30}
-	var SystemConfig = configInfo{time.Hour * 24 * DaysConfig.infoThreshold,
-		time.Hour * 24 * DaysConfig.warnThreshold}
-
-	var CurrCertStatus = statusInfo{allCertsAreValid}
-	// HACK end
-
-	// verify the NotBefore, and NotAfter
-	if rightNow.After(notBefore) {
-		// Cert is active (after NotBefore date)
-		//  process thresholds
-		validDuration := notAfter.Sub(rightNow)
-		switch {
-		case validDuration < 0:
-			log.Errorf("%s: expired %v ago",
-				certName,
-				-validDuration)
-			certValid = false
-			CurrCertStatus.CertStatus = aCertIsINVALID
-		case validDuration < SystemConfig.warnThreshold:
-			log.Warnf("%s: expires in %v (%v days or less)",
-				certName,
-				validDuration,
-				SystemConfig.warnThreshold/24)
-			if CurrCertStatus.CertStatus < aCertIsWarn {
-				CurrCertStatus.CertStatus = aCertIsWarn
+		if warnT.After(notAfter) {
+			opts.CurrentTime = warnT
+			if _, err := leafcert.Verify(opts); err != nil {
+				errStr := fmt.Sprintf("Warn Cert expires, %v",
+					err)
+				log.Warnln("Warn : " + errStr)
+				if CurCertStatus < aCertIsWarn {
+					CurCertStatus = aCertIsWarn
+				}
+				// return error, or just log and set visible status
+				// return errors.New(errStr)
 			}
-		case validDuration < SystemConfig.infoThreshold:
-			log.Noticef("%s: expires in %v (%v Days or less)",
-				certName,
-				validDuration,
-				SystemConfig.infoThreshold/24)
-			if CurrCertStatus.CertStatus < aCertIsWarn {
-				CurrCertStatus.CertStatus = aCertIsWarn
+		} else if infoT.After(notAfter) {
+			opts.CurrentTime = infoT
+			if _, err := leafcert.Verify(opts); err != nil {
+				errStr := fmt.Sprintf("Info Cert expires, %v",
+					err)
+				logrus.Infoln("verifySignature: " + errStr)
+				if CurCertStatus < aCertIsInfo {
+					CurCertStatus = aCertIsInfo
+				}
+				// return error, or just log and set visible status
+				// return errors.New(errStr)
 			}
-		default:
-			log.Tracef("%s: %v until it expires",
-				certName, validDuration)
 		}
-	} else {
-		// Current date is notBefore the Cert is valid
-		log.Errorf("%s: not yet valid, for %v",
-			certName, notBefore.Sub(rightNow))
-		certValid = false
-		CurrCertStatus.CertStatus = aCertIsINVALID
 	}
-	return certValid
+	return nil
 }
 
 // SaveServerSigningCert saves server (i.e. controller) signing certificate into the persist
