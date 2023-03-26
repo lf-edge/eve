@@ -5,7 +5,7 @@
 #
 
 # Script version, don't forget to bump up once something is changed
-VERSION=1
+VERSION=2
 
 DATE=$(date -Is)
 INFO_DIR="eve-info-v$VERSION-$DATE"
@@ -43,8 +43,8 @@ DIR="$TMP_DIR/$INFO_DIR"
 mkdir -p "$DIR"
 mkdir -p "$DIR/network"
 
-# Install GNU version of the 'ps' and other tools
-apk add procps dmidecode >/dev/null 2>&1
+# Install GNU version of the 'ps', 'tar' and other tools
+apk add procps tar dmidecode >/dev/null 2>&1
 
 collect_network_info()
 {
@@ -99,17 +99,20 @@ cat /proc/cpuinfo     > "$DIR/cpuinfo"
 qemu-affinities.sh    > "$DIR/qemu-affinities"
 iommu-groups.sh       > "$DIR/iommu-groups"
 
-cp -r /persist/status  "$DIR/persist-status"
-cp -r /persist/log     "$DIR/persist-log"
-cp -r /persist/newlog  "$DIR/persist-newlog"
-cp -r /persist/netdump "$DIR/persist-netdump" >/dev/null 2>&1
-cp -r /run             "$DIR/run"
+ln -s /persist/status  "$DIR/persist-status"
+ln -s /persist/log     "$DIR/persist-log"
+ln -s /persist/newlog  "$DIR/persist-newlog"
+ln -s /persist/netdump "$DIR/persist-netdump"
+ln -s /run             "$DIR/root-run"
 
 # Network part
 collect_network_info
 
 # Make a tarball
-tar -C "$TMP_DIR" -czf "$TARBALL_FILE" "$INFO_DIR" 2>&1 | grep -v 'socket ignored'
+# --exlude='root-run/run'              /run/run/run/.. exclude symbolic link loop
+# --ignore-failed-read --warning=none  ignore all errors, even if read fails
+# --dereference                        follow symlinks
+tar -C "$TMP_DIR" --exclude='root-run/run' --ignore-failed-read --warning=none --dereference -czf "$TARBALL_FILE" "$INFO_DIR"
 rm -rf "$TMP_DIR"
 sync
 
