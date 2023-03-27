@@ -26,6 +26,8 @@ At the moment, the only architecture supported for capturing kernel dumps is x86
 
 Once `kexec` is called the system kernel is ready to handle a system crash by jumping to a dump-capture kernel in case of a panic.
 
+**Note**: `kexec` load happens as a one-time operation via an early boot service and then immediately any further `kexec` gets blocked by writing to `/proc/sys/kernel/kexec_load_disabled`.
+
 ## EVE-OS behaviour in case of a system crash (kernel panic)
 
 After successfully loading the dump-capture kernel as previously described in the introduction, the system will reboot into the dump-capture kernel if a system crash is triggered.  Trigger points are located in panic(), die(), die_nmi() and in the sysrq handler (ALT-SysRq-c). After the dump-capture kernel is booted, the file `/proc/vmcore` is used to get access to the memory of the crashed system kernel.

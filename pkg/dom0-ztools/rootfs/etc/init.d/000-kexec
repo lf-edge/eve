@@ -11,3 +11,8 @@ if cat /proc/cmdline | grep -q crashkernel; then
     #
     kexec -p --reuse-cmdline --command-line="irqpoll nr_cpus=1 reset_devices nomodule" /boot/kernel
 fi
+
+#
+# In any case, block further kexec load
+#
+echo 1 > /proc/sys/kernel/kexec_load_disabled
