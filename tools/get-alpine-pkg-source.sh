@@ -76,7 +76,8 @@ get_ocpairs() {
     awk -F: '
         /^o:/ { origin=$2 }
         /^L:/ { license=$2 }
-        /^c:/ { commit=$2; if (commit == "") { commit = "unknown" }; print origin, commit, license; origin="XXX"; license="" }' < "$1" | sort -u > "$2"
+        /^V:/ { version=$2 }
+        /^c:/ { commit=$2; if (commit == "") { commit = "unknown" }; print origin, version, commit, license; origin="XXX"; license="";version="" }' < "$1" | sort -u > "$2"
 }
 
 if [ -n "$evedir" ]; then
@@ -126,7 +127,7 @@ cat ${OCPAIRS}.* | sort -u >${OCPAIRS}
 [ -z "$quiet" ] && echo "found $(cat ${OCPAIRS} |wc -l) packages times licenses"
 # skip licenses
 mv ${OCPAIRS} ${OCPAIRS}.with_licenses
-awk '{print $1, $2}' ${OCPAIRS}.with_licenses | sort -u >${OCPAIRS}
+awk '{print $1, $2, $3}' ${OCPAIRS}.with_licenses | sort -u >${OCPAIRS}
 # shellcheck disable=SC2002
 [ -z "$quiet" ] && echo "found $(cat ${OCPAIRS} |wc -l) packages"
 
@@ -136,9 +137,10 @@ missing=0
 cat ${OCPAIRS} | while read -r line ; do
     # shellcheck disable=SC2086
     set -- $line
-    origin=$1
-    commit=$2
-    shift 2
+    origin=$1   
+    version=$2
+    commit=$3
+    shift 3
     license="$*"
     # The commit is empty in one case... That is from the eve-debug container
     # Could ignore
@@ -149,7 +151,7 @@ cat ${OCPAIRS} | while read -r line ; do
     commitstr="?id=${commit}"
 
     # Include commit in directory to handle different versions
-    dstdir="${origin}.${commit}"
+    dstdir="${origin}.${version}.${commit}"
     [ -n "$verbose" ] && echo "origin: ${origin} commit: ${commit} dstdir: ${dstdir}"
     mkdir "${dstdir}"
     # Need to handle main, community and testing repos
