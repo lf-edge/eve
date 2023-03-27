@@ -155,7 +155,7 @@ BOOT_PART=$(INSTALLER)/boot
 BSP_IMX_PART=$(INSTALLER)/bsp-imx
 
 SBOM=$(ROOTFS).spdx.json
-
+COLLECTED_SOURCES=$(BUILD_DIR)/collected_sources.tar.gz
 DEVICETREE_DTB_amd64=
 DEVICETREE_DTB_arm64=$(DIST)/dtb/eve.dtb
 DEVICETREE_DTB=$(DEVICETREE_DTB_$(ZARCH))
@@ -283,6 +283,12 @@ LINUXKIT_PATCHES_DIR=tools/linuxkit/patches
 RESCAN_DEPS=FORCE
 # set FORCE_BUILD to --force to enforce rebuild
 FORCE_BUILD=
+
+# for the go build sources
+GOSOURCES=$(BUILDTOOLS_BIN)/go-sources-and-licenses
+GOSOURCES_VERSION=bc8b291f04566f35172f3d30f66e02e339f0342c
+GOSOURCES_SOURCE=github.com/deitch/go-sources-and-licenses
+
 
 SYFT_VERSION:=v0.63.0
 SYFT_IMAGE:=docker.io/anchore/syft:$(SYFT_VERSION)
@@ -559,6 +565,8 @@ live: $(LIVE_IMG) $(BIOS_IMG) current	; $(QUIET): "$@: Succeeded, LIVE_IMG=$(LIV
 live-%: $(LIVE).%		; $(QUIET): "$@: Succeeded, LIVE=$(LIVE)"
 installer: $(INSTALLER_IMG)
 installer-%: $(INSTALLER).% current ; @echo "$@: Succeeded, INSTALLER_IMG=$<"
+collected_sources: $(COLLECTED_SOURCES)
+gosources: $(GOSOURCES)
 
 $(SSH_KEY):
 	rm -f $@*
@@ -602,6 +610,33 @@ $(SBOM): $(ROOTFS_TAR) | $(INSTALLER)
 	tar xf $< -C $(TMP_ROOTDIR) --exclude "dev/*"
 	docker run -v $(TMP_ROOTDIR):/rootdir:ro $(SYFT_IMAGE) -o spdx-json /rootdir > $@
 	rm -rf $(TMP_ROOTDIR)
+	$(QUIET): $@: Succeeded
+
+$(GOSOURCES):
+	$(QUIET): $@: Begin
+	$(shell GOBIN=$(BUILDTOOLS_BIN) GO111MODULE=on CGO_ENABLED=0 go install $(GOSOURCES_SOURCE)@$(GOSOURCES_VERSION))
+	@echo Done building packages
+	$(QUIET): $@: Succeeded
+
+$(COLLECTED_SOURCES): $(ROOTFS_TAR) $(GOSOURCES)| $(INSTALLER)
+	$(QUIET): $@: Begin
+	$(eval TMP_ROOTDIR := $(shell mktemp -d))
+	# this is a bit of a hack, but we need to extract the rootfs tar to a directory, and it fails if
+	# we try to extract character devices, block devices or pipes, so we just exclude the dir.
+	# when syft supports reading straight from a tar archive with duplicate entries,
+	# this all can go away, and we can read the rootfs.tar
+	# see https://github.com/anchore/syft/issues/1400
+	tar xf $< -C $(TMP_ROOTDIR) --exclude "dev/*"
+	$(eval TMP_COLLECTED_SOURCES := $(shell mktemp -d))
+	bash tools/get-alpine-pkg-source.sh -s $(TMP_COLLECTED_SOURCES)/alpine/ -e $(TMP_ROOTDIR) 
+	bash tools/get-kernel-source.sh -s $(TMP_COLLECTED_SOURCES)/kernel/
+	for i in $$(find . -name 'go.sum'); \
+		do								 		   \
+			$(GOSOURCES) sources -d $$(dirname $$i) --recursive --out $(TMP_COLLECTED_SOURCES)/go; \
+		done;	
+	tar cvf - $(TMP_COLLECTED_SOURCES) | gzip -9 - > $(COLLECTED_SOURCES)
+	rm -rf $(TMP_ROOTDIR)
+	rm -rf $(TMP_COLLECTED_SOURCES)
 	$(QUIET): $@: Succeeded
 
 $(LIVE).raw: $(BOOT_PART) $(EFI_PART) $(ROOTFS_IMG) $(CONFIG_IMG) $(PERSIST_IMG) $(BSP_IMX_PART) | $(INSTALLER)
@@ -778,6 +813,7 @@ $(LINUXKIT): | $(GOBUILDER)
 	rm -rf /tmp/linuxkit" \
 	$(GOTREE) $(GOMODULE) $(BUILDTOOLS_BIN)
 	$(QUIET): $@: Succeeded
+
 
 $(GOBUILDER):
 	$(QUIET): "$@: Begin: GOBUILDER=$(GOBUILDER)"
