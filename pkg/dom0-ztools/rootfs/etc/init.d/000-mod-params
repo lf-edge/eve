@@ -14,6 +14,7 @@ set_module_parameter() {
 zfs_set_default_parameters() {
     set_module_parameter zfs zfs_compressed_arc_enabled 0
     set_module_parameter zfs zfs_vdev_min_auto_ashift 12
+    set_module_parameter zfs zfs_vdev_max_auto_ashift 12
     set_module_parameter zfs zvol_request_sync 0
     set_module_parameter zfs zfs_vdev_aggregation_limit_non_rotating $((1024*1024))
     set_module_parameter zfs zfs_vdev_async_write_active_min_dirty_percent 10
