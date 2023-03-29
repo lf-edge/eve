@@ -4,7 +4,7 @@ ARG BUILD_PKGS_BASE="argp-standalone automake bash bc binutils-dev bison build-b
                      diffutils flex git gmp-dev gnupg installkernel kmod elfutils-dev    \
                      linux-headers libunwind-dev mpc1-dev mpfr-dev ncurses-dev findutils \
                      openssl-dev patch rsync sed squashfs-tools tar xz xz-dev zlib-dev openssl \
-                     attr-dev autoconf file coreutils libtirpc-dev libtool util-linux-dev"
+                     attr-dev autoconf file coreutils libtirpc-dev libtool util-linux-dev python3"
 
 # we use the same image in several places
 ARG EVE_ALPINE_IMAGE=lfedge/eve-alpine:9fb9b9cbf7d90066a70e4704d04a6fe248ff52bb
@@ -184,7 +184,8 @@ RUN ./autogen.sh && \
 WORKDIR /linux
 RUN make CROSS_COMPILE="${CROSS_COMPILE_ENV}" ARCH="${KERNEL_ARCH}" "${KERNEL_DEFCONFIG}"
 RUN make CROSS_COMPILE="${CROSS_COMPILE_ENV}" ARCH="${KERNEL_ARCH}" oldconfig
-RUN diff -cw .config .config.new
+# diffconfig returns 0 in all cases, grep to throw error in a case config has changed between build stages.
+RUN ! scripts/diffconfig .config .config.new | grep .
 
 # Make kernel
 RUN make -j "$(getconf _NPROCESSORS_ONLN)" CROSS_COMPILE="${CROSS_COMPILE_ENV}" ARCH="${KERNEL_ARCH}" KCFLAGS="-fno-pie" && \
