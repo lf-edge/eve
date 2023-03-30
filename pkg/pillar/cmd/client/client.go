@@ -385,7 +385,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 			// Unlikely to have a network outage during that
 			// upgrade *and* require an override.
 			if clientCtx.networkState != types.DPCStateSuccess &&
-				clientCtx.operations["getUuid"] && oldUUID != nilUUID {
+				clientCtx.operations["getUuid"] && gotUUID && oldUUID != nilUUID {
 
 				log.Noticef("Already have a UUID %s; declaring success",
 					oldUUID.String())
