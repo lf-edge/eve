@@ -32,6 +32,8 @@ RUN eve-alpine-deploy.sh
 # adjust EVE_TARGET_ARCH for cross-compiler
 FROM kernel-build-base-cross AS kernel-cross-target-arm64
 ENV EVE_TARGET_ARCH=aarch64
+FROM kernel-build-base-cross AS kernel-cross-target-amd64
+ENV EVE_TARGET_ARCH=x86_64
 FROM kernel-build-base-cross AS kernel-cross-target-riscv64
 ENV EVE_TARGET_ARCH=riscv64
 
@@ -52,10 +54,11 @@ FROM kernel-cross-build-target AS kernel-target-riscv64-build-arm64
 
 # use kernel-build-base-native image as a base for the rest of target and build archs
 FROM kernel-build-base-native AS kernel-target-amd64-build-amd64
-FROM kernel-build-base-native AS kernel-target-amd64-build-riscv64
+ENV EVE_TARGET_ARCH=x86_64
 FROM kernel-build-base-native AS kernel-target-arm64-build-arm64
-FROM kernel-build-base-native AS kernel-target-arm64-build-riscv64
-FROM kernel-build-base-native AS kernel-target-riscv64-build-riscv64
+ENV EVE_TARGET_ARCH=aarch64
+FROM kernel-build-base-native AS kernel-target-amd64-build-riscv64
+ENV EVE_TARGET_ARCH=riscv64
 
 # set versions for arm64
 # hadolint ignore=DL3006
