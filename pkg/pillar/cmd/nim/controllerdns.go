@@ -5,12 +5,13 @@ package nim
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
-	"net"
+	"io/fs"
 	"os"
 	"time"
 
-	dns "github.com/Focinfi/go-dns-resolver"
+	"github.com/lf-edge/eve/pkg/pillar/devicenetwork"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 )
 
@@ -70,28 +71,78 @@ func (n *nim) queryControllerDNS() {
 	}
 }
 
+func (n *nim) resolveWithPorts(domain string) []devicenetwork.DNSResponse {
+	dnsResponse, errs := devicenetwork.ResolveWithPortsLambda(
+		domain,
+		n.dpcManager.GetDNS(),
+		devicenetwork.ResolveWithSrcIP,
+	)
+	if len(errs) > 0 {
+		n.Log.Warnf("resolveWithPortsLambda failed: %+v", errs)
+	}
+	return dnsResponse
+}
+
 // periodical cache the controller DNS resolution into /etc/hosts file
 // it returns the cached ip string, and TTL setting from the server
-func (n *nim) controllerDNSCache(etchosts, controllerServer []byte, ipaddrCached string) (string, int) {
-	if len(etchosts) == 0 || len(controllerServer) == 0 {
-		return ipaddrCached, maxTTLSec
-	}
-
+func (n *nim) controllerDNSCache(
+	etchosts, controllerServer []byte,
+	ipaddrCached string,
+) (string, int) {
 	// Check to see if the server domain is already in the /etc/hosts as in eden,
 	// then skip this DNS queries
-	if ipaddrCached == "" {
-		hostsEntries := bytes.Split(etchosts, []byte("\n"))
-		for _, entry := range hostsEntries {
-			fields := bytes.Fields(entry)
-			if len(fields) == 2 {
-				if bytes.Compare(fields[1], controllerServer) == 0 {
-					n.Log.Tracef("server entry %s already in /etc/hosts, skip", controllerServer)
-					return ipaddrCached, maxTTLSec
-				}
-			}
-		}
+	isCached, ipAddrCached, ttlCached := n.checkCachedEntry(
+		etchosts,
+		controllerServer,
+		ipaddrCached,
+	)
+	if isCached {
+		return ipAddrCached, ttlCached
 	}
 
+	err := os.Remove(tmpHostFileName)
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		n.Log.Warnf("%s exists but removing failed: %+v", tmpHostFileName, err)
+	}
+
+	var newhosts []byte
+	var ttlSec int
+	var lookupIPaddr string
+
+	dnsResponses := n.resolveWithPorts(string(controllerServer))
+	ttlSec = int(dnsResponses[0].TTL)
+	lookupIPaddr = dnsResponses[0].IP.String()
+	serverEntry := fmt.Sprintf("%s %s\n", lookupIPaddr, controllerServer)
+	newhosts = append(etchosts, []byte(serverEntry)...)
+
+	if len(dnsResponses) == 0 {
+		newhosts = append(newhosts, etchosts...)
+	}
+
+	if len(dnsResponses) > 0 && n.writeHostsFile(newhosts) {
+		n.Log.Tracef("append controller IP %s to /etc/hosts", lookupIPaddr)
+		ipaddrCached = lookupIPaddr
+	} else {
+		ipaddrCached = ""
+	}
+
+	return ipaddrCached, ttlSec
+}
+
+func (n *nim) writeHostsFile(newhosts []byte) bool {
+	err := os.WriteFile(tmpHostFileName, newhosts, 0644)
+	if err != nil {
+		n.Log.Errorf("can not write /tmp/etchosts file %v", err)
+		return false
+	}
+	if err := os.Rename(tmpHostFileName, etcHostFileName); err != nil {
+		n.Log.Errorf("can not rename /etc/hosts file %v", err)
+		return false
+	}
+	return true
+}
+
+func (*nim) readNameservers() []string {
 	var nameServers []string
 	dnsServer, _ := os.ReadFile(resolvFileName)
 	dnsRes := bytes.Split(dnsServer, []byte("\n"))
@@ -104,74 +155,31 @@ func (n *nim) controllerDNSCache(etchosts, controllerServer []byte, ipaddrCached
 	if len(nameServers) == 0 {
 		nameServers = append(nameServers, "8.8.8.8")
 	}
+	return nameServers
+}
 
-	if _, err := os.Stat(tmpHostFileName); err == nil {
-		_ = os.Remove(tmpHostFileName)
+func (n *nim) checkCachedEntry(
+	etchosts []byte,
+	controllerServer []byte,
+	ipaddrCached string,
+) (bool, string, int) {
+	if len(etchosts) == 0 || len(controllerServer) == 0 {
+		return true, ipaddrCached, maxTTLSec
 	}
 
-	var newhosts []byte
-	var gotipentry bool
-	var lookupIPaddr string
-	var ttlSec int
-
-	domains := []string{string(controllerServer)}
-	dtypes := []dns.QueryType{dns.TypeA}
-	for _, nameServer := range nameServers {
-		resolver := dns.NewResolver(nameServer)
-		resolver.Targets(domains...).Types(dtypes...)
-
-		res := resolver.Lookup()
-		for target := range res.ResMap {
-			for _, r := range res.ResMap[target] {
-				dIP := net.ParseIP(r.Content)
-				if dIP == nil {
-					continue
+	if ipaddrCached == "" {
+		hostsEntries := bytes.Split(etchosts, []byte("\n"))
+		for _, entry := range hostsEntries {
+			fields := bytes.Fields(entry)
+			if len(fields) == 2 {
+				if bytes.Compare(fields[1], controllerServer) == 0 {
+					n.Log.Tracef("server entry %s already in /etc/hosts, skip", controllerServer)
+					return true, ipaddrCached, maxTTLSec
 				}
-				lookupIPaddr = dIP.String()
-				ttlSec = getTTL(r.Ttl)
-				if ipaddrCached == lookupIPaddr {
-					n.Log.Tracef("same IP address %s, return", lookupIPaddr)
-					return ipaddrCached, ttlSec
-				}
-				serverEntry := fmt.Sprintf("%s %s\n", lookupIPaddr, controllerServer)
-				newhosts = append(etchosts, []byte(serverEntry)...)
-				gotipentry = true
-				// a rare event for dns address change, log it
-				n.Log.Noticef("dnsServer %s, ttl %d, entry add to /etc/hosts: %s", nameServer, ttlSec, serverEntry)
-				break
-			}
-			if gotipentry {
-				break
 			}
 		}
-		if gotipentry {
-			break
-		}
 	}
-
-	if ipaddrCached == lookupIPaddr {
-		return ipaddrCached, minTTLSec
-	}
-	if !gotipentry { // put original /etc/hosts file back
-		newhosts = append(newhosts, etchosts...)
-	}
-
-	ipaddrCached = ""
-	err := os.WriteFile(tmpHostFileName, newhosts, 0644)
-	if err == nil {
-		if err := os.Rename(tmpHostFileName, etcHostFileName); err != nil {
-			n.Log.Errorf("can not rename /etc/hosts file %v", err)
-		} else {
-			if gotipentry {
-				ipaddrCached = lookupIPaddr
-			}
-			n.Log.Tracef("append controller IP %s to /etc/hosts", lookupIPaddr)
-		}
-	} else {
-		n.Log.Errorf("can not write /tmp/etchosts file %v", err)
-	}
-
-	return ipaddrCached, ttlSec
+	return false, "", 0
 }
 
 func getTTL(ttl time.Duration) int {
