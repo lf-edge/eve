@@ -184,7 +184,7 @@ func New(ps *pubsub.PubSub, log *base.LogObject, retryTime, watchdogTickerTime t
 		log:                log,
 		event:              EventInitialize,
 		state:              StateNone,
-		eventTrigger:       make(chan Event),
+		eventTrigger:       make(chan Event, 1),
 		retryTime:          retryTime,
 		watchdogTickerTime: watchdogTickerTime,
 		OpaqueCtx:          opaque,
@@ -249,8 +249,14 @@ func Kickstart(ctx *Context) {
 }
 
 // RestartAttestation adds EventRestart event to the fsm
+// To avoid hanging forever we use a conditional send here.
 func RestartAttestation(ctx *Context) {
-	ctx.eventTrigger <- EventRestart
+	select {
+	case ctx.eventTrigger <- EventRestart:
+		// Do nothing more
+	default:
+		ctx.log.Warnf("RestartAttestation(): already triggered, still not processed")
+	}
 }
 
 // InternalQuoteRecvd adds EventInternalQuoteRecvd to the fsm
