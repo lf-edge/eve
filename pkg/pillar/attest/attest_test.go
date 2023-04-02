@@ -106,7 +106,7 @@ func initTest() *Context {
 		event:        EventInitialize,
 		state:        StateNone,
 		restartTimer: time.NewTimer(1 * time.Second),
-		eventTrigger: make(chan Event),
+		eventTrigger: make(chan Event, 1),
 		retryTime:    1,
 	}
 	ctx.restartTimer.Stop()
