@@ -754,8 +754,10 @@ func handleDeferredPeriodicTask(zedagentCtx *zedagentContext) {
 		select {
 		case change := <-zedcloudCtx.DeferredPeriodicCtx.Ticker.C:
 			start := time.Now()
-			zedcloudCtx.DeferredPeriodicCtx.HandleDeferred(
-				change, 100*time.Millisecond, false)
+			if !zedcloudCtx.DeferredPeriodicCtx.HandleDeferred(
+				change, 100*time.Millisecond, false) {
+				log.Noticef("handleDeferredPeriodicTask: some deferred items remain to be sent")
+			}
 			zedagentCtx.ps.CheckMaxTimeTopic(agentName, "deferredPeriodicCtx",
 				start, warningTime, errorTime)
 		case <-stillRunning.C:
