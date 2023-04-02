@@ -8,11 +8,10 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
-	"net"
 	"os"
 	"time"
 
-	dns "github.com/Focinfi/go-dns-resolver"
+	"github.com/lf-edge/eve/pkg/pillar/devicenetwork"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 )
 
@@ -72,6 +71,18 @@ func (n *nim) queryControllerDNS() {
 	}
 }
 
+func (n *nim) resolveWithPorts(domain string) []devicenetwork.DNSResponse {
+	dnsResponse, errs := devicenetwork.ResolveWithPortsLambda(
+		domain,
+		n.dpcManager.GetDNS(),
+		devicenetwork.ResolveWithSrcIP,
+	)
+	if len(errs) > 0 {
+		n.Log.Warnf("resolveWithPortsLambda failed: %+v", errs)
+	}
+	return dnsResponse
+}
+
 // periodical cache the controller DNS resolution into /etc/hosts file
 // it returns the cached ip string, and TTL setting from the server
 func (n *nim) controllerDNSCache(
@@ -89,61 +100,26 @@ func (n *nim) controllerDNSCache(
 		return ipAddrCached, ttlCached
 	}
 
-	nameServers := n.readNameservers()
-
 	err := os.Remove(tmpHostFileName)
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		n.Log.Warnf("%s exists but removing failed: %+v", tmpHostFileName, err)
 	}
 
 	var newhosts []byte
-	var gotipentry bool
-	var lookupIPaddr string
 	var ttlSec int
+	var lookupIPaddr string
 
-	domains := []string{string(controllerServer)}
-	dtypes := []dns.QueryType{dns.TypeA}
-	for _, nameServer := range nameServers {
-		resolver := dns.NewResolver(nameServer)
-		resolver.Targets(domains...).Types(dtypes...)
+	dnsResponses := n.resolveWithPorts(string(controllerServer))
+	ttlSec = int(dnsResponses[0].TTL)
+	lookupIPaddr = dnsResponses[0].IP.String()
+	serverEntry := fmt.Sprintf("%s %s\n", lookupIPaddr, controllerServer)
+	newhosts = append(etchosts, []byte(serverEntry)...)
 
-		res := resolver.Lookup()
-		for target := range res.ResMap {
-			for _, r := range res.ResMap[target] {
-				dIP := net.ParseIP(r.Content)
-				if dIP == nil {
-					continue
-				}
-				lookupIPaddr = dIP.String()
-				ttlSec = getTTL(r.Ttl)
-				if ipaddrCached == lookupIPaddr {
-					n.Log.Tracef("same IP address %s, return", lookupIPaddr)
-					return ipaddrCached, ttlSec
-				}
-				serverEntry := fmt.Sprintf("%s %s\n", lookupIPaddr, controllerServer)
-				newhosts = append(etchosts, []byte(serverEntry)...)
-				gotipentry = true
-				// a rare event for dns address change, log it
-				n.Log.Noticef("dnsServer %s, ttl %d, entry add to /etc/hosts: %s", nameServer, ttlSec, serverEntry)
-				break
-			}
-			if gotipentry {
-				break
-			}
-		}
-		if gotipentry {
-			break
-		}
-	}
-
-	if ipaddrCached == lookupIPaddr {
-		return ipaddrCached, minTTLSec
-	}
-	if !gotipentry { // put original /etc/hosts file back
+	if len(dnsResponses) == 0 {
 		newhosts = append(newhosts, etchosts...)
 	}
 
-	if n.writeTmpHostsFile(newhosts) && gotipentry {
+	if len(dnsResponses) > 0 && n.writeHostsFile(newhosts) {
 		n.Log.Tracef("append controller IP %s to /etc/hosts", lookupIPaddr)
 		ipaddrCached = lookupIPaddr
 	} else {
