@@ -483,11 +483,11 @@ func getLatestConfig(getconfigCtx *getconfigContext, url string,
 		case types.SenderStatusCertInvalid:
 			log.Warnf("getLatestConfig : Controller certificate invalid time")
 		case types.SenderStatusCertMiss:
-			log.Functionf("getLatestConfig : Controller certificate miss")
+			log.Warnf("getLatestConfig : Controller certificate miss")
 		case types.SenderStatusNotFound:
-			log.Functionf("getLatestConfig : Device deleted in controller?")
+			log.Noticef("getLatestConfig : Device deleted in controller?")
 		case types.SenderStatusForbidden:
-			log.Functionf("getLatestConfig : Device integrity token mismatch")
+			log.Warnf("getLatestConfig : Device integrity token mismatch")
 		default:
 			log.Errorf("getLatestConfig  failed: %s", err)
 		}
