@@ -444,7 +444,7 @@ func sendAttestReqProtobuf(attestReq *attest.ZAttestReq, iteration int) {
 	//If there are no failures and defers we'll send this message,
 	//but if there is a queue we'll retry sending the highest priority message.
 	zedcloud.SetDeferred(zedcloudCtx, deferKey, buf, size, attestURL,
-		false, false, attestReq.ReqType)
+		false, true, attestReq.ReqType)
 	zedcloud.HandleDeferred(zedcloudCtx, time.Now(), 0, true)
 }
 
