@@ -5,7 +5,9 @@ package nim
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
+	"io/fs"
 	"net"
 	"os"
 	"time"
@@ -72,41 +74,26 @@ func (n *nim) queryControllerDNS() {
 
 // periodical cache the controller DNS resolution into /etc/hosts file
 // it returns the cached ip string, and TTL setting from the server
-func (n *nim) controllerDNSCache(etchosts, controllerServer []byte, ipaddrCached string) (string, int) {
-	if len(etchosts) == 0 || len(controllerServer) == 0 {
-		return ipaddrCached, maxTTLSec
-	}
-
+func (n *nim) controllerDNSCache(
+	etchosts, controllerServer []byte,
+	ipaddrCached string,
+) (string, int) {
 	// Check to see if the server domain is already in the /etc/hosts as in eden,
 	// then skip this DNS queries
-	if ipaddrCached == "" {
-		hostsEntries := bytes.Split(etchosts, []byte("\n"))
-		for _, entry := range hostsEntries {
-			fields := bytes.Fields(entry)
-			if len(fields) == 2 {
-				if bytes.Compare(fields[1], controllerServer) == 0 {
-					n.Log.Tracef("server entry %s already in /etc/hosts, skip", controllerServer)
-					return ipaddrCached, maxTTLSec
-				}
-			}
-		}
+	isCached, ipAddrCached, ttlCached := n.checkCachedEntry(
+		etchosts,
+		controllerServer,
+		ipaddrCached,
+	)
+	if isCached {
+		return ipAddrCached, ttlCached
 	}
 
-	var nameServers []string
-	dnsServer, _ := os.ReadFile(resolvFileName)
-	dnsRes := bytes.Split(dnsServer, []byte("\n"))
-	for _, d := range dnsRes {
-		d1 := bytes.Split(d, []byte("nameserver "))
-		if len(d1) == 2 {
-			nameServers = append(nameServers, string(d1[1]))
-		}
-	}
-	if len(nameServers) == 0 {
-		nameServers = append(nameServers, "8.8.8.8")
-	}
+	nameServers := n.readNameservers()
 
-	if _, err := os.Stat(tmpHostFileName); err == nil {
-		_ = os.Remove(tmpHostFileName)
+	err := os.Remove(tmpHostFileName)
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		n.Log.Warnf("%s exists but removing failed: %+v", tmpHostFileName, err)
 	}
 
 	var newhosts []byte
@@ -156,22 +143,67 @@ func (n *nim) controllerDNSCache(etchosts, controllerServer []byte, ipaddrCached
 		newhosts = append(newhosts, etchosts...)
 	}
 
-	ipaddrCached = ""
-	err := os.WriteFile(tmpHostFileName, newhosts, 0644)
-	if err == nil {
-		if err := os.Rename(tmpHostFileName, etcHostFileName); err != nil {
-			n.Log.Errorf("can not rename /etc/hosts file %v", err)
-		} else {
-			if gotipentry {
-				ipaddrCached = lookupIPaddr
-			}
-			n.Log.Tracef("append controller IP %s to /etc/hosts", lookupIPaddr)
-		}
+	if n.writeTmpHostsFile(newhosts) && gotipentry {
+		n.Log.Tracef("append controller IP %s to /etc/hosts", lookupIPaddr)
+		ipaddrCached = lookupIPaddr
 	} else {
-		n.Log.Errorf("can not write /tmp/etchosts file %v", err)
+		ipaddrCached = ""
 	}
 
 	return ipaddrCached, ttlSec
+}
+
+func (n *nim) writeHostsFile(newhosts []byte) bool {
+	err := os.WriteFile(tmpHostFileName, newhosts, 0644)
+	if err != nil {
+		n.Log.Errorf("can not write /tmp/etchosts file %v", err)
+		return false
+	}
+	if err := os.Rename(tmpHostFileName, etcHostFileName); err != nil {
+		n.Log.Errorf("can not rename /etc/hosts file %v", err)
+		return false
+	}
+	return true
+}
+
+func (*nim) readNameservers() []string {
+	var nameServers []string
+	dnsServer, _ := os.ReadFile(resolvFileName)
+	dnsRes := bytes.Split(dnsServer, []byte("\n"))
+	for _, d := range dnsRes {
+		d1 := bytes.Split(d, []byte("nameserver "))
+		if len(d1) == 2 {
+			nameServers = append(nameServers, string(d1[1]))
+		}
+	}
+	if len(nameServers) == 0 {
+		nameServers = append(nameServers, "8.8.8.8")
+	}
+	return nameServers
+}
+
+func (n *nim) checkCachedEntry(
+	etchosts []byte,
+	controllerServer []byte,
+	ipaddrCached string,
+) (bool, string, int) {
+	if len(etchosts) == 0 || len(controllerServer) == 0 {
+		return true, ipaddrCached, maxTTLSec
+	}
+
+	if ipaddrCached == "" {
+		hostsEntries := bytes.Split(etchosts, []byte("\n"))
+		for _, entry := range hostsEntries {
+			fields := bytes.Fields(entry)
+			if len(fields) == 2 {
+				if bytes.Compare(fields[1], controllerServer) == 0 {
+					n.Log.Tracef("server entry %s already in /etc/hosts, skip", controllerServer)
+					return true, ipaddrCached, maxTTLSec
+				}
+			}
+		}
+	}
+	return false, "", 0
 }
 
 func getTTL(ttl time.Duration) int {
