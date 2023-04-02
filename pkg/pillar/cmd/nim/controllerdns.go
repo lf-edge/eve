@@ -110,13 +110,14 @@ func (n *nim) controllerDNSCache(
 	var lookupIPaddr string
 
 	dnsResponses := n.resolveWithPorts(string(controllerServer))
-	ttlSec = int(dnsResponses[0].TTL)
-	lookupIPaddr = dnsResponses[0].IP.String()
-	serverEntry := fmt.Sprintf("%s %s\n", lookupIPaddr, controllerServer)
-	newhosts = append(etchosts, []byte(serverEntry)...)
 
 	if len(dnsResponses) == 0 {
 		newhosts = append(newhosts, etchosts...)
+	} else {
+		ttlSec = int(dnsResponses[0].TTL)
+		lookupIPaddr = dnsResponses[0].IP.String()
+		serverEntry := fmt.Sprintf("%s %s\n", lookupIPaddr, controllerServer)
+		newhosts = append(etchosts, []byte(serverEntry)...)
 	}
 
 	if len(dnsResponses) > 0 && n.writeHostsFile(newhosts) {
