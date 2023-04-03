@@ -105,42 +105,59 @@ func (n *nim) controllerDNSCache(
 		n.Log.Warnf("%s exists but removing failed: %+v", tmpHostFileName, err)
 	}
 
-	var newhosts []byte
-	var ttlSec int
-	var lookupIPaddr string
-
 	dnsResponses := n.resolveWithPorts(string(controllerServer))
+
+	lookupIPaddr := n.writeHostsFile(dnsResponses, etchosts, controllerServer)
+	if lookupIPaddr != "" {
+		n.Log.Tracef("append controller IP %s to /etc/hosts", lookupIPaddr)
+	}
+
+	var ttlSec int
+
+	if len(dnsResponses) > 0 {
+		ipaddrCached = dnsResponses[0].IP.String()
+		ttlSec = getTTL(time.Duration(dnsResponses[0].TTL))
+		return ipaddrCached, ttlSec
+	} else {
+		return "", ttlSec
+	}
+}
+
+func (n *nim) writeHostsFile(
+	dnsResponses []devicenetwork.DNSResponse,
+	etchosts, controllerServer []byte,
+) string {
+	return n.writeHostsFileToDestination(dnsResponses, etchosts, controllerServer, etcHostFileName)
+}
+
+func (n *nim) writeHostsFileToDestination(
+	dnsResponses []devicenetwork.DNSResponse,
+	etchosts, controllerServer []byte,
+	destination string,
+) string {
+	var newhosts []byte
+
+	var lookupIPaddr string
 
 	if len(dnsResponses) == 0 {
 		newhosts = append(newhosts, etchosts...)
 	} else {
-		ttlSec = int(dnsResponses[0].TTL)
 		lookupIPaddr = dnsResponses[0].IP.String()
 		serverEntry := fmt.Sprintf("%s %s\n", lookupIPaddr, controllerServer)
 		newhosts = append(etchosts, []byte(serverEntry)...)
 	}
 
-	if len(dnsResponses) > 0 && n.writeHostsFile(newhosts) {
-		n.Log.Tracef("append controller IP %s to /etc/hosts", lookupIPaddr)
-		ipaddrCached = lookupIPaddr
-	} else {
-		ipaddrCached = ""
-	}
-
-	return ipaddrCached, ttlSec
-}
-
-func (n *nim) writeHostsFile(newhosts []byte) bool {
 	err := os.WriteFile(tmpHostFileName, newhosts, 0644)
 	if err != nil {
 		n.Log.Errorf("can not write /tmp/etchosts file %v", err)
-		return false
+		return ""
 	}
-	if err := os.Rename(tmpHostFileName, etcHostFileName); err != nil {
-		n.Log.Errorf("can not rename /etc/hosts file %v", err)
-		return false
+	if err := os.Rename(tmpHostFileName, destination); err != nil {
+		n.Log.Errorf("can not rename %s file %v", destination, err)
+		return ""
 	}
-	return true
+
+	return lookupIPaddr
 }
 
 func (*nim) readNameservers() []string {
