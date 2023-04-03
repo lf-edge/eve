@@ -1,8 +1,10 @@
 package nim
 
 import (
+	"fmt"
 	"io"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/lf-edge/eve/pkg/pillar/base"
@@ -43,6 +45,8 @@ func TestWriteHostsFile(t *testing.T) {
 		},
 	}
 
+	dnsName := "one.one.one.one"
+
 	f, err := os.CreateTemp("", "writeHostsFile.*.etchosts")
 	if err != nil {
 		panic(err)
@@ -50,7 +54,7 @@ func TestWriteHostsFile(t *testing.T) {
 	defer os.Remove(f.Name())
 	f.Close()
 
-	n.writeHostsFileToDestination(dnsResponses, []byte{}, []byte("one.one.one.one"), f.Name())
+	n.writeHostsFileToDestination(dnsResponses, []byte{}, []byte(dnsName), f.Name())
 
 	// reopen the file to be able to read what has been written by writeHostsFileToDestination; f.Seek(0, 0) unfortunately is not enough
 	f, err = os.Open(f.Name())
@@ -62,8 +66,14 @@ func TestWriteHostsFile(t *testing.T) {
 		panic(err)
 	}
 
-	expectedContent := "1.1.1.1 one.one.one.one\n"
-	if string(content) != expectedContent {
-		t.Fatalf("writing to hosts file failed, expected: '%s', got: '%s'", expectedContent, content)
+	for _, dnsResponse := range dnsResponses {
+		expectedContent := fmt.Sprintf("%s %s\n", dnsResponse.IP.String(), dnsName)
+		if !strings.Contains(string(content), expectedContent) {
+			t.Fatalf(
+				"writing to hosts file failed, expected: '%s', got: '%s'",
+				expectedContent,
+				content,
+			)
+		}
 	}
 }
