@@ -106,6 +106,11 @@ func (n *nim) controllerDNSCache(
 	}
 
 	dnsResponses := n.resolveWithPorts(string(controllerServer))
+	for _, dnsResponse := range dnsResponses {
+		if dnsResponse.IP.String() == ipAddrCached {
+			return ipAddrCached, getTTL(time.Duration(dnsResponse.TTL))
+		}
+	}
 
 	lookupIPaddr := n.writeHostsFile(dnsResponses, etchosts, controllerServer)
 	if lookupIPaddr != "" {
@@ -142,9 +147,12 @@ func (n *nim) writeHostsFileToDestination(
 	if len(dnsResponses) == 0 {
 		newhosts = append(newhosts, etchosts...)
 	} else {
-		lookupIPaddr = dnsResponses[0].IP.String()
-		serverEntry := fmt.Sprintf("%s %s\n", lookupIPaddr, controllerServer)
-		newhosts = append(etchosts, []byte(serverEntry)...)
+		newhosts = append([]byte{}, etchosts...)
+		for _, dnsResponse := range dnsResponses {
+			lookupIPaddr = dnsResponse.IP.String()
+			serverEntry := fmt.Sprintf("%s %s\n", lookupIPaddr, controllerServer)
+			newhosts = append(newhosts, []byte(serverEntry)...)
+		}
 	}
 
 	err := os.WriteFile(tmpHostFileName, newhosts, 0644)
