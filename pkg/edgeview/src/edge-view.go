@@ -376,6 +376,9 @@ func main() {
 		}()
 	} else { // 2) websocket mode on client side
 
+		// send keepalive to prevent nginx reverse-proxy timeout
+		go sendKeepalive()
+
 		// get the client ip address
 		mtype, msg, err := websocketConn.ReadMessage()
 		if err == nil && mtype == websocket.TextMessage {
@@ -540,7 +543,7 @@ func initpubInfo(logger *logrus.Logger) pubsub.Publication {
 }
 
 func sendKeepalive() {
-	ticker := time.NewTicker(120 * time.Second)
+	ticker := time.NewTicker(90 * time.Second)
 	for {
 		for range ticker.C {
 			wssWrMutex.Lock()

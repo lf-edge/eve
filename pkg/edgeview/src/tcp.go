@@ -72,7 +72,9 @@ type tcpConnRWMap struct {
 }
 
 const (
-	tcpMaxMappingNUM int = 5
+	tcpMaxMappingNUM  int           = 5
+	tcpIdleTimeoutSec float64       = 1800.0
+	tcpCheckTimeout   time.Duration = 300 * time.Second
 )
 
 const (
@@ -286,7 +288,7 @@ func setAndStartProxyTCP(opt string) {
 		ipAddrPort = make([]string, mappingCnt)
 		for i, ipport := range params {
 			gotProxy, proxyDNSIP = getProxyOpt(ipport)
-			if !strings.Contains(opt, ":") && !hasProxy {
+			if !strings.Contains(opt, ":") && !gotProxy {
 				fmt.Printf("tcp option needs ipaddress:port format, or is 'proxy'\n")
 				return
 			}
@@ -332,14 +334,34 @@ func setAndStartProxyTCP(opt string) {
 		}
 	}
 
+	t := time.NewTimer(tcpCheckTimeout)
+	tcpRecvTimeUpdate()
 	for {
 		select {
+		case <-t.C:
+			// if sessions still ongoing, continue
+			if !tcpRecvTimeCheckExpire() {
+				t = time.NewTimer(tcpCheckTimeout)
+				continue
+			}
+			log.Tracef("setAndStartProxyTCP: timer expired, close and notify client")
+			wssWrMutex.Lock()
+			_ = addEnvelopeAndWriteWss([]byte("\n"), true) // try send a text msg to other side
+			wssWrMutex.Unlock()
+			if !isClosed(tcpServerDone) {
+				close(tcpServerDone)
+			} else if !isClosed(proxyServerDone) {
+				close(proxyServerDone)
+			} else {
+				return
+			}
 		case <-tcpServerDone:
 			for _, d := range serverDone {
 				if !isClosed(d) {
 					close(d)
 				}
 			}
+			t.Stop()
 			if hasProxy && proxySvr != nil {
 				fmt.Printf("TCP exist. calling proxSvr.Close\n")
 				proxySvr.Close()
@@ -353,6 +375,7 @@ func setAndStartProxyTCP(opt string) {
 					close(d)
 				}
 			}
+			t.Stop()
 			isTCPServer = false
 			return
 		}
@@ -433,27 +456,10 @@ func tcpTransfer(url string, wssMsg tcpData, idx int) {
 	//done := make(chan struct{})
 	// receive from clinet/websocket and relay to tcp server
 	go func(conn net.Conn, done chan struct{}) {
-		t := time.NewTimer(600 * time.Second)
 		for {
 			select {
-			case <-t.C:
-				// other sessions still ongoing, continue
-				if !tcpRecvTimeCheckExpire() {
-					t = time.NewTimer(600 * time.Second)
-					continue
-				}
-				log.Tracef("tcp session timeout ch(%d)-%d", idx, chNum)
-				wssWrMutex.Lock()
-				_ = addEnvelopeAndWriteWss([]byte("\n"), true) // try send a text msg to other side
-				wssWrMutex.Unlock()
-				if !connClosed {
-					conn.Close()
-				}
-				tcpConnM[idx].CloseChan(chNum)
-				return
 			case <-done:
 				log.Tracef("done here, ch(%d)-%d", idx, chNum)
-				t.Stop()
 				tcpConnM[idx].CloseChan(chNum)
 				if !connClosed {
 					conn.Close()
@@ -463,14 +469,11 @@ func tcpTransfer(url string, wssMsg tcpData, idx int) {
 				tcpConnM[idx].RecvWssInc(chNum)
 				if wsmsg.mtype == websocket.TextMessage {
 					conn.Close()
-					t.Stop()
 					tcpConnM[idx].CloseChan(chNum)
 					return
 				}
 				buf := bytes.NewBuffer(wsmsg.msg)
 				_, _ = io.Copy(conn, buf)
-				t.Stop()
-				t = time.NewTimer(600 * time.Second)
 				tcpRecvTimeUpdate()
 			}
 		}
@@ -636,7 +639,7 @@ func tcpRecvTimeUpdate() {
 func tcpRecvTimeCheckExpire() bool {
 	var expired bool
 	tcpTimeMutex.Lock()
-	if time.Since(tcpServerRecvTime).Seconds() > 600 {
+	if time.Since(tcpServerRecvTime).Seconds() > tcpIdleTimeoutSec {
 		expired = true
 	}
 	tcpTimeMutex.Unlock()
