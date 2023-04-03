@@ -52,7 +52,7 @@ if [ -z "$EDGEVIEW_CLIENT" ]; then
           NOWSUM=$(md5sum /run/edgeview/edge-view-config)
           if [ "$NOWSUM" != "$CONFIGSUM" ]; then # for restart, generate stack-trace for current one
             kill -ABRT "$PID"
-            echo "edge-view killed, with stacks"
+            echo "edge-view killed due to restart, with stacks"
           fi
         fi
       fi
