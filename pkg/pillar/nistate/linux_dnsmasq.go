@@ -126,6 +126,9 @@ func (lc *LinuxCollector) processIPLeases(niInfo *niInfo) (
 	for i := range niInfo.vifs {
 		vifAddrs := &niInfo.vifs[i]
 		vif := vifAddrs.VIF
+		if !vif.Activated {
+			continue
+		}
 		ipLease := niInfo.ipLeases.findLease(vif.App.String(), vif.GuestIfMAC, true)
 		if ipLease == nil && vifAddrs.IPv4Addr != nil {
 			prevAddrs := *vifAddrs

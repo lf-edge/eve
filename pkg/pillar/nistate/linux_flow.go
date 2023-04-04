@@ -500,7 +500,7 @@ func (lc *LinuxCollector) processDHCPPacket(
 		}
 
 		vif := niInfo.vifs.LookupByGuestMAC(dhcpv4.ClientHWAddr)
-		if vif == nil {
+		if vif == nil || !vif.VIF.Activated {
 			return nil, true
 		}
 		if vif.IPv4Addr.Equal(dhcpv4.YourClientIP) {
@@ -539,7 +539,7 @@ func (lc *LinuxCollector) processDHCPPacket(
 		clientOption := &layers.DHCPv6DUID{}
 		clientOption.DecodeFromBytes(opt.Data)
 		vif := niInfo.vifs.LookupByGuestMAC(clientOption.LinkLayerAddress)
-		if vif == nil {
+		if vif == nil || !vif.VIF.Activated {
 			return nil, true
 		}
 		if isAddrPresent(vif.IPv6Addrs, dhcpv6.LinkAddr) {
@@ -568,7 +568,7 @@ func (lc *LinuxCollector) processDADProbe(
 		etherPkt := etherLayer.(*layers.Ethernet)
 		vif = niInfo.vifs.LookupByGuestMAC(etherPkt.SrcMAC)
 	}
-	if vif == nil {
+	if vif == nil || !vif.VIF.Activated {
 		return
 	}
 	ip6Layer := packet.Layer(layers.LayerTypeIPv6)
