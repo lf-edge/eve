@@ -1951,16 +1951,20 @@ func getArgsForStateCollecting(ctx *zedrouterContext,
 	for _, app := range apps {
 		appNetStatus := app.(types.AppNetworkStatus)
 		for _, ulStatus := range appNetStatus.GetULStatusForNI(niID) {
-			mac, err := net.ParseMAC(ulStatus.Mac)
-			if err != nil {
-				return br, vifs, fmt.Errorf("failed to parse VIF %s MAC %s: %v",
-					ulStatus.Name, ulStatus.VifConfig.Mac, err)
+			var mac net.HardwareAddr
+			if appNetStatus.Activated {
+				mac, err = net.ParseMAC(ulStatus.Mac)
+				if err != nil {
+					return br, vifs, fmt.Errorf("failed to parse VIF %s MAC %s: %v",
+						ulStatus.Name, ulStatus.VifConfig.Mac, err)
+				}
 			}
 			vifs = append(vifs, nistate.AppVIF{
 				App:            appNetStatus.UUIDandVersion.UUID,
 				NI:             niID,
 				AppNum:         appNetStatus.AppNum,
 				NetAdapterName: ulStatus.Name,
+				Activated:      appNetStatus.Activated,
 				HostIfName:     ulStatus.Vif,
 				GuestIfMAC:     mac,
 				VLAN:           ulStatus.Vlan,

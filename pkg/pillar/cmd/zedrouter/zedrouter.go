@@ -1699,6 +1699,13 @@ func handleAppNetworkModify(ctxArg interface{}, key string,
 			}
 			appNetworkDoInactivateUnderlayNetwork(ctx, status,
 				ulStatus, ipsets)
+			err := ctx.niStateCollector.InactivateVIFStateCollecting(ulConfig.Network,
+				config.UUIDandVersion.UUID, ulConfig.Name)
+			if err != nil {
+				log.Errorf(
+					"handleAppNetworkModify: InactivateVIFStateCollecting failed for %s: %v",
+					config.DisplayName, err)
+			}
 
 			if ulConfig.Network != ulStatus.Network {
 				log.Functionf("checkAppNetworkModifyUNetAppNum(%v) for %s: change from %s to %s",
@@ -1717,13 +1724,21 @@ func handleAppNetworkModify(ctxArg interface{}, key string,
 			// Save new config
 			ulStatus.UnderlayNetworkConfig = *ulConfig
 
-			err := appNetworkDoActivateUnderlayNetwork(
+			err = appNetworkDoActivateUnderlayNetwork(
 				ctx, config, status, ipsets, ulConfig, ulNum)
 			if err != nil {
 				// addError already done
 				log.Errorf("handleAppNetworkModify: Underlay Network activation failed for %s: %v",
 					config.DisplayName, err)
 			}
+			err = ctx.niStateCollector.ActivateVIFStateCollecting(ulConfig.Network,
+				config.UUIDandVersion.UUID, ulConfig.Name)
+			if err != nil {
+				log.Errorf(
+					"handleAppNetworkModify: ActivateVIFStateCollecting failed for %s: %v",
+					config.DisplayName, err)
+			}
+
 		}
 	}
 

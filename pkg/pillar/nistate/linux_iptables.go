@@ -42,7 +42,7 @@ func addrTypeToIPVer(addrType types.AddressType) int {
 func (lc *LinuxCollector) fetchIptablesCounters() []aclCounters {
 	// Get for IPv4 and IPv6 from filter and raw tables.
 	chainsWithCounters := map[string][]string{ // table -> chains
-		"filter": {"FORWARD", "OUTPUT"},
+		"filter": {"FORWARD"},
 		"raw":    {"PREROUTING"},
 	}
 	var counters []aclCounters

@@ -117,9 +117,12 @@ func (lc *LinuxCollector) UpdateCollectingForNI(
 	ni.vifs = nil
 	for _, vif := range vifs {
 		vifWithAddrs := VIFAddrs{VIF: vif}
-		if prevVIF := prevVIFs.LookupByGuestMAC(vif.GuestIfMAC); prevVIF != nil {
-			vifWithAddrs.IPv4Addr = prevVIF.IPv4Addr
-			vifWithAddrs.IPv6Addrs = prevVIF.IPv6Addrs
+		// If VIF was deactivated, forget previously recorded IP assignments.
+		if vif.Activated {
+			if prevVIF := prevVIFs.LookupByGuestMAC(vif.GuestIfMAC); prevVIF != nil {
+				vifWithAddrs.IPv4Addr = prevVIF.IPv4Addr
+				vifWithAddrs.IPv6Addrs = prevVIF.IPv6Addrs
+			}
 		}
 		ni.vifs = append(ni.vifs, vifWithAddrs)
 	}
@@ -139,6 +142,43 @@ func (lc *LinuxCollector) StopCollectingForNI(niID uuid.UUID) error {
 	lc.nis[niID].cancelPCAP()
 	delete(lc.nis, niID)
 	lc.log.Noticef("%s: Stopped collecting state data for NI %v", LogAndErrPrefix, niID)
+	return nil
+}
+
+// ActivateVIFStateCollecting : activate collecting of state data for the given VIF.
+// NOOP if the VIF is already activated.
+func (lc *LinuxCollector) ActivateVIFStateCollecting(
+	niID uuid.UUID, appID uuid.UUID, netAdapterName string) error {
+	return lc.setAppVIFActivateState(niID, appID, netAdapterName, true)
+}
+
+// InactivateVIFStateCollecting : stop collecting state data and forget recorded
+// IP assignments for the given VIF.
+// (config present but interface was un-configured from the network stack).
+func (lc *LinuxCollector) InactivateVIFStateCollecting(
+	niID uuid.UUID, appID uuid.UUID, netAdapterName string) error {
+	return lc.setAppVIFActivateState(niID, appID, netAdapterName, false)
+}
+
+func (lc *LinuxCollector) setAppVIFActivateState(niID uuid.UUID,
+	appID uuid.UUID, netAdapterName string, activate bool) error {
+	lc.mu.Lock()
+	defer lc.mu.Unlock()
+	if _, exists := lc.nis[niID]; !exists {
+		return ErrUnknownNI{NI: niID}
+	}
+	vif := lc.nis[niID].vifs.LookupByAdapterName(appID, netAdapterName)
+	if vif == nil {
+		err := fmt.Errorf("%s: Unknown VIF with adapter name %s for app %s",
+			LogAndErrPrefix, netAdapterName, appID)
+		return err
+	}
+	vif.VIF.Activated = activate
+	if !activate {
+		// Forget previously recorded IP assignments.
+		vif.IPv4Addr = nil
+		vif.IPv6Addrs = nil
+	}
 	return nil
 }
 
@@ -170,7 +210,7 @@ func (lc *LinuxCollector) WatchIPAssignments() <-chan []VIFAddrsUpdate {
 // by zedrouter, but also wireless physical ports and bridges created for wired
 // ports by NIM.
 func (lc *LinuxCollector) GetNetworkMetrics() (types.NetworkMetrics, error) {
-	network, err := psutilnet.IOCounters(true)
+	interfaces, err := psutilnet.IOCounters(true)
 	if err != nil {
 		err = fmt.Errorf("%s: GetNetworkMetrics failed to read IO counters: %v",
 			LogAndErrPrefix, err)
@@ -185,19 +225,17 @@ func (lc *LinuxCollector) GetNetworkMetrics() (types.NetworkMetrics, error) {
 	// The eethN counters are currently not used/reported, but could be
 	// used to indicate how much EVE is doing. However, we wouldn't have
 	// that separation for wlan and wwan interfaces.
-	for i := range network {
-		if !strings.HasPrefix(network[i].Name, "eth") {
+	for i := range interfaces {
+		if !strings.HasPrefix(interfaces[i].Name, "eth") {
 			continue
 		}
-		kernIfname := "k" + network[i].Name
-		for j := range network {
-			if network[j].Name != kernIfname {
+		kernIfname := "k" + interfaces[i].Name
+		for j := range interfaces {
+			if interfaces[j].Name != kernIfname {
 				continue
 			}
-			lc.log.Functionf("%s: getNetworkMetrics swapping %d and %d: %s and %s",
-				LogAndErrPrefix, i, j, network[i].Name, network[j].Name)
-			network[j].Name = network[i].Name
-			network[i].Name = "e" + network[i].Name
+			interfaces[j].Name = interfaces[i].Name
+			interfaces[i].Name = "e" + interfaces[i].Name
 			break
 		}
 	}
@@ -205,29 +243,29 @@ func (lc *LinuxCollector) GetNetworkMetrics() (types.NetworkMetrics, error) {
 	lc.mu.Lock()
 	defer lc.mu.Unlock()
 	var metrics []types.NetworkMetric
-	for _, ni := range network {
+	for _, intf := range interfaces {
 		metric := types.NetworkMetric{
-			IfName:   ni.Name,
-			TxPkts:   ni.PacketsSent,
-			RxPkts:   ni.PacketsRecv,
-			TxBytes:  ni.BytesSent,
-			RxBytes:  ni.BytesRecv,
-			TxDrops:  ni.Dropout,
-			RxDrops:  ni.Dropin,
-			TxErrors: ni.Errout,
-			RxErrors: ni.Errin,
+			IfName:   intf.Name,
+			TxPkts:   intf.PacketsSent,
+			RxPkts:   intf.PacketsRecv,
+			TxBytes:  intf.BytesSent,
+			RxBytes:  intf.BytesRecv,
+			TxDrops:  intf.Dropout,
+			RxDrops:  intf.Dropin,
+			TxErrors: intf.Errout,
+			RxErrors: intf.Errin,
 		}
 
-		// Is this interface associated with any network instances?
+		// Is this interface associated with any network instance?
 		var brIfName, vifName string
 		ipVer := 4
-		if vif, isVIF := lc.getVIFByIfName(ni.Name); isVIF {
+		if vif, isVIF := lc.getVIFByIfName(intf.Name); isVIF {
 			ipVer = addrTypeToIPVer(lc.nis[vif.NI].config.IpType)
 			brIfName = lc.nis[vif.NI].bridge.BrIfName
 			vifName = vif.HostIfName
-		} else if br, isBr := lc.getBridgeByIfName(ni.Name); isBr {
+		} else if br, isBr := lc.getBridgeByIfName(intf.Name); isBr {
 			ipVer = addrTypeToIPVer(lc.nis[br.NI].config.IpType)
-			brIfName = ni.Name
+			brIfName = intf.Name
 		} else {
 			// Not part of any NI, probably uplink interface.
 			metrics = append(metrics, metric)
