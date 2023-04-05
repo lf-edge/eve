@@ -1,6 +1,0 @@
-gptprio.next -d dev -u uuid
-
-set root=$dev
-chainloader ($dev)/@PATH_TO_GRUB@
-boot
-reboot

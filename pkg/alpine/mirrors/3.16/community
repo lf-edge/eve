@@ -21,8 +21,8 @@ sudo
 tini
 fio
 sysstat
-hwinfo
 iw
+hwinfo
 i2c-tools-dev
 qemu-system-x86_64
 qemu
