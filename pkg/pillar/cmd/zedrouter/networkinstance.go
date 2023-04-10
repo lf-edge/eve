@@ -12,12 +12,12 @@ import (
 	"strings"
 
 	"github.com/lf-edge/eve/pkg/pillar/base"
-	uuid "github.com/satori/go.uuid"
-
-	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/devicenetwork"
 	"github.com/lf-edge/eve/pkg/pillar/iptables"
+	"github.com/lf-edge/eve/pkg/pillar/nistate"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/utils"
+	uuid "github.com/satori/go.uuid"
 	"github.com/vishvananda/netlink"
 )
 
@@ -271,10 +271,18 @@ func handleNetworkInstanceModify(
 
 		// XXX Note that changing Logicallabel in NetworkInstance is not currently
 		// supported (but it will be at the end of refactoring), meaning that
-		// there is nothing that can change with respect to uplink probing.
+		// for example there is nothing that can change with respect to uplink probing.
 
 		status.ChangeInProgress = types.ChangeInProgressTypeNone
 		publishNetworkInstanceStatus(ctx, status)
+
+		_, vifs, err := getArgsForStateCollecting(ctx, config.UUID)
+		if err == nil {
+			err = ctx.niStateCollector.UpdateCollectingForNI(config, vifs)
+		}
+		if err != nil {
+			log.Error(err)
+		}
 		log.Functionf("handleNetworkInstanceModify(%s) done\n", key)
 	} else {
 		log.Fatalf("handleNetworkInstanceModify(%s) no status", key)
@@ -379,6 +387,15 @@ func handleNetworkInstanceCreate(
 	publishNetworkInstanceStatus(ctx, &status)
 	// Hooks for updating dependent objects
 	checkAndRecreateAppNetwork(ctx, status)
+
+	br, vifs, err := getArgsForStateCollecting(ctx, config.UUID)
+	if err == nil {
+		err = ctx.niStateCollector.StartCollectingForNI(config, br, vifs)
+	}
+	if err != nil {
+		log.Error(err)
+	}
+
 	log.Functionf("handleNetworkInstanceCreate(%s) done\n", key)
 }
 
@@ -395,6 +412,12 @@ func handleNetworkInstanceDelete(ctxArg interface{}, key string,
 	}
 	status.ChangeInProgress = types.ChangeInProgressTypeDelete
 	pub.Publish(status.Key(), *status)
+
+	err := ctx.niStateCollector.StopCollectingForNI(status.UUID)
+	if err != nil {
+		log.Error(err)
+	}
+
 	if status.Activated {
 		doNetworkInstanceInactivate(ctx, status)
 		status.Activated = false
@@ -533,10 +556,6 @@ func doNetworkInstanceCreate(ctx *zedrouterContext,
 			status.SelectedUplinkIntf, dnsServers, ntpServers)
 		startDnsmasq(bridgeName)
 	}
-
-	// monitor the DNS and DHCP information
-	log.Functionf("Creating %s at %s", "DNSDhcpMonitor", agentlog.GetMyStack())
-	go DNSDhcpMonitor(bridgeName, bridgeNum, ctx, status)
 
 	if status.IsIPv6() {
 		// XXX do we need same logic as for IPv4 dnsmasq to not
@@ -1441,7 +1460,6 @@ func doNetworkInstanceDelete(
 		if status.IsIPv6() {
 			stopRadvd(status.BridgeName, true)
 		}
-		DNSStopMonitor(status.BridgeNum)
 	}
 	if status.BridgeMac != "" {
 		mac, err := net.ParseMAC(status.BridgeMac)
@@ -1501,10 +1519,14 @@ func createNetworkInstanceMetrics(ctx *zedrouterContext,
 		Type:           status.Type,
 	}
 	netMetrics := types.NetworkMetrics{}
-	netMetric := status.UpdateNetworkMetrics(log, nms)
-	status.UpdateBridgeMetrics(log, nms, netMetric)
+	// Update status.VifMetricMap and get bridge metrics as a sum of all VIF metrics.
+	brNetMetric := status.UpdateNetworkMetrics(log, nms)
+	// Add metrics of the bridge interface itself into brNetMetric.
+	status.UpdateBridgeMetrics(log, nms, brNetMetric)
 
-	netMetrics.MetricList = []types.NetworkMetric{*netMetric}
+	// XXX For some strange reason we do not include VIFs into the returned
+	// NetworkInstanceMetrics.
+	netMetrics.MetricList = []types.NetworkMetric{*brNetMetric}
 	niMetrics.NetworkMetrics = netMetrics
 	if status.WithUplinkProbing() {
 		probeMetrics, err := ctx.uplinkProber.GetProbeMetrics(status.UUID)
@@ -1532,6 +1554,7 @@ func publishNetworkInstanceMetricsAll(ctx *zedrouterContext, nms *types.NetworkM
 		status := ni.(types.NetworkInstanceStatus)
 		netMetrics := createNetworkInstanceMetrics(ctx, &status, nms)
 		publishNetworkInstanceMetrics(ctx, netMetrics)
+		publishNetworkInstanceStatus(ctx, &status)
 	}
 }
 
@@ -1742,21 +1765,6 @@ func lookupNetworkInstanceStatusByBridgeName(ctx *zedrouterContext,
 	return nil
 }
 
-func networkInstanceAddressType(ctx *zedrouterContext, bridgeName string) int {
-	ipVer := 0
-	instanceStatus := lookupNetworkInstanceStatusByBridgeName(ctx, bridgeName)
-	if instanceStatus != nil {
-		switch instanceStatus.IpType {
-		case types.AddressTypeIPV4, types.AddressTypeCryptoIPV4:
-			ipVer = 4
-		case types.AddressTypeIPV6, types.AddressTypeCryptoIPV6:
-			ipVer = 6
-		}
-		return ipVer
-	}
-	return ipVer
-}
-
 func lookupNetworkInstanceStatusByAppIP(ctx *zedrouterContext,
 	ip net.IP) *types.NetworkInstanceStatus {
 
@@ -1900,26 +1908,104 @@ func doNetworkInstanceFallback(
 		// Find all app instances that use this network and purge flows
 		// that correspond to these applications.
 		for _, app := range apps {
-			appNetworkStatus := app.(types.AppNetworkStatus)
-			for i := range appNetworkStatus.UnderlayNetworkList {
-				ulStatus := &appNetworkStatus.UnderlayNetworkList[i]
-				if uuid.Equal(ulStatus.Network, status.UUID) {
-					config := lookupAppNetworkConfig(ctx, appNetworkStatus.Key())
-					ipsets := compileAppInstanceIpsets(ctx, config.UnderlayNetworkList)
-					ulConfig := &config.UnderlayNetworkList[i]
-					// This should take care of re-programming any ACL rules that
-					// use input match on uplinks.
-					// XXX no change in config
-					// XXX forcing a change
-					doAppNetworkModifyUNetAcls(ctx, &appNetworkStatus,
-						ulConfig, ulConfig, ulStatus, ipsets, true)
-				}
+			appNetStatus := app.(types.AppNetworkStatus)
+			appNetConfig := lookupAppNetworkConfig(ctx, appNetStatus.Key())
+			ipsets := compileAppInstanceIpsets(ctx, appNetConfig.UnderlayNetworkList)
+			for _, ulStatus := range appNetStatus.GetULStatusForNI(status.UUID) {
+				ulConfig := &ulStatus.UnderlayNetworkConfig
+				// This should take care of re-programming any ACL rules that
+				// use input match on uplinks.
+				// XXX no change in config
+				// XXX forcing a change
+				doAppNetworkModifyUNetAcls(ctx, &appNetStatus,
+					ulConfig, ulConfig, ulStatus, ipsets, true)
 			}
-			publishAppNetworkStatus(ctx, &appNetworkStatus)
+			publishAppNetworkStatus(ctx, &appNetStatus)
 		}
 	case types.NetworkInstanceTypeSwitch:
 		// NA for switch network instance.
 	}
 	publishNetworkInstanceStatus(ctx, status)
 	return err
+}
+
+// Return arguments describing network instance config as required by nistate.Collector
+// for collecting of state information (IP assignments, flows, metrics).
+func getArgsForStateCollecting(ctx *zedrouterContext,
+	niID uuid.UUID) (br nistate.NIBridge, vifs []nistate.AppVIF, err error) {
+	niStatus := lookupNetworkInstanceStatus(ctx, niID.String())
+	if niStatus == nil {
+		return br, vifs, fmt.Errorf("failed to get status for network instance %v", niID)
+	}
+	br.NI = niID
+	br.BrNum = niStatus.BridgeNum
+	br.BrIfName = niStatus.BridgeName
+	mac, err := net.ParseMAC(niStatus.BridgeMac)
+	if err != nil {
+		return br, vifs, fmt.Errorf("failed to parse bridge MAC %s for NI %v: %v",
+			niStatus.BridgeMac, niID, err)
+	}
+	br.BrIfMAC = mac
+	// Find all app instances that use this network.
+	apps := ctx.pubAppNetworkStatus.GetAll()
+	for _, app := range apps {
+		appNetStatus := app.(types.AppNetworkStatus)
+		for _, ulStatus := range appNetStatus.GetULStatusForNI(niID) {
+			var mac net.HardwareAddr
+			if appNetStatus.Activated {
+				mac, err = net.ParseMAC(ulStatus.Mac)
+				if err != nil {
+					return br, vifs, fmt.Errorf("failed to parse VIF %s MAC %s: %v",
+						ulStatus.Name, ulStatus.VifConfig.Mac, err)
+				}
+			}
+			vifs = append(vifs, nistate.AppVIF{
+				App:            appNetStatus.UUIDandVersion.UUID,
+				NI:             niID,
+				AppNum:         appNetStatus.AppNum,
+				NetAdapterName: ulStatus.Name,
+				Activated:      appNetStatus.Activated,
+				HostIfName:     ulStatus.Vif,
+				GuestIfMAC:     mac,
+				VLAN:           ulStatus.Vlan,
+			})
+		}
+	}
+	return br, vifs, nil
+}
+
+// This function is called when AppNetworkConfig changes.
+// In such case it can be necessary to update VIF description provided to nistate.Collector
+// for all network instances that this app is or was connected to.
+func updateStateCollectingForApp(ctx *zedrouterContext,
+	prevAppConf, newAppConfig *types.AppNetworkConfig) {
+	// Determine the set of affected network instances.
+	var networks []uuid.UUID
+	if prevAppConf != nil {
+		for _, ul := range prevAppConf.UnderlayNetworkList {
+			networks = append(networks, ul.Network)
+		}
+	}
+	if newAppConfig != nil {
+		for _, ul := range newAppConfig.UnderlayNetworkList {
+			networks = append(networks, ul.Network)
+		}
+	}
+	networks = utils.FilterDuplicates(networks)
+	// Update state collecting for NIs that the app is or was connected to.
+	for _, network := range networks {
+		netConfig := lookupNetworkInstanceConfig(ctx, network.String())
+		if netConfig == nil {
+			log.Errorf("failed to get config for network instance %v "+
+				"(needed to update VIF arguments for state collecting)", network)
+			continue
+		}
+		_, vifs, err := getArgsForStateCollecting(ctx, network)
+		if err == nil {
+			err = ctx.niStateCollector.UpdateCollectingForNI(*netConfig, vifs)
+		}
+		if err != nil {
+			log.Error(err)
+		}
+	}
 }

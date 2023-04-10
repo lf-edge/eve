@@ -262,8 +262,12 @@ func getCertsFromController(ctx *zedagentContext, desc string) (success bool) {
 			log.Noticef("getCertsFromController: Controller returned ECONNREFUSED")
 		case types.SenderStatusCertInvalid:
 			log.Warnf("getCertsFromController: Controller certificate invalid time")
+			log.Noticef("%s trigger", rv.Status.String())
+			triggerControllerCertEvent(ctx)
 		case types.SenderStatusCertMiss:
 			log.Noticef("getCertsFromController: Controller certificate miss")
+			log.Noticef("%s trigger", rv.Status.String())
+			triggerControllerCertEvent(ctx)
 		default:
 			log.Errorf("getCertsFromController failed: %s", err)
 		}
@@ -276,6 +280,12 @@ func getCertsFromController(ctx *zedagentContext, desc string) (success bool) {
 	default:
 		log.Errorf("getCertsFromController: failed, statuscode %d %s",
 			rv.HTTPResp.StatusCode, http.StatusText(rv.HTTPResp.StatusCode))
+		switch rv.Status {
+		case types.SenderStatusCertMiss, types.SenderStatusCertInvalid:
+			// trigger to acquire new controller certs from cloud
+			log.Noticef("%s trigger", rv.Status.String())
+			triggerControllerCertEvent(ctx)
+		}
 		return false
 	}
 
@@ -295,6 +305,12 @@ func getCertsFromController(ctx *zedagentContext, desc string) (success bool) {
 	signingCertBytes, ret := zedcloud.VerifyProtoSigningCertChain(log, rv.RespContents)
 	if ret != nil {
 		log.Errorf("getCertsFromController: verify err %v", ret)
+		switch rv.Status {
+		case types.SenderStatusCertMiss, types.SenderStatusCertInvalid:
+			// trigger to acquire new controller certs from cloud
+			log.Noticef("%s trigger", rv.Status.String())
+			triggerControllerCertEvent(ctx)
+		}
 		return false
 	}
 
@@ -428,8 +444,10 @@ func sendAttestReqProtobuf(attestReq *attest.ZAttestReq, iteration int) {
 	//We queue the message and then get the highest priority message to send.
 	//If there are no failures and defers we'll send this message,
 	//but if there is a queue we'll retry sending the highest priority message.
+	// Since attest messages can fail if there is a certificate mismatch
+	// we set ignoreErr to allow other messages to be sent as well.
 	zedcloudCtx.DeferredEventCtx.SetDeferred(deferKey, buf, size, attestURL,
-		false, false, false, attestReq.ReqType)
+		false, false, true, attestReq.ReqType)
 	zedcloudCtx.DeferredEventCtx.HandleDeferred(time.Now(), 0, true)
 }
 

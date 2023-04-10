@@ -73,6 +73,7 @@ CONFIGDIR=/config
 CONFIGDIR_PERSIST=/tmp/config_ro
 SMART_DETAILS_FILE=$PERSISTDIR/SMART_details.json
 SMART_DETAILS_PREVIOUS_FILE=$PERSISTDIR/SMART_details_previous.json
+IS_IN_KDUMP_KERNEL=$(! test -f /proc/vmcore; echo $?)
 
 # the following is here just for compatibility reasons and it should go away soon
 ln -s "$CONFIGDIR" "/var/$CONFIGDIR"
@@ -202,9 +203,12 @@ if P3=$(findfs PARTLABEL=P3) && [ -n "$P3" ]; then
     if [ "$P3_FS_TYPE" = zfs ]; then
         set_sequential_mdev
         if ! chroot /hostfs zpool import -f persist; then
-            echo "$(date -Ins -u) Cannot import persist pool on P3 partition $P3 of type $P3_FS_TYPE, recreating it as $P3_FS_TYPE_DEFAULT"
-            INIT_FS=1
-            P3_FS_TYPE="$P3_FS_TYPE_DEFAULT"
+            # Don't re-format the fs if we are in kdump kernel
+            if [ "$IS_IN_KDUMP_KERNEL" = 0 ]; then
+                echo "$(date -Ins -u) Cannot import persist pool on P3 partition $P3 of type $P3_FS_TYPE, recreating it as $P3_FS_TYPE_DEFAULT"
+                INIT_FS=1
+                P3_FS_TYPE="$P3_FS_TYPE_DEFAULT"
+            fi
         else
             zfs_adjust_features
         fi
@@ -214,9 +218,12 @@ if P3=$(findfs PARTLABEL=P3) && [ -n "$P3" ]; then
         #when we do usb install, this way the transition is more controlled.
         #Any fsck error (ext3 or ext4), will lead to formatting P3 with ext4
         if { [ "$P3_FS_TYPE" != ext3 ] && [ "$P3_FS_TYPE" != ext4 ]; } || ! "fsck.$P3_FS_TYPE" -y "$P3" ; then
-           echo "$(date -Ins -u) P3 partition $P3 of type $P3_FS_TYPE appears to be corrupted, recreating it as $P3_FS_TYPE_DEFAULT"
-           INIT_FS=1
-           P3_FS_TYPE="$P3_FS_TYPE_DEFAULT"
+            # Don't re-format the fs if we are in kdump kernel
+            if [ "$IS_IN_KDUMP_KERNEL" = 0 ]; then
+                echo "$(date -Ins -u) P3 partition $P3 of type $P3_FS_TYPE appears to be corrupted, recreating it as $P3_FS_TYPE_DEFAULT"
+                INIT_FS=1
+                P3_FS_TYPE="$P3_FS_TYPE_DEFAULT"
+            fi
         fi
     fi
 

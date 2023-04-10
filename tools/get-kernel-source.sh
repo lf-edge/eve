@@ -61,7 +61,7 @@ fi
 [ -n "$verbose" ] && echo "downloading using $tmpurlfile"
 # shellcheck disable=SC2002
 cat "$tmpurlfile" | while read -r url; do
-    dest=$(basename "$url")
+    dest=$(echo "$url" | cut -d'/' -f3- | tr "/" _)
     dest="$outdir/$dest"
     [ -n "$verbose" ] && echo "downloading: curl -sSLo $dest $url"
     if ! curl -sSLo "$dest" "$url"; then

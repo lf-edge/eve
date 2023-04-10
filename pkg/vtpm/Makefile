@@ -3,29 +3,29 @@
 
 TARGET ?= vtpm_server
 SRC_DIRS ?= ./src
-INC_DIRS ?= ./proto
+INC_DIR ?= ./proto
 PROTO_OBJS ?= vtpm_api.pb.o
+SERVER_OBJS ?= server.o
 CC = g++
-
-SRCS := $(shell find $(SRC_DIRS) -name *.cpp -or -name *.cc)
-OBJS := $(addsuffix .o,$(basename $(SRCS)))
 DEPS := $(OBJS:.o=.d)
 
-INC_FLAGS := $(addprefix -I,$(INC_DIRS))
-CPPFLAGS ?= $(INC_FLAGS) -std=c++11
+INC_FLAGS := $(addprefix -I,$(INC_DIR))
 LDLIBS := -lprotobuf
 
-$(TARGET): $(PROTO_OBJS) $(OBJS)
-	$(CC) $(OBJS) $(PROTO_OBJS) -o $@ $(LDLIBS)
+$(TARGET): $(PROTO_OBJS) $(SERVER_OBJS)
+	$(CC) $(PROTO_OBJS) $(SERVER_OBJS) -o $@ -lprotobuf
+
+$(SERVER_OBJS): $(PROTO_OBJS)
+	$(CC) $(INC_FLAGS) -std=c++11 -c src/server.cpp -o $@
 
 protoc_files: proto/vtpm_api.proto
 	protoc --cpp_out=proto -Iproto vtpm_api.proto
 
 $(PROTO_OBJS): protoc_files
-	$(CC) -c  -o $@ proto/vtpm_api.pb.cc
+	$(CC) -c proto/vtpm_api.pb.cc -o $(PROTO_OBJS)
 
 clean:
-	$(RM) $(TARGET) $(OBJS) $(DEPS) $(INC_DIR) $(PROTO_OBJS)
+	$(RM) $(TARGET) $(SERVER_OBJS) $(DEPS) $(INC_DIR)/vtpm_api.pb.cc $(INC_DIR)/vtpm_api.pb.h $(PROTO_OBJS)
 
 .PHONY: clean protoc_files all test
 
