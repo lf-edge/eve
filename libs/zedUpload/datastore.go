@@ -149,6 +149,12 @@ func (ctx *DronaCtx) postChunk(req *DronaRequest, chunkDetail ChunkData) {
 //	make sure the reply is always sent back
 func (ctx *DronaCtx) postResponse(req *DronaRequest, status error) {
 	// status is already set up by action, we just have to set processed flag
+	defer func() {
+		err := recover()
+		if err != nil {
+			req.logger.Error(err)
+		}
+	}()
 	req.setProcessed()
 	req.result <- req
 }
