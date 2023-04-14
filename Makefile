@@ -648,15 +648,15 @@ $(COLLECTED_SOURCES): $(ROOTFS_TAR) $(GOSOURCES)| $(INSTALLER)
 	# see https://github.com/anchore/syft/issues/1400
 	tar xf $< -C $(TMP_ROOTDIR) --exclude "dev/*"
 	$(eval TMP_COLLECTED_SOURCES := $(shell mktemp -d))
-	bash tools/get-alpine-pkg-source.sh -s $(TMP_COLLECTED_SOURCES)/alpine/ -e $(TMP_ROOTDIR) 
+	bash tools/get-alpine-pkg-source.sh -s $(TMP_COLLECTED_SOURCES)/alpine -e $(TMP_ROOTDIR)
 	bash tools/get-kernel-source.sh -s $(TMP_COLLECTED_SOURCES)/kernel/
 	for i in $$(find . -name 'go.sum'); \
 		do								 		   \
 			$(GOSOURCES) sources -d $$(dirname $$i) --recursive --out $(TMP_COLLECTED_SOURCES)/go; \
-		done;	
-	tar cvf - $(TMP_COLLECTED_SOURCES) | gzip -9 - > $(COLLECTED_SOURCES)
-	rm -rf $(TMP_ROOTDIR)
-	rm -rf $(TMP_COLLECTED_SOURCES)
+		done;
+	bash tools/generate-sources-manifests.sh $(TMP_COLLECTED_SOURCES)
+	tar -cf $(COLLECTED_SOURCES) -C $(TMP_COLLECTED_SOURCES) .
+	rm -rf $(TMP_ROOTDIR) $(TMP_COLLECTED_SOURCES)
 	$(QUIET): $@: Succeeded
 
 $(LIVE).raw: $(BOOT_PART) $(EFI_PART) $(ROOTFS_IMG) $(CONFIG_IMG) $(PERSIST_IMG) $(BSP_IMX_PART) | $(INSTALLER)
