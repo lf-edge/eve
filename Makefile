@@ -290,7 +290,7 @@ GOSOURCES_VERSION=bc8b291f04566f35172f3d30f66e02e339f0342c
 GOSOURCES_SOURCE=github.com/deitch/go-sources-and-licenses
 
 
-SYFT_VERSION:=v0.63.0
+SYFT_VERSION:=v0.78.0
 SYFT_IMAGE:=docker.io/anchore/syft:$(SYFT_VERSION)
 
 # we use the following block to assign correct tag to the Docker registry artifact
@@ -608,7 +608,7 @@ $(SBOM): $(ROOTFS_TAR) | $(INSTALLER)
 	# this all can go away, and we can read the rootfs.tar
 	# see https://github.com/anchore/syft/issues/1400
 	tar xf $< -C $(TMP_ROOTDIR) --exclude "dev/*"
-	docker run -v $(TMP_ROOTDIR):/rootdir:ro $(SYFT_IMAGE) -o spdx-json /rootdir > $@
+	docker run -v $(TMP_ROOTDIR):/rootdir:ro -v $(PWD)/.syft.yaml:/syft.yaml:ro $(SYFT_IMAGE) -c /syft.yaml /rootdir > $@
 	rm -rf $(TMP_ROOTDIR)
 	$(QUIET): $@: Succeeded
 
