@@ -197,7 +197,8 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	subDeviceNetworkStatus.Activate()
 	zedcloudCtx := zedcloud.NewContext(log, zedcloud.ContextOptions{
 		DevNetworkStatus: clientCtx.deviceNetworkStatus,
-		Timeout:          clientCtx.globalConfig.GlobalValueInt(types.NetworkSendTimeout),
+		SendTimeout:      clientCtx.globalConfig.GlobalValueInt(types.NetworkSendTimeout),
+		DialTimeout:      clientCtx.globalConfig.GlobalValueInt(types.NetworkDialTimeout),
 		AgentMetrics:     clientCtx.zedcloudMetrics,
 		Serial:           hardware.GetProductSerial(log),
 		SoftSerial:       hardware.GetSoftSerial(log),

@@ -55,7 +55,7 @@ func (t *ZedcloudConnectivityTester) TestConnectivity(
 
 	zedcloudCtx := zedcloud.NewContext(t.Log, zedcloud.ContextOptions{
 		DevNetworkStatus: &dns,
-		Timeout:          uint32(t.TestTimeout.Seconds()),
+		SendTimeout:      uint32(t.TestTimeout.Seconds()),
 		AgentMetrics:     t.Metrics,
 		Serial:           hardware.GetProductSerial(t.Log),
 		SoftSerial:       hardware.GetSoftSerial(t.Log),
