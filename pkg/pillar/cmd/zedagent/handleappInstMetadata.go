@@ -5,7 +5,10 @@
 
 package zedagent
 
-import "github.com/lf-edge/eve/pkg/pillar/types"
+import (
+	"github.com/lf-edge/eve/api/go/info"
+	"github.com/lf-edge/eve/pkg/pillar/types"
+)
 
 func handleAppInstMetaDataCreate(ctxArg interface{}, key string,
 	statusArg interface{}) {
@@ -20,16 +23,11 @@ func handleAppInstMetaDataModify(ctxArg interface{}, key string,
 func handleAppInstMetaDataDelete(ctxArg interface{}, key string, statusArg interface{}) {
 	appInstMetaData := statusArg.(types.AppInstMetaData)
 	ctx := ctxArg.(*zedagentContext)
-	uuidStr := appInstMetaData.Key()
-	PublishAppInstMetaDataToZedCloud(ctx, uuidStr, nil, appInstMetaData.Type, ctx.iteration)
-	ctx.iteration++
+	triggerPublishDeletedObjectInfo(
+		ctx, info.ZInfoTypes_ZiAppInstMetaData, key, appInstMetaData)
 }
 
 func handleAppInstMetaDataImpl(ctxArg interface{}, key string, statusArg interface{}) {
-
-	appInstMetaData := statusArg.(types.AppInstMetaData)
 	ctx := ctxArg.(*zedagentContext)
-	uuidStr := appInstMetaData.Key()
-	PublishAppInstMetaDataToZedCloud(ctx, uuidStr, &appInstMetaData, appInstMetaData.Type, ctx.iteration)
-	ctx.iteration++
+	triggerPublishObjectInfo(ctx, info.ZInfoTypes_ZiAppInstMetaData, key)
 }

@@ -74,7 +74,10 @@ func objectInfoTask(ctxPtr *zedagentContext, triggerInfo <-chan infoForObjectKey
 	for {
 		select {
 		case infoForKeyMessage := <-triggerInfo:
+			objKey := infoForKeyMessage.objectKey
 			infoType := infoForKeyMessage.infoType
+			deleted := infoForKeyMessage.deleted
+			deletedInfo := infoForKeyMessage.deletedInfo
 			log.Functionf("objectInfoTask got message for %s", infoType.String())
 			start := time.Now()
 			var err error
@@ -87,17 +90,25 @@ func objectInfoTask(ctxPtr *zedagentContext, triggerInfo <-chan infoForObjectKey
 			case info.ZInfoTypes_ZiApp:
 				// publish application info
 				sub := ctxPtr.getconfigCtx.subAppInstanceStatus
-				if c, err = sub.Get(infoForKeyMessage.objectKey); err == nil {
+				if deleted {
+					PublishAppInfoToZedCloud(ctxPtr, objKey, nil,
+						ctxPtr.assignableAdapters, ctxPtr.iteration)
+					ctxPtr.iteration++
+				} else if c, err = sub.Get(objKey); err == nil {
 					appStatus := c.(types.AppInstanceStatus)
-					uuidStr := appStatus.Key()
-					PublishAppInfoToZedCloud(ctxPtr, uuidStr, &appStatus, ctxPtr.assignableAdapters,
-						ctxPtr.iteration)
+					PublishAppInfoToZedCloud(ctxPtr, objKey, &appStatus,
+						ctxPtr.assignableAdapters, ctxPtr.iteration)
 					ctxPtr.iteration++
 				}
 			case info.ZInfoTypes_ZiNetworkInstance:
 				// publish network instance info
 				sub := ctxPtr.subNetworkInstanceStatus
-				if c, err = sub.Get(infoForKeyMessage.objectKey); err == nil {
+				if deleted {
+					niStatus := deletedInfo.(types.NetworkInstanceStatus)
+					prepareAndPublishNetworkInstanceInfoMsg(ctxPtr, niStatus,
+						true)
+					ctxPtr.iteration++
+				} else if c, err = sub.Get(objKey); err == nil {
 					niStatus := c.(types.NetworkInstanceStatus)
 					prepareAndPublishNetworkInstanceInfoMsg(ctxPtr, niStatus, false)
 					ctxPtr.iteration++
@@ -105,7 +116,13 @@ func objectInfoTask(ctxPtr *zedagentContext, triggerInfo <-chan infoForObjectKey
 			case info.ZInfoTypes_ZiVolume:
 				// publish volume info
 				sub := ctxPtr.getconfigCtx.subVolumeStatus
-				if c, err = sub.Get(infoForKeyMessage.objectKey); err == nil {
+				if deleted {
+					volumeStatus := deletedInfo.(types.VolumeStatus)
+					uuidStr := volumeStatus.VolumeID.String()
+					PublishVolumeToZedCloud(ctxPtr, uuidStr, nil,
+						ctxPtr.iteration)
+					ctxPtr.iteration++
+				} else if c, err = sub.Get(objKey); err == nil {
 					volumeStatus := c.(types.VolumeStatus)
 					uuidStr := volumeStatus.VolumeID.String()
 					PublishVolumeToZedCloud(ctxPtr, uuidStr, &volumeStatus, ctxPtr.iteration)
@@ -114,28 +131,40 @@ func objectInfoTask(ctxPtr *zedagentContext, triggerInfo <-chan infoForObjectKey
 			case info.ZInfoTypes_ZiContentTree:
 				// publish content tree info
 				sub := ctxPtr.getconfigCtx.subContentTreeStatus
-				if c, err = sub.Get(infoForKeyMessage.objectKey); err == nil {
+				if deleted {
+					PublishContentInfoToZedCloud(ctxPtr, objKey, nil,
+						ctxPtr.iteration)
+					ctxPtr.iteration++
+				} else if c, err = sub.Get(objKey); err == nil {
 					ctStatus := c.(types.ContentTreeStatus)
-					uuidStr := ctStatus.Key()
-					PublishContentInfoToZedCloud(ctxPtr, uuidStr, &ctStatus, ctxPtr.iteration)
+					PublishContentInfoToZedCloud(ctxPtr, objKey, &ctStatus,
+						ctxPtr.iteration)
 					ctxPtr.iteration++
 				}
 			case info.ZInfoTypes_ZiBlobList:
 				// publish blob info
 				sub := ctxPtr.subBlobStatus
-				if c, err = sub.Get(infoForKeyMessage.objectKey); err == nil {
+				if deleted {
+					PublishBlobInfoToZedCloud(ctxPtr, objKey, nil,
+						ctxPtr.iteration)
+					ctxPtr.iteration++
+				} else if c, err = sub.Get(objKey); err == nil {
 					blobStatus := c.(types.BlobStatus)
-					uuidStr := blobStatus.Key()
-					PublishBlobInfoToZedCloud(ctxPtr, uuidStr, &blobStatus, ctxPtr.iteration)
+					PublishBlobInfoToZedCloud(ctxPtr, objKey, &blobStatus,
+						ctxPtr.iteration)
 					ctxPtr.iteration++
 				}
 			case info.ZInfoTypes_ZiAppInstMetaData:
 				// publish appInst metadata info
 				sub := ctxPtr.subAppInstMetaData
-				if c, err = sub.Get(infoForKeyMessage.objectKey); err == nil {
+				if deleted {
+					appInstMetaData := deletedInfo.(types.AppInstMetaData)
+					PublishAppInstMetaDataToZedCloud(ctxPtr, objKey, nil, appInstMetaData.Type,
+						ctxPtr.iteration)
+					ctxPtr.iteration++
+				} else if c, err = sub.Get(objKey); err == nil {
 					appInstMetaData := c.(types.AppInstMetaData)
-					uuidStr := appInstMetaData.Key()
-					PublishAppInstMetaDataToZedCloud(ctxPtr, uuidStr, &appInstMetaData, appInstMetaData.Type,
+					PublishAppInstMetaDataToZedCloud(ctxPtr, objKey, &appInstMetaData, appInstMetaData.Type,
 						ctxPtr.iteration)
 					ctxPtr.iteration++
 				}
@@ -145,9 +174,13 @@ func objectInfoTask(ctxPtr *zedagentContext, triggerInfo <-chan infoForObjectKey
 			case info.ZInfoTypes_ZiEdgeview:
 				// publish Edgeview info
 				sub := ctxPtr.subEdgeviewStatus
-				if c, err = sub.Get(infoForKeyMessage.objectKey); err == nil {
+				if deleted {
+					PublishEdgeviewToZedCloud(ctxPtr, nil)
+					ctxPtr.iteration++
+				} else if c, err = sub.Get(objKey); err == nil {
 					evStatus := c.(types.EdgeviewStatus)
 					PublishEdgeviewToZedCloud(ctxPtr, &evStatus)
+					ctxPtr.iteration++
 				}
 			case info.ZInfoTypes_ZiLocation:
 				locInfo := getLocationInfo(ctxPtr)

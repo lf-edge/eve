@@ -50,6 +50,7 @@ type ZedCloudContext struct {
 	DevSerial           string
 	DevSoftSerial       string
 	NetworkSendTimeout  uint32 // In seconds
+	NetworkDialTimeout  uint32 // In seconds
 	V2API               bool   // XXX Needed?
 	AgentName           string // the agent process name
 	// V2 related items
@@ -70,7 +71,8 @@ type ContextOptions struct {
 	DevNetworkStatus *types.DeviceNetworkStatus
 	TLSConfig        *tls.Config
 	AgentMetrics     *AgentMetrics
-	Timeout          uint32
+	SendTimeout      uint32
+	DialTimeout      uint32
 	Serial           string
 	SoftSerial       string
 	AgentName        string // XXX replace by NoLogFailures?
@@ -116,7 +118,7 @@ func (e *SendError) Unwrap() error {
 
 var nilUUID = uuid.UUID{}
 
-//GetContextForAllIntfFunctions returns context with timeout to use with AllIntf functions
+// GetContextForAllIntfFunctions returns context with timeout to use with AllIntf functions
 // it uses 3 times of defined NetworkSendTimeout
 // and limits max wait up to MaxWaitForRequests
 func GetContextForAllIntfFunctions(ctx *ZedCloudContext) (context.Context, context.CancelFunc) {
@@ -222,22 +224,25 @@ func SendOnAllIntf(ctxWork context.Context, ctx *ZedCloudContext, url string, re
 
 // VerifyAllIntf
 // We try with free interfaces in first iteration.
-//      We test interfaces in sequence and as soon as we find the first working
-//      interface, we stop. Other interfaces are not tested.
+//
+//	We test interfaces in sequence and as soon as we find the first working
+//	interface, we stop. Other interfaces are not tested.
+//
 // If we find enough free interfaces through
 // which cloud connectivity can be achieved, we won't test non-free interfaces.
 // Otherwise we test non-free interfaces also.
 // We return a bool remoteTemporaryFailure for the cases when we reached
 // the controller but it is overloaded, or has certificate issues.
 // Return Values:
-//    success/Failure, remoteTemporaryFailure, error, intfStatusMap
-//    If Failure,
-//       remoteTemporaryFailure - indicates if it is a remote failure
-//       error  - indicates details of Errors
-//    IntfStatusMap - This status for each interface verified.
-//      Includes entries for all interfaces that were tested.
-//      If an intf is success, Error == "" Else - Set to appropriate Error
-//      ErrorTime will always be set for the interface.
+//
+//	success/Failure, remoteTemporaryFailure, error, intfStatusMap
+//	If Failure,
+//	   remoteTemporaryFailure - indicates if it is a remote failure
+//	   error  - indicates details of Errors
+//	IntfStatusMap - This status for each interface verified.
+//	  Includes entries for all interfaces that were tested.
+//	  If an intf is success, Error == "" Else - Set to appropriate Error
+//	  ErrorTime will always be set for the interface.
 func VerifyAllIntf(ctx *ZedCloudContext,
 	url string, successCount uint,
 	iteration int) (bool, bool, types.IntfStatusMap, error) {
@@ -373,6 +378,11 @@ func SendOnIntf(workContext context.Context, ctx *ZedCloudContext, destURL strin
 	var reqUrl string
 	var useTLS, isEdgenode, isGet bool
 
+	dialTimeout := time.Duration(0)
+	if ctx.NetworkDialTimeout != 0 {
+		dialTimeout = time.Duration(ctx.NetworkDialTimeout) * time.Second
+	}
+
 	senderStatus := types.SenderStatusNone
 	if strings.HasPrefix(destURL, "http:") {
 		reqUrl = destURL
@@ -495,7 +505,11 @@ func SendOnIntf(workContext context.Context, ctx *ZedCloudContext, destURL strin
 		}
 		r := net.Resolver{Dial: resolverDial, PreferGo: true,
 			StrictErrors: false}
-		d := net.Dialer{Resolver: &r, LocalAddr: &localTCPAddr}
+		d := net.Dialer{
+			Resolver:  &r,
+			LocalAddr: &localTCPAddr,
+			Timeout:   dialTimeout,
+		}
 		transport.Dial = d.Dial
 
 		client := &http.Client{Transport: transport}
@@ -735,7 +749,7 @@ func SendOnIntf(workContext context.Context, ctx *ZedCloudContext, destURL strin
 	return nil, nil, senderStatus, err
 }
 
-//SendLocal uses local routes to request the data
+// SendLocal uses local routes to request the data
 func SendLocal(ctx *ZedCloudContext, destURL string, intf string, ipSrc net.IP,
 	reqlen int64, b *bytes.Buffer, reqContentType string) (*http.Response, []byte, error) {
 
@@ -775,7 +789,11 @@ func SendLocal(ctx *ZedCloudContext, destURL string, intf string, ipSrc net.IP,
 	}
 	r := net.Resolver{Dial: resolverDial, PreferGo: true,
 		StrictErrors: false}
-	d := net.Dialer{Resolver: &r, LocalAddr: &localTCPAddr}
+	d := net.Dialer{
+		Resolver:  &r,
+		LocalAddr: &localTCPAddr,
+		Timeout:   time.Duration(ctx.NetworkDialTimeout) * time.Second,
+	}
 	transport.Dial = d.Dial
 
 	client := &http.Client{Transport: transport}
@@ -971,7 +989,8 @@ func isECONNREFUSED(err error) bool {
 func NewContext(log *base.LogObject, opt ContextOptions) ZedCloudContext {
 	ctx := ZedCloudContext{
 		DeviceNetworkStatus: opt.DevNetworkStatus,
-		NetworkSendTimeout:  opt.Timeout,
+		NetworkSendTimeout:  opt.SendTimeout,
+		NetworkDialTimeout:  opt.DialTimeout,
 		TlsConfig:           opt.TLSConfig,
 		V2API:               UseV2API(),
 		DevSerial:           opt.Serial,

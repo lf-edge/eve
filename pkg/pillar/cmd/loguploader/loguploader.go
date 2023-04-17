@@ -417,7 +417,8 @@ func sendCtxInit(ctx *loguploaderContext) {
 	//set newlog url
 	zedcloudCtx := zedcloud.NewContext(log, zedcloud.ContextOptions{
 		DevNetworkStatus: deviceNetworkStatus,
-		Timeout:          ctx.globalConfig.GlobalValueInt(types.NetworkSendTimeout),
+		SendTimeout:      ctx.globalConfig.GlobalValueInt(types.NetworkSendTimeout),
+		DialTimeout:      ctx.globalConfig.GlobalValueInt(types.NetworkDialTimeout),
 		AgentMetrics:     ctx.zedcloudMetrics,
 		Serial:           hardware.GetProductSerial(log),
 		SoftSerial:       hardware.GetSoftSerial(log),
