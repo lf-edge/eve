@@ -191,6 +191,8 @@ const (
 	NetworkTestTimeout GlobalSettingKey = "timer.port.timeout"
 	// NetworkSendTimeout global setting key
 	NetworkSendTimeout GlobalSettingKey = "timer.send.timeout"
+	// NetworkDialTimeout global setting key
+	NetworkDialTimeout GlobalSettingKey = "timer.dial.timeout"
 	// LocationCloudInterval global setting key
 	LocationCloudInterval GlobalSettingKey = "timer.location.cloud.interval"
 	// LocationAppInterval global setting key
@@ -793,6 +795,7 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	configItemSpecMap.AddIntItem(NetworkTestBetterInterval, 600, 0, 0xFFFFFFFF)
 	configItemSpecMap.AddIntItem(NetworkTestTimeout, 15, 0, 3600)
 	configItemSpecMap.AddIntItem(NetworkSendTimeout, 120, 0, 3600)
+	configItemSpecMap.AddIntItem(NetworkDialTimeout, 10, 0, 3600)
 	configItemSpecMap.AddIntItem(LocationCloudInterval, HourInSec, 5*MinuteInSec, 0xFFFFFFFF)
 	configItemSpecMap.AddIntItem(LocationAppInterval, 20, 5, HourInSec)
 	configItemSpecMap.AddIntItem(Dom0MinDiskUsagePercent, 20, 20, 80)
