@@ -297,7 +297,8 @@ func indicateInvalidBootstrapConfig(getconfigCtx *getconfigContext) {
 	getconfigCtx.ledBlinkCount = types.LedBlinkInvalidBootstrapConfig
 }
 
-func initZedcloudContext(networkSendTimeout uint32, agentMetrics *zedcloud.AgentMetrics) *zedcloud.ZedCloudContext {
+func initZedcloudContext(networkSendTimeout, networkDialTimeout uint32,
+	agentMetrics *zedcloud.AgentMetrics) *zedcloud.ZedCloudContext {
 
 	// get the server name
 	bytes, err := ioutil.ReadFile(types.ServerFileName)
@@ -308,7 +309,8 @@ func initZedcloudContext(networkSendTimeout uint32, agentMetrics *zedcloud.Agent
 
 	zedcloudCtx := zedcloud.NewContext(log, zedcloud.ContextOptions{
 		DevNetworkStatus: deviceNetworkStatus,
-		Timeout:          networkSendTimeout,
+		SendTimeout:      networkSendTimeout,
+		DialTimeout:      networkDialTimeout,
 		AgentMetrics:     agentMetrics,
 		Serial:           hardware.GetProductSerial(log),
 		SoftSerial:       hardware.GetSoftSerial(log),

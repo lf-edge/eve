@@ -50,6 +50,7 @@ type ZedCloudContext struct {
 	DevSerial           string
 	DevSoftSerial       string
 	NetworkSendTimeout  uint32 // In seconds
+	NetworkDialTimeout  uint32 // In seconds
 	V2API               bool   // XXX Needed?
 	AgentName           string // the agent process name
 	// V2 related items
@@ -70,7 +71,8 @@ type ContextOptions struct {
 	DevNetworkStatus *types.DeviceNetworkStatus
 	TLSConfig        *tls.Config
 	AgentMetrics     *AgentMetrics
-	Timeout          uint32
+	SendTimeout      uint32
+	DialTimeout      uint32
 	Serial           string
 	SoftSerial       string
 	AgentName        string // XXX replace by NoLogFailures?
@@ -431,6 +433,11 @@ func SendOnIntf(workContext context.Context, ctx *ZedCloudContext, destURL strin
 	var reqUrl string
 	var useTLS, isEdgenode, isGet bool
 
+	dialTimeout := time.Duration(0)
+	if ctx.NetworkDialTimeout != 0 {
+		dialTimeout = time.Duration(ctx.NetworkDialTimeout) * time.Second
+	}
+
 	senderStatus := types.SenderStatusNone
 	if strings.HasPrefix(destURL, "http:") {
 		reqUrl = destURL
@@ -572,7 +579,11 @@ func SendOnIntf(workContext context.Context, ctx *ZedCloudContext, destURL strin
 		}
 		r := net.Resolver{Dial: resolverDial, PreferGo: true,
 			StrictErrors: false}
-		d := net.Dialer{Resolver: &r, LocalAddr: &localTCPAddr}
+		d := net.Dialer{
+			Resolver:  &r,
+			LocalAddr: &localTCPAddr,
+			Timeout:   dialTimeout,
+		}
 		transport.Dial = d.Dial
 
 		client := &http.Client{Transport: transport}
@@ -859,7 +870,11 @@ func SendLocal(ctx *ZedCloudContext, destURL string, intf string, ipSrc net.IP,
 	}
 	r := net.Resolver{Dial: resolverDial, PreferGo: true,
 		StrictErrors: false}
-	d := net.Dialer{Resolver: &r, LocalAddr: &localTCPAddr}
+	d := net.Dialer{
+		Resolver:  &r,
+		LocalAddr: &localTCPAddr,
+		Timeout:   time.Duration(ctx.NetworkDialTimeout) * time.Second,
+	}
 	transport.Dial = d.Dial
 
 	client := &http.Client{Transport: transport}
@@ -1055,7 +1070,8 @@ func isECONNREFUSED(err error) bool {
 func NewContext(log *base.LogObject, opt ContextOptions) ZedCloudContext {
 	ctx := ZedCloudContext{
 		DeviceNetworkStatus: opt.DevNetworkStatus,
-		NetworkSendTimeout:  opt.Timeout,
+		NetworkSendTimeout:  opt.SendTimeout,
+		NetworkDialTimeout:  opt.DialTimeout,
 		TlsConfig:           opt.TLSConfig,
 		V2API:               UseV2API(),
 		DevSerial:           opt.Serial,
