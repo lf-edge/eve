@@ -361,7 +361,11 @@ currentversion:
 	@cat $(CURRENT_DIR)/installer/eve_version
 
 
-.PHONY: currentversion linuxkit
+kernel-yml:
+	$(QUIET)if [ ! -f "pkg/kernel/build.yml" ] || [ ! -f "pkg/new-kernel/build.yml" ]; then tools/kernel-build-yml.sh; fi
+
+
+.PHONY: currentversion linuxkit kernel-yml
 
 test: $(LINUXKIT) test-images-patches | $(DIST)
 	@echo Running tests on $(GOMODULE)
@@ -709,7 +713,7 @@ $(RUNME) $(BUILD_YML):
 	cp pkg/eve/$(@F) $@
 
 EVE_ARTIFACTS=$(BIOS_IMG) $(EFI_PART) $(CONFIG_IMG) $(PERSIST_IMG) $(INITRD_IMG) $(INSTALLER_IMG) $(ROOTFS_IMG) $(SBOM) $(BSP_IMX_PART) fullname-rootfs $(BOOT_PART)
-eve: $(INSTALLER) $(EVE_ARTIFACTS) current $(RUNME) $(BUILD_YML) | $(BUILD_DIR)
+eve: kernel-yml $(INSTALLER) $(EVE_ARTIFACTS) current $(RUNME) $(BUILD_YML) | $(BUILD_DIR)
 	$(QUIET): "$@: Begin: EVE_REL=$(EVE_REL), HV=$(HV), LINUXKIT_PKG_TARGET=$(LINUXKIT_PKG_TARGET)"
 	cp images/*.yml $|
 	$(PARSE_PKGS) pkg/eve/Dockerfile.in > $|/Dockerfile
@@ -883,6 +887,7 @@ get_pkg_build_dev_yml = $(if $(wildcard pkg/$1/build-dev.yml),build-dev.yml,buil
 get_pkg_build_rstats_yml = $(if $(wildcard pkg/$1/build-rstats.yml),build-rstats.yml,build.yml)
 
 eve-%: pkg/%/Dockerfile build-tools $(RESCAN_DEPS)
+	$(QUIET)if [ "$@" = "eve-kernel" ] || [ "$@" = "eve-new-kernel" ]; then tools/kernel-build-yml.sh; fi
 	$(QUIET): "$@: Begin: LINUXKIT_PKG_TARGET=$(LINUXKIT_PKG_TARGET)"
 	$(eval LINUXKIT_DOCKER_LOAD := $(if $(filter $(PKGS_DOCKER_LOAD),$*),--docker,))
 	$(eval LINUXKIT_BUILD_PLATFORMS_LIST := $(call uniq,linux/$(ZARCH) $(if $(filter $(PKGS_HOSTARCH),$*),linux/$(HOSTARCH),)))

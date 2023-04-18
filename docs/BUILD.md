@@ -506,6 +506,20 @@ docker run -p 8080:80 -p 8125:8125/udp --rm --name statsd graphiteapp/graphite-s
 
 While the EVE is running, navigate to `http://IP:8080/dashboard` and find the result under `stats.gauges`.
 
+#### Kernel versioning
+
+Kernel packages ("pkg/kernel" and "pkg/new-kernel") are configured to produce a bit-by-bit reproducible kernel, to this end a `build.yml` is generated at build time to set the following variables to a static value:
+
+```shell
+KBUILD_BUILD_USER=eve
+KBUILD_BUILD_HOST=eve
+KCONFIG_NOTIMESTAMP=true
+```
+
+In addition, both `KBUILD_BUILD_TIMESTAMP` and `SOURCE_DATE_EPOCH` variables are set to the last commit date of the respective package, This configuration results in having a static version string (`/proc/version`) on every build. In case there is uncommitted changes in the kernel(s) directory, kernel gets build normally without any static time.
+
+This process can be used to compare eve images that are build in a trusted environment vs CI, making sure the automated build process is intact and not malicious or compromised.
+
 ## Summary of Build Process
 
 This section provides an overview of the processes used to create the
