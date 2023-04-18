@@ -481,12 +481,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject) in
 	// Before starting to process DomainConfig, domainmgr should (in this order):
 	//   1. wait for NIM to publish DNS to learn which ports are used for management
 	//   2. wait for PhysicalIOAdapters (from zedagent) to be processed
-	//   3. wait for NIM to finalize testing of selected DPC
-	// Note: 2. and 3. can also execute in the reverse order.
 	for !domainCtx.assignableAdapters.Initialized ||
-		len(domainCtx.deviceNetworkStatus.Ports) == 0 ||
-		domainCtx.deviceNetworkStatus.Testing {
-		log.Noticef("Waiting for AssignableAdapters and/or verified DPC")
+		len(domainCtx.deviceNetworkStatus.Ports) == 0 {
+		log.Noticef("Waiting for AssignableAdapters, DPC with management ports ")
 		select {
 		case change := <-subGlobalConfig.MsgChan():
 			subGlobalConfig.ProcessChange(change)
