@@ -25,7 +25,7 @@ import (
 
 const (
 	chunkSize  int64 = 64 * 1024
-	maxRetries       = 10
+	maxRetries       = 7 // gives ~1m of overall timeout
 	maxDelay         = time.Minute
 	// if chunkSize cannot be transmitted after inactivityTimeout we will re-schedule download, so we expect more than 218 B/s
 	inactivityTimeout = 5 * time.Minute
@@ -141,7 +141,6 @@ func ExecCmd(ctx context.Context, cmd, host, remoteFile, localFile string, objSi
 		done := false
 		supportRange := false //is server supports ranges requests, false for the first request
 		forceRestart := false
-		NoSuitableAddrFound := false
 		delay := time.Second
 		lastModified := ""
 		appendToErrorList := func(attempt int, err error) {
@@ -199,16 +198,14 @@ func ExecCmd(ctx context.Context, cmd, host, remoteFile, localFile string, objSi
 			}
 			resp, err := client.Do(req)
 			if err != nil {
-				// skip the error from http *net.DNSError has the suffix of "no suitable address found"
-				// for a cleaner error string output for http download failure
-				if !IsNoSuitableAddrErr(err) {
-					appendToErrorList(attempt, fmt.Errorf("client.Do failed: %s", err))
-				} else {
-					if !NoSuitableAddrFound {
-						NoSuitableAddrFound = true
-						appendToErrorList(attempt, fmt.Errorf(NoSuitableAddrStr))
-					}
+				// break the retries loop and skip the error from
+				// http *net.DNSError if the error has the suffix
+				// of "no suitable address found"
+				if IsNoSuitableAddrErr(err) {
+					appendToErrorList(attempt, fmt.Errorf(NoSuitableAddrStr))
+					break
 				}
+				appendToErrorList(attempt, fmt.Errorf("client.Do failed: %s", err))
 				continue
 			}
 
