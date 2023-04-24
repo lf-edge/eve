@@ -1,0 +1,36 @@
+From 1d964dd33f356416a77e64aab1813557d6d83817 Mon Sep 17 00:00:00 2001
+From: Mikhail Malyshev <mikem@zededa.com>
+Date: Mon, 24 Apr 2023 11:09:33 +0000
+Subject: [PATCH] Add support for EM321 platform devices
+
+EM321 has the same schematics for LEDs so we can reuse
+the same structures
+
+Signed-off-by: Mikhail Malyshev <mikem@zededa.com>
+---
+ drivers/platform/x86/os-em32x.c | 9 +++++++++
+ 1 file changed, 9 insertions(+)
+
+diff --git a/drivers/platform/x86/os-em32x.c b/drivers/platform/x86/os-em32x.c
+index c18c20562cdc..966fb04cf56f 100644
+--- a/drivers/platform/x86/os-em32x.c
++++ b/drivers/platform/x86/os-em32x.c
+@@ -134,6 +134,15 @@ static const struct dmi_system_id os_dmi_table[] __initconst = {
+ 		.driver_data = &em320_config,
+ 		.callback = dmi_check_cb
+ 	},
++	{
++		.ident = "EM321",
++		.matches = {
++			DMI_MATCH(DMI_SYS_VENDOR, "Axiomtek Co., Ltd"),
++			DMI_MATCH(DMI_PRODUCT_NAME, "EM321"),
++		},
++		.driver_data = &em320_config,
++		.callback = dmi_check_cb
++	},
+ };
+ 
+ static struct i2c_client *client;
+-- 
+2.34.1
+
