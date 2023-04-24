@@ -159,7 +159,7 @@ EFI_PART=$(INSTALLER)/EFI
 BOOT_PART=$(INSTALLER)/boot
 BSP_IMX_PART=$(INSTALLER)/bsp-imx
 
-SBOM=$(ROOTFS).spdx.json
+SBOM?=$(ROOTFS).spdx.json
 COLLECTED_SOURCES=$(BUILD_DIR)/collected_sources.tar.gz
 DEVICETREE_DTB_amd64=
 DEVICETREE_DTB_arm64=$(DIST)/dtb/eve.dtb
