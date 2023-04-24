@@ -291,7 +291,7 @@ FORCE_BUILD=
 
 # for the go build sources
 GOSOURCES=$(BUILDTOOLS_BIN)/go-sources-and-licenses
-GOSOURCES_VERSION=bc8b291f04566f35172f3d30f66e02e339f0342c
+GOSOURCES_VERSION=91c965e0392ece0362bb9ac017ed052b679fc6f9
 GOSOURCES_SOURCE=github.com/deitch/go-sources-and-licenses
 
 
@@ -640,23 +640,7 @@ $(GOSOURCES):
 
 $(COLLECTED_SOURCES): $(ROOTFS_TAR) $(GOSOURCES)| $(INSTALLER)
 	$(QUIET): $@: Begin
-	$(eval TMP_ROOTDIR := $(shell mktemp -d))
-	# this is a bit of a hack, but we need to extract the rootfs tar to a directory, and it fails if
-	# we try to extract character devices, block devices or pipes, so we just exclude the dir.
-	# when syft supports reading straight from a tar archive with duplicate entries,
-	# this all can go away, and we can read the rootfs.tar
-	# see https://github.com/anchore/syft/issues/1400
-	tar xf $< -C $(TMP_ROOTDIR) --exclude "dev/*"
-	$(eval TMP_COLLECTED_SOURCES := $(shell mktemp -d))
-	bash tools/get-alpine-pkg-source.sh -s $(TMP_COLLECTED_SOURCES)/alpine -e $(TMP_ROOTDIR)
-	bash tools/get-kernel-source.sh -s $(TMP_COLLECTED_SOURCES)/kernel/
-	for i in $$(find . -name 'go.sum'); \
-		do								 		   \
-			$(GOSOURCES) sources -d $$(dirname $$i) --recursive --out $(TMP_COLLECTED_SOURCES)/go; \
-		done;
-	bash tools/generate-sources-manifests.sh $(TMP_COLLECTED_SOURCES)
-	tar -cf $(COLLECTED_SOURCES) -C $(TMP_COLLECTED_SOURCES) .
-	rm -rf $(TMP_ROOTDIR) $(TMP_COLLECTED_SOURCES)
+	bash tools/collect-sources.sh $< $(CURDIR) $@
 	$(QUIET): $@: Succeeded
 
 $(LIVE).raw: $(BOOT_PART) $(EFI_PART) $(ROOTFS_IMG) $(CONFIG_IMG) $(PERSIST_IMG) $(BSP_IMX_PART) | $(INSTALLER)
