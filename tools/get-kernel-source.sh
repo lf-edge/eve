@@ -14,21 +14,23 @@
 # Then outdir can be tarred together
 verbose=
 urlfile=
+prefix=
 outdir=/tmp/$$
 dockerfile="pkg/kernel/Dockerfile"
-while getopts vu:s: o
+while getopts vu:s:p: o
 do      case "$o" in
         v)      verbose=1;;
         s)      outdir=$OPTARG;;
         u)      urlfile=$OPTARG;;
-        [?])    >&2 echo "Usage: $0 [-v] [-s <outdir>] [-u <urlfile>] [<Dockerfile>]"
+        p)      prefix=$OPTARG;;
+        [?])    >&2 echo "Usage: $0 [-v] [-s <outdir>] [-u <urlfile>] [-p <prefix>] [<Dockerfile>]"
                 exit 1;;
         esac
 done
 shift $((OPTIND-1))
 if [ $# -gt 1 ]; then
     >&2 echo "Can specify at most one Dockerfile"
-    >&2 echo "Usage: $0 [-v] [-s <outdir>] [-u <urlfile>] [<Dockerfile>]"
+    >&2 echo "Usage: $0 [-v] [-s <outdir>] [-u <urlfile>] [-p <prefix>] [<Dockerfile>]"
     exit 1
 fi
 if [ $# = 1 ]; then
@@ -36,16 +38,19 @@ if [ $# = 1 ]; then
     shift
 fi
 
-if [ -d "$outdir" ]; then
-    >&2 echo "outdir $outdir already exists"
+checkdir=$outdir
+[ -n "$prefix" ] && checkdir="$outdir/$prefix"
+
+if [ -d "$checkdir" ]; then
+    >&2 echo "$checkdir already exists"
     exit 1
 fi
 
-mkdir -p "$outdir"
+mkdir -p "$checkdir"
 tmpurlfile=/tmp/$$.url
 
 # Make sure we have a binary
-if ! (cd tools/dockerfile-add-scanner; make); then
+if ! (cd tools/dockerfile-add-scanner; make >&2); then
     >&2 echo "Make dockerfile-add-scanner failed"
     exit 2
 fi
@@ -58,16 +63,18 @@ if [ -n "$urlfile" ]; then
     (cd "$outdir" || exit; cp -p "$tmpurlfile" "$urlfile")
 fi
 
-[ -n "$verbose" ] && echo "downloading using $tmpurlfile"
+[ -n "$verbose" ] && echo "downloading using $tmpurlfile" >&2
 # shellcheck disable=SC2002
 cat "$tmpurlfile" | while read -r url; do
-    dest=$(echo "$url" | cut -d'/' -f3- | tr "/" _)
-    dest="$outdir/$dest"
-    [ -n "$verbose" ] && echo "downloading: curl -sSLo $dest $url"
+    basedest=$(echo "$url" | cut -d'/' -f3- | tr "/" _)
+    [ -n "$prefix" ] && basedest="$prefix/$basedest"
+    dest="$outdir/$basedest"
+    [ -n "$verbose" ] && echo "downloading: curl -sSLo $dest $url" >&2
     if ! curl -sSLo "$dest" "$url"; then
         >&2 echo "curl $dest $url failed"
         exit 2
     fi
+    echo "kernel,${url},,${basedest}"
 done
 
 rm -f "$tmpurlfile"
