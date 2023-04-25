@@ -1,0 +1,155 @@
+@@ -1,7 +1,7 @@
+ #!/bin/sh
+
+ # this is the init script version
+-VERSION=3.6.2-r0
++VERSION=3.6.2-EVE
+ SINGLEMODE=no
+ sysroot=/sysroot
+ splashfile=/.splash.ctrl
+@@ -347,7 +347,7 @@
+        cryptdiscards cryptkey debug_init dma init init_args keep_apk_new modules ovl_dev
+        pkgs quiet root_size root usbdelay ip alpine_repo apkovl alpine_start splash
+        blacklist overlaytmpfs overlaytmpfsflags rootfstype rootflags nbd resume s390x_net
+-       dasd ssh_key BOOTIF zfcp"
++       dasd ssh_key BOOTIF zfcp find_boot"
+
+ for opt; do
+"/tmp/initramfs-init.patch2" 115L, 4622B                           1,1           Top
+-VERSION=3.6.2-r0
++		mount -t proc proc /media/root-rw
+ 	else
+ 		if [ "$rootfstype" = "zfs" ]; then
+ 			prepare_zfs_root
+@@ -557,7 +605,8 @@
+ 	fi
+
+ 	eend $?
+-	cat /proc/mounts | while read DEV DIR TYPE OPTS ; do
++
++	grep -vE '^(proc|sysfs|devtmpfs|devpts|shm) ' /proc/mounts | while read DEV DIR TYPE OPTS ; do
+ 		if [ "$DIR" != "/" -a "$DIR" != "$sysroot" -a -d "$DIR" ]; then
+ 			mkdir -p $sysroot/$DIR
+ 			mount -o move $DIR $sysroot/$DIR
+/ # diff -u /usr/share/mkinitfs/initramfs-init.orig /usr/share/mkinitfs/initramfs-ini
+t > /tmp/initramfs-init.patch
+initramfs-init.patch   initramfs-init.patch2
+/ # diff -u /usr/share/mkinitfs/initramfs-init.orig /usr/share/mkinitfs/initramfs-ini
+t > /tmp/initramfs-init.patch2
+/ # vim /tmp/initramfs-init.patch2
+/ # cat /tmp/initramfs-init.patch2
+--- a/usr/share/mkinitfs/initramfs-init
++++ b/usr/share/mkinitfs/initramfs-init
+@@ -1,7 +1,7 @@
+ #!/bin/sh
+
+ # this is the init script version
+-VERSION=3.6.2-r0
++VERSION=3.6.2-EVE
+ SINGLEMODE=no
+ sysroot=/sysroot
+ splashfile=/.splash.ctrl
+@@ -347,7 +347,7 @@
+ 	cryptdiscards cryptkey debug_init dma init init_args keep_apk_new modules ovl_dev
+ 	pkgs quiet root_size root usbdelay ip alpine_repo apkovl alpine_start splash
+ 	blacklist overlaytmpfs overlaytmpfsflags rootfstype rootflags nbd resume s390x_net
+-	dasd ssh_key BOOTIF zfcp"
++	dasd ssh_key BOOTIF zfcp find_boot"
+
+ for opt; do
+ 	case "$opt" in
+@@ -502,6 +502,40 @@
+ # zpool reports /dev/zfs missing if it can't read /etc/mtab
+ ln -s /proc/mounts /etc/mtab
+
++# let's see if we were told to identify a boot partition
++if [ -n "$KOPT_find_boot" ]; then
++        # locate boot media and mount it
++        # NOTE that we may require up to 3 tries with
++        # 30 seconds pauses between them to accommodate
++        # really slow controllers (such as bad USB sticks)
++        for i in 0 1 2; do
++                ebegin "Attempt $i to find and mount boot media"
++                MEDIA_ID=$(grep -l "$KOPT_find_boot" /media/*/boot/.uuid 2>/dev/null)
++                if [ -n "$MEDIA_ID" ]; then
++                        mkdir -p /media/boot
++                        mount --bind "/media/$(echo "$MEDIA_ID" | cut -f3 -d/)" /media/boot
++                        break
++                fi
++                sleep $(( i * 30 ))
++                nlplug-findfs $cryptopts -p /sbin/mdev ${KOPT_debug_init:+-d} \
++                   ${KOPT_usbdelay:+-t $(( $KOPT_usbdelay * 1000 ))} \
++                   -n -b $repofile -a /tmp/apkovls
++                eend $?
++        done
++
++        # if we didn't find anything, but were asked to -- treat it
++        # as an error condition (it maybe transient, but it needs to
++        # be corrected)
++        if [ -z "$MEDIA_ID" ]; then
++                echo "Failed to identify boot media. Try to re-run nlplug-findfs manually to see what's wrong:"
++                echo "  nlplug-findfs -p /sbin/mdev -d -t 30000 -n  -n -b $repofile -a /tmp/apkovls"
++                echo "once you find boot device, run:"
++                echo "  mount --bind /media/XXX /media/boot"
++                echo "and then exit the shell."
++                sh
++        fi
++fi
++
+ # check if root=... was set
+ if [ -n "$KOPT_root" ]; then
+ 	if [ "$SINGLEMODE" = "yes" ]; then
+@@ -510,9 +544,24 @@
+ 	fi
+
+ 	ebegin "Mounting root"
+-	nlplug-findfs $cryptopts -p /sbin/mdev ${KOPT_debug_init:+-d} \
+-		$KOPT_root
++        if [ -f "$KOPT_root" ]; then
++                LOOP_IMG=$(realpath "$KOPT_root")
++                # workaround linux kernel's desire to lump the entire
++                # set of initrd images into /initrd.image
++                if [ "$LOOP_IMG" = /initrd.image ]; then
++                        OFFSET=$(LANG=C grep -obUaP hsqs /initrd.image|cut -f1 -d:|head -1)
++                        if [ -n "$OFFSET" ]; then
++                                LOSETUP_EXTRA_OPTS="-o$OFFSET"
++                        fi
++                fi
+
++                KOPT_root=$(losetup -f)
++                losetup $LOSETUP_EXTRA_OPTS -r -f "$LOOP_IMG"
++        else
++                nlplug-findfs $cryptopts -p /sbin/mdev ${KOPT_debug_init:+-d} \
++                        $KOPT_root
++        fi
++
+ 	if echo "$KOPT_modules $rootfstype" | grep -qw btrfs; then
+ 		/sbin/btrfs device scan >/dev/null || \
+ 			echo "Failed to scan devices for btrfs filesystem."
+@@ -539,14 +588,13 @@
+ 		rootflags="${KOPT_rootflags:+$KOPT_rootflags,}ro"
+ 		mount ${KOPT_rootfstype:+-t $KOPT_rootfstype} -o $rootflags \
+ 			$KOPT_root /media/root-ro
+-		# Mount writable overlay tmpfs
+-		overlaytmpfsflags="mode=0755,${KOPT_overlaytmpfsflags:+$KOPT_overlaytmpfsflags,}rw"
+-		mount -t tmpfs -o $overlaytmpfsflags root-tmpfs /media/root-rw
+ 		# Create additional mountpoints and do the overlay mount
+ 		mkdir -p /media/root-rw/work /media/root-rw/root
+ 		mount -t overlay -o \
+ 			lowerdir=/media/root-ro,upperdir=/media/root-rw/root,workdir=/media/root-rw/work \
+ 			overlayfs $sysroot
++		# this protects /media/root-rw from being destroyed by switch_root
++		mount -t proc proc /media/root-rw
+ 	else
+ 		if [ "$rootfstype" = "zfs" ]; then
+ 			prepare_zfs_root
+@@ -557,7 +605,8 @@
+ 	fi
+
+ 	eend $?
+-	cat /proc/mounts | while read DEV DIR TYPE OPTS ; do
++
++	grep -vE '^(proc|sysfs|devtmpfs|devpts|shm) ' /proc/mounts | while read DEV DIR TYPE OPTS ; do
+ 		if [ "$DIR" != "/" -a "$DIR" != "$sysroot" -a -d "$DIR" ]; then
+ 			mkdir -p $sysroot/$DIR
+ 			mount -o move $DIR $sysroot/$DIR

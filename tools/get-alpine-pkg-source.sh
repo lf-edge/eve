@@ -42,8 +42,6 @@ do      case "$o" in
 done
 shift $((OPTIND-1))
 
-# ensure absolute path for outdir
-outdir=$(readlink -f "${outdir}")
 
 if [ $# == 0 ] && [ -z "$tags" ] && [ -z "$evedir" ]; then
     >&2 echo "Usage: $0 [-v] [-s <outdir>] [-u <urlfile>] [-t <tag>]+ [-e <evedir>] [<version>]"
@@ -67,6 +65,8 @@ fi
 
 startdir=$(pwd)
 mkdir -p "$outdir"
+# ensure absolute path for outdir
+outdir=$(readlink -f "${outdir}")
 cd "$outdir" || exit 2
 
 [ -n "$verbose" ] && echo "outdir: $outdir"
@@ -137,7 +137,7 @@ while read -r line ; do
     # shellcheck disable=SC2086
     set -- $line
     [ $# -lt 3 ] && continue
-    origin=$1   
+    origin=$1
     version=$2
     commit=$3
     shift 3
@@ -277,5 +277,4 @@ if [ -n "$badfileslist" ]; then
     for b in $badfileslist; do
         echo "  $b"
     done
-    exit 1
 fi

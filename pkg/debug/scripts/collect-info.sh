@@ -5,7 +5,7 @@
 #
 
 # Script version, don't forget to bump up once something is changed
-VERSION=3
+VERSION=4
 
 DATE=$(date -Is)
 INFO_DIR="eve-info-v$VERSION-$DATE"
@@ -143,6 +143,14 @@ qemu-affinities.sh    > "$DIR/qemu-affinities"
 
 echo "- iommu groups"
 iommu-groups.sh       > "$DIR/iommu-groups"
+
+echo "- TPM event log"
+find /sys/kernel/security -name "tpm*" | while read -r TPM; do
+    if [ -f "$TPM/binary_bios_measurements" ]; then
+        TPM_LOG="$(basename "$TPM").event_log"
+        ln -s "$TPM/binary_bios_measurements" "$DIR/$TPM_LOG"
+    fi
+done
 
 ln -s /persist/status   "$DIR/persist-status"
 ln -s /persist/log      "$DIR/persist-log"
