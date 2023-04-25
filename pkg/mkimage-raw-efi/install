@@ -22,6 +22,7 @@
 #   eve_install_skip_rootfs
 #   eve_install_skip_zfs_checks
 #   eve_install_zfs_with_raid_level
+#   eve_install_clustered_storage_sizeGB
 #
 BAIL_FINAL_CMD=${BAIL_FINAL_CMD:-"exit 1"}
 [ -n "$DEBUG" ] && set -x
@@ -139,7 +140,7 @@ collect_black_box() {
    pillar_run tpmmgr saveTpmInfo "$1"/tpminfo.txt
 }
 
-# prepare_mounts_and_zfs_pool POOL_CREATION_COMMAND_SUFFIX_SUFFIX
+# prepare_mounts_and_zfs_pool POOL_CREATION_COMMAND_SUFFIX_SUFFIX CLUSTERED_STORAGE_SIZE
 prepare_mounts_and_zfs_pool() {
   logmsg "Preparing ZFS pool and mounts"
   [ -e /root/sys ] || mkdir /root/sys && mount -t sysfs sysfs /root/sys
@@ -153,6 +154,28 @@ prepare_mounts_and_zfs_pool() {
   chroot /root zfs create -o mountpoint="/persist/containerd/io.containerd.snapshotter.v1.zfs" persist/snapshots
   # we need this mount to propagate persist from /root/persist after call to zfs command in changed root
   [ -e /persist ] || mkdir /persist && mount --rbind --make-rslave /root/persist /persist
+
+  # If clustered storage, then create volume of that size and format it with ext4
+  # When k3s cluster components start they will mount this volume
+  # If zfs-udev module is available at this point we will use path to the volume
+  # else we will format the raw device /dev/zd0 which is guaranteed to exist since its the first
+  # zfs volume being created on this device.
+  SIZEGB=$2
+  if [ $SIZEGB -gt 0 ]; then
+     SIZEGB=$SIZEGB"G"
+     logmsg "Creating clustered-storage volume of size $SIZEGB"  
+     /sbin/modprobe  zfs-udev
+     chroot /root zfs create -V $SIZEGB -o volblocksize=16k persist/clustered-storage
+     if [ -b /dev/zvol/persist/clustered-storage ]; then
+        logmsg "Formatting clustered-storage to ext4"
+     	/sbin/mkfs -t ext4 /dev/zvol/persist/clustered-storage
+     elif [ -b /dev/zd0 ]; then
+        logmsg "Formatting /dev/zd0 to ext4"
+     	/sbin/mkfs -t ext4 /dev/zd0
+     else
+        logmsg "FATAL: clustered-storage volume creation failed."
+     fi
+  fi
 }
 
 zfs_umount() {
@@ -283,7 +306,10 @@ DISKS_TO_MERGE_COUNT=0
 PDEV_LIST=""
 MULTIPLE_DISKS=false
 INSTALL_ZFS=false
+INSTALL_CLUSTERED_STORAGE=false
+CLUSTERED_STORAGE_SIZEGB=0
 grep -q eve_install_zfs_with_raid_level /proc/cmdline && INSTALL_ZFS=true
+grep -q eve_install_clustered_storage_sizeGB /proc/cmdline && INSTALL_CLUSTERED_STORAGE=true && INSTALL_ZFS=true
 RAID_LEVEL="none"
 
 
@@ -299,6 +325,12 @@ if [ "$INSTALL_ZFS" = true ]; then
       POOL_CREATION_COMMAND_SUFFIX="$POOL_CREATION_COMMAND_SUFFIX $P3_ON_BOOT_PLACEHOLDER"
       logmsg "Installing EVE and ZFS on same drive $DISK_WITH_P3"
    fi
+fi
+
+# In clustered storage config we always install ZFS with raid0 (none)
+if [ "$INSTALL_CLUSTERED_STORAGE" = true ]; then
+   RAID_LEVEL="none"
+   CLUSTERED_STORAGE_SIZEGB=$(</proc/cmdline tr ' ' '\012' | sed -ne '/^eve_install_clustered_storage_sizeGB=/s#^.*=##p')
 fi
 
 if [ "$INSTALL_DEV" != "$INSTALL_PERSIST" ]; then
@@ -393,7 +425,7 @@ if [ "$INSTALL_ZFS" = true ]; then
 
   logmsg "Creating ZFS pool with raid level: $RAID_LEVEL"
   logmsg "Pool creation command: $POOL_CREATION_COMMAND_SUFFIX"
-  prepare_mounts_and_zfs_pool "$POOL_CREATION_COMMAND_SUFFIX"
+  prepare_mounts_and_zfs_pool "$POOL_CREATION_COMMAND_SUFFIX" "$CLUSTERED_STORAGE_SIZEGB"
   if [ -z "$RANDOM_DISK_UUIDS" ]; then
       # Walk disks and set fixed UUIDs
       # We assume that as part of adding to the zpool there is partition 1 and 9

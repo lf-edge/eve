@@ -71,6 +71,8 @@ const (
 	ITokenFile = "/run/eve.integrity_token"
 	//EveVersionFile contains the running version of EVE
 	EveVersionFile = "/run/eve-release"
+	//EveVirtTypeFile contains the virtualization type, ie kvm, xen or kubevirt
+	EveVirtTypeFile = "/run/eve-virt-type"
 	//DefaultVaultName is the name of the default vault
 	DefaultVaultName = "Application Data Store"
 

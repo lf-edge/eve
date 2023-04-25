@@ -5,3 +5,10 @@
 ID=$(zboot curpart 2>/dev/null)
 echo "${ID:-RAM}" > /run/eve.id
 cp -p /etc/eve-release /run/eve-release
+v=$(cat /run/eve-release)
+echo $v | grep kubevirt
+if [ $? -eq 0 ]; then
+   echo "kubevirt" > /run/eve-virt-type
+else
+   echo "kvm" > /run/eve-virt-type
+fi
