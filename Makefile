@@ -167,8 +167,10 @@ BSP_IMX_PART=$(INSTALLER)/bsp-imx
 SBOM=$(ROOTFS).spdx.json
 
 ROOTFS_YML=images/rootfs.yml.in
+MAX_PARTITION_SIZE=250
 ifeq ($(HV),kubevirt)
 ROOTFS_YML=images/kubevirt-rootfs.yml.in
+MAX_PARTITION_SIZE=300
 endif
 
 COLLECTED_SOURCES=$(BUILD_DIR)/collected_sources.tar.gz
@@ -634,7 +636,7 @@ $(ROOTFS_IMG): $(ROOTFS_TAR) | $(INSTALLER)
 	$(QUIET): $@: Begin
 	./tools/makerootfs.sh imagefromtar -t $(ROOTFS_TAR) -i $@ -f $(ROOTFS_FORMAT) -a $(ZARCH)
 	@echo "size of $@ is $$(wc -c < "$@")B"
-	@[ $$(wc -c < "$@") -gt $$(( 250 * 1024 * 1024 )) ] && \
+	@[ $$(wc -c < "$@") -gt $$(( $(MAX_PARTITION_SIZE) * 1024 * 1024 )) ] && \
 	        echo "ERROR: size of $@ is greater than 250MB (bigger than allocated partition)" && exit 1 || :
 	$(QUIET): $@: Succeeded
 
@@ -922,7 +924,7 @@ eve-%: pkg/%/Dockerfile build-tools $(RESCAN_DEPS)
   	fi
 	$(QUIET): "$@: Succeeded (intermediate for pkg/%)"
 
-images/rootfs-%.yml.in: images/rootfs.yml.in FORCE
+images/rootfs-%.yml.in: ${ROOTFS_YML} FORCE
 	$(QUITE)tools/compose-image-yml.sh $< $@ "$(ROOTFS_VERSION)-$*-$(ZARCH)"
 
 images-patches := $(wildcard images/*.yq)
