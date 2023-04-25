@@ -428,6 +428,7 @@ type NodeAgentStatus struct {
 	RebootImage                string
 	LocalMaintenanceMode       bool                  //enter Maintenance Mode
 	LocalMaintenanceModeReason MaintenanceModeReason //reason for Maintenance Mode
+	KubeClusterMode            bool
 }
 
 // Key :

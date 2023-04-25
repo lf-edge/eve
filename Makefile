@@ -30,8 +30,13 @@ endif
 EVE_SNAPSHOT_VERSION=0.0.0
 # which language bindings to generate for EVE API
 PROTO_LANGS=go python
-# Use 'make HV=acrn|xen|kvm' to build ACRN images (AMD64 only), Xen or KVM
+# Use 'make HV=acrn|xen|kvm|kubevirt' to build ACRN images (AMD64 only), Xen, Kubevirt or KVM
 HV=$(HV_DEFAULT)
+
+ifeq ($(HV),kubevirt)
+HV_DEFAULT=kubevirt
+endif
+
 # Enable development build (disabled by default)
 DEV=n
 # How large to we want the disk to be in Mb
@@ -160,6 +165,13 @@ BOOT_PART=$(INSTALLER)/boot
 BSP_IMX_PART=$(INSTALLER)/bsp-imx
 
 SBOM?=$(ROOTFS).spdx.json
+
+ROOTFS_YML=images/rootfs.yml.in
+ifeq ($(HV),kubevirt)
+ROOTFS_YML=images/kubevirt-rootfs.yml.in
+endif
+
+>>>>>>> 1a51864ba (Add kubevirt and k3s components to EVE)
 COLLECTED_SOURCES=$(BUILD_DIR)/collected_sources.tar.gz
 DEVICETREE_DTB_amd64=
 DEVICETREE_DTB_arm64=$(DIST)/dtb/eve.dtb
@@ -325,7 +337,15 @@ endif
 
 # We are currently filtering out a few packages from bulk builds
 # since they are not getting published in Docker HUB
-PKGS_$(ZARCH)=$(shell ls -d pkg/* | grep -Ev "eve|test-microsvcs|alpine")
+ifeq ($(HV),kubevirt)
+   PKGS_$(ZARCH)=$(shell ls -d pkg/* | grep -Ev "eve|test-microsvcs|alpine")
+   DOCKER_COMPOSE_YAML=kubevirt-docker-compose.yml
+else
+   #eve-k3s container will not be in non-kubevirt builds
+   PKGS_$(ZARCH)=$(shell ls -d pkg/* | grep -Ev "eve|test-microsvcs|alpine|k3s")
+   DOCKER_COMPOSE_YAML=docker-compose.yml
+endif
+
 PKGS_riscv64=pkg/ipxe pkg/mkconf pkg/mkimage-iso-efi pkg/grub     \
              pkg/mkimage-raw-efi pkg/uefi pkg/u-boot pkg/cross-compilers pkg/new-kernel \
 	     pkg/debug pkg/dom0-ztools pkg/gpt-tools pkg/storage-init pkg/mkrootfs-squash \
@@ -505,8 +525,8 @@ run-grub: $(BIOS_IMG) $(UBOOT_IMG) $(EFI_PART) $(DEVICETREE_DTB) $(SWTPM)  GETTY
 run-compose: images/version.yml
 	# we regenerate this on every run, in case things changed
 	$(PARSE_PKGS) > tmp/images
-	docker-compose -f docker-compose.yml run storage-init sh -c 'rm -rf /run/* /config/* ; cp -Lr /conf/* /config/ ; echo IMGA > /run/eve.id'
-	docker-compose -f docker-compose.yml --env-file tmp/images up
+	docker-compose -f ${DOCKER_COMPOSE_YAML} run storage-init sh -c 'rm -rf /run/* /config/* ; cp -Lr /conf/* /config/ ; echo IMGA > /run/eve.id'
+	docker-compose -f ${DOCKER_COMPOSE_YAML} --env-file tmp/images up
 
 run-proxy:
 	ssh $(SSH_PROXY) -N -i $(SSH_KEY) -p $(SSH_PORT) -o StrictHostKeyChecking=no -o GlobalKnownHostsFile=/dev/null -o UserKnownHostsFile=/dev/null root@localhost &
@@ -912,7 +932,7 @@ eve-%: pkg/%/Dockerfile build-tools $(RESCAN_DEPS)
 	$(eval LINUXKIT_BUILD_PLATFORMS_LIST := $(call uniq,linux/$(ZARCH) $(if $(filter $(PKGS_HOSTARCH),$*),linux/$(HOSTARCH),)))
 	$(eval LINUXKIT_BUILD_PLATFORMS := --platforms $(subst $(space),$(comma),$(strip $(LINUXKIT_BUILD_PLATFORMS_LIST))))
 	$(eval LINUXKIT_FLAGS := $(if $(filter manifest,$(LINUXKIT_PKG_TARGET)),,$(FORCE_BUILD) $(LINUXKIT_DOCKER_LOAD) $(LINUXKIT_BUILD_PLATFORMS)))
-	$(QUIET)$(LINUXKIT) $(DASH_V) pkg $(LINUXKIT_PKG_TARGET) $(LINUXKIT_OPTS) $(LINUXKIT_FLAGS) -build-yml $(call get_pkg_build_yml,$*) pkg/$*
+	$(QUIET)$(LINUXKIT) $(DASH_V) pkg $(LINUXKIT_PKG_TARGET) -network $(LINUXKIT_OPTS) $(LINUXKIT_FLAGS) -build-yml $(call get_pkg_build_yml,$*) pkg/$*
 	$(QUIET)if [ -n "$(PRUNE)" ]; then \
   		$(LINUXKIT) pkg builder prune; \
   		docker image prune -f; \

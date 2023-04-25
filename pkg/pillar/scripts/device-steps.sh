@@ -25,6 +25,7 @@ TPMINFOTEMPFILE=/var/tmp/tpminfo.txt
 
 echo "$(date -Ins -u) Starting device-steps.sh"
 echo "$(date -Ins -u) EVE version: $(cat /run/eve-release)"
+echo "$(date -Ins -u) EVE virtualization type : $(cat /run/eve-virt-type)"
 
 if [ -f "$FIRSTBOOTFILE" ]; then
   FIRSTBOOT=1
