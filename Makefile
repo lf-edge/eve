@@ -167,10 +167,10 @@ BSP_IMX_PART=$(INSTALLER)/bsp-imx
 SBOM?=$(ROOTFS).spdx.json
 
 ROOTFS_YML=images/rootfs.yml.in
-MAX_PARTITION_SIZE=250
+MAX_PARTITION_SIZEMB=250
 ifeq ($(HV),kubevirt)
 ROOTFS_YML=images/kubevirt-rootfs.yml.in
-MAX_PARTITION_SIZE=300
+MAX_PARTITION_SIZEMB=350
 endif
 
 >>>>>>> 1a51864ba (Add kubevirt and k3s components to EVE)
@@ -648,8 +648,8 @@ $(ROOTFS_IMG): $(ROOTFS_TAR) | $(INSTALLER)
 	$(QUIET): $@: Begin
 	./tools/makerootfs.sh imagefromtar -t $(ROOTFS_TAR) -i $@ -f $(ROOTFS_FORMAT) -a $(ZARCH)
 	@echo "size of $@ is $$(wc -c < "$@")B"
-	@[ $$(wc -c < "$@") -gt $$(( $(MAX_PARTITION_SIZE) * 1024 * 1024 )) ] && \
-	        echo "ERROR: size of $@ is greater than 250MB (bigger than allocated partition)" && exit 1 || :
+	@[ $$(wc -c < "$@") -gt $$(( $(MAX_PARTITION_SIZEMB) * 1024 * 1024 )) ] && \
+	        echo "ERROR: size of $@ is greater than $(MAX_PARTITION_SIZEMB)MB (bigger than allocated partition)" && exit 1 || :
 	$(QUIET): $@: Succeeded
 
 sbom_info:
