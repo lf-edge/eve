@@ -908,9 +908,7 @@ func (r *LinuxDpcReconciler) getIntendedL3Cfg(dpc types.DevicePortConfig) dg.Gra
 	intendedL3 := dg.New(graphArgs)
 	intendedL3.PutSubGraph(r.getIntendedAdapters(dpc))
 	// XXX comment out this ip rule, this prevents kubernetes pods communicate
-	// with the api server. We may need to test out on if this affects the hari-pinning
-	// of Apps. On the other hand, if EVE Apps are kubernetes pods, they can communicate
-	// with each other by default.
+	// tried other approaches and not finding the right solutions
 	if !r.kubeClusterMode {
 		intendedL3.PutSubGraph(r.getIntendedSrcIPRules(dpc))
 	}
@@ -1532,7 +1530,10 @@ func (r *LinuxDpcReconciler) getIntendedACLs(
 	}
 
 	protoMarkV4Rules := []iptables.Rule{
-		markSSHAndGuacamole, markVnc, markIcmpV4, markDhcp, markDns,
+		markSSHAndGuacamole, markVnc, markIcmpV4, markDhcp,
+	}
+	if r.kubeClusterMode {
+		protoMarkV4Rules = append(protoMarkV4Rules, markDns)
 	}
 	protoMarkV6Rules := []iptables.Rule{
 		markSSHAndGuacamole, markVnc, markIcmpV6,

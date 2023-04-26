@@ -774,7 +774,7 @@ func parseSMARTData() {
 
 // IsKubeCluster - if the image is kube cluster type
 func IsKubeCluster() bool {
-	retbytes, err := os.ReadFile("/run/eve-release")
+	retbytes, err := os.ReadFile(types.EveVirtTypeFile)
 	if err != nil {
 		return false
 	}

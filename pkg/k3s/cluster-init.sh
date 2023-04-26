@@ -41,33 +41,33 @@ mount --make-rshared /
 setup_cgroup                                                   
 
 while true;
-do         
+do
 if [ ! -d /var/lib/longhorn ]; then
-        check_network_connection                 
+        check_network_connection
         if [ $network_available = "false" ]; then
                 echo "Waiting for network connectivity" >> $INSTALL_LOG
-        else                                                           
+        else
 		echo "Installing K3S version $K3S_VERSION" >> $INSTALL_LOG
-		nohup /usr/bin/k3s server  --cluster-init --log=/var/log/k3s.log  &                                
+		nohup /usr/bin/k3s server  --cluster-init --log=/var/log/k3s.log  &
                 # A lame way for doing things, but ok for now
-		sleep 60 
-		echo "Installing patched Kubevirt" >> $INSTALL_LOG                                       
-		kubectl apply -f /etc/kubevirt-operator.yaml 
-                echo "Installing Kubevirt CR version $KUBEVIRT_VERSION" >> $INSTALL_LOG 
-		kubectl apply -f https://github.com/kubevirt/kubevirt/releases/download/${KUBEVIRT_VERSION}/kubevirt-cr.yaml      
-		
-		echo "Installing patched longhorn" >> $INSTALL_LOG                                       
-                kubectl apply -f /etc/longhorn-config.yaml 
-        fi                                                                                                                
-else                                                                                                                      
-	ps -ef | grep "k3s server" | grep -v "grep" >> $INSTALL_LOG 
+		sleep 60
+		echo "Installing patched Kubevirt" >> $INSTALL_LOG
+		kubectl apply -f /etc/kubevirt-operator.yaml
+                echo "Installing Kubevirt CR version $KUBEVIRT_VERSION" >> $INSTALL_LOG
+		kubectl apply -f https://github.com/kubevirt/kubevirt/releases/download/${KUBEVIRT_VERSION}/kubevirt-cr.yaml
+
+		echo "Installing patched longhorn" >> $INSTALL_LOG
+                kubectl apply -f /etc/longhorn-config.yaml
+        fi
+else
+	ps -ef | grep "k3s server" | grep -v "grep" >> $INSTALL_LOG
         if [ $? -eq 0 ]; then
-        	echo "k3s is alive " >> $INSTALL_LOG                                                               
+        	echo "k3s is alive " >> $INSTALL_LOG
         else
 		## Must be after reboot
 		echo "Starting k3s server " >> $INSTALL_LOG
-		nohup /usr/bin/k3s server --log=/var/log/k3s.log  &                                
+		nohup /usr/bin/k3s server --log=/var/log/k3s.log  &
         fi
-fi                                                   
-        sleep 15                                     
-done 
+fi
+        sleep 15
+done
