@@ -5,7 +5,7 @@ if test -f /proc/vmcore; then
     exit 0;
 fi
 
-default_cgroup_memory_limit=838860800 #800M
+default_cgroup_memory_limit=838860800000 #800M
 default_cgroup_cpus_limit=1
 
 dom0_cgroup_memory_soft_limit=$(</proc/cmdline grep -o '\bdom0_mem=[^, ]*' | cut -d = -f 2)
@@ -66,7 +66,7 @@ if [ -z "${ctrd_cgroup_cpus_limit}" ] || [ "${ctrd_cgroup_cpus_limit}" = "0" ]; 
 fi
 
 CGROUPS="cpuset cpu cpuacct blkio memory devices freezer net_cls perf_event net_prio hugetlb pids systemd "
-EVESRVICES="sshd edgeview wwan wlan lisp guacd pillar vtpm watchdog xen-tools newlogd "
+EVESRVICES="sshd edgeview wwan wlan lisp guacd pillar vtpm watchdog xen-tools newlogd eve-k3s " 
 
 #Creating eve cgroup which will be parent/dom0 cgroup
 for cg in $CGROUPS; do
