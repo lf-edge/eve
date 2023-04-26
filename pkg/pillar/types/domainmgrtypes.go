@@ -30,6 +30,7 @@ type DomainConfig struct {
 	Activate       bool   // Actually start the domU as opposed to prepare
 	AppNum         int    // From networking; makes the name unique
 	VmConfig
+	DisableLogs    bool
 	GPUConfig      string
 	DiskConfigList []DiskConfig
 	VifList        []VifConfig
@@ -198,6 +199,10 @@ func (config DomainConfig) LogKey() string {
 // Some of these items can be overridden by matching Targets in
 // StorageConfigList. For example, a Target of "kernel" means to set/override
 // the Kernel attribute below.
+//
+// Keep in mind that the fields in this structure are considered
+// so-called "fixed resources", which means that the virtual machine
+// must be restarted before changes to the field will take effect.
 type VmConfig struct {
 	Kernel     string // default ""
 	Ramdisk    string // default ""
@@ -223,7 +228,6 @@ type VmConfig struct {
 	EnableVnc          bool
 	VncDisplay         uint32
 	VncPasswd          string
-	DisableLogs        bool
 	CPUsPinned         bool
 }
 
