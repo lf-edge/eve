@@ -621,7 +621,13 @@ $(ROOTFS_IMG): $(ROOTFS_TAR) | $(INSTALLER)
 	        echo "ERROR: size of $@ is greater than 250MB (bigger than allocated partition)" && exit 1 || :
 	$(QUIET): $@: Succeeded
 
-$(SBOM): $(ROOTFS_TAR) | $(INSTALLER)
+sbom_info:
+	@echo "$(SBOM)"
+
+collected_sources_info:
+	@echo "$(COLLECTED_SOURCES)"
+
+$(SBOM): $(ROOTFS_TAR)| $(INSTALLER)
 	$(QUIET): $@: Begin
 	$(eval TMP_ROOTDIR := $(shell mktemp -d))
 	# this is a bit of a hack, but we need to extract the rootfs tar to a directory, and it fails if

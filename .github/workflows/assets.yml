@@ -75,6 +75,14 @@ jobs:
              mv assets/kernel assets/kernel.gz
              gzip -d assets/kernel.gz
           fi
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      - name: Build SBOM and collected sources
+        run: |
+          make sbom collected_sources
+          mkdir -p assets
+          mv $(make sbom_info collected_sources_info) assets/
       - name: Create a GitHub release and clean up artifacts
         id: create-release
         uses: actions/github-script@v3
@@ -208,4 +216,24 @@ jobs:
           upload_url: ${{ steps.create-release.outputs.result }}
           asset_path: assets/ipxe.efi.ip.cfg
           asset_name: ${{ env.ARCH }}.ipxe.efi.ip.cfg
+          asset_content_type: application/octet-stream
+      - name: Upload SBOM
+        id: upload-sbom-asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create-release.outputs.result }}
+          asset_path: assets/rootfs.spdx.json
+          asset_name: rootfs.spdx.json
+          asset_content_type: application/json
+      - name: Upload COLLECTED_SOURCES
+        id: upload-collected-sources-asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create-release.outputs.result }}
+          asset_path: assets/collected_sources.tar.gz
+          asset_name: collected_sources.tar.gz
           asset_content_type: application/octet-stream
