@@ -168,6 +168,7 @@ func TestNewConfigItemSpecMap(t *testing.T) {
 		NetworkTestBetterInterval,
 		NetworkTestTimeout,
 		NetworkSendTimeout,
+		NetworkDialTimeout,
 		Dom0MinDiskUsagePercent,
 		AppContainerStatsInterval,
 		VaultReadyCutOffTime,

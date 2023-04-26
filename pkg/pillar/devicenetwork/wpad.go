@@ -100,7 +100,7 @@ func getPacFile(log *base.LogObject, url string, dns *types.DeviceNetworkStatus,
 	ifname string, metrics *zedcloud.AgentMetrics) (string, error) {
 
 	zedcloudCtx := zedcloud.NewContext(log, zedcloud.ContextOptions{
-		Timeout:          15,
+		SendTimeout:      15,
 		AgentName:        "wpad",
 		AgentMetrics:     metrics,
 		DevNetworkStatus: dns,

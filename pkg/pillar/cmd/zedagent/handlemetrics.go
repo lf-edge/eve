@@ -101,9 +101,7 @@ func handleAppDiskMetricCreate(ctxArg interface{}, key string, _ interface{}) {
 		if key != types.PathToKey(volumeStatus.FileLocation) {
 			continue
 		}
-		uuidStr := volumeStatus.VolumeID.String()
-		PublishVolumeToZedCloud(ctx, uuidStr, &volumeStatus,
-			ctx.iteration, AllDest)
+		triggerPublishObjectInfo(ctx, info.ZInfoTypes_ZiVolume, key)
 	}
 	log.Functionf("handleAppDiskMetricCreate: %s", key)
 }

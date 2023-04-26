@@ -1,6 +1,9 @@
 package zedagent
 
-import "github.com/lf-edge/eve/pkg/pillar/types"
+import (
+	"github.com/lf-edge/eve/api/go/info"
+	"github.com/lf-edge/eve/pkg/pillar/types"
+)
 
 func blobStatusGetAll(ctx *zedagentContext) map[string]*types.BlobStatus {
 	sub := ctx.subBlobStatus
@@ -24,18 +27,12 @@ func handleBlobStatusModify(ctxArg interface{}, key string,
 
 func handleBlobStatusImpl(ctxArg interface{}, key string,
 	statusArg interface{}) {
-
-	status := statusArg.(types.BlobStatus)
 	ctx := ctxArg.(*zedagentContext)
-	uuidStr := status.Key()
-	PublishBlobInfoToZedCloud(ctx, uuidStr, &status, ctx.iteration, AllDest)
-	ctx.iteration++
+	triggerPublishObjectInfo(ctx, info.ZInfoTypes_ZiBlobList, key)
 }
 
 func handleBlobDelete(ctxArg interface{}, key string, statusArg interface{}) {
 	status := statusArg.(types.BlobStatus)
 	ctx := ctxArg.(*zedagentContext)
-	uuidStr := status.Key()
-	PublishBlobInfoToZedCloud(ctx, uuidStr, nil, ctx.iteration, AllDest)
-	ctx.iteration++
+	triggerPublishDeletedObjectInfo(ctx, info.ZInfoTypes_ZiBlobList, key, status)
 }

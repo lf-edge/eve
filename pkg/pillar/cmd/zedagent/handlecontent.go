@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	zconfig "github.com/lf-edge/eve/api/go/config"
+	"github.com/lf-edge/eve/api/go/info"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	uuid "github.com/satori/go.uuid"
 )
@@ -137,19 +138,13 @@ func handleContentTreeStatusModify(ctxArg interface{}, key string,
 
 func handleContentTreeStatusImpl(ctxArg interface{}, key string,
 	statusArg interface{}) {
-
-	status := statusArg.(types.ContentTreeStatus)
 	ctx := ctxArg.(*zedagentContext)
-	uuidStr := status.Key()
-	PublishContentInfoToZedCloud(ctx, uuidStr, &status, ctx.iteration, AllDest)
-	ctx.iteration++
+	triggerPublishObjectInfo(ctx, info.ZInfoTypes_ZiContentTree, key)
 }
 
 func handleContentTreeStatusDelete(ctxArg interface{}, key string,
 	statusArg interface{}) {
-
+	status := statusArg.(types.ContentTreeStatus)
 	ctx := ctxArg.(*zedagentContext)
-	uuidStr := key
-	PublishContentInfoToZedCloud(ctx, uuidStr, nil, ctx.iteration, AllDest)
-	ctx.iteration++
+	triggerPublishDeletedObjectInfo(ctx, info.ZInfoTypes_ZiContentTree, key, status)
 }

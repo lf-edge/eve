@@ -114,6 +114,7 @@ type zedagentContext struct {
 	triggerHwInfo             chan<- destinationBitset
 	triggerLocationInfo       chan<- destinationBitset
 	triggerObjectInfo         chan<- infoForObjectKey
+	triggerHandleDeferred     chan<- time.Time
 	zbootRestarted            bool // published by baseosmgr
 	subOnboardStatus          pubsub.Subscription
 	subBaseOsStatus           pubsub.Subscription
@@ -290,9 +291,11 @@ func queueInfoToDest(ctx *zedagentContext, dest destinationBitset,
 
 // object to trigger sending of info with infoType for objectKey
 type infoForObjectKey struct {
-	infoType  info.ZInfoTypes
-	objectKey string
-	infoDest  destinationBitset
+	infoType    info.ZInfoTypes
+	objectKey   string
+	deleted     bool
+	deletedInfo interface{}
+	infoDest    destinationBitset
 }
 
 func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, arguments []string) int {
@@ -325,15 +328,18 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	zedagentCtx.fatalFlag = *zedagentCtx.fatalPtr
 
 	flowlogQueue := make(chan *flowlog.FlowMessage, flowlogQueueCap)
+	// Channels with buffer of size 1 are used with non-blocking send.
 	triggerDeviceInfo := make(chan destinationBitset, 1)
 	triggerHwInfo := make(chan destinationBitset, 1)
 	triggerLocationInfo := make(chan destinationBitset, 1)
-	triggerObjectInfo := make(chan infoForObjectKey, 1)
+	triggerObjectInfo := make(chan infoForObjectKey, 256)
+	triggerHandleDeferred := make(chan time.Time, 1)
 	zedagentCtx.flowlogQueue = flowlogQueue
 	zedagentCtx.triggerDeviceInfo = triggerDeviceInfo
 	zedagentCtx.triggerHwInfo = triggerHwInfo
 	zedagentCtx.triggerLocationInfo = triggerLocationInfo
 	zedagentCtx.triggerObjectInfo = triggerObjectInfo
+	zedagentCtx.triggerHandleDeferred = triggerHandleDeferred
 
 	// Initialize all zedagent publications.
 	initPublications(zedagentCtx)
@@ -400,6 +406,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	// We know our own UUID; prepare for communication with controller
 	zedcloudCtx = initZedcloudContext(
 		zedagentCtx.globalConfig.GlobalValueInt(types.NetworkSendTimeout),
+		zedagentCtx.globalConfig.GlobalValueInt(types.NetworkDialTimeout),
 		zedagentCtx.zedcloudMetrics)
 
 	if parse != "" {
@@ -436,6 +443,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	//initialize remote attestation context
 	attestModuleInitialize(zedagentCtx)
 
+	// Handle deferred requests from periodic queue
+	go handleDeferredPeriodicTask(zedagentCtx, triggerHandleDeferred)
+
 	// Pick up debug aka log level before we start real work
 	waitUntilGCReady(zedagentCtx, stillRunning)
 
@@ -447,9 +457,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 
 	// Parse SMART data
 	go parseSMARTData()
-
-	// Handle deferred requests from periodic queue
-	go handleDeferredPeriodicTask(zedagentCtx)
 
 	// Use go routines to make sure we have wait/timeout without
 	// blocking the main select loop
@@ -685,12 +692,7 @@ func waitUntilDNSReady(zedagentCtx *zedagentContext, stillRunning *time.Ticker) 
 		case change := <-dnsCtx.subDeviceNetworkStatus.MsgChan():
 			dnsCtx.subDeviceNetworkStatus.ProcessChange(change)
 			if dnsCtx.triggerHandleDeferred {
-				start := time.Now()
-				zedcloudCtx.DeferredEventCtx.HandleDeferred(
-					start, 100*time.Millisecond, false)
-				zedagentCtx.ps.CheckMaxTimeTopic(agentName, "deferredEventChan",
-					start, warningTime, errorTime)
-				dnsCtx.triggerHandleDeferred = false
+				triggerHandleDeferred(zedagentCtx)
 			}
 
 		case change := <-zedagentCtx.subAssignableAdapters.MsgChan():
@@ -721,13 +723,6 @@ func waitUntilDNSReady(zedagentCtx *zedagentContext, stillRunning *time.Ticker) 
 		case change := <-zedagentCtx.subLocationInfo.MsgChan():
 			zedagentCtx.subLocationInfo.ProcessChange(change)
 
-		case change := <-zedcloudCtx.DeferredEventCtx.Ticker.C:
-			start := time.Now()
-			zedcloudCtx.DeferredEventCtx.HandleDeferred(
-				change, 100*time.Millisecond, false)
-			zedagentCtx.ps.CheckMaxTimeTopic(agentName, "deferredEventCtx", start,
-				warningTime, errorTime)
-
 		case <-stillRunning.C:
 			// Fault injection
 			if zedagentCtx.fatalFlag {
@@ -742,7 +737,8 @@ func waitUntilDNSReady(zedagentCtx *zedagentContext, stillRunning *time.Ticker) 
 	}
 }
 
-func handleDeferredPeriodicTask(zedagentCtx *zedagentContext) {
+func handleDeferredPeriodicTask(zedagentCtx *zedagentContext,
+	triggerHandleDeferred <-chan time.Time) {
 	wdName := agentName + "devinfo"
 
 	// Run a periodic timer so we always update StillRunning
@@ -750,16 +746,22 @@ func handleDeferredPeriodicTask(zedagentCtx *zedagentContext) {
 	zedagentCtx.ps.StillRunning(wdName, warningTime, errorTime)
 	zedagentCtx.ps.RegisterFileWatchdog(wdName)
 
+	runHandleDeferred := func(change time.Time) {
+		start := time.Now()
+		if !zedcloudCtx.DeferredPeriodicCtx.HandleDeferred(
+			change, 100*time.Millisecond, false) {
+			log.Noticef("handleDeferredPeriodicTask: some deferred items remain to be sent")
+		}
+		zedagentCtx.ps.CheckMaxTimeTopic(agentName, "deferredPeriodicCtx",
+			start, warningTime, errorTime)
+	}
+
 	for {
 		select {
+		case change := <-triggerHandleDeferred:
+			runHandleDeferred(change)
 		case change := <-zedcloudCtx.DeferredPeriodicCtx.Ticker.C:
-			start := time.Now()
-			if !zedcloudCtx.DeferredPeriodicCtx.HandleDeferred(
-				change, 100*time.Millisecond, false) {
-				log.Noticef("handleDeferredPeriodicTask: some deferred items remain to be sent")
-			}
-			zedagentCtx.ps.CheckMaxTimeTopic(agentName, "deferredPeriodicCtx",
-				start, warningTime, errorTime)
+			runHandleDeferred(change)
 		case <-stillRunning.C:
 		}
 		zedagentCtx.ps.StillRunning(wdName, warningTime, errorTime)
@@ -827,12 +829,7 @@ func mainEventLoop(zedagentCtx *zedagentContext, stillRunning *time.Ticker) {
 				dnsCtx.triggerDeviceInfo = false
 			}
 			if dnsCtx.triggerHandleDeferred {
-				start := time.Now()
-				zedcloudCtx.DeferredEventCtx.HandleDeferred(
-					start, 100*time.Millisecond, false)
-				zedagentCtx.ps.CheckMaxTimeTopic(agentName,
-					"deferredEventCtx", start, warningTime, errorTime)
-				dnsCtx.triggerHandleDeferred = false
+				triggerHandleDeferred(zedagentCtx)
 			}
 			if dnsCtx.triggerRadioPOST {
 				triggerRadioPOST(getconfigCtx)
@@ -921,13 +918,6 @@ func mainEventLoop(zedagentCtx *zedagentContext, stillRunning *time.Ticker) {
 			} else {
 				downloaderMetrics = m.(types.MetricsMap)
 			}
-
-		case change := <-zedcloudCtx.DeferredEventCtx.Ticker.C:
-			start := time.Now()
-			zedcloudCtx.DeferredEventCtx.HandleDeferred(
-				change, 100*time.Millisecond, false)
-			zedagentCtx.ps.CheckMaxTimeTopic(agentName, "deferredEventCtx",
-				start, warningTime, errorTime)
 
 		case change := <-zedagentCtx.subCipherMetricsDL.MsgChan():
 			zedagentCtx.subCipherMetricsDL.ProcessChange(change)
@@ -1899,6 +1889,17 @@ func triggerPublishDevInfoToDest(ctxPtr *zedagentContext, dest destinationBitset
 	}
 }
 
+func triggerHandleDeferred(ctxPtr *zedagentContext) {
+
+	select {
+	case ctxPtr.triggerHandleDeferred <- time.Now():
+		// Do nothing more
+	default:
+		// Probably already triggered but not yet received by the Go routine.
+		log.Warnf("Failed to trigger HandleDeferred")
+	}
+}
+
 func triggerPublishDevInfo(ctxPtr *zedagentContext) {
 	triggerPublishDevInfoToDest(ctxPtr, AllDest)
 }
@@ -1912,6 +1913,26 @@ func triggerPublishLocationToDest(ctxPtr *zedagentContext, dest destinationBitse
 	ctxPtr.triggerLocationInfo <- dest
 }
 
+func triggerPublishObjectInfo(ctxPtr *zedagentContext, infoType info.ZInfoTypes,
+	objectKey string) {
+	ctxPtr.triggerObjectInfo <- infoForObjectKey{
+		infoType:  infoType,
+		objectKey: objectKey,
+		infoDest:  AllDest,
+	}
+}
+
+func triggerPublishDeletedObjectInfo(ctxPtr *zedagentContext, infoType info.ZInfoTypes,
+	objectKey string, deletedInfo interface{}) {
+	ctxPtr.triggerObjectInfo <- infoForObjectKey{
+		infoType:    infoType,
+		objectKey:   objectKey,
+		deleted:     true,
+		deletedInfo: deletedInfo,
+		infoDest:    AllDest,
+	}
+}
+
 func triggerPublishAllInfo(ctxPtr *zedagentContext, dest destinationBitset) {
 
 	log.Function("Triggered PublishAllInfo")
@@ -1923,59 +1944,59 @@ func triggerPublishAllInfo(ctxPtr *zedagentContext, dest destinationBitset) {
 		// trigger publish applications infos
 		for _, c := range ctxPtr.getconfigCtx.subAppInstanceStatus.GetAll() {
 			ctxPtr.triggerObjectInfo <- infoForObjectKey{
-				info.ZInfoTypes_ZiApp,
-				c.(types.AppInstanceStatus).Key(),
-				dest,
+				infoType:  info.ZInfoTypes_ZiApp,
+				objectKey: c.(types.AppInstanceStatus).Key(),
+				infoDest:  dest,
 			}
 		}
 		// trigger publish network instance infos
 		for _, c := range ctxPtr.subNetworkInstanceStatus.GetAll() {
 			niStatus := c.(types.NetworkInstanceStatus)
 			ctxPtr.triggerObjectInfo <- infoForObjectKey{
-				info.ZInfoTypes_ZiNetworkInstance,
-				(&niStatus).Key(),
-				dest,
+				infoType:  info.ZInfoTypes_ZiNetworkInstance,
+				objectKey: (&niStatus).Key(),
+				infoDest:  dest,
 			}
 		}
 		// trigger publish volume infos
 		for _, c := range ctxPtr.getconfigCtx.subVolumeStatus.GetAll() {
 			ctxPtr.triggerObjectInfo <- infoForObjectKey{
-				info.ZInfoTypes_ZiVolume,
-				c.(types.VolumeStatus).Key(),
-				dest,
+				infoType:  info.ZInfoTypes_ZiVolume,
+				objectKey: c.(types.VolumeStatus).Key(),
+				infoDest:  dest,
 			}
 		}
 		// trigger publish content tree infos
 		for _, c := range ctxPtr.getconfigCtx.subContentTreeStatus.GetAll() {
 			ctxPtr.triggerObjectInfo <- infoForObjectKey{
-				info.ZInfoTypes_ZiContentTree,
-				c.(types.ContentTreeStatus).Key(),
-				dest,
+				infoType:  info.ZInfoTypes_ZiContentTree,
+				objectKey: c.(types.ContentTreeStatus).Key(),
+				infoDest:  dest,
 			}
 		}
 		// trigger publish blob infos
 		for _, c := range ctxPtr.subBlobStatus.GetAll() {
 			ctxPtr.triggerObjectInfo <- infoForObjectKey{
-				info.ZInfoTypes_ZiBlobList,
-				c.(types.BlobStatus).Key(),
-				dest,
+				infoType:  info.ZInfoTypes_ZiBlobList,
+				objectKey: c.(types.BlobStatus).Key(),
+				infoDest:  dest,
 			}
 		}
 		// trigger publish appInst metadata infos
 		for _, c := range ctxPtr.subAppInstMetaData.GetAll() {
 			ctxPtr.triggerObjectInfo <- infoForObjectKey{
-				info.ZInfoTypes_ZiAppInstMetaData,
-				c.(types.AppInstMetaData).Key(),
-				dest,
+				infoType:  info.ZInfoTypes_ZiAppInstMetaData,
+				objectKey: c.(types.AppInstMetaData).Key(),
+				infoDest:  dest,
 			}
 		}
 		triggerPublishHwInfoToDest(ctxPtr, dest)
 		// trigger publish edgeview infos
 		for _, c := range ctxPtr.subEdgeviewStatus.GetAll() {
 			ctxPtr.triggerObjectInfo <- infoForObjectKey{
-				info.ZInfoTypes_ZiEdgeview,
-				c.(types.EdgeviewStatus).Key(),
-				dest,
+				infoType:  info.ZInfoTypes_ZiEdgeview,
+				objectKey: c.(types.EdgeviewStatus).Key(),
+				infoDest:  dest,
 			}
 		}
 		triggerPublishLocationToDest(ctxPtr, dest)
@@ -2004,9 +2025,7 @@ func handleAppInstanceStatusCreate(ctxArg interface{}, key string,
 	status := statusArg.(types.AppInstanceStatus)
 	log.Functionf("handleAppInstanceStatusCreate(%s)", key)
 	ctx := ctxArg.(*zedagentContext)
-	uuidStr := status.Key()
-	PublishAppInfoToZedCloud(ctx, uuidStr, &status, ctx.assignableAdapters,
-		ctx.iteration, AllDest)
+	triggerPublishObjectInfo(ctx, info.ZInfoTypes_ZiApp, key)
 	triggerPublishDevInfo(ctx)
 	processAppCommandStatus(ctx.getconfigCtx, status)
 	triggerLocalAppInfoPOST(ctx.getconfigCtx)
@@ -2023,9 +2042,7 @@ func handleAppInstanceStatusModify(ctxArg interface{}, key string,
 	status := statusArg.(types.AppInstanceStatus)
 	log.Functionf("handleAppInstanceStatusModify(%s)", key)
 	ctx := ctxArg.(*zedagentContext)
-	uuidStr := status.Key()
-	PublishAppInfoToZedCloud(ctx, uuidStr, &status, ctx.assignableAdapters,
-		ctx.iteration, AllDest)
+	triggerPublishObjectInfo(ctx, info.ZInfoTypes_ZiApp, key)
 	processAppCommandStatus(ctx.getconfigCtx, status)
 	triggerLocalAppInfoPOST(ctx.getconfigCtx)
 	ctx.iteration++
@@ -2036,10 +2053,8 @@ func handleAppInstanceStatusDelete(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
 	ctx := ctxArg.(*zedagentContext)
-	uuidStr := key
 	log.Functionf("handleAppInstanceStatusDelete(%s)", key)
-	PublishAppInfoToZedCloud(ctx, uuidStr, nil, ctx.assignableAdapters,
-		ctx.iteration, AllDest)
+	triggerPublishDeletedObjectInfo(ctx, info.ZInfoTypes_ZiApp, key, statusArg)
 	triggerPublishDevInfo(ctx)
 	triggerLocalAppInfoPOST(ctx.getconfigCtx)
 	ctx.iteration++
@@ -2554,9 +2569,8 @@ func handleEdgeviewStatusModify(ctxArg interface{}, key string,
 }
 
 func handleEdgeviewStatusImpl(ctxArg interface{}, key string, statusArg interface{}) {
-	status := statusArg.(types.EdgeviewStatus)
 	ctx := ctxArg.(*zedagentContext)
-	PublishEdgeviewToZedCloud(ctx, &status, AllDest)
+	triggerPublishObjectInfo(ctx, info.ZInfoTypes_ZiEdgeview, key)
 }
 
 func reinitNetdumper(ctx *zedagentContext) {

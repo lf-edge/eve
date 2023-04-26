@@ -11,6 +11,7 @@ import (
 	"fmt"
 
 	zconfig "github.com/lf-edge/eve/api/go/config"
+	"github.com/lf-edge/eve/api/go/info"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	uuid "github.com/satori/go.uuid"
 )
@@ -176,20 +177,13 @@ func handleVolumeStatusModify(ctxArg interface{}, key string,
 
 func handleVolumeStatusImpl(ctxArg interface{}, key string,
 	statusArg interface{}) {
-
-	status := statusArg.(types.VolumeStatus)
 	ctx := ctxArg.(*zedagentContext)
-	uuidStr := status.VolumeID.String()
-	PublishVolumeToZedCloud(ctx, uuidStr, &status, ctx.iteration, AllDest)
-	ctx.iteration++
+	triggerPublishObjectInfo(ctx, info.ZInfoTypes_ZiVolume, key)
 }
 
 func handleVolumeStatusDelete(ctxArg interface{},
 	key string, statusArg interface{}) {
-
 	status := statusArg.(types.VolumeStatus)
 	ctx := ctxArg.(*zedagentContext)
-	uuidStr := status.VolumeID.String()
-	PublishVolumeToZedCloud(ctx, uuidStr, nil, ctx.iteration, AllDest)
-	ctx.iteration++
+	triggerPublishDeletedObjectInfo(ctx, info.ZInfoTypes_ZiVolume, key, status)
 }

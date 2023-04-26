@@ -43,7 +43,7 @@ func handleNetworkInstanceImpl(ctxArg interface{}, key string,
 		log.Errorf("Received NetworkInstance error %s",
 			status.Error)
 	}
-	prepareAndPublishNetworkInstanceInfoMsg(ctx, status, false, AllDest)
+	triggerPublishObjectInfo(ctx, zinfo.ZInfoTypes_ZiNetworkInstance, key)
 	log.Functionf("handleNetworkInstanceImpl(%s) done", key)
 }
 
@@ -51,9 +51,8 @@ func handleNetworkInstanceDelete(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
 	log.Functionf("handleNetworkInstanceDelete(%s)", key)
-	status := statusArg.(types.NetworkInstanceStatus)
 	ctx := ctxArg.(*zedagentContext)
-	prepareAndPublishNetworkInstanceInfoMsg(ctx, status, true, AllDest)
+	triggerPublishDeletedObjectInfo(ctx, zinfo.ZInfoTypes_ZiNetworkInstance, key, statusArg)
 	log.Functionf("handleNetworkInstanceDelete(%s) done", key)
 }
 
