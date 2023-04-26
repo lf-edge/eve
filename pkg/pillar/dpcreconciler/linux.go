@@ -1040,10 +1040,6 @@ func (r *LinuxDpcReconciler) getIntendedRoutes(dpc types.DevicePortConfig) dg.Gr
 				// Hack to make the kernel routes not appear identical.
 				rtCopy.Priority = rtCopy.LinkIndex
 			}
-			// Clear any RTNH_F_LINKDOWN etc flags since add doesn't like them.
-			if rtCopy.Flags != 0 {
-				rtCopy.Flags = 0
-			}
 			intendedRoutes.PutItem(linux.Route{
 				Route:         rtCopy,
 				AdapterIfName: port.IfName,

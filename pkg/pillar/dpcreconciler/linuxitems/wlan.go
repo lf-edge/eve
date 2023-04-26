@@ -31,6 +31,12 @@ type WifiConfig struct {
 	Credentials types.EncryptionBlock
 }
 
+// String describes WifiConfig without revealing any sensitive info.
+func (wc WifiConfig) String() string {
+	return fmt.Sprintf("WifiConfig: {SSID: %s, KeyScheme: %d, "+
+		"Identity: %s, Priority: %d}", wc.SSID, wc.KeyScheme, wc.Identity, wc.Priority)
+}
+
 // Name returns the wpa_supplicant.conf file path as the name.
 func (w Wlan) Name() string {
 	return devicenetwork.WpaFilename
@@ -60,7 +66,7 @@ func (w Wlan) External() bool {
 
 // String describes the WLAN configuration.
 func (w Wlan) String() string {
-	return fmt.Sprintf("WLAN configuration: %+v, enable RF: %t",
+	return fmt.Sprintf("WLAN configuration: %v, enable RF: %t",
 		w.Config, w.EnableRF)
 }
 
