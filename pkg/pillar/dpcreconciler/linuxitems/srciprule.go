@@ -106,11 +106,10 @@ func (c *SrcIPRuleConfigurator) makeNetlinkRule(rule SrcIPRule) (*netlink.Rule, 
 		c.Log.Error()
 		return nil, err
 	}
-	r.Table = devicenetwork.BaseRTIndex + ifIdx
+	r.Table = devicenetwork.DPCBaseRTIndex + ifIdx
 	r.Priority = rule.Priority
 	r.Family = devicenetwork.HostFamily(rule.IPAddr)
-	src := devicenetwork.HostSubnet(rule.IPAddr)
-	r.Src = &src
+	r.Src = devicenetwork.HostSubnet(rule.IPAddr)
 	return r, nil
 }
 

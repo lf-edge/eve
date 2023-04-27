@@ -13,13 +13,12 @@ import (
 	"net"
 	"syscall"
 
+	"github.com/lf-edge/eve/pkg/pillar/devicenetwork"
 	"github.com/lf-edge/eve/pkg/pillar/iptables"
 	"github.com/lf-edge/eve/pkg/pillar/netmonitor"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/vishvananda/netlink"
 )
-
-var baseTableIndex = 500 // Number tables from here + ifindex
 
 // PbrRouteAddAll adds all the routes for the bridgeName table to the specific port
 // Separately we handle changes in PbrRouteChange
@@ -73,7 +72,7 @@ func PbrRouteAddAll(ctx *zedrouterContext, bridgeName string, port string) error
 		errStr := fmt.Sprintf("Failed to add default-drop route: %s", err)
 		log.Errorln(errStr)
 	}
-	brTable := baseTableIndex + brIndex
+	brTable := devicenetwork.NIBaseRTIndex + brIndex
 	for _, rt := range routes {
 		// TODO: accessing Linux specific route definition.
 		// This will have to go to Linux-specific zedrouter section
@@ -140,7 +139,7 @@ func PbrRouteDeleteAll(ctx *zedrouterContext, bridgeName string, port string) er
 		log.Error(err)
 		return err
 	}
-	brTable := baseTableIndex + brIndex
+	brTable := devicenetwork.NIBaseRTIndex + brIndex
 	for _, rt := range routes {
 		// TODO: accessing Linux specific route definition.
 		// This will have to go to Linux-specific zedrouter section
@@ -214,7 +213,7 @@ func PbrRouteChange(ctx *zedrouterContext,
 		log.Functionf("Received route del %v\n", rt)
 		if isNIBridge(ctx, ifName) {
 			log.Functionf("Apply route del for NI bridge %s", ifName)
-			copiedRt.Table = baseTableIndex + ifIndex
+			copiedRt.Table = devicenetwork.NIBaseRTIndex + ifIndex
 			if err := netlink.RouteDel(&copiedRt); err != nil {
 				log.Errorf("Failed to remove %v from %d: %s\n",
 					copiedRt, copiedRt.Table, err)
@@ -226,7 +225,7 @@ func PbrRouteChange(ctx *zedrouterContext,
 				log.Functionf("Apply route del to %v", indexes)
 			}
 			for _, brIndex := range indexes {
-				copiedRt.Table = baseTableIndex + brIndex
+				copiedRt.Table = devicenetwork.NIBaseRTIndex + brIndex
 				if err := netlink.RouteDel(&copiedRt); err != nil {
 					log.Errorf("Failed to remove %v from %d: %s\n",
 						copiedRt, copiedRt.Table, err)
@@ -237,7 +236,7 @@ func PbrRouteChange(ctx *zedrouterContext,
 		log.Functionf("Received route add %v\n", rt)
 		if isNIBridge(ctx, ifName) {
 			log.Functionf("Apply route add to NI bridge %s", ifName)
-			copiedRt.Table = baseTableIndex + ifIndex
+			copiedRt.Table = devicenetwork.NIBaseRTIndex + ifIndex
 			if err := netlink.RouteAdd(&copiedRt); err != nil {
 				// XXX ditto for ENXIO?? for del?
 				if isErrno(err, syscall.EEXIST) {
@@ -255,7 +254,7 @@ func PbrRouteChange(ctx *zedrouterContext,
 				log.Functionf("Apply route add to %v", indexes)
 			}
 			for _, brIndex := range indexes {
-				copiedRt.Table = baseTableIndex + brIndex
+				copiedRt.Table = devicenetwork.NIBaseRTIndex + brIndex
 				if err := netlink.RouteAdd(&copiedRt); err != nil {
 					log.Errorf("Failed to add %v to %d: %s\n",
 						copiedRt, copiedRt.Table, err)
@@ -279,7 +278,7 @@ func isErrno(err error, errno syscall.Errno) bool {
 func AddFwMarkRuleToDummy(ctx *zedrouterContext, ifIndex int) error {
 
 	r := netlink.NewRule()
-	myTable := baseTableIndex + ifIndex
+	myTable := devicenetwork.NIBaseRTIndex + ifIndex
 	r.Table = myTable
 	r.Mark = iptables.AceDropAction
 	r.Mask = iptables.AceActionMask
@@ -362,7 +361,7 @@ func makeDefaultDropRoute(
 		LinkIndex: outLinkIndex,
 		Dst:       dst,
 		Priority:  prio,
-		Table:     baseTableIndex + ifIndex,
+		Table:     devicenetwork.NIBaseRTIndex + ifIndex,
 		Type:      routeType,
 	}, nil
 }
