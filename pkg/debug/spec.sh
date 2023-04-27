@@ -34,7 +34,9 @@ do      case "$o" in
 done
 shift $((OPTIND-1))
 
-if [ "$(uname -m)" = x86_64 ]; then
+UNAME_M=$(uname -m)
+
+if [ "$UNAME_M" = x86_64 ]; then
    ARCH=2
 else
    ARCH=4
@@ -74,6 +76,8 @@ get_assignmentgroup() {
 # pci_iommugroup_includes_unknown($PCIID, $IOMMUGRPNUM)
 # returns whether or not there is some unknown to EVE-OS type of
 # device in the group
+FIND_IOMMU_GROUPS=$(find /sys/kernel/iommu_groups/ -type l)
+
 pci_iommugroup_includes_unknown() {
     local pcilong=$1
     local iommugrpnum=$2
@@ -81,9 +85,13 @@ pci_iommugroup_includes_unknown() {
     local pci
     local ztype
 #shellcheck disable=SC2044
-    for a in $(find /sys/kernel/iommu_groups/ -type l); do
-        grp=$(echo "${a}" | awk -F/ '{print $5}')
-        pci=$(echo "${a}" | awk -F/ '{print $7}')
+    for a in $FIND_IOMMU_GROUPS; do
+        oldIFS=$IFS
+        IFS="/";# read -a arr <<<"$a"
+        set -- "$a"
+        grp=$5
+        pci=$7
+        IFS=$oldIFS
         [ "${grp}" = "${iommugrpnum}" ] || continue
         [ "${pci}" != "${pcilong}" ] || continue
 
@@ -99,6 +107,8 @@ pci_iommugroup_includes_unknown() {
 # pci_to_ztype($PCI_ID) returns a numeric ztype
 pci_to_ztype() {
     local pci=$1
+    lspci_ds=$(lspci -D -s "$pci")
+
     if [ -d "/sys/bus/pci/devices/${pci}/net" ]; then
         local ifname
         local ztype
@@ -109,13 +119,13 @@ pci_to_ztype() {
         elif [ "${ifname:0:4}" = "wwan" ]; then
             ztype=6
         fi
-    elif lspci -D -s "${pci}" | grep -q USB; then
+    elif echo "$lspci_ds" | grep -q USB; then
         ztype=2
-    elif lspci -D -s "${pci}" | grep -q Audio; then
+    elif echo "$lspci_ds" | grep -q Audio; then
         ztype=4
-    elif lspci -D -s "${pci}" | grep -q VGA; then
+    elif echo "$lspci_ds" | grep -q VGA; then
         ztype=7
-    elif lspci -D -s "${pci}" | grep -q "Non-Volatile memory"; then
+    elif echo "$lspci_ds" | grep -q "Non-Volatile memory"; then
         ztype=8
     else
         ztype=255
@@ -238,6 +248,7 @@ DISK=$(lsblk -b -o NAME,TYPE,TRAN,SIZE | grep disk | grep -v usb | awk '{ total 
 WDT=$([ -e /dev/watchdog ] && echo true || echo false)
 HSM=$([ -e /dev/tpmrm0 ] && echo 1 || echo 0)
 
+LSPCI_D=$(lspci -D)
 cat <<__EOT__
 {
   "arch": $ARCH,
@@ -260,7 +271,7 @@ __EOT__
 
 #enumerate GPUs
 ID=""
-for VGA in $(lspci -D  | grep VGA | cut -f1 -d\ ); do
+for VGA in $(echo "$LSPCI_D" | grep VGA | cut -f1 -d\ ); do
     grp=$(get_assignmentgroup "VGA${ID}" "$VGA")
     cat <<__EOT__
     {
@@ -287,7 +298,7 @@ done
 
 #enumerate USB
 ID=""
-for USB in $(lspci -D  | grep USB | cut -f1 -d\ ); do
+for USB in $(echo "$LSPCI_D" | grep USB | cut -f1 -d\ ); do
     grp=$(get_assignmentgroup "USB${ID}" "$USB")
     cat <<__EOT__
     {
@@ -328,7 +339,7 @@ fi
 
 #enumerate NVME
 ID=""
-for NVME in $(lspci -D  | grep "Non-Volatile memory" | cut -f1 -d\ ); do
+for NVME in $(echo "$LSPCI_D" | grep "Non-Volatile memory" | cut -f1 -d\ ); do
     grp=$(get_assignmentgroup "NVME${ID}" "$NVME")
     cat <<__EOT__
     {
@@ -359,7 +370,7 @@ for TTY in /sys/class/tty/*; do
    if [ -f "$TTY/device/resources" ]; then
       IO=$(grep '^io ' "$TTY/device/resources" | sed -e 's#io 0x##' -e 's#0x##')
       IRQ=$(awk '/^irq /{print $2;}' < "$TTY/device/resources")
-   elif [ "$(uname -m)" = aarch64 ] && [ -f "$TTY/irq" ]; then
+   elif [ "$UNAME_M" = aarch64 ] && [ -f "$TTY/irq" ]; then
       IRQ=$(cat "$TTY/irq")
       [ "${IRQ:-0}" -gt 0 ] || IRQ=""
       IO=""
@@ -501,7 +512,7 @@ done
 
 #enumerate Audio
 ID=""
-for audio in $(lspci -D  | grep Audio | cut -f1 -d\ ); do
+for audio in $(echo "$LSPCI_D" | grep Audio | cut -f1 -d\ ); do
     grp=$(get_assignmentgroup "Audio${ID}" "$audio")
     cat <<__EOT__
     ${COMMA}
@@ -525,10 +536,11 @@ __EOT__
     COMMA="},"
 done
 
+LSPCI_DN=$(lspci -Dn)
 if [ -n "$verbose" ]; then
     # look for type 255
     ID=0
-    for pci in $(lspci -Dn  | cut -f1 -d\ ); do
+    for pci in $(echo "$LSPCI_DN"  | cut -f1 -d\ ); do
         ztype=$(pci_to_ztype "$pci")
         [ "$ztype" = 255 ] || continue
         cat <<__EOT__
