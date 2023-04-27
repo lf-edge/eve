@@ -651,7 +651,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 					// routing tables which, however, are under NIM management
 					// (resulting in "trying to delete already removed route" errors and other
 					// potential issues).
-					rt := baseTableIndex + ev.Attrs.IfIndex
+					rt := devicenetwork.NIBaseRTIndex + ev.Attrs.IfIndex
 					devicenetwork.FlushRoutesTable(log, rt, 0)
 					devicenetwork.FlushRules(log, ev.Attrs.IfIndex)
 				}
