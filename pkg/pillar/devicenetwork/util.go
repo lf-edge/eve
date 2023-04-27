@@ -18,10 +18,10 @@ func HostFamily(ip net.IP) int {
 }
 
 // HostSubnet returns the subnet mask for the given IP address
-func HostSubnet(ip net.IP) net.IPNet {
+func HostSubnet(ip net.IP) *net.IPNet {
 	if ip.To4() != nil {
-		return net.IPNet{IP: ip, Mask: net.CIDRMask(32, 32)}
+		return &net.IPNet{IP: ip, Mask: net.CIDRMask(32, 32)}
 	} else {
-		return net.IPNet{IP: ip, Mask: net.CIDRMask(128, 128)}
+		return &net.IPNet{IP: ip, Mask: net.CIDRMask(128, 128)}
 	}
 }
