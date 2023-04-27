@@ -25,8 +25,9 @@
 # does not set the correct assignment group.
 
 verbose=
-while getopts v o
+while getopts uv o
 do      case "$o" in
+        u)      usbpassthrough=1;;
         v)      verbose=1;;
         [?])    echo "Usage: $0 [-v]"
                 exit 1;;
@@ -87,7 +88,8 @@ pci_iommugroup_includes_unknown() {
 #shellcheck disable=SC2044
     for a in $FIND_IOMMU_GROUPS; do
         oldIFS=$IFS
-        IFS="/";# read -a arr <<<"$a"
+        IFS="/";
+        # shellcheck disable=SC2086
         set -- $a
         grp=$5
         pci=$7
@@ -210,10 +212,12 @@ __EOT__
 done
 
 #enumerate USB
-ID=""
-for USB in $(echo "$LSPCI_D" | grep USB | cut -f1 -d\ ); do
-    grp=$(get_assignmentgroup "USB${ID}" "$USB")
-    cat <<__EOT__
+if [ -z "$usbpassthrough" ]
+then
+    ID=""
+    for USB in $(echo "$LSPCI_D" | grep USB | cut -f1 -d\ ); do
+        grp=$(get_assignmentgroup "USB${ID}" "$USB")
+        cat <<__EOT__
     {
       "ztype": 2,
       "phylabel": "USB${ID}",
@@ -224,16 +228,16 @@ for USB in $(echo "$LSPCI_D" | grep USB | cut -f1 -d\ ); do
       "logicallabel": "USB${ID}",
       "usagePolicy": {}
 __EOT__
-    if [ -n "$verbose" ]; then
-        add_pci_info "${USB}"
-    fi
+        if [ -n "$verbose" ]; then
+            add_pci_info "${USB}"
+        fi
     cat <<__EOT__
     },
 __EOT__
-    ID=$(( ${ID:-0} + 1 ))
-done
-if [ -z "$ID" ] && [ "$(lsusb -t | wc -l)" -gt 0 ]; then
-cat <<__EOT__
+        ID=$(( ${ID:-0} + 1 ))
+    done
+    if [ -z "$ID" ] && [ "$(lsusb -t | wc -l)" -gt 0 ]; then
+    cat <<__EOT__
     {
       "ztype": 2,
       "phylabel": "USB",
@@ -242,6 +246,66 @@ cat <<__EOT__
       "usagePolicy": {}
     },
 __EOT__
+    fi
+else
+    bus=""
+    addr=""
+    name=""
+    deviceclass=""
+    skip=""
+
+    BLACKLISTED_DEVICE_CLASSES="9"
+
+    lsusb -v 2> /dev/null | while read -r l
+    do
+        oldIFS=$IFS
+        IFS=" :"
+        # shellcheck disable=SC2086
+        set -- $l
+        if [ "$1" = "Bus" ]
+        then
+                bus=$(echo "$2" | sed 's/^0*//')
+                addr=$(echo "$4" | sed 's/^0*//')
+                shift 7
+                name=$*
+                IFS=$oldIFS
+        elif [ "$1" = "bDeviceClass" ]
+        then
+                deviceclass=$2
+        elif [ -z "$l" ] && [ -n "$bus" ] && [ -n "$addr" ] && [ -n "$name" ]
+        then
+                for i in $BLACKLISTED_DEVICE_CLASSES
+                do
+                        if [ "$i" = "$deviceclass" ]
+                        then
+                                skip=1
+                        fi
+                done
+
+
+                if [ -z "$skip" ]
+                then
+                    cat << __EOT__
+    {
+      "ztype": "IO_TYPE_UNSPECIFIED",
+      "assigngrp": "USB",
+      "usagePolicy": {},
+__EOT__
+                    echo "      \"phylabel\": \"$name\","
+                    echo "      \"logicallabel\": \"$name\","
+                    echo '      "phyaddrs": {'
+                    echo "        \"usbaddr\": \"$bus:$addr\""
+                    cat << __EOT__
+      }
+    },
+__EOT__
+                fi
+            skip=""
+            bus=""
+            addr=""
+            deviceclass=""
+        fi
+    done
 fi
 
 #enumerate NVME
