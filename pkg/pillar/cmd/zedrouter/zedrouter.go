@@ -997,6 +997,7 @@ func handleAppNetworkCreate(ctxArg interface{}, key string, configArg interface{
 	appNumKey := types.UuidToNumKey{UUID: config.UUIDandVersion.UUID}
 	appNum, err := ctx.appNumAllocator.GetOrAllocate(appNumKey)
 	if err != nil {
+		status.PendingAdd = false
 		addError(ctx, &status, "handleAppNetworkCreate", err)
 		return
 	}
@@ -1006,6 +1007,7 @@ func handleAppNetworkCreate(ctxArg interface{}, key string, configArg interface{
 	// allocate application numbers on underlay network
 	err = allocateAppIntfNums(ctx, config.UUIDandVersion.UUID, config.UnderlayNetworkList)
 	if err != nil {
+		status.PendingAdd = false
 		addError(ctx, &status, "handleAppNetworkCreate", err)
 		return
 	}
