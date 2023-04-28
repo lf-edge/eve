@@ -81,7 +81,7 @@ func prepareAndPublishNetworkInstanceInfoMsg(ctx *zedagentContext,
 	if !deleted {
 		info.Displayname = status.DisplayName
 		info.InstType = uint32(status.Type)
-		info.CurrentUplinkIntf = status.SelectedUplinkIntf
+		info.CurrentUplinkIntf = status.SelectedUplinkIntfName
 
 		if !status.ErrorTime.IsZero() {
 			errInfo := new(zinfo.ErrorInfo)
@@ -117,38 +117,39 @@ func prepareAndPublishNetworkInstanceInfoMsg(ctx *zedagentContext,
 		for _, v := range status.Vifs {
 			vi := new(zinfo.ZmetVifInfo)
 			vi.VifName = v.Name
-			vi.MacAddress = v.MacAddr
+			vi.MacAddress = v.MacAddr.String()
 			vi.AppID = v.AppID.String()
 			info.Vifs = append(info.Vifs, vi)
 		}
-		for _, ifname := range status.IfNameList {
+		if status.SelectedUplinkIntfName != "" {
+			ifname := status.SelectedUplinkIntfName
 			ia := ctx.assignableAdapters.LookupIoBundleIfName(ifname)
 			if ia == nil {
 				log.Warnf("Missing adapter for ifname %s", ifname)
-				continue
-			}
-			reportAA := new(zinfo.ZioBundle)
-			reportAA.Type = zcommon.PhyIoType(ia.Type)
-			reportAA.Name = ia.Logicallabel
-			// XXX Add Phylabel in protobuf message?
-			reportAA.UsedByAppUUID = devUUID.String()
-			list := ctx.assignableAdapters.LookupIoBundleAny(ia.Phylabel)
-			for _, ib := range list {
-				if ib == nil {
-					continue
+			} else {
+				reportAA := new(zinfo.ZioBundle)
+				reportAA.Type = zcommon.PhyIoType(ia.Type)
+				reportAA.Name = ia.Logicallabel
+				// XXX Add Phylabel in protobuf message?
+				reportAA.UsedByAppUUID = devUUID.String()
+				list := ctx.assignableAdapters.LookupIoBundleAny(ia.Phylabel)
+				for _, ib := range list {
+					if ib == nil {
+						continue
+					}
+					reportAA.Members = append(reportAA.Members, ib.Logicallabel)
+					if ib.MacAddr != "" {
+						reportMac := new(zinfo.IoAddresses)
+						reportMac.MacAddress = ib.MacAddr
+						reportAA.IoAddressList = append(reportAA.IoAddressList,
+							reportMac)
+					}
+					log.Tracef("AssignableAdapters for %s macs %v",
+						reportAA.Name, reportAA.IoAddressList)
 				}
-				reportAA.Members = append(reportAA.Members, ib.Logicallabel)
-				if ib.MacAddr != "" {
-					reportMac := new(zinfo.IoAddresses)
-					reportMac.MacAddress = ib.MacAddr
-					reportAA.IoAddressList = append(reportAA.IoAddressList,
-						reportMac)
-				}
-				log.Tracef("AssignableAdapters for %s macs %v",
-					reportAA.Name, reportAA.IoAddressList)
+				info.AssignedAdapters = append(info.AssignedAdapters,
+					reportAA)
 			}
-			info.AssignedAdapters = append(info.AssignedAdapters,
-				reportAA)
 		}
 	}
 

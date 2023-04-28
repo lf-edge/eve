@@ -2066,30 +2066,14 @@ type UnderlayNetworkConfig struct {
 
 type UnderlayNetworkStatus struct {
 	UnderlayNetworkConfig
-	ACLs int // drop ACLs field from UnderlayNetworkConfig
 	VifInfo
 	BridgeMac         net.HardwareAddr
 	BridgeIPAddr      net.IP   // The address for DNS/DHCP service in zedrouter
-	AllocatedIPv4Addr string   // Assigned to domU
-	AllocatedIPv6List []string // IPv6 addresses assigned to domU
+	AllocatedIPv4Addr net.IP   // Assigned to domU
+	AllocatedIPv6List []net.IP // IPv6 addresses assigned to domU
 	IPv4Assigned      bool     // Set to true once DHCP has assigned it to domU
 	IPAddrMisMatch    bool
 	HostName          string
-	ACLDependList     []ACLDepend
-}
-
-// ACLDepend is used to track an external interface/port and optional IP addresses
-// on that interface which are encoded in the rules. Does not include the vif(s)
-// for the AppNetworkStatus itself.
-type ACLDepend struct {
-	Ifname string
-	IPAddr net.IP
-}
-
-// ULNetworkACLs - Underlay Network ACLRules
-// moved out from UnderlayNetowrkStatus, and now ACLRules are kept in zedrouterContext 2D-map NLaclMap
-type ULNetworkACLs struct {
-	ACLRules IPTablesRuleList
 }
 
 type NetworkType uint8
@@ -2214,19 +2198,13 @@ type AssignedAddrs struct {
 
 type NetworkInstanceInfo struct {
 	BridgeNum     int
-	BridgeName    string // bn<N>
+	BridgeName    string
 	BridgeIPAddr  net.IP
-	BridgeMac     string
+	BridgeMac     net.HardwareAddr
 	BridgeIfindex int
-
-	// interface names for the Logicallabel
-	IfNameList []string // Recorded at time of activate
 
 	// Collection of address assignments; from MAC address to IP address
 	IPAssignments map[string]AssignedAddrs
-
-	// Union of all ipsets fed to dnsmasq for the linux bridge
-	BridgeIPSets []string
 
 	// Set of vifs on this bridge
 	Vifs []VifNameMac
@@ -2245,9 +2223,6 @@ type NetworkInstanceInfo struct {
 	VlanMap map[uint32]uint32
 	// Counts the number of trunk ports attached to this network instance
 	NumTrunkPorts uint32
-
-	// IP address on which the meta-data server listens
-	MetaDataServerIP net.IP
 }
 
 func (instanceInfo *NetworkInstanceInfo) IsVifInBridge(
@@ -2281,7 +2256,7 @@ func (instanceInfo *NetworkInstanceInfo) RemoveVif(log *base.LogObject,
 }
 
 func (instanceInfo *NetworkInstanceInfo) AddVif(log *base.LogObject,
-	vifName string, appMac string, appID uuid.UUID) {
+	vifName string, appMac net.HardwareAddr, appID uuid.UUID) {
 
 	log.Functionf("AddVif(%s, %s, %s, %s)",
 		instanceInfo.BridgeName, vifName, appMac, appID.String())
@@ -2493,9 +2468,9 @@ type NetworkInstanceConfig struct {
 	// Activate - Activate the config.
 	Activate bool
 
-	// Logicallabel - name specified in the Device Config.
+	// PortLogicalLabel - references port(s) from DevicePortConfig.
 	// Can be a specific logicallabel for an interface, or a tag like "uplink"
-	Logicallabel string
+	PortLogicalLabel string
 
 	// IP configuration for the Application
 	IpType          AddressType
@@ -2506,9 +2481,6 @@ type NetworkInstanceConfig struct {
 	DnsServers      []net.IP // If not set we use Gateway as DNS server
 	DhcpRange       IpRange
 	DnsNameToIPList []DnsNameToIP // Used for DNS and ACL ipset
-
-	// For other network services - Proxy / StrongSwan etc..
-	OpaqueConfig string
 
 	// Any errors from the parser
 	// ErrorAndTime provides SetErrorNow() and ClearError()
@@ -2577,7 +2549,19 @@ func (config *NetworkInstanceConfig) IsIPv6() bool {
 func (config *NetworkInstanceConfig) WithUplinkProbing() bool {
 	switch config.Type {
 	case NetworkInstanceTypeLocal:
-		return IsSharedPortLabel(config.Logicallabel)
+		return IsSharedPortLabel(config.PortLogicalLabel)
+	default:
+		return false
+	}
+}
+
+// IsUsingUplinkBridge returns true if the network instance is using the bridge
+// created (by NIM) for the uplink port, instead of creating its own bridge.
+func (config *NetworkInstanceConfig) IsUsingUplinkBridge() bool {
+	switch config.Type {
+	case NetworkInstanceTypeSwitch:
+		airGapped := config.PortLogicalLabel == ""
+		return !airGapped
 	default:
 		return false
 	}
@@ -2626,16 +2610,20 @@ type NetworkInstanceStatus struct {
 
 	ChangeInProgress ChangeInProgressType
 
-	// Activated
-	//	Keeps track of current state of object - if it has been activated
+	// Activated is true if the network instance has been created in the network stack.
 	Activated bool
-
-	Server4Running bool // Did we start the server?
 
 	NetworkInstanceInfo
 
-	SelectedUplinkIntf string // Decided by local/remote probing
-	ProgUplinkIntf     string // Currently programmed uplink interface for app traffic
+	// Decided by local/remote probing
+	SelectedUplinkLogicalLabel string
+	SelectedUplinkIntfName     string
+
+	// True if uplink probing is running
+	RunningUplinkProbing bool
+
+	// True if NI is not activated only because of (currently) missing uplink.
+	WaitingForUplink bool
 }
 
 // LogCreate :
@@ -2678,45 +2666,9 @@ func (status NetworkInstanceStatus) LogKey() string {
 
 type VifNameMac struct {
 	Name    string
-	MacAddr string
+	MacAddr net.HardwareAddr
 	AppID   uuid.UUID
 }
-
-// AppNetworkACLArgs : args for converting ACL to iptables rules
-type AppNetworkACLArgs struct {
-	IsMgmt     bool
-	IPVer      int
-	BridgeName string
-	VifName    string
-	BridgeIP   net.IP
-	AppIP      string
-	UpLinks    []string // List of ifnames
-	NIType     NetworkInstanceType
-	// This is the same AppNum that comes from AppNetworkStatus
-	AppNum int32
-}
-
-// IPTablesRule : iptables rule detail
-type IPTablesRule struct {
-	IPVer            int      // 4 or, 6
-	Table            string   // filter/nat/raw/mangle...
-	Chain            string   // FORWARDING/INPUT/PREROUTING...
-	Prefix           []string // constructed using ACLArgs
-	Rule             []string // rule match
-	Action           []string // rule action
-	RuleID           int32    // Unique rule ID
-	RuleName         string
-	ActionChainName  string
-	IsUserConfigured bool // Does this rule come from user configuration/manifest?
-	IsMarkingRule    bool // Rule does marking of packet for flow tracking.
-	IsPortMapRule    bool // Is this a port map rule?
-	IsLimitDropRule  bool // Is this a policer limit drop rule?
-	IsDefaultDrop    bool // Is this a default drop rule that forwards to dummy?
-	AnyPhysdev       bool // Apply rule irrespective of the input/output physical device.
-}
-
-// IPTablesRuleList : list of iptables rules
-type IPTablesRuleList []IPTablesRule
 
 /*
  * Tx/Rx of bridge is equal to the total of Tx/Rx on all member
@@ -2792,16 +2744,6 @@ func (status *NetworkInstanceStatus) IsIpAssigned(ip net.IP) bool {
 			if ip.Equal(nip) {
 				return true
 			}
-		}
-	}
-	return false
-}
-
-// IsUsingIfName checks if ifname is used
-func (status *NetworkInstanceStatus) IsUsingIfName(ifname string) bool {
-	for _, ifname2 := range status.IfNameList {
-		if ifname2 == ifname {
-			return true
 		}
 	}
 	return false

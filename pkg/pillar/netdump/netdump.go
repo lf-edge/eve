@@ -80,6 +80,14 @@ var eveFilesToDump = [...]fileToDump{
 		dstPath: "eve/nim-intended-state.dot",
 	},
 	{
+		srcPath: "/run/zedrouter-current-state.dot",
+		dstPath: "eve/zedrouter-current-state.dot",
+	},
+	{
+		srcPath: "/run/zedrouter-intended-state.dot",
+		dstPath: "eve/zedrouter-intended-state.dot",
+	},
+	{
 		srcPath: "/run/nim/DeviceNetworkStatus/global.json",
 		dstPath: "eve/dns.json",
 	},

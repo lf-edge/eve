@@ -8,6 +8,8 @@ package iptables
 import (
 	"errors"
 	"fmt"
+	"strings"
+
 	"github.com/lf-edge/eve/pkg/pillar/base"
 )
 
@@ -49,8 +51,10 @@ func IptableCmdOut(log *base.LogObject, args ...string) (string, error) {
 		out, err = base.Exec(log, iptablesCmd, args...).Output()
 	}
 	if err != nil {
-		errStr := fmt.Sprintf("iptables command %s failed %s output %s",
-			args, err, out)
+		outStr := strings.TrimSpace(string(out))
+		outStr = strings.ReplaceAll(outStr, "\n", "; ")
+		errStr := fmt.Sprintf("iptables command %s failed with err '%s' and output: %s",
+			args, err, outStr)
 		if log != nil {
 			log.Errorln(errStr)
 		}
@@ -82,8 +86,10 @@ func Ip6tableCmdOut(log *base.LogObject, args ...string) (string, error) {
 		out, err = base.Exec(log, ip6tablesCmd, args...).Output()
 	}
 	if err != nil {
-		errStr := fmt.Sprintf("ip6tables command %s failed %s output %s",
-			args, err, out)
+		outStr := strings.TrimSpace(string(out))
+		outStr = strings.ReplaceAll(outStr, "\n", "; ")
+		errStr := fmt.Sprintf("ip6tables command %s failed with err '%s' and output: %s",
+			args, err, outStr)
 		if log != nil {
 			log.Errorln(errStr)
 		}

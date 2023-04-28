@@ -995,7 +995,7 @@ func updateLocalServerMap(getconfigCtx *getconfigContext, localServerURL string)
 			}
 			if localServerIP != nil {
 				// check if the defined IP of localServer equals the allocated IP of the app
-				if ulStatus.AllocatedIPv4Addr == localServerIP.String() {
+				if ulStatus.AllocatedIPv4Addr.Equal(localServerIP) {
 					srvAddr := localServerAddr{
 						localServerAddr: localServerURL,
 						bridgeIP:        ulStatus.BridgeIPAddr,

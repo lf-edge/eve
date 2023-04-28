@@ -406,7 +406,7 @@ func publishNetworkInstanceConfig(ctx *getconfigContext,
 			networkInstanceConfig.Type, networkInstanceConfig.Activate)
 
 		if apiConfigEntry.Port != nil {
-			networkInstanceConfig.Logicallabel = apiConfigEntry.Port.Name
+			networkInstanceConfig.PortLogicalLabel = apiConfigEntry.Port.Name
 		}
 		networkInstanceConfig.IpType = types.AddressType(apiConfigEntry.IpType)
 

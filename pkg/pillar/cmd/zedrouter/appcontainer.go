@@ -1,12 +1,6 @@
 // Copyright (c) 2020 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-// Process input in the form of a collection of AppNetworkConfig structs
-// from zedmanager and zedagent. Publish the status as AppNetworkStatus.
-// Produce the updated configlets (for radvd, dnsmasq, ip*tables, lisp.config,
-// ipset, ip link/addr/route configuration) based on that and apply those
-// configlets.
-
 package zedrouter
 
 import (
@@ -14,7 +8,6 @@ import (
 	"context"
 	"encoding/json"
 	"io"
-	"net"
 	"strconv"
 	"strings"
 	"time"
@@ -28,46 +21,48 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-// DOCKERAPIPORT - constant define of docker API TCP port value
-const DOCKERAPIPORT int = 2375
+// dockerAPIPort - unencrypted docker socket for remote password-less access
+const dockerAPIPort int = 2375
 
-// DOCKERAPIVERSION - docker API version used
-const DOCKERAPIVERSION string = "1.40"
-
-// convert from nanoSeconds to Seconds
-const nanoSecToSec uint64 = 1000000000
+// dockerAPIVersion - docker API version used
+const dockerAPIVersion string = "1.40"
 
 // check if we need to launch the goroutine to collect App container stats
-func appCheckStatsCollect(ctx *zedrouterContext, config *types.AppNetworkConfig,
+func (z *zedrouter) checkAppContainerStatsCollecting(config *types.AppNetworkConfig,
 	status *types.AppNetworkStatus) {
 
-	oldIPAddr := status.GetStatsIPAddr
+	var changed bool
 	if config != nil {
-		status.GetStatsIPAddr = config.GetStatsIPAddr
-	} else {
-		status.GetStatsIPAddr = nil
-	}
-	publishAppNetworkStatus(ctx, status)
-	if status.GetStatsIPAddr == nil && oldIPAddr != nil ||
-		status.GetStatsIPAddr != nil && !status.GetStatsIPAddr.Equal(oldIPAddr) {
-		log.Functionf("appCheckStatsCollect: config ip %v, status ip %v", status.GetStatsIPAddr, oldIPAddr)
-		if oldIPAddr == nil && status.GetStatsIPAddr != nil {
-			ensureStatsCollectRunning(ctx)
+		if !status.GetStatsIPAddr.Equal(config.GetStatsIPAddr) {
+			status.GetStatsIPAddr = config.GetStatsIPAddr
+			changed = true
 		}
-		appChangeContainerStatsACL(status.GetStatsIPAddr, oldIPAddr)
+	} else {
+		if status.GetStatsIPAddr != nil {
+			status.GetStatsIPAddr = nil
+			changed = true
+		}
+	}
+	if !changed {
+		return
+	}
+	z.publishAppNetworkStatus(status)
+	if status.GetStatsIPAddr != nil {
+		z.ensureAppContainerStatsAreCollected()
 	}
 }
 
 // goroutine for App container stats collection
-func appStatsAndLogCollect(ctx *zedrouterContext) {
-	log.Functionf("appStatsAndLogCollect: containerStats, started")
+func (z *zedrouter) collectAppContainerStats() {
+	z.log.Functionf("collectAppContainerStats: containerStats, started")
 	// cache the container last timestamp of log entries of the batch
 	lastLogTime := make(map[string]time.Time)
-	appStatsCollectTimer := time.NewTimer(time.Duration(ctx.appStatsInterval) * time.Second)
+	appStatsCollectTimer := time.NewTimer(
+		time.Duration(z.appContainerStatsInterval) * time.Second)
 	for {
 		select {
 		case <-appStatsCollectTimer.C:
-			items, stopped := checkAppStopStatsCollect(ctx)
+			items, stopped := z.maybeStopAppContainerStatsCollecting()
 			if stopped {
 				return
 			}
@@ -78,51 +73,56 @@ func appStatsAndLogCollect(ctx *zedrouterContext) {
 				status := st.(types.AppNetworkStatus)
 				if status.GetStatsIPAddr != nil {
 					// get a list of containers and client handle
-					cli, containers, err := getAppContainers(status)
+					cli, containers, err := z.getAppContainers(status)
 					if err != nil {
-						log.Errorf("appStatsAndLogCollect: can't get App Containers %s on %s, %v",
-							status.UUIDandVersion.UUID.String(), status.GetStatsIPAddr.String(), err)
+						z.log.Errorf(
+							"collectAppContainerStats: can't get App Containers %s on %s, %v",
+							status.UUIDandVersion.UUID.String(), status.GetStatsIPAddr.String(),
+							err)
 						continue
 					}
 					acNum += len(containers)
 
 					// collect container stats, and publish to zedclient
-					acMetrics := getAppContainerStats(status, cli, containers)
+					acMetrics := z.getAppContainerStats(cli, containers)
 					if len(acMetrics.StatsList) > 0 {
 						acMetrics.UUIDandVersion = status.UUIDandVersion
 						acMetrics.CollectTime = collectTime
-						ctx.pubAppContainerMetrics.Publish(acMetrics.Key(), acMetrics)
+						z.pubAppContainerStats.Publish(acMetrics.Key(), acMetrics)
 					}
 
 					// collect container logs and send through the logging system
-					numlogs += getAppContainerLogs(ctx, status, lastLogTime, cli, containers)
+					numlogs += z.getAppContainerLogs(status, lastLogTime, cli, containers)
 				}
 			}
-			// log output every 5 min, see this goroutine running status and number of containers from App
-			log.Functionf("appStatsAndLogCollect: containerStats, %d processed. total log entries %d, reset timer", acNum, numlogs)
+			// log output every 5 min, see this goroutine running status and number
+			// of containers from App
+			z.log.Functionf("collectAppContainerStats: containerStats, %d processed. "+
+				"total log entries %d, reset timer", acNum, numlogs)
 
-			appStatsCollectTimer = time.NewTimer(time.Duration(ctx.appStatsInterval) * time.Second)
+			appStatsCollectTimer = time.NewTimer(
+				time.Duration(z.appContainerStatsInterval) * time.Second)
 		}
 	}
 }
 
-func ensureStatsCollectRunning(ctx *zedrouterContext) {
-	ctx.appStatsMutex.Lock()
-	if !ctx.appCollectStatsRunning {
-		ctx.appCollectStatsRunning = true
-		ctx.appStatsMutex.Unlock()
-		log.Functionf("Creating %s at %s", "appStatusAndLogCollect",
+func (z *zedrouter) ensureAppContainerStatsAreCollected() {
+	z.appContainerStatsMutex.Lock()
+	if !z.appContainerStatsCollecting {
+		z.appContainerStatsCollecting = true
+		z.appContainerStatsMutex.Unlock()
+		z.log.Functionf("Creating %s at %s", "appStatusAndLogCollect",
 			agentlog.GetMyStack())
-		go appStatsAndLogCollect(ctx)
+		go z.collectAppContainerStats()
 	} else {
-		ctx.appStatsMutex.Unlock()
+		z.appContainerStatsMutex.Unlock()
 	}
 }
 
-func checkAppStopStatsCollect(ctx *zedrouterContext) (map[string]interface{}, bool) {
+func (z *zedrouter) maybeStopAppContainerStatsCollecting() (map[string]interface{}, bool) {
 	var numStatsIP int
-	ctx.appStatsMutex.Lock()
-	pub := ctx.pubAppNetworkStatus
+	z.appContainerStatsMutex.Lock()
+	pub := z.pubAppNetworkStatus
 	items := pub.GetAll()
 	for _, st := range items {
 		status := st.(types.AppNetworkStatus)
@@ -131,46 +131,52 @@ func checkAppStopStatsCollect(ctx *zedrouterContext) (map[string]interface{}, bo
 		}
 	}
 	if numStatsIP == 0 {
-		log.Functionf("checkAppStopStatsCollect: no stats IP anymore. stop and exit out")
-		ctx.appCollectStatsRunning = false
-		ctx.appStatsMutex.Unlock()
+		z.log.Functionf("maybeStopAppContainerStatsCollecting: no stats IP anymore. " +
+			"stop and exit out")
+		z.appContainerStatsCollecting = false
+		z.appContainerStatsMutex.Unlock()
 		return items, true
 	}
-	ctx.appStatsMutex.Unlock()
+	z.appContainerStatsMutex.Unlock()
 	return items, false
 }
 
-func getAppContainerStats(status types.AppNetworkStatus, cli *client.Client, containers []apitypes.Container) types.AppContainerMetrics {
+func (z *zedrouter) getAppContainerStats(cli *client.Client,
+	containers []apitypes.Container) types.AppContainerMetrics {
 	var acMetrics types.AppContainerMetrics
 
 	for _, container := range containers {
 		// the main purpose of Inspect is to obtain the container start time for CPU stats
 		cjson, err := cli.ContainerInspect(context.Background(), container.ID)
 		if err != nil {
-			log.Errorf("getAppContainerStats: container inspect for %s, error %v", container.ID, err)
+			z.log.Errorf("getAppContainerStats: container inspect for %s, error %v",
+				container.ID, err)
 			continue
 		}
 		startTime, _ := time.Parse(time.RFC3339Nano, cjson.State.StartedAt)
 
 		stats, err := cli.ContainerStats(context.Background(), container.ID, false)
 		if err != nil {
-			log.Errorf("getAppContainerStats: container stats for %s, error %v\n", container.Names[0], err)
+			z.log.Errorf("getAppContainerStats: container stats for %s, error %v\n",
+				container.Names[0], err)
 			continue
 		}
 
-		acStats, err := processAppContainerStats(stats, container, startTime)
+		acStats, err := z.processAppContainerStats(stats, container, startTime)
 		if err != nil {
-			log.Errorf("getAppContainerStats: process stats for %s, error %v\n", container.Names[0], err)
+			z.log.Errorf("getAppContainerStats: process stats for %s, error %v\n",
+				container.Names[0], err)
 			continue
 		}
-		log.Tracef("getAppContainerStats: container stats %v", acStats)
+		z.log.Tracef("getAppContainerStats: container stats %v", acStats)
 		acMetrics.StatsList = append(acMetrics.StatsList, acStats)
 	}
 
 	return acMetrics
 }
 
-func processAppContainerStats(stats apitypes.ContainerStats, container apitypes.Container, startTime time.Time) (types.AppContainerStats, error) {
+func (z *zedrouter) processAppContainerStats(stats apitypes.ContainerStats,
+	container apitypes.Container, startTime time.Time) (types.AppContainerStats, error) {
 	var acStats types.AppContainerStats
 	var v *apitypes.StatsJSON
 
@@ -217,36 +223,8 @@ func processAppContainerStats(stats apitypes.ContainerStats, container apitypes.
 	return acStats, nil
 }
 
-func appChangeContainerStatsACL(newIPAddr, oldIPAddr net.IP) {
-	if oldIPAddr != nil {
-		// remove the previous installed blocking ACL
-		appConfigContainerStatsACL(oldIPAddr, true)
-	}
-	if newIPAddr != nil {
-		// install the App Container blocking ACL
-		appConfigContainerStatsACL(newIPAddr, false)
-	}
-}
-
-// reinstall the App Container blocking ACL to place in the top
-func appStatsMayNeedReinstallACL(ctx *zedrouterContext, config types.AppNetworkConfig) {
-	sub := ctx.subAppNetworkConfig
-	items := sub.GetAll()
-	for _, item := range items {
-		cfg := item.(types.AppNetworkConfig)
-		if cfg.Key() == config.Key() {
-			log.Functionf("appStatsMayNeedReinstallACL: same app, skip")
-			continue
-		}
-		if cfg.GetStatsIPAddr != nil {
-			appConfigContainerStatsACL(cfg.GetStatsIPAddr, true)
-			appConfigContainerStatsACL(cfg.GetStatsIPAddr, false)
-			log.Functionf("appStatsMayNeedReinstallACL: reinstall %s\n", cfg.GetStatsIPAddr.String())
-		}
-	}
-}
-
-func getAppContainerLogs(ctx *zedrouterContext, status types.AppNetworkStatus, last map[string]time.Time, cli *client.Client, containers []apitypes.Container) int {
+func (z *zedrouter) getAppContainerLogs(status types.AppNetworkStatus,
+	last map[string]time.Time, cli *client.Client, containers []apitypes.Container) int {
 	var buf bytes.Buffer
 	var numlogs int
 
@@ -256,37 +234,41 @@ func getAppContainerLogs(ctx *zedrouterContext, status types.AppNetworkStatus, l
 		if lt, ok := last[containerName]; ok {
 			lasttime = lt.Format(time.RFC3339Nano)
 		}
-		out, err := cli.ContainerLogs(context.Background(), container.ID, apitypes.ContainerLogsOptions{
-			ShowStdout: true,
-			ShowStderr: true,
-			Timestamps: true,
-			Since:      lasttime,
-		})
+		out, err := cli.ContainerLogs(context.Background(), container.ID,
+			apitypes.ContainerLogsOptions{
+				ShowStdout: true,
+				ShowStderr: true,
+				Timestamps: true,
+				Since:      lasttime,
+			})
 		if err != nil {
-			log.Errorf("getAppContainerLogs: log output error %v", err)
+			z.log.Errorf("getAppContainerLogs: log output error %v", err)
 			continue
 		}
 
 		stdcopy.StdCopy(&buf, &buf, io.LimitReader(out, 100000))
 		logLines := strings.Split(buf.String(), "\n")
 		numlogs += len(logLines)
-		log.Tracef("getAppContainerLogs: container %s, lasttime %s, lines %d", containerName, lasttime, len(logLines))
+		z.log.Tracef("getAppContainerLogs: container %s, lasttime %s, lines %d",
+			containerName, lasttime, len(logLines))
 		for _, line := range logLines {
 			sline := strings.SplitN(line, " ", 2)
 			time := sline[0]
 			if len(time) > 0 && len(sline) == 2 {
 				newtime = time
-				// some message has timestamp like: [\u003c6\u003e 2020-06-23 22:29:01.871 +00:00 [INF] - ]
-				// remove the timestamp in message if any since we always have timestamp
+				// Some message has timestamp like:
+				//	[\u003c6\u003e 2020-06-23 22:29:01.871 +00:00 [INF] - ]
+				// Remove the timestamp in message if any since we always have timestamp
 				msg := strings.SplitN(sline[1], " +00:00 [", 2)
 				if len(msg) > 1 {
 					message = " [" + msg[1]
 				} else {
 					message = msg[0]
 				}
-				// insert container-name, app-UUID and module timestamp in log to be processed by newlogd
-				// use customized aclog independent of pillar logger
-				aclogger := ctx.aclog.WithFields(logrus.Fields{
+				// Insert container-name, app-UUID and module timestamp in log
+				// to be processed by newlogd.
+				// Use customized appContainerLogger independent of pillar logger
+				aclogger := z.appContainerLogger.WithFields(logrus.Fields{
 					"appuuid":       status.UUIDandVersion.UUID.String(),
 					"containername": containerName,
 					"eventtime":     time,
@@ -298,10 +280,11 @@ func getAppContainerLogs(ctx *zedrouterContext, status types.AppNetworkStatus, l
 		if newtime != "" {
 			t, err := time.Parse(time.RFC3339Nano, newtime)
 			if err != nil {
-				log.Errorf("getAppContainerLogs: time parse error %v", err)
+				z.log.Errorf("getAppContainerLogs: time parse error %v", err)
 				t = time.Now()
 			}
-			last[containerName] = t.Add(2 * time.Nanosecond) // skip the last timestamp next round
+			// skip the last timestamp next round
+			last[containerName] = t.Add(2 * time.Nanosecond)
 		}
 	}
 
@@ -322,17 +305,20 @@ func getAppContainerLogs(ctx *zedrouterContext, status types.AppNetworkStatus, l
 	return numlogs
 }
 
-func getAppContainers(status types.AppNetworkStatus) (*client.Client, []apitypes.Container, error) {
-	containerEndpoint := "tcp://" + status.GetStatsIPAddr.String() + ":" + strconv.Itoa(DOCKERAPIPORT)
-	cli, err := client.NewClient(containerEndpoint, DOCKERAPIVERSION, nil, nil)
+func (z *zedrouter) getAppContainers(status types.AppNetworkStatus) (
+	*client.Client, []apitypes.Container, error) {
+	containerEndpoint := "tcp://" + status.GetStatsIPAddr.String() +
+		":" + strconv.Itoa(dockerAPIPort)
+	cli, err := client.NewClient(containerEndpoint, dockerAPIVersion, nil, nil)
 	if err != nil {
-		log.Errorf("getAppContainers: client create failed, error %v", err)
+		z.log.Errorf("getAppContainers: client create failed, error %v", err)
 		return nil, nil, err
 	}
 
-	containers, err := cli.ContainerList(context.Background(), apitypes.ContainerListOptions{})
+	containers, err := cli.ContainerList(
+		context.Background(), apitypes.ContainerListOptions{})
 	if err != nil {
-		log.Errorf("getAppContainers: Container list error %v", err)
+		z.log.Errorf("getAppContainers: Container list error %v", err)
 		return nil, nil, err
 	}
 

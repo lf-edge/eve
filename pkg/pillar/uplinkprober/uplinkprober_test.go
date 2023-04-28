@@ -244,9 +244,9 @@ func mockNI(index int, local, onlyFreeUplinks bool) types.NetworkInstanceConfig 
 		uplinkLabel = types.FreeUplinkLabel
 	}
 	return types.NetworkInstanceConfig{
-		UUIDandVersion: testUUIDs()[index-1],
-		Type:           niType,
-		Logicallabel:   uplinkLabel,
+		UUIDandVersion:   testUUIDs()[index-1],
+		Type:             niType,
+		PortLogicalLabel: uplinkLabel,
 	}
 }
 
