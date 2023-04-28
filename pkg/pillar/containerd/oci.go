@@ -286,11 +286,12 @@ func (s *ociSpec) UpdateVifList(vifs []types.VifConfig) {
 		Timeout: &timeout,
 	})
 	for _, v := range vifs {
-		vifSpec := []string{"VIF_NAME=" + v.Vif, "VIF_BRIDGE=" + v.Bridge, "VIF_MAC=" + v.Mac}
+		vifSpec := []string{"VIF_NAME=" + v.Vif, "VIF_BRIDGE=" + v.Bridge,
+			"VIF_MAC=" + v.Mac.String()}
 		s.Hooks.Prestart = append(s.Hooks.Prestart, specs.Hook{
 			Env:     vifSpec,
 			Path:    eveScript,
-			Args:    append(vethScript, "up", v.Vif, v.Bridge, v.Mac),
+			Args:    append(vethScript, "up", v.Vif, v.Bridge, v.Mac.String()),
 			Timeout: &timeout,
 		})
 		s.Hooks.Poststop = append(s.Hooks.Poststop, specs.Hook{

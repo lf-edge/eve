@@ -1,6 +1,7 @@
 package hypervisor
 
 import (
+	"net"
 	"os"
 	"os/exec"
 	"testing"
@@ -58,8 +59,8 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
 		},
 		GPUConfig: "legacy",
 		VifList: []types.VifConfig{
-			{Bridge: "bn0", Mac: "6a:00:03:61:a6:90", Vif: "nbu1x1"},
-			{Bridge: "bn0", Mac: "6a:00:03:61:a6:91", Vif: "nbu1x2"},
+			{Bridge: "bn0", Mac: net.HardwareAddr{0x6a, 0x00, 0x03, 0x61, 0xa6, 0x90}, Vif: "nbu1x1"},
+			{Bridge: "bn0", Mac: net.HardwareAddr{0x6a, 0x00, 0x03, 0x61, 0xa6, 0x91}, Vif: "nbu1x2"},
 		},
 		IoAdapterList: []types.IoAdapter{
 			{Type: types.IoCom, Name: "COM1"},
@@ -874,8 +875,8 @@ func TestCreateDomConfig(t *testing.T) {
 		},
 		GPUConfig: "legacy",
 		VifList: []types.VifConfig{
-			{Bridge: "bn0", Mac: "6a:00:03:61:a6:90", Vif: "nbu1x1"},
-			{Bridge: "bn0", Mac: "6a:00:03:61:a6:91", Vif: "nbu1x2"},
+			{Bridge: "bn0", Mac: net.HardwareAddr{0x6a, 0x00, 0x03, 0x61, 0xa6, 0x90}, Vif: "nbu1x1"},
+			{Bridge: "bn0", Mac: net.HardwareAddr{0x6a, 0x00, 0x03, 0x61, 0xa6, 0x91}, Vif: "nbu1x2"},
 		},
 		IoAdapterList: []types.IoAdapter{
 			{Type: types.IoNetEth, Name: "eth0"},
@@ -2151,8 +2152,8 @@ func TestCreateDom(t *testing.T) {
 		},
 		GPUConfig: "legacy",
 		VifList: []types.VifConfig{
-			{Bridge: "bn0", Mac: "6a:00:03:61:a6:90", Vif: "nbu1x1"},
-			{Bridge: "bn0", Mac: "6a:00:03:61:a6:91", Vif: "nbu1x2"},
+			{Bridge: "bn0", Mac: net.HardwareAddr{0x6a, 0x00, 0x03, 0x61, 0xa6, 0x90}, Vif: "nbu1x1"},
+			{Bridge: "bn0", Mac: net.HardwareAddr{0x6a, 0x00, 0x03, 0x61, 0xa6, 0x91}, Vif: "nbu1x2"},
 		},
 		IoAdapterList: []types.IoAdapter{
 			{Type: types.IoNetEth, Name: "eth0"},

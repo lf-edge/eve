@@ -191,9 +191,9 @@ func (p *UplinkProber) StartNIProbing(niConfig types.NetworkInstanceConfig) (
 	initialStatus NIProbeStatus, err error) {
 	p.Lock()
 	defer p.Unlock()
-	if !types.IsSharedPortLabel(niConfig.Logicallabel) {
+	if !types.IsSharedPortLabel(niConfig.PortLogicalLabel) {
 		return initialStatus, fmt.Errorf("cannot probe NI (%s) with non-shared label (%s)",
-			niConfig.UUID, niConfig.Logicallabel)
+			niConfig.UUID, niConfig.PortLogicalLabel)
 	}
 	if niConfig.Type != types.NetworkInstanceTypeLocal {
 		return initialStatus, fmt.Errorf("unsupported NI (%s) type (%v) for probing",
@@ -304,7 +304,7 @@ func (p *UplinkProber) GetProbeMetrics(
 	metrics.RemotePingIntvl = uint32(remoteIntvl / time.Second)
 	config := p.niConfig[ni.String()]
 	for _, uplinkStatus := range p.uplinkProbeStatus {
-		if config.Logicallabel == types.FreeUplinkLabel && uplinkStatus.cost > 0 {
+		if config.PortLogicalLabel == types.FreeUplinkLabel && uplinkStatus.cost > 0 {
 			continue
 		}
 		metrics.UplinkCount++
@@ -623,7 +623,7 @@ func (p *UplinkProber) pickUplinkForNI(ni uuid.UUID) (changed bool) {
 			// Not yet probed, skip.
 			continue
 		}
-		if config.Logicallabel == types.FreeUplinkLabel && uplinkStatus.cost > 0 {
+		if config.PortLogicalLabel == types.FreeUplinkLabel && uplinkStatus.cost > 0 {
 			continue
 		}
 		if uplinkStatus.upCount() == 0 {
@@ -688,7 +688,7 @@ func (p *UplinkProber) pickUplinkForNI(ni uuid.UUID) (changed bool) {
 	}
 	// 3. Find any uplink matching the label that has unicast IP address.
 	for uplinkLL, uplinkStatus := range p.uplinkProbeStatus {
-		if config.Logicallabel == types.FreeUplinkLabel && uplinkStatus.cost > 0 {
+		if config.PortLogicalLabel == types.FreeUplinkLabel && uplinkStatus.cost > 0 {
 			continue
 		}
 		for _, ip := range uplinkStatus.localAddrs {
@@ -703,7 +703,7 @@ func (p *UplinkProber) pickUplinkForNI(ni uuid.UUID) (changed bool) {
 	}
 	// 4. Find any uplink matching the label that at least has a local IP address.
 	for uplinkLL, uplinkStatus := range p.uplinkProbeStatus {
-		if config.Logicallabel == types.FreeUplinkLabel && uplinkStatus.cost > 0 {
+		if config.PortLogicalLabel == types.FreeUplinkLabel && uplinkStatus.cost > 0 {
 			continue
 		}
 		if len(uplinkStatus.localAddrs) > 0 {
@@ -717,7 +717,7 @@ func (p *UplinkProber) pickUplinkForNI(ni uuid.UUID) (changed bool) {
 	// 5. If none of the uplinks have valid unicast/local IP address just pick
 	//    the first that matches the label
 	for uplinkLL, uplinkStatus := range p.uplinkProbeStatus {
-		if config.Logicallabel == types.FreeUplinkLabel && uplinkStatus.cost > 0 {
+		if config.PortLogicalLabel == types.FreeUplinkLabel && uplinkStatus.cost > 0 {
 			continue
 		}
 		p.log.Noticef(

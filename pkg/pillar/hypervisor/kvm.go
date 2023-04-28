@@ -606,7 +606,7 @@ func (ctx kvmContext) CreateDomConfig(domainName string, config types.DomainConf
 	}{PCIId: diskContext.PCIId, NetID: 0}
 	t, _ = template.New("qemuNet").Parse(qemuNetTemplate)
 	for _, net := range config.VifList {
-		netContext.Mac = net.Mac
+		netContext.Mac = net.Mac.String()
 		netContext.Bridge = net.Bridge
 		netContext.Vif = net.Vif
 		if config.VirtualizationMode == types.LEGACY {
