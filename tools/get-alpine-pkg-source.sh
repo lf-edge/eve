@@ -87,6 +87,7 @@ get_ocpairs() {
     # otherwise we produce XXX output string
     # Filter out duplicates
     awk -F: '
+        /^P:/ { name=$2 }
         /^o:/ { origin=$2 }
         /^L:/ { license=$2 }
         /^V:/ { version=$2 }
@@ -94,8 +95,8 @@ get_ocpairs() {
         /^\s*$/ {
             if (origin != "") {
                 if (commit ~ /^\s*$/) { commit="unknown" };
-                print origin, version, commit, license;
-                origin=""; license=""; version=""; commit="unknown";
+                print name, origin, version, commit, license;
+                origin=""; license=""; version=""; name=""; commit="unknown";
             }
         }' | sort -u
 }
@@ -124,7 +125,7 @@ fi
 [ -z "$quiet" ] && echo "found $(cat ${OCPAIRS} |wc -l) packages times licenses" >&2
 # skip licenses
 mv ${OCPAIRS} ${OCPAIRS}.with_licenses
-awk '{print $1, $2, $3}' ${OCPAIRS}.with_licenses | sort -u >${OCPAIRS}
+awk '{print $1, $2, $3, $4}' ${OCPAIRS}.with_licenses | sort -u >${OCPAIRS}
 # shellcheck disable=SC2002
 [ -z "$quiet" ] && echo "found $(cat ${OCPAIRS} |wc -l) packages" >&2
 
@@ -143,11 +144,12 @@ fi
 while read -r line ; do
     # shellcheck disable=SC2086
     set -- $line
-    [ $# -lt 3 ] && continue
-    origin=$1
-    version=$2
-    commit=$3
-    shift 3
+    [ $# -lt 4 ] && continue
+    name=$1
+    origin=$2
+    version=$3
+    commit=$4
+    shift 4
     license="$*"
     # The commit is empty in one case... That is from the eve-debug container
     # Could ignore
@@ -157,116 +159,125 @@ while read -r line ; do
     fi
     commitstr="?id=${commit}"
 
-    # Include commit in directory to handle different versions
-    name_version="${origin}-${version}"
-    pkgbasepath="${name_version}.${commit}"
+    # Include commit in directory to handle different versions of the same package.
+    # The actual download is based on the origin, but we indicate all names. There might
+    # be several for the same origin (and therefore same source).
+    name_version="${name}-${version}"
+    origin_version="${origin}-${version}"
+    pkgbasepath="${origin_version}.${commit}"
     pkgpath="${pkgbasepath}"
     [ -n "$prefix" ] && pkgpath="${prefix}/${pkgpath}"
     dstdir="${outdir}/${pkgpath}"
     [ -n "$verbose" ] && echo "origin: ${origin} commit: ${commit} dstdir: ${dstdir}" >&2
-    # Need to handle main, community and testing repos
-    foundRepo=""
-    git -C "${TMP_DIR}" checkout "${commit}" >/dev/null
-    for repo in main community testing; do
-            echo "Trying ${origin} in ${repo} at commit ${commit}" >&2
-            sourceDir="${TMP_DIR}/${repo}/${origin}"
-            if [ ! -d "${sourceDir}" ]; then
-                echo "${origin} not in ${repo} at commit ${commit}" >&2
-                continue
-            fi
-            if [ ! -f "${sourceDir}"/APKBUILD ]; then
-                echo "${origin} in ${repo} missing APKBUILD" >&2
-                continue
-            fi
-            cp -r "${sourceDir}/." "${dstdir}/"
-            foundRepo="${repo}"
+    # we might already have this package, in which case, all we need is the line to output
+    if [ -d "${dstdir}" ]; then
+        echo "Already have ${origin} at ${commit}" >&2
+    else
+        # Need to handle main, community and testing repos
+        foundRepo=""
+        git -C "${TMP_DIR}" checkout "${commit}" >/dev/null
+        for repo in main community testing; do
+                echo "Trying ${origin} in ${repo} at commit ${commit}" >&2
+                sourceDir="${TMP_DIR}/${repo}/${origin}"
+                if [ ! -d "${sourceDir}" ]; then
+                    echo "${origin} not in ${repo} at commit ${commit}" >&2
+                    continue
+                fi
+                if [ ! -f "${sourceDir}"/APKBUILD ]; then
+                    echo "${origin} in ${repo} missing APKBUILD" >&2
+                    continue
+                fi
+                cp -r "${sourceDir}/." "${dstdir}/"
+                foundRepo="${repo}"
 
-            break
-    done
-    if [ -z "${foundRepo}" ]; then
-        >&2 echo "Failed to find ${origin} at ${commit}"
-        exit 2
-    fi
-    [ -n "$verbose" ] && echo "Retrieved ${origin} ${commit}" >&2
-    if [ -n "$urlfile" ]; then
-        pkgurl="https://git.alpinelinux.org/aports/plain/${foundRepo}/${origin}/APKBUILD${commitstr}"
-        echo "$origin $pkgurl $license" >>"${urlfile}" >&2
-    fi
-    # XXX is this dangerous? subshell?
-    # Start empty
-    source=
-    sha512sums=
-    # shellcheck disable=SC1090,SC1091
-    source "${dstdir}/APKBUILD"
-    # shellcheck disable=SC2154
-    [ -n "$verbose" ] && echo "source: ${source}"
-    # shellcheck disable=SC2154
-    if [ -n "${sha512sums}" ]; then
-        echo "${sha512sums}" > "${dstdir}/sha512sums.APKBUILD"
-    fi
-    for s in ${source}; do
-        url="$s"
-        filename=$(basename "${url}")
-        # Do we need to split on "::"?
-        if echo "$s" | grep -sq "::"; then
-            # shellcheck disable=SC2001
-            filename="$(echo "$s" | sed 's/^\(.*\)::\(.*$\)/\1/')"
-            # shellcheck disable=SC2001
-            url="$(echo "$s" | sed 's/^\(.*\)::\(.*$\)/\2/')"
+                break
+        done
+        if [ -z "${foundRepo}" ]; then
+            >&2 echo "Failed to find ${origin} at ${commit}"
+            exit 2
         fi
-        case $url in
-            https://*|http://*|ftp://*)
-                [ -n "$verbose" ] && echo "found $s basename ${filename}" >&2
-                if ! curl -sSLo "${dstdir}/${filename}" "${url}"; then
-                    >&2 echo "Failed to download $url"
-                    rm -f "${dstdir}/${filename}"
-                    badfileslist="${badfileslist} missing:${pkgpath}:${filename}"
-                    badfilescount=$((badfilescount + 1))
-                    continue
-                fi
-                ;;
-            *)
-                [ -n "$verbose" ] && echo "not http*: $s" >&2
-                if [ ! -f "${dstdir}/${filename}" ]; then
-                    >&2 echo "Missing file ${filename} $url"
-                    badfileslist="${badfileslist} missing:${pkgpath}:${filename}"
-                    badfilescount=$((badfilescount + 1))
-                    continue
-                fi
-                ;;
-        esac
+        [ -n "$verbose" ] && echo "Retrieved ${origin} ${commit}" >&2
+        if [ -n "$urlfile" ]; then
+            pkgurl="https://git.alpinelinux.org/aports/plain/${foundRepo}/${origin}/APKBUILD${commitstr}"
+            echo "$origin $pkgurl $license" >>"${urlfile}" >&2
+        fi
+        # XXX is this dangerous? subshell?
+        # Start empty
+        source=
+        sha512sums=
+        # shellcheck disable=SC1090,SC1091
+        source "${dstdir}/APKBUILD"
+        # shellcheck disable=SC2154
+        [ -n "$verbose" ] && echo "source: ${source}"
+        # shellcheck disable=SC2154
         if [ -n "${sha512sums}" ]; then
-            sum=$(openssl sha512 "${dstdir}/${filename}" | awk '{print $2}')
-            rsum=$(grep ' '"$filename"\$ "${dstdir}/sha512sums.APKBUILD" | awk '{print $1}')
-            if [ "${sum}" != "${rsum}" ]; then
-                errmsg="mismatched-sh512"
-                echo "Mismatched sh512 for $url into ${dstdir}/${filename}" >&2
-                if grep -qsi '404 Not Found' "${dstdir}/${filename}"; then
-                    errmsg="404-not-found"
-                    >&2 echo "404 Not Found for ${url}"
-                    rm -f "${dstdir}/${filename}"
-                elif grep -qsi '^<!DOCTYPE html' "${dstdir}/${filename}"; then
-                    >&2 echo "Bad DOCTYPE for $url into ${dstdir}/${filename}"
-                    errmsg="bad-content"
-                    rm -f "${dstdir}/${filename}"
-                elif grep -qsi 'Too many requests' "${dstdir}/${filename}"; then
-                    errmsg="too-many-requests"
-                    >&2 echo "Too many requests for ${url}"
-                    rm -f "${dstdir}/${filename}"
-                else
-                    [ -n "$verbose" ] && echo "Bad content: $(cat "${dstdir}/${filename}")" >&2
-                fi
-                # "Bad content" and "Too many requests" isn't really missing ...
-                badfileslist="${badfileslist} ${errmsg}:${pkgpath}:${filename}"
-                badfilescount=$((badfilescount + 1))
-            else
-                echo "$sum $filename" >> "${dstdir}/sha512sums.received"
-            fi
+            echo "${sha512sums}" > "${dstdir}/sha512sums.APKBUILD"
         fi
-    done
-    if [ "$badfilescount" != 0 ]; then
-        echo "Missing/bad $badfilescount files" >&2
+        for s in ${source}; do
+            url="$s"
+            filename=$(basename "${url}")
+            # Do we need to split on "::"?
+            if echo "$s" | grep -sq "::"; then
+                # shellcheck disable=SC2001
+                filename="$(echo "$s" | sed 's/^\(.*\)::\(.*$\)/\1/')"
+                # shellcheck disable=SC2001
+                url="$(echo "$s" | sed 's/^\(.*\)::\(.*$\)/\2/')"
+            fi
+            case $url in
+                https://*|http://*|ftp://*)
+                    [ -n "$verbose" ] && echo "found $s basename ${filename}" >&2
+                    if ! curl -sSLo "${dstdir}/${filename}" "${url}"; then
+                        >&2 echo "Failed to download $url"
+                        rm -f "${dstdir}/${filename}"
+                        badfileslist="${badfileslist} missing:${pkgpath}:${filename}"
+                        badfilescount=$((badfilescount + 1))
+                        continue
+                    fi
+                    ;;
+                *)
+                    [ -n "$verbose" ] && echo "not http*: $s" >&2
+                    if [ ! -f "${dstdir}/${filename}" ]; then
+                        >&2 echo "Missing file ${filename} $url"
+                        badfileslist="${badfileslist} missing:${pkgpath}:${filename}"
+                        badfilescount=$((badfilescount + 1))
+                        continue
+                    fi
+                    ;;
+            esac
+            if [ -n "${sha512sums}" ]; then
+                sum=$(openssl sha512 "${dstdir}/${filename}" | awk '{print $2}')
+                rsum=$(grep ' '"$filename"\$ "${dstdir}/sha512sums.APKBUILD" | awk '{print $1}')
+                if [ "${sum}" != "${rsum}" ]; then
+                    errmsg="mismatched-sh512"
+                    echo "Mismatched sh512 for $url into ${dstdir}/${filename}" >&2
+                    if grep -qsi '404 Not Found' "${dstdir}/${filename}"; then
+                        errmsg="404-not-found"
+                        >&2 echo "404 Not Found for ${url}"
+                        rm -f "${dstdir}/${filename}"
+                    elif grep -qsi '^<!DOCTYPE html' "${dstdir}/${filename}"; then
+                        >&2 echo "Bad DOCTYPE for $url into ${dstdir}/${filename}"
+                        errmsg="bad-content"
+                        rm -f "${dstdir}/${filename}"
+                    elif grep -qsi 'Too many requests' "${dstdir}/${filename}"; then
+                        errmsg="too-many-requests"
+                        >&2 echo "Too many requests for ${url}"
+                        rm -f "${dstdir}/${filename}"
+                    else
+                        [ -n "$verbose" ] && echo "Bad content: $(cat "${dstdir}/${filename}")" >&2
+                    fi
+                    # "Bad content" and "Too many requests" isn't really missing ...
+                    badfileslist="${badfileslist} ${errmsg}:${pkgpath}:${filename}"
+                    badfilescount=$((badfilescount + 1))
+                else
+                    echo "$sum $filename" >> "${dstdir}/sha512sums.received"
+                fi
+            fi
+        done
+        if [ "$badfilescount" != 0 ]; then
+            echo "Missing/bad $badfilescount files" >&2
+        fi
     fi
+
     echo "alpine,$name_version,$commit,$pkgpath"
 done < "${OCPAIRS}"
 
