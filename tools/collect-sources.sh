@@ -29,7 +29,8 @@ tar -xf "$rootfs" -C "$tmproot" --exclude "dev/*"
 {
 "${eve}/tools/get-alpine-pkg-source.sh" -s "${tmpout}" -e "${tmproot}" -p alpine
 "${eve}/tools/get-kernel-source.sh" -s "${tmpout}" -p kernel
-"${eve}/build-tools/bin/go-sources-and-licenses" sources -d "${eve}/pkg" --find --recursive --out "${tmpout}" --prefix golang --template 'golang,{{.Module}}@{{.Version}},{{.Version}},{{.Path}}'
+"${eve}/build-tools/bin/go-sources-and-licenses" sources -s "${eve}/pkg" --find --recursive --out "${tmpout}" --prefix golang --template 'golang,{{.Module}}@{{.Version}},{{.Version}},{{.Path}}'
+"${eve}/build-tools/bin/go-sources-and-licenses" sources -b "${tmproot}" --find --recursive --out "${tmpout}" --prefix golang --template 'golang,{{.Module}}@{{.Version}},{{.Version}},{{.Path}}'
 } > "${manifest}"
 
 tar -zcf "${outfile}" -C "${tmpout}" .
