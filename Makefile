@@ -684,16 +684,12 @@ publish_sources: $(COLLECTED_SOURCES)
 
 
 $(LIVE).raw: $(BOOT_PART) $(EFI_PART) $(ROOTFS_IMG) $(CONFIG_IMG) $(PERSIST_IMG) $(BSP_IMX_PART) | $(INSTALLER)
-	@[ "$(PLATFORM)" != "${PLATFORM/imx/}" ] && \
-		cp $(INSTALLER)/bsp-imx/NXP-EULA-LICENSE.txt $(INSTALLER)/NXP-EULA-LICENSE.txt && \
-		cp $(INSTALLER)/bsp-imx/NXP-EULA-LICENSE.txt $(BUILD_DIR)/NXP-EULA-LICENSE.txt && \
-		cp $(INSTALLER)/bsp-imx/"$(PLATFORM)"-flash.bin $(INSTALLER)/imx8-flash.bin && \
-		cp $(INSTALLER)/bsp-imx/"$(PLATFORM)"-flash.conf $(INSTALLER)/imx8-flash.conf && \
-		cp $(INSTALLER)/bsp-imx/*.dtb $(INSTALLER)/boot  || :
+	./tools/prepare-platform.sh "$(PLATFORM)" "$(BUILD_DIR)" "$(INSTALLER)" || :
 	./tools/makeflash.sh -C 350 $| $@ $(PART_SPEC)
 	$(QUIET): $@: Succeeded
 
-$(INSTALLER).raw: $(BOOT_PART) $(EFI_PART) $(ROOTFS_IMG) $(INITRD_IMG) $(INSTALLER_IMG) $(CONFIG_IMG) $(PERSIST_IMG) | $(INSTALLER)
+$(INSTALLER).raw: $(BOOT_PART) $(EFI_PART) $(ROOTFS_IMG) $(INITRD_IMG) $(INSTALLER_IMG) $(CONFIG_IMG) $(PERSIST_IMG) $(BSP_IMX_PART) | $(INSTALLER)
+	./tools/prepare-platform.sh "$(PLATFORM)" "$(BUILD_DIR)" "$(INSTALLER)" || :
 	./tools/makeflash.sh -C 350 $| $@ "conf_win installer inventory_win"
 	$(QUIET): $@: Succeeded
 
