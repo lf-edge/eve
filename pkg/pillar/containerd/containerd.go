@@ -66,10 +66,6 @@ const (
 	// EVEOCIVNCPasswordLabel is OCI runtime spec label that tracks VNC password in OCI Image config
 	EVEOCIVNCPasswordLabel = "org.lfedge.eve.vnc_password"
 
-	//TBD: Have a better way to calculate this number.
-	//For now it is based on some trial-and-error experiments
-	qemuOverHead = int64(500 * 1024 * 1024)
-
 	// default signal to kill tasks
 	defaultSignal = "SIGTERM"
 )
