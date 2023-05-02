@@ -394,20 +394,43 @@ In Jetson nano, from January 22, 2021, it became possible to save the u-boot to 
 
 ## How to use on an i.MX 8M Plus Phytec phyBOARD-Pollux board
 
+### Running from SD Card (phyBOARD-Pollux)
+
 1. Set bootmode switch (S3) to boot device from an SD card (positions 1,2,3,4 set to ON,OFF,OFF,OFF).
 2. Build a live image `make ZARCH=arm64 HV=kvm PLATFORM=imx8mp_pollux live-raw` (Only KVM is supported)
 3. Flash the `dist/arm64/current/live.raw` live EVE image onto your SD card by [following these instructions](#how-to-write-eve-image-and-installer-onto-an-sd-card-or-an-installer-medium)
 
+### Installing on eMMC (phyBOARD-Pollux)
+
+1. Build an installation raw image `make ZARCH=arm64 HV=kvm PLATFORM=imx8mp_pollux installer-raw` (Only KVM is supported)
+2. Flash the `dist/arm64/current/installer.raw` install EVE image onto your SD card by [following these instructions](#how-to-write-eve-image-and-installer-onto-an-sd-card-or-an-installer-medium)
+3. Set bootmode switch (S3) to boot device from an SD card (positions 1,2,3,4 set to ON,OFF,OFF,OFF).
+4. Boot the device from SD Card. Installation process should initialize automatically, the device will be powered off when the process is done
+5. Remove the SD Card from the device
+6. Set bootmode switch (S3) to boot device from eMMC (positions 1,2,3,4 set to OFF,OFF,OFF,OFF).
+7. Power on the device, EVE should start from eMMC
+
 ## How to use on an EPC-R3720 (Advantech, based on i.MX 8M Plus)
 
 This device, from [Advantech](https://www.advantech.com/en-eu/products/880a61e5-3fed-41f3-bf53-8be2410c0f19/epc-r3720/mod_fde326be-b36e-4044-ba9a-28c4c49a25c6), it's an Edge AI Box Computer
-based on the NXP i.MX 8M Plus SoC. Three different models are available. EVE was tested and it supports the model EPC-R3720IQ-ALA220. The installation should be performed through the following steps:
+based on the NXP i.MX 8M Plus SoC. Three different models are available. EVE was tested and it supports the model EPC-R3720IQ-ALA220. The installation should be performed through the following steps
+according to the main boot device: SD Card or eMMC.
+
+### Running from SD Card (EPC-R3720)
 
 1. Set [Boot Select switch (SW1)](http://ess-wiki.advantech.com.tw/view/File:RSB-3720_connector_location_2021-10-21_143853.jpg) to boot device from an SD card (positions 1,2,3,4 set to ON,ON,OFF,OFF).
 2. Build a live image `make ZARCH=arm64 HV=kvm PLATFORM=imx8mp_epc_r3720 live-raw` (Only KVM is supported)
 3. Flash the `dist/arm64/current/live.raw` live EVE image onto your SD card by [following these instructions](#how-to-write-eve-image-and-installer-onto-an-sd-card-or-an-installer-medium)
 
-Note: installation to eMMC is currently not supported. EVE should run from SD Card.
+### Installing on eMMC (EPC-R3720)
+
+1. Build an installation raw image `make ZARCH=arm64 HV=kvm PLATFORM=imx8mp_epc_r3720 installer-raw` (Only KVM is supported)
+2. Flash the `dist/arm64/current/installer.raw` install EVE image onto your SD card by [following these instructions](#how-to-write-eve-image-and-installer-onto-an-sd-card-or-an-installer-medium)
+3. Set [Boot Select switch (SW1)](http://ess-wiki.advantech.com.tw/view/File:RSB-3720_connector_location_2021-10-21_143853.jpg) to boot device from an SD card (positions 1,2,3,4 set to ON,ON,OFF,OFF).
+4. Boot the device from SD Card. Installation process should initialize automatically, the device will be powered off when the process is done
+5. Remove the SD Card from the device
+6. Set [Boot Select switch (SW1)](http://ess-wiki.advantech.com.tw/view/File:RSB-3720_connector_location_2021-10-21_143853.jpg) to boot device from eMMC (positions 1,2,3,4 set to OFF,ON,OFF,OFF).
+7. Power on the device, EVE should start from eMMC
 
 ## How to use on an AMD board
 
