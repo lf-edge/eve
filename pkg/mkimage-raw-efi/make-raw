@@ -173,6 +173,9 @@ do_installer() {
   mkdir -p /efifs/boot && cp -r "$BOOT_DIR"/* /efifs/boot/ 2>/dev/null
   cp "$INSTALLER_GRUB_CFG" /efifs/EFI/BOOT/grub.cfg
   cp "$PERSIST_FILE" "$INITRD_IMG" "$ROOTFS_IMG" "$INSTALLER_IMG" /UsbInvocationScript.txt /efifs
+  if [ -f "$IMX8_BLOB" ] && [ -f "$IMX8_CONF" ]; then
+     cp "$IMX8_BLOB" "$IMX8_CONF" /efifs
+  fi
   touch /efifs/boot/.boot_repository
   od -An -x -N 16 /dev/random | tr -d ' ' > /efifs/boot/.uuid
   do_system_vfat_part "$1" "$INSTALLER_SYS_PART_SIZE"

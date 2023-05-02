@@ -1,0 +1,52 @@
+From 08cea66d64dba53850842ed92744685002d4295a Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Ren=C3=AA=20de=20Souza=20Pinto?= <rene@renesp.com.br>
+Date: Tue, 2 May 2023 16:42:19 +0200
+Subject: [PATCH] arm: imx8m: Set mmcdev variable at the initialization
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Adds the following changes to Advantech's RSB3720 platform:
+
+- Check the boot device and set mmcdev variable accordingly: 1, in case
+  device booted from SD Card, or 2, in case device booted from eMMC
+
+Code taken from: board/phytec/phycore_imx8mp/phycore-imx8mp.c
+
+Signed-off-by: Renê de Souza Pinto <rene@renesp.com.br>
+---
+ board/advantech/imx8mp_rsb3720a1/imx8mp_rsb3720a1.c | 11 +++++++++++
+ 1 file changed, 11 insertions(+)
+
+diff --git a/board/advantech/imx8mp_rsb3720a1/imx8mp_rsb3720a1.c b/board/advantech/imx8mp_rsb3720a1/imx8mp_rsb3720a1.c
+index 16566092bd8..b0b890edfe7 100644
+--- a/board/advantech/imx8mp_rsb3720a1/imx8mp_rsb3720a1.c
++++ b/board/advantech/imx8mp_rsb3720a1/imx8mp_rsb3720a1.c
+@@ -18,6 +18,7 @@
+ #include <asm/arch/sys_proto.h>
+ #include <asm/mach-imx/gpio.h>
+ #include <asm/mach-imx/mxc_i2c.h>
++#include <asm/mach-imx/boot_mode.h>
+ #include <asm/arch/clock.h>
+ #include <asm/mach-imx/dma.h>
+ #include <linux/delay.h>
+@@ -192,6 +193,16 @@ int board_late_init(void)
+ 	if (IS_ENABLED(CONFIG_ENV_VARS_UBOOT_RUNTIME_CONFIG)) {
+ 		env_set("board_name", "RSB3720A1");
+ 		env_set("board_rev", "iMX8MP");
++		switch (get_boot_device()) {
++		case SD2_BOOT:
++			env_set_ulong("mmcdev", 1);
++			break;
++		case MMC3_BOOT:
++			env_set_ulong("mmcdev", 2);
++			break;
++		default:
++			break;
++		}
+ 	}
+ 
+ 	return 0;
+-- 
+2.39.2
+
