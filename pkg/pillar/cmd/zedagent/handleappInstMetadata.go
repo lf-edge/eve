@@ -23,7 +23,7 @@ func handleAppInstMetaDataModify(ctxArg interface{}, key string,
 func handleAppInstMetaDataDelete(ctxArg interface{}, key string, statusArg interface{}) {
 	appInstMetaData := statusArg.(types.AppInstMetaData)
 	ctx := ctxArg.(*zedagentContext)
-	triggerPublishDeletedObjectInfo(
+	triggerUnpublishObjectInfo(
 		ctx, info.ZInfoTypes_ZiAppInstMetaData, key, appInstMetaData)
 }
 

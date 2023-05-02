@@ -185,5 +185,5 @@ func handleVolumeStatusDelete(ctxArg interface{},
 	key string, statusArg interface{}) {
 	status := statusArg.(types.VolumeStatus)
 	ctx := ctxArg.(*zedagentContext)
-	triggerPublishDeletedObjectInfo(ctx, info.ZInfoTypes_ZiVolume, key, status)
+	triggerUnpublishObjectInfo(ctx, info.ZInfoTypes_ZiVolume, key, status)
 }

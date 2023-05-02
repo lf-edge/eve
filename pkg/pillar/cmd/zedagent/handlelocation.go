@@ -28,7 +28,7 @@ const (
 )
 
 // Run a periodic post of the location information.
-func locationTimerTask(ctx *zedagentContext, handleChannel chan interface{},
+func locationInfoTask(ctx *zedagentContext, handleChannel chan interface{},
 	triggerLocationInfo chan destinationBitset) {
 	var cloudIteration int
 

@@ -34,5 +34,5 @@ func handleBlobStatusImpl(ctxArg interface{}, key string,
 func handleBlobDelete(ctxArg interface{}, key string, statusArg interface{}) {
 	status := statusArg.(types.BlobStatus)
 	ctx := ctxArg.(*zedagentContext)
-	triggerPublishDeletedObjectInfo(ctx, info.ZInfoTypes_ZiBlobList, key, status)
+	triggerUnpublishObjectInfo(ctx, info.ZInfoTypes_ZiBlobList, key, status)
 }

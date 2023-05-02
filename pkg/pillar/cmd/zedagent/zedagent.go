@@ -444,7 +444,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	attestModuleInitialize(zedagentCtx)
 
 	// Handle deferred requests from periodic queue
-	go handleDeferredPeriodicTask(zedagentCtx, triggerHandleDeferred)
+	go handleDeferredTask(zedagentCtx, triggerHandleDeferred)
 
 	// Pick up debug aka log level before we start real work
 	waitUntilGCReady(zedagentCtx, stillRunning)
@@ -483,8 +483,8 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	getconfigCtx.metricsTickerHandle = metricsTickerHandle
 
 	// start the location reporting task
-	log.Functionf("Creating %s at %s", "locationTimerTask", agentlog.GetMyStack())
-	go locationTimerTask(zedagentCtx, handleChannel, triggerLocationInfo)
+	log.Functionf("Creating %s at %s", "locationInfoTask", agentlog.GetMyStack())
+	go locationInfoTask(zedagentCtx, handleChannel, triggerLocationInfo)
 	getconfigCtx.locationCloudTickerHandle = <-handleChannel
 	getconfigCtx.locationAppTickerHandle = <-handleChannel
 
@@ -737,7 +737,7 @@ func waitUntilDNSReady(zedagentCtx *zedagentContext, stillRunning *time.Ticker) 
 	}
 }
 
-func handleDeferredPeriodicTask(zedagentCtx *zedagentContext,
+func handleDeferredTask(zedagentCtx *zedagentContext,
 	triggerHandleDeferred <-chan time.Time) {
 	wdName := agentName + "devinfo"
 
@@ -750,9 +750,9 @@ func handleDeferredPeriodicTask(zedagentCtx *zedagentContext,
 		start := time.Now()
 		if !zedcloudCtx.DeferredPeriodicCtx.HandleDeferred(
 			change, 100*time.Millisecond, false) {
-			log.Noticef("handleDeferredPeriodicTask: some deferred items remain to be sent")
+			log.Noticef("handleDeferredTask: some deferred items remain to be sent")
 		}
-		zedagentCtx.ps.CheckMaxTimeTopic(agentName, "deferredPeriodicCtx",
+		zedagentCtx.ps.CheckMaxTimeTopic(agentName, "handleDeferred",
 			start, warningTime, errorTime)
 	}
 
@@ -1889,6 +1889,10 @@ func triggerPublishDevInfoToDest(ctxPtr *zedagentContext, dest destinationBitset
 	}
 }
 
+func triggerPublishDevInfo(ctxPtr *zedagentContext) {
+	triggerPublishDevInfoToDest(ctxPtr, AllDest)
+}
+
 func triggerHandleDeferred(ctxPtr *zedagentContext) {
 
 	select {
@@ -1900,107 +1904,121 @@ func triggerHandleDeferred(ctxPtr *zedagentContext) {
 	}
 }
 
-func triggerPublishDevInfo(ctxPtr *zedagentContext) {
-	triggerPublishDevInfoToDest(ctxPtr, AllDest)
-}
-
 func triggerPublishLocationToDest(ctxPtr *zedagentContext, dest destinationBitset) {
 	if ctxPtr.getconfigCtx.locationCloudTickerHandle == nil {
 		// Location reporting task is not yet running.
 		return
 	}
-	log.Function("Triggered publishLocation")
-	ctxPtr.triggerLocationInfo <- dest
-}
-
-func triggerPublishObjectInfo(ctxPtr *zedagentContext, infoType info.ZInfoTypes,
-	objectKey string) {
-	ctxPtr.triggerObjectInfo <- infoForObjectKey{
-		infoType:  infoType,
-		objectKey: objectKey,
-		infoDest:  AllDest,
+	select {
+	case ctxPtr.triggerLocationInfo <- dest:
+		log.Function("Triggered location publishing")
+	default:
+		// This occurs if we are already trying to send a location info
+		// and we get another trigger before that is complete.
+		log.Warnf("Failed to trigger publishing of location info")
 	}
 }
 
-func triggerPublishDeletedObjectInfo(ctxPtr *zedagentContext, infoType info.ZInfoTypes,
+// triggerPublishObjectInfo triggers publishing of object info to all destinations.
+// Info is published asynchronously from objectInfoTask.
+func triggerPublishObjectInfo(ctxPtr *zedagentContext, infoType info.ZInfoTypes,
+	objectKey string) {
+	triggerPublishObjectInfoToDest(ctxPtr, infoType, objectKey, AllDest)
+}
+
+// triggerPublishObjectInfoToDest triggers publishing of object info to selected destinations.
+// Info is published asynchronously from objectInfoTask.
+func triggerPublishObjectInfoToDest(ctxPtr *zedagentContext, infoType info.ZInfoTypes,
+	objectKey string, dest destinationBitset) {
+	trigger := infoForObjectKey{
+		infoType:  infoType,
+		objectKey: objectKey,
+		infoDest:  dest,
+	}
+	select {
+	case ctxPtr.triggerObjectInfo <- trigger:
+		log.Functionf("Triggered publishing of object %s info", objectKey)
+	default:
+		// Buffer of triggerObjectInfo is full.
+		log.Warnf("Failed to trigger publishing of object %s info", objectKey)
+	}
+}
+
+// triggerUnpublishObjectInfo triggers a removal of published object info from
+// all destinations.
+// Info is unpublished asynchronously from objectInfoTask.
+func triggerUnpublishObjectInfo(ctxPtr *zedagentContext, infoType info.ZInfoTypes,
 	objectKey string, deletedInfo interface{}) {
-	ctxPtr.triggerObjectInfo <- infoForObjectKey{
+	triggerUnpublishObjectInfoFromDest(ctxPtr, infoType, objectKey, deletedInfo, AllDest)
+}
+
+// triggerUnpublishObjectInfoFromDest triggers a removal of published object info from
+// selected destinations.
+// Info is unpublished asynchronously from objectInfoTask.
+func triggerUnpublishObjectInfoFromDest(ctxPtr *zedagentContext, infoType info.ZInfoTypes,
+	objectKey string, deletedInfo interface{}, dest destinationBitset) {
+	trigger := infoForObjectKey{
 		infoType:    infoType,
 		objectKey:   objectKey,
 		deleted:     true,
 		deletedInfo: deletedInfo,
-		infoDest:    AllDest,
+		infoDest:    dest,
+	}
+	select {
+	case ctxPtr.triggerObjectInfo <- trigger:
+		log.Functionf("Triggered un-publishing of object %s info", objectKey)
+	default:
+		// Buffer of triggerObjectInfo is full.
+		log.Warnf("Failed to trigger un-publishing of object %s info", objectKey)
 	}
 }
 
+// triggerPublishAllInfo triggers publishing of all object info to selected destinations.
+// Info for every object is published asynchronously from objectInfoTask, deviceInfoTask,
+// hardwareInfoTask and locationInfoTask.
 func triggerPublishAllInfo(ctxPtr *zedagentContext, dest destinationBitset) {
 
 	log.Function("Triggered PublishAllInfo")
-	// we use goroutine since every publish operation can take a long time
-	// and will block sending on TriggerObjectInfo channel
-	go func() {
-		// we need only the last one device info to publish
-		triggerPublishDevInfoToDest(ctxPtr, dest)
-		// trigger publish applications infos
-		for _, c := range ctxPtr.getconfigCtx.subAppInstanceStatus.GetAll() {
-			ctxPtr.triggerObjectInfo <- infoForObjectKey{
-				infoType:  info.ZInfoTypes_ZiApp,
-				objectKey: c.(types.AppInstanceStatus).Key(),
-				infoDest:  dest,
-			}
-		}
-		// trigger publish network instance infos
-		for _, c := range ctxPtr.subNetworkInstanceStatus.GetAll() {
-			niStatus := c.(types.NetworkInstanceStatus)
-			ctxPtr.triggerObjectInfo <- infoForObjectKey{
-				infoType:  info.ZInfoTypes_ZiNetworkInstance,
-				objectKey: (&niStatus).Key(),
-				infoDest:  dest,
-			}
-		}
-		// trigger publish volume infos
-		for _, c := range ctxPtr.getconfigCtx.subVolumeStatus.GetAll() {
-			ctxPtr.triggerObjectInfo <- infoForObjectKey{
-				infoType:  info.ZInfoTypes_ZiVolume,
-				objectKey: c.(types.VolumeStatus).Key(),
-				infoDest:  dest,
-			}
-		}
-		// trigger publish content tree infos
-		for _, c := range ctxPtr.getconfigCtx.subContentTreeStatus.GetAll() {
-			ctxPtr.triggerObjectInfo <- infoForObjectKey{
-				infoType:  info.ZInfoTypes_ZiContentTree,
-				objectKey: c.(types.ContentTreeStatus).Key(),
-				infoDest:  dest,
-			}
-		}
-		// trigger publish blob infos
-		for _, c := range ctxPtr.subBlobStatus.GetAll() {
-			ctxPtr.triggerObjectInfo <- infoForObjectKey{
-				infoType:  info.ZInfoTypes_ZiBlobList,
-				objectKey: c.(types.BlobStatus).Key(),
-				infoDest:  dest,
-			}
-		}
-		// trigger publish appInst metadata infos
-		for _, c := range ctxPtr.subAppInstMetaData.GetAll() {
-			ctxPtr.triggerObjectInfo <- infoForObjectKey{
-				infoType:  info.ZInfoTypes_ZiAppInstMetaData,
-				objectKey: c.(types.AppInstMetaData).Key(),
-				infoDest:  dest,
-			}
-		}
-		triggerPublishHwInfoToDest(ctxPtr, dest)
-		// trigger publish edgeview infos
-		for _, c := range ctxPtr.subEdgeviewStatus.GetAll() {
-			ctxPtr.triggerObjectInfo <- infoForObjectKey{
-				infoType:  info.ZInfoTypes_ZiEdgeview,
-				objectKey: c.(types.EdgeviewStatus).Key(),
-				infoDest:  dest,
-			}
-		}
-		triggerPublishLocationToDest(ctxPtr, dest)
-	}()
+	// we need only the last one device info to publish
+	triggerPublishDevInfoToDest(ctxPtr, dest)
+	// trigger publish applications infos
+	for _, c := range ctxPtr.getconfigCtx.subAppInstanceStatus.GetAll() {
+		triggerPublishObjectInfoToDest(ctxPtr, info.ZInfoTypes_ZiApp,
+			c.(types.AppInstanceStatus).Key(), dest)
+	}
+	// trigger publish network instance infos
+	for _, c := range ctxPtr.subNetworkInstanceStatus.GetAll() {
+		niStatus := c.(types.NetworkInstanceStatus)
+		triggerPublishObjectInfoToDest(ctxPtr, info.ZInfoTypes_ZiNetworkInstance,
+			niStatus.Key(), dest)
+	}
+	// trigger publish volume infos
+	for _, c := range ctxPtr.getconfigCtx.subVolumeStatus.GetAll() {
+		triggerPublishObjectInfoToDest(ctxPtr, info.ZInfoTypes_ZiVolume,
+			c.(types.VolumeStatus).Key(), dest)
+	}
+	// trigger publish content tree infos
+	for _, c := range ctxPtr.getconfigCtx.subContentTreeStatus.GetAll() {
+		triggerPublishObjectInfoToDest(ctxPtr, info.ZInfoTypes_ZiContentTree,
+			c.(types.ContentTreeStatus).Key(), dest)
+	}
+	// trigger publish blob infos
+	for _, c := range ctxPtr.subBlobStatus.GetAll() {
+		triggerPublishObjectInfoToDest(ctxPtr, info.ZInfoTypes_ZiBlobList,
+			c.(types.BlobStatus).Key(), dest)
+	}
+	// trigger publish appInst metadata infos
+	for _, c := range ctxPtr.subAppInstMetaData.GetAll() {
+		triggerPublishObjectInfoToDest(ctxPtr, info.ZInfoTypes_ZiAppInstMetaData,
+			c.(types.AppInstMetaData).Key(), dest)
+	}
+	triggerPublishHwInfoToDest(ctxPtr, dest)
+	// trigger publish edgeview infos
+	for _, c := range ctxPtr.subEdgeviewStatus.GetAll() {
+		triggerPublishObjectInfoToDest(ctxPtr, info.ZInfoTypes_ZiEdgeview,
+			c.(types.EdgeviewStatus).Key(), dest)
+	}
+	triggerPublishLocationToDest(ctxPtr, dest)
 }
 
 // This is called when we try sending an ATTEST_REQ_QUOTE
@@ -2054,7 +2072,7 @@ func handleAppInstanceStatusDelete(ctxArg interface{}, key string,
 
 	ctx := ctxArg.(*zedagentContext)
 	log.Functionf("handleAppInstanceStatusDelete(%s)", key)
-	triggerPublishDeletedObjectInfo(ctx, info.ZInfoTypes_ZiApp, key, statusArg)
+	triggerUnpublishObjectInfo(ctx, info.ZInfoTypes_ZiApp, key, statusArg)
 	triggerPublishDevInfo(ctx)
 	triggerLocalAppInfoPOST(ctx.getconfigCtx)
 	ctx.iteration++

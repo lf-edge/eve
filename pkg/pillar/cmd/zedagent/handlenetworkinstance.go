@@ -52,7 +52,7 @@ func handleNetworkInstanceDelete(ctxArg interface{}, key string,
 
 	log.Functionf("handleNetworkInstanceDelete(%s)", key)
 	ctx := ctxArg.(*zedagentContext)
-	triggerPublishDeletedObjectInfo(ctx, zinfo.ZInfoTypes_ZiNetworkInstance, key, statusArg)
+	triggerUnpublishObjectInfo(ctx, zinfo.ZInfoTypes_ZiNetworkInstance, key, statusArg)
 	log.Functionf("handleNetworkInstanceDelete(%s) done", key)
 }
 

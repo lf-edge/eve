@@ -146,5 +146,5 @@ func handleContentTreeStatusDelete(ctxArg interface{}, key string,
 	statusArg interface{}) {
 	status := statusArg.(types.ContentTreeStatus)
 	ctx := ctxArg.(*zedagentContext)
-	triggerPublishDeletedObjectInfo(ctx, info.ZInfoTypes_ZiContentTree, key, status)
+	triggerUnpublishObjectInfo(ctx, info.ZInfoTypes_ZiContentTree, key, status)
 }
