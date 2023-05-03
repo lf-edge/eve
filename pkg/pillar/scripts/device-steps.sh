@@ -77,9 +77,16 @@ get_ntp_servers() {
         if [ "$portInfo" = "null" ] || [ -z "$portInfo" ]; then
             break
         fi
-        list=$(echo "$portInfo" | jq .NtpServers)
-        ns=$(echo "$list" | awk -F\" '{ if (NF > 2) { print $2}}')
+        # Add statically configured NTP server.
+        ns="$(echo "$portInfo" | jq -r .NtpServer)"
         res="$res $ns"
+        if [ -z "$ns" ]; then
+            # If NTP server is not statically configured, add the first NTP server
+            # advertised by DHCP server.
+            list=$(echo "$portInfo" | jq .NtpServers)
+            ns=$(echo "$list" | awk -F\" '{ if (NF > 2) { print $2}}')
+            res="$res $ns"
+        fi
         i=$((i + 1))
     done
     out=
