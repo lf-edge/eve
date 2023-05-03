@@ -5,9 +5,13 @@ if test -f /proc/vmcore; then
     exit 0;
 fi
 
-default_cgroup_memory_limit=838860800000 #800M
+virttype=`cat /run/eve-virt-type`
+default_cgroup_memory_limit=838860800 #800M
 default_cgroup_cpus_limit=1
 
+if [ $virttype = "kubevirt" ]; then
+   default_cgroup_memory_limit=8388608000 #8G
+fi
 dom0_cgroup_memory_soft_limit=$(</proc/cmdline grep -o '\bdom0_mem=[^, ]*' | cut -d = -f 2)
 dom0_cgroup_memory_limit=$(</proc/cmdline grep -o "\bdom0_mem=[^,]*,max:[^ ]*" | cut -d : -f 2)
 dom0_cgroup_cpus_limit=$(</proc/cmdline grep -o '\bdom0_max_vcpus=[^ ]*' | cut -d = -f 2)
@@ -66,7 +70,10 @@ if [ -z "${ctrd_cgroup_cpus_limit}" ] || [ "${ctrd_cgroup_cpus_limit}" = "0" ]; 
 fi
 
 CGROUPS="cpuset cpu cpuacct blkio memory devices freezer net_cls perf_event net_prio hugetlb pids systemd "
-EVESRVICES="sshd edgeview wwan wlan lisp guacd pillar vtpm watchdog xen-tools newlogd eve-k3s " 
+EVESRVICES="sshd edgeview wwan wlan lisp guacd pillar vtpm watchdog xen-tools newlogd " 
+if [ $virttype = "kubevirt" ]; then
+     EVESRVICES="sshd edgeview wwan wlan lisp guacd pillar vtpm watchdog xen-tools newlogd eve-k3s " 
+fi
 
 #Creating eve cgroup which will be parent/dom0 cgroup
 for cg in $CGROUPS; do

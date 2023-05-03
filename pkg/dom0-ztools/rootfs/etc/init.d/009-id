@@ -10,5 +10,11 @@ echo $v | grep kubevirt
 if [ $? -eq 0 ]; then
    echo "kubevirt" > /run/eve-virt-type
 else
-   echo "kvm" > /run/eve-virt-type
+   echo $v | grep kvm
+   if [ $? -eq 0 ]; then
+   	echo "kvm" > /run/eve-virt-type
+   else
+	echo "xen" > /run/eve-virt-type
+   fi
+   #ignore acrn for now
 fi

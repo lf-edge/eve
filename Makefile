@@ -173,7 +173,6 @@ ROOTFS_YML=images/kubevirt-rootfs.yml.in
 MAX_PARTITION_SIZEMB=350
 endif
 
->>>>>>> 1a51864ba (Add kubevirt and k3s components to EVE)
 COLLECTED_SOURCES=$(BUILD_DIR)/collected_sources.tar.gz
 DEVICETREE_DTB_amd64=
 DEVICETREE_DTB_arm64=$(DIST)/dtb/eve.dtb
