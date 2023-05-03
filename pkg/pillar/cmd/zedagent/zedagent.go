@@ -2010,7 +2010,6 @@ func handleAppInstanceStatusCreate(ctxArg interface{}, key string,
 	triggerPublishDevInfo(ctx)
 	processAppCommandStatus(ctx.getconfigCtx, status)
 	triggerLocalAppInfoPOST(ctx.getconfigCtx)
-	ctx.iteration++
 	log.Functionf("handleAppInstanceStatusCreate(%s) DONE", key)
 }
 
@@ -2028,7 +2027,6 @@ func handleAppInstanceStatusModify(ctxArg interface{}, key string,
 		ctx.iteration, AllDest)
 	processAppCommandStatus(ctx.getconfigCtx, status)
 	triggerLocalAppInfoPOST(ctx.getconfigCtx)
-	ctx.iteration++
 	log.Functionf("handleAppInstanceStatusModify(%s) DONE", key)
 }
 
@@ -2042,7 +2040,6 @@ func handleAppInstanceStatusDelete(ctxArg interface{}, key string,
 		ctx.iteration, AllDest)
 	triggerPublishDevInfo(ctx)
 	triggerLocalAppInfoPOST(ctx.getconfigCtx)
-	ctx.iteration++
 	log.Functionf("handleAppInstanceStatusDelete(%s) DONE", key)
 }
 

@@ -45,16 +45,12 @@ func handleDiskMetricImpl(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
 	status := statusArg.(types.DiskMetric)
-	ctx := ctxArg.(*zedagentContext)
-	ctx.iteration++
 	path := status.DiskPath
 	log.Functionf("handleDiskMetricImpl: %s", path)
 }
 
 func handleDiskMetricDelete(ctxArg interface{}, key string, statusArg interface{}) {
 	status := statusArg.(types.DiskMetric)
-	ctx := ctxArg.(*zedagentContext)
-	ctx.iteration++
 	path := status.DiskPath
 	log.Functionf("handleDiskMetricModify: %s", path)
 }
@@ -1485,7 +1481,6 @@ func PublishEdgeviewToZedCloud(ctx *zedagentContext,
 	//but if there is a queue we'll retry sending the highest priority message.
 	queueInfoToDest(ctx, dest, "global", buf, size, bailOnHTTPErr, false, forcePeriodic,
 		info.ZInfoTypes_ZiEdgeview)
-	ctx.iteration++
 }
 
 func appIfnameToNetworkInstance(ctx *zedagentContext,
