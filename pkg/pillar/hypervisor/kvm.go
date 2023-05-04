@@ -465,6 +465,9 @@ func vmmOverhead(config types.DomainConfig,
 	globalConfig *types.ConfigItemValueMap) (int64, error) {
 	var overhead int64
 
+	// Fetch VMM max memory setting (aka vmm overhead)
+	overhead = int64(config.VMMMaxMem) << 10
+
 	// Global node setting has a higher priority
 	if globalConfig != nil {
 		VmmOverheadOverrideCfgItem, ok := globalConfig.GlobalSettings[types.VmmMemoryLimitInMiB]
