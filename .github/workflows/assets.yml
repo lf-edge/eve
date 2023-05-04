@@ -81,7 +81,7 @@ jobs:
           fi
       - name: Build SBOM and collected sources
         run: |
-          make sbom collected_sources
+          make sbom collected_sources compare_sbom_collected_sources
           mv $(make sbom_info collected_sources_info) assets/
       - name: Create a GitHub release and clean up artifacts
         id: create-release

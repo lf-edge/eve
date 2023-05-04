@@ -297,6 +297,11 @@ GOSOURCES_VERSION=c73009667f4871c084c1f2164063321c81d053a2
 GOSOURCES_SOURCE=github.com/deitch/go-sources-and-licenses
 
 
+# for the compare sbom and collecte sources
+COMPARESOURCES=$(BUILDTOOLS_BIN)/compare-sbom-sources
+COMPARESOURCES_VERSION=fcf3c1558b1627ad06852b95851fbf097562b78f
+COMPARE_SOURCE=github.com/lf-edge/eve/tools/compare-sbom-sources
+
 SYFT_VERSION:=v0.78.0
 SYFT_IMAGE:=docker.io/anchore/syft:$(SYFT_VERSION)
 
@@ -654,6 +659,20 @@ $(COLLECTED_SOURCES): $(ROOTFS_TAR) $(GOSOURCES)| $(INSTALLER)
 	$(QUIET): $@: Begin
 	bash tools/collect-sources.sh $< $(CURDIR) $@
 	$(QUIET): $@: Succeeded
+
+$(COMPARESOURCES):
+	$(QUIET): $@: Begin
+	$(shell GOBIN=$(BUILDTOOLS_BIN) GO111MODULE=on CGO_ENABLED=0 go install $(COMPARE_SOURCE)@$(COMPARESOURCES_VERSION))
+	@echo Done building packages
+	$(QUIET): $@: Succeeded
+
+compare_sbom_collected_sources: $(COLLECTED_SOURCES) $(SBOM) | $(COMPARESOURCES)
+	$(QUIET): $@: Begin
+	$(COMPARESOURCES) $(COLLECTED_SOURCES):collected_sources_manifest.csv $(SBOM)
+	@echo Done building packages
+	$(QUIET): $@: Succeeded
+
+
 
 $(LIVE).raw: $(BOOT_PART) $(EFI_PART) $(ROOTFS_IMG) $(CONFIG_IMG) $(PERSIST_IMG) $(BSP_IMX_PART) | $(INSTALLER)
 	@[ "$(PLATFORM)" != "${PLATFORM/imx/}" ] && \
