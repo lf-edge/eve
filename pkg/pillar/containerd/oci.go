@@ -255,7 +255,7 @@ func (s *ociSpec) CreateContainer(removeExisting bool) error {
 func (s *ociSpec) AdjustMemLimit(dom types.DomainConfig, addMemory int64) {
 	// update cgroup resource constraints for CPU and memory
 	if s.Linux != nil {
-		m := int64(dom.Memory*1024) + addMemory
+		m := int64(dom.Memory)*1024 + addMemory
 		s.Linux.Resources.Memory.Limit = &m
 	}
 }
@@ -312,7 +312,7 @@ func (s *ociSpec) UpdateFromDomain(dom *types.DomainConfig, status *types.Domain
 			s.Linux.Resources.CPU = &specs.LinuxCPU{}
 		}
 
-		m := int64(dom.Memory * 1024)
+		m := int64(dom.Memory) * 1024
 		p := uint64(100000)
 		q := int64(100000 * dom.VCpus)
 		s.Linux.Resources.Memory.Limit = &m
