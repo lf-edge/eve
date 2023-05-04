@@ -180,6 +180,7 @@ func runZedbox(ps *pubsub.PubSub, logger *logrus.Logger, log *base.LogObject, ar
 		agentbase.WithArguments(arguments))
 
 	stillRunning := time.NewTicker(15 * time.Second)
+	ps.StillRunning(agentName, warningTime, errorTime)
 
 	subChan := reverse.NewSubscriber(log, agentName,
 		types.ServiceInitStatus{})

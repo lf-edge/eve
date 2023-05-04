@@ -103,6 +103,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(stillRunningInerval)
+	ps.StillRunning(agentName, warningTime, errorTime)
 
 	// Wait until we have been onboarded aka know our own UUID
 	subOnboardStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
