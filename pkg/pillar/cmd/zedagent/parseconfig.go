@@ -623,6 +623,7 @@ func parseAppInstanceConfig(getconfigCtx *getconfigContext,
 		appInstance.FixedResources.BootLoader = cfgApp.Fixedresources.Bootloader
 		appInstance.FixedResources.Ramdisk = cfgApp.Fixedresources.Ramdisk
 		appInstance.FixedResources.MaxMem = int(cfgApp.Fixedresources.Maxmem)
+		appInstance.FixedResources.VMMMaxMem = int(cfgApp.Fixedresources.VmmMaxmem)
 		appInstance.FixedResources.Memory = int(cfgApp.Fixedresources.Memory)
 		appInstance.FixedResources.RootDev = cfgApp.Fixedresources.Rootdev
 		appInstance.FixedResources.VCpus = int(cfgApp.Fixedresources.Vcpus)
