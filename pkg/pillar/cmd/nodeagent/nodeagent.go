@@ -123,7 +123,7 @@ type nodeagentContext struct {
 	domainHaltWaitIncrement uint32
 }
 
-func newNodeagentContext(_ *pubsub.PubSub, _ *logrus.Logger, _ *base.LogObject) *nodeagentContext {
+func newNodeagentContext(ps *pubsub.PubSub, _ *logrus.Logger, _ *base.LogObject) *nodeagentContext {
 	nodeagentCtx := nodeagentContext{}
 	nodeagentCtx.minRebootDelay = minRebootDelay
 	nodeagentCtx.maxDomainHaltTime = maxDomainHaltTime
@@ -134,6 +134,7 @@ func newNodeagentContext(_ *pubsub.PubSub, _ *logrus.Logger, _ *base.LogObject) 
 	// start the watchdog process timer tick
 	duration := time.Duration(watchdogInterval) * time.Second
 	nodeagentCtx.stillRunning = time.NewTicker(duration)
+	ps.StillRunning(agentName, warningTime, errorTime)
 
 	// set the ticker timer
 	duration = time.Duration(timeTickInterval) * time.Second
