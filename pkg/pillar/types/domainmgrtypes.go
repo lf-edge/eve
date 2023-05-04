@@ -202,7 +202,7 @@ type VmConfig struct {
 	Kernel     string // default ""
 	Ramdisk    string // default ""
 	Memory     int    // in kbytes; Rounded up to Mbytes for xen
-	MaxMem     int    // Default not set i.e. no ballooning
+	MaxMem     int    // in kbytes; Default equal to 'Memory', so no ballooning for xen
 	VCpus      int    // default 1
 	MaxCpus    int    // default VCpus
 	RootDev    string // default "/dev/xvda1"
@@ -225,6 +225,7 @@ type VmConfig struct {
 	VncPasswd          string
 	DisableLogs        bool
 	CPUsPinned         bool
+	VMMMaxMem          int // in kbytes
 }
 
 type VmMode uint8
