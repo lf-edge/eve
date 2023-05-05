@@ -9,12 +9,12 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"os"
 
 	"github.com/lf-edge/eve/libs/depgraph"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/devicenetwork"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
 )
 
 // Wwan : WWAN (LTE) configuration (read by wwan microservice).
@@ -103,24 +103,13 @@ func (c *WwanConfigurator) NeedsRecreate(oldItem, newItem depgraph.Item) (recrea
 
 // Write cellular config into /run/wwan/config.json
 func (c *WwanConfigurator) installWwanConfig(config types.WwanConfig) (err error) {
-	c.Log.Noticef("installWwanConfig: write file %s with config %+v",
-		devicenetwork.WwanConfigPath, config)
-	file, err := os.Create(devicenetwork.WwanConfigPath)
-	if err != nil {
-		err = fmt.Errorf("failed to create file %s: %w",
-			devicenetwork.WwanConfigPath, err)
-		c.Log.Error(err)
-		return err
-	}
-	defer file.Close()
 	bytes, hash, err := MarshalWwanConfig(config)
 	if err != nil {
 		c.Log.Error(err)
 		return err
 	}
-	if r, err := file.Write(bytes); err != nil || r != len(bytes) {
-		err = fmt.Errorf("failed to write %d bytes to file %s: %w",
-			len(bytes), file.Name(), err)
+	err = fileutils.WriteRename(devicenetwork.WwanConfigPath, bytes)
+	if err != nil {
 		c.Log.Error(err)
 		return err
 	}
