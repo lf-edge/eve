@@ -4,6 +4,10 @@
 #
 # [1] A poor man is a man on a deadline.
 #
+
+# if this has problems, it should fail right away
+set -e
+
 EVE="$(cd "$(dirname "$0")" && pwd)/../"
 PATH="$EVE/build-tools/bin:$PATH"
 
