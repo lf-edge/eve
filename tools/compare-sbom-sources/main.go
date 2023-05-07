@@ -10,7 +10,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"os"
 	"strings"
 
@@ -255,7 +254,7 @@ Arguments:
 	spdx_json_file Path to the SPDX JSON file
 			`,
 		Args: cobra.ExactArgs(2),
-		Run: func(cmd *cobra.Command, args []string) {
+		RunE: func(cmd *cobra.Command, args []string) error {
 			csvFile := args[0]
 			jsonFile := args[1]
 			// Create a map of the specified types
@@ -266,22 +265,22 @@ Arguments:
 
 			csvReader, err := getFileReader(csvFile)
 			if err != nil {
-				log.Fatalf("Error getting CSV file reader: %v", err)
+				return fmt.Errorf("error getting CSV file reader: %v", err)
 			}
 
 			jsonReader, err := getFileReader(jsonFile)
 			if err != nil {
-				log.Fatalf("Error getting JSON file reader: %v", err)
+				return fmt.Errorf("error getting JSON file reader: %v", err)
 			}
 
 			csvPackages, err := parseCSVFile(csvReader)
 			if err != nil {
-				log.Fatalf("Error parsing CSV file: %v", err)
+				return fmt.Errorf("error parsing CSV file: %v", err)
 			}
 
 			jsonPackages, err := parseJSONFile(jsonReader)
 			if err != nil {
-				log.Fatalf("Error parsing JSON file: %v", err)
+				return fmt.Errorf("error parsing JSON file: %v", err)
 			}
 			typeRestrictedCSVPackages, typeRestrictedJSONPackages := make(map[string]*singlePackage), make(map[string]*singlePackage)
 			for _, pkg := range csvPackages {
@@ -314,6 +313,7 @@ Arguments:
 			fmt.Printf("In SPDX but not in CSV: %d\n", len(jsonNotInCSV))
 			fmt.Printf("In CSV but not in SPDX: %d\n", len(csvNotInJSON))
 			fmt.Printf("In both: %d\n", len(typeRestrictedJSONPackages)-len(jsonNotInCSV))
+			return nil
 		},
 	}
 	rootCmd.Flags().StringSliceVar(&types, "types", defaultTypes, "Comma-separated list of types to filter")
