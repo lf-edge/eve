@@ -668,8 +668,8 @@ $(COMPARESOURCES):
 
 compare_sbom_collected_sources: $(COLLECTED_SOURCES) $(SBOM) | $(COMPARESOURCES)
 	$(QUIET): $@: Begin
-	$(COMPARESOURCES) $(COLLECTED_SOURCES):collected_sources_manifest.csv $(SBOM)
-	@echo Done building packages
+	$(COMPARESOURCES) $(COLLECTED_SOURCES):./collected_sources_manifest.csv $(SBOM)
+	@echo Done comparing the sbom and collected sources manifest file
 	$(QUIET): $@: Succeeded
 
 
