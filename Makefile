@@ -765,6 +765,9 @@ $(VERIFICATION).raw: $(BOOT_PART) $(EFI_PART) $(ROOTFS_IMG) $(INITRD_IMG) $(VERI
 
 $(VERIFICATION).net: $(EFI_PART) $(ROOTFS_IMG) $(INITRD_IMG) $(VERIFICATION_IMG) $(CONFIG_IMG) $(PERSIST_IMG) $(KERNEL_IMG) | $(VERIFICATION)
 	./tools/makenet.sh $| verification.img $@
+
+$(VERIFICATION).iso: $(EFI_PART) $(ROOTFS_IMG) $(INITRD_IMG) $(VERIFICATION_IMG) $(CONFIG_IMG) $(PERSIST_IMG) | $(VERIFICATION)
+	./tools/makeiso.sh $| $@ verification
 	$(QUIET): $@: Succeeded
 
 # top-level linuxkit packages targets, note the one enforcing ordering between packages
@@ -1049,6 +1052,7 @@ help:
 	@echo "   installer-net    builds a tarball of artifacts to be used for PXE booting"
 	@echo "   verification-raw builds raw disk verification image (to be installed on bootable media)"
 	@echo "   verification-net builds a tarball of artifacts to be used for PXE verification"
+	@echo "   verification-iso builds an ISO verification image (to be installed on bootable media)"
 	@echo
 	@echo "Commonly used run targets (note they don't automatically rebuild images they run):"
 	@echo "   run-compose          runs all EVE microservices via docker-compose deployment"
