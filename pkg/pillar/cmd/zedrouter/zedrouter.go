@@ -997,6 +997,7 @@ func handleAppNetworkCreate(ctxArg interface{}, key string, configArg interface{
 	appNumKey := types.UuidToNumKey{UUID: config.UUIDandVersion.UUID}
 	appNum, err := ctx.appNumAllocator.GetOrAllocate(appNumKey)
 	if err != nil {
+		status.PendingAdd = false
 		addError(ctx, &status, "handleAppNetworkCreate", err)
 		return
 	}
@@ -1006,6 +1007,7 @@ func handleAppNetworkCreate(ctxArg interface{}, key string, configArg interface{
 	// allocate application numbers on underlay network
 	err = allocateAppIntfNums(ctx, config.UUIDandVersion.UUID, config.UnderlayNetworkList)
 	if err != nil {
+		status.PendingAdd = false
 		addError(ctx, &status, "handleAppNetworkCreate", err)
 		return
 	}
@@ -1928,6 +1930,14 @@ func doAppNetworkModifyUNetAppNum(
 		log.Error(err)
 		return err
 	}
+	// Did the freeAppIntfNum release any last reference?
+	netstatus := lookupNetworkInstanceStatus(ctx, ulStatus.Network.String())
+	if netstatus != nil {
+		if maybeNetworkInstanceDelete(ctx, netstatus) {
+			log.Functionf("post freeAppIntfNum(%v) for %s deleted %s",
+				oldNetworkID, appID, netstatus.Key())
+		}
+	}
 	return nil
 }
 
@@ -1980,7 +1990,7 @@ func handleDelete(ctx *zedrouterContext, key string,
 		netstatus := lookupNetworkInstanceStatus(ctx, ulStatus.Network.String())
 		if netstatus != nil {
 			if maybeNetworkInstanceDelete(ctx, netstatus) {
-				log.Functionf("post appNumsOnUNetFree(%v) for %s deleted %s",
+				log.Functionf("post freeAppIntfNums(%v) for %s deleted %s",
 					status.UUIDandVersion, status.DisplayName,
 					netstatus.Key())
 			}

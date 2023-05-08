@@ -1433,6 +1433,8 @@ func PublishEdgeviewToZedCloud(ctx *zedagentContext,
 
 	log.Functionf("PublishEdgeviewToZedCloud")
 	var ReportInfo = &info.ZInfoMsg{}
+	bailOnHTTPErr := true
+	forcePeriodic := false
 
 	evType := new(info.ZInfoTypes)
 	*evType = info.ZInfoTypes_ZiEdgeview
@@ -1449,6 +1451,15 @@ func PublishEdgeviewToZedCloud(ctx *zedagentContext,
 		ReportEvInfo.CountDev = evStatus.CmdCountDev
 		ReportEvInfo.CountApp = evStatus.CmdCountApp
 		ReportEvInfo.CountExt = evStatus.CmdCountExt
+
+		// The first update is important, and that informs zedcloud the edgeivew is 'Active'.
+		// Edgeview publish the status when it first connects to dispatcher, which the counters
+		// are zeros. Notice that the edgeview container can start/stop at any time, and the
+		// counters will be cleared after every start.
+		if evStatus.CmdCountDev == 0 && evStatus.CmdCountApp == 0 && evStatus.CmdCountExt == 0 {
+			bailOnHTTPErr = false
+			forcePeriodic = true
+		}
 	}
 
 	ReportInfo.InfoContent = new(info.ZInfoMsg_Evinfo)
@@ -1472,7 +1483,7 @@ func PublishEdgeviewToZedCloud(ctx *zedagentContext,
 	//We queue the message and then get the highest priority message to send.
 	//If there are no failures and defers we'll send this message,
 	//but if there is a queue we'll retry sending the highest priority message.
-	queueInfoToDest(ctx, dest, "global", buf, size, true, false, false,
+	queueInfoToDest(ctx, dest, "global", buf, size, bailOnHTTPErr, false, forcePeriodic,
 		info.ZInfoTypes_ZiEdgeview)
 	ctx.iteration++
 }

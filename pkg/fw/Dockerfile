@@ -60,6 +60,7 @@ COPY --from=build /lib/firmware/iwlwifi-7260* /lib/firmware/
 COPY --from=build /lib/firmware/iwlwifi-9260* /lib/firmware/
 # AX210 160MHZ
 COPY --from=build /lib/firmware/iwlwifi-ty-a0-gf-a0-59.ucode /lib/firmware/
+COPY --from=build /lib/firmware/intel/ibt-0041-0041* /lib/firmware/intel/
 # NVidia Jetson
 COPY --from=build /lib/firmware/nvidia/tegra210 /lib/firmware/nvidia/tegra210
 # Dell Edge Gateway 300x firmware

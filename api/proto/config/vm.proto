@@ -50,6 +50,7 @@ message VmConfig {
   bool enableVnc = 16;
   uint32 vncDisplay = 17;
   string vncPasswd = 18;
+  // Change of the 'disable logs' field can be handled without VM reboot
   bool disableLogs = 19;
   // Set if the VM should run in a mode with pinned CPUs.
   // In this case any VCPU thread created by QEMU runs on a dedicated physical

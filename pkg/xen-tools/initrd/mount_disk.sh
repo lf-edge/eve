@@ -13,9 +13,10 @@ find /sys/block/ -maxdepth 1 -regex '.*[sv]d.*' -exec basename '{}' ';'| sort | 
       exit 0
   fi
 
-  #Checking and creating a file system inside the partition
-  fileSystem="ext2"
-  existingFileSystem="$(eval "$(blkid "/dev/$disk" | awk ' { print $3 } ')"; echo "$TYPE")"
+  #Checking and creating a ext4 file system inside the partition
+  fileSystem="ext4"
+  # We only care if filesystem exists, not what type it is. So just check for TYPE existence.
+  existingFileSystem="$(blkid "/dev/$disk" | grep TYPE= )"
   if [ "$existingFileSystem" = "" ]; then
     echo "Creating $fileSystem file system on /dev/$disk"
     mke2fs -t $fileSystem "/dev/$disk" && \

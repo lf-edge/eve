@@ -108,7 +108,9 @@ func ResolveWithPortsLambda(domain string,
 
 		var srcIPs []net.IP
 		for _, addrInfo := range port.AddrInfoList {
-			srcIPs = append(srcIPs, addrInfo.Addr)
+			if addrInfo.Addr.IsGlobalUnicast() {
+				srcIPs = append(srcIPs, addrInfo.Addr)
+			}
 		}
 
 		for _, dnsIP := range port.DNSServers {

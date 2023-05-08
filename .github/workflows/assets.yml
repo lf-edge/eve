@@ -42,6 +42,13 @@ jobs:
           $APT_INSTALL || { sudo apt update && $APT_INSTALL ; }
           echo "ARCH=${{ matrix.arch }}" >> "$GITHUB_ENV"
           echo "TAG=$(echo "$REF" | sed -e 's#^.*/##' -e 's#master#snapshot#' -e 's#main#snapshot#')" >> "$GITHUB_ENV"
+      - name: checkout repo
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      - name: ensure clean assets dir
+        run : |
+          rm -rf assets && mkdir -p assets
       - name: Pull the EVE release from DockerHUB or build it
         run: |
           HV=kvm
@@ -49,15 +56,12 @@ jobs:
              EVE=lfedge/eve:${{ env.TAG }}-${HV}-${{ env.ARCH }}
              docker pull "$EVE"
           else
-             git clone ${{ github.event.repository.html_url }} .
-             git reset --hard ${{ github.event.workflow_run.head_branch }}
              make pkgs
              make HV=${HV} ZARCH=${{ env.ARCH }} eve
              EVE=lfedge/eve:$(make version)-${HV}-${{ env.ARCH }}
           fi
-          rm -rf assets && mkdir assets && cd assets
-          docker run "$EVE" rootfs > rootfs.img
-          docker run "$EVE" installer_net | tar -xvf -
+          docker run "$EVE" rootfs > assets/rootfs.img
+          docker run "$EVE" installer_net | tar -C assets -xvf -
       - name: Create direct iPXE config
         run: |
           URL="${{ github.event.repository.html_url }}/releases/download/${{ env.TAG }}/${{ env.ARCH }}."
@@ -75,6 +79,10 @@ jobs:
              mv assets/kernel assets/kernel.gz
              gzip -d assets/kernel.gz
           fi
+      - name: Build SBOM and collected sources
+        run: |
+          make sbom collected_sources compare_sbom_collected_sources
+          mv $(make sbom_info collected_sources_info) assets/
       - name: Create a GitHub release and clean up artifacts
         id: create-release
         uses: actions/github-script@v3
@@ -208,4 +216,24 @@ jobs:
           upload_url: ${{ steps.create-release.outputs.result }}
           asset_path: assets/ipxe.efi.ip.cfg
           asset_name: ${{ env.ARCH }}.ipxe.efi.ip.cfg
+          asset_content_type: application/octet-stream
+      - name: Upload SBOM
+        id: upload-sbom-asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create-release.outputs.result }}
+          asset_path: assets/rootfs.spdx.json
+          asset_name: ${{ env.ARCH }}.rootfs.spdx.json
+          asset_content_type: application/json
+      - name: Upload COLLECTED_SOURCES
+        id: upload-collected-sources-asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create-release.outputs.result }}
+          asset_path: assets/collected_sources.tar.gz
+          asset_name: ${{ env.ARCH }}.collected_sources.tar.gz
           asset_content_type: application/octet-stream

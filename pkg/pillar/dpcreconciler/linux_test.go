@@ -267,6 +267,7 @@ func TestSingleEthInterface(test *testing.T) {
 				Dst:       nil,
 				Gw:        net.ParseIP("192.168.10.1"),
 				Table:     syscall.RT_TABLE_MAIN,
+				Family:    netlink.FAMILY_V4,
 			},
 		},
 	}
@@ -286,7 +287,7 @@ func TestSingleEthInterface(test *testing.T) {
 	t.Expect(status.DNS.Servers["eth0"][0].String()).To(Equal("8.8.8.8"))
 	t.Expect(itemDescription(adapterAddrs)).To(Equal("Adapter mock-eth0 IP addresses: [192.168.10.5/24]"))
 	t.Expect(itemIsCreatedWithLabel("IP rule for mock-eth0/192.168.10.5")).To(BeTrue())
-	t.Expect(itemIsCreatedWithLabel("IP route table 501 dst <default> dev mock-eth0 via 192.168.10.1")).To(BeTrue())
+	t.Expect(itemIsCreatedWithLabel("IPv4 route table 501 dst <default> dev mock-eth0 via 192.168.10.1")).To(BeTrue())
 	t.Expect(itemIsCreated(resolvConf)).To(BeTrue())
 	t.Expect(itemDescription(resolvConf)).To(ContainSubstring("eth0: [8.8.8.8]"))
 
@@ -310,7 +311,7 @@ func TestSingleEthInterface(test *testing.T) {
 	t.Expect(status.DNS.Servers["eth0"]).To(BeEmpty())
 	t.Expect(itemDescription(adapterAddrs)).To(Equal("Adapter mock-eth0 IP addresses: []"))
 	t.Expect(itemIsCreatedWithLabel("IP rule for mock-eth0/192.168.10.5")).ToNot(BeTrue())
-	t.Expect(itemCountWithType(generic.RouteTypename)).To(Equal(0))
+	t.Expect(itemCountWithType(generic.IPv4RouteTypename)).To(Equal(0))
 	t.Expect(itemIsCreated(resolvConf)).To(BeTrue())
 	t.Expect(itemDescription(resolvConf)).To(ContainSubstring("eth0: []"))
 
@@ -441,7 +442,7 @@ func TestMultipleEthsSameSubnet(test *testing.T) {
 	t.Expect(itemCountWithType(generic.AdapterTypename)).To(Equal(2))
 	t.Expect(itemCountWithType(generic.AdapterAddrsTypename)).To(Equal(2))
 	t.Expect(itemCountWithType(generic.DhcpcdTypename)).To(Equal(2))
-	t.Expect(itemCountWithType(generic.RouteTypename)).To(Equal(0))
+	t.Expect(itemCountWithType(generic.IPv4RouteTypename)).To(Equal(0))
 	t.Expect(itemCountWithType(generic.ArpTypename)).To(Equal(0))
 
 	// Simulate IP addresses being allocated by DHCP server.
@@ -484,6 +485,7 @@ func TestMultipleEthsSameSubnet(test *testing.T) {
 				Dst:       nil,
 				Gw:        gw,
 				Table:     syscall.RT_TABLE_MAIN,
+				Family:    netlink.FAMILY_V4,
 			},
 		},
 		{
@@ -496,6 +498,7 @@ func TestMultipleEthsSameSubnet(test *testing.T) {
 				Dst:       nil,
 				Gw:        gw,
 				Table:     syscall.RT_TABLE_MAIN,
+				Family:    netlink.FAMILY_V4,
 			},
 		},
 	}
@@ -511,11 +514,11 @@ func TestMultipleEthsSameSubnet(test *testing.T) {
 	t.Expect(itemDescription(eth1AdapterAddrs)).To(Equal("Adapter mock-eth1 IP addresses: [192.168.10.6/24]"))
 	t.Expect(itemIsCreatedWithLabel("IP rule for mock-eth0/192.168.10.5")).To(BeTrue())
 	t.Expect(itemIsCreatedWithLabel("IP rule for mock-eth1/192.168.10.6")).To(BeTrue())
-	t.Expect(itemIsCreatedWithLabel("IP route table 501 dst <default> dev mock-eth0 via 192.168.10.1")).To(BeTrue())
-	t.Expect(itemIsCreatedWithLabel("IP route table 502 dst <default> dev mock-eth1 via 192.168.10.1")).To(BeTrue())
+	t.Expect(itemIsCreatedWithLabel("IPv4 route table 501 dst <default> dev mock-eth0 via 192.168.10.1")).To(BeTrue())
+	t.Expect(itemIsCreatedWithLabel("IPv4 route table 502 dst <default> dev mock-eth1 via 192.168.10.1")).To(BeTrue())
 	t.Expect(itemIsCreatedWithLabel("ARP entry 192.168.10.6 / 02:00:00:00:00:02 for mock-eth0")).To(BeTrue())
 	t.Expect(itemIsCreatedWithLabel("ARP entry 192.168.10.5 / 02:00:00:00:00:01 for mock-eth1")).To(BeTrue())
-	t.Expect(itemCountWithType(generic.RouteTypename)).To(Equal(2))
+	t.Expect(itemCountWithType(generic.IPv4RouteTypename)).To(Equal(2))
 	t.Expect(itemCountWithType(generic.ArpTypename)).To(Equal(2))
 }
 
@@ -631,10 +634,11 @@ func TestWireless(test *testing.T) {
 	t.Expect(itemIsCreatedWithLabel("dhcpcd for mock-wlan0")).To(BeTrue())
 	t.Expect(itemIsCreatedWithLabel("dhcpcd for mock-wwan0")).To(BeFalse())
 	wlan := dg.Reference(linux.Wlan{})
-	t.Expect(itemDescription(wlan)).To(ContainSubstring("SSID:my-ssid"))
-	t.Expect(itemDescription(wlan)).To(ContainSubstring("KeyScheme:1"))
-	t.Expect(itemDescription(wlan)).To(ContainSubstring("WifiUserName:my-user"))
-	t.Expect(itemDescription(wlan)).To(ContainSubstring("WifiPassword:my-password"))
+	t.Expect(itemDescription(wlan)).To(ContainSubstring("SSID: my-ssid"))
+	t.Expect(itemDescription(wlan)).To(ContainSubstring("KeyScheme: 1"))
+	t.Expect(itemDescription(wlan)).To(ContainSubstring("Identity: my-user"))
+	t.Expect(itemDescription(wlan)).To(ContainSubstring("Priority: 0"))
+	t.Expect(itemDescription(wlan)).ToNot(ContainSubstring("my-password"))
 	t.Expect(itemDescription(wlan)).To(ContainSubstring("enable RF: true"))
 	wwan := dg.Reference(generic.Wwan{})
 	t.Expect(itemDescription(wwan)).To(ContainSubstring("Apns:[my-apn]"))
@@ -645,7 +649,7 @@ func TestWireless(test *testing.T) {
 	t.Expect(itemCountWithType(generic.AdapterTypename)).To(Equal(2))
 	t.Expect(itemCountWithType(generic.AdapterAddrsTypename)).To(Equal(2))
 	t.Expect(itemCountWithType(generic.DhcpcdTypename)).To(Equal(1))
-	t.Expect(itemCountWithType(generic.RouteTypename)).To(Equal(0))
+	t.Expect(itemCountWithType(generic.IPv4RouteTypename)).To(Equal(0))
 	t.Expect(itemCountWithType(generic.ArpTypename)).To(Equal(0))
 
 	// Impose radio silence
@@ -667,7 +671,7 @@ func TestWireless(test *testing.T) {
 	t.Expect(itemCountWithType(generic.AdapterTypename)).To(Equal(2))
 	t.Expect(itemCountWithType(generic.AdapterAddrsTypename)).To(Equal(2))
 	t.Expect(itemCountWithType(generic.DhcpcdTypename)).To(Equal(1))
-	t.Expect(itemCountWithType(generic.RouteTypename)).To(Equal(0))
+	t.Expect(itemCountWithType(generic.IPv4RouteTypename)).To(Equal(0))
 	t.Expect(itemCountWithType(generic.ArpTypename)).To(Equal(0))
 }
 

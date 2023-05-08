@@ -137,6 +137,19 @@ RUN make CROSS_COMPILE="${CROSS_COMPILE_ENV}" ARCH="${KERNEL_ARCH}" oldconfig
 # diffconfig returns 0 in all cases, grep to throw error in a case config has changed between build stages.
 RUN ! scripts/diffconfig .config .config.new | grep .
 
+# To have a reproducible kernel build
+ARG KBUILD_BUILD_TIMESTAMP
+ARG KBUILD_BUILD_USER
+ARG KBUILD_BUILD_HOST
+ARG KCONFIG_NOTIMESTAMP
+ARG SOURCE_DATE_EPOCH
+ENV KBUILD_BUILD_TIMESTAMP=${KBUILD_BUILD_TIMESTAMP}
+ENV KBUILD_BUILD_USER=${KBUILD_BUILD_USER}
+ENV KBUILD_BUILD_HOST=${KBUILD_BUILD_HOST}
+ENV KCONFIG_NOTIMESTAMP=${KCONFIG_NOTIMESTAMP}
+ENV SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH}
+RUN sed -i Makefile -e 's/--build-id=sha1/--build-id=none/g'
+
 # Make kernel
 RUN make -j "$(getconf _NPROCESSORS_ONLN)" CROSS_COMPILE="${CROSS_COMPILE_ENV}" ARCH="${KERNEL_ARCH}" KCFLAGS="-fno-pie" && \
     case ${EVE_TARGET_ARCH} in \
@@ -205,6 +218,12 @@ RUN if [ "${EVE_TARGET_ARCH}" = aarch64 ];then "${CROSS_COMPILE_ENV}strip" --str
 
 # Device Tree Blobs
 RUN if [ "${EVE_TARGET_ARCH}" = aarch64 ];then make INSTALL_DTBS_PATH=/tmp/kernel-modules/boot/dtb CROSS_COMPILE="${CROSS_COMPILE_ENV}" ARCH="${KERNEL_ARCH}" dtbs_install ;fi
+
+# copy build time gnerated module-signing public key, used for diffing builds
+RUN DVER=$(basename "$(find /tmp/kernel-modules/lib/modules/ -mindepth 1 -maxdepth 1)"); \
+    if [ -f "/linux/certs/signing_key.x509" ]; then \
+        cp /linux/certs/signing_key.x509 "/tmp/kernel-modules/lib/modules/$DVER"; \
+    fi
 
 # Package all the modules up
 RUN ( DVER=$(basename $(find /tmp/kernel-modules/lib/modules/ -mindepth 1 -maxdepth 1)) && \

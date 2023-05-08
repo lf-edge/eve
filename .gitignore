@@ -12,3 +12,6 @@ tags
 tmp/
 mkdocs.yml
 yetus-output/
+assets/
+pkg/kernel/build.yml
+pkg/new-kernel/build.yml

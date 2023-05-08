@@ -91,6 +91,7 @@ type AppInstanceConfig struct {
 	//	so the cloud gets it.
 	Errors              []string
 	FixedResources      VmConfig // CPU etc
+	DisableLogs         bool
 	VolumeRefConfigList []VolumeRefConfig
 	Activate            bool //EffectiveActivate in AppInstanceStatus must be used for the actual activation
 	UnderlayNetworkList []UnderlayNetworkConfig

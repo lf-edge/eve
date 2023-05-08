@@ -159,7 +159,7 @@ EFI_PART=$(INSTALLER)/EFI
 BOOT_PART=$(INSTALLER)/boot
 BSP_IMX_PART=$(INSTALLER)/bsp-imx
 
-SBOM=$(ROOTFS).spdx.json
+SBOM?=$(ROOTFS).spdx.json
 COLLECTED_SOURCES=$(BUILD_DIR)/collected_sources.tar.gz
 DEVICETREE_DTB_amd64=
 DEVICETREE_DTB_arm64=$(DIST)/dtb/eve.dtb
@@ -235,7 +235,9 @@ QEMU_OPTS_COMMON= -m $(QEMU_MEMORY) -smp 4 -display none $(QEMU_OPTS_BIOS) \
 	-global ICH9-LPC.noreboot=false -watchdog-action reset \
         -rtc base=utc,clock=rt \
         -netdev user,id=eth0,net=$(QEMU_OPTS_NET1),dhcpstart=$(QEMU_OPTS_NET1_FIRST_IP),hostfwd=tcp::$(SSH_PORT)-:22$(QEMU_TFTP_OPTS) -device virtio-net-pci,netdev=eth0,romfile="" \
-        -netdev user,id=eth1,net=$(QEMU_OPTS_NET2),dhcpstart=$(QEMU_OPTS_NET2_FIRST_IP) -device virtio-net-pci,netdev=eth1,romfile=""
+        -netdev user,id=eth1,net=$(QEMU_OPTS_NET2),dhcpstart=$(QEMU_OPTS_NET2_FIRST_IP) -device virtio-net-pci,netdev=eth1,romfile="" \
+        -device nec-usb-xhci,id=xhci \
+        -qmp unix:$(CURDIR)/qmp.sock,server,wait=off
 QEMU_OPTS_CONF_PART=$(shell [ -d "$(CONF_PART)" ] && echo '-drive file=fat:rw:$(CONF_PART),format=raw')
 QEMU_OPTS=$(QEMU_OPTS_COMMON) $(QEMU_ACCEL) $(QEMU_OPTS_$(ZARCH)) $(QEMU_OPTS_CONF_PART) $(QEMU_OPTS_TPM)
 # -device virtio-blk-device,drive=image -drive if=none,id=image,file=X
@@ -291,9 +293,14 @@ FORCE_BUILD=
 
 # for the go build sources
 GOSOURCES=$(BUILDTOOLS_BIN)/go-sources-and-licenses
-GOSOURCES_VERSION=bc8b291f04566f35172f3d30f66e02e339f0342c
+GOSOURCES_VERSION=c73009667f4871c084c1f2164063321c81d053a2
 GOSOURCES_SOURCE=github.com/deitch/go-sources-and-licenses
 
+
+# for the compare sbom and collecte sources
+COMPARESOURCES=$(BUILDTOOLS_BIN)/compare-sbom-sources
+COMPARESOURCES_VERSION=fcf3c1558b1627ad06852b95851fbf097562b78f
+COMPARE_SOURCE=github.com/lf-edge/eve/tools/compare-sbom-sources
 
 SYFT_VERSION:=v0.78.0
 SYFT_IMAGE:=docker.io/anchore/syft:$(SYFT_VERSION)
@@ -359,7 +366,11 @@ currentversion:
 	@cat $(CURRENT_DIR)/installer/eve_version
 
 
-.PHONY: currentversion linuxkit
+kernel-yml:
+	$(QUIET)if [ ! -f "pkg/kernel/build.yml" ] || [ ! -f "pkg/new-kernel/build.yml" ]; then tools/kernel-build-yml.sh; fi
+
+
+.PHONY: currentversion linuxkit kernel-yml
 
 test: $(LINUXKIT) test-images-patches | $(DIST)
 	@echo Running tests on $(GOMODULE)
@@ -619,7 +630,13 @@ $(ROOTFS_IMG): $(ROOTFS_TAR) | $(INSTALLER)
 	        echo "ERROR: size of $@ is greater than 250MB (bigger than allocated partition)" && exit 1 || :
 	$(QUIET): $@: Succeeded
 
-$(SBOM): $(ROOTFS_TAR) | $(INSTALLER)
+sbom_info:
+	@echo "$(SBOM)"
+
+collected_sources_info:
+	@echo "$(COLLECTED_SOURCES)"
+
+$(SBOM): $(ROOTFS_TAR)| $(INSTALLER)
 	$(QUIET): $@: Begin
 	$(eval TMP_ROOTDIR := $(shell mktemp -d))
 	# this is a bit of a hack, but we need to extract the rootfs tar to a directory, and it fails if
@@ -640,24 +657,22 @@ $(GOSOURCES):
 
 $(COLLECTED_SOURCES): $(ROOTFS_TAR) $(GOSOURCES)| $(INSTALLER)
 	$(QUIET): $@: Begin
-	$(eval TMP_ROOTDIR := $(shell mktemp -d))
-	# this is a bit of a hack, but we need to extract the rootfs tar to a directory, and it fails if
-	# we try to extract character devices, block devices or pipes, so we just exclude the dir.
-	# when syft supports reading straight from a tar archive with duplicate entries,
-	# this all can go away, and we can read the rootfs.tar
-	# see https://github.com/anchore/syft/issues/1400
-	tar xf $< -C $(TMP_ROOTDIR) --exclude "dev/*"
-	$(eval TMP_COLLECTED_SOURCES := $(shell mktemp -d))
-	bash tools/get-alpine-pkg-source.sh -s $(TMP_COLLECTED_SOURCES)/alpine -e $(TMP_ROOTDIR)
-	bash tools/get-kernel-source.sh -s $(TMP_COLLECTED_SOURCES)/kernel/
-	for i in $$(find . -name 'go.sum'); \
-		do								 		   \
-			$(GOSOURCES) sources -d $$(dirname $$i) --recursive --out $(TMP_COLLECTED_SOURCES)/go; \
-		done;
-	bash tools/generate-sources-manifests.sh $(TMP_COLLECTED_SOURCES)
-	tar -cf $(COLLECTED_SOURCES) -C $(TMP_COLLECTED_SOURCES) .
-	rm -rf $(TMP_ROOTDIR) $(TMP_COLLECTED_SOURCES)
+	bash tools/collect-sources.sh $< $(CURDIR) $@
 	$(QUIET): $@: Succeeded
+
+$(COMPARESOURCES):
+	$(QUIET): $@: Begin
+	$(shell GOBIN=$(BUILDTOOLS_BIN) GO111MODULE=on CGO_ENABLED=0 go install $(COMPARE_SOURCE)@$(COMPARESOURCES_VERSION))
+	@echo Done building packages
+	$(QUIET): $@: Succeeded
+
+compare_sbom_collected_sources: $(COLLECTED_SOURCES) $(SBOM) | $(COMPARESOURCES)
+	$(QUIET): $@: Begin
+	$(COMPARESOURCES) $(COLLECTED_SOURCES):collected_sources_manifest.csv $(SBOM)
+	@echo Done building packages
+	$(QUIET): $@: Succeeded
+
+
 
 $(LIVE).raw: $(BOOT_PART) $(EFI_PART) $(ROOTFS_IMG) $(CONFIG_IMG) $(PERSIST_IMG) $(BSP_IMX_PART) | $(INSTALLER)
 	@[ "$(PLATFORM)" != "${PLATFORM/imx/}" ] && \
@@ -873,7 +888,7 @@ endif
 	qemu-img resize $@ ${MEDIA_SIZE}M
 	$(QUIET): $@: Succeeded
 
-%.yml: %.yml.in build-tools $(RESCAN_DEPS)
+%.yml: %.yml.in build-tools kernel-yml $(RESCAN_DEPS)
 	$(QUIET)$(PARSE_PKGS) $< > $@
 	$(QUIET): $@: Succeeded
 
@@ -891,6 +906,7 @@ get_pkg_build_dev_yml = $(if $(wildcard pkg/$1/build-dev.yml),build-dev.yml,buil
 get_pkg_build_rstats_yml = $(if $(wildcard pkg/$1/build-rstats.yml),build-rstats.yml,build.yml)
 
 eve-%: pkg/%/Dockerfile build-tools $(RESCAN_DEPS)
+	$(QUIET)if [ "$@" = "eve-kernel" ] || [ "$@" = "eve-new-kernel" ]; then tools/kernel-build-yml.sh; fi
 	$(QUIET): "$@: Begin: LINUXKIT_PKG_TARGET=$(LINUXKIT_PKG_TARGET)"
 	$(eval LINUXKIT_DOCKER_LOAD := $(if $(filter $(PKGS_DOCKER_LOAD),$*),--docker,))
 	$(eval LINUXKIT_BUILD_PLATFORMS_LIST := $(call uniq,linux/$(ZARCH) $(if $(filter $(PKGS_HOSTARCH),$*),linux/$(HOSTARCH),)))
