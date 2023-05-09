@@ -215,11 +215,11 @@ func getFileReader(filename string) (io.Reader, error) {
 				return nil, fmt.Errorf("error reading .tar.gz file: %v", err)
 			}
 			if hdr.Name == targetFile {
-				var buf bytes.Buffer
-				if _, err := io.Copy(&buf, tr); err != nil {
-					return nil, fmt.Errorf("error copying file contents: %v", err)
+				b, err := io.ReadAll(tr)
+				if err != nil {
+					return nil, fmt.Errorf("error reading file contents: %v", err)
 				}
-				return bytes.NewReader(buf.Bytes()), nil
+				return bytes.NewReader(b), nil
 			}
 		}
 	} else if strings.HasSuffix(archiveFile, ".tar") {
@@ -239,11 +239,11 @@ func getFileReader(filename string) (io.Reader, error) {
 				return nil, fmt.Errorf("error reading .tar file: %v", err)
 			}
 			if hdr.Name == targetFile {
-				var buf bytes.Buffer
-				if _, err := io.Copy(&buf, tr); err != nil {
-					return nil, fmt.Errorf("error copying file contents: %v", err)
+				b, err := io.ReadAll(tr)
+				if err != nil {
+					return nil, fmt.Errorf("error reading file contents: %v", err)
 				}
-				return bytes.NewReader(buf.Bytes()), nil
+				return bytes.NewReader(b), nil
 			}
 		}
 	}
