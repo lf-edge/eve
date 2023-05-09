@@ -83,18 +83,14 @@ func (metaDataType MetaDataType) String() string {
 	}
 }
 
-// GetOCIConfigDir returns a location for OCI Config
-// FIXME we still have a few places where we need to know whether
-// a task came from an OCI container or not although the goal
-// is to get rid of this kind of split completely. Before that
-// happens our heuristic is to declare any app with the first volume
-// being of a type OCI container to be a container-based app
-func (config DomainConfig) GetOCIConfigDir() string {
-	if len(config.DiskConfigList) > 0 && config.DiskConfigList[0].Format == zconfig.Format_CONTAINER {
-		return config.DiskConfigList[0].FileLocation
-	} else {
-		return ""
+// The whole domain is considered as a container-based if the first disk
+// has the 'CONTAINER' format.
+func (config DomainConfig) IsOCIContainer() bool {
+	if len(config.DiskConfigList) > 0 &&
+		config.DiskConfigList[0].Format == zconfig.Format_CONTAINER {
+		return true
 	}
+	return false
 }
 
 // GetTaskName assigns a unique name to the task representing this domain
