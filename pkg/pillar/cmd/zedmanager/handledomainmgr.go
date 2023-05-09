@@ -87,7 +87,7 @@ func MaybeAddDomainConfig(ctx *zedmanagerContext,
 		// but nobody in their right mind should do it anyway.
 		dc.BootLoader = ""
 	}
-	if dc.GetOCIConfigDir() != "" {
+	if dc.IsOCIContainer() {
 		if dc.Kernel == "" {
 			dc.Kernel = "/hostfs/boot/kernel"
 		}
