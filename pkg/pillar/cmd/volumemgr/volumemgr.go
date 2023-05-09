@@ -103,6 +103,18 @@ type volumemgrContext struct {
 	versionPtr *bool
 }
 
+func (ctxPtr *volumemgrContext) lookupVolumeStatusByUUID(id string) *types.VolumeStatus {
+	sub := ctxPtr.pubVolumeStatus
+	items := sub.GetAll()
+	for _, st := range items {
+		status := st.(types.VolumeStatus)
+		if status.VolumeID.String() == id {
+			return &status
+		}
+	}
+	return nil
+}
+
 func (ctxPtr *volumemgrContext) GetCasClient() cas.CAS {
 	return ctxPtr.casClient
 }
