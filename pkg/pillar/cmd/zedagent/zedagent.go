@@ -400,6 +400,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	// We know our own UUID; prepare for communication with controller
 	zedcloudCtx = initZedcloudContext(
 		zedagentCtx.globalConfig.GlobalValueInt(types.NetworkSendTimeout),
+		zedagentCtx.globalConfig.GlobalValueInt(types.NetworkDialTimeout),
 		zedagentCtx.zedcloudMetrics)
 
 	if parse != "" {

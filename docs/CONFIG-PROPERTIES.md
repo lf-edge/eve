@@ -10,6 +10,7 @@
 | timer.location.cloud.interval | integer in seconds | 1 hour | how frequently device reports geographic location information to controller |
 | timer.location.app.interval | integer in seconds | 20 | how frequently device reports geographic location information to applications (to local profile server and to other apps via meta-data server) |
 | timer.send.timeout | timer in seconds | 120 | time for each http/send |
+| timer.dial.timeout | timer in seconds | 10 | maximum time allowed to establish connection |
 | timer.reboot.no.network | integer in seconds | 7 days | reboot after no cloud connectivity |
 | timer.update.fallback.no.network | integer in seconds | 300 | fallback after no cloud connectivity |
 | timer.test.baseimage.update | integer in seconds | 600 | commit to update |

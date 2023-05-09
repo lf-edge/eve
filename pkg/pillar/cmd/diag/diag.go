@@ -172,7 +172,8 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 
 	zedcloudCtx := zedcloud.NewContext(log, zedcloud.ContextOptions{
 		DevNetworkStatus: ctx.DeviceNetworkStatus,
-		Timeout:          ctx.globalConfig.GlobalValueInt(types.NetworkSendTimeout),
+		SendTimeout:      ctx.globalConfig.GlobalValueInt(types.NetworkSendTimeout),
+		DialTimeout:      ctx.globalConfig.GlobalValueInt(types.NetworkDialTimeout),
 		AgentMetrics:     ctx.zedcloudMetrics,
 		Serial:           hardware.GetProductSerial(log),
 		SoftSerial:       hardware.GetSoftSerial(log),
