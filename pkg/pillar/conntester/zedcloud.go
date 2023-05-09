@@ -57,7 +57,7 @@ func (t *ZedcloudConnectivityTester) TestConnectivity(dns types.DeviceNetworkSta
 
 	zedcloudCtx := zedcloud.NewContext(t.Log, zedcloud.ContextOptions{
 		DevNetworkStatus: &dns,
-		Timeout:          uint32(t.TestTimeout.Seconds()),
+		SendTimeout:      uint32(t.TestTimeout.Seconds()),
 		AgentMetrics:     t.Metrics,
 		Serial:           hardware.GetProductSerial(t.Log),
 		SoftSerial:       hardware.GetSoftSerial(t.Log),
@@ -204,7 +204,7 @@ func (t *ZedcloudConnectivityTester) tryGoogleWithTracing(
 	const withNetTracing = true
 	zedcloudCtx := zedcloud.NewContext(t.Log, zedcloud.ContextOptions{
 		DevNetworkStatus: &dns,
-		Timeout:          uint32(t.TestTimeout.Seconds()),
+		SendTimeout:      uint32(t.TestTimeout.Seconds()),
 		AgentName:        t.AgentName,
 		NetTraceOpts:     t.netTraceOpts(dns),
 	})
