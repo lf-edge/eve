@@ -6,6 +6,7 @@ package volumehandlers
 import (
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/cas"
 	"github.com/lf-edge/eve/pkg/pillar/containerd"
@@ -88,4 +89,26 @@ func (handler *volumeHandlerContainer) Populate() (bool, error) {
 		return true, nil
 	}
 	return false, nil
+}
+
+func (handler *volumeHandlerContainer) CreateSnapshot() (interface{}, time.Time, error) {
+	//TODO implement me
+	errStr := fmt.Sprintf("CreateSnapshot not implemented for container volumes")
+	handler.log.Errorf(errStr)
+	timeCreated := time.Time{}
+	return "", timeCreated, fmt.Errorf(errStr)
+}
+
+func (handler *volumeHandlerContainer) RollbackToSnapshot(snapshotMeta interface{}) error {
+	//TODO implement me
+	errStr := fmt.Sprintf("RollbackToSnapshot not implemented for container volumes")
+	handler.log.Errorf(errStr)
+	return fmt.Errorf(errStr)
+}
+
+func (handler *volumeHandlerContainer) DeleteSnapshot(snapshotMeta interface{}) error {
+	//TODO implement me
+	errStr := fmt.Sprintf("DeleteSnapshot not implemented for container volumes")
+	handler.log.Errorf(errStr)
+	return fmt.Errorf(errStr)
 }

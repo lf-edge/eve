@@ -8,6 +8,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/cas"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/vault"
+	"time"
 )
 
 // VolumeHandler implements processing of different volumes types
@@ -30,6 +31,12 @@ type VolumeHandler interface {
 	// with current options of VolumeStatus
 	// to be used in storage usage calculation
 	UsageFromStatus() uint64
+	// CreateSnapshot handles snapshot creation process, returns snapshot metadata
+	CreateSnapshot() (interface{}, time.Time, error)
+	// RollbackToSnapshot handles rollback process
+	RollbackToSnapshot(snapshotMeta interface{}) error
+	// DeleteSnapshot handles snapshot deletion
+	DeleteSnapshot(snapshotMeta interface{}) error
 }
 
 // VolumeMgr is an interface to obtain information required for volume processing
