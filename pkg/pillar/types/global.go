@@ -235,6 +235,8 @@ const (
 	IgnoreDiskCheckForApps GlobalSettingKey = "storage.apps.ignore.disk.check"
 	// AllowLogFastupload global setting key
 	AllowLogFastupload GlobalSettingKey = "newlog.allow.fastupload"
+	// EnableARPSnoopOnNI global setting key
+	EnableARPSnoop GlobalSettingKey = "network.switch.enable.arpsnoop"
 
 	// TriState Items
 	// NetworkFallbackAnyEth global setting key
@@ -849,6 +851,7 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	configItemSpecMap.AddBoolItem(DisableDHCPAllOnesNetMask, false)
 	configItemSpecMap.AddBoolItem(ProcessCloudInitMultiPart, false)
 	configItemSpecMap.AddBoolItem(ConsoleAccess, true) // Controller likely default to false
+	configItemSpecMap.AddBoolItem(EnableARPSnoop, true)
 
 	// Add TriState Items
 	configItemSpecMap.AddTriStateItem(NetworkFallbackAnyEth, TS_DISABLED)

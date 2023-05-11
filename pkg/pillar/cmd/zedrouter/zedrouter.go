@@ -124,6 +124,8 @@ type zedrouterContext struct {
 	publishTicker        *flextimer.FlexTickerHandle
 	// cli options
 	versionPtr *bool
+	// disable switch NI arp snooping
+	enableArpSnooping bool
 }
 
 // AddAgentSpecificCLIFlags adds CLI options
@@ -2179,6 +2181,7 @@ func handleGlobalConfigImpl(ctxArg interface{}, key string,
 
 			ctx.metricInterval = metricInterval
 		}
+		ctx.enableArpSnooping = gcp.GlobalValueBool(types.EnableARPSnoop)
 	}
 	log.Functionf("handleGlobalConfigImpl done for %s\n", key)
 }
