@@ -48,16 +48,19 @@ dump() {
 
 do_help() {
 cat <<__EOT__
-Usage: docker run [-v <option>] lfedge/verification [-f <fmt>] [-p <platform>] [--accept-license] version|verification_rootfs|verification_live|verification_raw|verification_iso|verification_net
+Usage: docker run [-v <option>] lfedge/eve-verification [-f <fmt>] [-p <platform>] [--accept-license] version|verification_rootfs|verification_live|verification_raw|verification_iso|verification_net
 
 The artifact will be produced on stdout, so don't forget to redirect
 it to a file or use the /out option below.
 
 Example:
-docker run --rm lfedge/verification verification_raw > verification.raw
+docker run --rm lfedge/eve-verification:<release_tag> verification_raw > verification.raw
 
 Where "--rm" is a generic optional Docker argument that simply means
 to remove the locally pulled container after the command completes.
+The release_tag refers to the specific EVE version we want to install,
+e.g., the image could be eve-verification:10.0.0 and the command
+docker run --rm lfedge/eve-verification:10.0.0 verification_raw > verification.raw.
 
 Optionally you can pass arguments right after docker run:
 
@@ -143,13 +146,13 @@ do_verification_live() {
      IMAGE_UUID=$(uuidgen | tee /tmp/soft_serial)
      mcopy -o -i /bits/config.img /tmp/soft_serial ::/soft_serial
   fi
-  create_efi_raw "${1:-350}" "$PART_SPEC"
+  create_efi_raw "${1:-650}" "$PART_SPEC"
   dump "$OUTPUT_IMG" live.raw
   echo "$IMAGE_UUID" >&2
 }
 
 do_verification_raw() {
-  create_efi_raw "${1:-350}" "conf_win verification inventory_win"
+  create_efi_raw "${1:-650}" "conf_win verification inventory_win"
   dump "$OUTPUT_IMG" verification.raw
 }
 
