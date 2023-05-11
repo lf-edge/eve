@@ -8,11 +8,13 @@ package nistate
 import (
 	"bytes"
 	"context"
-	log "github.com/sirupsen/logrus"
 	"net"
 	"strconv"
 	"syscall"
 	"time"
+
+	log "github.com/sirupsen/logrus"
+	"golang.org/x/net/bpf"
 
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
@@ -20,7 +22,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/packetcap/go-pcap"
 	"github.com/vishvananda/netlink"
-	"golang.org/x/net/bpf"
 )
 
 const (
@@ -273,7 +274,7 @@ func (lc *LinuxCollector) convertConntrackToFlow(
 // so that all state collecting and processing happens from the main event loop
 // (to simplify and avoid race conditions...).
 func (lc *LinuxCollector) sniffDNSandDHCP(ctx context.Context,
-	br NIBridge, niType types.NetworkInstanceType) {
+	br NIBridge, niType types.NetworkInstanceType, enableArpSnoop bool) {
 	var (
 		err         error
 		snapshotLen int32 = 1280             // draft-madi-dnsop-udp4dns-00
@@ -312,44 +313,89 @@ func (lc *LinuxCollector) sniffDNSandDHCP(ctx context.Context,
 		switched = true
 		filter = "(ip6 and icmp6 and ip6[40] == 135) or (udp and (port 53 or port 67 or port 546 or port 547))"
 		// Raw instructions below are the compiled instructions of the filter above.
-		// tcpdump -dd "(ip6 and icmp6 and ip6[40] == 135) or (udp and (port 53 or port 67 or port 546 or port 547))"
-		rawInstructions = []bpf.RawInstruction{
-			{Op: 0x28, Jt: 0, Jf: 0, K: 0x0000000c},
-			{Op: 0x15, Jt: 0, Jf: 16, K: 0x000086dd},
-			{Op: 0x30, Jt: 0, Jf: 0, K: 0x00000014},
-			{Op: 0x15, Jt: 3, Jf: 0, K: 0x0000003a},
-			{Op: 0x15, Jt: 0, Jf: 4, K: 0x0000002c},
-			{Op: 0x30, Jt: 0, Jf: 0, K: 0x00000036},
-			{Op: 0x15, Jt: 0, Jf: 28, K: 0x0000003a},
-			{Op: 0x30, Jt: 0, Jf: 0, K: 0x00000036},
-			{Op: 0x15, Jt: 25, Jf: 0, K: 0x00000087},
-			{Op: 0x30, Jt: 0, Jf: 0, K: 0x00000014},
-			{Op: 0x15, Jt: 0, Jf: 24, K: 0x00000011},
-			{Op: 0x28, Jt: 0, Jf: 0, K: 0x00000036},
-			{Op: 0x15, Jt: 21, Jf: 0, K: 0x00000035},
-			{Op: 0x15, Jt: 20, Jf: 0, K: 0x00000043},
-			{Op: 0x15, Jt: 19, Jf: 0, K: 0x00000222},
-			{Op: 0x15, Jt: 18, Jf: 0, K: 0x00000223},
-			{Op: 0x28, Jt: 0, Jf: 0, K: 0x00000038},
-			{Op: 0x15, Jt: 16, Jf: 13, K: 0x00000035},
-			{Op: 0x15, Jt: 0, Jf: 16, K: 0x00000800},
-			{Op: 0x30, Jt: 0, Jf: 0, K: 0x00000017},
-			{Op: 0x15, Jt: 0, Jf: 14, K: 0x00000011},
-			{Op: 0x28, Jt: 0, Jf: 0, K: 0x00000014},
-			{Op: 0x45, Jt: 12, Jf: 0, K: 0x00001fff},
-			{Op: 0xb1, Jt: 0, Jf: 0, K: 0x0000000e},
-			{Op: 0x48, Jt: 0, Jf: 0, K: 0x0000000e},
-			{Op: 0x15, Jt: 8, Jf: 0, K: 0x00000035},
-			{Op: 0x15, Jt: 7, Jf: 0, K: 0x00000043},
-			{Op: 0x15, Jt: 6, Jf: 0, K: 0x00000222},
-			{Op: 0x15, Jt: 5, Jf: 0, K: 0x00000223},
-			{Op: 0x48, Jt: 0, Jf: 0, K: 0x00000010},
-			{Op: 0x15, Jt: 3, Jf: 0, K: 0x00000035},
-			{Op: 0x15, Jt: 2, Jf: 0, K: 0x00000043},
-			{Op: 0x15, Jt: 1, Jf: 0, K: 0x00000222},
-			{Op: 0x15, Jt: 0, Jf: 1, K: 0x00000223},
-			{Op: 0x6, Jt: 0, Jf: 0, K: 0x00040000},
-			{Op: 0x6, Jt: 0, Jf: 0, K: 0x00000000},
+		// tcpdump -dd "(ip6 and icmp6 and ip6[40] == 135) or (udp and (port 53 or port 67 or port 546 or port 547)) or arp"
+		if !enableArpSnoop {
+			// If the user disables the ARP Snooping, the filter will omit the "or arp" above.
+			// This configitem change may need a reboot of the device to take effect.
+			rawInstructions = []bpf.RawInstruction{
+				{Op: 0x28, Jt: 0, Jf: 0, K: 0x0000000c},
+				{Op: 0x15, Jt: 0, Jf: 16, K: 0x000086dd},
+				{Op: 0x30, Jt: 0, Jf: 0, K: 0x00000014},
+				{Op: 0x15, Jt: 3, Jf: 0, K: 0x0000003a},
+				{Op: 0x15, Jt: 0, Jf: 4, K: 0x0000002c},
+				{Op: 0x30, Jt: 0, Jf: 0, K: 0x00000036},
+				{Op: 0x15, Jt: 0, Jf: 28, K: 0x0000003a},
+				{Op: 0x30, Jt: 0, Jf: 0, K: 0x00000036},
+				{Op: 0x15, Jt: 25, Jf: 0, K: 0x00000087},
+				{Op: 0x30, Jt: 0, Jf: 0, K: 0x00000014},
+				{Op: 0x15, Jt: 0, Jf: 24, K: 0x00000011},
+				{Op: 0x28, Jt: 0, Jf: 0, K: 0x00000036},
+				{Op: 0x15, Jt: 21, Jf: 0, K: 0x00000035},
+				{Op: 0x15, Jt: 20, Jf: 0, K: 0x00000043},
+				{Op: 0x15, Jt: 19, Jf: 0, K: 0x00000222},
+				{Op: 0x15, Jt: 18, Jf: 0, K: 0x00000223},
+				{Op: 0x28, Jt: 0, Jf: 0, K: 0x00000038},
+				{Op: 0x15, Jt: 16, Jf: 13, K: 0x00000035},
+				{Op: 0x15, Jt: 0, Jf: 16, K: 0x00000800},
+				{Op: 0x30, Jt: 0, Jf: 0, K: 0x00000017},
+				{Op: 0x15, Jt: 0, Jf: 14, K: 0x00000011},
+				{Op: 0x28, Jt: 0, Jf: 0, K: 0x00000014},
+				{Op: 0x45, Jt: 12, Jf: 0, K: 0x00001fff},
+				{Op: 0xb1, Jt: 0, Jf: 0, K: 0x0000000e},
+				{Op: 0x48, Jt: 0, Jf: 0, K: 0x0000000e},
+				{Op: 0x15, Jt: 8, Jf: 0, K: 0x00000035},
+				{Op: 0x15, Jt: 7, Jf: 0, K: 0x00000043},
+				{Op: 0x15, Jt: 6, Jf: 0, K: 0x00000222},
+				{Op: 0x15, Jt: 5, Jf: 0, K: 0x00000223},
+				{Op: 0x48, Jt: 0, Jf: 0, K: 0x00000010},
+				{Op: 0x15, Jt: 3, Jf: 0, K: 0x00000035},
+				{Op: 0x15, Jt: 2, Jf: 0, K: 0x00000043},
+				{Op: 0x15, Jt: 1, Jf: 0, K: 0x00000222},
+				{Op: 0x15, Jt: 0, Jf: 1, K: 0x00000223},
+				{Op: 0x6, Jt: 0, Jf: 0, K: 0x00040000},
+				{Op: 0x6, Jt: 0, Jf: 0, K: 0x00000000},
+			}
+		} else {
+			filter = filter + " or arp"
+			rawInstructions = []bpf.RawInstruction{
+				{Op: 0x28, Jt: 0, Jf: 0, K: 0x0000000c},
+				{Op: 0x15, Jt: 0, Jf: 16, K: 0x000086dd},
+				{Op: 0x30, Jt: 0, Jf: 0, K: 0x00000014},
+				{Op: 0x15, Jt: 3, Jf: 0, K: 0x0000003a},
+				{Op: 0x15, Jt: 0, Jf: 4, K: 0x0000002c},
+				{Op: 0x30, Jt: 0, Jf: 0, K: 0x00000036},
+				{Op: 0x15, Jt: 0, Jf: 29, K: 0x0000003a},
+				{Op: 0x30, Jt: 0, Jf: 0, K: 0x00000036},
+				{Op: 0x15, Jt: 26, Jf: 0, K: 0x00000087},
+				{Op: 0x30, Jt: 0, Jf: 0, K: 0x00000014},
+				{Op: 0x15, Jt: 0, Jf: 25, K: 0x00000011},
+				{Op: 0x28, Jt: 0, Jf: 0, K: 0x00000036},
+				{Op: 0x15, Jt: 22, Jf: 0, K: 0x00000035},
+				{Op: 0x15, Jt: 21, Jf: 0, K: 0x00000043},
+				{Op: 0x15, Jt: 20, Jf: 0, K: 0x00000222},
+				{Op: 0x15, Jt: 19, Jf: 0, K: 0x00000223},
+				{Op: 0x28, Jt: 0, Jf: 0, K: 0x00000038},
+				{Op: 0x15, Jt: 17, Jf: 13, K: 0x00000035},
+				{Op: 0x15, Jt: 0, Jf: 15, K: 0x00000800},
+				{Op: 0x30, Jt: 0, Jf: 0, K: 0x00000017},
+				{Op: 0x15, Jt: 0, Jf: 15, K: 0x00000011},
+				{Op: 0x28, Jt: 0, Jf: 0, K: 0x00000014},
+				{Op: 0x45, Jt: 13, Jf: 0, K: 0x00001fff},
+				{Op: 0xb1, Jt: 0, Jf: 0, K: 0x0000000e},
+				{Op: 0x48, Jt: 0, Jf: 0, K: 0x0000000e},
+				{Op: 0x15, Jt: 9, Jf: 0, K: 0x00000035},
+				{Op: 0x15, Jt: 8, Jf: 0, K: 0x00000043},
+				{Op: 0x15, Jt: 7, Jf: 0, K: 0x00000222},
+				{Op: 0x15, Jt: 6, Jf: 0, K: 0x00000223},
+				{Op: 0x48, Jt: 0, Jf: 0, K: 0x00000010},
+				{Op: 0x15, Jt: 4, Jf: 0, K: 0x00000035},
+				{Op: 0x15, Jt: 3, Jf: 0, K: 0x00000043},
+				{Op: 0x15, Jt: 2, Jf: 0, K: 0x00000222},
+				{Op: 0x15, Jt: 1, Jf: 2, K: 0x00000223},
+				{Op: 0x15, Jt: 0, Jf: 1, K: 0x00000806},
+				{Op: 0x6, Jt: 0, Jf: 0, K: 0x00040000},
+				{Op: 0x6, Jt: 0, Jf: 0, K: 0x00000000},
+			}
 		}
 	}
 	lc.log.Noticef("%s: Installing pcap on %s (bridge-num %d), "+
@@ -417,21 +463,77 @@ func (lc *LinuxCollector) processCapturedPacket(
 	}
 	packet := capPacket.packet
 	dnslayer := packet.Layer(layers.LayerTypeDNS)
-	if niInfo.config.Type == types.NetworkInstanceTypeSwitch && dnslayer == nil {
-		addrUpdates, isDhcp := lc.processDHCPPacket(niInfo, packet)
-		if isDhcp {
+	if packet.NetworkLayer() != nil {
+		if niInfo.config.Type == types.NetworkInstanceTypeSwitch && dnslayer == nil {
+			addrUpdates, isDhcp := lc.processDHCPPacket(niInfo, packet)
+			if isDhcp {
+				return addrUpdates
+			}
+			return lc.processDADProbe(niInfo, packet)
+		}
+		if dnslayer != nil {
+			lc.processDNSPacketInfo(niInfo, packet)
+		}
+	} else if niInfo.config.Type == types.NetworkInstanceTypeSwitch && packet.LinkLayer() != nil {
+		addrUpdates := lc.processARPPacket(niInfo, packet)
+		if len(addrUpdates) > 0 {
 			return addrUpdates
 		}
-		return lc.processDADProbe(niInfo, packet)
-	}
-	if dnslayer != nil {
-		lc.processDNSPacketInfo(niInfo, packet)
 	}
 	return nil
 }
 
 // Used as a constant.
 var broadcastMAC = []byte{0xff, 0xff, 0xff, 0xff, 0xff, 0xff}
+
+func (lc *LinuxCollector) processARPPacket(
+	niInfo *niInfo, packet gopacket.Packet) (addrUpdates []VIFAddrsUpdate) {
+
+	arpLayer := packet.Layer(layers.LayerTypeARP)
+	if arpLayer == nil {
+		return nil
+	}
+
+	arp, _ := arpLayer.(*layers.ARP)
+	if arp == nil {
+		return nil
+	}
+
+	var vif *VIFAddrs
+	var weAreSource bool
+	var gotAddress []byte
+	if arp.Operation == layers.ARPReply || arp.Operation == layers.ARPRequest {
+		vif = niInfo.vifs.LookupByGuestMAC(arp.DstHwAddress)
+		if vif == nil {
+			vif = niInfo.vifs.LookupByGuestMAC(arp.SourceHwAddress)
+			if vif != nil {
+				weAreSource = true
+			}
+		}
+		if vif == nil || !vif.VIF.Activated {
+			return nil
+		}
+	} else {
+		return nil
+	}
+
+	prevAddrs := *vif
+	if weAreSource {
+		gotAddress = arp.SourceProtAddress
+	} else {
+		gotAddress = arp.DstProtAddress
+	}
+	if vif.IPv4Addr.Equal(gotAddress) {
+		return nil
+	}
+	vif.IPv4Addr = gotAddress
+	newAddrs := *vif
+	addrUpdates = append(addrUpdates, VIFAddrsUpdate{
+		Prev: prevAddrs,
+		New:  newAddrs,
+	})
+	return addrUpdates
+}
 
 // Process captured DHCP packets for switched network instances.
 // Returns true if the packet being inspected is DHCP and intended for application(s)
