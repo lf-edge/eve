@@ -744,7 +744,7 @@ func waitUntilDNSReady(zedagentCtx *zedagentContext, stillRunning *time.Ticker) 
 }
 
 func handleDeferredPeriodicTask(zedagentCtx *zedagentContext) {
-	wdName := agentName + "devinfo"
+	wdName := agentName + "deferred"
 
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)
