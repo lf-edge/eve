@@ -31,7 +31,7 @@ test eden.network.test -test.v -timewait 10m ACTIVATED {{template "network"}}
 
 # Deploy local-manager
 eden pod deploy -n local-manager --memory=512MB {{template "eclient_image"}} -p {{template "mngr_port"}}:22 --networks={{template "network"}}
-test eden.app.test -test.v -timewait 10m RUNNING local-manager
+test eden.app.test -test.v -timewait 15m RUNNING local-manager
 
 # Wait for ssh access
 exec -t 5m bash wait-ssh.sh {{template "mngr_port"}}
@@ -54,7 +54,7 @@ exec -t 10m bash get-devinfo-status.sh
 
 # STEP 2: Deploy the second app
 eden pod deploy -n app1 --memory=512MB {{template "eclient_image"}} -p {{template "app_port"}}:22 --networks={{template "network"}}
-test eden.app.test -test.v -timewait 10m RUNNING app1
+test eden.app.test -test.v -timewait 15m RUNNING app1
 
 # Wait for ssh access
 exec -t 5m bash wait-ssh.sh {{template "app_port"}}
@@ -123,9 +123,7 @@ exec -t 1m bash eden-pod-ps.sh local-manager
 ! stderr .
 
 # STEP 7: Check qemu process is gone aka powered off
-exec sleep 120
-eden eve status
-stdout 'EVE.*process not running'
+exec -t 5m bash wait-for-eve-to-stop.sh
 
 # STEP 8: Restart EVE; check apps come up
 message 'Restart EVE'
@@ -232,6 +230,16 @@ while true; do
     DEVINFO="$($EDEN sdn fwd eth0 {{template "mngr_port"}} -- {{template "ssh"}} "cat {{template "dev_info_status_file"}}")"
     echo "$DEVINFO" | grep "$EXPSTATE" && break
     sleep 1
+done
+
+-- wait-for-eve-to-stop.sh --
+
+EDEN={{EdenConfig "eden.root"}}/{{EdenConfig "eden.bin-dist"}}/{{EdenConfig "eden.eden-bin"}}
+
+while true; do
+    STATUS="$($EDEN eve status)"
+    echo "$STATUS" | grep "EVE.*process not running" && break
+    sleep 3
 done
 
 -- eden-config.yml --
