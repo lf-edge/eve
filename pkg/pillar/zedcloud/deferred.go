@@ -302,6 +302,9 @@ func (ctx *DeferredContext) SetDeferred(
 		log.Tracef("Adding key %s", key)
 		ctx.deferredItems = append(ctx.deferredItems, &item)
 	}
+
+	// Run to a completion from the processing task
+	ctx.KickTimer()
 }
 
 // RemoveDeferred removes key from deferred items if exists
