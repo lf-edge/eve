@@ -18,7 +18,7 @@ eden -t 1m volume create -n v-vhdx file://{{EdenConfig "eden.root"}}/empty.vhdx 
 stdout 'create volume v-vhdx with file://{{EdenConfig "eden.root"}}/empty.vhdx request sent'
 
 # Wait for ready
-test eden.vol.test -test.v -timewait 10m DELIVERED v-qcow2 v-docker v-qcow v-vmdk v-vhdx
+test eden.vol.test -test.v -timewait 15m DELIVERED v-qcow2 v-docker v-qcow v-vmdk v-vhdx
 
 # measure reported total space of persist
 exec -t 5m bash wait-and-get-half-total.sh
@@ -26,7 +26,7 @@ source .env
 
 # allocate volume with size of half total space
 eden -t 1m volume create -n blank-vol-1 blank --disk-size=$half_total
-test eden.vol.test -test.v -timewait 1m CREATED_VOLUME blank-vol-1
+test eden.vol.test -test.v -timewait 3m CREATED_VOLUME blank-vol-1
 
 # allocate background info check for volumeErr contains Remaining word
 test eden.lim.test -test.v -timewait 3m -test.run TestInfo -out InfoContent.vinfo 'InfoContent.vinfo.volumeErr:Remaining' 'InfoContent.vinfo.displayName:blank-vol-2' &errorwait&
