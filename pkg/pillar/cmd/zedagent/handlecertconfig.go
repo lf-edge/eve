@@ -448,7 +448,6 @@ func sendAttestReqProtobuf(attestReq *attest.ZAttestReq, iteration int) {
 	// we set ignoreErr to allow other messages to be sent as well.
 	zedcloudCtx.DeferredEventCtx.SetDeferred(deferKey, buf, size, attestURL,
 		false, false, true, attestReq.ReqType)
-	zedcloudCtx.DeferredEventCtx.HandleDeferred(time.Now(), 0, true)
 }
 
 // initialize cipher pubsub trigger handlers and channels
