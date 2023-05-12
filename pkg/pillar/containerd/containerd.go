@@ -110,7 +110,9 @@ func NewContainerdClient(user bool) (*Client, error) {
 		socket = ctrdUserSocket
 	}
 
-	ctrdClient, err = containerd.New(socket, containerd.WithDefaultRuntime(containerdRunTime))
+	ctrdClient, err = containerd.New(socket,
+		containerd.WithDefaultRuntime(containerdRunTime),
+		containerd.WithTimeout(30*time.Second))
 	if err != nil {
 		logrus.Errorf("NewContainerdClient: could not create containerd client. %v", err.Error())
 		return nil, fmt.Errorf("initContainerdClient: could not create containerd client. %v", err.Error())
