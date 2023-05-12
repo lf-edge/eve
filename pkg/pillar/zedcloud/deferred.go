@@ -48,7 +48,6 @@ type deferredItem struct {
 	ignoreErr      bool
 }
 
-const maxTimeToHandleDeferred = time.Minute
 const longTime1 = time.Hour * 24
 const longTime2 = time.Hour * 48
 
@@ -118,9 +117,9 @@ func (ctx *DeferredContext) processQueueTask(ps *pubsub.PubSub,
 
 	for {
 		select {
-		case change := <-ctx.Ticker.C:
+		case <-ctx.Ticker.C:
 			start := time.Now()
-			if !ctx.handleDeferred(change, 100*time.Millisecond, false) {
+			if !ctx.handleDeferred() {
 				log.Noticef("processQueueTask: some deferred items remain to be sent")
 			}
 			ps.CheckMaxTimeTopic(agentName, ctxName,
@@ -132,8 +131,7 @@ func (ctx *DeferredContext) processQueueTask(ps *pubsub.PubSub,
 }
 
 // handleDeferred try to send all deferred items
-func (ctx *DeferredContext) handleDeferred(event time.Time,
-	spacing time.Duration, sendOne bool) bool {
+func (ctx *DeferredContext) handleDeferred() bool {
 	ctx.lock.Lock()
 	reqs := ctx.deferredItems
 	ctx.deferredItems = []*deferredItem{}
@@ -145,7 +143,7 @@ func (ctx *DeferredContext) handleDeferred(event time.Time,
 		return true
 	}
 
-	log.Functionf("handleDeferred(%v, %v) items %d", event, spacing, len(reqs))
+	log.Functionf("handleDeferred items %d", len(reqs))
 
 	exit := false
 	sent := 0
@@ -204,25 +202,6 @@ func (ctx *DeferredContext) handleDeferred(event time.Time,
 			}
 			item.buf = nil
 			sent++
-
-			if sendOne {
-				exit = true
-				break
-			}
-
-			if time.Since(event) > maxTimeToHandleDeferred {
-				log.Warnf("handleDeferred: took too long time %v",
-					time.Since(event))
-				exit = true
-				break
-			}
-
-			// XXX sleeping in main thread
-			if len(reqs)-sent != 0 && spacing != 0 {
-				log.Functionf("handleDeferred: sleeping %v",
-					spacing)
-				time.Sleep(spacing)
-			}
 		}
 		if exit {
 			break
