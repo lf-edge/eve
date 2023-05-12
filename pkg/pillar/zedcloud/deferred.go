@@ -19,13 +19,23 @@ import (
 
 // Example usage:
 // ctx := zedcloud.CreateDeferredCtx(zedcloudCtx, ...)
-// select {
-//      case change := <- ctx.Ticker.C:
-//          ctx.HandleDeferred(...)
-// Before or after sending success call:
-//     ctx.RemoveDeferred(key)
-// After failure call
+//
+// In order to send created deferred item immediately:
 //     ctx.SetDeferred(key, buf, size, ...)
+//
+// If item was created with the `ignoreErr` flag set,
+// then item will be removed from the queue regardless
+// the actual send result.
+//
+// If `ignoreErr` is not set and an error occurs during
+// the send, then queue processing is interrupted. The
+// queue process will be repeated by the timer, see the
+// `startTimer()` routine. `KickTimer` can be called in
+// order to restart queue processing immediately.
+//
+// The deferred item can be removed from the queue if
+// the send failed:
+//     ctx.RemoveDeferred(key)
 
 type deferredItem struct {
 	itemType       interface{}
@@ -110,7 +120,7 @@ func (ctx *DeferredContext) processQueueTask(ps *pubsub.PubSub,
 		select {
 		case change := <-ctx.Ticker.C:
 			start := time.Now()
-			if !ctx.HandleDeferred(change, 100*time.Millisecond, false) {
+			if !ctx.handleDeferred(change, 100*time.Millisecond, false) {
 				log.Noticef("processQueueTask: some deferred items remain to be sent")
 			}
 			ps.CheckMaxTimeTopic(agentName, ctxName,
@@ -121,10 +131,8 @@ func (ctx *DeferredContext) processQueueTask(ps *pubsub.PubSub,
 	}
 }
 
-// HandleDeferred try to send all deferred items (or only one if sendOne set). Give up if any one fails
-// Stop timer if map becomes empty
-// Returns true when there are no more deferred items
-func (ctx *DeferredContext) HandleDeferred(event time.Time,
+// handleDeferred try to send all deferred items
+func (ctx *DeferredContext) handleDeferred(event time.Time,
 	spacing time.Duration, sendOne bool) bool {
 	ctx.lock.Lock()
 	reqs := ctx.deferredItems
@@ -137,7 +145,7 @@ func (ctx *DeferredContext) HandleDeferred(event time.Time,
 		return true
 	}
 
-	log.Functionf("HandleDeferred(%v, %v) items %d", event, spacing, len(reqs))
+	log.Functionf("handleDeferred(%v, %v) items %d", event, spacing, len(reqs))
 
 	exit := false
 	sent := 0
