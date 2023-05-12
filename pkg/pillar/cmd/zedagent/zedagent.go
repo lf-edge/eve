@@ -423,8 +423,13 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 
 	// Timer for deferred sends of info messages
 	zedcloudCtx.DeferredEventCtx = zedcloud.CreateDeferredCtx(zedcloudCtx,
-		getDeferredSentHandlerFunction(zedagentCtx), getDeferredPriorityFunctions()...)
-	zedcloudCtx.DeferredPeriodicCtx = zedcloud.CreateDeferredCtx(zedcloudCtx, nil)
+		zedagentCtx.ps, agentName, "DeferredEvent",
+		warningTime, errorTime,
+		getDeferredSentHandlerFunction(zedagentCtx),
+		getDeferredPriorityFunctions()...)
+	zedcloudCtx.DeferredPeriodicCtx = zedcloud.CreateDeferredCtx(zedcloudCtx,
+		zedagentCtx.ps, agentName, "DeferredPeriodic",
+		warningTime, errorTime, nil)
 	// XXX defer this until we have some config from cloud or saved copy
 	getconfigCtx.pubAppInstanceConfig.SignalRestarted()
 

@@ -13,6 +13,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	"github.com/lf-edge/eve/pkg/pillar/netdump"
+	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 )
 
@@ -68,7 +69,10 @@ type SentHandlerFunction func(
 // sentHandler is callback which will be run on successful sent
 // priorityCheckFunctions may be added to send item with matched itemType firstly
 // default function at the end of priorityCheckFunctions added to serve non-priority items
-func CreateDeferredCtx(zedcloudCtx *ZedCloudContext, sentHandler *SentHandlerFunction,
+func CreateDeferredCtx(zedcloudCtx *ZedCloudContext,
+	ps *pubsub.PubSub, agentName string, ctxName string,
+	warningTime time.Duration, errorTime time.Duration,
+	sentHandler *SentHandlerFunction,
 	priorityCheckFunctions ...TypePriorityCheckFunction) *DeferredContext {
 	// Default "accept all" priority
 	priorityCheckFunctions = append(priorityCheckFunctions,
@@ -76,7 +80,7 @@ func CreateDeferredCtx(zedcloudCtx *ZedCloudContext, sentHandler *SentHandlerFun
 			return true
 		})
 
-	deferredCtx := DeferredContext{
+	ctx := &DeferredContext{
 		lock:                   &sync.Mutex{},
 		Ticker:                 flextimer.NewRangeTicker(longTime1, longTime2),
 		sentHandler:            sentHandler,
@@ -84,7 +88,37 @@ func CreateDeferredCtx(zedcloudCtx *ZedCloudContext, sentHandler *SentHandlerFun
 		zedcloudCtx:            zedcloudCtx,
 	}
 
-	return &deferredCtx
+	// Start processing task
+	go ctx.processQueueTask(ps, agentName, ctxName,
+		warningTime, errorTime)
+
+	return ctx
+}
+
+func (ctx *DeferredContext) processQueueTask(ps *pubsub.PubSub,
+	agentName string, ctxName string,
+	warningTime time.Duration, errorTime time.Duration) {
+
+	log := ctx.zedcloudCtx.log
+	wdName := agentName + ctxName
+
+	stillRunning := time.NewTicker(25 * time.Second)
+	ps.StillRunning(wdName, warningTime, errorTime)
+	ps.RegisterFileWatchdog(wdName)
+
+	for {
+		select {
+		case change := <-ctx.Ticker.C:
+			start := time.Now()
+			if !ctx.HandleDeferred(change, 100*time.Millisecond, false) {
+				log.Noticef("processQueueTask: some deferred items remain to be sent")
+			}
+			ps.CheckMaxTimeTopic(agentName, ctxName,
+				start, warningTime, errorTime)
+		case <-stillRunning.C:
+		}
+		ps.StillRunning(wdName, warningTime, errorTime)
+	}
 }
 
 // HandleDeferred try to send all deferred items (or only one if sendOne set). Give up if any one fails
