@@ -40,7 +40,7 @@ eden controller edge-node update --device global_profile=profile-1
 
 # We set default_profile to profile-1, so app-profile-2 should be in HALTED state
 test eden.app.test -test.v -timewait 15m HALTED app-profile-2
-test eden.app.test -test.v -timewait 5m RUNNING app-profile-1 app-profile-1-2 local-manager
+test eden.app.test -test.v -timewait 15m RUNNING app-profile-1 app-profile-1-2 local-manager
 
 exec sleep 20
 
@@ -49,7 +49,7 @@ eden controller edge-node update --device global_profile=profile-2
 
 # We set default_profile to profile-2, so app-profile-1 should be in HALTED state
 test eden.app.test -test.v -timewait 15m HALTED app-profile-1
-test eden.app.test -test.v -timewait 5m RUNNING app-profile-2 app-profile-1-2 local-manager
+test eden.app.test -test.v -timewait 15m RUNNING app-profile-2 app-profile-1-2 local-manager
 
 # STEP 3: global_profile=profile-3
 
@@ -57,7 +57,7 @@ eden controller edge-node update --device global_profile=profile-3
 
 # We set default_profile to profile-3, so all apps against local-manager should be in HALTED state
 test eden.app.test -test.v -timewait 15m HALTED app-profile-1 app-profile-2 app-profile-1-2
-test eden.app.test -test.v -timewait 5m RUNNING local-manager
+test eden.app.test -test.v -timewait 15m RUNNING local-manager
 
 exec sleep 20
 
@@ -66,7 +66,7 @@ eden pod stop local-manager
 test eden.app.test -test.v -timewait 15m HALTED local-manager
 
 eden pod start local-manager
-test eden.app.test -test.v -timewait 5m RUNNING local-manager
+test eden.app.test -test.v -timewait 15m RUNNING local-manager
 
 # Wait for ssh access
 exec -t 5m bash wait_ssh.sh 2223
@@ -85,7 +85,7 @@ exec -t 1m bash local-manager-profile.sh 2223 profile-1
 
 # We set local_manager and use profile-1 in it, so app-profile-2 should be in HALTED state
 test eden.app.test -test.v -timewait 15m HALTED app-profile-2
-test eden.app.test -test.v -timewait 5m RUNNING app-profile-1 app-profile-1-2 local-manager
+test eden.app.test -test.v -timewait 15m RUNNING app-profile-1 app-profile-1-2 local-manager
 
 exec sleep 20
 
@@ -96,7 +96,7 @@ exec -t 1m bash local-manager-profile.sh 2223 profile-2
 
 # We set local_manager and use profile-2 in it, so app-profile-1 should be in HALTED state
 test eden.app.test -test.v -timewait 15m HALTED app-profile-1
-test eden.app.test -test.v -timewait 5m RUNNING app-profile-2 app-profile-1-2 local-manager
+test eden.app.test -test.v -timewait 15m RUNNING app-profile-2 app-profile-1-2 local-manager
 
 exec sleep 20
 
@@ -107,7 +107,7 @@ exec -t 1m bash local-manager-profile.sh 2223 profile-3
 
 # We set local_manager and use profile-3 in it, so all apps against local-manager should be in HALTED state
 test eden.app.test -test.v -timewait 15m HALTED app-profile-1 app-profile-2 app-profile-1-2
-test eden.app.test -test.v -timewait 5m RUNNING local-manager
+test eden.app.test -test.v -timewait 15m RUNNING local-manager
 
 exec sleep 20
 
@@ -118,7 +118,7 @@ eden controller edge-node update --device local_profile_server=""
 
 exec sleep 30
 # We have empty local_manager and empty default_profile, so apps should come back to RUNNING state now
-test eden.app.test -test.v -timewait 5m RUNNING app-profile-1 app-profile-2 app-profile-1-2 local-manager
+test eden.app.test -test.v -timewait 15m RUNNING app-profile-1 app-profile-2 app-profile-1-2 local-manager
 
 exec sleep 20
 

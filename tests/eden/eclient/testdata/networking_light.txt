@@ -43,7 +43,6 @@ exec sleep 10
 exec -t 1m bash setup_srv.sh
 exec sleep 10
 exec -t 1m bash run_srv.sh &
-exec sleep 10
 exec -t 1m bash run_client.sh
 exec sleep 10
 exec -t 1m bash get_result.sh
@@ -55,7 +54,6 @@ exec sleep 10
 exec -t 1m bash setup_srv.sh
 exec sleep 10
 exec -t 1m bash run_srv.sh &
-exec sleep 10
 exec -t 1m bash run_client.sh
 exec sleep 10
 exec -t 1m bash get_result.sh
@@ -103,6 +101,18 @@ $EDEN sdn fwd eth0 {{template "port"}} -- {{template "ssh"}} 'sh /tmp/server > /
 -- run_client.sh --
 EDEN={{EdenConfig "eden.root"}}/{{EdenConfig "eden.bin-dist"}}/{{EdenConfig "eden.eden-bin"}}
 . ./env
+
+function check_server_port {
+    # get to server app via client app
+    listeners=$($EDEN sdn fwd eth0 {{template "port"}} -- {{template "ssh"}} ssh -o StrictHostKeyChecking=no root@$ESERVER_IP netstat -tlpn)
+    echo "Current listeners: $listeners"
+    if echo "$listeners" | grep -q ":1234"; then
+        return 0
+    fi
+    return 1
+}
+
+until check_server_port; do sleep 3; done
 
 echo $EDEN sdn fwd eth0 {{template "port"}} -- {{template "ssh"}} "echo {{$test_msg}} | nc -N $ESERVER_IP 1234"
 $EDEN sdn fwd eth0 {{template "port"}} -- {{template "ssh"}} "echo {{$test_msg}} | nc -N $ESERVER_IP 1234"
