@@ -247,11 +247,11 @@ const (
 
 // queueInfoToDest - queues "info" requests according to the specified
 //
-//	destination. Deferred event queue runs to a completion
-//	from this context, but deferred periodic queue will
-//	be executed later by timer from a separate goroutine.
-//	@forcePeriodic forces all deferred requests to be added
-//	to the deferred queue and errors will be ignored.
+// destination. Once deferred item has been added the queue is kicked
+// to start processing requests immediately from a separate task.
+//
+// @forcePeriodic forces all deferred requests to be added
+// to the deferred queue and errors will be ignored.
 func queueInfoToDest(ctx *zedagentContext, dest destinationBitset,
 	key string, buf *bytes.Buffer, size int64, bailOnHTTPErr,
 	withNetTracing, forcePeriodic bool, itemType interface{}) {
@@ -277,14 +277,6 @@ func queueInfoToDest(ctx *zedagentContext, dest destinationBitset,
 		const ignoreErr = true
 		zedcloudCtx.DeferredPeriodicCtx.SetDeferred(key, buf, size, url,
 			bailOnHTTPErr, withNetTracing, ignoreErr, itemType)
-	}
-	if dest&ControllerDest != 0 && !forcePeriodic {
-		// Run to a completion at least 1 request from this execution context
-		zedcloudCtx.DeferredEventCtx.HandleDeferred(time.Now(), 0, true)
-	}
-	if (dest&LOCDest != 0 && locConfig != nil) || forcePeriodic {
-		// Run to a completion from the goroutine
-		zedcloudCtx.DeferredPeriodicCtx.KickTimer()
 	}
 }
 
@@ -453,9 +445,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 
 	// Parse SMART data
 	go parseSMARTData()
-
-	// Handle deferred requests from periodic queue
-	go handleDeferredPeriodicTask(zedagentCtx)
 
 	// Use go routines to make sure we have wait/timeout without
 	// blocking the main select loop
@@ -691,11 +680,12 @@ func waitUntilDNSReady(zedagentCtx *zedagentContext, stillRunning *time.Ticker) 
 		case change := <-dnsCtx.subDeviceNetworkStatus.MsgChan():
 			dnsCtx.subDeviceNetworkStatus.ProcessChange(change)
 			if dnsCtx.triggerHandleDeferred {
-				start := time.Now()
-				zedcloudCtx.DeferredEventCtx.HandleDeferred(
-					start, 100*time.Millisecond, false)
-				zedagentCtx.ps.CheckMaxTimeTopic(agentName, "deferredEventChan",
-					start, warningTime, errorTime)
+				// Connectivity has been restored so kick the queue
+				// in order to process all deferred requests
+				// immediately. We don't bother to kick the periodic
+				// queue, because failed requests will be dropped
+				// from the queue.
+				zedcloudCtx.DeferredEventCtx.KickTimer()
 				dnsCtx.triggerHandleDeferred = false
 			}
 
@@ -727,13 +717,6 @@ func waitUntilDNSReady(zedagentCtx *zedagentContext, stillRunning *time.Ticker) 
 		case change := <-zedagentCtx.subLocationInfo.MsgChan():
 			zedagentCtx.subLocationInfo.ProcessChange(change)
 
-		case change := <-zedcloudCtx.DeferredEventCtx.Ticker.C:
-			start := time.Now()
-			zedcloudCtx.DeferredEventCtx.HandleDeferred(
-				change, 100*time.Millisecond, false)
-			zedagentCtx.ps.CheckMaxTimeTopic(agentName, "deferredEventCtx", start,
-				warningTime, errorTime)
-
 		case <-stillRunning.C:
 			// Fault injection
 			if zedagentCtx.fatalFlag {
@@ -745,30 +728,6 @@ func waitUntilDNSReady(zedagentCtx *zedagentContext, stillRunning *time.Ticker) 
 		} else {
 			zedagentCtx.ps.StillRunning(agentName, warningTime, errorTime)
 		}
-	}
-}
-
-func handleDeferredPeriodicTask(zedagentCtx *zedagentContext) {
-	wdName := agentName + "deferred"
-
-	// Run a periodic timer so we always update StillRunning
-	stillRunning := time.NewTicker(25 * time.Second)
-	zedagentCtx.ps.StillRunning(wdName, warningTime, errorTime)
-	zedagentCtx.ps.RegisterFileWatchdog(wdName)
-
-	for {
-		select {
-		case change := <-zedcloudCtx.DeferredPeriodicCtx.Ticker.C:
-			start := time.Now()
-			if !zedcloudCtx.DeferredPeriodicCtx.HandleDeferred(
-				change, 100*time.Millisecond, false) {
-				log.Noticef("handleDeferredPeriodicTask: some deferred items remain to be sent")
-			}
-			zedagentCtx.ps.CheckMaxTimeTopic(agentName, "deferredPeriodicCtx",
-				start, warningTime, errorTime)
-		case <-stillRunning.C:
-		}
-		zedagentCtx.ps.StillRunning(wdName, warningTime, errorTime)
 	}
 }
 
@@ -833,11 +792,12 @@ func mainEventLoop(zedagentCtx *zedagentContext, stillRunning *time.Ticker) {
 				dnsCtx.triggerDeviceInfo = false
 			}
 			if dnsCtx.triggerHandleDeferred {
-				start := time.Now()
-				zedcloudCtx.DeferredEventCtx.HandleDeferred(
-					start, 100*time.Millisecond, false)
-				zedagentCtx.ps.CheckMaxTimeTopic(agentName,
-					"deferredEventCtx", start, warningTime, errorTime)
+				// Connectivity has been restored so kick the queue
+				// in order to process all deferred requests
+				// immediately. We don't bother to kick the periodic
+				// queue, because failed requests will be dropped
+				// from the queue.
+				zedcloudCtx.DeferredEventCtx.KickTimer()
 				dnsCtx.triggerHandleDeferred = false
 			}
 			if dnsCtx.triggerRadioPOST {
@@ -927,13 +887,6 @@ func mainEventLoop(zedagentCtx *zedagentContext, stillRunning *time.Ticker) {
 			} else {
 				downloaderMetrics = m.(types.MetricsMap)
 			}
-
-		case change := <-zedcloudCtx.DeferredEventCtx.Ticker.C:
-			start := time.Now()
-			zedcloudCtx.DeferredEventCtx.HandleDeferred(
-				change, 100*time.Millisecond, false)
-			zedagentCtx.ps.CheckMaxTimeTopic(agentName, "deferredEventCtx",
-				start, warningTime, errorTime)
 
 		case change := <-zedagentCtx.subCipherMetricsDL.MsgChan():
 			zedagentCtx.subCipherMetricsDL.ProcessChange(change)
