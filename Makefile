@@ -160,7 +160,8 @@ BOOT_PART=$(INSTALLER)/boot
 BSP_IMX_PART=$(INSTALLER)/bsp-imx
 
 SBOM?=$(ROOTFS).spdx.json
-COLLECTED_SOURCES=$(BUILD_DIR)/collected_sources.tar.gz
+SOURCES_DIR=$(BUILD_DIR)/sources
+COLLECTED_SOURCES=$(SOURCES_DIR)/collected_sources.tar.gz
 DEVICETREE_DTB_amd64=
 DEVICETREE_DTB_arm64=$(DIST)/dtb/eve.dtb
 DEVICETREE_DTB=$(DEVICETREE_DTB_$(ZARCH))
@@ -325,7 +326,7 @@ endif
 
 # We are currently filtering out a few packages from bulk builds
 # since they are not getting published in Docker HUB
-PKGS_$(ZARCH)=$(shell ls -d pkg/* | grep -Ev "eve|test-microsvcs|alpine")
+PKGS_$(ZARCH)=$(shell ls -d pkg/* | grep -Ev "eve|test-microsvcs|alpine|sources")
 PKGS_riscv64=pkg/ipxe pkg/mkconf pkg/mkimage-iso-efi pkg/grub     \
              pkg/mkimage-raw-efi pkg/uefi pkg/u-boot pkg/cross-compilers pkg/new-kernel \
 	     pkg/debug pkg/dom0-ztools pkg/gpt-tools pkg/storage-init pkg/mkrootfs-squash \
@@ -655,7 +656,11 @@ $(GOSOURCES):
 	@echo Done building packages
 	$(QUIET): $@: Succeeded
 
-$(COLLECTED_SOURCES): $(ROOTFS_TAR) $(GOSOURCES)| $(INSTALLER)
+# ensure the installer dir exists, and save the version in the directory
+$(SOURCES_DIR):
+	@mkdir -p $@
+
+$(COLLECTED_SOURCES): $(ROOTFS_TAR) $(GOSOURCES)| $(INSTALLER) $(SOURCES_DIR)
 	$(QUIET): $@: Begin
 	bash tools/collect-sources.sh $< $(CURDIR) $@
 	$(QUIET): $@: Succeeded
@@ -672,6 +677,11 @@ compare_sbom_collected_sources: $(COLLECTED_SOURCES) $(SBOM) | $(COMPARESOURCES)
 	@echo Done comparing the sbom and collected sources manifest file
 	$(QUIET): $@: Succeeded
 
+publish_sources: $(COLLECTED_SOURCES)
+	$(QUIET): $@: Begin
+	cp pkg/sources/* $(SOURCES_DIR)
+	$(LINUXKIT) $(DASH_V) pkg $(LINUXKIT_PKG_TARGET) --platforms linux/$(ZARCH) --hash-path $(CURDIR) --hash $(ROOTFS_VERSION)-$(HV) --docker $(SOURCES_DIR)
+	$(QUIET): $@: Succeeded
 
 
 $(LIVE).raw: $(BOOT_PART) $(EFI_PART) $(ROOTFS_IMG) $(CONFIG_IMG) $(PERSIST_IMG) $(BSP_IMX_PART) | $(INSTALLER)
