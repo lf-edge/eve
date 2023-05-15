@@ -51,6 +51,8 @@ type zedmanagerContext struct {
 	subGlobalConfig       pubsub.Subscription
 	subHostMemory         pubsub.Subscription
 	subZedAgentStatus     pubsub.Subscription
+	pubVolumesSnapConfig  pubsub.Publication
+	subVolumesSnapStatus  pubsub.Subscription
 	globalConfig          *types.ConfigItemValueMap
 	appToPurgeCounterMap  objtonum.Map
 	GCInitialized         bool
@@ -100,6 +102,17 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		log.Fatal(err)
 	}
 	log.Functionf("processed onboarded")
+
+	// Create publish for SnapshotConfig
+	pubSnapshotConfig, err := ps.NewPublication(pubsub.PublicationOptions{
+		AgentName: agentName,
+		TopicType: types.VolumesSnapshotConfig{},
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctx.pubVolumesSnapConfig = pubSnapshotConfig
+	pubSnapshotConfig.ClearRestarted()
 
 	// Create publish before subscribing and activating subscriptions
 	pubAppInstanceStatus, err := ps.NewPublication(pubsub.PublicationOptions{
@@ -311,6 +324,24 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	ctx.subAppInstanceStatus = subAppInstanceStatus
 	subAppInstanceStatus.Activate()
 
+	subVolumesSnapshotStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "volumemgr",
+		MyAgentName:   agentName,
+		TopicImpl:     types.VolumesSnapshotStatus{},
+		Activate:      false,
+		Ctx:           &ctx,
+		CreateHandler: handleVolumesSnapshotStatusCreate,
+		ModifyHandler: handleVolumesSnapshotStatusModify,
+		DeleteHandler: handleVolumesSnapshotStatusDelete,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctx.subVolumesSnapStatus = subVolumesSnapshotStatus
+	_ = subVolumesSnapshotStatus.Activate()
+
 	// Pick up debug aka log level before we start real work
 	for !ctx.GCInitialized {
 		log.Functionf("waiting for GCInitialized")
@@ -354,6 +385,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 
 		case change := <-subAppInstanceStatus.MsgChan():
 			subAppInstanceStatus.ProcessChange(change)
+
+		case change := <-subVolumesSnapshotStatus.MsgChan():
+			subVolumesSnapshotStatus.ProcessChange(change)
 
 		case <-freeResourceChecker.C:
 			// Did any update above make more resources available for
