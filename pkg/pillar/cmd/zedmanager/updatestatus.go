@@ -54,6 +54,16 @@ func removeAIStatusUUID(ctx *zedmanagerContext, uuidStr string) {
 func removeAIStatus(ctx *zedmanagerContext, status *types.AppInstanceStatus) {
 	uuidStr := status.Key()
 	uninstall := (status.PurgeInprogress != types.BringDown)
+
+	domainStatus := lookupDomainStatus(ctx, uuidStr)
+	// The VM has been just shutdown in a result of the purge&update command coming from the controller.
+	if !uninstall && domainStatus != nil && !domainStatus.Activated {
+		// We should do it before the doRemove is called, so that all the volumes are still available.
+		if status.SnapStatus.SnapshotOnUpgrade && len(status.SnapStatus.PreparedVolumesSnapshotConfigs) > 0 {
+			triggerSnapshots(ctx, status)
+		}
+	}
+
 	changed, done := doRemove(ctx, status, uninstall)
 	if changed {
 		log.Functionf("removeAIStatus status change for %s",
@@ -129,6 +139,34 @@ func doUpdate(ctx *zedmanagerContext,
 		}
 		log.Functionf("PurgeInprogress(%s) bringing it up",
 			status.Key())
+	}
+
+	// Manage events necessitating VM shutdown (such as snapshot removal, rollback).
+	// This is different from instances where the VM is deactivated due to a purge&update
+	// command from the controller, which is taken care of in the removeAIStatus function.
+	domainStatus := lookupDomainStatus(ctx, uuidStr)
+	// Is the VM already shutdown?
+	if domainStatus != nil && !domainStatus.Activated {
+		// Trigger snapshot removal
+		// Note, that we do not restart the VM explicitly for the snapshot removal, we just wait for the next restart,
+		// which ends in this line of code.
+		if len(status.SnapStatus.SnapshotsToBeDeleted) > 0 {
+			triggerSnapshotDeletion(status.SnapStatus.SnapshotsToBeDeleted, ctx, status)
+		}
+
+		// Trigger the rollback process
+		if status.SnapStatus.HasRollbackRequest {
+			err := triggerRollback(ctx, *status)
+			status.SnapStatus.HasRollbackRequest = false
+			if err != nil {
+				errDesc := types.ErrorDescription{}
+				errStr := fmt.Sprintf("doUpdate(%s) triggerRollback failed: %s", uuidStr, err)
+				errDesc.Error = errStr
+				log.Error(errStr)
+				status.SetErrorWithSourceAndDescription(errDesc, types.AppInstanceStatus{})
+				return changed
+			}
+		}
 	}
 
 	if status.PurgeInprogress == types.RecreateVolumes {
