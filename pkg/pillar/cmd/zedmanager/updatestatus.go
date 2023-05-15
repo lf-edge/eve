@@ -4,6 +4,7 @@
 package zedmanager
 
 import (
+	"errors"
 	"fmt"
 	"time"
 
@@ -166,6 +167,51 @@ func doUpdate(ctx *zedmanagerContext,
 	changed = changed || c
 	log.Functionf("doUpdate done for %s", uuidStr)
 	return changed
+}
+
+func triggerSnapshots(ctx *zedmanagerContext, status *types.AppInstanceStatus) {
+	log.Noticef("triggerSnapshots(%s)", status.Key())
+	timeTriggered := time.Now()
+	// Set time triggered for snapshots that are not triggered by time
+	for _, snapshot := range status.SnapStatus.RequestedSnapshots {
+		if snapshot.Snapshot.SnapshotType == types.SnapshotTypeAppUpdate && snapshot.TimeTriggered.IsZero() {
+			log.Noticef("Setting snapshot %s timeTriggered to %v", snapshot.Snapshot.SnapshotID, timeTriggered)
+			snapshot.TimeTriggered = timeTriggered
+		}
+	}
+	// trigger the snapshots. Use the list of prepared VolumeSnapshotConfigs for that
+	for _, volumesSnapshotConfig := range status.SnapStatus.PreparedVolumesSnapshotConfigs {
+		log.Noticef("Triggering snapshot %s", volumesSnapshotConfig.SnapshotID)
+		publishVolumesSnapshotConfig(ctx, &volumesSnapshotConfig)
+		removePreparedVolumesSnapshotConfig(status, volumesSnapshotConfig.SnapshotID)
+	}
+	publishAppInstanceStatus(ctx, status)
+}
+
+func triggerRollback(ctx *zedmanagerContext, status types.AppInstanceStatus) error {
+	log.Noticef("Triggering rollback with snapshot %s", status.SnapStatus.ActiveSnapshot)
+	// Find the snapshot config for the snapshot to be rolled back
+	volumesSnapshotConfig := lookupVolumesSnapshotConfig(ctx, status.SnapStatus.ActiveSnapshot)
+	if volumesSnapshotConfig == nil {
+		log.Errorf("triggerRollback: No snapshot config found for %s", status.SnapStatus.ActiveSnapshot)
+		return errors.New("no snapshot config found")
+	}
+	// Switch the action to rollback
+	volumesSnapshotConfig.Action = types.VolumesSnapshotRollback
+	publishVolumesSnapshotConfig(ctx, volumesSnapshotConfig)
+	return nil
+}
+
+func triggerSnapshotDeletion(snapshotsToBeDeleted []types.SnapshotDesc, ctx *zedmanagerContext, status *types.AppInstanceStatus) {
+	for _, snapshot := range snapshotsToBeDeleted {
+		log.Noticef("Deleting snapshot %s", snapshot.SnapshotID)
+		volumesSnapshotConfig := lookupVolumesSnapshotConfig(ctx, snapshot.SnapshotID)
+		if volumesSnapshotConfig != nil {
+			// The snapshot has already been triggered, so we need to delete the config and notify volumemanager
+			log.Noticef("It has already been triggered, so deleting the config and notifying volumemanager")
+			unpublishVolumesSnapshotConfig(ctx, volumesSnapshotConfig)
+		}
+	}
 }
 
 func doInstall(ctx *zedmanagerContext,
