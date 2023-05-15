@@ -8,8 +8,7 @@ SED=sed
 OS=`uname`
 
 if [ "$OS" = "Darwin" ]; then
-	#If already installed, that is fine, error message goes to /dev/null
-	brew install gnu-sed > /dev/null 2>&1
+	#gsed is a requirement on MacOS, please see eve/README.md
 	SED=gsed
 fi
 
