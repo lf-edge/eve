@@ -8,8 +8,12 @@
 package zedmanager
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
+	"io/ioutil"
+	"os"
+	"sort"
 	"time"
 
 	"github.com/google/go-cmp/cmp"
@@ -607,6 +611,280 @@ func lookupAppInstanceConfig(ctx *zedmanagerContext, key string) *types.AppInsta
 	return &config
 }
 
+func isSnapshotRequestedOnUpdate(status *types.AppInstanceStatus, config types.AppInstanceConfig) bool {
+	if config.Snapshot.Snapshots == nil {
+		return false
+	}
+	for _, snap := range config.Snapshot.Snapshots {
+		// VM should be marked to be snapshotted on update only if there is any snapshot request of the type "on update"
+		// that is not handled yet.
+		if snap.SnapshotType == types.SnapshotTypeAppUpdate && lookupAvailableSnapshot(status, snap.SnapshotID) == nil {
+			return true
+		}
+	}
+	return false
+}
+
+// removeNUnpublishedSnapshotRequests removes up to n snapshot requests that have not been triggered yet
+func removeNUnpublishedSnapshotRequests(status *types.AppInstanceStatus, n uint32) (removedCount uint32) {
+	removedCount = 0
+	snapshots := status.SnapStatus.RequestedSnapshots
+	for i := 0; i < len(snapshots) && removedCount < n; i++ {
+		if snapshots[i].TimeTriggered.IsZero() {
+			// Move the last element to the current position and truncate the slice
+			snapshots[i] = snapshots[len(snapshots)-1]
+			snapshots = snapshots[:len(snapshots)-1]
+			// Remove the snapshot from the list of snapshots to be triggered
+			removePreparedVolumesSnapshotConfig(status, snapshots[i].Snapshot.SnapshotID)
+			i-- // Decrement i to recheck the current index after the swap
+			removedCount++
+		}
+	}
+	status.SnapStatus.RequestedSnapshots = snapshots
+	return removedCount
+}
+
+/* Functions to handle snapshot-related events coming from the controller */
+
+// adjustToMaxSnapshots verifies if the number of snapshots exceeds the set limit. In that case, it marks the oldest
+// snapshots for deletion. If the number of snapshots still surpasses the limit, it trims the list of upcoming snapshots
+// to fit within the limit. The order in which the lists are considered for deletion is as follows:
+// 1) existing snapshots,
+// 2) new snapshot requests, and
+// 3) snapshots prepared for capture.
+func adjustToMaxSnapshots(status *types.AppInstanceStatus, toBeDeleted []types.SnapshotDesc, newRequested []types.SnapshotDesc) ([]types.SnapshotDesc, []types.SnapshotDesc) {
+	snapState := &status.SnapStatus
+	// If the number of snapshots is less than the limit, then we do not need to delete any snapshots.
+	totalSnapshotsRequestedNum := uint32(len(snapState.AvailableSnapshots) + len(snapState.RequestedSnapshots) + len(newRequested) - len(toBeDeleted))
+	if totalSnapshotsRequestedNum <= snapState.MaxSnapshots {
+		return toBeDeleted, newRequested
+	}
+	// If the number of snapshots is more than the limit, then we need to report a warning...
+	errDesc := types.ErrorDescription{}
+	errDesc.Error = fmt.Sprintf("Too many snapshots requested. Max allowed: %d", snapState.MaxSnapshots)
+	log.Warnf("adjustToMaxSnapshots: %s", errDesc.Error)
+	errDesc.ErrorTime = time.Now()
+	errDesc.ErrorSeverity = types.ErrorSeverityWarning
+	status.ErrorDescription = errDesc
+	// ... and to delete the oldest snapshots ...
+	log.Noticef("adjustToMaxSnapshots: Flagging available snapshots for deletion for %s", status.DisplayName)
+	snapshotsToBeDeletedNum := totalSnapshotsRequestedNum - snapState.MaxSnapshots
+
+	// Sort the available snapshots by creation time
+	sort.Slice(snapState.AvailableSnapshots, func(i, j int) bool {
+		return snapState.AvailableSnapshots[i].TimeCreated.Before(snapState.AvailableSnapshots[j].TimeCreated)
+	})
+	for i := 0; i < len(snapState.AvailableSnapshots) && snapshotsToBeDeletedNum != 0; i++ {
+		log.Noticef("Flagging available snapshot %s for deletion", snapState.AvailableSnapshots[i].Snapshot.SnapshotID)
+		toBeDeleted = append(toBeDeleted, snapState.AvailableSnapshots[i].Snapshot)
+		snapshotsToBeDeletedNum--
+	}
+	if snapshotsToBeDeletedNum == 0 {
+		return toBeDeleted, newRequested
+	}
+
+	// ... if we still have snapshots to be deleted, we need to delete them from the requests list ...
+	requestsToBeDeleted := len(newRequested)
+	if int(snapshotsToBeDeletedNum) < requestsToBeDeleted {
+		requestsToBeDeleted = int(snapshotsToBeDeletedNum)
+	}
+	log.Noticef("Removing %d new snapshot requests for %s", requestsToBeDeleted, status.DisplayName)
+	newRequested = newRequested[:len(newRequested)-requestsToBeDeleted]
+	snapshotsToBeDeletedNum -= uint32(requestsToBeDeleted)
+	if snapshotsToBeDeletedNum == 0 {
+		return toBeDeleted, newRequested
+	}
+
+	// ... if we still have snapshots to be deleted, we need to delete the unpublished snapshots from the RequestedSnapshots list.
+	log.Noticef("Flagging planned but unpublished snapshots for deletion for %s", status.DisplayName)
+	removed := removeNUnpublishedSnapshotRequests(status, snapshotsToBeDeletedNum)
+	if removed != snapshotsToBeDeletedNum {
+		errDesc.Error = fmt.Sprintf("Unexpected error. The number of snapshots to be deleted is more than the number of all snapshots.")
+		log.Errorf("adjustToMaxSnapshots: %s", errDesc.Error)
+		errDesc.ErrorTime = time.Now()
+		errDesc.ErrorSeverity = types.ErrorSeverityWarning
+		status.ErrorDescription = errDesc
+	}
+	return toBeDeleted, newRequested
+}
+
+// getSnapshotsToBeDeleted returns the list of snapshots to be deleted
+func getSnapshotsToBeDeleted(config types.AppInstanceConfig, status *types.AppInstanceStatus) (snapsToBeDeleted []types.SnapshotDesc) {
+	for _, snap := range status.SnapStatus.AvailableSnapshots {
+		// Can mark a snapshot for deletion only if it is reported to the controller.
+		if snap.Reported {
+			// If the config has a list of snapshots, then we need to delete the ones which are not present in the config.
+			// If the config does not have a list of snapshots, then we need to delete all the reported snapshots.
+			if config.Snapshot.Snapshots == nil || !isSnapshotPresentInConfig(config, snap.Snapshot.SnapshotID) {
+				log.Noticef("Flagging snapshot %s for deletion", snap.Snapshot.SnapshotID)
+				snapsToBeDeleted = append(snapsToBeDeleted, snap.Snapshot)
+			}
+		}
+	}
+	return snapsToBeDeleted
+}
+
+// isSnapshotPresentInConfig checks if the snapshot is already present in the list of snapshots
+func isSnapshotPresentInConfig(config types.AppInstanceConfig, id string) bool {
+	for _, snapDesc := range config.Snapshot.Snapshots {
+		if snapDesc.SnapshotID == id {
+			return true
+		}
+	}
+	return false
+}
+
+// getNewSnapshotRequests returns the list of new snapshot requests
+func getNewSnapshotRequests(config types.AppInstanceConfig, status *types.AppInstanceStatus) (snapRequests []types.SnapshotDesc) {
+	if config.Snapshot.Snapshots != nil {
+		for _, snap := range config.Snapshot.Snapshots {
+			if isNewSnapshotRequest(snap.SnapshotID, status) {
+				log.Noticef("A new snapshot %s is requested", snap.SnapshotID)
+				snapRequests = append(snapRequests, snap)
+			}
+		}
+	}
+	return snapRequests
+}
+
+// isNewSnapshotRequest checks if the snapshot is already present at least in one of the lists:
+// the list of the snapshots to be taken or available snapshots.
+func isNewSnapshotRequest(id string, status *types.AppInstanceStatus) bool {
+	// Check if the snapshot is already present in the list of the snapshots to be taken.
+	for _, snapRequest := range status.SnapStatus.RequestedSnapshots {
+		if snapRequest.Snapshot.SnapshotID == id {
+			return false
+		}
+	}
+	// Check if the snapshot is already present in the list of the available snapshots.
+	for _, snapAvailable := range status.SnapStatus.AvailableSnapshots {
+		if snapAvailable.Snapshot.SnapshotID == id {
+			return false
+		}
+	}
+	return true
+}
+
+// Update the snapshot related fields in the AppInstanceStatus
+func updateSnapshotsInAIStatus(status *types.AppInstanceStatus, config types.AppInstanceConfig) {
+	status.SnapStatus.SnapshotOnUpgrade = isSnapshotRequestedOnUpdate(status, config)
+	//markReportedSnapshots(status, config)
+	status.SnapStatus.MaxSnapshots = config.Snapshot.MaxSnapshots
+	snapshotsToBeDeleted := getSnapshotsToBeDeleted(config, status)
+	snapshotsRequests := getNewSnapshotRequests(config, status)
+
+	// Check if we have reached the max number of snapshots and delete the oldest ones
+	snapshotsToBeDeleted, snapshotsRequests = adjustToMaxSnapshots(status, snapshotsToBeDeleted, snapshotsRequests)
+	for _, snapshot := range snapshotsRequests {
+		log.Noticef("Adding snapshot %s to the list of snapshots to be taken, for %s", snapshot.SnapshotID, config.DisplayName)
+		newSnapshotStatus := types.SnapshotInstanceStatus{
+			Snapshot:      snapshot,
+			Reported:      false,
+			AppInstanceID: config.UUIDandVersion.UUID,
+			// ConfigVersion is set when the snapshot is triggered
+		}
+		status.SnapStatus.RequestedSnapshots = append(status.SnapStatus.RequestedSnapshots, newSnapshotStatus)
+	}
+	status.SnapStatus.SnapshotsToBeDeleted = snapshotsToBeDeleted
+}
+
+// prepareVolumesSnapshotConfigs generates a 'volumesSnapshotConfig' for each pending snapshot request with a prepared configuration.
+// Creating and immediately triggering the 'volumesSnapshotConfig' is not possible due to the following reasons:
+// - A snapshot can only be initiated post the application stoppage.
+// - Upon application termination, the volumes list within the configuration might have already been modified, leading to inconsistencies.
+// Hence, we need this function to prepare the 'volumesSnapshotConfig' with the volumes list that was used when the snapshot was requested.
+func prepareVolumesSnapshotConfigs(ctx *zedmanagerContext, config types.AppInstanceConfig, status *types.AppInstanceStatus) []types.VolumesSnapshotConfig {
+	var volumesSnapshotConfigList []types.VolumesSnapshotConfig
+	for _, snapshot := range status.SnapStatus.RequestedSnapshots {
+		if snapshot.Snapshot.SnapshotType == types.SnapshotTypeAppUpdate {
+			log.Noticef("Creating volumesSnapshotConfig for snapshot %s", snapshot.Snapshot.SnapshotID)
+			volumesSnapshotConfig := types.VolumesSnapshotConfig{
+				SnapshotID: snapshot.Snapshot.SnapshotID,
+				Action:     types.VolumesSnapshotCreate,
+				AppUUID:    status.UUIDandVersion.UUID,
+			}
+			for _, volumeRefConfig := range config.VolumeRefConfigList {
+				log.Noticef("Adding volume %s to volumesSnapshotConfig", volumeRefConfig.VolumeID)
+				volumesSnapshotConfig.VolumeIDs = append(volumesSnapshotConfig.VolumeIDs, volumeRefConfig.VolumeID)
+				// Increment the reference count for the volume, so it's not deleted when it's temporary not used by any application
+				volumeRefConfig.RefCount++
+				publishVolumeRefConfig(ctx, &volumeRefConfig)
+			}
+			volumesSnapshotConfigList = append(volumesSnapshotConfigList, volumesSnapshotConfig)
+		}
+	}
+	return volumesSnapshotConfigList
+}
+
+// removePreparedVolumesSnapshotConfig removes the prepared volumesSnapshotConfig from the list of prepared volumesSnapshotConfigs
+func removePreparedVolumesSnapshotConfig(status *types.AppInstanceStatus, id string) {
+	preparedVolumesSnapshotConfigs := &status.SnapStatus.PreparedVolumesSnapshotConfigs
+	for i, volumesSnapshotConfig := range *preparedVolumesSnapshotConfigs {
+		if volumesSnapshotConfig.SnapshotID == id {
+			// Shift the elements to the right of the index i to fill the gap
+			*preparedVolumesSnapshotConfigs = append((*preparedVolumesSnapshotConfigs)[:i], (*preparedVolumesSnapshotConfigs)[i+1:]...)
+			break
+		}
+	}
+}
+
+// saveConfigForSnapshots saves the config for the snapshots for which the config has been prepared
+func saveConfigForSnapshots(status *types.AppInstanceStatus, config types.AppInstanceConfig) error {
+	for i, snapshot := range status.SnapStatus.PreparedVolumesSnapshotConfigs {
+		// Set the old config version to the snapshot status
+		status.SnapStatus.RequestedSnapshots[i].ConfigVersion = config.UUIDandVersion
+		// Serialize the old config and store it in a file
+		err := serializeConfigToSnapshot(config, snapshot.SnapshotID)
+		if err != nil {
+			log.Errorf("Failed to serialize the old config for %s, error: %s", config.DisplayName, err)
+			return err
+		}
+	}
+	return nil
+}
+
+// serializeConfigToSnapshot serializes the config to a file
+func serializeConfigToSnapshot(config types.AppInstanceConfig, snapshotID string) error {
+	// Store the old config in a file, so that we can use it to roll back to the previous version
+	// if the upgrade fails
+	configAsBytes, err := json.Marshal(config)
+	if err != nil {
+		log.Errorf("Failed to marshal the old config for %s, error: %s", config.DisplayName, err)
+		return err
+	}
+	err = createDirForSnapshots()
+	if err != nil {
+		log.Errorf("Failed to create the config dir for %s, error: %s", config.DisplayName, err)
+		return err
+	}
+	configFile := getFilenameForConfig(snapshotID)
+	err = ioutil.WriteFile(configFile, configAsBytes, 0644)
+	if err != nil {
+		log.Errorf("Failed to write the old config for %s, error: %s", config.DisplayName, err)
+		return err
+	}
+	return nil
+}
+
+func createDirForSnapshots() error {
+	if _, err := os.Stat(types.ConfigsForSnapshotsDirname); err == nil {
+		// Directory already exists
+		return nil
+	}
+	// Create the directory for storing the old config
+	err := os.MkdirAll(types.ConfigsForSnapshotsDirname, 0755)
+	if err != nil {
+		log.Errorf("Failed to create the config dir for snapshots, error: %s", err)
+		return err
+	}
+	return nil
+}
+
+func getFilenameForConfig(snapshotID string) string {
+	configFilename := fmt.Sprintf("%s/%s", types.ConfigsForSnapshotsDirname, snapshotID)
+	return configFilename
+}
+
 func handleCreate(ctxArg interface{}, key string,
 	configArg interface{}) {
 	ctx := ctxArg.(*zedmanagerContext)
@@ -624,6 +902,8 @@ func handleCreate(ctxArg interface{}, key string,
 
 	// Calculate the moment when the application should start, taking into account the configured delay
 	status.StartTime = ctx.delayBaseTime.Add(config.Delay)
+
+	updateSnapshotsInAIStatus(&status, config)
 
 	// Do we have a PurgeCmd counter from before the reboot?
 	// Note that purgeCmdCounter is a sum of the remote and the local purge counter.
@@ -723,6 +1003,8 @@ func handleModify(ctxArg interface{}, key string,
 
 	status.StartTime = ctx.delayBaseTime.Add(config.Delay)
 
+	updateSnapshotsInAIStatus(status, config)
+
 	effectiveActivate := effectiveActivateCurrentProfile(config, ctx.currentProfile)
 
 	publishAppInstanceStatus(ctx, status)
@@ -738,6 +1020,20 @@ func handleModify(ctxArg interface{}, key string,
 	needPurge, needRestart, purgeReason, restartReason := quantifyChanges(config, oldConfig, *status)
 	if needPurge {
 		needRestart = false
+	}
+	// A snapshot is deemed necessary whenever the application requires a restart, as this typically
+	// indicates a significant change in the application, such as an upgrade.
+	if status.SnapStatus.SnapshotOnUpgrade && (needRestart || needPurge) {
+		// Save the list of the volumes that need to be backed up. We will use this list to create the snapshot when
+		// it's triggered. We cannot trigger the snapshot creation here immediately, as the VM
+		// should be stopped first. But we still need to save the list of volumes that are known only at this point.
+		status.SnapStatus.PreparedVolumesSnapshotConfigs = prepareVolumesSnapshotConfigs(ctx, oldConfig, status)
+		err := saveConfigForSnapshots(status, oldConfig)
+		if err != nil {
+			log.Errorf("handleModify(%v) for %s: error saving old config for snapshots: %v",
+				config.UUIDandVersion, config.DisplayName, err)
+			// Do not report it to the controller, as the controller do not expect snapshot-creation related errors
+		}
 	}
 
 	if config.RestartCmd.Counter != oldConfig.RestartCmd.Counter ||
@@ -794,6 +1090,17 @@ func handleModify(ctxArg interface{}, key string,
 		status.SetError(errStr, time.Now())
 		publishAppInstanceStatus(ctx, status)
 		return
+	}
+
+	if config.Snapshot.RollbackCmd.Counter > oldConfig.Snapshot.RollbackCmd.Counter {
+		log.Noticef("handleModify(%v) for %s: Snapshot to be rolled back: %v",
+			config.UUIDandVersion, config.DisplayName, config.Snapshot.ActiveSnapshot)
+		status.SnapStatus.HasRollbackRequest = true
+		status.SnapStatus.ActiveSnapshot = config.Snapshot.ActiveSnapshot
+		// Mark the VM to be rebooted
+		status.RestartInprogress = types.BringDown
+		status.State = types.RESTARTING
+		status.RestartStartedAt = time.Now()
 	}
 
 	status.UUIDandVersion = config.UUIDandVersion
