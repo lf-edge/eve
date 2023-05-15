@@ -68,6 +68,27 @@ type SnapshotDesc struct {
 	SnapshotType SnapshotType // Type of the snapshot creation trigger
 }
 
+// SnapshotInstanceStatus status of a snapshot instance. Used as a zedmanager-level representation of a snapshot
+type SnapshotInstanceStatus struct {
+	// Snapshot contains the snapshot description
+	Snapshot SnapshotDesc
+	// Reported indicates if the snapshot has been reported to the controller
+	Reported bool
+	// TimeTriggered is the time when the snapshot was triggered. At the moment, it is used to check if the snapshot has
+	// already been triggered. Later it can be used to order the snapshots for example in the case of choosing the
+	// snapshot to be deleted.
+	TimeTriggered time.Time
+	// TimeCreated is the time when the snapshot was created. It's reported by FS-specific snapshot creation code.
+	TimeCreated time.Time
+	// AppInstanceID is the UUID of the app instance the snapshot belongs to
+	AppInstanceID uuid.UUID
+	// ConfigVersion is the version of the app instance config at the moment of the snapshot creation
+	// It is reported to the controller, so it can use the proper config to roll back the app instance
+	ConfigVersion UUIDandVersion
+	// Error indicates if snapshot deletion or a rollback to the snapshot failed
+	Error ErrorDescription
+}
+
 // SnapshotConfig configuration of the snapshot handling for the app instance
 type SnapshotConfig struct {
 	ActiveSnapshot string            // UUID of the active snapshot used by the app instance
@@ -197,6 +218,26 @@ func (config AppInstanceConfig) Key() string {
 	return config.UUIDandVersion.UUID.String()
 }
 
+// SnapshottingStatus contains the snapshot information for the app instance.
+type SnapshottingStatus struct {
+	// MaxSnapshots indicates the maximum number of snapshots to be kept for the app instance.
+	MaxSnapshots uint32
+	// RequestedSnapshots contains the list of snapshots to be taken for the app instance.
+	RequestedSnapshots []SnapshotInstanceStatus
+	// AvailableSnapshots contains the list of snapshots available for the app instance.
+	AvailableSnapshots []SnapshotInstanceStatus
+	// SnapshotsToBeDeleted contains the list of snapshots to be deleted for the app instance.
+	SnapshotsToBeDeleted []SnapshotDesc
+	// PreparedVolumesSnapshotConfigs contains the list of snapshots to be triggered for the app instance.
+	PreparedVolumesSnapshotConfigs []VolumesSnapshotConfig
+	// SnapshotOnUpgrade indicates whether a snapshot should be taken during the app instance update.
+	SnapshotOnUpgrade bool
+	// HasRollbackRequest indicates whether a rollback is in progress for the app instance.
+	HasRollbackRequest bool
+	// ActiveSnapshot contains the id of the snapshot to be used for the rollback.
+	ActiveSnapshot string
+}
+
 // Indexed by UUIDandVersion as above
 type AppInstanceStatus struct {
 	UUIDandVersion      UUIDandVersion
@@ -225,6 +266,8 @@ type AppInstanceStatus struct {
 	ErrorAndTimeWithSource
 	// Effective time, when the application should start
 	StartTime time.Time
+	// Snapshot related information
+	SnapStatus SnapshottingStatus
 }
 
 // AppCount is uint8 and it should be sufficient for the number of apps we can support
