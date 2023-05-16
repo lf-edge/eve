@@ -14,7 +14,6 @@ config:
     - /:/hostfs
     - /persist:/persist:rshared,rbind
     - /sys/fs/cgroup:/sys/fs/cgroup
-  net: host
   capabilities:
     - all 
   pid: host

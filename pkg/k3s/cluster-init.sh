@@ -26,22 +26,19 @@ setup_cgroup () {
 
                        
 check_network_connection () {
- network_available=false                                               
  while true; do
-   case "$(curl -s --max-time 5 -I http://google.com | sed 's/^[^ ]*  *\([0-9]\).*/\1/; 1q')" in
-     [23]) network_available=true;;                                                             
-        5) logmsg "The web proxy won't let us through" ;;                             
-        *) logmsg "The network is down" ;;                               
-   esac                                                            
 
-   if [ $network_available == true ]; then
-     logmsg "Network available"
-     break;
+   IP="8.8.8.8"
+   if ping -c 5  $IP > /dev/null 2>&1; then
+        logmsg "Network available, ping to $IP was successful."
+        break;
+   else
+        logmsg "Ping to $IP failed."
    fi
+
    sleep 5
  done
 }                                                               
-#!/bin/sh
 
 wait_for_default_route() {
   while read -r iface dest gw flags refcnt use metric mask mtu window irtt; do
@@ -69,8 +66,8 @@ setup_prereqs () {
 	setup_cgroup                                                   
 
 	#Check network and default routes are up
-	check_network_connection
 	wait_for_default_route
+	check_network_connection
 }
 
 #Make sure all prereqs are set
@@ -89,6 +86,10 @@ do
 if [ ! -f /var/lib/all_components_initialized ]; then
 	if [ ! -f /var/lib/k3s_initialized ]; then
 		#/var/lib is where all kubernetes components get installed.
+		logmsg "Installing K3S version $K3S_VERSION"
+		mkdir -p /var/lib/k3s/bin
+		/usr/bin/curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION=${K3S_VERSION} INSTALL_K3S_SKIP_ENABLE=true INSTALL_K3S_BIN_DIR=/var/lib/k3s/bin sh -
+		ln -s /var/lib/k3s/bin/* /usr/bin
 		logmsg "Initializing K3S version $K3S_VERSION"
 		nohup /usr/bin/k3s server --config /etc/rancher/k3s/config.yaml &
 		#wait until k3s is ready
@@ -131,6 +132,7 @@ else
 		logmsg "k3s is alive "
 	else
 		## Must be after reboot
+		ln -s /var/lib/k3s/bin/* /usr/bin
 		logmsg "Starting k3s server after reboot"
 		nohup /usr/bin/k3s server --config /etc/rancher/k3s/config.yaml &
 		logmsg "Looping until k3s is ready"

@@ -46,7 +46,7 @@ onboot:
   # measure-config must be executed after any other container that changes 
   # /config. Let's keep it the latest
   - name: measure-config
-    image: MEASURE_CONFIG_TAG    
+    image: MEASURE_CONFIG_TAG
 services:
   - name: newlogd
     image: NEWLOGD_TAG
@@ -88,7 +88,7 @@ services:
     image: XENTOOLS_TAG
     cgroupsPath: /eve/services/xen-tools
     oomScoreAdj: -999
-  - name: eve-k3s 
+  - name: eve-k3s
     image: K3S_TAG
     cgroupsPath: /eve/services/eve-k3s
     oomScoreAdj: -999
