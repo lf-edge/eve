@@ -4,7 +4,7 @@
 ARG BUILD_PKGS_BASE="autoconf automake bash binutils binutils-dev build-base bc bison curl dtc expat flex openssl-dev util-linux-dev swig gnutls-dev perl python3 python3-dev py3-setuptools py3-pycryptodome py3-elftools py3-cryptography"
 
 # we use the same image in several places
-ARG EVE_ALPINE_IMAGE=lfedge/eve-alpine:30eeeb121f7ab2fffbdcda3ce7e2a625d88a9677
+ARG EVE_ALPINE_IMAGE=lfedge/eve-alpine:269db59bde11b9acd9a5485c98a7c1383a159613
 
 # hadolint ignore=DL3006
 FROM ${EVE_ALPINE_IMAGE} as build-native
@@ -30,6 +30,8 @@ FROM build-cross AS build-cross-target-amd64
 ENV EVE_TARGET_ARCH=x86_64
 FROM build-cross AS build-cross-target-arm64
 ENV EVE_TARGET_ARCH=aarch64
+FROM build-cross AS build-cross-target-riscv64
+ENV EVE_TARGET_ARCH=riscv64
 
 # hadolint ignore=DL3006
 FROM build-cross-target-${TARGETARCH} AS build-cross-target
@@ -43,9 +45,12 @@ COPY --from=cross-compile-libs /out/ /usr/"${EVE_TARGET_ARCH}"-alpine-linux-musl
 # cross-compilers
 FROM build-cross-target AS target-arm64-build-amd64
 FROM build-cross-target AS target-amd64-build-arm64
+FROM build-cross-target AS target-riscv64-build-amd64
+FROM build-cross-target AS target-riscv64-build-arm64
 # native
 FROM build-native AS target-amd64-build-amd64
 FROM build-native AS target-arm64-build-arm64
+FROM build-native AS target-riscv64-build-riscv64
 
 # hadolint ignore=DL3006
 FROM target-${TARGETARCH}-build-${BUILDARCH} AS build
@@ -112,8 +117,10 @@ RUN for t in ${OPTEEOS_TARGETS}; do \
              do patch -p1 < "/tmp/patches/${p}"; done ;\
          make clean && \
          make -j "$(getconf _NPROCESSORS_ONLN)" \
-            CROSS_COMPILE="${CROSS_COMPILE_ARM32_ENV}" \
-            CROSS_COMPILE64="${CROSS_COMPILE_ENV}" \
+            CROSS_COMPILE="${CROSS_COMPILE_ENV}" \
+            CROSS_COMPILE_core="${CROSS_COMPILE_ENV}" \
+            CROSS_COMPILE_ta_arm32="${CROSS_COMPILE_ARM32_ENV}" \
+            CROSS_COMPILE_ta_arm64="${CROSS_COMPILE_ENV}" \
             CFG_TEE_BENCHMARK=n \
             CFG_TEE_CORE_LOG_LEVEL=1 \
             PLATFORM="${target}" \
