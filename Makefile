@@ -299,6 +299,7 @@ GOSOURCES_SOURCE=github.com/deitch/go-sources-and-licenses
 
 
 # for the compare sbom and collecte sources
+COMPARESOURCES=$(BUILDTOOLS_BIN)/compare-sbom-sources
 COMPARE_SOURCE=./tools/compare-sbom-sources
 
 SYFT_VERSION:=v0.78.0
@@ -663,13 +664,13 @@ $(COLLECTED_SOURCES): $(ROOTFS_TAR) $(GOSOURCES)| $(INSTALLER) $(SOURCES_DIR)
 	bash tools/collect-sources.sh $< $(CURDIR) $@
 	$(QUIET): $@: Succeeded
 
-$(COMPARE_SOURCE):
+$(COMPARESOURCES):
 	$(QUIET): $@: Begin
 	$(shell GOBIN=$(BUILDTOOLS_BIN) GO111MODULE=on CGO_ENABLED=0 go install $(COMPARE_SOURCE))
 	@echo Done building packages
 	$(QUIET): $@: Succeeded
 
-compare_sbom_collected_sources: $(COLLECTED_SOURCES) $(SBOM) | $(COMPARE_SOURCE)
+compare_sbom_collected_sources: $(COLLECTED_SOURCES) $(SBOM) | $(COMPARESOURCES)
 	$(QUIET): $@: Begin
 	$(COMPARESOURCES) $(COLLECTED_SOURCES):./collected_sources_manifest.csv $(SBOM)
 	@echo Done comparing the sbom and collected sources manifest file
