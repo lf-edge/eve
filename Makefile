@@ -299,9 +299,7 @@ GOSOURCES_SOURCE=github.com/deitch/go-sources-and-licenses
 
 
 # for the compare sbom and collecte sources
-COMPARESOURCES=$(BUILDTOOLS_BIN)/compare-sbom-sources
-COMPARESOURCES_VERSION=fcf3c1558b1627ad06852b95851fbf097562b78f
-COMPARE_SOURCE=github.com/lf-edge/eve/tools/compare-sbom-sources
+COMPARE_SOURCE=./tools/compare-sbom-sources
 
 SYFT_VERSION:=v0.78.0
 SYFT_IMAGE:=docker.io/anchore/syft:$(SYFT_VERSION)
@@ -667,7 +665,7 @@ $(COLLECTED_SOURCES): $(ROOTFS_TAR) $(GOSOURCES)| $(INSTALLER) $(SOURCES_DIR)
 
 $(COMPARESOURCES):
 	$(QUIET): $@: Begin
-	$(shell GOBIN=$(BUILDTOOLS_BIN) GO111MODULE=on CGO_ENABLED=0 go install $(COMPARE_SOURCE)@$(COMPARESOURCES_VERSION))
+	$(shell GOBIN=$(BUILDTOOLS_BIN) GO111MODULE=on CGO_ENABLED=0 go install $(COMPARE_SOURCE))
 	@echo Done building packages
 	$(QUIET): $@: Succeeded
 
