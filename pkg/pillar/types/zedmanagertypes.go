@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/lf-edge/eve/api/go/info"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/sriov"
 	uuid "github.com/satori/go.uuid"
@@ -59,6 +60,16 @@ func (s SnapshotType) String() string {
 		return "SnapshotTypeAppUpdate"
 	default:
 		return fmt.Sprintf("Unknown SnapshotType %d", s)
+	}
+}
+
+// ConvertToInfoSnapshotType converts from SnapshotType to info.SnapshotType
+func (s SnapshotType) ConvertToInfoSnapshotType() info.SnapshotType {
+	switch s {
+	case SnapshotTypeAppUpdate:
+		return info.SnapshotType_SNAPSHOT_TYPE_APP_UPDATE
+	default:
+		return info.SnapshotType_SNAPSHOT_TYPE_UNSPECIFIED
 	}
 }
 
