@@ -32,11 +32,6 @@ EVE_SNAPSHOT_VERSION=0.0.0
 PROTO_LANGS=go python
 # Use 'make HV=acrn|xen|kvm|kubevirt' to build ACRN images (AMD64 only), Xen, Kubevirt or KVM
 HV=$(HV_DEFAULT)
-
-ifeq ($(HV),kubevirt)
-HV_DEFAULT=kubevirt
-endif
-
 # Enable development build (disabled by default)
 DEV=n
 # How large to we want the disk to be in Mb
