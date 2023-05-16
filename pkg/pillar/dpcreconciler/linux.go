@@ -21,7 +21,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/vishvananda/netlink"
 
-	node "github.com/lf-edge/eve/pkg/pillar/cmd/nodeagent"
 	generic "github.com/lf-edge/eve/pkg/pillar/dpcreconciler/genericitems"
 	linux "github.com/lf-edge/eve/pkg/pillar/dpcreconciler/linuxitems"
 	"github.com/lf-edge/eve/pkg/pillar/netmonitor"
@@ -182,7 +181,7 @@ type LinuxDpcReconciler struct {
 	prevStatus   ReconcileStatus
 	radioSilence types.RadioSilence
 
-	kubeClusterMode bool
+	KubeClusterMode bool
 }
 type pendingReconcile struct {
 	isPending   bool
@@ -227,7 +226,6 @@ func (r *LinuxDpcReconciler) init() (startWatcher func()) {
 		r.Log.Fatal(err)
 	}
 
-	r.kubeClusterMode = node.IsKubeCluster()
 	r.registry = registry
 	configurator := registry.GetConfigurator(generic.Wwan{})
 	r.wwanConfigurator = configurator.(*generic.WwanConfigurator)
@@ -909,7 +907,7 @@ func (r *LinuxDpcReconciler) getIntendedL3Cfg(dpc types.DevicePortConfig) dg.Gra
 	intendedL3.PutSubGraph(r.getIntendedAdapters(dpc))
 	// XXX comment out this ip rule, this prevents kubernetes pods communicate
 	// tried other approaches and not finding the right solutions
-	if !r.kubeClusterMode {
+	if !r.KubeClusterMode {
 		intendedL3.PutSubGraph(r.getIntendedSrcIPRules(dpc))
 	}
 
@@ -1528,7 +1526,7 @@ func (r *LinuxDpcReconciler) getIntendedACLs(
 	protoMarkV4Rules := []iptables.Rule{
 		markSSHAndGuacamole, markVnc, markIcmpV4, markDhcp,
 	}
-	if r.kubeClusterMode {
+	if r.KubeClusterMode {
 		protoMarkV4Rules = append(protoMarkV4Rules, markDns)
 	}
 	protoMarkV6Rules := []iptables.Rule{
