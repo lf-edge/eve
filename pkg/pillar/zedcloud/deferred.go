@@ -48,6 +48,8 @@ type deferredItem struct {
 	ignoreErr      bool
 }
 
+// We create a timer with really a huge duration to avoid any problems
+// with timer recreation, so we keep timer always alive.
 const longTime1 = time.Hour * 24
 const longTime2 = time.Hour * 48
 
