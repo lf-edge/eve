@@ -55,6 +55,12 @@ FROM build-native AS target-riscv64-build-riscv64
 # hadolint ignore=DL3006
 FROM target-${TARGETARCH}-build-${BUILDARCH} AS build
 
+# ARM32 compiler is needed on all platforms
+ENV CROSS_COMPILE_ARM32_ENV="armv6-alpine-linux-musleabihf-"
+COPY --from=cross-compilers /packages /packages
+# hadolint ignore=DL3018
+RUN apk add --no-cache --allow-untrusted -X /packages build-base-armhf
+
 SHELL ["/bin/bash", "-eo", "pipefail", "-c"]
 
 RUN mkdir /optee_os /opteeos_bins
