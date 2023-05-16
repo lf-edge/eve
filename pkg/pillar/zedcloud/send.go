@@ -69,8 +69,15 @@ type ZedCloudContext struct {
 	serverSigningCertHash []byte
 	onBoardCertBytes      []byte
 	log                   *base.LogObject
-	DeferredEventCtx      *DeferredContext
-	DeferredPeriodicCtx   *DeferredContext
+	// All HTTP requests which can't be dropped and send should be
+	// repeated in case of a transmission error are added to this
+	// queue.
+	DeferredEventCtx *DeferredContext
+	// All periodic HTTP requests are added to this queue, sending
+	// errors of which can be ignored. This means even the request has
+	// failed, it will be removed from the queue, so there is no need
+	// to `kick` this queue once connectivity has restored.
+	DeferredPeriodicCtx *DeferredContext
 }
 
 // ContextOptions - options to be passed at NewContext
