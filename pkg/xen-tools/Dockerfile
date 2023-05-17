@@ -2,7 +2,7 @@
 
 FROM lfedge/eve-uefi:d821658883d6748d8bbf0d6640c62288e3ce8c6f as uefi-build
 
-FROM lfedge/eve-alpine:9fb9b9cbf7d90066a70e4704d04a6fe248ff52bb as runx-build
+FROM lfedge/eve-alpine:d32cf7889da970a42fdf5c1c5454a311356cb8f8 as runx-build
 ENV BUILD_PKGS mkinitfs gcc musl-dev e2fsprogs
 RUN eve-alpine-deploy.sh
 
@@ -16,16 +16,16 @@ RUN gcc -s -o /chroot2 /tmp/chroot2.c
 RUN gcc -s -o /hacf /tmp/hacf.c
 RUN mkinitfs -n -F base -i /init-initrd -o /runx-initrd
 
-FROM lfedge/eve-alpine:9fb9b9cbf7d90066a70e4704d04a6fe248ff52bb as build
+FROM lfedge/eve-alpine:d32cf7889da970a42fdf5c1c5454a311356cb8f8 as build
 ENV BUILD_PKGS \
     gcc make libc-dev dev86 xz-dev perl bash python3-dev \
     gettext iasl util-linux-dev ncurses-dev glib-dev \
     pixman-dev libaio-dev yajl-dev argp-standalone \
     linux-headers git patch texinfo tar libcap-ng-dev \
-    attr-dev flex bison cmake libusb-dev
+    attr-dev flex bison cmake libusb-dev zstd-dev
 ENV BUILD_PKGS_arm64 dtc-dev
 
-ENV PKGS alpine-baselayout musl-utils bash libaio libbz2 glib pixman yajl keyutils libusb xz-libs libuuid sudo
+ENV PKGS alpine-baselayout musl-utils bash libaio libbz2 glib pixman yajl keyutils libusb xz-libs libuuid sudo zstd-libs
 ENV PKGS_arm64 libfdt
 
 RUN eve-alpine-deploy.sh
@@ -57,7 +57,7 @@ ENV XEN_VERSION 4.15.0
 ENV XEN_SOURCE=https://downloads.xenproject.org/release/xen/${XEN_VERSION}/xen-${XEN_VERSION}.tar.gz
 ENV EXTRA_QEMUU_CONFIGURE_ARGS="--enable-libusb --enable-linux-aio \
     --enable-vhost-net --enable-vhost-vsock --enable-vhost-scsi --enable-vhost-kernel \
-    --enable-vhost-user --enable-linux-io-uring"
+    --enable-vhost-user --enable-linux-io-uring --enable-zstd"
 
 WORKDIR /
 
