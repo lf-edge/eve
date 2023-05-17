@@ -70,4 +70,8 @@ message EncryptionBlock {
   string wifiUserName = 3;      // If the authentication type is EAP
   string wifiPassword = 4;
   string protectedUserData = 5;
+  // Username for cellular network.
+  string cellular_net_username = 6;
+  // Password for cellular network.
+  string cellular_net_password = 7;
 }

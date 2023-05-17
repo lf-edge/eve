@@ -440,6 +440,7 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext, dest destinationBitset) {
 	}
 
 	// We report all the ports in DeviceNetworkStatus
+	// TODO: report also modems not used by any port.
 	labelList := types.ReportLogicallabels(*deviceNetworkStatus)
 	for _, label := range labelList {
 		ports := deviceNetworkStatus.GetPortsByLogicallabel(label)
@@ -951,6 +952,8 @@ func encodeSystemAdapterInfo(ctx *zedagentContext) *info.SystemAdapterInfo {
 				// info for ports from lower layers is not published
 				continue
 			}
+			// FIXME: publish status here, not config!
+			// TODO: include DNS servers, MTU, etc.
 			dps.Ports[j] = encodeNetworkPortConfig(ctx, &p)
 			if i == dpcl.CurrentIndex && p.WirelessCfg.WType == types.WirelessTypeCellular {
 				ports := deviceNetworkStatus.GetPortsByLogicallabel(p.Logicallabel)
