@@ -13,7 +13,7 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x19\x65vecommon/evecommon.proto\x12\x15org.lfedge.eve.common\"E\n\x0f\x44iskDescription\x12\x0c\n\x04name\x18\x01 \x01(\t\x12\x14\n\x0clogical_name\x18\x02 \x01(\t\x12\x0e\n\x06serial\x18\x03 \x01(\t*q\n\rHashAlgorithm\x12\x1a\n\x16HASH_ALGORITHM_INVALID\x10\x00\x12!\n\x1dHASH_ALGORITHM_SHA256_16BYTES\x10\x01\x12!\n\x1dHASH_ALGORITHM_SHA256_32BYTES\x10\x02\x42M\n\x15org.lfedge.eve.commonB\tEvecommonP\x01Z\'github.com/lf-edge/eve/api/go/evecommonb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x19\x65vecommon/evecommon.proto\x12\x15org.lfedge.eve.common\"E\n\x0f\x44iskDescription\x12\x0c\n\x04name\x18\x01 \x01(\t\x12\x14\n\x0clogical_name\x18\x02 \x01(\t\x12\x0e\n\x06serial\x18\x03 \x01(\t*q\n\rHashAlgorithm\x12\x1a\n\x16HASH_ALGORITHM_INVALID\x10\x00\x12!\n\x1dHASH_ALGORITHM_SHA256_16BYTES\x10\x01\x12!\n\x1dHASH_ALGORITHM_SHA256_32BYTES\x10\x02*\xc6\x01\n\x15RadioAccessTechnology\x12\'\n#RADIO_ACCESS_TECHNOLOGY_UNSPECIFIED\x10\x00\x12\x1f\n\x1bRADIO_ACCESS_TECHNOLOGY_GSM\x10\x01\x12 \n\x1cRADIO_ACCESS_TECHNOLOGY_UMTS\x10\x02\x12\x1f\n\x1bRADIO_ACCESS_TECHNOLOGY_LTE\x10\x03\x12 \n\x1cRADIO_ACCESS_TECHNOLOGY_5GNR\x10\x04\x42M\n\x15org.lfedge.eve.commonB\tEvecommonP\x01Z\'github.com/lf-edge/eve/api/go/evecommonb\x06proto3')
 
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, globals())
 _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'evecommon.evecommon_pb2', globals())
@@ -23,6 +23,8 @@ if _descriptor._USE_C_DESCRIPTORS == False:
   DESCRIPTOR._serialized_options = b'\n\025org.lfedge.eve.commonB\tEvecommonP\001Z\'github.com/lf-edge/eve/api/go/evecommon'
   _HASHALGORITHM._serialized_start=123
   _HASHALGORITHM._serialized_end=236
+  _RADIOACCESSTECHNOLOGY._serialized_start=239
+  _RADIOACCESSTECHNOLOGY._serialized_end=437
   _DISKDESCRIPTION._serialized_start=52
   _DISKDESCRIPTION._serialized_end=121
 # @@protoc_insertion_point(module_scope)
