@@ -666,7 +666,7 @@ $(COLLECTED_SOURCES): $(ROOTFS_TAR) $(GOSOURCES)| $(INSTALLER) $(SOURCES_DIR)
 
 $(COMPARESOURCES):
 	$(QUIET): $@: Begin
-	$(shell GOBIN=$(BUILDTOOLS_BIN) GO111MODULE=on CGO_ENABLED=0 go install $(COMPARE_SOURCE))
+	GOOS=$(shell uname -s | tr '[A-Z]' '[a-z]') CGO_ENABLED=0 go build -o $(COMPARESOURCES) -C $(COMPARE_SOURCE)
 	@echo Done building packages
 	$(QUIET): $@: Succeeded
 
