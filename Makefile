@@ -30,7 +30,7 @@ endif
 EVE_SNAPSHOT_VERSION=0.0.0
 # which language bindings to generate for EVE API
 PROTO_LANGS=go python
-# Use 'make HV=acrn|xen|kvm' to build ACRN images (AMD64 only), Xen or KVM
+# Use 'make HV=acrn|xen|kvm|kubevirt' to build ACRN images (AMD64 only), Xen, kubevirt or KVM
 HV=$(HV_DEFAULT)
 # Enable development build (disabled by default)
 DEV=n
@@ -168,6 +168,12 @@ DEVICETREE_DTB=$(DEVICETREE_DTB_$(ZARCH))
 
 CONF_FILES=$(shell ls -d $(CONF_DIR)/*)
 PART_SPEC=efi conf imga
+
+ifeq ($(HV),kubevirt)
+      ROOTFS_YML=images/kubevirt-rootfs.yml.in
+else
+      ROOTFS_YML=images/rootfs.yml.in
+endif
 
 # parallels settings
 # https://github.com/qemu/qemu/blob/595123df1d54ed8fbab9e1a73d5a58c5bb71058f/docs/interop/prl-xml.txt
@@ -325,7 +331,15 @@ endif
 
 # We are currently filtering out a few packages from bulk builds
 # since they are not getting published in Docker HUB
-PKGS_$(ZARCH)=$(shell ls -d pkg/* | grep -Ev "eve|test-microsvcs|alpine|sources")
+ifeq ($(HV),kubevirt)
+	PKGS_$(ZARCH)=$(shell ls -d pkg/* | grep -Ev "eve|test-microsvcs|alpine|sources")
+	DOCKER_COMPOSE_YAML=kubevirt-docker-compose.yml
+else
+        #eve-k3s container will not be in non-kubevirt builds
+	PKGS_$(ZARCH)=$(shell ls -d pkg/* | grep -Ev "eve|test-microsvcs|alpine|sources|k3s")
+        DOCKER_COMPOSE_YAML=docker-compose.yml
+endif
+
 PKGS_riscv64=pkg/ipxe pkg/mkconf pkg/mkimage-iso-efi pkg/grub     \
              pkg/mkimage-raw-efi pkg/uefi pkg/u-boot pkg/cross-compilers pkg/new-kernel \
 	     pkg/debug pkg/dom0-ztools pkg/gpt-tools pkg/storage-init pkg/mkrootfs-squash \
@@ -505,8 +519,8 @@ run-grub: $(BIOS_IMG) $(UBOOT_IMG) $(EFI_PART) $(DEVICETREE_DTB) $(SWTPM)  GETTY
 run-compose: images/version.yml
 	# we regenerate this on every run, in case things changed
 	$(PARSE_PKGS) > tmp/images
-	docker-compose -f docker-compose.yml run storage-init sh -c 'rm -rf /run/* /config/* ; cp -Lr /conf/* /config/ ; echo IMGA > /run/eve.id'
-	docker-compose -f docker-compose.yml --env-file tmp/images up
+	docker-compose -f ${DOCKER_COMPOSE_YAML} run storage-init sh -c 'rm -rf /run/* /config/* ; cp -Lr /conf/* /config/ ; echo IMGA > /run/eve.id'
+	docker-compose -f ${DOCKER_COMPOSE_YAML} --env-file tmp/images up
 
 run-proxy:
 	ssh $(SSH_PROXY) -N -i $(SSH_KEY) -p $(SSH_PORT) -o StrictHostKeyChecking=no -o GlobalKnownHostsFile=/dev/null -o UserKnownHostsFile=/dev/null root@localhost &
@@ -924,7 +938,7 @@ eve-%: pkg/%/Dockerfile build-tools $(RESCAN_DEPS)
   	fi
 	$(QUIET): "$@: Succeeded (intermediate for pkg/%)"
 
-images/rootfs-%.yml.in: images/rootfs.yml.in FORCE
+images/rootfs-%.yml.in: ${ROOTFS_YML} FORCE
 	$(QUITE)tools/compose-image-yml.sh $< $@ "$(ROOTFS_VERSION)-$*-$(ZARCH)"
 
 images-patches := $(wildcard images/*.yq)

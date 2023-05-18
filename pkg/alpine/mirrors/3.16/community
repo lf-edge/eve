@@ -36,3 +36,14 @@ tpm2-tss-tctildr
 tpm2-tss-fapi
 tpm2-tss-rc
 pkgconf
+librados
+librbd
+libvirt
+libvirt-client
+libvirt-common-drivers
+libvirt-daemon
+libvirt-libs
+libvirt-lxc
+libvirt-qemu
+fmt
+
