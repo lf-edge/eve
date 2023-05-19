@@ -67,6 +67,11 @@ cp -r /containers/services/pillar/lower /persist/services/pillar
 # reboot and enjoy updates to the pillar container
 ```
 
+## pprof access
+
+pprof can be enabled with `eve http-debug`; now zedbox listens on port 6543 which can be forwarded f.e. with edge-view.
+Information on how to use pprof can be found here: <https://pkg.go.dev/net/http/pprof>
+
 ## Keyboard/console access
 
 For security reasons the USB ports are disabled by default. The only exception is during hardware onboarding when an override file might be needed from a USB stick to do the initial network configuration as specified in in [DEVICE-CONNECTIVITY](DEVICE-CONNECTIVITY.md). During that onboarding USB keyboard access is currently also allowed. However, the USB access does not start until the pillar container is started.
