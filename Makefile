@@ -46,6 +46,8 @@ INSTALLER_IMG_FORMAT=raw
 VERIFICATION_IMG_FORMAT=raw
 # SSH port to use for running images live
 SSH_PORT=2222
+# Debug port to access debugging information (e.g. pprof)
+DEBUG_PORT=6543
 # ports to proxy into a running EVE instance (in ssh notation with -L)
 SSH_PROXY=-L6000:localhost:6000
 # ssh key to be used for getting into an EVE instance
@@ -235,7 +237,7 @@ QEMU_OPTS_COMMON= -m $(QEMU_MEMORY) -smp 4 -display none $(QEMU_OPTS_BIOS) \
         -serial mon:stdio      \
 	-global ICH9-LPC.noreboot=false -watchdog-action reset \
         -rtc base=utc,clock=rt \
-        -netdev user,id=eth0,net=$(QEMU_OPTS_NET1),dhcpstart=$(QEMU_OPTS_NET1_FIRST_IP),hostfwd=tcp::$(SSH_PORT)-:22$(QEMU_TFTP_OPTS) -device virtio-net-pci,netdev=eth0,romfile="" \
+	-netdev user,id=eth0,net=$(QEMU_OPTS_NET1),dhcpstart=$(QEMU_OPTS_NET1_FIRST_IP),hostfwd=tcp::$(SSH_PORT)-:22$(QEMU_TFTP_OPTS),hostfwd=tcp::$(DEBUG_PORT)-:6543 -device virtio-net-pci,netdev=eth0,romfile="" \
         -netdev user,id=eth1,net=$(QEMU_OPTS_NET2),dhcpstart=$(QEMU_OPTS_NET2_FIRST_IP) -device virtio-net-pci,netdev=eth1,romfile="" \
         -device nec-usb-xhci,id=xhci \
         -qmp unix:$(CURDIR)/qmp.sock,server,wait=off

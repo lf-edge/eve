@@ -5,6 +5,8 @@ package agentlog
 
 import (
 	"fmt"
+	"net/http"
+	"net/http/pprof"
 	"os"
 	"os/signal"
 	"runtime"
@@ -18,7 +20,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
-	"github.com/satori/go.uuid"
+	uuid "github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
 )
 
@@ -199,9 +201,35 @@ func handleSignals(log *base.LogObject, agentName string, agentPid int, sigs cha
 				if sigUsr2File != nil {
 					sigUsr2File.Close()
 				}
+				go listenDebug()
 			}
 		}
 	}
+}
+
+func listenDebug() {
+	mux := http.NewServeMux()
+
+	server := &http.Server{
+		Addr:    ":6543",
+		Handler: mux,
+	}
+
+	mux.Handle("/debug/pprof/", http.HandlerFunc(pprof.Index))
+	mux.Handle("/debug/pprof/cmdline", http.HandlerFunc(pprof.Cmdline))
+	mux.Handle("/debug/pprof/profile", http.HandlerFunc(pprof.Profile))
+	mux.Handle("/debug/pprof/symbol", http.HandlerFunc(pprof.Symbol))
+	mux.Handle("/debug/pprof/trace", http.HandlerFunc(pprof.Trace))
+	mux.Handle("/stop", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "POST" {
+			w.Write([]byte("Bye\n"))
+			server.Close()
+		} else {
+			w.Write([]byte("Did you want to use POST method?"))
+		}
+	}))
+
+	server.ListenAndServe()
 }
 
 // DumpAllStacks writes to file but does not log
