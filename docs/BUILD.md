@@ -437,7 +437,7 @@ Packages are built within a docker container as defined by the `Dockerfile` with
 
 Packages are meant to be the building blocks for [reproducible builds](https://reproducible-builds.org/). Currently, however, the builds are not strictly speaking reproducible, but rather guaranteed. EVE build system is not bootstrapping everything from the source up, instead it uses [Alpine Linux](https://pkgs.alpinelinux.org/packages) as the source of binary artifacts. All of the Alpine binary packages that are consumed by EVE are collected in the Docker image archive and published under `lfedge/eve-alpine` name. That way, EVE build system _pins_ all Alpine packages that it needs and can guarantee that they won't change until the archive is updated. All of the packages in the archive are listed under [mirrors](../pkg/alpine/mirrors) folder and the archive can be updated by updating that list. While currently re-building of the archive image is done by fetching required packages from the official Alpine mirrors, we can always add an additional step of bootstrapping all the same packages from source (which will give EVE true reproducible builds).
 
-Since updating content of the `lfedge/eve-alpine` package is a bit of an unusual process -- it is described in details in the [How to update eve-alpine package](#how-to-update-eve-alpine-package) section below.
+Since updating content of the `lfedge/eve-alpine` package is a bit of an unusual process -- it is described in details in the [ALPINE.md](./ALPINE.md) document.
 
 Reliance on `lfedge/eve-alpine` archive enforces a particular structure on individual Dockerfile from EVE packages. For one, they always start with `FROM lfedge/eve-alpine:TAG` and they always produce the final output in the `FROM scratch` step (to avoid layer dependency on the large `lfedge/eve-alpine` package). In addition, `lfedge/eve-alpine` archive package defines a helper script `eve-alpine-deploy.sh` that provides and easy entry point for setting up of the build environment and the final, Alpine-based output of the build. This helper script is driven by looking up the following environment variable (which are very similar to [Requires](https://docs.fedoraproject.org/en-US/packaging-guidelines/#_dependency_types) and [BuildRequires](https://docs.fedoraproject.org/en-US/packaging-guidelines/#buildrequires) in RPMs):
 
@@ -685,26 +685,6 @@ Last but not least, is this completely necessary?
 
 * `images/*.yml`: The need to update `images/*.yml` is understood, as these packages change a lot. Even so, the utilities might be better structured as a separate external utility that is run manually. Most of the time, you just build from a static `rootfs.yml` or `installer.yml`. When you want to update them, you run `update-images` (or similar) and it updates them. Finally, you commit when a good build is ready.
 * `pkg/*/Dockerfile`: The need to generate `Dockerfile` for many of the packages may mean too much cross-dependency, which can be brittle. It is possible that this is necessary, and there is no other way around it. However, we should explore how we can simplify dependencies.
-
-## How to update eve-alpine package
-
-There are two possible options of updating eve-alpine:
-
-1. Rebase eve-alpine on top of new Alpine release
-2. Update packages stored inside eve-alpine
-
-The first option requires update of eve-alpine-base image to use another minirootfs and repository and pointing eve-alpine to be based on novel eve-alpine-base using `FROM lfedge/eve-alpine-base`. This action will invalidate all stored packages inside eve-alpine and download them from repository.
-
-The second option will append package to cache. Unlike a lot of other Linux distributions, Alpine Linux doesn't provide historical versions of all its packages. In fact, Alpine Linux reserves the right to update packages with security patches behind the scenes resulting in content of Alpine x.y.z repositories shifting slightly from time to time. This, obviously, goes against the principle of reproducible builds and makes our `lfedge/eve-alpine` cache serve a double function: not only it is used to speed up the build, but it also may end up being the only place on the Internet where a certain Alpine Linux package version x.y.z could be available from.
-
-The latter aspect makes maintaining `lfedge/eve-alpine` a bit tricky, even though at its core it is simply driven by the list of packages recorded in the manifest files under [pkg/alpine/mirrors](../pkg/alpine/mirrors). Removing packages from the cache is not advisable (and should really only be done during major EVE version updates). Adding packages to the cache consists of two steps:
-
-1. adding new package names to the right manifest file (under `pkg/alpine/mirrors/<BASE ALPINE VERSION>/[main|community]`)
-2. updating `FROM ... AS cache` line in [pkg/alpine/Dockerfile](../pkg/alpine/Dockerfile) to point to the last version of the cache
-
-Step #2 guarantees that all _existing_ packages will simply be re-used from the previous version of the cache and _NOT_ re-downloaded from the Alpine http mirrors (remember that re-downloading always runs the risk of getting a different version of the same package). Step #1, of course, will download new packages and pin them in the new version of the cache.
-
-If the above seems a bit confusing, don't despair: here's an [actual example](../../../commit/1340c1b6981ed3219f78a7a0209ff9222a0dacdf) of adding 4 new packages `libfdt`, `dtc`, `dtc-dev` and `uboot-tools` to the `lfedge/eve-alpine` cache.
 
 ## Cross-compilation support
 
