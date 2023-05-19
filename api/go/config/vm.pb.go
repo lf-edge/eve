@@ -131,11 +131,10 @@ type VmConfig struct {
 	// that amount of available physical CPUs that is defined with the 'vcpus'
 	// parameter defined above.
 	PinCpu bool `protobuf:"varint,20,opt,name=pin_cpu,json=pinCpu,proto3" json:"pin_cpu,omitempty"`
-	// Maximum amount of memory in kbytes allowed for VMM to occupy, aka
-	// "overhead". For qemu-kvm hypervisor the memory limit for one VM
-	// instance is set according to the following equation:
-	//
-	//	`memory` + `vmm_maxmem`
+	// Maximum amount of memory in kbytes allowed for VM monitor to occupy,
+	// aka "overhead". E.g. for the qemu-kvm hypervisor the memory limit
+	// for one VM instance (guest RAM + VM monitor) is set according to the
+	// following equation: `memory` + `vmm_maxmem`
 	VmmMaxmem uint32 `protobuf:"varint,21,opt,name=vmm_maxmem,json=vmmMaxmem,proto3" json:"vmm_maxmem,omitempty"`
 }
 
