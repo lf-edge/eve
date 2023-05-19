@@ -114,9 +114,6 @@ func prepareAndPublishNetworkInstanceInfoMsg(ctx *zedagentContext,
 			}
 			info.IpAssignments = append(info.IpAssignments, assignment)
 		}
-		for _, s := range status.BridgeIPSets {
-			info.BridgeIPSets = append(info.BridgeIPSets, s)
-		}
 		for _, v := range status.Vifs {
 			vi := new(zinfo.ZmetVifInfo)
 			vi.VifName = v.Name
