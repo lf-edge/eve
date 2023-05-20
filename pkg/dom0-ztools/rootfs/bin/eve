@@ -23,6 +23,7 @@ Welcome to EVE!
             verbose on|off
             version
             uuid
+            virttype
 __EOT__
   exit 1
 }
@@ -158,6 +159,10 @@ __EOT__
  uuid)
           uuid=$(cat /persist/status/uuid)
           echo "$uuid"
+          ;;
+ virttype)
+          type=$(cat /run/eve-virt-type)
+          echo "$type"
           ;;
  persist) case "$2" in
                list) list_partitions
