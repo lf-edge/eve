@@ -12,9 +12,9 @@ if [ $? -eq 0 ]; then
 else
    echo $v | grep kvm
    if [ $? -eq 0 ]; then
-   	echo "kvm" > /run/eve-virt-type
+      echo "kvm" > /run/eve-virt-type
    else
-	echo "xen" > /run/eve-virt-type
+      echo "xen" > /run/eve-virt-type
    fi
    #ignore acrn for now
 fi
