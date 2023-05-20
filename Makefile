@@ -333,11 +333,9 @@ endif
 # since they are not getting published in Docker HUB
 ifeq ($(HV),kubevirt)
 	PKGS_$(ZARCH)=$(shell ls -d pkg/* | grep -Ev "eve|test-microsvcs|alpine|sources")
-	DOCKER_COMPOSE_YAML=kubevirt-docker-compose.yml
 else
         #eve-k3s container will not be in non-kubevirt builds
 	PKGS_$(ZARCH)=$(shell ls -d pkg/* | grep -Ev "eve|test-microsvcs|alpine|sources|k3s")
-        DOCKER_COMPOSE_YAML=docker-compose.yml
 endif
 
 PKGS_riscv64=pkg/ipxe pkg/mkconf pkg/mkimage-iso-efi pkg/grub     \
@@ -519,8 +517,8 @@ run-grub: $(BIOS_IMG) $(UBOOT_IMG) $(EFI_PART) $(DEVICETREE_DTB) $(SWTPM)  GETTY
 run-compose: images/version.yml
 	# we regenerate this on every run, in case things changed
 	$(PARSE_PKGS) > tmp/images
-	docker-compose -f ${DOCKER_COMPOSE_YAML} run storage-init sh -c 'rm -rf /run/* /config/* ; cp -Lr /conf/* /config/ ; echo IMGA > /run/eve.id'
-	docker-compose -f ${DOCKER_COMPOSE_YAML} --env-file tmp/images up
+	docker-compose -f docker-compose.yml run storage-init sh -c 'rm -rf /run/* /config/* ; cp -Lr /conf/* /config/ ; echo IMGA > /run/eve.id'
+	docker-compose -f docker-compose.yml --env-file tmp/images up
 
 run-proxy:
 	ssh $(SSH_PROXY) -N -i $(SSH_KEY) -p $(SSH_PORT) -o StrictHostKeyChecking=no -o GlobalKnownHostsFile=/dev/null -o UserKnownHostsFile=/dev/null root@localhost &

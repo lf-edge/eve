@@ -1,0 +1,1 @@
+.services |= .+ [{"name": "eve-k3s","image": "K3S_TAG", "cgroupsPath": "/eve/services/eve-k3s", "oomScoreAdj": -999}]

@@ -117,7 +117,7 @@ if [ ! -f /var/lib/all_components_initialized ]; then
 
 	if [ ! -f /var/lib/longhorn_initialized ]; then
 		logmsg "Installing longhorn version ${LONGHORN_VERSION}"
-		kubectl apply -f  https://raw.githubusercontent.com/longhorn/longhorn/v1.4.2/deploy/longhorn.yaml
+		kubectl apply -f  https://raw.githubusercontent.com/longhorn/longhorn/${LONGHORN_VERSION}/deploy/longhorn.yaml
 		touch /var/lib/longhorn_initialized
 	fi
 
