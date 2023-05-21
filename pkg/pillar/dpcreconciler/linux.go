@@ -180,6 +180,8 @@ type LinuxDpcReconciler struct {
 	prevArgs     Args
 	prevStatus   ReconcileStatus
 	radioSilence types.RadioSilence
+
+	KubeClusterMode bool
 }
 
 type pendingReconcile struct {
@@ -903,7 +905,12 @@ func (r *LinuxDpcReconciler) getIntendedL3Cfg(dpc types.DevicePortConfig) dg.Gra
 	}
 	intendedL3 := dg.New(graphArgs)
 	intendedL3.PutSubGraph(r.getIntendedAdapters(dpc))
-	intendedL3.PutSubGraph(r.getIntendedSrcIPRules(dpc))
+	// XXX comment out this ip rule, this prevents kubernetes pods communicate
+	// tried other approaches and not finding the right solutions
+	if !r.KubeClusterMode {
+		intendedL3.PutSubGraph(r.getIntendedSrcIPRules(dpc))
+	}
+
 	intendedL3.PutSubGraph(r.getIntendedRoutes(dpc))
 	intendedL3.PutSubGraph(r.getIntendedArps(dpc))
 	return intendedL3
@@ -1505,8 +1512,21 @@ func (r *LinuxDpcReconciler) getIntendedACLs(
 		TargetOpts:  []string{"--set-mark", iptables.ControlProtocolMarkingIDMap["in_dhcp"]},
 		Description: "Mark ingress DHCP traffic",
 	}
+	// XXX allow kubernetes DNS replies from external server. Maybe there is
+	// better way to setup this, like using set-mark for outbound kubernetes DNS queires.
+	markDns := iptables.Rule{
+		RuleLabel:   "Kube dns",
+		MatchOpts:   []string{"-p", "udp", "--sport", "domain"},
+		Target:      "CONNMARK",
+		TargetOpts:  []string{"--set-mark", iptables.ControlProtocolMarkingIDMap["in_dns"]},
+		Description: "Mark DNS traffic for kubernetes",
+	}
+
 	protoMarkV4Rules := []iptables.Rule{
 		markSSHAndGuacamole, markVnc, markIcmpV4, markDhcp,
+	}
+	if r.KubeClusterMode {
+		protoMarkV4Rules = append(protoMarkV4Rules, markDns)
 	}
 	protoMarkV6Rules := []iptables.Rule{
 		markSSHAndGuacamole, markVnc, markIcmpV6,

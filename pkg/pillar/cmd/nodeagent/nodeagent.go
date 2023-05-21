@@ -115,6 +115,7 @@ type nodeagentContext struct {
 	maintModeReason             types.MaintenanceModeReason //reason for entering Maintenance mode
 	configGetSuccess            bool                        // got config from controller success
 	vaultmgrReported            bool                        // got reports from vaultmgr
+	kubeClusterMode             bool                        // image is kubernetes cluster type
 
 	// Some constants.. Declared here as variables to enable unit tests
 	minRebootDelay          uint32
@@ -142,6 +143,7 @@ func newNodeagentContext(_ *pubsub.PubSub, _ *logrus.Logger, _ *base.LogObject) 
 	curpart := agentlog.EveCurrentPartition()
 	nodeagentCtx.curPart = strings.TrimSpace(curpart)
 	nodeagentCtx.vaultOperational = types.TS_NONE
+	nodeagentCtx.kubeClusterMode = IsKubeCluster()
 	return &nodeagentCtx
 }
 
@@ -697,6 +699,7 @@ func publishNodeAgentStatus(ctxPtr *nodeagentContext) {
 		RestartCounter:             ctxPtr.restartCounter,
 		LocalMaintenanceMode:       ctxPtr.maintMode,
 		LocalMaintenanceModeReason: ctxPtr.maintModeReason,
+		KubeClusterMode:            ctxPtr.kubeClusterMode,
 	}
 	ctxPtr.lastLock.Unlock()
 	pub.Publish(agentName, status)
@@ -767,4 +770,17 @@ func parseSMARTData() {
 
 	parseData(currentSMARTfilename, smartData)
 	parseData(previousSMARTfilename, previousSmartData)
+}
+
+// IsKubeCluster - if the image is kube cluster type
+func IsKubeCluster() bool {
+	retbytes, err := os.ReadFile(types.EveVirtTypeFile)
+	if err != nil {
+		return false
+	}
+
+	if strings.Contains(string(retbytes), "kubevirt") {
+		return true
+	}
+	return false
 }
