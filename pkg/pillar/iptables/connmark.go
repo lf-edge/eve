@@ -50,6 +50,8 @@ var ControlProtocolMarkingIDMap = map[string]string{
 	// DHCP packets originating from outside
 	// (e.g. DHCP multicast requests from other devices on the same network)
 	"in_dhcp": "10",
+	// hack, for kube dns
+	"in_dns": "11",
 }
 
 // GetConnmark : create connection mark corresponding to the given attributes.
