@@ -10,6 +10,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"google.golang.org/protobuf/types/known/timestamppb"
 	"net/http"
 	"os"
 	"runtime"
@@ -45,16 +46,12 @@ func handleDiskMetricImpl(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
 	status := statusArg.(types.DiskMetric)
-	ctx := ctxArg.(*zedagentContext)
-	ctx.iteration++
 	path := status.DiskPath
 	log.Functionf("handleDiskMetricImpl: %s", path)
 }
 
 func handleDiskMetricDelete(ctxArg interface{}, key string, statusArg interface{}) {
 	status := statusArg.(types.DiskMetric)
-	ctx := ctxArg.(*zedagentContext)
-	ctx.iteration++
 	path := status.DiskPath
 	log.Functionf("handleDiskMetricModify: %s", path)
 }
@@ -1104,6 +1101,7 @@ func PublishAppInfoToZedCloud(ctx *zedagentContext, uuid string,
 	ReportAppInfo.AppID = uuid
 	ReportAppInfo.SystemApp = false
 	if aiStatus != nil {
+		ReportAppInfo.AppVersion = aiStatus.UUIDandVersion.Version
 		ReportAppInfo.AppName = aiStatus.DisplayName
 		ReportAppInfo.State = aiStatus.State.ZSwState()
 		if !aiStatus.ErrorTime.IsZero() {
@@ -1196,6 +1194,17 @@ func PublishAppInfoToZedCloud(ctx *zedagentContext, uuid string,
 		for _, vr := range aiStatus.VolumeRefStatusList {
 			ReportAppInfo.VolumeRefs = append(ReportAppInfo.VolumeRefs,
 				vr.VolumeID.String())
+		}
+
+		for _, snap := range aiStatus.SnapStatus.AvailableSnapshots {
+			snapInfo := new(info.ZInfoSnapshot)
+			snapInfo.Id = snap.Snapshot.SnapshotID
+			snapInfo.ConfigId = snap.ConfigVersion.UUID.String()
+			snapInfo.ConfigVersion = snap.ConfigVersion.Version
+			snapInfo.CreateTime = timestamppb.New(snap.TimeCreated)
+			snapInfo.Type = snap.Snapshot.SnapshotType.ConvertToInfoSnapshotType()
+			snapInfo.SnapErr = encodeErrorInfo(snap.Error)
+			ReportAppInfo.Snapshots = append(ReportAppInfo.Snapshots, snapInfo)
 		}
 	}
 
@@ -1485,7 +1494,6 @@ func PublishEdgeviewToZedCloud(ctx *zedagentContext,
 	//but if there is a queue we'll retry sending the highest priority message.
 	queueInfoToDest(ctx, dest, "global", buf, size, bailOnHTTPErr, false, forcePeriodic,
 		info.ZInfoTypes_ZiEdgeview)
-	ctx.iteration++
 }
 
 func appIfnameToNetworkInstance(ctx *zedagentContext,

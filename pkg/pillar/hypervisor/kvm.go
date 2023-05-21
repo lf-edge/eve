@@ -20,11 +20,6 @@ import (
 
 // KVMHypervisorName is a name of kvm hypervisor
 const KVMHypervisorName = "kvm"
-
-// TBD: Have a better way to calculate this number.
-// For now it is based on some trial-and-error experiments
-const minQemuOverHead = int64(600 * 1024 * 1024)
-
 const minUringKernelTag = uint64((5 << 16) | (4 << 8) | (72 << 0))
 
 // We build device model around PCIe topology according to best practices
@@ -459,6 +454,46 @@ func (ctx kvmContext) Task(status *types.DomainStatus) types.Task {
 	}
 }
 
+// TBD: Have a better way to calculate this number.
+// For now it is based on some trial-and-error experiments.
+// Container limit is reduced to 100MiB.
+func minVMMOverhead(config types.DomainConfig) int64 {
+	if config.IsOCIContainer() {
+		return 100 << 20 // Mb in bytes
+	}
+	return 600 << 20 // Mb in bytes
+}
+
+func vmmOverhead(config types.DomainConfig,
+	globalConfig *types.ConfigItemValueMap) (int64, error) {
+	var overhead int64
+
+	// Fetch VMM max memory setting (aka vmm overhead)
+	overhead = int64(config.VMMMaxMem) << 10
+
+	// Global node setting has a higher priority
+	if globalConfig != nil {
+		VmmOverheadOverrideCfgItem, ok := globalConfig.GlobalSettings[types.VmmMemoryLimitInMiB]
+		if !ok {
+			return 0, logError("Missing key %s", string(types.VmmMemoryLimitInMiB))
+		}
+		if VmmOverheadOverrideCfgItem.IntValue > 0 {
+			overhead = int64(VmmOverheadOverrideCfgItem.IntValue) << 20
+		}
+	}
+	if overhead == 0 {
+		// XXX: This looks ugly and probably incorrect, please FIXME
+		// Default formula - 2.5 % of total memory
+		overhead = int64(config.Memory) * 1024 * 25 / 1000
+		minOverhead := minVMMOverhead(config)
+		if overhead < minOverhead {
+			overhead = minOverhead
+		}
+	}
+
+	return overhead, nil
+}
+
 func (ctx kvmContext) Setup(status types.DomainStatus, config types.DomainConfig,
 	aa *types.AssignableAdapters, globalConfig *types.ConfigItemValueMap, file *os.File) error {
 
@@ -498,26 +533,13 @@ func (ctx kvmContext) Setup(status types.DomainStatus, config types.DomainConfig
 	if err = spec.AddLoader("/containers/services/xen-tools"); err != nil {
 		return logError("failed to add kvm hypervisor loader to domain %s: %v", status.DomainName, err)
 	}
-
-	var qemuOverHead int64
-	if globalConfig != nil {
-		VmmOverheadOverrideCfgItem, ok := globalConfig.GlobalSettings[types.VmmMemoryLimitInMiB]
-		if !ok {
-			return logError("Missing key %s", string(types.VmmMemoryLimitInMiB))
-		}
-		qemuOverHead = int64(VmmOverheadOverrideCfgItem.IntValue) * 1024 * 1024
+	overhead, err := vmmOverhead(config, globalConfig)
+	if err != nil {
+		return logError("vmmOverhead() failed for domain %s: %v",
+			status.DomainName, err)
 	}
-
-	if qemuOverHead == 0 {
-		/* Default formula - 2.5 % of total memory */
-		qemuOverHead = int64(config.Memory) * 1024 * 25 / 1000
-		if qemuOverHead < minQemuOverHead {
-			qemuOverHead = minQemuOverHead
-		}
-	}
-
-	logrus.Debugf("Qemu overhead for domain %s is %d bytes", status.DomainName, qemuOverHead)
-	spec.AdjustMemLimit(config, qemuOverHead)
+	logrus.Debugf("Qemu overhead for domain %s is %d bytes", status.DomainName, overhead)
+	spec.AdjustMemLimit(config, overhead)
 	spec.Get().Process.Args = args
 	logrus.Infof("Hypervisor args: %v", args)
 

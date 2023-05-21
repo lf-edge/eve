@@ -31,6 +31,10 @@ const (
 	PersistInstallerDir = PersistDir + "/installer"
 	// IngestedDirname - location for shas of files we pulled from /config
 	IngestedDirname = PersistDir + "/ingested"
+	// SnapshotsDirname - location for snapshots
+	SnapshotsDirname = PersistDir + "/snapshots"
+	// ConfigsForSnapshotsDirname - location for configs used per snapshot
+	ConfigsForSnapshotsDirname = SnapshotsDirname + "/configs"
 
 	// IdentityDirname - Config dir
 	IdentityDirname = "/config"

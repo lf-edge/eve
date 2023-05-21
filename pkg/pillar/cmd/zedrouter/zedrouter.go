@@ -124,6 +124,8 @@ type zedrouterContext struct {
 	publishTicker        *flextimer.FlexTickerHandle
 	// cli options
 	versionPtr *bool
+	// disable switch NI arp snooping
+	enableArpSnooping bool
 }
 
 // AddAgentSpecificCLIFlags adds CLI options
@@ -651,7 +653,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 					// routing tables which, however, are under NIM management
 					// (resulting in "trying to delete already removed route" errors and other
 					// potential issues).
-					rt := baseTableIndex + ev.Attrs.IfIndex
+					rt := devicenetwork.NIBaseRTIndex + ev.Attrs.IfIndex
 					devicenetwork.FlushRoutesTable(log, rt, 0)
 					devicenetwork.FlushRules(log, ev.Attrs.IfIndex)
 				}
@@ -2179,6 +2181,7 @@ func handleGlobalConfigImpl(ctxArg interface{}, key string,
 
 			ctx.metricInterval = metricInterval
 		}
+		ctx.enableArpSnooping = gcp.GlobalValueBool(types.EnableARPSnoop)
 	}
 	log.Functionf("handleGlobalConfigImpl done for %s\n", key)
 }

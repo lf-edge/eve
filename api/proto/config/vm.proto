@@ -24,7 +24,9 @@ enum VmMode {
 message VmConfig {
   string kernel = 1;
   string ramdisk = 2;
+  // in kbytes; rounded up to Mbytes for xen
   uint32 memory = 3;
+  // in kbytes; xen only, default equal to 'memory', so no ballooning
   uint32 maxmem = 4;
   // The amount of the VCPUs in the VM.
   uint32 vcpus = 5;
@@ -61,4 +63,9 @@ message VmConfig {
   // that amount of available physical CPUs that is defined with the 'vcpus'
   // parameter defined above.
   bool pin_cpu = 20;
+  // Maximum amount of memory in kbytes allowed for VM monitor to occupy,
+  // aka "overhead". E.g. for the qemu-kvm hypervisor the memory limit
+  // for one VM instance (guest RAM + VM monitor) is set according to the
+  // following equation: `memory` + `vmm_maxmem`
+  uint32 vmm_maxmem = 21;
 }

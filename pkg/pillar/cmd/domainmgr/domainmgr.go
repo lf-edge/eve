@@ -486,15 +486,13 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	// Before starting to process DomainConfig, domainmgr should (in this order):
 	//   1. wait for NIM to publish DNS to learn which ports are used for management
 	//   2. wait for PhysicalIOAdapters (from zedagent) to be processed
-	//   3. wait for NIM to finalize testing of selected DPC
-	//   4. wait for capabilities information from hypervisor
-	// Note: 2. and 3. can also execute in the reverse order.
-	// Note: 4 may come in any order
+	//   3. wait for capabilities information from hypervisor
+	// Note: 3 may come in any order
 	for !domainCtx.assignableAdapters.Initialized ||
 		len(domainCtx.deviceNetworkStatus.Ports) == 0 ||
-		domainCtx.deviceNetworkStatus.Testing ||
 		!capabilitiesSent {
-		log.Noticef("Waiting for AssignableAdapters and/or verified DPC")
+		log.Noticef("Waiting for AssignableAdapters, DPC with management ports " +
+			"and hypervisor capabilities")
 		select {
 		case change := <-subGlobalConfig.MsgChan():
 			subGlobalConfig.ProcessChange(change)
@@ -2408,6 +2406,18 @@ func handleDNSImpl(ctxArg interface{}, key string,
 	ctx := ctxArg.(*domainContext)
 	if key != "global" {
 		log.Functionf("handleDNSImpl: ignoring %s", key)
+		return
+	}
+	if status.DPCKey == "" {
+		// Do not activate PhysicalIOAdapterList subscription until NIM receives
+		// a DPC and publishes corresponding DNS.
+		// NIM can publish DNS even before it receives first DPC. In such case
+		// DPCKey is empty.
+		// The goal is to avoid assigning network ports to PCIBack if they are going to be
+		// used for management purposes. This way we avoid doing unintended port assignment
+		// to PCIBack that would be shortly followed by a release, therefore mitigating
+		// the risk of race conditions between domainmgr and NIM.
+		log.Warnf("handleDNSImpl: DNS with empty DPCKey")
 		return
 	}
 	// Ignore test status and timestamps

@@ -13,18 +13,29 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	"github.com/lf-edge/eve/pkg/pillar/netdump"
+	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 )
 
 // Example usage:
 // ctx := zedcloud.CreateDeferredCtx(zedcloudCtx, ...)
-// select {
-//      case change := <- ctx.Ticker.C:
-//          ctx.HandleDeferred(...)
-// Before or after sending success call:
-//     ctx.RemoveDeferred(key)
-// After failure call
+//
+// In order to send created deferred item immediately:
 //     ctx.SetDeferred(key, buf, size, ...)
+//
+// If item was created with the `ignoreErr` flag set,
+// then item will be removed from the queue regardless
+// the actual send result.
+//
+// If `ignoreErr` is not set and an error occurs during
+// the send, then queue processing is interrupted. The
+// queue process will be repeated by the timer, see the
+// `startTimer()` routine. `KickTimer` can be called in
+// order to restart queue processing immediately.
+//
+// The deferred item can be removed from the queue if
+// the send failed:
+//     ctx.RemoveDeferred(key)
 
 type deferredItem struct {
 	itemType       interface{}
@@ -37,7 +48,8 @@ type deferredItem struct {
 	ignoreErr      bool
 }
 
-const maxTimeToHandleDeferred = time.Minute
+// We create a timer with really a huge duration to avoid any problems
+// with timer recreation, so we keep timer always alive.
 const longTime1 = time.Hour * 24
 const longTime2 = time.Hour * 48
 
@@ -68,7 +80,10 @@ type SentHandlerFunction func(
 // sentHandler is callback which will be run on successful sent
 // priorityCheckFunctions may be added to send item with matched itemType firstly
 // default function at the end of priorityCheckFunctions added to serve non-priority items
-func CreateDeferredCtx(zedcloudCtx *ZedCloudContext, sentHandler *SentHandlerFunction,
+func CreateDeferredCtx(zedcloudCtx *ZedCloudContext,
+	ps *pubsub.PubSub, agentName string, ctxName string,
+	warningTime time.Duration, errorTime time.Duration,
+	sentHandler *SentHandlerFunction,
 	priorityCheckFunctions ...TypePriorityCheckFunction) *DeferredContext {
 	// Default "accept all" priority
 	priorityCheckFunctions = append(priorityCheckFunctions,
@@ -76,7 +91,7 @@ func CreateDeferredCtx(zedcloudCtx *ZedCloudContext, sentHandler *SentHandlerFun
 			return true
 		})
 
-	deferredCtx := DeferredContext{
+	ctx := &DeferredContext{
 		lock:                   &sync.Mutex{},
 		Ticker:                 flextimer.NewRangeTicker(longTime1, longTime2),
 		sentHandler:            sentHandler,
@@ -84,14 +99,41 @@ func CreateDeferredCtx(zedcloudCtx *ZedCloudContext, sentHandler *SentHandlerFun
 		zedcloudCtx:            zedcloudCtx,
 	}
 
-	return &deferredCtx
+	// Start processing task
+	go ctx.processQueueTask(ps, agentName, ctxName,
+		warningTime, errorTime)
+
+	return ctx
 }
 
-// HandleDeferred try to send all deferred items (or only one if sendOne set). Give up if any one fails
-// Stop timer if map becomes empty
-// Returns true when there are no more deferred items
-func (ctx *DeferredContext) HandleDeferred(event time.Time,
-	spacing time.Duration, sendOne bool) bool {
+func (ctx *DeferredContext) processQueueTask(ps *pubsub.PubSub,
+	agentName string, ctxName string,
+	warningTime time.Duration, errorTime time.Duration) {
+
+	log := ctx.zedcloudCtx.log
+	wdName := agentName + ctxName
+
+	stillRunning := time.NewTicker(25 * time.Second)
+	ps.StillRunning(wdName, warningTime, errorTime)
+	ps.RegisterFileWatchdog(wdName)
+
+	for {
+		select {
+		case <-ctx.Ticker.C:
+			start := time.Now()
+			if !ctx.handleDeferred() {
+				log.Noticef("processQueueTask: some deferred items remain to be sent")
+			}
+			ps.CheckMaxTimeTopic(agentName, ctxName,
+				start, warningTime, errorTime)
+		case <-stillRunning.C:
+		}
+		ps.StillRunning(wdName, warningTime, errorTime)
+	}
+}
+
+// handleDeferred try to send all deferred items
+func (ctx *DeferredContext) handleDeferred() bool {
 	ctx.lock.Lock()
 	reqs := ctx.deferredItems
 	ctx.deferredItems = []*deferredItem{}
@@ -103,7 +145,7 @@ func (ctx *DeferredContext) HandleDeferred(event time.Time,
 		return true
 	}
 
-	log.Functionf("HandleDeferred(%v, %v) items %d", event, spacing, len(reqs))
+	log.Functionf("handleDeferred items %d", len(reqs))
 
 	exit := false
 	sent := 0
@@ -162,25 +204,6 @@ func (ctx *DeferredContext) HandleDeferred(event time.Time,
 			}
 			item.buf = nil
 			sent++
-
-			if sendOne {
-				exit = true
-				break
-			}
-
-			if time.Since(event) > maxTimeToHandleDeferred {
-				log.Warnf("handleDeferred: took too long time %v",
-					time.Since(event))
-				exit = true
-				break
-			}
-
-			// XXX sleeping in main thread
-			if len(reqs)-sent != 0 && spacing != 0 {
-				log.Functionf("handleDeferred: sleeping %v",
-					spacing)
-				time.Sleep(spacing)
-			}
 		}
 		if exit {
 			break
@@ -268,6 +291,9 @@ func (ctx *DeferredContext) SetDeferred(
 		log.Tracef("Adding key %s", key)
 		ctx.deferredItems = append(ctx.deferredItems, &item)
 	}
+
+	// Run to a completion from the processing task
+	ctx.KickTimer()
 }
 
 // RemoveDeferred removes key from deferred items if exists

@@ -55,6 +55,7 @@ type ZedCloudContext struct {
 	DevSerial          string
 	DevSoftSerial      string
 	NetworkSendTimeout uint32 // In seconds
+	NetworkDialTimeout uint32 // In seconds
 	V2API              bool   // XXX Needed?
 	AgentName          string // the agent process name
 	NetTraceOpts       []nettrace.TraceOpt
@@ -68,8 +69,15 @@ type ZedCloudContext struct {
 	serverSigningCertHash []byte
 	onBoardCertBytes      []byte
 	log                   *base.LogObject
-	DeferredEventCtx      *DeferredContext
-	DeferredPeriodicCtx   *DeferredContext
+	// All HTTP requests which can't be dropped and send should be
+	// repeated in case of a transmission error are added to this
+	// queue.
+	DeferredEventCtx *DeferredContext
+	// All periodic HTTP requests are added to this queue, sending
+	// errors of which can be ignored. This means even the request has
+	// failed, it will be removed from the queue, so there is no need
+	// to `kick` this queue once connectivity has restored.
+	DeferredPeriodicCtx *DeferredContext
 }
 
 // ContextOptions - options to be passed at NewContext
@@ -77,7 +85,8 @@ type ContextOptions struct {
 	DevNetworkStatus *types.DeviceNetworkStatus
 	TLSConfig        *tls.Config
 	AgentMetrics     *AgentMetrics
-	Timeout          uint32
+	SendTimeout      uint32
+	DialTimeout      uint32
 	Serial           string
 	SoftSerial       string
 	AgentName        string // XXX replace by NoLogFailures?
@@ -532,6 +541,9 @@ func SendOnIntf(workContext context.Context, ctx *ZedCloudContext, destURL strin
 	if ctx.NetworkSendTimeout != 0 {
 		clientConfig.ReqTimeout = time.Duration(ctx.NetworkSendTimeout) * time.Second
 	}
+	if ctx.NetworkDialTimeout != 0 {
+		clientConfig.TCPHandshakeTimeout = time.Duration(ctx.NetworkDialTimeout) * time.Second
+	}
 
 	// Get the transport header with proxy information filled
 	proxyURL, err := LookupProxy(ctx.log, ctx.DeviceNetworkStatus, intf, reqURL)
@@ -749,7 +761,11 @@ func SendOnIntf(workContext context.Context, ctx *ZedCloudContext, destURL strin
 				return d.Dial(network, address)
 			}
 			r := net.Resolver{Dial: resolverDial, PreferGo: true, StrictErrors: false}
-			d := net.Dialer{Resolver: &r, LocalAddr: &localTCPAddr}
+			d := net.Dialer{
+				Resolver:  &r,
+				LocalAddr: &localTCPAddr,
+				Timeout:   clientConfig.TCPHandshakeTimeout,
+			}
 			transport.DialContext = d.DialContext
 			client = &http.Client{Transport: transport, Timeout: clientConfig.ReqTimeout}
 		}
@@ -1026,7 +1042,11 @@ func SendLocal(ctx *ZedCloudContext, destURL string, intf string, ipSrc net.IP,
 	}
 	r := net.Resolver{Dial: resolverDial, PreferGo: true,
 		StrictErrors: false}
-	d := net.Dialer{Resolver: &r, LocalAddr: &localTCPAddr}
+	d := net.Dialer{
+		Resolver:  &r,
+		LocalAddr: &localTCPAddr,
+		Timeout:   time.Duration(ctx.NetworkDialTimeout) * time.Second,
+	}
 	transport.Dial = d.Dial
 
 	client := &http.Client{Transport: transport}
@@ -1222,7 +1242,8 @@ func isECONNREFUSED(err error) bool {
 func NewContext(log *base.LogObject, opt ContextOptions) ZedCloudContext {
 	ctx := ZedCloudContext{
 		DeviceNetworkStatus: opt.DevNetworkStatus,
-		NetworkSendTimeout:  opt.Timeout,
+		NetworkSendTimeout:  opt.SendTimeout,
+		NetworkDialTimeout:  opt.DialTimeout,
 		TlsConfig:           opt.TLSConfig,
 		V2API:               UseV2API(),
 		DevSerial:           opt.Serial,

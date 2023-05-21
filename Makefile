@@ -160,7 +160,8 @@ BOOT_PART=$(INSTALLER)/boot
 BSP_IMX_PART=$(INSTALLER)/bsp-imx
 
 SBOM?=$(ROOTFS).spdx.json
-COLLECTED_SOURCES=$(BUILD_DIR)/collected_sources.tar.gz
+SOURCES_DIR=$(BUILD_DIR)/sources
+COLLECTED_SOURCES=$(SOURCES_DIR)/collected_sources.tar.gz
 DEVICETREE_DTB_amd64=
 DEVICETREE_DTB_arm64=$(DIST)/dtb/eve.dtb
 DEVICETREE_DTB=$(DEVICETREE_DTB_$(ZARCH))
@@ -299,8 +300,7 @@ GOSOURCES_SOURCE=github.com/deitch/go-sources-and-licenses
 
 # for the compare sbom and collecte sources
 COMPARESOURCES=$(BUILDTOOLS_BIN)/compare-sbom-sources
-COMPARESOURCES_VERSION=fcf3c1558b1627ad06852b95851fbf097562b78f
-COMPARE_SOURCE=github.com/lf-edge/eve/tools/compare-sbom-sources
+COMPARE_SOURCE=./tools/compare-sbom-sources
 
 SYFT_VERSION:=v0.78.0
 SYFT_IMAGE:=docker.io/anchore/syft:$(SYFT_VERSION)
@@ -325,11 +325,11 @@ endif
 
 # We are currently filtering out a few packages from bulk builds
 # since they are not getting published in Docker HUB
-PKGS_$(ZARCH)=$(shell ls -d pkg/* | grep -Ev "eve|test-microsvcs|alpine")
+PKGS_$(ZARCH)=$(shell ls -d pkg/* | grep -Ev "eve|test-microsvcs|alpine|sources")
 PKGS_riscv64=pkg/ipxe pkg/mkconf pkg/mkimage-iso-efi pkg/grub     \
              pkg/mkimage-raw-efi pkg/uefi pkg/u-boot pkg/cross-compilers pkg/new-kernel \
 	     pkg/debug pkg/dom0-ztools pkg/gpt-tools pkg/storage-init pkg/mkrootfs-squash \
-		 pkg/bsp-imx
+		 pkg/bsp-imx pkg/optee-os
 # alpine-base and alpine must be the first packages to build
 PKGS=pkg/alpine $(PKGS_$(ZARCH))
 # eve-alpine-base is bootstrap image for eve-alpine
@@ -655,36 +655,41 @@ $(GOSOURCES):
 	@echo Done building packages
 	$(QUIET): $@: Succeeded
 
-$(COLLECTED_SOURCES): $(ROOTFS_TAR) $(GOSOURCES)| $(INSTALLER)
+# ensure the installer dir exists, and save the version in the directory
+$(SOURCES_DIR):
+	@mkdir -p $@
+
+$(COLLECTED_SOURCES): $(ROOTFS_TAR) $(GOSOURCES)| $(INSTALLER) $(SOURCES_DIR)
 	$(QUIET): $@: Begin
 	bash tools/collect-sources.sh $< $(CURDIR) $@
 	$(QUIET): $@: Succeeded
 
 $(COMPARESOURCES):
 	$(QUIET): $@: Begin
-	$(shell GOBIN=$(BUILDTOOLS_BIN) GO111MODULE=on CGO_ENABLED=0 go install $(COMPARE_SOURCE)@$(COMPARESOURCES_VERSION))
+	GOOS=$(shell uname -s | tr '[A-Z]' '[a-z]') CGO_ENABLED=0 go build -o $(COMPARESOURCES) -C $(COMPARE_SOURCE)
 	@echo Done building packages
 	$(QUIET): $@: Succeeded
 
 compare_sbom_collected_sources: $(COLLECTED_SOURCES) $(SBOM) | $(COMPARESOURCES)
 	$(QUIET): $@: Begin
-	$(COMPARESOURCES) $(COLLECTED_SOURCES):collected_sources_manifest.csv $(SBOM)
-	@echo Done building packages
+	$(COMPARESOURCES) $(COLLECTED_SOURCES):./collected_sources_manifest.csv $(SBOM)
+	@echo Done comparing the sbom and collected sources manifest file
 	$(QUIET): $@: Succeeded
 
+publish_sources: $(COLLECTED_SOURCES)
+	$(QUIET): $@: Begin
+	cp pkg/sources/* $(SOURCES_DIR)
+	$(LINUXKIT) $(DASH_V) pkg $(LINUXKIT_PKG_TARGET) --platforms linux/$(ZARCH) --hash-path $(CURDIR) --hash $(ROOTFS_VERSION)-$(HV) --docker $(SOURCES_DIR)
+	$(QUIET): $@: Succeeded
 
 
 $(LIVE).raw: $(BOOT_PART) $(EFI_PART) $(ROOTFS_IMG) $(CONFIG_IMG) $(PERSIST_IMG) $(BSP_IMX_PART) | $(INSTALLER)
-	@[ "$(PLATFORM)" != "${PLATFORM/imx/}" ] && \
-		cp $(INSTALLER)/bsp-imx/NXP-EULA-LICENSE.txt $(INSTALLER)/NXP-EULA-LICENSE.txt && \
-		cp $(INSTALLER)/bsp-imx/NXP-EULA-LICENSE.txt $(BUILD_DIR)/NXP-EULA-LICENSE.txt && \
-		cp $(INSTALLER)/bsp-imx/"$(PLATFORM)"-flash.bin $(INSTALLER)/imx8-flash.bin && \
-		cp $(INSTALLER)/bsp-imx/"$(PLATFORM)"-flash.conf $(INSTALLER)/imx8-flash.conf && \
-		cp $(INSTALLER)/bsp-imx/*.dtb $(INSTALLER)/boot  || :
+	./tools/prepare-platform.sh "$(PLATFORM)" "$(BUILD_DIR)" "$(INSTALLER)" || :
 	./tools/makeflash.sh -C 350 $| $@ $(PART_SPEC)
 	$(QUIET): $@: Succeeded
 
-$(INSTALLER).raw: $(BOOT_PART) $(EFI_PART) $(ROOTFS_IMG) $(INITRD_IMG) $(INSTALLER_IMG) $(CONFIG_IMG) $(PERSIST_IMG) | $(INSTALLER)
+$(INSTALLER).raw: $(BOOT_PART) $(EFI_PART) $(ROOTFS_IMG) $(INITRD_IMG) $(INSTALLER_IMG) $(CONFIG_IMG) $(PERSIST_IMG) $(BSP_IMX_PART) | $(INSTALLER)
+	./tools/prepare-platform.sh "$(PLATFORM)" "$(BUILD_DIR)" "$(INSTALLER)" || :
 	./tools/makeflash.sh -C 350 $| $@ "conf_win installer inventory_win"
 	$(QUIET): $@: Succeeded
 

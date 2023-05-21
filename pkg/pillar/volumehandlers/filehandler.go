@@ -198,3 +198,57 @@ func (handler *volumeHandlerFile) maybeResizeDisk(ctx context.Context, diskfile 
 	}
 	return nil
 }
+
+// CreateSnapshot creates a snapshot of the volume, returns snapshot name as metadata
+func (handler *volumeHandlerFile) CreateSnapshot() (interface{}, time.Time, error) {
+	handler.log.Noticef("CreateSnapshot for a file based volume (%s)", handler.status.FileLocation)
+	createSnapContext := context.Background()
+	snapshotName := handler.status.Key() + "-snapshot-" + time.Now().Format("20060102150405")
+	baseImagFile := handler.status.FileLocation
+	// XXX: we only support qcow2 for now
+	if handler.status.ContentFormat != zconfig.Format_QCOW2 {
+		return "", time.Time{}, fmt.Errorf("CreateSnapshot: unsupported format %s", handler.status.ContentFormat.String())
+	}
+	err := diskmetrics.CreateSnapshot(createSnapContext, handler.log, baseImagFile, snapshotName)
+	if err != nil {
+		handler.log.Errorf("CreateSnapshot: error creating snapshot image: %s", err)
+		return "", time.Time{}, err
+	}
+	// Replace VolumeStatus with a new snapshot file
+	timeCreated := time.Now()
+	handler.log.Noticef("CreateSnapshot: created snapshot %s %s", snapshotName, timeCreated.Format("02.01.2006 at 15:04:05"))
+	return snapshotName, timeCreated, nil
+}
+
+func (handler *volumeHandlerFile) RollbackToSnapshot(snapshotMeta interface{}) error {
+	snapshotName, ok := snapshotMeta.(string)
+	if !ok {
+		errStr := fmt.Sprintf("RollbackToSnapshot: snapshotMeta is not a string")
+		handler.log.Error(errStr)
+		return errors.New(errStr)
+	}
+	err := diskmetrics.ApplySnapshot(context.Background(), handler.log, handler.status.FileLocation, snapshotName)
+	if err != nil {
+		errStr := fmt.Sprintf("RollbackToSnapshot: error applying snapshot image: %s", err)
+		handler.log.Error(errStr)
+		return errors.New(errStr)
+	}
+	// Run with the base image file
+	handler.log.Noticef("RollbackToSnapshot for a file based volume (%s) to snapshot (%s)", handler.status.FileLocation, snapshotName)
+	return nil
+}
+
+func (handler *volumeHandlerFile) DeleteSnapshot(snapshotMeta interface{}) error {
+	snapshotName, ok := snapshotMeta.(string)
+	if !ok {
+		errStr := fmt.Sprintf("DeleteSnapshot: snapshotMeta is not a string")
+		handler.log.Error(errStr)
+		return errors.New(errStr)
+	}
+	err := diskmetrics.DeleteSnapshot(context.Background(), handler.log, handler.status.FileLocation, snapshotName)
+	if err != nil {
+		handler.log.Errorf("DeleteSnapshot: error deleting snapshot image: %s", err)
+		return err
+	}
+	return nil
+}

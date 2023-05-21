@@ -390,7 +390,7 @@ func handleNetworkInstanceCreate(
 
 	br, vifs, err := getArgsForStateCollecting(ctx, config.UUID)
 	if err == nil {
-		err = ctx.niStateCollector.StartCollectingForNI(config, br, vifs)
+		err = ctx.niStateCollector.StartCollectingForNI(config, br, vifs, ctx.enableArpSnooping)
 	}
 	if err != nil {
 		log.Error(err)

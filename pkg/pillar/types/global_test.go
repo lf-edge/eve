@@ -168,6 +168,7 @@ func TestNewConfigItemSpecMap(t *testing.T) {
 		NetworkTestBetterInterval,
 		NetworkTestTimeout,
 		NetworkSendTimeout,
+		NetworkDialTimeout,
 		Dom0MinDiskUsagePercent,
 		AppContainerStatsInterval,
 		VaultReadyCutOffTime,
@@ -186,6 +187,7 @@ func TestNewConfigItemSpecMap(t *testing.T) {
 		IgnoreMemoryCheckForApps,
 		IgnoreDiskCheckForApps,
 		AllowLogFastupload,
+		EnableARPSnoop,
 		// TriState Items
 		NetworkFallbackAnyEth,
 		MaintenanceMode,

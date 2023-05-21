@@ -74,7 +74,7 @@ func NewLinuxCollector(log *base.LogObject) *LinuxCollector {
 // StartCollectingForNI : start collecting state data for the given network instance.
 // It is called by zedrouter whenever a new network instance is configured.
 func (lc *LinuxCollector) StartCollectingForNI(
-	niConfig types.NetworkInstanceConfig, br NIBridge, vifs []AppVIF) error {
+	niConfig types.NetworkInstanceConfig, br NIBridge, vifs []AppVIF, enableARPSnoop bool) error {
 	lc.mu.Lock()
 	defer lc.mu.Unlock()
 	if _, duplicate := lc.nis[niConfig.UUID]; duplicate {
@@ -91,7 +91,7 @@ func (lc *LinuxCollector) StartCollectingForNI(
 		ni.vifs = append(ni.vifs, VIFAddrs{VIF: vif})
 	}
 	lc.nis[niConfig.UUID] = ni
-	go lc.sniffDNSandDHCP(pcapCtx, br, niConfig.Type)
+	go lc.sniffDNSandDHCP(pcapCtx, br, niConfig.Type, enableARPSnoop)
 	lc.log.Noticef("%s: Started collecting state data for NI %v "+
 		"(br: %+v, vifs: %+v)", LogAndErrPrefix, niConfig.UUID, br, vifs)
 	return nil

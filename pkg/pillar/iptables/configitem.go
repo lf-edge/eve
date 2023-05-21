@@ -15,6 +15,7 @@ import (
 	"github.com/lf-edge/eve/libs/depgraph"
 	"github.com/lf-edge/eve/libs/reconciler"
 	"github.com/lf-edge/eve/pkg/pillar/base"
+	"github.com/lf-edge/eve/pkg/pillar/nireconciler/genericitems"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
 )
 
@@ -191,9 +192,9 @@ func (r Rule) Equal(other depgraph.Item) bool {
 		r.Table == r2.Table &&
 		r.ChainName == r2.ChainName &&
 		r.ForIPv6 == r2.ForIPv6 &&
-		utils.EqualSlices(r.AppliedBefore, r2.AppliedBefore) &&
-		utils.EqualSlices(r.MatchOpts, r2.MatchOpts) &&
-		utils.EqualSlices(r.TargetOpts, r2.TargetOpts) &&
+		utils.EqualSets(r.AppliedBefore, r2.AppliedBefore) &&
+		utils.EqualLists(r.MatchOpts, r2.MatchOpts) &&
+		utils.EqualLists(r.TargetOpts, r2.TargetOpts) &&
 		r.Target == r2.Target && r.Description == r2.Description
 }
 
@@ -226,6 +227,7 @@ func (r Rule) String() string {
 //   - the rules referenced in AppliedBefore that this rule precedes
 //     (rules are added by inserting at the top of the chain, hence we start
 //     with the bottom ones)
+//   - matched ipsets
 func (r Rule) Dependencies() (deps []depgraph.Dependency) {
 	if r.dstIsCustomChain() && len(r.AppliedBefore) == 0 {
 		// No need to add this dependency for rules that depend on other rules
@@ -237,6 +239,7 @@ func (r Rule) Dependencies() (deps []depgraph.Dependency) {
 				Table:     r.Table,
 				ForIPv6:   r.ForIPv6,
 			}),
+			Description: "destination chain must exist",
 		})
 	}
 	for _, r2 := range r.AppliedBefore {
@@ -247,6 +250,7 @@ func (r Rule) Dependencies() (deps []depgraph.Dependency) {
 				Table:     r.Table,
 				ForIPv6:   r.ForIPv6,
 			}),
+			Description: "inserted into the chain above the referenced rule",
 		})
 	}
 	if r.targetIsCustomChain() {
@@ -256,7 +260,19 @@ func (r Rule) Dependencies() (deps []depgraph.Dependency) {
 				Table:     r.Table,
 				ForIPv6:   r.ForIPv6,
 			}),
+			Description: "target chain must exist",
 		})
+	}
+	for i, opt := range r.MatchOpts {
+		if opt == "--match-set" && i < len(r.MatchOpts)-1 {
+			deps = append(deps, depgraph.Dependency{
+				RequiredItem: depgraph.ItemRef{
+					ItemType: genericitems.IPSetTypename,
+					ItemName: r.MatchOpts[i+1],
+				},
+				Description: "matched ipset must exist",
+			})
+		}
 	}
 	return deps
 }

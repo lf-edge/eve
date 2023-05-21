@@ -5,6 +5,7 @@ package main
 
 import (
 	"archive/tar"
+	"bytes"
 	"compress/gzip"
 	"encoding/csv"
 	"encoding/json"
@@ -181,11 +182,11 @@ func compareMaps(csvPackages, jsonPackages map[string]*singlePackage) (csvNotInJ
 func getFileReader(filename string) (io.Reader, error) {
 	parts := strings.Split(filename, ":")
 	if len(parts) == 1 {
-		file, err := os.Open(filename)
+		b, err := os.ReadFile(filename)
 		if err != nil {
-			return nil, fmt.Errorf("error opening file: %v", err)
+			return nil, fmt.Errorf("error reading file: %v", err)
 		}
-		return file, nil
+		return bytes.NewReader(b), nil
 	}
 
 	archiveFile := parts[0]
@@ -214,7 +215,11 @@ func getFileReader(filename string) (io.Reader, error) {
 				return nil, fmt.Errorf("error reading .tar.gz file: %v", err)
 			}
 			if hdr.Name == targetFile {
-				return tr, nil
+				b, err := io.ReadAll(tr)
+				if err != nil {
+					return nil, fmt.Errorf("error reading file contents: %v", err)
+				}
+				return bytes.NewReader(b), nil
 			}
 		}
 	} else if strings.HasSuffix(archiveFile, ".tar") {
@@ -234,7 +239,11 @@ func getFileReader(filename string) (io.Reader, error) {
 				return nil, fmt.Errorf("error reading .tar file: %v", err)
 			}
 			if hdr.Name == targetFile {
-				return tr, nil
+				b, err := io.ReadAll(tr)
+				if err != nil {
+					return nil, fmt.Errorf("error reading file contents: %v", err)
+				}
+				return bytes.NewReader(b), nil
 			}
 		}
 	}

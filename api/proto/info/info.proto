@@ -977,7 +977,9 @@ message ZInfoNetworkInstance {
   string bridgeIPAddr = 22;
 
   repeated ZmetIPAssignmentEntry ipAssignments = 23;
-  repeated string bridgeIPSets = 24; // Union of all ipsets for the bridge
+  // Field bridgeIPSets was deprecated, because such info is an implementation detail
+  // specific to network instances built on top of the Linux network stack.
+  reserved 24;
   repeated ZmetVifInfo vifs = 25; // Set of vifs on this bridge
   bool ipv4Eid = 26; // Track if this is a CryptoEid with IPv4 EIDs
 

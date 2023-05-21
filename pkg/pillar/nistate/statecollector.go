@@ -30,7 +30,7 @@ type Collector interface {
 	// StartCollectingForNI : start collecting state data for the given network instance.
 	// It is called by zedrouter whenever a new network instance is configured.
 	StartCollectingForNI(
-		niConfig types.NetworkInstanceConfig, br NIBridge, vifs []AppVIF) error
+		niConfig types.NetworkInstanceConfig, br NIBridge, vifs []AppVIF, enableArpSnoop bool) error
 
 	// UpdateCollectingForNI : update state data collecting process to reflect a change
 	// in the network or app instance config.

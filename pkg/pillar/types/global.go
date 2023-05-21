@@ -192,6 +192,8 @@ const (
 	NetworkTestTimeout GlobalSettingKey = "timer.port.timeout"
 	// NetworkSendTimeout global setting key
 	NetworkSendTimeout GlobalSettingKey = "timer.send.timeout"
+	// NetworkDialTimeout global setting key
+	NetworkDialTimeout GlobalSettingKey = "timer.dial.timeout"
 	// LocationCloudInterval global setting key
 	LocationCloudInterval GlobalSettingKey = "timer.location.cloud.interval"
 	// LocationAppInterval global setting key
@@ -235,6 +237,8 @@ const (
 	IgnoreDiskCheckForApps GlobalSettingKey = "storage.apps.ignore.disk.check"
 	// AllowLogFastupload global setting key
 	AllowLogFastupload GlobalSettingKey = "newlog.allow.fastupload"
+	// EnableARPSnoopOnNI global setting key
+	EnableARPSnoop GlobalSettingKey = "network.switch.enable.arpsnoop"
 
 	// TriState Items
 	// NetworkFallbackAnyEth global setting key
@@ -820,6 +824,7 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	configItemSpecMap.AddIntItem(NetworkTestBetterInterval, 600, 0, 0xFFFFFFFF)
 	configItemSpecMap.AddIntItem(NetworkTestTimeout, 15, 0, 3600)
 	configItemSpecMap.AddIntItem(NetworkSendTimeout, 120, 0, 3600)
+	configItemSpecMap.AddIntItem(NetworkDialTimeout, 10, 0, 3600)
 	configItemSpecMap.AddIntItem(LocationCloudInterval, HourInSec, 5*MinuteInSec, 0xFFFFFFFF)
 	configItemSpecMap.AddIntItem(LocationAppInterval, 20, 5, HourInSec)
 	configItemSpecMap.AddIntItem(Dom0MinDiskUsagePercent, 20, 20, 80)
@@ -849,6 +854,7 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	configItemSpecMap.AddBoolItem(DisableDHCPAllOnesNetMask, false)
 	configItemSpecMap.AddBoolItem(ProcessCloudInitMultiPart, false)
 	configItemSpecMap.AddBoolItem(ConsoleAccess, true) // Controller likely default to false
+	configItemSpecMap.AddBoolItem(EnableARPSnoop, true)
 
 	// Add TriState Items
 	configItemSpecMap.AddTriStateItem(NetworkFallbackAnyEth, TS_DISABLED)

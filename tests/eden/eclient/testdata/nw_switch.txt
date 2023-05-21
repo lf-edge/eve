@@ -34,7 +34,8 @@ eden pod deploy -v debug -n pong {{template "eclient_image"}} --networks=n1 --me
 message 'Waiting of running'
 test eden.app.test -test.v -timewait 20m RUNNING ping1 ping2 pong
 
-message 'Getting of "pong" IP'
+message 'Getting "pong" IP'
+exec sleep 5
 eden pod ps
 cp stdout pod_ps
 exec bash pong_ip.sh
@@ -52,6 +53,9 @@ stdout '100% packet loss'
 message 'Switching to 2nd network'
 eden pod modify pong --networks n2
 test eden.app.test -test.v -timewait 15m RUNNING pong
+
+message 'Getting new "pong" IP'
+exec sleep 5
 eden pod ps
 cp stdout pod_ps
 exec bash pong_ip.sh
@@ -67,6 +71,9 @@ stdout '0% packet loss'
 message 'Switching back to 1st network'
 eden pod modify pong --networks n1
 test eden.app.test -test.v -timewait 15m RUNNING pong
+
+message 'Getting new "pong" IP'
+exec sleep 5
 eden pod ps
 cp stdout pod_ps
 exec bash pong_ip.sh

@@ -121,6 +121,10 @@ jobs:
       - name: Build and push EVE for ${{ matrix.arch }}-${{ matrix.hv }}
         run: |
           make -e V=1 HV=${{ matrix.hv }} ZARCH=${{ matrix.arch }} LINUXKIT_PKG_TARGET=push eve
+      - name: Build and push collected_sources to eve-source repo
+        if: matrix.arch != 'riscv64'
+        run: |
+          make -e V=1 HV=${{ matrix.hv }} ZARCH=${{ matrix.arch }} LINUXKIT_PKG_TARGET=push sbom collected_sources compare_sbom_collected_sources publish_sources
       - name: Post eve ${{ matrix.arch }}-${{ matrix.hv }} report
         run: |
           echo Disk usage

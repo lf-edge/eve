@@ -25,13 +25,13 @@ manifest=${tmpout}/collected_sources_manifest.csv
 # this is a bit of a hack, but we need to extract the rootfs tar to a directory, and it fails if
 # we try to extract character devices, block devices or pipes, so we just exclude the dir.
 tar -xf "$rootfs" -C "$tmproot" --exclude "dev/*"
-
+echo "${tmpout}"
+echo "${outfile}"
 {
 "${eve}/tools/get-alpine-pkg-source.sh" -s "${tmpout}" -e "${tmproot}" -p alpine
 "${eve}/tools/get-kernel-source.sh" -s "${tmpout}" -p kernel
 "${eve}/build-tools/bin/go-sources-and-licenses" sources -s "${eve}/pkg" --find --out "${tmpout}" --prefix golang --template 'golang,{{.Module}}@{{.Version}},{{.Version}},{{.Path}}'
 "${eve}/build-tools/bin/go-sources-and-licenses" sources -b "${tmproot}" --find --out "${tmpout}" --prefix golang --template 'golang,{{.Module}}@{{.Version}},{{.Version}},{{.Path}}'
 } > "${manifest}"
-
 tar -zcf "${outfile}" -C "${tmpout}" .
 rm -rf "${tmproot}" "${tmpout}"
