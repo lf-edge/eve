@@ -1,6 +1,6 @@
 #
 # Automatically generated file; DO NOT EDIT.
-# Linux/x86 5.10.121 Kernel Configuration
+# Linux/x86 5.10.131 Kernel Configuration
 #
 CONFIG_CC_VERSION_TEXT="gcc (Alpine 11.2.1_git20220219) 11.2.1 20220219"
 CONFIG_CC_IS_GCC=y
@@ -2873,10 +2873,9 @@ CONFIG_TCG_TIS_ST33ZP24_I2C=m
 # CONFIG_TCG_TIS_ST33ZP24_SPI is not set
 # CONFIG_TELCLOCK is not set
 # CONFIG_XILLYBUS is not set
-# end of Character devices
-
 # CONFIG_RANDOM_TRUST_CPU is not set
 # CONFIG_RANDOM_TRUST_BOOTLOADER is not set
+# end of Character devices
 
 #
 # I2C support
@@ -5662,6 +5661,7 @@ CONFIG_CRYPTO_LIB_CHACHA20POLY1305=m
 CONFIG_CRYPTO_LIB_SHA256=y
 # end of Crypto library routines
 
+CONFIG_LIB_MEMNEQ=y
 CONFIG_CRC_CCITT=y
 CONFIG_CRC16=y
 CONFIG_CRC_T10DIF=y
