@@ -9,6 +9,9 @@ ARG BUILD_PKGS_BASE="argp-standalone automake bash bc binutils-dev bison build-b
 # we use the same image in several places
 ARG EVE_ALPINE_IMAGE=lfedge/eve-alpine:9fb9b9cbf7d90066a70e4704d04a6fe248ff52bb
 
+# PREEMPT_RT support
+ARG PREEMPT_RT_SUPPORT=false
+
 # hadolint ignore=DL3006
 FROM ${EVE_ALPINE_IMAGE} as kernel-build-base-native
 ARG BUILD_PKGS_BASE
@@ -76,11 +79,12 @@ ENV KERNEL_DEFCONFIG=x86_64_defconfig
 
 # build for all arches
 # hadolint ignore=DL3006
-FROM kernel-target-${TARGETARCH} AS kernel-build
+FROM kernel-target-${TARGETARCH} AS kernel-build-preparation
 
 COPY /kernel-config/* /
 COPY /certs /certs
 COPY /patches-5.10.x /patches-5.10.x
+COPY /patches-preempt-rt-5.10.x /patches-preempt-rt-5.10.x
 COPY /patches-zfs-2.1.2 /patches-zfs-2.1.2
 
 ARG KERNEL_SOURCE=https://www.kernel.org/pub/linux/kernel/v${KERNEL_MAJOR}.x/linux-${KERNEL_VERSION}.tar.xz
@@ -123,7 +127,43 @@ RUN set -e ; KERNEL_SERIES="${KERNEL_VERSION%.*}".x; \
         patch -p1 < "$patch"; \
     done
 
+# No PREEMPT_RT support
+FROM kernel-build-preparation AS kernel-build-preempt-rt-false
+
+# PREEMPT_RT support
+FROM kernel-build-preparation AS kernel-build-preempt-rt-true
+
+# Apply preempt-rt patches
+WORKDIR /linux
+SHELL ["/bin/ash", "-eo", "pipefail", "-c"]
+RUN set -e ; \
+    KERNEL_SERIES="${KERNEL_VERSION%.*}".x; \
+    gzpatch=$(ls /patches-preempt-rt-"${KERNEL_SERIES}"/patch-"${KERNEL_VERSION}"-*.patch.gz); \
+    echo "Unzipping $gzpatch"; \
+    gzip -d "$gzpatch"; \
+    patch=$(echo "$gzpatch" | sed -e 's/\.[^.]*$//'); \
+    echo "Applying PREEMPT_RT $patch"; \
+    patch -p1 < "$patch"; \
+    rm "$patch"; \
+    for patch in /patches-preempt-rt-"${KERNEL_SERIES}"/*.patch; do \
+        echo "Applying PREEMPT_RT $patch"; \
+        patch -p1 < "$patch"; \
+    done
+
+# Check PREEMPT-RT support for the specified architecture and patch the config
+RUN KERNEL_SERIES="${KERNEL_VERSION%.*}".x; \
+    if [ ! -e /kernel_config-"${KERNEL_SERIES}"-preempt-rt-"${EVE_TARGET_ARCH}".patch ]; then \
+        echo "PREEMPT-RT is not supported for the selected architecture!"; \
+        exit 1; \
+    fi; \
+    echo "Patching kernel config to enable PREEMPT_RT"; \
+    patch /kernel_config-"${KERNEL_SERIES}"-"${EVE_TARGET_ARCH}" /kernel_config-"${KERNEL_SERIES}"-preempt-rt-"${EVE_TARGET_ARCH}".patch
+
+# hadolint ignore=DL3006
+FROM kernel-build-preempt-rt-${PREEMPT_RT_SUPPORT} AS kernel-build
+
 # Copy default kconfig and prepare kbuild
+WORKDIR /linux
 # hadolint ignore=SC2086
 RUN KERNEL_DEF_CONF="/linux/arch/${KERNEL_ARCH}/configs/${KERNEL_DEFCONFIG}"; \
     KERNEL_SERIES="${KERNEL_VERSION%.*}".x; \
@@ -145,6 +185,7 @@ WORKDIR /linux
 RUN make CROSS_COMPILE="${CROSS_COMPILE_ENV}" ARCH="${KERNEL_ARCH}" "${KERNEL_DEFCONFIG}"
 RUN make CROSS_COMPILE="${CROSS_COMPILE_ENV}" ARCH="${KERNEL_ARCH}" oldconfig
 # diffconfig returns 0 in all cases, grep to throw error in a case config has changed between build stages.
+SHELL ["/bin/ash", "-eo", "pipefail", "-c"]
 RUN ! scripts/diffconfig .config .config.new | grep .
 
 # To have a reproducible kernel build
