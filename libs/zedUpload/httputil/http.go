@@ -124,148 +124,7 @@ func ExecCmd(ctx context.Context, cmd, host, remoteFile, localFile string, objSi
 		rsp.List = imgList
 		return stats, rsp
 	case "get":
-		var copiedSize int64
-		stats.Size = objSize
-		dirErr := os.MkdirAll(filepath.Dir(localFile), 0755)
-		if dirErr != nil {
-			stats.Error = dirErr
-			return stats, Resp{}
-		}
-		local, fileErr := os.Create(localFile)
-		if fileErr != nil {
-			stats.Error = fileErr
-			return stats, Resp{}
-		}
-		defer local.Close()
-
-		var errorList []string
-		supportRange := false //is server supports ranges requests, false for the first request
-		forceRestart := false
-		delay := time.Second
-		lastModified := ""
-		appendToErrorList := func(attempt int, err error) {
-			errorList = append(errorList, fmt.Sprintf("(attempt %d/%d): %v", attempt, maxRetries, err))
-			logrus.Warnf("ExecCmd get %s failed (attempt %d/%d): %v", host, attempt, maxRetries, err)
-		}
-		for attempt := 0; attempt < maxRetries; attempt++ {
-			//check context error on every attempt
-			if ctx.Err() != nil {
-				appendToErrorList(attempt, ctx.Err())
-				break
-			}
-			if attempt > 0 {
-				time.Sleep(delay)
-				if delay < maxDelay {
-					delay = delay * 2
-				}
-			}
-
-			// restart from the beginning if server do not support ranges or we forced to restart
-			if !supportRange || forceRestart {
-				err := local.Truncate(0)
-				if err != nil {
-					appendToErrorList(attempt, fmt.Errorf("failed truncate file: %s", err))
-					continue
-				}
-				_, err = local.Seek(0, 0)
-				if err != nil {
-					appendToErrorList(attempt, fmt.Errorf("failed seek file: %s", err))
-					continue
-				}
-				copiedSize = 0
-				forceRestart = false
-			}
-			// we need innerCtx cancel to call in case of inactivity
-			innerCtx, innerCtxCancel := context.WithCancel(ctx)
-			inactivityTimer := time.AfterFunc(inactivityTimeout, func() {
-				//keep it to call cancel regardless of logic to releases resources
-				innerCtxCancel()
-			})
-			req, err := http.NewRequestWithContext(innerCtx, http.MethodGet, host, nil)
-			if err != nil {
-				stats.Error = fmt.Errorf("request failed for get %s: %s",
-					host, err)
-				return stats, Resp{}
-			}
-			req.Header.Set("User-Agent", userAgent)
-			req.Header.Set("Content-Type", "application/octet-stream")
-
-			withRange := false
-			//add Range header if server supports it and we already receive data
-			if supportRange && copiedSize > 0 {
-				withRange = true
-				req.Header.Set("Range", fmt.Sprintf("bytes=%d-", copiedSize))
-			}
-			resp, err := client.Do(req)
-			if err != nil {
-				// break the retries loop and skip the error from
-				// http *net.DNSError if the error has the suffix
-				// of "no suitable address found"
-				if IsNoSuitableAddrErr(err) {
-					appendToErrorList(attempt, fmt.Errorf(NoSuitableAddrStr))
-					break
-				}
-				appendToErrorList(attempt, fmt.Errorf("client.Do failed: %s", err))
-				continue
-			}
-
-			// supportRange indicates if server supports range requests
-			supportRange = resp.Header.Get("Accept-Ranges") == "bytes"
-
-			//if we not receive StatusOK for request without Range header or StatusPartialContent for request with range
-			//it indicates that server misconfigured
-			if !withRange && resp.StatusCode != http.StatusOK || withRange && resp.StatusCode != http.StatusPartialContent {
-				respErr := fmt.Errorf("bad response code: %d", resp.StatusCode)
-				err = resp.Body.Close()
-				if err != nil {
-					respErr = fmt.Errorf("respErr: %v; close Body error: %v", respErr, err)
-				}
-				appendToErrorList(attempt, respErr)
-				//we do not want to process server misconfiguration here
-				break
-			}
-			newLastModified := resp.Header.Get("Last-Modified")
-			if lastModified != "" && newLastModified != lastModified {
-				// last modified changed, retry from the beginning
-				lastModified = newLastModified
-				forceRestart = true
-				continue
-			}
-			if resp.StatusCode == http.StatusOK {
-				// we received StatusOK which is the response for the whole content, not for the partial one
-				rsp.BodyLength = int(resp.ContentLength)
-			}
-			//reset to be not affected by the client.Do timeouts
-			inactivityTimer.Reset(inactivityTimeout)
-			var written int64
-			for {
-				var copyErr error
-
-				written, copyErr = io.CopyN(local, resp.Body, chunkSize)
-				copiedSize += written
-
-				if copyErr != nil {
-					if objSize != copiedSize {
-						if innerCtx.Err() != nil {
-							// the error comes from canceled context, which indicates inactivity timeout
-							appendToErrorList(attempt, fmt.Errorf("inactivity for %s", inactivityTimeout))
-						} else if errors.Is(copyErr, io.EOF) {
-							appendToErrorList(attempt, fmt.Errorf("premature EOF after %d out of %d bytes: %+v", copiedSize, objSize, copyErr))
-						} else {
-							appendToErrorList(attempt, fmt.Errorf("error from CopyN after %d out of %d bytes: %v", copiedSize, objSize, copyErr))
-						}
-						stats.Error = fmt.Errorf("%s: %s", host, strings.Join(errorList, "; "))
-					}
-					return stats, rsp
-				}
-				//we received data so re-schedule inactivity timer
-				inactivityTimer.Reset(inactivityTimeout)
-				stats.Asize = copiedSize
-				types.SendStats(prgNotify, stats)
-			}
-		}
-		stats.Error = fmt.Errorf("%s: %s", host, strings.Join(errorList, "; "))
-		return stats, rsp
+		return execCmdGet(ctx, objSize, localFile, host, client, prgNotify)
 	case "post":
 		file, err := os.Open(localFile)
 		if err != nil {
@@ -336,4 +195,153 @@ func ExecCmd(ctx context.Context, cmd, host, remoteFile, localFile string, objSi
 		stats.Error = fmt.Errorf("unknown subcommand: %v", cmd)
 		return stats, rsp
 	}
+}
+
+func execCmdGet(ctx context.Context, objSize int64, localFile string, host string, client *http.Client, prgNotify types.StatsNotifChan) (types.UpdateStats, Resp) {
+	var copiedSize int64
+	stats := types.UpdateStats{}
+	rsp := Resp{}
+
+	stats.Size = objSize
+	dirErr := os.MkdirAll(filepath.Dir(localFile), 0755)
+	if dirErr != nil {
+		stats.Error = dirErr
+		return stats, Resp{}
+	}
+	local, fileErr := os.Create(localFile)
+	if fileErr != nil {
+		stats.Error = fileErr
+		return stats, Resp{}
+	}
+	defer local.Close()
+
+	var errorList []string
+	supportRange := false //is server supports ranges requests, false for the first request
+	forceRestart := false
+	delay := time.Second
+	lastModified := ""
+	appendToErrorList := func(attempt int, err error) {
+		errorList = append(errorList, fmt.Sprintf("(attempt %d/%d): %v", attempt, maxRetries, err))
+		logrus.Warnf("ExecCmd get %s failed (attempt %d/%d): %v", host, attempt, maxRetries, err)
+	}
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		//check context error on every attempt
+		if ctx.Err() != nil {
+			appendToErrorList(attempt, ctx.Err())
+			break
+		}
+		if attempt > 0 {
+			time.Sleep(delay)
+			if delay < maxDelay {
+				delay = delay * 2
+			}
+		}
+
+		// restart from the beginning if server do not support ranges or we forced to restart
+		if !supportRange || forceRestart {
+			err := local.Truncate(0)
+			if err != nil {
+				appendToErrorList(attempt, fmt.Errorf("failed truncate file: %s", err))
+				continue
+			}
+			_, err = local.Seek(0, 0)
+			if err != nil {
+				appendToErrorList(attempt, fmt.Errorf("failed seek file: %s", err))
+				continue
+			}
+			copiedSize = 0
+			forceRestart = false
+		}
+		// we need innerCtx cancel to call in case of inactivity
+		innerCtx, innerCtxCancel := context.WithCancel(ctx)
+		inactivityTimer := time.AfterFunc(inactivityTimeout, func() {
+			//keep it to call cancel regardless of logic to releases resources
+			innerCtxCancel()
+		})
+		req, err := http.NewRequestWithContext(innerCtx, http.MethodGet, host, nil)
+		if err != nil {
+			stats.Error = fmt.Errorf("request failed for get %s: %s",
+				host, err)
+			return stats, Resp{}
+		}
+		req.Header.Set("User-Agent", userAgent)
+		req.Header.Set("Content-Type", "application/octet-stream")
+
+		withRange := false
+		//add Range header if server supports it and we already receive data
+		if supportRange && copiedSize > 0 {
+			withRange = true
+			req.Header.Set("Range", fmt.Sprintf("bytes=%d-", copiedSize))
+		}
+		resp, err := client.Do(req)
+		if err != nil {
+			// break the retries loop and skip the error from
+			// http *net.DNSError if the error has the suffix
+			// of "no suitable address found"
+			if IsNoSuitableAddrErr(err) {
+				appendToErrorList(attempt, fmt.Errorf(NoSuitableAddrStr))
+				break
+			}
+			appendToErrorList(attempt, fmt.Errorf("client.Do failed: %s", err))
+			continue
+		}
+
+		// supportRange indicates if server supports range requests
+		supportRange = resp.Header.Get("Accept-Ranges") == "bytes"
+
+		//if we not receive StatusOK for request without Range header or StatusPartialContent for request with range
+		//it indicates that server misconfigured
+		if !withRange && resp.StatusCode != http.StatusOK || withRange && resp.StatusCode != http.StatusPartialContent {
+			respErr := fmt.Errorf("bad response code: %d", resp.StatusCode)
+			err = resp.Body.Close()
+			if err != nil {
+				respErr = fmt.Errorf("respErr: %v; close Body error: %v", respErr, err)
+			}
+			appendToErrorList(attempt, respErr)
+			//we do not want to process server misconfiguration here
+			break
+		}
+		newLastModified := resp.Header.Get("Last-Modified")
+		if lastModified != "" && newLastModified != lastModified {
+			// last modified changed, retry from the beginning
+			lastModified = newLastModified
+			forceRestart = true
+			continue
+		}
+		if resp.StatusCode == http.StatusOK {
+			// we received StatusOK which is the response for the whole content, not for the partial one
+			rsp.BodyLength = int(resp.ContentLength)
+		}
+		//reset to be not affected by the client.Do timeouts
+		inactivityTimer.Reset(inactivityTimeout)
+		var written int64
+		for {
+			var copyErr error
+
+			written, copyErr = io.CopyN(local, resp.Body, chunkSize)
+			copiedSize += written
+
+			if copyErr != nil {
+				if objSize != copiedSize {
+					if innerCtx.Err() != nil {
+						// the error comes from canceled context, which indicates inactivity timeout
+						appendToErrorList(attempt, fmt.Errorf("inactivity for %s", inactivityTimeout))
+					} else if errors.Is(copyErr, io.EOF) {
+						appendToErrorList(attempt, fmt.Errorf("premature EOF after %d out of %d bytes: %+v", copiedSize, objSize, copyErr))
+					} else {
+						appendToErrorList(attempt, fmt.Errorf("error from CopyN after %d out of %d bytes: %v", copiedSize, objSize, copyErr))
+					}
+
+					stats.Error = fmt.Errorf("%s: %s", host, strings.Join(errorList, "; "))
+				}
+				return stats, rsp
+			}
+			//we received data so re-schedule inactivity timer
+			inactivityTimer.Reset(inactivityTimeout)
+			stats.Asize = copiedSize
+			types.SendStats(prgNotify, stats)
+		}
+	}
+	stats.Error = fmt.Errorf("%s: %s", host, strings.Join(errorList, "; "))
+	return stats, rsp
 }
