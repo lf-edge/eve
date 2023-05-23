@@ -93,3 +93,5 @@ files:
     contents: 'EVE_VERSION'
   - path: etc/linuxkit-eve-config.yml
     metadata: yaml
+  - path: /etc/eve-hv-type
+    contents: 'EVE_HV'
