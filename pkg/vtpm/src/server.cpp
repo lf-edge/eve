@@ -16,6 +16,7 @@
 #include <thread>
 #include <fstream>
 #include <sstream>
+#include <atomic>
 #include "vtpm_api.pb.h"
 #include <list>
 #include <google/protobuf/io/zero_copy_stream_impl.h>
@@ -24,6 +25,8 @@ using namespace std;
 using namespace google::protobuf::io;
 
 #define CODED_STRM_HDR_LEN 4
+#define MAX_PAYLOAD_SIZE (10 * 1024) // 10k should be enough
+#define MAX_WORKERS 64
 #define SERVER_PORT 8877
 #define LISTEN_BACKLOG_LIMIT 16
 #define MAX_ARGS 25
@@ -36,6 +39,7 @@ using namespace google::protobuf::io;
 thread_local string args[MAX_ARGS];
 thread_local string cmdWithPath;
 thread_local string clientWorkingDir;
+std::atomic<int> _g_numConn(0);
 string cmdOutputFile("cmd.output");
 
 //Protobufs are sent in CodedStream format.
@@ -96,8 +100,16 @@ static int
 sendResponse (int sock, eve_tools::EveTPMResponse &response)
 {
     int rc = success;
+    if (response.ByteSize() > (MAX_PAYLOAD_SIZE - CODED_STRM_HDR_LEN)) {
+        cerr << "Response size " << response.ByteSize() << " is too large (maybe adjust MAX_PAYLOAD_SIZE)" << std::endl;
+        return failure;
+    }
     google::protobuf::uint32 size = response.ByteSize() + CODED_STRM_HDR_LEN;
-    char *resp_buffer = new char [size];
+    char *resp_buffer = new(nothrow) char [size];
+    if (resp_buffer == nullptr) {
+        cerr << "Failed to allocate memory for response payload" << std::endl;
+        return failure;
+    }
     google::protobuf::io::ArrayOutputStream aos(resp_buffer, size);
     CodedOutputStream *coded_output = new CodedOutputStream(&aos);
     if (!coded_output) {
@@ -120,7 +132,7 @@ cleanup_and_exit:
        delete(coded_output);
    }
    if (resp_buffer) {
-       delete(resp_buffer);
+       delete[] resp_buffer;
    }
    return rc;
 }
@@ -208,7 +220,7 @@ prepareCommand(string cmd,
         cmdArgs[i] = strdup(args[i].c_str());
         i++;
     }
-    cmdArgs[i] = NULL;
+    cmdArgs[i] = nullptr;
 
     if (i == (MAX_ARGS - 1)) {
         cerr << "More than acceptable number of args" << std::endl;
@@ -216,7 +228,6 @@ prepareCommand(string cmd,
         rc = failure;
         goto cleanup_and_exit;
     }
-    cmdArgs[i] = NULL;
 
     //print for debugging purposes
     cout << "Prepared command is :" << std::endl;
@@ -229,7 +240,7 @@ prepareCommand(string cmd,
 cleanup_and_exit:
     for (int i = 0; cmdArgs[i]; i++) {
         free((void *)cmdArgs[i]);
-        cmdArgs[i] = NULL;
+        cmdArgs[i] = nullptr;
     }
 
     return rc;
@@ -300,7 +311,7 @@ parseRequest(int sock,
              eve_tools::EveTPMResponse &response,
              char *payload)
 {
-    int byteCnt = 0;
+    ssize_t byteCnt = 0;
     ifstream cmdOut;
 
     //We expect at least one byte to read here.
@@ -340,12 +351,18 @@ parseRequest(int sock,
 int
 handleRequest (int sock, google::protobuf::uint32 size)
 {
-    char payload[size+CODED_STRM_HDR_LEN];
     eve_tools::EveTPMRequest request;
     eve_tools::EveTPMResponse response;
     int byteCnt = 0, rc = success;
-    const char *cmdArgs[MAX_ARGS+1];
+    const char *cmdArgs[MAX_ARGS+1] = {};
     ifstream cmdOut;
+
+    char *payload = new(nothrow) char [size+CODED_STRM_HDR_LEN];
+    if (payload == nullptr) {
+        cerr << "Failed to allocate memory for requests payload" << std::endl;
+        rc = failure;
+        goto cleanup_and_exit;
+    }
 
     if (parseRequest(sock, size, request, response, payload) < 0) {
         sendResponse(sock, response);
@@ -452,8 +469,11 @@ cleanup_and_exit:
         cmdOut.close();
     }
 
+    if (payload)
+        delete[] payload;
+
     // clean up the duplicate strings memory
-    if (cmdArgs[0] != NULL) {
+    if (cmdArgs[0] != nullptr) {
         for (int i=0; cmdArgs[i]; i++)
             free((void *)cmdArgs[i]);
     }
@@ -473,7 +493,8 @@ serveClient(int sock, sockaddr_in clientAddr)
     char *pBuf = hdrBuf;
 
     if (sock < 0) {
-       return;
+        _g_numConn--;
+        return;
     }
 
     //Don't block forever on reading. Have a timeout
@@ -484,6 +505,7 @@ serveClient(int sock, sockaddr_in clientAddr)
         int rc = errno;
         cerr << "Error setting recv timeout. client sock/err:"
              << sock << strerror(rc) << std::endl;
+        _g_numConn--;
         return;
     }
 
@@ -499,14 +521,21 @@ serveClient(int sock, sockaddr_in clientAddr)
         cerr << "recv() from " << inet_ntoa(clientAddr.sin_addr)
              << " failed with " << rc << std::endl;
     } else if (recvBytes == CODED_STRM_HDR_LEN) {
-        if (handleRequest(sock, readHdr(hdrBuf)) != 0) {
-            cerr << "Failure processing the request" << std::endl;
+        google::protobuf::uint32 payloadSize = readHdr(hdrBuf);
+        if (payloadSize > 0 && payloadSize <= (MAX_PAYLOAD_SIZE - CODED_STRM_HDR_LEN)) {
+            if (handleRequest(sock, payloadSize) != 0) {
+                cerr << "Failure processing the request" << std::endl;
+            }
+        }
+        else {
+            cerr << "Request size " << payloadSize << " is too large or small (maybe adjust MAX_PAYLOAD_SIZE)" << std::endl;
         }
     } else {
        cerr << "recv() received fewer than expected(" << recvBytes
             << ") bytes from: " << inet_ntoa(clientAddr.sin_addr)
             << std::endl;
     }
+    _g_numConn--;
     close(sock);
 }
 
@@ -528,8 +557,7 @@ main (int argc, char *argv[])
     int listenSock;
     if ((listenSock = socket(PF_INET, SOCK_STREAM, 0)) < 0) {
         cerr << "could not create listen socket" << std::endl;
-        rc = failure;
-        goto cleanup_and_exit;
+        return failure;
     }
 
     if ((bind(listenSock, (struct sockaddr *)&serverAddr,
@@ -555,6 +583,15 @@ main (int argc, char *argv[])
         cout << "New connection from: " << inet_ntoa(clientAddr.sin_addr)
              << ":" << to_string(clientAddr.sin_port) << std::endl;
 
+        if (_g_numConn >= MAX_WORKERS) {
+            eve_tools::EveTPMResponse response;
+            response.set_response("Server busy, try again later.");
+            sendResponse(sock, response);
+            close(sock);
+            continue;
+        }
+
+        _g_numConn++;
         std::thread worker(serveClient, sock, clientAddr);
         worker.detach();
     }
