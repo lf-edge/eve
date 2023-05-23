@@ -5,14 +5,21 @@ if test -f /proc/vmcore; then
     exit 0;
 fi
 
-virttype=`cat /run/eve-virt-type`
+hv=`cat /run/eve-hv-type`
 default_cgroup_cpus_limit=1
 
-if [ $virttype = "kubevirt" ]; then
-   default_cgroup_memory_limit=8388608000 #8G
-else
-   default_cgroup_memory_limit=838860800 #800M
-fi
+#Increase memory limits temporarily for kubevirt type only.
+case $hv in
+   kubevirt)
+            default_cgroup_memory_limit=8388608000 #8G
+            EVESERVICES="sshd edgeview wwan wlan lisp guacd pillar vtpm watchdog xen-tools newlogd eve-k3s "
+            ;;
+          *)
+            default_cgroup_memory_limit=838860800 #800M
+            EVESERVICES="sshd edgeview wwan wlan lisp guacd pillar vtpm watchdog xen-tools newlogd " 
+            ;;
+esac
+
 dom0_cgroup_memory_soft_limit=$(</proc/cmdline grep -o '\bdom0_mem=[^, ]*' | cut -d = -f 2)
 dom0_cgroup_memory_limit=$(</proc/cmdline grep -o "\bdom0_mem=[^,]*,max:[^ ]*" | cut -d : -f 2)
 dom0_cgroup_cpus_limit=$(</proc/cmdline grep -o '\bdom0_max_vcpus=[^ ]*' | cut -d = -f 2)
@@ -71,11 +78,6 @@ if [ -z "${ctrd_cgroup_cpus_limit}" ] || [ "${ctrd_cgroup_cpus_limit}" = "0" ]; 
 fi
 
 CGROUPS="cpuset cpu cpuacct blkio memory devices freezer net_cls perf_event net_prio hugetlb pids systemd "
-if [ $virttype = "kubevirt" ]; then
-     EVESRVICES="sshd edgeview wwan wlan lisp guacd pillar vtpm watchdog xen-tools newlogd eve-k3s "
-else
-     EVESRVICES="sshd edgeview wwan wlan lisp guacd pillar vtpm watchdog xen-tools newlogd "
-fi
 
 #Creating eve cgroup which will be parent/dom0 cgroup
 for cg in $CGROUPS; do
@@ -83,7 +85,7 @@ for cg in $CGROUPS; do
 done
 
 #Creating cgroup for individual eve services
-for srv in $EVESRVICES; do
+for srv in $EVESERVICES; do
     for cg in $CGROUPS; do
         mkdir -p /sys/fs/cgroup/"${cg}"/eve/services/"${srv}"
     done
@@ -118,7 +120,7 @@ if [ -n "${existingCPULimit}" ] && [ "$existingCPULimit" -ge "$eve_cgroup_cpus_l
     /bin/echo "0-$((eve_cgroup_cpus_limit-1))" > /sys/fs/cgroup/cpuset/eve/services/cpuset.cpus
 fi
 
-for srv in $EVESRVICES; do
+for srv in $EVESERVICES; do
     /bin/echo $eve_cgroup_memory_limit > /sys/fs/cgroup/memory/eve/services/"${srv}"/memory.limit_in_bytes
     /bin/echo $eve_cgroup_memory_soft_limit > /sys/fs/cgroup/memory/eve/services/"${srv}"/memory.soft_limit_in_bytes
     if [ -n "${existingCPULimit}" ] && [ "$existingCPULimit" -ge "$eve_cgroup_cpus_limit" ]; then
