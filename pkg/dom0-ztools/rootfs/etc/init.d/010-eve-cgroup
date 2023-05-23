@@ -16,7 +16,7 @@ case $hv in
             ;;
           *)
             default_cgroup_memory_limit=838860800 #800M
-            EVESERVICES="sshd edgeview wwan wlan lisp guacd pillar vtpm watchdog xen-tools newlogd " 
+            EVESERVICES="sshd edgeview wwan wlan lisp guacd pillar vtpm watchdog xen-tools newlogd "
             ;;
 esac
 
