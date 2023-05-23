@@ -23,7 +23,7 @@ Welcome to EVE!
             verbose on|off
             version
             uuid
-            virttype
+            hv
 __EOT__
   exit 1
 }
@@ -160,8 +160,8 @@ __EOT__
           uuid=$(cat /persist/status/uuid)
           echo "$uuid"
           ;;
- virttype)
-          type=$(cat /run/eve-virt-type)
+ hv)
+          type=$(cat /run/eve-hv-type)
           echo "$type"
           ;;
  persist) case "$2" in

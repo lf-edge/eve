@@ -925,7 +925,7 @@ eve-%: pkg/%/Dockerfile build-tools $(RESCAN_DEPS)
 	$(QUIET): "$@: Succeeded (intermediate for pkg/%)"
 
 images/rootfs-%.yml.in: images/rootfs.yml.in FORCE
-	$(QUITE)tools/compose-image-yml.sh $< $@ "$(ROOTFS_VERSION)-$*-$(ZARCH)"
+	$(QUITE)tools/compose-image-yml.sh $< $@ "$(ROOTFS_VERSION)-$*-$(ZARCH)" $(HV)
 
 images-patches := $(wildcard images/*.yq)
 test-images-patches: $(images-patches:%.yq=%)

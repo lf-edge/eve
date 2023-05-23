@@ -5,16 +5,4 @@
 ID=$(zboot curpart 2>/dev/null)
 echo "${ID:-RAM}" > /run/eve.id
 cp -p /etc/eve-release /run/eve-release
-v=$(cat /run/eve-release)
-echo $v | grep kubevirt
-if [ $? -eq 0 ]; then
-   echo "kubevirt" > /run/eve-virt-type
-else
-   echo $v | grep kvm
-   if [ $? -eq 0 ]; then
-      echo "kvm" > /run/eve-virt-type
-   else
-      echo "xen" > /run/eve-virt-type
-   fi
-   #ignore acrn for now
-fi
+cp -p /etc/eve-hv-type /run/eve-hv-type
