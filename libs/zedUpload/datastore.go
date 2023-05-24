@@ -274,13 +274,14 @@ func statsUpdater(req *DronaRequest, dronaCtx *DronaCtx, prgNotif types.StatsNot
 	var ok bool
 	for {
 		select {
-		case stats, ok = <-prgNotif:
+		case newStats, ok = <-prgNotif:
 			if !ok {
+				reqPostSize(req, dronaCtx, stats)
 				return
 			}
+			stats = newStats
 		case <-ticker.C:
-			req.doneParts = stats.DoneParts
-			dronaCtx.postSize(req, stats.Size, stats.Asize)
+			reqPostSize(req, dronaCtx, stats)
 		}
 	}
 }
