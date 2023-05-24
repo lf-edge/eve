@@ -220,14 +220,15 @@ func execCmdGet(ctx context.Context, objSize int64, localFile string, host strin
 	forceRestart := false
 	delay := time.Second
 	lastModified := ""
-	appendToErrorList := func(attempt int, err error) {
-		errorList = append(errorList, fmt.Sprintf("(attempt %d/%d): %v", attempt, maxRetries, err))
-		logrus.Warnf("ExecCmd get %s failed (attempt %d/%d): %v", host, attempt, maxRetries, err)
-	}
 	for attempt := 0; attempt < maxRetries; attempt++ {
+		appendToErrorList := func(format string, a ...interface{}) {
+			errMsg := fmt.Sprintf(format, a...)
+			errorList = append(errorList, fmt.Sprintf("(attempt %d/%d): %v", attempt, maxRetries, errMsg))
+			logrus.Warnf("ExecCmd get %s failed (attempt %d/%d): %v", host, attempt, maxRetries, errMsg)
+		}
 		//check context error on every attempt
 		if ctx.Err() != nil {
-			appendToErrorList(attempt, ctx.Err())
+			appendToErrorList(ctx.Err().Error())
 			break
 		}
 		if attempt > 0 {
@@ -241,12 +242,12 @@ func execCmdGet(ctx context.Context, objSize int64, localFile string, host strin
 		if !supportRange || forceRestart {
 			err := local.Truncate(0)
 			if err != nil {
-				appendToErrorList(attempt, fmt.Errorf("failed truncate file: %s", err))
+				appendToErrorList("failed truncate file: %s", err)
 				continue
 			}
 			_, err = local.Seek(0, 0)
 			if err != nil {
-				appendToErrorList(attempt, fmt.Errorf("failed seek file: %s", err))
+				appendToErrorList("failed seek file: %s", err)
 				continue
 			}
 			copiedSize = 0
@@ -279,10 +280,10 @@ func execCmdGet(ctx context.Context, objSize int64, localFile string, host strin
 			// http *net.DNSError if the error has the suffix
 			// of "no suitable address found"
 			if IsNoSuitableAddrErr(err) {
-				appendToErrorList(attempt, fmt.Errorf(NoSuitableAddrStr))
+				appendToErrorList(NoSuitableAddrStr)
 				break
 			}
-			appendToErrorList(attempt, fmt.Errorf("client.Do failed: %s", err))
+			appendToErrorList("client.Do failed: %s", err)
 			continue
 		}
 
@@ -292,12 +293,12 @@ func execCmdGet(ctx context.Context, objSize int64, localFile string, host strin
 		//if we not receive StatusOK for request without Range header or StatusPartialContent for request with range
 		//it indicates that server misconfigured
 		if !withRange && resp.StatusCode != http.StatusOK || withRange && resp.StatusCode != http.StatusPartialContent {
-			respErr := fmt.Errorf("bad response code: %d", resp.StatusCode)
+			respErr := fmt.Sprintf("bad response code: %d", resp.StatusCode)
 			err = resp.Body.Close()
 			if err != nil {
-				respErr = fmt.Errorf("respErr: %v; close Body error: %v", respErr, err)
+				respErr = fmt.Sprintf("respErr: %v; close Body error: %v", respErr, err)
 			}
-			appendToErrorList(attempt, respErr)
+			appendToErrorList(respErr)
 			//we do not want to process server misconfiguration here
 			break
 		}
@@ -325,11 +326,11 @@ func execCmdGet(ctx context.Context, objSize int64, localFile string, host strin
 				if objSize != copiedSize {
 					if innerCtx.Err() != nil {
 						// the error comes from canceled context, which indicates inactivity timeout
-						appendToErrorList(attempt, fmt.Errorf("inactivity for %s", inactivityTimeout))
+						appendToErrorList("inactivity for %s", inactivityTimeout)
 					} else if errors.Is(copyErr, io.EOF) {
-						appendToErrorList(attempt, fmt.Errorf("premature EOF after %d out of %d bytes: %+v", copiedSize, objSize, copyErr))
+						appendToErrorList("premature EOF after %d out of %d bytes: %+v", copiedSize, objSize, copyErr)
 					} else {
-						appendToErrorList(attempt, fmt.Errorf("error from CopyN after %d out of %d bytes: %v", copiedSize, objSize, copyErr))
+						appendToErrorList("error from CopyN after %d out of %d bytes: %v", copiedSize, objSize, copyErr)
 					}
 
 					stats.Error = fmt.Errorf("%s: %s", host, strings.Join(errorList, "; "))
