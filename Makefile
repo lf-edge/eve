@@ -456,7 +456,9 @@ SWTPM:=SWTPM_$(TPM:%=Y)
 # patch /conf/grub.cfg for developer's builds to enable getty
 GETTY:
 	echo "Enabling GETTY in grub.cfg"
-	grep -qxF 'set_getty' $(CONF_DIR)/grub.cfg || echo 'set_getty' >> $(CONF_DIR)/grub.cfg
+	if [ ! -f $(CONF_DIR)/grub.cfg ]; then\
+	       	cp $(CONF_DIR)/grub.cfg.tmpl $(CONF_DIR)/grub.cfg;\
+	fi
 
 # run-installer
 #
