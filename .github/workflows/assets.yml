@@ -18,7 +18,7 @@ on:
       - Publish
     types:
       - completed
-    branches-ignore:
+    branches:
       - "[0-9]+.[0-9]+"
       - "[0-9]+.[0-9]+-stable"
 
