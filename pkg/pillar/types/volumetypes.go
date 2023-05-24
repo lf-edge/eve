@@ -294,6 +294,8 @@ type VolumesSnapshotStatus struct {
 	TimeCreated time.Time
 	// AppUUID used as a backlink to the app
 	AppUUID uuid.UUID
+	// RefCount is the number of times the snapshot is used. Necessary to trigger the handleModify handler
+	RefCount int
 	// ErrorAndTimeWithSource provides SetErrorNow() and ClearError()
 	ErrorAndTimeWithSource
 }

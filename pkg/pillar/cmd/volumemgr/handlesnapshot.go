@@ -124,6 +124,8 @@ func handleVolumesSnapshotModify(ctxArg interface{}, key string, configArg, _ in
 		}
 		log.Noticef("handleVolumesSnapshotModify: successfully rolled back to snapshot %s for volume %s", config.SnapshotID, volumeID)
 	}
+	// Increment the refCount to indicate that the snapshot is being used and trigger the modify handler
+	volumesSnapshotStatus.RefCount++
 	log.Noticef("handleVolumesSnapshotModify: successfully rolled back to snapshot %s", config.SnapshotID)
 	publishVolumesSnapshotStatus(ctx, volumesSnapshotStatus)
 }
