@@ -9,6 +9,7 @@ import (
 	"net"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 )
@@ -32,6 +33,7 @@ type tracedResolver struct {
 	caller         *tracedDialer
 	skippedServers []string
 	triedServers   []string
+	sync.Mutex
 }
 
 // tracedFD records trace for every AF_INET socket created during dialing.
@@ -184,9 +186,7 @@ func (tr *tracedResolver) dial(ctx context.Context, network, address string) (ne
 		}
 		skip, reason := tr.caller.skipNameserver(ip, port)
 		if skip {
-			if !stringListContains(tr.skippedServers, address) {
-				tr.skippedServers = append(tr.skippedServers, address)
-			}
+			tr.ensureSkippedServersContains(address)
 			return nil, fmt.Errorf("skipped nameserver %s: %s", address, reason)
 		}
 	}
@@ -217,9 +217,7 @@ func (tr *tracedResolver) dial(ctx context.Context, network, address string) (ne
 	}
 	conn, err := netDialer.DialContext(ctx, network, address)
 	trace.dialEndAt = tr.caller.tracer.getRelTimestamp()
-	if !stringListContains(tr.triedServers, address) {
-		tr.triedServers = append(tr.triedServers, address)
-	}
+	tr.ensureTriedServersContains(address)
 	if err != nil {
 		trace.dialErr = err
 		tr.caller.tracer.publishTrace(trace)
@@ -248,6 +246,26 @@ func (tr *tracedResolver) close() {
 		skippedServers: tr.skippedServers,
 		triedServers:   tr.triedServers,
 	})
+}
+
+// ensureTriedServersContains ensure the list of tried servers contains the given server,
+// by adding it only if it does not already exist
+func (tr *tracedResolver) ensureTriedServersContains(server string) {
+	tr.Lock()
+	defer tr.Unlock()
+	if !stringListContains(tr.triedServers, server) {
+		tr.triedServers = append(tr.triedServers, server)
+	}
+}
+
+// ensureSkippedServersContains ensure the list of skipped servers contains the given server,
+// by adding it only if it does not already exist
+func (tr *tracedResolver) ensureSkippedServersContains(server string) {
+	tr.Lock()
+	defer tr.Unlock()
+	if !stringListContains(tr.skippedServers, server) {
+		tr.skippedServers = append(tr.skippedServers, server)
+	}
 }
 
 // controlFD is called for every newly created AF_INET socket.
