@@ -368,14 +368,16 @@ func (x *CellularStatus) GetProbeError() string {
 }
 
 // RadioConfig message may be returned in the response from a POST request
-// sent to the api/v1/radio API.
+// sent to the api/v1/radio API by the local profile server (see PROFILE.md),
+// or the message can be a part of the CompoundEdgeDevConfig message and
+// returned by the local operator console (see config/compound_devconfig.proto).
 type RadioConfig struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
 	// Security token. EVE will verify that serverToken matches the profile server
-	// token received from the controller.
+	// token received from the controller. Not used for the LOC case.
 	ServerToken string `protobuf:"bytes,1,opt,name=server_token,json=serverToken,proto3" json:"server_token,omitempty"`
 	// If enabled, EVE will disable radio transmission on all wireless devices available
 	// to the host (i.e. it does not cover wireless devices directly attached to applications).
@@ -569,14 +571,16 @@ func (x *LocalAppInfo) GetLastCmdTimestamp() uint64 {
 }
 
 // LocalAppCmdList message may be returned in the response from a POST request
-// sent to the api/v1/appinfo API.
+// sent to the api/v1/appinfo API by the local profile server (see PROFILE.md),
+// or the message can be a part of the CompoundEdgeDevConfig message and
+// returned by the local operator console (see config/compound_devconfig.proto)
 type LocalAppCmdList struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
 	// Security token. EVE will verify that server_token matches the profile server
-	// token received from the controller.
+	// token received from the controller. Not used for the LOC case.
 	ServerToken string `protobuf:"bytes,1,opt,name=server_token,json=serverToken,proto3" json:"server_token,omitempty"`
 	// A list of commands requested to be executed for locally running application instances.
 	// A new request created for the same application should overwrite the previous entry
@@ -826,14 +830,16 @@ func (x *LocalDevInfo) GetLastCmdTimestamp() uint64 {
 }
 
 // LocalDevCmd message may be returned in the response from a POST request
-// sent to the api/v1/devinfo API.
+// sent to the api/v1/devinfo API by the local profile server (see PROFILE.md),
+// or the message can be a part of the CompoundEdgeDevConfig message and
+// returned by the local operator console (see config/compound_devconfig.proto).
 type LocalDevCmd struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
 	// Security token. EVE will verify that server_token matches the profile server
-	// token received from the controller.
+	// token received from the controller. Not used for the LOC case.
 	ServerToken string `protobuf:"bytes,1,opt,name=server_token,json=serverToken,proto3" json:"server_token,omitempty"`
 	Timestamp   uint64 `protobuf:"varint,2,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
 	// Command to run.

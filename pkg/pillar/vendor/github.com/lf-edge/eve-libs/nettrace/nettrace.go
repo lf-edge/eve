@@ -45,19 +45,22 @@ type PacketCapture struct {
 }
 
 // WriteTo writes packet capture to a file or a buffer or whatever w represents.
-func (pc PacketCapture) WriteTo(w io.Writer) error {
+func (pc PacketCapture) WriteTo(w io.Writer) (n int64, err error) {
 	pw := pcapgo.NewWriter(w)
-	err := pw.WriteFileHeader(pc.SnapLen, layers.LinkTypeEthernet)
+	err = pw.WriteFileHeader(pc.SnapLen, layers.LinkTypeEthernet)
 	if err != nil {
-		return err
+		return n, err
 	}
+	n += 24 // header always is 24; it would be nice if this were a constant in github.com/google/gopacket
 	for _, packet := range pc.Packets {
-		err = pw.WritePacket(packet.Metadata().CaptureInfo, packet.Data())
+		b := packet.Data()
+		err = pw.WritePacket(packet.Metadata().CaptureInfo, b)
 		if err != nil {
-			return err
+			return n, err
 		}
+		n += int64(len(b))
 	}
-	return nil
+	return n, nil
 }
 
 // WriteToFile saves packet capture to a given file.
@@ -67,7 +70,8 @@ func (pc PacketCapture) WriteToFile(filename string) error {
 		return err
 	}
 	defer f.Close()
-	return pc.WriteTo(f)
+	_, err = pc.WriteTo(f)
+	return err
 }
 
 // AnyNetTrace is implemented by NetTrace and all its extensions (like HTTPTrace).
