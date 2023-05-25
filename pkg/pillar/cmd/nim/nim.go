@@ -18,7 +18,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/cipher"
-	node "github.com/lf-edge/eve/pkg/pillar/cmd/nodeagent"
 	"github.com/lf-edge/eve/pkg/pillar/conntester"
 	"github.com/lf-edge/eve/pkg/pillar/dpcmanager"
 	"github.com/lf-edge/eve/pkg/pillar/dpcreconciler"
@@ -182,7 +181,7 @@ func (n *nim) init() (err error) {
 		SubEdgeNodeCert:      n.subEdgeNodeCert,
 		PubCipherBlockStatus: n.pubCipherBlockStatus,
 		CipherMetrics:        n.cipherMetrics,
-		HVTypeKube:           node.IsHVTypeKube(),
+		HVTypeKube:           base.IsHVTypeKube(),
 	}
 	n.dpcManager = &dpcmanager.DpcManager{
 		Log:                      n.Log,

@@ -54,7 +54,7 @@ var ControlProtocolMarkingIDMap = map[string]string{
 	"app_http": "11",
 	// ICMPv6 traffic to and from an application
 	"app_icmpv6": "12",
-	// hack, for kube dns
+	// for Kubernetes DNS, allowing coreDNS to talk to external DNS servers
 	"in_dns": "13",
 }
 

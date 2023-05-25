@@ -143,7 +143,7 @@ func newNodeagentContext(_ *pubsub.PubSub, _ *logrus.Logger, _ *base.LogObject) 
 	curpart := agentlog.EveCurrentPartition()
 	nodeagentCtx.curPart = strings.TrimSpace(curpart)
 	nodeagentCtx.vaultOperational = types.TS_NONE
-	nodeagentCtx.hvTypeKube = IsHVTypeKube()
+	nodeagentCtx.hvTypeKube = base.IsHVTypeKube()
 	return &nodeagentCtx
 }
 
@@ -770,17 +770,4 @@ func parseSMARTData() {
 
 	parseData(currentSMARTfilename, smartData)
 	parseData(previousSMARTfilename, previousSmartData)
-}
-
-// IsHVTypeKube - if the EVE image is kube cluster type
-func IsHVTypeKube() bool {
-	retbytes, err := os.ReadFile(types.EveVirtTypeFile)
-	if err != nil {
-		return false
-	}
-
-	if strings.Contains(string(retbytes), "kubevirt") {
-		return true
-	}
-	return false
 }

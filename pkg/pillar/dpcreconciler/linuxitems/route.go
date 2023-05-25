@@ -26,9 +26,17 @@ type Route struct {
 	netlink.Route
 	// AdapterIfName : name of the interface associated with the route.
 	// Should match with Route.LinkIndex.
+	// Empty if this route is referencing unmanaged link.
 	AdapterIfName string
 	// AdapterLL : logical label of the associated interface.
+	// Empty if this route is referencing unmanaged link.
 	AdapterLL string
+	// True if this route is referencing link not managed by EVE.
+	// It is used by DPC Reconciler to install routes for the bridge cni0 created
+	// and used by Flannel CNI.
+	// Later this will likely go away as we find cleaner solution for integration
+	// between EVE and (possibly any) CNI plugin.
+	UnmanagedLink bool
 }
 
 // Name combines the interface name, route table ID and the destination
@@ -40,8 +48,12 @@ func (r Route) Name() string {
 	} else {
 		dst = r.Route.Dst.String()
 	}
+	ifName := r.AdapterIfName
+	if r.UnmanagedLink {
+		ifName = fmt.Sprintf("unmanaged-%d", r.LinkIndex)
+	}
 	return fmt.Sprintf("%d/%s/%s",
-		r.Table, r.AdapterIfName, dst)
+		r.Table, ifName, dst)
 }
 
 // Label is more human-readable than name.
@@ -52,8 +64,14 @@ func (r Route) Label() string {
 	} else {
 		dst = r.Route.Dst.String()
 	}
+	var dev string
+	if r.UnmanagedLink {
+		dev = fmt.Sprintf("<unmanaged-%d>", r.LinkIndex)
+	} else {
+		dev = r.AdapterLL
+	}
 	return fmt.Sprintf("%s route table %d dst %s dev %v via %v",
-		r.ipVersionStr(), r.Table, dst, r.AdapterLL, r.Gw)
+		r.ipVersionStr(), r.Table, dst, dev, r.Gw)
 }
 
 func (r Route) ipVersionStr() string {
@@ -120,6 +138,11 @@ func (r Route) External() bool {
 
 // String describes the network route.
 func (r Route) String() string {
+	if r.UnmanagedLink {
+		return fmt.Sprintf(
+			"Network route for unmanaged link (index=%d) with priority %d: %s",
+			r.LinkIndex, r.Route.Priority, r.Route.String())
+	}
 	return fmt.Sprintf("Network route for adapter '%s' with priority %d: %s",
 		r.AdapterLL, r.Route.Priority, r.Route.String())
 }
@@ -129,6 +152,11 @@ func (r Route) String() string {
 //   - the "via" adapter must have an IP address assigned from the subnet
 //     of the route gateway.
 func (r Route) Dependencies() (deps []depgraph.Dependency) {
+	if r.UnmanagedLink {
+		// Reconciler does not check dependencies for route associated
+		// with link not managed by EVE.
+		return nil
+	}
 	return []depgraph.Dependency{
 		{
 			RequiredItem: depgraph.ItemRef{
