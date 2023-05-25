@@ -339,7 +339,7 @@ PKGS_$(ZARCH)=$(shell ls -d pkg/* | grep -Ev "eve|test-microsvcs|alpine|sources"
 PKGS_riscv64=pkg/ipxe pkg/mkconf pkg/mkimage-iso-efi pkg/grub     \
              pkg/mkimage-raw-efi pkg/uefi pkg/u-boot pkg/cross-compilers pkg/new-kernel \
 	     pkg/debug pkg/dom0-ztools pkg/gpt-tools pkg/storage-init pkg/mkrootfs-squash \
-		 pkg/bsp-imx pkg/optee-os
+	     pkg/bsp-imx pkg/optee-os
 # alpine-base and alpine must be the first packages to build
 PKGS=pkg/alpine $(PKGS_$(ZARCH))
 # eve-alpine-base is bootstrap image for eve-alpine
@@ -944,9 +944,9 @@ eve-%: pkg/%/Dockerfile pkg/%/gopkgversion build-tools $(RESCAN_DEPS)
 	$(eval LINUXKIT_FLAGS := $(if $(filter manifest,$(LINUXKIT_PKG_TARGET)),,$(FORCE_BUILD) $(LINUXKIT_DOCKER_LOAD) $(LINUXKIT_BUILD_PLATFORMS)))
 	$(QUIET)$(LINUXKIT) $(DASH_V) pkg $(LINUXKIT_PKG_TARGET) $(LINUXKIT_OPTS) $(LINUXKIT_FLAGS) -build-yml $(call get_pkg_build_yml,$*) pkg/$*
 	$(QUIET)if [ -n "$(PRUNE)" ]; then \
-  		$(LINUXKIT) pkg builder prune; \
-  		docker image prune -f; \
-  	fi
+		$(LINUXKIT) pkg builder prune; \
+		docker image prune -f; \
+	fi
 	$(QUIET): "$@: Succeeded (intermediate for pkg/%)"
 
 images/rootfs-%.yml.in: images/rootfs.yml.in FORCE
