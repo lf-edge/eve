@@ -169,12 +169,6 @@ DEVICETREE_DTB=$(DEVICETREE_DTB_$(ZARCH))
 CONF_FILES=$(shell ls -d $(CONF_DIR)/*)
 PART_SPEC=efi conf imga
 
-ifeq ($(HV),kubevirt)
-      ROOTFS_YML=images/kubevirt-rootfs.yml.in
-else
-      ROOTFS_YML=images/rootfs.yml.in
-endif
-
 # parallels settings
 # https://github.com/qemu/qemu/blob/595123df1d54ed8fbab9e1a73d5a58c5bb71058f/docs/interop/prl-xml.txt
 # predefined GUID according link ^
@@ -332,10 +326,10 @@ endif
 # We are currently filtering out a few packages from bulk builds
 # since they are not getting published in Docker HUB
 ifeq ($(HV),kubevirt)
-	PKGS_$(ZARCH)=$(shell ls -d pkg/* | grep -Ev "eve|test-microsvcs|alpine|sources")
+	PKGS_$(ZARCH)=$(shell find pkg -maxdepth 1 -type d | grep -Ev "eve|test-microsvcs|alpine|sources")
 else
-        #eve-k3s container will not be in non-kubevirt builds
-	PKGS_$(ZARCH)=$(shell ls -d pkg/* | grep -Ev "eve|test-microsvcs|alpine|sources|k3s")
+        #kube container will not be in non-kubevirt builds
+	PKGS_$(ZARCH)=$(shell find pkg -maxdepth 1 -type d | grep -Ev "eve|test-microsvcs|alpine|sources|kube")
 endif
 
 PKGS_riscv64=pkg/ipxe pkg/mkconf pkg/mkimage-iso-efi pkg/grub     \
@@ -936,7 +930,7 @@ eve-%: pkg/%/Dockerfile build-tools $(RESCAN_DEPS)
   	fi
 	$(QUIET): "$@: Succeeded (intermediate for pkg/%)"
 
-images/rootfs-%.yml.in: ${ROOTFS_YML} FORCE
+images/rootfs-%.yml.in: images/rootfs.yml.in FORCE
 	$(QUITE)tools/compose-image-yml.sh $< $@ "$(ROOTFS_VERSION)-$*-$(ZARCH)"
 
 images-patches := $(wildcard images/*.yq)

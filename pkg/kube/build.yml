@@ -3,7 +3,7 @@
 # Copyright (c) 2023 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
 org: lfedge
-image: eve-k3s
+image: eve-kube
 config:
   binds:
     - /lib/modules:/lib/modules
