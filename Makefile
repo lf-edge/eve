@@ -65,6 +65,10 @@ BUILD_VM_SRC_amd64=https://cloud-images.ubuntu.com/focal/current/focal-server-cl
 BUILD_VM_SRC=$(BUILD_VM_SRC_$(ZARCH))
 
 UNAME_S := $(shell uname -s)
+UNAME_S_LCASE=$(shell uname -s | tr '[A-Z]' '[a-z]')
+
+# store the goos for local, as an easier-to-reference var
+LOCAL_GOOS=$(UNAME_S_LCASE)
 
 USER         = $(shell id -u -n)
 GROUP        = $(shell id -g -n)
@@ -204,10 +208,10 @@ QEMU_ACCEL_Y_Darwin_amd64=-machine q35,accel=hvf,usb=off -cpu kvm64,kvmclock=off
 QEMU_ACCEL_Y_Linux_amd64=-machine q35,accel=kvm,usb=off,dump-guest-core=off -cpu host,invtsc=on,kvmclock=off -machine kernel-irqchip=split -device intel-iommu,intremap=on,caching-mode=on,aw-bits=48
 # -machine virt,gic_version=3
 QEMU_ACCEL_Y_Linux_arm64=-machine virt,accel=kvm,usb=off,dump-guest-core=off -cpu host
-QEMU_ACCEL__$(shell uname -s)_arm64=-machine virt,virtualization=true -cpu cortex-a57
-QEMU_ACCEL__$(shell uname -s)_amd64=-machine q35 -cpu SandyBridge
-QEMU_ACCEL__$(shell uname -s)_riscv64=-machine virt -cpu rv64
-QEMU_ACCEL:=$(QEMU_ACCEL_$(ACCEL:%=Y)_$(shell uname -s)_$(ZARCH))
+QEMU_ACCEL__$(UNAME_S)_arm64=-machine virt,virtualization=true -cpu cortex-a57
+QEMU_ACCEL__$(UNAME_S)_amd64=-machine q35 -cpu SandyBridge
+QEMU_ACCEL__$(UNAME_S)_riscv64=-machine virt -cpu rv64
+QEMU_ACCEL:=$(QEMU_ACCEL_$(ACCEL:%=Y)_$(UNAME_S)_$(ZARCH))
 
 QEMU_OPTS_NET1=192.168.1.0/24
 QEMU_OPTS_NET1_FIRST_IP=192.168.1.10
@@ -292,6 +296,10 @@ RESCAN_DEPS=FORCE
 # set FORCE_BUILD to --force to enforce rebuild
 FORCE_BUILD=
 
+# for the dockerfile-add-scanner
+DOCKERFILE_ADD_SCANNER=$(BUILDTOOLS_BIN)/dockerfile-add-scanner
+DOCKERFILE_ADD_SCANNER_SOURCE=./tools/dockerfile-add-scanner
+
 # for the go build sources
 GOSOURCES=$(BUILDTOOLS_BIN)/go-sources-and-licenses
 GOSOURCES_VERSION=c73009667f4871c084c1f2164063321c81d053a2
@@ -302,7 +310,7 @@ GOSOURCES_SOURCE=github.com/deitch/go-sources-and-licenses
 COMPARESOURCES=$(BUILDTOOLS_BIN)/compare-sbom-sources
 COMPARE_SOURCE=./tools/compare-sbom-sources
 
-SYFT_VERSION:=v0.78.0
+SYFT_VERSION:=v0.82.0
 SYFT_IMAGE:=docker.io/anchore/syft:$(SYFT_VERSION)
 
 # we use the following block to assign correct tag to the Docker registry artifact
@@ -636,7 +644,7 @@ sbom_info:
 collected_sources_info:
 	@echo "$(COLLECTED_SOURCES)"
 
-$(SBOM): $(ROOTFS_TAR)| $(INSTALLER)
+$(SBOM): $(ROOTFS_TAR) $(DOCKERFILE_ADD_SCANNER)| $(INSTALLER)
 	$(QUIET): $@: Begin
 	$(eval TMP_ROOTDIR := $(shell mktemp -d))
 	# this is a bit of a hack, but we need to extract the rootfs tar to a directory, and it fails if
@@ -645,6 +653,8 @@ $(SBOM): $(ROOTFS_TAR)| $(INSTALLER)
 	# this all can go away, and we can read the rootfs.tar
 	# see https://github.com/anchore/syft/issues/1400
 	tar xf $< -C $(TMP_ROOTDIR) --exclude "dev/*"
+	# we need to generate the kernel sbom, because syft would give a completely different structure
+	$(DOCKERFILE_ADD_SCANNER) scan ./pkg/kernel/Dockerfile --format spdx-json > $(TMP_ROOTDIR)/kernel-sbom.spdx.json
 	docker run -v $(TMP_ROOTDIR):/rootdir:ro -v $(CURDIR)/.syft.yaml:/syft.yaml:ro $(SYFT_IMAGE) -c /syft.yaml /rootdir > $@
 	rm -rf $(TMP_ROOTDIR)
 	$(QUIET): $@: Succeeded
@@ -666,9 +676,16 @@ $(COLLECTED_SOURCES): $(ROOTFS_TAR) $(GOSOURCES)| $(INSTALLER) $(SOURCES_DIR)
 
 $(COMPARESOURCES):
 	$(QUIET): $@: Begin
-	GOOS=$(shell uname -s | tr '[A-Z]' '[a-z]') CGO_ENABLED=0 go build -o $(COMPARESOURCES) -C $(COMPARE_SOURCE)
+	GOOS=$(LOCAL_GOOS) CGO_ENABLED=0 go build -o $(COMPARESOURCES) -C $(COMPARE_SOURCE)
 	@echo Done building packages
 	$(QUIET): $@: Succeeded
+
+$(DOCKERFILE_ADD_SCANNER):
+	$(QUIET): $@: Begin
+	GOOS=$(LOCAL_GOOS) CGO_ENABLED=0 go build -o $@ -C $(DOCKERFILE_ADD_SCANNER_SOURCE)
+	@echo Done building dockerfile-add-scanner
+	$(QUIET): $@: Succeeded
+
 
 compare_sbom_collected_sources: $(COLLECTED_SOURCES) $(SBOM) | $(COMPARESOURCES)
 	$(QUIET): $@: Begin
@@ -846,7 +863,7 @@ $(LINUXKIT).$(LINUXKIT_VERSION):
 	@rm -rf $(LINUXKIT)*
 	@touch $(LINUXKIT).$(LINUXKIT_VERSION)
 # build linuxkit for the host OS, not the container OS
-$(LINUXKIT): GOOS=$(shell uname -s | tr '[A-Z]' '[a-z]')
+$(LINUXKIT): GOOS=$(LOCAL_GOOS)
 $(LINUXKIT): $(LINUXKIT).$(LINUXKIT_VERSION)
 $(LINUXKIT): | $(GOBUILDER)
 	$(QUIET)$(DOCKER_GO) \
