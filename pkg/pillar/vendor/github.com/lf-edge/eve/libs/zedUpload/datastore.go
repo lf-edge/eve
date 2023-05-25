@@ -262,26 +262,20 @@ func NewDronaCtx(name string, noHandlers int) (*DronaCtx, error) {
 	return &dSync, nil
 }
 
-func reqPostSize(req *DronaRequest, dronaCtx *DronaCtx, stats types.UpdateStats) {
-	req.doneParts = stats.DoneParts
-	dronaCtx.postSize(req, stats.Size, stats.Asize)
-}
-
 func statsUpdater(req *DronaRequest, dronaCtx *DronaCtx, prgNotif types.StatsNotifChan) {
 	ticker := time.NewTicker(StatsUpdateTicker)
 	defer ticker.Stop()
-	var newStats, stats types.UpdateStats
+	var stats types.UpdateStats
 	var ok bool
 	for {
 		select {
-		case newStats, ok = <-prgNotif:
+		case stats, ok = <-prgNotif:
 			if !ok {
-				reqPostSize(req, dronaCtx, stats)
 				return
 			}
-			stats = newStats
 		case <-ticker.C:
-			reqPostSize(req, dronaCtx, stats)
+			req.doneParts = stats.DoneParts
+			dronaCtx.postSize(req, stats.Size, stats.Asize)
 		}
 	}
 }
