@@ -223,16 +223,6 @@ jobs:
           asset_path: assets/ipxe.efi.ip.cfg
           asset_name: ${{ env.ARCH }}.ipxe.efi.ip.cfg
           asset_content_type: application/octet-stream
-      - name: Upload SBOM
-        id: upload-sbom-asset
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create-release.outputs.result }}
-          asset_path: assets/rootfs.spdx.json
-          asset_name: ${{ env.ARCH }}.rootfs.spdx.json
-          asset_content_type: application/json
       - name: Upload COLLECTED_SOURCES
         id: upload-collected-sources-asset
         uses: actions/upload-release-asset@v1
