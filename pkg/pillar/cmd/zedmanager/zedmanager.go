@@ -829,7 +829,7 @@ func removePreparedVolumesSnapshotConfig(status *types.AppInstanceStatus, id str
 }
 
 // saveConfigForSnapshots saves the config for the snapshots for which the config has been prepared
-func saveConfigForSnapshots(status *types.AppInstanceStatus, config types.AppInstanceConfig) error {
+func saveConfigForSnapshots(ctx *zedmanagerContext, status *types.AppInstanceStatus, config types.AppInstanceConfig) error {
 	for i, snapshot := range status.SnapStatus.PreparedVolumesSnapshotConfigs {
 		// Set the old config version to the snapshot status
 		status.SnapStatus.RequestedSnapshots[i].ConfigVersion = config.UUIDandVersion
@@ -839,8 +839,79 @@ func saveConfigForSnapshots(status *types.AppInstanceStatus, config types.AppIns
 			log.Errorf("Failed to serialize the old config for %s, error: %s", config.DisplayName, err)
 			return err
 		}
+		err = serializeVolumeRefStatusesToSnapshot(ctx, config, snapshot.SnapshotID)
+		if err != nil {
+			log.Errorf("Failed to serialize the volume ref statuses for %s, error: %s", config.DisplayName, err)
+			return err
+		}
 	}
 	return nil
+}
+
+func serializeVolumeRefStatusesToSnapshot(ctx *zedmanagerContext, config types.AppInstanceConfig, snapshotID string) error {
+	for _, volumeRefConfig := range config.VolumeRefConfigList {
+		volumeRefStatus := lookupVolumeRefStatus(ctx, volumeRefConfig.Key())
+		if volumeRefStatus == nil {
+			log.Errorf("Failed to find the volume ref status for %s", volumeRefConfig.VolumeID)
+			return fmt.Errorf("failed to find the volume ref status for %s", volumeRefConfig.VolumeID)
+		}
+		// Serialize the volume ref status and store it in a file
+		err := serializeVolumeRefStatusToSnapshot(volumeRefStatus, snapshotID)
+		if err != nil {
+			log.Errorf("Failed to serialize the volume ref status for %s, error: %s", volumeRefConfig.VolumeID, err)
+			return err
+		}
+	}
+	return nil
+}
+
+func serializeVolumeRefStatusToSnapshot(status *types.VolumeRefStatus, snapshotID string) error {
+	filename := getVolumeRefStatusFilename(status.VolumeID.String(), snapshotID)
+	log.Noticef("Serializing the volume ref status for %s to %s", status.VolumeID, filename)
+	statusAsBytes, err := json.Marshal(status)
+	if err != nil {
+		log.Errorf("Failed to marshal the volume ref status for %s, error: %s", status.VolumeID, err)
+		return err
+	}
+	// Create the file for storing the volume ref status
+	err = ioutil.WriteFile(filename, statusAsBytes, 0644)
+	if err != nil {
+		log.Errorf("Failed to write the volume ref status for %s, error: %s", status.VolumeID, err)
+		return err
+	}
+	log.Noticef("Successfully serialized the volume ref status for %s to %s", status.VolumeID, filename)
+	return nil
+}
+
+func deserializeVolumeRefStatusFromSnapshot(volumeID string, snapshotID string) (*types.VolumeRefStatus, error) {
+	// read the volume ref status from the file
+	filename := getVolumeRefStatusFilename(volumeID, snapshotID)
+	log.Noticef("Deserializing the volume ref status for %s from %s", volumeID, filename)
+	// check the file exists
+	if _, err := os.Stat(filename); os.IsNotExist(err) {
+		log.Errorf("Failed to find the volume ref status file for %s", volumeID)
+		return nil, err
+	}
+	// open the file
+	volumeRefStatusFile, err := os.Open(filename)
+	if err != nil {
+		log.Errorf("Failed to open the volume ref status file for %s, error: %s", volumeID, err)
+		return nil, err
+	}
+	defer volumeRefStatusFile.Close()
+	// deserialize the volume ref status
+	volumeRefStatus := types.VolumeRefStatus{}
+	err = json.NewDecoder(volumeRefStatusFile).Decode(&volumeRefStatus)
+	if err != nil {
+		log.Errorf("Failed to deserialize the volume ref status for %s, error: %s", volumeID, err)
+		return nil, err
+	}
+	log.Noticef("Successfully deserialized the volume ref status for %s from %s", volumeID, filename)
+	return &volumeRefStatus, nil
+}
+
+func getVolumeRefStatusFilename(volumeID string, snapshotID string) string {
+	return fmt.Sprintf("%s/%s.json", getSnapshotDir(snapshotID), volumeID)
 }
 
 // serializeConfigToSnapshot serializes the config to a file
@@ -852,12 +923,14 @@ func serializeConfigToSnapshot(config types.AppInstanceConfig, snapshotID string
 		log.Errorf("Failed to marshal the old config for %s, error: %s", config.DisplayName, err)
 		return err
 	}
-	err = createDirForSnapshots()
+	snapshotDir := getSnapshotDir(snapshotID)
+	// Create the directory for storing the old config
+	err = os.MkdirAll(snapshotDir, 0755)
 	if err != nil {
 		log.Errorf("Failed to create the config dir for %s, error: %s", config.DisplayName, err)
 		return err
 	}
-	configFile := getFilenameForConfig(snapshotID)
+	configFile := fmt.Sprintf("%s/%s", snapshotDir, types.SnapshotConfigFilename)
 	err = ioutil.WriteFile(configFile, configAsBytes, 0644)
 	if err != nil {
 		log.Errorf("Failed to write the old config for %s, error: %s", config.DisplayName, err)
@@ -866,23 +939,9 @@ func serializeConfigToSnapshot(config types.AppInstanceConfig, snapshotID string
 	return nil
 }
 
-func createDirForSnapshots() error {
-	if _, err := os.Stat(types.ConfigsForSnapshotsDirname); err == nil {
-		// Directory already exists
-		return nil
-	}
-	// Create the directory for storing the old config
-	err := os.MkdirAll(types.ConfigsForSnapshotsDirname, 0755)
-	if err != nil {
-		log.Errorf("Failed to create the config dir for snapshots, error: %s", err)
-		return err
-	}
-	return nil
-}
-
-func getFilenameForConfig(snapshotID string) string {
-	configFilename := fmt.Sprintf("%s/%s", types.ConfigsForSnapshotsDirname, snapshotID)
-	return configFilename
+func getSnapshotDir(snapshotID string) string {
+	snapshotDir := fmt.Sprintf("%s/%s", types.SnapshotsDirname, snapshotID)
+	return snapshotDir
 }
 
 func handleCreate(ctxArg interface{}, key string,
@@ -1028,7 +1087,7 @@ func handleModify(ctxArg interface{}, key string,
 		// it's triggered. We cannot trigger the snapshot creation here immediately, as the VM
 		// should be stopped first. But we still need to save the list of volumes that are known only at this point.
 		status.SnapStatus.PreparedVolumesSnapshotConfigs = prepareVolumesSnapshotConfigs(ctx, oldConfig, status)
-		err := saveConfigForSnapshots(status, oldConfig)
+		err := saveConfigForSnapshots(ctx, status, oldConfig)
 		if err != nil {
 			log.Errorf("handleModify(%v) for %s: error saving old config for snapshots: %v",
 				config.UUIDandVersion, config.DisplayName, err)
@@ -1155,7 +1214,8 @@ func quantifyChanges(config types.AppInstanceConfig, oldConfig types.AppInstance
 	} else {
 		for _, vrc := range config.VolumeRefConfigList {
 			vrs := getVolumeRefStatusFromAIStatus(&status, vrc)
-			if vrs == nil {
+			// During a rollback, we may not have a VolumeRefStatus for a volume, but the volume is still expected to be present
+			if vrs == nil && !status.SnapStatus.RollbackInProgress && status.SnapStatus.ConfigBeforeRollback != config.UUIDandVersion {
 				str := fmt.Sprintf("Missing VolumeRefStatus for "+
 					"(VolumeID: %s, GenerationCounter: %d, LocalGenerationCounter: %d)",
 					vrc.VolumeID, vrc.GenerationCounter, vrc.LocalGenerationCounter)

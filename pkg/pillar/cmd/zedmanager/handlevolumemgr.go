@@ -9,7 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"time"
+	"path"
 
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/types"
@@ -93,6 +93,17 @@ func lookupVolumeRefConfig(ctx *zedmanagerContext, key string) *types.VolumeRefC
 	}
 	config := c.(types.VolumeRefConfig)
 	return &config
+}
+
+func getAllVolumeRefConfig(ctx *zedmanagerContext) []types.VolumeRefConfig {
+	pub := ctx.pubVolumeRefConfig
+	items := pub.GetAll()
+	var configs []types.VolumeRefConfig
+	for _, st := range items {
+		config := st.(types.VolumeRefConfig)
+		configs = append(configs, config)
+	}
+	return configs
 }
 
 func lookupVolumeRefStatus(ctx *zedmanagerContext, key string) *types.VolumeRefStatus {
@@ -272,15 +283,7 @@ func handleVolumesSnapshotStatusModify(ctx interface{}, key string, status inter
 		publishAppInstanceStatus(zedmanagerCtx, appInstanceStatus)
 		return
 	}
-	err := restoreConfigFromSnapshot(zedmanagerCtx, volumesSnapshotStatus)
-	if err != nil {
-		errDesc := types.ErrorDescription{}
-		errDesc.Error = fmt.Sprintf("Failed to restore and apply config from snapshot %s: %s", volumesSnapshotStatus.SnapshotID, err)
-		log.Errorf(errDesc.Error)
-		errDesc.ErrorTime = time.Now()
-		appInstanceStatus.SetErrorWithSourceAndDescription(errDesc, types.VolumesSnapshotStatus{})
-		setSnapshotStatusError(appInstanceStatus, volumesSnapshotStatus.SnapshotID, errDesc)
-	}
+	appInstanceStatus.SnapStatus.RollbackInProgress = false
 	publishAppInstanceStatus(zedmanagerCtx, appInstanceStatus)
 }
 
@@ -302,17 +305,14 @@ func handleVolumesSnapshotStatusDelete(ctx interface{}, key string, status inter
 	}
 	deleteSnapshotFromStatus(appInstanceStatus, volumesSnapshotStatus.SnapshotID)
 	// Delete the serialized config, if it exists
-	configFile := getFilenameForConfig(volumesSnapshotStatus.SnapshotID)
-	// Delete the file if it exists
-	if _, err := os.Stat(configFile); err == nil {
-		log.Noticef("Deleting serialized config file %s", configFile)
-		if err := os.Remove(configFile); err != nil {
-			errDesc := types.ErrorDescription{}
-			errDesc.Error = fmt.Sprintf("Failed to delete serialized config file %s: %s", configFile, err)
-			log.Errorf(errDesc.Error)
-			errDesc.ErrorTime = time.Now()
-			appInstanceStatus.SetErrorWithSourceAndDescription(errDesc, types.VolumesSnapshotStatus{})
-			setSnapshotStatusError(appInstanceStatus, volumesSnapshotStatus.SnapshotID, errDesc)
+	configDir := getSnapshotDir(volumesSnapshotStatus.SnapshotID)
+	// delete the directory if it exists
+	if _, err := os.Stat(configDir); err == nil {
+		log.Noticef("Deleting snapshot directory %s", configDir)
+		err = os.RemoveAll(configDir)
+		if err != nil {
+			log.Errorf("handleVolumesSnapshotStatusDelete: Failed to delete snapshot directory %s: %s", configDir, err)
+			return
 		}
 	}
 
@@ -387,27 +387,24 @@ func deleteSnapshotFromStatus(status *types.AppInstanceStatus, id string) {
 	removePreparedVolumesSnapshotConfig(status, id)
 }
 
-// restoreConfigFromSnapshot restores the config from the snapshot and applies it
-func restoreConfigFromSnapshot(ctx *zedmanagerContext, status types.VolumesSnapshotStatus) error {
+func restoreConfigFromSnapshot(ctx *zedmanagerContext, appInstanceStatus *types.AppInstanceStatus) (*types.AppInstanceConfig, error) {
 	log.Noticef("restoreConfigFromSnapshot")
-	appInstanceStatus := lookupAppInstanceStatus(ctx, status.AppUUID.String())
-	if appInstanceStatus == nil {
-		return fmt.Errorf("AppInstanceStatus not found for %s", status.AppUUID.String())
-	}
+
 	// Get the snapshot status from the available snapshots
-	snapshotStatus := lookupAvailableSnapshot(appInstanceStatus, status.SnapshotID)
+	snapshotID := appInstanceStatus.SnapStatus.ActiveSnapshot
+	snapshotStatus := lookupAvailableSnapshot(appInstanceStatus, snapshotID)
 	if snapshotStatus == nil {
-		return fmt.Errorf("SnapshotInstanceStatus not found for %s", status.SnapshotID)
+		return nil, fmt.Errorf("SnapshotInstanceStatus not found for %s", snapshotID)
 	}
 	// Get the app instance config from the snapshot
 	snappedAppInstanceConfig := deserializeConfigFromSnapshot(snapshotStatus)
 	if snappedAppInstanceConfig == nil {
-		return fmt.Errorf("failed to read AppInstanceConfig from file for %s", status.SnapshotID)
+		return nil, fmt.Errorf("failed to read AppInstanceConfig from file for %s", snapshotID)
 	}
 	// Get the app instance config from the app instance status
 	currentAppInstanceConfig := lookupAppInstanceConfig(ctx, appInstanceStatus.Key())
 	if currentAppInstanceConfig == nil {
-		return fmt.Errorf("AppInstanceConfig not found for %s", appInstanceStatus.Key())
+		return nil, fmt.Errorf("AppInstanceConfig not found for %s", appInstanceStatus.Key())
 	}
 	// Sync the information about available snapshots
 	snappedAppInstanceConfig.Snapshot.Snapshots = make([]types.SnapshotDesc, len(currentAppInstanceConfig.Snapshot.Snapshots))
@@ -417,24 +414,14 @@ func restoreConfigFromSnapshot(ctx *zedmanagerContext, status types.VolumesSnaps
 	snappedAppInstanceConfig.LocalPurgeCmd = currentAppInstanceConfig.LocalPurgeCmd
 	snappedAppInstanceConfig.RestartCmd = currentAppInstanceConfig.RestartCmd
 	snappedAppInstanceConfig.LocalRestartCmd = currentAppInstanceConfig.LocalRestartCmd
-	// Apply the app instance config from the snapshot
-	log.Noticef("Applying config (calling handleModify) from snapshot %s", status.SnapshotID)
-	handleModify(ctx, appInstanceStatus.Key(), *snappedAppInstanceConfig, *currentAppInstanceConfig)
-	log.Noticef("Config from snapshot %s applied", status.SnapshotID)
-	// Publish the app instance status
-	publishAppInstanceStatus(ctx, appInstanceStatus)
-	return nil
+	return snappedAppInstanceConfig, nil
 }
 
 // deserializeConfigFromSnapshot deserializes the config from a file
 func deserializeConfigFromSnapshot(status *types.SnapshotInstanceStatus) *types.AppInstanceConfig {
 	log.Noticef("deserializeConfigFromSnapshot")
-	filename := getFilenameForConfig(status.Snapshot.SnapshotID)
-	// check for the existence of the config file
-	if _, err := os.Stat(filename); os.IsNotExist(err) {
-		log.Errorf("deserializeConfigFromSnapshot: Config file not found for %s", status.Snapshot.SnapshotID)
-		return nil
-	}
+	dirname := getSnapshotDir(status.Snapshot.SnapshotID)
+	filename := path.Join(dirname, types.SnapshotConfigFilename)
 	var appInstanceConfig types.AppInstanceConfig
 	configFile, err := os.Open(filename)
 	if err != nil {
