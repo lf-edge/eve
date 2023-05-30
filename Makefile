@@ -678,13 +678,13 @@ $(COLLECTED_SOURCES): $(ROOTFS_TAR) $(GOSOURCES)| $(INSTALLER) $(SOURCES_DIR)
 
 $(COMPARESOURCES):
 	$(QUIET): $@: Begin
-	GOOS=$(LOCAL_GOOS) CGO_ENABLED=0 go build -o $(COMPARESOURCES) -C $(COMPARE_SOURCE)
+	cd $(COMPARE_SOURCE) && GOOS=$(LOCAL_GOOS) CGO_ENABLED=0 go build -o $(COMPARESOURCES)
 	@echo Done building packages
 	$(QUIET): $@: Succeeded
 
 $(DOCKERFILE_ADD_SCANNER):
 	$(QUIET): $@: Begin
-	GOOS=$(LOCAL_GOOS) CGO_ENABLED=0 go build -o $@ -C $(DOCKERFILE_ADD_SCANNER_SOURCE)
+	cd $(DOCKERFILE_ADD_SCANNER_SOURCE) && GOOS=$(LOCAL_GOOS) CGO_ENABLED=0 go build -o $@
 	@echo Done building dockerfile-add-scanner
 	$(QUIET): $@: Succeeded
 
