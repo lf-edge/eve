@@ -75,6 +75,7 @@ func initOpts() {
 		"tcpdump",
 		"trace",
 		"url",
+		"pprof",
 		"wireless"}
 
 	pubsubopts = []string{
