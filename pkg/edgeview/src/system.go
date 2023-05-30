@@ -17,6 +17,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -980,6 +981,22 @@ func readAFile(path string, extraline int) {
 
 func dispAFile(f os.FileInfo) {
 	fmt.Printf("%s, %v, %d, %s\n", f.Mode().String(), f.ModTime(), f.Size(), f.Name())
+}
+
+func runPprof() {
+	cmd := exec.Command("/usr/bin/pkill", "-USR2", "/opt/zededa/bin/zedbox")
+
+	err := cmd.Run()
+	if err != nil {
+		fmt.Printf("could not signal zedbox to run pprof")
+	}
+
+	setAndStartProxyTCP("localhost:6543")
+
+	_, err = http.Post("http://localhost:6543/stop", "", nil)
+	if err != nil {
+		fmt.Printf("could not stop pprof: %+v\n", err)
+	}
 }
 
 func getTarFile(opt string) {
