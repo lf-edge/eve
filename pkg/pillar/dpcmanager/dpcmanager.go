@@ -93,7 +93,8 @@ type DpcManager struct {
 	adapters         types.AssignableAdapters
 	globalCfg        types.ConfigItemValueMap
 	hasGlobalCfg     bool
-	radioSilence     types.RadioSilence
+	rsConfig         types.RadioSilence
+	rsStatus         types.RadioSilence
 	enableLastResort bool
 	devUUID          uuid.UUID
 	// Boot-time configuration
@@ -426,7 +427,7 @@ func (m *DpcManager) reconcilerArgs() dpcreconciler.Args {
 	args := dpcreconciler.Args{
 		GCP: m.globalCfg,
 		AA:  m.adapters,
-		RS:  m.radioSilence,
+		RS:  m.rsConfig,
 	}
 	if m.currentDPC() != nil {
 		args.DPC = *m.currentDPC()

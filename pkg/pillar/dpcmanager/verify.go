@@ -28,7 +28,7 @@ func (m *DpcManager) restartVerify(ctx context.Context, reason string) {
 		return
 	}
 	if m.currentDPC() != nil &&
-		!m.radioSilence.ChangeInProgress && m.radioSilence.Imposed {
+		!m.rsStatus.ChangeInProgress && m.rsStatus.Imposed {
 		m.Log.Noticef("DPC verify: Radio-silence is imposed, skipping DPC verification")
 		return
 	}
