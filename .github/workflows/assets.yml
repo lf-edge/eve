@@ -18,9 +18,10 @@ on:  # yamllint disable-line rule:truthy
       - Publish
     types:
       - completed
-    branches-ignore:
+    branches:
       - "[0-9]+.[0-9]+"
       - "[0-9]+.[0-9]+-stable"
+      - "[0-9]+.[0-9]+-lts"
 
 jobs:
   build:
@@ -81,6 +82,7 @@ jobs:
           fi
       - name: Pull eve-sources and publish collected_sources.tar.gz to assets
         run: |
+          HV=kvm
           EVE_SOURCES=lfedge/eve-sources:${{ env.TAG }}-${HV}-${{ env.ARCH }}
           docker pull "$EVE_SOURCES"
           docker create --name eve_sources "$EVE_SOURCES" bash
