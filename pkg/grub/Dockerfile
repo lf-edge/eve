@@ -16,7 +16,8 @@ ENV BUILD_PKGS automake \
                pkgconf \
                patch \
                gettext-dev \
-               bash
+               bash \
+               gawk
 ENV BUILD_PKGS_arm64 coreutils
 ENV BUILD_PKGS_riscv64 coreutils
 RUN eve-alpine-deploy.sh
@@ -76,11 +77,12 @@ RUN if [ ! -d "grub" ]; then \
         git config --global user.name "Your Name" && \
         git config --global user.email "you@example.com" && \
         git init . && git add . && git commit -m "init" && \
-        git am /apply/patches/* && \
-        (./bootstrap --gnulib-srcdir=/gnulib || ./autogen.sh); \
+        git am /apply/patches/*; \
     fi
 
 WORKDIR /grub
+
+RUN ./bootstrap --gnulib-srcdir=/gnulib || ./autogen.sh
 
 # hadolint ignore=SC2046
 RUN set -e; for p in ${GRUB_PLATFORM}; do \
