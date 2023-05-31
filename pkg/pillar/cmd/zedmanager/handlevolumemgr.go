@@ -333,9 +333,9 @@ func setSnapshotStatusError(aiStatus *types.AppInstanceStatus, snapshotID string
 
 func lookupAvailableSnapshot(status *types.AppInstanceStatus, id string) *types.SnapshotInstanceStatus {
 	log.Noticef("lookupAvailableSnapshot")
-	for _, snap := range status.SnapStatus.AvailableSnapshots {
+	for i, snap := range status.SnapStatus.AvailableSnapshots {
 		if snap.Snapshot.SnapshotID == id {
-			return &snap
+			return &status.SnapStatus.AvailableSnapshots[i]
 		}
 	}
 	return nil
