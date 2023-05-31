@@ -202,3 +202,4 @@ zlib-static
 zstd-dev
 zstd-libs
 zstd-static
+musl-libintl
