@@ -14,3 +14,4 @@
 ^.+go.sum
 ^.+/vendor/.+
 ^tests/eden/eclient/testdata/maridb\.txt
+^pkg/apparmor/etc/

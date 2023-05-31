@@ -1,0 +1,7 @@
+image: eve-apparmor
+org: lfedge
+config:
+  binds:
+    - /sys:/sys
+  capabilities:
+    - all
