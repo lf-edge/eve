@@ -141,11 +141,16 @@ func doUpdate(ctx *zedmanagerContext,
 			snappedAppInstanceConfig, err := triggerRollback(ctx, status)
 			if err != nil {
 				errDesc := types.ErrorDescription{}
+				errDesc.ErrorTime = time.Now()
 				errStr := fmt.Sprintf("doUpdate(%s) triggerRollback failed: %s", uuidStr, err)
 				errDesc.Error = errStr
 				log.Error(errStr)
+				status.SnapStatus.HasRollbackRequest = false
+				errDesc.ErrorSeverity = types.ErrorSeverityWarning
+				setSnapshotStatusError(status, status.SnapStatus.ActiveSnapshot, errDesc)
 				status.SetErrorWithSourceAndDescription(errDesc, types.AppInstanceStatus{})
-				changed = true
+				publishAppInstanceStatus(ctx, status)
+				return true
 			}
 			status.SnapStatus.HasRollbackRequest = false
 			status.SnapStatus.RollbackInProgress = true
