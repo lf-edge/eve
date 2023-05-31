@@ -19,6 +19,8 @@ GOTREE=$(CURDIR)/pkg/pillar
 BUILDTOOLS_BIN=$(CURDIR)/build-tools/bin
 PATH:=$(BUILDTOOLS_BIN):$(PATH)
 
+GOPKGVERSION=$(shell tools/goversion.sh 2>/dev/null)
+
 export CGO_ENABLED GOOS GOARCH PATH
 
 ifeq ($(BUILDKIT_PROGRESS),)
@@ -923,6 +925,9 @@ endif
 	$(QUIET)$(PARSE_PKGS) $< > $@
 	$(QUIET): $@: Succeeded
 
+%/gopkgversion:
+	$(QUIET) echo $(GOPKGVERSION) > $@
+
 
 # If DEV=y and file pkg/my_package/build-dev.yml returns the path to that file.
 # If RSTATS=y and file pkg/my_package/build-rstats.yml returns the path to that file.
@@ -932,7 +937,7 @@ get_pkg_build_def_yml = $(if $(filter y,$(DEV)),$(call get_pkg_build_dev_yml,$1)
 get_pkg_build_dev_yml = $(if $(wildcard pkg/$1/build-dev.yml),build-dev.yml,build.yml)
 get_pkg_build_rstats_yml = $(if $(wildcard pkg/$1/build-rstats.yml),build-rstats.yml,build.yml)
 
-eve-%: pkg/%/Dockerfile build-tools $(RESCAN_DEPS)
+eve-%: pkg/%/Dockerfile pkg/%/gopkgversion build-tools $(RESCAN_DEPS)
 	$(QUIET)if [ "$@" = "eve-kernel" ] || [ "$@" = "eve-new-kernel" ]; then tools/kernel-build-yml.sh; fi
 	$(QUIET): "$@: Begin: LINUXKIT_PKG_TARGET=$(LINUXKIT_PKG_TARGET)"
 	$(eval LINUXKIT_DOCKER_LOAD := $(if $(filter $(PKGS_DOCKER_LOAD),$*),--docker,))
