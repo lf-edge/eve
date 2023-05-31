@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"path"
+	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/types"
@@ -327,6 +328,9 @@ func setSnapshotStatusError(aiStatus *types.AppInstanceStatus, snapshotID string
 	if snapshotStatus == nil {
 		log.Errorf("setSnapshotStatusError: %s not found", snapshotID)
 		return
+	}
+	if errDesc.ErrorTime.IsZero() {
+		errDesc.ErrorTime = time.Now()
 	}
 	snapshotStatus.Error = errDesc
 }
