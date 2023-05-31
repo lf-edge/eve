@@ -121,6 +121,7 @@ KEXEC_TAG=${KEXEC_TAG}
 KDUMP_TAG=${KDUMP_TAG}
 MEASURE_CONFIG_TAG=${MEASURE_CONFIG_TAG}
 BSP_IMX_TAG=${BSP_IMX_TAG}
+APPARMOR_TAG=${APPARMOR_TAG}
 EOF
 }
 
@@ -172,6 +173,7 @@ KEXEC_TAG=$(linuxkit_tag pkg/kexec)
 KDUMP_TAG=$(linuxkit_tag pkg/kdump)
 MEASURE_CONFIG_TAG=$(linuxkit_tag pkg/measure-config)
 BSP_IMX_TAG=$(linuxkit_tag pkg/bsp-imx)
+APPARMOR_TAG=$(linuxkit_tag pkg/apparmor)
 
 # Synthetic tags: the following tags are based on hashing
 # the contents of all the Dockerfile.in that we can find.
