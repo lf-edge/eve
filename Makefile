@@ -27,7 +27,11 @@ ifeq ($(BUILDKIT_PROGRESS),)
 export BUILDKIT_PROGRESS := plain
 endif
 
-KERNEL_BUILD_YML_TOOL := tools/kernel-build-yml.sh
+PREEMPT_RT_SUPPORT_ARG := ""
+ifeq ($(PREEMPT_RT),1)
+  PREEMPT_RT_SUPPORT_ARG := "--preempt-rt-support"
+endif
+KERNEL_BUILD_YML_TOOL := tools/kernel-build-yml.sh $(PREEMPT_RT_SUPPORT_ARG)
 
 # A set of tweakable knobs for our build needs (tweak at your risk!)
 # Which version to assign to snapshot builds (0.0.0 if built locally, 0.0.0-snapshot if on CI/CD)
