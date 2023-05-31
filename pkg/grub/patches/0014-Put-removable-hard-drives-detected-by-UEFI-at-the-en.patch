@@ -1,0 +1,118 @@
+From a8dbd32d74f5e4ae0f1adac9b1486d6f05c21e0c Mon Sep 17 00:00:00 2001
+From: Mikhail Malyshev <mikem@zededa.com>
+Date: Tue, 30 May 2023 13:59:05 +0000
+Subject: [PATCH 14/14] Put removable hard drives detected by UEFI at the end
+ of the drive list
+
+When grub queries for available disks it doesn't take into account that
+the disk can be removable e.g. USB stick. The disk can appear in front of regular
+HDDs and the numbering will be different e.g. hd0 become hd1 when the
+USB stick is plugged in. It is not a problem for GRUB to find a correct
+partition in this case and the system can be booted just fine. However
+every command from grub.cfg is measured into PCR8 while being executed
+and HDD names appear in those commands e.g. 'set root=(hd2,gpt5)'. If
+any key is sealed into TPM using PCR8 then that key cannot be unsealed when a
+random USB stick is inserted (or removed if it was inserted when the key
+was sealed)
+
+The original issue should not affect PC BIOS case because USB devices
+are usually emulated as either CD or floppy drives and have their unique
+numbering
+
+The behaviour is controlled by reorder_removable_media flag set through
+eve_quirks environment variable
+
+Signed-off-by: Mikhail Malyshev <mikem@zededa.com>
+---
+ grub-core/disk/efi/efidisk.c | 49 ++++++++++++++++++++++++++++++------
+ 1 file changed, 41 insertions(+), 8 deletions(-)
+
+diff --git a/grub-core/disk/efi/efidisk.c b/grub-core/disk/efi/efidisk.c
+index 5d2400f66..916e8ec23 100644
+--- a/grub-core/disk/efi/efidisk.c
++++ b/grub-core/disk/efi/efidisk.c
+@@ -41,6 +41,7 @@ static grub_efi_guid_t block_io_guid = GRUB_EFI_BLOCK_IO_GUID;
+ 
+ static struct grub_efidisk_data *fd_devices;
+ static struct grub_efidisk_data *hd_devices;
++static struct grub_efidisk_data *hd_removable_devices;
+ static struct grub_efidisk_data *cd_devices;
+ 
+ static struct grub_efidisk_data *
+@@ -256,14 +257,25 @@ name_devices (struct grub_efidisk_data *devices)
+ 		  }
+ 		if (is_hard_drive)
+ 		  {
++                    if (parent->block_io->media->removable_media == 1)
++                       {
+ #ifdef DEBUG_NAMES
+-		    grub_printf ("adding a hard drive by a partition: ");
+-		    grub_efi_print_device_path (parent->device_path);
++                        grub_printf("adding a REMOVABLE hard drive by a partition: ");
++                        grub_efi_print_device_path(parent->device_path);
+ #endif
+-		    add_device (&hd_devices, parent);
+-		  }
+-		else
+-		  {
++                        add_device(&hd_removable_devices, parent);
++                      }
++                    else
++                      {
++#ifdef DEBUG_NAMES
++                        grub_printf("adding a hard drive by a partition: ");
++                        grub_efi_print_device_path(parent->device_path);
++#endif
++                        add_device(&hd_devices, parent);
++                      }
++                  }
++                else
++                  {
+ #ifdef DEBUG_NAMES
+ 		    grub_printf ("adding a cdrom by a partition: ");
+ 		    grub_efi_print_device_path (parent->device_path);
+@@ -359,9 +371,28 @@ name_devices (struct grub_efidisk_data *devices)
+ 	  grub_printf ("adding a hard drive by guessing: ");
+ 	  grub_efi_print_device_path (d->device_path);
+ #endif
+-	  add_device (&hd_devices, d);
+-	}
++          if (m->removable_media == 0)
++            {
++              add_device(&hd_devices, d);
++            }
++          else
++            {
++              add_device(&hd_removable_devices, d);
++            }
++        }
+     }
++    // link the removable devices to the end of the hd_devices list
++    if (hd_devices)
++      {
++        struct grub_efidisk_data *p;
++        for (p = hd_devices; p->next; p = p->next)
++          ;
++        p->next = hd_removable_devices;
++      }
++    else
++      {
++        hd_devices = hd_removable_devices;
++      }
+ }
+ 
+ static void
+@@ -641,8 +672,10 @@ grub_efidisk_fini (void)
+   free_devices (fd_devices);
+   free_devices (hd_devices);
+   free_devices (cd_devices);
++  // do not free hd_removable_devices, as it is a subset of hd_devices
+   fd_devices = 0;
+   hd_devices = 0;
++  hd_removable_devices = 0;
+   cd_devices = 0;
+   grub_disk_dev_unregister (&grub_efidisk_dev);
+ }
+-- 
+2.34.1
+
