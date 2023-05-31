@@ -106,14 +106,6 @@ RUN gpg2 -q --import keys.asc && \
     cat linux-${KERNEL_VERSION}.tar | tar --absolute-names -x && mv /linux-${KERNEL_VERSION} /linux && \
     rm -rf /out && mkdir /out && echo "KERNEL_SOURCE=${KERNEL_SOURCE}" > /out/kernel-source-info
 
-# Apply local patches
-WORKDIR /linux
-RUN set -e ; KERNEL_SERIES="${KERNEL_VERSION%.*}".x; \
-    [ ! -d /patches-"${KERNEL_SERIES}" ] || for patch in /patches-"${KERNEL_SERIES}"/*.patch; do \
-        echo "Applying $patch"; \
-        patch -p1 < "$patch"; \
-    done
-
 # Copy module signing x509 template and key
 WORKDIR /linux
 SHELL ["/bin/ash", "-eo", "pipefail", "-c"]
@@ -122,6 +114,14 @@ RUN cp /certs/x509.genkey /linux/certs/; \
         KEY=$(find certs/ -name \*.pem | head -1); \
         cp "${KEY}" /linux/certs/signing_key.pem; \
     fi
+
+# Apply local patches
+WORKDIR /linux
+RUN set -e ; KERNEL_SERIES="${KERNEL_VERSION%.*}".x; \
+    [ ! -d /patches-"${KERNEL_SERIES}" ] || for patch in /patches-"${KERNEL_SERIES}"/*.patch; do \
+        echo "Applying $patch"; \
+        patch -p1 < "$patch"; \
+    done
 
 # Copy default kconfig and prepare kbuild
 # hadolint ignore=SC2086
