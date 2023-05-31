@@ -27,6 +27,8 @@ ifeq ($(BUILDKIT_PROGRESS),)
 export BUILDKIT_PROGRESS := plain
 endif
 
+KERNEL_BUILD_YML_TOOL := tools/kernel-build-yml.sh
+
 # A set of tweakable knobs for our build needs (tweak at your risk!)
 # Which version to assign to snapshot builds (0.0.0 if built locally, 0.0.0-snapshot if on CI/CD)
 EVE_SNAPSHOT_VERSION=0.0.0
@@ -375,10 +377,8 @@ currentversion:
 	#echo $(shell readlink $(CURRENT) | sed -E 's/rootfs-(.*)\.[^.]*$/\1/')
 	@cat $(CURRENT_DIR)/installer/eve_version
 
-
 kernel-yml:
-	$(QUIET)if [ ! -f "pkg/kernel/build.yml" ] || [ ! -f "pkg/new-kernel/build.yml" ]; then tools/kernel-build-yml.sh; fi
-
+	$(QUIET)$(KERNEL_BUILD_YML_TOOL)
 
 .PHONY: currentversion linuxkit kernel-yml
 
@@ -936,7 +936,7 @@ get_pkg_build_dev_yml = $(if $(wildcard pkg/$1/build-dev.yml),build-dev.yml,buil
 get_pkg_build_rstats_yml = $(if $(wildcard pkg/$1/build-rstats.yml),build-rstats.yml,build.yml)
 
 eve-%: pkg/%/Dockerfile pkg/%/gopkgversion build-tools $(RESCAN_DEPS)
-	$(QUIET)if [ "$@" = "eve-kernel" ] || [ "$@" = "eve-new-kernel" ]; then tools/kernel-build-yml.sh; fi
+	$(QUIET)$(KERNEL_BUILD_YML_TOOL)
 	$(QUIET): "$@: Begin: LINUXKIT_PKG_TARGET=$(LINUXKIT_PKG_TARGET)"
 	$(eval LINUXKIT_DOCKER_LOAD := $(if $(filter $(PKGS_DOCKER_LOAD),$*),--docker,))
 	$(eval LINUXKIT_BUILD_PLATFORMS_LIST := $(call uniq,linux/$(ZARCH) $(if $(filter $(PKGS_HOSTARCH),$*),linux/$(HOSTARCH),)))
