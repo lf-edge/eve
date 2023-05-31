@@ -6,7 +6,7 @@ RUN eve-alpine-deploy.sh
 COPY ./  /newlog/.
 WORKDIR /newlog
 
-RUN GO111MODULE=on CGO_ENABLED=0 go build -ldflags "-s -w" -mod=vendor -o /out/usr/bin/newlogd ./cmd
+RUN GO111MODULE=on CGO_ENABLED=0 go build -ldflags "-s -w -X=main.Version=$(cat gopkgversion)" -mod=vendor -o /out/usr/bin/newlogd ./cmd
 
 # required for pubsub
 RUN rm -rf /out/var/run && mkdir -p /out/run /out/var && ln -s /run /out/var

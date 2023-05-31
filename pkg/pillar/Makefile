@@ -8,7 +8,7 @@
 ARCH         ?= amd64
 #ARCH        ?= arm64
 DISTDIR      := dist/$(ARCH)
-BUILD_VERSION=$(shell scripts/getversion.sh 2>/dev/null)
+BUILD_VERSION=$(shell cat gopkgversion)
 
 DOCKER_ARGS=
 DOCKER_TAG=lfedge/eve-pillar:local
