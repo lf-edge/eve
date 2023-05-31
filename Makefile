@@ -124,6 +124,7 @@ LIVE=$(BUILD_DIR)/live
 LIVE_IMG=$(BUILD_DIR)/live.$(IMG_FORMAT)
 TARGET_IMG=$(BUILD_DIR)/target.img
 INSTALLER=$(BUILD_DIR)/installer
+VERSION_FILE=$(INSTALLER)/eve_version
 VERIFICATION=$(BUILD_DIR)/verification
 BUILD_DIR=$(DIST)/$(ROOTFS_VERSION)
 CURRENT_DIR=$(DIST)/current
@@ -582,7 +583,7 @@ $(INSTALLER):
 	@mkdir -p $@
 	@cp -r pkg/eve/installer/* $@
 	# sample output 0.0.0-HEAD-a437e8e4-xen-amd64
-	@echo $(FULL_VERSION) > $(INSTALLER)/eve_version
+	@echo $(FULL_VERSION) > $(VERSION_FILE)
 
 $(VERIFICATION):
 	@mkdir -p $@
@@ -631,7 +632,7 @@ $(ROOTFS)-%.img: $(ROOTFS_IMG)
 
 $(ROOTFS_TAR): images/rootfs-$(HV).yml | $(INSTALLER)
 	$(QUIET): $@: Begin
-	./tools/makerootfs.sh tar -y $< -t $@ -a $(ZARCH)
+	./tools/makerootfs.sh tar -y $< -t $@ -d $(INSTALLER) -a $(ZARCH)
 	$(QUIET): $@: Succeeded
 
 $(ROOTFS_IMG): $(ROOTFS_TAR) | $(INSTALLER)
