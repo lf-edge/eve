@@ -248,6 +248,13 @@ var mToF = []modelToFuncs{
 		arg:         "user",
 	},
 	{
+		model:       "phytec,imx8mp-phyboard-pollux-rdk.*",
+		regexp:      true,
+		initFunc:    InitLedCmd,
+		displayFunc: ExecuteLedCmd,
+		arg:         "user-led3", // Blue LED
+	},
+	{
 		// Last in table as a default
 		model:       "",
 		initFunc:    InitForceDiskCmd,
