@@ -35,6 +35,8 @@ const (
 	SnapshotsDirname = PersistDir + "/snapshots"
 	// SnapshotConfigFilename - file to store snapshot configuration
 	SnapshotConfigFilename = "config.json"
+	// SnapshotMetadataFilename - file to store SnapshotInstanceStatus
+	SnapshotMetadataFilename = "metadata.json"
 
 	// IdentityDirname - Config dir
 	IdentityDirname = "/config"

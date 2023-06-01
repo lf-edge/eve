@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"path"
+	"path/filepath"
 	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/base"
@@ -357,10 +358,64 @@ func moveSnapshotToAvailable(status *types.AppInstanceStatus, volumesSnapshotSta
 	snapToBeMoved.TimeCreated = volumesSnapshotStatus.TimeCreated
 	// Mark as reported
 	snapToBeMoved.Reported = true
+	err := serializeSnapshotMetadata(status, snapToBeMoved)
+	if err != nil {
+		log.Errorf("moveSnapshotToAvailable: Failed to serialize snapshot metadata: %s", err)
+		return fmt.Errorf("failed to serialize snapshot metadata: %s", err)
+	}
 	// Add to AvailableSnapshots
 	status.SnapStatus.AvailableSnapshots = append(status.SnapStatus.AvailableSnapshots, *snapToBeMoved)
 	log.Noticef("Snapshot %s moved to AvailableSnapshots", volumesSnapshotStatus.SnapshotID)
 	return nil
+}
+
+func serializeSnapshotMetadata(status *types.AppInstanceStatus, moved *types.SnapshotInstanceStatus) error {
+	log.Noticef("serializeSnapshotMetadata")
+	snapshotDir := getSnapshotDir(moved.Snapshot.SnapshotID)
+	// check that the directory exists (it should exist by this moment)
+	if _, err := os.Stat(snapshotDir); err != nil {
+		log.Errorf("serializeSnapshotMetadata: Snapshot directory %s not found", snapshotDir)
+		return fmt.Errorf("snapshot directory %s not found", snapshotDir)
+	}
+	metadataFile := filepath.Join(snapshotDir, types.SnapshotMetadataFilename)
+	// serialize the SnapshotInstanceStatus into the file (JSON)
+	data, err := json.Marshal(moved)
+	if err != nil {
+		log.Errorf("serializeSnapshotMetadata: Failed to marshal SnapshotInstanceStatus: %s", err)
+		return fmt.Errorf("failed to marshal SnapshotInstanceStatus: %s", err)
+	}
+	err = os.WriteFile(metadataFile, data, 0644)
+	if err != nil {
+		log.Errorf("serializeSnapshotMetadata: Failed to write SnapshotInstanceStatus to file: %s", err)
+		return fmt.Errorf("failed to write SnapshotInstanceStatus to file: %s", err)
+	}
+
+	return nil
+}
+
+func deserializeSnapshotMetadata(snapshotID string) (*types.SnapshotInstanceStatus, error) {
+	log.Noticef("deserializeSnapshotMetadata")
+	snapshotDir := getSnapshotDir(snapshotID)
+	// check that the directory exists
+	if _, err := os.Stat(snapshotDir); err != nil {
+		log.Errorf("deserializeSnapshotMetadata: Snapshot directory %s not found", snapshotDir)
+		return nil, fmt.Errorf("snapshot directory %s not found", snapshotDir)
+	}
+	metadataFile := filepath.Join(snapshotDir, types.SnapshotMetadataFilename)
+	// read the file
+	data, err := os.ReadFile(metadataFile)
+	if err != nil {
+		log.Errorf("deserializeSnapshotMetadata: Failed to read SnapshotInstanceStatus from file: %s", err)
+		return nil, fmt.Errorf("failed to read SnapshotInstanceStatus from file: %s", err)
+	}
+	// deserialize the file into the SnapshotInstanceStatus
+	var snapshotStatus types.SnapshotInstanceStatus
+	err = json.Unmarshal(data, &snapshotStatus)
+	if err != nil {
+		log.Errorf("deserializeSnapshotMetadata: Failed to unmarshal SnapshotInstanceStatus: %s", err)
+		return nil, fmt.Errorf("failed to unmarshal SnapshotInstanceStatus: %s", err)
+	}
+	return &snapshotStatus, nil
 }
 
 func removeSnapshotFromSlice(slice *[]types.SnapshotInstanceStatus, id string) (removedSnap *types.SnapshotInstanceStatus) {
