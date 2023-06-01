@@ -266,6 +266,10 @@ func triggerRollback(ctx *zedmanagerContext, status *types.AppInstanceStatus) (*
 		}
 		restoredVolumeRefStatusList = append(restoredVolumeRefStatusList, *volumeRefStatus)
 		volumeRefConfig := lookupVolumeRefConfig(ctx, volumeRefStatus.Key())
+		if volumeRefConfig == nil {
+			log.Errorf("triggerRollback: No volumeRefConfig found for volume %s", volumeID.String())
+			return nil, errors.New("no volumeRefConfig found")
+		}
 		fixedVolumesRefConfig = append(fixedVolumesRefConfig, *volumeRefConfig)
 	}
 	status.VolumeRefStatusList = restoredVolumeRefStatusList
