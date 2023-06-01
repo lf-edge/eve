@@ -464,7 +464,7 @@ github.com/kr/fs
 github.com/lf-edge/edge-containers/pkg/registry
 github.com/lf-edge/edge-containers/pkg/resolver
 github.com/lf-edge/edge-containers/pkg/tgz
-# github.com/lf-edge/eve/api/go v0.0.0-00010101000000-000000000000 => ../../api/go
+# github.com/lf-edge/eve/api/go v0.0.0-20230306060116-9673fb35833f
 ## explicit; go 1.20
 github.com/lf-edge/eve/api/go/attest
 github.com/lf-edge/eve/api/go/auth
@@ -945,4 +945,3 @@ oras.land/oras-go/pkg/auth/docker
 oras.land/oras-go/pkg/content
 oras.land/oras-go/pkg/oras
 oras.land/oras-go/pkg/target
-# github.com/lf-edge/eve/api/go => ../../api/go

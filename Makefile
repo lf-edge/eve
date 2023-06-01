@@ -19,6 +19,8 @@ GOTREE=$(CURDIR)/pkg/pillar
 BUILDTOOLS_BIN=$(CURDIR)/build-tools/bin
 PATH:=$(BUILDTOOLS_BIN):$(PATH)
 
+GOPKGVERSION=$(shell tools/goversion.sh 2>/dev/null)
+
 export CGO_ENABLED GOOS GOARCH PATH
 
 ifeq ($(BUILDKIT_PROGRESS),)
@@ -302,7 +304,7 @@ DOCKERFILE_ADD_SCANNER_SOURCE=./tools/dockerfile-add-scanner
 
 # for the go build sources
 GOSOURCES=$(BUILDTOOLS_BIN)/go-sources-and-licenses
-GOSOURCES_VERSION=c73009667f4871c084c1f2164063321c81d053a2
+GOSOURCES_VERSION=35a4cc0e0a12f91ef11278eb0ce22f02fe9c96f6
 GOSOURCES_SOURCE=github.com/deitch/go-sources-and-licenses
 
 
@@ -678,13 +680,13 @@ $(COLLECTED_SOURCES): $(ROOTFS_TAR) $(GOSOURCES)| $(INSTALLER) $(SOURCES_DIR)
 
 $(COMPARESOURCES):
 	$(QUIET): $@: Begin
-	GOOS=$(LOCAL_GOOS) CGO_ENABLED=0 go build -o $(COMPARESOURCES) -C $(COMPARE_SOURCE)
+	cd $(COMPARE_SOURCE) && GOOS=$(LOCAL_GOOS) CGO_ENABLED=0 go build -o $(COMPARESOURCES)
 	@echo Done building packages
 	$(QUIET): $@: Succeeded
 
 $(DOCKERFILE_ADD_SCANNER):
 	$(QUIET): $@: Begin
-	GOOS=$(LOCAL_GOOS) CGO_ENABLED=0 go build -o $@ -C $(DOCKERFILE_ADD_SCANNER_SOURCE)
+	cd $(DOCKERFILE_ADD_SCANNER_SOURCE) && GOOS=$(LOCAL_GOOS) CGO_ENABLED=0 go build -o $@
 	@echo Done building dockerfile-add-scanner
 	$(QUIET): $@: Succeeded
 
@@ -801,16 +803,14 @@ cache-export-docker-load: $(LINUXKIT)
 ## will skip image if not found in cache
 cache-export-docker-load-all: $(LINUXKIT) $(addsuffix -cache-export-docker-load,$(PKGS_DOCKER_LOAD))
 
-proto-vendor:
-	@$(DOCKER_GO) "cd pkg/pillar ; go mod vendor" $(CURDIR) proto
-
 proto-diagram: $(GOBUILDER)
 	@$(DOCKER_GO) "/usr/local/bin/protodot -inc /usr/include -src ./api/proto/config/devconfig.proto -output devconfig && cp ~/protodot/generated/devconfig.* ./api/images && dot ./api/images/devconfig.dot -Tpng -o ./api/images/devconfig.png && echo generated ./api/images/devconfig.*" $(CURDIR) api
 
 .PHONY: proto-api-%
 
 proto: $(GOBUILDER) api/go api/python proto-diagram
-	@echo Done building protobuf, you may want to vendor it into pillar by running proto-vendor
+	@echo Done building protobuf, you may want to vendor it into your packages, e.g. `pkg/pillar`.
+	@echo See ./api/go/README.md for more information.
 
 api/go: PROTOC_OUT_OPTS=paths=source_relative:
 api/go: proto-api-go
@@ -923,6 +923,9 @@ endif
 	$(QUIET)$(PARSE_PKGS) $< > $@
 	$(QUIET): $@: Succeeded
 
+%/gopkgversion:
+	$(QUIET) echo $(GOPKGVERSION) > $@
+
 
 # If DEV=y and file pkg/my_package/build-dev.yml returns the path to that file.
 # If RSTATS=y and file pkg/my_package/build-rstats.yml returns the path to that file.
@@ -932,7 +935,7 @@ get_pkg_build_def_yml = $(if $(filter y,$(DEV)),$(call get_pkg_build_dev_yml,$1)
 get_pkg_build_dev_yml = $(if $(wildcard pkg/$1/build-dev.yml),build-dev.yml,build.yml)
 get_pkg_build_rstats_yml = $(if $(wildcard pkg/$1/build-rstats.yml),build-rstats.yml,build.yml)
 
-eve-%: pkg/%/Dockerfile build-tools $(RESCAN_DEPS)
+eve-%: pkg/%/Dockerfile pkg/%/gopkgversion build-tools $(RESCAN_DEPS)
 	$(QUIET)if [ "$@" = "eve-kernel" ] || [ "$@" = "eve-new-kernel" ]; then tools/kernel-build-yml.sh; fi
 	$(QUIET): "$@: Begin: LINUXKIT_PKG_TARGET=$(LINUXKIT_PKG_TARGET)"
 	$(eval LINUXKIT_DOCKER_LOAD := $(if $(filter $(PKGS_DOCKER_LOAD),$*),--docker,))
@@ -947,7 +950,7 @@ eve-%: pkg/%/Dockerfile build-tools $(RESCAN_DEPS)
 	$(QUIET): "$@: Succeeded (intermediate for pkg/%)"
 
 images/rootfs-%.yml.in: images/rootfs.yml.in FORCE
-	$(QUITE)tools/compose-image-yml.sh $< $@ "$(ROOTFS_VERSION)-$*-$(ZARCH)"
+	$(QUITE)tools/compose-image-yml.sh $< $@ "$(ROOTFS_VERSION)-$*-$(ZARCH)" $(HV)
 
 images-patches := $(wildcard images/*.yq)
 test-images-patches: $(images-patches:%.yq=%)
