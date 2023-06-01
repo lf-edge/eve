@@ -22,6 +22,7 @@ The four main knobs you should be aware of are:
 * `ZARCH` - sets the architecture (either arm64 or amd64) of the resulting image
 * `HV` - sets the hypervisor flavor of the resulting image (acrn, xen or kvm)
 * `IMAGE_FORMAT` - sets the image format of the resulting bootable image (raw, qcow2 or gcp)
+* `PREEMPT_RT` - (amd64 only) set to '1' applies, enables and builds PREEMPT_RT patches for EVE kernel
 
 You can always specify an arbitrary combinations of these knobs to set the desired outcome of the build.
 For example, the following command line will build a Google Compute Platform live image with the default
