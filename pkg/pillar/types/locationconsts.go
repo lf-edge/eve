@@ -33,10 +33,18 @@ const (
 	IngestedDirname = PersistDir + "/ingested"
 	// SnapshotsDirname - location for snapshots
 	SnapshotsDirname = PersistDir + "/snapshots"
+	// VolumeRefStatusDirName - directory used to store volume references
+	VolumeRefStatusDirName = "volumeRefStatuses"
+	// VolumeRefConfigDirName - directory used to store volume references
+	VolumeRefConfigDirName = "volumeRefConfigs"
+	// VolumeStatusDirName - directory used to store volume status
+	VolumeStatusDirName = "volumeStatuses"
 	// SnapshotConfigFilename - file to store snapshot configuration
-	SnapshotConfigFilename = "config.json"
-	// SnapshotMetadataFilename - file to store SnapshotInstanceStatus
-	SnapshotMetadataFilename = "metadata.json"
+	SnapshotConfigFilename = "appInstanceConfig.json"
+	// SnapshotInstanceStatusFilename - file to store SnapshotInstanceStatus
+	SnapshotInstanceStatusFilename = "snapshotInstanceStatus.json"
+	// SnapshotVolumesConfigFilename - file to store SnapshotVolumesConfig
+	SnapshotVolumesConfigFilename = "snapshotVolumesConfig.json"
 
 	// IdentityDirname - Config dir
 	IdentityDirname = "/config"

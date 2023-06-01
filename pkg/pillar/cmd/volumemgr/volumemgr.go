@@ -103,6 +103,22 @@ type volumemgrContext struct {
 	versionPtr *bool
 }
 
+func (ctxPtr *volumemgrContext) lookupOrCreateVolumeStatusByUUID(volumeID string, snapshotID string) *types.VolumeStatus {
+	// try to find in pubVolumeStatus
+	status := ctxPtr.lookupVolumeStatusByUUID(volumeID)
+	if status != nil {
+		return status
+	}
+	// try to deserialize
+	status, err := deserializeVolumeStatus(volumeID, snapshotID)
+	if err != nil {
+		log.Errorf("Failed to find volume status for %s: %s", volumeID, err)
+		return nil
+	}
+	publishVolumeStatus(ctxPtr, status)
+	return status
+}
+
 func (ctxPtr *volumemgrContext) lookupVolumeStatusByUUID(id string) *types.VolumeStatus {
 	sub := ctxPtr.pubVolumeStatus
 	items := sub.GetAll()

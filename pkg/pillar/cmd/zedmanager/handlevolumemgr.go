@@ -97,6 +97,86 @@ func lookupVolumeRefConfig(ctx *zedmanagerContext, key string) *types.VolumeRefC
 	return &config
 }
 
+func lookupOrCreateVolumeRefConfig(ctx *zedmanagerContext, volumeID string, snapshotID string) *types.VolumeRefConfig {
+	// Try to look up the VolumeRefConfig
+	config := lookupVolumeRefConfig(ctx, volumeID)
+	if config != nil {
+		return config
+	}
+	// deserialize the VolumeConfig
+	config, err := deserializeVolumeRefConfig(volumeID, snapshotID)
+	if err != nil {
+		log.Errorf("lookupOrCreateVolumeRefConfig(%s) failed to deserialize volume ref config: %v", volumeID, err)
+		return nil
+	}
+	// publish the VolumeRefConfig
+	publishVolumeRefConfig(ctx, config)
+	return config
+}
+
+func serializeVolumeRefConfig(config *types.VolumeRefConfig, snapshotID string) error {
+	log.Noticef("serializeVolumeRefConfig(%s) for %s", snapshotID, config.VolumeID.String())
+	// create volume ref config dir if it doesn't exist
+	volumeRefConfigDir := getVolumeRefConfigDir(snapshotID)
+	if _, err := os.Stat(volumeRefConfigDir); os.IsNotExist(err) {
+		log.Noticef("serializeVolumeRefConfig(%s) creating volume ref config dir %s", snapshotID, volumeRefConfigDir)
+		err = os.MkdirAll(volumeRefConfigDir, 0755)
+		if err != nil {
+			log.Errorf("serializeVolumeRefConfig(%s) failed to create volume ref config dir %s: %v", snapshotID, volumeRefConfigDir, err)
+			return err
+		}
+		log.Noticef("serializeVolumeRefConfig(%s) created volume ref config dir %s", snapshotID, volumeRefConfigDir)
+	}
+	fileName := getVolumeRefConfigFileName(config.VolumeID.String(), snapshotID)
+	configAsBytes, err := json.Marshal(config)
+	if err != nil {
+		log.Errorf("serializeVolumeRefConfig(%s) failed to marshal volume ref config %s: %v", snapshotID, fileName, err)
+		return err
+	}
+	err = fileutils.WriteRename(fileName, configAsBytes)
+	if err != nil {
+		log.Errorf("serializeVolumeRefConfig(%s) failed to write volume ref config %s: %v", snapshotID, fileName, err)
+		return err
+	}
+	log.Noticef("serializeVolumeRefConfig(%s) wrote volume ref config %s", snapshotID, fileName)
+	return nil
+}
+
+func deserializeVolumeRefConfig(key string, snapshotID string) (*types.VolumeRefConfig, error) {
+	log.Noticef("deserializeVolumeRefConfig(%s) for %s", snapshotID, key)
+	fileName := getVolumeRefConfigFileName(key, snapshotID)
+	// Try to open the file, check weather it exits
+	if _, err := os.Stat(fileName); os.IsNotExist(err) {
+		log.Errorf("Failed to find the volume ref config file for %s", key)
+		return nil, err
+	}
+	// open the file
+	volumeRefConfigFile, err := os.Open(fileName)
+	if err != nil {
+		log.Errorf("Failed to open the volume ref config file for %s", key)
+		return nil, err
+	}
+	defer volumeRefConfigFile.Close()
+	volumeRefConfig := types.VolumeRefConfig{}
+	// decode the file
+	err = json.NewDecoder(volumeRefConfigFile).Decode(&volumeRefConfig)
+	if err != nil {
+		log.Errorf("Failed to decode the volume ref config file for %s", key)
+		return nil, err
+	}
+	log.Noticef("deserializeVolumeRefConfig(%s) done for %s", snapshotID, key)
+	return &volumeRefConfig, nil
+}
+
+func getVolumeRefConfigFileName(volumeID string, snapshotID string) string {
+	fileName := fmt.Sprintf("%s.json", volumeID)
+	return path.Join(getVolumeRefConfigDir(snapshotID), fileName)
+}
+
+func getVolumeRefConfigDir(snapshotID string) string {
+	return path.Join(types.SnapshotsDirname, snapshotID, types.VolumeRefConfigDirName)
+}
+
 func getAllVolumeRefConfig(ctx *zedmanagerContext) []types.VolumeRefConfig {
 	pub := ctx.pubVolumeRefConfig
 	items := pub.GetAll()
@@ -256,6 +336,12 @@ func handleVolumesSnapshotStatusCreate(ctx interface{}, key string, status inter
 		publishAppInstanceStatus(zedmanagerCtx, appInstanceStatus)
 		return
 	}
+	// Check if the snapshot is already available (can happen during status restore after a reboot)
+	availableSnap := lookupAvailableSnapshot(appInstanceStatus, volumesSnapshotStatus.SnapshotID)
+	if availableSnap != nil {
+		return
+	}
+	// We have a new snapshot
 	log.Noticef("Snapshot %s created", volumesSnapshotStatus.SnapshotID)
 	err := moveSnapshotToAvailable(appInstanceStatus, volumesSnapshotStatus)
 	if err != nil {
@@ -307,7 +393,7 @@ func handleVolumesSnapshotStatusDelete(ctx interface{}, key string, status inter
 	}
 	deleteSnapshotFromStatus(appInstanceStatus, volumesSnapshotStatus.SnapshotID)
 	// Delete the serialized config, if it exists
-	configDir := getSnapshotDir(volumesSnapshotStatus.SnapshotID)
+	configDir := GetSnapshotDir(volumesSnapshotStatus.SnapshotID)
 	// delete the directory if it exists
 	if _, err := os.Stat(configDir); err == nil {
 		log.Noticef("Deleting snapshot directory %s", configDir)
@@ -358,7 +444,7 @@ func moveSnapshotToAvailable(status *types.AppInstanceStatus, volumesSnapshotSta
 	snapToBeMoved.TimeCreated = volumesSnapshotStatus.TimeCreated
 	// Mark as reported
 	snapToBeMoved.Reported = true
-	err := serializeSnapshotMetadata(status, snapToBeMoved)
+	err := serializeSnapshotInstanceStatus(status, snapToBeMoved)
 	if err != nil {
 		log.Errorf("moveSnapshotToAvailable: Failed to serialize snapshot metadata: %s", err)
 		return fmt.Errorf("failed to serialize snapshot metadata: %s", err)
@@ -369,53 +455,100 @@ func moveSnapshotToAvailable(status *types.AppInstanceStatus, volumesSnapshotSta
 	return nil
 }
 
-func serializeSnapshotMetadata(status *types.AppInstanceStatus, moved *types.SnapshotInstanceStatus) error {
-	log.Noticef("serializeSnapshotMetadata")
-	snapshotDir := getSnapshotDir(moved.Snapshot.SnapshotID)
+func serializeSnapshotInstanceStatus(status *types.AppInstanceStatus, moved *types.SnapshotInstanceStatus) error {
+	log.Noticef("serializeSnapshotInstanceStatus")
+	snapshotDir := GetSnapshotDir(moved.Snapshot.SnapshotID)
 	// check that the directory exists (it should exist by this moment)
 	if _, err := os.Stat(snapshotDir); err != nil {
-		log.Errorf("serializeSnapshotMetadata: Snapshot directory %s not found", snapshotDir)
+		log.Errorf("serializeSnapshotInstanceStatus: Snapshot directory %s not found", snapshotDir)
 		return fmt.Errorf("snapshot directory %s not found", snapshotDir)
 	}
-	metadataFile := filepath.Join(snapshotDir, types.SnapshotMetadataFilename)
+	metadataFile := filepath.Join(snapshotDir, types.SnapshotInstanceStatusFilename)
 	// serialize the SnapshotInstanceStatus into the file (JSON)
 	data, err := json.Marshal(moved)
 	if err != nil {
-		log.Errorf("serializeSnapshotMetadata: Failed to marshal SnapshotInstanceStatus: %s", err)
+		log.Errorf("serializeSnapshotInstanceStatus: Failed to marshal SnapshotInstanceStatus: %s", err)
 		return fmt.Errorf("failed to marshal SnapshotInstanceStatus: %s", err)
 	}
 	err = os.WriteFile(metadataFile, data, 0644)
 	if err != nil {
-		log.Errorf("serializeSnapshotMetadata: Failed to write SnapshotInstanceStatus to file: %s", err)
+		log.Errorf("serializeSnapshotInstanceStatus: Failed to write SnapshotInstanceStatus to file: %s", err)
 		return fmt.Errorf("failed to write SnapshotInstanceStatus to file: %s", err)
 	}
-
 	return nil
 }
 
-func deserializeSnapshotMetadata(snapshotID string) (*types.SnapshotInstanceStatus, error) {
-	log.Noticef("deserializeSnapshotMetadata")
-	snapshotDir := getSnapshotDir(snapshotID)
+func deserializeSnapshotInstanceStatus(snapshotID string) (*types.SnapshotInstanceStatus, error) {
+	log.Noticef("deserializeSnapshotInstanceStatus")
+	snapshotDir := GetSnapshotDir(snapshotID)
 	// check that the directory exists
 	if _, err := os.Stat(snapshotDir); err != nil {
-		log.Errorf("deserializeSnapshotMetadata: Snapshot directory %s not found", snapshotDir)
+		log.Errorf("deserializeSnapshotInstanceStatus: Snapshot directory %s not found", snapshotDir)
 		return nil, fmt.Errorf("snapshot directory %s not found", snapshotDir)
 	}
-	metadataFile := filepath.Join(snapshotDir, types.SnapshotMetadataFilename)
+	fileName := filepath.Join(snapshotDir, types.SnapshotInstanceStatusFilename)
 	// read the file
-	data, err := os.ReadFile(metadataFile)
+	data, err := os.ReadFile(fileName)
 	if err != nil {
-		log.Errorf("deserializeSnapshotMetadata: Failed to read SnapshotInstanceStatus from file: %s", err)
+		log.Errorf("deserializeSnapshotInstanceStatus: Failed to read SnapshotInstanceStatus from file: %s", err)
 		return nil, fmt.Errorf("failed to read SnapshotInstanceStatus from file: %s", err)
 	}
 	// deserialize the file into the SnapshotInstanceStatus
 	var snapshotStatus types.SnapshotInstanceStatus
 	err = json.Unmarshal(data, &snapshotStatus)
 	if err != nil {
-		log.Errorf("deserializeSnapshotMetadata: Failed to unmarshal SnapshotInstanceStatus: %s", err)
+		log.Errorf("deserializeSnapshotInstanceStatus: Failed to unmarshal SnapshotInstanceStatus: %s", err)
 		return nil, fmt.Errorf("failed to unmarshal SnapshotInstanceStatus: %s", err)
 	}
 	return &snapshotStatus, nil
+}
+
+func serializeSnapshotVolumesConfig(snapshotID string, volumesConfig *types.VolumesSnapshotConfig) error {
+	log.Noticef("serializeVolumesConfigToSnapshot(%s)", snapshotID)
+	snapshotDir := GetSnapshotDir(snapshotID)
+	// check that the directory exists (it should exist by this moment)
+	if _, err := os.Stat(snapshotDir); err != nil {
+		log.Errorf("serializeVolumesConfigToSnapshot: Snapshot directory %s not found", snapshotDir)
+		return fmt.Errorf("snapshot directory %s not found", snapshotDir)
+	}
+	fileName := filepath.Join(snapshotDir, types.SnapshotVolumesConfigFilename)
+	// serialize the VolumesSnapshotConfig into the file (JSON)
+	data, err := json.Marshal(volumesConfig)
+	if err != nil {
+		log.Errorf("serializeVolumesConfigToSnapshot: Failed to marshal VolumesSnapshotConfig: %s", err)
+		return fmt.Errorf("failed to marshal VolumesSnapshotConfig: %s", err)
+	}
+	err = fileutils.WriteRename(fileName, data)
+	if err != nil {
+		log.Errorf("serializeVolumesConfigToSnapshot: Failed to write VolumesSnapshotConfig to file: %s", err)
+		return fmt.Errorf("failed to write VolumesSnapshotConfig to file: %s", err)
+	}
+	return nil
+}
+
+func deserializeSnapshotVolumesConfig(snapshotID string) (*types.VolumesSnapshotConfig, error) {
+	log.Noticef("deserializeSnapshotVolumesConfig(%s)", snapshotID)
+	snapshotDir := GetSnapshotDir(snapshotID)
+	// check that the directory exists
+	if _, err := os.Stat(snapshotDir); err != nil {
+		log.Errorf("deserializeSnapshotVolumesConfig: Snapshot directory %s not found", snapshotDir)
+		return nil, fmt.Errorf("snapshot directory %s not found", snapshotDir)
+	}
+	fileName := filepath.Join(snapshotDir, types.SnapshotVolumesConfigFilename)
+	// read the file
+	data, err := os.ReadFile(fileName)
+	if err != nil {
+		log.Errorf("deserializeSnapshotVolumesConfig: Failed to read VolumesSnapshotConfig from file: %s", err)
+		return nil, fmt.Errorf("failed to read VolumesSnapshotConfig from file: %s", err)
+	}
+	// deserialize the file into the VolumesSnapshotConfig
+	var snapshotVolumesConfig types.VolumesSnapshotConfig
+	err = json.Unmarshal(data, &snapshotVolumesConfig)
+	if err != nil {
+		log.Errorf("deserializeSnapshotVolumesConfig: Failed to deserialize VolumesSnapshotConfig: %s", err)
+		return nil, fmt.Errorf("failed to deserialize VolumesSnapshotConfig: %s", err)
+	}
+	return &snapshotVolumesConfig, nil
 }
 
 func removeSnapshotFromSlice(slice *[]types.SnapshotInstanceStatus, id string) (removedSnap *types.SnapshotInstanceStatus) {
@@ -490,7 +623,7 @@ func addFixupsIntoSnappedConfig(ctx *zedmanagerContext, appInstanceStatus *types
 // deserializeConfigFromSnapshot deserializes the config from a file
 func deserializeConfigFromSnapshot(snapshotID string) *types.AppInstanceConfig {
 	log.Noticef("deserializeConfigFromSnapshot")
-	dirname := getSnapshotDir(snapshotID)
+	dirname := GetSnapshotDir(snapshotID)
 	filename := path.Join(dirname, types.SnapshotConfigFilename)
 	var appInstanceConfig types.AppInstanceConfig
 	configFile, err := os.Open(filename)

@@ -282,7 +282,7 @@ func restorePresnapStatus(ctx *zedmanagerContext, status *types.AppInstanceStatu
 			return errors.New("error deserializing volumeRefStatus")
 		}
 		restoredVolumeRefStatusList = append(restoredVolumeRefStatusList, *volumeRefStatus)
-		volumeRefConfig := lookupVolumeRefConfig(ctx, volumeRefStatus.Key())
+		volumeRefConfig := lookupOrCreateVolumeRefConfig(ctx, volumeRefStatus.VolumeID.String(), volumesSnapshotConfig.SnapshotID)
 		if volumeRefConfig == nil {
 			log.Errorf("restorePresnapStatus: No volumeRefConfig found for volume %s", volumeID.String())
 			return errors.New("no volumeRefConfig found")

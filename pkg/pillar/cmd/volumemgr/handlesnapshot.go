@@ -4,10 +4,15 @@
 package volumemgr
 
 import (
+	"encoding/json"
 	"fmt"
-	"github.com/lf-edge/eve/pkg/pillar/types"
-	"github.com/lf-edge/eve/pkg/pillar/volumehandlers"
+	"os"
 	"time"
+
+	"github.com/lf-edge/eve/pkg/pillar/cmd/zedmanager"
+	"github.com/lf-edge/eve/pkg/pillar/types"
+	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
+	"github.com/lf-edge/eve/pkg/pillar/volumehandlers"
 )
 
 func handleVolumesSnapshotCreate(ctxArg interface{}, key string, configArg interface{}) {
@@ -17,7 +22,7 @@ func handleVolumesSnapshotCreate(ctxArg interface{}, key string, configArg inter
 	// Check if snapshot snapshotStatus already exists, or it's a new snapshot request
 	snapshotStatus := lookupVolumesSnapshotStatus(ctx, config.SnapshotID)
 	if snapshotStatus != nil {
-		log.Errorf("Snapshot %s already exists", config.SnapshotID)
+		log.Warnf("Snapshot %s already exists", config.SnapshotID)
 		return
 	}
 	// Create a new snapshotStatus
@@ -56,6 +61,16 @@ func handleVolumesSnapshotCreate(ctxArg interface{}, key string, configArg inter
 			publishVolumesSnapshotStatus(ctx, snapshotStatus)
 			return
 		}
+		// Serialize the volume status
+		err = serializeVolumeStatus(volumeStatus, config.SnapshotID)
+		if err != nil {
+			errDesc := types.ErrorDescription{}
+			errDesc.Error = fmt.Sprintf("handleVolumesSnapshotCreate: failed to serialize volume status for %s, %s", volumeID.String(), err.Error())
+			log.Errorf(errDesc.Error)
+			snapshotStatus.SetErrorWithSourceAndDescription(errDesc, types.VolumesSnapshotStatus{})
+			publishVolumesSnapshotStatus(ctx, snapshotStatus)
+			return
+		}
 		// Save the snapshot metadata (for example, snapshot file location), so later it can be used for rollback
 		snapshotStatus.VolumeSnapshotMeta[volumeID.String()] = snapshotMeta
 		// Save the time when the snapshot was created
@@ -63,6 +78,70 @@ func handleVolumesSnapshotCreate(ctxArg interface{}, key string, configArg inter
 	}
 	log.Noticef("handleVolumesSnapshotCreate: successfully created snapshot %s", config.SnapshotID)
 	publishVolumesSnapshotStatus(ctx, snapshotStatus)
+}
+
+func serializeVolumeStatus(status *types.VolumeStatus, snapshotID string) error {
+	log.Noticef("serializeVolumeStatus(%s) for %s", snapshotID, status.VolumeID.String())
+	// create volume status dir if it doesn't exist
+	volumeStatusDir := getVolumeStatusDir(snapshotID)
+	if _, err := os.Stat(volumeStatusDir); os.IsNotExist(err) {
+		log.Noticef("serializeVolumeStatus(%s) creating volume status dir %s", snapshotID, volumeStatusDir)
+		err = os.MkdirAll(volumeStatusDir, 0755)
+		if err != nil {
+			log.Errorf("serializeVolumeStatus(%s) failed to create volume status dir %s", snapshotID, volumeStatusDir)
+			return err
+		}
+		log.Noticef("serializeVolumeStatus(%s) successfully created volume status dir %s", snapshotID, volumeStatusDir)
+	}
+	fileName := getVolumeStatusFileName(status.VolumeID.String(), snapshotID)
+	// Serialize the volume status
+	statusAsBytes, err := json.Marshal(status)
+	if err != nil {
+		log.Errorf("serializeVolumeStatus(%s) failed to marshal volume status for %s", snapshotID, status.VolumeID.String())
+		return err
+	}
+	// Create the file for storing the volume ref status
+	err = fileutils.WriteRename(fileName, statusAsBytes)
+	if err != nil {
+		log.Errorf("serializeVolumeStatus(%s) failed to write volume status for %s", snapshotID, status.VolumeID.String())
+		return err
+	}
+	return nil
+}
+
+func deserializeVolumeStatus(volumeID string, snapshotID string) (*types.VolumeStatus, error) {
+	log.Noticef("deserializeVolumeStatus(%s) for %s", snapshotID, volumeID)
+
+	fileName := getVolumeStatusFileName(volumeID, snapshotID)
+	// Try to open the file, check weather it exits
+	if _, err := os.Stat(fileName); os.IsNotExist(err) {
+		log.Errorf("Failed to find the volume status file for %s", volumeID)
+		return nil, err
+	}
+	// open the file
+	volumeStatusFile, err := os.Open(fileName)
+	if err != nil {
+		log.Errorf("Failed to open the volume status file for %s", volumeID)
+		return nil, err
+	}
+	defer volumeStatusFile.Close()
+	volumeStatus := types.VolumeStatus{}
+	// decode the file
+	err = json.NewDecoder(volumeStatusFile).Decode(&volumeStatus)
+	if err != nil {
+		log.Errorf("Failed to decode the volume status file for %s", volumeID)
+		return nil, err
+	}
+	log.Noticef("deserializeVolumeStatus(%s) successfully deserialized volume status for %s", snapshotID, volumeID)
+	return &volumeStatus, nil
+}
+
+func getVolumeStatusDir(snapshotID string) string {
+	return fmt.Sprintf("%s/%s", zedmanager.GetSnapshotDir(snapshotID), types.VolumeStatusDirName)
+}
+
+func getVolumeStatusFileName(volumeID string, snapshotID string) string {
+	return fmt.Sprintf("%s/%s.json", getVolumeStatusDir(snapshotID), volumeID)
 }
 
 func createVolumeSnapshot(ctx *volumemgrContext, volumeStatus *types.VolumeStatus) (interface{}, time.Time, error) {
@@ -102,7 +181,8 @@ func handleVolumesSnapshotModify(ctxArg interface{}, key string, configArg, _ in
 		return
 	}
 	for volumeID, snapMeta := range volumesSnapshotStatus.VolumeSnapshotMeta {
-		volumeStatus := ctx.lookupVolumeStatusByUUID(volumeID)
+		// First try to find the volume status in the active publisher
+		volumeStatus := ctx.lookupOrCreateVolumeStatusByUUID(volumeID, config.SnapshotID)
 		if volumeStatus == nil {
 			errDesc := types.ErrorDescription{}
 			errDesc.Error = fmt.Sprintf("handleVolumesSnapshotModify: volume %s not found", volumeID)
@@ -146,7 +226,7 @@ func handleVolumesSnapshotDelete(ctxArg interface{}, keyArg string, configArg in
 		return
 	}
 	for volumeUUID, snapMeta := range volumesSnapshotStatus.VolumeSnapshotMeta {
-		volumeStatus := ctx.lookupVolumeStatusByUUID(volumeUUID)
+		volumeStatus := ctx.lookupOrCreateVolumeStatusByUUID(volumeUUID, config.SnapshotID)
 		if volumeStatus == nil {
 			errDesc := types.ErrorDescription{}
 			errDesc.Error = fmt.Sprintf("handleVolumesSnapshotDelete: volume %s not found", volumeUUID)

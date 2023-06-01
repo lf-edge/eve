@@ -412,7 +412,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	}
 }
 
-func restoreAvailableSnapshots(aiStatus *types.AppInstanceStatus) {
+func restoreAvailableSnapshots(aiStatus *types.AppInstanceStatus, ctx *zedmanagerContext) {
 	// List all the directories that are present in snapshots directory
 	// and restore the snapshot status for each of them
 	snapDir := types.SnapshotsDirname
@@ -438,7 +438,7 @@ func restoreAvailableSnapshots(aiStatus *types.AppInstanceStatus) {
 		}
 		// Get the metadata for this snapshot
 		var availableSnapshot *types.SnapshotInstanceStatus
-		availableSnapshot, err = deserializeSnapshotMetadata(snapshotID)
+		availableSnapshot, err = deserializeSnapshotInstanceStatus(snapshotID)
 		if err != nil {
 			log.Errorf("restoreAvailableSnapshots: %s", err)
 			continue
@@ -446,6 +446,15 @@ func restoreAvailableSnapshots(aiStatus *types.AppInstanceStatus) {
 		log.Noticef("restoreAvailableSnapshots: %s", availableSnapshot.Snapshot.SnapshotID)
 		// add to the list of the available snapshots
 		aiStatus.SnapStatus.AvailableSnapshots = append(aiStatus.SnapStatus.AvailableSnapshots, *availableSnapshot)
+
+		// deserialize the snapshot volumes config
+		var snapshotVolumesConfig *types.VolumesSnapshotConfig
+		snapshotVolumesConfig, err = deserializeSnapshotVolumesConfig(snapshotID)
+		if err != nil {
+			log.Errorf("restoreAvailableSnapshots: %s", err)
+			continue
+		}
+		publishVolumesSnapshotConfig(ctx, snapshotVolumesConfig)
 	}
 }
 
@@ -829,7 +838,7 @@ func updateSnapshotsInAIStatus(status *types.AppInstanceStatus, config types.App
 // - A snapshot can only be initiated post the application stoppage.
 // - Upon application termination, the volumes list within the configuration might have already been modified, leading to inconsistencies.
 // Hence, we need this function to prepare the 'volumesSnapshotConfig' with the volumes list that was used when the snapshot was requested.
-func prepareVolumesSnapshotConfigs(ctx *zedmanagerContext, config types.AppInstanceConfig, status *types.AppInstanceStatus) []types.VolumesSnapshotConfig {
+func prepareVolumesSnapshotConfigs(ctx *zedmanagerContext, config types.AppInstanceConfig, status *types.AppInstanceStatus) ([]types.VolumesSnapshotConfig, error) {
 	var volumesSnapshotConfigList []types.VolumesSnapshotConfig
 	for _, snapshot := range status.SnapStatus.RequestedSnapshots {
 		if snapshot.Snapshot.SnapshotType == types.SnapshotTypeAppUpdate {
@@ -842,14 +851,25 @@ func prepareVolumesSnapshotConfigs(ctx *zedmanagerContext, config types.AppInsta
 			for _, volumeRefConfig := range config.VolumeRefConfigList {
 				log.Noticef("Adding volume %s to volumesSnapshotConfig", volumeRefConfig.VolumeID)
 				volumesSnapshotConfig.VolumeIDs = append(volumesSnapshotConfig.VolumeIDs, volumeRefConfig.VolumeID)
+				// serializeVolumeRefConfig serializes the volumeRefConfig
+				err := serializeVolumeRefConfig(&volumeRefConfig, snapshot.Snapshot.SnapshotID)
+				if err != nil {
+					log.Errorf("Failed to serialize volumeRefConfig for volume %s: %s", volumeRefConfig.VolumeID, err)
+					return nil, err
+				}
 				// Increment the reference count for the volume, so it's not deleted when it's temporary not used by any application
 				volumeRefConfig.RefCount++
 				publishVolumeRefConfig(ctx, &volumeRefConfig)
 			}
+			err := serializeSnapshotVolumesConfig(snapshot.Snapshot.SnapshotID, &volumesSnapshotConfig)
+			if err != nil {
+				log.Errorf("Failed to serialize volumesSnapshotConfig for snapshot %s: %s", snapshot.Snapshot.SnapshotID, err)
+				return nil, err
+			}
 			volumesSnapshotConfigList = append(volumesSnapshotConfigList, volumesSnapshotConfig)
 		}
 	}
-	return volumesSnapshotConfigList
+	return volumesSnapshotConfigList, nil
 }
 
 // removePreparedVolumesSnapshotConfig removes the prepared volumesSnapshotConfig from the list of prepared volumesSnapshotConfigs
@@ -902,6 +922,16 @@ func serializeVolumeRefStatusesToSnapshot(ctx *zedmanagerContext, config types.A
 }
 
 func serializeVolumeRefStatusToSnapshot(status *types.VolumeRefStatus, snapshotID string) error {
+	// Create the directory for storing the volume ref status if it doesn't exist
+	volumeRefStatusDir := getVolumeRefStatusDir(snapshotID)
+	if _, err := os.Stat(volumeRefStatusDir); os.IsNotExist(err) {
+		log.Noticef("Creating the directory for storing the volume ref status for %s", status.VolumeID)
+		err = os.MkdirAll(volumeRefStatusDir, 0755)
+		if err != nil {
+			log.Errorf("Failed to create the directory for storing the volume ref status for %s, error: %s", status.VolumeID, err)
+			return err
+		}
+	}
 	filename := getVolumeRefStatusFilename(status.VolumeID.String(), snapshotID)
 	log.Noticef("Serializing the volume ref status for %s to %s", status.VolumeID, filename)
 	statusAsBytes, err := json.Marshal(status)
@@ -946,8 +976,12 @@ func deserializeVolumeRefStatusFromSnapshot(volumeID string, snapshotID string) 
 	return &volumeRefStatus, nil
 }
 
+func getVolumeRefStatusDir(snapshotID string) string {
+	return fmt.Sprintf("%s/%s", GetSnapshotDir(snapshotID), types.VolumeRefStatusDirName)
+}
+
 func getVolumeRefStatusFilename(volumeID string, snapshotID string) string {
-	return fmt.Sprintf("%s/%s.json", getSnapshotDir(snapshotID), volumeID)
+	return fmt.Sprintf("%s/%s.json", getVolumeRefStatusDir(snapshotID), volumeID)
 }
 
 // serializeConfigToSnapshot serializes the config to a file
@@ -959,7 +993,7 @@ func serializeConfigToSnapshot(config types.AppInstanceConfig, snapshotID string
 		log.Errorf("Failed to marshal the old config for %s, error: %s", config.DisplayName, err)
 		return err
 	}
-	snapshotDir := getSnapshotDir(snapshotID)
+	snapshotDir := GetSnapshotDir(snapshotID)
 	// Create the directory for storing the old config
 	err = os.MkdirAll(snapshotDir, 0755)
 	if err != nil {
@@ -975,7 +1009,8 @@ func serializeConfigToSnapshot(config types.AppInstanceConfig, snapshotID string
 	return nil
 }
 
-func getSnapshotDir(snapshotID string) string {
+// GetSnapshotDir returns the directory where the snapshot is stored
+func GetSnapshotDir(snapshotID string) string {
 	snapshotDir := fmt.Sprintf("%s/%s", types.SnapshotsDirname, snapshotID)
 	return snapshotDir
 }
@@ -998,7 +1033,7 @@ func handleCreate(ctxArg interface{}, key string,
 	// Calculate the moment when the application should start, taking into account the configured delay
 	status.StartTime = ctx.delayBaseTime.Add(config.Delay)
 
-	restoreAvailableSnapshots(&status)
+	restoreAvailableSnapshots(&status, ctx)
 
 	updateSnapshotsInAIStatus(&status, config)
 
@@ -1124,8 +1159,14 @@ func handleModify(ctxArg interface{}, key string,
 		// Save the list of the volumes that need to be backed up. We will use this list to create the snapshot when
 		// it's triggered. We cannot trigger the snapshot creation here immediately, as the VM
 		// should be stopped first. But we still need to save the list of volumes that are known only at this point.
-		status.SnapStatus.PreparedVolumesSnapshotConfigs = prepareVolumesSnapshotConfigs(ctx, oldConfig, status)
-		err := saveConfigForSnapshots(ctx, status, oldConfig)
+		var err error
+		status.SnapStatus.PreparedVolumesSnapshotConfigs, err = prepareVolumesSnapshotConfigs(ctx, oldConfig, status)
+		if err != nil {
+			log.Errorf("handleModify(%v) for %s: error preparing volumes snapshot configs: %v",
+				config.UUIDandVersion, config.DisplayName, err)
+			return
+		}
+		err = saveConfigForSnapshots(ctx, status, oldConfig)
 		if err != nil {
 			log.Errorf("handleModify(%v) for %s: error saving old config for snapshots: %v",
 				config.UUIDandVersion, config.DisplayName, err)
