@@ -401,7 +401,7 @@ func restoreConfigFromSnapshot(ctx *zedmanagerContext, appInstanceStatus *types.
 		return nil, fmt.Errorf("SnapshotInstanceStatus not found for %s", snapshotID)
 	}
 	// Get the app instance config from the snapshot
-	snappedAppInstanceConfig := deserializeConfigFromSnapshot(snapshotStatus)
+	snappedAppInstanceConfig := deserializeConfigFromSnapshot(snapshotStatus.Snapshot.SnapshotID)
 	if snappedAppInstanceConfig == nil {
 		return nil, fmt.Errorf("failed to read AppInstanceConfig from file for %s", snapshotID)
 	}
@@ -434,9 +434,9 @@ func addFixupsIntoSnappedConfig(ctx *zedmanagerContext, appInstanceStatus *types
 }
 
 // deserializeConfigFromSnapshot deserializes the config from a file
-func deserializeConfigFromSnapshot(status *types.SnapshotInstanceStatus) *types.AppInstanceConfig {
+func deserializeConfigFromSnapshot(snapshotID string) *types.AppInstanceConfig {
 	log.Noticef("deserializeConfigFromSnapshot")
-	dirname := getSnapshotDir(status.Snapshot.SnapshotID)
+	dirname := getSnapshotDir(snapshotID)
 	filename := path.Join(dirname, types.SnapshotConfigFilename)
 	var appInstanceConfig types.AppInstanceConfig
 	configFile, err := os.Open(filename)
