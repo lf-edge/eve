@@ -254,6 +254,23 @@ func triggerRollback(ctx *zedmanagerContext, status *types.AppInstanceStatus) (*
 		log.Errorf("triggerRollback: No snapshot config found for %s", status.SnapStatus.ActiveSnapshot)
 		return nil, errors.New("no snapshot config found")
 	}
+	err := restorePresnapStatus(ctx, status, volumesSnapshotConfig)
+	if err != nil {
+		return nil, err
+	}
+	var snappedAppInstanceConfig *types.AppInstanceConfig
+	snappedAppInstanceConfig, err = restoreConfigFromSnapshot(ctx, status)
+	if err != nil {
+		log.Errorf("triggerRollback: Error restoring config from snapshot %s: %s", status.SnapStatus.ActiveSnapshot, err)
+		return nil, errors.New("error restoring config from snapshot")
+	}
+	// Switch the action to rollback
+	volumesSnapshotConfig.Action = types.VolumesSnapshotRollback
+	publishVolumesSnapshotConfig(ctx, volumesSnapshotConfig)
+	return snappedAppInstanceConfig, nil
+}
+
+func restorePresnapStatus(ctx *zedmanagerContext, status *types.AppInstanceStatus, volumesSnapshotConfig *types.VolumesSnapshotConfig) error {
 	// Restore volumeRefStatuses from the snapshot config. Do it before doActivate is called, so that the volumeRefStatuses are available
 	// when the maybeAddDomainConfig inside doActivate is called (the list is used there to update the domain config).
 	restoredVolumeRefStatusList := make([]types.VolumeRefStatus, 0)
@@ -261,11 +278,15 @@ func triggerRollback(ctx *zedmanagerContext, status *types.AppInstanceStatus) (*
 	for _, volumeID := range volumesSnapshotConfig.VolumeIDs {
 		volumeRefStatus, err := deserializeVolumeRefStatusFromSnapshot(volumeID.String(), status.SnapStatus.ActiveSnapshot)
 		if err != nil {
-			log.Errorf("triggerRollback: Error deserializing volumeRefStatus for volume %s from snapshot %s: %s", volumeID.String(), status.SnapStatus.ActiveSnapshot, err)
-			return nil, errors.New("error deserializing volumeRefStatus")
+			log.Errorf("restorePresnapStatus: Error deserializing volumeRefStatus for volume %s from snapshot %s: %s", volumeID.String(), status.SnapStatus.ActiveSnapshot, err)
+			return errors.New("error deserializing volumeRefStatus")
 		}
 		restoredVolumeRefStatusList = append(restoredVolumeRefStatusList, *volumeRefStatus)
 		volumeRefConfig := lookupVolumeRefConfig(ctx, volumeRefStatus.Key())
+		if volumeRefConfig == nil {
+			log.Errorf("restorePresnapStatus: No volumeRefConfig found for volume %s", volumeID.String())
+			return errors.New("no volumeRefConfig found")
+		}
 		fixedVolumesRefConfig = append(fixedVolumesRefConfig, *volumeRefConfig)
 	}
 	status.VolumeRefStatusList = restoredVolumeRefStatusList
@@ -282,15 +303,7 @@ func triggerRollback(ctx *zedmanagerContext, status *types.AppInstanceStatus) (*
 			unpublishVolumeRefConfig(ctx, volumeRefConfig.Key())
 		}
 	}
-	snappedAppInstanceConfig, err := restoreConfigFromSnapshot(ctx, status)
-	if err != nil {
-		log.Errorf("triggerRollback: Error restoring config from snapshot %s: %s", status.SnapStatus.ActiveSnapshot, err)
-		return nil, errors.New("error restoring config from snapshot")
-	}
-	// Switch the action to rollback
-	volumesSnapshotConfig.Action = types.VolumesSnapshotRollback
-	publishVolumesSnapshotConfig(ctx, volumesSnapshotConfig)
-	return snappedAppInstanceConfig, nil
+	return nil
 }
 
 func triggerSnapshotDeletion(snapshotsToBeDeleted []types.SnapshotDesc, ctx *zedmanagerContext, status *types.AppInstanceStatus) {
