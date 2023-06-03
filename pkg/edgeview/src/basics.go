@@ -419,11 +419,23 @@ func runCmd(prog string, args []string, isPrint bool) (string, error) {
 	} else {
 		retStr = string(retBytes)
 		if isPrint {
-			fmt.Println(retStr)
-			closePipe(true)
+			maySplitAndPrint([]byte(retStr))
 		}
 	}
 	return retStr, err
+}
+
+func maySplitAndPrint(pBytes []byte) {
+	if len(pBytes) > pipeBufHalfSize {
+		chunks := splitBySize(pBytes, pipeBufHalfSize)
+		for _, chunk := range chunks {
+			fmt.Println(string(chunk))
+			closePipe(true)
+		}
+	} else {
+		fmt.Println(string(pBytes))
+		closePipe(true)
+	}
 }
 
 func runCmdInFunction(prog string, args []string) ([]byte, error) {
