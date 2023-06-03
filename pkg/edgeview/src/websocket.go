@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"golang.org/x/sys/unix"
 )
 
 const (
@@ -30,17 +31,18 @@ const (
 )
 
 var (
-	readP         *os.File
-	writeP        *os.File
-	oldStdout     *os.File
-	techSuppFile  *os.File
-	socketOpen    bool
-	wsMsgCount    int
-	wsSentBytes   int
-	websocketConn *websocket.Conn
-	isTechSupport bool
-	reconnectCnt  int
-	websIndex     = invalidIndex
+	readP           *os.File
+	writeP          *os.File
+	oldStdout       *os.File
+	techSuppFile    *os.File
+	socketOpen      bool
+	wsMsgCount      int
+	wsSentBytes     int
+	websocketConn   *websocket.Conn
+	isTechSupport   bool
+	reconnectCnt    int
+	websIndex       = invalidIndex
+	pipeBufHalfSize int
 )
 
 func setupWebC(hostname, token string, u url.URL, isServer bool) bool {
@@ -212,6 +214,16 @@ func openPipe() (*os.File, *os.File, error) {
 	os.Stdout = w
 	socketOpen = true
 
+	if pipeBufHalfSize == 0 {
+		fd := r.Fd()
+		pipeBufHalfSize, err = unix.FcntlInt(uintptr(fd), unix.F_GETPIPE_SZ, 0)
+		if err != nil {
+			log.Errorf("openPipe: fcntl: %v", err)
+			pipeBufHalfSize = 8192
+		} else {
+			pipeBufHalfSize = pipeBufHalfSize / 2
+		}
+	}
 	return r, w, nil
 }
 
@@ -234,7 +246,7 @@ func closePipe(openAfter bool) {
 			}
 		}
 	} else if websocketConn != nil && len(buf.String()) > 0 {
-		for _, buff := range splitBySize(buf.Bytes(), 8192) {
+		for _, buff := range splitBySize(buf.Bytes(), pipeBufHalfSize) {
 			err := addEnvelopeAndWriteWss(buff, true)
 			if err != nil {
 				log.Errorf("write: %v", err)
