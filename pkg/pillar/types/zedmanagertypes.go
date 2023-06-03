@@ -247,6 +247,10 @@ type SnapshottingStatus struct {
 	HasRollbackRequest bool
 	// ActiveSnapshot contains the id of the snapshot to be used for the rollback.
 	ActiveSnapshot string
+	// RollbackInProgress indicates whether a rollback is in progress for the app instance.
+	RollbackInProgress bool
+	// ConfigBeforeRollback contains the version of the configuration of the app instance before the rollback
+	ConfigBeforeRollback UUIDandVersion
 }
 
 // Indexed by UUIDandVersion as above

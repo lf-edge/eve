@@ -29,6 +29,10 @@ func updateAIStatusUUID(ctx *zedmanagerContext, uuidStr string) {
 		removeAIStatus(ctx, status)
 		return
 	}
+	if status.SnapStatus.RollbackInProgress {
+		log.Noticef("updateAIStatusUUID(%s): RollbackInProgress, skipping", uuidStr)
+		return
+	}
 	changed := doUpdate(ctx, *config, status)
 	if changed {
 		log.Functionf("updateAIStatusUUID status change %d for %s",
@@ -114,14 +118,56 @@ func doUpdate(ctx *zedmanagerContext,
 	status *types.AppInstanceStatus) bool {
 
 	uuidStr := status.Key()
+	changed := false
+	done := false
 
 	log.Functionf("doUpdate: UUID:%s, Name", uuidStr)
 
+	// Manage events necessitating VM shutdown (such as snapshot removal, rollback).
+	// This is different from instances where the VM is deactivated due to a purge&update
+	// command from the controller, which is taken care of in the removeAIStatus function.
+	domainStatus := lookupDomainStatus(ctx, uuidStr)
+	// Is the VM already shutdown?
+	if domainStatus != nil && !domainStatus.Activated {
+		// Trigger snapshot removal
+		// Note, that we do not restart the VM explicitly for the snapshot removal, we just wait for the next restart,
+		// which ends in this line of code.
+		if len(status.SnapStatus.SnapshotsToBeDeleted) > 0 {
+			triggerSnapshotDeletion(status.SnapStatus.SnapshotsToBeDeleted, ctx, status)
+		}
+
+		// Trigger the rollback process
+		if status.SnapStatus.HasRollbackRequest {
+			snappedAppInstanceConfig, err := triggerRollback(ctx, status)
+			if err != nil {
+				errDesc := types.ErrorDescription{}
+				errDesc.ErrorTime = time.Now()
+				errStr := fmt.Sprintf("doUpdate(%s) triggerRollback failed: %s", uuidStr, err)
+				errDesc.Error = errStr
+				log.Error(errStr)
+				status.SnapStatus.HasRollbackRequest = false
+				errDesc.ErrorSeverity = types.ErrorSeverityWarning
+				setSnapshotStatusError(status, status.SnapStatus.ActiveSnapshot, errDesc)
+				status.SetErrorWithSourceAndDescription(errDesc, types.AppInstanceStatus{})
+				publishAppInstanceStatus(ctx, status)
+				return true
+			}
+			status.SnapStatus.HasRollbackRequest = false
+			status.SnapStatus.RollbackInProgress = true
+			status.SnapStatus.ConfigBeforeRollback = status.UUIDandVersion
+			status.UUIDandVersion = snappedAppInstanceConfig.UUIDandVersion
+			publishAppInstanceStatus(ctx, status)
+			handleModify(ctx, uuidStr, *snappedAppInstanceConfig, config)
+			return true
+		}
+	}
 	// The existence of Config is interpreted to mean the
 	// AppInstance should be INSTALLED. Activate is checked separately.
-	changed, done := doInstall(ctx, config, status)
-	if !done {
-		return changed
+	if config.UUIDandVersion != status.SnapStatus.ConfigBeforeRollback {
+		changed, done = doInstall(ctx, config, status)
+		if !done {
+			return changed
+		}
 	}
 
 	// Are we doing a purge?
@@ -139,34 +185,6 @@ func doUpdate(ctx *zedmanagerContext,
 		}
 		log.Functionf("PurgeInprogress(%s) bringing it up",
 			status.Key())
-	}
-
-	// Manage events necessitating VM shutdown (such as snapshot removal, rollback).
-	// This is different from instances where the VM is deactivated due to a purge&update
-	// command from the controller, which is taken care of in the removeAIStatus function.
-	domainStatus := lookupDomainStatus(ctx, uuidStr)
-	// Is the VM already shutdown?
-	if domainStatus != nil && !domainStatus.Activated {
-		// Trigger snapshot removal
-		// Note, that we do not restart the VM explicitly for the snapshot removal, we just wait for the next restart,
-		// which ends in this line of code.
-		if len(status.SnapStatus.SnapshotsToBeDeleted) > 0 {
-			triggerSnapshotDeletion(status.SnapStatus.SnapshotsToBeDeleted, ctx, status)
-		}
-
-		// Trigger the rollback process
-		if status.SnapStatus.HasRollbackRequest {
-			err := triggerRollback(ctx, *status)
-			status.SnapStatus.HasRollbackRequest = false
-			if err != nil {
-				errDesc := types.ErrorDescription{}
-				errStr := fmt.Sprintf("doUpdate(%s) triggerRollback failed: %s", uuidStr, err)
-				errDesc.Error = errStr
-				log.Error(errStr)
-				status.SetErrorWithSourceAndDescription(errDesc, types.AppInstanceStatus{})
-				return changed
-			}
-		}
 	}
 
 	if status.PurgeInprogress == types.RecreateVolumes {
@@ -226,18 +244,53 @@ func triggerSnapshots(ctx *zedmanagerContext, status *types.AppInstanceStatus) {
 	publishAppInstanceStatus(ctx, status)
 }
 
-func triggerRollback(ctx *zedmanagerContext, status types.AppInstanceStatus) error {
+// triggerRollback triggers the rollback process. It also restores the volumeRefStatuses from the snapshot config and
+// updates the list of volumeRefConfigs. It returns the config of the app instance to be rolled back to.
+func triggerRollback(ctx *zedmanagerContext, status *types.AppInstanceStatus) (*types.AppInstanceConfig, error) {
 	log.Noticef("Triggering rollback with snapshot %s", status.SnapStatus.ActiveSnapshot)
 	// Find the snapshot config for the snapshot to be rolled back
 	volumesSnapshotConfig := lookupVolumesSnapshotConfig(ctx, status.SnapStatus.ActiveSnapshot)
 	if volumesSnapshotConfig == nil {
 		log.Errorf("triggerRollback: No snapshot config found for %s", status.SnapStatus.ActiveSnapshot)
-		return errors.New("no snapshot config found")
+		return nil, errors.New("no snapshot config found")
+	}
+	// Restore volumeRefStatuses from the snapshot config. Do it before doActivate is called, so that the volumeRefStatuses are available
+	// when the maybeAddDomainConfig inside doActivate is called (the list is used there to update the domain config).
+	restoredVolumeRefStatusList := make([]types.VolumeRefStatus, 0)
+	fixedVolumesRefConfig := make([]types.VolumeRefConfig, 0)
+	for _, volumeID := range volumesSnapshotConfig.VolumeIDs {
+		volumeRefStatus, err := deserializeVolumeRefStatusFromSnapshot(volumeID.String(), status.SnapStatus.ActiveSnapshot)
+		if err != nil {
+			log.Errorf("triggerRollback: Error deserializing volumeRefStatus for volume %s from snapshot %s: %s", volumeID.String(), status.SnapStatus.ActiveSnapshot, err)
+			return nil, errors.New("error deserializing volumeRefStatus")
+		}
+		restoredVolumeRefStatusList = append(restoredVolumeRefStatusList, *volumeRefStatus)
+		volumeRefConfig := lookupVolumeRefConfig(ctx, volumeRefStatus.Key())
+		fixedVolumesRefConfig = append(fixedVolumesRefConfig, *volumeRefConfig)
+	}
+	status.VolumeRefStatusList = restoredVolumeRefStatusList
+	// Remove all volumeRefConfigs that are not in the fixedVolumesRefConfig list
+	for _, volumeRefConfig := range getAllVolumeRefConfig(ctx) {
+		inFixedList := false
+		for _, fixedVolumeRefConfig := range fixedVolumesRefConfig {
+			if volumeRefConfig.VolumeID == fixedVolumeRefConfig.VolumeID {
+				inFixedList = true
+				break
+			}
+		}
+		if !inFixedList {
+			unpublishVolumeRefConfig(ctx, volumeRefConfig.Key())
+		}
+	}
+	snappedAppInstanceConfig, err := restoreConfigFromSnapshot(ctx, status)
+	if err != nil {
+		log.Errorf("triggerRollback: Error restoring config from snapshot %s: %s", status.SnapStatus.ActiveSnapshot, err)
+		return nil, errors.New("error restoring config from snapshot")
 	}
 	// Switch the action to rollback
 	volumesSnapshotConfig.Action = types.VolumesSnapshotRollback
 	publishVolumesSnapshotConfig(ctx, volumesSnapshotConfig)
-	return nil
+	return snappedAppInstanceConfig, nil
 }
 
 func triggerSnapshotDeletion(snapshotsToBeDeleted []types.SnapshotDesc, ctx *zedmanagerContext, status *types.AppInstanceStatus) {
@@ -334,6 +387,9 @@ func doInstall(ctx *zedmanagerContext,
 			continue
 		}
 		if status.PurgeInprogress == types.NotInprogress {
+			if status.SnapStatus.RollbackInProgress {
+				continue
+			}
 			errString := fmt.Sprintf(
 				"New volumeRefConfig (VolumeID: %s, GenerationCounter: %d, "+
 					"LocalGenerationCounter: %d) found. "+

@@ -248,6 +248,13 @@ var mToF = []modelToFuncs{
 		arg:         "user",
 	},
 	{
+		model:       "phytec,imx8mp-phyboard-pollux-rdk.*",
+		regexp:      true,
+		initFunc:    InitLedCmd,
+		displayFunc: ExecuteLedCmd,
+		arg:         "user-led3", // Blue LED
+	},
+	{
 		// Last in table as a default
 		model:       "",
 		initFunc:    InitForceDiskCmd,
@@ -761,7 +768,7 @@ func doLedAction(ledName string, turnon bool) {
 	var brightnessFilename string
 	var b []byte
 	if turnon == true {
-		b = []byte("1")
+		b = maxLEDBrightness(ledName)
 	} else {
 		b = []byte("0")
 	}
@@ -786,12 +793,12 @@ func doLedBlink(ledName string) {
 		return
 	}
 	var brightnessFilename string
-	b := []byte("1")
 	if strings.HasPrefix(ledName, "/") {
 		brightnessFilename = ledName
 	} else {
 		brightnessFilename = fmt.Sprintf("/sys/class/leds/%s/brightness", ledName)
 	}
+	b := maxLEDBrightness(ledName)
 	err := os.WriteFile(brightnessFilename, b, 0644)
 	if err != nil {
 		if printOnce {
@@ -845,6 +852,21 @@ func appendLogfile(deviceNetworkStatus *types.DeviceNetworkStatus,
 	if _, err := file.WriteString(msg); err != nil {
 		log.Errorf("WriteString %s failed: %v", filename, err)
 		return
+	}
+}
+
+func maxLEDBrightness(ledName string) []byte {
+	log.Functionf("maxLEDBrightness(%s)", ledName)
+	if !strings.HasPrefix(ledName, "/") {
+		bmaxFilename := fmt.Sprintf("/sys/class/leds/%s/max_brightness", ledName)
+		brightness, err := os.ReadFile(bmaxFilename)
+		if err == nil {
+			return brightness
+		} else {
+			return []byte("1")
+		}
+	} else {
+		return []byte("1")
 	}
 }
 

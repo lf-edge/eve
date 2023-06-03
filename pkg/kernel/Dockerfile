@@ -79,6 +79,7 @@ ENV KERNEL_DEFCONFIG=x86_64_defconfig
 FROM kernel-target-${TARGETARCH} AS kernel-build
 
 COPY /kernel-config/* /
+COPY /certs /certs
 COPY /patches-5.10.x /patches-5.10.x
 COPY /patches-zfs-2.1.2 /patches-zfs-2.1.2
 
@@ -112,6 +113,15 @@ RUN set -e ; KERNEL_SERIES="${KERNEL_VERSION%.*}".x; \
         echo "Applying $patch"; \
         patch -p1 < "$patch"; \
     done
+
+# Copy module signing x509 template and key
+WORKDIR /linux
+SHELL ["/bin/ash", "-eo", "pipefail", "-c"]
+RUN cp /certs/x509.genkey /linux/certs/; \
+    if find certs/ -name \*.pem | grep . ; then \
+        KEY=$(find certs/ -name \*.pem | head -1); \
+        cp "${KEY}" /linux/certs/signing_key.pem; \
+    fi
 
 # Copy default kconfig and prepare kbuild
 # hadolint ignore=SC2086
@@ -215,6 +225,26 @@ RUN make -j "$(getconf _NPROCESSORS_ONLN)" CROSS_COMPILE="${CROSS_COMPILE_ENV}" 
 
 # Strip at least some of the modules to conserve space
 RUN if [ "${EVE_TARGET_ARCH}" = aarch64 ];then "${CROSS_COMPILE_ENV}strip" --strip-debug `find /tmp/kernel-modules/lib/modules -name \*.ko` ;fi
+
+# Resign stripped kernel modules again
+RUN if [ "${EVE_TARGET_ARCH}" = aarch64 ];then \
+    KERNEL_DEF_CONF="/linux/arch/${KERNEL_ARCH}/configs/${KERNEL_DEFCONFIG}"; \
+    if grep -q "^CONFIG_MODULE_SIG_FORCE=y" "${KERNEL_DEF_CONF}" ;then \
+        make INSTALL_MOD_PATH=/tmp/kernel-modules modules_sign ; \
+    fi \
+fi
+
+# Sign out-of-tree module(s)
+WORKDIR /linux
+SHELL ["/bin/ash", "-eo", "pipefail", "-c"]
+# hadolint ignore=SC2086,SC2046
+RUN KERNEL_DEF_CONF="/linux/arch/${KERNEL_ARCH}/configs/${KERNEL_DEFCONFIG}"; \
+    if grep -q "^CONFIG_MODULE_SIG_FORCE=y" "${KERNEL_DEF_CONF}" ;then \
+        SIG_HASH=$(sed -n '/^CONFIG_MODULE_SIG_HASH=/s///p' ${KERNEL_DEF_CONF} | tr -d '"') ; \
+        SIG_KEY_SRCPREFIX=$(sed -n '/^MODULE_SIG_KEY_SRCPREFIX=/s///p' ${KERNEL_DEF_CONF} | tr -d '"') ; \
+        SIG_KEY=$(sed -n '/^CONFIG_MODULE_SIG_KEY=/s///p' ${KERNEL_DEF_CONF} | tr -d '"') ; \
+        scripts/sign-file "${SIG_HASH}" "/linux/${SIG_KEY_SRCPREFIX}${SIG_KEY}" /linux/certs/signing_key.x509 $(find /tmp/kernel-modules/lib/modules -name 8821cu.ko); \
+    fi
 
 # Device Tree Blobs
 RUN if [ "${EVE_TARGET_ARCH}" = aarch64 ];then make INSTALL_DTBS_PATH=/tmp/kernel-modules/boot/dtb CROSS_COMPILE="${CROSS_COMPILE_ENV}" ARCH="${KERNEL_ARCH}" dtbs_install ;fi

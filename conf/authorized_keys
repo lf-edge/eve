@@ -1,6 +1,0 @@
-# put your own authorized_keys file in here
-# DO NOT use options in your authorized_keys
-# we only accept
-#    keytype, base64-encoded key, comment
-# format. E.g.:
-#    ssh-rsa AAAAB3NzaC1yc2EAAAADA foo@acme.corp

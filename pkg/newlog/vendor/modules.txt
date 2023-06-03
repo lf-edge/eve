@@ -24,7 +24,7 @@ github.com/google/go-cmp/cmp/internal/value
 # github.com/google/go-containerregistry v0.8.0
 ## explicit; go 1.14
 github.com/google/go-containerregistry/pkg/v1/types
-# github.com/lf-edge/eve/api/go v0.0.0-20220616105859-8b9463e1561b => ../../api/go
+# github.com/lf-edge/eve/api/go v0.0.0-20230306060116-9673fb35833f
 ## explicit; go 1.20
 github.com/lf-edge/eve/api/go/auth
 github.com/lf-edge/eve/api/go/certs
@@ -32,7 +32,7 @@ github.com/lf-edge/eve/api/go/config
 github.com/lf-edge/eve/api/go/evecommon
 github.com/lf-edge/eve/api/go/info
 github.com/lf-edge/eve/api/go/logs
-# github.com/lf-edge/eve/pkg/pillar v0.0.0-20230303013136-e890ce9ee8a3
+# github.com/lf-edge/eve/pkg/pillar v0.0.0-20230306060627-c6953d139f5f
 ## explicit; go 1.20
 github.com/lf-edge/eve/pkg/pillar/agentlog
 github.com/lf-edge/eve/pkg/pillar/base
@@ -99,4 +99,3 @@ google.golang.org/protobuf/reflect/protoregistry
 google.golang.org/protobuf/runtime/protoiface
 google.golang.org/protobuf/runtime/protoimpl
 google.golang.org/protobuf/types/known/timestamppb
-# github.com/lf-edge/eve/api/go => ../../api/go

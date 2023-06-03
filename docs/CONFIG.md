@@ -11,7 +11,7 @@ In general, EVE is trying to make sure that its controller always has the last w
 * `v2tlsbaseroot-certificates.pem` - contains the x509 root certificate to trust for the TLS to the controller when using the V2 API
 * `onboard.cert.pem` - onboarding certificate for the [initial registration](REGISTRATION.md) with the controller
 * `wpa_supplicant.conf` - a legacy way of configuring EVE's WiFi
-* `authorized_keys` - initial authorized SSH keys for accessing EVE's debug console
+* `authorized_keys` - initial authorized SSH keys for accessing EVE's debug console; DO NOT use options, we only accept 'keytype, base64-encoded key, comment' format
 * `bootstrap-config.pb`- initial device configuration used only until device is onboarded (see below for details)
 
 The initial content of these configuration files is stored in the EVE's source tree under [config](../config) folder. From there, these configuration files are baked into the EVE installer images. For the read-write bootable disk installer image these files can further be tweaked by mounting the "EVE" partition and editing those files directly on the installer image. This gives you an ability to take the default installer image and tweak it for your needs without re-building EVE from scratch (obviously this is not an option for a read-only ISO installer image). A typical workflow is to take an installer image from the official EVE build, flash it onto a USB flash drive, insert that USB flash drive into your desktop and edit file on the partition called EVE.
