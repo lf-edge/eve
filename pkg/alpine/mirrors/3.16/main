@@ -199,6 +199,9 @@ zip
 zlib
 zlib-dev
 zlib-static
+zstd-dev
+zstd-libs
+zstd-static
 openrc
 open-iscsi
 pm-utils
