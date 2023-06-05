@@ -803,6 +803,9 @@ cache-export-docker-load: $(LINUXKIT)
 ## will skip image if not found in cache
 cache-export-docker-load-all: $(LINUXKIT) $(addsuffix -cache-export-docker-load,$(PKGS_DOCKER_LOAD))
 
+proto-vendor:
+	@$(DOCKER_GO) "cd pkg/pillar ; go mod vendor" $(CURDIR) proto
+
 proto-diagram: $(GOBUILDER)
 	@$(DOCKER_GO) "/usr/local/bin/protodot -inc /usr/include -src ./api/proto/config/devconfig.proto -output devconfig && cp ~/protodot/generated/devconfig.* ./api/images && dot ./api/images/devconfig.dot -Tpng -o ./api/images/devconfig.png && echo generated ./api/images/devconfig.*" $(CURDIR) api
 
