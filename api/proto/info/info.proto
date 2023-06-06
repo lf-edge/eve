@@ -348,16 +348,30 @@ message ZInfoDeviceTasks {
   // deprecated 3
 }
 
+// ZSimcardInfo describes either empty SIM slot or a slot with a SIM card inserted.
 message ZSimcardInfo {
-  // Name is a SIM card identifier. For example ICCID if available.
+  // Name is a SIM card/slot identifier.
   // Guaranteed to be unique only in the scope of the edge node.
+  // Used as a reference from ZCellularStatus.sim_cards.
   string name = 1;
   // Reference to ZCellularModuleInfo.name
   string cell_module_name = 2;
+  // International Mobile Subscriber Identity.
   string imsi = 3;
+  // Integrated Circuit Card Identifier.
   string iccid = 4;
   reserved 5;  // legacy sim card status enum
+  // The current state of the SIM card (absent, initialized, not recognized, etc.).
+  // This state is not modeled using enum because the set of possible values differs
+  // between QMI and MBIM protocols (used to control cellular modules) and there is
+  // no 1:1 mapping between them.
   string state = 6;
+  // SIM slot number (of the modem referenced by cell_module_name) which this ZSimcardInfo
+  // describes.
+  uint32 slot_number = 7;
+  // True if this SIM slot is activated (i.e. inserted SIM card can be used to connect
+  // to cellular network).
+  bool slot_activated = 8;
 }
 
 message ZCellularModuleInfo {
@@ -369,6 +383,7 @@ message ZCellularModuleInfo {
   string model = 4;
   ZCellularOperatingState operating_state = 5;
   ZCellularControlProtocol control_protocol = 6;
+  string manufacturer = 7;
 }
 
 enum ZCellularOperatingState {
@@ -393,6 +408,8 @@ message ZCellularProvider {
   // True if this is the provider currently being used.
   bool current_serving = 3;
   bool roaming = 4;
+  // True if this provider is forbidden by SIM card config.
+  bool forbidden = 5;
 }
 
 // Device Run State
@@ -570,6 +587,7 @@ message ZInfoDevice {
   // Cellular / LTE related information
   repeated ZCellularModuleInfo cell_radios = 35;
   repeated ZSimcardInfo sims = 36;
+
   repeated ZInfoDeviceTasks tasks = 37;
 
   bool maintenance_mode = 38;
@@ -734,6 +752,7 @@ message DevicePort {
   string networkUUID = 31; // Network UUID configured for the port.
   uint32 cost = 32; // Zero is free. Max is 255.
   WirelessStatus wireless_status = 33; // defined for cellular/WiFi ports only
+  uint32 mtu = 34; // MTU of the port
 }
 
 message ProxyStatus {
@@ -773,7 +792,15 @@ message ZCellularStatus {
   // Ordered by slot numbers.
   repeated string sim_cards = 2;
   // List of available cellular service providers.
+  // If the modem is registered to a network, the list is guaranteed to contain an entry
+  // with ZCellularProvider.current_serving set to true, describing the current provider.
   repeated ZCellularProvider providers = 3;
+  // The list of Radio Access Technologies (RATs) currently used for registering/connecting
+  // to the network (typically just one).
+  repeated org.lfedge.eve.common.RadioAccessTechnology current_rats = 4;
+  // Time when the current connection was established.
+  // Zero timestamp if the modem is not connected.
+  google.protobuf.Timestamp connected_at = 5;
   // If EVE failed to configure the cellular connection, the error is published here.
   string config_error = 10;
   // if the connectivity probing is failing, error is reported here
@@ -977,7 +1004,9 @@ message ZInfoNetworkInstance {
   string bridgeIPAddr = 22;
 
   repeated ZmetIPAssignmentEntry ipAssignments = 23;
-  repeated string bridgeIPSets = 24; // Union of all ipsets for the bridge
+  // Field bridgeIPSets was deprecated, because such info is an implementation detail
+  // specific to network instances built on top of the Linux network stack.
+  reserved 24;
   repeated ZmetVifInfo vifs = 25; // Set of vifs on this bridge
   bool ipv4Eid = 26; // Track if this is a CryptoEid with IPv4 EIDs
 

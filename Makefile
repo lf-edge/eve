@@ -19,6 +19,8 @@ GOTREE=$(CURDIR)/pkg/pillar
 BUILDTOOLS_BIN=$(CURDIR)/build-tools/bin
 PATH:=$(BUILDTOOLS_BIN):$(PATH)
 
+GOPKGVERSION=$(shell tools/goversion.sh 2>/dev/null)
+
 export CGO_ENABLED GOOS GOARCH PATH
 
 ifeq ($(BUILDKIT_PROGRESS),)
@@ -65,6 +67,10 @@ BUILD_VM_SRC_amd64=https://cloud-images.ubuntu.com/focal/current/focal-server-cl
 BUILD_VM_SRC=$(BUILD_VM_SRC_$(ZARCH))
 
 UNAME_S := $(shell uname -s)
+UNAME_S_LCASE=$(shell uname -s | tr '[A-Z]' '[a-z]')
+
+# store the goos for local, as an easier-to-reference var
+LOCAL_GOOS=$(UNAME_S_LCASE)
 
 USER         = $(shell id -u -n)
 GROUP        = $(shell id -g -n)
@@ -118,6 +124,7 @@ LIVE=$(BUILD_DIR)/live
 LIVE_IMG=$(BUILD_DIR)/live.$(IMG_FORMAT)
 TARGET_IMG=$(BUILD_DIR)/target.img
 INSTALLER=$(BUILD_DIR)/installer
+VERSION_FILE=$(INSTALLER)/eve_version
 VERIFICATION=$(BUILD_DIR)/verification
 BUILD_DIR=$(DIST)/$(ROOTFS_VERSION)
 CURRENT_DIR=$(DIST)/current
@@ -204,10 +211,10 @@ QEMU_ACCEL_Y_Darwin_amd64=-machine q35,accel=hvf,usb=off -cpu kvm64,kvmclock=off
 QEMU_ACCEL_Y_Linux_amd64=-machine q35,accel=kvm,usb=off,dump-guest-core=off -cpu host,invtsc=on,kvmclock=off -machine kernel-irqchip=split -device intel-iommu,intremap=on,caching-mode=on,aw-bits=48
 # -machine virt,gic_version=3
 QEMU_ACCEL_Y_Linux_arm64=-machine virt,accel=kvm,usb=off,dump-guest-core=off -cpu host
-QEMU_ACCEL__$(shell uname -s)_arm64=-machine virt,virtualization=true -cpu cortex-a57
-QEMU_ACCEL__$(shell uname -s)_amd64=-machine q35 -cpu SandyBridge
-QEMU_ACCEL__$(shell uname -s)_riscv64=-machine virt -cpu rv64
-QEMU_ACCEL:=$(QEMU_ACCEL_$(ACCEL:%=Y)_$(shell uname -s)_$(ZARCH))
+QEMU_ACCEL__$(UNAME_S)_arm64=-machine virt,virtualization=true -cpu cortex-a57
+QEMU_ACCEL__$(UNAME_S)_amd64=-machine q35 -cpu SandyBridge
+QEMU_ACCEL__$(UNAME_S)_riscv64=-machine virt -cpu rv64
+QEMU_ACCEL:=$(QEMU_ACCEL_$(ACCEL:%=Y)_$(UNAME_S)_$(ZARCH))
 
 QEMU_OPTS_NET1=192.168.1.0/24
 QEMU_OPTS_NET1_FIRST_IP=192.168.1.10
@@ -292,9 +299,13 @@ RESCAN_DEPS=FORCE
 # set FORCE_BUILD to --force to enforce rebuild
 FORCE_BUILD=
 
+# for the dockerfile-add-scanner
+DOCKERFILE_ADD_SCANNER=$(BUILDTOOLS_BIN)/dockerfile-add-scanner
+DOCKERFILE_ADD_SCANNER_SOURCE=./tools/dockerfile-add-scanner
+
 # for the go build sources
 GOSOURCES=$(BUILDTOOLS_BIN)/go-sources-and-licenses
-GOSOURCES_VERSION=c73009667f4871c084c1f2164063321c81d053a2
+GOSOURCES_VERSION=35a4cc0e0a12f91ef11278eb0ce22f02fe9c96f6
 GOSOURCES_SOURCE=github.com/deitch/go-sources-and-licenses
 
 
@@ -302,7 +313,7 @@ GOSOURCES_SOURCE=github.com/deitch/go-sources-and-licenses
 COMPARESOURCES=$(BUILDTOOLS_BIN)/compare-sbom-sources
 COMPARE_SOURCE=./tools/compare-sbom-sources
 
-SYFT_VERSION:=v0.78.0
+SYFT_VERSION:=v0.82.0
 SYFT_IMAGE:=docker.io/anchore/syft:$(SYFT_VERSION)
 
 # we use the following block to assign correct tag to the Docker registry artifact
@@ -462,7 +473,9 @@ SWTPM:=SWTPM_$(TPM:%=Y)
 # patch /conf/grub.cfg for developer's builds to enable getty
 GETTY:
 	echo "Enabling GETTY in grub.cfg"
-	grep -qxF 'set_getty' $(CONF_DIR)/grub.cfg || echo 'set_getty' >> $(CONF_DIR)/grub.cfg
+	if [ ! -f $(CONF_DIR)/grub.cfg ]; then\
+	       	cp $(CONF_DIR)/grub.cfg.tmpl $(CONF_DIR)/grub.cfg;\
+	fi
 
 # run-installer
 #
@@ -576,7 +589,7 @@ $(INSTALLER):
 	@mkdir -p $@
 	@cp -r pkg/eve/installer/* $@
 	# sample output 0.0.0-HEAD-a437e8e4-xen-amd64
-	@echo $(FULL_VERSION) > $(INSTALLER)/eve_version
+	@echo $(FULL_VERSION) > $(VERSION_FILE)
 
 $(VERIFICATION):
 	@mkdir -p $@
@@ -625,7 +638,7 @@ $(ROOTFS)-%.img: $(ROOTFS_IMG)
 
 $(ROOTFS_TAR): images/rootfs-$(HV).yml | $(INSTALLER)
 	$(QUIET): $@: Begin
-	./tools/makerootfs.sh tar -y $< -t $@ -a $(ZARCH)
+	./tools/makerootfs.sh tar -y $< -t $@ -d $(INSTALLER) -a $(ZARCH)
 	$(QUIET): $@: Succeeded
 
 $(ROOTFS_IMG): $(ROOTFS_TAR) | $(INSTALLER)
@@ -642,7 +655,7 @@ sbom_info:
 collected_sources_info:
 	@echo "$(COLLECTED_SOURCES)"
 
-$(SBOM): $(ROOTFS_TAR)| $(INSTALLER)
+$(SBOM): $(ROOTFS_TAR) $(DOCKERFILE_ADD_SCANNER)| $(INSTALLER)
 	$(QUIET): $@: Begin
 	$(eval TMP_ROOTDIR := $(shell mktemp -d))
 	# this is a bit of a hack, but we need to extract the rootfs tar to a directory, and it fails if
@@ -651,6 +664,8 @@ $(SBOM): $(ROOTFS_TAR)| $(INSTALLER)
 	# this all can go away, and we can read the rootfs.tar
 	# see https://github.com/anchore/syft/issues/1400
 	tar xf $< -C $(TMP_ROOTDIR) --exclude "dev/*"
+	# we need to generate the kernel sbom, because syft would give a completely different structure
+	$(DOCKERFILE_ADD_SCANNER) scan ./pkg/kernel/Dockerfile --format spdx-json > $(TMP_ROOTDIR)/kernel-sbom.spdx.json
 	docker run -v $(TMP_ROOTDIR):/rootdir:ro -v $(CURDIR)/.syft.yaml:/syft.yaml:ro $(SYFT_IMAGE) -c /syft.yaml /rootdir > $@
 	rm -rf $(TMP_ROOTDIR)
 	$(QUIET): $@: Succeeded
@@ -672,9 +687,16 @@ $(COLLECTED_SOURCES): $(ROOTFS_TAR) $(GOSOURCES)| $(INSTALLER) $(SOURCES_DIR)
 
 $(COMPARESOURCES):
 	$(QUIET): $@: Begin
-	GOOS=$(shell uname -s | tr '[A-Z]' '[a-z]') CGO_ENABLED=0 go build -o $(COMPARESOURCES) -C $(COMPARE_SOURCE)
+	cd $(COMPARE_SOURCE) && GOOS=$(LOCAL_GOOS) CGO_ENABLED=0 go build -o $(COMPARESOURCES)
 	@echo Done building packages
 	$(QUIET): $@: Succeeded
+
+$(DOCKERFILE_ADD_SCANNER):
+	$(QUIET): $@: Begin
+	cd $(DOCKERFILE_ADD_SCANNER_SOURCE) && GOOS=$(LOCAL_GOOS) CGO_ENABLED=0 go build -o $@
+	@echo Done building dockerfile-add-scanner
+	$(QUIET): $@: Succeeded
+
 
 compare_sbom_collected_sources: $(COLLECTED_SOURCES) $(SBOM) | $(COMPARESOURCES)
 	$(QUIET): $@: Begin
@@ -685,7 +707,10 @@ compare_sbom_collected_sources: $(COLLECTED_SOURCES) $(SBOM) | $(COMPARESOURCES)
 publish_sources: $(COLLECTED_SOURCES)
 	$(QUIET): $@: Begin
 	cp pkg/sources/* $(SOURCES_DIR)
-	$(LINUXKIT) $(DASH_V) pkg $(LINUXKIT_PKG_TARGET) --platforms linux/$(ZARCH) --hash-path $(CURDIR) --hash $(ROOTFS_VERSION)-$(HV) --docker $(SOURCES_DIR)
+	$(LINUXKIT) $(DASH_V) pkg $(LINUXKIT_PKG_TARGET) --platforms linux/$(ZARCH) --hash-path $(CURDIR) --hash $(ROOTFS_VERSION)-$(HV) --docker $(if $(strip $(EVE_REL)),--release) $(EVE_REL)$(if $(strip $(EVE_REL)),-$(HV)) $(SOURCES_DIR) $|
+	$(QUIET)if [ -n "$(EVE_REL)" ] && [ $(HV) = $(HV_DEFAULT) ]; then \
+	   $(LINUXKIT) $(DASH_V) pkg $(LINUXKIT_PKG_TARGET) --platforms linux/$(ZARCH) --hash-path $(CURDIR) --hash $(EVE_REL)-$(HV) --docker --release $(EVE_REL) $(SOURCES_DIR) $| ;\
+	fi
 	$(QUIET): $@: Succeeded
 
 
@@ -785,16 +810,14 @@ cache-export-docker-load: $(LINUXKIT)
 ## will skip image if not found in cache
 cache-export-docker-load-all: $(LINUXKIT) $(addsuffix -cache-export-docker-load,$(PKGS_DOCKER_LOAD))
 
-proto-vendor:
-	@$(DOCKER_GO) "cd pkg/pillar ; go mod vendor" $(CURDIR) proto
-
 proto-diagram: $(GOBUILDER)
 	@$(DOCKER_GO) "/usr/local/bin/protodot -inc /usr/include -src ./api/proto/config/devconfig.proto -output devconfig && cp ~/protodot/generated/devconfig.* ./api/images && dot ./api/images/devconfig.dot -Tpng -o ./api/images/devconfig.png && echo generated ./api/images/devconfig.*" $(CURDIR) api
 
 .PHONY: proto-api-%
 
 proto: $(GOBUILDER) api/go api/python proto-diagram
-	@echo Done building protobuf, you may want to vendor it into pillar by running proto-vendor
+	@echo Done building protobuf, you may want to vendor it into your packages, e.g. `pkg/pillar`.
+	@echo See ./api/go/README.md for more information.
 
 api/go: PROTOC_OUT_OPTS=paths=source_relative:
 api/go: proto-api-go
@@ -852,7 +875,7 @@ $(LINUXKIT).$(LINUXKIT_VERSION):
 	@rm -rf $(LINUXKIT)*
 	@touch $(LINUXKIT).$(LINUXKIT_VERSION)
 # build linuxkit for the host OS, not the container OS
-$(LINUXKIT): GOOS=$(shell uname -s | tr '[A-Z]' '[a-z]')
+$(LINUXKIT): GOOS=$(LOCAL_GOOS)
 $(LINUXKIT): $(LINUXKIT).$(LINUXKIT_VERSION)
 $(LINUXKIT): | $(GOBUILDER)
 	$(QUIET)$(DOCKER_GO) \
@@ -907,6 +930,9 @@ endif
 	$(QUIET)$(PARSE_PKGS) $< > $@
 	$(QUIET): $@: Succeeded
 
+%/gopkgversion:
+	$(QUIET) echo $(GOPKGVERSION) > $@
+
 
 # If DEV=y and file pkg/my_package/build-dev.yml returns the path to that file.
 # If RSTATS=y and file pkg/my_package/build-rstats.yml returns the path to that file.
@@ -916,7 +942,7 @@ get_pkg_build_def_yml = $(if $(filter y,$(DEV)),$(call get_pkg_build_dev_yml,$1)
 get_pkg_build_dev_yml = $(if $(wildcard pkg/$1/build-dev.yml),build-dev.yml,build.yml)
 get_pkg_build_rstats_yml = $(if $(wildcard pkg/$1/build-rstats.yml),build-rstats.yml,build.yml)
 
-eve-%: pkg/%/Dockerfile build-tools $(RESCAN_DEPS)
+eve-%: pkg/%/Dockerfile pkg/%/gopkgversion build-tools $(RESCAN_DEPS)
 	$(QUIET)if [ "$@" = "eve-kernel" ] || [ "$@" = "eve-new-kernel" ]; then tools/kernel-build-yml.sh; fi
 	$(QUIET): "$@: Begin: LINUXKIT_PKG_TARGET=$(LINUXKIT_PKG_TARGET)"
 	$(eval LINUXKIT_DOCKER_LOAD := $(if $(filter $(PKGS_DOCKER_LOAD),$*),--docker,))
@@ -931,7 +957,7 @@ eve-%: pkg/%/Dockerfile build-tools $(RESCAN_DEPS)
 	$(QUIET): "$@: Succeeded (intermediate for pkg/%)"
 
 images/rootfs-%.yml.in: images/rootfs.yml.in FORCE
-	$(QUITE)tools/compose-image-yml.sh $< $@ "$(ROOTFS_VERSION)-$*-$(ZARCH)"
+	$(QUITE)tools/compose-image-yml.sh $< $@ "$(ROOTFS_VERSION)-$*-$(ZARCH)" $(HV)
 
 images-patches := $(wildcard images/*.yq)
 test-images-patches: $(images-patches:%.yq=%)

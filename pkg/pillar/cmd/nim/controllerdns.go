@@ -117,15 +117,14 @@ func (n *nim) controllerDNSCache(
 		n.Log.Tracef("append controller IP %s to /etc/hosts", lookupIPaddr)
 	}
 
-	var ttlSec int
-
 	if len(dnsResponses) > 0 {
 		ipaddrCached = dnsResponses[0].IP.String()
-		ttlSec = getTTL(time.Duration(dnsResponses[0].TTL))
+		ttlSec := getTTL(time.Duration(dnsResponses[0].TTL))
 		return ipaddrCached, ttlSec
-	} else {
-		return "", ttlSec
 	}
+
+	// No response or a failure; make sure we redo the query after 30 seconds.
+	return "", minTTLSec
 }
 
 func (n *nim) writeHostsFile(

@@ -33,8 +33,8 @@ const (
 	IngestedDirname = PersistDir + "/ingested"
 	// SnapshotsDirname - location for snapshots
 	SnapshotsDirname = PersistDir + "/snapshots"
-	// ConfigsForSnapshotsDirname - location for configs used per snapshot
-	ConfigsForSnapshotsDirname = SnapshotsDirname + "/configs"
+	// SnapshotConfigFilename - file to store snapshot configuration
+	SnapshotConfigFilename = "config.json"
 
 	// IdentityDirname - Config dir
 	IdentityDirname = "/config"

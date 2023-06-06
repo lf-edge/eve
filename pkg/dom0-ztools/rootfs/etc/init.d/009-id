@@ -5,3 +5,4 @@
 ID=$(zboot curpart 2>/dev/null)
 echo "${ID:-RAM}" > /run/eve.id
 cp -p /etc/eve-release /run/eve-release
+cp -p /etc/eve-hv-type /run/eve-hv-type

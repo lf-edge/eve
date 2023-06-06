@@ -25,8 +25,8 @@ require (
 	github.com/jackwakefield/gopac v1.0.2
 	github.com/jaypipes/ghw v0.8.0
 	github.com/lf-edge/edge-containers v0.0.0-20221025050409-93c34bebadd2
-	github.com/lf-edge/eve/api/go v0.0.0-00010101000000-000000000000
-	github.com/lf-edge/eve/libs v0.0.0-20230303013136-e890ce9ee8a3
+	github.com/lf-edge/eve/api/go v0.0.0-20230306060116-9673fb35833f
+	github.com/lf-edge/eve/libs v0.0.0-20230524115335-5c6c795151b7
 	github.com/linuxkit/linuxkit/src/cmd/linuxkit v0.0.0-20220913135124-e532e7310810
 	github.com/miekg/dns v1.1.41
 	github.com/moby/sys/mountinfo v0.6.0
@@ -142,5 +142,3 @@ require (
 	howett.net/plist v0.0.0-20181124034731-591f970eefbb // indirect
 	oras.land/oras-go v1.2.0 // indirect
 )
-
-replace github.com/lf-edge/eve/api/go => ../../api/go

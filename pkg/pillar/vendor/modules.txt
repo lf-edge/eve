@@ -408,11 +408,6 @@ github.com/gorilla/websocket
 github.com/grandcat/zeroconf
 # github.com/insomniacslk/dhcp v0.0.0-20221215072855-de60144f33f8
 ## explicit; go 1.13
-github.com/insomniacslk/dhcp/dhcpv4
-github.com/insomniacslk/dhcp/dhcpv4/nclient4
-github.com/insomniacslk/dhcp/iana
-github.com/insomniacslk/dhcp/interfaces
-github.com/insomniacslk/dhcp/rfc1035label
 # github.com/jackwakefield/gopac v1.0.2
 ## explicit
 github.com/jackwakefield/gopac
@@ -464,7 +459,7 @@ github.com/kr/fs
 github.com/lf-edge/edge-containers/pkg/registry
 github.com/lf-edge/edge-containers/pkg/resolver
 github.com/lf-edge/edge-containers/pkg/tgz
-# github.com/lf-edge/eve/api/go v0.0.0-00010101000000-000000000000 => ../../api/go
+# github.com/lf-edge/eve/api/go v0.0.0-20230306060116-9673fb35833f
 ## explicit; go 1.20
 github.com/lf-edge/eve/api/go/attest
 github.com/lf-edge/eve/api/go/auth
@@ -478,7 +473,7 @@ github.com/lf-edge/eve/api/go/logs
 github.com/lf-edge/eve/api/go/metrics
 github.com/lf-edge/eve/api/go/profile
 github.com/lf-edge/eve/api/go/register
-# github.com/lf-edge/eve/libs v0.0.0-20230303013136-e890ce9ee8a3
+# github.com/lf-edge/eve/libs v0.0.0-20230524115335-5c6c795151b7
 ## explicit; go 1.20
 github.com/lf-edge/eve/libs/depgraph
 github.com/lf-edge/eve/libs/nettrace
@@ -512,14 +507,12 @@ github.com/mattn/go-ieproxy
 github.com/matttproud/golang_protobuf_extensions/pbutil
 # github.com/mdlayher/ethernet v0.0.0-20190606142754-0394541c37b7
 ## explicit; go 1.12
-github.com/mdlayher/ethernet
 # github.com/mdlayher/netlink v1.7.1
 ## explicit; go 1.18
 github.com/mdlayher/netlink
 github.com/mdlayher/netlink/nlenc
 # github.com/mdlayher/raw v0.0.0-20191009151244-50f2db8cc065
 ## explicit; go 1.12
-github.com/mdlayher/raw
 # github.com/mdlayher/socket v0.4.0
 ## explicit; go 1.18
 github.com/mdlayher/socket
@@ -659,8 +652,6 @@ github.com/tklauser/go-sysconf
 github.com/tklauser/numcpus
 # github.com/u-root/uio v0.0.0-20221213070652-c3537552635f
 ## explicit; go 1.15
-github.com/u-root/uio/rand
-github.com/u-root/uio/uio
 # github.com/vbatts/tar-split v0.11.2
 ## explicit; go 1.15
 github.com/vbatts/tar-split/archive/tar
@@ -945,4 +936,3 @@ oras.land/oras-go/pkg/auth/docker
 oras.land/oras-go/pkg/content
 oras.land/oras-go/pkg/oras
 oras.land/oras-go/pkg/target
-# github.com/lf-edge/eve/api/go => ../../api/go

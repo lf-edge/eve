@@ -14,7 +14,7 @@ _sym_db = _symbol_database.Default()
 from evecommon import evecommon_pb2 as evecommon_dot_evecommon__pb2
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x18\x63onfig/acipherinfo.proto\x12\x15org.lfedge.eve.config\x1a\x19\x65vecommon/evecommon.proto\"\x98\x02\n\rCipherContext\x12\x11\n\tcontextId\x18\x01 \x01(\t\x12\x38\n\nhashScheme\x18\x02 \x01(\x0e\x32$.org.lfedge.eve.common.HashAlgorithm\x12\x43\n\x11keyExchangeScheme\x18\x03 \x01(\x0e\x32(.org.lfedge.eve.config.KeyExchangeScheme\x12\x41\n\x10\x65ncryptionScheme\x18\x04 \x01(\x0e\x32\'.org.lfedge.eve.config.EncryptionScheme\x12\x16\n\x0e\x64\x65viceCertHash\x18\x05 \x01(\x0c\x12\x1a\n\x12\x63ontrollerCertHash\x18\x06 \x01(\x0c\"i\n\x0b\x43ipherBlock\x12\x17\n\x0f\x63ipherContextId\x18\x01 \x01(\t\x12\x14\n\x0cinitialValue\x18\x02 \x01(\x0c\x12\x12\n\ncipherData\x18\x03 \x01(\x0c\x12\x17\n\x0f\x63learTextSha256\x18\x04 \x01(\x0c\"~\n\x0f\x45ncryptionBlock\x12\x10\n\x08\x64sAPIKey\x18\x01 \x01(\t\x12\x12\n\ndsPassword\x18\x02 \x01(\t\x12\x14\n\x0cwifiUserName\x18\x03 \x01(\t\x12\x14\n\x0cwifiPassword\x18\x04 \x01(\t\x12\x19\n\x11protectedUserData\x18\x05 \x01(\t*/\n\x11KeyExchangeScheme\x12\x0c\n\x08KEA_NONE\x10\x00\x12\x0c\n\x08KEA_ECDH\x10\x01*3\n\x10\x45ncryptionScheme\x12\x0b\n\x07SA_NONE\x10\x00\x12\x12\n\x0eSA_AES_256_CFB\x10\x01\x42=\n\x15org.lfedge.eve.configZ$github.com/lf-edge/eve/api/go/configb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x18\x63onfig/acipherinfo.proto\x12\x15org.lfedge.eve.config\x1a\x19\x65vecommon/evecommon.proto\"\x98\x02\n\rCipherContext\x12\x11\n\tcontextId\x18\x01 \x01(\t\x12\x38\n\nhashScheme\x18\x02 \x01(\x0e\x32$.org.lfedge.eve.common.HashAlgorithm\x12\x43\n\x11keyExchangeScheme\x18\x03 \x01(\x0e\x32(.org.lfedge.eve.config.KeyExchangeScheme\x12\x41\n\x10\x65ncryptionScheme\x18\x04 \x01(\x0e\x32\'.org.lfedge.eve.config.EncryptionScheme\x12\x16\n\x0e\x64\x65viceCertHash\x18\x05 \x01(\x0c\x12\x1a\n\x12\x63ontrollerCertHash\x18\x06 \x01(\x0c\"i\n\x0b\x43ipherBlock\x12\x17\n\x0f\x63ipherContextId\x18\x01 \x01(\t\x12\x14\n\x0cinitialValue\x18\x02 \x01(\x0c\x12\x12\n\ncipherData\x18\x03 \x01(\x0c\x12\x17\n\x0f\x63learTextSha256\x18\x04 \x01(\x0c\"\xbc\x01\n\x0f\x45ncryptionBlock\x12\x10\n\x08\x64sAPIKey\x18\x01 \x01(\t\x12\x12\n\ndsPassword\x18\x02 \x01(\t\x12\x14\n\x0cwifiUserName\x18\x03 \x01(\t\x12\x14\n\x0cwifiPassword\x18\x04 \x01(\t\x12\x19\n\x11protectedUserData\x18\x05 \x01(\t\x12\x1d\n\x15\x63\x65llular_net_username\x18\x06 \x01(\t\x12\x1d\n\x15\x63\x65llular_net_password\x18\x07 \x01(\t*/\n\x11KeyExchangeScheme\x12\x0c\n\x08KEA_NONE\x10\x00\x12\x0c\n\x08KEA_ECDH\x10\x01*3\n\x10\x45ncryptionScheme\x12\x0b\n\x07SA_NONE\x10\x00\x12\x12\n\x0eSA_AES_256_CFB\x10\x01\x42=\n\x15org.lfedge.eve.configZ$github.com/lf-edge/eve/api/go/configb\x06proto3')
 
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, globals())
 _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'config.acipherinfo_pb2', globals())
@@ -22,14 +22,14 @@ if _descriptor._USE_C_DESCRIPTORS == False:
 
   DESCRIPTOR._options = None
   DESCRIPTOR._serialized_options = b'\n\025org.lfedge.eve.configZ$github.com/lf-edge/eve/api/go/config'
-  _KEYEXCHANGESCHEME._serialized_start=596
-  _KEYEXCHANGESCHEME._serialized_end=643
-  _ENCRYPTIONSCHEME._serialized_start=645
-  _ENCRYPTIONSCHEME._serialized_end=696
+  _KEYEXCHANGESCHEME._serialized_start=659
+  _KEYEXCHANGESCHEME._serialized_end=706
+  _ENCRYPTIONSCHEME._serialized_start=708
+  _ENCRYPTIONSCHEME._serialized_end=759
   _CIPHERCONTEXT._serialized_start=79
   _CIPHERCONTEXT._serialized_end=359
   _CIPHERBLOCK._serialized_start=361
   _CIPHERBLOCK._serialized_end=466
-  _ENCRYPTIONBLOCK._serialized_start=468
-  _ENCRYPTIONBLOCK._serialized_end=594
+  _ENCRYPTIONBLOCK._serialized_start=469
+  _ENCRYPTIONBLOCK._serialized_end=657
 # @@protoc_insertion_point(module_scope)

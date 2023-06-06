@@ -6,8 +6,8 @@ require (
 	github.com/euank/go-kmsg-parser v2.0.0+incompatible
 	github.com/golang/protobuf v1.5.2
 	github.com/google/go-cmp v0.5.9
-	github.com/lf-edge/eve/api/go v0.0.0-20220616105859-8b9463e1561b
-	github.com/lf-edge/eve/pkg/pillar v0.0.0-20230303013136-e890ce9ee8a3
+	github.com/lf-edge/eve/api/go v0.0.0-20230306060116-9673fb35833f
+	github.com/lf-edge/eve/pkg/pillar v0.0.0-20230306060627-c6953d139f5f
 	github.com/sirupsen/logrus v1.9.0
 )
 
@@ -24,5 +24,3 @@ require (
 	golang.org/x/sys v0.5.0 // indirect
 	google.golang.org/protobuf v1.28.1 // indirect
 )
-
-replace github.com/lf-edge/eve/api/go => ../../api/go

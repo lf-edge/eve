@@ -18,9 +18,11 @@ on:  # yamllint disable-line rule:truthy
       - Publish
     types:
       - completed
-    branches-ignore:
+    branches:
+      - "master"
       - "[0-9]+.[0-9]+"
       - "[0-9]+.[0-9]+-stable"
+      - "[0-9]+.[0-9]+-lts"
 
 jobs:
   build:
@@ -79,10 +81,14 @@ jobs:
              mv assets/kernel assets/kernel.gz
              gzip -d assets/kernel.gz
           fi
-      - name: Build SBOM and collected sources
+      - name: Pull eve-sources and publish collected_sources.tar.gz to assets
         run: |
-          make sbom collected_sources compare_sbom_collected_sources
-          mv $(make sbom_info collected_sources_info) assets/
+          HV=kvm
+          EVE_SOURCES=lfedge/eve-sources:${{ env.TAG }}-${HV}-${{ env.ARCH }}
+          docker pull "$EVE_SOURCES"
+          docker create --name eve_sources "$EVE_SOURCES" bash
+          docker export --output assets/collected_sources.tar.gz eve_sources
+          docker rm eve_sources
       - name: Create a GitHub release and clean up artifacts
         id: create-release
         uses: actions/github-script@v3
@@ -217,16 +223,6 @@ jobs:
           asset_path: assets/ipxe.efi.ip.cfg
           asset_name: ${{ env.ARCH }}.ipxe.efi.ip.cfg
           asset_content_type: application/octet-stream
-      - name: Upload SBOM
-        id: upload-sbom-asset
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create-release.outputs.result }}
-          asset_path: assets/rootfs.spdx.json
-          asset_name: ${{ env.ARCH }}.rootfs.spdx.json
-          asset_content_type: application/json
       - name: Upload COLLECTED_SOURCES
         id: upload-collected-sources-asset
         uses: actions/upload-release-asset@v1

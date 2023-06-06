@@ -970,8 +970,10 @@ func SendOnIntf(workContext context.Context, ctx *ZedCloudContext, destURL strin
 			errStr := fmt.Sprintf("SendOnIntf to %s reqlen %d statuscode %d %s body:\n%s",
 				reqURL, reqlen, resp.StatusCode,
 				http.StatusText(resp.StatusCode), hexdump)
-			// zedrouter probing sends 'http' to zedcloud server, expect to get status of 404, not an error
-			if resp.StatusCode != http.StatusNotFound || ctx.AgentName != "zedrouter" {
+			// zedrouter probing sends 'http' to zedcloud server and expects
+			// to get status of 404 or 400, not an error
+			if (resp.StatusCode != http.StatusBadRequest &&
+				resp.StatusCode != http.StatusNotFound) || ctx.AgentName != "zedrouter" {
 				log.Errorln(errStr)
 				log.Errorf("Got payload for status %s: %s",
 					http.StatusText(resp.StatusCode), contents)

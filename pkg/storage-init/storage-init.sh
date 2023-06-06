@@ -100,11 +100,6 @@ fi
 
 INIT_FS=0
 P3_FS_TYPE_DEFAULT=ext4
-# check if we have zfs-kvm or zfs-xen or zfs-acrn in eve version
-# if so use zfs as default
-if grep -E 'zfs-(kvm|xen|acrn)' /hostfs/etc/eve-release; then
-   P3_FS_TYPE_DEFAULT=zfs
-fi
 # check if we have eve_install_zfs_with_raid_level in kernel command line
 # if so use zfs as default
 if grep -q 'eve_install_zfs_with_raid_level' /proc/cmdline; then

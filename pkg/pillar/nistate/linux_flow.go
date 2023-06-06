@@ -13,7 +13,6 @@ import (
 	"syscall"
 	"time"
 
-	log "github.com/sirupsen/logrus"
 	"golang.org/x/net/bpf"
 
 	"github.com/google/gopacket"
@@ -72,7 +71,7 @@ func (lc *LinuxCollector) collectFlows() (flows []types.IPFlow) {
 	for _, proto := range protocols {
 		connT, err := netlink.ConntrackTableList(netlink.ConntrackTable, proto)
 		if err != nil {
-			log.Errorf("%s: ContrackTableList failed: %v",
+			lc.log.Errorf("%s: ContrackTableList failed: %v",
 				flowLogPrefix, err)
 			return nil
 		}
@@ -208,7 +207,7 @@ func (lc *LinuxCollector) convertConntrackToFlow(
 
 	if !forwSrcApp && !forwDstApp && !backSrcApp && !backDstApp {
 		// If app endpoint is not part of the flow, something is wrong.
-		log.Warnf("%s: Flow entry without app IP address, "+
+		lc.log.Warnf("%s: Flow entry without app IP address, "+
 			"appNum: %d, entry: %s", flowLogPrefix, appNum, entry.String())
 		return ipFlow, true
 	}
@@ -474,7 +473,8 @@ func (lc *LinuxCollector) processCapturedPacket(
 		if dnslayer != nil {
 			lc.processDNSPacketInfo(niInfo, packet)
 		}
-	} else if niInfo.config.Type == types.NetworkInstanceTypeSwitch && packet.LinkLayer() != nil {
+	} else if niInfo.config.Type == types.NetworkInstanceTypeSwitch &&
+		packet.LinkLayer() != nil {
 		addrUpdates := lc.processARPPacket(niInfo, packet)
 		if len(addrUpdates) > 0 {
 			return addrUpdates
@@ -482,9 +482,6 @@ func (lc *LinuxCollector) processCapturedPacket(
 	}
 	return nil
 }
-
-// Used as a constant.
-var broadcastMAC = []byte{0xff, 0xff, 0xff, 0xff, 0xff, 0xff}
 
 func (lc *LinuxCollector) processARPPacket(
 	niInfo *niInfo, packet gopacket.Packet) (addrUpdates []VIFAddrsUpdate) {
@@ -510,7 +507,7 @@ func (lc *LinuxCollector) processARPPacket(
 				weAreSource = true
 			}
 		}
-		if vif == nil || !vif.VIF.Activated {
+		if vif == nil {
 			return nil
 		}
 	} else {
@@ -534,6 +531,9 @@ func (lc *LinuxCollector) processARPPacket(
 	})
 	return addrUpdates
 }
+
+// Used as a constant.
+var broadcastMAC = []byte{0xff, 0xff, 0xff, 0xff, 0xff, 0xff}
 
 // Process captured DHCP packets for switched network instances.
 // Returns true if the packet being inspected is DHCP and intended for application(s)
@@ -602,7 +602,7 @@ func (lc *LinuxCollector) processDHCPPacket(
 		}
 
 		vif := niInfo.vifs.LookupByGuestMAC(dhcpv4.ClientHWAddr)
-		if vif == nil || !vif.VIF.Activated {
+		if vif == nil {
 			return nil, true
 		}
 		if vif.IPv4Addr.Equal(dhcpv4.YourClientIP) {
@@ -641,7 +641,7 @@ func (lc *LinuxCollector) processDHCPPacket(
 		clientOption := &layers.DHCPv6DUID{}
 		clientOption.DecodeFromBytes(opt.Data)
 		vif := niInfo.vifs.LookupByGuestMAC(clientOption.LinkLayerAddress)
-		if vif == nil || !vif.VIF.Activated {
+		if vif == nil {
 			return nil, true
 		}
 		if isAddrPresent(vif.IPv6Addrs, dhcpv6.LinkAddr) {
@@ -670,7 +670,7 @@ func (lc *LinuxCollector) processDADProbe(
 		etherPkt := etherLayer.(*layers.Ethernet)
 		vif = niInfo.vifs.LookupByGuestMAC(etherPkt.SrcMAC)
 	}
-	if vif == nil || !vif.VIF.Activated {
+	if vif == nil {
 		return
 	}
 	ip6Layer := packet.Layer(layers.LayerTypeIPv6)

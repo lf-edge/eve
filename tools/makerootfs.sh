@@ -1,9 +1,12 @@
 #!/bin/bash
 # Usage:
 #
-#     ./makerootfs.sh mode [-y <image.yml>] [-i <output rootfs image>] [-t <tar file>] [-f <filesystem format>] [-a <arch>]
+#     ./makerootfs.sh mode [-y <image.yml>] [-i <output rootfs image>] [-t <tar file>] [-f <filesystem format>] [-a <arch>] [-d <directory where to execute>]
 # <fs> defaults to squash
 # <arch> defaults to the current machine architecture
+
+# NOTE: this will get executed from the provided -d <dir>, or else the current directory
+# make NO assumptions about where this runs; if you can, use absolute paths
 
 set -e
 set -o pipefail
@@ -61,7 +64,7 @@ bail() {
 
 # no mode we recognize
 help() {
-  echo "Usage: $0 <mode> [-y <image.yml>] [-i <output rootfs image>] [-t <tarfile>] [-f {ext4|squash}] [-a <arch>]" >&2
+  echo "Usage: $0 <mode> [-y <image.yml>] [-i <output rootfs image>] [-t <tarfile>] [-f {ext4|squash}] [-a <arch>] [-d <directory>]" >&2
   echo "must be one of the following modes:" >&2
   echo "  generate final image from yml:" >&2
   echo "    $0 image [-y <image.yml>] [-i <output rootfs image>] [-f {ext4|squash}] [-a <arch>]" >&2
@@ -69,6 +72,8 @@ help() {
   echo "    $0 tar [-y <image.yml>] [-t <output tarfile>] [-a <arch>]" >&2
   echo "  generate final image from tar:" >&2
   echo "    $0 imagefromtar [-i <output rootfs image>] [-f {ext4|squash}] [-t <input tarfile>]" >&2
+  echo
+  echo "setting the directory via -d will change to execute in the given directory" >&2
   exit 1
 }
 
@@ -79,24 +84,27 @@ help() {
 mode="$1"
 shift
 
-unset tarfile imgfile arch format ymlfile
-while getopts "t:i:a:f:y:h" o
+unset tarfile imgfile arch format ymlfile execidr
+while getopts "t:i:a:f:y:d:h" o
 do
   case $o in
     t)
-      tarfile=$OPTARG
+      tarfile=$(realpath "$OPTARG")
       ;;
     i)
-      imgfile=$OPTARG
+      imgfile=$(realpath "$OPTARG")
       ;;
     a)
-      arch=$OPTARG
+      arch="$OPTARG"
       ;;
     f)
-      format=$OPTARG
+      format="$OPTARG"
       ;;
     y)
-      ymlfile=$OPTARG
+      ymlfile=$(realpath "$OPTARG")
+      ;;
+    d)
+      execdir=$(realpath "$OPTARG")
       ;;
     h)
       help
@@ -112,6 +120,8 @@ EVE="$(cd "$(dirname "$0")" && pwd)/../"
 PATH="$EVE/build-tools/bin:$PATH"
 MKROOTFS_TAG="$(linuxkit pkg show-tag "$EVE/pkg/mkrootfs-${format}")"
 IMAGE="$(cd "$(dirname "$imgfile")" && pwd)/$(basename "$imgfile")"
+
+[ -n "$execdir" ] && cd "$execdir"
 
 action="do_${mode}"
 #shellcheck disable=SC2039

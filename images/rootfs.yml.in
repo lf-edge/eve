@@ -90,6 +90,8 @@ services:
     oomScoreAdj: -999
 files:
   - path: /etc/eve-release
-    contents: 'EVE_VERSION'
+    source: eve_version
   - path: etc/linuxkit-eve-config.yml
     metadata: yaml
+  - path: /etc/eve-hv-type
+    contents: 'EVE_HV'
