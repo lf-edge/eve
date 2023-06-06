@@ -1,0 +1,1 @@
+.services |= .+ [{"name": "kube","image": "KUBE_TAG", "cgroupsPath": "/eve/services/kube", "oomScoreAdj": -999}]

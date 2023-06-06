@@ -1,0 +1,23 @@
+# linuxkit build template 
+#
+# Copyright (c) 2023 Zededa, Inc.
+# SPDX-License-Identifier: Apache-2.0
+org: lfedge
+image: eve-kube
+config:
+  binds:
+    - /lib/modules:/lib/modules
+    - /dev:/dev
+    - /etc/resolv.conf:/etc/resolv.conf
+    - /run:/run
+    - /config:/config
+    - /:/hostfs
+    - /persist:/persist:rshared,rbind
+    - /sys/fs/cgroup:/sys/fs/cgroup
+  capabilities:
+    - all 
+  pid: host
+  rootfsPropagation: shared
+  devices:
+    - path: all
+      type: a
