@@ -113,18 +113,18 @@ Make sure that Docker is up and running on your system. On MacOS just start a do
 docker version
 ```
 
-#### Get system dependencies (git, make, qemu, jq, gnu-sed)
+#### Get system dependencies (git, make, qemu, jq, gnu-sed, coreutils)
 
 ##### On OSX (using [Brew](https://brew.sh/))
 
 ```sh
-$ brew install git make jq qemu gnu-sed
+$ brew install git make jq qemu gnu-sed coreutils
 ```
 
 > **_NOTE:_** (M1 Macs) `qemu` may also require `python3 nettle ninja` to install properly, that is:
 >
 > ```sh
-> $ brew install git make jq python3 nettle ninja qemu gnu-sed
+> $ brew install git make jq python3 nettle ninja qemu gnu-sed coreutils
 > ```
 
 ##### On Ubuntu Linux
