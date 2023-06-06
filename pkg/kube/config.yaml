@@ -1,0 +1,5 @@
+#k3s server config file.
+
+write-kubeconfig-mode: "0644"
+cluster-init: true
+log: "/var/lib/rancher/k3s/k3s.log"
