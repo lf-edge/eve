@@ -168,19 +168,19 @@ prepare_mounts_and_zfs_pool() {
           SIZEGB=$((availableGB - reservedGB))
           if [ $SIZEGB -gt 0 ]; then
              SIZEGB=$SIZEGB"G"
-	     logmsg "Creating clustered-storage volume of size $SIZEGB"
-	     /sbin/modprobe  zfs-udev
-	     chroot /root zfs create -V $SIZEGB -o volblocksize=16k persist/clustered-storage
-	     if [ -b /dev/zvol/persist/clustered-storage ]; then
-		logmsg "Formatting clustered-storage to ext4"
-		/sbin/mkfs -t ext4 /dev/zvol/persist/clustered-storage
-	     elif [ -b /dev/zd0 ]; then
-		logmsg "Formatting /dev/zd0 to ext4"
-		/sbin/mkfs -t ext4 /dev/zd0
-	     else
-		logmsg "FATAL: clustered-storage volume creation failed."
-	     fi
-	  fi
+             logmsg "Creating clustered-storage volume of size $SIZEGB"
+             /sbin/modprobe  zfs-udev
+             chroot /root zfs create -V $SIZEGB -o volblocksize=16k persist/clustered-storage
+             if [ -b /dev/zvol/persist/clustered-storage ]; then
+                logmsg "Formatting clustered-storage to ext4"
+                /sbin/mkfs -t ext4 /dev/zvol/persist/clustered-storage
+             elif [ -b /dev/zd0 ]; then
+                logmsg "Formatting /dev/zd0 to ext4"
+                /sbin/mkfs -t ext4 /dev/zd0
+             else
+                logmsg "FATAL: clustered-storage volume creation failed."
+             fi
+          fi
   fi
 }
 
