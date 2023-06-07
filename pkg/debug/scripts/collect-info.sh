@@ -144,6 +144,9 @@ qemu-affinities.sh    > "$DIR/qemu-affinities"
 echo "- iommu groups"
 iommu-groups.sh       > "$DIR/iommu-groups"
 
+echo "- AppArmor logs"
+dmesg | grep -e "apparmor" > "$DIR/apparmor-log"
+
 echo "- TPM event log"
 find /sys/kernel/security -name "tpm*" | while read -r TPM; do
     if [ -f "$TPM/binary_bios_measurements" ]; then
