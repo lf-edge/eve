@@ -121,8 +121,6 @@ func runNetwork(netw string) {
 			runmDNS(substring)
 		} else if opt == "tcp" { // tcp and proxy are special
 			setAndStartProxyTCP(substring)
-		} else if opt == "pprof" {
-			runPprof()
 		} else if opt == "showcerts" {
 			getPeerCerts(substring)
 		} else if opt == "addhost" {

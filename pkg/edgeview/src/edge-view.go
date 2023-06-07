@@ -202,13 +202,6 @@ func main() {
 			pnetopt = pqueryopt
 		} else if strings.HasPrefix(pqueryopt, "app") {
 			psysopt = pqueryopt
-		} else if pqueryopt == "pprof" {
-			var ok bool
-			ok, tcpclientCnt, remotePorts = processTCPcmd("tcp/localhost:6543", remotePorts)
-			if !ok {
-				return
-			}
-			pnetopt = pqueryopt
 		} else if strings.HasPrefix(pqueryopt, "tcp/") {
 			var ok bool
 			ok, tcpclientCnt, remotePorts = processTCPcmd(pqueryopt, remotePorts)
