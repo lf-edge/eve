@@ -7,6 +7,7 @@ package zboot
 
 import (
 	"context"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"os"
@@ -248,6 +249,22 @@ func GetPartitionDevname(partName string) string {
 	devName = strings.TrimSpace(devName)
 	partDev[partName] = devName
 	return devName
+}
+
+// GetPartitionSizeInBytes get the partition size for partition partName
+func GetPartitionSizeInBytes(partName string) uint64 {
+	validatePartitionName(partName)
+	_, ok := partDev[partName]
+	if ok {
+		partsize, err := execWithRetry(nil, "zboot", "partdevsize", partName)
+		if err != nil {
+			logrus.Fatalf("zboot partdevsize %s: err %v\n", partName, err)
+		}
+		return binary.BigEndian.Uint64(partsize)
+	}
+
+	// Invalid partition
+	return 0
 }
 
 // set routines
