@@ -25,13 +25,14 @@ usage() {
     echo "${ZX} Boot Control and Administration API tool."
     echo
     echo "Usage:"
-    echo "       $(basename "$0") {partdev|partstate} <LABEL>"
+    echo "       $(basename "$0") {partdev|partstate|partdevsize} <LABEL>"
     echo "       $(basename "$0") set_partstate <LABEL> <STATE>"
     echo "       $(basename "$0") {curpart|reset}"
     echo
     echo "Commands:"
     echo "    partdev: return device of partition LABEL."
     echo "    partstate: return state of partition LABEL."
+    echo "    partdevsize: return device size of partition LABEL."
     echo "    set_partstate: Set state of partition LABEL to STATE."
     echo "    curpart: return label of current root partition."
     echo "    reset: reboot the machine with a certain hurry."
@@ -69,6 +70,17 @@ partdev() {
         usage
     fi
     cgpt find -l $1 ${rootdsk}
+}
+
+#
+# PARTDEVSIZE: get device size from partition label
+#
+partdevsize() {
+    if [ ! $# -eq 1 ]; then
+        usage
+    fi
+    dev=$(cgpt find -l $1 ${rootdsk})
+    lsblk -b -n -o SIZE $dev
 }
 
 #
@@ -154,6 +166,7 @@ shift 1
 case $cmd in
     curpart) curpart ;;
     partdev) partdev "$@" ;;
+    partdevsize) partdevsize "$@" ;;
     partdevall) partdevall "$@" ;;
     partstate) partstate "$@" ;;
     set_partstate) set_partstate "$@" ;;
