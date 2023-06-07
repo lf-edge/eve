@@ -118,7 +118,7 @@ func (lc *LinuxCollector) UpdateCollectingForNI(
 	for _, vif := range vifs {
 		vifWithAddrs := VIFAddrs{VIF: vif}
 		prevVIF := prevVIFs.LookupByGuestMAC(vif.GuestIfMAC)
-		if prevVIF != nil && prevVIF.VIF.App == vif.App {
+		if prevVIF != nil && prevVIF.VIF.App == vif.App && prevVIF.VIF.NI == vif.NI {
 			vifWithAddrs.IPv4Addr = prevVIF.IPv4Addr
 			vifWithAddrs.IPv6Addrs = prevVIF.IPv6Addrs
 		}
