@@ -98,19 +98,19 @@ http_debug_request() {
         pkill -USR2 /opt/zededa/bin/zedbox
     fi
 
-    wget -O - "$URL" --post-data ''
+    printf "POST %s HTTP/1.0\r\n\r\n" "$URL" | nc 127.1 6543
 
     if [ "$running" = "0" ]; then
-        wget -O - 127.1:6543/stop --post-data '' > /dev/null 2>&1
+        printf "POST /stop HTTP/1.0\r\n\r\n" | nc 127.1 6543
     fi
 }
 
 dump_stacks() {
-    http_debug_request "127.1:6543/dump/stacks"
+    http_debug_request "/dump/stacks"
 }
 
 dump_mem() {
-    http_debug_request "127.1:6543/dump/memory"
+    http_debug_request "/dump/memory"
 }
 
 case "$1" in
@@ -170,7 +170,7 @@ __EOT__
               pkill -USR2 /opt/zededa/bin/zedbox
               echo "Listening on :6543 -- use 'eve http-debug stop' to stop"
           elif [ "$2" = "stop" ]; then
-              wget -O - 127.1:6543/stop --post-data '' > /dev/null 2>&1
+              printf "POST /stop HTTP/1.0\r\n\r\n" | nc 127.1 6543
           else
               echo "Unknown command; use 'start' or 'stop'"
           fi
