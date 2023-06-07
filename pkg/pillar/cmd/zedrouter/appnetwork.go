@@ -9,7 +9,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
 	uuid "github.com/satori/go.uuid"
-	log "github.com/sirupsen/logrus"
 )
 
 // Scan through existing AppNetworkStatus list to bring up any AppNetwork
@@ -80,7 +79,7 @@ func (z *zedrouter) prepareConfigForVIFs(config types.AppNetworkConfig,
 			// Should be unreachable.
 			err := fmt.Errorf("missing network instance status for %s",
 				ulStatus.Network.String())
-			log.Errorf("doActivateAppNetwork(%v/%v): %v",
+			z.log.Errorf("doActivateAppNetwork(%v/%v): %v",
 				config.UUIDandVersion.UUID, config.DisplayName, err)
 			z.addAppNetworkError(status, "doActivateAppNetwork", err)
 			return nil, err
@@ -99,7 +98,7 @@ func (z *zedrouter) prepareConfigForVIFs(config types.AppNetworkConfig,
 		guestIP, err := z.lookupOrAllocateIPv4ForVIF(
 			netInstStatus, *ulStatus, status.UUIDandVersion.UUID)
 		if err != nil {
-			log.Errorf("doActivateAppNetwork(%v/%v): %v",
+			z.log.Errorf("doActivateAppNetwork(%v/%v): %v",
 				config.UUIDandVersion.UUID, config.DisplayName, err)
 			z.addAppNetworkError(status, "doActivateAppNetwork", err)
 			return nil, err
@@ -123,13 +122,14 @@ func (z *zedrouter) doActivateAppNetwork(config types.AppNetworkConfig,
 		// Error already logged and added to status.
 		return
 	}
+
 	// Use NIReconciler to configure connection between the app and the network instance(s)
 	// inside the network stack.
 	appConnRecStatus, err := z.niReconciler.ConnectApp(
 		z.runCtx, config, status.AppNum, vifs)
 	if err != nil {
 		err = fmt.Errorf("failed to activate application network: %v", err)
-		log.Errorf("doActivateAppNetwork(%v/%v): %v",
+		z.log.Errorf("doActivateAppNetwork(%v/%v): %v",
 			config.UUIDandVersion.UUID, config.DisplayName, err)
 		z.addAppNetworkError(status, "doActivateAppNetwork", err)
 		return
@@ -137,10 +137,12 @@ func (z *zedrouter) doActivateAppNetwork(config types.AppNetworkConfig,
 	z.log.Functionf("Activated application network %s (%s)", status.UUIDandVersion.UUID,
 		status.DisplayName)
 	z.processAppConnReconcileStatus(appConnRecStatus, status)
+
 	// Update AppNetwork and NetworkInstance status.
 	status.Activated = true
 	z.publishAppNetworkStatus(status)
 	z.updateNIStatusAfterAppNetworkActivate(status)
+
 	// Update state data collecting to include this application.
 	z.checkAppContainerStatsCollecting(&config, status)
 	z.updateVIFsForStateCollecting(nil, &config)
@@ -152,7 +154,7 @@ func (z *zedrouter) updateNIStatusAfterAppNetworkActivate(status *types.AppNetwo
 		if netInstStatus == nil {
 			err := fmt.Errorf("missing network instance status for %s",
 				ulStatus.Network.String())
-			log.Error(err)
+			z.log.Error(err)
 			continue
 		}
 		if netInstStatus.Type == types.NetworkInstanceTypeSwitch {
@@ -164,6 +166,11 @@ func (z *zedrouter) updateNIStatusAfterAppNetworkActivate(status *types.AppNetwo
 		}
 		netInstStatus.AddVif(z.log, ulStatus.Vif, ulStatus.Mac,
 			status.UUIDandVersion.UUID)
+		netInstStatus.IPAssignments[ulStatus.Mac.String()] =
+			types.AssignedAddrs{
+				IPv4Addr:  ulStatus.AllocatedIPv4Addr,
+				IPv6Addrs: ulStatus.AllocatedIPv6List,
+			}
 		z.publishNetworkInstanceStatus(netInstStatus)
 	}
 }
@@ -175,7 +182,7 @@ func (z *zedrouter) updateNIStatusAfterAppNetworkInactivate(
 		if netInstStatus == nil {
 			err := fmt.Errorf("missing network instance status for %s",
 				ulStatus.Network.String())
-			log.Error(err)
+			z.log.Error(err)
 			continue
 		}
 		if netInstStatus.Type == types.NetworkInstanceTypeSwitch {
@@ -186,6 +193,7 @@ func (z *zedrouter) updateNIStatusAfterAppNetworkInactivate(
 			}
 		}
 		netInstStatus.RemoveVif(z.log, ulStatus.Vif)
+		delete(netInstStatus.IPAssignments, ulStatus.Mac.String())
 		z.publishNetworkInstanceStatus(netInstStatus)
 	}
 }
@@ -195,11 +203,17 @@ func (z *zedrouter) doCopyAppNetworkConfigToStatus(
 	status *types.AppNetworkStatus) {
 
 	ulcount := len(config.UnderlayNetworkList)
-	status.UnderlayNetworkList = make([]types.UnderlayNetworkStatus,
-		ulcount)
-	for i := range config.UnderlayNetworkList {
-		status.UnderlayNetworkList[i].UnderlayNetworkConfig =
-			config.UnderlayNetworkList[i]
+	prevNetStatus := status.UnderlayNetworkList
+	status.UnderlayNetworkList = make([]types.UnderlayNetworkStatus, ulcount)
+	for i, netConfig := range config.UnderlayNetworkList {
+		// Preserve previous VIF status unless it was moved to another network.
+		// Note that adding or removing VIF is not currently supported
+		// (such change would be rejected by config validation methods,
+		// see zedrouter/validation.go).
+		if i < len(prevNetStatus) && prevNetStatus[i].Network == netConfig.Network {
+			status.UnderlayNetworkList[i] = prevNetStatus[i]
+		}
+		status.UnderlayNetworkList[i].UnderlayNetworkConfig = netConfig
 	}
 }
 
@@ -211,7 +225,7 @@ func (z *zedrouter) checkAndRecreateAppNetworks(niID uuid.UUID) {
 	z.log.Functionf("checkAndRecreateAppNetworks(%v)", niID)
 	niStatus := z.lookupNetworkInstanceStatus(niID.String())
 	if niStatus == nil {
-		log.Warnf("checkAndRecreateAppNetworks(%v): status not available",
+		z.log.Warnf("checkAndRecreateAppNetworks(%v): status not available",
 			niID)
 		return
 	}
@@ -221,7 +235,7 @@ func (z *zedrouter) checkAndRecreateAppNetworks(niID uuid.UUID) {
 		appNetStatus := st.(types.AppNetworkStatus)
 		appNetConfig := z.lookupAppNetworkConfig(appNetStatus.Key())
 		if appNetConfig == nil {
-			log.Warnf("checkAndRecreateAppNetworks(%v): no config for %s",
+			z.log.Warnf("checkAndRecreateAppNetworks(%v): no config for %s",
 				niID, appNetStatus.DisplayName)
 			continue
 		}
@@ -258,7 +272,12 @@ func (z *zedrouter) doUpdateActivatedAppNetwork(oldConfig, newConfig types.AppNe
 	status *types.AppNetworkStatus) {
 	// To update status of connected network instances we can pretend
 	// that application network was deactivated and then re-activated.
+	// This approach simplifies the implementation quite a bit.
 	z.updateNIStatusAfterAppNetworkInactivate(status)
+	// Reloaded below, see reloadStatusOfAssignedIPs.
+	z.removeAssignedIPsFromAppNetStatus(status)
+
+	// Re-build config for application VIFs.
 	z.doCopyAppNetworkConfigToStatus(newConfig, status)
 	vifs, err := z.prepareConfigForVIFs(newConfig, status)
 	if err != nil {
@@ -271,7 +290,7 @@ func (z *zedrouter) doUpdateActivatedAppNetwork(oldConfig, newConfig types.AppNe
 		z.runCtx, newConfig, vifs)
 	if err != nil {
 		err = fmt.Errorf("failed to update activated app network: %v", err)
-		log.Errorf("doUpdateActivatedAppNetwork(%v/%v): %v",
+		z.log.Errorf("doUpdateActivatedAppNetwork(%v/%v): %v",
 			newConfig.UUIDandVersion.UUID, newConfig.DisplayName, err)
 		z.addAppNetworkError(status, "doUpdateActivatedAppNetwork", err)
 		return
@@ -279,14 +298,15 @@ func (z *zedrouter) doUpdateActivatedAppNetwork(oldConfig, newConfig types.AppNe
 	z.log.Functionf("Updated activated application network %s (%s)",
 		newConfig.UUIDandVersion.UUID, newConfig.DisplayName)
 
-	// Update app network status as well as status of connected network instances.
-	z.processAppConnReconcileStatus(appConnRecStatus, status)
-	z.publishAppNetworkStatus(status)
-	z.updateNIStatusAfterAppNetworkActivate(status)
-
 	// Update state data collecting parameters.
 	z.checkAppContainerStatsCollecting(&newConfig, status)
 	z.updateVIFsForStateCollecting(&oldConfig, &newConfig)
+
+	// Update app network status as well as status of connected network instances.
+	z.processAppConnReconcileStatus(appConnRecStatus, status)
+	z.reloadStatusOfAssignedIPs(status)
+	z.publishAppNetworkStatus(status)
+	z.updateNIStatusAfterAppNetworkActivate(status)
 }
 
 func (z *zedrouter) doInactivateAppNetwork(config types.AppNetworkConfig,
@@ -294,12 +314,13 @@ func (z *zedrouter) doInactivateAppNetwork(config types.AppNetworkConfig,
 	// Stop state data collecting for this application.
 	z.updateVIFsForStateCollecting(&config, nil)
 	z.checkAppContainerStatsCollecting(nil, status) // nil config to represent delete
+
 	// Use NIReconciler to un-configure connection between the app and the network instance(s)
 	// inside the network stack.
 	appConnRecStatus, err := z.niReconciler.DisconnectApp(z.runCtx, config.UUIDandVersion.UUID)
 	if err != nil {
 		err = fmt.Errorf("failed to deactivate application network: %v", err)
-		log.Errorf("doInactivateAppNetwork(%v/%v): %v",
+		z.log.Errorf("doInactivateAppNetwork(%v/%v): %v",
 			config.UUIDandVersion.UUID, config.DisplayName, err)
 		z.addAppNetworkError(status, "doInactivateAppNetwork", err)
 		return
@@ -308,33 +329,12 @@ func (z *zedrouter) doInactivateAppNetwork(config types.AppNetworkConfig,
 	z.log.Functionf("Deactivated application network %s (%s)", status.UUIDandVersion.UUID,
 		status.DisplayName)
 	z.processAppConnReconcileStatus(appConnRecStatus, status)
+
 	// Update AppNetwork and NetworkInstance status.
 	status.Activated = false
 	z.updateNIStatusAfterAppNetworkInactivate(status)
+	z.removeAssignedIPsFromAppNetStatus(status)
 	z.publishAppNetworkStatus(status)
-	// Free allocated VIF IPs.
-	for i := range status.UnderlayNetworkList {
-		ulStatus := &status.UnderlayNetworkList[i]
-		netInstStatus := z.lookupNetworkInstanceStatus(ulStatus.Network.String())
-		if netInstStatus == nil {
-			// Should be unreachable.
-			err = fmt.Errorf("missing network instance status for %s",
-				ulStatus.Network.String())
-			log.Errorf("doInactivateAppNetwork(%v/%v): %v",
-				config.UUIDandVersion.UUID, config.DisplayName, err)
-			z.addAppNetworkError(status, "doInactivateAppNetwork", err)
-			// Continue freeing IPs for other VIFs.
-			continue
-		}
-		err = z.releaseAllIPsForVIF(netInstStatus, ulStatus.Mac)
-		if err != nil {
-			log.Errorf("doInactivateAppNetwork(%v/%v): %v",
-				config.UUIDandVersion.UUID, config.DisplayName, err)
-			z.addAppNetworkError(status, "doInactivateAppNetwork", err)
-			// Continue freeing IPs for other VIFs.
-			continue
-		}
-	}
 }
 
 // Check if any references to network instances have changed and potentially update
@@ -359,7 +359,7 @@ func (z *zedrouter) checkAppNetworkModifyAppIntfNums(config types.AppNetworkConf
 			status.UUIDandVersion.UUID, ulConfig, ulStatus)
 		if err != nil {
 			err = fmt.Errorf("failed to modify appIntfNum: %v", err)
-			log.Errorf(
+			z.log.Errorf(
 				"checkAppNetworkModifyAppIntfNums(%v/%v): %v",
 				config.UUIDandVersion.UUID, config.DisplayName, err)
 			z.addAppNetworkError(status, "checkAppNetworkModifyAppIntfNums", err)
@@ -383,7 +383,7 @@ func (z *zedrouter) doAppNetworkModifyAppIntfNum(appID uuid.UUID,
 	// Try to release the app number on the old network.
 	err := z.freeAppIntfNum(oldNetworkID, appID, oldIfIdx)
 	if err != nil {
-		log.Error(err)
+		z.log.Error(err)
 		// Continue anyway...
 	}
 
@@ -391,7 +391,7 @@ func (z *zedrouter) doAppNetworkModifyAppIntfNum(appID uuid.UUID,
 	withStaticIP := ulConfig.AppIPAddr != nil
 	err = z.allocateAppIntfNum(newNetworkID, appID, newIfIdx, withStaticIP)
 	if err != nil {
-		log.Error(err)
+		z.log.Error(err)
 		return err
 	}
 

@@ -442,7 +442,6 @@ func (z *zedrouter) run(ctx context.Context) (err error) {
 					IPv6Addrs: newAddrs.IPv6Addrs,
 				}
 				z.publishNetworkInstanceStatus(netStatus)
-				switchNI := netStatus.Type == types.NetworkInstanceTypeSwitch
 				appKey := vif.App.String()
 				appStatus := z.lookupAppNetworkStatus(appKey)
 				if appStatus == nil {
@@ -456,21 +455,7 @@ func (z *zedrouter) run(ctx context.Context) (err error) {
 					if ulStatus.Name != vif.NetAdapterName {
 						continue
 					}
-					if switchNI {
-						if !isEmptyIP(newAddrs.IPv4Addr) {
-							ulStatus.AllocatedIPv4Addr = newAddrs.IPv4Addr
-						}
-						ulStatus.IPAddrMisMatch = false
-					} else {
-						if isEmptyIP(ulStatus.AllocatedIPv4Addr) {
-							ulStatus.AllocatedIPv4Addr = newAddrs.IPv4Addr
-							ulStatus.IPAddrMisMatch = false
-						} else if !ulStatus.AllocatedIPv4Addr.Equal(newAddrs.IPv4Addr) {
-							ulStatus.IPAddrMisMatch = true
-						}
-					}
-					ulStatus.AllocatedIPv6List = newAddrs.IPv6Addrs
-					ulStatus.IPv4Assigned = !isEmptyIP(newAddrs.IPv4Addr)
+					z.recordAssignedIPsToULStatus(ulStatus, &newAddrs)
 					break
 				}
 				z.publishAppNetworkStatus(appStatus)

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net"
 
+	"github.com/lf-edge/eve/pkg/pillar/nistate"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	uuid "github.com/satori/go.uuid"
 )
@@ -109,7 +110,7 @@ func (z *zedrouter) lookupOrAllocateIPv4ForVIF(niStatus *types.NetworkInstanceSt
 			return nil, err
 		}
 	}
-	// Later will be overwritten with addresses received from NIStateCollector,
+	// Later will be overwritten with addresses received from nistate.Collector,
 	// which snoops DHCP traffic and watches DNS server leases to learn the *actual*
 	// IP address assignments.
 	addrs := niStatus.IPAssignments[ulStatus.Mac.String()] // preserve IPv6 addresses
@@ -121,20 +122,45 @@ func (z *zedrouter) lookupOrAllocateIPv4ForVIF(niStatus *types.NetworkInstanceSt
 	return ipAddr, nil
 }
 
-func (z *zedrouter) releaseAllIPsForVIF(status *types.NetworkInstanceStatus,
-	mac net.HardwareAddr) error {
-	z.log.Functionf("releaseIPv4FromNetworkInstance(NI:%v, MAC:%v)",
-		status.UUID, mac)
-	// Lookup to see if VIF IP addresses are allocated.
-	if _, ok := status.IPAssignments[mac.String()]; !ok {
-		err := fmt.Errorf("IP address not found for MAC %v", mac)
-		z.log.Errorf("releaseIPv4FromNetworkInstance(NI:%v, MAC:%v): %v",
-			status.UUID, mac, err)
-		return err
+func (z *zedrouter) reloadStatusOfAssignedIPs(status *types.AppNetworkStatus) {
+	for i := range status.UnderlayNetworkList {
+		ulStatus := &status.UnderlayNetworkList[i]
+		allAddrs, _ := z.niStateCollector.GetIPAssignments(ulStatus.Network)
+		vifAddrs := allAddrs.LookupByAdapterName(status.UUIDandVersion.UUID, ulStatus.Name)
+		z.recordAssignedIPsToULStatus(ulStatus, vifAddrs)
 	}
-	delete(status.IPAssignments, mac.String())
-	z.publishNetworkInstanceStatus(status)
-	return nil
+}
+
+func (z *zedrouter) recordAssignedIPsToULStatus(ul *types.UnderlayNetworkStatus,
+	vifAddrs *nistate.VIFAddrs) {
+	if vifAddrs == nil {
+		z.removeAssignedIPsFromULStatus(ul)
+		return
+	}
+	ul.AllocatedIPv4Addr = vifAddrs.IPv4Addr
+	if !isEmptyIP(ul.AppIPAddr) &&
+		!ul.AppIPAddr.Equal(ul.AllocatedIPv4Addr) {
+		// Config and status do not match.
+		ul.IPAddrMisMatch = true
+	} else {
+		ul.IPAddrMisMatch = false
+	}
+	ul.AllocatedIPv6List = vifAddrs.IPv6Addrs
+	ul.IPv4Assigned = !isEmptyIP(vifAddrs.IPv4Addr)
+}
+
+func (z *zedrouter) removeAssignedIPsFromAppNetStatus(status *types.AppNetworkStatus) {
+	for i := range status.UnderlayNetworkList {
+		ulStatus := &status.UnderlayNetworkList[i]
+		z.removeAssignedIPsFromULStatus(ulStatus)
+	}
+}
+
+func (z *zedrouter) removeAssignedIPsFromULStatus(ulStatus *types.UnderlayNetworkStatus) {
+	ulStatus.AllocatedIPv6List = nil
+	ulStatus.AllocatedIPv4Addr = nil
+	ulStatus.IPAddrMisMatch = false
+	ulStatus.IPv4Assigned = false
 }
 
 func isEmptyIP(ip net.IP) bool {
