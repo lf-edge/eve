@@ -157,17 +157,17 @@ prepare_mounts_and_zfs_pool() {
 
   # If clustered storage, then create volume of (available space - RESERVE_EVE_STORAGE_SIZEGB) and format it with ext4
   if [ "$2" = true ]; then
-	  logmsg "Creating clustered-storage"
-	  # When k3s cluster components start they will mount this volume
-	  # If zfs-udev module is available at this point we will use path to the volume
-	  # else we will format the raw device /dev/zd0 which is guaranteed to exist since its the first
-	  # zfs volume being created on this device.
+          logmsg "Creating clustered-storage"
+          # When k3s cluster components start they will mount this volume
+          # If zfs-udev module is available at this point we will use path to the volume
+          # else we will format the raw device /dev/zd0 which is guaranteed to exist since its the first
+          # zfs volume being created on this device.
           availableGB="$(chroot /root zfs get -o value -Hp available persist | awk '{ print int($1/1024/1024/1024) }')"
           reservedGB=$3
           logmsg "AvailableGB : $availableGB  ReservedGB : $reservedGB"
-	  SIZEGB=$(($availableGB - $reservedGB))
-	  if [ $SIZEGB -gt 0 ]; then
-	     SIZEGB=$SIZEGB"G"
+          SIZEGB=$((availableGB - reservedGB))
+          if [ $SIZEGB -gt 0 ]; then
+             SIZEGB=$SIZEGB"G"
 	     logmsg "Creating clustered-storage volume of size $SIZEGB"
 	     /sbin/modprobe  zfs-udev
 	     chroot /root zfs create -V $SIZEGB -o volblocksize=16k persist/clustered-storage
