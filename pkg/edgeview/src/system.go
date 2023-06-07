@@ -13,6 +13,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -96,6 +97,8 @@ func runSystem(cmds cmdOpt, sysOpt string) {
 			getDmesg()
 		} else if strings.HasPrefix(opt, "tar/") {
 			getTarFile(opt)
+		} else if strings.HasPrefix(opt, "pprof") {
+			togglePprof(opt)
 		} else {
 			fmt.Printf("opt %s: not supported yet\n", opt)
 		}
@@ -980,6 +983,21 @@ func dispAFile(f os.FileInfo) {
 	fmt.Printf("%s, %v, %d, %s\n", f.Mode().String(), f.ModTime(), f.Size(), f.Name())
 }
 
+func togglePprof(opt string) {
+	toggle := strings.SplitN(opt, "pprof/", 2)
+	if len(toggle) != 2 {
+		fmt.Printf("pprof needs to be either pprof/on or pprof/off\n")
+		return
+	}
+
+	if toggle[1] == "on" {
+		runPprof()
+	}
+	if toggle[1] == "off" {
+		stopPprof()
+	}
+}
+
 func runPprof() {
 	cmd := exec.Command("/usr/bin/pkill", "-USR2", "/opt/zededa/bin/zedbox")
 
@@ -987,11 +1005,11 @@ func runPprof() {
 	if err != nil {
 		fmt.Printf("could not signal zedbox to run pprof")
 	}
+}
 
-	setAndStartProxyTCP("localhost:6543")
-
-	_, err = http.Post("http://localhost:6543/stop", "", nil)
-	if err != nil {
+func stopPprof() {
+	_, err := http.Post("http://localhost:6543/stop", "", nil)
+	if err != nil && !errors.Is(err, io.EOF) {
 		fmt.Printf("could not stop pprof: %+v\n", err)
 	}
 }
