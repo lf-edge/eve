@@ -195,11 +195,17 @@ func (z *zedrouter) doCopyAppNetworkConfigToStatus(
 	status *types.AppNetworkStatus) {
 
 	ulcount := len(config.UnderlayNetworkList)
-	status.UnderlayNetworkList = make([]types.UnderlayNetworkStatus,
-		ulcount)
-	for i := range config.UnderlayNetworkList {
-		status.UnderlayNetworkList[i].UnderlayNetworkConfig =
-			config.UnderlayNetworkList[i]
+	prevNetStatus := status.UnderlayNetworkList
+	status.UnderlayNetworkList = make([]types.UnderlayNetworkStatus, ulcount)
+	for i, netConfig := range config.UnderlayNetworkList {
+		// Preserve previous VIF status unless it was moved to another network.
+		// Note that adding or removing VIF is not currently supported
+		// (such change would be rejected by config validation methods,
+		// see zedrouter/validation.go).
+		if i < len(prevNetStatus) && prevNetStatus[i].Network == netConfig.Network {
+			status.UnderlayNetworkList[i] = prevNetStatus[i]
+		}
+		status.UnderlayNetworkList[i].UnderlayNetworkConfig = netConfig
 	}
 }
 

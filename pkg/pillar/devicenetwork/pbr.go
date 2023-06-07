@@ -13,11 +13,8 @@ const (
 
 	// NIBaseRTIndex : base index for per-NI (network instance) routing tables used
 	// for uplink connectivity (between applications and remote endpoints).
-	// Routing table ID is a sum of the base with the interface index of the corresponding
-	// bridge interface.
-	// TODO: Once NIReconciler is integrated with zedrouter, routing table ID will be generated
-	// differently: as a sum of the base with the "bridge number" allocated (and persisted)
-	// for every network instance.
+	// Routing table ID is a sum of the base with the "bridge number" allocated
+	// (and persisted) for every network instance.
 	NIBaseRTIndex = 800
 
 	// PbrLocalDestPrio : IP rule priority for packets destined to locally owned addresses
