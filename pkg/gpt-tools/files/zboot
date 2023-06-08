@@ -79,7 +79,7 @@ partdevsize() {
     if [ ! $# -eq 1 ]; then
         usage
     fi
-    dev="$(cgpt find -l $1 ${rootdsk})"
+    dev="$(partdev "$@")"
     lsblk -b -n -o SIZE "$dev"
 }
 
