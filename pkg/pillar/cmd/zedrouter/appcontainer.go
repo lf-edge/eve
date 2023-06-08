@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"net/http"
 	"strconv"
 	"strings"
 	"time"
@@ -309,7 +310,10 @@ func (z *zedrouter) getAppContainers(status types.AppNetworkStatus) (
 	*client.Client, []apitypes.Container, error) {
 	containerEndpoint := "tcp://" + status.GetStatsIPAddr.String() +
 		":" + strconv.Itoa(dockerAPIPort)
-	cli, err := client.NewClient(containerEndpoint, dockerAPIVersion, nil, nil)
+	cli, err := client.NewClientWithOpts(
+		client.WithHost(containerEndpoint),
+		client.WithVersion(dockerAPIVersion),
+		client.WithHTTPClient(&http.Client{}))
 	if err != nil {
 		z.log.Errorf("getAppContainers: client create failed, error %v", err)
 		return nil, nil, err
