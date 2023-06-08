@@ -4,6 +4,7 @@
 package nistate
 
 import (
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -45,18 +46,36 @@ func (lc *LinuxCollector) fetchIptablesCounters() []aclCounters {
 		"filter": {"FORWARD"},
 		"raw":    {"PREROUTING"},
 	}
+	// Note that ACLs are split into per-VIF iptables chains
+	// (see nireconciler/linux_acl.go, function vifChain).
+	type vif struct {
+		ifName string
+		bridge string
+	}
+	var vifs []vif
+	for _, niState := range lc.nis {
+		for _, niVif := range niState.vifs {
+			vifs = append(vifs, vif{
+				ifName: niVif.VIF.HostIfName,
+				bridge: niState.bridge.BrIfName,
+			})
+		}
+	}
 	var counters []aclCounters
 	for table, chains := range chainsWithCounters {
 		for _, chain := range chains {
-			output, err := iptables.IptableCmdOut(
-				nil, "-t", table, "-S", chain+iptables.AppChainSuffix, "-v")
-			if err != nil {
-				lc.log.Errorf("%s: fetchIptablesCounters: iptables -S failed: %v",
-					LogAndErrPrefix, err)
-			} else {
-				c := lc.parseIptablesCounters(output, table, 4)
-				if c != nil {
-					counters = append(counters, c...)
+			for _, vif := range vifs {
+				output, err := iptables.IptableCmdOut(
+					nil, "-t", table, "-S", chain+"-"+vif.ifName, "-v")
+				if err != nil {
+					lc.log.Errorf("%s: fetchIptablesCounters: iptables -S failed: %v",
+						LogAndErrPrefix, err)
+				} else {
+					c := lc.parseIptablesCounters(output, table, chain,
+						vif.bridge, vif.ifName, 4)
+					if c != nil {
+						counters = append(counters, c...)
+					}
 				}
 			}
 		}
@@ -66,10 +85,10 @@ func (lc *LinuxCollector) fetchIptablesCounters() []aclCounters {
 
 // Parse the output of iptables -S -v
 func (lc *LinuxCollector) parseIptablesCounters(
-	output string, table string, ipVer int) (counters []aclCounters) {
+	output, table, chain, bridge, vif string, ipVer int) (counters []aclCounters) {
 	lines := strings.Split(output, "\n")
 	for _, line := range lines {
-		ac, skip := lc.parseIptablesLine(line, table, ipVer)
+		ac, skip := lc.parseIptablesLine(line, table, chain, bridge, vif, ipVer)
 		if !skip {
 			counters = append(counters, ac)
 		}
@@ -77,9 +96,14 @@ func (lc *LinuxCollector) parseIptablesCounters(
 	return counters
 }
 
+// Regular expression used to parse iptables rule into separate command line arguments.
+// Unlike simple split by whitespace, this respects apostrophes (unless they are nested
+// and/or escaped, but we do not have such case in iptables rules)
+var argParser = regexp.MustCompile("'[^']*'|\"[^\"]*\"|\\S+")
+
 func (lc *LinuxCollector) parseIptablesLine(
-	line string, table string, ipVer int) (ac aclCounters, skip bool) {
-	items := strings.Split(line, " ")
+	line, table, chain, bridge, vif string, ipVer int) (ac aclCounters, skip bool) {
+	items := argParser.FindAllString(line, -1)
 	if len(items) < 4 {
 		// log.Tracef("Too short: %s\n", line)
 		return ac, true
@@ -87,9 +111,15 @@ func (lc *LinuxCollector) parseIptablesLine(
 	if items[0] != "-A" {
 		return ac, true
 	}
-	chain := strings.TrimSuffix(items[1], iptables.AppChainSuffix)
 	forward := chain == "FORWARD"
 	ac = aclCounters{table: table, chain: chain, ipVer: ipVer}
+	if forward {
+		ac.outIf = bridge
+		ac.pOutIf = vif
+	} else {
+		ac.inIf = bridge
+		ac.pInIf = vif
+	}
 	i := 2
 	for i < len(items) {
 		// Ignore any xen-related entries.
@@ -117,6 +147,15 @@ func (lc *LinuxCollector) parseIptablesLine(
 		}
 		// Ignore any log-prefix and log-level if present
 		if items[i] == "--log-prefix" || items[i] == "--log-level" {
+			i += 2
+			continue
+		}
+		// Ignore comment
+		if items[i] == "-m" && items[i+1] == "comment" {
+			i += 2
+			continue
+		}
+		if items[i] == "--comment" {
 			i += 2
 			continue
 		}
@@ -172,7 +211,6 @@ func (lc *LinuxCollector) parseIptablesLine(
 			i += 3
 			continue
 		}
-
 		ac.more = true
 		i += 1
 	}
@@ -202,18 +240,20 @@ func (lc *LinuxCollector) getIptablesCounters(
 func (lc *LinuxCollector) makeIptablesCountersMatcher(
 	bridgeName string, vifName string, ipVer int, brInput bool) aclCounters {
 	var inIf string
-	var pInIf string
+	var pInIf, pOutIf string
 	var outIf string
 	if brInput {
 		inIf = bridgeName
 		if vifName != "" {
-			pInIf = vifName + "+"
+			pInIf = vifName
 		}
 	} else {
 		outIf = bridgeName
-		// TODO what about pOutIf = vifName + "+" ?
+		if vifName != "" {
+			pOutIf = vifName
+		}
 	}
-	return aclCounters{inIf: inIf, pInIf: pInIf, outIf: outIf, ipVer: ipVer}
+	return aclCounters{inIf: inIf, pInIf: pInIf, pOutIf: pOutIf, outIf: outIf, ipVer: ipVer}
 }
 
 // Look for a LOG entry without More; we don't have those for rate limits
