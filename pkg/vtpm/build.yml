@@ -5,8 +5,6 @@ config:
     - /dev:/dev
     - /run:/run
     - /config:/config
-  capabilities:
-    - all
   devices:
     - path: all
       type: a
