@@ -56,6 +56,33 @@ do_imagefromtar() {
   cat "${tarfile}" | docker run -i --rm -v /dev:/dev --privileged -v "$IMAGE:/rootfs.img" "${MKROOTFS_TAG}"
 }
 
+abspath() {
+  local target
+  local dir
+  local filename
+  local absolute_dir
+
+  target="$1"
+  if [ -z "$target" ]; then
+    echo "Error: Unable to find file '$target'" >&2
+    return 1
+  fi
+  # we have two problems here:
+  # First, we want to realpath a file that may not exist yet.
+  # on some OSes, it is fine; on others, it returns an error.
+  # a prerequisite is that the directory exists, so we can realpath that,
+  # and just append the filename after.
+  # Second, we want to use realpath, but it is not available on all OSes.
+  dir=$(dirname "$target")
+  filename=$(basename "$target")
+  if [ ! -d "$dir" ]; then
+    echo "Error: Unable to find directory '$dir'" >&2
+    return 1
+  fi
+  absolute_dir=$(cd "$dir"; pwd -P)
+  echo "${absolute_dir}/${filename}"
+}
+
 bail() {
   echo "$@" >&2
   help
@@ -89,10 +116,10 @@ while getopts "t:i:a:f:y:d:h" o
 do
   case $o in
     t)
-      tarfile=$(realpath "$OPTARG")
+      tarfile=$(abspath "$OPTARG")
       ;;
     i)
-      imgfile=$(realpath "$OPTARG")
+      imgfile=$(abspath "$OPTARG")
       ;;
     a)
       arch="$OPTARG"
@@ -101,10 +128,10 @@ do
       format="$OPTARG"
       ;;
     y)
-      ymlfile=$(realpath "$OPTARG")
+      ymlfile=$(abspath "$OPTARG")
       ;;
     d)
-      execdir=$(realpath "$OPTARG")
+      execdir=$(abspath "$OPTARG")
       ;;
     h)
       help
