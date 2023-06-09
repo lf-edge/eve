@@ -1,4 +1,5 @@
-#k3s server config file.
+---
+# k3s server config file.
 
 write-kubeconfig-mode: "0644"
 cluster-init: true

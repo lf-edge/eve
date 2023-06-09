@@ -8,6 +8,7 @@
 ^pkg/pillar/zedpac/
 ^pkg/kvm-tools/include
 ^pkg/kvm-tools/dtrace
+^pkg/kube/kubevirt-operator.yaml
 ^api/python/
 ^api/go/
 ^api/images/
