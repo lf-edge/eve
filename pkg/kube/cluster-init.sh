@@ -44,7 +44,8 @@ wait_for_default_route() {
       logmsg "Default route found"
       return 0
     fi
-    logmsg "waiting for default route"
+    #Make yetus happy
+    logmsg "waiting for default route $iface $dest $gw $flags $refcnt $use $metric $mask $mtu $window $irtt"
     sleep 1
   done < /proc/net/route
 
