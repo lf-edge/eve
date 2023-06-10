@@ -7,11 +7,11 @@ package zboot
 
 import (
 	"context"
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -256,11 +256,20 @@ func GetPartitionSizeInBytes(partName string) uint64 {
 	validatePartitionName(partName)
 	_, ok := partDev[partName]
 	if ok {
-		partsize, err := execWithRetry(nil, "zboot", "partdevsize", partName)
+		ret, err := execWithRetry(nil, "zboot", "partdevsize", partName)
 		if err != nil {
 			logrus.Fatalf("zboot partdevsize %s: err %v\n", partName, err)
 		}
-		return binary.BigEndian.Uint64(partsize)
+		partsize := string(ret)
+		partsize = strings.TrimSpace(partsize)
+		logrus.Infof("partsize in bytes %s", partsize)
+		value, err := strconv.ParseUint(partsize, 10, 64)
+		if err != nil {
+			logrus.Errorf("Strconv failed for partsize err %v\n", err)
+			return 0
+		}
+
+		return value
 	}
 
 	// Invalid partition
