@@ -46,7 +46,9 @@ onboot:
   # measure-config must be executed after any other container that changes 
   # /config. Let's keep it the latest
   - name: measure-config
-    image: MEASURE_CONFIG_TAG    
+    image: MEASURE_CONFIG_TAG
+  - name: apparmor
+    image: APPARMOR_TAG
 services:
   - name: newlogd
     image: NEWLOGD_TAG
@@ -90,7 +92,7 @@ services:
     oomScoreAdj: -999
 files:
   - path: /etc/eve-release
-    contents: 'EVE_VERSION'
+    source: eve_version
   - path: etc/linuxkit-eve-config.yml
     metadata: yaml
   - path: /etc/eve-hv-type

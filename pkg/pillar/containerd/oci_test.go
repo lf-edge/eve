@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net"
 	"os"
 	"path"
 	"path/filepath"
@@ -383,8 +384,8 @@ func TestOciSpec(t *testing.T) {
 	conf := &types.DomainConfig{
 		VmConfig: types.VmConfig{Memory: 1234, VCpus: 4},
 		VifList: []types.VifConfig{
-			{Vif: "vif0", Bridge: "br0", Mac: "52:54:00:12:34:56"},
-			{Vif: "vif1", Bridge: "br0", Mac: "52:54:00:12:34:57"},
+			{Vif: "vif0", Bridge: "br0", Mac: net.HardwareAddr{0x52, 0x54, 0x00, 0x12, 0x34, 0x56}},
+			{Vif: "vif1", Bridge: "br0", Mac: net.HardwareAddr{0x52, 0x54, 0x00, 0x12, 0x34, 0x57}},
 		},
 	}
 	status := &types.DomainStatus{}

@@ -27,6 +27,12 @@ ifeq ($(BUILDKIT_PROGRESS),)
 export BUILDKIT_PROGRESS := plain
 endif
 
+PREEMPT_RT_SUPPORT_ARG := ""
+ifeq ($(PREEMPT_RT),1)
+  PREEMPT_RT_SUPPORT_ARG := "--preempt-rt-support"
+endif
+KERNEL_BUILD_YML_TOOL := tools/kernel-build-yml.sh $(PREEMPT_RT_SUPPORT_ARG)
+
 # A set of tweakable knobs for our build needs (tweak at your risk!)
 # Which version to assign to snapshot builds (0.0.0 if built locally, 0.0.0-snapshot if on CI/CD)
 EVE_SNAPSHOT_VERSION=0.0.0
@@ -124,6 +130,7 @@ LIVE=$(BUILD_DIR)/live
 LIVE_IMG=$(BUILD_DIR)/live.$(IMG_FORMAT)
 TARGET_IMG=$(BUILD_DIR)/target.img
 INSTALLER=$(BUILD_DIR)/installer
+VERSION_FILE=$(INSTALLER)/eve_version
 VERIFICATION=$(BUILD_DIR)/verification
 BUILD_DIR=$(DIST)/$(ROOTFS_VERSION)
 CURRENT_DIR=$(DIST)/current
@@ -339,7 +346,7 @@ PKGS_$(ZARCH)=$(shell ls -d pkg/* | grep -Ev "eve|test-microsvcs|alpine|sources"
 PKGS_riscv64=pkg/ipxe pkg/mkconf pkg/mkimage-iso-efi pkg/grub     \
              pkg/mkimage-raw-efi pkg/uefi pkg/u-boot pkg/cross-compilers pkg/new-kernel \
 	     pkg/debug pkg/dom0-ztools pkg/gpt-tools pkg/storage-init pkg/mkrootfs-squash \
-		 pkg/bsp-imx pkg/optee-os
+	     pkg/bsp-imx pkg/optee-os
 # alpine-base and alpine must be the first packages to build
 PKGS=pkg/alpine $(PKGS_$(ZARCH))
 # eve-alpine-base is bootstrap image for eve-alpine
@@ -375,10 +382,8 @@ currentversion:
 	#echo $(shell readlink $(CURRENT) | sed -E 's/rootfs-(.*)\.[^.]*$/\1/')
 	@cat $(CURRENT_DIR)/installer/eve_version
 
-
 kernel-yml:
-	$(QUIET)if [ ! -f "pkg/kernel/build.yml" ] || [ ! -f "pkg/new-kernel/build.yml" ]; then tools/kernel-build-yml.sh; fi
-
+	$(QUIET)$(KERNEL_BUILD_YML_TOOL)
 
 .PHONY: currentversion linuxkit kernel-yml
 
@@ -582,7 +587,7 @@ $(INSTALLER):
 	@mkdir -p $@
 	@cp -r pkg/eve/installer/* $@
 	# sample output 0.0.0-HEAD-a437e8e4-xen-amd64
-	@echo $(FULL_VERSION) > $(INSTALLER)/eve_version
+	@echo $(FULL_VERSION) > $(VERSION_FILE)
 
 $(VERIFICATION):
 	@mkdir -p $@
@@ -631,7 +636,7 @@ $(ROOTFS)-%.img: $(ROOTFS_IMG)
 
 $(ROOTFS_TAR): images/rootfs-$(HV).yml | $(INSTALLER)
 	$(QUIET): $@: Begin
-	./tools/makerootfs.sh tar -y $< -t $@ -a $(ZARCH)
+	./tools/makerootfs.sh tar -y $< -t $@ -d $(INSTALLER) -a $(ZARCH)
 	$(QUIET): $@: Succeeded
 
 $(ROOTFS_IMG): $(ROOTFS_TAR) | $(INSTALLER)
@@ -803,6 +808,9 @@ cache-export-docker-load: $(LINUXKIT)
 ## will skip image if not found in cache
 cache-export-docker-load-all: $(LINUXKIT) $(addsuffix -cache-export-docker-load,$(PKGS_DOCKER_LOAD))
 
+proto-vendor:
+	@$(DOCKER_GO) "cd pkg/pillar ; go mod vendor" $(CURDIR) proto
+
 proto-diagram: $(GOBUILDER)
 	@$(DOCKER_GO) "/usr/local/bin/protodot -inc /usr/include -src ./api/proto/config/devconfig.proto -output devconfig && cp ~/protodot/generated/devconfig.* ./api/images && dot ./api/images/devconfig.dot -Tpng -o ./api/images/devconfig.png && echo generated ./api/images/devconfig.*" $(CURDIR) api
 
@@ -936,7 +944,7 @@ get_pkg_build_dev_yml = $(if $(wildcard pkg/$1/build-dev.yml),build-dev.yml,buil
 get_pkg_build_rstats_yml = $(if $(wildcard pkg/$1/build-rstats.yml),build-rstats.yml,build.yml)
 
 eve-%: pkg/%/Dockerfile pkg/%/gopkgversion build-tools $(RESCAN_DEPS)
-	$(QUIET)if [ "$@" = "eve-kernel" ] || [ "$@" = "eve-new-kernel" ]; then tools/kernel-build-yml.sh; fi
+	$(QUIET)$(KERNEL_BUILD_YML_TOOL)
 	$(QUIET): "$@: Begin: LINUXKIT_PKG_TARGET=$(LINUXKIT_PKG_TARGET)"
 	$(eval LINUXKIT_DOCKER_LOAD := $(if $(filter $(PKGS_DOCKER_LOAD),$*),--docker,))
 	$(eval LINUXKIT_BUILD_PLATFORMS_LIST := $(call uniq,linux/$(ZARCH) $(if $(filter $(PKGS_HOSTARCH),$*),linux/$(HOSTARCH),)))
@@ -944,13 +952,13 @@ eve-%: pkg/%/Dockerfile pkg/%/gopkgversion build-tools $(RESCAN_DEPS)
 	$(eval LINUXKIT_FLAGS := $(if $(filter manifest,$(LINUXKIT_PKG_TARGET)),,$(FORCE_BUILD) $(LINUXKIT_DOCKER_LOAD) $(LINUXKIT_BUILD_PLATFORMS)))
 	$(QUIET)$(LINUXKIT) $(DASH_V) pkg $(LINUXKIT_PKG_TARGET) $(LINUXKIT_OPTS) $(LINUXKIT_FLAGS) -build-yml $(call get_pkg_build_yml,$*) pkg/$*
 	$(QUIET)if [ -n "$(PRUNE)" ]; then \
-  		$(LINUXKIT) pkg builder prune; \
-  		docker image prune -f; \
-  	fi
+		$(LINUXKIT) pkg builder prune; \
+		docker image prune -f; \
+	fi
 	$(QUIET): "$@: Succeeded (intermediate for pkg/%)"
 
 images/rootfs-%.yml.in: images/rootfs.yml.in FORCE
-	$(QUITE)tools/compose-image-yml.sh $< $@ "$(ROOTFS_VERSION)-$*-$(ZARCH)" $(HV)
+	$(QUIET)tools/compose-image-yml.sh $< $@ "$(ROOTFS_VERSION)-$*-$(ZARCH)" $(HV)
 
 images-patches := $(wildcard images/*.yq)
 test-images-patches: $(images-patches:%.yq=%)

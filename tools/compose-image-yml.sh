@@ -29,11 +29,6 @@ process-image-template() {
     done
 }
 
-patch_version() {
-    # shellcheck disable=SC2016
-    yq --arg version "$1" '(.files[] | select(.contents == "EVE_VERSION")).contents |= $version' "$2"
-}
-
 patch_hv() {
     # shellcheck disable=SC2016
     yq --arg hv "$1" '(.files[] | select(.contents == "EVE_HV")).contents |= $hv' "$2"
@@ -48,8 +43,6 @@ main() {
     if [ -e "${out_templ_path}".yq ]; then
         yq -f "${out_templ_path}".yq "${out_templ_path}" || exit 1
     fi
-
-    patch_version "${eve_version}" "${out_templ_path}"
 
     patch_hv "${eve_hv}" "${out_templ_path}"
 

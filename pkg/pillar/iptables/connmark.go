@@ -50,6 +50,10 @@ var ControlProtocolMarkingIDMap = map[string]string{
 	// DHCP packets originating from outside
 	// (e.g. DHCP multicast requests from other devices on the same network)
 	"in_dhcp": "10",
+	// App initiated HTTP requests towards the metadata server running in dom0
+	"app_http": "11",
+	// ICMPv6 traffic to and from an application
+	"app_icmpv6": "12",
 }
 
 // GetConnmark : create connection mark corresponding to the given attributes.

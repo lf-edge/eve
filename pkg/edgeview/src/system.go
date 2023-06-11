@@ -971,10 +971,7 @@ func readAFile(path string, extraline int) {
 			buf = append(buf, l...)
 		}
 	}
-	for _, buff := range splitBySize(buf, 8192) {
-		fmt.Printf("%s", string(buff))
-		closePipe(true)
-	}
+	maySplitAndPrint(buf)
 	fmt.Printf("\n")
 }
 

@@ -117,12 +117,10 @@ func (lc *LinuxCollector) UpdateCollectingForNI(
 	ni.vifs = nil
 	for _, vif := range vifs {
 		vifWithAddrs := VIFAddrs{VIF: vif}
-		// If VIF was deactivated, forget previously recorded IP assignments.
-		if vif.Activated {
-			if prevVIF := prevVIFs.LookupByGuestMAC(vif.GuestIfMAC); prevVIF != nil {
-				vifWithAddrs.IPv4Addr = prevVIF.IPv4Addr
-				vifWithAddrs.IPv6Addrs = prevVIF.IPv6Addrs
-			}
+		prevVIF := prevVIFs.LookupByGuestMAC(vif.GuestIfMAC)
+		if prevVIF != nil && prevVIF.VIF.App == vif.App && prevVIF.VIF.NI == vif.NI {
+			vifWithAddrs.IPv4Addr = prevVIF.IPv4Addr
+			vifWithAddrs.IPv6Addrs = prevVIF.IPv6Addrs
 		}
 		ni.vifs = append(ni.vifs, vifWithAddrs)
 	}
@@ -142,43 +140,6 @@ func (lc *LinuxCollector) StopCollectingForNI(niID uuid.UUID) error {
 	lc.nis[niID].cancelPCAP()
 	delete(lc.nis, niID)
 	lc.log.Noticef("%s: Stopped collecting state data for NI %v", LogAndErrPrefix, niID)
-	return nil
-}
-
-// ActivateVIFStateCollecting : activate collecting of state data for the given VIF.
-// NOOP if the VIF is already activated.
-func (lc *LinuxCollector) ActivateVIFStateCollecting(
-	niID uuid.UUID, appID uuid.UUID, netAdapterName string) error {
-	return lc.setAppVIFActivateState(niID, appID, netAdapterName, true)
-}
-
-// InactivateVIFStateCollecting : stop collecting state data and forget recorded
-// IP assignments for the given VIF.
-// (config present but interface was un-configured from the network stack).
-func (lc *LinuxCollector) InactivateVIFStateCollecting(
-	niID uuid.UUID, appID uuid.UUID, netAdapterName string) error {
-	return lc.setAppVIFActivateState(niID, appID, netAdapterName, false)
-}
-
-func (lc *LinuxCollector) setAppVIFActivateState(niID uuid.UUID,
-	appID uuid.UUID, netAdapterName string, activate bool) error {
-	lc.mu.Lock()
-	defer lc.mu.Unlock()
-	if _, exists := lc.nis[niID]; !exists {
-		return ErrUnknownNI{NI: niID}
-	}
-	vif := lc.nis[niID].vifs.LookupByAdapterName(appID, netAdapterName)
-	if vif == nil {
-		err := fmt.Errorf("%s: Unknown VIF with adapter name %s for app %s",
-			LogAndErrPrefix, netAdapterName, appID)
-		return err
-	}
-	vif.VIF.Activated = activate
-	if !activate {
-		// Forget previously recorded IP assignments.
-		vif.IPv4Addr = nil
-		vif.IPv6Addrs = nil
-	}
 	return nil
 }
 

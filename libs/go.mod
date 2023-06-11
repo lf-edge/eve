@@ -32,7 +32,7 @@ require (
 require (
 	cloud.google.com/go/storage v1.17.0
 	github.com/Azure/azure-pipeline-go v0.2.3
-	github.com/Azure/azure-storage-blob-go v0.14.0
+	github.com/Azure/azure-storage-blob-go v0.15.0
 	github.com/aws/aws-sdk-go v1.35.35
 	github.com/google/go-containerregistry v0.6.0
 	github.com/pkg/sftp v1.12.0

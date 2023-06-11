@@ -1,0 +1,27 @@
+# vim:syntax=apparmor
+# ------------------------------------------------------------------
+#
+#    Copyright (C) 2002-2009 Novell/SUSE
+#    Copyright (C) 2009-2011 Canonical Ltd.
+#    Copyright (C) 2021 Christian Boltz
+#
+#    This program is free software; you can redistribute it and/or
+#    modify it under the terms of version 2 of the GNU General Public
+#    License published by the Free Software Foundation.
+#
+# ------------------------------------------------------------------
+
+  abi <abi/3.0>,
+
+  @{etc_ro}/gcrypt/hwf.deny r,
+  @{etc_ro}/gcrypt/random.conf r,
+  @{PROC}/sys/crypto/fips_enabled r,
+
+  # libgcrypt reads some flags from /proc
+  @{PROC}/sys/crypto/* r,
+
+  # crypto policies used by various libraries
+  /etc/crypto-policies/*/*.txt r,
+  /usr/share/crypto-policies/*/*.txt r,
+
+  include if exists <abstractions/crypto.d>
