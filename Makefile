@@ -742,7 +742,7 @@ $(INSTALLER).iso: $(EFI_PART) $(ROOTFS_IMG) $(INITRD_IMG) $(INSTALLER_IMG) $(CON
 	$(QUIET): $@: Succeeded
 
 $(INSTALLER).net: $(EFI_PART) $(ROOTFS_IMG) $(INITRD_IMG) $(INSTALLER_IMG) $(CONFIG_IMG) $(PERSIST_IMG) $(KERNEL_IMG) | $(INSTALLER)
-	./tools/makenet.sh $| $@
+	./tools/makenet.sh $| installer.img $@
 	$(QUIET): $@: Succeeded
 
 $(LIVE).vdi: $(LIVE).raw
@@ -756,13 +756,12 @@ $(LIVE).parallels: $(LIVE).raw
 	qemu-img info -f parallels --output json $(LIVE).parallels/live.0.$(PARALLELS_UUID).hds | jq --raw-output '.["virtual-size"]' | xargs ./tools/parallels_disk.sh $(LIVE) $(PARALLELS_UUID)
 
 $(VERIFICATION).raw: $(BOOT_PART) $(EFI_PART) $(ROOTFS_IMG) $(INITRD_IMG) $(VERIFICATION_IMG) $(CONFIG_IMG) $(PERSIST_IMG) $(BSP_IMX_PART) | $(VERIFICATION)
-	@[ "$(PLATFORM)" != "${PLATFORM/imx/}" ] && \
-		cp $(VERIFICATION)/bsp-imx/NXP-EULA-LICENSE.txt $(VERIFICATION)/NXP-EULA-LICENSE.txt && \
-		cp $(VERIFICATION)/bsp-imx/NXP-EULA-LICENSE.txt $(BUILD_DIR)/NXP-EULA-LICENSE.txt && \
-		cp $(VERIFICATION)/bsp-imx/"$(PLATFORM)"-flash.bin $(VERIFICATION)/imx8-flash.bin && \
-		cp $(VERIFICATION)/bsp-imx/"$(PLATFORM)"-flash.conf $(VERIFICATION)/imx8-flash.conf && \
-		cp $(VERIFICATION)/bsp-imx/*.dtb $(VERIFICATION)/boot  || :
+	./tools/prepare-platform.sh "$(PLATFORM)" "$(BUILD_DIR)" "$(VERIFICATION)" || :
 	./tools/makeverification.sh -C 650 $| $@ "conf_win verification inventory_win"
+	$(QUIET): $@: Succeeded
+
+$(VERIFICATION).net: $(EFI_PART) $(ROOTFS_IMG) $(INITRD_IMG) $(VERIFICATION_IMG) $(CONFIG_IMG) $(PERSIST_IMG) $(KERNEL_IMG) | $(VERIFICATION)
+	./tools/makenet.sh $| verification.img $@
 	$(QUIET): $@: Succeeded
 
 # top-level linuxkit packages targets, note the one enforcing ordering between packages
@@ -1031,9 +1030,10 @@ help:
 	@echo "   live             builds a full disk image of EVE which can be function as a virtual device"
 	@echo "   live-XXX         builds a particular kind of EVE live image (raw, qcow2, gcp, vdi, parallels)"
 	@echo "   installer-raw    builds raw disk installer image (to be installed on bootable media)"
-	@echo "   verification-raw builds raw disk verification image (to be installed on bootable media)"
 	@echo "   installer-iso    builds an ISO installers image (to be installed on bootable media)"
 	@echo "   installer-net    builds a tarball of artifacts to be used for PXE booting"
+	@echo "   verification-raw builds raw disk verification image (to be installed on bootable media)"
+	@echo "   verification-net builds a tarball of artifacts to be used for PXE verification"
 	@echo
 	@echo "Commonly used run targets (note they don't automatically rebuild images they run):"
 	@echo "   run-compose          runs all EVE microservices via docker-compose deployment"
