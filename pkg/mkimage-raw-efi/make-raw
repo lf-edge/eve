@@ -73,7 +73,7 @@ PERSIST_UUID=ad6871ee-31f9-4cf3-9e09-6f7a25c30059
 # EFI partition size in bytes
 EFI_PART_SIZE=$((36 * 1024 * 1024))
 # rootfs partition size in bytes
-ROOTFS_PART_SIZE=$(( 300 * 1024 * 1024 ))
+ROOTFS_PART_SIZE=$(( 512 * 1024 * 1024 ))
 # conf partition size in bytes
 CONF_PART_SIZE=$((1024 * 1024))
 # installer inventory partition size in bytes
