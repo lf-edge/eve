@@ -1,0 +1,14 @@
+# Copyright (c) 2023 Zededa, Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+#include <tunables/global>
+
+@{exec_path} = /usr/bin/vtpm_server
+profile vtpm @{exec_path} {
+    #include <abstractions/base>
+
+    # alow necessary access for operations
+    /jail/{,*,**}    rw,
+    /usr/bin/tpm2   rPx,
+    network inet stream,
+}
