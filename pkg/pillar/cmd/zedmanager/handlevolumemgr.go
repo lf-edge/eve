@@ -15,6 +15,7 @@ import (
 
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
 	uuid "github.com/satori/go.uuid"
 )
 
@@ -470,7 +471,7 @@ func serializeSnapshotInstanceStatus(status *types.AppInstanceStatus, moved *typ
 		log.Errorf("serializeSnapshotInstanceStatus: Failed to marshal SnapshotInstanceStatus: %s", err)
 		return fmt.Errorf("failed to marshal SnapshotInstanceStatus: %s", err)
 	}
-	err = os.WriteFile(metadataFile, data, 0644)
+	err = fileutils.WriteRename(metadataFile, data)
 	if err != nil {
 		log.Errorf("serializeSnapshotInstanceStatus: Failed to write SnapshotInstanceStatus to file: %s", err)
 		return fmt.Errorf("failed to write SnapshotInstanceStatus to file: %s", err)
