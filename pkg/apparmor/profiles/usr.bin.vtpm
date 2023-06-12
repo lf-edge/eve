@@ -7,7 +7,7 @@
 profile vtpm @{exec_path} {
     #include <abstractions/base>
 
-    # alow necessary access for operations
+    # allow necessary access for operations
     /jail/{,*,**}    rw,
     /usr/bin/tpm2   rPx,
     network inet stream,
