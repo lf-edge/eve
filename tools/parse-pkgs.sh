@@ -31,7 +31,7 @@ _linuxkit_tag() {
     local -a build_yml_cmd
 
     if [[ "${is_dev_build}" == 1 ]]; then
-      build_yml_cmd=(-build-yml build-dev.yml)
+      build_yml_cmd=(--build-yml build-dev.yml)
     fi
 
     echo "$(linuxkit pkg show-tag "${build_yml_cmd[@]}" ${EVE_HASH:+--hash $EVE_HASH} "${EVE}/${pkg}")${ARCH}"
