@@ -21,11 +21,11 @@ do_image() {
   # did we specify an architecture?
   ARCHARG=""
   if [ -n "$arch" ]; then
-    ARCHARG="-arch ${arch}"
+    ARCHARG="--arch ${arch}"
   fi
   : > "$IMAGE"
   # shellcheck disable=SC2086
-  linuxkit build -docker ${ARCHARG} -o - "$ymlfile" | docker run -i --rm -v /dev:/dev --privileged -v "$IMAGE:/rootfs.img" "${MKROOTFS_TAG}"
+  linuxkit build --docker ${ARCHARG} -o - "$ymlfile" | docker run -i --rm -v /dev:/dev --privileged -v "$IMAGE:/rootfs.img" "${MKROOTFS_TAG}"
 }
 
 # mode 1 - generate tarfile from yml and save
@@ -38,10 +38,10 @@ do_tar() {
   # did we specify an architecture?
   ARCHARG=""
   if [ -n "$arch" ]; then
-    ARCHARG="-arch ${arch}"
+    ARCHARG="--arch ${arch}"
   fi
   # shellcheck disable=SC2086
-  linuxkit build -docker ${ARCHARG} -o "${tarfile}" "$ymlfile"
+  linuxkit build --docker ${ARCHARG} --o "${tarfile}" "$ymlfile"
 }
 
 # mode 2 - generate image from tarfile
