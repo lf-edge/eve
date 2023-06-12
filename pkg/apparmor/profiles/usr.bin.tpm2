@@ -7,11 +7,11 @@
 profile tpm2 @{exec_path} {
     #include <abstractions/base>
 
-    # alow necessary access for operations
+    # allow necessary access for operations
     /usr/bin/tpm2           rm,
     /jail/{,*,**}           rw,
 
-    # alow access to tpm device
+    # allow access to tpm device
     /dev/tpm0               rw,
     /dev/tpmrm0             rw,
 }
