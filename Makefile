@@ -311,7 +311,7 @@ DOCKERFILE_ADD_SCANNER_SOURCE=./tools/dockerfile-add-scanner
 
 # for the go build sources
 GOSOURCES=$(BUILDTOOLS_BIN)/go-sources-and-licenses
-GOSOURCES_VERSION=35a4cc0e0a12f91ef11278eb0ce22f02fe9c96f6
+GOSOURCES_VERSION=668fbc58b7b48e0202e106c45c2caaf9f5be189f
 GOSOURCES_SOURCE=github.com/deitch/go-sources-and-licenses
 
 
