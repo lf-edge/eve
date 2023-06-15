@@ -237,6 +237,8 @@ func (c *HTTPServerConfigurator) runServer(ctx context.Context, srvName string,
 		case <-ctx.Done():
 			c.Log.Noticef("%s: stopped trying to Listen, context is done", logPrefix)
 			// Return error from net.Listen to Reconciler.
+			err = fmt.Errorf("net.Listen failed with error (%v) "+
+				"and repeated attempts were canceled", err)
 			listenDoneFn(err)
 			return
 		case <-time.After(2 * time.Second):

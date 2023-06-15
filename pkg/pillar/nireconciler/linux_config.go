@@ -232,6 +232,11 @@ const (
 )
 
 const (
+	vifIfNamePrefix    = "nbu"
+	bridgeIfNamePrefix = "bn"
+)
+
+const (
 	metadataSrvIP = "169.254.169.254"
 )
 
@@ -999,6 +1004,45 @@ func (r *LinuxNIReconciler) getIntendedAppConnCfg(niID uuid.UUID,
 	intendedAppConnCfg.PutItem(ipv6Eids, nil)
 	intendedAppConnCfg.PutSubGraph(r.getIntendedAppConnACLs(niID, vif, ul))
 	return intendedAppConnCfg
+}
+
+func (r *LinuxNIReconciler) generateBridgeIfName(
+	niConfig types.NetworkInstanceConfig, br NIBridge) (string, error) {
+	var brIfName string
+	switch niConfig.Type {
+	case types.NetworkInstanceTypeSwitch:
+		if br.Uplink.IfName != "" {
+			brIfName = br.Uplink.IfName
+			break
+		}
+		// Air-gapped, create bridge just like for local NI.
+		fallthrough
+	case types.NetworkInstanceTypeLocal:
+		brIfName = fmt.Sprintf("%s%d", bridgeIfNamePrefix, br.BrNum)
+	default:
+		return "", fmt.Errorf("%s: Unsupported type %v for NI %v",
+			LogAndErrPrefix, niConfig.Type, niConfig.UUID)
+	}
+	return brIfName, nil
+}
+
+func (r *LinuxNIReconciler) generateVifHostIfName(vifNum, appNum int) string {
+	return fmt.Sprintf("%s%dx%d", vifIfNamePrefix, vifNum, appNum)
+}
+
+func (r *LinuxNIReconciler) niBridgeIsCreatedByNIM(ni *niInfo) bool {
+	return ni.config.Type == types.NetworkInstanceTypeSwitch &&
+		ni.bridge.Uplink.IfName != ""
+}
+
+func (r *LinuxNIReconciler) getNISubnet(ni *niInfo) *net.IPNet {
+	if ni.config.Subnet.IP == nil {
+		return nil
+	}
+	return &net.IPNet{
+		IP:   ni.config.Subnet.IP,
+		Mask: ni.config.Subnet.Mask,
+	}
 }
 
 // HostIPSetBasename returns basename (without the "ipvX." prefix) to use for ipset
