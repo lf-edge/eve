@@ -61,12 +61,14 @@ func (c *asyncManager) reconcileEnds() (anyAsyncOps bool, resumeChan <-chan stri
 	return false, nil
 }
 
-func (c *asyncManager) cancelOps() {
+func (c *asyncManager) cancelOps(cancelForItem func(ref dg.ItemRef) bool) {
 	c.Lock()
 	defer c.Unlock()
 	for _, asyncOp := range c.asyncOps {
-		cancel := asyncOp.params.cancel
-		if cancel != nil {
+		if cancelForItem != nil && !cancelForItem(asyncOp.params.itemRef) {
+			continue
+		}
+		if cancel := asyncOp.params.cancel; cancel != nil {
 			cancel()
 			asyncOp.status.cancelTime = time.Now()
 		}
