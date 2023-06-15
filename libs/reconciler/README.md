@@ -369,9 +369,9 @@ type MyAgent struct {
      registry       reconciler.ConfiguratorRegistry
 
      // To manage asynchronous operations.
-     resumeReconciliation <-chan struct{}     // nil if no async ops
-     cancelAsyncOps       context.CancelFunc  // nil if no async ops
-     waitForAsyncOps      func()              // NOOP if no async ops
+     resumeReconciliation <-chan struct{}        // nil if no async ops
+     cancelAsyncOps       reconciler.CancelFunc  // nil if no async ops
+     waitForAsyncOps      func()                 // NOOP if no async ops
 }
 
 func (a *MyAgent) main() {
@@ -395,7 +395,7 @@ func (a *MyAgent) main() {
                case <- event2:
                     // If you need to cancel all asynchronous operations, run:
                     if a.cancelAsyncOps != nil {
-                         a.cancelAsyncOps()
+                         a.cancelAsyncOps(nil)
                          a.waitForAsyncOps()
                          fmt.Println("Asynchronous operations were canceled!")
                     }
