@@ -946,7 +946,7 @@ func TestSingleLocalNI(test *testing.T) {
 	t.Expect(err).ToNot(HaveOccurred())
 	t.Expect(niStatus.NI).To(Equal(ni1UUID.UUID))
 	t.Expect(niStatus.Deleted).To(BeFalse())
-	t.Expect(niStatus.AsyncInProgress).To(BeFalse())
+	t.Expect(niStatus.InProgress).To(BeFalse())
 	t.Expect(niStatus.BrIfName).To(Equal("bn1"))
 	t.Expect(niStatus.FailedItems).To(BeEmpty())
 
@@ -1033,9 +1033,8 @@ func TestSingleLocalNI(test *testing.T) {
 	t.Expect(appStatus.Deleted).To(BeFalse())
 	t.Expect(appStatus.VIFs).To(HaveLen(1))
 	t.Expect(appStatus.VIFs[0].NetAdapterName).To(Equal("adapter1"))
-	t.Expect(appStatus.VIFs[0].AsyncInProgress).To(BeFalse())
+	t.Expect(appStatus.VIFs[0].InProgress).To(BeTrue())
 	t.Expect(appStatus.VIFs[0].HostIfName).To(Equal("nbu1x1"))
-	t.Expect(appStatus.VIFs[0].Ready).To(BeFalse())
 	t.Expect(appStatus.VIFs[0].FailedItems).To(BeEmpty())
 
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
@@ -1063,7 +1062,7 @@ func TestSingleLocalNI(test *testing.T) {
 
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
 	t.Expect(recUpdate.UpdateType).To(Equal(nirec.AppConnReconcileStatusChanged))
-	t.Expect(recUpdate.AppConnStatus.VIFs[0].Ready).To(BeTrue())
+	t.Expect(recUpdate.AppConnStatus.VIFs[0].InProgress).To(BeFalse())
 	t.Expect(recUpdate.AppConnStatus.VIFs[0].FailedItems).To(BeEmpty())
 
 	graphs := []dg.GraphR{niReconciler.GetIntendedState(), niReconciler.GetCurrentState()}
@@ -1129,9 +1128,8 @@ func TestSingleLocalNI(test *testing.T) {
 	t.Expect(appStatus.Deleted).To(BeTrue())
 	t.Expect(appStatus.VIFs).To(HaveLen(1))
 	t.Expect(appStatus.VIFs[0].NetAdapterName).To(Equal("adapter1"))
-	t.Expect(appStatus.VIFs[0].AsyncInProgress).To(BeFalse())
+	t.Expect(appStatus.VIFs[0].InProgress).To(BeFalse())
 	t.Expect(appStatus.VIFs[0].HostIfName).To(Equal("nbu1x1"))
-	t.Expect(appStatus.VIFs[0].Ready).To(BeFalse())
 	t.Expect(appStatus.VIFs[0].FailedItems).To(BeEmpty())
 
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
@@ -1156,7 +1154,7 @@ func TestSingleLocalNI(test *testing.T) {
 	t.Expect(err).ToNot(HaveOccurred())
 	t.Expect(niStatus.NI).To(Equal(ni1UUID.UUID))
 	t.Expect(niStatus.Deleted).To(BeTrue())
-	t.Expect(niStatus.AsyncInProgress).To(BeFalse())
+	t.Expect(niStatus.InProgress).To(BeFalse())
 	t.Expect(niStatus.BrIfName).To(Equal("bn1"))
 	t.Expect(niStatus.FailedItems).To(BeEmpty())
 	networkMonitor.DelInterface(ni1BridgeIf.Attrs.IfName)
@@ -1178,6 +1176,7 @@ func TestIPv4LocalAndSwitchNIs(test *testing.T) {
 	eth1IPs := eth1.IPAddrs
 	eth1.IPAddrs = nil
 	networkMonitor.AddOrUpdateInterface(eth0)
+	networkMonitor.AddOrUpdateInterface(keth1)
 	networkMonitor.AddOrUpdateInterface(eth1)
 	networkMonitor.UpdateRoutes(eth0Routes)
 	ctx := reconciler.MockRun(context.Background())
@@ -1189,7 +1188,7 @@ func TestIPv4LocalAndSwitchNIs(test *testing.T) {
 	t.Expect(err).ToNot(HaveOccurred())
 	t.Expect(niStatus.NI).To(Equal(ni1UUID.UUID))
 	t.Expect(niStatus.Deleted).To(BeFalse())
-	t.Expect(niStatus.AsyncInProgress).To(BeFalse())
+	t.Expect(niStatus.InProgress).To(BeFalse())
 	t.Expect(niStatus.BrIfName).To(Equal("bn1"))
 	t.Expect(niStatus.FailedItems).To(BeEmpty())
 
@@ -1225,7 +1224,7 @@ func TestIPv4LocalAndSwitchNIs(test *testing.T) {
 	t.Expect(err).ToNot(HaveOccurred())
 	t.Expect(niStatus.NI).To(Equal(ni2UUID.UUID))
 	t.Expect(niStatus.Deleted).To(BeFalse())
-	t.Expect(niStatus.AsyncInProgress).To(BeFalse())
+	t.Expect(niStatus.InProgress).To(BeFalse())
 	t.Expect(niStatus.BrIfName).To(Equal("eth1"))
 	t.Expect(niStatus.FailedItems).To(BeEmpty())
 
@@ -1264,19 +1263,16 @@ func TestIPv4LocalAndSwitchNIs(test *testing.T) {
 	t.Expect(appStatus.Deleted).To(BeFalse())
 	t.Expect(appStatus.VIFs).To(HaveLen(3))
 	t.Expect(appStatus.VIFs[0].NetAdapterName).To(Equal("adapter1"))
-	t.Expect(appStatus.VIFs[0].AsyncInProgress).To(BeFalse())
+	t.Expect(appStatus.VIFs[0].InProgress).To(BeTrue())
 	t.Expect(appStatus.VIFs[0].HostIfName).To(Equal("nbu1x2"))
-	t.Expect(appStatus.VIFs[0].Ready).To(BeFalse())
 	t.Expect(appStatus.VIFs[0].FailedItems).To(BeEmpty())
 	t.Expect(appStatus.VIFs[1].NetAdapterName).To(Equal("adapter2"))
-	t.Expect(appStatus.VIFs[1].AsyncInProgress).To(BeFalse())
+	t.Expect(appStatus.VIFs[1].InProgress).To(BeTrue())
 	t.Expect(appStatus.VIFs[1].HostIfName).To(Equal("nbu2x2"))
-	t.Expect(appStatus.VIFs[1].Ready).To(BeFalse())
 	t.Expect(appStatus.VIFs[1].FailedItems).To(BeEmpty())
 	t.Expect(appStatus.VIFs[2].NetAdapterName).To(Equal("adapter3"))
-	t.Expect(appStatus.VIFs[2].AsyncInProgress).To(BeFalse())
+	t.Expect(appStatus.VIFs[2].InProgress).To(BeTrue())
 	t.Expect(appStatus.VIFs[2].HostIfName).To(Equal("nbu3x2"))
-	t.Expect(appStatus.VIFs[2].Ready).To(BeFalse())
 	t.Expect(appStatus.VIFs[2].FailedItems).To(BeEmpty())
 
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
@@ -1300,9 +1296,9 @@ func TestIPv4LocalAndSwitchNIs(test *testing.T) {
 	t.Expect(recUpdate.UpdateType).To(Equal(nirec.AppConnReconcileStatusChanged))
 	for i := 0; i < 3; i++ {
 		if i < 2 {
-			t.Expect(recUpdate.AppConnStatus.VIFs[i].Ready).To(BeTrue())
+			t.Expect(recUpdate.AppConnStatus.VIFs[i].InProgress).To(BeFalse())
 		} else {
-			t.Expect(recUpdate.AppConnStatus.VIFs[i].Ready).To(BeFalse())
+			t.Expect(recUpdate.AppConnStatus.VIFs[i].InProgress).To(BeTrue())
 		}
 		t.Expect(recUpdate.AppConnStatus.VIFs[i].FailedItems).To(BeEmpty())
 	}
@@ -1348,7 +1344,7 @@ func TestIPv4LocalAndSwitchNIs(test *testing.T) {
 
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
 	t.Expect(recUpdate.UpdateType).To(Equal(nirec.AppConnReconcileStatusChanged))
-	t.Expect(recUpdate.AppConnStatus.VIFs[2].Ready).To(BeTrue())
+	t.Expect(recUpdate.AppConnStatus.VIFs[2].InProgress).To(BeFalse())
 
 	t.Expect(itemIsCreated(dg.Reference(
 		linuxitems.VLANPort{
@@ -1371,7 +1367,7 @@ func TestIPv4LocalAndSwitchNIs(test *testing.T) {
 	t.Expect(appStatus.Deleted).To(BeFalse())
 	t.Expect(appStatus.VIFs).To(HaveLen(3))
 	for i := 0; i < 3; i++ {
-		t.Expect(appStatus.VIFs[i].Ready).To(BeTrue())
+		t.Expect(appStatus.VIFs[i].InProgress).To(BeFalse())
 		t.Expect(appStatus.VIFs[i].FailedItems).To(BeEmpty())
 	}
 
@@ -1389,7 +1385,7 @@ func TestIPv4LocalAndSwitchNIs(test *testing.T) {
 	t.Expect(appStatus.Deleted).To(BeTrue())
 	t.Expect(appStatus.VIFs).To(HaveLen(3))
 	for i := 0; i < 3; i++ {
-		t.Expect(appStatus.VIFs[i].Ready).To(BeFalse())
+		t.Expect(appStatus.VIFs[i].InProgress).To(BeFalse())
 	}
 
 	// Delete network instances
@@ -1476,7 +1472,7 @@ func TestUplinkFailover(test *testing.T) {
 	niReconciler.ResumeReconcile(ctx)
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
 	t.Expect(recUpdate.UpdateType).To(Equal(nirec.AppConnReconcileStatusChanged))
-	t.Expect(recUpdate.AppConnStatus.VIFs[0].Ready).To(BeTrue())
+	t.Expect(recUpdate.AppConnStatus.VIFs[0].InProgress).To(BeFalse())
 
 	eth0PortMapRuleIn := iptables.Rule{
 		RuleLabel: "User-configured PORTMAP ACL rule 4 for uplink IP 192.168.10.5 from inside",
@@ -1551,7 +1547,7 @@ func TestUplinkFailover(test *testing.T) {
 	niStatus, err := niReconciler.UpdateNI(ctx, ni1Config, ni1Bridge)
 	t.Expect(niStatus.NI).To(Equal(ni1UUID.UUID))
 	t.Expect(niStatus.Deleted).To(BeFalse())
-	t.Expect(niStatus.AsyncInProgress).To(BeFalse())
+	t.Expect(niStatus.InProgress).To(BeFalse())
 	t.Expect(niStatus.BrIfName).To(Equal("bn1"))
 	t.Expect(niStatus.FailedItems).To(BeEmpty())
 
@@ -1573,7 +1569,7 @@ func TestUplinkFailover(test *testing.T) {
 	niStatus, err = niReconciler.UpdateNI(ctx, ni1Config, ni1Bridge)
 	t.Expect(niStatus.NI).To(Equal(ni1UUID.UUID))
 	t.Expect(niStatus.Deleted).To(BeFalse())
-	t.Expect(niStatus.AsyncInProgress).To(BeFalse())
+	t.Expect(niStatus.InProgress).To(BeFalse())
 	t.Expect(niStatus.BrIfName).To(Equal("bn1"))
 	t.Expect(niStatus.FailedItems).To(BeEmpty())
 
@@ -1601,6 +1597,7 @@ func TestUplinkFailover(test *testing.T) {
 
 func TestIPv6LocalAndSwitchNIs(test *testing.T) {
 	t := initTest(test)
+	networkMonitor.AddOrUpdateInterface(keth2)
 	networkMonitor.AddOrUpdateInterface(eth2)
 	networkMonitor.UpdateRoutes(eth2Routes)
 	ctx := reconciler.MockRun(context.Background())
@@ -1612,7 +1609,7 @@ func TestIPv6LocalAndSwitchNIs(test *testing.T) {
 	t.Expect(err).ToNot(HaveOccurred())
 	t.Expect(niStatus.NI).To(Equal(ni3UUID.UUID))
 	t.Expect(niStatus.Deleted).To(BeFalse())
-	t.Expect(niStatus.AsyncInProgress).To(BeFalse())
+	t.Expect(niStatus.InProgress).To(BeFalse())
 	t.Expect(niStatus.BrIfName).To(Equal("bn3"))
 	t.Expect(niStatus.FailedItems).To(BeEmpty())
 
@@ -1628,7 +1625,7 @@ func TestIPv6LocalAndSwitchNIs(test *testing.T) {
 	t.Expect(err).ToNot(HaveOccurred())
 	t.Expect(niStatus.NI).To(Equal(ni4UUID.UUID))
 	t.Expect(niStatus.Deleted).To(BeFalse())
-	t.Expect(niStatus.AsyncInProgress).To(BeFalse())
+	t.Expect(niStatus.InProgress).To(BeFalse())
 	t.Expect(niStatus.BrIfName).To(Equal("eth2"))
 	t.Expect(niStatus.FailedItems).To(BeEmpty())
 
@@ -1655,14 +1652,12 @@ func TestIPv6LocalAndSwitchNIs(test *testing.T) {
 	t.Expect(appStatus.Deleted).To(BeFalse())
 	t.Expect(appStatus.VIFs).To(HaveLen(2))
 	t.Expect(appStatus.VIFs[0].NetAdapterName).To(Equal("adapter1"))
-	t.Expect(appStatus.VIFs[0].AsyncInProgress).To(BeFalse())
+	t.Expect(appStatus.VIFs[0].InProgress).To(BeTrue())
 	t.Expect(appStatus.VIFs[0].HostIfName).To(Equal("nbu1x3"))
-	t.Expect(appStatus.VIFs[0].Ready).To(BeFalse())
 	t.Expect(appStatus.VIFs[0].FailedItems).To(BeEmpty())
 	t.Expect(appStatus.VIFs[1].NetAdapterName).To(Equal("adapter2"))
-	t.Expect(appStatus.VIFs[1].AsyncInProgress).To(BeFalse())
+	t.Expect(appStatus.VIFs[1].InProgress).To(BeTrue())
 	t.Expect(appStatus.VIFs[1].HostIfName).To(Equal("nbu2x3"))
-	t.Expect(appStatus.VIFs[1].Ready).To(BeFalse())
 	t.Expect(appStatus.VIFs[1].FailedItems).To(BeEmpty())
 
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
@@ -1679,8 +1674,8 @@ func TestIPv6LocalAndSwitchNIs(test *testing.T) {
 	niReconciler.ResumeReconcile(ctx)
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
 	t.Expect(recUpdate.UpdateType).To(Equal(nirec.AppConnReconcileStatusChanged))
-	t.Expect(recUpdate.AppConnStatus.VIFs[0].Ready).To(BeTrue())
-	t.Expect(recUpdate.AppConnStatus.VIFs[1].Ready).To(BeTrue())
+	t.Expect(recUpdate.AppConnStatus.VIFs[0].InProgress).To(BeFalse())
+	t.Expect(recUpdate.AppConnStatus.VIFs[1].InProgress).To(BeFalse())
 
 	vif2VLAN := linuxitems.VLANPort{
 		BridgeIfName: "eth2",
@@ -1817,7 +1812,7 @@ func TestAirGappedLocalAndSwitchNIs(test *testing.T) {
 	t.Expect(err).ToNot(HaveOccurred())
 	t.Expect(niStatus.NI).To(Equal(ni1UUID.UUID))
 	t.Expect(niStatus.Deleted).To(BeFalse())
-	t.Expect(niStatus.AsyncInProgress).To(BeFalse())
+	t.Expect(niStatus.InProgress).To(BeFalse())
 	t.Expect(niStatus.BrIfName).To(Equal("bn1"))
 	t.Expect(niStatus.FailedItems).To(BeEmpty())
 
@@ -1861,7 +1856,7 @@ func TestAirGappedLocalAndSwitchNIs(test *testing.T) {
 	t.Expect(err).ToNot(HaveOccurred())
 	t.Expect(niStatus.NI).To(Equal(ni2UUID.UUID))
 	t.Expect(niStatus.Deleted).To(BeFalse())
-	t.Expect(niStatus.AsyncInProgress).To(BeFalse())
+	t.Expect(niStatus.InProgress).To(BeFalse())
 	t.Expect(niStatus.BrIfName).To(Equal("bn2"))
 	t.Expect(niStatus.FailedItems).To(BeEmpty())
 
@@ -1896,19 +1891,16 @@ func TestAirGappedLocalAndSwitchNIs(test *testing.T) {
 	t.Expect(appStatus.Deleted).To(BeFalse())
 	t.Expect(appStatus.VIFs).To(HaveLen(3))
 	t.Expect(appStatus.VIFs[0].NetAdapterName).To(Equal("adapter1"))
-	t.Expect(appStatus.VIFs[0].AsyncInProgress).To(BeFalse())
+	t.Expect(appStatus.VIFs[0].InProgress).To(BeTrue())
 	t.Expect(appStatus.VIFs[0].HostIfName).To(Equal("nbu1x2"))
-	t.Expect(appStatus.VIFs[0].Ready).To(BeFalse())
 	t.Expect(appStatus.VIFs[0].FailedItems).To(BeEmpty())
 	t.Expect(appStatus.VIFs[1].NetAdapterName).To(Equal("adapter2"))
-	t.Expect(appStatus.VIFs[1].AsyncInProgress).To(BeFalse())
+	t.Expect(appStatus.VIFs[1].InProgress).To(BeTrue())
 	t.Expect(appStatus.VIFs[1].HostIfName).To(Equal("nbu2x2"))
-	t.Expect(appStatus.VIFs[1].Ready).To(BeFalse())
 	t.Expect(appStatus.VIFs[1].FailedItems).To(BeEmpty())
 	t.Expect(appStatus.VIFs[2].NetAdapterName).To(Equal("adapter3"))
-	t.Expect(appStatus.VIFs[2].AsyncInProgress).To(BeFalse())
+	t.Expect(appStatus.VIFs[2].InProgress).To(BeTrue())
 	t.Expect(appStatus.VIFs[2].HostIfName).To(Equal("nbu3x2"))
-	t.Expect(appStatus.VIFs[2].Ready).To(BeFalse())
 	t.Expect(appStatus.VIFs[2].FailedItems).To(BeEmpty())
 
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
@@ -1932,7 +1924,7 @@ func TestAirGappedLocalAndSwitchNIs(test *testing.T) {
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
 	t.Expect(recUpdate.UpdateType).To(Equal(nirec.AppConnReconcileStatusChanged))
 	for i := 0; i < 3; i++ {
-		t.Expect(recUpdate.AppConnStatus.VIFs[i].Ready).To(BeTrue())
+		t.Expect(recUpdate.AppConnStatus.VIFs[i].InProgress).To(BeFalse())
 		t.Expect(recUpdate.AppConnStatus.VIFs[i].FailedItems).To(BeEmpty())
 	}
 
@@ -1975,7 +1967,7 @@ func TestAirGappedLocalAndSwitchNIs(test *testing.T) {
 	t.Expect(appStatus.Deleted).To(BeFalse())
 	t.Expect(appStatus.VIFs).To(HaveLen(3))
 	for i := 0; i < 3; i++ {
-		t.Expect(appStatus.VIFs[i].Ready).To(BeTrue())
+		t.Expect(appStatus.VIFs[i].InProgress).To(BeFalse())
 		t.Expect(appStatus.VIFs[i].FailedItems).To(BeEmpty())
 	}
 
@@ -1991,7 +1983,7 @@ func TestAirGappedLocalAndSwitchNIs(test *testing.T) {
 	t.Expect(appStatus.Deleted).To(BeTrue())
 	t.Expect(appStatus.VIFs).To(HaveLen(3))
 	for i := 0; i < 3; i++ {
-		t.Expect(appStatus.VIFs[i].Ready).To(BeFalse())
+		t.Expect(appStatus.VIFs[i].InProgress).To(BeFalse())
 	}
 
 	// Delete network instances
