@@ -18,9 +18,9 @@ import (
 const asyncOpDuration = 3 * time.Second
 
 type mockItemAttrs struct {
-	intAttr   int
-	strAttr   string
-	boolAttr  bool
+	intAttr  int
+	strAttr  string
+	boolAttr bool
 }
 
 type mockItem struct {
@@ -71,7 +71,7 @@ func (m mockItem) Dependencies() []depgraph.Dependency {
 	return m.deps
 }
 
-func (m *mockConfigurator) Create(ctx context.Context, item depgraph.Item) (err error) {
+func (m *mockConfigurator) Create(ctx context.Context, item depgraph.Item) (injectedErr error) {
 	mItem, ok := item.(mockItem)
 	if !ok {
 		panic("mockConfigurator only works with mockItem")
@@ -83,25 +83,25 @@ func (m *mockConfigurator) Create(ctx context.Context, item depgraph.Item) (err 
 		panic("external item should not have configurator associated")
 	}
 	if mItem.failToCreate {
-		err = errors.New("failed to create")
+		injectedErr = errors.New("failed to create")
 	}
 	if mItem.asyncCreate {
 		done := reconciler.ContinueInBackground(ctx)
-		go func() {
+		go func(injectedErr error) {
 			select {
 			case <-time.After(asyncOpDuration):
 				break
 			case <-ctx.Done():
-				err = errors.New("failed to complete")
+				injectedErr = errors.New("failed to complete")
 			}
-			done(err)
-		}()
+			done(injectedErr)
+		}(injectedErr)
 		return nil
 	}
-	return err
+	return injectedErr
 }
 
-func (m *mockConfigurator) Modify(ctx context.Context, oldItem, newItem depgraph.Item) (err error) {
+func (m *mockConfigurator) Modify(ctx context.Context, oldItem, newItem depgraph.Item) (injectedErr error) {
 	if oldItem.Name() != newItem.Name() {
 		panic("Modify called between different items")
 	}
@@ -123,25 +123,25 @@ func (m *mockConfigurator) Modify(ctx context.Context, oldItem, newItem depgraph
 		panic("external item should not have configurator associated")
 	}
 	if mNewItem.failToCreate {
-		err = errors.New("failed to modify")
+		injectedErr = errors.New("failed to modify")
 	}
 	if mNewItem.asyncCreate {
 		done := reconciler.ContinueInBackground(ctx)
-		go func() {
+		go func(injectedErr error) {
 			select {
 			case <-time.After(asyncOpDuration):
 				break
 			case <-ctx.Done():
-				err = errors.New("failed to complete")
+				injectedErr = errors.New("failed to complete")
 			}
-			done(err)
-		}()
+			done(injectedErr)
+		}(injectedErr)
 		return nil
 	}
-	return err
+	return injectedErr
 }
 
-func (m *mockConfigurator) Delete(ctx context.Context, item depgraph.Item) (err error) {
+func (m *mockConfigurator) Delete(ctx context.Context, item depgraph.Item) (injectedErr error) {
 	mItem, ok := item.(mockItem)
 	if !ok {
 		panic("mockConfigurator only works with mockItem")
@@ -153,22 +153,22 @@ func (m *mockConfigurator) Delete(ctx context.Context, item depgraph.Item) (err 
 		panic("external item should not have configurator associated")
 	}
 	if mItem.failToDelete {
-		err = errors.New("failed to delete")
+		injectedErr = errors.New("failed to delete")
 	}
 	if mItem.asyncDelete {
 		done := reconciler.ContinueInBackground(ctx)
-		go func() {
+		go func(injectedErr error) {
 			select {
 			case <-time.After(asyncOpDuration):
 				break
 			case <-ctx.Done():
-				err = errors.New("failed to complete")
+				injectedErr = errors.New("failed to complete")
 			}
-			done(err)
-		}()
+			done(injectedErr)
+		}(injectedErr)
 		return nil
 	}
-	return err
+	return injectedErr
 }
 
 func (m *mockConfigurator) NeedsRecreate(oldItem, newItem depgraph.Item) (recreate bool) {
