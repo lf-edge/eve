@@ -436,7 +436,6 @@ func (r *LinuxDpcReconciler) Reconcile(ctx context.Context, args Args) Reconcile
 	}
 
 	// Log every executed operation.
-	// XXX Do we want to have this always logged or only with DEBUG enabled?
 	for _, log := range rs.OperationLog {
 		var withErr string
 		if log.Err != nil {
@@ -525,7 +524,7 @@ func (r *LinuxDpcReconciler) Reconcile(ctx context.Context, args Args) Reconcile
 		Error:           rs.Err,
 		AsyncInProgress: rs.AsyncOpsInProgress,
 		ResumeReconcile: r.resumeReconcile,
-		CancelAsyncOps:  rs.CancelAsyncOps,
+		CancelAsyncOps:  func() { rs.CancelAsyncOps(nil) },
 		WaitForAsyncOps: rs.WaitForAsyncOps,
 		FailingItems:    failingItems,
 		RS: RadioSilenceStatus{

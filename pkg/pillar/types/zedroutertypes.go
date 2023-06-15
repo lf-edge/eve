@@ -157,6 +157,7 @@ type AppNetworkStatus struct {
 	PendingAdd     bool
 	PendingModify  bool
 	PendingDelete  bool
+	ConfigInSync   bool
 	DisplayName    string
 	// Copy from the AppNetworkConfig; used to delete when config is gone.
 	GetStatsIPAddr       net.IP
