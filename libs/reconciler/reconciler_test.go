@@ -2548,13 +2548,19 @@ func TestAsyncFailures(test *testing.T) {
 	t.Expect(stateData.State).To(Equal(rec.ItemStateFailure))
 }
 
-// Items: A
+// Items: A, B
 // No dependencies
-func TestCancelAsyncOperation(test *testing.T) {
+func TestCancelAsyncOperations(test *testing.T) {
 	t := NewGomegaWithT(test)
 
 	itemA := mockItem{
 		name:        "A",
+		itemType:    "type1",
+		asyncCreate: true,
+	}
+
+	itemB := mockItem{
+		name:        "B",
 		itemType:    "type1",
 		asyncCreate: true,
 	}
@@ -2565,7 +2571,7 @@ func TestCancelAsyncOperation(test *testing.T) {
 	intent := dg.New(dg.InitArgs{
 		Name:        "TestGraph",
 		Description: "Graph for testing",
-		Items:       []dg.Item{itemA},
+		Items:       []dg.Item{itemA, itemB},
 	})
 
 	r := rec.New(reg)
@@ -2575,7 +2581,8 @@ func TestCancelAsyncOperation(test *testing.T) {
 	t.Expect(status.ReadyToResume).ToNot(BeNil())
 	t.Expect(itemA).To(BeingCreated())
 	t.Expect(itemA).ToNot(BeingRecreated()) // just to use BeingRecreated at least once
-	t.Expect(status.OperationLog).To(HaveLen(1))
+	t.Expect(itemB).To(BeingCreated())
+	t.Expect(status.OperationLog).To(HaveLen(2))
 	t.Expect(status.NewCurrentState).ToNot(BeNil())
 	current := status.NewCurrentState
 
@@ -2589,8 +2596,18 @@ func TestCancelAsyncOperation(test *testing.T) {
 	t.Expect(stateData.LastError).To(BeNil())
 	t.Expect(stateData.State).To(Equal(rec.ItemStateCreating))
 
-	// Cancel Create() of itemA.
-	status.CancelAsyncOps()
+	item, state, path, exists = current.Item(dg.Reference(itemB))
+	t.Expect(exists).To(BeTrue())
+	t.Expect(path.Len()).To(BeZero())
+	t.Expect(item).To(BeMockItem(itemB))
+	stateData = state.(*rec.ItemStateData)
+	t.Expect(stateData).ToNot(BeNil())
+	t.Expect(stateData.LastOperation).To(Equal(rec.OperationUnknown))
+	t.Expect(stateData.LastError).To(BeNil())
+	t.Expect(stateData.State).To(Equal(rec.ItemStateCreating))
+
+	// Cancel all asynchronous operations.
+	status.CancelAsyncOps(nil)
 	timeout := time.After(2 * time.Second)
 	done := make(chan bool)
 	go func() {
@@ -2599,14 +2616,11 @@ func TestCancelAsyncOperation(test *testing.T) {
 	}()
 	select {
 	case <-timeout:
-		test.Fatalf("Failed to cancel async op")
+		test.Fatalf("Failed to cancel async ops")
 	case <-done:
 	}
 
-	waitFor := time.Second
-	var graphName string
-	t.Eventually(status.ReadyToResume, waitFor).Should(Receive(&graphName))
-	t.Expect(graphName).To(Equal("TestGraph"))
+	waitForAsyncOps(t, 2)
 
 	r = rec.New(reg)
 	status = r.Reconcile(context.Background(), current, intent)
@@ -2614,6 +2628,107 @@ func TestCancelAsyncOperation(test *testing.T) {
 	t.Expect(status.AsyncOpsInProgress).To(BeFalse())
 	t.Expect(status.NewCurrentState).To(BeIdenticalTo(current))
 	t.Expect(status.ReadyToResume).To(BeNil())
+	t.Expect(itemA).To(BeCreated().WithError("failed to complete"))
+	t.Expect(itemB).To(BeCreated().WithError("failed to complete"))
+	t.Expect(status.OperationLog).To(HaveLen(2))
+
+	item, state, path, exists = current.Item(dg.Reference(itemA))
+	t.Expect(exists).To(BeTrue())
+	t.Expect(path.Len()).To(BeZero())
+	t.Expect(item).To(BeMockItem(itemA))
+	stateData = state.(*rec.ItemStateData)
+	t.Expect(stateData).ToNot(BeNil())
+	t.Expect(stateData.LastOperation).To(Equal(rec.OperationCreate))
+	t.Expect(stateData.LastError).To(MatchError("failed to complete"))
+	t.Expect(stateData.State).To(Equal(rec.ItemStateFailure))
+
+	item, state, path, exists = current.Item(dg.Reference(itemB))
+	t.Expect(exists).To(BeTrue())
+	t.Expect(path.Len()).To(BeZero())
+	t.Expect(item).To(BeMockItem(itemB))
+	stateData = state.(*rec.ItemStateData)
+	t.Expect(stateData).ToNot(BeNil())
+	t.Expect(stateData.LastOperation).To(Equal(rec.OperationCreate))
+	t.Expect(stateData.LastError).To(MatchError("failed to complete"))
+	t.Expect(stateData.State).To(Equal(rec.ItemStateFailure))
+}
+
+// Items: A, B
+// No dependencies
+func TestCancelSelectedAsyncOperations(test *testing.T) {
+	t := NewGomegaWithT(test)
+
+	itemA := mockItem{
+		name:        "A",
+		itemType:    "type1",
+		asyncCreate: true,
+	}
+
+	itemB := mockItem{
+		name:        "B",
+		itemType:    "type1",
+		asyncCreate: true,
+	}
+
+	reg := &rec.DefaultRegistry{}
+	t.Expect(addConfigurator(reg, "type1")).To(Succeed())
+
+	intent := dg.New(dg.InitArgs{
+		Name:        "TestGraph",
+		Description: "Graph for testing",
+		Items:       []dg.Item{itemA, itemB},
+	})
+
+	r := rec.New(reg)
+	status = r.Reconcile(context.Background(), nil, intent)
+	t.Expect(status.Err).To(BeNil())
+	t.Expect(status.AsyncOpsInProgress).To(BeTrue())
+	t.Expect(status.ReadyToResume).ToNot(BeNil())
+	t.Expect(itemA).To(BeingCreated())
+	t.Expect(itemB).To(BeingCreated())
+	t.Expect(status.OperationLog).To(HaveLen(2))
+	t.Expect(status.NewCurrentState).ToNot(BeNil())
+	current := status.NewCurrentState
+
+	item, state, path, exists := current.Item(dg.Reference(itemA))
+	t.Expect(exists).To(BeTrue())
+	t.Expect(path.Len()).To(BeZero())
+	t.Expect(item).To(BeMockItem(itemA))
+	stateData := state.(*rec.ItemStateData)
+	t.Expect(stateData).ToNot(BeNil())
+	t.Expect(stateData.LastOperation).To(Equal(rec.OperationUnknown))
+	t.Expect(stateData.LastError).To(BeNil())
+	t.Expect(stateData.State).To(Equal(rec.ItemStateCreating))
+
+	item, state, path, exists = current.Item(dg.Reference(itemB))
+	t.Expect(exists).To(BeTrue())
+	t.Expect(path.Len()).To(BeZero())
+	t.Expect(item).To(BeMockItem(itemB))
+	stateData = state.(*rec.ItemStateData)
+	t.Expect(stateData).ToNot(BeNil())
+	t.Expect(stateData.LastOperation).To(Equal(rec.OperationUnknown))
+	t.Expect(stateData.LastError).To(BeNil())
+	t.Expect(stateData.State).To(Equal(rec.ItemStateCreating))
+
+	// Cancel Create() of itemA but keep Create() of itemB going.
+	// Note that WaitForAsyncOps() is not supported for selective cancellation.
+	status.CancelAsyncOps(func(ref dg.ItemRef) bool {
+		return ref == dg.Reference(itemA)
+	})
+	timeout := time.After(2 * time.Second)
+	select {
+	case <-timeout:
+		test.Fatalf("Failed to cancel async ops")
+	case graphName := <-status.ReadyToResume:
+		t.Expect(graphName).To(Equal("TestGraph"))
+	}
+
+	r = rec.New(reg)
+	status = r.Reconcile(context.Background(), current, intent)
+	t.Expect(status.Err).ToNot(BeNil())
+	t.Expect(status.AsyncOpsInProgress).To(BeTrue())
+	t.Expect(status.NewCurrentState).To(BeIdenticalTo(current))
+	t.Expect(status.ReadyToResume).ToNot(BeNil())
 	t.Expect(itemA).To(BeCreated().WithError("failed to complete"))
 	t.Expect(status.OperationLog).To(HaveLen(1))
 
@@ -2626,6 +2741,38 @@ func TestCancelAsyncOperation(test *testing.T) {
 	t.Expect(stateData.LastOperation).To(Equal(rec.OperationCreate))
 	t.Expect(stateData.LastError).To(MatchError("failed to complete"))
 	t.Expect(stateData.State).To(Equal(rec.ItemStateFailure))
+
+	item, state, path, exists = current.Item(dg.Reference(itemB))
+	t.Expect(exists).To(BeTrue())
+	t.Expect(path.Len()).To(BeZero())
+	t.Expect(item).To(BeMockItem(itemB))
+	stateData = state.(*rec.ItemStateData)
+	t.Expect(stateData).ToNot(BeNil())
+	t.Expect(stateData.LastOperation).To(Equal(rec.OperationUnknown))
+	t.Expect(stateData.LastError).To(BeNil())
+	t.Expect(stateData.State).To(Equal(rec.ItemStateCreating))
+
+	// Wait for itemB to get created
+	waitForAsyncOps(t, 1)
+
+	r = rec.New(reg)
+	status = r.Reconcile(context.Background(), current, intent)
+	t.Expect(status.Err).To(BeNil())
+	t.Expect(status.AsyncOpsInProgress).To(BeFalse())
+	t.Expect(status.NewCurrentState).To(BeIdenticalTo(current))
+	t.Expect(status.ReadyToResume).To(BeNil())
+	t.Expect(itemB).To(BeCreated())
+	t.Expect(status.OperationLog).To(HaveLen(1))
+
+	item, state, path, exists = current.Item(dg.Reference(itemB))
+	t.Expect(exists).To(BeTrue())
+	t.Expect(path.Len()).To(BeZero())
+	t.Expect(item).To(BeMockItem(itemB))
+	stateData = state.(*rec.ItemStateData)
+	t.Expect(stateData).ToNot(BeNil())
+	t.Expect(stateData.LastOperation).To(Equal(rec.OperationCreate))
+	t.Expect(stateData.LastError).To(BeNil())
+	t.Expect(stateData.State).To(Equal(rec.ItemStateCreated))
 }
 
 func BenchmarkDepGraph100(b *testing.B) {
