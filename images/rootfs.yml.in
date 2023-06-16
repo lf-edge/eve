@@ -2,12 +2,12 @@ kernel:
   image: KERNEL_TAG
   cmdline: "rootdelay=3"
 init:
-  - linuxkit/init:8f1e6a0747acbbb4d7e24dc98f97faa8d1c6cec7
-  - linuxkit/runc:f01b88c7033180d50ae43562d72707c6881904e4
-  - linuxkit/containerd:de1b18eed76a266baa3092e5c154c84f595e56da
+  - linuxkit/init:6542ad0457ac153861870bfe2d036b6647cdc69f
+  - linuxkit/runc:d971bd4ffcfc92fec49d1b46757a2a1bb98d1a65
+  - linuxkit/containerd:682d2a1f63b31cc76f1fb8ae59f6e54b0932e182
   # pillar's logic rely on existence of getty and /etc/init.d/001-getty inside
-  - linuxkit/getty:c9d5afa9a61ac907904090643e946874ff6bf07c
-  - linuxkit/memlogd:v0.5
+  - linuxkit/getty:06f34bce0facea79161566d67345c3ea49965437
+  - linuxkit/memlogd:cf7ea20e6b68aacaa888aa178f267dcad602ed05
   - DOM0ZTOOLS_TAG
   - GRUB_TAG
   - FW_TAG
@@ -19,7 +19,7 @@ onboot:
     image: RNGD_TAG
     command: ["/sbin/rngd", "-1"]
   - name: sysctl
-    image: linuxkit/sysctl:v0.5
+    image: linuxkit/sysctl:a88a50c104d538b58da5e1441f6f0b4b738f76a6
     binds:
       - /etc/sysctl.d:/etc/sysctl.d
     capabilities:
