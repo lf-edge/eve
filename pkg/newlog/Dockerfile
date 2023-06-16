@@ -5,6 +5,7 @@ RUN eve-alpine-deploy.sh
 
 COPY ./  /newlog/.
 WORKDIR /newlog
+ARG GOPKGVERSION
 
 RUN GO111MODULE=on CGO_ENABLED=0 go build -ldflags "-s -w -X=main.Version=${GOPKGVERSION}" -mod=vendor -o /out/usr/bin/newlogd ./cmd
 
