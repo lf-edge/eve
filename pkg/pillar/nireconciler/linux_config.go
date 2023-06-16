@@ -736,8 +736,8 @@ func (r *LinuxNIReconciler) getIntendedMetadataSrvCfg(niID uuid.UUID) (items []d
 		})
 	}
 	items = append(items, generic.HTTPServer{
-		ServerName: fmt.Sprintf("Metadata-NI-%v", niID),
-		ListenIP:   bridgeIP.IP,
+		ForNI:    niID,
+		ListenIP: bridgeIP.IP,
 		ListenIf: generic.NetworkIf{
 			IfName:  ni.brIfName,
 			ItemRef: dg.Reference(linux.Bridge{IfName: ni.brIfName}),
@@ -909,9 +909,7 @@ func (r *LinuxNIReconciler) getIntendedDnsmasqCfg(niID uuid.UUID) (items []dg.It
 		})
 	}
 	items = append(items, generic.Dnsmasq{
-		// Use bridge interface name as the dnsmasq instance name.
-		// There is at most one dnsmasq instance running per every NI bridge.
-		InstanceName: ni.brIfName,
+		ForNI: niID,
 		ListenIf: generic.NetworkIf{
 			IfName:  ni.brIfName,
 			ItemRef: dg.Reference(linux.Bridge{IfName: ni.brIfName}),
@@ -930,9 +928,7 @@ func (r *LinuxNIReconciler) getIntendedRadvdCfg(niID uuid.UUID) (items []dg.Item
 	// XXX do we need same logic as for IPv4 dnsmasq to not advertise as default router?
 	// Might we need lower radvd preference if isolated local network?
 	items = append(items, generic.Radvd{
-		// Use bridge interface name as the radvd instance name.
-		// There is at most one radvd instance running per every NI bridge.
-		InstanceName: ni.brIfName,
+		ForNI: niID,
 		ListenIf: generic.NetworkIf{
 			IfName:  ni.brIfName,
 			ItemRef: dg.Reference(linux.Bridge{IfName: ni.brIfName}),

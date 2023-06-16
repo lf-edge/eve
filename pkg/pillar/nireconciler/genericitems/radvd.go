@@ -14,24 +14,30 @@ import (
 	dg "github.com/lf-edge/eve/libs/depgraph"
 	"github.com/lf-edge/eve/libs/reconciler"
 	"github.com/lf-edge/eve/pkg/pillar/base"
+	uuid "github.com/satori/go.uuid"
 )
 
 // Radvd : router advertisement daemon (https://linux.die.net/man/5/radvd.conf).
 type Radvd struct {
-	// InstanceName : logical name for the radvd instance.
-	InstanceName string
+	// ForNI : UUID of the Network Instance for which this radvd instance is created.
+	// Mostly used just to force re-start of radvd when one NI is being deleted
+	// and subsequently another is created for the same bridge interface name
+	// (ForNI will differ in such case).
+	ForNI uuid.UUID
 	// ListenIf : interface on which radvd should listen.
 	ListenIf NetworkIf
 }
 
-// Name returns the logical label assigned to the radvd instance.
+// Name returns the interface name on which radvd listens.
+// This ensures that there cannot be two different radvd instances
+// that would attempt to listen on the same interface at the same time.
 func (r Radvd) Name() string {
-	return r.InstanceName
+	return r.ListenIf.IfName
 }
 
 // Label for the radvd instance.
 func (r Radvd) Label() string {
-	return r.InstanceName + " (radvd)"
+	return "radvd for " + r.ListenIf.IfName
 }
 
 // Type of the item.
@@ -42,7 +48,7 @@ func (r Radvd) Type() string {
 // Equal compares two Radvd instances
 func (r Radvd) Equal(other dg.Item) bool {
 	r2 := other.(Radvd)
-	return r.InstanceName == r2.InstanceName &&
+	return r.ForNI == r2.ForNI &&
 		r.ListenIf == r2.ListenIf
 }
 
@@ -53,8 +59,8 @@ func (r Radvd) External() bool {
 
 // String describes the radvd instance.
 func (r Radvd) String() string {
-	return fmt.Sprintf("Radvd: {instanceName: %s, listenIf: %s}",
-		r.InstanceName, r.ListenIf.IfName)
+	return fmt.Sprintf("Radvd: {NI: %s, listenIf: %s}",
+		r.ForNI, r.ListenIf.IfName)
 }
 
 // Dependencies returns returns the interface on which radvd listens
@@ -106,7 +112,7 @@ func (c *RadvdConfigurator) Create(ctx context.Context, item dg.Item) error {
 	}
 	done := reconciler.ContinueInBackground(ctx)
 	go func() {
-		err := c.startRadvd(ctx, radvd.InstanceName)
+		err := c.startRadvd(ctx, radvd.Name())
 		done(err)
 	}()
 	return nil
@@ -125,11 +131,11 @@ func (c *RadvdConfigurator) Delete(ctx context.Context, item dg.Item) error {
 	}
 	done := reconciler.ContinueInBackground(ctx)
 	go func() {
-		err := c.stopRadvd(ctx, radvd.InstanceName)
+		err := c.stopRadvd(ctx, radvd.Name())
 		if err == nil {
 			// Ignore errors from here.
-			_ = c.removeRadvdConfigFile(radvd.InstanceName)
-			_ = c.removeRadvdPidFile(radvd.InstanceName)
+			_ = c.removeRadvdConfigFile(radvd.Name())
+			_ = c.removeRadvdPidFile(radvd.Name())
 		}
 		done(err)
 	}()
@@ -150,7 +156,7 @@ func (c *RadvdConfigurator) radvdPidFile(instanceName string) string {
 }
 
 func (c *RadvdConfigurator) createRadvdConfigFile(radvd Radvd) error {
-	cfgPath := c.radvdConfigPath(radvd.InstanceName)
+	cfgPath := c.radvdConfigPath(radvd.Name())
 	file, err := os.Create(cfgPath)
 	if err != nil {
 		err = fmt.Errorf("failed to create radvd config file %s: %w", cfgPath, err)
