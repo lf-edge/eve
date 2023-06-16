@@ -74,6 +74,13 @@ func (b Bridge) Dependencies() (deps []dg.Dependency) {
 	return nil
 }
 
+// GetAssignedIPs returns IP addresses assigned to the bridge interface.
+// The function is needed for the definition of dependencies for
+// dnsmasq and HTTP server.
+func (b Bridge) GetAssignedIPs() []*net.IPNet {
+	return b.IPAddresses
+}
+
 // BridgeConfigurator implements Configurator interface (libs/reconciler) for Linux bridge.
 type BridgeConfigurator struct {
 	Log *base.LogObject

@@ -70,3 +70,10 @@ func (u Uplink) String() string {
 func (u Uplink) Dependencies() (deps []dg.Dependency) {
 	return nil
 }
+
+// GetAssignedIPs returns IP addresses assigned to the uplink interface.
+// The function is needed for the definition of dependencies for
+// dnsmasq and HTTP server.
+func (u Uplink) GetAssignedIPs() []*net.IPNet {
+	return u.IPAddresses
+}

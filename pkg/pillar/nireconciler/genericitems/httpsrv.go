@@ -20,13 +20,18 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
+	uuid "github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
 )
 
 // HTTPServer : HTTP server.
 type HTTPServer struct {
-	// ServerName : logical name for the HTTP server.
-	ServerName string
+	// ForNI : UUID of the Network Instance for which this HTTP server is created.
+	// Mostly used just to force re-start of the server when one NI is being deleted
+	// and subsequently another is created with the same bridge interface name
+	// and IP address. Since Handler is not comparable, ForNI will do the trick
+	// to make the new HTTP server unequal to the previous one.
+	ForNI uuid.UUID
 	// ListenIP : IP address on which the server should listen.
 	ListenIP net.IP
 	// ListenIf : reference to interface which is expected to have ListenIP assigned.
@@ -37,14 +42,16 @@ type HTTPServer struct {
 	Handler http.Handler
 }
 
-// Name returns the logical label assigned to the HTTP server.
+// Name returns the interface name and port on which the HTTP server listens.
+// This ensures that there cannot be two different HTTP servers
+// that would attempt to listen on the same interface and port at the same time.
 func (s HTTPServer) Name() string {
-	return s.ServerName
+	return fmt.Sprintf("%s:%d", s.ListenIf.IfName, s.Port)
 }
 
 // Label for the HTTP server.
 func (s HTTPServer) Label() string {
-	return s.ServerName + " (HTTP server)"
+	return fmt.Sprintf("HTTP server for %s:%d", s.ListenIf.IfName, s.Port)
 }
 
 // Type of the item.
@@ -60,7 +67,7 @@ func (s HTTPServer) Type() string {
 //     and the handlers can freely change without having to restart the server.
 func (s HTTPServer) Equal(other dg.Item) bool {
 	s2 := other.(HTTPServer)
-	return s.ServerName == s2.ServerName &&
+	return s.ForNI == s2.ForNI &&
 		utils.EqualIPs(s.ListenIP, s2.ListenIP) &&
 		s.ListenIf == s2.ListenIf &&
 		s.Port == s2.Port
@@ -73,8 +80,8 @@ func (s HTTPServer) External() bool {
 
 // String describes the HTTP server.
 func (s HTTPServer) String() string {
-	return fmt.Sprintf("HTTPServer: {serverName: %s, listenIP: %s, "+
-		"listenIf: %s, port: %d}", s.ServerName, s.ListenIP, s.ListenIf.IfName, s.Port)
+	return fmt.Sprintf("HTTPServer: {NI: %s, listenIP: %s, "+
+		"listenIf: %s, port: %d}", s.ForNI.String(), s.ListenIP, s.ListenIf.IfName, s.Port)
 }
 
 // Dependencies returns the interface on which the HTTP server listens
@@ -83,7 +90,22 @@ func (s HTTPServer) String() string {
 func (s HTTPServer) Dependencies() (deps []dg.Dependency) {
 	deps = append(deps, dg.Dependency{
 		RequiredItem: s.ListenIf.ItemRef,
-		Description:  "interface on which the HTTP server listens must exist",
+		Description: "interface on which the HTTP server listens must exist " +
+			"and have ListenIP assigned",
+		MustSatisfy: func(item dg.Item) bool {
+			netIfWithIP, isNetIfWithIP := item.(NetworkIfWithIP)
+			if !isNetIfWithIP {
+				// Should be unreachable.
+				return false
+			}
+			ips := netIfWithIP.GetAssignedIPs()
+			for _, ip := range ips {
+				if s.ListenIP.Equal(ip.IP) {
+					return true
+				}
+			}
+			return false
+		},
 	})
 	return deps
 }
@@ -125,9 +147,9 @@ func (c *HTTPServerConfigurator) Create(ctx context.Context, item dg.Item) error
 	if c.httpServers == nil {
 		c.httpServers = make(map[string]httpSrvGoRoutine)
 	}
-	c.httpServers[httpServer.ServerName] = goRoutine
-	go c.runServer(goRoutineCtx, httpServer.ServerName, httpServer.Handler,
-		httpServer.ListenIP, listenDoneFn, serveDoneFn)
+	c.httpServers[httpServer.Name()] = goRoutine
+	go c.runServer(goRoutineCtx, httpServer.Name(), httpServer.Handler,
+		httpServer.ListenIP, httpServer.Port, listenDoneFn, serveDoneFn)
 	return nil
 }
 
@@ -142,12 +164,12 @@ func (c *HTTPServerConfigurator) Delete(ctx context.Context, item dg.Item) error
 	if !isHTTPServer {
 		return fmt.Errorf("invalid item type %T, expected HTTPServer", item)
 	}
-	goRoutine, isRunning := c.httpServers[httpServer.ServerName]
+	goRoutine, isRunning := c.httpServers[httpServer.Name()]
 	if !isRunning {
 		return fmt.Errorf("go routine for HTTP server %s is not running",
-			httpServer.ServerName)
+			httpServer.Name())
 	}
-	delete(c.httpServers, httpServer.ServerName)
+	delete(c.httpServers, httpServer.Name())
 	// Shutdown procedure waits (sleeps) some (fixed) time for all sockets associated
 	// with the server to close - better to run this asynchronously.
 	shutdownDoneFn := reconciler.ContinueInBackground(ctx)
@@ -165,11 +187,11 @@ func (c *HTTPServerConfigurator) NeedsRecreate(oldItem, newItem dg.Item) (recrea
 }
 
 func (c *HTTPServerConfigurator) runServer(ctx context.Context, srvName string,
-	handler http.Handler, listenIP net.IP, listenDoneFn, serveDoneFn func(error)) {
+	handler http.Handler, listenIP net.IP, port uint16, listenDoneFn, serveDoneFn func(error)) {
 	w := c.Logger.Writer()
 	defer w.Close()
 	srv := http.Server{
-		Addr:         listenIP.String() + ":80",
+		Addr:         fmt.Sprintf("%s:%d", listenIP.String(), port),
 		Handler:      handler,
 		ReadTimeout:  5 * time.Second,
 		WriteTimeout: 5 * time.Second,

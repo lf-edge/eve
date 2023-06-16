@@ -963,12 +963,12 @@ func TestSingleLocalNI(test *testing.T) {
 		linuxitems.VLANBridge{BridgeIfName: "bn1"}))).To(BeFalse())
 	t.Expect(itemIsCreated(dg.Reference(
 		genericitems.HTTPServer{
-			ServerName: fmt.Sprintf("Metadata-NI-%v", ni1UUID.UUID)},
+			ListenIf: genericitems.NetworkIf{IfName: "bn1"}, Port: 80},
 	))).To(BeTrue())
 	t.Expect(itemIsCreated(dg.Reference(
-		genericitems.Dnsmasq{InstanceName: "bn1"}))).To(BeTrue())
+		genericitems.Dnsmasq{ListenIf: genericitems.NetworkIf{IfName: "bn1"}}))).To(BeTrue())
 	t.Expect(itemIsCreated(dg.Reference(
-		genericitems.Radvd{InstanceName: "bn1"}))).To(BeFalse())
+		genericitems.Radvd{ListenIf: genericitems.NetworkIf{IfName: "bn1"}}))).To(BeFalse())
 	netlinkDefRoute := netlink.Route{
 		LinkIndex: 1,
 		Dst:       nil,
@@ -1237,7 +1237,7 @@ func TestIPv4LocalAndSwitchNIs(test *testing.T) {
 		linuxitems.VLANBridge{BridgeIfName: "eth1"}))).To(BeTrue())
 	t.Expect(itemIsCreated(dg.Reference(
 		genericitems.HTTPServer{
-			ServerName: fmt.Sprintf("Metadata-NI-%v", ni2UUID.UUID),
+			ListenIf: genericitems.NetworkIf{IfName: "eth1"}, Port: 80,
 		}))).To(BeFalse())
 
 	// Simulate eth1 getting an IP address.
@@ -1253,7 +1253,7 @@ func TestIPv4LocalAndSwitchNIs(test *testing.T) {
 
 	t.Expect(itemIsCreated(dg.Reference(
 		genericitems.HTTPServer{
-			ServerName: fmt.Sprintf("Metadata-NI-%v", ni2UUID.UUID),
+			ListenIf: genericitems.NetworkIf{IfName: "eth1"}, Port: 80,
 		}))).To(BeTrue())
 
 	// Connect application into network instances.
@@ -1424,7 +1424,8 @@ func TestDisableAllOnesMask(test *testing.T) {
 	networkMonitor.AddOrUpdateInterface(ni1BridgeIf)
 
 	// dnsmasq should advertise mask with all bits set to one.
-	dnsmasqConf := itemDescription(dg.Reference(genericitems.Dnsmasq{InstanceName: "bn1"}))
+	dnsmasqConf := itemDescription(dg.Reference(
+		genericitems.Dnsmasq{ListenIf: genericitems.NetworkIf{IfName: "bn1"}}))
 	t.Expect(dnsmasqConf).To(ContainSubstring("allOnesNetmask: true"))
 
 	// Update global config to disable all ones mask.
@@ -1433,7 +1434,8 @@ func TestDisableAllOnesMask(test *testing.T) {
 	niReconciler.ApplyUpdatedGCP(ctx, *gcp)
 
 	// dnsmasq should now use the mask configured for the NI subnet.
-	dnsmasqConf = itemDescription(dg.Reference(genericitems.Dnsmasq{InstanceName: "bn1"}))
+	dnsmasqConf = itemDescription(dg.Reference(
+		genericitems.Dnsmasq{ListenIf: genericitems.NetworkIf{IfName: "bn1"}}))
 	t.Expect(dnsmasqConf).To(ContainSubstring("allOnesNetmask: false"))
 
 	// Delete network instance
@@ -1508,7 +1510,7 @@ func TestUplinkFailover(test *testing.T) {
 	}
 	t.Expect(itemDescription(dg.Reference(snatRule))).To(ContainSubstring(
 		"-o eth0 -s 10.10.10.0/24 -j MASQUERADE"))
-	dnsmasq := genericitems.Dnsmasq{InstanceName: "bn1"}
+	dnsmasq := genericitems.Dnsmasq{ListenIf: genericitems.NetworkIf{IfName: "bn1"}}
 	t.Expect(itemDescription(dg.Reference(dnsmasq))).To(ContainSubstring(
 		"uplinkIf: eth0"))
 	t.Expect(itemDescription(dg.Reference(dnsmasq))).To(ContainSubstring(
@@ -1636,11 +1638,11 @@ func TestIPv6LocalAndSwitchNIs(test *testing.T) {
 
 	t.Expect(itemIsCreated(dg.Reference(
 		genericitems.HTTPServer{
-			ServerName: fmt.Sprintf("Metadata-NI-%v", ni3UUID.UUID),
+			ListenIf: genericitems.NetworkIf{IfName: "bn3"}, Port: 80,
 		}))).To(BeTrue())
 	t.Expect(itemIsCreated(dg.Reference(
 		genericitems.HTTPServer{
-			ServerName: fmt.Sprintf("Metadata-NI-%v", ni4UUID.UUID),
+			ListenIf: genericitems.NetworkIf{IfName: "eth2"}, Port: 80,
 		}))).To(BeTrue())
 	t.Expect(itemIsCreated(dg.Reference(
 		linuxitems.VLANBridge{BridgeIfName: "eth2"}))).To(BeTrue())
@@ -1710,9 +1712,9 @@ func TestIPv6LocalAndSwitchNIs(test *testing.T) {
 			UplinkIfName: "eth2",
 		}}
 	t.Expect(itemIsCreated(dg.Reference(ni3DefRoute))).To(BeTrue())
-	radvd := genericitems.Radvd{InstanceName: "bn3"}
+	radvd := genericitems.Radvd{ListenIf: genericitems.NetworkIf{IfName: "bn3"}}
 	t.Expect(itemIsCreated(dg.Reference(radvd))).To(BeTrue())
-	dnsmasq := genericitems.Dnsmasq{InstanceName: "bn3"}
+	dnsmasq := genericitems.Dnsmasq{ListenIf: genericitems.NetworkIf{IfName: "bn3"}}
 	t.Expect(itemDescription(dg.Reference(dnsmasq))).To(ContainSubstring(
 		"subnet: 2001::1111:0/112"))
 	t.Expect(itemDescription(dg.Reference(dnsmasq))).To(ContainSubstring(
@@ -1724,7 +1726,7 @@ func TestIPv6LocalAndSwitchNIs(test *testing.T) {
 	t.Expect(itemDescription(dg.Reference(dnsmasq))).To(ContainSubstring(
 		"staticEntries: [{test-hostname 2001:db8::1} {router 2001::1111:1} {app3 2001::1111:2}]"))
 	httpSrvN3 := genericitems.HTTPServer{
-		ServerName: fmt.Sprintf("Metadata-NI-%v", ni3UUID.UUID)}
+		ListenIf: genericitems.NetworkIf{IfName: "bn3"}, Port: 80}
 	t.Expect(itemDescription(dg.Reference(httpSrvN3))).To(ContainSubstring(
 		"listenIP: 2001::1111:1"))
 	vif1Eidset := linuxitems.IPSet{SetName: "ipv6.eids.nbu1x3"}
@@ -1755,7 +1757,7 @@ func TestIPv6LocalAndSwitchNIs(test *testing.T) {
 
 	// Check items created in the scope of NI4.
 	httpSrvN4 := genericitems.HTTPServer{
-		ServerName: fmt.Sprintf("Metadata-NI-%v", ni4UUID.UUID)}
+		ListenIf: genericitems.NetworkIf{IfName: "eth2"}, Port: 80}
 	t.Expect(itemDescription(dg.Reference(httpSrvN4))).To(ContainSubstring(
 		"listenIP: 2001::20"))
 	vif2Eidset := linuxitems.IPSet{SetName: "ipv6.eids.nbu2x3"}
@@ -1849,7 +1851,7 @@ func TestAirGappedLocalAndSwitchNIs(test *testing.T) {
 	// Metadata server is run even in the air-gapped mode, however.
 	t.Expect(itemIsCreated(dg.Reference(
 		genericitems.HTTPServer{
-			ServerName: fmt.Sprintf("Metadata-NI-%v", ni1UUID.UUID),
+			ListenIf: genericitems.NetworkIf{IfName: "bn1"}, Port: 80,
 		}))).To(BeTrue())
 
 	// Create switch network instance but make it air-gapped.
@@ -1884,7 +1886,7 @@ func TestAirGappedLocalAndSwitchNIs(test *testing.T) {
 		linuxitems.VLANBridge{BridgeIfName: "bn2"}))).To(BeTrue())
 	t.Expect(itemIsCreated(dg.Reference(
 		genericitems.HTTPServer{
-			ServerName: fmt.Sprintf("Metadata-NI-%v", ni2UUID.UUID),
+			ListenIf: genericitems.NetworkIf{IfName: "bn2"}, Port: 80,
 		}))).To(BeFalse())
 
 	// Connect application into network instances.
