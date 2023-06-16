@@ -90,10 +90,12 @@ func prepareAndPublishNetworkInstanceInfoMsg(ctx *zedagentContext,
 			errInfo.Timestamp = errTime
 			info.NetworkErr = append(info.NetworkErr, errInfo)
 			info.State = zinfo.ZNetworkInstanceState_ZNETINST_STATE_ERROR
+		} else if status.ChangeInProgress != types.ChangeInProgressTypeNone {
+			info.State = zinfo.ZNetworkInstanceState_ZNETINST_STATE_INIT
 		} else if status.Activated {
 			info.State = zinfo.ZNetworkInstanceState_ZNETINST_STATE_ONLINE
 		} else {
-			info.State = zinfo.ZNetworkInstanceState_ZNETINST_STATE_INIT
+			info.State = zinfo.ZNetworkInstanceState_ZNETINST_STATE_UNSPECIFIED
 		}
 		info.Activated = status.Activated
 
