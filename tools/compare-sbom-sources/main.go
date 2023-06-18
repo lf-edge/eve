@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sort"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -176,6 +177,14 @@ func compareMaps(csvPackages, jsonPackages map[string]*singlePackage) (csvNotInJ
 		}
 	}
 
+	// sort them both
+	sort.Slice(csvNotInJSON, func(i, j int) bool {
+		return csvNotInJSON[i].String() < csvNotInJSON[j].String()
+	})
+	sort.Slice(jsonNotInCSV, func(i, j int) bool {
+		return jsonNotInCSV[i].String() < jsonNotInCSV[j].String()
+	})
+
 	return csvNotInJSON, jsonNotInCSV
 }
 
@@ -304,7 +313,6 @@ Arguments:
 			}
 
 			csvNotInJSON, jsonNotInCSV := compareMaps(typeRestrictedCSVPackages, typeRestrictedJSONPackages)
-
 			fmt.Println("Packages in CSV file but not in SPDX file:")
 			for _, pkg := range csvNotInJSON {
 				fmt.Println(pkg)
