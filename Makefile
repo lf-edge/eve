@@ -340,6 +340,15 @@ ifeq ($(LINUXKIT_PKG_TARGET),push)
   endif
 endif
 
+# Though the partition size is set to 512MB lets check for ROOTFS_MAXSIZE_MB not exceeding 450MB for kubevirt.
+# That seems to be the direction taken for existing kvm systems where partition size is 300MB but
+# rootfs size is limited to 250MB. That helps in catching image size increases earlier than at later stage.
+ifeq ($(HV),kubevirt)
+  ROOTFS_MAXSIZE_MB=450
+else
+  ROOTFS_MAXSIZE_MB=250
+endif
+
 # We are currently filtering out a few packages from bulk builds
 # since they are not getting published in Docker HUB
 PKGS_$(ZARCH)=$(shell ls -d pkg/* | grep -Ev "eve|test-microsvcs|alpine|sources")
@@ -643,8 +652,8 @@ $(ROOTFS_IMG): $(ROOTFS_TAR) | $(INSTALLER)
 	$(QUIET): $@: Begin
 	./tools/makerootfs.sh imagefromtar -t $(ROOTFS_TAR) -i $@ -f $(ROOTFS_FORMAT) -a $(ZARCH)
 	@echo "size of $@ is $$(wc -c < "$@")B"
-	@[ $$(wc -c < "$@") -gt $$(( 250 * 1024 * 1024 )) ] && \
-	        echo "ERROR: size of $@ is greater than 250MB (bigger than allocated partition)" && exit 1 || :
+	@[ $$(wc -c < "$@") -gt $$(( $(ROOTFS_MAXSIZE_MB) * 1024 * 1024 )) ] && \
+	        echo "ERROR: size of $@ is greater than $(ROOTFS_MAXSIZE_MB)MB (bigger than allocated partition)" && exit 1 || :
 	$(QUIET): $@: Succeeded
 
 sbom_info:
