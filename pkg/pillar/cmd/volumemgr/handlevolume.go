@@ -104,7 +104,8 @@ func handleDeferredVolumeCreate(ctx *volumemgrContext, key string, config *types
 	log.Tracef("handleDeferredVolumeCreate(%s)", key)
 	status := ctx.LookupVolumeStatus(config.Key())
 	if status != nil {
-		log.Fatalf("status exists at handleVolumeCreate for %s", config.Key())
+		log.Warnf("status exists at handleVolumeCreate for %s", config.Key())
+		return
 	}
 	status = &types.VolumeStatus{
 		VolumeID:                config.VolumeID,
