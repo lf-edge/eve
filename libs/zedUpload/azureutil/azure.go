@@ -46,7 +46,7 @@ func newSectionWriter(c io.WriterAt, off int64, count int64, part *types.PartDef
 	}
 }
 
-//Write implementation for sectionWriter
+// Write implementation for sectionWriter
 func (c *sectionWriter) Write(p []byte) (int, error) {
 	remaining := c.count - c.position
 
@@ -458,6 +458,12 @@ func GenerateBlobSasURI(accountURL, accountName, accountKey, containerName, remo
 	credential, err := azblob.NewSharedKeyCredential(accountName, accountKey)
 	if err != nil {
 		return "", fmt.Errorf("Invalid credentials with error: " + err.Error())
+	}
+
+	// Checking whether blob exists or not before generating SAS URI
+	_, _, err = GetAzureBlobMetaData(accountURL, accountName, accountKey, containerName, remoteFile, httpClient)
+	if err != nil {
+		return "", err
 	}
 
 	// Set the desired SAS signature values and sign them with the shared key credentials to get the SAS query parameters.
