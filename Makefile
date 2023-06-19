@@ -213,9 +213,13 @@ ACCEL=1
 else
 ACCEL=
 endif
+ifeq ($(UNAME_S)_$(ZARCH),Darwin_arm64)
+QEMU_DEFAULT_MACHINE=virt,
+endif
 QEMU_ACCEL_Y_Darwin_amd64=-machine q35,accel=hvf,usb=off -cpu kvm64,kvmclock=off
 QEMU_ACCEL_Y_Linux_amd64=-machine q35,accel=kvm,usb=off,dump-guest-core=off -cpu host,invtsc=on,kvmclock=off -machine kernel-irqchip=split -device intel-iommu,intremap=on,caching-mode=on,aw-bits=48
 # -machine virt,gic_version=3
+QEMU_ACCEL_Y_Darwin_arm64=-machine $(QEMU_DEFAULT_MACHINE)accel=hvf,usb=off -cpu host
 QEMU_ACCEL_Y_Linux_arm64=-machine virt,accel=kvm,usb=off,dump-guest-core=off -cpu host
 QEMU_ACCEL__$(UNAME_S)_arm64=-machine virt,virtualization=true -cpu cortex-a57
 QEMU_ACCEL__$(UNAME_S)_amd64=-machine q35 -cpu SandyBridge
@@ -449,7 +453,7 @@ $(DEVICETREE_DTB): $(BIOS_IMG) | $(DIST)
 	mkdir $(dir $@) 2>/dev/null || :
 	# start swtpm to generate dtb
 	$(MAKE) $(SWTPM)
-	$(QEMU_SYSTEM) $(QEMU_OPTS) -machine dumpdtb=$@
+	$(QEMU_SYSTEM) $(QEMU_OPTS) -machine $(QEMU_DEFAULT_MACHINE)dumpdtb=$@
 	$(QUIET): $@: Succeeded
 
 $(EFI_PART): PKG=grub
