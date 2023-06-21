@@ -573,7 +573,7 @@ func UploadBlockListToBlob(accountURL, accountName, accountKey, containerName, r
 
 	blob := containerURL.NewBlockBlobURL(remoteFile)
 
-	if _, err := blob.CommitBlockList(ctx, blocks, azblob.BlobHTTPHeaders{}, azblob.Metadata{}, azblob.BlobAccessConditions{}, azblob.DefaultAccessTier, nil, azblob.ClientProvidedKeyOptions{}); err != nil {
+	if _, err := blob.CommitBlockList(ctx, blocks, azblob.BlobHTTPHeaders{}, azblob.Metadata{}, azblob.BlobAccessConditions{}, azblob.DefaultAccessTier, nil, azblob.ClientProvidedKeyOptions{}, azblob.ImmutabilityPolicyOptions{}); err != nil {
 		return fmt.Errorf("failed to commit block list: %v", err)
 	}
 	return nil
