@@ -221,6 +221,8 @@ RUN make -j "$(getconf _NPROCESSORS_ONLN)" CROSS_COMPILE="${CROSS_COMPILE_ENV}" 
 # Modules
 RUN make -j "$(getconf _NPROCESSORS_ONLN)" CROSS_COMPILE="${CROSS_COMPILE_ENV}" ARCH="${KERNEL_ARCH}" INSTALL_MOD_PATH=/tmp/kernel-modules modules_install
 
+# Device Tree Blobs
+RUN if [ "${EVE_TARGET_ARCH}" = aarch64 ];then make INSTALL_DTBS_PATH=/tmp/kernel-modules/boot/dtb CROSS_COMPILE="${CROSS_COMPILE_ENV}" ARCH="${KERNEL_ARCH}" dtbs_install ;fi
 
 # Out-of-tree, open source modules
 #  * ZFS on Linux
@@ -286,9 +288,6 @@ RUN KERNEL_DEF_CONF="/linux/arch/${KERNEL_ARCH}/configs/${KERNEL_DEFCONFIG}"; \
         SIG_KEY=$(sed -n '/^CONFIG_MODULE_SIG_KEY=/s///p' ${KERNEL_DEF_CONF} | tr -d '"') ; \
         scripts/sign-file "${SIG_HASH}" "/linux/${SIG_KEY_SRCPREFIX}${SIG_KEY}" /linux/certs/signing_key.x509 $(find /tmp/kernel-modules/lib/modules -name 8821cu.ko); \
     fi
-
-# Device Tree Blobs
-RUN if [ "${EVE_TARGET_ARCH}" = aarch64 ];then make INSTALL_DTBS_PATH=/tmp/kernel-modules/boot/dtb CROSS_COMPILE="${CROSS_COMPILE_ENV}" ARCH="${KERNEL_ARCH}" dtbs_install ;fi
 
 # copy build time gnerated module-signing public key, used for diffing builds
 RUN DVER=$(basename "$(find /tmp/kernel-modules/lib/modules/ -mindepth 1 -maxdepth 1)"); \
