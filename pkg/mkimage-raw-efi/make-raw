@@ -79,7 +79,7 @@ CONF_PART_SIZE=$((1024 * 1024))
 # installer inventory partition size in bytes
 WIN_INVENTORY_PART_SIZE=$((40240 * 1024))
 # installer system partition size in bytes
-INSTALLER_SYS_PART_SIZE=$(( 300 * 1024 * 1024 ))
+INSTALLER_SYS_PART_SIZE=$(( 532 * 1024 * 1024 ))
 # imx8 boot blob size in bytes
 IMX8_BLOB_SIZE=$(( 8 * 1024 * 1024 ))
 # sector where the first partition starts on a blank disk
