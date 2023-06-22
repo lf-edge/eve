@@ -1,0 +1,72 @@
+From cf6a0a52b07195ba278e48b89cfb7ddbad332ab1 Mon Sep 17 00:00:00 2001
+From: Gerd Hoffmann <kraxel@redhat.com>
+Date: Fri, 17 Mar 2023 13:19:21 +0100
+Subject: [PATCH] OvmfPkg/PlatformBootManagerLib: use utf8 for the serial
+ console.
+
+Time to leave behind relics from the last century and arrive in the
+modern world.  Drop PC-ANSI Terminal Type for the serial console, use
+UTF-8 instead.
+
+Signed-off-by: Gerd Hoffmann <kraxel@redhat.com>
+---
+ OvmfPkg/Library/PlatformBootManagerLib/BdsPlatform.h  | 4 ++--
+ OvmfPkg/Library/PlatformBootManagerLib/PlatformData.c | 6 +++---
+ 2 files changed, 5 insertions(+), 5 deletions(-)
+
+diff --git a/OvmfPkg/Library/PlatformBootManagerLib/BdsPlatform.h b/OvmfPkg/Library/PlatformBootManagerLib/BdsPlatform.h
+index 1676d61616..18b3deb9db 100644
+--- a/OvmfPkg/Library/PlatformBootManagerLib/BdsPlatform.h
++++ b/OvmfPkg/Library/PlatformBootManagerLib/BdsPlatform.h
+@@ -126,7 +126,7 @@ extern VENDOR_DEVICE_PATH        gTerminalTypeDeviceNode;
+     1 \
+   }
+ 
+-#define gPcAnsiTerminal \
++#define gVtUtf8Terminal \
+   { \
+     { \
+       MESSAGING_DEVICE_PATH, \
+@@ -136,7 +136,7 @@ extern VENDOR_DEVICE_PATH        gTerminalTypeDeviceNode;
+         (UINT8) ((sizeof (VENDOR_DEVICE_PATH)) >> 8) \
+       } \
+     }, \
+-    DEVICE_PATH_MESSAGING_PC_ANSI \
++    DEVICE_PATH_MESSAGING_VT_UTF8 \
+   }
+ 
+ #define gEndEntire \
+diff --git a/OvmfPkg/Library/PlatformBootManagerLib/PlatformData.c b/OvmfPkg/Library/PlatformBootManagerLib/PlatformData.c
+index 6536d9fe36..c1801725c2 100644
+--- a/OvmfPkg/Library/PlatformBootManagerLib/PlatformData.c
++++ b/OvmfPkg/Library/PlatformBootManagerLib/PlatformData.c
+@@ -47,7 +47,7 @@ typedef struct {
+ ACPI_HID_DEVICE_PATH  gPnpPs2KeyboardDeviceNode  = gPnpPs2Keyboard;
+ ACPI_HID_DEVICE_PATH  gPnp16550ComPortDeviceNode = gPnp16550ComPort;
+ UART_DEVICE_PATH      gUartDeviceNode            = gUart;
+-VENDOR_DEVICE_PATH    gTerminalTypeDeviceNode    = gPcAnsiTerminal;
++VENDOR_DEVICE_PATH    gTerminalTypeDeviceNode    = gVtUtf8Terminal;
+ 
+ //
+ // Platform specific keyboard device path
+@@ -83,7 +83,7 @@ VENDOR_UART_DEVICE_PATH  gDebugAgentUartDevicePath = {
+     0,  // Parity   - Default
+     0,  // StopBits - Default
+   },
+-  gPcAnsiTerminal,
++  gVtUtf8Terminal,
+   gEndEntire
+ };
+ 
+@@ -168,7 +168,7 @@ STATIC VENDOR_UART_DEVICE_PATH  gXenConsoleDevicePath = {
+     FixedPcdGet8 (PcdUartDefaultParity),
+     FixedPcdGet8 (PcdUartDefaultStopBits),
+   },
+-  gPcAnsiTerminal,
++  gVtUtf8Terminal,
+   gEndEntire
+ };
+ 
+-- 
+2.30.2
+
