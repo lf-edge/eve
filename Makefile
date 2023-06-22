@@ -727,12 +727,12 @@ publish_sources: $(COLLECTED_SOURCES)
 
 $(LIVE).raw: $(BOOT_PART) $(EFI_PART) $(ROOTFS_IMG) $(CONFIG_IMG) $(PERSIST_IMG) $(BSP_IMX_PART) | $(INSTALLER)
 	./tools/prepare-platform.sh "$(PLATFORM)" "$(BUILD_DIR)" "$(INSTALLER)" || :
-	./tools/makeflash.sh -C 350 $| $@ $(PART_SPEC)
+	./tools/makeflash.sh -C 559 $| $@ $(PART_SPEC)
 	$(QUIET): $@: Succeeded
 
 $(INSTALLER).raw: $(BOOT_PART) $(EFI_PART) $(ROOTFS_IMG) $(INITRD_IMG) $(INSTALLER_IMG) $(CONFIG_IMG) $(PERSIST_IMG) $(BSP_IMX_PART) | $(INSTALLER)
 	./tools/prepare-platform.sh "$(PLATFORM)" "$(BUILD_DIR)" "$(INSTALLER)" || :
-	./tools/makeflash.sh -C 350 $| $@ "conf_win installer inventory_win"
+	./tools/makeflash.sh -C 592 $| $@ "conf_win installer inventory_win"
 	$(QUIET): $@: Succeeded
 
 $(INSTALLER).iso: $(EFI_PART) $(ROOTFS_IMG) $(INITRD_IMG) $(INSTALLER_IMG) $(CONFIG_IMG) $(PERSIST_IMG) | $(INSTALLER)
