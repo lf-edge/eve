@@ -176,7 +176,7 @@ func (z *zedrouter) handleNetworkInstanceCreate(ctxArg interface{}, key string,
 		return
 	}
 
-	if err := z.doNetworkInstanceSanityCheck(&status); err != nil {
+	if err := z.doNetworkInstanceSanityCheck(&config); err != nil {
 		z.log.Error(err)
 		status.SetErrorNow(err.Error())
 		status.ChangeInProgress = types.ChangeInProgressTypeNone
@@ -295,7 +295,7 @@ func (z *zedrouter) handleNetworkInstanceModify(ctxArg interface{}, key string,
 
 	prevPortLL := status.PortLogicalLabel
 	status.NetworkInstanceConfig = config
-	if err := z.doNetworkInstanceSanityCheck(status); err != nil {
+	if err := z.doNetworkInstanceSanityCheck(&config); err != nil {
 		z.log.Error(err)
 		status.SetErrorNow(err.Error())
 		status.WaitingForUplink = false
