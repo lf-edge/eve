@@ -13,56 +13,56 @@ import (
 )
 
 func (z *zedrouter) doNetworkInstanceSanityCheck(
-	status *types.NetworkInstanceStatus) error {
+	config *types.NetworkInstanceConfig) error {
 	z.log.Functionf("Sanity Checking NetworkInstance(%s-%s): type:%d, IpType:%d",
-		status.DisplayName, status.UUID, status.Type, status.IpType)
+		config.DisplayName, config.UUID, config.Type, config.IpType)
 
 	//  Check NetworkInstanceType
-	switch status.Type {
+	switch config.Type {
 	case types.NetworkInstanceTypeLocal:
 		// Do nothing
 	case types.NetworkInstanceTypeSwitch:
 		// Do nothing
 	default:
-		return fmt.Errorf("network instance type %d is not supported", status.Type)
+		return fmt.Errorf("network instance type %d is not supported", config.Type)
 	}
 
 	// IpType - Check for valid types
-	switch status.IpType {
+	switch config.IpType {
 	case types.AddressTypeNone:
 		// Do nothing
 	case types.AddressTypeIPV4, types.AddressTypeIPV6,
 		types.AddressTypeCryptoIPV4, types.AddressTypeCryptoIPV6:
-		err := z.doNetworkInstanceSubnetSanityCheck(status)
+		err := z.doNetworkInstanceSubnetSanityCheck(config)
 		if err != nil {
 			return err
 		}
-		err = z.doNetworkInstanceDhcpRangeSanityCheck(status)
+		err = z.doNetworkInstanceDhcpRangeSanityCheck(config)
 		if err != nil {
 			return err
 		}
-		err = z.doNetworkInstanceGatewaySanityCheck(status)
+		err = z.doNetworkInstanceGatewaySanityCheck(config)
 		if err != nil {
 			return err
 		}
 
 	default:
-		return fmt.Errorf("IpType %d not supported", status.IpType)
+		return fmt.Errorf("IpType %d not supported", config.IpType)
 	}
 	return nil
 }
 
 func (z *zedrouter) doNetworkInstanceSubnetSanityCheck(
-	status *types.NetworkInstanceStatus) error {
-	if status.Subnet.IP == nil || status.Subnet.IP.IsUnspecified() {
+	config *types.NetworkInstanceConfig) error {
+	if config.Subnet.IP == nil || config.Subnet.IP.IsUnspecified() {
 		return fmt.Errorf("subnet unspecified for %s-%s: %+v",
-			status.Key(), status.DisplayName, status.Subnet)
+			config.Key(), config.DisplayName, config.Subnet)
 	}
 
-	items := z.pubNetworkInstanceStatus.GetAll()
-	for key2, status2 := range items {
-		niStatus2 := status2.(types.NetworkInstanceStatus)
-		if status.Key() == key2 {
+	items := z.subNetworkInstanceConfig.GetAll()
+	for key2, config2 := range items {
+		niConfig2 := config2.(types.NetworkInstanceConfig)
+		if config.Key() == key2 {
 			continue
 		}
 
@@ -71,62 +71,62 @@ func (z *zedrouter) doNetworkInstanceSubnetSanityCheck(
 		// any other NI and vice-versa ( Other NI Subnet addrs are not
 		// contained in the current NI subnet)
 
-		// Check if status.Subnet is contained in iterStatusEntry.Subnet
-		if niStatus2.Subnet.Contains(status.Subnet.IP) {
+		// Check if config.Subnet is contained in iterStatusEntry.Subnet
+		if niConfig2.Subnet.Contains(config.Subnet.IP) {
 			return fmt.Errorf("subnet(%s, IP:%s) overlaps with another "+
 				"network instance(%s-%s) Subnet(%s)",
-				status.Subnet.String(), status.Subnet.IP.String(),
-				niStatus2.DisplayName, niStatus2.UUID,
-				niStatus2.Subnet.String())
+				config.Subnet.String(), config.Subnet.IP.String(),
+				niConfig2.DisplayName, niConfig2.UUID,
+				niConfig2.Subnet.String())
 		}
 
-		// Reverse check: check if iterStatusEntry.Subnet is contained in status.subnet
-		if status.Subnet.Contains(niStatus2.Subnet.IP) {
+		// Reverse check: check if iterStatusEntry.Subnet is contained in config.subnet
+		if config.Subnet.Contains(niConfig2.Subnet.IP) {
 			return fmt.Errorf("another network instance(%s-%s) Subnet(%s) "+
 				"overlaps with Subnet(%s)",
-				niStatus2.DisplayName, niStatus2.UUID,
-				niStatus2.Subnet.String(),
-				status.Subnet.String())
+				niConfig2.DisplayName, niConfig2.UUID,
+				niConfig2.Subnet.String(),
+				config.Subnet.String())
 		}
 	}
 	return nil
 }
 
 func (z *zedrouter) doNetworkInstanceDhcpRangeSanityCheck(
-	status *types.NetworkInstanceStatus) error {
-	if status.DhcpRange.Start == nil || status.DhcpRange.Start.IsUnspecified() {
+	config *types.NetworkInstanceConfig) error {
+	if config.DhcpRange.Start == nil || config.DhcpRange.Start.IsUnspecified() {
 		return fmt.Errorf("DhcpRange Start Unspecified: %+v",
-			status.DhcpRange.Start)
+			config.DhcpRange.Start)
 	}
-	if !status.Subnet.Contains(status.DhcpRange.Start) {
+	if !config.Subnet.Contains(config.DhcpRange.Start) {
 		return fmt.Errorf("DhcpRange Start(%s) not within Subnet(%s)",
-			status.DhcpRange.Start.String(), status.Subnet.String())
+			config.DhcpRange.Start.String(), config.Subnet.String())
 	}
-	if status.DhcpRange.End == nil || status.DhcpRange.End.IsUnspecified() {
+	if config.DhcpRange.End == nil || config.DhcpRange.End.IsUnspecified() {
 		return fmt.Errorf("DhcpRange End Unspecified: %+v",
-			status.DhcpRange.Start)
+			config.DhcpRange.Start)
 	}
-	if !status.Subnet.Contains(status.DhcpRange.End) {
+	if !config.Subnet.Contains(config.DhcpRange.End) {
 		return fmt.Errorf("DhcpRange End(%s) not within Subnet(%s)",
-			status.DhcpRange.End.String(), status.Subnet.String())
+			config.DhcpRange.End.String(), config.Subnet.String())
 	}
 	return nil
 }
 
 func (z *zedrouter) doNetworkInstanceGatewaySanityCheck(
-	status *types.NetworkInstanceStatus) error {
-	if status.Gateway == nil || status.Gateway.IsUnspecified() {
+	config *types.NetworkInstanceConfig) error {
+	if config.Gateway == nil || config.Gateway.IsUnspecified() {
 		return fmt.Errorf("gateway is not specified: %+v",
-			status.Gateway)
+			config.Gateway)
 	}
-	if !status.Subnet.Contains(status.Gateway) {
+	if !config.Subnet.Contains(config.Gateway) {
 		return fmt.Errorf("gateway(%s) not within Subnet(%s)",
-			status.Gateway.String(), status.Subnet.String())
+			config.Gateway.String(), config.Subnet.String())
 	}
-	if status.DhcpRange.Contains(status.Gateway) {
+	if config.DhcpRange.Contains(config.Gateway) {
 		return fmt.Errorf("gateway(%s) is in DHCP Range(%v,%v)",
-			status.Gateway, status.DhcpRange.Start,
-			status.DhcpRange.End)
+			config.Gateway, config.DhcpRange.Start,
+			config.DhcpRange.End)
 	}
 	return nil
 }
