@@ -347,19 +347,15 @@ endif
 # Though the partition size is set to 512MB lets check for ROOTFS_MAXSIZE_MB not exceeding 450MB for kubevirt.
 # That seems to be the direction taken for existing kvm systems where partition size is 300MB but
 # rootfs size is limited to 250MB. That helps in catching image size increases earlier than at later stage.
-ifeq ($(HV),kubevirt)
-  ROOTFS_MAXSIZE_MB=450
-else
-  ROOTFS_MAXSIZE_MB=250
-endif
-
 # We are currently filtering out a few packages from bulk builds
 # since they are not getting published in Docker HUB
 ifeq ($(HV),kubevirt)
         PKGS_$(ZARCH)=$(shell find pkg -maxdepth 1 -type d | grep -Ev "eve|test-microsvcs|alpine|sources")
+        ROOTFS_MAXSIZE_MB=450
 else
         #kube container will not be in non-kubevirt builds
         PKGS_$(ZARCH)=$(shell find pkg -maxdepth 1 -type d | grep -Ev "eve|test-microsvcs|alpine|sources|kube")
+        ROOTFS_MAXSIZE_MB=250
 endif
 
 PKGS_riscv64=pkg/ipxe pkg/mkconf pkg/mkimage-iso-efi pkg/grub     \
