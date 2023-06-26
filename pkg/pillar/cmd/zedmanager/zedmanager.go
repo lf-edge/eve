@@ -11,7 +11,6 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"sort"
 	"time"
@@ -874,7 +873,7 @@ func serializeVolumeRefStatusToSnapshot(status *types.VolumeRefStatus, snapshotI
 		return err
 	}
 	// Create the file for storing the volume ref status
-	err = ioutil.WriteFile(filename, statusAsBytes, 0644)
+	err = os.WriteFile(filename, statusAsBytes, 0644)
 	if err != nil {
 		log.Errorf("Failed to write the volume ref status for %s, error: %s", status.VolumeID, err)
 		return err
@@ -931,7 +930,7 @@ func serializeConfigToSnapshot(config types.AppInstanceConfig, snapshotID string
 		return err
 	}
 	configFile := fmt.Sprintf("%s/%s", snapshotDir, types.SnapshotConfigFilename)
-	err = ioutil.WriteFile(configFile, configAsBytes, 0644)
+	err = os.WriteFile(configFile, configAsBytes, 0644)
 	if err != nil {
 		log.Errorf("Failed to write the old config for %s, error: %s", config.DisplayName, err)
 		return err

@@ -2,12 +2,12 @@ kernel:
   image: KERNEL_TAG
   cmdline: "rootdelay=3"
 init:
-  - linuxkit/init:6542ad0457ac153861870bfe2d036b6647cdc69f
+  - linuxkit/init:144c9cee8aed9e30a16940f2bf1d3813883aceda
   - linuxkit/runc:d971bd4ffcfc92fec49d1b46757a2a1bb98d1a65
-  - linuxkit/containerd:682d2a1f63b31cc76f1fb8ae59f6e54b0932e182
+  - linuxkit/containerd:d445de33c7f08470187b068d247b1c0dea240f0a
   # pillar's logic rely on existence of getty and /etc/init.d/001-getty inside
   - linuxkit/getty:06f34bce0facea79161566d67345c3ea49965437
-  - linuxkit/memlogd:cf7ea20e6b68aacaa888aa178f267dcad602ed05
+  - linuxkit/memlogd:9a1bb29abca6d739f4b22c3e637faf1898e14184
   - DOM0ZTOOLS_TAG
   - GRUB_TAG
   - FW_TAG

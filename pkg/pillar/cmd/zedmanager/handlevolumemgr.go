@@ -401,10 +401,22 @@ func restoreConfigFromSnapshot(ctx *zedmanagerContext, appInstanceStatus *types.
 		return nil, fmt.Errorf("SnapshotInstanceStatus not found for %s", snapshotID)
 	}
 	// Get the app instance config from the snapshot
-	snappedAppInstanceConfig := deserializeConfigFromSnapshot(snapshotStatus)
+	snappedAppInstanceConfig := deserializeConfigFromSnapshot(snapshotStatus.Snapshot.SnapshotID)
 	if snappedAppInstanceConfig == nil {
 		return nil, fmt.Errorf("failed to read AppInstanceConfig from file for %s", snapshotID)
 	}
+	config, err := addFixupsIntoSnappedConfig(ctx, appInstanceStatus, snappedAppInstanceConfig)
+	if err != nil {
+		return config, err
+	}
+	return snappedAppInstanceConfig, nil
+}
+
+// addFixupsIntoSnappedConfig adds the fixups into the snapped app instance config.
+// The fixups are the information that should be taken from the current app instance config, not from the snapshot.
+// The fixups should correspond to the fixups done on the controller side. A function name, where it's done maybe
+// something like: applyAppInstanceFromSnapshot.
+func addFixupsIntoSnappedConfig(ctx *zedmanagerContext, appInstanceStatus *types.AppInstanceStatus, snappedAppInstanceConfig *types.AppInstanceConfig) (*types.AppInstanceConfig, error) {
 	// Get the app instance config from the app instance status
 	currentAppInstanceConfig := lookupAppInstanceConfig(ctx, appInstanceStatus.Key())
 	if currentAppInstanceConfig == nil {
@@ -422,9 +434,9 @@ func restoreConfigFromSnapshot(ctx *zedmanagerContext, appInstanceStatus *types.
 }
 
 // deserializeConfigFromSnapshot deserializes the config from a file
-func deserializeConfigFromSnapshot(status *types.SnapshotInstanceStatus) *types.AppInstanceConfig {
+func deserializeConfigFromSnapshot(snapshotID string) *types.AppInstanceConfig {
 	log.Noticef("deserializeConfigFromSnapshot")
-	dirname := getSnapshotDir(status.Snapshot.SnapshotID)
+	dirname := getSnapshotDir(snapshotID)
 	filename := path.Join(dirname, types.SnapshotConfigFilename)
 	var appInstanceConfig types.AppInstanceConfig
 	configFile, err := os.Open(filename)
