@@ -132,6 +132,7 @@ func initOpts() {
 		"techsupport",
 		"top",
 		"volume",
+		"pprof",
 	}
 
 	logdirectory = []string{
@@ -675,6 +676,8 @@ func printHelp(opt string) {
 			helpExample("cat/<path> -line <num>", "display only <num> of lines, like 'head' if <num> is positive, like 'tail' if the <num> is negative", false)
 		case "datastore":
 			helpOn("datastore", "display the device current datastore: EQDN, type, cipher information")
+		case "pprof":
+			helpOn("pprof", "pprof/on to turn on pprof; pprof/off to turn off again")
 		case "dmesg":
 			helpOn("dmesg", "display the device current dmesg information")
 		case "download":

@@ -181,6 +181,7 @@ func (n *nim) init() (err error) {
 		SubEdgeNodeCert:      n.subEdgeNodeCert,
 		PubCipherBlockStatus: n.pubCipherBlockStatus,
 		CipherMetrics:        n.cipherMetrics,
+		HVTypeKube:           base.IsHVTypeKube(),
 	}
 	n.dpcManager = &dpcmanager.DpcManager{
 		Log:                      n.Log,

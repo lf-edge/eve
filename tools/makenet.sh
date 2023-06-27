@@ -2,10 +2,11 @@
 EVE="$(cd "$(dirname "$0")" && pwd)/../"
 PATH="$EVE/build-tools/bin:$PATH"
 SOURCE="$(cd "$1" && pwd)"
-NET="$(cd "$(dirname "$2")" && pwd)/$(basename "$2")"
+IMG="$2"
+NET="$(cd "$(dirname "$3")" && pwd)/$(basename "$3")"
 
-if [ ! -d "$SOURCE" ] || [ $# -lt 2 ]; then
-   echo "Usage: $0 <input dir> <output tar image file>"
+if [ ! -d "$SOURCE" ] || [ $# -lt 3 ]; then
+   echo "Usage: $0 <input dir> <image file name> <output tar image file>"
    exit 1
 fi
 
@@ -20,5 +21,5 @@ cat <<__EOT__ | docker run --rm -v "$SOURCE:/bits" -v "$NET:/output.tar" -i alpi
    echo netboot > media/root-rw/boot/.uuid
    find . | sort | cpio --quiet -o -H newc | gzip > /initrd.bits
    ln -s /bits/* /
-   tar -C / -chvf /output.tar ipxe.efi.cfg kernel initrd.img installer.img initrd.bits rootfs.img
+   tar -C / -chvf /output.tar ipxe.efi.cfg kernel initrd.img "$IMG" initrd.bits rootfs.img
 __EOT__

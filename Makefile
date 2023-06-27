@@ -38,7 +38,7 @@ KERNEL_BUILD_YML_TOOL := tools/kernel-build-yml.sh $(PREEMPT_RT_SUPPORT_ARG)
 EVE_SNAPSHOT_VERSION=0.0.0
 # which language bindings to generate for EVE API
 PROTO_LANGS=go python
-# Use 'make HV=acrn|xen|kvm' to build ACRN images (AMD64 only), Xen or KVM
+# Use 'make HV=acrn|xen|kvm|kubevirt' to build ACRN images (AMD64 only), Xen or KVM
 HV=$(HV_DEFAULT)
 # Enable development build (disabled by default)
 DEV=n
@@ -213,9 +213,13 @@ ACCEL=1
 else
 ACCEL=
 endif
+ifeq ($(UNAME_S)_$(ZARCH),Darwin_arm64)
+QEMU_DEFAULT_MACHINE=virt,
+endif
 QEMU_ACCEL_Y_Darwin_amd64=-machine q35,accel=hvf,usb=off -cpu kvm64,kvmclock=off
 QEMU_ACCEL_Y_Linux_amd64=-machine q35,accel=kvm,usb=off,dump-guest-core=off -cpu host,invtsc=on,kvmclock=off -machine kernel-irqchip=split -device intel-iommu,intremap=on,caching-mode=on,aw-bits=48
 # -machine virt,gic_version=3
+QEMU_ACCEL_Y_Darwin_arm64=-machine $(QEMU_DEFAULT_MACHINE)accel=hvf,usb=off -cpu host
 QEMU_ACCEL_Y_Linux_arm64=-machine virt,accel=kvm,usb=off,dump-guest-core=off -cpu host
 QEMU_ACCEL__$(UNAME_S)_arm64=-machine virt,virtualization=true -cpu cortex-a57
 QEMU_ACCEL__$(UNAME_S)_amd64=-machine q35 -cpu SandyBridge
@@ -296,7 +300,7 @@ DOCKER_GO = _() { $(SET_X); mkdir -p $(CURDIR)/.go/src/$${3:-dummy} ; mkdir -p $
 
 PARSE_PKGS=$(if $(strip $(EVE_HASH)),EVE_HASH=)$(EVE_HASH) DOCKER_ARCH_TAG=$(DOCKER_ARCH_TAG) ./tools/parse-pkgs.sh
 LINUXKIT=$(BUILDTOOLS_BIN)/linuxkit
-LINUXKIT_VERSION=8b04a8c92affacb13584c164161d7253d4b7ba4b
+LINUXKIT_VERSION=7164b2c04d40eb276cee6e16c7fa617fe6840a17
 LINUXKIT_SOURCE=https://github.com/linuxkit/linuxkit.git
 LINUXKIT_OPTS=$(if $(strip $(EVE_HASH)),--hash) $(EVE_HASH) $(if $(strip $(EVE_REL)),--release) $(EVE_REL)
 LINUXKIT_PKG_TARGET=build
@@ -311,7 +315,7 @@ DOCKERFILE_ADD_SCANNER_SOURCE=./tools/dockerfile-add-scanner
 
 # for the go build sources
 GOSOURCES=$(BUILDTOOLS_BIN)/go-sources-and-licenses
-GOSOURCES_VERSION=35a4cc0e0a12f91ef11278eb0ce22f02fe9c96f6
+GOSOURCES_VERSION=668fbc58b7b48e0202e106c45c2caaf9f5be189f
 GOSOURCES_SOURCE=github.com/deitch/go-sources-and-licenses
 
 
@@ -340,9 +344,20 @@ ifeq ($(LINUXKIT_PKG_TARGET),push)
   endif
 endif
 
+# Though the partition size is set to 512MB lets check for ROOTFS_MAXSIZE_MB not exceeding 450MB for kubevirt.
+# That seems to be the direction taken for existing kvm systems where partition size is 300MB but
+# rootfs size is limited to 250MB. That helps in catching image size increases earlier than at later stage.
 # We are currently filtering out a few packages from bulk builds
 # since they are not getting published in Docker HUB
-PKGS_$(ZARCH)=$(shell ls -d pkg/* | grep -Ev "eve|test-microsvcs|alpine|sources")
+ifeq ($(HV),kubevirt)
+        PKGS_$(ZARCH)=$(shell find pkg -maxdepth 1 -type d | grep -Ev "eve|test-microsvcs|alpine|sources")
+        ROOTFS_MAXSIZE_MB=450
+else
+        #kube container will not be in non-kubevirt builds
+        PKGS_$(ZARCH)=$(shell find pkg -maxdepth 1 -type d | grep -Ev "eve|test-microsvcs|alpine|sources|kube")
+        ROOTFS_MAXSIZE_MB=250
+endif
+
 PKGS_riscv64=pkg/ipxe pkg/mkconf pkg/mkimage-iso-efi pkg/grub     \
              pkg/mkimage-raw-efi pkg/uefi pkg/u-boot pkg/cross-compilers pkg/new-kernel \
 	     pkg/debug pkg/dom0-ztools pkg/gpt-tools pkg/storage-init pkg/mkrootfs-squash \
@@ -440,7 +455,7 @@ $(DEVICETREE_DTB): $(BIOS_IMG) | $(DIST)
 	mkdir $(dir $@) 2>/dev/null || :
 	# start swtpm to generate dtb
 	$(MAKE) $(SWTPM)
-	$(QEMU_SYSTEM) $(QEMU_OPTS) -machine dumpdtb=$@
+	$(QEMU_SYSTEM) $(QEMU_OPTS) -machine $(QEMU_DEFAULT_MACHINE)dumpdtb=$@
 	$(QUIET): $@: Succeeded
 
 $(EFI_PART): PKG=grub
@@ -456,7 +471,7 @@ $(BSP_IMX_PART): PKG=bsp-imx
 $(EFI_PART) $(BOOT_PART) $(INITRD_IMG) $(INSTALLER_IMG) $(VERIFICATION_IMG) $(KERNEL_IMG) $(IPXE_IMG) $(BIOS_IMG) $(UBOOT_IMG) $(BSP_IMX_PART): $(LINUXKIT) | $(INSTALLER)
 	mkdir -p $(dir $@)
 	$(LINUXKIT) pkg build --pull --platforms linux/$(ZARCH) pkg/$(PKG) # running linuxkit pkg build _without_ force ensures that we either pull it down or build it.
-	cd $(dir $@) && $(LINUXKIT) cache export -arch $(DOCKER_ARCH_TAG) -format filesystem -outfile - $(shell $(LINUXKIT) pkg show-tag pkg/$(PKG)) | tar xvf - $(notdir $@)
+	cd $(dir $@) && $(LINUXKIT) cache export --arch $(DOCKER_ARCH_TAG) --format filesystem --outfile - $(shell $(LINUXKIT) pkg show-tag pkg/$(PKG)) | tar xvf - $(notdir $@)
 	$(QUIET): $@: Succeeded
 
 # run swtpm if TPM flag defined
@@ -643,8 +658,8 @@ $(ROOTFS_IMG): $(ROOTFS_TAR) | $(INSTALLER)
 	$(QUIET): $@: Begin
 	./tools/makerootfs.sh imagefromtar -t $(ROOTFS_TAR) -i $@ -f $(ROOTFS_FORMAT) -a $(ZARCH)
 	@echo "size of $@ is $$(wc -c < "$@")B"
-	@[ $$(wc -c < "$@") -gt $$(( 250 * 1024 * 1024 )) ] && \
-	        echo "ERROR: size of $@ is greater than 250MB (bigger than allocated partition)" && exit 1 || :
+	@[ $$(wc -c < "$@") -gt $$(( $(ROOTFS_MAXSIZE_MB) * 1024 * 1024 )) ] && \
+	        echo "ERROR: size of $@ is greater than $(ROOTFS_MAXSIZE_MB)MB (bigger than allocated partition)" && exit 1 || :
 	$(QUIET): $@: Succeeded
 
 sbom_info:
@@ -714,12 +729,12 @@ publish_sources: $(COLLECTED_SOURCES)
 
 $(LIVE).raw: $(BOOT_PART) $(EFI_PART) $(ROOTFS_IMG) $(CONFIG_IMG) $(PERSIST_IMG) $(BSP_IMX_PART) | $(INSTALLER)
 	./tools/prepare-platform.sh "$(PLATFORM)" "$(BUILD_DIR)" "$(INSTALLER)" || :
-	./tools/makeflash.sh -C 350 $| $@ $(PART_SPEC)
+	./tools/makeflash.sh -C 559 $| $@ $(PART_SPEC)
 	$(QUIET): $@: Succeeded
 
 $(INSTALLER).raw: $(BOOT_PART) $(EFI_PART) $(ROOTFS_IMG) $(INITRD_IMG) $(INSTALLER_IMG) $(CONFIG_IMG) $(PERSIST_IMG) $(BSP_IMX_PART) | $(INSTALLER)
 	./tools/prepare-platform.sh "$(PLATFORM)" "$(BUILD_DIR)" "$(INSTALLER)" || :
-	./tools/makeflash.sh -C 350 $| $@ "conf_win installer inventory_win"
+	./tools/makeflash.sh -C 592 $| $@ "conf_win installer inventory_win"
 	$(QUIET): $@: Succeeded
 
 $(INSTALLER).iso: $(EFI_PART) $(ROOTFS_IMG) $(INITRD_IMG) $(INSTALLER_IMG) $(CONFIG_IMG) $(PERSIST_IMG) | $(INSTALLER)
@@ -727,7 +742,7 @@ $(INSTALLER).iso: $(EFI_PART) $(ROOTFS_IMG) $(INITRD_IMG) $(INSTALLER_IMG) $(CON
 	$(QUIET): $@: Succeeded
 
 $(INSTALLER).net: $(EFI_PART) $(ROOTFS_IMG) $(INITRD_IMG) $(INSTALLER_IMG) $(CONFIG_IMG) $(PERSIST_IMG) $(KERNEL_IMG) | $(INSTALLER)
-	./tools/makenet.sh $| $@
+	./tools/makenet.sh $| installer.img $@
 	$(QUIET): $@: Succeeded
 
 $(LIVE).vdi: $(LIVE).raw
@@ -741,13 +756,12 @@ $(LIVE).parallels: $(LIVE).raw
 	qemu-img info -f parallels --output json $(LIVE).parallels/live.0.$(PARALLELS_UUID).hds | jq --raw-output '.["virtual-size"]' | xargs ./tools/parallels_disk.sh $(LIVE) $(PARALLELS_UUID)
 
 $(VERIFICATION).raw: $(BOOT_PART) $(EFI_PART) $(ROOTFS_IMG) $(INITRD_IMG) $(VERIFICATION_IMG) $(CONFIG_IMG) $(PERSIST_IMG) $(BSP_IMX_PART) | $(VERIFICATION)
-	@[ "$(PLATFORM)" != "${PLATFORM/imx/}" ] && \
-		cp $(VERIFICATION)/bsp-imx/NXP-EULA-LICENSE.txt $(VERIFICATION)/NXP-EULA-LICENSE.txt && \
-		cp $(VERIFICATION)/bsp-imx/NXP-EULA-LICENSE.txt $(BUILD_DIR)/NXP-EULA-LICENSE.txt && \
-		cp $(VERIFICATION)/bsp-imx/"$(PLATFORM)"-flash.bin $(VERIFICATION)/imx8-flash.bin && \
-		cp $(VERIFICATION)/bsp-imx/"$(PLATFORM)"-flash.conf $(VERIFICATION)/imx8-flash.conf && \
-		cp $(VERIFICATION)/bsp-imx/*.dtb $(VERIFICATION)/boot  || :
+	./tools/prepare-platform.sh "$(PLATFORM)" "$(BUILD_DIR)" "$(VERIFICATION)" || :
 	./tools/makeverification.sh -C 650 $| $@ "conf_win verification inventory_win"
+	$(QUIET): $@: Succeeded
+
+$(VERIFICATION).net: $(EFI_PART) $(ROOTFS_IMG) $(INITRD_IMG) $(VERIFICATION_IMG) $(CONFIG_IMG) $(PERSIST_IMG) $(KERNEL_IMG) | $(VERIFICATION)
+	./tools/makenet.sh $| verification.img $@
 	$(QUIET): $@: Succeeded
 
 # top-level linuxkit packages targets, note the one enforcing ordering between packages
@@ -790,8 +804,8 @@ endif
 
 ## exports an image from the linuxkit cache to stdout
 cache-export: image-set outfile-set $(LINUXKIT)
-	$(eval IMAGE_TAG_OPT := $(if $(IMAGE_NAME),-name $(IMAGE_NAME),))
-	$(LINUXKIT) $(DASH_V) cache export -arch $(ZARCH) -outfile $(OUTFILE) $(IMAGE_TAG_OPT) $(IMAGE)
+	$(eval IMAGE_TAG_OPT := $(if $(IMAGE_NAME),--name $(IMAGE_NAME),))
+	$(LINUXKIT) $(DASH_V) cache export --arch $(ZARCH) --outfile $(OUTFILE) $(IMAGE_TAG_OPT) $(IMAGE)
 
 ## export an image from linuxkit cache and load it into docker.
 cache-export-docker-load: $(LINUXKIT)
@@ -931,10 +945,6 @@ endif
 	$(QUIET)$(PARSE_PKGS) $< > $@
 	$(QUIET): $@: Succeeded
 
-%/gopkgversion:
-	$(QUIET) echo $(GOPKGVERSION) > $@
-
-
 # If DEV=y and file pkg/my_package/build-dev.yml returns the path to that file.
 # If RSTATS=y and file pkg/my_package/build-rstats.yml returns the path to that file.
 # Ortherwise returns pkg/my_package/build.yml.
@@ -943,14 +953,14 @@ get_pkg_build_def_yml = $(if $(filter y,$(DEV)),$(call get_pkg_build_dev_yml,$1)
 get_pkg_build_dev_yml = $(if $(wildcard pkg/$1/build-dev.yml),build-dev.yml,build.yml)
 get_pkg_build_rstats_yml = $(if $(wildcard pkg/$1/build-rstats.yml),build-rstats.yml,build.yml)
 
-eve-%: pkg/%/Dockerfile pkg/%/gopkgversion build-tools $(RESCAN_DEPS)
+eve-%: pkg/%/Dockerfile build-tools $(RESCAN_DEPS)
 	$(QUIET)$(KERNEL_BUILD_YML_TOOL)
 	$(QUIET): "$@: Begin: LINUXKIT_PKG_TARGET=$(LINUXKIT_PKG_TARGET)"
 	$(eval LINUXKIT_DOCKER_LOAD := $(if $(filter $(PKGS_DOCKER_LOAD),$*),--docker,))
 	$(eval LINUXKIT_BUILD_PLATFORMS_LIST := $(call uniq,linux/$(ZARCH) $(if $(filter $(PKGS_HOSTARCH),$*),linux/$(HOSTARCH),)))
 	$(eval LINUXKIT_BUILD_PLATFORMS := --platforms $(subst $(space),$(comma),$(strip $(LINUXKIT_BUILD_PLATFORMS_LIST))))
 	$(eval LINUXKIT_FLAGS := $(if $(filter manifest,$(LINUXKIT_PKG_TARGET)),,$(FORCE_BUILD) $(LINUXKIT_DOCKER_LOAD) $(LINUXKIT_BUILD_PLATFORMS)))
-	$(QUIET)$(LINUXKIT) $(DASH_V) pkg $(LINUXKIT_PKG_TARGET) $(LINUXKIT_OPTS) $(LINUXKIT_FLAGS) -build-yml $(call get_pkg_build_yml,$*) pkg/$*
+	$(QUIET)$(LINUXKIT) $(DASH_V) pkg $(LINUXKIT_PKG_TARGET) $(LINUXKIT_OPTS) $(LINUXKIT_FLAGS) --build-yml $(call get_pkg_build_yml,$*) pkg/$*
 	$(QUIET)if [ -n "$(PRUNE)" ]; then \
 		$(LINUXKIT) pkg builder prune; \
 		docker image prune -f; \
@@ -1020,9 +1030,10 @@ help:
 	@echo "   live             builds a full disk image of EVE which can be function as a virtual device"
 	@echo "   live-XXX         builds a particular kind of EVE live image (raw, qcow2, gcp, vdi, parallels)"
 	@echo "   installer-raw    builds raw disk installer image (to be installed on bootable media)"
-	@echo "   verification-raw builds raw disk verification image (to be installed on bootable media)"
 	@echo "   installer-iso    builds an ISO installers image (to be installed on bootable media)"
 	@echo "   installer-net    builds a tarball of artifacts to be used for PXE booting"
+	@echo "   verification-raw builds raw disk verification image (to be installed on bootable media)"
+	@echo "   verification-net builds a tarball of artifacts to be used for PXE verification"
 	@echo
 	@echo "Commonly used run targets (note they don't automatically rebuild images they run):"
 	@echo "   run-compose          runs all EVE microservices via docker-compose deployment"

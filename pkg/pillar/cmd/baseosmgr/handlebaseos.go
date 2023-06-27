@@ -259,6 +259,33 @@ func doBaseOsActivate(ctx *baseOsMgrContext, uuidStr string,
 
 	log.Functionf("doBaseOsActivate: %s activating", uuidStr)
 
+	// Before writing to partition lets make sure we have enough space on the partition
+	// 1. Get the size of the image using contenttree status
+	// 2. Get the size of the partition using zboot
+	// 3. If partition size is < image size, error out
+
+	cts := lookupContentTreeStatus(ctx, status.ContentTreeUUID)
+
+	if cts == nil {
+		errString := fmt.Sprintf("doBaseOsActivate: ContentTreeStatus not found for %s", status.ContentTreeUUID)
+		log.Error(errString)
+		status.SetErrorNow(errString)
+		changed = true
+		return changed
+	}
+
+	if cts.State == types.LOADED {
+		partSize := zboot.GetPartitionSizeInBytes(status.PartitionLabel)
+		imageSize := cts.MaxDownloadSize
+		if partSize < imageSize {
+			errString := fmt.Sprintf("doBaseOsActivate: Image size %v bytes greater than partition size %v bytes", imageSize, partSize)
+			log.Error(errString)
+			status.SetErrorNow(errString)
+			changed = true
+			return changed
+		}
+	}
+
 	// install the image at proper partition; dd etc
 	changed, proceed, err = installDownloadedObjects(ctx, uuidStr, status.PartitionLabel,
 		status.ContentTreeUUID)

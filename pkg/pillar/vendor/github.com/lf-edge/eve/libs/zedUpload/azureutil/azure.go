@@ -46,7 +46,7 @@ func newSectionWriter(c io.WriterAt, off int64, count int64, part *types.PartDef
 	}
 }
 
-//Write implementation for sectionWriter
+// Write implementation for sectionWriter
 func (c *sectionWriter) Write(p []byte) (int, error) {
 	remaining := c.count - c.position
 
@@ -460,6 +460,12 @@ func GenerateBlobSasURI(accountURL, accountName, accountKey, containerName, remo
 		return "", fmt.Errorf("Invalid credentials with error: " + err.Error())
 	}
 
+	// Checking whether blob exists or not before generating SAS URI
+	_, _, err = GetAzureBlobMetaData(accountURL, accountName, accountKey, containerName, remoteFile, httpClient)
+	if err != nil {
+		return "", err
+	}
+
 	// Set the desired SAS signature values and sign them with the shared key credentials to get the SAS query parameters.
 	sasQueryParams, err := azblob.BlobSASSignatureValues{
 		Protocol:      azblob.SASProtocolHTTPS, // Users MUST use HTTPS (not HTTP)
@@ -567,7 +573,7 @@ func UploadBlockListToBlob(accountURL, accountName, accountKey, containerName, r
 
 	blob := containerURL.NewBlockBlobURL(remoteFile)
 
-	if _, err := blob.CommitBlockList(ctx, blocks, azblob.BlobHTTPHeaders{}, azblob.Metadata{}, azblob.BlobAccessConditions{}, azblob.DefaultAccessTier, nil, azblob.ClientProvidedKeyOptions{}); err != nil {
+	if _, err := blob.CommitBlockList(ctx, blocks, azblob.BlobHTTPHeaders{}, azblob.Metadata{}, azblob.BlobAccessConditions{}, azblob.DefaultAccessTier, nil, azblob.ClientProvidedKeyOptions{}, azblob.ImmutabilityPolicyOptions{}); err != nil {
 		return fmt.Errorf("failed to commit block list: %v", err)
 	}
 	return nil

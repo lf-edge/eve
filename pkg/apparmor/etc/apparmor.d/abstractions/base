@@ -62,24 +62,24 @@
   @{etc_ro}/ld.so.conf                r,
   @{etc_ro}/ld.so.conf.d/{,*.conf}    r,
   @{etc_ro}/ld.so.preload             r,
-  /{usr/,}lib{,32,64}/ld{,32,64}-*.so   mr,
-  /{usr/,}lib/@{multiarch}/ld{,32,64}-*.so    mr,
-  /{usr/,}lib/tls/i686/{cmov,nosegneg}/ld-*.so     mr,
-  /{usr/,}lib/i386-linux-gnu/tls/i686/{cmov,nosegneg}/ld-*.so     mr,
+  /{usr/,usr/local/}lib{,32,64}/ld{,32,64}-*.so   mr,
+  /{usr/,usr/local/}lib/@{multiarch}/ld{,32,64}-*.so    mr,
+  /{usr/,usr/local/}lib/tls/i686/{cmov,nosegneg}/ld-*.so     mr,
+  /{usr/,usr/local/}lib/i386-linux-gnu/tls/i686/{cmov,nosegneg}/ld-*.so     mr,
   /opt/*-linux-uclibc/lib/ld-uClibc*so* mr,
 
   # we might as well allow everything to use common libraries
-  /{usr/,}lib{,32,64}/**                r,
-  /{usr/,}lib{,32,64}/**.so*       mr,
-  /{usr/,}lib/@{multiarch}/**            r,
-  /{usr/,}lib/@{multiarch}/**.so*   mr,
-  /{usr/,}lib/tls/i686/{cmov,nosegneg}/*.so*    mr,
-  /{usr/,}lib/i386-linux-gnu/tls/i686/{cmov,nosegneg}/*.so*    mr,
+  /{usr/,usr/local/}lib{,32,64}/**                r,
+  /{usr/,usr/local/}lib{,32,64}/**.so*       mr,
+  /{usr/,usr/local/}lib/@{multiarch}/**            r,
+  /{usr/,usr/local/}lib/@{multiarch}/**.so*   mr,
+  /{usr/,usr/local/}lib/tls/i686/{cmov,nosegneg}/*.so*    mr,
+  /{usr/,usr/local/}lib/i386-linux-gnu/tls/i686/{cmov,nosegneg}/*.so*    mr,
 
   # FIPS-140-2 versions of some crypto libraries need to access their
   # associated integrity verification file, or they will abort.
-  /{usr/,}lib{,32,64}/.lib*.so*.hmac      r,
-  /{usr/,}lib/@{multiarch}/.lib*.so*.hmac r,
+  /{usr/,usr/local/}lib{,32,64}/.lib*.so*.hmac      r,
+  /{usr/,usr/local/}lib/@{multiarch}/.lib*.so*.hmac r,
 
   # /dev/null is pretty harmless and frequently used
   /dev/null                      rw,

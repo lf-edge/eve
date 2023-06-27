@@ -2,12 +2,12 @@ kernel:
   image: KERNEL_TAG
   cmdline: "rootdelay=3"
 init:
-  - linuxkit/init:8f1e6a0747acbbb4d7e24dc98f97faa8d1c6cec7
-  - linuxkit/runc:f01b88c7033180d50ae43562d72707c6881904e4
-  - linuxkit/containerd:de1b18eed76a266baa3092e5c154c84f595e56da
+  - linuxkit/init:144c9cee8aed9e30a16940f2bf1d3813883aceda
+  - linuxkit/runc:d971bd4ffcfc92fec49d1b46757a2a1bb98d1a65
+  - linuxkit/containerd:d445de33c7f08470187b068d247b1c0dea240f0a
   # pillar's logic rely on existence of getty and /etc/init.d/001-getty inside
-  - linuxkit/getty:c9d5afa9a61ac907904090643e946874ff6bf07c
-  - linuxkit/memlogd:v0.5
+  - linuxkit/getty:06f34bce0facea79161566d67345c3ea49965437
+  - linuxkit/memlogd:9a1bb29abca6d739f4b22c3e637faf1898e14184
   - DOM0ZTOOLS_TAG
   - GRUB_TAG
   - FW_TAG
@@ -19,7 +19,7 @@ onboot:
     image: RNGD_TAG
     command: ["/sbin/rngd", "-1"]
   - name: sysctl
-    image: linuxkit/sysctl:v0.5
+    image: linuxkit/sysctl:a88a50c104d538b58da5e1441f6f0b4b738f76a6
     binds:
       - /etc/sysctl.d:/etc/sysctl.d
     capabilities:
@@ -43,12 +43,12 @@ onboot:
   - name: pillar-onboot
     image: PILLAR_TAG
     command: ["/opt/zededa/bin/onboot.sh"]
+  - name: apparmor
+    image: APPARMOR_TAG
   # measure-config must be executed after any other container that changes 
   # /config. Let's keep it the latest
   - name: measure-config
     image: MEASURE_CONFIG_TAG
-  - name: apparmor
-    image: APPARMOR_TAG
 services:
   - name: newlogd
     image: NEWLOGD_TAG

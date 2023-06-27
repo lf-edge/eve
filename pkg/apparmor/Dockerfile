@@ -16,12 +16,12 @@ WORKDIR /apparmor/parser
 RUN ../common/list_af_names.sh > base_af_names.h && \
     make
 
-
 #Pull a selected set of artifacts into the final stage.
 FROM scratch
 COPY --from=build /out/ /
 COPY --from=build /apparmor/parser/apparmor_parser /usr/bin/
 COPY /etc/ /etc
+COPY /profiles/* /etc/apparmor.d
 COPY aa-init.sh /
 
 WORKDIR /

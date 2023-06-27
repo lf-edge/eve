@@ -115,6 +115,7 @@ type nodeagentContext struct {
 	maintModeReason             types.MaintenanceModeReason //reason for entering Maintenance mode
 	configGetSuccess            bool                        // got config from controller success
 	vaultmgrReported            bool                        // got reports from vaultmgr
+	hvTypeKube                  bool                        // image is kubernetes cluster type
 
 	// Some constants.. Declared here as variables to enable unit tests
 	minRebootDelay          uint32
@@ -142,6 +143,7 @@ func newNodeagentContext(_ *pubsub.PubSub, _ *logrus.Logger, _ *base.LogObject) 
 	curpart := agentlog.EveCurrentPartition()
 	nodeagentCtx.curPart = strings.TrimSpace(curpart)
 	nodeagentCtx.vaultOperational = types.TS_NONE
+	nodeagentCtx.hvTypeKube = base.IsHVTypeKube()
 	return &nodeagentCtx
 }
 
@@ -697,6 +699,7 @@ func publishNodeAgentStatus(ctxPtr *nodeagentContext) {
 		RestartCounter:             ctxPtr.restartCounter,
 		LocalMaintenanceMode:       ctxPtr.maintMode,
 		LocalMaintenanceModeReason: ctxPtr.maintModeReason,
+		HVTypeKube:                 ctxPtr.hvTypeKube,
 	}
 	ctxPtr.lastLock.Unlock()
 	pub.Publish(agentName, status)

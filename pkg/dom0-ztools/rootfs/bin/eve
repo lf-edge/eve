@@ -19,6 +19,9 @@ Welcome to EVE!
             persist attach <disk>
             config mount <mountpoint>
             config unmount
+            http-debug
+            dump-stacks
+            dump-memory
             firewall drop
             verbose on|off
             version
@@ -83,6 +86,33 @@ unmount_partlabel() {
   fi
 }
 
+http_debug_request() {
+    URL="$1"
+    running=0
+
+    if nc -z 127.1 6543; then
+        running=1
+    fi
+
+    if [ "$running" = "0" ]; then
+        pkill -USR2 /opt/zededa/bin/zedbox
+    fi
+
+    printf "POST %s HTTP/1.0\r\n\r\n" "$URL" | nc 127.1 6543
+
+    if [ "$running" = "0" ]; then
+        printf "POST /stop HTTP/1.0\r\n\r\n" | nc 127.1 6543
+    fi
+}
+
+dump_stacks() {
+    http_debug_request "/dump/stacks"
+}
+
+dump_mem() {
+    http_debug_request "/dump/memory"
+}
+
 case "$1" in
     exec) # shellcheck disable=SC2086
           ID=$(${CTR_CMD} t ls | awk '/^'${2:-pillar}' /{print $2;}' 2>/dev/null)
@@ -135,6 +165,23 @@ __EOT__
           else
              help
           fi
+          ;;
+ http-debug) if [ -z "$2" ] || [ "$2" = "start" ]; then
+              pkill -USR2 /opt/zededa/bin/zedbox
+              echo "Listening on :6543 -- use 'eve http-debug stop' to stop"
+          elif [ "$2" = "stop" ]; then
+              printf "POST /stop HTTP/1.0\r\n\r\n" | nc 127.1 6543
+          else
+              echo "Unknown command; use 'start' or 'stop'"
+          fi
+          ;;
+ dump-stacks)
+          dump_stacks
+          echo "Your information can be found in logread"
+          ;;
+ dump-memory)
+          dump_mem
+          echo "Your information can be found in logread"
           ;;
  verbose) # first lets find our piping process
           for PIPE in $(pgrep cat); do
