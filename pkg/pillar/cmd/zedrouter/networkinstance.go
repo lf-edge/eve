@@ -252,26 +252,32 @@ func (z *zedrouter) maybeDelOrInactivateNetworkInstance(
 		return false
 	}
 
-	if status.Activated {
-		z.doInactivateNetworkInstance(status)
-		// If NI config was deleted, status will be unpublished when async operations
-		// of NI inactivation complete.
-	} else if config == nil {
-		z.unpublishNetworkInstanceStatus(status)
-	}
-
 	if config != nil {
 		// Should be only inactivated, not yet deleted.
+		if status.Activated {
+			z.doInactivateNetworkInstance(status)
+		}
 		return true
 	}
 
+	z.delNetworkInstance(status)
+	z.log.Noticef("maybeDelOrInactivateNetworkInstance(%s) done", status.Key())
+	return true
+}
+
+func (z *zedrouter) delNetworkInstance(status *types.NetworkInstanceStatus) {
+	if status.Activated {
+		z.doInactivateNetworkInstance(status)
+		// Status will be unpublished when async operations of NI inactivation complete.
+	} else {
+		z.unpublishNetworkInstanceStatus(status)
+	}
 	if status.RunningUplinkProbing {
 		err := z.uplinkProber.StopNIProbing(status.UUID)
 		if err != nil {
 			z.log.Error(err)
 		}
 	}
-
 	if status.BridgeNum != 0 {
 		bridgeNumKey := types.UuidToNumKey{UUID: status.UUID}
 		err := z.bridgeNumAllocator.Free(bridgeNumKey, false)
@@ -288,6 +294,28 @@ func (z *zedrouter) maybeDelOrInactivateNetworkInstance(
 	}
 
 	z.deleteNetworkInstanceMetrics(status.Key())
-	z.log.Noticef("maybeDelOrInactivateNetworkInstance(%s) done", status.Key())
-	return true
+}
+
+// Called when a NetworkInstance is deleted or modified to check if there are other
+// NIs that previously could not be configured due to inter-NI config conflicts.
+func (z *zedrouter) checkConflictingNetworkInstances() {
+	for _, item := range z.pubNetworkInstanceStatus.GetAll() {
+		niStatus := item.(types.NetworkInstanceStatus)
+		if !niStatus.NIConflict {
+			continue
+		}
+		niConfig := z.lookupNetworkInstanceConfig(niStatus.Key())
+		if niConfig == nil {
+			continue
+		}
+		niConflict, err := z.doNetworkInstanceSanityCheck(niConfig)
+		if err == nil && niConflict == false {
+			// Try to re-create the network instance now that the conflict is gone.
+			z.log.Noticef("Recreating NI %s (%s) now that inter-NI conflict "+
+				"is not present anymore", niConfig.UUID, niConfig.DisplayName)
+			// First release whatever has been already allocated for this NI.
+			z.delNetworkInstance(&niStatus)
+			z.handleNetworkInstanceCreate(nil, niConfig.Key(), *niConfig)
+		}
+	}
 }
