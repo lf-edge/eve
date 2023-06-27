@@ -2610,6 +2610,7 @@ type NetworkInstanceStatus struct {
 	Activate uint64
 
 	ChangeInProgress ChangeInProgressType
+	NIConflict       bool // True if config conflicts with another NI
 
 	// Activated is true if the network instance has been created in the network stack.
 	Activated bool

@@ -13,7 +13,7 @@ import (
 )
 
 func (z *zedrouter) doNetworkInstanceSanityCheck(
-	config *types.NetworkInstanceConfig) error {
+	config *types.NetworkInstanceConfig) (niConflict bool, err error) {
 	z.log.Functionf("Sanity Checking NetworkInstance(%s-%s): type:%d, IpType:%d",
 		config.DisplayName, config.UUID, config.Type, config.IpType)
 
@@ -24,7 +24,7 @@ func (z *zedrouter) doNetworkInstanceSanityCheck(
 	case types.NetworkInstanceTypeSwitch:
 		// Do nothing
 	default:
-		return fmt.Errorf("network instance type %d is not supported", config.Type)
+		return false, fmt.Errorf("network instance type %d is not supported", config.Type)
 	}
 
 	// IpType - Check for valid types
@@ -33,29 +33,29 @@ func (z *zedrouter) doNetworkInstanceSanityCheck(
 		// Do nothing
 	case types.AddressTypeIPV4, types.AddressTypeIPV6,
 		types.AddressTypeCryptoIPV4, types.AddressTypeCryptoIPV6:
-		err := z.doNetworkInstanceSubnetSanityCheck(config)
+		niConflict, err = z.doNetworkInstanceSubnetSanityCheck(config)
 		if err != nil {
-			return err
+			return niConflict, err
 		}
 		err = z.doNetworkInstanceDhcpRangeSanityCheck(config)
 		if err != nil {
-			return err
+			return false, err
 		}
 		err = z.doNetworkInstanceGatewaySanityCheck(config)
 		if err != nil {
-			return err
+			return false, err
 		}
 
 	default:
-		return fmt.Errorf("IpType %d not supported", config.IpType)
+		return false, fmt.Errorf("IpType %d not supported", config.IpType)
 	}
-	return nil
+	return false, nil
 }
 
 func (z *zedrouter) doNetworkInstanceSubnetSanityCheck(
-	config *types.NetworkInstanceConfig) error {
+	config *types.NetworkInstanceConfig) (niConflict bool, err error) {
 	if config.Subnet.IP == nil || config.Subnet.IP.IsUnspecified() {
-		return fmt.Errorf("subnet unspecified for %s-%s: %+v",
+		return false, fmt.Errorf("subnet unspecified for %s-%s: %+v",
 			config.Key(), config.DisplayName, config.Subnet)
 	}
 
@@ -73,7 +73,7 @@ func (z *zedrouter) doNetworkInstanceSubnetSanityCheck(
 
 		// Check if config.Subnet is contained in iterStatusEntry.Subnet
 		if niConfig2.Subnet.Contains(config.Subnet.IP) {
-			return fmt.Errorf("subnet(%s, IP:%s) overlaps with another "+
+			return true, fmt.Errorf("subnet(%s, IP:%s) overlaps with another "+
 				"network instance(%s-%s) Subnet(%s)",
 				config.Subnet.String(), config.Subnet.IP.String(),
 				niConfig2.DisplayName, niConfig2.UUID,
@@ -82,14 +82,14 @@ func (z *zedrouter) doNetworkInstanceSubnetSanityCheck(
 
 		// Reverse check: check if iterStatusEntry.Subnet is contained in config.subnet
 		if config.Subnet.Contains(niConfig2.Subnet.IP) {
-			return fmt.Errorf("another network instance(%s-%s) Subnet(%s) "+
+			return true, fmt.Errorf("another network instance(%s-%s) Subnet(%s) "+
 				"overlaps with Subnet(%s)",
 				niConfig2.DisplayName, niConfig2.UUID,
 				niConfig2.Subnet.String(),
 				config.Subnet.String())
 		}
 	}
-	return nil
+	return false, nil
 }
 
 func (z *zedrouter) doNetworkInstanceDhcpRangeSanityCheck(
