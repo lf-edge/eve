@@ -176,10 +176,11 @@ func (z *zedrouter) handleNetworkInstanceCreate(ctxArg interface{}, key string,
 		return
 	}
 
-	if err := z.doNetworkInstanceSanityCheck(&config); err != nil {
+	if niConflict, err := z.doNetworkInstanceSanityCheck(&config); err != nil {
 		z.log.Error(err)
 		status.SetErrorNow(err.Error())
 		status.ChangeInProgress = types.ChangeInProgressTypeNone
+		status.NIConflict = niConflict
 		z.publishNetworkInstanceStatus(&status)
 		return
 	}
@@ -295,11 +296,12 @@ func (z *zedrouter) handleNetworkInstanceModify(ctxArg interface{}, key string,
 
 	prevPortLL := status.PortLogicalLabel
 	status.NetworkInstanceConfig = config
-	if err := z.doNetworkInstanceSanityCheck(&config); err != nil {
+	if niConflict, err := z.doNetworkInstanceSanityCheck(&config); err != nil {
 		z.log.Error(err)
 		status.SetErrorNow(err.Error())
 		status.WaitingForUplink = false
 		status.ChangeInProgress = types.ChangeInProgressTypeNone
+		status.NIConflict = niConflict
 		z.publishNetworkInstanceStatus(status)
 		return
 	}
@@ -391,6 +393,9 @@ func (z *zedrouter) handleNetworkInstanceModify(ctxArg interface{}, key string,
 	} else if status.Activated {
 		z.doUpdateActivatedNetworkInstance(config, status)
 	}
+
+	// Check if some inter-NI conflicts were resolved by this modification.
+	z.checkConflictingNetworkInstances()
 	z.log.Functionf("handleNetworkInstanceModify(%s) done", key)
 }
 
@@ -407,6 +412,8 @@ func (z *zedrouter) handleNetworkInstanceDelete(ctxArg interface{}, key string,
 	z.publishNetworkInstanceStatus(status)
 
 	done := z.maybeDelOrInactivateNetworkInstance(status)
+	// Check if some inter-NI conflicts were resolved by this delete.
+	z.checkConflictingNetworkInstances()
 	z.log.Functionf("handleNetworkInstanceDelete(%s) done %t", key, done)
 }
 

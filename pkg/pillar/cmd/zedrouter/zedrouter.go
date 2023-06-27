@@ -416,7 +416,7 @@ func (z *zedrouter) run(ctx context.Context) (err error) {
 				}
 				if appNetConfig == nil && recUpdate.AppConnStatus.Deleted &&
 					appNetStatus != nil && !appNetStatus.HasError() &&
-					!appNetStatus.Pending() {
+					!appNetStatus.Pending() && appNetStatus.ConfigInSync {
 					z.unpublishAppNetworkStatus(appNetStatus)
 				}
 			}
