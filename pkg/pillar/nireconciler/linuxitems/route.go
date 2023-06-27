@@ -157,14 +157,47 @@ func (r Route) String() string {
 		r.outputIfName(), r.Route.Priority, r.Route.String())
 }
 
-// Dependencies lists the output interface as the only dependency.
-// Note that we do not check if the route gateway (if any) matches IP addresses
-// assigned to the output interface. This is because zedrouter mostly just mirrors
-// routes from the main routing table to per-NI tables and the presence of these
-// routes essentially proves that this requirement is satisfied.
-// The only exception is the route for the "blackhole" dummy interface, but that one
-// is defined without gateway.
+// Dependencies of a network route are:
+//   - the "via" interface must exist and be UP
+//   - the "via" interface must have an IP address assigned from the subnet
+//     of the route gateway.
+//   - if route has src IP, this IP must be assigned to the "via" interface
 func (r Route) Dependencies() (deps []dg.Dependency) {
+	gwAndSrcMatchesIP := func(item dg.Item) bool {
+		netIfWithIP, isNetIfWithIP := item.(genericitems.NetworkIfWithIP)
+		if !isNetIfWithIP {
+			if len(r.Gw) != 0 || len(r.Src) != 0 {
+				return false
+			}
+			return true
+		}
+		ips := netIfWithIP.GetAssignedIPs()
+		if len(r.Src) != 0 {
+			var srcMatch bool
+			for _, ip := range ips {
+				if ip.IP.Equal(r.Src) {
+					srcMatch = true
+					break
+				}
+			}
+			if !srcMatch {
+				return false
+			}
+		}
+		if len(r.Gw) != 0 {
+			var gwMatch bool
+			for _, ip := range ips {
+				if ip.Contains(r.Gw) {
+					gwMatch = true
+					break
+				}
+			}
+			if !gwMatch {
+				return false
+			}
+		}
+		return true
+	}
 	if r.OutputIf.UplinkIfName != "" {
 		deps = append(deps, dg.Dependency{
 			RequiredItem: dg.ItemRef{
@@ -175,7 +208,8 @@ func (r Route) Dependencies() (deps []dg.Dependency) {
 				// Linux automatically removes the route when the interface disappears.
 				AutoDeletedByExternal: true,
 			},
-			Description: "Uplink interface must exist",
+			MustSatisfy: gwAndSrcMatchesIP,
+			Description: "Uplink interface must exist and have matching IP address assigned",
 		})
 	} else if r.OutputIf.BridgeIfName != "" {
 		deps = append(deps, dg.Dependency{
@@ -187,7 +221,8 @@ func (r Route) Dependencies() (deps []dg.Dependency) {
 				// Linux automatically removes the route when the interface disappears.
 				AutoDeletedByExternal: true,
 			},
-			Description: "Bridge interface must exist",
+			MustSatisfy: gwAndSrcMatchesIP,
+			Description: "Bridge interface must exist and have matching IP address assigned",
 		})
 	} else if r.OutputIf.DummyIfName != "" {
 		deps = append(deps, dg.Dependency{
@@ -199,7 +234,8 @@ func (r Route) Dependencies() (deps []dg.Dependency) {
 				// Linux automatically removes the route when the interface disappears.
 				AutoDeletedByExternal: true,
 			},
-			Description: "Dummy interface must exist",
+			MustSatisfy: gwAndSrcMatchesIP,
+			Description: "Dummy interface must exist and have matching IP address assigned",
 		})
 	}
 	return deps

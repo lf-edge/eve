@@ -331,12 +331,12 @@ func (r *LinuxNIReconciler) runWatcher(netEvents <-chan netmonitor.Event) {
 				ifName := attrs.IfName
 				brForNI := r.getNIWithBridge(ifName)
 				if brForNI != nil {
-					if brForNI.config.Type == types.NetworkInstanceTypeSwitch {
+					if r.niBridgeIsCreatedByNIM(brForNI) {
 						// When bridge used by switch NI gets IP address from external
 						// DHCP server, zedrouter can start HTTP server with app metadata.
 						// Also, DHCP ACLs need to be updated.
-						brChanged := r.updateCurrentNIBridge(brForNI.config.UUID)
-						if brChanged {
+						brIPChanged := r.updateCurrentNIBridge(brForNI.config.UUID)
+						if brIPChanged {
 							r.scheduleNICfgRebuild(brForNI.config.UUID,
 								"bridge IP change")
 							needReconcile = true
@@ -415,7 +415,7 @@ func (r *LinuxNIReconciler) reconcile(ctx context.Context) (updates []Reconciler
 		if deleted {
 			r.intendedState.DelSubGraph(sgName)
 		} else {
-			r.intendedState.PutSubGraph(r.getIntendedGlobalState())
+			r.intendedState.PutSubGraph(r.getIntendedNICfg(niID))
 		}
 	}
 
@@ -428,6 +428,8 @@ func (r *LinuxNIReconciler) reconcile(ctx context.Context) (updates []Reconciler
 	}
 	reconcileStartTime := time.Now()
 	stateReconciler := reconciler.New(r.registry)
+	r.log.Noticef("%s: Running state reconciliation, reasons: %s",
+		LogAndErrPrefix, strings.Join(reconcileReasons, ", "))
 	rs := stateReconciler.Reconcile(ctx, r.currentState, r.intendedState)
 	r.resumeAsync = rs.ReadyToResume
 	r.cancelAsync = rs.CancelAsyncOps
@@ -1001,18 +1003,6 @@ func (r *LinuxNIReconciler) DisconnectApp(ctx context.Context,
 		}
 	}
 	return appStatus, nil
-}
-
-func (r *LinuxNIReconciler) getOrAddNISubgraph(niID uuid.UUID) dg.Graph {
-	sgName := NIToSGName(niID)
-	var niSG dg.Graph
-	if readHandle := r.currentState.SubGraph(sgName); readHandle != nil {
-		niSG = r.currentState.EditSubGraph(readHandle)
-	} else {
-		niSG = dg.New(dg.InitArgs{Name: sgName})
-		r.currentState.PutSubGraph(niSG)
-	}
-	return niSG
 }
 
 func (r *LinuxNIReconciler) getNIsUsingUplink(ifName string) (nis []*niInfo) {
