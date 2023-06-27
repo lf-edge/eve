@@ -13,6 +13,8 @@ const (
 	// UnsupportedRouteTypename : typename which can be used for kinds of routes
 	// not supported/expected by a particular implementation of NIReconciler.
 	UnsupportedRouteTypename = "Unsupported-Route"
+	// IPReserveTypename : typename for reserved IP address (for use with a bridge)
+	IPReserveTypename = "IPReserve"
 	// VIFTypename : typename for VIF.
 	VIFTypename = "VIF"
 	// UplinkTypename : typename for uplink interface.

@@ -12,6 +12,7 @@ import (
 
 	dg "github.com/lf-edge/eve/libs/depgraph"
 	"github.com/lf-edge/eve/pkg/pillar/base"
+	"github.com/lf-edge/eve/pkg/pillar/nireconciler/genericitems"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
 	"github.com/vishvananda/netlink"
 )
@@ -69,9 +70,26 @@ func (b Bridge) String() string {
 		b.MACAddress, b.IPAddresses)
 }
 
-// Dependencies returns no dependencies.
+// Dependencies returns reservations of IPs that bridge should have assigned.
 func (b Bridge) Dependencies() (deps []dg.Dependency) {
-	return nil
+	if b.External() {
+		return nil
+	}
+	for _, ip := range b.IPAddresses {
+		deps = append(deps, dg.Dependency{
+			RequiredItem: dg.Reference(genericitems.IPReserve{AddrWithMask: ip}),
+			Description:  "IP address must be reserved for the bridge",
+			MustSatisfy: func(item dg.Item) bool {
+				ipReserve, isIPReserve := item.(genericitems.IPReserve)
+				if !isIPReserve {
+					// Should be unreachable.
+					return false
+				}
+				return ipReserve.NetIf.ItemRef == dg.Reference(b)
+			},
+		})
+	}
+	return deps
 }
 
 // GetAssignedIPs returns IP addresses assigned to the bridge interface.
