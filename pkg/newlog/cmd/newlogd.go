@@ -567,42 +567,46 @@ func getMemlogMsg(logChan chan inputEntry, panicFileChan chan []byte) {
 			time.Sleep(5 * time.Second)
 			continue
 		}
-		sourceName, msgTime, origMsg := getSourceFromMsg(string(bytes))
-
 		var pidStr string
-		var isApp bool
 		var jsonOK bool
 		var logInfo agentlog.Loginfo
-		if strings.Contains(sourceName, "guest_vm") {
-			isApp = true
-			logInfo.Source = sourceName
-			logInfo.Msg = origMsg
-			jsonOK = true
-			logmetrics.AppMetrics.NumInputEvent++
-		} else {
-			logInfo, jsonOK = agentlog.ParseLoginfo(origMsg)
-		}
-
-		if logInfo.Containername != "" {
-			logmetrics.AppMetrics.NumInputEvent++
-			isApp = true
-		} else {
-			logInfo.Msg = origMsg
-			logmetrics.DevMetrics.NumInputEvent++
-		}
-
+		logInfo, jsonOK = agentlog.ParseLoginfo(string(bytes))
 		if !jsonOK {
-			// not in json or right json format, try to reformat
-			logInfo = repaireMsg(origMsg, msgTime, sourceName)
+			// Look for legacy format
+			sourceName, msgTime, origMsg := getSourceFromMsg(string(bytes))
+			if len(origMsg) != 0 {
+				logInfo.Source = sourceName
+				logInfo.Time = msgTime
+				logInfo.Msg = origMsg
+			} else {
+				logInfo.Msg = string(bytes)
+			}
 		}
-		if logInfo.Msg == "" {
-			logInfo.Msg = origMsg
+		// Is the Msg itself json?
+		logInfo2, ok := agentlog.ParseLoginfo(logInfo.Msg)
+		if ok {
+			// If the inner has Time or Source set they take precedence
+			if logInfo2.Time == "" {
+				logInfo2.Time = logInfo.Time
+			}
+			if logInfo2.Source == "" {
+				logInfo2.Source = logInfo.Source
+			}
+			logInfo = logInfo2
 		}
-		if !isApp && logInfo.Source == "" {
-			logInfo.Source = sourceName
-		}
-		if logInfo.Time == "" {
-			logInfo.Time = msgTime
+		if strings.Contains(logInfo.Source, "guest_vm") {
+			logmetrics.AppMetrics.NumInputEvent++
+			jsonOK = true
+		} else if logInfo.Containername != "" {
+			logmetrics.AppMetrics.NumInputEvent++
+			jsonOK = true
+		} else {
+			logmetrics.DevMetrics.NumInputEvent++
+			if !jsonOK {
+				// not in json or right json format, try to reformat
+				logInfo = repaireMsg(logInfo.Msg, logInfo.Time,
+					logInfo.Source)
+			}
 		}
 		if logInfo.Pid != 0 {
 			pidStr = strconv.Itoa(logInfo.Pid)
@@ -675,6 +679,7 @@ func repaireMsg(content, savedTimestamp, sourceName string) agentlog.Loginfo {
 	return loginfo
 }
 
+// Handle old "timestamp,source;msg" and newer "timestamp;source;nsg"
 func getSourceFromMsg(msg string) (string, string, string) {
 	var source, content string
 	lines := strings.SplitN(msg, ";", 2)
@@ -685,7 +690,12 @@ func getSourceFromMsg(msg string) (string, string, string) {
 	lines2 := strings.Split(lines[0], ",")
 	n := len(lines2)
 	if n < 2 {
-		return source, "", content
+		// Handle newer memlogd with ';' between timestamp and source
+		lines := strings.SplitN(msg, ";", 3)
+		if len(lines) != 3 {
+			return source, "", content
+		}
+		return lines[1], lines[0], lines[2]
 	}
 	return lines2[n-1], lines2[n-2], content
 }
