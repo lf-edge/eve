@@ -593,6 +593,18 @@ func getMemlogMsg(logChan chan inputEntry, panicFileChan chan []byte) {
 				logInfo2.Source = logInfo.Source
 			}
 			logInfo = logInfo2
+		} else {
+			// Some messages have attr=val syntax
+			level, timeStr, msg := parseLevelTimeMsg(logInfo.Msg)
+			if level != "" {
+				logInfo.Level = level
+			}
+			if timeStr != "" {
+				logInfo.Time = timeStr
+			}
+			if msg != "" {
+				logInfo.Msg = msg
+			}
 		}
 		if strings.Contains(logInfo.Source, "guest_vm") {
 			logmetrics.AppMetrics.NumInputEvent++
@@ -622,6 +634,35 @@ func getMemlogMsg(logChan chan inputEntry, panicFileChan chan []byte) {
 
 		logChan <- entry
 	}
+}
+
+// Returns level, time and msg if the string contains those attr=val
+func parseLevelTimeMsg(content string) (level string, timeStr string, msg string) {
+	content = remNonPrintable(content)
+	if strings.Contains(content, ",\"msg\":") {
+		// Json or something - bail
+		return
+	}
+	level1 := strings.SplitN(content, "level=", 2)
+	if len(level1) == 2 {
+		level2 := strings.Split(level1[1], " ")
+		level = level2[0]
+	}
+	time1 := strings.SplitN(content, "time=", 2)
+	if len(time1) == 2 {
+		time2 := strings.Split(time1[1], "\"")
+		if len(time2) == 3 {
+			timeStr = time2[1]
+		}
+	}
+	msg1 := strings.SplitN(content, "msg=", 2)
+	if len(msg1) == 2 {
+		msg2 := strings.Split(msg1[1], "\"")
+		if len(msg2) == 3 {
+			msg = msg2[1]
+		}
+	}
+	return
 }
 
 func startTmpfile(dirname, filename string, isApp bool) *os.File {
