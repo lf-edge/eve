@@ -242,40 +242,60 @@ func getVolumeRefConfigFromAIConfig(config *types.AppInstanceConfig,
 
 /* Handlers for VolumesSnapshotStatus */
 
-func handleVolumesSnapshotStatusCreate(ctx interface{}, key string, status interface{}) {
-	log.Noticef("handleVolumesSnapshotStatusCreate")
-	volumesSnapshotStatus := status.(types.VolumesSnapshotStatus)
-	zedmanagerCtx := ctx.(*zedmanagerContext)
-	appInstanceStatus := lookupAppInstanceStatus(zedmanagerCtx, volumesSnapshotStatus.AppUUID.String())
+func handleVolumesSnapshotStatusImpl(ctx *zedmanagerContext, volumesSnapshotStatus types.VolumesSnapshotStatus) {
+	log.Noticef("handleVolumesSnapshotStatusImpl")
+	switch volumesSnapshotStatus.ResultOfAction {
+	case types.VolumesSnapshotCreate:
+		reactToSnapshotCreate(ctx, volumesSnapshotStatus)
+	case types.VolumesSnapshotRollback:
+		reactToSnapshotRollback(ctx, volumesSnapshotStatus)
+	case types.VolumesSnapshotDelete:
+		reactToSnapshotDelete(ctx, volumesSnapshotStatus)
+	}
+	log.Noticef("handleVolumesSnapshotStatusImpl done")
+}
+
+func reactToSnapshotDelete(ctx *zedmanagerContext, volumesSnapshotStatus types.VolumesSnapshotStatus) {
+	log.Noticef("reactToSnapshotDelete: %s", volumesSnapshotStatus.SnapshotID)
+	appInstanceStatus := lookupAppInstanceStatus(ctx, volumesSnapshotStatus.AppUUID.String())
 	if appInstanceStatus == nil {
-		log.Errorf("handleVolumesSnapshotStatusCreate: AppInstanceStatus not found for %s", volumesSnapshotStatus.AppUUID.String())
+		log.Errorf("reactToSnapshotDelete: AppInstanceStatus not found for %s", volumesSnapshotStatus.AppUUID.String())
 		return
 	}
 	if volumesSnapshotStatus.HasError() {
 		appInstanceStatus.Error = volumesSnapshotStatus.Error
 		appInstanceStatus.ErrorTime = volumesSnapshotStatus.ErrorTime
 		setSnapshotStatusError(appInstanceStatus, volumesSnapshotStatus.SnapshotID, volumesSnapshotStatus.ErrorDescription)
-		publishAppInstanceStatus(zedmanagerCtx, appInstanceStatus)
+		publishAppInstanceStatus(ctx, appInstanceStatus)
 		return
 	}
-	log.Noticef("Snapshot %s created", volumesSnapshotStatus.SnapshotID)
-	err := moveSnapshotToAvailable(appInstanceStatus, volumesSnapshotStatus)
-	if err != nil {
-		errDesc := types.ErrorDescription{}
-		errDesc.Error = err.Error()
-		log.Errorf("handleVolumesSnapshotStatusCreate: %s", errDesc.Error)
-		setSnapshotStatusError(appInstanceStatus, volumesSnapshotStatus.SnapshotID, errDesc)
-		appInstanceStatus.SetErrorWithSourceAndDescription(errDesc, types.SnapshotInstanceStatus{})
+	deleteSnapshotFromStatus(appInstanceStatus, volumesSnapshotStatus.SnapshotID)
+	// Delete the serialized config, if it exists
+	if err := DeleteSnapshotFiles(volumesSnapshotStatus.SnapshotID); err != nil {
+		return
 	}
-	publishAppInstanceStatus(zedmanagerCtx, appInstanceStatus)
+	log.Noticef("Deleting snapshot from the App status")
+	publishAppInstanceStatus(ctx, appInstanceStatus)
 }
 
-func handleVolumesSnapshotStatusModify(ctx interface{}, key string, status interface{}, status2 interface{}) {
-	log.Noticef("handleVolumesSnapshotStatusModify")
-	// Reaction to a snapshot rollback
-	volumesSnapshotStatus := status.(types.VolumesSnapshotStatus)
-	zedmanagerCtx := ctx.(*zedmanagerContext)
-	appInstanceStatus := lookupAppInstanceStatus(zedmanagerCtx, volumesSnapshotStatus.AppUUID.String())
+// DeleteSnapshotFiles deletes the snapshot directory
+func DeleteSnapshotFiles(snapshotID string) error {
+	configDir := types.GetSnapshotDir(snapshotID)
+	// delete the directory if it exists
+	if _, err := os.Stat(configDir); err == nil {
+		log.Noticef("Deleting snapshot directory %s", configDir)
+		err = os.RemoveAll(configDir)
+		if err != nil {
+			log.Errorf("Failed to delete snapshot directory %s: %s", configDir, err)
+			return err
+		}
+	}
+	return nil
+}
+
+func reactToSnapshotRollback(ctx *zedmanagerContext, volumesSnapshotStatus types.VolumesSnapshotStatus) {
+	log.Noticef("reactToSnapshotRollback: %s", volumesSnapshotStatus.SnapshotID)
+	appInstanceStatus := lookupAppInstanceStatus(ctx, volumesSnapshotStatus.AppUUID.String())
 	if appInstanceStatus == nil {
 		log.Errorf("handleVolumesSnapshotStatusModify: AppInstanceStatus not found for %s", volumesSnapshotStatus.AppUUID.String())
 		return
@@ -284,44 +304,70 @@ func handleVolumesSnapshotStatusModify(ctx interface{}, key string, status inter
 		log.Errorf("Snapshot handling %s failed: %s", volumesSnapshotStatus.SnapshotID, volumesSnapshotStatus.Error)
 		appInstanceStatus.SetErrorWithSourceAndDescription(volumesSnapshotStatus.ErrorDescription, volumesSnapshotStatus.ErrorSourceType)
 		setSnapshotStatusError(appInstanceStatus, volumesSnapshotStatus.SnapshotID, volumesSnapshotStatus.ErrorDescription)
-		publishAppInstanceStatus(zedmanagerCtx, appInstanceStatus)
+		publishAppInstanceStatus(ctx, appInstanceStatus)
 		return
 	}
 	appInstanceStatus.SnapStatus.RollbackInProgress = false
-	publishAppInstanceStatus(zedmanagerCtx, appInstanceStatus)
+	// unpublish local app instance config, as the rollback is complete, we do not need to replace the config
+	config := lookupAppInstanceConfig(ctx, appInstanceStatus.Key(), false)
+	if config == nil {
+		log.Fatalf("reactToSnapshotRollback: AppInstanceConfig not found for %s", appInstanceStatus.Key())
+	}
+	unpublishLocalAppInstanceConfig(ctx, appInstanceStatus.Key())
+	publishAppInstanceStatus(ctx, appInstanceStatus)
+	doUpdate(ctx, *config, appInstanceStatus)
+}
+
+func reactToSnapshotCreate(ctx *zedmanagerContext, volumesSnapshotStatus types.VolumesSnapshotStatus) {
+	log.Noticef("reactToSnapshotCreate")
+	appInstanceStatus := lookupAppInstanceStatus(ctx, volumesSnapshotStatus.AppUUID.String())
+	if appInstanceStatus == nil {
+		log.Errorf("reactToSnapshotCreate: AppInstanceStatus not found for %s", volumesSnapshotStatus.AppUUID.String())
+		return
+	}
+
+	if volumesSnapshotStatus.HasError() && volumesSnapshotStatus.ErrorSeverity != types.ErrorSeverityWarning {
+		appInstanceStatus.Error = volumesSnapshotStatus.Error
+		appInstanceStatus.ErrorTime = volumesSnapshotStatus.ErrorTime
+		setSnapshotStatusError(appInstanceStatus, volumesSnapshotStatus.SnapshotID, volumesSnapshotStatus.ErrorDescription)
+		publishAppInstanceStatus(ctx, appInstanceStatus)
+		return
+	}
+	log.Noticef("Snapshot %s created", volumesSnapshotStatus.SnapshotID)
+	err := moveSnapshotToAvailable(appInstanceStatus, volumesSnapshotStatus)
+	if err != nil {
+		errDesc := types.ErrorDescription{}
+		errDesc.Error = err.Error()
+		log.Errorf("reactToSnapshotCreate: %s", errDesc.Error)
+		setSnapshotStatusError(appInstanceStatus, volumesSnapshotStatus.SnapshotID, errDesc)
+		appInstanceStatus.SetErrorWithSourceAndDescription(errDesc, types.SnapshotInstanceStatus{})
+	}
+	publishAppInstanceStatus(ctx, appInstanceStatus)
+}
+
+func handleVolumesSnapshotStatusCreate(ctx interface{}, key string, status interface{}) {
+	log.Noticef("handleVolumesSnapshotStatusCreate")
+	volumesSnapshotStatus := status.(types.VolumesSnapshotStatus)
+	zedmanagerCtx := ctx.(*zedmanagerContext)
+	handleVolumesSnapshotStatusImpl(zedmanagerCtx, volumesSnapshotStatus)
+	log.Noticef("handleVolumesSnapshotStatusCreate done")
+}
+
+func handleVolumesSnapshotStatusModify(ctx interface{}, key string, status interface{}, status2 interface{}) {
+	log.Noticef("handleVolumesSnapshotStatusModify")
+	volumesSnapshotStatus := status.(types.VolumesSnapshotStatus)
+	zedmanagerCtx := ctx.(*zedmanagerContext)
+	handleVolumesSnapshotStatusImpl(zedmanagerCtx, volumesSnapshotStatus)
+	log.Noticef("handleVolumesSnapshotStatusModify done")
 }
 
 func handleVolumesSnapshotStatusDelete(ctx interface{}, key string, status interface{}) {
 	log.Noticef("handleVolumesSnapshotStatusDelete")
 	volumesSnapshotStatus := status.(types.VolumesSnapshotStatus)
 	zedmanagerCtx := ctx.(*zedmanagerContext)
-	appInstanceStatus := lookupAppInstanceStatus(zedmanagerCtx, volumesSnapshotStatus.AppUUID.String())
-	if appInstanceStatus == nil {
-		log.Errorf("handleVolumesSnapshotStatusDelete: AppInstanceStatus not found for %s", volumesSnapshotStatus.AppUUID.String())
-		return
-	}
-	if volumesSnapshotStatus.HasError() {
-		appInstanceStatus.Error = volumesSnapshotStatus.Error
-		appInstanceStatus.ErrorTime = volumesSnapshotStatus.ErrorTime
-		setSnapshotStatusError(appInstanceStatus, volumesSnapshotStatus.SnapshotID, volumesSnapshotStatus.ErrorDescription)
-		publishAppInstanceStatus(zedmanagerCtx, appInstanceStatus)
-		return
-	}
-	deleteSnapshotFromStatus(appInstanceStatus, volumesSnapshotStatus.SnapshotID)
-	// Delete the serialized config, if it exists
-	configDir := getSnapshotDir(volumesSnapshotStatus.SnapshotID)
-	// delete the directory if it exists
-	if _, err := os.Stat(configDir); err == nil {
-		log.Noticef("Deleting snapshot directory %s", configDir)
-		err = os.RemoveAll(configDir)
-		if err != nil {
-			log.Errorf("handleVolumesSnapshotStatusDelete: Failed to delete snapshot directory %s: %s", configDir, err)
-			return
-		}
-	}
-
-	log.Noticef("Deleting snapshot from the App status")
-	publishAppInstanceStatus(zedmanagerCtx, appInstanceStatus)
+	volumesSnapshotStatus.ResultOfAction = types.VolumesSnapshotDelete
+	handleVolumesSnapshotStatusImpl(zedmanagerCtx, volumesSnapshotStatus)
+	log.Noticef("handleVolumesSnapshotStatusDelete done")
 }
 
 /* Helper functions for the VolumesSnapshotStatus handlers */
