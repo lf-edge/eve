@@ -25,7 +25,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
-	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
 	"github.com/sirupsen/logrus"
 )
 
@@ -1092,6 +1091,28 @@ func handleModify(ctxArg interface{}, key string,
 		config = *localConfig
 	}
 
+	// Check if we need to roll back to a snapshot
+	if config.Snapshot.RollbackCmd.Counter > oldConfig.Snapshot.RollbackCmd.Counter {
+		log.Noticef("handleModify(%v) for %s: Snapshot to be rolled back: %v",
+			config.UUIDandVersion, config.DisplayName, config.Snapshot.ActiveSnapshot)
+		status.SnapStatus.ActiveSnapshot = config.Snapshot.ActiveSnapshot
+		snappedAppInstanceConfig, err := restoreAppInstanceConfigFromSnapshot(ctx, status, config.Snapshot.ActiveSnapshot)
+		if err != nil {
+			errStr := fmt.Sprintf("Error restoring config from snapshot %s: %s", config.Snapshot.ActiveSnapshot, err)
+			log.Errorf("handleModify(%s) failed: %s", status.Key(), errStr)
+			status.SetError(errStr, time.Now())
+			return
+		}
+		log.Noticef("handleModify: switch config to snapshot %s, version %s", status.SnapStatus.ActiveSnapshot, snappedAppInstanceConfig.UUIDandVersion.Version)
+		status.SnapStatus.HasRollbackRequest = true
+		status.SnapStatus.RollbackInProgress = true
+		publishAppInstanceStatus(ctx, status)
+		config = *snappedAppInstanceConfig
+		// Since now the config been handled here and the one in the channel are different, so we need to ignore the config in the channel
+		publishLocalAppInstanceConfig(ctx, &config)
+		return
+	}
+
 	status.StartTime = ctx.delayBaseTime.Add(config.Delay)
 
 	updateSnapshotsInAIStatus(status, config)
@@ -1159,7 +1180,8 @@ func handleModify(ctxArg interface{}, key string,
 	}
 
 	if config.PurgeCmd.Counter != oldConfig.PurgeCmd.Counter ||
-		config.LocalPurgeCmd.Counter != oldConfig.LocalPurgeCmd.Counter {
+		config.LocalPurgeCmd.Counter != oldConfig.LocalPurgeCmd.Counter ||
+		(needPurge && status.SnapStatus.HasRollbackRequest) {
 		log.Functionf("handleModify(%v) for %s purgecmd from %d/%d to %d/%d "+
 			"needPurge: %v",
 			config.UUIDandVersion, config.DisplayName,
@@ -1181,17 +1203,6 @@ func handleModify(ctxArg interface{}, key string,
 		status.SetError(errStr, time.Now())
 		publishAppInstanceStatus(ctx, status)
 		return
-	}
-
-	if config.Snapshot.RollbackCmd.Counter > oldConfig.Snapshot.RollbackCmd.Counter {
-		log.Noticef("handleModify(%v) for %s: Snapshot to be rolled back: %v",
-			config.UUIDandVersion, config.DisplayName, config.Snapshot.ActiveSnapshot)
-		status.SnapStatus.HasRollbackRequest = true
-		status.SnapStatus.ActiveSnapshot = config.Snapshot.ActiveSnapshot
-		// Mark the VM to be rebooted
-		status.RestartInprogress = types.BringDown
-		status.State = types.RESTARTING
-		status.RestartStartedAt = time.Now()
 	}
 
 	status.UUIDandVersion = config.UUIDandVersion
@@ -1259,12 +1270,12 @@ func quantifyChanges(config types.AppInstanceConfig, oldConfig types.AppInstance
 	} else {
 		for _, vrc := range config.VolumeRefConfigList {
 			vrs := getVolumeRefStatusFromAIStatus(&status, vrc)
-			// During a rollback, we may not have a VolumeRefStatus for a volume, but the volume is still expected to be present
-			if vrs == nil && !status.SnapStatus.RollbackInProgress && status.SnapStatus.ConfigBeforeRollback != config.UUIDandVersion {
+			if vrs == nil {
 				str := fmt.Sprintf("Missing VolumeRefStatus for "+
 					"(VolumeID: %s, GenerationCounter: %d, LocalGenerationCounter: %d)",
 					vrc.VolumeID, vrc.GenerationCounter, vrc.LocalGenerationCounter)
-				log.Errorf(str)
+				// It can be a part of rollback
+				log.Warn(str)
 				needPurge = true
 				purgeReason += str + "\n"
 				continue

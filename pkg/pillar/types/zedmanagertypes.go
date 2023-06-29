@@ -251,14 +251,14 @@ type SnapshottingStatus struct {
 	PreparedVolumesSnapshotConfigs []VolumesSnapshotConfig
 	// SnapshotOnUpgrade indicates whether a snapshot should be taken during the app instance update.
 	SnapshotOnUpgrade bool
-	// HasRollbackRequest indicates whether a rollback is in progress for the app instance.
+	// HasRollbackRequest indicates whether there are any rollback requests for the app instance.
+	// Set to true when a rollback is requested by controller, set to false when the rollback is triggered.
 	HasRollbackRequest bool
 	// ActiveSnapshot contains the id of the snapshot to be used for the rollback.
 	ActiveSnapshot string
 	// RollbackInProgress indicates whether a rollback is in progress for the app instance.
+	// Set to true when a rollback is triggered, set to false when the rollback is completed.
 	RollbackInProgress bool
-	// ConfigBeforeRollback contains the version of the configuration of the app instance before the rollback
-	ConfigBeforeRollback UUIDandVersion
 }
 
 // Indexed by UUIDandVersion as above
