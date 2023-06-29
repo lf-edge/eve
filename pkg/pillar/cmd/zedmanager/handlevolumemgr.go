@@ -498,32 +498,31 @@ func deleteSnapshotFromStatus(status *types.AppInstanceStatus, id string) {
 	removePreparedVolumesSnapshotConfig(status, id)
 }
 
-func restoreConfigFromSnapshot(ctx *zedmanagerContext, appInstanceStatus *types.AppInstanceStatus) (*types.AppInstanceConfig, error) {
-	log.Noticef("restoreConfigFromSnapshot")
+func restoreAppInstanceConfigFromSnapshot(ctx *zedmanagerContext, appInstanceStatus *types.AppInstanceStatus, snapshotID string) (*types.AppInstanceConfig, error) {
+	log.Noticef("restoreAppInstanceConfigFromSnapshot")
 
 	// Get the snapshot status from the available snapshots
-	snapshotID := appInstanceStatus.SnapStatus.ActiveSnapshot
 	snapshotStatus := lookupAvailableSnapshot(appInstanceStatus, snapshotID)
 	if snapshotStatus == nil {
 		return nil, fmt.Errorf("SnapshotInstanceStatus not found for %s", snapshotID)
 	}
 	// Get the app instance config from the snapshot
-	snappedAppInstanceConfig := deserializeConfigFromSnapshot(snapshotStatus.Snapshot.SnapshotID)
+	snappedAppInstanceConfig := deserializeAppInstanceConfigFromSnapshot(snapshotStatus.Snapshot.SnapshotID)
 	if snappedAppInstanceConfig == nil {
 		return nil, fmt.Errorf("failed to read AppInstanceConfig from file for %s", snapshotID)
 	}
-	config, err := addFixupsIntoSnappedConfig(ctx, appInstanceStatus, snappedAppInstanceConfig)
+	config, err := fixupAppInstanceConfig(ctx, appInstanceStatus, snappedAppInstanceConfig)
 	if err != nil {
 		return config, err
 	}
-	return snappedAppInstanceConfig, nil
+	return config, nil
 }
 
-// addFixupsIntoSnappedConfig adds the fixups into the snapped app instance config.
-// The fixups are the information that should be taken from the current app instance config, not from the snapshot.
-// The fixups should correspond to the fixups done on the controller side. A function name, where it's done maybe
+// fixupAppInstanceConfig adds the fixes into the snapped app instance config.
+// The fixes are the information that should be taken from the current app instance config, not from the snapshot.
+// The fixes should correspond to the fixes done on the controller side. A function name, where it's done maybe
 // something like: applyAppInstanceFromSnapshot.
-func addFixupsIntoSnappedConfig(ctx *zedmanagerContext, appInstanceStatus *types.AppInstanceStatus, snappedAppInstanceConfig *types.AppInstanceConfig) (*types.AppInstanceConfig, error) {
+func fixupAppInstanceConfig(ctx *zedmanagerContext, appInstanceStatus *types.AppInstanceStatus, snappedAppInstanceConfig *types.AppInstanceConfig) (*types.AppInstanceConfig, error) {
 	// Get the app instance config from the app instance status
 	currentAppInstanceConfig := lookupAppInstanceConfig(ctx, appInstanceStatus.Key(), true)
 	if currentAppInstanceConfig == nil {
@@ -540,21 +539,21 @@ func addFixupsIntoSnappedConfig(ctx *zedmanagerContext, appInstanceStatus *types
 	return snappedAppInstanceConfig, nil
 }
 
-// deserializeConfigFromSnapshot deserializes the config from a file
-func deserializeConfigFromSnapshot(snapshotID string) *types.AppInstanceConfig {
-	log.Noticef("deserializeConfigFromSnapshot")
+// deserializeAppInstanceConfigFromSnapshot deserializes the config from a file
+func deserializeAppInstanceConfigFromSnapshot(snapshotID string) *types.AppInstanceConfig {
+	log.Noticef("deserializeAppInstanceConfigFromSnapshot")
 	dirname := getSnapshotDir(snapshotID)
 	filename := path.Join(dirname, types.SnapshotConfigFilename)
 	var appInstanceConfig types.AppInstanceConfig
 	configFile, err := os.Open(filename)
 	if err != nil {
-		log.Errorf("deserializeConfigFromSnapshot: Open failed %s", err)
+		log.Errorf("deserializeAppInstanceConfigFromSnapshot: Open failed %s", err)
 		return nil
 	}
 	defer configFile.Close()
 	jsonParser := json.NewDecoder(configFile)
 	if err = jsonParser.Decode(&appInstanceConfig); err != nil {
-		log.Errorf("deserializeConfigFromSnapshot: Decode failed %s", err)
+		log.Errorf("deserializeAppInstanceConfigFromSnapshot: Decode failed %s", err)
 		return nil
 	}
 	return &appInstanceConfig
