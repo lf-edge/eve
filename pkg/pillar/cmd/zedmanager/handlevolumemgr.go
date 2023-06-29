@@ -8,12 +8,15 @@ package zedmanager
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
-	"path"
+	"reflect"
 	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/utils"
+	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
 	uuid "github.com/satori/go.uuid"
 )
 
@@ -357,10 +360,114 @@ func moveSnapshotToAvailable(status *types.AppInstanceStatus, volumesSnapshotSta
 	snapToBeMoved.TimeCreated = volumesSnapshotStatus.TimeCreated
 	// Mark as reported
 	snapToBeMoved.Reported = true
+	err := serializeSnapshotInstanceStatus(snapToBeMoved)
+	if err != nil {
+		errStr := fmt.Sprintf("moveSnapshotToAvailable: Failed to serialize snapshot instance status: %s", err)
+		log.Error(errStr)
+		return fmt.Errorf(errStr)
+	}
 	// Add to AvailableSnapshots
 	status.SnapStatus.AvailableSnapshots = append(status.SnapStatus.AvailableSnapshots, *snapToBeMoved)
 	log.Noticef("Snapshot %s moved to AvailableSnapshots", volumesSnapshotStatus.SnapshotID)
 	return nil
+}
+
+func serializeSnapshotInstanceStatus(moved *types.SnapshotInstanceStatus) error {
+	log.Noticef("serializeSnapshotInstanceStatus")
+	snapshotDir := types.GetSnapshotDir(moved.Snapshot.SnapshotID)
+	// check that the directory exists (it should exist by this moment)
+	if _, err := os.Stat(snapshotDir); err != nil {
+		log.Errorf("serializeSnapshotInstanceStatus: Snapshot directory %s not found", snapshotDir)
+		return fmt.Errorf("snapshot directory %s not found", snapshotDir)
+	}
+	snapshotInstanceStatusFilename := types.GetSnapshotInstanceStatusFile(moved.Snapshot.SnapshotID)
+	// serialize the SnapshotInstanceStatus into the file (JSON)
+	data, err := json.Marshal(moved)
+	if err != nil {
+		log.Errorf("serializeSnapshotInstanceStatus: Failed to marshal SnapshotInstanceStatus: %s", err)
+		return fmt.Errorf("failed to marshal SnapshotInstanceStatus: %s", err)
+	}
+	err = fileutils.WriteRename(snapshotInstanceStatusFilename, data)
+	if err != nil {
+		log.Errorf("serializeSnapshotInstanceStatus: Failed to write SnapshotInstanceStatus to file: %s", err)
+		return fmt.Errorf("failed to write SnapshotInstanceStatus to file: %s", err)
+	}
+	return nil
+}
+
+func deserializeSnapshotInstanceStatus(snapshotID string) (*types.SnapshotInstanceStatus, error) {
+	log.Noticef("deserializeSnapshotInstanceStatus")
+	// get the filename
+	snapshotInstanceStatusFilename := types.GetSnapshotInstanceStatusFile(snapshotID)
+
+	// check that the file exists
+	if _, err := os.Stat(snapshotInstanceStatusFilename); err != nil {
+		log.Errorf("deserializeSnapshotInstanceStatus: SnapshotInstanceStatus file %s not found", snapshotInstanceStatusFilename)
+		return nil, err
+	}
+
+	// open the file
+	snapshotInstanceStatusFile, err := os.Open(snapshotInstanceStatusFilename)
+	if err != nil {
+		log.Errorf("deserializeSnapshotInstanceStatus: Failed to open SnapshotInstanceStatus file %s: %s", snapshotInstanceStatusFilename, err)
+		return nil, err
+	}
+	defer snapshotInstanceStatusFile.Close()
+
+	// read the raw data
+	data, err := io.ReadAll(snapshotInstanceStatusFile)
+	if err != nil {
+		log.Errorf("deserializeSnapshotInstanceStatus: Failed to read SnapshotInstanceStatus file %s: %s", snapshotInstanceStatusFilename, err)
+		return nil, err
+	}
+
+	// read the opaque data to check the fields
+	var dataMap map[string]interface{}
+	err = json.Unmarshal(data, &dataMap)
+	if err != nil {
+		log.Errorf("deserializeSnapshotInstanceStatus: Failed to unmarshal SnapshotInstanceStatus file %s: %s", snapshotInstanceStatusFilename, err)
+		return nil, err
+	}
+
+	// Automatically extract the fields that are part of the SnapshotInstanceStatus struct
+	var snapshotInstanceStatus types.SnapshotInstanceStatus
+	expectedFields := make(map[string]bool)
+	v := reflect.ValueOf(snapshotInstanceStatus)
+	typeOfSnapshotInstanceStatus := v.Type()
+	utils.ExtractFields(typeOfSnapshotInstanceStatus, &expectedFields)
+
+	// Check if there are any unknown fields
+	for k := range dataMap {
+		if _, ok := expectedFields[k]; !ok {
+			// This is an unknown field, make warning and continue
+			log.Warnf("deserializeSnapshotInstanceStatus: Unknown field %s in SnapshotInstanceStatus file %s", k, snapshotInstanceStatusFilename)
+		}
+	}
+
+	// Check if there are any missing fields
+	for k := range expectedFields {
+		if _, ok := dataMap[k]; !ok {
+			// This is a missing field, check if it's critical
+			if types.SnapshotInstanceStatusCriticalFields[k] {
+				errMsg := fmt.Sprintf("deserializeSnapshotInstanceStatus: Missing critical field %s in SnapshotInstanceStatus file %s", k, snapshotInstanceStatusFilename)
+				log.Errorf(errMsg)
+				return nil, fmt.Errorf(errMsg)
+			}
+			// This is a missing non-critical field, make warning and continue
+			log.Warnf("deserializeSnapshotInstanceStatus: Missing field %s in SnapshotInstanceStatus file %s", k, snapshotInstanceStatusFilename)
+		}
+	}
+
+	// All the necessary fields are present, unmarshal the data
+
+	err = json.Unmarshal(data, &snapshotInstanceStatus)
+	if err != nil {
+		log.Errorf("deserializeSnapshotInstanceStatus: Failed to unmarshal SnapshotInstanceStatus file %s: %s", snapshotInstanceStatusFilename, err)
+		return nil, err
+	}
+
+	log.Noticef("deserializeSnapshotInstanceStatus: SnapshotInstanceStatus file %s successfully unmarshalled", snapshotInstanceStatusFilename)
+	return &snapshotInstanceStatus, nil
 }
 
 func removeSnapshotFromSlice(slice *[]types.SnapshotInstanceStatus, id string) (removedSnap *types.SnapshotInstanceStatus) {
