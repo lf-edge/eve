@@ -25,6 +25,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
+	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
 	"github.com/sirupsen/logrus"
 )
 
@@ -960,7 +961,7 @@ func serializeAppInstanceConfigToSnapshot(config types.AppInstanceConfig, snapsh
 		return err
 	}
 	configFile := types.GetSnapshotAppInstanceConfigFile(snapshotID)
-	err = os.WriteFile(configFile, configAsBytes, 0644)
+	err = fileutils.WriteRename(configFile, configAsBytes)
 	if err != nil {
 		log.Errorf("Failed to write the old config for %s, error: %s", config.DisplayName, err)
 		return err
