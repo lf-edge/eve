@@ -1056,6 +1056,14 @@ func doUninstall(ctx *zedmanagerContext, appInstID uuid.UUID,
 	changed := false
 	del := false
 
+	// Clean the snapshot files related to this app instance
+	for _, snap := range status.SnapStatus.AvailableSnapshots {
+		log.Noticef("doUninstall: DeleteSnapshotFiles(%s)", snap.Snapshot.SnapshotID)
+		if err := DeleteSnapshotFiles(snap.Snapshot.SnapshotID); err != nil {
+			log.Warnf("doUninstall: DeleteSnapshotFiles(%s) failed: %s", snap.Snapshot.SnapshotID, err)
+		}
+	}
+
 	for i := range status.VolumeRefStatusList {
 		vrs := &status.VolumeRefStatusList[i]
 		MaybeRemoveVolumeRefConfig(ctx, appInstID,
