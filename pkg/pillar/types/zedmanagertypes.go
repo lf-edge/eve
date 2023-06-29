@@ -100,6 +100,13 @@ type SnapshotInstanceStatus struct {
 	Error ErrorDescription
 }
 
+// SnapshotInstanceStatusCriticalFields list of mandatory fields in SnapshotInstanceStatus to be restored from persistent storage
+var SnapshotInstanceStatusCriticalFields = map[string]bool{
+	"Snapshot":      true,
+	"AppInstanceID": true,
+	"ConfigVersion": true,
+}
+
 // SnapshotConfig configuration of the snapshot handling for the app instance
 type SnapshotConfig struct {
 	ActiveSnapshot string            // UUID of the active snapshot used by the app instance

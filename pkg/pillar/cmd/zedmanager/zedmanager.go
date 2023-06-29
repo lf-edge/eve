@@ -25,6 +25,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
+	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
 	"github.com/sirupsen/logrus"
 )
 
@@ -409,6 +410,43 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		case <-stillRunning.C:
 		}
 		ps.StillRunning(agentName, warningTime, errorTime)
+	}
+}
+
+func restoreAvailableSnapshots(aiStatus *types.AppInstanceStatus) {
+	// List all the directories that are present in snapshots directory
+	// and restore the snapshot status for each of them
+	snapDir := types.SnapshotsDirname
+	dirEntries, err := os.ReadDir(snapDir)
+	if err != nil {
+		log.Warnf("No %s directory, nothing to restore", snapDir)
+		return
+	}
+	for _, dirEntry := range dirEntries {
+		if !dirEntry.IsDir() {
+			continue
+		}
+		snapshotID := dirEntry.Name()
+		// Figure out the ID of the app that this snapshot belongs to
+		aiConfig := deserializeAppInstanceConfigFromSnapshot(snapshotID)
+		if aiConfig == nil {
+			log.Warnf("cannot deserialize config for snapshot %s", snapshotID)
+			continue
+		}
+		if aiConfig.UUIDandVersion.UUID != aiStatus.UUIDandVersion.UUID {
+			// This snapshot is not for this app
+			continue
+		}
+		// Get the metadata for this snapshot
+		var availableSnapshot *types.SnapshotInstanceStatus
+		availableSnapshot, err = deserializeSnapshotInstanceStatus(snapshotID)
+		if err != nil {
+			log.Errorf("restoreAvailableSnapshots: %s", err)
+			continue
+		}
+		log.Noticef("restoreAvailableSnapshots: %s", availableSnapshot.Snapshot.SnapshotID)
+		// add to the list of the available snapshots
+		aiStatus.SnapStatus.AvailableSnapshots = append(aiStatus.SnapStatus.AvailableSnapshots, *availableSnapshot)
 	}
 }
 
@@ -960,6 +998,8 @@ func handleCreate(ctxArg interface{}, key string,
 
 	// Calculate the moment when the application should start, taking into account the configured delay
 	status.StartTime = ctx.delayBaseTime.Add(config.Delay)
+
+	restoreAvailableSnapshots(&status)
 
 	updateSnapshotsInAIStatus(&status, config)
 
