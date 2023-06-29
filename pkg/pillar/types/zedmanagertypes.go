@@ -6,6 +6,7 @@ package types
 import (
 	"fmt"
 	"net"
+	"path/filepath"
 	"time"
 
 	"github.com/google/go-cmp/cmp"
@@ -480,4 +481,24 @@ func (aih AppAndImageToHash) LogDelete(logBase *base.LogObject) {
 // LogKey :
 func (aih AppAndImageToHash) LogKey() string {
 	return string(base.AppAndImageToHashLogType) + "-" + aih.Key()
+}
+
+// GetSnapshotDir returns the snapshot directory for the given snapshot ID
+func GetSnapshotDir(snapshotID string) string {
+	return filepath.Join(SnapshotsDirname, snapshotID)
+}
+
+// GetVolumesSnapshotStatusFile returns the volumes snapshot status file for the given snapshot ID and volume ID
+func GetVolumesSnapshotStatusFile(snapshotID string) string {
+	return filepath.Join(GetSnapshotDir(snapshotID), SnapshotVolumesSnapshotStatusFilename)
+}
+
+// GetSnapshotInstanceStatusFile returns the instance status file for the given snapshot ID
+func GetSnapshotInstanceStatusFile(snapshotID string) string {
+	return filepath.Join(GetSnapshotDir(snapshotID), SnapshotInstanceStatusFilename)
+}
+
+// GetSnapshotAppInstanceConfigFile returns the app instance config file for the given snapshot ID
+func GetSnapshotAppInstanceConfigFile(snapshotID string) string {
+	return filepath.Join(GetSnapshotDir(snapshotID), SnapshotAppInstanceConfigFilename)
 }
