@@ -278,6 +278,7 @@ func triggerSnapshotDeletion(snapshotsToBeDeleted []types.SnapshotDesc, ctx *zed
 		if volumesSnapshotConfig != nil {
 			// The snapshot has already been triggered, so we need to delete the config and notify volumemanager
 			log.Noticef("It has already been triggered, so deleting the config and notifying volumemanager")
+			volumesSnapshotConfig.Action = types.VolumesSnapshotDelete
 			unpublishVolumesSnapshotConfig(ctx, volumesSnapshotConfig)
 		}
 	}
