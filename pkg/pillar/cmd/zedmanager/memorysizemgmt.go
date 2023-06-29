@@ -32,7 +32,7 @@ func getRemainingMemory(ctxPtr *zedmanagerContext) (uint64, uint64, uint64, erro
 		if status.Activated || status.ActivateInprogress {
 			usedMemorySize += mem
 			accountedApps = append(accountedApps, status.Key())
-			config := lookupAppInstanceConfig(ctxPtr, status.Key())
+			config := lookupAppInstanceConfig(ctxPtr, status.Key(), true)
 			if config == nil || !config.Activate {
 				haltingMemorySize += mem
 			}

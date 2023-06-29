@@ -42,27 +42,29 @@ var Version = "No version specified"
 // State used by handlers
 type zedmanagerContext struct {
 	agentbase.AgentBase
-	subAppInstanceConfig  pubsub.Subscription
-	subAppInstanceStatus  pubsub.Subscription // zedmanager both publishes and subscribes to AppInstanceStatus
-	pubAppInstanceStatus  pubsub.Publication
-	pubAppInstanceSummary pubsub.Publication
-	pubVolumeRefConfig    pubsub.Publication
-	subVolumeRefStatus    pubsub.Subscription
-	pubAppNetworkConfig   pubsub.Publication
-	subAppNetworkStatus   pubsub.Subscription
-	pubDomainConfig       pubsub.Publication
-	subDomainStatus       pubsub.Subscription
-	subGlobalConfig       pubsub.Subscription
-	subHostMemory         pubsub.Subscription
-	subZedAgentStatus     pubsub.Subscription
-	pubVolumesSnapConfig  pubsub.Publication
-	subVolumesSnapStatus  pubsub.Subscription
-	globalConfig          *types.ConfigItemValueMap
-	appToPurgeCounterMap  objtonum.Map
-	GCInitialized         bool
-	checkFreedResources   bool // Set when app instance has !Activated
-	currentProfile        string
-	currentTotalMemoryMB  uint64
+	subAppInstanceConfig      pubsub.Subscription
+	subAppInstanceStatus      pubsub.Subscription // zedmanager both publishes and subscribes to AppInstanceStatus
+	subLocalAppInstanceConfig pubsub.Subscription
+	pubLocalAppInstanceConfig pubsub.Publication
+	pubAppInstanceStatus      pubsub.Publication
+	pubAppInstanceSummary     pubsub.Publication
+	pubVolumeRefConfig        pubsub.Publication
+	subVolumeRefStatus        pubsub.Subscription
+	pubAppNetworkConfig       pubsub.Publication
+	subAppNetworkStatus       pubsub.Subscription
+	pubDomainConfig           pubsub.Publication
+	subDomainStatus           pubsub.Subscription
+	subGlobalConfig           pubsub.Subscription
+	subHostMemory             pubsub.Subscription
+	subZedAgentStatus         pubsub.Subscription
+	pubVolumesSnapConfig      pubsub.Publication
+	subVolumesSnapStatus      pubsub.Subscription
+	globalConfig              *types.ConfigItemValueMap
+	appToPurgeCounterMap      objtonum.Map
+	GCInitialized             bool
+	checkFreedResources       bool // Set when app instance has !Activated
+	currentProfile            string
+	currentTotalMemoryMB      uint64
 	// The time from which the configured applications delays should be counted
 	delayBaseTime time.Time
 	// cli options
@@ -216,6 +218,33 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	}
 	ctx.subAppInstanceConfig = subAppInstanceConfig
 	subAppInstanceConfig.Activate()
+
+	// Get AppInstanceConfig from zedmanager itself
+	subLocalAppInstanceConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     agentName,
+		MyAgentName:   agentName,
+		TopicImpl:     types.AppInstanceConfig{},
+		Activate:      false,
+		Ctx:           &ctx,
+		CreateHandler: handleLocalAppInstanceConfigCreate,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctx.subLocalAppInstanceConfig = subLocalAppInstanceConfig
+	subLocalAppInstanceConfig.Activate()
+
+	pubLocalAppInstanceConfig, err := ps.NewPublication(pubsub.PublicationOptions{
+		AgentName: agentName,
+		TopicType: types.AppInstanceConfig{},
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctx.pubLocalAppInstanceConfig = pubLocalAppInstanceConfig
+	pubLocalAppInstanceConfig.ClearRestarted()
 
 	// Look for VolumeRefStatus from volumemgr
 	subVolumeRefStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
@@ -384,6 +413,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		case change := <-subAppInstanceConfig.MsgChan():
 			subAppInstanceConfig.ProcessChange(change)
 
+		case change := <-subLocalAppInstanceConfig.MsgChan():
+			subLocalAppInstanceConfig.ProcessChange(change)
+
 		case change := <-subZedAgentStatus.MsgChan():
 			subZedAgentStatus.ProcessChange(change)
 
@@ -411,6 +443,17 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		}
 		ps.StillRunning(agentName, warningTime, errorTime)
 	}
+}
+
+func handleLocalAppInstanceConfigCreate(ctx interface{}, key string, config interface{}) {
+	log.Noticef("handleLocalAppInstanceConfigCreate(%s)", key)
+	zedmanagerCtx := ctx.(*zedmanagerContext)
+	localConfig := config.(types.AppInstanceConfig)
+	oldConfig := lookupAppInstanceConfig(zedmanagerCtx, localConfig.Key(), false)
+	if oldConfig == nil {
+		log.Fatalf("handleLocalAppInstanceConfigCreate: no regular AppInstanceConfig for %s", key)
+	}
+	handleModify(ctx, key, localConfig, *oldConfig)
 }
 
 func restoreAvailableSnapshots(aiStatus *types.AppInstanceStatus) {
@@ -458,7 +501,7 @@ func checkRetry(ctxPtr *zedmanagerContext) {
 		if !status.MissingMemory {
 			continue
 		}
-		config := lookupAppInstanceConfig(ctxPtr, status.Key())
+		config := lookupAppInstanceConfig(ctxPtr, status.Key(), true)
 		if config == nil {
 			log.Noticef("checkRetry: %s waiting for memory but no config",
 				status.Key())
@@ -482,6 +525,9 @@ func checkDelayedStartApps(ctx *zedmanagerContext) {
 	configs := ctx.subAppInstanceConfig.GetAll()
 	for _, c := range configs {
 		config := c.(types.AppInstanceConfig)
+		if localConfig := lookupLocalAppInstanceConfig(ctx, config.Key()); localConfig != nil {
+			config = *localConfig
+		}
 		status := lookupAppInstanceStatus(ctx, config.Key())
 		// Is the application in the delayed state and ready to be started?
 		if status != nil && status.State == types.START_DELAYED && status.StartTime.Before(time.Now()) {
@@ -560,7 +606,7 @@ func publishAppInstanceSummary(ctxPtr *zedmanagerContext) {
 	for _, st := range items {
 		status := st.(types.AppInstanceStatus)
 		effectiveActivate := false
-		config := lookupAppInstanceConfig(ctxPtr, status.Key())
+		config := lookupAppInstanceConfig(ctxPtr, status.Key(), true)
 		if config != nil {
 			effectiveActivate = effectiveActivateCurrentProfile(*config, ctxPtr.currentProfile)
 		}
@@ -636,12 +682,30 @@ func lookupAppInstanceStatus(ctx *zedmanagerContext, key string) *types.AppInsta
 	return &status
 }
 
-func lookupAppInstanceConfig(ctx *zedmanagerContext, key string) *types.AppInstanceConfig {
-
+func lookupAppInstanceConfig(ctx *zedmanagerContext, key string, checkLocal bool) *types.AppInstanceConfig {
+	if checkLocal {
+		sub := ctx.subLocalAppInstanceConfig
+		c, _ := sub.Get(key)
+		if c != nil {
+			config := c.(types.AppInstanceConfig)
+			return &config
+		}
+	}
 	sub := ctx.subAppInstanceConfig
 	c, _ := sub.Get(key)
 	if c == nil {
 		log.Tracef("lookupAppInstanceConfig(%s) not found", key)
+		return nil
+	}
+	config := c.(types.AppInstanceConfig)
+	return &config
+}
+
+func lookupLocalAppInstanceConfig(ctx *zedmanagerContext, key string) *types.AppInstanceConfig {
+	sub := ctx.subLocalAppInstanceConfig
+	c, _ := sub.Get(key)
+	if c == nil {
+		log.Tracef("lookupLocalAppInstanceConfig(%s) not found", key)
 		return nil
 	}
 	config := c.(types.AppInstanceConfig)
@@ -1099,6 +1163,11 @@ func handleModify(ctxArg interface{}, key string,
 	log.Functionf("handleModify(%v) for %s",
 		config.UUIDandVersion, config.DisplayName)
 
+	localConfig := lookupLocalAppInstanceConfig(ctx, config.Key())
+	if localConfig != nil {
+		config = *localConfig
+	}
+
 	status.StartTime = ctx.delayBaseTime.Add(config.Delay)
 
 	updateSnapshotsInAIStatus(status, config)
@@ -1211,6 +1280,19 @@ func handleModify(ctxArg interface{}, key string,
 	}
 	publishAppInstanceStatus(ctx, status)
 	log.Functionf("handleModify done for %s", config.DisplayName)
+}
+
+func unpublishLocalAppInstanceConfig(ctx *zedmanagerContext, key string) {
+	log.Noticef("unpublishLocalAppInstanceConfig(%v)", key)
+	pub := ctx.pubLocalAppInstanceConfig
+	pub.Unpublish(key)
+}
+
+func publishLocalAppInstanceConfig(ctx *zedmanagerContext, appInstanceConfig *types.AppInstanceConfig) {
+	key := appInstanceConfig.Key()
+	log.Noticef("publishLocalAppInstanceConfig(%v)", key)
+	pub := ctx.pubLocalAppInstanceConfig
+	_ = pub.Publish(key, *appInstanceConfig)
 }
 
 func handleDelete(ctx *zedmanagerContext, key string,
@@ -1429,6 +1511,9 @@ func updateBasedOnProfile(ctx *zedmanagerContext, oldProfile string) {
 	items := pub.GetAll()
 	for _, c := range items {
 		config := c.(types.AppInstanceConfig)
+		if localConfig := lookupLocalAppInstanceConfig(ctx, config.Key()); localConfig != nil {
+			config = *localConfig
+		}
 		effectiveActivate := effectiveActivateCurrentProfile(config, ctx.currentProfile)
 		effectiveActivateOld := effectiveActivateCurrentProfile(config, oldProfile)
 		if effectiveActivateOld == effectiveActivate {
