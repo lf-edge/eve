@@ -24,7 +24,7 @@ func updateAIStatusUUID(ctx *zedmanagerContext, uuidStr string) {
 			uuidStr)
 		return
 	}
-	config := lookupAppInstanceConfig(ctx, uuidStr)
+	config := lookupAppInstanceConfig(ctx, uuidStr, true)
 	if config == nil || (status.PurgeInprogress == types.BringDown) {
 		removeAIStatus(ctx, status)
 		return
@@ -99,7 +99,7 @@ func removeAIStatus(ctx *zedmanagerContext, status *types.AppInstanceStatus) {
 		status.Key())
 	status.PurgeInprogress = types.RecreateVolumes
 	publishAppInstanceStatus(ctx, status)
-	config := lookupAppInstanceConfig(ctx, uuidStr)
+	config := lookupAppInstanceConfig(ctx, uuidStr, true)
 	if config != nil {
 		changed := purgeCmdDone(ctx, *config, status)
 		if changed {

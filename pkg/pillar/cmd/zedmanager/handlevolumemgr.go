@@ -525,7 +525,7 @@ func restoreConfigFromSnapshot(ctx *zedmanagerContext, appInstanceStatus *types.
 // something like: applyAppInstanceFromSnapshot.
 func addFixupsIntoSnappedConfig(ctx *zedmanagerContext, appInstanceStatus *types.AppInstanceStatus, snappedAppInstanceConfig *types.AppInstanceConfig) (*types.AppInstanceConfig, error) {
 	// Get the app instance config from the app instance status
-	currentAppInstanceConfig := lookupAppInstanceConfig(ctx, appInstanceStatus.Key())
+	currentAppInstanceConfig := lookupAppInstanceConfig(ctx, appInstanceStatus.Key(), true)
 	if currentAppInstanceConfig == nil {
 		return nil, fmt.Errorf("AppInstanceConfig not found for %s", appInstanceStatus.Key())
 	}
