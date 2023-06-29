@@ -29,10 +29,6 @@ func updateAIStatusUUID(ctx *zedmanagerContext, uuidStr string) {
 		removeAIStatus(ctx, status)
 		return
 	}
-	if status.SnapStatus.RollbackInProgress {
-		log.Noticef("updateAIStatusUUID(%s): RollbackInProgress, skipping", uuidStr)
-		return
-	}
 	changed := doUpdate(ctx, *config, status)
 	if changed {
 		log.Functionf("updateAIStatusUUID status change %d for %s",
@@ -157,9 +153,6 @@ func doUpdate(ctx *zedmanagerContext,
 				return true
 			}
 			status.SnapStatus.HasRollbackRequest = false
-			status.SnapStatus.RollbackInProgress = true
-			status.SnapStatus.ConfigBeforeRollback = status.UUIDandVersion
-			status.UUIDandVersion = snappedAppInstanceConfig.UUIDandVersion
 			publishAppInstanceStatus(ctx, status)
 			handleModify(ctx, uuidStr, *snappedAppInstanceConfig, config)
 			return true
@@ -167,11 +160,9 @@ func doUpdate(ctx *zedmanagerContext,
 	}
 	// The existence of Config is interpreted to mean the
 	// AppInstance should be INSTALLED. Activate is checked separately.
-	if config.UUIDandVersion != status.SnapStatus.ConfigBeforeRollback {
-		changed, done = doInstall(ctx, config, status)
-		if !done {
-			return changed
-		}
+	changed, done = doInstall(ctx, config, status)
+	if !done {
+		return changed
 	}
 
 	// Are we doing a purge?
@@ -199,6 +190,12 @@ func doUpdate(ctx *zedmanagerContext,
 	c, done := doPrepare(ctx, config, status)
 	changed = changed || c
 	if !done {
+		return changed
+	}
+
+	// Check if we are still rolling back. Should not activate in that case.
+	if status.SnapStatus.RollbackInProgress {
+		log.Functionf("Rollback in progress for %s", uuidStr)
 		return changed
 	}
 
@@ -404,9 +401,6 @@ func doInstall(ctx *zedmanagerContext,
 			continue
 		}
 		if status.PurgeInprogress == types.NotInprogress {
-			if status.SnapStatus.RollbackInProgress {
-				continue
-			}
 			errString := fmt.Sprintf(
 				"New volumeRefConfig (VolumeID: %s, GenerationCounter: %d, "+
 					"LocalGenerationCounter: %d) found. "+
