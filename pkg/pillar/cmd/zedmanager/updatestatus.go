@@ -4,7 +4,6 @@
 package zedmanager
 
 import (
-	"errors"
 	"fmt"
 	"time"
 
@@ -138,7 +137,7 @@ func doUpdate(ctx *zedmanagerContext,
 
 		// Trigger the rollback process
 		if status.SnapStatus.HasRollbackRequest {
-			snappedAppInstanceConfig, err := triggerRollback(ctx, status)
+			err := triggerRollback(ctx, status)
 			if err != nil {
 				errDesc := types.ErrorDescription{}
 				errDesc.ErrorTime = time.Now()
@@ -154,7 +153,6 @@ func doUpdate(ctx *zedmanagerContext,
 			}
 			status.SnapStatus.HasRollbackRequest = false
 			publishAppInstanceStatus(ctx, status)
-			handleModify(ctx, uuidStr, *snappedAppInstanceConfig, config)
 			return true
 		}
 	}
@@ -247,63 +245,29 @@ func triggerSnapshots(ctx *zedmanagerContext, status *types.AppInstanceStatus) {
 
 // triggerRollback triggers the rollback process. It also restores the volumeRefStatuses from the snapshot config and
 // updates the list of volumeRefConfigs. It returns the config of the app instance to be rolled back to.
-func triggerRollback(ctx *zedmanagerContext, status *types.AppInstanceStatus) (*types.AppInstanceConfig, error) {
+func triggerRollback(ctx *zedmanagerContext, status *types.AppInstanceStatus) error {
 	log.Noticef("Triggering rollback with snapshot %s", status.SnapStatus.ActiveSnapshot)
-	// Find the snapshot config for the snapshot to be rolled back
+	// lookup for VolumesSnapshotConfig in the channel
 	volumesSnapshotConfig := lookupVolumesSnapshotConfig(ctx, status.SnapStatus.ActiveSnapshot)
-	if volumesSnapshotConfig == nil {
-		log.Errorf("triggerRollback: No snapshot config found for %s", status.SnapStatus.ActiveSnapshot)
-		return nil, errors.New("no snapshot config found")
+	if volumesSnapshotConfig != nil {
+		// We have found the VolumesSnapshotConfig in the channel
+		// Switch the action to rollback
+		volumesSnapshotConfig.Action = types.VolumesSnapshotRollback
+		publishVolumesSnapshotConfig(ctx, volumesSnapshotConfig)
+		return nil
 	}
-	err := restorePresnapStatus(ctx, status, volumesSnapshotConfig)
-	if err != nil {
-		return nil, err
+	// We have not found the VolumesSnapshotConfig in the channel, maybe the system was rebooted
+	// Create a new one and publish it
+	volumesSnapshotConfig = &types.VolumesSnapshotConfig{
+		SnapshotID: status.SnapStatus.ActiveSnapshot,
+		VolumeIDs:  make([]uuid.UUID, 0),
+		Action:     types.VolumesSnapshotRollback,
+		AppUUID:    status.UUIDandVersion.UUID,
 	}
-	var snappedAppInstanceConfig *types.AppInstanceConfig
-	snappedAppInstanceConfig, err = restoreConfigFromSnapshot(ctx, status)
-	if err != nil {
-		log.Errorf("triggerRollback: Error restoring config from snapshot %s: %s", status.SnapStatus.ActiveSnapshot, err)
-		return nil, errors.New("error restoring config from snapshot")
+	for _, volumeRefConfig := range status.VolumeRefStatusList {
+		volumesSnapshotConfig.VolumeIDs = append(volumesSnapshotConfig.VolumeIDs, volumeRefConfig.VolumeID)
 	}
-	// Switch the action to rollback
-	volumesSnapshotConfig.Action = types.VolumesSnapshotRollback
 	publishVolumesSnapshotConfig(ctx, volumesSnapshotConfig)
-	return snappedAppInstanceConfig, nil
-}
-
-func restorePresnapStatus(ctx *zedmanagerContext, status *types.AppInstanceStatus, volumesSnapshotConfig *types.VolumesSnapshotConfig) error {
-	// Restore volumeRefStatuses from the snapshot config. Do it before doActivate is called, so that the volumeRefStatuses are available
-	// when the maybeAddDomainConfig inside doActivate is called (the list is used there to update the domain config).
-	restoredVolumeRefStatusList := make([]types.VolumeRefStatus, 0)
-	fixedVolumesRefConfig := make([]types.VolumeRefConfig, 0)
-	for _, volumeID := range volumesSnapshotConfig.VolumeIDs {
-		volumeRefStatus, err := deserializeVolumeRefStatusFromSnapshot(volumeID.String(), status.SnapStatus.ActiveSnapshot)
-		if err != nil {
-			log.Errorf("restorePresnapStatus: Error deserializing volumeRefStatus for volume %s from snapshot %s: %s", volumeID.String(), status.SnapStatus.ActiveSnapshot, err)
-			return errors.New("error deserializing volumeRefStatus")
-		}
-		restoredVolumeRefStatusList = append(restoredVolumeRefStatusList, *volumeRefStatus)
-		volumeRefConfig := lookupVolumeRefConfig(ctx, volumeRefStatus.Key())
-		if volumeRefConfig == nil {
-			log.Errorf("restorePresnapStatus: No volumeRefConfig found for volume %s", volumeID.String())
-			return errors.New("no volumeRefConfig found")
-		}
-		fixedVolumesRefConfig = append(fixedVolumesRefConfig, *volumeRefConfig)
-	}
-	status.VolumeRefStatusList = restoredVolumeRefStatusList
-	// Remove all volumeRefConfigs that are not in the fixedVolumesRefConfig list
-	for _, volumeRefConfig := range getAllVolumeRefConfig(ctx) {
-		inFixedList := false
-		for _, fixedVolumeRefConfig := range fixedVolumesRefConfig {
-			if volumeRefConfig.VolumeID == fixedVolumeRefConfig.VolumeID {
-				inFixedList = true
-				break
-			}
-		}
-		if !inFixedList {
-			unpublishVolumeRefConfig(ctx, volumeRefConfig.Key())
-		}
-	}
 	return nil
 }
 
