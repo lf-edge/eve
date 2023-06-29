@@ -542,8 +542,7 @@ func fixupAppInstanceConfig(ctx *zedmanagerContext, appInstanceStatus *types.App
 // deserializeAppInstanceConfigFromSnapshot deserializes the config from a file
 func deserializeAppInstanceConfigFromSnapshot(snapshotID string) *types.AppInstanceConfig {
 	log.Noticef("deserializeAppInstanceConfigFromSnapshot")
-	dirname := getSnapshotDir(snapshotID)
-	filename := path.Join(dirname, types.SnapshotConfigFilename)
+	filename := types.GetSnapshotAppInstanceConfigFile(snapshotID)
 	var appInstanceConfig types.AppInstanceConfig
 	configFile, err := os.Open(filename)
 	if err != nil {
