@@ -682,6 +682,9 @@ func lookupAppInstanceStatus(ctx *zedmanagerContext, key string) *types.AppInsta
 	return &status
 }
 
+// lookupAppInstanceConfig returns the AppInstanceConfig for the given key. If checkLocal is true, then the local
+// AppInstanceConfig subscription is checked first, not the regular one. The local subscription is used for
+// AppInstanceConfig that comes from snapshot during a rollback.
 func lookupAppInstanceConfig(ctx *zedmanagerContext, key string, checkLocal bool) *types.AppInstanceConfig {
 	if checkLocal {
 		sub := ctx.subLocalAppInstanceConfig
@@ -907,9 +910,6 @@ func prepareVolumesSnapshotConfigs(ctx *zedmanagerContext, config types.AppInsta
 			for _, volumeRefConfig := range config.VolumeRefConfigList {
 				log.Noticef("Adding volume %s to volumesSnapshotConfig", volumeRefConfig.VolumeID)
 				volumesSnapshotConfig.VolumeIDs = append(volumesSnapshotConfig.VolumeIDs, volumeRefConfig.VolumeID)
-				// Increment the reference count for the volume, so it's not deleted when it's temporary not used by any application
-				volumeRefConfig.RefCount++
-				publishVolumeRefConfig(ctx, &volumeRefConfig)
 			}
 			volumesSnapshotConfigList = append(volumesSnapshotConfigList, volumesSnapshotConfig)
 		}
