@@ -1104,6 +1104,8 @@ func handleModify(ctxArg interface{}, key string,
 			status.SetError(errStr, time.Now())
 			return
 		}
+		// Remove the volume ref statuses that are not in the snapshot. Need to remove the corresponding volumes properly
+		removeUnusedVolumeRefStatuses(ctx, snappedAppInstanceConfig, status)
 		log.Noticef("handleModify: switch config to snapshot %s, version %s", status.SnapStatus.ActiveSnapshot, snappedAppInstanceConfig.UUIDandVersion.Version)
 		status.SnapStatus.HasRollbackRequest = true
 		status.SnapStatus.RollbackInProgress = true
@@ -1216,6 +1218,32 @@ func handleModify(ctxArg interface{}, key string,
 	}
 	publishAppInstanceStatus(ctx, status)
 	log.Functionf("handleModify done for %s", config.DisplayName)
+}
+
+func removeUnusedVolumeRefStatuses(ctx *zedmanagerContext, config *types.AppInstanceConfig, status *types.AppInstanceStatus) {
+	// Remove any volumeRefStatuses that are no longer referenced by the config
+	for _, vrs := range status.VolumeRefStatusList {
+		found := false
+		for _, vrc := range config.VolumeRefConfigList {
+			if vrs.VolumeID == vrc.VolumeID {
+				found = true
+				break
+			}
+		}
+		if !found {
+			log.Functionf("Removing VolumeRefStatus for %s", vrs.VolumeID)
+			//remove from the volume ref status list
+			for i, vrs1 := range status.VolumeRefStatusList {
+				if vrs1.VolumeID == vrs.VolumeID {
+					status.VolumeRefStatusList = append(status.VolumeRefStatusList[:i], status.VolumeRefStatusList[i+1:]...)
+					break
+				}
+			}
+			//unpublish the volume ref config
+			unpublishVolumeRefConfig(ctx, vrs.Key())
+		}
+	}
+
 }
 
 func unpublishLocalAppInstanceConfig(ctx *zedmanagerContext, key string) {
