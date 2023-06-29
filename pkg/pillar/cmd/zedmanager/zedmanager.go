@@ -940,79 +940,8 @@ func saveConfigForSnapshots(ctx *zedmanagerContext, status *types.AppInstanceSta
 			log.Errorf("Failed to serialize the old config for %s, error: %s", config.DisplayName, err)
 			return err
 		}
-		err = serializeVolumeRefStatusesToSnapshot(ctx, config, snapshot.SnapshotID)
-		if err != nil {
-			log.Errorf("Failed to serialize the volume ref statuses for %s, error: %s", config.DisplayName, err)
-			return err
-		}
 	}
 	return nil
-}
-
-func serializeVolumeRefStatusesToSnapshot(ctx *zedmanagerContext, config types.AppInstanceConfig, snapshotID string) error {
-	for _, volumeRefConfig := range config.VolumeRefConfigList {
-		volumeRefStatus := lookupVolumeRefStatus(ctx, volumeRefConfig.Key())
-		if volumeRefStatus == nil {
-			log.Errorf("Failed to find the volume ref status for %s", volumeRefConfig.VolumeID)
-			return fmt.Errorf("failed to find the volume ref status for %s", volumeRefConfig.VolumeID)
-		}
-		// Serialize the volume ref status and store it in a file
-		err := serializeVolumeRefStatusToSnapshot(volumeRefStatus, snapshotID)
-		if err != nil {
-			log.Errorf("Failed to serialize the volume ref status for %s, error: %s", volumeRefConfig.VolumeID, err)
-			return err
-		}
-	}
-	return nil
-}
-
-func serializeVolumeRefStatusToSnapshot(status *types.VolumeRefStatus, snapshotID string) error {
-	filename := getVolumeRefStatusFilename(status.VolumeID.String(), snapshotID)
-	log.Noticef("Serializing the volume ref status for %s to %s", status.VolumeID, filename)
-	statusAsBytes, err := json.Marshal(status)
-	if err != nil {
-		log.Errorf("Failed to marshal the volume ref status for %s, error: %s", status.VolumeID, err)
-		return err
-	}
-	// Create the file for storing the volume ref status
-	err = os.WriteFile(filename, statusAsBytes, 0644)
-	if err != nil {
-		log.Errorf("Failed to write the volume ref status for %s, error: %s", status.VolumeID, err)
-		return err
-	}
-	log.Noticef("Successfully serialized the volume ref status for %s to %s", status.VolumeID, filename)
-	return nil
-}
-
-func deserializeVolumeRefStatusFromSnapshot(volumeID string, snapshotID string) (*types.VolumeRefStatus, error) {
-	// read the volume ref status from the file
-	filename := getVolumeRefStatusFilename(volumeID, snapshotID)
-	log.Noticef("Deserializing the volume ref status for %s from %s", volumeID, filename)
-	// check the file exists
-	if _, err := os.Stat(filename); os.IsNotExist(err) {
-		log.Errorf("Failed to find the volume ref status file for %s", volumeID)
-		return nil, err
-	}
-	// open the file
-	volumeRefStatusFile, err := os.Open(filename)
-	if err != nil {
-		log.Errorf("Failed to open the volume ref status file for %s, error: %s", volumeID, err)
-		return nil, err
-	}
-	defer volumeRefStatusFile.Close()
-	// deserialize the volume ref status
-	volumeRefStatus := types.VolumeRefStatus{}
-	err = json.NewDecoder(volumeRefStatusFile).Decode(&volumeRefStatus)
-	if err != nil {
-		log.Errorf("Failed to deserialize the volume ref status for %s, error: %s", volumeID, err)
-		return nil, err
-	}
-	log.Noticef("Successfully deserialized the volume ref status for %s from %s", volumeID, filename)
-	return &volumeRefStatus, nil
-}
-
-func getVolumeRefStatusFilename(volumeID string, snapshotID string) string {
-	return fmt.Sprintf("%s/%s.json", getSnapshotDir(snapshotID), volumeID)
 }
 
 // serializeConfigToSnapshot serializes the config to a file
