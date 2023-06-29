@@ -953,25 +953,20 @@ func serializeAppInstanceConfigToSnapshot(config types.AppInstanceConfig, snapsh
 		log.Errorf("Failed to marshal the old config for %s, error: %s", config.DisplayName, err)
 		return err
 	}
-	snapshotDir := getSnapshotDir(snapshotID)
+	snapshotDir := types.GetSnapshotDir(snapshotID)
 	// Create the directory for storing the old config
 	err = os.MkdirAll(snapshotDir, 0755)
 	if err != nil {
 		log.Errorf("Failed to create the config dir for %s, error: %s", config.DisplayName, err)
 		return err
 	}
-	configFile := fmt.Sprintf("%s/%s", snapshotDir, types.SnapshotConfigFilename)
+	configFile := types.GetSnapshotAppInstanceConfigFile(snapshotID)
 	err = os.WriteFile(configFile, configAsBytes, 0644)
 	if err != nil {
 		log.Errorf("Failed to write the old config for %s, error: %s", config.DisplayName, err)
 		return err
 	}
 	return nil
-}
-
-func getSnapshotDir(snapshotID string) string {
-	snapshotDir := fmt.Sprintf("%s/%s", types.SnapshotsDirname, snapshotID)
-	return snapshotDir
 }
 
 func handleCreate(ctxArg interface{}, key string,
