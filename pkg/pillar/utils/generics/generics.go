@@ -3,6 +3,8 @@
 
 package generics
 
+import "reflect"
+
 // EqualLists returns true if the two slices representing lists (i.e. order dependent)
 // are equal in size and items they contain.
 // This function can be used if slice items are comparable
@@ -160,4 +162,20 @@ func ContainsItemFn[Type any](list []Type, item Type, equal func(a, b Type) bool
 		}
 	}
 	return false
+}
+
+// ExtractFields extracts all fields from the given type and its anonymous fields
+// and adds them to the given map. This can be used for a careful deserialization.
+func ExtractFields(t reflect.Type, fieldMap *map[string]bool) {
+	for i := 0; i < t.NumField(); i++ {
+		field := t.Field(i)
+
+		if field.Anonymous {
+			// If this is an anonymous field, recursively extract its fields as well.
+			ExtractFields(field.Type, fieldMap)
+		} else {
+			// This is a normal field, so just add its name to the map.
+			(*fieldMap)[field.Name] = true
+		}
+	}
 }
