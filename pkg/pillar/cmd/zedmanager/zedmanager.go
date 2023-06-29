@@ -929,13 +929,13 @@ func removePreparedVolumesSnapshotConfig(status *types.AppInstanceStatus, id str
 	}
 }
 
-// saveConfigForSnapshots saves the config for the snapshots for which the config has been prepared
-func saveConfigForSnapshots(ctx *zedmanagerContext, status *types.AppInstanceStatus, config types.AppInstanceConfig) error {
+// saveAppInstanceConfigForSnapshot saves the config for the snapshots for which the config has been prepared
+func saveAppInstanceConfigForSnapshot(status *types.AppInstanceStatus, config types.AppInstanceConfig) error {
 	for i, snapshot := range status.SnapStatus.PreparedVolumesSnapshotConfigs {
 		// Set the old config version to the snapshot status
 		status.SnapStatus.RequestedSnapshots[i].ConfigVersion = config.UUIDandVersion
 		// Serialize the old config and store it in a file
-		err := serializeConfigToSnapshot(config, snapshot.SnapshotID)
+		err := serializeAppInstanceConfigToSnapshot(config, snapshot.SnapshotID)
 		if err != nil {
 			log.Errorf("Failed to serialize the old config for %s, error: %s", config.DisplayName, err)
 			return err
@@ -944,8 +944,8 @@ func saveConfigForSnapshots(ctx *zedmanagerContext, status *types.AppInstanceSta
 	return nil
 }
 
-// serializeConfigToSnapshot serializes the config to a file
-func serializeConfigToSnapshot(config types.AppInstanceConfig, snapshotID string) error {
+// serializeAppInstanceConfigToSnapshot serializes the config to a file
+func serializeAppInstanceConfigToSnapshot(config types.AppInstanceConfig, snapshotID string) error {
 	// Store the old config in a file, so that we can use it to roll back to the previous version
 	// if the upgrade fails
 	configAsBytes, err := json.Marshal(config)
@@ -1124,7 +1124,7 @@ func handleModify(ctxArg interface{}, key string,
 		// it's triggered. We cannot trigger the snapshot creation here immediately, as the VM
 		// should be stopped first. But we still need to save the list of volumes that are known only at this point.
 		status.SnapStatus.PreparedVolumesSnapshotConfigs = prepareVolumesSnapshotConfigs(ctx, oldConfig, status)
-		err := saveConfigForSnapshots(ctx, status, oldConfig)
+		err := saveAppInstanceConfigForSnapshot(status, oldConfig)
 		if err != nil {
 			log.Errorf("handleModify(%v) for %s: error saving old config for snapshots: %v",
 				config.UUIDandVersion, config.DisplayName, err)
