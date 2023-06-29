@@ -276,7 +276,6 @@ type VolumesSnapshotConfig struct {
 	VolumeIDs []uuid.UUID
 	// AppUUID used as a backlink to the app
 	AppUUID uuid.UUID
-	// ConfigID is the ID of the config that created the snapshot
 }
 
 // Key returns unique key for the snapshot
