@@ -537,9 +537,20 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	}
 	domainCtx.cpuPinningSupported = caps.CPUPinning
 
-	resources, err := hyper.GetHostCPUMem()
-	if err != nil {
-		log.Fatal(err)
+	// Need to wait for things to get started
+	var resources types.HostMemory
+	for i := 0; true; i++ {
+		delay := 10
+		resources, err = hyper.GetHostCPUMem()
+		if err == nil {
+			break
+		}
+		if i == 10 {
+			log.Fatalf("Failed %d times due to %s", i, err)
+		}
+		log.Warnf("Retrying in %d seconds due to %s", delay, err)
+		time.Sleep(time.Duration(delay) * time.Second)
+		ps.StillRunning(agentName, warningTime, errorTime)
 	}
 
 	cpusReserved, err := getReservedCPUsNum()
