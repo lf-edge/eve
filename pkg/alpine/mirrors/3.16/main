@@ -22,6 +22,7 @@ cairo
 cairo-dev
 cmake
 coreutils
+chrony
 cryptsetup-dev
 curl
 curl-dev
