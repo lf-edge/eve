@@ -632,12 +632,12 @@ func (ctx xenContext) GetHostCPUMem() (types.HostMemory, error) {
 	xlInfo, stderr, err := ctx.ctrdClient.CtrSystemExec(ctrdSystemCtx, "xen-tools",
 		[]string{"xl", "info"})
 	if err != nil {
-		return hm, fmt.Errorf("xl info failed stdout: %s stderr: %s, err: %v falling back on Dom0 stats",
+		return hm, fmt.Errorf("xl info failed stdout: %s stderr: %s, err: %v",
 			xlInfo, stderr, err)
 	}
 	// Seems like we can get empty output, or partial output, from xl info
 	if xlInfo == "" {
-		return hm, fmt.Errorf("xl info empty stderr: %s falling back on Dom0 stats",
+		return hm, fmt.Errorf("xl info empty stdout, stderr: %s",
 			stderr)
 	}
 	splitXlInfo := strings.Split(xlInfo, "\n")
