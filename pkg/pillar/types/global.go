@@ -286,6 +286,10 @@ const (
 	// download requests. However, even if enabled, TCP segments carrying non-empty payload
 	// (i.e. content which is being downloaded) are excluded.
 	NetDumpDownloaderPCAP GlobalSettingKey = "netdump.downloader.with.pcap"
+	// NetDumpDownloaderHTTPWithFieldValue : Enable to include HTTP header field values in captured
+	// network traces for download requests.
+	// Beware: may contain secrets, such as datastore credentials.
+	NetDumpDownloaderHTTPWithFieldValue GlobalSettingKey = "netdump.downloader.http.with.fieldvalue"
 )
 
 // AgentSettingKey - keys for per-agent settings
@@ -888,6 +892,7 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	configItemSpecMap.AddIntItem(NetDumpTopicPostOnboardInterval, 24*HourInSec, 60, 0xFFFFFFFF)
 	configItemSpecMap.AddIntItem(NetDumpTopicMaxCount, 10, 1, 0xFFFFFFFF)
 	configItemSpecMap.AddBoolItem(NetDumpDownloaderPCAP, false)
+	configItemSpecMap.AddBoolItem(NetDumpDownloaderHTTPWithFieldValue, false)
 	return configItemSpecMap
 }
 
