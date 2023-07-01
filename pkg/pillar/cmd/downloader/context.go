@@ -36,6 +36,7 @@ type downloaderContext struct {
 	downloadMaxPortCost      uint8
 	netDumper                *netdump.NetDumper // nil if netdump is disabled
 	netdumpWithPCAP          bool
+	netdumpWithHdrFieldVal   bool
 	// cli options
 	versionPtr *bool
 }
