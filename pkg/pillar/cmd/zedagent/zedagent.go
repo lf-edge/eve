@@ -219,6 +219,7 @@ type zedagentContext struct {
 	netdumpInterval      time.Duration
 	lastConfigNetdumpPub time.Time // last call to publishConfigNetdump
 	lastInfoNetdumpPub   time.Time // last call to publishInfoNetdump
+	startTime            time.Time
 }
 
 // AddAgentSpecificCLIFlags adds CLI options
@@ -315,6 +316,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	zedagentCtx.ps = ps
 	zedagentCtx.hangFlag = *zedagentCtx.hangPtr
 	zedagentCtx.fatalFlag = *zedagentCtx.fatalPtr
+	zedagentCtx.startTime = time.Now()
 
 	flowlogQueue := make(chan *flowlog.FlowMessage, flowlogQueueCap)
 	triggerDeviceInfo := make(chan destinationBitset, 1)
