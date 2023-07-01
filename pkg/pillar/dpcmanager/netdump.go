@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/netdump"
+	"github.com/lf-edge/eve/pkg/pillar/zboot"
 )
 
 // Topic for netdumps of successful connectivity tests.
@@ -31,7 +32,17 @@ func (m *DpcManager) traceNextConnTest() bool {
 	if len(m.dpcList.PortConfigList) == 0 || m.dpcList.CurrentIndex != 0 {
 		return false
 	}
-	return m.lastNetdumpPub.IsZero() || time.Since(m.lastNetdumpPub) >= m.netdumpInterval
+	if m.lastNetdumpPub.IsZero() {
+		// No netdump published yet for DPC testing.
+		return true
+	}
+	uptime := time.Since(m.startTime)
+	lastNetdumpAge := time.Since(m.lastNetdumpPub)
+	// Ensure we get at least one netdump for the currently tested EVE upgrade.
+	if zboot.IsCurrentPartitionStateInProgress() && lastNetdumpAge > uptime {
+		return true
+	}
+	return lastNetdumpAge >= m.netdumpInterval
 }
 
 // Publish netdump containing traces of executed connectivity probes.

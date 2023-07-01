@@ -129,6 +129,7 @@ type DpcManager struct {
 	netDumper       *netdump.NetDumper // nil if netdump is disabled
 	netdumpInterval time.Duration
 	lastNetdumpPub  time.Time // last call to publishNetdump
+	startTime       time.Time
 }
 
 // Watchdog : methods used by DpcManager to interact with Watchdog.
@@ -238,6 +239,7 @@ func (m *DpcManager) Init(ctx context.Context) error {
 
 // Run DpcManager as a separate task with its own loop and a watchdog file.
 func (m *DpcManager) Run(ctx context.Context) (err error) {
+	m.startTime = time.Now()
 	m.networkEvents = m.NetworkMonitor.WatchEvents(ctx, "dpc-reconciler")
 	m.wwanEvents, err = m.WwanWatcher.Watch(ctx)
 	if err != nil {

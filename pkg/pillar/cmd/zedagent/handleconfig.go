@@ -26,6 +26,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
 	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
+	"github.com/lf-edge/eve/pkg/pillar/zboot"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 	uuid "github.com/satori/go.uuid"
 	"google.golang.org/protobuf/proto"
@@ -1081,14 +1082,28 @@ func isNettraceEnabled(ctx *zedagentContext) bool {
 	return true
 }
 
-// Function decides if the next call to SendOnAllIntf for /config request should be traced
-// and netdump published at the end (see libs/nettrace and pkg/pillar/netdump).
-func traceNextConfigReq(ctx *zedagentContext) bool {
+// Function decides if the next HTTP request should be traced and netdump published.
+func traceNextReq(ctx *zedagentContext, lastNetdump time.Time) bool {
 	if !isNettraceEnabled(ctx) {
 		return false
 	}
-	return ctx.lastConfigNetdumpPub.IsZero() ||
-		time.Since(ctx.lastConfigNetdumpPub) >= ctx.netdumpInterval
+	if lastNetdump.IsZero() {
+		// No netdump published yet.
+		return true
+	}
+	uptime := time.Since(ctx.startTime)
+	lastNetdumpAge := time.Since(lastNetdump)
+	// Ensure we get at least one netdump for the currently tested EVE upgrade.
+	if zboot.IsCurrentPartitionStateInProgress() && lastNetdumpAge > uptime {
+		return true
+	}
+	return lastNetdumpAge >= ctx.netdumpInterval
+}
+
+// Function decides if the next call to SendOnAllIntf for /config request should be traced
+// and netdump published at the end (see libs/nettrace and pkg/pillar/netdump).
+func traceNextConfigReq(ctx *zedagentContext) bool {
+	return traceNextReq(ctx, ctx.lastConfigNetdumpPub)
 }
 
 // Publish netdump containing traces of executed config requests.
