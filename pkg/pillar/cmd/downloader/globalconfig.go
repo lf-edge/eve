@@ -77,5 +77,7 @@ func reinitNetdumper(ctx *downloaderContext) {
 		netDumper = nil
 	}
 	ctx.netdumpWithPCAP = gcp.GlobalValueBool(types.NetDumpDownloaderPCAP)
+	ctx.netdumpWithHdrFieldVal = gcp.GlobalValueBool(
+		types.NetDumpDownloaderHTTPWithFieldValue)
 	ctx.netDumper = netDumper
 }
