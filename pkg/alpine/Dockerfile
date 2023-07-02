@@ -36,6 +36,7 @@ RUN for repo in main community testing; do \
 
 # set the default repository to use
 RUN cp /mirror/${ALPINE_VERSION}/rootfs/etc/apk/repositories /etc/apk
+RUN cat /mirror/3.18/rootfs/etc/apk/repositories >> /etc/apk/repositories
 RUN cat /mirror/edge/rootfs/etc/apk/repositories >> /etc/apk/repositories
 RUN apk update
 

@@ -125,7 +125,6 @@ lz4-libs
 lzo-dev
 m4
 make
-mkinitfs
 mpc1-dev
 mpfr-dev
 mtools
