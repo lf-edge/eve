@@ -867,7 +867,7 @@ func waitForQmp(domainName string, available bool) error {
 			time.Sleep(delay)
 			waited += delay
 		}
-		if _, err := getQemuStatus(getQmpExecutorSocket(domainName)); available == (err == nil) {
+		if _, err := getQemuStatus(GetQmpExecutorSocket(domainName)); available == (err == nil) {
 			logrus.Infof("waitForQmp for %s %t done", domainName, available)
 			return nil
 		}
@@ -899,11 +899,11 @@ func (ctx kvmContext) Start(domainName string) error {
 	}
 	logrus.Infof("done launching qemu device model")
 
-	qmpFile := getQmpExecutorSocket(domainName)
+	qmpFile := GetQmpExecutorSocket(domainName)
 
 	logrus.Debugf("starting qmpEventHandler")
 	logrus.Infof("Creating %s at %s", "qmpEventHandler", agentlog.GetMyStack())
-	go qmpEventHandler(getQmpListenerSocket(domainName), getQmpExecutorSocket(domainName))
+	go qmpEventHandler(getQmpListenerSocket(domainName), GetQmpExecutorSocket(domainName))
 
 	annotations, err := ctx.ctrdContext.Annotations(domainName)
 	if err != nil {
@@ -928,7 +928,7 @@ func (ctx kvmContext) Start(domainName string) error {
 }
 
 func (ctx kvmContext) Stop(domainName string, _ bool) error {
-	if err := execShutdown(getQmpExecutorSocket(domainName)); err != nil {
+	if err := execShutdown(GetQmpExecutorSocket(domainName)); err != nil {
 		return logError("Stop: failed to execute shutdown command %v", err)
 	}
 	return nil
@@ -936,8 +936,8 @@ func (ctx kvmContext) Stop(domainName string, _ bool) error {
 
 func (ctx kvmContext) Delete(domainName string) (result error) {
 	//Sending a stop signal to then domain before quitting. This is done to freeze the domain before quitting it.
-	execStop(getQmpExecutorSocket(domainName))
-	if err := execQuit(getQmpExecutorSocket(domainName)); err != nil {
+	execStop(GetQmpExecutorSocket(domainName))
+	if err := execQuit(GetQmpExecutorSocket(domainName)); err != nil {
 		return logError("failed to execute quit command %v", err)
 	}
 	// we may want to wait a little bit here and actually kill qemu process if it gets wedged
@@ -972,7 +972,7 @@ func (ctx kvmContext) Info(domainName string) (int, types.SwState, error) {
 		"colo":           types.PAUSED,
 		"preconfig":      types.PAUSED,
 	}
-	res, err := getQemuStatus(getQmpExecutorSocket(domainName))
+	res, err := getQemuStatus(GetQmpExecutorSocket(domainName))
 	if err != nil {
 		return effectiveDomainID, types.BROKEN, logError("couldn't retrieve status for domain %s: %v", domainName, err)
 	}
@@ -1085,7 +1085,7 @@ func usbBusPort(USBAddr string) (string, string) {
 	return "", ""
 }
 
-func getQmpExecutorSocket(domainName string) string {
+func GetQmpExecutorSocket(domainName string) string {
 	return filepath.Join(kvmStateDir, domainName, "qmp")
 }
 
