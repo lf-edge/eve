@@ -104,7 +104,7 @@ type getconfigContext struct {
 	pubDisksConfig            pubsub.Publication
 	pubEdgeNodeInfo           pubsub.Publication
 	NodeAgentStatus           *types.NodeAgentStatus
-	configProcessingSkipFlag  bool
+	configProcessingRV        configProcessingRetval
 	lastReceivedConfig        time.Time // controller or local clocks
 	lastProcessedConfig       time.Time // controller or local clocks
 	lastConfigTimestamp       time.Time // controller clocks (zero if not available)
@@ -185,13 +185,18 @@ func (s configSource) String() string {
 type configProcessingRetval int
 
 const (
-	configOK        configProcessingRetval = iota
-	configReqFailed                        // failed to request latest config
-	obsoleteConfig                         // newer config is already applied
-	invalidConfig                          // config is not valid (cannot be parsed, UUID mismatch, bad signature, etc.)
-	skipConfig                             // reboot or shutdown flag is set
-	defferConfig                           // not ready to process config yet
+	configOK         configProcessingRetval = iota
+	configReqFailed                         // failed to request latest config
+	obsoleteConfig                          // newer config is already applied
+	invalidConfig                           // config is not valid (cannot be parsed, UUID mismatch, bad signature, etc.)
+	skipConfigReboot                        // reboot or shutdown flag is set
+	skipConfigUpdate                        // update flag is set
+	defferConfig                            // not ready to process config yet
 )
+
+func (r configProcessingRetval) isSkip() bool {
+	return r == skipConfigReboot || r == skipConfigUpdate
+}
 
 // Load bootstrap config provided that:
 //   - it exists
@@ -357,9 +362,8 @@ func configTimerTask(getconfigCtx *getconfigContext, handleChannel chan interfac
 	iteration := 0
 	withNetTracing := traceNextConfigReq(ctx)
 	retVal, tracedReqs := getLatestConfig(getconfigCtx, iteration, withNetTracing)
-	configProcessingSkipFlag := retVal == skipConfig
-	if configProcessingSkipFlag != getconfigCtx.configProcessingSkipFlag {
-		getconfigCtx.configProcessingSkipFlag = configProcessingSkipFlag
+	if getconfigCtx.configProcessingRV != retVal {
+		getconfigCtx.configProcessingRV = retVal
 		triggerPublishDevInfo(ctx)
 	}
 	getconfigCtx.localServerMap.upToDate = false
@@ -399,9 +403,8 @@ func configTimerTask(getconfigCtx *getconfigContext, handleChannel chan interfac
 			withNetTracing = traceNextConfigReq(ctx)
 			retVal, tracedReqs = getLatestConfig(
 				getconfigCtx, iteration, withNetTracing)
-			configProcessingSkipFlag = retVal == skipConfig
-			if configProcessingSkipFlag != getconfigCtx.configProcessingSkipFlag {
-				getconfigCtx.configProcessingSkipFlag = configProcessingSkipFlag
+			if getconfigCtx.configProcessingRV != retVal {
+				getconfigCtx.configProcessingRV = retVal
 				triggerPublishDevInfo(ctx)
 			}
 			getconfigCtx.localServerMap.upToDate = false
@@ -419,7 +422,7 @@ func configTimerTask(getconfigCtx *getconfigContext, handleChannel chan interfac
 				warningTime, errorTime)
 
 		case <-stillRunning.C:
-			if getconfigCtx.configProcessingSkipFlag {
+			if getconfigCtx.configProcessingRV.isSkip() {
 				log.Noticef("config processing skip flag set")
 			}
 		}
@@ -473,7 +476,7 @@ func updateCertTimer(configInterval uint32, tickerHandle interface{}) {
 // Start by trying the all the free management ports and then all the non-free
 // until one succeeds in communicating with the cloud.
 // We use the iteration argument to start at a different point each time.
-// Returns a configProcessingSkipFlag
+// Returns the configProcessingRetval and the traced requests if any.
 func requestConfigByURL(getconfigCtx *getconfigContext, url string,
 	iteration int, withNetTracing bool) (configProcessingRetval, []netdump.TracedNetRequest) {
 
@@ -912,7 +915,7 @@ func inhaleDeviceConfig(getconfigCtx *getconfigContext, config *zconfig.EdgeDevC
 		}
 	}
 
-	// add new BaseOS/App instances; returns configProcessingSkipFlag
+	// add new BaseOS/App instances; returns configProcessingSkipFlagReboot
 	return parseConfig(getconfigCtx, config, source)
 }
 

@@ -81,9 +81,9 @@ func parseConfig(getconfigCtx *getconfigContext, config *zconfig.EdgeDevConfig,
 	parseLocConfig(getconfigCtx, config)
 
 	// Look for timers and other settings in configItems
-	// Process Config items even when configProcessingSkipFlag is set.
+	// Process Config items even when configProcessingSkipFlagReboot is set.
 	// Allows us to recover if the system got stuck after setting
-	// configProcessingSkipFlag
+	// configProcessingSkipFlagReboot
 	parseConfigItems(getconfigCtx, config, source)
 
 	// Did MaintenanceMode change?
@@ -108,21 +108,24 @@ func parseConfig(getconfigCtx *getconfigContext, config *zconfig.EdgeDevConfig,
 		// Any new reboot command?
 		if rebootFlag {
 			log.Noticeln("Reboot flag set, skipping config processing")
-			return skipConfig
+			return skipConfigReboot
 		}
 
 		// Any new shutdown command?
 		if shutdownFlag {
 			log.Noticeln("Shutdown flag set, skipping config processing")
-			return skipConfig
+			return skipConfigReboot
 		}
 	}
 
-	if getconfigCtx.configProcessingSkipFlag || ctx.deviceReboot || ctx.deviceShutdown {
+	if getconfigCtx.configProcessingRV == skipConfigReboot || ctx.deviceReboot || ctx.deviceShutdown {
 		log.Noticef("parseConfig: Ignoring config as reboot/shutdown flag set")
+		return skipConfigReboot
 	} else if ctx.maintenanceMode {
 		log.Noticef("parseConfig: Ignoring config due to maintenanceMode")
 	} else {
+		// We do not ignore config if we are in the baseOS upgrade process, as we need to check the volumes
+		// and the baseOS image configs
 		if source != fromBootstrap {
 			handleControllerCertsSha(ctx, config)
 			parseCipherContext(getconfigCtx, config)
@@ -147,17 +150,20 @@ func parseConfig(getconfigCtx *getconfigContext, config *zconfig.EdgeDevConfig,
 		parseSystemAdapterConfig(getconfigCtx, config, source, forceSystemAdaptersParse)
 
 		if source != fromBootstrap {
-			activateNewBaseOSFlag := parseBaseOS(getconfigCtx, config)
+			activateNewBaseOS := parseBaseOS(getconfigCtx, config)
 			parseNetworkInstanceConfig(getconfigCtx, config)
 			parseContentInfoConfig(getconfigCtx, config)
 			parseVolumeConfig(getconfigCtx, config)
 
-			if source == fromController && activateNewBaseOSFlag {
+			// We have handled the volumes, so we can now process the app instances. But we need to check if
+			// we are in the middle of a baseOS upgrade, and if so, we need to skip processing the app instances.
+			if (source == fromController && activateNewBaseOS) ||
+				(getconfigCtx.configProcessingRV == skipConfigUpdate) {
 				// We need to activate the new baseOS
 				// before we can process the app instances
 				// which depend on the new baseOS
 				log.Noticef("parseConfig: Ignoring config as a new baseOS image is being activated")
-				return skipConfig
+				return skipConfigUpdate
 			}
 
 			// parseProfile must be called before processing of app instances from config
@@ -252,7 +258,12 @@ var baseOSPrevConfigHash []byte
 
 func parseBaseOS(getconfigCtx *getconfigContext,
 	config *zconfig.EdgeDevConfig) (activateNewBaseOSFlag bool) {
+	// activateNewBaseOSFlag is set to true if we need to activate a new baseOS:
+	// 1. If the config has a new baseOS image with the activate flag set to true
+	// 2. If the config has a previous baseOS image, but the activate flag is _switched_ from false to true
+	// We don't care if the active flag already was true, as that means that the process of activating has already started.
 	activateNewBaseOSFlag = false
+
 	baseOS := config.GetBaseos()
 	if baseOS == nil {
 		log.Function("parseBaseOS: nil config received")
@@ -284,16 +295,29 @@ func parseBaseOS(getconfigCtx *getconfigContext,
 		RetryUpdateCounter: getconfigCtx.configRetryUpdateCounter,
 		Activate:           baseOS.Activate,
 	}
-	// If Activate is set, we need to activate the new baseOS
-	if cfg.Activate {
-		activateNewBaseOSFlag = true
+
+	// Check if the BaseOsConfig already exists
+	prevBaseOsConfig, _ := getconfigCtx.pubBaseOsConfig.Get(cfg.Key())
+	if prevBaseOsConfig == nil {
+		// If we don't have a BaseOsConfig with the same key already published, it's a new one
+		// Check for activation flag
+		if cfg.Activate {
+			activateNewBaseOSFlag = true
+		}
 	}
-	// First look for deleted ones
+
+	// Go through all published BaseOsConfig's and delete the ones which are not in the config
+	// and detect if we have a BaseOsConfig which has changed from Activate=false to Activate=true
 	items := getconfigCtx.pubBaseOsConfig.GetAll()
 	for idStr := range items {
 		if idStr != cfg.Key() {
 			log.Functionf("parseBaseOS: deleting %s\n", idStr)
 			unpublishBaseOsConfig(getconfigCtx, idStr)
+		} else {
+			if !items[idStr].(types.BaseOsConfig).Activate && cfg.Activate {
+				log.Functionf("parseBaseOS: Activate set for %s", idStr)
+				activateNewBaseOSFlag = true
+			}
 		}
 	}
 	// publish new one
