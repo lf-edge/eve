@@ -147,10 +147,18 @@ func parseConfig(getconfigCtx *getconfigContext, config *zconfig.EdgeDevConfig,
 		parseSystemAdapterConfig(getconfigCtx, config, source, forceSystemAdaptersParse)
 
 		if source != fromBootstrap {
-			parseBaseOS(getconfigCtx, config)
+			activateNewBaseOSFlag := parseBaseOS(getconfigCtx, config)
 			parseNetworkInstanceConfig(getconfigCtx, config)
 			parseContentInfoConfig(getconfigCtx, config)
 			parseVolumeConfig(getconfigCtx, config)
+
+			if source == fromController && activateNewBaseOSFlag {
+				// We need to activate the new baseOS
+				// before we can process the app instances
+				// which depend on the new baseOS
+				log.Noticef("parseConfig: Ignoring config as a new baseOS image is being activated")
+				return skipConfig
+			}
 
 			// parseProfile must be called before processing of app instances from config
 			parseProfile(getconfigCtx, config)
@@ -243,8 +251,8 @@ func shutdownAppsGlobal(ctx *zedagentContext) {
 var baseOSPrevConfigHash []byte
 
 func parseBaseOS(getconfigCtx *getconfigContext,
-	config *zconfig.EdgeDevConfig) {
-
+	config *zconfig.EdgeDevConfig) (activateNewBaseOSFlag bool) {
+	activateNewBaseOSFlag = false
 	baseOS := config.GetBaseos()
 	if baseOS == nil {
 		log.Function("parseBaseOS: nil config received")
@@ -276,6 +284,10 @@ func parseBaseOS(getconfigCtx *getconfigContext,
 		RetryUpdateCounter: getconfigCtx.configRetryUpdateCounter,
 		Activate:           baseOS.Activate,
 	}
+	// If Activate is set, we need to activate the new baseOS
+	if cfg.Activate {
+		activateNewBaseOSFlag = true
+	}
 	// First look for deleted ones
 	items := getconfigCtx.pubBaseOsConfig.GetAll()
 	for idStr := range items {
@@ -286,6 +298,7 @@ func parseBaseOS(getconfigCtx *getconfigContext,
 	}
 	// publish new one
 	publishBaseOsConfig(getconfigCtx, cfg)
+	return
 }
 
 var networkConfigPrevConfigHash []byte
