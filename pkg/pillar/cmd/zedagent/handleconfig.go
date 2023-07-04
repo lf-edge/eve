@@ -191,7 +191,7 @@ const (
 	invalidConfig                           // config is not valid (cannot be parsed, UUID mismatch, bad signature, etc.)
 	skipConfigReboot                        // reboot or shutdown flag is set
 	skipConfigUpdate                        // update flag is set
-	defferConfig                            // not ready to process config yet
+	deferConfig                             // not ready to process config yet
 )
 
 func (r configProcessingRetval) isSkip() bool {
@@ -212,8 +212,8 @@ func (r configProcessingRetval) String() string {
 		return "skipConfigReboot"
 	case skipConfigUpdate:
 		return "skipConfigUpdate"
-	case defferConfig:
-		return "defferConfig"
+	case deferConfig:
+		return "deferConfig"
 	}
 	return "<invalid>"
 }
@@ -507,7 +507,7 @@ func requestConfigByURL(getconfigCtx *getconfigContext, url string,
 	if getconfigCtx.zedagentCtx.bootReason == types.BootReasonFirst &&
 		!getconfigCtx.zedagentCtx.publishedEdgeNodeCerts {
 		log.Noticef("Defer fetching config until our EdgeNodeCerts have been published")
-		return defferConfig, nil
+		return deferConfig, nil
 	}
 	ctx := getconfigCtx.zedagentCtx
 	const bailOnHTTPErr = false // For 4xx and 5xx HTTP errors we try other interfaces
@@ -1140,7 +1140,7 @@ func publishConfigNetdump(ctx *zedagentContext,
 	switch configRV {
 	case configOK:
 		topic = netDumpConfigOKTopic
-	case defferConfig:
+	case deferConfig:
 		// There was no actual /config request so there is nothing interesting to publish.
 		return
 	default:
