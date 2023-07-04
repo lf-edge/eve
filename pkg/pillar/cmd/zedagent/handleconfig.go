@@ -198,6 +198,26 @@ func (r configProcessingRetval) isSkip() bool {
 	return r == skipConfigReboot || r == skipConfigUpdate
 }
 
+func (r configProcessingRetval) String() string {
+	switch r {
+	case configOK:
+		return "configOK"
+	case configReqFailed:
+		return "configReqFailed"
+	case obsoleteConfig:
+		return "obsoleteConfig"
+	case invalidConfig:
+		return "invalidConfig"
+	case skipConfigReboot:
+		return "skipConfigReboot"
+	case skipConfigUpdate:
+		return "skipConfigUpdate"
+	case defferConfig:
+		return "defferConfig"
+	}
+	return "<invalid>"
+}
+
 // Load bootstrap config provided that:
 //   - it exists
 //   - has not been loaded before (incl. previous device boots)
@@ -422,8 +442,8 @@ func configTimerTask(getconfigCtx *getconfigContext, handleChannel chan interfac
 				warningTime, errorTime)
 
 		case <-stillRunning.C:
-			if getconfigCtx.configProcessingRV.isSkip() {
-				log.Noticef("config processing skip flag set")
+			if getconfigCtx.configProcessingRV != configOK {
+				log.Noticef("config processing flag is not OK: %s", getconfigCtx.configProcessingRV)
 			}
 		}
 		ctx.ps.StillRunning(wdName, warningTime, errorTime)
