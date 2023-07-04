@@ -237,6 +237,8 @@ const (
 	AllowLogFastupload GlobalSettingKey = "newlog.allow.fastupload"
 	// EnableARPSnoopOnNI global setting key
 	EnableARPSnoop GlobalSettingKey = "network.switch.enable.arpsnoop"
+	// WwanQueryVisibleProviders : periodically query visible cellular service providers
+	WwanQueryVisibleProviders GlobalSettingKey = "wwan.query.visible.providers"
 
 	// TriState Items
 	// NetworkFallbackAnyEth global setting key
@@ -856,6 +858,7 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	configItemSpecMap.AddBoolItem(ProcessCloudInitMultiPart, false)
 	configItemSpecMap.AddBoolItem(ConsoleAccess, true) // Controller likely default to false
 	configItemSpecMap.AddBoolItem(EnableARPSnoop, true)
+	configItemSpecMap.AddBoolItem(WwanQueryVisibleProviders, false)
 
 	// Add TriState Items
 	configItemSpecMap.AddTriStateItem(NetworkFallbackAnyEth, TS_DISABLED)

@@ -18,14 +18,24 @@ import (
 type WwanConfig struct {
 	RadioSilence bool `json:"radio-silence"`
 	// Enable verbose logging in the wwan microservice.
-	Verbose  bool                `json:"verbose"`
-	Networks []WwanNetworkConfig `json:"networks"`
+	Verbose bool `json:"verbose"`
+	// Enable to periodically obtain the set of visible network providers (for each modem)
+	// and publish them under WwanNetworkStatus.VisibleProviders.
+	// Use with caution because this operation may take quite some time (around 2 minutes)
+	// and makes modem unmanageable for the time being. Therefore, even if enabled,
+	// the period to query visible providers is quite long - 1 hour.
+	// Note that WwanNetworkStatus always provides info about the currently used
+	// network provider (CurrentProvider). Getting this info is not expensive so if you
+	// do not need info about other providers in the area, leave this disabled.
+	QueryVisibleProviders bool                `json:"query-visible-providers"`
+	Networks              []WwanNetworkConfig `json:"networks"`
 }
 
 // Equal compares two instances of WwanConfig for equality.
 func (wc WwanConfig) Equal(wc2 WwanConfig) bool {
 	if wc.RadioSilence != wc2.RadioSilence ||
-		wc.Verbose != wc2.Verbose {
+		wc.Verbose != wc2.Verbose ||
+		wc.QueryVisibleProviders != wc2.QueryVisibleProviders {
 		return false
 	}
 	return generics.EqualSetsFn(wc.Networks, wc2.Networks,
@@ -262,7 +272,7 @@ type WwanNetworkStatus struct {
 	CurrentProvider WwanProvider `json:"current-provider"`
 	// All networks that the modem is able to detect.
 	// This will include the currently used provider as well as other visible networks.
-	VisibleProviders []WwanProvider `json:"visible-providers"`
+	VisibleProviders []WwanProvider `json:"visible-providers,omitempty"`
 	// The list of Radio Access Technologies (RATs) currently used for registering/connecting
 	// to the network (typically just one).
 	CurrentRATs []WwanRAT `json:"current-rats"`
