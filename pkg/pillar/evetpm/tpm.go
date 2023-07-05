@@ -9,11 +9,13 @@ import (
 	"crypto/ecdsa"
 	"crypto/x509"
 	"encoding/asn1"
+	"encoding/gob"
 	"encoding/pem"
 	"fmt"
 	"io"
 	"math/big"
 	"os"
+	"sort"
 	"unsafe"
 
 	"github.com/google/go-tpm/tpm2"
@@ -70,6 +72,10 @@ const (
 	//EmptyPassword is an empty string
 	EmptyPassword  = ""
 	vaultKeyLength = 32 //Bytes
+
+	// TpmSavedDiskSealingPcrs is the file that holds a copy of PCR values
+	// at the time of generating and sealing the disk key into the TPM.
+	TpmSavedDiskSealingPcrs = types.PersistStatusDir + "/sealingpcrs"
 )
 
 // PCRBank256Status stores info about support for
@@ -609,6 +615,12 @@ func SealDiskKey(key []byte, pcrSel tpm2.PCRSelection) error {
 		EmptyPassword, public, 0); err != nil {
 		return fmt.Errorf("NVWrite %v failed: %v", TpmSealedDiskPubHdl, err)
 	}
+
+	// save a snapshot of PCR values
+	if err := saveDiskKeySealingPCRs(TpmSavedDiskSealingPcrs); err != nil {
+		return fmt.Errorf("saving snapshot of sealing PCRs failed: %v", err)
+	}
+
 	return nil
 }
 
@@ -664,7 +676,14 @@ func UnsealDiskKey(pcrSel tpm2.PCRSelection) ([]byte, error) {
 
 	key, err := tpm2.UnsealWithSession(rw, session, sealedObjHandle, EmptyPassword)
 	if err != nil {
-		return nil, fmt.Errorf("UnsealWithSession failed: %v", err)
+		// We get here mostly because of RCPolicyFail error, so try to get more
+		// information about the failure by finding the mismatching PCR index.
+		mismatch, newErr := findMismatchingPCRs(TpmSavedDiskSealingPcrs)
+		if newErr != nil {
+			return nil, fmt.Errorf("UnsealWithSession failed: %v, failed to get more info: %v", err, newErr)
+		}
+
+		return nil, fmt.Errorf("UnsealWithSession failed: %v, possibly mismatching PCR indexes %v", err, mismatch)
 	}
 	return key, nil
 }
@@ -772,4 +791,89 @@ func pcrBankSHA256EnabledHelper() bool {
 	//test is by reading PCR index 0 from SHA256 bank
 	_, err = tpm2.ReadPCR(rw, 0, tpm2.AlgSHA256)
 	return err == nil
+}
+
+func saveDiskKeySealingPCRs(pcrsFile string) error {
+	trw, err := tpm2.OpenTPM(TpmDevicePath)
+	if err != nil {
+		return err
+	}
+	defer trw.Close()
+
+	readPCRs, err := readDiskKeySealingPCRs()
+	if err != nil {
+		return err
+	}
+
+	frw, err := os.Create(pcrsFile)
+	if err != nil {
+		return err
+	}
+	defer frw.Close()
+
+	e := gob.NewEncoder(frw)
+	err = e.Encode(readPCRs)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func findMismatchingPCRs(savedPCRsFile string) ([]int, error) {
+	frw, err := os.Open(savedPCRsFile)
+	if err != nil {
+		return nil, err
+	}
+	defer frw.Close()
+
+	var savedPCRs map[int][]byte
+	d := gob.NewDecoder(frw)
+	err = d.Decode(&savedPCRs)
+	if err != nil {
+		return nil, err
+	}
+
+	readPCRs, err := readDiskKeySealingPCRs()
+	if err != nil {
+		return nil, err
+	}
+
+	mismatch := make([]int, 0)
+	for i, savedPCR := range savedPCRs {
+		readPCR, ok := readPCRs[i]
+		// this should never happen, except when we update EVE and adding new
+		// indexes to the DiskKeySealingPCRs, anyways, better safe than sorry!
+		if !ok {
+			return nil, fmt.Errorf("saved PCR index %d doesn't exist at run-time PCRs list %v", i, DiskKeySealingPCRs.PCRs)
+		}
+
+		if !bytes.Equal(readPCR, savedPCR) {
+			mismatch = append(mismatch, i)
+		}
+	}
+
+	sort.Ints(mismatch)
+	return mismatch, nil
+}
+
+func readDiskKeySealingPCRs() (map[int][]byte, error) {
+	rw, err := tpm2.OpenTPM(TpmDevicePath)
+	if err != nil {
+		return nil, err
+	}
+	defer rw.Close()
+
+	// tpm2.ReadPCRs returns at most 8 PCRs, so loop over and read one by one
+	readPCRs := make(map[int][]byte)
+	for _, v := range DiskKeySealingPCRs.PCRs {
+		p, err := tpm2.ReadPCR(rw, v, DiskKeySealingPCRs.Hash)
+		if err != nil {
+			return nil, err
+		}
+
+		readPCRs[v] = p
+	}
+
+	return readPCRs, nil
 }
