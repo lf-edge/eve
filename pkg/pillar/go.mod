@@ -25,7 +25,7 @@ require (
 	github.com/jaypipes/ghw v0.8.0
 	github.com/lf-edge/edge-containers v0.0.0-20221025050409-93c34bebadd2
 	github.com/lf-edge/eve/api/go v0.0.0-20230602070228-0c11e32c7718
-	github.com/lf-edge/eve/libs v0.0.0-20230621123421-9968f5332761
+	github.com/lf-edge/eve/libs v0.0.0-20230705061838-6ed29226fccf
 	github.com/linuxkit/linuxkit/src/cmd/linuxkit v0.0.0-20220913135124-e532e7310810
 	github.com/miekg/dns v1.1.41
 	github.com/moby/sys/mountinfo v0.6.0
