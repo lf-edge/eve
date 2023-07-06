@@ -188,7 +188,6 @@ func ReadOwnerCrdl() (string, error) {
 // TpmSign is used by external packages to get a digest signed by
 // device key in TPM
 func TpmSign(digest []byte) (*big.Int, *big.Int, error) {
-
 	rw, err := tpm2.OpenTPM(TpmDevicePath)
 	if err != nil {
 		return nil, nil, err
@@ -197,7 +196,7 @@ func TpmSign(digest []byte) (*big.Int, *big.Int, error) {
 
 	tpmOwnerPasswd, err := ReadOwnerCrdl()
 	if err != nil {
-		return nil, nil, fmt.Errorf("Error in fetching TPM credentials: %v", err)
+		return nil, nil, fmt.Errorf("fetching TPM credentials failed: %v", err)
 	}
 
 	//XXX This "32" should really come from Hash algo used.
@@ -212,7 +211,7 @@ func TpmSign(digest []byte) (*big.Int, *big.Int, error) {
 	sig, err := tpm2.Sign(rw, TpmDeviceKeyHdl,
 		tpmOwnerPasswd, digest, nil, scheme)
 	if err != nil {
-		return nil, nil, fmt.Errorf("Sign using TPM failed with error %v", err)
+		return nil, nil, fmt.Errorf("signing data using TPM failed: %v", err)
 	}
 	return sig.ECC.R, sig.ECC.S, nil
 }
@@ -265,7 +264,6 @@ func GetFirmwareVersion(v1 uint32, v2 uint32) string {
 
 // GetTpmProperty fetches a given property id, and returns it as uint32
 func GetTpmProperty(propID tpm2.TPMProp) (uint32, error) {
-
 	rw, err := tpm2.OpenTPM(TpmDevicePath)
 	if err != nil {
 		return 0, err
@@ -279,7 +277,7 @@ func GetTpmProperty(propID tpm2.TPMProp) (uint32, error) {
 	}
 	prop, ok := v[0].(tpm2.TaggedProperty)
 	if !ok {
-		return 0, fmt.Errorf("Unable to fetch property %d", propID)
+		return 0, fmt.Errorf("fetching TPM property %X failed", propID)
 	}
 	return prop.Value, nil
 }
@@ -338,7 +336,6 @@ const (
 
 // FetchTpmHwInfo returns TPM Hardware properties in a string
 func FetchTpmHwInfo() (string, error) {
-
 	//If we had done this earlier, return the last result
 	if tpmHwInfo != "" {
 		return tpmHwInfo, nil
@@ -383,7 +380,7 @@ func FetchVaultKey(log *base.LogObject) ([]byte, error) {
 	//First try to read from TPM, if it was stored earlier
 	key, err := readDiskKey()
 	if err != nil {
-		log.Noticef("Generating VaultKey")
+		log.Noticef("can't read the legacy disk key, generating a new one")
 		//
 		//Note on why we are using GetRandom here:
 		//We are using raw_key option to protect the encryption/decryption protector:
@@ -402,14 +399,14 @@ func FetchVaultKey(log *base.LogObject) ([]byte, error) {
 		//
 		key, err = GetRandom(vaultKeyLength)
 		if err != nil {
-			return nil, fmt.Errorf("FetchVaultKey: Error in GetRandom: %v", err)
+			return nil, fmt.Errorf("GetRandom failed: %v", err)
 		}
 		err = writeDiskKey(key)
 		if err != nil {
-			return nil, fmt.Errorf("FetchVaultKey: Writing Key to TPM failed: %v", err)
+			return nil, fmt.Errorf("writing legacy Key to TPM failed: %v", err)
 		}
 	} else {
-		log.Noticef("Found VaultKey")
+		log.Noticef("successfully read the legacy disk key from TPM")
 	}
 	return key, nil
 }
@@ -481,7 +478,7 @@ func FetchSealedVaultKey(log *base.LogObject) ([]byte, error) {
 	legacyKeyPresent := isLegacyKeyPresent()
 
 	if !sealedKeyPresent && !legacyKeyPresent {
-		log.Noticef("FetchSealedVaultKey generate new key")
+		log.Noticef("neither legacy nor sealed disk key present, generating a fresh key")
 		//Fresh install, generate a new key
 		//
 		//Note on why we are using GetRandom here:
@@ -501,16 +498,18 @@ func FetchSealedVaultKey(log *base.LogObject) ([]byte, error) {
 		//
 		key, err := GetRandom(vaultKeyLength)
 		if err != nil {
-			return nil, fmt.Errorf("FetchSealedVaultKey: GetRandom failed, %v", err)
+			return nil, fmt.Errorf("GetRandom failed: %v", err)
 		}
 		err = SealDiskKey(key, DiskKeySealingPCRs)
 		if err != nil {
-			return nil, fmt.Errorf("FetchSealedVaultKey: Sealing failed: %v", err)
+			return nil, fmt.Errorf("sealing the fresh disk key failed: %v", err)
 		}
+
+		log.Noticef("successfully sealed the fresh disk key into TPM")
 	}
 
 	if !sealedKeyPresent && legacyKeyPresent {
-		log.Noticef("FetchSealedVaultKey legacy present")
+		log.Noticef("only legacy disk key present, using it")
 		//XXX: we need a migration path for existing installations.
 		//hence re-using the current key here. i.e. if we end up creating
 		//a new random key here, and we fail the upgrade, the fallback
@@ -523,20 +522,29 @@ func FetchSealedVaultKey(log *base.LogObject) ([]byte, error) {
 		//Upgrade path will be to first upgrade to a) first release and then b)
 		key, err := readDiskKey()
 		if err != nil {
-			return nil, fmt.Errorf("Error in retrieving old key")
+			return nil, fmt.Errorf("retrieving the legacy disk key from TPM failed: %v", err)
 		}
+
+		log.Noticef("try to convert the legacy key into a sealed key")
+
 		err = SealDiskKey(key, DiskKeySealingPCRs)
 		if err != nil {
-			return nil, fmt.Errorf("FetchSealedVaultKey: Sealing failed: %v", err)
+			return nil, fmt.Errorf("sealing the legacy disk key into TPM failed: %v", err)
 		}
 	}
 	//sealedKeyPresent && !legacyKeyPresent : unseal
 	//sealedKeyPresent && legacyKeyPresent  : unseal
 	if sealedKeyPresent {
-		log.Noticef("FetchSealedVaultKey unseal key")
+		log.Noticef("sealed disk key present int TPM, about to unseal it")
 	}
 	//By this, we have a key sealed into TPM
-	return UnsealDiskKey(DiskKeySealingPCRs)
+	key, err := UnsealDiskKey(DiskKeySealingPCRs)
+	if err == nil {
+		// be more verbose, lets celebrate
+		log.Noticef("successfully unsealed the disk key from TPM")
+	}
+
+	return key, err
 }
 
 // SealDiskKey seals key into TPM2.0, with provided PCRs
@@ -571,12 +579,12 @@ func SealDiskKey(key []byte, pcrSel tpm2.PCRSelection) error {
 
 	//Don't need the handle, we need only the policy for sealing
 	if err := tpm2.FlushContext(rw, session); err != nil {
-		return fmt.Errorf("Unable to flush session handle %v: %v", session, err)
+		return fmt.Errorf("flushing session handle %v failed: %v", session, err)
 	}
 
 	priv, public, err := tpm2.Seal(rw, TpmSRKHdl, EmptyPassword, EmptyPassword, policy, key)
 	if err != nil {
-		return fmt.Errorf("Unable to seal key: %v", err)
+		return fmt.Errorf("sealing the disk key into TPM failed: %v", err)
 	}
 
 	// Define space in NV storage and clean up afterwards or subsequent runs will fail.
@@ -664,7 +672,7 @@ func UnsealDiskKey(pcrSel tpm2.PCRSelection) ([]byte, error) {
 
 	sealedObjHandle, _, err := tpm2.Load(rw, TpmSRKHdl, "", pub, priv)
 	if err != nil {
-		return nil, fmt.Errorf("Load failed: %v", err)
+		return nil, fmt.Errorf("loading the disk key into TPM failed: %v", err)
 	}
 	defer tpm2.FlushContext(rw, sealedObjHandle)
 
@@ -680,7 +688,7 @@ func UnsealDiskKey(pcrSel tpm2.PCRSelection) ([]byte, error) {
 		// information about the failure by finding the mismatching PCR index.
 		mismatch, newErr := findMismatchingPCRs(TpmSavedDiskSealingPcrs)
 		if newErr != nil {
-			return nil, fmt.Errorf("UnsealWithSession failed: %v, failed to get more info: %v", err, newErr)
+			return nil, fmt.Errorf("UnsealWithSession failed: %v, getting more info failed: %v", err, newErr)
 		}
 
 		return nil, fmt.Errorf("UnsealWithSession failed: %v, possibly mismatching PCR indexes %v", err, mismatch)
@@ -714,7 +722,7 @@ func PolicyPCRSession(rw io.ReadWriteCloser, pcrSel tpm2.PCRSelection) (tpmutil.
 
 	policy, err := tpm2.PolicyGetDigest(rw, session)
 	if err != nil {
-		return session, nil, fmt.Errorf("Unable to get policy digest: %v", err)
+		return session, nil, fmt.Errorf("PolicyGetDigest failed: %v", err)
 	}
 	return session, policy, nil
 }
