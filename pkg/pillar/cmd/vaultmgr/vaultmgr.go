@@ -260,18 +260,27 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 
 	// initialize publishing handles
 	initializeSelfPublishHandles(ps, &ctx)
-	if etpm.IsTpmEnabled() {
+	tpmEnabled := etpm.IsTpmEnabled()
+	if tpmEnabled {
 		// TPM is enabled. Check if defaultVault directory exists, if not set vaultconfig
 		tpmKeyOnlyMode := checkAndPublishVaultConfig(&ctx)
 		handler.SetHandlerOptions(vault.HandlerOptions{TpmKeyOnlyMode: tpmKeyOnlyMode})
 	}
+
+	if tpmEnabled {
+		log.Noticef("about to setup the vault and fetch the disk key from TPM")
+	} else {
+		log.Noticef("about to setup the vault without TPM")
+	}
+	// if TPM available, this sets up the fscrypt and eventually calls FetchSealedVaultKey
 	if err := handler.SetupDefaultVault(); err != nil {
-		log.Errorf("setupDefaultVault failed, err: %v", err)
+		log.Errorf("SetupDefaultVault failed, err: %v", err)
 		getAndPublishAllVaultStatuses(&ctx)
 	} else {
+		log.Noticef("vault is setup and unlocked successfully")
 		ctx.defaultVaultUnlocked = true
 	}
-	if ctx.defaultVaultUnlocked || !etpm.IsTpmEnabled() {
+	if ctx.defaultVaultUnlocked || !tpmEnabled {
 		// Now that vault is unlocked, run any upgrade converter handler if needed
 		// In case of non-TPM platforms, we do this irrespective of
 		// defaultVaultUnlocked

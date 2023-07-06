@@ -117,7 +117,7 @@ func (h *Ext4Handler) SetupDefaultVault() error {
 		return fmt.Errorf("error in setting up vault %s:%v", defaultVault, err)
 	}
 	// Log the type of key used for unlocking default vault
-	h.log.Noticef("default vault unlocked using key type %s",
+	h.log.Noticef("default vault unlocked using key type: %s",
 		etpm.CompareLegacyandSealedKey().String())
 	return nil
 }
