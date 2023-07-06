@@ -17,25 +17,52 @@ func (z *zedrouter) generateBridgeMAC(brNum int) net.HardwareAddr {
 	return net.HardwareAddr{0x00, 0x16, 0x3e, 0x06, 0x00, byte(brNum)}
 }
 
-// generateAppMac picks a fixed address for Local and uses a fixed hash for Switch
-// which still produces a stable MAC address for a given app instance.
+// generateAppMac calculates random but stable (not changing across reboots) MAC address
+// for a given app instance.
+// The generated MAC addresses are locally administered addresses (LAA).
+//
+// For switch network instances we use OUI 02-16-3E. It is important to preserve
+// the method of generating addresses for VIFs on switch network instances across EVE
+// versions, so that DHCP servers on external networks are likely to assign the same
+// IP addresses across upgrades.
+// Another important aspect of switch network instances, is that two edge nodes could be
+// connected to the same network segment. It is therefore important that the seed used
+// to randomly generate the second half of the MAC address is unique to the app VIF
+// globally or at least within the enterprise (e.g. app UUID + VIF index).
+//
+// Even for local network instances we generate random MAC address that with a high
+// probability will not collide with other apps on other edge nodes. From networking
+// point of view this is not necessary, but there are apps that use MAC address as some
+// sort of ID and could fail to function properly if there is a collision across edge
+// nodes. Here the collision could be a problem from edge app perspective even for edge
+// nodes in completely different locations and connected to different networks.
+// We therefore need even higher probability of address uniqueness. For example, with 24
+// random bits and 1000 app interfaces the change of a collision would be as high as 3%.
+// Since these MAC addresses will not appear on external Ethernet networks, we can also
+// use OUI octets for randomness. Only I/G and U/L bits need to stay constant and set
+// appropriately.
 func (z *zedrouter) generateAppMac(appUUID uuid.UUID, ulNum int, appNum int,
 	netInstStatus *types.NetworkInstanceStatus) net.HardwareAddr {
+	h := sha256.New()
+	h.Write(appUUID[:])
+	h.Write(netInstStatus.UUIDandVersion.UUID[:])
+	nums := make([]byte, 2)
+	nums[0] = byte(ulNum)
+	nums[1] = byte(appNum)
+	h.Write(nums)
+	hash := h.Sum(nil)
 	switch netInstStatus.Type {
 	case types.NetworkInstanceTypeSwitch:
-		h := sha256.New()
-		h.Write(appUUID[:])
-		h.Write(netInstStatus.UUIDandVersion.UUID[:])
-		nums := make([]byte, 2)
-		nums[0] = byte(ulNum)
-		nums[1] = byte(appNum)
-		h.Write(nums)
-		hash := h.Sum(nil)
 		return net.HardwareAddr{0x02, 0x16, 0x3e, hash[0], hash[1], hash[2]}
-
 	case types.NetworkInstanceTypeLocal:
-		// Room to handle multiple underlays in 5th byte
-		return net.HardwareAddr{0x00, 0x16, 0x3e, 0x00, byte(ulNum), byte(appNum)}
+		mac := net.HardwareAddr{hash[0], hash[1], hash[2], hash[3], hash[4], hash[5]}
+		// Mark this MAC address as unicast by setting the I/G bit to zero.
+		mac[0] &= ^byte(1)
+		// Mark this MAC address as locally administered by setting the U/L bit to 1.
+		mac[0] |= byte(1 << 1)
+		return mac
+	default:
+		z.log.Fatalf("unsupported network instance type")
 	}
 	return nil
 }
