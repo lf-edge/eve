@@ -1108,14 +1108,24 @@ func createArchive(source, archiveName string, buf io.Writer) error {
 			if info.Size() == 0 && !info.Mode().IsRegular() {
 				return nil
 			}
+
+			// Check if the file still exists before opening it
+			if _, err := os.Stat(path); os.IsNotExist(err) {
+				// File does not exist, skip it
+				log.Noticef("createArchive: not exist, continue %v", err)
+				return nil
+			}
+
 			header, err := tar.FileInfoHeader(info, info.Name())
 			if err != nil {
-				return err
+				log.Noticef("createArchive: tar head error, continue %v", err)
+				return nil
 			}
 
 			header.Name = filepath.Join(baseDir, strings.TrimPrefix(path, source))
 			if err := tarball.WriteHeader(header); err != nil {
-				return err
+				log.Noticef("createArchive: header write error, continue %v", err)
+				return nil
 			}
 
 			if info.IsDir() {
@@ -1133,12 +1143,16 @@ func createArchive(source, archiveName string, buf io.Writer) error {
 
 			file, err := os.Open(path)
 			if err != nil {
-				return err
+				log.Noticef("createArchive: file open %s error, %v", path, err)
+				return nil
 			}
 			defer file.Close()
 
 			_, err = io.Copy(tarball, file)
-			return err
+			if err != nil {
+				log.Noticef("createArchive: io copy error %v", err)
+			}
+			return nil
 		})
 	return err
 }
