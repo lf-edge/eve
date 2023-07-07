@@ -85,7 +85,7 @@ func GetPublicKeyFromCert(certFile string) (crypto.PublicKey, error) {
 	block, _ := pem.Decode(certBytes)
 	cert, err := x509.ParseCertificate(block.Bytes)
 	if err != nil {
-		fmt.Printf("error in parsing ecdh cert file: %v", err)
+		fmt.Printf("====> error in parsing ecdh cert file: %v", err)
 		return nil, err
 	}
 	return cert.PublicKey, nil
