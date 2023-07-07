@@ -123,7 +123,7 @@ jobs:
           make -e V=1 HV=${{ matrix.hv }} ZARCH=${{ matrix.arch }} LINUXKIT_PKG_TARGET=push eve
       - name: Build and push VERIFICATION for ${{ matrix.arch }}-${{ matrix.hv }}
         run: |
-          make -e V=1 HV=${{ matrix.hv }} ZARCH=${{ matrix.arch }} LINUXKIT_PKG_TARGET=push eve-verification
+          make -e V=1 HV=${{ matrix.hv }} ZARCH=${{ matrix.arch }} LINUXKIT_PKG_TARGET=push verification
       - name: Build and push collected_sources to eve-source repo
         if: matrix.arch != 'riscv64'
         run: |

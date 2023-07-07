@@ -146,13 +146,13 @@ do_verification_live() {
      IMAGE_UUID=$(uuidgen | tee /tmp/soft_serial)
      mcopy -o -i /bits/config.img /tmp/soft_serial ::/soft_serial
   fi
-  create_efi_raw "${1:-650}" "$PART_SPEC"
+  create_efi_raw "${1:-850}" "$PART_SPEC"
   dump "$OUTPUT_IMG" live.raw
   echo "$IMAGE_UUID" >&2
 }
 
 do_verification_raw() {
-  create_efi_raw "${1:-650}" "conf_win verification inventory_win"
+  create_efi_raw "${1:-850}" "conf_win verification inventory_win"
   dump "$OUTPUT_IMG" verification.raw
 }
 
