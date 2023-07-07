@@ -51,7 +51,13 @@ func addEnvelopeAndWriteWss(msg []byte, isText bool) error {
 	} else {
 		msgType = websocket.BinaryMessage
 	}
+	// for websocket write, the requirement is that: Applications are responsible for
+	// ensuring that no more than one goroutine calls the write methods.
+	// we do grab the mutex before write in this function, and another place is
+	// in function sendKeepalive() which the packet is only sent to dispatcher.
+	wssWrMutex.Lock()
 	err := websocketConn.WriteMessage(msgType, jdata)
+	wssWrMutex.Unlock()
 	return err
 }
 
