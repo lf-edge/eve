@@ -456,7 +456,7 @@ func handleVaultKeyFromControllerImpl(ctxArg interface{}, key string,
 		}
 		log.Warnln("default vault removed")
 		if err := handler.SetupDefaultVault(); err != nil {
-			log.Errorf("setupDefaultVault failed, err: %v", err)
+			log.Errorf("SetupDefaultVault failed, err: %v", err)
 			getAndPublishAllVaultStatuses(ctx)
 			return
 		}
@@ -494,12 +494,12 @@ func publishVaultKey(ctx *vaultMgrContext, vaultName string) error {
 		}
 		keyBytes, err := etpm.FetchSealedVaultKey(log)
 		if err != nil {
-			return fmt.Errorf("Failed to retrieve key from TPM %v", err)
+			return fmt.Errorf("Failed to retrieve key from TPM %w", err)
 		}
 
 		encryptedKey, err := etpm.EncryptDecryptUsingTpm(keyBytes, true)
 		if err != nil {
-			return fmt.Errorf("Failed to encrypt vault key %v", err)
+			return fmt.Errorf("Failed to encrypt vault key %w", err)
 		}
 
 		hash := sha256.New()
@@ -512,7 +512,7 @@ func publishVaultKey(ctx *vaultMgrContext, vaultName string) error {
 		}
 		encryptedVaultKey, err = proto.Marshal(keyData)
 		if err != nil {
-			return fmt.Errorf("Failed to Marshal keyData %v", err)
+			return fmt.Errorf("Failed to Marshal keyData %w", err)
 		}
 	}
 
