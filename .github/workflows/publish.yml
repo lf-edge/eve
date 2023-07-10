@@ -121,14 +121,57 @@ jobs:
       - name: Build and push EVE for ${{ matrix.arch }}-${{ matrix.hv }}
         run: |
           make -e V=1 HV=${{ matrix.hv }} ZARCH=${{ matrix.arch }} LINUXKIT_PKG_TARGET=push eve
-      - name: Build and push VERIFICATION for ${{ matrix.arch }}-${{ matrix.hv }}
-        run: |
-          make -e V=1 HV=${{ matrix.hv }} ZARCH=${{ matrix.arch }} LINUXKIT_PKG_TARGET=push verification
       - name: Build and push collected_sources to eve-source repo
         if: matrix.arch != 'riscv64'
         run: |
           make -e V=1 HV=${{ matrix.hv }} ZARCH=${{ matrix.arch }} LINUXKIT_PKG_TARGET=push sbom collected_sources compare_sbom_collected_sources publish_sources
       - name: Post eve ${{ matrix.arch }}-${{ matrix.hv }} report
+        run: |
+          echo Disk usage
+          df -h
+          echo Memory
+          free -m
+          docker system df
+          docker system df -v
+      - name: Pre clean report
+        run: |
+          echo Disk usage
+          df -h
+          echo Memory
+          free -m
+          docker system df
+          docker system df -v
+      - name: Clean
+        run: |
+          make clean
+          docker system prune -f -a
+          rm -rf ~/.linuxkit
+
+  verification:
+    if: github.event.repository.full_name == 'lf-edge/eve'
+    needs: packages
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [arm64, amd64]
+        hv: [kvm, xen]
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      - name: Force fetch annotated tags (workaround)
+        # Workaround for https://github.com/actions/checkout/issues/290
+        run: |
+          git fetch --force --tags
+      - name: Login to DockerHUB
+        run: |
+          echo "${{ secrets.RELEASE_DOCKERHUB_TOKEN }}" |\
+             docker login -u "${{ secrets.RELEASE_DOCKERHUB_ACCOUNT }}" --password-stdin
+      - name: Build and push VERIFICATION for ${{ matrix.arch }}-${{ matrix.hv }}
+        run: |
+          make -e V=1 HV=${{ matrix.hv }} ZARCH=${{ matrix.arch }} LINUXKIT_PKG_TARGET=push verification
+      - name: Post verification ${{ matrix.arch }}-${{ matrix.hv }} report
         run: |
           echo Disk usage
           df -h
