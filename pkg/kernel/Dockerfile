@@ -9,8 +9,8 @@ ENV BUILD_PKGS \
     attr-dev autoconf file coreutils libtirpc-dev libtool util-linux-dev
 RUN eve-alpine-deploy.sh
 
-ARG KERNEL_VERSION_aarch64=5.10.121
-ARG KERNEL_VERSION_x86_64=5.10.121
+ARG KERNEL_VERSION_aarch64=5.10.186
+ARG KERNEL_VERSION_x86_64=5.10.186
 ARG KERNEL_SOURCE
 ARG KERNEL_SHA256_SUMS
 ARG KERNEL_PGP2_SIGN
