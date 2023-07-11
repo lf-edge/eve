@@ -11,7 +11,7 @@ RUN eve-alpine-deploy.sh
 
 # set versions for arm64
 FROM kernel-build-base AS kernel-build-arm64
-ARG KERNEL_VERSION_arm64=5.10.121
+ARG KERNEL_VERSION_arm64=5.10.186
 # this has to be specified separately because of dockerfile limitations
 ARG KERNEL_MAJOR=5
 ENV KERNEL_VERSION=${KERNEL_VERSION_arm64}
@@ -19,7 +19,7 @@ ENV KERNEL_MAJOR=${KERNEL_MAJOR}
 
 # set versions for amd64
 FROM kernel-build-base AS kernel-build-amd64
-ARG KERNEL_VERSION_amd64=5.10.121
+ARG KERNEL_VERSION_amd64=5.10.186
 # this has to be specified separately because of dockerfile limitations
 ARG KERNEL_MAJOR=5
 ENV KERNEL_VERSION=${KERNEL_VERSION_amd64}
