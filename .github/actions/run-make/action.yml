@@ -19,13 +19,16 @@ runs:
       # Workaround for https://github.com/actions/checkout/issues/290
       run: |
         git fetch --force --tags
+      shell: bash
     - name: Login to DockerHUB
       run: |
         echo "${{ inputs.RELEASE_DOCKERHUB_TOKEN }}" |\
            docker login -u "${{ inputs.RELEASE_DOCKERHUB_ACCOUNT }}" --password-stdin
+      shell: bash
     - name: Build and push `make -e ${{ inputs.command }}`
       run: |
         make -e ${{ inputs.command }}
+      shell: bash
     - name: Post `make -e ${{ inputs.command }}` report
       run: |
         echo Disk usage
@@ -34,6 +37,7 @@ runs:
         free -m
         docker system df
         docker system df -v
+      shell: bash
     - name: Pre clean report
       run: |
         echo Disk usage
@@ -42,8 +46,10 @@ runs:
         free -m
         docker system df
         docker system df -v
+      shell: bash
     - name: Clean
       run: |
         make clean
         docker system prune -f -a
         rm -rf ~/.linuxkit
+      shell: bash
