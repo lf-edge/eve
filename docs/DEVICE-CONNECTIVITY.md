@@ -222,7 +222,7 @@ the current config/state/metrics as published by EVE microservices.
 For device connectivity, the particularly interesting topics are those published by Network
 Interface Manager (NIM for short):
 
--`/persist/status/nim/DevicePortConfigList/global.json`: contains the set of DevicePortConfig-s
+- `/persist/status/nim/DevicePortConfigList/global.json`: contains the set of DevicePortConfig-s
  (configurations for mgmt and app-shared ports) which are currently known to the device
  (the latest highest-priority DPC plus some persisted previous configs). These configs are sorted
  in priority-decreasing order, i.e. the latest config is at the index 0. Additionally, there is
@@ -232,6 +232,7 @@ Interface Manager (NIM for short):
  by the last test). `State` is an enum value but in this file presented with its integer representation.
  To learn what a given `State` number means, look for the `DPCState` enum in
  [zedroutertypes.go](../pkg/pillar/types/zedroutertypes.go).
+
 - `/run/nim/DeviceNetworkStatus/global.json`: contains state information for the currently applied
  DPC. For every port it shows the currently assigned IP addresses, DNS servers, IP-based geolocation
  info, MAC address, administrative status (up/down), WiFi/cellular-specific details for wireless
@@ -254,15 +255,18 @@ troubleshooting:
 
 - `/run/zedagent/DevicePortConfig/zedagent.json`: currently published DPC from zedagent (either
  coming from the controller or from a bootstrap config, see [CONFIG.md](./CONFIG.md)).
+
 - `/run/zedagent/PhysicalIOAdapterList/zedagent.json`: list of physical IO adapters, published
  from zedagent but ultimately coming from the device model. This includes network adapters
  with their specification (PCI addresses, kernel interface names, etc.).
+
 - `/run/domainmgr/AssignableAdapters/global.json`: the spec and state of physical IO adapters
  after being processed by [domainmgr microservice](../pkg/pillar/cmd/domainmgr). This means after
  each was assigned to the corresponding domain and available to be used either by NIM (for mgmt or
  as app-shared) or by an app (as app-direct). NIM waits for `AssignableAdapters` before applying
  DPC config. Change in `AssignableAdapters` can also trigger DPC re-testing or unblock NIM
  to apply a given DPC (e.g. a particular port is finally available in dom0).
+
 - `/persist/status/zedclient/OnboardingStatus/global.json`: the status of the onboarding procedure.
  Once device is onboarded, `DeviceUUID` field will be non-empty and contain the assigned
  device UUID (also printed to `/persist/status/uuid`).
@@ -273,8 +277,10 @@ wwan config, status and metrics with NIM simply by reading/writing files located
 directory:
 
 - `config.json` is published by NIM and may contain configuration for a cellular modem.
+
 - `status.json` and `metrics.json` are published by wwan microservice to inform NIM about the current
  cellular connectivity status and to publish packet/byte counters, respectively.
+
 - `resolv.conf/<interface-name>.dhcp` contains the list of nameservers that should be used with
  a given wwan interface (published by wwan to NIM and further via `DeviceNetworkStatus` to other
  microservices, like downloader)
