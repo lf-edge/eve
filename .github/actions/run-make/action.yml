@@ -21,8 +21,8 @@ runs:
         git fetch --force --tags
     - name: Login to DockerHUB
       run: |
-        echo "${{ inputs.RELEASE_DOCKERHUB_TOKEN }}" |\
-           docker login -u "${{ inputs.RELEASE_DOCKERHUB_ACCOUNT }}" --password-stdin
+        echo "${{ inputs.dockerhub-token }}" |\
+           docker login -u "${{ inputs.dockerhub-account }}" --password-stdin
     - name: Build and push `make -e ${{ inputs.command }}`
       run: |
         make -e ${{ inputs.command }}
