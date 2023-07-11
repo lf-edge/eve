@@ -15,14 +15,16 @@ Branch:     v5.10.72_2.2.0-phy
 Revision:   ff3f6d6ea8232e6330053449487678587c657e22
 
 Signed-off-by: Renê de Souza Pinto <rene@renesp.com.br>
+Ported to the kernel version 5.10.186
+Signed-off-by: Christoph Ostarek <christoph@zededa.com>
 ---
  drivers/gpu/Makefile                          |    2 +-
  drivers/gpu/drm/bridge/Kconfig                |   46 +
  drivers/gpu/drm/bridge/Makefile               |    6 +
- drivers/gpu/drm/bridge/adv7511/adv7511.h      |   10 +-
+ drivers/gpu/drm/bridge/adv7511/adv7511.h      |    9 +-
  drivers/gpu/drm/bridge/adv7511/adv7511_cec.c  |    3 +-
- drivers/gpu/drm/bridge/adv7511/adv7511_drv.c  |  209 +-
- drivers/gpu/drm/bridge/adv7511/adv7533.c      |  110 +-
+ drivers/gpu/drm/bridge/adv7511/adv7511_drv.c  |  192 +-
+ drivers/gpu/drm/bridge/adv7511/adv7533.c      |   88 +-
  .../drm/bridge/analogix/analogix_dp_core.c    |   31 +-
  .../gpu/drm/bridge/analogix/analogix_dp_reg.c |   14 +-
  drivers/gpu/drm/bridge/cadence/Kconfig        |   33 +
@@ -88,7 +90,7 @@ Signed-off-by: Renê de Souza Pinto <rene@renesp.com.br>
  drivers/gpu/drm/imx/dcss/dcss-hdr10.c         |  395 +++
  drivers/gpu/drm/imx/dcss/dcss-kms.c           |   56 +-
  drivers/gpu/drm/imx/dcss/dcss-kms.h           |   43 +-
- drivers/gpu/drm/imx/dcss/dcss-plane.c         |  364 +-
+ drivers/gpu/drm/imx/dcss/dcss-plane.c         |  362 +-
  drivers/gpu/drm/imx/dcss/dcss-rdsrc.c         |  119 +
  drivers/gpu/drm/imx/dcss/dcss-scaler.c        |  105 +-
  drivers/gpu/drm/imx/dcss/dcss-ss.c            |   27 +-
@@ -226,159 +228,159 @@ Signed-off-by: Renê de Souza Pinto <rene@renesp.com.br>
  include/video/imx-lcdifv3.h                   |   36 +
  include/video/imx8-pc.h                       |   33 +
  include/video/imx8-prefetch.h                 |   75 +
- 210 files changed, 59316 insertions(+), 1117 deletions(-)
- create mode 100644 drivers/gpu/drm/bridge/cadence/cdns-dp-core.c
- create mode 100644 drivers/gpu/drm/bridge/cadence/cdns-hdcp-common.c
- create mode 100644 drivers/gpu/drm/bridge/cadence/cdns-hdcp-common.h
- create mode 100644 drivers/gpu/drm/bridge/cadence/cdns-hdmi-core.c
- create mode 100644 drivers/gpu/drm/bridge/cadence/cdns-mhdp-audio.c
- create mode 100644 drivers/gpu/drm/bridge/cadence/cdns-mhdp-cec.c
- create mode 100644 drivers/gpu/drm/bridge/cadence/cdns-mhdp-common.c
- create mode 100644 drivers/gpu/drm/bridge/cadence/cdns-mhdp-dp.c
- create mode 100644 drivers/gpu/drm/bridge/cadence/cdns-mhdp-hdcp.c
- create mode 100644 drivers/gpu/drm/bridge/cadence/cdns-mhdp-hdcp.h
- create mode 100644 drivers/gpu/drm/bridge/cadence/cdns-mhdp-hdmi.c
- create mode 100644 drivers/gpu/drm/bridge/cadence/cdns-mhdp.h
- create mode 100644 drivers/gpu/drm/bridge/fsl-imx-ldb.c
- create mode 100644 drivers/gpu/drm/bridge/it6161.c
- create mode 100644 drivers/gpu/drm/bridge/it6161.h
- create mode 100644 drivers/gpu/drm/bridge/it6263.c
- create mode 100644 drivers/gpu/drm/bridge/nxp-seiko-43wvfig.c
- create mode 100644 drivers/gpu/drm/bridge/sec-dsim.c
- create mode 100644 drivers/gpu/drm/bridge/sn65dsi83_dsi_lvds.c
- create mode 100644 drivers/gpu/drm/bridge/synopsys/dw-hdmi-gp-audio.c
- create mode 100644 drivers/gpu/drm/imx/dcnano/Kconfig
- create mode 100644 drivers/gpu/drm/imx/dcnano/Makefile
- create mode 100644 drivers/gpu/drm/imx/dcnano/dcnano-crtc.c
- create mode 100644 drivers/gpu/drm/imx/dcnano/dcnano-drv.c
- create mode 100644 drivers/gpu/drm/imx/dcnano/dcnano-drv.h
- create mode 100644 drivers/gpu/drm/imx/dcnano/dcnano-kms.c
- create mode 100644 drivers/gpu/drm/imx/dcnano/dcnano-plane.c
- create mode 100644 drivers/gpu/drm/imx/dcnano/dcnano-reg.h
- create mode 100644 drivers/gpu/drm/imx/dcss/dcss-dec400d.c
- create mode 100644 drivers/gpu/drm/imx/dcss/dcss-dtrc.c
- create mode 100644 drivers/gpu/drm/imx/dcss/dcss-hdr10-tables.h
- create mode 100644 drivers/gpu/drm/imx/dcss/dcss-hdr10.c
- create mode 100644 drivers/gpu/drm/imx/dcss/dcss-rdsrc.c
- create mode 100644 drivers/gpu/drm/imx/dcss/dcss-wrscl.c
- create mode 100644 drivers/gpu/drm/imx/dpu/Kconfig
- create mode 100644 drivers/gpu/drm/imx/dpu/Makefile
- create mode 100644 drivers/gpu/drm/imx/dpu/dpu-blit.c
- create mode 100644 drivers/gpu/drm/imx/dpu/dpu-crc.c
- create mode 100644 drivers/gpu/drm/imx/dpu/dpu-crc.h
- create mode 100644 drivers/gpu/drm/imx/dpu/dpu-crtc.c
- create mode 100644 drivers/gpu/drm/imx/dpu/dpu-crtc.h
- create mode 100644 drivers/gpu/drm/imx/dpu/dpu-kms.c
- create mode 100644 drivers/gpu/drm/imx/dpu/dpu-kms.h
- create mode 100644 drivers/gpu/drm/imx/dpu/dpu-plane.c
- create mode 100644 drivers/gpu/drm/imx/dpu/dpu-plane.h
- create mode 100644 drivers/gpu/drm/imx/imx8mp-hdmi-pavi.c
- create mode 100644 drivers/gpu/drm/imx/imx8mp-hdmi-pavi.h
- create mode 100644 drivers/gpu/drm/imx/imx8mp-ldb.c
- create mode 100644 drivers/gpu/drm/imx/imx8qm-ldb.c
- create mode 100644 drivers/gpu/drm/imx/imx8qxp-ldb.c
- create mode 100644 drivers/gpu/drm/imx/ipuv3/Kconfig
- create mode 100644 drivers/gpu/drm/imx/ipuv3/Makefile
- rename drivers/gpu/drm/imx/{ => ipuv3}/ipuv3-crtc.c (93%)
- create mode 100644 drivers/gpu/drm/imx/ipuv3/ipuv3-kms.c
- create mode 100644 drivers/gpu/drm/imx/ipuv3/ipuv3-kms.h
- rename drivers/gpu/drm/imx/{ => ipuv3}/ipuv3-plane.c (100%)
- rename drivers/gpu/drm/imx/{ => ipuv3}/ipuv3-plane.h (94%)
- create mode 100644 drivers/gpu/drm/imx/lcdif-mux-display.c
- create mode 100644 drivers/gpu/drm/imx/lcdif/Kconfig
- create mode 100644 drivers/gpu/drm/imx/lcdif/Makefile
- create mode 100644 drivers/gpu/drm/imx/lcdif/lcdif-crtc.c
- create mode 100644 drivers/gpu/drm/imx/lcdif/lcdif-kms.c
- create mode 100644 drivers/gpu/drm/imx/lcdif/lcdif-kms.h
- create mode 100644 drivers/gpu/drm/imx/lcdif/lcdif-plane.c
- create mode 100644 drivers/gpu/drm/imx/lcdif/lcdif-plane.h
- create mode 100644 drivers/gpu/drm/imx/lcdifv3/Kconfig
- create mode 100644 drivers/gpu/drm/imx/lcdifv3/Makefile
- create mode 100644 drivers/gpu/drm/imx/lcdifv3/lcdifv3-crtc.c
- create mode 100644 drivers/gpu/drm/imx/lcdifv3/lcdifv3-kms.c
- create mode 100644 drivers/gpu/drm/imx/lcdifv3/lcdifv3-kms.h
- create mode 100644 drivers/gpu/drm/imx/lcdifv3/lcdifv3-plane.c
- create mode 100644 drivers/gpu/drm/imx/lcdifv3/lcdifv3-plane.h
- create mode 100644 drivers/gpu/drm/imx/mhdp/Kconfig
- create mode 100644 drivers/gpu/drm/imx/mhdp/Makefile
- create mode 100644 drivers/gpu/drm/imx/mhdp/cdns-mhdp-dp-phy.c
- create mode 100644 drivers/gpu/drm/imx/mhdp/cdns-mhdp-hdmi-phy.c
- create mode 100644 drivers/gpu/drm/imx/mhdp/cdns-mhdp-imx.h
- create mode 100644 drivers/gpu/drm/imx/mhdp/cdns-mhdp-imx8qm.c
- create mode 100644 drivers/gpu/drm/imx/mhdp/cdns-mhdp-imxdrv.c
- create mode 100644 drivers/gpu/drm/imx/mhdp/cdns-mhdp-ls1028a.c
- create mode 100644 drivers/gpu/drm/imx/mhdp/cdns-mhdp-phy.h
- create mode 100644 drivers/gpu/drm/imx/sec_mipi_dphy_ln14lpp.h
- create mode 100644 drivers/gpu/drm/imx/sec_mipi_dsim-imx.c
- create mode 100644 drivers/gpu/drm/imx/sec_mipi_pll_1432x.h
- create mode 100644 drivers/gpu/drm/panel/panel-wks-101wx001.c
- create mode 100644 drivers/gpu/imx/Kconfig
- create mode 100644 drivers/gpu/imx/Makefile
- create mode 100644 drivers/gpu/imx/dpu-blit/Kconfig
- create mode 100644 drivers/gpu/imx/dpu-blit/Makefile
- create mode 100644 drivers/gpu/imx/dpu-blit/dpu-blit-registers.h
- create mode 100644 drivers/gpu/imx/dpu-blit/dpu-blit.c
- create mode 100644 drivers/gpu/imx/dpu-blit/dpu-blit.h
- create mode 100644 drivers/gpu/imx/dpu/Kconfig
- create mode 100644 drivers/gpu/imx/dpu/Makefile
- create mode 100644 drivers/gpu/imx/dpu/dpu-common.c
- create mode 100644 drivers/gpu/imx/dpu/dpu-constframe.c
- create mode 100644 drivers/gpu/imx/dpu/dpu-disengcfg.c
- create mode 100644 drivers/gpu/imx/dpu/dpu-extdst.c
- create mode 100644 drivers/gpu/imx/dpu/dpu-fetchdecode.c
- create mode 100644 drivers/gpu/imx/dpu/dpu-fetcheco.c
- create mode 100644 drivers/gpu/imx/dpu/dpu-fetchlayer.c
- create mode 100644 drivers/gpu/imx/dpu/dpu-fetchunit.c
- create mode 100644 drivers/gpu/imx/dpu/dpu-fetchwarp.c
- create mode 100644 drivers/gpu/imx/dpu/dpu-framegen.c
- create mode 100644 drivers/gpu/imx/dpu/dpu-hscaler.c
- create mode 100644 drivers/gpu/imx/dpu/dpu-layerblend.c
- create mode 100644 drivers/gpu/imx/dpu/dpu-prv.h
- create mode 100644 drivers/gpu/imx/dpu/dpu-sc-misc.c
- create mode 100644 drivers/gpu/imx/dpu/dpu-signature.c
- create mode 100644 drivers/gpu/imx/dpu/dpu-store.c
- create mode 100644 drivers/gpu/imx/dpu/dpu-tcon.c
- create mode 100644 drivers/gpu/imx/dpu/dpu-vscaler.c
- create mode 100644 drivers/gpu/imx/imx8_dprc.c
- create mode 100644 drivers/gpu/imx/imx8_pc.c
- create mode 100644 drivers/gpu/imx/imx8_prg.c
- create mode 100644 drivers/gpu/imx/ipu-v3/Kconfig
- create mode 100644 drivers/gpu/imx/ipu-v3/Makefile
- create mode 100644 drivers/gpu/imx/ipu-v3/ipu-common.c
- create mode 100644 drivers/gpu/imx/ipu-v3/ipu-cpmem.c
- create mode 100644 drivers/gpu/imx/ipu-v3/ipu-csi.c
- create mode 100644 drivers/gpu/imx/ipu-v3/ipu-dc.c
- create mode 100644 drivers/gpu/imx/ipu-v3/ipu-di.c
- create mode 100644 drivers/gpu/imx/ipu-v3/ipu-dmfc.c
- create mode 100644 drivers/gpu/imx/ipu-v3/ipu-dp.c
- create mode 100644 drivers/gpu/imx/ipu-v3/ipu-ic-csc.c
- create mode 100644 drivers/gpu/imx/ipu-v3/ipu-ic.c
- create mode 100644 drivers/gpu/imx/ipu-v3/ipu-image-convert.c
- create mode 100644 drivers/gpu/imx/ipu-v3/ipu-pre.c
- create mode 100644 drivers/gpu/imx/ipu-v3/ipu-prg.c
- create mode 100644 drivers/gpu/imx/ipu-v3/ipu-prv.h
- create mode 100644 drivers/gpu/imx/ipu-v3/ipu-smfc.c
- create mode 100644 drivers/gpu/imx/ipu-v3/ipu-vdi.c
- create mode 100644 drivers/gpu/imx/lcdif/Kconfig
- create mode 100644 drivers/gpu/imx/lcdif/Makefile
- create mode 100644 drivers/gpu/imx/lcdif/lcdif-common.c
- create mode 100644 drivers/gpu/imx/lcdif/lcdif-regs.h
- create mode 100644 drivers/gpu/imx/lcdifv3/Kconfig
- create mode 100644 drivers/gpu/imx/lcdifv3/Makefile
- create mode 100644 drivers/gpu/imx/lcdifv3/lcdifv3-common.c
- create mode 100644 drivers/gpu/imx/lcdifv3/lcdifv3-regs.h
- create mode 100644 include/drm/bridge/cdns-mhdp.h
- create mode 100644 include/drm/bridge/fsl_imx_ldb.h
- create mode 100644 include/drm/bridge/sec_mipi_dsim.h
- create mode 100644 include/uapi/drm/imx_drm.h
- create mode 100644 include/video/dpu.h
- create mode 100644 include/video/imx-lcdif.h
- create mode 100644 include/video/imx-lcdifv3.h
- create mode 100644 include/video/imx8-pc.h
- create mode 100644 include/video/imx8-prefetch.h
+ 210 files changed, 59306 insertions(+), 1085 deletions(-)
+ create mode 100644 linux-5.10.186/drivers/gpu/drm/bridge/cadence/cdns-dp-core.c
+ create mode 100644 linux-5.10.186/drivers/gpu/drm/bridge/cadence/cdns-hdcp-common.c
+ create mode 100644 linux-5.10.186/drivers/gpu/drm/bridge/cadence/cdns-hdcp-common.h
+ create mode 100644 linux-5.10.186/drivers/gpu/drm/bridge/cadence/cdns-hdmi-core.c
+ create mode 100644 linux-5.10.186/drivers/gpu/drm/bridge/cadence/cdns-mhdp-audio.c
+ create mode 100644 linux-5.10.186/drivers/gpu/drm/bridge/cadence/cdns-mhdp-cec.c
+ create mode 100644 linux-5.10.186/drivers/gpu/drm/bridge/cadence/cdns-mhdp-common.c
+ create mode 100644 linux-5.10.186/drivers/gpu/drm/bridge/cadence/cdns-mhdp-dp.c
+ create mode 100644 linux-5.10.186/drivers/gpu/drm/bridge/cadence/cdns-mhdp-hdcp.c
+ create mode 100644 linux-5.10.186/drivers/gpu/drm/bridge/cadence/cdns-mhdp-hdcp.h
+ create mode 100644 linux-5.10.186/drivers/gpu/drm/bridge/cadence/cdns-mhdp-hdmi.c
+ create mode 100644 linux-5.10.186/drivers/gpu/drm/bridge/cadence/cdns-mhdp.h
+ create mode 100644 linux-5.10.186/drivers/gpu/drm/bridge/fsl-imx-ldb.c
+ create mode 100644 linux-5.10.186/drivers/gpu/drm/bridge/it6161.c
+ create mode 100644 linux-5.10.186/drivers/gpu/drm/bridge/it6161.h
+ create mode 100644 linux-5.10.186/drivers/gpu/drm/bridge/it6263.c
+ create mode 100644 linux-5.10.186/drivers/gpu/drm/bridge/nxp-seiko-43wvfig.c
+ create mode 100644 linux-5.10.186/drivers/gpu/drm/bridge/sec-dsim.c
+ create mode 100644 linux-5.10.186/drivers/gpu/drm/bridge/sn65dsi83_dsi_lvds.c
+ create mode 100644 linux-5.10.186/drivers/gpu/drm/bridge/synopsys/dw-hdmi-gp-audio.c
+ create mode 100644 linux-5.10.186/drivers/gpu/drm/imx/dcnano/Kconfig
+ create mode 100644 linux-5.10.186/drivers/gpu/drm/imx/dcnano/Makefile
+ create mode 100644 linux-5.10.186/drivers/gpu/drm/imx/dcnano/dcnano-crtc.c
+ create mode 100644 linux-5.10.186/drivers/gpu/drm/imx/dcnano/dcnano-drv.c
+ create mode 100644 linux-5.10.186/drivers/gpu/drm/imx/dcnano/dcnano-drv.h
+ create mode 100644 linux-5.10.186/drivers/gpu/drm/imx/dcnano/dcnano-kms.c
+ create mode 100644 linux-5.10.186/drivers/gpu/drm/imx/dcnano/dcnano-plane.c
+ create mode 100644 linux-5.10.186/drivers/gpu/drm/imx/dcnano/dcnano-reg.h
+ create mode 100644 linux-5.10.186/drivers/gpu/drm/imx/dcss/dcss-dec400d.c
+ create mode 100644 linux-5.10.186/drivers/gpu/drm/imx/dcss/dcss-dtrc.c
+ create mode 100644 linux-5.10.186/drivers/gpu/drm/imx/dcss/dcss-hdr10-tables.h
+ create mode 100644 linux-5.10.186/drivers/gpu/drm/imx/dcss/dcss-hdr10.c
+ create mode 100644 linux-5.10.186/drivers/gpu/drm/imx/dcss/dcss-rdsrc.c
+ create mode 100644 linux-5.10.186/drivers/gpu/drm/imx/dcss/dcss-wrscl.c
+ create mode 100644 linux-5.10.186/drivers/gpu/drm/imx/dpu/Kconfig
+ create mode 100644 linux-5.10.186/drivers/gpu/drm/imx/dpu/Makefile
+ create mode 100644 linux-5.10.186/drivers/gpu/drm/imx/dpu/dpu-blit.c
+ create mode 100644 linux-5.10.186/drivers/gpu/drm/imx/dpu/dpu-crc.c
+ create mode 100644 linux-5.10.186/drivers/gpu/drm/imx/dpu/dpu-crc.h
+ create mode 100644 linux-5.10.186/drivers/gpu/drm/imx/dpu/dpu-crtc.c
+ create mode 100644 linux-5.10.186/drivers/gpu/drm/imx/dpu/dpu-crtc.h
+ create mode 100644 linux-5.10.186/drivers/gpu/drm/imx/dpu/dpu-kms.c
+ create mode 100644 linux-5.10.186/drivers/gpu/drm/imx/dpu/dpu-kms.h
+ create mode 100644 linux-5.10.186/drivers/gpu/drm/imx/dpu/dpu-plane.c
+ create mode 100644 linux-5.10.186/drivers/gpu/drm/imx/dpu/dpu-plane.h
+ create mode 100644 linux-5.10.186/drivers/gpu/drm/imx/imx8mp-hdmi-pavi.c
+ create mode 100644 linux-5.10.186/drivers/gpu/drm/imx/imx8mp-hdmi-pavi.h
+ create mode 100644 linux-5.10.186/drivers/gpu/drm/imx/imx8mp-ldb.c
+ create mode 100644 linux-5.10.186/drivers/gpu/drm/imx/imx8qm-ldb.c
+ create mode 100644 linux-5.10.186/drivers/gpu/drm/imx/imx8qxp-ldb.c
+ create mode 100644 linux-5.10.186/drivers/gpu/drm/imx/ipuv3/Kconfig
+ create mode 100644 linux-5.10.186/drivers/gpu/drm/imx/ipuv3/Makefile
+ rename linux-5.10.186/drivers/gpu/drm/imx/{ => ipuv3}/ipuv3-crtc.c (93%)
+ create mode 100644 linux-5.10.186/drivers/gpu/drm/imx/ipuv3/ipuv3-kms.c
+ create mode 100644 linux-5.10.186/drivers/gpu/drm/imx/ipuv3/ipuv3-kms.h
+ rename linux-5.10.186/drivers/gpu/drm/imx/{ => ipuv3}/ipuv3-plane.c (100%)
+ rename linux-5.10.186/drivers/gpu/drm/imx/{ => ipuv3}/ipuv3-plane.h (94%)
+ create mode 100644 linux-5.10.186/drivers/gpu/drm/imx/lcdif-mux-display.c
+ create mode 100644 linux-5.10.186/drivers/gpu/drm/imx/lcdif/Kconfig
+ create mode 100644 linux-5.10.186/drivers/gpu/drm/imx/lcdif/Makefile
+ create mode 100644 linux-5.10.186/drivers/gpu/drm/imx/lcdif/lcdif-crtc.c
+ create mode 100644 linux-5.10.186/drivers/gpu/drm/imx/lcdif/lcdif-kms.c
+ create mode 100644 linux-5.10.186/drivers/gpu/drm/imx/lcdif/lcdif-kms.h
+ create mode 100644 linux-5.10.186/drivers/gpu/drm/imx/lcdif/lcdif-plane.c
+ create mode 100644 linux-5.10.186/drivers/gpu/drm/imx/lcdif/lcdif-plane.h
+ create mode 100644 linux-5.10.186/drivers/gpu/drm/imx/lcdifv3/Kconfig
+ create mode 100644 linux-5.10.186/drivers/gpu/drm/imx/lcdifv3/Makefile
+ create mode 100644 linux-5.10.186/drivers/gpu/drm/imx/lcdifv3/lcdifv3-crtc.c
+ create mode 100644 linux-5.10.186/drivers/gpu/drm/imx/lcdifv3/lcdifv3-kms.c
+ create mode 100644 linux-5.10.186/drivers/gpu/drm/imx/lcdifv3/lcdifv3-kms.h
+ create mode 100644 linux-5.10.186/drivers/gpu/drm/imx/lcdifv3/lcdifv3-plane.c
+ create mode 100644 linux-5.10.186/drivers/gpu/drm/imx/lcdifv3/lcdifv3-plane.h
+ create mode 100644 linux-5.10.186/drivers/gpu/drm/imx/mhdp/Kconfig
+ create mode 100644 linux-5.10.186/drivers/gpu/drm/imx/mhdp/Makefile
+ create mode 100644 linux-5.10.186/drivers/gpu/drm/imx/mhdp/cdns-mhdp-dp-phy.c
+ create mode 100644 linux-5.10.186/drivers/gpu/drm/imx/mhdp/cdns-mhdp-hdmi-phy.c
+ create mode 100644 linux-5.10.186/drivers/gpu/drm/imx/mhdp/cdns-mhdp-imx.h
+ create mode 100644 linux-5.10.186/drivers/gpu/drm/imx/mhdp/cdns-mhdp-imx8qm.c
+ create mode 100644 linux-5.10.186/drivers/gpu/drm/imx/mhdp/cdns-mhdp-imxdrv.c
+ create mode 100644 linux-5.10.186/drivers/gpu/drm/imx/mhdp/cdns-mhdp-ls1028a.c
+ create mode 100644 linux-5.10.186/drivers/gpu/drm/imx/mhdp/cdns-mhdp-phy.h
+ create mode 100644 linux-5.10.186/drivers/gpu/drm/imx/sec_mipi_dphy_ln14lpp.h
+ create mode 100644 linux-5.10.186/drivers/gpu/drm/imx/sec_mipi_dsim-imx.c
+ create mode 100644 linux-5.10.186/drivers/gpu/drm/imx/sec_mipi_pll_1432x.h
+ create mode 100644 linux-5.10.186/drivers/gpu/drm/panel/panel-wks-101wx001.c
+ create mode 100644 linux-5.10.186/drivers/gpu/imx/Kconfig
+ create mode 100644 linux-5.10.186/drivers/gpu/imx/Makefile
+ create mode 100644 linux-5.10.186/drivers/gpu/imx/dpu-blit/Kconfig
+ create mode 100644 linux-5.10.186/drivers/gpu/imx/dpu-blit/Makefile
+ create mode 100644 linux-5.10.186/drivers/gpu/imx/dpu-blit/dpu-blit-registers.h
+ create mode 100644 linux-5.10.186/drivers/gpu/imx/dpu-blit/dpu-blit.c
+ create mode 100644 linux-5.10.186/drivers/gpu/imx/dpu-blit/dpu-blit.h
+ create mode 100644 linux-5.10.186/drivers/gpu/imx/dpu/Kconfig
+ create mode 100644 linux-5.10.186/drivers/gpu/imx/dpu/Makefile
+ create mode 100644 linux-5.10.186/drivers/gpu/imx/dpu/dpu-common.c
+ create mode 100644 linux-5.10.186/drivers/gpu/imx/dpu/dpu-constframe.c
+ create mode 100644 linux-5.10.186/drivers/gpu/imx/dpu/dpu-disengcfg.c
+ create mode 100644 linux-5.10.186/drivers/gpu/imx/dpu/dpu-extdst.c
+ create mode 100644 linux-5.10.186/drivers/gpu/imx/dpu/dpu-fetchdecode.c
+ create mode 100644 linux-5.10.186/drivers/gpu/imx/dpu/dpu-fetcheco.c
+ create mode 100644 linux-5.10.186/drivers/gpu/imx/dpu/dpu-fetchlayer.c
+ create mode 100644 linux-5.10.186/drivers/gpu/imx/dpu/dpu-fetchunit.c
+ create mode 100644 linux-5.10.186/drivers/gpu/imx/dpu/dpu-fetchwarp.c
+ create mode 100644 linux-5.10.186/drivers/gpu/imx/dpu/dpu-framegen.c
+ create mode 100644 linux-5.10.186/drivers/gpu/imx/dpu/dpu-hscaler.c
+ create mode 100644 linux-5.10.186/drivers/gpu/imx/dpu/dpu-layerblend.c
+ create mode 100644 linux-5.10.186/drivers/gpu/imx/dpu/dpu-prv.h
+ create mode 100644 linux-5.10.186/drivers/gpu/imx/dpu/dpu-sc-misc.c
+ create mode 100644 linux-5.10.186/drivers/gpu/imx/dpu/dpu-signature.c
+ create mode 100644 linux-5.10.186/drivers/gpu/imx/dpu/dpu-store.c
+ create mode 100644 linux-5.10.186/drivers/gpu/imx/dpu/dpu-tcon.c
+ create mode 100644 linux-5.10.186/drivers/gpu/imx/dpu/dpu-vscaler.c
+ create mode 100644 linux-5.10.186/drivers/gpu/imx/imx8_dprc.c
+ create mode 100644 linux-5.10.186/drivers/gpu/imx/imx8_pc.c
+ create mode 100644 linux-5.10.186/drivers/gpu/imx/imx8_prg.c
+ create mode 100644 linux-5.10.186/drivers/gpu/imx/ipu-v3/Kconfig
+ create mode 100644 linux-5.10.186/drivers/gpu/imx/ipu-v3/Makefile
+ create mode 100644 linux-5.10.186/drivers/gpu/imx/ipu-v3/ipu-common.c
+ create mode 100644 linux-5.10.186/drivers/gpu/imx/ipu-v3/ipu-cpmem.c
+ create mode 100644 linux-5.10.186/drivers/gpu/imx/ipu-v3/ipu-csi.c
+ create mode 100644 linux-5.10.186/drivers/gpu/imx/ipu-v3/ipu-dc.c
+ create mode 100644 linux-5.10.186/drivers/gpu/imx/ipu-v3/ipu-di.c
+ create mode 100644 linux-5.10.186/drivers/gpu/imx/ipu-v3/ipu-dmfc.c
+ create mode 100644 linux-5.10.186/drivers/gpu/imx/ipu-v3/ipu-dp.c
+ create mode 100644 linux-5.10.186/drivers/gpu/imx/ipu-v3/ipu-ic-csc.c
+ create mode 100644 linux-5.10.186/drivers/gpu/imx/ipu-v3/ipu-ic.c
+ create mode 100644 linux-5.10.186/drivers/gpu/imx/ipu-v3/ipu-image-convert.c
+ create mode 100644 linux-5.10.186/drivers/gpu/imx/ipu-v3/ipu-pre.c
+ create mode 100644 linux-5.10.186/drivers/gpu/imx/ipu-v3/ipu-prg.c
+ create mode 100644 linux-5.10.186/drivers/gpu/imx/ipu-v3/ipu-prv.h
+ create mode 100644 linux-5.10.186/drivers/gpu/imx/ipu-v3/ipu-smfc.c
+ create mode 100644 linux-5.10.186/drivers/gpu/imx/ipu-v3/ipu-vdi.c
+ create mode 100644 linux-5.10.186/drivers/gpu/imx/lcdif/Kconfig
+ create mode 100644 linux-5.10.186/drivers/gpu/imx/lcdif/Makefile
+ create mode 100644 linux-5.10.186/drivers/gpu/imx/lcdif/lcdif-common.c
+ create mode 100644 linux-5.10.186/drivers/gpu/imx/lcdif/lcdif-regs.h
+ create mode 100644 linux-5.10.186/drivers/gpu/imx/lcdifv3/Kconfig
+ create mode 100644 linux-5.10.186/drivers/gpu/imx/lcdifv3/Makefile
+ create mode 100644 linux-5.10.186/drivers/gpu/imx/lcdifv3/lcdifv3-common.c
+ create mode 100644 linux-5.10.186/drivers/gpu/imx/lcdifv3/lcdifv3-regs.h
+ create mode 100644 linux-5.10.186/include/drm/bridge/cdns-mhdp.h
+ create mode 100644 linux-5.10.186/include/drm/bridge/fsl_imx_ldb.h
+ create mode 100644 linux-5.10.186/include/drm/bridge/sec_mipi_dsim.h
+ create mode 100644 linux-5.10.186/include/uapi/drm/imx_drm.h
+ create mode 100644 linux-5.10.186/include/video/dpu.h
+ create mode 100644 linux-5.10.186/include/video/imx-lcdif.h
+ create mode 100644 linux-5.10.186/include/video/imx-lcdifv3.h
+ create mode 100644 linux-5.10.186/include/video/imx8-pc.h
+ create mode 100644 linux-5.10.186/include/video/imx8-prefetch.h
 
 diff --git a/drivers/gpu/Makefile b/drivers/gpu/Makefile
-index 835c88318cec..aadcc4101c10 100644
+index 835c88318..aadcc4101 100644
 --- a/drivers/gpu/Makefile
 +++ b/drivers/gpu/Makefile
 @@ -3,6 +3,6 @@
@@ -390,7 +392,7 @@ index 835c88318cec..aadcc4101c10 100644
  obj-$(CONFIG_IMX_IPUV3_CORE)	+= ipu-v3/
  obj-$(CONFIG_TRACE_GPU_MEM)		+= trace/
 diff --git a/drivers/gpu/drm/bridge/Kconfig b/drivers/gpu/drm/bridge/Kconfig
-index 4e82647a621e..962626c7beef 100644
+index 4e82647a6..962626c7b 100644
 --- a/drivers/gpu/drm/bridge/Kconfig
 +++ b/drivers/gpu/drm/bridge/Kconfig
 @@ -62,6 +62,15 @@ config DRM_LONTIUM_LT9611
@@ -466,7 +468,7 @@ index 4e82647a621e..962626c7beef 100644
 +
  endmenu
 diff --git a/drivers/gpu/drm/bridge/Makefile b/drivers/gpu/drm/bridge/Makefile
-index 2b3aff104e46..28c9050b10ce 100644
+index 2b3aff104..28c9050b1 100644
 --- a/drivers/gpu/drm/bridge/Makefile
 +++ b/drivers/gpu/drm/bridge/Makefile
 @@ -3,6 +3,7 @@ obj-$(CONFIG_DRM_CDNS_DSI) += cdns-dsi.o
@@ -494,7 +496,7 @@ index 2b3aff104e46..28c9050b10ce 100644
 +obj-$(CONFIG_DRM_SEC_MIPI_DSIM) += sec-dsim.o
 +obj-$(CONFIG_DRM_NXP_SEIKO_43WVFIG) += nxp-seiko-43wvfig.o
 diff --git a/drivers/gpu/drm/bridge/adv7511/adv7511.h b/drivers/gpu/drm/bridge/adv7511/adv7511.h
-index a0f6ee15c248..5d1286414c96 100644
+index e95abeb64..da3e39c63 100644
 --- a/drivers/gpu/drm/bridge/adv7511/adv7511.h
 +++ b/drivers/gpu/drm/bridge/adv7511/adv7511.h
 @@ -169,7 +169,6 @@
@@ -534,16 +536,8 @@ index a0f6ee15c248..5d1286414c96 100644
  	bool use_timing_gen;
  
  	enum adv7511_type type;
-@@ -397,7 +404,6 @@ static inline int adv7511_cec_init(struct device *dev, struct adv7511 *adv7511)
- 
- void adv7533_dsi_power_on(struct adv7511 *adv);
- void adv7533_dsi_power_off(struct adv7511 *adv);
--void adv7533_mode_set(struct adv7511 *adv, const struct drm_display_mode *mode);
- int adv7533_patch_registers(struct adv7511 *adv);
- int adv7533_patch_cec_registers(struct adv7511 *adv);
- int adv7533_attach_dsi(struct adv7511 *adv);
 diff --git a/drivers/gpu/drm/bridge/adv7511/adv7511_cec.c b/drivers/gpu/drm/bridge/adv7511/adv7511_cec.c
-index a20a45c0b353..366d9bdc960b 100644
+index ddd1305b8..bd2628de9 100644
 --- a/drivers/gpu/drm/bridge/adv7511/adv7511_cec.c
 +++ b/drivers/gpu/drm/bridge/adv7511/adv7511_cec.c
 @@ -302,7 +302,8 @@ static int adv7511_cec_parse_dt(struct device *dev, struct adv7511 *adv7511)
@@ -557,7 +551,7 @@ index a20a45c0b353..366d9bdc960b 100644
  	int ret = adv7511_cec_parse_dt(dev, adv7511);
  
 diff --git a/drivers/gpu/drm/bridge/adv7511/adv7511_drv.c b/drivers/gpu/drm/bridge/adv7511/adv7511_drv.c
-index aca2f14f04c2..b550f53a08c3 100644
+index 6ba860a16..e19bea05a 100644
 --- a/drivers/gpu/drm/bridge/adv7511/adv7511_drv.c
 +++ b/drivers/gpu/drm/bridge/adv7511/adv7511_drv.c
 @@ -9,7 +9,9 @@
@@ -708,12 +702,9 @@ index aca2f14f04c2..b550f53a08c3 100644
  	}
  
  	adv7511->status = status;
-@@ -697,11 +714,23 @@ adv7511_detect(struct adv7511 *adv7511, struct drm_connector *connector)
- }
- 
+@@ -699,9 +716,21 @@ adv7511_detect(struct adv7511 *adv7511, struct drm_connector *connector)
  static enum drm_mode_status adv7511_mode_valid(struct adv7511 *adv7511,
--			      struct drm_display_mode *mode)
-+			      const struct drm_display_mode *mode)
+ 			      const struct drm_display_mode *mode)
  {
 +	size_t i, num_modes = ARRAY_SIZE(valid_clocks);
 +	bool clock_ok = false;
@@ -733,7 +724,7 @@ index aca2f14f04c2..b550f53a08c3 100644
  	return MODE_OK;
  }
  
-@@ -786,14 +815,16 @@ static void adv7511_mode_set(struct adv7511 *adv7511,
+@@ -786,8 +815,13 @@ static void adv7511_mode_set(struct adv7511 *adv7511,
  	else
  		low_refresh_rate = ADV7511_LOW_REFRESH_RATE_NONE;
  
@@ -741,21 +732,15 @@ index aca2f14f04c2..b550f53a08c3 100644
 -		0x6, low_refresh_rate << 1);
 +	if (adv7511->type == ADV7535)
 +		regmap_update_bits(adv7511->regmap, 0x4a,
-+			0xc, low_refresh_rate << 2);
++				0xc, low_refresh_rate << 2);
 +	else
 +		regmap_update_bits(adv7511->regmap, 0xfb,
-+			0x6, low_refresh_rate << 1);
++				0x6, low_refresh_rate << 1);
 +
  	regmap_update_bits(adv7511->regmap, 0x17,
  		0x60, (vsync_polarity << 6) | (hsync_polarity << 5));
  
--	if (adv7511->type == ADV7533 || adv7511->type == ADV7535)
--		adv7533_mode_set(adv7511, adj_mode);
--
- 	drm_mode_copy(&adv7511->curr_mode, adj_mode);
- 
- 	/*
-@@ -904,6 +935,23 @@ static void adv7511_bridge_disable(struct drm_bridge *bridge)
+@@ -901,6 +935,14 @@ static void adv7511_bridge_disable(struct drm_bridge *bridge)
  	adv7511_power_off(adv);
  }
  
@@ -767,19 +752,10 @@ index aca2f14f04c2..b550f53a08c3 100644
 +	return adv7511_get_modes(adv, connector);
 +}
 +
-+static enum drm_mode_status adv7511_bridge_mode_valid(struct drm_bridge *bridge,
-+					   const struct drm_display_info *info,
-+					   const struct drm_display_mode *mode)
-+{
-+	struct adv7511 *adv = bridge_to_adv7511(bridge);
-+
-+	return adv7511_mode_valid(adv, mode);
-+}
-+
  static void adv7511_bridge_mode_set(struct drm_bridge *bridge,
  				    const struct drm_display_mode *mode,
  				    const struct drm_display_mode *adj_mode)
-@@ -959,14 +1007,30 @@ static void adv7511_bridge_hpd_notify(struct drm_bridge *bridge,
+@@ -968,15 +1010,32 @@ static void adv7511_bridge_hpd_notify(struct drm_bridge *bridge,
  		cec_phys_addr_invalidate(adv->cec_adap);
  }
  
@@ -795,6 +771,7 @@ index aca2f14f04c2..b550f53a08c3 100644
 +
 +	drm_connector_cleanup(&adv->connector);
 +}
++		
 +
  static const struct drm_bridge_funcs adv7511_bridge_funcs = {
  	.enable = adv7511_bridge_enable,
@@ -802,6 +779,7 @@ index aca2f14f04c2..b550f53a08c3 100644
 +	.get_modes = adv7511_bridge_get_modes,
 +	.mode_valid = adv7511_bridge_mode_valid,
  	.mode_set = adv7511_bridge_mode_set,
+ 	.mode_valid = adv7511_bridge_mode_valid,
  	.attach = adv7511_bridge_attach,
  	.detect = adv7511_bridge_detect,
  	.get_edid = adv7511_bridge_get_edid,
@@ -810,7 +788,7 @@ index aca2f14f04c2..b550f53a08c3 100644
  };
  
  /* -----------------------------------------------------------------------------
-@@ -1060,7 +1124,7 @@ static int adv7511_init_cec_regmap(struct adv7511 *adv)
+@@ -1070,7 +1129,7 @@ static int adv7511_init_cec_regmap(struct adv7511 *adv)
  	int ret;
  
  	adv->i2c_cec = i2c_new_ancillary_device(adv->i2c_main, "cec",
@@ -818,8 +796,8 @@ index aca2f14f04c2..b550f53a08c3 100644
 +						adv->addr_cec);
  	if (IS_ERR(adv->i2c_cec))
  		return PTR_ERR(adv->i2c_cec);
- 	i2c_set_clientdata(adv->i2c_cec, adv);
-@@ -1172,6 +1236,14 @@ static int adv7511_probe(struct i2c_client *i2c, const struct i2c_device_id *id)
+ 
+@@ -1186,6 +1245,14 @@ static int adv7511_probe(struct i2c_client *i2c, const struct i2c_device_id *id)
  	struct adv7511_link_config link_config;
  	struct adv7511 *adv7511;
  	struct device *dev = &i2c->dev;
@@ -834,7 +812,7 @@ index aca2f14f04c2..b550f53a08c3 100644
  	unsigned int val;
  	int ret;
  
-@@ -1206,6 +1278,21 @@ static int adv7511_probe(struct i2c_client *i2c, const struct i2c_device_id *id)
+@@ -1220,6 +1287,21 @@ static int adv7511_probe(struct i2c_client *i2c, const struct i2c_device_id *id)
  		return ret;
  	}
  
@@ -856,13 +834,13 @@ index aca2f14f04c2..b550f53a08c3 100644
  	/*
  	 * The power down GPIO is optional. If present, toggle it from active to
  	 * inactive to wake up the encoder.
-@@ -1243,33 +1330,33 @@ static int adv7511_probe(struct i2c_client *i2c, const struct i2c_device_id *id)
+@@ -1256,26 +1338,28 @@ static int adv7511_probe(struct i2c_client *i2c, const struct i2c_device_id *id)
+ 		goto uninit_regulators;
  
  	adv7511_packet_disable(adv7511, 0xffff);
- 
 +	regmap_write(adv7511->regmap, ADV7511_REG_EDID_I2C_ADDR,
 +			edid_i2c_addr);
-+
+ 
  	adv7511->i2c_edid = i2c_new_ancillary_device(i2c, "edid",
 -					ADV7511_EDID_I2C_ADDR_DEFAULT);
 +					adv7511->addr_edid);
@@ -891,15 +869,7 @@ index aca2f14f04c2..b550f53a08c3 100644
  
  	ret = adv7511_init_cec_regmap(adv7511);
  	if (ret)
- 		goto err_i2c_unregister_packet;
- 
--	regmap_write(adv7511->regmap, ADV7511_REG_CEC_I2C_ADDR,
--		     adv7511->i2c_cec->addr << 1);
--
- 	INIT_WORK(&adv7511->hpd_work, adv7511_hpd_work);
- 
- 	if (i2c->irq) {
-@@ -1306,7 +1393,6 @@ static int adv7511_probe(struct i2c_client *i2c, const struct i2c_device_id *id)
+@@ -1317,7 +1401,6 @@ static int adv7511_probe(struct i2c_client *i2c, const struct i2c_device_id *id)
  	return 0;
  
  err_unregister_cec:
@@ -907,7 +877,7 @@ index aca2f14f04c2..b550f53a08c3 100644
  	i2c_unregister_device(adv7511->i2c_cec);
  	if (adv7511->cec_clk)
  		clk_disable_unprepare(adv7511->cec_clk);
-@@ -1316,6 +1402,37 @@ static int adv7511_probe(struct i2c_client *i2c, const struct i2c_device_id *id)
+@@ -1327,6 +1410,37 @@ static int adv7511_probe(struct i2c_client *i2c, const struct i2c_device_id *id)
  	i2c_unregister_device(adv7511->i2c_edid);
  uninit_regulators:
  	adv7511_uninit_regulators(adv7511);
@@ -945,7 +915,7 @@ index aca2f14f04c2..b550f53a08c3 100644
  
  	return ret;
  }
-@@ -1324,8 +1441,6 @@ static int adv7511_remove(struct i2c_client *i2c)
+@@ -1335,8 +1449,6 @@ static int adv7511_remove(struct i2c_client *i2c)
  {
  	struct adv7511 *adv7511 = i2c_get_clientdata(i2c);
  
@@ -955,7 +925,7 @@ index aca2f14f04c2..b550f53a08c3 100644
  	if (adv7511->cec_clk)
  		clk_disable_unprepare(adv7511->cec_clk);
 diff --git a/drivers/gpu/drm/bridge/adv7511/adv7533.c b/drivers/gpu/drm/bridge/adv7511/adv7533.c
-index aa19d5a40e31..27d63b804f31 100644
+index e0bdedf22..d7cba2a23 100644
 --- a/drivers/gpu/drm/bridge/adv7511/adv7533.c
 +++ b/drivers/gpu/drm/bridge/adv7511/adv7533.c
 @@ -26,10 +26,8 @@ static const struct reg_sequence adv7533_cec_fixed_registers[] = {
@@ -1005,12 +975,12 @@ index aa19d5a40e31..27d63b804f31 100644
 -		adv7511_dsi_config_timing_gen(adv);
 +	/* Gate DSI LP Oscillator */
 +	regmap_update_bits(adv->regmap_cec, 0x03, 0x02, 0x00);
- 
--	/* set number of dsi lanes */
++
 +	/* 01-03 Initialisation (Fixed) Registers */
 +	regmap_register_patch(adv->regmap_cec, adv7533_cec_fixed_registers,
 +			      ARRAY_SIZE(adv7533_cec_fixed_registers));
-+
+ 
+-	/* set number of dsi lanes */
 +	/* 02-04 DSI Lanes */
  	regmap_write(adv->regmap_cec, 0x1c, dsi->lanes << 4);
  
@@ -1064,36 +1034,7 @@ index aa19d5a40e31..27d63b804f31 100644
  }
  
  void adv7533_dsi_power_off(struct adv7511 *adv)
-@@ -100,28 +130,6 @@ void adv7533_dsi_power_off(struct adv7511 *adv)
- 	regmap_write(adv->regmap_cec, 0x27, 0x0b);
- }
- 
--void adv7533_mode_set(struct adv7511 *adv, const struct drm_display_mode *mode)
--{
--	struct mipi_dsi_device *dsi = adv->dsi;
--	int lanes, ret;
--
--	if (adv->num_dsi_lanes != 4)
--		return;
--
--	if (mode->clock > 80000)
--		lanes = 4;
--	else
--		lanes = 3;
--
--	if (lanes != dsi->lanes) {
--		mipi_dsi_detach(dsi);
--		dsi->lanes = lanes;
--		ret = mipi_dsi_attach(dsi);
--		if (ret)
--			dev_err(&dsi->dev, "failed to change host lanes\n");
--	}
--}
--
- int adv7533_patch_registers(struct adv7511 *adv)
- {
- 	return regmap_register_patch(adv->regmap,
-@@ -143,7 +151,7 @@ int adv7533_attach_dsi(struct adv7511 *adv)
+@@ -141,7 +171,7 @@ int adv7533_attach_dsi(struct adv7511 *adv)
  	struct mipi_dsi_device *dsi;
  	int ret = 0;
  	const struct mipi_dsi_device_info info = { .type = "adv7533",
@@ -1102,7 +1043,7 @@ index aa19d5a40e31..27d63b804f31 100644
  						   .node = NULL,
  						 };
  
-@@ -189,14 +197,24 @@ void adv7533_detach_dsi(struct adv7511 *adv)
+@@ -187,14 +217,24 @@ void adv7533_detach_dsi(struct adv7511 *adv)
  
  int adv7533_parse_dt(struct device_node *np, struct adv7511 *adv)
  {
@@ -1116,12 +1057,12 @@ index aa19d5a40e31..27d63b804f31 100644
 -	if (num_lanes < 1 || num_lanes > 4)
 +	if (num_lanes < 1 || num_lanes > 4) {
 +		dev_err(dev, "Invalid dsi-lanes: %d\n", num_lanes);
- 		return -EINVAL;
++		return -EINVAL;
 +	}
 +
 +	if (channel_id > 3) {
 +		dev_err(dev, "Invalid dsi-channel: %d\n", channel_id);
-+		return -EINVAL;
+ 		return -EINVAL;
 +	}
  
  	adv->num_dsi_lanes = num_lanes;
@@ -1129,7 +1070,7 @@ index aa19d5a40e31..27d63b804f31 100644
  
  	adv->host_node = of_graph_get_remote_node(np, 0, 0);
  	if (!adv->host_node)
-@@ -207,6 +225,10 @@ int adv7533_parse_dt(struct device_node *np, struct adv7511 *adv)
+@@ -205,6 +245,10 @@ int adv7533_parse_dt(struct device_node *np, struct adv7511 *adv)
  	adv->use_timing_gen = !of_property_read_bool(np,
  						"adi,disable-timing-generator");
  
@@ -1141,10 +1082,10 @@ index aa19d5a40e31..27d63b804f31 100644
  	adv->rgb = true;
  	adv->embedded_sync = false;
 diff --git a/drivers/gpu/drm/bridge/analogix/analogix_dp_core.c b/drivers/gpu/drm/bridge/analogix/analogix_dp_core.c
-index 9755672caf1a..aa1bb86293fd 100644
+index e8baa0745..66be547fb 100644
 --- a/drivers/gpu/drm/bridge/analogix/analogix_dp_core.c
 +++ b/drivers/gpu/drm/bridge/analogix/analogix_dp_core.c
-@@ -1639,19 +1639,8 @@ static ssize_t analogix_dpaux_transfer(struct drm_dp_aux *aux,
+@@ -1673,19 +1673,8 @@ static ssize_t analogix_dpaux_transfer(struct drm_dp_aux *aux,
  				       struct drm_dp_aux_msg *msg)
  {
  	struct analogix_dp_device *dp = to_dp(aux);
@@ -1165,7 +1106,7 @@ index 9755672caf1a..aa1bb86293fd 100644
  }
  
  struct analogix_dp_device *
-@@ -1716,10 +1705,8 @@ analogix_dp_probe(struct device *dev, struct analogix_dp_plat_data *plat_data)
+@@ -1750,10 +1739,8 @@ analogix_dp_probe(struct device *dev, struct analogix_dp_plat_data *plat_data)
  	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
  
  	dp->reg_base = devm_ioremap_resource(&pdev->dev, res);
@@ -1178,7 +1119,7 @@ index 9755672caf1a..aa1bb86293fd 100644
  
  	dp->force_hpd = of_property_read_bool(dev->of_node, "force-hpd");
  
-@@ -1731,8 +1718,7 @@ analogix_dp_probe(struct device *dev, struct analogix_dp_plat_data *plat_data)
+@@ -1765,8 +1752,7 @@ analogix_dp_probe(struct device *dev, struct analogix_dp_plat_data *plat_data)
  	if (IS_ERR(dp->hpd_gpiod)) {
  		dev_err(dev, "error getting HDP GPIO: %ld\n",
  			PTR_ERR(dp->hpd_gpiod));
@@ -1188,7 +1129,7 @@ index 9755672caf1a..aa1bb86293fd 100644
  	}
  
  	if (dp->hpd_gpiod) {
-@@ -1752,8 +1738,7 @@ analogix_dp_probe(struct device *dev, struct analogix_dp_plat_data *plat_data)
+@@ -1786,8 +1772,7 @@ analogix_dp_probe(struct device *dev, struct analogix_dp_plat_data *plat_data)
  
  	if (dp->irq == -ENXIO) {
  		dev_err(&pdev->dev, "failed to get irq\n");
@@ -1198,7 +1139,7 @@ index 9755672caf1a..aa1bb86293fd 100644
  	}
  
  	ret = devm_request_threaded_irq(&pdev->dev, dp->irq,
-@@ -1762,15 +1747,11 @@ analogix_dp_probe(struct device *dev, struct analogix_dp_plat_data *plat_data)
+@@ -1796,15 +1781,11 @@ analogix_dp_probe(struct device *dev, struct analogix_dp_plat_data *plat_data)
  					irq_flags, "analogix-dp", dp);
  	if (ret) {
  		dev_err(&pdev->dev, "failed to request irq\n");
@@ -1216,7 +1157,7 @@ index 9755672caf1a..aa1bb86293fd 100644
  EXPORT_SYMBOL_GPL(analogix_dp_probe);
  
 diff --git a/drivers/gpu/drm/bridge/analogix/analogix_dp_reg.c b/drivers/gpu/drm/bridge/analogix/analogix_dp_reg.c
-index cab3f5c4e2fc..914c569ab8c1 100644
+index cab3f5c4e..914c569ab 100644
 --- a/drivers/gpu/drm/bridge/analogix/analogix_dp_reg.c
 +++ b/drivers/gpu/drm/bridge/analogix/analogix_dp_reg.c
 @@ -1086,21 +1086,11 @@ int analogix_dp_send_psr_spd(struct analogix_dp_device *dp,
@@ -1244,7 +1185,7 @@ index cab3f5c4e2fc..914c569ab8c1 100644
  		dev_warn(dp->dev, "Failed to apply PSR %d\n", ret);
  		return ret;
 diff --git a/drivers/gpu/drm/bridge/cadence/Kconfig b/drivers/gpu/drm/bridge/cadence/Kconfig
-index ef8c230e0f62..d08aadf32414 100644
+index ef8c230e0..d08aadf32 100644
 --- a/drivers/gpu/drm/bridge/cadence/Kconfig
 +++ b/drivers/gpu/drm/bridge/cadence/Kconfig
 @@ -22,3 +22,36 @@ config DRM_CDNS_MHDP8546_J721E
@@ -1285,7 +1226,7 @@ index ef8c230e0f62..d08aadf32414 100644
 +	select CEC_CORE
 +	select CEC_NOTIFIER
 diff --git a/drivers/gpu/drm/bridge/cadence/Makefile b/drivers/gpu/drm/bridge/cadence/Makefile
-index 8f647991b374..a6571358898c 100644
+index 8f647991b..a65713588 100644
 --- a/drivers/gpu/drm/bridge/cadence/Makefile
 +++ b/drivers/gpu/drm/bridge/cadence/Makefile
 @@ -2,3 +2,13 @@
@@ -1304,7 +1245,7 @@ index 8f647991b374..a6571358898c 100644
 +obj-$(CONFIG_DRM_CDNS_MHDP)		+= cdns_mhdp_drmcore.o
 diff --git a/drivers/gpu/drm/bridge/cadence/cdns-dp-core.c b/drivers/gpu/drm/bridge/cadence/cdns-dp-core.c
 new file mode 100644
-index 000000000000..bee452effa9e
+index 000000000..bee452eff
 --- /dev/null
 +++ b/drivers/gpu/drm/bridge/cadence/cdns-dp-core.c
 @@ -0,0 +1,868 @@
@@ -2178,7 +2119,7 @@ index 000000000000..bee452effa9e
 +MODULE_ALIAS("platform:cdn-dp");
 diff --git a/drivers/gpu/drm/bridge/cadence/cdns-hdcp-common.c b/drivers/gpu/drm/bridge/cadence/cdns-hdcp-common.c
 new file mode 100644
-index 000000000000..aaabc25a9a9e
+index 000000000..aaabc25a9
 --- /dev/null
 +++ b/drivers/gpu/drm/bridge/cadence/cdns-hdcp-common.c
 @@ -0,0 +1,1323 @@
@@ -3507,7 +3448,7 @@ index 000000000000..aaabc25a9a9e
 +}
 diff --git a/drivers/gpu/drm/bridge/cadence/cdns-hdcp-common.h b/drivers/gpu/drm/bridge/cadence/cdns-hdcp-common.h
 new file mode 100644
-index 000000000000..9de8759252d2
+index 000000000..9de875925
 --- /dev/null
 +++ b/drivers/gpu/drm/bridge/cadence/cdns-hdcp-common.h
 @@ -0,0 +1,23 @@
@@ -3536,7 +3477,7 @@ index 000000000000..9de8759252d2
 +#endif /* CDNS_HDCP_COMMON_H */
 diff --git a/drivers/gpu/drm/bridge/cadence/cdns-hdmi-core.c b/drivers/gpu/drm/bridge/cadence/cdns-hdmi-core.c
 new file mode 100644
-index 000000000000..8e5607c156ae
+index 000000000..8e5607c15
 --- /dev/null
 +++ b/drivers/gpu/drm/bridge/cadence/cdns-hdmi-core.c
 @@ -0,0 +1,810 @@
@@ -4352,7 +4293,7 @@ index 000000000000..8e5607c156ae
 +MODULE_ALIAS("platform:cdn-hdmi");
 diff --git a/drivers/gpu/drm/bridge/cadence/cdns-mhdp-audio.c b/drivers/gpu/drm/bridge/cadence/cdns-mhdp-audio.c
 new file mode 100644
-index 000000000000..85f526175439
+index 000000000..85f526175
 --- /dev/null
 +++ b/drivers/gpu/drm/bridge/cadence/cdns-mhdp-audio.c
 @@ -0,0 +1,423 @@
@@ -4781,7 +4722,7 @@ index 000000000000..85f526175439
 +}
 diff --git a/drivers/gpu/drm/bridge/cadence/cdns-mhdp-cec.c b/drivers/gpu/drm/bridge/cadence/cdns-mhdp-cec.c
 new file mode 100644
-index 000000000000..18ae36cd3668
+index 000000000..18ae36cd3
 --- /dev/null
 +++ b/drivers/gpu/drm/bridge/cadence/cdns-mhdp-cec.c
 @@ -0,0 +1,365 @@
@@ -5152,7 +5093,7 @@ index 000000000000..18ae36cd3668
 +MODULE_DESCRIPTION("NXP CDNS MHDP HDMI CEC driver");
 diff --git a/drivers/gpu/drm/bridge/cadence/cdns-mhdp-common.c b/drivers/gpu/drm/bridge/cadence/cdns-mhdp-common.c
 new file mode 100644
-index 000000000000..447e9f188c7c
+index 000000000..447e9f188
 --- /dev/null
 +++ b/drivers/gpu/drm/bridge/cadence/cdns-mhdp-common.c
 @@ -0,0 +1,853 @@
@@ -6011,7 +5952,7 @@ index 000000000000..447e9f188c7c
 +EXPORT_SYMBOL(cdns_phy_reg_read);
 diff --git a/drivers/gpu/drm/bridge/cadence/cdns-mhdp-dp.c b/drivers/gpu/drm/bridge/cadence/cdns-mhdp-dp.c
 new file mode 100644
-index 000000000000..299e533d6b52
+index 000000000..299e533d6
 --- /dev/null
 +++ b/drivers/gpu/drm/bridge/cadence/cdns-mhdp-dp.c
 @@ -0,0 +1,278 @@
@@ -6295,7 +6236,7 @@ index 000000000000..299e533d6b52
 +EXPORT_SYMBOL(cdns_mhdp_train_link);
 diff --git a/drivers/gpu/drm/bridge/cadence/cdns-mhdp-hdcp.c b/drivers/gpu/drm/bridge/cadence/cdns-mhdp-hdcp.c
 new file mode 100644
-index 000000000000..d999a53ddf0a
+index 000000000..d999a53dd
 --- /dev/null
 +++ b/drivers/gpu/drm/bridge/cadence/cdns-mhdp-hdcp.c
 @@ -0,0 +1,350 @@
@@ -6651,7 +6592,7 @@ index 000000000000..d999a53ddf0a
 +EXPORT_SYMBOL(cdns_mhdp_hdcp_tx_reauth);
 diff --git a/drivers/gpu/drm/bridge/cadence/cdns-mhdp-hdcp.h b/drivers/gpu/drm/bridge/cadence/cdns-mhdp-hdcp.h
 new file mode 100644
-index 000000000000..558fc07b3ce7
+index 000000000..558fc07b3
 --- /dev/null
 +++ b/drivers/gpu/drm/bridge/cadence/cdns-mhdp-hdcp.h
 @@ -0,0 +1,29 @@
@@ -6686,7 +6627,7 @@ index 000000000000..558fc07b3ce7
 +#endif /* CDNS_HDMI_HDCP_H */
 diff --git a/drivers/gpu/drm/bridge/cadence/cdns-mhdp-hdmi.c b/drivers/gpu/drm/bridge/cadence/cdns-mhdp-hdmi.c
 new file mode 100644
-index 000000000000..47c853781d84
+index 000000000..47c853781
 --- /dev/null
 +++ b/drivers/gpu/drm/bridge/cadence/cdns-mhdp-hdmi.c
 @@ -0,0 +1,332 @@
@@ -7024,7 +6965,7 @@ index 000000000000..47c853781d84
 +}
 diff --git a/drivers/gpu/drm/bridge/cadence/cdns-mhdp.h b/drivers/gpu/drm/bridge/cadence/cdns-mhdp.h
 new file mode 100644
-index 000000000000..8ad99eb8f86e
+index 000000000..8ad99eb8f
 --- /dev/null
 +++ b/drivers/gpu/drm/bridge/cadence/cdns-mhdp.h
 @@ -0,0 +1,232 @@
@@ -7261,7 +7202,7 @@ index 000000000000..8ad99eb8f86e
 +
 +#endif
 diff --git a/drivers/gpu/drm/bridge/cdns-dsi.c b/drivers/gpu/drm/bridge/cdns-dsi.c
-index 0ced08d81d7a..b31281f76117 100644
+index 0ced08d81..b31281f76 100644
 --- a/drivers/gpu/drm/bridge/cdns-dsi.c
 +++ b/drivers/gpu/drm/bridge/cdns-dsi.c
 @@ -1286,7 +1286,6 @@ static const struct of_device_id cdns_dsi_of_match[] = {
@@ -7273,7 +7214,7 @@ index 0ced08d81d7a..b31281f76117 100644
  static struct platform_driver cdns_dsi_platform_driver = {
  	.probe  = cdns_dsi_drm_probe,
 diff --git a/drivers/gpu/drm/bridge/display-connector.c b/drivers/gpu/drm/bridge/display-connector.c
-index 544a47335cac..4d278573cdb9 100644
+index 544a47335..4d278573c 100644
 --- a/drivers/gpu/drm/bridge/display-connector.c
 +++ b/drivers/gpu/drm/bridge/display-connector.c
 @@ -104,7 +104,7 @@ static int display_connector_probe(struct platform_device *pdev)
@@ -7287,7 +7228,7 @@ index 544a47335cac..4d278573cdb9 100644
  	conn = devm_kzalloc(&pdev->dev, sizeof(*conn), GFP_KERNEL);
 diff --git a/drivers/gpu/drm/bridge/fsl-imx-ldb.c b/drivers/gpu/drm/bridge/fsl-imx-ldb.c
 new file mode 100644
-index 000000000000..55ccb0128f18
+index 000000000..55ccb0128
 --- /dev/null
 +++ b/drivers/gpu/drm/bridge/fsl-imx-ldb.c
 @@ -0,0 +1,281 @@
@@ -7574,7 +7515,7 @@ index 000000000000..55ccb0128f18
 +MODULE_ALIAS("platform: fsl-imx-ldb");
 diff --git a/drivers/gpu/drm/bridge/it6161.c b/drivers/gpu/drm/bridge/it6161.c
 new file mode 100644
-index 000000000000..da0f62d14faa
+index 000000000..da0f62d14
 --- /dev/null
 +++ b/drivers/gpu/drm/bridge/it6161.c
 @@ -0,0 +1,2492 @@
@@ -10072,7 +10013,7 @@ index 000000000000..da0f62d14faa
 +MODULE_LICENSE("GPL v2");
 diff --git a/drivers/gpu/drm/bridge/it6161.h b/drivers/gpu/drm/bridge/it6161.h
 new file mode 100644
-index 000000000000..93900406bcb3
+index 000000000..93900406b
 --- /dev/null
 +++ b/drivers/gpu/drm/bridge/it6161.h
 @@ -0,0 +1,322 @@
@@ -10400,7 +10341,7 @@ index 000000000000..93900406bcb3
 +#endif
 diff --git a/drivers/gpu/drm/bridge/it6263.c b/drivers/gpu/drm/bridge/it6263.c
 new file mode 100644
-index 000000000000..a687a2754097
+index 000000000..a687a2754
 --- /dev/null
 +++ b/drivers/gpu/drm/bridge/it6263.c
 @@ -0,0 +1,1040 @@
@@ -11445,10 +11386,10 @@ index 000000000000..a687a2754097
 +MODULE_DESCRIPTION("ITE Tech. Inc. IT6263 LVDS->HDMI bridge");
 +MODULE_LICENSE("GPL");
 diff --git a/drivers/gpu/drm/bridge/megachips-stdpxxxx-ge-b850v3-fw.c b/drivers/gpu/drm/bridge/megachips-stdpxxxx-ge-b850v3-fw.c
-index cce98bf2a4e7..d2808c4a6fb1 100644
+index e41afcc53..8c7ca33ce 100644
 --- a/drivers/gpu/drm/bridge/megachips-stdpxxxx-ge-b850v3-fw.c
 +++ b/drivers/gpu/drm/bridge/megachips-stdpxxxx-ge-b850v3-fw.c
-@@ -306,10 +306,19 @@ static void ge_b850v3_lvds_remove(void)
+@@ -308,10 +308,19 @@ static void ge_b850v3_lvds_remove(void)
  	mutex_unlock(&ge_b850v3_lvds_dev_mutex);
  }
  
@@ -11470,7 +11411,7 @@ index cce98bf2a4e7..d2808c4a6fb1 100644
  
  	/* drm bridge initialization */
  	ge_b850v3_lvds_ptr->bridge.funcs = &ge_b850v3_lvds_funcs;
-@@ -334,27 +343,6 @@ static int ge_b850v3_register(void)
+@@ -336,27 +345,6 @@ static int ge_b850v3_register(void)
  			"ge-b850v3-lvds-dp", ge_b850v3_lvds_ptr);
  }
  
@@ -11498,7 +11439,7 @@ index cce98bf2a4e7..d2808c4a6fb1 100644
  static int stdp4028_ge_b850v3_fw_remove(struct i2c_client *stdp4028_i2c)
  {
  	ge_b850v3_lvds_remove();
-@@ -398,11 +386,7 @@ static int stdp2690_ge_b850v3_fw_probe(struct i2c_client *stdp2690_i2c,
+@@ -400,11 +388,7 @@ static int stdp2690_ge_b850v3_fw_probe(struct i2c_client *stdp2690_i2c,
  	ge_b850v3_lvds_ptr->stdp2690_i2c = stdp2690_i2c;
  	i2c_set_clientdata(stdp2690_i2c, ge_b850v3_lvds_ptr);
  
@@ -11512,7 +11453,7 @@ index cce98bf2a4e7..d2808c4a6fb1 100644
  
  static int stdp2690_ge_b850v3_fw_remove(struct i2c_client *stdp2690_i2c)
 diff --git a/drivers/gpu/drm/bridge/nwl-dsi.c b/drivers/gpu/drm/bridge/nwl-dsi.c
-index b68d33598158..6b1c5104bbea 100644
+index b68d33598..6b1c5104b 100644
 --- a/drivers/gpu/drm/bridge/nwl-dsi.c
 +++ b/drivers/gpu/drm/bridge/nwl-dsi.c
 @@ -8,7 +8,9 @@
@@ -13007,7 +12948,7 @@ index b68d33598158..6b1c5104bbea 100644
  	mipi_dsi_host_unregister(&dsi->dsi_host);
  	drm_bridge_remove(&dsi->bridge);
 diff --git a/drivers/gpu/drm/bridge/nwl-dsi.h b/drivers/gpu/drm/bridge/nwl-dsi.h
-index a247a8a11c7c..d34fffec00c0 100644
+index a247a8a11..d34fffec0 100644
 --- a/drivers/gpu/drm/bridge/nwl-dsi.h
 +++ b/drivers/gpu/drm/bridge/nwl-dsi.h
 @@ -69,9 +69,7 @@
@@ -13032,7 +12973,7 @@ index a247a8a11c7c..d34fffec00c0 100644
  #define NWL_DSI_SINGLE_BIT_ECC_ERR_MASK		BIT(0)
 diff --git a/drivers/gpu/drm/bridge/nxp-seiko-43wvfig.c b/drivers/gpu/drm/bridge/nxp-seiko-43wvfig.c
 new file mode 100644
-index 000000000000..1207f3bb13c5
+index 000000000..1207f3bb1
 --- /dev/null
 +++ b/drivers/gpu/drm/bridge/nxp-seiko-43wvfig.c
 @@ -0,0 +1,235 @@
@@ -13273,7 +13214,7 @@ index 000000000000..1207f3bb13c5
 +MODULE_LICENSE("GPL");
 diff --git a/drivers/gpu/drm/bridge/sec-dsim.c b/drivers/gpu/drm/bridge/sec-dsim.c
 new file mode 100644
-index 000000000000..dc2fab8e89b8
+index 000000000..dc2fab8e8
 --- /dev/null
 +++ b/drivers/gpu/drm/bridge/sec-dsim.c
 @@ -0,0 +1,2015 @@
@@ -15293,7 +15234,7 @@ index 000000000000..dc2fab8e89b8
 +MODULE_AUTHOR("Fancy Fang <chen.fang@nxp.com>");
 +MODULE_LICENSE("GPL");
 diff --git a/drivers/gpu/drm/bridge/sil-sii8620.c b/drivers/gpu/drm/bridge/sil-sii8620.c
-index ec7745c31da0..843265d7f1b1 100644
+index ab0bce4a9..ba203afff 100644
 --- a/drivers/gpu/drm/bridge/sil-sii8620.c
 +++ b/drivers/gpu/drm/bridge/sil-sii8620.c
 @@ -2120,7 +2120,7 @@ static void sii8620_init_rcp_input_dev(struct sii8620 *ctx)
@@ -15307,7 +15248,7 @@ index ec7745c31da0..843265d7f1b1 100644
  	ctx->rc_dev = rc_dev;
 diff --git a/drivers/gpu/drm/bridge/sn65dsi83_dsi_lvds.c b/drivers/gpu/drm/bridge/sn65dsi83_dsi_lvds.c
 new file mode 100644
-index 000000000000..f95aa97afb52
+index 000000000..f95aa97af
 --- /dev/null
 +++ b/drivers/gpu/drm/bridge/sn65dsi83_dsi_lvds.c
 @@ -0,0 +1,537 @@
@@ -15849,7 +15790,7 @@ index 000000000000..f95aa97afb52
 +MODULE_DESCRIPTION("SN65DSI83 MIPI/LVDS transmitter driver");
 +MODULE_LICENSE("GPL v2");
 diff --git a/drivers/gpu/drm/bridge/synopsys/Kconfig b/drivers/gpu/drm/bridge/synopsys/Kconfig
-index 21a1be3ced0f..e398b58c996d 100644
+index 21a1be3ce..e398b58c9 100644
 --- a/drivers/gpu/drm/bridge/synopsys/Kconfig
 +++ b/drivers/gpu/drm/bridge/synopsys/Kconfig
 @@ -25,6 +25,17 @@ config DRM_DW_HDMI_I2S_AUDIO
@@ -15871,7 +15812,7 @@ index 21a1be3ced0f..e398b58c996d 100644
  	tristate "Synopsis Designware CEC interface"
  	depends on DRM_DW_HDMI
 diff --git a/drivers/gpu/drm/bridge/synopsys/Makefile b/drivers/gpu/drm/bridge/synopsys/Makefile
-index 91d746ad5de1..ce715562e9e5 100644
+index 91d746ad5..ce715562e 100644
 --- a/drivers/gpu/drm/bridge/synopsys/Makefile
 +++ b/drivers/gpu/drm/bridge/synopsys/Makefile
 @@ -1,6 +1,7 @@
@@ -15883,7 +15824,7 @@ index 91d746ad5de1..ce715562e9e5 100644
  obj-$(CONFIG_DRM_DW_HDMI_CEC) += dw-hdmi-cec.o
  
 diff --git a/drivers/gpu/drm/bridge/synopsys/dw-hdmi-ahb-audio.c b/drivers/gpu/drm/bridge/synopsys/dw-hdmi-ahb-audio.c
-index 7d2ed0ed2fe2..d0db1acf11d7 100644
+index 7d2ed0ed2..d0db1acf1 100644
 --- a/drivers/gpu/drm/bridge/synopsys/dw-hdmi-ahb-audio.c
 +++ b/drivers/gpu/drm/bridge/synopsys/dw-hdmi-ahb-audio.c
 @@ -320,17 +320,13 @@ static int dw_hdmi_open(struct snd_pcm_substream *substream)
@@ -15908,7 +15849,7 @@ index 7d2ed0ed2fe2..d0db1acf11d7 100644
  	ret = snd_pcm_limit_hw_rates(runtime);
  	if (ret < 0)
 diff --git a/drivers/gpu/drm/bridge/synopsys/dw-hdmi-audio.h b/drivers/gpu/drm/bridge/synopsys/dw-hdmi-audio.h
-index f72d27208ebe..cb07dc0da5a7 100644
+index f72d27208..cb07dc0da 100644
 --- a/drivers/gpu/drm/bridge/synopsys/dw-hdmi-audio.h
 +++ b/drivers/gpu/drm/bridge/synopsys/dw-hdmi-audio.h
 @@ -9,15 +9,15 @@ struct dw_hdmi_audio_data {
@@ -15930,7 +15871,7 @@ index f72d27208ebe..cb07dc0da5a7 100644
  
  #endif
 diff --git a/drivers/gpu/drm/bridge/synopsys/dw-hdmi-cec.c b/drivers/gpu/drm/bridge/synopsys/dw-hdmi-cec.c
-index 70ab4fbdc23e..061fe6f47077 100644
+index 70ab4fbdc..061fe6f47 100644
 --- a/drivers/gpu/drm/bridge/synopsys/dw-hdmi-cec.c
 +++ b/drivers/gpu/drm/bridge/synopsys/dw-hdmi-cec.c
 @@ -18,6 +18,8 @@
@@ -15989,7 +15930,7 @@ index 70ab4fbdc23e..061fe6f47077 100644
  module_platform_driver(dw_hdmi_cec_driver);
 diff --git a/drivers/gpu/drm/bridge/synopsys/dw-hdmi-gp-audio.c b/drivers/gpu/drm/bridge/synopsys/dw-hdmi-gp-audio.c
 new file mode 100644
-index 000000000000..b6b77ca7c879
+index 000000000..b6b77ca7c
 --- /dev/null
 +++ b/drivers/gpu/drm/bridge/synopsys/dw-hdmi-gp-audio.c
 @@ -0,0 +1,194 @@
@@ -16188,7 +16129,7 @@ index 000000000000..b6b77ca7c879
 +MODULE_LICENSE("GPL v2");
 +MODULE_ALIAS("platform:" DRIVER_NAME);
 diff --git a/drivers/gpu/drm/bridge/synopsys/dw-hdmi-i2s-audio.c b/drivers/gpu/drm/bridge/synopsys/dw-hdmi-i2s-audio.c
-index 9682416056ed..9fef6413741d 100644
+index 968241605..9fef64137 100644
 --- a/drivers/gpu/drm/bridge/synopsys/dw-hdmi-i2s-audio.c
 +++ b/drivers/gpu/drm/bridge/synopsys/dw-hdmi-i2s-audio.c
 @@ -135,15 +135,8 @@ static int dw_hdmi_i2s_get_eld(struct device *dev, void *data, uint8_t *buf,
@@ -16209,7 +16150,7 @@ index 9682416056ed..9fef6413741d 100644
  }
  
 diff --git a/drivers/gpu/drm/bridge/synopsys/dw-hdmi.c b/drivers/gpu/drm/bridge/synopsys/dw-hdmi.c
-index b10228b9e3a9..ce59bf24551b 100644
+index 2c3c743df..0f5004a08 100644
 --- a/drivers/gpu/drm/bridge/synopsys/dw-hdmi.c
 +++ b/drivers/gpu/drm/bridge/synopsys/dw-hdmi.c
 @@ -190,7 +190,10 @@ struct dw_hdmi {
@@ -16459,7 +16400,7 @@ index b10228b9e3a9..ce59bf24551b 100644
  		*num_output_fmts = 1;
  		output_fmts[0] = MEDIA_BUS_FMT_FIXED;
  
-@@ -3210,6 +3325,7 @@ struct dw_hdmi *dw_hdmi_probe(struct platform_device *pdev,
+@@ -3213,6 +3328,7 @@ struct dw_hdmi *dw_hdmi_probe(struct platform_device *pdev,
  	hdmi->plat_data = plat_data;
  	hdmi->dev = dev;
  	hdmi->sample_rate = 48000;
@@ -16467,7 +16408,7 @@ index b10228b9e3a9..ce59bf24551b 100644
  	hdmi->disabled = true;
  	hdmi->rxsense = true;
  	hdmi->phy_mask = (u8)~(HDMI_PHY_HPD | HDMI_PHY_RX_SENSE);
-@@ -3404,7 +3520,7 @@ struct dw_hdmi *dw_hdmi_probe(struct platform_device *pdev,
+@@ -3407,7 +3523,7 @@ struct dw_hdmi *dw_hdmi_probe(struct platform_device *pdev,
  		audio.base = hdmi->regs;
  		audio.irq = irq;
  		audio.hdmi = hdmi;
@@ -16476,7 +16417,7 @@ index b10228b9e3a9..ce59bf24551b 100644
  		hdmi->enable_audio = dw_hdmi_ahb_audio_enable;
  		hdmi->disable_audio = dw_hdmi_ahb_audio_disable;
  
-@@ -3417,7 +3533,7 @@ struct dw_hdmi *dw_hdmi_probe(struct platform_device *pdev,
+@@ -3420,7 +3536,7 @@ struct dw_hdmi *dw_hdmi_probe(struct platform_device *pdev,
  		struct dw_hdmi_i2s_audio_data audio;
  
  		audio.hdmi	= hdmi;
@@ -16485,7 +16426,7 @@ index b10228b9e3a9..ce59bf24551b 100644
  		audio.write	= hdmi_writeb;
  		audio.read	= hdmi_readb;
  		hdmi->enable_audio = dw_hdmi_i2s_audio_enable;
-@@ -3428,6 +3544,24 @@ struct dw_hdmi *dw_hdmi_probe(struct platform_device *pdev,
+@@ -3431,6 +3547,24 @@ struct dw_hdmi *dw_hdmi_probe(struct platform_device *pdev,
  		pdevinfo.size_data = sizeof(audio);
  		pdevinfo.dma_mask = DMA_BIT_MASK(32);
  		hdmi->audio = platform_device_register_full(&pdevinfo);
@@ -16511,7 +16452,7 @@ index b10228b9e3a9..ce59bf24551b 100644
  
  	if (config0 & HDMI_CONFIG0_CEC) {
 diff --git a/drivers/gpu/drm/bridge/synopsys/dw-hdmi.h b/drivers/gpu/drm/bridge/synopsys/dw-hdmi.h
-index 1999db05bc3b..99aa1c03343b 100644
+index 1999db05b..99aa1c033 100644
 --- a/drivers/gpu/drm/bridge/synopsys/dw-hdmi.h
 +++ b/drivers/gpu/drm/bridge/synopsys/dw-hdmi.h
 @@ -158,8 +158,17 @@
@@ -16535,7 +16476,7 @@ index 1999db05bc3b..99aa1c03343b 100644
  #define HDMI_FC_DATACH1FILL                     0x1071
  #define HDMI_FC_DATACH2FILL                     0x1072
 diff --git a/drivers/gpu/drm/bridge/synopsys/dw-mipi-dsi.c b/drivers/gpu/drm/bridge/synopsys/dw-mipi-dsi.c
-index 376fa6eb46f6..6b268f9445b3 100644
+index 376fa6eb4..6b268f944 100644
 --- a/drivers/gpu/drm/bridge/synopsys/dw-mipi-dsi.c
 +++ b/drivers/gpu/drm/bridge/synopsys/dw-mipi-dsi.c
 @@ -1172,7 +1172,6 @@ __dw_mipi_dsi_probe(struct platform_device *pdev,
@@ -16547,7 +16488,7 @@ index 376fa6eb46f6..6b268f9445b3 100644
  		return ERR_PTR(ret);
  	}
 diff --git a/drivers/gpu/drm/bridge/ti-sn65dsi86.c b/drivers/gpu/drm/bridge/ti-sn65dsi86.c
-index 1a58481037b3..ecdf9b01340f 100644
+index 77a447a3f..df2a77258 100644
 --- a/drivers/gpu/drm/bridge/ti-sn65dsi86.c
 +++ b/drivers/gpu/drm/bridge/ti-sn65dsi86.c
 @@ -171,7 +171,6 @@ static const struct regmap_config ti_sn_bridge_regmap_config = {
@@ -16559,7 +16500,7 @@ index 1a58481037b3..ecdf9b01340f 100644
  
  static void ti_sn_bridge_write_u16(struct ti_sn_bridge *pdata,
 diff --git a/drivers/gpu/drm/imx/Kconfig b/drivers/gpu/drm/imx/Kconfig
-index 6231048aa5aa..99ba230d89f3 100644
+index 6231048aa..99ba230d8 100644
 --- a/drivers/gpu/drm/imx/Kconfig
 +++ b/drivers/gpu/drm/imx/Kconfig
 @@ -6,10 +6,15 @@ config DRM_IMX
@@ -16654,7 +16595,7 @@ index 6231048aa5aa..99ba230d89f3 100644
 +source "drivers/gpu/drm/imx/lcdif/Kconfig"
 +source "drivers/gpu/drm/imx/lcdifv3/Kconfig"
 diff --git a/drivers/gpu/drm/imx/Makefile b/drivers/gpu/drm/imx/Makefile
-index b644deffe948..5aad8b074155 100644
+index b644deffe..5aad8b074 100644
 --- a/drivers/gpu/drm/imx/Makefile
 +++ b/drivers/gpu/drm/imx/Makefile
 @@ -1,12 +1,24 @@
@@ -16685,7 +16626,7 @@ index b644deffe948..5aad8b074155 100644
 +obj-$(CONFIG_DRM_IMX_LCDIFV3) += lcdifv3/
 diff --git a/drivers/gpu/drm/imx/dcnano/Kconfig b/drivers/gpu/drm/imx/dcnano/Kconfig
 new file mode 100644
-index 000000000000..ec3ba3ad7b00
+index 000000000..ec3ba3ad7
 --- /dev/null
 +++ b/drivers/gpu/drm/imx/dcnano/Kconfig
 @@ -0,0 +1,10 @@
@@ -16701,7 +16642,7 @@ index 000000000000..ec3ba3ad7b00
 +	  enable NXP i.MX DCNANO graphics support
 diff --git a/drivers/gpu/drm/imx/dcnano/Makefile b/drivers/gpu/drm/imx/dcnano/Makefile
 new file mode 100644
-index 000000000000..b08d6712861f
+index 000000000..b08d67128
 --- /dev/null
 +++ b/drivers/gpu/drm/imx/dcnano/Makefile
 @@ -0,0 +1,5 @@
@@ -16712,7 +16653,7 @@ index 000000000000..b08d6712861f
 +obj-$(CONFIG_DRM_IMX_DCNANO) += imx-dcnano-drm.o
 diff --git a/drivers/gpu/drm/imx/dcnano/dcnano-crtc.c b/drivers/gpu/drm/imx/dcnano/dcnano-crtc.c
 new file mode 100644
-index 000000000000..c27cdae3ed31
+index 000000000..c27cdae3e
 --- /dev/null
 +++ b/drivers/gpu/drm/imx/dcnano/dcnano-crtc.c
 @@ -0,0 +1,483 @@
@@ -17201,7 +17142,7 @@ index 000000000000..c27cdae3ed31
 +}
 diff --git a/drivers/gpu/drm/imx/dcnano/dcnano-drv.c b/drivers/gpu/drm/imx/dcnano/dcnano-drv.c
 new file mode 100644
-index 000000000000..1c3459de02dc
+index 000000000..1c3459de0
 --- /dev/null
 +++ b/drivers/gpu/drm/imx/dcnano/dcnano-drv.c
 @@ -0,0 +1,350 @@
@@ -17557,7 +17498,7 @@ index 000000000000..1c3459de02dc
 +MODULE_LICENSE("GPL v2");
 diff --git a/drivers/gpu/drm/imx/dcnano/dcnano-drv.h b/drivers/gpu/drm/imx/dcnano/dcnano-drv.h
 new file mode 100644
-index 000000000000..357a496c5f85
+index 000000000..357a496c5
 --- /dev/null
 +++ b/drivers/gpu/drm/imx/dcnano/dcnano-drv.h
 @@ -0,0 +1,60 @@
@@ -17623,7 +17564,7 @@ index 000000000000..357a496c5f85
 +#endif
 diff --git a/drivers/gpu/drm/imx/dcnano/dcnano-kms.c b/drivers/gpu/drm/imx/dcnano/dcnano-kms.c
 new file mode 100644
-index 000000000000..95808b522cdd
+index 000000000..95808b522
 --- /dev/null
 +++ b/drivers/gpu/drm/imx/dcnano/dcnano-kms.c
 @@ -0,0 +1,194 @@
@@ -17823,7 +17764,7 @@ index 000000000000..95808b522cdd
 +}
 diff --git a/drivers/gpu/drm/imx/dcnano/dcnano-plane.c b/drivers/gpu/drm/imx/dcnano/dcnano-plane.c
 new file mode 100644
-index 000000000000..bb332f2bb54c
+index 000000000..bb332f2bb
 --- /dev/null
 +++ b/drivers/gpu/drm/imx/dcnano/dcnano-plane.c
 @@ -0,0 +1,173 @@
@@ -18002,7 +17943,7 @@ index 000000000000..bb332f2bb54c
 +}
 diff --git a/drivers/gpu/drm/imx/dcnano/dcnano-reg.h b/drivers/gpu/drm/imx/dcnano/dcnano-reg.h
 new file mode 100644
-index 000000000000..aa31adcc2935
+index 000000000..aa31adcc2
 --- /dev/null
 +++ b/drivers/gpu/drm/imx/dcnano/dcnano-reg.h
 @@ -0,0 +1,438 @@
@@ -18445,7 +18386,7 @@ index 000000000000..aa31adcc2935
 +
 +#endif
 diff --git a/drivers/gpu/drm/imx/dcss/Kconfig b/drivers/gpu/drm/imx/dcss/Kconfig
-index 2b17a964ff05..2c5e159dab8f 100644
+index 2b17a964f..2c5e159da 100644
 --- a/drivers/gpu/drm/imx/dcss/Kconfig
 +++ b/drivers/gpu/drm/imx/dcss/Kconfig
 @@ -1,5 +1,6 @@
@@ -18456,7 +18397,7 @@ index 2b17a964ff05..2c5e159dab8f 100644
  	select DRM_KMS_CMA_HELPER
  	select VIDEOMODE_HELPERS
 diff --git a/drivers/gpu/drm/imx/dcss/Makefile b/drivers/gpu/drm/imx/dcss/Makefile
-index 8c7c8da42792..eb3a1860edd0 100644
+index 8c7c8da42..eb3a1860e 100644
 --- a/drivers/gpu/drm/imx/dcss/Makefile
 +++ b/drivers/gpu/drm/imx/dcss/Makefile
 @@ -1,6 +1,7 @@
@@ -18469,7 +18410,7 @@ index 8c7c8da42792..eb3a1860edd0 100644
  obj-$(CONFIG_DRM_IMX_DCSS) += imx-dcss.o
  
 diff --git a/drivers/gpu/drm/imx/dcss/dcss-crtc.c b/drivers/gpu/drm/imx/dcss/dcss-crtc.c
-index 36abff0890b2..aa63d72e9383 100644
+index 36abff089..aa63d72e9 100644
 --- a/drivers/gpu/drm/imx/dcss/dcss-crtc.c
 +++ b/drivers/gpu/drm/imx/dcss/dcss-crtc.c
 @@ -3,18 +3,76 @@
@@ -18854,7 +18795,7 @@ index 36abff0890b2..aa63d72e9383 100644
  {
  	free_irq(crtc->irq, crtc);
 diff --git a/drivers/gpu/drm/imx/dcss/dcss-ctxld.c b/drivers/gpu/drm/imx/dcss/dcss-ctxld.c
-index 3a84cb3209c4..06668205094b 100644
+index 3a84cb320..066682050 100644
 --- a/drivers/gpu/drm/imx/dcss/dcss-ctxld.c
 +++ b/drivers/gpu/drm/imx/dcss/dcss-ctxld.c
 @@ -267,6 +267,11 @@ static int dcss_ctxld_enable_locked(struct dcss_ctxld *ctxld)
@@ -18871,7 +18812,7 @@ index 3a84cb3209c4..06668205094b 100644
  	db_cnt = ctxld->ctx_size[curr_ctx][CTX_DB];
 diff --git a/drivers/gpu/drm/imx/dcss/dcss-dec400d.c b/drivers/gpu/drm/imx/dcss/dcss-dec400d.c
 new file mode 100644
-index 000000000000..11636d813802
+index 000000000..11636d813
 --- /dev/null
 +++ b/drivers/gpu/drm/imx/dcss/dcss-dec400d.c
 @@ -0,0 +1,270 @@
@@ -19146,7 +19087,7 @@ index 000000000000..11636d813802
 +	dcss_dec400d_write(dec400d, control, DEC400D_CONTROL);
 +}
 diff --git a/drivers/gpu/drm/imx/dcss/dcss-dev.c b/drivers/gpu/drm/imx/dcss/dcss-dev.c
-index c849533ca83e..e24671382435 100644
+index 3f5750cc2..a964cb6c9 100644
 --- a/drivers/gpu/drm/imx/dcss/dcss-dev.c
 +++ b/drivers/gpu/drm/imx/dcss/dcss-dev.c
 @@ -10,6 +10,7 @@
@@ -19280,7 +19221,7 @@ index c849533ca83e..e24671382435 100644
  			dev_err(dcss->dev, "failed to get %s clock\n",
  				clks[i].id);
  			return PTR_ERR(*clks[i].clk);
-@@ -254,7 +308,11 @@ int dcss_dev_suspend(struct device *dev)
+@@ -257,7 +311,11 @@ int dcss_dev_suspend(struct device *dev)
  	struct dcss_kms_dev *kms = container_of(ddev, struct dcss_kms_dev, base);
  	int ret;
  
@@ -19293,7 +19234,7 @@ index c849533ca83e..e24671382435 100644
  
  	drm_mode_config_helper_suspend(ddev);
  
-@@ -267,6 +325,8 @@ int dcss_dev_suspend(struct device *dev)
+@@ -270,6 +328,8 @@ int dcss_dev_suspend(struct device *dev)
  
  	dcss_clocks_disable(dcss);
  
@@ -19302,7 +19243,7 @@ index c849533ca83e..e24671382435 100644
  	return 0;
  }
  
-@@ -276,11 +336,16 @@ int dcss_dev_resume(struct device *dev)
+@@ -279,11 +339,16 @@ int dcss_dev_resume(struct device *dev)
  	struct drm_device *ddev = dcss_drv_dev_to_drm(dev);
  	struct dcss_kms_dev *kms = container_of(ddev, struct dcss_kms_dev, base);
  
@@ -19319,7 +19260,7 @@ index c849533ca83e..e24671382435 100644
  	dcss_clocks_enable(dcss);
  
  	dcss_blkctl_cfg(dcss->blkctl);
-@@ -289,7 +354,8 @@ int dcss_dev_resume(struct device *dev)
+@@ -292,7 +357,8 @@ int dcss_dev_resume(struct device *dev)
  
  	drm_mode_config_helper_resume(ddev);
  
@@ -19329,7 +19270,7 @@ index c849533ca83e..e24671382435 100644
  
  	return 0;
  }
-@@ -301,12 +367,17 @@ int dcss_dev_runtime_suspend(struct device *dev)
+@@ -304,12 +370,17 @@ int dcss_dev_runtime_suspend(struct device *dev)
  	struct dcss_dev *dcss = dcss_drv_dev_to_dcss(dev);
  	int ret;
  
@@ -19347,7 +19288,7 @@ index c849533ca83e..e24671382435 100644
  	return 0;
  }
  
-@@ -314,6 +385,11 @@ int dcss_dev_runtime_resume(struct device *dev)
+@@ -317,6 +388,11 @@ int dcss_dev_runtime_resume(struct device *dev)
  {
  	struct dcss_dev *dcss = dcss_drv_dev_to_dcss(dev);
  
@@ -19360,7 +19301,7 @@ index c849533ca83e..e24671382435 100644
  
  	dcss_blkctl_cfg(dcss->blkctl);
 diff --git a/drivers/gpu/drm/imx/dcss/dcss-dev.h b/drivers/gpu/drm/imx/dcss/dcss-dev.h
-index c642ae17837f..5019b9bbf4a6 100644
+index c642ae178..5019b9bbf 100644
 --- a/drivers/gpu/drm/imx/dcss/dcss-dev.h
 +++ b/drivers/gpu/drm/imx/dcss/dcss-dev.h
 @@ -6,6 +6,7 @@
@@ -19591,7 +19532,7 @@ index c642ae17837f..5019b9bbf4a6 100644
 +
  #endif /* __DCSS_PRV_H__ */
 diff --git a/drivers/gpu/drm/imx/dcss/dcss-dpr.c b/drivers/gpu/drm/imx/dcss/dcss-dpr.c
-index df9dab949bf2..e7dc98f73d1a 100644
+index df9dab949..e7dc98f73 100644
 --- a/drivers/gpu/drm/imx/dcss/dcss-dpr.c
 +++ b/drivers/gpu/drm/imx/dcss/dcss-dpr.c
 @@ -106,12 +106,17 @@ struct dcss_dpr_ch {
@@ -19755,7 +19696,7 @@ index df9dab949bf2..e7dc98f73d1a 100644
  	dcss_dpr_yuv_en(ch, format->is_yuv);
  
 diff --git a/drivers/gpu/drm/imx/dcss/dcss-drv.c b/drivers/gpu/drm/imx/dcss/dcss-drv.c
-index 8dc2f85c514b..dab15913d8c7 100644
+index 8dc2f85c5..dab15913d 100644
 --- a/drivers/gpu/drm/imx/dcss/dcss-drv.c
 +++ b/drivers/gpu/drm/imx/dcss/dcss-drv.c
 @@ -6,6 +6,7 @@
@@ -19921,7 +19862,7 @@ index 8dc2f85c514b..dab15913d8c7 100644
  };
  
 diff --git a/drivers/gpu/drm/imx/dcss/dcss-dtg.c b/drivers/gpu/drm/imx/dcss/dcss-dtg.c
-index 30de00540f63..b5994d1929cd 100644
+index 30de00540..b5994d192 100644
 --- a/drivers/gpu/drm/imx/dcss/dcss-dtg.c
 +++ b/drivers/gpu/drm/imx/dcss/dcss-dtg.c
 @@ -83,6 +83,7 @@ struct dcss_dtg {
@@ -19974,7 +19915,7 @@ index 30de00540f63..b5994d1929cd 100644
  }
 diff --git a/drivers/gpu/drm/imx/dcss/dcss-dtrc.c b/drivers/gpu/drm/imx/dcss/dcss-dtrc.c
 new file mode 100644
-index 000000000000..613535d4d3f8
+index 000000000..613535d4d
 --- /dev/null
 +++ b/drivers/gpu/drm/imx/dcss/dcss-dtrc.c
 @@ -0,0 +1,516 @@
@@ -20496,7 +20437,7 @@ index 000000000000..613535d4d3f8
 +}
 diff --git a/drivers/gpu/drm/imx/dcss/dcss-hdr10-tables.h b/drivers/gpu/drm/imx/dcss/dcss-hdr10-tables.h
 new file mode 100644
-index 000000000000..6baa886bb358
+index 000000000..6baa886bb
 --- /dev/null
 +++ b/drivers/gpu/drm/imx/dcss/dcss-hdr10-tables.h
 @@ -0,0 +1,3018 @@
@@ -23520,7 +23461,7 @@ index 000000000000..6baa886bb358
 +#endif /* __DCSS_HDR10_TABLES_H__ */
 diff --git a/drivers/gpu/drm/imx/dcss/dcss-hdr10.c b/drivers/gpu/drm/imx/dcss/dcss-hdr10.c
 new file mode 100644
-index 000000000000..f5debd369499
+index 000000000..f5debd369
 --- /dev/null
 +++ b/drivers/gpu/drm/imx/dcss/dcss-hdr10.c
 @@ -0,0 +1,395 @@
@@ -23920,7 +23861,7 @@ index 000000000000..f5debd369499
 +	dcss_hdr10_write_pipe_tbls(&hdr10->ch[OPIPE_CH_NO], olut, csco, NULL);
 +}
 diff --git a/drivers/gpu/drm/imx/dcss/dcss-kms.c b/drivers/gpu/drm/imx/dcss/dcss-kms.c
-index 135a62366ab8..231ceb0d7403 100644
+index 135a62366..231ceb0d7 100644
 --- a/drivers/gpu/drm/imx/dcss/dcss-kms.c
 +++ b/drivers/gpu/drm/imx/dcss/dcss-kms.c
 @@ -3,6 +3,7 @@
@@ -24049,7 +23990,7 @@ index 135a62366ab8..231ceb0d7403 100644
  	drm->dev_private = NULL;
  }
 diff --git a/drivers/gpu/drm/imx/dcss/dcss-kms.h b/drivers/gpu/drm/imx/dcss/dcss-kms.h
-index dfe5dd99eea3..ded51fe64cb4 100644
+index dfe5dd99e..ded51fe64 100644
 --- a/drivers/gpu/drm/imx/dcss/dcss-kms.h
 +++ b/drivers/gpu/drm/imx/dcss/dcss-kms.h
 @@ -6,23 +6,40 @@
@@ -24128,7 +24069,7 @@ index dfe5dd99eea3..ded51fe64cb4 100644
  
  #endif
 diff --git a/drivers/gpu/drm/imx/dcss/dcss-plane.c b/drivers/gpu/drm/imx/dcss/dcss-plane.c
-index f54087ac44d3..2fb5cc44d86a 100644
+index 46a188dd0..b8ca71a80 100644
 --- a/drivers/gpu/drm/imx/dcss/dcss-plane.c
 +++ b/drivers/gpu/drm/imx/dcss/dcss-plane.c
 @@ -5,6 +5,8 @@
@@ -24581,34 +24522,21 @@ index f54087ac44d3..2fb5cc44d86a 100644
  static void dcss_plane_atomic_update(struct drm_plane *plane,
  				     struct drm_plane_state *old_state)
  {
-@@ -268,7 +538,6 @@ static void dcss_plane_atomic_update(struct drm_plane *plane,
- 	struct dcss_plane *dcss_plane = to_dcss_plane(plane);
- 	struct dcss_dev *dcss = plane->dev->dev_private;
- 	struct drm_framebuffer *fb = state->fb;
--	u32 pixel_format;
- 	struct drm_crtc_state *crtc_state;
- 	bool modifiers_present;
- 	u32 src_w, src_h, dst_w, dst_h;
-@@ -279,13 +548,16 @@ static void dcss_plane_atomic_update(struct drm_plane *plane,
- 	if (!fb || !state->crtc || !state->visible)
- 		return;
- 
--	pixel_format = state->fb->format->format;
- 	crtc_state = state->crtc->state;
+@@ -282,8 +552,12 @@ static void dcss_plane_atomic_update(struct drm_plane *plane,
  	modifiers_present = !!(fb->flags & DRM_MODE_FB_MODIFIERS);
  
  	if (old_state->fb && !drm_atomic_crtc_needs_modeset(crtc_state) &&
 -	    !dcss_plane_needs_setup(state, old_state)) {
 +	    !dcss_plane_needs_setup(state, old_state) &&
 +	    !dcss_dtg_global_alpha_changed(dcss->dtg, dcss_plane->ch_num,
-+					   state->alpha >> 8)) {
++		    state->alpha >> 8)) {
  		dcss_plane_atomic_set_base(dcss_plane);
 +		if (plane->type == DRM_PLANE_TYPE_PRIMARY)
 +			dcss_dec400d_shadow_trig(dcss->dec400d);
  		return;
  	}
  
-@@ -300,14 +572,20 @@ static void dcss_plane_atomic_update(struct drm_plane *plane,
+@@ -298,14 +572,20 @@ static void dcss_plane_atomic_update(struct drm_plane *plane,
  	dst_w = drm_rect_width(&dst);
  	dst_h = drm_rect_height(&dst);
  
@@ -24634,7 +24562,7 @@ index f54087ac44d3..2fb5cc44d86a 100644
  	dcss_dpr_set_rotation(dcss->dpr, dcss_plane->ch_num,
  			      state->rotation);
  
-@@ -323,11 +601,18 @@ static void dcss_plane_atomic_update(struct drm_plane *plane,
+@@ -321,11 +601,18 @@ static void dcss_plane_atomic_update(struct drm_plane *plane,
  			  dst_w, dst_h,
  			  drm_mode_vrefresh(&crtc_state->mode));
  
@@ -24653,7 +24581,7 @@ index f54087ac44d3..2fb5cc44d86a 100644
  	if (!dcss_plane->ch_num && (state->alpha >> 8) == 0)
  		enable = false;
  
-@@ -347,6 +632,8 @@ static void dcss_plane_atomic_disable(struct drm_plane *plane,
+@@ -345,6 +632,8 @@ static void dcss_plane_atomic_disable(struct drm_plane *plane,
  	struct dcss_plane *dcss_plane = to_dcss_plane(plane);
  	struct dcss_dev *dcss = plane->dev->dev_private;
  
@@ -24662,7 +24590,7 @@ index f54087ac44d3..2fb5cc44d86a 100644
  	dcss_dpr_enable(dcss->dpr, dcss_plane->ch_num, false);
  	dcss_scaler_ch_enable(dcss->scaler, dcss_plane->ch_num, false);
  	dcss_dtg_plane_pos_set(dcss->dtg, dcss_plane->ch_num, 0, 0, 0, 0);
-@@ -366,7 +653,8 @@ struct dcss_plane *dcss_plane_init(struct drm_device *drm,
+@@ -364,7 +653,8 @@ struct dcss_plane *dcss_plane_init(struct drm_device *drm,
  				   unsigned int zpos)
  {
  	struct dcss_plane *dcss_plane;
@@ -24672,7 +24600,7 @@ index f54087ac44d3..2fb5cc44d86a 100644
  	int ret;
  
  	if (zpos > 2)
-@@ -379,7 +667,7 @@ struct dcss_plane *dcss_plane_init(struct drm_device *drm,
+@@ -377,7 +667,7 @@ struct dcss_plane *dcss_plane_init(struct drm_device *drm,
  	}
  
  	if (type == DRM_PLANE_TYPE_PRIMARY)
@@ -24681,7 +24609,7 @@ index f54087ac44d3..2fb5cc44d86a 100644
  
  	ret = drm_universal_plane_init(drm, &dcss_plane->base, possible_crtcs,
  				       &dcss_plane_funcs, dcss_common_formats,
-@@ -406,7 +694,21 @@ struct dcss_plane *dcss_plane_init(struct drm_device *drm,
+@@ -404,7 +694,21 @@ struct dcss_plane *dcss_plane_init(struct drm_device *drm,
  					   DRM_MODE_REFLECT_X  |
  					   DRM_MODE_REFLECT_Y);
  
@@ -24706,7 +24634,7 @@ index f54087ac44d3..2fb5cc44d86a 100644
  }
 diff --git a/drivers/gpu/drm/imx/dcss/dcss-rdsrc.c b/drivers/gpu/drm/imx/dcss/dcss-rdsrc.c
 new file mode 100644
-index 000000000000..ef695e584acf
+index 000000000..ef695e584
 --- /dev/null
 +++ b/drivers/gpu/drm/imx/dcss/dcss-rdsrc.c
 @@ -0,0 +1,119 @@
@@ -24830,7 +24758,7 @@ index 000000000000..ef695e584acf
 +	dcss_rdsrc_write(rdsrc, rdsrc->ctrl_status, DCSS_RDSRC_CTRL_STATUS);
 +}
 diff --git a/drivers/gpu/drm/imx/dcss/dcss-scaler.c b/drivers/gpu/drm/imx/dcss/dcss-scaler.c
-index cd21905de580..b670ec5aa3b6 100644
+index cd21905de..b670ec5aa 100644
 --- a/drivers/gpu/drm/imx/dcss/dcss-scaler.c
 +++ b/drivers/gpu/drm/imx/dcss/dcss-scaler.c
 @@ -77,6 +77,8 @@ struct dcss_scaler_ch {
@@ -25046,7 +24974,7 @@ index cd21905de580..b670ec5aa3b6 100644
  
  /* This function will be called from interrupt context. */
 diff --git a/drivers/gpu/drm/imx/dcss/dcss-ss.c b/drivers/gpu/drm/imx/dcss/dcss-ss.c
-index 8ddf08da911b..79061d4d51b4 100644
+index 8ddf08da9..79061d4d5 100644
 --- a/drivers/gpu/drm/imx/dcss/dcss-ss.c
 +++ b/drivers/gpu/drm/imx/dcss/dcss-ss.c
 @@ -115,12 +115,29 @@ void dcss_ss_exit(struct dcss_ss *ss)
@@ -25086,7 +25014,7 @@ index 8ddf08da911b..79061d4d51b4 100644
  void dcss_ss_sync_set(struct dcss_ss *ss, struct videomode *vm,
 diff --git a/drivers/gpu/drm/imx/dcss/dcss-wrscl.c b/drivers/gpu/drm/imx/dcss/dcss-wrscl.c
 new file mode 100644
-index 000000000000..8228f8f46cae
+index 000000000..8228f8f46
 --- /dev/null
 +++ b/drivers/gpu/drm/imx/dcss/dcss-wrscl.c
 @@ -0,0 +1,158 @@
@@ -25250,7 +25178,7 @@ index 000000000000..8228f8f46cae
 +}
 diff --git a/drivers/gpu/drm/imx/dpu/Kconfig b/drivers/gpu/drm/imx/dpu/Kconfig
 new file mode 100644
-index 000000000000..ad480cdbe503
+index 000000000..ad480cdbe
 --- /dev/null
 +++ b/drivers/gpu/drm/imx/dpu/Kconfig
 @@ -0,0 +1,6 @@
@@ -25262,7 +25190,7 @@ index 000000000000..ad480cdbe503
 +	default m if DRM_IMX=m
 diff --git a/drivers/gpu/drm/imx/dpu/Makefile b/drivers/gpu/drm/imx/dpu/Makefile
 new file mode 100644
-index 000000000000..22ff7e916b6f
+index 000000000..22ff7e916
 --- /dev/null
 +++ b/drivers/gpu/drm/imx/dpu/Makefile
 @@ -0,0 +1,8 @@
@@ -25276,7 +25204,7 @@ index 000000000000..22ff7e916b6f
 +obj-$(CONFIG_DRM_IMX_DPU) += imx-dpu-render.o
 diff --git a/drivers/gpu/drm/imx/dpu/dpu-blit.c b/drivers/gpu/drm/imx/dpu/dpu-blit.c
 new file mode 100644
-index 000000000000..2f48450d459c
+index 000000000..2f48450d4
 --- /dev/null
 +++ b/drivers/gpu/drm/imx/dpu/dpu-blit.c
 @@ -0,0 +1,335 @@
@@ -25617,7 +25545,7 @@ index 000000000000..2f48450d459c
 +MODULE_DESCRIPTION("i.MX DRM DPU BLITENG");
 diff --git a/drivers/gpu/drm/imx/dpu/dpu-crc.c b/drivers/gpu/drm/imx/dpu/dpu-crc.c
 new file mode 100644
-index 000000000000..7ed7422c1ebb
+index 000000000..7ed7422c1
 --- /dev/null
 +++ b/drivers/gpu/drm/imx/dpu/dpu-crc.c
 @@ -0,0 +1,385 @@
@@ -26008,7 +25936,7 @@ index 000000000000..7ed7422c1ebb
 +}
 diff --git a/drivers/gpu/drm/imx/dpu/dpu-crc.h b/drivers/gpu/drm/imx/dpu/dpu-crc.h
 new file mode 100644
-index 000000000000..25c03937470e
+index 000000000..25c039374
 --- /dev/null
 +++ b/drivers/gpu/drm/imx/dpu/dpu-crc.h
 @@ -0,0 +1,75 @@
@@ -26089,7 +26017,7 @@ index 000000000000..25c03937470e
 +#endif
 diff --git a/drivers/gpu/drm/imx/dpu/dpu-crtc.c b/drivers/gpu/drm/imx/dpu/dpu-crtc.c
 new file mode 100644
-index 000000000000..45c169d9db38
+index 000000000..45c169d9d
 --- /dev/null
 +++ b/drivers/gpu/drm/imx/dpu/dpu-crtc.c
 @@ -0,0 +1,1442 @@
@@ -27537,7 +27465,7 @@ index 000000000000..45c169d9db38
 +MODULE_ALIAS("platform:imx-dpu-crtc");
 diff --git a/drivers/gpu/drm/imx/dpu/dpu-crtc.h b/drivers/gpu/drm/imx/dpu/dpu-crtc.h
 new file mode 100644
-index 000000000000..423fe1339cf2
+index 000000000..423fe1339
 --- /dev/null
 +++ b/drivers/gpu/drm/imx/dpu/dpu-crtc.h
 @@ -0,0 +1,115 @@
@@ -27658,7 +27586,7 @@ index 000000000000..423fe1339cf2
 +#endif
 diff --git a/drivers/gpu/drm/imx/dpu/dpu-kms.c b/drivers/gpu/drm/imx/dpu/dpu-kms.c
 new file mode 100644
-index 000000000000..fd4897012810
+index 000000000..fd4897012
 --- /dev/null
 +++ b/drivers/gpu/drm/imx/dpu/dpu-kms.c
 @@ -0,0 +1,728 @@
@@ -28392,7 +28320,7 @@ index 000000000000..fd4897012810
 +};
 diff --git a/drivers/gpu/drm/imx/dpu/dpu-kms.h b/drivers/gpu/drm/imx/dpu/dpu-kms.h
 new file mode 100644
-index 000000000000..73723e500239
+index 000000000..73723e500
 --- /dev/null
 +++ b/drivers/gpu/drm/imx/dpu/dpu-kms.h
 @@ -0,0 +1,20 @@
@@ -28418,7 +28346,7 @@ index 000000000000..73723e500239
 +#endif
 diff --git a/drivers/gpu/drm/imx/dpu/dpu-plane.c b/drivers/gpu/drm/imx/dpu/dpu-plane.c
 new file mode 100644
-index 000000000000..aae9de5601a2
+index 000000000..aae9de560
 --- /dev/null
 +++ b/drivers/gpu/drm/imx/dpu/dpu-plane.c
 @@ -0,0 +1,1010 @@
@@ -29434,7 +29362,7 @@ index 000000000000..aae9de5601a2
 +}
 diff --git a/drivers/gpu/drm/imx/dpu/dpu-plane.h b/drivers/gpu/drm/imx/dpu/dpu-plane.h
 new file mode 100644
-index 000000000000..bc9189336bf3
+index 000000000..bc9189336
 --- /dev/null
 +++ b/drivers/gpu/drm/imx/dpu/dpu-plane.h
 @@ -0,0 +1,195 @@
@@ -29634,7 +29562,7 @@ index 000000000000..bc9189336bf3
 +				   enum drm_plane_type type);
 +#endif
 diff --git a/drivers/gpu/drm/imx/dw_hdmi-imx.c b/drivers/gpu/drm/imx/dw_hdmi-imx.c
-index d07b39b8afd2..f93c2e94de99 100644
+index d07b39b8a..f93c2e94d 100644
 --- a/drivers/gpu/drm/imx/dw_hdmi-imx.c
 +++ b/drivers/gpu/drm/imx/dw_hdmi-imx.c
 @@ -9,7 +9,9 @@
@@ -29997,7 +29925,7 @@ index d07b39b8afd2..f93c2e94de99 100644
  	},
  };
 diff --git a/drivers/gpu/drm/imx/imx-drm-core.c b/drivers/gpu/drm/imx/imx-drm-core.c
-index a1423be70721..02c78babbda9 100644
+index a1423be70..02c78babb 100644
 --- a/drivers/gpu/drm/imx/imx-drm-core.c
 +++ b/drivers/gpu/drm/imx/imx-drm-core.c
 @@ -12,6 +12,8 @@
@@ -30322,7 +30250,7 @@ index a1423be70721..02c78babbda9 100644
  MODULE_AUTHOR("Sascha Hauer <s.hauer@pengutronix.de>");
  MODULE_DESCRIPTION("i.MX drm driver core");
 diff --git a/drivers/gpu/drm/imx/imx-drm.h b/drivers/gpu/drm/imx/imx-drm.h
-index c3e1a3f14d30..2ab936f6faa0 100644
+index c3e1a3f14..2ab936f6f 100644
 --- a/drivers/gpu/drm/imx/imx-drm.h
 +++ b/drivers/gpu/drm/imx/imx-drm.h
 @@ -2,6 +2,8 @@
@@ -30352,7 +30280,7 @@ index c3e1a3f14d30..2ab936f6faa0 100644
 -
  #endif /* _IMX_DRM_H_ */
 diff --git a/drivers/gpu/drm/imx/imx-ldb.c b/drivers/gpu/drm/imx/imx-ldb.c
-index efd13e533726..ac88b9b04bef 100644
+index efd13e533..ac88b9b04 100644
 --- a/drivers/gpu/drm/imx/imx-ldb.c
 +++ b/drivers/gpu/drm/imx/imx-ldb.c
 @@ -7,7 +7,6 @@
@@ -31154,7 +31082,7 @@ index efd13e533726..ac88b9b04bef 100644
  static const struct component_ops imx_ldb_ops = {
 diff --git a/drivers/gpu/drm/imx/imx8mp-hdmi-pavi.c b/drivers/gpu/drm/imx/imx8mp-hdmi-pavi.c
 new file mode 100644
-index 000000000000..d93694d80334
+index 000000000..d93694d80
 --- /dev/null
 +++ b/drivers/gpu/drm/imx/imx8mp-hdmi-pavi.c
 @@ -0,0 +1,220 @@
@@ -31380,7 +31308,7 @@ index 000000000000..d93694d80334
 +MODULE_LICENSE("GPL");
 diff --git a/drivers/gpu/drm/imx/imx8mp-hdmi-pavi.h b/drivers/gpu/drm/imx/imx8mp-hdmi-pavi.h
 new file mode 100644
-index 000000000000..ef90bf46cb97
+index 000000000..ef90bf46c
 --- /dev/null
 +++ b/drivers/gpu/drm/imx/imx8mp-hdmi-pavi.h
 @@ -0,0 +1,38 @@
@@ -31424,7 +31352,7 @@ index 000000000000..ef90bf46cb97
 +#endif /* _IMX8MP_HDMI_PAVI_H_ */
 diff --git a/drivers/gpu/drm/imx/imx8mp-ldb.c b/drivers/gpu/drm/imx/imx8mp-ldb.c
 new file mode 100644
-index 000000000000..0f8fb10bd835
+index 000000000..0f8fb10bd
 --- /dev/null
 +++ b/drivers/gpu/drm/imx/imx8mp-ldb.c
 @@ -0,0 +1,445 @@
@@ -31875,7 +31803,7 @@ index 000000000000..0f8fb10bd835
 +MODULE_ALIAS("platform:" DRIVER_NAME);
 diff --git a/drivers/gpu/drm/imx/imx8qm-ldb.c b/drivers/gpu/drm/imx/imx8qm-ldb.c
 new file mode 100644
-index 000000000000..596f5350e7f6
+index 000000000..596f5350e
 --- /dev/null
 +++ b/drivers/gpu/drm/imx/imx8qm-ldb.c
 @@ -0,0 +1,565 @@
@@ -32446,7 +32374,7 @@ index 000000000000..596f5350e7f6
 +MODULE_ALIAS("platform:" DRIVER_NAME);
 diff --git a/drivers/gpu/drm/imx/imx8qxp-ldb.c b/drivers/gpu/drm/imx/imx8qxp-ldb.c
 new file mode 100644
-index 000000000000..8167e4d49412
+index 000000000..8167e4d49
 --- /dev/null
 +++ b/drivers/gpu/drm/imx/imx8qxp-ldb.c
 @@ -0,0 +1,876 @@
@@ -33328,7 +33256,7 @@ index 000000000000..8167e4d49412
 +MODULE_ALIAS("platform:" DRIVER_NAME);
 diff --git a/drivers/gpu/drm/imx/ipuv3/Kconfig b/drivers/gpu/drm/imx/ipuv3/Kconfig
 new file mode 100644
-index 000000000000..718da3784070
+index 000000000..718da3784
 --- /dev/null
 +++ b/drivers/gpu/drm/imx/ipuv3/Kconfig
 @@ -0,0 +1,6 @@
@@ -33340,7 +33268,7 @@ index 000000000000..718da3784070
 +	default m if DRM_IMX=m
 diff --git a/drivers/gpu/drm/imx/ipuv3/Makefile b/drivers/gpu/drm/imx/ipuv3/Makefile
 new file mode 100644
-index 000000000000..11643dfd23ce
+index 000000000..11643dfd2
 --- /dev/null
 +++ b/drivers/gpu/drm/imx/ipuv3/Makefile
 @@ -0,0 +1,4 @@
@@ -33352,7 +33280,7 @@ diff --git a/drivers/gpu/drm/imx/ipuv3-crtc.c b/drivers/gpu/drm/imx/ipuv3/ipuv3-
 similarity index 93%
 rename from drivers/gpu/drm/imx/ipuv3-crtc.c
 rename to drivers/gpu/drm/imx/ipuv3/ipuv3-crtc.c
-index d412fc265395..44773c80e1a4 100644
+index fd9d8e518..6d5c28d97 100644
 --- a/drivers/gpu/drm/imx/ipuv3-crtc.c
 +++ b/drivers/gpu/drm/imx/ipuv3/ipuv3-crtc.c
 @@ -24,6 +24,7 @@
@@ -33447,7 +33375,7 @@ index d412fc265395..44773c80e1a4 100644
 +MODULE_ALIAS("platform:imx-ipuv3-crtc");
 diff --git a/drivers/gpu/drm/imx/ipuv3/ipuv3-kms.c b/drivers/gpu/drm/imx/ipuv3/ipuv3-kms.c
 new file mode 100644
-index 000000000000..c36a9a2eda49
+index 000000000..c36a9a2ed
 --- /dev/null
 +++ b/drivers/gpu/drm/imx/ipuv3/ipuv3-kms.c
 @@ -0,0 +1,94 @@
@@ -33547,7 +33475,7 @@ index 000000000000..c36a9a2eda49
 +};
 diff --git a/drivers/gpu/drm/imx/ipuv3/ipuv3-kms.h b/drivers/gpu/drm/imx/ipuv3/ipuv3-kms.h
 new file mode 100644
-index 000000000000..72f80a91e33e
+index 000000000..72f80a91e
 --- /dev/null
 +++ b/drivers/gpu/drm/imx/ipuv3/ipuv3-kms.h
 @@ -0,0 +1,21 @@
@@ -33580,7 +33508,7 @@ diff --git a/drivers/gpu/drm/imx/ipuv3-plane.h b/drivers/gpu/drm/imx/ipuv3/ipuv3
 similarity index 94%
 rename from drivers/gpu/drm/imx/ipuv3-plane.h
 rename to drivers/gpu/drm/imx/ipuv3/ipuv3-plane.h
-index ffacbcdd2f98..7dc27973ce5d 100644
+index ffacbcdd2..7dc27973c 100644
 --- a/drivers/gpu/drm/imx/ipuv3-plane.h
 +++ b/drivers/gpu/drm/imx/ipuv3/ipuv3-plane.h
 @@ -50,4 +50,7 @@ void ipu_plane_disable(struct ipu_plane *ipu_plane, bool disable_dp_channel);
@@ -33593,7 +33521,7 @@ index ffacbcdd2f98..7dc27973ce5d 100644
  #endif
 diff --git a/drivers/gpu/drm/imx/lcdif-mux-display.c b/drivers/gpu/drm/imx/lcdif-mux-display.c
 new file mode 100644
-index 000000000000..7e218269407d
+index 000000000..7e2182694
 --- /dev/null
 +++ b/drivers/gpu/drm/imx/lcdif-mux-display.c
 @@ -0,0 +1,254 @@
@@ -33853,7 +33781,7 @@ index 000000000000..7e218269407d
 +MODULE_ALIAS("platform:imx-lcdif-mux-display");
 diff --git a/drivers/gpu/drm/imx/lcdif/Kconfig b/drivers/gpu/drm/imx/lcdif/Kconfig
 new file mode 100644
-index 000000000000..4460ffacd1f7
+index 000000000..4460ffacd
 --- /dev/null
 +++ b/drivers/gpu/drm/imx/lcdif/Kconfig
 @@ -0,0 +1,8 @@
@@ -33867,7 +33795,7 @@ index 000000000000..4460ffacd1f7
 +	  enable i.MX LCDIF controller DRM driver under DRM_IMX.
 diff --git a/drivers/gpu/drm/imx/lcdif/Makefile b/drivers/gpu/drm/imx/lcdif/Makefile
 new file mode 100644
-index 000000000000..59fe9be6d78e
+index 000000000..59fe9be6d
 --- /dev/null
 +++ b/drivers/gpu/drm/imx/lcdif/Makefile
 @@ -0,0 +1,4 @@
@@ -33877,7 +33805,7 @@ index 000000000000..59fe9be6d78e
 +obj-$(CONFIG_DRM_IMX_LCDIF) += imx-lcdif-crtc.o
 diff --git a/drivers/gpu/drm/imx/lcdif/lcdif-crtc.c b/drivers/gpu/drm/imx/lcdif/lcdif-crtc.c
 new file mode 100644
-index 000000000000..4a97c86fff9c
+index 000000000..4a97c86ff
 --- /dev/null
 +++ b/drivers/gpu/drm/imx/lcdif/lcdif-crtc.c
 @@ -0,0 +1,427 @@
@@ -34310,7 +34238,7 @@ index 000000000000..4a97c86fff9c
 +MODULE_LICENSE("GPL");
 diff --git a/drivers/gpu/drm/imx/lcdif/lcdif-kms.c b/drivers/gpu/drm/imx/lcdif/lcdif-kms.c
 new file mode 100644
-index 000000000000..f4c83ed8d802
+index 000000000..f4c83ed8d
 --- /dev/null
 +++ b/drivers/gpu/drm/imx/lcdif/lcdif-kms.c
 @@ -0,0 +1,47 @@
@@ -34363,7 +34291,7 @@ index 000000000000..f4c83ed8d802
 +};
 diff --git a/drivers/gpu/drm/imx/lcdif/lcdif-kms.h b/drivers/gpu/drm/imx/lcdif/lcdif-kms.h
 new file mode 100644
-index 000000000000..fcf7d257c6b7
+index 000000000..fcf7d257c
 --- /dev/null
 +++ b/drivers/gpu/drm/imx/lcdif/lcdif-kms.h
 @@ -0,0 +1,21 @@
@@ -34390,7 +34318,7 @@ index 000000000000..fcf7d257c6b7
 +#endif
 diff --git a/drivers/gpu/drm/imx/lcdif/lcdif-plane.c b/drivers/gpu/drm/imx/lcdif/lcdif-plane.c
 new file mode 100644
-index 000000000000..ac8c6807473a
+index 000000000..ac8c68074
 --- /dev/null
 +++ b/drivers/gpu/drm/imx/lcdif/lcdif-plane.c
 @@ -0,0 +1,241 @@
@@ -34637,7 +34565,7 @@ index 000000000000..ac8c6807473a
 +}
 diff --git a/drivers/gpu/drm/imx/lcdif/lcdif-plane.h b/drivers/gpu/drm/imx/lcdif/lcdif-plane.h
 new file mode 100644
-index 000000000000..acd7aead606a
+index 000000000..acd7aead6
 --- /dev/null
 +++ b/drivers/gpu/drm/imx/lcdif/lcdif-plane.h
 @@ -0,0 +1,37 @@
@@ -34680,7 +34608,7 @@ index 000000000000..acd7aead606a
 +#endif
 diff --git a/drivers/gpu/drm/imx/lcdifv3/Kconfig b/drivers/gpu/drm/imx/lcdifv3/Kconfig
 new file mode 100644
-index 000000000000..6d64c29778b9
+index 000000000..6d64c2977
 --- /dev/null
 +++ b/drivers/gpu/drm/imx/lcdifv3/Kconfig
 @@ -0,0 +1,8 @@
@@ -34694,7 +34622,7 @@ index 000000000000..6d64c29778b9
 +	  enable i.MX LCDIFV3 controller DRM driver under DRM_IMX.
 diff --git a/drivers/gpu/drm/imx/lcdifv3/Makefile b/drivers/gpu/drm/imx/lcdifv3/Makefile
 new file mode 100644
-index 000000000000..2f2b91078dba
+index 000000000..2f2b91078
 --- /dev/null
 +++ b/drivers/gpu/drm/imx/lcdifv3/Makefile
 @@ -0,0 +1,4 @@
@@ -34704,7 +34632,7 @@ index 000000000000..2f2b91078dba
 +obj-$(CONFIG_DRM_IMX_LCDIFV3) += imx-lcdifv3-crtc.o
 diff --git a/drivers/gpu/drm/imx/lcdifv3/lcdifv3-crtc.c b/drivers/gpu/drm/imx/lcdifv3/lcdifv3-crtc.c
 new file mode 100644
-index 000000000000..ad7d4bb54daf
+index 000000000..ad7d4bb54
 --- /dev/null
 +++ b/drivers/gpu/drm/imx/lcdifv3/lcdifv3-crtc.c
 @@ -0,0 +1,410 @@
@@ -35120,7 +35048,7 @@ index 000000000000..ad7d4bb54daf
 +MODULE_LICENSE("GPL");
 diff --git a/drivers/gpu/drm/imx/lcdifv3/lcdifv3-kms.c b/drivers/gpu/drm/imx/lcdifv3/lcdifv3-kms.c
 new file mode 100644
-index 000000000000..3d08a3215d53
+index 000000000..3d08a3215
 --- /dev/null
 +++ b/drivers/gpu/drm/imx/lcdifv3/lcdifv3-kms.c
 @@ -0,0 +1,37 @@
@@ -35163,7 +35091,7 @@ index 000000000000..3d08a3215d53
 +};
 diff --git a/drivers/gpu/drm/imx/lcdifv3/lcdifv3-kms.h b/drivers/gpu/drm/imx/lcdifv3/lcdifv3-kms.h
 new file mode 100644
-index 000000000000..9a7caf4b0c2d
+index 000000000..9a7caf4b0
 --- /dev/null
 +++ b/drivers/gpu/drm/imx/lcdifv3/lcdifv3-kms.h
 @@ -0,0 +1,12 @@
@@ -35181,7 +35109,7 @@ index 000000000000..9a7caf4b0c2d
 +#endif
 diff --git a/drivers/gpu/drm/imx/lcdifv3/lcdifv3-plane.c b/drivers/gpu/drm/imx/lcdifv3/lcdifv3-plane.c
 new file mode 100644
-index 000000000000..aa76e6a482bf
+index 000000000..aa76e6a48
 --- /dev/null
 +++ b/drivers/gpu/drm/imx/lcdifv3/lcdifv3-plane.c
 @@ -0,0 +1,203 @@
@@ -35390,7 +35318,7 @@ index 000000000000..aa76e6a482bf
 +}
 diff --git a/drivers/gpu/drm/imx/lcdifv3/lcdifv3-plane.h b/drivers/gpu/drm/imx/lcdifv3/lcdifv3-plane.h
 new file mode 100644
-index 000000000000..437b7d97e69f
+index 000000000..437b7d97e
 --- /dev/null
 +++ b/drivers/gpu/drm/imx/lcdifv3/lcdifv3-plane.h
 @@ -0,0 +1,24 @@
@@ -35420,7 +35348,7 @@ index 000000000000..437b7d97e69f
 +#endif
 diff --git a/drivers/gpu/drm/imx/mhdp/Kconfig b/drivers/gpu/drm/imx/mhdp/Kconfig
 new file mode 100644
-index 000000000000..42cf7fdd06d5
+index 000000000..42cf7fdd0
 --- /dev/null
 +++ b/drivers/gpu/drm/imx/mhdp/Kconfig
 @@ -0,0 +1,12 @@
@@ -35438,7 +35366,7 @@ index 000000000000..42cf7fdd06d5
 +	  Choose this if you want to use HDMI on i.MX8.
 diff --git a/drivers/gpu/drm/imx/mhdp/Makefile b/drivers/gpu/drm/imx/mhdp/Makefile
 new file mode 100644
-index 000000000000..235fa2d515e9
+index 000000000..235fa2d51
 --- /dev/null
 +++ b/drivers/gpu/drm/imx/mhdp/Makefile
 @@ -0,0 +1,5 @@
@@ -35449,7 +35377,7 @@ index 000000000000..235fa2d515e9
 +obj-$(CONFIG_DRM_IMX_CDNS_MHDP) += cdns_mhdp_imx.o
 diff --git a/drivers/gpu/drm/imx/mhdp/cdns-mhdp-dp-phy.c b/drivers/gpu/drm/imx/mhdp/cdns-mhdp-dp-phy.c
 new file mode 100644
-index 000000000000..f2229224bf72
+index 000000000..f2229224b
 --- /dev/null
 +++ b/drivers/gpu/drm/imx/mhdp/cdns-mhdp-dp-phy.c
 @@ -0,0 +1,548 @@
@@ -36003,7 +35931,7 @@ index 000000000000..f2229224bf72
 +}
 diff --git a/drivers/gpu/drm/imx/mhdp/cdns-mhdp-hdmi-phy.c b/drivers/gpu/drm/imx/mhdp/cdns-mhdp-hdmi-phy.c
 new file mode 100644
-index 000000000000..dbcb14a6f98f
+index 000000000..dbcb14a6f
 --- /dev/null
 +++ b/drivers/gpu/drm/imx/mhdp/cdns-mhdp-hdmi-phy.c
 @@ -0,0 +1,796 @@
@@ -36805,7 +36733,7 @@ index 000000000000..dbcb14a6f98f
 +}
 diff --git a/drivers/gpu/drm/imx/mhdp/cdns-mhdp-imx.h b/drivers/gpu/drm/imx/mhdp/cdns-mhdp-imx.h
 new file mode 100644
-index 000000000000..f83e5d5fdc3e
+index 000000000..f83e5d5fd
 --- /dev/null
 +++ b/drivers/gpu/drm/imx/mhdp/cdns-mhdp-imx.h
 @@ -0,0 +1,77 @@
@@ -36888,7 +36816,7 @@ index 000000000000..f83e5d5fdc3e
 +#endif /* CDNS_MHDP_IMX_H_ */
 diff --git a/drivers/gpu/drm/imx/mhdp/cdns-mhdp-imx8qm.c b/drivers/gpu/drm/imx/mhdp/cdns-mhdp-imx8qm.c
 new file mode 100644
-index 000000000000..3f8d996a874f
+index 000000000..3f8d996a8
 --- /dev/null
 +++ b/drivers/gpu/drm/imx/mhdp/cdns-mhdp-imx8qm.c
 @@ -0,0 +1,670 @@
@@ -37564,7 +37492,7 @@ index 000000000000..3f8d996a874f
 +}
 diff --git a/drivers/gpu/drm/imx/mhdp/cdns-mhdp-imxdrv.c b/drivers/gpu/drm/imx/mhdp/cdns-mhdp-imxdrv.c
 new file mode 100644
-index 000000000000..109c210eb5ad
+index 000000000..109c210eb
 --- /dev/null
 +++ b/drivers/gpu/drm/imx/mhdp/cdns-mhdp-imxdrv.c
 @@ -0,0 +1,272 @@
@@ -37842,7 +37770,7 @@ index 000000000000..109c210eb5ad
 +MODULE_ALIAS("platform:cdnhdmi-imx");
 diff --git a/drivers/gpu/drm/imx/mhdp/cdns-mhdp-ls1028a.c b/drivers/gpu/drm/imx/mhdp/cdns-mhdp-ls1028a.c
 new file mode 100644
-index 000000000000..4cc71301f5fe
+index 000000000..4cc71301f
 --- /dev/null
 +++ b/drivers/gpu/drm/imx/mhdp/cdns-mhdp-ls1028a.c
 @@ -0,0 +1,110 @@
@@ -37958,7 +37886,7 @@ index 000000000000..4cc71301f5fe
 +}
 diff --git a/drivers/gpu/drm/imx/mhdp/cdns-mhdp-phy.h b/drivers/gpu/drm/imx/mhdp/cdns-mhdp-phy.h
 new file mode 100644
-index 000000000000..768f6829269d
+index 000000000..768f68292
 --- /dev/null
 +++ b/drivers/gpu/drm/imx/mhdp/cdns-mhdp-phy.h
 @@ -0,0 +1,158 @@
@@ -38121,7 +38049,7 @@ index 000000000000..768f6829269d
 +int cdns_hdmi_phy_power_up(struct cdns_mhdp_device *mhdp);
 +#endif /* _CDNS_MHDP_PHY_H */
 diff --git a/drivers/gpu/drm/imx/parallel-display.c b/drivers/gpu/drm/imx/parallel-display.c
-index b61bfa84b6bb..2eb8df4697df 100644
+index b61bfa84b..2eb8df469 100644
 --- a/drivers/gpu/drm/imx/parallel-display.c
 +++ b/drivers/gpu/drm/imx/parallel-display.c
 @@ -70,10 +70,8 @@ static int imx_pd_connector_get_modes(struct drm_connector *connector)
@@ -38153,7 +38081,7 @@ index b61bfa84b6bb..2eb8df4697df 100644
  	imx_crtc_state->bus_flags = bus_flags;
 diff --git a/drivers/gpu/drm/imx/sec_mipi_dphy_ln14lpp.h b/drivers/gpu/drm/imx/sec_mipi_dphy_ln14lpp.h
 new file mode 100644
-index 000000000000..b302ed064e25
+index 000000000..b302ed064
 --- /dev/null
 +++ b/drivers/gpu/drm/imx/sec_mipi_dphy_ln14lpp.h
 @@ -0,0 +1,227 @@
@@ -38386,7 +38314,7 @@ index 000000000000..b302ed064e25
 +#endif
 diff --git a/drivers/gpu/drm/imx/sec_mipi_dsim-imx.c b/drivers/gpu/drm/imx/sec_mipi_dsim-imx.c
 new file mode 100644
-index 000000000000..b641c3b3f541
+index 000000000..b641c3b3f
 --- /dev/null
 +++ b/drivers/gpu/drm/imx/sec_mipi_dsim-imx.c
 @@ -0,0 +1,515 @@
@@ -38907,7 +38835,7 @@ index 000000000000..b641c3b3f541
 +MODULE_LICENSE("GPL");
 diff --git a/drivers/gpu/drm/imx/sec_mipi_pll_1432x.h b/drivers/gpu/drm/imx/sec_mipi_pll_1432x.h
 new file mode 100644
-index 000000000000..c387b2facd59
+index 000000000..c387b2fac
 --- /dev/null
 +++ b/drivers/gpu/drm/imx/sec_mipi_pll_1432x.h
 @@ -0,0 +1,49 @@
@@ -38961,7 +38889,7 @@ index 000000000000..c387b2facd59
 +#endif
 +
 diff --git a/drivers/gpu/drm/panel/Kconfig b/drivers/gpu/drm/panel/Kconfig
-index 6153972e0127..436013189166 100644
+index 6153972e0..436013189 100644
 --- a/drivers/gpu/drm/panel/Kconfig
 +++ b/drivers/gpu/drm/panel/Kconfig
 @@ -233,7 +233,6 @@ config DRM_PANEL_OLIMEX_LCD_OLINUXINO
@@ -38987,7 +38915,7 @@ index 6153972e0127..436013189166 100644
 +
  endmenu
 diff --git a/drivers/gpu/drm/panel/Makefile b/drivers/gpu/drm/panel/Makefile
-index 2ba560bca61d..3be941e15fd5 100644
+index 2ba560bca..3be941e15 100644
 --- a/drivers/gpu/drm/panel/Makefile
 +++ b/drivers/gpu/drm/panel/Makefile
 @@ -53,3 +53,4 @@ obj-$(CONFIG_DRM_PANEL_TPO_TPG110) += panel-tpo-tpg110.o
@@ -38996,7 +38924,7 @@ index 2ba560bca61d..3be941e15fd5 100644
  obj-$(CONFIG_DRM_PANEL_XINPENG_XPP055C272) += panel-xinpeng-xpp055c272.o
 +obj-$(CONFIG_DRM_PANEL_WKS_101WX001) += panel-wks-101wx001.o
 diff --git a/drivers/gpu/drm/panel/panel-ilitek-ili9881c.c b/drivers/gpu/drm/panel/panel-ilitek-ili9881c.c
-index 534dd7414d42..0145129d7c66 100644
+index 534dd7414..0145129d7 100644
 --- a/drivers/gpu/drm/panel/panel-ilitek-ili9881c.c
 +++ b/drivers/gpu/drm/panel/panel-ilitek-ili9881c.c
 @@ -590,14 +590,14 @@ static const struct drm_display_mode k101_im2byl02_default_mode = {
@@ -39021,7 +38949,7 @@ index 534dd7414d42..0145129d7c66 100644
  	.width_mm	= 135,
  	.height_mm	= 217,
 diff --git a/drivers/gpu/drm/panel/panel-innolux-p079zca.c b/drivers/gpu/drm/panel/panel-innolux-p079zca.c
-index f194b62e290c..aea316225391 100644
+index f194b62e2..aea316225 100644
 --- a/drivers/gpu/drm/panel/panel-innolux-p079zca.c
 +++ b/drivers/gpu/drm/panel/panel-innolux-p079zca.c
 @@ -484,7 +484,6 @@ static void innolux_panel_del(struct innolux_panel *innolux)
@@ -39049,7 +38977,7 @@ index f194b62e290c..aea316225391 100644
  
  static int innolux_panel_remove(struct mipi_dsi_device *dsi)
 diff --git a/drivers/gpu/drm/panel/panel-kingdisplay-kd097d04.c b/drivers/gpu/drm/panel/panel-kingdisplay-kd097d04.c
-index daccb1fd5fda..86e4213e8bb1 100644
+index daccb1fd5..86e4213e8 100644
 --- a/drivers/gpu/drm/panel/panel-kingdisplay-kd097d04.c
 +++ b/drivers/gpu/drm/panel/panel-kingdisplay-kd097d04.c
 @@ -406,13 +406,7 @@ static int kingdisplay_panel_probe(struct mipi_dsi_device *dsi)
@@ -39068,7 +38996,7 @@ index daccb1fd5fda..86e4213e8bb1 100644
  
  static int kingdisplay_panel_remove(struct mipi_dsi_device *dsi)
 diff --git a/drivers/gpu/drm/panel/panel-raspberrypi-touchscreen.c b/drivers/gpu/drm/panel/panel-raspberrypi-touchscreen.c
-index 4b92c6341490..bbdd086be7f5 100644
+index 4b92c6341..bbdd086be 100644
 --- a/drivers/gpu/drm/panel/panel-raspberrypi-touchscreen.c
 +++ b/drivers/gpu/drm/panel/panel-raspberrypi-touchscreen.c
 @@ -229,7 +229,7 @@ static void rpi_touchscreen_i2c_write(struct rpi_touchscreen *ts,
@@ -39113,7 +39041,7 @@ index 4b92c6341490..bbdd086be7f5 100644
  	.get_modes = rpi_touchscreen_get_modes,
  };
 diff --git a/drivers/gpu/drm/panel/panel-raydium-rm67191.c b/drivers/gpu/drm/panel/panel-raydium-rm67191.c
-index 572547d1aa83..b633631e05f4 100644
+index 572547d1a..b633631e0 100644
 --- a/drivers/gpu/drm/panel/panel-raydium-rm67191.c
 +++ b/drivers/gpu/drm/panel/panel-raydium-rm67191.c
 @@ -10,6 +10,7 @@
@@ -39631,7 +39559,7 @@ index 572547d1aa83..b633631e05f4 100644
  	.driver = {
  		.name = "panel-raydium-rm67191",
 diff --git a/drivers/gpu/drm/panel/panel-raydium-rm68200.c b/drivers/gpu/drm/panel/panel-raydium-rm68200.c
-index f908eeafb1af..5af8feb1953d 100644
+index f908eeafb..5af8feb19 100644
 --- a/drivers/gpu/drm/panel/panel-raydium-rm68200.c
 +++ b/drivers/gpu/drm/panel/panel-raydium-rm68200.c
 @@ -75,6 +75,7 @@
@@ -39784,7 +39712,7 @@ index f908eeafb1af..5af8feb1953d 100644
  
  	drm_panel_init(&ctx->panel, dev, &rm68200_drm_funcs,
 diff --git a/drivers/gpu/drm/panel/panel-simple.c b/drivers/gpu/drm/panel/panel-simple.c
-index bf2c845ef3a2..f2dba7474b59 100644
+index 1a87cc445..a801d1bd8 100644
 --- a/drivers/gpu/drm/panel/panel-simple.c
 +++ b/drivers/gpu/drm/panel/panel-simple.c
 @@ -557,7 +557,6 @@ static int panel_simple_probe(struct device *dev, const struct panel_desc *desc)
@@ -39898,7 +39826,7 @@ index bf2c845ef3a2..f2dba7474b59 100644
  static const struct display_timing koe_tx14d24vm1bpa_timing = {
  	.pixelclock = { 5580000, 5850000, 6200000 },
  	.hactive = { 320, 320, 320 },
-@@ -4050,6 +4111,9 @@ static const struct of_device_id platform_of_match[] = {
+@@ -4052,6 +4113,9 @@ static const struct of_device_id platform_of_match[] = {
  	}, {
  		.compatible = "evervision,vgg804821",
  		.data = &evervision_vgg804821,
@@ -39908,7 +39836,7 @@ index bf2c845ef3a2..f2dba7474b59 100644
  	}, {
  		.compatible = "foxlink,fl500wvr00-a0t",
  		.data = &foxlink_fl500wvr00_a0t,
-@@ -4110,6 +4174,9 @@ static const struct of_device_id platform_of_match[] = {
+@@ -4112,6 +4176,9 @@ static const struct of_device_id platform_of_match[] = {
  	}, {
  		.compatible = "kingdisplay,kd116n21-30nv-a010",
  		.data = &kingdisplay_kd116n21_30nv_a010,
@@ -39920,7 +39848,7 @@ index bf2c845ef3a2..f2dba7474b59 100644
  		.data = &koe_tx14d24vm1bpa,
 diff --git a/drivers/gpu/drm/panel/panel-wks-101wx001.c b/drivers/gpu/drm/panel/panel-wks-101wx001.c
 new file mode 100644
-index 000000000000..ef924ab3a477
+index 000000000..ef924ab3a
 --- /dev/null
 +++ b/drivers/gpu/drm/panel/panel-wks-101wx001.c
 @@ -0,0 +1,228 @@
@@ -40154,7 +40082,7 @@ index 000000000000..ef924ab3a477
 +MODULE_LICENSE("GPL v2");
 diff --git a/drivers/gpu/imx/Kconfig b/drivers/gpu/imx/Kconfig
 new file mode 100644
-index 000000000000..0c9f14f02a87
+index 000000000..0c9f14f02
 --- /dev/null
 +++ b/drivers/gpu/imx/Kconfig
 @@ -0,0 +1,19 @@
@@ -40179,7 +40107,7 @@ index 000000000000..0c9f14f02a87
 +	default m if IMX_DPU_CORE=m
 diff --git a/drivers/gpu/imx/Makefile b/drivers/gpu/imx/Makefile
 new file mode 100644
-index 000000000000..3c08def348d6
+index 000000000..3c08def34
 --- /dev/null
 +++ b/drivers/gpu/imx/Makefile
 @@ -0,0 +1,8 @@
@@ -40193,7 +40121,7 @@ index 000000000000..3c08def348d6
 +obj-$(CONFIG_IMX8_DPRC)	+= imx8_dprc.o
 diff --git a/drivers/gpu/imx/dpu-blit/Kconfig b/drivers/gpu/imx/dpu-blit/Kconfig
 new file mode 100644
-index 000000000000..d71d9a7f9515
+index 000000000..d71d9a7f9
 --- /dev/null
 +++ b/drivers/gpu/imx/dpu-blit/Kconfig
 @@ -0,0 +1,5 @@
@@ -40204,7 +40132,7 @@ index 000000000000..d71d9a7f9515
 +	default m if IMX_DPU_CORE=m
 diff --git a/drivers/gpu/imx/dpu-blit/Makefile b/drivers/gpu/imx/dpu-blit/Makefile
 new file mode 100644
-index 000000000000..6d06b88b9d5e
+index 000000000..6d06b88b9
 --- /dev/null
 +++ b/drivers/gpu/imx/dpu-blit/Makefile
 @@ -0,0 +1,5 @@
@@ -40215,7 +40143,7 @@ index 000000000000..6d06b88b9d5e
 +obj-$(CONFIG_IMX_DPU_BLIT) += imx-dpu-blit.o
 diff --git a/drivers/gpu/imx/dpu-blit/dpu-blit-registers.h b/drivers/gpu/imx/dpu-blit/dpu-blit-registers.h
 new file mode 100644
-index 000000000000..3d86b272e281
+index 000000000..3d86b272e
 --- /dev/null
 +++ b/drivers/gpu/imx/dpu-blit/dpu-blit-registers.h
 @@ -0,0 +1,283 @@
@@ -40504,7 +40432,7 @@ index 000000000000..3d86b272e281
 +#endif
 diff --git a/drivers/gpu/imx/dpu-blit/dpu-blit.c b/drivers/gpu/imx/dpu-blit/dpu-blit.c
 new file mode 100644
-index 000000000000..03c63d000814
+index 000000000..03c63d000
 --- /dev/null
 +++ b/drivers/gpu/imx/dpu-blit/dpu-blit.c
 @@ -0,0 +1,430 @@
@@ -40940,7 +40868,7 @@ index 000000000000..03c63d000814
 +MODULE_ALIAS("platform:imx-dpu-bliteng");
 diff --git a/drivers/gpu/imx/dpu-blit/dpu-blit.h b/drivers/gpu/imx/dpu-blit/dpu-blit.h
 new file mode 100644
-index 000000000000..a3fe17276a9c
+index 000000000..a3fe17276
 --- /dev/null
 +++ b/drivers/gpu/imx/dpu-blit/dpu-blit.h
 @@ -0,0 +1,47 @@
@@ -40993,7 +40921,7 @@ index 000000000000..a3fe17276a9c
 +#endif
 diff --git a/drivers/gpu/imx/dpu/Kconfig b/drivers/gpu/imx/dpu/Kconfig
 new file mode 100644
-index 000000000000..d62891118907
+index 000000000..d62891118
 --- /dev/null
 +++ b/drivers/gpu/imx/dpu/Kconfig
 @@ -0,0 +1,8 @@
@@ -41007,7 +40935,7 @@ index 000000000000..d62891118907
 +	  DPU base support.
 diff --git a/drivers/gpu/imx/dpu/Makefile b/drivers/gpu/imx/dpu/Makefile
 new file mode 100644
-index 000000000000..5b568e998d7e
+index 000000000..5b568e998
 --- /dev/null
 +++ b/drivers/gpu/imx/dpu/Makefile
 @@ -0,0 +1,8 @@
@@ -41021,7 +40949,7 @@ index 000000000000..5b568e998d7e
 +		     dpu-vscaler.o
 diff --git a/drivers/gpu/imx/dpu/dpu-common.c b/drivers/gpu/imx/dpu/dpu-common.c
 new file mode 100644
-index 000000000000..e7ce8363f7f4
+index 000000000..e7ce8363f
 --- /dev/null
 +++ b/drivers/gpu/imx/dpu/dpu-common.c
 @@ -0,0 +1,1333 @@
@@ -42360,7 +42288,7 @@ index 000000000000..e7ce8363f7f4
 +MODULE_LICENSE("GPL");
 diff --git a/drivers/gpu/imx/dpu/dpu-constframe.c b/drivers/gpu/imx/dpu/dpu-constframe.c
 new file mode 100644
-index 000000000000..26c7f85fa67a
+index 000000000..26c7f85fa
 --- /dev/null
 +++ b/drivers/gpu/imx/dpu/dpu-constframe.c
 @@ -0,0 +1,253 @@
@@ -42619,7 +42547,7 @@ index 000000000000..26c7f85fa67a
 +}
 diff --git a/drivers/gpu/imx/dpu/dpu-disengcfg.c b/drivers/gpu/imx/dpu/dpu-disengcfg.c
 new file mode 100644
-index 000000000000..be7e8011c270
+index 000000000..be7e8011c
 --- /dev/null
 +++ b/drivers/gpu/imx/dpu/dpu-disengcfg.c
 @@ -0,0 +1,158 @@
@@ -42783,7 +42711,7 @@ index 000000000000..be7e8011c270
 +}
 diff --git a/drivers/gpu/imx/dpu/dpu-extdst.c b/drivers/gpu/imx/dpu/dpu-extdst.c
 new file mode 100644
-index 000000000000..013e03a2537e
+index 000000000..013e03a25
 --- /dev/null
 +++ b/drivers/gpu/imx/dpu/dpu-extdst.c
 @@ -0,0 +1,521 @@
@@ -43310,7 +43238,7 @@ index 000000000000..013e03a2537e
 +}
 diff --git a/drivers/gpu/imx/dpu/dpu-fetchdecode.c b/drivers/gpu/imx/dpu/dpu-fetchdecode.c
 new file mode 100644
-index 000000000000..6cb051de15f7
+index 000000000..6cb051de1
 --- /dev/null
 +++ b/drivers/gpu/imx/dpu/dpu-fetchdecode.c
 @@ -0,0 +1,673 @@
@@ -43989,7 +43917,7 @@ index 000000000000..6cb051de15f7
 +}
 diff --git a/drivers/gpu/imx/dpu/dpu-fetcheco.c b/drivers/gpu/imx/dpu/dpu-fetcheco.c
 new file mode 100644
-index 000000000000..d8bfb79e3ae9
+index 000000000..d8bfb79e3
 --- /dev/null
 +++ b/drivers/gpu/imx/dpu/dpu-fetcheco.c
 @@ -0,0 +1,407 @@
@@ -44402,7 +44330,7 @@ index 000000000000..d8bfb79e3ae9
 +}
 diff --git a/drivers/gpu/imx/dpu/dpu-fetchlayer.c b/drivers/gpu/imx/dpu/dpu-fetchlayer.c
 new file mode 100644
-index 000000000000..3a72a8e65a17
+index 000000000..3a72a8e65
 --- /dev/null
 +++ b/drivers/gpu/imx/dpu/dpu-fetchlayer.c
 @@ -0,0 +1,294 @@
@@ -44702,7 +44630,7 @@ index 000000000000..3a72a8e65a17
 +}
 diff --git a/drivers/gpu/imx/dpu/dpu-fetchunit.c b/drivers/gpu/imx/dpu/dpu-fetchunit.c
 new file mode 100644
-index 000000000000..b6e67bb503be
+index 000000000..b6e67bb50
 --- /dev/null
 +++ b/drivers/gpu/imx/dpu/dpu-fetchunit.c
 @@ -0,0 +1,346 @@
@@ -45054,7 +44982,7 @@ index 000000000000..b6e67bb503be
 +EXPORT_SYMBOL_GPL(fetchunit_is_fetchwarp);
 diff --git a/drivers/gpu/imx/dpu/dpu-fetchwarp.c b/drivers/gpu/imx/dpu/dpu-fetchwarp.c
 new file mode 100644
-index 000000000000..953368e3fade
+index 000000000..953368e3f
 --- /dev/null
 +++ b/drivers/gpu/imx/dpu/dpu-fetchwarp.c
 @@ -0,0 +1,305 @@
@@ -45365,7 +45293,7 @@ index 000000000000..953368e3fade
 +}
 diff --git a/drivers/gpu/imx/dpu/dpu-framegen.c b/drivers/gpu/imx/dpu/dpu-framegen.c
 new file mode 100644
-index 000000000000..aac9efbd4d2c
+index 000000000..aac9efbd4
 --- /dev/null
 +++ b/drivers/gpu/imx/dpu/dpu-framegen.c
 @@ -0,0 +1,597 @@
@@ -45968,7 +45896,7 @@ index 000000000000..aac9efbd4d2c
 +}
 diff --git a/drivers/gpu/imx/dpu/dpu-hscaler.c b/drivers/gpu/imx/dpu/dpu-hscaler.c
 new file mode 100644
-index 000000000000..9e69c619bd3f
+index 000000000..9e69c619b
 --- /dev/null
 +++ b/drivers/gpu/imx/dpu/dpu-hscaler.c
 @@ -0,0 +1,386 @@
@@ -46360,7 +46288,7 @@ index 000000000000..9e69c619bd3f
 +}
 diff --git a/drivers/gpu/imx/dpu/dpu-layerblend.c b/drivers/gpu/imx/dpu/dpu-layerblend.c
 new file mode 100644
-index 000000000000..c19fcbdb169b
+index 000000000..c19fcbdb1
 --- /dev/null
 +++ b/drivers/gpu/imx/dpu/dpu-layerblend.c
 @@ -0,0 +1,346 @@
@@ -46712,7 +46640,7 @@ index 000000000000..c19fcbdb169b
 +}
 diff --git a/drivers/gpu/imx/dpu/dpu-prv.h b/drivers/gpu/imx/dpu/dpu-prv.h
 new file mode 100644
-index 000000000000..2c1b5a39ac05
+index 000000000..2c1b5a39a
 --- /dev/null
 +++ b/drivers/gpu/imx/dpu/dpu-prv.h
 @@ -0,0 +1,467 @@
@@ -47185,7 +47113,7 @@ index 000000000000..2c1b5a39ac05
 +#endif				/* __DPU_PRV_H__ */
 diff --git a/drivers/gpu/imx/dpu/dpu-sc-misc.c b/drivers/gpu/imx/dpu/dpu-sc-misc.c
 new file mode 100644
-index 000000000000..20f600cb5a68
+index 000000000..20f600cb5
 --- /dev/null
 +++ b/drivers/gpu/imx/dpu/dpu-sc-misc.c
 @@ -0,0 +1,93 @@
@@ -47284,7 +47212,7 @@ index 000000000000..20f600cb5a68
 +}
 diff --git a/drivers/gpu/imx/dpu/dpu-signature.c b/drivers/gpu/imx/dpu/dpu-signature.c
 new file mode 100644
-index 000000000000..5fca7a1c4343
+index 000000000..5fca7a1c4
 --- /dev/null
 +++ b/drivers/gpu/imx/dpu/dpu-signature.c
 @@ -0,0 +1,392 @@
@@ -47682,7 +47610,7 @@ index 000000000000..5fca7a1c4343
 +}
 diff --git a/drivers/gpu/imx/dpu/dpu-store.c b/drivers/gpu/imx/dpu/dpu-store.c
 new file mode 100644
-index 000000000000..cbd06b83581b
+index 000000000..cbd06b835
 --- /dev/null
 +++ b/drivers/gpu/imx/dpu/dpu-store.c
 @@ -0,0 +1,157 @@
@@ -47845,7 +47773,7 @@ index 000000000000..cbd06b83581b
 +}
 diff --git a/drivers/gpu/imx/dpu/dpu-tcon.c b/drivers/gpu/imx/dpu/dpu-tcon.c
 new file mode 100644
-index 000000000000..bbecc2c720ba
+index 000000000..bbecc2c72
 --- /dev/null
 +++ b/drivers/gpu/imx/dpu/dpu-tcon.c
 @@ -0,0 +1,330 @@
@@ -48181,7 +48109,7 @@ index 000000000000..bbecc2c720ba
 +}
 diff --git a/drivers/gpu/imx/dpu/dpu-vscaler.c b/drivers/gpu/imx/dpu/dpu-vscaler.c
 new file mode 100644
-index 000000000000..b1bdcd596392
+index 000000000..b1bdcd596
 --- /dev/null
 +++ b/drivers/gpu/imx/dpu/dpu-vscaler.c
 @@ -0,0 +1,438 @@
@@ -48625,7 +48553,7 @@ index 000000000000..b1bdcd596392
 +}
 diff --git a/drivers/gpu/imx/imx8_dprc.c b/drivers/gpu/imx/imx8_dprc.c
 new file mode 100644
-index 000000000000..4cec62c8bc33
+index 000000000..4cec62c8b
 --- /dev/null
 +++ b/drivers/gpu/imx/imx8_dprc.c
 @@ -0,0 +1,889 @@
@@ -49520,7 +49448,7 @@ index 000000000000..4cec62c8bc33
 +MODULE_LICENSE("GPL");
 diff --git a/drivers/gpu/imx/imx8_pc.c b/drivers/gpu/imx/imx8_pc.c
 new file mode 100644
-index 000000000000..f5386b9f6193
+index 000000000..f5386b9f6
 --- /dev/null
 +++ b/drivers/gpu/imx/imx8_pc.c
 @@ -0,0 +1,218 @@
@@ -49744,7 +49672,7 @@ index 000000000000..f5386b9f6193
 +MODULE_LICENSE("GPL");
 diff --git a/drivers/gpu/imx/imx8_prg.c b/drivers/gpu/imx/imx8_prg.c
 new file mode 100644
-index 000000000000..4dbcb1cb909a
+index 000000000..4dbcb1cb9
 --- /dev/null
 +++ b/drivers/gpu/imx/imx8_prg.c
 @@ -0,0 +1,452 @@
@@ -50202,7 +50130,7 @@ index 000000000000..4dbcb1cb909a
 +MODULE_LICENSE("GPL");
 diff --git a/drivers/gpu/imx/ipu-v3/Kconfig b/drivers/gpu/imx/ipu-v3/Kconfig
 new file mode 100644
-index 000000000000..061fb990c120
+index 000000000..061fb990c
 --- /dev/null
 +++ b/drivers/gpu/imx/ipu-v3/Kconfig
 @@ -0,0 +1,11 @@
@@ -50219,7 +50147,7 @@ index 000000000000..061fb990c120
 +	  Processing Unit. This option only enables IPU base support.
 diff --git a/drivers/gpu/imx/ipu-v3/Makefile b/drivers/gpu/imx/ipu-v3/Makefile
 new file mode 100644
-index 000000000000..5fe5ef20701a
+index 000000000..5fe5ef207
 --- /dev/null
 +++ b/drivers/gpu/imx/ipu-v3/Makefile
 @@ -0,0 +1,10 @@
@@ -50235,7 +50163,7 @@ index 000000000000..5fe5ef20701a
 +endif
 diff --git a/drivers/gpu/imx/ipu-v3/ipu-common.c b/drivers/gpu/imx/ipu-v3/ipu-common.c
 new file mode 100644
-index 000000000000..d166ee262ce4
+index 000000000..d166ee262
 --- /dev/null
 +++ b/drivers/gpu/imx/ipu-v3/ipu-common.c
 @@ -0,0 +1,1500 @@
@@ -51741,7 +51669,7 @@ index 000000000000..d166ee262ce4
 +MODULE_LICENSE("GPL");
 diff --git a/drivers/gpu/imx/ipu-v3/ipu-cpmem.c b/drivers/gpu/imx/ipu-v3/ipu-cpmem.c
 new file mode 100644
-index 000000000000..82b244cb313e
+index 000000000..82b244cb3
 --- /dev/null
 +++ b/drivers/gpu/imx/ipu-v3/ipu-cpmem.c
 @@ -0,0 +1,976 @@
@@ -52723,7 +52651,7 @@ index 000000000000..82b244cb313e
 +}
 diff --git a/drivers/gpu/imx/ipu-v3/ipu-csi.c b/drivers/gpu/imx/ipu-v3/ipu-csi.c
 new file mode 100644
-index 000000000000..8ae301eef643
+index 000000000..8ae301eef
 --- /dev/null
 +++ b/drivers/gpu/imx/ipu-v3/ipu-csi.c
 @@ -0,0 +1,821 @@
@@ -53550,7 +53478,7 @@ index 000000000000..8ae301eef643
 +EXPORT_SYMBOL_GPL(ipu_csi_dump);
 diff --git a/drivers/gpu/imx/ipu-v3/ipu-dc.c b/drivers/gpu/imx/ipu-v3/ipu-dc.c
 new file mode 100644
-index 000000000000..34b4075a6a8e
+index 000000000..34b4075a6
 --- /dev/null
 +++ b/drivers/gpu/imx/ipu-v3/ipu-dc.c
 @@ -0,0 +1,420 @@
@@ -53976,7 +53904,7 @@ index 000000000000..34b4075a6a8e
 +}
 diff --git a/drivers/gpu/imx/ipu-v3/ipu-di.c b/drivers/gpu/imx/ipu-v3/ipu-di.c
 new file mode 100644
-index 000000000000..b4a31d506fcc
+index 000000000..b4a31d506
 --- /dev/null
 +++ b/drivers/gpu/imx/ipu-v3/ipu-di.c
 @@ -0,0 +1,745 @@
@@ -54727,7 +54655,7 @@ index 000000000000..b4a31d506fcc
 +}
 diff --git a/drivers/gpu/imx/ipu-v3/ipu-dmfc.c b/drivers/gpu/imx/ipu-v3/ipu-dmfc.c
 new file mode 100644
-index 000000000000..ae682084a10a
+index 000000000..ae682084a
 --- /dev/null
 +++ b/drivers/gpu/imx/ipu-v3/ipu-dmfc.c
 @@ -0,0 +1,214 @@
@@ -54947,7 +54875,7 @@ index 000000000000..ae682084a10a
 +}
 diff --git a/drivers/gpu/imx/ipu-v3/ipu-dp.c b/drivers/gpu/imx/ipu-v3/ipu-dp.c
 new file mode 100644
-index 000000000000..8f67e985f26a
+index 000000000..8f67e985f
 --- /dev/null
 +++ b/drivers/gpu/imx/ipu-v3/ipu-dp.c
 @@ -0,0 +1,357 @@
@@ -55310,7 +55238,7 @@ index 000000000000..8f67e985f26a
 +}
 diff --git a/drivers/gpu/imx/ipu-v3/ipu-ic-csc.c b/drivers/gpu/imx/ipu-v3/ipu-ic-csc.c
 new file mode 100644
-index 000000000000..d1ca7ba94a12
+index 000000000..d1ca7ba94
 --- /dev/null
 +++ b/drivers/gpu/imx/ipu-v3/ipu-ic-csc.c
 @@ -0,0 +1,409 @@
@@ -55725,7 +55653,7 @@ index 000000000000..d1ca7ba94a12
 +EXPORT_SYMBOL_GPL(ipu_ic_calc_csc);
 diff --git a/drivers/gpu/imx/ipu-v3/ipu-ic.c b/drivers/gpu/imx/ipu-v3/ipu-ic.c
 new file mode 100644
-index 000000000000..846461bac70d
+index 000000000..846461bac
 --- /dev/null
 +++ b/drivers/gpu/imx/ipu-v3/ipu-ic.c
 @@ -0,0 +1,761 @@
@@ -56492,7 +56420,7 @@ index 000000000000..846461bac70d
 +EXPORT_SYMBOL_GPL(ipu_ic_dump);
 diff --git a/drivers/gpu/imx/ipu-v3/ipu-image-convert.c b/drivers/gpu/imx/ipu-v3/ipu-image-convert.c
 new file mode 100644
-index 000000000000..aa1d4b6d278f
+index 000000000..aa1d4b6d2
 --- /dev/null
 +++ b/drivers/gpu/imx/ipu-v3/ipu-image-convert.c
 @@ -0,0 +1,2512 @@
@@ -59010,7 +58938,7 @@ index 000000000000..aa1d4b6d278f
 +}
 diff --git a/drivers/gpu/imx/ipu-v3/ipu-pre.c b/drivers/gpu/imx/ipu-v3/ipu-pre.c
 new file mode 100644
-index 000000000000..ad82c9e0252f
+index 000000000..ad82c9e02
 --- /dev/null
 +++ b/drivers/gpu/imx/ipu-v3/ipu-pre.c
 @@ -0,0 +1,346 @@
@@ -59362,7 +59290,7 @@ index 000000000000..ad82c9e0252f
 +};
 diff --git a/drivers/gpu/imx/ipu-v3/ipu-prg.c b/drivers/gpu/imx/ipu-v3/ipu-prg.c
 new file mode 100644
-index 000000000000..196797c1b4b3
+index 000000000..196797c1b
 --- /dev/null
 +++ b/drivers/gpu/imx/ipu-v3/ipu-prg.c
 @@ -0,0 +1,483 @@
@@ -59851,7 +59779,7 @@ index 000000000000..196797c1b4b3
 +};
 diff --git a/drivers/gpu/imx/ipu-v3/ipu-prv.h b/drivers/gpu/imx/ipu-v3/ipu-prv.h
 new file mode 100644
-index 000000000000..291ac1bab66d
+index 000000000..291ac1bab
 --- /dev/null
 +++ b/drivers/gpu/imx/ipu-v3/ipu-prv.h
 @@ -0,0 +1,274 @@
@@ -60131,7 +60059,7 @@ index 000000000000..291ac1bab66d
 +#endif				/* __IPU_PRV_H__ */
 diff --git a/drivers/gpu/imx/ipu-v3/ipu-smfc.c b/drivers/gpu/imx/ipu-v3/ipu-smfc.c
 new file mode 100644
-index 000000000000..46ffc0a5906d
+index 000000000..46ffc0a59
 --- /dev/null
 +++ b/drivers/gpu/imx/ipu-v3/ipu-smfc.c
 @@ -0,0 +1,202 @@
@@ -60339,7 +60267,7 @@ index 000000000000..46ffc0a5906d
 +}
 diff --git a/drivers/gpu/imx/ipu-v3/ipu-vdi.c b/drivers/gpu/imx/ipu-v3/ipu-vdi.c
 new file mode 100644
-index 000000000000..a593b232b6d3
+index 000000000..a593b232b
 --- /dev/null
 +++ b/drivers/gpu/imx/ipu-v3/ipu-vdi.c
 @@ -0,0 +1,234 @@
@@ -60579,7 +60507,7 @@ index 000000000000..a593b232b6d3
 +}
 diff --git a/drivers/gpu/imx/lcdif/Kconfig b/drivers/gpu/imx/lcdif/Kconfig
 new file mode 100644
-index 000000000000..dfaea1207940
+index 000000000..dfaea1207
 --- /dev/null
 +++ b/drivers/gpu/imx/lcdif/Kconfig
 @@ -0,0 +1,9 @@
@@ -60594,7 +60522,7 @@ index 000000000000..dfaea1207940
 +
 diff --git a/drivers/gpu/imx/lcdif/Makefile b/drivers/gpu/imx/lcdif/Makefile
 new file mode 100644
-index 000000000000..8c7ce5ccce95
+index 000000000..8c7ce5ccc
 --- /dev/null
 +++ b/drivers/gpu/imx/lcdif/Makefile
 @@ -0,0 +1,3 @@
@@ -60603,7 +60531,7 @@ index 000000000000..8c7ce5ccce95
 +imx-lcdif-core-objs := lcdif-common.o
 diff --git a/drivers/gpu/imx/lcdif/lcdif-common.c b/drivers/gpu/imx/lcdif/lcdif-common.c
 new file mode 100644
-index 000000000000..b3781270ad67
+index 000000000..b3781270a
 --- /dev/null
 +++ b/drivers/gpu/imx/lcdif/lcdif-common.c
 @@ -0,0 +1,835 @@
@@ -61444,7 +61372,7 @@ index 000000000000..b3781270ad67
 +MODULE_LICENSE("GPL");
 diff --git a/drivers/gpu/imx/lcdif/lcdif-regs.h b/drivers/gpu/imx/lcdif/lcdif-regs.h
 new file mode 100644
-index 000000000000..de2f1c55591c
+index 000000000..de2f1c555
 --- /dev/null
 +++ b/drivers/gpu/imx/lcdif/lcdif-regs.h
 @@ -0,0 +1,144 @@
@@ -61594,7 +61522,7 @@ index 000000000000..de2f1c55591c
 +#endif
 diff --git a/drivers/gpu/imx/lcdifv3/Kconfig b/drivers/gpu/imx/lcdifv3/Kconfig
 new file mode 100644
-index 000000000000..8365c285f4a4
+index 000000000..8365c285f
 --- /dev/null
 +++ b/drivers/gpu/imx/lcdifv3/Kconfig
 @@ -0,0 +1,10 @@
@@ -61610,7 +61538,7 @@ index 000000000000..8365c285f4a4
 +
 diff --git a/drivers/gpu/imx/lcdifv3/Makefile b/drivers/gpu/imx/lcdifv3/Makefile
 new file mode 100644
-index 000000000000..812043e52f34
+index 000000000..812043e52
 --- /dev/null
 +++ b/drivers/gpu/imx/lcdifv3/Makefile
 @@ -0,0 +1,3 @@
@@ -61619,7 +61547,7 @@ index 000000000000..812043e52f34
 +imx-lcdifv3-core-objs := lcdifv3-common.o
 diff --git a/drivers/gpu/imx/lcdifv3/lcdifv3-common.c b/drivers/gpu/imx/lcdifv3/lcdifv3-common.c
 new file mode 100644
-index 000000000000..7bdb00e2ecc7
+index 000000000..7bdb00e2e
 --- /dev/null
 +++ b/drivers/gpu/imx/lcdifv3/lcdifv3-common.c
 @@ -0,0 +1,866 @@
@@ -62491,7 +62419,7 @@ index 000000000000..7bdb00e2ecc7
 +MODULE_LICENSE("GPL");
 diff --git a/drivers/gpu/imx/lcdifv3/lcdifv3-regs.h b/drivers/gpu/imx/lcdifv3/lcdifv3-regs.h
 new file mode 100644
-index 000000000000..d47c2f80b8c3
+index 000000000..d47c2f80b
 --- /dev/null
 +++ b/drivers/gpu/imx/lcdifv3/lcdifv3-regs.h
 @@ -0,0 +1,150 @@
@@ -62646,7 +62574,7 @@ index 000000000000..d47c2f80b8c3
 +
 +#endif /* __LCDIFV3_REGS_H */
 diff --git a/drivers/video/Kconfig b/drivers/video/Kconfig
-index 427a993c7f57..c26d4d95e175 100644
+index 427a993c7..c26d4d95e 100644
 --- a/drivers/video/Kconfig
 +++ b/drivers/video/Kconfig
 @@ -15,6 +15,7 @@ source "drivers/char/agp/Kconfig"
@@ -62659,7 +62587,7 @@ index 427a993c7f57..c26d4d95e175 100644
  source "drivers/gpu/drm/Kconfig"
 diff --git a/include/drm/bridge/cdns-mhdp.h b/include/drm/bridge/cdns-mhdp.h
 new file mode 100644
-index 000000000000..f3bdff5c3193
+index 000000000..f3bdff5c3
 --- /dev/null
 +++ b/include/drm/bridge/cdns-mhdp.h
 @@ -0,0 +1,921 @@
@@ -63585,7 +63513,7 @@ index 000000000000..f3bdff5c3193
 +
 +#endif /* CDNS_MHDP_H_ */
 diff --git a/include/drm/bridge/dw_hdmi.h b/include/drm/bridge/dw_hdmi.h
-index ea34ca146b82..783333a08121 100644
+index ea34ca146..783333a08 100644
 --- a/include/drm/bridge/dw_hdmi.h
 +++ b/include/drm/bridge/dw_hdmi.h
 @@ -121,6 +121,9 @@ struct dw_hdmi_phy_ops {
@@ -63622,7 +63550,7 @@ index ea34ca146b82..783333a08121 100644
  					       void *data);
 diff --git a/include/drm/bridge/fsl_imx_ldb.h b/include/drm/bridge/fsl_imx_ldb.h
 new file mode 100644
-index 000000000000..ade80fb22fd5
+index 000000000..ade80fb22
 --- /dev/null
 +++ b/include/drm/bridge/fsl_imx_ldb.h
 @@ -0,0 +1,39 @@
@@ -63667,7 +63595,7 @@ index 000000000000..ade80fb22fd5
 +#endif /* __FSL_IMX_LDB__ */
 diff --git a/include/drm/bridge/sec_mipi_dsim.h b/include/drm/bridge/sec_mipi_dsim.h
 new file mode 100644
-index 000000000000..f679b7ca8eb8
+index 000000000..f679b7ca8
 --- /dev/null
 +++ b/include/drm/bridge/sec_mipi_dsim.h
 @@ -0,0 +1,113 @@
@@ -63785,7 +63713,7 @@ index 000000000000..f679b7ca8eb8
 +
 +#endif
 diff --git a/include/uapi/drm/drm_fourcc.h b/include/uapi/drm/drm_fourcc.h
-index 5498d7a6556a..d59b56513c41 100644
+index dad9d3b4a..3de4863dd 100644
 --- a/include/uapi/drm/drm_fourcc.h
 +++ b/include/uapi/drm/drm_fourcc.h
 @@ -243,6 +243,14 @@ extern "C" {
@@ -63803,7 +63731,7 @@ index 5498d7a6556a..d59b56513c41 100644
  /*
   * 2 plane YCbCr MSB aligned
   * index 0 = Y plane, [15:0] Y:x [10:6] little endian
-@@ -332,6 +340,8 @@ extern "C" {
+@@ -339,6 +347,8 @@ extern "C" {
  #define DRM_FORMAT_MOD_VENDOR_ARM     0x08
  #define DRM_FORMAT_MOD_VENDOR_ALLWINNER 0x09
  #define DRM_FORMAT_MOD_VENDOR_AMLOGIC 0x0a
@@ -63812,7 +63740,7 @@ index 5498d7a6556a..d59b56513c41 100644
  
  /* add more to the end as needed */
  
-@@ -565,6 +575,15 @@ extern "C" {
+@@ -572,6 +582,15 @@ extern "C" {
   */
  #define DRM_FORMAT_MOD_VIVANTE_SPLIT_SUPER_TILED fourcc_mod_code(VIVANTE, 4)
  
@@ -63828,7 +63756,7 @@ index 5498d7a6556a..d59b56513c41 100644
  /* NVIDIA frame buffer modifiers */
  
  /*
-@@ -1056,6 +1075,42 @@ drm_fourcc_canonicalize_nvidia_format_mod(__u64 modifier)
+@@ -1067,6 +1086,42 @@ drm_fourcc_canonicalize_nvidia_format_mod(__u64 modifier)
   */
  #define AMLOGIC_FBC_OPTION_MEM_SAVING		(1ULL << 0)
  
@@ -63873,7 +63801,7 @@ index 5498d7a6556a..d59b56513c41 100644
  #endif
 diff --git a/include/uapi/drm/imx_drm.h b/include/uapi/drm/imx_drm.h
 new file mode 100644
-index 000000000000..e80cad4be8bd
+index 000000000..e80cad4be
 --- /dev/null
 +++ b/include/uapi/drm/imx_drm.h
 @@ -0,0 +1,89 @@
@@ -63967,7 +63895,7 @@ index 000000000000..e80cad4be8bd
 +
 +#endif /* _UAPI_IMX_DRM_H_ */
 diff --git a/include/uapi/linux/media-bus-format.h b/include/uapi/linux/media-bus-format.h
-index 84fa53ffb13f..fa8ea6584abd 100644
+index 84fa53ffb..fa8ea6584 100644
 --- a/include/uapi/linux/media-bus-format.h
 +++ b/include/uapi/linux/media-bus-format.h
 @@ -34,7 +34,7 @@
@@ -63993,7 +63921,7 @@ index 84fa53ffb13f..fa8ea6584abd 100644
  #define MEDIA_BUS_FMT_Y8_1X8			0x2001
 diff --git a/include/video/dpu.h b/include/video/dpu.h
 new file mode 100644
-index 000000000000..4115da97aab8
+index 000000000..4115da97a
 --- /dev/null
 +++ b/include/video/dpu.h
 @@ -0,0 +1,754 @@
@@ -64753,7 +64681,7 @@ index 000000000000..4115da97aab8
 +#endif /* __DRM_DPU_H__ */
 diff --git a/include/video/imx-lcdif.h b/include/video/imx-lcdif.h
 new file mode 100644
-index 000000000000..d5005b10a2c0
+index 000000000..d5005b10a
 --- /dev/null
 +++ b/include/video/imx-lcdif.h
 @@ -0,0 +1,44 @@
@@ -64803,7 +64731,7 @@ index 000000000000..d5005b10a2c0
 +#endif
 diff --git a/include/video/imx-lcdifv3.h b/include/video/imx-lcdifv3.h
 new file mode 100644
-index 000000000000..f201edfe46f9
+index 000000000..f201edfe4
 --- /dev/null
 +++ b/include/video/imx-lcdifv3.h
 @@ -0,0 +1,36 @@
@@ -64845,7 +64773,7 @@ index 000000000000..f201edfe46f9
 +#endif
 diff --git a/include/video/imx8-pc.h b/include/video/imx8-pc.h
 new file mode 100644
-index 000000000000..e30017d78cc4
+index 000000000..e30017d78
 --- /dev/null
 +++ b/include/video/imx8-pc.h
 @@ -0,0 +1,33 @@
@@ -64884,7 +64812,7 @@ index 000000000000..e30017d78cc4
 +#endif
 diff --git a/include/video/imx8-prefetch.h b/include/video/imx8-prefetch.h
 new file mode 100644
-index 000000000000..56073c4af5e7
+index 000000000..56073c4af
 --- /dev/null
 +++ b/include/video/imx8-prefetch.h
 @@ -0,0 +1,75 @@
@@ -64964,5 +64892,5 @@ index 000000000000..56073c4af5e7
 +
 +#endif
 -- 
-2.39.0
+2.41.0
 

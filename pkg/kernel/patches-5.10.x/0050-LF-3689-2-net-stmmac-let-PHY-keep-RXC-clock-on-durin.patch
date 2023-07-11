@@ -13,23 +13,25 @@ imx-dwmac 30bf0000.ethernet eth0: Timeout accessing MAC_VLAN_Tag_Filter
 
 Reviewed-by: Jun Li <jun.li@nxp.com>
 Signed-off-by: Joakim Zhang <qiangqing.zhang@nxp.com>
+Ported to the kernel version 5.10.186
+Signed-off-by: Christoph Ostarek <christoph@zededa.com>
 ---
- drivers/net/ethernet/stmicro/stmmac/stmmac_main.c | 2 +-
- 1 file changed, 1 insertion(+), 1 deletion(-)
+ drivers/net/ethernet/stmicro/stmmac/stmmac_main.c | 3 +--
+ 1 file changed, 1 insertion(+), 2 deletions(-)
 
 diff --git a/drivers/net/ethernet/stmicro/stmmac/stmmac_main.c b/drivers/net/ethernet/stmicro/stmmac/stmmac_main.c
-index 3366886983b0..7678008c7044 100644
+index 8da577ce9..2d1e8d9ed 100644
 --- a/drivers/net/ethernet/stmicro/stmmac/stmmac_main.c
 +++ b/drivers/net/ethernet/stmicro/stmmac/stmmac_main.c
-@@ -1059,7 +1059,7 @@ static void stmmac_mac_link_up(struct phylink_config *config,
+@@ -1058,8 +1058,7 @@ static void stmmac_mac_link_up(struct phylink_config *config,
  
  	stmmac_mac_set(priv, priv->ioaddr, true);
  	if (phy && priv->dma_cap.eee) {
--		priv->eee_active = phy_init_eee(phy, 1) >= 0;
+-		priv->eee_active =
+-			phy_init_eee(phy, !priv->plat->rx_clk_runs_in_lpi) >= 0;
 +		priv->eee_active = phy_init_eee(phy, 0) >= 0;
  		priv->eee_enabled = stmmac_eee_init(priv);
  		priv->tx_lpi_enabled = priv->eee_enabled;
  		stmmac_set_eee_pls(priv, priv->hw, true);
 -- 
-2.39.2
-
+2.41.0
