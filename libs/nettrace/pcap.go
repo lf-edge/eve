@@ -257,6 +257,7 @@ func (pc *packetCapturer) startPcap(ctx context.Context, wg *sync.WaitGroup) err
 			defer pcapHandle.Close()
 			packetSource := gopacket.NewPacketSource(
 				pcapHandle, layers.LinkType(pcapHandle.LinkType()))
+			packetSource.NoCopy = true
 			packetsCh := packetSource.Packets()
 			pc.log.Tracef(
 				"nettrace: networkTracer id=%s: packet capture started for interface %s\n",
