@@ -1,6 +1,6 @@
-From b1a43659a2601f5dd1575084b617f8fdb52c030c Mon Sep 17 00:00:00 2001
+From 13125dacd1a5036015e09c5778d662353bbd9a30 Mon Sep 17 00:00:00 2001
 From: Roman Penyaev <r.peniaev@gmail.com>
-Date: Tue, 23 May 2023 13:40:31 +0200
+Date: Fri, 14 Jul 2023 17:05:32 +0200
 Subject: [PATCH 1/1] sched/core: make migrate_disable() and migrate_enable()
  as non-GPL
 
@@ -12,10 +12,10 @@ Signed-off-by: Roman Penyaev <r.peniaev@gmail.com>
  1 file changed, 2 insertions(+), 2 deletions(-)
 
 diff --git a/kernel/sched/core.c b/kernel/sched/core.c
-index 1bc5a58bc18d..b9d2b87ffe99 100644
+index 8a51ddc28927..f0f9f6a38653 100644
 --- a/kernel/sched/core.c
 +++ b/kernel/sched/core.c
-@@ -1813,7 +1813,7 @@ void migrate_disable(void)
+@@ -1817,7 +1817,7 @@ void migrate_disable(void)
  	preempt_lazy_disable();
  	preempt_enable();
  }
@@ -24,7 +24,7 @@ index 1bc5a58bc18d..b9d2b87ffe99 100644
  
  void migrate_enable(void)
  {
-@@ -1844,7 +1844,7 @@ void migrate_enable(void)
+@@ -1848,7 +1848,7 @@ void migrate_enable(void)
  
  	trace_sched_migrate_enable_tp(p);
  }
