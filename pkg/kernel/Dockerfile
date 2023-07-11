@@ -58,7 +58,7 @@ FROM kernel-build-base-native AS kernel-target-arm64-build-arm64
 # set versions for arm64
 # hadolint ignore=DL3006
 FROM kernel-target-${TARGETARCH}-build-${BUILDARCH} AS kernel-target-arm64
-ARG KERNEL_VERSION_arm64=5.10.131
+ARG KERNEL_VERSION_arm64=5.10.186
 # this has to be specified separately because of dockerfile limitations
 ARG KERNEL_MAJOR=5
 ENV KERNEL_VERSION=${KERNEL_VERSION_arm64}
@@ -69,7 +69,7 @@ ENV KERNEL_DEFCONFIG=defconfig
 # set versions for amd64
 # hadolint ignore=DL3006
 FROM kernel-target-${TARGETARCH}-build-${BUILDARCH} AS kernel-target-amd64
-ARG KERNEL_VERSION_amd64=5.10.131
+ARG KERNEL_VERSION_amd64=5.10.186
 # this has to be specified separately because of dockerfile limitations
 ARG KERNEL_MAJOR=5
 ENV KERNEL_VERSION=${KERNEL_VERSION_amd64}

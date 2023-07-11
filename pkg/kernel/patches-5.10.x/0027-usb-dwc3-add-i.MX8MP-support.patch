@@ -31,20 +31,22 @@ faa6026ffd80c usb: dwc3: core: add soft itp sync related settings
 ac204ca75b0ed LF-3877 usb: dwc3: core: only overwrite prtcap for none role
 
 Signed-off-by: Renê de Souza Pinto <rene@renesp.com.br>
+Ported to the kernel version 5.10.186
+Signed-off-by: Christoph Ostarek <christoph@zededa.com>
 ---
  drivers/usb/dwc3/Kconfig       |  10 +
  drivers/usb/dwc3/Makefile      |   1 +
- drivers/usb/dwc3/core.c        | 204 +++++++++++++++-
- drivers/usb/dwc3/core.h        |  35 +++
+ drivers/usb/dwc3/core.c        | 204 ++++++++-
+ drivers/usb/dwc3/core.h        |  35 ++
  drivers/usb/dwc3/drd.c         |  15 +-
- drivers/usb/dwc3/dwc3-imx8mp.c | 414 +++++++++++++++++++++++++++++++++
+ drivers/usb/dwc3/dwc3-imx8mp.c | 414 ++++++++++++++++++
  drivers/usb/dwc3/gadget.c      |   7 +-
- drivers/usb/dwc3/host.c        |  57 +++++
+ drivers/usb/dwc3/host.c        |  57 +++
  8 files changed, 727 insertions(+), 16 deletions(-)
  create mode 100644 drivers/usb/dwc3/dwc3-imx8mp.c
 
 diff --git a/drivers/usb/dwc3/Kconfig b/drivers/usb/dwc3/Kconfig
-index 7a2304565a73..2133acf8ee69 100644
+index 7a2304565..2133acf8e 100644
 --- a/drivers/usb/dwc3/Kconfig
 +++ b/drivers/usb/dwc3/Kconfig
 @@ -139,4 +139,14 @@ config USB_DWC3_QCOM
@@ -63,7 +65,7 @@ index 7a2304565a73..2133acf8ee69 100644
 +
  endif
 diff --git a/drivers/usb/dwc3/Makefile b/drivers/usb/dwc3/Makefile
-index ae86da0dc5bd..2259f8876fb2 100644
+index ae86da0dc..2259f8876 100644
 --- a/drivers/usb/dwc3/Makefile
 +++ b/drivers/usb/dwc3/Makefile
 @@ -51,3 +51,4 @@ obj-$(CONFIG_USB_DWC3_MESON_G12A)	+= dwc3-meson-g12a.o
@@ -72,7 +74,7 @@ index ae86da0dc5bd..2259f8876fb2 100644
  obj-$(CONFIG_USB_DWC3_QCOM)		+= dwc3-qcom.o
 +obj-$(CONFIG_USB_DWC3_IMX8MP)		+= dwc3-imx8mp.o
 diff --git a/drivers/usb/dwc3/core.c b/drivers/usb/dwc3/core.c
-index d97da7cef867..5558f2d888a2 100644
+index 5709b959b..8339c1806 100644
 --- a/drivers/usb/dwc3/core.c
 +++ b/drivers/usb/dwc3/core.c
 @@ -104,11 +104,17 @@ static int dwc3_get_dr_mode(struct dwc3 *dwc)
@@ -95,7 +97,7 @@ index d97da7cef867..5558f2d888a2 100644
  	dwc3_writel(dwc->regs, DWC3_GCTL, reg);
  
  	dwc->current_dr_role = mode;
-@@ -119,6 +125,7 @@ static int dwc3_core_soft_reset(struct dwc3 *dwc);
+@@ -117,6 +123,7 @@ void dwc3_set_prtcap(struct dwc3 *dwc, u32 mode)
  static void __dwc3_set_mode(struct work_struct *work)
  {
  	struct dwc3 *dwc = work_to_dwc(work);
@@ -103,17 +105,17 @@ index d97da7cef867..5558f2d888a2 100644
  	unsigned long flags;
  	int ret;
  	u32 reg;
-@@ -130,9 +137,6 @@ static void __dwc3_set_mode(struct work_struct *work)
+@@ -132,9 +139,6 @@ static void __dwc3_set_mode(struct work_struct *work)
  	if (dwc->current_dr_role == DWC3_GCTL_PRTCAP_OTG)
  		dwc3_otg_update(dwc, 0);
  
--	if (!dwc->desired_dr_role)
+-	if (!desired_dr_role)
 -		goto out;
 -
- 	if (dwc->desired_dr_role == dwc->current_dr_role)
+ 	if (desired_dr_role == dwc->current_dr_role)
  		goto out;
  
-@@ -222,6 +226,10 @@ static void __dwc3_set_mode(struct work_struct *work)
+@@ -229,6 +233,10 @@ static void __dwc3_set_mode(struct work_struct *work)
  		break;
  	}
  
@@ -124,7 +126,7 @@ index d97da7cef867..5558f2d888a2 100644
  out:
  	pm_runtime_mark_last_busy(dwc->dev);
  	pm_runtime_put_autosuspend(dwc->dev);
-@@ -318,9 +326,64 @@ static int dwc3_core_soft_reset(struct dwc3 *dwc)
+@@ -325,9 +333,64 @@ int dwc3_core_soft_reset(struct dwc3 *dwc)
   */
  static void dwc3_frame_length_adjustment(struct dwc3 *dwc)
  {
@@ -189,8 +191,8 @@ index d97da7cef867..5558f2d888a2 100644
  	if (DWC3_VER_IS_PRIOR(DWC3, 250A))
  		return;
  
-@@ -734,6 +797,8 @@ static void dwc3_core_exit(struct dwc3 *dwc)
- 	phy_power_off(dwc->usb3_generic_phy);
+@@ -742,6 +805,8 @@ static void dwc3_core_exit(struct dwc3 *dwc)
+ 
  	clk_bulk_disable_unprepare(dwc->num_clks, dwc->clks);
  	reset_control_assert(dwc->reset);
 +
@@ -198,7 +200,7 @@ index d97da7cef867..5558f2d888a2 100644
  }
  
  static bool dwc3_core_is_valid(struct dwc3 *dwc)
-@@ -926,6 +991,72 @@ static void dwc3_set_incr_burst_type(struct dwc3 *dwc)
+@@ -934,6 +999,72 @@ static void dwc3_set_incr_burst_type(struct dwc3 *dwc)
  	dwc3_writel(dwc->regs, DWC3_GSBUSCFG0, cfg);
  }
  
@@ -271,7 +273,7 @@ index d97da7cef867..5558f2d888a2 100644
  /**
   * dwc3_core_init - Low-level initialization of DWC3 Core
   * @dwc: Pointer to our controller context structure
-@@ -945,6 +1076,7 @@ static int dwc3_core_init(struct dwc3 *dwc)
+@@ -953,6 +1084,7 @@ static int dwc3_core_init(struct dwc3 *dwc)
  	 * out which kernel version a bug was found.
  	 */
  	dwc3_writel(dwc->regs, DWC3_GUID, LINUX_VERSION_CODE);
@@ -279,7 +281,7 @@ index d97da7cef867..5558f2d888a2 100644
  
  	ret = dwc3_phy_setup(dwc);
  	if (ret)
-@@ -1007,6 +1139,10 @@ static int dwc3_core_init(struct dwc3 *dwc)
+@@ -1020,6 +1152,10 @@ static int dwc3_core_init(struct dwc3 *dwc)
  
  	dwc3_set_incr_burst_type(dwc);
  
@@ -290,7 +292,7 @@ index d97da7cef867..5558f2d888a2 100644
  	usb_phy_set_suspend(dwc->usb2_phy, 0);
  	usb_phy_set_suspend(dwc->usb3_phy, 0);
  	ret = phy_power_on(dwc->usb2_generic_phy);
-@@ -1106,6 +1242,8 @@ static int dwc3_core_init(struct dwc3 *dwc)
+@@ -1119,6 +1255,8 @@ static int dwc3_core_init(struct dwc3 *dwc)
  		}
  	}
  
@@ -299,7 +301,7 @@ index d97da7cef867..5558f2d888a2 100644
  	return 0;
  
  err4:
-@@ -1200,6 +1338,7 @@ static int dwc3_core_get_phy(struct dwc3 *dwc)
+@@ -1213,6 +1351,7 @@ static int dwc3_core_get_phy(struct dwc3 *dwc)
  
  static int dwc3_core_init_mode(struct dwc3 *dwc)
  {
@@ -307,7 +309,7 @@ index d97da7cef867..5558f2d888a2 100644
  	struct device *dev = dwc->dev;
  	int ret;
  
-@@ -1248,6 +1387,10 @@ static int dwc3_core_init_mode(struct dwc3 *dwc)
+@@ -1261,6 +1400,10 @@ static int dwc3_core_init_mode(struct dwc3 *dwc)
  		return -EINVAL;
  	}
  
@@ -318,7 +320,7 @@ index d97da7cef867..5558f2d888a2 100644
  	return 0;
  }
  
-@@ -1297,6 +1440,17 @@ static void dwc3_get_properties(struct dwc3 *dwc)
+@@ -1310,6 +1453,17 @@ static void dwc3_get_properties(struct dwc3 *dwc)
  
  	dwc->maximum_speed = usb_get_maximum_speed(dev);
  	dwc->dr_mode = usb_get_dr_mode(dev);
@@ -336,7 +338,7 @@ index d97da7cef867..5558f2d888a2 100644
  	dwc->hsphy_mode = of_usb_get_phy_mode(dev->of_node);
  
  	dwc->sysdev_is_parent = device_property_read_bool(dev,
-@@ -1382,6 +1536,8 @@ static void dwc3_get_properties(struct dwc3 *dwc)
+@@ -1395,6 +1549,8 @@ static void dwc3_get_properties(struct dwc3 *dwc)
  
  	dwc->dis_split_quirk = device_property_read_bool(dev,
  				"snps,dis-split-quirk");
@@ -345,7 +347,7 @@ index d97da7cef867..5558f2d888a2 100644
  
  	dwc->lpm_nyet_threshold = lpm_nyet_threshold;
  	dwc->tx_de_emphasis = tx_de_emphasis;
-@@ -1689,6 +1845,11 @@ static int dwc3_suspend_common(struct dwc3 *dwc, pm_message_t msg)
+@@ -1699,6 +1855,11 @@ static int dwc3_suspend_common(struct dwc3 *dwc, pm_message_t msg)
  	u32 reg;
  
  	switch (dwc->current_dr_role) {
@@ -357,7 +359,7 @@ index d97da7cef867..5558f2d888a2 100644
  	case DWC3_GCTL_PRTCAP_DEVICE:
  		if (pm_runtime_suspended(dwc->dev))
  			break;
-@@ -1749,7 +1910,24 @@ static int dwc3_resume_common(struct dwc3 *dwc, pm_message_t msg)
+@@ -1759,7 +1920,24 @@ static int dwc3_resume_common(struct dwc3 *dwc, pm_message_t msg)
  	u32		reg;
  
  	switch (dwc->current_dr_role) {
@@ -382,7 +384,7 @@ index d97da7cef867..5558f2d888a2 100644
  		ret = dwc3_core_init_for_resume(dwc);
  		if (ret)
  			return ret;
-@@ -1948,12 +2126,16 @@ static const struct dev_pm_ops dwc3_dev_pm_ops = {
+@@ -1958,12 +2136,16 @@ static const struct dev_pm_ops dwc3_dev_pm_ops = {
  
  #ifdef CONFIG_OF
  static const struct of_device_id of_dwc3_match[] = {
@@ -406,7 +408,7 @@ index d97da7cef867..5558f2d888a2 100644
  };
  MODULE_DEVICE_TABLE(of, of_dwc3_match);
 diff --git a/drivers/usb/dwc3/core.h b/drivers/usb/dwc3/core.h
-index 79e1b82e5e05..0db047421887 100644
+index cbebe541f..9398b31aa 100644
 --- a/drivers/usb/dwc3/core.h
 +++ b/drivers/usb/dwc3/core.h
 @@ -30,6 +30,7 @@
@@ -495,7 +497,7 @@ index 79e1b82e5e05..0db047421887 100644
   * @dr_mode: requested mode of operation
   * @current_dr_role: current role of operation when in dual-role mode
   * @desired_dr_role: desired role of operation when in dual-role mode
-@@ -1061,6 +1091,8 @@ struct dwc3_scratchpad_array {
+@@ -1062,6 +1092,8 @@ struct dwc3_scratchpad_array {
   *	2	- No de-emphasis
   *	3	- Reserved
   * @dis_metastability_quirk: set to disable metastability quirk.
@@ -504,7 +506,7 @@ index 79e1b82e5e05..0db047421887 100644
   * @dis_split_quirk: set to disable split boundary.
   * @imod_interval: set the interrupt moderation interval in 250ns
   *			increments or 0 to disable.
-@@ -1098,6 +1130,7 @@ struct dwc3 {
+@@ -1099,6 +1131,7 @@ struct dwc3 {
  	struct clk_bulk_data	*clks;
  	int			num_clks;
  
@@ -512,7 +514,7 @@ index 79e1b82e5e05..0db047421887 100644
  	struct reset_control	*reset;
  
  	struct usb_phy		*usb2_phy;
-@@ -1132,6 +1165,7 @@ struct dwc3 {
+@@ -1133,6 +1166,7 @@ struct dwc3 {
  	u32			nr_scratch;
  	u32			u1u2;
  	u32			maximum_speed;
@@ -520,7 +522,7 @@ index 79e1b82e5e05..0db047421887 100644
  
  	u32			ip;
  
-@@ -1258,6 +1292,7 @@ struct dwc3 {
+@@ -1260,6 +1294,7 @@ struct dwc3 {
  	unsigned		tx_de_emphasis:2;
  
  	unsigned		dis_metastability_quirk:1;
@@ -529,7 +531,7 @@ index 79e1b82e5e05..0db047421887 100644
  	unsigned		dis_split_quirk:1;
  
 diff --git a/drivers/usb/dwc3/drd.c b/drivers/usb/dwc3/drd.c
-index 0a96f44ccca7..85d21d74b029 100644
+index 0a96f44cc..85d21d74b 100644
 --- a/drivers/usb/dwc3/drd.c
 +++ b/drivers/usb/dwc3/drd.c
 @@ -494,6 +494,8 @@ static int dwc3_usb_role_switch_set(struct usb_role_switch *sw,
@@ -570,7 +572,7 @@ index 0a96f44ccca7..85d21d74b029 100644
  		mode = DWC3_GCTL_PRTCAP_DEVICE;
 diff --git a/drivers/usb/dwc3/dwc3-imx8mp.c b/drivers/usb/dwc3/dwc3-imx8mp.c
 new file mode 100644
-index 000000000000..19b827455a7f
+index 000000000..19b827455
 --- /dev/null
 +++ b/drivers/usb/dwc3/dwc3-imx8mp.c
 @@ -0,0 +1,414 @@
@@ -989,10 +991,10 @@ index 000000000000..19b827455a7f
 +MODULE_LICENSE("GPL v2");
 +MODULE_DESCRIPTION("DesignWare USB3 imx8mp Glue Layer");
 diff --git a/drivers/usb/dwc3/gadget.c b/drivers/usb/dwc3/gadget.c
-index 05fe6ded66a5..debb2fd3c468 100644
+index 164910237..2cce800d7 100644
 --- a/drivers/usb/dwc3/gadget.c
 +++ b/drivers/usb/dwc3/gadget.c
-@@ -2088,7 +2088,7 @@ static int dwc3_gadget_run_stop(struct dwc3 *dwc, int is_on, int suspend)
+@@ -2103,7 +2103,7 @@ static int dwc3_gadget_run_stop(struct dwc3 *dwc, int is_on, int suspend)
  	u32			reg;
  	u32			timeout = 500;
  
@@ -1001,7 +1003,7 @@ index 05fe6ded66a5..debb2fd3c468 100644
  		return 0;
  
  	reg = dwc3_readl(dwc->regs, DWC3_DCTL);
-@@ -3953,7 +3953,6 @@ int dwc3_gadget_init(struct dwc3 *dwc)
+@@ -3960,7 +3960,6 @@ int dwc3_gadget_init(struct dwc3 *dwc)
  		goto err3;
  	}
  
@@ -1009,7 +1011,7 @@ index 05fe6ded66a5..debb2fd3c468 100644
  	usb_initialize_gadget(dwc->dev, dwc->gadget, dwc_gadget_release);
  	dev				= &dwc->gadget->dev;
  	dev->platform_data		= dwc;
-@@ -3962,6 +3961,10 @@ int dwc3_gadget_init(struct dwc3 *dwc)
+@@ -3969,6 +3968,10 @@ int dwc3_gadget_init(struct dwc3 *dwc)
  	dwc->gadget->sg_supported	= true;
  	dwc->gadget->name		= "dwc3-gadget";
  	dwc->gadget->lpm_capable	= !dwc->usb2_gadget_lpm_disable;
@@ -1021,7 +1023,7 @@ index 05fe6ded66a5..debb2fd3c468 100644
  	/*
  	 * FIXME We might be setting max_speed to <SUPER, however versions
 diff --git a/drivers/usb/dwc3/host.c b/drivers/usb/dwc3/host.c
-index e195176580de..774ac03dd983 100644
+index b06ab85f8..78b5b8f89 100644
 --- a/drivers/usb/dwc3/host.c
 +++ b/drivers/usb/dwc3/host.c
 @@ -10,8 +10,49 @@
@@ -1110,5 +1112,4 @@ index e195176580de..774ac03dd983 100644
  	if (ret) {
  		dev_err(dwc->dev, "failed to register xHCI device\n");
 -- 
-2.39.0
-
+2.41.0
