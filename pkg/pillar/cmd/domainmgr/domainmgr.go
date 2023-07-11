@@ -2513,8 +2513,8 @@ func fetchCloudInit(ctx *domainContext,
 // Parse the list of environment variables from the cloud init
 // We are expecting the environment variables to be pass in particular format in cloud-int
 // Example:
-// Key1:Val1
-// Key2:Val2 ...
+// Key1=Val1
+// Key2=Val2 ...
 func parseEnvVariablesFromCloudInit(ciStr string) (map[string]string, error) {
 
 	envList := make(map[string]string, 0)
