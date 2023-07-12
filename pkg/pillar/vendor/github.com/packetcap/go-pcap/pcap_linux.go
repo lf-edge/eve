@@ -20,17 +20,19 @@ import (
 
 const (
 	//defaultFrameSize = 4096
-	defaultFrameSize = 65632
+	defaultFrameSize = 65632 //nolint:unused
 	//defaultBlockNumbers = 128
 	defaultBlockNumbers = 32
 	//defaultBlockSize = defaultFrameSize * defaultBlockNumbers
-	defaultBlockSize = 131072
+	defaultBlockSize = 131072 //nolint:unused
 	//defaultFramesPerBlock = defaultBlockSize / defaultFrameSize
 	defaultFramesPerBlock = 32
 	EthHlen               = 0x10
 	// defaultSyscalls default setting for using syscalls
 	defaultSyscalls     = false
 	offsetToBlockStatus = 4 + 4
+
+	tpacketAuxdataSize = 20
 )
 
 var (
@@ -51,9 +53,28 @@ type captured struct {
 	ci   gopacket.CaptureInfo
 }
 
+// Handle states
+// Writer (OpenLive + Close) transitions:
+//   - closed <-> open
+//   - reading -> canceling
+//   - canceled / gone -> closed
+//
+// Reader (ReadPacketData) transitions:
+//   - open <-> reading
+//   - reading -> gone
+//   - canceling -> canceled
+const (
+	closed    uint32 = 0
+	open      uint32 = 1
+	reading   uint32 = 2
+	canceling uint32 = 3
+	canceled  uint32 = 4
+	gone      uint32 = 5
+)
+
 type Handle struct {
 	// this must be first for atomic to behave nicely
-	isOpen          uint32
+	state           uint32
 	syscalls        bool
 	promiscuous     bool
 	index           int
@@ -63,7 +84,7 @@ type Handle struct {
 	ring            []byte
 	framePtr        int
 	framesPerBuffer uint32
-	frameIndex      uint32
+	frameIndex      uint32 //nolint:unused
 	frameSize       uint32
 	frameNumbers    uint32
 	blockNumbers    int
@@ -75,9 +96,19 @@ type Handle struct {
 }
 
 func (h *Handle) ReadPacketData() (data []byte, ci gopacket.CaptureInfo, err error) {
-	if atomic.LoadUint32(&h.isOpen) == 0 {
+	if !atomic.CompareAndSwapUint32(&h.state, open, reading) {
 		return data, ci, io.EOF
 	}
+	defer func() {
+		if !atomic.CompareAndSwapUint32(&h.state, reading, open) {
+			if atomic.CompareAndSwapUint32(&h.state, canceling, canceled) {
+				logger := log.WithFields(log.Fields{
+					"iface": h.iface,
+				})
+				logger.Debugf("packet read was canceled")
+			}
+		}
+	}()
 	if h.syscalls {
 		return h.readPacketDataSyscall()
 	}
@@ -106,17 +137,48 @@ func (h *Handle) ReadPacketData() (data []byte, ci gopacket.CaptureInfo, err err
 	return cap.data, cap.ci, nil
 }
 
+func writeVLANTag(data []byte, tci, tpid uint16) ([]byte, []byte) {
+	buf := make([]byte, 4)
+	if tpid == 0 || binary.BigEndian.Uint16(data[12:14]) != 0x8100 {
+		tpid = binary.BigEndian.Uint16(data[12:14])
+		binary.BigEndian.PutUint16(data[12:14], 0x8100) // set ethernet frame type to VLAN
+	}
+	binary.BigEndian.PutUint16(buf[:2], tci)
+	binary.BigEndian.PutUint16(buf[2:], tpid)
+	return data, buf
+}
+
 func (h *Handle) readPacketDataSyscall() (data []byte, ci gopacket.CaptureInfo, err error) {
 	b := make([]byte, h.snaplen)
-	read, _, err := syscall.Recvfrom(h.fd, b, 0)
+	oob := make([]byte, syscall.CmsgSpace(tpacketAuxdataSize))
+	n, _, _, _, err := syscall.Recvmsg(h.fd, b, oob, 0)
 	if err != nil {
-		return nil, ci, fmt.Errorf("error reading: %v", err)
+		return nil, ci, fmt.Errorf("error reading packets: %w", err)
+	}
+
+	var auxData syscall.TpacketAuxdata
+	cmsgs, err := syscall.ParseSocketControlMessage(oob)
+	if err != nil {
+		return nil, ci, fmt.Errorf("error reading socket control messages: %w", err)
+	}
+	for _, cmsg := range cmsgs {
+		if cmsg.Header.Level == syscall.SOL_PACKET && cmsg.Header.Type == syscall.PACKET_AUXDATA && cmsg.Header.Len >= tpacketAuxdataSize {
+			auxData.Vlan_tci = binary.BigEndian.Uint16(cmsg.Data[len(cmsg.Data)-5 : len(cmsg.Data)-3])
+			auxData.Vlan_tpid = binary.BigEndian.Uint16(cmsg.Data[len(cmsg.Data)-3:])
+			break
+		}
+	}
+	if auxData.Vlan_tci != 0 {
+		var aux []byte
+		b, aux = writeVLANTag(b, auxData.Vlan_tci, auxData.Vlan_tpid)
+		b = append(append(b[:14], aux...), b[14:]...)
+		n = n + 4
 	}
 	// TODO: add CaptureInfo, specifically:
 	//    capture timestamp
 	//    original packet length
 	ci = gopacket.CaptureInfo{
-		CaptureLength:  read,
+		CaptureLength:  n,
 		InterfaceIndex: h.index,
 	}
 	return b, ci, nil
@@ -127,12 +189,19 @@ func (h *Handle) readPacketDataMmap() ([]captured, error) {
 		"method": "mmap",
 		"iface":  h.iface,
 	})
-	logger.Debugf("started: framesPerBuffer %d, blockSize %d, frameSize %d, frameNumbers %d, blockNumbers %d", h.framesPerBuffer, h.blockSize, h.frameSize, h.frameNumbers, h.blockNumbers)
+	logger.Debugf(
+		"started: framesPerBuffer %d, blockSize %d, frameSize %d, frameNumbers %d, blockNumbers %d",
+		h.framesPerBuffer,
+		h.blockSize,
+		h.frameSize,
+		h.frameNumbers,
+		h.blockNumbers,
+	)
 	// we check the bit setting on the pointer
 	blockBase := h.framePtr * h.blockSize
 	// add a loop, so that we do not just rely on the polling, but instead the actual flag bit
 	flagIndex := blockBase + offsetToBlockStatus
-	for atomic.LoadUint32(&h.isOpen) > 0 {
+	for atomic.LoadUint32(&h.state) == reading {
 		logger.Debugf("checking for packet at block %d, buffer starting position %d, flagIndex %d ring pointer %p", h.framePtr, blockBase, flagIndex, h.ring)
 		if h.ring[flagIndex]&syscall.TP_STATUS_USER == syscall.TP_STATUS_USER {
 			return h.processMmapPackets(blockBase, flagIndex)
@@ -162,8 +231,8 @@ func (h *Handle) readPacketDataMmap() ([]captured, error) {
 				return nil, fmt.Errorf("could not get sockopt to check poll error; sockopt error: %v", err)
 			}
 			if sockOptVal == int(syscall.ENETDOWN) {
-				logger.Errorf("interface %s is down, marking as closed and returning", h.iface)
-				atomic.StoreUint32(&h.isOpen, 0)
+				logger.Errorf("interface %s is down, marking handle as gone and returning", h.iface)
+				atomic.StoreUint32(&h.state, gone)
 				return nil, nil
 			}
 			// we have no idea what it was, so just return
@@ -171,7 +240,7 @@ func (h *Handle) readPacketDataMmap() ([]captured, error) {
 			return nil, errors.New("unknown error returned from socket")
 		case h.pollfd[0].Revents&syscall.POLLNVAL == syscall.POLLNVAL:
 			logger.Error("socket closed")
-			atomic.StoreUint32(&h.isOpen, 0)
+			atomic.StoreUint32(&h.state, gone)
 			return nil, io.EOF
 		}
 	}
@@ -231,7 +300,21 @@ func (h *Handle) processMmapPackets(blockBase, flagIndex int) ([]captured, error
 			Timestamp:      time.Unix(int64(hdr.Sec), int64(hdr.Nsec)),
 			InterfaceIndex: int(sall.Ifindex),
 		}
-		data := b[hdr.Mac : uint32(hdr.Mac)+hdr.Snaplen]
+		// We need to copy packet data because as soon as ReadPacketData returns,
+		// the ring buffer could be un-mapped by Close. If the caller of ReadPacketData
+		// does not process packet data quickly enough and a call to Handle.Close()
+		// interleaves, it could find itself reading from invalid memory segments.
+		// If you are using go-pcap with google/gopacket, it is better to have packet
+		// data copied here and then enable NoCopy for PacketSource, i.e.:
+		//   packetSource := gopacket.NewPacketSource(...)
+		//   packetSource.NoCopy = true
+		data := make([]byte, hdr.Snaplen)
+		copy(data, b[hdr.Mac:uint32(hdr.Mac)+hdr.Snaplen])
+		if hdr.Hv1.Vlan_tci != 0 {
+			var vlanTag []byte
+			data, vlanTag = writeVLANTag(data, uint16(hdr.Hv1.Vlan_tci), uint16(hdr.Hv1.Vlan_tpid))
+			data = append(data[:14], append(vlanTag, data[14:]...)...)
+		}
 		packets[i] = captured{
 			ci:   ci,
 			data: data,
@@ -255,7 +338,16 @@ func (h *Handle) Close() {
 	logger := log.WithFields(log.Fields{
 		"iface": h.iface,
 	})
-	atomic.StoreUint32(&h.isOpen, 0)
+	for !atomic.CompareAndSwapUint32(&h.state, open, closed) {
+		state := atomic.LoadUint32(&h.state)
+		if state == canceled || state == gone {
+			atomic.StoreUint32(&h.state, closed)
+			break
+		}
+		if atomic.CompareAndSwapUint32(&h.state, reading, canceling) {
+			logger.Debugf("cancelling ongoig packet read")
+		}
+	}
 	if h.ring != nil {
 		if err := syscall.Munmap(h.ring); err != nil {
 			logger.Errorf("error unmapping mmap at %p ; nothing to do", h.ring)
@@ -300,7 +392,7 @@ func openLive(iface string, snaplen int32, promiscuous bool, timeout time.Durati
 	logger.Debug("started")
 	h := Handle{
 		// we start with it not open
-		isOpen:   0,
+		state:    closed,
 		snaplen:  snaplen,
 		syscalls: syscalls,
 		iface:    iface,
@@ -329,6 +421,9 @@ func openLive(iface string, snaplen int32, promiscuous bool, timeout time.Durati
 	h.pollfd = []syscall.PollFd{{Fd: int32(h.fd), Events: syscall.POLLIN}}
 	if err := syscall.SetNonblock(fd, false); err != nil {
 		return nil, fmt.Errorf("failed to set socket as blocking: %v", err)
+	}
+	if err = syscall.SetsockoptInt(fd, syscall.SOL_PACKET, syscall.PACKET_AUXDATA, 1); err != nil {
+		return nil, fmt.Errorf("failed to set packet auxilary data: %w", err)
 	}
 	if iface != "" {
 		// get our interface
@@ -414,7 +509,7 @@ func openLive(iface string, snaplen int32, promiscuous bool, timeout time.Durati
 		h.ring = data
 		h.cache = make([]captured, 0, blockSize/frameSize)
 	}
-	atomic.StoreUint32(&h.isOpen, 1)
+	atomic.StoreUint32(&h.state, open)
 	return &h, nil
 }
 
