@@ -34,6 +34,7 @@ const (
 	filterKindPortRange
 )
 
+//nolint:unused
 var kinds = map[string]filterKind{
 	"host":      filterKindHost,
 	"net":       filterKindNet,
@@ -63,6 +64,7 @@ const (
 	filterDirectionAddr4
 )
 
+//nolint:unused
 var directions = map[string]filterDirection{
 	"src":         filterDirectionSrc,
 	"dst":         filterDirectionDst,

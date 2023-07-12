@@ -481,7 +481,7 @@ github.com/lf-edge/eve/api/go/logs
 github.com/lf-edge/eve/api/go/metrics
 github.com/lf-edge/eve/api/go/profile
 github.com/lf-edge/eve/api/go/register
-# github.com/lf-edge/eve/libs v0.0.0-20230705061838-6ed29226fccf
+# github.com/lf-edge/eve/libs v0.0.0-20230712053757-b4a564c38a6d
 ## explicit; go 1.20
 github.com/lf-edge/eve/libs/depgraph
 github.com/lf-edge/eve/libs/nettrace
@@ -574,7 +574,7 @@ github.com/opencontainers/selinux/go-selinux
 github.com/opencontainers/selinux/go-selinux/label
 github.com/opencontainers/selinux/pkg/pwalk
 github.com/opencontainers/selinux/pkg/pwalkdir
-# github.com/packetcap/go-pcap v0.0.0-20221020071412-2b2e94010282
+# github.com/packetcap/go-pcap v0.0.0-20230711190632-81137528cfbc
 ## explicit; go 1.13
 github.com/packetcap/go-pcap
 github.com/packetcap/go-pcap/filter

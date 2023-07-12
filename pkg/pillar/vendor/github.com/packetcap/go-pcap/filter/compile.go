@@ -435,10 +435,10 @@ func loadAndCompareIPv6Address(addr [4]uint32, mask net.IPMask, source bool, ski
 // getSkipper calculate how much to skip at a stage in IP addresses.
 // At each stage we have SkipTrue and SkipFalse. Here is how we
 // calculate it. The rules are the same for either skiptrue/skipfalse
-// - if skip == 0, then at any stage, should show the amount to the end
-//   This can be calculated as size-len(inst)-1
-// - if skip != 0, then at any stage, should show (skip - amount used).
-//   This can be calculated as skip-len(inst)
+//   - if skip == 0, then at any stage, should show the amount to the end
+//     This can be calculated as size-len(inst)-1
+//   - if skip != 0, then at any stage, should show (skip - amount used).
+//     This can be calculated as skip-len(inst)
 func getSkipper(a, size uint8, inst []bpf.Instruction) uint8 {
 	l := uint8(len(inst))
 	if a == 0 {

@@ -279,7 +279,7 @@ func (e *Expression) Next() Element {
 
 tokens:
 	for {
-		tok, word := e.peekPastWhitespace()
+		tok, _ := e.peekPastWhitespace()
 		// handle the case where the next element will be the end of us
 		if inElement && (tok == tokenAnd || tok == tokenOr || tok == tokenEOF) {
 			// we hit "and" or "or". If we already have started building a primitive,
@@ -288,7 +288,7 @@ tokens:
 			return p
 		}
 
-		tok, word = e.scanPastWhitespace()
+		tok, word := e.scanPastWhitespace()
 
 		// indicate we are in an element
 		inElement = true

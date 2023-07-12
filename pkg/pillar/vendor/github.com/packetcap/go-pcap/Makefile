@@ -31,7 +31,7 @@ GOBINDIR ?= $(shell go env GOPATH)/bin
 LOCALBIN := $(BINDIR)/$(BIN)-$(OS)-$(ARCH)
 INSTALLBIN := $(GOBINDIR)/$(BIN)
 
-.PHONY: build clean fmt test fmt-check lint golint golangci-lint
+.PHONY: build clean fmt test fmt-check lint golangci-lint
 
 export GO111MODULE=on
 
@@ -69,14 +69,9 @@ golangci-lint: $(LINTER)
 $(LINTER):
 	curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(GOBINDIR) $(LINTER_VERSION)
 
-golint:
-ifeq (, $(shell which golint))
-	go get -u golang.org/x/lint/golint
-endif
-
 ## Lint the files
-lint: golint golangci-lint
-	@$(LINTER) run --disable-all --enable=golint ./...
+lint: golangci-lint
+	@$(LINTER) run ./...
 
 test:
 	go test ./...
