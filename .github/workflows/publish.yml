@@ -2,6 +2,9 @@
 name: Publish
 on:  # yamllint disable-line rule:truthy
   push:
+    # Assuming it is an or so that all pushes on master get published but on
+    # other branches we only build when the below tags are set.
+    branches: ["master"]
     tags:
       - "[0-9]+.[0-9]+.[0-9]+"
       - "[0-9]+.[0-9]+.[0-9]+-lts"
