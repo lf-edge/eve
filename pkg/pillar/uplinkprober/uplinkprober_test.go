@@ -211,6 +211,15 @@ func makeDNS(intfs selectedIntfs) types.DeviceNetworkStatus {
 	return dns
 }
 
+func copyDNS(dns types.DeviceNetworkStatus) types.DeviceNetworkStatus {
+	dnsCopy := dns
+	dnsCopy.Ports = make([]types.NetworkPortStatus, len(dns.Ports))
+	for i := range dns.Ports {
+		dnsCopy.Ports[i] = dns.Ports[i]
+	}
+	return dnsCopy
+}
+
 func setDefaultReachState(intfs selectedIntfs) {
 	if intfs.eth0 {
 		reachProber.SetNextHopState(eth0LL, mockEth0NHs(), nil, 50*time.Millisecond)
@@ -554,6 +563,7 @@ func TestProbingNoConnectivity(test *testing.T) {
 	t.Expect(status.SelectedUplinkLL).To(Or(Equal(eth0LL), Equal(wlanLL)))
 
 	// Give wlan0 interface at least a local IP addr...
+	dns = copyDNS(dns)
 	localIP := net.ParseIP("169.254.50.50")
 	dns.Ports[1].AddrInfoList = []types.AddrInfo{{Addr: localIP}}
 	prober.ApplyDNSUpdate(dns)
@@ -570,6 +580,7 @@ func TestProbingNoConnectivity(test *testing.T) {
 	neverChangedUplink(t, ni1.UUID)
 
 	// Give eth0 a unicast IP.
+	dns = copyDNS(dns)
 	ip := net.ParseIP("192.168.1.1")
 	dns.Ports[0].AddrInfoList = []types.AddrInfo{{Addr: ip}}
 	prober.ApplyDNSUpdate(dns)
