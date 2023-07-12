@@ -23,7 +23,7 @@ const (
 
 type Handle struct {
 	syscalls    bool
-	promiscuous bool
+	promiscuous bool //nolint: unused
 	index       int
 	snaplen     int32
 	fd          int
