@@ -138,3 +138,26 @@ func FilterDuplicatesFn[Type any](list []Type, equal func(a, b Type) bool) (filt
 	}
 	return
 }
+
+// ContainsItem returns true if the slice contains the given item.
+// This function can be used if slice items are comparable
+// (operator "==" can be used).
+func ContainsItem[Type comparable](list []Type, item Type) bool {
+	for i := range list {
+		if list[i] == item {
+			return true
+		}
+	}
+	return false
+}
+
+// ContainsItemFn returns true if the slice contains the given item.
+// Two slice items are compared using the provided "equal" callback.
+func ContainsItemFn[Type any](list []Type, item Type, equal func(a, b Type) bool) bool {
+	for i := range list {
+		if equal(list[i], item) {
+			return true
+		}
+	}
+	return false
+}

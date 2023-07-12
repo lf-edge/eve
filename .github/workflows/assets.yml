@@ -32,6 +32,15 @@ jobs:
       matrix:
         arch: [amd64, arm64]
     steps:
+      - name: checkout repo
+        uses: actions/checkout@v3
+        with:
+          ref: ${{ github.event.workflow_run.head_branch }}
+          fetch-depth: 0
+      - name: Force fetch annotated tags (workaround)
+        # Workaround for https://github.com/actions/checkout/issues/290
+        run: |
+          git fetch --force --tags
       - name: Determine architecture prefix and ref
         env:
           REF: ${{ github.event.workflow_run.head_branch }}
@@ -43,13 +52,9 @@ jobs:
           # if the default server is responding -- we can skip apt update
           $APT_INSTALL || { sudo apt update && $APT_INSTALL ; }
           echo "ARCH=${{ matrix.arch }}" >> "$GITHUB_ENV"
-          echo "TAG=$(echo "$REF" | sed -e 's#^.*/##' -e 's#master#snapshot#' -e 's#main#snapshot#')" >> "$GITHUB_ENV"
-      - name: checkout repo
-        uses: actions/checkout@v3
-        with:
-          fetch-depth: 0
+          echo "TAG=$(git describe --always --tags | grep -E '[0-9]*\.[0-9]*\.[0-9]*' || echo snapshot)" >> "$GITHUB_ENV"
       - name: ensure clean assets dir
-        run : |
+        run: |
           rm -rf assets && mkdir -p assets
       - name: Pull the EVE release from DockerHUB or build it
         run: |

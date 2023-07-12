@@ -217,7 +217,10 @@ ifeq ($(UNAME_S)_$(ZARCH),Darwin_arm64)
 QEMU_DEFAULT_MACHINE=virt,
 endif
 QEMU_ACCEL_Y_Darwin_amd64=-machine q35,accel=hvf,usb=off -cpu kvm64,kvmclock=off
-QEMU_ACCEL_Y_Linux_amd64=-machine q35,accel=kvm,usb=off,dump-guest-core=off -cpu host,invtsc=on,kvmclock=off -machine kernel-irqchip=split -device intel-iommu,intremap=on,caching-mode=on,aw-bits=48
+# NOTE: -vmx-true-ctls and -vmx-secondary-ctls is used as a workaround to
+# mitigate QEMU crashes due to MSR access errors like the following:
+# "error: failed to set MSR 0x48b to 0x137bff00000000"
+QEMU_ACCEL_Y_Linux_amd64=-machine q35,accel=kvm,usb=off,dump-guest-core=off -cpu host,-vmx-true-ctls,-vmx-secondary-ctls,invtsc=on,kvmclock=off -machine kernel-irqchip=split -device intel-iommu,intremap=on,caching-mode=on,aw-bits=48
 # -machine virt,gic_version=3
 QEMU_ACCEL_Y_Darwin_arm64=-machine $(QEMU_DEFAULT_MACHINE)accel=hvf,usb=off -cpu host
 QEMU_ACCEL_Y_Linux_arm64=-machine virt,accel=kvm,usb=off,dump-guest-core=off -cpu host
@@ -347,19 +350,15 @@ endif
 # Though the partition size is set to 512MB lets check for ROOTFS_MAXSIZE_MB not exceeding 450MB for kubevirt.
 # That seems to be the direction taken for existing kvm systems where partition size is 300MB but
 # rootfs size is limited to 250MB. That helps in catching image size increases earlier than at later stage.
-ifeq ($(HV),kubevirt)
-  ROOTFS_MAXSIZE_MB=450
-else
-  ROOTFS_MAXSIZE_MB=250
-endif
-
 # We are currently filtering out a few packages from bulk builds
 # since they are not getting published in Docker HUB
 ifeq ($(HV),kubevirt)
-        PKGS_$(ZARCH)=$(shell find pkg -maxdepth 1 -type d | grep -Ev "eve|test-microsvcs|alpine|sources")
+        PKGS_$(ZARCH)=$(shell find pkg -maxdepth 1 -type d | grep -Ev "eve|test-microsvcs|alpine|sources|verification$$")
+        ROOTFS_MAXSIZE_MB=450
 else
         #kube container will not be in non-kubevirt builds
-        PKGS_$(ZARCH)=$(shell find pkg -maxdepth 1 -type d | grep -Ev "eve|test-microsvcs|alpine|sources|kube")
+        PKGS_$(ZARCH)=$(shell find pkg -maxdepth 1 -type d | grep -Ev "eve|test-microsvcs|alpine|sources|kube|verification$$")
+        ROOTFS_MAXSIZE_MB=250
 endif
 
 PKGS_riscv64=pkg/ipxe pkg/mkconf pkg/mkimage-iso-efi pkg/grub     \
@@ -610,8 +609,7 @@ $(INSTALLER):
 
 $(VERIFICATION):
 	@mkdir -p $@
-	@cp -r $(INSTALLER)/* $@
-	@cp -r pkg/eve-verification/verification/* $@
+	@cp -r pkg/verification/verification/* $@
 	@echo $(FULL_VERSION) > $(VERIFICATION)/eve_version
 
 # convenience targets - so you can do `make config` instead of `make dist/config.img`, and `make installer` instead of `make dist/amd64/installer.img
@@ -746,7 +744,7 @@ $(INSTALLER).iso: $(EFI_PART) $(ROOTFS_IMG) $(INITRD_IMG) $(INSTALLER_IMG) $(CON
 	$(QUIET): $@: Succeeded
 
 $(INSTALLER).net: $(EFI_PART) $(ROOTFS_IMG) $(INITRD_IMG) $(INSTALLER_IMG) $(CONFIG_IMG) $(PERSIST_IMG) $(KERNEL_IMG) | $(INSTALLER)
-	./tools/makenet.sh $| $@
+	./tools/makenet.sh $| installer.img $@
 	$(QUIET): $@: Succeeded
 
 $(LIVE).vdi: $(LIVE).raw
@@ -760,13 +758,16 @@ $(LIVE).parallels: $(LIVE).raw
 	qemu-img info -f parallels --output json $(LIVE).parallels/live.0.$(PARALLELS_UUID).hds | jq --raw-output '.["virtual-size"]' | xargs ./tools/parallels_disk.sh $(LIVE) $(PARALLELS_UUID)
 
 $(VERIFICATION).raw: $(BOOT_PART) $(EFI_PART) $(ROOTFS_IMG) $(INITRD_IMG) $(VERIFICATION_IMG) $(CONFIG_IMG) $(PERSIST_IMG) $(BSP_IMX_PART) | $(VERIFICATION)
-	@[ "$(PLATFORM)" != "${PLATFORM/imx/}" ] && \
-		cp $(VERIFICATION)/bsp-imx/NXP-EULA-LICENSE.txt $(VERIFICATION)/NXP-EULA-LICENSE.txt && \
-		cp $(VERIFICATION)/bsp-imx/NXP-EULA-LICENSE.txt $(BUILD_DIR)/NXP-EULA-LICENSE.txt && \
-		cp $(VERIFICATION)/bsp-imx/"$(PLATFORM)"-flash.bin $(VERIFICATION)/imx8-flash.bin && \
-		cp $(VERIFICATION)/bsp-imx/"$(PLATFORM)"-flash.conf $(VERIFICATION)/imx8-flash.conf && \
-		cp $(VERIFICATION)/bsp-imx/*.dtb $(VERIFICATION)/boot  || :
-	./tools/makeverification.sh -C 650 $| $@ "conf_win verification inventory_win"
+	@cp -r $(INSTALLER)/* $(VERIFICATION)
+	./tools/prepare-platform.sh "$(PLATFORM)" "$(BUILD_DIR)" "$(VERIFICATION)" || :
+	./tools/makeverification.sh -C 850 $| $@ "conf_win verification inventory_win"
+	$(QUIET): $@: Succeeded
+
+$(VERIFICATION).net: $(EFI_PART) $(ROOTFS_IMG) $(INITRD_IMG) $(VERIFICATION_IMG) $(CONFIG_IMG) $(PERSIST_IMG) $(KERNEL_IMG) | $(VERIFICATION)
+	./tools/makenet.sh $| verification.img $@
+
+$(VERIFICATION).iso: $(EFI_PART) $(ROOTFS_IMG) $(INITRD_IMG) $(VERIFICATION_IMG) $(CONFIG_IMG) $(PERSIST_IMG) | $(VERIFICATION)
+	./tools/makeiso.sh $| $@ verification
 	$(QUIET): $@: Succeeded
 
 # top-level linuxkit packages targets, note the one enforcing ordering between packages
@@ -789,6 +790,18 @@ eve: $(INSTALLER) $(EVE_ARTIFACTS) current $(RUNME) $(BUILD_YML) | $(BUILD_DIR)
 	$(QUIET): "$@: Begin: EVE_REL=$(EVE_REL), HV=$(HV), LINUXKIT_PKG_TARGET=$(LINUXKIT_PKG_TARGET)"
 	cp images/*.yml $|
 	$(PARSE_PKGS) pkg/eve/Dockerfile.in > $|/Dockerfile
+	$(LINUXKIT) $(DASH_V) pkg $(LINUXKIT_PKG_TARGET) --platforms linux/$(ZARCH) --hash-path $(CURDIR) --hash $(ROOTFS_VERSION)-$(HV) --docker $(if $(strip $(EVE_REL)),--release) $(EVE_REL)$(if $(strip $(EVE_REL)),-$(HV)) $(FORCE_BUILD) $|
+	$(QUIET)if [ -n "$(EVE_REL)" ] && [ $(HV) = $(HV_DEFAULT) ]; then \
+	   $(LINUXKIT) $(DASH_V) pkg $(LINUXKIT_PKG_TARGET) --platforms linux/$(ZARCH) --hash-path $(CURDIR) --hash $(EVE_REL)-$(HV) --docker --release $(EVE_REL) $(FORCE_BUILD) $| ;\
+	fi
+	$(QUIET): $@: Succeeded
+
+VERIFICATION_ARTIFACTS=$(BIOS_IMG) $(EFI_PART) $(CONFIG_IMG) $(PERSIST_IMG) $(INITRD_IMG) $(VERIFICATION_IMG) $(ROOTFS_IMG) $(SBOM) $(BSP_IMX_PART) fullname-rootfs $(BOOT_PART)
+verification: $(VERIFICATION) $(VERIFICATION_ARTIFACTS) current | $(BUILD_DIR)
+	$(QUIET): "$@: Begin: EVE_REL=$(EVE_REL), HV=$(HV), LINUXKIT_PKG_TARGET=$(LINUXKIT_PKG_TARGET)"
+	cp images/*.yml $|
+	cp pkg/verification/runme.sh pkg/verification/build.yml $|
+	$(PARSE_PKGS) pkg/verification/Dockerfile.in > $|/Dockerfile
 	$(LINUXKIT) $(DASH_V) pkg $(LINUXKIT_PKG_TARGET) --platforms linux/$(ZARCH) --hash-path $(CURDIR) --hash $(ROOTFS_VERSION)-$(HV) --docker $(if $(strip $(EVE_REL)),--release) $(EVE_REL)$(if $(strip $(EVE_REL)),-$(HV)) $(FORCE_BUILD) $|
 	$(QUIET)if [ -n "$(EVE_REL)" ] && [ $(HV) = $(HV_DEFAULT) ]; then \
 	   $(LINUXKIT) $(DASH_V) pkg $(LINUXKIT_PKG_TARGET) --platforms linux/$(ZARCH) --hash-path $(CURDIR) --hash $(EVE_REL)-$(HV) --docker --release $(EVE_REL) $(FORCE_BUILD) $| ;\
@@ -1035,9 +1048,11 @@ help:
 	@echo "   live             builds a full disk image of EVE which can be function as a virtual device"
 	@echo "   live-XXX         builds a particular kind of EVE live image (raw, qcow2, gcp, vdi, parallels)"
 	@echo "   installer-raw    builds raw disk installer image (to be installed on bootable media)"
-	@echo "   verification-raw builds raw disk verification image (to be installed on bootable media)"
 	@echo "   installer-iso    builds an ISO installers image (to be installed on bootable media)"
 	@echo "   installer-net    builds a tarball of artifacts to be used for PXE booting"
+	@echo "   verification-raw builds raw disk verification image (to be installed on bootable media)"
+	@echo "   verification-net builds a tarball of artifacts to be used for PXE verification"
+	@echo "   verification-iso builds an ISO verification image (to be installed on bootable media)"
 	@echo
 	@echo "Commonly used run targets (note they don't automatically rebuild images they run):"
 	@echo "   run-compose          runs all EVE microservices via docker-compose deployment"

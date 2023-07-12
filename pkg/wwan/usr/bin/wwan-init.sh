@@ -411,7 +411,7 @@ switch_to_preferred_proto() {
 }
 
 event_stream() {
-  inotifywait -qm "${BBS}" -e create -e modify -e delete &
+  inotifywait -qm "${BBS}" --include config.json -e create -e modify -e delete -e moved_to &
   while true; do
     echo "PROBE"
     sleep "$PROBE_INTERVAL"

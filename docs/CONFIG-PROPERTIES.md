@@ -52,6 +52,7 @@
 | netdump.topic.postonboard.interval | integer in seconds | 1 day | how frequently (in seconds) can be netdumps of the same topic published after device has been onboarded |
 | netdump.topic.maxcount | integer | 10 | maximum number of netdumps that can be published for each topic. The oldest netdump is unpublished should a new netdump exceed the limit.
 | netdump.downloader.with.pcap | boolean | false | include packet captures inside netdumps for download requests. However, even if enabled, TCP segments carrying non-empty payload (i.e. content which is being downloaded) are excluded and the overall PCAP size is limited to 64MB. |
+| netdump.downloader.http.with.fieldvalue | boolean | false | include HTTP header field values in captured network traces for download requests (beware: may contain secrets, such as datastore credentials). |
 | network.switch.enable.arpsnoop | boolean | true | enable ARP Snooping on switch Network Instance, may need a device reboot to take effect |
 
 In addition, there can be per-agent settings.

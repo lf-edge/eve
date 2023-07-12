@@ -36,7 +36,9 @@ for {
 The returned information will be the packet bytes themselves, excluding the system-defined headers, i.e. the Ethernet frame and all contents.
 
 `Handle` is 100% compatible with [gopacket.Handle](https://godoc.org/github.com/google/gopacket#Handle); you can use it to process packets, analyze layers,
-and anything else you would want.
+and anything else you would want. Note that `Handle` copies packet data before passing them to gopacket in order to avoid possible race conditions
+with `Handle.Close()`, which when called un-maps buffer shared with the kernel containing captured data. This means that gopacket can be configured
+to not perform any additional copying.
 
 ```go
 import (
@@ -48,6 +50,7 @@ if handle, err = pcap.OpenLive(iface, 1600, true, 0); err != nil {
         log.Fatal(err)
 }
 packetSource := gopacket.NewPacketSource(handle, layers.LinkTypeEthernet)
+packetSource.NoCopy = true
 for packet := range packetSource.Packets() {
         processPacket(packet)
 }
@@ -82,6 +85,7 @@ if err != nil {
 	// handle error
 }
 packetSource := gopacket.NewPacketSource(handle, layers.LinkTypeEthernet)
+packetSource.NoCopy = true
 for packet := range packetSource.Packets() {
         processPacket(packet)
 }

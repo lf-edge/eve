@@ -102,6 +102,7 @@ func getEndianness() (binary.ByteOrder, error) {
 	}
 }
 
+// nolint: unused
 func htons(in uint16) uint16 {
 	return (in<<8)&0xff00 | in>>8
 }

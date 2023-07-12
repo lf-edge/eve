@@ -537,9 +537,20 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	}
 	domainCtx.cpuPinningSupported = caps.CPUPinning
 
-	resources, err := hyper.GetHostCPUMem()
-	if err != nil {
-		log.Fatal(err)
+	// Need to wait for things to get started
+	var resources types.HostMemory
+	for i := 0; true; i++ {
+		delay := 10
+		resources, err = hyper.GetHostCPUMem()
+		if err == nil {
+			break
+		}
+		if i == 10 {
+			log.Fatalf("Failed %d times due to %s", i, err)
+		}
+		log.Warnf("Retrying in %d seconds due to %s", delay, err)
+		time.Sleep(time.Duration(delay) * time.Second)
+		ps.StillRunning(agentName, warningTime, errorTime)
 	}
 
 	cpusReserved, err := getReservedCPUsNum()
@@ -1714,8 +1725,10 @@ func doInactivate(ctx *domainContext, status *types.DomainStatus, impatient bool
 			status.DomainId = 0
 		}
 	}
+	doCleanup(ctx, status)
+}
 
-	// Cleanup
+func doCleanup(ctx *domainContext, status *types.DomainStatus) {
 	if err := hyper.Task(status).Cleanup(status.DomainName); err != nil {
 		log.Errorf("failed to cleanup domain: %s (%v)", status.DomainName, err)
 	}
@@ -1742,6 +1755,7 @@ func doInactivate(ctx *domainContext, status *types.DomainStatus, impatient bool
 			log.Errorln("unmountContainers failed after retry with force flag")
 		}
 	}
+
 	if ctx.cpuPinningSupported {
 		if status.VmConfig.CPUsPinned {
 			if err := ctx.cpuAllocator.Free(status.UUIDandVersion.UUID); err != nil {
@@ -1756,7 +1770,7 @@ func doInactivate(ctx *domainContext, status *types.DomainStatus, impatient bool
 	status.IoAdapterList = nil
 	publishDomainStatus(ctx, status)
 
-	log.Functionf("doInactivate(%v) done for %s",
+	log.Functionf("doClennup(%v) done for %s",
 		status.UUIDandVersion, status.DisplayName)
 }
 
@@ -2212,6 +2226,8 @@ func handleDelete(ctx *domainContext, key string, status *types.DomainStatus) {
 
 	if status.Activated {
 		doInactivate(ctx, status, true)
+	} else if status.HasError() {
+		doCleanup(ctx, status)
 	}
 
 	// Check if the USB controller became available for dom0
@@ -2497,8 +2513,8 @@ func fetchCloudInit(ctx *domainContext,
 // Parse the list of environment variables from the cloud init
 // We are expecting the environment variables to be pass in particular format in cloud-int
 // Example:
-// Key1:Val1
-// Key2:Val2 ...
+// Key1=Val1
+// Key2=Val2 ...
 func parseEnvVariablesFromCloudInit(ciStr string) (map[string]string, error) {
 
 	envList := make(map[string]string, 0)

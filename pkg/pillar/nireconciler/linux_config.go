@@ -107,10 +107,10 @@ import (
 //  |   |   |   +-----------+       |   (in, out, local)  |      |   |   |
 //  |   |   |                       +---------------------+      |   |   |
 //  |   |   |                                                    |   |   |
-//  |   |   |            +--------------------------+            |   |   |
-//  |   |   |            |       IptablesRule       |            |   |   |
-//  |   |   |            |  (MASQUERADE for L3 NI)  |            |   |   |
-//  |   |   |            +--------------------------+            |   |   |
+//  |   |   |   +--------------+   +--------------------------+  |   |   |
+//  |   |   |   |  IPReserve   |   |       IptablesRule       |  |   |   |
+//  |   |   |   | (for bridge) |   |  (MASQUERADE for L3 NI)  |  |   |   |
+//  |   |   |   +--------------+   +--------------------------+  |   |   |
 //  |   |   +----------------------------------------------------+   |   |
 //  |   |                                                            |   |
 //  |   |   +----------------------------------------------------+   |   |
@@ -229,6 +229,11 @@ const (
 	blackholeIfName = "blackhole" // dummy interface for dropping traffic
 	blackholeRT     = 400         // below DPCBaseRTIndex and NIBaseRTIndex
 	blackholePrio   = 1000        // higher priority than any other ipRule
+)
+
+const (
+	vifIfNamePrefix    = "nbu"
+	bridgeIfNamePrefix = "bn"
 )
 
 const (
@@ -483,7 +488,7 @@ func (r *LinuxNIReconciler) getIntendedNIL2Cfg(niID uuid.UUID) dg.Graph {
 	}
 	intendedL2Cfg.PutItem(linux.Bridge{
 		IfName:       ni.brIfName,
-		CreatedByNIM: false,
+		CreatedByNIM: r.niBridgeIsCreatedByNIM(ni),
 		MACAddress:   bridgeMAC,
 		IPAddresses:  bridgeIPs,
 	}, nil)
@@ -554,11 +559,22 @@ func (r *LinuxNIReconciler) getIntendedNIL3Cfg(niID uuid.UUID) dg.Graph {
 		Description: "Layer 3 configuration for network instance",
 	}
 	intendedL3Cfg := dg.New(graphArgs)
+	if !r.niBridgeIsCreatedByNIM(ni) {
+		if bridgeIP, _, _, _, _ := r.getBridgeAddrs(niID); bridgeIP != nil {
+			intendedL3Cfg.PutItem(generic.IPReserve{
+				AddrWithMask: bridgeIP,
+				NetIf: generic.NetworkIf{
+					IfName:  ni.brIfName,
+					ItemRef: dg.Reference(linux.Bridge{IfName: ni.brIfName}),
+				},
+			}, nil)
+		}
+	}
 	if ni.config.Type == types.NetworkInstanceTypeSwitch {
-		// No L3 config for switch network instance.
+		// No more L3 config for switch network instance.
 		return intendedL3Cfg
 	}
-	if ni.config.Subnet.IP == nil {
+	if r.getNISubnet(ni) == nil {
 		// Local network instance with undefined subnet.
 		// (should be unreachable)
 		return intendedL3Cfg
@@ -642,19 +658,19 @@ func (r *LinuxNIReconciler) getIntendedNIL3Cfg(niID uuid.UUID) dg.Graph {
 		intendedL3Cfg.PutItem(linux.IPRule{
 			Priority: devicenetwork.PbrNatOutGatewayPrio,
 			Table:    syscall.RT_TABLE_LOCAL,
-			Src:      &ni.config.Subnet,
+			Src:      r.getNISubnet(ni),
 			Dst:      bridgeIP,
 		}, nil)
 	}
 	intendedL3Cfg.PutItem(linux.IPRule{
 		Priority: devicenetwork.PbrNatOutPrio,
 		Table:    devicenetwork.NIBaseRTIndex + ni.bridge.BrNum,
-		Src:      &ni.config.Subnet,
+		Src:      r.getNISubnet(ni),
 	}, nil)
 	intendedL3Cfg.PutItem(linux.IPRule{
 		Priority: devicenetwork.PbrNatInPrio,
 		Table:    devicenetwork.NIBaseRTIndex + ni.bridge.BrNum,
-		Dst:      &ni.config.Subnet,
+		Dst:      r.getNISubnet(ni),
 	}, nil)
 	// Add S-NAT iptables rule for the local network instance (only for IPv4).
 	if ni.config.Subnet.IP.To4() != nil {
@@ -720,8 +736,7 @@ func (r *LinuxNIReconciler) getIntendedMetadataSrvCfg(niID uuid.UUID) (items []d
 				"of the NI %v", metadataSrvIP, bridgeIP.IP, ni.config.DisplayName),
 		})
 	}
-	uplink := ni.bridge.Uplink.IfName
-	if ni.config.Type == types.NetworkInstanceTypeSwitch && uplink != "" {
+	if r.niBridgeIsCreatedByNIM(ni) {
 		items = append(items, iptables.Rule{
 			RuleLabel: fmt.Sprintf("Block access to metadata server from outside "+
 				"for L2 NI %s", ni.config.UUID),
@@ -736,8 +751,8 @@ func (r *LinuxNIReconciler) getIntendedMetadataSrvCfg(niID uuid.UUID) (items []d
 		})
 	}
 	items = append(items, generic.HTTPServer{
-		ServerName: fmt.Sprintf("Metadata-NI-%v", niID),
-		ListenIP:   bridgeIP.IP,
+		ForNI:    niID,
+		ListenIP: bridgeIP.IP,
 		ListenIf: generic.NetworkIf{
 			IfName:  ni.brIfName,
 			ItemRef: dg.Reference(linux.Bridge{IfName: ni.brIfName}),
@@ -762,10 +777,6 @@ func (r *LinuxNIReconciler) getIntendedDnsmasqCfg(niID uuid.UUID) (items []dg.It
 	}
 
 	// DHCP server configuration
-	var subnet *net.IPNet
-	if ni.config.Subnet.IP != nil {
-		subnet = &ni.config.Subnet
-	}
 	// By default, dnsmasq advertises a router (and we can have a static router
 	// defined in the NetworkInstanceConfig).
 	// To support airgap networks we interpret gateway=0.0.0.0 to not advertise
@@ -796,7 +807,7 @@ func (r *LinuxNIReconciler) getIntendedDnsmasqCfg(niID uuid.UUID) (items []dg.It
 	}
 	ntpServers = utils.FilterDuplicatesFn(ntpServers, utils.EqualIPs)
 	dhcpCfg := generic.DHCPServer{
-		Subnet:         subnet,
+		Subnet:         r.getNISubnet(ni),
 		AllOnesNetmask: !r.disableAllOnesNetmask,
 		IPRange: generic.IPRange{
 			FromIP: ni.config.DhcpRange.Start,
@@ -909,9 +920,7 @@ func (r *LinuxNIReconciler) getIntendedDnsmasqCfg(niID uuid.UUID) (items []dg.It
 		})
 	}
 	items = append(items, generic.Dnsmasq{
-		// Use bridge interface name as the dnsmasq instance name.
-		// There is at most one dnsmasq instance running per every NI bridge.
-		InstanceName: ni.brIfName,
+		ForNI: niID,
 		ListenIf: generic.NetworkIf{
 			IfName:  ni.brIfName,
 			ItemRef: dg.Reference(linux.Bridge{IfName: ni.brIfName}),
@@ -930,9 +939,7 @@ func (r *LinuxNIReconciler) getIntendedRadvdCfg(niID uuid.UUID) (items []dg.Item
 	// XXX do we need same logic as for IPv4 dnsmasq to not advertise as default router?
 	// Might we need lower radvd preference if isolated local network?
 	items = append(items, generic.Radvd{
-		// Use bridge interface name as the radvd instance name.
-		// There is at most one radvd instance running per every NI bridge.
-		InstanceName: ni.brIfName,
+		ForNI: niID,
 		ListenIf: generic.NetworkIf{
 			IfName:  ni.brIfName,
 			ItemRef: dg.Reference(linux.Bridge{IfName: ni.brIfName}),
@@ -1003,6 +1010,45 @@ func (r *LinuxNIReconciler) getIntendedAppConnCfg(niID uuid.UUID,
 	intendedAppConnCfg.PutItem(ipv6Eids, nil)
 	intendedAppConnCfg.PutSubGraph(r.getIntendedAppConnACLs(niID, vif, ul))
 	return intendedAppConnCfg
+}
+
+func (r *LinuxNIReconciler) generateBridgeIfName(
+	niConfig types.NetworkInstanceConfig, br NIBridge) (string, error) {
+	var brIfName string
+	switch niConfig.Type {
+	case types.NetworkInstanceTypeSwitch:
+		if br.Uplink.IfName != "" {
+			brIfName = br.Uplink.IfName
+			break
+		}
+		// Air-gapped, create bridge just like for local NI.
+		fallthrough
+	case types.NetworkInstanceTypeLocal:
+		brIfName = fmt.Sprintf("%s%d", bridgeIfNamePrefix, br.BrNum)
+	default:
+		return "", fmt.Errorf("%s: Unsupported type %v for NI %v",
+			LogAndErrPrefix, niConfig.Type, niConfig.UUID)
+	}
+	return brIfName, nil
+}
+
+func (r *LinuxNIReconciler) generateVifHostIfName(vifNum, appNum int) string {
+	return fmt.Sprintf("%s%dx%d", vifIfNamePrefix, vifNum, appNum)
+}
+
+func (r *LinuxNIReconciler) niBridgeIsCreatedByNIM(ni *niInfo) bool {
+	return ni.config.Type == types.NetworkInstanceTypeSwitch &&
+		ni.bridge.Uplink.IfName != ""
+}
+
+func (r *LinuxNIReconciler) getNISubnet(ni *niInfo) *net.IPNet {
+	if ni.config.Subnet.IP == nil {
+		return nil
+	}
+	return &net.IPNet{
+		IP:   ni.config.Subnet.IP,
+		Mask: ni.config.Subnet.Mask,
+	}
 }
 
 // HostIPSetBasename returns basename (without the "ipvX." prefix) to use for ipset

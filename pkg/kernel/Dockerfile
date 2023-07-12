@@ -93,13 +93,16 @@ ARG KERNEL_PGP2_SIGN=https://www.kernel.org/pub/linux/kernel/v${KERNEL_MAJOR}.x/
 
 # Download and verify kernel
 # PGP keys: 589DA6B1 (greg@kroah.com) & 6092693E (autosigner@kernel.org) & 00411886 (torvalds@linux-foundation.org)
+# sbom no-distribute
 # hadolint ignore=DL3020
 ADD ${KERNEL_SHA256_SUMS} sha256sums.asc
+# sbom no-distribute
 # hadolint ignore=DL3020
 ADD ${KERNEL_PGP2_SIGN} linux-${KERNEL_VERSION}.tar.sign
 # hadolint ignore=DL3020
 ADD ${KERNEL_SOURCE} /tmp/linux-${KERNEL_VERSION}.tar.xz
 
+# hadolint ignore=DL4006
 RUN gpg2 -q --import keys.asc && \
     gpg2 --verify sha256sums.asc && \
     KERNEL_SHA256=$(grep linux-${KERNEL_VERSION}.tar.xz sha256sums.asc | cut -d ' ' -f 1) && \

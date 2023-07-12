@@ -1,6 +1,6 @@
 ---
 name: PR build
-on:
+on:  # yamllint disable-line rule:truthy
   pull_request:
     branches:
       - "master"
@@ -18,12 +18,12 @@ jobs:
       fail-fast: false
       matrix:
         include:
-        - os: arm64-dirty
-          arch: arm64
-        - os: ubuntu-20.04
-          arch: amd64
-        - os: ubuntu-20.04
-          arch: riscv64
+          - os: arm64-dirty
+            arch: arm64
+          - os: ubuntu-20.04
+            arch: amd64
+          - os: ubuntu-20.04
+            arch: riscv64
     steps:
       - name: Starting Report
         run: |
