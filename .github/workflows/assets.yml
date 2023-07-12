@@ -22,7 +22,6 @@ on:  # yamllint disable-line rule:truthy
       - "master"
       - "[0-9]+.[0-9]+"
       - "[0-9]+.[0-9]+-stable"
-      - "[0-9]+.[0-9]+-lts"
 
 jobs:
   build:
