@@ -6,6 +6,7 @@ package attest
 import (
 	"errors"
 	"fmt"
+	"sync/atomic"
 	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/base"
@@ -17,7 +18,7 @@ import (
 type Event int
 
 // State represents a state in the attest state machine
-type State int
+type State int32
 
 // Events
 const (
@@ -198,7 +199,7 @@ func (ctx *Context) Initialize() error {
 
 // GetState returns current state
 func (ctx *Context) GetState() State {
-	return ctx.state
+	return getStateAtomic(ctx)
 }
 
 // EventHandler represents a handler function for a Transition
@@ -243,6 +244,14 @@ func triggerSelfEvent(ctx *Context, event Event) error {
 	return nil
 }
 
+func setStateAtomic(ctx *Context, state State) {
+	atomic.StoreInt32((*int32)(&ctx.state), int32(state))
+}
+
+func getStateAtomic(ctx *Context) State {
+	return State(atomic.LoadInt32((*int32)(&ctx.state)))
+}
+
 // Kickstart starts the state machine with EventInitialize
 func Kickstart(ctx *Context) {
 	ctx.eventTrigger <- EventInitialize
@@ -284,7 +293,7 @@ func startNewRetryTimer(ctx *Context) error {
 // The event handlers
 func handleInitializeAtNone(ctx *Context) error {
 	ctx.log.Trace("handleInitializeAtNone")
-	ctx.state = StateNonceWait
+	setStateAtomic(ctx, StateNonceWait)
 	err := verifier.SendNonceRequest(ctx)
 	if err == nil {
 		triggerSelfEvent(ctx, EventNonceRecvd)
@@ -313,7 +322,7 @@ func handleRestartAtNone(ctx *Context) error {
 
 func handleNonceRecvdAtNonceWait(ctx *Context) error {
 	ctx.log.Trace("handleNonceRecvdAtNonceWait")
-	ctx.state = StateInternalQuoteWait
+	setStateAtomic(ctx, StateInternalQuoteWait)
 	err := tpmAgent.SendInternalQuoteRequest(ctx)
 	if err == nil {
 		return nil
@@ -329,7 +338,7 @@ func handleNonceRecvdAtNonceWait(ctx *Context) error {
 
 func handleInternalQuoteRecvdAtInternalQuoteWait(ctx *Context) error {
 	ctx.log.Trace("handleInternalQuoteRecvdAtInternalQuoteWait")
-	ctx.state = StateAttestWait
+	setStateAtomic(ctx, StateAttestWait)
 	err := verifier.SendAttestQuote(ctx)
 	if err == nil {
 		triggerSelfEvent(ctx, EventAttestSuccessful)
@@ -359,7 +368,7 @@ func handleInternalQuoteRecvdAtInternalQuoteWait(ctx *Context) error {
 
 func handleAttestSuccessfulAtAttestWait(ctx *Context) error {
 	ctx.log.Trace("handleAttestSuccessfulAtAttestWait")
-	ctx.state = StateAttestEscrowWait
+	setStateAtomic(ctx, StateAttestEscrowWait)
 	err := verifier.SendAttestEscrow(ctx)
 	if err == nil {
 		triggerSelfEvent(ctx, EventAttestEscrowRecorded)
@@ -387,9 +396,9 @@ func handleAttestSuccessfulAtAttestWait(ctx *Context) error {
 
 func handleAttestEscrowRecordedAtAttestEscrowWait(ctx *Context) error {
 	ctx.log.Trace("handleAttestEscrowRecordedAtAttestEscrowWait")
-	ctx.state = StateComplete
+	setStateAtomic(ctx, StateComplete)
 	if ctx.restartRequestPending {
-		ctx.state = StateRestartWait
+		setStateAtomic(ctx, StateRestartWait)
 		startNewRetryTimer(ctx)
 	}
 	return nil
@@ -397,7 +406,7 @@ func handleAttestEscrowRecordedAtAttestEscrowWait(ctx *Context) error {
 
 func handleRestartAtStateComplete(ctx *Context) error {
 	ctx.log.Trace("handleRestartAtStateComplete")
-	ctx.state = StateRestartWait
+	setStateAtomic(ctx, StateRestartWait)
 	return startNewRetryTimer(ctx)
 }
 
@@ -409,7 +418,7 @@ func handleRestart(ctx *Context) error {
 
 func handleNonceMismatchAtAttestWait(ctx *Context) error {
 	ctx.log.Trace("handleNonceMismatchAtAttestWait")
-	ctx.state = StateRestartWait
+	setStateAtomic(ctx, StateRestartWait)
 	return startNewRetryTimer(ctx)
 }
 
@@ -425,7 +434,7 @@ func handleNoQuoteCertRcvdAtAttestWait(ctx *Context) error {
 
 func handleAttestEscrowFailedAtAttestEscrowWait(ctx *Context) error {
 	ctx.log.Trace("handleAttestEscrowFailedAtAttestEscrowWait")
-	ctx.state = StateRestartWait
+	setStateAtomic(ctx, StateRestartWait)
 	return startNewRetryTimer(ctx)
 }
 
@@ -458,20 +467,20 @@ func handleInternalEscrowRecvdAtAnyOther(ctx *Context) error {
 func handleNoEscrowAtAttestEscrowWait(ctx *Context) error {
 	ctx.log.Trace("handleNoEscrowAtAttestEscrowWait")
 	//Wait till we get escrow data published
-	ctx.state = StateInternalEscrowWait
+	setStateAtomic(ctx, StateInternalEscrowWait)
 	return nil
 }
 
 func handleRetryTimerExpiryAtRestartWait(ctx *Context) error {
 	ctx.log.Trace("handleRetryTimerExpiryAtRestartWait")
-	ctx.state = StateNone
+	setStateAtomic(ctx, StateNone)
 	ctx.restartRequestPending = false
 	return triggerSelfEvent(ctx, EventInitialize)
 }
 
 func handleRetryTimerExpiryAtNonceWait(ctx *Context) error {
 	ctx.log.Trace("handleRetryTimerExpiryAtNonceWait")
-	ctx.state = StateNone
+	setStateAtomic(ctx, StateNone)
 	return triggerSelfEvent(ctx, EventInitialize)
 }
 
