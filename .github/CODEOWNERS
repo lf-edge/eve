@@ -1,9 +1,138 @@
 # These owners will be the default owners for everything in
 # the repo. Unless a later match takes precedence, these will
 # be requested for review when someone opens a pull request.
-*       @eriknordmark @rvs
 
-/api/   @eriknordmark @rvs @deitch
-/pkg/pillar/cmd/zedrouter @milan-zededa
-/pkg/pillar/cmd/nim @milan-zededa
+*                                  @eriknordmark
 
+/pkg/edgeview/                     @naiming-zededa
+/pkg/newlog/                       @naiming-zededa
+
+
+/api/                              @deitch
+/build-tools/                      @deitch
+/libs/zedUpload/                   @deitch
+/pkg/newlog/                       @deitch
+/pkg/pillar/cas/                   @deitch
+/pkg/pillar/cmd/baseosmgr/         @deitch
+/pkg/pillar/cmd/downloader/        @deitch
+/pkg/pillar/cmd/volumemgr/         @deitch
+/pkg/pillar/containerd/            @deitch
+/pkg/rngd/                         @deitch
+/tools/                            @deitch
+
+
+/libs/zedUpload/                   @christoph-zededa
+/pkg/alpine/                       @christoph-zededa
+/pkg/dom0-ztools/                  @christoph-zededa
+/pkg/edgeview/                     @christoph-zededa
+/pkg/pillar/cmd/zedrouter/         @christoph-zededa
+/pkg/pillar/zedcloud/              @christoph-zededa
+
+
+/pkg/mkimage-raw-efi/              @jsfakian
+/pkg/mkverification-raw-efi/       @jsfakian
+/pkg/pillar/cmd/domainmgr/         @jsfakian
+/pkg/verification/                 @jsfakian
+/tools/                            @jsfakian
+
+
+/pkg/grub/                         @mikem-zed
+/pkg/kernel/                       @mikem-zed
+/pkg/measure-config/               @mikem-zed
+/pkg/new-kernel/                   @mikem-zed
+/pkg/pillar/cmd/ledmanager/        @mikem-zed
+/pkg/pillar/cmd/tpmmgr/            @mikem-zed
+/pkg/pillar/evetpm/                @mikem-zed
+/pkg/pillar/hypervisor/            @mikem-zed
+/pkg/uefi/                         @mikem-zed
+/pkg/xen-tools/                    @mikem-zed
+/pkg/xen/                          @mikem-zed
+
+
+/libs/depgraph/                    @milan-zededa
+/libs/nettrace/                    @milan-zededa
+/libs/reconciler/                  @milan-zededa
+/pkg/pillar/cmd/domainmgr/         @milan-zededa
+/pkg/pillar/cmd/downloader/        @milan-zededa
+/pkg/pillar/cmd/nim/               @milan-zededa
+/pkg/pillar/cmd/zedagent/          @milan-zededa
+/pkg/pillar/cmd/zedrouter/         @milan-zededa
+/pkg/pillar/devicenetwork/         @milan-zededa
+/pkg/pillar/dpcmanager/            @milan-zededa
+/pkg/pillar/dpcreconciler/         @milan-zededa
+/pkg/pillar/iptables/              @milan-zededa
+/pkg/pillar/netdump/               @milan-zededa
+/pkg/pillar/netmonitor/            @milan-zededa
+/pkg/pillar/nireconciler/          @milan-zededa
+/pkg/pillar/nistate/               @milan-zededa
+/pkg/pillar/uplinkprober/          @milan-zededa
+/pkg/pillar/utils/                 @milan-zededa
+/pkg/wwan/                         @milan-zededa
+/tests/eden/                       @milan-zededa
+
+
+/pkg/pillar/cmd/domainmgr/         @OhmSpectator
+/pkg/pillar/cmd/volumemgr/         @OhmSpectator
+/pkg/pillar/cmd/zedagent/          @OhmSpectator
+/pkg/pillar/cmd/zedmanager/        @OhmSpectator
+/pkg/pillar/cpuallocator/          @OhmSpectator
+/pkg/pillar/hypervisor/            @OhmSpectator
+/pkg/pillar/volumehandlers/        @OhmSpectator
+/pkg/xen-tools/                    @OhmSpectator
+/pkg/xen/                          @OhmSpectator
+
+
+/pkg/pillar/cmd/domainmgr/         @uncleDecart
+/pkg/pillar/cmd/zedagent/          @uncleDecart
+/pkg/pillar/sriov/                 @uncleDecart
+/tests/eden/                       @uncleDecart
+
+
+/pkg/kube/                         @zedi-pramodh
+/pkg/mkimage-raw-efi/              @zedi-pramodh
+/pkg/pillar/zfs/                   @zedi-pramodh
+
+
+/pkg/bsp-imx/                      @rene
+/pkg/cross-compilers/              @rene
+/pkg/debug/lshw/                   @rene
+/pkg/fw/                           @rene
+/pkg/grub/                         @rene
+/pkg/kernel/                       @rene
+/pkg/new-kernel/                   @rene
+/pkg/optee-os/                     @rene
+/pkg/pillar/cmd/ledmanager/        @rene
+/pkg/pillar/hypervisor/            @rene
+/pkg/u-boot/                       @rene
+/pkg/xen-tools/                    @rene
+/pkg/xen/                          @rene
+
+
+/libs/zedUpload/                   @rouming
+/pkg/debug/                        @rouming
+/pkg/dom0-ztools/                  @rouming
+/pkg/kdump/                        @rouming
+/pkg/kernel/                       @rouming
+/pkg/kexec/                        @rouming
+/pkg/new-kernel/                   @rouming
+/pkg/pillar/cmd/downloader/        @rouming
+/pkg/pillar/cmd/volumemgr/         @rouming
+/pkg/pillar/cmd/zedagent/          @rouming
+/pkg/pillar/cmd/zedmanager/        @rouming
+/pkg/pillar/cmd/zedrouter/         @rouming
+/pkg/pillar/containerd/            @rouming
+/pkg/pillar/hypervisor/            @rouming
+/pkg/pillar/zedcloud/              @rouming
+/pkg/storage-init/                 @rouming
+
+
+/pkg/apparmor/                     @shjala
+/pkg/dom0-tools/                   @shjala
+/pkg/kernel/                       @shjala
+/pkg/new-kernel/                   @shjala
+/pkg/pillar/cmd/tpmmgr/            @shjala
+/pkg/pillar/evetpm/                @shjala
+/pkg/pillar/hypervisor/            @shjala
+/pkg/vtpm/                         @shjala
+/pkg/xen-tools/                    @shjala
+/pkg/xen/                          @shjala
