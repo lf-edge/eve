@@ -392,7 +392,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	reinitNetdumper(zedagentCtx)
 
 	// We know our own UUID; prepare for communication with controller
-	zedcloudCtx = initZedcloudContext(
+	zedcloudCtx = initZedcloudContext(getconfigCtx,
 		zedagentCtx.globalConfig.GlobalValueInt(types.NetworkSendTimeout),
 		zedagentCtx.globalConfig.GlobalValueInt(types.NetworkDialTimeout),
 		zedagentCtx.zedcloudMetrics)
@@ -985,6 +985,9 @@ func mainEventLoop(zedagentCtx *zedagentContext, stillRunning *time.Ticker) {
 
 		case change := <-zedagentCtx.subZFSPoolMetrics.MsgChan():
 			zedagentCtx.subZFSPoolMetrics.ProcessChange(change)
+
+		case change := <-getconfigCtx.subCachedResolvedIPs.MsgChan():
+			getconfigCtx.subCachedResolvedIPs.ProcessChange(change)
 
 		case <-hwInfoTiker.C:
 			triggerPublishHwInfo(zedagentCtx)
@@ -1821,6 +1824,18 @@ func initPostOnboardSubs(zedagentCtx *zedagentContext) {
 		Ctx:         &zedagentCtx,
 		WarningTime: warningTime,
 		ErrorTime:   errorTime,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	getconfigCtx.subCachedResolvedIPs, err = ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:   "nim",
+		MyAgentName: agentName,
+		WarningTime: warningTime,
+		ErrorTime:   errorTime,
+		TopicImpl:   types.CachedResolvedIPs{},
+		Activate:    true,
 	})
 	if err != nil {
 		log.Fatal(err)
