@@ -103,6 +103,7 @@ type getconfigContext struct {
 	pubVolumeConfig           pubsub.Publication
 	pubDisksConfig            pubsub.Publication
 	pubEdgeNodeInfo           pubsub.Publication
+	subCachedResolvedIPs      pubsub.Subscription
 	NodeAgentStatus           *types.NodeAgentStatus
 	configProcessingRV        configProcessingRetval
 	lastReceivedConfig        time.Time // controller or local clocks
@@ -150,6 +151,16 @@ type getconfigContext struct {
 	configEdgeview *types.EdgeviewConfig // edge-view config save
 
 	cipherContexts map[string]types.CipherContext
+}
+
+func (ctx *getconfigContext) getCachedResolvedIPs(hostname string) []types.CachedIP {
+	if ctx.subCachedResolvedIPs == nil {
+		return nil
+	}
+	if item, err := ctx.subCachedResolvedIPs.Get(hostname); err == nil {
+		return item.(types.CachedResolvedIPs).CachedIPs
+	}
+	return nil
 }
 
 // current devUUID from OnboardingStatus
@@ -329,7 +340,8 @@ func indicateInvalidBootstrapConfig(getconfigCtx *getconfigContext) {
 	getconfigCtx.ledBlinkCount = types.LedBlinkInvalidBootstrapConfig
 }
 
-func initZedcloudContext(networkSendTimeout, networkDialTimeout uint32,
+func initZedcloudContext(getconfigCtx *getconfigContext,
+	networkSendTimeout, networkDialTimeout uint32,
 	agentMetrics *zedcloud.AgentMetrics) *zedcloud.ZedCloudContext {
 
 	// get the server name
@@ -340,13 +352,14 @@ func initZedcloudContext(networkSendTimeout, networkDialTimeout uint32,
 	serverNameAndPort = strings.TrimSpace(string(bytes))
 
 	zedcloudCtx := zedcloud.NewContext(log, zedcloud.ContextOptions{
-		DevNetworkStatus: deviceNetworkStatus,
-		SendTimeout:      networkSendTimeout,
-		DialTimeout:      networkDialTimeout,
-		AgentMetrics:     agentMetrics,
-		Serial:           hardware.GetProductSerial(log),
-		SoftSerial:       hardware.GetSoftSerial(log),
-		AgentName:        agentName,
+		DevNetworkStatus:  deviceNetworkStatus,
+		SendTimeout:       networkSendTimeout,
+		DialTimeout:       networkDialTimeout,
+		AgentMetrics:      agentMetrics,
+		Serial:            hardware.GetProductSerial(log),
+		SoftSerial:        hardware.GetSoftSerial(log),
+		AgentName:         agentName,
+		ResolverCacheFunc: getconfigCtx.getCachedResolvedIPs,
 		// Enable all net traces but packet capture, which is already covered
 		// by NIM (for the ping request).
 		NetTraceOpts: []nettrace.TraceOpt{
