@@ -76,6 +76,7 @@ type loguploaderContext struct {
 	subDeviceNetworkStatus pubsub.Subscription
 	subGlobalConfig        pubsub.Subscription
 	subAppInstConfig       pubsub.Subscription
+	subCachedResolvedIPs   pubsub.Subscription
 	usableAddrCount        int
 	metrics                types.NewlogMetrics
 	zedcloudMetrics        *zedcloud.AgentMetrics
@@ -84,6 +85,16 @@ type loguploaderContext struct {
 	enableFastUpload       bool
 	scheduleTimer          *time.Timer
 	backoffExprTimer       *time.Timer
+}
+
+func (ctx *loguploaderContext) getCachedResolvedIPs(hostname string) []types.CachedIP {
+	if ctx.subCachedResolvedIPs == nil {
+		return nil
+	}
+	if item, err := ctx.subCachedResolvedIPs.Get(hostname); err == nil {
+		return item.(types.CachedResolvedIPs).CachedIPs
+	}
+	return nil
 }
 
 // Run - an loguploader run
@@ -205,6 +216,19 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	}
 	log.Functionf("Have %d management ports with usable addresses", loguploaderCtx.usableAddrCount)
 
+	subCachedResolvedIPs, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:   "nim",
+		MyAgentName: agentName,
+		WarningTime: warningTime,
+		ErrorTime:   errorTime,
+		TopicImpl:   types.CachedResolvedIPs{},
+		Activate:    true,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	loguploaderCtx.subCachedResolvedIPs = subCachedResolvedIPs
+
 	// Publish cloud metrics
 	pubCloud, err := ps.NewPublication(
 		pubsub.PublicationOptions{
@@ -278,6 +302,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 
 		case change := <-subAppInstConfig.MsgChan():
 			subAppInstConfig.ProcessChange(change)
+
+		case change := <-subCachedResolvedIPs.MsgChan():
+			subCachedResolvedIPs.ProcessChange(change)
 
 		case <-publishCloudTimer.C:
 			start := time.Now()
@@ -403,13 +430,14 @@ func sendCtxInit(ctx *loguploaderContext) {
 
 	//set newlog url
 	zedcloudCtx := zedcloud.NewContext(log, zedcloud.ContextOptions{
-		DevNetworkStatus: deviceNetworkStatus,
-		SendTimeout:      ctx.globalConfig.GlobalValueInt(types.NetworkSendTimeout),
-		DialTimeout:      ctx.globalConfig.GlobalValueInt(types.NetworkDialTimeout),
-		AgentMetrics:     ctx.zedcloudMetrics,
-		Serial:           hardware.GetProductSerial(log),
-		SoftSerial:       hardware.GetSoftSerial(log),
-		AgentName:        agentName,
+		DevNetworkStatus:  deviceNetworkStatus,
+		SendTimeout:       ctx.globalConfig.GlobalValueInt(types.NetworkSendTimeout),
+		DialTimeout:       ctx.globalConfig.GlobalValueInt(types.NetworkDialTimeout),
+		AgentMetrics:      ctx.zedcloudMetrics,
+		ResolverCacheFunc: ctx.getCachedResolvedIPs,
+		Serial:            hardware.GetProductSerial(log),
+		SoftSerial:        hardware.GetSoftSerial(log),
+		AgentName:         agentName,
 	})
 	zedcloudCtx.DevUUID = ctx.devUUID
 
