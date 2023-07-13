@@ -27,3 +27,10 @@ func EqualIPNets(ipNet1, ipNet2 *net.IPNet) bool {
 	return ipNet1.IP.Equal(ipNet2.IP) &&
 		bytes.Equal(ipNet1.Mask, ipNet2.Mask)
 }
+
+// SameIPVersions returns true if both IP addresses are of the same version
+func SameIPVersions(ip1, ip2 net.IP) bool {
+	firstIsV4 := ip1.To4() != nil
+	secondIsV4 := ip2.To4() != nil
+	return firstIsV4 == secondIsV4
+}
