@@ -1,11 +1,12 @@
 #!/bin/sh
 # Usage:
 #
-#      ./makeflash.sh [-C size] <input dir> <output.img> [partitions]
+#      ./makeflash.sh <raw.img> [-C size] <input dir> <output.img> [partitions]
 #
 EVE="$(cd "$(dirname "$0")" && pwd)/../"
 PATH="$EVE/build-tools/bin:$PATH"
-MKFLASH_TAG="$(linuxkit pkg show-tag "$EVE/pkg/mkimage-raw-efi")"
+MKFLASH_TAG="$(linuxkit pkg show-tag "$EVE/pkg/$1")"
+shift 1
 
 if [ "$1" = "-C" ]; then
     SIZE="$2"
