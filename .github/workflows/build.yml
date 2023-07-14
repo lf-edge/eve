@@ -60,6 +60,10 @@ jobs:
       - name: Build packages
         run: |
           make V=1 PRUNE=1 ZARCH=${{ matrix.arch }} pkgs
+      - name: Build PREEMPT_RT kernel
+        if: ${{ matrix.arch == 'amd64' }}  # because RT only enabled on amd64
+        run: |
+          make V=1 PRUNE=1 ZARCH=${{ matrix.arch }} PREEMPT_RT=1 pkg/kernel
       - name: Post package report
         run: |
           echo Disk usage
