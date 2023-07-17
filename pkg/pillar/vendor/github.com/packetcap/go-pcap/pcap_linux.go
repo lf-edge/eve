@@ -56,21 +56,25 @@ type captured struct {
 // Handle states
 // Writer (OpenLive + Close) transitions:
 //   - closed <-> open
-//   - reading -> canceling
+//   - reading / polling -> canceling
 //   - canceled / gone -> closed
 //
 // Reader (ReadPacketData) transitions:
 //   - open <-> reading
+//   - reading <-> polling
 //   - reading -> gone
 //   - canceling -> canceled
 const (
 	closed    uint32 = 0
 	open      uint32 = 1
 	reading   uint32 = 2
-	canceling uint32 = 3
-	canceled  uint32 = 4
-	gone      uint32 = 5
+	polling   uint32 = 3
+	canceling uint32 = 4
+	canceled  uint32 = 5
+	gone      uint32 = 6
 )
+
+const pollIntervalMs = 60 * 1000 // 1 minute
 
 type Handle struct {
 	// this must be first for atomic to behave nicely
@@ -207,7 +211,25 @@ func (h *Handle) readPacketDataMmap() ([]captured, error) {
 			return h.processMmapPackets(blockBase, flagIndex)
 		}
 		logger.Debugf("packet not ready at block %d position %d, polling via %#v", h.framePtr, blockBase, h.pollfd)
-		val, err := syscall.Poll(h.pollfd, -1)
+		var err error
+		var val int
+		// Just repeat Poll when we get timeout, do not even log anything.
+		for err == nil && val == 0 {
+			if !atomic.CompareAndSwapUint32(&h.state, reading, polling) {
+				// the state is cancelling
+				logger.Debugf("polling was canceled for ring %p", h.ring)
+				return nil, io.EOF
+			}
+			// We need to have some timeout to eventually detect closed socket.
+			// Listening for syscall.POLLERR and syscall.POLLNVAL events
+			// does not seem to always do the job.
+			val, err = syscall.Poll(h.pollfd, pollIntervalMs)
+			if !atomic.CompareAndSwapUint32(&h.state, polling, reading) {
+				// the state is cancelling
+				logger.Debugf("polling was canceled for ring %p", h.ring)
+				return nil, io.EOF
+			}
+		}
 		logger.Debugf("poll returned val %v with pollfd %#v", val, h.pollfd)
 
 		switch {
@@ -338,6 +360,7 @@ func (h *Handle) Close() {
 	logger := log.WithFields(log.Fields{
 		"iface": h.iface,
 	})
+	// Wait for reader to finish before unmapping memory with the ring buffer.
 	for !atomic.CompareAndSwapUint32(&h.state, open, closed) {
 		state := atomic.LoadUint32(&h.state)
 		if state == canceled || state == gone {
@@ -346,6 +369,13 @@ func (h *Handle) Close() {
 		}
 		if atomic.CompareAndSwapUint32(&h.state, reading, canceling) {
 			logger.Debugf("cancelling ongoig packet read")
+		}
+		if atomic.CompareAndSwapUint32(&h.state, polling, canceling) {
+			// When polling is interrupted it is safe to go ahead and unmap the ring buffer.
+			// Reader will eventually detect canceled polling and will exit without accessing
+			// the buffer anymore.
+			logger.Debugf("cancelling ongoing socket polling; not waiting for poll to return")
+			break
 		}
 	}
 	if h.ring != nil {
@@ -418,7 +448,9 @@ func openLive(iface string, snaplen int32, promiscuous bool, timeout time.Durati
 		return nil, fmt.Errorf("failed opening raw socket: %v", err)
 	}
 	h.fd = fd
-	h.pollfd = []syscall.PollFd{{Fd: int32(h.fd), Events: syscall.POLLIN}}
+	h.pollfd = []syscall.PollFd{{
+		Fd:     int32(h.fd),
+		Events: syscall.POLLIN | syscall.POLLERR | syscall.POLLNVAL}}
 	if err := syscall.SetNonblock(fd, false); err != nil {
 		return nil, fmt.Errorf("failed to set socket as blocking: %v", err)
 	}
