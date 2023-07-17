@@ -213,6 +213,7 @@ zip
 zlib
 zlib-dev
 zlib-static
+zstd
 zstd-dev
 zstd-libs
 zstd-static
