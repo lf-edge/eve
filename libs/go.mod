@@ -9,7 +9,7 @@ require (
 	github.com/google/gopacket v1.1.19
 	github.com/lithammer/shortuuid/v4 v4.0.0
 	github.com/mdlayher/netlink v1.7.1
-	github.com/packetcap/go-pcap v0.0.0-20230711190632-81137528cfbc
+	github.com/packetcap/go-pcap v0.0.0-20230717110547-c34843f9206d
 	github.com/sirupsen/logrus v1.9.0
 	github.com/ti-mo/conntrack v0.4.0
 	golang.org/x/net v0.7.0
