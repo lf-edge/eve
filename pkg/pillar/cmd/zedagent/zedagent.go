@@ -177,18 +177,21 @@ type zedagentContext struct {
 	//  This is the value of counter that triggered reboot. This is sent in
 	//  device info msg. Can be used to verify device is caught up on all
 	// outstanding reboot commands from cloud.
-	rebootConfigCounter     uint32
-	shutdownConfigCounter   uint32
-	subDevicePortConfigList pubsub.Subscription
-	DevicePortConfigList    *types.DevicePortConfigList
-	remainingTestTime       time.Duration
-	physicalIoAdapterMap    map[string]types.PhysicalIOAdapter
-	globalConfig            types.ConfigItemValueMap
-	globalConfigPublished   bool // was last globalConfig successfully published
-	specMap                 types.ConfigItemSpecMap
-	globalStatus            types.GlobalStatus
-	flowLogMetrics          types.FlowlogMetrics
-	appContainerStatsTime   time.Time // last time the App Container stats uploaded
+	rebootConfigCounter   uint32
+	shutdownConfigCounter uint32
+	// Part of the fields above (the reboot ones) are initialized only once the NodeAgent status is received
+	// This flag is used to make sure we initialize them before continuing with the rest of the agent's initialization
+	initializedFromNodeAgentStatus bool
+	subDevicePortConfigList        pubsub.Subscription
+	DevicePortConfigList           *types.DevicePortConfigList
+	remainingTestTime              time.Duration
+	physicalIoAdapterMap           map[string]types.PhysicalIOAdapter
+	globalConfig                   types.ConfigItemValueMap
+	globalConfigPublished          bool // was last globalConfig successfully published
+	specMap                        types.ConfigItemSpecMap
+	globalStatus                   types.GlobalStatus
+	flowLogMetrics                 types.FlowlogMetrics
+	appContainerStatsTime          time.Time // last time the App Container stats uploaded
 	// The MaintenanceMode can come from GlobalConfig and from the config
 	// API. Those are merged into maintenanceMode
 	// TBD will be also decide locally to go into maintenanceMode based
@@ -430,6 +433,11 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	// With device UUID, zedagent is ready to initialize and activate all subscriptions.
 	initPostOnboardSubs(zedagentCtx)
 
+	// Wait until we initialize the context from node agent status.
+	// At least we need to be sure the bootReason field is set properly, as it's used during fetching local config,
+	// when it's necessary (necessary or not is determined exactly by the bootReason).
+	waitUntilInitializedFromNodeAgentStatus(zedagentCtx, stillRunning)
+
 	//initialize cipher processing block
 	cipherModuleInitialize(zedagentCtx)
 
@@ -517,6 +525,19 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	// Enter main zedagent event loop.
 	mainEventLoop(zedagentCtx, stillRunning) // never exits
 	return 0
+}
+
+func waitUntilInitializedFromNodeAgentStatus(ctx *zedagentContext, running *time.Ticker) {
+	log.Functionf("waitUntilInitializedFromNodeAgentStatus()")
+	for !ctx.initializedFromNodeAgentStatus {
+		select {
+		case change := <-ctx.getconfigCtx.subNodeAgentStatus.MsgChan():
+			ctx.getconfigCtx.subNodeAgentStatus.ProcessChange(change)
+		case <-running.C:
+		}
+		ctx.ps.StillRunning(agentName, warningTime, errorTime)
+	}
+	log.Functionf("waitUntilInitializedFromNodeAgentStatus() done")
 }
 
 func (zedagentCtx *zedagentContext) init() {
@@ -2326,6 +2347,8 @@ func handleNodeAgentStatusImpl(ctxArg interface{}, key string,
 	ctx.bootReason = status.BootReason
 	ctx.restartCounter = status.RestartCounter
 	ctx.allDomainsHalted = status.AllDomainsHalted
+	// Mark that we have received the NodeAgentStatus and initialized the context properly
+	ctx.initializedFromNodeAgentStatus = true
 	// if config reboot command was initiated and
 	// was deferred, and the device is not in inprogress
 	// state, initiate the reboot process
