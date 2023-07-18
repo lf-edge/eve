@@ -12,6 +12,7 @@ import (
 
 	dg "github.com/lf-edge/eve/libs/depgraph"
 	"github.com/lf-edge/eve/pkg/pillar/base"
+	"github.com/lf-edge/eve/pkg/pillar/devicenetwork"
 	"github.com/lf-edge/eve/pkg/pillar/netmonitor"
 	"github.com/lf-edge/eve/pkg/pillar/nireconciler/genericitems"
 	"github.com/vishvananda/netlink"
@@ -31,6 +32,9 @@ type Route struct {
 	// OutputIf : output interface for the routed traffic.
 	// Leave undefined if the destination is unreachable.
 	OutputIf RouteOutIf
+	// GwViaLinkRoute is set to true if gateway is not included in the output interface
+	// subnet and therefore depends on a link route (RT_SCOPE_LINK) for reachability.
+	GwViaLinkRoute bool
 }
 
 // RouteOutIf : output interface for the route.
@@ -143,7 +147,8 @@ func (r Route) Equal(other dg.Item) bool {
 		return false
 	}
 	return r.normalizedNetlinkRoute().Equal(r2.normalizedNetlinkRoute()) &&
-		r.OutputIf == r2.OutputIf
+		r.OutputIf == r2.OutputIf &&
+		r.GwViaLinkRoute == r2.GwViaLinkRoute
 }
 
 // External returns false.
@@ -184,7 +189,7 @@ func (r Route) Dependencies() (deps []dg.Dependency) {
 				return false
 			}
 		}
-		if len(r.Gw) != 0 {
+		if !r.GwViaLinkRoute && len(r.Gw) != 0 {
 			var gwMatch bool
 			for _, ip := range ips {
 				if ip.Contains(r.Gw) {
@@ -236,6 +241,27 @@ func (r Route) Dependencies() (deps []dg.Dependency) {
 			},
 			MustSatisfy: gwAndSrcMatchesIP,
 			Description: "Dummy interface must exist and have matching IP address assigned",
+		})
+	}
+	if r.GwViaLinkRoute && len(r.Gw) != 0 {
+		// Link route for the gateway must be configured first.
+		deps = append(deps, dg.Dependency{
+			RequiredItem: dg.Reference(Route{
+				Route: netlink.Route{
+					Family: r.Family,
+					Table:  r.Table,
+					Dst:    devicenetwork.HostSubnet(r.Gw)},
+				OutputIf: r.OutputIf,
+			}),
+			MustSatisfy: func(item dg.Item) bool {
+				gwRoute, isRoute := item.(Route)
+				if !isRoute {
+					// Should be unreachable
+					return false
+				}
+				return gwRoute.Scope == netlink.SCOPE_LINK
+			},
+			Description: "Link route for the gateway must be configured first",
 		})
 	}
 	return deps
