@@ -614,6 +614,7 @@ func (r *LinuxNIReconciler) getIntendedNIL3Cfg(niID uuid.UUID) dg.Graph {
 				LogAndErrPrefix, outIfIndex, err)
 			continue
 		}
+		// Copy routes from the main table into the NI-specific table.
 		for _, rt := range routes {
 			rtCopy := rt.Data.(netlink.Route)
 			rtCopy.Table = dstTable
@@ -627,8 +628,9 @@ func (r *LinuxNIReconciler) getIntendedNIL3Cfg(niID uuid.UUID) dg.Graph {
 			}
 			rtCopy.Protocol = unix.RTPROT_STATIC
 			intendedL3Cfg.PutItem(linux.Route{
-				Route:    rtCopy,
-				OutputIf: rtOutIf,
+				Route:          rtCopy,
+				OutputIf:       rtOutIf,
+				GwViaLinkRoute: gwViaLinkRoute(rt, routes),
 			}, nil)
 		}
 	}
@@ -1049,6 +1051,23 @@ func (r *LinuxNIReconciler) getNISubnet(ni *niInfo) *net.IPNet {
 		IP:   ni.config.Subnet.IP,
 		Mask: ni.config.Subnet.Mask,
 	}
+}
+
+// gwViaLinkRoute returns true if the given route uses gateway routed by another
+// link-scoped route.
+func gwViaLinkRoute(route netmonitor.Route, routingTable []netmonitor.Route) bool {
+	if len(route.Gw) == 0 {
+		return false
+	}
+	gwHostSubnet := devicenetwork.HostSubnet(route.Gw)
+	for _, route2 := range routingTable {
+		netlinkRoute2 := route2.Data.(netlink.Route)
+		if netlinkRoute2.Scope == netlink.SCOPE_LINK &&
+			utils.EqualIPNets(netlinkRoute2.Dst, gwHostSubnet) {
+			return true
+		}
+	}
+	return false
 }
 
 // HostIPSetBasename returns basename (without the "ipvX." prefix) to use for ipset
