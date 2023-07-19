@@ -338,7 +338,7 @@ func (m *DpcManager) verifyDPC(ctx context.Context) (status types.DPCState) {
 		}
 		m.Log.Errorf("DPC verify: no IP/DNS: exceeded timeout (waited for %v): "+
 			"%v for %+v\n", elapsed, err, dpc)
-		dpc.RecordFailure(err.Error())
+		dpc.RecordFailure(unwrapPortsNotReady(err).Error())
 		status = types.DPCStateFail
 		dpc.State = status
 		return status
@@ -362,7 +362,7 @@ func (m *DpcManager) verifyDPC(ctx context.Context) (status types.DPCState) {
 		}
 		m.Log.Errorf("DPC verify: ports %v are not ready: exceeded timeout (waited for %v): "+
 			"%v for %+v\n", notReadyErr.Ports, elapsed, err, dpc)
-		dpc.RecordFailure(err.Error())
+		dpc.RecordFailure(unwrapPortsNotReady(err).Error())
 		status = types.DPCStateFailWithIPAndDNS
 		dpc.State = status
 		return status
@@ -576,4 +576,17 @@ func (m *DpcManager) checkMgmtPortsPresence() (available, missing []string) {
 		}
 	}
 	return available, missing
+}
+
+// If error returned from connectivity test was wrapped into PortsNotReady,
+// unwrap it before recording it into DeviceNetworkStatus and DPCL.
+// PortsNotReady error type is only useful between ConnectivityTester and DPC
+// Manager to determine next steps in the connectivity testing process,
+// but otherwise in wider context it produces somewhat confusing error
+// message for users.
+func unwrapPortsNotReady(err error) error {
+	if pnrErr, isPNRErr := err.(*conntester.PortsNotReady); isPNRErr {
+		return pnrErr.Unwrap()
+	}
+	return err
 }
