@@ -81,6 +81,7 @@ require (
 	github.com/docker/go-units v0.4.0 // indirect
 	github.com/estesp/manifest-tool/v2 v2.0.6-0.20220728154431-89d791ab7966 // indirect
 	github.com/ghodss/yaml v1.0.0 // indirect
+	github.com/go-chi/chi/v5 v5.0.10 // indirect
 	github.com/go-ole/go-ole v1.2.6 // indirect
 	github.com/godbus/dbus/v5 v5.0.6 // indirect
 	github.com/gogo/googleapis v1.4.1 // indirect
