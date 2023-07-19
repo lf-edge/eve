@@ -260,8 +260,8 @@ func SendOnAllIntf(ctxWork context.Context, ctx *ZedCloudContext, url string, re
 		combinedRV.RespContents = rv.RespContents
 		return combinedRV, nil
 	}
-	errStr := fmt.Sprintf("All attempts to connect to %s failed: %v",
-		url, attempts)
+	errStr := fmt.Sprintf("All attempts to connect to %s failed: %s",
+		url, describeSendAttempts(attempts))
 	log.Errorln(errStr)
 	err := &SendError{
 		Err:      errors.New(errStr),
@@ -438,8 +438,8 @@ func VerifyAllIntf(ctx *ZedCloudContext, url string, requiredSuccessCount uint,
 		return verifyRV, err
 	}
 	if intfSuccessCount == 0 {
-		errStr := fmt.Sprintf("All attempts to connect to %s failed: %v",
-			url, attempts)
+		errStr := fmt.Sprintf("All attempts to connect to %s failed: %s",
+			url, describeSendAttempts(attempts))
 		log.Errorln(errStr)
 		err := &SendError{
 			Err:      errors.New(errStr),
@@ -1117,8 +1117,8 @@ func SendOnIntf(workContext context.Context, ctx *ZedCloudContext, destURL strin
 	if ctx.FailureFunc != nil {
 		ctx.FailureFunc(log, intf, reqURL, 0, 0, false)
 	}
-	errStr := fmt.Sprintf("All attempts to connect to %s failed: %v",
-		reqURL, attempts)
+	errStr := fmt.Sprintf("All attempts to connect to %s failed: %s",
+		reqURL, describeSendAttempts(attempts))
 	log.Errorln(errStr)
 	err = &SendError{
 		Err:      errors.New(errStr),
@@ -1351,6 +1351,30 @@ func isECONNREFUSED(err error) bool {
 		return false
 	}
 	return errno == syscall.ECONNREFUSED
+}
+
+// Describe send attempts in a concise and readable form.
+func describeSendAttempts(attempts []SendAttempt) string {
+	var attemptDescriptions []string
+	for _, attempt := range attempts {
+		var description string
+		// Unwrap errors defined here in pillar to avoid stutter.
+		// Instead of "send via eth1: interface eth1: no DNS server available",
+		// we simply return "interface eth1: no DNS server available".
+		// Same for IPAddrNotAvail.
+		// Otherwise, the errors are of the form:
+		// "send via eth1 [with src IP <IP>]: <error from http client>"
+		switch err := attempt.Err.(type) {
+		case *types.DNSNotAvail:
+			description = err.Error()
+		case *types.IPAddrNotAvail:
+			description = err.Error()
+		default:
+			description = attempt.String()
+		}
+		attemptDescriptions = append(attemptDescriptions, description)
+	}
+	return strings.Join(attemptDescriptions, "; ")
 }
 
 // NewContext - return initialized cloud context
