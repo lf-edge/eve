@@ -10,6 +10,7 @@ package zedrouter
 import (
 	"net/http"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 )
@@ -31,24 +32,27 @@ const SignerMaxSize = 65535
 const DiagMaxSize = 65535
 
 func (z *zedrouter) makeMetadataHandler() http.Handler {
-	mux := http.NewServeMux()
+	r := chi.NewRouter()
+
 	nh := &networkHandler{zedrouter: z}
-	mux.Handle("/eve/v1/network.json", nh)
+	r.Get("/eve/v1/network.json", nh.ServeHTTP)
+
 	ipHandler := &externalIPHandler{zedrouter: z}
-	mux.Handle("/eve/v1/external_ipv4", ipHandler)
+	r.Get("/eve/v1/external_ipv4", ipHandler.ServeHTTP)
+
 	hostnameHandler := &hostnameHandler{zedrouter: z}
-	mux.Handle("/eve/v1/hostname", hostnameHandler)
+	r.Get("/eve/v1/hostname", hostnameHandler.ServeHTTP)
 
 	openstackHandler := &openstackHandler{zedrouter: z}
-	mux.Handle("/openstack", openstackHandler)
-	mux.Handle("/openstack/", openstackHandler)
+	r.Get("/openstack", openstackHandler.ServeHTTP)
+	r.Get("/openstack/", openstackHandler.ServeHTTP)
 
 	kubeConfigHandler := &appInstMetaHandler{
 		zedrouter:       z,
 		maxResponseLen:  KubeconfigFileSizeLimitInBytes,
 		publishDataType: types.AppInstMetaDataTypeKubeConfig,
 	}
-	mux.Handle("/eve/v1/kubeconfig", kubeConfigHandler)
+	r.Get("/eve/v1/kubeconfig", kubeConfigHandler.ServeHTTP)
 
 	AppCustomStatusHandler := &appInstMetaHandler{
 		zedrouter: z,
@@ -56,31 +60,32 @@ func (z *zedrouter) makeMetadataHandler() http.Handler {
 		maxResponseLen:  KubeconfigFileSizeLimitInBytes,
 		publishDataType: types.AppInstMetaDataCustomStatus,
 	}
-	mux.Handle("/eve/v1/app/appCustomStatus", AppCustomStatusHandler)
+	r.Get("/eve/v1/app/appCustomStatus", AppCustomStatusHandler.ServeHTTP)
 
 	locationInfoHandler := &locationInfoHandler{zedrouter: z}
-	mux.Handle("/eve/v1/location.json", locationInfoHandler)
+	r.Get("/eve/v1/location.json", locationInfoHandler.ServeHTTP)
 
 	wwanStatusHandler := &wwanStatusHandler{zedrouter: z}
-	mux.Handle("/eve/v1/wwan/status.json", wwanStatusHandler)
+	r.Get("/eve/v1/wwan/status.json", wwanStatusHandler.ServeHTTP)
 
 	wwanMetricsHandler := &wwanMetricsHandler{zedrouter: z}
-	mux.Handle("/eve/v1/wwan/metrics.json", wwanMetricsHandler)
+	r.Get("/eve/v1/wwan/metrics.json", wwanMetricsHandler.ServeHTTP)
 
 	AppInfoHandler := &AppInfoHandler{zedrouter: z}
-	mux.Handle("/eve/v1/app/info.json", AppInfoHandler)
+	r.Get("/eve/v1/app/info.json", AppInfoHandler.ServeHTTP)
 
 	AppCustomBlobsHandler := &AppCustomBlobsHandler{zedrouter: z}
-	mux.Handle("/eve/app-custom-blobs/", AppCustomBlobsHandler)
+	r.Get("/eve/app-custom-blobs/", AppCustomBlobsHandler.ServeHTTP)
 
 	zedcloudCtx := zedcloud.NewContext(z.log, zedcloud.ContextOptions{})
 	signerHandler := &signerHandler{
 		zedrouter:   z,
 		zedcloudCtx: &zedcloudCtx,
 	}
-	mux.Handle("/eve/v1/tpm/signer", signerHandler)
+	r.Get("/eve/v1/tpm/signer", signerHandler.ServeHTTP)
 
 	diagHandler := &diagHandler{zedrouter: z}
-	mux.Handle("/eve/v1/diag", diagHandler)
-	return mux
+	r.Get("/eve/v1/diag", diagHandler.ServeHTTP)
+
+	return r
 }
