@@ -416,7 +416,7 @@ func (z *zedrouter) run(ctx context.Context) (err error) {
 				}
 				if appNetConfig == nil && recUpdate.AppConnStatus.Deleted &&
 					appNetStatus != nil && !appNetStatus.HasError() &&
-					!appNetStatus.Pending() {
+					!appNetStatus.Pending() && appNetStatus.ConfigInSync {
 					z.unpublishAppNetworkStatus(appNetStatus)
 				}
 			}
@@ -798,7 +798,7 @@ func (z *zedrouter) processNIReconcileStatus(recStatus nireconciler.NIReconcileS
 		niStatus.BridgeName = recStatus.BrIfName
 		changed = true
 	}
-	if !recStatus.AsyncInProgress {
+	if !recStatus.InProgress {
 		if niStatus.ChangeInProgress != types.ChangeInProgressTypeNone {
 			niStatus.ChangeInProgress = types.ChangeInProgressTypeNone
 			changed = true
@@ -835,10 +835,10 @@ func (z *zedrouter) processAppConnReconcileStatus(
 		}
 		return false
 	}
-	var asyncInProgress bool
+	var inProgress bool
 	var failedItems []string
 	for _, vif := range recStatus.VIFs {
-		asyncInProgress = asyncInProgress || vif.AsyncInProgress
+		inProgress = inProgress || vif.InProgress
 		for itemRef, itemErr := range vif.FailedItems {
 			failedItems = append(failedItems, fmt.Sprintf("%v (%v)", itemRef, itemErr))
 		}
@@ -853,13 +853,9 @@ func (z *zedrouter) processAppConnReconcileStatus(
 			}
 		}
 	}
-	if !asyncInProgress {
-		if appNetStatus.Pending() {
-			changed = true
-		}
-		appNetStatus.PendingAdd = false
-		appNetStatus.PendingModify = false
-		appNetStatus.PendingDelete = false
+	if appNetStatus.ConfigInSync != !inProgress {
+		changed = true
+		appNetStatus.ConfigInSync = !inProgress
 	}
 	if len(failedItems) > 0 {
 		err := fmt.Errorf("failed items: %s", strings.Join(failedItems, ";"))
@@ -1069,6 +1065,11 @@ func (z *zedrouter) publishNetworkInstanceMetricsAll(nms *types.NetworkMetrics) 
 	}
 	for _, ni := range niList {
 		status := ni.(types.NetworkInstanceStatus)
+		config := z.lookupNetworkInstanceConfig(status.Key())
+		if config == nil || !config.Activate {
+			// NI was deleted or is inactive - skip metrics publishing.
+			continue
+		}
 		netMetrics := z.createNetworkInstanceMetrics(&status, nms)
 		err := z.pubNetworkInstanceMetrics.Publish(netMetrics.Key(), *netMetrics)
 		if err != nil {

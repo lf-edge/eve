@@ -334,11 +334,19 @@ const qemuPciPassthruTemplate = `
 `
 const qemuSerialTemplate = `
 [chardev "charserial-usr{{.ID}}"]
+{{- if eq .Machine "virt"}}
+  backend = "serial"
+{{- else}}
   backend = "tty"
+{{- end}}
   path = "{{.SerialPortName}}"
 
 [device "serial-usr{{.ID}}"]
+{{- if eq .Machine "virt"}}
+  driver = "pci-serial"
+{{- else}}
   driver = "isa-serial"
+{{- end}}
   chardev = "charserial-usr{{.ID}}"
 `
 
@@ -698,9 +706,10 @@ func (ctx kvmContext) CreateDomConfig(domainName string, config types.DomainConf
 	}
 	if len(serialAssignments) != 0 {
 		serialPortContext := struct {
+			Machine        string
 			SerialPortName string
 			ID             int
-		}{SerialPortName: "", ID: 0}
+		}{Machine: ctx.devicemodel, SerialPortName: "", ID: 0}
 
 		t, _ = template.New("qemuSerial").Parse(qemuSerialTemplate)
 		for id, serial := range serialAssignments {

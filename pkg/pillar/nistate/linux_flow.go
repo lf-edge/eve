@@ -417,6 +417,7 @@ func (lc *LinuxCollector) sniffDNSandDHCP(ctx context.Context,
 	}
 
 	packetSource := gopacket.NewPacketSource(handle, layers.LinkType(handle.LinkType()))
+	packetSource.NoCopy = true
 	packetsCh := packetSource.Packets()
 	for {
 		select {

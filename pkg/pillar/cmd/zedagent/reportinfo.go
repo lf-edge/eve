@@ -1147,11 +1147,7 @@ func isUpdating(ctx *zedagentContext) bool {
 // Function decides if the next call to SendOnAllIntf for /info request should be traced
 // and netdump published at the end (see libs/nettrace and pkg/pillar/netdump).
 func traceNextInfoReq(ctx *zedagentContext) bool {
-	if !isNettraceEnabled(ctx) {
-		return false
-	}
-	return ctx.lastInfoNetdumpPub.IsZero() ||
-		time.Since(ctx.lastInfoNetdumpPub) >= ctx.netdumpInterval
+	return traceNextReq(ctx, ctx.lastInfoNetdumpPub)
 }
 
 // Publish netdump containing traces of executed /info requests.

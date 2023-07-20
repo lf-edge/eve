@@ -20,6 +20,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/devicenetwork"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
+	uuid "github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
 )
 
@@ -28,8 +29,11 @@ const zedrouterRunDir = "/run/zedrouter"
 
 // Dnsmasq : DNS and DHCP server (https://thekelleys.org.uk/dnsmasq/doc.html).
 type Dnsmasq struct {
-	// InstanceName : logical name for the dnsmasq instance.
-	InstanceName string
+	// ForNI : UUID of the Network Instance for which this Dnsmasq instance is created.
+	// Mostly used just to force re-start of Dnsmasq when one NI is being deleted
+	// and subsequently another is created with the same ListenIf + DNS/DHCP parameters
+	// (ForNI will differ in such case).
+	ForNI uuid.UUID
 	// ListenIf : interface on which dnsmasq should listen.
 	ListenIf NetworkIf
 	// DHCPServer : part of the dnsmasq config specific to DHCP server.
@@ -182,14 +186,24 @@ type NetworkIf struct {
 	ItemRef dg.ItemRef
 }
 
-// Name returns the logical label assigned to the dnsmasq instance.
+// NetworkIfWithIP should be implemented by the item representing network interface
+// on which dnsmasq is supposed to listen.
+type NetworkIfWithIP interface {
+	// GetAssignedIPs : return IP addresses with subnets currently assigned to the network
+	// interface.
+	GetAssignedIPs() []*net.IPNet
+}
+
+// Name returns the interface name on which Dnsmasq listens.
+// This ensures that there cannot be two different Dnsmasq instances
+// that would attempt to listen on the same interface at the same time.
 func (d Dnsmasq) Name() string {
-	return d.InstanceName
+	return d.ListenIf.IfName
 }
 
 // Label for the dnsmasq instance.
 func (d Dnsmasq) Label() string {
-	return d.InstanceName + " (dnsmasq)"
+	return "dnsmasq for " + d.ListenIf.IfName
 }
 
 // Type of the item.
@@ -200,7 +214,7 @@ func (d Dnsmasq) Type() string {
 // Equal compares two Dnsmasq instances
 func (d Dnsmasq) Equal(other dg.Item) bool {
 	d2 := other.(Dnsmasq)
-	return d.InstanceName == d2.InstanceName &&
+	return d.ForNI == d2.ForNI &&
 		d.ListenIf == d2.ListenIf &&
 		d.DNSServer.Equal(d2.DNSServer, true) &&
 		d.DHCPServer.Equal(d2.DHCPServer, true)
@@ -213,19 +227,33 @@ func (d Dnsmasq) External() bool {
 
 // String describes the dnsmasq instance.
 func (d Dnsmasq) String() string {
-	return fmt.Sprintf("Dnsmasq: {instanceName: %s, listenIf: %s, %s, "+
-		"%s}", d.InstanceName, d.ListenIf.IfName, d.DHCPServer, d.DNSServer)
+	return fmt.Sprintf("Dnsmasq: {NI: %s, listenIf: %s, %s, %s}",
+		d.ForNI.String(), d.ListenIf.IfName, d.DHCPServer, d.DNSServer)
 }
 
 // Dependencies returns:
-//   - the (downlink) interface on which the dnsmasq listens (for DNS it is assumed
-//     that if the interface is created, it has ListenIP assigned)
+//   - the (downlink) interface and the IP on which the dnsmasq listens
 //   - the (uplink) interface used by dnsmasq to contact upstream DNS servers (if any)
 //   - every referenced ipset
 func (d Dnsmasq) Dependencies() (deps []dg.Dependency) {
 	deps = append(deps, dg.Dependency{
 		RequiredItem: d.ListenIf.ItemRef,
-		Description:  "interface on which dnsmasq listens must exist",
+		Description: "interface on which dnsmasq listens must exist " +
+			"and have ListenIP assigned",
+		MustSatisfy: func(item dg.Item) bool {
+			netIfWithIP, isNetIfWithIP := item.(NetworkIfWithIP)
+			if !isNetIfWithIP {
+				// Should be unreachable.
+				return false
+			}
+			ips := netIfWithIP.GetAssignedIPs()
+			for _, ip := range ips {
+				if d.DNSServer.ListenIP.Equal(ip.IP) {
+					return true
+				}
+			}
+			return false
+		},
 	})
 	if d.DNSServer.UplinkIf.IfName != "" {
 		deps = append(deps, dg.Dependency{
@@ -284,29 +312,29 @@ func (c *DnsmasqConfigurator) Create(ctx context.Context, item dg.Item) error {
 	if err := c.createDnsmasqConfigFile(dnsmasq); err != nil {
 		return err
 	}
-	if err := ensureDir(c.Log, c.dnsmasqDHCPHostsDir(dnsmasq.InstanceName)); err != nil {
+	if err := ensureDir(c.Log, c.dnsmasqDHCPHostsDir(dnsmasq.Name())); err != nil {
 		return err
 	}
-	if err := ensureDir(c.Log, c.dnsmasqDNSHostsDir(dnsmasq.InstanceName)); err != nil {
+	if err := ensureDir(c.Log, c.dnsmasqDNSHostsDir(dnsmasq.Name())); err != nil {
 		return err
 	}
 	if err := ensureDir(c.Log, devicenetwork.DnsmasqLeaseDir); err != nil {
 		return err
 	}
 	for _, host := range dnsmasq.DHCPServer.StaticEntries {
-		if err := c.addDHCPHostFile(dnsmasq.InstanceName, host); err != nil {
+		if err := c.addDHCPHostFile(dnsmasq.Name(), host); err != nil {
 			return err
 		}
 	}
 	for _, host := range dnsmasq.DNSServer.StaticEntries {
-		if err := c.addDNSHostFile(dnsmasq.InstanceName, host); err != nil {
+		if err := c.addDNSHostFile(dnsmasq.Name(), host); err != nil {
 			return err
 		}
 	}
 	// TODO: cleanup obsolete leases?
 	done := reconciler.ContinueInBackground(ctx)
 	go func() {
-		err := c.startDnsmasq(ctx, dnsmasq.InstanceName)
+		err := c.startDnsmasq(ctx, dnsmasq.Name())
 		done(err)
 	}()
 	return nil
@@ -327,12 +355,12 @@ func (c *DnsmasqConfigurator) Modify(ctx context.Context, oldItem, newItem dg.It
 		oldDnsmasq.DHCPServer.StaticEntries, newDnsmasq.DHCPServer.StaticEntries,
 		equalMACToIP)
 	for _, host := range obsoleteDHCPHosts {
-		if err := c.delDHCPHostFile(oldDnsmasq.InstanceName, host); err != nil {
+		if err := c.delDHCPHostFile(oldDnsmasq.Name(), host); err != nil {
 			return err
 		}
 	}
 	for _, host := range newDHCPHosts {
-		if err := c.addDHCPHostFile(newDnsmasq.InstanceName, host); err != nil {
+		if err := c.addDHCPHostFile(newDnsmasq.Name(), host); err != nil {
 			return err
 		}
 	}
@@ -340,16 +368,16 @@ func (c *DnsmasqConfigurator) Modify(ctx context.Context, oldItem, newItem dg.It
 		oldDnsmasq.DNSServer.StaticEntries, newDnsmasq.DNSServer.StaticEntries,
 		equalHostnameToIP)
 	for _, host := range obsoleteDNSHosts {
-		if err := c.delDNSHostFile(oldDnsmasq.InstanceName, host); err != nil {
+		if err := c.delDNSHostFile(oldDnsmasq.Name(), host); err != nil {
 			return err
 		}
 	}
 	for _, host := range newDNSHosts {
-		if err := c.addDNSHostFile(newDnsmasq.InstanceName, host); err != nil {
+		if err := c.addDNSHostFile(newDnsmasq.Name(), host); err != nil {
 			return err
 		}
 	}
-	pidFile := c.dnsmasqPidFile(newDnsmasq.InstanceName)
+	pidFile := c.dnsmasqPidFile(newDnsmasq.Name())
 	return sendSignalToProcess(c.Log, pidFile, syscall.SIGHUP)
 }
 
@@ -361,14 +389,14 @@ func (c *DnsmasqConfigurator) Delete(ctx context.Context, item dg.Item) error {
 	}
 	done := reconciler.ContinueInBackground(ctx)
 	go func() {
-		err := c.stopDnsmasq(ctx, dnsmasq.InstanceName)
+		err := c.stopDnsmasq(ctx, dnsmasq.Name())
 		if err == nil {
 			// Ignore errors from here.
-			_ = c.removeDnsmasqConfigFile(dnsmasq.InstanceName)
+			_ = c.removeDnsmasqConfigFile(dnsmasq.Name())
 			_ = c.removeDnsmasqLeaseFile(dnsmasq.ListenIf.IfName)
-			_ = c.removeDnsmasqPidFile(dnsmasq.InstanceName)
-			_ = c.removeDnsmasqDHCPHostDir(dnsmasq.InstanceName)
-			_ = c.removeDnsmasqDNSHostDir(dnsmasq.InstanceName)
+			_ = c.removeDnsmasqPidFile(dnsmasq.Name())
+			_ = c.removeDnsmasqDHCPHostDir(dnsmasq.Name())
+			_ = c.removeDnsmasqDNSHostDir(dnsmasq.Name())
 		}
 		done(err)
 	}()
@@ -385,7 +413,8 @@ func (c *DnsmasqConfigurator) NeedsRecreate(oldItem, newItem dg.Item) (recreate 
 	if !isDnsmasq {
 		return false
 	}
-	return oldDnsmasq.ListenIf != newDnsmasq.ListenIf ||
+	return oldDnsmasq.ForNI != newDnsmasq.ForNI ||
+		oldDnsmasq.ListenIf != newDnsmasq.ListenIf ||
 		!oldDnsmasq.DNSServer.Equal(newDnsmasq.DNSServer, false) ||
 		!oldDnsmasq.DHCPServer.Equal(newDnsmasq.DHCPServer, false)
 }
@@ -407,7 +436,7 @@ func (c *DnsmasqConfigurator) dnsmasqDNSHostsDir(instanceName string) string {
 }
 
 func (c *DnsmasqConfigurator) createDnsmasqConfigFile(dnsmasq Dnsmasq) error {
-	cfgFilename := c.dnsmasqConfigPath(dnsmasq.InstanceName)
+	cfgFilename := c.dnsmasqConfigPath(dnsmasq.Name())
 	file, err := os.Create(cfgFilename)
 	if err != nil {
 		err = fmt.Errorf("failed to create dnsmasq config file %s: %w", cfgFilename, err)
@@ -482,7 +511,7 @@ func (c *DnsmasqConfigurator) CreateDnsmasqConfig(buffer io.Writer, dnsmasq Dnsm
 		}
 	}
 
-	pidFile := c.dnsmasqPidFile(dnsmasq.InstanceName)
+	pidFile := c.dnsmasqPidFile(dnsmasq.Name())
 	if _, err := io.WriteString(buffer,
 		fmt.Sprintf("pid-file=%s\n", pidFile)); err != nil {
 		return writeErr(err)
@@ -504,12 +533,12 @@ func (c *DnsmasqConfigurator) CreateDnsmasqConfig(buffer io.Writer, dnsmasq Dnsm
 		// XXX Error if there is no ListenIP?
 	}
 
-	hostsDir := c.dnsmasqDNSHostsDir(dnsmasq.InstanceName)
+	hostsDir := c.dnsmasqDNSHostsDir(dnsmasq.Name())
 	if _, err := io.WriteString(buffer,
 		fmt.Sprintf("hostsdir=%s\n", hostsDir)); err != nil {
 		return writeErr(err)
 	}
-	hostsDir = c.dnsmasqDHCPHostsDir(dnsmasq.InstanceName)
+	hostsDir = c.dnsmasqDHCPHostsDir(dnsmasq.Name())
 	if _, err := io.WriteString(buffer,
 		fmt.Sprintf("dhcp-hostsdir=%s\n", hostsDir)); err != nil {
 		return writeErr(err)

@@ -567,42 +567,51 @@ func getMemlogMsg(logChan chan inputEntry, panicFileChan chan []byte) {
 			time.Sleep(5 * time.Second)
 			continue
 		}
-		sourceName, msgTime, origMsg := getSourceFromMsg(string(bytes))
-
 		var pidStr string
-		var isApp bool
-		var jsonOK bool
 		var logInfo agentlog.Loginfo
-		if strings.Contains(sourceName, "guest_vm") {
-			isApp = true
-			logInfo.Source = sourceName
-			logInfo.Msg = origMsg
-			jsonOK = true
-			logmetrics.AppMetrics.NumInputEvent++
-		} else {
-			logInfo, jsonOK = agentlog.ParseLoginfo(origMsg)
-		}
-
-		if logInfo.Containername != "" {
-			logmetrics.AppMetrics.NumInputEvent++
-			isApp = true
-		} else {
-			logInfo.Msg = origMsg
-			logmetrics.DevMetrics.NumInputEvent++
-		}
-
+		// Everything is json, in some cases with an embedded json Msg
+		logEntry, jsonOK := ParseMemlogLogEntry(string(bytes))
 		if !jsonOK {
-			// not in json or right json format, try to reformat
-			logInfo = repaireMsg(origMsg, msgTime, sourceName)
+			log.Warnf("Received non-json from memlogd: %s\n",
+				string(bytes))
+			continue
 		}
-		if logInfo.Msg == "" {
-			logInfo.Msg = origMsg
+		// Start with the envelope
+		logInfo.Source = logEntry.Source
+		logInfo.Time = logEntry.Time
+		logInfo.Msg = logEntry.Msg
+
+		// Is the Msg itself json?
+		logInfo2, ok := agentlog.ParseLoginfo(logInfo.Msg)
+		if ok {
+			// If the inner has Time or Source set they take
+			// precedence over the envelope
+			if logInfo2.Time == "" {
+				logInfo2.Time = logInfo.Time
+			}
+			if logInfo2.Source == "" {
+				logInfo2.Source = logInfo.Source
+			}
+			logInfo = logInfo2
+		} else {
+			// Some messages have attr=val syntax
+			level, timeStr, msg := parseLevelTimeMsg(logInfo.Msg)
+			if level != "" {
+				logInfo.Level = level
+			}
+			if timeStr != "" {
+				logInfo.Time = timeStr
+			}
+			if msg != "" {
+				logInfo.Msg = msg
+			}
 		}
-		if !isApp && logInfo.Source == "" {
-			logInfo.Source = sourceName
-		}
-		if logInfo.Time == "" {
-			logInfo.Time = msgTime
+		if strings.Contains(logInfo.Source, "guest_vm") {
+			logmetrics.AppMetrics.NumInputEvent++
+		} else if logInfo.Containername != "" {
+			logmetrics.AppMetrics.NumInputEvent++
+		} else {
+			logmetrics.DevMetrics.NumInputEvent++
 		}
 		if logInfo.Pid != 0 {
 			pidStr = strconv.Itoa(logInfo.Pid)
@@ -627,67 +636,33 @@ func getMemlogMsg(logChan chan inputEntry, panicFileChan chan []byte) {
 	}
 }
 
-func repaireMsg(content, savedTimestamp, sourceName string) agentlog.Loginfo {
-	// repair oversized json msg
-	myStr := remNonPrintable(content)
-	myStr1 := strings.Split(myStr, ",\"msg\":")
-	var loginfo agentlog.Loginfo
-	var ok bool
-	if loginfo.Time == "" {
-		loginfo.Time = savedTimestamp
+// Returns level, time and msg if the string contains those attr=val
+func parseLevelTimeMsg(content string) (level string, timeStr string, msg string) {
+	content = remNonPrintable(content)
+	if strings.Contains(content, ",\"msg\":") {
+		// Json or something - bail
+		return
 	}
-	if loginfo.Source == "" {
-		loginfo.Source = sourceName
+	level1 := strings.SplitN(content, "level=", 2)
+	if len(level1) == 2 {
+		level2 := strings.Split(level1[1], " ")
+		level = level2[0]
 	}
-	if len(myStr1) == 1 { // no msg:
-		var nsev, nmsg string
-		level := strings.SplitN(content, "level=", 2)
-		if len(level) == 2 {
-			level2 := strings.Split(level[1], " ")
-			nsev = level2[0]
-		}
-		msg := strings.SplitN(content, "msg=", 2)
-		if len(msg) == 2 {
-			msg2 := strings.Split(msg[1], "\"")
-			if len(msg2) == 3 {
-				nmsg = msg2[1]
-			}
-		}
-		if nsev != "" || nmsg != "" {
-			loginfo.Level = nsev
-			loginfo.Msg = nmsg
-			ok = true
-		}
-	} else {
-		msgStr := myStr1[0]
-		if string(msgStr[len(msgStr)-1]) != "}" {
-			msgStr += "}"
-		}
-		loginfo, ok = agentlog.ParseLoginfo(msgStr)
-		if ok {
-			loginfo.Msg = myStr1[1]
+	time1 := strings.SplitN(content, "time=", 2)
+	if len(time1) == 2 {
+		time2 := strings.Split(time1[1], "\"")
+		if len(time2) == 3 {
+			timeStr = time2[1]
 		}
 	}
-	if !ok {
-		loginfo.Level = "info"
-		loginfo.Msg = content
+	msg1 := strings.SplitN(content, "msg=", 2)
+	if len(msg1) == 2 {
+		msg2 := strings.Split(msg1[1], "\"")
+		if len(msg2) == 3 {
+			msg = msg2[1]
+		}
 	}
-	return loginfo
-}
-
-func getSourceFromMsg(msg string) (string, string, string) {
-	var source, content string
-	lines := strings.SplitN(msg, ";", 2)
-	if len(lines) != 2 {
-		return source, "", content
-	}
-	content = lines[1]
-	lines2 := strings.Split(lines[0], ",")
-	n := len(lines2)
-	if n < 2 {
-		return source, "", content
-	}
-	return lines2[n-1], lines2[n-2], content
+	return
 }
 
 func startTmpfile(dirname, filename string, isApp bool) *os.File {
@@ -1717,4 +1692,21 @@ func newMessage(pkt []byte, size int, sysfmt *regexp.Regexp) (inputEntry, error)
 	}
 
 	return entry, nil
+}
+
+// MemlogLogEntry is copied from memlogd; maybe it should provide a parser
+// which sends this struct on a channel.
+type MemlogLogEntry struct {
+	Time   string `json:"time"`
+	Source string `json:"source"`
+	Msg    string `json:"msg"`
+}
+
+// ParseMemlogLogEntry returns MemlogLogEntry, ok
+func ParseMemlogLogEntry(line string) (MemlogLogEntry, bool) {
+	var output MemlogLogEntry
+	if err := json.Unmarshal([]byte(line), &output); err != nil {
+		return output, false
+	}
+	return output, true
 }

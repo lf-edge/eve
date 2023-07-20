@@ -93,7 +93,8 @@ type DpcManager struct {
 	adapters         types.AssignableAdapters
 	globalCfg        types.ConfigItemValueMap
 	hasGlobalCfg     bool
-	radioSilence     types.RadioSilence
+	rsConfig         types.RadioSilence
+	rsStatus         types.RadioSilence
 	enableLastResort bool
 	devUUID          uuid.UUID
 	// Boot-time configuration
@@ -129,6 +130,7 @@ type DpcManager struct {
 	netDumper       *netdump.NetDumper // nil if netdump is disabled
 	netdumpInterval time.Duration
 	lastNetdumpPub  time.Time // last call to publishNetdump
+	startTime       time.Time
 }
 
 // Watchdog : methods used by DpcManager to interact with Watchdog.
@@ -238,6 +240,7 @@ func (m *DpcManager) Init(ctx context.Context) error {
 
 // Run DpcManager as a separate task with its own loop and a watchdog file.
 func (m *DpcManager) Run(ctx context.Context) (err error) {
+	m.startTime = time.Now()
 	m.networkEvents = m.NetworkMonitor.WatchEvents(ctx, "dpc-reconciler")
 	m.wwanEvents, err = m.WwanWatcher.Watch(ctx)
 	if err != nil {
@@ -424,7 +427,7 @@ func (m *DpcManager) reconcilerArgs() dpcreconciler.Args {
 	args := dpcreconciler.Args{
 		GCP: m.globalCfg,
 		AA:  m.adapters,
-		RS:  m.radioSilence,
+		RS:  m.rsConfig,
 	}
 	if m.currentDPC() != nil {
 		args.DPC = *m.currentDPC()

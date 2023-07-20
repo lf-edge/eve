@@ -845,11 +845,11 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
   addr = "0x0"
 
 [chardev "charserial-usr0"]
-  backend = "tty"
+  backend = "serial"
   path = "/dev/ttyS0"
 
 [device "serial-usr0"]
-  driver = "isa-serial"
+  driver = "pci-serial"
   chardev = "charserial-usr0"
 ` {
 			t.Errorf("got an unexpected resulting config %s", string(result))
@@ -2111,11 +2111,11 @@ func TestCreateDomConfig(t *testing.T) {
   bus = "pci.10"
   addr = "0x0"
 [chardev "charserial-usr0"]
-  backend = "tty"
+  backend = "serial"
   path = "/dev/ttyS0"
 
 [device "serial-usr0"]
-  driver = "isa-serial"
+  driver = "pci-serial"
   chardev = "charserial-usr0"
 
 [device]

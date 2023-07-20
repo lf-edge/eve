@@ -120,7 +120,7 @@ func TestGoodPath(t *testing.T) {
 
 	go func() {
 		ctx.eventTrigger <- EventInitialize
-		for ctx.state != StateInternalQuoteWait {
+		for getStateAtomic(ctx) != StateInternalQuoteWait {
 			time.Sleep(1 * time.Second)
 		}
 		ctx.eventTrigger <- EventInternalQuoteRecvd
@@ -149,7 +149,7 @@ func TestNonceMismatch(t *testing.T) {
 
 	go func() {
 		ctx.eventTrigger <- EventInitialize
-		for ctx.state != StateInternalQuoteWait {
+		for getStateAtomic(ctx) != StateInternalQuoteWait {
 			time.Sleep(1 * time.Second)
 		}
 		ctx.eventTrigger <- EventInternalQuoteRecvd
@@ -176,7 +176,7 @@ func TestQuoteMismatch(t *testing.T) {
 
 	go func() {
 		ctx.eventTrigger <- EventInitialize
-		for ctx.state != StateInternalQuoteWait {
+		for getStateAtomic(ctx) != StateInternalQuoteWait {
 			time.Sleep(1 * time.Second)
 		}
 		ctx.eventTrigger <- EventInternalQuoteRecvd
@@ -203,7 +203,7 @@ func TestNoCertInController(t *testing.T) {
 
 	go func() {
 		ctx.eventTrigger <- EventInitialize
-		for ctx.state != StateInternalQuoteWait {
+		for getStateAtomic(ctx) != StateInternalQuoteWait {
 			time.Sleep(1 * time.Second)
 		}
 		ctx.eventTrigger <- EventInternalQuoteRecvd
@@ -230,7 +230,7 @@ func TestControllerNotAvbleInNonceWait(t *testing.T) {
 
 	go func() {
 		ctx.eventTrigger <- EventInitialize
-		for ctx.state != StateInternalQuoteWait {
+		for getStateAtomic(ctx) != StateInternalQuoteWait {
 			time.Sleep(1 * time.Second)
 		}
 		ctx.eventTrigger <- EventInternalQuoteRecvd
@@ -255,7 +255,7 @@ func TestControllerNotAvbleInAttestWait(t *testing.T) {
 	ctx := initTest()
 
 	go func() {
-		ctx.state = StateInternalQuoteWait
+		setStateAtomic(ctx, StateInternalQuoteWait)
 		simulateControllerReqFailure = true
 		ctx.eventTrigger <- EventInternalQuoteRecvd
 	}()
@@ -279,7 +279,7 @@ func TestControllerNotAvbleInAttestEscrowWait(t *testing.T) {
 	ctx := initTest()
 
 	go func() {
-		ctx.state = StateAttestWait
+		setStateAtomic(ctx, StateAttestWait)
 		simulateControllerReqFailure = true
 		ctx.eventTrigger <- EventAttestSuccessful
 	}()
@@ -304,7 +304,7 @@ func TestNoEscrowDataAttestEscrowWait(t *testing.T) {
 	stopTrigger := make(chan int)
 
 	go func() {
-		ctx.state = StateAttestWait
+		setStateAtomic(ctx, StateAttestWait)
 		simulateNoEscrowData = true
 		ctx.eventTrigger <- EventAttestSuccessful
 		time.Sleep(time.Second)
@@ -330,7 +330,7 @@ func TestItokenMismatchAttestEscrowWait(t *testing.T) {
 	ctx := initTest()
 
 	go func() {
-		ctx.state = StateAttestWait
+		setStateAtomic(ctx, StateAttestWait)
 		simulateITokenMismatch = true
 		ctx.eventTrigger <- EventAttestSuccessful
 	}()
@@ -355,7 +355,7 @@ func TestNoVerifierInNonceWait(t *testing.T) {
 	stopTrigger := make(chan int)
 
 	go func() {
-		ctx.state = StateNone
+		setStateAtomic(ctx, StateNone)
 		simulateNoVerifier = true
 		ctx.eventTrigger <- EventInitialize
 		time.Sleep(1 * time.Second)
@@ -381,7 +381,7 @@ func TestInternalEscrowRcvdAtAnyOther(t *testing.T) {
 	ctx := initTest()
 
 	testInternalEscrowRcvdAt := func(state State) {
-		ctx.state = state
+		setStateAtomic(ctx, state)
 		stopTrigger := make(chan int)
 		go func() {
 			ctx.eventTrigger <- EventInternalEscrowRecvd
@@ -409,7 +409,7 @@ func TestRestartAtEachState(t *testing.T) {
 	ctx := initTest()
 
 	testRestartEvent := func(state State) {
-		ctx.state = state
+		setStateAtomic(ctx, state)
 		stopTrigger := make(chan int)
 		go func() {
 			ctx.eventTrigger <- EventRestart

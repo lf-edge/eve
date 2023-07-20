@@ -55,14 +55,14 @@ your customers the hassle of this boot option.
 Signed-off-by: Hariharasubramanian C S <cshari@zededa.com>
 ---
  .../admin-guide/kernel-parameters.txt         |   9 ++
- drivers/pci/quirks.c                          | 100 ++++++++++++++++++
+ drivers/pci/quirks.c           | 100 ++++++++++++++++++
  2 files changed, 109 insertions(+)
 
 diff --git a/Documentation/admin-guide/kernel-parameters.txt b/Documentation/admin-guide/kernel-parameters.txt
-index 5e34deec819f..39aac6ad1abf 100644
+index 1f4a0523d..5de50f9cf 100644
 --- a/Documentation/admin-guide/kernel-parameters.txt
 +++ b/Documentation/admin-guide/kernel-parameters.txt
-@@ -3641,6 +3641,15 @@
+@@ -3708,6 +3708,15 @@
  		nomsi		[MSI] If the PCI_MSI kernel config parameter is
  				enabled, this kernel boot option can be used to
  				disable the use of MSI interrupts system-wide.
@@ -79,7 +79,7 @@ index 5e34deec819f..39aac6ad1abf 100644
  				Safety option to keep boot IRQs enabled. This
  				should never be necessary.
 diff --git a/drivers/pci/quirks.c b/drivers/pci/quirks.c
-index 1be2894ada70..91a01300df69 100644
+index c1ebd5e12..29dddb04c 100644
 --- a/drivers/pci/quirks.c
 +++ b/drivers/pci/quirks.c
 @@ -3572,6 +3572,105 @@ static void quirk_no_bus_reset(struct pci_dev *dev)
@@ -188,14 +188,14 @@ index 1be2894ada70..91a01300df69 100644
  /*
   * Some NVIDIA GPU devices do not work with bus reset, SBR needs to be
   * prevented for those affected devices.
-@@ -4939,6 +5038,7 @@ static const struct pci_dev_acs_enabled {
- 	{ PCI_VENDOR_ID_NXP, 0x8d9b, pci_quirk_nxp_rp_acs },
- 	/* Zhaoxin Root/Downstream Ports */
+@@ -4964,6 +5063,7 @@ static const struct pci_dev_acs_enabled {
  	{ PCI_VENDOR_ID_ZHAOXIN, PCI_ANY_ID, pci_quirk_zhaoxin_pcie_ports_acs },
+ 	/* Wangxun nics */
+ 	{ PCI_VENDOR_ID_WANGXUN, PCI_ANY_ID, pci_quirk_wangxun_nic_acs },
 +	{ PCI_ANY_ID, PCI_ANY_ID, pcie_acs_overrides },
  	{ 0 }
  };
  
 -- 
-2.25.1
+2.41.0
 

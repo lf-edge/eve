@@ -176,9 +176,7 @@ func (r *LinuxNIReconciler) updateCurrentNIBridge(niID uuid.UUID) (changed bool)
 			break
 		}
 	}
-	// Only non-air-gapped switch network instances use bridges created
-	// outside zedrouter.
-	if ni.config.Type != types.NetworkInstanceTypeSwitch || ni.bridge.Uplink.IfName == "" {
+	if !r.niBridgeIsCreatedByNIM(ni) {
 		return r.updateSingleItem(prevExtBridge, nil, l2SG)
 	}
 	ip, _, mac, found, err := r.getBridgeAddrs(niID)
@@ -271,8 +269,9 @@ func (r *LinuxNIReconciler) updateCurrentNIRoutes(niID uuid.UUID) (changed bool)
 		}
 		for _, rt := range routes {
 			route := linux.Route{
-				Route:    rt.Data.(netlink.Route),
-				OutputIf: rtOutIf,
+				Route:          rt.Data.(netlink.Route),
+				OutputIf:       rtOutIf,
+				GwViaLinkRoute: gwViaLinkRoute(rt, routes),
 			}
 			prevRoute := prevRoutes[dg.Reference(route)]
 			if prevRoute == nil || !prevRoute.Equal(route) {
@@ -451,4 +450,16 @@ func (r *LinuxNIReconciler) updateSingleItem(
 		changed = true
 	}
 	return changed
+}
+
+func (r *LinuxNIReconciler) getOrAddNISubgraph(niID uuid.UUID) dg.Graph {
+	sgName := NIToSGName(niID)
+	var niSG dg.Graph
+	if readHandle := r.currentState.SubGraph(sgName); readHandle != nil {
+		niSG = r.currentState.EditSubGraph(readHandle)
+	} else {
+		niSG = dg.New(dg.InitArgs{Name: sgName})
+		r.currentState.PutSubGraph(niSG)
+	}
+	return niSG
 }

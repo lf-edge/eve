@@ -18,15 +18,17 @@ a1ec2dd88595f reset: imx7: add the clkreq reset for imx8m
 07da364fb1300 LF-2881-3 reset: imx7: add the imx8mp pcie clkreq reset
 
 Signed-off-by: Renê de Souza Pinto <rene@renesp.com.br>
+Ported to the kernel version 5.10.186
+Signed-off-by: Christoph Ostarek <christoph@zededa.com>
 ---
  drivers/pci/controller/dwc/pci-imx6.c | 2245 ++++++++++++++++++++++---
- drivers/reset/reset-imx7.c            |    9 +-
+ drivers/reset/reset-imx7.c            |    8 +-
  include/dt-bindings/soc/imx8_hsio.h   |   31 +
- 3 files changed, 2020 insertions(+), 265 deletions(-)
- create mode 100644 include/dt-bindings/soc/imx8_hsio.h
+ 3 files changed, 2019 insertions(+), 265 deletions(-)
+ create mode 100644 linux-5.10.186/include/dt-bindings/soc/imx8_hsio.h
 
 diff --git a/drivers/pci/controller/dwc/pci-imx6.c b/drivers/pci/controller/dwc/pci-imx6.c
-index ceb4815379cd..d3ca0d9fe028 100644
+index 8117f2dad..49951e5a4 100644
 --- a/drivers/pci/controller/dwc/pci-imx6.c
 +++ b/drivers/pci/controller/dwc/pci-imx6.c
 @@ -8,6 +8,7 @@
@@ -2760,13 +2762,13 @@ index ceb4815379cd..d3ca0d9fe028 100644
  static int __init imx6_pcie_init(void)
  {
  #ifdef CONFIG_ARM
-@@ -1286,3 +3002,4 @@ static int __init imx6_pcie_init(void)
+@@ -1293,3 +3009,4 @@ static int __init imx6_pcie_init(void)
  	return platform_driver_register(&imx6_pcie_driver);
  }
  device_initcall(imx6_pcie_init);
 +MODULE_LICENSE("GPL v2");
 diff --git a/drivers/reset/reset-imx7.c b/drivers/reset/reset-imx7.c
-index 185a333df66c..ff9f99ff9a49 100644
+index d2408725e..a6f4c4bd5 100644
 --- a/drivers/reset/reset-imx7.c
 +++ b/drivers/reset/reset-imx7.c
 @@ -191,6 +191,7 @@ static const struct imx7_src_signal imx8mq_src_signals[IMX8MQ_RESET_NUM] = {
@@ -2806,19 +2808,17 @@ index 185a333df66c..ff9f99ff9a49 100644
  	[IMX8MP_RESET_PCIE_CTRL_APPS_EN]	= { SRC_PCIEPHY_RCR, BIT(6) },
  	[IMX8MP_RESET_PCIE_CTRL_APPS_TURNOFF]	= { SRC_PCIEPHY_RCR, BIT(11) },
  	[IMX8MP_RESET_HDMI_PHY_APB_RESET]	= { SRC_HDMI_RCR, BIT(0) },
-@@ -328,7 +333,9 @@ static int imx8mp_reset_set(struct reset_controller_dev *rcdev,
- 			udelay(10);
- 		break;
+@@ -330,6 +335,7 @@ static int imx8mp_reset_set(struct reset_controller_dev *rcdev,
  
-+	case IMX8MP_RESET_PCIEPHY_PERST:
  	case IMX8MP_RESET_PCIE_CTRL_APPS_EN:
+ 	case IMX8MP_RESET_PCIEPHY_PERST:
 +	case IMX8MP_RESET_PCIE_CTRL_APPS_CLK_REQ:
  		value = assert ? 0 : bit;
  		break;
  	}
 diff --git a/include/dt-bindings/soc/imx8_hsio.h b/include/dt-bindings/soc/imx8_hsio.h
 new file mode 100644
-index 000000000000..3cf1056b63d7
+index 000000000..3cf1056b6
 --- /dev/null
 +++ b/include/dt-bindings/soc/imx8_hsio.h
 @@ -0,0 +1,31 @@
@@ -2854,5 +2854,5 @@ index 000000000000..3cf1056b63d7
 +
 +#endif /* __DT_BINDINGS_IMX8_HSIO_H */
 -- 
-2.39.0
+2.41.0
 

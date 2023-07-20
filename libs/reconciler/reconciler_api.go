@@ -65,16 +65,16 @@ type Configurator interface {
 //
 // Example Usage:
 //
-//     func (c *MyConfigurator) Create(ctx context.Context, item depgraph.Item) error {
-//         done := reconciler.ContinueInBackground(ctx)
-//         go func() {
-//             // Remember to stop if ctx.Done() fires (return error if failed to complete)
-//             err := longRunningTask(ctx)
-//             done(err)
-//          }
-//          // exit immediately with nil error
-//          return nil
-//     }
+//	func (c *MyConfigurator) Create(ctx context.Context, item depgraph.Item) error {
+//	    done := reconciler.ContinueInBackground(ctx)
+//	    go func() {
+//	        // Remember to stop if ctx.Done() fires (return error if failed to complete)
+//	        err := longRunningTask(ctx)
+//	        done(err)
+//	     }
+//	     // exit immediately with nil error
+//	     return nil
+//	}
 func ContinueInBackground(ctx context.Context) (done func(error)) {
 	opCtx := getOpCtx(ctx)
 	opCtx.runAsync = true
@@ -128,14 +128,20 @@ type Status struct {
 	// Returns name of the (sub)graph ready to continue reconciling.
 	// This may be useful if you do selective reconciliations with subgraphs.
 	ReadyToResume <-chan string
-	// CancelAsyncOps : send cancel signal to all asynchronously running operations.
+	// CancelAsyncOps : send cancel signal to either all asynchronously running operations,
+	// or only to those running for items matched by the provided callback.
 	// They will receive the signal through ctx.Done() and should respect it.
-	CancelAsyncOps context.CancelFunc
+	CancelAsyncOps CancelFunc
 	// WaitForAsyncOps : wait for all asynchronously running operations to complete.
 	// Beware that this may block endlessly if at least one of the operations
 	// keeps ignoring ctx.Done().
+	// Note that this function waits for all currently running asynchronous operations.
+	// Waiting for only a subset of operations is not yet supported.
 	WaitForAsyncOps func()
 }
+
+// CancelFunc is used to cancel all or only some asynchronously running operations.
+type CancelFunc func(cancelForItem func(ref dg.ItemRef) bool)
 
 // OperationLog : log of all operations executed during a single Reconcile().
 // Operations are ordered by StartTime.

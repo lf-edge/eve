@@ -58,7 +58,7 @@ FROM kernel-build-base-native AS kernel-target-arm64-build-arm64
 # set versions for arm64
 # hadolint ignore=DL3006
 FROM kernel-target-${TARGETARCH}-build-${BUILDARCH} AS kernel-target-arm64
-ARG KERNEL_VERSION_arm64=5.10.131
+ARG KERNEL_VERSION_arm64=5.10.186
 # this has to be specified separately because of dockerfile limitations
 ARG KERNEL_MAJOR=5
 ENV KERNEL_VERSION=${KERNEL_VERSION_arm64}
@@ -69,7 +69,7 @@ ENV KERNEL_DEFCONFIG=defconfig
 # set versions for amd64
 # hadolint ignore=DL3006
 FROM kernel-target-${TARGETARCH}-build-${BUILDARCH} AS kernel-target-amd64
-ARG KERNEL_VERSION_amd64=5.10.131
+ARG KERNEL_VERSION_amd64=5.10.186
 # this has to be specified separately because of dockerfile limitations
 ARG KERNEL_MAJOR=5
 ENV KERNEL_VERSION=${KERNEL_VERSION_amd64}
@@ -93,13 +93,16 @@ ARG KERNEL_PGP2_SIGN=https://www.kernel.org/pub/linux/kernel/v${KERNEL_MAJOR}.x/
 
 # Download and verify kernel
 # PGP keys: 589DA6B1 (greg@kroah.com) & 6092693E (autosigner@kernel.org) & 00411886 (torvalds@linux-foundation.org)
+# sbom no-distribute
 # hadolint ignore=DL3020
 ADD ${KERNEL_SHA256_SUMS} sha256sums.asc
+# sbom no-distribute
 # hadolint ignore=DL3020
 ADD ${KERNEL_PGP2_SIGN} linux-${KERNEL_VERSION}.tar.sign
 # hadolint ignore=DL3020
 ADD ${KERNEL_SOURCE} /tmp/linux-${KERNEL_VERSION}.tar.xz
 
+# hadolint ignore=DL4006
 RUN gpg2 -q --import keys.asc && \
     gpg2 --verify sha256sums.asc && \
     KERNEL_SHA256=$(grep linux-${KERNEL_VERSION}.tar.xz sha256sums.asc | cut -d ' ' -f 1) && \

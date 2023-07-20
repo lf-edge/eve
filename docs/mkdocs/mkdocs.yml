@@ -22,6 +22,7 @@ nav:
   - 'EVE Configuration': 'docs/CONFIG.md'
   - 'BIOS and Firmware management with EVE': 'docs/BIOS-FIRMWARE.md'
   - 'Deploying EVE-OS': 'docs/DEPLOYMENT.md'
+  - 'Verifying EVE-OS': 'docs/HARDWARE-VERIFICATION.md'
   - 'Booting EVE': 'docs/BOOTING.md'
   - 'Device Connectivity': 'docs/DEVICE-CONNECTIVITY.md'
   - Communications: 'docs/COMMS.md'
@@ -217,3 +218,4 @@ nav:
       - U-boot: 'pkg/u-boot/README.md'
       - UEFI: 'pkg/uefi/rpi/README.md'
       - WLAN: 'pkg/wlan/FIXME.md'
+      - 'Clock Synchronization': 'docs/CLOCK-SYNCHRONIZATION.md'

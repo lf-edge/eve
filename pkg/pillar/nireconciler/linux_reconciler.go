@@ -21,6 +21,7 @@ import (
 	generic "github.com/lf-edge/eve/pkg/pillar/nireconciler/genericitems"
 	linux "github.com/lf-edge/eve/pkg/pillar/nireconciler/linuxitems"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/utils"
 	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
 	uuid "github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
@@ -35,11 +36,6 @@ const (
 	// File where the intended state graph is exported (as DOT) after each reconcile.
 	// Can be used for troubleshooting purposes.
 	intendedStateFile = "/run/zedrouter-intended-state.dot"
-)
-
-const (
-	vifIfNamePrefix    = "nbu"
-	bridgeIfNamePrefix = "bn"
 )
 
 var emptyUUID = uuid.UUID{} // used as a constant
@@ -69,8 +65,9 @@ type LinuxNIReconciler struct {
 
 	// To manage asynchronous operations.
 	watcherControl   chan watcherCtrl
-	pendingReconcile map[string]pendingReconcile // key : subgraph name
-	resumeAsync      <-chan string               // nil if no async ops
+	pendingReconcile pendingReconcile
+	resumeAsync      <-chan string // nil if no async ops
+	cancelAsync      reconciler.CancelFunc
 
 	// Publishing of reconciler updates.
 	// When reconcileMu and publishMu are both needed to acquire,
@@ -86,10 +83,18 @@ type LinuxNIReconciler struct {
 }
 
 type pendingReconcile struct {
-	// Either forGlobalSG is true or forNI is non-empty.
-	forGlobalSG bool
-	forNI       uuid.UUID
-	reasons     []string
+	// True if we need to resume reconciliation because async op(s) finalized.
+	asyncFinalized bool
+	// Non-nil if the intended state of the global config is outdated
+	// and needs to be rebuilt before triggering reconciliation.
+	rebuildGlobalCfg *pendingCfgRebuild
+	// A map of network instances whose intended state is outdated
+	// and needs to be rebuilt before triggering reconciliation.
+	rebuildNICfg map[uuid.UUID]pendingCfgRebuild
+}
+
+type pendingCfgRebuild struct {
+	reasons []string
 }
 
 type watcherCtrl uint8
@@ -173,7 +178,7 @@ func (r *LinuxNIReconciler) init() (startWatcher func()) {
 	r.intendedState = r.initialDepGraph()
 	r.nis = make(map[uuid.UUID]*niInfo)
 	r.apps = make(map[uuid.UUID]*appInfo)
-	r.pendingReconcile = make(map[string]pendingReconcile)
+	r.pendingReconcile.rebuildNICfg = make(map[uuid.UUID]pendingCfgRebuild)
 	r.wakeupPublisher = make(chan bool, 1)
 	go r.runPublisher()
 	r.watcherControl = make(chan watcherCtrl, 10)
@@ -237,20 +242,8 @@ func (r *LinuxNIReconciler) runWatcher(netEvents <-chan netmonitor.Event) {
 	defer r.reconcileMu.Unlock()
 	for {
 		select {
-		case subgraph := <-r.resumeAsync:
-			reconcileReason := "async op finalized"
-			if subgraph == GlobalSG {
-				r.addPendingReconcile(true, emptyUUID, reconcileReason)
-			} else {
-				niID := SGNameToNI(subgraph)
-				if niID == emptyUUID {
-					r.log.Errorf(
-						"%s: received resumeAsync signal for unrecognized subgraph: %s",
-						LogAndErrPrefix, subgraph)
-					continue
-				}
-				r.addPendingReconcile(false, niID, reconcileReason)
-			}
+		case <-r.resumeAsync:
+			r.pendingReconcile.asyncFinalized = true
 			updateMsg := ReconcilerUpdate{UpdateType: AsyncOpDone}
 			r.publishReconcilerUpdates(updateMsg)
 
@@ -272,7 +265,7 @@ func (r *LinuxNIReconciler) runWatcher(netEvents <-chan netmonitor.Event) {
 						}
 						if ifName == ni.brIfName || ifName == ni.bridge.Uplink.IfName {
 							r.updateCurrentNIRoutes(ni.config.UUID)
-							r.addPendingReconcile(false, ni.config.UUID, "route change")
+							r.scheduleNICfgRebuild(ni.config.UUID, "route change")
 							needReconcile = true
 						}
 					}
@@ -292,7 +285,7 @@ func (r *LinuxNIReconciler) runWatcher(netEvents <-chan netmonitor.Event) {
 						if uplinkChanged {
 							for _, ni := range r.getNIsUsingUplink(ifName) {
 								r.updateCurrentNIRoutes(ni.config.UUID)
-								r.addPendingReconcile(false, ni.config.UUID,
+								r.scheduleNICfgRebuild(ni.config.UUID,
 									"uplink state change")
 								needReconcile = true
 							}
@@ -309,7 +302,7 @@ func (r *LinuxNIReconciler) runWatcher(netEvents <-chan netmonitor.Event) {
 						if _, _, _, found = subG.Item(brRef); found {
 							brChanged := r.updateCurrentNIBridge(niID)
 							if brChanged {
-								r.addPendingReconcile(false, niID, "bridge state change")
+								r.scheduleNICfgRebuild(niID, "bridge state change")
 								needReconcile = true
 							}
 							break
@@ -317,7 +310,7 @@ func (r *LinuxNIReconciler) runWatcher(netEvents <-chan netmonitor.Event) {
 						if _, _, _, found = subG.Item(vifRef); found {
 							vifChanged := r.updateCurrentVIFs(niID)
 							if vifChanged {
-								r.addPendingReconcile(false, niID, "VIF state change")
+								r.scheduleNICfgRebuild(niID, "VIF state change")
 								needReconcile = true
 							}
 							break
@@ -338,13 +331,13 @@ func (r *LinuxNIReconciler) runWatcher(netEvents <-chan netmonitor.Event) {
 				ifName := attrs.IfName
 				brForNI := r.getNIWithBridge(ifName)
 				if brForNI != nil {
-					if brForNI.config.Type == types.NetworkInstanceTypeSwitch {
+					if r.niBridgeIsCreatedByNIM(brForNI) {
 						// When bridge used by switch NI gets IP address from external
 						// DHCP server, zedrouter can start HTTP server with app metadata.
 						// Also, DHCP ACLs need to be updated.
-						brChanged := r.updateCurrentNIBridge(brForNI.config.UUID)
-						if brChanged {
-							r.addPendingReconcile(false, brForNI.config.UUID,
+						brIPChanged := r.updateCurrentNIBridge(brForNI.config.UUID)
+						if brIPChanged {
+							r.scheduleNICfgRebuild(brForNI.config.UUID,
 								"bridge IP change")
 							needReconcile = true
 						}
@@ -358,7 +351,7 @@ func (r *LinuxNIReconciler) runWatcher(netEvents <-chan netmonitor.Event) {
 					if uplinkChanged {
 						for _, ni := range uplinkForNIs {
 							r.updateCurrentNIRoutes(ni.config.UUID)
-							r.addPendingReconcile(false, ni.config.UUID,
+							r.scheduleNICfgRebuild(ni.config.UUID,
 								"uplink IP change")
 							needReconcile = true
 						}
@@ -397,53 +390,88 @@ func (r *LinuxNIReconciler) pauseWatcher() (cont func()) {
 // reconcile the current state of network instances and application connectivity with
 // the intended state.
 func (r *LinuxNIReconciler) reconcile(ctx context.Context) (updates []ReconcilerUpdate) {
-	if len(r.pendingReconcile) == 0 {
-		// Nothing to reconcile.
-		return nil
-	}
-	statusUpdateMap := make(map[uuid.UUID]ReconcilerUpdate)
-	// Reconcile with clear network monitor cache to avoid working with stale data.
+	// Stage 1: Rebuild intended state if needed
+	var reconcileReasons []string
+	// Rebuild intended state and reconcile with clear network monitor cache to avoid
+	// working with stale data.
 	r.netMonitor.ClearCache()
-	for sgName, pReconcile := range r.pendingReconcile {
-		// Prepare intended+current subgraphs for reconciliation.
-		var intSG dg.Graph
-		if pReconcile.forGlobalSG {
-			intSG = r.getIntendedGlobalState()
-			if r.currentState.SubGraph(GlobalSG) == nil {
-				// Very first reconciliation.
-				r.updateCurrentGlobalState(false)
-			}
+	if r.pendingReconcile.rebuildGlobalCfg != nil {
+		reasons := r.pendingReconcile.rebuildGlobalCfg.reasons
+		r.log.Noticef("%s: Rebuilding intended global config, reasons: %s",
+			LogAndErrPrefix, strings.Join(reasons, ", "))
+		reconcileReasons = append(reconcileReasons,
+			"rebuilt intended state for global config")
+		r.intendedState.PutSubGraph(r.getIntendedGlobalState())
+	}
+	for niID, pReconcile := range r.pendingReconcile.rebuildNICfg {
+		reasons := pReconcile.reasons
+		r.log.Noticef("%s: Rebuilding intended config for NI %s, reasons: %s",
+			LogAndErrPrefix, niID, strings.Join(reasons, ", "))
+		reconcileReasons = append(reconcileReasons,
+			fmt.Sprintf("rebuilt intended state for NI %s", niID))
+		sgName := NIToSGName(niID)
+		niInfo := r.nis[niID]
+		deleted := niInfo == nil || niInfo.deleted
+		if deleted {
+			r.intendedState.DelSubGraph(sgName)
 		} else {
-			niInfo := r.nis[pReconcile.forNI]
-			intSG = r.getIntendedNICfg(pReconcile.forNI)
-			if r.currentState.SubGraph(sgName) == nil {
-				if niInfo == nil || niInfo.deleted {
-					// Nothing to do for removed NI.
-					continue
-				}
-				// New network instance. Get the current state of external items.
-				r.updateCurrentNIState(pReconcile.forNI)
-			}
+			r.intendedState.PutSubGraph(r.getIntendedNICfg(niID))
 		}
-		r.intendedState.PutSubGraph(intSG)
-		currSG := r.currentState.SubGraph(sgName) // non-nil at this point
+	}
 
-		// Run state reconciliation.
-		r.log.Noticef("%s: Running state reconciliation for subgraph %s, reasons: %s",
-			LogAndErrPrefix, sgName, strings.Join(pReconcile.reasons, ", "))
-		reconcileStartTime := time.Now()
-		stateReconciler := reconciler.New(r.registry)
-		rs := stateReconciler.Reconcile(ctx, r.currentState.EditSubGraph(currSG), intSG)
-		r.resumeAsync = rs.ReadyToResume
+	// Stage 2: Run reconciliation between the intended and the current state
+	if r.pendingReconcile.asyncFinalized {
+		reconcileReasons = append(reconcileReasons, "async op finalized")
+	}
+	if len(reconcileReasons) == 0 {
+		return
+	}
+	reconcileStartTime := time.Now()
+	stateReconciler := reconciler.New(r.registry)
+	r.log.Noticef("%s: Running state reconciliation, reasons: %s",
+		LogAndErrPrefix, strings.Join(reconcileReasons, ", "))
+	rs := stateReconciler.Reconcile(ctx, r.currentState, r.intendedState)
+	r.resumeAsync = rs.ReadyToResume
+	r.cancelAsync = rs.CancelAsyncOps
+	r.logReconciliation(rs, reconcileStartTime)
+	// Clear pending reconciliation.
+	r.pendingReconcile.rebuildGlobalCfg = nil
+	r.pendingReconcile.asyncFinalized = false
+	r.pendingReconcile.rebuildNICfg = make(map[uuid.UUID]pendingCfgRebuild)
 
-		// Detect and collect status updates.
-		if pReconcile.forNI != emptyUUID {
-			niStatus := r.updateNIStatus(pReconcile.forNI, currSG, statusUpdateMap)
-			// Clear UDP flows if any NAT ACL rule has changed.
+	// Stage 3: Collect NI and VIF status updates
+	for niID := range r.nis {
+		niStatus, changed := r.updateNIStatus(niID)
+		if changed {
+			updates = append(updates, ReconcilerUpdate{
+				UpdateType: NIReconcileStatusChanged,
+				NIStatus:   &niStatus,
+			})
+		}
+	}
+	for appID := range r.apps {
+		appConnStatus, changed := r.updateAppConnStatus(appID)
+		if changed {
+			updates = append(updates, ReconcilerUpdate{
+				UpdateType:    AppConnReconcileStatusChanged,
+				AppConnStatus: &appConnStatus,
+			})
+		}
+	}
+
+	// Stage 4: Clear UDP flows if any NAT ACL rule has changed.
+	for appID, app := range r.apps {
+		for i, vif := range app.vifs {
 			var natV4RuleChanged, natV6RuleChanged bool
+			acls := app.config.UnderlayNetworkList[i].ACLs
 			for _, log := range rs.OperationLog {
 				rule, isRule := log.Item.(iptables.Rule)
-				if isRule && rule.Table == "nat" {
+				if !isRule || rule.Table != "nat" {
+					continue
+				}
+				preRChain := vifChain("PREROUTING", vif)
+				postRChain := vifChain("POSTROUTING", vif)
+				if rule.ChainName == preRChain || rule.ChainName == postRChain {
 					if rule.ForIPv6 {
 						natV6RuleChanged = true
 					} else {
@@ -451,79 +479,67 @@ func (r *LinuxNIReconciler) reconcile(ctx context.Context) (updates []Reconciler
 					}
 				}
 			}
-			if natV4RuleChanged || natV6RuleChanged {
-				for _, app := range r.apps {
-					for i, vif := range app.vifs {
-						if vif.NI != pReconcile.forNI {
-							continue
-						}
-						acls := app.config.UnderlayNetworkList[i].ACLs
-						if natV4RuleChanged {
-							r.clearUDPFlows(acls, false)
-						}
-						if natV6RuleChanged {
-							r.clearUDPFlows(acls, true)
-						}
-					}
-				}
+			if natV4RuleChanged {
+				r.log.Noticef("%s: Clearing IPv4 UDP flows for app VIF %s/%s",
+					LogAndErrPrefix, appID, vif.NetAdapterName)
+				r.clearUDPFlows(acls, false)
 			}
-			// Remove NI subgraph if the network instance has been fully un-configured.
-			niInfo := r.nis[pReconcile.forNI]
-			if niInfo == nil || niInfo.deleted {
-				r.intendedState.DelSubGraph(sgName)
-				if !niStatus.AsyncInProgress {
-					r.currentState.DelSubGraph(sgName)
-				}
+			if natV6RuleChanged {
+				r.log.Noticef("%s: Clearing IPv6 UDP flows for app VIF %s/%s",
+					LogAndErrPrefix, appID, vif.NetAdapterName)
+				r.clearUDPFlows(acls, true)
 			}
 		}
+	}
+	return updates
+}
 
-		// Log every executed operation.
-		// XXX Do we want to have this always logged or only with DEBUG enabled?
-		for _, log := range rs.OperationLog {
-			var withErr string
-			if log.Err != nil {
-				withErr = fmt.Sprintf(" with error: %v", log.Err)
-			}
-			var action string
-			if log.InProgress {
-				action = "Started async execution of"
+func (r *LinuxNIReconciler) logReconciliation(rs reconciler.Status,
+	reconcileStartTime time.Time) {
+	// Log every executed operation.
+	for _, log := range rs.OperationLog {
+		var withErr string
+		if log.Err != nil {
+			withErr = fmt.Sprintf(" with error: %v", log.Err)
+		}
+		var action string
+		if log.InProgress {
+			action = "Started async execution of"
+		} else {
+			if log.StartTime.Before(reconcileStartTime) {
+				action = "Finalized async execution of"
 			} else {
-				if log.StartTime.Before(reconcileStartTime) {
-					action = "Finalized async execution of"
-				} else {
-					// synchronous operation
-					action = "Executed"
-				}
+				// synchronous operation
+				action = "Executed"
 			}
-			r.log.Noticef("%s: %s %v for %v%s, content: %s",
-				LogAndErrPrefix, action, log.Operation, dg.Reference(log.Item),
-				withErr, log.Item.String())
 		}
+		r.log.Noticef("%s: %s %v for %v%s, content: %s",
+			LogAndErrPrefix, action, log.Operation, dg.Reference(log.Item),
+			withErr, log.Item.String())
+	}
 
-		// Log transitions from no-error to error and vice-versa.
-		var failed, fixed []string
-		var failingItems reconciler.OperationLog
-		for _, log := range rs.OperationLog {
-			if log.PrevErr == nil && log.Err != nil {
-				failed = append(failed,
-					fmt.Sprintf("%v (err: %v)", dg.Reference(log.Item), log.Err))
-			}
-			if log.PrevErr != nil && log.Err == nil {
-				fixed = append(fixed, dg.Reference(log.Item).String())
-			}
-			if log.Err != nil {
-				failingItems = append(failingItems, log)
-			}
+	// Log transitions from no-error to error and vice-versa.
+	var failed, fixed []string
+	var failingItems reconciler.OperationLog
+	for _, log := range rs.OperationLog {
+		if log.PrevErr == nil && log.Err != nil {
+			failed = append(failed,
+				fmt.Sprintf("%v (err: %v)", dg.Reference(log.Item), log.Err))
 		}
-		if len(failed) > 0 {
-			r.log.Errorf("%s: Newly failed config items: %s",
-				LogAndErrPrefix, strings.Join(failed, ", "))
+		if log.PrevErr != nil && log.Err == nil {
+			fixed = append(fixed, dg.Reference(log.Item).String())
 		}
-		if len(fixed) > 0 {
-			r.log.Noticef("%s: Fixed config items: %s",
-				LogAndErrPrefix, strings.Join(fixed, ", "))
+		if log.Err != nil {
+			failingItems = append(failingItems, log)
 		}
-		delete(r.pendingReconcile, sgName)
+	}
+	if len(failed) > 0 {
+		r.log.Errorf("%s: Newly failed config items: %s",
+			LogAndErrPrefix, strings.Join(failed, ", "))
+	}
+	if len(fixed) > 0 {
+		r.log.Noticef("%s: Fixed config items: %s",
+			LogAndErrPrefix, strings.Join(fixed, ", "))
 	}
 
 	// Output the current state into a file for troubleshooting purposes.
@@ -557,95 +573,87 @@ func (r *LinuxNIReconciler) reconcile(ctx context.Context) (updates []Reconciler
 			}
 		}
 	}
-
-	// Return status updates for changed NIs and app connections.
-	for _, statusUpdate := range statusUpdateMap {
-		updates = append(updates, statusUpdate)
-	}
-	return updates
 }
 
-// Called after NI reconciliation to update status of the given network instance
-// and VIFs that connect to it.
-// Function adds detected status changes to statusUpdateMap.
-func (r *LinuxNIReconciler) updateNIStatus(niID uuid.UUID, currNISG dg.GraphR,
-	statusUpdateMap map[uuid.UUID]ReconcilerUpdate) (niStatus NIReconcileStatus) {
-	asyncInProgress, failedItems := r.getSubgraphState(currNISG)
+// Called after reconciliation to update status of the given network instance.
+func (r *LinuxNIReconciler) updateNIStatus(
+	niID uuid.UUID) (niStatus NIReconcileStatus, changed bool) {
 	var brIfName string
-	niInfo := r.nis[niID]
-	if niInfo != nil {
-		brIfName = niInfo.brIfName
-	}
-	brIfIndex, _, _ := r.netMonitor.GetInterfaceIndex(brIfName)
+	var brIfIndex int
+	niInfo := r.nis[niID] // guaranteed not to be nil
+	brIfName = niInfo.brIfName
+	brIfIndex, _, _ = r.netMonitor.GetInterfaceIndex(brIfName)
+	deleted := niInfo == nil || niInfo.deleted
+	sgName := NIToSGName(niID)
+	currSG := r.currentState.SubGraph(sgName)
+	intSG := r.intendedState.SubGraph(sgName)
+	inProgress, failedItems := r.getSubgraphState(intSG, currSG, false)
 	niStatus = NIReconcileStatus{
-		NI:              niID,
-		Deleted:         niInfo == nil || niInfo.deleted,
-		BrIfName:        brIfName,
-		BrIfIndex:       brIfIndex,
-		AsyncInProgress: asyncInProgress,
-		FailedItems:     failedItems,
+		NI:          niID,
+		Deleted:     deleted,
+		BrIfName:    brIfName,
+		BrIfIndex:   brIfIndex,
+		InProgress:  inProgress,
+		FailedItems: failedItems,
 	}
-	if niInfo == nil || !niInfo.status.Equal(niStatus) {
-		statusUpdateMap[niID] = ReconcilerUpdate{
-			UpdateType: NIReconcileStatusChanged,
-			NIStatus:   &niStatus,
-		}
-		if niInfo != nil {
-			niInfo.status = niStatus
-		}
+	if !niInfo.status.Equal(niStatus) {
+		changed = true
+		niInfo.status = niStatus
 	}
+	if deleted && !inProgress {
+		changed = true
+		delete(r.nis, niID)
+		if currSG != nil {
+			r.currentState.DelSubGraph(sgName)
+		}
+		r.log.Noticef("%s: Deleted niInfo for NI %s", LogAndErrPrefix, niID)
+	}
+	return
+}
 
-	// Update AppVIFReconcileStatus for all VIFs connected to this NI.
-	for appID, app := range r.apps {
-		var updated bool
-		for _, vif := range app.vifs {
-			if vif.NI != niID {
-				continue
-			}
-			vifStatus := AppVIFReconcileStatus{
-				NetAdapterName: vif.NetAdapterName,
-				VIFNum:         vif.VIFNum,
-				HostIfName:     vif.hostIfName,
-			}
-			appConnSG := currNISG.SubGraph(AppConnSGName(vif.App, vif.NetAdapterName))
-			if appConnSG != nil && !app.deleted {
-				vifStatus.AsyncInProgress, vifStatus.FailedItems =
-					r.getSubgraphState(appConnSG)
-				// Is VIF ready for use?
-				vifRef := dg.Reference(generic.VIF{IfName: vif.hostIfName})
-				item, state, _, found := appConnSG.Item(vifRef)
-				vifStatus.Ready = found && state.IsCreated() &&
-					!state.InTransition() && state.WithError() == nil
-				if vifStatus.Ready {
-					// Check that VIF is bridged.
-					vifItem, isVifItem := item.(generic.VIF)
-					vifStatus.Ready = isVifItem && vifItem.MasterIfName == niInfo.brIfName
-				}
-			}
-			if app.vifStatus == nil {
-				app.vifStatus = make(map[string]AppVIFReconcileStatus)
-			}
-			if !app.vifStatus[vif.NetAdapterName].Equal(vifStatus) {
-				app.vifStatus[vif.NetAdapterName] = vifStatus
-				updated = true
-			}
-		}
-		if updated {
-			appStatus := &AppConnReconcileStatus{
-				App:     appID,
-				Deleted: app.deleted,
-			}
-			for _, vif := range app.vifStatus {
-				appStatus.VIFs = append(appStatus.VIFs, vif)
-			}
-			appStatus.SortVIFs()
-			statusUpdateMap[appID] = ReconcilerUpdate{
-				UpdateType:    AppConnReconcileStatusChanged,
-				AppConnStatus: appStatus,
-			}
-		}
+// Called after reconciliation to update connectivity status of the given app.
+func (r *LinuxNIReconciler) updateAppConnStatus(
+	appID uuid.UUID) (appConnStatus AppConnReconcileStatus, changed bool) {
+	appInfo := r.apps[appID] // guaranteed not to be nil
+	appConnStatus = AppConnReconcileStatus{
+		App:     appID,
+		Deleted: appInfo.deleted,
 	}
-	return niStatus
+	var anyInProgress bool
+	for _, vif := range appInfo.vifs {
+		var currSG, intSG dg.GraphR
+		if niSG := r.currentState.SubGraph(NIToSGName(vif.NI)); niSG != nil {
+			currSG = niSG.SubGraph(AppConnSGName(vif.App, vif.NetAdapterName))
+		}
+		if niSG := r.intendedState.SubGraph(NIToSGName(vif.NI)); niSG != nil {
+			intSG = niSG.SubGraph(AppConnSGName(vif.App, vif.NetAdapterName))
+		}
+		inProgress, failedItems := r.getSubgraphState(intSG, currSG, true)
+		anyInProgress = anyInProgress || inProgress
+		vifStatus := AppVIFReconcileStatus{
+			NetAdapterName: vif.NetAdapterName,
+			VIFNum:         vif.VIFNum,
+			HostIfName:     vif.hostIfName,
+			InProgress:     inProgress,
+			FailedItems:    failedItems,
+		}
+		if appInfo.vifStatus == nil {
+			appInfo.vifStatus = make(map[string]AppVIFReconcileStatus)
+		}
+		if !appInfo.vifStatus[vif.NetAdapterName].Equal(vifStatus) {
+			appInfo.vifStatus[vif.NetAdapterName] = vifStatus
+			changed = true
+		}
+		appConnStatus.VIFs = append(appConnStatus.VIFs, vifStatus)
+	}
+	// Sort VIF status for deterministic order and easier unit-testing.
+	appConnStatus.SortVIFs()
+	if !anyInProgress && appInfo.deleted {
+		changed = true
+		delete(r.apps, appID)
+		r.log.Noticef("%s: Deleted appInfo for app %s", LogAndErrPrefix, appID)
+	}
+	return
 }
 
 // This function looks for any UDP port map rules among the ACLs and if so clears
@@ -705,28 +713,22 @@ func (r *LinuxNIReconciler) clearUDPFlows(ACLs []types.ACE, ipv6 bool) {
 	}
 }
 
-func (r *LinuxNIReconciler) addPendingReconcile(
-	forGlobalSG bool, forNI uuid.UUID, reason string) {
-	var sgName string
-	if forGlobalSG {
-		sgName = GlobalSG
-	} else {
-		sgName = NIToSGName(forNI)
+func (r *LinuxNIReconciler) scheduleGlobalCfgRebuild(reason string) {
+	if r.pendingReconcile.rebuildGlobalCfg == nil {
+		r.pendingReconcile.rebuildGlobalCfg = &pendingCfgRebuild{}
 	}
-	pReconcile := r.pendingReconcile[sgName]
-	pReconcile.forGlobalSG = forGlobalSG
-	pReconcile.forNI = forNI
-	var duplicateReason bool
-	for _, prevReason := range pReconcile.reasons {
-		if prevReason == reason {
-			duplicateReason = true
-			break
-		}
+	rebuild := r.pendingReconcile.rebuildGlobalCfg
+	if !utils.ContainsItem(rebuild.reasons, reason) {
+		rebuild.reasons = append(rebuild.reasons, reason)
 	}
-	if !duplicateReason {
-		pReconcile.reasons = append(pReconcile.reasons, reason)
+}
+
+func (r *LinuxNIReconciler) scheduleNICfgRebuild(niID uuid.UUID, reason string) {
+	rebuild := r.pendingReconcile.rebuildNICfg[niID]
+	if !utils.ContainsItem(rebuild.reasons, reason) {
+		rebuild.reasons = append(rebuild.reasons, reason)
 	}
-	r.pendingReconcile[sgName] = pReconcile
+	r.pendingReconcile.rebuildNICfg[niID] = rebuild
 }
 
 // RunInitialReconcile is called once by zedrouter at startup before any NI
@@ -735,8 +737,10 @@ func (r *LinuxNIReconciler) addPendingReconcile(
 func (r *LinuxNIReconciler) RunInitialReconcile(ctx context.Context) {
 	contWatcher := r.pauseWatcher()
 	defer contWatcher()
-	// Just reconcile the global configuration (primarily for BlackHole config).
-	r.addPendingReconcile(true, emptyUUID, "initial reconciliation")
+	// Initial state after a boot.
+	r.updateCurrentGlobalState(false)
+	// Build and reconcile the global configuration (primarily for BlackHole config).
+	r.scheduleGlobalCfgRebuild("initial reconciliation")
 	updates := r.reconcile(ctx)
 	r.publishReconcilerUpdates(updates...)
 }
@@ -766,7 +770,7 @@ func (r *LinuxNIReconciler) ApplyUpdatedGCP(ctx context.Context,
 			// Not running DHCP server for switch NI inside EVE.
 			continue
 		}
-		r.addPendingReconcile(false, niID,
+		r.scheduleNICfgRebuild(niID,
 			fmt.Sprintf("global config property %s changed to %t",
 				types.DisableDHCPAllOnesNetMask, r.disableAllOnesNetmask))
 	}
@@ -784,20 +788,9 @@ func (r *LinuxNIReconciler) AddNI(ctx context.Context,
 	if _, duplicate := r.nis[niID]; duplicate {
 		return niStatus, fmt.Errorf("%s: NI %v is already added", LogAndErrPrefix, niID)
 	}
-	var brIfName string
-	switch niConfig.Type {
-	case types.NetworkInstanceTypeSwitch:
-		if br.Uplink.IfName != "" {
-			brIfName = br.Uplink.IfName
-			break
-		}
-		// Air-gapped, create bridge just like for local NI.
-		fallthrough
-	case types.NetworkInstanceTypeLocal:
-		brIfName = fmt.Sprintf("%s%d", bridgeIfNamePrefix, br.BrNum)
-	default:
-		return niStatus, fmt.Errorf("%s: Unsupported type %v for NI %v",
-			LogAndErrPrefix, niConfig.Type, niID)
+	brIfName, err := r.generateBridgeIfName(niConfig, br)
+	if err != nil {
+		return niStatus, err
 	}
 	r.nis[niID] = &niInfo{
 		config:   niConfig,
@@ -805,10 +798,13 @@ func (r *LinuxNIReconciler) AddNI(ctx context.Context,
 		brIfName: brIfName,
 	}
 	reconcileReason := fmt.Sprintf("adding new NI (%v)", niID)
-	// Reconcile also GlobalSG to update the set of intended/current uplinks.
+	// Rebuild and reconcile also global config to update the set of intended/current
+	// uplinks.
 	r.updateCurrentGlobalState(true) // uplinks only
-	r.addPendingReconcile(true, emptyUUID, reconcileReason)
-	r.addPendingReconcile(false, niID, reconcileReason)
+	// Get the current state of external items used by NI.
+	r.updateCurrentNIState(niID)
+	r.scheduleGlobalCfgRebuild(reconcileReason)
+	r.scheduleNICfgRebuild(niID, reconcileReason)
 	updates := r.reconcile(ctx)
 	r.publishReconcilerUpdates(updates...)
 	niStatus = r.nis[niID].status
@@ -829,11 +825,21 @@ func (r *LinuxNIReconciler) UpdateNI(ctx context.Context,
 	}
 	r.nis[niID].config = niConfig
 	r.nis[niID].bridge = br
+	// Re-generate bridge interface name to support change in the select uplink port
+	// for switch network instances.
+	brIfName, err := r.generateBridgeIfName(niConfig, br)
+	if err != nil {
+		return niStatus, err
+	}
+	r.nis[niID].brIfName = brIfName
 	reconcileReason := fmt.Sprintf("updating NI (%v)", niID)
-	// Reconcile also GlobalSG to update the set of intended/current uplinks.
+	// Get the current state of external items to be used by NI.
+	r.updateCurrentNIState(niID)
+	// Rebuild and reconcile also global config to update the set of intended/current
+	// uplinks.
 	r.updateCurrentGlobalState(true) // uplinks only
-	r.addPendingReconcile(true, emptyUUID, reconcileReason)
-	r.addPendingReconcile(false, niID, reconcileReason)
+	r.scheduleGlobalCfgRebuild(reconcileReason)
+	r.scheduleNICfgRebuild(niID, reconcileReason)
 	updates := r.reconcile(ctx)
 	r.publishReconcilerUpdates(updates...)
 	niStatus = r.nis[niID].status
@@ -850,16 +856,32 @@ func (r *LinuxNIReconciler) DelNI(ctx context.Context,
 		return niStatus, fmt.Errorf("%s: Cannot delete NI %v: does not exist",
 			LogAndErrPrefix, niID)
 	}
+	// Deleted from the map when removal is completed successfully (incl. async ops).
 	r.nis[niID].deleted = true
+	niStatus = r.nis[niID].status
 	reconcileReason := fmt.Sprintf("deleting NI (%v)", niID)
-	// Reconcile also GlobalSG to update the set of intended/current uplinks.
+	// Rebuild and reconcile also global config to update the set of intended/current
+	// uplinks.
 	r.updateCurrentGlobalState(true) // uplinks only
-	r.addPendingReconcile(true, emptyUUID, reconcileReason)
-	r.addPendingReconcile(false, niID, reconcileReason)
+	r.scheduleGlobalCfgRebuild(reconcileReason)
+	r.scheduleNICfgRebuild(niID, reconcileReason)
+	// Cancel any in-progress configuration changes previously
+	// submitted for this NI.
+	sg := r.currentState.SubGraph(NIToSGName(niID))
+	if sg != nil && r.cancelAsync != nil {
+		r.cancelAsync(func(ref dg.ItemRef) bool {
+			_, _, _, isForThisNI := sg.Item(ref)
+			return isForThisNI
+		})
+	}
 	updates := r.reconcile(ctx)
 	r.publishReconcilerUpdates(updates...)
-	niStatus = r.nis[niID].status
-	delete(r.nis, niID)
+	// r.nis[niID] could be deleted by this point
+	for _, update := range updates {
+		if update.UpdateType == NIReconcileStatusChanged && update.NIStatus.NI == niID {
+			niStatus = *update.NIStatus
+		}
+	}
 	return niStatus, nil
 }
 
@@ -886,22 +908,23 @@ func (r *LinuxNIReconciler) ConnectApp(ctx context.Context,
 	for _, vif := range vifs {
 		appInfo.vifs = append(appInfo.vifs, vifInfo{
 			AppVIF:     vif,
-			hostIfName: fmt.Sprintf("%s%dx%d", vifIfNamePrefix, vif.VIFNum, appNum),
+			hostIfName: r.generateVifHostIfName(vif.VIFNum, appNum),
 		})
 	}
 	r.apps[appID] = appInfo
 	reconcileReason := fmt.Sprintf("connecting new app (%v)", appID)
-	// Reconcile also GlobalSG to update the set of intended IPSets.
-	r.addPendingReconcile(true, emptyUUID, reconcileReason)
-	// Reconcile every NI that this app is trying to connect into.
+	// Rebuild and reconcile also global config to update the set of intended IPSets.
+	r.scheduleGlobalCfgRebuild(reconcileReason)
+	// Rebuild and reconcile config of every NI that this app is trying to connect into.
 	for _, vif := range vifs {
-		r.addPendingReconcile(false, vif.NI, reconcileReason)
+		r.scheduleNICfgRebuild(vif.NI, reconcileReason)
 	}
 	updates := r.reconcile(ctx)
 	r.publishReconcilerUpdates(updates...)
 	for _, vifStatus := range r.apps[appID].vifStatus {
 		appStatus.VIFs = append(appStatus.VIFs, vifStatus)
 	}
+	// Sort VIF status for deterministic order and easier unit-testing.
 	appStatus.SortVIFs()
 	return appStatus, nil
 }
@@ -925,28 +948,28 @@ func (r *LinuxNIReconciler) ReconnectApp(ctx context.Context,
 	appInfo.vifStatus = nil
 	for _, vif := range vifs {
 		appInfo.vifs = append(appInfo.vifs, vifInfo{
-			AppVIF: vif,
-			hostIfName: fmt.Sprintf("%s%dx%d", vifIfNamePrefix, vif.VIFNum,
-				appInfo.appNum),
+			AppVIF:     vif,
+			hostIfName: r.generateVifHostIfName(vif.VIFNum, appInfo.appNum),
 		})
 	}
 	r.apps[appID] = appInfo
 	reconcileReason := fmt.Sprintf("reconnecting app (%v)", appID)
-	// Reconcile also GlobalSG to update the set of intended IPSets.
-	r.addPendingReconcile(true, emptyUUID, reconcileReason)
+	// Rebuild and reconcile also global config to update the set of intended IPSets.
+	r.scheduleGlobalCfgRebuild(reconcileReason)
 	// Reconcile every NI that this app is either disconnecting from or trying
 	// to (re)connect into.
 	for _, vif := range prevVifs {
-		r.addPendingReconcile(false, vif.NI, reconcileReason)
+		r.scheduleNICfgRebuild(vif.NI, reconcileReason)
 	}
 	for _, vif := range vifs {
-		r.addPendingReconcile(false, vif.NI, reconcileReason)
+		r.scheduleNICfgRebuild(vif.NI, reconcileReason)
 	}
 	updates := r.reconcile(ctx)
 	r.publishReconcilerUpdates(updates...)
 	for _, vifStatus := range r.apps[appID].vifStatus {
 		appStatus.VIFs = append(appStatus.VIFs, vifStatus)
 	}
+	// Sort VIF status for deterministic order and easier unit-testing.
 	appStatus.SortVIFs()
 	return appStatus, nil
 }
@@ -961,34 +984,25 @@ func (r *LinuxNIReconciler) DisconnectApp(ctx context.Context,
 		return appStatus, fmt.Errorf("%s: Cannot disconnect App %v: does not exist",
 			LogAndErrPrefix, appID)
 	}
+	// Deleted from the map when removal is completed successfully (incl. async ops).
 	r.apps[appID].deleted = true
 	reconcileReason := fmt.Sprintf("disconnecting app (%v)", appID)
-	// Reconcile also GlobalSG to update the set of intended IPSets.
-	r.addPendingReconcile(true, emptyUUID, reconcileReason)
+	// Rebuild and reconcile also global config to update the set of intended IPSets.
+	r.scheduleGlobalCfgRebuild(reconcileReason)
 	// Reconcile every NI that this app is trying to disconnect from.
 	for _, vif := range r.apps[appID].vifs {
-		r.addPendingReconcile(false, vif.NI, reconcileReason)
+		r.scheduleNICfgRebuild(vif.NI, reconcileReason)
 	}
 	updates := r.reconcile(ctx)
 	r.publishReconcilerUpdates(updates...)
-	for _, vifStatus := range r.apps[appID].vifStatus {
-		appStatus.VIFs = append(appStatus.VIFs, vifStatus)
+	// r.apps[appID] could be deleted by this point
+	for _, update := range updates {
+		if update.UpdateType == AppConnReconcileStatusChanged &&
+			update.AppConnStatus.App == appID {
+			appStatus = *update.AppConnStatus
+		}
 	}
-	appStatus.SortVIFs()
-	delete(r.apps, appID)
 	return appStatus, nil
-}
-
-func (r *LinuxNIReconciler) getOrAddNISubgraph(niID uuid.UUID) dg.Graph {
-	sgName := NIToSGName(niID)
-	var niSG dg.Graph
-	if readHandle := r.currentState.SubGraph(sgName); readHandle != nil {
-		niSG = r.currentState.EditSubGraph(readHandle)
-	} else {
-		niSG = dg.New(dg.InitArgs{Name: sgName})
-		r.currentState.PutSubGraph(niSG)
-	}
-	return niSG
 }
 
 func (r *LinuxNIReconciler) getNIsUsingUplink(ifName string) (nis []*niInfo) {
@@ -1023,13 +1037,51 @@ func (r *LinuxNIReconciler) getNIWithBridge(ifName string) *niInfo {
 	return nil
 }
 
-func (r *LinuxNIReconciler) getSubgraphState(sg dg.GraphR) (
-	asyncInProgress bool, failedItems map[dg.ItemRef]error) {
-	iter := sg.Items(true)
+// Function returns inProgress as true if any intended item is missing or is still being
+// asynchronously updated or if there is an unintended item not yet deleted.
+// Additionally, returns a map of items for which the last operation failed.
+func (r *LinuxNIReconciler) getSubgraphState(intSG, currSG dg.GraphR, forApp bool) (
+	inProgress bool, failedItems map[dg.ItemRef]error) {
+	if currSG == nil {
+		if intSG == nil {
+			return false, nil
+		}
+		emptyIntSG := intSG.Items(true).Next() == false
+		return !emptyIntSG, nil
+	}
+	itemIsForApp := func(item dg.Item) bool {
+		// XXX Better would be to check if item is inside AppConn-* subgraph
+		// but depgraph API does not allow to do that.
+		if item.Type() == generic.VIFTypename {
+			return true
+		}
+		if item.Type() == linux.VLANPortTypename {
+			if item.(linux.VLANPort).BridgePort.VIFIfName != "" {
+				return true
+			}
+		}
+		return false
+	}
+	ignoreExtraItem := func(item dg.Item) bool {
+		// Ignore if extra item is external.
+		if item.External() {
+			return true
+		}
+		// Also ignore extra routes added by kernel.
+		route, isRoute := item.(linux.Route)
+		if isRoute && route.Dst != nil && route.Dst.IP.IsLinkLocalUnicast() {
+			return true
+		}
+		return false
+	}
+	iter := currSG.Items(true)
 	for iter.Next() {
 		item, state := iter.Item()
+		if !forApp && itemIsForApp(item) {
+			continue
+		}
 		if state.InTransition() {
-			asyncInProgress = true
+			inProgress = true
 		}
 		if itemErr := state.WithError(); itemErr != nil {
 			if failedItems == nil {
@@ -1038,5 +1090,35 @@ func (r *LinuxNIReconciler) getSubgraphState(sg dg.GraphR) (
 			failedItems[dg.Reference(item)] = itemErr
 		}
 	}
-	return asyncInProgress, failedItems
+	if intSG == nil {
+		iter := currSG.Items(true)
+		for iter.Next() {
+			item, _ := iter.Item()
+			if !forApp && itemIsForApp(item) {
+				continue
+			}
+			if ignoreExtraItem(item) {
+				continue
+			}
+			inProgress = true
+		}
+		return inProgress, failedItems
+	}
+	diff := currSG.DiffItems(intSG)
+	for _, itemRef := range diff {
+		intItem, _, _, shouldExist := intSG.Item(itemRef)
+		currItem, _, _, exists := currSG.Item(itemRef)
+		item := intItem
+		if item == nil {
+			item = currItem
+		}
+		if !forApp && item != nil && itemIsForApp(item) {
+			continue
+		}
+		if exists && !shouldExist && ignoreExtraItem(item) {
+			continue
+		}
+		inProgress = true
+	}
+	return inProgress, failedItems
 }

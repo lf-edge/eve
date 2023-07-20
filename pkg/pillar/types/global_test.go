@@ -203,6 +203,7 @@ func TestNewConfigItemSpecMap(t *testing.T) {
 		NetDumpTopicPreOnboardInterval,
 		NetDumpTopicPostOnboardInterval,
 		NetDumpDownloaderPCAP,
+		NetDumpDownloaderHTTPWithFieldValue,
 	}
 	if len(specMap.GlobalSettings) != len(gsKeys) {
 		t.Errorf("GlobalSettings has more (%d) than expected keys (%d)",

@@ -11,6 +11,7 @@ import (
 
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/nireconciler/genericitems"
+	uuid "github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
 )
 
@@ -31,7 +32,7 @@ func init() {
 
 func exampleDnsmasqParams() genericitems.Dnsmasq {
 	var dnsmasq genericitems.Dnsmasq
-	dnsmasq.InstanceName = "br0"
+	dnsmasq.ForNI, _ = uuid.FromString("d882ce20-fac2-448b-82e6-d411619d488f")
 	dnsmasq.ListenIf.IfName = "br0"
 	_, subnet, _ := net.ParseCIDR("10.0.0.0/24")
 	dnsmasq.DHCPServer = genericitems.DHCPServer{

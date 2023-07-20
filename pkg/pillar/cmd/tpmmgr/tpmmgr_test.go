@@ -6,14 +6,19 @@
 package tpmmgr
 
 import (
+	"bytes"
+	"crypto/sha256"
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
 	"os"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/google/go-tpm/tpm2"
+	"github.com/google/go-tpm/tpmutil"
 	etpm "github.com/lf-edge/eve/pkg/pillar/evetpm"
 )
 
@@ -220,5 +225,45 @@ func TestSealUnseal(t *testing.T) {
 	}
 	if !reflect.DeepEqual(dataToSeal, unsealedData) {
 		t.Errorf("Seal/Unseal operation failed, want %v, but got %v", dataToSeal, unsealedData)
+	}
+}
+
+func TestSealUnsealMismatchReport(t *testing.T) {
+	_, err := os.Stat(etpm.TpmDevicePath)
+	if err != nil {
+		t.Skip("TPM is not available, skipping the test.")
+	}
+
+	rw, err := tpm2.OpenTPM(etpm.TpmDevicePath)
+	if err != nil {
+		t.Errorf("OpenTPM failed with err: %v", err)
+		return
+	}
+	defer rw.Close()
+
+	dataToSeal := []byte("secret")
+	if err := etpm.SealDiskKey(dataToSeal, etpm.DiskKeySealingPCRs); err != nil {
+		t.Errorf("Seal operation failed with err: %v", err)
+		return
+	}
+
+	pcrIndexes := [3]int{1, 7, 8}
+	pcrValue := bytes.Repeat([]byte{0xF}, sha256.Size)
+	for _, pcr := range pcrIndexes {
+		if err = tpm2.PCRExtend(rw, tpmutil.Handle(pcr), tpm2.AlgSHA256, pcrValue, ""); err != nil {
+			t.Errorf("Failed to extend PCR %d: %s", pcr, err)
+			return
+		}
+	}
+
+	_, err = etpm.UnsealDiskKey(etpm.DiskKeySealingPCRs)
+	if err == nil {
+		t.Errorf("Expected error from UnsealDiskKey, got nil")
+		return
+	}
+
+	if !strings.Contains(err.Error(), "[1 7 8]") {
+		t.Errorf("UnsealDiskKey expected to report mismatching PCR indexes, got : %v", err)
+		return
 	}
 }

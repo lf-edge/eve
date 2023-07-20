@@ -228,9 +228,7 @@ func clientTCPtunnel(here net.Conn, idx, chNum int, rport int) {
 			log.Noticef("ch(%d)-%d, websocketConn nil. exit", idx, chNum)
 			return
 		}
-		wssWrMutex.Lock()
 		err = addEnvelopeAndWriteWss(jdata, false)
-		wssWrMutex.Unlock()
 		if err != nil {
 			close(done)
 			log.Errorf("ch(%d)-%d, client write wss error %v", idx, chNum, err)
@@ -345,9 +343,7 @@ func setAndStartProxyTCP(opt string) {
 				continue
 			}
 			log.Tracef("setAndStartProxyTCP: timer expired, close and notify client")
-			wssWrMutex.Lock()
 			_ = addEnvelopeAndWriteWss([]byte("\n"), true) // try send a text msg to other side
-			wssWrMutex.Unlock()
 			if !isClosed(tcpServerDone) {
 				close(tcpServerDone)
 			} else if !isClosed(proxyServerDone) {
@@ -506,9 +502,7 @@ func tcpTransfer(url string, wssMsg tcpData, idx int) {
 			close(done)
 			return
 		}
-		wssWrMutex.Lock()
 		err = addEnvelopeAndWriteWss(jdata, false)
-		wssWrMutex.Unlock()
 		if err != nil {
 			log.Errorf("ch(%d)-%d, server wrote error %v", idx, chNum, err)
 			break
@@ -648,16 +642,12 @@ func tcpRecvTimeCheckExpire() bool {
 
 func tcpClientSendDone() {
 	if !isTCPClient {
-		wssWrMutex.Lock()
 		sendCloseToWss()
-		wssWrMutex.Unlock()
 		return
 	}
-	wssWrMutex.Lock()
 	// send to server first, then to dispatcher to close
 	_ = addEnvelopeAndWriteWss([]byte(tcpDONEMessage), true)
 	sendCloseToWss()
-	wssWrMutex.Unlock()
 }
 
 func getProxyOpt(opt string) (bool, string) {
