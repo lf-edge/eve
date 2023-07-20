@@ -122,7 +122,8 @@ func initTest(test *testing.T) *GomegaWithT {
 	wwanWatcher = &MockWwanWatcher{}
 	geoService = &MockGeoService{}
 	connTester = &conntester.MockConnectivityTester{
-		TestDuration: 2 * time.Second,
+		TestDuration:   2 * time.Second,
+		NetworkMonitor: networkMonitor,
 	}
 	dpcManager = &dpcmngr.DpcManager{
 		Log:                      logObj,
@@ -488,11 +489,21 @@ func mockWwan0Status() types.WwanStatus {
 						IMSI:  "310180933695713",
 					},
 				},
-				Providers: []types.WwanProvider{
+				CurrentProvider: types.WwanProvider{
+					PLMN:           "310-410",
+					Description:    "AT&T",
+					CurrentServing: true,
+				},
+				VisibleProviders: []types.WwanProvider{
 					{
 						PLMN:           "310-410",
 						Description:    "AT&T",
 						CurrentServing: true,
+					},
+					{
+						PLMN:           "231-02",
+						Description:    "Telekom",
+						CurrentServing: false,
 					},
 				},
 			},
@@ -616,11 +627,14 @@ func makeDPC(key string, timePrio time.Time, intfs selectedIntfs) types.DevicePo
 			},
 			WirelessCfg: types.WirelessConfig{
 				WType: types.WirelessTypeCellular,
-				Cellular: []types.CellConfig{
-					{
-						APN:              "apn",
-						LocationTracking: true,
+				CellularV2: types.CellNetPortConfig{
+					AccessPoints: []types.CellularAccessPoint{
+						{
+							APN:       "apn",
+							Activated: true,
+						},
 					},
+					LocationTracking: true,
 				},
 			},
 		})
@@ -1043,7 +1057,7 @@ func TestDNS(test *testing.T) {
 	t.Expect(eth0State.NtpServers).To(HaveLen(1))
 	t.Expect(eth0State.NtpServers[0].String()).To(Equal("132.163.96.5"))
 	t.Expect(eth0State.Subnet.String()).To(Equal("192.168.10.0/24"))
-	t.Expect(eth0State.MacAddr).To(Equal("02:00:00:00:00:01"))
+	t.Expect(eth0State.MacAddr.String()).To(Equal("02:00:00:00:00:01"))
 	t.Expect(eth0State.Up).To(BeTrue())
 	t.Expect(eth0State.Type).To(BeEquivalentTo(types.NT_IPV4))
 	t.Expect(eth0State.Dhcp).To(BeEquivalentTo(types.DT_CLIENT))
@@ -1066,7 +1080,7 @@ func TestDNS(test *testing.T) {
 	t.Expect(eth1State.NtpServers).To(HaveLen(1))
 	t.Expect(eth1State.NtpServers[0].String()).To(Equal("132.163.96.6"))
 	t.Expect(eth1State.Subnet.String()).To(Equal("172.20.1.0/24"))
-	t.Expect(eth1State.MacAddr).To(Equal("02:00:00:00:00:02"))
+	t.Expect(eth1State.MacAddr.String()).To(Equal("02:00:00:00:00:02"))
 	t.Expect(eth1State.Up).To(BeTrue())
 	t.Expect(eth1State.Type).To(BeEquivalentTo(types.NT_IPV4))
 	t.Expect(eth1State.Dhcp).To(BeEquivalentTo(types.DT_CLIENT))
@@ -1128,7 +1142,7 @@ func TestWireless(test *testing.T) {
 				PhysAddrs: types.WwanPhysAddrs{
 					Interface: "wwan0",
 				},
-				Apns:             []string{"apn"},
+				APN:              "apn",
 				LocationTracking: true,
 			},
 		},
@@ -1152,10 +1166,16 @@ func TestWireless(test *testing.T) {
 	t.Expect(wwanDNS.Cellular.Module.Revision).To(Equal("SWI9X50C_01.08.04.00"))
 	t.Expect(wwanDNS.Cellular.ConfigError).To(BeEmpty())
 	t.Expect(wwanDNS.Cellular.ProbeError).To(BeEmpty())
-	t.Expect(wwanDNS.Cellular.Providers).To(HaveLen(1))
-	t.Expect(wwanDNS.Cellular.Providers[0].Description).To(Equal("AT&T"))
-	t.Expect(wwanDNS.Cellular.Providers[0].CurrentServing).To(BeTrue())
-	t.Expect(wwanDNS.Cellular.Providers[0].PLMN).To(Equal("310-410"))
+	t.Expect(wwanDNS.Cellular.CurrentProvider.Description).To(Equal("AT&T"))
+	t.Expect(wwanDNS.Cellular.CurrentProvider.CurrentServing).To(BeTrue())
+	t.Expect(wwanDNS.Cellular.CurrentProvider.PLMN).To(Equal("310-410"))
+	t.Expect(wwanDNS.Cellular.VisibleProviders).To(HaveLen(2))
+	t.Expect(wwanDNS.Cellular.VisibleProviders[0].Description).To(Equal("AT&T"))
+	t.Expect(wwanDNS.Cellular.VisibleProviders[0].CurrentServing).To(BeTrue())
+	t.Expect(wwanDNS.Cellular.VisibleProviders[0].PLMN).To(Equal("310-410"))
+	t.Expect(wwanDNS.Cellular.VisibleProviders[1].Description).To(Equal("Telekom"))
+	t.Expect(wwanDNS.Cellular.VisibleProviders[1].CurrentServing).To(BeFalse())
+	t.Expect(wwanDNS.Cellular.VisibleProviders[1].PLMN).To(Equal("231-02"))
 	t.Expect(wwanDNS.Cellular.SimCards).To(HaveLen(1))
 	t.Expect(wwanDNS.Cellular.SimCards[0].Name).To(Equal("89012703578345957137")) // ICCID put by DoSanitize()
 	t.Expect(wwanDNS.Cellular.SimCards[0].ICCID).To(Equal("89012703578345957137"))
@@ -1718,7 +1738,7 @@ func TestVlansAndBonds(test *testing.T) {
 	t.Expect(eth0State.DNSServers).To(BeEmpty())
 	t.Expect(eth0State.NtpServers).To(BeEmpty())
 	t.Expect(eth0State.Subnet.IP).To(BeNil())
-	t.Expect(eth0State.MacAddr).To(Equal("02:00:00:00:00:01"))
+	t.Expect(eth0State.MacAddr.String()).To(Equal("02:00:00:00:00:01"))
 	t.Expect(eth0State.Up).To(BeTrue())
 	t.Expect(eth0State.Type).To(BeEquivalentTo(types.NT_NOOP))
 	t.Expect(eth0State.Dhcp).To(BeEquivalentTo(types.DT_NOOP))
@@ -1735,7 +1755,7 @@ func TestVlansAndBonds(test *testing.T) {
 	t.Expect(eth1State.DNSServers).To(BeEmpty())
 	t.Expect(eth1State.NtpServers).To(BeEmpty())
 	t.Expect(eth1State.Subnet.IP).To(BeNil())
-	t.Expect(eth1State.MacAddr).To(Equal("02:00:00:00:00:02"))
+	t.Expect(eth1State.MacAddr.String()).To(Equal("02:00:00:00:00:02"))
 	t.Expect(eth1State.Up).To(BeTrue())
 	t.Expect(eth1State.Type).To(BeEquivalentTo(types.NT_NOOP))
 	t.Expect(eth1State.Dhcp).To(BeEquivalentTo(types.DT_NOOP))
@@ -1751,7 +1771,7 @@ func TestVlansAndBonds(test *testing.T) {
 	t.Expect(bond0State.DNSServers).To(BeEmpty())
 	t.Expect(bond0State.NtpServers).To(BeEmpty())
 	t.Expect(bond0State.Subnet.IP).To(BeNil())
-	t.Expect(bond0State.MacAddr).To(Equal("02:00:00:00:00:03"))
+	t.Expect(bond0State.MacAddr.String()).To(Equal("02:00:00:00:00:03"))
 	t.Expect(bond0State.Up).To(BeTrue())
 	t.Expect(bond0State.Type).To(BeEquivalentTo(types.NT_NOOP))
 	t.Expect(bond0State.Dhcp).To(BeEquivalentTo(types.DT_NOOP))
@@ -1770,7 +1790,7 @@ func TestVlansAndBonds(test *testing.T) {
 	t.Expect(vlan100State.NtpServers).To(HaveLen(1))
 	t.Expect(vlan100State.NtpServers[0].String()).To(Equal("132.163.96.5"))
 	t.Expect(vlan100State.Subnet.String()).To(Equal("192.168.10.0/24"))
-	t.Expect(vlan100State.MacAddr).To(Equal("02:00:00:00:00:04"))
+	t.Expect(vlan100State.MacAddr.String()).To(Equal("02:00:00:00:00:04"))
 	t.Expect(vlan100State.Up).To(BeTrue())
 	t.Expect(vlan100State.Type).To(BeEquivalentTo(types.NT_IPV4))
 	t.Expect(vlan100State.Dhcp).To(BeEquivalentTo(types.DT_CLIENT))
@@ -1790,7 +1810,7 @@ func TestVlansAndBonds(test *testing.T) {
 	t.Expect(vlan200State.NtpServers).To(HaveLen(1))
 	t.Expect(vlan200State.NtpServers[0].String()).To(Equal("132.163.96.6"))
 	t.Expect(vlan200State.Subnet.String()).To(Equal("172.20.1.0/24"))
-	t.Expect(vlan200State.MacAddr).To(Equal("02:00:00:00:00:05"))
+	t.Expect(vlan200State.MacAddr.String()).To(Equal("02:00:00:00:00:05"))
 	t.Expect(vlan200State.Up).To(BeTrue())
 	t.Expect(vlan200State.Type).To(BeEquivalentTo(types.NT_IPV4))
 	t.Expect(vlan200State.Dhcp).To(BeEquivalentTo(types.DT_CLIENT))

@@ -21,8 +21,8 @@ import (
 	generic "github.com/lf-edge/eve/pkg/pillar/nireconciler/genericitems"
 	linux "github.com/lf-edge/eve/pkg/pillar/nireconciler/linuxitems"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	"github.com/lf-edge/eve/pkg/pillar/utils"
 	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
+	"github.com/lf-edge/eve/pkg/pillar/utils/generics"
 	uuid "github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
 	"github.com/vishvananda/netlink"
@@ -718,14 +718,14 @@ func (r *LinuxNIReconciler) scheduleGlobalCfgRebuild(reason string) {
 		r.pendingReconcile.rebuildGlobalCfg = &pendingCfgRebuild{}
 	}
 	rebuild := r.pendingReconcile.rebuildGlobalCfg
-	if !utils.ContainsItem(rebuild.reasons, reason) {
+	if !generics.ContainsItem(rebuild.reasons, reason) {
 		rebuild.reasons = append(rebuild.reasons, reason)
 	}
 }
 
 func (r *LinuxNIReconciler) scheduleNICfgRebuild(niID uuid.UUID, reason string) {
 	rebuild := r.pendingReconcile.rebuildNICfg[niID]
-	if !utils.ContainsItem(rebuild.reasons, reason) {
+	if !generics.ContainsItem(rebuild.reasons, reason) {
 		rebuild.reasons = append(rebuild.reasons, reason)
 	}
 	r.pendingReconcile.rebuildNICfg[niID] = rebuild

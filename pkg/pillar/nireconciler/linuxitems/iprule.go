@@ -11,7 +11,7 @@ import (
 
 	dg "github.com/lf-edge/eve-libs/depgraph"
 	"github.com/lf-edge/eve/pkg/pillar/base"
-	"github.com/lf-edge/eve/pkg/pillar/utils"
+	"github.com/lf-edge/eve/pkg/pillar/utils/netutils"
 	"github.com/vishvananda/netlink"
 )
 
@@ -63,8 +63,8 @@ func (r IPRule) Equal(other dg.Item) bool {
 		r.Table == r2.Table &&
 		r.Mark == r2.Mark &&
 		r.Mask == r2.Mask &&
-		utils.EqualIPNets(r.Src, r2.Src) &&
-		utils.EqualIPNets(r.Dst, r2.Dst)
+		netutils.EqualIPNets(r.Src, r2.Src) &&
+		netutils.EqualIPNets(r.Dst, r2.Dst)
 }
 
 // External returns false.

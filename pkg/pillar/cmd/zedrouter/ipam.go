@@ -10,6 +10,7 @@ import (
 
 	"github.com/lf-edge/eve/pkg/pillar/nistate"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/utils/netutils"
 	uuid "github.com/satori/go.uuid"
 )
 
@@ -127,7 +128,7 @@ func (z *zedrouter) lookupOrAllocateIPv4ForVIF(niStatus *types.NetworkInstanceSt
 			return nil, err
 		}
 		// Pick an IP address from the subnet.
-		ipAddr = types.AddToIP(niStatus.DhcpRange.Start, appNum)
+		ipAddr = netutils.AddToIP(niStatus.DhcpRange.Start, appNum)
 		// Check if the address falls into the Dhcp Range.
 		if !niStatus.DhcpRange.Contains(ipAddr) {
 			err := fmt.Errorf("no free IP addresses in DHCP range(%v, %v)",

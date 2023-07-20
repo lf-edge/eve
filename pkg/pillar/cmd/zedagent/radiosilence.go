@@ -144,7 +144,7 @@ func getRadioStatus(ctx *getconfigContext) *profile.RadioStatus {
 				Logicallabel: port.Logicallabel,
 				Module:       encodeCellModuleInfo(wwanStatus.Module),
 				SimCards:     encodeSimCards(wwanStatus.Module.Name, wwanStatus.SimCards),
-				Providers:    encodeCellProviders(wwanStatus.Providers),
+				Providers:    encodeCellProviders(wwanStatus),
 				ConfigError:  wwanStatus.ConfigError,
 				ProbeError:   wwanStatus.ProbeError,
 			})
