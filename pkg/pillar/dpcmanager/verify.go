@@ -63,6 +63,9 @@ func (m *DpcManager) setupVerify(index int, reason string) {
 	m.dpcList.CurrentIndex = index
 	m.dpcVerify.inProgress = true
 	m.dpcVerify.startedAt = time.Now()
+	if dpc := m.currentDPC(); dpc != nil {
+		m.setDiscoveredWwanIfNames(dpc)
+	}
 	m.Log.Functionf("DPC verify: Started testing DPC (index %d): %v",
 		m.dpcList.CurrentIndex, m.dpcList.PortConfigList[m.dpcList.CurrentIndex])
 }

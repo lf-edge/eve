@@ -26,9 +26,11 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/utils"
 	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
 	"github.com/lf-edge/eve/pkg/pillar/vault"
+	uuid "github.com/satori/go.uuid"
 	"github.com/shirou/gopsutil/host"
 	"golang.org/x/sys/unix"
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 const (
@@ -440,28 +442,25 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext, dest destinationBitset) {
 	}
 
 	// We report all the ports in DeviceNetworkStatus
-	// TODO: report also modems not used by any port.
-	labelList := types.ReportLogicallabels(*deviceNetworkStatus)
-	for _, label := range labelList {
-		ports := deviceNetworkStatus.GetPortsByLogicallabel(label)
-		if len(ports) == 0 {
-			continue
-		}
-		p := ports[0]
-		ReportDeviceNetworkInfo := encodeNetInfo(*p)
+	// Note that this is deprecated in favour of SystemAdapterInfo.
+	for _, p := range deviceNetworkStatus.Ports {
+		ReportDeviceNetworkInfo := encodeNetInfo(p)
 		// XXX rename DevName to Logicallabel in proto file
-		ReportDeviceNetworkInfo.DevName = *proto.String(label)
+		ReportDeviceNetworkInfo.DevName = p.Logicallabel
 		ReportDeviceInfo.Network = append(ReportDeviceInfo.Network,
 			ReportDeviceNetworkInfo)
-		// Report all SIM cards and cellular modules
-		if p.WirelessStatus.WType == types.WirelessTypeCellular {
-			wwanStatus := p.WirelessStatus.Cellular
-			ReportDeviceInfo.CellRadios = append(
-				ReportDeviceInfo.CellRadios,
-				encodeCellModuleInfo(wwanStatus.Module))
-			ReportDeviceInfo.Sims = append(
-				ReportDeviceInfo.Sims,
-				encodeSimCards(wwanStatus.Module.Name, wwanStatus.SimCards)...)
+	}
+	// Report all SIM cards and cellular modules, including those not in use.
+	if statusObj, _ := ctx.subWwanStatus.Get("global"); statusObj != nil {
+		if status, ok := statusObj.(types.WwanStatus); ok {
+			for _, cellNet := range status.Networks {
+				ReportDeviceInfo.CellRadios = append(
+					ReportDeviceInfo.CellRadios,
+					encodeCellModuleInfo(cellNet.Module))
+				ReportDeviceInfo.Sims = append(
+					ReportDeviceInfo.Sims,
+					encodeSimCards(cellNet.Module.Name, cellNet.SimCards)...)
+			}
 		}
 	}
 	// Fill in global ZInfoDNS dns from /etc/resolv.conf
@@ -803,18 +802,16 @@ func addUserSwInfo(ctx *zedagentContext, swInfo *info.ZInfoDevSW, tooEarly bool)
 func encodeNetInfo(port types.NetworkPortStatus) *info.ZInfoNetwork {
 
 	networkInfo := new(info.ZInfoNetwork)
-	networkInfo.LocalName = *proto.String(port.IfName)
+	networkInfo.LocalName = port.IfName
 	networkInfo.IPAddrs = make([]string, len(port.AddrInfoList))
 	for index, ai := range port.AddrInfoList {
-		networkInfo.IPAddrs[index] = *proto.String(ai.Addr.String())
+		networkInfo.IPAddrs[index] = ai.Addr.String()
 	}
 	networkInfo.Ipv4Up = port.Up
-	networkInfo.MacAddr = *proto.String(port.MacAddr)
+	networkInfo.MacAddr = port.MacAddr.String()
+	networkInfo.DevName = port.Logicallabel
 
-	// In case caller doesn't override
-	networkInfo.DevName = *proto.String(port.IfName)
-
-	networkInfo.Alias = *proto.String(port.Alias)
+	networkInfo.Alias = port.Alias
 	// Default routers from kernel whether or not we are using DHCP
 	networkInfo.DefaultRouters = make([]string, len(port.DefaultRouters))
 	for index, dr := range port.DefaultRouters {
@@ -839,13 +836,13 @@ func encodeNetInfo(port types.NetworkPortStatus) *info.ZInfoNetwork {
 			continue
 		}
 		geo := new(info.GeoLoc)
-		geo.UnderlayIP = *proto.String(ai.Geo.IP)
-		geo.Hostname = *proto.String(ai.Geo.Hostname)
-		geo.City = *proto.String(ai.Geo.City)
-		geo.Country = *proto.String(ai.Geo.Country)
-		geo.Loc = *proto.String(ai.Geo.Loc)
-		geo.Org = *proto.String(ai.Geo.Org)
-		geo.Postal = *proto.String(ai.Geo.Postal)
+		geo.UnderlayIP = ai.Geo.IP
+		geo.Hostname = ai.Geo.Hostname
+		geo.City = ai.Geo.City
+		geo.Country = ai.Geo.Country
+		geo.Loc = ai.Geo.Loc
+		geo.Org = ai.Geo.Org
+		geo.Postal = ai.Geo.Postal
 		networkInfo.Location = geo
 		break
 	}
@@ -895,6 +892,7 @@ func encodeCellModuleInfo(wwanModule types.WwanCellModule) *info.ZCellularModule
 		Imei:            wwanModule.IMEI,
 		FirmwareVersion: wwanModule.Revision,
 		Model:           wwanModule.Model,
+		Manufacturer:    wwanModule.Manufacturer,
 		OperatingState:  opState,
 		ControlProtocol: ctrlProto,
 	}
@@ -907,20 +905,34 @@ func encodeSimCards(cellModule string, wwanSimCards []types.WwanSimCard) (simCar
 			CellModuleName: cellModule,
 			Imsi:           simCard.IMSI,
 			Iccid:          simCard.ICCID,
-			State:          simCard.Status,
+			State:          simCard.State,
+			SlotNumber:     uint32(simCard.SlotNumber),
+			SlotActivated:  simCard.SlotActivated,
 		})
 	}
 	return simCards
 }
 
-func encodeCellProviders(wwanProviders []types.WwanProvider) (providers []*info.ZCellularProvider) {
-	for _, provider := range wwanProviders {
-		providers = append(providers, &info.ZCellularProvider{
-			Plmn:           provider.PLMN,
-			Description:    provider.Description,
-			CurrentServing: provider.CurrentServing,
-			Roaming:        provider.Roaming,
-		})
+func encodeCellProvider(wwanProvider types.WwanProvider) (provider *info.ZCellularProvider) {
+	return &info.ZCellularProvider{
+		Plmn:           wwanProvider.PLMN,
+		Description:    wwanProvider.Description,
+		CurrentServing: wwanProvider.CurrentServing,
+		Roaming:        wwanProvider.Roaming,
+		Forbidden:      wwanProvider.Forbidden,
+	}
+}
+
+func encodeCellProviders(wwanStatus types.WwanNetworkStatus) (providers []*info.ZCellularProvider) {
+	var includedCurrentProvider bool
+	for _, provider := range wwanStatus.VisibleProviders {
+		if provider == wwanStatus.CurrentProvider {
+			includedCurrentProvider = true
+		}
+		providers = append(providers, encodeCellProvider(provider))
+	}
+	if !includedCurrentProvider && wwanStatus.CurrentProvider.PLMN != "" {
+		providers = append(providers, encodeCellProvider(wwanStatus.CurrentProvider))
 	}
 	return providers
 }
@@ -952,36 +964,174 @@ func encodeSystemAdapterInfo(ctx *zedagentContext) *info.SystemAdapterInfo {
 				// info for ports from lower layers is not published
 				continue
 			}
-			// FIXME: publish status here, not config!
-			// TODO: include DNS servers, MTU, etc.
-			dps.Ports[j] = encodeNetworkPortConfig(ctx, &p)
-			if i == dpcl.CurrentIndex && p.WirelessCfg.WType == types.WirelessTypeCellular {
-				ports := deviceNetworkStatus.GetPortsByLogicallabel(p.Logicallabel)
-				if len(ports) == 0 {
+			if i == dpcl.CurrentIndex {
+				// For the currently used DPC we publish the status (DeviceNetworkStatus).
+				portStatus := deviceNetworkStatus.GetPortsByLogicallabel(p.Logicallabel)
+				if len(portStatus) == 1 {
+					dps.Ports[j] = encodeNetworkPortStatus(ctx, portStatus[0], p.NetworkUUID)
 					continue
 				}
-				portStatus := ports[0]
-				wwanStatus := portStatus.WirelessStatus.Cellular
-				var simCards []string
-				for _, simCard := range wwanStatus.SimCards {
-					simCards = append(simCards, simCard.Name)
-				}
-				dps.Ports[j].WirelessStatus = &info.WirelessStatus{
-					Type: info.WirelessType_WIRELESS_TYPE_CELLULAR,
-					Cellular: &info.ZCellularStatus{
-						CellularModule: wwanStatus.Module.Name,
-						SimCards:       simCards,
-						Providers:      encodeCellProviders(wwanStatus.Providers),
-						ConfigError:    wwanStatus.ConfigError,
-						ProbeError:     wwanStatus.ProbeError,
-					},
-				}
 			}
+			// For inactive DPCs (or if DNS is not available) we publish the config
+			// (DevicePortConfig).
+			dps.Ports[j] = encodeNetworkPortConfig(ctx, &p)
 		}
 		sainfo.Status[i] = dps
 	}
 	log.Tracef("encodeSystemAdapterInfo: %+v", sainfo)
 	return sainfo
+}
+
+func encodeNetworkPortStatus(ctx *zedagentContext,
+	port *types.NetworkPortStatus, network uuid.UUID) *info.DevicePort {
+	aa := ctx.assignableAdapters
+	ioBundle := aa.LookupIoBundleLogicallabel(port.Logicallabel)
+
+	devicePort := new(info.DevicePort)
+	devicePort.Ifname = port.IfName
+	devicePort.Name = port.Logicallabel
+	devicePort.Err = encodeTestResults(port.TestResults)
+	if ioBundle != nil {
+		devicePort.Usage = ioBundle.Usage
+	}
+	devicePort.Cost = uint32(port.Cost)
+	devicePort.IsMgmt = port.IsMgmt
+	devicePort.Free = port.Cost == 0 // To be deprecated
+	devicePort.NetworkUUID = network.String()
+	devicePort.DhcpType = uint32(port.Dhcp)
+	devicePort.Subnet = port.Subnet.String()
+	devicePort.Up = port.Up
+	devicePort.Mtu = uint32(port.MTU)
+	devicePort.Domainname = port.DomainName
+	// TODO: modify EVE APIs and allow to publish full list of NTP servers
+	if port.NtpServer != nil {
+		devicePort.NtpServer = port.NtpServer.String()
+	} else if len(port.NtpServers) > 0 {
+		devicePort.NtpServer = port.NtpServers[0].String()
+	}
+	devicePort.Proxy = encodeProxyStatus(&port.ProxyConfig)
+	devicePort.MacAddr = port.MacAddr.String()
+	for _, ipAddr := range port.AddrInfoList {
+		devicePort.IPAddrs = append(devicePort.IPAddrs, ipAddr.Addr.String())
+	}
+	// devicePort.Gateway is deprecated - replaced by DefaultRouters
+	for _, router := range port.DefaultRouters {
+		devicePort.DefaultRouters = append(devicePort.DefaultRouters, router.String())
+	}
+	// devicePort.DnsServers is deprecated - replaced by Dns
+	devicePort.Dns = new(info.ZInfoDNS)
+	devicePort.Dns.DNSdomain = port.DomainName
+	for _, dnsServer := range port.DNSServers {
+		devicePort.Dns.DNSservers = append(devicePort.Dns.DNSservers, dnsServer.String())
+	}
+	// TODO We may have geoloc information for each IP address.
+	// For now fill in using the first IP address which has location info available.
+	for _, ai := range port.AddrInfoList {
+		if ai.Geo == nilIPInfo {
+			continue
+		}
+		geo := new(info.GeoLoc)
+		geo.UnderlayIP = ai.Geo.IP
+		geo.Hostname = ai.Geo.Hostname
+		geo.City = ai.Geo.City
+		geo.Country = ai.Geo.Country
+		geo.Loc = ai.Geo.Loc
+		geo.Org = ai.Geo.Org
+		geo.Postal = ai.Geo.Postal
+		devicePort.Location = geo
+		break
+	}
+	switch port.WirelessStatus.WType {
+	case types.WirelessTypeCellular:
+		wwanStatus := port.WirelessStatus.Cellular
+		var simCards []string
+		for _, simCard := range wwanStatus.SimCards {
+			simCards = append(simCards, simCard.Name)
+		}
+		var rats []evecommon.RadioAccessTechnology
+		for _, rat := range wwanStatus.CurrentRATs {
+			switch rat {
+			case types.WwanRATGSM:
+				rats = append(rats, evecommon.RadioAccessTechnology_RADIO_ACCESS_TECHNOLOGY_GSM)
+			case types.WwanRATUMTS:
+				rats = append(rats, evecommon.RadioAccessTechnology_RADIO_ACCESS_TECHNOLOGY_UMTS)
+			case types.WwanRATLTE:
+				rats = append(rats, evecommon.RadioAccessTechnology_RADIO_ACCESS_TECHNOLOGY_LTE)
+			case types.WwanRAT5GNR:
+				rats = append(rats, evecommon.RadioAccessTechnology_RADIO_ACCESS_TECHNOLOGY_5GNR)
+			}
+		}
+		var connectedAt *timestamppb.Timestamp
+		if wwanStatus.ConnectedAt != 0 {
+			connectedAt = timestamppb.New(time.Unix(int64(wwanStatus.ConnectedAt), 0))
+		}
+		devicePort.WirelessStatus = &info.WirelessStatus{
+			Type: info.WirelessType_WIRELESS_TYPE_CELLULAR,
+			Cellular: &info.ZCellularStatus{
+				CellularModule: wwanStatus.Module.Name,
+				SimCards:       simCards,
+				Providers:      encodeCellProviders(wwanStatus),
+				CurrentRats:    rats,
+				ConnectedAt:    connectedAt,
+				ConfigError:    wwanStatus.ConfigError,
+				ProbeError:     wwanStatus.ProbeError,
+			},
+		}
+	case types.WirelessTypeWifi:
+		devicePort.WirelessStatus = &info.WirelessStatus{
+			Type: info.WirelessType_WIRELESS_TYPE_WIFI,
+		}
+	}
+	return devicePort
+}
+
+func encodeNetworkPortConfig(ctx *zedagentContext,
+	npc *types.NetworkPortConfig) *info.DevicePort {
+	aa := ctx.assignableAdapters
+
+	dp := new(info.DevicePort)
+	dp.Ifname = npc.IfName
+	// XXX rename the protobuf field Name to Logicallabel and add Phylabel?
+	dp.Name = npc.Logicallabel
+	// XXX Add Alias to DevicePort?
+	// dp.Alias = npc.Alias
+
+	ibPtr := aa.LookupIoBundleLogicallabel(npc.Logicallabel)
+	if ibPtr != nil {
+		dp.Usage = ibPtr.Usage
+	}
+
+	dp.IsMgmt = npc.IsMgmt
+	dp.Cost = uint32(npc.Cost)
+	dp.Free = npc.Cost == 0 // To be deprecated
+	// DhcpConfig
+	dp.DhcpType = uint32(npc.Dhcp)
+	dp.Subnet = npc.AddrSubnet
+
+	dp.DefaultRouters = make([]string, 0)
+	dp.DefaultRouters = append(dp.DefaultRouters, npc.Gateway.String())
+
+	dp.NtpServer = npc.NtpServer.String()
+
+	dp.Dns = new(info.ZInfoDNS)
+	dp.Dns.DNSdomain = npc.DomainName
+	dp.Dns.DNSservers = make([]string, 0)
+	for _, d := range npc.DnsServers {
+		dp.Dns.DNSservers = append(dp.Dns.DNSservers, d.String())
+	}
+	// XXX Not in definition. Remove?
+	// XXX  string dhcpRangeLow = 17;
+	// XXX  string dhcpRangeHigh = 18;
+
+	dp.Proxy = encodeProxyStatus(&npc.ProxyConfig)
+
+	dp.Err = encodeTestResults(npc.TestResults)
+
+	var nilUUID uuid.UUID
+	if npc.NetworkUUID != nilUUID {
+		dp.NetworkUUID = npc.NetworkUUID.String()
+	}
+	return dp
 }
 
 // getDataSecAtRestInfo prepares status related to Data security at Rest

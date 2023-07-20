@@ -154,6 +154,7 @@ func (m *LinuxNetworkMonitor) ifAttrsFromLink(link netlink.Link) IfAttrs {
 		LowerUp:       link.Attrs().OperState == netlink.OperUp,
 		Enslaved:      link.Attrs().MasterIndex != 0,
 		MasterIfIndex: link.Attrs().MasterIndex,
+		MTU:           uint16(link.Attrs().MTU),
 	}
 }
 

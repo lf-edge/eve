@@ -22,6 +22,7 @@ func (m *DpcManager) currentDPC() *types.DevicePortConfig {
 }
 
 func (m *DpcManager) doAddDPC(ctx context.Context, dpc types.DevicePortConfig) {
+	m.setDiscoveredWwanIfNames(&dpc)
 	mgmtCount := dpc.CountMgmtPorts()
 	if mgmtCount == 0 {
 		// This DPC will be ignored when we check IsDPCUsable which
@@ -55,6 +56,7 @@ func (m *DpcManager) doAddDPC(ctx context.Context, dpc types.DevicePortConfig) {
 }
 
 func (m *DpcManager) doDelDPC(ctx context.Context, dpc types.DevicePortConfig) {
+	m.setDiscoveredWwanIfNames(&dpc)
 	configChanged := m.updateDPCListAndPublish(dpc, true)
 	if !configChanged {
 		m.Log.Functionf("doDelDPC: System current. No change detected.\n")

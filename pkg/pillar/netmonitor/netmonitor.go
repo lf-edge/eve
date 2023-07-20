@@ -146,6 +146,8 @@ type IfAttrs struct {
 	Enslaved bool
 	// If interface is enslaved, this should contain index of the master interface.
 	MasterIfIndex int
+	// Maximum Transmission Unit configured on the interface.
+	MTU uint16
 }
 
 // Equal allows to compare two sets of interface attributes for equality.

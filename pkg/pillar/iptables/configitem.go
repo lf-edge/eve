@@ -16,7 +16,7 @@ import (
 	"github.com/lf-edge/eve-libs/reconciler"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/nireconciler/genericitems"
-	"github.com/lf-edge/eve/pkg/pillar/utils"
+	"github.com/lf-edge/eve/pkg/pillar/utils/generics"
 )
 
 const (
@@ -192,9 +192,9 @@ func (r Rule) Equal(other depgraph.Item) bool {
 		r.Table == r2.Table &&
 		r.ChainName == r2.ChainName &&
 		r.ForIPv6 == r2.ForIPv6 &&
-		utils.EqualSets(r.AppliedBefore, r2.AppliedBefore) &&
-		utils.EqualLists(r.MatchOpts, r2.MatchOpts) &&
-		utils.EqualLists(r.TargetOpts, r2.TargetOpts) &&
+		generics.EqualSets(r.AppliedBefore, r2.AppliedBefore) &&
+		generics.EqualLists(r.MatchOpts, r2.MatchOpts) &&
+		generics.EqualLists(r.TargetOpts, r2.TargetOpts) &&
 		r.Target == r2.Target && r.Description == r2.Description
 }
 

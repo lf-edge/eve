@@ -13,7 +13,8 @@ import (
 	dg "github.com/lf-edge/eve-libs/depgraph"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/nireconciler/genericitems"
-	"github.com/lf-edge/eve/pkg/pillar/utils"
+	"github.com/lf-edge/eve/pkg/pillar/utils/generics"
+	"github.com/lf-edge/eve/pkg/pillar/utils/netutils"
 	"github.com/vishvananda/netlink"
 )
 
@@ -55,7 +56,7 @@ func (b Bridge) Equal(other dg.Item) bool {
 	return b.IfName == b2.IfName &&
 		b.CreatedByNIM == b2.CreatedByNIM &&
 		bytes.Equal(b.MACAddress, b2.MACAddress) &&
-		utils.EqualSetsFn(b.IPAddresses, b2.IPAddresses, utils.EqualIPNets)
+		generics.EqualSetsFn(b.IPAddresses, b2.IPAddresses, netutils.EqualIPNets)
 }
 
 // External returns true if it was created by NIM and not be zedrouter.
