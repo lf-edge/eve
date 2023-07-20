@@ -27,7 +27,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/utils"
 	"github.com/lf-edge/eve/pkg/pillar/vault"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
-	uuid "github.com/satori/go.uuid"
 	"github.com/shirou/gopsutil/host"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -343,16 +342,14 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 
 	// Use the network metrics from zedrouter subscription
 	// Only report stats for the ports in DeviceNetworkStatus
-	labelList := types.ReportLogicallabels(*deviceNetworkStatus)
-	for _, label := range labelList {
+	for _, p := range deviceNetworkStatus.Ports {
 		var metric *types.NetworkMetric
-		ports := deviceNetworkStatus.GetPortsByLogicallabel(label)
-		if len(ports) == 0 {
-			continue
-		}
-		p := ports[0]
 		if !p.IsL3Port {
 			// metrics for ports from lower layers are not reported
+			continue
+		}
+		if p.IfName == "" {
+			// Cannot associate metrics with the port until interface name is known.
 			continue
 		}
 		for _, m := range networkMetrics.MetricList {
@@ -366,7 +363,7 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 		}
 		networkDetails := new(metrics.NetworkMetric)
 		networkDetails.LocalName = metric.IfName
-		networkDetails.IName = label
+		networkDetails.IName = p.Logicallabel
 		networkDetails.Alias = p.Alias
 		networkDetails.TxPkts = metric.TxPkts
 		networkDetails.RxPkts = metric.RxPkts
@@ -1033,55 +1030,6 @@ func encodeProxyStatus(proxyConfig *types.ProxyConfig) *info.ProxyStatus {
 	return status
 }
 
-func encodeNetworkPortConfig(ctx *zedagentContext,
-	npc *types.NetworkPortConfig) *info.DevicePort {
-	aa := ctx.assignableAdapters
-
-	dp := new(info.DevicePort)
-	dp.Ifname = npc.IfName
-	// XXX rename the protobuf field Name to Logicallabel and add Phylabel?
-	dp.Name = npc.Logicallabel
-	// XXX Add Alias in proto file?
-	// dp.Alias = npc.Alias
-
-	ibPtr := aa.LookupIoBundlePhylabel(npc.Phylabel)
-	if ibPtr != nil {
-		dp.Usage = evecommon.PhyIoMemberUsage(ibPtr.Usage)
-	}
-
-	dp.IsMgmt = npc.IsMgmt
-	dp.Cost = uint32(npc.Cost)
-	dp.Free = npc.Cost == 0 // To be deprecated
-	// DhcpConfig
-	dp.DhcpType = uint32(npc.Dhcp)
-	dp.Subnet = npc.AddrSubnet
-
-	dp.DefaultRouters = make([]string, 0)
-	dp.DefaultRouters = append(dp.DefaultRouters, npc.Gateway.String())
-
-	dp.NtpServer = npc.NtpServer.String()
-
-	dp.Dns = new(info.ZInfoDNS)
-	dp.Dns.DNSdomain = npc.DomainName
-	dp.Dns.DNSservers = make([]string, 0)
-	for _, d := range npc.DnsServers {
-		dp.Dns.DNSservers = append(dp.Dns.DNSservers, d.String())
-	}
-	// XXX Not in definition. Remove?
-	// XXX  string dhcpRangeLow = 17;
-	// XXX  string dhcpRangeHigh = 18;
-
-	dp.Proxy = encodeProxyStatus(&npc.ProxyConfig)
-
-	dp.Err = encodeTestResults(npc.TestResults)
-
-	var nilUUID uuid.UUID
-	if npc.NetworkUUID != nilUUID {
-		dp.NetworkUUID = npc.NetworkUUID.String()
-	}
-	return dp
-}
-
 // This function is called per change, hence needs to try over all management ports
 // When aiStatus is nil it means a delete and we send a message
 // containing only the UUID to inform zedcloud about the delete.
@@ -1175,8 +1123,9 @@ func PublishAppInfoToZedCloud(ctx *zedagentContext, uuid string,
 			if niStatus != nil {
 				networkInfo.NtpServers = []string{}
 				if niStatus.NtpServer != nil {
-					networkInfo.NtpServers = append(networkInfo.NtpServers, niStatus.NtpServer.String())
-				} else {
+					networkInfo.NtpServers = append(networkInfo.NtpServers,
+						niStatus.NtpServer.String())
+				} else if niStatus.SelectedUplinkIntfName != "" {
 					ntpServers := types.GetNTPServers(*deviceNetworkStatus,
 						niStatus.SelectedUplinkIntfName)
 					for _, server := range ntpServers {

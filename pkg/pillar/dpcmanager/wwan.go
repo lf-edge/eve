@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"reflect"
 	"strings"
 	"time"
 
@@ -142,7 +141,7 @@ func (w *wwanWatcher) createWwanDir() error {
 }
 
 // reloadWwanStatus loads the latest state data published by the wwan service.
-func (m *DpcManager) reloadWwanStatus() {
+func (m *DpcManager) reloadWwanStatus(ctx context.Context) {
 	status, err := m.WwanWatcher.LoadStatus()
 	if err != nil {
 		// Already logged.
@@ -163,7 +162,7 @@ func (m *DpcManager) reloadWwanStatus() {
 	}
 
 	status.DoSanitize()
-	changed := !reflect.DeepEqual(m.wwanStatus, status)
+	changed := !m.wwanStatus.Equal(status)
 	if changed {
 		m.Log.Functionf("Have new wwan status: %v", m.wwanStatus)
 	}
@@ -203,6 +202,13 @@ func (m *DpcManager) reloadWwanStatus() {
 	}
 
 	if changed || wasInProgress {
+		if m.currentDPC() != nil {
+			changedDPC := m.setDiscoveredWwanIfNames(m.currentDPC())
+			if changedDPC {
+				m.publishDPCL()
+			}
+		}
+		m.restartVerify(ctx, "wwan status changed")
 		m.updateDNS()
 	}
 	if changed && m.PubWwanStatus != nil {
@@ -222,7 +228,7 @@ func (m *DpcManager) reloadWwanMetrics() {
 		// Already logged.
 		return
 	}
-	if reflect.DeepEqual(metrics, m.wwanMetrics) {
+	if m.wwanMetrics.Equal(metrics) {
 		// nothing really changed
 		return
 	}
@@ -341,4 +347,63 @@ func (m *DpcManager) doUpdateRadioSilence(ctx context.Context, newRS types.Radio
 
 	m.rsStatus.ConfigError = strings.Join(errMsgs, "\n")
 	m.updateDNS()
+}
+
+// Handle cellular modems referenced in the device model by USB or PCI addresses
+// but without interface name included.
+// Use status published by the wwan microservice to learn the name of the interface
+// created by the kernel for the modem data-path.
+func (m *DpcManager) setDiscoveredWwanIfNames(dpc *types.DevicePortConfig) bool {
+	var changed bool
+	ifNames := make(map[string]string) // interface name -> logical label
+	currentDPC := m.currentDPC()
+	for i := range dpc.Ports {
+		port := &dpc.Ports[i]
+		if port.WirelessCfg.WType != types.WirelessTypeCellular {
+			continue
+		}
+		wwanNetStatus, found := m.wwanStatus.LookupNetworkStatus(port.Logicallabel)
+		if found && wwanNetStatus.PhysAddrs.Interface != "" {
+			ifNames[wwanNetStatus.PhysAddrs.Interface] = port.Logicallabel
+			if port.IfName != wwanNetStatus.PhysAddrs.Interface {
+				changed = true
+			}
+		} else if port.IfName == "" && currentDPC != nil && currentDPC != dpc {
+			// Maybe we received new DPC while modem status is not yet available.
+			// See if we can get interface name from the current DPC.
+			currentPortConfig := currentDPC.LookupPortByLogicallabel(port.Logicallabel)
+			if currentPortConfig != nil && currentPortConfig.IfName != "" &&
+				currentPortConfig.USBAddr == port.USBAddr &&
+				currentPortConfig.PCIAddr == port.PCIAddr {
+				if _, used := ifNames[currentPortConfig.IfName]; !used {
+					ifNames[currentPortConfig.IfName] = port.Logicallabel
+					changed = true
+				}
+			}
+		}
+	}
+	if !changed {
+		return false
+	}
+	updatedPorts := make([]types.NetworkPortConfig, len(dpc.Ports))
+	// First see if any wwan modem has changed interface name.
+	for i := range dpc.Ports {
+		port := &dpc.Ports[i]
+		updatedPorts[i] = *port // copy
+		if port.IfName != "" {
+			if port2 := ifNames[port.IfName]; port2 != "" && port2 != port.Logicallabel {
+				// This interface name was taken by port2.
+				updatedPorts[i].IfName = ""
+				m.Log.Noticef("Interface name %s was taken from port %s by port %s",
+					port.IfName, port.Logicallabel, port2)
+			}
+		}
+		for ifName, port2 := range ifNames {
+			if port.Logicallabel == port2 {
+				updatedPorts[i].IfName = ifName
+			}
+		}
+	}
+	dpc.Ports = updatedPorts
+	return true
 }

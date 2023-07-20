@@ -11,7 +11,7 @@ import (
 
 	dg "github.com/lf-edge/eve-libs/depgraph"
 	"github.com/lf-edge/eve/pkg/pillar/base"
-	"github.com/lf-edge/eve/pkg/pillar/utils"
+	"github.com/lf-edge/eve/pkg/pillar/utils/netutils"
 )
 
 // IPReserve : an item representing allocation and use of an IP address (for bridge).
@@ -50,7 +50,7 @@ func (ip IPReserve) Equal(other dg.Item) bool {
 		return false
 	}
 	return ip.NetIf == ip2.NetIf &&
-		utils.EqualIPNets(ip.AddrWithMask, ip2.AddrWithMask)
+		netutils.EqualIPNets(ip.AddrWithMask, ip2.AddrWithMask)
 }
 
 // External returns false - not used for IPs assigned by NIM.

@@ -13,7 +13,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/devicenetwork"
 	"github.com/lf-edge/eve/pkg/pillar/iptables"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	"github.com/lf-edge/eve/pkg/pillar/utils"
+	"github.com/lf-edge/eve/pkg/pillar/utils/generics"
 	uuid "github.com/satori/go.uuid"
 )
 
@@ -497,7 +497,7 @@ func (r *LinuxNIReconciler) getIntendedAppConnACLs(niID uuid.UUID,
 					"%s: getIntendedAppConnACLs: failed to get uplink %s addresses: %v",
 					LogAndErrPrefix, uplink, err)
 			}
-			uplinkIPs = utils.FilterList(uplinkIPs, func(ipNet *net.IPNet) bool {
+			uplinkIPs = generics.FilterList(uplinkIPs, func(ipNet *net.IPNet) bool {
 				return ipNet.IP.IsGlobalUnicast()
 			})
 		}
@@ -509,7 +509,7 @@ func (r *LinuxNIReconciler) getIntendedAppConnACLs(niID uuid.UUID,
 				continue
 			}
 		}
-		uplinkIPvXs := utils.FilterList(uplinkIPs, func(ipNet *net.IPNet) bool {
+		uplinkIPvXs := generics.FilterList(uplinkIPs, func(ipNet *net.IPNet) bool {
 			return (ipNet.IP.To4() == nil) == ipv6
 		})
 		for _, item := range r.getIntendedAppConnRawIptables(vif, ul, ipv6) {

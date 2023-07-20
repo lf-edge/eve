@@ -30,6 +30,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
 	logutils "github.com/lf-edge/eve/pkg/pillar/utils/logging"
+	"github.com/lf-edge/eve/pkg/pillar/utils/netutils"
 	uuid "github.com/satori/go.uuid"
 	"github.com/vishvananda/netlink"
 	"google.golang.org/protobuf/proto"
@@ -569,7 +570,7 @@ func (d *dialerWithResolverCache) DialContext(
 			continue
 		}
 		if d.localIP != nil &&
-			!utils.SameIPVersions(cachedEntry.IPAddress, d.localIP) {
+			!netutils.SameIPVersions(cachedEntry.IPAddress, d.localIP) {
 			continue
 		}
 		var addrWithIP string
@@ -649,35 +650,42 @@ func SendOnIntf(workContext context.Context, ctx *ZedCloudContext, destURL strin
 	}
 
 	addrCount, err := types.CountLocalAddrAnyNoLinkLocalIf(*ctx.DeviceNetworkStatus, intf)
-	if err != nil {
-		return rv, err
-	}
-	log.Tracef("Connecting to %s using intf %s #sources %d reqlen %d\n",
-		reqURL, intf, addrCount, reqlen)
-
-	if addrCount == 0 {
+	if err != nil || addrCount == 0 {
 		if ctx.FailureFunc != nil && !dryRun {
 			ctx.FailureFunc(log, intf, reqURL, 0, 0, false)
 		}
 		// Determine a specific failure for intf
-		link, err := netlink.LinkByName(intf)
-		if err != nil {
-			errStr := fmt.Sprintf("Link not found to connect to %s using intf %s: %s",
-				reqURL, intf, err)
-			log.Traceln(errStr)
-			return rv, errors.New(errStr)
+		if intf == "" {
+			err = fmt.Errorf("missing interface name")
+			log.Tracef("unable to connect to %s: %v", reqURL, err)
+			return rv, err
+		}
+		link, err2 := netlink.LinkByName(intf)
+		if err2 != nil {
+			err = fmt.Errorf("link not found for interface %s", intf)
+			log.Tracef("unable to connect to %s: %v", reqURL, err)
+			return rv, err
 		}
 		attrs := link.Attrs()
 		if attrs.OperState != netlink.OperUp {
-			errStr := fmt.Sprintf("Link not up to connect to %s using intf %s: %s",
-				reqURL, intf, attrs.OperState.String())
-			log.Traceln(errStr)
-			return rv, errors.New(errStr)
+			err = fmt.Errorf("link not up for interface %s (%s)",
+				intf, attrs.OperState.String())
+			log.Tracef("unable to connect to %s: %v", reqURL, err)
+			return rv, err
 		}
+		// A different issue caused CountLocalAddrAnyNoLinkLocalIf to fail.
+		if err != nil {
+			log.Tracef("unable to connect to %s: %v", reqURL, err)
+			return rv, err
+		}
+		// err is nil but addrCount is zero
 		err = &types.IPAddrNotAvail{IfName: intf}
-		log.Trace(err)
+		log.Tracef("unable to connect to %s: %v", reqURL, err)
 		return rv, err
 	}
+
+	log.Tracef("Connecting to %s using intf %s #sources %d reqlen %d\n",
+		reqURL, intf, addrCount, reqlen)
 
 	// Prepare config for the HTTP client.
 	clientConfig := nettrace.HTTPClientCfg{

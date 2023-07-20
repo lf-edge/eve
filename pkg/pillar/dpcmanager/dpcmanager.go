@@ -406,7 +406,7 @@ func (m *DpcManager) run(ctx context.Context) {
 			case WwanEventUndefined:
 				m.Log.Warnf("Undefined event received from WwanWatcher")
 			case WwanEventNewStatus:
-				m.reloadWwanStatus()
+				m.reloadWwanStatus(ctx)
 			case WwanEventNewMetrics:
 				m.reloadWwanMetrics()
 			case WwanEventNewLocationInfo:
