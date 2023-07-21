@@ -21,8 +21,15 @@ STATUS_PATH="${BBS}/status.json"
 METRICS_PATH="${BBS}/metrics.json"
 LOCINFO_PATH="${BBS}/location.json"
 
-LTESTAT_TIMEOUT=120
-PROBE_INTERVAL=300  # how often to probe the connectivity status (in seconds)
+CMD_TIMEOUT=5 # timeout applied for MBIM and QMI commands
+# How often to probe the connectivity status (in seconds).
+# Note that on most iterations we only run "Quick" probe, checking the status of connectivity
+# without generating any traffic and triggering re-connect if a modem is found to be offline.
+# Every 5 minutes the probe is elevated to "Standard" probe and we also collect and publish
+# state data to /run/wwan/status.json.
+# And every 1 hour we additionally query the set of visible providers from "Long" probe
+# (also published in status.json).
+PROBE_INTERVAL=20
 METRICS_INTERVAL=60 # how often to obtain and publish metrics (in seconds)
 UNAVAIL_SIGNAL_METRIC=$(printf "%d" 0x7FFFFFFF) # max int32
 
@@ -63,6 +70,42 @@ parse_json_attr() {
   echo "$JSON" | jq -rc ".$JSON_PATH | select (.!=null)"
 }
 
+join_lines_with_semicolon() {
+  cat - | sed ':a;N;$!ba;s/\n/; /g'
+}
+
+escape_apostrophe() {
+  cat - | sed 's/\"/\\\"/g'
+}
+
+join_lines_with_escaped_newline() {
+  cat - | sed ':a;N;$!ba;s/\n/\\n/g'
+}
+
+bool_to_yesno() {
+  local INPUT
+  read -r INPUT
+  [ "$INPUT" = "true" ] && echo "yes" || echo "no"
+}
+
+yesno_to_bool() {
+  local INPUT
+  read -r INPUT
+  [ "$INPUT" = "yes" ] && echo "true" || echo "false"
+}
+
+bool_to_onoff() {
+  local INPUT
+  read -r INPUT
+  [ "$INPUT" = "true" ] && echo "on" || echo "off"
+}
+
+onoff_to_bool() {
+  local INPUT
+  read -r INPUT
+  [ "$INPUT" = "on" ] && echo "true" || echo "false"
+}
+
 mod_reload() {
   local RLIST
   for mod in "$@" ; do
@@ -76,12 +119,13 @@ mod_reload() {
 }
 
 wait_for() {
-  local EXPECT="$1"
-  shift
-  for i in $(seq 1 10); do
+  local ATTEMPTS="$1"
+  local EXPECT="$2"
+  shift 2
+  for i in $(seq 1 "$ATTEMPTS"); do
      eval RES='"$('"$*"')"'
      [ "$RES" = "$EXPECT" ] && return 0
-     sleep 6
+     sleep 3
   done
   return 1
 }
@@ -156,7 +200,18 @@ sys_get_modem_pciaddr() {
 # https://en.wikipedia.org/wiki/Hayes_command_set
 # Args: <command> <tty device>
 send_hayes_command() {
-  printf "%s\r\n" "$1" | picocom -qrx 2000 -b 9600 "$2"
+  if [ "$VERBOSE" = "true" ]; then
+    log_debug Running AT command: "$1"
+  fi
+  local OUTPUT
+  local RV
+  OUTPUT="$(printf "%s\r\n" "$1" | picocom -qrx 2000 -b 9600 "$2")"
+  RV=$?
+  if [ "$VERBOSE" = "true" ]; then
+    log_debug AT output: "$OUTPUT"
+  fi
+  echo "$OUTPUT"
+  return $RV
 }
 
 sys_get_modem_ttys() {
@@ -178,28 +233,29 @@ sys_get_modem_atport() {
   return 1
 }
 
-# If successful, sets CDC_DEV, PROTOCOL, IFACE, USB_ADDR, PCI_ADDR and AT_PORT variables.
+# If successful, sets CDC_DEV, PROTOCOL, IFACE, USB_ADDR and PCI_ADDR variables.
 lookup_modem() {
   local ARG_IF="$1"
   local ARG_USB="$2"
   local ARG_PCI="$3"
 
   for DEV in /sys/class/usbmisc/*; do
-    DEV_PROT=$(sys_get_modem_protocol "$DEV") || continue
+    if [ "$VERBOSE" = "true" ]; then
+      log_debug "lookup_modem: $DEV"
+    fi
+    local DEV_PROT="$(sys_get_modem_protocol "$DEV")" || continue
 
     # check interface name
-    DEV_IF="$(sys_get_modem_interface "$DEV")"
+    local DEV_IF="$(sys_get_modem_interface "$DEV")"
     [ -n "$ARG_IF" ] && [ "$ARG_IF" != "$DEV_IF" ] && continue
 
     # check USB address
-    DEV_USB="$(sys_get_modem_usbaddr "$DEV")"
+    local DEV_USB="$(sys_get_modem_usbaddr "$DEV")"
     [ -n "$ARG_USB" ] && [ "$ARG_USB" != "$DEV_USB" ] && continue
 
     # check PCI address
-    DEV_PCI="$(sys_get_modem_pciaddr "$DEV")"
+    local DEV_PCI="$(sys_get_modem_pciaddr "$DEV")"
     [ -n "$ARG_PCI" ] && [ "$ARG_PCI" != "$DEV_PCI" ] && continue
-
-    AT_PORT="$(sys_get_modem_atport "$DEV_USB")"
 
     PROTOCOL="$DEV_PROT"
     IFACE="$DEV_IF"
@@ -209,23 +265,33 @@ lookup_modem() {
     return 0
   done
 
-  echo "Failed to find modem for"\
-    "interface=${ARG_IF:-<ANY>}, USB=${ARG_USB:-<ANY>}, PCI=${ARG_PCI:-<ANY>}" >&2
+  log_error "Failed to find modem for"\
+    "interface=${ARG_IF:-<ANY>}, USB=${ARG_USB:-<ANY>}, PCI=${ARG_PCI:-<ANY>}"
   return 1
 }
 
 bringup_iface() {
   if ! "${PROTOCOL}_get_ip_settings"; then
-    echo "Failed to get IP config for interface $IFACE"
+    log_error "Failed to get IP config for interface $IFACE"
     return 1
   fi
   ifconfig "$IFACE" "$IP" netmask "$SUBNET" pointopoint "$GW"
   if [ -n "$MTU" ]; then
     ip link set mtu "$MTU" dev "$IFACE"
   fi
+  local METRIC=65000
+  # If interface name is something unexpected, metric will stay as 65000.
+  local IDX="${IFACE#"wwan"}"
+  # With multiple modems there will be multiple default routes and each should
+  # have different metric otherwise there is a conflict.
+  # Note that the actual metric value does not matter all that much. EVE does not use
+  # the main routing table, instead it chooses uplink interface for a particular mgmt
+  # request or network instance and routes the traffic using the interface-specific
+  # table.
+  METRIC="$((METRIC+IDX))"
   # NOTE we may want to disable /proc/sys/net/ipv4/conf/default/rp_filter instead
   #      Verify it by cat /proc/net/netstat | awk '{print $80}'
-  ip route add default via "$GW" dev "$IFACE" metric 65000
+  ip route add default via "$GW" dev "$IFACE" metric "${METRIC}"
   mkdir -p "$BBS/resolv.conf"
   local RESOLV_CONF="$BBS/resolv.conf/${IFACE}.dhcp"
   : > "$RESOLV_CONF"
@@ -246,33 +312,54 @@ bringup_iface() {
 }
 
 bringdown_iface() {
-  # Truncate resolv.conf if it exists.
+  # Remove resolv.conf if it exists.
   local RESOLV_CONF="$BBS/resolv.conf/${IFACE}.dhcp"
-  if [ -f "$RESOLV_CONF" ]; then
-    : > "$RESOLV_CONF"
-  fi
+  rm -f "$RESOLV_CONF"
   # Remove IP address and routes from the interface.
   ip addr flush dev "$IFACE"
 }
 
+# Sets global variable DP_STUCK to "y" if data-plane is found to be stuck.
 check_connectivity() {
+  local EVENT="$1"
+  unset PROBE_ERROR
   # First check the connectivity status as reported by the modem.
-  if [ "$("${PROTOCOL}_get_op_mode")" != "online-and-connected" ]; then
+  local OP_STATUS="$("${PROTOCOL}_get_op_mode")"
+  if [ "$OP_STATUS" != "online-and-connected" ]; then
+    add_probe_error "modem is not connected (operational mode: ${OP_STATUS})"
     return 1
   fi
+  if "${PROTOCOL}_get_ip_address" | grep -vq "$IPV4_REGEXP"; then
+    add_probe_error "no IP address assigned"
+    return 1
+  fi
+  if [ "$EVENT" = "QUICK-PROBE" ]; then
+    # Do not generate any traffic during a quick probe.
+    # Assume that the connectivity is OK if modem says so.
+    return 0
+  fi
   # (optionally) Check connectivity by communicating with a remote endpoint.
-  probe_connectivity
+  PS_BEFORE="$("${PROTOCOL}_get_packet_stats")"
+  if ! probe_connectivity; then
+    PS_AFTER="$("${PROTOCOL}_get_packet_stats")"
+    # If packet counters as reported by the modem has not changed,
+    # then data-plane is very likely stuck.
+    if [ "$PS_BEFORE" != "$PS_AFTER" ]; then
+      DP_STUCK=y
+      add_probe_error "data-plane of the modem is stuck"
+    fi
+    return 1
+  fi
 }
 
 probe_connectivity() {
-  unset PROBE_ERROR
   if [ "$PROBE_DISABLED" = "true" ]; then
     # probing disabled, skip it
     return 0
   fi
   if [ -n "$PROBE_ADDR" ]; then
     # User-configured ICMP probe address.
-    add_probe_error "$(icmp_probe "$PROBE_ADDR")"
+    icmp_probe "$PROBE_ADDR"
     return
   fi
   # Default probing behaviour (not configured by user).
@@ -309,61 +396,100 @@ __EOT__
   # This is a last-resort probing option.
   # In a private LTE network ICMP requests headed towards public DNS servers
   # may be blocked by the firewall and thus produce probing false negatives.
-  add_probe_error "$(icmp_probe "$DEFAULT_PROBE_ADDR")"
+  icmp_probe "$DEFAULT_PROBE_ADDR"
 }
 
 add_probe_error() {
   if [ -z "$1" ]; then
     return
   fi
+  local ERR_MSG="$(echo "$1" | join_lines_with_semicolon | escape_apostrophe)"
   if [ -n "$PROBE_ERROR" ]; then
-    PROBE_ERROR="$PROBE_ERROR; $1"
+    PROBE_ERROR="$PROBE_ERROR; $ERR_MSG"
   else
-    PROBE_ERROR="$1"
+    PROBE_ERROR="$ERR_MSG"
+  fi
+  if [ "$VERBOSE" = "true" ]; then
+    log_debug "[$CDC_DEV] Check connectivity: $1"
   fi
 }
 
 icmp_probe() {
-  local PROBE_ADDR="$1"
+  local PING_ADDR="$1"
   # ping is supposed to return 0 even if just a single packet out of 3 gets through
-  local PROBE_OUTPUT
-  if PROBE_OUTPUT="$(ping -W 20 -w 20 -c 3 -I "$IFACE" "$PROBE_ADDR" 2>&1)"; then
+  local PING_OUTPUT
+  if PING_OUTPUT="$(ping -W 20 -w 20 -c 3 -I "$IFACE" "$PING_ADDR" 2>&1)"; then
     return 0
   else
-    local PROBE_ERROR="$(printf "%s" "$PROBE_OUTPUT" | grep "packet loss")"
-    if [ -z "$PROBE_ERROR" ]; then
-      PROBE_ERROR="$PROBE_OUTPUT"
+    local PING_ERROR="$(printf "%s" "$PING_OUTPUT" | grep "packet loss")"
+    if [ -z "$PING_ERROR" ]; then
+      PING_ERROR="$PING_OUTPUT"
     fi
-    echo "Failed to ping $PROBE_ADDR via $IFACE: $PROBE_ERROR"
+    add_probe_error "Failed to ping $PING_ADDR via $IFACE: $PING_ERROR"
     return 1
   fi
 }
 
 collect_network_status() {
-  local QUICK="$1"
+  local EVENT="$1"
   local PROVIDERS="[]"
-  if [ "$QUICK" != "y" ]; then
+  if [ "$EVENT" = "LONG-PROBE" ]; then
     # The process of scanning for available providers takes up to 1 minute.
-    # It is done only during PROBING events and skipped when config is changed
+    # It is done only during LONG-PROBE events and skipped when config is changed
     # (e.g. radio-silence mode is switched ON/OFF) so that the updated status is promptly
     # published for better user experience.
     PROVIDERS="$("${PROTOCOL}_get_providers")"
+  else
+    # Just preserve the list of providers previously obtained for this modem.
+    PROVIDERS="$(jq -rc --arg CDC_DEV "$CDC_DEV" \
+      '.networks[] | select(."physical-addrs".dev==$CDC_DEV) | ."visible-providers"' \
+      "${STATUS_PATH}" 2>/dev/null)"
+    PROVIDERS="${PROVIDERS:-"[]"}"
   fi
+  local OP_MODE="$("${PROTOCOL}_get_op_mode")"
   local MODULE="$(json_struct \
     "$(json_str_attr imei     "$("${PROTOCOL}_get_imei")")" \
     "$(json_str_attr model    "$("${PROTOCOL}_get_modem_model")")" \
     "$(json_str_attr revision "$("${PROTOCOL}_get_modem_revision")")" \
+    "$(json_str_attr manufacturer "$("${PROTOCOL}_get_modem_manufacturer")")" \
     "$(json_str_attr control-protocol "$PROTOCOL")" \
-    "$(json_str_attr operating-mode   "$("${PROTOCOL}_get_op_mode")")")"
+    "$(json_str_attr operating-mode   "$OP_MODE")")"
   local NETWORK_STATUS="$(json_struct \
-    "$(json_str_attr logical-label     "$LOGICAL_LABEL")" \
-    "$(json_attr     physical-addrs    "$ADDRS")" \
-    "$(json_attr     cellular-module   "$MODULE")" \
-    "$(json_attr     sim-cards         "$("${PROTOCOL}_get_sim_cards")")" \
-    "$(json_str_attr config-error      "$CONFIG_ERROR")" \
-    "$(json_str_attr probe-error       "$PROBE_ERROR")" \
-    "$(json_attr     visible-providers "$PROVIDERS")")"
+    "$(json_str_attr logical-label        "$LOGICAL_LABEL")" \
+    "$(json_attr     physical-addrs       "$ADDRS")" \
+    "$(json_attr     cellular-module      "$MODULE")" \
+    "$(json_attr     sim-cards            "$("${PROTOCOL}_get_sim_cards")")" \
+    "$(json_str_attr config-error         "$CONFIG_ERROR")" \
+    "$(json_str_attr probe-error          "$PROBE_ERROR")" \
+    "$(json_attr     visible-providers    "$PROVIDERS")" \
+    "$(json_attr     current-provider     "$("${PROTOCOL}_get_current_provider")")" \
+    "$(json_attr     current-rats         "$("${PROTOCOL}_get_currently_used_rats")")" \
+    "$(json_attr     connected-at         "$(get_connection_time)")" \
+    "$(json_attr     suspended-quickprobe "${SUSPEND_QUICKPROBE:-false}")")"
   STATUS="${STATUS}${NETWORK_STATUS}\n"
+}
+
+# When modem is connected, the corresponding resolv.conf file is created and/or updated
+# (at least emptied).
+# Disconnected modem does not have resolv.conf.
+get_connection_time() {
+  local TIMESTAMP="$(stat -c "%Y" "$BBS/resolv.conf/${IFACE}.dhcp" 2>/dev/null)"
+  TIMESTAMP="${TIMESTAMP:-0}"
+  echo "$TIMESTAMP"
+}
+
+is_quickprobe_suspended() {
+  local SUSPENDED="$(jq -rc --arg CDC_DEV "$CDC_DEV" \
+    '.networks[] | select(."physical-addrs".dev==$CDC_DEV) | ."suspended-quickprobe"' \
+    "${STATUS_PATH}" 2>/dev/null)"
+  [ "$SUSPENDED" = "true" ] && return 0 || return 1
+}
+
+sim_card_status_changed() {
+  local PREV_STATUS="$(jq -rc --arg CDC_DEV "$CDC_DEV" \
+    '.networks[] | select(."physical-addrs".dev==$CDC_DEV) | ."sim-cards"' \
+    "${STATUS_PATH}" 2>/dev/null)"
+  [ "$PREV_STATUS" != "$("${PROTOCOL}_get_sim_cards")" ] && return 0 || return 1
 }
 
 collect_network_metrics() {
@@ -391,15 +517,16 @@ switch_to_preferred_proto() {
      # attempts. Therefore we prefer to use MBIM with this modem until we find
      # a better solution.
      if [ "$PROTOCOL" != "mbim" ]; then
+       local AT_PORT="$(sys_get_modem_atport "$USB_ADDR")"
        if [ -z "$AT_PORT" ]; then
-         echo "Cannot switch modem $LOGICAL_LABEL to MBIM: AT port is not available"
+         log_error "Cannot switch modem $LOGICAL_LABEL to MBIM: AT port is not available"
          return 1
        fi
-       echo "Switching modem $LOGICAL_LABEL to MBIM (using AT port: ${AT_PORT})..."
+       log_debug "Switching modem $LOGICAL_LABEL to MBIM (using AT port: ${AT_PORT})..."
        for CMD in '+++' 'AT!ENTERCND="A710"' 'AT!USBCOMP=1,1,100D' 'AT!RESET'; do
          local OUT="$(send_hayes_command "$CMD" "${AT_PORT}")"
          if echo "$OUT" | grep -q "ERROR"; then
-           echo "Failed to switch modem $LOGICAL_LABEL to MBIM: $OUT"
+           log_error "Failed to switch modem $LOGICAL_LABEL to MBIM: $OUT"
            return 1
          fi
        done
@@ -410,19 +537,109 @@ switch_to_preferred_proto() {
   return 1 # No switch executed.
 }
 
+# According to ETSI TS 100 916 V7.4.0 (1999-11), Section 8.2,
+# "AT+CFUN=1,1" is one of the commands a modem should implement.
+reset_modem_method1() {
+  local AT_PORT="$1"
+  for CMD in '+++' 'AT+CFUN=1,1'; do
+    local OUT="$(send_hayes_command "$CMD" "${AT_PORT}")"
+    if echo "$OUT" | grep -q "ERROR"; then
+      log_error "Failed to reset modem $LOGICAL_LABEL using AT+CFUN=1,1: $OUT"
+      return 1
+    fi
+  done
+}
+
+# Just for a rare case that "AT+CFUN=1,1" is not available, we try also AT!RESET,
+# which, however, is Sierra Wireless specific.
+reset_modem_method2() {
+  local AT_PORT="$1"
+  for CMD in '+++' 'AT!RESET'; do
+    local OUT="$(send_hayes_command "$CMD" "${AT_PORT}")"
+    if echo "$OUT" | grep -q "ERROR"; then
+      log_error "Failed to reset modem $LOGICAL_LABEL using" 'AT!RESET' ": $OUT"
+      return 1
+    fi
+  done
+}
+
+reset_modem() {
+  local AT_PORT="$(sys_get_modem_atport "$USB_ADDR")"
+  if [ -z "$AT_PORT" ]; then
+    log_error "Cannot reset modem $LOGICAL_LABEL: AT port is not available"
+    return 1
+  fi
+  log_debug "Resetting modem $LOGICAL_LABEL (using AT port: ${AT_PORT})..."
+  reset_modem_method1 "$AT_PORT" || reset_modem_method2 "$AT_PORT" || return 1
+}
+
+LOG_PIPE="/tmp/wwan-log.pipe"
+if [ ! -p "$LOG_PIPE" ]; then
+  rm -f "$LOG_PIPE"
+  mkfifo "$LOG_PIPE"
+fi
+
+log_debug() {
+  local MSG="$*"
+  echo "$MSG" | join_lines_with_escaped_newline > "$LOG_PIPE"
+}
+
+log_error() {
+  local MSG="$*"
+  echo "Error: $MSG" | join_lines_with_escaped_newline > "$LOG_PIPE"
+  # Additionally to logging, print the error message to stderr.
+  # This is then typically redirected to /tmp/wwan.stderr and loaded into CONFIG_ERROR
+  # variable.
+  echo "$MSG" >&2
+}
+
+logger() {
+  # EVE collects logs from the stdout of this script.
+  while [ -p "$LOG_PIPE" ]; do cat "$LOG_PIPE"; done
+}
+
+logger &
+
+# Suspend periodic events, i.e. probes and metrics (not config change notifications).
+# This is used to avoid long backlog of pending periodic events.
+suspend_periodic_events() {
+  touch "${BBS}/${1}.suspend"
+}
+
+release_periodic_events() {
+  rm -f "${BBS}/${1}.suspend"
+}
+
+wait_if_suspended() {
+  local WAS_SUSPENDED
+  while [ -f "${BBS}/${1}.suspend" ]; do
+    WAS_SUSPENDED="y"
+    sleep 1
+  done
+  if [ "$WAS_SUSPENDED" = "y" ]; then
+    # Processing of an event just completed - do not immediately trigger another one.
+    sleep 5
+  fi
+}
+
 event_stream() {
   inotifywait -qm "${BBS}" --include config.json -e create -e modify -e delete -e moved_to &
   while true; do
+    wait_if_suspended "probe"
     echo "PROBE"
     sleep "$PROBE_INTERVAL"
   done &
+  # Do not ask for metrics immediately after boot (may delay applying initial config),
+  # instead wait 2 minutes.
+  sleep 120
   while true; do
+    wait_if_suspended "metrics"
     echo "METRICS"
     sleep "$METRICS_INTERVAL"
   done
 }
 
-echo "Starting wwan manager"
+log_debug "Starting wwan manager"
 mkdir -p "${BBS}"
 modprobe -a qcserial usb_wwan qmi_wwan cdc_wdm cdc_mbim cdc_acm
 
@@ -435,18 +652,44 @@ modprobe -a qcserial usb_wwan qmi_wwan cdc_wdm cdc_mbim cdc_acm
 rfkill unblock wwan
 
 # Main event loop
+PROBE_ITER=0
+ENFORCE_LONG_PROBE=n
+STATUS_OUTDATED=n
 event_stream | while read -r EVENT; do
   if ! echo "$EVENT" | grep -q "PROBE\|METRICS\|config.json"; then
     continue
   fi
 
-  CONFIG_CHANGE=n
   if [ "$EVENT" != "PROBE" ] && [ "$EVENT" != "METRICS" ]; then
-    CONFIG_CHANGE=y
+    EVENT="CONFIG-CHANGE"
+    # Next probe will update the set of visible/used providers.
+    ENFORCE_LONG_PROBE="y"
+  fi
+
+  if [ "$EVENT" = "PROBE" ]; then
+    PROBE_ITER="$((PROBE_ITER+1))"
+    # Every 20 seconds check the modem connectivity status.
+    # Quick probe only checks the status as reported by the modem,
+    # without generating any traffic.
+    EVENT="QUICK-PROBE"
+    if [ "$((PROBE_ITER % 15))" = "0" ] || [ "$STATUS_OUTDATED" = "y" ]; then
+      # Every 5 minutes update status.json.
+      # Also when QUICK-PROBE changes modem status (e.g. reconnects), next PROBE
+      # will be elevated to at least STANDARD-PROBE level.
+      # First update is not done immediately but after 5 minutes (PROBE_ITER starts with 1).
+      EVENT="STANDARD-PROBE"
+    fi
+    if [ "$((PROBE_ITER % 180))" = "31" ] || [ "$ENFORCE_LONG_PROBE" = "y" ]; then
+      # Every 1 hour additionally query the set of visible providers.
+      # Also after processing config change, next PROBE will be elevated to LONG-PROBE level.
+      # First LONG-PROBE is done after 10 minutes (modulo equals 31; PROBE_ITER starts with 1).
+      EVENT="LONG-PROBE"
+    fi
+    ENFORCE_LONG_PROBE=n
   fi
 
   CONFIG="$(cat "${CONFIG_PATH}" 2>/dev/null)"
-  if [ "$CONFIG_CHANGE" = "y" ]; then
+  if [ "$EVENT" = "CONFIG-CHANGE" ]; then
     if [ "$LAST_CONFIG" = "$CONFIG" ]; then
       # spurious notification, ignore
       continue
@@ -463,12 +706,25 @@ event_stream | while read -r EVENT; do
   unset LOC_TRACKING_PROTO
   unset LOC_TRACKING_LL
   RADIO_SILENCE="$(parse_json_attr "$CONFIG" "\"radio-silence\"")"
+  VERBOSE="$(parse_json_attr "$CONFIG" "\"verbose\"")"
+
+  if [ "$VERBOSE" = "true" ]; then
+    log_debug Event: "$EVENT"
+  fi
+
+  # Avoid periodic events getting backlogged while this one completes.
+  suspend_periodic_events "probe"
+  suspend_periodic_events "metrics"
 
   # iterate over each configured cellular network
   while read -r NETWORK; do
     [ -z "$NETWORK" ] && continue
     unset CONFIG_ERROR
     unset PROBE_ERROR
+    # Quick probe can be suspended (until Standard probe is reached) when reconnection
+    # attempts are not helping to bring the connectivity back. We do not want to trigger
+    # modem reconnection so often if it is getting us nowhere.
+    unset SUSPEND_QUICKPROBE
 
     # parse network configuration
     LOGICAL_LABEL="$(parse_json_attr "$NETWORK" "\"logical-label\"")"
@@ -480,23 +736,57 @@ event_stream | while read -r EVENT; do
     PROBE_DISABLED="$(parse_json_attr "$PROBE" "disable")"
     PROBE_ADDR="$(parse_json_attr "$PROBE" "address")"
     PROXIES="$(parse_json_attr "$NETWORK" "proxies")"
+    SIM_SLOT="$(parse_json_attr "$NETWORK" "\"sim-slot\"")"
     APN="$(parse_json_attr "$NETWORK" "apn")"
     APN="${APN:-$DEFAULT_APN}"
+    AUTH_PROTO="$(parse_json_attr "$NETWORK" "\"auth-protocol\"")"
+    USERNAME="$(parse_json_attr "$NETWORK" "username")"
+    ENC_PASSWORD="$(parse_json_attr "$NETWORK" "\"encrypted-password\"")"
+    PREFERRED_PLMNS="$(parse_json_attr "$NETWORK" "\"preferred-plmns\"")"
+    PREFERRED_RATS="$(parse_json_attr "$NETWORK" "\"preferred-rats\"")"
+    FORBID_ROAMING="$(parse_json_attr "$NETWORK" "\"forbid-roaming\"")"
     LOC_TRACKING="$(parse_json_attr "$NETWORK" "\"location-tracking\"")"
 
     if ! lookup_modem "${IFACE}" "${USB_ADDR}" "${PCI_ADDR}" 2>/tmp/wwan.stderr; then
-      CONFIG_ERROR="$(cat /tmp/wwan.stderr)"
+      CONFIG_ERROR="$(join_lines_with_semicolon </tmp/wwan.stderr | escape_apostrophe)"
       NETWORK_STATUS="$(json_struct \
         "$(json_str_attr logical-label  "$LOGICAL_LABEL")" \
         "$(json_attr     physical-addrs "$ADDRS")" \
         "$(json_str_attr config-error   "$CONFIG_ERROR")")"
       STATUS="${STATUS}${NETWORK_STATUS}\n"
+      if ! grep -q "$CONFIG_ERROR" <"${STATUS_PATH}"; then
+        STATUS_OUTDATED=y
+      fi
       continue
     fi
-    MODEMS="${MODEMS}${CDC_DEV}\n"
-    echo "Processing managed modem (event: $EVENT): $CDC_DEV"
 
-    if switch_to_preferred_proto; then
+    MODEMS="${MODEMS}${CDC_DEV}\n"
+    if [ "$VERBOSE" = "true" ]; then
+      log_debug "Processing managed modem (event: $EVENT): $CDC_DEV"
+    fi
+
+    # Check responsiveness of the control-plane.
+    if ! "${PROTOCOL}_is_modem_responsive" 2>/dev/null; then
+      CONFIG_ERROR="Modem $LOGICAL_LABEL is not responsive"
+      log_debug "$CONFIG_ERROR"
+      NETWORK_STATUS="$(json_struct \
+        "$(json_str_attr logical-label  "$LOGICAL_LABEL")" \
+        "$(json_attr     physical-addrs "$ADDRS")" \
+        "$(json_str_attr config-error   "$CONFIG_ERROR")")"
+      STATUS="${STATUS}${NETWORK_STATUS}\n"
+      if [ "$(get_connection_time)" != "0" ]; then
+        bringdown_iface
+        STATUS_OUTDATED=y
+      fi
+      if [ "$EVENT" != "QUICK-PROBE" ] && [ "$EVENT" != "METRICS" ]; then
+        reset_modem
+        # Do not wait for reset to complete, return back to this modem later
+        # (e.g. in the next probing event).
+      fi
+      continue
+    fi
+
+    if switch_to_preferred_proto 2>/dev/null; then
       # Modem is being restarted, return back to it later.
       continue
     fi
@@ -506,7 +796,8 @@ event_stream | while read -r EVENT; do
     ADDRS="$(json_struct \
       "$(json_str_attr interface "$IFACE")" \
       "$(json_str_attr usb       "$USB_ADDR")" \
-      "$(json_str_attr pci       "$PCI_ADDR")")"
+      "$(json_str_attr pci       "$PCI_ADDR")" \
+      "$(json_str_attr dev       "$CDC_DEV")")"
 
     if [ "$EVENT" = "METRICS" ]; then
       collect_network_metrics 2>/dev/null
@@ -519,38 +810,93 @@ event_stream | while read -r EVENT; do
       LOC_TRACKING_LL="$LOGICAL_LABEL"
     fi
 
+    if [ "$EVENT" = "QUICK-PROBE" ] && is_quickprobe_suspended; then
+      if sim_card_status_changed; then
+        log_debug "[$CDC_DEV] Quick-probe is suspended but SIM card status changed"
+      else
+        [ "$VERBOSE" = "true" ] && log_debug "[$CDC_DEV] Quick-probe is suspended"
+        continue
+      fi
+    fi
+
     # reflect updated config or just probe the current status
     if [ "$RADIO_SILENCE" != "true" ]; then
-      if [ "$CONFIG_CHANGE" = "y" ] || ! check_connectivity; then
-        echo "[$CDC_DEV] Restarting connection (APN=${APN}, interface=${IFACE})"
+      DP_STUCK="n"
+      if [ "$EVENT" = "CONFIG-CHANGE" ] || ! check_connectivity "$EVENT"; then
+        if [ "$(get_connection_time)" != "0" ]; then
+          bringdown_iface
+          # Connectivity just stopped working or config changed.
+          # Ensure that status.json is updated during this event or by the next probe.
+          STATUS_OUTDATED=y
+        fi
+        if [ "$DP_STUCK" = "y" ]; then
+            if [ "$EVENT" != "QUICK-PROBE" ]; then
+              # Reset modem to recover
+              bringdown_iface
+              reset_modem
+            fi
+            NETWORK_STATUS="$(json_struct \
+                    "$(json_str_attr logical-label  "$LOGICAL_LABEL")" \
+                    "$(json_attr     physical-addrs "$ADDRS")" \
+                    "$(json_str_attr probe-error    "$PROBE_ERROR")")"
+            STATUS="${STATUS}${NETWORK_STATUS}\n"
+            continue
+        fi
+        if [ -n "$USERNAME" ]; then
+          log_debug "[$CDC_DEV] Restarting connection (NETWORK=${LOGICAL_LABEL}, APN=${APN}, " \
+               "username=${USERNAME}, auth-proto=${AUTH_PROTO})"
+          # Try to decrypt user password.
+          if ! PASSWORD="$(decryptpasswd "$ENC_PASSWORD" 2>/tmp/wwan.stderr)"; then
+            CONFIG_ERROR="$(join_lines_with_semicolon </tmp/wwan.stderr | escape_apostrophe)"
+            NETWORK_STATUS="$(json_struct \
+                    "$(json_str_attr logical-label  "$LOGICAL_LABEL")" \
+                    "$(json_attr     physical-addrs "$ADDRS")" \
+                    "$(json_str_attr config-error   "$CONFIG_ERROR")")"
+            STATUS="${STATUS}${NETWORK_STATUS}\n"
+            continue
+          fi
+        else
+          log_debug "[$CDC_DEV] Restarting connection (NETWORK=${LOGICAL_LABEL}, APN=${APN})"
+        fi
         {
-          bringdown_iface                 &&\
-          "${PROTOCOL}_stop_network"      &&\
-          "${PROTOCOL}_toggle_rf" on      &&\
-          "${PROTOCOL}_wait_for_sim"      &&\
-          "${PROTOCOL}_wait_for_register" &&\
-          "${PROTOCOL}_start_network"     &&\
-          "${PROTOCOL}_wait_for_wds"      &&\
-          "${PROTOCOL}_wait_for_settings" &&\
-          bringup_iface                   &&\
-          echo "[$CDC_DEV] Connection successfully restarted"
+          bringdown_iface                  &&\
+          "${PROTOCOL}_stop_network"       &&\
+          "${PROTOCOL}_toggle_rf" on       &&\
+          "${PROTOCOL}_wait_for_sim"       &&\
+          "${PROTOCOL}_wait_for_register"  &&\
+          "${PROTOCOL}_start_network"      &&\
+          "${PROTOCOL}_wait_for_wds"       &&\
+          "${PROTOCOL}_wait_for_ip_config" &&\
+          bringup_iface                    &&\
+          STATUS_OUTDATED=y                &&\
+          log_debug "[$CDC_DEV] Connection successfully restarted (NETWORK=${LOGICAL_LABEL})"
         } 2>/tmp/wwan.stderr
         RV=$?
         if [ $RV -ne 0 ]; then
-          CONFIG_ERROR="$(sort -u < /tmp/wwan.stderr)"
+          CONFIG_ERROR="$(sort -u < /tmp/wwan.stderr | join_lines_with_semicolon | escape_apostrophe)"
           CONFIG_ERROR="${CONFIG_ERROR:-(Re)Connection attempt failed with rv=$RV}"
+          # Avoid frequent reconnection attempts by disabling quick probe until Standard
+          # or Long probe fixes the current connection problem.
+          # Suspend is bypassed only if we detect change in the SIM card status
+          # (e.g. SIM card was inserted, replaced, etc.).
+          SUSPEND_QUICKPROBE="true"
         fi
         # retry probe to update PROBE_ERROR
-        sleep 3
-        probe_connectivity
+        if [ "$EVENT" != "QUICK-PROBE" ]; then
+          sleep 3
+          if ! check_connectivity "$EVENT"; then
+            SUSPEND_QUICKPROBE="true"
+          fi
+        fi
       fi
     else # Radio-silence is ON
       if [ "$("${PROTOCOL}_get_op_mode")" != "radio-off" ]; then
-        echo "[$CDC_DEV] Trying to disable radio (APN=${APN}, interface=${IFACE})"
+        log_debug "[$CDC_DEV] Trying to disable radio (network=${LOGICAL_LABEL})"
+        STATUS_OUTDATED=y
         if ! "${PROTOCOL}_toggle_rf" off 2>/tmp/wwan.stderr; then
-          CONFIG_ERROR="$(cat /tmp/wwan.stderr)"
+          CONFIG_ERROR="$(join_lines_with_semicolon </tmp/wwan.stderr | escape_apostrophe)"
         else
-          if ! wait_for radio-off "${PROTOCOL}_get_op_mode"; then
+          if ! wait_for 3 radio-off "${PROTOCOL}_get_op_mode"; then
             CONFIG_ERROR="Timeout waiting for radio to turn off"
           else
             bringdown_iface
@@ -559,13 +905,15 @@ event_stream | while read -r EVENT; do
       fi
     fi
 
-    collect_network_status "$CONFIG_CHANGE"
+    if [ "$EVENT" != "QUICK-PROBE" ]; then
+      collect_network_status "$EVENT"
+    fi
   done <<__EOT__
   $(echo "$CONFIG" | jq -c '.networks[]' 2>/dev/null)
 __EOT__
 
   # Start/stop location tracking.
-  if [ "$CONFIG_CHANGE" = "y" ]; then
+  if [ "$EVENT" = "CONFIG-CHANGE" ]; then
     if [ -n "$LOC_TRACKING_DEV" ]; then
       if [ -z "$LOC_TRACKER" ]; then
         location_tracking "${LOC_TRACKING_LL}" "${LOC_TRACKING_DEV}"\
@@ -575,7 +923,7 @@ __EOT__
     else
       if [ -n "$LOC_TRACKER" ]; then
         kill_process_tree $LOC_TRACKER >/dev/null 2>&1
-        echo "Location tracking was stopped (parent process: $LOC_TRACKER)"
+        log_debug "Location tracking was stopped (parent process: $LOC_TRACKER)"
         unset LOC_TRACKER
       fi
     fi
@@ -586,6 +934,7 @@ __EOT__
     unset CONFIG_ERROR
     unset PROBE_ERROR
     unset LOGICAL_LABEL # unmanaged modems do not have logical name
+    unset SUSPEND_QUICKPROBE
 
     PROTOCOL="$(sys_get_modem_protocol "$DEV")" || continue
     CDC_DEV="$(basename "${DEV}")"
@@ -593,35 +942,53 @@ __EOT__
       # this modem has configuration and was already processed
       continue
     fi
-    echo "Processing unmanaged modem (event: $EVENT): $CDC_DEV"
+    if [ "$VERBOSE" = "true" ]; then
+      log_debug "Processing unmanaged modem (event: $EVENT): $CDC_DEV"
+    fi
     IFACE=$(sys_get_modem_interface "$DEV")
     USB_ADDR=$(sys_get_modem_usbaddr "$DEV")
     PCI_ADDR=$(sys_get_modem_pciaddr "$DEV")
     ADDRS="$(json_struct \
         "$(json_str_attr interface "$IFACE")" \
         "$(json_str_attr usb       "$USB_ADDR")" \
-        "$(json_str_attr pci       "$PCI_ADDR")")"
+        "$(json_str_attr pci       "$PCI_ADDR")" \
+        "$(json_str_attr dev       "$CDC_DEV")")"
 
     if [ "$EVENT" = "METRICS" ]; then
       collect_network_metrics 2>/dev/null
       continue
     fi
 
+    if [ "$(get_connection_time)" != "0" ]; then
+      bringdown_iface
+      STATUS_OUTDATED=y
+    fi
+
     if [ "$("${PROTOCOL}_get_op_mode")" != "radio-off" ]; then
-      echo "[$CDC_DEV] Trying to disable radio (interface=${IFACE})"
+      log_debug "[$CDC_DEV] Trying to disable radio"
+      STATUS_OUTDATED=y
       if ! "${PROTOCOL}_toggle_rf" off 2>/tmp/wwan.stderr; then
-        CONFIG_ERROR="$(cat /tmp/wwan.stderr)"
+        CONFIG_ERROR="$(join_lines_with_semicolon </tmp/wwan.stderr | escape_apostrophe)"
       else
-        if ! wait_for radio-off "${PROTOCOL}_get_op_mode"; then
+        if ! wait_for 3 radio-off "${PROTOCOL}_get_op_mode"; then
           CONFIG_ERROR="Timeout waiting for radio to turn off"
-        else
-          bringdown_iface
         fi
       fi
     fi
 
-    collect_network_status "$CONFIG_CHANGE"
+    if [ "$EVENT" != "QUICK-PROBE" ]; then
+      collect_network_status "$EVENT"
+    fi
   done
+
+  # No blocking operations below this point.
+  release_periodic_events "probe"
+  release_periodic_events "metrics"
+
+  # Do not update status.json during a quick probe, continue with the next event..
+  if [ "$EVENT" = "QUICK-PROBE" ]; then
+    continue
+  fi
 
   if [ "$EVENT" = "METRICS" ]; then
     json_struct \
@@ -636,5 +1003,6 @@ __EOT__
         | jq > "${STATUS_PATH}.tmp"
     # update status atomically
     mv "${STATUS_PATH}.tmp" "${STATUS_PATH}"
+    STATUS_OUTDATED=n
   fi
 done
