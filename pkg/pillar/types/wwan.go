@@ -37,7 +37,6 @@ func (wc WwanConfig) Equal(wc2 WwanConfig) bool {
 // WwanNetworkConfig contains configuration for a single cellular network.
 // In case there are multiple SIM cards/slots in the modem, WwanNetworkConfig
 // contains config only for the activated one.
-// TODO: Add username + password (will be done in the next PR)
 type WwanNetworkConfig struct {
 	// Logical label in PhysicalIO.
 	LogicalLabel string        `json:"logical-label"`
@@ -51,6 +50,17 @@ type WwanNetworkConfig struct {
 	// Access Point Network to connect into.
 	// By default, it is "internet".
 	APN string `json:"apn"`
+	// Some cellular networks require authentication.
+	AuthProtocol WwanAuthProtocol `json:"auth-protocol"`
+	Username     string           `json:"username,omitempty"`
+	// User password (if provided) is encrypted using AES-256-GCM with key derived
+	// by the PBKDF2 method, taking kernel-generated /proc/sys/kernel/random/boot_id
+	// as the input.
+	// Note that even though the config with the password is passed from NIM to the wwan
+	// microservice using the *in-memory only* /run filesystem, we still encrypt the password
+	// to avoid accidental exposure when the content of /run/wwan is dumped as part
+	// of a customer issue report.
+	EncryptedPassword string `json:"encrypted-password,omitempty"`
 	// The set of cellular network operators that modem should preferably try to register
 	// and connect into.
 	// Network operator should be referenced by PLMN (Public Land Mobile Network) code,
@@ -125,6 +135,11 @@ func (wnc WwanNetworkConfig) Equal(wnc2 WwanNetworkConfig) bool {
 	}
 	if wnc.SIMSlot != wnc2.SIMSlot ||
 		wnc.APN != wnc2.APN {
+		return false
+	}
+	if wnc.AuthProtocol != wnc2.AuthProtocol ||
+		wnc.Username != wnc2.Username ||
+		wnc.EncryptedPassword != wnc2.EncryptedPassword {
 		return false
 	}
 	if !generics.EqualLists(wnc.PreferredPLMNs, wnc2.PreferredPLMNs) ||
