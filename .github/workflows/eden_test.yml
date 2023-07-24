@@ -1,5 +1,5 @@
 ---
-name: Call workflow from lf-edge/eden
+name: Test from lf-edge/eden
 on:
   workflow_dispatch:
   push:
@@ -16,6 +16,6 @@ on:
 
 jobs:
   call_test_wf_from_eden:
-    uses: lf-edge/eden/.github/workflows/test.yml@master
+    uses: yash-zededa/eden/.github/workflows/test.yml@master
     with:
       eve_tag: "evebuild/danger:pr${{ github.event.pull_request.number  }}"
