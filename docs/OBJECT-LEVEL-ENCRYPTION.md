@@ -2,7 +2,7 @@
 
 ## Motivation
 
-Independent of the use of TLS in the [API](../api/APIv2.md) and [object signing](../api/OBJECT-SIGNING.md) there are some secrets in the device configuration API (such as datastore credentials, WiFi credentials, and cloud-init user data) which should have minimal exposure by
+Independent of the use of TLS in the [API](https://github.com/lf-edge/eve-api/tree/main/APIv2.md) and [object signing](https://github.com/lf-edge/eve-api/tree/main/OBJECT-SIGNING.md) there are some secrets in the device configuration API (such as datastore credentials, WiFi credentials, and cloud-init user data) which should have minimal exposure by
 
 1. keeping them in some vault inside a controller implementation
 2. not exposing them to any microservices in a controller except for the party which decrypts from the vault and re-encrypts for a particular device
@@ -32,7 +32,7 @@ The ECC certificates used in the exchange are:
 
 1. A certificate that the controller deploys for this purpose. This needs to be signed by the root CA that the devices trust (stored in /config/root-certificate.pem) via zero or more intermediaries. The controller can generate new certificates at any time which provides forward secrecy.
 
-The controller publishes its certificate using [ZControllerCert](../api/APIv2.md#controller-certificates) and the device publishes its certificate using [ZEveCert](../api/APIv2.md#attestation), as described in the [API](../api/APIv2.md#messages) specification.
+The controller publishes its certificate using [ZControllerCert](https://github.com/lf-edge/eve-api/tree/main/APIv2.md#controller-certificates) and the device publishes its certificate using [ZEveCert](https://github.com/lf-edge/eve-api/tree/main/APIv2.md#attestation), as described in the [API](https://github.com/lf-edge/eve-api/tree/main/APIv2.md#messages) specification.
 
 ## Sender authentication
 
@@ -46,15 +46,15 @@ In addition to the above mechanisms for the controller and device to send their 
 
 ### Cipher Contexts
 
-The [Cipher Context](../api/proto/config/acipherinfo.proto#L26) is a construct used for defining hash algorithms, key exchange schemes like ECDH, etc., encryption schemes like AES256, etc., and certificate hashes used for the encryption by the controller.
+The [Cipher Context](https://github.com/lf-edge/eve-api/tree/main/proto/config/acipherinfo.proto#L26) is a construct used for defining hash algorithms, key exchange schemes like ECDH, etc., encryption schemes like AES256, etc., and certificate hashes used for the encryption by the controller.
 
 ### Cipher Block
 
-The [Cipher block](../api/proto/config/acipherinfo.proto#L47) is a construct which has a cipher context id, [IV](https://en.wikipedia.org/wiki/Initialization_vector), encrypted data and hash of clear text (used for verification after decryption). Cipher block is a part of the object configuration which has encrypted data.
+The [Cipher block](https://github.com/lf-edge/eve-api/tree/main/proto/config/acipherinfo.proto#L47) is a construct which has a cipher context id, [IV](https://en.wikipedia.org/wiki/Initialization_vector), encrypted data and hash of clear text (used for verification after decryption). Cipher block is a part of the object configuration which has encrypted data.
 
 ### Encryption Block
 
-The [Encryption block](../api/proto/config/acipherinfo.proto#L66) is a construct used for encryption by the controller. The controller fills the encryption block with sensitive information and then encrypts it and provides encrypted data in the cipher block.
+The [Encryption block](https://github.com/lf-edge/eve-api/tree/main/proto/config/acipherinfo.proto#L66) is a construct used for encryption by the controller. The controller fills the encryption block with sensitive information and then encrypts it and provides encrypted data in the cipher block.
 
 ## EVE packages
 

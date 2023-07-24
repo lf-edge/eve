@@ -7,7 +7,7 @@ import (
 	"flag"
 	"os"
 
-	zauth "github.com/lf-edge/eve/api/go/auth"
+	zauth "github.com/lf-edge/eve-api/go/auth"
 	"github.com/lf-edge/eve/pkg/pillar/agentbase"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"

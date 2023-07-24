@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"net"
 
-	dg "github.com/lf-edge/eve/libs/depgraph"
-	"github.com/lf-edge/eve/libs/reconciler"
+	dg "github.com/lf-edge/eve-libs/depgraph"
+	"github.com/lf-edge/eve-libs/reconciler"
 	"github.com/lf-edge/eve/pkg/pillar/devicenetwork"
 	"github.com/lf-edge/eve/pkg/pillar/iptables"
 	"github.com/lf-edge/eve/pkg/pillar/netmonitor"

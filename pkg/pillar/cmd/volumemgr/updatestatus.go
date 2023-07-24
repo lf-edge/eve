@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	zconfig "github.com/lf-edge/eve/api/go/config"
+	zconfig "github.com/lf-edge/eve-api/go/config"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
 	"github.com/lf-edge/eve/pkg/pillar/volumehandlers"

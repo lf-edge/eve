@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	zconfig "github.com/lf-edge/eve/api/go/config"
-	"github.com/lf-edge/eve/api/go/profile"
+	zconfig "github.com/lf-edge/eve-api/go/config"
+	"github.com/lf-edge/eve-api/go/profile"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"

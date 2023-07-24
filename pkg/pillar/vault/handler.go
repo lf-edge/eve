@@ -4,7 +4,7 @@
 package vault
 
 import (
-	"github.com/lf-edge/eve/api/go/info"
+	"github.com/lf-edge/eve-api/go/info"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 )

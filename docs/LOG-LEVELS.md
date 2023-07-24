@@ -1,6 +1,6 @@
 # EVE LOG LEVELS
 
-The various services in EVE use logging with levels and a specified source which are all sent to the [log API](../api/proto/logs/log.proto).
+The various services in EVE use logging with levels and a specified source which are all sent to the [log API](https://github.com/lf-edge/eve-api/tree/main/proto/logs/log.proto).
 
 There are settings specified in [config properties](./CONFIG-PROPERTIES.md) to set the minimum log level which is reported over the API. This currently defaults to the info level.
 

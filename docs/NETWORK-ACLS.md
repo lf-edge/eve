@@ -8,12 +8,12 @@ for common use-cases.
 ## Configuration Model
 
 In EVE, ACLs are configured separately for every ECO interface.
-Protobuf-modeled configuration model of ACLs can be found in the [fw.proto file](../api/proto/config/fw.proto).
+Protobuf-modeled configuration model of ACLs can be found in the [fw.proto file](https://github.com/lf-edge/eve-api/tree/main/proto/config/fw.proto).
 To control the network traffic between a given ECO and other endpoints within the scope of a given network instance,
-add one or more ACEs under the `acls` field of [NetworkAdapter](../api/proto/config/netconfig.proto).
+add one or more ACEs under the `acls` field of [NetworkAdapter](https://github.com/lf-edge/eve-api/tree/main/proto/config/netconfig.proto).
 
 Every ACE should have a unique non-zero integer ID assigned. Please note that ACE ID should not exceed 24bits.
-ACE ID is set in [flowlogs](../api/proto/flowlog/flowlog.proto) as `aclId` for every flow to show which ACE was applied.
+ACE ID is set in [flowlogs](https://github.com/lf-edge/eve-api/tree/main/proto/flowlog/flowlog.proto) as `aclId` for every flow to show which ACE was applied.
 ACE `ID=0` is reserved for a default reject-all rule that implicitly exists at the end of every ACL (even flows whose
 packets are rejected are logged).
 
@@ -131,7 +131,7 @@ Here is a summary of all limitations of the current ACL implementation:
 ## Examples
 
 This section contains a set of simple ACL configuration examples covering the most common ACL use-cases.
-These configuration snippets show only the content of the `acls` field of [NetworkAdapter](../api/proto/config/netconfig.proto).
+These configuration snippets show only the content of the `acls` field of [NetworkAdapter](https://github.com/lf-edge/eve-api/tree/main/proto/config/netconfig.proto).
 The rest of the edge device config is omitted.
 
 ### Allow all IPv4 traffic

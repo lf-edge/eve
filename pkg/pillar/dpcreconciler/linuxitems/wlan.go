@@ -10,7 +10,7 @@ import (
 	"reflect"
 	"strings"
 
-	"github.com/lf-edge/eve/libs/depgraph"
+	"github.com/lf-edge/eve-libs/depgraph"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/devicenetwork"
 	"github.com/lf-edge/eve/pkg/pillar/dpcreconciler/genericitems"

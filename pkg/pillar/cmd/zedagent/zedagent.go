@@ -34,9 +34,9 @@ import (
 
 	"github.com/eriknordmark/ipinfo"
 	"github.com/google/go-cmp/cmp"
-	"github.com/lf-edge/eve/api/go/attest"
-	"github.com/lf-edge/eve/api/go/flowlog"
-	"github.com/lf-edge/eve/api/go/info"
+	"github.com/lf-edge/eve-api/go/attest"
+	"github.com/lf-edge/eve-api/go/flowlog"
+	"github.com/lf-edge/eve-api/go/info"
 	"github.com/lf-edge/eve/pkg/pillar/agentbase"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/base"

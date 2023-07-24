@@ -78,7 +78,7 @@ On systems where TPM is available, the idea is to change TPM authentication poli
 
 ### EVE trusting side-channel configuration
 
-The use of [object signing](../api/OBJECT-SIGNING.md) is designed to enable delivering device configuration using side channels such as USB sticks. But the details of timestamp checks to avoid replay attacks has yet to be designed and implemented. Those aspects are [TBD](https://github.com/lf-edge/eve/issues/233)
+The use of [object signing](https://github.com/lf-edge/eve-api/tree/main/OBJECT-SIGNING.md) is designed to enable delivering device configuration using side channels such as USB sticks. But the details of timestamp checks to avoid replay attacks has yet to be designed and implemented. Those aspects are [TBD](https://github.com/lf-edge/eve/issues/233)
 
 ### Identity of EVE's instance
 

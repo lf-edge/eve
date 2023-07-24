@@ -7,7 +7,7 @@ import (
 	"bytes"
 	"crypto/sha256"
 
-	zconfig "github.com/lf-edge/eve/api/go/config"
+	zconfig "github.com/lf-edge/eve-api/go/config"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 )
 

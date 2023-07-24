@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"strings"
 
-	dg "github.com/lf-edge/eve/libs/depgraph"
+	dg "github.com/lf-edge/eve-libs/depgraph"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	generic "github.com/lf-edge/eve/pkg/pillar/nireconciler/genericitems"
 	"github.com/lf-edge/eve/pkg/pillar/utils"

@@ -104,8 +104,6 @@ endif
 # ROOTFS_VERSION used to construct the installer directory
 ROOTFS_VERSION:=$(if $(findstring snapshot,$(REPO_TAG)),$(EVE_SNAPSHOT_VERSION)-$(REPO_BRANCH)-$(REPO_SHA)$(REPO_DIRTY_TAG)$(DEV_TAG),$(REPO_TAG))
 
-APIDIRS = $(shell find ./api/* -maxdepth 1 -type d -exec basename {} \;)
-
 HOSTARCH:=$(subst aarch64,arm64,$(subst x86_64,amd64,$(shell uname -m)))
 # by default, take the host architecture as the target architecture, but can override with `make ZARCH=foo`
 #    assuming that the toolchain supports it, of course...
@@ -844,24 +842,7 @@ cache-export-docker-load-all: $(LINUXKIT) $(addsuffix -cache-export-docker-load,
 proto-vendor:
 	@$(DOCKER_GO) "cd pkg/pillar ; go mod vendor" $(CURDIR) proto
 
-proto-diagram: $(GOBUILDER)
-	@$(DOCKER_GO) "/usr/local/bin/protodot -inc /usr/include -src ./api/proto/config/devconfig.proto -output devconfig && cp ~/protodot/generated/devconfig.* ./api/images && dot ./api/images/devconfig.dot -Tpng -o ./api/images/devconfig.png && echo generated ./api/images/devconfig.*" $(CURDIR) api
-
 .PHONY: proto-api-%
-
-proto: $(GOBUILDER) api/go api/python proto-diagram
-	@echo Done building protobuf, you may want to vendor it into your packages, e.g. `pkg/pillar`.
-	@echo See ./api/go/README.md for more information.
-
-api/go: PROTOC_OUT_OPTS=paths=source_relative:
-api/go: proto-api-go
-
-api/python: proto-api-python
-
-proto-api-%: $(GOBUILDER)
-	rm -rf api/$*/*/; mkdir -p api/$* # building $@
-	@$(DOCKER_GO) "protoc -I./proto --$(*)_out=$(PROTOC_OUT_OPTS)./$* \
-		proto/*/*.proto" $(CURDIR)/api api
 
 check-patch-%:
 	@if ! echo $* | grep -Eq '^[0-9]+\.[0-9]+$$'; then echo "ERROR: must be on a release branch X.Y"; exit 1; fi

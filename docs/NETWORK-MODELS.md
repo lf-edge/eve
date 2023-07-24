@@ -32,7 +32,7 @@ From the perspective of EVE on a single device, which is its entire scope of res
 * what the network type is: L2 or L3 (see below)
 * the endpoints that are to be connected to that network (see below)
 
-EVE receives these as part of its `EdgeDeviceConfig`, returned when querying the [/config API Controller Endpoint](../api/README.md#Configuration). EVE then should either create a network that matches the specifications and connect endpoints, or update one if it already exists.
+EVE receives these as part of its `EdgeDeviceConfig`, returned when querying the [/config API Controller Endpoint](https://github.com/lf-edge/eve-api/tree/main/README.md#Configuration). EVE then should either create a network that matches the specifications and connect endpoints, or update one if it already exists.
 
 ### Network Type
 

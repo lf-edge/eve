@@ -12,7 +12,7 @@ import (
 	"fmt"
 	"reflect"
 
-	zconfig "github.com/lf-edge/eve/api/go/config"
+	zconfig "github.com/lf-edge/eve-api/go/config"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"google.golang.org/protobuf/proto"
 )

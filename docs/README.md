@@ -121,8 +121,8 @@ are  always initiated by EVE, never by the Controller):
 A good way to think about this is that Controller is to EVE what Kubernetes is
 to Docker Engine.
 
-An API between EVE and its Controller is considered a [public API of Project EVE](../api).
-Refer to [API documentation](../api/APIv2.md) for detailed information on API
+An API between EVE and its Controller is considered a [public API of Project EVE](https://github.com/lf-edge/eve-api/).
+Refer to [API documentation](https://github.com/lf-edge/eve-api/tree/main/APIv2.md) for detailed information on API
 end points and message format.
 
 EVE design makes the trust between an EVE instance and its controller extremely
@@ -145,7 +145,7 @@ URL for the Controller and its Root x509 certificate are made available during
 
 ## Runtime Configuration
 
-The heart of EVE API is a self-contained [configuration object](../api/APIv2.md#configuration)
+The heart of EVE API is a self-contained [configuration object](https://github.com/lf-edge/eve-api/tree/main/APIv2.md#configuration)
 that each instance of EVE receives from its controller. This object is
 serialized into a protobuf message but it can also be represented as a JSON.
 It is self-contained in a sense that a running EVE instance doesn't need to

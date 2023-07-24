@@ -11,8 +11,8 @@ import (
 	"path/filepath"
 	"time"
 
-	dg "github.com/lf-edge/eve/libs/depgraph"
-	"github.com/lf-edge/eve/libs/reconciler"
+	dg "github.com/lf-edge/eve-libs/depgraph"
+	"github.com/lf-edge/eve-libs/reconciler"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	uuid "github.com/satori/go.uuid"
 )

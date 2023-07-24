@@ -24,7 +24,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/lf-edge/eve/libs/nettrace"
+	"github.com/lf-edge/eve-libs/nettrace"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/netdump"
 	"github.com/lf-edge/eve/pkg/pillar/types"

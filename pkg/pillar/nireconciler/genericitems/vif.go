@@ -6,7 +6,7 @@ package genericitems
 import (
 	"fmt"
 
-	dg "github.com/lf-edge/eve/libs/depgraph"
+	dg "github.com/lf-edge/eve-libs/depgraph"
 )
 
 // VIF : virtual interface connecting an application to a network instance.

@@ -16,9 +16,9 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/vishvananda/netlink"
 
-	"github.com/lf-edge/eve/api/go/evecommon"
-	dg "github.com/lf-edge/eve/libs/depgraph"
-	"github.com/lf-edge/eve/libs/reconciler"
+	"github.com/lf-edge/eve-api/go/evecommon"
+	dg "github.com/lf-edge/eve-libs/depgraph"
+	"github.com/lf-edge/eve-libs/reconciler"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	dpcrec "github.com/lf-edge/eve/pkg/pillar/dpcreconciler"
 	generic "github.com/lf-edge/eve/pkg/pillar/dpcreconciler/genericitems"

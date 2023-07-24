@@ -18,7 +18,7 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
-	zconfig "github.com/lf-edge/eve/api/go/config"
+	zconfig "github.com/lf-edge/eve-api/go/config"
 	"github.com/lf-edge/eve/pkg/pillar/objtonum"
 	"github.com/lf-edge/eve/pkg/pillar/sriov"
 	"github.com/lf-edge/eve/pkg/pillar/types"

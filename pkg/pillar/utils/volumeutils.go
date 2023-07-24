@@ -8,7 +8,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/lf-edge/eve/api/go/config"
+	"github.com/lf-edge/eve-api/go/config"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/diskmetrics"
 )

@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"net"
 
-	"github.com/lf-edge/eve/libs/depgraph"
+	"github.com/lf-edge/eve-libs/depgraph"
 )
 
 // AdapterAddrs : allocated network adapter IP addresses (statically or through DHCP).

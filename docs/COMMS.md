@@ -1,7 +1,7 @@
 # Communications
 
 This document describes the components in EVE that are responsible for
-communications between an EVE instance and a Controller. Read about the API for Device to Controller Communications [here](https://github.com/lf-edge/eve/blob/master/api/APIv2.md)
+communications between an EVE instance and a Controller. Read about the API for Device to Controller Communications [here](https://github.com/lf-edge/eve-api/tree/main/APIv2.md)
 
 All of these are components of [pkg/pillar](../pkg/pillar/), which is the set
 of process, commands and services responsible for managing an EVE device.
