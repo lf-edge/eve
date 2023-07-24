@@ -21,7 +21,7 @@ import (
 
 	"github.com/eriknordmark/ipinfo"
 	"github.com/google/go-cmp/cmp"
-	eveuuid "github.com/lf-edge/eve/api/go/eveuuid"
+	eveuuid "github.com/lf-edge/eve-api/go/eveuuid"
 	"github.com/lf-edge/eve/pkg/pillar/agentbase"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/base"

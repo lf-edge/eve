@@ -3,12 +3,7 @@
 # be requested for review when someone opens a pull request.
 
 *                             @eriknordmark
-/api/                         @deitch
 /build-tools/                 @deitch
-/libs/depgraph/               @milan-zededa
-/libs/nettrace/               @milan-zededa
-/libs/reconciler/             @milan-zededa
-/libs/zedUpload/              @christoph-zededa @deitch @rouming
 /pkg/alpine/                  @christoph-zededa
 /pkg/apparmor/                @shjala
 /pkg/bsp-imx/                 @rene

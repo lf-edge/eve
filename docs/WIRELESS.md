@@ -184,9 +184,9 @@ configuration or to do anything else that may negatively affect applications run
 For safety reasons and due to uncertain accessibility to the controller, it is typically required
 that the radio silence mode is switched ON and OFF locally and not managed remotely.
 
-With these requirements in mind, EVE was designed to use the [Local profile server](../api/PROFILE.md)
+With these requirements in mind, EVE was designed to use the [Local profile server](https://github.com/lf-edge/eve-api/tree/main/PROFILE.md)
 (a designated application overriding controller for a small subset of the config) with a separate
-[Radio endpoint](../api/PROFILE.md#Radio), to periodically obtain the required state of the radio
+[Radio endpoint](https://github.com/lf-edge/eve-api/tree/main/PROFILE.md#Radio), to periodically obtain the required state of the radio
 silence mode and to publish the actual state. Intentionally, it is not possible to enabled or disable
 radio silence remotely through the controller. Still, the controller is at least used to deploy
 the application, mark it as a Local profile server and to specify string token that the application
@@ -201,7 +201,7 @@ and disable the rest. In other words, a temporary radio silence is disabled by d
 unused devices are (permanently) silenced.
 
 Once a Local profile server has been deployed and the application transitioned to the "running"
-state, EVE will start periodically making a POST request to the [Radio endpoint](../api/PROFILE.md#Radio).
+state, EVE will start periodically making a POST request to the [Radio endpoint](https://github.com/lf-edge/eve-api/tree/main/PROFILE.md#Radio).
 If this (optional) endpoint is not implemented, the default policy for radio transmission
 will remain in effect. If the endpoint is available, EVE will provide an update of the
 current state of wireless devices in the POST request body, formatted and marshalled using
@@ -214,7 +214,7 @@ If a response from the application contains no content (response code 204), EVE 
 that the intended radio silence state has not changed (initial intended state is a disabled
 radio silence).
 Application response with non-empty content (response code 200) is unmarshalled into
-[RadioConfig](../api/proto/profile/local_profile.proto) protobuf message. If the unmarshalling
+[RadioConfig](https://github.com/lf-edge/eve-api/tree/main/proto/profile/local_profile.proto) protobuf message. If the unmarshalling
 succeeded and the token matches the expected value configured through the controller,
 EVE will accept the new radio configuration. Currently, apart from the token, RadioConfig
 contains only a single boolean field which determines if the radio silence should be imposed
@@ -230,7 +230,7 @@ EVE will restart the periodic radio status updates and will POST the outcome of 
 back to the application via the radio endpoint.
 
 A formal definition for the syntax and the semantics of the radio endpoint can be found
-[here](../api/PROFILE.md#Radio)
+[here](https://github.com/lf-edge/eve-api/tree/main/PROFILE.md#Radio)
 
 #### Persistence
 

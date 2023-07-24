@@ -12,7 +12,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/lf-edge/eve/libs/zedUpload"
+	"github.com/lf-edge/eve-libs/zedUpload"
 	"github.com/lf-edge/eve/pkg/pillar/agentbase"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/cipher"

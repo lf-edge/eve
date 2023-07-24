@@ -10,8 +10,8 @@ import (
 	. "github.com/onsi/gomega"
 	"github.com/sirupsen/logrus"
 
-	zconfig "github.com/lf-edge/eve/api/go/config"
-	zcommon "github.com/lf-edge/eve/api/go/evecommon"
+	zconfig "github.com/lf-edge/eve-api/go/config"
+	zcommon "github.com/lf-edge/eve-api/go/evecommon"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/sriov"

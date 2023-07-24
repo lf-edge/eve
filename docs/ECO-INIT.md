@@ -148,6 +148,6 @@ to download, given the credentials and information necessary. This method should
 accept, as a parameter, the local path where it should deposit the artifact, and
 return an `error`.
 1. Add an entry for the type to the various `DsType*` constants and variables
-in the api protobufs under [storage.proto](../api/proto/config/storage.proto) and
+in the api protobufs under [storage.proto](https://github.com/lf-edge/eve-api/tree/main/proto/proto/config/storage.proto) and
 regenerate all of the API language imports.
 1. Add a `case` statement for your new download protocol to the [switch dsCtx.TransportMethod](../pkg/pillar/cmd/downloader/downloader.go#L1712).

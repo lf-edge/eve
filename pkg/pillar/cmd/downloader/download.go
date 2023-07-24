@@ -12,9 +12,9 @@ import (
 	"os"
 	"time"
 
-	"github.com/lf-edge/eve/libs/nettrace"
-	"github.com/lf-edge/eve/libs/zedUpload"
-	"github.com/lf-edge/eve/libs/zedUpload/types"
+	"github.com/lf-edge/eve-libs/nettrace"
+	"github.com/lf-edge/eve-libs/zedUpload"
+	"github.com/lf-edge/eve-libs/zedUpload/types"
 	"github.com/lf-edge/eve/pkg/pillar/netdump"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 )

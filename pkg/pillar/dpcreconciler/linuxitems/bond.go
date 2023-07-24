@@ -10,7 +10,7 @@ import (
 
 	"github.com/vishvananda/netlink"
 
-	"github.com/lf-edge/eve/libs/depgraph"
+	"github.com/lf-edge/eve-libs/depgraph"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/dpcreconciler/genericitems"
 	"github.com/lf-edge/eve/pkg/pillar/netmonitor"

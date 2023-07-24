@@ -12,8 +12,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/lf-edge/eve/libs/depgraph"
-	"github.com/lf-edge/eve/libs/reconciler"
+	"github.com/lf-edge/eve-libs/depgraph"
+	"github.com/lf-edge/eve-libs/reconciler"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/nireconciler/genericitems"
 	"github.com/lf-edge/eve/pkg/pillar/utils"

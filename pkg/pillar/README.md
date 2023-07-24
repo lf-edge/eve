@@ -2,7 +2,7 @@
 
 For information about EVE see <https://www.lfedge.org/projects/eve/>
 
-The onboarding of devices is done by `scripts/device-steps.sh`, and after onboarding that script proceeds to start the agents implementing the various microservices. That script runs on each boot. Once the agents are running they are operated from the controller using the API specified in <https://github.com/lf-edge/eve/api>
+The onboarding of devices is done by `scripts/device-steps.sh`, and after onboarding that script proceeds to start the agents implementing the various microservices. That script runs on each boot. Once the agents are running they are operated from the controller using the API specified in <https://github.com/lf-edge/eve-api>
 
 The agents are:
 
@@ -66,13 +66,13 @@ updated with `go mod vendor`.
 
 In addition, pillar depends upon [eve libraries from this repository](../../libs).
 These libraries are their own go module. They **must** be treated like any other external
-module, imported via a fully pathed import, e.g. `go get github.com/lf-edge/eve/libs@master`.
+module, imported via a fully pathed import, e.g. `go get github.com/lf-edge/eve-libs@master`.
 
 It is imperative **not** to use `replace` directives in `go.mod` to point to
 local paths, e.g.
 
 ```go
-replace github.com/lf-edge/eve/libs => ../../libs
+replace github.com/lf-edge/eve-libs => ../../libs
 ```
 
 These will break various dependency chains and make it difficult to track what was included

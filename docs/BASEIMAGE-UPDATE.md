@@ -8,9 +8,9 @@ The timer behavior can be controlled by some variables specified in [configurati
 
 ## API
 
-The API for the baseimage update consists of specifying the image(s) to download and one to run using [BaseOSConfig](../api/proto/config/baseosconfig.proto). If activate is set to false the image is downloaded and verified, and if/when activate it set to true the image is also applied by writing to the unused partition, rebooting, and testing the new image for 10 minutes.
+The API for the baseimage update consists of specifying the image(s) to download and one to run using [BaseOSConfig](https://github.com/lf-edge/eve-api/tree/main/proto/config/baseosconfig.proto). If activate is set to false the image is downloaded and verified, and if/when activate it set to true the image is also applied by writing to the unused partition, rebooting, and testing the new image for 10 minutes.
 
-The status of the current image (its version) and any in-transit download and update is reported to the controller using [ZInfoDevSW](../api/proto/info/info.proto). Some of the information in ZInfoDevSW is for debugging purposes such as the name of the partition label. The normal user-visible information showing the progression of the download and update is captured in these fields:
+The status of the current image (its version) and any in-transit download and update is reported to the controller using [ZInfoDevSW](https://github.com/lf-edge/eve-api/tree/main/proto/info/info.proto). Some of the information in ZInfoDevSW is for debugging purposes such as the name of the partition label. The normal user-visible information showing the progression of the download and update is captured in these fields:
 
 * userStatus, which is an enum with high-level values such as "Updating"
 * subStatus, which is an enum with more details, such as "update-testing"

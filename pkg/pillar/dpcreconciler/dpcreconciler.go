@@ -7,7 +7,7 @@ import (
 	"context"
 	"net"
 
-	"github.com/lf-edge/eve/libs/reconciler"
+	"github.com/lf-edge/eve-libs/reconciler"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 )
 

@@ -7,8 +7,8 @@ import (
 	"encoding/hex"
 
 	"github.com/google/go-cmp/cmp"
-	zconfig "github.com/lf-edge/eve/api/go/config"
-	zcommon "github.com/lf-edge/eve/api/go/evecommon"
+	zconfig "github.com/lf-edge/eve-api/go/config"
+	zcommon "github.com/lf-edge/eve-api/go/evecommon"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 )
 

@@ -8,7 +8,7 @@ import (
 	"os"
 	"testing"
 
-	zcommon "github.com/lf-edge/eve/api/go/evecommon"
+	zcommon "github.com/lf-edge/eve-api/go/evecommon"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
