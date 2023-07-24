@@ -1083,7 +1083,7 @@ func handleMetaDataServerChange(ctx *zedrouterContext, dnstatus *types.DeviceNet
 		if addr.String() == status.MetaDataServerIP {
 			continue
 		}
-		if (err != nil || (addr.String() == "" && status.MetaDataServerIP != "")) &&
+		if (err != nil || (isEmptyIP(addr) && status.MetaDataServerIP != "")) &&
 			status.Server4Running == true {
 			// Bridge had a valid IP and it is gone now
 			deleteServer4(ctx, status.MetaDataServerIP, status.BridgeName)
@@ -1102,7 +1102,7 @@ func handleMetaDataServerChange(ctx *zedrouterContext, dnstatus *types.DeviceNet
 				status.MetaDataServerIP, status.BridgeName)
 			status.Server4Running = false
 		}
-		if addr.String() != "" {
+		if !isEmptyIP(addr) {
 			// Start new meta-data server
 			status.MetaDataServerIP = addr.String()
 			err := createServer4(ctx, status.MetaDataServerIP, status.BridgeName)
