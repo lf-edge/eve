@@ -14,7 +14,7 @@ import (
 	"strconv"
 	"strings"
 
-	zconfig "github.com/lf-edge/eve/api/go/config"
+	zconfig "github.com/lf-edge/eve-api/go/config"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/volumehandlers"
 	"github.com/lf-edge/eve/pkg/pillar/zfs"

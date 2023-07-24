@@ -8,7 +8,7 @@ EVE is detecting and recovering from a multitude of faults such as
 - processes crashing (using the Linux watchdog daemon and pid files)
 - key goroutines in the pillar services getting stuck (using the Linux watchdog daemon and touch files)
 - the above failures during an update of the EVE image (when the resulting reboot results in a fallback to the previous image)
-- failure to reach the controller after a change to the systemAdapterList [config API](../api/proto/config/devconfig.proto) which results in a fallback to the old systemAdapterList
+- failure to reach the controller after a change to the systemAdapterList [config API](https://github.com/lf-edge/eve-api/tree/main/proto/config/devconfig.proto) which results in a fallback to the old systemAdapterList
 
 For some of the above we can explicitly inject faults.
 For instance, one can unplug the network cable to cause network failures or run an iptables setup which drops all communication to the controller.

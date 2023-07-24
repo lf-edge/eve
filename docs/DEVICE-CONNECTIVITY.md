@@ -15,7 +15,7 @@ To handle different types of connectivity towards the controller EVE supports bo
 Load spreading means that there are two or more similar uplink network, for instance two Ethernet ports for redundancy, the EVE will send different requests over different connections in a round-robin fashion.
 Failover means that a device can have different types of uplink networks, for example Ethernet, LTE, and/or satellite connectivity. In such a case a cost can be assigned to each uplink port so that e.g., LTE (the wwan0 port) is only used if EVE can not connect via any lower cost (e.g., one or more Ethernet) ports.
 
-That is accomplished in the below configuration, which uses the ```DevicePortConfig``` type, by specifying the ```Cost``` integer. In the in the [API](../api/proto/config/devmodel.proto) the corresponding field is the ```cost``` in the SystemAdapter message.
+That is accomplished in the below configuration, which uses the ```DevicePortConfig``` type, by specifying the ```Cost``` integer. In the in the [API](https://github.com/lf-edge/eve-api/tree/main/proto/config/devmodel.proto) the corresponding field is the ```cost``` in the SystemAdapter message.
 
 The cost is a number between 0 and 255, with zero (the default) implying free, and less preferred ports being assigned a higher cost. Multiple ports can be assigned the same cost, in which case once failover has happened to cost N, then all uplink ports with cost N will be used for load spreading of the management traffic.
 
@@ -60,7 +60,7 @@ That ensures that the configuration doesn't revert back once the device has conn
 The SystemAdapter in the API specifies the intended port configuration.
 This is fed into the logic in nim by [zedagent](../pkg/pillar/cmd/zedagent) publishing a ```DevicePortConfig``` item.
 
-The API for this is [SystemAdapter](../api/proto/config/devmodel.proto).
+The API for this is [SystemAdapter](https://github.com/lf-edge/eve-api/tree/main/proto/config/devmodel.proto).
 At least one port must be set to be a management port, and that port needs to refer to a network with IP configuration for the device to even try to use the SystemAdapter configuration.
 
 ### Last resort
@@ -103,13 +103,13 @@ The testing is triggered by receiving a new configuration from the controller (o
 [TBD Should we verify that the new configuration is usable for some minimum time e.g., 10 minutes before discarding the previous/fallback configuration?]
 
 If no management port can be used to reach the controller, then nim switches to using the next configuration in the DevicePortConfigList, which is normally the previously used configuration.
-In that case a failure is reported in the [SystemAdapterInfo](../api/proto/info/info.proto) by setting lastError in DevicePortStatus and the currentIndex is set to the currently used DevicePortStatus in the list. Note that lastFailed and lastSucceeded can be used to see if a configuration has succeeded in the past or always failed.
+In that case a failure is reported in the [SystemAdapterInfo](https://github.com/lf-edge/eve-api/tree/main/proto/info/info.proto) by setting lastError in DevicePortStatus and the currentIndex is set to the currently used DevicePortStatus in the list. Note that lastFailed and lastSucceeded can be used to see if a configuration has succeeded in the past or always failed.
 
 ### Periodic testing
 
 The default timer for this is 5 minutes and can be set with [timer.port.testinterval](CONFIG-PROPERTIES.md). At those intervals the device verifies that it can still reach the controller using one of the management ports.
 
-Each attempt it starts with a different management port, which ensures that all management ports are tested for connectivity. Any management port which sees a failure gets an error in the [SystemAdapterInfo](../api/proto/info/info.proto) in the ErrorInfo for the particular DevicePort.
+Each attempt it starts with a different management port, which ensures that all management ports are tested for connectivity. Any management port which sees a failure gets an error in the [SystemAdapterInfo](https://github.com/lf-edge/eve-api/tree/main/proto/info/info.proto) in the ErrorInfo for the particular DevicePort.
 
 Note that if a port was tested and succeeded the ErrorInfo.timestamp is updated and the ErrorInfo.description is empty; this indicates the most recent successful test.
 
@@ -133,7 +133,7 @@ In those cases nim proceeds with the current configuration and assumes that the 
 
 ## Failure reporting
 
-The device reports the status of all of the device connectivity using [SystemAdapterInfo](../api/proto/info/info.proto). There are two levels of errors:
+The device reports the status of all of the device connectivity using [SystemAdapterInfo](https://github.com/lf-edge/eve-api/tree/main/proto/info/info.proto). There are two levels of errors:
 
 - A new SystemAdapter configuration was tested, but none of the management ports could be used to connect to the controller. In that case a failure is reported by setting lastError in DevicePortStatus and the currentIndex is set to the currently used DevicePortStatus in the list. Note that lastFailed and lastSucceeded can be used to see if a configuration has succeeded in the past or always failed.
 - A particular management port could not be used to reach the controller. In that case the ErrorInfo for the particular DevicePort is set to indicate the error and timestamp.
@@ -291,7 +291,7 @@ EVE performs all communication with the controller over the HTTP protocol using 
 for Go. Additionally, the same protocol and the client are typically also used to download EVE/app
 images from data stores. Given all that, it is useful to be able to obtain diagnostics from HTTP
 requests processing as done by `http.Client` and use it for connectivity troubleshooting.
-For exactly this purpose we implemented [nettrace package](../libs/nettrace/README.md),
+For exactly this purpose we implemented [nettrace package](https://github.com/lf-edge/eve-libs/blob/main/nettrace/README.md),
 which internally wraps and injects hooks into `http.Client` to monitor and record a summary of
 all important network operations that happen behind the scenes during request processing at different
 layers of the network stacks, denoted as "network traces" (or just collectively denoted as "network trace"

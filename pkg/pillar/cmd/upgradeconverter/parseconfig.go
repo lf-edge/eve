@@ -9,8 +9,8 @@ package upgradeconverter
 import (
 	"os"
 
-	zauth "github.com/lf-edge/eve/api/go/auth"
-	zconfig "github.com/lf-edge/eve/api/go/config"
+	zauth "github.com/lf-edge/eve-api/go/auth"
+	zconfig "github.com/lf-edge/eve-api/go/config"
 	uuid "github.com/satori/go.uuid"
 	"google.golang.org/protobuf/proto"
 )

@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"syscall"
 
-	"github.com/lf-edge/eve/libs/depgraph"
+	"github.com/lf-edge/eve-libs/depgraph"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/vishvananda/netlink"
 )

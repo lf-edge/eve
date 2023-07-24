@@ -11,7 +11,7 @@ import (
 	"os"
 	"reflect"
 
-	"github.com/lf-edge/eve/libs/depgraph"
+	"github.com/lf-edge/eve-libs/depgraph"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 )
 

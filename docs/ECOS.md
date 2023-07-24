@@ -131,12 +131,12 @@ The controller drives the ECO state transitions via the configuration. These sta
 * Purge an ECO
   * An ECO which is either running or transitioning to running state will be stopped and the mutated run time state of the ECO is deleted. A subsequent action to start the ECO will start the ECO with a pristine runtime state.
   * EVE performs this operation if the 'purge' counter in the configuration is greater than the 'purge' counter in the previous configuration.
-  * Purge of an application instance can be also requested locally from a [Local Profile Server](../api/PROFILE.md).
+  * Purge of an application instance can be also requested locally from a [Local Profile Server](https://github.com/lf-edge/eve-api/tree/main/PROFILE.md).
 
 * Restart an ECO
   * The action of stopping an ECO and starting it again is combined in a single action of restart. Restart supports a flag which indicates whether the mutated runtime state is to be purged after stopping it.
   * EVE performs this operation if the 'restart' counter in the configuration is greater than the 'restart' counter in the previous configuration.
-  * Restart of an application instance can be also requested locally from a [Local Profile Server](../api/PROFILE.md).
+  * Restart of an application instance can be also requested locally from a [Local Profile Server](https://github.com/lf-edge/eve-api/tree/main/PROFILE.md).
 
 * Delete an ECO
   * An ECO will be deleted. The resources previously reserved for the ECO are released. The storage for the ECI may or may not be released depending on whether there are other ECO's referencing it. If there is no ECO referencing the ECI, the storage is released as part of periodic garbage collection.

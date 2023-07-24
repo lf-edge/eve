@@ -1,6 +1,6 @@
 # EVE meta-data server for app instances
 
-EVE provides an old method to serve cloud-init meta-data in the form of a read-only CDROM disk which is created on the fly when an app instance is booted if the API specifies userData/cipherData in the [AppInstanceConfig message](../api/proto/config/appconfig.proto).
+EVE provides an old method to serve cloud-init meta-data in the form of a read-only CDROM disk which is created on the fly when an app instance is booted if the API specifies userData/cipherData in the [AppInstanceConfig message](https://github.com/lf-edge/eve-api/tree/main/proto/config/appconfig.proto).
 
 However, there is also a need to provide access to meta-data which might change while the app instance is running.
 
@@ -66,7 +66,7 @@ must be **configured as port shared between applications and/or for device manag
 **location tracking** enabled. When the modem is disabled or directly assigned to an application,
 EVE is not able to access the location service and obtain location information.
 In EVE API this is done by setting the field `NetworkConfig.wireless.cellularCfg.location_tracking`
-to `true`. For more details refer to [netconfig.proto](../api/proto/config/netconfig.proto).
+to `true`. For more details refer to [netconfig.proto](https://github.com/lf-edge/eve-api/tree/main/proto/config/netconfig.proto).
 
 Provided that location tracking is enabled and the device has a good reception of GNSS signal,
 a JSON-formatted location information is made available to all applications on the
@@ -303,4 +303,4 @@ Applications might want to get some application-specific data signed by EVE-OS s
 
 This can be done using a POST to `/eve/v1/tmp/signer` endpoint.
 The maximum support size is 64 kbytes.
-The returned object is binary with protobuf message of type `AuthContainer` carrying the signature with the embedded posted payload. This protobuf message is specified in [OBJECT-SIGNING](../api/OBJECT-SIGNING.md).
+The returned object is binary with protobuf message of type `AuthContainer` carrying the signature with the embedded posted payload. This protobuf message is specified in [OBJECT-SIGNING](https://github.com/lf-edge/eve-api/tree/main/OBJECT-SIGNING.md).
