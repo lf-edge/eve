@@ -1,0 +1,21 @@
+---
+name: Call workflow from lf-edge/eden
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - "master"
+      - "[0-9]+.[0-9]+"
+      - "[0-9]+.[0-9]+-stable"
+    paths-ignore:
+      - 'docs/**'
+  pull_request_review:
+    types: [submitted]
+    paths-ignore:
+      - 'docs/**'
+
+jobs:
+  call_test_wf_from_eden:
+    uses: lf-edge/eden/.github/workflows/test.yml@master
+    with:
+      eve_tag: "evebuild/danger:pr${{ github.event.pull_request.number  }}"
