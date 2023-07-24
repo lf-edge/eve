@@ -164,6 +164,8 @@ const (
 	EncryptedVaultKeyFromDeviceLogType LogObjectType = "encrypted_vault_key_from_device"
 	// EncryptedVaultKeyFromControllerLogType:
 	EncryptedVaultKeyFromControllerLogType LogObjectType = "encrypted_vault_key_from_controller"
+	// CachedResolvedIPsLogType:
+	CachedResolvedIPsLogType LogObjectType = "cached_resolved_ips"
 )
 
 // RelationObjectType :

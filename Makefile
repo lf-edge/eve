@@ -731,12 +731,12 @@ publish_sources: $(COLLECTED_SOURCES)
 
 $(LIVE).raw: $(BOOT_PART) $(EFI_PART) $(ROOTFS_IMG) $(CONFIG_IMG) $(PERSIST_IMG) $(BSP_IMX_PART) | $(INSTALLER)
 	./tools/prepare-platform.sh "$(PLATFORM)" "$(BUILD_DIR)" "$(INSTALLER)" || :
-	./tools/makeflash.sh -C 559 $| $@ $(PART_SPEC)
+	./tools/makeflash.sh "mkimage-raw-efi" -C 559 $| $@ $(PART_SPEC)
 	$(QUIET): $@: Succeeded
 
 $(INSTALLER).raw: $(BOOT_PART) $(EFI_PART) $(ROOTFS_IMG) $(INITRD_IMG) $(INSTALLER_IMG) $(CONFIG_IMG) $(PERSIST_IMG) $(BSP_IMX_PART) | $(INSTALLER)
 	./tools/prepare-platform.sh "$(PLATFORM)" "$(BUILD_DIR)" "$(INSTALLER)" || :
-	./tools/makeflash.sh -C 592 $| $@ "conf_win installer inventory_win"
+	./tools/makeflash.sh "mkimage-raw-efi" -C 592 $| $@ "conf_win installer inventory_win"
 	$(QUIET): $@: Succeeded
 
 $(INSTALLER).iso: $(EFI_PART) $(ROOTFS_IMG) $(INITRD_IMG) $(INSTALLER_IMG) $(CONFIG_IMG) $(PERSIST_IMG) | $(INSTALLER)
@@ -760,7 +760,7 @@ $(LIVE).parallels: $(LIVE).raw
 $(VERIFICATION).raw: $(BOOT_PART) $(EFI_PART) $(ROOTFS_IMG) $(INITRD_IMG) $(VERIFICATION_IMG) $(CONFIG_IMG) $(PERSIST_IMG) $(BSP_IMX_PART) | $(VERIFICATION)
 	@cp -r $(INSTALLER)/* $(VERIFICATION)
 	./tools/prepare-platform.sh "$(PLATFORM)" "$(BUILD_DIR)" "$(VERIFICATION)" || :
-	./tools/makeverification.sh -C 850 $| $@ "conf_win verification inventory_win"
+	./tools/makeflash.sh "mkverification-raw-efi" -C 850 $| $@ "conf_win verification inventory_win"
 	$(QUIET): $@: Succeeded
 
 $(VERIFICATION).net: $(EFI_PART) $(ROOTFS_IMG) $(INITRD_IMG) $(VERIFICATION_IMG) $(CONFIG_IMG) $(PERSIST_IMG) $(KERNEL_IMG) | $(VERIFICATION)
@@ -806,6 +806,7 @@ verification: $(VERIFICATION) $(VERIFICATION_ARTIFACTS) current | $(BUILD_DIR)
 	$(QUIET)if [ -n "$(EVE_REL)" ] && [ $(HV) = $(HV_DEFAULT) ]; then \
 	   $(LINUXKIT) $(DASH_V) pkg $(LINUXKIT_PKG_TARGET) --platforms linux/$(ZARCH) --hash-path $(CURDIR) --hash $(EVE_REL)-$(HV) --docker --release $(EVE_REL) $(FORCE_BUILD) $| ;\
 	fi
+	cp -r $|/installer/* $|/verification
 	$(QUIET): $@: Succeeded
 
 .PHONY: image-set outfile-set cache-export cache-export-docker-load cache-export-docker-load-all

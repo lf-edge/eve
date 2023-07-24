@@ -100,6 +100,7 @@ type nim struct {
 	pubWwanStatus            pubsub.Publication
 	pubWwanMetrics           pubsub.Publication
 	pubWwanLocationInfo      pubsub.Publication
+	pubCachedResolvedIPs     pubsub.Publication
 
 	// Metrics
 	zedcloudMetrics *zedcloud.AgentMetrics
@@ -314,7 +315,7 @@ func (n *nim) run(ctx context.Context) (err error) {
 		if err = n.subAssignableAdapters.Activate(); err != nil {
 			return err
 		}
-		go n.queryControllerDNS()
+		go n.runResolverCacheForController()
 		return nil
 	}
 	if !waitForLastResort {
@@ -510,6 +511,15 @@ func (n *nim) initPublications() (err error) {
 		pubsub.PublicationOptions{
 			AgentName: agentName,
 			TopicType: types.WwanLocationInfo{},
+		})
+	if err != nil {
+		return err
+	}
+
+	n.pubCachedResolvedIPs, err = n.PubSub.NewPublication(
+		pubsub.PublicationOptions{
+			AgentName: agentName,
+			TopicType: types.CachedResolvedIPs{},
 		})
 	if err != nil {
 		return err

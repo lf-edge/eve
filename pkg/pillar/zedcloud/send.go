@@ -50,6 +50,7 @@ type ZedCloudContext struct {
 	TlsConfig          *tls.Config
 	FailureFunc        func(log *base.LogObject, intf string, url string, reqLen int64, respLen int64, authFail bool)
 	SuccessFunc        func(log *base.LogObject, intf string, url string, reqLen int64, respLen int64, timeSpent int64, resume bool)
+	ResolverCacheFunc  ResolverCacheFunc
 	NoLedManager       bool // Don't call UpdateLedManagerConfig
 	DevUUID            uuid.UUID
 	DevSerial          string
@@ -82,16 +83,22 @@ type ZedCloudContext struct {
 
 // ContextOptions - options to be passed at NewContext
 type ContextOptions struct {
-	DevNetworkStatus *types.DeviceNetworkStatus
-	TLSConfig        *tls.Config
-	AgentMetrics     *AgentMetrics
-	SendTimeout      uint32
-	DialTimeout      uint32
-	Serial           string
-	SoftSerial       string
-	AgentName        string // XXX replace by NoLogFailures?
-	NetTraceOpts     []nettrace.TraceOpt
+	DevNetworkStatus  *types.DeviceNetworkStatus
+	TLSConfig         *tls.Config
+	AgentMetrics      *AgentMetrics
+	SendTimeout       uint32
+	DialTimeout       uint32
+	Serial            string
+	SoftSerial        string
+	AgentName         string // XXX replace by NoLogFailures?
+	NetTraceOpts      []nettrace.TraceOpt
+	ResolverCacheFunc ResolverCacheFunc
 }
+
+// ResolverCacheFunc is a callback that the caller may provide to give access
+// to cached resolved IP addresses. SendOnIntf will try to use the cached IPs
+// to avoid unnecessary DNS lookups.
+type ResolverCacheFunc func(hostname string) []types.CachedIP
 
 // SendAttempt - single attempt to send data made by SendOnIntf function.
 type SendAttempt struct {
@@ -253,8 +260,8 @@ func SendOnAllIntf(ctxWork context.Context, ctx *ZedCloudContext, url string, re
 		combinedRV.RespContents = rv.RespContents
 		return combinedRV, nil
 	}
-	errStr := fmt.Sprintf("All attempts to connect to %s failed: %v",
-		url, attempts)
+	errStr := fmt.Sprintf("All attempts to connect to %s failed: %s",
+		url, describeSendAttempts(attempts))
 	log.Errorln(errStr)
 	err := &SendError{
 		Err:      errors.New(errStr),
@@ -431,8 +438,8 @@ func VerifyAllIntf(ctx *ZedCloudContext, url string, requiredSuccessCount uint,
 		return verifyRV, err
 	}
 	if intfSuccessCount == 0 {
-		errStr := fmt.Sprintf("All attempts to connect to %s failed: %v",
-			url, attempts)
+		errStr := fmt.Sprintf("All attempts to connect to %s failed: %s",
+			url, describeSendAttempts(attempts))
 		log.Errorln(errStr)
 		err := &SendError{
 			Err:      errors.New(errStr),
@@ -455,6 +462,146 @@ func VerifyAllIntf(ctx *ZedCloudContext, url string, requiredSuccessCount uint,
 	log.Tracef("VerifyAllIntf: Verify done. intfStatusMap: %+v",
 		verifyRV.IntfStatusMap)
 	return verifyRV, nil
+}
+
+// resolverWithLocalIP extends net.Resolver to allow to define local IP for DNS queries
+// and a callback to skip some DNS servers. The callback is used by SendOnIntf to filter
+// out DNS servers which should not be used for the given interface.
+type resolverWithLocalIP struct {
+	log     *base.LogObject
+	ifName  string
+	localIP net.IP
+	skipNs  nettrace.NameserverSelector
+	// Output flags used by dialerWithResolverCache to determine appropriate error
+	// for failed Dial.
+	dialRequested bool
+	dnsWasAvail   bool
+}
+
+func (r *resolverWithLocalIP) resolverDial(
+	ctx context.Context, network, address string) (net.Conn, error) {
+	if r.log != nil {
+		r.log.Tracef("resolverDial %v %v", network, address)
+	}
+	r.dialRequested = true
+	dnsHost, _, err := net.SplitHostPort(address)
+	if err != nil {
+		// No port in the address.
+		dnsHost = address
+	}
+	dnsIP := net.ParseIP(dnsHost)
+	if dnsIP == nil {
+		return nil, fmt.Errorf("failed to parse DNS IP address '%s'", dnsHost)
+	}
+	if dnsIP.IsLoopback() {
+		// 127.0.0.1:53 is tried by Golang resolver when resolv.conf does not contain
+		// any nameservers (see defaultNS in net/dnsconfig_unix.go).
+		// There is no point in looking for DNS server on the loopback interface on EVE.
+		return nil, &types.DNSNotAvail{IfName: r.ifName}
+	}
+	// Note that port number is not looked at by skipNs.
+	if r.skipNs != nil {
+		if skip, reason := r.skipNs(dnsIP, 0); skip {
+			return nil, fmt.Errorf("skipped nameserver %v: %s", dnsIP, reason)
+		}
+	}
+	r.dnsWasAvail = true
+	switch network {
+	case "udp", "udp4", "udp6":
+		d := net.Dialer{LocalAddr: &net.UDPAddr{IP: r.localIP}}
+		return d.Dial(network, address)
+	case "tcp", "tcp4", "tcp6":
+		d := net.Dialer{LocalAddr: &net.TCPAddr{IP: r.localIP}}
+		return d.Dial(network, address)
+	default:
+		return nil, fmt.Errorf("unsupported address type: %v", network)
+	}
+}
+
+// Return resolverWithLocalIP functionality wrapped inside the standard net.Resolver type.
+func (r *resolverWithLocalIP) getNetResolver() *net.Resolver {
+	return &net.Resolver{Dial: r.resolverDial, PreferGo: true, StrictErrors: false}
+}
+
+// dialerWithResolverCache provides DialContext function just like regular net.Dialer.
+// The difference is that it will try to avoid DNS query if the target hostname IP is already
+// resolved and stored in the cache.
+// If dialing the cached IP fails, dialer will fall back to using regular dial, performing
+// hostname IP resolution using available DNS servers.
+type dialerWithResolverCache struct {
+	log           *base.LogObject
+	ifName        string
+	localIP       net.IP
+	skipNs        nettrace.NameserverSelector
+	timeout       time.Duration
+	resolverCache ResolverCacheFunc
+}
+
+// DialContext : extends net.DialContext to first try dialing using a cached IP if available.
+// Only if that fails, the standard DialContext is called.
+func (d *dialerWithResolverCache) DialContext(
+	ctx context.Context, network, address string) (net.Conn, error) {
+	if d.log != nil {
+		d.log.Tracef("DialContext %v %v", network, address)
+	}
+	resolver := resolverWithLocalIP{
+		log:     d.log,
+		ifName:  d.ifName,
+		localIP: d.localIP,
+		skipNs:  d.skipNs,
+	}
+	stdDialer := net.Dialer{
+		Resolver:  resolver.getNetResolver(),
+		LocalAddr: &net.TCPAddr{IP: d.localIP},
+		Timeout:   d.timeout,
+	}
+	host, port, err := net.SplitHostPort(address)
+	if err != nil {
+		host = address
+		port = ""
+	}
+	var cachedLookup []types.CachedIP
+	if d.resolverCache != nil {
+		cachedLookup = d.resolverCache(host)
+	}
+	for _, cachedEntry := range cachedLookup {
+		if time.Now().After(cachedEntry.ValidUntil) {
+			continue
+		}
+		if d.localIP != nil &&
+			!utils.SameIPVersions(cachedEntry.IPAddress, d.localIP) {
+			continue
+		}
+		var addrWithIP string
+		if port == "" {
+			addrWithIP = cachedEntry.IPAddress.String()
+		} else {
+			addrWithIP = net.JoinHostPort(cachedEntry.IPAddress.String(), port)
+		}
+		conn, err := stdDialer.DialContext(ctx, network, addrWithIP)
+		if err == nil {
+			return conn, nil
+		}
+	}
+	// Fall back to using the regular dialer.
+	conn, err := stdDialer.DialContext(ctx, network, address)
+	if err != nil {
+		// Find out if dial failed because there was no DNS server available.
+		// Even though SendOnIntf checks if there are any DNS servers available
+		// for the given interface in DeviceNetworkStatus before using this dialer,
+		// there might be a delay between config being written to /etc/resolv.conf
+		// and the Golang resolver reloading it. More info about this can be found
+		// in pillar/dpcmanager/verify.go, function verifyDPC.
+		// Note that even with empty resolv.conf, Golang resolver will try at least
+		// 127.0.0.1:53, so dialRequested=true means that hostname IP resolution was
+		// needed (not using cached IP or /etc/hosts).
+		// dnsWasAvail is set after filtering out DNS servers which are not valid
+		// for the given interface (servers from other interfaces and the loopback IP).
+		if resolver.dialRequested && !resolver.dnsWasAvail {
+			err = &types.DNSNotAvail{IfName: d.ifName}
+		}
+	}
+	return conn, err
 }
 
 // SendOnIntf : Tries all source addresses on interface until one succeeds.
@@ -717,12 +864,11 @@ func SendOnIntf(workContext context.Context, ctx *ZedCloudContext, destURL strin
 			tracedClient   *nettrace.HTTPClient
 			tracedReqName  string
 			tracedReqDescr string
-			dnsIsAvail     bool
-			// Did the domain name resolution used IP address cached in /etc/hosts
-			// (see pillar/cmd/nim/controllerdns.go)
-			fromDNSCache bool
 		)
 		if withNetTracing {
+			// Note that resolver cache is not supported when network tracing is enabled.
+			// This is actually intentional - when tracing, we want to run normal hostname
+			// IP resolution and collect traces of DNS queries.
 			tracedClient, err = nettrace.NewHTTPClient(clientConfig, ctx.NetTraceOpts...)
 			if err != nil {
 				log.Errorf("SendOnIntf: nettrace.NewHTTPClient failed: %v\n", err)
@@ -741,32 +887,15 @@ func SendOnIntf(workContext context.Context, ctx *ZedCloudContext, destURL strin
 			tracedReqDescr = fmt.Sprintf("%s %s via %s src IP %v",
 				reqMethod, reqURL, intf, localAddr)
 		} else {
-			fromDNSCache = true // set to false by resolverDial below
-			localTCPAddr := net.TCPAddr{IP: localAddr}
-			localUDPAddr := net.UDPAddr{IP: localAddr}
-			log.Tracef("Connecting to %s using intf %s source %v\n",
-				reqURL, intf, localTCPAddr)
-			resolverDial := func(ctx context.Context, network, address string) (net.Conn, error) {
-				log.Tracef("resolverDial %v %v", network, address)
-				fromDNSCache = false
-				dnsIP := net.ParseIP(strings.Split(address, ":")[0])
-				// Note that port number is not looked at by skipNs.
-				skip, reason := skipNs(dnsIP, 0)
-				if skip {
-					return nil, fmt.Errorf("skipped nameserver %v: %s", dnsIP, reason)
-				}
-				dnsIsAvail = true
-				// XXX can we fallback to TCP? Would get a mismatched address if we do
-				d := net.Dialer{LocalAddr: &localUDPAddr}
-				return d.Dial(network, address)
+			dialer := &dialerWithResolverCache{
+				log:           log,
+				ifName:        intf,
+				localIP:       localAddr,
+				skipNs:        skipNs,
+				timeout:       clientConfig.TCPHandshakeTimeout,
+				resolverCache: ctx.ResolverCacheFunc,
 			}
-			r := net.Resolver{Dial: resolverDial, PreferGo: true, StrictErrors: false}
-			d := net.Dialer{
-				Resolver:  &r,
-				LocalAddr: &localTCPAddr,
-				Timeout:   clientConfig.TCPHandshakeTimeout,
-			}
-			transport.DialContext = d.DialContext
+			transport.DialContext = dialer.DialContext
 			client = &http.Client{Transport: transport, Timeout: clientConfig.ReqTimeout}
 		}
 
@@ -779,34 +908,35 @@ func SendOnIntf(workContext context.Context, ctx *ZedCloudContext, destURL strin
 				if withPCAP {
 					time.Sleep(pcapDelay)
 				}
-				netTrace, pcaps, err := tracedClient.GetTrace(tracedReqDescr)
-				if err != nil {
-					log.Error(err)
+				netTrace, pcaps, err2 := tracedClient.GetTrace(tracedReqDescr)
+				if err2 != nil {
+					log.Error(err2)
 				} else {
 					rv.TracedReqs = append(rv.TracedReqs, netdump.TracedNetRequest{
 						RequestName:    tracedReqName,
 						NetTrace:       netTrace,
 						PacketCaptures: pcaps,
 					})
-					// Determine dnsIsAvail and fromDNSCache using Dial traces.
-					fromDNSCache = true
+					// Find out if dial failed because there was no DNS server available.
+					var calledResolver, dnsWasAvail bool
 					for _, dialTrace := range netTrace.Dials {
 						if len(dialTrace.ResolverDials) > 0 {
-							dnsIsAvail = true
-							fromDNSCache = false
+							dnsWasAvail = true
+							calledResolver = true
 						}
 						if len(dialTrace.SkippedNameservers) > 0 {
-							fromDNSCache = false
+							calledResolver = true
 						}
 					}
+					if calledResolver && !dnsWasAvail {
+						err = &types.DNSNotAvail{IfName: intf}
+					}
 				}
-				if err = tracedClient.Close(); err != nil {
-					log.Error(err)
+				if err2 = tracedClient.Close(); err2 != nil {
+					log.Error(err2)
 				}
 			}
-			if !fromDNSCache && !dnsIsAvail {
-				attempt.Err = &types.DNSNotAvail{IfName: intf}
-			} else if cf, cert := isCertFailure(err); cf {
+			if cf, cert := isCertFailure(err); cf {
 				// XXX can we ever get this from a proxy?
 				// We assume we reached the controller here
 				log.Errorf("client.Do fail: certFailure")
@@ -889,8 +1019,8 @@ func SendOnIntf(workContext context.Context, ctx *ZedCloudContext, destURL strin
 		// Handle failure to read HTTP response body.
 		if readErr != nil {
 			log.Errorf("ReadAll (timeout %d) failed: %s",
-				ctx.NetworkSendTimeout, err)
-			attempt.Err = err
+				ctx.NetworkSendTimeout, readErr)
+			attempt.Err = readErr
 			attempts = append(attempts, attempt)
 			continue
 		}
@@ -987,8 +1117,8 @@ func SendOnIntf(workContext context.Context, ctx *ZedCloudContext, destURL strin
 	if ctx.FailureFunc != nil {
 		ctx.FailureFunc(log, intf, reqURL, 0, 0, false)
 	}
-	errStr := fmt.Sprintf("All attempts to connect to %s failed: %v",
-		reqURL, attempts)
+	errStr := fmt.Sprintf("All attempts to connect to %s failed: %s",
+		reqURL, describeSendAttempts(attempts))
 	log.Errorln(errStr)
 	err = &SendError{
 		Err:      errors.New(errStr),
@@ -1025,31 +1155,14 @@ func SendLocal(ctx *ZedCloudContext, destURL string, intf string, ipSrc net.IP,
 	// Since we recreate the transport on each call there is no benefit
 	// to keeping the connections open.
 	defer transport.CloseIdleConnections()
-
-	// Try all addresses
-	localTCPAddr := net.TCPAddr{IP: ipSrc}
-	localUDPAddr := net.UDPAddr{IP: ipSrc}
-	resolverDial := func(ctx context.Context, network, address string) (net.Conn, error) {
-		log.Tracef("resolverDial %v %v", network, address)
-		switch network {
-		case "udp", "udp4", "udp6":
-			d := net.Dialer{LocalAddr: &localUDPAddr}
-			return d.Dial(network, address)
-		case "tcp", "tcp4", "tcp6":
-			d := net.Dialer{LocalAddr: &localTCPAddr}
-			return d.Dial(network, address)
-		default:
-			return nil, fmt.Errorf("unsupported address type: %v", network)
-		}
+	dialer := &dialerWithResolverCache{
+		log:           log,
+		ifName:        intf,
+		localIP:       ipSrc,
+		timeout:       time.Duration(ctx.NetworkDialTimeout) * time.Second,
+		resolverCache: ctx.ResolverCacheFunc,
 	}
-	r := net.Resolver{Dial: resolverDial, PreferGo: true,
-		StrictErrors: false}
-	d := net.Dialer{
-		Resolver:  &r,
-		LocalAddr: &localTCPAddr,
-		Timeout:   time.Duration(ctx.NetworkDialTimeout) * time.Second,
-	}
-	transport.Dial = d.Dial
+	transport.DialContext = dialer.DialContext
 
 	client := &http.Client{Transport: transport}
 	if ctx.NetworkSendTimeout != 0 {
@@ -1240,12 +1353,37 @@ func isECONNREFUSED(err error) bool {
 	return errno == syscall.ECONNREFUSED
 }
 
+// Describe send attempts in a concise and readable form.
+func describeSendAttempts(attempts []SendAttempt) string {
+	var attemptDescriptions []string
+	for _, attempt := range attempts {
+		var description string
+		// Unwrap errors defined here in pillar to avoid stutter.
+		// Instead of "send via eth1: interface eth1: no DNS server available",
+		// we simply return "interface eth1: no DNS server available".
+		// Same for IPAddrNotAvail.
+		// Otherwise, the errors are of the form:
+		// "send via eth1 [with src IP <IP>]: <error from http client>"
+		switch err := attempt.Err.(type) {
+		case *types.DNSNotAvail:
+			description = err.Error()
+		case *types.IPAddrNotAvail:
+			description = err.Error()
+		default:
+			description = attempt.String()
+		}
+		attemptDescriptions = append(attemptDescriptions, description)
+	}
+	return strings.Join(attemptDescriptions, "; ")
+}
+
 // NewContext - return initialized cloud context
 func NewContext(log *base.LogObject, opt ContextOptions) ZedCloudContext {
 	ctx := ZedCloudContext{
 		DeviceNetworkStatus: opt.DevNetworkStatus,
 		NetworkSendTimeout:  opt.SendTimeout,
 		NetworkDialTimeout:  opt.DialTimeout,
+		ResolverCacheFunc:   opt.ResolverCacheFunc,
 		TlsConfig:           opt.TLSConfig,
 		V2API:               UseV2API(),
 		DevSerial:           opt.Serial,
