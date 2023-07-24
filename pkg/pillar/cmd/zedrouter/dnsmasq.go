@@ -573,7 +573,7 @@ func checkAndPublishDhcpLeases(ctx *zedrouterContext) {
 }
 
 func isEmptyIP(ip net.IP) bool {
-	return ip.Equal(net.IP{})
+	return ip == nil || ip.Equal(net.IP{})
 }
 
 func ipListEqual(one []net.IP, two []string) bool {
