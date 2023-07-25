@@ -64,15 +64,15 @@ In general, pillar depends on its own directory and subdirectories, and external
 which can be found in `go.mod`. It also vendors its dependencies, which can be
 updated with `go mod vendor`.
 
-In addition, pillar depends upon [eve libraries from this repository](../../libs).
+In addition, pillar depends upon [eve libraries](https://github.com/lf-edge/eve-libs).
 These libraries are their own go module. They **must** be treated like any other external
-module, imported via a fully pathed import, e.g. `go get github.com/lf-edge/eve/libs@master`.
+module, imported via a fully pathed import, e.g. `go get github.com/lf-edge/eve-libs@main`.
 
 It is imperative **not** to use `replace` directives in `go.mod` to point to
 local paths, e.g.
 
 ```go
-replace github.com/lf-edge/eve/libs => ../../libs
+replace github.com/lf-edge/eve-libs => ../../../eve-libs
 ```
 
 These will break various dependency chains and make it difficult to track what was included

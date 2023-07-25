@@ -5,7 +5,7 @@ package genericitems
 
 import (
 	"fmt"
-	"github.com/lf-edge/eve/libs/depgraph"
+	"github.com/lf-edge/eve-libs/depgraph"
 )
 
 // PhysIf : physical network interface.

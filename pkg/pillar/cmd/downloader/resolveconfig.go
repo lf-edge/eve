@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/lf-edge/eve-libs/zedUpload"
 	zconfig "github.com/lf-edge/eve/api/go/config"
-	"github.com/lf-edge/eve/libs/zedUpload"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils"

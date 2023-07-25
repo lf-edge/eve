@@ -10,7 +10,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/lf-edge/eve/libs/zedUpload"
+	"github.com/lf-edge/eve-libs/zedUpload"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/zedpac"

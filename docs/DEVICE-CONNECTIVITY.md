@@ -291,7 +291,7 @@ EVE performs all communication with the controller over the HTTP protocol using 
 for Go. Additionally, the same protocol and the client are typically also used to download EVE/app
 images from data stores. Given all that, it is useful to be able to obtain diagnostics from HTTP
 requests processing as done by `http.Client` and use it for connectivity troubleshooting.
-For exactly this purpose we implemented [nettrace package](../libs/nettrace/README.md),
+For exactly this purpose we implemented [nettrace package](https://github.com/lf-edge/eve-libs/blob/main/nettrace/README.md),
 which internally wraps and injects hooks into `http.Client` to monitor and record a summary of
 all important network operations that happen behind the scenes during request processing at different
 layers of the network stacks, denoted as "network traces" (or just collectively denoted as "network trace"

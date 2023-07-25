@@ -7,4 +7,3 @@ github.com/google/go-tpm/tpmutil/tbs
 ## explicit; go 1.17
 golang.org/x/sys/unix
 # github.com/lf-edge/eve/api/go => github.com/lf-edge/eve/api/go v0.0.0-20221108162354-969f3cba94d8
-# github.com/lf-edge/eve/libs/depgraph => github.com/lf-edge/eve/libs/depgraph v0.0.0-20221108162354-969f3cba94d8

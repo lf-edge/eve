@@ -12,9 +12,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/lf-edge/eve-libs/nettrace"
+	"github.com/lf-edge/eve-libs/zedUpload"
 	zconfig "github.com/lf-edge/eve/api/go/config"
-	"github.com/lf-edge/eve/libs/nettrace"
-	"github.com/lf-edge/eve/libs/zedUpload"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/cipher"
 	"github.com/lf-edge/eve/pkg/pillar/netdump"

@@ -173,9 +173,9 @@ Inside the main event loop, zedrouter processes:
 of all Network Instances (`NetworkInstanceConfig`) and application networks (`AppNetworkConfig`)
 into the corresponding low-level network configuration items (bridges, routes, IP rules,
 ARP entries, iptables rules, etc.) of the target network stack and applies them using
-the [Reconciler](../../../libs/reconciler/README.md).
+the [Reconciler](https://github.com/lf-edge/eve-libs/blob/main/reconciler/README.md).
 
-Internally, NIReconciler maintains two [dependency graphs](../../../libs/depgraph/README.md),
+Internally, NIReconciler maintains two [dependency graphs](https://github.com/lf-edge/eve-libs/blob/main/depgraph/README.md),
 one modelling the current state of the network stack and the other the intended state.
 The current state is being updated during each state reconciliation and potentially also when
 a state change notification is received from [NetworkMonitor](#networkmonitor) (e.g. a network

@@ -467,6 +467,19 @@ github.com/kr/fs
 github.com/lf-edge/edge-containers/pkg/registry
 github.com/lf-edge/edge-containers/pkg/resolver
 github.com/lf-edge/edge-containers/pkg/tgz
+# github.com/lf-edge/eve-libs v0.0.0-20230724174211-8b4b7a344f7e
+## explicit; go 1.20
+github.com/lf-edge/eve-libs/depgraph
+github.com/lf-edge/eve-libs/nettrace
+github.com/lf-edge/eve-libs/reconciler
+github.com/lf-edge/eve-libs/zedUpload
+github.com/lf-edge/eve-libs/zedUpload/awsutil
+github.com/lf-edge/eve-libs/zedUpload/azureutil
+github.com/lf-edge/eve-libs/zedUpload/gsutil
+github.com/lf-edge/eve-libs/zedUpload/httputil
+github.com/lf-edge/eve-libs/zedUpload/ociutil
+github.com/lf-edge/eve-libs/zedUpload/sftputil
+github.com/lf-edge/eve-libs/zedUpload/types
 # github.com/lf-edge/eve/api/go v0.0.0-20230602070228-0c11e32c7718
 ## explicit; go 1.20
 github.com/lf-edge/eve/api/go/attest
@@ -481,19 +494,6 @@ github.com/lf-edge/eve/api/go/logs
 github.com/lf-edge/eve/api/go/metrics
 github.com/lf-edge/eve/api/go/profile
 github.com/lf-edge/eve/api/go/register
-# github.com/lf-edge/eve/libs v0.0.0-20230717153241-cc5629af4657
-## explicit; go 1.20
-github.com/lf-edge/eve/libs/depgraph
-github.com/lf-edge/eve/libs/nettrace
-github.com/lf-edge/eve/libs/reconciler
-github.com/lf-edge/eve/libs/zedUpload
-github.com/lf-edge/eve/libs/zedUpload/awsutil
-github.com/lf-edge/eve/libs/zedUpload/azureutil
-github.com/lf-edge/eve/libs/zedUpload/gsutil
-github.com/lf-edge/eve/libs/zedUpload/httputil
-github.com/lf-edge/eve/libs/zedUpload/ociutil
-github.com/lf-edge/eve/libs/zedUpload/sftputil
-github.com/lf-edge/eve/libs/zedUpload/types
 # github.com/linuxkit/linuxkit/src/cmd/linuxkit v0.0.0-20220913135124-e532e7310810
 ## explicit; go 1.16
 github.com/linuxkit/linuxkit/src/cmd/linuxkit/cache

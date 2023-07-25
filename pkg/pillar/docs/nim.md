@@ -124,8 +124,8 @@ into the event loop of the manager.
 [DpcReconciler](../dpcreconciler/dpcreconciler.go) translates the currently selected device
 port configuration (`DevicePortConfig` struct; abbreviated to DPC) into the corresponding
 low-level network configuration items (routes, IP rules, ARP entries, iptables rules, etc.)
-of the target network stack and applies them using the [Reconciler](../../../libs/reconciler/README.md).
-Internally, DpcReconciler maintains two [dependency graphs](../../../libs/depgraph/README.md),
+of the target network stack and applies them using the [Reconciler](https://github.com/lf-edge/eve-libs/blob/main/reconciler/README.md).
+Internally, DpcReconciler maintains two [dependency graphs](https://github.com/lf-edge/eve-libs/blob/main/depgraph/README.md),
 one modelling the current state of the network stack and the other the intended state.
 The current state is being updated during each state reconciliation and potentially also when
 a state change notification is received from [NetworkMonitor](#networkmonitor) (e.g. a network

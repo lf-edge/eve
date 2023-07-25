@@ -15,8 +15,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/lf-edge/eve-libs/nettrace"
 	zconfig "github.com/lf-edge/eve/api/go/config"
-	"github.com/lf-edge/eve/libs/nettrace"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	"github.com/lf-edge/eve/pkg/pillar/hardware"
