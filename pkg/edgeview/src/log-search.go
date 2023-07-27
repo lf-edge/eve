@@ -15,7 +15,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lf-edge/eve/api/go/logs"
+	"github.com/lf-edge/eve-api/go/logs"
 )
 
 type logfiletime struct {

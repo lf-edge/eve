@@ -105,8 +105,9 @@ func (sub *SubscriptionImpl) populate() {
 // ProcessChange process a single change and its parameters. It
 // calls the various handlers (if set) and updates the subscribed collection.
 // The subscribed collection can be accessed using:
-//   foo := s1.Get(key)
-//   fooAll := s1.GetAll()
+//
+//	foo := s1.Get(key)
+//	fooAll := s1.GetAll()
 func (sub *SubscriptionImpl) ProcessChange(change Change) {
 	start := time.Now()
 	sub.log.Tracef("ProcessChange agentName(%s) agentScope(%s) topic(%s): %#v", sub.agentName, sub.agentScope, sub.topic, change)
