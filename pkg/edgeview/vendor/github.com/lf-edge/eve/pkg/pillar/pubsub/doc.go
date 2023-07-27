@@ -7,7 +7,7 @@
 // * how to use pubsub in another module
 // * how to implement a driver.
 //
-// Usage
+// # Usage
 //
 // To use pubsub, you must first instantiate a pubsub instance, passing it a
 // driver, and then use the instance. In general, there will be one pubsub
@@ -16,10 +16,10 @@
 // Once instantiated, you can retrieve a publisher or a subscriber from the
 // `pubsub.PubSub`.
 //
-//
 // To instantiate pubsub:
-//   import "github.com/lf-edge/eve/pkg/pillar/pubsub"
-//   ps := pubsub.New(driver)
+//
+//	import "github.com/lf-edge/eve/pkg/pillar/pubsub"
+//	ps := pubsub.New(driver)
 //
 // where `driver` is a `struct` that implements `pubsub.Driver`.
 //
@@ -27,26 +27,24 @@
 // communicate between publishers and subscribers, and local directories to
 // store persistent messages.
 //
-//
 // see the documentation for each element to understand its usage.
 //
 // For example:
 //
-//   import (
-//     "github.com/lf-edge/eve/pkg/pillar/pubsub"
-//     "github.com/lf-edge/eve/pkg/pillar/pubsub/socketdriver"
-//   )
+//	import (
+//	  "github.com/lf-edge/eve/pkg/pillar/pubsub"
+//	  "github.com/lf-edge/eve/pkg/pillar/pubsub/socketdriver"
+//	)
 //
-//   func foo() {
-//     driver := socketdriver.SocketDriver{}
-//     ps := pubsub.New(&driver)
-//     pub, err := ps.Publish("my-agent", element)
-//     pub, err := ps.PublishPersistent("other-agent", element)
-//     sub, err := ps.Subscribe("my-agent", element, true, ctx)
-//   }
+//	func foo() {
+//	  driver := socketdriver.SocketDriver{}
+//	  ps := pubsub.New(&driver)
+//	  pub, err := ps.Publish("my-agent", element)
+//	  pub, err := ps.PublishPersistent("other-agent", element)
+//	  sub, err := ps.Subscribe("my-agent", element, true, ctx)
+//	}
 //
-//
-// Driver
+// # Driver
 //
 // The driver is responsible for implementing the underlying mechanics of
 // publishing and subscribing. While `pubsub.PubSub` and its components -
@@ -62,7 +60,7 @@
 // The `DriverPublisher` and `DriverSubscriber` are expected to function as
 // follows.
 //
-// DriverPublisher
+// # DriverPublisher
 //
 // The `DriverPublisher` publishes messages and, optionally, persists them.
 // It also can `Unpublish` messages, as well as `Load` all messages from
@@ -74,7 +72,7 @@
 //
 // See the documentation for the `DriverPublisher` interface to learn more.
 //
-// DriverSubscriber
+// # DriverSubscriber
 //
 // The `DriverSubscriber` subscribes to messages. As with the `DriverPublisher`,
 // the caller has no understanding of the underlying mechanism or semantics.

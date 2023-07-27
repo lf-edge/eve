@@ -14,7 +14,7 @@ const (
 	PersistZFS
 )
 
-//ParsePersistType process provided string and returns PersistType
+// ParsePersistType process provided string and returns PersistType
 func ParsePersistType(persistFsString string) PersistType {
 	switch persistFsString {
 	case "ext3":

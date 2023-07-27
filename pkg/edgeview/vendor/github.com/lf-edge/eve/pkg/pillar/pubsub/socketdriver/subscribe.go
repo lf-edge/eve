@@ -7,7 +7,6 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"net"
 	"os"
 	"path"
@@ -48,7 +47,7 @@ func (s *Subscriber) Load() (map[string][]byte, int, error) {
 
 	s.log.Tracef("Load(%s)\n", s.name)
 
-	files, err := ioutil.ReadDir(dirName)
+	files, err := os.ReadDir(dirName)
 	if err != nil {
 		// Drive on?
 		s.log.Error(err)
@@ -58,7 +57,7 @@ func (s *Subscriber) Load() (map[string][]byte, int, error) {
 		if !strings.HasSuffix(file.Name(), ".json") {
 			if file.Name() == "restarted" {
 				statusFile := dirName + "/" + file.Name()
-				sb, err := ioutil.ReadFile(statusFile)
+				sb, err := os.ReadFile(statusFile)
 				if err != nil {
 					s.log.Errorf("Load: %s for %s\n", err, statusFile)
 					continue
@@ -86,7 +85,7 @@ func (s *Subscriber) Load() (map[string][]byte, int, error) {
 
 		s.log.Tracef("Load found key %s file %s\n", key, statusFile)
 
-		sb, err := ioutil.ReadFile(statusFile)
+		sb, err := os.ReadFile(statusFile)
 		if err != nil {
 			s.log.Errorf("Load: %s for %s\n", err, statusFile)
 			continue
@@ -432,7 +431,7 @@ func (s *Subscriber) translate(in <-chan string, out chan<- pubsub.Change) {
 				out <- pubsub.Change{Operation: pubsub.Sync}
 			case operation == "M" && fileName == "restarted":
 				statusFile := path.Join(statusDirName, fileName)
-				cb, err := ioutil.ReadFile(statusFile)
+				cb, err := os.ReadFile(statusFile)
 				if err != nil {
 					s.log.Errorf("%s for %s\n", err, statusFile)
 					continue
@@ -461,7 +460,7 @@ func (s *Subscriber) translate(in <-chan string, out chan<- pubsub.Change) {
 					name[0])
 			case operation == "M":
 				statusFile := path.Join(statusDirName, fileName)
-				cb, err := ioutil.ReadFile(statusFile)
+				cb, err := os.ReadFile(statusFile)
 				if err != nil {
 					s.log.Errorf("%s for %s\n", err, statusFile)
 					continue
