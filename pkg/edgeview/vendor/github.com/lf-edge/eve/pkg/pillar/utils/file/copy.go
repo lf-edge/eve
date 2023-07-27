@@ -26,7 +26,6 @@ package utils
 import (
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 )
@@ -103,7 +102,7 @@ func CopyDir(src string, dst string) (err error) {
 		return
 	}
 
-	entries, err := ioutil.ReadDir(src)
+	entries, err := os.ReadDir(src)
 	if err != nil {
 		return
 	}
@@ -111,7 +110,11 @@ func CopyDir(src string, dst string) (err error) {
 	for _, entry := range entries {
 		srcPath := filepath.Join(src, entry.Name())
 		dstPath := filepath.Join(dst, entry.Name())
-
+		var info os.FileInfo
+		info, err = entry.Info()
+		if err != nil {
+			return fmt.Errorf("failed to get file '%s' info: %w", entry.Name(), err)
+		}
 		if entry.IsDir() {
 			err = CopyDir(srcPath, dstPath)
 			if err != nil {
@@ -119,7 +122,7 @@ func CopyDir(src string, dst string) (err error) {
 			}
 		} else {
 			// Skip symlinks.
-			if entry.Mode()&os.ModeSymlink != 0 {
+			if info.Mode()&os.ModeSymlink != 0 {
 				continue
 			}
 

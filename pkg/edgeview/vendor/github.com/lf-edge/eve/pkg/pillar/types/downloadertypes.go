@@ -5,6 +5,7 @@ package types
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/go-cmp/cmp"
@@ -14,14 +15,14 @@ import (
 
 // The key/index to this is the ImageSha256 which is allocated by the controller or resolver.
 type DownloaderConfig struct {
-	ImageSha256 string
-	DatastoreID uuid.UUID
-	Name        string
-	Target      string // file path where to download the file
-	NameIsURL   bool   // If not we form URL based on datastore info
-	Size        uint64 // In bytes
-	FinalObjDir string // final Object Store
-	RefCount    uint
+	ImageSha256     string
+	DatastoreIDList []uuid.UUID
+	Name            string
+	Target          string // file path where to download the file
+	NameIsURL       bool   // If not we form URL based on datastore info
+	Size            uint64 // In bytes
+	FinalObjDir     string // final Object Store
+	RefCount        uint
 }
 
 func (config DownloaderConfig) Key() string {
@@ -35,8 +36,9 @@ func (config DownloaderConfig) LogCreate(logBase *base.LogObject) {
 	if logObject == nil {
 		return
 	}
+	uuids := strings.Join(UuidsToStrings(config.DatastoreIDList), ",")
 	logObject.CloneAndAddField("target", config.Target).
-		AddField("datastore-id", config.DatastoreID).
+		AddField("datastore-ids", uuids).
 		AddField("refcount-int64", config.RefCount).
 		AddField("size-int64", config.Size).
 		Noticef("Download config create")
@@ -51,17 +53,20 @@ func (config DownloaderConfig) LogModify(logBase *base.LogObject, old interface{
 	if !ok {
 		logObject.Clone().Fatalf("LogModify: Old object interface passed is not of DownloaderConfig type")
 	}
+	uuids := strings.Join(UuidsToStrings(config.DatastoreIDList), ",")
+	oldUuids := strings.Join(UuidsToStrings(oldConfig.DatastoreIDList), ",")
+
 	if oldConfig.Target != config.Target ||
-		oldConfig.DatastoreID != config.DatastoreID ||
+		oldUuids != uuids ||
 		oldConfig.RefCount != config.RefCount ||
 		oldConfig.Size != config.Size {
 
 		logObject.CloneAndAddField("target", config.Target).
-			AddField("datastore-id", config.DatastoreID).
+			AddField("datastore-ids", uuids).
 			AddField("refcount-int64", config.RefCount).
 			AddField("size-int64", config.Size).
 			AddField("old-target", oldConfig.Target).
-			AddField("old-datastore-id", oldConfig.DatastoreID).
+			AddField("old-datastore-ids", oldUuids).
 			AddField("old-refcount-int64", oldConfig.RefCount).
 			AddField("old-size-int64", oldConfig.Size).
 			Noticef("Download config modify")
@@ -76,8 +81,9 @@ func (config DownloaderConfig) LogModify(logBase *base.LogObject, old interface{
 func (config DownloaderConfig) LogDelete(logBase *base.LogObject) {
 	logObject := base.EnsureLogObject(logBase, base.DownloaderConfigLogType, config.Name,
 		nilUUID, config.LogKey())
+	uuids := strings.Join(UuidsToStrings(config.DatastoreIDList), ",")
 	logObject.CloneAndAddField("target", config.Target).
-		AddField("datastore-id", config.DatastoreID).
+		AddField("datastore-ids", uuids).
 		AddField("refcount-int64", config.RefCount).
 		AddField("size-int64", config.Size).
 		Noticef("Download config delete")
@@ -92,25 +98,25 @@ func (config DownloaderConfig) LogKey() string {
 
 // The key/index to this is the ImageSha256 which comes from DownloaderConfig.
 type DownloaderStatus struct {
-	ImageSha256   string
-	DatastoreID   uuid.UUID
-	Target        string // file path where we download the file
-	Name          string
-	PendingAdd    bool
-	PendingModify bool
-	PendingDelete bool
-	RefCount      uint      // Zero means not downloaded
-	LastUse       time.Time // When RefCount dropped to zero
-	Expired       bool      // Handshake to client
-	NameIsURL     bool      // If not we form URL based on datastore info
-	State         SwState   // DOWNLOADED etc
-	ReservedSpace uint64    // Contribution to global ReservedSpace
-	Size          uint64    // Once DOWNLOADED; in bytes
-	TotalSize     int64     // expected size as reported by the downloader, if any
-	CurrentSize   int64     // current total downloaded size as reported by the downloader
-	Progress      uint      // In percent i.e., 0-100, given by CurrentSize/ExpectedSize
-	ModTime       time.Time
-	ContentType   string // content-type header, if provided
+	ImageSha256     string
+	DatastoreIDList []uuid.UUID
+	Target          string // file path where we download the file
+	Name            string
+	PendingAdd      bool
+	PendingModify   bool
+	PendingDelete   bool
+	RefCount        uint      // Zero means not downloaded
+	LastUse         time.Time // When RefCount dropped to zero
+	Expired         bool      // Handshake to client
+	NameIsURL       bool      // If not we form URL based on datastore info
+	State           SwState   // DOWNLOADED etc
+	ReservedSpace   uint64    // Contribution to global ReservedSpace
+	Size            uint64    // Once DOWNLOADED; in bytes
+	TotalSize       int64     // expected size as reported by the downloader, if any
+	CurrentSize     int64     // current total downloaded size as reported by the downloader
+	Progress        uint      // In percent i.e., 0-100, given by CurrentSize/ExpectedSize
+	ModTime         time.Time
+	ContentType     string // content-type header, if provided
 	// ErrorAndTime provides SetErrorNow() and ClearError()
 	ErrorAndTime
 	RetryCount int
