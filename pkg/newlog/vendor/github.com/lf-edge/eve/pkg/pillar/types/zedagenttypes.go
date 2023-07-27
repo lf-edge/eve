@@ -428,6 +428,7 @@ type NodeAgentStatus struct {
 	RebootImage                string
 	LocalMaintenanceMode       bool                  //enter Maintenance Mode
 	LocalMaintenanceModeReason MaintenanceModeReason //reason for Maintenance Mode
+	HVTypeKube                 bool
 }
 
 // Key :
@@ -696,3 +697,9 @@ const (
 	// DevCommandShutdownPoweroff : shut down all app instances + poweroff
 	DevCommandShutdownPoweroff
 )
+
+// LOCConfig : configuration of the Local Operator Console
+type LOCConfig struct {
+	// LOC URL
+	LocURL string
+}

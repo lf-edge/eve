@@ -41,7 +41,7 @@ func (metric ProcessMetric) LogCreate(logBase *base.LogObject) {
 	if logObject == nil {
 		return
 	}
-	logObject.Metricf("Process metric create")
+	logObject.Tracef("Process metric create")
 }
 
 // LogModify :
@@ -53,16 +53,15 @@ func (metric ProcessMetric) LogModify(logBase *base.LogObject, old interface{}) 
 	if !ok {
 		logObject.Clone().Fatalf("LogModify: Old object interface passed is not of ProcessMetric type")
 	}
-	// XXX remove? XXX huge?
 	logObject.CloneAndAddField("diff", cmp.Diff(oldMetric, metric)).
-		Metricf("Process metric modify")
+		Tracef("Process metric modify")
 }
 
 // LogDelete :
 func (metric ProcessMetric) LogDelete(logBase *base.LogObject) {
 	logObject := base.EnsureLogObject(logBase, base.ProcessMetricLogType, "",
 		nilUUID, metric.LogKey())
-	logObject.Metricf("Process metric delete")
+	logObject.Tracef("Process metric delete")
 
 	base.DeleteLogObject(logBase, metric.LogKey())
 }

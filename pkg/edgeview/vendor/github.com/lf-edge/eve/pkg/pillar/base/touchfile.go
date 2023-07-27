@@ -15,7 +15,7 @@ const (
 	WatchdogPidDir = "/run/watchdog/pid"
 )
 
-//TouchFile touches the given file
+// TouchFile touches the given file
 func TouchFile(log *LogObject, filename string) {
 	_, err := os.Stat(filename)
 	if os.IsNotExist(err) {

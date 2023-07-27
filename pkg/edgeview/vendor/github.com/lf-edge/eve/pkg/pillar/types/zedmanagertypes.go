@@ -9,7 +9,9 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/lf-edge/eve-api/go/info"
 	"github.com/lf-edge/eve/pkg/pillar/base"
+	"github.com/lf-edge/eve/pkg/pillar/sriov"
 	uuid "github.com/satori/go.uuid"
 )
 
@@ -39,6 +41,73 @@ type UUIDandVersion struct {
 	Version string
 }
 
+// SnapshotType type of the snapshot creation trigger
+// Must match the definition in appconfig.proto
+type SnapshotType int32
+
+const (
+	// SnapshotTypeUnspecified is the default value, and should not be used in practice
+	SnapshotTypeUnspecified SnapshotType = 0
+	// SnapshotTypeAppUpdate is used when the snapshot is created as a result of an app update
+	SnapshotTypeAppUpdate SnapshotType = 1
+)
+
+func (s SnapshotType) String() string {
+	switch s {
+	case SnapshotTypeUnspecified:
+		return "SnapshotTypeUnspecified"
+	case SnapshotTypeAppUpdate:
+		return "SnapshotTypeAppUpdate"
+	default:
+		return fmt.Sprintf("Unknown SnapshotType %d", s)
+	}
+}
+
+// ConvertToInfoSnapshotType converts from SnapshotType to info.SnapshotType
+func (s SnapshotType) ConvertToInfoSnapshotType() info.SnapshotType {
+	switch s {
+	case SnapshotTypeAppUpdate:
+		return info.SnapshotType_SNAPSHOT_TYPE_APP_UPDATE
+	default:
+		return info.SnapshotType_SNAPSHOT_TYPE_UNSPECIFIED
+	}
+}
+
+// SnapshotDesc a description of a snapshot instance
+type SnapshotDesc struct {
+	SnapshotID   string       // UUID of the snapshot
+	SnapshotType SnapshotType // Type of the snapshot creation trigger
+}
+
+// SnapshotInstanceStatus status of a snapshot instance. Used as a zedmanager-level representation of a snapshot
+type SnapshotInstanceStatus struct {
+	// Snapshot contains the snapshot description
+	Snapshot SnapshotDesc
+	// Reported indicates if the snapshot has been reported to the controller
+	Reported bool
+	// TimeTriggered is the time when the snapshot was triggered. At the moment, it is used to check if the snapshot has
+	// already been triggered. Later it can be used to order the snapshots for example in the case of choosing the
+	// snapshot to be deleted.
+	TimeTriggered time.Time
+	// TimeCreated is the time when the snapshot was created. It's reported by FS-specific snapshot creation code.
+	TimeCreated time.Time
+	// AppInstanceID is the UUID of the app instance the snapshot belongs to
+	AppInstanceID uuid.UUID
+	// ConfigVersion is the version of the app instance config at the moment of the snapshot creation
+	// It is reported to the controller, so it can use the proper config to roll back the app instance
+	ConfigVersion UUIDandVersion
+	// Error indicates if snapshot deletion or a rollback to the snapshot failed
+	Error ErrorDescription
+}
+
+// SnapshotConfig configuration of the snapshot handling for the app instance
+type SnapshotConfig struct {
+	ActiveSnapshot string            // UUID of the active snapshot used by the app instance
+	MaxSnapshots   uint32            // Number of snapshots that may be created for the app instance
+	RollbackCmd    AppInstanceOpsCmd // Command to roll back the app instance to the active snapshot
+	Snapshots      []SnapshotDesc    // List of snapshots known to the controller at the moment
+}
+
 // This is what we assume will come from the ZedControl for each
 // application instance. Note that we can have different versions
 // configured for the same UUID, hence the key is the UUIDandVersion
@@ -54,6 +123,7 @@ type AppInstanceConfig struct {
 	//	so the cloud gets it.
 	Errors              []string
 	FixedResources      VmConfig // CPU etc
+	DisableLogs         bool
 	VolumeRefConfigList []VolumeRefConfig
 	Activate            bool //EffectiveActivate in AppInstanceStatus must be used for the actual activation
 	UnderlayNetworkList []UnderlayNetworkConfig
@@ -81,6 +151,14 @@ type AppInstanceConfig struct {
 	// Service flag indicates that we want to start app instance
 	// with options defined in org.mobyproject.config label of image provided by linuxkit
 	Service bool
+
+	// All changes to the cloud-init config are tracked using this version field -
+	// once the version is changed cloud-init tool restarts in a guest.
+	CloudInitVersion uint32
+
+	// Contains the configuration of the snapshot handling for the app instance.
+	// Meanwhile, the list of actual snapshots is stored in the AppInstanceStatus.
+	Snapshot SnapshotConfig
 }
 
 type AppInstanceOpsCmd struct {
@@ -91,8 +169,8 @@ type AppInstanceOpsCmd struct {
 // IoAdapter specifies that a group of ports should be assigned
 type IoAdapter struct {
 	Type  IoType
-	Name  string // Short hand name such as "COM1" or "eth1-2"
-	EthVf EthVF  // Applies only to the VF IoType
+	Name  string      // Short hand name such as "COM1" or "eth1-2"
+	EthVf sriov.EthVF // Applies only to the VF IoType
 }
 
 // LogCreate :
@@ -151,6 +229,30 @@ func (config AppInstanceConfig) Key() string {
 	return config.UUIDandVersion.UUID.String()
 }
 
+// SnapshottingStatus contains the snapshot information for the app instance.
+type SnapshottingStatus struct {
+	// MaxSnapshots indicates the maximum number of snapshots to be kept for the app instance.
+	MaxSnapshots uint32
+	// RequestedSnapshots contains the list of snapshots to be taken for the app instance.
+	RequestedSnapshots []SnapshotInstanceStatus
+	// AvailableSnapshots contains the list of snapshots available for the app instance.
+	AvailableSnapshots []SnapshotInstanceStatus
+	// SnapshotsToBeDeleted contains the list of snapshots to be deleted for the app instance.
+	SnapshotsToBeDeleted []SnapshotDesc
+	// PreparedVolumesSnapshotConfigs contains the list of snapshots to be triggered for the app instance.
+	PreparedVolumesSnapshotConfigs []VolumesSnapshotConfig
+	// SnapshotOnUpgrade indicates whether a snapshot should be taken during the app instance update.
+	SnapshotOnUpgrade bool
+	// HasRollbackRequest indicates whether a rollback is in progress for the app instance.
+	HasRollbackRequest bool
+	// ActiveSnapshot contains the id of the snapshot to be used for the rollback.
+	ActiveSnapshot string
+	// RollbackInProgress indicates whether a rollback is in progress for the app instance.
+	RollbackInProgress bool
+	// ConfigBeforeRollback contains the version of the configuration of the app instance before the rollback
+	ConfigBeforeRollback UUIDandVersion
+}
+
 // Indexed by UUIDandVersion as above
 type AppInstanceStatus struct {
 	UUIDandVersion      UUIDandVersion
@@ -179,6 +281,8 @@ type AppInstanceStatus struct {
 	ErrorAndTimeWithSource
 	// Effective time, when the application should start
 	StartTime time.Time
+	// Snapshot related information
+	SnapStatus SnapshottingStatus
 }
 
 // AppCount is uint8 and it should be sufficient for the number of apps we can support

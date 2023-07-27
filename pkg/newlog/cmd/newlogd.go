@@ -26,7 +26,7 @@ import (
 	"github.com/euank/go-kmsg-parser/kmsgparser"
 	"github.com/golang/protobuf/ptypes/timestamp"
 	"github.com/google/go-cmp/cmp"
-	"github.com/lf-edge/eve/api/go/logs"
+	"github.com/lf-edge/eve-api/go/logs"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
