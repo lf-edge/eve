@@ -17,7 +17,7 @@ require (
 	github.com/golang/protobuf v1.5.2
 	github.com/google/go-cmp v0.5.9
 	github.com/google/go-containerregistry v0.8.0
-	github.com/google/go-tpm v0.3.0
+	github.com/google/go-tpm v0.3.3
 	github.com/google/gopacket v1.1.19
 	github.com/gorilla/websocket v1.4.2
 	github.com/grandcat/zeroconf v1.0.0
