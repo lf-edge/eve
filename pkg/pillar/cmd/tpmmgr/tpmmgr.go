@@ -343,9 +343,9 @@ func readDeviceCert() error {
 	return nil
 }
 
-func genCredentials() error {
+func genCredentials(credentialsFileName string) error {
 	//First try to read from TPM, if it was stored earlier
-	err := readCredentials()
+	err := readCredentials(credentialsFileName)
 	if err != nil {
 		id, err := uuid.NewV4()
 		if err != nil {
@@ -353,13 +353,13 @@ func genCredentials() error {
 			return err
 		}
 		//Write uuid to credentials file for faster access
-		err = os.WriteFile(etpm.TpmCredentialsFileName, []byte(id.String()), 0644)
+		err = os.WriteFile(credentialsFileName, []byte(id.String()), 0644)
 		if err != nil {
 			log.Errorf("Writing to credentials file failed: %v", err)
 			return err
 		}
 		//Write credentials to TPM for permanent storage.
-		err = writeCredentials()
+		err = writeCredentials(credentialsFileName)
 		if err != nil {
 			log.Errorf("Writing credentials to TPM failed: %v", err)
 			return err
@@ -368,7 +368,7 @@ func genCredentials() error {
 	return nil
 }
 
-func writeCredentials() error {
+func writeCredentials(credentialsFileName string) error {
 
 	rw, err := tpm2.OpenTPM(etpm.TpmDevicePath)
 	if err != nil {
@@ -382,7 +382,7 @@ func writeCredentials() error {
 		log.Tracef("NVUndefineSpace failed: %v", err)
 	}
 
-	tpmCredentialBytes, err := os.ReadFile(etpm.TpmCredentialsFileName)
+	tpmCredentialBytes, err := os.ReadFile(credentialsFileName)
 	if err != nil {
 		log.Errorf("Failed to read credentials file: %v", err)
 		return err
@@ -411,7 +411,7 @@ func writeCredentials() error {
 	return nil
 }
 
-func readCredentials() error {
+func readCredentials(credentialsFileName string) error {
 
 	rw, err := tpm2.OpenTPM(etpm.TpmDevicePath)
 	if err != nil {
@@ -427,7 +427,7 @@ func readCredentials() error {
 		return err
 	}
 
-	err = os.WriteFile(etpm.TpmCredentialsFileName, tpmCredentialBytes, 0644)
+	err = os.WriteFile(credentialsFileName, tpmCredentialBytes, 0644)
 	if err != nil {
 		log.Errorf("Writing to credentials file failed: %v", err)
 		return err
@@ -1502,7 +1502,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	log.Functionf("processed GlobalConfig")
 
 	if etpm.IsTpmEnabled() && !fileutils.FileExists(log, etpm.TpmCredentialsFileName) {
-		err := readCredentials()
+		err := readCredentials(etpm.TpmCredentialsFileName)
 		if err != nil {
 			// this indicates that we are in a very bad state
 			log.Errorf("TPM is enabled, but credential file is absent: %v", err)
@@ -1527,7 +1527,7 @@ func runInline(command string, args []string) int {
 	case "createDeviceCert":
 		// Create required directories if not present
 		initializeDirs()
-		if err = genCredentials(); err != nil {
+		if err = genCredentials(etpm.TpmCredentialsFileName); err != nil {
 			// No need for Fatal, caller will take action based on return code.
 			log.Errorf("Error in generating credentials: %v", err)
 			return 1
@@ -1570,14 +1570,14 @@ func runInline(command string, args []string) int {
 		}
 
 	case "readCredentials":
-		if err = readCredentials(); err != nil {
+		if err = readCredentials(etpm.TpmCredentialsFileName); err != nil {
 			// No need for Fatal, caller will take action based on return code.
 			log.Errorf("Error in reading credentials: %v", err)
 			return 1
 		}
 
 	case "genCredentials":
-		if err = genCredentials(); err != nil {
+		if err = genCredentials(etpm.TpmCredentialsFileName); err != nil {
 			// No need for Fatal, caller will take action based on return code.
 			log.Errorf("Error in generating credentials: %v", err)
 			return 1
