@@ -19,7 +19,7 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
-	zcommon "github.com/lf-edge/eve/api/go/evecommon"
+	zcommon "github.com/lf-edge/eve-api/go/evecommon"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/sriov"
 	uuid "github.com/satori/go.uuid"
