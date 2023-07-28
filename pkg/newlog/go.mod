@@ -7,15 +7,16 @@ require (
 	github.com/golang/protobuf v1.5.2
 	github.com/google/go-cmp v0.5.9
 	github.com/lf-edge/eve/api/go v0.0.0-20230306060116-9673fb35833f
-	github.com/lf-edge/eve/pkg/pillar v0.0.0-20230306060627-c6953d139f5f
+	github.com/lf-edge/eve/pkg/pillar v0.0.0-20230728132627-87a9bc7f4e97
 	github.com/sirupsen/logrus v1.9.0
 )
 
 require (
-	github.com/eriknordmark/ipinfo v0.0.0-20190220084921-7ee0839158f9 // indirect
+	github.com/eriknordmark/ipinfo v0.0.0-20230728132417-2d8f4da903d7 // indirect
 	github.com/fsnotify/fsnotify v1.5.1 // indirect
 	github.com/go-ole/go-ole v1.2.6 // indirect
 	github.com/google/go-containerregistry v0.8.0 // indirect
+	github.com/lf-edge/eve-api/go v0.0.0-20230725195950-9c64039db587 // indirect
 	github.com/satori/go.uuid v1.2.1-0.20180404165556-75cca531ea76 // indirect
 	github.com/shirou/gopsutil v3.21.11+incompatible // indirect
 	github.com/vishvananda/netlink v1.1.1-0.20210924202909-187053b97868 // indirect

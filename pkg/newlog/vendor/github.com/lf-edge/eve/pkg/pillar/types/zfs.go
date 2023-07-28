@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	zconfig "github.com/lf-edge/eve/api/go/config"
+	zconfig "github.com/lf-edge/eve-api/go/config"
 	uuid "github.com/satori/go.uuid"
 )
 
