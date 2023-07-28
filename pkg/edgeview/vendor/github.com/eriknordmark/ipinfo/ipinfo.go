@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-var ipinfoURI = "http://ipinfo.io"
+var ipinfoURI = "https://ipinfo.io"
 
 // IPInfo wraps json response
 type IPInfo struct {
