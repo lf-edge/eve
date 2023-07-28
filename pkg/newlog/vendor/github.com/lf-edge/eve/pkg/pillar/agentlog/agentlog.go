@@ -5,6 +5,9 @@ package agentlog
 
 import (
 	"fmt"
+	"io"
+	"net/http"
+	"net/http/pprof"
 	"os"
 	"os/signal"
 	"runtime"
@@ -12,13 +15,14 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
-	"github.com/satori/go.uuid"
+	uuid "github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
 )
 
@@ -149,58 +153,151 @@ func (hook *SkipCallerHook) Levels() []logrus.Level {
 
 // Wait on channel then handle the signals
 func handleSignals(log *base.LogObject, agentName string, agentPid int, sigs chan os.Signal) {
-	agentDebugDir := fmt.Sprintf("%s/%s/", types.PersistDebugDir, agentName)
-	sigUsr1FileName := agentDebugDir + "/sigusr1"
-	sigUsr2FileName := agentDebugDir + "/sigusr2"
-
 	for {
 		select {
 		case sig := <-sigs:
 			log.Functionf("handleSignals: received %v\n", sig)
 			switch sig {
 			case syscall.SIGUSR1:
-				stacks := getStacks(true)
-				stackArray := strings.Split(stacks, "\n\n")
-
-				sigUsr1File, err := os.OpenFile(sigUsr1FileName,
-					os.O_WRONLY|os.O_CREATE|os.O_SYNC|os.O_TRUNC, 0755)
-				if err == nil {
-					for _, stack := range stackArray {
-						// This goes to /persist/agentdebug/<agentname>/sigusr1 file
-						sigUsr1File.WriteString(stack + "\n\n")
-					}
-					sigUsr1File.Close()
-				} else {
-					log.Errorf("handleSignals: Error opening file %s with: %s", sigUsr1FileName, err)
-				}
-
-				usr1LogObject := base.EnsureLogObject(log, base.SigUSR1StacksType,
-					"", uuid.UUID{}, string(base.SigUSR1StacksType))
-				if usr1LogObject != nil {
-					log.Warnf("SIGUSR1 triggered with %d stacks", len(stackArray))
-					for _, stack := range stackArray {
-						usr1LogObject.Warnf("%v", stack)
-					}
-					log.Warnf("SIGUSR1: end of stacks")
-				}
+				dumpStacks(log, agentName)
 			case syscall.SIGUSR2:
-				log.Warnf("SIGUSR2 triggered memory info:\n")
-				sigUsr2File, err := os.OpenFile(sigUsr2FileName,
-					os.O_WRONLY|os.O_CREATE|os.O_SYNC|os.O_TRUNC, 0755)
-				if err != nil {
-					log.Errorf("handleSignals: Error opening file %s with: %s", sigUsr2FileName, err)
-				} else {
-					// This goes to /persist/agentdebug/<agentname>/sigusr2 file
-					sigUsr2File.WriteString("SIGUSR2 triggered memory info:\n")
-				}
-
-				logMemUsage(log, sigUsr2File)
-				logMemAllocationSites(log, sigUsr2File)
-				if sigUsr2File != nil {
-					sigUsr2File.Close()
-				}
+				go listenDebug(log, agentName)
 			}
 		}
+	}
+}
+
+func dumpMemoryInfo(log *base.LogObject, fileName string) {
+	log.Warnf("SIGUSR2 triggered memory info:\n")
+	sigUsr2File, err := os.OpenFile(fileName,
+		os.O_WRONLY|os.O_CREATE|os.O_SYNC|os.O_TRUNC, 0755)
+	if err != nil {
+		log.Errorf("handleSignals: Error opening file %s with: %s", fileName, err)
+	} else {
+		// This goes to /persist/agentdebug/<agentname>/sigusr2 file
+		_, err := sigUsr2File.WriteString("SIGUSR2 triggered memory info:\n")
+		if err != nil {
+			log.Errorf("could not write to %s: %+v", fileName, err)
+		}
+	}
+
+	logMemUsage(log, sigUsr2File)
+	logMemAllocationSites(log, sigUsr2File)
+	if sigUsr2File != nil {
+		sigUsr2File.Close()
+	}
+}
+
+func dumpStacks(log *base.LogObject, fileName string) {
+	stacks := getStacks(true)
+	stackArray := strings.Split(stacks, "\n\n")
+
+	sigUsr1File, err := os.OpenFile(fileName,
+		os.O_WRONLY|os.O_CREATE|os.O_SYNC|os.O_TRUNC, 0755)
+	if err == nil {
+		for _, stack := range stackArray {
+			// This goes to /persist/agentdebug/<agentname>/sigusr1 file
+			_, err := sigUsr1File.WriteString(stack + "\n\n")
+			if err != nil {
+				log.Errorf("could not write to %s: %+v", fileName, err)
+			}
+		}
+		sigUsr1File.Close()
+	} else {
+		log.Errorf("handleSignals: Error opening file %s with: %s", fileName, err)
+	}
+
+	usr1LogObject := base.EnsureLogObject(log, base.SigUSR1StacksType,
+		"", uuid.UUID{}, string(base.SigUSR1StacksType))
+	if usr1LogObject != nil {
+		log.Warnf("SIGUSR1 triggered with %d stacks", len(stackArray))
+		for _, stack := range stackArray {
+			usr1LogObject.Warnf("%v", stack)
+		}
+		log.Warnf("SIGUSR1: end of stacks")
+	}
+}
+
+func writeOrLog(log *base.LogObject, w io.Writer, msg string) {
+	if _, err := w.Write([]byte(msg)); err != nil {
+		log.Errorf("Could not write to %+v: %+v", w, err)
+	}
+}
+
+var listenDebugRunning atomic.Bool
+
+func listenDebug(log *base.LogObject, agentName string) {
+	if listenDebugRunning.Swap(true) {
+		return
+	}
+
+	agentDebugDir := fmt.Sprintf("%s/%s/", types.PersistDebugDir, agentName)
+	stacksDumpFileName := agentDebugDir + "/sigusr1"
+	memDumpFileName := agentDebugDir + "/sigusr2"
+
+	mux := http.NewServeMux()
+
+	server := &http.Server{
+		Addr:              "localhost:6543",
+		Handler:           mux,
+		ReadHeaderTimeout: 10 * time.Second,
+	}
+
+	info := `
+		This server exposes the net/http/pprof API.</br>
+		For examples on how to use it, see: <a href="https://pkg.go.dev/net/http/pprof">https://pkg.go.dev/net/http/pprof</a></br>
+	    <a href="debug/pprof/">pprof methods</a></br></br>
+	    To create a flamegraph, do: go tool pprof -raw -output=cpu.txt 'http://localhost:6543/debug/pprof/profile?seconds=5';</br>
+	    stackcollapse-go.pl cpu.txt | flamegraph.pl --width 4096 > flame.svg</br>
+	    (both scripts can be found <a href="https://github.com/brendangregg/FlameGraph">here</a>)
+		`
+
+	mux.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		writeOrLog(log, w, info)
+	}))
+	mux.Handle("/index.html", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		writeOrLog(log, w, info)
+	}))
+
+	mux.Handle("/debug/pprof/", http.HandlerFunc(pprof.Index))
+	mux.Handle("/debug/pprof/cmdline", http.HandlerFunc(pprof.Cmdline))
+	mux.Handle("/debug/pprof/profile", http.HandlerFunc(pprof.Profile))
+	mux.Handle("/debug/pprof/symbol", http.HandlerFunc(pprof.Symbol))
+	mux.Handle("/debug/pprof/trace", http.HandlerFunc(pprof.Trace))
+	mux.Handle("/stop", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			server.Close()
+			listenDebugRunning.Swap(false)
+		} else {
+			http.Error(w, "Did you want to use POST method?", http.StatusMethodNotAllowed)
+			return
+		}
+	}))
+	mux.Handle("/dump/stacks", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			dumpStacks(log, stacksDumpFileName)
+			response := fmt.Sprintf("Stacks can be found in logread or %s\n", stacksDumpFileName)
+			writeOrLog(log, w, response)
+		} else {
+			http.Error(w, "Did you want to use POST method?", http.StatusMethodNotAllowed)
+			return
+		}
+	}))
+	mux.Handle("/dump/memory", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			dumpMemoryInfo(log, memDumpFileName)
+			response := fmt.Sprintf("Stacks can be found in logread or %s\n", memDumpFileName)
+			writeOrLog(log, w, response)
+		} else {
+			http.Error(w, "Did you want to use POST method?", http.StatusMethodNotAllowed)
+			return
+		}
+	}))
+
+	if err := server.ListenAndServe(); err != nil {
+		log.Errorf("Listening failed: %+v", err)
 	}
 }
 
