@@ -13,12 +13,15 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	utils "github.com/lf-edge/eve/pkg/pillar/utils/file"
 )
 
 // define a path in sysfs to the PCI devices
 const sysfsPciDevices = "/sys/bus/pci/devices/"
 
 // define go constants for the flags as defined in include/linux/pci_ids.h
+//
+//revive:disable:var-naming
 const (
 	IORESOURCE_BITS      = 0x000000ff
 	IORESOURCE_TYPE_BITS = 0x00001f00
@@ -36,6 +39,7 @@ const (
 	PCI_BASE_CLASS_BRIDGE = "0x06"
 )
 
+//revive:enable:var-naming
 type pciResource struct {
 	start uint64
 	end   uint64
@@ -76,17 +80,13 @@ type pciDevice struct {
 // check if the PCI device is a VGA device
 // check availability of the VGA file in the sysfs filesystem
 func (d pciDevice) isVGA() bool {
-	bootVgaFile := filepath.Join(sysfsPciDevices, d.pciLong, "/boot_vga")
-
-	if _, err := os.Stat(bootVgaFile); err == nil {
-		return true
-	}
-	return false
+	bootVgaFile := filepath.Join(sysfsPciDevices, d.pciLong, "boot_vga")
+	return utils.FileExists(nil, bootVgaFile)
 }
 
 // read vendor ID
 func (d pciDevice) vid() (string, error) {
-	vendorID, err := os.ReadFile(filepath.Join(sysfsPciDevices, d.pciLong, "/vendor"))
+	vendorID, err := os.ReadFile(filepath.Join(sysfsPciDevices, d.pciLong, "vendor"))
 	if err != nil {
 		return "", err
 	}
@@ -100,7 +100,7 @@ func (d pciDevice) vid() (string, error) {
 // base_class,subclass,prog-if
 // e.g. 0x06,0x04,0x00 - PCI bridge
 func (d pciDevice) isBridge() (bool, error) {
-	class, err := os.ReadFile(filepath.Join(sysfsPciDevices, d.pciLong, "/class"))
+	class, err := os.ReadFile(filepath.Join(sysfsPciDevices, d.pciLong, "class"))
 
 	if err != nil {
 		logrus.Errorf("Can't read PCI device class %s: %v\n",
@@ -119,7 +119,7 @@ func (d pciDevice) isBridge() (bool, error) {
 // read the boot_vga file from the sysfs filesystem
 // and return true if the file contains "1"
 func (d pciDevice) isBootVGA() (bool, error) {
-	bootVGA, err := os.ReadFile(filepath.Join(sysfsPciDevices, d.pciLong, "/boot_vga"))
+	bootVGA, err := os.ReadFile(filepath.Join(sysfsPciDevices, d.pciLong, "boot_vga"))
 
 	if err != nil {
 		logrus.Errorf("Can't read PCI device boot_vga %s: %v\n",
@@ -165,20 +165,20 @@ func (d pciDevice) readResources() ([]pciResource, error) {
 			continue
 		}
 		// trim prefix and convert to integer
-		resoureIndex := strings.TrimPrefix(name, "resource")
-		if resoureIndex == "" {
+		resourceIndex := strings.TrimPrefix(name, "resource")
+		if resourceIndex == "" {
 			continue
 		}
 
-		index, err := strconv.Atoi(resoureIndex)
+		index, err := strconv.Atoi(resourceIndex)
 		if err != nil {
 			return nil, logError("Can't convert PCI device resource index %s: %v\n",
-				resoureIndex, err)
+				resourceIndex, err)
 		}
 		resourceIndexes = append(resourceIndexes, index)
 	}
 
-	data, err := os.ReadFile(filepath.Join(path, "/resource"))
+	data, err := os.ReadFile(filepath.Join(path, "resource"))
 	if err != nil {
 		return nil, logError("Can't read PCI device resource file %s: %v\n",
 			path, err)
