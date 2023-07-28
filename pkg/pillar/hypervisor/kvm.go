@@ -1,4 +1,4 @@
-// Copyright (c) 2017-2020 Zededa, Inc.
+// Copyright (c) 2017-2023 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
 package hypervisor
@@ -6,6 +6,7 @@ package hypervisor
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"text/template"
@@ -460,18 +461,150 @@ func (ctx kvmContext) Task(status *types.DomainStatus) types.Task {
 	return ctx
 }
 
-// TBD: Have a better way to calculate this number.
-// For now it is based on some trial-and-error experiments.
-// Container limit is reduced to 100MiB.
-func minVMMOverhead(config types.DomainConfig) int64 {
-	if config.IsOCIContainer() {
-		return 100 << 20 // Mb in bytes
-	}
-	return 600 << 20 // Mb in bytes
+func isArchARM() bool {
+	return runtime.GOARCH == "arm64"
 }
 
-func vmmOverhead(config types.DomainConfig,
-	globalConfig *types.ConfigItemValueMap) (int64, error) {
+func estimatedVMMOverhead(domainName string, config types.DomainConfig, aa *types.AssignableAdapters) (int64, error) {
+	// Container limit is set to 100MiB for x86 and 300 for ARM.
+	// This is a temporary solution until we have a better way to predict
+	// the memory usage of the container.
+	if config.IsOCIContainer() {
+		if isArchARM() {
+			return 300 << 20, nil // Mb in bytes
+		}
+		return 100 << 20, nil // Mb in bytes
+	}
+
+	var overhead int64
+
+	mmioOverhead, err := mmioVMMOverhead(domainName, config, aa)
+
+	if err != nil {
+		return 0, logError("mmioVMMOverhead() failed for domain %s: %v",
+			domainName, err)
+	}
+	overhead = undefinedVMMOverhead() + ramVMMOverhead(config) +
+		qemuVMMOverhead() + cpuVMMOverhead(config) + mmioOverhead
+
+	return overhead, nil
+}
+
+func ramVMMOverhead(config types.DomainConfig) int64 {
+	// 0.224% of the total RAM allocated for VM in bytes
+	// this formula is precise and well explained in the following QEMU issue:
+	// https://gitlab.com/qemu-project/qemu/-/issues/1003
+	// This is a best case scenario because it assumes that all PTEs are allocated
+	// sequentially. In reality, there will be some fragmentation and the overhead
+	// for now 2.5% (~10x) is a good approximation until we have a better way to
+	// predict the memory usage of the VM.
+	return int64(config.Memory) * 1024 * 25 / 1000
+}
+
+// overhead for qemu binaries and libraries
+func qemuVMMOverhead() int64 {
+	return 20 << 20 // Mb in bytes
+}
+
+// overhead for VMM memory mapped IO
+// it fluctuates between 0.66 and 0.81 % of MMIO total size
+// for all mapped devices. Set it to 1% to be on the safe side
+// this can be a pretty big number for GPUs with very big
+// aperture size (e.g. 64G for NVIDIA A40)
+func mmioVMMOverhead(domainName string, config types.DomainConfig, aa *types.AssignableAdapters) (int64, error) {
+	var pciAssignments []pciDevice
+	var mmioSize uint64
+
+	for _, adapter := range config.IoAdapterList {
+		logrus.Debugf("processing adapter %d %s\n", adapter.Type, adapter.Name)
+		aaList := aa.LookupIoBundleAny(adapter.Name)
+		// We reserved it in handleCreate so nobody could have stolen it
+		if len(aaList) == 0 {
+			return 0, logError("IoBundle disappeared %d %s for %s\n",
+				adapter.Type, adapter.Name, domainName)
+		}
+		for _, ib := range aaList {
+			if ib == nil {
+				continue
+			}
+			if ib.UsedByUUID != config.UUIDandVersion.UUID {
+				return 0, logError("IoBundle not ours %s: %d %s for %s\n",
+					ib.UsedByUUID, adapter.Type, adapter.Name,
+					domainName)
+			}
+			if ib.PciLong != "" && ib.UsbAddr == "" {
+				logrus.Infof("Adding PCI device <%s>\n", ib.PciLong)
+				tap := pciDevice{pciLong: ib.PciLong, ioType: ib.Type}
+				pciAssignments = addNoDuplicatePCI(pciAssignments, tap)
+			}
+		}
+	}
+
+	for _, dev := range pciAssignments {
+		logrus.Infof("PCI device %s %d\n", dev.pciLong, dev.ioType)
+		// read the size of the PCI device aperture. Only GPU/VGA devices for now
+		if dev.ioType != types.IoOther && dev.ioType != types.IoHDMI {
+			continue
+		}
+		// skip bridges
+		isBridge, err := dev.isBridge()
+		if err != nil {
+			// do not treat as fatal error
+			logrus.Warnf("Can't read PCI device class, treat as bridge %s: %v\n",
+				dev.pciLong, err)
+			isBridge = true
+		}
+
+		if isBridge {
+			logrus.Infof("Skipping bridge %s\n", dev.pciLong)
+			continue
+		}
+
+		// read all resources of the PCI device
+		resources, err := dev.readResources()
+		if err != nil {
+			return 0, logError("Can't read PCI device resources %s: %v\n",
+				dev.pciLong, err)
+		}
+
+		// calculate the size of the MMIO region
+		for _, res := range resources {
+			if res.valid() && res.isMem() {
+				mmioSize += res.size()
+			}
+		}
+	}
+
+	// 1% of the total MMIO size in bytes
+	mmioOverhead := int64(mmioSize) / 100
+
+	logrus.Infof("MMIO size: %d / overhead: %d for %s", mmioSize, mmioOverhead, domainName)
+
+	return int64(mmioOverhead), nil
+}
+
+// each vCPU requires about 3MB of memory
+func cpuVMMOverhead(config types.DomainConfig) int64 {
+	cpus := int64(config.MaxCpus)
+	if cpus == 0 {
+		cpus = int64(config.VCpus)
+	}
+	return cpus * (3 << 20) // Mb in bytes
+}
+
+// memory allocated by QEMU for its own purposes.
+// statistical analysis did not revile any correlation between
+// VM configuration (devices, nr of vcpus, etc) and this number
+// however the size of disk space affects it. Probably some internal
+// QEMU caches are allocated based on the size of the disk image.
+// it requires more investigation.
+func undefinedVMMOverhead() int64 {
+	return 350 << 20 // Mb in bytes
+}
+
+func vmmOverhead(domainName string, config types.DomainConfig,
+	globalConfig *types.ConfigItemValueMap,
+	aa *types.AssignableAdapters) (int64, error) {
 	var overhead int64
 
 	// Fetch VMM max memory setting (aka vmm overhead)
@@ -487,14 +620,14 @@ func vmmOverhead(config types.DomainConfig,
 			overhead = int64(VmmOverheadOverrideCfgItem.IntValue) << 20
 		}
 	}
+
 	if overhead == 0 {
-		// XXX: This looks ugly and probably incorrect, please FIXME
-		// Default formula - 2.5 % of total memory
-		overhead = int64(config.Memory) * 1024 * 25 / 1000
-		minOverhead := minVMMOverhead(config)
-		if overhead < minOverhead {
-			overhead = minOverhead
+		overhead, err := estimatedVMMOverhead(domainName, config, aa)
+		if err != nil {
+			return 0, logError("estimatedVMMOverhead() failed for domain %s: %v",
+				domainName, err)
 		}
+		return overhead, nil
 	}
 
 	return overhead, nil
@@ -539,7 +672,7 @@ func (ctx kvmContext) Setup(status types.DomainStatus, config types.DomainConfig
 	if err = spec.AddLoader("/containers/services/xen-tools"); err != nil {
 		return logError("failed to add kvm hypervisor loader to domain %s: %v", status.DomainName, err)
 	}
-	overhead, err := vmmOverhead(config, globalConfig)
+	overhead, err := vmmOverhead(domainName, config, globalConfig, aa)
 	if err != nil {
 		return logError("vmmOverhead() failed for domain %s: %v",
 			status.DomainName, err)
@@ -808,7 +941,7 @@ func (ctx kvmContext) Start(domainName string) error {
 	return nil
 }
 
-func (ctx kvmContext) Stop(domainName string, force bool) error {
+func (ctx kvmContext) Stop(domainName string, _ bool) error {
 	if err := execShutdown(getQmpExecutorSocket(domainName)); err != nil {
 		return logError("Stop: failed to execute shutdown command %v", err)
 	}
@@ -879,9 +1012,9 @@ func (ctx kvmContext) Cleanup(domainName string) error {
 func (ctx kvmContext) PCIReserve(long string) error {
 	logrus.Infof("PCIReserve long addr is %s", long)
 
-	overrideFile := sysfsPciDevices + long + "/driver_override"
-	driverPath := sysfsPciDevices + long + "/driver"
-	unbindFile := driverPath + "/unbind"
+	overrideFile := filepath.Join(sysfsPciDevices, long, "driver_override")
+	driverPath := filepath.Join(sysfsPciDevices, long, "driver")
+	unbindFile := filepath.Join(driverPath, "unbind")
 
 	//Check if already bound to vfio-pci
 	driverPathInfo, driverPathErr := os.Stat(driverPath)
@@ -917,8 +1050,8 @@ func (ctx kvmContext) PCIReserve(long string) error {
 func (ctx kvmContext) PCIRelease(long string) error {
 	logrus.Infof("PCIRelease long addr is %s", long)
 
-	overrideFile := sysfsPciDevices + long + "/driver_override"
-	unbindFile := sysfsPciDevices + long + "/driver/unbind"
+	overrideFile := filepath.Join(sysfsPciDevices, long, "driver_override")
+	unbindFile := filepath.Join(sysfsPciDevices, long, "driver/unbind")
 
 	//Write Empty string, to clear driver_override for the device
 	if err := os.WriteFile(overrideFile, []byte("\n"), 0644); err != nil {
@@ -967,9 +1100,9 @@ func usbBusPort(USBAddr string) (string, string) {
 }
 
 func getQmpExecutorSocket(domainName string) string {
-	return kvmStateDir + domainName + "/qmp"
+	return filepath.Join(kvmStateDir, domainName, "qmp")
 }
 
 func getQmpListenerSocket(domainName string) string {
-	return kvmStateDir + domainName + "/listener.qmp"
+	return filepath.Join(kvmStateDir, domainName, "listener.qmp")
 }
