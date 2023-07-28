@@ -666,7 +666,7 @@ func (ctx xenContext) GetHostCPUMem() (types.HostMemory, error) {
 	if str, ok := dict["nr_cpus"]; ok {
 		// Note that this is the set of physical CPUs which is different
 		// than the set of CPUs assigned to dom0
-		res, err := strconv.ParseUint(str, 10, 64)
+		res, err := strconv.ParseUint(str, 10, 32)
 		if err != nil {
 			return hm, fmt.Errorf("failed parsing nr_cpus: %s", err)
 		}
