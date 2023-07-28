@@ -57,7 +57,8 @@ func (ctxPtr *tpmMgrContext) ProcessAgentSpecificCLIFlags(flagSet *flag.FlagSet)
 const (
 	agentName = "tpmmgr"
 
-	maxPCRIndex = 23
+	maxPCRIndex    = 23
+	applicationPCR = 23
 
 	// Time limits for event loop handlers
 	errorTime   = 3 * time.Minute
@@ -82,7 +83,7 @@ var (
 	// of PCRs do not matter as well as the contents but PCR[7] is not changed often
 	// on our devices
 	pcrSelection     = tpm2.PCRSelection{Hash: tpm2.AlgSHA256, PCRs: []int{7}}
-	pcrListForQuote  = tpm2.PCRSelection{Hash: tpm2.AlgSHA256, PCRs: []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}}
+	pcrListForQuote  = tpm2.PCRSelection{Hash: tpm2.AlgSHA256, PCRs: []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 23}}
 	defaultKeyParams = tpm2.Public{
 		Type:    tpm2.AlgECC,
 		NameAlg: tpm2.AlgSHA256,
@@ -430,6 +431,49 @@ func readCredentials(credentialsFileName string) error {
 	err = os.WriteFile(credentialsFileName, tpmCredentialBytes, 0644)
 	if err != nil {
 		log.Errorf("Writing to credentials file failed: %v", err)
+		return err
+	}
+
+	return nil
+}
+
+func extendAppPcrWithCredentials(credentialsFileName string) error {
+	rw, err := tpm2.OpenTPM(etpm.TpmDevicePath)
+	if err != nil {
+		log.Errorf("failed to open TPM device handle: %v", err)
+		return err
+	}
+	defer rw.Close()
+
+	if !fileutils.FileExists(log, credentialsFileName) {
+		err := readCredentials(credentialsFileName)
+		if err != nil {
+			return err
+		}
+	}
+
+	tpmCredentialBytes, err := os.ReadFile(credentialsFileName)
+	if err != nil {
+		log.Errorf("failed to read credentials: %v", err)
+		return err
+	}
+
+	// reset the application PCR first, this will set the PCR value to 0,
+	// so we end-up with the same predictable value no matter how many times
+	// a quote (for attest) is requested.
+	err = tpm2.PCRReset(rw, tpmutil.Handle(applicationPCR))
+	if err != nil {
+		log.Errorf("failed to reset PCR index %d: %v", applicationPCR, err)
+		return err
+	}
+
+	// Extend the application PCR with the device identity, doing so makes
+	// tpm quote a unique (per-device) operation rather than a generic one.
+	// main reason for this is to prevent masquerading attack over network.
+	hashSum := sha256.Sum256(tpmCredentialBytes)
+	err = tpm2.PCRExtend(rw, tpmutil.Handle(applicationPCR), tpm2.AlgSHA256, hashSum[:], etpm.EmptyPassword)
+	if err != nil {
+		log.Errorf("failed to extend PCR index %d: %v", applicationPCR, err)
 		return err
 	}
 
@@ -1702,6 +1746,14 @@ func handleAttestNonceImpl(ctxArg interface{}, key string,
 	ctx := ctxArg.(*tpmMgrContext)
 	nonceReq := statusArg.(types.AttestNonce)
 	log.Functionf("Received quote request from %s", nonceReq.Requester)
+
+	// Inject the device unique credential to the mix before quoting, this is used
+	// to prevent tpm masquerading attack.
+	err := extendAppPcrWithCredentials(etpm.TpmCredentialsFileName)
+	if err != nil {
+		log.Errorf("Error in extending application pcr with device cred: %v", err)
+	}
+
 	quote, signature, pcrs, err := getQuote(nonceReq.Nonce)
 	if err != nil {
 		log.Errorf("Error in fetching quote %v", err)

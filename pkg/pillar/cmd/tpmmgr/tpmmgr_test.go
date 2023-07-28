@@ -11,6 +11,7 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
+	"io/ioutil"
 	"os"
 	"reflect"
 	"strings"
@@ -19,6 +20,7 @@ import (
 
 	"github.com/google/go-tpm/tpm2"
 	"github.com/google/go-tpm/tpmutil"
+	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	etpm "github.com/lf-edge/eve/pkg/pillar/evetpm"
 )
 
@@ -265,5 +267,77 @@ func TestSealUnsealMismatchReport(t *testing.T) {
 	if !strings.Contains(err.Error(), "[1 7 8]") {
 		t.Errorf("UnsealDiskKey expected to report mismatching PCR indexes, got : %v", err)
 		return
+	}
+}
+
+func TestExtendAppPcrWithDeviceIdentity(t *testing.T) {
+	_, err := os.Stat(etpm.TpmDevicePath)
+	if err != nil {
+		t.Skip("TPM is not available, skipping the test.")
+	}
+
+	logger, log = agentlog.InitNoRedirect("tpmmgr")
+	file, err := ioutil.TempFile("/tmp", "tpmcred")
+	if err != nil {
+		t.Error(err)
+		return
+	}
+	defer os.Remove(file.Name())
+	credFile := file.Name()
+
+	rw, err := tpm2.OpenTPM(etpm.TpmDevicePath)
+	if err != nil {
+		t.Errorf("failed to open TPM device handle: %v", err)
+		return
+	}
+	defer rw.Close()
+
+	// undefine the NV so we get a fresh cred for device
+	err = tpm2.NVUndefineSpace(rw, etpm.EmptyPassword, tpm2.HandleOwner, etpm.TpmPasswdHdl)
+	if err != nil {
+		t.Errorf("NVUndefineSpace failed: %v", err)
+		return
+	}
+
+	if err = genCredentials(credFile); err != nil {
+		t.Errorf("failed to generate credentials: %v", err)
+		return
+	}
+
+	pcrExtend := func(old, new []byte) []byte {
+		h := sha256.New()
+		h.Write(old)
+		h.Write(new)
+		return h.Sum(nil)
+	}
+
+	// Read cred and calc sha256(0 || cred)
+	tpmCredentialBytes, err := os.ReadFile(credFile)
+	if err != nil {
+		t.Errorf("failed to read credentials: %v", err)
+		return
+	}
+
+	s := sha256.Sum256(tpmCredentialBytes)
+	expected := pcrExtend(bytes.Repeat([]byte{0x00}, sha256.Size), s[:])
+
+	// Get the PCR value from TPM
+	if err = extendAppPcrWithCredentials(credFile); err != nil {
+		t.Errorf("extendAppPcrWithCredentials failed: %v", err)
+		return
+	}
+
+	pcrVal, err := tpm2.ReadPCR(rw, int(applicationPCR), tpm2.AlgSHA256)
+	if err != nil {
+		t.Errorf("failed reading PCR-%d: %v", applicationPCR, err)
+		return
+	}
+
+	// compare
+	t.Logf("expected PCR[%d] : %x\n", applicationPCR, expected)
+	t.Logf("returned PCR[%d] : %x\n", applicationPCR, pcrVal)
+
+	if !bytes.Equal(expected, pcrVal) {
+		t.Errorf("expected PCR value doesn't match the returned value: %v", err)
 	}
 }
