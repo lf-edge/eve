@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/containerd/containerd/content"
+	containerderrdefs "github.com/containerd/containerd/errdefs"
 	"github.com/containerd/containerd/images"
 	"github.com/containerd/containerd/mount"
 	"github.com/lf-edge/edge-containers/pkg/resolver"
@@ -41,6 +42,11 @@ const (
 	imageNameFilename = "image-name"
 	// start of containerd gc ref label for children in content store
 	containerdGCRef = "containerd.io/gc.ref.content"
+)
+
+var (
+	// ErrImageNotFound describes the error for when image is not found in containerd
+	ErrImageNotFound = errors.New("Image not found")
 )
 
 type containerdCAS struct {
@@ -514,6 +520,10 @@ func (c *containerdCAS) GetImageHash(reference string) (string, error) {
 	defer done()
 
 	image, err := c.ctrdClient.CtrGetImage(ctrdCtx, reference)
+	if errors.Is(err, containerderrdefs.ErrNotFound) {
+		return "", ErrImageNotFound
+	}
+
 	if err != nil {
 		return "", fmt.Errorf("GetImageHash: Exception while getting image: %s. %s", reference, err.Error())
 	}
@@ -785,14 +795,18 @@ func (c *containerdCAS) IngestBlobsAndCreateImage(reference string, root types.B
 	rootBlobSha := fmt.Sprintf("%s:%s", digest.SHA256, strings.ToLower(root.Sha256))
 	mediaType := root.MediaType
 	imageHash, err := c.GetImageHash(reference)
-	if err != nil || imageHash == "" {
-		logrus.Infof("IngestBlobsAndCreateImage: creating reference: %s for rootBlob %s", reference, rootBlobSha)
+	if errors.Is(err, ErrImageNotFound) || imageHash == "" {
+		logrus.Infof("IngestBlobsAndCreateImage: image not found, creating reference: %s for rootBlob %s", reference, rootBlobSha)
 		if err := c.CreateImage(reference, mediaType, rootBlobSha); err != nil {
 			err = fmt.Errorf("IngestBlobsAndCreateImage: could not create reference %s with rootBlob %s: %v",
 				reference, rootBlobSha, err.Error())
 			logrus.Errorf(err.Error())
 			return nil, err
 		}
+	} else if err != nil {
+		retErr := fmt.Errorf("getting image hash for reference %s, rootBlob %s failed: %+v", reference, rootBlobSha, err)
+		logrus.Error(retErr)
+		return nil, retErr
 	} else {
 		logrus.Infof("IngestBlobsAndCreateImage: updating reference: %s for rootBlob %s", reference, rootBlobSha)
 		if err := c.ReplaceImage(reference, mediaType, rootBlobSha); err != nil {
