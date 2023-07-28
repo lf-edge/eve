@@ -22,7 +22,7 @@ require (
 require (
 	github.com/StackExchange/wmi v0.0.0-20190523213315-cbe66965904d // indirect
 	github.com/cenkalti/backoff v2.2.1+incompatible // indirect
-	github.com/eriknordmark/ipinfo v0.0.0-20190220084921-7ee0839158f9 // indirect
+	github.com/eriknordmark/ipinfo v0.0.0-20230728132417-2d8f4da903d7 // indirect
 	github.com/fsnotify/fsnotify v1.5.1 // indirect
 	github.com/go-ole/go-ole v1.2.4 // indirect
 	github.com/google/go-cmp v0.5.7 // indirect
