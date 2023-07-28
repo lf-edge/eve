@@ -303,7 +303,7 @@ github.com/docker/go-metrics
 # github.com/docker/go-units v0.4.0
 ## explicit
 github.com/docker/go-units
-# github.com/eriknordmark/ipinfo v0.0.0-20190220084921-7ee0839158f9
+# github.com/eriknordmark/ipinfo v0.0.0-20230728132417-2d8f4da903d7
 ## explicit
 github.com/eriknordmark/ipinfo
 # github.com/estesp/manifest-tool/v2 v2.0.6-0.20220728154431-89d791ab7966
