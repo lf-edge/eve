@@ -358,7 +358,6 @@ const qemuUsbHostTemplate = `
 `
 
 const kvmStateDir = "/run/hypervisor/kvm/"
-const sysfsPciDevices = "/sys/bus/pci/devices/"
 const sysfsVfioPciBind = "/sys/bus/pci/drivers/vfio-pci/bind"
 const sysfsPciDriversProbe = "/sys/bus/pci/drivers_probe"
 const vfioDriverPath = "/sys/bus/pci/drivers/vfio-pci"
@@ -457,9 +456,8 @@ func (ctx kvmContext) Name() string {
 func (ctx kvmContext) Task(status *types.DomainStatus) types.Task {
 	if status.VirtualizationMode == types.NOHYPER {
 		return ctx.ctrdContext
-	} else {
-		return ctx
 	}
+	return ctx
 }
 
 // TBD: Have a better way to calculate this number.
@@ -630,7 +628,7 @@ func (ctx kvmContext) CreateDomConfig(domainName string, config types.DomainConf
 	}
 
 	// Gather all PCI assignments into a single line
-	var pciAssignments []typeAndPCI
+	var pciAssignments []pciDevice
 	// Gather all USB assignments into a single line
 	var usbAssignments []string
 	// Gather all serial assignments into a single line
@@ -655,7 +653,7 @@ func (ctx kvmContext) CreateDomConfig(domainName string, config types.DomainConf
 			}
 			if ib.PciLong != "" {
 				logrus.Infof("Adding PCI device <%v>\n", ib.PciLong)
-				tap := typeAndPCI{pciLong: ib.PciLong, ioType: ib.Type}
+				tap := pciDevice{pciLong: ib.PciLong, ioType: ib.Type}
 				pciAssignments = addNoDuplicatePCI(pciAssignments, tap)
 			}
 			if ib.Serial != "" {
@@ -679,14 +677,11 @@ func (ctx kvmContext) CreateDomConfig(domainName string, config types.DomainConf
 		t, _ = template.New("qemuPciPT").Parse(qemuPciPassthruTemplate)
 		for _, pa := range pciAssignments {
 			short := types.PCILongToShort(pa.pciLong)
-			bootVgaFile := sysfsPciDevices + pa.pciLong + "/boot_vga"
-			if _, err := os.Stat(bootVgaFile); err == nil {
-				pciPTContext.Xvga = true
-			}
-			vendorFile := sysfsPciDevices + pa.pciLong + "/vendor"
-			if vendor, err := os.ReadFile(vendorFile); err == nil {
+			pciPTContext.Xvga = pa.isVGA()
+
+			if vendor, err := pa.vid(); err == nil {
 				// check for Intel vendor
-				if strings.TrimSpace(strings.TrimSuffix(string(vendor), "\n")) == "0x8086" {
+				if vendor == "0x8086" {
 					if pciPTContext.Xvga {
 						// we set opregion for Intel vga
 						// https://github.com/qemu/qemu/blob/stable-5.0/docs/igd-assign.txt#L91-L96
@@ -746,6 +741,7 @@ func waitForQmp(domainName string, available bool) error {
 	maxDelay := time.Second * 10
 	delay := time.Second
 	var waited time.Duration
+	var err error
 	for {
 		logrus.Infof("waitForQmp for %s %t: waiting for %v", domainName, available, delay)
 		if delay != 0 {
@@ -755,19 +751,18 @@ func waitForQmp(domainName string, available bool) error {
 		if _, err := getQemuStatus(getQmpExecutorSocket(domainName)); available == (err == nil) {
 			logrus.Infof("waitForQmp for %s %t done", domainName, available)
 			return nil
-		} else {
-			if waited > maxDelay {
-				// Give up
-				logrus.Warnf("waitForQmp for %s %t: giving up", domainName, available)
-				if available {
-					return logError("Qmp not found: error %v", err)
-				}
-				return logError("Qmp still available")
+		}
+		if waited > maxDelay {
+			// Give up
+			logrus.Warnf("waitForQmp for %s %t: giving up", domainName, available)
+			if available {
+				return logError("Qmp not found: error %v", err)
 			}
-			delay = 2 * delay
-			if delay > time.Minute {
-				delay = time.Minute
-			}
+			return logError("Qmp still available")
+		}
+		delay = 2 * delay
+		if delay > time.Minute {
+			delay = time.Minute
 		}
 	}
 }
