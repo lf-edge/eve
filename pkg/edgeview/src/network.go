@@ -152,114 +152,154 @@ func doAppNet(status, appstr string, isSummary bool) string {
 	if appstr != "" && !strings.Contains(nameLower, appStrLower) {
 		return ""
 	}
-	printColor("\n - app: "+name+", appNum: "+strconv.Itoa(appStatus.AppNum)+"\n", colorBLUE)
-	fmt.Printf("   app uuid %s\n", appStatus.UUIDandVersion.UUID.String())
+	printColor("\n == app: "+name+", appNum: "+strconv.Itoa(appStatus.AppNum)+"\n", colorBLUE)
+	fmt.Printf(" - app uuid %s\n", appStatus.UUIDandVersion.UUID.String())
 
 	if appStatus.GetStatsIPAddr != nil {
-		fmt.Printf("\n - App Container Stats Collect IP %v\n", appStatus.GetStatsIPAddr)
+		fmt.Printf("\n - collect container stats from IP %v\n", appStatus.GetStatsIPAddr)
+	}
+
+	var deviceNetStatus types.DeviceNetworkStatus
+	retbytes, err := os.ReadFile("/run/nim/DeviceNetworkStatus/global.json")
+	if err == nil {
+		// Leave empty deviceNetStatus if reading/unmarshal fails.
+		_ = json.Unmarshal(retbytes, &deviceNetStatus)
 	}
 
 	for _, item := range appStatus.UnderlayNetworkList {
 		niUUID := item.Network.String()
-		retbytes, err := os.ReadFile("/run/zedrouter/NetworkInstanceStatus/" + niUUID + ".json")
-		if err != nil {
-			continue
-		}
+		// Try to obtain network instance status data.
 		var niStatus types.NetworkInstanceStatus
-		_ = json.Unmarshal(retbytes, &niStatus)
-		var ifname string
-		var ipaddr net.IP
-		for _, p := range item.ACLDependList {
-			if ifname != p.Ifname || !ipaddr.Equal(p.IPAddr) {
-				fmt.Printf("\n  - uplink port: %s, %v\n", p.Ifname, p.IPAddr)
-				ifname = p.Ifname
-				ipaddr = p.IPAddr
-			}
+		retbytes, err = os.ReadFile("/run/zedrouter/NetworkInstanceStatus/" + niUUID + ".json")
+		if err == nil {
+			// Leave empty niStatus if reading/unmarshal fails.
+			_ = json.Unmarshal(retbytes, &niStatus)
 		}
-		fmt.Printf("\n == bridge: %s, %s, %v, %s\n", item.Bridge, item.Vif, item.AllocatedIPv4Addr, item.Mac)
+		// Try to obtain network instance metrics.
+		var niMetrics types.NetworkInstanceMetrics
+		retbytes, err = os.ReadFile("/run/zedrouter/NetworkInstanceMetrics/" + niUUID + ".json")
+		if err == nil {
+			// Leave empty niMetrics if reading/unmarshal fails.
+			_ = json.Unmarshal(retbytes, &niMetrics)
+		}
+
+		fmt.Printf("\n = bridge: %s, VIF: %s, VIF IP: %v, VIF MAC: %s\n",
+			item.Bridge, item.Vif, item.AllocatedIPv4Addr, item.Mac)
+
+		if niStatus.SelectedUplinkLogicalLabel != "" {
+			var uplinkIPs []net.IP
+			port := deviceNetStatus.GetPortsByLogicallabel(niStatus.SelectedUplinkLogicalLabel)
+			if len(port) == 1 {
+				for _, addrInfo := range port[0].AddrInfoList {
+					uplinkIPs = append(uplinkIPs, addrInfo.Addr)
+				}
+			}
+			fmt.Printf("\n - uplink port: %s, IPs: %v\n",
+				niStatus.SelectedUplinkLogicalLabel, uplinkIPs)
+		}
 
 		if isSummary {
 			continue
 		}
 
-		ipStr := item.AllocatedIPv4Addr
-		printColor("\n - ping app ip address: "+ipStr, colorRED)
+		var appIP string
+		if item.AllocatedIPv4Addr != nil {
+			appIP = item.AllocatedIPv4Addr.String()
+		}
+		appMAC := item.Mac.String()
 
-		pingIPHost(ipStr, "")
+		if appIP != "" {
+			printColor("\n - ping app ip address: "+appIP, colorRED)
+			pingIPHost(appIP, "")
+		}
 
 		if niStatus.Type != types.NetworkInstanceTypeSwitch {
-			printColor("\n - check open ports for "+ipStr, colorRED)
-			// nmap package
+			if appIP != "" {
+				printColor("\n - check open ports for "+appIP, colorRED)
+				// TODO: nmap package
+			}
 
 			files, err := listRecursiveFiles("/run/zedrouter", ".inet")
 			if err == nil {
 				printColor("\n - dhcp host file:\n", colorGREEN)
 				for _, l := range files {
-					if !strings.HasPrefix(l, "dhcp-hosts.") {
+					if !strings.Contains(l, "dhcp-hosts."+item.Bridge) {
 						continue
 					}
-					retbytes, err := os.ReadFile(l)
+					retbytes, err = os.ReadFile(l)
 					if err == nil {
-						if strings.Contains(string(retbytes), item.Mac) {
-							fmt.Printf("%s\n", l)
+						content := strings.TrimSpace(string(retbytes))
+						if strings.Contains(content, appMAC) {
+							fmt.Printf("   %s\n", content)
 							break
 						}
 					}
 				}
 			}
 
-			retbytes, err := os.ReadFile("/run/zedrouter/dnsmasq.leases/" + item.Bridge)
+			retbytes, err = os.ReadFile("/run/zedrouter/dnsmasq.leases/" + item.Bridge)
 			if err == nil {
 				printColor("\n - dnsmasq lease files\n", colorGREEN)
 				lines := strings.Split(string(retbytes), "\n")
 				for _, l := range lines {
-					if strings.Contains(l, item.Mac) {
-						fmt.Printf("%ss\n", l)
+					if strings.Contains(l, appMAC) {
+						fmt.Printf("   %s\n", l)
 						items := strings.Split(l, " ")
 						unixtime, _ := strconv.Atoi(items[0])
-						fmt.Printf(" lease up to: %v\n", time.Unix(int64(unixtime), 0))
+						fmt.Printf("   lease up to: %v\n", time.Unix(int64(unixtime), 0))
 						break
 					}
 				}
 			}
 
-			runAppACLs(item.AllocatedIPv4Addr)
+			if appIP != "" {
+				getAppNetTable(appIP, &niStatus)
+			}
+		}
 
+		if item.Vif != "" {
+			runAppACLs(item.Vif)
 			getVifStats(item.Vif)
+		}
 
-			getAppNetTable(item.AllocatedIPv4Addr, &niStatus)
-
-			// NI
-			printColor("\n - network instance: ", colorGREEN)
-			fmt.Printf(" %s, type %s, logical label: %s\n\n", niStatus.DisplayName,
-				niType[niStatus.Type], niStatus.Logicallabel)
-			fmt.Printf(" DHCP range start: %v, end: %v\n", niStatus.DhcpRange.Start, niStatus.DhcpRange.End)
-			fmt.Printf(" Current Uplink: %s\n", niStatus.CurrentUplinkIntf)
-			fmt.Printf(" Probe Status:\n")
-			for k, p := range niStatus.PInfo {
-				fmt.Printf(" Uplink Intfname: %s\n", k)
-				upStatus := "Down"
-				if p.SuccessCnt != 0 || p.SuccessProbeCnt != 0 {
+		// Network Instance Info
+		printColor("\n - network instance: ", colorGREEN)
+		fmt.Printf("   name: %s, type: %s, UUID: %s\n", niStatus.DisplayName,
+			niType[niStatus.Type], niStatus.UUID)
+		if niStatus.Type != types.NetworkInstanceTypeSwitch {
+			fmt.Printf("   DHCP range start: %v, end: %v\n",
+				niStatus.DhcpRange.Start, niStatus.DhcpRange.End)
+			fmt.Printf("   DNS servers: %v\n", niStatus.DnsServers)
+		}
+		fmt.Printf("   current uplink: %s (interface: %s)\n",
+			niStatus.SelectedUplinkLogicalLabel, niStatus.SelectedUplinkIntfName)
+		if niStatus.RunningUplinkProbing {
+			for _, p := range niMetrics.ProbeMetrics.IntfProbeStats {
+				upStatus := "DOWN"
+				if p.NexthopUP && p.RemoteUP {
 					upStatus = "UP"
 				}
-				fmt.Printf("   Probe status: %s, Cost: %d, local success: %d, remote success: %d\n",
-					upStatus, p.Cost, p.SuccessCnt, p.SuccessProbeCnt)
+				fmt.Printf("    %s probe status: %s, "+
+					"local success: %d, remote success: %d, remote latency: %d msec\n",
+					p.IntfName, upStatus, p.NexthopUPCnt, p.RemoteUPCnt,
+					p.LatencyToRemote)
 			}
-			fmt.Printf("\n")
 		}
+		fmt.Printf("\n")
+
 		closePipe(true)
 	}
 
 	appUUIDStr := appStatus.UUIDandVersion.UUID.String()
-	retbytes, err := os.ReadFile("/run/domainmgr/DomainStatus/" + appUUIDStr + ".json")
+	retbytes, err = os.ReadFile("/run/domainmgr/DomainStatus/" + appUUIDStr + ".json")
 	if err == nil {
-		printColor("\n  - domain status:", colorGREEN)
+		printColor("\n - domain status:", colorGREEN)
 		var domainS types.DomainStatus
 		_ = json.Unmarshal(retbytes, &domainS)
-		fmt.Printf("    state: %d, boot time: %v, tried count %d\n",
+		fmt.Printf("   state: %d, boot time: %v, tried count %d\n",
 			domainS.State, domainS.BootTime, domainS.TriedCount)
 		if domainS.Error != "" {
-			fmt.Printf("    error: %s, error time: %v, boot failed: %v",
+			fmt.Printf("   error: %s, error time: %v, boot failed: %v",
 				domainS.Error, domainS.ErrorTime, domainS.BootFailed)
 		}
 	}
@@ -291,7 +331,7 @@ func getAppNetTable(ipaddr string, niStatus *types.NetworkInstanceStatus) {
 
 	routes := getAllIPv4Routes(link.Attrs().Index)
 	for _, r := range routes {
-		fmt.Printf("%s\n", r.String())
+		fmt.Printf("   %s\n", r.String())
 	}
 }
 
@@ -306,7 +346,7 @@ func getVifStats(vifStr string) {
 	_ = json.Unmarshal(retbytes, &ntMetric)
 	for _, m := range ntMetric.MetricList {
 		if vifStr == m.IfName {
-			fmt.Printf(" TxBytes: %d, RxBytes: %d, TxPkts: %d, RxPkts: %d\n",
+			fmt.Printf("   TxBytes: %d, RxBytes: %d, TxPkts: %d, RxPkts: %d\n",
 				m.TxBytes, m.RxBytes, m.TxPkts, m.RxPkts)
 			break
 		}
@@ -314,26 +354,24 @@ func getVifStats(vifStr string) {
 }
 
 // runAppACLs - in 'doAppNet'
-func runAppACLs(ipStr string) {
-	printColor("\n - check for ACLs on: "+ipStr+"\n", colorGREEN)
-	runAppACLTblAddr("-S", "filter", ipStr)
-	runAppACLTblAddr("-nvL", "filter", ipStr)
-	runAppACLTblAddr("-S", "nat", ipStr)
-	runAppACLTblAddr("-nvL", "nat", ipStr)
+func runAppACLs(vif string) {
+	printColor("\n - ingress ACLs on VIF: "+vif+"\n", colorGREEN)
+	printIptablesRules("FORWARD-"+vif, "filter")
+	printColor("\n - egress ACLs on VIF: "+vif+"\n", colorGREEN)
+	printIptablesRules("PREROUTING-"+vif, "raw")
 }
 
-func runAppACLTblAddr(op, tbl, ipaddr string) {
+func printIptablesRules(chain, table string) {
 	prog := "iptables"
-	args := []string{op, "-t", tbl}
+	args := []string{"-S", chain, "-t", table}
 	retStr, err := runCmd(prog, args, false)
-	fmt.Printf(" iptable " + tbl + "op" + " rules: \n")
 	if err == nil && len(retStr) > 0 {
 		lines := strings.Split(retStr, "\n")
 		for _, l := range lines {
-			if !strings.Contains(l, ipaddr) {
+			if l = strings.TrimSpace(l); len(l) == 0 {
 				continue
 			}
-			fmt.Printf("%s\n", l)
+			fmt.Printf("   %s\n", l)
 		}
 	}
 }
@@ -489,7 +527,9 @@ func getAppIPs(status string) ([]string, uuid.UUID) {
 	var appIPs []string
 	appUUID := appStatus.UUIDandVersion.UUID
 	for _, item := range appStatus.UnderlayNetworkList {
-		appIPs = append(appIPs, item.AllocatedIPv4Addr)
+		if item.AllocatedIPv4Addr != nil {
+			appIPs = append(appIPs, item.AllocatedIPv4Addr.String())
+		}
 	}
 	return appIPs, appUUID
 }
