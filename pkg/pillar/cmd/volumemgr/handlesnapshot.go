@@ -6,14 +6,12 @@ package volumemgr
 import (
 	"encoding/json"
 	"fmt"
-	"io"
-	"os"
-	"reflect"
-
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
 	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
 	"github.com/lf-edge/eve/pkg/pillar/volumehandlers"
+	"os"
+	"reflect"
 )
 
 func createSnapshot(ctx *volumemgrContext, config *types.VolumesSnapshotConfig) *types.VolumesSnapshotStatus {
@@ -100,76 +98,15 @@ func deserializeVolumesSnapshotStatus(snapshotID string) (*types.VolumesSnapshot
 	// Get the filename for the snapshot status
 	volumesSnapshotStatusFilename := types.GetVolumesSnapshotStatusFile(snapshotID)
 
-	// check if the volumesSnapshotStatusFile exists
-	if _, err := os.Stat(volumesSnapshotStatusFilename); os.IsNotExist(err) {
-		log.Errorf("deserializeVolumesSnapshotStatus: snapshot status file %s does not exist", volumesSnapshotStatusFilename)
-		return nil, err
-	}
-
-	// open the file
-	volumesSnapshotStatusFile, err := os.Open(volumesSnapshotStatusFilename)
+	deserializedStruct, err := utils.DeserializeToStruct(volumesSnapshotStatusFilename, reflect.TypeOf(types.VolumesSnapshotStatus{}), types.VolumesSnapshotStatusCriticalFields)
 	if err != nil {
-		log.Errorf("deserializeVolumesSnapshotStatus: failed to open snapshot status file %s, %s", volumesSnapshotStatusFilename, err.Error())
-		return nil, err
+		log.Errorf("deserializeVolumesSnapshotStatus: failed to deserialize snapshot status for %s, %s", snapshotID, err.Error())
+		return nil, fmt.Errorf("failed to deserialize snapshot status for %s, %s", snapshotID, err.Error())
 	}
-	defer volumesSnapshotStatusFile.Close()
+	volumesSnapshotStatus := deserializedStruct.(*types.VolumesSnapshotStatus)
 
-	// read the raw data
-	data, err := io.ReadAll(volumesSnapshotStatusFile)
-	if err != nil {
-		log.Errorf("deserializeVolumesSnapshotStatus: failed to read snapshot status for %s, %s", snapshotID, err.Error())
-		return nil, err
-	}
+	return volumesSnapshotStatus, nil
 
-	// read to an opaque map to check the fields
-	var dataMap map[string]interface{}
-	err = json.Unmarshal(data, &dataMap)
-	if err != nil {
-		log.Errorf("deserializeVolumesSnapshotStatus: failed to unmarshal snapshot status for %s, %s", snapshotID, err.Error())
-		return nil, err
-	}
-
-	// Automatically extract the field names from the struct using reflection.
-	var volumeSnapshotStatus types.VolumesSnapshotStatus
-	expectedFields := make(map[string]bool)
-	v := reflect.ValueOf(volumeSnapshotStatus)
-	typeOfVolumesSnapshotStatus := v.Type()
-	utils.ExtractFields(typeOfVolumesSnapshotStatus, &expectedFields)
-
-	// Check if there are any unexpected fields
-	for k := range dataMap {
-		if _, ok := expectedFields[k]; !ok {
-			// This is an unexpected field, make warning and ignore
-			log.Warnf("deserializeVolumesSnapshotStatus: unexpected field %s in stored volumes snapshot status for %s", k, snapshotID)
-		}
-	}
-
-	// Check if there are any missing fields
-	for k := range expectedFields {
-		if _, ok := dataMap[k]; !ok {
-			// This is a missing field, check if it is critical
-			if types.VolumesSnapshotStatusCriticalFields[k] {
-				// This is a missing critical field, return error
-				errMsg := fmt.Sprintf("deserializeVolumesSnapshotStatus: critical field %s missing in stored volumes snapshot status for %s", k, snapshotID)
-				log.Errorf(errMsg)
-				return nil, fmt.Errorf(errMsg)
-			}
-			// This is a missing non-critical field, make warning and ignore
-			log.Warnf("deserializeVolumesSnapshotStatus: missing field %s in stored volumes snapshot status for %s", k, snapshotID)
-		}
-	}
-
-	// All the checks passed, so it is safe to unmarshal the data into the struct
-
-	// Unmarshal from JSON
-	status := types.VolumesSnapshotStatus{}
-	err = json.Unmarshal(data, &status)
-	if err != nil {
-		log.Errorf("deserializeVolumesSnapshotStatus: failed to unmarshal snapshot status for %s, %s", snapshotID, err.Error())
-		return nil, err
-	}
-	log.Noticef("deserializeVolumesSnapshotStatus: successfully deserialized snapshot status for %s", snapshotID)
-	return &status, nil
 }
 
 func rollbackSnapshot(ctx *volumemgrContext, config *types.VolumesSnapshotConfig) *types.VolumesSnapshotStatus {
