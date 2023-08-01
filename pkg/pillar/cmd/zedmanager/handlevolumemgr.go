@@ -8,7 +8,6 @@ package zedmanager
 import (
 	"encoding/json"
 	"fmt"
-	"io"
 	"os"
 	"reflect"
 	"time"
@@ -446,74 +445,13 @@ func deserializeSnapshotInstanceStatus(snapshotID string) (*types.SnapshotInstan
 	// get the filename
 	snapshotInstanceStatusFilename := types.GetSnapshotInstanceStatusFile(snapshotID)
 
-	// check that the file exists
-	if _, err := os.Stat(snapshotInstanceStatusFilename); err != nil {
-		log.Errorf("deserializeSnapshotInstanceStatus: SnapshotInstanceStatus file %s not found", snapshotInstanceStatusFilename)
-		return nil, err
-	}
-
-	// open the file
-	snapshotInstanceStatusFile, err := os.Open(snapshotInstanceStatusFilename)
+	retStruct, err := utils.DeserializeToStruct(snapshotInstanceStatusFilename, reflect.TypeOf(types.SnapshotInstanceStatus{}), types.SnapshotInstanceStatusCriticalFields)
 	if err != nil {
-		log.Errorf("deserializeSnapshotInstanceStatus: Failed to open SnapshotInstanceStatus file %s: %s", snapshotInstanceStatusFilename, err)
-		return nil, err
+		log.Errorf("deserializeSnapshotInstanceStatus: Failed to deserialize SnapshotInstanceStatus: %s", err)
+		return nil, fmt.Errorf("failed to deserialize SnapshotInstanceStatus: %s", err)
 	}
-	defer snapshotInstanceStatusFile.Close()
-
-	// read the raw data
-	data, err := io.ReadAll(snapshotInstanceStatusFile)
-	if err != nil {
-		log.Errorf("deserializeSnapshotInstanceStatus: Failed to read SnapshotInstanceStatus file %s: %s", snapshotInstanceStatusFilename, err)
-		return nil, err
-	}
-
-	// read the opaque data to check the fields
-	var dataMap map[string]interface{}
-	err = json.Unmarshal(data, &dataMap)
-	if err != nil {
-		log.Errorf("deserializeSnapshotInstanceStatus: Failed to unmarshal SnapshotInstanceStatus file %s: %s", snapshotInstanceStatusFilename, err)
-		return nil, err
-	}
-
-	// Automatically extract the fields that are part of the SnapshotInstanceStatus struct
-	var snapshotInstanceStatus types.SnapshotInstanceStatus
-	expectedFields := make(map[string]bool)
-	v := reflect.ValueOf(snapshotInstanceStatus)
-	typeOfSnapshotInstanceStatus := v.Type()
-	utils.ExtractFields(typeOfSnapshotInstanceStatus, &expectedFields)
-
-	// Check if there are any unknown fields
-	for k := range dataMap {
-		if _, ok := expectedFields[k]; !ok {
-			// This is an unknown field, make warning and continue
-			log.Warnf("deserializeSnapshotInstanceStatus: Unknown field %s in SnapshotInstanceStatus file %s", k, snapshotInstanceStatusFilename)
-		}
-	}
-
-	// Check if there are any missing fields
-	for k := range expectedFields {
-		if _, ok := dataMap[k]; !ok {
-			// This is a missing field, check if it's critical
-			if types.SnapshotInstanceStatusCriticalFields[k] {
-				errMsg := fmt.Sprintf("deserializeSnapshotInstanceStatus: Missing critical field %s in SnapshotInstanceStatus file %s", k, snapshotInstanceStatusFilename)
-				log.Errorf(errMsg)
-				return nil, fmt.Errorf(errMsg)
-			}
-			// This is a missing non-critical field, make warning and continue
-			log.Warnf("deserializeSnapshotInstanceStatus: Missing field %s in SnapshotInstanceStatus file %s", k, snapshotInstanceStatusFilename)
-		}
-	}
-
-	// All the necessary fields are present, unmarshal the data
-
-	err = json.Unmarshal(data, &snapshotInstanceStatus)
-	if err != nil {
-		log.Errorf("deserializeSnapshotInstanceStatus: Failed to unmarshal SnapshotInstanceStatus file %s: %s", snapshotInstanceStatusFilename, err)
-		return nil, err
-	}
-
-	log.Noticef("deserializeSnapshotInstanceStatus: SnapshotInstanceStatus file %s successfully unmarshalled", snapshotInstanceStatusFilename)
-	return &snapshotInstanceStatus, nil
+	snapshotInstanceStatus := retStruct.(*types.SnapshotInstanceStatus)
+	return snapshotInstanceStatus, nil
 }
 
 func removeSnapshotFromSlice(slice *[]types.SnapshotInstanceStatus, id string) (removedSnap *types.SnapshotInstanceStatus) {
