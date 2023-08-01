@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"net"
 
-	dg "github.com/lf-edge/eve/libs/depgraph"
-	"github.com/lf-edge/eve/libs/reconciler"
+	dg "github.com/lf-edge/eve-libs/depgraph"
+	"github.com/lf-edge/eve-libs/reconciler"
 	"github.com/lf-edge/eve/pkg/pillar/devicenetwork"
 	"github.com/lf-edge/eve/pkg/pillar/iptables"
 	"github.com/lf-edge/eve/pkg/pillar/netmonitor"
@@ -269,8 +269,9 @@ func (r *LinuxNIReconciler) updateCurrentNIRoutes(niID uuid.UUID) (changed bool)
 		}
 		for _, rt := range routes {
 			route := linux.Route{
-				Route:    rt.Data.(netlink.Route),
-				OutputIf: rtOutIf,
+				Route:          rt.Data.(netlink.Route),
+				OutputIf:       rtOutIf,
+				GwViaLinkRoute: gwViaLinkRoute(rt, routes),
 			}
 			prevRoute := prevRoutes[dg.Reference(route)]
 			if prevRoute == nil || !prevRoute.Equal(route) {

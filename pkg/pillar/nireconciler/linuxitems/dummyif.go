@@ -8,7 +8,7 @@ import (
 	"errors"
 	"fmt"
 
-	dg "github.com/lf-edge/eve/libs/depgraph"
+	dg "github.com/lf-edge/eve-libs/depgraph"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/vishvananda/netlink"
 )

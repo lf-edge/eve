@@ -14,8 +14,8 @@ import (
 	"time"
 
 	"github.com/golang/protobuf/ptypes"
-	"github.com/lf-edge/eve/api/go/info"
-	"github.com/lf-edge/eve/api/go/profile"
+	"github.com/lf-edge/eve-api/go/info"
+	"github.com/lf-edge/eve-api/go/profile"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"

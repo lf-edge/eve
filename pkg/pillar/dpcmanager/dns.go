@@ -42,7 +42,7 @@ func (m *DpcManager) updateDNS() {
 	m.deviceNetStatus.State = dpc.State
 	m.deviceNetStatus.Testing = m.dpcVerify.inProgress
 	m.deviceNetStatus.CurrentIndex = m.dpcList.CurrentIndex
-	m.deviceNetStatus.RadioSilence = m.radioSilence
+	m.deviceNetStatus.RadioSilence = m.rsStatus
 	oldDNS := m.deviceNetStatus
 	m.deviceNetStatus.Ports = make([]types.NetworkPortStatus, len(dpc.Ports))
 	for ix, port := range dpc.Ports {

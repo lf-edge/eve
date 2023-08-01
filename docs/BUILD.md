@@ -424,11 +424,7 @@ The package `lfedge/eve-zedctr` is a "catch-all" package, composed of many diffe
 
 The package `pillar` contains, unsurprisingly, the `pillar` services that are responsible for managing the various components and deployments of a running EVE system. Its source is [pkg/pillar](../pkg/pillar). We need to start breaking this monolith down at some point, but for now everything sits in the same container.
 
-`pillar` itself vendors EVE golang api, i.e. the golang-compiled protobufs defined in [api/proto](../api/proto). These can be compiled for a specific language using the makefile target `make proto-<language>`, e.g. `make proto-go` or `make proto-python`. To build them all, run:
-
-```shell
-make proto
-```
+`pillar` itself vendors EVE golang api, i.e. the golang-compiled protobufs defined in [api/proto](https://github.com/lf-edge/eve-api/tree/main/proto). These can be updated and compiled using the instructions in its repository [lf-edge/eve-api](https://github.com/lf-edge/eve-api/).
 
 `pillar` depends upon the latest versions of these being available at its compile time in its vendor directory at [pkg/pillar/vendor](../pkg/pillar/vendor). The target `make proto-vendor` will vendor them into [pkg/pillar/vendor](../pkg/pillar/vendor).
 

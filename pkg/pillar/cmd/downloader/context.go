@@ -6,7 +6,7 @@ package downloader
 import (
 	"flag"
 
-	"github.com/lf-edge/eve/libs/zedUpload"
+	"github.com/lf-edge/eve-libs/zedUpload"
 	"github.com/lf-edge/eve/pkg/pillar/agentbase"
 	"github.com/lf-edge/eve/pkg/pillar/cipher"
 	"github.com/lf-edge/eve/pkg/pillar/netdump"

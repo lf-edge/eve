@@ -3,6 +3,15 @@
 /lib/libext2fs.so.2*
 /lib/libcom_err.so.2*
 /lib/libe2p.so.2*
+/usr/lib/libnettle.so.*
+/usr/lib/libgnutls.so.*
+/usr/lib/libcap.so.*
+/usr/lib/libp11-kit.so.*
+/usr/lib/libunistring.so.*
+/usr/lib/libtasn1.so.*
+/usr/lib/libhogweed.so.*
+/usr/lib/libgmp.so.*
+/usr/lib/libffi.so.*
 /lib/mdev
 /etc/modprobe.d/*.conf
 /etc/mdev.conf
@@ -14,3 +23,5 @@
 /bin/sh
 /sbin/poweroff
 /etc/acpi/PWRF/00000080
+/usr/sbin/chronyd
+/var/lib/chrony/chrony.drift

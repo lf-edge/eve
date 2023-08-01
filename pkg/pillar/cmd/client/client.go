@@ -16,7 +16,7 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/lf-edge/eve/api/go/register"
+	"github.com/lf-edge/eve-api/go/register"
 	"github.com/lf-edge/eve/pkg/pillar/agentbase"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/base"
@@ -66,6 +66,7 @@ type clientContext struct {
 	usableAddressCount     int
 	networkState           types.DPCState
 	subGlobalConfig        pubsub.Subscription
+	subCachedResolvedIPs   pubsub.Subscription
 	globalConfig           *types.ConfigItemValueMap
 	zedcloudCtx            *zedcloud.ZedCloudContext
 	getCertsTimer          *time.Timer
@@ -95,6 +96,16 @@ func (ctxPtr *clientContext) ProcessAgentSpecificCLIFlags(flagSet *flag.FlagSet)
 				"[-o] [<operations>...]")
 		}
 	}
+}
+
+func (ctxPtr *clientContext) getCachedResolvedIPs(hostname string) []types.CachedIP {
+	if ctxPtr.subCachedResolvedIPs == nil {
+		return nil
+	}
+	if item, err := ctxPtr.subCachedResolvedIPs.Get(hostname); err == nil {
+		return item.(types.CachedResolvedIPs).CachedIPs
+	}
+	return nil
 }
 
 var (
@@ -179,6 +190,19 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	clientCtx.subGlobalConfig = subGlobalConfig
 	subGlobalConfig.Activate()
 
+	subCachedResolvedIPs, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:   "nim",
+		MyAgentName: agentName,
+		WarningTime: warningTime,
+		ErrorTime:   errorTime,
+		TopicImpl:   types.CachedResolvedIPs{},
+		Activate:    true,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	clientCtx.subCachedResolvedIPs = subCachedResolvedIPs
+
 	subDeviceNetworkStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		CreateHandler: handleDNSCreate,
 		ModifyHandler: handleDNSModify,
@@ -196,13 +220,14 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	clientCtx.subDeviceNetworkStatus = subDeviceNetworkStatus
 	subDeviceNetworkStatus.Activate()
 	zedcloudCtx := zedcloud.NewContext(log, zedcloud.ContextOptions{
-		DevNetworkStatus: clientCtx.deviceNetworkStatus,
-		SendTimeout:      clientCtx.globalConfig.GlobalValueInt(types.NetworkSendTimeout),
-		DialTimeout:      clientCtx.globalConfig.GlobalValueInt(types.NetworkDialTimeout),
-		AgentMetrics:     clientCtx.zedcloudMetrics,
-		Serial:           hardware.GetProductSerial(log),
-		SoftSerial:       hardware.GetSoftSerial(log),
-		AgentName:        agentName,
+		DevNetworkStatus:  clientCtx.deviceNetworkStatus,
+		SendTimeout:       clientCtx.globalConfig.GlobalValueInt(types.NetworkSendTimeout),
+		DialTimeout:       clientCtx.globalConfig.GlobalValueInt(types.NetworkDialTimeout),
+		ResolverCacheFunc: clientCtx.getCachedResolvedIPs,
+		AgentMetrics:      clientCtx.zedcloudMetrics,
+		Serial:            hardware.GetProductSerial(log),
+		SoftSerial:        hardware.GetSoftSerial(log),
+		AgentName:         agentName,
 	})
 
 	clientCtx.zedcloudCtx = &zedcloudCtx
@@ -354,6 +379,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 				log.Errorf("tryRegister failed %d", ret)
 				return ret
 			}
+
+		case change := <-subCachedResolvedIPs.MsgChan():
+			subCachedResolvedIPs.ProcessChange(change)
 
 		case <-ticker.C:
 			// Check in case /config/server changes while running

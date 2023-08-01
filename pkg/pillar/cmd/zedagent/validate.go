@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"unicode/utf8"
 
-	zconfig "github.com/lf-edge/eve/api/go/config"
+	zconfig "github.com/lf-edge/eve-api/go/config"
 )
 
 func readValidateConfig(staleConfigTime uint32,

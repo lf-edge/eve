@@ -167,26 +167,28 @@ func (m *DpcManager) reloadWwanStatus() {
 	if changed {
 		m.Log.Functionf("Have new wwan status: %v", m.wwanStatus)
 	}
-	wasInProgress := m.radioSilence.ChangeInProgress
+	wasInProgress := m.rsStatus.ChangeInProgress
 	m.wwanStatus = status
 
-	if m.radioSilence.ChangeInProgress {
+	if m.rsStatus.ChangeInProgress {
 		var errMsgs []string
-		if m.radioSilence.ConfigError != "" {
-			errMsgs = append(errMsgs, m.radioSilence.ConfigError)
+		if m.rsStatus.ConfigError != "" {
+			errMsgs = append(errMsgs, m.rsStatus.ConfigError)
 		}
 		for _, network := range status.Networks {
 			if network.ConfigError != "" {
 				errMsgs = append(errMsgs, netName(network)+": "+network.ConfigError)
 			}
 		}
-		if m.radioSilence.Imposed {
+		// Imposed is set to false below if any modem is not in the radio-off mode.
+		m.rsStatus.Imposed = m.rsConfig.Imposed
+		if m.rsStatus.Imposed {
 			for _, network := range status.Networks {
 				if network.Module.OpMode != types.WwanOpModeRadioOff {
 					// Failed to turn off the radio
 					m.Log.Warnf("Modem %s (network: %s) is not in the radio-off operational state",
 						network.Module.Name, netName(network))
-					m.radioSilence.Imposed = false // the actual state
+					m.rsStatus.Imposed = false // the actual state
 					if network.ConfigError == "" {
 						errMsgs = append(errMsgs,
 							fmt.Sprintf("%s: modem %s is not in the radio-off operational state",
@@ -195,8 +197,8 @@ func (m *DpcManager) reloadWwanStatus() {
 				}
 			}
 		}
-		m.radioSilence.ConfigError = strings.Join(errMsgs, "\n")
-		m.radioSilence.ChangeInProgress = false
+		m.rsStatus.ConfigError = strings.Join(errMsgs, "\n")
+		m.rsStatus.ChangeInProgress = false
 		m.Log.Noticeln("Radio-silence state changing operation has finalized (as seen by nim)")
 	}
 
@@ -308,14 +310,14 @@ func (m *DpcManager) reloadWwanLocationInfo() {
 // react to changed radio-silence configuration
 func (m *DpcManager) doUpdateRadioSilence(ctx context.Context, newRS types.RadioSilence) {
 	var errMsgs []string
-	if !newRS.ChangeRequestedAt.After(m.radioSilence.ChangeRequestedAt) {
+	if !newRS.ChangeRequestedAt.After(m.rsConfig.ChangeRequestedAt) {
 		return
 	}
 
 	// ChangeInProgress is enabled below if wwan config changes.
-	m.radioSilence.ChangeInProgress = false
-	m.radioSilence.ChangeRequestedAt = newRS.ChangeRequestedAt
-	m.radioSilence.ConfigError = ""
+	m.rsStatus.ChangeInProgress = false
+	m.rsStatus.ChangeRequestedAt = newRS.ChangeRequestedAt
+	m.rsStatus.ConfigError = ""
 
 	if newRS.ConfigError != "" {
 		// Do not apply if configuration is marked as invalid by zedagent.
@@ -323,20 +325,20 @@ func (m *DpcManager) doUpdateRadioSilence(ctx context.Context, newRS types.Radio
 		errMsgs = append(errMsgs, newRS.ConfigError)
 	} else {
 		// Valid configuration, try to apply.
-		wasImposed := m.radioSilence.Imposed
-		m.radioSilence.Imposed = newRS.Imposed
+		wasImposed := m.rsConfig.Imposed
+		m.rsConfig = newRS
 
 		// update RF state for wwan and wlan
 		m.reconcileStatus = m.DpcReconciler.Reconcile(ctx, m.reconcilerArgs())
 		if m.reconcileStatus.RS.ConfigError != "" {
 			errMsgs = append(errMsgs, m.reconcileStatus.RS.ConfigError)
-			m.radioSilence.Imposed = m.reconcileStatus.RS.Imposed // should be false
+			m.rsStatus.Imposed = m.reconcileStatus.RS.Imposed // should be false
 		} else if wasImposed != newRS.Imposed {
-			m.radioSilence.ChangeInProgress = true // waiting for ack from wwan service
-			m.Log.Noticef("Triggering radio-silence state change to: %s", m.radioSilence)
+			m.rsStatus.ChangeInProgress = true // waiting for status update from wwan service
+			m.Log.Noticef("Triggering radio-silence state change to: %s", m.rsConfig)
 		}
 	}
 
-	m.radioSilence.ConfigError = strings.Join(errMsgs, "\n")
+	m.rsStatus.ConfigError = strings.Join(errMsgs, "\n")
 	m.updateDNS()
 }

@@ -241,3 +241,7 @@ If and only if you have a debug version of EVE-OS booted using the KVM hyperviso
 ### Verifying LED progress indication
 
 As EVE-OS boots the LED (by default the disk LED) will repeatedly blink once until the device has an IP address, then repeatedly blink twice while trying to connect to the controller, then repeatedly blink three or four times when connected to the controller. If your hardware model has some other LED to use for this, please review [ledmanager](../pkg/pillar/cmd/ledmanager) and submit a pull request for your hardware model.
+
+### Hardware model in verification image
+
+Among other logs, the verification process generates and collects the hardware model of the edge device as described in [HARDWARE-VERIFICATION](./HARDWARE-VERIFICATION.md).

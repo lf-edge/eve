@@ -24,8 +24,8 @@ require (
 	github.com/jackwakefield/gopac v1.0.2
 	github.com/jaypipes/ghw v0.8.0
 	github.com/lf-edge/edge-containers v0.0.0-20221025050409-93c34bebadd2
-	github.com/lf-edge/eve/api/go v0.0.0-20230602070228-0c11e32c7718
-	github.com/lf-edge/eve/libs v0.0.0-20230712053757-b4a564c38a6d
+	github.com/lf-edge/eve-api/go v0.0.0-20230725195950-9c64039db587
+	github.com/lf-edge/eve-libs v0.0.0-20230724174211-8b4b7a344f7e
 	github.com/linuxkit/linuxkit/src/cmd/linuxkit v0.0.0-20220913135124-e532e7310810
 	github.com/miekg/dns v1.1.41
 	github.com/moby/sys/mountinfo v0.6.0
@@ -33,7 +33,7 @@ require (
 	github.com/opencontainers/go-digest v1.0.0
 	github.com/opencontainers/image-spec v1.0.3-0.20211202183452-c5a74bcca799
 	github.com/opencontainers/runtime-spec v1.0.3-0.20210326190908-1c3f411f0417
-	github.com/packetcap/go-pcap v0.0.0-20230711190632-81137528cfbc
+	github.com/packetcap/go-pcap v0.0.0-20230717110547-c34843f9206d
 	github.com/prometheus/procfs v0.7.3
 	github.com/satori/go.uuid v1.2.1-0.20180404165556-75cca531ea76
 	github.com/shirou/gopsutil v3.21.11+incompatible

@@ -260,3 +260,7 @@ You need to consult EVE-OS's Makefile for the right invocation of these tools.
 ### Deploying EVE-OS as a VM in public clouds
 
 EVE-OS is known to run on Google's GCP as a Virtual Machine. You need to consult EVE-OS's Makefile for the right invocation of these tools.
+
+## Deploying verification image of EVE-OS
+
+Similar to the deployments methods of EVE-OS, we can deploy the verification image of EVE-OS as described in [HARDWARE-VERIFICATION](./HARDWARE-VERIFICATION.md).

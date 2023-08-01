@@ -4,7 +4,7 @@
 package linuxitems
 
 import (
-	"github.com/lf-edge/eve/libs/reconciler"
+	"github.com/lf-edge/eve-libs/reconciler"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/netmonitor"
 	generic "github.com/lf-edge/eve/pkg/pillar/nireconciler/genericitems"

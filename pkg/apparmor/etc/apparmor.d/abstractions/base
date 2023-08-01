@@ -69,10 +69,10 @@
   /opt/*-linux-uclibc/lib/ld-uClibc*so* mr,
 
   # we might as well allow everything to use common libraries
-  /{usr/,usr/local/}lib{,32,64}/**                r,
-  /{usr/,usr/local/}lib{,32,64}/**.so*       mr,
-  /{usr/,usr/local/}lib/@{multiarch}/**            r,
-  /{usr/,usr/local/}lib/@{multiarch}/**.so*   mr,
+  /{,usr/,usr/local/}lib{,32,64}/**                r,
+  /{,usr/,usr/local/}lib{,32,64}/**.so*       mr,
+  /{,usr/,usr/local/}lib/@{multiarch}/**            r,
+  /{,usr/,usr/local/}lib/@{multiarch}/**.so*   mr,
   /{usr/,usr/local/}lib/tls/i686/{cmov,nosegneg}/*.so*    mr,
   /{usr/,usr/local/}lib/i386-linux-gnu/tls/i686/{cmov,nosegneg}/*.so*    mr,
 

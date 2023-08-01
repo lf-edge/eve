@@ -4,7 +4,7 @@
 package genericitems
 
 import (
-	"github.com/lf-edge/eve/libs/reconciler"
+	"github.com/lf-edge/eve-libs/reconciler"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/sirupsen/logrus"
 )

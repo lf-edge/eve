@@ -104,8 +104,6 @@ endif
 # ROOTFS_VERSION used to construct the installer directory
 ROOTFS_VERSION:=$(if $(findstring snapshot,$(REPO_TAG)),$(EVE_SNAPSHOT_VERSION)-$(REPO_BRANCH)-$(REPO_SHA)$(REPO_DIRTY_TAG)$(DEV_TAG),$(REPO_TAG))
 
-APIDIRS = $(shell find ./api/* -maxdepth 1 -type d -exec basename {} \;)
-
 HOSTARCH:=$(subst aarch64,arm64,$(subst x86_64,amd64,$(shell uname -m)))
 # by default, take the host architecture as the target architecture, but can override with `make ZARCH=foo`
 #    assuming that the toolchain supports it, of course...
@@ -326,7 +324,7 @@ GOSOURCES_SOURCE=github.com/deitch/go-sources-and-licenses
 COMPARESOURCES=$(BUILDTOOLS_BIN)/compare-sbom-sources
 COMPARE_SOURCE=./tools/compare-sbom-sources
 
-SYFT_VERSION:=v0.82.0
+SYFT_VERSION:=v0.85.0
 SYFT_IMAGE:=docker.io/anchore/syft:$(SYFT_VERSION)
 
 # we use the following block to assign correct tag to the Docker registry artifact
@@ -681,7 +679,7 @@ $(SBOM): $(ROOTFS_TAR) $(DOCKERFILE_ADD_SCANNER)| $(INSTALLER)
 	tar xf $< -C $(TMP_ROOTDIR) --exclude "dev/*"
 	# we need to generate the kernel sbom, because syft would give a completely different structure
 	$(DOCKERFILE_ADD_SCANNER) scan ./pkg/kernel/Dockerfile --format spdx-json > $(TMP_ROOTDIR)/kernel-sbom.spdx.json
-	docker run -v $(TMP_ROOTDIR):/rootdir:ro -v $(CURDIR)/.syft.yaml:/syft.yaml:ro $(SYFT_IMAGE) -c /syft.yaml /rootdir > $@
+	docker run -v $(TMP_ROOTDIR):/rootdir:ro -v $(CURDIR)/.syft.yaml:/syft.yaml:ro $(SYFT_IMAGE) -c /syft.yaml --base-path /rootdir /rootdir > $@
 	rm -rf $(TMP_ROOTDIR)
 	$(QUIET): $@: Succeeded
 
@@ -731,12 +729,12 @@ publish_sources: $(COLLECTED_SOURCES)
 
 $(LIVE).raw: $(BOOT_PART) $(EFI_PART) $(ROOTFS_IMG) $(CONFIG_IMG) $(PERSIST_IMG) $(BSP_IMX_PART) | $(INSTALLER)
 	./tools/prepare-platform.sh "$(PLATFORM)" "$(BUILD_DIR)" "$(INSTALLER)" || :
-	./tools/makeflash.sh -C 559 $| $@ $(PART_SPEC)
+	./tools/makeflash.sh "mkimage-raw-efi" -C 559 $| $@ $(PART_SPEC)
 	$(QUIET): $@: Succeeded
 
 $(INSTALLER).raw: $(BOOT_PART) $(EFI_PART) $(ROOTFS_IMG) $(INITRD_IMG) $(INSTALLER_IMG) $(CONFIG_IMG) $(PERSIST_IMG) $(BSP_IMX_PART) | $(INSTALLER)
 	./tools/prepare-platform.sh "$(PLATFORM)" "$(BUILD_DIR)" "$(INSTALLER)" || :
-	./tools/makeflash.sh -C 592 $| $@ "conf_win installer inventory_win"
+	./tools/makeflash.sh "mkimage-raw-efi" -C 592 $| $@ "conf_win installer inventory_win"
 	$(QUIET): $@: Succeeded
 
 $(INSTALLER).iso: $(EFI_PART) $(ROOTFS_IMG) $(INITRD_IMG) $(INSTALLER_IMG) $(CONFIG_IMG) $(PERSIST_IMG) | $(INSTALLER)
@@ -760,7 +758,7 @@ $(LIVE).parallels: $(LIVE).raw
 $(VERIFICATION).raw: $(BOOT_PART) $(EFI_PART) $(ROOTFS_IMG) $(INITRD_IMG) $(VERIFICATION_IMG) $(CONFIG_IMG) $(PERSIST_IMG) $(BSP_IMX_PART) | $(VERIFICATION)
 	@cp -r $(INSTALLER)/* $(VERIFICATION)
 	./tools/prepare-platform.sh "$(PLATFORM)" "$(BUILD_DIR)" "$(VERIFICATION)" || :
-	./tools/makeverification.sh -C 850 $| $@ "conf_win verification inventory_win"
+	./tools/makeflash.sh "mkverification-raw-efi" -C 850 $| $@ "conf_win verification inventory_win"
 	$(QUIET): $@: Succeeded
 
 $(VERIFICATION).net: $(EFI_PART) $(ROOTFS_IMG) $(INITRD_IMG) $(VERIFICATION_IMG) $(CONFIG_IMG) $(PERSIST_IMG) $(KERNEL_IMG) | $(VERIFICATION)
@@ -806,6 +804,7 @@ verification: $(VERIFICATION) $(VERIFICATION_ARTIFACTS) current | $(BUILD_DIR)
 	$(QUIET)if [ -n "$(EVE_REL)" ] && [ $(HV) = $(HV_DEFAULT) ]; then \
 	   $(LINUXKIT) $(DASH_V) pkg $(LINUXKIT_PKG_TARGET) --platforms linux/$(ZARCH) --hash-path $(CURDIR) --hash $(EVE_REL)-$(HV) --docker --release $(EVE_REL) $(FORCE_BUILD) $| ;\
 	fi
+	cp -r $|/installer/* $|/verification
 	$(QUIET): $@: Succeeded
 
 .PHONY: image-set outfile-set cache-export cache-export-docker-load cache-export-docker-load-all
@@ -843,24 +842,7 @@ cache-export-docker-load-all: $(LINUXKIT) $(addsuffix -cache-export-docker-load,
 proto-vendor:
 	@$(DOCKER_GO) "cd pkg/pillar ; go mod vendor" $(CURDIR) proto
 
-proto-diagram: $(GOBUILDER)
-	@$(DOCKER_GO) "/usr/local/bin/protodot -inc /usr/include -src ./api/proto/config/devconfig.proto -output devconfig && cp ~/protodot/generated/devconfig.* ./api/images && dot ./api/images/devconfig.dot -Tpng -o ./api/images/devconfig.png && echo generated ./api/images/devconfig.*" $(CURDIR) api
-
 .PHONY: proto-api-%
-
-proto: $(GOBUILDER) api/go api/python proto-diagram
-	@echo Done building protobuf, you may want to vendor it into your packages, e.g. `pkg/pillar`.
-	@echo See ./api/go/README.md for more information.
-
-api/go: PROTOC_OUT_OPTS=paths=source_relative:
-api/go: proto-api-go
-
-api/python: proto-api-python
-
-proto-api-%: $(GOBUILDER)
-	rm -rf api/$*/*/; mkdir -p api/$* # building $@
-	@$(DOCKER_GO) "protoc -I./proto --$(*)_out=$(PROTOC_OUT_OPTS)./$* \
-		proto/*/*.proto" $(CURDIR)/api api
 
 check-patch-%:
 	@if ! echo $* | grep -Eq '^[0-9]+\.[0-9]+$$'; then echo "ERROR: must be on a release branch X.Y"; exit 1; fi
