@@ -5,7 +5,7 @@
 #
 
 # Script version, don't forget to bump up once something is changed
-VERSION=5
+VERSION=6
 
 DATE=$(date -Is)
 INFO_DIR="eve-info-v$VERSION-$DATE"
@@ -44,9 +44,9 @@ DIR="$TMP_DIR/$INFO_DIR"
 mkdir -p "$DIR"
 mkdir -p "$DIR/network"
 
-# Install GNU version of the 'ps', 'tar' and other tools
+# Install GNU version of the 'ps' and the dmidecode tool
 echo "- install GNU tools"
-apk add procps tar dmidecode >/dev/null 2>&1
+apk add procps dmidecode >/dev/null 2>&1
 
 collect_network_info()
 {
