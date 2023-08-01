@@ -20,6 +20,7 @@ import (
 	"github.com/google/go-tpm/tpm2"
 	"github.com/google/go-tpm/tpmutil"
 	etpm "github.com/lf-edge/eve/pkg/pillar/evetpm"
+	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
 )
 
 const ecdhCertPem = `
@@ -264,6 +265,82 @@ func TestSealUnsealMismatchReport(t *testing.T) {
 
 	if !strings.Contains(err.Error(), "[1 7 8]") {
 		t.Errorf("UnsealDiskKey expected to report mismatching PCR indexes, got : %v", err)
+		return
+	}
+}
+
+func TestSealUnsealTpmEventLogCollect(t *testing.T) {
+	_, err := os.Stat(etpm.TpmDevicePath)
+	if err != nil {
+		t.Skip("TPM is not available, skipping the test.")
+	}
+
+	rw, err := tpm2.OpenTPM(etpm.TpmDevicePath)
+	if err != nil {
+		t.Errorf("OpenTPM failed with err: %v", err)
+		return
+	}
+	defer rw.Close()
+
+	// this should write the save the first event log
+	dataToSeal := []byte("secret")
+	if err := etpm.SealDiskKey(dataToSeal, etpm.DiskKeySealingPCRs); err != nil {
+		t.Errorf("Seal operation failed with err: %v", err)
+		return
+	}
+
+	// this won't write to event log, but still triggers saving it on unseal.
+	pcrValue := bytes.Repeat([]byte{0xF}, sha256.Size)
+	if err = tpm2.PCRExtend(rw, tpmutil.Handle(1), tpm2.AlgSHA256, pcrValue, ""); err != nil {
+		t.Errorf("Failed to extend PCR[1]: %v", err)
+		return
+	}
+
+	// this should fail and result in saving the second tpm event log
+	_, err = etpm.UnsealDiskKey(etpm.DiskKeySealingPCRs)
+	if err == nil {
+		t.Errorf("Expected error from UnsealDiskKey, got nil")
+		return
+	}
+
+	// just check for tpm0
+	sealSuccess := fmt.Sprintf(etpm.TpmEvtLogSavePattern, etpm.MeasurementLogSealSuccess, 0)
+	sealFail := fmt.Sprintf(etpm.TpmEvtLogSavePattern, etpm.MeasurementLogUnsealFail, 0)
+	if !fileutils.FileExists(nil, sealSuccess) {
+		t.Errorf("TPM event log \"%s\" not found, Expected to be saved", sealSuccess)
+		return
+	}
+	if !fileutils.FileExists(nil, sealFail) {
+		t.Errorf("TPM event log \"%s\" not found, Expected to be saved", sealFail)
+		return
+	}
+
+	// this should trigger collecting previous tpm event logs
+	if err := etpm.SealDiskKey(dataToSeal, etpm.DiskKeySealingPCRs); err != nil {
+		t.Errorf("Seal operation failed with err: %v", err)
+		return
+	}
+
+	// current event log should exist
+	if !fileutils.FileExists(nil, sealSuccess) {
+		t.Errorf("TPM event log \"%s\" not found, Expected to be saved", sealSuccess)
+		return
+	}
+	// this shouldn't exist because SealDiskKey will do a clean up
+	if fileutils.FileExists(nil, sealFail) {
+		t.Errorf("TPM event log \"%s\" found, Expected to not exist", sealFail)
+		return
+	}
+
+	// collected event logs both should exist
+	prevSealSuccess := fmt.Sprintf(etpm.TpmEvtLogCollectPattern, sealSuccess)
+	prevSealFail := fmt.Sprintf(etpm.TpmEvtLogCollectPattern, sealFail)
+	if !fileutils.FileExists(nil, prevSealSuccess) {
+		t.Errorf("TPM event log \"%s\" not found, Expected to be collected", prevSealSuccess)
+		return
+	}
+	if !fileutils.FileExists(nil, prevSealFail) {
+		t.Errorf("TPM event log \"%s\" not found, Expected to be collected", prevSealFail)
 		return
 	}
 }
