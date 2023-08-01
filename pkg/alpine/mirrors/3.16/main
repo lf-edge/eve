@@ -29,6 +29,7 @@ cryptsetup-dev
 curl
 curl-dev
 dbus
+dbus-glib-dev
 dbus-libs
 dev86
 dhclient
@@ -129,6 +130,7 @@ lz4-libs
 lzo-dev
 m4
 make
+meson
 mkinitfs
 mpc1-dev
 mpfr-dev
@@ -143,6 +145,7 @@ ncurses-dev
 net-snmp
 netcat-openbsd
 nettle
+ninja
 numactl-dev
 open-iscsi
 openrc
