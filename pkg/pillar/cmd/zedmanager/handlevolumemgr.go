@@ -9,7 +9,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"reflect"
 	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/base"
@@ -445,12 +444,12 @@ func deserializeSnapshotInstanceStatus(snapshotID string) (*types.SnapshotInstan
 	// get the filename
 	snapshotInstanceStatusFilename := types.GetSnapshotInstanceStatusFile(snapshotID)
 
-	retStruct, err := utils.DeserializeToStruct(snapshotInstanceStatusFilename, reflect.TypeOf(types.SnapshotInstanceStatus{}), types.SnapshotInstanceStatusCriticalFields)
+	snapshotInstanceStatus := new(types.SnapshotInstanceStatus)
+	err := utils.DeserializeToStruct(snapshotInstanceStatusFilename, snapshotInstanceStatus)
 	if err != nil {
 		log.Errorf("deserializeSnapshotInstanceStatus: Failed to deserialize SnapshotInstanceStatus: %s", err)
 		return nil, fmt.Errorf("failed to deserialize SnapshotInstanceStatus: %s", err)
 	}
-	snapshotInstanceStatus := retStruct.(*types.SnapshotInstanceStatus)
 	return snapshotInstanceStatus, nil
 }
 
