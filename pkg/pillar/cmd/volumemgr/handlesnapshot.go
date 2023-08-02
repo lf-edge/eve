@@ -11,7 +11,6 @@ import (
 	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
 	"github.com/lf-edge/eve/pkg/pillar/volumehandlers"
 	"os"
-	"reflect"
 )
 
 func createSnapshot(ctx *volumemgrContext, config *types.VolumesSnapshotConfig) *types.VolumesSnapshotStatus {
@@ -98,12 +97,12 @@ func deserializeVolumesSnapshotStatus(snapshotID string) (*types.VolumesSnapshot
 	// Get the filename for the snapshot status
 	volumesSnapshotStatusFilename := types.GetVolumesSnapshotStatusFile(snapshotID)
 
-	deserializedStruct, err := utils.DeserializeToStruct(volumesSnapshotStatusFilename, reflect.TypeOf(types.VolumesSnapshotStatus{}), types.VolumesSnapshotStatusCriticalFields)
+	volumesSnapshotStatus := new(types.VolumesSnapshotStatus)
+	err := utils.DeserializeToStruct(volumesSnapshotStatusFilename, volumesSnapshotStatus)
 	if err != nil {
 		log.Errorf("deserializeVolumesSnapshotStatus: failed to deserialize snapshot status for %s, %s", snapshotID, err.Error())
 		return nil, fmt.Errorf("failed to deserialize snapshot status for %s, %s", snapshotID, err.Error())
 	}
-	volumesSnapshotStatus := deserializedStruct.(*types.VolumesSnapshotStatus)
 
 	return volumesSnapshotStatus, nil
 

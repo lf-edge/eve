@@ -58,53 +58,63 @@ func validateFields(dataMap map[string]interface{}, expectedFields map[string]bo
 	return nil
 }
 
-// ExtractFields extracts all fields from the given type and its anonymous fields
-// and adds them to the given map. This can be used for a careful deserialization.
-func extractFields(t reflect.Type, fieldMap *map[string]bool) {
+func extractFields(t reflect.Type, fieldsMap map[string]bool, criticalFields map[string]bool) {
 	for i := 0; i < t.NumField(); i++ {
 		field := t.Field(i)
 
 		if field.Anonymous {
 			// If this is an anonymous field, recursively extract its fields as well.
-			extractFields(field.Type, fieldMap)
+			extractFields(field.Type, fieldsMap, criticalFields)
 		} else {
 			// This is a normal field, so just add its name to the map.
-			(*fieldMap)[field.Name] = true
+			fieldsMap[field.Name] = true
+			// Check if the field is mandatory
+			tag := field.Tag.Get("mandatory")
+			if tag == "true" {
+				criticalFields[field.Name] = true
+			}
 		}
 	}
 }
 
-// DeserializeToStruct deserializes the given file into the given struct type.
-// It also validates that all mandatory fields in the struct are present in the file. It prints warnings
-// for all unexpected fields in the file and for all missing fields in the file that are not mandatory.
-func DeserializeToStruct(filename string, structType reflect.Type, criticalFields map[string]bool) (interface{}, error) {
+// DeserializeToStruct deserializes the given file into the given struct.
+// It returns an error if the file is not accessible or if the file does not contain all the necessary fields
+// (those that are marked as mandatory="true" in the struct definition).
+func DeserializeToStruct(filename string, pointerToStructInstance any) error {
+	// Validate the pointerToStructInstance argument
+	if reflect.TypeOf(pointerToStructInstance).Kind() != reflect.Ptr {
+		return fmt.Errorf("pointerToStructInstance must be a pointer to a struct (it's not a pointer now)")
+	}
+	structType := reflect.TypeOf(pointerToStructInstance).Elem()
+	if structType.Kind() != reflect.Struct {
+		return fmt.Errorf("pointerToStructInstance must be a pointer to a struct (it's not to a struct now)")
+	}
+
 	data, err := readFile(filename)
 	if err != nil {
-		return nil, err
+		return fmt.Errorf("failed to read file: %s", err.Error())
 	}
 
 	var dataMap map[string]interface{}
 	err = json.Unmarshal(data, &dataMap)
 	if err != nil {
-		log.Errorf("Failed to unmarshal data, %s", err.Error())
-		return nil, err
+		return fmt.Errorf("failed to unmarshal data: %s", err.Error())
 	}
 
 	expectedFields := make(map[string]bool)
-	extractFields(structType, &expectedFields)
+	criticalFields := make(map[string]bool)
+	extractFields(structType, expectedFields, criticalFields)
 
 	err = validateFields(dataMap, expectedFields, criticalFields, filename)
 	if err != nil {
-		return nil, err
+		return fmt.Errorf("failed to validate fields: %s", err.Error())
 	}
 
 	// Unmarshal from JSON
-	retStruct := reflect.New(structType).Interface()
-	err = json.Unmarshal(data, &retStruct)
+	err = json.Unmarshal(data, pointerToStructInstance)
 	if err != nil {
-		log.Errorf("Failed to unmarshal data, %s", err.Error())
-		return nil, err
+		return fmt.Errorf("failed to unmarshal data: %s", err.Error())
 	}
 
-	return retStruct, nil
+	return nil
 }

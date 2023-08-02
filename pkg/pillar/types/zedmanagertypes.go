@@ -83,7 +83,7 @@ type SnapshotDesc struct {
 // SnapshotInstanceStatus status of a snapshot instance. Used as a zedmanager-level representation of a snapshot
 type SnapshotInstanceStatus struct {
 	// Snapshot contains the snapshot description
-	Snapshot SnapshotDesc
+	Snapshot SnapshotDesc `mandatory:"true"`
 	// Reported indicates if the snapshot has been reported to the controller
 	Reported bool
 	// TimeTriggered is the time when the snapshot was triggered. At the moment, it is used to check if the snapshot has
@@ -93,19 +93,12 @@ type SnapshotInstanceStatus struct {
 	// TimeCreated is the time when the snapshot was created. It's reported by FS-specific snapshot creation code.
 	TimeCreated time.Time
 	// AppInstanceID is the UUID of the app instance the snapshot belongs to
-	AppInstanceID uuid.UUID
+	AppInstanceID uuid.UUID `mandatory:"true"`
 	// ConfigVersion is the version of the app instance config at the moment of the snapshot creation
 	// It is reported to the controller, so it can use the proper config to roll back the app instance
-	ConfigVersion UUIDandVersion
+	ConfigVersion UUIDandVersion `mandatory:"true"`
 	// Error indicates if snapshot deletion or a rollback to the snapshot failed
 	Error ErrorDescription
-}
-
-// SnapshotInstanceStatusCriticalFields list of mandatory fields in SnapshotInstanceStatus to be restored from persistent storage
-var SnapshotInstanceStatusCriticalFields = map[string]bool{
-	"Snapshot":      true,
-	"AppInstanceID": true,
-	"ConfigVersion": true,
 }
 
 // SnapshotConfig configuration of the snapshot handling for the app instance
