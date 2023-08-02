@@ -7,6 +7,9 @@
 # Script version, don't forget to bump up once something is changed
 VERSION=6
 
+# Add required packages here, it will be passed to "apk add".
+PKG_DEPS="procps dmidecode iptables dhcpcd"
+
 DATE=$(date -Is)
 INFO_DIR="eve-info-v$VERSION-$DATE"
 TARBALL_FILE="/persist/$INFO_DIR.tar.gz"
@@ -44,18 +47,17 @@ DIR="$TMP_DIR/$INFO_DIR"
 mkdir -p "$DIR"
 mkdir -p "$DIR/network"
 
-# Install GNU version of the 'ps' and the dmidecode tool
-echo "- install GNU tools"
-apk add procps dmidecode >/dev/null 2>&1
+# Check for internet access, timeouts at 30 seconds,
+# If there is internet access, install required GNU utilities and networking tools.
+if nc -z -w 30 dl-cdn.alpinelinux.org 443 2>/dev/null; then
+  echo "- install GNU utilities and networking tools"
+  # shellcheck disable=SC2086
+  apk add $PKG_DEPS >/dev/null 2>&1
+fi
 
 collect_network_info()
 {
     echo "- network info"
-
-    # Install missing tools
-    echo "   - install networking GNU tools"
-    apk add iptables dhcpcd >/dev/null 2>&1
-
     echo "   - ifconfig, ip, arp, netstat, iptables"
     ifconfig       > "$DIR/network/ifconfig"
     ip -s link     > "$DIR/network/ip-s-link"
