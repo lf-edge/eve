@@ -9,10 +9,10 @@ import (
 	"fmt"
 	"strings"
 
-	dg "github.com/lf-edge/eve/libs/depgraph"
+	dg "github.com/lf-edge/eve-libs/depgraph"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	generic "github.com/lf-edge/eve/pkg/pillar/nireconciler/genericitems"
-	"github.com/lf-edge/eve/pkg/pillar/utils"
+	"github.com/lf-edge/eve/pkg/pillar/utils/generics"
 	"github.com/vishvananda/netlink"
 )
 
@@ -56,7 +56,7 @@ func (s IPSet) Equal(other dg.Item) bool {
 	}
 	return s.SetName == s2.SetName &&
 		s.TypeName == s2.TypeName &&
-		utils.EqualSets(s.Entries, s2.Entries)
+		generics.EqualSets(s.Entries, s2.Entries)
 }
 
 // External returns false.

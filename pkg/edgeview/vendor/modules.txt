@@ -4,7 +4,7 @@ github.com/StackExchange/wmi
 # github.com/cenkalti/backoff v2.2.1+incompatible
 ## explicit
 github.com/cenkalti/backoff
-# github.com/eriknordmark/ipinfo v0.0.0-20190220084921-7ee0839158f9
+# github.com/eriknordmark/ipinfo v0.0.0-20230728132417-2d8f4da903d7
 ## explicit
 github.com/eriknordmark/ipinfo
 # github.com/fsnotify/fsnotify v1.5.1

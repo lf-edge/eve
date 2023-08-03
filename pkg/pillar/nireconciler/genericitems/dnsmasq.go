@@ -15,11 +15,12 @@ import (
 	"syscall"
 	"time"
 
-	dg "github.com/lf-edge/eve/libs/depgraph"
-	"github.com/lf-edge/eve/libs/reconciler"
+	dg "github.com/lf-edge/eve-libs/depgraph"
+	"github.com/lf-edge/eve-libs/reconciler"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/devicenetwork"
-	"github.com/lf-edge/eve/pkg/pillar/utils"
+	"github.com/lf-edge/eve/pkg/pillar/utils/generics"
+	"github.com/lf-edge/eve/pkg/pillar/utils/netutils"
 	uuid "github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
 )
@@ -82,16 +83,16 @@ func (d DHCPServer) String() string {
 
 // Equal compares two DHCPServer instances
 func (d DHCPServer) Equal(d2 DHCPServer, withStaticEntries bool) bool {
-	return utils.EqualIPNets(d.Subnet, d2.Subnet) &&
+	return netutils.EqualIPNets(d.Subnet, d2.Subnet) &&
 		d.AllOnesNetmask == d2.AllOnesNetmask &&
-		utils.EqualIPs(d.IPRange.FromIP, d2.IPRange.FromIP) &&
-		utils.EqualIPs(d.IPRange.ToIP, d2.IPRange.ToIP) &&
-		utils.EqualIPs(d.GatewayIP, d2.GatewayIP) &&
+		netutils.EqualIPs(d.IPRange.FromIP, d2.IPRange.FromIP) &&
+		netutils.EqualIPs(d.IPRange.ToIP, d2.IPRange.ToIP) &&
+		netutils.EqualIPs(d.GatewayIP, d2.GatewayIP) &&
 		d.DomainName == d2.DomainName &&
-		utils.EqualSetsFn(d.DNSServers, d2.DNSServers, utils.EqualIPs) &&
-		utils.EqualSetsFn(d.NTPServers, d2.NTPServers, utils.EqualIPs) &&
+		generics.EqualSetsFn(d.DNSServers, d2.DNSServers, netutils.EqualIPs) &&
+		generics.EqualSetsFn(d.NTPServers, d2.NTPServers, netutils.EqualIPs) &&
 		(!withStaticEntries ||
-			utils.EqualSetsFn(d.StaticEntries, d2.StaticEntries, equalMACToIP))
+			generics.EqualSetsFn(d.StaticEntries, d2.StaticEntries, equalMACToIP))
 }
 
 // DNSServer : part of the dnsmasq config specific to DNS server.
@@ -125,12 +126,12 @@ func (d DNSServer) String() string {
 
 // Equal compares two DNSServer instances
 func (d DNSServer) Equal(d2 DNSServer, withStaticEntries bool) bool {
-	return utils.EqualIPs(d.ListenIP, d2.ListenIP) &&
+	return netutils.EqualIPs(d.ListenIP, d2.ListenIP) &&
 		d.UplinkIf == d2.UplinkIf &&
-		utils.EqualSetsFn(d.UpstreamServers, d2.UpstreamServers, utils.EqualIPs) &&
-		utils.EqualSetsFn(d.LinuxIPSets, d2.LinuxIPSets, equalLinuxIPSet) &&
+		generics.EqualSetsFn(d.UpstreamServers, d2.UpstreamServers, netutils.EqualIPs) &&
+		generics.EqualSetsFn(d.LinuxIPSets, d2.LinuxIPSets, equalLinuxIPSet) &&
 		(!withStaticEntries ||
-			utils.EqualSetsFn(d.StaticEntries, d2.StaticEntries, equalHostnameToIP))
+			generics.EqualSetsFn(d.StaticEntries, d2.StaticEntries, equalHostnameToIP))
 }
 
 // IPRange : a range of IP addresses.
@@ -150,7 +151,7 @@ type MACToIP struct {
 
 func equalMACToIP(a, b MACToIP) bool {
 	return bytes.Equal(a.MAC, b.MAC) &&
-		utils.EqualIPs(a.IP, b.IP) &&
+		netutils.EqualIPs(a.IP, b.IP) &&
 		a.Hostname == b.Hostname
 }
 
@@ -162,7 +163,7 @@ type HostnameToIP struct {
 
 func equalHostnameToIP(a, b HostnameToIP) bool {
 	return a.Hostname == b.Hostname &&
-		utils.EqualIPs(a.IP, b.IP)
+		netutils.EqualIPs(a.IP, b.IP)
 }
 
 // LinuxIPSet : see https://www.netfilter.org/projects/ipset/index.html
@@ -174,8 +175,8 @@ type LinuxIPSet struct {
 }
 
 func equalLinuxIPSet(a, b LinuxIPSet) bool {
-	return utils.EqualSets(a.Domains, b.Domains) &&
-		utils.EqualSets(a.Sets, b.Sets)
+	return generics.EqualSets(a.Domains, b.Domains) &&
+		generics.EqualSets(a.Sets, b.Sets)
 }
 
 // NetworkIf : network interface used by dnsmasq.
@@ -351,7 +352,7 @@ func (c *DnsmasqConfigurator) Modify(ctx context.Context, oldItem, newItem dg.It
 	if !isDnsmasq {
 		return fmt.Errorf("invalid item type %T, expected Dnsmasq", newItem)
 	}
-	obsoleteDHCPHosts, newDHCPHosts := utils.DiffSetsFn(
+	obsoleteDHCPHosts, newDHCPHosts := generics.DiffSetsFn(
 		oldDnsmasq.DHCPServer.StaticEntries, newDnsmasq.DHCPServer.StaticEntries,
 		equalMACToIP)
 	for _, host := range obsoleteDHCPHosts {
@@ -364,7 +365,7 @@ func (c *DnsmasqConfigurator) Modify(ctx context.Context, oldItem, newItem dg.It
 			return err
 		}
 	}
-	obsoleteDNSHosts, newDNSHosts := utils.DiffSetsFn(
+	obsoleteDNSHosts, newDNSHosts := generics.DiffSetsFn(
 		oldDnsmasq.DNSServer.StaticEntries, newDnsmasq.DNSServer.StaticEntries,
 		equalHostnameToIP)
 	for _, host := range obsoleteDNSHosts {

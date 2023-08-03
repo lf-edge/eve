@@ -14,10 +14,10 @@ import (
 	"github.com/golang/protobuf/ptypes/timestamp"
 
 	"github.com/golang/protobuf/ptypes"
-	zcommon "github.com/lf-edge/eve/api/go/evecommon"
-	"github.com/lf-edge/eve/api/go/flowlog"
-	zinfo "github.com/lf-edge/eve/api/go/info"   // XXX need to stop using
-	zmet "github.com/lf-edge/eve/api/go/metrics" // zinfo and zmet here
+	zcommon "github.com/lf-edge/eve-api/go/evecommon"
+	"github.com/lf-edge/eve-api/go/flowlog"
+	zinfo "github.com/lf-edge/eve-api/go/info"   // XXX need to stop using
+	zmet "github.com/lf-edge/eve-api/go/metrics" // zinfo and zmet here
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 	"google.golang.org/protobuf/proto"

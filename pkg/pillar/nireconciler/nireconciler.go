@@ -15,9 +15,10 @@ import (
 	"net"
 	"sort"
 
-	dg "github.com/lf-edge/eve/libs/depgraph"
+	dg "github.com/lf-edge/eve-libs/depgraph"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	"github.com/lf-edge/eve/pkg/pillar/utils"
+	"github.com/lf-edge/eve/pkg/pillar/utils/generics"
+	"github.com/lf-edge/eve/pkg/pillar/utils/netutils"
 	uuid "github.com/satori/go.uuid"
 )
 
@@ -111,8 +112,8 @@ type Uplink struct {
 func (u Uplink) Equal(u2 Uplink) bool {
 	return u.LogicalLabel == u2.LogicalLabel &&
 		u.IfName == u2.IfName &&
-		utils.EqualSetsFn(u.DNSServers, u2.DNSServers, utils.EqualIPs) &&
-		utils.EqualSetsFn(u.NTPServers, u2.NTPServers, utils.EqualIPs)
+		generics.EqualSetsFn(u.DNSServers, u2.DNSServers, netutils.EqualIPs) &&
+		generics.EqualSetsFn(u.NTPServers, u2.NTPServers, netutils.EqualIPs)
 }
 
 // AppVIF : describes interface created to connect application with network instance.
@@ -222,7 +223,7 @@ type AppConnReconcileStatus struct {
 // Equal compares two instances of AppConnReconcileStatus.
 func (s AppConnReconcileStatus) Equal(s2 AppConnReconcileStatus) bool {
 	return s.App == s2.App && s.Deleted == s2.Deleted &&
-		utils.EqualSetsFn(s.VIFs, s2.VIFs,
+		generics.EqualSetsFn(s.VIFs, s2.VIFs,
 			func(v1, v2 AppVIFReconcileStatus) bool {
 				return v1.Equal(v2)
 			})

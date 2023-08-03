@@ -11,8 +11,8 @@ import (
 	"syscall"
 	"time"
 
-	dg "github.com/lf-edge/eve/libs/depgraph"
-	"github.com/lf-edge/eve/libs/reconciler"
+	dg "github.com/lf-edge/eve-libs/depgraph"
+	"github.com/lf-edge/eve-libs/reconciler"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/cipher"
 	"github.com/lf-edge/eve/pkg/pillar/devicenetwork"
@@ -646,7 +646,7 @@ func (r *LinuxDpcReconciler) updateCurrentPhysicalIO(
 	dpc types.DevicePortConfig, aa types.AssignableAdapters) (changed bool) {
 	currentIO := dg.New(dg.InitArgs{Name: PhysicalIoSG})
 	for _, port := range dpc.Ports {
-		if port.L2Type != types.L2LinkTypeNone {
+		if port.L2Type != types.L2LinkTypeNone || port.IfName == "" {
 			continue
 		}
 		ioBundle := aa.LookupIoBundleIfName(port.IfName)
@@ -690,7 +690,7 @@ func (r *LinuxDpcReconciler) updateCurrentAdapterAddrs(
 	sgPath := dg.NewSubGraphPath(L3SG, AdaptersSG, AdapterAddrsSG)
 	currentAddrs := dg.New(dg.InitArgs{Name: AdapterAddrsSG})
 	for _, port := range dpc.Ports {
-		if !port.IsL3Port {
+		if !port.IsL3Port || port.IfName == "" {
 			continue
 		}
 		ifIndex, found, err := r.NetworkMonitor.GetInterfaceIndex(port.IfName)
@@ -740,6 +740,9 @@ func (r *LinuxDpcReconciler) updateCurrentRoutes(dpc types.DevicePortConfig) (ch
 		}
 	}
 	for _, port := range dpc.Ports {
+		if port.IfName == "" {
+			continue
+		}
 		ifIndex, found, err := r.NetworkMonitor.GetInterfaceIndex(port.IfName)
 		if err != nil {
 			r.Log.Errorf("updateCurrentRoutes: failed to get ifIndex for %s: %v",
@@ -830,7 +833,7 @@ func (r *LinuxDpcReconciler) getIntendedGlobalCfg(dpc types.DevicePortConfig) dg
 	// Intended content of /etc/resolv.conf
 	dnsServers := make(map[string][]net.IP)
 	for _, port := range dpc.Ports {
-		if !port.IsMgmt {
+		if !port.IsMgmt || port.IfName == "" {
 			continue
 		}
 		ifIndex, found, err := r.NetworkMonitor.GetInterfaceIndex(port.IfName)
@@ -861,6 +864,9 @@ func (r *LinuxDpcReconciler) getIntendedPhysicalIO(dpc types.DevicePortConfig) d
 	}
 	intendedIO := dg.New(graphArgs)
 	for _, port := range dpc.Ports {
+		if port.IfName == "" {
+			continue
+		}
 		if port.L2Type == types.L2LinkTypeNone {
 			intendedIO.PutItem(generic.PhysIf{
 				LogicalLabel: port.Logicallabel,
@@ -878,6 +884,9 @@ func (r *LinuxDpcReconciler) getIntendedLogicalIO(dpc types.DevicePortConfig) dg
 	}
 	intendedIO := dg.New(graphArgs)
 	for _, port := range dpc.Ports {
+		if port.IfName == "" {
+			continue
+		}
 		switch port.L2Type {
 		case types.L2LinkTypeVLAN:
 			parent := dpc.LookupPortByLogicallabel(port.VLAN.ParentPort)
@@ -962,7 +971,7 @@ func (r *LinuxDpcReconciler) getIntendedAdapters(dpc types.DevicePortConfig) dg.
 	}
 	intendedAdapters := dg.New(graphArgs)
 	for _, port := range dpc.Ports {
-		if !port.IsL3Port {
+		if !port.IsL3Port || port.IfName == "" {
 			continue
 		}
 		adapter := linux.Adapter{
@@ -1010,6 +1019,9 @@ func (r *LinuxDpcReconciler) getIntendedSrcIPRules(dpc types.DevicePortConfig) d
 	}
 	intendedRules := dg.New(graphArgs)
 	for _, port := range dpc.Ports {
+		if port.IfName == "" {
+			continue
+		}
 		ifIndex, found, err := r.NetworkMonitor.GetInterfaceIndex(port.IfName)
 		if err != nil {
 			r.Log.Errorf("getIntendedSrcIPRules: failed to get ifIndex for %s: %v",
@@ -1066,6 +1078,9 @@ func (r *LinuxDpcReconciler) getIntendedRoutes(dpc types.DevicePortConfig) dg.Gr
 		}
 	}
 	for _, port := range dpc.Ports {
+		if port.IfName == "" {
+			continue
+		}
 		ifIndex, found, err := r.NetworkMonitor.GetInterfaceIndex(port.IfName)
 		if err != nil {
 			r.Log.Errorf("getIntendedRoutes: failed to get ifIndex for %s: %v",
@@ -1133,6 +1148,9 @@ type portAddr struct {
 func (r *LinuxDpcReconciler) groupPortAddrs(dpc types.DevicePortConfig) map[string][]portAddr {
 	arpGroups := map[string][]portAddr{}
 	for _, port := range dpc.Ports {
+		if port.IfName == "" {
+			continue
+		}
 		ifIndex, found, err := r.NetworkMonitor.GetInterfaceIndex(port.IfName)
 		if err != nil {
 			r.Log.Errorf("groupPortAddrs: failed to get ifIndex for %s: %v",
@@ -1217,8 +1235,17 @@ func (r *LinuxDpcReconciler) getIntendedWirelessCfg(dpc types.DevicePortConfig,
 	rsImposed := radioSilence.Imposed
 	intendedWirelessCfg.PutItem(
 		r.getIntendedWlanConfig(dpc, rsImposed), nil)
-	intendedWirelessCfg.PutItem(
-		r.getIntendedWwanConfig(dpc, aa, rsImposed), nil)
+	if dpc.Key != "" {
+		// Do not send config to wwan microservice until we receive DPC.
+		// The default behaviour of wwan microservice (i.e. without config) is to disable
+		// radios of all cellular modems, which is the same effect we would get with empty
+		// config anyway. However, without config the wwan microservice does just that
+		// and does not waste time collecting e.g. modem state data. This is important
+		// because when the DPC arrives, wwan microservice won't be blocked on retrieving
+		// some state data but will be ready to apply the config immediately.
+		intendedWirelessCfg.PutItem(
+			r.getIntendedWwanConfig(dpc, aa, rsImposed), nil)
+	}
 	return intendedWirelessCfg
 }
 
@@ -1307,38 +1334,89 @@ func (r *LinuxDpcReconciler) getWifiCredentials(wifi types.WifiConfig) (types.En
 
 func (r *LinuxDpcReconciler) getIntendedWwanConfig(dpc types.DevicePortConfig,
 	aa types.AssignableAdapters, radioSilence bool) dg.Item {
-	config := types.WwanConfig{RadioSilence: radioSilence, Networks: []types.WwanNetworkConfig{}}
-
+	config := types.WwanConfig{
+		RadioSilence: radioSilence,
+		Networks:     []types.WwanNetworkConfig{},
+	}
 	for _, port := range dpc.Ports {
-		if port.WirelessCfg.WType != types.WirelessTypeCellular || len(port.WirelessCfg.Cellular) == 0 {
+		if port.WirelessCfg.WType != types.WirelessTypeCellular {
 			continue
 		}
-		ioBundle := aa.LookupIoBundleLogicallabel(port.Logicallabel)
-		if ioBundle == nil {
-			r.Log.Warnf("Failed to find adapter with logical label '%s'", port.Logicallabel)
-			continue
+		if !aa.Initialized {
+			r.Log.Warnf("getIntendedWwanConfig: AA is not yet initialized, "+
+				"skipping IsPCIBack check for port %s", port.Logicallabel)
+		} else {
+			ioBundle := aa.LookupIoBundleLogicallabel(port.Logicallabel)
+			if ioBundle == nil {
+				r.Log.Warnf("Failed to find adapter with logical label '%s'",
+					port.Logicallabel)
+				continue
+			}
+			if ioBundle.IsPCIBack {
+				r.Log.Warnf("getIntendedWwanConfig: wwan adapter with the logical label "+
+					"'%s' is assigned to pciback, skipping", port.Logicallabel)
+				continue
+			}
 		}
-		if ioBundle.IsPCIBack {
-			r.Log.Warnf("wwan adapter with the logical label '%s' is assigned to pciback, skipping",
-				port.Logicallabel)
-			continue
+		var (
+			accessPoint      *types.CellularAccessPoint
+			probeCfg         types.WwanProbe
+			locationTracking bool
+		)
+		for _, ap := range port.WirelessCfg.CellularV2.AccessPoints {
+			if ap.Activated {
+				accessPoint = &ap
+				break
+			}
 		}
-		// XXX Limited to a single APN for now
-		cellCfg := port.WirelessCfg.Cellular[0]
+		if accessPoint != nil {
+			// CellularV2 is being used.
+			probeCfg = port.WirelessCfg.CellularV2.Probe
+			locationTracking = port.WirelessCfg.CellularV2.LocationTracking
+		} else {
+			if len(port.WirelessCfg.Cellular) > 0 {
+				// Old and now deprecated Cellular config is being used.
+				cellCfg := port.WirelessCfg.Cellular[0]
+				accessPoint = &types.CellularAccessPoint{
+					Activated: true,
+					APN:       cellCfg.APN,
+				}
+				probeCfg = types.WwanProbe{
+					Disable: cellCfg.DisableProbe,
+					Address: cellCfg.ProbeAddr,
+				}
+				locationTracking = cellCfg.LocationTracking
+				r.Log.Warnf("getIntendedWwanConfig: using deprecated WirelessCfg.Cellular")
+			} else {
+				r.Log.Warnf("getIntendedWwanConfig: no activated access point "+
+					"for port %s, skipping", port.Logicallabel)
+				continue
+			}
+		}
+		// Prefer USB and PCI addresses over interface name.
+		// Plus we want to avoid changing /run/wwan/config.json just to put there
+		// discovered interface name (it is the wwan microservice that discovered it anyway
+		// and changing config.json would just trigger many redundant operations inside
+		// of that microservice)
+		var physAddress types.WwanPhysAddrs
+		if port.USBAddr != "" || port.PCIAddr != "" {
+			physAddress.USB = port.USBAddr
+			physAddress.PCI = port.PCIAddr
+		} else {
+			physAddress.Interface = port.IfName
+		}
 		network := types.WwanNetworkConfig{
-			LogicalLabel: port.Logicallabel,
-			PhysAddrs: types.WwanPhysAddrs{
-				Interface: ioBundle.Ifname,
-				USB:       ioBundle.UsbAddr,
-				PCI:       ioBundle.PciLong,
-			},
-			Apns:    []string{cellCfg.APN},
-			Proxies: port.Proxies,
-			Probe: types.WwanProbe{
-				Disable: cellCfg.DisableProbe,
-				Address: cellCfg.ProbeAddr,
-			},
-			LocationTracking: cellCfg.LocationTracking,
+			// TODO: Username + Password (will be done in the next PR)
+			LogicalLabel:     port.Logicallabel,
+			PhysAddrs:        physAddress,
+			SIMSlot:          accessPoint.SIMSlot,
+			APN:              accessPoint.APN,
+			PreferredPLMNs:   accessPoint.PreferredPLMNs,
+			PreferredRATs:    accessPoint.PreferredRATs,
+			ForbidRoaming:    accessPoint.ForbidRoaming,
+			Proxies:          port.Proxies,
+			Probe:            probeCfg,
+			LocationTracking: locationTracking,
 		}
 		config.Networks = append(config.Networks, network)
 	}
@@ -1651,6 +1729,9 @@ func (r *LinuxDpcReconciler) getIntendedACLs(
 	// i.e. these rules are below protoMarkV4Rules/protoMarkV6Rules
 	var dropMarkRules []iptables.Rule
 	for _, port := range dpc.Ports {
+		if port.IfName == "" {
+			continue
+		}
 		dropIngressRule := iptables.Rule{
 			RuleLabel: fmt.Sprintf("Ingress from %s", port.IfName),
 			MatchOpts: []string{"-i", port.IfName},

@@ -112,7 +112,7 @@ nav:
       - volumemgr: 'pkg/pillar/docs/volumemgr.md'
       - zedmanager: 'pkg/pillar/docs/zedmanager.md'
       - zedrouter: 'pkg/pillar/docs/zedrouter.md'
-      - zedUpload: 'pkg/pillar/vendor/github.com/lf-edge/eve/libs/zedUpload/README.md'
+      - zedUpload: 'pkg/pillar/vendor/github.com/lf-edge/eve-libs/zedUpload/README.md'
       - go-ieproxy: 'pkg/pillar/vendor/github.com/mattn/go-ieproxy/README.md'
       - dns: 'pkg/pillar/vendor/github.com/miekg/dns/README.md'
       - go-homedir: 'pkg/pillar/vendor/github.com/mitchellh/go-homedir/README.md'

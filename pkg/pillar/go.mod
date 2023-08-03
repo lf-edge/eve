@@ -11,7 +11,7 @@ require (
 	github.com/cshari-zededa/eve-tpm2-tools v0.0.4
 	github.com/digitalocean/go-qemu v0.0.0-20220826173844-d5f5e3ceed89
 	github.com/docker/docker v20.10.24+incompatible
-	github.com/eriknordmark/ipinfo v0.0.0-20190220084921-7ee0839158f9
+	github.com/eriknordmark/ipinfo v0.0.0-20230728132417-2d8f4da903d7
 	github.com/fsnotify/fsnotify v1.5.1
 	github.com/golang-jwt/jwt v3.2.2+incompatible
 	github.com/golang/protobuf v1.5.2
@@ -24,8 +24,8 @@ require (
 	github.com/jackwakefield/gopac v1.0.2
 	github.com/jaypipes/ghw v0.8.0
 	github.com/lf-edge/edge-containers v0.0.0-20221025050409-93c34bebadd2
-	github.com/lf-edge/eve/api/go v0.0.0-20230602070228-0c11e32c7718
-	github.com/lf-edge/eve/libs v0.0.0-20230717153241-cc5629af4657
+	github.com/lf-edge/eve-api/go v0.0.0-20230725195950-9c64039db587
+	github.com/lf-edge/eve-libs v0.0.0-20230724174211-8b4b7a344f7e
 	github.com/linuxkit/linuxkit/src/cmd/linuxkit v0.0.0-20220913135124-e532e7310810
 	github.com/miekg/dns v1.1.41
 	github.com/moby/sys/mountinfo v0.6.0

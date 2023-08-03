@@ -15,8 +15,8 @@ import (
 	"sync"
 	"time"
 
-	zconfig "github.com/lf-edge/eve/api/go/config"
-	"github.com/lf-edge/eve/libs/nettrace"
+	zconfig "github.com/lf-edge/eve-api/go/config"
+	"github.com/lf-edge/eve-libs/nettrace"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	"github.com/lf-edge/eve/pkg/pillar/hardware"
@@ -103,8 +103,9 @@ type getconfigContext struct {
 	pubVolumeConfig           pubsub.Publication
 	pubDisksConfig            pubsub.Publication
 	pubEdgeNodeInfo           pubsub.Publication
+	subCachedResolvedIPs      pubsub.Subscription
 	NodeAgentStatus           *types.NodeAgentStatus
-	configProcessingSkipFlag  bool
+	configProcessingRV        configProcessingRetval
 	lastReceivedConfig        time.Time // controller or local clocks
 	lastProcessedConfig       time.Time // controller or local clocks
 	lastConfigTimestamp       time.Time // controller clocks (zero if not available)
@@ -152,6 +153,16 @@ type getconfigContext struct {
 	cipherContexts map[string]types.CipherContext
 }
 
+func (ctx *getconfigContext) getCachedResolvedIPs(hostname string) []types.CachedIP {
+	if ctx.subCachedResolvedIPs == nil {
+		return nil
+	}
+	if item, err := ctx.subCachedResolvedIPs.Get(hostname); err == nil {
+		return item.(types.CachedResolvedIPs).CachedIPs
+	}
+	return nil
+}
+
 // current devUUID from OnboardingStatus
 var devUUID uuid.UUID
 
@@ -185,13 +196,38 @@ func (s configSource) String() string {
 type configProcessingRetval int
 
 const (
-	configOK        configProcessingRetval = iota
-	configReqFailed                        // failed to request latest config
-	obsoleteConfig                         // newer config is already applied
-	invalidConfig                          // config is not valid (cannot be parsed, UUID mismatch, bad signature, etc.)
-	skipConfig                             // reboot or shutdown flag is set
-	defferConfig                           // not ready to process config yet
+	configOK         configProcessingRetval = iota
+	configReqFailed                         // failed to request latest config
+	obsoleteConfig                          // newer config is already applied
+	invalidConfig                           // config is not valid (cannot be parsed, UUID mismatch, bad signature, etc.)
+	skipConfigReboot                        // reboot or shutdown flag is set
+	skipConfigUpdate                        // update flag is set
+	deferConfig                             // not ready to process config yet
 )
+
+func (r configProcessingRetval) isSkip() bool {
+	return r == skipConfigReboot || r == skipConfigUpdate
+}
+
+func (r configProcessingRetval) String() string {
+	switch r {
+	case configOK:
+		return "configOK"
+	case configReqFailed:
+		return "configReqFailed"
+	case obsoleteConfig:
+		return "obsoleteConfig"
+	case invalidConfig:
+		return "invalidConfig"
+	case skipConfigReboot:
+		return "skipConfigReboot"
+	case skipConfigUpdate:
+		return "skipConfigUpdate"
+	case deferConfig:
+		return "deferConfig"
+	}
+	return "<invalid>"
+}
 
 // Load bootstrap config provided that:
 //   - it exists
@@ -304,7 +340,8 @@ func indicateInvalidBootstrapConfig(getconfigCtx *getconfigContext) {
 	getconfigCtx.ledBlinkCount = types.LedBlinkInvalidBootstrapConfig
 }
 
-func initZedcloudContext(networkSendTimeout, networkDialTimeout uint32,
+func initZedcloudContext(getconfigCtx *getconfigContext,
+	networkSendTimeout, networkDialTimeout uint32,
 	agentMetrics *zedcloud.AgentMetrics) *zedcloud.ZedCloudContext {
 
 	// get the server name
@@ -315,13 +352,14 @@ func initZedcloudContext(networkSendTimeout, networkDialTimeout uint32,
 	serverNameAndPort = strings.TrimSpace(string(bytes))
 
 	zedcloudCtx := zedcloud.NewContext(log, zedcloud.ContextOptions{
-		DevNetworkStatus: deviceNetworkStatus,
-		SendTimeout:      networkSendTimeout,
-		DialTimeout:      networkDialTimeout,
-		AgentMetrics:     agentMetrics,
-		Serial:           hardware.GetProductSerial(log),
-		SoftSerial:       hardware.GetSoftSerial(log),
-		AgentName:        agentName,
+		DevNetworkStatus:  deviceNetworkStatus,
+		SendTimeout:       networkSendTimeout,
+		DialTimeout:       networkDialTimeout,
+		AgentMetrics:      agentMetrics,
+		Serial:            hardware.GetProductSerial(log),
+		SoftSerial:        hardware.GetSoftSerial(log),
+		AgentName:         agentName,
+		ResolverCacheFunc: getconfigCtx.getCachedResolvedIPs,
 		// Enable all net traces but packet capture, which is already covered
 		// by NIM (for the ping request).
 		NetTraceOpts: []nettrace.TraceOpt{
@@ -357,9 +395,8 @@ func configTimerTask(getconfigCtx *getconfigContext, handleChannel chan interfac
 	iteration := 0
 	withNetTracing := traceNextConfigReq(ctx)
 	retVal, tracedReqs := getLatestConfig(getconfigCtx, iteration, withNetTracing)
-	configProcessingSkipFlag := retVal == skipConfig
-	if configProcessingSkipFlag != getconfigCtx.configProcessingSkipFlag {
-		getconfigCtx.configProcessingSkipFlag = configProcessingSkipFlag
+	if getconfigCtx.configProcessingRV != retVal {
+		getconfigCtx.configProcessingRV = retVal
 		triggerPublishDevInfo(ctx)
 	}
 	getconfigCtx.localServerMap.upToDate = false
@@ -399,9 +436,8 @@ func configTimerTask(getconfigCtx *getconfigContext, handleChannel chan interfac
 			withNetTracing = traceNextConfigReq(ctx)
 			retVal, tracedReqs = getLatestConfig(
 				getconfigCtx, iteration, withNetTracing)
-			configProcessingSkipFlag = retVal == skipConfig
-			if configProcessingSkipFlag != getconfigCtx.configProcessingSkipFlag {
-				getconfigCtx.configProcessingSkipFlag = configProcessingSkipFlag
+			if getconfigCtx.configProcessingRV != retVal {
+				getconfigCtx.configProcessingRV = retVal
 				triggerPublishDevInfo(ctx)
 			}
 			getconfigCtx.localServerMap.upToDate = false
@@ -419,8 +455,8 @@ func configTimerTask(getconfigCtx *getconfigContext, handleChannel chan interfac
 				warningTime, errorTime)
 
 		case <-stillRunning.C:
-			if getconfigCtx.configProcessingSkipFlag {
-				log.Noticef("config processing skip flag set")
+			if getconfigCtx.configProcessingRV != configOK {
+				log.Noticef("config processing flag is not OK: %s", getconfigCtx.configProcessingRV)
 			}
 		}
 		ctx.ps.StillRunning(wdName, warningTime, errorTime)
@@ -473,7 +509,7 @@ func updateCertTimer(configInterval uint32, tickerHandle interface{}) {
 // Start by trying the all the free management ports and then all the non-free
 // until one succeeds in communicating with the cloud.
 // We use the iteration argument to start at a different point each time.
-// Returns a configProcessingSkipFlag
+// Returns the configProcessingRetval and the traced requests if any.
 func requestConfigByURL(getconfigCtx *getconfigContext, url string,
 	iteration int, withNetTracing bool) (configProcessingRetval, []netdump.TracedNetRequest) {
 
@@ -484,7 +520,7 @@ func requestConfigByURL(getconfigCtx *getconfigContext, url string,
 	if getconfigCtx.zedagentCtx.bootReason == types.BootReasonFirst &&
 		!getconfigCtx.zedagentCtx.publishedEdgeNodeCerts {
 		log.Noticef("Defer fetching config until our EdgeNodeCerts have been published")
-		return defferConfig, nil
+		return deferConfig, nil
 	}
 	ctx := getconfigCtx.zedagentCtx
 	const bailOnHTTPErr = false // For 4xx and 5xx HTTP errors we try other interfaces
@@ -912,7 +948,7 @@ func inhaleDeviceConfig(getconfigCtx *getconfigContext, config *zconfig.EdgeDevC
 		}
 	}
 
-	// add new BaseOS/App instances; returns configProcessingSkipFlag
+	// add new BaseOS/App instances; returns configProcessingSkipFlagReboot
 	return parseConfig(getconfigCtx, config, source)
 }
 
@@ -1117,7 +1153,7 @@ func publishConfigNetdump(ctx *zedagentContext,
 	switch configRV {
 	case configOK:
 		topic = netDumpConfigOKTopic
-	case defferConfig:
+	case deferConfig:
 		// There was no actual /config request so there is nothing interesting to publish.
 		return
 	default:

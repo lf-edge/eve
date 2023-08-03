@@ -9,8 +9,8 @@ import (
 	"net/http"
 	"strings"
 
-	zconfig "github.com/lf-edge/eve/api/go/config"
-	eveuuid "github.com/lf-edge/eve/api/go/eveuuid"
+	zconfig "github.com/lf-edge/eve-api/go/config"
+	eveuuid "github.com/lf-edge/eve-api/go/eveuuid"
 	"github.com/lf-edge/eve/pkg/pillar/hardware"
 	"github.com/satori/go.uuid"
 	"google.golang.org/protobuf/proto"

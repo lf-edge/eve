@@ -24,9 +24,9 @@ import (
 	"os"
 	"strings"
 
-	zauth "github.com/lf-edge/eve/api/go/auth"
-	zcert "github.com/lf-edge/eve/api/go/certs"
-	zcommon "github.com/lf-edge/eve/api/go/evecommon"
+	zauth "github.com/lf-edge/eve-api/go/auth"
+	zcert "github.com/lf-edge/eve-api/go/certs"
+	zcommon "github.com/lf-edge/eve-api/go/evecommon"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	etpm "github.com/lf-edge/eve/pkg/pillar/evetpm"
 	"github.com/lf-edge/eve/pkg/pillar/types"

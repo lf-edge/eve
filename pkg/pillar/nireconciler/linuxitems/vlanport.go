@@ -8,11 +8,11 @@ import (
 	"errors"
 	"fmt"
 
-	dg "github.com/lf-edge/eve/libs/depgraph"
+	dg "github.com/lf-edge/eve-libs/depgraph"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/netmonitor"
 	generic "github.com/lf-edge/eve/pkg/pillar/nireconciler/genericitems"
-	"github.com/lf-edge/eve/pkg/pillar/utils"
+	"github.com/lf-edge/eve/pkg/pillar/utils/generics"
 	"github.com/vishvananda/netlink"
 )
 
@@ -87,7 +87,7 @@ func (v VLANPort) Equal(other dg.Item) bool {
 	}
 	if isTrunk1 {
 		if v.VLANConfig.TrunkPort.AllVIDs != v2.VLANConfig.TrunkPort.AllVIDs ||
-			!utils.EqualSets(v.VLANConfig.TrunkPort.VIDs, v2.VLANConfig.TrunkPort.VIDs) {
+			!generics.EqualSets(v.VLANConfig.TrunkPort.VIDs, v2.VLANConfig.TrunkPort.VIDs) {
 			return false
 		}
 	} else {

@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lf-edge/eve/libs/nettrace"
+	"github.com/lf-edge/eve-libs/nettrace"
 )
 
 const (

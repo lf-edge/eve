@@ -14,7 +14,7 @@ import (
 	"strings"
 
 	eventlog "github.com/cshari-zededa/eve-tpm2-tools/eventlog"
-	"github.com/lf-edge/eve/api/go/attest"
+	"github.com/lf-edge/eve-api/go/attest"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	zattest "github.com/lf-edge/eve/pkg/pillar/attest"
 	"github.com/lf-edge/eve/pkg/pillar/hardware"

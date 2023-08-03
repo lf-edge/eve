@@ -11,6 +11,7 @@ import (
 	"os"
 	"reflect"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/eriknordmark/ipinfo"
@@ -135,6 +136,20 @@ func (status AppNetworkStatus) AwaitingNetwork() bool {
 	return status.AwaitNetworkInstance
 }
 
+// GetULStatusForNI returns UnderlayNetworkStatus for every application VIF
+// connected to the given network instance (there can be multiple interfaces connected
+// to the same network instance).
+func (status AppNetworkStatus) GetULStatusForNI(netUUID uuid.UUID) []*UnderlayNetworkStatus {
+	var uls []*UnderlayNetworkStatus
+	for i := range status.UnderlayNetworkList {
+		ul := &status.UnderlayNetworkList[i]
+		if ul.Network == netUUID {
+			uls = append(uls, ul)
+		}
+	}
+	return uls
+}
+
 // Indexed by UUID
 type AppNetworkStatus struct {
 	UUIDandVersion UUIDandVersion
@@ -143,6 +158,7 @@ type AppNetworkStatus struct {
 	PendingAdd     bool
 	PendingModify  bool
 	PendingDelete  bool
+	ConfigInSync   bool
 	DisplayName    string
 	// Copy from the AppNetworkConfig; used to delete when config is gone.
 	GetStatsIPAddr       net.IP
@@ -2052,30 +2068,14 @@ type UnderlayNetworkConfig struct {
 
 type UnderlayNetworkStatus struct {
 	UnderlayNetworkConfig
-	ACLs int // drop ACLs field from UnderlayNetworkConfig
 	VifInfo
 	BridgeMac         net.HardwareAddr
-	BridgeIPAddr      string   // The address for DNS/DHCP service in zedrouter
-	AllocatedIPv4Addr string   // Assigned to domU
-	AllocatedIPv6List []string // IPv6 addresses assigned to domU
+	BridgeIPAddr      net.IP   // The address for DNS/DHCP service in zedrouter
+	AllocatedIPv4Addr net.IP   // Assigned to domU
+	AllocatedIPv6List []net.IP // IPv6 addresses assigned to domU
 	IPv4Assigned      bool     // Set to true once DHCP has assigned it to domU
 	IPAddrMisMatch    bool
 	HostName          string
-	ACLDependList     []ACLDepend
-}
-
-// ACLDepend is used to track an external interface/port and optional IP addresses
-// on that interface which are encoded in the rules. Does not include the vif(s)
-// for the AppNetworkStatus itself.
-type ACLDepend struct {
-	Ifname string
-	IPAddr net.IP
-}
-
-// ULNetworkACLs - Underlay Network ACLRules
-// moved out from UnderlayNetowrkStatus, and now ACLRules are kept in zedrouterContext 2D-map NLaclMap
-type ULNetworkACLs struct {
-	ACLRules IPTablesRuleList
 }
 
 type NetworkType uint8
@@ -2200,19 +2200,13 @@ type AssignedAddrs struct {
 
 type NetworkInstanceInfo struct {
 	BridgeNum     int
-	BridgeName    string // bn<N>
-	BridgeIPAddr  string
-	BridgeMac     string
+	BridgeName    string
+	BridgeIPAddr  net.IP
+	BridgeMac     net.HardwareAddr
 	BridgeIfindex int
-
-	// interface names for the Logicallabel
-	IfNameList []string // Recorded at time of activate
 
 	// Collection of address assignments; from MAC address to IP address
 	IPAssignments map[string]AssignedAddrs
-
-	// Union of all ipsets fed to dnsmasq for the linux bridge
-	BridgeIPSets []string
 
 	// Set of vifs on this bridge
 	Vifs []VifNameMac
@@ -2231,9 +2225,6 @@ type NetworkInstanceInfo struct {
 	VlanMap map[uint32]uint32
 	// Counts the number of trunk ports attached to this network instance
 	NumTrunkPorts uint32
-
-	// IP address on which the meta-data server listens
-	MetaDataServerIP string
 }
 
 func (instanceInfo *NetworkInstanceInfo) IsVifInBridge(
@@ -2267,7 +2258,7 @@ func (instanceInfo *NetworkInstanceInfo) RemoveVif(log *base.LogObject,
 }
 
 func (instanceInfo *NetworkInstanceInfo) AddVif(log *base.LogObject,
-	vifName string, appMac string, appID uuid.UUID) {
+	vifName string, appMac net.HardwareAddr, appID uuid.UUID) {
 
 	log.Functionf("AddVif(%s, %s, %s, %s)",
 		instanceInfo.BridgeName, vifName, appMac, appID.String())
@@ -2286,26 +2277,12 @@ func (instanceInfo *NetworkInstanceInfo) AddVif(log *base.LogObject,
 	instanceInfo.Vifs = append(instanceInfo.Vifs, info)
 }
 
-type NetworkServiceType uint8
-
-const (
-	NST_FIRST NetworkServiceType = iota
-	NST_STRONGSWAN
-	NST_LISP
-	NST_BRIDGE
-	NST_NAT // Default?
-	NST_LB  // What is this?
-	// XXX Add a NST_L3/NST_ROUTER to describe IP forwarding?
-	NST_LAST = 255
-)
-
 type NetworkInstanceMetrics struct {
 	UUIDandVersion UUIDandVersion
 	DisplayName    string
 	Type           NetworkInstanceType
 	NetworkMetrics NetworkMetrics
 	ProbeMetrics   ProbeMetrics
-	VpnMetrics     *VpnMetrics
 	VlanMetrics    VlanMetrics
 }
 
@@ -2493,9 +2470,9 @@ type NetworkInstanceConfig struct {
 	// Activate - Activate the config.
 	Activate bool
 
-	// Logicallabel - name specified in the Device Config.
+	// PortLogicalLabel - references port(s) from DevicePortConfig.
 	// Can be a specific logicallabel for an interface, or a tag like "uplink"
-	Logicallabel string
+	PortLogicalLabel string
 
 	// IP configuration for the Application
 	IpType          AddressType
@@ -2506,9 +2483,6 @@ type NetworkInstanceConfig struct {
 	DnsServers      []net.IP // If not set we use Gateway as DNS server
 	DhcpRange       IpRange
 	DnsNameToIPList []DnsNameToIP // Used for DNS and ACL ipset
-
-	// For other network services - Proxy / StrongSwan etc..
-	OpaqueConfig string
 
 	// Any errors from the parser
 	// ErrorAndTime provides SetErrorNow() and ClearError()
@@ -2576,8 +2550,20 @@ func (config *NetworkInstanceConfig) IsIPv6() bool {
 // no uplink ports available that match the label.
 func (config *NetworkInstanceConfig) WithUplinkProbing() bool {
 	switch config.Type {
-	case NetworkInstanceTypeLocal, NetworkInstanceTypeCloud:
-		return IsSharedPortLabel(config.Logicallabel)
+	case NetworkInstanceTypeLocal:
+		return IsSharedPortLabel(config.PortLogicalLabel)
+	default:
+		return false
+	}
+}
+
+// IsUsingUplinkBridge returns true if the network instance is using the bridge
+// created (by NIM) for the uplink port, instead of creating its own bridge.
+func (config *NetworkInstanceConfig) IsUsingUplinkBridge() bool {
+	switch config.Type {
+	case NetworkInstanceTypeSwitch:
+		airGapped := config.PortLogicalLabel == ""
+		return !airGapped
 	default:
 		return false
 	}
@@ -2625,20 +2611,22 @@ type NetworkInstanceStatus struct {
 	Activate uint64
 
 	ChangeInProgress ChangeInProgressType
+	NIConflict       bool // True if config conflicts with another NI
 
-	// Activated
-	//	Keeps track of current state of object - if it has been activated
+	// Activated is true if the network instance has been created in the network stack.
 	Activated bool
-
-	Server4Running bool // Did we start the server?
 
 	NetworkInstanceInfo
 
-	OpaqueStatus string
-	VpnStatus    *VpnStatus
+	// Decided by local/remote probing
+	SelectedUplinkLogicalLabel string
+	SelectedUplinkIntfName     string
 
-	SelectedUplinkIntf string // Decided by local/remote probing
-	ProgUplinkIntf     string // Currently programmed uplink interface for app traffic
+	// True if uplink probing is running
+	RunningUplinkProbing bool
+
+	// True if NI is not activated only because of (currently) missing uplink.
+	WaitingForUplink bool
 }
 
 // LogCreate :
@@ -2681,45 +2669,9 @@ func (status NetworkInstanceStatus) LogKey() string {
 
 type VifNameMac struct {
 	Name    string
-	MacAddr string
+	MacAddr net.HardwareAddr
 	AppID   uuid.UUID
 }
-
-// AppNetworkACLArgs : args for converting ACL to iptables rules
-type AppNetworkACLArgs struct {
-	IsMgmt     bool
-	IPVer      int
-	BridgeName string
-	VifName    string
-	BridgeIP   string
-	AppIP      string
-	UpLinks    []string // List of ifnames
-	NIType     NetworkInstanceType
-	// This is the same AppNum that comes from AppNetworkStatus
-	AppNum int32
-}
-
-// IPTablesRule : iptables rule detail
-type IPTablesRule struct {
-	IPVer            int      // 4 or, 6
-	Table            string   // filter/nat/raw/mangle...
-	Chain            string   // FORWARDING/INPUT/PREROUTING...
-	Prefix           []string // constructed using ACLArgs
-	Rule             []string // rule match
-	Action           []string // rule action
-	RuleID           int32    // Unique rule ID
-	RuleName         string
-	ActionChainName  string
-	IsUserConfigured bool // Does this rule come from user configuration/manifest?
-	IsMarkingRule    bool // Rule does marking of packet for flow tracking.
-	IsPortMapRule    bool // Is this a port map rule?
-	IsLimitDropRule  bool // Is this a policer limit drop rule?
-	IsDefaultDrop    bool // Is this a default drop rule that forwards to dummy?
-	AnyPhysdev       bool // Apply rule irrespective of the input/output physical device.
-}
-
-// IPTablesRuleList : list of iptables rules
-type IPTablesRuleList []IPTablesRule
 
 /*
  * Tx/Rx of bridge is equal to the total of Tx/Rx on all member
@@ -2729,9 +2681,10 @@ type IPTablesRuleList []IPTablesRule
  * on all member virtual interface including the bridge.
  */
 func (status *NetworkInstanceStatus) UpdateNetworkMetrics(log *base.LogObject,
-	nms *NetworkMetrics) *NetworkMetric {
+	nms *NetworkMetrics) (brNetMetric *NetworkMetric) {
 
-	netMetric := NetworkMetric{IfName: status.BridgeName}
+	brNetMetric = &NetworkMetric{IfName: status.BridgeName}
+	status.VifMetricMap = make(map[string]NetworkMetric) // clear previous metrics
 	for _, vif := range status.Vifs {
 		metric, found := nms.LookupNetworkMetrics(vif.Name)
 		if !found {
@@ -2742,20 +2695,20 @@ func (status *NetworkInstanceStatus) UpdateNetworkMetrics(log *base.LogObject,
 		status.VifMetricMap[vif.Name] = metric
 	}
 	for _, metric := range status.VifMetricMap {
-		netMetric.TxBytes += metric.TxBytes
-		netMetric.RxBytes += metric.RxBytes
-		netMetric.TxPkts += metric.TxPkts
-		netMetric.RxPkts += metric.RxPkts
-		netMetric.TxErrors += metric.TxErrors
-		netMetric.RxErrors += metric.RxErrors
-		netMetric.TxDrops += metric.TxDrops
-		netMetric.RxDrops += metric.RxDrops
-		netMetric.TxAclDrops += metric.TxAclDrops
-		netMetric.RxAclDrops += metric.RxAclDrops
-		netMetric.TxAclRateLimitDrops += metric.TxAclRateLimitDrops
-		netMetric.RxAclRateLimitDrops += metric.RxAclRateLimitDrops
+		brNetMetric.TxBytes += metric.TxBytes
+		brNetMetric.RxBytes += metric.RxBytes
+		brNetMetric.TxPkts += metric.TxPkts
+		brNetMetric.RxPkts += metric.RxPkts
+		brNetMetric.TxErrors += metric.TxErrors
+		brNetMetric.RxErrors += metric.RxErrors
+		brNetMetric.TxDrops += metric.TxDrops
+		brNetMetric.RxDrops += metric.RxDrops
+		brNetMetric.TxAclDrops += metric.TxAclDrops
+		brNetMetric.RxAclDrops += metric.RxAclDrops
+		brNetMetric.TxAclRateLimitDrops += metric.TxAclRateLimitDrops
+		brNetMetric.RxAclRateLimitDrops += metric.RxAclRateLimitDrops
 	}
-	return &netMetric
+	return brNetMetric
 }
 
 /*
@@ -2794,16 +2747,6 @@ func (status *NetworkInstanceStatus) IsIpAssigned(ip net.IP) bool {
 			if ip.Equal(nip) {
 				return true
 			}
-		}
-	}
-	return false
-}
-
-// IsUsingIfName checks if ifname is used
-func (status *NetworkInstanceStatus) IsUsingIfName(ifname string) bool {
-	for _, ifname2 := range status.IfNameList {
-		if ifname2 == ifname {
-			return true
 		}
 	}
 	return false
@@ -2858,182 +2801,6 @@ type ACEAction struct {
 	TargetPort int  // Internal port
 }
 
-// Retrieved from geolocation service for device underlay connectivity
-type AdditionalInfoDevice struct {
-	UnderlayIP string
-	Hostname   string `json:",omitempty"` // From reverse DNS
-	City       string `json:",omitempty"`
-	Region     string `json:",omitempty"`
-	Country    string `json:",omitempty"`
-	Loc        string `json:",omitempty"` // Lat and long as string
-	Org        string `json:",omitempty"` // From AS number
-}
-
-// Tie the Application EID back to the device
-type AdditionalInfoApp struct {
-	DisplayName string
-	DeviceEID   net.IP
-	DeviceIID   uint32
-	UnderlayIP  string
-	Hostname    string `json:",omitempty"` // From reverse DNS
-}
-
-// Input Opaque Config
-type StrongSwanConfig struct {
-	VpnRole          string
-	PolicyBased      bool
-	IsClient         bool
-	VpnGatewayIpAddr string
-	VpnSubnetBlock   string
-	VpnLocalIpAddr   string
-	VpnRemoteIpAddr  string
-	PreSharedKey     string
-	LocalSubnetBlock string
-	ClientConfigList []VpnClientConfig
-}
-
-// structure for internal handling
-type VpnConfig struct {
-	VpnRole          string
-	PolicyBased      bool
-	IsClient         bool
-	PortConfig       NetLinkConfig
-	AppLinkConfig    NetLinkConfig
-	GatewayConfig    NetLinkConfig
-	ClientConfigList []VpnClientConfig
-}
-
-type NetLinkConfig struct {
-	IfName      string
-	IpAddr      string
-	SubnetBlock string
-}
-
-type VpnClientConfig struct {
-	IpAddr       string
-	SubnetBlock  string
-	PreSharedKey string
-	TunnelConfig VpnTunnelConfig
-}
-
-type VpnTunnelConfig struct {
-	Name         string
-	Key          string
-	Mtu          string
-	Metric       string
-	LocalIpAddr  string
-	RemoteIpAddr string
-}
-
-type VpnState uint8
-
-const (
-	VPN_INVALID VpnState = iota
-	VPN_INITIAL
-	VPN_CONNECTING
-	VPN_ESTABLISHED
-	VPN_INSTALLED
-	VPN_REKEYED
-	VPN_DELETED  VpnState = 10
-	VPN_MAXSTATE VpnState = 255
-)
-
-type VpnLinkInfo struct {
-	SubNet    string // connecting subnet
-	SpiId     string // security parameter index
-	Direction bool   // 0 - in, 1 - out
-	PktStats  PktStats
-}
-
-type VpnLinkStatus struct {
-	Id         string
-	Name       string
-	ReqId      string
-	InstTime   uint64 // installation time
-	ExpTime    uint64 // expiry time
-	RekeyTime  uint64 // rekey time
-	EspInfo    string
-	State      VpnState
-	LInfo      VpnLinkInfo
-	RInfo      VpnLinkInfo
-	MarkDelete bool
-}
-
-type VpnEndPoint struct {
-	Id     string // ipsec id
-	IpAddr string // end point ip address
-	Port   uint32 // udp port
-}
-
-type VpnConnStatus struct {
-	Id         string   // ipsec connection id
-	Name       string   // connection name
-	State      VpnState // vpn state
-	Version    string   // ike version
-	Ikes       string   // ike parameters
-	EstTime    uint64   // established time
-	ReauthTime uint64   // reauth time
-	LInfo      VpnEndPoint
-	RInfo      VpnEndPoint
-	Links      []*VpnLinkStatus
-	StartLine  uint32
-	EndLine    uint32
-	MarkDelete bool
-}
-
-type VpnStatus struct {
-	Version            string    // strongswan package version
-	UpTime             time.Time // service start time stamp
-	IpAddrs            string    // listening ip addresses, can be multiple
-	ActiveVpnConns     []*VpnConnStatus
-	StaleVpnConns      []*VpnConnStatus
-	ActiveTunCount     uint32
-	ConnectingTunCount uint32
-	PolicyBased        bool
-}
-
-type PktStats struct {
-	Pkts  uint64
-	Bytes uint64
-}
-
-type LinkPktStats struct {
-	InPkts  PktStats
-	OutPkts PktStats
-}
-
-type VpnLinkMetrics struct {
-	SubNet string // connecting subnet
-	SpiId  string // security parameter index
-}
-
-type VpnEndPointMetrics struct {
-	IpAddr   string // end point ip address
-	LinkInfo VpnLinkMetrics
-	PktStats PktStats
-}
-
-type VpnConnMetrics struct {
-	Id        string // ipsec connection id
-	Name      string // connection name
-	EstTime   uint64 // established time
-	Type      NetworkServiceType
-	NIType    NetworkInstanceType
-	LEndPoint VpnEndPointMetrics
-	REndPoint VpnEndPointMetrics
-}
-
-type VpnMetrics struct {
-	UpTime     time.Time // service start time stamp
-	DataStat   LinkPktStats
-	IkeStat    LinkPktStats
-	NatTStat   LinkPktStats
-	EspStat    LinkPktStats
-	ErrStat    LinkPktStats
-	PhyErrStat LinkPktStats
-	VpnConns   []*VpnConnMetrics
-}
-
 // IPTuple :
 type IPTuple struct {
 	Src     net.IP // local App IP address
@@ -3045,11 +2812,22 @@ type IPTuple struct {
 
 // FlowScope :
 type FlowScope struct {
-	UUID      uuid.UUID
-	Intf      string
-	Localintf string
-	NetUUID   uuid.UUID
-	Sequence  string // used internally for limit and pkt size per app/bn
+	AppUUID        uuid.UUID
+	NetAdapterName string // logical name for VIF (set by controller in NetworkAdapter.Name)
+	BrIfName       string
+	NetUUID        uuid.UUID
+	Sequence       string // used internally for limit and pkt size per app/bn
+}
+
+// Key identifies flow.
+func (fs FlowScope) Key() string {
+	// Use adapter name instead of NI UUID because application can be connected to the same
+	// network instance with multiple interfaces.
+	key := fs.AppUUID.String() + "-" + fs.NetAdapterName
+	if fs.Sequence != "" {
+		key += "-" + fs.Sequence
+	}
+	return key
 }
 
 // ACLActionType - action
@@ -3093,7 +2871,7 @@ type IPFlow struct {
 
 // Key :
 func (flows IPFlow) Key() string {
-	return flows.Scope.UUID.String() + flows.Scope.NetUUID.String() + flows.Scope.Sequence
+	return flows.Scope.Key()
 }
 
 // LogCreate : we treat IPFlow as Metrics for logging
@@ -3132,56 +2910,6 @@ func (flows IPFlow) LogDelete(logBase *base.LogObject) {
 // LogKey :
 func (flows IPFlow) LogKey() string {
 	return string(base.IPFlowLogType) + "-" + flows.Key()
-}
-
-// VifIPTrig - structure contains Mac Address
-type VifIPTrig struct {
-	MacAddr   string
-	IPv4Addr  net.IP
-	IPv6Addrs []net.IP
-}
-
-// Key - VifIPTrig key function
-func (vifIP VifIPTrig) Key() string {
-	return vifIP.MacAddr
-}
-
-// LogCreate :
-func (vifIP VifIPTrig) LogCreate(logBase *base.LogObject) {
-	logObject := base.NewLogObject(logBase, base.VifIPTrigLogType, "",
-		nilUUID, vifIP.LogKey())
-	if logObject == nil {
-		return
-	}
-	logObject.Noticef("Vif IP trig create")
-}
-
-// LogModify :
-func (vifIP VifIPTrig) LogModify(logBase *base.LogObject, old interface{}) {
-	logObject := base.EnsureLogObject(logBase, base.VifIPTrigLogType, "",
-		nilUUID, vifIP.LogKey())
-
-	oldVifIP, ok := old.(VifIPTrig)
-	if !ok {
-		logObject.Clone().Fatalf("LogModify: Old object interface passed is not of VifIPTrig type")
-	}
-	// XXX remove?
-	logObject.CloneAndAddField("diff", cmp.Diff(oldVifIP, vifIP)).
-		Noticef("Vif IP trig modify")
-}
-
-// LogDelete :
-func (vifIP VifIPTrig) LogDelete(logBase *base.LogObject) {
-	logObject := base.EnsureLogObject(logBase, base.VifIPTrigLogType, "",
-		nilUUID, vifIP.LogKey())
-	logObject.Noticef("Vif IP trig delete")
-
-	base.DeleteLogObject(logBase, vifIP.LogKey())
-}
-
-// LogKey :
-func (vifIP VifIPTrig) LogKey() string {
-	return string(base.VifIPTrigLogType) + "-" + vifIP.Key()
 }
 
 // OnboardingStatus - UUID, etc. advertised by client process
@@ -3740,4 +3468,70 @@ type AppBlobsAvailable struct {
 // AppInfo provides various information to the application
 type AppInfo struct {
 	AppBlobs []AppBlobsAvailable
+}
+
+// CachedIP : cached IP with time-limited validity.
+type CachedIP struct {
+	IPAddress  net.IP
+	ValidUntil time.Time
+}
+
+// String representation of CachedIP.
+func (c CachedIP) String() string {
+	return fmt.Sprintf("IP %s valid until %v", c.IPAddress, c.ValidUntil)
+}
+
+// CachedResolvedIPs serves as a cache for storing the IP addresses obtained through
+// DNS resolution for a given hostname.
+type CachedResolvedIPs struct {
+	Hostname  string
+	CachedIPs []CachedIP
+}
+
+// String representation of CachedResolvedIPs.
+func (c CachedResolvedIPs) String() string {
+	var cachedIPs []string
+	for _, ip := range c.CachedIPs {
+		cachedIPs = append(cachedIPs, ip.String())
+	}
+	return fmt.Sprintf("Hostname %s with cached resolved IPs: [%s]", c.Hostname,
+		strings.Join(cachedIPs, ", "))
+}
+
+// Key is used for pubsub
+func (c CachedResolvedIPs) Key() string {
+	return c.Hostname
+}
+
+// LogCreate :
+func (c CachedResolvedIPs) LogCreate(logBase *base.LogObject) {
+	logObject := base.NewLogObject(logBase, base.CachedResolvedIPsLogType, "",
+		nilUUID, c.LogKey())
+	logObject.Metricf("CachedResolvedIPs create %s", c.String())
+}
+
+// LogModify :
+func (c CachedResolvedIPs) LogModify(logBase *base.LogObject, old interface{}) {
+	logObject := base.EnsureLogObject(logBase, base.CachedResolvedIPsLogType, "",
+		nilUUID, c.LogKey())
+	oldVal, ok := old.(CachedResolvedIPs)
+	if !ok {
+		logObject.Clone().Fatalf(
+			"LogModify: Old object interface passed is not of CachedResolvedIPs type")
+	}
+	logObject.Metricf("CachedResolvedIPs modified from %s to %s",
+		oldVal.String(), c.String())
+}
+
+// LogDelete :
+func (c CachedResolvedIPs) LogDelete(logBase *base.LogObject) {
+	logObject := base.EnsureLogObject(logBase, base.CachedResolvedIPsLogType, "",
+		nilUUID, c.LogKey())
+	logObject.Metricf("CachedResolvedIPs delete %s", c.String())
+	base.DeleteLogObject(logBase, c.LogKey())
+}
+
+// LogKey :
+func (c CachedResolvedIPs) LogKey() string {
+	return string(base.CachedResolvedIPsLogType) + "-" + c.Key()
 }

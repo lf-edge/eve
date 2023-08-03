@@ -10,7 +10,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/lf-edge/eve/libs/depgraph"
+	"github.com/lf-edge/eve-libs/depgraph"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/devicenetwork"
 	"github.com/lf-edge/eve/pkg/pillar/types"
@@ -54,22 +54,10 @@ func (w Wwan) String() string {
 	return fmt.Sprintf("WWAN configuration: %+v", w.Config)
 }
 
-// Dependencies lists every adapter referenced from the wwan config
-// as a dependency.
+// Dependencies return empty list - wwan config file can be created even before
+// the referenced wwanX interface(s) are ready (the wwan microservice can deal with it).
 func (w Wwan) Dependencies() (deps []depgraph.Dependency) {
-	for _, network := range w.Config.Networks {
-		if network.PhysAddrs.Interface == "" {
-			continue
-		}
-		deps = append(deps, depgraph.Dependency{
-			RequiredItem: depgraph.ItemRef{
-				ItemType: AdapterTypename,
-				ItemName: network.PhysAddrs.Interface,
-			},
-			Description: "The referenced (LTE) adapter must exist",
-		})
-	}
-	return deps
+	return nil
 }
 
 // WwanConfigurator implements Configurator interface (libs/reconciler) for WWAN config.

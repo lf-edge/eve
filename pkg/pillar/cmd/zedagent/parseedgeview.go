@@ -15,7 +15,7 @@ import (
 
 	"github.com/golang-jwt/jwt"
 	"github.com/google/go-cmp/cmp"
-	zconfig "github.com/lf-edge/eve/api/go/config"
+	zconfig "github.com/lf-edge/eve-api/go/config"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 )
 
