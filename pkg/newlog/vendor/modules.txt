@@ -1,4 +1,4 @@
-# github.com/eriknordmark/ipinfo v0.0.0-20190220084921-7ee0839158f9
+# github.com/eriknordmark/ipinfo v0.0.0-20230728132417-2d8f4da903d7
 ## explicit
 github.com/eriknordmark/ipinfo
 # github.com/euank/go-kmsg-parser v2.0.0+incompatible
@@ -24,15 +24,15 @@ github.com/google/go-cmp/cmp/internal/value
 # github.com/google/go-containerregistry v0.8.0
 ## explicit; go 1.14
 github.com/google/go-containerregistry/pkg/v1/types
-# github.com/lf-edge/eve/api/go v0.0.0-20230306060116-9673fb35833f
+# github.com/lf-edge/eve-api/go v0.0.0-20230727134029-123abaf9479d
 ## explicit; go 1.20
-github.com/lf-edge/eve/api/go/auth
-github.com/lf-edge/eve/api/go/certs
-github.com/lf-edge/eve/api/go/config
-github.com/lf-edge/eve/api/go/evecommon
-github.com/lf-edge/eve/api/go/info
-github.com/lf-edge/eve/api/go/logs
-# github.com/lf-edge/eve/pkg/pillar v0.0.0-20230306060627-c6953d139f5f
+github.com/lf-edge/eve-api/go/auth
+github.com/lf-edge/eve-api/go/certs
+github.com/lf-edge/eve-api/go/config
+github.com/lf-edge/eve-api/go/evecommon
+github.com/lf-edge/eve-api/go/info
+github.com/lf-edge/eve-api/go/logs
+# github.com/lf-edge/eve/pkg/pillar v0.0.0-20230727061425-295cf5137a5c
 ## explicit; go 1.20
 github.com/lf-edge/eve/pkg/pillar/agentlog
 github.com/lf-edge/eve/pkg/pillar/base

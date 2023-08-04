@@ -7,7 +7,6 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -19,6 +18,37 @@ import (
 )
 
 const maxCounterReadSize = 16384 // Max size of counter file
+
+// FileExists checks file existence.
+func FileExists(log *base.LogObject, filename string) bool {
+	_, err := os.Stat(filename)
+	if err == nil {
+		return true
+	}
+	if os.IsNotExist(err) {
+		return false
+	}
+	if log != nil {
+		log.Errorf("File %s may or may not exist. Err: %s", filename, err)
+	}
+	return false
+}
+
+// DirExists checks directory existence.
+func DirExists(log *base.LogObject, dirname string) bool {
+	fi, err := os.Stat(dirname)
+	if err == nil {
+		return fi.IsDir()
+	}
+	if os.IsNotExist(err) {
+		return false
+	}
+	if log != nil {
+		log.Errorf("Directory %s may or may not exist. Err: %s",
+			dirname, err)
+	}
+	return false
+}
 
 // DirSync flushes changes made to a directory.
 func DirSync(dirName string) error {
@@ -73,7 +103,7 @@ func WriteRenameWithBackup(fileName string, b []byte) error {
 func writeRename(fileName string, b []byte, withBackup bool) error {
 	dirName := filepath.Dir(fileName)
 	// Do atomic rename to avoid partially written files
-	tmpfile, err := ioutil.TempFile(dirName, "tmp")
+	tmpfile, err := os.CreateTemp(dirName, "tmp")
 	if err != nil {
 		errStr := fmt.Sprintf("WriteRename(%s): %s",
 			fileName, err)
@@ -157,7 +187,7 @@ func ReadWithMaxSize(log *base.LogObject, filename string, maxReadSize int) ([]b
 	}
 	defer f.Close()
 	r := bufio.NewReader(f)
-	content := make([]byte, maxReadSize)
+	content := make([]byte, maxReadSize+1)
 	n, err := r.Read(content)
 	if err != nil {
 		err = fmt.Errorf("ReadWithMaxSize %s failed: %v", filename, err)
@@ -166,13 +196,14 @@ func ReadWithMaxSize(log *base.LogObject, filename string, maxReadSize int) ([]b
 		}
 		return nil, err
 	}
-	if n == maxReadSize {
+	if n > maxReadSize {
 		err = fmt.Errorf("ReadWithMaxSize %s truncated after %d bytes",
 			filename, maxReadSize)
+		n = maxReadSize
 	} else {
 		err = nil
 	}
-	return content[0:n], err
+	return content[:n], err
 }
 
 // ReadSavedCounter returns counter value from provided file

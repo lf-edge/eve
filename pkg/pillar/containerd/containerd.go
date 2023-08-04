@@ -258,7 +258,6 @@ func (client *Client) CtrGetImage(ctx context.Context, reference string) (contai
 	}
 	image, err := client.ctrdClient.GetImage(ctx, reference)
 	if err != nil {
-		logrus.Errorf("CtrGetImage: could not get image %s from containerd: %+s", reference, err.Error())
 		return nil, err
 	}
 	return image, nil

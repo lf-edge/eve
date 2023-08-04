@@ -158,12 +158,14 @@ const (
 	MemoryNotificationType = "memory_notification"
 	// DiskNotificationType
 	DiskNotificationType = "disk_notification"
-	// UUIDPairToNumAndIfIdxLogType:
-	UUIDPairToNumAndIfIdxLogType LogObjectType = "uuid_pair_and_if_idx_to_num"
+	// AppInterfaceToNumLogType
+	AppInterfaceToNumLogType LogObjectType = "app_interface_to_num"
 	// EncryptedVaultKeyFromDeviceLogType:
 	EncryptedVaultKeyFromDeviceLogType LogObjectType = "encrypted_vault_key_from_device"
 	// EncryptedVaultKeyFromControllerLogType:
 	EncryptedVaultKeyFromControllerLogType LogObjectType = "encrypted_vault_key_from_controller"
+	// CachedResolvedIPsLogType:
+	CachedResolvedIPsLogType LogObjectType = "cached_resolved_ips"
 )
 
 // RelationObjectType :

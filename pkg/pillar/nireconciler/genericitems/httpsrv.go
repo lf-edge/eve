@@ -19,7 +19,7 @@ import (
 	"github.com/lf-edge/eve-libs/reconciler"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/base"
-	"github.com/lf-edge/eve/pkg/pillar/utils"
+	"github.com/lf-edge/eve/pkg/pillar/utils/netutils"
 	uuid "github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
 )
@@ -68,7 +68,7 @@ func (s HTTPServer) Type() string {
 func (s HTTPServer) Equal(other dg.Item) bool {
 	s2 := other.(HTTPServer)
 	return s.ForNI == s2.ForNI &&
-		utils.EqualIPs(s.ListenIP, s2.ListenIP) &&
+		netutils.EqualIPs(s.ListenIP, s2.ListenIP) &&
 		s.ListenIf == s2.ListenIf &&
 		s.Port == s2.Port
 }

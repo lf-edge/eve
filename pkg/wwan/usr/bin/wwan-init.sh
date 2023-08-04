@@ -356,13 +356,13 @@ collect_network_status() {
     "$(json_str_attr control-protocol "$PROTOCOL")" \
     "$(json_str_attr operating-mode   "$("${PROTOCOL}_get_op_mode")")")"
   local NETWORK_STATUS="$(json_struct \
-    "$(json_str_attr logical-label    "$LOGICAL_LABEL")" \
-    "$(json_attr     physical-addrs   "$ADDRS")" \
-    "$(json_attr     cellular-module  "$MODULE")" \
-    "$(json_attr     sim-cards        "$("${PROTOCOL}_get_sim_cards")")" \
-    "$(json_str_attr config-error     "$CONFIG_ERROR")" \
-    "$(json_str_attr probe-error      "$PROBE_ERROR")" \
-    "$(json_attr     providers        "$PROVIDERS")")"
+    "$(json_str_attr logical-label     "$LOGICAL_LABEL")" \
+    "$(json_attr     physical-addrs    "$ADDRS")" \
+    "$(json_attr     cellular-module   "$MODULE")" \
+    "$(json_attr     sim-cards         "$("${PROTOCOL}_get_sim_cards")")" \
+    "$(json_str_attr config-error      "$CONFIG_ERROR")" \
+    "$(json_str_attr probe-error       "$PROBE_ERROR")" \
+    "$(json_attr     visible-providers "$PROVIDERS")")"
   STATUS="${STATUS}${NETWORK_STATUS}\n"
 }
 
@@ -480,7 +480,7 @@ event_stream | while read -r EVENT; do
     PROBE_DISABLED="$(parse_json_attr "$PROBE" "disable")"
     PROBE_ADDR="$(parse_json_attr "$PROBE" "address")"
     PROXIES="$(parse_json_attr "$NETWORK" "proxies")"
-    APN="$(parse_json_attr "$NETWORK" "apns[0]")" # FIXME XXX limited to a single APN for now
+    APN="$(parse_json_attr "$NETWORK" "apn")"
     APN="${APN:-$DEFAULT_APN}"
     LOC_TRACKING="$(parse_json_attr "$NETWORK" "\"location-tracking\"")"
 

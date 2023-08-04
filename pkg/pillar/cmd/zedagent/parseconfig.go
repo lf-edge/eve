@@ -19,10 +19,12 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	zconfig "github.com/lf-edge/eve-api/go/config"
+	zevecommon "github.com/lf-edge/eve-api/go/evecommon"
 	"github.com/lf-edge/eve/pkg/pillar/objtonum"
 	"github.com/lf-edge/eve/pkg/pillar/sriov"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
+	"github.com/lf-edge/eve/pkg/pillar/utils/netutils"
 	uuid "github.com/satori/go.uuid"
 )
 
@@ -798,7 +800,7 @@ func validateAndAssignNetPorts(dpc *types.DevicePortConfig, newPorts []*types.Ne
 				port2.RecordFailure(errStr)
 				break
 			}
-			if port.IfName == port2.IfName {
+			if port.IfName != "" && port.IfName == port2.IfName {
 				errStr := fmt.Sprintf(
 					"Port collides with another port with the same interface name (%s)",
 					port.IfName)
@@ -927,15 +929,44 @@ func propagateError(higherLayerPort, lowerLayerPort *types.NetworkPortConfig) {
 func propagatePhyioAttrsToPort(port *types.NetworkPortConfig, phyio *types.PhysicalIOAdapter) {
 	port.Phylabel = phyio.Phylabel
 	port.IfName = phyio.Phyaddr.Ifname
+	port.USBAddr = phyio.Phyaddr.UsbAddr
+	port.PCIAddr = phyio.Phyaddr.PciLong
 	if port.IfName == "" {
-		// Might not be set for all models
-		log.Warnf("Physical IO %s (Phylabel %s) has no ifname",
-			phyio.Logicallabel, phyio.Phylabel)
-		if phyio.Logicallabel != "" {
-			port.IfName = phyio.Logicallabel
-		} else {
-			port.IfName = phyio.Phylabel
+		// Inside device model, network adapter may be referenced by PCI or USB address
+		// instead of the interface name. In fact, with multiple network ports, interface naming
+		// is not necessary deterministic and may depend on the order of network adapter
+		// initialization and discovery by the kernel.
+		// Moreover, once EVE supports userspace vswitch, interface names of ports will differ
+		// depending on if they are assigned to the kernel or vswitch.
+		// For the reasons above, it is preferred to reference network adapters by PCI/USB
+		// addresses going forward.
+		// For now, we will allow network port configs without interface name at least for
+		// cellular modems.
+		// TODO: Allow any type of network port to be defined in PhysicalIOAdapter without
+		//       interface name.
+		switch types.IoType(phyio.Ptype) {
+		case types.IoNetWWAN:
+			if port.USBAddr == "" && port.PCIAddr == "" {
+				log.Warnf("Physical IO %s (Phylabel %s) has no physical address",
+					phyio.Logicallabel, phyio.Phylabel)
+				handleMissingIfname(port, phyio)
+			}
+		default:
+			log.Warnf("Physical IO %s (Phylabel %s) has no ifname",
+				phyio.Logicallabel, phyio.Phylabel)
+			handleMissingIfname(port, phyio)
 		}
+	}
+}
+
+func handleMissingIfname(port *types.NetworkPortConfig, phyio *types.PhysicalIOAdapter) {
+	// Try to use logical or physical label as interface name.
+	// If such interface name is not valid, NIM will report error in DeviceNetworkStatus
+	// under the port's TestResults.
+	if phyio.Logicallabel != "" {
+		port.IfName = phyio.Logicallabel
+	} else {
+		port.IfName = phyio.Phylabel
 	}
 }
 
@@ -1118,7 +1149,7 @@ func parseOneSystemAdapterConfig(getconfigCtx *getconfigContext,
 			errStr := fmt.Sprintf("Device Config Error. Port %s configured with "+
 				"UNKNOWN Network UUID (%s). Err: %s. Please fix the "+
 				"device configuration.",
-				port.IfName, sysAdapter.NetworkUUID, err)
+				port.Logicallabel, sysAdapter.NetworkUUID, err)
 			log.Errorf("parseSystemAdapterConfig: %s", errStr)
 			port.RecordFailure(errStr)
 		} else {
@@ -1129,7 +1160,7 @@ func parseOneSystemAdapterConfig(getconfigCtx *getconfigContext,
 			if network.HasError() {
 				errStr := fmt.Sprintf("Port %s configured with a network "+
 					"(UUID: %s) which has an error (%s).",
-					port.IfName, port.NetworkUUID, network.Error)
+					port.Logicallabel, port.NetworkUUID, network.Error)
 				log.Errorf("parseSystemAdapterConfig: %s", errStr)
 				port.RecordFailure(errStr)
 			}
@@ -1153,7 +1184,7 @@ func parseOneSystemAdapterConfig(getconfigCtx *getconfigContext,
 				if port.AddrSubnet == "" {
 					errStr := fmt.Sprintf("Port %s Configured as DT_STATIC but "+
 						"missing subnet address. SysAdapter - Name: %s, Addr:%s",
-						port.IfName, sysAdapter.Name, sysAdapter.Addr)
+						port.Logicallabel, sysAdapter.Name, sysAdapter.Addr)
 					log.Errorf("parseSystemAdapterConfig: %s", errStr)
 					port.RecordFailure(errStr)
 				}
@@ -1164,14 +1195,14 @@ func parseOneSystemAdapterConfig(getconfigCtx *getconfigContext,
 					errStr := fmt.Sprintf("Port %s configured as Management port "+
 						"with an unsupported DHCP type %d. Client and static are "+
 						"the only allowed DHCP modes for management ports.",
-						port.IfName, types.DT_NONE)
+						port.Logicallabel, types.DT_NONE)
 
 					log.Errorf("parseSystemAdapterConfig: %s", errStr)
 					port.RecordFailure(errStr)
 				}
 			default:
 				errStr := fmt.Sprintf("Port %s configured with unknown DHCP type %v",
-					port.IfName, network.Dhcp)
+					port.Logicallabel, network.Dhcp)
 				log.Errorf("parseSystemAdapterConfig: %s", errStr)
 				port.RecordFailure(errStr)
 			}
@@ -1183,7 +1214,7 @@ func parseOneSystemAdapterConfig(getconfigCtx *getconfigContext,
 	} else if isMgmt {
 		errStr := fmt.Sprintf("Port %s Configured as Management port without "+
 			"configuring a Network. Network is required for Management ports",
-			port.IfName)
+			port.Logicallabel)
 		log.Errorf("parseSystemAdapterConfig: %s", errStr)
 		port.RecordFailure(errStr)
 	}
@@ -1850,40 +1881,101 @@ func parseNetworkWirelessConfig(ctx *getconfigContext, key string, netEnt *zconf
 	wType := netWireless.GetType()
 	switch wType {
 	case zconfig.WirelessType_Cellular:
-		//
 		wconfig.WType = types.WirelessTypeCellular
-		cellulars := netWireless.GetCellularCfg()
-		for _, cellular := range cellulars {
-			var wcell types.CellConfig
-			wcell.APN = cellular.GetAPN()
-			wcell.ProbeAddr = cellular.GetProbe().GetProbeAddress()
-			wcell.DisableProbe = cellular.GetProbe().GetDisable()
-			wcell.LocationTracking = cellular.GetLocationTracking()
-			wconfig.Cellular = append(wconfig.Cellular, wcell)
+		cellNetConfigs := netWireless.GetCellularCfg()
+		if len(cellNetConfigs) == 0 {
+			log.Errorf("parseNetworkWirelessConfig: missing cellular config in: %v",
+				netWireless)
+			return wconfig
 		}
-		log.Functionf("parseNetworkWirelessConfig: Wireless of network Cellular, %v", wconfig.Cellular)
+		// CellularCfg should really have been defined in the EVE API as a single entry
+		// rather than as a list (for multiple SIM cards and APNs there is AccessPoints list
+		// underneath). However, marking this field as deprecated and creating a new non-list
+		// field seems unnecessary - let's instead expect single entry.
+		if len(cellNetConfigs) > 1 {
+			log.Errorf(
+				"parseNetworkWirelessConfig: unexpected multiple cellular configs in: %v",
+				netWireless)
+			return wconfig
+		}
+		cellNetConfig := cellNetConfigs[0]
+		for _, accessPoint := range cellNetConfig.AccessPoints {
+			var ap types.CellularAccessPoint
+			ap.APN = accessPoint.Apn
+			ap.SIMSlot = uint8(accessPoint.SimSlot)
+			// By default (ActivatedSimSlot is not defined), any configured Access Point
+			// should be activated.
+			ap.Activated = cellNetConfig.ActivatedSimSlot == 0 ||
+				cellNetConfig.ActivatedSimSlot == accessPoint.SimSlot
+			switch accessPoint.AuthProtocol {
+			case zconfig.CellularAuthProtocol_CELLULAR_AUTH_PROTOCOL_PAP:
+				ap.AuthProtocol = types.WwanAuthProtocolPAP
+			case zconfig.CellularAuthProtocol_CELLULAR_AUTH_PROTOCOL_CHAP:
+				ap.AuthProtocol = types.WwanAuthProtocolCHAP
+			case zconfig.CellularAuthProtocol_CELLULAR_AUTH_PROTOCOL_PAP_AND_CHAP:
+				ap.AuthProtocol = types.WwanAuthProtocolPAPAndCHAP
+			default:
+				log.Errorf("parseNetworkWirelessConfig: unrecognized AuthProtocol: %+v",
+					accessPoint)
+			}
+			ap.EncryptedCredentials = parseCipherBlock(ctx, key, accessPoint.GetCipherData())
+			for _, plmn := range accessPoint.PreferredPlmns {
+				ap.PreferredPLMNs = append(ap.PreferredPLMNs, plmn)
+			}
+			for _, rat := range accessPoint.PreferredRats {
+				switch rat {
+				case zevecommon.RadioAccessTechnology_RADIO_ACCESS_TECHNOLOGY_GSM:
+					ap.PreferredRATs = append(ap.PreferredRATs, types.WwanRATGSM)
+				case zevecommon.RadioAccessTechnology_RADIO_ACCESS_TECHNOLOGY_UMTS:
+					ap.PreferredRATs = append(ap.PreferredRATs, types.WwanRATUMTS)
+				case zevecommon.RadioAccessTechnology_RADIO_ACCESS_TECHNOLOGY_LTE:
+					ap.PreferredRATs = append(ap.PreferredRATs, types.WwanRATLTE)
+				case zevecommon.RadioAccessTechnology_RADIO_ACCESS_TECHNOLOGY_5GNR:
+					ap.PreferredRATs = append(ap.PreferredRATs, types.WwanRAT5GNR)
+				default:
+					log.Errorf("parseNetworkWirelessConfig: unrecognized RAT: %+v",
+						accessPoint)
+				}
+			}
+			ap.ForbidRoaming = accessPoint.ForbidRoaming
+			wconfig.CellularV2.AccessPoints = append(wconfig.CellularV2.AccessPoints, ap)
+		}
+		// For backward compatibility.
+		if len(cellNetConfig.AccessPoints) == 0 && cellNetConfig.APN != "" {
+			ap := types.CellularAccessPoint{
+				Activated: true,
+				APN:       cellNetConfig.APN,
+			}
+			wconfig.CellularV2.AccessPoints = append(wconfig.CellularV2.AccessPoints, ap)
+		}
+		wconfig.CellularV2.Probe.Disable = cellNetConfig.Probe.GetDisable()
+		wconfig.CellularV2.Probe.Address = cellNetConfig.Probe.GetProbeAddress()
+		wconfig.CellularV2.LocationTracking = cellNetConfig.GetLocationTracking()
+		log.Functionf("parseNetworkWirelessConfig: Wireless of type Cellular, %v",
+			wconfig.CellularV2)
 	case zconfig.WirelessType_WiFi:
-		//
 		wconfig.WType = types.WirelessTypeWifi
 		wificfgs := netWireless.GetWifiCfg()
-
 		for _, wificfg := range wificfgs {
 			var wifi types.WifiConfig
 			wifi.SSID = wificfg.GetWifiSSID()
-			if wificfg.GetKeyScheme() == zconfig.WiFiKeyScheme_WPAPSK {
+			switch wificfg.GetKeyScheme() {
+			case zconfig.WiFiKeyScheme_WPAPSK:
 				wifi.KeyScheme = types.KeySchemeWpaPsk
-			} else if wificfg.GetKeyScheme() == zconfig.WiFiKeyScheme_WPAEAP {
+			case zconfig.WiFiKeyScheme_WPAEAP:
 				wifi.KeyScheme = types.KeySchemeWpaEap
+			default:
+				log.Errorf("parseNetworkWirelessConfig: unrecognized WiFi Key scheme: %+v",
+					wificfg)
 			}
 			wifi.Identity = wificfg.GetIdentity()
 			wifi.Password = wificfg.GetPassword()
 			wifi.Priority = wificfg.GetPriority()
-			key = fmt.Sprintf("%s-%s", key, wifi.SSID)
-			wifi.CipherBlockStatus = parseCipherBlock(ctx, key, wificfg.GetCipherData())
-
+			wifiKey := fmt.Sprintf("%s-%s", key, wifi.SSID)
+			wifi.CipherBlockStatus = parseCipherBlock(ctx, wifiKey, wificfg.GetCipherData())
 			wconfig.Wifi = append(wconfig.Wifi, wifi)
 		}
-		log.Functionf("parseNetworkWirelessConfig: Wireless of network Wifi, %v", wconfig.Wifi)
+		log.Functionf("parseNetworkWirelessConfig: Wireless of type Wifi, %v", wconfig.Wifi)
 	default:
 		log.Errorf("parseNetworkWirelessConfig: unsupported wireless configure type %d", wType)
 	}
@@ -1994,7 +2086,7 @@ func parseIpspec(ipspec *zconfig.Ipspec,
 		config.DhcpRange.End = end
 	}
 
-	addrCount := types.GetIPAddrCountOnSubnet(config.Subnet)
+	addrCount := netutils.GetIPAddrCountOnSubnet(config.Subnet)
 	if addrCount < types.MinSubnetSize {
 		return fmt.Errorf("network(%s), Subnet too small(%d)",
 			config.Key(), addrCount)
@@ -2002,7 +2094,7 @@ func parseIpspec(ipspec *zconfig.Ipspec,
 
 	// if not set, take some default
 	if config.Gateway == nil {
-		config.Gateway = types.AddToIP(config.Subnet.IP, 1)
+		config.Gateway = netutils.AddToIP(config.Subnet.IP, 1)
 		log.Warnf("network(%s), No Gateway, setting default(%s)",
 			config.Key(), config.Gateway.String())
 	}
@@ -2020,39 +2112,39 @@ func parseIpspec(ipspec *zconfig.Ipspec,
 
 	// if not set, take some default
 	if config.DhcpRange.Start == nil {
-		config.DhcpRange.Start = types.AddToIP(config.Subnet.IP,
+		config.DhcpRange.Start = netutils.AddToIP(config.Subnet.IP,
 			dhcpRangeStart)
 		log.Warnf("network(%s), No Dhcp Start, setting default(%s)",
 			config.Key(), config.DhcpRange.Start.String())
 	}
 	if config.DhcpRange.End == nil {
-		config.DhcpRange.End = types.AddToIP(config.Subnet.IP,
+		config.DhcpRange.End = netutils.AddToIP(config.Subnet.IP,
 			dhcpRangeEnd)
 		log.Warnf("network(%s), No Dhcp End, setting default(%s)",
 			config.Key(), config.DhcpRange.End.String())
 	}
 	// check whether the dhcp range(start, end)
 	// equal (network, gateway, broadcast) addresses
-	if network := types.GetIPNetwork(config.Subnet); network != nil {
+	if network := netutils.GetIPNetwork(config.Subnet); network != nil {
 		if network.Equal(config.DhcpRange.Start) {
 			log.Warnf("network(%s), Dhcp Start is Network(%s), correcting",
 				config.Key(), config.Subnet.IP.String())
 			config.DhcpRange.Start =
-				types.AddToIP(config.DhcpRange.Start, 1)
+				netutils.AddToIP(config.DhcpRange.Start, 1)
 		}
 		if config.Gateway.Equal(config.DhcpRange.Start) {
 			log.Warnf("network(%s), Dhcp Start is Gateway(%s), correcting",
 				config.Key(), config.Gateway.String())
 			config.DhcpRange.Start =
-				types.AddToIP(config.Gateway, 1)
+				netutils.AddToIP(config.Gateway, 1)
 		}
 	}
-	if bcast := types.GetIPBroadcast(config.Subnet); bcast != nil {
+	if bcast := netutils.GetIPBroadcast(config.Subnet); bcast != nil {
 		if bcast.Equal(config.DhcpRange.End) {
 			log.Warnf("network(%s), Dhcp End is Broadcast(%s), correcting",
 				config.Key(), bcast.String())
 			config.DhcpRange.End =
-				types.AddToIP(config.DhcpRange.End, -1)
+				netutils.AddToIP(config.DhcpRange.End, -1)
 		}
 	}
 	// Gateway should not be inside the DhcpRange
@@ -2068,7 +2160,7 @@ func parseIpspec(ipspec *zconfig.Ipspec,
 	// what ByteAllocator can provide) and use it for network instances
 	// that require bigger subnets.
 	if addressesInRange > objtonum.ByteAllocatorMaxNum {
-		config.DhcpRange.End = types.AddToIP(config.DhcpRange.Start, objtonum.ByteAllocatorMaxNum)
+		config.DhcpRange.End = netutils.AddToIP(config.DhcpRange.Start, objtonum.ByteAllocatorMaxNum)
 	}
 	return nil
 }

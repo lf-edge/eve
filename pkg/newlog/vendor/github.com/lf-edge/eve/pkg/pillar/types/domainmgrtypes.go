@@ -5,6 +5,7 @@ package types
 
 import (
 	"fmt"
+	"net"
 	"os"
 	"strconv"
 	"strings"
@@ -13,7 +14,7 @@ import (
 	uuid "github.com/satori/go.uuid"
 
 	"github.com/google/go-cmp/cmp"
-	zconfig "github.com/lf-edge/eve/api/go/config"
+	zconfig "github.com/lf-edge/eve-api/go/config"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 )
 
@@ -30,6 +31,7 @@ type DomainConfig struct {
 	Activate       bool   // Actually start the domU as opposed to prepare
 	AppNum         int    // From networking; makes the name unique
 	VmConfig
+	DisableLogs    bool
 	GPUConfig      string
 	DiskConfigList []DiskConfig
 	VifList        []VifConfig
@@ -82,18 +84,14 @@ func (metaDataType MetaDataType) String() string {
 	}
 }
 
-// GetOCIConfigDir returns a location for OCI Config
-// FIXME we still have a few places where we need to know whether
-// a task came from an OCI container or not although the goal
-// is to get rid of this kind of split completely. Before that
-// happens our heuristic is to declare any app with the first volume
-// being of a type OCI container to be a container-based app
-func (config DomainConfig) GetOCIConfigDir() string {
-	if len(config.DiskConfigList) > 0 && config.DiskConfigList[0].Format == zconfig.Format_CONTAINER {
-		return config.DiskConfigList[0].FileLocation
-	} else {
-		return ""
+// The whole domain is considered as a container-based if the first disk
+// has the 'CONTAINER' format.
+func (config DomainConfig) IsOCIContainer() bool {
+	if len(config.DiskConfigList) > 0 &&
+		config.DiskConfigList[0].Format == zconfig.Format_CONTAINER {
+		return true
 	}
+	return false
 }
 
 // GetTaskName assigns a unique name to the task representing this domain
@@ -198,11 +196,15 @@ func (config DomainConfig) LogKey() string {
 // Some of these items can be overridden by matching Targets in
 // StorageConfigList. For example, a Target of "kernel" means to set/override
 // the Kernel attribute below.
+//
+// Keep in mind that the fields in this structure are considered
+// so-called "fixed resources", which means that the virtual machine
+// must be restarted before changes to the field will take effect.
 type VmConfig struct {
 	Kernel     string // default ""
 	Ramdisk    string // default ""
 	Memory     int    // in kbytes; Rounded up to Mbytes for xen
-	MaxMem     int    // Default not set i.e. no ballooning
+	MaxMem     int    // in kbytes; Default equal to 'Memory', so no ballooning for xen
 	VCpus      int    // default 1
 	MaxCpus    int    // default VCpus
 	RootDev    string // default "/dev/xvda1"
@@ -223,8 +225,8 @@ type VmConfig struct {
 	EnableVnc          bool
 	VncDisplay         uint32
 	VncPasswd          string
-	DisableLogs        bool
 	CPUsPinned         bool
+	VMMMaxMem          int // in kbytes
 }
 
 type VmMode uint8
@@ -375,9 +377,7 @@ type VlanInfo struct {
 type VifConfig struct {
 	Bridge string
 	Vif    string
-	Mac    string
-
-	Vlan VlanInfo
+	Mac    net.HardwareAddr
 }
 
 // VifInfo store info about vif

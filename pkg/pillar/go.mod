@@ -11,7 +11,7 @@ require (
 	github.com/cshari-zededa/eve-tpm2-tools v0.0.4
 	github.com/digitalocean/go-qemu v0.0.0-20220826173844-d5f5e3ceed89
 	github.com/docker/docker v20.10.24+incompatible
-	github.com/eriknordmark/ipinfo v0.0.0-20190220084921-7ee0839158f9
+	github.com/eriknordmark/ipinfo v0.0.0-20230728132417-2d8f4da903d7
 	github.com/fsnotify/fsnotify v1.5.1
 	github.com/golang-jwt/jwt v3.2.2+incompatible
 	github.com/golang/protobuf v1.5.2

@@ -137,6 +137,7 @@ type zedagentContext struct {
 	subCapabilities           pubsub.Subscription
 	subAppInstMetaData        pubsub.Subscription
 	subWwanMetrics            pubsub.Subscription
+	subWwanStatus             pubsub.Subscription
 	subLocationInfo           pubsub.Subscription
 	subZFSPoolStatus          pubsub.Subscription
 	subZFSPoolMetrics         pubsub.Subscription
@@ -734,6 +735,9 @@ func waitUntilDNSReady(zedagentCtx *zedagentContext, stillRunning *time.Ticker) 
 			getconfigCtx.localServerMap.upToDate = false
 			getconfigCtx.subAppNetworkStatus.ProcessChange(change)
 
+		case change := <-zedagentCtx.subWwanStatus.MsgChan():
+			zedagentCtx.subWwanStatus.ProcessChange(change)
+
 		case change := <-zedagentCtx.subWwanMetrics.MsgChan():
 			zedagentCtx.subWwanMetrics.ProcessChange(change)
 
@@ -993,6 +997,9 @@ func mainEventLoop(zedagentCtx *zedagentContext, stillRunning *time.Ticker) {
 
 		case change := <-zedagentCtx.subAppInstMetaData.MsgChan():
 			zedagentCtx.subAppInstMetaData.ProcessChange(change)
+
+		case change := <-zedagentCtx.subWwanStatus.MsgChan():
+			zedagentCtx.subWwanStatus.ProcessChange(change)
 
 		case change := <-zedagentCtx.subWwanMetrics.MsgChan():
 			zedagentCtx.subWwanMetrics.ProcessChange(change)
@@ -1674,6 +1681,22 @@ func initPostOnboardSubs(zedagentCtx *zedagentContext) {
 		log.Fatal(err)
 	}
 	zedagentCtx.subAppInstMetaData.Activate()
+
+	// Used to publish info about unused cellular modems.
+	// Cellular modems used by configured network ports have status published
+	// as part of DeviceNetworkStatus.
+	zedagentCtx.subWwanStatus, err = ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:   "nim",
+		MyAgentName: agentName,
+		TopicImpl:   types.WwanStatus{},
+		Activate:    true,
+		Ctx:         zedagentCtx,
+		WarningTime: warningTime,
+		ErrorTime:   errorTime,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	zedagentCtx.subWwanMetrics, err = ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:   "nim",

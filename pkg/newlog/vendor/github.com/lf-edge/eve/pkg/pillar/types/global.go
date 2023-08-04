@@ -192,6 +192,8 @@ const (
 	NetworkTestTimeout GlobalSettingKey = "timer.port.timeout"
 	// NetworkSendTimeout global setting key
 	NetworkSendTimeout GlobalSettingKey = "timer.send.timeout"
+	// NetworkDialTimeout global setting key
+	NetworkDialTimeout GlobalSettingKey = "timer.dial.timeout"
 	// LocationCloudInterval global setting key
 	LocationCloudInterval GlobalSettingKey = "timer.location.cloud.interval"
 	// LocationAppInterval global setting key
@@ -235,6 +237,8 @@ const (
 	IgnoreDiskCheckForApps GlobalSettingKey = "storage.apps.ignore.disk.check"
 	// AllowLogFastupload global setting key
 	AllowLogFastupload GlobalSettingKey = "newlog.allow.fastupload"
+	// EnableARPSnoopOnNI global setting key
+	EnableARPSnoop GlobalSettingKey = "network.switch.enable.arpsnoop"
 
 	// TriState Items
 	// NetworkFallbackAnyEth global setting key
@@ -279,6 +283,10 @@ const (
 	// download requests. However, even if enabled, TCP segments carrying non-empty payload
 	// (i.e. content which is being downloaded) are excluded.
 	NetDumpDownloaderPCAP GlobalSettingKey = "netdump.downloader.with.pcap"
+	// NetDumpDownloaderHTTPWithFieldValue : Enable to include HTTP header field values in captured
+	// network traces for download requests.
+	// Beware: may contain secrets, such as datastore credentials.
+	NetDumpDownloaderHTTPWithFieldValue GlobalSettingKey = "netdump.downloader.http.with.fieldvalue"
 )
 
 // AgentSettingKey - keys for per-agent settings
@@ -820,6 +828,7 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	configItemSpecMap.AddIntItem(NetworkTestBetterInterval, 600, 0, 0xFFFFFFFF)
 	configItemSpecMap.AddIntItem(NetworkTestTimeout, 15, 0, 3600)
 	configItemSpecMap.AddIntItem(NetworkSendTimeout, 120, 0, 3600)
+	configItemSpecMap.AddIntItem(NetworkDialTimeout, 10, 0, 3600)
 	configItemSpecMap.AddIntItem(LocationCloudInterval, HourInSec, 5*MinuteInSec, 0xFFFFFFFF)
 	configItemSpecMap.AddIntItem(LocationAppInterval, 20, 5, HourInSec)
 	configItemSpecMap.AddIntItem(Dom0MinDiskUsagePercent, 20, 20, 80)
@@ -849,6 +858,7 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	configItemSpecMap.AddBoolItem(DisableDHCPAllOnesNetMask, false)
 	configItemSpecMap.AddBoolItem(ProcessCloudInitMultiPart, false)
 	configItemSpecMap.AddBoolItem(ConsoleAccess, true) // Controller likely default to false
+	configItemSpecMap.AddBoolItem(EnableARPSnoop, true)
 
 	// Add TriState Items
 	configItemSpecMap.AddTriStateItem(NetworkFallbackAnyEth, TS_DISABLED)
@@ -872,6 +882,7 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	configItemSpecMap.AddIntItem(NetDumpTopicPostOnboardInterval, 24*HourInSec, 60, 0xFFFFFFFF)
 	configItemSpecMap.AddIntItem(NetDumpTopicMaxCount, 10, 1, 0xFFFFFFFF)
 	configItemSpecMap.AddBoolItem(NetDumpDownloaderPCAP, false)
+	configItemSpecMap.AddBoolItem(NetDumpDownloaderHTTPWithFieldValue, false)
 	return configItemSpecMap
 }
 
