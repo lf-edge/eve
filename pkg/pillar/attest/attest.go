@@ -17,8 +17,8 @@ import (
 // Event represents an event in the attest state machine
 type Event int
 
-// State represents a state in the attest state machine
-type State int32
+// AttestState represents a state in the attest state machine
+type AttestState int32
 
 // Events
 const (
@@ -39,15 +39,15 @@ const (
 
 // States
 const (
-	StateNone               State = iota + 0 //State when (Re)Starting attestation
-	StateNonceWait                           //Waiting for response from Controller for Nonce request
-	StateInternalQuoteWait                   //Waiting for internal PCR quote to be published
-	StateInternalEscrowWait                  //Waiting for internal Escrow data to be published
-	StateAttestWait                          //Waiting for response from Controller for PCR quote
-	StateAttestEscrowWait                    //Waiting for response from Controller for Escrow data
-	StateRestartWait                         //Waiting for restart timer to expire, to start all over again
-	StateComplete                            //Everything w.r.t attestation is complete
-	StateAny                                 //Not a real state per se. helps defining wildcard transitions(below)
+	StateNone               AttestState = iota + 0 //State when (Re)Starting attestation
+	StateNonceWait                                 //Waiting for response from Controller for Nonce request
+	StateInternalQuoteWait                         //Waiting for internal PCR quote to be published
+	StateInternalEscrowWait                        //Waiting for internal Escrow data to be published
+	StateAttestWait                                //Waiting for response from Controller for PCR quote
+	StateAttestEscrowWait                          //Waiting for response from Controller for Escrow data
+	StateRestartWait                               //Waiting for restart timer to expire, to start all over again
+	StateComplete                                  //Everything w.r.t attestation is complete
+	StateAny                                       //Not a real state per se. helps defining wildcard transitions(below)
 )
 
 // String returns human readable equivalent of an Event
@@ -84,8 +84,8 @@ func (event Event) String() string {
 	}
 }
 
-// String returns human readable string of a State
-func (state State) String() string {
+// String returns human readable string of an AttestState
+func (state AttestState) String() string {
 	switch state {
 	case StateNone:
 		return "StateNone"
@@ -161,7 +161,7 @@ type Context struct {
 	PubSub                *pubsub.PubSub
 	log                   *base.LogObject
 	event                 Event
-	state                 State
+	state                 AttestState
 	restartTimer          *time.Timer
 	eventTrigger          chan Event
 	retryTime             time.Duration //in seconds
@@ -175,7 +175,7 @@ type Context struct {
 // Transition represents an event triggered from a state
 type Transition struct {
 	event Event
-	state State
+	state AttestState
 }
 
 // New returns a new instance of the state machine
@@ -198,7 +198,7 @@ func (ctx *Context) Initialize() error {
 }
 
 // GetState returns current state
-func (ctx *Context) GetState() State {
+func (ctx *Context) GetState() AttestState {
 	return getStateAtomic(ctx)
 }
 
@@ -244,12 +244,12 @@ func triggerSelfEvent(ctx *Context, event Event) error {
 	return nil
 }
 
-func setStateAtomic(ctx *Context, state State) {
+func setStateAtomic(ctx *Context, state AttestState) {
 	atomic.StoreInt32((*int32)(&ctx.state), int32(state))
 }
 
-func getStateAtomic(ctx *Context) State {
-	return State(atomic.LoadInt32((*int32)(&ctx.state)))
+func getStateAtomic(ctx *Context) AttestState {
+	return AttestState(atomic.LoadInt32((*int32)(&ctx.state)))
 }
 
 // Kickstart starts the state machine with EventInitialize
@@ -501,7 +501,7 @@ func handleRetryTimerExpiryAtInternalQuoteWait(ctx *Context) error {
 	return handleNonceRecvdAtNonceWait(ctx)
 }
 
-func despatchEvent(event Event, state State, ctx *Context) error {
+func despatchEvent(event Event, state AttestState, ctx *Context) error {
 	elem, ok := transitions[Transition{event: event, state: state}]
 	if ok {
 		return elem(ctx)
