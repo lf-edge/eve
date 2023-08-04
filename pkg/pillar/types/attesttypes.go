@@ -10,6 +10,48 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/base"
 )
 
+// AttestState represents a state in the attest state machine
+type AttestState int32
+
+// States
+const (
+	StateNone               AttestState = iota + 0 //State when (Re)Starting attestation
+	StateNonceWait                                 //Waiting for response from Controller for Nonce request
+	StateInternalQuoteWait                         //Waiting for internal PCR quote to be published
+	StateInternalEscrowWait                        //Waiting for internal Escrow data to be published
+	StateAttestWait                                //Waiting for response from Controller for PCR quote
+	StateAttestEscrowWait                          //Waiting for response from Controller for Escrow data
+	StateRestartWait                               //Waiting for restart timer to expire, to start all over again
+	StateComplete                                  //Everything w.r.t attestation is complete
+	StateAny                                       //Not a real state per se. helps defining wildcard transitions(below)
+)
+
+// String returns human readable string of an AttestState
+func (state AttestState) String() string {
+	switch state {
+	case StateNone:
+		return "StateNone"
+	case StateNonceWait:
+		return "StateNonceWait"
+	case StateInternalQuoteWait:
+		return "StateInternalQuoteWait"
+	case StateInternalEscrowWait:
+		return "StateInternalEscrowWait"
+	case StateAttestWait:
+		return "StateAttestWait"
+	case StateAttestEscrowWait:
+		return "StateAttestEscrowWait"
+	case StateRestartWait:
+		return "StateRestartWait"
+	case StateComplete:
+		return "StateComplete"
+	case StateAny:
+		return "StateAny"
+	default:
+		return "Unknown State"
+	}
+}
+
 // AttestNonce carries nonce published by requester
 type AttestNonce struct {
 	Nonce     []byte
