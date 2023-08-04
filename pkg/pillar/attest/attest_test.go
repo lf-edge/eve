@@ -380,7 +380,7 @@ func TestInternalEscrowRcvdAtAnyOther(t *testing.T) {
 	fmt.Println("--------TestInternalEscrowRcvdAtAnyOther----")
 	ctx := initTest()
 
-	testInternalEscrowRcvdAt := func(state State) {
+	testInternalEscrowRcvdAt := func(state AttestState) {
 		setStateAtomic(ctx, state)
 		stopTrigger := make(chan int)
 		go func() {
@@ -408,7 +408,7 @@ func TestRestartAtEachState(t *testing.T) {
 	fmt.Println("--------TestRestartAtEachState----")
 	ctx := initTest()
 
-	testRestartEvent := func(state State) {
+	testRestartEvent := func(state AttestState) {
 		setStateAtomic(ctx, state)
 		stopTrigger := make(chan int)
 		go func() {
