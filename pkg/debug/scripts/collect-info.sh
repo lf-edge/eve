@@ -153,13 +153,13 @@ find /sys/kernel/security -name "tpm*" | while read -r TPM; do
         TPM_LOG_INFO="$(basename "$TPM").evtlog_info"
         TPM_EVT_LOG_SIZE=$(wc -c "$TPM/binary_bios_measurements" | cut -d ' ' -f1)
         # read max size is 1mb
-        if [ $TPM_EVT_LOG_SIZE -gt 1048576 ]; then
+        if [ "$TPM_EVT_LOG_SIZE" -gt 1048576 ]; then
             TPM_EVT_LOG_SIZE=1048576
             echo "tpm log is truncated" > "$DIR/$TPM_LOG_INFO"
         else
             echo "tpm log is NOT truncated" > "$DIR/$TPM_LOG_INFO"
         fi
-        dd if="$TPM/binary_bios_measurements" of="$DIR/$TPM_LOG_BIN" bs=1 count=$TPM_EVT_LOG_SIZE
+        dd if="$TPM/binary_bios_measurements" of="$DIR/$TPM_LOG_BIN" bs=1 count="$TPM_EVT_LOG_SIZE"
     fi
 done
 
