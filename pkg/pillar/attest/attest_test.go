@@ -10,6 +10,7 @@ import (
 
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
+	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/sirupsen/logrus"
 )
 
@@ -104,7 +105,7 @@ func initTest() *Context {
 		PubSub:       ps,
 		log:          log,
 		event:        EventInitialize,
-		state:        StateNone,
+		state:        types.StateNone,
 		restartTimer: time.NewTimer(1 * time.Second),
 		eventTrigger: make(chan Event, 1),
 		retryTime:    1,
@@ -120,7 +121,7 @@ func TestGoodPath(t *testing.T) {
 
 	go func() {
 		ctx.eventTrigger <- EventInitialize
-		for getStateAtomic(ctx) != StateInternalQuoteWait {
+		for getStateAtomic(ctx) != types.StateInternalQuoteWait {
 			time.Sleep(1 * time.Second)
 		}
 		ctx.eventTrigger <- EventInternalQuoteRecvd
@@ -134,8 +135,8 @@ func TestGoodPath(t *testing.T) {
 				t.Errorf("%v", err)
 			}
 		case <-stopTrigger:
-			if ctx.state != StateComplete {
-				t.Errorf("Expected %s, Got %s", StateComplete.String(), ctx.state.String())
+			if ctx.state != types.StateComplete {
+				t.Errorf("Expected %s, Got %s", types.StateComplete.String(), ctx.state.String())
 			}
 			return
 		}
@@ -149,7 +150,7 @@ func TestNonceMismatch(t *testing.T) {
 
 	go func() {
 		ctx.eventTrigger <- EventInitialize
-		for getStateAtomic(ctx) != StateInternalQuoteWait {
+		for getStateAtomic(ctx) != types.StateInternalQuoteWait {
 			time.Sleep(1 * time.Second)
 		}
 		ctx.eventTrigger <- EventInternalQuoteRecvd
@@ -161,8 +162,8 @@ func TestNonceMismatch(t *testing.T) {
 				t.Errorf("%v", err)
 			}
 		case <-ctx.restartTimer.C:
-			if ctx.state != StateRestartWait {
-				t.Errorf("Expected %s, Got %s", StateRestartWait.String(), ctx.state.String())
+			if ctx.state != types.StateRestartWait {
+				t.Errorf("Expected %s, Got %s", types.StateRestartWait.String(), ctx.state.String())
 			}
 			return
 		}
@@ -176,7 +177,7 @@ func TestQuoteMismatch(t *testing.T) {
 
 	go func() {
 		ctx.eventTrigger <- EventInitialize
-		for getStateAtomic(ctx) != StateInternalQuoteWait {
+		for getStateAtomic(ctx) != types.StateInternalQuoteWait {
 			time.Sleep(1 * time.Second)
 		}
 		ctx.eventTrigger <- EventInternalQuoteRecvd
@@ -188,8 +189,8 @@ func TestQuoteMismatch(t *testing.T) {
 				t.Errorf("%v", err)
 			}
 		case <-ctx.restartTimer.C:
-			if ctx.state != StateRestartWait {
-				t.Errorf("Expected %s, Got %s", StateRestartWait.String(), ctx.state.String())
+			if ctx.state != types.StateRestartWait {
+				t.Errorf("Expected %s, Got %s", types.StateRestartWait.String(), ctx.state.String())
 			}
 			return
 		}
@@ -203,7 +204,7 @@ func TestNoCertInController(t *testing.T) {
 
 	go func() {
 		ctx.eventTrigger <- EventInitialize
-		for getStateAtomic(ctx) != StateInternalQuoteWait {
+		for getStateAtomic(ctx) != types.StateInternalQuoteWait {
 			time.Sleep(1 * time.Second)
 		}
 		ctx.eventTrigger <- EventInternalQuoteRecvd
@@ -215,8 +216,8 @@ func TestNoCertInController(t *testing.T) {
 				t.Errorf("%v", err)
 			}
 		case <-ctx.restartTimer.C:
-			if ctx.state != StateRestartWait {
-				t.Errorf("Expected %s, Got %s", StateRestartWait.String(), ctx.state.String())
+			if ctx.state != types.StateRestartWait {
+				t.Errorf("Expected %s, Got %s", types.StateRestartWait.String(), ctx.state.String())
 			}
 			return
 		}
@@ -230,7 +231,7 @@ func TestControllerNotAvbleInNonceWait(t *testing.T) {
 
 	go func() {
 		ctx.eventTrigger <- EventInitialize
-		for getStateAtomic(ctx) != StateInternalQuoteWait {
+		for getStateAtomic(ctx) != types.StateInternalQuoteWait {
 			time.Sleep(1 * time.Second)
 		}
 		ctx.eventTrigger <- EventInternalQuoteRecvd
@@ -242,8 +243,8 @@ func TestControllerNotAvbleInNonceWait(t *testing.T) {
 				t.Errorf("%v", err)
 			}
 		case <-ctx.restartTimer.C:
-			if ctx.state != StateNonceWait {
-				t.Errorf("Expected %s, Got %s", StateNonceWait.String(), ctx.state.String())
+			if ctx.state != types.StateNonceWait {
+				t.Errorf("Expected %s, Got %s", types.StateNonceWait.String(), ctx.state.String())
 			}
 			return
 		}
@@ -255,7 +256,7 @@ func TestControllerNotAvbleInAttestWait(t *testing.T) {
 	ctx := initTest()
 
 	go func() {
-		setStateAtomic(ctx, StateInternalQuoteWait)
+		setStateAtomic(ctx, types.StateInternalQuoteWait)
 		simulateControllerReqFailure = true
 		ctx.eventTrigger <- EventInternalQuoteRecvd
 	}()
@@ -266,8 +267,8 @@ func TestControllerNotAvbleInAttestWait(t *testing.T) {
 				t.Errorf("%v", err)
 			}
 		case <-ctx.restartTimer.C:
-			if ctx.state != StateAttestWait {
-				t.Errorf("Expected %s, Got %s", StateAttestWait.String(), ctx.state.String())
+			if ctx.state != types.StateAttestWait {
+				t.Errorf("Expected %s, Got %s", types.StateAttestWait.String(), ctx.state.String())
 			}
 			return
 		}
@@ -279,7 +280,7 @@ func TestControllerNotAvbleInAttestEscrowWait(t *testing.T) {
 	ctx := initTest()
 
 	go func() {
-		setStateAtomic(ctx, StateAttestWait)
+		setStateAtomic(ctx, types.StateAttestWait)
 		simulateControllerReqFailure = true
 		ctx.eventTrigger <- EventAttestSuccessful
 	}()
@@ -290,8 +291,8 @@ func TestControllerNotAvbleInAttestEscrowWait(t *testing.T) {
 				t.Errorf("%v", err)
 			}
 		case <-ctx.restartTimer.C:
-			if ctx.state != StateAttestEscrowWait {
-				t.Errorf("Expected %s, Got %s", StateAttestEscrowWait.String(), ctx.state.String())
+			if ctx.state != types.StateAttestEscrowWait {
+				t.Errorf("Expected %s, Got %s", types.StateAttestEscrowWait.String(), ctx.state.String())
 			}
 			return
 		}
@@ -304,7 +305,7 @@ func TestNoEscrowDataAttestEscrowWait(t *testing.T) {
 	stopTrigger := make(chan int)
 
 	go func() {
-		setStateAtomic(ctx, StateAttestWait)
+		setStateAtomic(ctx, types.StateAttestWait)
 		simulateNoEscrowData = true
 		ctx.eventTrigger <- EventAttestSuccessful
 		time.Sleep(time.Second)
@@ -317,8 +318,8 @@ func TestNoEscrowDataAttestEscrowWait(t *testing.T) {
 				t.Errorf("%v", err)
 			}
 		case <-stopTrigger:
-			if ctx.state != StateInternalEscrowWait {
-				t.Errorf("Expected %s, Got %s", StateInternalEscrowWait.String(), ctx.state.String())
+			if ctx.state != types.StateInternalEscrowWait {
+				t.Errorf("Expected %s, Got %s", types.StateInternalEscrowWait.String(), ctx.state.String())
 			}
 			return
 		}
@@ -330,7 +331,7 @@ func TestItokenMismatchAttestEscrowWait(t *testing.T) {
 	ctx := initTest()
 
 	go func() {
-		setStateAtomic(ctx, StateAttestWait)
+		setStateAtomic(ctx, types.StateAttestWait)
 		simulateITokenMismatch = true
 		ctx.eventTrigger <- EventAttestSuccessful
 	}()
@@ -341,8 +342,8 @@ func TestItokenMismatchAttestEscrowWait(t *testing.T) {
 				t.Errorf("%v", err)
 			}
 		case <-ctx.restartTimer.C:
-			if ctx.state != StateRestartWait {
-				t.Errorf("Expected %s, Got %s", StateRestartWait.String(), ctx.state.String())
+			if ctx.state != types.StateRestartWait {
+				t.Errorf("Expected %s, Got %s", types.StateRestartWait.String(), ctx.state.String())
 			}
 			return
 		}
@@ -355,7 +356,7 @@ func TestNoVerifierInNonceWait(t *testing.T) {
 	stopTrigger := make(chan int)
 
 	go func() {
-		setStateAtomic(ctx, StateNone)
+		setStateAtomic(ctx, types.StateNone)
 		simulateNoVerifier = true
 		ctx.eventTrigger <- EventInitialize
 		time.Sleep(1 * time.Second)
@@ -368,8 +369,8 @@ func TestNoVerifierInNonceWait(t *testing.T) {
 				t.Errorf("%v", err)
 			}
 		case <-stopTrigger:
-			if ctx.state != StateNonceWait {
-				t.Errorf("Expected %s, Got %s", StateNonceWait.String(), ctx.state.String())
+			if ctx.state != types.StateNonceWait {
+				t.Errorf("Expected %s, Got %s", types.StateNonceWait.String(), ctx.state.String())
 			}
 			return
 		}
@@ -380,7 +381,7 @@ func TestInternalEscrowRcvdAtAnyOther(t *testing.T) {
 	fmt.Println("--------TestInternalEscrowRcvdAtAnyOther----")
 	ctx := initTest()
 
-	testInternalEscrowRcvdAt := func(state AttestState) {
+	testInternalEscrowRcvdAt := func(state types.AttestState) {
 		setStateAtomic(ctx, state)
 		stopTrigger := make(chan int)
 		go func() {
@@ -399,7 +400,7 @@ func TestInternalEscrowRcvdAtAnyOther(t *testing.T) {
 			}
 		}
 	}
-	for state := StateNone; state < StateAny; state++ {
+	for state := types.StateNone; state < types.StateAny; state++ {
 		testInternalEscrowRcvdAt(state)
 	}
 }
@@ -408,7 +409,7 @@ func TestRestartAtEachState(t *testing.T) {
 	fmt.Println("--------TestRestartAtEachState----")
 	ctx := initTest()
 
-	testRestartEvent := func(state AttestState) {
+	testRestartEvent := func(state types.AttestState) {
 		setStateAtomic(ctx, state)
 		stopTrigger := make(chan int)
 		go func() {
@@ -427,7 +428,7 @@ func TestRestartAtEachState(t *testing.T) {
 			}
 		}
 	}
-	for state := StateNone; state < StateAny; state++ {
+	for state := types.StateNone; state < types.StateAny; state++ {
 		testRestartEvent(state)
 	}
 }
