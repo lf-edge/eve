@@ -612,10 +612,10 @@ func publishAppInstanceSummary(ctxPtr *zedmanagerContext) {
 		}
 		// Only condition we did not count is EffectiveActive = true and Activated = false.
 		// That means customer either halted his app or did not activate it yet.
-		if effectiveActivate && status.Activated {
-			summary.TotalRunning++
-		} else if len(status.Error) > 0 {
+		if len(status.Error) > 0 {
 			summary.TotalError++
+		} else if effectiveActivate && status.Activated {
+			summary.TotalRunning++
 		} else if status.Activated {
 			summary.TotalStopping++
 		} else if effectiveActivate {
