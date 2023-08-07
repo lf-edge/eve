@@ -10,7 +10,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/base"
 )
 
-//VaultStatus represents running status of a Vault
+// VaultStatus represents running status of a Vault
 type VaultStatus struct {
 	Name               string
 	Status             info.DataSecAtRestStatus
@@ -30,7 +30,7 @@ func (config VaultConfig) Key() string {
 	return "global"
 }
 
-//Key returns the key used for indexing into a list of vaults
+// Key returns the key used for indexing into a list of vaults
 func (status VaultStatus) Key() string {
 	return status.Name
 }
@@ -79,14 +79,14 @@ func (status VaultStatus) LogKey() string {
 	return string(base.VaultStatusLogType) + "-" + status.Key()
 }
 
-//EncryptedVaultKeyFromDevice is published by vaultmgr towards Controller (through zedagent)
+// EncryptedVaultKeyFromDevice is published by vaultmgr towards Controller (through zedagent)
 type EncryptedVaultKeyFromDevice struct {
 	Name              string
 	EncryptedVaultKey []byte // empty if no TPM enabled
 }
 
-//Key returns name of the vault corresponding to this object
-//for now it is only the default vault i.e. "Application Volume Store"
+// Key returns name of the vault corresponding to this object
+// for now it is only the default vault i.e. "Application Volume Store"
 func (key EncryptedVaultKeyFromDevice) Key() string {
 	return key.Name
 }
@@ -127,14 +127,14 @@ func (key EncryptedVaultKeyFromDevice) LogKey() string {
 	return string(base.EncryptedVaultKeyFromDeviceLogType) + "-" + key.Key()
 }
 
-//EncryptedVaultKeyFromController is published from Controller to vaultmgr (through zedagent)
+// EncryptedVaultKeyFromController is published from Controller to vaultmgr (through zedagent)
 type EncryptedVaultKeyFromController struct {
 	Name              string
 	EncryptedVaultKey []byte
 }
 
-//Key returns name of the vault corresponding to this object
-//for now it is only the default vault i.e. "Application Volume Store"
+// Key returns name of the vault corresponding to this object
+// for now it is only the default vault i.e. "Application Volume Store"
 func (key EncryptedVaultKeyFromController) Key() string {
 	return key.Name
 }

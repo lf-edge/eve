@@ -87,6 +87,7 @@ type CipherBlockStatus struct {
 	CipherData      []byte `json:"pubsub-large-CipherData"`
 	ClearTextHash   []byte
 	IsCipher        bool
+	CipherContext   *CipherContext
 	// ErrorAndTime provides SetErrorNow() and ClearError()
 	ErrorAndTime
 }
