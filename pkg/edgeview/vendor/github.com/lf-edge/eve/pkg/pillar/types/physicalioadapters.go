@@ -10,6 +10,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	zcommon "github.com/lf-edge/eve/api/go/evecommon"
 	"github.com/lf-edge/eve/pkg/pillar/base"
+	"github.com/lf-edge/eve/pkg/pillar/sriov"
 )
 
 // PhysicalAddress - Structure that represents various attributes related
@@ -47,7 +48,7 @@ type PhysicalIOAdapter struct {
 	//  a structure OR may be even various attributes in PhysicalIO structure
 	// itself.
 	// map <string, string> cbattr = 8;
-	Vfs VFList // Used only for Physical Functions PFs
+	Vfs sriov.VFList // Used only for Physical Functions PFs
 }
 
 // PhysicalIOAdapterList - List of Physical Adapters to be used on the

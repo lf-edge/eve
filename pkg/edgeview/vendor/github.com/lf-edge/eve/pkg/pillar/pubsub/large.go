@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"strings"
 
@@ -142,7 +141,7 @@ func writeRemoveTree(log *base.LogObject,
 				dirname, nk, err)
 			return out, err
 		}
-		tmpfile, err := ioutil.TempFile(dirname, nk)
+		tmpfile, err := os.CreateTemp(dirname, nk)
 		if err != nil {
 			err := fmt.Errorf("writeRemoveTree: TempFile failed for %s %s: %v",
 				dirname, nk, err)

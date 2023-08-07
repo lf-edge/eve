@@ -40,7 +40,8 @@ type Notify struct{}
 //  fooAll := p1.GetAll()
 
 // PublicationImpl - Publication Implementation. The main structure that implements
-//  Publication interface.
+//
+//	Publication interface.
 type PublicationImpl struct {
 	// Private fields
 	topicType   reflect.Type

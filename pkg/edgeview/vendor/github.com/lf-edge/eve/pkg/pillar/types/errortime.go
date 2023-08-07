@@ -35,7 +35,7 @@ const (
 	ErrorSeverityError ErrorSeverity = 3
 )
 
-//GetErrorSeverity returns ErrorSeverity based on retry count and time spend
+// GetErrorSeverity returns ErrorSeverity based on retry count and time spend
 func GetErrorSeverity(retryCount int, timeSpend time.Duration) ErrorSeverity {
 	if retryCount > RetryCountError || timeSpend > RetryTimeError {
 		return ErrorSeverityError
@@ -91,7 +91,7 @@ type ErrorDescription struct {
 	ErrorEntities       []*ErrorEntity
 }
 
-//SetErrorDescription sync ErrorDescription with provided one
+// SetErrorDescription sync ErrorDescription with provided one
 // it sets ErrorSeverityError in case of unspecified ErrorSeverity
 // it sets ErrorTime to time.Now() in case of no time provided
 func (edPtr *ErrorDescription) SetErrorDescription(errDescription ErrorDescription) {
