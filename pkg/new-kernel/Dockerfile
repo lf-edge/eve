@@ -251,7 +251,7 @@ RUN if [ "${EVE_TARGET_ARCH}" != riscv64 ]; then \
 WORKDIR /linux
 
 # Strip at least some of the modules to conserve space
-RUN [ "${EVE_TARGET_ARCH}" = x86_64 ] || "${CROSS_COMPILE_ENV}strip" --strip-debug `find /tmp/kernel-modules/lib/modules -name \*.ko`
+RUN if [ "${EVE_TARGET_ARCH}" != x86_64 ];then "${CROSS_COMPILE_ENV}strip" --strip-debug `find /tmp/kernel-modules/lib/modules -name \*.ko` ;fi
 
 # Resign stripped kernel modules again
 RUN if [ "${EVE_TARGET_ARCH}" != x86_64 ];then \
