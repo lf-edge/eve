@@ -393,6 +393,7 @@ currentversion:
 test: $(LINUXKIT) test-images-patches | $(DIST)
 	@echo Running tests on $(GOMODULE)
 	$(QUIET)$(DOCKER_GO) "gotestsum --jsonfile $(DOCKER_DIST)/results.json --junitfile $(DOCKER_DIST)/results.xml --raw-command -- go test -coverprofile=coverage.txt -covermode=atomic -json ./..." $(GOTREE) $(GOMODULE)
+	$(QUIET)$(DOCKER_GO) "cd \"$(GOTREE)\"; find ./ -type d \! -path ./vendor/\* -exec go test -fuzz=^Fuzz -run=^Fuzz -fuzztime=30s "{}" \;" $(GOTREE) $(GOMODULE)
 	$(QUIET): $@: Succeeded
 
 # wrap command into DOCKER_GO and propagate it to the pillar's Makefile
