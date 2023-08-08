@@ -250,10 +250,10 @@ RUN if [ "${EVE_TARGET_ARCH}" != riscv64 ]; then \
 
 WORKDIR /linux
 
-# Strip at least some of the modules to conserve space
+# Strip all the modules to conserve space
 RUN if [ "${EVE_TARGET_ARCH}" != x86_64 ];then "${CROSS_COMPILE_ENV}strip" --strip-debug `find /tmp/kernel-modules/lib/modules -name \*.ko` ;fi
 
-# Resign stripped kernel modules again
+# Sign stripped kernel modules again
 RUN if [ "${EVE_TARGET_ARCH}" != x86_64 ];then \
     KERNEL_DEF_CONF="/linux/arch/${KERNEL_ARCH}/configs/${KERNEL_DEFCONFIG}"; \
     if grep -q "^CONFIG_MODULE_SIG_FORCE=y" "${KERNEL_DEF_CONF}" ;then \
@@ -261,24 +261,29 @@ RUN if [ "${EVE_TARGET_ARCH}" != x86_64 ];then \
     fi \
 fi
 
-# Sign out-of-tree module(s)
+# Sign out-of-tree module(s) + stripped ZFS modules on ARM/RISCV
 WORKDIR /linux
 SHELL ["/bin/ash", "-eo", "pipefail", "-c"]
 # hadolint ignore=SC2086,SC2046
-RUN if [ "${EVE_TARGET_ARCH}" != riscv64 ]; then \
-        KERNEL_DEF_CONF="/linux/arch/${KERNEL_ARCH}/configs/${KERNEL_DEFCONFIG}"; \
-        if grep -q "^CONFIG_MODULE_SIG_FORCE=y" "${KERNEL_DEF_CONF}" ;then \
-            SIG_HASH=$(sed -n '/^CONFIG_MODULE_SIG_HASH=/s///p' ${KERNEL_DEF_CONF} | tr -d '"') ; \
-            SIG_KEY_SRCPREFIX=$(sed -n '/^MODULE_SIG_KEY_SRCPREFIX=/s///p' ${KERNEL_DEF_CONF} | tr -d '"') ; \
-            SIG_KEY=$(sed -n '/^CONFIG_MODULE_SIG_KEY=/s///p' ${KERNEL_DEF_CONF} | tr -d '"') ; \
+RUN KERNEL_DEF_CONF="/linux/arch/${KERNEL_ARCH}/configs/${KERNEL_DEFCONFIG}"; \
+    if grep -q "^CONFIG_MODULE_SIG_FORCE=y" "${KERNEL_DEF_CONF}" ;then \
+        SIG_HASH=$(sed -n '/^CONFIG_MODULE_SIG_HASH=/s///p' ${KERNEL_DEF_CONF} | tr -d '"') ; \
+        SIG_KEY_SRCPREFIX=$(sed -n '/^MODULE_SIG_KEY_SRCPREFIX=/s///p' ${KERNEL_DEF_CONF} | tr -d '"') ; \
+        SIG_KEY=$(sed -n '/^CONFIG_MODULE_SIG_KEY=/s///p' ${KERNEL_DEF_CONF} | tr -d '"') ; \
+        if [ "${EVE_TARGET_ARCH}" != riscv64 ] ;then \
             scripts/sign-file "${SIG_HASH}" "/linux/${SIG_KEY_SRCPREFIX}${SIG_KEY}" /linux/certs/signing_key.x509 $(find /tmp/kernel-modules/lib/modules -name 8821cu.ko); \
-        fi\
+        fi ; \
+        if [ "${EVE_TARGET_ARCH}" != x86_64 ] ;then \
+            for m in $(find /tmp/kernel-modules/lib/modules/*/extra -name "*.ko"); do \
+                scripts/sign-file "${SIG_HASH}" "/linux/${SIG_KEY_SRCPREFIX}${SIG_KEY}" /linux/certs/signing_key.x509 ${m}; \
+            done \
+        fi ; \
     fi
 
 # Device Tree Blobs
 RUN [ "${EVE_TARGET_ARCH}" = x86_64 ] || make INSTALL_DTBS_PATH=/tmp/kernel-modules/boot/dtb CROSS_COMPILE="${CROSS_COMPILE_ENV}" ARCH="${KERNEL_ARCH}" dtbs_install
 
-# copy build time gnerated module-signing public key, used for diffing builds
+# copy build time generated module-signing public key, used for diffing builds
 RUN DVER=$(basename "$(find /tmp/kernel-modules/lib/modules/ -mindepth 1 -maxdepth 1)"); \
     if [ -f "/linux/certs/signing_key.x509" ]; then \
         cp /linux/certs/signing_key.x509 "/tmp/kernel-modules/lib/modules/$DVER"; \
