@@ -15,15 +15,15 @@ type AttestState int32
 
 // States
 const (
-	StateNone               AttestState = iota + 0 //State when (Re)Starting attestation
-	StateNonceWait                                 //Waiting for response from Controller for Nonce request
-	StateInternalQuoteWait                         //Waiting for internal PCR quote to be published
-	StateInternalEscrowWait                        //Waiting for internal Escrow data to be published
-	StateAttestWait                                //Waiting for response from Controller for PCR quote
-	StateAttestEscrowWait                          //Waiting for response from Controller for Escrow data
-	StateRestartWait                               //Waiting for restart timer to expire, to start all over again
-	StateComplete                                  //Everything w.r.t attestation is complete
-	StateAny                                       //Not a real state per se. helps defining wildcard transitions(below)
+	StateNone               AttestState = iota + 0 // State when (Re)Starting attestation
+	StateNonceWait                                 // Waiting for response from Controller for Nonce request
+	StateInternalQuoteWait                         // Waiting for internal PCR quote to be published
+	StateInternalEscrowWait                        // Waiting for internal Escrow data to be published
+	StateAttestWait                                // Waiting for response from Controller for PCR quote
+	StateAttestEscrowWait                          // Waiting for response from Controller for Escrow data
+	StateRestartWait                               // Waiting for restart timer to expire, to start all over again
+	StateComplete                                  // Everything w.r.t attestation is complete
+	StateAny                                       // Not a real state per se. helps defining wildcard transitions(below)
 )
 
 // String returns human readable string of an AttestState
