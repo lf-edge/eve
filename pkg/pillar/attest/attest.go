@@ -165,33 +165,33 @@ type EventHandler func(*Context) error
 
 // the state machine
 var transitions = map[Transition]EventHandler{
-	{EventInitialize, types.StateNone}:                        handleInitializeAtNone,                        //goes to NonceWait
-	{EventRestart, types.StateNone}:                           handleRestartAtNone,                           //goes to NonceWait
-	{EventRetryTimerExpiry, types.StateRestartWait}:           handleRetryTimerExpiryAtRestartWait,           //goes to NonceWait
-	{EventRestart, types.StateRestartWait}:                    handleRestart,                                 //goes to RestartWait
-	{EventNonceRecvd, types.StateNonceWait}:                   handleNonceRecvdAtNonceWait,                   //goes to InternalQuoteWait
-	{EventRetryTimerExpiry, types.StateNonceWait}:             handleRetryTimerExpiryAtNonceWait,             //goes to InternalQuoteWait
-	{EventRestart, types.StateNonceWait}:                      handleRestart,                                 //goes to RestartWait
-	{EventInternalQuoteRecvd, types.StateInternalQuoteWait}:   handleInternalQuoteRecvdAtInternalQuoteWait,   //goes to AttestWait
-	{EventRetryTimerExpiry, types.StateInternalQuoteWait}:     handleRetryTimerExpiryAtInternalQuoteWait,     //retries in InternalQuoteWait
-	{EventRestart, types.StateInternalQuoteWait}:              handleRestart,                                 //goes to RestartWait
-	{EventRestart, types.StateInternalEscrowWait}:             handleRestart,                                 //goes to RestartWait
-	{EventInternalEscrowRecvd, types.StateInternalEscrowWait}: handleInternalEscrowRecvdAtInternalEscrowWait, //goes to AttestEscrowWait
-	{EventNonceMismatch, types.StateAttestWait}:               handleNonceMismatchAtAttestWait,               //goes to RestartWait
-	{EventQuoteMismatch, types.StateAttestWait}:               handleQuoteMismatchAtAttestWait,               //goes to RestartWait
-	{EventNoQuoteCertRecvd, types.StateAttestWait}:            handleNoQuoteCertRcvdAtAttestWait,             //goes to RestartWait
-	{EventAttestSuccessful, types.StateAttestWait}:            handleAttestSuccessfulAtAttestWait,            //goes to AttestEscrowWait | RestartWait
-	{EventRetryTimerExpiry, types.StateAttestWait}:            handleRetryTimerExpiryAtAttestWait,            //retries in AttestWait
-	{EventRestart, types.StateAttestWait}:                     handleRestart,                                 //goes to RestartWait
-	{EventAttestEscrowFailed, types.StateAttestEscrowWait}:    handleAttestEscrowFailedAtAttestEscrowWait,    //goes to RestartWait (XXX: optimise)
-	{EventNoEscrow, types.StateAttestEscrowWait}:              handleNoEscrowAtAttestEscrowWait,              //goes to InternalEscrowWait
-	{EventAttestEscrowRecorded, types.StateAttestEscrowWait}:  handleAttestEscrowRecordedAtAttestEscrowWait,  //goes to Complete | RestartWait
-	{EventRetryTimerExpiry, types.StateAttestEscrowWait}:      handleRetryTimerExpiryWhileAttestEscrowWait,   //goes to Complete | RestartWait
-	{EventRestart, types.StateAttestEscrowWait}:               handleRestart,                                 //goes to RestartWait
-	{EventRestart, types.StateComplete}:                       handleRestartAtStateComplete,                  //goes to RestartWait
+	{EventInitialize, types.StateNone}:                        handleInitializeAtNone,                        // goes to NonceWait
+	{EventRestart, types.StateNone}:                           handleRestartAtNone,                           // goes to NonceWait
+	{EventRetryTimerExpiry, types.StateRestartWait}:           handleRetryTimerExpiryAtRestartWait,           // goes to NonceWait
+	{EventRestart, types.StateRestartWait}:                    handleRestart,                                 // goes to RestartWait
+	{EventNonceRecvd, types.StateNonceWait}:                   handleNonceRecvdAtNonceWait,                   // goes to InternalQuoteWait
+	{EventRetryTimerExpiry, types.StateNonceWait}:             handleRetryTimerExpiryAtNonceWait,             // goes to InternalQuoteWait
+	{EventRestart, types.StateNonceWait}:                      handleRestart,                                 // goes to RestartWait
+	{EventInternalQuoteRecvd, types.StateInternalQuoteWait}:   handleInternalQuoteRecvdAtInternalQuoteWait,   // goes to AttestWait
+	{EventRetryTimerExpiry, types.StateInternalQuoteWait}:     handleRetryTimerExpiryAtInternalQuoteWait,     // retries in InternalQuoteWait
+	{EventRestart, types.StateInternalQuoteWait}:              handleRestart,                                 // goes to RestartWait
+	{EventRestart, types.StateInternalEscrowWait}:             handleRestart,                                 // goes to RestartWait
+	{EventInternalEscrowRecvd, types.StateInternalEscrowWait}: handleInternalEscrowRecvdAtInternalEscrowWait, // goes to AttestEscrowWait
+	{EventNonceMismatch, types.StateAttestWait}:               handleNonceMismatchAtAttestWait,               // goes to RestartWait
+	{EventQuoteMismatch, types.StateAttestWait}:               handleQuoteMismatchAtAttestWait,               // goes to RestartWait
+	{EventNoQuoteCertRecvd, types.StateAttestWait}:            handleNoQuoteCertRcvdAtAttestWait,             // goes to RestartWait
+	{EventAttestSuccessful, types.StateAttestWait}:            handleAttestSuccessfulAtAttestWait,            // goes to AttestEscrowWait | RestartWait
+	{EventRetryTimerExpiry, types.StateAttestWait}:            handleRetryTimerExpiryAtAttestWait,            // retries in AttestWait
+	{EventRestart, types.StateAttestWait}:                     handleRestart,                                 // goes to RestartWait
+	{EventAttestEscrowFailed, types.StateAttestEscrowWait}:    handleAttestEscrowFailedAtAttestEscrowWait,    // goes to RestartWait (XXX: optimise)
+	{EventNoEscrow, types.StateAttestEscrowWait}:              handleNoEscrowAtAttestEscrowWait,              // goes to InternalEscrowWait
+	{EventAttestEscrowRecorded, types.StateAttestEscrowWait}:  handleAttestEscrowRecordedAtAttestEscrowWait,  // goes to Complete | RestartWait
+	{EventRetryTimerExpiry, types.StateAttestEscrowWait}:      handleRetryTimerExpiryWhileAttestEscrowWait,   // goes to Complete | RestartWait
+	{EventRestart, types.StateAttestEscrowWait}:               handleRestart,                                 // goes to RestartWait
+	{EventRestart, types.StateComplete}:                       handleRestartAtStateComplete,                  // goes to RestartWait
 
 	////////////// wildcard event handlers below this///////////////////
-	{EventInternalEscrowRecvd, types.StateAny}: handleInternalEscrowRecvdAtAnyOther, //stays in the same state
+	{EventInternalEscrowRecvd, types.StateAny}: handleInternalEscrowRecvdAtAnyOther, // stays in the same state
 }
 
 // some helpers
