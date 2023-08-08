@@ -29,3 +29,5 @@ jobs:
         with:
           name: 'test-report'
           path: ${{ github.workspace }}/dist
+      - name: Get code coverage
+        uses: codecov/codecov-action@v3
