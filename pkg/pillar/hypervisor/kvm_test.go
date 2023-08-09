@@ -1,6 +1,7 @@
 package hypervisor
 
 import (
+	"fmt"
 	"net"
 	"os"
 	"os/exec"
@@ -14,7 +15,7 @@ import (
 var kvmIntel, kvmArm kvmContext
 
 // these ones are very much handcrafted just for the tests
-func initTest(t *testing.T) {
+func init() {
 	kvmIntel = kvmContext{
 		devicemodel: "pc-q35-3.1",
 		dmExec:      "",
@@ -28,7 +29,6 @@ func initTest(t *testing.T) {
 }
 
 func TestCreateDomConfigOnlyCom1(t *testing.T) {
-	initTest(t)
 	id, err := uuid.NewV4()
 	if err != nil {
 		t.Errorf("NewV4 failed: %v", err)
@@ -844,22 +844,130 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
 	})
 }
 
-func TestCreateDomConfig(t *testing.T) {
-	initTest(t)
-	id, err := uuid.NewV4()
-	if err != nil {
-		t.Errorf("NewV4 failed: %v", err)
-	}
-
-	config, aa := domainConfigAndAssignableAdapters(id)
+func TestCreateDomConfigAmd64(t *testing.T) {
+	t.Parallel()
 
 	conf, err := os.CreateTemp("/tmp", "config")
 	if err != nil {
 		t.Errorf("Can't create config file for a domain %v", err)
-	} else {
-		defer os.Remove(conf.Name())
+	}
+	defer os.Remove(conf.Name())
+
+	disks := qemuDisks()
+	config, aa := domainConfigAndAssignableAdapters()
+	if err := kvmIntel.CreateDomConfig("test", config, types.DomainStatus{}, disks, &aa, conf); err != nil {
+		t.Errorf("CreateDomConfig failed %v", err)
+	}
+	defer os.Truncate(conf.Name(), 0)
+
+	result, err := os.ReadFile(conf.Name())
+	if err != nil {
+		t.Errorf("reading conf file failed %v", err)
 	}
 
+	if string(result) != domConfigAmd64() {
+		t.Errorf("got an unexpected resulting config %s", string(result))
+	}
+}
+
+func TestCreateDomConfigAmd64Legacy(t *testing.T) {
+	t.Parallel()
+
+	conf, err := os.CreateTemp("/tmp", "config")
+	if err != nil {
+		t.Errorf("Can't create config file for a domain %v", err)
+	}
+	defer os.Remove(conf.Name())
+	disksLegacy := qemuDisksLegacy()
+	config, aa := domainConfigAndAssignableAdapters()
+	config.VirtualizationMode = types.LEGACY
+	if err := kvmIntel.CreateDomConfig("test", config, types.DomainStatus{}, disksLegacy, &aa, conf); err != nil {
+		t.Errorf("CreateDomConfig failed %v", err)
+	}
+	defer os.Truncate(conf.Name(), 0)
+
+	result, err := os.ReadFile(conf.Name())
+	if err != nil {
+		t.Errorf("reading conf file failed %v", err)
+	}
+
+	if string(result) != domConfigAmd64Legacy() {
+		t.Errorf("got an unexpected resulting config %s", string(result))
+	}
+}
+func TestCreateDomConfigAmd64Fml(t *testing.T) {
+	t.Parallel()
+
+	conf, err := os.CreateTemp("/tmp", "config")
+	if err != nil {
+		t.Errorf("Can't create config file for a domain %v", err)
+	}
+	defer os.Remove(conf.Name())
+	disks := qemuDisks()
+	config, aa := domainConfigAndAssignableAdapters()
+	config.VirtualizationMode = types.FML
+	addNonExistingAdapter(&config, &aa)
+	if err := kvmIntel.CreateDomConfig("test", config, types.DomainStatus{}, disks, &aa, conf); err != nil {
+		t.Errorf("CreateDomConfig failed %v", err)
+	}
+	aa.IoBundleList = aa.IoBundleList[:len(aa.IoBundleList)-1]
+	config.IoAdapterList = config.IoAdapterList[:len(config.IoAdapterList)-1]
+	defer os.Truncate(conf.Name(), 0)
+
+	result, err := os.ReadFile(conf.Name())
+	if err != nil {
+		t.Errorf("reading conf file failed %v", err)
+	}
+
+	if string(result) != domConfigAmd64FML() {
+		t.Errorf("got an unexpected resulting config %s", string(result))
+	}
+}
+
+func TestCreateDomConfigArm64(t *testing.T) {
+	t.Parallel()
+
+	conf, err := os.CreateTemp("/tmp", "config")
+	if err != nil {
+		t.Errorf("Can't create config file for a domain %v", err)
+	}
+	defer os.Remove(conf.Name())
+
+	config, aa := domainConfigAndAssignableAdapters()
+	config.VirtualizationMode = types.HVM
+	disks := qemuDisks()
+	if err := kvmArm.CreateDomConfig("test", config, types.DomainStatus{}, disks, &aa, conf); err != nil {
+		t.Errorf("CreateDomConfig failed %v", err)
+	}
+	defer os.Truncate(conf.Name(), 0)
+
+	result, err := os.ReadFile(conf.Name())
+	if err != nil {
+		t.Errorf("reading conf file failed %v", err)
+	}
+
+	if string(result) != domConfigArm64() {
+		t.Errorf("got an unexpected resulting config %s", string(result))
+	}
+}
+
+func addNonExistingAdapter(config *types.DomainConfig, aa *types.AssignableAdapters) {
+	config.IoAdapterList = append(config.IoAdapterList, types.IoAdapter{
+		Type: types.IoNetEth,
+		Name: "eth1",
+	})
+
+	aa.IoBundleList = append(aa.IoBundleList, types.IoBundle{
+		Type:            types.IoNetEth,
+		AssignmentGroup: "eth1-1",
+		Phylabel:        "eth1",
+		Ifname:          "eth1",
+		PciLong:         "0000:f4:00.0",
+		UsedByUUID:      config.UUIDandVersion.UUID,
+	})
+}
+
+func qemuDisks() []types.DiskStatus {
 	disks := []types.DiskStatus{
 		{Format: zconfig.Format_QCOW2, FileLocation: "/foo/bar.qcow2", Devtype: "hdd"},
 		{Format: zconfig.Format_CONTAINER, FileLocation: "/foo/container", Devtype: "9P"},
@@ -868,94 +976,15 @@ func TestCreateDomConfig(t *testing.T) {
 		{Format: zconfig.Format_CONTAINER, FileLocation: "/foo/volume", Devtype: ""},
 		{Format: zconfig.Format_RAW, WWN: "naa.000000000000000a", Devtype: "hdd"},
 	}
-	t.Run("amd64", func(t *testing.T) {
-		conf.Seek(0, 0)
-		if err := kvmIntel.CreateDomConfig("test", config, types.DomainStatus{}, disks, &aa, conf); err != nil {
-			t.Errorf("CreateDomConfig failed %v", err)
-		}
-		defer os.Truncate(conf.Name(), 0)
-
-		result, err := os.ReadFile(conf.Name())
-		if err != nil {
-			t.Errorf("reading conf file failed %v", err)
-		}
-
-		if string(result) != domConfigAmd64() {
-			t.Errorf("got an unexpected resulting config %s", string(result))
-		}
-	})
-	config.VirtualizationMode = types.LEGACY
-	t.Run("amd64-legacy", func(t *testing.T) {
-		conf.Seek(0, 0)
-		disksLegacy := disksLegacy()
-		if err := kvmIntel.CreateDomConfig("test", config, types.DomainStatus{}, disksLegacy, &aa, conf); err != nil {
-			t.Errorf("CreateDomConfig failed %v", err)
-		}
-		defer os.Truncate(conf.Name(), 0)
-
-		result, err := os.ReadFile(conf.Name())
-		if err != nil {
-			t.Errorf("reading conf file failed %v", err)
-		}
-
-		if string(result) != domConfigAmd64Legacy() {
-			t.Errorf("got an unexpected resulting config %s", string(result))
-		}
-	})
-
-	config.VirtualizationMode = types.FML
-	t.Run("amd64-fml", func(t *testing.T) {
-		conf.Seek(0, 0)
-		config.IoAdapterList = append(config.IoAdapterList, types.IoAdapter{
-			Type: types.IoNetEth,
-			Name: "eth1",
-		})
-		// we use device that expected to not exists on the real hardware
-		aa.IoBundleList = append(aa.IoBundleList, types.IoBundle{
-			Type:            types.IoNetEth,
-			AssignmentGroup: "eth1-1",
-			Phylabel:        "eth1",
-			Ifname:          "eth1",
-			PciLong:         "0000:f4:00.0",
-			UsedByUUID:      config.UUIDandVersion.UUID,
-		})
-		if err := kvmIntel.CreateDomConfig("test", config, types.DomainStatus{}, disks, &aa, conf); err != nil {
-			t.Errorf("CreateDomConfig failed %v", err)
-		}
-		aa.IoBundleList = aa.IoBundleList[:len(aa.IoBundleList)-1]
-		config.IoAdapterList = config.IoAdapterList[:len(config.IoAdapterList)-1]
-		defer os.Truncate(conf.Name(), 0)
-
-		result, err := os.ReadFile(conf.Name())
-		if err != nil {
-			t.Errorf("reading conf file failed %v", err)
-		}
-
-		if string(result) != domConfigAmd64FML() {
-			t.Errorf("got an unexpected resulting config %s", string(result))
-		}
-	})
-
-	config.VirtualizationMode = types.HVM
-	t.Run("arm64", func(t *testing.T) {
-		conf.Seek(0, 0)
-		if err := kvmArm.CreateDomConfig("test", config, types.DomainStatus{}, disks, &aa, conf); err != nil {
-			t.Errorf("CreateDomConfig failed %v", err)
-		}
-		defer os.Truncate(conf.Name(), 0)
-
-		result, err := os.ReadFile(conf.Name())
-		if err != nil {
-			t.Errorf("reading conf file failed %v", err)
-		}
-
-		if string(result) != domConfigArm64() {
-			t.Errorf("got an unexpected resulting config %s", string(result))
-		}
-	})
+	return disks
 }
 
-func domainConfigAndAssignableAdapters(id uuid.UUID) (types.DomainConfig, types.AssignableAdapters) {
+func domainConfigAndAssignableAdapters() (types.DomainConfig, types.AssignableAdapters) {
+	id, err := uuid.NewV4()
+	if err != nil {
+		panic(fmt.Errorf("NewV4 failed: %v", err))
+	}
+
 	config := types.DomainConfig{
 		UUIDandVersion: types.UUIDandVersion{UUID: id, Version: "1.0"},
 		VmConfig: types.VmConfig{
@@ -1010,7 +1039,7 @@ func domainConfigAndAssignableAdapters(id uuid.UUID) (types.DomainConfig, types.
 	return config, aa
 }
 
-func disksLegacy() []types.DiskStatus {
+func qemuDisksLegacy() []types.DiskStatus {
 	disksLegacy := []types.DiskStatus{
 		{Format: zconfig.Format_QCOW2, FileLocation: "/foo/bar.qcow2", Devtype: "legacy"},
 		{Format: zconfig.Format_CONTAINER, FileLocation: "/foo/container", Devtype: "9P"},
@@ -2126,7 +2155,6 @@ func domConfigAmd64() string {
 }
 
 func TestCreateDom(t *testing.T) {
-	initTest(t)
 	if exec.Command("qemu-system-x86_64", "--version").Run() != nil {
 		// skipping this test since we're clearly not in a presence of qemu
 		return
