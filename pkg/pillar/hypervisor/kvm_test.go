@@ -1220,11 +1220,6 @@ func TestCreateDomConfig(t *testing.T) {
 [device "serial-usr0"]
   driver = "isa-serial"
   chardev = "charserial-usr0"
-
-[device]
-  driver = "usb-host"
-  hostbus = "1"
-  hostaddr = "1"
 ` {
 			t.Errorf("got an unexpected resulting config %s", string(result))
 		}
@@ -1519,11 +1514,6 @@ func TestCreateDomConfig(t *testing.T) {
 [device "serial-usr0"]
   driver = "isa-serial"
   chardev = "charserial-usr0"
-
-[device]
-  driver = "usb-host"
-  hostbus = "1"
-  hostaddr = "1"
 ` {
 			t.Errorf("got an unexpected resulting config %s", string(result))
 		}
@@ -1843,11 +1833,6 @@ func TestCreateDomConfig(t *testing.T) {
 [device "serial-usr0"]
   driver = "isa-serial"
   chardev = "charserial-usr0"
-
-[device]
-  driver = "usb-host"
-  hostbus = "1"
-  hostaddr = "1"
 ` {
 			t.Errorf("got an unexpected resulting config %s", string(result))
 		}
@@ -2117,11 +2102,6 @@ func TestCreateDomConfig(t *testing.T) {
 [device "serial-usr0"]
   driver = "pci-serial"
   chardev = "charserial-usr0"
-
-[device]
-  driver = "usb-host"
-  hostbus = "1"
-  hostaddr = "1"
 ` {
 			t.Errorf("got an unexpected resulting config %s", string(result))
 		}

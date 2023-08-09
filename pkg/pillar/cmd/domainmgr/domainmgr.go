@@ -3015,7 +3015,7 @@ func updatePortAndPciBackIoMember(ctx *domainContext, ib *types.IoBundle, isPort
 		} else if ctx.deviceNetworkStatus.Testing && ib.Type.IsNet() {
 			log.Noticef("Not assigning %s (%s) to pciback due to Testing",
 				ib.Phylabel, ib.PciLong)
-		} else if ib.PciLong != "" {
+		} else if ib.PciLong != "" && ib.UsbAddr == "" {
 			log.Noticef("Assigning %s (%s) to pciback",
 				ib.Phylabel, ib.PciLong)
 			err := hyper.PCIReserve(ib.PciLong)

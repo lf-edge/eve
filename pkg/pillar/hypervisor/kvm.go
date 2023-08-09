@@ -351,13 +351,6 @@ const qemuSerialTemplate = `
   chardev = "charserial-usr{{.ID}}"
 `
 
-const qemuUsbHostTemplate = `
-[device]
-  driver = "usb-host"
-  hostbus = "{{.UsbBus}}"
-  hostaddr = "{{.UsbDevAddr}}"
-`
-
 const kvmStateDir = "/run/hypervisor/kvm/"
 const sysfsVfioPciBind = "/sys/bus/pci/drivers/vfio-pci/bind"
 const sysfsPciDriversProbe = "/sys/bus/pci/drivers_probe"
@@ -748,8 +741,6 @@ func (ctx kvmContext) CreateDomConfig(domainName string, config types.DomainConf
 
 	// Gather all PCI assignments into a single line
 	var pciAssignments []pciDevice
-	// Gather all USB assignments into a single line
-	var usbAssignments []string
 	// Gather all serial assignments into a single line
 	var serialAssignments []string
 
@@ -770,7 +761,7 @@ func (ctx kvmContext) CreateDomConfig(domainName string, config types.DomainConf
 					ib.UsedByUUID, adapter.Type, adapter.Name,
 					domainName)
 			}
-			if ib.PciLong != "" {
+			if ib.PciLong != "" && ib.UsbAddr == "" {
 				logrus.Infof("Adding PCI device <%v>\n", ib.PciLong)
 				tap := pciDevice{pciLong: ib.PciLong, ioType: ib.Type}
 				pciAssignments = addNoDuplicatePCI(pciAssignments, tap)
@@ -778,10 +769,6 @@ func (ctx kvmContext) CreateDomConfig(domainName string, config types.DomainConf
 			if ib.Serial != "" {
 				logrus.Infof("Adding serial <%s>\n", ib.Serial)
 				serialAssignments = addNoDuplicate(serialAssignments, ib.Serial)
-			}
-			if ib.UsbAddr != "" {
-				logrus.Infof("Adding USB host device <%s>\n", ib.UsbAddr)
-				usbAssignments = addNoDuplicate(usbAssignments, ib.UsbAddr)
 			}
 		}
 	}
@@ -832,23 +819,6 @@ func (ctx kvmContext) CreateDomConfig(domainName string, config types.DomainConf
 			serialPortContext.ID = id
 			if err := t.Execute(file, serialPortContext); err != nil {
 				return logError("can't write serial assignment to config file %s (%v)", file.Name(), err)
-			}
-		}
-	}
-	if len(usbAssignments) != 0 {
-		usbHostContext := struct {
-			UsbBus     string
-			UsbDevAddr string
-			// Ports are dot-separated
-		}{UsbBus: "", UsbDevAddr: ""}
-
-		t, _ = template.New("qemuUsbHost").Parse(qemuUsbHostTemplate)
-		for _, usbaddr := range usbAssignments {
-			bus, port := usbBusPort(usbaddr)
-			usbHostContext.UsbBus = bus
-			usbHostContext.UsbDevAddr = port
-			if err := t.Execute(file, usbHostContext); err != nil {
-				return logError("can't write USB host device assignment to config file %s (%v)", file.Name(), err)
 			}
 		}
 	}
