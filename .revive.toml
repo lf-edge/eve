@@ -14,6 +14,7 @@ warningCode = 0
 [rule.if-return]
 [rule.increment-decrement]
 [rule.var-naming]
+  arguments = [[], [], [{upperCaseConst=true}]]
 [rule.var-declaration]
 #[rule.package-comments]
 [rule.range]
