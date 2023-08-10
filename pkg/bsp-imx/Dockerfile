@@ -124,7 +124,7 @@ RUN for t in ${ATF_TARGETS}; do \
 # IMX firmware
 WORKDIR /tmp
 ENV FIRMWARE_VER=8.18
-ADD https://www.nxp.com/lgfiles/NMG/MAD/YOCTO/firmware-imx-${FIRMWARE_VER}.bin firmware-imx-${FIRMWARE_VER}.bin
+ADD https://cache.nxp.com/lgfiles/NMG/MAD/YOCTO/firmware-imx-${FIRMWARE_VER}.bin firmware-imx-${FIRMWARE_VER}.bin
 RUN chmod 777 firmware-imx-${FIRMWARE_VER}.bin && \
         echo "n" | ./firmware-imx-8.18.bin | head -n -1 > /bsp/NXP-EULA-LICENSE.txt || true && \
         ./firmware-imx-${FIRMWARE_VER}.bin --auto-accept && \
