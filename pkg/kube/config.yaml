@@ -4,3 +4,4 @@
 write-kubeconfig-mode: "0644"
 cluster-init: true
 log: "/var/lib/rancher/k3s/k3s.log"
+debug: true

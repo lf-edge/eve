@@ -332,7 +332,7 @@ func (s *ociSpec) UpdateFromDomain(dom *types.DomainConfig, status *types.Domain
 			s.Linux.Resources.CPU.Cpus = status.VmConfig.CPUs
 		}
 
-		s.Linux.CgroupsPath = fmt.Sprintf("/%s/%s", ctrdServicesNamespace, dom.GetTaskName())
+		s.Linux.CgroupsPath = fmt.Sprintf("/%s/%s", GetServicesNamespace(), dom.GetTaskName())
 	}
 	if !s.service {
 		// not create uts namespace by default for MobyLabelConfigMode
