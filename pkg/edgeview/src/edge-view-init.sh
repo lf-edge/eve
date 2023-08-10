@@ -1,6 +1,8 @@
 #!/bin/sh
 
 if [ -z "$EDGEVIEW_CLIENT" ]; then
+  [ -f /config/hosts ] && cat /config/hosts >> /etc/hosts
+
   sleep 60 # allow system to settle, no need to come up too fast
   while true;
   do
