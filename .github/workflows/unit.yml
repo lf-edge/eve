@@ -14,15 +14,17 @@ on:  # yamllint disable-line rule:truthy
 
 jobs:
   test:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v3
         with:
           ref: ${{ github.event.pull_request.head.sha }}
-
       - name: Test
         run: |
           make test
+      - name : Test (TPM Required)
+        run: |
+          bash tools/tpm-tests-on-qemu.sh
       - name: Report test results as Annotations
         if: ${{ always() }}
         uses: guyarb/golang-test-annoations@v0.6.0
