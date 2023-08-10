@@ -43,6 +43,7 @@ type zedkubeContext struct {
 	appNetConfig             map[string]*types.AppNetworkConfig
 	resendNITimer            *time.Timer
 	appMetricsTimer          *time.Timer
+	hackAILaunchTimer        *time.Timer
 }
 
 // Run - an zedkube run
@@ -166,6 +167,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 
 	zedkubeCtx.appMetricsTimer = time.NewTimer(10 * time.Second)
 
+	zedkubeCtx.hackAILaunchTimer = time.NewTimer(10 * time.Second)
+	zedkubeCtx.hackAILaunchTimer.Stop()
+
 	go appNetStatusNotify(&zedkubeCtx)
 
 	for {
@@ -183,6 +187,13 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		case <-zedkubeCtx.appMetricsTimer.C:
 			publishAppMetrics(&zedkubeCtx)
 			zedkubeCtx.appMetricsTimer = time.NewTimer(10 * time.Second)
+
+		case <-zedkubeCtx.hackAILaunchTimer.C:
+			if checkHackAILaunch() {
+				checkAndRunPods(&zedkubeCtx)
+			} else {
+				zedkubeCtx.hackAILaunchTimer = time.NewTimer(10 * time.Second)
+			}
 
 		case <-stillRunning.C:
 		}
@@ -304,8 +315,12 @@ func handleAppInstanceConfigCreate(ctxArg interface{}, key string,
 
 	log.Noticef("handleAppInstanceConfigCreate(%v) spec for %s, url %s",
 		config.UUIDandVersion, config.DisplayName, config.ImageURL)
-	err := genAISpecCreate(ctx, &config)
-	log.Noticef("handleAppInstancConfigModify: genAISpec %v", err)
+	if checkHackAILaunch() {
+		err := genAISpecCreate(ctx, &config)
+		log.Noticef("handleAppInstancConfigModify: genAISpec %v", err)
+	} else {
+		ctx.hackAILaunchTimer = time.NewTimer(10 * time.Second)
+	}
 }
 
 func handleAppInstanceConfigModify(ctxArg interface{}, key string,
@@ -315,8 +330,12 @@ func handleAppInstanceConfigModify(ctxArg interface{}, key string,
 
 	log.Noticef("handleAppInstancConfigCreate(%v) spec for %s, url %s",
 		config.UUIDandVersion, config.DisplayName, config.ImageURL)
-	err := genAISpecCreate(ctx, &config)
-	log.Noticef("handleAppInstancConfigModify: genAISpec %v", err)
+	if checkHackAILaunch() {
+		err := genAISpecCreate(ctx, &config)
+		log.Noticef("handleAppInstancConfigModify: genAISpec %v", err)
+	} else {
+		ctx.hackAILaunchTimer = time.NewTimer(10 * time.Second)
+	}
 }
 
 func handleAppInstanceConfigDelete(ctxArg interface{}, key string,
@@ -336,4 +355,25 @@ func publishNetworkInstanceStatus(ctx *zedkubeContext,
 	ctx.networkInstanceStatusMap.Store(status.UUID, status)
 	pub := ctx.pubNetworkInstanceStatus
 	pub.Publish(status.Key(), *status)
+}
+
+func checkHackAILaunch() bool {
+	fname := "/run/zedkube/hack-ai-run"
+	if _, err := os.Stat(fname); err != nil && os.IsNotExist(err) {
+		return false
+	}
+	return true
+}
+
+func checkAndRunPods(ctx *zedkubeContext) {
+	sub := ctx.subAppInstanceConfig
+	items := sub.GetAll()
+	for _, item := range items {
+		aiconfig := item.(types.AppInstanceConfig)
+		if aiconfig.PodCreated {
+			continue
+		}
+		err := genAISpecCreate(ctx, &aiconfig)
+		log.Noticef("checkAndRunPods: genAISpec for %s, %v", aiconfig.DisplayName, err)
+	}
 }

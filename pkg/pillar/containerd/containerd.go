@@ -28,6 +28,7 @@ import (
 	"github.com/containerd/containerd/snapshots"
 	"github.com/containerd/typeurl"
 	"github.com/lf-edge/edge-containers/pkg/resolver"
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/vault"
 	"github.com/opencontainers/go-digest"
@@ -45,10 +46,14 @@ const (
 	ctrdSocket = "/run/containerd/containerd.sock"
 	// containerd user socket
 	ctrdUserSocket = "/run/containerd-user/containerd.sock"
+	// kube-containerd user socket
+	ctrdKubeUserSocket = "/run/k3s/containerd/containerd.sock"
 	// ctrdSystemServicesNamespace containerd namespace for EVE system containers
 	ctrdSystemServicesNamespace = "services.linuxkit"
 	// ctrdServicesNamespace containerd namespace for running user containers
 	ctrdServicesNamespace = "eve-user-apps"
+	// ctrdKubeServicesNamespace containerd namespace for running user containers in kube-containerd
+	ctrdKubeServicesNamespace = "k8s.io"
 	//containerdRunTime - default runtime of containerd
 	containerdRunTime = "io.containerd.runc.v2"
 	// container config file name
@@ -84,6 +89,10 @@ type Client struct {
 // GetServicesNamespace returns ctrdServicesNamespace
 // The value is used to define the cgroups path of the EVE services
 func GetServicesNamespace() string {
+
+	if base.IsHVTypeKube() {
+		return ctrdKubeServicesNamespace
+	}
 	return ctrdServicesNamespace
 }
 
@@ -92,6 +101,10 @@ func init() {
 	// see if we need to use zfs snapshotter based on what flavor of storage persist partition is
 	if vault.ReadPersistType() == types.PersistZFS {
 		defaultSnapshotter = types.ZFSSnapshotter
+	}
+
+	if base.IsHVTypeKube() {
+		defaultSnapshotter = "overlayfs"
 	}
 }
 
@@ -107,7 +120,12 @@ func NewContainerdClient(user bool) (*Client, error) {
 
 	socket := ctrdSocket
 	if user {
-		socket = ctrdUserSocket
+		// In kubevirt env, we talk to containerd that comes with k3s
+		if base.IsHVTypeKube() {
+			socket = ctrdKubeUserSocket
+		} else {
+			socket = ctrdUserSocket
+		}
 	}
 
 	ctrdClient, err = containerd.New(socket,
@@ -635,6 +653,10 @@ func (client *Client) Resolver(ctx context.Context) (resolver.ResolverCloser, er
 // CtrNewUserServicesCtx returns a new user service containerd context
 // and a done func to cancel the context after use.
 func (client *Client) CtrNewUserServicesCtx() (context.Context, context.CancelFunc) {
+
+	if base.IsHVTypeKube() {
+		return newServiceCtx(ctrdKubeServicesNamespace)
+	}
 	return newServiceCtx(ctrdServicesNamespace)
 }
 
@@ -647,6 +669,10 @@ func (client *Client) CtrNewSystemServicesCtx() (context.Context, context.Cancel
 // CtrNewUserServicesCtxWithLease returns a new user service containerd context with a 24 hrs lease
 // and a done func to delete the lease and cancel the context after use.
 func (client *Client) CtrNewUserServicesCtxWithLease() (context.Context, context.CancelFunc, error) {
+
+	if base.IsHVTypeKube() {
+		return newServiceCtxWithLease(client.ctrdClient, ctrdKubeServicesNamespace)
+	}
 	return newServiceCtxWithLease(client.ctrdClient, ctrdServicesNamespace)
 }
 
@@ -885,6 +911,11 @@ func (client *Client) UnpackClientImage(clientImage containerd.Image) error {
 
 // StartUserContainerdInstance execute user containerd instance in goroutine
 func StartUserContainerdInstance() error {
+
+	// In kubevirt env we do not start eve user containerd, we just use that comes with k3s.
+	if base.IsHVTypeKube() {
+		return nil
+	}
 	name := "/usr/bin/containerd"
 	args := []string{"--config", "/etc/containerd/user.toml"}
 	cmd := exec.Command(name, args...)

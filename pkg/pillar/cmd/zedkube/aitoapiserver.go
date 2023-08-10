@@ -82,8 +82,9 @@ func genAISpecCreate(ctx *zedkubeContext, aiConfig *types.AppInstanceConfig) err
 		Spec: corev1.PodSpec{
 			Containers: []corev1.Container{
 				{
-					Name:  cname,
-					Image: aiConfig.ImageURL,
+					Name:            cname,
+					Image:           aiConfig.ImageURL,
+					ImagePullPolicy: corev1.PullNever, // Set the image pull policy to 'Never'
 					SecurityContext: &corev1.SecurityContext{
 						Privileged: &[]bool{true}[0],
 					},
