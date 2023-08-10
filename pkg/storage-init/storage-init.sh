@@ -274,6 +274,7 @@ chmod 700 $UUID_SYMLINK_PATH
 
 # create /run/edgeview early before the disk mount for edgeview container
 mkdir -p /run/edgeview
+mkdir -p /run/.kube/k3s
 
 BLK_DEVICES=$(ls /sys/class/block/)
 for BLK_DEVICE in $BLK_DEVICES; do

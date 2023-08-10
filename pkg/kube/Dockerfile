@@ -1,15 +1,23 @@
 # syntax=docker/dockerfile-upstream:1.5.0-rc2-labs
 
-FROM lfedge/eve-alpine:12487b9900ba40f3ecdadfec2c84799fa34e5014 as build
+#FROM lfedge/eve-alpine:12487b9900ba40f3ecdadfec2c84799fa34e5014 as build
+FROM lfedge/eve-alpine:2958f1601c4ed018dc26823f390982d396cd745a as build
+ENV BUILD_PKGS git go
 ENV PKGS alpine-baselayout musl-utils iproute2 iptables curl openrc \
-         open-iscsi libvirt libvirt-client util-linux grep
+         open-iscsi libvirt libvirt-client util-linux grep cni-plugins
 RUN eve-alpine-deploy.sh
+
+COPY ./  /plugins/.
+WORKDIR /plugins
+RUN GO111MODULE=on CGO_ENABLED=0 go build -ldflags "-s -w" -mod=vendor -o /out/eve-bridge ./src/eve-bridge
 
 FROM scratch
 COPY --from=build /out/ /
 COPY cluster-init.sh /usr/bin/
 COPY cgconfig.conf /etc
 # kubevirt yaml files are patched files and will be removed later, look at cluster-init.sh
+RUN mv /eve-bridge /usr/bin
+COPY multus-daemonset.yaml /etc
 COPY kubevirt-operator.yaml /etc
 RUN mkdir -p /etc/rancher/k3s
 COPY config.yaml /etc/rancher/k3s
