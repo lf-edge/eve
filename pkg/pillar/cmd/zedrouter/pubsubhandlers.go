@@ -417,11 +417,54 @@ func (z *zedrouter) handleNetworkInstanceDelete(ctxArg interface{}, key string,
 	z.log.Functionf("handleNetworkInstanceDelete(%s) done %t", key, done)
 }
 
+func (z *zedrouter) insertAppNetVif(config types.AppNetworkConfig) {
+	ulstatusList := config.ULNetworkStatusList
+	for _, ulstatus := range ulstatusList { // ulstatus inside AppNetworkConfig
+		sub := z.pubNetworkInstanceStatus
+		items := sub.GetAll()
+		var nistatus *types.NetworkInstanceStatus
+		for _, item := range items {
+			nis := item.(types.NetworkInstanceStatus)
+			if nis.UUID.String() == ulstatus.Network.String() {
+				z.log.Noticef("handleAppNetworkCreate: UL match %v", ulstatus.Network)
+				nistatus = &nis
+				break
+			}
+		}
+		if nistatus != nil {
+			var found bool
+			for i, v := range nistatus.Vifs {
+				if v.Name == ulstatus.Vif {
+					nistatus.Vifs[i].MacAddr = ulstatus.Mac
+					nistatus.Vifs[i].AppID = config.UUIDandVersion.UUID
+					found = true
+					break
+				}
+			}
+			if !found {
+				vif := types.VifNameMac{
+					Name:    ulstatus.Vif,
+					MacAddr: ulstatus.Mac,
+					AppID:   config.UUIDandVersion.UUID,
+				}
+				nistatus.Vifs = append(nistatus.Vifs, vif)
+			}
+			z.log.Functionf("handleAppNetworkCreate: pub nistatus, found %v, %+v", found, nistatus)
+			z.publishNetworkInstanceStatus(nistatus)
+		}
+	}
+}
+
 func (z *zedrouter) handleAppNetworkCreate(ctxArg interface{}, key string,
 	configArg interface{}) {
 	config := configArg.(types.AppNetworkConfig)
 	z.log.Functionf("handleAppNetworkCreate(%v) for %s",
 		config.UUIDandVersion, config.DisplayName)
+
+	if z.hvTypeKube {
+		z.log.Functionf("handleAppNetworkCreate: config %+v", config)
+		z.insertAppNetVif(config)
+	}
 
 	if !z.initReconcileDone {
 		z.niReconciler.RunInitialReconcile(z.runCtx)
@@ -526,6 +569,11 @@ func (z *zedrouter) handleAppNetworkModify(ctxArg interface{}, key string,
 			newConfig.UUIDandVersion.UUID, err)
 		z.addAppNetworkError(status, "handleAppNetworkModify", err)
 		return
+	}
+
+	if z.hvTypeKube {
+		z.log.Functionf("handleAppNetworkCreate: new config %+v", newConfig)
+		z.insertAppNetVif(newConfig)
 	}
 
 	// Update numbers allocated for application interfaces.

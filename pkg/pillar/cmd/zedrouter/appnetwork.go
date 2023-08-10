@@ -85,19 +85,44 @@ func (z *zedrouter) prepareConfigForVIFs(config types.AppNetworkConfig,
 			z.addAppNetworkError(status, "doActivateAppNetwork", err)
 			return nil, err
 		}
+
+		// kube mode
+		var kubeulstatus *types.UnderlayNetworkStatus
+		if z.hvTypeKube {
+			for _, u := range config.ULNetworkStatusList {
+				if u.Network.String() == ulStatus.Network.String() {
+					kubeulstatus = &u
+					break
+				}
+			}
+			if kubeulstatus == nil {
+				err := fmt.Errorf("kube ul status not found")
+				z.log.Errorf("appNetworkDoActivateUnderlayNetwork: %v", err)
+				continue
+			}
+			z.log.Functionf("appNetworkDoActivateUnderlayNetwork: kubeulstatus %+v", kubeulstatus)
+		}
+
 		ulStatus.Bridge = netInstStatus.BridgeName
 		ulStatus.BridgeMac = netInstStatus.BridgeMac
 		ulStatus.BridgeIPAddr = netInstStatus.BridgeIPAddr
-		if ulStatus.AppMacAddr != nil {
-			// User-configured static MAC address.
-			ulStatus.Mac = ulStatus.AppMacAddr
-		} else {
-			ulStatus.Mac = z.generateAppMac(config.UUIDandVersion.UUID, ulNum,
-				status.AppNum, netInstStatus)
-		}
 		ulStatus.HostName = config.Key()
+		if z.hvTypeKube && kubeulstatus != nil {
+			ulStatus.Name = kubeulstatus.Name
+			ulStatus.Vif = kubeulstatus.Vif
+			ulStatus.Mac = kubeulstatus.Mac
+			ulStatus.AllocatedIPv4Addr = kubeulstatus.AllocatedIPv4Addr
+		} else {
+			if ulStatus.AppMacAddr != nil {
+				// User-configured static MAC address.
+				ulStatus.Mac = ulStatus.AppMacAddr
+			} else {
+				ulStatus.Mac = z.generateAppMac(config.UUIDandVersion.UUID, ulNum,
+					status.AppNum, netInstStatus)
+			}
+		}
 		guestIP, err := z.lookupOrAllocateIPv4ForVIF(
-			netInstStatus, *ulStatus, status.UUIDandVersion.UUID)
+			netInstStatus, *ulStatus, status.UUIDandVersion.UUID, kubeulstatus)
 		if err != nil {
 			z.log.Errorf("doActivateAppNetwork(%v/%v): %v",
 				config.UUIDandVersion.UUID, config.DisplayName, err)
@@ -111,7 +136,9 @@ func (z *zedrouter) prepareConfigForVIFs(config types.AppNetworkConfig,
 			VIFNum:         ulNum,
 			GuestIfMAC:     ulStatus.Mac,
 			GuestIP:        guestIP,
+			VifIfName:      ulStatus.Vif,
 		})
+		z.log.Functionf("appNetworkDoActivateUnderlayNetwork: vifs %+v", vifs)
 	}
 	return vifs, nil
 }
@@ -127,7 +154,7 @@ func (z *zedrouter) doActivateAppNetwork(config types.AppNetworkConfig,
 	// Use NIReconciler to configure connection between the app and the network instance(s)
 	// inside the network stack.
 	appConnRecStatus, err := z.niReconciler.ConnectApp(
-		z.runCtx, config, status.AppNum, vifs)
+		z.runCtx, config, status.AppNum, vifs, z.hvTypeKube)
 	if err != nil {
 		err = fmt.Errorf("failed to activate application network: %v", err)
 		z.log.Errorf("doActivateAppNetwork(%v/%v): %v",
@@ -285,6 +312,7 @@ func (z *zedrouter) doUpdateActivatedAppNetwork(oldConfig, newConfig types.AppNe
 		// Error already logged and added to status.
 		return
 	}
+	z.log.Noticef("doUpdateActivatedAppNetwork: vifs %+v", vifs)
 
 	// Update configuration inside the network stack.
 	appConnRecStatus, err := z.niReconciler.ReconnectApp(

@@ -416,6 +416,12 @@ type DiskStatus struct {
 	CustomMeta   string
 }
 
+// CPUKubePrev - remember previous time window recorded cpu stats
+type CPUKubePrev struct {
+	CPUCountNs uint64    // Nanoseconds since last start time
+	StartTime  time.Time // last window start time
+}
+
 // DomainMetric carries CPU and memory usage. UUID=devUUID for the dom0/host metrics overhead
 type DomainMetric struct {
 	UUIDandVersion    UUIDandVersion
@@ -428,6 +434,7 @@ type DomainMetric struct {
 	UsedMemoryPercent float64
 	LastHeard         time.Time
 	Activated         bool
+	Prev              CPUKubePrev // for EVE local record
 }
 
 // Key returns the key for pubsub
