@@ -45,4 +45,5 @@ libvirt-daemon
 libvirt-libs
 libvirt-lxc
 libvirt-qemu
+cni-plugins
 fmt
