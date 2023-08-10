@@ -9,7 +9,7 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	"github.com/satori/go.uuid"
+	uuid "github.com/satori/go.uuid"
 )
 
 // Update this AppInstanceStatus generate config updates to
@@ -212,12 +212,18 @@ func doUpdate(ctx *zedmanagerContext,
 			// HALTED to indicate it is not running since it
 			// might have been halted before the device was rebooted
 			if status.State == types.INSTALLED || status.State == types.START_DELAYED {
-				status.State = types.HALTED
+				log.Noticef("doUpdate: kube mode, set halted, %v", status.State)
+				if !ctx.hvTypeKube {
+					status.State = types.HALTED
+				}
 				changed = true
 			}
 		}
 		log.Functionf("Waiting for config.Activate for %s", uuidStr)
-		return changed
+		// XXX kube mode
+		if !ctx.hvTypeKube {
+			return changed
+		}
 	}
 	log.Functionf("Have config.Activate for %s", uuidStr)
 	c = doActivate(ctx, uuidStr, config, status)
@@ -795,16 +801,19 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 	// XXX compare with equal before setting changed?
 	status.IoAdapterList = ds.IoAdapterList
 	changed = true
-	if ds.State < types.BOOTING {
-		log.Functionf("Waiting for DomainStatus to BOOTING for %s",
-			uuidStr)
-		return changed
+	if !ctx.hvTypeKube {
+		if ds.State < types.BOOTING {
+			log.Functionf("Waiting for DomainStatus to BOOTING for %s",
+				uuidStr)
+			return changed
+		}
+		if ds.Pending() {
+			log.Functionf("Waiting for DomainStatus !Pending for %s", uuidStr)
+			return changed
+		}
+		log.Functionf("Done with DomainStatus for %s", uuidStr)
 	}
-	if ds.Pending() {
-		log.Functionf("Waiting for DomainStatus !Pending for %s", uuidStr)
-		return changed
-	}
-	log.Functionf("Done with DomainStatus for %s", uuidStr)
+	log.Noticef("doActiavate: hack, Done with DomainStatus") // XXX
 
 	if !status.Activated {
 		status.Activated = true

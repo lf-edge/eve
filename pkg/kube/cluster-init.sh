@@ -11,7 +11,8 @@ Node_IP=""
 MAX_K3S_RESTARTS=5
 RESTART_COUNT=0
 k3slogFile="/var/lib/rancher/k3s/k3s.log"
-loglimitSize=$((50*1024*1024))  # 50MB limit
+#loglimitSize=$((50*1024*1024))  # 50MB limit
+loglimitSize=$((5*1024*1024)) # XXX testing
 
 INSTALL_LOG=/var/lib/install.log
 

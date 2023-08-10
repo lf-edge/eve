@@ -160,6 +160,10 @@ type AppInstanceConfig struct {
 	// Contains the configuration of the snapshot handling for the app instance.
 	// Meanwhile, the list of actual snapshots is stored in the AppInstanceStatus.
 	Snapshot SnapshotConfig
+	// XXX hack
+	KubeActivate bool
+	ImageFqdn    string
+	ImageURL     string
 }
 
 type AppInstanceOpsCmd struct {

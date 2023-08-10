@@ -163,6 +163,8 @@ type zedrouter struct {
 
 	// Retry NI or app network config that zedrouter failed to apply
 	retryTimer *time.Timer
+	// kube cluster
+	hvTypeKube bool
 }
 
 // AddAgentSpecificCLIFlags adds CLI options
@@ -201,6 +203,8 @@ func (z *zedrouter) init() (err error) {
 
 	z.zedcloudMetrics = zedcloud.NewAgentMetrics()
 	z.cipherMetrics = cipher.NewAgentMetrics(agentName)
+
+	z.hvTypeKube = base.IsHVTypeKube()
 
 	gcp := *types.DefaultConfigItemValueMap()
 	z.appContainerStatsInterval = gcp.GlobalValueInt(types.AppContainerStatsInterval)
@@ -425,41 +429,7 @@ func (z *zedrouter) run(ctx context.Context) (err error) {
 			z.flowPublish(flowUpdate)
 
 		case ipAssignUpdates := <-ipAssignUpdates:
-			for _, ipAssignUpdate := range ipAssignUpdates {
-				vif := ipAssignUpdate.Prev.VIF
-				newAddrs := ipAssignUpdate.New
-				mac := vif.GuestIfMAC.String()
-				niKey := vif.NI.String()
-				netStatus := z.lookupNetworkInstanceStatus(niKey)
-				if netStatus == nil {
-					z.log.Errorf("Failed to get status for network instance %s "+
-						"(needed to update IPs assigned to VIF %s)",
-						niKey, vif.NetAdapterName)
-					continue
-				}
-				netStatus.IPAssignments[mac] = types.AssignedAddrs{
-					IPv4Addr:  newAddrs.IPv4Addr,
-					IPv6Addrs: newAddrs.IPv6Addrs,
-				}
-				z.publishNetworkInstanceStatus(netStatus)
-				appKey := vif.App.String()
-				appStatus := z.lookupAppNetworkStatus(appKey)
-				if appStatus == nil {
-					z.log.Errorf("Failed to get network status for app %s "+
-						"(needed to update IPs assigned to VIF %s)",
-						appKey, vif.NetAdapterName)
-					continue
-				}
-				for i := range appStatus.UnderlayNetworkList {
-					ulStatus := &appStatus.UnderlayNetworkList[i]
-					if ulStatus.Name != vif.NetAdapterName {
-						continue
-					}
-					z.recordAssignedIPsToULStatus(ulStatus, &newAddrs)
-					break
-				}
-				z.publishAppNetworkStatus(appStatus)
-			}
+			ipAssignUpdate(z, ipAssignUpdates)
 
 		case updates := <-probeUpdates:
 			start := time.Now()
@@ -500,6 +470,45 @@ func (z *zedrouter) run(ctx context.Context) (err error) {
 			z.pubSub.CheckMaxTimeTopic(agentName, "allocatorGC", start,
 				warningTime, errorTime)
 		}
+	}
+}
+
+// ipAssignUpdate
+func ipAssignUpdate(z *zedrouter, ipAssignUpdates []nistate.VIFAddrsUpdate) {
+	for _, ipAssignUpdate := range ipAssignUpdates {
+		vif := ipAssignUpdate.Prev.VIF
+		newAddrs := ipAssignUpdate.New
+		mac := vif.GuestIfMAC.String()
+		niKey := vif.NI.String()
+		netStatus := z.lookupNetworkInstanceStatus(niKey)
+		if netStatus == nil {
+			z.log.Errorf("Failed to get status for network instance %s "+
+				"(needed to update IPs assigned to VIF %s)",
+				niKey, vif.NetAdapterName)
+			continue
+		}
+		netStatus.IPAssignments[mac] = types.AssignedAddrs{
+			IPv4Addr:  newAddrs.IPv4Addr,
+			IPv6Addrs: newAddrs.IPv6Addrs,
+		}
+		z.publishNetworkInstanceStatus(netStatus)
+		appKey := vif.App.String()
+		appStatus := z.lookupAppNetworkStatus(appKey)
+		if appStatus == nil {
+			z.log.Errorf("Failed to get network status for app %s "+
+				"(needed to update IPs assigned to VIF %s)",
+				appKey, vif.NetAdapterName)
+			continue
+		}
+		for i := range appStatus.UnderlayNetworkList {
+			ulStatus := &appStatus.UnderlayNetworkList[i]
+			if ulStatus.Name != vif.NetAdapterName {
+				continue
+			}
+			z.recordAssignedIPsToULStatus(ulStatus, &newAddrs)
+			break
+		}
+		z.publishAppNetworkStatus(appStatus)
 	}
 }
 
@@ -679,9 +688,15 @@ func (z *zedrouter) initSubscriptions() (err error) {
 		return err
 	}
 
+	// Subscribe to AppNetworkConfig from zedkube
+	// since the zedmanager is not publishing the appnetconfig
+	advAgentName := "zedmanager"
+	if z.hvTypeKube {
+		advAgentName = "zedkube"
+	}
 	// Subscribe to AppNetworkConfig from zedmanager
 	z.subAppNetworkConfig, err = z.pubSub.NewSubscription(pubsub.SubscriptionOptions{
-		AgentName:      "zedmanager",
+		AgentName:      advAgentName,
 		MyAgentName:    agentName,
 		TopicImpl:      types.AppNetworkConfig{},
 		Activate:       false,

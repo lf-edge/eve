@@ -891,7 +891,7 @@ func (r *LinuxNIReconciler) DelNI(ctx context.Context,
 // some of the operations will be completed later from within ResumeReconcile() after
 // domainmgr starts the VM.
 func (r *LinuxNIReconciler) ConnectApp(ctx context.Context,
-	appNetConfig types.AppNetworkConfig, appNum int, vifs []AppVIF) (
+	appNetConfig types.AppNetworkConfig, appNum int, vifs []AppVIF, hvTypeKube bool) (
 	AppConnReconcileStatus, error) {
 	contWatcher := r.pauseWatcher()
 	defer contWatcher()
@@ -905,10 +905,15 @@ func (r *LinuxNIReconciler) ConnectApp(ctx context.Context,
 		config: appNetConfig,
 		appNum: appNum,
 	}
+
 	for _, vif := range vifs {
+		hostifname := fmt.Sprintf("%s%dx%d", vifIfNamePrefix, vif.VIFNum, appNum)
+		if hvTypeKube {
+			hostifname = vif.VifIfName
+		}
 		appInfo.vifs = append(appInfo.vifs, vifInfo{
 			AppVIF:     vif,
-			hostIfName: r.generateVifHostIfName(vif.VIFNum, appNum),
+			hostIfName: hostifname,
 		})
 	}
 	r.apps[appID] = appInfo

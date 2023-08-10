@@ -560,7 +560,12 @@ func parseAppInstanceConfig(getconfigCtx *getconfigContext,
 		appInstance.UUIDandVersion.UUID, _ = uuid.FromString(cfgApp.Uuidandversion.Uuid)
 		appInstance.UUIDandVersion.Version = cfgApp.Uuidandversion.Version
 		appInstance.DisplayName = cfgApp.Displayname
-		appInstance.Activate = cfgApp.Activate
+		if getconfigCtx.zedagentCtx.hvTypeKube {
+			appInstance.Activate = false
+			appInstance.KubeActivate = cfgApp.Activate
+		} else {
+			appInstance.Activate = cfgApp.Activate
+		}
 
 		appInstance.FixedResources.Kernel = cfgApp.Fixedresources.Kernel
 		appInstance.FixedResources.BootLoader = cfgApp.Fixedresources.Bootloader
@@ -2564,6 +2569,36 @@ func checkAndPublishAppInstanceConfig(getconfigCtx *getconfigContext,
 		config.Errors = append(config.Errors, err.Error())
 	}
 
+	// XXX hack
+	volumeList0 := config.VolumeRefConfigList[0]
+	pub1 := getconfigCtx.pubVolumeConfig
+	volConfig := pub1.GetAll()
+	var contentID uuid.UUID
+	if volConfig != nil {
+		for _, vol := range volConfig {
+			vol1 := vol.(types.VolumeConfig)
+			if vol1.VolumeID.String() == volumeList0.VolumeID.String() {
+				log.Noticef("checkAndPublishAppInstanceConfig: found contentID %s", vol1.ContentID)
+				contentID = vol1.ContentID
+				break
+			}
+		}
+		if contentID.String() != "" {
+			items := getconfigCtx.pubContentTreeConfig.GetAll()
+			if items != nil {
+				for _, ct := range items {
+					ct1 := ct.(types.ContentTreeConfig)
+					if ct1.ContentID.String() == contentID.String() {
+						log.Noticef("checkAndPublishAppInstanceConfig: found URL")
+						config.ImageURL = ct1.RelativeURL
+						break
+					}
+				}
+			}
+		}
+	}
+	log.Noticef("checkAndPublishAppInstanceConfig: image url %s**", config.ImageURL)
+	// XXX hack
 	pub.Publish(key, config)
 }
 
