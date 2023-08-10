@@ -6,8 +6,8 @@ require (
 	github.com/euank/go-kmsg-parser v2.0.0+incompatible
 	github.com/golang/protobuf v1.5.2
 	github.com/google/go-cmp v0.5.9
-	github.com/lf-edge/eve/api/go v0.0.0-20230306060116-9673fb35833f
-	github.com/lf-edge/eve/pkg/pillar v0.0.0-20230728132627-87a9bc7f4e97
+	github.com/lf-edge/eve-api/go v0.0.0-20230727134029-123abaf9479d
+	github.com/lf-edge/eve/pkg/pillar v0.0.0-20230727061425-295cf5137a5c
 	github.com/sirupsen/logrus v1.9.0
 )
 
@@ -16,7 +16,6 @@ require (
 	github.com/fsnotify/fsnotify v1.5.1 // indirect
 	github.com/go-ole/go-ole v1.2.6 // indirect
 	github.com/google/go-containerregistry v0.8.0 // indirect
-	github.com/lf-edge/eve-api/go v0.0.0-20230725195950-9c64039db587 // indirect
 	github.com/satori/go.uuid v1.2.1-0.20180404165556-75cca531ea76 // indirect
 	github.com/shirou/gopsutil v3.21.11+incompatible // indirect
 	github.com/vishvananda/netlink v1.1.1-0.20210924202909-187053b97868 // indirect

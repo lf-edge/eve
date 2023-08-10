@@ -300,3 +300,65 @@ The uuid of the device running eve-os can be obtained by running following comma
 ```bash
 eve uuid
 ```
+
+## TPM
+
+TPM issues mostly happen due to a PCR mismatch error when EVE tries to unseal the vault key from the TPM. This can happen because of faulty hardware, faulty firmware, change of software/hardware after installation or a malicious attacks.
+
+### Check for PCR mismatch
+
+To check for a PCR mismatch issue, enter debug container and after installing `jq`, search for `mismatch` in logs :
+
+```text
+# eve enter debug
+# apk add jq
+# zcat /persist/newlog/keepSentQueue/* | jq .content | grep mismatch
+# cat /persist/newlog/collect/* | jq .content | grep mismatch
+"Error deriving key for accessing the vault: UnsealWithSession failed: session 1, error code 0x1d : a policy check failed, copied (failed unseal) TPM measurement log, possibly mismatching PCR indexes: [1]"
+"SetupDefaultVault failed, err: error in setting up vault /persist/vault:UnsealWithSession failed: session 1, error code 0x1d : a policy check failed, copied (failed unseal) TPM measurement log, possibly mismatching PCR indexes: [1]"
+```
+
+In the above example, EVE reported a failed unseal operation due to a mismatch in PCR number 1. A good starting point to further diagnose the issue is section "3.3.4 PCR Usage" of [TCG PC Client Platform Firmware Profile Specification](https://trustedcomputinggroup.org/wp-content/uploads/TCG_PCClient_PFP_r1p05_v22_02dec2020.pdf).
+
+### TPM Measurement Logs
+
+In addition to error logs, EVE saves a snapshot of TPM's Stored Measurement Log (SML) on two occasions, 1) when vault key is successfully sealed and 2) when the unseal operation fails. This information can be helpful to pin point the issue by parsing the logs and checking the TPM events. The log files can be collected from `/persist/status`:
+
+```text
+# ls /persist/status/tpm_measurement*
+/persist/status/tpm_measurement_seal_success-tpm0
+/persist/status/tpm_measurement_seal_success-tpm0-backup
+/persist/status/tpm_measurement_unseal_fail-tpm0-backup
+```
+
+Further parsing and diffing the files is possible using tpm2-tools:
+
+```text
+# tpm2_eventlog tpm_measurement_seal_success-tpm0-backup > success.log
+# tpm2_eventlog tpm_measurement_unseal_fail-tpm0-backup > fail.log
+# diff success.log fail.log
+178c178
+<     ImageLocationInMemory: 0x2aac3018
+---
+>     ImageLocationInMemory: 0x2aac8018
+207,208c207,208
+<     Digest: "85262adf74518bbb70c7cb94cd6159d91669e5a81edf1efebd543eadbda9fa2b"
+<   EventSize: 58
+---
+>     Digest: "48621d3825aee2ae3599aca03adb1eaba9e9ec2ea28981f1aebb7691a8119229"
+>   EventSize: 64
+212c212
+<     VariableDataLength: 8
+---
+>     VariableDataLength: 14
+214c214
+<     VariableData: "0500040003000100"
+---
+>     VariableData: "0500040003000100060007000800"
+271a272,313
+>   PCRIndex: 1
+>   EventType: EV_EFI_VARIABLE_BOOT
+>   DigestCount: 1
+>   Digests:
+[...]
+```

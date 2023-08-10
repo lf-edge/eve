@@ -139,9 +139,11 @@ func (status CipherBlockStatus) LogKey() string {
 // api/proto/config/acipherinfo.proto - EncryptionBlock
 // Always need to keep these two consistent.
 type EncryptionBlock struct {
-	DsAPIKey          string
-	DsPassword        string
-	WifiUserName      string // If the authentication type is EAP
-	WifiPassword      string
-	ProtectedUserData string
+	DsAPIKey            string
+	DsPassword          string
+	WifiUserName        string // If the authentication type is EAP
+	WifiPassword        string
+	CellularNetUsername string
+	CellularNetPassword string
+	ProtectedUserData   string
 }

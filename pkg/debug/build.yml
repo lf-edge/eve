@@ -20,6 +20,7 @@ config:
     - /etc/profile.d:/etc/profile.d
     - /run:/root/.ssh
     - /bin/eve:/bin/eve
+    - /usr/bin/service:/usr/bin/service
     - /usr/bin/logread:/usr/bin/logread
     - /usr/bin/ctr:/usr/bin/ctr
     - /usr/bin/runc:/usr/bin/runc

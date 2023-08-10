@@ -87,7 +87,7 @@ publish_location() {
                     # Update location atomically.
                     mv "${OUTPUT}.tmp" "${OUTPUT}"
                   done
-  echo "Location publisher stopped"
+  log_debug "Location publisher stopped"
 }
 
 # Function keeps publishing location updates to /run/wwan/location.json
@@ -109,7 +109,7 @@ location_tracking() {
   while true; do
     if [ "$FIRST_ATTEMPT" = "n" ]; then
       sleep 1 # Maybe intentionally killed, wait before claiming that we will retry.
-      echo "Retrying location tracking after $RETRY_AFTER seconds..."
+      log_debug "Retrying location tracking after $RETRY_AFTER seconds..."
       sleep $RETRY_AFTER
     fi
     FIRST_ATTEMPT=n
@@ -119,20 +119,20 @@ location_tracking() {
     if ! LOC_START="$(timeout -s KILL 60 qmicli -p "--device-open-$PROTOCOL" \
                                                 -d "/dev/$CDC_DEV" --loc-start \
                                                 --client-no-release-cid)"; then
-      echo "Failed to start location service"
+      log_error "Failed to start location service"
       continue
     fi
     CID=$(echo "$LOC_START" | sed -n "s/\s*CID: '\(.*\)'/\1/p")
-    echo "Location tracking CID is $CID"
+    log_debug "Location tracking CID is $CID"
 
     publish_location "$LOGICAL_LABEL" "$PIPE" "$OUTPUT_FILE" &
     PUBLISHER_PID=$!
-    echo "PID of the location publisher is $PUBLISHER_PID"
+    log_debug "PID of the location publisher is $PUBLISHER_PID"
 
     qmicli -p "--device-open-$PROTOCOL" -d "/dev/$CDC_DEV" \
            --loc-follow-position-report "--client-cid=$CID" >"$PIPE" 2>"$STDERR" &
     TRACKER_PID=$!
-    echo "PID of the location tracker is $TRACKER_PID"
+    log_debug "PID of the location tracker is $TRACKER_PID"
 
     # Watchdog - we expect at least one location update every minute,
     # otherwise we consider the location tracking to be stuck.
@@ -140,12 +140,12 @@ location_tracking() {
     while true; do
       sleep 60
       if [ ! -f "$OUTPUT_FILE" ]; then
-        echo "Location info is not available, restarting tracker"
+        log_debug "Location info is not available, restarting tracker"
         break
       fi
       NEW_MODTIME="$(date "+%s" -r "$OUTPUT_FILE" 2>/dev/null)"
       if [ "$MODTIME" = "$NEW_MODTIME" ]; then
-        echo "Location info has not been updated in the last minute, restarting tracker"
+        log_debug "Location info has not been updated in the last minute, restarting tracker"
         break
       fi
       MODTIME="$NEW_MODTIME"
@@ -154,7 +154,7 @@ location_tracking() {
     # Stop location tracking - it is likely stuck.
     kill_process_tree $PUBLISHER_PID >/dev/null 2>&1
     kill_process_tree $TRACKER_PID >/dev/null 2>&1
-    echo "Location tracking was killed"
+    log_debug "Location tracking was killed"
     cat "$STDERR"
 
     # Release client CID

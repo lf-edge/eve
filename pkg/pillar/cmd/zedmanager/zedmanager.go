@@ -25,6 +25,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
+	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
 	"github.com/sirupsen/logrus"
 )
 
@@ -41,27 +42,29 @@ var Version = "No version specified"
 // State used by handlers
 type zedmanagerContext struct {
 	agentbase.AgentBase
-	subAppInstanceConfig  pubsub.Subscription
-	subAppInstanceStatus  pubsub.Subscription // zedmanager both publishes and subscribes to AppInstanceStatus
-	pubAppInstanceStatus  pubsub.Publication
-	pubAppInstanceSummary pubsub.Publication
-	pubVolumeRefConfig    pubsub.Publication
-	subVolumeRefStatus    pubsub.Subscription
-	pubAppNetworkConfig   pubsub.Publication
-	subAppNetworkStatus   pubsub.Subscription
-	pubDomainConfig       pubsub.Publication
-	subDomainStatus       pubsub.Subscription
-	subGlobalConfig       pubsub.Subscription
-	subHostMemory         pubsub.Subscription
-	subZedAgentStatus     pubsub.Subscription
-	pubVolumesSnapConfig  pubsub.Publication
-	subVolumesSnapStatus  pubsub.Subscription
-	globalConfig          *types.ConfigItemValueMap
-	appToPurgeCounterMap  objtonum.Map
-	GCInitialized         bool
-	checkFreedResources   bool // Set when app instance has !Activated
-	currentProfile        string
-	currentTotalMemoryMB  uint64
+	subAppInstanceConfig      pubsub.Subscription
+	subAppInstanceStatus      pubsub.Subscription // zedmanager both publishes and subscribes to AppInstanceStatus
+	subLocalAppInstanceConfig pubsub.Subscription
+	pubLocalAppInstanceConfig pubsub.Publication
+	pubAppInstanceStatus      pubsub.Publication
+	pubAppInstanceSummary     pubsub.Publication
+	pubVolumeRefConfig        pubsub.Publication
+	subVolumeRefStatus        pubsub.Subscription
+	pubAppNetworkConfig       pubsub.Publication
+	subAppNetworkStatus       pubsub.Subscription
+	pubDomainConfig           pubsub.Publication
+	subDomainStatus           pubsub.Subscription
+	subGlobalConfig           pubsub.Subscription
+	subHostMemory             pubsub.Subscription
+	subZedAgentStatus         pubsub.Subscription
+	pubVolumesSnapConfig      pubsub.Publication
+	subVolumesSnapStatus      pubsub.Subscription
+	globalConfig              *types.ConfigItemValueMap
+	appToPurgeCounterMap      objtonum.Map
+	GCInitialized             bool
+	checkFreedResources       bool // Set when app instance has !Activated
+	currentProfile            string
+	currentTotalMemoryMB      uint64
 	// The time from which the configured applications delays should be counted
 	delayBaseTime time.Time
 	// cli options
@@ -215,6 +218,33 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	}
 	ctx.subAppInstanceConfig = subAppInstanceConfig
 	subAppInstanceConfig.Activate()
+
+	// Get AppInstanceConfig from zedmanager itself
+	subLocalAppInstanceConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     agentName,
+		MyAgentName:   agentName,
+		TopicImpl:     types.AppInstanceConfig{},
+		Activate:      false,
+		Ctx:           &ctx,
+		CreateHandler: handleLocalAppInstanceConfigCreate,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctx.subLocalAppInstanceConfig = subLocalAppInstanceConfig
+	subLocalAppInstanceConfig.Activate()
+
+	pubLocalAppInstanceConfig, err := ps.NewPublication(pubsub.PublicationOptions{
+		AgentName: agentName,
+		TopicType: types.AppInstanceConfig{},
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctx.pubLocalAppInstanceConfig = pubLocalAppInstanceConfig
+	pubLocalAppInstanceConfig.ClearRestarted()
 
 	// Look for VolumeRefStatus from volumemgr
 	subVolumeRefStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
@@ -383,6 +413,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		case change := <-subAppInstanceConfig.MsgChan():
 			subAppInstanceConfig.ProcessChange(change)
 
+		case change := <-subLocalAppInstanceConfig.MsgChan():
+			subLocalAppInstanceConfig.ProcessChange(change)
+
 		case change := <-subZedAgentStatus.MsgChan():
 			subZedAgentStatus.ProcessChange(change)
 
@@ -412,6 +445,54 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	}
 }
 
+func handleLocalAppInstanceConfigCreate(ctx interface{}, key string, config interface{}) {
+	log.Noticef("handleLocalAppInstanceConfigCreate(%s)", key)
+	zedmanagerCtx := ctx.(*zedmanagerContext)
+	localConfig := config.(types.AppInstanceConfig)
+	oldConfig := lookupAppInstanceConfig(zedmanagerCtx, localConfig.Key(), false)
+	if oldConfig == nil {
+		log.Fatalf("handleLocalAppInstanceConfigCreate: no regular AppInstanceConfig for %s", key)
+	}
+	handleModify(ctx, key, localConfig, *oldConfig)
+}
+
+func restoreAvailableSnapshots(aiStatus *types.AppInstanceStatus) {
+	// List all the directories that are present in snapshots directory
+	// and restore the snapshot status for each of them
+	snapDir := types.SnapshotsDirname
+	dirEntries, err := os.ReadDir(snapDir)
+	if err != nil {
+		log.Warnf("No %s directory, nothing to restore", snapDir)
+		return
+	}
+	for _, dirEntry := range dirEntries {
+		if !dirEntry.IsDir() {
+			continue
+		}
+		snapshotID := dirEntry.Name()
+		// Figure out the ID of the app that this snapshot belongs to
+		aiConfig := deserializeAppInstanceConfigFromSnapshot(snapshotID)
+		if aiConfig == nil {
+			log.Warnf("cannot deserialize config for snapshot %s", snapshotID)
+			continue
+		}
+		if aiConfig.UUIDandVersion.UUID != aiStatus.UUIDandVersion.UUID {
+			// This snapshot is not for this app
+			continue
+		}
+		// Get the metadata for this snapshot
+		var availableSnapshot *types.SnapshotInstanceStatus
+		availableSnapshot, err = deserializeSnapshotInstanceStatus(snapshotID)
+		if err != nil {
+			log.Errorf("restoreAvailableSnapshots: %s", err)
+			continue
+		}
+		log.Noticef("restoreAvailableSnapshots: %s", availableSnapshot.Snapshot.SnapshotID)
+		// add to the list of the available snapshots
+		aiStatus.SnapStatus.AvailableSnapshots = append(aiStatus.SnapStatus.AvailableSnapshots, *availableSnapshot)
+	}
+}
+
 func checkRetry(ctxPtr *zedmanagerContext) {
 	log.Noticef("checkRetry")
 	items := ctxPtr.pubAppInstanceStatus.GetAll()
@@ -420,7 +501,7 @@ func checkRetry(ctxPtr *zedmanagerContext) {
 		if !status.MissingMemory {
 			continue
 		}
-		config := lookupAppInstanceConfig(ctxPtr, status.Key())
+		config := lookupAppInstanceConfig(ctxPtr, status.Key(), true)
 		if config == nil {
 			log.Noticef("checkRetry: %s waiting for memory but no config",
 				status.Key())
@@ -444,6 +525,9 @@ func checkDelayedStartApps(ctx *zedmanagerContext) {
 	configs := ctx.subAppInstanceConfig.GetAll()
 	for _, c := range configs {
 		config := c.(types.AppInstanceConfig)
+		if localConfig := lookupLocalAppInstanceConfig(ctx, config.Key()); localConfig != nil {
+			config = *localConfig
+		}
 		status := lookupAppInstanceStatus(ctx, config.Key())
 		// Is the application in the delayed state and ready to be started?
 		if status != nil && status.State == types.START_DELAYED && status.StartTime.Before(time.Now()) {
@@ -522,7 +606,7 @@ func publishAppInstanceSummary(ctxPtr *zedmanagerContext) {
 	for _, st := range items {
 		status := st.(types.AppInstanceStatus)
 		effectiveActivate := false
-		config := lookupAppInstanceConfig(ctxPtr, status.Key())
+		config := lookupAppInstanceConfig(ctxPtr, status.Key(), true)
 		if config != nil {
 			effectiveActivate = effectiveActivateCurrentProfile(*config, ctxPtr.currentProfile)
 		}
@@ -598,12 +682,33 @@ func lookupAppInstanceStatus(ctx *zedmanagerContext, key string) *types.AppInsta
 	return &status
 }
 
-func lookupAppInstanceConfig(ctx *zedmanagerContext, key string) *types.AppInstanceConfig {
-
+// lookupAppInstanceConfig returns the AppInstanceConfig for the given key. If checkLocal is true, then the local
+// AppInstanceConfig subscription is checked first, not the regular one. The local subscription is used for
+// AppInstanceConfig that comes from snapshot during a rollback.
+func lookupAppInstanceConfig(ctx *zedmanagerContext, key string, checkLocal bool) *types.AppInstanceConfig {
+	if checkLocal {
+		sub := ctx.subLocalAppInstanceConfig
+		c, _ := sub.Get(key)
+		if c != nil {
+			config := c.(types.AppInstanceConfig)
+			return &config
+		}
+	}
 	sub := ctx.subAppInstanceConfig
 	c, _ := sub.Get(key)
 	if c == nil {
 		log.Tracef("lookupAppInstanceConfig(%s) not found", key)
+		return nil
+	}
+	config := c.(types.AppInstanceConfig)
+	return &config
+}
+
+func lookupLocalAppInstanceConfig(ctx *zedmanagerContext, key string) *types.AppInstanceConfig {
+	sub := ctx.subLocalAppInstanceConfig
+	c, _ := sub.Get(key)
+	if c == nil {
+		log.Tracef("lookupLocalAppInstanceConfig(%s) not found", key)
 		return nil
 	}
 	config := c.(types.AppInstanceConfig)
@@ -805,9 +910,6 @@ func prepareVolumesSnapshotConfigs(ctx *zedmanagerContext, config types.AppInsta
 			for _, volumeRefConfig := range config.VolumeRefConfigList {
 				log.Noticef("Adding volume %s to volumesSnapshotConfig", volumeRefConfig.VolumeID)
 				volumesSnapshotConfig.VolumeIDs = append(volumesSnapshotConfig.VolumeIDs, volumeRefConfig.VolumeID)
-				// Increment the reference count for the volume, so it's not deleted when it's temporary not used by any application
-				volumeRefConfig.RefCount++
-				publishVolumeRefConfig(ctx, &volumeRefConfig)
 			}
 			volumesSnapshotConfigList = append(volumesSnapshotConfigList, volumesSnapshotConfig)
 		}
@@ -827,94 +929,23 @@ func removePreparedVolumesSnapshotConfig(status *types.AppInstanceStatus, id str
 	}
 }
 
-// saveConfigForSnapshots saves the config for the snapshots for which the config has been prepared
-func saveConfigForSnapshots(ctx *zedmanagerContext, status *types.AppInstanceStatus, config types.AppInstanceConfig) error {
+// saveAppInstanceConfigForSnapshot saves the config for the snapshots for which the config has been prepared
+func saveAppInstanceConfigForSnapshot(status *types.AppInstanceStatus, config types.AppInstanceConfig) error {
 	for i, snapshot := range status.SnapStatus.PreparedVolumesSnapshotConfigs {
 		// Set the old config version to the snapshot status
 		status.SnapStatus.RequestedSnapshots[i].ConfigVersion = config.UUIDandVersion
 		// Serialize the old config and store it in a file
-		err := serializeConfigToSnapshot(config, snapshot.SnapshotID)
+		err := serializeAppInstanceConfigToSnapshot(config, snapshot.SnapshotID)
 		if err != nil {
 			log.Errorf("Failed to serialize the old config for %s, error: %s", config.DisplayName, err)
 			return err
 		}
-		err = serializeVolumeRefStatusesToSnapshot(ctx, config, snapshot.SnapshotID)
-		if err != nil {
-			log.Errorf("Failed to serialize the volume ref statuses for %s, error: %s", config.DisplayName, err)
-			return err
-		}
 	}
 	return nil
 }
 
-func serializeVolumeRefStatusesToSnapshot(ctx *zedmanagerContext, config types.AppInstanceConfig, snapshotID string) error {
-	for _, volumeRefConfig := range config.VolumeRefConfigList {
-		volumeRefStatus := lookupVolumeRefStatus(ctx, volumeRefConfig.Key())
-		if volumeRefStatus == nil {
-			log.Errorf("Failed to find the volume ref status for %s", volumeRefConfig.VolumeID)
-			return fmt.Errorf("failed to find the volume ref status for %s", volumeRefConfig.VolumeID)
-		}
-		// Serialize the volume ref status and store it in a file
-		err := serializeVolumeRefStatusToSnapshot(volumeRefStatus, snapshotID)
-		if err != nil {
-			log.Errorf("Failed to serialize the volume ref status for %s, error: %s", volumeRefConfig.VolumeID, err)
-			return err
-		}
-	}
-	return nil
-}
-
-func serializeVolumeRefStatusToSnapshot(status *types.VolumeRefStatus, snapshotID string) error {
-	filename := getVolumeRefStatusFilename(status.VolumeID.String(), snapshotID)
-	log.Noticef("Serializing the volume ref status for %s to %s", status.VolumeID, filename)
-	statusAsBytes, err := json.Marshal(status)
-	if err != nil {
-		log.Errorf("Failed to marshal the volume ref status for %s, error: %s", status.VolumeID, err)
-		return err
-	}
-	// Create the file for storing the volume ref status
-	err = os.WriteFile(filename, statusAsBytes, 0644)
-	if err != nil {
-		log.Errorf("Failed to write the volume ref status for %s, error: %s", status.VolumeID, err)
-		return err
-	}
-	log.Noticef("Successfully serialized the volume ref status for %s to %s", status.VolumeID, filename)
-	return nil
-}
-
-func deserializeVolumeRefStatusFromSnapshot(volumeID string, snapshotID string) (*types.VolumeRefStatus, error) {
-	// read the volume ref status from the file
-	filename := getVolumeRefStatusFilename(volumeID, snapshotID)
-	log.Noticef("Deserializing the volume ref status for %s from %s", volumeID, filename)
-	// check the file exists
-	if _, err := os.Stat(filename); os.IsNotExist(err) {
-		log.Errorf("Failed to find the volume ref status file for %s", volumeID)
-		return nil, err
-	}
-	// open the file
-	volumeRefStatusFile, err := os.Open(filename)
-	if err != nil {
-		log.Errorf("Failed to open the volume ref status file for %s, error: %s", volumeID, err)
-		return nil, err
-	}
-	defer volumeRefStatusFile.Close()
-	// deserialize the volume ref status
-	volumeRefStatus := types.VolumeRefStatus{}
-	err = json.NewDecoder(volumeRefStatusFile).Decode(&volumeRefStatus)
-	if err != nil {
-		log.Errorf("Failed to deserialize the volume ref status for %s, error: %s", volumeID, err)
-		return nil, err
-	}
-	log.Noticef("Successfully deserialized the volume ref status for %s from %s", volumeID, filename)
-	return &volumeRefStatus, nil
-}
-
-func getVolumeRefStatusFilename(volumeID string, snapshotID string) string {
-	return fmt.Sprintf("%s/%s.json", getSnapshotDir(snapshotID), volumeID)
-}
-
-// serializeConfigToSnapshot serializes the config to a file
-func serializeConfigToSnapshot(config types.AppInstanceConfig, snapshotID string) error {
+// serializeAppInstanceConfigToSnapshot serializes the config to a file
+func serializeAppInstanceConfigToSnapshot(config types.AppInstanceConfig, snapshotID string) error {
 	// Store the old config in a file, so that we can use it to roll back to the previous version
 	// if the upgrade fails
 	configAsBytes, err := json.Marshal(config)
@@ -922,25 +953,20 @@ func serializeConfigToSnapshot(config types.AppInstanceConfig, snapshotID string
 		log.Errorf("Failed to marshal the old config for %s, error: %s", config.DisplayName, err)
 		return err
 	}
-	snapshotDir := getSnapshotDir(snapshotID)
+	snapshotDir := types.GetSnapshotDir(snapshotID)
 	// Create the directory for storing the old config
 	err = os.MkdirAll(snapshotDir, 0755)
 	if err != nil {
 		log.Errorf("Failed to create the config dir for %s, error: %s", config.DisplayName, err)
 		return err
 	}
-	configFile := fmt.Sprintf("%s/%s", snapshotDir, types.SnapshotConfigFilename)
-	err = os.WriteFile(configFile, configAsBytes, 0644)
+	configFile := types.GetSnapshotAppInstanceConfigFile(snapshotID)
+	err = fileutils.WriteRename(configFile, configAsBytes)
 	if err != nil {
 		log.Errorf("Failed to write the old config for %s, error: %s", config.DisplayName, err)
 		return err
 	}
 	return nil
-}
-
-func getSnapshotDir(snapshotID string) string {
-	snapshotDir := fmt.Sprintf("%s/%s", types.SnapshotsDirname, snapshotID)
-	return snapshotDir
 }
 
 func handleCreate(ctxArg interface{}, key string,
@@ -960,6 +986,8 @@ func handleCreate(ctxArg interface{}, key string,
 
 	// Calculate the moment when the application should start, taking into account the configured delay
 	status.StartTime = ctx.delayBaseTime.Add(config.Delay)
+
+	restoreAvailableSnapshots(&status)
 
 	updateSnapshotsInAIStatus(&status, config)
 
@@ -1059,6 +1087,35 @@ func handleModify(ctxArg interface{}, key string,
 	log.Functionf("handleModify(%v) for %s",
 		config.UUIDandVersion, config.DisplayName)
 
+	localConfig := lookupLocalAppInstanceConfig(ctx, config.Key())
+	if localConfig != nil {
+		config = *localConfig
+	}
+
+	// Check if we need to roll back to a snapshot
+	if config.Snapshot.RollbackCmd.Counter > oldConfig.Snapshot.RollbackCmd.Counter {
+		log.Noticef("handleModify(%v) for %s: Snapshot to be rolled back: %v",
+			config.UUIDandVersion, config.DisplayName, config.Snapshot.ActiveSnapshot)
+		status.SnapStatus.ActiveSnapshot = config.Snapshot.ActiveSnapshot
+		snappedAppInstanceConfig, err := restoreAppInstanceConfigFromSnapshot(ctx, status, config.Snapshot.ActiveSnapshot)
+		if err != nil {
+			errStr := fmt.Sprintf("Error restoring config from snapshot %s: %s", config.Snapshot.ActiveSnapshot, err)
+			log.Errorf("handleModify(%s) failed: %s", status.Key(), errStr)
+			status.SetError(errStr, time.Now())
+			return
+		}
+		// Remove the volume ref statuses that are not in the snapshot. Need to remove the corresponding volumes properly
+		removeUnusedVolumeRefStatuses(ctx, snappedAppInstanceConfig, status)
+		log.Noticef("handleModify: switch config to snapshot %s, version %s", status.SnapStatus.ActiveSnapshot, snappedAppInstanceConfig.UUIDandVersion.Version)
+		status.SnapStatus.HasRollbackRequest = true
+		status.SnapStatus.RollbackInProgress = true
+		publishAppInstanceStatus(ctx, status)
+		config = *snappedAppInstanceConfig
+		// Since now the config been handled here and the one in the channel are different, so we need to ignore the config in the channel
+		publishLocalAppInstanceConfig(ctx, &config)
+		return
+	}
+
 	status.StartTime = ctx.delayBaseTime.Add(config.Delay)
 
 	updateSnapshotsInAIStatus(status, config)
@@ -1086,7 +1143,7 @@ func handleModify(ctxArg interface{}, key string,
 		// it's triggered. We cannot trigger the snapshot creation here immediately, as the VM
 		// should be stopped first. But we still need to save the list of volumes that are known only at this point.
 		status.SnapStatus.PreparedVolumesSnapshotConfigs = prepareVolumesSnapshotConfigs(ctx, oldConfig, status)
-		err := saveConfigForSnapshots(ctx, status, oldConfig)
+		err := saveAppInstanceConfigForSnapshot(status, oldConfig)
 		if err != nil {
 			log.Errorf("handleModify(%v) for %s: error saving old config for snapshots: %v",
 				config.UUIDandVersion, config.DisplayName, err)
@@ -1126,7 +1183,8 @@ func handleModify(ctxArg interface{}, key string,
 	}
 
 	if config.PurgeCmd.Counter != oldConfig.PurgeCmd.Counter ||
-		config.LocalPurgeCmd.Counter != oldConfig.LocalPurgeCmd.Counter {
+		config.LocalPurgeCmd.Counter != oldConfig.LocalPurgeCmd.Counter ||
+		(needPurge && status.SnapStatus.HasRollbackRequest) {
 		log.Functionf("handleModify(%v) for %s purgecmd from %d/%d to %d/%d "+
 			"needPurge: %v",
 			config.UUIDandVersion, config.DisplayName,
@@ -1150,17 +1208,6 @@ func handleModify(ctxArg interface{}, key string,
 		return
 	}
 
-	if config.Snapshot.RollbackCmd.Counter > oldConfig.Snapshot.RollbackCmd.Counter {
-		log.Noticef("handleModify(%v) for %s: Snapshot to be rolled back: %v",
-			config.UUIDandVersion, config.DisplayName, config.Snapshot.ActiveSnapshot)
-		status.SnapStatus.HasRollbackRequest = true
-		status.SnapStatus.ActiveSnapshot = config.Snapshot.ActiveSnapshot
-		// Mark the VM to be rebooted
-		status.RestartInprogress = types.BringDown
-		status.State = types.RESTARTING
-		status.RestartStartedAt = time.Now()
-	}
-
 	status.UUIDandVersion = config.UUIDandVersion
 	publishAppInstanceStatus(ctx, status)
 
@@ -1171,6 +1218,45 @@ func handleModify(ctxArg interface{}, key string,
 	}
 	publishAppInstanceStatus(ctx, status)
 	log.Functionf("handleModify done for %s", config.DisplayName)
+}
+
+func removeUnusedVolumeRefStatuses(ctx *zedmanagerContext, config *types.AppInstanceConfig, status *types.AppInstanceStatus) {
+	// Remove any volumeRefStatuses that are no longer referenced by the config
+	for _, vrs := range status.VolumeRefStatusList {
+		found := false
+		for _, vrc := range config.VolumeRefConfigList {
+			if vrs.VolumeID == vrc.VolumeID {
+				found = true
+				break
+			}
+		}
+		if !found {
+			log.Functionf("Removing VolumeRefStatus for %s", vrs.VolumeID)
+			//remove from the volume ref status list
+			for i, vrs1 := range status.VolumeRefStatusList {
+				if vrs1.VolumeID == vrs.VolumeID {
+					status.VolumeRefStatusList = append(status.VolumeRefStatusList[:i], status.VolumeRefStatusList[i+1:]...)
+					break
+				}
+			}
+			//unpublish the volume ref config
+			unpublishVolumeRefConfig(ctx, vrs.Key())
+		}
+	}
+
+}
+
+func unpublishLocalAppInstanceConfig(ctx *zedmanagerContext, key string) {
+	log.Noticef("unpublishLocalAppInstanceConfig(%v)", key)
+	pub := ctx.pubLocalAppInstanceConfig
+	pub.Unpublish(key)
+}
+
+func publishLocalAppInstanceConfig(ctx *zedmanagerContext, appInstanceConfig *types.AppInstanceConfig) {
+	key := appInstanceConfig.Key()
+	log.Noticef("publishLocalAppInstanceConfig(%v)", key)
+	pub := ctx.pubLocalAppInstanceConfig
+	_ = pub.Publish(key, *appInstanceConfig)
 }
 
 func handleDelete(ctx *zedmanagerContext, key string,
@@ -1213,12 +1299,12 @@ func quantifyChanges(config types.AppInstanceConfig, oldConfig types.AppInstance
 	} else {
 		for _, vrc := range config.VolumeRefConfigList {
 			vrs := getVolumeRefStatusFromAIStatus(&status, vrc)
-			// During a rollback, we may not have a VolumeRefStatus for a volume, but the volume is still expected to be present
-			if vrs == nil && !status.SnapStatus.RollbackInProgress && status.SnapStatus.ConfigBeforeRollback != config.UUIDandVersion {
+			if vrs == nil {
 				str := fmt.Sprintf("Missing VolumeRefStatus for "+
 					"(VolumeID: %s, GenerationCounter: %d, LocalGenerationCounter: %d)",
 					vrc.VolumeID, vrc.GenerationCounter, vrc.LocalGenerationCounter)
-				log.Errorf(str)
+				// It can be a part of rollback
+				log.Warn(str)
 				needPurge = true
 				purgeReason += str + "\n"
 				continue
@@ -1389,6 +1475,9 @@ func updateBasedOnProfile(ctx *zedmanagerContext, oldProfile string) {
 	items := pub.GetAll()
 	for _, c := range items {
 		config := c.(types.AppInstanceConfig)
+		if localConfig := lookupLocalAppInstanceConfig(ctx, config.Key()); localConfig != nil {
+			config = *localConfig
+		}
 		effectiveActivate := effectiveActivateCurrentProfile(config, ctx.currentProfile)
 		effectiveActivateOld := effectiveActivateCurrentProfile(config, oldProfile)
 		if effectiveActivateOld == effectiveActivate {

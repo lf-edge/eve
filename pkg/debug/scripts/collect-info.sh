@@ -5,7 +5,10 @@
 #
 
 # Script version, don't forget to bump up once something is changed
-VERSION=5
+VERSION=6
+
+# Add required packages here, it will be passed to "apk add".
+PKG_DEPS="procps dmidecode iptables dhcpcd"
 
 DATE=$(date -Is)
 INFO_DIR="eve-info-v$VERSION-$DATE"
@@ -44,18 +47,17 @@ DIR="$TMP_DIR/$INFO_DIR"
 mkdir -p "$DIR"
 mkdir -p "$DIR/network"
 
-# Install GNU version of the 'ps', 'tar' and other tools
-echo "- install GNU tools"
-apk add procps tar dmidecode >/dev/null 2>&1
+# Check for internet access, timeouts at 30 seconds,
+# If there is internet access, install required GNU utilities and networking tools.
+if nc -z -w 30 dl-cdn.alpinelinux.org 443 2>/dev/null; then
+  echo "- install GNU utilities and networking tools"
+  # shellcheck disable=SC2086
+  apk add $PKG_DEPS >/dev/null 2>&1
+fi
 
 collect_network_info()
 {
     echo "- network info"
-
-    # Install missing tools
-    echo "   - install networking GNU tools"
-    apk add iptables dhcpcd >/dev/null 2>&1
-
     echo "   - ifconfig, ip, arp, netstat, iptables"
     ifconfig       > "$DIR/network/ifconfig"
     ip -s link     > "$DIR/network/ip-s-link"
@@ -151,13 +153,13 @@ find /sys/kernel/security -name "tpm*" | while read -r TPM; do
         TPM_LOG_INFO="$(basename "$TPM").evtlog_info"
         TPM_EVT_LOG_SIZE=$(wc -c "$TPM/binary_bios_measurements" | cut -d ' ' -f1)
         # read max size is 1mb
-        if [ $TPM_EVT_LOG_SIZE -gt 1048576 ]; then
+        if [ "$TPM_EVT_LOG_SIZE" -gt 1048576 ]; then
             TPM_EVT_LOG_SIZE=1048576
             echo "tpm log is truncated" > "$DIR/$TPM_LOG_INFO"
         else
             echo "tpm log is NOT truncated" > "$DIR/$TPM_LOG_INFO"
         fi
-        dd if="$TPM/binary_bios_measurements" of="$DIR/$TPM_LOG_BIN" bs=1 count=$TPM_EVT_LOG_SIZE
+        dd if="$TPM/binary_bios_measurements" of="$DIR/$TPM_LOG_BIN" bs=1 count="$TPM_EVT_LOG_SIZE"
     fi
 done
 

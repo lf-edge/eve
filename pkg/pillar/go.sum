@@ -632,8 +632,6 @@ github.com/envoyproxy/go-control-plane v0.9.10-0.20210907150352-cf90f659a021/go.
 github.com/envoyproxy/go-control-plane v0.10.1/go.mod h1:AY7fTTXNdv/aJ2O5jwpxAPOWUZ7hQAEvzN5Pf27BkQQ=
 github.com/envoyproxy/protoc-gen-validate v0.1.0/go.mod h1:iSmxcyjqTsJpI2R4NaDN7+kN2VEUnK/pcBlmesArF7c=
 github.com/envoyproxy/protoc-gen-validate v0.6.2/go.mod h1:2t7qjJNvHPx8IjnBOzl9E9/baC+qXE/TeeyBRzgJDws=
-github.com/eriknordmark/ipinfo v0.0.0-20190220084921-7ee0839158f9 h1:DiIi8XZvZ36gVZj+ZQ4xMT/ZknKJA1yRYv8yqi6Dcbk=
-github.com/eriknordmark/ipinfo v0.0.0-20190220084921-7ee0839158f9/go.mod h1:m5kR+NOoKCuA5r6T+9f7q7VfPjPhHskhmxRAebb7avM=
 github.com/eriknordmark/ipinfo v0.0.0-20230728132417-2d8f4da903d7 h1:25R+h8+75+zyY0+/6TfUsz/arhEltIwNMgDH6IGJ/tc=
 github.com/eriknordmark/ipinfo v0.0.0-20230728132417-2d8f4da903d7/go.mod h1:m5kR+NOoKCuA5r6T+9f7q7VfPjPhHskhmxRAebb7avM=
 github.com/estesp/manifest-tool/v2 v2.0.6-0.20220728154431-89d791ab7966 h1:Hlw3XgTSejseEVY+URYLZKmJf2iXDT9IzBa/rvJZ8zc=

@@ -269,10 +269,10 @@ RUN make -j "$(getconf _NPROCESSORS_ONLN)" CROSS_COMPILE="${CROSS_COMPILE_ENV}" 
     -C /tmp/rtl8821CU KSRC=/linux modules && \
     install -D -p -m 644 /tmp/rtl8821CU/8821cu.ko $(echo /tmp/kernel-modules/lib/modules/*)/kernel/drivers/net/wireless/realtek/rtl8821cu/8821cu.ko
 
-# Strip at least some of the modules to conserve space
+# Strip all the modules to conserve space
 RUN if [ "${EVE_TARGET_ARCH}" = aarch64 ];then "${CROSS_COMPILE_ENV}strip" --strip-debug `find /tmp/kernel-modules/lib/modules -name \*.ko` ;fi
 
-# Resign stripped kernel modules again
+# Sign stripped kernel modules again
 RUN if [ "${EVE_TARGET_ARCH}" = aarch64 ];then \
     KERNEL_DEF_CONF="/linux/arch/${KERNEL_ARCH}/configs/${KERNEL_DEFCONFIG}"; \
     if grep -q "^CONFIG_MODULE_SIG_FORCE=y" "${KERNEL_DEF_CONF}" ;then \
@@ -280,7 +280,7 @@ RUN if [ "${EVE_TARGET_ARCH}" = aarch64 ];then \
     fi \
 fi
 
-# Sign out-of-tree module(s)
+# Sign out-of-tree module(s) + stripped ZFS modules on ARM
 WORKDIR /linux
 SHELL ["/bin/ash", "-eo", "pipefail", "-c"]
 # hadolint ignore=SC2086,SC2046
@@ -290,9 +290,14 @@ RUN KERNEL_DEF_CONF="/linux/arch/${KERNEL_ARCH}/configs/${KERNEL_DEFCONFIG}"; \
         SIG_KEY_SRCPREFIX=$(sed -n '/^MODULE_SIG_KEY_SRCPREFIX=/s///p' ${KERNEL_DEF_CONF} | tr -d '"') ; \
         SIG_KEY=$(sed -n '/^CONFIG_MODULE_SIG_KEY=/s///p' ${KERNEL_DEF_CONF} | tr -d '"') ; \
         scripts/sign-file "${SIG_HASH}" "/linux/${SIG_KEY_SRCPREFIX}${SIG_KEY}" /linux/certs/signing_key.x509 $(find /tmp/kernel-modules/lib/modules -name 8821cu.ko); \
+        if [ "${EVE_TARGET_ARCH}" = aarch64 ];then \
+            for m in $(find /tmp/kernel-modules/lib/modules/*/extra -name "*.ko"); do \
+                scripts/sign-file "${SIG_HASH}" "/linux/${SIG_KEY_SRCPREFIX}${SIG_KEY}" /linux/certs/signing_key.x509 ${m}; \
+            done \
+        fi \
     fi
 
-# copy build time gnerated module-signing public key, used for diffing builds
+# copy build time generated module-signing public key, used for diffing builds
 RUN DVER=$(basename "$(find /tmp/kernel-modules/lib/modules/ -mindepth 1 -maxdepth 1)"); \
     if [ -f "/linux/certs/signing_key.x509" ]; then \
         cp /linux/certs/signing_key.x509 "/tmp/kernel-modules/lib/modules/$DVER"; \

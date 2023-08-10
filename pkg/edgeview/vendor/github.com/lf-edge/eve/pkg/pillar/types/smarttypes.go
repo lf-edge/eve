@@ -5,18 +5,18 @@
 
 package types
 
-//DeviceSmartInfo holds SMART details of the device
+// DeviceSmartInfo holds SMART details of the device
 type DeviceSmartInfo struct {
 	PowerOnTime     PowerOnTime `json:"power_on_time"`
 	PowerCycleCount int64       `json:"power_cycle_count"`
 }
 
-//PowerOnTime of the disk
+// PowerOnTime of the disk
 type PowerOnTime struct {
 	Hours int64 `json:"hours"`
 }
 
-//NewSmartDataWithDefaults returns 'SmartData' with default values
+// NewSmartDataWithDefaults returns 'SmartData' with default values
 func NewSmartDataWithDefaults() *DeviceSmartInfo {
 	return &DeviceSmartInfo{
 		PowerOnTime:     PowerOnTime{Hours: -1},
@@ -65,7 +65,7 @@ const (
 	SmartAttrIDRealLocatedEventCount int = 196
 )
 
-//DAttrTable have smart attr received via API
+// DAttrTable have smart attr received via API
 type DAttrTable struct {
 	ID       int
 	Value    int
@@ -74,7 +74,7 @@ type DAttrTable struct {
 	RawValue int
 }
 
-//DiskSmartInfo have smart data received via API
+// DiskSmartInfo have smart data received via API
 type DiskSmartInfo struct {
 	DiskName         string   // /dev/sda
 	DiskType         DiskType //SATA, SCSI, NVME    enum
