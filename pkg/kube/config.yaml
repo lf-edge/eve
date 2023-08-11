@@ -5,3 +5,7 @@ write-kubeconfig-mode: "0644"
 cluster-init: true
 log: "/var/lib/rancher/k3s/k3s.log"
 debug: true
+etcd-arg:
+  - heartbeat-interval: 30000
+  - election-timeout: 30000
+etcd-expose-metrics: true
