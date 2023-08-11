@@ -5,11 +5,19 @@ package main
 
 import (
 	"bytes"
+	"crypto/aes"
+	"crypto/cipher"
+	"crypto/rand"
+	"crypto/rsa"
 	"encoding/json"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"net"
 	"net/http"
+	"os"
+	"os/exec"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -17,6 +25,7 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"golang.org/x/crypto/ssh"
 )
 
 type wsMessage struct {
@@ -75,6 +84,14 @@ const (
 	tcpMaxMappingNUM  int           = 5
 	tcpIdleTimeoutSec float64       = 1800.0
 	tcpCheckTimeout   time.Duration = 300 * time.Second
+	tcpKubeEndpoint   string        = "localhost:6443"
+	kubeYamlFile      string        = "/run/.kube/k3s/k3s.yaml"
+	kubeConfigFile    string        = "kube-config-yaml"
+	kubeSymKeyFile    string        = "kube-symmetric-file.enc"
+	kubeServerFile    string        = "/tmp/" + kubeConfigFile
+	kubeClientFile    string        = fileCopyDir + kubeConfigFile
+	symKeyClientFile  string        = fileCopyDir + kubeSymKeyFile
+	kubeClientTmpFile string        = fileCopyDir + "tmp-config-file"
 )
 
 const (
@@ -272,37 +289,52 @@ func recvServerData(mtype int, message []byte) {
 func setAndStartProxyTCP(opt string) {
 	var ipAddrPort []string
 	var proxySvr *http.Server
+	var kubeport int
 	proxyServerDone := make(chan struct{})
 
 	mappingCnt := 1
 	ipAddrPort = make([]string, mappingCnt)
 
-	var hasProxy bool
+	var hasProxy, hasKube bool
 	var proxyDNSIP string
+	kubenum := edgeviewInstID - 1
+	if kubenum < 0 {
+		kubenum = 0
+	}
 	if strings.Contains(opt, "/") {
-		var gotProxy bool
+		var gotProxy, gotKube bool
 		params := strings.Split(opt, "/")
 		mappingCnt = len(params)
 		ipAddrPort = make([]string, mappingCnt)
 		for i, ipport := range params {
-			gotProxy, proxyDNSIP = getProxyOpt(ipport)
-			if !strings.Contains(opt, ":") && !gotProxy {
+			gotProxy, gotKube, proxyDNSIP = getProxyOpt(ipport)
+			if !strings.Contains(opt, ":") && !gotProxy && !gotKube { // XXX had bug hasProxy
 				fmt.Printf("tcp option needs ipaddress:port format, or is 'proxy'\n")
 				return
 			}
 			ipAddrPort[i] = ipport
 			if gotProxy {
 				hasProxy = true
+			} else if gotKube {
+				hasKube = true
+				kubeport = 9001 + i + kubenum*types.EdgeviewMaxInstNum
+				ipAddrPort[i] = tcpKubeEndpoint
 			}
 			log.Tracef("setAndStartProxyTCP: (%d) ipport %s", i, ipport)
 		}
 	} else {
-		hasProxy, proxyDNSIP = getProxyOpt(opt)
-		if !strings.Contains(opt, ":") && !hasProxy {
+		hasProxy, hasKube, proxyDNSIP = getProxyOpt(opt)
+		if !strings.Contains(opt, ":") && !hasProxy && !hasKube {
 			fmt.Printf("tcp option needs ipaddress:port format, or is 'proxy'\n")
 			return
 		}
 		ipAddrPort[0] = opt
+		if hasKube {
+			ipAddrPort[0] = tcpKubeEndpoint
+			kubeport = 9001 + kubenum*types.EdgeviewMaxInstNum
+		} else {
+			ipAddrPort[0] = opt
+		}
 		log.Tracef("setAndStartProxyTCP: opt %s", opt)
 	}
 
@@ -310,6 +342,22 @@ func setAndStartProxyTCP(opt string) {
 		log.Tracef("setAndStartProxyTCP: launch proxy server")
 		proxyServerEndpoint.Port += edgeviewInstID
 		proxySvr = proxyServer(proxyServerDone, proxyDNSIP)
+	}
+
+	if hasKube {
+		if !kubPolicy.Enabled || !kubPolicy.AllowKubeCtl {
+			fmt.Printf("tcp option for kubectl is not allowed")
+			return
+		}
+		kubefileName, err := genKubeConfigFile(kubeport)
+		if err != nil {
+			fmt.Printf("tcp kube copy file error: %v\n", err)
+			return
+		}
+		runCopy("cp/" + kubefileName)
+
+		_ = os.Remove(kubefileName)
+		log.Tracef("setAndStartProxyTCP: copy kube file done, port %d", kubeport)
 	}
 
 	// send tcp-setup-ok to client side
@@ -375,6 +423,182 @@ func setAndStartProxyTCP(opt string) {
 			isTCPServer = false
 			return
 		}
+	}
+}
+
+func generateSymmetricKey() ([]byte, error) {
+	key := make([]byte, 32) // 256-bit key for AES-256
+	_, err := rand.Read(key)
+	return key, err
+}
+
+func encryptFile(symKey, inputData []byte) ([]byte, error) {
+	block, err := aes.NewCipher(symKey)
+	if err != nil {
+		return nil, err
+	}
+
+	// Create a new AES-GCM cipher with the symmetric key
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil, err
+	}
+
+	// Generate a random nonce
+	nonce := make([]byte, gcm.NonceSize())
+	if _, err := rand.Read(nonce); err != nil {
+		return nil, err
+	}
+
+	// Encrypt the data
+	//ciphertext := gcm.Seal(nil, nonce, inputData, nil)
+	ciphertext := gcm.Seal(nonce, nonce, inputData, nil)
+
+	// Write the encrypted data to the output file
+	//err = ioutil.WriteFile(outputFile, ciphertext, 0644)
+	//return err
+	return ciphertext, nil
+}
+
+func encryptSymmetricKey(symKey []byte, publicKeyFile string) ([]byte, error) {
+	pubKeyData, err := ioutil.ReadFile(publicKeyFile)
+	if err != nil {
+		return nil, err
+	}
+
+	fmt.Printf("encryptSymmetricKey: got pubkey %s\n", string(pubKeyData))
+	parsed, _, _, _, err := ssh.ParseAuthorizedKey([]byte(pubKeyData))
+	if err != nil {
+		return nil, err
+	}
+	parsedCryptoKey := parsed.(ssh.CryptoPublicKey)
+	pubCrypto := parsedCryptoKey.CryptoPublicKey()
+	pub := pubCrypto.(*rsa.PublicKey)
+
+	fmt.Printf("encryptSymmetricKey: before encrypt\n")
+	encryptedBytes, err := rsa.EncryptPKCS1v15(
+		rand.Reader,
+		pub,
+		symKey,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	// Write the encrypted symmetric key to the output file
+	//return ioutil.WriteFile(outputFile, encryptedBytes, 0644)
+	return encryptedBytes, nil
+}
+
+func opensslEncryptConfig(symKey []byte, yamlString string) ([]byte, error) {
+	// save the config into a tmp file
+	idStr := strconv.Itoa(edgeviewInstID)
+	tmpCfgFile := "/tmp/ev-kubecfg-tmp." + idStr
+	tmpCfgFileEnc := "/tmp/ev-kubecfg-enc-tmp." + idStr
+	err := ioutil.WriteFile(tmpCfgFile, []byte(yamlString), 0644)
+	if err != nil {
+		log.Errorf("opensslEncryptConfig: write tmp file error %v", err)
+		return nil, err
+	}
+
+	// openssl encrypt input kubeconfig file
+	name := "/usr/bin/openssl"
+	args := []string{"enc",
+		"-aes-256-cbc",
+		"-salt",
+		"-in",
+		tmpCfgFile,
+		"-out",
+		tmpCfgFileEnc,
+		"-k",
+		string(symKey),
+	}
+	cmd := exec.Command(name, args...)
+	err = cmd.Run()
+	if err != nil {
+		log.Errorf("opensslEncryptConfig: run openssl error %v", err)
+		_ = os.Remove(tmpCfgFile)
+		_ = os.Remove(tmpCfgFileEnc)
+		return nil, err
+	}
+
+	// read content of the encrypted config file
+	encryptedData, err := ioutil.ReadFile(tmpCfgFileEnc)
+	if err != nil {
+		_ = os.Remove(tmpCfgFile)
+		_ = os.Remove(tmpCfgFileEnc)
+		return nil, err
+	}
+	_ = os.Remove(tmpCfgFile)
+	_ = os.Remove(tmpCfgFileEnc)
+	return encryptedData, nil
+}
+
+func genKubeConfigFile(kubeport int) (string, error) {
+	yamlBytes, err := ioutil.ReadFile(kubeYamlFile)
+	if err != nil {
+		log.Errorf("genKubeConfigFile: read error %v", err)
+		return "", err
+	}
+
+	yamlString := string(yamlBytes)
+	pattern := regexp.MustCompile(`https://[\d\.]+:6443`)
+	newString := "https://localhost:" + strconv.Itoa(kubeport)
+
+	yamlString = pattern.ReplaceAllString(yamlString, newString)
+
+	pubkeyfile := "/run/authorized_keys"
+
+	// generate symmetric key, 32 bytes
+	symmetricKey, err := generateSymmetricKey()
+	if err != nil {
+		log.Errorf("genKubeConfigFile: symmetric key gen error %v", err)
+		return "", err
+	}
+
+	/*
+		encfileBytes, err := encryptFile(symmetricKey, []byte(yamlString))
+		if err != nil {
+			log.Errorf("genKubeConfigFile: encrypt file error %v", err)
+			return "", err
+		}
+	*/
+
+	encfileBytes, err := opensslEncryptConfig(symmetricKey, yamlString)
+	if err != nil {
+		log.Errorf("genKubeConfigFile: openssl error %v", err)
+		return "", err
+	}
+
+	symKeyBytes, err := encryptSymmetricKey(symmetricKey, pubkeyfile)
+	if err != nil {
+		log.Errorf("genKubeConfigFile: encrypt symmetric key file error %v", err)
+		return "", err
+	}
+
+	combinedBytes := append(symKeyBytes, encfileBytes...)
+	kubefileName := kubeServerFile + fmt.Sprintf(".%d", len(symKeyBytes))
+	err = ioutil.WriteFile(kubefileName, combinedBytes, 0644)
+	if err != nil {
+		log.Errorf("genKubeConfigFile: combined file error %v", err)
+		return "", err
+	}
+
+	log.Noticef("genKubeConfigFile: convert done")
+	return kubefileName, nil
+}
+
+func delKubeConfigFile(isKube bool) {
+	if !isKube {
+		return
+	}
+	err := os.Remove(kubeClientFile)
+	if err != nil {
+		fmt.Printf("delKubeConfigFile: delete file error %v\n", err)
+	}
+	err = os.Remove(symKeyClientFile)
+	if err != nil {
+		fmt.Printf("delKubeConfigFile: delete sym key file error %v\n", err)
 	}
 }
 
@@ -650,9 +874,9 @@ func tcpClientSendDone() {
 	sendCloseToWss()
 }
 
-func getProxyOpt(opt string) (bool, string) {
+func getProxyOpt(opt string) (bool, bool, string) {
 	var proxyDNSIP string
-	var hasProxy bool
+	var hasProxy, hasKube bool
 	if strings.HasPrefix(opt, "proxy") {
 		hasProxy = true
 		if strings.Contains(opt, "proxy@") {
@@ -661,15 +885,17 @@ func getProxyOpt(opt string) (bool, string) {
 				proxyDNSIP = strs[1]
 			}
 		}
+	} else if strings.HasPrefix(opt, "kube") {
+		hasKube = true
 	}
-	return hasProxy, proxyDNSIP
+	return hasProxy, hasKube, proxyDNSIP
 }
 
-func processTCPcmd(opt string, remotePorts map[int]int) (bool, int, map[int]int) {
+func processTCPcmd(opt string, remotePorts map[int]int) (bool, bool, int, map[int]int) {
 	tcpopts := strings.SplitN(opt, "tcp/", 2)
 	if len(tcpopts) != 2 {
 		fmt.Printf("tcp options need to be specified\n")
-		return false, 0, map[int]int{}
+		return false, false, 0, map[int]int{}
 	}
 	tcpparam := tcpopts[1]
 
@@ -680,13 +906,14 @@ func processTCPcmd(opt string, remotePorts map[int]int) (bool, int, map[int]int)
 		tcpclientCnt = len(params)
 		if tcpclientCnt > tcpMaxMappingNUM {
 			fmt.Printf("tcp maximum mapping is: %d\n", tcpMaxMappingNUM)
-			return false, tcpclientCnt, map[int]int{}
+			return false, false, tcpclientCnt, map[int]int{}
 		}
 	} else {
 		params = append(params, tcpparam)
 	}
 
 	proxycnt := 0
+	hasKube := false
 	for i, pStr := range params {
 		if strings.Contains(pStr, ":") {
 			pPort := strings.Split(pStr, ":")
@@ -698,15 +925,19 @@ func processTCPcmd(opt string, remotePorts map[int]int) (bool, int, map[int]int)
 		} else if strings.HasPrefix(pStr, "proxy") {
 			if proxycnt > 0 {
 				fmt.Printf("can not setup multiple proxies\n")
-				return false, tcpclientCnt, map[int]int{}
+				return false, false, tcpclientCnt, map[int]int{}
 			}
 			remotePorts[i] = 0
 			proxycnt++
+		} else if strings.HasPrefix(pStr, "kube") {
+			remotePorts[i] = 0
+			hasKube = true
 		}
 	}
+
 	if len(remotePorts) != tcpclientCnt {
 		fmt.Printf("tcp port mapping not matching %d, %v\n", tcpclientCnt, remotePorts)
-		return false, tcpclientCnt, map[int]int{}
+		return false, false, tcpclientCnt, map[int]int{}
 	}
 
 	isTCPClient = true
@@ -720,5 +951,5 @@ func processTCPcmd(opt string, remotePorts map[int]int) (bool, int, map[int]int)
 		printColor(mapline, colorGREEN)
 	}
 
-	return true, tcpclientCnt, remotePorts
+	return true, hasKube, tcpclientCnt, remotePorts
 }

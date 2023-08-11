@@ -83,6 +83,7 @@ func initOpts() {
 		"downloader",
 		"edgeview",
 		"global",
+		"k3s",
 		"loguploader",
 		"newlogd",
 		"nim",
