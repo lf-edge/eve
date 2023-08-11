@@ -33,6 +33,11 @@ type VolumeConfig struct {
 
 // Key is volume UUID which will be unique
 func (config VolumeConfig) Key() string {
+	// PVC names should not include # so lets choose -pvc-
+	if base.IsHVTypeKube() {
+		return fmt.Sprintf("%s-pvc-%d", config.VolumeID.String(),
+			config.GenerationCounter+config.LocalGenerationCounter)
+	}
 	return fmt.Sprintf("%s#%d", config.VolumeID.String(),
 		config.GenerationCounter+config.LocalGenerationCounter)
 }
@@ -143,6 +148,12 @@ type VolumeStatus struct {
 
 // Key is volume UUID which will be unique
 func (status VolumeStatus) Key() string {
+
+	// PVC names should not include # so lets choose -pvc-
+	if base.IsHVTypeKube() {
+		return fmt.Sprintf("%s-pvc-%d", status.VolumeID.String(),
+			status.GenerationCounter+status.LocalGenerationCounter)
+	}
 	return fmt.Sprintf("%s#%d", status.VolumeID.String(),
 		status.GenerationCounter+status.LocalGenerationCounter)
 }

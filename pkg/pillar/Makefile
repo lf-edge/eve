@@ -30,7 +30,7 @@ all: build
 $(DISTDIR):
 	mkdir -p $(DISTDIR)
 
-build: $(APPS) $(APPS1)
+build: $(APPS) $(APPS1) 
 
 TAGS=
 ifeq ($(RSTATS),y)

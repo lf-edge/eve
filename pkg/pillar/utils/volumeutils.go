@@ -15,6 +15,13 @@ import (
 
 // GetVolumeFormat returns format of the volume
 func GetVolumeFormat(log *base.LogObject, fileLocation string) (config.Format, error) {
+
+	// If kubevirt type, format is always PVC.
+	if base.IsHVTypeKube() {
+		// return config.Format_PVC, nil
+		return config.Format_FmtUnknown, nil
+	}
+
 	info, err := os.Stat(fileLocation)
 	if err != nil {
 		return config.Format_FmtUnknown, fmt.Errorf("GetVolumeFormat failed for %s: %v",
@@ -24,6 +31,7 @@ func GetVolumeFormat(log *base.LogObject, fileLocation string) (config.Format, e
 	if info.IsDir() {
 		return config.Format_CONTAINER, nil
 	}
+
 	// Assume this is zvol
 	if info.Mode()&os.ModeDevice != 0 {
 		return config.Format_RAW, nil
