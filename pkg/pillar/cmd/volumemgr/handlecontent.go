@@ -325,7 +325,12 @@ func doDeleteContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus)
 	log.Functionf("doDeleteContentTree for %v", status.ContentID)
 	RemoveAllBlobsFromContentTreeStatus(ctx, status, status.Blobs...)
 	//We create a reference when we load the blobs. We should remove that reference when we delete the contentTree.
-	if err := ctx.casClient.RemoveImage(status.ReferenceID()); err != nil {
+	ref_name := status.ReferenceID()
+	if ctx.hvTypeKube && status.OciImageName != "" {
+		ref_name = status.OciImageName
+		log.Functionf("doDeleteContentTree: oci image %v", ref_name)
+	}
+	if err := ctx.casClient.RemoveImage(ref_name); err != nil {
 		log.Errorf("doDeleteContentTree: exception while deleting image %s: %s",
 			status.RelativeURL, err.Error())
 	}

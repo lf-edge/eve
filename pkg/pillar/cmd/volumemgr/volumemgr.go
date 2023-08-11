@@ -101,6 +101,9 @@ type volumemgrContext struct {
 
 	// cli options
 	versionPtr *bool
+
+	// kube mode
+	hvTypeKube bool
 }
 
 func (ctxPtr *volumemgrContext) lookupVolumeStatusByUUID(id string) *types.VolumeStatus {
@@ -139,6 +142,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		deferContentDelete: 0,
 		globalConfig:       types.DefaultConfigItemValueMap(),
 		persistType:        vault.ReadPersistType(),
+		hvTypeKube:         base.IsHVTypeKube(),
 	}
 	agentbase.Init(&ctx, logger, log, agentName,
 		agentbase.WithArguments(arguments))

@@ -26,6 +26,7 @@ type ContentTreeConfig struct {
 	GenerationCounter int64
 	DisplayName       string
 	CustomMeta        string
+	IsAppImage        bool
 }
 
 // Key is content info UUID which will be unique
@@ -131,6 +132,8 @@ type ContentTreeStatus struct {
 	NameIsURL    bool
 	// Blobs the sha256 hashes of the blobs that are in this tree, the first of which always is the root
 	Blobs []string
+	// kube oci image
+	OciImageName string
 
 	ErrorAndTimeWithSource
 }

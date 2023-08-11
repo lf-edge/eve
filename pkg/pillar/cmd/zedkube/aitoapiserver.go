@@ -42,6 +42,30 @@ func genAISpecCreate(ctx *zedkubeContext, aiConfig *types.AppInstanceConfig) err
 		}
 	}
 
+	if len(aiConfig.VolumeRefConfigList) == 0 {
+		err := fmt.Errorf("genAISpecCreate: no volume, return")
+		return err
+	}
+
+	var ociName string
+	sub := ctx.subContentTreeStatus
+	items := sub.GetAll()
+	for _, item := range items {
+		ctStatus := item.(types.ContentTreeStatus)
+		if ctStatus.OciImageName == "" {
+			continue
+		}
+		if aiConfig.ContentID == ctStatus.ContentID.String() {
+			ociName = ctStatus.OciImageName
+			break
+		}
+	}
+	if ociName == "" {
+		err := fmt.Errorf("genAISpecCreate: no OCI name found, return")
+		return err
+	}
+	log.Noticef("genAISpecCreate: found oci image name %v", ociName)
+
 	if len(nadnames) > 0 {
 		selections := make([]netattdefv1.NetworkSelectionElement, len(nadnames))
 		for i, nad := range nadnames {
@@ -67,12 +91,6 @@ func genAISpecCreate(ctx *zedkubeContext, aiConfig *types.AppInstanceConfig) err
 	memoryLimit := strconv.Itoa(aiConfig.FixedResources.Memory * 1000)
 	memoryRequest := strconv.Itoa(aiConfig.FixedResources.Memory * 1000)
 
-	c1 := strings.Split(aiConfig.ImageURL, "/")
-	cname := aiConfig.DisplayName
-	if len(c1) > 1 {
-		cname = c1[1]
-	}
-
 	pod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        strings.ToLower(aiConfig.DisplayName),
@@ -82,9 +100,9 @@ func genAISpecCreate(ctx *zedkubeContext, aiConfig *types.AppInstanceConfig) err
 		Spec: corev1.PodSpec{
 			Containers: []corev1.Container{
 				{
-					Name:            cname,
-					Image:           aiConfig.ImageURL,
-					ImagePullPolicy: corev1.PullNever, // Set the image pull policy to 'Never'
+					Name:            aiConfig.DisplayName,
+					Image:           ociName,
+					ImagePullPolicy: corev1.PullNever,
 					SecurityContext: &corev1.SecurityContext{
 						Privileged: &[]bool{true}[0],
 					},
