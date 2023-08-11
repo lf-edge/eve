@@ -2569,7 +2569,7 @@ func checkAndPublishAppInstanceConfig(getconfigCtx *getconfigContext,
 		config.Errors = append(config.Errors, err.Error())
 	}
 
-	// XXX hack
+	// for kube app image
 	volumeList0 := config.VolumeRefConfigList[0]
 	pub1 := getconfigCtx.pubVolumeConfig
 	volConfig := pub1.GetAll()
@@ -2589,16 +2589,17 @@ func checkAndPublishAppInstanceConfig(getconfigCtx *getconfigContext,
 				for _, ct := range items {
 					ct1 := ct.(types.ContentTreeConfig)
 					if ct1.ContentID.String() == contentID.String() {
-						log.Noticef("checkAndPublishAppInstanceConfig: found URL")
-						config.ImageURL = ct1.RelativeURL
+						// pub contenttree config with app image bool
+						config.ContentID = contentID.String()
+						ct1.IsAppImage = true
+						publishContentTreeConfig(getconfigCtx, ct1)
 						break
 					}
 				}
 			}
 		}
 	}
-	log.Noticef("checkAndPublishAppInstanceConfig: image url %s**", config.ImageURL)
-	// XXX hack
+
 	pub.Publish(key, config)
 }
 

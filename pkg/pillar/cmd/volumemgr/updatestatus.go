@@ -431,7 +431,11 @@ func doUpdateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus)
 		log.Functionf("doUpdateContentTree(%s) successfully loaded all blobs into CAS", status.Key())
 
 		// check if the image was created
-		if !lookupImageCAS(status.ReferenceID(), ctx.casClient) {
+		imgName := status.ReferenceID()
+		if ctx.hvTypeKube && status.OciImageName != "" {
+			imgName = status.OciImageName
+		}
+		if !lookupImageCAS(imgName, ctx.casClient) {
 			log.Functionf("doUpdateContentTree(%s): image does not yet exist in CAS", status.Key())
 			return changed, false
 		}
@@ -588,7 +592,14 @@ func doUpdateVol(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool)
 			status.State != types.CREATING_VOLUME &&
 			status.SubState == types.VolumeSubStateInitial {
 
-			_, err := ctx.casClient.GetImageHash(ctStatus.ReferenceID())
+			imgName := ctStatus.ReferenceID()
+			if ctx.hvTypeKube {
+				cfg := lookupContentTreeConfig(ctx, status.ContentID.String())
+				if cfg != nil && cfg.IsAppImage && ctStatus.OciImageName != "" {
+					imgName = ctStatus.OciImageName
+				}
+			}
+			_, err := ctx.casClient.GetImageHash(imgName)
 			if err != nil {
 				log.Functionf("doUpdateVol(%s): waiting for image create: %s", status.Key(), err.Error())
 				return changed, false
@@ -610,7 +621,7 @@ func doUpdateVol(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool)
 					status.Key(), status.DisplayName)
 				return changed, false
 			}
-			status.ReferenceName = ctStatus.ReferenceID()
+			status.ReferenceName = imgName
 			status.ContentFormat = ctStatus.Format
 			changed = true
 			// Asynch preparation; ensure we have requested it
