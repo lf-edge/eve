@@ -16,7 +16,7 @@ import (
 func GetClientSet() (*kubernetes.Clientset, error) {
 
 	// Build the configuration from the provided kubeconfig file
-	err, config := getKubeConfig()
+	err, config := GetKubeConfig()
 	if err != nil {
 		return nil, err
 	}

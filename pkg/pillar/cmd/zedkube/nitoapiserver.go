@@ -7,17 +7,16 @@ import (
 
 	netattdefv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 	netclientset "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/client/clientset/versioned"
+	"github.com/lf-edge/eve/pkg/pillar/kubeapi"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/tools/clientcmd"
-	"k8s.io/client-go/util/retry"
 )
 
 const (
 	kubeConfigFile = "/run/.kube/k3s/k3s.yaml"
 )
 
+/* XXX
 func getKubeConfig(ctx *zedkubeContext) error {
 	// Build the configuration from the kubeconfig file
 	config, err := clientcmd.BuildConfigFromFlags("", kubeConfigFile)
@@ -28,6 +27,7 @@ func getKubeConfig(ctx *zedkubeContext) error {
 	ctx.config = config
 	return nil
 }
+*/
 
 func sendToApiServer(ctx *zedkubeContext, yamlData []byte, name, namespace string) error {
 
@@ -59,7 +59,7 @@ func sendToApiServer(ctx *zedkubeContext, yamlData []byte, name, namespace strin
 	readyCh := make(chan bool)
 
 	// Start a goroutine to check the Kubernetes API's reachability
-	go waitForNodeReady(client, readyCh)
+	go kubeapi.WaitForNodeReady(client, readyCh)
 
 	select {
 	case isReady := <-readyCh:
@@ -81,6 +81,7 @@ func sendToApiServer(ctx *zedkubeContext, yamlData []byte, name, namespace strin
 	return nil
 }
 
+/*
 func waitForNodeReady(client *kubernetes.Clientset, readyCh chan bool) {
 	err := wait.PollImmediate(time.Second, time.Minute*10, func() (bool, error) {
 		err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
@@ -101,6 +102,7 @@ func waitForNodeReady(client *kubernetes.Clientset, readyCh chan bool) {
 		readyCh <- true
 	}
 }
+*/
 
 func monitorKubeCluster(ctx *zedkubeContext) {
 	netClientset, err := netclientset.NewForConfig(ctx.config)
