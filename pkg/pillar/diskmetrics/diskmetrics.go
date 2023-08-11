@@ -108,6 +108,27 @@ func RolloutImgToBlock(ctx context.Context, log *base.LogObject, diskfile, outpu
 	return nil
 }
 
+// RolloutImgToPVC copy the content of diskfile to PVC
+func RolloutImgToPVC(ctx context.Context, log *base.LogObject, diskfile, outputFile, outputFormat string) error {
+	log.Noticef("PRAMOD RolloutImgToPVC diskfile %s outputFile %s outputFormat %s", diskfile, outputFile, outputFormat)
+	if _, err := os.Stat(diskfile); err != nil {
+		return err
+	}
+	errStr := fmt.Sprintf("virtctl failed: Not supported yet")
+	return errors.New(errStr)
+
+	// writeback cache instead of default unsafe, out of order enabled, skip file creation
+	// Timeout 2 hours
+	//args := []string{"convert", "--target-is-zero", "-t", "writeback", "-W", "-n", "-O", outputFormat, diskfile, outputFile}
+	//output, err := base.Exec(log, "/containers/services/kube/rootfs/usr/bin/virtctl", args...).WithContext(ctx).CombinedOutputWithCustomTimeout(432000)
+	//if err != nil {
+	//	errStr := fmt.Sprintf("qemu-img failed: %s, %s\n",
+	//		err, output)
+	//	return errors.New(errStr)
+	//}
+	//return nil
+}
+
 // CreateSnapshot creates snapshot of diskfile with defined format and size
 func CreateSnapshot(ctx context.Context, log *base.LogObject, diskfile, snapshotName string) error {
 	// Command line should be:

@@ -331,12 +331,22 @@ type VolumeRefConfig struct {
 
 // Key : VolumeRefConfig unique key
 func (config VolumeRefConfig) Key() string {
+	// PVC names should not include # so lets choose -pvc-
+	if base.IsHVTypeKube() {
+		return fmt.Sprintf("%s-pvc-%d", config.VolumeID.String(),
+			config.GenerationCounter+config.LocalGenerationCounter)
+	}
 	return fmt.Sprintf("%s#%d", config.VolumeID.String(),
 		config.GenerationCounter+config.LocalGenerationCounter)
 }
 
 // VolumeKey : Unique key of volume referenced in VolumeRefConfig
 func (config VolumeRefConfig) VolumeKey() string {
+	// PVC names should not include # so lets choose -pvc-
+	if base.IsHVTypeKube() {
+		return fmt.Sprintf("%s-pvc-%d", config.VolumeID.String(),
+			config.GenerationCounter+config.LocalGenerationCounter)
+	}
 	return fmt.Sprintf("%s#%d", config.VolumeID.String(),
 		config.GenerationCounter+config.LocalGenerationCounter)
 }
@@ -415,12 +425,22 @@ type VolumeRefStatus struct {
 
 // Key : VolumeRefStatus unique key
 func (status VolumeRefStatus) Key() string {
+	// PVC names should not include # so lets choose -pvc-
+	if base.IsHVTypeKube() {
+		return fmt.Sprintf("%s-pvc-%d", status.VolumeID.String(),
+			status.GenerationCounter+status.LocalGenerationCounter)
+	}
 	return fmt.Sprintf("%s#%d", status.VolumeID.String(),
 		status.GenerationCounter+status.LocalGenerationCounter)
 }
 
 // VolumeKey : Unique key of volume referenced in VolumeRefStatus
 func (status VolumeRefStatus) VolumeKey() string {
+	// PVC names should not include # so lets choose -pvc-
+	if base.IsHVTypeKube() {
+		return fmt.Sprintf("%s-pvc-%d", status.VolumeID.String(),
+			status.GenerationCounter+status.LocalGenerationCounter)
+	}
 	return fmt.Sprintf("%s#%d", status.VolumeID.String(),
 		status.GenerationCounter+status.LocalGenerationCounter)
 }
@@ -528,6 +548,11 @@ type VolumeCreatePending struct {
 
 // Key : VolumeCreatePending unique key
 func (status VolumeCreatePending) Key() string {
+	// PVC names should not include # so lets choose -pvc-
+	if base.IsHVTypeKube() {
+		return fmt.Sprintf("%s-pvc-%d", status.VolumeID.String(),
+			status.GenerationCounter+status.LocalGenerationCounter)
+	}
 	return fmt.Sprintf("%s#%d", status.VolumeID.String(),
 		status.GenerationCounter+status.LocalGenerationCounter)
 }

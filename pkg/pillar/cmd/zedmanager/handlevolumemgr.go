@@ -24,8 +24,15 @@ func MaybeAddVolumeRefConfig(ctx *zedmanagerContext, appInstID uuid.UUID,
 	volumeID uuid.UUID, generationCounter, localGenerationCounter int64,
 	mountDir string, verifyOnly bool) {
 
-	key := fmt.Sprintf("%s#%d", volumeID.String(),
-		generationCounter+localGenerationCounter)
+	var key string
+
+	if base.IsHVTypeKube() {
+		key = fmt.Sprintf("%s-pvc-%d", volumeID.String(),
+			generationCounter+localGenerationCounter)
+	} else {
+		key = fmt.Sprintf("%s#%d", volumeID.String(),
+			generationCounter+localGenerationCounter)
+	}
 	log.Functionf("MaybeAddVolumeRefConfig for %s", key)
 	m := lookupVolumeRefConfig(ctx, key)
 	if m != nil {
@@ -59,8 +66,16 @@ func MaybeAddVolumeRefConfig(ctx *zedmanagerContext, appInstID uuid.UUID,
 func MaybeRemoveVolumeRefConfig(ctx *zedmanagerContext, appInstID uuid.UUID,
 	volumeID uuid.UUID, generationCounter, localGenerationCounter int64) {
 
-	key := fmt.Sprintf("%s#%d", volumeID.String(),
-		generationCounter+localGenerationCounter)
+	var key string
+
+	if base.IsHVTypeKube() {
+		key = fmt.Sprintf("%s-pvc-%d", volumeID.String(),
+			generationCounter+localGenerationCounter)
+	} else {
+		key = fmt.Sprintf("%s#%d", volumeID.String(),
+			generationCounter+localGenerationCounter)
+	}
+
 	log.Functionf("MaybeRemoveVolumeRefConfig for %s", key)
 	m := lookupVolumeRefConfig(ctx, key)
 	if m == nil {
