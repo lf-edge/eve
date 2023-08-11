@@ -17,6 +17,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/cas"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
+	"github.com/lf-edge/eve/pkg/pillar/kubeapi"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
@@ -239,6 +240,17 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		log.Fatal(err)
 	}
 	log.Functionf("user containerd ready")
+
+	// wait for kubernetes up if in kube mode, if gets error, move on
+	if ctx.hvTypeKube {
+		log.Noticef("volumemgr run: wait for kubernetes")
+		_, err := kubeapi.WaitKubernetes(agentName, ps, stillRunning)
+		if err != nil {
+			log.Errorf("volumemgr run: wait for kubernetes error %v", err)
+		} else {
+			log.Noticef("volumemgr run: kubernetes node ready")
+		}
+	}
 
 	if ctx.persistType == types.PersistZFS {
 		// create datasets for volumes

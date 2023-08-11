@@ -2,18 +2,17 @@ package zedkube
 
 import (
 	"fmt"
-	"os"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/agentbase"
 	"github.com/lf-edge/eve/pkg/pillar/base"
+	"github.com/lf-edge/eve/pkg/pillar/kubeapi"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	uuid "github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
-	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 )
 
@@ -150,38 +149,47 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	//zedkubeCtx.configWait = make(map[string]bool)
 	zedkubeCtx.appNetConfig = make(map[string]*types.AppNetworkConfig)
 
-	checkTimer := time.NewTimer(5 * time.Second)
-	configFileExist := false
-
-	// wait until k3s server is started
-	for !configFileExist {
-		select {
-		case <-checkTimer.C:
-			if _, err := os.Stat(kubeConfigFile); err == nil {
-				err = getKubeConfig(&zedkubeCtx)
-				if err == nil {
-					configFileExist = true
-					break
-				}
-			}
-			checkTimer = time.NewTimer(5 * time.Second)
-		case <-stillRunning.C:
-		}
-		ps.StillRunning(agentName, warningTime, errorTime)
-	}
-
-	client, err := kubernetes.NewForConfig(zedkubeCtx.config)
+	config, err := kubeapi.WaitKubernetes(agentName, ps, stillRunning)
 	if err != nil {
-		log.Errorf("Run: Failed to create clientset: %v", err)
-	} else { // wait for ready
-		readyCh := make(chan bool)
-
-		go waitForNodeReady(client, readyCh)
-		select {
-		case isReady := <-readyCh:
-			log.Noticef("Run: doprint, node %v", isReady)
-		}
+		// XXX may need to change this to loop
+		log.Fatal(err)
 	}
+	zedkubeCtx.config = config
+	log.Noticef("zedkube run: kubernetes running")
+	/*
+		checkTimer := time.NewTimer(5 * time.Second)
+		configFileExist := false
+
+		// wait until k3s server is started
+		for !configFileExist {
+			select {
+			case <-checkTimer.C:
+				if _, err := os.Stat(kubeConfigFile); err == nil {
+					err = getKubeConfig(&zedkubeCtx)
+					if err == nil {
+						configFileExist = true
+						break
+					}
+				}
+				checkTimer = time.NewTimer(5 * time.Second)
+			case <-stillRunning.C:
+			}
+			ps.StillRunning(agentName, warningTime, errorTime)
+		}
+
+		client, err := kubernetes.NewForConfig(zedkubeCtx.config)
+		if err != nil {
+			log.Errorf("Run: Failed to create clientset: %v", err)
+		} else { // wait for ready
+			readyCh := make(chan bool)
+
+			go waitForNodeReady(client, readyCh)
+			select {
+			case isReady := <-readyCh:
+				log.Noticef("Run: doprint, node %v", isReady)
+			}
+		}
+	*/
 
 	zedkubeCtx.resendNITimer = time.NewTimer(5 * time.Second)
 	zedkubeCtx.resendNITimer.Stop()
