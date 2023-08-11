@@ -247,6 +247,12 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		// volume's content format with the volume key
 		populateExistingVolumesFormatDatasets(&ctx, types.VolumeEncryptedZFSDataset)
 		populateExistingVolumesFormatDatasets(&ctx, types.VolumeClearZFSDataset)
+
+		// CSI Persist volumes are built on ZFS, check and populate if they exist
+		if ctx.hvTypeKube {
+			populateExistingVolumesFormatPVC(&ctx, types.VolumeCSINameSpace)
+		}
+
 	} else {
 		// create the directories
 		initializeDirs()

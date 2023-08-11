@@ -65,7 +65,11 @@ func GetVolumeHandler(log *base.LogObject, volumeManager VolumeMgr, status *type
 	if status.IsContainer() {
 		return &volumeHandlerContainer{common}
 	}
-	if status.UseZVolDisk(vault.ReadPersistType()) {
+	// We always check for kubevirt type before ZFS since we use ZFS for non-kubevirt types too.
+	// That is, Persist type could be ZFS but the eve flavor is kubevirt
+	if base.IsHVTypeKube() {
+		return &volumeHandlerCSI{commonVolumeHandler: common, useVHost: false} // kubevirt does not support vhost yet
+	} else if status.UseZVolDisk(vault.ReadPersistType()) {
 		return &volumeHandlerZVol{commonVolumeHandler: common, useVHost: useVhost(log, volumeManager)}
 	}
 	return &volumeHandlerFile{common}
