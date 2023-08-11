@@ -18,8 +18,7 @@ func GetVolumeFormat(log *base.LogObject, fileLocation string) (config.Format, e
 
 	// If kubevirt type, format is always PVC.
 	if base.IsHVTypeKube() {
-		// return config.Format_PVC, nil
-		return config.Format_FmtUnknown, nil
+		return config.Format_RAW, nil
 	}
 
 	info, err := os.Stat(fileLocation)

@@ -147,7 +147,6 @@ func getVolumeStatusByPVC(pvcName string) (*types.VolumeStatus, error) {
 
 	volumeIDAndGeneration = pvcName
 	parsedFormat = int32(zconfig.Format_RAW)
-	// parsedFormat = int32(zconfig.Format_PVC)
 
 	generation := strings.Split(volumeIDAndGeneration, "-pvc-")
 	volUUID, err := uuid.FromString(generation[0])
