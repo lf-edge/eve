@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -31,6 +32,7 @@ const (
 	copyLogFiles
 	copyTarFiles
 	copyTechSupport
+	copyKubeConfig
 )
 
 var (
@@ -260,6 +262,8 @@ func recvCopyFile(msg []byte, fstatus *fileCopyStatus, mtype int) {
 				ungzipFile(fstatus.filename)
 			} else if fstatus.cType == copyLogFiles {
 				untarLogfile(fstatus.filename)
+			} else if fstatus.cType == copyKubeConfig {
+				splitKubeConfigFiles(fstatus.filename)
 			}
 		} else {
 			fmt.Printf("\n file sha256 different. %s, should be %s\n", shaStr, fstatus.fileHash)
@@ -304,6 +308,42 @@ func sendCopyDone(context string, err error) {
 	if err != nil {
 		fmt.Printf("sign and write error: %v\n", err)
 	}
+}
+
+// splite files into key and encrypted files
+func splitKubeConfigFiles(combFile string) {
+	fileStrs := strings.Split(combFile, ".")
+	if len(fileStrs) != 2 {
+		fmt.Printf("get file name incorrect %s\n", combFile)
+		return
+	}
+	numBytes := fileStrs[1]
+
+	bytesPlusOne, err := strconv.Atoi(numBytes)
+	if err != nil {
+		fmt.Printf("get file name incorrect num %s\n", numBytes)
+		return
+	}
+	bytesPlusOne += 1
+	bytesPlus := strconv.Itoa(bytesPlusOne)
+	// get the first 32 bytes
+	cmdStr := "cd " + fileCopyDir + "; head -c " + numBytes + " " + combFile + " > " + symKeyClientFile
+	getSymFileCmd := exec.Command("sh", "-c", cmdStr)
+	err = getSymFileCmd.Run()
+	if err != nil {
+		fmt.Printf("get sym file error: %v\n", err)
+		return
+	}
+
+	// get the rest of the content
+	cmdStr = "cd " + fileCopyDir + "; tail -c +" + bytesPlus + " " + combFile + " > " + kubeClientFile
+	getCfgFileCmd := exec.Command("sh", "-c", cmdStr)
+	err = getCfgFileCmd.Run()
+	if err != nil {
+		fmt.Printf("get config file error: %v\n", err)
+		return
+	}
+	_ = os.Remove(fileCopyDir + combFile)
 }
 
 func untarLogfile(downloadedFile string) {

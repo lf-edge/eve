@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"net"
 	"os"
 	"strconv"
 	"strings"
@@ -18,6 +19,7 @@ const (
 	devPolicyErr = "EVE policy not allow"
 	appPolicyErr = "App policy not allow"
 	extPolicyErr = "External policy not allow"
+	kubPolicyErr = "Kubernetes policy not allow"
 	vncPolicyErr = "App VNC access must be enabled"
 	tcpSyntaxErr = "TCP syntax error"
 )
@@ -28,10 +30,22 @@ var (
 	devPolicy  types.EvDevPolicy
 	appPolicy  types.EvAppPolicy
 	extPolicy  types.EvExtPolicy
+	kubPolicy  EvKubPolicy
 )
+
+// XXX temp for cluster-k3s, need to move to type.EvKubPolicy later and API
+type EvKubPolicy struct {
+	Enabled      bool
+	AllowKubeCtl bool
+}
 
 func initPolicy() error {
 	_, err := os.Stat(types.EdgeviewCfgFile)
+	// XXX
+	kubPolicy = EvKubPolicy{
+		Enabled:      true,
+		AllowKubeCtl: true,
+	}
 	if err == nil {
 		data, err := os.ReadFile(types.EdgeviewCfgFile)
 		if err != nil {
@@ -180,7 +194,7 @@ func checkTCPPolicy(tcpOpts string, evStatus *types.EdgeviewStatus) (bool, strin
 // One TCP cmd with multiple address:port, count for multiple access
 // E.g. tcp/proxy/localhost:22/10.1.0.102:5901 count access for device 1, and app 2
 func checkIPportPolicy(tcpOpt string, evStatus *types.EdgeviewStatus) (bool, string, string) {
-	if strings.HasPrefix(tcpOpt, "proxy") {
+	if strings.HasPrefix(tcpOpt, "proxy") || strings.HasPrefix(tcpOpt, "kube") {
 		// 'proxy' sessions will be check at connect time
 		return true, "", ""
 	}
@@ -192,6 +206,7 @@ func checkIPportPolicy(tcpOpt string, evStatus *types.EdgeviewStatus) (bool, str
 		}
 		ipaddr := opts[0]
 		ipport := opts[1]
+		isAddrKube := checkAddrKube(ipaddr)
 		isAddrDevice := checkAddrLocal(ipaddr)
 		// check console access for apps first
 		isAppConsole, allowVNC, name := checkAppConsole(ipaddr, ipport)
@@ -208,6 +223,10 @@ func checkIPportPolicy(tcpOpt string, evStatus *types.EdgeviewStatus) (bool, str
 				return false, "", devPolicyErr
 			} else {
 				evStatus.CmdCountDev++
+			}
+		} else if isAddrKube {
+			if !kubPolicy.Enabled {
+				return false, "", kubPolicyErr
 			}
 		} else { // App Interface IP
 			isAddrApps, vncEnable, name := checkAddrApps(ipaddr)
@@ -236,6 +255,30 @@ func checkIPportPolicy(tcpOpt string, evStatus *types.EdgeviewStatus) (bool, str
 	}
 
 	return true, appName, ""
+}
+
+func checkAddrKube(addr string) bool {
+	ipa := net.ParseIP(addr)
+	if ipa == nil {
+		return false
+	}
+
+	_, subnet1, err := net.ParseCIDR("10.42.0.0/16")
+	if err != nil {
+		return false
+	}
+
+	_, subnet2, err := net.ParseCIDR("10.43.0.0/16")
+	if err != nil {
+		return false
+	}
+
+	if subnet1.Contains(ipa) {
+		return true
+	} else if subnet2.Contains(ipa) {
+		return true
+	}
+	return false
 }
 
 func checkAddrLocal(addr string) bool {
