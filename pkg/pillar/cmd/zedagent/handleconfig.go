@@ -18,6 +18,7 @@ import (
 	zconfig "github.com/lf-edge/eve-api/go/config"
 	"github.com/lf-edge/eve-libs/nettrace"
 	"github.com/lf-edge/eve/pkg/pillar/base"
+	"github.com/lf-edge/eve/pkg/pillar/cipher"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	"github.com/lf-edge/eve/pkg/pillar/hardware"
 	"github.com/lf-edge/eve/pkg/pillar/netdump"
@@ -658,7 +659,13 @@ func requestConfigByURL(getconfigCtx *getconfigContext, url string,
 	}
 
 	authWrappedRV := rv
-	err = zedcloud.RemoveAndVerifyAuthContainer(zedcloudCtx, nil, &rv, false)
+	decryptCtx := &cipher.DecryptCipherContext{
+		Log:                  log,
+		AgentName:            agentName,
+		PubSubControllerCert: getconfigCtx.pubControllerCert,
+		PubSubEdgeNodeCert:   getconfigCtx.zedagentCtx.subEdgeNodeCert,
+	}
+	err = zedcloud.RemoveAndVerifyAuthContainer(zedcloudCtx, decryptCtx, &rv, false)
 	if err != nil {
 		log.Errorf("RemoveAndVerifyAuthContainer failed: %s", err)
 		switch rv.Status {
