@@ -709,7 +709,6 @@ const (
 	AppCommandRestart
 	// AppCommandPurge : purge application with ALL of its volumes.
 	AppCommandPurge
-	// TODO : purge for a single or a subset of volumes.
 )
 
 // LocalAppCommand : An application command requested from a local server.
