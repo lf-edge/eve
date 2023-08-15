@@ -672,7 +672,7 @@ func postLocalDevInfo(ctx *getconfigContext) *profile.LocalDevCmd {
 func prepareLocalDevInfo(ctx *zedagentContext) *profile.LocalDevInfo {
 	msg := profile.LocalDevInfo{}
 	msg.DeviceUuid = devUUID.String()
-	msg.State = getState(ctx)
+	msg.State = info.ZDeviceState(getDeviceState(ctx))
 	msg.MaintenanceModeReasons = append(msg.MaintenanceModeReasons,
 		info.MaintenanceModeReason(ctx.maintModeReason))
 	hinfo, err := host.Info()

@@ -1003,6 +1003,12 @@ func publishZedAgentStatus(getconfigCtx *getconfigContext) {
 		ForceFallbackCounter:  ctx.forceFallbackCounter,
 		CurrentProfile:        getconfigCtx.currentProfile,
 		RadioSilence:          getconfigCtx.radioSilence,
+		DeviceState:           ctx.devState,
+		AttestState:           ctx.attestState,
+		AttestError:           ctx.attestError,
+		VaultStatus:           ctx.vaultStatus,
+		PCRStatus:             ctx.pcrStatus,
+		VaultErr:              ctx.vaultErr,
 	}
 	pub := getconfigCtx.pubZedAgentStatus
 	pub.Publish(agentName, status)
