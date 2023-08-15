@@ -28,6 +28,7 @@ import (
 	zcert "github.com/lf-edge/eve-api/go/certs"
 	zcommon "github.com/lf-edge/eve-api/go/evecommon"
 	"github.com/lf-edge/eve/pkg/pillar/base"
+	"github.com/lf-edge/eve/pkg/pillar/cipher"
 	etpm "github.com/lf-edge/eve/pkg/pillar/evetpm"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
@@ -47,8 +48,8 @@ const (
 //   - SendRetval.Status is potentially updated to reflect the result of auth verification
 //
 // If skipVerify we remove the envelope but do not verify the signature.
-func RemoveAndVerifyAuthContainer(
-	ctx *ZedCloudContext, sendRV *SendRetval, skipVerify bool) error {
+func RemoveAndVerifyAuthContainer(ctx *ZedCloudContext,
+	decryptCtx *cipher.DecryptCipherContext, sendRV *SendRetval, skipVerify bool) error {
 	var reqURL string
 	if strings.HasPrefix(sendRV.ReqURL, "http:") {
 		reqURL = sendRV.ReqURL
@@ -62,7 +63,8 @@ func RemoveAndVerifyAuthContainer(
 	if !ctx.V2API {
 		return nil
 	}
-	contents, status, err := removeAndVerifyAuthContainer(ctx, sendRV.RespContents, skipVerify)
+	contents, status, err := removeAndVerifyAuthContainer(ctx, decryptCtx,
+		sendRV.RespContents, skipVerify)
 	if status != types.SenderStatusNone {
 		sendRV.Status = status
 	}
@@ -88,7 +90,8 @@ func RemoveAndVerifyAuthContainer(
 
 // given an envelope protobuf received from controller, verify the authentication
 // If skipVerify we parse the envelope but do not verify the content.
-func removeAndVerifyAuthContainer(ctx *ZedCloudContext, c []byte, skipVerify bool) ([]byte, types.SenderStatus, error) {
+func removeAndVerifyAuthContainer(ctx *ZedCloudContext, decryptCtx *cipher.DecryptCipherContext,
+	c []byte, skipVerify bool) ([]byte, types.SenderStatus, error) {
 	senderSt := types.SenderStatusNone
 	sm := &zauth.AuthContainer{}
 	err := proto.Unmarshal(c, sm)

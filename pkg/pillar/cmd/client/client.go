@@ -607,7 +607,7 @@ func myPost(zedcloudCtx *zedcloud.ZedCloudContext, tlsConfig *tls.Config,
 	if len(rv.RespContents) == 0 {
 		return true, rv
 	}
-	err = zedcloud.RemoveAndVerifyAuthContainer(zedcloudCtx, &rv, skipVerify)
+	err = zedcloud.RemoveAndVerifyAuthContainer(zedcloudCtx, nil, &rv, skipVerify)
 	if err != nil {
 		if !zedcloudCtx.NoLedManager {
 			utils.UpdateLedManagerConfig(log,
