@@ -898,7 +898,7 @@ func printOutput(ctx *diagContext, caller string) {
 		priority := types.GetPortCost(*ctx.DeviceNetworkStatus,
 			ifname)
 		if isMgmt {
-			mgmtPorts += 1
+			mgmtPorts++
 		}
 
 		typeStr := "use: app-shared "
@@ -925,7 +925,7 @@ func printOutput(ctx *diagContext, caller string) {
 			if ai.Addr.IsLinkLocalUnicast() {
 				continue
 			}
-			ipCount += 1
+			ipCount++
 			noGeo := ipinfo.IPInfo{}
 			if dpcSuccess {
 				PrintIfSpace(ctx, "INFO: Port %s: %s%s%s%s\n",
@@ -947,7 +947,7 @@ func printOutput(ctx *diagContext, caller string) {
 		// all as connected
 		if dpcSuccess {
 			if isMgmt {
-				passPorts += 1
+				passPorts++
 			}
 			continue
 		}
@@ -1018,7 +1018,7 @@ func printOutput(ctx *diagContext, caller string) {
 			continue
 		}
 		if isMgmt {
-			passPorts += 1
+			passPorts++
 		}
 		PrintIfSpace(ctx, "PASS: port %s fully connected to EV controller %s\n",
 			ifname, ctx.serverName)
@@ -1234,7 +1234,7 @@ func tryPing(ctx *diagContext, ifname string, reqURL string) bool {
 		if done {
 			break
 		}
-		retryCount += 1
+		retryCount++
 		if maxRetries != 0 && retryCount > maxRetries {
 			PrintIfSpace(ctx, "ERROR: %s: Exceeded %d retries for ping\n",
 				ifname, maxRetries)
@@ -1289,7 +1289,7 @@ func tryPostUUID(ctx *diagContext, ifname string) bool {
 			zedcloud.ClearCloudCert(zedcloudCtx)
 			return false
 		}
-		retryCount += 1
+		retryCount++
 		if maxRetries != 0 && retryCount > maxRetries {
 			PrintIfSpace(ctx, "ERROR: %s: Exceeded %d retries for get config\n",
 				ifname, maxRetries)
