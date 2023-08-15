@@ -11,7 +11,7 @@ const (
 
 	// PersistDir - Location to store persistent files.
 	PersistDir = "/persist"
-	// PersistConfigDir is where we keep some configuration across reboots
+	// PersistConfigDir is where we used to keep some configuration across reboots. Remove once upgradeconverter code is removed.
 	PersistConfigDir = PersistDir + "/config"
 	// PersistStatusDir is where we keep some configuration across reboots
 	PersistStatusDir = PersistDir + "/status"
