@@ -203,6 +203,12 @@ type zedagentContext struct {
 	apiMaintenanceMode   bool
 	localMaintenanceMode bool                        //maintenance mode triggered by local failure
 	localMaintModeReason types.MaintenanceModeReason //local failure reason for maintenance mode
+	devState             types.DeviceState
+	attestState          types.AttestState
+	attestError          string
+	vaultStatus          info.DataSecAtRestStatus
+	pcrStatus            info.PCRStatus
+	vaultErr             string
 
 	// Track the counter from force.fallback.counter to detect changes
 	forceFallbackCounter int
