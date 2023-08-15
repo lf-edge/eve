@@ -55,7 +55,6 @@ func (h *ZFSHandler) SetHandlerOptions(options HandlerOptions) {
 
 // GetVaultStatuses returns statuses of vault(s)
 func (h *ZFSHandler) GetVaultStatuses() []*types.VaultStatus {
-	// XXX: till Controller deprecates handling status of persist/config, keep sending
 	return []*types.VaultStatus{h.getVaultStatus(types.DefaultVaultName, types.SealedDataset)}
 }
 
@@ -186,6 +185,13 @@ func (h *ZFSHandler) setupVault(vaultPath string) error {
 func (h *ZFSHandler) getVaultStatus(vaultName, vaultPath string) *types.VaultStatus {
 	status := types.VaultStatus{}
 	status.Name = vaultName
+
+	if etpm.PCRBankSHA256Enabled() {
+		status.PCRStatus = info.PCRStatus_PCR_ENABLED
+	} else {
+		status.PCRStatus = info.PCRStatus_PCR_DISABLED
+	}
+
 	zfsEncryptStatus, zfsEncryptError := h.GetOperationalInfo()
 	if zfsEncryptStatus != info.DataSecAtRestStatus_DATASEC_AT_REST_ENABLED {
 		status.Status = zfsEncryptStatus
