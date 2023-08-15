@@ -173,7 +173,7 @@ access_usb() {
             fi
             NETDUMPDIR="/persist/netdump"
             [ -d "$NETDUMPDIR" ] || NETDUMPDIR=""
-            if tar cf /mnt/dump/diag1.tar /persist/status/ /var/run/ /persist/log /persist/newlog $NETDUMPDIR $TPMINFOTEMPFILE; then
+            if tar cf /mnt/dump/diag1.tar /persist/status/ /var/run/ /persist/log /persist/newlog "$NETDUMPDIR" $TPMINFOTEMPFILE; then
                 mv /mnt/dump/diag1.tar /mnt/dump/diag.tar
             else
                 rm -f /mnt/dump/diag1.tar
@@ -201,9 +201,15 @@ for AGENT in $AGENTS; do
       # NOTE: it is safe to do either kill -STOP or an outright
       # kill -9 on the following cat process if you want to stop
       # receiving those messages on the console.
+      rows=$(stty size | awk '{print $1}')
+      columns=$(stty size | awk '{print $2}')
+      [ -n "$rows" ] || rows=40
+      [ "$rows" = 0 ] || rows=40
+      [ -n "$columns" ] || columns=80
+      [ "$columns" = 0 ] || columns=80
       mkfifo /run/diag.pipe
       (while true; do cat; done) < /run/diag.pipe >/dev/console 2>&1 &
-      $BINDIR/diag -f -o /run/diag.pipe &
+      $BINDIR/diag -f -o /run/diag.pipe -s /run/diag.out -r $rows -c $columns &
     else
       $BINDIR/"$AGENT" &
     fi
