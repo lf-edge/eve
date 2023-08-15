@@ -88,6 +88,52 @@ func RemoveAndVerifyAuthContainer(ctx *ZedCloudContext,
 	return nil
 }
 
+func decryptCipherBlock(decryptCtx *cipher.DecryptCipherContext,
+	sm *zauth.AuthContainer, cipherBlock *zcommon.CipherBlock) ([]byte, error) {
+	cipherContext := sm.GetCipherContext()
+	if decryptCtx == nil {
+		err := errors.New("removeAndVerifyAuthContainer: decrypt cipher context is undefined\n")
+		return nil, err
+	}
+	if cipherContext == nil {
+		err := errors.New("removeAndVerifyAuthContainer: cipher context is undefined\n")
+		return nil, err
+	}
+	if len(cipherBlock.CipherData) == 0 ||
+		len(cipherBlock.CipherContextId) == 0 {
+		err := errors.New("removeAndVerifyAuthContainer: cipher block data or context id are incorrect\n")
+		return nil, err
+	}
+	if cipherContext.ContextId != cipherBlock.CipherContextId {
+		err := errors.New("removeAndVerifyAuthContainer: cipher context ids do not match\n")
+		return nil, err
+	}
+	cipherCtx := &types.CipherContext{
+		ContextID:          cipherContext.GetContextId(),
+		HashScheme:         cipherContext.GetHashScheme(),
+		KeyExchangeScheme:  cipherContext.GetKeyExchangeScheme(),
+		EncryptionScheme:   cipherContext.GetEncryptionScheme(),
+		DeviceCertHash:     cipherContext.GetDeviceCertHash(),
+		ControllerCertHash: cipherContext.GetControllerCertHash(),
+	}
+	cipherBlockSt := types.CipherBlockStatus{
+		// No unique key is needed here, because this status is never published
+		CipherBlockID:   "cipher-block",
+		CipherContextID: cipherBlock.GetCipherContextId(),
+		InitialValue:    cipherBlock.GetInitialValue(),
+		CipherData:      cipherBlock.GetCipherData(),
+		ClearTextHash:   cipherBlock.GetClearTextSha256(),
+		CipherContext:   cipherCtx,
+		IsCipher:        true,
+	}
+	clearBytes, err := cipher.DecryptCipherBlock(decryptCtx, cipherBlockSt)
+	if err != nil {
+		return nil, err
+	}
+
+	return clearBytes, nil
+}
+
 // given an envelope protobuf received from controller, verify the authentication
 // If skipVerify we parse the envelope but do not verify the content.
 func removeAndVerifyAuthContainer(ctx *ZedCloudContext, decryptCtx *cipher.DecryptCipherContext,
@@ -99,6 +145,17 @@ func removeAndVerifyAuthContainer(ctx *ZedCloudContext, decryptCtx *cipher.Decry
 		ctx.log.Errorf(
 			"removeAndVerifyAuthContainer: can not unmarshal authen content, %v\n", err)
 		return nil, senderSt, err
+	}
+
+	// Firstly decrypt the payload if encrypted
+	if cipherBlock := sm.GetCipherData(); cipherBlock != nil {
+		clearBytes, err := decryptCipherBlock(decryptCtx, sm, cipherBlock)
+		if err != nil {
+			ctx.log.Errorf(
+				"removeAndVerifyAuthContainer: decryptCipherBlock failed: %v\n", err)
+			return nil, senderSt, err
+		}
+		sm.ProtectedPayload.Payload = clearBytes
 	}
 
 	if !skipVerify { // no verify for /certs itself
