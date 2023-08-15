@@ -890,6 +890,10 @@ func updateSnapshotsInAIStatus(status *types.AppInstanceStatus, config types.App
 		status.SnapStatus.RequestedSnapshots = append(status.SnapStatus.RequestedSnapshots, newSnapshotStatus)
 	}
 	status.SnapStatus.SnapshotsToBeDeleted = snapshotsToBeDeleted
+	// Remove the snapshots marked for deletion from the list of available snapshots
+	for _, snapshot := range snapshotsToBeDeleted {
+		_ = removeSnapshotFromSlice(&status.SnapStatus.AvailableSnapshots, snapshot.SnapshotID)
+	}
 }
 
 // prepareVolumesSnapshotConfigs generates a 'volumesSnapshotConfig' for each pending snapshot request with a prepared configuration.
