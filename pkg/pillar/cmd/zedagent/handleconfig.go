@@ -658,7 +658,7 @@ func requestConfigByURL(getconfigCtx *getconfigContext, url string,
 	}
 
 	authWrappedRV := rv
-	err = zedcloud.RemoveAndVerifyAuthContainer(zedcloudCtx, &rv, false)
+	err = zedcloud.RemoveAndVerifyAuthContainer(zedcloudCtx, nil, &rv, false)
 	if err != nil {
 		log.Errorf("RemoveAndVerifyAuthContainer failed: %s", err)
 		switch rv.Status {
@@ -832,7 +832,7 @@ func readSavedProtoMessageConfig(zedcloudCtx *zedcloud.ZedCloudContext, URL stri
 		// Other fields are not needed to restore for RemoveAndVerifyAuthContainer().
 	}
 	err = zedcloud.RemoveAndVerifyAuthContainer(
-		zedcloudCtx, &restoredSendRV, false)
+		zedcloudCtx, nil, &restoredSendRV, false)
 	if err != nil {
 		log.Errorf("RemoveAndVerifyAuthContainer failed: %s", err)
 		return nil, ts, err

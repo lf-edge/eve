@@ -92,7 +92,7 @@ func trySendToController(attestReq *attest.ZAttestReq, attestCtx *attestContext)
 	if err != nil || len(rv.RespContents) == 0 {
 		// Error case handled below
 	} else {
-		err = zedcloud.RemoveAndVerifyAuthContainer(zedcloudCtx, &rv, false)
+		err = zedcloud.RemoveAndVerifyAuthContainer(zedcloudCtx, nil, &rv, false)
 	}
 	switch rv.Status {
 	case types.SenderStatusCertMiss, types.SenderStatusCertInvalid:
