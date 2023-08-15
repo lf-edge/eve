@@ -1332,11 +1332,11 @@ func (r *LinuxDpcReconciler) getWifiCredentials(wifi types.WifiConfig) (types.En
 	}
 	status, decBlock, err := cipher.GetCipherCredentials(
 		&cipher.DecryptCipherContext{
-			Log:               r.Log,
-			AgentName:         r.AgentName,
-			AgentMetrics:      r.CipherMetrics,
-			SubControllerCert: r.SubControllerCert,
-			SubEdgeNodeCert:   r.SubEdgeNodeCert,
+			Log:                  r.Log,
+			AgentName:            r.AgentName,
+			AgentMetrics:         r.CipherMetrics,
+			PubSubControllerCert: r.SubControllerCert,
+			PubSubEdgeNodeCert:   r.SubEdgeNodeCert,
 		},
 		wifi.CipherBlockStatus)
 	if r.PubCipherBlockStatus != nil {
@@ -1512,11 +1512,11 @@ func (r *LinuxDpcReconciler) getWwanCredentials(ap *types.CellularAccessPoint) (
 	}
 	status, decBlock, err := cipher.GetCipherCredentials(
 		&cipher.DecryptCipherContext{
-			Log:               r.Log,
-			AgentName:         r.AgentName,
-			AgentMetrics:      r.CipherMetrics,
-			SubControllerCert: r.SubControllerCert,
-			SubEdgeNodeCert:   r.SubEdgeNodeCert,
+			Log:                  r.Log,
+			AgentName:            r.AgentName,
+			AgentMetrics:         r.CipherMetrics,
+			PubSubControllerCert: r.SubControllerCert,
+			PubSubEdgeNodeCert:   r.SubEdgeNodeCert,
 		},
 		ap.EncryptedCredentials)
 	if r.PubCipherBlockStatus != nil {
