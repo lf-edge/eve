@@ -23,17 +23,17 @@ import (
 // DecryptCipherContext has subscriptions to controller certs
 // and cipher contexts for doing decryption
 type DecryptCipherContext struct {
-	Log               *base.LogObject
-	AgentName         string
-	AgentMetrics      *AgentMetrics
-	SubControllerCert pubsub.Getter
-	SubEdgeNodeCert   pubsub.Getter
+	Log                  *base.LogObject
+	AgentName            string
+	AgentMetrics         *AgentMetrics
+	PubSubControllerCert pubsub.Getter
+	PubSubEdgeNodeCert   pubsub.Getter
 }
 
 // look up controller cert
 func lookupControllerCert(ctx *DecryptCipherContext, key string) *types.ControllerCert {
 	ctx.Log.Functionf("lookupControllerCert(%s)\n", key)
-	sub := ctx.SubControllerCert
+	sub := ctx.PubSubControllerCert
 	item, err := sub.Get(key)
 	if err != nil {
 		ctx.Log.Errorf("lookupControllerCert(%s) not found\n", key)
@@ -58,7 +58,7 @@ func getCipherContext(ctx *DecryptCipherContext, cipherBlock types.CipherBlockSt
 // look up edge node cert
 func lookupEdgeNodeCert(ctx *DecryptCipherContext, key string) *types.EdgeNodeCert {
 	ctx.Log.Functionf("lookupEdgeNodeCert(%s)\n", key)
-	sub := ctx.SubEdgeNodeCert
+	sub := ctx.PubSubEdgeNodeCert
 	item, err := sub.Get(key)
 	if err != nil {
 		ctx.Log.Errorf("lookupEdgeNodeCert(%s) not found\n", key)
