@@ -26,8 +26,8 @@ type DecryptCipherContext struct {
 	Log               *base.LogObject
 	AgentName         string
 	AgentMetrics      *AgentMetrics
-	SubControllerCert pubsub.Subscription
-	SubEdgeNodeCert   pubsub.Subscription
+	SubControllerCert pubsub.Getter
+	SubEdgeNodeCert   pubsub.Getter
 }
 
 // look up controller cert
