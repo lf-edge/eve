@@ -13,7 +13,6 @@ import (
 	"fmt"
 	"os"
 
-	zconfig "github.com/lf-edge/eve-api/go/config"
 	zcommon "github.com/lf-edge/eve-api/go/evecommon"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	etpm "github.com/lf-edge/eve/pkg/pillar/evetpm"
@@ -137,10 +136,10 @@ func DecryptCipherBlock(ctx *DecryptCipherContext,
 		return []byte{}, errors.New(errStr)
 	}
 	switch cipherContext.KeyExchangeScheme {
-	case zconfig.KeyExchangeScheme_KEA_NONE:
+	case zcommon.KeyExchangeScheme_KEA_NONE:
 		return []byte{}, errors.New("No Key Exchange Scheme")
 
-	case zconfig.KeyExchangeScheme_KEA_ECDH:
+	case zcommon.KeyExchangeScheme_KEA_ECDH:
 		clearData, err := decryptCipherBlockWithECDH(ctx, cipherContext, cipherBlock)
 		if err != nil {
 			return []byte{}, err
@@ -167,10 +166,10 @@ func decryptCipherBlockWithECDH(ctx *DecryptCipherContext,
 		return []byte{}, errors.New(errStr)
 	}
 	switch cipherContext.EncryptionScheme {
-	case zconfig.EncryptionScheme_SA_NONE:
+	case zcommon.EncryptionScheme_SA_NONE:
 		return []byte{}, errors.New("No Encryption")
 
-	case zconfig.EncryptionScheme_SA_AES_256_CFB:
+	case zcommon.EncryptionScheme_SA_AES_256_CFB:
 		if len(cipherBlock.InitialValue) == 0 {
 			return []byte{}, errors.New("Invalid Initial value")
 		}
