@@ -303,4 +303,4 @@ Applications might want to get some application-specific data signed by EVE-OS s
 
 This can be done using a POST to `/eve/v1/tpm/signer` endpoint.
 The maximum support size is 64 kbytes.
-The returned object is binary with protobuf message of type `AuthContainer` carrying the signature with the embedded posted payload. This protobuf message is specified in [OBJECT-SIGNING](https://github.com/lf-edge/eve-api/tree/main/OBJECT-SIGNING.md).
+The returned object is binary with protobuf message of type `AuthContainer` carrying the signature with the embedded posted payload (possibly encrypted). This protobuf message is specified in [OBJECT-SIGNING](https://github.com/lf-edge/eve-api/tree/main/OBJECT-SIGNING.md).
