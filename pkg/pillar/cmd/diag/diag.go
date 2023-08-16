@@ -154,10 +154,10 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 			log.Fatal(err)
 		}
 	}
+	log.Noticef("diag starting with max rows %d columns %d",
+		*ctx.rowPtr, *ctx.columnPtr)
 	PrintIfSpaceInit(&ctx, outfile, *ctx.stateFilenamePtr,
 		*ctx.rowPtr, *ctx.columnPtr, false)
-	PrintIfSpace(&ctx, "INFO: output limited to %drows and %d columns\n",
-		*ctx.rowPtr, *ctx.columnPtr)
 	ctx.DeviceNetworkStatus = &types.DeviceNetworkStatus{}
 	ctx.DevicePortConfigList = &types.DevicePortConfigList{}
 
