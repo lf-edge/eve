@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/agentbase"
+	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/kubeapi"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
@@ -19,9 +20,10 @@ import (
 const (
 	agentName = "zedkube"
 	// Time limits for event loop handlers
-	errorTime           = 3 * time.Minute
-	warningTime         = 40 * time.Second
-	stillRunningInerval = 25 * time.Second
+	errorTime            = 3 * time.Minute
+	warningTime          = 40 * time.Second
+	stillRunningInterval = 25 * time.Second
+	logcollectInterval   = 30
 )
 
 var (
@@ -43,6 +45,8 @@ type zedkubeContext struct {
 	appNetConfig             map[string]*types.AppNetworkConfig
 	resendNITimer            *time.Timer
 	appMetricsTimer          *time.Timer
+	appLogStarted            bool
+	appContainerLogger       *logrus.Logger
 }
 
 // Run - an zedkube run
@@ -59,7 +63,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		agentbase.WithArguments(arguments))
 
 	// Run a periodic timer so we always update StillRunning
-	stillRunning := time.NewTicker(stillRunningInerval)
+	stillRunning := time.NewTicker(stillRunningInterval)
+
+	zedkubeCtx.appContainerLogger = agentlog.CustomLogInit(logrus.InfoLevel)
 
 	// Get AppInstanceConfig from zedagent
 	subAppInstanceConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
@@ -196,6 +202,8 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 
 	zedkubeCtx.appMetricsTimer = time.NewTimer(10 * time.Second)
 
+	appLogTimer := time.NewTimer(logcollectInterval * time.Second)
+
 	go appNetStatusNotify(&zedkubeCtx)
 
 	for {
@@ -213,6 +221,10 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		case <-zedkubeCtx.appMetricsTimer.C:
 			publishAppMetrics(&zedkubeCtx)
 			zedkubeCtx.appMetricsTimer = time.NewTimer(10 * time.Second)
+
+		case <-appLogTimer.C:
+			collectAppLogs(&zedkubeCtx)
+			appLogTimer = time.NewTimer(logcollectInterval * time.Second)
 
 		case change := <-zedkubeCtx.subContentTreeStatus.MsgChan():
 			zedkubeCtx.subContentTreeStatus.ProcessChange(change)
