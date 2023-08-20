@@ -37,6 +37,7 @@ type zedkubeContext struct {
 	subNetworkInstanceStatus pubsub.Subscription
 	subAppInstanceConfig     pubsub.Subscription
 	subContentTreeStatus     pubsub.Subscription
+	subGlobalConfig          pubsub.Subscription
 	pubNetworkInstanceStatus pubsub.Publication
 	pubAppNetworkConfig      pubsub.Publication
 	pubDomainMetric          pubsub.Publication
@@ -152,6 +153,25 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	zedkubeCtx.subContentTreeStatus = subContentTreeStatus
 	subContentTreeStatus.Activate()
 
+	// Look for global config such as log levels
+	subGlobalConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "zedagent",
+		MyAgentName:   agentName,
+		TopicImpl:     types.ConfigItemValueMap{},
+		Persistent:    true,
+		Activate:      false,
+		Ctx:           &zedkubeCtx,
+		CreateHandler: handleGlobalConfigCreate,
+		ModifyHandler: handleGlobalConfigModify,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	zedkubeCtx.subGlobalConfig = subGlobalConfig
+	subGlobalConfig.Activate()
+
 	//zedkubeCtx.configWait = make(map[string]bool)
 	zedkubeCtx.appNetConfig = make(map[string]*types.AppNetworkConfig)
 
@@ -162,40 +182,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	}
 	zedkubeCtx.config = config
 	log.Noticef("zedkube run: kubernetes running")
-	/*
-		checkTimer := time.NewTimer(5 * time.Second)
-		configFileExist := false
-
-		// wait until k3s server is started
-		for !configFileExist {
-			select {
-			case <-checkTimer.C:
-				if _, err := os.Stat(kubeConfigFile); err == nil {
-					err = getKubeConfig(&zedkubeCtx)
-					if err == nil {
-						configFileExist = true
-						break
-					}
-				}
-				checkTimer = time.NewTimer(5 * time.Second)
-			case <-stillRunning.C:
-			}
-			ps.StillRunning(agentName, warningTime, errorTime)
-		}
-
-		client, err := kubernetes.NewForConfig(zedkubeCtx.config)
-		if err != nil {
-			log.Errorf("Run: Failed to create clientset: %v", err)
-		} else { // wait for ready
-			readyCh := make(chan bool)
-
-			go waitForNodeReady(client, readyCh)
-			select {
-			case isReady := <-readyCh:
-				log.Noticef("Run: doprint, node %v", isReady)
-			}
-		}
-	*/
 
 	zedkubeCtx.resendNITimer = time.NewTimer(5 * time.Second)
 	zedkubeCtx.resendNITimer.Stop()
@@ -228,6 +214,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 
 		case change := <-zedkubeCtx.subContentTreeStatus.MsgChan():
 			zedkubeCtx.subContentTreeStatus.ProcessChange(change)
+
+		case change := <-subGlobalConfig.MsgChan():
+			subGlobalConfig.ProcessChange(change)
 
 		case <-stillRunning.C:
 		}
@@ -421,4 +410,31 @@ func handleContentTreeStatusImpl(ctxArg interface{}, key string,
 		}
 	}
 	log.Noticef("handleContentTreeStatusImpl done for %s", key)
+}
+
+func handleGlobalConfigCreate(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	handleGlobalConfigImpl(ctxArg, key, statusArg)
+}
+
+func handleGlobalConfigModify(ctxArg interface{}, key string,
+	statusArg interface{}, oldStatusArg interface{}) {
+	handleGlobalConfigImpl(ctxArg, key, statusArg)
+}
+
+func handleGlobalConfigImpl(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
+	ctx := ctxArg.(*zedkubeContext)
+	if key != "global" {
+		log.Functionf("handleGlobalConfigImpl: ignoring %s", key)
+		return
+	}
+	log.Functionf("handleGlobalConfigImpl for %s", key)
+	gcp := agentlog.HandleGlobalConfig(log, ctx.subGlobalConfig, agentName,
+		ctx.CLIParams().DebugOverride, ctx.Logger())
+	if gcp != nil {
+		ctx.globalConfig = gcp
+	}
+	log.Functionf("handleGlobalConfigImpl(%s): done", key)
 }

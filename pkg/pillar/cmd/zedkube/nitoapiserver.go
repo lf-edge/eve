@@ -16,19 +16,6 @@ const (
 	kubeConfigFile = "/run/.kube/k3s/k3s.yaml"
 )
 
-/* XXX
-func getKubeConfig(ctx *zedkubeContext) error {
-	// Build the configuration from the kubeconfig file
-	config, err := clientcmd.BuildConfigFromFlags("", kubeConfigFile)
-	if err != nil {
-		log.Errorf("getKubeConfig: spec Read kubeconfig failed: %v", err)
-		return err
-	}
-	ctx.config = config
-	return nil
-}
-*/
-
 func sendToApiServer(ctx *zedkubeContext, yamlData []byte, name, namespace string) error {
 
 	if ctx.config == nil {
@@ -80,29 +67,6 @@ func sendToApiServer(ctx *zedkubeContext, yamlData []byte, name, namespace strin
 
 	return nil
 }
-
-/*
-func waitForNodeReady(client *kubernetes.Clientset, readyCh chan bool) {
-	err := wait.PollImmediate(time.Second, time.Minute*10, func() (bool, error) {
-		err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
-			_, err := client.CoreV1().Nodes().List(context.Background(), metav1.ListOptions{})
-			return err
-		})
-
-		if err == nil {
-			return true, nil
-		}
-
-		return false, nil
-	})
-
-	if err != nil {
-		readyCh <- false
-	} else {
-		readyCh <- true
-	}
-}
-*/
 
 func monitorKubeCluster(ctx *zedkubeContext) {
 	netClientset, err := netclientset.NewForConfig(ctx.config)
