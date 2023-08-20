@@ -164,6 +164,10 @@ func parseConfig(getconfigCtx *getconfigContext, config *zconfig.EdgeDevConfig,
 				// before we can process the app instances
 				// which depend on the new baseOS
 				log.Noticef("parseConfig: Ignoring config as a new baseOS image is being activated")
+
+				if getconfigCtx.zedagentCtx.hvTypeKube {
+					fillAppContentTree(getconfigCtx, config)
+				}
 				return skipConfigUpdate
 			}
 
@@ -2566,6 +2570,26 @@ func checkAndPublishAppInstanceConfig(getconfigCtx *getconfigContext,
 		config.Errors = append(config.Errors, err.Error())
 	}
 
+	// get kube app to content tree relation
+	getAppContentTree(getconfigCtx, &config)
+
+	pub.Publish(key, config)
+}
+
+func fillAppContentTree(getconfigCtx *getconfigContext, config *zconfig.EdgeDevConfig) {
+	items := getconfigCtx.pubAppInstanceConfig.GetAll()
+	for _, item := range items {
+		appInstCfg := item.(types.AppInstanceConfig)
+		log.Noticef("fillAppContentTree: appInstCfg %+v", appInstCfg)
+		getAppContentTree(getconfigCtx, &appInstCfg)
+		pub := getconfigCtx.pubAppInstanceConfig
+		pub.Publish(appInstCfg.Key(), appInstCfg)
+	}
+}
+
+func getAppContentTree(getconfigCtx *getconfigContext,
+	config *types.AppInstanceConfig) {
+
 	// for kube app image
 	volumeList0 := config.VolumeRefConfigList[0]
 	pub1 := getconfigCtx.pubVolumeConfig
@@ -2575,7 +2599,7 @@ func checkAndPublishAppInstanceConfig(getconfigCtx *getconfigContext,
 		for _, vol := range volConfig {
 			vol1 := vol.(types.VolumeConfig)
 			if vol1.VolumeID.String() == volumeList0.VolumeID.String() {
-				log.Noticef("checkAndPublishAppInstanceConfig: found contentID %s", vol1.ContentID)
+				log.Noticef("getAppContentTree: found contentID %s", vol1.ContentID)
 				contentID = vol1.ContentID
 				break
 			}
@@ -2596,8 +2620,6 @@ func checkAndPublishAppInstanceConfig(getconfigCtx *getconfigContext,
 			}
 		}
 	}
-
-	pub.Publish(key, config)
 }
 
 func publishBaseOsConfig(getconfigCtx *getconfigContext,
