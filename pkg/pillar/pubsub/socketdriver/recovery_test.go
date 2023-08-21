@@ -45,7 +45,7 @@ func TestRecovery(t *testing.T) {
 			Log:     log,
 			RootDir: rootPath,
 		}
-		publisher, err := driver.Publisher(true, "test", "item", true, &pubsub.Updaters{},
+		publisher, err := driver.Publisher(false, "test", "item", true, &pubsub.Updaters{},
 			mockPubSub{}, mockPubSub{})
 		if err != nil {
 			t.Fatal(err)
@@ -58,7 +58,7 @@ func TestRecovery(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	filePath := filepath.Join(rootPath, "persist", "config", "test", "global.json")
+	filePath := filepath.Join(rootPath, "persist", "status", "test", "global.json")
 	_, err = os.Stat(filePath)
 	if err != nil {
 		t.Fatalf("published item was not persisted: %v", err)
@@ -81,6 +81,10 @@ func TestRecovery(t *testing.T) {
 	}
 
 	// Simulate reboot without the persisted file getting lost.
+	err = publisher.Stop()
+	if err != nil {
+		t.Logf("Stop failed: %v", err)
+	}
 	publisher = newPublisher()
 	items, _, err := publisher.Load()
 	if err != nil {
@@ -94,6 +98,10 @@ func TestRecovery(t *testing.T) {
 	err = os.Remove(filePath)
 	if err != nil {
 		t.Fatal(err)
+	}
+	err = publisher.Stop()
+	if err != nil {
+		t.Logf("Stop failed: %v", err)
 	}
 	publisher = newPublisher()
 	// Load should recover the first publication.
@@ -109,6 +117,10 @@ func TestRecovery(t *testing.T) {
 	err = os.WriteFile(filePath, nil, file.Mode())
 	if err != nil {
 		t.Fatal(err)
+	}
+	err = publisher.Stop()
+	if err != nil {
+		t.Logf("Stop failed: %v", err)
 	}
 	publisher = newPublisher()
 	// Load should recover the first publication.

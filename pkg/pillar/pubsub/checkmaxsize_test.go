@@ -20,7 +20,8 @@ type largeItem struct {
 	StrC string `json:"pubsub-large-StrC"`
 }
 
-func TestCheckMaxSize(t *testing.T) { //nolint:gocyclo
+//nolint:gocyclo
+func TestCheckMaxSize(t *testing.T) {
 	// Run in a unique directory
 	rootPath, err := os.MkdirTemp("", "checkmaxsize_test")
 	if err != nil {
