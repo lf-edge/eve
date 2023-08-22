@@ -11,7 +11,6 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
-	"os"
 
 	zcommon "github.com/lf-edge/eve-api/go/evecommon"
 	"github.com/lf-edge/eve/pkg/pillar/base"
@@ -67,59 +66,6 @@ func lookupEdgeNodeCert(ctx *DecryptCipherContext, key string) *types.EdgeNodeCe
 	status := item.(types.EdgeNodeCert)
 	ctx.Log.Functionf("lookupEdgeNodeCert(%s) Done\n", key)
 	return &status
-}
-
-func getDeviceCert(ctx *DecryptCipherContext,
-	cipherBlock types.CipherBlockStatus) ([]byte, error) {
-
-	ctx.Log.Functionf("getDeviceCert for %s\n", cipherBlock.CipherBlockID)
-	cipherContext := getCipherContext(ctx, cipherBlock)
-	if cipherContext == nil {
-		errStr := fmt.Sprintf("cipher context %s not found\n",
-			cipherBlock.CipherContextID)
-		ctx.Log.Error(errStr)
-		return []byte{}, errors.New(errStr)
-	}
-	// TBD:XXX as of now, only one
-	certBytes, err := os.ReadFile(types.DeviceCertName)
-	if err != nil {
-		errStr := fmt.Sprintf("getDeviceCert failed while reading device certificate: %v",
-			err)
-		ctx.Log.Error(errStr)
-		return []byte{}, errors.New(errStr)
-	}
-	if computeAndMatchHash(certBytes, cipherContext.DeviceCertHash,
-		cipherContext.HashScheme) {
-		ctx.Log.Functionf("getDeviceCert for %s Done\n", cipherBlock.CipherBlockID)
-		return certBytes, nil
-	}
-	errStr := fmt.Sprintf("getDeviceCert for %s not found\n",
-		cipherBlock.CipherBlockID)
-	ctx.Log.Error(errStr)
-	return []byte{}, errors.New(errStr)
-}
-
-// hash function
-func computeAndMatchHash(cert []byte, suppliedHash []byte,
-	hashScheme zcommon.HashAlgorithm) bool {
-
-	switch hashScheme {
-	case zcommon.HashAlgorithm_HASH_ALGORITHM_INVALID:
-		return false
-
-	case zcommon.HashAlgorithm_HASH_ALGORITHM_SHA256_16BYTES:
-		h := sha256.New()
-		h.Write(cert)
-		computedHash := h.Sum(nil)
-		return bytes.Equal(suppliedHash, computedHash[:16])
-
-	case zcommon.HashAlgorithm_HASH_ALGORITHM_SHA256_32BYTES:
-		h := sha256.New()
-		h.Write(cert)
-		computedHash := h.Sum(nil)
-		return bytes.Equal(suppliedHash, computedHash)
-	}
-	return false
 }
 
 // DecryptCipherBlock : Decryption API, for encrypted object information received from controller
