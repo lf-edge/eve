@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"os"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/google/go-cmp/cmp"
@@ -59,6 +60,7 @@ type zedmanagerContext struct {
 	subZedAgentStatus         pubsub.Subscription
 	pubVolumesSnapConfig      pubsub.Publication
 	subVolumesSnapStatus      pubsub.Subscription
+	subNetworkInstanceStatus  pubsub.Subscription
 	globalConfig              *types.ConfigItemValueMap
 	appToPurgeCounterMap      objtonum.Map
 	GCInitialized             bool
@@ -378,6 +380,21 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	ctx.subVolumesSnapStatus = subVolumesSnapshotStatus
 	_ = subVolumesSnapshotStatus.Activate()
 
+	subNetworkInstanceStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:   "zedrouter",
+		MyAgentName: agentName,
+		Ctx:         &ctx,
+		TopicImpl:   types.NetworkInstanceStatus{},
+		WarningTime: warningTime,
+		ErrorTime:   errorTime,
+		Activate:    false,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctx.subNetworkInstanceStatus = subNetworkInstanceStatus
+	subNetworkInstanceStatus.Activate()
+
 	// Pick up debug aka log level before we start real work
 	for !ctx.GCInitialized {
 		log.Functionf("waiting for GCInitialized")
@@ -428,6 +445,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		case change := <-subVolumesSnapshotStatus.MsgChan():
 			subVolumesSnapshotStatus.ProcessChange(change)
 
+		case change := <-subNetworkInstanceStatus.MsgChan():
+			subNetworkInstanceStatus.ProcessChange(change)
+
 		case <-freeResourceChecker.C:
 			// Did any update above make more resources available for
 			// other app instances?
@@ -446,6 +466,28 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		}
 		ps.StillRunning(agentName, warningTime, errorTime)
 	}
+}
+
+func checkToFillKubeNADs(ctx *zedmanagerContext, aiConfig types.AppInstanceConfig) []string {
+	var nadNames []string
+	pub := ctx.subNetworkInstanceStatus
+	items := pub.GetAll()
+	for _, ul := range aiConfig.UnderlayNetworkList {
+		var nadName string
+		for _, item := range items {
+			ni := item.(types.NetworkInstanceStatus)
+			if ul.Network.String() == ni.UUIDandVersion.UUID.String() {
+				nadName = strings.ToLower(ni.DisplayName)
+				break
+			}
+		}
+		if nadName != "" {
+			nadNames = append(nadNames, nadName)
+		} else {
+			log.Noticef("checkToFillKubeNADs: can not find NAD for %v", ul.Network)
+		}
+	}
+	return nadNames
 }
 
 func handleLocalAppInstanceConfigCreate(ctx interface{}, key string, config interface{}) {
