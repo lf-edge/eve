@@ -36,6 +36,7 @@ type DomainConfig struct {
 	DiskConfigList []DiskConfig
 	VifList        []VifConfig
 	IoAdapterList  []IoAdapter
+	KubeNADList    []string // List of NAD names for kubernetes
 
 	// XXX: to be deprecated, use CipherBlockStatus instead
 	CloudInitUserData *string `json:"pubsub-large-CloudInitUserData"` // base64-encoded

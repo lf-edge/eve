@@ -119,6 +119,9 @@ type domainContext struct {
 	// CPUs management
 	cpuAllocator        *cpuallocator.CPUAllocator
 	cpuPinningSupported bool
+
+	// hvTypeKube
+	hvTypeKube bool
 }
 
 // AddAgentSpecificCLIFlags adds CLI options
@@ -155,6 +158,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		pids:                make(map[int32]bool),
 		cipherMetrics:       cipher.NewAgentMetrics(agentName),
 		metricInterval:      10,
+		hvTypeKube:          base.IsHVTypeKube(),
 	}
 	agentbase.Init(&domainCtx, logger, log, agentName,
 		agentbase.WithArguments(arguments))
@@ -1372,10 +1376,14 @@ func doAssignIoAdaptersToDomain(ctx *domainContext, config types.DomainConfig,
 					ib.Phylabel, ib.UsbAddr, status.DomainName)
 				assignmentsUsb = addNoDuplicate(assignmentsUsb, ib.UsbAddr)
 			} else if ib.PciLong != "" && !ib.IsPCIBack {
-				log.Functionf("Assigning %s (%s) to %s",
-					ib.Phylabel, ib.PciLong, status.DomainName)
-				assignmentsPci = addNoDuplicate(assignmentsPci, ib.PciLong)
-				ib.IsPCIBack = true
+				if !ctx.hvTypeKube || ib.Type != types.IoNetEth {
+					log.Functionf("Assigning %s (%s) to %s",
+						ib.Phylabel, ib.PciLong, status.DomainName)
+					assignmentsPci = addNoDuplicate(assignmentsPci, ib.PciLong)
+					ib.IsPCIBack = true
+				} else {
+					log.Noticef("doAssignIoAdaptersToDomain: skip IO assign %v", ib)
+				}
 			}
 		}
 		publishAssignableAdapters = len(assignmentsUsb) > 0 || len(assignmentsPci) > 0
@@ -3016,14 +3024,18 @@ func updatePortAndPciBackIoMember(ctx *domainContext, ib *types.IoBundle, isPort
 			log.Noticef("Not assigning %s (%s) to pciback due to Testing",
 				ib.Phylabel, ib.PciLong)
 		} else if ib.PciLong != "" {
-			log.Noticef("Assigning %s (%s) to pciback",
-				ib.Phylabel, ib.PciLong)
-			err := hyper.PCIReserve(ib.PciLong)
-			if err != nil {
-				return changed, err
+			if !ctx.hvTypeKube || ib.Type != types.IoNetEth {
+				log.Noticef("Assigning %s (%s) to pciback",
+					ib.Phylabel, ib.PciLong)
+				err := hyper.PCIReserve(ib.PciLong)
+				if err != nil {
+					return changed, err
+				}
+				ib.IsPCIBack = true
+				changed = true
+			} else {
+				log.Noticef("updatePortAndPciBackIoMember: skip IO on ib %v", ib)
 			}
-			ib.IsPCIBack = true
-			changed = true
 		}
 	}
 	return changed, nil

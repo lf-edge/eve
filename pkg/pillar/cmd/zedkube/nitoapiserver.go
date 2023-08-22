@@ -90,3 +90,19 @@ func monitorKubeCluster(ctx *zedkubeContext) {
 		}
 	}
 }
+
+func genNISpecDelete(ctx *zedkubeContext, nadName string) error {
+	netClientset, err := netclientset.NewForConfig(ctx.config)
+	if err != nil {
+		log.Errorf("genNISpecDelete: Failed to create netclientset: %v", err)
+		return err
+	}
+
+	err = netClientset.K8sCniCncfIoV1().NetworkAttachmentDefinitions(eveNamespace).Delete(context.Background(), nadName, metav1.DeleteOptions{})
+	if err != nil {
+		log.Errorf("genNISpecDelete: spec delete error %s", err)
+		return err
+	}
+	log.Noticef("genNISpecDelete: spec NetworkAttachmentDefinition deleted successfully: %+v", nadName)
+	return err
+}

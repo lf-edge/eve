@@ -14,6 +14,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	uuid "github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
+	"github.com/vishvananda/netlink"
 	"k8s.io/client-go/rest"
 )
 
@@ -42,6 +43,7 @@ type zedkubeContext struct {
 	pubAppNetworkConfig      pubsub.Publication
 	pubDomainMetric          pubsub.Publication
 	networkInstanceStatusMap sync.Map
+	ioAdapterMap             sync.Map
 	config                   *rest.Config
 	appNetConfig             map[string]*types.AppNetworkConfig
 	resendNITimer            *time.Timer
@@ -314,7 +316,10 @@ func handleNetworkInstanceDelete(ctxArg interface{}, key string,
 	configArg interface{}) {
 
 	log.Noticef("handleNetworkInstanceDelete(%s)\n", key) // XXX Functionf
-	// XXX ctx := ctxArg.(*zedkubeContext)
+	ctx := ctxArg.(*zedkubeContext)
+	status := configArg.(types.NetworkInstanceStatus)
+	nadName := strings.ToLower(status.DisplayName)
+	genNISpecDelete(ctx, nadName)
 }
 
 func kubeGetNIStatus(ctx *zedkubeContext, niUUID uuid.UUID) (*types.NetworkInstanceStatus, error) {
@@ -437,4 +442,18 @@ func handleGlobalConfigImpl(ctxArg interface{}, key string,
 		ctx.globalConfig = gcp
 	}
 	log.Functionf("handleGlobalConfigImpl(%s): done", key)
+}
+
+func bringupInterface(intfName string) {
+	link, err := netlink.LinkByName(intfName)
+	if err != nil {
+		log.Errorf("bringupInterface: %v", err)
+		return
+	}
+
+	// Set the IFF_UP flag to bring up the interface
+	if err := netlink.LinkSetUp(link); err != nil {
+		log.Errorf("bringupInterface: %v", err)
+		return
+	}
 }

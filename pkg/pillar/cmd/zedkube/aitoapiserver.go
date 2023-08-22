@@ -47,6 +47,26 @@ func genAISpecCreate(ctx *zedkubeContext, aiConfig *types.AppInstanceConfig) err
 		}
 	}
 
+	ioAdapter := aiConfig.IoAdapterList
+	for _, io := range ioAdapter {
+		if io.Type == types.IoNetEth {
+			nadname := "host-" + io.Name
+			_, ok := ctx.ioAdapterMap.Load(nadname)
+			if !ok {
+				bringupInterface(io.Name)
+				err = ioEtherCreate(ctx, &io)
+				if err != nil {
+					log.Errorf("genAISpecCreate: create io adapter error %v", err)
+				}
+				ctx.ioAdapterMap.Store(nadname, true)
+			} else {
+				log.Noticef("genAISpecCreate: nad already exist %v", nadname)
+			}
+			nadnames = append(nadnames, nadname)
+			log.Noticef("genAISpecCreate: nadnames %v", nadnames)
+		}
+	}
+
 	if len(aiConfig.VolumeRefConfigList) == 0 {
 		err := fmt.Errorf("genAISpecCreate: no volume, return")
 		return err
@@ -152,6 +172,21 @@ func aiSpecDelete(ctx *zedkubeContext, aiConfig *types.AppInstanceConfig) {
 	if err != nil {
 		log.Errorf("aiSpecDelete: can't get clientset %v", err)
 		return
+	}
+
+	ioAdapter := aiConfig.IoAdapterList
+	for _, io := range ioAdapter {
+		if io.Type == types.IoNetEth {
+			nadname := "host-" + io.Name
+			_, ok := ctx.ioAdapterMap.Load(nadname)
+			if ok {
+				// remove the syncMap entry
+				ctx.ioAdapterMap.Delete(nadname)
+			}
+			// delete the NAD in kubernetes
+			genNISpecDelete(ctx, nadname)
+			log.Noticef("aiSpecDelete: delete existing nad %v", nadname)
+		}
 	}
 
 	podName := strings.ToLower(aiConfig.DisplayName)

@@ -151,3 +151,23 @@ func localNISpecCreate(ctx *zedkubeContext, niStatus *types.NetworkInstanceStatu
 	log.Noticef("localNISpecCreate: spec, sendToApiServer, error %v", err)
 	return err
 }
+
+func ioEtherCreate(ctx *zedkubeContext, ioAdapt *types.IoAdapter) error {
+	name := ioAdapt.Name
+	namespace := eveNamespace
+
+	output := fmt.Sprintf(" {\n")
+	output = output + fmt.Sprintf(`    "cniVersion": "0.3.1",
+    "plugins": [
+      {
+        "type": "host-device",
+        "device": "%s"
+      }
+    ]
+`, name)
+	output = output + fmt.Sprintf("  }\n")
+
+	err := sendToApiServer(ctx, []byte(output), "host-"+name, namespace)
+	log.Noticef("ioEtherCreate: spec, sendToApiServer, error %v", err)
+	return err
+}
