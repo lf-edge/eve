@@ -579,9 +579,7 @@ func requestConfigByURL(getconfigCtx *getconfigContext, url string,
 					ctx.bootReason)
 			} else {
 				config, ts, err := readSavedProtoMessageConfig(
-					zedcloudCtx, url,
-					ctx.globalConfig.GlobalValueInt(types.StaleConfigTime),
-					checkpointDirname+"/lastconfig", false)
+					zedcloudCtx, url, checkpointDirname+"/lastconfig")
 				if err != nil {
 					log.Errorf("getconfig: %v", err)
 					return invalidConfig, rv.TracedReqs
@@ -797,8 +795,8 @@ func existsSavedConfig(filename string) bool {
 // If the file exists then read the config, and return is modify time
 // Ignore if older than StaleConfigTime seconds
 func readSavedProtoMessageConfig(zedcloudCtx *zedcloud.ZedCloudContext, URL string,
-	staleConfigTime uint32, filename string, force bool) (*zconfig.EdgeDevConfig, time.Time, error) {
-	contents, ts, err := readSavedConfig(staleConfigTime, filename, force)
+	filename string) (*zconfig.EdgeDevConfig, time.Time, error) {
+	contents, ts, err := readSavedConfig(filename)
 	if err != nil {
 		log.Errorln("readSavedProtoMessageConfig", err)
 		return nil, ts, err
@@ -826,24 +824,10 @@ func readSavedProtoMessageConfig(zedcloudCtx *zedcloud.ZedCloudContext, URL stri
 }
 
 // If the file exists then read the config content from it, and return its modify time.
-// Ignore if older than staleTime seconds.
-func readSavedConfig(staleTime uint32,
-	filename string, force bool) ([]byte, time.Time, error) {
+func readSavedConfig(filename string) ([]byte, time.Time, error) {
 	info, err := os.Stat(filename)
 	if err != nil {
-		if os.IsNotExist(err) && !force {
-			return nil, time.Time{}, nil
-		} else {
-			return nil, time.Time{}, err
-		}
-	}
-	age := time.Since(info.ModTime())
-	staleLimit := time.Second * time.Duration(staleTime)
-	if !force && age > staleLimit {
-		errStr := fmt.Sprintf("saved config too old: age %v limit %d\n",
-			age, staleLimit)
-		log.Errorln(errStr)
-		return nil, info.ModTime(), nil
+		return nil, time.Time{}, err
 	}
 	contents, err := os.ReadFile(filename)
 	if err != nil {
