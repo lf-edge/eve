@@ -468,26 +468,29 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	}
 }
 
-func checkToFillKubeNADs(ctx *zedmanagerContext, aiConfig types.AppInstanceConfig) []string {
-	var nadNames []string
+func checkToFillKubeNADs(ctx *zedmanagerContext, aiConfig types.AppInstanceConfig) []types.KubeNAD {
+	var nads []types.KubeNAD
 	pub := ctx.subNetworkInstanceStatus
 	items := pub.GetAll()
 	for _, ul := range aiConfig.UnderlayNetworkList {
-		var nadName string
+		var nad types.KubeNAD
 		for _, item := range items {
 			ni := item.(types.NetworkInstanceStatus)
 			if ul.Network.String() == ni.UUIDandVersion.UUID.String() {
-				nadName = strings.ToLower(ni.DisplayName)
+				nad = types.KubeNAD{
+					Name: strings.ToLower(ni.DisplayName),
+					Mac:  ul.AppMacAddr.String(),
+				}
 				break
 			}
 		}
-		if nadName != "" {
-			nadNames = append(nadNames, nadName)
+		if nad.Name != "" {
+			nads = append(nads, nad)
 		} else {
 			log.Noticef("checkToFillKubeNADs: can not find NAD for %v", ul.Network)
 		}
 	}
-	return nadNames
+	return nads
 }
 
 func handleLocalAppInstanceConfigCreate(ctx interface{}, key string, config interface{}) {

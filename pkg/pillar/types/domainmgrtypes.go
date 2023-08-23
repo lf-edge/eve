@@ -36,7 +36,7 @@ type DomainConfig struct {
 	DiskConfigList []DiskConfig
 	VifList        []VifConfig
 	IoAdapterList  []IoAdapter
-	KubeNADList    []string // List of NAD names for kubernetes
+	KubeNADList    []KubeNAD // List of NAD names for kubernetes
 
 	// XXX: to be deprecated, use CipherBlockStatus instead
 	CloudInitUserData *string `json:"pubsub-large-CloudInitUserData"` // base64-encoded
@@ -55,6 +55,12 @@ type DomainConfig struct {
 	// once the version is changed cloud-init tool restarts in a guest.
 	// See getCloudInitVersion() and createCloudInitISO() for details.
 	CloudInitVersion uint32
+}
+
+// KubeNAD - carry the Kubernetes NAD name and Mac Address for App
+type KubeNAD struct {
+	Name string
+	Mac  string
 }
 
 // MetaDataType of metadata service for app

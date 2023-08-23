@@ -47,22 +47,31 @@ func sendToApiServer(ctx *zedkubeContext, yamlData []byte, name, namespace strin
 
 	// Start a goroutine to check the Kubernetes API's reachability
 	go kubeapi.WaitForNodeReady(client, readyCh)
+	stillRunning := time.NewTicker(stillRunningInterval)
 
-	select {
-	case isReady := <-readyCh:
-		if isReady {
-			log.Noticef("sendAoApiServer: spec Kubernetes cluster is ready!")
-			createdNAD, err := netClientset.K8sCniCncfIoV1().NetworkAttachmentDefinitions(namespace).Create(context.Background(), nad, metav1.CreateOptions{})
-			if err != nil {
-				log.Errorf("sendAoApiServer: spec create error %s", err)
-				return err
+	var done bool
+	for !done {
+		select {
+		case isReady := <-readyCh:
+			if isReady {
+				log.Noticef("sendAoApiServer: spec Kubernetes cluster is ready!")
+				createdNAD, err := netClientset.K8sCniCncfIoV1().NetworkAttachmentDefinitions(namespace).Create(context.Background(), nad, metav1.CreateOptions{})
+				if err != nil {
+					log.Errorf("sendAoApiServer: spec create error %s", err)
+					return err
+				}
+				log.Noticef("sendAoApiServer: spec NetworkAttachmentDefinition created successfully: %+v", createdNAD)
+			} else {
+				log.Noticef("sendAoApiServer: spec Kubernetes cluster isn't ready!")
 			}
-			log.Noticef("sendAoApiServer: spec NetworkAttachmentDefinition created successfully: %+v", createdNAD)
-		} else {
-			log.Noticef("sendAoApiServer: spec Kubernetes cluster isn't ready!")
+			done = true
+		case <-time.After(time.Minute * 10):
+			log.Noticef("sendToApiServer: spec NetworkAttachmentDefinition create timedout")
+			done = true
+		case <-stillRunning.C:
+			log.Noticef("sendToApiServer: still running")
 		}
-	case <-time.After(time.Minute * 10):
-		log.Noticef("sendAoApiServer: spec NetworkAttachmentDefinition create timedout")
+		ctx.ps.StillRunning(agentName, warningTime, errorTime)
 	}
 
 	return nil

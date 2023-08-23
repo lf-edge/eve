@@ -590,12 +590,13 @@ func (c *DnsmasqConfigurator) CreateDnsmasqConfig(buffer io.Writer, dnsmasq Dnsm
 		router = dnsmasq.DHCPServer.GatewayIP.String()
 	}
 
+	hvTypeKube := base.IsHVTypeKube()
 	ipv4Netmask := "255.255.255.0" // Default unless there is a Subnet
 	subnet := dnsmasq.DHCPServer.Subnet
 	if subnet != nil {
 		ipv4Netmask = net.IP(subnet.Mask).String()
 		altIPv4Netmask := ipv4Netmask
-		if router != "" && dnsmasq.DHCPServer.AllOnesNetmask {
+		if router != "" && dnsmasq.DHCPServer.AllOnesNetmask && !hvTypeKube {
 			// Network prefix "255.255.255.255" will force packets to go through
 			// dom0 virtual router that makes the packets pass through ACLs and flow log.
 			altIPv4Netmask = "255.255.255.255"
@@ -614,7 +615,7 @@ func (c *DnsmasqConfigurator) CreateDnsmasqConfig(buffer io.Writer, dnsmasq Dnsm
 					dnsmasq.DHCPServer.GatewayIP)); err != nil {
 				return writeErr(err)
 			}
-			if dnsmasq.DHCPServer.AllOnesNetmask {
+			if dnsmasq.DHCPServer.AllOnesNetmask && !hvTypeKube {
 				if _, err := io.WriteString(buffer,
 					fmt.Sprintf(
 						"dhcp-option=option:classless-static-route,%s/32,%s,%s,%s,%s,%s\n",

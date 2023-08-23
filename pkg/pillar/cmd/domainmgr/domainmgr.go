@@ -1824,6 +1824,9 @@ func releaseAdapters(ctx *domainContext, ioAdapterList []types.IoAdapter,
 			if ib == nil {
 				continue
 			}
+			if ctx.hvTypeKube && ib.Type == types.IoNetEth {
+				continue
+			}
 			if ib.UsedByUUID != myUUID {
 				log.Warnf("releaseAdapters IoBundle not ours by %s: %d %s for %s",
 					ib.UsedByUUID, adapter.Type, adapter.Name,
@@ -2976,7 +2979,7 @@ func updatePortAndPciBackIoMember(ctx *domainContext, ib *types.IoBundle, isPort
 	if changed && ib.KeepInHost && ib.UsedByUUID == nilUUID && ib.IsPCIBack {
 		log.Functionf("updatePortAndPciBackIoMember(%d, %s, %s) take back from pciback",
 			ib.Type, ib.Phylabel, ib.AssignmentGroup)
-		if ib.PciLong != "" {
+		if ib.PciLong != "" || (!ctx.hvTypeKube && ib.Type != types.IoNetEth) {
 			log.Functionf("updatePortAndPciBackIoMember: Removing %s (%s) from pciback",
 				ib.Phylabel, ib.PciLong)
 			err = hyper.PCIRelease(ib.PciLong)
@@ -3270,7 +3273,7 @@ func handleIBDelete(ctx *domainContext, phylabel string) {
 	if ib.IsPCIBack {
 		log.Functionf("handleIBDelete: Assigning %s (%s) back",
 			ib.Phylabel, ib.PciLong)
-		if ib.PciLong != "" {
+		if ib.PciLong != "" || (!ctx.hvTypeKube && ib.Type != types.IoNetEth) {
 			err := hyper.PCIRelease(ib.PciLong)
 			if err != nil {
 				log.Errorf("handleIBDelete(%d %s %s) PCIRelease %s failed %v",

@@ -90,15 +90,6 @@ func localNISpecCreate(ctx *zedkubeContext, niStatus *types.NetworkInstanceStatu
 
 	pluginName := "bridge-" + status.BridgeName
 	pluginBridge := status.BridgeName
-	macAddress := status.BridgeMac
-	subnet := niStatus.Subnet.String()
-	rangeStart := niStatus.DhcpRange.Start.String()
-	rangeEnd := niStatus.DhcpRange.End.String()
-	gateway := niStatus.Gateway.String()
-	route1 := "10.1.0.0/16"
-	route2 := "192.168.86.0/24"
-	nameserver1 := "8.8.8.8"
-	nameserver2 := "1.1.1.1"
 	port := niStatus.PortLogicalLabel
 
 	// Create the config string for net-attach-def
@@ -110,28 +101,10 @@ func localNISpecCreate(ctx *zedkubeContext, niStatus *types.NetworkInstanceStatu
         "type": "bridge",
         "bridge": "%s",
         "isDefaultGateway": true,
-        "ipMasq": true,
+        "ipMasq": false,
         "hairpinMode": true,
-        "mac": "%s",
         "ipam": {
-          "type": "host-local",
-          "ranges": [
-            [
-              {
-                "subnet": "%s",
-                "rangeStart": "%s",
-                "rangeEnd": "%s",
-                "gateway": "%s"
-              }
-            ]
-          ],
-          "routes": [
-            { "dst": "%s" },
-            { "dst": "%s" }
-          ],
-          "dns": {
-            "nameservers": [ "%s", "%s" ]
-          }
+          "type": "dhcp"
         }
       },
       {
@@ -143,8 +116,7 @@ func localNISpecCreate(ctx *zedkubeContext, niStatus *types.NetworkInstanceStatu
         "type": "eve-bridge"
       }
     ]
-`, pluginName, pluginBridge, macAddress, subnet, rangeStart,
-		rangeEnd, gateway, route1, route2, nameserver1, nameserver2, port)
+`, pluginName, pluginBridge, port)
 	output = output + fmt.Sprintf("  }\n")
 
 	err = sendToApiServer(ctx, []byte(output), name, namespace)

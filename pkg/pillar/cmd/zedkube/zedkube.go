@@ -34,6 +34,7 @@ var (
 
 type zedkubeContext struct {
 	agentbase.AgentBase
+	ps                       *pubsub.PubSub
 	globalConfig             *types.ConfigItemValueMap
 	subNetworkInstanceStatus pubsub.Subscription
 	subAppInstanceConfig     pubsub.Subscription
@@ -59,6 +60,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 
 	zedkubeCtx := zedkubeContext{
 		globalConfig: types.DefaultConfigItemValueMap(),
+		ps:           ps,
 	}
 	agentbase.Init(&zedkubeCtx, logger, log, agentName,
 		agentbase.WithPidFile(),
@@ -222,7 +224,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 
 		case <-stillRunning.C:
 		}
-		ps.StillRunning(agentName, warningTime, errorTime)
+		zedkubeCtx.ps.StillRunning(agentName, warningTime, errorTime)
 	}
 }
 
