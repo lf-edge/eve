@@ -15,8 +15,12 @@ import (
 
 	"github.com/google/go-tpm/tpm2"
 	"github.com/google/go-tpm/tpmutil"
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
+	"github.com/sirupsen/logrus"
 )
+
+var log = base.NewSourceLogObject(logrus.StandardLogger(), "test", 1234)
 
 func TestSealUnseal(t *testing.T) {
 	_, err := os.Stat(TpmDevicePath)
@@ -25,7 +29,7 @@ func TestSealUnseal(t *testing.T) {
 	}
 
 	dataToSeal := []byte("secret")
-	if err := SealDiskKey(dataToSeal, DiskKeySealingPCRs); err != nil {
+	if err := SealDiskKey(log, dataToSeal, DiskKeySealingPCRs); err != nil {
 		t.Errorf("Seal operation failed with err: %v", err)
 		return
 	}
@@ -53,7 +57,7 @@ func TestSealUnsealMismatchReport(t *testing.T) {
 	defer rw.Close()
 
 	dataToSeal := []byte("secret")
-	if err := SealDiskKey(dataToSeal, DiskKeySealingPCRs); err != nil {
+	if err := SealDiskKey(log, dataToSeal, DiskKeySealingPCRs); err != nil {
 		t.Errorf("Seal operation failed with err: %v", err)
 		return
 	}
@@ -94,7 +98,7 @@ func TestSealUnsealTpmEventLogCollect(t *testing.T) {
 
 	// this should write the save the first event log
 	dataToSeal := []byte("secret")
-	if err := SealDiskKey(dataToSeal, DiskKeySealingPCRs); err != nil {
+	if err := SealDiskKey(log, dataToSeal, DiskKeySealingPCRs); err != nil {
 		t.Errorf("Seal operation failed with err: %v", err)
 		return
 	}
@@ -126,7 +130,7 @@ func TestSealUnsealTpmEventLogCollect(t *testing.T) {
 	}
 
 	// this should trigger collecting previous tpm event logs
-	if err := SealDiskKey(dataToSeal, DiskKeySealingPCRs); err != nil {
+	if err := SealDiskKey(log, dataToSeal, DiskKeySealingPCRs); err != nil {
 		t.Errorf("Seal operation failed with err: %v", err)
 		return
 	}

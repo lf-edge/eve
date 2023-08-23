@@ -521,7 +521,7 @@ func FetchSealedVaultKey(log *base.LogObject) ([]byte, error) {
 		if err != nil {
 			return nil, fmt.Errorf("GetRandom failed: %w", err)
 		}
-		err = SealDiskKey(key, DiskKeySealingPCRs)
+		err = SealDiskKey(log, key, DiskKeySealingPCRs)
 		if err != nil {
 			return nil, fmt.Errorf("sealing the fresh disk key failed: %w", err)
 		}
@@ -548,7 +548,7 @@ func FetchSealedVaultKey(log *base.LogObject) ([]byte, error) {
 
 		log.Noticef("try to convert the legacy key into a sealed key")
 
-		err = SealDiskKey(key, DiskKeySealingPCRs)
+		err = SealDiskKey(log, key, DiskKeySealingPCRs)
 		if err != nil {
 			return nil, fmt.Errorf("sealing the legacy disk key into TPM failed: %w", err)
 		}
@@ -569,7 +569,7 @@ func FetchSealedVaultKey(log *base.LogObject) ([]byte, error) {
 }
 
 // SealDiskKey seals key into TPM2.0, with provided PCRs
-func SealDiskKey(key []byte, pcrSel tpm2.PCRSelection) error {
+func SealDiskKey(log *base.LogObject, key []byte, pcrSel tpm2.PCRSelection) error {
 	rw, err := tpm2.OpenTPM(TpmDevicePath)
 	if err != nil {
 		return err
@@ -647,7 +647,7 @@ func SealDiskKey(key []byte, pcrSel tpm2.PCRSelection) error {
 
 	// save a snapshot of current PCR values
 	if err := saveDiskKeySealingPCRs(savedSealingPcrsFile); err != nil {
-		return fmt.Errorf("saving snapshot of sealing PCRs failed: %w", err)
+		log.Warnf("saving snapshot of sealing PCRs failed: %s", err)
 	}
 
 	// Backup the previous pair of logs if any, so at most we have two pairs of
@@ -657,17 +657,17 @@ func SealDiskKey(key []byte, pcrSel tpm2.PCRSelection) error {
 	// current measurement log (which is same as the content of MeasurementLogSealFail)
 	// and lose the ability to diff and diagnose the issue.
 	if err := backupCopiedMeasurementLogs(); err != nil {
-		return fmt.Errorf("collecting previous snapshot of TPM event log failed: %w", err)
+		log.Warnf("collecting previous snapshot of TPM event log failed: %s", err)
 	}
 
 	// fresh start, remove old copies of measurement logs.
 	if err := removeCopiedMeasurementLogs(); err != nil {
-		return fmt.Errorf("removing old copies of TPM measurement log failed: %w", err)
+		log.Warnf("removing old copies of TPM measurement log failed: %s", err)
 	}
 
 	// save a copy of the current measurement log
 	if err := copyMeasurementLog(measurementLogSealSuccess); err != nil {
-		return fmt.Errorf("copying current TPM measurement log failed: %w", err)
+		log.Warnf("copying current TPM measurement log failed: %s", err)
 	}
 
 	return nil
