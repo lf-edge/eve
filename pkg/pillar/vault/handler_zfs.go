@@ -98,7 +98,8 @@ func (h *ZFSHandler) SetupDefaultVault() error {
 		return fmt.Errorf("error in setting up ZFS vault %s:%v", types.SealedDataset, err)
 	}
 	// Log the type of key used for unlocking default vault
-	h.log.Noticef("default zfs vault unlocked")
+	h.log.Noticef("default zfs vault unlocked using key type: %s",
+		etpm.CompareLegacyandSealedKey().String())
 	return nil
 }
 
