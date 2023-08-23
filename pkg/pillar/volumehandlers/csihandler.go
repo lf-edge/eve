@@ -7,14 +7,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-
 	"os"
 	"path/filepath"
 	"time"
 
 	"github.com/lf-edge/edge-containers/pkg/registry"
 	zconfig "github.com/lf-edge/eve-api/go/config"
-	"github.com/lf-edge/eve/pkg/pillar/diskmetrics"
 	"github.com/lf-edge/eve/pkg/pillar/kubeapi"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	kerr "k8s.io/apimachinery/pkg/api/errors"
@@ -113,13 +111,9 @@ func (handler *volumeHandlerCSI) CreateVolume() (string, error) {
 		pvcSize = uint64(handler.status.TotalSize)
 	}
 	handler.log.Noticef("CreateVolume called for PVC %s size %v", pvcName, pvcSize)
-	err := kubeapi.CreatePVC(pvcName, pvcSize)
-	if err != nil {
-		errStr := fmt.Sprintf("Error creating PVC %s", pvcName)
-		handler.log.Error(errStr)
-		return "", errors.New(errStr)
-	}
 
+	// Reference Name is set for downloaded volumes. virtctl in RolloutImgToPVC can create PVC if not exists
+	// so we need not explicitly create the PVC here.
 	if handler.status.ReferenceName != "" {
 		pathToFile, err := handler.getVolumeFilePath()
 		if err != nil {
@@ -128,11 +122,18 @@ func (handler *volumeHandlerCSI) CreateVolume() (string, error) {
 			handler.log.Error(errStr)
 			return "", errors.New(errStr)
 		}
-		if err := diskmetrics.RolloutImgToPVC(createContext, handler.log, pathToFile, pvcName, "pvc"); err != nil {
+		if err := kubeapi.RolloutImgToPVC(createContext, handler.log, false, pathToFile, pvcName, "pvc"); err != nil {
 			errStr := fmt.Sprintf("Error converting %s to PVC %s: %v",
 				pathToFile, pvcName, err)
 			handler.log.Error(errStr)
 			return pvcName, errors.New(errStr)
+		}
+	} else {
+		err := kubeapi.CreatePVC(pvcName, pvcSize)
+		if err != nil {
+			errStr := fmt.Sprintf("Error creating PVC %s", pvcName)
+			handler.log.Error(errStr)
+			return "", errors.New(errStr)
 		}
 	}
 

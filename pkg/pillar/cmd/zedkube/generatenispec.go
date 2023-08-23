@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/lf-edge/eve/pkg/pillar/kubeapi"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 )
 
@@ -70,8 +71,8 @@ func switchNISpecCreate(ctx *zedkubeContext, niStatus *types.NetworkInstanceStat
 `, pluginName, pluginBridge, macAddress)
 	output = output + fmt.Sprintf("  }\n")
 
-	err = sendToApiServer(ctx, []byte(output), name, namespace)
-	log.Noticef("switch2NISpecCreate: spec, sendToApiServer, error %v", err)
+	err = kubeapi.CreateNAD(ctx.ps, log, []byte(output), name, namespace)
+	log.Noticef("switch2NISpecCreate: spec, CreateNAD, error %v", err)
 	return err
 }
 
@@ -119,8 +120,8 @@ func localNISpecCreate(ctx *zedkubeContext, niStatus *types.NetworkInstanceStatu
 `, pluginName, pluginBridge, port)
 	output = output + fmt.Sprintf("  }\n")
 
-	err = sendToApiServer(ctx, []byte(output), name, namespace)
-	log.Noticef("localNISpecCreate: spec, sendToApiServer, error %v", err)
+	err = kubeapi.CreateNAD(ctx.ps, log, []byte(output), name, namespace)
+	log.Noticef("localNISpecCreate: spec, CreateNAD, error %v", err)
 	return err
 }
 
@@ -139,7 +140,7 @@ func ioEtherCreate(ctx *zedkubeContext, ioAdapt *types.IoAdapter) error {
 `, name)
 	output = output + fmt.Sprintf("  }\n")
 
-	err := sendToApiServer(ctx, []byte(output), "host-"+name, namespace)
-	log.Noticef("ioEtherCreate: spec, sendToApiServer, error %v", err)
+	err := kubeapi.CreateNAD(ctx.ps, log, []byte(output), "host-"+name, namespace)
+	log.Noticef("ioEtherCreate: spec, CreateNAD, error %v", err)
 	return err
 }

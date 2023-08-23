@@ -171,6 +171,7 @@ if [ ! -f /var/lib/all_components_initialized ]; then
                 #wait until k3s is ready
                 logmsg "Looping until k3s is ready"
                 until kubectl get node | grep "$HOSTNAME" | awk '{print $2}' | grep 'Ready'; do sleep 5; done
+                ln -sf /persist/vault/containerd /var/lib/rancher/k3s/agent/containerd
                 # Give the embedded etcd in k3s priority over io as its fsync latencies are critical
                 ionice -c2 -n0 -p $(pgrep -f "k3s server")
                 logmsg "k3s is ready on this node"

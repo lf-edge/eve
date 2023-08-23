@@ -1,36 +1,32 @@
-package zedkube
+package kubeapi
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	netattdefv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
-	netclientset "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/client/clientset/versioned"
-	"github.com/lf-edge/eve/pkg/pillar/kubeapi"
+	"github.com/lf-edge/eve/pkg/pillar/base"
+	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/kubernetes"
 )
 
 const (
-	kubeConfigFile = "/run/.kube/k3s/k3s.yaml"
+	agentName = "zedkube"
+	// Time limits for event loop handlers
+	stillRunningInterval = 25 * time.Second
 )
 
-func sendToApiServer(ctx *zedkubeContext, yamlData []byte, name, namespace string) error {
+func CreateNAD(ps *pubsub.PubSub, log *base.LogObject, yamlData []byte, name, namespace string) error {
 
-	if ctx.config == nil {
-		return fmt.Errorf("kubeConfig null\n")
-	}
-	// Create the clientset using the configuration
-	client, err := kubernetes.NewForConfig(ctx.config)
+	client, err := GetClientSet()
 	if err != nil {
-		log.Errorf("sendAoApiServer: Failed to create clientset: %v", err)
+		log.Errorf("createNAD: Failed to create clientset: %v", err)
 		return err
 	}
 
-	netClientset, err := netclientset.NewForConfig(ctx.config)
+	netClientset, err := GetNetClientSet()
 	if err != nil {
-		log.Errorf("sendAoApiServer: Failed to create netclientset: %v", err)
+		log.Errorf("createNAD: Failed to create netclientset: %v", err)
 		return err
 	}
 	// Create the NAD.
@@ -46,7 +42,8 @@ func sendToApiServer(ctx *zedkubeContext, yamlData []byte, name, namespace strin
 	readyCh := make(chan bool)
 
 	// Start a goroutine to check the Kubernetes API's reachability
-	go kubeapi.WaitForNodeReady(client, readyCh)
+	go WaitForNodeReady(client, readyCh)
+
 	stillRunning := time.NewTicker(stillRunningInterval)
 
 	var done bool
@@ -71,14 +68,14 @@ func sendToApiServer(ctx *zedkubeContext, yamlData []byte, name, namespace strin
 		case <-stillRunning.C:
 			log.Noticef("sendToApiServer: still running")
 		}
-		ctx.ps.StillRunning(agentName, warningTime, errorTime)
+		ps.StillRunning(agentName, warningTime, errorTime)
 	}
 
 	return nil
 }
 
-func monitorKubeCluster(ctx *zedkubeContext) {
-	netClientset, err := netclientset.NewForConfig(ctx.config)
+func monitorKubeCluster(log *base.LogObject) {
+	netClientset, err := GetNetClientSet()
 	if err != nil {
 		log.Errorf("monitorKubeCluster: Failed to create netclientset: %v", err)
 		return
@@ -88,7 +85,7 @@ func monitorKubeCluster(ctx *zedkubeContext) {
 	for {
 		select {
 		case <-checkTimer.C:
-			namespace := eveNamespace                     // XXX
+			namespace := eveNameSpace                     // XXX
 			nadname := "defaultlocal-canary-naiming-sm50" // XXX
 			gotNAD, err := netClientset.K8sCniCncfIoV1().NetworkAttachmentDefinitions(namespace).Get(context.Background(), nadname, metav1.GetOptions{})
 			if err != nil {
@@ -100,18 +97,19 @@ func monitorKubeCluster(ctx *zedkubeContext) {
 	}
 }
 
-func genNISpecDelete(ctx *zedkubeContext, nadName string) error {
-	netClientset, err := netclientset.NewForConfig(ctx.config)
+func DeleteNAD(log *base.LogObject, nadName string) error {
+	netClientset, err := GetNetClientSet()
+
 	if err != nil {
-		log.Errorf("genNISpecDelete: Failed to create netclientset: %v", err)
+		log.Errorf("deleteNAD: Failed to create netclientset: %v", err)
 		return err
 	}
 
-	err = netClientset.K8sCniCncfIoV1().NetworkAttachmentDefinitions(eveNamespace).Delete(context.Background(), nadName, metav1.DeleteOptions{})
+	err = netClientset.K8sCniCncfIoV1().NetworkAttachmentDefinitions(eveNameSpace).Delete(context.Background(), nadName, metav1.DeleteOptions{})
 	if err != nil {
-		log.Errorf("genNISpecDelete: spec delete error %s", err)
+		log.Errorf("deleteNAD: spec delete error %s", err)
 		return err
 	}
-	log.Noticef("genNISpecDelete: spec NetworkAttachmentDefinition deleted successfully: %+v", nadName)
+	log.Noticef("deleteNAD: spec NetworkAttachmentDefinition deleted successfully: %+v", nadName)
 	return err
 }

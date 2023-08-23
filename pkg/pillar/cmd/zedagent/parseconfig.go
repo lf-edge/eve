@@ -564,12 +564,9 @@ func parseAppInstanceConfig(getconfigCtx *getconfigContext,
 		appInstance.UUIDandVersion.UUID, _ = uuid.FromString(cfgApp.Uuidandversion.Uuid)
 		appInstance.UUIDandVersion.Version = cfgApp.Uuidandversion.Version
 		appInstance.DisplayName = cfgApp.Displayname
-		if getconfigCtx.zedagentCtx.hvTypeKube {
-			appInstance.Activate = false
-			appInstance.KubeActivate = cfgApp.Activate
-		} else {
-			appInstance.Activate = cfgApp.Activate
-		}
+
+		appInstance.KubeActivate = false
+		appInstance.Activate = true
 
 		appInstance.FixedResources.Kernel = cfgApp.Fixedresources.Kernel
 		appInstance.FixedResources.BootLoader = cfgApp.Fixedresources.Bootloader
