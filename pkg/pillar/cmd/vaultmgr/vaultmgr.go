@@ -418,7 +418,7 @@ func handleVaultKeyFromControllerImpl(ctxArg interface{}, key string,
 		}
 		// Try unlocking the vault now, in case it is not yet unlocked
 		log.Noticef("Vault is still locked, trying to unlock")
-		err = etpm.SealDiskKey(decryptedKey, etpm.DiskKeySealingPCRs)
+		err = etpm.SealDiskKey(log, decryptedKey, etpm.DiskKeySealingPCRs)
 		if err != nil {
 			log.Errorf("Failed to Seal key in TPM %v", err)
 			return
