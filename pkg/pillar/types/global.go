@@ -165,9 +165,6 @@ const (
 	FallbackIfCloudGoneTime GlobalSettingKey = "timer.update.fallback.no.network"
 	// MintimeUpdateSuccess global setting key
 	MintimeUpdateSuccess GlobalSettingKey = "timer.test.baseimage.update"
-	// StaleConfigTime global setting key
-	// DEPRECATED! Saved config never expires!
-	StaleConfigTime GlobalSettingKey = "timer.use.config.checkpoint"
 	// VdiskGCTime global setting key
 	VdiskGCTime GlobalSettingKey = "timer.gc.vdisk"
 	// DeferContentDelete global setting key
@@ -783,8 +780,6 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	configItemSpecMap.AddIntItem(ResetIfCloudGoneTime, 7*24*3600, 120, 0xFFFFFFFF)
 	configItemSpecMap.AddIntItem(FallbackIfCloudGoneTime, 300, 60, 0xFFFFFFFF)
 	configItemSpecMap.AddIntItem(MintimeUpdateSuccess, 600, 30, HourInSec)
-	// DEPRECATED
-	configItemSpecMap.AddIntItem(StaleConfigTime, 7*24*3600, 0, 0xFFFFFFFF)
 	configItemSpecMap.AddIntItem(VdiskGCTime, 3600, 60, 0xFFFFFFFF)
 	configItemSpecMap.AddIntItem(DeferContentDelete, 0, 0, 24*3600)
 	configItemSpecMap.AddIntItem(DownloadRetryTime, 600, 60, 0xFFFFFFFF)
