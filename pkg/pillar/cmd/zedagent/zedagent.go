@@ -257,8 +257,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		return 1
 	}
 	if parse != "" {
-		res, config := readValidateConfig(
-			types.DefaultConfigItemValueMap().GlobalValueInt(types.StaleConfigTime), parse)
+		res, config := readValidateConfig(parse)
 		if !res {
 			fmt.Printf("Failed to parse %s\n", parse)
 			return 1
