@@ -15,6 +15,7 @@ import (
 	"github.com/sirupsen/logrus"
 
 	netattdefv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
+	"github.com/lf-edge/eve/pkg/pillar/kubeapi"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -194,7 +195,7 @@ func aiSpecDelete(ctx *zedkubeContext, aiConfig *types.AppInstanceConfig) {
 				ctx.ioAdapterMap.Delete(nadname)
 			}
 			// delete the NAD in kubernetes
-			genNISpecDelete(ctx, nadname)
+			kubeapi.DeleteNAD(log, nadname)
 			log.Noticef("aiSpecDelete: delete existing nad %v", nadname)
 		}
 	}

@@ -318,10 +318,10 @@ func handleNetworkInstanceDelete(ctxArg interface{}, key string,
 	configArg interface{}) {
 
 	log.Noticef("handleNetworkInstanceDelete(%s)\n", key) // XXX Functionf
-	ctx := ctxArg.(*zedkubeContext)
+	// ctx := ctxArg.(*zedkubeContext)
 	status := configArg.(types.NetworkInstanceStatus)
 	nadName := strings.ToLower(status.DisplayName)
-	genNISpecDelete(ctx, nadName)
+	kubeapi.DeleteNAD(log, nadName)
 }
 
 func kubeGetNIStatus(ctx *zedkubeContext, niUUID uuid.UUID) (*types.NetworkInstanceStatus, error) {

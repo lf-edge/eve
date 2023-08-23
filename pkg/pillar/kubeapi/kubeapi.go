@@ -5,6 +5,7 @@ import (
 	"os"
 	"time"
 
+	netclientset "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/client/clientset/versioned"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -19,6 +20,7 @@ const (
 	errorTime           = 3 * time.Minute
 	warningTime         = 40 * time.Second
 	stillRunningInerval = 25 * time.Second
+	eveNameSpace        = "eve-kube-app"
 )
 
 func GetKubeConfig() (error, *rest.Config) {
@@ -29,6 +31,40 @@ func GetKubeConfig() (error, *rest.Config) {
 		return err, nil
 	}
 	return nil, config
+}
+
+func GetClientSet() (*kubernetes.Clientset, error) {
+
+	// Build the configuration from the provided kubeconfig file
+	err, config := GetKubeConfig()
+	if err != nil {
+		return nil, err
+	}
+
+	// Create the Kubernetes clientset
+	clientset, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		return nil, err
+	}
+
+	return clientset, nil
+}
+
+func GetNetClientSet() (*netclientset.Clientset, error) {
+
+	// Build the configuration from the provided kubeconfig file
+	err, config := GetKubeConfig()
+	if err != nil {
+		return nil, err
+	}
+
+	// Create the Kubernetes netclientset
+	nclientset, err := netclientset.NewForConfig(config)
+	if err != nil {
+		return nil, err
+	}
+
+	return nclientset, nil
 }
 
 func WaitKubernetes(agentName string, ps *pubsub.PubSub, stillRunning *time.Ticker) (*rest.Config, error) {
@@ -77,6 +113,9 @@ func WaitKubernetes(agentName string, ps *pubsub.PubSub, stillRunning *time.Tick
 }
 
 func WaitForNodeReady(client *kubernetes.Clientset, readyCh chan bool) {
+	if client == nil {
+
+	}
 	err := wait.PollImmediate(time.Second, time.Minute*10, func() (bool, error) {
 		err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
 			_, err := client.CoreV1().Nodes().List(context.Background(), metav1.ListOptions{})
