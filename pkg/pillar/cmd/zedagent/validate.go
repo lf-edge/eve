@@ -10,10 +10,9 @@ import (
 	zconfig "github.com/lf-edge/eve-api/go/config"
 )
 
-func readValidateConfig(staleConfigTime uint32,
-	validateFile string) (bool, *zconfig.EdgeDevConfig) {
+func readValidateConfig(validateFile string) (bool, *zconfig.EdgeDevConfig) {
 	config, _, err := readSavedProtoMessageConfig(zedcloudCtx, "https://",
-		staleConfigTime, validateFile, true)
+		validateFile)
 	if err != nil {
 		fmt.Printf("getconfig: %v\n", err)
 		return false, nil

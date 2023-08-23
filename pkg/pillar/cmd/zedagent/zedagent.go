@@ -408,8 +408,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		zedagentCtx.zedcloudMetrics)
 
 	if parse != "" {
-		res, config := readValidateConfig(
-			types.DefaultConfigItemValueMap().GlobalValueInt(types.StaleConfigTime), parse)
+		res, config := readValidateConfig(parse)
 		if !res {
 			fmt.Printf("Failed to parse %s\n", parse)
 			return 1

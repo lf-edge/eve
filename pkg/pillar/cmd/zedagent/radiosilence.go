@@ -228,8 +228,7 @@ func getRadioConfig(ctx *getconfigContext, radioStatus *profile.RadioStatus) *pr
 // read saved radio config in case of a reboot
 func readSavedRadioConfig(ctx *getconfigContext) (*profile.RadioConfig, error) {
 	radioConfigBytes, ts, err := readSavedConfig(
-		ctx.zedagentCtx.globalConfig.GlobalValueInt(types.StaleConfigTime),
-		filepath.Join(checkpointDirname, savedRadioConfigFile), false)
+		filepath.Join(checkpointDirname, savedRadioConfigFile))
 	if err != nil {
 		return nil, fmt.Errorf("readSavedRadioConfig: %v", err)
 	}
