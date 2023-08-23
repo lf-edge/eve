@@ -10,6 +10,7 @@ import (
 	"crypto/x509"
 	"encoding/asn1"
 	"encoding/gob"
+	"encoding/json"
 	"encoding/pem"
 	"fmt"
 	"io"
@@ -22,6 +23,7 @@ import (
 	"github.com/google/go-tpm/tpm2"
 	"github.com/google/go-tpm/tpmutil"
 	"github.com/lf-edge/eve-api/go/info"
+	tpmea "github.com/lf-edge/eve-tpmea"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
@@ -70,6 +72,9 @@ const (
 	//TpmSealedDiskPubHdl is the handle for constructing disk encryption key
 	TpmSealedDiskPubHdl tpmutil.Handle = 0x1900000
 
+	// TpmPolicyCounterIndex is the TPM NVIndex we use as a monotonic counter
+	TpmPolicyCounterIndex = 0x1500017
+
 	//EmptyPassword is an empty string
 	EmptyPassword  = ""
 	vaultKeyLength = 32 //Bytes
@@ -93,6 +98,11 @@ const (
 	// syfsTpmDir is directory that TPMs get mapped on sysfs, and it contains
 	// measurement logs.
 	syfsTpmDir = "/hostfs/sys/kernel/security/tpm*"
+
+	// RollbackCounter is the rollback protection counter, it has to increase
+	// by one each time we release a new version of eve.
+	// TODO : somehow bake this into build system.
+	RollbackCounter uint64 = 1
 )
 
 // PCRBank256Status stores info about support for
@@ -129,6 +139,18 @@ const (
 	SealedKeyTypeNew                                  //Sealed key is not cloned from legacy key
 	SealedKeyTypeUnprotected                          //Sealed key is not available, using legacy key
 )
+
+// EnhancedAuthConfig is TPM Enhanced Authorization policy config definitions
+type EnhancedAuthConfig struct {
+	AuthDigest    []byte               `json:"authDigest"`
+	AuthPublicKey []byte               `json:"authPublicKey"`
+	Policy        []EnhancedAuthPolicy `json:"policy"`
+}
+
+type EnhancedAuthPolicy struct {
+	Policy    []byte                `json:"policy"`
+	PolicySig tpmea.PolicySignature `json:"policySig"`
+}
 
 // String returns verbose string for SealedKeyType value
 func (s SealedKeyType) String() string {
@@ -556,7 +578,7 @@ func FetchSealedVaultKey(log *base.LogObject) ([]byte, error) {
 		log.Noticef("sealed disk key present int TPM, about to unseal it")
 	}
 	//By this, we have a key sealed into TPM
-	key, err := UnsealDiskKey(DiskKeySealingPCRs)
+	key, err := UnsealDiskKey(log, DiskKeySealingPCRs)
 	if err == nil {
 		// be more verbose, lets celebrate
 		log.Noticef("successfully unsealed the disk key from TPM")
@@ -565,8 +587,26 @@ func FetchSealedVaultKey(log *base.LogObject) ([]byte, error) {
 	return key, err
 }
 
+// TryToSealDiskKeyWithEnhancedAuth loads the current TPM EA policy and tries
+// to seal the vault key using enhanced authorization.
+func TryToSealDiskKeyWithEnhancedAuth(log *base.LogObject, key []byte) error {
+	policyConfig, err := FindCurrentTpmPolicy(types.TPMPolicyConfigDir)
+	if err != nil {
+		return fmt.Errorf("failed to find current tpm policy for sealing: %w", err)
+	}
+
+	return SealDiskKeyWithEnhancedAuth(log, policyConfig, key)
+}
+
 // SealDiskKey seals key into TPM2.0, with provided PCRs
 func SealDiskKey(log *base.LogObject, key []byte, pcrSel tpm2.PCRSelection) error {
+	// first try the tmpea, if it failed, fall back to legacy
+	err := TryToSealDiskKeyWithEnhancedAuth(log, key)
+	if err == nil {
+		return nil
+	}
+	log.Warnf("falling back to legacy key sealing, seal with enhanced authorization failed : %v", err)
+
 	rw, err := tpm2.OpenTPM(TpmDevicePath)
 	if err != nil {
 		return err
@@ -642,29 +682,8 @@ func SealDiskKey(log *base.LogObject, key []byte, pcrSel tpm2.PCRSelection) erro
 		return fmt.Errorf("NVWrite %v failed: %v", TpmSealedDiskPubHdl, err)
 	}
 
-	// save a snapshot of current PCR values
-	if err := saveDiskKeySealingPCRs(savedSealingPcrsFile); err != nil {
-		log.Warnf("saving snapshot of sealing PCRs failed: %s", err)
-	}
-
-	// Backup the previous pair of logs if any, so at most we have two pairs of
-	// measurement logs (per available tpm devices). This is needed because if the
-	// failing devices get connected to the controller and collects the backup key,
-	// we end up here again and will override the MeasurementLogSealSuccess  with
-	// current measurement log (which is same as the content of MeasurementLogSealFail)
-	// and lose the ability to diff and diagnose the issue.
-	if err := backupCopiedMeasurementLogs(); err != nil {
-		log.Warnf("collecting previous snapshot of TPM event log failed: %s", err)
-	}
-
-	// fresh start, remove old copies of measurement logs.
-	if err := removeCopiedMeasurementLogs(); err != nil {
-		log.Warnf("removing old copies of TPM measurement log failed: %s", err)
-	}
-
-	// save a copy of the current measurement log
-	if err := copyMeasurementLog(measurementLogSealSuccess); err != nil {
-		log.Warnf("copying current TPM measurement log failed: %s", err)
+	if err := collectTpmDiagInfo(); err != nil {
+		log.Warnf("collecting tpm diagnostic information failed: %v", err)
 	}
 
 	return nil
@@ -687,8 +706,26 @@ func isLegacyKeyPresent() bool {
 	return err == nil
 }
 
+// TryToUnsealDiskKeyWithEnhancedAuth loads the current TPM EA policy and tries
+// to unseal the vault key using enhanced authorization.
+func TryToUnsealDiskKeyWithEnhancedAuth(log *base.LogObject) ([]byte, error) {
+	policyConfig, err := FindCurrentTpmPolicy(types.TPMPolicyConfigDir)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find current tpm policy for unsealing: %w", err)
+	}
+
+	return UnsealDiskKeyWithEnhancedAuth(log, policyConfig)
+}
+
 // UnsealDiskKey unseals key from TPM2.0
-func UnsealDiskKey(pcrSel tpm2.PCRSelection) ([]byte, error) {
+func UnsealDiskKey(log *base.LogObject, pcrSel tpm2.PCRSelection) ([]byte, error) {
+	// first try the tmpea, if it failed, fall back to legacy
+	key, err := TryToUnsealDiskKeyWithEnhancedAuth(log)
+	if err == nil {
+		return key, nil
+	}
+	log.Warnf("falling back to legacy key unsealing, unseal with enhanced authorization failed : %v", err)
+
 	rw, err := tpm2.OpenTPM(TpmDevicePath)
 	if err != nil {
 		return nil, err
@@ -720,7 +757,7 @@ func UnsealDiskKey(pcrSel tpm2.PCRSelection) ([]byte, error) {
 	}
 	defer tpm2.FlushContext(rw, session)
 
-	key, err := tpm2.UnsealWithSession(rw, session, sealedObjHandle, EmptyPassword)
+	key, err = tpm2.UnsealWithSession(rw, session, sealedObjHandle, EmptyPassword)
 	if err != nil {
 		// We get here mostly because of RCPolicyFail error, so first try to save
 		// a copy of TPM measurement log, it comes handy for diagnosing the issue.
@@ -775,7 +812,7 @@ func PolicyPCRSession(rw io.ReadWriteCloser, pcrSel tpm2.PCRSelection) (tpmutil.
 
 // CompareLegacyandSealedKey compares legacy and sealed keys
 // to record if we are using a new key for sealed vault
-func CompareLegacyandSealedKey() SealedKeyType {
+func CompareLegacyandSealedKey(log *base.LogObject) SealedKeyType {
 	if !isSealedKeyPresent() {
 		return SealedKeyTypeUnprotected
 	}
@@ -784,7 +821,7 @@ func CompareLegacyandSealedKey() SealedKeyType {
 		//no cloning case, return SealedKeyTypeNew
 		return SealedKeyTypeNew
 	}
-	unsealedKey, err := UnsealDiskKey(DiskKeySealingPCRs)
+	unsealedKey, err := UnsealDiskKey(log, DiskKeySealingPCRs)
 	if err != nil {
 		//key is present but can't unseal it
 		//but legacy key is present
@@ -1051,4 +1088,233 @@ func readDiskKeySealingPCRs() (map[int][]byte, error) {
 	}
 
 	return readPCRs, nil
+}
+
+func collectTpmDiagInfo() error {
+	// save a snapshot of current PCR values
+	if err := saveDiskKeySealingPCRs(savedSealingPcrsFile); err != nil {
+		return fmt.Errorf("saving snapshot of sealing PCRs failed: %w", err)
+	}
+
+	// Backup the previous pair of logs if any, so at most we have two pairs of
+	// measurement logs (per available tpm devices). This is needed because if the
+	// failing devices get connected to the controller and collects the backup key,
+	// we end up here again and will override the MeasurementLogSealSuccess  with
+	// current measurement log (which is same as the content of MeasurementLogSealFail)
+	// and lose the ability to diff and diagnose the issue.
+	if err := backupCopiedMeasurementLogs(); err != nil {
+		return fmt.Errorf("collecting previous snapshot of TPM event log failed: %w", err)
+	}
+
+	// fresh start, remove old copies of measurement logs.
+	if err := removeCopiedMeasurementLogs(); err != nil {
+		return fmt.Errorf("removing old copies of TPM measurement log failed: %w", err)
+	}
+
+	// save a copy of the current measurement log
+	if err := copyMeasurementLog(measurementLogSealSuccess); err != nil {
+		return fmt.Errorf("copying current TPM measurement log failed: %w", err)
+	}
+
+	return nil
+}
+
+func readEnhancedAuthConfig(configPath string) (*EnhancedAuthConfig, error) {
+	cont, err := os.ReadFile(configPath)
+	if err != nil {
+		return nil, err
+	}
+
+	authConfig := &EnhancedAuthConfig{}
+	err = json.Unmarshal(cont, authConfig)
+	if err != nil {
+		return nil, err
+	}
+
+	return authConfig, nil
+}
+
+func decodePublicKeyFromPEM(publicKeyPem []byte) (any, error) {
+	block, _ := pem.Decode(publicKeyPem)
+	if block == nil || block.Type != "PUBLIC KEY" {
+		return nil, fmt.Errorf("decoding pem block failed")
+	}
+
+	publicKey, err := x509.ParsePKIXPublicKey(block.Bytes)
+	if err != nil {
+		return nil, fmt.Errorf("parsing pem public key failed : %w", err)
+	}
+
+	return publicKey, nil
+}
+
+// SealDiskKeyWithEnhancedAuth seals the vault key into the TPM using
+// enhanced authorization (EA). This is different from the legacy sealing,
+// with EA we can have mutable TPM policies (e.g. mutable PCR config).
+func SealDiskKeyWithEnhancedAuth(log *base.LogObject, configPath string, key []byte) error {
+	conf, err := readEnhancedAuthConfig(configPath)
+	if err != nil {
+		return fmt.Errorf("reading tpm-ea config failed: %w", err)
+	}
+
+	// if NV counter already exist and it is initialized, this call just returns
+	// the existing NV counter for use without messing with it.
+	localCounter, err := tpmea.DefineMonotonicCounter(TpmPolicyCounterIndex)
+	if err != nil {
+		return fmt.Errorf("defining a monodic counter failed: %w", err)
+	}
+
+	// if local counter is greater than EVE's release counter, this is a rollback
+	// and we reject this version.
+	// TODO : move this to earlier stage, i.e. boot service or on grub even?
+	if localCounter > RollbackCounter {
+		return fmt.Errorf("local monodic counter greater than EVE's release counter (%d > %d)", localCounter, RollbackCounter)
+	}
+
+	// to keep the rollback protection working, sync local counter with the EVE's
+	// release counter.
+	if localCounter < RollbackCounter {
+		for counter := localCounter; counter < RollbackCounter; {
+			counter, err = tpmea.IncreaseMonotonicCounter(TpmPolicyCounterIndex)
+			if err != nil {
+				return fmt.Errorf("failed to sync local rollback protection counter with EVE's release counter : %w ", err)
+			}
+		}
+	}
+
+	// TODO: write  a unit test to make sure tpmutil.Handle remains of type uint32
+	err = tpmea.SealSecret(uint32(TpmSealedDiskPrivHdl), conf.AuthDigest, key)
+	if err != nil {
+		return fmt.Errorf("failed to seal the key : %w", err)
+	}
+
+	if err := collectTpmDiagInfo(); err != nil {
+		log.Warnf("collecting tpm diagnostic information failed: %v", err)
+	}
+
+	return nil
+}
+
+// UnsealDiskKeyWithEnhancedAuth unseals the vault key from the TPM using
+// the enhanced authorization policy.
+func UnsealDiskKeyWithEnhancedAuth(log *base.LogObject, configPath string) ([]byte, error) {
+	conf, err := readEnhancedAuthConfig(configPath)
+	if err != nil {
+		return nil, fmt.Errorf("reading tpm-ea config failed: %w", err)
+	}
+
+	publicKey, err := decodePublicKeyFromPEM(conf.AuthPublicKey)
+	if err != nil {
+		return nil, fmt.Errorf("decoding PEM public key failed : %w", err)
+	}
+
+	// iterate over all available policies, proceed if at least one of them
+	// successfully unseals the secret from TPM.
+	for i, pol := range conf.Policy {
+		rbp := tpmea.RBP{
+			Counter: TpmPolicyCounterIndex,
+			Check:   RollbackCounter}
+
+		key, err := tpmea.UnsealSecret(uint32(TpmSealedDiskPrivHdl),
+			publicKey,
+			pol.Policy,
+			&pol.PolicySig,
+			DiskKeySealingPCRs.PCRs,
+			rbp)
+
+		if err != nil {
+			log.Warnf("failed to unseal disk key with policy (%d of %d) : %v", i+1, len(conf.Policy), err)
+			continue
+		}
+
+		log.Noticef("successfully unsealed disk key with policy no. %d", i+1)
+		return key, nil
+	}
+
+	return nil, fmt.Errorf("all available policies failed to unseal the disk key")
+}
+
+// RotateEnhancedAuthPublicKey rotates the public key used for enhanced
+// authorization.
+func RotateEnhancedAuthPublicKey(log *base.LogObject, currentConfigPath string, keyRotationConfigPath string) error {
+	key, err := UnsealDiskKeyWithEnhancedAuth(log, currentConfigPath)
+	if err != nil {
+		return fmt.Errorf("failed to unseal the disk key during key rotation operation : %w", err)
+	}
+
+	// the keyRotationConfigPath has be verified by the caller that signed by the
+	// right key.
+	err = SealDiskKeyWithEnhancedAuth(log, keyRotationConfigPath, key)
+	if err != nil {
+		return fmt.Errorf("failed to seal the disk key during key rotation operation : %w", err)
+	}
+
+	return nil
+}
+
+// SaveEnhancedAuthConfig saves the enhanced authorization config into a file,
+// if the config for the same auth digest already exists, it will append the
+// new policy to the existing config.
+func SaveEnhancedAuthConfig(configDir string, config *EnhancedAuthConfig) error {
+	savedConfig, err := findTpmEnhancedAuthPolicy(configDir, config.AuthDigest)
+	if err == nil {
+		readConfig, err := readEnhancedAuthConfig(savedConfig)
+		if err != nil {
+			return fmt.Errorf("reading tpm-ea config failed: %w", err)
+		}
+
+		readConfig.Policy = append(readConfig.Policy, config.Policy...)
+		data, err := json.Marshal(config)
+		if err != nil {
+			return err
+		}
+
+		return fileutils.WriteRename(savedConfig, data)
+	}
+
+	data, err := json.Marshal(config)
+	if err != nil {
+		return err
+	}
+
+	configPath := filepath.Join(configDir, fmt.Sprintf("tpm-ea-%x.json", config.AuthDigest))
+	return fileutils.WriteRename(configPath, data)
+}
+
+// findTpmEnhancedAuthPolicy finds the enhanced authorization policy config
+// file that matches the given auth digest. If no matching policy found, it
+// returns an error. If there are multiple matching policies, it returns the
+// first one.
+func findTpmEnhancedAuthPolicy(configDir string, policyDigest []byte) (string, error) {
+	files, err := os.ReadDir(configDir)
+	if err != nil {
+		return "", err
+	}
+
+	for _, f := range files {
+		configPath := filepath.Join(configDir, f.Name())
+		conf, err := readEnhancedAuthConfig(configPath)
+		if err != nil {
+			return "", fmt.Errorf("reading tpm-ea config failed: %w", err)
+		}
+
+		if bytes.Equal(policyDigest, conf.AuthDigest) {
+			return configPath, nil
+		}
+	}
+
+	return "", fmt.Errorf("failed to find a matching policy")
+}
+
+// FindCurrentTpmPolicy finds the current TPM policy config file that matches
+// the current TPM policy auth digest of the sealed key. If no matching policy
+// found, it returns an error. If there are multiple matching policies,
+// it returns the first one.
+func FindCurrentTpmPolicy(configDir string) (string, error) {
+	policyDigest, err := tpmea.ReadNVAuthDigest(uint32(TpmSealedDiskPrivHdl))
+	if err != nil {
+		return "", fmt.Errorf("failed to read the policy digest : %w", err)
+	}
+
+	return findTpmEnhancedAuthPolicy(configDir, policyDigest)
 }

@@ -39,6 +39,8 @@ const (
 	SnapshotVolumesSnapshotStatusFilename = "volumesSnapshotStatus.json"
 	// SnapshotInstanceStatusFilename - file to store SnapshotInstanceStatus
 	SnapshotInstanceStatusFilename = "snapshotInstanceStatus.json"
+	// TPMPolicyConfigDir - directory to keep tpm enhanced auth policies
+	TPMPolicyConfigDir = PersistConfigDir + "/tpmpolicy"
 
 	// IdentityDirname - Config dir
 	IdentityDirname = "/config"

@@ -434,7 +434,7 @@ func handleVaultKeyFromControllerImpl(ctxArg interface{}, key string,
 
 		//Log the type of key used for unlocking default vault
 		log.Noticef("%s unlocked using key type %s", types.DefaultVaultName,
-			etpm.CompareLegacyandSealedKey().String())
+			etpm.CompareLegacyandSealedKey(log).String())
 	} else {
 		// We are here if we receive no keys from controller
 		if ctx.defaultVaultUnlocked {
