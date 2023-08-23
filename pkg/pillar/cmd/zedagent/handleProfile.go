@@ -97,8 +97,7 @@ func parseLocalProfile(localProfileBytes []byte) (*profile.LocalProfile, error) 
 // read saved local profile in case of particular reboot reason
 func readSavedLocalProfile(getconfigCtx *getconfigContext) (*profile.LocalProfile, error) {
 	localProfileMessage, ts, err := readSavedConfig(
-		getconfigCtx.zedagentCtx.globalConfig.GlobalValueInt(types.StaleConfigTime),
-		filepath.Join(checkpointDirname, savedLocalProfileFile), false)
+		filepath.Join(checkpointDirname, savedLocalProfileFile))
 	if err != nil {
 		return nil, fmt.Errorf("readSavedLocalProfile: %v", err)
 	}
