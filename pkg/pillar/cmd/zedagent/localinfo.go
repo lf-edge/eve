@@ -457,8 +457,7 @@ func findAppInstance(
 func readSavedLocalCommands(ctx *getconfigContext) (*types.LocalCommands, error) {
 	commands := &types.LocalCommands{}
 	contents, ts, err := readSavedConfig(
-		ctx.zedagentCtx.globalConfig.GlobalValueInt(types.StaleConfigTime),
-		filepath.Join(checkpointDirname, savedLocalCommandsFile), false)
+		filepath.Join(checkpointDirname, savedLocalCommandsFile))
 	if err != nil {
 		return commands, err
 	}

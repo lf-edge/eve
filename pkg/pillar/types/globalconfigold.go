@@ -107,7 +107,7 @@ var globalConfigDefaults = OldGlobalConfig{
 	UsbAccess:           true, // Controller likely to default to false
 	SshAccess:           true, // Controller likely to default to false
 	SshAuthorizedKeys:   "",
-	StaleConfigTime:     600,  // Use stale config for up to 10 minutes
+	StaleConfigTime:     600,  // DEPRECATED!
 	DownloadGCTime:      600,  // 10 minutes
 	VdiskGCTime:         3600, // 1 hour
 	DownloadRetryTime:   600,  // 10 minutes
