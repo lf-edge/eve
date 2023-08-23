@@ -37,13 +37,17 @@ func genAISpecCreate(ctx *zedkubeContext, aiConfig *types.AppInstanceConfig) err
 	}
 
 	ulConfig := aiConfig.UnderlayNetworkList
-	var nadnames []string
+	var nads []types.KubeNAD
 	//var defNetName string
 	var annotations map[string]string
 	for _, ul := range ulConfig {
 		nadname := lookupNIStatusForNAD(ctx, ul.Network.String())
 		if nadname != "" {
-			nadnames = append(nadnames, nadname)
+			nad := types.KubeNAD{
+				Name: nadname,
+				Mac:  ul.AppMacAddr.String(),
+			}
+			nads = append(nads, nad)
 		}
 	}
 
@@ -62,8 +66,11 @@ func genAISpecCreate(ctx *zedkubeContext, aiConfig *types.AppInstanceConfig) err
 			} else {
 				log.Noticef("genAISpecCreate: nad already exist %v", nadname)
 			}
-			nadnames = append(nadnames, nadname)
-			log.Noticef("genAISpecCreate: nadnames %v", nadnames)
+			nad := types.KubeNAD{
+				Name: nadname,
+			}
+			nads = append(nads, nad)
+			log.Noticef("genAISpecCreate: nadnames %v", nads)
 		}
 	}
 
@@ -91,15 +98,18 @@ func genAISpecCreate(ctx *zedkubeContext, aiConfig *types.AppInstanceConfig) err
 	}
 	log.Noticef("genAISpecCreate: found oci image name %v", ociName)
 
-	if len(nadnames) > 0 {
-		selections := make([]netattdefv1.NetworkSelectionElement, len(nadnames))
-		for i, nad := range nadnames {
-			if i > len(nadnames)-1 {
+	if len(nads) > 0 {
+		selections := make([]netattdefv1.NetworkSelectionElement, len(nads))
+		for i, nad := range nads {
+			if i > len(nads)-1 {
 				err := fmt.Errorf("genAISpecCreate: no def local ni found, exit")
 				return err
 			}
 			selections[i] = netattdefv1.NetworkSelectionElement{
-				Name: nad,
+				Name: nad.Name,
+			}
+			if nad.Mac != "" {
+				selections[i].MacRequest = nad.Mac
 			}
 		}
 		annotations = map[string]string{
