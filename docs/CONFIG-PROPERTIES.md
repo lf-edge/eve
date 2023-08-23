@@ -14,7 +14,6 @@
 | timer.reboot.no.network | integer in seconds | 7 days | reboot after no cloud connectivity |
 | timer.update.fallback.no.network | integer in seconds | 300 | fallback after no cloud connectivity |
 | timer.test.baseimage.update | integer in seconds | 600 | commit to update |
-| timer.use.config.checkpoint | integer in seconds | 600 | use checkpointed config if no cloud connectivity |
 | timer.gc.vdisk | integer in seconds | 1 hour | garbage collect unused instance virtual disk |
 | timer.defer.content.delete | integer in seconds | zero | if set, keep content trees around for reuse after they have been deleted |
 | timer.download.retry | integer in seconds | 600 | retry a failed download |
