@@ -4,7 +4,8 @@
 FROM lfedge/eve-alpine:2958f1601c4ed018dc26823f390982d396cd745a as build
 ENV BUILD_PKGS git go
 ENV PKGS alpine-baselayout musl-utils iproute2 iptables curl openrc \
-         open-iscsi libvirt libvirt-client util-linux grep cni-plugins jq
+         open-iscsi libvirt libvirt-client util-linux grep cni-plugins \
+         jq findutils
 RUN eve-alpine-deploy.sh
 
 COPY ./  /plugins/.
