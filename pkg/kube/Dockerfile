@@ -14,6 +14,7 @@ RUN GO111MODULE=on CGO_ENABLED=0 go build -ldflags "-s -w" -mod=vendor -o /out/e
 FROM scratch
 COPY --from=build /out/ /
 COPY cluster-init.sh /usr/bin/
+COPY install-etcdctl.sh /usr/bin/
 COPY cgconfig.conf /etc
 # kubevirt yaml files are patched files and will be removed later, look at cluster-init.sh
 RUN mv /eve-bridge /usr/bin
@@ -30,10 +31,6 @@ ADD https://github.com/kubevirt/kubevirt/releases/download/${VIRTCTL_VERSION}/vi
 RUN install virtctl-${VIRTCTL_VERSION}-linux-amd64 /usr/bin/virtctl
 # We installed under /usr/bin. Remove the downloaded version
 RUN rm -f ./virtctl-${VIRTCTL_VERSION}-linux-amd64
-
-ENV ETCDCTL_VERSION v3.5.5
-ADD https://github.com/etcd-io/etcd/releases/download/${ETCDCTL_VERSION}/etcd-${ETCDCTL_VERSION}-linux-amd64.tar.gz .
-RUN tar -zxv --strip-components=1 -C /usr/local/bin  < ./etcd-${ETCDCTL_VERSION}-linux-amd64.tar.gz
 
 ENTRYPOINT []
 CMD ["/usr/bin/cluster-init.sh"]
