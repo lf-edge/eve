@@ -95,11 +95,11 @@ func (z *zedrouter) prepareConfigForVIFs(config types.AppNetworkConfig,
 					break
 				}
 			}
-			if kubeulstatus == nil {
-				err := fmt.Errorf("kube ul status not found")
-				z.log.Errorf("appNetworkDoActivateUnderlayNetwork: %v", err)
-				continue
-			}
+			//if kubeulstatus == nil {
+			//	err := fmt.Errorf("kube ul status not found")
+			//	z.log.Errorf("appNetworkDoActivateUnderlayNetwork: %v", err)
+			//	continue
+			//}
 			z.log.Functionf("appNetworkDoActivateUnderlayNetwork: kubeulstatus %+v", kubeulstatus)
 		}
 
@@ -147,6 +147,7 @@ func (z *zedrouter) doActivateAppNetwork(config types.AppNetworkConfig,
 	status *types.AppNetworkStatus) {
 	vifs, err := z.prepareConfigForVIFs(config, status)
 	if err != nil {
+		z.log.Errorf("doActivateAppNetwork: find vif err %v", err) // XXX
 		// Error already logged and added to status.
 		return
 	}

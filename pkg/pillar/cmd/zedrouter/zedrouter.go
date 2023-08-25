@@ -691,9 +691,9 @@ func (z *zedrouter) initSubscriptions() (err error) {
 	// Subscribe to AppNetworkConfig from zedkube
 	// since the zedmanager is not publishing the appnetconfig
 	advAgentName := "zedmanager"
-	if z.hvTypeKube {
-		advAgentName = "zedkube"
-	}
+	//if z.hvTypeKube {
+	//	advAgentName = "zedkube"
+	//}
 	// Subscribe to AppNetworkConfig from zedmanager
 	z.subAppNetworkConfig, err = z.pubSub.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:      advAgentName,
