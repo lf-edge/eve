@@ -153,9 +153,40 @@ setup_prereqs
 
 date >> $INSTALL_LOG
 HOSTNAME=$(/bin/hostname)
+
+# Wait for vault to unseal
+vaultMgrStatusPath="/run/vaultmgr/VaultStatus/Application Data Store.json"
+vaultMgrStatus=0
+DataSecAtRestStatus_DATASEC_AT_REST_DISABLED=1
+DataSecAtRestStatus_DATASEC_AT_REST_ENABLED=2
+while [ $vaultMgrStatus -ne $DataSecAtRestStatus_DATASEC_AT_REST_DISABLED ] && [ $vaultMgrStatus -ne $DataSecAtRestStatus_DATASEC_AT_REST_ENABLED ]; 
+do
+        echo "Waiting for vault, currently: $vaultMgrStatus"
+        if [ -e "$vaultMgrStatusPath" ]; then
+                vaultMgrStatus=$(cat "$vaultMgrStatusPath" | jq -r .Status)
+        fi 
+        if [ $vaultMgrStatus -ne $DataSecAtRestStatus_DATASEC_AT_REST_DISABLED ] && [ $vaultMgrStatus -ne $DataSecAtRestStatus_DATASEC_AT_REST_ENABLED ]; then 
+                sleep 1
+        fi
+done
+
 #Forever loop every 15 secs
 while true;
 do
+if pgrep -f "containerd --config" >> $INSTALL_LOG 2>&1; then
+        logmsg "k3s-containerd is alive"
+else 
+        logmsg "Starting Containerd"
+        # For now i'm installing from apk.
+
+        # Using Eves with a bind mount in build.yml has missing containerd-shim-runc-v2
+        # Same with k3s's containerd
+        if [ ! -e /usr/bin/containerd ]; then
+                /sbin/apk add containerd
+        fi
+        mkdir -p /run/containerd-user
+        nohup /usr/bin/containerd --config /etc/containerd/config-k3s.toml &
+fi
 if [ ! -f /var/lib/all_components_initialized ]; then
         if [ ! -f /var/lib/k3s_initialized ]; then
                 # cni plugin

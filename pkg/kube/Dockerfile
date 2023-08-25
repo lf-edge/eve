@@ -4,7 +4,7 @@
 FROM lfedge/eve-alpine:2958f1601c4ed018dc26823f390982d396cd745a as build
 ENV BUILD_PKGS git go
 ENV PKGS alpine-baselayout musl-utils iproute2 iptables curl openrc \
-         open-iscsi libvirt libvirt-client util-linux grep cni-plugins
+         open-iscsi libvirt libvirt-client util-linux grep cni-plugins jq
 RUN eve-alpine-deploy.sh
 
 COPY ./  /plugins/.
@@ -20,6 +20,7 @@ COPY cgconfig.conf /etc
 RUN mv /eve-bridge /usr/bin
 COPY multus-daemonset.yaml /etc
 COPY kubevirt-operator.yaml /etc
+COPY config-k3s.toml /etc/containerd/
 RUN mkdir -p /etc/rancher/k3s
 COPY config.yaml /etc/rancher/k3s
 WORKDIR /
