@@ -6,6 +6,6 @@ cluster-init: true
 log: "/var/lib/rancher/k3s/k3s.log"
 debug: true
 etcd-arg:
-  - heartbeat-interval: 30000
-  - election-timeout: 30000
+  - 'heartbeat-interval=8000'
+  - 'election-timeout=40000'
 etcd-expose-metrics: true
