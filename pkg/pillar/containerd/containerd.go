@@ -120,12 +120,7 @@ func NewContainerdClient(user bool) (*Client, error) {
 
 	socket := ctrdSocket
 	if user {
-		// In kubevirt env, we talk to containerd that comes with k3s
-		if base.IsHVTypeKube() {
-			socket = ctrdKubeUserSocket
-		} else {
-			socket = ctrdUserSocket
-		}
+		socket = ctrdUserSocket
 	}
 
 	ctrdClient, err = containerd.New(socket,
