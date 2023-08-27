@@ -18,6 +18,7 @@ import (
 	zconfig "github.com/lf-edge/eve-api/go/config"
 	"github.com/lf-edge/eve-libs/nettrace"
 	"github.com/lf-edge/eve/pkg/pillar/base"
+	"github.com/lf-edge/eve/pkg/pillar/cipher"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	"github.com/lf-edge/eve/pkg/pillar/hardware"
 	"github.com/lf-edge/eve/pkg/pillar/netdump"
@@ -602,9 +603,7 @@ func requestConfigByURL(getconfigCtx *getconfigContext, url string,
 					ctx.bootReason)
 			} else {
 				config, ts, err := readSavedProtoMessageConfig(
-					zedcloudCtx, url,
-					ctx.globalConfig.GlobalValueInt(types.StaleConfigTime),
-					checkpointDirname+"/lastconfig", false)
+					zedcloudCtx, url, checkpointDirname+"/lastconfig")
 				if err != nil {
 					log.Errorf("getconfig: %v", err)
 					return invalidConfig, rv.TracedReqs
@@ -658,7 +657,13 @@ func requestConfigByURL(getconfigCtx *getconfigContext, url string,
 	}
 
 	authWrappedRV := rv
-	err = zedcloud.RemoveAndVerifyAuthContainer(zedcloudCtx, &rv, false)
+	decryptCtx := &cipher.DecryptCipherContext{
+		Log:                  log,
+		AgentName:            agentName,
+		PubSubControllerCert: getconfigCtx.pubControllerCert,
+		PubSubEdgeNodeCert:   getconfigCtx.zedagentCtx.subEdgeNodeCert,
+	}
+	err = zedcloud.RemoveAndVerifyAuthContainer(zedcloudCtx, decryptCtx, &rv, false)
 	if err != nil {
 		log.Errorf("RemoveAndVerifyAuthContainer failed: %s", err)
 		switch rv.Status {
@@ -820,8 +825,8 @@ func existsSavedConfig(filename string) bool {
 // If the file exists then read the config, and return is modify time
 // Ignore if older than StaleConfigTime seconds
 func readSavedProtoMessageConfig(zedcloudCtx *zedcloud.ZedCloudContext, URL string,
-	staleConfigTime uint32, filename string, force bool) (*zconfig.EdgeDevConfig, time.Time, error) {
-	contents, ts, err := readSavedConfig(staleConfigTime, filename, force)
+	filename string) (*zconfig.EdgeDevConfig, time.Time, error) {
+	contents, ts, err := readSavedConfig(filename)
 	if err != nil {
 		log.Errorln("readSavedProtoMessageConfig", err)
 		return nil, ts, err
@@ -832,7 +837,7 @@ func readSavedProtoMessageConfig(zedcloudCtx *zedcloud.ZedCloudContext, URL stri
 		// Other fields are not needed to restore for RemoveAndVerifyAuthContainer().
 	}
 	err = zedcloud.RemoveAndVerifyAuthContainer(
-		zedcloudCtx, &restoredSendRV, false)
+		zedcloudCtx, nil, &restoredSendRV, false)
 	if err != nil {
 		log.Errorf("RemoveAndVerifyAuthContainer failed: %s", err)
 		return nil, ts, err
@@ -849,24 +854,10 @@ func readSavedProtoMessageConfig(zedcloudCtx *zedcloud.ZedCloudContext, URL stri
 }
 
 // If the file exists then read the config content from it, and return its modify time.
-// Ignore if older than staleTime seconds.
-func readSavedConfig(staleTime uint32,
-	filename string, force bool) ([]byte, time.Time, error) {
+func readSavedConfig(filename string) ([]byte, time.Time, error) {
 	info, err := os.Stat(filename)
 	if err != nil {
-		if os.IsNotExist(err) && !force {
-			return nil, time.Time{}, nil
-		} else {
-			return nil, time.Time{}, err
-		}
-	}
-	age := time.Since(info.ModTime())
-	staleLimit := time.Second * time.Duration(staleTime)
-	if !force && age > staleLimit {
-		errStr := fmt.Sprintf("saved config too old: age %v limit %d\n",
-			age, staleLimit)
-		log.Errorln(errStr)
-		return nil, info.ModTime(), nil
+		return nil, time.Time{}, err
 	}
 	contents, err := os.ReadFile(filename)
 	if err != nil {
@@ -1003,6 +994,12 @@ func publishZedAgentStatus(getconfigCtx *getconfigContext) {
 		ForceFallbackCounter:  ctx.forceFallbackCounter,
 		CurrentProfile:        getconfigCtx.currentProfile,
 		RadioSilence:          getconfigCtx.radioSilence,
+		DeviceState:           ctx.devState,
+		AttestState:           ctx.attestState,
+		AttestError:           ctx.attestError,
+		VaultStatus:           ctx.vaultStatus,
+		PCRStatus:             ctx.pcrStatus,
+		VaultErr:              ctx.vaultErr,
 	}
 	pub := getconfigCtx.pubZedAgentStatus
 	pub.Publish(agentName, status)

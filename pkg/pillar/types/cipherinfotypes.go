@@ -7,7 +7,6 @@ import (
 	"encoding/hex"
 
 	"github.com/google/go-cmp/cmp"
-	zconfig "github.com/lf-edge/eve-api/go/config"
 	zcommon "github.com/lf-edge/eve-api/go/evecommon"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 )
@@ -18,8 +17,8 @@ import (
 type CipherContext struct {
 	ContextID          string
 	HashScheme         zcommon.HashAlgorithm
-	KeyExchangeScheme  zconfig.KeyExchangeScheme
-	EncryptionScheme   zconfig.EncryptionScheme
+	KeyExchangeScheme  zcommon.KeyExchangeScheme
+	EncryptionScheme   zcommon.EncryptionScheme
 	ControllerCertHash []byte
 	DeviceCertHash     []byte
 	// ErrorAndTime provides SetErrorNow() and ClearError()

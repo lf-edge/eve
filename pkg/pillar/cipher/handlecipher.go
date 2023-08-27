@@ -11,9 +11,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
-	"os"
 
-	zconfig "github.com/lf-edge/eve-api/go/config"
 	zcommon "github.com/lf-edge/eve-api/go/evecommon"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	etpm "github.com/lf-edge/eve/pkg/pillar/evetpm"
@@ -24,17 +22,17 @@ import (
 // DecryptCipherContext has subscriptions to controller certs
 // and cipher contexts for doing decryption
 type DecryptCipherContext struct {
-	Log               *base.LogObject
-	AgentName         string
-	AgentMetrics      *AgentMetrics
-	SubControllerCert pubsub.Subscription
-	SubEdgeNodeCert   pubsub.Subscription
+	Log                  *base.LogObject
+	AgentName            string
+	AgentMetrics         *AgentMetrics
+	PubSubControllerCert pubsub.Getter
+	PubSubEdgeNodeCert   pubsub.Getter
 }
 
 // look up controller cert
 func lookupControllerCert(ctx *DecryptCipherContext, key string) *types.ControllerCert {
 	ctx.Log.Functionf("lookupControllerCert(%s)\n", key)
-	sub := ctx.SubControllerCert
+	sub := ctx.PubSubControllerCert
 	item, err := sub.Get(key)
 	if err != nil {
 		ctx.Log.Errorf("lookupControllerCert(%s) not found\n", key)
@@ -59,7 +57,7 @@ func getCipherContext(ctx *DecryptCipherContext, cipherBlock types.CipherBlockSt
 // look up edge node cert
 func lookupEdgeNodeCert(ctx *DecryptCipherContext, key string) *types.EdgeNodeCert {
 	ctx.Log.Functionf("lookupEdgeNodeCert(%s)\n", key)
-	sub := ctx.SubEdgeNodeCert
+	sub := ctx.PubSubEdgeNodeCert
 	item, err := sub.Get(key)
 	if err != nil {
 		ctx.Log.Errorf("lookupEdgeNodeCert(%s) not found\n", key)
@@ -68,59 +66,6 @@ func lookupEdgeNodeCert(ctx *DecryptCipherContext, key string) *types.EdgeNodeCe
 	status := item.(types.EdgeNodeCert)
 	ctx.Log.Functionf("lookupEdgeNodeCert(%s) Done\n", key)
 	return &status
-}
-
-func getDeviceCert(ctx *DecryptCipherContext,
-	cipherBlock types.CipherBlockStatus) ([]byte, error) {
-
-	ctx.Log.Functionf("getDeviceCert for %s\n", cipherBlock.CipherBlockID)
-	cipherContext := getCipherContext(ctx, cipherBlock)
-	if cipherContext == nil {
-		errStr := fmt.Sprintf("cipher context %s not found\n",
-			cipherBlock.CipherContextID)
-		ctx.Log.Error(errStr)
-		return []byte{}, errors.New(errStr)
-	}
-	// TBD:XXX as of now, only one
-	certBytes, err := os.ReadFile(types.DeviceCertName)
-	if err != nil {
-		errStr := fmt.Sprintf("getDeviceCert failed while reading device certificate: %v",
-			err)
-		ctx.Log.Error(errStr)
-		return []byte{}, errors.New(errStr)
-	}
-	if computeAndMatchHash(certBytes, cipherContext.DeviceCertHash,
-		cipherContext.HashScheme) {
-		ctx.Log.Functionf("getDeviceCert for %s Done\n", cipherBlock.CipherBlockID)
-		return certBytes, nil
-	}
-	errStr := fmt.Sprintf("getDeviceCert for %s not found\n",
-		cipherBlock.CipherBlockID)
-	ctx.Log.Error(errStr)
-	return []byte{}, errors.New(errStr)
-}
-
-// hash function
-func computeAndMatchHash(cert []byte, suppliedHash []byte,
-	hashScheme zcommon.HashAlgorithm) bool {
-
-	switch hashScheme {
-	case zcommon.HashAlgorithm_HASH_ALGORITHM_INVALID:
-		return false
-
-	case zcommon.HashAlgorithm_HASH_ALGORITHM_SHA256_16BYTES:
-		h := sha256.New()
-		h.Write(cert)
-		computedHash := h.Sum(nil)
-		return bytes.Equal(suppliedHash, computedHash[:16])
-
-	case zcommon.HashAlgorithm_HASH_ALGORITHM_SHA256_32BYTES:
-		h := sha256.New()
-		h.Write(cert)
-		computedHash := h.Sum(nil)
-		return bytes.Equal(suppliedHash, computedHash)
-	}
-	return false
 }
 
 // DecryptCipherBlock : Decryption API, for encrypted object information received from controller
@@ -137,10 +82,10 @@ func DecryptCipherBlock(ctx *DecryptCipherContext,
 		return []byte{}, errors.New(errStr)
 	}
 	switch cipherContext.KeyExchangeScheme {
-	case zconfig.KeyExchangeScheme_KEA_NONE:
+	case zcommon.KeyExchangeScheme_KEA_NONE:
 		return []byte{}, errors.New("No Key Exchange Scheme")
 
-	case zconfig.KeyExchangeScheme_KEA_ECDH:
+	case zcommon.KeyExchangeScheme_KEA_ECDH:
 		clearData, err := decryptCipherBlockWithECDH(ctx, cipherContext, cipherBlock)
 		if err != nil {
 			return []byte{}, err
@@ -167,10 +112,10 @@ func decryptCipherBlockWithECDH(ctx *DecryptCipherContext,
 		return []byte{}, errors.New(errStr)
 	}
 	switch cipherContext.EncryptionScheme {
-	case zconfig.EncryptionScheme_SA_NONE:
+	case zcommon.EncryptionScheme_SA_NONE:
 		return []byte{}, errors.New("No Encryption")
 
-	case zconfig.EncryptionScheme_SA_AES_256_CFB:
+	case zcommon.EncryptionScheme_SA_AES_256_CFB:
 		if len(cipherBlock.InitialValue) == 0 {
 			return []byte{}, errors.New("Invalid Initial value")
 		}

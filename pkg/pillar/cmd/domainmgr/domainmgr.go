@@ -316,7 +316,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	domainCtx.decryptCipherContext.Log = log
 	domainCtx.decryptCipherContext.AgentName = agentName
 	domainCtx.decryptCipherContext.AgentMetrics = domainCtx.cipherMetrics
-	domainCtx.decryptCipherContext.SubControllerCert = subControllerCert
+	domainCtx.decryptCipherContext.PubSubControllerCert = subControllerCert
 	subControllerCert.Activate()
 
 	// Look for edge node certs which will be used for decryption
@@ -333,7 +333,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	if err != nil {
 		log.Fatal(err)
 	}
-	domainCtx.decryptCipherContext.SubEdgeNodeCert = subEdgeNodeCert
+	domainCtx.decryptCipherContext.PubSubEdgeNodeCert = subEdgeNodeCert
 	subEdgeNodeCert.Activate()
 
 	// Look for global config such as log levels

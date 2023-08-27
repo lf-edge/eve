@@ -457,8 +457,7 @@ func findAppInstance(
 func readSavedLocalCommands(ctx *getconfigContext) (*types.LocalCommands, error) {
 	commands := &types.LocalCommands{}
 	contents, ts, err := readSavedConfig(
-		ctx.zedagentCtx.globalConfig.GlobalValueInt(types.StaleConfigTime),
-		filepath.Join(checkpointDirname, savedLocalCommandsFile), false)
+		filepath.Join(checkpointDirname, savedLocalCommandsFile))
 	if err != nil {
 		return commands, err
 	}
@@ -672,7 +671,7 @@ func postLocalDevInfo(ctx *getconfigContext) *profile.LocalDevCmd {
 func prepareLocalDevInfo(ctx *zedagentContext) *profile.LocalDevInfo {
 	msg := profile.LocalDevInfo{}
 	msg.DeviceUuid = devUUID.String()
-	msg.State = getState(ctx)
+	msg.State = info.ZDeviceState(getDeviceState(ctx))
 	msg.MaintenanceModeReasons = append(msg.MaintenanceModeReasons,
 		info.MaintenanceModeReason(ctx.maintModeReason))
 	hinfo, err := host.Info()

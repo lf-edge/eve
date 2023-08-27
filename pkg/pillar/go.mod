@@ -24,7 +24,7 @@ require (
 	github.com/jackwakefield/gopac v1.0.2
 	github.com/jaypipes/ghw v0.8.0
 	github.com/lf-edge/edge-containers v0.0.0-20221025050409-93c34bebadd2
-	github.com/lf-edge/eve-api/go v0.0.0-20230725195950-9c64039db587
+	github.com/lf-edge/eve-api/go v0.0.0-20230818142341-272fc065f4cb
 	github.com/lf-edge/eve-libs v0.0.0-20230724174211-8b4b7a344f7e
 	github.com/linuxkit/linuxkit/src/cmd/linuxkit v0.0.0-20220913135124-e532e7310810
 	github.com/miekg/dns v1.1.41

@@ -612,10 +612,10 @@ func publishAppInstanceSummary(ctxPtr *zedmanagerContext) {
 		}
 		// Only condition we did not count is EffectiveActive = true and Activated = false.
 		// That means customer either halted his app or did not activate it yet.
-		if effectiveActivate && status.Activated {
-			summary.TotalRunning++
-		} else if len(status.Error) > 0 {
+		if len(status.Error) > 0 {
 			summary.TotalError++
+		} else if effectiveActivate && status.Activated {
+			summary.TotalRunning++
 		} else if status.Activated {
 			summary.TotalStopping++
 		} else if effectiveActivate {
@@ -890,6 +890,10 @@ func updateSnapshotsInAIStatus(status *types.AppInstanceStatus, config types.App
 		status.SnapStatus.RequestedSnapshots = append(status.SnapStatus.RequestedSnapshots, newSnapshotStatus)
 	}
 	status.SnapStatus.SnapshotsToBeDeleted = snapshotsToBeDeleted
+	// Remove the snapshots marked for deletion from the list of available snapshots
+	for _, snapshot := range snapshotsToBeDeleted {
+		_ = removeSnapshotFromSlice(&status.SnapStatus.AvailableSnapshots, snapshot.SnapshotID)
+	}
 }
 
 // prepareVolumesSnapshotConfigs generates a 'volumesSnapshotConfig' for each pending snapshot request with a prepared configuration.

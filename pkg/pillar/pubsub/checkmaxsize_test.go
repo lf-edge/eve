@@ -20,6 +20,7 @@ type largeItem struct {
 	StrC string `json:"pubsub-large-StrC"`
 }
 
+//nolint:gocyclo
 func TestCheckMaxSize(t *testing.T) {
 	// Run in a unique directory
 	rootPath, err := os.MkdirTemp("", "checkmaxsize_test")
@@ -59,12 +60,6 @@ func TestCheckMaxSize(t *testing.T) {
 			//			agentScope: "testscope1",
 			stringSize: 48000,
 		},
-		"File with persistent small enough": {
-			agentName: "",
-			//			agentScope: "testscope2",
-			persistent: true,
-			stringSize: 48000,
-		},
 		"IPC small enough": {
 			agentName: "testagent1",
 			//			agentScope: "testscope",
@@ -79,13 +74,6 @@ func TestCheckMaxSize(t *testing.T) {
 		"File too large": {
 			agentName: "",
 			//			agentScope: "testscope1",
-			stringSize: 49122,
-			expectFail: true,
-		},
-		"File with persistent too large": {
-			agentName: "",
-			//			agentScope: "testscope2",
-			persistent: true,
 			stringSize: 49122,
 			expectFail: true,
 		},
@@ -107,12 +95,6 @@ func TestCheckMaxSize(t *testing.T) {
 			//			agentScope: "testscope1",
 			stringCSize: 524288,
 		},
-		"File with persistent using large tag": {
-			agentName: "",
-			//			agentScope: "testscope2",
-			persistent:  true,
-			stringCSize: 524288,
-		},
 		"IPC using large tag": {
 			agentName: "testagent1",
 			//			agentScope: "testscope",
@@ -127,13 +109,6 @@ func TestCheckMaxSize(t *testing.T) {
 		"File too large using large tag": {
 			agentName: "",
 			//			agentScope: "testscope1",
-			stringCSize: 1048576,
-			expectFail:  true,
-		},
-		"File with persistent too large using large tag": {
-			agentName: "",
-			//			agentScope: "testscope2",
-			persistent:  true,
 			stringCSize: 1048576,
 			expectFail:  true,
 		},

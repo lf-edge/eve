@@ -55,11 +55,6 @@ func TestUnsubscribe(t *testing.T) {
 			agentName: "",
 			//			agentScope: "testscope1",
 		},
-		"File with persistent": {
-			agentName: "",
-			//			agentScope: "testscope2",
-			persistent: true,
-		},
 		"IPC": {
 			agentName: "testagent1",
 			//			agentScope: "testscope",

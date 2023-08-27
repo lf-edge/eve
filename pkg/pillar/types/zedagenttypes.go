@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/lf-edge/eve-api/go/info"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	uuid "github.com/satori/go.uuid"
 )
@@ -524,6 +525,57 @@ type ZedAgentStatus struct {
 	ForceFallbackCounter  int          // Try image fallback when counter changes
 	CurrentProfile        string       // Current profile
 	RadioSilence          RadioSilence // Currently requested state of radio devices
+	DeviceState           DeviceState
+	AttestState           AttestState
+	AttestError           string
+	VaultStatus           info.DataSecAtRestStatus
+	PCRStatus             info.PCRStatus
+	VaultErr              string
+}
+
+// DeviceState represents overall state
+type DeviceState uint8
+
+// Integer values must match those in ZDeviceState in lf-edge/eve-api/proto/info/info.proto
+//
+//revive:disable:var-naming
+const (
+	DEVICE_STATE_UNSPECIFIED        DeviceState = iota
+	DEVICE_STATE_ONLINE                         = 1
+	DEVICE_STATE_REBOOTING                      = 2
+	DEVICE_STATE_MAINTENANCE_MODE               = 3
+	DEVICE_STATE_BASEOS_UPDATING                = 4
+	DEVICE_STATE_BOOTING                        = 5
+	DEVICE_STATE_PREPARING_POWEROFF             = 6
+	DEVICE_STATE_POWERING_OFF                   = 7
+	DEVICE_STATE_PREPARED_POWEROFF              = 8
+)
+
+//revive:enable:var-naming
+
+func (ds DeviceState) String() string {
+	switch ds {
+	case DEVICE_STATE_UNSPECIFIED:
+		return "unspecified"
+	case DEVICE_STATE_ONLINE:
+		return "online"
+	case DEVICE_STATE_REBOOTING:
+		return "rebooting"
+	case DEVICE_STATE_MAINTENANCE_MODE:
+		return "maintenance_mode"
+	case DEVICE_STATE_BASEOS_UPDATING:
+		return "baseos_updating"
+	case DEVICE_STATE_BOOTING:
+		return "booting"
+	case DEVICE_STATE_PREPARING_POWEROFF:
+		return "preparing_poweroff"
+	case DEVICE_STATE_POWERING_OFF:
+		return "powering_off"
+	case DEVICE_STATE_PREPARED_POWEROFF:
+		return "prepared_poweroff"
+	default:
+		return fmt.Sprintf("Unknown state %d", ds)
+	}
 }
 
 // Key :
@@ -657,7 +709,6 @@ const (
 	AppCommandRestart
 	// AppCommandPurge : purge application with ALL of its volumes.
 	AppCommandPurge
-	// TODO : purge for a single or a subset of volumes.
 )
 
 // LocalAppCommand : An application command requested from a local server.

@@ -12,13 +12,13 @@ import (
 	"fmt"
 	"reflect"
 
-	zconfig "github.com/lf-edge/eve-api/go/config"
+	zcommon "github.com/lf-edge/eve-api/go/evecommon"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"google.golang.org/protobuf/proto"
 )
 
 func getEncryptionBlock(
-	zconfigDecBlockPtr *zconfig.EncryptionBlock) types.EncryptionBlock {
+	zconfigDecBlockPtr *zcommon.EncryptionBlock) types.EncryptionBlock {
 	var decBlock types.EncryptionBlock
 	decBlock.DsAPIKey = zconfigDecBlockPtr.DsAPIKey
 	decBlock.DsPassword = zconfigDecBlockPtr.DsPassword
@@ -59,7 +59,7 @@ func GetCipherCredentials(ctx *DecryptCipherContext,
 			decBlock, err, types.DecryptFailed)
 	}
 
-	var zconfigDecBlock zconfig.EncryptionBlock
+	var zconfigDecBlock zcommon.EncryptionBlock
 	err = proto.Unmarshal(clearBytes, &zconfigDecBlock)
 	if err != nil {
 		ctx.Log.Errorf("%s, encryption block unmarshall failed, %v\n",

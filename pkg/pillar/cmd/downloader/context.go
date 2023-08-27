@@ -27,6 +27,8 @@ type downloaderContext struct {
 	pubCipherBlockStatus     pubsub.Publication
 	subDatastoreConfig       pubsub.Subscription
 	subNetworkInstanceStatus pubsub.Subscription
+	subControllerCert        pubsub.Subscription
+	subEdgeNodeCert          pubsub.Subscription
 	deviceNetworkStatus      types.DeviceNetworkStatus
 	subGlobalConfig          pubsub.Subscription
 	zedcloudMetrics          *zedcloud.AgentMetrics
@@ -64,7 +66,8 @@ func (ctx *downloaderContext) registerHandlers(ps *pubsub.PubSub) error {
 	ctx.decryptCipherContext.Log = log
 	ctx.decryptCipherContext.AgentName = agentName
 	ctx.decryptCipherContext.AgentMetrics = ctx.cipherMetrics
-	ctx.decryptCipherContext.SubControllerCert = subControllerCert
+	ctx.decryptCipherContext.PubSubControllerCert = subControllerCert
+	ctx.subControllerCert = subControllerCert
 	subControllerCert.Activate()
 
 	// Look for edge node certs which will be used for decryption
@@ -81,7 +84,8 @@ func (ctx *downloaderContext) registerHandlers(ps *pubsub.PubSub) error {
 	if err != nil {
 		log.Fatal(err)
 	}
-	ctx.decryptCipherContext.SubEdgeNodeCert = subEdgeNodeCert
+	ctx.decryptCipherContext.PubSubEdgeNodeCert = subEdgeNodeCert
+	ctx.subEdgeNodeCert = subEdgeNodeCert
 	subEdgeNodeCert.Activate()
 
 	// Look for global config such as log levels
