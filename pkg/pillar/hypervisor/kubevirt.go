@@ -14,6 +14,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/containerd"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+
 	// "github.com/lf-edge/eve/pkg/pillar/kubeapi"
 	"github.com/sirupsen/logrus"
 )
@@ -193,7 +194,7 @@ func (ctx kubevirtContext) CreateDomConfig(domainName string, config types.Domai
 	}
 
 	// Gather all PCI assignments into a single line
-	var pciAssignments []typeAndPCI
+	var pciAssignments []pciDevice
 	// Gather all USB assignments into a single line
 	var usbAssignments []string
 	// Gather all serial assignments into a single line
@@ -218,7 +219,7 @@ func (ctx kubevirtContext) CreateDomConfig(domainName string, config types.Domai
 			}
 			if ib.PciLong != "" {
 				logrus.Infof("Adding PCI device <%v>\n", ib.PciLong)
-				tap := typeAndPCI{pciLong: ib.PciLong, ioType: ib.Type}
+				tap := pciDevice{pciLong: ib.PciLong, ioType: ib.Type}
 				pciAssignments = addNoDuplicatePCI(pciAssignments, tap)
 			}
 			if ib.Serial != "" {
