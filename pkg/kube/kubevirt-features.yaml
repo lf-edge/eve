@@ -1,0 +1,14 @@
+apiVersion: kubevirt.io/v1
+kind: KubeVirt
+metadata:
+  name: kubevirt
+  namespace: kubevirt
+spec:
+  configuration:
+    developerConfiguration:
+      featureGates:
+        - LiveMigration
+        - HostDisk
+        - Snapshot
+        - HostDevices
+        - GPU
