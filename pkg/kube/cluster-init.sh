@@ -153,6 +153,13 @@ setup_prereqs
 
 date >> $INSTALL_LOG
 HOSTNAME=$(/bin/hostname)
+logmsg "Starting wait for hostname, currently: $HOSTNAME"
+while [[ $HOSTNAME = linuxkit* ]];
+do
+        sleep 1
+        HOSTNAME=$(/bin/hostname)
+done
+logmsg "Got real hostname, currently: $HOSTNAME"
 
 # Wait for vault to unseal
 vaultMgrStatusPath="/run/vaultmgr/VaultStatus/Application Data Store.json"
@@ -161,7 +168,7 @@ DataSecAtRestStatus_DATASEC_AT_REST_DISABLED=1
 DataSecAtRestStatus_DATASEC_AT_REST_ENABLED=2
 while [ $vaultMgrStatus -ne $DataSecAtRestStatus_DATASEC_AT_REST_DISABLED ] && [ $vaultMgrStatus -ne $DataSecAtRestStatus_DATASEC_AT_REST_ENABLED ]; 
 do
-        echo "Waiting for vault, currently: $vaultMgrStatus"
+        logmsg "Waiting for vault, currently: $vaultMgrStatus"
         if [ -e "$vaultMgrStatusPath" ]; then
                 vaultMgrStatus=$(cat "$vaultMgrStatusPath" | jq -r .Status)
         fi 
@@ -170,23 +177,35 @@ do
         fi
 done
 
+check_start_containerd() {
+        if pgrep -f "containerd --config" >> $INSTALL_LOG 2>&1; then
+                logmsg "k3s-containerd is alive"
+        else 
+                logmsg "Starting k3s-containerd"
+                mkdir -p /run/containerd-user
+                nohup /var/lib/rancher/k3s/data/current/bin/containerd --config /etc/containerd/config-k3s.toml &
+        fi   
+}
+wait_for_containerd_to_exist() {
+        # This is extracted when k3s server first starts
+        logmsg "Waiting for containerd binary"
+        while true; 
+        do
+                if [ -e /var/lib/rancher/k3s/data/current/bin/containerd ]; then
+                        # Needed to get the pods to start
+                        ln -s /var/lib/rancher/k3s/data/current/bin/runc /usr/bin/runc
+                        ln -s /var/lib/rancher/k3s/data/current/bin/containerd-shim-runc-v2 /usr/bin/containerd-shim-runc-v2
+                        break
+                fi
+                sleep 1
+        done
+        logmsg "containerd binary arrived"
+}
+
 #Forever loop every 15 secs
 while true;
 do
-if pgrep -f "containerd --config" >> $INSTALL_LOG 2>&1; then
-        logmsg "k3s-containerd is alive"
-else 
-        logmsg "Starting Containerd"
-        # For now i'm installing from apk.
-
-        # Using Eves with a bind mount in build.yml has missing containerd-shim-runc-v2
-        # Same with k3s's containerd
-        if [ ! -e /usr/bin/containerd ]; then
-                /sbin/apk add containerd
-        fi
-        mkdir -p /run/containerd-user
-        nohup /usr/bin/containerd --config /etc/containerd/config-k3s.toml &
-fi
+check_start_containerd
 if [ ! -f /var/lib/all_components_initialized ]; then
         if [ ! -f /var/lib/k3s_initialized ]; then
                 # cni plugin
@@ -199,6 +218,8 @@ if [ ! -f /var/lib/all_components_initialized ]; then
                 sleep 60
                 logmsg "Initializing K3S version $K3S_VERSION"
                 nohup /usr/bin/k3s server --config /etc/rancher/k3s/config.yaml &
+                wait_for_containerd_to_exist
+                check_start_containerd
                 #wait until k3s is ready
                 logmsg "Looping until k3s is ready"
                 until kubectl get node | grep "$HOSTNAME" | awk '{print $2}' | grep 'Ready'; do sleep 5; done
