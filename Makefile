@@ -756,15 +756,19 @@ $(LIVE).parallels: $(LIVE).raw
 	qemu-img info -f parallels --output json $(LIVE).parallels/live.0.$(PARALLELS_UUID).hds | jq --raw-output '.["virtual-size"]' | xargs ./tools/parallels_disk.sh $(LIVE) $(PARALLELS_UUID)
 
 $(VERIFICATION).raw: $(BOOT_PART) $(EFI_PART) $(ROOTFS_IMG) $(INITRD_IMG) $(VERIFICATION_IMG) $(CONFIG_IMG) $(PERSIST_IMG) $(BSP_IMX_PART) | $(VERIFICATION)
-	@cp -r $(INSTALLER)/* $(VERIFICATION)
+	./tools/prepare-verification.sh pkg/verification $(INSTALLER) $(VERIFICATION)
 	./tools/prepare-platform.sh "$(PLATFORM)" "$(BUILD_DIR)" "$(VERIFICATION)" || :
 	./tools/makeflash.sh "mkverification-raw-efi" -C 850 $| $@ "conf_win verification inventory_win"
 	$(QUIET): $@: Succeeded
 
 $(VERIFICATION).net: $(EFI_PART) $(ROOTFS_IMG) $(INITRD_IMG) $(VERIFICATION_IMG) $(CONFIG_IMG) $(PERSIST_IMG) $(KERNEL_IMG) | $(VERIFICATION)
+	./tools/prepare-verification.sh pkg/verification $(INSTALLER) $(VERIFICATION)
+	./tools/prepare-platform.sh "$(PLATFORM)" "$(BUILD_DIR)" "$(VERIFICATION)" || :
 	./tools/makenet.sh $| verification.img $@
 
 $(VERIFICATION).iso: $(EFI_PART) $(ROOTFS_IMG) $(INITRD_IMG) $(VERIFICATION_IMG) $(CONFIG_IMG) $(PERSIST_IMG) | $(VERIFICATION)
+	./tools/prepare-verification.sh pkg/verification $(INSTALLER) $(VERIFICATION)
+	./tools/prepare-platform.sh "$(PLATFORM)" "$(BUILD_DIR)" "$(VERIFICATION)" || :
 	./tools/makeiso.sh $| $@ verification
 	$(QUIET): $@: Succeeded
 
