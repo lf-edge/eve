@@ -174,6 +174,8 @@ func parseConfig(getconfigCtx *getconfigContext, config *zconfig.EdgeDevConfig,
 			parseDisksConfig(getconfigCtx, config)
 
 			parseEdgeNodeInfo(getconfigCtx, config)
+
+			parsePatchEnvelopes(getconfigCtx, config)
 		}
 
 		getconfigCtx.lastProcessedConfig = getconfigCtx.lastReceivedConfig

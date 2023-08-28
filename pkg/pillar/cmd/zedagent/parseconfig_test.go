@@ -4,6 +4,10 @@
 package zedagent
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"os"
+	"path/filepath"
 	"sort"
 	"testing"
 
@@ -36,10 +40,16 @@ func initGetConfigCtx(g *GomegaWithT) *getconfigContext {
 		AgentName: agentName,
 		TopicType: types.NetworkXObjectConfig{},
 	})
+	pubPatchEnvelopes, err := ps.NewPublication(pubsub.PublicationOptions{
+		AgentName: agentName,
+		TopicType: types.PatchEnvelopes{},
+	})
+	g.Expect(err).To(BeNil())
 	getconfigCtx := &getconfigContext{
 		pubDevicePortConfig:     pubDPC,
 		pubPhysicalIOAdapters:   pubIOAdapters,
 		pubNetworkXObjectConfig: pubNetworks,
+		pubPatchEnvelopeInfo:    pubPatchEnvelopes,
 		zedagentCtx: &zedagentContext{
 			physicalIoAdapterMap: make(map[string]types.PhysicalIOAdapter),
 		},
@@ -1253,4 +1263,74 @@ func TestParseSRIOV(t *testing.T) {
 			},
 		},
 	}))
+}
+
+func TestParsePatchEnvelope(t *testing.T) {
+	g := NewGomegaWithT(t)
+	getconfigCtx := initGetConfigCtx(g)
+
+	appU1 := "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+	appU2 := "60331c10-9dad-182g-80b4-00123ga430c8"
+
+	patchId := "uuid1"
+	displayName := "test"
+	patchVersion := "version1"
+	artiactMetadata := "Artifact metadata"
+
+	fileData := "textdata"
+	fileMetadata := "metadata"
+	inlineFileName := "inline-query-name"
+
+	config := &zconfig.EdgeDevConfig{
+		PatchEnvelopes: []*zconfig.EvePatchEnvelope{
+			{
+				DisplayName: displayName,
+				Uuid:        patchId,
+				Version:     &patchVersion,
+				Action:      zconfig.EVE_PATCH_ENVELOPE_ACTION_ACTIVATE,
+				Artifacts: []*zconfig.EveBinaryArtifact{
+					{
+						Format: zconfig.EVE_OPAQUE_OBJECT_CATEGORY_BASE64,
+						BinaryBlob: &zconfig.EveBinaryArtifact_Inline{
+							Inline: &zconfig.InlineOpaqueBase64Data{
+								Base64Data:     fileData,
+								Base64MetaData: &fileMetadata,
+								FileNameToUse:  inlineFileName,
+							},
+						},
+						ArtifactMetaData: &artiactMetadata,
+					},
+				},
+				AppInstIdsAllowed: []string{appU1, appU2},
+			},
+		},
+	}
+
+	path, _ := os.Getwd()
+	persistCacheFolder := filepath.Join(path, "testPersist/")
+
+	// Impl because we have to change filepath of persist cache for testing
+	parsePatchEnvelopesImpl(getconfigCtx, config, persistCacheFolder)
+
+	patchEnvelopes, err := getconfigCtx.pubPatchEnvelopeInfo.Get("zedagent")
+
+	g.Expect(err).To(BeNil())
+	pes, ok := patchEnvelopes.(types.PatchEnvelopes)
+	g.Expect(ok).To(BeTrue())
+	shaBytes := sha256.Sum256([]byte(fileData))
+	g.Expect(pes.Get(appU1)).To(BeEquivalentTo([]types.PatchEnvelopeInfo{
+		{
+			PatchId: displayName,
+			BinaryBlobs: []types.BinaryBlob{
+				{
+					FileName:     inlineFileName,
+					FileSha:      hex.EncodeToString(shaBytes[:]),
+					FileMetadata: fileMetadata,
+					Url:          filepath.Join(persistCacheFolder, inlineFileName),
+				},
+			},
+		},
+	}))
+
+	os.RemoveAll(persistCacheFolder)
 }

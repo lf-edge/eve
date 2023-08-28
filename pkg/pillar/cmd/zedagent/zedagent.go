@@ -1201,6 +1201,16 @@ func initPublications(zedagentCtx *zedagentContext) {
 	}
 	getconfigCtx.pubEdgeNodeInfo.ClearRestarted()
 
+	getconfigCtx.pubPatchEnvelopeInfo, err = ps.NewPublication(
+		pubsub.PublicationOptions{
+			AgentName:  agentName,
+			TopicType:  types.PatchEnvelopes{},
+			Persistent: true,
+		})
+	if err != nil {
+		log.Fatal(err)
+	}
+	getconfigCtx.pubPatchEnvelopeInfo.ClearRestarted()
 }
 
 // All but one zedagent subscription (subOnboardStatus) are activated
