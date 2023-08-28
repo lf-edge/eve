@@ -87,5 +87,7 @@ func (z *zedrouter) makeMetadataHandler() http.Handler {
 	diagHandler := &diagHandler{zedrouter: z}
 	r.Get("/eve/v1/diag", diagHandler.ServeHTTP)
 
+	r.Get("/eve/v1/patch/description", HandlePatchDescription(z))
+
 	return r
 }

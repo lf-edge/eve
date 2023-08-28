@@ -20,6 +20,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 
 	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
+	uuid "github.com/satori/go.uuid"
 )
 
 // Provides a json file
@@ -566,4 +567,51 @@ func (hdl AppCustomBlobsHandler) ServeHTTP(w http.ResponseWriter, r *http.Reques
 	modTime := fi.ModTime()
 
 	http.ServeContent(w, r, blobFileLocation, modTime, f)
+}
+
+func getIP(r *http.Request) net.IP {
+	IPAddress := r.Header.Get("X-Real-Ip")
+	if IPAddress == "" {
+		IPAddress = r.Header.Get("X-Forwarded-For")
+	}
+	if IPAddress == "" {
+		IPAddress = r.RemoteAddr
+	}
+	return net.ParseIP(IPAddress)
+}
+
+func HandlePatchDescription(z *zedrouter) func(http.ResponseWriter, *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		peObj, err := z.subPatchEnvelopeInfo.Get("global")
+		if err != nil {
+			http.Error(w, http.StatusText(http.StatusNoContent), http.StatusNoContent)
+			return
+		}
+
+		pe := peObj.(types.PatchEnvelopes)
+		appUUID := getAppUUIDByIP(z, getIP(r))
+		envelopes := pe.Get(appUUID.String())
+		if len(envelopes) > 0 {
+			b, err := json.Marshal(envelopes)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusUnprocessableEntity)
+				return
+			}
+			w.WriteHeader(http.StatusOK)
+			w.Write(b)
+			return
+		} else {
+			http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+			return
+		}
+	}
+}
+
+func getAppUUIDByIP(z *zedrouter, ip net.IP) uuid.UUID {
+	netstatus := z.lookupNetworkInstanceStatusByAppIP(ip)
+	if netstatus == nil {
+		z.log.Errorf("getExternalIPForApp: No NetworkInstanceStatus for %v", ip)
+		return uuid.UUID{}
+	}
+	return netstatus.NetworkInstanceConfig.UUIDandVersion.UUID
 }
