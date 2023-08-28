@@ -163,6 +163,8 @@ type zedrouter struct {
 
 	// Retry NI or app network config that zedrouter failed to apply
 	retryTimer *time.Timer
+
+	subPatchEnvelopeInfo pubsub.Subscription
 }
 
 // AddAgentSpecificCLIFlags adds CLI options
@@ -355,6 +357,9 @@ func (z *zedrouter) run(ctx context.Context) (err error) {
 
 		case change := <-z.subNetworkInstanceConfig.MsgChan():
 			z.subNetworkInstanceConfig.ProcessChange(change)
+
+		case change := <-z.subPatchEnvelopeInfo.MsgChan():
+			z.subPatchEnvelopeInfo.ProcessChange(change)
 
 		case <-z.publishTicker.C:
 			start := time.Now()
@@ -776,6 +781,20 @@ func (z *zedrouter) initSubscriptions() (err error) {
 	if err != nil {
 		return err
 	}
+
+	// Information about patch envelopes
+	z.subPatchEnvelopeInfo, err = z.pubSub.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:   "zedagent",
+		MyAgentName: agentName,
+		TopicImpl:   types.PatchEnvelopes{},
+		Activate:    false,
+		WarningTime: warningTime,
+		ErrorTime:   errorTime,
+	})
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
