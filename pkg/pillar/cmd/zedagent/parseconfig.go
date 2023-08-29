@@ -45,12 +45,10 @@ const (
 func parseConfig(getconfigCtx *getconfigContext, config *zconfig.EdgeDevConfig,
 	source configSource) configProcessingRetval {
 
-	// Do not accept new commands from Local profile server while new config
-	// from the controller is being applied.
-	if getconfigCtx.sideController.localCommands != nil {
-		getconfigCtx.sideController.localCommands.Lock()
-		defer getconfigCtx.sideController.localCommands.Unlock()
-	}
+	// Do not accept new commands from side controller while new config
+	// from the primary controller is being applied. Or vice versa.
+	getconfigCtx.sideController.Lock()
+	defer getconfigCtx.sideController.Unlock()
 
 	// Make sure we do not accidentally revert to an older configuration.
 	// This depends on the controller attaching config timestamp.
