@@ -270,7 +270,9 @@ if [ ! -f /var/lib/all_components_initialized ]; then
 
         if [ ! -f /var/lib/longhorn_initialized ]; then
                 logmsg "Installing longhorn version ${LONGHORN_VERSION}"
-                kubectl apply -f  https://raw.githubusercontent.com/longhorn/longhorn/${LONGHORN_VERSION}/deploy/longhorn.yaml
+                #kubectl apply -f  https://raw.githubusercontent.com/longhorn/longhorn/${LONGHORN_VERSION}/deploy/longhorn.yaml
+                # Switch back to above once all the longhorn services use the updated go iscsi tools
+                kubectl apply -f /etc/longhorn-config.yaml
                 touch /var/lib/longhorn_initialized
         fi
 
