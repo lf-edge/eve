@@ -178,7 +178,7 @@ func NewPVCDefinition(pvcName string, size string, annotations, labels map[strin
 }
 
 // RolloutImgToPVC copy the content of diskfile to PVC
-func RolloutImgToPVC(ctx context.Context, log *base.LogObject, exists bool, diskfile, pvcName, outputFormat string) error {
+func RolloutImgToPVC(ctx context.Context, log *base.LogObject, exists bool, diskfile, pvcName, outputFormat string, isAppImage bool) error {
 
 	//fetch CDI proxy url
 	// Get the Kubernetes clientset
@@ -214,8 +214,14 @@ func RolloutImgToPVC(ctx context.Context, log *base.LogObject, exists bool, disk
 	// 84ed078f3f0e1671d591d15409883a24bd30763eb10a9dec01a2fb38cf06cf6d --insecure --uploadproxy-url https://10.43.31.180:8443
 	// Write API to get proxy url
 
-	args := []string{"image-upload", "-n", "eve-kube-app", "pvc", pvcName, "--storage-class", "longhorn", "--image-path", diskfile, "--insecure", "--uploadproxy-url", uploadproxyURL, "--kubeconfig", kubeConfigFile,
-		"--access-mode", "ReadWriteMany", "--block-volume"}
+	args := []string{"image-upload", "-n", "eve-kube-app", "pvc", pvcName, "--storage-class", "longhorn", "--image-path", diskfile, "--insecure", "--uploadproxy-url", uploadproxyURL, "--kubeconfig", kubeConfigFile}
+
+	// We create PVC of filesystem mode if its appimage volume. longhorn PVC FS mode does not support ReadWriteMany mode.
+	if isAppImage {
+		args = append(args, "--access-mode", "ReadWriteOnce")
+	} else {
+		args = append(args, "--access-mode", "ReadWriteMany", "--block-volume")
+	}
 	//args := fmt.Sprintf("image-upload -n eve-kube-app pvc %s --no-create --storage-class longhorn --image-path=%s --insecure --uploadproxy-url %s", outputFile, diskfile, uploadproxyURL)
 
 	// If PVC already exists just copy out the data, else virtctl will create the PVC before data copy

@@ -592,11 +592,13 @@ func doUpdateVol(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool)
 			status.State != types.CREATING_VOLUME &&
 			status.SubState == types.VolumeSubStateInitial {
 
+			status.IsAppImage = false
 			imgName := ctStatus.ReferenceID()
 			if ctx.hvTypeKube {
 				cfg := lookupContentTreeConfig(ctx, status.ContentID.String())
 				if cfg != nil && cfg.IsAppImage && ctStatus.OciImageName != "" {
 					imgName = ctStatus.OciImageName
+					status.IsAppImage = true
 				}
 			}
 			_, err := ctx.casClient.GetImageHash(imgName)
