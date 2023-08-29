@@ -178,6 +178,14 @@ do
 done
 
 check_start_containerd() {
+        # Needed to get the pods to start
+        if [ ! -L /usr/bin/runc ]; then 
+                ln -s /var/lib/rancher/k3s/data/current/bin/runc /usr/bin/runc
+        fi
+        if [ ! -L /usr/bin/containerd-shim-runc-v2 ]; then
+                ln -s /var/lib/rancher/k3s/data/current/bin/containerd-shim-runc-v2 /usr/bin/containerd-shim-runc-v2
+        fi
+
         if pgrep -f "containerd --config" >> $INSTALL_LOG 2>&1; then
                 logmsg "k3s-containerd is alive"
         else 
@@ -204,10 +212,6 @@ trigger_k3s_selfextraction() {
         #- apparmor: enabled, but apparmor_parser missing (fail)
         #      - CONFIG_INET_XFRM_MODE_TRANSPORT: missing
         /usr/bin/k3s check-config >> $INSTALL_LOG 2>&1
-
-        # Needed to get the pods to start
-        ln -s /var/lib/rancher/k3s/data/current/bin/runc /usr/bin/runc
-        ln -s /var/lib/rancher/k3s/data/current/bin/containerd-shim-runc-v2 /usr/bin/containerd-shim-runc-v2
 }
 
 #Forever loop every 15 secs
@@ -230,7 +234,7 @@ if [ ! -f /var/lib/all_components_initialized ]; then
                 #wait until k3s is ready
                 logmsg "Looping until k3s is ready"
                 until kubectl get node | grep "$HOSTNAME" | awk '{print $2}' | grep 'Ready'; do sleep 5; done
-                ln -sf /persist/vault/containerd /var/lib/rancher/k3s/agent/containerd
+                #ln -sf /persist/vault/containerd /var/lib/rancher/k3s/agent/containerd
                 # Give the embedded etcd in k3s priority over io as its fsync latencies are critical
                 ionice -c2 -n0 -p $(pgrep -f "k3s server")
                 logmsg "k3s is ready on this node"
