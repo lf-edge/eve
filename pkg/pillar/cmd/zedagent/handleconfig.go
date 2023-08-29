@@ -123,6 +123,7 @@ type getconfigContext struct {
 	// Combines both LPS (local profile server) and LOC (local operator console)
 	// configurations and structures
 	sideController struct {
+		sync.Mutex
 		localProfileServer  string
 		profileServerToken  string
 		currentProfile      string

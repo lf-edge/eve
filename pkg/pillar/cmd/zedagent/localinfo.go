@@ -183,8 +183,8 @@ func postLocalAppInfo(ctx *getconfigContext) *profile.LocalAppCmdList {
 }
 
 func processReceivedAppCommands(ctx *getconfigContext, cmdList *profile.LocalAppCmdList) {
-	ctx.sideController.localCommands.Lock()
-	defer ctx.sideController.localCommands.Unlock()
+	ctx.sideController.Lock()
+	defer ctx.sideController.Unlock()
 	if cmdList == nil {
 		// Nothing requested by local server, just refresh the persisted config.
 		if !ctx.sideController.localCommands.Empty() {
@@ -344,8 +344,8 @@ func triggerLocalCommand(ctx *getconfigContext, cmd types.AppCommand,
 
 func processAppCommandStatus(
 	ctx *getconfigContext, appStatus types.AppInstanceStatus) {
-	ctx.sideController.localCommands.Lock()
-	defer ctx.sideController.localCommands.Unlock()
+	ctx.sideController.Lock()
+	defer ctx.sideController.Unlock()
 	uuid := appStatus.UUIDandVersion.UUID.String()
 	appCmd, hasLocalCmd := ctx.sideController.localCommands.AppCommands[uuid]
 	if !hasLocalCmd {
@@ -384,7 +384,7 @@ func processAppCommandStatus(
 }
 
 // Add config submitted for the application via local profile server.
-// ctx.localCommands should be locked!
+// ctx.sideController should be locked!
 func addLocalAppConfig(ctx *getconfigContext, appInstance *types.AppInstanceConfig) {
 	uuid := appInstance.UUIDandVersion.UUID.String()
 	appCounters, hasCounters := ctx.sideController.localCommands.AppCounters[uuid]
@@ -401,7 +401,7 @@ func addLocalAppConfig(ctx *getconfigContext, appInstance *types.AppInstanceConf
 }
 
 // Delete all local config for this application.
-// ctx.localCommands should be locked!
+// ctx.sideController should be locked!
 func delLocalAppConfig(ctx *getconfigContext, appUUID string) {
 	delete(ctx.sideController.localCommands.AppCommands, appUUID)
 	delete(ctx.sideController.localCommands.AppCounters, appUUID)
@@ -409,7 +409,7 @@ func delLocalAppConfig(ctx *getconfigContext, appUUID string) {
 }
 
 // Add config submitted for the volume via local profile server.
-// ctx.localCommands should be locked!
+// ctx.sideController should be locked!
 func addLocalVolumeConfig(ctx *getconfigContext, volumeConfig *types.VolumeConfig) {
 	uuid := volumeConfig.VolumeID.String()
 	volumeConfig.LocalGenerationCounter =
@@ -425,8 +425,8 @@ func delLocalVolumeConfig(ctx *getconfigContext, volumeUUID string) {
 
 func prepareLocalAppInfo(ctx *getconfigContext) *profile.LocalAppInfoList {
 	msg := profile.LocalAppInfoList{}
-	ctx.sideController.localCommands.Lock()
-	defer ctx.sideController.localCommands.Unlock()
+	ctx.sideController.Lock()
+	defer ctx.sideController.Unlock()
 	addAppInstanceFunc := func(key string, value interface{}) bool {
 		ais := value.(types.AppInstanceStatus)
 		zinfoAppInst := new(profile.LocalAppInfo)
