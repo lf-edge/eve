@@ -110,15 +110,16 @@ func removeAndVerifyAuthContainer(ctx *ZedCloudContext,
 	return sm.ProtectedPayload.GetPayload(), senderSt, nil
 }
 
-// VerifyAuthContainer verifies the integrity of the payload inside AuthContainer.
-func VerifyAuthContainer(ctx *ZedCloudContext, sm *zauth.AuthContainer) (types.SenderStatus, error) {
+// VerifyAuthContainerHeader verifies correctness of algorithm fields in header
+func VerifyAuthContainerHeader(ctx *ZedCloudContext, sm *zauth.AuthContainer) (
+	types.SenderStatus, error) {
 	err := loadSavedServerSigningCert(ctx)
 	if err != nil {
 		return types.SenderStatusNone, err
 	}
 	if len(sm.GetSenderCertHash()) != hashSha256Len16 &&
 		len(sm.GetSenderCertHash()) != hashSha256Len32 {
-		err := fmt.Errorf("VerifyAuthContainer: unexpected senderCertHash length (%d)",
+		err := fmt.Errorf("VerifyAuthContainerHeader: unexpected senderCertHash length (%d)",
 			len(sm.GetSenderCertHash()))
 		ctx.log.Error(err)
 		return types.SenderStatusHashSizeError, err
@@ -127,30 +128,40 @@ func VerifyAuthContainer(ctx *ZedCloudContext, sm *zauth.AuthContainer) (types.S
 	switch sm.Algo {
 	case zcommon.HashAlgorithm_HASH_ALGORITHM_SHA256_32BYTES:
 		if bytes.Compare(sm.GetSenderCertHash(), ctx.serverSigningCertHash) != 0 {
-			ctx.log.Errorf("VerifyAuthContainer: local server cert hash (%d)"+
+			ctx.log.Errorf("VerifyAuthContainerHeader: local server cert hash (%d)"+
 				"does not match in authen (%d): %v, %v",
 				len(ctx.serverSigningCertHash), len(sm.GetSenderCertHash()),
 				ctx.serverSigningCertHash, sm.GetSenderCertHash())
-			err := fmt.Errorf("VerifyAuthContainer: local server cert hash " +
+			err := fmt.Errorf("VerifyAuthContainerHeader: local server cert hash " +
 				"does not match in authen (32 bytes)")
 			return types.SenderStatusCertMiss, err
 		}
 	case zcommon.HashAlgorithm_HASH_ALGORITHM_SHA256_16BYTES:
 		if bytes.Compare(sm.GetSenderCertHash(), ctx.serverSigningCertHash[:hashSha256Len16]) != 0 {
-			ctx.log.Errorf("VerifyAuthContainer: local server cert hash (%d)"+
+			ctx.log.Errorf("VerifyAuthContainerHeader: local server cert hash (%d)"+
 				"does not match in authen (%d): %v, %v",
 				len(ctx.serverSigningCertHash), len(sm.GetSenderCertHash()),
 				ctx.serverSigningCertHash, sm.GetSenderCertHash())
-			err := fmt.Errorf("VerifyAuthContainer: local server cert hash " +
+			err := fmt.Errorf("VerifyAuthContainerHeader: local server cert hash " +
 				"does not match in authen (16 bytes)")
 			return types.SenderStatusCertMiss, err
 		}
 	default:
-		err := fmt.Errorf("VerifyAuthContainer: hash algorithm is not supported")
+		err := fmt.Errorf("VerifyAuthContainerHeader: hash algorithm is not supported")
 		ctx.log.Error(err)
 		return types.SenderStatusAlgoFail, err
 	}
 
+	return types.SenderStatusNone, nil
+}
+
+// VerifyAuthContainer verifies the integrity of the payload inside AuthContainer.
+func VerifyAuthContainer(ctx *ZedCloudContext, sm *zauth.AuthContainer) (types.SenderStatus, error) {
+	status, err := VerifyAuthContainerHeader(ctx, sm)
+	if err != nil {
+		return status, err
+	}
+	// Verify payload integrity
 	data := sm.ProtectedPayload.GetPayload()
 	hash := ComputeSha(data)
 	err = verifyAuthSig(ctx, sm.GetSignatureHash(), ctx.serverSigningCert, hash)
