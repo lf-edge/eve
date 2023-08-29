@@ -345,8 +345,8 @@ func getCertsFromController(ctx *zedagentContext, desc string) bool {
 		nilUUID, "certs")
 
 	rv := requestCertsByURL(ctx, url, desc)
-	if !rv && ctx.getconfigCtx.locConfig != nil {
-		locURL := ctx.getconfigCtx.locConfig.LocURL
+	if !rv && ctx.getconfigCtx.sideController.locConfig != nil {
+		locURL := ctx.getconfigCtx.sideController.locConfig.LocURL
 		url = zedcloud.URLPathString(locURL, zedcloudCtx.V2API,
 			nilUUID, "certs")
 
