@@ -532,6 +532,15 @@ func decryptAuthContainer(getconfigCtx *getconfigContext, sendRV *zedcloud.SendR
 		// Nothing encrypted, nothing to do
 		return nil
 	}
+	// Verify auth container header and propagate the certificate
+	// errors to the caller by updating the retval status. That is
+	// utterly important that a caller schedules certs update in
+	// that case.
+	status, err := zedcloud.VerifyAuthContainerHeader(zedcloudCtx, sm)
+	if err != nil {
+		sendRV.Status = status
+		return err
+	}
 	cipherContext := sm.GetCipherContext()
 	if cipherContext == nil {
 		err := errors.New("cipher context is undefined\n")
@@ -736,24 +745,24 @@ func requestConfigByURL(getconfigCtx *getconfigContext, url string,
 		return invalidConfig, rv.TracedReqs
 	}
 
+	// Copy of retval with auth container stream
+	var authWrappedRV zedcloud.SendRetval
+
 	// Decrypts auth container envelope if it is encrypted
 	err = decryptAuthContainer(getconfigCtx, &rv)
 	if err != nil {
 		log.Errorf("decryptAuthContainer: %s", err)
-		// Inform ledmanager about problem
-		utils.UpdateLedManagerConfig(log, types.LedBlinkInvalidAuthContainer)
-		getconfigCtx.ledBlinkCount = types.LedBlinkInvalidAuthContainer
-		publishZedAgentStatus(getconfigCtx)
-		return invalidConfig, rv.TracedReqs
+	} else {
+		// Success path. Store auth container stream for further
+		// saving it into the file
+		authWrappedRV = rv
+		err = zedcloud.RemoveAndVerifyAuthContainer(zedcloudCtx, &rv, false)
+		if err != nil {
+			log.Errorf("RemoveAndVerifyAuthContainer: %s", err)
+		}
 	}
-
-	// Store successfully decrypted auth container stream for further
-	// saving it to the file
-	authWrappedRV := rv
-
-	err = zedcloud.RemoveAndVerifyAuthContainer(zedcloudCtx, &rv, false)
 	if err != nil {
-		log.Errorf("RemoveAndVerifyAuthContainer failed: %s", err)
+		// Handles decrypt or verification error
 		switch rv.Status {
 		case types.SenderStatusCertMiss, types.SenderStatusCertInvalid:
 			// trigger to acquire new controller certs from cloud
