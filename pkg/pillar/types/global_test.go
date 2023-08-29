@@ -196,7 +196,6 @@ func TestNewConfigItemSpecMap(t *testing.T) {
 		DefaultRemoteLogLevel,
 		DisableDHCPAllOnesNetMask,
 		ProcessCloudInitMultiPart,
-		EdgeViewToken,
 		NetDumpEnable,
 		NetDumpTopicMaxCount,
 		NetDumpTopicPreOnboardInterval,

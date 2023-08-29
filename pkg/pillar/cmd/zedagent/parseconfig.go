@@ -156,6 +156,7 @@ func parseConfig(getconfigCtx *getconfigContext, config *zconfig.EdgeDevConfig,
 			parseNetworkInstanceConfig(getconfigCtx, config)
 			parseContentInfoConfig(getconfigCtx, config)
 			parseVolumeConfig(getconfigCtx, config)
+			parseEvConfig(getconfigCtx, config)
 
 			// We have handled the volumes, so we can now process the app instances. But we need to check if
 			// we are in the middle of a baseOS upgrade, and if so, we need to skip processing the app instances.
@@ -171,8 +172,6 @@ func parseConfig(getconfigCtx *getconfigContext, config *zconfig.EdgeDevConfig,
 			// parseProfile must be called before processing of app instances from config
 			parseProfile(getconfigCtx, config)
 			parseAppInstanceConfig(getconfigCtx, config)
-
-			parseEvConfig(getconfigCtx, config)
 
 			parseDisksConfig(getconfigCtx, config)
 

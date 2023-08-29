@@ -261,9 +261,6 @@ const (
 	// ProcessCloudInitMultiPart to help VMs which do not handle mime multi-part themselves
 	ProcessCloudInitMultiPart GlobalSettingKey = "process.cloud-init.multipart"
 
-	// XXX temp for testing edge-view
-	EdgeViewToken GlobalSettingKey = "edgeview.authen.jwt"
-
 	// NetDumpEnable : enable publishing of network diagnostics (as tgz archives to /persist/netdump).
 	NetDumpEnable GlobalSettingKey = "netdump.enable"
 	// NetDumpTopicPreOnboardInterval : how frequently (in seconds) can be netdumps
@@ -869,9 +866,6 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	// Add Agent Settings
 	configItemSpecMap.AddAgentSettingStringItem(LogLevel, "info", parseLevel)
 	configItemSpecMap.AddAgentSettingStringItem(RemoteLogLevel, "info", parseLevel)
-
-	// XXX temp edgeview setting
-	configItemSpecMap.AddStringItem(EdgeViewToken, "", blankValidator)
 
 	// Add NetDump settings
 	configItemSpecMap.AddBoolItem(NetDumpEnable, true)
