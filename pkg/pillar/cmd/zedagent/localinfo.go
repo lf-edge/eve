@@ -698,10 +698,12 @@ func prepareLocalDevInfo(ctx *zedagentContext) *profile.LocalDevInfo {
 }
 
 func processReceivedDevCommands(getconfigCtx *getconfigContext, cmd *profile.LocalDevCmd) {
-	ctx := getconfigCtx.zedagentCtx
 	if cmd == nil {
 		return
 	}
+	ctx := getconfigCtx.zedagentCtx
+	getconfigCtx.sideController.Lock()
+	defer getconfigCtx.sideController.Unlock()
 
 	if cmd.Timestamp == getconfigCtx.sideController.lastDevCmdTimestamp {
 		log.Functionf("unchanged timestamp %v",
