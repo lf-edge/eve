@@ -1454,7 +1454,7 @@ func myPost(ctx *diagContext, reqURL string, ifname string,
 		return false, nil, rv.Status, nil
 	}
 	if len(rv.RespContents) > 0 {
-		err = zedcloud.RemoveAndVerifyAuthContainer(zedcloudCtx, nil, &rv, false)
+		err = zedcloud.RemoveAndVerifyAuthContainer(zedcloudCtx, &rv, false)
 		if err != nil {
 			ctx.ph.Print("ERROR: %s: %s RemoveAndVerifyAuthContainer  %s\n",
 				ifname, reqURL, err)

@@ -5,6 +5,7 @@ package zedagent
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -15,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	zauth "github.com/lf-edge/eve-api/go/auth"
 	zconfig "github.com/lf-edge/eve-api/go/config"
 	"github.com/lf-edge/eve-libs/nettrace"
 	"github.com/lf-edge/eve/pkg/pillar/base"
@@ -513,6 +515,76 @@ func updateCertTimer(configInterval uint32, tickerHandle interface{}) {
 	flextimer.TickNow(tickerHandle)
 }
 
+func decryptAuthContainer(getconfigCtx *getconfigContext, sendRV *zedcloud.SendRetval) error {
+	decryptCtx := &cipher.DecryptCipherContext{
+		Log:                  log,
+		AgentName:            agentName,
+		PubSubControllerCert: getconfigCtx.pubControllerCert,
+		PubSubEdgeNodeCert:   getconfigCtx.zedagentCtx.subEdgeNodeCert,
+	}
+	sm := &zauth.AuthContainer{}
+	err := proto.Unmarshal(sendRV.RespContents, sm)
+	if err != nil {
+		return err
+	}
+	cipherBlock := sm.GetCipherData()
+	if cipherBlock == nil {
+		// Nothing encrypted, nothing to do
+		return nil
+	}
+	cipherContext := sm.GetCipherContext()
+	if cipherContext == nil {
+		err := errors.New("cipher context is undefined\n")
+		return err
+	}
+	if len(cipherBlock.CipherData) == 0 ||
+		len(cipherBlock.CipherContextId) == 0 {
+		err := errors.New("cipher block data or context id are incorrect\n")
+		return err
+	}
+	if cipherContext.ContextId != cipherBlock.CipherContextId {
+		err := errors.New("cipher context ids do not match\n")
+		return err
+	}
+	cipherCtx := &types.CipherContext{
+		ContextID:          cipherContext.GetContextId(),
+		HashScheme:         cipherContext.GetHashScheme(),
+		KeyExchangeScheme:  cipherContext.GetKeyExchangeScheme(),
+		EncryptionScheme:   cipherContext.GetEncryptionScheme(),
+		DeviceCertHash:     cipherContext.GetDeviceCertHash(),
+		ControllerCertHash: cipherContext.GetControllerCertHash(),
+	}
+	cipherBlockSt := types.CipherBlockStatus{
+		// No unique key is needed here, because this status is never published
+		CipherBlockID:   "cipher-block",
+		CipherContextID: cipherBlock.GetCipherContextId(),
+		InitialValue:    cipherBlock.GetInitialValue(),
+		CipherData:      cipherBlock.GetCipherData(),
+		ClearTextHash:   cipherBlock.GetClearTextSha256(),
+		CipherContext:   cipherCtx,
+		IsCipher:        true,
+	}
+	clearBytes, err := cipher.DecryptCipherBlock(decryptCtx, cipherBlockSt)
+	if err != nil {
+		return err
+	}
+
+	// Restore payload with decrypted bytes
+	sm.ProtectedPayload.Payload = clearBytes
+	sm.CipherContext = nil
+	sm.CipherData = nil
+
+	bytes, err := proto.Marshal(sm)
+	if err != nil {
+		return err
+	}
+
+	// Restore contents
+	sendRV.RespContents = bytes
+
+	return nil
+}
+
 // Start by trying the all the free management ports and then all the non-free
 // until one succeeds in communicating with the cloud.
 // We use the iteration argument to start at a different point each time.
@@ -662,14 +734,22 @@ func requestConfigByURL(getconfigCtx *getconfigContext, url string,
 		return invalidConfig, rv.TracedReqs
 	}
 
-	authWrappedRV := rv
-	decryptCtx := &cipher.DecryptCipherContext{
-		Log:                  log,
-		AgentName:            agentName,
-		PubSubControllerCert: getconfigCtx.pubControllerCert,
-		PubSubEdgeNodeCert:   getconfigCtx.zedagentCtx.subEdgeNodeCert,
+	// Decrypts auth container envelope if it is encrypted
+	err = decryptAuthContainer(getconfigCtx, &rv)
+	if err != nil {
+		log.Errorf("decryptAuthContainer: %s", err)
+		// Inform ledmanager about problem
+		utils.UpdateLedManagerConfig(log, types.LedBlinkInvalidAuthContainer)
+		getconfigCtx.ledBlinkCount = types.LedBlinkInvalidAuthContainer
+		publishZedAgentStatus(getconfigCtx)
+		return invalidConfig, rv.TracedReqs
 	}
-	err = zedcloud.RemoveAndVerifyAuthContainer(zedcloudCtx, decryptCtx, &rv, false)
+
+	// Store successfully decrypted auth container stream for further
+	// saving it to the file
+	authWrappedRV := rv
+
+	err = zedcloud.RemoveAndVerifyAuthContainer(zedcloudCtx, &rv, false)
 	if err != nil {
 		log.Errorf("RemoveAndVerifyAuthContainer failed: %s", err)
 		switch rv.Status {
@@ -843,7 +923,7 @@ func readSavedProtoMessageConfig(zedcloudCtx *zedcloud.ZedCloudContext, URL stri
 		// Other fields are not needed to restore for RemoveAndVerifyAuthContainer().
 	}
 	err = zedcloud.RemoveAndVerifyAuthContainer(
-		zedcloudCtx, nil, &restoredSendRV, false)
+		zedcloudCtx, &restoredSendRV, false)
 	if err != nil {
 		log.Errorf("RemoveAndVerifyAuthContainer failed: %s", err)
 		return nil, ts, err
