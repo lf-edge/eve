@@ -101,14 +101,6 @@ func removeAndVerifyAuthContainer(ctx *ZedCloudContext,
 	}
 
 	if !skipVerify { // no verify for /certs itself
-		if ctx.serverSigningCert == nil {
-			err = loadSavedServerSigningCert(ctx)
-			if err != nil {
-				ctx.log.Errorf(
-					"removeAndVerifyAuthContainer: can not load save server cert, %v\n", err)
-				return nil, senderSt, err
-			}
-		}
 		senderSt, err = VerifyAuthContainer(ctx, sm)
 		if err != nil { // already logged
 			return nil, senderSt, err
@@ -120,6 +112,10 @@ func removeAndVerifyAuthContainer(ctx *ZedCloudContext,
 
 // VerifyAuthContainer verifies the integrity of the payload inside AuthContainer.
 func VerifyAuthContainer(ctx *ZedCloudContext, sm *zauth.AuthContainer) (types.SenderStatus, error) {
+	err := loadSavedServerSigningCert(ctx)
+	if err != nil {
+		return types.SenderStatusNone, err
+	}
 	if len(sm.GetSenderCertHash()) != hashSha256Len16 &&
 		len(sm.GetSenderCertHash()) != hashSha256Len32 {
 		err := fmt.Errorf("VerifyAuthContainer: unexpected senderCertHash length (%d)",
@@ -157,7 +153,7 @@ func VerifyAuthContainer(ctx *ZedCloudContext, sm *zauth.AuthContainer) (types.S
 
 	data := sm.ProtectedPayload.GetPayload()
 	hash := ComputeSha(data)
-	err := verifyAuthSig(ctx, sm.GetSignatureHash(), ctx.serverSigningCert, hash)
+	err = verifyAuthSig(ctx, sm.GetSignatureHash(), ctx.serverSigningCert, hash)
 	if err != nil {
 		err = fmt.Errorf("VerifyAuthContainer: verifyAuthSig error %v\n", err)
 		ctx.log.Error(err)
@@ -167,12 +163,21 @@ func VerifyAuthContainer(ctx *ZedCloudContext, sm *zauth.AuthContainer) (types.S
 }
 
 func loadSavedServerSigningCert(ctx *ZedCloudContext) error {
+	if ctx.serverSigningCert != nil {
+		// Already loaded
+		return nil
+	}
 	certBytes, err := os.ReadFile(types.ServerSigningCertFileName)
 	if err != nil {
 		ctx.log.Errorf("loadSavedServerSigningCert: can not read in server cert file, %v\n", err)
 		return err
 	}
-	return LoadServerSigningCert(ctx, certBytes)
+	err = LoadServerSigningCert(ctx, certBytes)
+	if err != nil {
+		ctx.log.Errorf("loadServerSigningCert: can not load save server cert, %v\n", err)
+		return err
+	}
+	return nil
 }
 
 // ClearCloudCert - zero out cached cloud certs in client zedcloudCtx
