@@ -288,7 +288,7 @@ func requestCertsByURL(ctx *zedagentContext, url string, desc string) bool {
 		return false
 	}
 	if len(rv.RespContents) > 0 {
-		err = zedcloud.RemoveAndVerifyAuthContainer(zedcloudCtx, nil, &rv, true)
+		err = zedcloud.RemoveAndVerifyAuthContainer(zedcloudCtx, &rv, true)
 		if err != nil {
 			log.Errorf("RemoveAndVerifyAuthContainer failed: %s", err)
 			return false
