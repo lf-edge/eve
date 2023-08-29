@@ -186,26 +186,33 @@ check_start_containerd() {
                 nohup /var/lib/rancher/k3s/data/current/bin/containerd --config /etc/containerd/config-k3s.toml &
         fi   
 }
-wait_for_containerd_to_exist() {
+trigger_k3s_selfextraction() {
         # This is extracted when k3s server first starts
-        logmsg "Waiting for containerd binary"
-        while true; 
-        do
-                if [ -e /var/lib/rancher/k3s/data/current/bin/containerd ]; then
-                        # Needed to get the pods to start
-                        ln -s /var/lib/rancher/k3s/data/current/bin/runc /usr/bin/runc
-                        ln -s /var/lib/rancher/k3s/data/current/bin/containerd-shim-runc-v2 /usr/bin/containerd-shim-runc-v2
-                        break
-                fi
-                sleep 1
-        done
-        logmsg "containerd binary arrived"
+        # analysis of the k3s source shows any cli command will first extract the binaries.
+        # so we'll just run one, check-config appears to be the only one which doesn't:
+        # - start a long running process/server
+        # - timeout connecting to a socket
+        # - manipulate config/certs
+
+        # When run on the shell this does throw some config errors, its unclear if we need this issues fixed:
+        # - links: aux/ip6tables should link to iptables-detect.sh (fail)
+        #- links: aux/ip6tables-restore should link to iptables-detect.sh (fail)
+        #- links: aux/ip6tables-save should link to iptables-detect.sh (fail)
+        #- links: aux/iptables should link to iptables-detect.sh (fail)
+        #- links: aux/iptables-restore should link to iptables-detect.sh (fail)
+        #- links: aux/iptables-save should link to iptables-detect.sh (fail)
+        #- apparmor: enabled, but apparmor_parser missing (fail)
+        #      - CONFIG_INET_XFRM_MODE_TRANSPORT: missing
+        /usr/bin/k3s check-config >> $INSTALL_LOG 2>&1
+
+        # Needed to get the pods to start
+        ln -s /var/lib/rancher/k3s/data/current/bin/runc /usr/bin/runc
+        ln -s /var/lib/rancher/k3s/data/current/bin/containerd-shim-runc-v2 /usr/bin/containerd-shim-runc-v2
 }
 
 #Forever loop every 15 secs
 while true;
 do
-check_start_containerd
 if [ ! -f /var/lib/all_components_initialized ]; then
         if [ ! -f /var/lib/k3s_initialized ]; then
                 # cni plugin
@@ -217,9 +224,9 @@ if [ ! -f /var/lib/all_components_initialized ]; then
                 ln -s /var/lib/k3s/bin/* /usr/bin
                 sleep 60
                 logmsg "Initializing K3S version $K3S_VERSION"
-                nohup /usr/bin/k3s server --config /etc/rancher/k3s/config.yaml &
-                wait_for_containerd_to_exist
+                trigger_k3s_selfextraction
                 check_start_containerd
+                nohup /usr/bin/k3s server --config /etc/rancher/k3s/config.yaml &
                 #wait until k3s is ready
                 logmsg "Looping until k3s is ready"
                 until kubectl get node | grep "$HOSTNAME" | awk '{print $2}' | grep 'Ready'; do sleep 5; done
@@ -268,6 +275,7 @@ if [ ! -f /var/lib/all_components_initialized ]; then
                 touch /var/lib/all_components_initialized
         fi
 else
+        check_start_containerd
         if pgrep -f "k3s server" >> $INSTALL_LOG 2>&1; then
                 logmsg "k3s is alive"
         else
