@@ -245,7 +245,7 @@ func (m *LinuxNetworkMonitor) GetInterfaceDHCPInfo(ifIndex int) (info DHCPInfo, 
 	// XXX Getting error -1 unless we add argument -4.
 	// XXX Add IPv6 support.
 	m.Log.Functionf("Calling dhcpcd -U -4 %s\n", ifName)
-	stdoutStderr, err := base.Exec(m.Log, "dhcpcd", "-U", "-4", ifName).CombinedOutput()
+	stdoutStderr, err := base.Exec(m.Log, "dhcpcd", "-U", "-4", ifName).CombinedOutputWithTimeout()
 	if err != nil {
 		if strings.Contains(string(stdoutStderr), "dhcp_dump: No such file or directory") {
 			// DHCP is not configured for this interface. Return empty DHCPInfo.
