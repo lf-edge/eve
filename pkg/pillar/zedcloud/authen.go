@@ -172,23 +172,7 @@ func loadSavedServerSigningCert(ctx *ZedCloudContext) error {
 		ctx.log.Errorf("loadSavedServerSigningCert: can not read in server cert file, %v\n", err)
 		return err
 	}
-	block, _ := pem.Decode(certBytes)
-	if block == nil {
-		err := fmt.Errorf("loadSavedServerSigningCert: can not get client Cert")
-		return err
-	}
-
-	sCert, err := x509.ParseCertificate(block.Bytes)
-	if err != nil {
-		ctx.log.Errorf("loadSavedServerSigningCert: can not parse cert %v\n", err)
-		return err
-	}
-
-	// hash verify using PEM bytes from cloud
-	ctx.serverSigningCertHash = ComputeSha(certBytes)
-	ctx.serverSigningCert = sCert
-
-	return nil
+	return LoadServerSigningCert(ctx, certBytes)
 }
 
 // ClearCloudCert - zero out cached cloud certs in client zedcloudCtx
