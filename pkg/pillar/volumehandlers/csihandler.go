@@ -122,7 +122,7 @@ func (handler *volumeHandlerCSI) CreateVolume() (string, error) {
 			handler.log.Error(errStr)
 			return "", errors.New(errStr)
 		}
-		if err := kubeapi.RolloutImgToPVC(createContext, handler.log, false, pathToFile, pvcName, "pvc"); err != nil {
+		if err := kubeapi.RolloutImgToPVC(createContext, handler.log, false, pathToFile, pvcName, "pvc", handler.status.IsAppImage); err != nil {
 			errStr := fmt.Sprintf("Error converting %s to PVC %s: %v",
 				pathToFile, pvcName, err)
 			handler.log.Error(errStr)
