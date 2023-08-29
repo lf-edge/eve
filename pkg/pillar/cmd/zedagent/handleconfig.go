@@ -111,15 +111,6 @@ type getconfigContext struct {
 	lastProcessedConfig       time.Time // controller or local clocks
 	lastConfigTimestamp       time.Time // controller clocks (zero if not available)
 	lastConfigSource          configSource
-	localProfileServer        string
-	profileServerToken        string
-	currentProfile            string
-	globalProfile             string
-	localProfile              string
-	localProfileTrigger       chan Notify
-	localServerMap            *localServerMap
-	lastDevCmdTimestamp       uint64 // From lastDevCmdTimestampFile
-	locConfig                 *types.LOCConfig
 
 	// parsed L2 adapters
 	vlans []L2Adapter
@@ -129,17 +120,31 @@ type getconfigContext struct {
 	radioSilence     types.RadioSilence // the intended state of radio devices
 	triggerRadioPOST chan Notify
 
-	localAppInfoPOSTTicker flextimer.FlexTickerHandle
-	localDevInfoPOSTTicker flextimer.FlexTickerHandle
+	// Combines both LPS (local profile server) and LOC (local operator console)
+	// configurations and structures
+	sideController struct {
+		localProfileServer  string
+		profileServerToken  string
+		currentProfile      string
+		globalProfile       string
+		localProfile        string
+		localProfileTrigger chan Notify
+		localServerMap      *localServerMap
+		lastDevCmdTimestamp uint64 // From lastDevCmdTimestampFile
+		locConfig           *types.LOCConfig
 
-	// When enabled, device location reports are being published to the Local profile server
-	// at a significantly decreased rate.
-	lpsThrottledLocation     bool
-	lpsLastPublishedLocation time.Time
+		localAppInfoPOSTTicker flextimer.FlexTickerHandle
+		localDevInfoPOSTTicker flextimer.FlexTickerHandle
 
-	// localCommands : list of commands requested from a local server.
-	// This information is persisted under /persist/checkpoint/localcommands
-	localCommands *types.LocalCommands
+		// When enabled, device location reports are being published to the Local profile server
+		// at a significantly decreased rate.
+		lpsThrottledLocation     bool
+		lpsLastPublishedLocation time.Time
+
+		// localCommands : list of commands requested from a local server.
+		// This information is persisted under /persist/checkpoint/localcommands
+		localCommands *types.LocalCommands
+	}
 
 	configRetryUpdateCounter uint32 // received from config
 
@@ -400,7 +405,7 @@ func configTimerTask(getconfigCtx *getconfigContext, handleChannel chan interfac
 		getconfigCtx.configProcessingRV = retVal
 		triggerPublishDevInfo(ctx)
 	}
-	getconfigCtx.localServerMap.upToDate = false
+	getconfigCtx.sideController.localServerMap.upToDate = false
 	publishZedAgentStatus(getconfigCtx)
 	if withNetTracing {
 		publishConfigNetdump(ctx, retVal, tracedReqs)
@@ -441,7 +446,7 @@ func configTimerTask(getconfigCtx *getconfigContext, handleChannel chan interfac
 				getconfigCtx.configProcessingRV = retVal
 				triggerPublishDevInfo(ctx)
 			}
-			getconfigCtx.localServerMap.upToDate = false
+			getconfigCtx.sideController.localServerMap.upToDate = false
 			ctx.ps.CheckMaxTimeTopic(wdName, "getLastestConfig", start,
 				warningTime, errorTime)
 			publishZedAgentStatus(getconfigCtx)
@@ -725,7 +730,7 @@ cfgReceived:
 func needRequestLocConfig(getconfigCtx *getconfigContext,
 	rv configProcessingRetval) bool {
 
-	return (rv != configOK && getconfigCtx.locConfig != nil)
+	return (rv != configOK && getconfigCtx.sideController.locConfig != nil)
 }
 
 func getLatestConfig(getconfigCtx *getconfigContext, iteration int,
@@ -739,7 +744,7 @@ func getLatestConfig(getconfigCtx *getconfigContext, iteration int,
 
 	// Request configuration from the LOC
 	if needRequestLocConfig(getconfigCtx, rv) {
-		locURL := getconfigCtx.locConfig.LocURL
+		locURL := getconfigCtx.sideController.locConfig.LocURL
 		url = zedcloud.URLPathString(locURL, zedcloudCtx.V2API, devUUID, "config")
 
 		// If LOC configuration is outdated, then we get @obsoleteConfig
@@ -992,7 +997,7 @@ func publishZedAgentStatus(getconfigCtx *getconfigContext) {
 		RequestedBootReason:   ctx.requestedBootReason,
 		MaintenanceMode:       ctx.maintenanceMode,
 		ForceFallbackCounter:  ctx.forceFallbackCounter,
-		CurrentProfile:        getconfigCtx.currentProfile,
+		CurrentProfile:        getconfigCtx.sideController.currentProfile,
 		RadioSilence:          getconfigCtx.radioSilence,
 		DeviceState:           ctx.devState,
 		AttestState:           ctx.attestState,
@@ -1066,7 +1071,7 @@ func updateLocalServerMap(getconfigCtx *getconfigContext, localServerURL string)
 	// To handle concurrent access to localServerMap (from localProfileTimerTask, radioPOSTTask and potentially from
 	// some more future tasks), we replace the map pointer at the very end of this function once the map is fully
 	// constructed.
-	getconfigCtx.localServerMap = srvMap
+	getconfigCtx.sideController.localServerMap = srvMap
 	return nil
 }
 
@@ -1075,7 +1080,7 @@ func updateLocalServerMap(getconfigCtx *getconfigContext, localServerURL string)
 // addresses the HasLocalServer will not immediately reflect that since we need
 // the IP address from AppNetworkStatus.
 func updateHasLocalServer(ctx *getconfigContext) {
-	srvMap := ctx.localServerMap.servers
+	srvMap := ctx.sideController.localServerMap.servers
 	items := ctx.pubAppInstanceConfig.GetAll()
 	for _, item := range items {
 		aic := item.(types.AppInstanceConfig)

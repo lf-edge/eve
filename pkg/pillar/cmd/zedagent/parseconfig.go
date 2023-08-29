@@ -47,9 +47,9 @@ func parseConfig(getconfigCtx *getconfigContext, config *zconfig.EdgeDevConfig,
 
 	// Do not accept new commands from Local profile server while new config
 	// from the controller is being applied.
-	if getconfigCtx.localCommands != nil {
-		getconfigCtx.localCommands.Lock()
-		defer getconfigCtx.localCommands.Unlock()
+	if getconfigCtx.sideController.localCommands != nil {
+		getconfigCtx.sideController.localCommands.Lock()
+		defer getconfigCtx.sideController.localCommands.Unlock()
 	}
 
 	// Make sure we do not accidentally revert to an older configuration.
@@ -2636,11 +2636,11 @@ func parseLocConfig(getconfigCtx *getconfigContext,
 	config *zconfig.EdgeDevConfig) {
 	locConfig := config.GetLocConfig()
 	if isLocConfigValid(locConfig) {
-		getconfigCtx.locConfig = &types.LOCConfig{
+		getconfigCtx.sideController.locConfig = &types.LOCConfig{
 			LocURL: locConfig.LocUrl,
 		}
 	} else {
-		getconfigCtx.locConfig = nil
+		getconfigCtx.sideController.locConfig = nil
 	}
 }
 
