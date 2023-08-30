@@ -2,7 +2,6 @@ package zedkube
 
 import (
 	"encoding/json"
-	"io/ioutil"
 	"net"
 	"os"
 	"time"
@@ -71,7 +70,6 @@ func appNetStatusNotify(ctx *zedkubeContext) {
 		case <-checkDirTimer.C:
 			if _, err := os.Stat(eveBridgeStatusPath); os.IsNotExist(err) {
 				checkDirTimer = time.NewTimer(5 * time.Second)
-				log.Noticef("appNetStatusNotify: reschedule for 5 more sec")
 			} else {
 				log.Noticef("appNetStatusNotify: add watcher")
 				err = watcher.Add(eveBridgeStatusPath)
@@ -80,7 +78,7 @@ func appNetStatusNotify(ctx *zedkubeContext) {
 				}
 
 				// read in the json files first time if it's already there
-				fileInfos, err := ioutil.ReadDir(eveBridgeStatusPath)
+				fileInfos, err := os.ReadDir(eveBridgeStatusPath)
 				if err == nil {
 					log.Noticef("appNetStatusNotify: file info %s", fileInfos)
 					for _, fileInfo := range fileInfos {
@@ -109,7 +107,7 @@ func appNetStatusNotify(ctx *zedkubeContext) {
 
 func processEbStatus(ctx *zedkubeContext, fileName string) {
 	var eveBridgeStatus EveClusterInstStatus
-	fileContent, err := ioutil.ReadFile(fileName)
+	fileContent, err := os.ReadFile(fileName)
 	if err != nil {
 		log.Errorf("processEbStatus: readfile error %v", err)
 	} else {
@@ -119,7 +117,7 @@ func processEbStatus(ctx *zedkubeContext, fileName string) {
 		if err != nil {
 			log.Errorf("processEbStatus: json unmarshal error %v", err)
 		} else {
-			publishAppNetConfig(ctx, &eveBridgeStatus)
+			publishAppKubeNetStatus(ctx, &eveBridgeStatus)
 		}
 	}
 }

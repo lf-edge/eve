@@ -7,6 +7,7 @@ import (
 	netattdefv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
+	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -49,18 +50,19 @@ func CreateNAD(ps *pubsub.PubSub, log *base.LogObject, yamlData []byte, name, na
 	var done bool
 	for !done {
 		select {
-		case isReady := <-readyCh:
-			if isReady {
-				log.Noticef("sendAoApiServer: spec Kubernetes cluster is ready!")
-				createdNAD, err := netClientset.K8sCniCncfIoV1().NetworkAttachmentDefinitions(namespace).Create(context.Background(), nad, metav1.CreateOptions{})
-				if err != nil {
+		case <-readyCh:
+			opStr := "created"
+			log.Noticef("sendAoApiServer: spec Kubernetes cluster is ready!")
+			createdNAD, err := netClientset.K8sCniCncfIoV1().NetworkAttachmentDefinitions(namespace).Create(context.Background(), nad, metav1.CreateOptions{})
+			if err != nil {
+				if !errors.IsAlreadyExists(err) {
 					log.Errorf("sendAoApiServer: spec create error %s", err)
 					return err
+				} else {
+					opStr = "already exists"
 				}
-				log.Noticef("sendAoApiServer: spec NetworkAttachmentDefinition created successfully: %+v", createdNAD)
-			} else {
-				log.Noticef("sendAoApiServer: spec Kubernetes cluster isn't ready!")
 			}
+			log.Noticef("sendAoApiServer: spec NetworkAttachmentDefinition %s successfully: %+v", opStr, createdNAD)
 			done = true
 		case <-time.After(time.Minute * 10):
 			log.Noticef("sendToApiServer: spec NetworkAttachmentDefinition create timedout")

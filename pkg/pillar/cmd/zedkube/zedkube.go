@@ -41,12 +41,12 @@ type zedkubeContext struct {
 	subContentTreeStatus     pubsub.Subscription
 	subGlobalConfig          pubsub.Subscription
 	pubNetworkInstanceStatus pubsub.Publication
-	pubAppNetworkConfig      pubsub.Publication
+	pubAppKubeNetworkStatus  pubsub.Publication
 	pubDomainMetric          pubsub.Publication
 	networkInstanceStatusMap sync.Map
 	ioAdapterMap             sync.Map
 	config                   *rest.Config
-	appNetConfig             map[string]*types.AppNetworkConfig
+	appKubeNetStatus         map[string]*types.AppKubeNetworkStatus
 	resendNITimer            *time.Timer
 	appMetricsTimer          *time.Timer
 	appLogStarted            bool
@@ -118,15 +118,15 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	}
 	zedkubeCtx.pubNetworkInstanceStatus = pubNetworkInstanceStatus
 
-	pubAppNetworkConfig, err := ps.NewPublication(pubsub.PublicationOptions{
+	pubAppKubeNetworkStatus, err := ps.NewPublication(pubsub.PublicationOptions{
 		AgentName: agentName,
-		TopicType: types.AppNetworkConfig{},
+		TopicType: types.AppKubeNetworkStatus{},
 	})
 	if err != nil {
 		log.Fatal(err)
 	}
-	zedkubeCtx.pubAppNetworkConfig = pubAppNetworkConfig
-	pubAppNetworkConfig.ClearRestarted()
+	zedkubeCtx.pubAppKubeNetworkStatus = pubAppKubeNetworkStatus
+	pubAppKubeNetworkStatus.ClearRestarted()
 
 	pubDomainMetric, err := ps.NewPublication(
 		pubsub.PublicationOptions{
@@ -177,7 +177,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	subGlobalConfig.Activate()
 
 	//zedkubeCtx.configWait = make(map[string]bool)
-	zedkubeCtx.appNetConfig = make(map[string]*types.AppNetworkConfig)
+	zedkubeCtx.appKubeNetStatus = make(map[string]*types.AppKubeNetworkStatus)
 
 	config, err := kubeapi.WaitKubernetes(agentName, ps, stillRunning)
 	if err != nil {

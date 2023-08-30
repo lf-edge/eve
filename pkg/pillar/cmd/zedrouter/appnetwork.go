@@ -89,9 +89,20 @@ func (z *zedrouter) prepareConfigForVIFs(config types.AppNetworkConfig,
 		// kube mode
 		var kubeulstatus *types.UnderlayNetworkStatus
 		if z.hvTypeKube {
-			for _, u := range config.ULNetworkStatusList {
-				if u.Network.String() == ulStatus.Network.String() {
-					kubeulstatus = &u
+			subk := z.subAppKubeNetStatus
+			items := subk.GetAll()
+			for _, item := range items {
+				st := item.(types.AppKubeNetworkStatus)
+				if st.UUIDandVersion.UUID.String() != config.UUIDandVersion.UUID.String() {
+					continue
+				}
+				for _, u := range st.ULNetworkStatusList {
+					if u.Network.String() == ulStatus.Network.String() {
+						kubeulstatus = &u
+						break
+					}
+				}
+				if kubeulstatus != nil {
 					break
 				}
 			}
@@ -298,16 +309,20 @@ func (z *zedrouter) checkAndRecreateAppNetworks(niID uuid.UUID) {
 }
 
 func (z *zedrouter) doUpdateActivatedAppNetwork(oldConfig, newConfig types.AppNetworkConfig,
-	status *types.AppNetworkStatus) {
+	status *types.AppNetworkStatus, akStatus *types.AppKubeNetworkStatus) {
 	// To update status of connected network instances we can pretend
 	// that application network was deactivated and then re-activated.
 	// This approach simplifies the implementation quite a bit.
-	z.updateNIStatusAfterAppNetworkInactivate(status)
-	// Reloaded below, see reloadStatusOfAssignedIPs.
-	z.removeAssignedIPsFromAppNetStatus(status)
+	if !z.hvTypeKube && akStatus == nil {
+		z.updateNIStatusAfterAppNetworkInactivate(status)
+		// Reloaded below, see reloadStatusOfAssignedIPs.
+		z.removeAssignedIPsFromAppNetStatus(status)
 
-	// Re-build config for application VIFs.
-	z.doCopyAppNetworkConfigToStatus(newConfig, status)
+		// Re-build config for application VIFs.
+		z.doCopyAppNetworkConfigToStatus(newConfig, status)
+	} else {
+		z.insertAppNetVif(*akStatus)
+	}
 	vifs, err := z.prepareConfigForVIFs(newConfig, status)
 	if err != nil {
 		// Error already logged and added to status.

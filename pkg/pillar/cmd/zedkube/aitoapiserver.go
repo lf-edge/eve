@@ -18,6 +18,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/kubeapi"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
@@ -29,6 +30,8 @@ func genAISpecCreate(ctx *zedkubeContext, aiConfig *types.AppInstanceConfig) err
 	if !aiConfig.KubeActivate {
 		log.Noticef("genAISpecCreate: app instance not activated, exit")
 		return nil
+	} else {
+		updateAppKubeNetStatus(ctx, aiConfig)
 	}
 
 	clientset, err := kubernetes.NewForConfig(ctx.config)
@@ -160,15 +163,20 @@ func genAISpecCreate(ctx *zedkubeContext, aiConfig *types.AppInstanceConfig) err
 		},
 	}
 
-	updateAppNetConfig(ctx, aiConfig)
+	updateAppKubeNetStatus(ctx, aiConfig)
 
+	opStr := "created"
 	_, err = clientset.CoreV1().Pods(eveNamespace).Create(context.TODO(), pod, metav1.CreateOptions{})
 	if err != nil {
-		log.Errorf("genAISpecCreate: pod create filed: %v", err)
-		return err
+		if !errors.IsAlreadyExists(err) {
+			log.Errorf("genAISpecCreate: pod create filed: %v", err)
+			return err
+		} else {
+			opStr = "already exists"
+		}
 	}
 
-	log.Noticef("genAISpecCreate: Pod %s created with nad %+v", aiConfig.DisplayName, pod.Annotations)
+	log.Noticef("genAISpecCreate: Pod %s %s with nad %+v", aiConfig.DisplayName, opStr, pod.Annotations)
 	return nil
 }
 
@@ -208,8 +216,8 @@ func aiSpecDelete(ctx *zedkubeContext, aiConfig *types.AppInstanceConfig) {
 		return
 	}
 
-	// or do this in eve-bridge notify?
-	//updateAppNetConfig(ctx, aiConfig)
+	// XXX or do this in eve-bridge notify?
+	//updateAppKubeNetStatus(ctx, aiConfig)
 	log.Noticef("aiSpecDelete: Pod %s deleted", podName)
 }
 
@@ -221,79 +229,60 @@ func encodeSelections(selections []netattdefv1.NetworkSelectionElement) string {
 	return string(bytes)
 }
 
-func updateAppNetConfig(ctx *zedkubeContext, aiConfig *types.AppInstanceConfig) {
+func updateAppKubeNetStatus(ctx *zedkubeContext, aiConfig *types.AppInstanceConfig) {
 	aiName := strings.ToLower(aiConfig.DisplayName)
-	if _, ok := ctx.appNetConfig[aiName]; !ok {
-		ctx.appNetConfig[aiName] = &types.AppNetworkConfig{
-			UUIDandVersion:    aiConfig.UUIDandVersion,
-			DisplayName:       aiConfig.DisplayName,
-			Activate:          false,
-			CloudInitUserData: aiConfig.CloudInitUserData,
+	if _, ok := ctx.appKubeNetStatus[aiName]; !ok {
+		ctx.appKubeNetStatus[aiName] = &types.AppKubeNetworkStatus{
+			UUIDandVersion: aiConfig.UUIDandVersion,
+			DisplayName:    aiName,
 		}
 		ulcount := len(aiConfig.UnderlayNetworkList)
-		ctx.appNetConfig[aiName].UnderlayNetworkList = make([]types.UnderlayNetworkConfig, ulcount)
+		ctx.appKubeNetStatus[aiName].ULNetworkStatusList = make([]types.UnderlayNetworkStatus, ulcount)
 		for i := range aiConfig.UnderlayNetworkList {
-			ctx.appNetConfig[aiName].UnderlayNetworkList[i] =
+			ctx.appKubeNetStatus[aiName].ULNetworkStatusList[i].UnderlayNetworkConfig =
 				aiConfig.UnderlayNetworkList[i]
+			log.Noticef("updateAppKubeNetStatus: (%d)", i)
 		}
-		log.Functionf("updateAppNetConfig: ulcount %d, for %s, appnetconfig %+v", ulcount, aiName, ctx.appNetConfig[aiName])
+		log.Functionf("updateAppKubeNetStatus: ulcount %d, for %s, appKubeNetStatus %+v", ulcount, aiName, ctx.appKubeNetStatus[aiName])
 	}
 }
 
-func publishAppNetConfig(ctx *zedkubeContext, ebStatus *EveClusterInstStatus) {
+func publishAppKubeNetStatus(ctx *zedkubeContext, ebStatus *EveClusterInstStatus) {
 	status := lookupNIStatusFromName(ctx, ebStatus.BridgeConfig)
 	if status == nil {
-		log.Errorf("publishAppNetConfig: can't find NI status for %s", ebStatus.BridgeConfig)
+		log.Errorf("publishAppKubeNetStatus: can't find NI status for %s", ebStatus.BridgeConfig)
 		return
 	}
 
-	log.Noticef("publishAppNetConfig: for eve-bridge %v, ni-status %v, nistatus uuid %v, appnet len %d",
-		ebStatus, status, status.UUIDandVersion.UUID, len(ctx.appNetConfig))
-	for _, aiCfg := range ctx.appNetConfig {
-		var found bool
-		log.Noticef("publishAppNetConfig: aiCfg.UnderlayNetworkList size %d", len(aiCfg.UnderlayNetworkList))
-		for _, ulcfg := range aiCfg.UnderlayNetworkList {
-			log.Noticef("publishAppNetConfig: ulcfg network %v, list size %d, ulstatus size %d",
-				ulcfg.Network, len(aiCfg.UnderlayNetworkList), len(aiCfg.ULNetworkStatusList))
-			if ulcfg.Network.String() == status.UUIDandVersion.UUID.String() {
-				found = true
+	log.Noticef("publishAppKubeNetStatus: for eve-bridge %v, ni-status %v, nistatus uuid %v, appnet len %d",
+		ebStatus, status, status.UUIDandVersion.UUID, len(ctx.appKubeNetStatus))
+	for ainame, akStatus := range ctx.appKubeNetStatus {
+		log.Noticef("publishAppKubeNetStatus:(%s) akStatus size %d", ainame, len(akStatus.ULNetworkStatusList))
+		for i, ulstatus := range akStatus.ULNetworkStatusList {
+			log.Noticef("publishAppKubeNetStatus:(%d) ulcfg network %v", i, ulstatus.Network)
+			if ulstatus.Network.String() == status.UUIDandVersion.UUID.String() {
+				var err error
+				ulx := ulstatus
+				ulx.Vif = ebStatus.VifName
+				ulx.Mac, err = net.ParseMAC(ebStatus.VifMAC)
+				if err != nil {
+					log.Errorf("publishAppKubeNetStatus: parseMac %s, error %v", ebStatus.VifMAC, err)
+				}
+				ulx.Bridge = ebStatus.BridgeName
+				ulx.AllocatedIPv4Addr = ebStatus.PodIntfPrefix.IP
+				ulx.IPv4Assigned = true
+				ulx.HostName = ebStatus.PodName
+
+				akStatus.ULNetworkStatusList[i] = ulx
+
+				// got all the NI items. publish
+				key := akStatus.UUIDandVersion.UUID.String()
+				log.Noticef("publishAppKubeNetStatus: update ul key %s, status %+v", key, ulx)
+				ctx.pubAppKubeNetworkStatus.Publish(key, *akStatus)
+				ctx.appKubeNetStatus[ainame] = akStatus
+
 				break
 			}
-		}
-		if found {
-			var foundUL bool
-			for _, ulstatus := range aiCfg.ULNetworkStatusList {
-				if ulstatus.Network.String() == status.UUIDandVersion.UUID.String() {
-					foundUL = true
-					break
-				}
-			}
-			if !foundUL {
-				ul := new(types.UnderlayNetworkStatus)
-				ul.Name = ebStatus.PodIntfName
-				ul.Network = status.UUIDandVersion.UUID
-				ul.Vif = ebStatus.VifName
-				var err error
-				ul.Mac, err = net.ParseMAC(ebStatus.VifMAC)
-				if err != nil {
-					log.Errorf("publishAppNetConfig: parseMac %s, error %v", ebStatus.VifMAC, err)
-				}
-				ul.Bridge = ebStatus.BridgeName
-				ul.AllocatedIPv4Addr = ebStatus.PodIntfPrefix.IP
-				ul.IPv4Assigned = true
-				ul.HostName = ebStatus.PodName
-
-				aiCfg.ULNetworkStatusList = append(aiCfg.ULNetworkStatusList, *ul)
-				log.Noticef("publishAppNetConfig: add ul status %+v", ul)
-			}
-
-			if len(aiCfg.UnderlayNetworkList) == len(aiCfg.ULNetworkStatusList) {
-				// got all the NI items. publish
-				key := aiCfg.UUIDandVersion.UUID.String()
-				aiCfg.Activate = true
-				ctx.pubAppNetworkConfig.Publish(key, *aiCfg)
-			}
-			break
 		}
 	}
 }

@@ -115,6 +115,9 @@ type zedrouter struct {
 	// To collect uplink info
 	subDeviceNetworkStatus pubsub.Subscription
 
+	// Collect Pod Network info
+	subAppKubeNetStatus pubsub.Subscription
+
 	// Configuration for Network Instances
 	subNetworkInstanceConfig pubsub.Subscription
 
@@ -309,6 +312,7 @@ func (z *zedrouter) run(ctx context.Context) (err error) {
 		z.subWwanStatus,
 		z.subWwanMetrics,
 		z.subDomainStatus,
+		z.subAppKubeNetStatus,
 	}
 	for _, sub := range inactiveSubs {
 		if err = sub.Activate(); err != nil {
@@ -332,6 +336,10 @@ func (z *zedrouter) run(ctx context.Context) (err error) {
 			// If we have NetworkInstanceConfig process it first
 			z.checkAndProcessNetworkInstanceConfig()
 			z.subAppNetworkConfig.ProcessChange(change)
+
+		case change := <-z.subAppKubeNetStatus.MsgChan():
+			z.log.Noticef("change for subAppKubeNetStatus run")
+			z.subAppKubeNetStatus.ProcessChange(change)
 
 		case change := <-z.subAppNetworkConfigAg.MsgChan():
 			z.subAppNetworkConfigAg.ProcessChange(change)
@@ -690,19 +698,30 @@ func (z *zedrouter) initSubscriptions() (err error) {
 
 	// Subscribe to AppNetworkConfig from zedkube
 	// since the zedmanager is not publishing the appnetconfig
-	advAgentName := "zedmanager"
-	//if z.hvTypeKube {
-	//	advAgentName = "zedkube"
-	//}
-	// Subscribe to AppNetworkConfig from zedmanager
 	z.subAppNetworkConfig, err = z.pubSub.NewSubscription(pubsub.SubscriptionOptions{
-		AgentName:      advAgentName,
+		AgentName:      "zedmanager",
 		MyAgentName:    agentName,
 		TopicImpl:      types.AppNetworkConfig{},
 		Activate:       false,
 		CreateHandler:  z.handleAppNetworkCreate,
 		ModifyHandler:  z.handleAppNetworkModify,
 		DeleteHandler:  z.handleAppNetworkDelete,
+		RestartHandler: z.handleRestart,
+		WarningTime:    warningTime,
+		ErrorTime:      errorTime,
+	})
+	if err != nil {
+		return err
+	}
+
+	z.subAppKubeNetStatus, err = z.pubSub.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:      "zedkube",
+		MyAgentName:    agentName,
+		TopicImpl:      types.AppKubeNetworkStatus{},
+		Activate:       false,
+		CreateHandler:  z.handleAppKubeNetCreate,
+		ModifyHandler:  z.handleAppKubeNetModify,
+		DeleteHandler:  z.handleAppKubeNetDelete,
 		RestartHandler: z.handleRestart,
 		WarningTime:    warningTime,
 		ErrorTime:      errorTime,
