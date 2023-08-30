@@ -54,6 +54,13 @@ type AppNetworkConfig struct {
 	CloudInitUserData   *string `json:"pubsub-large-CloudInitUserData"`
 	CipherBlockStatus   CipherBlockStatus
 	MetaDataType        MetaDataType
+}
+
+// AppKubeNetworkStatus - Indexed by AppInstance UUID, includes list of App Net items
+// this is used to advertise pod interfaces related IP, Mac, Vif, etc.
+type AppKubeNetworkStatus struct {
+	UUIDandVersion      UUIDandVersion
+	DisplayName         string
 	ULNetworkStatusList []UnderlayNetworkStatus // kubecluster mode need from zedkube
 }
 

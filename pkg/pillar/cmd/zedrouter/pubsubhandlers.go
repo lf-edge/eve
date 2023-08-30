@@ -417,8 +417,8 @@ func (z *zedrouter) handleNetworkInstanceDelete(ctxArg interface{}, key string,
 	z.log.Functionf("handleNetworkInstanceDelete(%s) done %t", key, done)
 }
 
-func (z *zedrouter) insertAppNetVif(config types.AppNetworkConfig) {
-	ulstatusList := config.ULNetworkStatusList
+func (z *zedrouter) insertAppNetVif(status types.AppKubeNetworkStatus) {
+	ulstatusList := status.ULNetworkStatusList
 	for _, ulstatus := range ulstatusList { // ulstatus inside AppNetworkConfig
 		sub := z.pubNetworkInstanceStatus
 		items := sub.GetAll()
@@ -426,18 +426,28 @@ func (z *zedrouter) insertAppNetVif(config types.AppNetworkConfig) {
 		for _, item := range items {
 			nis := item.(types.NetworkInstanceStatus)
 			if nis.UUID.String() == ulstatus.Network.String() {
-				z.log.Noticef("handleAppNetworkCreate: UL match %v", ulstatus.Network)
+				z.log.Noticef("insertAppNetVif: UL match %v", ulstatus.Network)
 				nistatus = &nis
 				break
 			}
 		}
 		if nistatus != nil {
 			var found bool
+			var foundStr string
+			z.log.Noticef("insertAppNetVif: ulstatus %+v", ulstatus)
 			for i, v := range nistatus.Vifs {
+				z.log.Noticef("insertAppNetVif: (%d) vif %+v", i, v)
 				if v.Name == ulstatus.Vif {
 					nistatus.Vifs[i].MacAddr = ulstatus.Mac
-					nistatus.Vifs[i].AppID = config.UUIDandVersion.UUID
+					nistatus.Vifs[i].AppID = status.UUIDandVersion.UUID
 					found = true
+					foundStr = "vif name"
+					break
+				} else if v.AppID.String() == status.UUIDandVersion.UUID.String() {
+					nistatus.Vifs[i].Name = ulstatus.Vif
+					nistatus.Vifs[i].MacAddr = ulstatus.Mac
+					found = true
+					foundStr = "app id"
 					break
 				}
 			}
@@ -445,11 +455,11 @@ func (z *zedrouter) insertAppNetVif(config types.AppNetworkConfig) {
 				vif := types.VifNameMac{
 					Name:    ulstatus.Vif,
 					MacAddr: ulstatus.Mac,
-					AppID:   config.UUIDandVersion.UUID,
+					AppID:   status.UUIDandVersion.UUID,
 				}
 				nistatus.Vifs = append(nistatus.Vifs, vif)
 			}
-			z.log.Functionf("handleAppNetworkCreate: pub nistatus, found %v, %+v", found, nistatus)
+			z.log.Functionf("insertAppNetVif: pub nistatus, found %v, for %s, %+v", found, foundStr, nistatus)
 			z.publishNetworkInstanceStatus(nistatus)
 		}
 	}
@@ -460,11 +470,7 @@ func (z *zedrouter) handleAppNetworkCreate(ctxArg interface{}, key string,
 	config := configArg.(types.AppNetworkConfig)
 	z.log.Functionf("handleAppNetworkCreate(%v) for %s",
 		config.UUIDandVersion, config.DisplayName)
-
-	if z.hvTypeKube {
-		z.log.Functionf("handleAppNetworkCreate: config %+v", config)
-		z.insertAppNetVif(config)
-	}
+	z.log.Noticef("handleAppNetworkCreate: handleAppKubeNetCreate: tag enter")
 
 	if !z.initReconcileDone {
 		z.niReconciler.RunInitialReconcile(z.runCtx)
@@ -537,6 +543,8 @@ func (z *zedrouter) handleAppNetworkCreate(ctxArg interface{}, key string,
 		return
 	}
 
+	z.runAppKubeStatus(config)
+
 	if config.Activate {
 		z.doActivateAppNetwork(config, &status)
 	} else {
@@ -546,6 +554,7 @@ func (z *zedrouter) handleAppNetworkCreate(ctxArg interface{}, key string,
 
 	z.maybeScheduleRetry()
 	z.log.Functionf("handleAppNetworkCreate(%s) done for %s", key, config.DisplayName)
+	z.log.Noticef("handleAppNetworkCreate: handleAppKubeNetCreate: tag done")
 }
 
 // handleAppNetworkModify cannot handle any change.
@@ -557,6 +566,7 @@ func (z *zedrouter) handleAppNetworkModify(ctxArg interface{}, key string,
 	status := z.lookupAppNetworkStatus(key)
 	z.log.Functionf("handleAppNetworkModify(%v) for %s",
 		newConfig.UUIDandVersion, newConfig.DisplayName)
+	z.log.Noticef("handleAppNetworkModify: handleAppKubeNetCreate: tag enter")
 
 	// Reset error status and mark pending modify as true.
 	status.ClearError()
@@ -570,11 +580,6 @@ func (z *zedrouter) handleAppNetworkModify(ctxArg interface{}, key string,
 		status.PendingModify = false
 		z.addAppNetworkError(status, "handleAppNetworkModify", err)
 		return
-	}
-
-	if z.hvTypeKube {
-		z.log.Functionf("handleAppNetworkCreate: new config %+v", newConfig)
-		z.insertAppNetVif(newConfig)
 	}
 
 	// Update numbers allocated for application interfaces.
@@ -595,6 +600,8 @@ func (z *zedrouter) handleAppNetworkModify(ctxArg interface{}, key string,
 		return
 	}
 
+	z.runAppKubeStatus(newConfig)
+
 	if !newConfig.Activate && status.Activated {
 		z.doInactivateAppNetwork(newConfig, status)
 		z.doCopyAppNetworkConfigToStatus(newConfig, status)
@@ -608,7 +615,7 @@ func (z *zedrouter) handleAppNetworkModify(ctxArg interface{}, key string,
 		status.PendingModify = false
 		z.publishAppNetworkStatus(status)
 	} else { // Config change while application network is active.
-		z.doUpdateActivatedAppNetwork(oldConfig, newConfig, status)
+		z.doUpdateActivatedAppNetwork(oldConfig, newConfig, status, nil)
 	}
 
 	// On resource release, another AppNetworkConfig which is currently in a failed state
@@ -616,6 +623,7 @@ func (z *zedrouter) handleAppNetworkModify(ctxArg interface{}, key string,
 	z.maybeScheduleRetry()
 	z.log.Functionf("handleAppNetworkModify(%s) done for %s",
 		key, newConfig.DisplayName)
+	z.log.Noticef("handleAppNetworkModify: handleAppKubeNetCreate: tag done")
 }
 
 func (z *zedrouter) handleAppNetworkDelete(ctxArg interface{}, key string,
@@ -681,4 +689,68 @@ func (z *zedrouter) handleAppInstDelete(ctxArg interface{}, key string,
 	// Clean up appInst Metadata
 	z.unpublishAppInstMetadata(appInstMetadata)
 	z.log.Functionf("handleAppInstDelete(%s) done", key)
+}
+
+func (z *zedrouter) handleAppKubeNetCreate(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	akStatus := statusArg.(types.AppKubeNetworkStatus)
+	status := z.lookupAppNetworkStatus(key)
+	z.log.Noticef("handleAppKubeNetCreate(%v) for %s",
+		key, akStatus.DisplayName)
+
+	z.handleAppKubeNetImpl(key, &akStatus, status)
+}
+
+func (z *zedrouter) handleAppKubeNetModify(ctxArg interface{}, key string,
+	statusArg interface{}, oldStatusArg interface{}) {
+	newStatus := statusArg.(types.AppKubeNetworkStatus)
+	status := z.lookupAppNetworkStatus(key)
+	z.log.Functionf("handleAppKubeNetModify(%v) for %s",
+		key, newStatus.DisplayName)
+
+	z.handleAppKubeNetImpl(key, &newStatus, status)
+}
+
+func (z *zedrouter) handleAppKubeNetImpl(key string, akStatus *types.AppKubeNetworkStatus, status *types.AppNetworkStatus) {
+	// Reset error status and mark pending modify as true.
+	if akStatus == nil || status == nil {
+		z.log.Noticef("handleAppKubeNetImpl: akStatus %v, status %v", akStatus, status)
+		return
+	}
+	status.ClearError()
+	status.PendingModify = true
+	z.publishAppNetworkStatus(status)
+
+	//if z.hvTypeKube {
+	//	z.log.Functionf("handleAppKubeNetImpl: new config %+v", akStatus)
+	//	z.insertAppNetVif(*akStatus)
+	//}
+
+	config := z.lookupAppNetworkConfig(key)
+	if status.Activated {
+		z.log.Functionf("handleAppKubeNetImpl: call doUpdateActivatedAppNetwork %+v", config)
+		z.doUpdateActivatedAppNetwork(*config, *config, status, akStatus)
+		//z.updateNIStatusAfterAppNetworkActivate(status)
+		//z.checkAppContainerStatsCollecting(config, status)
+		//z.updateVIFsForStateCollecting(nil, config)
+	}
+}
+
+func (z *zedrouter) handleAppKubeNetDelete(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	// XXX
+}
+
+func (z *zedrouter) runAppKubeStatus(config types.AppNetworkConfig) {
+	if !z.hvTypeKube {
+		return
+	}
+	sub := z.subAppKubeNetStatus
+	items := sub.GetAll()
+	for _, item := range items {
+		akStatus := item.(types.AppKubeNetworkStatus)
+		if akStatus.UUIDandVersion.UUID.String() == config.UUIDandVersion.UUID.String() {
+			break
+		}
+	}
 }
