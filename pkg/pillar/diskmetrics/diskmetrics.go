@@ -11,6 +11,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/types"
@@ -93,7 +94,7 @@ func RolloutImgToBlock(ctx context.Context, log *base.LogObject, diskfile, outpu
 	// writeback cache instead of default unsafe, out of order enabled, skip file creation
 	// Timeout 2 hours
 	args := []string{"convert", "--target-is-zero", "-t", "writeback", "-W", "-n", "-O", outputFormat, diskfile, outputFile}
-	output, err := base.Exec(log, "/usr/bin/qemu-img", args...).WithContext(ctx).CombinedOutputWithCustomTimeout(432000)
+	output, err := base.Exec(log, "/usr/bin/qemu-img", args...).WithContext(ctx).WithUnlimitedTimeout(15 * time.Minute).CombinedOutput()
 	if err != nil {
 		errStr := fmt.Sprintf("qemu-img failed: %s, %s\n",
 			err, output)
