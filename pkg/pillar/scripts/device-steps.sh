@@ -204,7 +204,9 @@ for AGENT in $AGENTS; do
       size="$(stty -F /dev/console size)"
       rows=$(echo "$size" | awk '{print $1}')
       columns=$(echo "$size" | awk '{print $2}')
+      [ "$rows" != 0 ] || rows=""
       [ -z "$rows" ] || rows="-r $rows"
+      [ "$columns" != 0 ] || columns=""
       [ -z "$columns" ] || columns="-c $columns"
       mkfifo /run/diag.pipe
       (while true; do cat; done) < /run/diag.pipe >/dev/console 2>&1 &
