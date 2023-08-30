@@ -2758,7 +2758,7 @@ func mkisofs(output string, dir string) error {
 		dir,
 	}
 	log.Functionf("Calling command %s %v\n", cmd, args)
-	stdoutStderr, err := base.Exec(log, cmd, args...).CombinedOutput()
+	stdoutStderr, err := base.Exec(log, cmd, args...).WithUnlimitedTimeout(15 * time.Minute).CombinedOutput()
 	if err != nil {
 		errStr := fmt.Sprintf("mkisofs failed: %s",
 			string(stdoutStderr))
