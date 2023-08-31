@@ -126,15 +126,16 @@ type getconfigContext struct {
 	// configurations and structures
 	sideController struct {
 		sync.Mutex
-		localProfileServer  string
-		profileServerToken  string
-		currentProfile      string
-		globalProfile       string
-		localProfile        string
-		localProfileTrigger chan Notify
-		localServerMap      *localServerMap
-		lastDevCmdTimestamp uint64 // From lastDevCmdTimestampFile
-		locConfig           *types.LOCConfig
+		localProfileServer        string
+		profileServerToken        string
+		currentProfile            string
+		globalProfile             string
+		localProfile              string
+		localProfileTrigger       chan Notify
+		localServerMap            *localServerMap
+		lastDevCmdTimestamp       uint64 // From lastDevCmdTimestampFile
+		compoundConfLastTimestamp uint64 // used for compound config acknowledgement
+		locConfig                 *types.LOCConfig
 
 		localAppInfoPOSTTicker flextimer.FlexTickerHandle
 		localDevInfoPOSTTicker flextimer.FlexTickerHandle
@@ -601,7 +602,8 @@ func decryptAuthContainer(getconfigCtx *getconfigContext, sendRV *zedcloud.SendR
 // We use the iteration argument to start at a different point each time.
 // Returns the configProcessingRetval and the traced requests if any.
 func requestConfigByURL(getconfigCtx *getconfigContext, url string,
-	iteration int, withNetTracing bool) (configProcessingRetval, []netdump.TracedNetRequest) {
+	isCompoundConfig bool, iteration int, withNetTracing bool) (
+	configProcessingRetval, []netdump.TracedNetRequest) {
 
 	log.Tracef("getLatestConfig(%s, %d)", url, iteration)
 	// On first boot, if we haven't yet published our certificates we defer
@@ -617,12 +619,12 @@ func requestConfigByURL(getconfigCtx *getconfigContext, url string,
 	// except http.StatusForbidden(which returns error
 	// irrespective of bailOnHTTPErr)
 	getconfigCtx.configGetStatus = types.ConfigGetFail
-	b, cr, err := generateConfigRequest(getconfigCtx)
+	b, err := generateConfigRequest(getconfigCtx, isCompoundConfig)
 	if err != nil {
 		log.Fatal(err)
 	}
 	buf := bytes.NewBuffer(b)
-	size := int64(proto.Size(cr))
+	size := int64(buf.Len())
 	ctxWork, cancel := zedcloud.GetContextForAllIntfFunctions(zedcloudCtx)
 	defer cancel()
 	rv, err := zedcloud.SendOnAllIntf(
@@ -745,6 +747,21 @@ func requestConfigByURL(getconfigCtx *getconfigContext, url string,
 		return invalidConfig, rv.TracedReqs
 	}
 
+	var compoundConfig zconfig.CompoundEdgeDevConfig
+	if isCompoundConfig {
+		// Parse compound config and update the rv.RespContents with
+		// auth container stream for further processing
+		err = parseCompoundDeviceConfig(getconfigCtx, &rv, &compoundConfig)
+		if err != nil {
+			log.Errorln("parseCompoundDeviceConfig: ", err)
+			// Inform ledmanager about cloud connectivity
+			utils.UpdateLedManagerConfig(log, types.LedBlinkConnectedToController)
+			getconfigCtx.ledBlinkCount = types.LedBlinkConnectedToController
+			publishZedAgentStatus(getconfigCtx)
+			return invalidConfig, rv.TracedReqs
+		}
+	}
+
 	// Copy of retval with auth container stream
 	var authWrappedRV zedcloud.SendRetval
 
@@ -813,6 +830,14 @@ func requestConfigByURL(getconfigCtx *getconfigContext, url string,
 cfgReceived:
 	getconfigCtx.configReceived = true
 
+	if isCompoundConfig {
+		// No errors are propagated up to the caller, the main
+		// config was applied successfully, all possible errors
+		// from the auxiliary members from the compound config
+		// are ignored.
+		inhaleCompoundDeviceConfig(getconfigCtx, &compoundConfig)
+	}
+
 	return configOK, rv.TracedReqs
 }
 
@@ -831,18 +856,19 @@ func getLatestConfig(getconfigCtx *getconfigContext, iteration int,
 	url := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API,
 		devUUID, "config")
 
-	rv, tracedReqs := requestConfigByURL(getconfigCtx, url,
+	rv, tracedReqs := requestConfigByURL(getconfigCtx, url, false,
 		iteration, withNetTracing)
 
 	// Request configuration from the LOC
 	if needRequestLocConfig(getconfigCtx, rv) {
 		locURL := getconfigCtx.sideController.locConfig.LocURL
-		url = zedcloud.URLPathString(locURL, zedcloudCtx.V2API, devUUID, "config")
+		url = zedcloud.URLPathString(locURL, zedcloudCtx.V2API,
+			devUUID, "compound-config")
 
-		// If LOC configuration is outdated, then we get @obsoleteConfig
-		// return value (see parseConfig() for details) and we repeat on
-		// the next fetch attempt
-		rv, tracedReqs = requestConfigByURL(getconfigCtx, url,
+		// Request compound config, if LOC configuration is outdated, then we
+		// get @obsoleteConfig return value (see parseConfig() for details)
+		// and we repeat on the next fetch attempt
+		rv, tracedReqs = requestConfigByURL(getconfigCtx, url, true,
 			iteration, withNetTracing)
 	}
 
@@ -967,7 +993,8 @@ func readSavedConfig(filename string) ([]byte, time.Time, error) {
 // The most recent config hash we received. Starts empty
 var prevConfigHash string
 
-func generateConfigRequest(getconfigCtx *getconfigContext) ([]byte, *zconfig.ConfigRequest, error) {
+func generateConfigRequest(getconfigCtx *getconfigContext, isCompoundConfig bool) (
+	[]byte, error) {
 	log.Tracef("generateConfigRequest() sending hash %s", prevConfigHash)
 	configRequest := &zconfig.ConfigRequest{
 		ConfigHash: prevConfigHash,
@@ -977,12 +1004,21 @@ func generateConfigRequest(getconfigCtx *getconfigContext) ([]byte, *zconfig.Con
 	if err == nil {
 		configRequest.IntegrityToken = iToken
 	}
-	b, err := proto.Marshal(configRequest)
+	var b []byte
+	if isCompoundConfig {
+		compoundRequest := &zconfig.CompoundEdgeDevConfigRequest{
+			LastCmdTimestamp: getconfigCtx.sideController.compoundConfLastTimestamp,
+			CfgReq:           configRequest,
+		}
+		b, err = proto.Marshal(compoundRequest)
+	} else {
+		b, err = proto.Marshal(configRequest)
+	}
 	if err != nil {
 		log.Errorln(err)
-		return nil, nil, err
+		return nil, err
 	}
-	return b, configRequest, nil
+	return b, nil
 }
 
 // Returns changed, config, error. The changed is based the ConfigRequest vs
@@ -1038,6 +1074,47 @@ func inhaleDeviceConfig(getconfigCtx *getconfigContext, config *zconfig.EdgeDevC
 
 	// add new BaseOS/App instances; returns configProcessingSkipFlagReboot
 	return parseConfig(getconfigCtx, config, source)
+}
+
+func parseCompoundDeviceConfig(getconfigCtx *getconfigContext,
+	rv *zedcloud.SendRetval,
+	compoundConfig *zconfig.CompoundEdgeDevConfig) error {
+
+	err := proto.Unmarshal(rv.RespContents, compoundConfig)
+	if err != nil {
+		return err
+	}
+	authContainer := compoundConfig.GetProtectedConfig()
+	if authContainer == nil {
+		return fmt.Errorf("Incorrect compound config received: protected config is not defined!")
+	}
+	// Restore stream of contents by marshalling and assigning the auth
+	// container. This is needed, because all internal processing functions
+	// expect auth container.
+	bytes, err := proto.Marshal(authContainer)
+	if err != nil {
+		return err
+	}
+	rv.RespContents = bytes
+
+	return nil
+}
+
+func inhaleCompoundDeviceConfig(getconfigCtx *getconfigContext,
+	compoundConfig *zconfig.CompoundEdgeDevConfig) {
+
+	appCmdList := compoundConfig.GetAppCmdList()
+	if appCmdList != nil {
+		processReceivedAppCommands(getconfigCtx, appCmdList)
+	}
+	devCmd := compoundConfig.GetDevCmd()
+	if devCmd != nil {
+		processReceivedDevCommands(getconfigCtx, devCmd)
+	}
+
+	// Acknowledge the config has been processed
+	getconfigCtx.sideController.compoundConfLastTimestamp =
+		compoundConfig.Timestamp
 }
 
 var (
