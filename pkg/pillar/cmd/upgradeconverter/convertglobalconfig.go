@@ -130,10 +130,3 @@ func newConfigFromOld(globalConfigFile string) *types.ConfigItemValueMap {
 	}
 	return oldGlobalConfig.MoveBetweenConfigs()
 }
-
-func convert(ctxPtr *ucContext) error {
-	// Any any conversions we need here.
-	err := convertGlobalConfig(ctxPtr)
-	log.Tracef("upgradeconverter.convert done")
-	return err
-}
