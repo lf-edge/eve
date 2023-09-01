@@ -21,6 +21,9 @@
 #include <list>
 #include <google/protobuf/io/zero_copy_stream_impl.h>
 
+// TODO : this service can be invoked on demand from a VM, so logging in this
+// service could potentially be abused.
+
 using namespace std;
 using namespace google::protobuf::io;
 
@@ -171,7 +174,7 @@ sanitizeCmdRequest (int sock, eve_tools::EveTPMRequest &request,
 
     //If command is not one of the allowed group, reject it.
     if (!isCommandAllowed(command)) {
-        cerr << "Not a legal command, bailing out" << std::endl;
+        cerr << "\"" << command << "\"" << "is not a legal command, bailing out." << std::endl;
         response.set_response(command + ":" + "Command is forbidden!");
         rc = failure;
         goto cleanup_and_exit;
@@ -229,12 +232,6 @@ prepareCommand(string cmd,
         goto cleanup_and_exit;
     }
 
-    //print for debugging purposes
-    cout << "Prepared command is :" << std::endl;
-    while(cmdArgs[j]) {
-      cout << cmdArgs[j++] << " ";
-    }
-    cout << std::endl;
     return rc;
 
 cleanup_and_exit:
@@ -355,6 +352,7 @@ handleRequest (int sock, google::protobuf::uint32 size)
     eve_tools::EveTPMResponse response;
     int byteCnt = 0, rc = success;
     const char *cmdArgs[MAX_ARGS+1] = {};
+    ostringstream cmdoutstream = {};
     ifstream cmdOut;
 
     char *payload = new(nothrow) char [size+CODED_STRM_HDR_LEN];
@@ -393,6 +391,7 @@ handleRequest (int sock, google::protobuf::uint32 size)
         rc = failure;
         goto cleanup_and_exit;
     }
+
     //Prepare input files expected by the command.
     for (int i=0; i < request.inputfiles_size(); i++) {
         const eve_tools::File& file = request.inputfiles(i);
@@ -414,15 +413,8 @@ handleRequest (int sock, google::protobuf::uint32 size)
     //sync all the input files.
     sync();
 
+    //Invoke the command
     rc = execCmd(cmdArgs);
-    if (rc != 0) {
-        cerr << "Command invocation failed with rc " << rc << std::endl;
-        response.set_response("Backend failure while serving the request: Error "
-                               + to_string(rc));
-        sendResponse(sock, response);
-        rc = failure;
-        goto cleanup_and_exit;
-    }
 
     //sync all the output files.
     sync();
@@ -430,14 +422,34 @@ handleRequest (int sock, google::protobuf::uint32 size)
     //Pack stderr/stdout from command invocation.
     cmdOut.open(clientWorkingDir + "/" + cmdOutputFile, ios::in);
     if (cmdOut) {
-        ostringstream cmdoutstream;
         //cmdOut could be empty, not an error.
         cmdoutstream << cmdOut.rdbuf();
-        cout << "Command output is: " << std::endl
-             << cmdoutstream.str() << std::endl;
-        response.set_response(cmdoutstream.str());
         cmdOut.close();
     }
+
+    //If command invocation failed, send the error to client and exit.
+     if (rc != 0) {
+        cerr << "Command invocation failed with rc : " << rc << std::endl;
+        // log the command for debugging
+        cerr << "Command is : ";
+        for (int i=0; cmdArgs[i] && i < MAX_ARGS; i++ ) {
+            cerr << cmdArgs[i] << " ";
+        }
+        cerr << std::endl;
+
+        // log the command output for debugging
+        cerr << "Command output is: " << std::endl << "---- START ----"
+        << std::endl << cmdoutstream.str() << "---- END ---- " << std::endl;
+
+        response.set_response("Backend failure while serving the request: Error "
+                               + to_string(rc));
+        sendResponse(sock, response);
+        rc = failure;
+        goto cleanup_and_exit;
+    }
+
+    // collect the command output for the client
+    response.set_response(cmdoutstream.str());
 
     //Pack output files expected by the client, from the command.
     for (int i=0; i < request.expectedfiles_size(); i++) {
