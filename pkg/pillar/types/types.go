@@ -48,6 +48,9 @@ const (
 	PURGING    // Purging due to config change
 	BROKEN     // Domain is still alive, but its device model has failed
 	UNKNOWN    // State of the domain can't be determined
+	PENDING    // Pending to start
+	SCHEDULING // Waiting to be scheduled (kubernetes specific)
+	FAILED     // Failed to start
 	MAXSTATE
 )
 
@@ -96,6 +99,12 @@ func (state SwState) String() string {
 		return "RESTARTING"
 	case PURGING:
 		return "PURGING"
+	case PENDING:
+		return "PENDING"
+	case FAILED:
+		return "FAILED"
+	case SCHEDULING:
+		return "SCHEDULING"
 	case BROKEN:
 		return "BROKEN"
 	case START_DELAYED:
