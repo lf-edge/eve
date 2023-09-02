@@ -4,24 +4,36 @@
 package hypervisor
 
 import (
+	"context"
 	"fmt"
+	"math"
 	"os"
 	"runtime"
-	"strings"
-	"text/template"
+	"strconv"
+	"time"
 
-	zconfig "github.com/lf-edge/eve-api/go/config"
-	"github.com/lf-edge/eve/pkg/pillar/agentlog"
-	"github.com/lf-edge/eve/pkg/pillar/containerd"
+	//	zconfig "github.com/lf-edge/eve-api/go/config"
+	//	"github.com/lf-edge/eve/pkg/pillar/agentlog"
+	//	"github.com/lf-edge/eve/pkg/pillar/containerd"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 
-	// "github.com/lf-edge/eve/pkg/pillar/kubeapi"
+	"github.com/lf-edge/eve/pkg/pillar/kubeapi"
 	"github.com/sirupsen/logrus"
+	k8sv1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/resource"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	//	"k8s.io/client-go/kubernetes"
+	//	"k8s.io/client-go/rest"
+	// "k8s.io/client-go/tools/clientcmd"
+	v1 "kubevirt.io/api/core/v1"
+	"kubevirt.io/client-go/kubecli"
 )
 
 // KubevirtHypervisorName is a name of kubevirt hypervisor
 const KubevirtHypervisorName = "kubevirt"
 const kubevirtStateDir = "/run/hypervisor/kubevirt/"
+const eveNameSpace = "eve-kube-app"
 
 // const sysfsPciDevices = "/sys/bus/pci/devices/"
 // const sysfsVfioPciBind = "/sys/bus/pci/drivers/vfio-pci/bind"
@@ -37,6 +49,18 @@ type kubevirtContext struct {
 	dmCPUArgs    []string
 	dmFmlCPUArgs []string
 	capabilities *types.Capabilities
+	vmiList      map[string]*v1.VirtualMachineInstance
+}
+
+// Use few states  for now
+var stateMap = map[string]types.SwState{
+	"Paused":     types.PAUSED,
+	"Running":    types.RUNNING,
+	"shutdown":   types.HALTING,
+	"suspended":  types.PAUSED,
+	"Pending":    types.PENDING,
+	"Scheduling": types.SCHEDULING,
+	"Failed":     types.FAILED,
 }
 
 func newKubevirt() Hypervisor {
@@ -49,21 +73,15 @@ func newKubevirt() Hypervisor {
 	switch runtime.GOARCH {
 	case "arm64":
 		return kubevirtContext{
-			ctrdContext:  *ctrdCtx,
-			devicemodel:  "virt",
-			dmExec:       "",
-			dmArgs:       []string{},
-			dmCPUArgs:    []string{},
-			dmFmlCPUArgs: []string{},
+			ctrdContext: *ctrdCtx,
+			devicemodel: "virt",
+			vmiList:     make(map[string]*v1.VirtualMachineInstance),
 		}
 	case "amd64":
 		return kubevirtContext{
-			ctrdContext:  *ctrdCtx,
-			devicemodel:  "pc-q35-3.1",
-			dmExec:       "",
-			dmArgs:       []string{},
-			dmCPUArgs:    []string{},
-			dmFmlCPUArgs: []string{},
+			ctrdContext: *ctrdCtx,
+			devicemodel: "pc-q35-3.1",
+			vmiList:     make(map[string]*v1.VirtualMachineInstance),
 		}
 	}
 	return nil
@@ -116,81 +134,146 @@ func (ctx kubevirtContext) Task(status *types.DomainStatus) types.Task {
 func (ctx kubevirtContext) Setup(status types.DomainStatus, config types.DomainConfig,
 	aa *types.AssignableAdapters, globalConfig *types.ConfigItemValueMap, file *os.File) error {
 
-	return logError("PRAMOD domainmgr not supported yet for domain %s", status.DomainName)
+	diskStatusList := status.DiskStatusList
+	domainName := status.DomainName
+
+	logrus.Infof("PRAMOD Setup called for Domain: %s", domainName)
+
+	// Take eve domain config and convert to kube config
+	if err := ctx.CreateKubeConfig(domainName, config, status, diskStatusList, aa, file); err != nil {
+		return logError("failed to build kube config: %v", err)
+	}
+
+	os.MkdirAll(kubevirtStateDir+domainName, 0777)
+
+	// return logError("PRAMOD domainmgr not supported yet for domain %s", status.DomainName)
+	return nil
 
 }
 
-func (ctx kubevirtContext) CreateDomConfig(domainName string, config types.DomainConfig, status types.DomainStatus,
+func (ctx kubevirtContext) CreateKubeConfig(domainName string, config types.DomainConfig, status types.DomainStatus,
 	diskStatusList []types.DiskStatus, aa *types.AssignableAdapters, file *os.File) error {
-	tmplCtx := struct {
-		Machine string
-		types.DomainConfig
-		types.DomainStatus
-	}{ctx.devicemodel, config, status}
-	tmplCtx.DomainConfig.Memory = (config.Memory + 1023) / 1024
-	tmplCtx.DomainConfig.DisplayName = domainName
-
-	// Get a VirtualMachineInstance and populate the values from DomainConfig
-
-	// render global device model settings
-	t, _ := template.New("qemu").Parse(qemuConfTemplate)
-	if err := t.Execute(file, tmplCtx); err != nil {
-		return logError("can't write to config file %s (%v)", file.Name(), err)
+	logrus.Infof("PRAMOD CreateKubeConfig called for Domain: %s", domainName)
+	err, kubeconfig := kubeapi.GetKubeConfig()
+	if err != nil {
+		logrus.Errorf("couldn't get the Kube Config: %v", err)
+		return err
 	}
 
-	// render disk device model settings
-	diskContext := struct {
-		Machine                          string
-		PCIId, DiskID, SATAId, NumQueues int
-		AioType                          string
-		types.DiskStatus
-	}{Machine: ctx.devicemodel, PCIId: 4, DiskID: 0, SATAId: 0, AioType: "io_uring", NumQueues: config.VCpus}
+	_, err = kubecli.GetKubevirtClientFromRESTConfig(kubeconfig)
 
-	t, _ = template.New("qemuDisk").
-		Funcs(template.FuncMap{"Fmt": func(f zconfig.Format) string { return strings.ToLower(f.String()) }}).
-		Parse(qemuDiskTemplate)
-	for _, ds := range diskStatusList {
-		if ds.Devtype == "" {
-			continue
-		}
-		if ds.Devtype == "AppCustom" {
-			// This is application custom data. It is forwarded to the VM
-			// differently - as a download url in zedrouter
-			continue
-		}
-		diskContext.DiskStatus = ds
-		if err := t.Execute(file, diskContext); err != nil {
-			return logError("can't write to config file %s (%v)", file.Name(), err)
-		}
-		if diskContext.Devtype == "cdrom" {
-			diskContext.SATAId = diskContext.SATAId + 1
-		} else {
-			diskContext.PCIId = diskContext.PCIId + 1
-		}
-		diskContext.DiskID = diskContext.DiskID + 1
+	if err != nil {
+		logrus.Errorf("couldn't get the kubernetes client API config: %v", err)
+		return err
+	}
+	// Get a VirtualMachineInstance object and populate the values from DomainConfig
+	vmi := v1.NewVMIReferenceFromNameWithNS(eveNameSpace, domainName)
+	//vmi.ObjectMeta.UID = status.UUIDandVersion.UUID
+
+	// Set CPUs
+
+	cpus := v1.CPU{}
+	cpus.Cores = uint32(config.VCpus)
+	vmi.Spec.Domain.CPU = &cpus
+
+	// Set memory
+
+	mem := v1.Memory{}
+	//config.Memory = (config.Memory + 1023) / 1024
+
+	m, err := resource.ParseQuantity(convertToKubernetesFormat(config.Memory * 1024)) // To bytes from KB
+
+	if err != nil {
+		logrus.Errorf("Could not parse the memory value %v", err)
+		return err
 	}
 
-	// render network device model settings
-	netContext := struct {
-		PCIId, NetID     int
-		Driver           string
-		Mac, Bridge, Vif string
-	}{PCIId: diskContext.PCIId, NetID: 0}
-	t, _ = template.New("qemuNet").Parse(qemuNetTemplate)
-	for _, net := range config.VifList {
-		netContext.Mac = net.Mac.String()
-		netContext.Bridge = net.Bridge
-		netContext.Vif = net.Vif
-		if config.VirtualizationMode == types.LEGACY {
-			netContext.Driver = "e1000"
-		} else {
-			netContext.Driver = "virtio-net-pci"
+	mem.Guest = &m
+	vmi.Spec.Domain.Memory = &mem
+
+	// Set Network
+	intfs := make([]v1.Interface, len(config.KubeNADList)+1)
+	nets := make([]v1.Network, len(config.KubeNADList)+1)
+	intfs[0] = v1.Interface{
+		Name:                   "default",
+		InterfaceBindingMethod: v1.InterfaceBindingMethod{Bridge: &v1.InterfaceBridge{}},
+	}
+	nets[0] = *v1.DefaultPodNetwork()
+
+	if len(config.KubeNADList) > 0 {
+		for i, nad := range config.KubeNADList {
+			intfname := "net" + strconv.Itoa(i+1)
+			intfs[i+1] = v1.Interface{
+				Name:                   intfname,
+				MacAddress:             nad.Mac,
+				InterfaceBindingMethod: v1.InterfaceBindingMethod{Bridge: &v1.InterfaceBridge{}},
+			}
+
+			nets[i+1] = v1.Network{
+				Name: intfname,
+				NetworkSource: v1.NetworkSource{
+					Multus: &v1.MultusNetwork{
+						NetworkName: nad.Name,
+					},
+				},
+			}
 		}
-		if err := t.Execute(file, netContext); err != nil {
-			return logError("can't write to config file %s (%v)", file.Name(), err)
+	}
+
+	vmi.Spec.Networks = nets
+	vmi.Spec.Domain.Devices.Interfaces = intfs
+
+	// Set Storage
+
+	if len(diskStatusList) > 0 {
+		disks := make([]v1.Disk, len(diskStatusList))
+		vols := make([]v1.Volume, len(diskStatusList))
+
+		for i, ds := range diskStatusList {
+
+			diskName := "disk" + strconv.Itoa(i+1)
+			if ds.Devtype == "cdrom" {
+				disks[i] = v1.Disk{
+					Name: diskName,
+					DiskDevice: v1.DiskDevice{
+						CDRom: &v1.CDRomTarget{
+							Bus: "sata",
+						},
+					},
+				}
+				vols[i] = v1.Volume{
+					Name: diskName,
+					VolumeSource: v1.VolumeSource{
+						HostDisk: &v1.HostDisk{
+							Path: ds.FileLocation,
+							Type: "Disk",
+						},
+					},
+				}
+			} else {
+				disks[i] = v1.Disk{
+					Name: diskName,
+					DiskDevice: v1.DiskDevice{
+						Disk: &v1.DiskTarget{
+							Bus: "virtio",
+						},
+					},
+				}
+				vols[i] = v1.Volume{
+					Name: diskName,
+					VolumeSource: v1.VolumeSource{
+						PersistentVolumeClaim: &v1.PersistentVolumeClaimVolumeSource{
+							PersistentVolumeClaimVolumeSource: k8sv1.PersistentVolumeClaimVolumeSource{
+								ClaimName: ds.VolumeKey,
+							},
+						},
+					},
+				}
+			}
+
 		}
-		netContext.PCIId = netContext.PCIId + 1
-		netContext.NetID = netContext.NetID + 1
+		vmi.Spec.Domain.Devices.Disks = disks
+		vmi.Spec.Volumes = vols
 	}
 
 	// Gather all PCI assignments into a single line
@@ -232,134 +315,126 @@ func (ctx kubevirtContext) CreateDomConfig(domainName string, config types.Domai
 			}
 		}
 	}
+
 	if len(pciAssignments) != 0 {
-		pciPTContext := struct {
-			PCIId        int
-			PciShortAddr string
-			Xvga         bool
-			Xopregion    bool
-		}{PCIId: netContext.PCIId, PciShortAddr: "", Xvga: false, Xopregion: false}
-
-		t, _ = template.New("qemuPciPT").Parse(qemuPciPassthruTemplate)
-		for _, pa := range pciAssignments {
-			short := types.PCILongToShort(pa.pciLong)
-			bootVgaFile := sysfsPciDevices + pa.pciLong + "/boot_vga"
-			if _, err := os.Stat(bootVgaFile); err == nil {
-				pciPTContext.Xvga = true
-			}
-			vendorFile := sysfsPciDevices + pa.pciLong + "/vendor"
-			if vendor, err := os.ReadFile(vendorFile); err == nil {
-				// check for Intel vendor
-				if strings.TrimSpace(strings.TrimSuffix(string(vendor), "\n")) == "0x8086" {
-					if pciPTContext.Xvga {
-						// we set opregion for Intel vga
-						// https://github.com/qemu/qemu/blob/stable-5.0/docs/igd-assign.txt#L91-L96
-						pciPTContext.Xopregion = true
-					}
-				}
-			}
-
-			pciPTContext.PciShortAddr = short
-			if err := t.Execute(file, pciPTContext); err != nil {
-				return logError("can't write PCI Passthrough to config file %s (%v)", file.Name(), err)
-			}
-			pciPTContext.Xvga = false
-			pciPTContext.Xopregion = false
-			pciPTContext.PCIId = pciPTContext.PCIId + 1
-		}
+		return logError("PRAMOD: PCI assignments not supported yet %v", len(pciAssignments))
 	}
 	if len(serialAssignments) != 0 {
-		serialPortContext := struct {
-			SerialPortName string
-			ID             int
-		}{SerialPortName: "", ID: 0}
-
-		t, _ = template.New("qemuSerial").Parse(qemuSerialTemplate)
-		for id, serial := range serialAssignments {
-			serialPortContext.SerialPortName = serial
-			fmt.Printf("id for serial is %d\n", id)
-			serialPortContext.ID = id
-			if err := t.Execute(file, serialPortContext); err != nil {
-				return logError("can't write serial assignment to config file %s (%v)", file.Name(), err)
-			}
-		}
+		return logError("PRAMOD: Serial assignments not supported yet %v", len(serialAssignments))
 	}
 	if len(usbAssignments) != 0 {
-		usbHostContext := struct {
-			UsbBus     string
-			UsbDevAddr string
-			// Ports are dot-separated
-		}{UsbBus: "", UsbDevAddr: ""}
-
-		t, _ = template.New("qemuUsbHost").Parse(qemuUsbHostTemplate)
-		for _, usbaddr := range usbAssignments {
-			bus, port := usbBusPort(usbaddr)
-			usbHostContext.UsbBus = bus
-			usbHostContext.UsbDevAddr = port
-			if err := t.Execute(file, usbHostContext); err != nil {
-				return logError("can't write USB host device assignment to config file %s (%v)", file.Name(), err)
-			}
-		}
+		return logError("PRAMOD: USB assignments not supported yet %v", len(usbAssignments))
 	}
+
+	// Now we have VirtualMachine Instance object, save it to file for debug purposes
+	// and save it in context which will be use to start VM in Start() call
+
+	ctx.vmiList[domainName] = vmi
+
+	vmiStr := fmt.Sprintf("%+v", vmi)
+
+	// write to config file
+
+	file.WriteString(vmiStr)
 
 	return nil
 }
 
 func (ctx kubevirtContext) Start(domainName string) error {
-	logrus.Infof("starting KVM domain %s", domainName)
-	if err := ctx.ctrdContext.Start(domainName); err != nil {
-		logrus.Errorf("couldn't start task for domain %s: %v", domainName, err)
-		return err
-	}
-	logrus.Infof("done launching qemu device model")
-	if err := waitForQmp(domainName, true); err != nil {
-		logrus.Errorf("Error waiting for Qmp for domain %s: %v", domainName, err)
-		return err
-	}
-	logrus.Infof("done launching qemu device model")
+	logrus.Infof("starting Kubevirt domain %s", domainName)
 
-	qmpFile := getQmpExecutorSocket(domainName)
+	vmi := ctx.vmiList[domainName]
 
-	logrus.Debugf("starting qmpEventHandler")
-	logrus.Infof("Creating %s at %s", "qmpEventHandler", agentlog.GetMyStack())
-	go qmpEventHandler(getQmpListenerSocket(domainName), getQmpExecutorSocket(domainName))
-
-	annotations, err := ctx.ctrdContext.Annotations(domainName)
+	err, kubeconfig := kubeapi.GetKubeConfig()
 	if err != nil {
-		logrus.Warnf("Error in get annotations for domain %s: %v", domainName, err)
+		logrus.Errorf("couldn't get the Kube Config: %v", err)
 		return err
 	}
 
-	if vncPassword, ok := annotations[containerd.EVEOCIVNCPasswordLabel]; ok && vncPassword != "" {
-		if err := execVNCPassword(qmpFile, vncPassword); err != nil {
-			return logError("failed to set VNC password %v", err)
-		}
+	virtClient, err := kubecli.GetKubevirtClientFromRESTConfig(kubeconfig)
+
+	if err != nil {
+		logrus.Errorf("couldn't get the kubernetes client API config: %v", err)
+		return err
 	}
 
-	if err := execContinue(qmpFile); err != nil {
-		return logError("failed to start domain that is stopped %v", err)
+	// Create the VM
+	_, err = virtClient.VirtualMachineInstance(eveNameSpace).Create(context.Background(), vmi)
+	if err != nil {
+		fmt.Printf("Start VM failed %v\n", err)
+		return err
 	}
 
-	if status, err := getQemuStatus(qmpFile); err != nil || status != "running" {
-		return logError("domain status is not running but %s after cont command returned %v", status, err)
+	logrus.Infof("Started Kubevirt domain %s", domainName)
+
+	err = waitForVMI(domainName, true)
+
+	if err != nil {
+		logrus.Errorf("couldn't start VMI %v", err)
+		return err
 	}
+
 	return nil
+
 }
 
+func (ctx kubevirtContext) Create(domainName string, cfgFilename string, config *types.DomainConfig) (int, error) {
+
+	return len(ctx.vmiList), nil
+}
+
+// There is no such thing as stop VMI, so delete it.
 func (ctx kubevirtContext) Stop(domainName string, force bool) error {
-	if err := execShutdown(getQmpExecutorSocket(domainName)); err != nil {
-		return logError("Stop: failed to execute shutdown command %v", err)
+	logrus.Infof("PRAMOD Stop called for Domain: %s", domainName)
+	err, kubeconfig := kubeapi.GetKubeConfig()
+	if err != nil {
+		logrus.Errorf("couldn't get the Kube Config: %v", err)
+		return err
 	}
+
+	virtClient, err := kubecli.GetKubevirtClientFromRESTConfig(kubeconfig)
+
+	if err != nil {
+		logrus.Errorf("couldn't get the kubernetes client API config: %v", err)
+		return err
+	}
+
+	// Stop the VM
+	err = virtClient.VirtualMachineInstance(eveNameSpace).Delete(context.Background(), domainName, &metav1.DeleteOptions{})
+	if err != nil {
+		fmt.Printf("Stop error %v\n", err)
+		return err
+	}
+
 	return nil
 }
 
 func (ctx kubevirtContext) Delete(domainName string) (result error) {
-	//Sending a stop signal to then domain before quitting. This is done to freeze the domain before quitting it.
-	execStop(getQmpExecutorSocket(domainName))
-	if err := execQuit(getQmpExecutorSocket(domainName)); err != nil {
-		return logError("failed to execute quit command %v", err)
+	logrus.Infof("PRAMOD Delete called for Domain: %s", domainName)
+	err, kubeconfig := kubeapi.GetKubeConfig()
+	if err != nil {
+		logrus.Errorf("couldn't get the Kube Config: %v", err)
+		return err
 	}
-	// we may want to wait a little bit here and actually kill qemu process if it gets wedged
+
+	virtClient, err := kubecli.GetKubevirtClientFromRESTConfig(kubeconfig)
+
+	if err != nil {
+		logrus.Errorf("couldn't get the kubernetes client API config: %v", err)
+		return err
+	}
+
+	// Stop the VM
+	err = virtClient.VirtualMachineInstance(eveNameSpace).Delete(context.Background(), domainName, &metav1.DeleteOptions{})
+
+	// May be already deleted during Stop action, so its not an error if does not exist
+	if errors.IsNotFound(err) {
+		logrus.Infof("Domain already deleted: %v", domainName)
+	} else {
+		fmt.Printf("Delete error %v\n", err)
+		return err
+	}
+	// Delete the state dir
 	if err := os.RemoveAll(kubevirtStateDir + domainName); err != nil {
 		return logError("failed to clean up domain state directory %s (%v)", domainName, err)
 	}
@@ -368,47 +443,32 @@ func (ctx kubevirtContext) Delete(domainName string) (result error) {
 }
 
 func (ctx kubevirtContext) Info(domainName string) (int, types.SwState, error) {
-	// first we ask for the task status
-	effectiveDomainID, effectiveDomainState, err := ctx.ctrdContext.Info(domainName)
-	if err != nil || effectiveDomainState != types.RUNNING {
-		return effectiveDomainID, effectiveDomainState, err
-	}
 
-	// if task us alive, we augment task status with finer grained details from qemu
-	// lets parse the status according to https://github.com/qemu/qemu/blob/master/qapi/run-state.json#L8
-	stateMap := map[string]types.SwState{
-		"finish-migrate": types.PAUSED,
-		"inmigrate":      types.PAUSING,
-		"paused":         types.PAUSED,
-		"postmigrate":    types.PAUSED,
-		"prelaunch":      types.PAUSED,
-		"restore-vm":     types.PAUSED,
-		"running":        types.RUNNING,
-		"save-vm":        types.PAUSED,
-		"shutdown":       types.HALTING,
-		"suspended":      types.PAUSED,
-		"watchdog":       types.PAUSING,
-		"colo":           types.PAUSED,
-		"preconfig":      types.PAUSED,
-	}
-	res, err := getQemuStatus(getQmpExecutorSocket(domainName))
+	logrus.Infof("PRAMOD Info called for Domain: %s", domainName)
+
+	res, err := getVMIStatus(domainName)
+
 	if err != nil {
-		return effectiveDomainID, types.BROKEN, logError("couldn't retrieve status for domain %s: %v", domainName, err)
+		return 0, types.BROKEN, logError("domain %s failed to get info: %v", domainName, err)
 	}
 
 	if effectiveDomainState, matched := stateMap[res]; !matched {
-		return effectiveDomainID, types.BROKEN, logError("domain %s reported to be in unexpected state %s", domainName, res)
+		return 0, types.BROKEN, logError("domain %s reported to be in unexpected state %s", domainName, res)
 	} else {
-		return effectiveDomainID, effectiveDomainState, nil
+		return len(ctx.vmiList), effectiveDomainState, nil
 	}
 }
 
 func (ctx kubevirtContext) Cleanup(domainName string) error {
+	logrus.Infof("PRAMOD Cleanup called for Domain: %s", domainName)
 	if err := ctx.ctrdContext.Cleanup(domainName); err != nil {
 		return fmt.Errorf("couldn't cleanup task %s: %v", domainName, err)
 	}
-	if err := waitForQmp(domainName, false); err != nil {
-		return fmt.Errorf("error waiting for Qmp absent for domain %s: %v", domainName, err)
+
+	err := waitForVMI(domainName, false)
+
+	if err != nil {
+		return fmt.Errorf("waitforvmi failed  %s: %v", domainName, err)
 	}
 
 	return nil
@@ -495,4 +555,89 @@ func (ctx kubevirtContext) PCISameController(id1 string, id2 string) bool {
 	}
 
 	return tag1 == tag2
+}
+
+// Kubernetes only allows size format in Ki, Mi, Gi etc. Not KiB, MiB, GiB ...
+// so convert the bytes to that format
+// kubevirt minimum supported memory is 1MB.
+func convertToKubernetesFormat(b int) string {
+	bf := float64(b)
+	for _, unit := range []string{"", "Ki", "Mi", "Gi", "Ti", "Pi", "Ei", "Zi"} {
+		if math.Abs(bf) < 1024.0 {
+			return fmt.Sprintf("%3.1f%s", bf, unit)
+		}
+		bf /= 1024.0
+	}
+
+	// Do we ever reach here ?
+	return fmt.Sprintf("%.1fYi", bf)
+}
+
+func getVMIStatus(domainName string) (string, error) {
+
+	err, kubeconfig := kubeapi.GetKubeConfig()
+	if err != nil {
+		return "", logError("couldn't get the Kube Config: %v", err)
+
+	}
+
+	virtClient, err := kubecli.GetKubevirtClientFromRESTConfig(kubeconfig)
+
+	if err != nil {
+		return "", logError("couldn't get the Kube client Config: %v", err)
+	}
+
+	// Get the VMI info
+	vmi, err := virtClient.VirtualMachineInstance(eveNameSpace).Get(context.Background(), domainName, &metav1.GetOptions{})
+
+	if err != nil {
+		return "", logError("domain %s failed to get VMI info %s", domainName, err)
+	}
+
+	res := fmt.Sprintf("%v", vmi.Status.Phase)
+
+	return res, nil
+}
+func waitForVMI(domainName string, available bool) error {
+	maxDelay := time.Second * 300 // 5mins ?? lets keep it for now
+	delay := time.Second
+	var waited time.Duration
+
+	for {
+		logrus.Infof("waitForVMI for %s %t: waiting for %v", domainName, available, delay)
+		if delay != 0 {
+			time.Sleep(delay)
+			waited += delay
+		}
+
+		state, err := getVMIStatus(domainName)
+
+		if err != nil {
+
+			if available {
+				logrus.Infof("waitForVMI for %s %t done", domainName, available)
+			} else {
+				// Failed to get status, may be already deleted.
+				logrus.Infof("waitForVMI for %s %t done", domainName, available)
+				return nil
+			}
+		} else {
+			if state == "Running" && available {
+				return nil
+			}
+		}
+
+		if waited > maxDelay {
+			// Give up
+			logrus.Warnf("waitForVMIfor %s %t: giving up", domainName, available)
+			if available {
+				return logError("VMI not found: error %v", err)
+			}
+			return logError("VMI still available")
+		}
+		delay = 2 * delay
+		if delay > time.Minute {
+			delay = time.Minute
+		}
+	}
 }

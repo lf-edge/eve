@@ -32,6 +32,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/cpuallocator"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	"github.com/lf-edge/eve/pkg/pillar/hypervisor"
+	"github.com/lf-edge/eve/pkg/pillar/kubeapi"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/sema"
@@ -586,6 +587,17 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		log.Fatal(err)
 	}
 	log.Noticef("user containerd ready")
+
+	// wait for kubernetes up if in kube mode, if gets error, move on
+	if domainCtx.hvTypeKube {
+		log.Noticef("Domainmgr run: wait for kubernetes")
+		_, err := kubeapi.WaitKubernetes(agentName, ps, stillRunning)
+		if err != nil {
+			log.Errorf("Domainmgr: wait for kubernetes error %v", err)
+		} else {
+			log.Noticef("Domainmgr: kubernetes node ready")
+		}
+	}
 
 	if domainCtx.casClient, err = cas.NewCAS(casClientType); err != nil {
 		err = fmt.Errorf("Run: exception while initializing CAS client: %s", err.Error())
