@@ -16,26 +16,25 @@ package blockdevice
 import (
 	"bufio"
 	"fmt"
-	"github.com/prometheus/procfs/internal/util"
 	"io"
-	"io/ioutil"
 	"os"
 	"strings"
 
 	"github.com/prometheus/procfs/internal/fs"
+	"github.com/prometheus/procfs/internal/util"
 )
 
-// Info contains identifying information for a block device such as a disk drive
+// Info contains identifying information for a block device such as a disk drive.
 type Info struct {
 	MajorNumber uint32
 	MinorNumber uint32
 	DeviceName  string
 }
 
-// IOStats models the iostats data described in the kernel documentation
-// https://www.kernel.org/doc/Documentation/iostats.txt,
-// https://www.kernel.org/doc/Documentation/block/stat.txt,
-// and https://www.kernel.org/doc/Documentation/ABI/testing/procfs-diskstats
+// IOStats models the iostats data described in the kernel documentation.
+// - https://www.kernel.org/doc/Documentation/iostats.txt,
+// - https://www.kernel.org/doc/Documentation/block/stat.txt
+// - https://www.kernel.org/doc/Documentation/ABI/testing/procfs-diskstats
 type IOStats struct {
 	// ReadIOs is the number of reads completed successfully.
 	ReadIOs uint64
@@ -76,7 +75,7 @@ type IOStats struct {
 	TimeSpentFlushing uint64
 }
 
-// Diskstats combines the device Info and IOStats
+// Diskstats combines the device Info and IOStats.
 type Diskstats struct {
 	Info
 	IOStats
@@ -178,12 +177,37 @@ type BlockQueueStats struct {
 	WriteZeroesMaxBytes uint64
 }
 
+// DeviceMapperInfo models the devicemapper files that are located in the sysfs tree for each block device
+// and described in the kernel documentation:
+// https://www.kernel.org/doc/Documentation/ABI/testing/sysfs-block-dm
+type DeviceMapperInfo struct {
+	// Name is the string containing mapped device name.
+	Name string
+	// RqBasedSeqIOMergeDeadline determines how long (in microseconds) a request that is a reasonable merge
+	// candidate can be queued on the request queue.
+	RqBasedSeqIOMergeDeadline uint64
+	// Suspended indicates if the device is suspended (1 is on, 0 is off).
+	Suspended uint64
+	// UseBlkMQ indicates if the device is using the request-based blk-mq I/O path mode (1 is on, 0 is off).
+	UseBlkMQ uint64
+	// UUID is the DM-UUID string or empty string if DM-UUID is not set.
+	UUID string
+}
+
+// UnderlyingDevices models the list of devices that this device is built from.
+type UnderlyingDeviceInfo struct {
+	// DeviceNames is the list of devices names
+	DeviceNames []string
+}
+
 const (
 	procDiskstatsPath   = "diskstats"
 	procDiskstatsFormat = "%d %d %s %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d"
 	sysBlockPath        = "block"
 	sysBlockStatFormat  = "%d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d"
 	sysBlockQueue       = "queue"
+	sysBlockDM          = "dm"
+	sysUnderlyingDev    = "slaves"
 )
 
 // FS represents the pseudo-filesystems proc and sys, which provides an
@@ -220,7 +244,7 @@ func NewFS(procMountPoint string, sysMountPoint string) (FS, error) {
 }
 
 // ProcDiskstats reads the diskstats file and returns
-// an array of Diskstats (one per line/device)
+// an array of Diskstats (one per line/device).
 func (fs FS) ProcDiskstats() ([]Diskstats, error) {
 	file, err := os.Open(fs.proc.Path(procDiskstatsPath))
 	if err != nil {
@@ -266,9 +290,9 @@ func (fs FS) ProcDiskstats() ([]Diskstats, error) {
 	return diskstats, scanner.Err()
 }
 
-// SysBlockDevices lists the device names from /sys/block/<dev>
+// SysBlockDevices lists the device names from /sys/block/<dev>.
 func (fs FS) SysBlockDevices() ([]string, error) {
-	deviceDirs, err := ioutil.ReadDir(fs.sys.Path(sysBlockPath))
+	deviceDirs, err := os.ReadDir(fs.sys.Path(sysBlockPath))
 	if err != nil {
 		return nil, err
 	}
@@ -284,7 +308,7 @@ func (fs FS) SysBlockDevices() ([]string, error) {
 // and 11 if they are not available.
 func (fs FS) SysBlockDeviceStat(device string) (IOStats, int, error) {
 	stat := IOStats{}
-	bytes, err := ioutil.ReadFile(fs.sys.Path(sysBlockPath, device, "stat"))
+	bytes, err := os.ReadFile(fs.sys.Path(sysBlockPath, device, "stat"))
 	if err != nil {
 		return stat, 0, err
 	}
@@ -317,7 +341,7 @@ func (fs FS) SysBlockDeviceStat(device string) (IOStats, int, error) {
 // SysBlockDeviceQueueStats returns stats for /sys/block/xxx/queue where xxx is a device name.
 func (fs FS) SysBlockDeviceQueueStats(device string) (BlockQueueStats, error) {
 	stat := BlockQueueStats{}
-	// files with uint64 fields
+	// Files with uint64 fields
 	for file, p := range map[string]*uint64{
 		"add_random":             &stat.AddRandom,
 		"dax":                    &stat.DAX,
@@ -355,7 +379,7 @@ func (fs FS) SysBlockDeviceQueueStats(device string) (BlockQueueStats, error) {
 		}
 		*p = val
 	}
-	// files with int64 fields
+	// Files with int64 fields
 	for file, p := range map[string]*int64{
 		"io_poll_delay": &stat.IOPollDelay,
 		"wbt_lat_usec":  &stat.WBTLatUSec,
@@ -366,7 +390,7 @@ func (fs FS) SysBlockDeviceQueueStats(device string) (BlockQueueStats, error) {
 		}
 		*p = val
 	}
-	// files with string fields
+	// Files with string fields
 	for file, p := range map[string]*string{
 		"write_cache": &stat.WriteCache,
 		"zoned":       &stat.Zoned,
@@ -397,4 +421,45 @@ func (fs FS) SysBlockDeviceQueueStats(device string) (BlockQueueStats, error) {
 		stat.ThrottleSampleTime = &throttleSampleTime
 	}
 	return stat, nil
+}
+
+func (fs FS) SysBlockDeviceMapperInfo(device string) (DeviceMapperInfo, error) {
+	info := DeviceMapperInfo{}
+	// Files with uint64 fields
+	for file, p := range map[string]*uint64{
+		"rq_based_seq_io_merge_deadline": &info.RqBasedSeqIOMergeDeadline,
+		"suspended":                      &info.Suspended,
+		"use_blk_mq":                     &info.UseBlkMQ,
+	} {
+		val, err := util.ReadUintFromFile(fs.sys.Path(sysBlockPath, device, sysBlockDM, file))
+		if err != nil {
+			return DeviceMapperInfo{}, err
+		}
+		*p = val
+	}
+	// Files with string fields
+	for file, p := range map[string]*string{
+		"name": &info.Name,
+		"uuid": &info.UUID,
+	} {
+		val, err := util.SysReadFile(fs.sys.Path(sysBlockPath, device, sysBlockDM, file))
+		if err != nil {
+			return DeviceMapperInfo{}, err
+		}
+		*p = val
+	}
+	return info, nil
+}
+
+func (fs FS) SysBlockDeviceUnderlyingDevices(device string) (UnderlyingDeviceInfo, error) {
+	underlyingDir, err := os.Open(fs.sys.Path(sysBlockPath, device, sysUnderlyingDev))
+	if err != nil {
+		return UnderlyingDeviceInfo{}, err
+	}
+	underlying, err := underlyingDir.Readdirnames(0)
+	if err != nil {
+		return UnderlyingDeviceInfo{}, err
+	}
+	return UnderlyingDeviceInfo{DeviceNames: underlying}, nil
+
 }
