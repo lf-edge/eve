@@ -79,6 +79,20 @@ If during hardware or software bringup it is desirable to have USB access during
 
 To enable USB keyboard and/or storage access post onboarding it is necessary to set debug.enable.usb to true as specified in [configuration properties](CONFIG-PROPERTIES.md). Note that this setting is persisted by the device across reboots, hence it is re-applied once the pillar container starts.
 
+Further, to enable any console input post onboarding it is necessary to set debug.enable.console to true as specified in [configuration properties](CONFIG-PROPERTIES.md). Note that this setting is persisted by the device across reboots, hence it is re-applied once the pillar container starts. To see output on a screen post onboarding it is necessary to set debug.enable.vga, which is also persisted and re-applied after a reboot.
+
+## Diagnostic output
+
+If the device has an attached console or screen per the above, then EVE will send textual output to that which summarizes the connectivity to the controller, the device status including remote attestation state, the application status and errors, and any download status and errors.
+
+If the developer has edge-view or ssh debug access to the device this output can in addition be viewed using
+
+```bash
+tail -F /run/diag.out
+```
+
+In addition this information is provided to application instances on the device using [the diag API endpoint](./ECO-METADATA.md).
+
 ## Reboots
 
 EVE is architected in such a way that if any service is unresponsive for a period of time, the entire device will reboot. When this happens a BootReason is constructed and sent in the device info message to the controller. If there is a golang panic there can also be useful information found in `/persist/agentdebug/`.
