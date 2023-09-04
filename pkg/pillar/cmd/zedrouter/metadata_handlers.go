@@ -5,6 +5,7 @@ package zedrouter
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"encoding/binary"
 	"encoding/json"
@@ -16,11 +17,12 @@ import (
 	"path"
 	"strings"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 
+	"github.com/lf-edge/eve/pkg/pillar/utils"
 	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
-	uuid "github.com/satori/go.uuid"
 )
 
 // Provides a json file
@@ -90,6 +92,8 @@ type AppInfoHandler struct {
 type AppCustomBlobsHandler struct {
 	zedrouter *zedrouter
 }
+
+const PatchEnvelopesContextKeyType = "patchEnvelopes"
 
 // ServeHTTP for networkHandler provides a json return
 func (hdl networkHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -569,49 +573,142 @@ func (hdl AppCustomBlobsHandler) ServeHTTP(w http.ResponseWriter, r *http.Reques
 	http.ServeContent(w, r, blobFileLocation, modTime, f)
 }
 
-func getIP(r *http.Request) net.IP {
-	IPAddress := r.Header.Get("X-Real-Ip")
-	if IPAddress == "" {
-		IPAddress = r.Header.Get("X-Forwarded-For")
-	}
-	if IPAddress == "" {
-		IPAddress = r.RemoteAddr
-	}
-	return net.ParseIP(IPAddress)
-}
-
+// HandlePatchDescription returns Patch Envelopes available for app instance
 func HandlePatchDescription(z *zedrouter) func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
-		peObj, err := z.subPatchEnvelopeInfo.Get("global")
-		if err != nil {
-			http.Error(w, http.StatusText(http.StatusNoContent), http.StatusNoContent)
-			return
-		}
+		// WithPatchEnvelopesByIP middleware returns envelopes which are more than 0
+		envelopes := r.Context().Value("patchEnvelopes").([]types.PatchEnvelopeInfo)
 
-		pe := peObj.(types.PatchEnvelopes)
-		appUUID := getAppUUIDByIP(z, getIP(r))
-		envelopes := pe.Get(appUUID.String())
-		if len(envelopes) > 0 {
-			b, err := json.Marshal(envelopes)
-			if err != nil {
-				http.Error(w, err.Error(), http.StatusUnprocessableEntity)
-				return
-			}
-			w.WriteHeader(http.StatusOK)
-			w.Write(b)
-			return
-		} else {
-			http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+		b, err := types.PatchEnvelopesJsonForAppInstance(envelopes)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusUnprocessableEntity)
 			return
 		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write(b)
+		return
 	}
 }
 
-func getAppUUIDByIP(z *zedrouter, ip net.IP) uuid.UUID {
-	netstatus := z.lookupNetworkInstanceStatusByAppIP(ip)
-	if netstatus == nil {
-		z.log.Errorf("getExternalIPForApp: No NetworkInstanceStatus for %v", ip)
-		return uuid.UUID{}
+func sendError(w http.ResponseWriter, code int, msg string) {
+	w.Header().Set("Content-Type", "text/plain")
+	w.WriteHeader(code)
+	w.Write([]byte(fmt.Sprintf("{\"message\": \"%s\"}", msg)))
+}
+
+// HandlePatchDownload serves binary artifacts of specified patch envelope to app
+// instance. Patch envelope id is specified in URL. All artifacts are compressed to
+// a zip archive
+func HandlePatchDownload(z *zedrouter) func(http.ResponseWriter, *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// WithPatchEnvelopesByIP middleware returns envelopes which are more than 0
+		envelopes := r.Context().Value(PatchEnvelopesContextKeyType).([]types.PatchEnvelopeInfo)
+
+		patchID := chi.URLParam(r, "patch")
+		if patchID == "" {
+			sendError(w, http.StatusNoContent, "patch in route is missing")
+			return
+		}
+		e := types.FindPatchEnvelopeById(envelopes, patchID)
+		if e != nil {
+			path, err := os.MkdirTemp("", "patchEnvelopeZip")
+			if err != nil {
+				sendError(w, http.StatusInternalServerError,
+					fmt.Sprintf("failed to create temp dir %v", err))
+				return
+			}
+			zipFilename, err := utils.GetZipArchive(path, *e)
+
+			if err != nil {
+				sendError(w, http.StatusInternalServerError,
+					fmt.Sprintf("failed to archive binary blobs %v", err))
+				return
+			}
+
+			http.ServeFile(w, r, zipFilename)
+
+			err = os.Remove(zipFilename)
+			if err != nil {
+				sendError(w, http.StatusInternalServerError,
+					fmt.Sprintf("failed to delete archive %v", err))
+				return
+			}
+			return
+		}
+		http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+		return
 	}
-	return netstatus.NetworkInstanceConfig.UUIDandVersion.UUID
+}
+
+// HandlePatchFileDownload serves binary artifact of specified patch envelope to app
+// instance. Patch envelope id and file name is specified in URL.
+func HandlePatchFileDownload(z *zedrouter) func(http.ResponseWriter, *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// WithPatchEnvelopesByIP middleware returns envelopes which are more than 0
+		envelopes := r.Context().Value(PatchEnvelopesContextKeyType).([]types.PatchEnvelopeInfo)
+
+		patchID := chi.URLParam(r, "patch")
+		if patchID == "" {
+			sendError(w, http.StatusNotFound, "patch in route is missing")
+			return
+		}
+		fileName := chi.URLParam(r, "file")
+		if fileName == "" {
+			sendError(w, http.StatusNotFound, "file in route is missing")
+			return
+		}
+
+		e := types.FindPatchEnvelopeById(envelopes, patchID)
+		if e != nil {
+			if idx := types.CompletedBinaryBlobIdxByName(e.BinaryBlobs, fileName); idx != -1 {
+				http.ServeFile(w, r, e.BinaryBlobs[idx].Url)
+				return
+			} else {
+				sendError(w, http.StatusNotFound, "file is not found")
+				return
+			}
+		}
+
+		sendError(w, http.StatusNotFound, "patch is not found")
+	}
+}
+
+// WithPatchEnvelopesByIP is a middleware for Patch Envelopes which adds
+// to a context patchEnvelope variable containing available patch envelopes
+// for given IP address (it gets resolved to app instance UUID)
+// in case there is no patch envelopes avaiable it returns StatusNoContent
+func WithPatchEnvelopesByIP(z *zedrouter) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			peObj, err := z.subPatchEnvelopeInfo.Get("zedagent")
+			if err != nil {
+				sendError(w, http.StatusNoContent, "Cannot get patch envelope subscription")
+				return
+			}
+
+			pe := peObj.(types.PatchEnvelopes)
+
+			remoteIP := net.ParseIP(strings.Split(r.RemoteAddr, ":")[0])
+			anStatus := z.lookupAppNetworkStatusByAppIP(remoteIP)
+			if anStatus == nil {
+				w.WriteHeader(http.StatusNoContent)
+				z.log.Errorf("No AppNetworkStatus for %s",
+					remoteIP.String())
+				return
+			}
+
+			appUUID := anStatus.UUIDandVersion.UUID
+
+			envelopes := pe.Get(appUUID.String())
+			if len(envelopes) == 0 {
+				sendError(w, http.StatusOK, fmt.Sprintf("No envelopes for %s", appUUID.String()))
+			}
+
+			ctx := context.WithValue(r.Context(), PatchEnvelopesContextKeyType, envelopes)
+
+			r = r.WithContext(ctx)
+			next.ServeHTTP(w, r)
+		})
+	}
 }

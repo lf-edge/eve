@@ -39,6 +39,8 @@ const (
 	SnapshotVolumesSnapshotStatusFilename = "volumesSnapshotStatus.json"
 	// SnapshotInstanceStatusFilename - file to store SnapshotInstanceStatus
 	SnapshotInstanceStatusFilename = "snapshotInstanceStatus.json"
+	// PersistCachePatchEnvelopes - folder to store inline patch envelopes
+	PersistCachePatchEnvelopes = PersistDir + "/patchEnvelopesCache"
 
 	// IdentityDirname - Config dir
 	IdentityDirname = "/config"
