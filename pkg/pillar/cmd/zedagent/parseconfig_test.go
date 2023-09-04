@@ -1266,6 +1266,8 @@ func TestParseSRIOV(t *testing.T) {
 }
 
 func TestParsePatchEnvelope(t *testing.T) {
+	t.Parallel()
+
 	g := NewGomegaWithT(t)
 	getconfigCtx := initGetConfigCtx(g)
 
@@ -1306,8 +1308,8 @@ func TestParsePatchEnvelope(t *testing.T) {
 		},
 	}
 
-	path, _ := os.Getwd()
-	persistCacheFolder := filepath.Join(path, "testPersist/")
+	persistCacheFolder, err := os.MkdirTemp("", "testPersist")
+	g.Expect(err).To(BeNil())
 
 	// Impl because we have to change filepath of persist cache for testing
 	parsePatchEnvelopesImpl(getconfigCtx, config, persistCacheFolder)
@@ -1334,4 +1336,5 @@ func TestParsePatchEnvelope(t *testing.T) {
 	}))
 
 	os.RemoveAll(persistCacheFolder)
+
 }

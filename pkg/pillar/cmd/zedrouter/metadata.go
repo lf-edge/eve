@@ -52,7 +52,7 @@ func (z *zedrouter) makeMetadataHandler() http.Handler {
 		maxResponseLen:  KubeconfigFileSizeLimitInBytes,
 		publishDataType: types.AppInstMetaDataTypeKubeConfig,
 	}
-	r.Get("/eve/v1/kubeconfig", kubeConfigHandler.ServeHTTP)
+	r.Post("/eve/v1/kubeconfig", kubeConfigHandler.ServeHTTP)
 
 	AppCustomStatusHandler := &appInstMetaHandler{
 		zedrouter: z,
@@ -60,7 +60,7 @@ func (z *zedrouter) makeMetadataHandler() http.Handler {
 		maxResponseLen:  KubeconfigFileSizeLimitInBytes,
 		publishDataType: types.AppInstMetaDataCustomStatus,
 	}
-	r.Get("/eve/v1/app/appCustomStatus", AppCustomStatusHandler.ServeHTTP)
+	r.Post("/eve/v1/app/appCustomStatus", AppCustomStatusHandler.ServeHTTP)
 
 	locationInfoHandler := &locationInfoHandler{zedrouter: z}
 	r.Get("/eve/v1/location.json", locationInfoHandler.ServeHTTP)
@@ -82,12 +82,18 @@ func (z *zedrouter) makeMetadataHandler() http.Handler {
 		zedrouter:   z,
 		zedcloudCtx: &zedcloudCtx,
 	}
-	r.Get("/eve/v1/tpm/signer", signerHandler.ServeHTTP)
+	r.Post("/eve/v1/tpm/signer", signerHandler.ServeHTTP)
 
 	diagHandler := &diagHandler{zedrouter: z}
 	r.Get("/eve/v1/diag", diagHandler.ServeHTTP)
 
-	r.Get("/eve/v1/patch/description", HandlePatchDescription(z))
+	r.Route("/eve/v1/patch/", func(r chi.Router) {
+		r.Use(WithPatchEnvelopesByIP(z))
+
+		r.Get("/description.json", HandlePatchDescription(z))
+		r.Get("/download/{patch}", HandlePatchDownload(z))
+		r.Get("/download/{patch}/{file}", HandlePatchFileDownload(z))
+	})
 
 	return r
 }

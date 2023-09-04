@@ -164,7 +164,17 @@ type zedrouter struct {
 	// Retry NI or app network config that zedrouter failed to apply
 	retryTimer *time.Timer
 
+	// Subscriptions to gather information about
+	// patch envelopes from volumemgr and zedagent
+	// external envelopes have to be downloaded via
+	// volumemgr, therefore we need to be subscribed
+	// to volume status to know filepath and download status
+	// patchEnvelopeInfo is list of patchEnvelopes which
+	// is coming from EdgeDevConfig containing infromation
+	// about inline patch envelopes and volume uuid as reference
+	// for external patch envelopes
 	subPatchEnvelopeInfo pubsub.Subscription
+	subVolumeStatus      pubsub.Subscription
 }
 
 // AddAgentSpecificCLIFlags adds CLI options
@@ -307,6 +317,8 @@ func (z *zedrouter) run(ctx context.Context) (err error) {
 		z.subWwanStatus,
 		z.subWwanMetrics,
 		z.subDomainStatus,
+		z.subPatchEnvelopeInfo,
+		z.subVolumeStatus,
 	}
 	for _, sub := range inactiveSubs {
 		if err = sub.Activate(); err != nil {
@@ -360,6 +372,9 @@ func (z *zedrouter) run(ctx context.Context) (err error) {
 
 		case change := <-z.subPatchEnvelopeInfo.MsgChan():
 			z.subPatchEnvelopeInfo.ProcessChange(change)
+
+		case change := <-z.subVolumeStatus.MsgChan():
+			z.subVolumeStatus.ProcessChange(change)
 
 		case <-z.publishTicker.C:
 			start := time.Now()
@@ -787,6 +802,19 @@ func (z *zedrouter) initSubscriptions() (err error) {
 		AgentName:   "zedagent",
 		MyAgentName: agentName,
 		TopicImpl:   types.PatchEnvelopes{},
+		Activate:    false,
+		WarningTime: warningTime,
+		ErrorTime:   errorTime,
+	})
+	if err != nil {
+		return err
+	}
+
+	// Infromation about volumes reffered in external patch envelopes
+	z.subVolumeStatus, err = z.pubSub.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:   "volumemgr",
+		MyAgentName: agentName,
+		TopicImpl:   types.VolumeStatus{},
 		Activate:    false,
 		WarningTime: warningTime,
 		ErrorTime:   errorTime,
