@@ -4,86 +4,77 @@
 package diag
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"strings"
-	"syscall"
 
 	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
 )
 
-// The directory might not be available when we start so this gets called
-// until it succeeds.
-func tryOpenStatefile(ctx *diagContext) *os.File {
-	// XXX tmpfile plus rename at end ... where is end?
-	// Want open+defer close instead of Init() call?
-	// XXX have close function do the rename and log.
-	// XXX make level an arg to PrintIfSpace so we can determine max
-	// level and use that for log.
-	statefile, err := os.OpenFile(ctx.stateFilename,
-		os.O_APPEND|os.O_CREATE|os.O_WRONLY|syscall.O_NONBLOCK, 0644)
-	if err != nil {
-		log.Warn(err)
-		return nil
-	}
-	log.Noticef("Created %s", ctx.stateFilename)
-	return statefile
+// PrintHandle is returned by PrintIfSpaceInit()
+// The assumption is that the caller calls Flush() when done with one set of
+// output so it can be written to a file and the counters reset.
+type PrintHandle struct {
+	curLines      int // Number used in current iteration
+	maxRows       int
+	maxColumns    int
+	exceeded      bool
+	exceededCount int
+	outfile       *os.File
+	stateFilename string
+	allBytes      bytes.Buffer
 }
 
-// PrintIfSpaceInit sets up the limits and initializes lines to zero
-// ignorePrevious needed for unit test
-func PrintIfSpaceInit(ctx *diagContext, outfile *os.File, stateFilename string,
-	maxRows int, maxColumns int, ignorePrevious bool) {
-	// Save then (re)set everything
-	exceededCount := ctx.exceededCount
-
-	ctx.curLines = 0
-	ctx.maxRows = maxRows
-	ctx.maxColumns = maxColumns
-	ctx.exceeded = false
-	ctx.outfile = outfile
-	ctx.stateFilename = stateFilename
-	ctx.exceededCount = 0
-	if ctx.stateFilename != "" && ctx.statefile == nil {
-		ctx.statefile = tryOpenStatefile(ctx)
+// PrintIfSpaceInit sets up the limits and initializes current lines to zero
+func PrintIfSpaceInit(outfile *os.File, stateFilename string,
+	maxRows int, maxColumns int) *PrintHandle {
+	ctx := PrintHandle{
+		curLines:      0,
+		maxRows:       maxRows - 1, // Save one line for an "exceeded" message
+		maxColumns:    maxColumns,
+		exceeded:      false,
+		outfile:       outfile,
+		stateFilename: stateFilename,
+		exceededCount: 0,
 	}
-	if ctx.statefile != nil {
-		ctx.statefile.Truncate(0)
-		ctx.statefile.Seek(0, 0)
-	}
-	if exceededCount > 0 {
-		if ignorePrevious {
-			log.Warnf("WARNING: previous screen exceeded size by %d",
-				exceededCount)
-		} else {
-			PrintIfSpace(ctx, "WARNING: previous screen exceeded size by %d\n",
-				exceededCount)
-		}
-	}
+	return &ctx
 }
 
-// XXX
-func PrintIfSpaceClose(ctx *diagContext) {
+// Flush writes all the output to statefilename and resets to zero.
+// It prints a line if exceeded
+func (ctx *PrintHandle) Flush() {
+	if ctx.exceededCount > 0 {
+		ctx.Print("WARNING: screen exceeded size by %d\n",
+			ctx.exceededCount)
+	}
 	if ctx.stateFilename != "" {
-		// XXX tmpfilename? Read it to write?
-		fileutils.WriteRename(ctx.stateFilename, nil)
+		fileutils.WriteRename(ctx.stateFilename,
+			[]byte(ctx.allBytes.String()))
 	}
+	ctx.Reset()
 }
 
-// PrintIfSpace checks the number of lines since last PrintIfSpaceInit taking
+// Reset forgets about what has been printed
+func (ctx *PrintHandle) Reset() {
+	ctx.curLines = 0
+	ctx.exceeded = false
+	ctx.exceededCount = 0
+	ctx.allBytes.Reset()
+}
+
+// Print checks the number of lines since last PrintIfSpaceInit taking
 // into account the number of columns.
 // A terminating non-empty line counts as a line.
 // Returns true if it was printed.
-// In addition it always prints to ctx.statefile if set.
-func PrintIfSpace(ctx *diagContext, format string, a ...any) (bool, error) {
+// In addition it always saves to allBytes
+func (ctx *PrintHandle) Print(format string, a ...any) (bool, error) {
 	// Determine how many lines this will take based on \n plus the
 	// line wrap past maxColumns
 	out := fmt.Sprintf(format, a...)
 	if ctx.exceeded {
 		ctx.exceededCount++
-		if ctx.statefile != nil {
-			fmt.Fprint(ctx.statefile, out)
-		}
+		ctx.allBytes.WriteString(out)
 		return false, fmt.Errorf("already exceeded. count %d",
 			ctx.exceededCount-1)
 	}
@@ -101,16 +92,12 @@ func PrintIfSpace(ctx *diagContext, format string, a ...any) (bool, error) {
 	if ctx.curLines+lineCnt > ctx.maxRows {
 		ctx.exceeded = true
 		ctx.exceededCount++
-		if ctx.statefile != nil {
-			fmt.Fprint(ctx.statefile, out)
-		}
+		ctx.allBytes.WriteString(out)
 		return false, fmt.Errorf("had %d lines, added %d, exceeded %d",
 			ctx.curLines, lineCnt, ctx.maxRows)
 	}
 	ctx.curLines += lineCnt
 	fmt.Fprint(ctx.outfile, out)
-	if ctx.statefile != nil {
-		fmt.Fprint(ctx.statefile, out)
-	}
+	ctx.allBytes.WriteString(out)
 	return true, nil
 }
