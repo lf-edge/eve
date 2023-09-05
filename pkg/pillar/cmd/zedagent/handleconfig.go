@@ -570,7 +570,9 @@ func decryptAuthContainer(getconfigCtx *getconfigContext, sendRV *zedcloud.SendR
 	}
 
 	// Restore payload with decrypted bytes
-	sm.ProtectedPayload.Payload = clearBytes
+	sm.ProtectedPayload = &zauth.AuthBody{
+		Payload: clearBytes,
+	}
 	sm.CipherContext = nil
 	sm.CipherData = nil
 
