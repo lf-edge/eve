@@ -1,5 +1,3 @@
-# syntax=docker/dockerfile-upstream:1.5.0-rc2-labs
-
 #There are four parts:
 # a) building tpm2-tss
 # b) building tpm2-tools
@@ -10,9 +8,8 @@
 #Build TPM2-TSS and TPM2-TOOLS
 FROM lfedge/eve-alpine:c114cf1d3ea51534f061f9aa949beb6ac5c12fb3 as build
 ENV BUILD_PKGS linux-headers git gcc g++ autoconf automake libtool doxygen make \
-               openssl-dev protobuf-dev gnupg curl-dev patch json-c json-c-dev \
-               util-linux-dev libcurl curl-dev
-ENV PKGS alpine-baselayout musl-utils libcurl
+               openssl-dev protobuf-dev gnupg curl-dev patch
+ENV PKGS alpine-baselayout musl-utils
 RUN eve-alpine-deploy.sh
 
 WORKDIR /
@@ -29,21 +26,31 @@ RUN ./configure --datarootdir=/usr/share/ && \
     make -j "$(getconf _NPROCESSORS_ONLN)" && make install
 
 WORKDIR /tpm2-tss
-ADD --keep-git-dir=true https://github.com/tpm2-software/tpm2-tss.git#4.0.1 /tpm2-tss
+ADD https://github.com/tpm2-software/tpm2-tss/tarball/2.3.1 /tpm2-tss.tgz
+RUN tar -zxvf /tpm2-tss.tgz --strip-components=1 && \
+    rm /tpm2-tss.tgz
 RUN ./bootstrap && \
     ./configure --disable-dependency-tracking && \
     make -j "$(getconf _NPROCESSORS_ONLN)" && \
     make install
 
 WORKDIR /tpm2-tools
-ADD --keep-git-dir=true https://github.com/tpm2-software/tpm2-tools.git#5.5 /tpm2-tools
+ADD https://github.com/tpm2-software/tpm2-tools/tarball/4.0.1-rc0 /tpm2-tools.tgz
+RUN tar -zxvf /tpm2-tools.tgz  --strip-components=1 && \
+    rm /tpm2-tools.tgz
+
+# because various builds assume this is in a git repo
+RUN git config --global user.name "Your Name"; \
+    git config --global user.email "you@example.com"; \
+    git init . && git add . && git commit -m "init"
+
 COPY patch-tpm2-tools.diff .
-RUN patch -p1 < patch-tpm2-tools.diff
-RUN ./bootstrap && ./configure && make -j "$(getconf _NPROCESSORS_ONLN)"
+RUN patch -p1 < patch-tpm2-tools.diff && \
+    ./bootstrap && ./configure && make
 
 RUN mkdir -p /out/usr/local/lib
 RUN cp lib/.libs/libcommon.so* /out/usr/local/lib/
-RUN cp tools/.libs/tpm2 /out/usr/bin/
+RUN cp tools/.libs/tpm2_* /out/usr/bin/
 
 #The vTPM server
 COPY ./ /vtpm_server
@@ -56,8 +63,7 @@ RUN cp libstdc++.so.6 libgcc_s.so.1 libprotobuf.so.29.0.1 /out/usr/lib/
 RUN ln -s libprotobuf.so.29.0.1 /out/usr/lib/libprotobuf.so.29
 WORKDIR /usr/local/lib
 RUN cp libtss2-tctildr.so.0 libtss2-rc.so.0 libtss2-mu.so.0 libtss2-esys.so.0 \
-       libtss2-sys.so.1 libtss2-tcti-device.so.0 libtss2-tcti-device.so.0.0.0 \
-       /out/usr/local/lib/
+       libtss2-sys.so.0.0.0 libtss2-sys.so.0 libtss2-tcti-device.so.0 /out/usr/local/lib/
 
 #Pull a selected set of artifacts into the final stage.
 FROM scratch
