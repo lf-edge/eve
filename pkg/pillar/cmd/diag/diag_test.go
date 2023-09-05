@@ -39,8 +39,7 @@ func TestPrintIfSpace(t *testing.T) {
 	log = base.NewSourceLogObject(logrus.StandardLogger(), "diag", 0)
 	outfile := os.Stdout
 	stateFilename := ""
-	ctx := diagContext{}
-	maxRows := 3
+	maxRows := 3 + 1 // Add one for any Exceeded output
 	maxColumns := 10
 
 	type printArg struct {
@@ -173,15 +172,15 @@ func TestPrintIfSpace(t *testing.T) {
 		},
 	}
 
+	h := PrintIfSpaceInit(outfile, stateFilename,
+		maxRows, maxColumns)
 	for testname, test := range printTests {
 		t.Logf("Running test case %s", testname)
-		PrintIfSpaceInit(&ctx, outfile, stateFilename,
-			maxRows, maxColumns, true)
 		lastIndex := len(test.sequence) - 1
 		for i, pa := range test.sequence {
 			assertString := fmt.Sprintf("test %s sequence %d",
 				testname, i)
-			res, err := PrintIfSpace(&ctx, pa.format, pa.args...)
+			res, err := h.Print(pa.format, pa.args...)
 			if i == lastIndex {
 				assert.Equal(t, test.expected, res, assertString)
 				if test.expected {
@@ -194,5 +193,6 @@ func TestPrintIfSpace(t *testing.T) {
 				assert.Nil(t, err, assertString)
 			}
 		}
+		h.Flush()
 	}
 }
