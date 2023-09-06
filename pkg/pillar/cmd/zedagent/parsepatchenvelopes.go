@@ -10,7 +10,7 @@ import (
 	"crypto/sha256"
 
 	zconfig "github.com/lf-edge/eve-api/go/config"
-	"github.com/lf-edge/eve-libs/persistcache"
+	"github.com/lf-edge/eve/pkg/pillar/persistcache"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 )
 
@@ -93,13 +93,13 @@ func processEveBinaryArtifact(artifact *zconfig.EveBinaryArtifact, persistCacheF
 		return cacheInlineBase64Artifact(inlineArtifact, persistCacheFilepath)
 	}
 
-	return nil, fmt.Errorf("Unkown EveBinaryArtifact format")
+	return fmt.Errorf("Unknown EveBinaryArtifact format")
 }
 
 // cacheInlineBinaryArtifact stores inline artifact as file and
 // returns path to it to be served by HTTP server
 func cacheInlineBase64Artifact(artifact *zconfig.InlineOpaqueBase64Data, persistCacheFilepath string) (*types.BinaryBlob, error) {
-	pc, err := persistcache.Load(persistCacheFilepath)
+	pc, err := persistcache.New(persistCacheFilepath)
 	if err != nil {
 		return nil, err
 	}
@@ -108,7 +108,7 @@ func cacheInlineBase64Artifact(artifact *zconfig.InlineOpaqueBase64Data, persist
 	data := artifact.GetBase64Data()
 
 	// We want write inline data to a file to serve it from http server
-	url, err := pc.Put(artifact.GetFileNameToUse(), data)
+	url, err := pc.Put(artifact.GetFileNameToUse(), []byte(data))
 	if err != nil {
 		return nil, err
 	}

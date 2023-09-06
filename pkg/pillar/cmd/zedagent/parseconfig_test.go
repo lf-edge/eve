@@ -1272,7 +1272,7 @@ func TestParsePatchEnvelope(t *testing.T) {
 	appU1 := "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
 	appU2 := "60331c10-9dad-182g-80b4-00123ga430c8"
 
-	patchId := "uuid1"
+	patchID := "uuid1"
 	displayName := "test"
 	patchVersion := "version1"
 	artiactMetadata := "Artifact metadata"
@@ -1285,7 +1285,7 @@ func TestParsePatchEnvelope(t *testing.T) {
 		PatchEnvelopes: []*zconfig.EvePatchEnvelope{
 			{
 				DisplayName: displayName,
-				Uuid:        patchId,
+				Uuid:        patchID,
 				Version:     &patchVersion,
 				Action:      zconfig.EVE_PATCH_ENVELOPE_ACTION_ACTIVATE,
 				Artifacts: []*zconfig.EveBinaryArtifact{
@@ -1320,8 +1320,9 @@ func TestParsePatchEnvelope(t *testing.T) {
 	shaBytes := sha256.Sum256([]byte(fileData))
 	g.Expect(pes.Get(appU1)).To(BeEquivalentTo([]types.PatchEnvelopeInfo{
 		{
-			PatchId: displayName,
-			BinaryBlobs: []types.BinaryBlob{
+			PatchId:     patchID,
+			AllowedApps: []string{appU1, appU2},
+			BinaryBlobs: []types.BinaryBlobCompleted{
 				{
 					FileName:     inlineFileName,
 					FileSha:      hex.EncodeToString(shaBytes[:]),
