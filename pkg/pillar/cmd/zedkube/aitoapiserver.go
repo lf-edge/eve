@@ -29,9 +29,8 @@ func genAISpecCreate(ctx *zedkubeContext, aiConfig *types.AppInstanceConfig) err
 
 	if !aiConfig.KubeActivate {
 		log.Noticef("genAISpecCreate: app instance not activated, exit")
-		return nil
-	} else {
 		updateAppKubeNetStatus(ctx, aiConfig)
+		return nil
 	}
 
 	clientset, err := kubernetes.NewForConfig(ctx.config)
@@ -309,7 +308,9 @@ func publishAppMetrics(ctx *zedkubeContext) {
 		aiName := strings.ToLower(aiconfig.DisplayName)
 		pod, err := podclientset.CoreV1().Pods(eveNamespace).Get(context.TODO(), aiName, metav1.GetOptions{})
 		if err != nil {
-			log.Errorf("publishAppMetrics: get pod error %v", err)
+			if aiconfig.KubeActivate {
+				log.Errorf("publishAppMetrics: get pod error %v", err)
+			}
 			continue
 		}
 		if len(pod.Spec.Containers) == 0 {
@@ -431,7 +432,9 @@ func collectAppLogs(ctx *zedkubeContext) {
 		req := clientset.CoreV1().Pods(eveNamespace).GetLogs(aiName, opt)
 		podLogs, err := req.Stream(context.Background())
 		if err != nil {
-			log.Errorf("collectAppLogs: pod %s, log error %v", aiName, err)
+			if aiconfig.KubeActivate {
+				log.Errorf("collectAppLogs: pod %s, log error %v", aiName, err)
+			}
 			continue
 		}
 		defer podLogs.Close()

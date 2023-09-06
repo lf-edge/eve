@@ -123,6 +123,7 @@ func (z *zedrouter) prepareConfigForVIFs(config types.AppNetworkConfig,
 			ulStatus.Vif = kubeulstatus.Vif
 			ulStatus.Mac = kubeulstatus.Mac
 			ulStatus.AllocatedIPv4Addr = kubeulstatus.AllocatedIPv4Addr
+			ulStatus.IPv4Assigned = true
 		} else {
 			if ulStatus.AppMacAddr != nil {
 				// User-configured static MAC address.
@@ -149,7 +150,8 @@ func (z *zedrouter) prepareConfigForVIFs(config types.AppNetworkConfig,
 			GuestIP:        guestIP,
 			VifIfName:      ulStatus.Vif,
 		})
-		z.log.Functionf("appNetworkDoActivateUnderlayNetwork: vifs %+v", vifs)
+		status.UnderlayNetworkList[i] = *ulStatus
+		z.log.Functionf("appNetworkDoActivateUnderlayNetwork: vifs %+v, ulStats %+v", vifs, ulStatus)
 	}
 	return vifs, nil
 }
@@ -174,8 +176,8 @@ func (z *zedrouter) doActivateAppNetwork(config types.AppNetworkConfig,
 		z.addAppNetworkError(status, "doActivateAppNetwork", err)
 		return
 	}
-	z.log.Functionf("Activated application network %s (%s)", status.UUIDandVersion.UUID,
-		status.DisplayName)
+	z.log.Functionf("Activated application network %s (%s), status %+v", status.UUIDandVersion.UUID,
+		status.DisplayName, status)
 	z.processAppConnReconcileStatus(appConnRecStatus, status)
 
 	// Update AppNetwork and NetworkInstance status.

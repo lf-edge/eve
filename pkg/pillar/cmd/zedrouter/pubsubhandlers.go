@@ -426,7 +426,7 @@ func (z *zedrouter) insertAppNetVif(status types.AppKubeNetworkStatus) {
 		for _, item := range items {
 			nis := item.(types.NetworkInstanceStatus)
 			if nis.UUID.String() == ulstatus.Network.String() {
-				z.log.Noticef("insertAppNetVif: UL match %v", ulstatus.Network)
+				z.log.Functionf("insertAppNetVif: UL match ulstatus %+v", ulstatus)
 				nistatus = &nis
 				break
 			}
@@ -434,9 +434,8 @@ func (z *zedrouter) insertAppNetVif(status types.AppKubeNetworkStatus) {
 		if nistatus != nil {
 			var found bool
 			var foundStr string
-			z.log.Noticef("insertAppNetVif: ulstatus %+v", ulstatus)
 			for i, v := range nistatus.Vifs {
-				z.log.Noticef("insertAppNetVif: (%d) vif %+v", i, v)
+				z.log.Functionf("insertAppNetVif: (%d) vif %+v", i, v)
 				if v.Name == ulstatus.Vif {
 					nistatus.Vifs[i].MacAddr = ulstatus.Mac
 					nistatus.Vifs[i].AppID = status.UUIDandVersion.UUID
@@ -514,47 +513,70 @@ func (z *zedrouter) handleAppNetworkCreate(ctxArg interface{}, key string,
 		return
 	}
 	status.AppNum = appNum
+
+	sub := z.subAppKubeNetStatus
+	items := sub.GetAll()
+	var foundAkStatus bool
+	for _, item := range items {
+		akStatus := item.(types.AppKubeNetworkStatus)
+		if akStatus.UUIDandVersion.UUID.String() == config.UUIDandVersion.UUID.String() {
+			foundAkStatus = true
+			break
+		}
+	}
+	if !foundAkStatus {
+		z.log.Noticef("handleAppNetworkCreate: AkStatus not found pub anyway")
+		status.Activated = true
+		status.PendingAdd = false
+		status.PendingModify = false
+		z.publishAppNetworkStatus(&status)
+
+		return
+	}
 	z.publishAppNetworkStatus(&status)
 
-	// Allocate application numbers on underlay network.
-	// Used to allocate VIF IP address.
-	err = z.allocateAppIntfNums(config.UUIDandVersion.UUID, config.UnderlayNetworkList)
-	if err != nil {
-		err = fmt.Errorf("failed to allocate numbers for VIFs of the app %s/%s: %v",
-			config.UUIDandVersion.UUID, config.DisplayName, err)
-		z.log.Errorf("handleAppNetworkCreate(%v): %v", config.UUIDandVersion.UUID, err)
-		status.PendingAdd = false
-		z.addAppNetworkError(&status, "handleAppNetworkCreate", err)
-		return
-	}
-
-	// Check that Network exists for all underlays.
-	// We look for apps with raised AwaitNetworkInstance when a NetworkInstance is added.
-	netInErrState, err := z.checkNetworkReferencesFromApp(config)
-	if err != nil {
-		z.log.Errorf("handleAppNetworkCreate(%v): %v", config.UUIDandVersion.UUID, err)
-		status.AwaitNetworkInstance = true
-		status.PendingAdd = false
-		if netInErrState {
+	continueAppNetCreate(z, key, config, status)
+	/*
+		// Allocate application numbers on underlay network.
+		// Used to allocate VIF IP address.
+		err = z.allocateAppIntfNums(config.UUIDandVersion.UUID, config.UnderlayNetworkList)
+		if err != nil {
+			err = fmt.Errorf("failed to allocate numbers for VIFs of the app %s/%s: %v",
+				config.UUIDandVersion.UUID, config.DisplayName, err)
+			z.log.Errorf("handleAppNetworkCreate(%v): %v", config.UUIDandVersion.UUID, err)
+			status.PendingAdd = false
 			z.addAppNetworkError(&status, "handleAppNetworkCreate", err)
+			return
+		}
+
+		// Check that Network exists for all underlays.
+		// We look for apps with raised AwaitNetworkInstance when a NetworkInstance is added.
+		netInErrState, err := z.checkNetworkReferencesFromApp(config)
+		if err != nil {
+			z.log.Errorf("handleAppNetworkCreate(%v): %v", config.UUIDandVersion.UUID, err)
+			status.AwaitNetworkInstance = true
+			status.PendingAdd = false
+			if netInErrState {
+				z.addAppNetworkError(&status, "handleAppNetworkCreate", err)
+			} else {
+				z.publishAppNetworkStatus(&status)
+			}
+			return
+		}
+
+		z.runAppKubeStatus(config)
+
+		if config.Activate {
+			z.doActivateAppNetwork(config, &status)
 		} else {
+			status.PendingAdd = false
 			z.publishAppNetworkStatus(&status)
 		}
-		return
-	}
 
-	z.runAppKubeStatus(config)
-
-	if config.Activate {
-		z.doActivateAppNetwork(config, &status)
-	} else {
-		status.PendingAdd = false
-		z.publishAppNetworkStatus(&status)
-	}
-
-	z.maybeScheduleRetry()
-	z.log.Functionf("handleAppNetworkCreate(%s) done for %s", key, config.DisplayName)
-	z.log.Noticef("handleAppNetworkCreate: handleAppKubeNetCreate: tag done")
+		z.maybeScheduleRetry()
+		z.log.Functionf("handleAppNetworkCreate(%s) done for %s", key, config.DisplayName)
+		z.log.Noticef("handleAppNetworkCreate: handleAppKubeNetCreate: tag done")
+	*/
 }
 
 // handleAppNetworkModify cannot handle any change.
@@ -717,23 +739,35 @@ func (z *zedrouter) handleAppKubeNetImpl(key string, akStatus *types.AppKubeNetw
 		z.log.Noticef("handleAppKubeNetImpl: akStatus %v, status %v", akStatus, status)
 		return
 	}
-	status.ClearError()
-	status.PendingModify = true
-	z.publishAppNetworkStatus(status)
 
-	//if z.hvTypeKube {
-	//	z.log.Functionf("handleAppKubeNetImpl: new config %+v", akStatus)
-	//	z.insertAppNetVif(*akStatus)
-	//}
-
-	config := z.lookupAppNetworkConfig(key)
-	if status.Activated {
-		z.log.Functionf("handleAppKubeNetImpl: call doUpdateActivatedAppNetwork %+v", config)
-		z.doUpdateActivatedAppNetwork(*config, *config, status, akStatus)
-		//z.updateNIStatusAfterAppNetworkActivate(status)
-		//z.checkAppContainerStatsCollecting(config, status)
-		//z.updateVIFsForStateCollecting(nil, config)
+	sub := z.subAppNetworkConfig
+	items := sub.GetAll()
+	for _, item := range items {
+		config := item.(types.AppNetworkConfig)
+		if config.UUIDandVersion.UUID.String() == key {
+			z.log.Noticef("handleAppKubeNetImpl: run continue AppNetCreate")
+			continueAppNetCreate(z, key, config, *status)
+		}
 	}
+	/*
+		status.ClearError()
+		status.PendingModify = true
+		z.publishAppNetworkStatus(status)
+
+		//if z.hvTypeKube {
+		//	z.log.Functionf("handleAppKubeNetImpl: new config %+v", akStatus)
+		//	z.insertAppNetVif(*akStatus)
+		//}
+
+		config := z.lookupAppNetworkConfig(key)
+		if status.Activated {
+			z.log.Functionf("handleAppKubeNetImpl: call doUpdateActivatedAppNetwork %+v", config)
+			z.doUpdateActivatedAppNetwork(*config, *config, status, akStatus)
+			//z.updateNIStatusAfterAppNetworkActivate(status)
+			//z.checkAppContainerStatsCollecting(config, status)
+			//z.updateVIFsForStateCollecting(nil, config)
+		}
+	*/
 }
 
 func (z *zedrouter) handleAppKubeNetDelete(ctxArg interface{}, key string,
@@ -750,7 +784,51 @@ func (z *zedrouter) runAppKubeStatus(config types.AppNetworkConfig) {
 	for _, item := range items {
 		akStatus := item.(types.AppKubeNetworkStatus)
 		if akStatus.UUIDandVersion.UUID.String() == config.UUIDandVersion.UUID.String() {
+			z.insertAppNetVif(akStatus)
 			break
 		}
 	}
+}
+
+func continueAppNetCreate(z *zedrouter, key string, config types.AppNetworkConfig, status types.AppNetworkStatus) {
+	// Allocate application numbers on underlay network.
+	// Used to allocate VIF IP address.
+	err := z.allocateAppIntfNums(config.UUIDandVersion.UUID, config.UnderlayNetworkList)
+	if err != nil {
+		err = fmt.Errorf("failed to allocate numbers for VIFs of the app %s/%s: %v",
+			config.UUIDandVersion.UUID, config.DisplayName, err)
+		z.log.Errorf("handleAppNetworkCreate(%v): %v", config.UUIDandVersion.UUID, err)
+		status.PendingAdd = false
+		z.addAppNetworkError(&status, "handleAppNetworkCreate", err)
+		return
+	}
+
+	// Check that Network exists for all underlays.
+	// We look for apps with raised AwaitNetworkInstance when a NetworkInstance is added.
+	netInErrState, err := z.checkNetworkReferencesFromApp(config)
+	if err != nil {
+		z.log.Errorf("handleAppNetworkCreate(%v): %v", config.UUIDandVersion.UUID, err)
+		status.AwaitNetworkInstance = true
+		status.PendingAdd = false
+		if netInErrState {
+			z.addAppNetworkError(&status, "handleAppNetworkCreate", err)
+		} else {
+			z.publishAppNetworkStatus(&status)
+		}
+		return
+	}
+
+	z.runAppKubeStatus(config)
+
+	if config.Activate {
+		z.doActivateAppNetwork(config, &status)
+	} else {
+		status.PendingAdd = false
+		z.publishAppNetworkStatus(&status)
+	}
+
+	z.maybeScheduleRetry()
+	z.log.Functionf("handleAppNetworkCreate(%s) done for %s", key, config.DisplayName)
+	z.log.Noticef("handleAppNetworkCreate: handleAppKubeNetCreate: tag done")
+
 }
