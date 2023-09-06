@@ -8,7 +8,7 @@ KUBEVIRT_VERSION=v0.59.0
 LONGHORN_VERSION=v1.4.2
 CDI_VERSION=v1.56.0
 Node_IP=""
-MAX_K3S_RESTARTS=5
+MAX_K3S_RESTARTS=10
 RESTART_COUNT=0
 k3slogFile="/var/lib/rancher/k3s/k3s.log"
 #loglimitSize=$((50*1024*1024))  # 50MB limit
@@ -214,6 +214,58 @@ trigger_k3s_selfextraction() {
         /usr/bin/k3s check-config >> $INSTALL_LOG 2>&1
 }
 
+# wait for debugging flag in /persist/k3s/wait_{flagname} if exist
+wait_for_item() {
+  filename="/persist/k3s/wait_$1"
+  processname="k3s server"
+  while true; do
+    if [ -e "$filename" ]; then
+      k3sproc=""
+      if pgrep -x "$process_name" > /dev/null; then
+        k3sproc="k3s server is running"
+      else
+        k3sproc="k3s server is NOT running"
+      fi
+      logmsg "Found $filename file. $k3sproc, Waiting for 60 seconds..."
+      sleep 60
+    else
+      #logmsg "$filename not found. Exiting loop."
+      break
+    fi
+  done
+}
+
+check_node_ready_k3s_running() {
+  # Function to check if 'k3s server' process is running
+  check_k3s_running() {
+    pgrep -x "k3s server" > /dev/null
+  }
+
+  # Function to check if the Kubernetes node is ready
+  check_node_ready() {
+    kubectl get node | grep "$HOSTNAME" | awk '{print $2}' | grep 'Ready'
+  }
+
+  # Continuously check both conditions
+  while true; do
+    # Check if 'k3s server' is running
+    if ! check_k3s_running; then
+      K3S_RUNNING=false
+      logmsg "k3s server is not running, exit wait"
+      break
+    fi
+
+    # Check if the Kubernetes node is ready
+    if check_node_ready; then
+      break
+    fi
+
+    # Sleep for a while before checking again
+    logmsg "wait 5 more sec for node to be ready"
+    sleep 5
+  done
+}
+
 #Forever loop every 15 secs
 while true;
 do
@@ -226,15 +278,21 @@ if [ ! -f /var/lib/all_components_initialized ]; then
                 mkdir -p /var/lib/k3s/bin
                 /usr/bin/curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION=${K3S_VERSION} INSTALL_K3S_SKIP_ENABLE=true INSTALL_K3S_BIN_DIR=/var/lib/k3s/bin sh -
                 ln -s /var/lib/k3s/bin/* /usr/bin
-                sleep 60
+                sleep 5
                 logmsg "Initializing K3S version $K3S_VERSION"
                 trigger_k3s_selfextraction
                 check_start_containerd
                 nohup /usr/bin/k3s server --config /etc/rancher/k3s/config.yaml &
                 #wait until k3s is ready
                 logmsg "Looping until k3s is ready"
-                until kubectl get node | grep "$HOSTNAME" | awk '{print $2}' | grep 'Ready'; do sleep 5; done
-                #ln -sf /persist/vault/containerd /var/lib/rancher/k3s/agent/containerd
+                #until kubectl get node | grep "$HOSTNAME" | awk '{print $2}' | grep 'Ready'; do sleep 5; done
+                # check to see if node is ready, and if k3s crashed
+                K3S_RUNNING=true
+                check_node_ready_k3s_running
+                if ! $K3S_RUNNING; then
+                  continue
+                fi
+                #ln -sf /var/lib/rancher/k3s/agent/containerd /persist/vault/containerd
                 # Give the embedded etcd in k3s priority over io as its fsync latencies are critical
                 ionice -c2 -n0 -p $(pgrep -f "k3s server")
                 logmsg "k3s is ready on this node"
@@ -252,11 +310,13 @@ if [ ! -f /var/lib/all_components_initialized ]; then
         fi
 
         if [ ! -f /var/lib/kubevirt_initialized ]; then
+                wait_for_item "kubevirt"
                 # This patched version will be removed once the following PR https://github.com/kubevirt/kubevirt/pull/9668 is merged
                 logmsg "Installing patched Kubevirt"
                 kubectl apply -f /etc/kubevirt-operator.yaml
                 kubectl apply -f https://github.com/kubevirt/kubevirt/releases/download/${KUBEVIRT_VERSION}/kubevirt-cr.yaml
 
+                wait_for_item "cdi"
                 #CDI (containerzed data importer) is need to convert qcow2/raw formats to Persistent Volumes and Data volumes
                 #Since CDI goes with kubevirt we install with that.
                 logmsg "Installing CDI version $CDI_VERSION"
@@ -269,6 +329,7 @@ if [ ! -f /var/lib/all_components_initialized ]; then
         fi
 
         if [ ! -f /var/lib/longhorn_initialized ]; then
+                wait_for_item "longhorn"
                 logmsg "Installing longhorn version ${LONGHORN_VERSION}"
                 #kubectl apply -f  https://raw.githubusercontent.com/longhorn/longhorn/${LONGHORN_VERSION}/deploy/longhorn.yaml
                 # Switch back to above once all the longhorn services use the updated go iscsi tools
@@ -312,11 +373,15 @@ else
                 fi
                 # launch CNI dhcp service
                 /opt/cni/bin/dhcp daemon &
+
+                # apply the storageClass
+                kubectl patch storageclass local-path -p '{"metadata": {"annotations":{"storageclass.kubernetes.io/is-default-class":"false"}}}'
             else
                 logmsg "k3s is down and restart count exceeded."
             fi
         fi
 fi
         check_log_file_size
+        wait_for_item "wait"
         sleep 30
 done

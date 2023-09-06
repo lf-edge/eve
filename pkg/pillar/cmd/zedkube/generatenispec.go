@@ -122,6 +122,10 @@ func localNISpecCreate(ctx *zedkubeContext, niStatus *types.NetworkInstanceStatu
 
 	err = kubeapi.CreateNAD(ctx.ps, log, []byte(output), name, namespace)
 	log.Noticef("localNISpecCreate: spec, CreateNAD, error %v", err)
+	if _, ok := ctx.niStatusMap[niUUID.String()]; !ok {
+		ctx.niStatusMap[niUUID.String()] = niStatus
+	}
+
 	return err
 }
 

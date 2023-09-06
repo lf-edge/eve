@@ -47,6 +47,7 @@ type zedkubeContext struct {
 	ioAdapterMap             sync.Map
 	config                   *rest.Config
 	appKubeNetStatus         map[string]*types.AppKubeNetworkStatus
+	niStatusMap              map[string]*types.NetworkInstanceStatus
 	resendNITimer            *time.Timer
 	appMetricsTimer          *time.Timer
 	appLogStarted            bool
@@ -178,6 +179,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 
 	//zedkubeCtx.configWait = make(map[string]bool)
 	zedkubeCtx.appKubeNetStatus = make(map[string]*types.AppKubeNetworkStatus)
+	zedkubeCtx.niStatusMap = make(map[string]*types.NetworkInstanceStatus)
 
 	config, err := kubeapi.WaitKubernetes(agentName, ps, stillRunning)
 	if err != nil {
@@ -285,7 +287,10 @@ func handleNetworkInstanceModify(
 	status := statusArg.(types.NetworkInstanceStatus)
 	log.Noticef("handleNetworkInstanceModify: (UUID: %s, name:%s)\n",
 		key, status.DisplayName)
-	err := genNISpecCreate(ctx, &status)
+	var err error
+	if _, ok := ctx.niStatusMap[key]; !ok {
+		err = genNISpecCreate(ctx, &status)
+	}
 	log.Noticef("handleNetworkInstanceModify: spec modify %v", err)
 	checkNISendStatus(ctx, &status, err)
 }
@@ -318,10 +323,13 @@ func handleNetworkInstanceDelete(ctxArg interface{}, key string,
 	configArg interface{}) {
 
 	log.Noticef("handleNetworkInstanceDelete(%s)\n", key) // XXX Functionf
-	// ctx := ctxArg.(*zedkubeContext)
+	ctx := ctxArg.(*zedkubeContext)
 	status := configArg.(types.NetworkInstanceStatus)
 	nadName := strings.ToLower(status.DisplayName)
 	kubeapi.DeleteNAD(log, nadName)
+	if _, ok := ctx.niStatusMap[status.UUIDandVersion.UUID.String()]; ok {
+		delete(ctx.niStatusMap, key)
+	}
 }
 
 func kubeGetNIStatus(ctx *zedkubeContext, niUUID uuid.UUID) (*types.NetworkInstanceStatus, error) {
@@ -370,6 +378,9 @@ func handleAppInstanceConfigDelete(ctxArg interface{}, key string,
 	config := configArg.(types.AppInstanceConfig)
 
 	aiSpecDelete(ctx, &config)
+	if _, ok := ctx.appKubeNetStatus[key]; ok {
+		delete(ctx.appKubeNetStatus, key)
+	}
 	log.Functionf("handleAppInstanceConfigDelete(%s) done", key)
 }
 

@@ -563,7 +563,7 @@ func parseAppInstanceConfig(getconfigCtx *getconfigContext,
 		appInstance.DisplayName = cfgApp.Displayname
 
 		appInstance.KubeActivate = false
-		appInstance.Activate = true
+		appInstance.Activate = cfgApp.Activate
 
 		appInstance.FixedResources.Kernel = cfgApp.Fixedresources.Kernel
 		appInstance.FixedResources.BootLoader = cfgApp.Fixedresources.Bootloader
