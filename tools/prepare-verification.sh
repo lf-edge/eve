@@ -15,5 +15,5 @@ else
     VERIFICATION_DIR="$3"
 fi
 
-cp -r "${PKGVERIFICATION_DIR}/verification/*" "${INSTALLER_DIR}/"
-cp -r "${INSTALLER_DIR}/*" "${VERIFICATION_DIR}/"
+cp -r "${PKGVERIFICATION_DIR}/verification/"* "${INSTALLER_DIR}/"
+cp -r "${INSTALLER_DIR}/"* "${VERIFICATION_DIR}/"
