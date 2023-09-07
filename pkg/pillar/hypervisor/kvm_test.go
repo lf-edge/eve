@@ -12,16 +12,16 @@ import (
 	uuid "github.com/satori/go.uuid"
 )
 
-var kvmIntel, kvmArm kvmContext
+var kvmIntel, kvmArm KvmContext
 
 // these ones are very much handcrafted just for the tests
 func init() {
-	kvmIntel = kvmContext{
+	kvmIntel = KvmContext{
 		devicemodel: "pc-q35-3.1",
 		dmExec:      "",
 		dmArgs:      []string{},
 	}
-	kvmArm = kvmContext{
+	kvmArm = KvmContext{
 		devicemodel: "virt",
 		dmExec:      "",
 		dmArgs:      []string{},
