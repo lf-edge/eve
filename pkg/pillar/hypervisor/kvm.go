@@ -364,10 +364,10 @@ const vfioDriverPath = "/sys/bus/pci/drivers/vfio-pci"
 //	 qmp - UNIX domain socket that allows us to talk to anchor process
 //	cons - symlink to /dev/pts/X that allows us to talk to the serial console of the domain
 //
-// In addition to that, we also maintain DOMAIN_NAME -> PID mapping in kvmContext, so we don't
+// In addition to that, we also maintain DOMAIN_NAME -> PID mapping in KvmContext, so we don't
 // have to look things up in the filesystem all the time (this also allows us to filter domains
 // that may be created by others)
-type kvmContext struct {
+type KvmContext struct {
 	ctrdContext
 	// for now the following is statically configured and can not be changed per domain
 	devicemodel  string
@@ -390,7 +390,7 @@ func newKvm() Hypervisor {
 	// -cpu IvyBridge-IBRS,ss=on,vmx=on,movbe=on,hypervisor=on,arat=on,tsc_adjust=on,mpx=on,rdseed=on,smap=on,clflushopt=on,sha-ni=on,umip=on,md-clear=on,arch-capabilities=on,xsaveopt=on,xsavec=on,xgetbv1=on,xsaves=on,pdpe1gb=on,3dnowprefetch=on,avx=off,f16c=off,hv_time,hv_relaxed,hv_vapic,hv_spinlocks=0x1fff
 	switch runtime.GOARCH {
 	case "arm64":
-		return kvmContext{
+		return KvmContext{
 			ctrdContext:  *ctrdCtx,
 			devicemodel:  "virt",
 			dmExec:       "/usr/lib/xen/bin/qemu-system-aarch64",
@@ -399,7 +399,7 @@ func newKvm() Hypervisor {
 			dmFmlCPUArgs: []string{"-cpu", "host"},
 		}
 	case "amd64":
-		return kvmContext{
+		return KvmContext{
 			//nolint:godox // FIXME: Removing "-overcommit", "mem-lock=on", "-overcommit" for now, revisit it later as part of resource partitioning
 			ctrdContext:  *ctrdCtx,
 			devicemodel:  "pc-q35-3.1",
@@ -412,7 +412,7 @@ func newKvm() Hypervisor {
 	return nil
 }
 
-func (ctx kvmContext) GetCapabilities() (*types.Capabilities, error) {
+func (ctx KvmContext) GetCapabilities() (*types.Capabilities, error) {
 	if ctx.capabilities != nil {
 		return ctx.capabilities, nil
 	}
@@ -429,7 +429,7 @@ func (ctx kvmContext) GetCapabilities() (*types.Capabilities, error) {
 	return ctx.capabilities, nil
 }
 
-func (ctx kvmContext) checkIOVirtualisation() (bool, error) {
+func (ctx KvmContext) checkIOVirtualisation() (bool, error) {
 	f, err := os.Open("/sys/kernel/iommu_groups")
 	if err == nil {
 		files, err := f.Readdirnames(0)
@@ -443,11 +443,11 @@ func (ctx kvmContext) checkIOVirtualisation() (bool, error) {
 	return false, err
 }
 
-func (ctx kvmContext) Name() string {
+func (ctx KvmContext) Name() string {
 	return KVMHypervisorName
 }
 
-func (ctx kvmContext) Task(status *types.DomainStatus) types.Task {
+func (ctx KvmContext) Task(status *types.DomainStatus) types.Task {
 	if status.VirtualizationMode == types.NOHYPER {
 		return ctx.ctrdContext
 	}
@@ -612,7 +612,7 @@ func vmmOverhead(domainName string, config types.DomainConfig,
 	return overhead, nil
 }
 
-func (ctx kvmContext) Setup(status types.DomainStatus, config types.DomainConfig,
+func (ctx KvmContext) Setup(status types.DomainStatus, config types.DomainConfig,
 	aa *types.AssignableAdapters, globalConfig *types.ConfigItemValueMap, file *os.File) error {
 
 	diskStatusList := status.DiskStatusList
@@ -668,7 +668,7 @@ func (ctx kvmContext) Setup(status types.DomainStatus, config types.DomainConfig
 	return nil
 }
 
-func (ctx kvmContext) CreateDomConfig(domainName string, config types.DomainConfig, status types.DomainStatus,
+func (ctx KvmContext) CreateDomConfig(domainName string, config types.DomainConfig, status types.DomainStatus,
 	diskStatusList []types.DiskStatus, aa *types.AssignableAdapters, file *os.File) error {
 	tmplCtx := struct {
 		Machine string
@@ -856,7 +856,7 @@ func waitForQmp(domainName string, available bool) error {
 	}
 }
 
-func (ctx kvmContext) Start(domainName string) error {
+func (ctx KvmContext) Start(domainName string) error {
 	logrus.Infof("starting KVM domain %s", domainName)
 	if err := ctx.ctrdContext.Start(domainName); err != nil {
 		logrus.Errorf("couldn't start task for domain %s: %v", domainName, err)
@@ -897,14 +897,14 @@ func (ctx kvmContext) Start(domainName string) error {
 	return nil
 }
 
-func (ctx kvmContext) Stop(domainName string, _ bool) error {
+func (ctx KvmContext) Stop(domainName string, _ bool) error {
 	if err := execShutdown(GetQmpExecutorSocket(domainName)); err != nil {
 		return logError("Stop: failed to execute shutdown command %v", err)
 	}
 	return nil
 }
 
-func (ctx kvmContext) Delete(domainName string) (result error) {
+func (ctx KvmContext) Delete(domainName string) (result error) {
 	//Sending a stop signal to then domain before quitting. This is done to freeze the domain before quitting it.
 	execStop(GetQmpExecutorSocket(domainName))
 	if err := execQuit(GetQmpExecutorSocket(domainName)); err != nil {
@@ -918,7 +918,7 @@ func (ctx kvmContext) Delete(domainName string) (result error) {
 	return nil
 }
 
-func (ctx kvmContext) Info(domainName string) (int, types.SwState, error) {
+func (ctx KvmContext) Info(domainName string) (int, types.SwState, error) {
 	// first we ask for the task status
 	effectiveDomainID, effectiveDomainState, err := ctx.ctrdContext.Info(domainName)
 	if err != nil || effectiveDomainState != types.RUNNING {
@@ -954,7 +954,7 @@ func (ctx kvmContext) Info(domainName string) (int, types.SwState, error) {
 	}
 }
 
-func (ctx kvmContext) Cleanup(domainName string) error {
+func (ctx KvmContext) Cleanup(domainName string) error {
 	if err := ctx.ctrdContext.Cleanup(domainName); err != nil {
 		return fmt.Errorf("couldn't cleanup task %s: %v", domainName, err)
 	}
@@ -965,7 +965,7 @@ func (ctx kvmContext) Cleanup(domainName string) error {
 	return nil
 }
 
-func (ctx kvmContext) PCIReserve(long string) error {
+func (ctx KvmContext) PCIReserve(long string) error {
 	logrus.Infof("PCIReserve long addr is %s", long)
 
 	overrideFile := filepath.Join(sysfsPciDevices, long, "driver_override")
@@ -1003,7 +1003,7 @@ func (ctx kvmContext) PCIReserve(long string) error {
 	return nil
 }
 
-func (ctx kvmContext) PCIRelease(long string) error {
+func (ctx KvmContext) PCIRelease(long string) error {
 	logrus.Infof("PCIRelease long addr is %s", long)
 
 	overrideFile := filepath.Join(sysfsPciDevices, long, "driver_override")
@@ -1033,7 +1033,7 @@ func (ctx kvmContext) PCIRelease(long string) error {
 	return nil
 }
 
-func (ctx kvmContext) PCISameController(id1 string, id2 string) bool {
+func (ctx KvmContext) PCISameController(id1 string, id2 string) bool {
 	tag1, err := types.PCIGetIOMMUGroup(id1)
 	if err != nil {
 		return types.PCISameController(id1, id2)
