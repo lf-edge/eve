@@ -67,6 +67,20 @@ func execVNCPassword(socket string, password string) error {
 	return err
 }
 
+// QmpExecDeviceDelete removes a device
+func QmpExecDeviceDelete(socket, id string) error {
+	qmpString := fmt.Sprintf(`{ "execute": "device_del", "arguments": { "id": "%s"}}`, id)
+	_, err := execRawCmd(socket, qmpString)
+	return err
+}
+
+// QmpExecDeviceAdd adds a usb device via busnum/devnum
+func QmpExecDeviceAdd(socket, id string, busnum, devnum uint16) error {
+	qmpString := fmt.Sprintf(`{ "execute": "device_add", "arguments": { "driver": "usb-host", "hostbus": %d, "hostaddr": %d, "id": "%s"} }`, busnum, devnum, id)
+	_, err := execRawCmd(socket, qmpString)
+	return err
+}
+
 func getQemuStatus(socket string) (string, error) {
 	if raw, err := execRawCmd(socket, `{ "execute": "query-status" }`); err == nil {
 		var result struct {

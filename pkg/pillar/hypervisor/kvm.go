@@ -356,7 +356,7 @@ const sysfsVfioPciBind = "/sys/bus/pci/drivers/vfio-pci/bind"
 const sysfsPciDriversProbe = "/sys/bus/pci/drivers_probe"
 const vfioDriverPath = "/sys/bus/pci/drivers/vfio-pci"
 
-// KVM domains map 1-1 to anchor device model UNIX processes (qemu or firecracker)
+// KvmContext is a KVM domains map 0-1 to anchor device model UNIX processes (qemu or firecracker)
 // For every anchor process we maintain the following entry points in the
 // /run/hypervisor/kvm/DOMAIN_NAME:
 //
@@ -412,6 +412,7 @@ func newKvm() Hypervisor {
 	return nil
 }
 
+// GetCapabilities returns capabilities of the kvm hypervisor
 func (ctx KvmContext) GetCapabilities() (*types.Capabilities, error) {
 	if ctx.capabilities != nil {
 		return ctx.capabilities, nil
@@ -443,10 +444,12 @@ func (ctx KvmContext) checkIOVirtualisation() (bool, error) {
 	return false, err
 }
 
+// Name returns the name of the kvm hypervisor
 func (ctx KvmContext) Name() string {
 	return KVMHypervisorName
 }
 
+// Task returns either the kvm context or the containerd context depending on the domain status
 func (ctx KvmContext) Task(status *types.DomainStatus) types.Task {
 	if status.VirtualizationMode == types.NOHYPER {
 		return ctx.ctrdContext
@@ -612,6 +615,7 @@ func vmmOverhead(domainName string, config types.DomainConfig,
 	return overhead, nil
 }
 
+// Setup sets up kvm
 func (ctx KvmContext) Setup(status types.DomainStatus, config types.DomainConfig,
 	aa *types.AssignableAdapters, globalConfig *types.ConfigItemValueMap, file *os.File) error {
 
@@ -668,6 +672,7 @@ func (ctx KvmContext) Setup(status types.DomainStatus, config types.DomainConfig
 	return nil
 }
 
+// CreateDomConfig creates a domain config (a qemu config file, typically named something like xen-%d.cfg)
 func (ctx KvmContext) CreateDomConfig(domainName string, config types.DomainConfig, status types.DomainStatus,
 	diskStatusList []types.DiskStatus, aa *types.AssignableAdapters, file *os.File) error {
 	tmplCtx := struct {
@@ -856,6 +861,7 @@ func waitForQmp(domainName string, available bool) error {
 	}
 }
 
+// Start starts a domain
 func (ctx KvmContext) Start(domainName string) error {
 	logrus.Infof("starting KVM domain %s", domainName)
 	if err := ctx.ctrdContext.Start(domainName); err != nil {
@@ -897,6 +903,7 @@ func (ctx KvmContext) Start(domainName string) error {
 	return nil
 }
 
+// Stop stops a domain
 func (ctx KvmContext) Stop(domainName string, _ bool) error {
 	if err := execShutdown(GetQmpExecutorSocket(domainName)); err != nil {
 		return logError("Stop: failed to execute shutdown command %v", err)
@@ -904,6 +911,7 @@ func (ctx KvmContext) Stop(domainName string, _ bool) error {
 	return nil
 }
 
+// Delete deletes a domain
 func (ctx KvmContext) Delete(domainName string) (result error) {
 	//Sending a stop signal to then domain before quitting. This is done to freeze the domain before quitting it.
 	execStop(GetQmpExecutorSocket(domainName))
@@ -918,6 +926,7 @@ func (ctx KvmContext) Delete(domainName string) (result error) {
 	return nil
 }
 
+// Info returns information of a domain
 func (ctx KvmContext) Info(domainName string) (int, types.SwState, error) {
 	// first we ask for the task status
 	effectiveDomainID, effectiveDomainState, err := ctx.ctrdContext.Info(domainName)
@@ -954,6 +963,7 @@ func (ctx KvmContext) Info(domainName string) (int, types.SwState, error) {
 	}
 }
 
+// Cleanup cleans up a domain
 func (ctx KvmContext) Cleanup(domainName string) error {
 	if err := ctx.ctrdContext.Cleanup(domainName); err != nil {
 		return fmt.Errorf("couldn't cleanup task %s: %v", domainName, err)
@@ -965,6 +975,7 @@ func (ctx KvmContext) Cleanup(domainName string) error {
 	return nil
 }
 
+// PCIReserve reserves a PCI device
 func (ctx KvmContext) PCIReserve(long string) error {
 	logrus.Infof("PCIReserve long addr is %s", long)
 
@@ -1003,6 +1014,7 @@ func (ctx KvmContext) PCIReserve(long string) error {
 	return nil
 }
 
+// PCIRelease releases the PCI device reservation
 func (ctx KvmContext) PCIRelease(long string) error {
 	logrus.Infof("PCIRelease long addr is %s", long)
 
@@ -1033,6 +1045,7 @@ func (ctx KvmContext) PCIRelease(long string) error {
 	return nil
 }
 
+// PCISameController checks if two PCI controllers are the same
 func (ctx KvmContext) PCISameController(id1 string, id2 string) bool {
 	tag1, err := types.PCIGetIOMMUGroup(id1)
 	if err != nil {
@@ -1055,6 +1068,7 @@ func usbBusPort(USBAddr string) (string, string) {
 	return "", ""
 }
 
+// GetQmpExecutorSocket returns the path to the qmp socket of a domain
 func GetQmpExecutorSocket(domainName string) string {
 	return filepath.Join(kvmStateDir, domainName, "qmp")
 }

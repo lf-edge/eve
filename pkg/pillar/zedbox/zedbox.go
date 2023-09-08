@@ -34,6 +34,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/cmd/pbuf"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/tpmmgr"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/upgradeconverter"
+	"github.com/lf-edge/eve/pkg/pillar/cmd/usbmanager"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/vaultmgr"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/verifier"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/volumemgr"
@@ -103,6 +104,7 @@ var (
 		"upgradeconverter": {f: upgradeconverter.Run, inline: inlineAlways},
 		"watcher":          {f: watcher.Run},
 		"zfsmanager":       {f: zfsmanager.Run},
+		"usbmanager":       {f: usbmanager.Run},
 	}
 	logger *logrus.Logger
 	log    *base.LogObject
