@@ -138,6 +138,7 @@ var currentHypervisorMutex sync.Mutex
 var logger *logrus.Logger
 var log *base.LogObject
 
+// CurrentHypervisor returns the current hypervisor
 func CurrentHypervisor() hypervisor.Hypervisor {
 	currentHypervisorMutex.Lock()
 	hv := currentHypervisor
