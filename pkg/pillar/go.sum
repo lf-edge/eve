@@ -634,6 +634,8 @@ github.com/envoyproxy/protoc-gen-validate v0.1.0/go.mod h1:iSmxcyjqTsJpI2R4NaDN7
 github.com/envoyproxy/protoc-gen-validate v0.6.2/go.mod h1:2t7qjJNvHPx8IjnBOzl9E9/baC+qXE/TeeyBRzgJDws=
 github.com/eriknordmark/ipinfo v0.0.0-20230728132417-2d8f4da903d7 h1:25R+h8+75+zyY0+/6TfUsz/arhEltIwNMgDH6IGJ/tc=
 github.com/eriknordmark/ipinfo v0.0.0-20230728132417-2d8f4da903d7/go.mod h1:m5kR+NOoKCuA5r6T+9f7q7VfPjPhHskhmxRAebb7avM=
+github.com/eshard/uevent v1.0.1 h1:AaqwtzDItdrb+rZ9EEAJJnkR36kTgeWplR44wc2ptfI=
+github.com/eshard/uevent v1.0.1/go.mod h1:fgPg/9WMh1CvD0dIh08gjDdrgLueDUJH7aPzM0932CY=
 github.com/estesp/manifest-tool/v2 v2.0.6-0.20220728154431-89d791ab7966 h1:Hlw3XgTSejseEVY+URYLZKmJf2iXDT9IzBa/rvJZ8zc=
 github.com/estesp/manifest-tool/v2 v2.0.6-0.20220728154431-89d791ab7966/go.mod h1:xXnTTBEDX1yic5KumuBnxU9+8jdVA4vuJkioPzwredI=
 github.com/evanphx/json-patch v4.2.0+incompatible/go.mod h1:50XU6AFN0ol/bzJsmQLiYLvXMP4fmwYFNcr97nuDLSk=
