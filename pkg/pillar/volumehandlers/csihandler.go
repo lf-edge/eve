@@ -60,8 +60,7 @@ func (handler *volumeHandlerCSI) HandlePrepared() (bool, error) {
 
 func (handler *volumeHandlerCSI) HandleCreated() (bool, error) {
 	handler.log.Noticef("HandleCreated called for PVC %s", handler.status.Key())
-	//handler.status.ContentFormat = zconfig.Format_PVC
-	handler.status.ContentFormat = zconfig.Format_RAW
+	handler.status.ContentFormat = zconfig.Format_PVC
 	updateVolumeSizes(handler.log, handler, handler.status)
 	return true, nil
 }
@@ -122,7 +121,7 @@ func (handler *volumeHandlerCSI) CreateVolume() (string, error) {
 			handler.log.Error(errStr)
 			return "", errors.New(errStr)
 		}
-		if err := kubeapi.RolloutImgToPVC(createContext, handler.log, false, pathToFile, pvcName, "pvc", handler.status.IsAppImage); err != nil {
+		if err := kubeapi.RolloutImgToPVC(createContext, handler.log, false, pathToFile, pvcName, handler.status.IsAppImage); err != nil {
 			errStr := fmt.Sprintf("Error converting %s to PVC %s: %v",
 				pathToFile, pvcName, err)
 			handler.log.Error(errStr)

@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"math/rand"
 	"os"
 	"runtime"
 	"strconv"
@@ -35,21 +36,17 @@ const KubevirtHypervisorName = "kubevirt"
 const kubevirtStateDir = "/run/hypervisor/kubevirt/"
 const eveNameSpace = "eve-kube-app"
 
-// const sysfsPciDevices = "/sys/bus/pci/devices/"
-// const sysfsVfioPciBind = "/sys/bus/pci/drivers/vfio-pci/bind"
-// const sysfsPciDriversProbe = "/sys/bus/pci/drivers_probe"
-// const vfioDriverPath = "/sys/bus/pci/drivers/vfio-pci"
+// VM instance meta data structure.
+type vmiMetaData struct {
+	vmi      *v1.VirtualMachineInstance // Handle to the VM instance
+	domainId int                        // DomainId understood by domainmgr in EVE
+}
 
 type kubevirtContext struct {
 	ctrdContext
-	// for now the following is statically configured and can not be changed per domain
 	devicemodel  string
-	dmExec       string
-	dmArgs       []string
-	dmCPUArgs    []string
-	dmFmlCPUArgs []string
 	capabilities *types.Capabilities
-	vmiList      map[string]*v1.VirtualMachineInstance
+	vmiList      map[string]*vmiMetaData
 }
 
 // Use few states  for now
@@ -75,13 +72,13 @@ func newKubevirt() Hypervisor {
 		return kubevirtContext{
 			ctrdContext: *ctrdCtx,
 			devicemodel: "virt",
-			vmiList:     make(map[string]*v1.VirtualMachineInstance),
+			vmiList:     make(map[string]*vmiMetaData),
 		}
 	case "amd64":
 		return kubevirtContext{
 			ctrdContext: *ctrdCtx,
 			devicemodel: "pc-q35-3.1",
-			vmiList:     make(map[string]*v1.VirtualMachineInstance),
+			vmiList:     make(map[string]*vmiMetaData),
 		}
 	}
 	return nil
@@ -139,8 +136,8 @@ func (ctx kubevirtContext) Setup(status types.DomainStatus, config types.DomainC
 
 	logrus.Infof("PRAMOD Setup called for Domain: %s", domainName)
 
-	// Take eve domain config and convert to kube config
-	if err := ctx.CreateKubeConfig(domainName, config, status, diskStatusList, aa, file); err != nil {
+	// Take eve domain config and convert to VMI config
+	if err := ctx.CreateVMIConfig(domainName, config, status, diskStatusList, aa, file); err != nil {
 		return logError("failed to build kube config: %v", err)
 	}
 
@@ -151,9 +148,12 @@ func (ctx kubevirtContext) Setup(status types.DomainStatus, config types.DomainC
 
 }
 
-func (ctx kubevirtContext) CreateKubeConfig(domainName string, config types.DomainConfig, status types.DomainStatus,
+// Kubevirt VMI config spec is updated with the domain config/status of the app.
+// The details and the struct of the spec can be found at:
+// https://kubevirt.io/api-reference/v1.0.0/definitions.html
+func (ctx kubevirtContext) CreateVMIConfig(domainName string, config types.DomainConfig, status types.DomainStatus,
 	diskStatusList []types.DiskStatus, aa *types.AssignableAdapters, file *os.File) error {
-	logrus.Infof("PRAMOD CreateKubeConfig called for Domain: %s", domainName)
+	logrus.Infof("PRAMOD CreateVMIConfig called for Domain: %s", domainName)
 	err, kubeconfig := kubeapi.GetKubeConfig()
 	if err != nil {
 		logrus.Errorf("couldn't get the Kube Config: %v", err)
@@ -326,15 +326,17 @@ func (ctx kubevirtContext) CreateKubeConfig(domainName string, config types.Doma
 		return logError("PRAMOD: USB assignments not supported yet %v", len(usbAssignments))
 	}
 
-	// Now we have VirtualMachine Instance object, save it to file for debug purposes
-	// and save it in context which will be use to start VM in Start() call
-
-	ctx.vmiList[domainName] = vmi
+	// Now we have VirtualMachine Instance object, save it to config file for debug purposes
+	// and save it in context which will be used to start VM in Start() call
+	meta := vmiMetaData{
+		vmi:      vmi,
+		domainId: int(rand.Uint32()),
+	}
+	ctx.vmiList[domainName] = &meta
 
 	vmiStr := fmt.Sprintf("%+v", vmi)
 
 	// write to config file
-
 	file.WriteString(vmiStr)
 
 	return nil
@@ -343,7 +345,7 @@ func (ctx kubevirtContext) CreateKubeConfig(domainName string, config types.Doma
 func (ctx kubevirtContext) Start(domainName string) error {
 	logrus.Infof("starting Kubevirt domain %s", domainName)
 
-	vmi := ctx.vmiList[domainName]
+	vmi := ctx.vmiList[domainName].vmi
 
 	err, kubeconfig := kubeapi.GetKubeConfig()
 	if err != nil {
@@ -378,9 +380,9 @@ func (ctx kubevirtContext) Start(domainName string) error {
 
 }
 
+// Create is no-op for kubevirt, just return the domainId we already have.
 func (ctx kubevirtContext) Create(domainName string, cfgFilename string, config *types.DomainConfig) (int, error) {
-
-	return len(ctx.vmiList), nil
+	return ctx.vmiList[domainName].domainId, nil
 }
 
 // There is no such thing as stop VMI, so delete it.
@@ -404,6 +406,10 @@ func (ctx kubevirtContext) Stop(domainName string, force bool) error {
 	if err != nil {
 		fmt.Printf("Stop error %v\n", err)
 		return err
+	}
+
+	if _, ok := ctx.vmiList[domainName]; ok {
+		delete(ctx.vmiList, domainName)
 	}
 
 	return nil
@@ -439,6 +445,10 @@ func (ctx kubevirtContext) Delete(domainName string) (result error) {
 		return logError("failed to clean up domain state directory %s (%v)", domainName, err)
 	}
 
+	if _, ok := ctx.vmiList[domainName]; ok {
+		delete(ctx.vmiList, domainName)
+	}
+
 	return nil
 }
 
@@ -455,7 +465,7 @@ func (ctx kubevirtContext) Info(domainName string) (int, types.SwState, error) {
 	if effectiveDomainState, matched := stateMap[res]; !matched {
 		return 0, types.BROKEN, logError("domain %s reported to be in unexpected state %s", domainName, res)
 	} else {
-		return len(ctx.vmiList), effectiveDomainState, nil
+		return ctx.vmiList[domainName].domainId, effectiveDomainState, nil
 	}
 }
 
@@ -472,89 +482,6 @@ func (ctx kubevirtContext) Cleanup(domainName string) error {
 	}
 
 	return nil
-}
-
-// All PCI specific code is a copy from kvm.go, is there an ideal way to share the code ?
-func (ctx kubevirtContext) PCIReserve(long string) error {
-	logrus.Infof("PCIReserve long addr is %s", long)
-
-	overrideFile := sysfsPciDevices + long + "/driver_override"
-	driverPath := sysfsPciDevices + long + "/driver"
-	unbindFile := driverPath + "/unbind"
-
-	//Check if already bound to vfio-pci
-	driverPathInfo, driverPathErr := os.Stat(driverPath)
-	vfioDriverPathInfo, vfioDriverPathErr := os.Stat(vfioDriverPath)
-	if driverPathErr == nil && vfioDriverPathErr == nil &&
-		os.SameFile(driverPathInfo, vfioDriverPathInfo) {
-		logrus.Infof("Driver for %s is already bound to vfio-pci, skipping unbind", long)
-		return nil
-	}
-
-	//map vfio-pci as the driver_override for the device
-	if err := os.WriteFile(overrideFile, []byte("vfio-pci"), 0644); err != nil {
-		return logError("driver_override failure for PCI device %s: %v",
-			long, err)
-	}
-
-	//Unbind the current driver, whatever it is, if there is one
-	if _, err := os.Stat(unbindFile); err == nil {
-		if err := os.WriteFile(unbindFile, []byte(long), 0644); err != nil {
-			return logError("unbind failure for PCI device %s: %v",
-				long, err)
-		}
-	}
-
-	if err := os.WriteFile(sysfsPciDriversProbe, []byte(long), 0644); err != nil {
-		return logError("drivers_probe failure for PCI device %s: %v",
-			long, err)
-	}
-
-	return nil
-}
-
-func (ctx kubevirtContext) PCIRelease(long string) error {
-	logrus.Infof("PCIRelease long addr is %s", long)
-
-	overrideFile := sysfsPciDevices + long + "/driver_override"
-	unbindFile := sysfsPciDevices + long + "/driver/unbind"
-
-	//Write Empty string, to clear driver_override for the device
-	if err := os.WriteFile(overrideFile, []byte("\n"), 0644); err != nil {
-		logrus.Fatalf("driver_override failure for PCI device %s: %v",
-			long, err)
-	}
-
-	//Unbind vfio-pci, if unbind file is present
-	if _, err := os.Stat(unbindFile); err == nil {
-		if err := os.WriteFile(unbindFile, []byte(long), 0644); err != nil {
-			logrus.Fatalf("unbind failure for PCI device %s: %v",
-				long, err)
-		}
-	}
-
-	//Write PCI DDDD:BB:DD.FF to /sys/bus/pci/drivers_probe,
-	//as a best-effort to bring back original driver
-	if err := os.WriteFile(sysfsPciDriversProbe, []byte(long), 0644); err != nil {
-		logrus.Fatalf("drivers_probe failure for PCI device %s: %v",
-			long, err)
-	}
-
-	return nil
-}
-
-func (ctx kubevirtContext) PCISameController(id1 string, id2 string) bool {
-	tag1, err := types.PCIGetIOMMUGroup(id1)
-	if err != nil {
-		return types.PCISameController(id1, id2)
-	}
-
-	tag2, err := types.PCIGetIOMMUGroup(id2)
-	if err != nil {
-		return types.PCISameController(id1, id2)
-	}
-
-	return tag1 == tag2
 }
 
 // Kubernetes only allows size format in Ki, Mi, Gi etc. Not KiB, MiB, GiB ...
@@ -578,7 +505,6 @@ func getVMIStatus(domainName string) (string, error) {
 	err, kubeconfig := kubeapi.GetKubeConfig()
 	if err != nil {
 		return "", logError("couldn't get the Kube Config: %v", err)
-
 	}
 
 	virtClient, err := kubecli.GetKubevirtClientFromRESTConfig(kubeconfig)
@@ -598,6 +524,8 @@ func getVMIStatus(domainName string) (string, error) {
 
 	return res, nil
 }
+
+// Inspired from kvm.go
 func waitForVMI(domainName string, available bool) error {
 	maxDelay := time.Second * 300 // 5mins ?? lets keep it for now
 	delay := time.Second
