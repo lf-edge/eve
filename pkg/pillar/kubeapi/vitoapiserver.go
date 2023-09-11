@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 
+	zconfig "github.com/lf-edge/eve-api/go/config"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/diskmetrics"
 	"github.com/lf-edge/eve/pkg/pillar/types"
@@ -101,8 +102,9 @@ func GetPVCInfo(pvcName string) (*types.ImgInfo, error) {
 		return nil, err
 	}
 
+	fmt := zconfig.Format_name[int32(zconfig.Format_PVC)]
 	imgInfo := types.ImgInfo{
-		Format:    "pv",
+		Format:    fmt,
 		Filename:  pvcName,
 		DirtyFlag: false,
 	}
@@ -178,7 +180,7 @@ func NewPVCDefinition(pvcName string, size string, annotations, labels map[strin
 }
 
 // RolloutImgToPVC copy the content of diskfile to PVC
-func RolloutImgToPVC(ctx context.Context, log *base.LogObject, exists bool, diskfile, pvcName, outputFormat string, isAppImage bool) error {
+func RolloutImgToPVC(ctx context.Context, log *base.LogObject, exists bool, diskfile string, pvcName string, isAppImage bool) error {
 
 	//fetch CDI proxy url
 	// Get the Kubernetes clientset
@@ -198,7 +200,7 @@ func RolloutImgToPVC(ctx context.Context, log *base.LogObject, exists bool, disk
 	// Get the ClusterIP of the Service.
 	clusterIP := service.Spec.ClusterIP
 	uploadproxyURL := "https://" + clusterIP + ":443"
-	log.Noticef("PRAMOD RolloutImgToPVC diskfile %s pvc %s outputFormat %s URL %s", diskfile, pvcName, outputFormat, uploadproxyURL)
+	log.Noticef("PRAMOD RolloutImgToPVC diskfile %s pvc %s  URL %s", diskfile, pvcName, uploadproxyURL)
 	volSize, err := diskmetrics.GetDiskVirtualSize(log, diskfile)
 	if err != nil {
 		errStr := fmt.Sprintf("Failed to get virtual size of disk %s: %v", diskfile, err)
