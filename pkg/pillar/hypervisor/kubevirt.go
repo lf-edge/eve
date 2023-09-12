@@ -4,13 +4,18 @@
 package hypervisor
 
 import (
+	"bufio"
 	"context"
+	"crypto/tls"
 	"fmt"
+	"io"
 	"math"
 	"math/rand"
+	"net/http"
 	"os"
 	"runtime"
 	"strconv"
+	"strings"
 	"time"
 
 	//	zconfig "github.com/lf-edge/eve-api/go/config"
@@ -24,6 +29,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
 	//	"k8s.io/client-go/kubernetes"
 	//	"k8s.io/client-go/rest"
 	// "k8s.io/client-go/tools/clientcmd"
@@ -44,9 +50,11 @@ type vmiMetaData struct {
 
 type kubevirtContext struct {
 	ctrdContext
-	devicemodel  string
-	capabilities *types.Capabilities
-	vmiList      map[string]*vmiMetaData
+	devicemodel       string
+	capabilities      *types.Capabilities
+	vmiList           map[string]*vmiMetaData
+	virthandlerIPAddr string
+	prevDomainMetric  map[string]types.DomainMetric
 }
 
 // Use few states  for now
@@ -60,6 +68,16 @@ var stateMap = map[string]types.SwState{
 	"Failed":     types.FAILED,
 }
 
+var excludedMetrics = map[string]struct{}{
+	"kubevirt_vmi_cpu_affinity":                        {},
+	"kubevirt_vmi_memory_actual_balloon_bytes":         {},
+	"kubevirt_vmi_memory_unused_bytes":                 {},
+	"kubevirt_vmi_memory_pgmajfault":                   {},
+	"kubevirt_vmi_memory_pgminfault":                   {},
+	"kubevirt_vmi_memory_swap_in_traffic_bytes_total":  {},
+	"kubevirt_vmi_memory_swap_out_traffic_bytes_total": {},
+}
+
 func newKubevirt() Hypervisor {
 	ctrdCtx, err := initContainerd()
 	if err != nil {
@@ -70,15 +88,17 @@ func newKubevirt() Hypervisor {
 	switch runtime.GOARCH {
 	case "arm64":
 		return kubevirtContext{
-			ctrdContext: *ctrdCtx,
-			devicemodel: "virt",
-			vmiList:     make(map[string]*vmiMetaData),
+			ctrdContext:      *ctrdCtx,
+			devicemodel:      "virt",
+			vmiList:          make(map[string]*vmiMetaData),
+			prevDomainMetric: make(map[string]types.DomainMetric),
 		}
 	case "amd64":
 		return kubevirtContext{
-			ctrdContext: *ctrdCtx,
-			devicemodel: "pc-q35-3.1",
-			vmiList:     make(map[string]*vmiMetaData),
+			ctrdContext:      *ctrdCtx,
+			devicemodel:      "pc-q35-3.1",
+			vmiList:          make(map[string]*vmiMetaData),
+			prevDomainMetric: make(map[string]types.DomainMetric),
 		}
 	}
 	return nil
@@ -412,6 +432,10 @@ func (ctx kubevirtContext) Stop(domainName string, force bool) error {
 		delete(ctx.vmiList, domainName)
 	}
 
+	if _, ok := ctx.prevDomainMetric[domainName]; ok {
+		delete(ctx.prevDomainMetric, domainName)
+	}
+
 	return nil
 }
 
@@ -447,6 +471,10 @@ func (ctx kubevirtContext) Delete(domainName string) (result error) {
 
 	if _, ok := ctx.vmiList[domainName]; ok {
 		delete(ctx.vmiList, domainName)
+	}
+
+	if _, ok := ctx.prevDomainMetric[domainName]; ok {
+		delete(ctx.prevDomainMetric, domainName)
 	}
 
 	return nil
@@ -568,4 +596,212 @@ func waitForVMI(domainName string, available bool) error {
 			delay = time.Minute
 		}
 	}
+}
+
+func (ctx kubevirtContext) GetDomsCPUMem() (map[string]types.DomainMetric, error) {
+	logrus.Infof("GetDomsCPUMem: enter")
+
+	res := make(map[string]types.DomainMetric, len(ctx.vmiList))
+	virtIP, err := getVirtHandlerIPAddr(&ctx)
+	if err != nil {
+		logrus.Errorf("GetDomsCPUMem get virthandler ip error %v", err)
+		return nil, err
+	}
+
+	url := "https://" + virtIP + ":8443/metrics"
+	httpClient := &http.Client{
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		},
+	}
+
+	// Perform the GET request
+	resp, err := httpClient.Get(url)
+	if err != nil {
+		logrus.Errorf("GetDomsCPUMem http url %s, get error %v", url, err)
+		ctx.virthandlerIPAddr = "" // next round get the IP again
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	// Check the response status code
+	if resp.StatusCode != http.StatusOK {
+		logrus.Infof("GetDomsCPUMem: HTTP request failed with status code: %d", resp.StatusCode)
+		ctx.virthandlerIPAddr = "" // next round get the IP again
+		return nil, err
+	}
+
+	// Read the response body
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		logrus.Infof("GetDomsCPUMem: Error reading response body %v", err)
+		return nil, err
+	}
+
+	scanner := bufio.NewScanner(strings.NewReader(string(body)))
+	for scanner.Scan() {
+		line := scanner.Text()
+		if (strings.HasPrefix(line, "kubevirt_vmi_cpu") ||
+			strings.HasPrefix(line, "kubevirt_vmi_memory")) &&
+			strings.Contains(line, eveNameSpace) {
+
+			parts := strings.SplitN(line, " ", 2)
+			if len(parts) != 2 {
+				continue
+			}
+
+			metricStr := parts[0]
+			metricValue := parts[1]
+
+			metricStr2 := strings.SplitN(metricStr, "{", 2)
+			if len(metricStr2) != 2 {
+				continue
+			}
+			metricName := metricStr2[0]
+			if _, excluded := excludedMetrics[metricName]; excluded {
+				continue
+			}
+
+			vmiName := getVMIName(metricStr2[1])
+			var parsedValue interface{}
+			if strings.Contains(metricValue, ".") || strings.Contains(metricValue, "e+") {
+				// Try parsing as float64
+				value, err := strconv.ParseFloat(metricValue, 64)
+				if err != nil {
+					continue
+				}
+				parsedValue = value
+			} else {
+				// Try parsing as int
+				value, err := strconv.Atoi(metricValue)
+				if err != nil {
+					continue
+				}
+				parsedValue = value
+			}
+
+			if _, ok := res[vmiName]; !ok {
+				res[vmiName] = types.DomainMetric{
+					UUIDandVersion: types.UUIDandVersion{},
+					CPUScaled:      1,
+				}
+			}
+			fillMetrics(res, vmiName, metricName, parsedValue)
+			logrus.Infof("GetDomsCPUMem: vmi %s, metric name %s, value %v", vmiName, metricName, parsedValue)
+		}
+	}
+
+	for n, r := range res {
+		// used_bytes = available_bytes - usable_bytes
+		r.UsedMemory = r.UsedMemory - r.AvailableMemory
+		if r.AllocatedMB > 0 {
+			per := float64(r.UsedMemory) / float64(r.AllocatedMB)
+			r.UsedMemoryPercent = per
+		}
+		if r.UsedMemory > r.MaxUsedMemory {
+			r.MaxUsedMemory = r.UsedMemory
+		}
+		if _, ok := ctx.prevDomainMetric[n]; !ok {
+			r.MaxUsedMemory = r.UsedMemory
+			ctx.prevDomainMetric[n] = r
+		} else {
+			if ctx.prevDomainMetric[n].MaxUsedMemory > r.UsedMemory {
+				r.MaxUsedMemory = ctx.prevDomainMetric[n].MaxUsedMemory
+			} else if ctx.prevDomainMetric[n].MaxUsedMemory < r.UsedMemory {
+				r.MaxUsedMemory = r.UsedMemory
+			}
+			ctx.prevDomainMetric[n] = r
+		}
+		res[n] = r
+	}
+	logrus.Infof("GetDomsCPUMem: %d VMs: %+v", len(ctx.vmiList), res)
+	return res, nil
+}
+
+func getVirtHandlerIPAddr(ctx *kubevirtContext) (string, error) {
+	if ctx.virthandlerIPAddr != "" {
+		return ctx.virthandlerIPAddr, nil
+	}
+	clientSet, err := kubeapi.GetClientSet()
+	if err != nil {
+		return "", err
+	}
+
+	pods, err := clientSet.CoreV1().Pods("kubevirt").List(context.Background(),
+		metav1.ListOptions{
+			LabelSelector: "kubevirt.io=virt-handler",
+		})
+	if err != nil {
+		return "", err
+	}
+
+	var vmiPod *k8sv1.Pod
+	for _, pod := range pods.Items {
+		if strings.HasPrefix(pod.ObjectMeta.Name, "virt-handler-") {
+			vmiPod = &pod
+			break
+		}
+	}
+
+	if vmiPod == nil {
+		return "", fmt.Errorf("can not find virt-handler pod")
+	}
+	ctx.virthandlerIPAddr = vmiPod.Status.PodIP
+	logrus.Infof("getVirtHandlerIPAddr: %s", ctx.virthandlerIPAddr)
+	return ctx.virthandlerIPAddr, nil
+}
+
+func getVMIName(metricStr string) string {
+	nameStr := strings.SplitN(metricStr, ",name=\"", 2)
+	if len(nameStr) != 2 {
+		fmt.Printf("get name failed, string %s\n", metricStr)
+		return ""
+	}
+	nameStr2 := strings.SplitN(nameStr[1], "\",", 2)
+	if len(nameStr2) != 2 {
+		fmt.Printf("get name2 failed, string %s\n", metricStr)
+		return ""
+	}
+	return nameStr2[0]
+}
+
+func fillMetrics(res map[string]types.DomainMetric, vmiName, metricName string, value interface{}) {
+	if _, ok := res[vmiName]; !ok {
+		logrus.Infof("fillMetrics, vmiName %s not in map", vmiName)
+		return
+	}
+
+	r := res[vmiName]
+	BytesInMegabyte := uint32(1024 * 1024)
+	switch metricName {
+	// add all the cpus to be Total, seconds should be from VM startup time
+	case "kubevirt_vmi_cpu_system_usage_seconds":
+	case "kubevirt_vmi_cpu_usage_seconds":
+	case "kubevirt_vmi_cpu_user_usage_seconds":
+		cpuNs := assignToInt64(value) * int64(time.Second)
+		r.CPUTotalNs = r.CPUTotalNs + uint64(cpuNs)
+	case "kubevirt_vmi_memory_usable_bytes":
+		r.AvailableMemory = uint32(assignToInt64(value)) / BytesInMegabyte
+	case "kubevirt_vmi_memory_domain_bytes_total":
+		r.AllocatedMB = uint32(assignToInt64(value)) / BytesInMegabyte
+	case "kubevirt_vmi_memory_available_bytes": // save this temp for later
+		r.UsedMemory = uint32(assignToInt64(value)) / BytesInMegabyte
+	//case "kubevirt_vmi_memory_resident_bytes":
+	//	r.UsedMemory = uint32(assignToInt64(value)) / BytesInMegabyte
+	default:
+	}
+	res[vmiName] = r
+}
+
+func assignToInt64(parsedValue interface{}) int64 {
+	var intValue int64
+
+	// Assert the type and assign to the int64 variable
+	if val, ok := parsedValue.(int); ok {
+		intValue = int64(val)
+	} else if val, ok := parsedValue.(float64); ok {
+		intValue = int64(val)
+	}
+
+	return intValue
 }
