@@ -417,6 +417,18 @@ if [ "$eve_flavor" = "kubevirt" ]; then
         mount /dev/zvol/persist/clustered-storage /var/lib  ## This is where we persist the cluster components (k3s containers)
         echo "$(date -Ins -u) Mounted clustered-storage in kubevirt eve"
    fi
+   if [ ! -d /var/lib/rancher/k3s/agent/containerd ]; then
+     mkdir -p /var/lib/rancher/k3s/agent/containerd
+     echo "Created k3s containerd directory"
+     if [ -d /persist/vault/containerd ]; then
+       echo "Removed existing vault containerd directory"
+       rm -rf /persist/vault/containerd
+     fi
+     if [ ! -L /persist/vault/containerd ]; then
+       echo "make symlink to k3s containerd"
+       ln -sf /var/lib/rancher/k3s/agent/containerd /persist/vault/containerd
+     fi
+   fi
 fi
 
 echo "$(date -Ins -u) Done starting EVE version: $(cat /run/eve-release)"

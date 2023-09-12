@@ -36,7 +36,7 @@ func switchNISpecCreate(ctx *zedkubeContext, niStatus *types.NetworkInstanceStat
 
 	status, err := kubeGetNIStatus(ctx, niUUID)
 	if err != nil || status.BridgeName == "" {
-		log.Noticef("localNISpecCreate: spec get status wait. status %+v, err %v", status, err)
+		log.Noticef("switchNISpecCreate: spec get status wait. status %+v, err %v", status, err)
 		return err
 	}
 
@@ -72,6 +72,15 @@ func switchNISpecCreate(ctx *zedkubeContext, niStatus *types.NetworkInstanceStat
 	output = output + fmt.Sprintf("  }\n")
 
 	err = kubeapi.CreateNAD(ctx.ps, log, []byte(output), name, namespace)
+	if _, ok := ctx.niStatusMap[niUUID.String()]; !ok {
+		k := niKubeStatus{
+			status: *niStatus,
+		}
+		if err == nil {
+			k.created = true
+		}
+		ctx.niStatusMap[niUUID.String()] = k
+	}
 	log.Noticef("switch2NISpecCreate: spec, CreateNAD, error %v", err)
 	return err
 }
@@ -123,7 +132,13 @@ func localNISpecCreate(ctx *zedkubeContext, niStatus *types.NetworkInstanceStatu
 	err = kubeapi.CreateNAD(ctx.ps, log, []byte(output), name, namespace)
 	log.Noticef("localNISpecCreate: spec, CreateNAD, error %v", err)
 	if _, ok := ctx.niStatusMap[niUUID.String()]; !ok {
-		ctx.niStatusMap[niUUID.String()] = niStatus
+		k := niKubeStatus{
+			status: *niStatus,
+		}
+		if err == nil {
+			k.created = true
+		}
+		ctx.niStatusMap[niUUID.String()] = k
 	}
 
 	return err

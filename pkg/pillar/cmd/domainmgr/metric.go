@@ -5,8 +5,9 @@ package domainmgr
 
 import (
 	"fmt"
-	"github.com/lf-edge/eve/pkg/pillar/hypervisor"
 	"time"
+
+	"github.com/lf-edge/eve/pkg/pillar/hypervisor"
 
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	"github.com/lf-edge/eve/pkg/pillar/types"

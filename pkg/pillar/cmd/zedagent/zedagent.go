@@ -1365,13 +1365,9 @@ func initPostOnboardSubs(zedagentCtx *zedagentContext) {
 		log.Fatal(err)
 	}
 
-	domainMetricFrom := "domainmgr"
-	if zedagentCtx.hvTypeKube { // if in kubecluster mode, take DomainMetrics from zedkube
-		domainMetricFrom = "zedkube"
-	}
 	// Look for DomainMetric from domainmgr
 	getconfigCtx.subDomainMetric, err = ps.NewSubscription(pubsub.SubscriptionOptions{
-		AgentName:   domainMetricFrom,
+		AgentName:   "domainmgr",
 		MyAgentName: agentName,
 		TopicImpl:   types.DomainMetric{},
 		Activate:    true,

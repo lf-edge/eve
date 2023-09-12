@@ -32,6 +32,11 @@ var (
 	log    *base.LogObject
 )
 
+type niKubeStatus struct {
+	status  types.NetworkInstanceStatus
+	created bool
+}
+
 type zedkubeContext struct {
 	agentbase.AgentBase
 	ps                       *pubsub.PubSub
@@ -47,7 +52,7 @@ type zedkubeContext struct {
 	ioAdapterMap             sync.Map
 	config                   *rest.Config
 	appKubeNetStatus         map[string]*types.AppKubeNetworkStatus
-	niStatusMap              map[string]*types.NetworkInstanceStatus
+	niStatusMap              map[string]niKubeStatus
 	resendNITimer            *time.Timer
 	appMetricsTimer          *time.Timer
 	appLogStarted            bool
@@ -179,7 +184,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 
 	//zedkubeCtx.configWait = make(map[string]bool)
 	zedkubeCtx.appKubeNetStatus = make(map[string]*types.AppKubeNetworkStatus)
-	zedkubeCtx.niStatusMap = make(map[string]*types.NetworkInstanceStatus)
+	zedkubeCtx.niStatusMap = make(map[string]niKubeStatus)
 
 	config, err := kubeapi.WaitKubernetes(agentName, ps, stillRunning)
 	if err != nil {
@@ -290,6 +295,8 @@ func handleNetworkInstanceModify(
 	var err error
 	if _, ok := ctx.niStatusMap[key]; !ok {
 		err = genNISpecCreate(ctx, &status)
+	} else if !ctx.niStatusMap[key].created {
+		err = genNISpecCreate(ctx, &status)
 	}
 	log.Noticef("handleNetworkInstanceModify: spec modify %v", err)
 	checkNISendStatus(ctx, &status, err)
@@ -311,10 +318,8 @@ func resendNIToCluster(ctx *zedkubeContext) {
 
 func checkNISendStatus(ctx *zedkubeContext, status *types.NetworkInstanceStatus, err error) {
 	if err != nil {
-		status.Activated = false
 		ctx.resendNITimer = time.NewTimer(10 * time.Second)
-	} else {
-		status.Activated = true
+		log.Noticef("checkNISendStatus: NAD create failed, will retry, err %v", err)
 	}
 	publishNetworkInstanceStatus(ctx, status)
 }

@@ -685,6 +685,16 @@ func publishAppInstanceStatus(ctx *zedmanagerContext,
 
 	key := status.Key()
 	log.Tracef("publishAppInstanceStatus(%s)", key)
+	if ctx.hvTypeKube { // XXX hack here to get the network stats
+		for i := range status.UnderlayNetworks {
+			ulStatus := &status.UnderlayNetworks[i]
+			if ulStatus.VifUsed == "" && ulStatus.Vif != "" {
+				ulStatus.VifUsed = ulStatus.Vif
+				status.UnderlayNetworks[i] = *ulStatus
+				log.Noticef("publishAppInstanceStatus: VifUsed updated %v", ulStatus)
+			}
+		}
+	}
 	pub := ctx.pubAppInstanceStatus
 	pub.Publish(key, *status)
 }
