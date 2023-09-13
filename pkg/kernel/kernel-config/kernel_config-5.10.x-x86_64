@@ -1,6 +1,6 @@
 #
 # Automatically generated file; DO NOT EDIT.
-# Linux/x86 5.10.186 Kernel Configuration
+# Linux/x86_64 5.10.186 Kernel Configuration
 #
 CONFIG_CC_VERSION_TEXT="gcc (Alpine 11.2.1_git20220219) 11.2.1 20220219"
 CONFIG_CC_IS_GCC=y
@@ -2416,7 +2416,7 @@ CONFIG_SWPHY=y
 # CONFIG_LXT_PHY is not set
 # CONFIG_INTEL_XWAY_PHY is not set
 # CONFIG_LSI_ET1011C_PHY is not set
-# CONFIG_MARVELL_PHY is not set
+CONFIG_MARVELL_PHY=m
 # CONFIG_MARVELL_10G_PHY is not set
 # CONFIG_MICREL_PHY is not set
 # CONFIG_MICROCHIP_PHY is not set
