@@ -34,7 +34,8 @@ RUN echo "mtools_skip_check=1" >> etc/mtools.conf; \
 ADD https://www.ddcutil.com/tarballs/ddcutil-1.2.2.tar.gz /out/ddcutil-1.2.2.tar.gz
 ADD http://sources.buildroot.net/edid-decode/edid-decode-188950472c19492547e298b27f9da0d72cf826df.tar.gz /out/edid-decode-188950472c19492547e298b27f9da0d72cf826df.tar.gz
 ADD https://github.com/linuxhw/build-stuff/releases/download/1.6/hw-probe-1.6-AI.tar.gz /out/hw-probe-1.6-AI.tar.gz
-ADD https://cloud-images.ubuntu.com/minimal/releases/jammy/release/ubuntu-22.04-minimal-cloudimg-amd64.img /out/ubuntu-22.04-minimal-cloudimg-amd64.img
+# Temporarily removed ubuntu VM image to make the verification image smaller.
+#ADD https://cloud-images.ubuntu.com/minimal/releases/jammy/release/ubuntu-22.04-minimal-cloudimg-amd64.img /out/ubuntu-22.04-minimal-cloudimg-amd64.img
 ADD https://github.com/tpm2-software/tpm2-tools/archive/5.2.tar.gz /out/5.2.tar.gz
 
 COPY make-raw verify grub.cfg.in UsbInvocationScript.txt ./
@@ -61,7 +62,9 @@ WORKDIR /out/tpm2-tools-5.2
 RUN ./bootstrap \
     && ./configure --prefix=/out/usr \
     && make -j"$(nproc)" \
-    && make install
+    && make install \
+    && rm -rf /out/edid-decode-188950472c19492547e298b27f9da0d72cf826df \
+    /out/ddcutil-1.2.2 /out/hw-probe-1.6-AI /out/tpm2-tools-5.2
 # Before changing something here please take a look into the
 # images/rootfs.yml.in onboot section: the verification should
 # precede the storage-init container.
