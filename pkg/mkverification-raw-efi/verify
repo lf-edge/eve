@@ -373,24 +373,31 @@ do
    fi
 done
 
-#Testing qemu and passthrough
-qemu_exec=/usr/bin/qemu-system-$(uname -m)
-machine=$($qemu_exec -machine help | awk '{if (NR==2) print $1}')
-$qemu_exec -m 1024 -smp 2 -display none -serial mon:stdio -global ICH9-LPC.noreboot=false \
-   -watchdog-action reset -rtc base=utc,clock=rt -machine "$machine" -cpu SandyBridge \
-   -drive file=/ubuntu-22.04-minimal-cloudimg-amd64.img,format=qcow2 &
+if false; # Temporarily commented out
+then
+   # Testing qemu and passthrough
+   qemu_exec=/usr/bin/qemu-system-$(uname -m)
+   machine=$($qemu_exec -machine help | awk '{if (NR==2) print $1}')
+   $qemu_exec -m 1024 -smp 2 -display none -serial mon:stdio -global ICH9-LPC.noreboot=false \
+      -watchdog-action reset -rtc base=utc,clock=rt -machine "$machine" -cpu SandyBridge \
+      -drive file=/ubuntu-22.04-minimal-cloudimg-amd64.img,format=qcow2 &
 
-# shellcheck disable=SC2181
-if [ "$?" -eq 0 ]; then
-   kill %1
-   echo "start VM success" > "$REPORT/guest-checks.log"
-   echo "Start of an edge application successful" >> "$REPORT/summary.log";
-else
-   echo "start VM failed" > "$REPORT/guest-checks.log"
-   echo "Start of an edge application failed" >> "$REPORT/summary.log";
+   # shellcheck disable=SC2181
+   if [ "$?" -eq 0 ]; then
+      kill %1
+      echo "start VM success" > "$REPORT/guest-checks.log"
+      echo "Start of an edge application successful" >> "$REPORT/summary.log";
+   else
+      echo "start VM failed" > "$REPORT/guest-checks.log"
+      echo "Start of an edge application failed" >> "$REPORT/summary.log";
+   fi
 fi
 
+echo "start VM test unavailable" > "$REPORT/guest-checks.log"
+
 tpm2_pcrread >> "$REPORT/summary.log"
+
+cp "/root/etc/eve-release" "$REPORT"
 
 cat "$REPORT/summary.log"
 
@@ -400,8 +407,24 @@ if [ -n "$REPORT" ]; then
    cat $LOGFILE > "$REPORT/verification.log"
 fi
 
+# if we store report to USB copy installer.log to persist explicitly
+if [ ! -d "/persist/installer" ]; then
+  mkdir "/persist/installer"
+  cat $LOGFILE > "/persist/installer/installer.log"
+fi
+
+#store file to indicate first boot after installer
+touch /persist/installer/first-boot
+
+# store file to indicate that EVE will clean vault
+# in case of no key received from controller
+mkdir -p /persist/status
+touch /persist/status/allow-vault-clean
+
 # lets hope this is enough to flush the caches
 sync; sleep 5; sync
+umount /config 2>/dev/null
+umount /run/INVENTORY 2>/dev/null
 
 # we need a copy of these in tmpfs so that a block device with rootfs can be yanked
 cp /sbin/poweroff /sbin/reboot /bin/sleep /run

@@ -191,9 +191,10 @@ do_rootfs() {
     esac
 
     # Calculate partition size and add a partition
+    # shellcheck disable=SC2086
     sgdisk --new "$NUM_PART:$SEC_START:$SEC_END" \
            --typecode="$NUM_PART:$PARTITION_TYPE_USR_X86_64" \
-           --change-name="$NUM_PART:$LABEL" "$EXTRA_ATTR" "$IMGFILE"
+           --change-name="$NUM_PART:$LABEL" $EXTRA_ATTR "$IMGFILE"
 
     if [ -z "$RANDOM_DISK_UUIDS" ]; then
         case $LABEL in
