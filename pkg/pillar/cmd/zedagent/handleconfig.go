@@ -760,18 +760,20 @@ func requestConfigByURL(getconfigCtx *getconfigContext, url string,
 			publishZedAgentStatus(getconfigCtx)
 			return invalidConfig, rv.TracedReqs
 		}
+		// Decrypts auth container envelope if it is encrypted
+		err = decryptAuthContainer(getconfigCtx, &rv)
+		if err != nil {
+			log.Errorf("decryptAuthContainer: %s", err)
+		}
 	}
 
 	// Copy of retval with auth container stream
 	var authWrappedRV zedcloud.SendRetval
 
-	// Decrypts auth container envelope if it is encrypted
-	err = decryptAuthContainer(getconfigCtx, &rv)
-	if err != nil {
-		log.Errorf("decryptAuthContainer: %s", err)
-	} else {
-		// Success path. Store auth container stream for further
-		// saving it into the file
+	if err == nil {
+		// Success path for both cases: generic config or compound decrypted
+		// config. Store auth container stream for further saving it into the
+		// file.
 		authWrappedRV = rv
 		err = zedcloud.RemoveAndVerifyAuthContainer(zedcloudCtx, &rv, false)
 		if err != nil {
