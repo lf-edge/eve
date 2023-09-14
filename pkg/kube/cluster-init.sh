@@ -141,8 +141,8 @@ setup_prereqs () {
 # NOTE: We only support zfs storage in production systems because data is persisted on zvol.
 # If ZFS is not available we still go ahead and provide the service but the data is lost on reboot
 # because /var/lib will be on overlayfs. The only reason to allow that is to provide a quick debugging env for developers.
-if [ -b /dev/zvol/persist/clustered-storage ]; then
-        mount /dev/zvol/persist/clustered-storage /var/lib  ## This is where we persist the cluster components (k3s containers)
+if [ -b /dev/zvol/persist/etcd-storage ]; then
+        mount /dev/zvol/persist/etcd-storage /var/lib  ## This is where we persist the cluster components (k3s containers)
         logmsg "Using ZFS persistent storage"
 else
         logmsg "WARNING: Using overlayfs non-persistent storage"
