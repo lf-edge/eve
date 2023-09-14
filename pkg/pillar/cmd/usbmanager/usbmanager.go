@@ -10,7 +10,6 @@ import (
 
 	"github.com/lf-edge/eve/pkg/pillar/agentbase"
 	"github.com/lf-edge/eve/pkg/pillar/base"
-	"github.com/lf-edge/eve/pkg/pillar/cmd/domainmgr"
 	"github.com/lf-edge/eve/pkg/pillar/hypervisor"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
@@ -82,7 +81,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	}
 	log.Functionf("processed Vault Status")
 
-	currentHypervisor := domainmgr.CurrentHypervisor()
+	currentHypervisor := hypervisor.CurrentHypervisor()
 	_, ok := currentHypervisor.(hypervisor.KvmContext)
 	if ok {
 		usbCtx.subscribe(ps)
