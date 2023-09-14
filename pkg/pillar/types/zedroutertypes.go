@@ -877,6 +877,14 @@ func (config DevicePortConfig) IsDPCTestable(minTimeSinceFailure time.Duration) 
 	if config.LastSucceeded.After(config.LastFailed) {
 		return true
 	}
+	if config.LastFailed.After(time.Now()) {
+		// Clocks are not in sync - most likely they are still around
+		// the start of the epoch.
+		// Network is likely needed to synchronize the clocks using NTP,
+		// and we should attempt to establish network connectivity using
+		// any DPC available.
+		return true
+	}
 	return time.Since(config.LastFailed) >= minTimeSinceFailure
 }
 
