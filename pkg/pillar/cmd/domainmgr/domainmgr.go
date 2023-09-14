@@ -2939,6 +2939,10 @@ func updatePortAndPciBackIoBundle(ctx *domainContext, ib *types.IoBundle) (chang
 		ib.Type, ib.Phylabel, ib.AssignmentGroup, isPort, keepInHost, len(list))
 	anyChanged := false
 	for _, ib := range list {
+		if ib.UsbAddr != "" {
+			// this is usb device forwarding, so usbmanager cares for not passing through network devices
+			continue
+		}
 		changed, err := updatePortAndPciBackIoMember(ctx, ib, isPort, keepInHost)
 		anyChanged = anyChanged || changed
 		if err != nil {
@@ -3011,7 +3015,7 @@ func updatePortAndPciBackIoMember(ctx *domainContext, ib *types.IoBundle, isPort
 		ib.IsPCIBack = false
 		// Verify that it has been returned from pciback
 		_, err = types.IoBundleToPci(log, ib)
-		if err != nil {
+		if err != nil || ib.UsbAddr != "" {
 			err = fmt.Errorf("adapter %s (group %s type %d) PCI ID %s not found: %v",
 				ib.Phylabel, ib.AssignmentGroup, ib.Type,
 				ib.PciLong, err)
