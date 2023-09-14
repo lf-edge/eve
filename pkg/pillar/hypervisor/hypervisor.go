@@ -4,13 +4,36 @@
 package hypervisor
 
 import (
+	"flag"
 	"fmt"
+	"log"
+	"os"
+
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/shirou/gopsutil/cpu"
 	"github.com/shirou/gopsutil/mem"
 	"github.com/sirupsen/logrus"
-	"os"
 )
+
+var currentHypervisor Hypervisor
+
+func init() {
+	var err error
+
+	flagSet := flag.NewFlagSet("", flag.ExitOnError)
+	allHypervisors, enabledHypervisors := GetAvailableHypervisors()
+	hypervisorPtr := flagSet.String("h", enabledHypervisors[0], fmt.Sprintf("Current hypervisor %+q", allHypervisors))
+
+	currentHypervisor, err = GetHypervisor(*hypervisorPtr)
+	if err != nil {
+		log.Fatal(err)
+	}
+}
+
+// CurrentHypervisor returns the current hypervisor
+func CurrentHypervisor() Hypervisor {
+	return currentHypervisor
+}
 
 // Hypervisor provides methods for manipulating domains on the host
 type Hypervisor interface {
