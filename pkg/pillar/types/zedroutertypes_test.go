@@ -183,56 +183,75 @@ func TestIsDPCUsable(t *testing.T) {
 }
 
 func TestIsDPCTestable(t *testing.T) {
-	n := time.Now()
 	testMatrix := map[string]struct {
 		devicePortConfig DevicePortConfig
 		expectedValue    bool
 	}{
-		"Difference is exactly 60 seconds": {
+		"DPC always failed test and not enough time passed since the last test": {
 			devicePortConfig: DevicePortConfig{
 				TestResults: TestResults{
-					LastFailed:    n.Add(time.Second * 60),
-					LastSucceeded: n,
+					LastFailed:    time.Now().Add(-2 * time.Minute),
+					LastSucceeded: time.Time{},
 				},
 				Ports: usablePorts,
 			},
 			expectedValue: false,
 		},
-		"Difference is 61 seconds": {
+		"DPC succeeded, then failed and not enough time passed since then": {
 			devicePortConfig: DevicePortConfig{
 				TestResults: TestResults{
-					LastFailed:    n.Add(time.Second * 61),
-					LastSucceeded: n,
+					LastFailed:    time.Now().Add(-2 * time.Minute),
+					LastSucceeded: time.Now().Add(-4 * time.Minute),
 				},
 				Ports: usablePorts,
 			},
 			expectedValue: false,
 		},
-		"Difference is 59 seconds": {
+		"DPC always failed test but enough time passed since the last test": {
 			devicePortConfig: DevicePortConfig{
 				TestResults: TestResults{
-					LastFailed:    n.Add(time.Second * 59),
-					LastSucceeded: n,
-				},
-				Ports: usablePorts,
-			},
-			expectedValue: false,
-		},
-		"LastFailed is 0": {
-			devicePortConfig: DevicePortConfig{
-				TestResults: TestResults{
-					LastFailed:    time.Time{},
-					LastSucceeded: n,
+					LastFailed:    time.Now().Add(-6 * time.Minute),
+					LastSucceeded: time.Time{},
 				},
 				Ports: usablePorts,
 			},
 			expectedValue: true,
 		},
-		"Last Succeeded is after Last Failed": {
+		"DPC succeeded, then failed but enough time passed since then": {
 			devicePortConfig: DevicePortConfig{
 				TestResults: TestResults{
-					LastFailed:    n,
-					LastSucceeded: n.Add(time.Second * 61),
+					LastFailed:    time.Now().Add(-6 * time.Minute),
+					LastSucceeded: time.Now().Add(-8 * time.Minute),
+				},
+				Ports: usablePorts,
+			},
+			expectedValue: true,
+		},
+		"DPC always succeeded test": {
+			devicePortConfig: DevicePortConfig{
+				TestResults: TestResults{
+					LastFailed:    time.Time{},
+					LastSucceeded: time.Now().Add(-2 * time.Minute),
+				},
+				Ports: usablePorts,
+			},
+			expectedValue: true,
+		},
+		"DPC failed but later succeeded test": {
+			devicePortConfig: DevicePortConfig{
+				TestResults: TestResults{
+					LastFailed:    time.Now().Add(-4 * time.Minute),
+					LastSucceeded: time.Now().Add(-2 * time.Minute),
+				},
+				Ports: usablePorts,
+			},
+			expectedValue: true,
+		},
+		"Clocks are not synchronized": {
+			devicePortConfig: DevicePortConfig{
+				TestResults: TestResults{
+					LastFailed:    time.Now().Add(time.Hour),
+					LastSucceeded: time.Time{},
 				},
 				Ports: usablePorts,
 			},
