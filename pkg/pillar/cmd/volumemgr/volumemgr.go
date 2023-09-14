@@ -253,12 +253,16 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	}
 
 	if ctx.persistType == types.PersistZFS {
-		// create datasets for volumes
-		initializeDatasets()
-		// Iterate over volume datasets and prepares map of
-		// volume's content format with the volume key
-		populateExistingVolumesFormatDatasets(&ctx, types.VolumeEncryptedZFSDataset)
-		populateExistingVolumesFormatDatasets(&ctx, types.VolumeClearZFSDataset)
+		if ctx.hvTypeKube {
+			initializeDirs()
+		} else {
+			// create datasets for volumes
+			initializeDatasets()
+			// Iterate over volume datasets and prepares map of
+			// volume's content format with the volume key
+			populateExistingVolumesFormatDatasets(&ctx, types.VolumeEncryptedZFSDataset)
+			populateExistingVolumesFormatDatasets(&ctx, types.VolumeClearZFSDataset)
+		}
 
 		// CSI Persist volumes are built on ZFS, check and populate if they exist
 		if ctx.hvTypeKube {

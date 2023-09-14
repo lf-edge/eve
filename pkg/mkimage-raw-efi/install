@@ -157,7 +157,7 @@ prepare_mounts_and_zfs_pool() {
 
   # If clustered storage, then create volume of (available space - RESERVE_EVE_STORAGE_SIZEGB) and format it with ext4
   if [ "$2" = true ]; then
-          logmsg "Creating clustered-storage"
+          logmsg "Creating etcd-storage"
           # When k3s cluster components start they will mount this volume
           # If zfs-udev module is available at this point we will use path to the volume
           # else we will format the raw device /dev/zd0 which is guaranteed to exist since its the first
@@ -166,19 +166,29 @@ prepare_mounts_and_zfs_pool() {
           reservedGB=$3
           logmsg "AvailableGB : $availableGB  ReservedGB : $reservedGB"
           SIZEGB=$((availableGB - reservedGB))
+
+          etcdSizeGb=0
+          vaultSizeGb=0
           if [ $SIZEGB -gt 0 ]; then
-             SIZEGB=$SIZEGB"G"
-             logmsg "Creating clustered-storage volume of size $SIZEGB"
+            etcdSizeGb=1
+            if [ $SIZEGB -gt 20 ]; then
+               etcdSizeGb=5
+            fi
+          fi
+
+          if [ $etcdSizeGb -gt 0 ]; then
+             etcdSizeGb=$etcdSizeGb"G"
+             logmsg "Creating etcd-storage volume of size $etcdSizeGb"
              /sbin/modprobe  zfs-udev
-             chroot /root zfs create -V $SIZEGB -o volblocksize=16k persist/clustered-storage
-             if [ -b /dev/zvol/persist/clustered-storage ]; then
-                logmsg "Formatting clustered-storage to ext4"
-                /sbin/mkfs -t ext4 /dev/zvol/persist/clustered-storage
+             chroot /root zfs create -V $etcdSizeGb -o volblocksize=16k persist/etcd-storage
+             if [ -b /dev/zvol/persist/etcd-storage ]; then
+                logmsg "Formatting etcd-storage to ext4"
+                /sbin/mkfs -t ext4 /dev/zvol/persist/etcd-storage
              elif [ -b /dev/zd0 ]; then
                 logmsg "Formatting /dev/zd0 to ext4"
                 /sbin/mkfs -t ext4 /dev/zd0
              else
-                logmsg "FATAL: clustered-storage volume creation failed."
+                logmsg "FATAL: etcd-storage volume creation failed."
              fi
           fi
   fi
