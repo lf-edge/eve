@@ -288,18 +288,6 @@ if [ ! -f /var/lib/all_components_initialized ]; then
                 logmsg "Initializing K3S version $K3S_VERSION"
                 trigger_k3s_selfextraction
                 check_start_containerd
-                if [ ! -d /var/lib/rancher/k3s/agent/containerd ]; then
-                  mkdir -p /var/lib/rancher/k3s/agent/containerd
-                  logmsg "mkdir k3s containerd directory"
-                fi
-                if [ -d /persist/vault/containerd ]; then
-                  logmsg "Remove existing vault containerd directory"
-                  rm -rf /persist/vault/containerd
-                fi
-                if [ ! -L /persist/vault/containerd ]; then
-                  logmsg "make symlink of containerd"
-                  ln -sf /var/lib/rancher/k3s/agent/containerd /persist/vault/containerd
-                fi
                 nohup /usr/bin/k3s server --config /etc/rancher/k3s/config.yaml &
                 #wait until k3s is ready
                 logmsg "Looping until k3s is ready"

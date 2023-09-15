@@ -413,21 +413,9 @@ if [ "$eve_flavor" = "kubevirt" ]; then
    # Mount clustered-storage to /var/lib
    # We need to this here to access the containerd storage in /var/lib/rancher/k3s/agent/containerd.
    # kube container will create a link /persist/vault/containerd -> /var/lib/rancher/k3s/agent/containerd
-   if [ -b /dev/zvol/persist/clustered-storage ]; then
-        mount /dev/zvol/persist/clustered-storage /var/lib  ## This is where we persist the cluster components (k3s containers)
-        echo "$(date -Ins -u) Mounted clustered-storage in kubevirt eve"
-   fi
-   if [ ! -d /var/lib/rancher/k3s/agent/containerd ]; then
-     mkdir -p /var/lib/rancher/k3s/agent/containerd
-     echo "Created k3s containerd directory"
-     if [ -d /persist/vault/containerd ]; then
-       echo "Removed existing vault containerd directory"
-       rm -rf /persist/vault/containerd
-     fi
-     if [ ! -L /persist/vault/containerd ]; then
-       echo "make symlink to k3s containerd"
-       ln -sf /var/lib/rancher/k3s/agent/containerd /persist/vault/containerd
-     fi
+   if [ -b /dev/zvol/persist/etcd-storage ]; then
+        mount /dev/zvol/persist/etcd-storage /var/lib  ## This is where we persist the etcd db
+        echo "$(date -Ins -u) Mounted etcd-storage in kubevirt eve"
    fi
 fi
 
