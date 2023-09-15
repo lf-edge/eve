@@ -39,6 +39,7 @@ metadata:
     app.kubernetes.io/version: v1.4.0
 data:
   default-setting.yaml: |-
+    create-default-disk-labeled-nodes: true
 ---
 # Source: longhorn/templates/storageclass.yaml
 apiVersion: v1
@@ -3909,7 +3910,7 @@ spec:
         - name: proc
           mountPath: /host/proc/
         - name: longhorn
-          mountPath: /var/lib/longhorn
+          mountPath: /var/lib/longhorn/
           mountPropagation: Bidirectional
         - name: longhorn-grpc-tls
           mountPath: /tls-files/
