@@ -4,14 +4,14 @@
 # has a fast path for stack unwinding. This also happens
 # to be a perfect place to put any other kind of debug info
 # into the package: see abuild/etc/abuild.conf.
-FROM lfedge/eve-alpine:9fb9b9cbf7d90066a70e4704d04a6fe248ff52bb as build
+FROM lfedge/eve-alpine:fad44e3702708a8d044663a20fd98d933dddb41e as build
 ENV BUILD_PKGS abuild curl tar make linux-headers patch g++ git gcc ncurses-dev autoconf
 # Feel free to add additional packages here, but be aware that
 # EVE's rootfs image can be no larger than 300Mb (and don't
 # forget to check on all supported architectures: e.g. arm64
 # binaries are typically larger and amd64 ones).
 # RUN apk add --no-cache gdb valgrind
-ENV PKGS openssl openssh-client openssh-server tini util-linux ca-certificates pciutils usbutils vim tcpdump perf strace iproute2-minimal curl tar
+ENV PKGS openssl openssh-client openssh-server tini util-linux ca-certificates pciutils usbutils vim tcpdump perf strace iproute2-minimal curl procps tar dmidecode iptables dhcpcd
 RUN eve-alpine-deploy.sh
 
 ENV LSHW_VERSION 02.19.2
