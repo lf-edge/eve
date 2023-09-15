@@ -138,6 +138,12 @@ setup_prereqs () {
         wait_for_device_uuid
 }
 
+apply_longhorn_disk_config() {
+        node=$1
+        kubectl label node $node node.longhorn.io/create-default-disk='config'
+        kubectl annotate node $node node.longhorn.io/default-disks-config='[ { "path":"/persist/vault/volumes", "allowScheduling":true }]'
+}
+
 # NOTE: We only support zfs storage in production systems because data is persisted on zvol.
 # If ZFS is not available we still go ahead and provide the service but the data is lost on reboot
 # because /var/lib will be on overlayfs. The only reason to allow that is to provide a quick debugging env for developers.
@@ -343,6 +349,7 @@ if [ ! -f /var/lib/all_components_initialized ]; then
         if [ ! -f /var/lib/longhorn_initialized ]; then
                 wait_for_item "longhorn"
                 logmsg "Installing longhorn version ${LONGHORN_VERSION}"
+                apply_longhorn_disk_config $HOSTNAME
                 #kubectl apply -f  https://raw.githubusercontent.com/longhorn/longhorn/${LONGHORN_VERSION}/deploy/longhorn.yaml
                 # Switch back to above once all the longhorn services use the updated go iscsi tools
                 kubectl apply -f /etc/longhorn-config.yaml
