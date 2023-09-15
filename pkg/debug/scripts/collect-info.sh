@@ -5,10 +5,10 @@
 #
 
 # Script version, don't forget to bump up once something is changed
-VERSION=6
+VERSION=7
 
 # Add required packages here, it will be passed to "apk add".
-PKG_DEPS="procps dmidecode iptables dhcpcd"
+PKG_DEPS="procps tar dmidecode iptables dhcpcd"
 
 DATE=$(date -Is)
 INFO_DIR="eve-info-v$VERSION-$DATE"
