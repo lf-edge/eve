@@ -534,6 +534,13 @@ func triggerEdgeNodeCertEvent(ctxPtr *zedagentContext) {
 	}
 }
 
+func triggerEdgeNodeCertDelayedEvent(ctxPtr *zedagentContext, d time.Duration) {
+	go func() {
+		time.Sleep(d)
+		triggerEdgeNodeCertEvent(ctxPtr)
+	}()
+}
+
 func convertLocalToApiHashAlgo(algo types.CertHashType) evecommon.HashAlgorithm {
 	switch algo {
 	case types.CertHashTypeSha256First16:

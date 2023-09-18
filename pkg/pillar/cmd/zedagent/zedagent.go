@@ -2503,6 +2503,13 @@ func getDeferredSentHandlerFunction(ctx *zedagentContext) *zedcloud.SentHandlerF
 					log.Functionf("sendAttestReqProtobuf: Controller SenderStatusNotFound")
 					potentialUUIDUpdate(ctx.getconfigCtx)
 				}
+				if !ctx.publishedEdgeNodeCerts {
+					// Attestation request does not clog the send queue (issued
+					// with the `ignoreErr` set to true), but once fails has to
+					// be repeated in reasonable time to avoid tight fail-repeat
+					// loop.
+					triggerEdgeNodeCertDelayedEvent(ctx, 10*time.Second)
+				}
 			}
 		}
 	}
