@@ -58,10 +58,16 @@ type AppNetworkConfig struct {
 
 // AppKubeNetworkStatus - Indexed by AppInstance UUID, includes list of App Net items
 // this is used to advertise pod interfaces related IP, Mac, Vif, etc.
+// the ContainerID is Pod's container UUID from kubernetes
 type AppKubeNetworkStatus struct {
 	UUIDandVersion      UUIDandVersion
 	DisplayName         string
+	ContainerID         string
 	ULNetworkStatusList []UnderlayNetworkStatus // kubecluster mode need from zedkube
+}
+
+func (status AppKubeNetworkStatus) Key() string {
+	return status.UUIDandVersion.UUID.String()
 }
 
 func (config AppNetworkConfig) Key() string {

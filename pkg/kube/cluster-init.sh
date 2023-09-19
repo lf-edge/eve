@@ -272,6 +272,51 @@ check_node_ready_k3s_running() {
   done
 }
 
+VMICONFIG_FILENAME="/run/zedkube/vmiVNC.run"
+VNC_RUNNING=false
+# run virtctl vnc
+check_and_run_vnc() {
+  pid=$(pgrep -f "/usr/bin/virtctl vnc" )
+  # if remote-console config file exist, and either has not started, or need to restart
+  if [ -f "$VMICONFIG_FILENAME" ] && { [ "$VNC_RUNNING" = false ] || [ -z "$pid"]; } then
+    vmiName=""
+    vmiPort=""
+
+    # Read the file and extract values
+    while IFS= read -r line; do
+        if [[ $line == *"VMINAME:"* ]]; then
+            vmiName="${line#*VMINAME:}"   # Extract the part after "VMINAME:"
+            vmiName="${vmiName%%[[:space:]]*}"  # Remove leading/trailing whitespace
+        elif [[ $line == *"VNCPORT:"* ]]; then
+            vmiPort="${line#*VNCPORT:}"   # Extract the part after "VNCPORT:"
+            vmiPort="${vmiPort%%[[:space:]]*}"  # Remove leading/trailing whitespace
+        fi
+    done < "$VMICONFIG_FILENAME"
+
+    # Check if vminame and vncport were found and assign default values if not
+    if [ -z "$vmiName" ] || [ -z "$vmiPort" ]; then
+        logmsg "Error: VMINAME or VNCPORT is empty in $myVNCFile"
+        return 1
+    fi
+
+    logmsg "virctl vnc on vmiName: $vmiName, port $vmiPort"
+    nohup /usr/bin/virtctl vnc "$vmiName" -n eve-kube-app --port "$vmiPort" --proxy-only &
+    VNC_RUNNING=true
+  else
+    if [ ! -f "$VMICONFIG_FILENAME" ]; then
+      if [ "$VNC_RUNNING" = true ]; then
+        if [ -n "$pid" ]; then
+            logmsg "Killing process with PID $pid"
+            kill -9 "$pid"
+        else
+            logmsg "Error: Process not found"
+        fi
+      fi
+      VNC_RUNNING=false
+    fi
+  fi
+}
+
 #Forever loop every 15 secs
 while true;
 do
@@ -389,6 +434,7 @@ else
         fi
 fi
         check_log_file_size
+        check_and_run_vnc
         wait_for_item "wait"
         sleep 30
 done

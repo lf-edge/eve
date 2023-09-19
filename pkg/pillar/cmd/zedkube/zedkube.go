@@ -25,6 +25,8 @@ const (
 	warningTime          = 40 * time.Second
 	stillRunningInterval = 25 * time.Second
 	logcollectInterval   = 30
+	// run VNC file
+	vmiVNCFileName = "/run/zedkube/vmiVNC.run"
 )
 
 var (
@@ -307,9 +309,9 @@ func resendNIToCluster(ctx *zedkubeContext) {
 	items := pub.GetAll()
 	for _, item := range items {
 		status := item.(types.NetworkInstanceStatus)
-		if status.Activated {
-			continue
-		}
+		//if status.Activated {
+		//	continue
+		//}
 		err := genNISpecCreate(ctx, &status)
 		log.Noticef("resendNIToCluster: spec %v", err)
 		checkNISendStatus(ctx, &status, err)
@@ -367,11 +369,17 @@ func handleAppInstanceConfigModify(ctxArg interface{}, key string,
 	configArg interface{}, oldConfigArg interface{}) {
 	ctx := ctxArg.(*zedkubeContext)
 	config := configArg.(types.AppInstanceConfig)
+	oldconfig := oldConfigArg.(types.AppInstanceConfig)
 
-	log.Noticef("handleAppInstancConfigCreate(%v) spec for %s, contentid %s",
+	log.Noticef("handleAppInstancConfigModify(%v) spec for %s, contentid %s",
 		config.UUIDandVersion, config.DisplayName, config.ContentID)
 
 	err := genAISpecCreate(ctx, &config)
+
+	if oldconfig.RemoteConsole != config.RemoteConsole {
+		log.Noticef("handleAppInstancConfigModify: new remote console %v", config.RemoteConsole)
+		go runAppVNC(ctx, &config)
+	}
 	log.Noticef("handleAppInstancConfigModify: genAISpec %v", err)
 }
 
