@@ -278,12 +278,28 @@ func publishAppKubeNetStatus(ctx *zedkubeContext, ebStatus *EveClusterInstStatus
 				key := akStatus.UUIDandVersion.UUID.String()
 				log.Noticef("publishAppKubeNetStatus: update ul key %s, status %+v", key, ulx)
 				ctx.pubAppKubeNetworkStatus.Publish(key, *akStatus)
+				akStatus.ContainerID = ebStatus.ContainerID
 				ctx.appKubeNetStatus[ainame] = akStatus
 
 				break
 			}
 		}
 	}
+}
+
+func unpublishAppKubeNetStatus(ctx *zedkubeContext, filename string) {
+	pub := ctx.pubAppKubeNetworkStatus
+	items := pub.GetAll()
+	for _, item := range items {
+		akStatus := item.(types.AppKubeNetworkStatus)
+		if strings.Contains(filename, akStatus.ContainerID) {
+			key := akStatus.Key()
+			log.Noticef("unpublishAppKubeNetStatus: key %s, filename %s", key, filename)
+			pub.Unpublish(key)
+			return
+		}
+	}
+	log.Noticef("unpublishAppKubeNetStatus: not found %s", filename)
 }
 
 func publishAppMetrics(ctx *zedkubeContext) {
