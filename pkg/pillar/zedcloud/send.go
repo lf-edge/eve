@@ -748,17 +748,12 @@ func SendOnIntf(workContext context.Context, ctx *ZedCloudContext, destURL strin
 		return rv, nil
 	}
 
-	var (
-		transport     *http.Transport
-		attempts      []SendAttempt
-		sessionResume bool
-	)
-	if !withNetTracing {
-		transport = &http.Transport{
-			TLSClientConfig:   clientConfig.TLSClientConfig,
-			Proxy:             clientConfig.Proxy,
-			DisableKeepAlives: clientConfig.DisableKeepAlive,
-		}
+	var attempts []SendAttempt
+	var sessionResume bool
+	transport := &http.Transport{
+		TLSClientConfig:   clientConfig.TLSClientConfig,
+		Proxy:             clientConfig.Proxy,
+		DisableKeepAlives: clientConfig.DisableKeepAlive,
 	}
 
 	// If the HTTP requests are being traced and PCAP is enabled, the function
@@ -879,22 +874,24 @@ func SendOnIntf(workContext context.Context, ctx *ZedCloudContext, destURL strin
 			// IP resolution and collect traces of DNS queries.
 			tracedClient, err = nettrace.NewHTTPClient(clientConfig, ctx.NetTraceOpts...)
 			if err != nil {
+				// Log error and revert to running send operation without tracing.
 				log.Errorf("SendOnIntf: nettrace.NewHTTPClient failed: %v\n", err)
-				attempt.Err = err
-				attempts = append(attempts, attempt)
-				continue
-			}
-			client = tracedClient.Client
-			var reqMethod string
-			if isGet {
-				reqMethod = "GET"
+				withNetTracing = false
+				log.Warnf("Running SendOnIntf (req: %s) without network tracing", reqURL)
 			} else {
-				reqMethod = "POST"
+				client = tracedClient.Client
+				var reqMethod string
+				if isGet {
+					reqMethod = "GET"
+				} else {
+					reqMethod = "POST"
+				}
+				tracedReqName = fmt.Sprintf("%s-%d", intf, retryCount)
+				tracedReqDescr = fmt.Sprintf("%s %s via %s src IP %v",
+					reqMethod, reqURL, intf, localAddr)
 			}
-			tracedReqName = fmt.Sprintf("%s-%d", intf, retryCount)
-			tracedReqDescr = fmt.Sprintf("%s %s via %s src IP %v",
-				reqMethod, reqURL, intf, localAddr)
-		} else {
+		}
+		if !withNetTracing {
 			dialer := &dialerWithResolverCache{
 				log:           log,
 				ifName:        intf,
