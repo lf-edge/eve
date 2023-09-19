@@ -11,7 +11,13 @@ ENV BUILD_PKGS abuild curl tar make linux-headers patch g++ git gcc ncurses-dev 
 # forget to check on all supported architectures: e.g. arm64
 # binaries are typically larger and amd64 ones).
 # RUN apk add --no-cache gdb valgrind
-ENV PKGS openssl openssh-client openssh-server tini util-linux ca-certificates pciutils usbutils vim tcpdump perf strace iproute2-minimal curl procps tar dmidecode iptables dhcpcd
+ENV PKGS openssl openssh-client openssh-server tini util-linux ca-certificates pciutils usbutils vim tcpdump perf strace iproute2-minimal curl
+
+# These packages are not available on the riscv arch, so I have no idea how
+# deliver those, but still install them on other archs.
+ENV PKGS_amd64 procps tar dmidecode iptables dhcpcd
+ENV PKGS_arm64 procps tar dmidecode iptables dhcpcd
+
 RUN eve-alpine-deploy.sh
 
 ENV LSHW_VERSION 02.19.2
