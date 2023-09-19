@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"strings"
+	"time"
 
 	zconfig "github.com/lf-edge/eve-api/go/config"
 	"github.com/lf-edge/eve/pkg/pillar/base"
@@ -189,12 +191,23 @@ func RolloutImgToPVC(ctx context.Context, log *base.LogObject, exists bool, disk
 		return err
 	}
 
+	var service *corev1.Service
 	// Get the Service from Kubernetes API.
-	service, err := clientset.CoreV1().Services("cdi").Get(context.Background(), "cdi-uploadproxy", metav1.GetOptions{})
+	i := 5
+	for {
+		service, err = clientset.CoreV1().Services("cdi").Get(context.Background(), "cdi-uploadproxy", metav1.GetOptions{})
 
-	if err != nil {
-		errStr := fmt.Sprintf("Failed to get Service cdi/cdi-uploadproxy: %v\n", err)
-		return errors.New(errStr)
+		if err != nil {
+			if strings.Contains(err.Error(), "dial tcp 127.0.0.1:6443") && i <= 0 {
+				errStr := fmt.Sprintf("Failed to get Service cdi/cdi-uploadproxy: %v\n", err)
+				return errors.New(errStr)
+			}
+			time.Sleep(10 * time.Second)
+			log.Noticef("PRAMOD RolloutImgToPVC loop (%d), wait for 10 sec, err %v", i, err)
+		} else {
+			break
+		}
+		i = i - 1
 	}
 
 	// Get the ClusterIP of the Service.
@@ -233,12 +246,35 @@ func RolloutImgToPVC(ctx context.Context, log *base.LogObject, exists bool, disk
 		// Add size
 		args = append(args, "--size", fmt.Sprint(volSize))
 	}
+	time.Sleep(10 * time.Second)
 	log.Noticef("PRAMOD virtctl args %v", args)
-	output, err := base.Exec(log, "/containers/services/kube/rootfs/usr/bin/virtctl", args...).WithContext(ctx).CombinedOutputWithCustomTimeout(432000)
-	if err != nil {
-		errStr := fmt.Sprintf("virtctl failed: %s, %s\n",
-			err, output)
-		return errors.New(errStr)
+	i = 5
+	for {
+		output, err := base.Exec(log, "/containers/services/kube/rootfs/usr/bin/virtctl", args...).WithContext(ctx).CombinedOutputWithCustomTimeout(432000)
+		if err != nil {
+			if !strings.Contains(string(output), "dial tcp 127.0.0.1:6443") {
+				if i <= 0 {
+					log.Noticef("PRAMOD RolloutImgToPVC: virtctl failed: %s, %s", err, output)
+					break
+					//errStr := fmt.Sprintf("virtctl failed: %s, %s\n", err, output)
+					//return errors.New(errStr)
+				}
+				log.Noticef("PRAMOD RolloutImgToPVC: (retry left %d) err %v, output %s", i, err, output)
+			} else {
+				if !strings.Contains(string(output), "pvc-0 not found") {
+					log.Noticef("PRAMOD RolloutImgToPVC: sleep 20 sec, virtctl error %v, %s", err, output)
+					time.Sleep(20 * time.Second)
+					break
+				} else {
+					log.Noticef("PRAMOD RolloutImgToPVC: not found, retry again, virtctl error %v, %s", err, output)
+				}
+			}
+		} else {
+			log.Noticef("PRAMOD RolloutImgToPVC: done")
+			break
+		}
+		time.Sleep(10 * time.Second)
+		i = i - 1
 	}
 	return nil
 }
