@@ -481,7 +481,7 @@ github.com/lf-edge/eve-api/go/logs
 github.com/lf-edge/eve-api/go/metrics
 github.com/lf-edge/eve-api/go/profile
 github.com/lf-edge/eve-api/go/register
-# github.com/lf-edge/eve-libs v0.0.0-20230724174211-8b4b7a344f7e
+# github.com/lf-edge/eve-libs v0.0.0-20230917102118-52bfdda7819c
 ## explicit; go 1.20
 github.com/lf-edge/eve-libs/depgraph
 github.com/lf-edge/eve-libs/nettrace

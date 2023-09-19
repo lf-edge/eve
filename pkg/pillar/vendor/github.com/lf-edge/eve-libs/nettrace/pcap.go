@@ -242,11 +242,17 @@ func (pc *packetCapturer) startPcap(ctx context.Context, wg *sync.WaitGroup) err
 		// https://pkg.go.dev/github.com/google/gopacket/pcap#hdr-PCAP_Timeouts
 		pcapHandle, err := pcap.OpenLive(
 			ifName, int32(pc.opts.PacketSnaplen), true, 0, false)
-		if err == nil {
-			err = pcapHandle.SetRawBPFFilter(bpfFilter)
-		}
 		if err != nil {
-			return err
+			pc.log.Errorf("pcap.OpenLive failed for interface %s: %v", ifName, err)
+			// Simply skip over interfaces where we failed to start packet capture.
+			continue
+		}
+		err = pcapHandle.SetRawBPFFilter(bpfFilter)
+		if err != nil {
+			pc.log.Errorf("SetRawBPFFilter failed for interface %s: %v", ifName, err)
+			// Simply skip over interfaces where we failed to set BPF filter.
+			pcapHandle.Close()
+			continue
 		}
 		pcapHandles = append(pcapHandles, pcapHandle)
 	}
