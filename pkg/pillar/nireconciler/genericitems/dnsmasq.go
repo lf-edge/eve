@@ -653,8 +653,12 @@ func (c *DnsmasqConfigurator) CreateDnsmasqConfig(buffer io.Writer, dnsmasq Dnsm
 		if err != nil {
 			return err
 		}
-		if _, err := io.WriteString(buffer, fmt.Sprintf("dhcp-range=%s,%s,60m\n",
-			dhcpRange, ipv4Netmask)); err != nil {
+		defaultLeaseStr := "60m"
+		if hvTypeKube {
+			defaultLeaseStr = "infinite"
+		}
+		if _, err := io.WriteString(buffer, fmt.Sprintf("dhcp-range=%s,%s,%s\n",
+			dhcpRange, ipv4Netmask, defaultLeaseStr)); err != nil {
 			return writeErr(err)
 		}
 	}
