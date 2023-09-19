@@ -381,10 +381,20 @@ func (ctx kubevirtContext) Start(domainName string) error {
 	}
 
 	// Create the VM
-	_, err = virtClient.VirtualMachineInstance(eveNameSpace).Create(context.Background(), vmi)
-	if err != nil {
-		fmt.Printf("Start VM failed %v\n", err)
-		return err
+	i := 5
+	for {
+		_, err = virtClient.VirtualMachineInstance(eveNameSpace).Create(context.Background(), vmi)
+		if err != nil {
+			if strings.Contains(err.Error(), "dial tcp 127.0.0.1:6443") && i <= 0 {
+				logrus.Infof("Start VM failed %v\n", err)
+				return err
+			}
+			time.Sleep(10 * time.Second)
+			logrus.Infof("Start VM failed, retry (%d) err %v", i, err)
+		} else {
+			break
+		}
+		i = i - 1
 	}
 
 	logrus.Infof("Started Kubevirt domain %s", domainName)
@@ -493,6 +503,9 @@ func (ctx kubevirtContext) Info(domainName string) (int, types.SwState, error) {
 	if effectiveDomainState, matched := stateMap[res]; !matched {
 		return 0, types.BROKEN, logError("domain %s reported to be in unexpected state %s", domainName, res)
 	} else {
+		if _, ok := ctx.vmiList[domainName]; !ok {
+			return 0, types.HALTED, logError("domain %s is deleted", domainName)
+		}
 		return ctx.vmiList[domainName].domainId, effectiveDomainState, nil
 	}
 }
