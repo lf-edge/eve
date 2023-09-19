@@ -93,6 +93,10 @@ func (h *ZFSHandler) SetupDefaultVault() error {
 				return fmt.Errorf("error creating zfs vault %s, error=%v",
 					types.SealedDataset, err)
 			}
+			if err := CreateZvolEtcd(h.log, types.EtcdZvol); err != nil {
+				return fmt.Errorf("error creating zfs etcd zvol %s, error=%v",
+					types.EtcdZvol, err)
+			}
 			return nil
 		}
 		if zfs.DatasetExist(h.log, types.SealedDataset) {
@@ -163,6 +167,9 @@ func (h *ZFSHandler) createVault(vaultPath string) error {
 		if err := CreateZvolVault(h.log, vaultPath, zfsKeyFile, true); err != nil {
 			h.log.Errorf("Error creating zfs vault %s, error=%v", vaultPath, err)
 			return err
+		}
+		if err := CreateZvolEtcd(h.log, types.EtcdZvol); err != nil {
+			return fmt.Errorf("error creating zfs etcd zvol %s, error=%v", types.EtcdZvol, err)
 		}
 	} else {
 		if err := zfs.CreateVaultDataset(vaultPath, zfsKeyFile); err != nil {
@@ -384,6 +391,45 @@ func CreateZvolVault(log *base.LogObject, datasetName string, zfsKeyFile string,
 
 	if err = MountVaultZvol(log, types.SealedDataset); err != nil {
 		return fmt.Errorf("Vault zvol mount error: %v", err)
+	}
+	return nil
+}
+
+// CreateZvolEtcd Create and mount an empty vault dataset zvol
+func CreateZvolEtcd(log *base.LogObject, datasetName string) error {
+	// Remaining space in the pool
+	sizeBytes := uint64(0)
+	etcdSizeBytes := uint64(1024 * 1024 * 1024 * 1)
+
+	parentDatasetName := datasetName
+	if strings.Contains(parentDatasetName, "/") {
+		datasetParts := strings.Split(parentDatasetName, "/")
+		parentDatasetName = datasetParts[0]
+	}
+
+	sizeBytes, err := zfs.GetDatasetAvailableBytes(parentDatasetName)
+	if err != nil {
+		return fmt.Errorf("Dataset %s available bytes read error: %v", parentDatasetName, err)
+	}
+
+	if sizeBytes > (1024 * 1024 * 1024 * 5) {
+		etcdSizeBytes = 1024 * 1024 * 1024 * 5
+	}
+
+	err = zfs.CreateVolumeDataset(log, datasetName, etcdSizeBytes, "off")
+	if err != nil {
+		return fmt.Errorf("Vault zvol creation error; %v", err)
+	}
+
+	devPath := zfs.GetZvolPath(datasetName)
+	// Sometimes we wait for /dev path to the zvol to appear
+	// Since this only occurs on first boot, we can afford to be patient
+	if err = waitPath(log, devPath, vaultZvolPathWaitSeconds); err != nil {
+		return fmt.Errorf("Vault zvol dev path missing: %v", err)
+	}
+
+	if err = formatZvol(log, devPath, vaultFsType); err != nil {
+		return fmt.Errorf("Vault zvol format error: %v", err)
 	}
 	return nil
 }

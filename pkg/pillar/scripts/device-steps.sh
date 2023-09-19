@@ -410,17 +410,6 @@ if [ $MEASURE = 1 ]; then
     echo "$(date -Ins -u) Measurement done"
 fi
 
-eve_flavor=$(cat /run/eve-hv-type)
-if [ "$eve_flavor" = "kubevirt" ]; then
-   # Mount clustered-storage to /var/lib
-   # We need to this here to access the containerd storage in /var/lib/rancher/k3s/agent/containerd.
-   # kube container will create a link /persist/vault/containerd -> /var/lib/rancher/k3s/agent/containerd
-   if [ -b /dev/zvol/persist/etcd-storage ]; then
-        mount /dev/zvol/persist/etcd-storage /var/lib  ## This is where we persist the etcd db
-        echo "$(date -Ins -u) Mounted etcd-storage in kubevirt eve"
-   fi
-fi
-
 echo "$(date -Ins -u) Done starting EVE version: $(cat /run/eve-release)"
 
 # If there is a USB stick inserted and debug.enable.usb is set, we periodically
