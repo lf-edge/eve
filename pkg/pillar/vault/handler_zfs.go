@@ -89,8 +89,11 @@ func (h *ZFSHandler) RemoveDefaultVault() error {
 func (h *ZFSHandler) SetupDefaultVault() error {
 	if !etpm.IsTpmEnabled() {
 		if base.IsHVTypeKube() {
+			if zfs.DatasetExist(h.log, types.SealedDataset) {
+				return MountVaultZvol(h.log, types.SealedDataset)
+			}
 			if err := CreateZvolVault(h.log, types.SealedDataset, "", false); err != nil {
-				return fmt.Errorf("error creating zfs vault %s, error=%v",
+				return fmt.Errorf("error creating zfs non-tpm vault %s, error=%v",
 					types.SealedDataset, err)
 			}
 			if err := CreateZvolEtcd(h.log, types.EtcdZvol); err != nil {
