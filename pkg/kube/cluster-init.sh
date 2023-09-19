@@ -144,16 +144,6 @@ apply_longhorn_disk_config() {
         kubectl annotate node $node node.longhorn.io/default-disks-config='[ { "path":"/persist/vault/volumes", "allowScheduling":true }]'
 }
 
-# NOTE: We only support zfs storage in production systems because data is persisted on zvol.
-# If ZFS is not available we still go ahead and provide the service but the data is lost on reboot
-# because /var/lib will be on overlayfs. The only reason to allow that is to provide a quick debugging env for developers.
-if [ -b /dev/zvol/persist/etcd-storage ]; then
-        mount /dev/zvol/persist/etcd-storage /var/lib  ## This is where we persist the cluster components (k3s containers)
-        logmsg "Using ZFS persistent storage"
-else
-        logmsg "WARNING: Using overlayfs non-persistent storage"
-fi
-
 #Make sure all prereqs are set after /var/lib is mounted to get logging info
 setup_prereqs
 
@@ -316,6 +306,22 @@ check_and_run_vnc() {
     fi
   fi
 }
+# NOTE: We only support zfs storage in production systems because data is persisted on zvol.
+etcd_fs_ready=0
+while [ $etcd_fs_ready -eq 0 ];
+do
+        logmsg "Waiting for /dev/zvol/persist/etcd-storage"
+        sleep 1
+        if [ -b /dev/zvol/persist/etcd-storage ]; then
+                # blkid would also work...
+                fs=$(lsblk -f -d /dev/zvol/persist/etcd-storage | grep -v FSTYPE | awk '{print $2}')
+                if [ "$fs" == "ext4" ]; then
+                        etcd_fs_ready=1
+                fi
+        fi
+done
+mount /dev/zvol/persist/etcd-storage /var/lib  ## This is where we persist the cluster components (etcd)
+logmsg "Using ZFS persistent storage"
 
 #Forever loop every 15 secs
 while true;

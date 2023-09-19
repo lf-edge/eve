@@ -125,4 +125,6 @@ var (
 	// CSI storage class types
 	VolumeCSIClusterStorageClass = "longhorn"
 	VolumeCSILocalStorageClass   = "local-path"
+	// EtcdZvol - zvol encrypted for etcd storage
+	EtcdZvol = PersistDataset + "/etcd-storage"
 )
