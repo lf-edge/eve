@@ -83,6 +83,7 @@ var cipherMetricsDL types.CipherMetrics
 var cipherMetricsDM types.CipherMetrics
 var cipherMetricsNim types.CipherMetrics
 var cipherMetricsZR types.CipherMetrics
+var cipherMetricsWwan types.CipherMetrics
 var diagMetrics types.MetricsMap
 var nimMetrics types.MetricsMap
 var zrouterMetrics types.MetricsMap
@@ -153,6 +154,7 @@ type zedagentContext struct {
 	subCipherMetricsDM        pubsub.Subscription
 	subCipherMetricsNim       pubsub.Subscription
 	subCipherMetricsZR        pubsub.Subscription
+	subCipherMetricsWwan      pubsub.Subscription
 	zedcloudMetrics           *zedcloud.AgentMetrics
 	fatalFlag                 bool // From command line arguments
 	hangFlag                  bool // From command line arguments
@@ -960,6 +962,15 @@ func mainEventLoop(zedagentCtx *zedagentContext, stillRunning *time.Ticker) {
 				cipherMetricsZR = m.(types.CipherMetrics)
 			}
 
+		case change := <-zedagentCtx.subCipherMetricsWwan.MsgChan():
+			zedagentCtx.subCipherMetricsWwan.ProcessChange(change)
+			m, err := zedagentCtx.subCipherMetricsWwan.Get("global")
+			if err != nil {
+				log.Errorf("subCipherMetricsWwan.Get failed: %s", err)
+			} else {
+				cipherMetricsWwan = m.(types.CipherMetrics)
+			}
+
 		case change := <-zedagentCtx.subNetworkInstanceStatus.MsgChan():
 			zedagentCtx.subNetworkInstanceStatus.ProcessChange(change)
 
@@ -1701,7 +1712,7 @@ func initPostOnboardSubs(zedagentCtx *zedagentContext) {
 	// Cellular modems used by configured network ports have status published
 	// as part of DeviceNetworkStatus.
 	zedagentCtx.subWwanStatus, err = ps.NewSubscription(pubsub.SubscriptionOptions{
-		AgentName:   "nim",
+		AgentName:   "wwan",
 		MyAgentName: agentName,
 		TopicImpl:   types.WwanStatus{},
 		Activate:    true,
@@ -1714,7 +1725,7 @@ func initPostOnboardSubs(zedagentCtx *zedagentContext) {
 	}
 
 	zedagentCtx.subWwanMetrics, err = ps.NewSubscription(pubsub.SubscriptionOptions{
-		AgentName:   "nim",
+		AgentName:   "wwan",
 		MyAgentName: agentName,
 		TopicImpl:   types.WwanMetrics{},
 		Activate:    true,
@@ -1727,7 +1738,7 @@ func initPostOnboardSubs(zedagentCtx *zedagentContext) {
 	}
 
 	zedagentCtx.subLocationInfo, err = ps.NewSubscription(pubsub.SubscriptionOptions{
-		AgentName:   "nim",
+		AgentName:   "wwan",
 		MyAgentName: agentName,
 		TopicImpl:   types.WwanLocationInfo{},
 		Activate:    true,
@@ -1853,6 +1864,17 @@ func initPostOnboardSubs(zedagentCtx *zedagentContext) {
 
 	zedagentCtx.subCipherMetricsZR, err = ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:   "zedrouter",
+		MyAgentName: agentName,
+		TopicImpl:   types.CipherMetrics{},
+		Activate:    true,
+		Ctx:         zedagentCtx,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	zedagentCtx.subCipherMetricsWwan, err = ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:   "wwan",
 		MyAgentName: agentName,
 		TopicImpl:   types.CipherMetrics{},
 		Activate:    true,

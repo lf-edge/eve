@@ -4,15 +4,11 @@
 package dpcmanager_test
 
 import (
-	"context"
 	"net"
 	"sync"
 	"time"
 
 	"github.com/eriknordmark/ipinfo"
-
-	dpcmngr "github.com/lf-edge/eve/pkg/pillar/dpcmanager"
-	"github.com/lf-edge/eve/pkg/pillar/types"
 )
 
 // MockWatchdog does absolutely nothing.
@@ -27,80 +23,6 @@ func (m *MockWatchdog) StillRunning(_ string, _, _ time.Duration) {}
 
 // CheckMaxTimeTopic does nothing.
 func (m *MockWatchdog) CheckMaxTimeTopic(_, _ string, _ time.Time, _, _ time.Duration) {}
-
-// MockWwanWatcher allows to simulate events coming from wwan microservice.
-// Can be injected to DpcManager.WwanWatcher in UTs.
-type MockWwanWatcher struct {
-	sync.Mutex
-	wwanStatus  types.WwanStatus
-	wwanMetrics types.WwanMetrics
-	wwanLocInfo types.WwanLocationInfo
-	wwanEvents  chan dpcmngr.WwanEvent
-}
-
-// UpdateStatus : simulate update of Wwan status.
-func (m *MockWwanWatcher) UpdateStatus(status types.WwanStatus) {
-	m.Lock()
-	defer m.Unlock()
-
-	m.wwanStatus = status
-	if m.wwanEvents != nil {
-		m.wwanEvents <- dpcmngr.WwanEventNewStatus
-	}
-}
-
-// UpdateMetrics : simulate update of Wwan metrics.
-func (m *MockWwanWatcher) UpdateMetrics(metrics types.WwanMetrics) {
-	m.Lock()
-	defer m.Unlock()
-
-	m.wwanMetrics = metrics
-	if m.wwanEvents != nil {
-		m.wwanEvents <- dpcmngr.WwanEventNewMetrics
-	}
-}
-
-// UpdateLocationInfo : simulate update of Wwan location info.
-func (m *MockWwanWatcher) UpdateLocationInfo(locInfo types.WwanLocationInfo) {
-	m.Lock()
-	defer m.Unlock()
-
-	m.wwanLocInfo = locInfo
-	if m.wwanEvents != nil {
-		m.wwanEvents <- dpcmngr.WwanEventNewLocationInfo
-	}
-}
-
-// Watch for simulated wwan events.
-func (m *MockWwanWatcher) Watch(context.Context) (<-chan dpcmngr.WwanEvent, error) {
-	m.Lock()
-	defer m.Unlock()
-	if m.wwanEvents == nil {
-		m.wwanEvents = make(chan dpcmngr.WwanEvent, 10)
-	}
-	return m.wwanEvents, nil
-}
-
-// LoadStatus returns last status submitted via UpdateStatus.
-func (m *MockWwanWatcher) LoadStatus() (types.WwanStatus, error) {
-	m.Lock()
-	defer m.Unlock()
-	return m.wwanStatus, nil
-}
-
-// LoadMetrics returns last metrics submitted via UpdateMetrics.
-func (m *MockWwanWatcher) LoadMetrics() (types.WwanMetrics, error) {
-	m.Lock()
-	defer m.Unlock()
-	return m.wwanMetrics, nil
-}
-
-// LoadLocationInfo returns last location info submitted via UpdateLocationInfo.
-func (m *MockWwanWatcher) LoadLocationInfo() (types.WwanLocationInfo, error) {
-	m.Lock()
-	defer m.Unlock()
-	return m.wwanLocInfo, nil
-}
 
 // MockGeoService allows to simulate geolocation service.
 // Can be injected to DpcManager.GeoService in UTs.

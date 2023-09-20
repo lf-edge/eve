@@ -74,9 +74,9 @@ func (m *DpcManager) updateDNS() {
 		// If this is a cellular network connectivity, add status information
 		// obtained from the wwan service.
 		if port.WirelessCfg.WType == types.WirelessTypeCellular {
-			wwanNetStatus, found := m.wwanStatus.LookupNetworkStatus(port.Logicallabel)
-			if found {
-				m.deviceNetStatus.Ports[ix].WirelessStatus.Cellular = wwanNetStatus
+			wwanNetStatus := m.wwanStatus.GetNetworkStatus(port.Logicallabel)
+			if wwanNetStatus != nil {
+				m.deviceNetStatus.Ports[ix].WirelessStatus.Cellular = *wwanNetStatus
 			}
 		}
 		// Do not try to get state data for interface which is in PCIback.

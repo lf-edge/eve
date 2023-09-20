@@ -52,19 +52,12 @@ type ReconcileStatus struct {
 	// Includes information about the last (failed) operation.
 	FailingItems reconciler.OperationLog
 	// Radio silence state information.
-	RS RadioSilenceStatus
+	RS types.RadioSilence
 	// Status of domain name system (DNS) configuration.
 	// Not to be confused with device network status
 	// (which DPC reconciler does not work with).
 	DNS DNSStatus
 	// XXX Add more as needed...
-}
-
-// RadioSilenceStatus : state information related to radio silence.
-type RadioSilenceStatus struct {
-	types.RadioSilence
-	// SHA256 checksum of the installed wwan config.
-	WwanConfigChecksum string
 }
 
 // DNSStatus : state information related to domain name system (DNS).

@@ -17,6 +17,7 @@ import (
 	"github.com/eriknordmark/ipinfo"
 	"github.com/google/go-cmp/cmp"
 	"github.com/lf-edge/eve/pkg/pillar/base"
+	"github.com/lf-edge/eve/pkg/pillar/utils/generics"
 	uuid "github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
 	"github.com/vishvananda/netlink"
@@ -1048,7 +1049,7 @@ type CellularAccessPoint struct {
 	APN string
 	// Authentication protocol used by the network.
 	AuthProtocol WwanAuthProtocol
-	// EcnryptedCredentials : encrypted username and password.
+	// EncryptedCredentials : encrypted username and password.
 	EncryptedCredentials CipherBlockStatus
 	// The set of cellular network operators that modem should preferably try to register
 	// and connect into.
@@ -1059,6 +1060,26 @@ type CellularAccessPoint struct {
 	PreferredRATs []WwanRAT
 	// If true, then modem will avoid connecting to networks with roaming.
 	ForbidRoaming bool
+}
+
+// Equal compares two instances of CellularAccessPoint for equality.
+func (ap CellularAccessPoint) Equal(ap2 CellularAccessPoint) bool {
+	if ap.SIMSlot != ap2.SIMSlot ||
+		ap.Activated != ap2.Activated ||
+		ap.APN != ap2.APN {
+		return false
+	}
+	if ap.AuthProtocol != ap2.AuthProtocol ||
+		// TODO (how to properly detect changed username/password ?)
+		!reflect.DeepEqual(ap.EncryptedCredentials, ap2.EncryptedCredentials) {
+		return false
+	}
+	if !generics.EqualLists(ap.PreferredPLMNs, ap2.PreferredPLMNs) ||
+		!generics.EqualLists(ap.PreferredRATs, ap2.PreferredRATs) ||
+		ap.ForbidRoaming != ap2.ForbidRoaming {
+		return false
+	}
+	return true
 }
 
 // WirelessConfig - wireless structure

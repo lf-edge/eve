@@ -3,39 +3,51 @@
 
 // Types defined for interaction between pillar and the wwan microservice.
 
-//nolint:tagliatelle
 package types
 
 import (
 	"fmt"
+	"net"
+	"time"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/utils/generics"
+	"github.com/lf-edge/eve/pkg/pillar/utils/netutils"
 )
 
 // WwanConfig is published by nim and consumed by the wwan service.
 type WwanConfig struct {
-	RadioSilence bool `json:"radio-silence"`
-	// Enable verbose logging in the wwan microservice.
-	Verbose bool `json:"verbose"`
-	// Enable to periodically obtain the set of visible network providers (for each modem)
-	// and publish them under WwanNetworkStatus.VisibleProviders.
-	// Use with caution because this operation may take quite some time (around 2 minutes)
-	// and makes modem unmanageable for the time being. Therefore, even if enabled,
-	// the period to query visible providers is quite long - 1 hour.
-	// Note that WwanNetworkStatus always provides info about the currently used
-	// network provider (CurrentProvider). Getting this info is not expensive so if you
-	// do not need info about other providers in the area, leave this disabled.
-	QueryVisibleProviders bool                `json:"query-visible-providers"`
-	Networks              []WwanNetworkConfig `json:"networks"`
+	// Key of the DevicePortConfig from which WwanConfig was generated.
+	DPCKey string
+	// Timestamp of the DevicePortConfig from which WwanConfig was generated.
+	DPCTimestamp time.Time
+	// Timestamp of the RadioSilence config applied into this WwanConfig.
+	RSConfigTimestamp time.Time
+	// Radio silence is the act of disabling all radio transmission
+	// for safety or security reasons
+	RadioSilence bool
+	// One entry for every cellular modem.
+	Networks []WwanNetworkConfig
+}
+
+// GetNetworkConfig returns pointer to the network config corresponding to the modem
+// with the given logical label.
+func (wc WwanConfig) GetNetworkConfig(logicalLabel string) *WwanNetworkConfig {
+	for i := range wc.Networks {
+		if wc.Networks[i].LogicalLabel == logicalLabel {
+			return &wc.Networks[i]
+		}
+	}
+	return nil
 }
 
 // Equal compares two instances of WwanConfig for equality.
 func (wc WwanConfig) Equal(wc2 WwanConfig) bool {
-	if wc.RadioSilence != wc2.RadioSilence ||
-		wc.Verbose != wc2.Verbose ||
-		wc.QueryVisibleProviders != wc2.QueryVisibleProviders {
+	if wc.DPCKey != wc2.DPCKey ||
+		!wc.DPCTimestamp.Equal(wc2.DPCTimestamp) ||
+		!wc.RSConfigTimestamp.Equal(wc2.RSConfigTimestamp) ||
+		wc.RadioSilence != wc2.RadioSilence {
 		return false
 	}
 	return generics.EqualSetsFn(wc.Networks, wc2.Networks,
@@ -44,60 +56,65 @@ func (wc WwanConfig) Equal(wc2 WwanConfig) bool {
 		})
 }
 
+// Key is used for pubsub
+func (wc WwanConfig) Key() string {
+	return "global"
+}
+
+// LogCreate :
+func (wc WwanConfig) LogCreate(logBase *base.LogObject) {
+	logObject := base.NewLogObject(logBase, base.WwanConfigLogType, "",
+		nilUUID, wc.LogKey())
+	if logObject == nil {
+		return
+	}
+	logObject.Metricf("Wwan config create")
+}
+
+// LogModify :
+func (wc WwanConfig) LogModify(logBase *base.LogObject, old interface{}) {
+	logObject := base.EnsureLogObject(logBase, base.WwanConfigLogType, "",
+		nilUUID, wc.LogKey())
+	oldWc, ok := old.(WwanConfig)
+	if !ok {
+		logObject.Clone().Fatalf("LogModify: Old object passed is not of WwanConfig type")
+	}
+	logObject.CloneAndAddField("diff", cmp.Diff(oldWc, wc)).
+		Metricf("Wwan config modify")
+}
+
+// LogDelete :
+func (wc WwanConfig) LogDelete(logBase *base.LogObject) {
+	logObject := base.EnsureLogObject(logBase, base.WwanConfigLogType, "",
+		nilUUID, wc.LogKey())
+	logObject.Metricf("Wwan config delete")
+	base.DeleteLogObject(logBase, wc.LogKey())
+}
+
+// LogKey :
+func (wc WwanConfig) LogKey() string {
+	return string(base.WwanConfigLogType) + "-" + wc.Key()
+}
+
 // WwanNetworkConfig contains configuration for a single cellular network.
 // In case there are multiple SIM cards/slots in the modem, WwanNetworkConfig
 // contains config only for the activated one.
 type WwanNetworkConfig struct {
 	// Logical label in PhysicalIO.
-	LogicalLabel string        `json:"logical-label"`
-	PhysAddrs    WwanPhysAddrs `json:"physical-addrs"`
-	// Index of the SIM slot to activate and use for the connection.
-	// Note that slots are indexed incrementally, starting with 1.
-	// Zero value means that the slot is undefined and EVE will not change
-	// SIM slot activation settings, meaning that the currently activated
-	// slot will remain being used.
-	SIMSlot uint8 `json:"sim-slot"`
-	// Access Point Network to connect into.
-	// By default, it is "internet".
-	APN string `json:"apn"`
-	// Some cellular networks require authentication.
-	AuthProtocol WwanAuthProtocol `json:"auth-protocol"`
-	Username     string           `json:"username,omitempty"`
-	// User password (if provided) is encrypted using AES-256-GCM with key derived
-	// by the PBKDF2 method, taking kernel-generated /proc/sys/kernel/random/boot_id
-	// as the input.
-	// Note that even though the config with the password is passed from NIM to the wwan
-	// microservice using the *in-memory only* /run filesystem, we still encrypt the password
-	// to avoid accidental exposure when the content of /run/wwan is dumped as part
-	// of a customer issue report.
-	EncryptedPassword string `json:"encrypted-password,omitempty"`
-	// The set of cellular network operators that modem should preferably try to register
-	// and connect into.
-	// Network operator should be referenced by PLMN (Public Land Mobile Network) code,
-	// consisting of 3-digits MCC (Mobile Country Code) and 2 or 3-digits MNC
-	// (Mobile Network Code), separated by a dash, e.g. "310-260".
-	// If empty, then modem will select the network automatically based on the SIM
-	// card config.
-	PreferredPLMNs []string `json:"preferred-plmns,omitempty"`
-	// The list of preferred Radio Access Technologies (RATs) to use for connecting
-	// to the network.
-	// Order matters, first is the most preferred, second is tried next, etc.
-	// Not listed technologies will not be tried.
-	// If empty, then modem will select RAT automatically.
-	PreferredRATs []WwanRAT `json:"preferred-rats,omitempty"`
-	// Enable or disable data roaming.
-	ForbidRoaming bool `json:"forbid-roaming"`
+	LogicalLabel string
+	// Physical address of the cellular modem.
+	PhysAddrs WwanPhysAddrs
+	// Configuration of the activated Access point.
+	AccessPoint CellularAccessPoint
 	// Proxies configured for the cellular network.
-	Proxies []ProxyEntry `json:"proxies"`
+	Proxies []ProxyEntry
 	// Probe used to detect broken connection.
-	Probe WwanProbe `json:"probe"`
+	Probe WwanProbe
 	// Some LTE modems have GNSS receiver integrated and can be used
 	// for device location tracking.
 	// Enable this option to have location info periodically obtained
-	// from this modem and published into /run/wwan/location.json by the wwan
-	// microservice. This is further distributed to the controller and
-	// to applications by zedagent.
-	LocationTracking bool `json:"location-tracking"`
+	// from this modem and published by wwan microservice via topic WwanLocationInfo.
+	LocationTracking bool
 }
 
 // WwanAuthProtocol : authentication protocol used by cellular network.
@@ -132,9 +149,9 @@ const (
 
 // WwanProbe : cellular connectivity verification probe.
 type WwanProbe struct {
-	Disable bool `json:"disable"`
+	Disable bool
 	// IP/FQDN address to periodically probe to determine connection status.
-	Address string `json:"address"`
+	Address string
 }
 
 // Equal compares two instances of WwanNetworkConfig for equality.
@@ -143,18 +160,7 @@ func (wnc WwanNetworkConfig) Equal(wnc2 WwanNetworkConfig) bool {
 		wnc.PhysAddrs != wnc2.PhysAddrs {
 		return false
 	}
-	if wnc.SIMSlot != wnc2.SIMSlot ||
-		wnc.APN != wnc2.APN {
-		return false
-	}
-	if wnc.AuthProtocol != wnc2.AuthProtocol ||
-		wnc.Username != wnc2.Username ||
-		wnc.EncryptedPassword != wnc2.EncryptedPassword {
-		return false
-	}
-	if !generics.EqualLists(wnc.PreferredPLMNs, wnc2.PreferredPLMNs) ||
-		!generics.EqualLists(wnc.PreferredRATs, wnc2.PreferredRATs) ||
-		wnc.ForbidRoaming != wnc2.ForbidRoaming {
+	if !wnc.AccessPoint.Equal(wnc2.AccessPoint) {
 		return false
 	}
 	if !generics.EqualLists(wnc.Proxies, wnc2.Proxies) {
@@ -175,29 +181,36 @@ func (wnc WwanNetworkConfig) Equal(wnc2 WwanNetworkConfig) bool {
 type WwanPhysAddrs struct {
 	// Interface name.
 	// For example: wwan0
-	Interface string `json:"interface"`
+	Interface string
 	// USB address in the format "<BUS>:[<PORT>]", with nested ports separated by dots.
 	// For example: 1:2.3
-	USB string `json:"usb"`
+	USB string
 	// PCI address in the long format.
 	// For example: 0000:00:15.0
-	PCI string `json:"pci"`
+	PCI string
 	// Dev : device file representing the modem (e.g. /dev/cdc-wdm0).
 	// This address is only published as part of the wwan status
 	// and can't be configured from the controller.
-	Dev string `json:"dev,omitempty"`
+	Dev string
 }
 
-// WwanStatus is published by the wwan service and consumed by nim.
+// WwanStatus is published by the wwan service and consumed by nim, zedagent and zedrouter.
 type WwanStatus struct {
-	Networks []WwanNetworkStatus `json:"networks"`
-	// SHA256 hash of the corresponding WwanConfig (as config.json).
-	ConfigChecksum string `json:"config-checksum,omitempty"`
+	// DPCKey is just copied from the last applied WwanConfig.
+	DPCKey string
+	// DPCTimestamp is just copied from the last applied WwanConfig.
+	DPCTimestamp time.Time
+	// RSConfigTimestamp is just copied from the last applied WwanConfig.
+	RSConfigTimestamp time.Time
+	// One entry for every cellular modem.
+	Networks []WwanNetworkStatus
 }
 
 // Equal compares two instances of WwanStatus for equality.
 func (ws WwanStatus) Equal(ws2 WwanStatus) bool {
-	if ws.ConfigChecksum != ws2.ConfigChecksum {
+	if ws.DPCKey != ws2.DPCKey ||
+		!ws.DPCTimestamp.Equal(ws2.DPCTimestamp) ||
+		!ws.RSConfigTimestamp.Equal(ws2.RSConfigTimestamp) {
 		return false
 	}
 	return generics.EqualSetsFn(ws.Networks, ws2.Networks,
@@ -206,14 +219,15 @@ func (ws WwanStatus) Equal(ws2 WwanStatus) bool {
 		})
 }
 
-// LookupNetworkStatus returns status corresponding to the given cellular network.
-func (ws WwanStatus) LookupNetworkStatus(logicalLabel string) (WwanNetworkStatus, bool) {
-	for _, status := range ws.Networks {
-		if logicalLabel == status.LogicalLabel {
-			return status, true
+// GetNetworkStatus returns pointer to the network status corresponding to the modem
+// with the given logical label.
+func (ws WwanStatus) GetNetworkStatus(logicalLabel string) *WwanNetworkStatus {
+	for i := range ws.Networks {
+		if ws.Networks[i].LogicalLabel == logicalLabel {
+			return &ws.Networks[i]
 		}
 	}
-	return WwanNetworkStatus{}, false
+	return nil
 }
 
 // DoSanitize fills in logical names for cellular modules and SIM cards.
@@ -253,48 +267,92 @@ func (ws WwanStatus) DoSanitize() {
 	}
 }
 
+// Key is used for pubsub
+func (ws WwanStatus) Key() string {
+	return "global"
+}
+
+// LogCreate :
+func (ws WwanStatus) LogCreate(logBase *base.LogObject) {
+	logObject := base.NewLogObject(logBase, base.WwanStatusLogType, "",
+		nilUUID, ws.LogKey())
+	if logObject == nil {
+		return
+	}
+	logObject.Metricf("Wwan status create")
+}
+
+// LogModify :
+func (ws WwanStatus) LogModify(logBase *base.LogObject, old interface{}) {
+	logObject := base.EnsureLogObject(logBase, base.WwanStatusLogType, "",
+		nilUUID, ws.LogKey())
+	oldWs, ok := old.(WwanStatus)
+	if !ok {
+		logObject.Clone().Fatalf("LogModify: Old object passed is not of WwanStatus type")
+	}
+	logObject.CloneAndAddField("diff", cmp.Diff(oldWs, ws)).
+		Metricf("Wwan status modify")
+}
+
+// LogDelete :
+func (ws WwanStatus) LogDelete(logBase *base.LogObject) {
+	logObject := base.EnsureLogObject(logBase, base.WwanStatusLogType, "",
+		nilUUID, ws.LogKey())
+	logObject.Metricf("Wwan status delete")
+	base.DeleteLogObject(logBase, ws.LogKey())
+}
+
+// LogKey :
+func (ws WwanStatus) LogKey() string {
+	return string(base.WwanStatusLogType) + "-" + ws.Key()
+}
+
 // WwanNetworkStatus contains status information for a single cellular network
 // (i.e. one modem but possibly multiple SIM slots/cards).
 type WwanNetworkStatus struct {
 	// Logical label of the cellular modem in PhysicalIO.
 	// Can be empty if this device is not configured by the controller
 	// (and hence logical label does not exist).
-	LogicalLabel string         `json:"logical-label"`
-	PhysAddrs    WwanPhysAddrs  `json:"physical-addrs"`
-	Module       WwanCellModule `json:"cellular-module"`
+	LogicalLabel string
+	PhysAddrs    WwanPhysAddrs
+	Module       WwanCellModule
 	// One entry for every SIM slot (incl. those without SIM card).
-	SimCards []WwanSimCard `json:"sim-cards"`
+	SimCards []WwanSimCard
 	// Non-empty if the wwan microservice failed to apply config submitted by NIM.
-	ConfigError string `json:"config-error"`
+	ConfigError string
 	// Error message from the last connectivity probing.
-	ProbeError string `json:"probe-error"`
+	ProbeError string
 	// Network where the modem is currently registered.
-	CurrentProvider WwanProvider `json:"current-provider"`
+	CurrentProvider WwanProvider
 	// All networks that the modem is able to detect.
 	// This will include the currently used provider as well as other visible networks.
-	VisibleProviders []WwanProvider `json:"visible-providers,omitempty"`
+	VisibleProviders []WwanProvider
 	// The list of Radio Access Technologies (RATs) currently used for registering/connecting
 	// to the network (typically just one).
-	CurrentRATs []WwanRAT `json:"current-rats"`
+	CurrentRATs []WwanRAT
 	// Unix timestamp in seconds made when the current connection was established.
 	// Zero value if the modem is not connected.
-	ConnectedAt uint64 `json:"connected-at"`
+	ConnectedAt uint64
+	// IP settings received from the network when connection is established.
+	IPSettings WwanIPSettings
+	// True if location tracking is successfully running.
+	LocationTracking bool
 }
 
 // WwanCellModule contains cellular module specs.
 type WwanCellModule struct {
 	// Name is a module identifier. For example IMEI if available.
 	// Guaranteed to be unique among all modems attached to the edge node.
-	Name string `json:"name,omitempty"`
+	Name string
 	// International Mobile Equipment Identity.
-	IMEI         string `json:"imei"`
-	Model        string `json:"model"`
-	Manufacturer string `json:"manufacturer"`
+	IMEI         string
+	Model        string
+	Manufacturer string
 	// Firmware version identifier.
-	Revision string `json:"revision"`
+	Revision string
 	// QMI or MBIM.
-	ControlProtocol WwanCtrlProt `json:"control-protocol"`
-	OpMode          WwanOpMode   `json:"operating-mode"`
+	ControlProtocol WwanCtrlProt
+	OpMode          WwanOpMode
 }
 
 // WwanSimCard describes either empty SIM slot or a slot with a SIM card inserted.
@@ -302,37 +360,37 @@ type WwanSimCard struct {
 	// Name is a SIM card/slot identifier.
 	// Guaranteed to be unique across all modems and their SIM slots attached
 	// to the edge node.
-	Name string `json:"name,omitempty"`
+	Name string
 	// SIM slot number which this WwanSimCard instance describes.
-	SlotNumber uint8 `json:"slot-number"`
+	SlotNumber uint8
 	// True if this SIM slot is activated, i.e. the inserted SIM card (if any) can be used
 	// to connect to a cellular network.
-	SlotActivated bool `json:"slot-activated"`
+	SlotActivated bool
 	// Integrated Circuit Card Identifier.
 	// Empty if no SIM card is inserted into the slot or if the SIM card is not recognized.
-	ICCID string `json:"iccid,omitempty"`
+	ICCID string
 	// International Mobile Subscriber Identity.
 	// Empty if no SIM card is inserted into the slot or if the SIM card is not recognized.
-	IMSI string `json:"imsi,omitempty"`
+	IMSI string
 	// The current state of the SIM card (absent, initialized, not recognized, etc.).
 	// This state is not modeled using enum because the set of possible values differs
 	// between QMI and MBIM protocols (used to control cellular modules) and there is
 	// no 1:1 mapping between them.
-	State string `json:"state"`
+	State string
 }
 
 // WwanProvider contains information about a cellular connectivity provider.
 type WwanProvider struct {
 	// Public Land Mobile Network identifier.
-	PLMN string `json:"plmn"`
+	PLMN string
 	// Human-readable label identifying the provider.
-	Description string `json:"description"`
+	Description string
 	// True if this is the provider currently being used.
-	CurrentServing bool `json:"current-serving"`
+	CurrentServing bool
 	// True if data roaming is ON.
-	Roaming bool `json:"roaming"`
+	Roaming bool
 	// True if this provider is forbidden by SIM card config.
-	Forbidden bool `json:"forbidden"`
+	Forbidden bool
 }
 
 // WwanOpMode : wwan operating mode
@@ -365,6 +423,22 @@ const (
 	WwanCtrlProtMBIM WwanCtrlProt = "mbim"
 )
 
+// WwanIPSettings : IP settings received from the connected network.
+type WwanIPSettings struct {
+	Address    *net.IPNet
+	Gateway    net.IP
+	DNSServers []net.IP
+	MTU        uint16
+}
+
+// Equal compares two instances of WwanIPSettings for equality.
+func (wips WwanIPSettings) Equal(wips2 WwanIPSettings) bool {
+	return netutils.EqualIPNets(wips.Address, wips2.Address) &&
+		netutils.EqualIPs(wips.Gateway, wips2.Gateway) &&
+		generics.EqualSetsFn(wips.DNSServers, wips2.DNSServers, netutils.EqualIPs) &&
+		wips.MTU == wips2.MTU
+}
+
 // Equal compares two instances of WwanNetworkStatus for equality.
 func (wns WwanNetworkStatus) Equal(wns2 WwanNetworkStatus) bool {
 	if wns.LogicalLabel != wns2.LogicalLabel ||
@@ -388,7 +462,9 @@ func (wns WwanNetworkStatus) Equal(wns2 WwanNetworkStatus) bool {
 	if !generics.EqualSets(wns.CurrentRATs, wns2.CurrentRATs) {
 		return false
 	}
-	if wns.ConnectedAt != wns2.ConnectedAt {
+	if wns.ConnectedAt != wns2.ConnectedAt ||
+		!wns.IPSettings.Equal(wns2.IPSettings) ||
+		wns.LocationTracking != wns2.LocationTracking {
 		return false
 	}
 	return true
@@ -396,7 +472,18 @@ func (wns WwanNetworkStatus) Equal(wns2 WwanNetworkStatus) bool {
 
 // WwanMetrics is published by the wwan service.
 type WwanMetrics struct {
-	Networks []WwanNetworkMetrics `json:"networks"`
+	Networks []WwanNetworkMetrics
+}
+
+// GetNetworkMetrics returns pointer to the network metrics corresponding to the modem
+// with the given logical label.
+func (wm WwanMetrics) GetNetworkMetrics(logicalLabel string) *WwanNetworkMetrics {
+	for i := range wm.Networks {
+		if wm.Networks[i].LogicalLabel == logicalLabel {
+			return &wm.Networks[i]
+		}
+	}
+	return nil
 }
 
 // Equal compares two instances of WwanMetrics for equality.
@@ -462,70 +549,70 @@ type WwanNetworkMetrics struct {
 	// Logical label of the cellular modem in PhysicalIO.
 	// Can be empty if this device is not configured by the controller
 	// (and hence logical label does not exist).
-	LogicalLabel string          `json:"logical-label"`
-	PhysAddrs    WwanPhysAddrs   `json:"physical-addrs"`
-	PacketStats  WwanPacketStats `json:"packet-stats"`
-	SignalInfo   WwanSignalInfo  `json:"signal-info"`
+	LogicalLabel string
+	PhysAddrs    WwanPhysAddrs
+	PacketStats  WwanPacketStats
+	SignalInfo   WwanSignalInfo
 }
 
 // WwanPacketStats contains packet statistics recorded by a cellular modem.
 type WwanPacketStats struct {
-	RxBytes   uint64 `json:"rx-bytes"`
-	RxPackets uint64 `json:"rx-packets"`
-	RxDrops   uint64 `json:"rx-drops"`
-	TxBytes   uint64 `json:"tx-bytes"`
-	TxPackets uint64 `json:"tx-packets"`
-	TxDrops   uint64 `json:"tx-drops"`
+	RxBytes   uint64
+	RxPackets uint64
+	RxDrops   uint64
+	TxBytes   uint64
+	TxPackets uint64
+	TxDrops   uint64
 }
 
 // WwanSignalInfo contains cellular signal strength information.
 // The maximum value of int32 (0x7FFFFFFF) represents unspecified/unavailable metric.
 type WwanSignalInfo struct {
 	// Received signal strength indicator (RSSI) measured in dBm (decibel-milliwatts).
-	RSSI int32 `json:"rssi"`
+	RSSI int32
 	// Reference Signal Received Quality (RSRQ) measured in dB (decibels).
-	RSRQ int32 `json:"rsrq"`
+	RSRQ int32
 	// Reference Signal Receive Power (RSRP) measured in dBm (decibel-milliwatts).
-	RSRP int32 `json:"rsrp"`
+	RSRP int32
 	// Signal-to-Noise Ratio (SNR) measured in dB (decibels).
-	SNR int32 `json:"snr"`
+	SNR int32
 }
 
 // WwanLocationInfo contains device location information obtained from a GNSS
 // receiver integrated into an LTE modem.
 type WwanLocationInfo struct {
 	// Logical label of the device used to obtain this location information.
-	LogicalLabel string `json:"logical-label"`
+	LogicalLabel string
 	// Latitude in the Decimal degrees (DD) notation.
 	// Valid values are in the range <-90, 90>. Anything outside of this range
 	// should be treated as an unavailable value.
 	// Note that wwan microservice uses -32768 specifically when latitude is not known.
-	Latitude float64 `json:"latitude"`
+	Latitude float64
 	// Longitude in the Decimal degrees (DD) notation.
 	// Valid values are in the range <-180, 180>. Anything outside of this range
 	// should be treated as an unavailable value.
 	// Note that wwan microservice uses -32768 specifically when longitude is not known.
-	Longitude float64 `json:"longitude"`
+	Longitude float64
 	// Altitude w.r.t. mean sea level in meters.
 	// Negative value of -32768 is returned when altitude is not known.
-	Altitude float64 `json:"altitude"`
+	Altitude float64
 	// Circular horizontal position uncertainty in meters.
 	// Negative values are not valid and represent unavailable uncertainty.
 	// Note that wwan microservice uses -32768 specifically when horizontal
 	// uncertainty is not known.
-	HorizontalUncertainty float32 `json:"horizontal-uncertainty"`
+	HorizontalUncertainty float32
 	// Reliability of the provided information for latitude and longitude.
-	HorizontalReliability LocReliability `json:"horizontal-reliability"`
+	HorizontalReliability LocReliability
 	// Vertical position uncertainty in meters.
 	// Negative values are not valid and represent unavailable uncertainty.
 	// Note that wwan microservice uses -32768 specifically when vertical
 	// uncertainty is not known.
-	VerticalUncertainty float32 `json:"vertical-uncertainty"`
+	VerticalUncertainty float32
 	// Reliability of the provided information for altitude.
-	VerticalReliability LocReliability `json:"vertical-reliability"`
+	VerticalReliability LocReliability
 	// Unix timestamp in milliseconds.
 	// Zero value represents unavailable UTC timestamp.
-	UTCTimestamp uint64 `json:"utc-timestamp"`
+	UTCTimestamp uint64
 }
 
 // Key is used for pubsub
