@@ -161,3 +161,11 @@ func ContainsItemFn[Type any](list []Type, item Type, equal func(a, b Type) bool
 	}
 	return false
 }
+
+// AppendIfNotDuplicate adds item into list if the list does not yet contain the item.
+func AppendIfNotDuplicate[Type comparable](list []Type, item Type) []Type {
+	if !ContainsItem(list, item) {
+		return append(list, item)
+	}
+	return list
+}

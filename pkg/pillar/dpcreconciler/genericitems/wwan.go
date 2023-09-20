@@ -5,16 +5,17 @@ package genericitems
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
-	"encoding/json"
+	"errors"
 	"fmt"
 
 	"github.com/lf-edge/eve-libs/depgraph"
 	"github.com/lf-edge/eve/pkg/pillar/base"
-	"github.com/lf-edge/eve/pkg/pillar/devicenetwork"
+	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
+)
+
+const (
+	pubsubWwanKey = "global"
 )
 
 // Wwan : WWAN (LTE) configuration (read by wwan microservice).
@@ -23,9 +24,9 @@ type Wwan struct {
 	Config types.WwanConfig
 }
 
-// Name returns the full path to the wwan config file.
+// Name returns the key under which the WWAN config is published through pubsub.
 func (w Wwan) Name() string {
-	return devicenetwork.WwanConfigPath
+	return pubsubWwanKey
 }
 
 // Label is not defined.
@@ -40,7 +41,10 @@ func (w Wwan) Type() string {
 
 // Equal compares two WWAN configs.
 func (w Wwan) Equal(other depgraph.Item) bool {
-	w2 := other.(Wwan)
+	w2, isWwan := other.(Wwan)
+	if !isWwan {
+		return false
+	}
 	return w.Config.Equal(w2.Config)
 }
 
@@ -54,7 +58,7 @@ func (w Wwan) String() string {
 	return fmt.Sprintf("WWAN configuration: %+v", w.Config)
 }
 
-// Dependencies return empty list - wwan config file can be created even before
+// Dependencies return empty list - wwan config can be published even before
 // the referenced wwanX interface(s) are ready (the wwan microservice can deal with it).
 func (w Wwan) Dependencies() (deps []depgraph.Dependency) {
 	return nil
@@ -62,26 +66,31 @@ func (w Wwan) Dependencies() (deps []depgraph.Dependency) {
 
 // WwanConfigurator implements Configurator interface (libs/reconciler) for WWAN config.
 type WwanConfigurator struct {
-	Log *base.LogObject
-	// LastChecksum : checksum of the last written wwan configuration.
-	LastChecksum string
+	Log           *base.LogObject
+	PubWwanConfig pubsub.Publication
 }
 
-// Create writes config for wwan microservice.
+// Create publishes config for wwan microservice.
 func (c *WwanConfigurator) Create(ctx context.Context, item depgraph.Item) error {
-	wwan := item.(Wwan)
-	return c.installWwanConfig(wwan.Config)
+	wwan, isWwan := item.(Wwan)
+	if !isWwan {
+		return errors.New("unexpected item type")
+	}
+	return c.publishWwanConfig(wwan.Config)
 }
 
-// Modify writes updated config for wwan microservice.
+// Modify publishes updated config for wwan microservice.
 func (c *WwanConfigurator) Modify(ctx context.Context, oldItem, newItem depgraph.Item) (err error) {
-	wwan := newItem.(Wwan)
-	return c.installWwanConfig(wwan.Config)
+	wwan, isWwan := newItem.(Wwan)
+	if !isWwan {
+		return errors.New("unexpected item type")
+	}
+	return c.publishWwanConfig(wwan.Config)
 }
 
-// Delete writes empty config for wwan microservice.
+// Delete publishes empty config for wwan microservice.
 func (c *WwanConfigurator) Delete(ctx context.Context, item depgraph.Item) error {
-	return c.installWwanConfig(types.WwanConfig{})
+	return c.publishWwanConfig(types.WwanConfig{})
 }
 
 // NeedsRecreate returns false - Modify can apply any change.
@@ -89,30 +98,7 @@ func (c *WwanConfigurator) NeedsRecreate(oldItem, newItem depgraph.Item) (recrea
 	return false
 }
 
-// Write cellular config into /run/wwan/config.json
-func (c *WwanConfigurator) installWwanConfig(config types.WwanConfig) (err error) {
-	bytes, hash, err := MarshalWwanConfig(config)
-	if err != nil {
-		c.Log.Error(err)
-		return err
-	}
-	err = fileutils.WriteRename(devicenetwork.WwanConfigPath, bytes)
-	if err != nil {
-		c.Log.Error(err)
-		return err
-	}
-	c.LastChecksum = hash
-	return nil
-}
-
-// MarshalWwanConfig is exposed only for unit-testing purposes.
-func MarshalWwanConfig(config types.WwanConfig) (bytes []byte, hash string, err error) {
-	bytes, err = json.MarshalIndent(config, "", "    ")
-	if err != nil {
-		err = fmt.Errorf("failed to serialize wwan config: %w", err)
-		return nil, "", err
-	}
-	shaHash := sha256.Sum256(bytes)
-	hash = hex.EncodeToString(shaHash[:])
-	return bytes, hash, err
+// Publish cellular config to wwan microservice via pubsub.
+func (c *WwanConfigurator) publishWwanConfig(config types.WwanConfig) (err error) {
+	return c.PubWwanConfig.Publish(pubsubWwanKey, config)
 }

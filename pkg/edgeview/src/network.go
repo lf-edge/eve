@@ -1237,33 +1237,36 @@ func runWireless() {
 	}
 
 	printTitle("\n wwan config", colorCYAN, false)
-	retbytes, err = os.ReadFile("/run/wwan/config.json")
-	if err != nil {
-		return
+	retbytes, err = os.ReadFile("/run/nim/WwanConfig/global.json")
+	if err == nil {
+		var wwanConfig types.WwanConfig
+		err = json.Unmarshal(retbytes, &wwanConfig)
+		if err != nil {
+			return
+		}
+		fmt.Printf("%+v\n", wwanConfig)
 	}
-	var wwancfg types.WwanConfig
-	err = json.Unmarshal(retbytes, &wwancfg)
-	if err != nil {
-		return
-	}
-	fmt.Printf("%+v\n", wwancfg)
 
 	printTitle("\n wwan metrics", colorCYAN, false)
-	retbytes, err = os.ReadFile("/run/wwan/metrics.json")
+	retbytes, err = os.ReadFile("/run/wwan/WwanMetrics/global.json")
 	if err == nil {
-		prettyJSON, err := formatJSON(retbytes)
-		if err == nil {
-			fmt.Println(string(prettyJSON))
+		var wwanMetrics types.WwanMetrics
+		err = json.Unmarshal(retbytes, &wwanMetrics)
+		if err != nil {
+			return
 		}
+		fmt.Printf("%+v\n", wwanMetrics)
 	}
 
 	printTitle("\n wwan status", colorCYAN, false)
-	retbytes, err = os.ReadFile("/run/wwan/status.json")
+	retbytes, err = os.ReadFile("/run/wwan/WwanStatus/global.json")
 	if err == nil {
-		prettyJSON, err := formatJSON(retbytes)
-		if err == nil {
-			fmt.Println(string(prettyJSON))
+		var wwanStatus types.WwanStatus
+		err = json.Unmarshal(retbytes, &wwanStatus)
+		if err != nil {
+			return
 		}
+		fmt.Printf("%+v\n", wwanStatus)
 	}
 }
 

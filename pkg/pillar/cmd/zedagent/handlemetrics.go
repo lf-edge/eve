@@ -504,6 +504,7 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 		cipherMetricsDM,
 		cipherMetricsNim,
 		cipherMetricsZR,
+		cipherMetricsWwan,
 	}
 	for _, cm := range cipherMetrics {
 		log.Functionf("Cipher metrics for %s: %+v", cm.AgentName, cm)

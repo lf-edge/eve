@@ -360,7 +360,6 @@ func (hdl wwanStatusHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			status.Networks[i].SimCards[j].Name = ""
 		}
 	}
-	status.ConfigChecksum = ""
 	resp, err := json.Marshal(status)
 	if err != nil {
 		msg := fmt.Sprintf("Failed to marshal WWAN status: %v", err)

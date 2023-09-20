@@ -16,8 +16,17 @@ import (
 	"github.com/miekg/dns"
 )
 
+const (
+	// DhcpcdResolvConfDir : directory where dhcpcd stores resolv.conf
+	// files separately for every interface (named <interface>.dhcp).
+	DhcpcdResolvConfDir = "/run/dhcpcd/resolv.conf"
+	// WwanResolvConfDir : directory where wwan microservice stores resolv.conf
+	// files separately for every interface (named <interface>.dhcp).
+	WwanResolvConfDir = "/run/wwan/resolv.conf"
+)
+
 // ResolveConfDirs : directories where resolv.conf for an interface could be found.
-var ResolveConfDirs = []string{"/run/dhcpcd/resolv.conf", "/run/wwan/resolv.conf"}
+var ResolveConfDirs = []string{DhcpcdResolvConfDir, WwanResolvConfDir}
 
 const (
 	// DNSMaxParallelRequests is the maximum amount of parallel DNS requests

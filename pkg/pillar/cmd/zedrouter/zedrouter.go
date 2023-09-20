@@ -748,7 +748,7 @@ func (z *zedrouter) initSubscriptions() (err error) {
 
 	// Look for geographic location reports
 	z.subLocationInfo, err = z.pubSub.NewSubscription(pubsub.SubscriptionOptions{
-		AgentName:   "nim",
+		AgentName:   "wwan",
 		MyAgentName: agentName,
 		TopicImpl:   types.WwanLocationInfo{},
 		Activate:    false,
@@ -761,7 +761,7 @@ func (z *zedrouter) initSubscriptions() (err error) {
 
 	// Look for cellular status
 	z.subWwanStatus, err = z.pubSub.NewSubscription(pubsub.SubscriptionOptions{
-		AgentName:   "nim",
+		AgentName:   "wwan",
 		MyAgentName: agentName,
 		TopicImpl:   types.WwanStatus{},
 		Activate:    false,
@@ -774,7 +774,7 @@ func (z *zedrouter) initSubscriptions() (err error) {
 
 	// Look for cellular metrics
 	z.subWwanMetrics, err = z.pubSub.NewSubscription(pubsub.SubscriptionOptions{
-		AgentName:   "nim",
+		AgentName:   "wwan",
 		MyAgentName: agentName,
 		TopicImpl:   types.WwanMetrics{},
 		Activate:    false,
@@ -921,7 +921,7 @@ func (z *zedrouter) processAppConnReconcileStatus(
 
 func (z *zedrouter) ensureDir(path string) error {
 	if _, err := os.Stat(path); err != nil {
-		z.log.Functionf("Create directory %s", runDirname)
+		z.log.Functionf("Create directory %s", path)
 		if err := os.Mkdir(path, 0755); err != nil {
 			return err
 		}

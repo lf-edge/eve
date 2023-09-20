@@ -369,7 +369,7 @@ func (c *DhcpcdConfigurator) dhcpcdExists(ifName string) bool {
 	args := []string{"-P", ifName}
 	out, err := base.Exec(c.Log, name, args...).CombinedOutput()
 	if err != nil {
-		err = fmt.Errorf("dhcpcd command %s failed: %s; output: %s",
+		err = fmt.Errorf("dhcpcd command %s failed: %w; output: %s",
 			args, err, out)
 		c.Log.Error(err)
 		return false
