@@ -11,7 +11,7 @@ on:  # yamllint disable-line rule:truthy
       - 'docs/**'
       - 'pkg/pillar/docs/**'
   pull_request_review:
-    types: [submitted]
+    types: [labeled]
     paths-ignore:
       - 'docs/**'
       - 'pkg/pillar/docs/**'
