@@ -22,7 +22,7 @@ concurrency:
 
 jobs:
   test_suite_pr:
-    if: ${{ (github.event.review.state == 'approved') &&  ( github.event_name == 'pull_request') }}
+    if: ${{ (github.event.review.state == 'approved') && ( github.event.label.name  == 'test-eden') }}
     uses: lf-edge/eden/.github/workflows/test.yml@master
     with:
       eve_image: "evebuild/danger:pr${{ github.event.pull_request.number  }}"
