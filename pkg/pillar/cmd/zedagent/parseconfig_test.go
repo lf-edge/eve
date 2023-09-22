@@ -1314,7 +1314,7 @@ func TestParsePatchEnvelope(t *testing.T) {
 	// Impl because we have to change filepath of persist cache for testing
 	parsePatchEnvelopesImpl(getconfigCtx, config, persistCacheFolder)
 
-	patchEnvelopes, err := getconfigCtx.pubPatchEnvelopeInfo.Get("zedagent")
+	patchEnvelopes, err := getconfigCtx.pubPatchEnvelopeInfo.Get("global")
 
 	g.Expect(err).To(BeNil())
 	pes, ok := patchEnvelopes.(types.PatchEnvelopeInfoList)

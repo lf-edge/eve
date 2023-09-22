@@ -580,7 +580,7 @@ func (hdl AppCustomBlobsHandler) ServeHTTP(w http.ResponseWriter, r *http.Reques
 func HandlePatchDescription(z *zedrouter) func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// WithPatchEnvelopesByIP middleware returns envelopes which are more than 0
-		envelopes := r.Context().Value(patchEnvelopesContextKey).([]types.PatchEnvelopeInfo)
+		envelopes := r.Context().Value(patchEnvelopesContextKey).(types.PatchEnvelopeInfoList)
 
 		b, err := types.PatchEnvelopesJSONForAppInstance(envelopes)
 		if err != nil {
@@ -606,14 +606,14 @@ func sendError(w http.ResponseWriter, code int, msg string) {
 func HandlePatchDownload(z *zedrouter) func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// WithPatchEnvelopesByIP middleware returns envelopes which are more than 0
-		envelopes := r.Context().Value(patchEnvelopesContextKey).([]types.PatchEnvelopeInfo)
+		envelopes := r.Context().Value(patchEnvelopesContextKey).(types.PatchEnvelopeInfoList)
 
 		patchID := chi.URLParam(r, "patch")
 		if patchID == "" {
 			sendError(w, http.StatusNoContent, "patch in route is missing")
 			return
 		}
-		e := types.FindPatchEnvelopeByID(envelopes, patchID)
+		e := envelopes.FindPatchEnvelopeByID(patchID)
 		if e != nil {
 			path, err := os.MkdirTemp("", "patchEnvelopeZip")
 			if err != nil {
@@ -649,7 +649,7 @@ func HandlePatchDownload(z *zedrouter) func(http.ResponseWriter, *http.Request) 
 func HandlePatchFileDownload(z *zedrouter) func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// WithPatchEnvelopesByIP middleware returns envelopes which are more than 0
-		envelopes := r.Context().Value(patchEnvelopesContextKey).([]types.PatchEnvelopeInfo)
+		envelopes := r.Context().Value(patchEnvelopesContextKey).(types.PatchEnvelopeInfoList)
 
 		patchID := chi.URLParam(r, "patch")
 		if patchID == "" {
@@ -662,7 +662,7 @@ func HandlePatchFileDownload(z *zedrouter) func(http.ResponseWriter, *http.Reque
 			return
 		}
 
-		e := types.FindPatchEnvelopeByID(envelopes, patchID)
+		e := envelopes.FindPatchEnvelopeByID(patchID)
 		if e != nil {
 			if idx := types.CompletedBinaryBlobIdxByName(e.BinaryBlobs, fileName); idx != -1 {
 				http.ServeFile(w, r, e.BinaryBlobs[idx].URL)
@@ -703,12 +703,12 @@ func WithPatchEnvelopesByIP(z *zedrouter) func(http.Handler) http.Handler {
 
 			appUUID := anStatus.UUIDandVersion.UUID
 
-			envelopes := pe.Get(appUUID.String())
-			if len(envelopes) == 0 {
+			accessablePe := pe.Get(appUUID.String())
+			if len(accessablePe.Envelopes) == 0 {
 				sendError(w, http.StatusOK, fmt.Sprintf("No envelopes for %s", appUUID.String()))
 			}
 
-			ctx := context.WithValue(r.Context(), patchEnvelopesContextKey, envelopes)
+			ctx := context.WithValue(r.Context(), patchEnvelopesContextKey, accessablePe)
 
 			r = r.WithContext(ctx)
 			next.ServeHTTP(w, r)
