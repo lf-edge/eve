@@ -1320,7 +1320,7 @@ func TestParsePatchEnvelope(t *testing.T) {
 	pes, ok := patchEnvelopes.(types.PatchEnvelopeInfoList)
 	g.Expect(ok).To(BeTrue())
 	shaBytes := sha256.Sum256([]byte(fileData))
-	g.Expect(pes.Get(appU1)).To(BeEquivalentTo([]types.PatchEnvelopeInfo{
+	g.Expect(pes.Get(appU1).Envelopes).To(BeEquivalentTo([]types.PatchEnvelopeInfo{
 		{
 			PatchID:     patchID,
 			AllowedApps: []string{appU1, appU2},

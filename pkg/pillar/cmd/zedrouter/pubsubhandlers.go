@@ -629,3 +629,129 @@ func (z *zedrouter) handleAppInstDelete(ctxArg interface{}, key string,
 	z.unpublishAppInstMetadata(appInstMetadata)
 	z.log.Functionf("handleAppInstDelete(%s) done", key)
 }
+
+func (z *zedrouter) handlePatchEnvelopeImpl(peInfo types.PatchEnvelopeInfoList) {
+	z.patchEnvelopes.UpdateEnvelopes(peInfo.Envelopes)
+
+	z.triggerPEUpdate()
+}
+
+func (z *zedrouter) handlePatchEnvelopeCreate(ctxArg interface{}, key string,
+	configArg interface{}) {
+	peInfo := configArg.(types.PatchEnvelopeInfoList)
+	z.log.Functionf("handlePatchEnvelopeCreate: (UUID: %s) %v", key, peInfo.Envelopes)
+
+	z.handlePatchEnvelopeImpl(peInfo)
+
+	z.log.Functionf("handlePatchEnvelopeCreate(%s) done", key)
+}
+
+func (z *zedrouter) handlePatchEnvelopeModify(ctxArg interface{}, key string,
+	statusArg interface{}, oldStatusArg interface{}) {
+	peInfo := statusArg.(types.PatchEnvelopeInfoList)
+	z.log.Functionf("handlePatchEnvelopeModify: (UUID: %s) %v", key, peInfo.Envelopes)
+
+	z.handlePatchEnvelopeImpl(peInfo)
+
+	z.log.Functionf("handlePatchEnvelopeModify(%s) done", key)
+}
+
+func (z *zedrouter) handlePatchEnvelopeDelete(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	z.log.Functionf("handlePatchEnvelopeDelete: (UUID: %s)", key)
+
+	z.handlePatchEnvelopeImpl(types.PatchEnvelopeInfoList{})
+
+	z.log.Functionf("handlePatchEnvelopeDelete(%s) done", key)
+}
+
+func (z *zedrouter) handleContentTreeStatusCreate(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	contentTree := statusArg.(types.ContentTreeStatus)
+	z.log.Functionf("handleContentTreeStatusCreate: (UUID: %s, name:%s)",
+		key, contentTree.DisplayName)
+
+	z.patchEnvelopes.UpdateContentTree(contentTree, false)
+
+	z.triggerPEUpdate()
+
+	z.log.Functionf("handleContentTreeStatusCreate(%s) done", key)
+}
+
+func (z *zedrouter) handleContentTreeStatusModify(ctxArg interface{}, key string,
+	statusArg interface{}, oldStatusArg interface{}) {
+
+	contentTree := statusArg.(types.ContentTreeStatus)
+	z.log.Functionf("handleContentTreeStatusModify: (UUID: %s), name:%s",
+		key, contentTree.DisplayName)
+
+	z.patchEnvelopes.UpdateContentTree(contentTree, false)
+
+	z.triggerPEUpdate()
+
+	z.log.Functionf("handleContentTreeStatusModify(%s) done", key)
+
+}
+
+func (z *zedrouter) handleContentTreeStatusDelete(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	contentTree := statusArg.(types.ContentTreeStatus)
+	z.log.Functionf("handleVolumeStatusDelete: (UUID: %s, name:%s)",
+		key, contentTree.DisplayName)
+
+	z.patchEnvelopes.UpdateContentTree(contentTree, true)
+
+	z.triggerPEUpdate()
+
+	z.log.Functionf("handleContentTreeStatusDelete(%s) done", key)
+
+}
+
+func (z *zedrouter) handleVolumeStatusCreate(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	volume := statusArg.(types.VolumeStatus)
+	z.log.Functionf("handleVolumeStatusCreate: (UUID: %s, name:%s)",
+		key, volume.DisplayName)
+
+	z.patchEnvelopes.UpdateVolumeStatus(volume, false)
+
+	z.triggerPEUpdate()
+
+	z.log.Functionf("handleVolumeStatusCreate(%s) done", key)
+}
+
+func (z *zedrouter) handleVolumeStatusModify(ctxArg interface{}, key string,
+	statusArg interface{}, oldStatusArg interface{}) {
+
+	volume := statusArg.(types.VolumeStatus)
+	z.log.Functionf("handleVolumeStatusModify: (UUID: %s), name:%s",
+		key, volume.DisplayName)
+
+	z.patchEnvelopes.UpdateVolumeStatus(volume, false)
+
+	z.triggerPEUpdate()
+
+	z.log.Functionf("handleVolumeStatusModify(%s) done", key)
+}
+
+func (z *zedrouter) handleVolumeStatusDelete(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	volume := statusArg.(types.VolumeStatus)
+	z.log.Functionf("handleVolumeStatusDelete: (UUID: %s, name:%s)",
+		key, volume.DisplayName)
+
+	z.patchEnvelopes.UpdateVolumeStatus(volume, true)
+
+	z.triggerPEUpdate()
+
+	z.log.Functionf("handleVolumeStatusDelete(%s) done", key)
+}
+
+func (z *zedrouter) triggerPEUpdate() {
+	select {
+	case z.patchEnvelopes.UpdateStateNotificationCh() <- struct{}{}:
+		z.log.Function("triggerPEUpdate sent update")
+	default:
+		z.log.Warn("patchEnvelopes did not sent update. Slow handler?")
+	}
+}
