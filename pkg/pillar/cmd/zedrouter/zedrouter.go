@@ -801,7 +801,7 @@ func (z *zedrouter) initSubscriptions() (err error) {
 	z.subPatchEnvelopeInfo, err = z.pubSub.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:   "zedagent",
 		MyAgentName: agentName,
-		TopicImpl:   types.PatchEnvelopes{},
+		TopicImpl:   []types.PatchEnvelopeInfo{},
 		Activate:    false,
 		WarningTime: warningTime,
 		ErrorTime:   errorTime,

@@ -21,7 +21,7 @@ func TestGetZipArchive(t *testing.T) {
 	t.Parallel()
 
 	g := gomega.NewGomegaWithT(t)
-	pe := types.PatchEnvelopes{}
+	pe := []types.PatchEnvelopeInfo{}
 
 	uuidString := "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
 	peInfo := types.PatchEnvelopeInfo{
@@ -37,9 +37,9 @@ func TestGetZipArchive(t *testing.T) {
 		},
 	}
 
-	pe.Envelopes = append(pe.Envelopes, peInfo)
+	pe = append(pe, peInfo)
 
-	g.Expect(pe.Get(uuidString)).To(gomega.BeEquivalentTo([]types.PatchEnvelopeInfo{peInfo}))
+	g.Expect(types.FindPatchEnvelopesByApp(pe, uuidString)).To(gomega.BeEquivalentTo([]types.PatchEnvelopeInfo{peInfo}))
 
 	// Test GetZipArchive
 	root := "./"

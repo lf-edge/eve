@@ -16,7 +16,7 @@ func TestPatchEnvelopes(t *testing.T) {
 	t.Parallel()
 
 	g := gomega.NewGomegaWithT(t)
-	pe := types.PatchEnvelopes{}
+	pe := []types.PatchEnvelopeInfo{}
 
 	uuidString := "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
 	peInfo := types.PatchEnvelopeInfo{
@@ -32,9 +32,9 @@ func TestPatchEnvelopes(t *testing.T) {
 		},
 	}
 
-	pe.Envelopes = append(pe.Envelopes, peInfo)
+	pe = append(pe, peInfo)
 
-	g.Expect(pe.Get(uuidString)).To(gomega.BeEquivalentTo([]types.PatchEnvelopeInfo{peInfo}))
+	g.Expect(types.FindPatchEnvelopesByApp(pe, uuidString)).To(gomega.BeEquivalentTo([]types.PatchEnvelopeInfo{peInfo}))
 
 	// Test GetZipArchive
 	filecontent := "blobfilecontent"
@@ -62,11 +62,9 @@ func TestPatchEnvelopes(t *testing.T) {
 			},
 		},
 	}
-	pe = types.PatchEnvelopes{
-		Envelopes: []types.PatchEnvelopeInfo{peInfo},
-	}
+	pe = []types.PatchEnvelopeInfo{peInfo}
 
-	got := pe.Get("17daa0ff-39d6-42be-a537-44c974276aec")
+	got := types.FindPatchEnvelopesByApp(pe, "17daa0ff-39d6-42be-a537-44c974276aec")
 	assert.Equal(t, got, []types.PatchEnvelopeInfo{peInfo})
 
 	assert.Equal(t, peInfo, *types.FindPatchEnvelopeByID(got, "699fbdb2-e455-448f-84f5-68e547ec1305"))

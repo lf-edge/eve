@@ -42,7 +42,7 @@ func parsePatchEnvelopesImpl(ctx *getconfigContext, config *zconfig.EdgeDevConfi
 
 	var blobsAfter []string
 	patchEnvelopes := config.GetPatchEnvelopes()
-	result := types.PatchEnvelopes{}
+	result := make([]types.PatchEnvelopeInfo, len(patchEnvelopes))
 	for _, pe := range patchEnvelopes {
 		peInfo := types.PatchEnvelopeInfo{
 			AllowedApps: pe.GetAppInstIdsAllowed(),
@@ -56,7 +56,7 @@ func parsePatchEnvelopesImpl(ctx *getconfigContext, config *zconfig.EdgeDevConfi
 			}
 		}
 
-		result.Envelopes = append(result.Envelopes, peInfo)
+		result = append(result, peInfo)
 
 		for _, inlineBlob := range peInfo.BinaryBlobs {
 			blobsAfter = append(blobsAfter, inlineBlob.FileName)
@@ -72,8 +72,8 @@ func parsePatchEnvelopesImpl(ctx *getconfigContext, config *zconfig.EdgeDevConfi
 	}
 }
 
-func publishPatchEnvelopes(ctx *getconfigContext, patchEnvelopes types.PatchEnvelopes) {
-	key := patchEnvelopes.Key()
+func publishPatchEnvelopes(ctx *getconfigContext, patchEnvelopes []types.PatchEnvelopeInfo) {
+	key := types.PatchEnvelopeInfoKey()
 	pub := ctx.pubPatchEnvelopeInfo
 
 	pub.Publish(key, patchEnvelopes)

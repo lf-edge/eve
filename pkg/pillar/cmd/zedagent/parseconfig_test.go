@@ -42,7 +42,7 @@ func initGetConfigCtx(g *GomegaWithT) *getconfigContext {
 	})
 	pubPatchEnvelopes, err := ps.NewPublication(pubsub.PublicationOptions{
 		AgentName: agentName,
-		TopicType: types.PatchEnvelopes{},
+		TopicType: []types.PatchEnvelopeInfo{},
 	})
 	g.Expect(err).To(BeNil())
 	getconfigCtx := &getconfigContext{
@@ -1309,18 +1309,19 @@ func TestParsePatchEnvelope(t *testing.T) {
 	}
 
 	persistCacheFolder, err := os.MkdirTemp("", "testPersist")
+	defer os.RemoveAll(persistCacheFolder)
 	g.Expect(err).To(BeNil())
 
 	// Impl because we have to change filepath of persist cache for testing
 	parsePatchEnvelopesImpl(getconfigCtx, config, persistCacheFolder)
 
-	patchEnvelopes, err := getconfigCtx.pubPatchEnvelopeInfo.Get("zedagent")
+	patchEnvelopes, err := getconfigCtx.pubPatchEnvelopeInfo.Get(types.PatchEnvelopeInfoKey())
 
 	g.Expect(err).To(BeNil())
-	pes, ok := patchEnvelopes.(types.PatchEnvelopes)
+	pes, ok := patchEnvelopes.([]types.PatchEnvelopeInfo)
 	g.Expect(ok).To(BeTrue())
 	shaBytes := sha256.Sum256([]byte(fileData))
-	g.Expect(pes.Get(appU1)).To(BeEquivalentTo([]types.PatchEnvelopeInfo{
+	g.Expect(types.FindPatchEnvelopesByApp(pes, appU1)).To(BeEquivalentTo([]types.PatchEnvelopeInfo{
 		{
 			PatchID:     patchID,
 			AllowedApps: []string{appU1, appU2},
@@ -1334,7 +1335,5 @@ func TestParsePatchEnvelope(t *testing.T) {
 			},
 		},
 	}))
-
-	os.RemoveAll(persistCacheFolder)
 
 }
