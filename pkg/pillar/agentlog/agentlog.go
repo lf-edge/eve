@@ -153,16 +153,17 @@ func (hook *SkipCallerHook) Levels() []logrus.Level {
 
 // Wait on channel then handle the signals
 func handleSignals(log *base.LogObject, agentName string, agentPid int, sigs chan os.Signal) {
-	for {
-		select {
-		case sig := <-sigs:
-			log.Functionf("handleSignals: received %v\n", sig)
-			switch sig {
-			case syscall.SIGUSR1:
-				dumpStacks(log, agentName)
-			case syscall.SIGUSR2:
-				go listenDebug(log, agentName)
-			}
+	agentDebugDir := fmt.Sprintf("%s/%s/", types.PersistDebugDir, agentName)
+	stacksDumpFileName := agentDebugDir + "/sigusr1"
+	memDumpFileName := agentDebugDir + "/sigusr2"
+
+	for sig := range sigs {
+		log.Functionf("handleSignals: received %v\n", sig)
+		switch sig {
+		case syscall.SIGUSR1:
+			dumpStacks(log, stacksDumpFileName)
+		case syscall.SIGUSR2:
+			go listenDebug(log, stacksDumpFileName, memDumpFileName)
 		}
 	}
 }
@@ -226,14 +227,10 @@ func writeOrLog(log *base.LogObject, w io.Writer, msg string) {
 
 var listenDebugRunning atomic.Bool
 
-func listenDebug(log *base.LogObject, agentName string) {
+func listenDebug(log *base.LogObject, stacksDumpFileName, memDumpFileName string) {
 	if listenDebugRunning.Swap(true) {
 		return
 	}
-
-	agentDebugDir := fmt.Sprintf("%s/%s/", types.PersistDebugDir, agentName)
-	stacksDumpFileName := agentDebugDir + "/sigusr1"
-	memDumpFileName := agentDebugDir + "/sigusr2"
 
 	mux := http.NewServeMux()
 
