@@ -4,38 +4,31 @@
 package types
 
 import (
-	"archive/zip"
 	"encoding/json"
-	"io"
-	"os"
-	"path/filepath"
 )
 
-// PatchEnvelopeInfoList is a wrapper
-// to send patch envelopes
+// PatchEnvelopeInfoList will be shared with zedrouter after parsing
+// in zedagent
 type PatchEnvelopeInfoList struct {
 	Envelopes []PatchEnvelopeInfo
 }
 
 // Get returns list of patch envelopes, which are available to appUUID
-func (pe *PatchEnvelopeInfoList) Get(appUUID string) []PatchEnvelopeInfo {
-	var res []PatchEnvelopeInfo
+func (pe *PatchEnvelopeInfoList) Get(appUUID string) PatchEnvelopeInfoList {
+	var result []PatchEnvelopeInfo
 
 	for _, envelope := range pe.Envelopes {
 		for _, allowedUUID := range envelope.AllowedApps {
 			if allowedUUID == appUUID {
-				res = append(res, envelope)
+				result = append(result, envelope)
 				break
 			}
 		}
 	}
 
-	return res
-}
-
-// Key for pubsub
-func (PatchEnvelopeInfoList) Key() string {
-	return "zedagent"
+	return PatchEnvelopeInfoList{
+		Envelopes: result,
+	}
 }
 
 // PatchEnvelopeInfo - information
@@ -58,10 +51,10 @@ type peInfoToDisplay struct {
 
 // PatchEnvelopesJSONForAppInstance returns json representation
 // of Patch Envelopes list which are shown to app instances
-func PatchEnvelopesJSONForAppInstance(pe []PatchEnvelopeInfo) ([]byte, error) {
-	toDisplay := make([]peInfoToDisplay, len(pe))
+func PatchEnvelopesJSONForAppInstance(pe PatchEnvelopeInfoList) ([]byte, error) {
+	toDisplay := make([]peInfoToDisplay, len(pe.Envelopes))
 
-	for i, envelope := range pe {
+	for i, envelope := range pe.Envelopes {
 		toDisplay[i] = peInfoToDisplay{
 			PatchID:     envelope.PatchID,
 			BinaryBlobs: envelope.BinaryBlobs,
@@ -72,51 +65,19 @@ func PatchEnvelopesJSONForAppInstance(pe []PatchEnvelopeInfo) ([]byte, error) {
 	return json.Marshal(toDisplay)
 }
 
+// Key for pubsub
+func (pe *PatchEnvelopeInfoList) Key() string {
+	return "global"
+}
+
 // FindPatchEnvelopeByID returns patch envelope with given patchId
-func FindPatchEnvelopeByID(pe []PatchEnvelopeInfo, patchID string) *PatchEnvelopeInfo {
-	for _, pe := range pe {
+func (pe *PatchEnvelopeInfoList) FindPatchEnvelopeByID(patchID string) *PatchEnvelopeInfo {
+	for _, pe := range pe.Envelopes {
 		if pe.PatchID == patchID {
 			return &pe
 		}
 	}
 	return nil
-}
-
-// GetZipArchive archives list of patch envelopes in a given path and returns
-// full path to zip archive
-func GetZipArchive(root string, pe PatchEnvelopeInfo) (string, error) {
-	zipFilename := filepath.Join(root, pe.PatchID+".zip")
-	zipFile, err := os.Create(zipFilename)
-	if err != nil {
-		return "", err
-	}
-	defer zipFile.Close()
-
-	zipWriter := zip.NewWriter(zipFile)
-	defer zipWriter.Close()
-
-	for _, b := range pe.BinaryBlobs {
-		// We only want to archive binary blobs which are ready
-		file, err := os.Open(b.URL)
-		if err != nil {
-			return "", err
-		}
-		defer file.Close()
-
-		baseName := filepath.Base(b.URL)
-		zipEntry, err := zipWriter.Create(baseName)
-		if err != nil {
-			return "", err
-		}
-
-		_, err = io.Copy(zipEntry, file)
-		if err != nil {
-			return "", err
-		}
-
-	}
-
-	return zipFilename, nil
 }
 
 // BinaryBlobCompleted is representation of
