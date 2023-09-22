@@ -5,20 +5,24 @@ package types_test
 
 import (
 	"os"
+	"path/filepath"
 	"testing"
 
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/onsi/gomega"
+	uuid "github.com/satori/go.uuid"
+	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 )
 
-func TestPatchEnvelopes(t *testing.T) {
+func TestPatchEnvelopeInfo(t *testing.T) {
 	t.Parallel()
 
 	g := gomega.NewGomegaWithT(t)
 	pe := []types.PatchEnvelopeInfo{}
 
-	uuidString := "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+	uuidString := "6ba7b810-9dad-13d0-80b4-00c04fd430c8"
 	peInfo := types.PatchEnvelopeInfo{
 		PatchID:     "PatchId1",
 		AllowedApps: []string{uuidString},
@@ -96,4 +100,105 @@ func TestFindPatchEnvelopeById(t *testing.T) {
 
 	got = types.FindPatchEnvelopeByID(pes, "NonExistingPatchId")
 	g.Expect(got).To(gomega.BeNil())
+}
+
+func TestPatchEnvelopes(t *testing.T) {
+	t.Parallel()
+
+	g := gomega.NewGomegaWithT(t)
+
+	logger := logrus.StandardLogger()
+	log := base.NewSourceLogObject(logger, "petypes", 1234)
+	peStore := types.NewPatchEnvelopes(log)
+
+	u := "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+	u1, _ := uuid.FromString(u)
+	filecontent := "blobfilecontent"
+	path, err := os.MkdirTemp("", "testFolder")
+	f := filepath.Join(path, "blobfile")
+	g.Expect(err).To(gomega.BeNil())
+
+	err = os.WriteFile(f, []byte(filecontent), 0600)
+	g.Expect(err).To(gomega.BeNil())
+
+	defer os.Remove(f)
+
+	volumeStatuses := []types.VolumeStatus{
+		{
+			VolumeID:     u1,
+			State:        types.INSTALLED,
+			FileLocation: f,
+		},
+	}
+
+	peInfo := []types.PatchEnvelopeInfo{
+		{
+			PatchID:     "PatchId1",
+			AllowedApps: []string{u},
+			BinaryBlobs: []types.BinaryBlobCompleted{
+				{
+					FileName:     "TestFileName",
+					FileSha:      "TestFileSha",
+					FileMetadata: "TestFileMetadata",
+					URL:          "./testurl",
+				},
+			},
+			VolumeRefs: []types.BinaryBlobVolumeRef{
+				{
+					FileName:     "VolTestFileName",
+					ImageName:    "VolTestImageName",
+					FileMetadata: "VolTestFileMetadata",
+					ImageID:      u,
+				},
+			},
+		},
+	}
+
+	peStore.Wg.Add(1)
+	go func() {
+		for _, vs := range volumeStatuses {
+			peStore.VolumeStatusCh <- types.PatchEnvelopesVsCh{
+				Vs:     vs,
+				Action: types.PatchEnvelopesVsChActionPut,
+			}
+		}
+	}()
+
+	peStore.Wg.Add(1)
+	go func() {
+		peStore.PatchEnvelopeInfoCh <- peInfo
+	}()
+
+	peStore.Wg.Wait()
+
+	g.Expect(peStore.Get(u)).To(gomega.BeEquivalentTo(
+		[]types.PatchEnvelopeInfo{
+			{
+				PatchID:     "PatchId1",
+				AllowedApps: []string{u},
+				BinaryBlobs: []types.BinaryBlobCompleted{
+					{
+						FileName:     "TestFileName",
+						FileSha:      "TestFileSha",
+						FileMetadata: "TestFileMetadata",
+						URL:          "./testurl",
+					},
+					{
+						FileName: "VolTestFileName",
+						//pragma: allowlist nextline secret
+						FileSha:      "2c096be52e6f8510b4deac978f700dd103f144539e4ccdede5b075ce55dca980",
+						FileMetadata: "VolTestFileMetadata",
+						URL:          f,
+					},
+				},
+				VolumeRefs: []types.BinaryBlobVolumeRef{
+					{
+						FileName:     "VolTestFileName",
+						ImageName:    "VolTestImageName",
+						FileMetadata: "VolTestFileMetadata",
+						ImageID:      u,
+					},
+				},
+			},
+		}))
 }
