@@ -629,3 +629,70 @@ func (z *zedrouter) handleAppInstDelete(ctxArg interface{}, key string,
 	z.unpublishAppInstMetadata(appInstMetadata)
 	z.log.Functionf("handleAppInstDelete(%s) done", key)
 }
+
+func (z *zedrouter) handlePatchEnvelopeCreate(ctxArg interface{}, key string,
+	configArg interface{}) {
+	peInfo := ctxArg.([]types.PatchEnvelopeInfo)
+	z.log.Functionf("handlePatchEnvelopeCreate: (UUID: %s)", key)
+
+	z.patchEnvelopes.Wg.Add(1)
+	z.patchEnvelopes.PatchEnvelopeInfoCh <- peInfo
+
+	z.log.Functionf("handleVolumeStatusCreate(%s) done", key)
+}
+
+func (z *zedrouter) handlePatchEnvelopeModify(ctxArg interface{}, key string,
+	statusArg interface{}, oldStatusArg interface{}) {
+	peInfo := ctxArg.([]types.PatchEnvelopeInfo)
+	z.log.Functionf("handlePatchEnvelopeModify: (UUID: %s)", key)
+
+	z.patchEnvelopes.Wg.Add(1)
+	z.patchEnvelopes.PatchEnvelopeInfoCh <- peInfo
+
+	z.log.Functionf("handlePatchEnvelopeModify(%s) done", key)
+}
+
+func (z *zedrouter) handleVolumeStatusCreate(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	volume := ctxArg.(types.VolumeStatus)
+	z.log.Functionf("handleVolumeStatusCreate: (UUID: %s, name:%s)",
+		key, volume.DisplayName)
+
+	z.patchEnvelopes.Wg.Add(1)
+	z.patchEnvelopes.VolumeStatusCh <- types.PatchEnvelopesVsCh{
+		Vs:     volume,
+		Action: types.PatchEnvelopesVsChActionPut,
+	}
+
+	z.log.Functionf("handleVolumeStatusCreate(%s) done", key)
+}
+
+func (z *zedrouter) handleVolumeStatusModify(ctxArg interface{}, key string,
+	statusArg interface{}, oldStatusArg interface{}) {
+	volume := ctxArg.(types.VolumeStatus)
+	z.log.Functionf("handleVolumeStatusModify: (UUID: %s, name:%s)",
+		key, volume.DisplayName)
+
+	z.patchEnvelopes.Wg.Add(1)
+	z.patchEnvelopes.VolumeStatusCh <- types.PatchEnvelopesVsCh{
+		Vs:     volume,
+		Action: types.PatchEnvelopesVsChActionPut,
+	}
+
+	z.log.Functionf("handleVolumeStatusModify(%s) done", key)
+}
+
+func (z *zedrouter) handleVolumeStatusDelete(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	volume := ctxArg.(types.VolumeStatus)
+	z.log.Functionf("handleVolumeStatusDelete: (UUID: %s, name:%s)",
+		key, volume.DisplayName)
+
+	z.patchEnvelopes.Wg.Add(1)
+	z.patchEnvelopes.VolumeStatusCh <- types.PatchEnvelopesVsCh{
+		Vs:     volume,
+		Action: types.PatchEnvelopesVsChActionDelete,
+	}
+
+	z.log.Functionf("handleVolumeStatusDelete(%s) done", key)
+}
