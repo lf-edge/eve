@@ -582,7 +582,7 @@ func HandlePatchDescription(z *zedrouter) func(http.ResponseWriter, *http.Reques
 		// WithPatchEnvelopesByIP middleware returns envelopes which are more than 0
 		envelopes := r.Context().Value(patchEnvelopesContextKey).(types.PatchEnvelopeInfoList)
 
-		b, err := types.PatchEnvelopesJSONForAppInstance(envelopes)
+		b, err := PatchEnvelopesJSONForAppInstance(envelopes)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusUnprocessableEntity)
 			return
@@ -684,13 +684,6 @@ func HandlePatchFileDownload(z *zedrouter) func(http.ResponseWriter, *http.Reque
 func WithPatchEnvelopesByIP(z *zedrouter) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			peObj, err := z.subPatchEnvelopeInfo.Get("zedagent")
-			if err != nil {
-				sendError(w, http.StatusNoContent, "Cannot get patch envelope subscription")
-				return
-			}
-
-			pe := peObj.(types.PatchEnvelopeInfoList)
 
 			remoteIP := net.ParseIP(strings.Split(r.RemoteAddr, ":")[0])
 			anStatus := z.lookupAppNetworkStatusByAppIP(remoteIP)
@@ -703,7 +696,7 @@ func WithPatchEnvelopesByIP(z *zedrouter) func(http.Handler) http.Handler {
 
 			appUUID := anStatus.UUIDandVersion.UUID
 
-			accessablePe := pe.Get(appUUID.String())
+			accessablePe := z.patchEnvelopes.Get(appUUID.String())
 			if len(accessablePe.Envelopes) == 0 {
 				sendError(w, http.StatusOK, fmt.Sprintf("No envelopes for %s", appUUID.String()))
 			}

@@ -5,6 +5,7 @@ package zedrouter_test
 
 import (
 	"testing"
+	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/zedrouter"
@@ -71,7 +72,6 @@ func TestPatchEnvelopes(t *testing.T) {
 		},
 	}
 
-	peStore.Wg.Add(1)
 	go func() {
 		for _, vs := range volumeStatuses {
 			peStore.UpdateVolumeStatus(vs, false)
@@ -79,7 +79,6 @@ func TestPatchEnvelopes(t *testing.T) {
 		}
 	}()
 
-	peStore.Wg.Add(1)
 	go func() {
 		for _, ct := range contentStatuses {
 			peStore.UpdateContentTree(ct, false)
@@ -98,7 +97,6 @@ func TestPatchEnvelopes(t *testing.T) {
 	finishedProcessing := make(chan struct{})
 	go func() {
 		for {
-
 			if len(peStore.Get(u).Envelopes) > 0 && len(peStore.Get(u).Envelopes[0].BinaryBlobs) >= 2 {
 				close(finishedProcessing)
 				return
@@ -115,7 +113,6 @@ func TestPatchEnvelopes(t *testing.T) {
 			return false
 		}
 	}, 2*time.Minute, time.Second).Should(gomega.BeTrue())
->>>>>>> 8d39825eb (MERGE ME 2)
 
 	g.Expect(peStore.Get(u).Envelopes).To(gomega.BeEquivalentTo(
 		[]types.PatchEnvelopeInfo{

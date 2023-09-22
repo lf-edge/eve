@@ -3,10 +3,6 @@
 
 package types
 
-import (
-	"encoding/json"
-)
-
 // PatchEnvelopeInfoList will be shared with zedrouter after parsing
 // in zedagent
 type PatchEnvelopeInfoList struct {
@@ -38,31 +34,6 @@ type PatchEnvelopeInfo struct {
 	PatchID     string
 	BinaryBlobs []BinaryBlobCompleted
 	VolumeRefs  []BinaryBlobVolumeRef
-}
-
-// since we use json in pubsub we cannot use json - tag
-// and therefore we need some representational structure
-// for PatchEnvelopeInfo.
-type peInfoToDisplay struct {
-	PatchID     string
-	BinaryBlobs []BinaryBlobCompleted
-	VolumeRefs  []BinaryBlobVolumeRef
-}
-
-// PatchEnvelopesJSONForAppInstance returns json representation
-// of Patch Envelopes list which are shown to app instances
-func PatchEnvelopesJSONForAppInstance(pe PatchEnvelopeInfoList) ([]byte, error) {
-	toDisplay := make([]peInfoToDisplay, len(pe.Envelopes))
-
-	for i, envelope := range pe.Envelopes {
-		toDisplay[i] = peInfoToDisplay{
-			PatchID:     envelope.PatchID,
-			BinaryBlobs: envelope.BinaryBlobs,
-			VolumeRefs:  envelope.VolumeRefs,
-		}
-	}
-
-	return json.Marshal(toDisplay)
 }
 
 // Key for pubsub
