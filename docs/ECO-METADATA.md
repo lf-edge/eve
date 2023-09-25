@@ -311,3 +311,51 @@ EVE is generating diagnostic output on a console (if there is one) which summari
 
 This can be done using a GET to `/eve/v1/diag` endpoint.
 The returned object is of Context-Type text - the same text which is sent to the console.
+
+### Patch Envelope endpoints
+
+Applications might want to get some updates/configurations in runtime, this can be done via Patch Envelopes.
+More information on what Patch Envelopes are you can find in [PATCH-ENVELOPES.md](.PATCH-ENVELOPES.md) doc.
+There are several endpoints which allow application to handle Patch Envelopes
+
+Get list of available Patch Envelopes `/eve/v1/patch/description.json`
+For example:
+
+```bash
+curl -X GET -v http://169.254.169.254/eve/v1/patch/description.json
+[
+
+    {
+        "PatchId":"699fbdb2-e455-448f-84f5-68e547ec1305",
+        "BinaryBlobs":[
+            {
+                "file-name":"textfile1.txt",
+                "file-sha":"%FILE_SHA",
+                "file-meta-data":"YXJ0aWZhY3QgbWV0YWRhdGE=",
+                "url":"/persist/patchEnvelopesCache/textfile1.txt"
+            },
+            {
+                "file-name":"textfile2.txt",
+                "file-sha":"%FILE_SHA%",
+                "file-meta-data":"YXJ0aWZhY3QgbWV0YWRhdGE=",
+                "url":"/persist/patchEnvelopesCache/textfile2.txt"
+            }
+        ],
+        "VolumeRefs":null
+    }
+
+]
+```
+
+Files represented in BinaryBlobs section can be downloaded via this endpoint
+`/eve/v1/patch/download/{patch}/{file}`
+
+Where `patch` is Patch Envelope uuid and `file` is file name of binary blob.
+In example above files are `textfile1.txt` and `textfile2.txt`
+For example:
+
+```bash
+curl -X GET http://169.254.169.254/eve/v1/patch/download/699fbdb2-e455-448f-84f5-68e547ec1305/textfile1.txt
+
+%base64-encoded file contents%
+```
