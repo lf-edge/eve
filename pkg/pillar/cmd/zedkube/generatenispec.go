@@ -95,6 +95,7 @@ func localNISpecCreate(ctx *zedkubeContext, niStatus *types.NetworkInstanceStatu
 	status, err := kubeGetNIStatus(ctx, niUUID)
 	if err != nil || status.BridgeName == "" {
 		log.Noticef("localNISpecCreate: spec get status wait. status %+v, err %v", status, err)
+		err = fmt.Errorf("localNISpecCreate: get status wait err %v", err)
 		return err
 	}
 

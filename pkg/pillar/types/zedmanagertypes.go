@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/google/go-cmp/cmp"
@@ -231,6 +232,10 @@ func (config AppInstanceConfig) LogKey() string {
 
 func (config AppInstanceConfig) Key() string {
 	return config.UUIDandVersion.UUID.String()
+}
+
+func (config AppInstanceConfig) GetKubeDispName() string {
+	return strings.ToLower(config.DisplayName) + "-" + config.UUIDandVersion.UUID.String()[:5]
 }
 
 // SnapshottingStatus contains the snapshot information for the app instance.

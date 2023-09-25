@@ -138,7 +138,7 @@ func runAppVNC(ctx *zedkubeContext, config *types.AppInstanceConfig) {
 	i := 5
 	for {
 		var err error
-		vmiName, err = getVMIdomainName(ctx, config.UUIDandVersion.UUID.String())
+		vmiName, err = getVMIdomainName(ctx, config)
 		if err != nil {
 			log.Noticef("runAppVNC: get vmi domainname error %v", err)
 			if i >= 0 {
@@ -157,8 +157,6 @@ func runAppVNC(ctx *zedkubeContext, config *types.AppInstanceConfig) {
 	vncPort := vmconfig.VncDisplay + 5900
 	port := strconv.Itoa(int(vncPort))
 
-	//args := []string{"vnc", vmiName, "-n", "eveNamespace", "--kubeconfig",
-	//	"/run/.kube/k3s/k3s.yaml", "--port", port, "--proxy-only"}
 	if config.RemoteConsole {
 		content := fmt.Sprintf("VMINAME:%s\nVNCPORT:%s\n", vmiName, port)
 		err := os.WriteFile(vmiVNCFileName, []byte(content), 0644)
@@ -176,16 +174,17 @@ func runAppVNC(ctx *zedkubeContext, config *types.AppInstanceConfig) {
 			}
 		}
 	}
-	log.Noticef("runAppVNC: done")
+	log.Noticef("runAppVNC: %v, done", vmiName)
 }
 
-func getVMIdomainName(ctx *zedkubeContext, appuuid string) (string, error) {
+func getVMIdomainName(ctx *zedkubeContext, config *types.AppInstanceConfig) (string, error) {
 	virtClient, err := kubecli.GetKubevirtClientFromRESTConfig(ctx.config)
 	if err != nil {
 		log.Errorf("getVMIs: get virtclient error %v", err)
 		return "", err
 	}
 
+	DispName := config.GetKubeDispName()
 	var domainName string
 	vmis, err := virtClient.VirtualMachineInstance(eveNamespace).List(context.Background(), &metav1.ListOptions{})
 	if err != nil {
@@ -194,7 +193,7 @@ func getVMIdomainName(ctx *zedkubeContext, appuuid string) (string, error) {
 	}
 
 	for _, vmi := range vmis.Items {
-		if !strings.Contains(vmi.ObjectMeta.Name, appuuid) {
+		if !strings.Contains(vmi.ObjectMeta.Name, DispName) {
 			continue
 		}
 		domainName = vmi.ObjectMeta.Name

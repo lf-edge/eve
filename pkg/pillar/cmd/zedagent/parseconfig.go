@@ -585,6 +585,11 @@ func parseAppInstanceConfig(getconfigCtx *getconfigContext,
 		appInstance.CloudInitVersion = cfgApp.CloudInitVersion
 		appInstance.FixedResources.CPUsPinned = cfgApp.Fixedresources.PinCpu
 
+		// XXX hack for Kubernetes container type, until have updated EVE API and Zedcloud support
+		if appInstance.FixedResources.VirtualizationMode == types.LEGACY {
+			appInstance.FixedResources.VirtualizationMode = types.KubeContainer
+		}
+
 		// Parse the snapshot related fields
 		if cfgApp.Snapshot != nil {
 			parseSnapshotConfig(&appInstance.Snapshot, cfgApp.Snapshot)

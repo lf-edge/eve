@@ -1982,6 +1982,10 @@ func reserveAdapters(ctx *domainContext, config types.DomainConfig) *types.Error
 			if ibp == nil {
 				continue
 			}
+			if ctx.hvTypeKube && ibp.Type == types.IoNetEth {
+				log.Noticef("reserveAdapters: ethernet io, skip reserve")
+				continue
+			}
 			log.Noticef("reserveAdapters processing adapter %d %s phylabel %s",
 				adapter.Type, adapter.Name, ibp.Phylabel)
 			if ibp.AssignmentGroup == "" {

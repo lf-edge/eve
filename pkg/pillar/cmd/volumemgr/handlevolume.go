@@ -188,6 +188,27 @@ func publishVolumeStatus(ctx *volumemgrContext,
 	status *types.VolumeStatus) {
 
 	key := status.Key()
+	if ctx.hvTypeKube {
+		vrStatus := lookupVolumeRefStatus(ctx, key)
+		sub := ctx.pubContentTreeStatus
+		items := sub.GetAll()
+		var reference string
+		for _, item := range items {
+			cts := item.(types.ContentTreeStatus)
+			if status.ContentID.String() == cts.ContentID.String() {
+				log.Tracef("publishVolumeStatus: oci image %s", cts.OciImageName)
+				reference = cts.OciImageName
+				break
+			}
+		}
+		if vrStatus != nil {
+			if vrStatus.ReferenceName != reference {
+				log.Tracef("publishVolumeStatus: sync reference name %s", reference)
+				vrStatus.ReferenceName = reference
+				publishVolumeRefStatus(ctx, vrStatus)
+			}
+		}
+	}
 	log.Tracef("publishVolumeStatus(%s)", key)
 	pub := ctx.pubVolumeStatus
 	pub.Publish(key, *status)

@@ -37,6 +37,7 @@ type DomainConfig struct {
 	VifList        []VifConfig
 	IoAdapterList  []IoAdapter
 	KubeNADList    []KubeNAD // List of NAD names for kubernetes
+	KubeImageName  string    // propagate kube pod container image reference
 
 	// XXX: to be deprecated, use CipherBlockStatus instead
 	CloudInitUserData *string `json:"pubsub-large-CloudInitUserData"` // base64-encoded
@@ -107,6 +108,10 @@ func (config DomainConfig) GetTaskName() string {
 	return config.UUIDandVersion.UUID.String() + "." +
 		config.UUIDandVersion.Version + "." +
 		strconv.Itoa(config.AppNum)
+}
+
+func (config DomainConfig) GetKubeDispName() string {
+	return strings.ToLower(config.DisplayName) + "-" + config.UUIDandVersion.UUID.String()[:5]
 }
 
 // DomainnameToUUID does the reverse of GetTaskName
@@ -245,6 +250,7 @@ const (
 	FML
 	NOHYPER
 	LEGACY
+	KubeContainer
 )
 
 // Task represents any runnable entity on EVE
