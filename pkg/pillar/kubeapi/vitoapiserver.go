@@ -248,37 +248,54 @@ func RolloutImgToPVC(ctx context.Context, log *base.LogObject, exists bool, disk
 	}
 	time.Sleep(10 * time.Second)
 	log.Noticef("PRAMOD virtctl args %v", args)
-	i = 5
-	for {
-		output, err := base.Exec(log, "/containers/services/kube/rootfs/usr/bin/virtctl", args...).WithContext(ctx).CombinedOutputWithCustomTimeout(432000)
-		if err != nil {
-			if !strings.Contains(string(output), "dial tcp 127.0.0.1:6443") {
-				if i <= 0 {
-					log.Noticef("PRAMOD RolloutImgToPVC: virtctl failed: %s, %s", err, output)
-					break
-					//errStr := fmt.Sprintf("virtctl failed: %s, %s\n", err, output)
-					//return errors.New(errStr)
-				}
-				log.Noticef("PRAMOD RolloutImgToPVC: (retry left %d) err %v, output %s", i, err, output)
-			} else {
-				if !strings.Contains(string(output), "pvc-0 not found") {
-					log.Noticef("PRAMOD RolloutImgToPVC: sleep 20 sec, virtctl error %v, %s", err, output)
-					time.Sleep(20 * time.Second)
-					break
-				} else {
-					log.Noticef("PRAMOD RolloutImgToPVC: not found, retry again, virtctl error %v, %s", err, output)
-				}
-			}
-		} else {
-			log.Noticef("PRAMOD RolloutImgToPVC: done")
-			break
-		}
-		time.Sleep(10 * time.Second)
-		i = i - 1
-	}
+
+	output, err := base.Exec(log, "/containers/services/kube/rootfs/usr/bin/virtctl", args...).WithContext(ctx).CombinedOutputWithCustomTimeout(432000)
+	log.Noticef("RolloutImgToPVC: image-upload error %v", err)
+	log.Noticef("RolloutImgToPVC: image-upload output %s", output)
+	err = waitForPVCReady(ctx, log, pvcName)
+	log.Noticef("RolloutImgToPVC: wait for pvc %v", err)
 	return nil
 }
 
 func stringPtr(str string) *string {
 	return &str
+}
+
+func waitForPVCReady(ctx context.Context, log *base.LogObject, pvcName string) error {
+	clientset, err := GetClientSet()
+	if err != nil {
+		log.Errorf("waitForPVCReady failed to get clientset err %v", err)
+		return err
+	}
+
+	i := 10
+	var count int
+	var err2 error
+	for {
+		pvcs, err := clientset.CoreV1().PersistentVolumeClaims(eveNameSpace).List(context.Background(), metav1.ListOptions{})
+		if err != nil {
+			log.Errorf("GetPVCInfo failed to list pvc info err %v", err)
+			err2 = err
+		} else {
+
+			count = 0
+			for _, pvc := range pvcs.Items {
+				pvcObjName := pvc.ObjectMeta.Name
+				if strings.Contains(pvcObjName, pvcName) {
+					count++
+					log.Noticef("waitForPVCReady(%d): get pvc %s", count, pvcObjName)
+				}
+			}
+			if count == 1 {
+				return nil
+			}
+		}
+		i -= 1
+		if i <= 0 {
+			break
+		}
+		time.Sleep(5 * time.Second)
+	}
+
+	return fmt.Errorf("waitForPVCReady: time expired count %d, err %v", count, err2)
 }

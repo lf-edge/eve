@@ -666,7 +666,8 @@ func (c *containerdCAS) PrepareContainerRootDir(rootPath, reference, rootBlobSha
 	//Step 2: create snapshot of the image so that it can be mounted as container's rootfs.
 	snapshotID := containerd.GetSnapshotID(rootPath)
 	if err := c.CreateSnapshotForImage(snapshotID, reference); err != nil {
-		err = fmt.Errorf("PrepareContainerRootDir: Could not create snapshot %s. %v", snapshotID, err)
+		err = fmt.Errorf("PrepareContainerRootDir: Could not creat snapshot, rootpath %s, ref %s, %s. %v",
+			rootPath, reference, snapshotID, err)
 		logrus.Errorf(err.Error())
 		return err
 	}

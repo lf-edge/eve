@@ -420,6 +420,8 @@ type VolumeRefStatus struct {
 	VerifyOnly             bool
 	Target                 zconfig.Target
 	CustomMeta             string
+	// kube pod container image
+	ReferenceName string
 
 	ErrorAndTimeWithSource
 }

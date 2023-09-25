@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"runtime"
+	"strings"
 
 	"github.com/lf-edge/eve/pkg/pillar/types"
 )
@@ -156,6 +157,24 @@ func publishDomainConfig(ctx *zedmanagerContext,
 
 	key := status.Key()
 	log.Tracef("publishDomainConfig(%s)", key)
+	if ctx.hvTypeKube {
+		var imageName string
+		for _, disk := range status.DiskConfigList {
+			sub := ctx.subVolumeRefStatus
+			items := sub.GetAll()
+			for _, item := range items {
+				vrs := item.(types.VolumeRefStatus)
+				if strings.Contains(disk.VolumeKey, vrs.VolumeID.String()) {
+					imageName = vrs.ReferenceName
+					break
+				}
+			}
+			if imageName != "" {
+				break
+			}
+		}
+		status.KubeImageName = imageName
+	}
 	pub := ctx.pubDomainConfig
 	pub.Publish(key, *status)
 }

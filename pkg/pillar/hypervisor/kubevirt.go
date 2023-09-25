@@ -7,6 +7,7 @@ import (
 	"bufio"
 	"context"
 	"crypto/tls"
+	"encoding/json"
 	"fmt"
 	"io"
 	"math"
@@ -18,34 +19,40 @@ import (
 	"strings"
 	"time"
 
-	//	zconfig "github.com/lf-edge/eve-api/go/config"
-	//	"github.com/lf-edge/eve/pkg/pillar/agentlog"
-	//	"github.com/lf-edge/eve/pkg/pillar/containerd"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 
+	netattdefv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 	"github.com/lf-edge/eve/pkg/pillar/kubeapi"
 	"github.com/sirupsen/logrus"
 	k8sv1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
 
-	//	"k8s.io/client-go/kubernetes"
-	//	"k8s.io/client-go/rest"
-	// "k8s.io/client-go/tools/clientcmd"
+	metricsv "k8s.io/metrics/pkg/client/clientset/versioned"
 	v1 "kubevirt.io/api/core/v1"
 	"kubevirt.io/client-go/kubecli"
 )
 
 // KubevirtHypervisorName is a name of kubevirt hypervisor
-const KubevirtHypervisorName = "kubevirt"
-const kubevirtStateDir = "/run/hypervisor/kubevirt/"
-const eveNameSpace = "eve-kube-app"
+const (
+	KubevirtHypervisorName = "kubevirt"
+	kubevirtStateDir       = "/run/hypervisor/kubevirt/"
+	eveNameSpace           = "eve-kube-app"
+	eveLableKey            = "App-Domain-Name"
+)
 
 // VM instance meta data structure.
 type vmiMetaData struct {
 	vmi      *v1.VirtualMachineInstance // Handle to the VM instance
+	pod      *k8sv1.Pod                 // Handle to the pod container
 	domainId int                        // DomainId understood by domainmgr in EVE
+	isPod    bool                       // switch on is Pod or is VMI
+	name     string                     // Display-Name(all lower case) + first 5 bytes of domainName
+	cputotal uint64                     // total CPU in NS so far
+	maxmem   uint32                     // total Max memory usage in bytes so far
 }
 
 type kubevirtContext struct {
@@ -55,6 +62,7 @@ type kubevirtContext struct {
 	vmiList           map[string]*vmiMetaData
 	virthandlerIPAddr string
 	prevDomainMetric  map[string]types.DomainMetric
+	kubeConfig        *rest.Config
 }
 
 // Use few states  for now
@@ -154,11 +162,17 @@ func (ctx kubevirtContext) Setup(status types.DomainStatus, config types.DomainC
 	diskStatusList := status.DiskStatusList
 	domainName := status.DomainName
 
-	logrus.Infof("PRAMOD Setup called for Domain: %s", domainName)
+	logrus.Infof("PRAMOD Setup called for Domain: %s, vmmode %v", domainName, config.VirtualizationMode)
 
-	// Take eve domain config and convert to VMI config
-	if err := ctx.CreateVMIConfig(domainName, config, status, diskStatusList, aa, file); err != nil {
-		return logError("failed to build kube config: %v", err)
+	if config.VirtualizationMode == types.KubeContainer {
+		if err := ctx.CreatePodConfig(domainName, config, status, diskStatusList, aa, file); err != nil {
+			return logError("failed to build kube pod config: %v", err)
+		}
+	} else {
+		// Take eve domain config and convert to VMI config
+		if err := ctx.CreateVMIConfig(domainName, config, status, diskStatusList, aa, file); err != nil {
+			return logError("failed to build kube config: %v", err)
+		}
 	}
 
 	os.MkdirAll(kubevirtStateDir+domainName, 0777)
@@ -174,20 +188,21 @@ func (ctx kubevirtContext) Setup(status types.DomainStatus, config types.DomainC
 func (ctx kubevirtContext) CreateVMIConfig(domainName string, config types.DomainConfig, status types.DomainStatus,
 	diskStatusList []types.DiskStatus, aa *types.AssignableAdapters, file *os.File) error {
 	logrus.Infof("PRAMOD CreateVMIConfig called for Domain: %s", domainName)
-	err, kubeconfig := kubeapi.GetKubeConfig()
+
+	err := getConfig(&ctx)
 	if err != nil {
-		logrus.Errorf("couldn't get the Kube Config: %v", err)
 		return err
 	}
-
+	kubeconfig := ctx.kubeConfig
 	_, err = kubecli.GetKubevirtClientFromRESTConfig(kubeconfig)
-
 	if err != nil {
 		logrus.Errorf("couldn't get the kubernetes client API config: %v", err)
 		return err
 	}
+
+	dispName := config.GetKubeDispName()
 	// Get a VirtualMachineInstance object and populate the values from DomainConfig
-	vmi := v1.NewVMIReferenceFromNameWithNS(eveNameSpace, domainName)
+	vmi := v1.NewVMIReferenceFromNameWithNS(eveNameSpace, dispName)
 	//vmi.ObjectMeta.UID = status.UUIDandVersion.UUID
 
 	// Set CPUs
@@ -211,17 +226,35 @@ func (ctx kubevirtContext) CreateVMIConfig(domainName string, config types.Domai
 	mem.Guest = &m
 	vmi.Spec.Domain.Memory = &mem
 
+	var kubeNADs []types.KubeNAD
+	for _, nad := range config.KubeNADList {
+		kubeNADs = append(kubeNADs, nad)
+	}
+
+	// Add Direct Attach Ethernet Port
+	for _, io := range config.IoAdapterList {
+		if io.Type == types.IoNetEth {
+			nadname := "host-" + io.Name
+			nad := types.KubeNAD{
+				Name: nadname,
+			}
+			// even if ioAdapter does not exist, kubernetes will retry
+			kubeNADs = append(kubeNADs, nad)
+			logrus.Infof("CreateVMIConfig: direct attach add to nadnames %v", kubeNADs)
+		}
+	}
+
 	// Set Network
-	intfs := make([]v1.Interface, len(config.KubeNADList)+1)
-	nets := make([]v1.Network, len(config.KubeNADList)+1)
+	intfs := make([]v1.Interface, len(kubeNADs)+1)
+	nads := make([]v1.Network, len(kubeNADs)+1)
 	intfs[0] = v1.Interface{
 		Name:                   "default",
 		InterfaceBindingMethod: v1.InterfaceBindingMethod{Bridge: &v1.InterfaceBridge{}},
 	}
-	nets[0] = *v1.DefaultPodNetwork()
+	nads[0] = *v1.DefaultPodNetwork()
 
-	if len(config.KubeNADList) > 0 {
-		for i, nad := range config.KubeNADList {
+	if len(kubeNADs) > 0 {
+		for i, nad := range kubeNADs {
 			intfname := "net" + strconv.Itoa(i+1)
 			intfs[i+1] = v1.Interface{
 				Name:                   intfname,
@@ -229,7 +262,7 @@ func (ctx kubevirtContext) CreateVMIConfig(domainName string, config types.Domai
 				InterfaceBindingMethod: v1.InterfaceBindingMethod{Bridge: &v1.InterfaceBridge{}},
 			}
 
-			nets[i+1] = v1.Network{
+			nads[i+1] = v1.Network{
 				Name: intfname,
 				NetworkSource: v1.NetworkSource{
 					Multus: &v1.MultusNetwork{
@@ -240,7 +273,7 @@ func (ctx kubevirtContext) CreateVMIConfig(domainName string, config types.Domai
 		}
 	}
 
-	vmi.Spec.Networks = nets
+	vmi.Spec.Networks = nads
 	vmi.Spec.Domain.Devices.Interfaces = intfs
 
 	// Set Storage
@@ -336,9 +369,9 @@ func (ctx kubevirtContext) CreateVMIConfig(domainName string, config types.Domai
 		}
 	}
 
-	if len(pciAssignments) != 0 {
-		return logError("PRAMOD: PCI assignments not supported yet %v", len(pciAssignments))
-	}
+	//if len(pciAssignments) != 0 {
+	//	return logError("PRAMOD: PCI assignments not supported yet %v", len(pciAssignments))
+	//}
 	if len(serialAssignments) != 0 {
 		return logError("PRAMOD: Serial assignments not supported yet %v", len(serialAssignments))
 	}
@@ -346,10 +379,15 @@ func (ctx kubevirtContext) CreateVMIConfig(domainName string, config types.Domai
 		return logError("PRAMOD: USB assignments not supported yet %v", len(usbAssignments))
 	}
 
+	vmi.Labels = make(map[string]string)
+	vmi.Labels[eveLableKey] = domainName
+
 	// Now we have VirtualMachine Instance object, save it to config file for debug purposes
 	// and save it in context which will be used to start VM in Start() call
+	// dispName is for vmi name/handle on kubernetes
 	meta := vmiMetaData{
 		vmi:      vmi,
+		name:     dispName,
 		domainId: int(rand.Uint32()),
 	}
 	ctx.vmiList[domainName] = &meta
@@ -365,14 +403,22 @@ func (ctx kubevirtContext) CreateVMIConfig(domainName string, config types.Domai
 func (ctx kubevirtContext) Start(domainName string) error {
 	logrus.Infof("starting Kubevirt domain %s", domainName)
 
-	vmi := ctx.vmiList[domainName].vmi
-
-	err, kubeconfig := kubeapi.GetKubeConfig()
+	err := getConfig(&ctx)
 	if err != nil {
-		logrus.Errorf("couldn't get the Kube Config: %v", err)
+		return err
+	}
+	kubeconfig := ctx.kubeConfig
+
+	vmis, ok := ctx.vmiList[domainName]
+	if !ok {
+		return logError("start domain %s failed to get vmlist", domainName)
+	}
+	if vmis.isPod {
+		err := StartPodContiner(kubeconfig, ctx.vmiList[domainName].pod)
 		return err
 	}
 
+	vmi := vmis.vmi
 	virtClient, err := kubecli.GetKubevirtClientFromRESTConfig(kubeconfig)
 
 	if err != nil {
@@ -399,8 +445,7 @@ func (ctx kubevirtContext) Start(domainName string) error {
 
 	logrus.Infof("Started Kubevirt domain %s", domainName)
 
-	err = waitForVMI(domainName, true)
-
+	err = waitForVMI(vmis.name, true)
 	if err != nil {
 		logrus.Errorf("couldn't start VMI %v", err)
 		return err
@@ -418,24 +463,33 @@ func (ctx kubevirtContext) Create(domainName string, cfgFilename string, config 
 // There is no such thing as stop VMI, so delete it.
 func (ctx kubevirtContext) Stop(domainName string, force bool) error {
 	logrus.Infof("PRAMOD Stop called for Domain: %s", domainName)
-	err, kubeconfig := kubeapi.GetKubeConfig()
+	err := getConfig(&ctx)
 	if err != nil {
-		logrus.Errorf("couldn't get the Kube Config: %v", err)
 		return err
 	}
+	kubeconfig := ctx.kubeConfig
 
-	virtClient, err := kubecli.GetKubevirtClientFromRESTConfig(kubeconfig)
-
-	if err != nil {
-		logrus.Errorf("couldn't get the kubernetes client API config: %v", err)
-		return err
+	vmis, ok := ctx.vmiList[domainName]
+	if !ok {
+		return logError("domain %s failed to get vmlist", domainName)
 	}
-
-	// Stop the VM
-	err = virtClient.VirtualMachineInstance(eveNameSpace).Delete(context.Background(), domainName, &metav1.DeleteOptions{})
-	if err != nil {
-		fmt.Printf("Stop error %v\n", err)
+	if vmis.isPod {
+		err := StopPodContainer(kubeconfig, vmis.name)
 		return err
+	} else {
+		virtClient, err := kubecli.GetKubevirtClientFromRESTConfig(kubeconfig)
+
+		if err != nil {
+			logrus.Errorf("couldn't get the kubernetes client API config: %v", err)
+			return err
+		}
+
+		// Stop the VM
+		err = virtClient.VirtualMachineInstance(eveNameSpace).Delete(context.Background(), vmis.name, &metav1.DeleteOptions{})
+		if err != nil {
+			fmt.Printf("Stop error %v\n", err)
+			return err
+		}
 	}
 
 	if _, ok := ctx.vmiList[domainName]; ok {
@@ -451,29 +505,39 @@ func (ctx kubevirtContext) Stop(domainName string, force bool) error {
 
 func (ctx kubevirtContext) Delete(domainName string) (result error) {
 	logrus.Infof("PRAMOD Delete called for Domain: %s", domainName)
-	err, kubeconfig := kubeapi.GetKubeConfig()
+	err := getConfig(&ctx)
 	if err != nil {
-		logrus.Errorf("couldn't get the Kube Config: %v", err)
 		return err
 	}
+	kubeconfig := ctx.kubeConfig
 
-	virtClient, err := kubecli.GetKubevirtClientFromRESTConfig(kubeconfig)
-
-	if err != nil {
-		logrus.Errorf("couldn't get the kubernetes client API config: %v", err)
-		return err
+	vmis, ok := ctx.vmiList[domainName]
+	if !ok {
+		return logError("delete domain %s failed to get vmlist", domainName)
 	}
-
-	// Stop the VM
-	err = virtClient.VirtualMachineInstance(eveNameSpace).Delete(context.Background(), domainName, &metav1.DeleteOptions{})
-
-	// May be already deleted during Stop action, so its not an error if does not exist
-	if errors.IsNotFound(err) {
-		logrus.Infof("Domain already deleted: %v", domainName)
+	if vmis.isPod {
+		err := StopPodContainer(kubeconfig, vmis.name)
+		return err
 	} else {
-		fmt.Printf("Delete error %v\n", err)
-		return err
+		virtClient, err := kubecli.GetKubevirtClientFromRESTConfig(kubeconfig)
+
+		if err != nil {
+			logrus.Errorf("couldn't get the kubernetes client API config: %v", err)
+			return err
+		}
+
+		// Stop the VM
+		err = virtClient.VirtualMachineInstance(eveNameSpace).Delete(context.Background(), vmis.name, &metav1.DeleteOptions{})
+
+		// May be already deleted during Stop action, so its not an error if does not exist
+		if errors.IsNotFound(err) {
+			logrus.Infof("Domain already deleted: %v", domainName)
+		} else {
+			fmt.Printf("Delete error %v\n", err)
+			return err
+		}
 	}
+
 	// Delete the state dir
 	if err := os.RemoveAll(kubevirtStateDir + domainName); err != nil {
 		return logError("failed to clean up domain state directory %s (%v)", domainName, err)
@@ -494,8 +558,21 @@ func (ctx kubevirtContext) Info(domainName string) (int, types.SwState, error) {
 
 	logrus.Infof("PRAMOD Info called for Domain: %s", domainName)
 
-	res, err := getVMIStatus(domainName)
-
+	var res string
+	var err error
+	err = getConfig(&ctx)
+	if err != nil {
+		return 0, types.BROKEN, err
+	}
+	vmis, ok := ctx.vmiList[domainName]
+	if !ok {
+		return 0, types.HALTED, logError("info domain %s failed to get vmlist", domainName)
+	}
+	if vmis.isPod {
+		res, err = InfoPodContainer(ctx.kubeConfig, vmis.name)
+	} else {
+		res, err = getVMIStatus(vmis.name)
+	}
 	if err != nil {
 		return 0, types.BROKEN, logError("domain %s failed to get info: %v", domainName, err)
 	}
@@ -516,8 +593,15 @@ func (ctx kubevirtContext) Cleanup(domainName string) error {
 		return fmt.Errorf("couldn't cleanup task %s: %v", domainName, err)
 	}
 
-	err := waitForVMI(domainName, false)
-
+	var err error
+	vmis, ok := ctx.vmiList[domainName]
+	if !ok {
+		return logError("cleanup domain %s failed to get vmlist", domainName)
+	}
+	if vmis.isPod {
+	} else {
+		err = waitForVMI(vmis.name, false)
+	}
 	if err != nil {
 		return fmt.Errorf("waitforvmi failed  %s: %v", domainName, err)
 	}
@@ -541,7 +625,7 @@ func convertToKubernetesFormat(b int) string {
 	return fmt.Sprintf("%.1fYi", bf)
 }
 
-func getVMIStatus(domainName string) (string, error) {
+func getVMIStatus(vmiName string) (string, error) {
 
 	err, kubeconfig := kubeapi.GetKubeConfig()
 	if err != nil {
@@ -555,10 +639,10 @@ func getVMIStatus(domainName string) (string, error) {
 	}
 
 	// Get the VMI info
-	vmi, err := virtClient.VirtualMachineInstance(eveNameSpace).Get(context.Background(), domainName, &metav1.GetOptions{})
+	vmi, err := virtClient.VirtualMachineInstance(eveNameSpace).Get(context.Background(), vmiName, &metav1.GetOptions{})
 
 	if err != nil {
-		return "", logError("domain %s failed to get VMI info %s", domainName, err)
+		return "", logError("domain %s failed to get VMI info %s", vmiName, err)
 	}
 
 	res := fmt.Sprintf("%v", vmi.Status.Phase)
@@ -567,27 +651,27 @@ func getVMIStatus(domainName string) (string, error) {
 }
 
 // Inspired from kvm.go
-func waitForVMI(domainName string, available bool) error {
+func waitForVMI(vmiName string, available bool) error {
 	maxDelay := time.Second * 300 // 5mins ?? lets keep it for now
 	delay := time.Second
 	var waited time.Duration
 
 	for {
-		logrus.Infof("waitForVMI for %s %t: waiting for %v", domainName, available, delay)
+		logrus.Infof("waitForVMI for %s %t: waiting for %v", vmiName, available, delay)
 		if delay != 0 {
 			time.Sleep(delay)
 			waited += delay
 		}
 
-		state, err := getVMIStatus(domainName)
+		state, err := getVMIStatus(vmiName)
 
 		if err != nil {
 
 			if available {
-				logrus.Infof("waitForVMI for %s %t done", domainName, available)
+				logrus.Infof("waitForVMI for %s %t done", vmiName, available)
 			} else {
 				// Failed to get status, may be already deleted.
-				logrus.Infof("waitForVMI for %s %t done", domainName, available)
+				logrus.Infof("waitForVMI for %s %t done", vmiName, available)
 				return nil
 			}
 		} else {
@@ -598,7 +682,7 @@ func waitForVMI(domainName string, available bool) error {
 
 		if waited > maxDelay {
 			// Give up
-			logrus.Warnf("waitForVMIfor %s %t: giving up", domainName, available)
+			logrus.Warnf("waitForVMIfor %s %t: giving up", vmiName, available)
 			if available {
 				return logError("VMI not found: error %v", err)
 			}
@@ -693,18 +777,27 @@ func (ctx kubevirtContext) GetDomsCPUMem() (map[string]types.DomainMetric, error
 				parsedValue = value
 			}
 
-			if _, ok := res[vmiName]; !ok {
-				res[vmiName] = types.DomainMetric{
-					UUIDandVersion: types.UUIDandVersion{},
-					CPUScaled:      1,
+			var domainName string
+			for n, vmis := range ctx.vmiList {
+				if vmis.name == vmiName {
+					domainName = n
+					if _, ok := res[domainName]; !ok {
+						res[domainName] = types.DomainMetric{
+							UUIDandVersion: types.UUIDandVersion{},
+							CPUScaled:      1,
+						}
+					}
 				}
 			}
-			fillMetrics(res, vmiName, metricName, parsedValue)
-			logrus.Infof("GetDomsCPUMem: vmi %s, metric name %s, value %v", vmiName, metricName, parsedValue)
+			fillMetrics(res, domainName, metricName, parsedValue)
+			logrus.Infof("GetDomsCPUMem: vmi %s, domainName %s, metric name %s, value %v", vmiName, domainName, metricName, parsedValue)
 		}
 	}
 
 	for n, r := range res {
+		if n == "" {
+			continue
+		}
 		// used_bytes = available_bytes - usable_bytes
 		r.UsedMemory = r.UsedMemory - r.AvailableMemory
 		if r.AllocatedMB > 0 {
@@ -727,7 +820,13 @@ func (ctx kubevirtContext) GetDomsCPUMem() (map[string]types.DomainMetric, error
 		}
 		res[n] = r
 	}
-	logrus.Infof("GetDomsCPUMem: %d VMs: %+v", len(ctx.vmiList), res)
+
+	hasEmptyRes := len(ctx.vmiList) - len(res)
+	if hasEmptyRes > 0 {
+		// check and get the kubernetes pod's metrics
+		checkPodMetrics(ctx, res, hasEmptyRes)
+	}
+	logrus.Infof("GetDomsCPUMem: %d VMs: %+v, podnum %d", len(ctx.vmiList), res, hasEmptyRes)
 	return res, nil
 }
 
@@ -760,7 +859,6 @@ func getVirtHandlerIPAddr(ctx *kubevirtContext) (string, error) {
 		return "", fmt.Errorf("can not find virt-handler pod")
 	}
 	ctx.virthandlerIPAddr = vmiPod.Status.PodIP
-	logrus.Infof("getVirtHandlerIPAddr: %s", ctx.virthandlerIPAddr)
 	return ctx.virthandlerIPAddr, nil
 }
 
@@ -778,13 +876,13 @@ func getVMIName(metricStr string) string {
 	return nameStr2[0]
 }
 
-func fillMetrics(res map[string]types.DomainMetric, vmiName, metricName string, value interface{}) {
-	if _, ok := res[vmiName]; !ok {
-		logrus.Infof("fillMetrics, vmiName %s not in map", vmiName)
+func fillMetrics(res map[string]types.DomainMetric, domainName, metricName string, value interface{}) {
+	if _, ok := res[domainName]; !ok {
+		logrus.Infof("fillMetrics, vmiName %s not in map", domainName)
 		return
 	}
 
-	r := res[vmiName]
+	r := res[domainName]
 	BytesInMegabyte := uint32(1024 * 1024)
 	switch metricName {
 	// add all the cpus to be Total, seconds should be from VM startup time
@@ -803,7 +901,7 @@ func fillMetrics(res map[string]types.DomainMetric, vmiName, metricName string, 
 	//	r.UsedMemory = uint32(assignToInt64(value)) / BytesInMegabyte
 	default:
 	}
-	res[vmiName] = r
+	res[domainName] = r
 }
 
 func assignToInt64(parsedValue interface{}) int64 {
@@ -817,4 +915,306 @@ func assignToInt64(parsedValue interface{}) int64 {
 	}
 
 	return intValue
+}
+
+func (ctx kubevirtContext) CreatePodConfig(domainName string, config types.DomainConfig, status types.DomainStatus,
+	diskStatusList []types.DiskStatus, aa *types.AssignableAdapters, file *os.File) error {
+
+	dispName := config.GetKubeDispName()
+	if config.KubeImageName == "" {
+		err := fmt.Errorf("domain config kube image name empty")
+		logrus.Errorf("CreateVMIConfig: %v", err)
+		return err
+	}
+	ociName := config.KubeImageName
+
+	// NADs for NIs
+	var nads []types.KubeNAD
+	if len(config.KubeNADList) > 0 {
+		for _, nad := range config.KubeNADList {
+			nads = append(nads, nad)
+		}
+	}
+
+	// Direct attached Ethernet port
+	for _, io := range config.IoAdapterList {
+		if io.Type == types.IoNetEth {
+			nadname := "host-" + io.Name
+			nad := types.KubeNAD{
+				Name: nadname,
+			}
+			// even if ioAdapter does not exist, kubernetes will retry
+			nads = append(nads, nad)
+			logrus.Infof("CreatePodConfig: direct attach add to nadnames %v", nads)
+		}
+	}
+
+	var annotations map[string]string
+	if len(nads) > 0 {
+		selections := make([]netattdefv1.NetworkSelectionElement, len(nads))
+		for i, nad := range nads {
+			if i > len(nads)-1 {
+				err := fmt.Errorf("CreatePodConfig: no def local ni found, exit")
+				return err
+			}
+			selections[i] = netattdefv1.NetworkSelectionElement{
+				Name: nad.Name,
+			}
+			if nad.Mac != "" {
+				selections[i].MacRequest = nad.Mac
+			}
+		}
+		annotations = map[string]string{
+			"k8s.v1.cni.cncf.io/networks": encodeSelections(selections),
+		}
+		logrus.Infof("CreatePodConfig: annotations %+v", annotations)
+	} else {
+		err := fmt.Errorf("CreatePodConfig: no nadname, exit")
+		return err
+	}
+
+	vcpus := strconv.Itoa(config.VCpus*1000) + "m"
+	// FixedResources.Memory is in Kbytes
+	memoryLimit := strconv.Itoa(config.Memory * 1000)
+	memoryRequest := strconv.Itoa(config.Memory * 1000)
+
+	pod := &k8sv1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:        dispName,
+			Namespace:   eveNameSpace,
+			Annotations: annotations,
+		},
+		Spec: k8sv1.PodSpec{
+			Containers: []k8sv1.Container{
+				{
+					Name:            dispName,
+					Image:           ociName,
+					ImagePullPolicy: k8sv1.PullNever,
+					SecurityContext: &k8sv1.SecurityContext{
+						Privileged: &[]bool{true}[0],
+					},
+					Resources: k8sv1.ResourceRequirements{
+						Limits: k8sv1.ResourceList{
+							k8sv1.ResourceCPU:    resource.MustParse(vcpus),
+							k8sv1.ResourceMemory: resource.MustParse(memoryLimit),
+						},
+						Requests: k8sv1.ResourceList{
+							k8sv1.ResourceCPU:    resource.MustParse(vcpus),
+							k8sv1.ResourceMemory: resource.MustParse(memoryRequest),
+						},
+					},
+				},
+			},
+			DNSConfig: &k8sv1.PodDNSConfig{
+				Nameservers: []string{"8.8.8.8", "1.1.1.1"}, // XXX, temp, Add your desired DNS servers here
+			},
+		},
+	}
+	pod.Labels = make(map[string]string)
+	pod.Labels[eveLableKey] = domainName
+	logrus.Infof("CreatePodConfig: pod setup %+v", pod)
+
+	// Now we have VirtualMachine Instance object, save it to config file for debug purposes
+	// and save it in context which will be used to start VM in Start() call
+	meta := vmiMetaData{
+		pod:      pod,
+		isPod:    true,
+		name:     dispName,
+		domainId: int(rand.Uint32()),
+	}
+	ctx.vmiList[domainName] = &meta
+
+	podStr := fmt.Sprintf("%+v", pod)
+
+	// write to config file
+	file.WriteString(podStr)
+
+	return nil
+}
+
+func getVMIorPodName(displayName, domainName string) string {
+	return strings.ToLower(displayName) + "-" + domainName[:5]
+}
+
+func encodeSelections(selections []netattdefv1.NetworkSelectionElement) string {
+	bytes, err := json.Marshal(selections)
+	if err != nil {
+		logrus.Errorf("encodeSelections %v", err)
+		return ""
+	}
+	return string(bytes)
+}
+
+func StartPodContiner(kubeconfig *rest.Config, pod *k8sv1.Pod) error {
+
+	clientset, err := kubernetes.NewForConfig(kubeconfig)
+	if err != nil {
+		logrus.Errorf("StartPodContiner: can't get clientset %v", err)
+		return err
+	}
+
+	opStr := "created"
+	_, err = clientset.CoreV1().Pods(eveNameSpace).Create(context.TODO(), pod, metav1.CreateOptions{})
+	if err != nil {
+		if !errors.IsAlreadyExists(err) {
+			logrus.Errorf("StartPodContiner: pod create filed: %v", err)
+			return err
+		} else {
+			opStr = "already exists"
+		}
+	}
+
+	logrus.Infof("StartPodContiner: Pod %s %s with nad %+v", pod.ObjectMeta.Name, opStr, pod.Annotations)
+	return nil
+}
+
+func StopPodContainer(kubeconfig *rest.Config, podName string) error {
+
+	clientset, err := kubernetes.NewForConfig(kubeconfig)
+	if err != nil {
+		logrus.Errorf("StopPodContainer: can't get clientset %v", err)
+		return err
+	}
+
+	err = clientset.CoreV1().Pods(eveNameSpace).Delete(context.TODO(), podName, metav1.DeleteOptions{})
+	if err != nil {
+		// Handle error
+		logrus.Errorf("StopPodContainer: deleting pod: %v", err)
+		return err
+	}
+
+	logrus.Infof("StopPodContainer: Pod %s deleted", podName)
+	return nil
+}
+
+func InfoPodContainer(kubeconfig *rest.Config, podName string) (string, error) {
+
+	podclientset, err := kubernetes.NewForConfig(kubeconfig)
+	if err != nil {
+		return "", logError("InfoPodContainer: couldn't get the pod Config: %v", err)
+	}
+
+	pod, err := podclientset.CoreV1().Pods(eveNameSpace).Get(context.TODO(), podName, metav1.GetOptions{})
+	if err != nil {
+		return "", logError("InfoPodContainer: couldn't get the pod: %v", err)
+	}
+
+	var res string
+	// https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle/
+	switch pod.Status.Phase {
+	case k8sv1.PodPending:
+		res = "Pending"
+	case k8sv1.PodRunning:
+		res = "Running"
+	case k8sv1.PodSucceeded:
+		res = "Running"
+	case k8sv1.PodFailed:
+		res = "Failed"
+	case k8sv1.PodUnknown:
+		res = "Scheduling"
+	default:
+		res = "Scheduling"
+	}
+	logrus.Infof("InfoPodContainer: pod %s, status %s", podName, res)
+
+	return res, nil
+}
+
+func checkPodMetrics(ctx kubevirtContext, res map[string]types.DomainMetric, emptySlot int) {
+
+	err := getConfig(&ctx)
+	if err != nil {
+		return
+	}
+	kubeconfig := ctx.kubeConfig
+	podclientset, err := kubernetes.NewForConfig(kubeconfig)
+	if err != nil {
+		logrus.Errorf("checkPodMetrics: can not get pod client %v", err)
+		return
+	}
+
+	clientset, err := metricsv.NewForConfig(kubeconfig)
+	if err != nil {
+		logrus.Errorf("checkPodMetrics: can't get clientset %v", err)
+		return
+	}
+
+	count := 0
+	for n, vmis := range ctx.vmiList {
+		if !vmis.isPod {
+			continue
+		}
+		count++
+		podName := vmis.name
+		pod, err := podclientset.CoreV1().Pods(eveNameSpace).Get(context.TODO(), podName, metav1.GetOptions{})
+		if err != nil {
+			logrus.Errorf("checkPodMetrics: can't get pod %v", err)
+			continue
+		}
+		memoryLimits := pod.Spec.Containers[0].Resources.Limits.Memory()
+
+		metrics, err := clientset.MetricsV1beta1().PodMetricses(eveNameSpace).Get(context.TODO(), podName, metav1.GetOptions{})
+		if err != nil {
+			logrus.Errorf("checkPodMetrics: get pod metrics error %v", err)
+			continue
+		}
+
+		cpuTotalNs := metrics.Containers[0].Usage[k8sv1.ResourceCPU]
+		cpuTotalNsAsFloat64 := cpuTotalNs.AsApproximateFloat64() * float64(time.Second) // get nanoseconds
+		totalCpu := uint64(cpuTotalNsAsFloat64)
+
+		//allocatedMemory := metrics.Containers[0].Usage[k8sv1.ResourceMemory]
+		usedMemory := metrics.Containers[0].Usage[k8sv1.ResourceMemory]
+		maxMemory := uint32(usedMemory.Value())
+		if vmis.maxmem < maxMemory {
+			vmis.maxmem = maxMemory
+		} else {
+			maxMemory = vmis.maxmem
+		}
+
+		available := uint32(memoryLimits.Value())
+		if uint32(usedMemory.Value()) < available {
+			available = available - uint32(usedMemory.Value())
+		}
+		usedMemoryPercent := calculateMemoryUsagePercent(usedMemory.Value(), memoryLimits.Value())
+		BytesInMegabyte := uint32(1024 * 1024)
+
+		realCPUTotal := vmis.cputotal + totalCpu
+		vmis.cputotal = realCPUTotal
+		dm := types.DomainMetric{
+			CPUTotalNs:        realCPUTotal,
+			CPUScaled:         1,
+			AllocatedMB:       uint32(memoryLimits.Value()) / BytesInMegabyte,
+			UsedMemory:        uint32(usedMemory.Value()) / BytesInMegabyte,
+			MaxUsedMemory:     maxMemory / BytesInMegabyte,
+			AvailableMemory:   available / BytesInMegabyte,
+			UsedMemoryPercent: usedMemoryPercent,
+		}
+		if count <= emptySlot {
+			res[n] = dm
+		}
+		logrus.Infof("checkPodMetrics: dm %+v, res %v", dm, res)
+
+		ctx.vmiList[n] = vmis // update for the last seen metrics
+	}
+}
+
+// Helper function to calculate the memory usage percentage
+func calculateMemoryUsagePercent(usedMemory, allocatedMemory int64) float64 {
+	if allocatedMemory > 0 {
+		return float64(usedMemory) / float64(allocatedMemory) * 100.0
+	}
+	return 0.0
+}
+
+func getConfig(ctx *kubevirtContext) error {
+	if ctx.kubeConfig == nil {
+		err, kubeconfig := kubeapi.GetKubeConfig()
+		if err != nil {
+			logrus.Error("getConfig: can not get kubeconfig")
+			return err
+		}
+		ctx.kubeConfig = kubeconfig
+	}
+	return nil
 }
