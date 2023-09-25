@@ -5,10 +5,15 @@
 #
 
 # Script version, don't forget to bump up once something is changed
-VERSION=6
+VERSION=7
 
 # Add required packages here, it will be passed to "apk add".
-PKG_DEPS="procps dmidecode iptables dhcpcd"
+# Once something added here don't forget to add the same package
+# to the Dockerfile ('ENV PKGS' line) of the debug container,
+# because we don't want to fail in case of network problems, on
+# the other hand we want to support old versions of EVE, so we
+# still attempt to install those packages.
+PKG_DEPS="procps tar dmidecode iptables dhcpcd"
 
 DATE=$(date -Is)
 INFO_DIR="eve-info-v$VERSION-$DATE"

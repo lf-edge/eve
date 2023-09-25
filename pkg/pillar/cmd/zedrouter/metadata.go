@@ -21,6 +21,7 @@ import (
 	"strings"
 
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 )
 
@@ -76,6 +77,12 @@ type signerHandler struct {
 	zedcloudCtx *zedcloud.ZedCloudContext
 }
 
+// Provides the /opt/zededa/bin/diag output as text
+type diagHandler struct {
+	zedrouter   *zedrouter
+	zedcloudCtx *zedcloud.ZedCloudContext
+}
+
 // AppInfoHandler provides information about available patches for the application
 type AppInfoHandler struct {
 	zedrouter *zedrouter
@@ -98,6 +105,9 @@ const AppInstMetadataResponseSizeLimitInBytes = 35840 // 35KB
 
 // SignerMaxSize is how large objects we will sign
 const SignerMaxSize = 65535
+
+// DiagMaxSize is the max returned size for diag
+const DiagMaxSize = 65535
 
 func (z *zedrouter) makeMetadataHandler() http.Handler {
 	mux := http.NewServeMux()
@@ -148,6 +158,9 @@ func (z *zedrouter) makeMetadataHandler() http.Handler {
 		zedcloudCtx: &zedcloudCtx,
 	}
 	mux.Handle("/eve/v1/tpm/signer", signerHandler)
+
+	diagHandler := &diagHandler{zedrouter: z}
+	mux.Handle("/eve/v1/diag", diagHandler)
 	return mux
 }
 
@@ -493,6 +506,56 @@ func (hdl signerHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Add("Content-Type", "application/x-proto-binary")
 	w.WriteHeader(http.StatusOK)
 	w.Write(resp.Bytes())
+}
+
+// ServeHTTP for diagHandler returns text output
+func (hdl diagHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	hdl.zedrouter.log.Tracef("diagHandler.ServeHTTP")
+
+	if r.Method != http.MethodGet {
+		msg := "diagHandler: request method is not GET"
+		hdl.zedrouter.log.Error(msg)
+		http.Error(w, msg, http.StatusMethodNotAllowed)
+		return
+	}
+	// Check that request comes from a source IP for an app instance
+	// to avoid returning data to others.
+	remoteIP := net.ParseIP(strings.Split(r.RemoteAddr, ":")[0])
+	anStatus := hdl.zedrouter.lookupAppNetworkStatusByAppIP(remoteIP)
+	if anStatus == nil {
+		msg := fmt.Sprintf("diagHandler: no AppNetworkStatus for %s",
+			remoteIP.String())
+		hdl.zedrouter.log.Errorf(msg)
+		http.Error(w, msg, http.StatusForbidden)
+		return
+	}
+	const diagStatefile = "/run/diag.out"
+
+	if _, err := os.Stat(diagStatefile); err != nil && os.IsNotExist(err) {
+		msg := "diagHandler: file not found"
+		hdl.zedrouter.log.Error(msg)
+		http.Error(w, msg, http.StatusNotFound)
+		return
+	}
+	b, err := fileutils.ReadWithMaxSize(hdl.zedrouter.log, diagStatefile,
+		DiagMaxSize+1)
+	if err != nil {
+		msg := fmt.Sprintf("diagHandler: read: %v", err)
+		hdl.zedrouter.log.Errorf(msg)
+		http.Error(w, msg, http.StatusInternalServerError)
+		return
+	}
+
+	if len(b) > DiagMaxSize {
+		msg := fmt.Sprintf("diagHandler: size exceeds limit. Expected <= %v",
+			DiagMaxSize)
+		hdl.zedrouter.log.Errorf(msg)
+		http.Error(w, msg, http.StatusInternalServerError)
+		return
+	}
+	w.Header().Add("Content-Type", "text")
+	w.WriteHeader(http.StatusOK)
+	w.Write(b)
 }
 
 func (hdl AppInfoHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {

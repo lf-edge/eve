@@ -45,7 +45,6 @@
 | memory.vmm.limit.MiB | integer | 0 | Manually override how much overhead is allocated for each running VMM |
 | newlog.gzipfiles.ondisk.maxmegabytes | integer in Mbytes | 2048 | the quota for keepig newlog gzip files on device |
 | process.cloud-init.multipart | boolean | false | help VMs which do not handle mime multi-part themselves |
-| edgeview.authen.jwt | edgeview session jwt token | empty string(edgeview disabled) | format as standard JWT for websocket session for temporary testing, this configitem will be removed once controllers are setup to send EdgeViewConfig in configuration |
 | netdump.enable | boolean | true | enable publishing of network diagnostics (as tgz archives to /persist/netdump) |
 | netdump.topic.preonboard.interval | integer in seconds | 1 hour | how frequently (in seconds) can be netdumps of the same topic published while device is not yet onboarded |
 | netdump.topic.postonboard.interval | integer in seconds | 1 day | how frequently (in seconds) can be netdumps of the same topic published after device has been onboarded |
@@ -53,6 +52,7 @@
 | netdump.downloader.with.pcap | boolean | false | include packet captures inside netdumps for download requests. However, even if enabled, TCP segments carrying non-empty payload (i.e. content which is being downloaded) are excluded and the overall PCAP size is limited to 64MB. |
 | netdump.downloader.http.with.fieldvalue | boolean | false | include HTTP header field values in captured network traces for download requests (beware: may contain secrets, such as datastore credentials). |
 | network.switch.enable.arpsnoop | boolean | true | enable ARP Snooping on switch Network Instance, may need a device reboot to take effect |
+| wwan.query.visible.providers | bool | false | enable to periodically (once per hour) query the set of visible cellular service providers and publish them under WirelessStatus (for every modem) |
 
 In addition, there can be per-agent settings.
 The Per-agent settings begin with "agent.*agentname*.*setting*"

@@ -6,7 +6,6 @@ package types
 import (
 	"fmt"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/google/go-cmp/cmp"
@@ -680,7 +679,6 @@ func (am RadioSilence) String() string {
 
 // LocalCommands : commands triggered locally via Local profile server.
 type LocalCommands struct {
-	sync.Mutex
 	// Locally issued app commands.
 	// For every app there is entry only for the last command (completed
 	// or still in progress). Previous commands are not remembered.

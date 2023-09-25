@@ -187,6 +187,7 @@ func TestNewConfigItemSpecMap(t *testing.T) {
 		IgnoreDiskCheckForApps,
 		AllowLogFastupload,
 		EnableARPSnoop,
+		WwanQueryVisibleProviders,
 		// TriState Items
 		NetworkFallbackAnyEth,
 		MaintenanceMode,
@@ -196,7 +197,6 @@ func TestNewConfigItemSpecMap(t *testing.T) {
 		DefaultRemoteLogLevel,
 		DisableDHCPAllOnesNetMask,
 		ProcessCloudInitMultiPart,
-		EdgeViewToken,
 		NetDumpEnable,
 		NetDumpTopicMaxCount,
 		NetDumpTopicPreOnboardInterval,

@@ -237,6 +237,8 @@ const (
 	AllowLogFastupload GlobalSettingKey = "newlog.allow.fastupload"
 	// EnableARPSnoopOnNI global setting key
 	EnableARPSnoop GlobalSettingKey = "network.switch.enable.arpsnoop"
+	// WwanQueryVisibleProviders : periodically query visible cellular service providers
+	WwanQueryVisibleProviders GlobalSettingKey = "wwan.query.visible.providers"
 
 	// TriState Items
 	// NetworkFallbackAnyEth global setting key
@@ -260,9 +262,6 @@ const (
 
 	// ProcessCloudInitMultiPart to help VMs which do not handle mime multi-part themselves
 	ProcessCloudInitMultiPart GlobalSettingKey = "process.cloud-init.multipart"
-
-	// XXX temp for testing edge-view
-	EdgeViewToken GlobalSettingKey = "edgeview.authen.jwt"
 
 	// NetDumpEnable : enable publishing of network diagnostics (as tgz archives to /persist/netdump).
 	NetDumpEnable GlobalSettingKey = "netdump.enable"
@@ -856,6 +855,7 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	configItemSpecMap.AddBoolItem(ProcessCloudInitMultiPart, false)
 	configItemSpecMap.AddBoolItem(ConsoleAccess, true) // Controller likely default to false
 	configItemSpecMap.AddBoolItem(EnableARPSnoop, true)
+	configItemSpecMap.AddBoolItem(WwanQueryVisibleProviders, false)
 
 	// Add TriState Items
 	configItemSpecMap.AddTriStateItem(NetworkFallbackAnyEth, TS_DISABLED)
@@ -869,9 +869,6 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	// Add Agent Settings
 	configItemSpecMap.AddAgentSettingStringItem(LogLevel, "info", parseLevel)
 	configItemSpecMap.AddAgentSettingStringItem(RemoteLogLevel, "info", parseLevel)
-
-	// XXX temp edgeview setting
-	configItemSpecMap.AddStringItem(EdgeViewToken, "", blankValidator)
 
 	// Add NetDump settings
 	configItemSpecMap.AddBoolItem(NetDumpEnable, true)

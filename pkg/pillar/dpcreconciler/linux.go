@@ -646,6 +646,11 @@ func (r *LinuxDpcReconciler) gcpChanged(newGCP types.ConfigItemValueMap) bool {
 	if prevWwanLogLevel != newWwanLogLevel {
 		return true
 	}
+	prevQueryProviders := r.prevArgs.GCP.GlobalValueBool(types.WwanQueryVisibleProviders)
+	newQueryProviders := newGCP.GlobalValueBool(types.WwanQueryVisibleProviders)
+	if prevQueryProviders != newQueryProviders {
+		return true
+	}
 	return false
 }
 
@@ -1374,9 +1379,10 @@ func (r *LinuxDpcReconciler) getIntendedWwanConfig(dpc types.DevicePortConfig,
 		r.Log.Warnf("getIntendedWwanConfig: failed to parse agent log level: %v", err)
 	}
 	config := types.WwanConfig{
-		RadioSilence: radioSilence,
-		Verbose:      verboseLogging,
-		Networks:     []types.WwanNetworkConfig{},
+		RadioSilence:          radioSilence,
+		Verbose:               verboseLogging,
+		QueryVisibleProviders: gcp.GlobalValueBool(types.WwanQueryVisibleProviders),
+		Networks:              []types.WwanNetworkConfig{},
 	}
 
 	// To begin, mark all cached passwords as unused.

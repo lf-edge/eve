@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"os"
 	"sync"
@@ -294,7 +293,7 @@ func ReadMetaFile(metaloc string) (error, *DronaRequest) {
 	if metaloc == "" {
 		return fmt.Errorf("file path empty"), nil
 	}
-	sbody, serr := ioutil.ReadFile(metaloc)
+	sbody, serr := os.ReadFile(metaloc)
 	if serr != nil {
 		return serr, nil
 	}
