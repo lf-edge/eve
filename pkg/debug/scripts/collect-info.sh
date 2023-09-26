@@ -15,7 +15,7 @@ VERSION=7
 # still attempt to install those packages.
 PKG_DEPS="procps tar dmidecode iptables dhcpcd"
 
-DATE=$(date -Is)
+DATE=$(date "+%Y-%m-%d-%H-%M-%S")
 INFO_DIR="eve-info-v$VERSION-$DATE"
 TARBALL_FILE="/persist/$INFO_DIR.tar.gz"
 
