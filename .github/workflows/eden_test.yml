@@ -1,7 +1,8 @@
 ---
 name: lf-edge/eden Test suite
 
-on:  # yamllint disable-line rule:truthy
+on: # yamllint disable-line rule:truthy
+  pull_request_review:
   push:
     branches:
       - "master"
@@ -21,6 +22,18 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  labelWhenApproved:
+    name: Label when approved
+    runs-on: ubuntu-latest
+    steps:
+    - name: Label when approved
+      uses: pullreminders/label-when-approved-action@master
+      env:
+        APPROVALS: "2"
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        ADD_LABEL: "test-eden"
+        REMOVE_LABEL: "awaiting%20review"
+
   test_suite_pr:
     if: ${{ github.event.label.name  == 'test-eden' }}
     uses: lf-edge/eden/.github/workflows/test.yml@master
