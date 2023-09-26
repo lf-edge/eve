@@ -5,7 +5,7 @@
 #
 
 # Script version, don't forget to bump up once something is changed
-VERSION=7
+VERSION=8
 
 # Add required packages here, it will be passed to "apk add".
 # Once something added here don't forget to add the same package
@@ -18,16 +18,24 @@ PKG_DEPS="procps tar dmidecode iptables dhcpcd"
 DATE=$(date "+%Y-%m-%d-%H-%M-%S")
 INFO_DIR="eve-info-v$VERSION-$DATE"
 TARBALL_FILE="/persist/$INFO_DIR.tar.gz"
+SCRIPT_DIR=$(dirname "$(readlink -f "$0")")
+
+READ_LOGS_DEV=
+READ_LOGS_APP=
 
 usage()
 {
-    echo "Usage: collect-info.sh [-v] [-h]"
+    echo "Usage: collect-info.sh [-v] [-h] [-a APPLICATION-UUID] [-d]"
     echo "       -h   show this help"
     echo "       -v   show the script version"
+    echo ""
+    echo "Read-logs mode:"
+    echo "       -d                   - read device logs only"
+    echo "       -a APPLICATION-UUID  - read specified application logs only"
     exit 1
 }
 
-while getopts "vh" o; do
+while getopts "vha:d" o; do
     case "$o" in
         h)
             usage
@@ -35,6 +43,12 @@ while getopts "vh" o; do
         v)
             echo "v$VERSION"
             exit 0
+            ;;
+        a)
+            READ_LOGS_APP="$OPTARG"
+            ;;
+        d)
+            READ_LOGS_DEV=1
             ;;
         :)
             usage
@@ -44,6 +58,60 @@ while getopts "vh" o; do
             ;;
     esac
 done
+
+sort_cat_jq()
+{
+    # Sort and extract a filename
+    sort -n | awk '{print $2}' | \
+    # Decompress if needed and output
+    xargs --no-run-if-empty zcat -f | \
+    # Add a new JSON entry "timestamp.str" which represents timestamp
+    # in a human readable `strftime` format: "%B %d %Y %I:%M:%S.%f".
+    # The whole complexity lies in the JQ `strftime` implementation
+    # which does not support milli/nano seconds ("%f" part), and for
+    # me that means converting nanos# to a fraction of a float number.
+    # If nanos field does not have exactly 9 digits it should be
+    # prepended with 0. E.g. nanos == 99, so the fraction should be
+    # ".000000099" and not ".99", that's why the complex conversion:
+    # "nanos  + 1e9 | tostring | .[1:]".
+    # Also:
+    # "-R (. as $line | try fromjson)" means ignore a line if is not a JSON,
+    # "(nanos // 0)" means return 0 if nanos is null
+    jq -R '(. as $line | try fromjson) | .timestamp.str.nanos = ((.timestamp.nanos // 0) + 1e9 | tostring | .[1:]) | .timestamp.str.human = (.timestamp.seconds | strftime("%B %d %Y %I:%M:%S")) | .timestamp.str = "\(.timestamp.str.human).\(.timestamp.str.nanos)"'
+}
+
+# We are not on EVE? Switch to read-logs mode
+if [ -d "$SCRIPT_DIR/persist-newlog" ]; then
+    FIND=".log"
+
+    if [ -n "$READ_LOGS_DEV" ]; then
+        FIND="dev.log"
+    elif [ -n "$READ_LOGS_APP" ]; then
+        FIND="app.$READ_LOGS_APP.log"
+    fi
+
+    # Find compressed logs (device or application or both)
+    find . -name "*$FIND*gz" 2>/dev/null | \
+        # Extract timestamp and make it a first column
+        perl -ne 'if (/\.(\d+).gz$/){ printf "$1 $_";  }' | \
+        # Process the rest
+        sort_cat_jq
+
+    # Find not yet compressed logs (device or application or both)
+    # which follow the compressed logs.
+    #
+    # For each file read a first valid line with a timestamp and output
+    # in the following format: "$TIMESTAMP $FILEPATH". Also:
+    # "-R (. as $line | try fromjson)" means ignore a line if is not a JSON,
+    # "(nanos // 0)" means return 0 if nanos is null
+    # shellcheck disable=SC2156
+    find . -regex ".*$FIND.?[0-9]+" -exec \
+        sh -c "jq -R '(. as \$line | try fromjson) | select(has(\"timestamp\")) | (.timestamp.seconds + (.timestamp.nanos // 0) / 1e9)' {} | head -n 1 | sed 's:$: {}:' " \; 2>/dev/null | \
+        # Process the rest
+        sort_cat_jq
+
+    exit
+fi
 
 # Create temporary dir
 echo "- basic setup"
