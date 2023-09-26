@@ -190,12 +190,13 @@ collect_pillar_backtraces()
 cp "${0}" "$DIR"
 
 # Have to chroot, lsusb does not work from this container
-echo "- lsusb, dmesg, ps, lspci, lsblk, lshw, lsof, lsmod, logread, dmidecode"
+echo "- lsusb, dmesg, ps, lspci, lsblk, lshw, lsof, lsmod, logread, dmidecode, ls -lRa /dev, free"
 chroot /hostfs lsusb -vvv    > "$DIR/lsusb-vvv"
 chroot /hostfs lsusb -vvv -t > "$DIR/lsusb-vvv-t"
 
 dmesg         > "$DIR/dmesg"
-ps -ef        > "$DIR/ps-ef"
+ps -xao uid,pid,ppid,vsz,rss,c,pcpu,pmem,stime,tname,stat,time,cmd \
+              > "$DIR/ps-xao"
 lspci -vvv    > "$DIR/lspci-vvv"
 lspci -vvv -t > "$DIR/lspci-vvv-t"
 lsblk -a      > "$DIR/lsblk-a"
@@ -204,14 +205,18 @@ lsof          > "$DIR/lsof"
 lsmod         > "$DIR/lsmod"
 logread       > "$DIR/logread"
 dmidecode     > "$DIR/dmidecode"
+ls -lRa /dev  > "$DIR/ls-lRa-dev"
+free          > "$DIR/free"
 
-echo "- vmallocinfo, slabinfo, zoneinfo, mounts, vmstat, cpuinfo"
+echo "- vmallocinfo, slabinfo, meminfo, zoneinfo, mounts, vmstat, cpuinfo, iomem"
 cat /proc/vmallocinfo > "$DIR/vmallocinfo"
 cat /proc/slabinfo    > "$DIR/slabinfo"
+cat /proc/meminfo     > "$DIR/meminfo"
 cat /proc/zoneinfo    > "$DIR/zoneinfo"
 cat /proc/mounts      > "$DIR/mounts"
 cat /proc/vmstat      > "$DIR/vmstat"
 cat /proc/cpuinfo     > "$DIR/cpuinfo"
+cat /proc/iomem       > "$DIR/iomem"
 
 echo "- qemu affinities"
 qemu-affinities.sh    > "$DIR/qemu-affinities"
@@ -236,12 +241,13 @@ find /sys/kernel/security -name "tpm*" | while read -r TPM; do
     fi
 done
 
-ln -s /persist/status   "$DIR/persist-status"
-ln -s /persist/log      "$DIR/persist-log"
-ln -s /persist/newlog   "$DIR/persist-newlog"
-ln -s /persist/netdump  "$DIR/persist-netdump"
-ln -s /persist/kcrashes "$DIR/persist-kcrashes"
-ln -s /run              "$DIR/root-run"
+ln -s /persist/status       "$DIR/persist-status"
+ln -s /persist/log          "$DIR/persist-log"
+ln -s /persist/newlog       "$DIR/persist-newlog"
+ln -s /persist/netdump      "$DIR/persist-netdump"
+ln -s /persist/kcrashes     "$DIR/persist-kcrashes"
+ln -s /run                  "$DIR/root-run"
+cp -r /sys/fs/cgroup/memory "$DIR/sys-fs-cgroup-memory" >/dev/null 2>&1
 
 # Network part
 collect_network_info
