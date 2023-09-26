@@ -206,7 +206,8 @@ func (m *mux) loop() {
 	m.errCond.L.Unlock()
 
 	if debugMux {
-		log.Println("loop exit", err)
+		// log.Println("loop exit", err)
+		log.Println("exiting the loop", err)
 	}
 }
 
