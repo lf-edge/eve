@@ -1,0 +1,54 @@
+---
+name: Request Code Owners Review
+
+on:
+  pull_request:
+    types: ["opened", "synchronize"]
+
+jobs:
+  auto_request_review:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: ${{ github.event.pull_request.commits + 1 }}
+
+      - name: Auto request review
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          reviewers=""
+          # Get changed files in this pull request
+          echo "Checking base: ${{ github.event.pull_request.base.sha }}"
+          echo "Checking head: ${{ github.event.pull_request.head.sha }}"
+          for changed_file in $(git diff --name-only ${{ github.event.pull_request.base.sha }} ${{ github.event.pull_request.head.sha }}); do
+            echo "Checking $changed_file"
+            while read -r line; do
+              # Get pattern of the files owned
+              pattern=$(echo "$line" | awk '{print $1}')
+              # Remove leading / from pattern and changed_file for comparison
+              pattern="${pattern#/}"
+              # Get owners of the files owned
+              owners=$(echo "$line" | awk '{$1=""; print $0}' | xargs)
+              # Remove leading / from changed_file for comparison
+              changed_file="${changed_file#/}"
+              if [[ "$changed_file" == $pattern* ]]; then
+                # Add owners to reviewers
+                echo "Found owners for $changed_file: $owners"
+                reviewers="$reviewers $owners"
+              fi
+            done < .github/CODEOWNERS
+          done
+          # Remove duplicates
+          reviewers=$(echo "$reviewers" | xargs -n1 | sort -u | xargs)
+          if [ -n "$reviewers" ]; then
+            # Remove @ from reviewers (it stays in the beginning of the username)
+            reviewers_cleaned=${reviewers//@/}
+            # Convert reviewers to comma separated list
+            reviewers_comma_separated=$(echo "$reviewers_cleaned" | tr ' ' ',')
+            echo "Requesting review from: $reviewers_comma_separated"
+            gh pr edit ${{ github.event.pull_request.number }} --add-reviewer $reviewers_comma_separated
+          else
+            echo "No reviewers found for the changed files."
+          fi
