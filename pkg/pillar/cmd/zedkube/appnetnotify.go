@@ -119,13 +119,17 @@ func processEbStatus(ctx *zedkubeContext, fileName string) {
 		log.Errorf("processEbStatus: readfile error %v", err)
 		unpublishAppKubeNetStatus(ctx, fileName)
 	} else {
-		log.Noticef("processEbStatus: filename %s has changed, content %s", fileName, fileContent)
-
-		err = json.Unmarshal(fileContent, &eveBridgeStatus)
-		if err != nil {
-			log.Errorf("processEbStatus: json unmarshal error %v", err)
+		if len(fileContent) == 0 {
+			log.Noticef("processEbStatus: filename %s has changed, content empty, ignore", fileName)
 		} else {
-			publishAppKubeNetStatus(ctx, &eveBridgeStatus)
+			log.Noticef("processEbStatus: filename %s has changed, content %s", fileName, fileContent)
+
+			err = json.Unmarshal(fileContent, &eveBridgeStatus)
+			if err != nil {
+				log.Errorf("processEbStatus: json unmarshal error %v", err)
+			} else {
+				publishAppKubeNetStatus(ctx, &eveBridgeStatus)
+			}
 		}
 	}
 }
