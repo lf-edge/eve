@@ -116,7 +116,8 @@ data:
       "capabilities": {
         "portMappings": true
       },
-      "logFile": "/var/log/multus.log",
+      "logFile": "/var/lib/rancher/k3s/multus.log",
+      "logLevel": "debug",
       "binDir": "/var/lib/cni/bin",
       "kubeconfig": "/var/lib/rancher/k3s/agent/etc/cni/net.d/multus.d/multus.kubeconfig",
       "delegates": [
