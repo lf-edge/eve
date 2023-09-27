@@ -18,6 +18,8 @@ type persistObj struct {
 }
 
 func TestPut(test *testing.T) {
+	test.Parallel()
+
 	g := gomega.NewGomegaWithT(test)
 
 	path, err := os.MkdirTemp("", "testFolder")
@@ -34,25 +36,24 @@ func TestPut(test *testing.T) {
 		Name: "object1",
 		Val:  []byte("123"),
 	}
-	pc.Put(obj1.Name, obj1.Val)
-	got, _ := pc.Get(obj1.Name)
+	_, err = pc.Put(obj1.Name, obj1.Val)
+	g.Expect(err).To(gomega.BeNil())
+
+	got, err := pc.Get(obj1.Name)
 	g.Expect(err).To(gomega.BeNil())
 
 	g.Expect(got).To(gomega.BeEquivalentTo(obj1.Val))
 
 	// Update
 	newVal := []byte("320")
-	pc.Put(obj1.Name, newVal)
+	_, err = pc.Put(obj1.Name, newVal)
+	g.Expect(err).To(gomega.BeNil())
+
 	got, _ = pc.Get(obj1.Name)
 	g.Expect(got).To(gomega.BeEquivalentTo(newVal))
 
 	// Try to insert malicious key
 	gotFp, err := pc.Put("../../../../etc/passwd", []byte("myNewPassword"))
-	g.Expect(err).To(gomega.BeEquivalentTo(&persistcache.InvalidKeyError{}))
-	g.Expect(gotFp).To(gomega.BeEquivalentTo(""))
-
-	// Try to insert lock file key
-	gotFp, err = pc.Put(persistcache.LockFileName, []byte("Overriding lock file!"))
 	g.Expect(err).To(gomega.BeEquivalentTo(&persistcache.InvalidKeyError{}))
 	g.Expect(gotFp).To(gomega.BeEquivalentTo(""))
 
@@ -63,6 +64,8 @@ func TestPut(test *testing.T) {
 }
 
 func TestDelete(test *testing.T) {
+	test.Parallel()
+
 	g := gomega.NewGomegaWithT(test)
 
 	path, err := os.MkdirTemp("", "testFolder")
@@ -81,19 +84,27 @@ func TestDelete(test *testing.T) {
 	}
 
 	pc, _ := persistcache.New(persistCacheFolder)
-	pc.Put(obj1.Name, obj1.Val)
-	pc.Put(obj2.Name, obj2.Val)
+	_, err = pc.Put(obj1.Name, obj1.Val)
+	g.Expect(err).To(gomega.BeNil())
 
-	val, _ := pc.Get(obj1.Name)
+	_, err = pc.Put(obj2.Name, obj2.Val)
+	g.Expect(err).To(gomega.BeNil())
+
+	val, err := pc.Get(obj1.Name)
+	g.Expect(err).To(gomega.BeNil())
 	g.Expect(val).To(gomega.BeEquivalentTo(obj1.Val))
 
-	pc.Delete(obj1.Name)
+	err = pc.Delete(obj1.Name)
+	g.Expect(err).To(gomega.BeNil())
 
-	val, _ = pc.Get(obj1.Name)
+	val, err = pc.Get(obj1.Name)
+	g.Expect(err).NotTo(gomega.BeNil())
 	g.Expect(val).To(gomega.BeEquivalentTo(""))
 }
 
 func TestLoad(test *testing.T) {
+	test.Parallel()
+
 	g := gomega.NewGomegaWithT(test)
 
 	path, err := os.MkdirTemp("", "testFolder")
@@ -111,21 +122,31 @@ func TestLoad(test *testing.T) {
 		Val:  []byte("bazinga"),
 	}
 
-	pc, _ := persistcache.New(persistCacheFolder)
+	pc, err := persistcache.New(persistCacheFolder)
+	g.Expect(err).To(gomega.BeNil())
 
-	pc.Put(obj1.Name, obj1.Val)
-	pc.Put(obj2.Name, obj2.Val)
+	_, err = pc.Put(obj1.Name, obj1.Val)
+	g.Expect(err).To(gomega.BeNil())
 
-	val, _ := pc.Get(obj1.Name)
+	_, err = pc.Put(obj2.Name, obj2.Val)
+	g.Expect(err).To(gomega.BeNil())
+
+	val, err := pc.Get(obj1.Name)
+	g.Expect(err).To(gomega.BeNil())
 	g.Expect(val).To(gomega.BeEquivalentTo(obj1.Val))
-	val, _ = pc.Get(obj2.Name)
+
+	val, err = pc.Get(obj2.Name)
+	g.Expect(err).To(gomega.BeNil())
 	g.Expect(val).To(gomega.BeEquivalentTo(obj2.Val))
 
 	pc2, err := persistcache.New(persistCacheFolder)
+	g.Expect(err).To(gomega.BeNil())
 
-	val, _ = pc2.Get(obj1.Name)
+	val, err = pc2.Get(obj1.Name)
+	g.Expect(err).To(gomega.BeNil())
 	g.Expect(val).To(gomega.BeEquivalentTo(obj1.Val))
 
-	val, _ = pc2.Get(obj2.Name)
+	val, err = pc2.Get(obj2.Name)
+	g.Expect(err).To(gomega.BeNil())
 	g.Expect(val).To(gomega.BeEquivalentTo(obj2.Val))
 }

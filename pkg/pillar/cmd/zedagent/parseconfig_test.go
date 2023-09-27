@@ -1322,14 +1322,14 @@ func TestParsePatchEnvelope(t *testing.T) {
 	shaBytes := sha256.Sum256([]byte(fileData))
 	g.Expect(pes.Get(appU1)).To(BeEquivalentTo([]types.PatchEnvelopeInfo{
 		{
-			PatchId:     patchID,
+			PatchID:     patchID,
 			AllowedApps: []string{appU1, appU2},
 			BinaryBlobs: []types.BinaryBlobCompleted{
 				{
 					FileName:     inlineFileName,
 					FileSha:      hex.EncodeToString(shaBytes[:]),
 					FileMetadata: fileMetadata,
-					Url:          filepath.Join(persistCacheFolder, inlineFileName),
+					URL:          filepath.Join(persistCacheFolder, inlineFileName),
 				},
 			},
 		},

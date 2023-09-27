@@ -4,6 +4,8 @@
 package persistcache
 
 import (
+	"bytes"
+	"crypto/sha256"
 	"io/fs"
 	"os"
 	"path"
@@ -14,85 +16,98 @@ import (
 	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
 )
 
-type persistCache struct {
+// PersistCache is main structure storing objects both
+// in-memory and on file system
+type PersistCache struct {
 	sync.Mutex
-	cache map[string][]byte
+	cache map[string]objectWrapper
 	root  string
 }
 
-const FileMask = 0755
-const LockFileName = "persistcache.lock"
+type objectWrapper struct {
+	Val []byte
+	Sha []byte
+}
 
+const fileMask = 0700
+
+// InvalidKeyError returned when Get or Put are
+// called with key which cannot be written or read
 type InvalidKeyError struct{}
 
+// Error returns error description string
 func (e *InvalidKeyError) Error() string {
 	return "Key is invalid"
 }
 
+// InvalidValueError returned when Put is
+// called with empty value
 type InvalidValueError struct{}
 
+// Error returns error description string
 func (e *InvalidValueError) Error() string {
 	return "Value is invalid"
 }
 
-// New values from cache or creates path if there's none
-func New(path string) (*persistCache, error) {
-	pc := &persistCache{}
+// New loads values from cache or creates path if there's none
+func New(path string) (*PersistCache, error) {
+	pc := &PersistCache{}
 	pc.root = path
-	pc.cache = make(map[string][]byte)
+	pc.cache = make(map[string]objectWrapper)
 
 	if _, err := os.Stat(pc.root); os.IsNotExist(err) {
-		if err := os.MkdirAll(pc.root, FileMask); err != nil {
+		if err := os.MkdirAll(pc.root, fileMask); err != nil {
 			return nil, err
 		}
 		return pc, nil
 	}
 
-	err := filepath.WalkDir(pc.root, func(path string, di fs.DirEntry, err error) error {
+	walkErr := filepath.WalkDir(pc.root, func(path string, di fs.DirEntry, err error) error {
 		// We skip all directories
 		if di.IsDir() {
 			return nil
 		}
 
+		// if there is any problem with path we stop
+		if err != nil {
+			return err
+		}
+
+		sha, err := fileutils.ComputeShaFile(path)
+		if err != nil {
+			return err
+		}
+
 		// lazy initialization
-		pc.cache[di.Name()] = []byte{}
+		pc.cache[di.Name()] = objectWrapper{
+			Val: []byte{},
+			Sha: sha,
+		}
 
 		return nil
 	})
 
-	return pc, err
-}
-
-func (pc *persistCache) loadObject(objName string) error {
-	path := filepath.Join(pc.root, objName)
-	val, err := os.ReadFile(path)
-	if err != nil {
-		return err
-	}
-
-	pc.cache[filepath.Base(path)] = val
-
-	return nil
+	return pc, walkErr
 }
 
 // Get value from cache
-func (pc *persistCache) Get(key string) ([]byte, error) {
+func (pc *PersistCache) Get(key string) ([]byte, error) {
 	pc.Lock()
 	defer pc.Unlock()
 
-	if len(pc.cache[key]) == 0 {
+	if len(pc.cache[key].Val) == 0 {
 		if err := pc.loadObject(key); err != nil {
 			return []byte{}, err
 		}
 	}
 
-	val, _ := pc.cache[key]
+	obj := pc.cache[key]
 
-	return val, nil
+	return obj.Val, nil
 }
 
-// Create or update value in in-memory cache and filesystem
-func (pc *persistCache) Put(key string, val []byte) (string, error) {
+// Put creates or updates value in in-memory cache and filesystem
+func (pc *PersistCache) Put(key string, val []byte) (string, error) {
 	pc.Lock()
 	defer pc.Unlock()
 
@@ -103,19 +118,23 @@ func (pc *persistCache) Put(key string, val []byte) (string, error) {
 		return "", &InvalidValueError{}
 	}
 
-	// save file
-	filepath := filepath.Join(pc.root, key)
-	if err := fileutils.WriteRename(filepath, val); err != nil {
-		return "", err
+	hash := sha256.New()
+	hash.Write(val)
+
+	newObj := objectWrapper{
+		Val: val,
+		Sha: hash.Sum(nil),
 	}
 
-	pc.cache[key] = val
+	if _, ok := pc.cache[key]; ok {
+		return pc.update(key, newObj)
+	}
 
-	return filepath, nil
+	return pc.create(key, newObj)
 }
 
-// Remove element from cache and filesystem
-func (pc *persistCache) Delete(key string) error {
+// Delete removes element from cache and filesystem
+func (pc *PersistCache) Delete(key string) error {
 	pc.Lock()
 	defer pc.Unlock()
 
@@ -123,20 +142,62 @@ func (pc *persistCache) Delete(key string) error {
 	return os.Remove(filepath.Join(pc.root, key))
 }
 
+// Objects returns list objects stored in PersistCache
+func (pc *PersistCache) Objects() []string {
+	answer := make([]string, 0, len(pc.cache))
+
+	for key := range pc.cache {
+		answer = append(answer, key)
+	}
+
+	return answer
+}
+
+func (pc *PersistCache) loadObject(objName string) error {
+	path := filepath.Join(pc.root, objName)
+
+	val, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+
+	sha, err := fileutils.ComputeShaFile(path)
+	if err != nil {
+		return err
+	}
+
+	pc.cache[filepath.Base(path)] = objectWrapper{
+		Val: val,
+		Sha: sha,
+	}
+
+	return nil
+}
+
+func (pc *PersistCache) update(key string, obj objectWrapper) (string, error) {
+	if bytes.Equal(obj.Sha, pc.cache[key].Sha) {
+		return filepath.Join(pc.root, key), nil
+	}
+
+	return pc.create(key, obj)
+}
+
+func (pc *PersistCache) create(key string, obj objectWrapper) (string, error) {
+	filepath := filepath.Join(pc.root, key)
+
+	if err := fileutils.WriteRename(filepath, obj.Val); err != nil {
+		return "", err
+	}
+
+	pc.cache[key] = obj
+
+	return filepath, nil
+}
+
 func isValidKey(key string) bool {
 	key = path.Clean(key)
 
-	if strings.Contains(key, "/") {
-		// in case of key being ../../../../../../etc/passwd
-		return false
-	} else if key == LockFileName {
-		// because this filename is reserved for lock file which
-		// is used to check if persistcache used by another program,
-		// process
-		return false
-	}
-
-	return true
+	return !strings.Contains(key, "/")
 }
 
 func isValidValue(val []byte) bool {
