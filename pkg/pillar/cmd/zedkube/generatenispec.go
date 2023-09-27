@@ -161,6 +161,10 @@ func ioEtherCreate(ctx *zedkubeContext, ioAdapt *types.IoAdapter) error {
 	output = output + fmt.Sprintf("  }\n")
 
 	err := kubeapi.CreateNAD(ctx.ps, log, []byte(output), "host-"+name, namespace)
-	log.Noticef("ioEtherCreate: spec, CreateNAD, error %v", err)
+	if err != nil {
+		log.Errorf("ioEtherCreate: spec, CreateNAD, error %v", err)
+	} else {
+		log.Noticef("ioEtherCreate: spec, CreateNAD, done")
+	}
 	return err
 }

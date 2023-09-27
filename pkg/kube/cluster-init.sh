@@ -10,9 +10,8 @@ CDI_VERSION=v1.56.0
 Node_IP=""
 MAX_K3S_RESTARTS=10
 RESTART_COUNT=0
-k3slogFile="/var/lib/rancher/k3s/k3s.log"
-#loglimitSize=$((50*1024*1024))  # 50MB limit
-loglimitSize=$((5*1024*1024)) # XXX testing
+K3S_LOG_DIR="/var/lib/rancher/k3s"
+loglimitSize=$((5*1024*1024))
 
 INSTALL_LOG=/var/lib/install.log
 
@@ -29,16 +28,16 @@ setup_cgroup () {
 }
 
 check_log_file_size() {
-  currentSize=$(wc -c <"$k3slogFile")
+  currentSize=$(wc -c <"$K3S_LOG_DIR/$1")
   if [ "$currentSize" -gt "$loglimitSize" ]; then
-    if [ -f "$k3slogFile.2" ]; then
-      cp "$k3slogFile.2" "$k3slogFile.3"
+    if [ -f "$K3S_LOG_DIR/$1.2" ]; then
+      cp "$K3S_LOG_DIR/$1.2" "$K3S_LOG_DIR/$1.3"
     fi
-    if [ -f "$k3slogFile.1" ]; then
-      cp "$k3slogFile.1" "$k3slogFile.2"
+    if [ -f "$K3S_LOG_DIR/$1.1" ]; then
+      cp "$K3S_LOG_DIR/$1.1" "$K3S_LOG_DIR/$1.2"
     fi
-    cp "$k3slogFile" "$k3slogFile.1"
-    cat /dev/null > "$k3slogFile"
+    cp "$K3S_LOG_DIR/$1" "$K3S_LOG_DIR/$1.1"
+    truncate -s 0 "$K3S_LOG_DIR/$1"
     logmsg "k3s logfile size $currentSize rotate"
   fi
 }
@@ -439,7 +438,8 @@ else
             fi
         fi
 fi
-        check_log_file_size
+        check_log_file_size "k3s.log"
+        check_log_file_size "multus.log"
         check_and_run_vnc
         wait_for_item "wait"
         sleep 30
