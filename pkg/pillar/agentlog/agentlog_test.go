@@ -13,8 +13,8 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub/socketdriver"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	"github.com/lf-edge/eve/pkg/pillar/utils/file"
-	"github.com/satori/go.uuid"
+	utils "github.com/lf-edge/eve/pkg/pillar/utils/file"
+	uuid "github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 )
@@ -101,13 +101,13 @@ func TestPubsubLog(t *testing.T) {
 		t.Logf("Required directories not writeable; SKIP")
 		return
 	}
-	defaultLogger, defaultLog := agentlog.InitNoRedirect(defaultAgent)
+	defaultLogger, defaultLog := agentlog.Init(defaultAgent)
 	// how do we check this appears in log?
 	defaultLogger.Infof("defaultLogger")
 	defaultLog.Noticef("defaultLog")
 	logrus.Infof("logrus")
 
-	pubLogger, pubLog := agentlog.InitNoRedirect(publisherAgent)
+	pubLogger, pubLog := agentlog.Init(publisherAgent)
 	// pubLogger.SetLevel(logrus.TraceLevel)
 	pubPs := pubsub.New(
 		&socketdriver.SocketDriver{
@@ -124,7 +124,7 @@ func TestPubsubLog(t *testing.T) {
 		t.Fatalf("unable to publish: %v", err)
 	}
 
-	subLogger, subLog := agentlog.InitNoRedirect(subscriberAgent)
+	subLogger, subLog := agentlog.Init(subscriberAgent)
 	// subLogger.SetLevel(logrus.TraceLevel)
 	subPs := pubsub.New(
 		&socketdriver.SocketDriver{

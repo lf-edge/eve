@@ -655,52 +655,12 @@ func roundToMb(b uint64) uint64 {
 	return mb
 }
 
-func spoofStdFDs(log *base.LogObject, agentName string) *os.File {
-	agentDebugDir := fmt.Sprintf("%s/%s/", types.PersistDebugDir, agentName)
-	if _, err := os.Stat(agentDebugDir); os.IsNotExist(err) {
-		// Create the agent specific debug directory
-		if err := os.MkdirAll(agentDebugDir, 0755); err != nil {
-			log.Fatalf("spoofStdFDs: Agent specific debug directory (%s) does not exist: %s",
-				agentDebugDir, err)
-		}
-	}
-	startTimeFile := agentDebugDir + "/starttime"
-	base.TouchFile(log, startTimeFile)
-
-	stdOutFile := agentDebugDir + "/stdout"
-	stdOut, err := os.OpenFile(stdOutFile, os.O_WRONLY|os.O_CREATE|os.O_SYNC, 0755)
-	if err != nil {
-		log.Fatalf("spoofStdFDs: Failed opening stdout file %s with err: %s", stdOutFile, err)
-	}
-
-	fd2, err := syscall.Dup(syscall.Stdout)
-	if err != nil {
-		log.Fatalf("spoofStdFDs: Error duplicating Stdout: %s", err)
-	}
-	originalStdout := os.NewFile(uintptr(fd2), "originalStdout")
-	if originalStdout == nil {
-		log.Fatalf("spoofStdFDs: Error opening duplicate stdout with fd: %v", fd2)
-	}
-	// replace stdout
-	err = syscall.Dup3(int(stdOut.Fd()), 1, 0)
-	if err != nil {
-		log.Fatalf("spoofStdFDs: Error replacing stdout with panic file %s: %s",
-			stdOutFile, err)
-	}
-	return originalStdout
-}
-
 // Init provides both a logger and a logObject
 func Init(agentName string) (*logrus.Logger, *base.LogObject) {
-	return initImpl(agentName, true)
+	return initImpl(agentName)
 }
 
-// InitNoRedirect provides both a logger and a logObject; does not redirect stdout
-func InitNoRedirect(agentName string) (*logrus.Logger, *base.LogObject) {
-	return initImpl(agentName, false)
-}
-
-func initImpl(agentName string, redirect bool) (*logrus.Logger, *base.LogObject) {
+func initImpl(agentName string) (*logrus.Logger, *base.LogObject) {
 	agentPid := os.Getpid()
 	logger := logrus.New()
 	// Report nano timestamps
@@ -723,16 +683,8 @@ func initImpl(agentName string, redirect bool) (*logrus.Logger, *base.LogObject)
 
 	skipHook := new(SkipCallerHook)
 	logger.AddHook(skipHook)
-	// For every separate process we set up output redirection
-	// to /persist/agentdebug (while keeping logs on stdout) and
-	// signal handlers
-	if once() {
-		if redirect {
-			originalStdout := spoofStdFDs(log, agentName)
-			logger.SetOutput(originalStdout)
-			logrus.SetOutput(originalStdout)
-		}
 
+	if once() {
 		// XXX Some code such as containerd and hypervisor still use
 		// logrus directly. Set up the formatter and hooks for them
 		// to point at zedbox as agentname
