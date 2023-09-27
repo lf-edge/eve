@@ -93,6 +93,15 @@ func (d pciDevice) vid() (string, error) {
 	return strings.TrimSpace(strings.TrimSuffix(string(vendorID), "\n")), nil
 }
 
+// read device ID
+func (d pciDevice) devid() (string, error) {
+	devID, err := os.ReadFile(filepath.Join(sysfsPciDevices, d.pciLong, "device"))
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(strings.TrimSuffix(string(devID), "\n")), nil
+}
+
 // isBridge checks if the given PCI device is a bridge.
 // It reads the device's class from the sysfs filesystem and returns true if the class
 // starts with "0x06", which is the PCI base class code for bridges.
