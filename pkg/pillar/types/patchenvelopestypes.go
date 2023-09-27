@@ -17,13 +17,13 @@ type PatchEnvelopes struct {
 	Envelopes []PatchEnvelopeInfo
 }
 
-// Get returns list of patch envelopes, which are available to appUuid
-func (pe *PatchEnvelopes) Get(appUuid string) []PatchEnvelopeInfo {
+// Get returns list of patch envelopes, which are available to appUUID
+func (pe *PatchEnvelopes) Get(appUUID string) []PatchEnvelopeInfo {
 	var res []PatchEnvelopeInfo
 
 	for _, envelope := range pe.Envelopes {
-		for _, allowedUuid := range envelope.AllowedApps {
-			if allowedUuid == appUuid {
+		for _, allowedUUID := range envelope.AllowedApps {
+			if allowedUUID == appUUID {
 				res = append(res, envelope)
 				break
 			}
@@ -42,7 +42,7 @@ func (PatchEnvelopes) Key() string {
 // about patch envelopes
 type PatchEnvelopeInfo struct {
 	AllowedApps []string
-	PatchId     string
+	PatchID     string
 	BinaryBlobs []BinaryBlobCompleted
 	VolumeRefs  []BinaryBlobVolumeRef
 }
@@ -51,19 +51,19 @@ type PatchEnvelopeInfo struct {
 // and therefore we need some representational structure
 // for PatchEnvelopeInfo.
 type peInfoToDisplay struct {
-	PatchId     string
+	PatchID     string
 	BinaryBlobs []BinaryBlobCompleted
 	VolumeRefs  []BinaryBlobVolumeRef
 }
 
-// MarshalPatchEnvelopesForAppInstance returns json representation
+// PatchEnvelopesJSONForAppInstance returns json representation
 // of Patch Envelopes list which are shown to app instances
-func PatchEnvelopesJsonForAppInstance(pe []PatchEnvelopeInfo) ([]byte, error) {
+func PatchEnvelopesJSONForAppInstance(pe []PatchEnvelopeInfo) ([]byte, error) {
 	toDisplay := make([]peInfoToDisplay, len(pe))
 
 	for i, envelope := range pe {
 		toDisplay[i] = peInfoToDisplay{
-			PatchId:     envelope.PatchId,
+			PatchID:     envelope.PatchID,
 			BinaryBlobs: envelope.BinaryBlobs,
 			VolumeRefs:  envelope.VolumeRefs,
 		}
@@ -72,10 +72,10 @@ func PatchEnvelopesJsonForAppInstance(pe []PatchEnvelopeInfo) ([]byte, error) {
 	return json.Marshal(toDisplay)
 }
 
-// FindPatchEnvelopeById returns patch envelope with given patchId
-func FindPatchEnvelopeById(pe []PatchEnvelopeInfo, patchId string) *PatchEnvelopeInfo {
+// FindPatchEnvelopeByID returns patch envelope with given patchId
+func FindPatchEnvelopeByID(pe []PatchEnvelopeInfo, patchID string) *PatchEnvelopeInfo {
 	for _, pe := range pe {
-		if pe.PatchId == patchId {
+		if pe.PatchID == patchID {
 			return &pe
 		}
 	}
@@ -85,7 +85,7 @@ func FindPatchEnvelopeById(pe []PatchEnvelopeInfo, patchId string) *PatchEnvelop
 // GetZipArchive archives list of patch envelopes in a given path and returns
 // full path to zip archive
 func GetZipArchive(root string, pe PatchEnvelopeInfo) (string, error) {
-	zipFilename := filepath.Join(root, pe.PatchId+".zip")
+	zipFilename := filepath.Join(root, pe.PatchID+".zip")
 	zipFile, err := os.Create(zipFilename)
 	if err != nil {
 		return "", err
@@ -97,13 +97,13 @@ func GetZipArchive(root string, pe PatchEnvelopeInfo) (string, error) {
 
 	for _, b := range pe.BinaryBlobs {
 		// We only want to archive binary blobs which are ready
-		file, err := os.Open(b.Url)
+		file, err := os.Open(b.URL)
 		if err != nil {
 			return "", err
 		}
 		defer file.Close()
 
-		baseName := filepath.Base(b.Url)
+		baseName := filepath.Base(b.URL)
 		zipEntry, err := zipWriter.Create(baseName)
 		if err != nil {
 			return "", err
@@ -122,10 +122,10 @@ func GetZipArchive(root string, pe PatchEnvelopeInfo) (string, error) {
 // BinaryBlobCompleted is representation of
 // binary blob ready to be downloaded by app instance
 type BinaryBlobCompleted struct {
-	FileName     string `json:"file-name"`
-	FileSha      string `json:"file-sha"`
-	FileMetadata string `json:"file-meta-data"`
-	Url          string `json:"url"`
+	FileName     string `json:"fileName"`
+	FileSha      string `json:"fileSha"`
+	FileMetadata string `json:"fileMetaData"`
+	URL          string `json:"url"` //nolint:var-naming
 }
 
 // CompletedBinaryBlobIdxByName returns index of element in blobs list
@@ -143,8 +143,8 @@ func CompletedBinaryBlobIdxByName(blobs []BinaryBlobCompleted, name string) int 
 // external binary blobs, which has not yet been
 // downloaded
 type BinaryBlobVolumeRef struct {
-	FileName     string `json:"file-name"`
-	ImageName    string `json:"image-name"`
-	FileMetadata string `json:"file-meta-data"`
-	ImageId      string `json:"image-id"`
+	FileName     string `json:"fileName"`
+	ImageName    string `json:"imageName"`
+	FileMetadata string `json:"fileMetaData"`
+	ImageID      string `json:"imageId"`
 }

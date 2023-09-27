@@ -170,7 +170,7 @@ type zedrouter struct {
 	// volumemgr, therefore we need to be subscribed
 	// to volume status to know filepath and download status
 	// patchEnvelopeInfo is list of patchEnvelopes which
-	// is coming from EdgeDevConfig containing infromation
+	// is coming from EdgeDevConfig containing information
 	// about inline patch envelopes and volume uuid as reference
 	// for external patch envelopes
 	subPatchEnvelopeInfo pubsub.Subscription
@@ -810,7 +810,7 @@ func (z *zedrouter) initSubscriptions() (err error) {
 		return err
 	}
 
-	// Infromation about volumes reffered in external patch envelopes
+	// Information about volumes referred in external patch envelopes
 	z.subVolumeStatus, err = z.pubSub.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:   "volumemgr",
 		MyAgentName: agentName,

@@ -6,12 +6,15 @@ package zedagent
 import (
 	"encoding/hex"
 	"fmt"
+	"os"
 
 	"crypto/sha256"
 
 	zconfig "github.com/lf-edge/eve-api/go/config"
 	"github.com/lf-edge/eve/pkg/pillar/persistcache"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+
+	"github.com/lf-edge/eve/pkg/pillar/utils/generics"
 )
 
 func parsePatchEnvelopes(ctx *getconfigContext, config *zconfig.EdgeDevConfig) {
@@ -22,12 +25,28 @@ func parsePatchEnvelopesImpl(ctx *getconfigContext, config *zconfig.EdgeDevConfi
 	persistCacheFilepath string) {
 	log.Tracef("Parsing patchEnvelope from configuration")
 
+	// Remove previously created patch envelopes
+	// so that we will not have stale objects
+	if err := os.RemoveAll(persistCacheFilepath); err != nil {
+		log.Errorf("Failed to delete persistCacheFilepath %v", err)
+		return
+	}
+
+	// Store list of binary blobs which were created before
+	pc, err := persistcache.New(persistCacheFilepath)
+	if err != nil {
+		log.Errorf("Failed to load persistCache %v", err)
+		return
+	}
+	blobsBefore := pc.Objects()
+
+	var blobsAfter []string
 	patchEnvelopes := config.GetPatchEnvelopes()
 	result := types.PatchEnvelopes{}
 	for _, pe := range patchEnvelopes {
 		peInfo := types.PatchEnvelopeInfo{
 			AllowedApps: pe.GetAppInstIdsAllowed(),
-			PatchId:     pe.GetUuid(),
+			PatchID:     pe.GetUuid(),
 		}
 		for _, a := range pe.GetArtifacts() {
 			err := addBinaryBlobToPatchEnvelope(&peInfo, a, persistCacheFilepath)
@@ -38,9 +57,19 @@ func parsePatchEnvelopesImpl(ctx *getconfigContext, config *zconfig.EdgeDevConfi
 		}
 
 		result.Envelopes = append(result.Envelopes, peInfo)
+
+		for _, inlineBlob := range peInfo.BinaryBlobs {
+			blobsAfter = append(blobsAfter, inlineBlob.FileName)
+		}
 	}
 
 	publishPatchEnvelopes(ctx, result)
+
+	// Provide zedrouter with newest version for description.json and then delete files
+	blobsToDelete, _ := generics.DiffSets(blobsBefore, blobsAfter)
+	for _, blob := range blobsToDelete {
+		pc.Delete(blob)
+	}
 }
 
 func publishPatchEnvelopes(ctx *getconfigContext, patchEnvelopes types.PatchEnvelopes) {
@@ -107,7 +136,7 @@ func cacheInlineBase64Artifact(artifact *zconfig.InlineOpaqueBase64Data, persist
 		FileName:     artifact.GetFileNameToUse(),
 		FileSha:      hex.EncodeToString(shaBytes[:]),
 		FileMetadata: metadata,
-		Url:          url,
+		URL:          url,
 	}, nil
 }
 
@@ -119,6 +148,6 @@ func getBinaryBlobVolumeRef(artifact *zconfig.ExternalOpaqueBinaryBlob) (*types.
 		ImageName:    artifact.GetImageName(),
 		FileName:     artifact.GetFileNameToUse(),
 		FileMetadata: artifact.GetBlobMetaData(),
-		ImageId:      artifact.GetImageId(),
+		ImageID:      artifact.GetImageId(),
 	}, nil
 }
