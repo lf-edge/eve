@@ -5,6 +5,9 @@ metadata:
   namespace: kubevirt
 spec:
   configuration:
+    permittedHostDevices:
+      pciHostDevices:   # <- PCIe passthrough devices like nvme drives
+      mediatedDevices:  # <- GPUs
     developerConfiguration:
       featureGates:
         - LiveMigration

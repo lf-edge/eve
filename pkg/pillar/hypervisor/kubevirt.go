@@ -30,8 +30,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
-
 	metricsv "k8s.io/metrics/pkg/client/clientset/versioned"
+	//"k8s.io/client-go/kubernetes"
 	v1 "kubevirt.io/api/core/v1"
 	"kubevirt.io/client-go/kubecli"
 )
@@ -194,7 +194,8 @@ func (ctx kubevirtContext) CreateVMIConfig(domainName string, config types.Domai
 		return err
 	}
 	kubeconfig := ctx.kubeConfig
-	_, err = kubecli.GetKubevirtClientFromRESTConfig(kubeconfig)
+	kvClient, err := kubecli.GetKubevirtClientFromRESTConfig(kubeconfig)
+
 	if err != nil {
 		logrus.Errorf("couldn't get the kubernetes client API config: %v", err)
 		return err
@@ -203,26 +204,19 @@ func (ctx kubevirtContext) CreateVMIConfig(domainName string, config types.Domai
 	dispName := config.GetKubeDispName()
 	// Get a VirtualMachineInstance object and populate the values from DomainConfig
 	vmi := v1.NewVMIReferenceFromNameWithNS(eveNameSpace, dispName)
-	//vmi.ObjectMeta.UID = status.UUIDandVersion.UUID
 
 	// Set CPUs
-
 	cpus := v1.CPU{}
 	cpus.Cores = uint32(config.VCpus)
 	vmi.Spec.Domain.CPU = &cpus
 
 	// Set memory
-
 	mem := v1.Memory{}
-	//config.Memory = (config.Memory + 1023) / 1024
-
 	m, err := resource.ParseQuantity(convertToKubernetesFormat(config.Memory * 1024)) // To bytes from KB
-
 	if err != nil {
 		logrus.Errorf("Could not parse the memory value %v", err)
 		return err
 	}
-
 	mem.Guest = &m
 	vmi.Spec.Domain.Memory = &mem
 
@@ -277,7 +271,6 @@ func (ctx kubevirtContext) CreateVMIConfig(domainName string, config types.Domai
 	vmi.Spec.Domain.Devices.Interfaces = intfs
 
 	// Set Storage
-
 	if len(diskStatusList) > 0 {
 		disks := make([]v1.Disk, len(diskStatusList))
 		vols := make([]v1.Volume, len(diskStatusList))
@@ -369,9 +362,17 @@ func (ctx kubevirtContext) CreateVMIConfig(domainName string, config types.Domai
 		}
 	}
 
-	//if len(pciAssignments) != 0 {
-	//	return logError("PRAMOD: PCI assignments not supported yet %v", len(pciAssignments))
-	//}
+	if len(pciAssignments) != 0 {
+		// PCIe passthrough is a three step process in Kubevirt/Kubernetes
+		// 1) First do PCI Reserve like in kvm.go (If we are here, PCI Reserve is already done)
+		// 2) Register the  pciVendorSelector which is a PCI vendor ID and product ID tuple in the form vendor_id:product_id
+		//    with kubevirt
+		// 3) Then pass the registered names to VMI config
+		err := registerWithKV(kvClient, vmi, pciAssignments)
+		if err != nil {
+			return logError("Failed to register with Kubevirt  %v", len(pciAssignments))
+		}
+	}
 	if len(serialAssignments) != 0 {
 		return logError("PRAMOD: Serial assignments not supported yet %v", len(serialAssignments))
 	}
@@ -1217,4 +1218,78 @@ func getConfig(ctx *kubevirtContext) error {
 		ctx.kubeConfig = kubeconfig
 	}
 	return nil
+}
+
+// Register the PCI address with Kubevirt
+// Refer https://kubevirt.io/user-guide/virtual_machines/host-devices/#host-preparation-for-pci-passthrough
+func registerWithKV(kvClient kubecli.KubevirtClient, vmi *v1.VirtualMachineInstance, pciAssignments []pciDevice) error {
+
+	devices := make([]v1.HostDevice, len(pciAssignments))
+	// Define the KubeVirt resource's name and namespace
+	kubeVirtName := "kubevirt"
+	kubeVirtNamespace := "kubevirt"
+
+	// Retrieve the KubeVirt resource
+	kubeVirt, err := kvClient.KubeVirt(kubeVirtNamespace).Get(kubeVirtName, &metav1.GetOptions{})
+	if err != nil {
+		return logError("can't fetch the PCI device info from kubevirt %v", err)
+	}
+
+	pciHostDevs := kubeVirt.Spec.Configuration.PermittedHostDevices.PciHostDevices
+
+	for _, pa := range pciAssignments {
+
+		vendor, err := pa.vid()
+		if err != nil {
+			return logError("can't fetch the vendor id for pci device %v", err)
+		}
+
+		devid, err := pa.devid()
+		if err != nil {
+			return logError("can't fetch the device id for pci device %v", err)
+		}
+
+		pciVendorSelector := vendor + ":" + devid
+
+		for i, pcidev := range pciHostDevs {
+			// Check if we already registered this device with kubevirt. If not register with kubevirt
+			if pcidev.PCIVendorSelector != pciVendorSelector {
+
+				name := "devices.kubevirt.io/nvme" + strconv.Itoa(i+1)
+				newpcidev := v1.PciHostDevice{
+					ResourceName:      name,
+					PCIVendorSelector: pciVendorSelector,
+				}
+
+				kubeVirt.Spec.Configuration.PermittedHostDevices.PciHostDevices = append(kubeVirt.Spec.Configuration.PermittedHostDevices.PciHostDevices, newpcidev)
+				_, err = kvClient.KubeVirt(kubeVirtNamespace).Update(kubeVirt)
+
+				if err != nil {
+					return logError("can't update the PCI device info from kubevirt %v", err)
+				}
+				// Insert into HostDevice struct
+
+				devices[i] = v1.HostDevice{
+					DeviceName: name,
+					Name:       "pcidev" + strconv.Itoa(i+1),
+				}
+
+			} else {
+
+				// At this point we registered the PCI device with kubevirt
+				// Insert into HostDevice struct
+
+				devices[i] = v1.HostDevice{
+					DeviceName: pcidev.ResourceName,
+					Name:       "pcidev" + strconv.Itoa(i+1),
+				}
+			}
+		}
+
+	}
+
+	vmi.Spec.Domain.Devices.HostDevices = devices
+
+	return nil
+
 }
