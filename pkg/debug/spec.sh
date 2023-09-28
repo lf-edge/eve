@@ -217,10 +217,10 @@ get_modem_atport() {
 
 if [ -e /dev/xen ]; then
    CPUS=$(eve exec xen-tools xl info | grep nr_cpus | cut -f2 -d:)
-   MEM=$(( $(eve exec xen-tools xl info | grep total_memory | cut -f2 -d:) / 1024 ))
+   MEM=$(( $(eve exec xen-tools xl info | grep total_memory | cut -f2 -d:) ))
 else
    CPUS=$(grep -c '^processor.*' < /proc/cpuinfo)
-   MEM=$(awk '/MemTotal:/ { print int($2 / 1048576); }' < /proc/meminfo)
+   MEM=$(awk '/MemTotal:/ { print int($2 / 1024); }' < /proc/meminfo)
 fi
 
 DISK=$(lsblk -b  | grep disk | awk '{ total += $4; } END { print int(total/(1024*1024*1024)); }')
@@ -233,7 +233,7 @@ cat <<__EOT__
   "productURL": "$(cat /persist/status/hardwaremodel || cat /config/hardwaremodel)",
   "productStatus": "production",
   "attr": {
-    "memory": "${MEM}G",
+    "memory": "${MEM}M",
     "storage": "${DISK}G",
     "Cpus": "${CPUS}",
     "watchdog": "${WDT}",
