@@ -415,8 +415,8 @@ func CreateZvolEtcd(log *base.LogObject, datasetName string) error {
 		return fmt.Errorf("Dataset %s available bytes read error: %v", parentDatasetName, err)
 	}
 
-	if sizeBytes > (1024 * 1024 * 1024 * 5) {
-		etcdSizeBytes = 1024 * 1024 * 1024 * 5
+	if sizeBytes > (1024 * 1024 * 1024 * 10) {
+		etcdSizeBytes = 1024 * 1024 * 1024 * 10
 	}
 
 	err = zfs.CreateVolumeDataset(log, datasetName, etcdSizeBytes, "off")
