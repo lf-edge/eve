@@ -1,7 +1,8 @@
-From 39f5340e0916c949ed1ddad662b0523362e45bbf Mon Sep 17 00:00:00 2001
+From 80b9b9e6b2921c6341c8ccb63be7f53eb0de4a78 Mon Sep 17 00:00:00 2001
 From: Aleksandrov Dmitriy <goodmobiledevices@gmail.com>
 Date: Wed, 2 Nov 2022 16:34:15 -0100
-Subject: [PATCH] Revert "LFU-278-20 imx8m: Disable BINMAN for iMX8M EVK build"
+Subject: [PATCH 02/25] Revert "LFU-278-20 imx8m: Disable BINMAN for iMX8M EVK
+ build"
 
 This reverts commit d955c2248dd12f5c0d6afd3cf0ba1a013ed39646.
 ---
@@ -9,7 +10,7 @@ This reverts commit d955c2248dd12f5c0d6afd3cf0ba1a013ed39646.
  1 file changed, 3 insertions(+)
 
 diff --git a/arch/arm/mach-imx/imx8m/Kconfig b/arch/arm/mach-imx/imx8m/Kconfig
-index 456073873d..67e600453a 100644
+index d7edf88a655..a732da8f050 100644
 --- a/arch/arm/mach-imx/imx8m/Kconfig
 +++ b/arch/arm/mach-imx/imx8m/Kconfig
 @@ -66,6 +66,7 @@ config TARGET_IMX8MQ_CM
@@ -28,7 +29,7 @@ index 456073873d..67e600453a 100644
  	select IMX8MM
  	select SUPPORT_SPL
  	select IMX8M_LPDDR4
-@@ -188,6 +190,7 @@ config TARGET_IMX8MN_VENICE
+@@ -233,6 +235,7 @@ config TARGET_IMX8MN_VENICE
  
  config TARGET_IMX8MP_EVK
  	bool "imx8mp LPDDR4 EVK board"
@@ -37,5 +38,5 @@ index 456073873d..67e600453a 100644
  	select SUPPORT_SPL
  	select IMX8M_LPDDR4
 -- 
-2.25.1
+2.40.1
 

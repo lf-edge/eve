@@ -1,7 +1,8 @@
-From 22ed1aa027f7374e88690f26c2e337be9c0a86c7 Mon Sep 17 00:00:00 2001
+From 8723bba4cd838740a03312c286ea6839df328903 Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Ren=C3=AA=20de=20Souza=20Pinto?= <rene@renesp.com.br>
 Date: Wed, 22 Feb 2023 15:17:22 +0100
-Subject: [PATCH] configs: imx8mp_rsb3720.h: Set eth0 as primary interface
+Subject: [PATCH 19/25] configs: imx8mp_rsb3720.h: Set eth0 as primary
+ interface
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
@@ -27,5 +28,5 @@ index 802519931c7..752b27ba1ea 100644
  #define CONFIG_FEC_XCV_TYPE             RGMII
  #define CONFIG_FEC_MXC_PHYADDR          1
 -- 
-2.39.1
+2.40.1
 

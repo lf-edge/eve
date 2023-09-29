@@ -1,7 +1,7 @@
-From bb56bdcf90b736524a44e37b7758fb752cbc2441 Mon Sep 17 00:00:00 2001
+From fd6ed4b0379226ab015ae397b5cae228b679ba96 Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Ren=C3=AA=20de=20Souza=20Pinto?= <rene@renesp.com.br>
 Date: Thu, 23 Mar 2023 14:55:35 +0100
-Subject: [PATCH 20/20] configs: Enable OPTEE image loading
+Subject: [PATCH 21/25] configs: Enable OPTEE image loading
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
@@ -28,15 +28,15 @@ index b7329a30043..33bc53bdd55 100644
 +CONFIG_OPTEE_FIRMWARE_SET=y
 +CONFIG_OPTEE_FIRMWARE="tee.bin"
 diff --git a/configs/phycore-imx8mp_defconfig b/configs/phycore-imx8mp_defconfig
-index dccffbac970..68048bf5ed9 100644
+index 164739c68d5..839b595b8da 100644
 --- a/configs/phycore-imx8mp_defconfig
 +++ b/configs/phycore-imx8mp_defconfig
-@@ -113,3 +113,5 @@ CONFIG_DM_THERMAL=y
+@@ -118,3 +118,5 @@ CONFIG_DM_THERMAL=y
  CONFIG_IMX_WATCHDOG=y
  CONFIG_SYSINFO=y
  CONFIG_SYSINFO_SMBIOS=y
 +CONFIG_OPTEE_FIRMWARE_SET=y
 +CONFIG_OPTEE_FIRMWARE="tee.bin"
 -- 
-2.39.2
+2.40.1
 

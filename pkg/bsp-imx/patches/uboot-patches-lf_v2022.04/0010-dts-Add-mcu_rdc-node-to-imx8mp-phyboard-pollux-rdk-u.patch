@@ -1,7 +1,7 @@
-From 35761515e1a2a2dcca15117faaa3dafa45b1d9d5 Mon Sep 17 00:00:00 2001
+From 5e924f26253bf686300bfa115a0f8fb72ae7ba8e Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Ren=C3=AA=20de=20Souza=20Pinto?= <rene@renesp.com.br>
 Date: Wed, 4 Jan 2023 19:23:04 +0100
-Subject: [PATCH 4/6] dts: Add mcu_rdc node to
+Subject: [PATCH 10/25] dts: Add mcu_rdc node to
  imx8mp-phyboard-pollux-rdk-u-boot.dtsi
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
@@ -89,5 +89,5 @@ index dbc48dfb484..78d7512fac5 100644
  
  &reg_usdhc2_vmmc {
 -- 
-2.35.1
+2.40.1
 

@@ -1,7 +1,7 @@
-From 8761b446824300bb8e5a1f5ae0a0db680ef9f294 Mon Sep 17 00:00:00 2001
+From 992c2d5b49132c0a0678ce587f1bfcd63e393063 Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Ren=C3=AA=20de=20Souza=20Pinto?= <rene@renesp.com.br>
 Date: Thu, 23 Mar 2023 14:42:45 +0100
-Subject: [PATCH 19/20] arm: mach: imx: Add OPTEE options to Kconfig
+Subject: [PATCH 20/25] arm: mach: imx: Add OPTEE options to Kconfig
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
@@ -39,5 +39,5 @@ index 9976ab78d0f..12ff5034f4c 100644
  	bool
  
 -- 
-2.39.2
+2.40.1
 

@@ -1,7 +1,8 @@
-From fc532a2b79a612cb0eda3c2176045f5347cf084e Mon Sep 17 00:00:00 2001
+From 9ee71fea7e8577c743abb8d24692de26cdb5ed6b Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Ren=C3=AA=20de=20Souza=20Pinto?= <rene@renesp.com.br>
 Date: Wed, 4 Jan 2023 19:11:13 +0100
-Subject: [PATCH 3/6] arch: arm: dts: Add SMBIOS information for Phytec Pollux
+Subject: [PATCH 09/25] arch: arm: dts: Add SMBIOS information for Phytec
+ Pollux
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
@@ -16,7 +17,7 @@ Signed-off-by: Renê de Souza Pinto <rene@renesp.com.br>
  2 files changed, 20 insertions(+)
 
 diff --git a/arch/arm/dts/imx8mp-phyboard-pollux-rdk.dts b/arch/arm/dts/imx8mp-phyboard-pollux-rdk.dts
-index 984a6b9ded8..5f66e1a5fe0 100644
+index 3083530cd38..3ccc36ada71 100644
 --- a/arch/arm/dts/imx8mp-phyboard-pollux-rdk.dts
 +++ b/arch/arm/dts/imx8mp-phyboard-pollux-rdk.dts
 @@ -15,6 +15,24 @@
@@ -45,15 +46,15 @@ index 984a6b9ded8..5f66e1a5fe0 100644
  		stdout-path = &uart1;
  	};
 diff --git a/configs/phycore-imx8mp_defconfig b/configs/phycore-imx8mp_defconfig
-index 2391aa49141..e38b7a52896 100644
+index 9623b84a783..d563aadc879 100644
 --- a/configs/phycore-imx8mp_defconfig
 +++ b/configs/phycore-imx8mp_defconfig
-@@ -107,3 +107,5 @@ CONFIG_SYSRESET_PSCI=y
+@@ -112,3 +112,5 @@ CONFIG_SYSRESET_PSCI=y
  CONFIG_SYSRESET_WATCHDOG=y
  CONFIG_DM_THERMAL=y
  CONFIG_IMX_WATCHDOG=y
 +CONFIG_SYSINFO=y
 +CONFIG_SYSINFO_SMBIOS=y
 -- 
-2.35.1
+2.40.1
 

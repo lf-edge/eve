@@ -1,7 +1,7 @@
-From 08f5600145fda5295267e5fb2eeb0e6795516dd3 Mon Sep 17 00:00:00 2001
+From f5562c420eca1c23d699f41986adf026a9ca518e Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Ren=C3=AA=20de=20Souza=20Pinto?= <rene@renesp.com.br>
 Date: Wed, 8 Feb 2023 16:47:54 +0100
-Subject: [PATCH 17/17] arch: Fix PHY initialization and enable eth1
+Subject: [PATCH 18/25] arch: Fix PHY initialization and enable eth1
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
@@ -105,5 +105,5 @@ index ac4a7d0cb30..802519931c7 100644
  #define CONFIG_SYS_NONCACHED_MEMORY     (1 * SZ_1M)     /* 1M */
  #endif
 -- 
-2.39.1
+2.40.1
 

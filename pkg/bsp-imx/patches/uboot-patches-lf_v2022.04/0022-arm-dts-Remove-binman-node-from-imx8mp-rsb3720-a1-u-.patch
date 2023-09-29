@@ -1,7 +1,7 @@
-From 904b0025dc2a950e6ddd0a7c224828c892dd50b9 Mon Sep 17 00:00:00 2001
+From 1ed242650d1a323d75872ce865dc29eb08e0a73c Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Ren=C3=AA=20de=20Souza=20Pinto?= <rene@renesp.com.br>
 Date: Fri, 24 Mar 2023 14:05:59 +0100
-Subject: [PATCH] arm: dts: Remove binman node from
+Subject: [PATCH 22/25] arm: dts: Remove binman node from
  imx8mp-rsb3720-a1-u-boot.dtsi
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
@@ -49,5 +49,5 @@ index 3c2517a79ab..69ea625053a 100644
 -	};
 -};
 -- 
-2.39.2
+2.40.1
 

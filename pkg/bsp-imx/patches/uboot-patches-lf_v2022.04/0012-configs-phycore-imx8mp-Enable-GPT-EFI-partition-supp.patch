@@ -1,7 +1,7 @@
-From f2ccbac5dae658b83009cbd5f888960f5532db55 Mon Sep 17 00:00:00 2001
+From 94ad3031f5b77787a3ed63d11bf304dc8af38067 Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Ren=C3=AA=20de=20Souza=20Pinto?= <rene@renesp.com.br>
 Date: Wed, 4 Jan 2023 19:50:43 +0100
-Subject: [PATCH 6/6] configs: phycore-imx8mp: Enable GPT EFI partition
+Subject: [PATCH 12/25] configs: phycore-imx8mp: Enable GPT EFI partition
  support.
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
@@ -13,10 +13,10 @@ Signed-off-by: Renê de Souza Pinto <rene@renesp.com.br>
  1 file changed, 4 insertions(+)
 
 diff --git a/configs/phycore-imx8mp_defconfig b/configs/phycore-imx8mp_defconfig
-index e38b7a52896..77697e66c21 100644
+index d563aadc879..bdab98c7c62 100644
 --- a/configs/phycore-imx8mp_defconfig
 +++ b/configs/phycore-imx8mp_defconfig
-@@ -62,6 +62,10 @@ CONFIG_CMD_EXT4=y
+@@ -64,6 +64,10 @@ CONFIG_CMD_EXT4=y
  CONFIG_CMD_EXT4_WRITE=y
  CONFIG_CMD_FAT=y
  CONFIG_OF_CONTROL=y
@@ -28,5 +28,5 @@ index e38b7a52896..77697e66c21 100644
  CONFIG_ENV_OVERWRITE=y
  CONFIG_ENV_IS_IN_MMC=y
 -- 
-2.35.1
+2.40.1
 

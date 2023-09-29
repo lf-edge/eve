@@ -1,7 +1,7 @@
-From 69074cf413469dbb49e146c88556002d8e67703c Mon Sep 17 00:00:00 2001
+From 438cbd87a4dc206baab086b1bb269d41a8d3bbb6 Mon Sep 17 00:00:00 2001
 From: Troy Kisky <troy.kisky@boundarydevices.com>
 Date: Sat, 4 Jun 2022 11:39:19 -0700
-Subject: [PATCH 1/6] arm: dts: imx8mp-u-boot: select correct bl31
+Subject: [PATCH 07/25] arm: dts: imx8mp-u-boot: select correct bl31
 
 Signed-off-by: Troy Kisky <troy.kisky@boundarydevices.com>
 ---
@@ -56,5 +56,5 @@ index 120c4c4dbb1..6d31e206c03 100644
  				};
  			};
 -- 
-2.35.1
+2.40.1
 
