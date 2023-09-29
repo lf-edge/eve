@@ -18,9 +18,9 @@ func GetVolumeFormat(log *base.LogObject, fileLocation string) (config.Format, e
 
 	// If kubevirt type, format is always PVC.
 	if base.IsHVTypeKube() {
-        	// Might be cleaner to call GetImgInfo(), i'll cleanup in a later commit
+		// Might be cleaner to call GetImgInfo(), i'll cleanup in a later commit
 		if strings.HasSuffix(fileLocation, ".cidata") {
-                	return config.Format_RAW, nil
+			return config.Format_RAW, nil
 		}
 		return config.Format_PVC, nil
 	}
