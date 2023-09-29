@@ -1,7 +1,7 @@
-From f87eab4b21306b75e003902c6dcb106a45b90b4f Mon Sep 17 00:00:00 2001
+From 2353d7d54322da73b589b028c08757047262e2c5 Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Ren=C3=AA=20de=20Souza=20Pinto?= <rene@renesp.com.br>
 Date: Wed, 11 Jan 2023 15:09:35 +0100
-Subject: [PATCH 15/17] arch: arm: dts: Add SMBIOS information for Advantech's
+Subject: [PATCH 16/25] arch: arm: dts: Add SMBIOS information for Advantech's
  board
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
@@ -57,5 +57,5 @@ index e3c0a74088e..24fb1de1db7 100644
 +CONFIG_SYSINFO=y
 +CONFIG_SYSINFO_SMBIOS=y
 -- 
-2.39.1
+2.40.1
 

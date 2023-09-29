@@ -1,7 +1,7 @@
-From 08cea66d64dba53850842ed92744685002d4295a Mon Sep 17 00:00:00 2001
+From dfac40fdc1126ef2aa1717379f064b774ef9a95c Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Ren=C3=AA=20de=20Souza=20Pinto?= <rene@renesp.com.br>
 Date: Tue, 2 May 2023 16:42:19 +0200
-Subject: [PATCH] arm: imx8m: Set mmcdev variable at the initialization
+Subject: [PATCH 23/25] arm: imx8m: Set mmcdev variable at the initialization
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
@@ -48,5 +48,5 @@ index 16566092bd8..b0b890edfe7 100644
  
  	return 0;
 -- 
-2.39.2
+2.40.1
 

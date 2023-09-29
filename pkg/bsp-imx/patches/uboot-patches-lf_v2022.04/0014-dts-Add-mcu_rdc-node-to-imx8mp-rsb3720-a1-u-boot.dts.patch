@@ -1,7 +1,7 @@
-From b90a60af24e92118079d8d28273df14efd52e909 Mon Sep 17 00:00:00 2001
+From bf2496bbd360cbc1ed30602c34d726fe291ce248 Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Ren=C3=AA=20de=20Souza=20Pinto?= <rene@renesp.com.br>
 Date: Wed, 11 Jan 2023 14:33:10 +0100
-Subject: [PATCH 13/17] dts: Add mcu_rdc node to imx8mp-rsb3720-a1-u-boot.dtsi
+Subject: [PATCH 14/25] dts: Add mcu_rdc node to imx8mp-rsb3720-a1-u-boot.dtsi
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
@@ -81,5 +81,5 @@ index 2848b24f655..307c833cf4e 100644
  
  &iomuxc {
 -- 
-2.39.1
+2.40.1
 

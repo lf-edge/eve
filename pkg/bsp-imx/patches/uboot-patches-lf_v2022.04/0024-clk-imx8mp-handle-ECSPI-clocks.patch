@@ -1,7 +1,7 @@
-From ae43f7bbb9651f23540b6060db14e472eba0ac75 Mon Sep 17 00:00:00 2001
+From 751912f4bb3a2a30762a80f7890dbe0268c38837 Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Ren=C3=AA=20de=20Souza=20Pinto?= <rene@renesp.com.br>
 Date: Wed, 31 May 2023 12:01:25 +0200
-Subject: [PATCH 23/24] clk: imx8mp: handle ECSPI clocks
+Subject: [PATCH 24/25] clk: imx8mp: handle ECSPI clocks
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
@@ -63,5 +63,5 @@ index 435d5dc46b6..7869572b3ce 100644
  	clk_dm(IMX8MP_CLK_GPIO1_ROOT, imx_clk_gate4("gpio1_root_clk", "ipg_root", base + 0x40b0, 0));
  	clk_dm(IMX8MP_CLK_GPIO2_ROOT, imx_clk_gate4("gpio2_root_clk", "ipg_root", base + 0x40c0, 0));
 -- 
-2.39.2
+2.40.1
 

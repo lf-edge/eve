@@ -1,7 +1,7 @@
-From 3f1bdc167456e9d043541e8d959b7d26eb5af74d Mon Sep 17 00:00:00 2001
+From 1a1e880a8ac0b404d48bff5b05a50c6f9ee3bee7 Mon Sep 17 00:00:00 2001
 From: Aleksandrov Dmitriy <goodmobiledevices@gmail.com>
 Date: Wed, 2 Nov 2022 23:13:03 -0100
-Subject: [PATCH] configs: imx8mq-evk: disable optee-os * We get an error
+Subject: [PATCH 06/25] configs: imx8mq-evk: disable optee-os * We get an error
  initializing the UEFI subsystem in u-boot, if we boot without
  optee-os(trusted execution environment) on bl32, so we will turn off optee
  driver.
@@ -12,10 +12,10 @@ Signed-off-by: Aleksandrov Dmitriy <goodmobiledevices@gmail.com>
  1 file changed, 3 insertions(+), 3 deletions(-)
 
 diff --git a/configs/imx8mq_evk_defconfig b/configs/imx8mq_evk_defconfig
-index 802fa920de..cf1c1f1c26 100644
+index ce900ef7390..c40ae8c0092 100644
 --- a/configs/imx8mq_evk_defconfig
 +++ b/configs/imx8mq_evk_defconfig
-@@ -90,7 +90,7 @@ CONFIG_DM_I2C=y
+@@ -92,7 +92,7 @@ CONFIG_DM_I2C=y
  CONFIG_SPL_SYS_I2C_LEGACY=y
  CONFIG_SYS_I2C_MXC=y
  CONFIG_DM_MMC=y
@@ -24,7 +24,7 @@ index 802fa920de..cf1c1f1c26 100644
  CONFIG_SUPPORT_EMMC_BOOT=y
  CONFIG_MMC_IO_VOLTAGE=y
  CONFIG_MMC_UHS_SUPPORT=y
-@@ -162,8 +162,8 @@ CONFIG_SHA384=y
+@@ -165,8 +165,8 @@ CONFIG_SHA384=y
  CONFIG_EFI_VAR_BUF_SIZE=139264
  CONFIG_EFI_IGNORE_OSINDICATIONS=y
  CONFIG_EFI_CAPSULE_AUTHENTICATE=y
@@ -36,5 +36,5 @@ index 802fa920de..cf1c1f1c26 100644
  CONFIG_TEE=y
  CONFIG_EFI_ESRT=y
 -- 
-2.34.1
+2.40.1
 
