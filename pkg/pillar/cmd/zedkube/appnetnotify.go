@@ -17,10 +17,10 @@ import (
 )
 
 const (
-	eveBridgeStatusPath = "/run/k3s/eve-bridge"
+	eveBridgeStatusPath = "/run/kube/eve-bridge"
 )
 
-// XXX copy those from pillar/k3s/eve-bridge
+// XXX copy those from pillar/kube/eve-bridge
 type EveClusterNIType uint32
 
 const (
