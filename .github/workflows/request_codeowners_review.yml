@@ -8,6 +8,8 @@ on:
 jobs:
   auto_request_review:
     runs-on: ubuntu-latest
+    permissions:
+      pull-requests: "write"
     steps:
       - name: Calculate fetch-depth
         id: calc
