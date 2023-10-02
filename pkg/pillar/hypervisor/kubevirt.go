@@ -31,6 +31,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	metricsv "k8s.io/metrics/pkg/client/clientset/versioned"
+
 	//"k8s.io/client-go/kubernetes"
 	v1 "kubevirt.io/api/core/v1"
 	"kubevirt.io/client-go/kubecli"
@@ -1066,7 +1067,41 @@ func StartPodContiner(kubeconfig *rest.Config, pod *k8sv1.Pod) error {
 	}
 
 	logrus.Infof("StartPodContiner: Pod %s %s with nad %+v", pod.ObjectMeta.Name, opStr, pod.Annotations)
+
+	err = checkForPod(kubeconfig, pod.ObjectMeta.Name)
+	if err != nil {
+		logrus.Errorf("StartPodContiner: check for pod status error %v", err)
+		return err
+	}
+	logrus.Infof("StartPodContiner: Pod %s running", pod.ObjectMeta.Name)
 	return nil
+}
+
+func checkForPod(kubeconfig *rest.Config, podName string) error {
+	var i int
+	var status string
+	var err error
+	for {
+		i++
+		logrus.Infof("checkForPod: check(%d) wait 15 sec, %v", i, podName)
+		time.Sleep(15 * time.Second)
+
+		status, err = InfoPodContainer(kubeconfig, podName)
+		if err != nil {
+			logrus.Infof("checkForPod: podName %s, %v", podName, err)
+		} else {
+			if status == "Running" {
+				return nil
+			} else {
+				logrus.Errorf("checkForPod: get podName info status %v (not running)", status)
+			}
+		}
+		if i > 5 {
+			break
+		}
+	}
+
+	return fmt.Errorf("checkForPod: timed out, statuus %s, err %v", status, err)
 }
 
 func StopPodContainer(kubeconfig *rest.Config, podName string) error {

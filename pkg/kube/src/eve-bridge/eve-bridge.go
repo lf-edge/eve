@@ -26,7 +26,7 @@ import (
 const (
 	logfileDir       = "/tmp/eve-bridge/"
 	logfile          = logfileDir + "eve-bridge.log"
-	niStatusFileDir  = "/run/k3s/eve-bridge/"
+	niStatusFileDir  = "/run/kube/eve-bridge/"
 
 	eveKubeNamespace = "eve-kube-app"
 
