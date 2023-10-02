@@ -114,7 +114,7 @@ func (m *DpcManager) updateDNS() {
 				"updateDNS: failed to get attrs for interface %s with index %d: %v",
 				port.IfName, ifindex, err)
 		} else {
-			m.deviceNetStatus.Ports[ix].Up = ifAttrs.AdminUp
+			m.deviceNetStatus.Ports[ix].Up = ifAttrs.LowerUp
 			m.deviceNetStatus.Ports[ix].MTU = ifAttrs.MTU
 		}
 		ipAddrs, macAddr, err := m.NetworkMonitor.GetInterfaceAddrs(ifindex)

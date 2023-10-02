@@ -14,6 +14,10 @@ import (
 	"github.com/lf-edge/eve-libs/zedUpload/types"
 )
 
+const (
+	defaultHTTPInactivityTimeout = 5 * time.Minute
+)
+
 type HttpTransportMethod struct {
 	transport SyncTransportType
 	hurl      string
@@ -21,9 +25,10 @@ type HttpTransportMethod struct {
 
 	authType string
 
-	failPostTime time.Time
-	ctx          *DronaCtx
-	hClientWrap  *httpClientWrapper
+	failPostTime      time.Time
+	ctx               *DronaCtx
+	hClientWrap       *httpClientWrapper
+	inactivityTimeout time.Duration
 }
 
 // Action : execute selected action targeting HTTP datastore.
@@ -52,7 +57,7 @@ func (ep *HttpTransportMethod) Action(req *DronaRequest) error {
 		err = fmt.Errorf("Unknown HTTP datastore operation")
 	}
 
-	req.asize = int64(size)
+	req.updateAsize(int64(size))
 	if err != nil {
 		req.status = fmt.Sprintf("%v", err)
 	}
@@ -116,7 +121,7 @@ func (ep *HttpTransportMethod) processHttpUpload(req *DronaRequest) (error, int)
 		return err, 0
 	}
 	stats, resp := zedHttp.ExecCmd(req.cancelContext, "post", postUrl, req.name,
-		req.objloc, req.sizelimit, prgChan, hClient)
+		req.objloc, req.sizelimit, prgChan, hClient, ep.inactivityTimeout)
 	return stats.Error, resp.BodyLength
 }
 
@@ -136,7 +141,7 @@ func (ep *HttpTransportMethod) processHttpDownload(req *DronaRequest) (error, in
 		return err, 0
 	}
 	stats, resp := zedHttp.ExecCmd(req.cancelContext, "get", file, "",
-		req.objloc, req.sizelimit, prgChan, hClient)
+		req.objloc, req.sizelimit, prgChan, hClient, ep.inactivityTimeout)
 	return stats.Error, resp.BodyLength
 }
 
@@ -158,7 +163,7 @@ func (ep *HttpTransportMethod) processHttpList(req *DronaRequest) ([]string, err
 		return nil, err
 	}
 	stats, resp := zedHttp.ExecCmd(req.cancelContext, "ls", listUrl, "", "",
-		req.sizelimit, prgChan, hClient)
+		req.sizelimit, prgChan, hClient, ep.inactivityTimeout)
 	return resp.List, stats.Error
 }
 
@@ -178,7 +183,7 @@ func (ep *HttpTransportMethod) processHttpObjectMetaData(req *DronaRequest) (err
 		return err, 0
 	}
 	stats, resp := zedHttp.ExecCmd(req.cancelContext, "meta", file, "", req.objloc,
-		req.sizelimit, prgChan, hClient)
+		req.sizelimit, prgChan, hClient, ep.inactivityTimeout)
 	return stats.Error, resp.ContentLength
 }
 func (ep *HttpTransportMethod) getContext() *DronaCtx {
@@ -201,5 +206,29 @@ func (ep *HttpTransportMethod) NewRequest(opType SyncOpType, objname, objloc str
 	dR.sizelimit = sizelimit
 	dR.result = reply
 
+	// if the inactivity timeout was not set, use the default
+	if ep.inactivityTimeout == 0 {
+		ep.inactivityTimeout = defaultHTTPInactivityTimeout
+	}
+
 	return dR
+}
+
+// WithHTTPInactivityTimeout set the inactivity timeout for HTTP datastore.
+// Default if not set is 5 minutes.
+// This is different than the timeouts for individual sections available in
+// http.RoundTripper or the entire-transaction client.Timeout. This is reset every
+// time data is received, so it is an inactivity timeout.
+func WithHTTPInactivityTimeout(timeout time.Duration) SyncerDestOption {
+	return func(endpoint DronaEndPoint) error {
+		var (
+			httpEp *HttpTransportMethod
+			ok     bool
+		)
+		if httpEp, ok = endpoint.(*HttpTransportMethod); !ok {
+			return fmt.Errorf("Invalid endpoint type")
+		}
+		httpEp.inactivityTimeout = timeout
+		return nil
+	}
 }

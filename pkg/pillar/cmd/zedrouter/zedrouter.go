@@ -223,8 +223,8 @@ func (z *zedrouter) init() (err error) {
 	z.decryptCipherContext.Log = z.log
 	z.decryptCipherContext.AgentName = agentName
 	z.decryptCipherContext.AgentMetrics = z.cipherMetrics
-	z.decryptCipherContext.SubControllerCert = z.subControllerCert
-	z.decryptCipherContext.SubEdgeNodeCert = z.subEdgeNodeCert
+	z.decryptCipherContext.PubSubControllerCert = z.subControllerCert
+	z.decryptCipherContext.PubSubEdgeNodeCert = z.subEdgeNodeCert
 
 	// Initialize Zedrouter components (for Linux network stack).
 	z.networkMonitor = &netmonitor.LinuxNetworkMonitor{Log: z.log}

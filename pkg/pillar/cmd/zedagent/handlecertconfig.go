@@ -236,16 +236,10 @@ func controllerCertsTask(ctx *zedagentContext, triggerCerts <-chan struct{}) {
 // Fetch and verify the controller certificates. Returns true if certificates have
 // not changed or the update was successfully applied.
 // False is returned if the function failed to fetch/verify/unmarshal certs.
-func getCertsFromController(ctx *zedagentContext, desc string) (success bool) {
+func requestCertsByURL(ctx *zedagentContext, url string, desc string) bool {
 	log.Functionf("getCertsFromController started for %s", desc)
 	certURL := zedcloud.URLPathString(serverNameAndPort,
 		zedcloudCtx.V2API, nilUUID, "certs")
-
-	// not V2API
-	if !zedcloud.UseV2API() {
-		log.Noticef("getCertsFromController not V2API!")
-		return false
-	}
 
 	ctxWork, cancel := zedcloud.GetContextForAllIntfFunctions(zedcloudCtx)
 	defer cancel()
@@ -333,6 +327,35 @@ func getCertsFromController(ctx *zedagentContext, desc string) (success bool) {
 
 	log.Noticef("getCertsFromController: success for %s", desc)
 	return true
+}
+
+// Fetch and verify the controller certificates. Returns true if certificates
+// have not changed or the update was successfully applied. False is returned
+// if the function failed to fetch/verify/unmarshal certs.
+//
+// If main controller is unavailable (@false is returned), the next set of
+// attempts is to fallback to retrieve certs from the LOC.
+func getCertsFromController(ctx *zedagentContext, desc string) bool {
+	// not V2API
+	if !zedcloud.UseV2API() {
+		log.Noticef("getCertsFromController not V2API!")
+		return false
+	}
+	url := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API,
+		nilUUID, "certs")
+
+	rv := requestCertsByURL(ctx, url, desc)
+	if !rv && ctx.getconfigCtx.sideController.locConfig != nil {
+		locURL := ctx.getconfigCtx.sideController.locConfig.LocURL
+		url = zedcloud.URLPathString(locURL, zedcloudCtx.V2API,
+			nilUUID, "certs")
+
+		// Request certs from LOC if previous request has failed and LOC
+		// configuration exists and is valid
+		rv = requestCertsByURL(ctx, url, desc)
+	}
+
+	return rv
 }
 
 // edge node certificate post task, on change trigger
@@ -509,6 +532,13 @@ func triggerEdgeNodeCertEvent(ctxPtr *zedagentContext) {
 	default:
 		log.Warnf("triggerEdgeNodeCertEvent(): already triggered, still not processed")
 	}
+}
+
+func triggerEdgeNodeCertDelayedEvent(ctxPtr *zedagentContext, d time.Duration) {
+	go func() {
+		time.Sleep(d)
+		triggerEdgeNodeCertEvent(ctxPtr)
+	}()
 }
 
 func convertLocalToApiHashAlgo(algo types.CertHashType) evecommon.HashAlgorithm {

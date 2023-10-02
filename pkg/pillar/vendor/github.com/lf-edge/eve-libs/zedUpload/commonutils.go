@@ -24,6 +24,15 @@ const (
 	SingleMB int64 = 1024 * 1024
 )
 
+const (
+	tcpHandshakeTimeout   = 30 * time.Second
+	tcpKeepAliveInterval  = 30 * time.Second
+	maxIdleConns          = 100
+	idleConnTimeout       = 90 * time.Second
+	tlsHandshakeTimeout   = 10 * time.Second
+	expectContinueTimeout = 1 * time.Second
+)
+
 // ChunkData contains the details of Chunks being downloaded
 type ChunkData struct {
 	Size  int64  // complete size to upload/download
@@ -72,14 +81,6 @@ type httpClientWrapper struct {
 }
 
 func (c *httpClientWrapper) unwrap() (*http.Client, error) {
-	const (
-		tcpHandshakeTimeout   = 30 * time.Second
-		tcpKeepAliveInterval  = 30 * time.Second
-		maxIdleConns          = 100
-		idleConnTimeout       = 90 * time.Second
-		tlsHandshakeTimeout   = 10 * time.Second
-		expectContinueTimeout = 1 * time.Second
-	)
 	c.initOnce.Do(func() {
 		var tlsConfig *tls.Config
 		if c.withCerts {
@@ -162,10 +163,12 @@ func (c *httpClientWrapper) unwrap() (*http.Client, error) {
 	if c.initErr != nil {
 		return nil, c.initErr
 	}
+
+	client := c.client
 	if c.withTracing {
-		return c.tracedClient.Client, nil
+		client = c.tracedClient.Client
 	}
-	return c.client, nil
+	return client, nil
 }
 
 func (c *httpClientWrapper) withBindIntf(intf string) error {

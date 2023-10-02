@@ -17,84 +17,57 @@ import (
 )
 
 const (
-	// Will wait for 1000s max for a call instead of waiting forever
-	maxTimeOutLimit = 1000
-	timeOutLimit    = 100
+	/*
+	 * execution timeout is supposed to be less than the watchdog timeout,
+	 * as otherwise the watchdog might fire and reboot the system before
+	 * the timeout fires
+	 * exceptions are when an executable is started from a different goroutine
+	 * source of the error timeout and the watchdog timeout:
+	 * error timeout: $ grep -r errorTime pkg/pillar/cmd/ | grep time
+	 * watchdog timeout: $ grep hv_watchdog_timer pkg/grub/rootfs.cfg
+	 */
+	timeoutLimit   = 3 * time.Minute
+	defaultTimeout = 100 * time.Second
 )
 
 // Command holds the necessary data to execute command
 type Command struct {
-	command   *exec.Cmd
-	log       *LogObject
-	agentName string
-	timeout   time.Duration
-	buffer    *bytes.Buffer
-	ctx       context.Context
+	command    *exec.Cmd
+	log        *LogObject
+	agentName  string
+	timeout    time.Duration
+	buffer     *bytes.Buffer
+	ctx        context.Context
+	errorMonad error
 }
 
 // Output runs the command and returns its standard output.
 // Any returned error will usually be of type *ExitError.
-// Waits for the exec call to finish for `maxTimeOutLimit` after which timeout error is returned
+// Waits for the exec call to finish for `defaultTimeout` after which timeout error is returned
 func (c *Command) Output() ([]byte, error) {
 	var buf bytes.Buffer
 	c.command.Stdout = &buf
 	c.buffer = &buf
-	c.timeout = maxTimeOutLimit
+	c.timeout = defaultTimeout
 	return c.execCommand()
 }
 
 // CombinedOutput runs the command and returns its combined standard output and standard error.
-// Waits for the exec call to finish for `maxTimeOutLimit` after which timeout error is returned
+// Waits for the exec call to finish for `defaultTimeout` after which timeout error is returned
 func (c *Command) CombinedOutput() ([]byte, error) {
 	var buf bytes.Buffer
 	c.command.Stdout = &buf
 	c.command.Stderr = &buf
 	c.buffer = &buf
-	c.timeout = maxTimeOutLimit
-	return c.execCommand()
-}
-
-// OutputWithTimeout waits for the exec call to finish for `timeOutLimit`
-// after which timeout error is returned
-func (c *Command) OutputWithTimeout() ([]byte, error) {
-	var buf bytes.Buffer
-	c.command.Stdout = &buf
-	c.buffer = &buf
-	c.timeout = timeOutLimit
-	return c.execCommand()
-}
-
-// CombinedOutputWithTimeout waits for the exec call to finish for `timeOutLimit`
-// after which timeout error is returned
-func (c *Command) CombinedOutputWithTimeout() ([]byte, error) {
-	var buf bytes.Buffer
-	c.command.Stdout = &buf
-	c.command.Stderr = &buf
-	c.buffer = &buf
-	c.timeout = timeOutLimit
-	return c.execCommand()
-}
-
-// OutputWithCustomTimeout accepts a custom timeout limit to wait for the exec call.
-func (c *Command) OutputWithCustomTimeout(timeout uint) ([]byte, error) {
-	var buf bytes.Buffer
-	c.command.Stdout = &buf
-	c.buffer = &buf
-	c.timeout = time.Duration(timeout)
-	return c.execCommand()
-}
-
-// CombinedOutputWithCustomTimeout accepts a custom timeout limit to wait for the exec call.
-func (c *Command) CombinedOutputWithCustomTimeout(timeout uint) ([]byte, error) {
-	var buf bytes.Buffer
-	c.command.Stdout = &buf
-	c.command.Stderr = &buf
-	c.buffer = &buf
-	c.timeout = time.Duration(timeout)
+	c.timeout = defaultTimeout
 	return c.execCommand()
 }
 
 func (c *Command) execCommand() ([]byte, error) {
+	if c.errorMonad != nil {
+		return nil, c.errorMonad
+	}
+
 	if c.log != nil {
 		c.log.Tracef("execCommand(%v)", c.command.Args)
 	}
@@ -108,7 +81,7 @@ func (c *Command) execCommand() ([]byte, error) {
 	stillRunning := time.NewTicker(25 * time.Second)
 	defer stillRunning.Stop()
 
-	waitTimer := time.NewTimer(c.timeout * time.Second)
+	waitTimer := time.NewTimer(c.timeout)
 	defer waitTimer.Stop()
 
 	if c.ctx == nil {
@@ -132,6 +105,23 @@ func (c *Command) execCommand() ([]byte, error) {
 		}
 		updateAgentTouchFile(c.log, c.agentName)
 	}
+}
+
+// WithLimitedTimeout set custom timeout for command
+func (c *Command) WithLimitedTimeout(timeout time.Duration) *Command {
+	c.timeout = timeout
+	if c.timeout > timeoutLimit {
+		c.errorMonad = fmt.Errorf("custom timeout (%v) is longer than watchdog timeout (%v)", c.timeout, defaultTimeout)
+	}
+
+	return c
+}
+
+// WithUnlimitedTimeout set custom timeout for command not bound to any limits for when run in a separate goroutine
+func (c *Command) WithUnlimitedTimeout(timeout time.Duration) *Command {
+	c.timeout = timeout
+
+	return c
 }
 
 // WithContext set context for command

@@ -49,20 +49,22 @@ func updateLocalAppInfoTicker(ctx *getconfigContext, throttle bool) {
 	max := 1.1 * interval
 	min := 0.8 * max
 	throttledLocalAppInfo = throttle
-	ctx.localAppInfoPOSTTicker.UpdateRangeTicker(time.Duration(min), time.Duration(max))
+	ctx.sideController.localAppInfoPOSTTicker.UpdateRangeTicker(
+		time.Duration(min), time.Duration(max))
 }
 
 func initializeLocalAppInfo(ctx *getconfigContext) {
 	max := 1.1 * float64(localAppInfoPOSTInterval)
 	min := 0.8 * max
-	ctx.localAppInfoPOSTTicker = flextimer.NewRangeTicker(time.Duration(min), time.Duration(max))
+	ctx.sideController.localAppInfoPOSTTicker =
+		flextimer.NewRangeTicker(time.Duration(min), time.Duration(max))
 }
 
 func initializeLocalCommands(ctx *getconfigContext) {
 	if !loadSavedLocalCommands(ctx) {
 		// Write the initial empty content.
-		ctx.localCommands = &types.LocalCommands{}
-		persistLocalCommands(ctx.localCommands)
+		ctx.sideController.localCommands = &types.LocalCommands{}
+		persistLocalCommands(ctx.sideController.localCommands)
 	}
 }
 
@@ -72,7 +74,7 @@ func triggerLocalAppInfoPOST(ctx *getconfigContext) {
 		log.Functionln("throttledLocalAppInfo flag set")
 		return
 	}
-	ctx.localAppInfoPOSTTicker.TickNow()
+	ctx.sideController.localAppInfoPOSTTicker.TickNow()
 }
 
 // Run a periodic POST request to send information message about apps to local server
@@ -81,7 +83,7 @@ func localAppInfoPOSTTask(ctx *getconfigContext) {
 
 	log.Functionf("localAppInfoPOSTTask: waiting for localAppInfoPOSTTicker")
 	// wait for the first trigger
-	<-ctx.localAppInfoPOSTTicker.C
+	<-ctx.sideController.localAppInfoPOSTTicker.C
 	log.Functionln("localAppInfoPOSTTask: waiting for localAppInfoPOSTTicker done")
 	// trigger again to pass into the loop
 	triggerLocalAppInfoPOST(ctx)
@@ -95,7 +97,7 @@ func localAppInfoPOSTTask(ctx *getconfigContext) {
 
 	for {
 		select {
-		case <-ctx.localAppInfoPOSTTicker.C:
+		case <-ctx.sideController.localAppInfoPOSTTicker.C:
 			start := time.Now()
 			appCmds := postLocalAppInfo(ctx)
 			processReceivedAppCommands(ctx, appCmds)
@@ -110,7 +112,7 @@ func localAppInfoPOSTTask(ctx *getconfigContext) {
 // Post the current state of locally running application instances to the local server
 // and optionally receive a set of app commands to run in the response.
 func postLocalAppInfo(ctx *getconfigContext) *profile.LocalAppCmdList {
-	localProfileServer := ctx.localProfileServer
+	localProfileServer := ctx.sideController.localProfileServer
 	if localProfileServer == "" {
 		return nil
 	}
@@ -119,7 +121,7 @@ func postLocalAppInfo(ctx *getconfigContext) *profile.LocalAppCmdList {
 		log.Errorf("sendLocalAppInfo: makeLocalServerBaseURL: %v", err)
 		return nil
 	}
-	if !ctx.localServerMap.upToDate {
+	if !ctx.sideController.localServerMap.upToDate {
 		err := updateLocalServerMap(ctx, localServerURL)
 		if err != nil {
 			log.Errorf("sendLocalAppInfo: updateLocalServerMap: %v", err)
@@ -128,7 +130,7 @@ func postLocalAppInfo(ctx *getconfigContext) *profile.LocalAppCmdList {
 		// Make sure HasLocalServer is set correctly for the AppInstanceConfig
 		updateHasLocalServer(ctx)
 	}
-	srvMap := ctx.localServerMap.servers
+	srvMap := ctx.sideController.localServerMap.servers
 	if len(srvMap) == 0 {
 		log.Functionf("sendLocalAppInfo: cannot find any configured apps for localServerURL: %s",
 			localServerURL)
@@ -154,7 +156,7 @@ func postLocalAppInfo(ctx *getconfigContext) *profile.LocalAppCmdList {
 				return nil
 			case http.StatusOK, http.StatusCreated:
 				if len(appCmds.AppCommands) != 0 {
-					if appCmds.GetServerToken() != ctx.profileServerToken {
+					if appCmds.GetServerToken() != ctx.sideController.profileServerToken {
 						errList = append(errList,
 							fmt.Sprintf("invalid token submitted by local server (%s)", appCmds.GetServerToken()))
 						continue
@@ -181,11 +183,11 @@ func postLocalAppInfo(ctx *getconfigContext) *profile.LocalAppCmdList {
 }
 
 func processReceivedAppCommands(ctx *getconfigContext, cmdList *profile.LocalAppCmdList) {
-	ctx.localCommands.Lock()
-	defer ctx.localCommands.Unlock()
+	ctx.sideController.Lock()
+	defer ctx.sideController.Unlock()
 	if cmdList == nil {
 		// Nothing requested by local server, just refresh the persisted config.
-		if !ctx.localCommands.Empty() {
+		if !ctx.sideController.localCommands.Empty() {
 			touchLocalCommands()
 		}
 		return
@@ -226,13 +228,14 @@ func processReceivedAppCommands(ctx *getconfigContext, cmdList *profile.LocalApp
 
 		// Accept (or skip already accepted) application command.
 		command := types.AppCommand(appCmdReq.Command)
-		appCmd, hasLocalCmd := ctx.localCommands.AppCommands[appUUID.String()]
+		appCmd, hasLocalCmd := ctx.sideController.localCommands.AppCommands[appUUID.String()]
 		if !hasLocalCmd {
 			appCmd = &types.LocalAppCommand{}
-			if ctx.localCommands.AppCommands == nil {
-				ctx.localCommands.AppCommands = make(map[string]*types.LocalAppCommand)
+			if ctx.sideController.localCommands.AppCommands == nil {
+				ctx.sideController.localCommands.AppCommands =
+					make(map[string]*types.LocalAppCommand)
 			}
-			ctx.localCommands.AppCommands[appUUID.String()] = appCmd
+			ctx.sideController.localCommands.AppCommands[appUUID.String()] = appCmd
 		}
 		if appCmd.Command == command &&
 			appCmd.LocalServerTimestamp == appCmdReq.Timestamp {
@@ -255,7 +258,7 @@ func processReceivedAppCommands(ctx *getconfigContext, cmdList *profile.LocalApp
 
 	// Persist accepted application commands and counters.
 	if cmdChanges {
-		persistLocalCommands(ctx.localCommands)
+		persistLocalCommands(ctx.sideController.localCommands)
 	} else {
 		// No actual configuration change to apply, just refresh the persisted config.
 		touchLocalCommands()
@@ -273,13 +276,14 @@ func triggerLocalCommand(ctx *getconfigContext, cmd types.AppCommand,
 	app *types.AppInstanceConfig, timestamp string) (changedVolumes bool) {
 	// Get current local counters of the application.
 	appUUID := app.UUIDandVersion.UUID
-	appCounters, hasCounters := ctx.localCommands.AppCounters[appUUID.String()]
+	appCounters, hasCounters := ctx.sideController.localCommands.AppCounters[appUUID.String()]
 	if !hasCounters {
 		appCounters = &types.LocalAppCounters{}
-		if ctx.localCommands.AppCounters == nil {
-			ctx.localCommands.AppCounters = make(map[string]*types.LocalAppCounters)
+		if ctx.sideController.localCommands.AppCounters == nil {
+			ctx.sideController.localCommands.AppCounters =
+				make(map[string]*types.LocalAppCounters)
 		}
-		ctx.localCommands.AppCounters[appUUID.String()] = appCounters
+		ctx.sideController.localCommands.AppCounters[appUUID.String()] = appCounters
 	}
 
 	// Update configuration to trigger the operation.
@@ -306,14 +310,15 @@ func triggerLocalCommand(ctx *getconfigContext, cmd types.AppCommand,
 		// Trigger purge of all volumes used by the application.
 		// XXX Currently the assumption is that every volume instance is used
 		//     by at most one application.
-		if ctx.localCommands.VolumeGenCounters == nil {
-			ctx.localCommands.VolumeGenCounters = make(map[string]int64)
+		if ctx.sideController.localCommands.VolumeGenCounters == nil {
+			ctx.sideController.localCommands.VolumeGenCounters =
+				make(map[string]int64)
 		}
 		for i := range app.VolumeRefConfigList {
 			vr := &app.VolumeRefConfigList[i]
 			uuid := vr.VolumeID.String()
 			remoteGenCounter := vr.GenerationCounter
-			localGenCounter := ctx.localCommands.VolumeGenCounters[uuid]
+			localGenCounter := ctx.sideController.localCommands.VolumeGenCounters[uuid]
 			// Un-publish volume with the current counters.
 			volKey := volumeKey(uuid, remoteGenCounter, localGenCounter)
 			volObj, _ := ctx.pubVolumeConfig.Get(volKey)
@@ -326,7 +331,7 @@ func triggerLocalCommand(ctx *getconfigContext, cmd types.AppCommand,
 			unpublishVolumeConfig(ctx, volKey)
 			// Publish volume with an increased local generation counter.
 			localGenCounter++
-			ctx.localCommands.VolumeGenCounters[uuid] = localGenCounter
+			ctx.sideController.localCommands.VolumeGenCounters[uuid] = localGenCounter
 			vr.LocalGenerationCounter = localGenCounter
 			volume.LocalGenerationCounter = localGenCounter
 			publishVolumeConfig(ctx, volume)
@@ -339,10 +344,10 @@ func triggerLocalCommand(ctx *getconfigContext, cmd types.AppCommand,
 
 func processAppCommandStatus(
 	ctx *getconfigContext, appStatus types.AppInstanceStatus) {
-	ctx.localCommands.Lock()
-	defer ctx.localCommands.Unlock()
+	ctx.sideController.Lock()
+	defer ctx.sideController.Unlock()
 	uuid := appStatus.UUIDandVersion.UUID.String()
-	appCmd, hasLocalCmd := ctx.localCommands.AppCommands[uuid]
+	appCmd, hasLocalCmd := ctx.sideController.localCommands.AppCommands[uuid]
 	if !hasLocalCmd {
 		// This app received no local command requests.
 		return
@@ -374,15 +379,15 @@ func processAppCommandStatus(
 		}
 	}
 	if updated {
-		persistLocalCommands(ctx.localCommands)
+		persistLocalCommands(ctx.sideController.localCommands)
 	}
 }
 
 // Add config submitted for the application via local profile server.
-// ctx.localCommands should be locked!
+// ctx.sideController should be locked!
 func addLocalAppConfig(ctx *getconfigContext, appInstance *types.AppInstanceConfig) {
 	uuid := appInstance.UUIDandVersion.UUID.String()
-	appCounters, hasCounters := ctx.localCommands.AppCounters[uuid]
+	appCounters, hasCounters := ctx.sideController.localCommands.AppCounters[uuid]
 	if hasCounters {
 		appInstance.LocalRestartCmd = appCounters.RestartCmd
 		appInstance.LocalPurgeCmd = appCounters.PurgeCmd
@@ -390,36 +395,38 @@ func addLocalAppConfig(ctx *getconfigContext, appInstance *types.AppInstanceConf
 	for i := range appInstance.VolumeRefConfigList {
 		vr := &appInstance.VolumeRefConfigList[i]
 		uuid = vr.VolumeID.String()
-		vr.LocalGenerationCounter = ctx.localCommands.VolumeGenCounters[uuid]
+		vr.LocalGenerationCounter =
+			ctx.sideController.localCommands.VolumeGenCounters[uuid]
 	}
 }
 
 // Delete all local config for this application.
-// ctx.localCommands should be locked!
+// ctx.sideController should be locked!
 func delLocalAppConfig(ctx *getconfigContext, appUUID string) {
-	delete(ctx.localCommands.AppCommands, appUUID)
-	delete(ctx.localCommands.AppCounters, appUUID)
-	persistLocalCommands(ctx.localCommands)
+	delete(ctx.sideController.localCommands.AppCommands, appUUID)
+	delete(ctx.sideController.localCommands.AppCounters, appUUID)
+	persistLocalCommands(ctx.sideController.localCommands)
 }
 
 // Add config submitted for the volume via local profile server.
-// ctx.localCommands should be locked!
+// ctx.sideController should be locked!
 func addLocalVolumeConfig(ctx *getconfigContext, volumeConfig *types.VolumeConfig) {
 	uuid := volumeConfig.VolumeID.String()
-	volumeConfig.LocalGenerationCounter = ctx.localCommands.VolumeGenCounters[uuid]
+	volumeConfig.LocalGenerationCounter =
+		ctx.sideController.localCommands.VolumeGenCounters[uuid]
 }
 
 // Delete all local config for this volume.
 // ctx.localCommands should be locked!
 func delLocalVolumeConfig(ctx *getconfigContext, volumeUUID string) {
-	delete(ctx.localCommands.VolumeGenCounters, volumeUUID)
-	persistLocalCommands(ctx.localCommands)
+	delete(ctx.sideController.localCommands.VolumeGenCounters, volumeUUID)
+	persistLocalCommands(ctx.sideController.localCommands)
 }
 
 func prepareLocalAppInfo(ctx *getconfigContext) *profile.LocalAppInfoList {
 	msg := profile.LocalAppInfoList{}
-	ctx.localCommands.Lock()
-	defer ctx.localCommands.Unlock()
+	ctx.sideController.Lock()
+	defer ctx.sideController.Unlock()
 	addAppInstanceFunc := func(key string, value interface{}) bool {
 		ais := value.(types.AppInstanceStatus)
 		zinfoAppInst := new(profile.LocalAppInfo)
@@ -428,7 +435,8 @@ func prepareLocalAppInfo(ctx *getconfigContext) *profile.LocalAppInfoList {
 		zinfoAppInst.Name = ais.DisplayName
 		zinfoAppInst.Err = encodeErrorInfo(ais.ErrorAndTimeWithSource.ErrorDescription)
 		zinfoAppInst.State = ais.State.ZSwState()
-		if appCmd, hasEntry := ctx.localCommands.AppCommands[zinfoAppInst.Id]; hasEntry {
+		if appCmd, hasEntry :=
+			ctx.sideController.localCommands.AppCommands[zinfoAppInst.Id]; hasEntry {
 			zinfoAppInst.LastCmdTimestamp = appCmd.LastCompletedTimestamp
 		}
 		msg.AppsInfo = append(msg.AppsInfo, zinfoAppInst)
@@ -457,8 +465,7 @@ func findAppInstance(
 func readSavedLocalCommands(ctx *getconfigContext) (*types.LocalCommands, error) {
 	commands := &types.LocalCommands{}
 	contents, ts, err := readSavedConfig(
-		ctx.zedagentCtx.globalConfig.GlobalValueInt(types.StaleConfigTime),
-		filepath.Join(checkpointDirname, savedLocalCommandsFile), false)
+		filepath.Join(checkpointDirname, savedLocalCommandsFile))
 	if err != nil {
 		return commands, err
 	}
@@ -484,7 +491,7 @@ func loadSavedLocalCommands(ctx *getconfigContext) bool {
 	for _, appCmd := range commands.AppCommands {
 		log.Noticef("Loaded persisted local app command: %+v", appCmd)
 	}
-	ctx.localCommands = commands
+	ctx.sideController.localCommands = commands
 	return true
 }
 
@@ -513,42 +520,44 @@ func updateLocalDevInfoTicker(ctx *getconfigContext, throttle bool) {
 	max := 1.1 * interval
 	min := 0.8 * max
 	throttledLocalDevInfo = throttle
-	ctx.localDevInfoPOSTTicker.UpdateRangeTicker(time.Duration(min), time.Duration(max))
+	ctx.sideController.localDevInfoPOSTTicker.UpdateRangeTicker(
+		time.Duration(min), time.Duration(max))
 }
 
 func initializeLocalDevInfo(ctx *getconfigContext) {
 	max := 1.1 * float64(localDevInfoPOSTInterval)
 	min := 0.8 * max
-	ctx.localDevInfoPOSTTicker = flextimer.NewRangeTicker(time.Duration(min), time.Duration(max))
+	ctx.sideController.localDevInfoPOSTTicker =
+		flextimer.NewRangeTicker(time.Duration(min), time.Duration(max))
 }
 
 const maxReadSize = 1024 // Sufficient for a uin64
 
 func initializeLocalDevCmdTimestamp(ctx *getconfigContext) {
 	if _, err := os.Stat(lastDevCmdTimestampFile); err != nil && os.IsNotExist(err) {
-		ctx.lastDevCmdTimestamp = 0
+		ctx.sideController.lastDevCmdTimestamp = 0
 		return
 	}
 	b, err := fileutils.ReadWithMaxSize(log, lastDevCmdTimestampFile,
 		maxReadSize)
 	if err != nil {
 		log.Errorf("initializeLocalDevCmdTimestamp read: %s", err)
-		ctx.lastDevCmdTimestamp = 0
+		ctx.sideController.lastDevCmdTimestamp = 0
 		return
 	}
 	u, err := strconv.ParseUint(string(b), 10, 64)
 	if err != nil {
 		log.Errorf("initializeLocalDevCmdTimestamp: %s", err)
-		ctx.lastDevCmdTimestamp = 0
+		ctx.sideController.lastDevCmdTimestamp = 0
 	} else {
-		ctx.lastDevCmdTimestamp = u
+		ctx.sideController.lastDevCmdTimestamp = u
 		log.Noticef("initializeLocalDevCmdTimestamp: read %d",
-			ctx.lastDevCmdTimestamp)
+			ctx.sideController.lastDevCmdTimestamp)
 	}
 }
 
 func saveLocalDevCmdTimestamp(ctx *getconfigContext) {
-	b := []byte(fmt.Sprintf("%v", ctx.lastDevCmdTimestamp))
+	b := []byte(fmt.Sprintf("%v", ctx.sideController.lastDevCmdTimestamp))
 	err := fileutils.WriteRename(lastDevCmdTimestampFile, b)
 	if err != nil {
 		log.Errorf("saveLocalDevCmdTimestamp write: %s", err)
@@ -561,7 +570,7 @@ func triggerLocalDevInfoPOST(ctx *getconfigContext) {
 		log.Functionln("throttledLocalDevInfo flag set")
 		return
 	}
-	ctx.localDevInfoPOSTTicker.TickNow()
+	ctx.sideController.localDevInfoPOSTTicker.TickNow()
 }
 
 // Run a periodic POST request to send information message about devs to local server
@@ -570,7 +579,7 @@ func localDevInfoPOSTTask(ctx *getconfigContext) {
 
 	log.Functionf("localDevInfoPOSTTask: waiting for localDevInfoPOSTTicker")
 	// wait for the first trigger
-	<-ctx.localDevInfoPOSTTicker.C
+	<-ctx.sideController.localDevInfoPOSTTicker.C
 	log.Functionln("localDevInfoPOSTTask: waiting for localDevInfoPOSTTicker done")
 	// trigger again to pass into the loop
 	triggerLocalDevInfoPOST(ctx)
@@ -584,7 +593,7 @@ func localDevInfoPOSTTask(ctx *getconfigContext) {
 
 	for {
 		select {
-		case <-ctx.localDevInfoPOSTTicker.C:
+		case <-ctx.sideController.localDevInfoPOSTTicker.C:
 			start := time.Now()
 			devCmd := postLocalDevInfo(ctx)
 			if devCmd != nil {
@@ -601,7 +610,7 @@ func localDevInfoPOSTTask(ctx *getconfigContext) {
 // Post the current state of locally running devlication instances to the local server
 // and optionally receive a set of dev commands to run in the response.
 func postLocalDevInfo(ctx *getconfigContext) *profile.LocalDevCmd {
-	localProfileServer := ctx.localProfileServer
+	localProfileServer := ctx.sideController.localProfileServer
 	if localProfileServer == "" {
 		return nil
 	}
@@ -610,7 +619,7 @@ func postLocalDevInfo(ctx *getconfigContext) *profile.LocalDevCmd {
 		log.Errorf("sendLocalDevInfo: makeLocalServerBaseURL: %v", err)
 		return nil
 	}
-	if !ctx.localServerMap.upToDate {
+	if !ctx.sideController.localServerMap.upToDate {
 		err := updateLocalServerMap(ctx, localServerURL)
 		if err != nil {
 			log.Errorf("sendLocalDevInfo: updateLocalServerMap: %v", err)
@@ -619,7 +628,7 @@ func postLocalDevInfo(ctx *getconfigContext) *profile.LocalDevCmd {
 		// Make sure HasLocalServer is set correctly for the AppInstanceConfig
 		updateHasLocalServer(ctx)
 	}
-	srvMap := ctx.localServerMap.servers
+	srvMap := ctx.sideController.localServerMap.servers
 	if len(srvMap) == 0 {
 		log.Functionf("sendLocalDevInfo: cannot find any configured devs for localServerURL: %s",
 			localServerURL)
@@ -645,7 +654,7 @@ func postLocalDevInfo(ctx *getconfigContext) *profile.LocalDevCmd {
 				updateLocalDevInfoTicker(ctx, true)
 				return nil
 			case http.StatusOK, http.StatusCreated:
-				if devCmd.GetServerToken() != ctx.profileServerToken {
+				if devCmd.GetServerToken() != ctx.sideController.profileServerToken {
 					errList = append(errList,
 						fmt.Sprintf("invalid token submitted by local server (%s)",
 							devCmd.GetServerToken()))
@@ -672,7 +681,7 @@ func postLocalDevInfo(ctx *getconfigContext) *profile.LocalDevCmd {
 func prepareLocalDevInfo(ctx *zedagentContext) *profile.LocalDevInfo {
 	msg := profile.LocalDevInfo{}
 	msg.DeviceUuid = devUUID.String()
-	msg.State = getState(ctx)
+	msg.State = info.ZDeviceState(getDeviceState(ctx))
 	msg.MaintenanceModeReasons = append(msg.MaintenanceModeReasons,
 		info.MaintenanceModeReason(ctx.maintModeReason))
 	hinfo, err := host.Info()
@@ -684,19 +693,21 @@ func prepareLocalDevInfo(ctx *zedagentContext) *profile.LocalDevInfo {
 		msg.BootTime = bootTime
 	}
 	msg.LastBootReason = info.BootReason(ctx.bootReason)
-	msg.LastCmdTimestamp = ctx.getconfigCtx.lastDevCmdTimestamp
+	msg.LastCmdTimestamp = ctx.getconfigCtx.sideController.lastDevCmdTimestamp
 	return &msg
 }
 
 func processReceivedDevCommands(getconfigCtx *getconfigContext, cmd *profile.LocalDevCmd) {
-	ctx := getconfigCtx.zedagentCtx
 	if cmd == nil {
 		return
 	}
+	ctx := getconfigCtx.zedagentCtx
+	getconfigCtx.sideController.Lock()
+	defer getconfigCtx.sideController.Unlock()
 
-	if cmd.Timestamp == getconfigCtx.lastDevCmdTimestamp {
+	if cmd.Timestamp == getconfigCtx.sideController.lastDevCmdTimestamp {
 		log.Functionf("unchanged timestamp %v",
-			getconfigCtx.lastDevCmdTimestamp)
+			getconfigCtx.sideController.lastDevCmdTimestamp)
 		return
 	}
 	command := types.DevCommand(cmd.Command)
@@ -748,6 +759,6 @@ func processReceivedDevCommands(getconfigCtx *getconfigContext, cmd *profile.Loc
 	// power failure, then we will not poweroff. It seems impossible to do that
 	// without introducing a race condition where we might poweroff without
 	// a power cycle from a UPS to power on again.
-	getconfigCtx.lastDevCmdTimestamp = cmd.Timestamp
+	getconfigCtx.sideController.lastDevCmdTimestamp = cmd.Timestamp
 	saveLocalDevCmdTimestamp(getconfigCtx)
 }

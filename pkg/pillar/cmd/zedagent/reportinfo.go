@@ -592,6 +592,23 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext, dest destinationBitset) {
 	ReportDataSecAtRestInfo.Status, ReportDataSecAtRestInfo.Info =
 		vault.GetOperationalInfo(log)
 	ReportDeviceInfo.DataSecAtRestInfo = ReportDataSecAtRestInfo
+	if len(ReportDataSecAtRestInfo.VaultList) > 0 {
+		// We look at the first one since current implementation only
+		// has the default vault
+		first := ReportDataSecAtRestInfo.VaultList[0]
+		var firstErr string
+		if first.VaultErr != nil {
+			firstErr = first.VaultErr.Description
+		}
+		if ctx.vaultStatus != first.Status ||
+			ctx.pcrStatus != first.PcrStatus ||
+			ctx.vaultErr != firstErr {
+			ctx.vaultStatus = first.Status
+			ctx.pcrStatus = first.PcrStatus
+			ctx.vaultErr = firstErr
+			publishZedAgentStatus(ctx.getconfigCtx)
+		}
+	}
 
 	// Add SecurityInfo
 	ReportDeviceInfo.SecInfo = getSecurityInfo(ctx)
@@ -611,7 +628,12 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext, dest destinationBitset) {
 
 	ReportDeviceInfo.Capabilities = getCapabilities(ctx)
 
-	ReportDeviceInfo.State = getState(ctx)
+	devState := getDeviceState(ctx)
+	if ctx.devState != devState {
+		ctx.devState = devState
+		publishZedAgentStatus(ctx.getconfigCtx)
+	}
+	ReportDeviceInfo.State = info.ZDeviceState(devState)
 
 	// TODO: Enhance capability reporting with a bitmap-like approach for increased granularity.
 	// We report the snapshot capability despite the fact that we support snapshots only
@@ -620,8 +642,9 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext, dest destinationBitset) {
 	ReportDeviceInfo.ApiCapability = info.APICapability_API_CAPABILITY_VOLUME_SNAPSHOTS
 
 	// Report if there is a local override of profile
-	if ctx.getconfigCtx.currentProfile != ctx.getconfigCtx.globalProfile {
-		ReportDeviceInfo.LocalProfile = ctx.getconfigCtx.currentProfile
+	if ctx.getconfigCtx.sideController.currentProfile !=
+		ctx.getconfigCtx.sideController.globalProfile {
+		ReportDeviceInfo.LocalProfile = ctx.getconfigCtx.sideController.currentProfile
 	}
 
 	ReportInfo.InfoContent = new(info.ZInfoMsg_Dinfo)
@@ -643,6 +666,15 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext, dest destinationBitset) {
 		}
 		if ctx.attestCtx.attestFsmCtx.HasError() {
 			ReportDeviceInfo.AttestationInfo.Error = encodeErrorInfo(ctx.attestCtx.attestFsmCtx.ErrorDescription)
+		}
+		if ctx.attestCtx.Started {
+			attestFsmCtx := ctx.attestCtx.attestFsmCtx
+			if ctx.attestState != attestFsmCtx.GetState() ||
+				ctx.attestError != attestFsmCtx.ErrorDescription.Error {
+				ctx.attestState = attestFsmCtx.GetState()
+				ctx.attestError = attestFsmCtx.ErrorDescription.Error
+				publishZedAgentStatus(ctx.getconfigCtx)
+			}
 		}
 	}
 
@@ -1237,30 +1269,30 @@ func getBaseosUpdateCounter(ctx *zedagentContext) uint32 {
 	return status.CurrentRetryUpdateCounter
 }
 
-func getState(ctx *zedagentContext) info.ZDeviceState {
+func getDeviceState(ctx *zedagentContext) types.DeviceState {
 	if ctx.maintenanceMode {
-		return info.ZDeviceState_ZDEVICE_STATE_MAINTENANCE_MODE
+		return types.DEVICE_STATE_MAINTENANCE_MODE
 	}
 	if isUpdating(ctx) {
-		return info.ZDeviceState_ZDEVICE_STATE_BASEOS_UPDATING
+		return types.DEVICE_STATE_BASEOS_UPDATING
 	}
 	if ctx.rebootCmd || ctx.deviceReboot {
-		return info.ZDeviceState_ZDEVICE_STATE_REBOOTING
+		return types.DEVICE_STATE_REBOOTING
 	}
 	if ctx.shutdownCmd || ctx.deviceShutdown {
 		if ctx.allDomainsHalted {
-			return info.ZDeviceState_ZDEVICE_STATE_PREPARED_POWEROFF
+			return types.DEVICE_STATE_PREPARED_POWEROFF
 		}
-		return info.ZDeviceState_ZDEVICE_STATE_PREPARING_POWEROFF
+		return types.DEVICE_STATE_PREPARING_POWEROFF
 	}
 	if ctx.poweroffCmd || ctx.devicePoweroff {
-		return info.ZDeviceState_ZDEVICE_STATE_POWERING_OFF
+		return types.DEVICE_STATE_POWERING_OFF
 	}
 	if ctx.getconfigCtx != nil && (ctx.getconfigCtx.configReceived ||
 		ctx.getconfigCtx.readSavedConfig) {
-		return info.ZDeviceState_ZDEVICE_STATE_ONLINE
+		return types.DEVICE_STATE_ONLINE
 	}
-	return info.ZDeviceState_ZDEVICE_STATE_BOOTING
+	return types.DEVICE_STATE_BOOTING
 }
 
 func lookupZbootStatus(ctx *zedagentContext, key string) *types.ZbootStatus {

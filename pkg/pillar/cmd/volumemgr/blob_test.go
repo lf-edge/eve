@@ -10,7 +10,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub/socketdriver"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	"github.com/lf-edge/eve/pkg/pillar/utils/file"
+	utils "github.com/lf-edge/eve/pkg/pillar/utils/file"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 )
@@ -22,7 +22,7 @@ func TestLookupBlobStatus(t *testing.T) {
 		t.Logf("Required directories not writeable; SKIP")
 		return
 	}
-	pubLogger, pubLog := agentlog.InitNoRedirect(agentName)
+	pubLogger, pubLog := agentlog.Init(agentName)
 	pubLogger.SetLevel(logrus.InfoLevel)
 	pubPs := pubsub.New(
 		&socketdriver.SocketDriver{

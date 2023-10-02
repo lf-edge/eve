@@ -33,6 +33,7 @@ func updateAIStatusUUID(ctx *zedmanagerContext, uuidStr string) {
 		log.Functionf("updateAIStatusUUID status change %d for %s",
 			status.State, uuidStr)
 		publishAppInstanceStatus(ctx, status)
+		publishAppInstanceSummary(ctx)
 	}
 }
 
@@ -103,6 +104,7 @@ func removeAIStatus(ctx *zedmanagerContext, status *types.AppInstanceStatus) {
 		changed = doUpdate(ctx, *config, status)
 		if changed {
 			publishAppInstanceStatus(ctx, status)
+			publishAppInstanceSummary(ctx)
 		}
 	} else {
 		log.Errorf("removeAIStatus(%s): PurgeInprogress no config!",
@@ -1031,7 +1033,7 @@ func doInactivate(ctx *zedmanagerContext, appInstID uuid.UUID,
 		}
 		return changed, done
 	}
-	log.Functionf("Done with AppNetworkStatus removal/deactivaye for %s", uuidStr)
+	log.Functionf("Done with AppNetworkStatus removal/deactivate for %s", uuidStr)
 	done = true
 	status.Activated = false
 	status.ActivateInprogress = false

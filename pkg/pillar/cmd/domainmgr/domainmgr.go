@@ -316,7 +316,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	domainCtx.decryptCipherContext.Log = log
 	domainCtx.decryptCipherContext.AgentName = agentName
 	domainCtx.decryptCipherContext.AgentMetrics = domainCtx.cipherMetrics
-	domainCtx.decryptCipherContext.SubControllerCert = subControllerCert
+	domainCtx.decryptCipherContext.PubSubControllerCert = subControllerCert
 	subControllerCert.Activate()
 
 	// Look for edge node certs which will be used for decryption
@@ -333,7 +333,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	if err != nil {
 		log.Fatal(err)
 	}
-	domainCtx.decryptCipherContext.SubEdgeNodeCert = subEdgeNodeCert
+	domainCtx.decryptCipherContext.PubSubEdgeNodeCert = subEdgeNodeCert
 	subEdgeNodeCert.Activate()
 
 	// Look for global config such as log levels
@@ -2658,7 +2658,7 @@ func mkisofs(output string, dir string) error {
 		dir,
 	}
 	log.Functionf("Calling command %s %v\n", cmd, args)
-	stdoutStderr, err := base.Exec(log, cmd, args...).CombinedOutput()
+	stdoutStderr, err := base.Exec(log, cmd, args...).WithUnlimitedTimeout(15 * time.Minute).CombinedOutput()
 	if err != nil {
 		errStr := fmt.Sprintf("mkisofs failed: %s",
 			string(stdoutStderr))

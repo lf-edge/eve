@@ -330,7 +330,7 @@ func (dumper *NetDumper) Publish(topic string,
 			}
 			pcapName += ".pcap"
 			buf := new(strings.Builder)
-			err = pcap.WriteTo(buf)
+			_, err = pcap.WriteTo(buf)
 			if err != nil {
 				return "", fmt.Errorf("netdump: failed to write PCAP %s: %w", pcapName, err)
 			}

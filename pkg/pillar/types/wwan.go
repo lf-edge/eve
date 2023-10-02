@@ -18,14 +18,24 @@ import (
 type WwanConfig struct {
 	RadioSilence bool `json:"radio-silence"`
 	// Enable verbose logging in the wwan microservice.
-	Verbose  bool                `json:"verbose"`
-	Networks []WwanNetworkConfig `json:"networks"`
+	Verbose bool `json:"verbose"`
+	// Enable to periodically obtain the set of visible network providers (for each modem)
+	// and publish them under WwanNetworkStatus.VisibleProviders.
+	// Use with caution because this operation may take quite some time (around 2 minutes)
+	// and makes modem unmanageable for the time being. Therefore, even if enabled,
+	// the period to query visible providers is quite long - 1 hour.
+	// Note that WwanNetworkStatus always provides info about the currently used
+	// network provider (CurrentProvider). Getting this info is not expensive so if you
+	// do not need info about other providers in the area, leave this disabled.
+	QueryVisibleProviders bool                `json:"query-visible-providers"`
+	Networks              []WwanNetworkConfig `json:"networks"`
 }
 
 // Equal compares two instances of WwanConfig for equality.
 func (wc WwanConfig) Equal(wc2 WwanConfig) bool {
 	if wc.RadioSilence != wc2.RadioSilence ||
-		wc.Verbose != wc2.Verbose {
+		wc.Verbose != wc2.Verbose ||
+		wc.QueryVisibleProviders != wc2.QueryVisibleProviders {
 		return false
 	}
 	return generics.EqualSetsFn(wc.Networks, wc2.Networks,
@@ -37,7 +47,6 @@ func (wc WwanConfig) Equal(wc2 WwanConfig) bool {
 // WwanNetworkConfig contains configuration for a single cellular network.
 // In case there are multiple SIM cards/slots in the modem, WwanNetworkConfig
 // contains config only for the activated one.
-// TODO: Add username + password (will be done in the next PR)
 type WwanNetworkConfig struct {
 	// Logical label in PhysicalIO.
 	LogicalLabel string        `json:"logical-label"`
@@ -51,6 +60,17 @@ type WwanNetworkConfig struct {
 	// Access Point Network to connect into.
 	// By default, it is "internet".
 	APN string `json:"apn"`
+	// Some cellular networks require authentication.
+	AuthProtocol WwanAuthProtocol `json:"auth-protocol"`
+	Username     string           `json:"username,omitempty"`
+	// User password (if provided) is encrypted using AES-256-GCM with key derived
+	// by the PBKDF2 method, taking kernel-generated /proc/sys/kernel/random/boot_id
+	// as the input.
+	// Note that even though the config with the password is passed from NIM to the wwan
+	// microservice using the *in-memory only* /run filesystem, we still encrypt the password
+	// to avoid accidental exposure when the content of /run/wwan is dumped as part
+	// of a customer issue report.
+	EncryptedPassword string `json:"encrypted-password,omitempty"`
 	// The set of cellular network operators that modem should preferably try to register
 	// and connect into.
 	// Network operator should be referenced by PLMN (Public Land Mobile Network) code,
@@ -125,6 +145,11 @@ func (wnc WwanNetworkConfig) Equal(wnc2 WwanNetworkConfig) bool {
 	}
 	if wnc.SIMSlot != wnc2.SIMSlot ||
 		wnc.APN != wnc2.APN {
+		return false
+	}
+	if wnc.AuthProtocol != wnc2.AuthProtocol ||
+		wnc.Username != wnc2.Username ||
+		wnc.EncryptedPassword != wnc2.EncryptedPassword {
 		return false
 	}
 	if !generics.EqualLists(wnc.PreferredPLMNs, wnc2.PreferredPLMNs) ||
@@ -247,7 +272,7 @@ type WwanNetworkStatus struct {
 	CurrentProvider WwanProvider `json:"current-provider"`
 	// All networks that the modem is able to detect.
 	// This will include the currently used provider as well as other visible networks.
-	VisibleProviders []WwanProvider `json:"visible-providers"`
+	VisibleProviders []WwanProvider `json:"visible-providers,omitempty"`
 	// The list of Radio Access Technologies (RATs) currently used for registering/connecting
 	// to the network (typically just one).
 	CurrentRATs []WwanRAT `json:"current-rats"`

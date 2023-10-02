@@ -158,7 +158,7 @@ func getRadioStatus(ctx *getconfigContext) *profile.RadioStatus {
 }
 
 func getRadioConfig(ctx *getconfigContext, radioStatus *profile.RadioStatus) *profile.RadioConfig {
-	localProfileServer := ctx.localProfileServer
+	localProfileServer := ctx.sideController.localProfileServer
 	if localProfileServer == "" {
 		// default configuration
 		return &profile.RadioConfig{
@@ -170,7 +170,7 @@ func getRadioConfig(ctx *getconfigContext, radioStatus *profile.RadioStatus) *pr
 		log.Errorf("getRadioConfig: makeLocalServerBaseURL: %v", err)
 		return nil
 	}
-	if !ctx.localServerMap.upToDate {
+	if !ctx.sideController.localServerMap.upToDate {
 		err := updateLocalServerMap(ctx, localServerURL)
 		if err != nil {
 			log.Errorf("getRadioConfig: updateLocalServerMap: %v", err)
@@ -179,7 +179,7 @@ func getRadioConfig(ctx *getconfigContext, radioStatus *profile.RadioStatus) *pr
 		// Make sure HasLocalServer is set correctly for the AppInstanceConfig
 		updateHasLocalServer(ctx)
 	}
-	srvMap := ctx.localServerMap.servers
+	srvMap := ctx.sideController.localServerMap.servers
 	if len(srvMap) == 0 {
 		log.Functionf("getRadioConfig: cannot find any configured apps for localServerURL: %s",
 			localServerURL)
@@ -207,7 +207,7 @@ func getRadioConfig(ctx *getconfigContext, radioStatus *profile.RadioStatus) *pr
 				touchRadioConfig()
 				return nil
 			}
-			if radioConfig.GetServerToken() != ctx.profileServerToken {
+			if radioConfig.GetServerToken() != ctx.sideController.profileServerToken {
 				errList = append(errList,
 					fmt.Sprintf("invalid token submitted by local server (%s)", radioConfig.GetServerToken()))
 				continue
@@ -228,8 +228,7 @@ func getRadioConfig(ctx *getconfigContext, radioStatus *profile.RadioStatus) *pr
 // read saved radio config in case of a reboot
 func readSavedRadioConfig(ctx *getconfigContext) (*profile.RadioConfig, error) {
 	radioConfigBytes, ts, err := readSavedConfig(
-		ctx.zedagentCtx.globalConfig.GlobalValueInt(types.StaleConfigTime),
-		filepath.Join(checkpointDirname, savedRadioConfigFile), false)
+		filepath.Join(checkpointDirname, savedRadioConfigFile))
 	if err != nil {
 		return nil, fmt.Errorf("readSavedRadioConfig: %v", err)
 	}

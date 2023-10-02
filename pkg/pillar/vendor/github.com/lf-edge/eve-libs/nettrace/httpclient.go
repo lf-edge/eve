@@ -312,6 +312,13 @@ func (c *HTTPClient) getTracerID() TraceID {
 
 // Get timestamp for the current time relative to when racing started.
 func (c *HTTPClient) getRelTimestamp() Timestamp {
+	c.Lock()
+	defer c.Unlock()
+	return c.getRelTimestampNolock()
+}
+
+// Get timestamp for the current time relative to when racing started.
+func (c *HTTPClient) getRelTimestampNolock() Timestamp {
 	return c.tracingStartedAt.Elapsed()
 }
 
@@ -321,8 +328,9 @@ func (c *HTTPClient) publishTrace(t networkTrace) {
 }
 
 // resetTraces : recreates all maps holding recorded network traces and pcaps.
-// The function should be called with HTTPClient locked.
 func (c *HTTPClient) resetTraces(delOpenConns bool) error {
+	c.Lock()
+	defer c.Unlock()
 	// Make sure that all pending traces for open connections are processed.
 	c.processPendingTraces(delOpenConns)
 	prevStart := c.tracingStartedAt
@@ -389,7 +397,7 @@ func (c *HTTPClient) GetTrace(description string) (HTTPTrace, []PacketCapture, e
 	httpTrace := HTTPTrace{NetTrace: NetTrace{
 		Description:  description,
 		TraceBeginAt: c.tracingStartedAt,
-		TraceEndAt:   c.getRelTimestamp(),
+		TraceEndAt:   c.getRelTimestampNolock(),
 	}}
 	for _, dial := range c.dials {
 		httpTrace.Dials = append(httpTrace.Dials, dial.DialTrace)
@@ -497,8 +505,6 @@ func (c *HTTPClient) GetTrace(description string) (HTTPTrace, []PacketCapture, e
 // recorded values (like .HandshakeBeginAt) and some updated (for example .Reused will be set
 // to true).
 func (c *HTTPClient) ClearTrace() error {
-	c.Lock()
-	defer c.Unlock()
 	return c.resetTraces(false)
 }
 
@@ -509,8 +515,6 @@ func (c *HTTPClient) ClearTrace() error {
 func (c *HTTPClient) Close() error {
 	c.cancelTracing()
 	c.tracingWG.Wait()
-	c.Lock()
-	defer c.Unlock()
 	return c.resetTraces(true)
 }
 
@@ -547,7 +551,7 @@ func (c *HTTPClient) runTracing() {
 // AF_INET sockets (if still not available) and updates obtained conntrack entries.
 // The function should be called with HTTPClient locked.
 func (c *HTTPClient) periodicSockUpdate(gettingTrace bool) {
-	now := c.getRelTimestamp()
+	now := c.getRelTimestampNolock()
 	// How frequently to retry to get source IP and source port for an AF_INET socket.
 	const addrRetryPeriod = 3 * time.Second
 	// How frequently to update conntrack entry for not-yet-established connection.
@@ -642,7 +646,7 @@ func (c *HTTPClient) closeSockDupFD(sock *inetSocket) {
 // for established connections.
 // The function should be called with HTTPClient locked.
 func (c *HTTPClient) periodicConnUpdate(gettingTrace bool) {
-	now := c.getRelTimestamp()
+	now := c.getRelTimestampNolock()
 	// How frequently to update conntrack entry for established connection.
 	const conntrackUpdatePeriod = 20 * time.Second
 	for _, conn := range c.connections {
@@ -666,7 +670,7 @@ func (c *HTTPClient) processPendingTraces(dropAll bool) {
 	traceCount := c.pendingTraces.Length()
 	for i = 0; i < traceCount; i++ {
 		item := c.pendingTraces.Dequeue()
-		now := c.getRelTimestamp()
+		now := c.getRelTimestampNolock()
 		if dropAll {
 			continue
 		}
@@ -968,7 +972,7 @@ func (c *HTTPClient) dial(ctx context.Context, network, addr string) (net.Conn, 
 func (c *HTTPClient) traceNewSocket(sock *inetSocket) {
 	c.Lock()
 	defer c.Unlock()
-	now := c.getRelTimestamp()
+	now := c.getRelTimestampNolock()
 	for _, oldSock := range c.noConnSockets {
 		if !oldSock.origClosed && oldSock.origFD == sock.origFD {
 			// oldSock.origFD was closed and got reused.
