@@ -113,7 +113,7 @@ func removeAndVerifyAuthContainer(ctx *ZedCloudContext,
 // VerifyAuthContainerHeader verifies correctness of algorithm fields in header
 func VerifyAuthContainerHeader(ctx *ZedCloudContext, sm *zauth.AuthContainer) (
 	types.SenderStatus, error) {
-	err := loadSavedServerSigningCert(ctx)
+	err := LoadSavedServerSigningCert(ctx)
 	if err != nil {
 		return types.SenderStatusNone, err
 	}
@@ -173,8 +173,10 @@ func VerifyAuthContainer(ctx *ZedCloudContext, sm *zauth.AuthContainer) (types.S
 	return types.SenderStatusNone, nil
 }
 
-func loadSavedServerSigningCert(ctx *ZedCloudContext) error {
-	if ctx.serverSigningCert != nil {
+// LoadSavedServerSigningCert loads server (i.e. controller) signing
+// certificate stored in the file into the zedcloud context.
+func LoadSavedServerSigningCert(ctx *ZedCloudContext) error {
+	if ctx.ServerSigningCert != nil {
 		// Already loaded
 		return nil
 	}
