@@ -249,7 +249,7 @@ func RolloutImgToPVC(ctx context.Context, log *base.LogObject, exists bool, disk
 	time.Sleep(10 * time.Second)
 	log.Noticef("PRAMOD virtctl args %v", args)
 
-	output, err := base.Exec(log, "/containers/services/kube/rootfs/usr/bin/virtctl", args...).WithContext(ctx).CombinedOutputWithCustomTimeout(432000)
+	output, err := base.Exec(log, "/containers/services/kube/rootfs/usr/bin/virtctl", args...).WithContext(ctx).WithUnlimitedTimeout(432000 * time.Second).CombinedOutput()
 	log.Noticef("RolloutImgToPVC: image-upload error %v", err)
 	log.Noticef("RolloutImgToPVC: image-upload output %s", output)
 	err = waitForPVCReady(ctx, log, pvcName)

@@ -350,7 +350,7 @@ func formatZvol(log *base.LogObject, zvolDevPath string, fsType string) error {
 	// Not enabling encryption...its already set on the zvol
 	ctx := context.Background()
 	args := []string{zvolDevPath}
-	output, err := base.Exec(log, "/sbin/mkfs."+fsType, args...).WithContext(ctx).CombinedOutputWithCustomTimeout(3600)
+	output, err := base.Exec(log, "/sbin/mkfs."+fsType, args...).WithContext(ctx).WithUnlimitedTimeout(3600 * time.Second).CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("formatZvol dev:%s, stdout:%s, err:%v", zvolDevPath, output, err)
 	}
