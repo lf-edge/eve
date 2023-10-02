@@ -539,37 +539,6 @@ func (z *zedrouter) handleAppNetworkCreate(ctxArg interface{}, key string,
 	z.publishAppNetworkStatus(&status)
 
 	continueAppNetCreate(z, key, config, status)
-	/*
-	// Allocate application numbers on underlay network.
-	// Used to allocate VIF IP address.
-	err = z.allocateAppIntfNums(config.UUIDandVersion.UUID, config.UnderlayNetworkList)
-	if err != nil {
-		err = fmt.Errorf("failed to allocate numbers for VIFs of the app %s/%s: %v",
-			config.UUIDandVersion.UUID, config.DisplayName, err)
-		z.log.Errorf("handleAppNetworkCreate(%v): %v", config.UUIDandVersion.UUID, err)
-		z.addAppNetworkError(&status, "handleAppNetworkCreate", err)
-		return
-	}
-
-	// Check that Network exists for all underlays.
-	// We look for apps with raised AwaitNetworkInstance when a NetworkInstance is added.
-	netInErrState, err := z.checkNetworkReferencesFromApp(config)
-	if err != nil {
-		z.log.Errorf("handleAppNetworkCreate(%v): %v", config.UUIDandVersion.UUID, err)
-		status.AwaitNetworkInstance = true
-		if netInErrState {
-			z.addAppNetworkError(&status, "handleAppNetworkCreate", err)
-
-	z.runAppKubeStatus(config)
-
-	if config.Activate {
-		z.doActivateAppNetwork(config, &status)
-	}
-
-	z.maybeScheduleRetry()
-	z.log.Functionf("handleAppNetworkCreate(%s) done for %s", key, config.DisplayName)
-	z.log.Noticef("handleAppNetworkCreate: handleAppKubeNetCreate: tag done")
-	*/
 }
 
 // handleAppNetworkModify cannot handle any change.
