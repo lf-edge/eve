@@ -191,7 +191,7 @@ func metricsAndInfoTimerTask(ctx *zedagentContext, handleChannel chan interface{
 			ctx.ps.CheckMaxTimeTopic(wdName, "publishMetrics", start,
 				warningTime, errorTime)
 
-			locConfig := ctx.getconfigCtx.locConfig
+			locConfig := ctx.getconfigCtx.sideController.locConfig
 			if locConfig != nil {
 				// Publish all info by timer only for LOC
 				triggerPublishAllInfo(ctx, LOCDest)
@@ -1543,7 +1543,7 @@ func sendMetricsProtobuf(ctx *getconfigContext,
 		devUUID, "metrics")
 	sendMetricsProtobufByURL(ctx, url, ReportMetrics, iteration)
 
-	locConfig := ctx.locConfig
+	locConfig := ctx.sideController.locConfig
 
 	// Repeat metrics for LOC as well
 	if locConfig != nil {

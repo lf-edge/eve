@@ -288,7 +288,7 @@ func requestCertsByURL(ctx *zedagentContext, url string, desc string) bool {
 		return false
 	}
 	if len(rv.RespContents) > 0 {
-		err = zedcloud.RemoveAndVerifyAuthContainer(zedcloudCtx, nil, &rv, true)
+		err = zedcloud.RemoveAndVerifyAuthContainer(zedcloudCtx, &rv, true)
 		if err != nil {
 			log.Errorf("RemoveAndVerifyAuthContainer failed: %s", err)
 			return false
@@ -345,8 +345,8 @@ func getCertsFromController(ctx *zedagentContext, desc string) bool {
 		nilUUID, "certs")
 
 	rv := requestCertsByURL(ctx, url, desc)
-	if !rv && ctx.getconfigCtx.locConfig != nil {
-		locURL := ctx.getconfigCtx.locConfig.LocURL
+	if !rv && ctx.getconfigCtx.sideController.locConfig != nil {
+		locURL := ctx.getconfigCtx.sideController.locConfig.LocURL
 		url = zedcloud.URLPathString(locURL, zedcloudCtx.V2API,
 			nilUUID, "certs")
 
@@ -532,6 +532,13 @@ func triggerEdgeNodeCertEvent(ctxPtr *zedagentContext) {
 	default:
 		log.Warnf("triggerEdgeNodeCertEvent(): already triggered, still not processed")
 	}
+}
+
+func triggerEdgeNodeCertDelayedEvent(ctxPtr *zedagentContext, d time.Duration) {
+	go func() {
+		time.Sleep(d)
+		triggerEdgeNodeCertEvent(ctxPtr)
+	}()
 }
 
 func convertLocalToApiHashAlgo(algo types.CertHashType) evecommon.HashAlgorithm {

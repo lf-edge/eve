@@ -10,6 +10,8 @@ import (
 	"time"
 
 	dg "github.com/lf-edge/eve-libs/depgraph"
+	"golang.org/x/text/cases"
+	"golang.org/x/text/language"
 )
 
 // Reconciler implements state reconciliation using two dependency graphs,
@@ -174,8 +176,9 @@ func (l OperationLog) String() string {
 		if op.Err != nil {
 			withError = " with error " + op.Err.Error()
 		}
+		caser := cases.Title(language.English)
 		ops = append(ops, fmt.Sprintf("[%v - %v]%s %s item type:%s name:%s%s",
-			op.StartTime, op.EndTime, inProgress, strings.Title(op.Operation.String()),
+			op.StartTime, op.EndTime, inProgress, caser.String(op.Operation.String()),
 			op.Item.Type(), op.Item.Name(), withError))
 	}
 	return strings.Join(ops, "\n")

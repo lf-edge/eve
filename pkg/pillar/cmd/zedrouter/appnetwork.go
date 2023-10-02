@@ -182,8 +182,6 @@ func (z *zedrouter) doActivateAppNetwork(config types.AppNetworkConfig,
 
 	// Update AppNetwork and NetworkInstance status.
 	status.Activated = true
-	status.PendingAdd = false
-	status.PendingModify = false
 	z.publishAppNetworkStatus(status)
 	z.updateNIStatusAfterAppNetworkActivate(status)
 
@@ -354,7 +352,6 @@ func (z *zedrouter) doUpdateActivatedAppNetwork(oldConfig, newConfig types.AppNe
 	// Update app network status as well as status of connected network instances.
 	z.processAppConnReconcileStatus(appConnRecStatus, status)
 	z.reloadStatusOfAssignedIPs(status)
-	status.PendingModify = false
 	z.publishAppNetworkStatus(status)
 	z.updateNIStatusAfterAppNetworkActivate(status)
 }
@@ -382,8 +379,6 @@ func (z *zedrouter) doInactivateAppNetwork(config types.AppNetworkConfig,
 
 	// Update AppNetwork and NetworkInstance status.
 	status.Activated = false
-	status.PendingModify = false
-	status.PendingDelete = false
 	z.updateNIStatusAfterAppNetworkInactivate(status)
 	z.removeAssignedIPsFromAppNetStatus(status)
 	z.publishAppNetworkStatus(status)

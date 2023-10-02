@@ -25,8 +25,8 @@ require (
 	github.com/jaypipes/ghw v0.8.0
 	github.com/k8snetworkplumbingwg/network-attachment-definition-client v1.4.0
 	github.com/lf-edge/edge-containers v0.0.0-20221025050409-93c34bebadd2
-	github.com/lf-edge/eve-api/go v0.0.0-20230818142341-272fc065f4cb
-	github.com/lf-edge/eve-libs v0.0.0-20230724174211-8b4b7a344f7e
+	github.com/lf-edge/eve-api/go v0.0.0-20230917094129-590dad30fe13
+	github.com/lf-edge/eve-libs v0.0.0-20230921141205-94d6f6b65597
 	github.com/linuxkit/linuxkit/src/cmd/linuxkit v0.0.0-20220913135124-e532e7310810
 	github.com/miekg/dns v1.1.41
 	github.com/moby/sys/mountinfo v0.6.0

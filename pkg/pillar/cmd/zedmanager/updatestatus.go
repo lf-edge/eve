@@ -1042,7 +1042,7 @@ func doInactivate(ctx *zedmanagerContext, appInstID uuid.UUID,
 		}
 		return changed, done
 	}
-	log.Functionf("Done with AppNetworkStatus removal/deactivaye for %s", uuidStr)
+	log.Functionf("Done with AppNetworkStatus removal/deactivate for %s", uuidStr)
 	done = true
 	status.Activated = false
 	status.ActivateInprogress = false

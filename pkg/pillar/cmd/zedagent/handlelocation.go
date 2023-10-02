@@ -162,12 +162,12 @@ func publishLocationToDest(ctx *zedagentContext, locInfo *info.ZInfoLocation,
 }
 
 func publishLocationToLocalServer(ctx *getconfigContext, locInfo *info.ZInfoLocation) {
-	if ctx.lpsThrottledLocation {
-		if time.Since(ctx.lpsLastPublishedLocation) < lpsLocationThrottledInterval {
+	if ctx.sideController.lpsThrottledLocation {
+		if time.Since(ctx.sideController.lpsLastPublishedLocation) < lpsLocationThrottledInterval {
 			return
 		}
 	}
-	localProfileServer := ctx.localProfileServer
+	localProfileServer := ctx.sideController.localProfileServer
 	if localProfileServer == "" {
 		return
 	}
@@ -176,7 +176,7 @@ func publishLocationToLocalServer(ctx *getconfigContext, locInfo *info.ZInfoLoca
 		log.Errorf("publishLocationToLocalServer: makeLocalServerBaseURL: %v", err)
 		return
 	}
-	if !ctx.localServerMap.upToDate {
+	if !ctx.sideController.localServerMap.upToDate {
 		err := updateLocalServerMap(ctx, localServerURL)
 		if err != nil {
 			log.Errorf("publishLocationToLocalServer: updateLocalServerMap: %v", err)
@@ -185,7 +185,7 @@ func publishLocationToLocalServer(ctx *getconfigContext, locInfo *info.ZInfoLoca
 		// Make sure HasLocalServer is set correctly for the AppInstanceConfig
 		updateHasLocalServer(ctx)
 	}
-	srvMap := ctx.localServerMap.servers
+	srvMap := ctx.sideController.localServerMap.servers
 	if len(srvMap) == 0 {
 		log.Functionf("publishLocationToLocalServer: cannot find any configured "+
 			"apps for localServerURL: %s", localServerURL)
@@ -198,7 +198,7 @@ func publishLocationToLocalServer(ctx *getconfigContext, locInfo *info.ZInfoLoca
 			fullURL := srv.localServerAddr + lpsLocationURLPath
 			resp, err := zedcloud.SendLocalProto(
 				zedcloudCtx, fullURL, bridgeName, srv.bridgeIP, locInfo, nil)
-			ctx.lpsLastPublishedLocation = time.Now()
+			ctx.sideController.lpsLastPublishedLocation = time.Now()
 			if err != nil {
 				errList = append(errList, fmt.Sprintf("SendLocalProto: %v", err))
 				if resp == nil {
@@ -207,10 +207,10 @@ func publishLocationToLocalServer(ctx *getconfigContext, locInfo *info.ZInfoLoca
 			}
 			switch resp.StatusCode {
 			case http.StatusNotFound:
-				ctx.lpsThrottledLocation = true
+				ctx.sideController.lpsThrottledLocation = true
 				return
 			case http.StatusOK, http.StatusCreated, http.StatusNoContent:
-				ctx.lpsThrottledLocation = false
+				ctx.sideController.lpsThrottledLocation = false
 				return
 			default:
 				if err == nil {

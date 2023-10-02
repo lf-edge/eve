@@ -62,6 +62,7 @@ nav:
   - Storage:
       - 'RAID configuration': 'docs/STORAGE-RAID-CONFIGURATION.md'
       - ZFS: 'docs/ZFS.md'
+      - 'Application Snapshot, API': 'docs/APP-SNAPSHOT.md'
   - Boards:
       - 'NVIDIA Jetson': 'boards/nvidia/jetson/README.md'
   - Debugging:
@@ -112,6 +113,7 @@ nav:
       - volumemgr: 'pkg/pillar/docs/volumemgr.md'
       - zedmanager: 'pkg/pillar/docs/zedmanager.md'
       - zedrouter: 'pkg/pillar/docs/zedrouter.md'
+      - 'Application Snapshot, Implementation': 'pkg/pillar/docs/app-snapshot.md'
       - zedUpload: 'pkg/pillar/vendor/github.com/lf-edge/eve-libs/zedUpload/README.md'
       - go-ieproxy: 'pkg/pillar/vendor/github.com/mattn/go-ieproxy/README.md'
       - dns: 'pkg/pillar/vendor/github.com/miekg/dns/README.md'

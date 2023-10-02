@@ -19,6 +19,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/devicenetwork"
 	"github.com/lf-edge/eve/pkg/pillar/netclone"
 	"github.com/vishvananda/netlink"
+	"golang.org/x/sys/unix"
 )
 
 const (
@@ -144,6 +145,18 @@ func (m *LinuxNetworkMonitor) getInterfaceAttrs(ifIndex int) (attrs IfAttrs, err
 }
 
 func (m *LinuxNetworkMonitor) ifAttrsFromLink(link netlink.Link) IfAttrs {
+	var lowerUP bool
+	switch link.Attrs().OperState {
+	case netlink.OperUnknown:
+		// It is common for cellular modems that the operating state is not reported,
+		// whereas lower-layer IFF_* flags are available and can be used to determine
+		// link status.
+		lowerUP = link.Attrs().RawFlags&unix.IFF_LOWER_UP != 0
+	case netlink.OperUp:
+		lowerUP = true
+	default:
+		lowerUP = false
+	}
 	return IfAttrs{
 		IfIndex:       link.Attrs().Index,
 		IfName:        link.Attrs().Name,
@@ -151,7 +164,7 @@ func (m *LinuxNetworkMonitor) ifAttrsFromLink(link netlink.Link) IfAttrs {
 		IsLoopback:    (link.Attrs().Flags & net.FlagLoopback) != 0,
 		WithBroadcast: (link.Attrs().Flags & net.FlagBroadcast) != 0,
 		AdminUp:       (link.Attrs().Flags & net.FlagUp) != 0,
-		LowerUp:       link.Attrs().OperState == netlink.OperUp,
+		LowerUp:       lowerUP,
 		Enslaved:      link.Attrs().MasterIndex != 0,
 		MasterIfIndex: link.Attrs().MasterIndex,
 		MTU:           uint16(link.Attrs().MTU),

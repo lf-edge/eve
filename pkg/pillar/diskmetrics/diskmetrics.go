@@ -11,10 +11,16 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 )
+
+const qemuExecTimeout = 2 * time.Minute
+
+// qemuExecLongTimeout is a long timeout for command executions in separate worker thread that don't interfere with the watchdog
+const qemuExecLongTimeout = 1000 * time.Second
 
 func GetImgInfo(log *base.LogObject, diskfile string) (*types.ImgInfo, error) {
 	var imgInfo types.ImgInfo
@@ -23,7 +29,7 @@ func GetImgInfo(log *base.LogObject, diskfile string) (*types.ImgInfo, error) {
 		return nil, err
 	}
 	output, err := base.Exec(log, "/usr/bin/qemu-img", "info", "-U", "--output=json",
-		diskfile).CombinedOutput()
+		diskfile).WithUnlimitedTimeout(qemuExecLongTimeout).CombinedOutput()
 	if err != nil {
 		errStr := fmt.Sprintf("qemu-img failed: %s, %s\n",
 			err, output)
@@ -64,7 +70,7 @@ func ResizeImg(ctx context.Context, log *base.LogObject, diskfile string, newsiz
 		return err
 	}
 	output, err := base.Exec(log, "/usr/bin/qemu-img", "resize", diskfile,
-		strconv.FormatUint(newsize, 10)).WithContext(ctx).CombinedOutput()
+		strconv.FormatUint(newsize, 10)).WithContext(ctx).WithUnlimitedTimeout(qemuExecLongTimeout).CombinedOutput()
 	if err != nil {
 		errStr := fmt.Sprintf("qemu-img failed: %s, %s\n",
 			err, output)
@@ -76,7 +82,7 @@ func ResizeImg(ctx context.Context, log *base.LogObject, diskfile string, newsiz
 // CreateImg creates empty diskfile with defined format and size
 func CreateImg(ctx context.Context, log *base.LogObject, diskfile string, format string, size uint64) error {
 	output, err := base.Exec(log, "/usr/bin/qemu-img", "create", "-f", format, diskfile,
-		strconv.FormatUint(size, 10)).WithContext(ctx).CombinedOutput()
+		strconv.FormatUint(size, 10)).WithContext(ctx).WithUnlimitedTimeout(qemuExecLongTimeout).CombinedOutput()
 	if err != nil {
 		errStr := fmt.Sprintf("qemu-img failed: %s, %s\n",
 			err, output)
@@ -93,7 +99,7 @@ func RolloutImgToBlock(ctx context.Context, log *base.LogObject, diskfile, outpu
 	// writeback cache instead of default unsafe, out of order enabled, skip file creation
 	// Timeout 2 hours
 	args := []string{"convert", "--target-is-zero", "-t", "writeback", "-W", "-n", "-O", outputFormat, diskfile, outputFile}
-	output, err := base.Exec(log, "/usr/bin/qemu-img", args...).WithContext(ctx).CombinedOutputWithCustomTimeout(432000)
+	output, err := base.Exec(log, "/usr/bin/qemu-img", args...).WithContext(ctx).WithUnlimitedTimeout(qemuExecLongTimeout).CombinedOutput()
 	if err != nil {
 		errStr := fmt.Sprintf("qemu-img failed: %s, %s\n",
 			err, output)
@@ -112,7 +118,7 @@ func CreateSnapshot(ctx context.Context, log *base.LogObject, diskfile, snapshot
 	cmdBin := "/usr/bin/qemu-img"
 	cmdArgs := []string{"snapshot", "-c", snapshotName, diskfile}
 	log.Noticef("CreateSnapshot: %s %s", cmdBin, strings.Join(cmdArgs, " "))
-	output, err := base.Exec(log, cmdBin, cmdArgs...).WithContext(ctx).CombinedOutput()
+	output, err := base.Exec(log, cmdBin, cmdArgs...).WithContext(ctx).WithLimitedTimeout(qemuExecTimeout).CombinedOutput()
 	if err != nil {
 		errStr := fmt.Sprintf("qemu-img failed: %s, %s\n", err, output)
 		return errors.New(errStr)
@@ -130,7 +136,7 @@ func ApplySnapshot(ctx context.Context, log *base.LogObject, diskfile, snapshotN
 	cmdBin := "/usr/bin/qemu-img"
 	cmdArgs := []string{"snapshot", "-a", snapshotName, diskfile}
 	log.Noticef("ApplySnapshot: %s %s", cmdBin, strings.Join(cmdArgs, " "))
-	output, err := base.Exec(log, cmdBin, cmdArgs...).WithContext(ctx).CombinedOutput()
+	output, err := base.Exec(log, cmdBin, cmdArgs...).WithContext(ctx).WithLimitedTimeout(qemuExecTimeout).CombinedOutput()
 	if err != nil {
 		errStr := fmt.Sprintf("qemu-img failed: %s, %s\n", err, output)
 		return errors.New(errStr)
@@ -145,7 +151,7 @@ func DeleteSnapshot(ctx context.Context, log *base.LogObject, diskfile, snapshot
 	cmdBin := "/usr/bin/qemu-img"
 	cmdArgs := []string{"snapshot", "-d", snapshotName, diskfile}
 	log.Noticef("DeleteSnapshot: %s %s", cmdBin, strings.Join(cmdArgs, " "))
-	output, err := base.Exec(log, cmdBin, cmdArgs...).WithContext(ctx).CombinedOutput()
+	output, err := base.Exec(log, cmdBin, cmdArgs...).WithContext(ctx).WithLimitedTimeout(qemuExecTimeout).CombinedOutput()
 	if err != nil {
 		errStr := fmt.Sprintf("qemu-img failed: %s, %s\n", err, output)
 		return errors.New(errStr)

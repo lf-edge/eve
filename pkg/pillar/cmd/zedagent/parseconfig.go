@@ -45,12 +45,10 @@ const (
 func parseConfig(getconfigCtx *getconfigContext, config *zconfig.EdgeDevConfig,
 	source configSource) configProcessingRetval {
 
-	// Do not accept new commands from Local profile server while new config
-	// from the controller is being applied.
-	if getconfigCtx.localCommands != nil {
-		getconfigCtx.localCommands.Lock()
-		defer getconfigCtx.localCommands.Unlock()
-	}
+	// Do not accept new commands from side controller while new config
+	// from the primary controller is being applied. Or vice versa.
+	getconfigCtx.sideController.Lock()
+	defer getconfigCtx.sideController.Unlock()
 
 	// Make sure we do not accidentally revert to an older configuration.
 	// This depends on the controller attaching config timestamp.
@@ -156,6 +154,7 @@ func parseConfig(getconfigCtx *getconfigContext, config *zconfig.EdgeDevConfig,
 			parseNetworkInstanceConfig(getconfigCtx, config)
 			parseContentInfoConfig(getconfigCtx, config)
 			parseVolumeConfig(getconfigCtx, config)
+			parseEvConfig(getconfigCtx, config)
 
 			// We have handled the volumes, so we can now process the app instances. But we need to check if
 			// we are in the middle of a baseOS upgrade, and if so, we need to skip processing the app instances.
@@ -175,8 +174,6 @@ func parseConfig(getconfigCtx *getconfigContext, config *zconfig.EdgeDevConfig,
 			// parseProfile must be called before processing of app instances from config
 			parseProfile(getconfigCtx, config)
 			parseAppInstanceConfig(getconfigCtx, config)
-
-			parseEvConfig(getconfigCtx, config)
 
 			parseDisksConfig(getconfigCtx, config)
 
@@ -2697,11 +2694,11 @@ func parseLocConfig(getconfigCtx *getconfigContext,
 	config *zconfig.EdgeDevConfig) {
 	locConfig := config.GetLocConfig()
 	if isLocConfigValid(locConfig) {
-		getconfigCtx.locConfig = &types.LOCConfig{
+		getconfigCtx.sideController.locConfig = &types.LOCConfig{
 			LocURL: locConfig.LocUrl,
 		}
 	} else {
-		getconfigCtx.locConfig = nil
+		getconfigCtx.sideController.locConfig = nil
 	}
 }
 

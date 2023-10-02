@@ -1,16 +1,23 @@
+# syntax=docker/dockerfile-upstream:1.5.0-rc2-labs
 # for debug container we need to build our own copy of musl
 # with -fno-omit-frame-pointer to make sure that perf(1)
 # has a fast path for stack unwinding. This also happens
 # to be a perfect place to put any other kind of debug info
 # into the package: see abuild/etc/abuild.conf.
-FROM lfedge/eve-alpine:9fb9b9cbf7d90066a70e4704d04a6fe248ff52bb as build
+FROM lfedge/eve-alpine:fad44e3702708a8d044663a20fd98d933dddb41e as build
 ENV BUILD_PKGS abuild curl tar make linux-headers patch g++ git gcc ncurses-dev autoconf
 # Feel free to add additional packages here, but be aware that
 # EVE's rootfs image can be no larger than 300Mb (and don't
 # forget to check on all supported architectures: e.g. arm64
 # binaries are typically larger and amd64 ones).
 # RUN apk add --no-cache gdb valgrind
-ENV PKGS openssl openssh-client openssh-server tini util-linux ca-certificates pciutils usbutils vim tcpdump perf strace iproute2-minimal curl tar
+ENV PKGS openssl openssh-client openssh-server tini util-linux ca-certificates pciutils usbutils vim tcpdump perf strace iproute2-minimal curl
+
+# These packages are not available on the riscv arch, so I have no idea how
+# deliver those, but still install them on other archs.
+ENV PKGS_amd64 procps tar dmidecode iptables dhcpcd
+ENV PKGS_arm64 procps tar dmidecode iptables dhcpcd
+
 RUN eve-alpine-deploy.sh
 
 ENV LSHW_VERSION 02.19.2
@@ -49,6 +56,13 @@ WORKDIR /tmp/hexedit/hexedit-1.5
 ADD https://github.com/pixel/hexedit/archive/refs/tags/1.5.tar.gz ../1.5.tar.gz
 RUN tar -C .. -xzvf ../1.5.tar.gz
 RUN ./autogen.sh && ./configure && make DESTDIR=/out install
+
+# building picocom
+# Need this patch to build with musl: https://github.com/npat-efault/picocom/commit/1acf1ddabaf3576b4023c4f6f09c5a3e4b086fb8
+ENV PICOCOM_COMMIT=1acf1ddabaf3576b4023c4f6f09c5a3e4b086fb8
+ADD --keep-git-dir=true https://github.com/npat-efault/picocom.git#${PICOCOM_COMMIT} /tmp/picocom
+WORKDIR /tmp/picocom
+RUN make -j "$(getconf _NPROCESSORS_ONLN)" && strip picocom && cp picocom /out/usr/bin/
 
 # tweaking various bit
 WORKDIR /out

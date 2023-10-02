@@ -342,10 +342,19 @@ ICCID if available). Information provided for each SIM card may include ICCID (a
 IMSI (a mobile subscriber identity) and a reference to the name of the modem to which it is inserted.
 SIM card state is also defined but currently not provided.
 
-Every device port associated with a cellular modem has `wireless_status` defined. It contains references
-to the names of the modem and the SIM card being used, information about visible network providers
-(with PLMN codes) and potentially also error messages if EVE failed to apply the last configuration for
-this port or if the connectivity testing is failing.
+Every device port associated with a cellular modem has `wireless_status` defined.
+It contains references to the names of the modem and the SIM card(s) being used, information
+about the currently used network provider (identified by PLMN code), and potentially,
+error messages if EVE failed to apply the last configuration for this port or if connectivity
+testing is failing.
+
+It is also possible to request information about all visible providers by enabling
+the [configuration property](CONFIG-PROPERTIES.md) `wwan.query.visible.providers`.
+By default, this feature is disabled because the operation to scan visible cellular providers
+is quite expensive and takes around 2 minutes to complete, during which the modem is practically
+unmanageable. Therefore, even if enabled, the period for re-scanning visible providers
+is quite long: 1 hour. For the user, it makes sense to enable scanning only temporarily,
+for example, when troubleshooting a modem that is failing to register on the network.
 
 EVE also collects metrics from cellular modems (i.e. stats recorded by modems themselves, not from the Linux
 network stack). These are published in `deviceMetric.cellular`.  Included are packet and byte RX/TX

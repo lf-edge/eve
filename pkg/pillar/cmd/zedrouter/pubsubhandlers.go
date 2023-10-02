@@ -487,15 +487,19 @@ func (z *zedrouter) handleAppNetworkCreate(ctxArg interface{}, key string,
 	// Start by marking with PendingAdd
 	status := types.AppNetworkStatus{
 		UUIDandVersion: config.UUIDandVersion,
-		PendingAdd:     true,
 		DisplayName:    config.DisplayName,
 	}
 	z.doCopyAppNetworkConfigToStatus(config, &status)
+	status.PendingAdd = true
+	z.publishAppNetworkStatus(&status)
+	defer func() {
+		status.PendingAdd = false
+		z.publishAppNetworkStatus(&status)
+	}()
 
 	if err := z.validateAppNetworkConfig(config); err != nil {
 		z.log.Errorf("handleAppNetworkCreate(%v): validation failed: %v",
 			config.UUIDandVersion.UUID, err)
-		status.PendingAdd = false
 		z.addAppNetworkError(&status, "handleAppNetworkCreate", err)
 		return
 	}
@@ -508,7 +512,6 @@ func (z *zedrouter) handleAppNetworkCreate(ctxArg interface{}, key string,
 		err = fmt.Errorf("failed to allocate appNum for %s/%s: %v",
 			config.UUIDandVersion.UUID, config.DisplayName, err)
 		z.log.Errorf("handleAppNetworkCreate(%v): %v", config.UUIDandVersion.UUID, err)
-		status.PendingAdd = false
 		z.addAppNetworkError(&status, "handleAppNetworkCreate", err)
 		return
 	}
@@ -536,47 +539,6 @@ func (z *zedrouter) handleAppNetworkCreate(ctxArg interface{}, key string,
 	z.publishAppNetworkStatus(&status)
 
 	continueAppNetCreate(z, key, config, status)
-	/*
-		// Allocate application numbers on underlay network.
-		// Used to allocate VIF IP address.
-		err = z.allocateAppIntfNums(config.UUIDandVersion.UUID, config.UnderlayNetworkList)
-		if err != nil {
-			err = fmt.Errorf("failed to allocate numbers for VIFs of the app %s/%s: %v",
-				config.UUIDandVersion.UUID, config.DisplayName, err)
-			z.log.Errorf("handleAppNetworkCreate(%v): %v", config.UUIDandVersion.UUID, err)
-			status.PendingAdd = false
-			z.addAppNetworkError(&status, "handleAppNetworkCreate", err)
-			return
-		}
-
-		// Check that Network exists for all underlays.
-		// We look for apps with raised AwaitNetworkInstance when a NetworkInstance is added.
-		netInErrState, err := z.checkNetworkReferencesFromApp(config)
-		if err != nil {
-			z.log.Errorf("handleAppNetworkCreate(%v): %v", config.UUIDandVersion.UUID, err)
-			status.AwaitNetworkInstance = true
-			status.PendingAdd = false
-			if netInErrState {
-				z.addAppNetworkError(&status, "handleAppNetworkCreate", err)
-			} else {
-				z.publishAppNetworkStatus(&status)
-			}
-			return
-		}
-
-		z.runAppKubeStatus(config)
-
-		if config.Activate {
-			z.doActivateAppNetwork(config, &status)
-		} else {
-			status.PendingAdd = false
-			z.publishAppNetworkStatus(&status)
-		}
-
-		z.maybeScheduleRetry()
-		z.log.Functionf("handleAppNetworkCreate(%s) done for %s", key, config.DisplayName)
-		z.log.Noticef("handleAppNetworkCreate: handleAppKubeNetCreate: tag done")
-	*/
 }
 
 // handleAppNetworkModify cannot handle any change.
@@ -594,12 +556,15 @@ func (z *zedrouter) handleAppNetworkModify(ctxArg interface{}, key string,
 	status.ClearError()
 	status.PendingModify = true
 	z.publishAppNetworkStatus(status)
+	defer func() {
+		status.PendingModify = false
+		z.publishAppNetworkStatus(status)
+	}()
 
 	// Check for unsupported/invalid changes.
 	if err := z.validateAppNetworkConfigForModify(newConfig, oldConfig); err != nil {
 		z.log.Errorf("handleAppNetworkModify(%v): validation failed: %v",
 			newConfig.UUIDandVersion.UUID, err)
-		status.PendingModify = false
 		z.addAppNetworkError(status, "handleAppNetworkModify", err)
 		return
 	}
@@ -613,11 +578,8 @@ func (z *zedrouter) handleAppNetworkModify(ctxArg interface{}, key string,
 	if err != nil {
 		z.log.Errorf("handleAppNetworkModify(%v): %v", newConfig.UUIDandVersion.UUID, err)
 		status.AwaitNetworkInstance = true
-		status.PendingModify = false
 		if netInErrState {
 			z.addAppNetworkError(status, "handleAppNetworkModify", err)
-		} else {
-			z.publishAppNetworkStatus(status)
 		}
 		return
 	}
@@ -627,15 +589,12 @@ func (z *zedrouter) handleAppNetworkModify(ctxArg interface{}, key string,
 	if !newConfig.Activate && status.Activated {
 		z.doInactivateAppNetwork(newConfig, status)
 		z.doCopyAppNetworkConfigToStatus(newConfig, status)
-		z.publishAppNetworkStatus(status)
 	} else if newConfig.Activate && !status.Activated {
 		z.doCopyAppNetworkConfigToStatus(newConfig, status)
 		z.doActivateAppNetwork(newConfig, status)
 	} else if !status.Activated {
 		// Just copy in newConfig
 		z.doCopyAppNetworkConfigToStatus(newConfig, status)
-		status.PendingModify = false
-		z.publishAppNetworkStatus(status)
 	} else { // Config change while application network is active.
 		z.doUpdateActivatedAppNetwork(oldConfig, newConfig, status, nil)
 	}
@@ -662,6 +621,8 @@ func (z *zedrouter) handleAppNetworkDelete(ctxArg interface{}, key string,
 
 	// Deactivate app network if it is currently activated.
 	if status.Activated {
+		// No need to clear PendingDelete later. Instead, we un-publish
+		// the status completely few lines below.
 		status.PendingDelete = true
 		z.publishAppNetworkStatus(status)
 		z.doInactivateAppNetwork(config, status)
@@ -798,7 +759,6 @@ func continueAppNetCreate(z *zedrouter, key string, config types.AppNetworkConfi
 		err = fmt.Errorf("failed to allocate numbers for VIFs of the app %s/%s: %v",
 			config.UUIDandVersion.UUID, config.DisplayName, err)
 		z.log.Errorf("handleAppNetworkCreate(%v): %v", config.UUIDandVersion.UUID, err)
-		status.PendingAdd = false
 		z.addAppNetworkError(&status, "handleAppNetworkCreate", err)
 		return
 	}
@@ -809,11 +769,8 @@ func continueAppNetCreate(z *zedrouter, key string, config types.AppNetworkConfi
 	if err != nil {
 		z.log.Errorf("handleAppNetworkCreate(%v): %v", config.UUIDandVersion.UUID, err)
 		status.AwaitNetworkInstance = true
-		status.PendingAdd = false
 		if netInErrState {
 			z.addAppNetworkError(&status, "handleAppNetworkCreate", err)
-		} else {
-			z.publishAppNetworkStatus(&status)
 		}
 		return
 	}
@@ -822,9 +779,6 @@ func continueAppNetCreate(z *zedrouter, key string, config types.AppNetworkConfi
 
 	if config.Activate {
 		z.doActivateAppNetwork(config, &status)
-	} else {
-		status.PendingAdd = false
-		z.publishAppNetworkStatus(&status)
 	}
 
 	z.maybeScheduleRetry()

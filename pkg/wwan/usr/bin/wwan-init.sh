@@ -439,8 +439,11 @@ collect_network_status() {
     # (e.g. radio-silence mode is switched ON/OFF) so that the updated status is promptly
     # published for better user experience.
     PROVIDERS="$("${PROTOCOL}_get_providers")"
-  else
+  elif [ "$QUERY_VISIBLE_PROVIDERS" = "true" ]; then
     # Just preserve the list of providers previously obtained for this modem.
+    # If scanning of visible providers is disabled, we do not preserve previously
+    # obtained data. Over time, this data becomes increasingly obsolete and could confuse
+    # users.
     PROVIDERS="$(jq -rc --arg CDC_DEV "$CDC_DEV" \
       '.networks[] | select(."physical-addrs".dev==$CDC_DEV) | ."visible-providers"' \
       "${STATUS_PATH}" 2>/dev/null)"
@@ -662,30 +665,9 @@ event_stream | while read -r EVENT; do
 
   if [ "$EVENT" != "PROBE" ] && [ "$EVENT" != "METRICS" ]; then
     EVENT="CONFIG-CHANGE"
-    # Next probe will update the set of visible/used providers.
+    # Next probe will update the set of visible/used providers
+    # (unless QUERY_VISIBLE_PROVIDERS is disabled).
     ENFORCE_LONG_PROBE="y"
-  fi
-
-  if [ "$EVENT" = "PROBE" ]; then
-    PROBE_ITER="$((PROBE_ITER+1))"
-    # Every 20 seconds check the modem connectivity status.
-    # Quick probe only checks the status as reported by the modem,
-    # without generating any traffic.
-    EVENT="QUICK-PROBE"
-    if [ "$((PROBE_ITER % 15))" = "0" ] || [ "$STATUS_OUTDATED" = "y" ]; then
-      # Every 5 minutes update status.json.
-      # Also when QUICK-PROBE changes modem status (e.g. reconnects), next PROBE
-      # will be elevated to at least STANDARD-PROBE level.
-      # First update is not done immediately but after 5 minutes (PROBE_ITER starts with 1).
-      EVENT="STANDARD-PROBE"
-    fi
-    if [ "$((PROBE_ITER % 180))" = "31" ] || [ "$ENFORCE_LONG_PROBE" = "y" ]; then
-      # Every 1 hour additionally query the set of visible providers.
-      # Also after processing config change, next PROBE will be elevated to LONG-PROBE level.
-      # First LONG-PROBE is done after 10 minutes (modulo equals 31; PROBE_ITER starts with 1).
-      EVENT="LONG-PROBE"
-    fi
-    ENFORCE_LONG_PROBE=n
   fi
 
   CONFIG="$(cat "${CONFIG_PATH}" 2>/dev/null)"
@@ -707,6 +689,31 @@ event_stream | while read -r EVENT; do
   unset LOC_TRACKING_LL
   RADIO_SILENCE="$(parse_json_attr "$CONFIG" "\"radio-silence\"")"
   VERBOSE="$(parse_json_attr "$CONFIG" "\"verbose\"")"
+  QUERY_VISIBLE_PROVIDERS="$(parse_json_attr "$CONFIG" "\"query-visible-providers\"")"
+
+  if [ "$EVENT" = "PROBE" ]; then
+    PROBE_ITER="$((PROBE_ITER+1))"
+    # Every 20 seconds check the modem connectivity status.
+    # Quick probe only checks the status as reported by the modem,
+    # without generating any traffic.
+    EVENT="QUICK-PROBE"
+    if [ "$((PROBE_ITER % 15))" = "0" ] || [ "$STATUS_OUTDATED" = "y" ]; then
+      # Every 5 minutes update status.json.
+      # Also when QUICK-PROBE changes modem status (e.g. reconnects), next PROBE
+      # will be elevated to at least STANDARD-PROBE level.
+      # First update is not done immediately but after 5 minutes (PROBE_ITER starts with 1).
+      EVENT="STANDARD-PROBE"
+    fi
+    if [ "$QUERY_VISIBLE_PROVIDERS" = "true" ]; then
+      if [ "$((PROBE_ITER % 180))" = "31" ] || [ "$ENFORCE_LONG_PROBE" = "y" ]; then
+        # Every 1 hour additionally query the set of visible providers.
+        # Also after processing config change, next PROBE will be elevated to LONG-PROBE level.
+        # First LONG-PROBE is done after 10 minutes (modulo equals 31; PROBE_ITER starts with 1).
+        EVENT="LONG-PROBE"
+      fi
+    fi
+    ENFORCE_LONG_PROBE=n
+  fi
 
   if [ "$VERBOSE" = "true" ]; then
     log_debug Event: "$EVENT"

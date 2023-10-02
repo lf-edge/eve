@@ -270,7 +270,7 @@ func queueInfoToDest(ctx *zedagentContext, dest destinationBitset,
 	key string, buf *bytes.Buffer, size int64, bailOnHTTPErr,
 	withNetTracing, forcePeriodic bool, itemType interface{}) {
 
-	locConfig := ctx.getconfigCtx.locConfig
+	locConfig := ctx.getconfigCtx.sideController.locConfig
 
 	if dest&ControllerDest != 0 {
 		url := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API,
@@ -496,7 +496,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	getconfigCtx.locationAppTickerHandle = <-handleChannel
 
 	//trigger channel for localProfile state machine
-	getconfigCtx.localProfileTrigger = make(chan Notify, 1)
+	getconfigCtx.sideController.localProfileTrigger = make(chan Notify, 1)
 	//process saved local profile
 	processSavedProfile(getconfigCtx)
 
@@ -583,13 +583,13 @@ func (zedagentCtx *zedagentContext) init() {
 
 	// Initialize context used to get and parse device configuration.
 	getconfigCtx := &getconfigContext{
-		localServerMap: &localServerMap{},
 		// default value of currentMetricInterval
 		currentMetricInterval: zedagentCtx.globalConfig.GlobalValueInt(types.MetricInterval),
 		// edge-view configure
 		configEdgeview: &types.EdgeviewConfig{},
 		cipherContexts: make(map[string]types.CipherContext),
 	}
+	getconfigCtx.sideController.localServerMap = &localServerMap{}
 
 	cipherCtx := &cipherContext{}
 	attestCtx := &attestContext{}
@@ -742,7 +742,7 @@ func waitUntilDNSReady(zedagentCtx *zedagentContext, stillRunning *time.Ticker) 
 			zedagentCtx.subEncryptedKeyFromDevice.ProcessChange(change)
 
 		case change := <-getconfigCtx.subAppNetworkStatus.MsgChan():
-			getconfigCtx.localServerMap.upToDate = false
+			getconfigCtx.sideController.localServerMap.upToDate = false
 			getconfigCtx.subAppNetworkStatus.ProcessChange(change)
 
 		case change := <-zedagentCtx.subWwanStatus.MsgChan():
@@ -813,7 +813,7 @@ func mainEventLoop(zedagentCtx *zedagentContext, stillRunning *time.Ticker) {
 			getconfigCtx.subNodeAgentStatus.ProcessChange(change)
 
 		case change := <-getconfigCtx.subAppNetworkStatus.MsgChan():
-			getconfigCtx.localServerMap.upToDate = false
+			getconfigCtx.sideController.localServerMap.upToDate = false
 			getconfigCtx.subAppNetworkStatus.ProcessChange(change)
 
 		case change := <-dnsCtx.subDeviceNetworkStatus.MsgChan():
@@ -2507,6 +2507,13 @@ func getDeferredSentHandlerFunction(ctx *zedagentContext) *zedcloud.SentHandlerF
 				case types.SenderStatusNotFound:
 					log.Functionf("sendAttestReqProtobuf: Controller SenderStatusNotFound")
 					potentialUUIDUpdate(ctx.getconfigCtx)
+				}
+				if !ctx.publishedEdgeNodeCerts {
+					// Attestation request does not clog the send queue (issued
+					// with the `ignoreErr` set to true), but once fails has to
+					// be repeated in reasonable time to avoid tight fail-repeat
+					// loop.
+					triggerEdgeNodeCertDelayedEvent(ctx, 10*time.Second)
 				}
 			}
 		}

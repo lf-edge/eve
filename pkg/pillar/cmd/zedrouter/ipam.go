@@ -140,6 +140,18 @@ func (z *zedrouter) lookupOrAllocateIPv4ForVIF(niStatus *types.NetworkInstanceSt
 				niStatus.DhcpRange.Start, niStatus.DhcpRange.End)
 			z.log.Errorf("lookupOrAllocateIPv4(NI:%v, app:%v): %v",
 				networkID, appID, err)
+			// Release this interface number, it produces IP address outside the range
+			// anyway. Once another already deployed app is deleted and its IP allocations
+			// are freed, retryTimer will call handleAppNetworkCreate for this app
+			// again and it will reuse interface number(s) of the deleted app, which
+			// will then produce a valid IP address fitting the DHCP range.
+			// Otherwise, zedrouter would just try to use the same IP address outside
+			// the DHCP range and fail repeatedly, even after there is free IP available.
+			err2 := z.freeAppIntfNum(networkID, appID, ulStatus.IfIdx)
+			if err2 != nil {
+				// Should be unreachable.
+				z.log.Error(err2)
+			}
 			return nil, err
 		}
 	}

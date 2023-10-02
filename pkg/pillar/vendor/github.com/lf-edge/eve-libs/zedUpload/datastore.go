@@ -113,7 +113,7 @@ func (ctx *DronaCtx) handleRequest(req *DronaRequest) error {
 		return err
 	}
 	go func() {
-		err = trp.Action(req)
+		err := trp.Action(req)
 
 		// No matter what post response
 		ctx.postResponse(req, err)
@@ -167,9 +167,15 @@ type AuthInput struct {
 	Keys []string
 }
 
-// NewSyncerDest:
-//   - add another location end point to syncer
-func (ctx *DronaCtx) NewSyncerDest(tr SyncTransportType, UrlOrRegion, PathOrBkt string, auth *AuthInput) (DronaEndPoint, error) {
+// SyncerDestOption is a function that configures a DronaEndpoint.
+// It is expected to check that the passed DronaEndpoint is of the correct type for it and, if not,
+// return an error.
+type SyncerDestOption func(endpoint DronaEndPoint) error
+
+// NewSyncerDest add another location end point to syncer.
+// The options are passed directly to the specific transport and should match its type.
+func (ctx *DronaCtx) NewSyncerDest(tr SyncTransportType, UrlOrRegion, PathOrBkt string, auth *AuthInput, opts ...SyncerDestOption) (DronaEndPoint, error) {
+	var endpoint DronaEndPoint
 	switch tr {
 	case SyncAwsTr:
 		syncEp := &AwsTransportMethod{transport: tr, region: UrlOrRegion, bucket: PathOrBkt, ctx: ctx}
@@ -179,7 +185,7 @@ func (ctx *DronaCtx) NewSyncerDest(tr SyncTransportType, UrlOrRegion, PathOrBkt 
 		}
 		syncEp.hClientWrap = &httpClientWrapper{}
 		syncEp.failPostTime = time.Now()
-		return syncEp, nil
+		endpoint = syncEp
 	case SyncAzureTr:
 		syncEp := &AzureTransportMethod{transport: tr, aurl: UrlOrRegion, container: PathOrBkt, ctx: ctx}
 		if auth != nil {
@@ -189,7 +195,7 @@ func (ctx *DronaCtx) NewSyncerDest(tr SyncTransportType, UrlOrRegion, PathOrBkt 
 		}
 		syncEp.hClientWrap = &httpClientWrapper{}
 		syncEp.failPostTime = time.Now()
-		return syncEp, nil
+		endpoint = syncEp
 	case SyncHttpTr:
 		syncEp := &HttpTransportMethod{transport: tr, hurl: UrlOrRegion, path: PathOrBkt, ctx: ctx}
 		if auth != nil {
@@ -197,7 +203,7 @@ func (ctx *DronaCtx) NewSyncerDest(tr SyncTransportType, UrlOrRegion, PathOrBkt 
 		}
 		syncEp.hClientWrap = &httpClientWrapper{}
 		syncEp.failPostTime = time.Now()
-		return syncEp, nil
+		endpoint = syncEp
 	case SyncSftpTr:
 		syncEp := &SftpTransportMethod{transport: tr, surl: UrlOrRegion, path: PathOrBkt, ctx: ctx}
 		if auth != nil {
@@ -207,7 +213,7 @@ func (ctx *DronaCtx) NewSyncerDest(tr SyncTransportType, UrlOrRegion, PathOrBkt 
 			syncEp.keys = auth.Keys
 		}
 		syncEp.failPostTime = time.Now()
-		return syncEp, nil
+		endpoint = syncEp
 	case SyncOCIRegistryTr:
 		syncEp := &OCITransportMethod{transport: tr, registry: UrlOrRegion, path: PathOrBkt, ctx: ctx}
 		if auth != nil {
@@ -216,7 +222,7 @@ func (ctx *DronaCtx) NewSyncerDest(tr SyncTransportType, UrlOrRegion, PathOrBkt 
 		}
 		syncEp.hClientWrap = &httpClientWrapper{}
 		syncEp.failPostTime = time.Now()
-		return syncEp, nil
+		endpoint = syncEp
 	case SyncGSTr:
 		syncEp := &GsTransportMethod{transport: tr, bucket: PathOrBkt, ctx: ctx}
 		if auth != nil {
@@ -225,11 +231,17 @@ func (ctx *DronaCtx) NewSyncerDest(tr SyncTransportType, UrlOrRegion, PathOrBkt 
 		}
 		syncEp.hClientWrap = &httpClientWrapper{}
 		syncEp.failPostTime = time.Now()
-		return syncEp, nil
+		endpoint = syncEp
 	default:
+		return nil, fmt.Errorf("unknown transport type %v", tr)
 	}
 
-	return nil, fmt.Errorf("unknown transport type %v", tr)
+	for _, opt := range opts {
+		if err := opt(endpoint); err != nil {
+			return nil, err
+		}
+	}
+	return endpoint, nil
 }
 
 // NewDronaCtx

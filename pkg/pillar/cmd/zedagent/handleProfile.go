@@ -55,7 +55,7 @@ func localProfileTimerTask(handleChannel chan interface{}, getconfigCtx *getconf
 
 	log.Functionf("localProfileTimerTask: waiting for localProfileTrigger")
 	//wait for the first trigger comes from parseProfile to have information about localProfileServer
-	<-getconfigCtx.localProfileTrigger
+	<-getconfigCtx.sideController.localProfileTrigger
 	log.Functionf("localProfileTimerTask: waiting for localProfileTrigger done")
 	//trigger again to pass into loop
 	triggerGetLocalProfile(getconfigCtx)
@@ -69,7 +69,7 @@ func localProfileTimerTask(handleChannel chan interface{}, getconfigCtx *getconf
 
 	for {
 		select {
-		case <-getconfigCtx.localProfileTrigger:
+		case <-getconfigCtx.sideController.localProfileTrigger:
 			start := time.Now()
 			profileStateMachine(getconfigCtx, false)
 			ctx.ps.CheckMaxTimeTopic(wdName, "getLocalProfileConfigTrigger", start,
@@ -114,7 +114,7 @@ func getLocalProfileConfig(getconfigCtx *getconfigContext, localServerURL string
 
 	log.Functionf("getLocalProfileConfig(%s)", localServerURL)
 
-	if !getconfigCtx.localServerMap.upToDate {
+	if !getconfigCtx.sideController.localServerMap.upToDate {
 		err := updateLocalServerMap(getconfigCtx, localServerURL)
 		if err != nil {
 			return nil, fmt.Errorf("getLocalProfileConfig: updateLocalServerMap: %v", err)
@@ -123,7 +123,7 @@ func getLocalProfileConfig(getconfigCtx *getconfigContext, localServerURL string
 		updateHasLocalServer(getconfigCtx)
 	}
 
-	srvMap := getconfigCtx.localServerMap.servers
+	srvMap := getconfigCtx.sideController.localServerMap.servers
 	if len(srvMap) == 0 {
 		return nil, fmt.Errorf(
 			"getLocalProfileConfig: cannot find any configured apps for localServerURL: %s",
@@ -146,7 +146,7 @@ func getLocalProfileConfig(getconfigCtx *getconfigContext, localServerURL string
 					resp.StatusCode))
 				continue
 			}
-			if localProfile.GetServerToken() != getconfigCtx.profileServerToken {
+			if localProfile.GetServerToken() != getconfigCtx.sideController.profileServerToken {
 				errList = append(errList,
 					fmt.Sprintf("invalid token submitted by local server (%s)", localProfile.GetServerToken()))
 				continue
@@ -160,8 +160,8 @@ func getLocalProfileConfig(getconfigCtx *getconfigContext, localServerURL string
 // saveOrTouchReceivedLocalProfile updates modification time of received LocalProfile in case of no changes
 // or updates content of received LocalProfile in case of changes or no checkpoint file
 func saveOrTouchReceivedLocalProfile(getconfigCtx *getconfigContext, localProfile *profile.LocalProfile) {
-	if getconfigCtx.localProfile == localProfile.GetLocalProfile() &&
-		getconfigCtx.profileServerToken == localProfile.GetServerToken() &&
+	if getconfigCtx.sideController.localProfile == localProfile.GetLocalProfile() &&
+		getconfigCtx.sideController.profileServerToken == localProfile.GetServerToken() &&
 		existsSavedConfig(savedLocalProfileFile) {
 		touchSavedConfig(savedLocalProfileFile)
 		return
@@ -179,43 +179,43 @@ func saveOrTouchReceivedLocalProfile(getconfigCtx *getconfigContext, localProfil
 // must be called before processing of app instances from config
 func parseProfile(ctx *getconfigContext, config *zconfig.EdgeDevConfig) {
 	log.Functionf("parseProfile start: globalProfile: %s localProfile: %s",
-		ctx.globalProfile, ctx.localProfile)
-	if ctx.globalProfile != config.GlobalProfile {
+		ctx.sideController.globalProfile, ctx.sideController.localProfile)
+	if ctx.sideController.globalProfile != config.GlobalProfile {
 		log.Noticef("parseProfile: GlobalProfile changed from %s to %s",
-			ctx.globalProfile, config.GlobalProfile)
-		ctx.globalProfile = config.GlobalProfile
+			ctx.sideController.globalProfile, config.GlobalProfile)
+		ctx.sideController.globalProfile = config.GlobalProfile
 	}
-	ctx.profileServerToken = config.ProfileServerToken
-	if ctx.localProfileServer != config.LocalProfileServer {
+	ctx.sideController.profileServerToken = config.ProfileServerToken
+	if ctx.sideController.localProfileServer != config.LocalProfileServer {
 		log.Noticef("parseProfile: LocalProfileServer changed from %s to %s",
-			ctx.localProfileServer, config.LocalProfileServer)
-		ctx.localProfileServer = config.LocalProfileServer
+			ctx.sideController.localProfileServer, config.LocalProfileServer)
+		ctx.sideController.localProfileServer = config.LocalProfileServer
 		triggerGetLocalProfile(ctx)
 		triggerRadioPOST(ctx)
 		updateLocalAppInfoTicker(ctx, false)
 		triggerLocalAppInfoPOST(ctx)
 		updateLocalDevInfoTicker(ctx, false)
 		triggerLocalDevInfoPOST(ctx)
-		ctx.lpsThrottledLocation = false
+		ctx.sideController.lpsThrottledLocation = false
 	}
 	profileStateMachine(ctx, true)
 	log.Functionf("parseProfile done globalProfile: %s currentProfile: %s",
-		ctx.globalProfile, ctx.currentProfile)
+		ctx.sideController.globalProfile, ctx.sideController.currentProfile)
 }
 
 // determineCurrentProfile return current profile based on localProfile, globalProfile
 func determineCurrentProfile(ctx *getconfigContext) string {
-	if ctx.localProfile == "" {
-		return ctx.globalProfile
+	if ctx.sideController.localProfile == "" {
+		return ctx.sideController.globalProfile
 	}
-	return ctx.localProfile
+	return ctx.sideController.localProfile
 }
 
 // triggerGetLocalProfile notifies task to reload local profile from profileServer
 func triggerGetLocalProfile(ctx *getconfigContext) {
 	log.Functionf("triggerGetLocalProfile")
 	select {
-	case ctx.localProfileTrigger <- Notify{}:
+	case ctx.sideController.localProfileTrigger <- Notify{}:
 	default:
 	}
 }
@@ -226,16 +226,16 @@ func triggerGetLocalProfile(ctx *getconfigContext) {
 // but keep the current localProfile
 func profileStateMachine(ctx *getconfigContext, skipFetch bool) {
 	localProfile := getLocalProfile(ctx, skipFetch)
-	if ctx.localProfile != localProfile {
+	if ctx.sideController.localProfile != localProfile {
 		log.Noticef("local profile changed from %s to %s",
-			ctx.localProfile, localProfile)
-		ctx.localProfile = localProfile
+			ctx.sideController.localProfile, localProfile)
+		ctx.sideController.localProfile = localProfile
 	}
 	currentProfile := determineCurrentProfile(ctx)
-	if ctx.currentProfile != currentProfile {
+	if ctx.sideController.currentProfile != currentProfile {
 		log.Noticef("current profile changed from %s to %s",
-			ctx.currentProfile, currentProfile)
-		ctx.currentProfile = currentProfile
+			ctx.sideController.currentProfile, currentProfile)
+		ctx.sideController.currentProfile = currentProfile
 		publishZedAgentStatus(ctx)
 	}
 }
@@ -246,16 +246,16 @@ func profileStateMachine(ctx *getconfigContext, skipFetch bool) {
 // It returns the last known value until it gets a response from the server
 // or localProfileServer is cleared.
 func getLocalProfile(ctx *getconfigContext, skipFetch bool) string {
-	localProfileServer := ctx.localProfileServer
+	localProfileServer := ctx.sideController.localProfileServer
 	if localProfileServer == "" {
-		if ctx.localProfile != "" {
+		if ctx.sideController.localProfile != "" {
 			log.Noticef("clearing localProfile checkpoint since no server")
 			cleanSavedConfig(savedLocalProfileFile)
 		}
 		return ""
 	}
 	if skipFetch {
-		return ctx.localProfile
+		return ctx.sideController.localProfile
 	}
 	localServerURL, err := makeLocalServerBaseURL(localProfileServer)
 	if err != nil {
@@ -266,7 +266,7 @@ func getLocalProfile(ctx *getconfigContext, skipFetch bool) string {
 	if err != nil {
 		log.Errorf("getLocalProfile: getLocalProfileConfig: %s", err)
 		// Return last known value
-		return ctx.localProfile
+		return ctx.sideController.localProfile
 	}
 	localProfile := localProfileConfig.GetLocalProfile()
 	saveOrTouchReceivedLocalProfile(ctx, localProfileConfig)
@@ -282,6 +282,6 @@ func processSavedProfile(ctx *getconfigContext) {
 	}
 	if localProfile != nil {
 		log.Noticef("starting with localProfile %s", localProfile.LocalProfile)
-		ctx.localProfile = localProfile.LocalProfile
+		ctx.sideController.localProfile = localProfile.LocalProfile
 	}
 }
