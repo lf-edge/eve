@@ -65,7 +65,7 @@ type ZedCloudContext struct {
 	PrevCertPEM           [][]byte // cached proxy certs for later comparison
 	onBoardCert           *tls.Certificate
 	deviceCert            *tls.Certificate
-	serverSigningCert     *x509.Certificate
+	ServerSigningCert     *x509.Certificate
 	deviceCertHash        []byte
 	onBoardCertHash       []byte
 	serverSigningCertHash []byte
