@@ -270,12 +270,9 @@ func verifySigningCertNewest(ctx *zedagentContext, certByte []byte) error {
 // Fetch and verify the controller certificates. Returns true if certificates have
 // not changed or the update was successfully applied.
 // False is returned if the function failed to fetch/verify/unmarshal certs.
-func requestCertsByURL(ctx *zedagentContext, url string, desc string,
+func requestCertsByURL(ctx *zedagentContext, certURL string, desc string,
 	requireSigningCertNewest bool) bool {
 	log.Functionf("getCertsFromController started for %s", desc)
-	certURL := zedcloud.URLPathString(serverNameAndPort,
-		zedcloudCtx.V2API, nilUUID, "certs")
-
 	ctxWork, cancel := zedcloud.GetContextForAllIntfFunctions(zedcloudCtx)
 	defer cancel()
 
