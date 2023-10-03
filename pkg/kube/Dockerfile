@@ -2,7 +2,7 @@
 
 FROM lfedge/eve-alpine:12487b9900ba40f3ecdadfec2c84799fa34e5014 as build
 ENV PKGS alpine-baselayout musl-utils iproute2 iptables curl openrc \
-         open-iscsi libvirt libvirt-client util-linux grep
+         open-iscsi libvirt libvirt-client util-linux grep findutils
 RUN eve-alpine-deploy.sh
 
 FROM scratch
@@ -11,6 +11,8 @@ COPY cluster-init.sh /usr/bin/
 COPY cgconfig.conf /etc
 # kubevirt yaml files are patched files and will be removed later, look at cluster-init.sh
 COPY kubevirt-operator.yaml /etc
+RUN mkdir -p /etc/containerd
+COPY config-k3s.toml /etc/containerd/
 RUN mkdir -p /etc/rancher/k3s
 COPY config.yaml /etc/rancher/k3s
 WORKDIR /
