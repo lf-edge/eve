@@ -10,7 +10,7 @@ CDI_VERSION=v1.56.0
 Node_IP=""
 MAX_K3S_RESTARTS=10
 RESTART_COUNT=0
-K3S_LOG_DIR="/var/lib/rancher/k3s"
+K3S_LOG_DIR="/var/lib/"
 loglimitSize=$((5*1024*1024))
 
 INSTALL_LOG=/var/lib/install.log
@@ -141,6 +141,27 @@ apply_longhorn_disk_config() {
         node=$1
         kubectl label node $node node.longhorn.io/create-default-disk='config'
         kubectl annotate node $node node.longhorn.io/default-disks-config='[ { "path":"/persist/vault/volumes", "allowScheduling":true }]'
+}
+
+config_cluster_roles() {
+  apk add openssl
+  # generate user debugging-user certificates
+  openssl genrsa -out /tmp/user.key 2048
+  openssl req -new -key /tmp/user.key -out /tmp/user.csr -subj "/CN=debugging-user/O=rbac"
+  openssl x509 -req -in /tmp/user.csr -CA /var/lib/rancher/k3s/server/tls/client-ca.crt \
+    -CAkey /var/lib/rancher/k3s/server/tls/client-ca.key -CAcreateserial -out /tmp/user.crt -days 365
+  user_key_base64=$(cat /tmp/user.key | base64 -w0)
+  user_crt_base64=$(cat /tmp/user.crt | base64 -w0)
+
+  # generate kubeConfigure user for debugging-user
+  cp /etc/rancher/k3s/k3s.yaml /var/lib/rancher/k3s/user.yaml
+  sed -i "s|client-certificate-data:.*|client-certificate-data: $user_crt_base64|g" /var/lib/rancher/k3s/user.yaml
+  sed -i "s|client-key-data:.*|client-key-data: $user_key_base64|g" /var/lib/rancher/k3s/user.yaml
+  cp /var/lib/rancher/k3s/user.yaml /run/.kube/k3s/user.yaml
+
+  # apply kubernetes and kubevirt roles and binding to debugging-user
+  kubectl create -f /etc/debuguser-role-binding.yaml
+  touch /var/lib/debuguser-initialized
 }
 
 #Make sure all prereqs are set after /var/lib is mounted to get logging info
@@ -365,6 +386,11 @@ if [ ! -f /var/lib/all_components_initialized ]; then
           /opt/cni/bin/dhcp daemon &
         fi
 
+        # setup debug user credential, role and binding
+        if [ ! -f /var/lib/debuguser-initialized ]; then
+          config_cluster_roles
+        fi
+
         if [ ! -f /var/lib/kubevirt_initialized ]; then
                 wait_for_item "kubevirt"
                 # This patched version will be removed once the following PR https://github.com/kubevirt/kubevirt/pull/9668 is merged
@@ -431,6 +457,13 @@ else
                 # launch CNI dhcp service
                 /opt/cni/bin/dhcp daemon &
 
+                # setup debug user credential, role and binding
+                if [ ! -f /var/lib/debuguser-initialized ]; then
+                  config_cluster_roles
+                else
+                  cp /var/lib/rancher/k3s/user.yaml /run/.kube/k3s/user.yaml
+                fi
+
                 # apply the storageClass
                 kubectl patch storageclass local-path -p '{"metadata": {"annotations":{"storageclass.kubernetes.io/is-default-class":"false"}}}'
             else
@@ -438,8 +471,9 @@ else
             fi
         fi
 fi
-        check_log_file_size "k3s.log"
-        check_log_file_size "multus.log"
+        check_log_file_size "rancher/k3s/k3s.log"
+        check_log_file_size "rancher/k3s/multus.log"
+        check_log_file_size "install.log"
         check_and_run_vnc
         wait_for_item "wait"
         sleep 30

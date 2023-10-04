@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"golang.org/x/crypto/ssh"
 )
@@ -85,7 +86,7 @@ const (
 	tcpIdleTimeoutSec float64       = 1800.0
 	tcpCheckTimeout   time.Duration = 300 * time.Second
 	tcpKubeEndpoint   string        = "localhost:6443"
-	kubeYamlFile      string        = "/run/.kube/k3s/k3s.yaml"
+	kubeYamlFile      string        = "/run/.kube/k3s/user.yaml"
 	kubeConfigFile    string        = "kube-config-yaml"
 	kubeSymKeyFile    string        = "kube-symmetric-file.enc"
 	kubeServerFile    string        = "/tmp/" + kubeConfigFile
@@ -316,6 +317,10 @@ func setAndStartProxyTCP(opt string) {
 			if gotProxy {
 				hasProxy = true
 			} else if gotKube {
+				if !base.IsHVTypeKube() {
+					fmt.Printf("tcp kube option is only supported in kubevirt image\n")
+					return
+				}
 				hasKube = true
 				kubeport = 9001 + i + kubenum*types.EdgeviewMaxInstNum
 				ipAddrPort[i] = tcpKubeEndpoint
@@ -461,7 +466,7 @@ func encryptFile(symKey, inputData []byte) ([]byte, error) {
 }
 
 func encryptSymmetricKey(symKey []byte, publicKeyFile string) ([]byte, error) {
-	pubKeyData, err := ioutil.ReadFile(publicKeyFile)
+	pubKeyData, err := os.ReadFile(publicKeyFile)
 	if err != nil {
 		return nil, err
 	}
@@ -495,7 +500,7 @@ func opensslEncryptConfig(symKey []byte, yamlString string) ([]byte, error) {
 	idStr := strconv.Itoa(edgeviewInstID)
 	tmpCfgFile := "/tmp/ev-kubecfg-tmp." + idStr
 	tmpCfgFileEnc := "/tmp/ev-kubecfg-enc-tmp." + idStr
-	err := ioutil.WriteFile(tmpCfgFile, []byte(yamlString), 0644)
+	err := os.WriteFile(tmpCfgFile, []byte(yamlString), 0644)
 	if err != nil {
 		log.Errorf("opensslEncryptConfig: write tmp file error %v", err)
 		return nil, err
@@ -535,9 +540,9 @@ func opensslEncryptConfig(symKey []byte, yamlString string) ([]byte, error) {
 }
 
 func genKubeConfigFile(kubeport int) (string, error) {
-	yamlBytes, err := ioutil.ReadFile(kubeYamlFile)
+	yamlBytes, err := os.ReadFile(kubeYamlFile)
 	if err != nil {
-		log.Errorf("genKubeConfigFile: read error %v", err)
+		err = fmt.Errorf("tcp kube can not read/process kubeConfig yaml file. error %v\n", err)
 		return "", err
 	}
 
@@ -548,6 +553,11 @@ func genKubeConfigFile(kubeport int) (string, error) {
 	yamlString = pattern.ReplaceAllString(yamlString, newString)
 
 	pubkeyfile := "/run/authorized_keys"
+	fileInfo, err := os.Stat(pubkeyfile)
+	if err != nil || fileInfo.Size() == 0 {
+		err = fmt.Errorf("tcp kube requires ssh public key installed, error %v\n", err)
+		return "", err
+	}
 
 	// generate symmetric key, 32 bytes
 	symmetricKey, err := generateSymmetricKey()
@@ -555,14 +565,6 @@ func genKubeConfigFile(kubeport int) (string, error) {
 		log.Errorf("genKubeConfigFile: symmetric key gen error %v", err)
 		return "", err
 	}
-
-	/*
-		encfileBytes, err := encryptFile(symmetricKey, []byte(yamlString))
-		if err != nil {
-			log.Errorf("genKubeConfigFile: encrypt file error %v", err)
-			return "", err
-		}
-	*/
 
 	encfileBytes, err := opensslEncryptConfig(symmetricKey, yamlString)
 	if err != nil {
@@ -578,7 +580,7 @@ func genKubeConfigFile(kubeport int) (string, error) {
 
 	combinedBytes := append(symKeyBytes, encfileBytes...)
 	kubefileName := kubeServerFile + fmt.Sprintf(".%d", len(symKeyBytes))
-	err = ioutil.WriteFile(kubefileName, combinedBytes, 0644)
+	err = os.WriteFile(kubefileName, combinedBytes, 0644)
 	if err != nil {
 		log.Errorf("genKubeConfigFile: combined file error %v", err)
 		return "", err
