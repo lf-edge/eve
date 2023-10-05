@@ -185,7 +185,8 @@ An example file with eth0 being static and eth1 using dhcp is:
 }
 ```
 
-To specify that wwan0 should be secondary (only used if eth0 can not be used to reach the controller), and eth1 only be if neither eth0 nor wwan0 works, one would set non-zero costs. For example,
+To specify that a cellular modem should be secondary (only used if eth0 can not be used to reach the controller),
+and eth1 only be used if neither eth0 nor the modem works, one would set non-zero costs. For example,
 
 ```json
 {
@@ -202,10 +203,23 @@ To specify that wwan0 should be secondary (only used if eth0 can not be used to 
         {
             "Dhcp": 4,
             "Cost": 1,
-            "IfName": "wwan0",
+            "USBAddr": "1:1.4",
+            "PCIAddr": "0000:01:00.0",
             "IsMgmt": true,
-            "Name": "Management1"
-        }
+            "Name": "Management1",
+            "WirelessCfg": {
+                "WType": 1,
+                "CellularV2": {
+                    "AccessPoints": [
+                        {
+                            "SIMSlot": 0,
+                            "Activated": true,
+                            "APN": "internet"
+                        }
+                    ]
+                }
+            }
+        },
         {
             "Dhcp": 4,
             "Cost": 2,

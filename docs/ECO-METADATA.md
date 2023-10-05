@@ -61,10 +61,10 @@ Standalone GPS receivers are currently not supported.
 
 However, by default EVE does not use the location service of the LTE modem and the location
 information is therefore not available.
-To enable location reporting for the device, the `wwan*` adapter (corresponding to the LTE modem)
-must be **configured as port shared between applications and/or for device management** with
-**location tracking** enabled. When the modem is disabled or directly assigned to an application,
-EVE is not able to access the location service and obtain location information.
+To enable location reporting for the device, the cellular modem adapter must be **configured as port
+shared between applications and/or for device management** with **location tracking** enabled.
+When the modem is disabled or directly assigned to an application, EVE is not able to access
+the location service and obtain location information.
 In EVE API this is done by setting the field `NetworkConfig.wireless.cellularCfg.location_tracking`
 to `true`. For more details refer to [netconfig.proto](https://github.com/lf-edge/eve-api/tree/main/proto/config/netconfig.proto).
 
@@ -112,6 +112,8 @@ Uncertainty and reliability fields describe how accurate the provided location i
 with single-precision floating-point values. Negative values are not valid and represent
 unavailable uncertainty.
 Reliability is one of: `not-set` (unavailable), `very-low`, `low`, `medium` and `high`.
+Note that Uncertainty and Reliability are no longer available in newer EVE versions
+(returned are zero values).
 
 The frequency at which EVE updates location information is configurable using the option
 [timer.location.app.interval](../docs/CONFIG-PROPERTIES.md). By default, the interval is 20
@@ -206,7 +208,7 @@ curl 169.254.169.254/eve/v1/wwan/status.json 2>/dev/null | jq
 ```
 
 The underlying structure, used by EVE to store the information and output it as JSON,
-is named `WwanStatus` and can be found in [zedroutertypes.go](../pkg/pillar/types/zedroutertypes.go).
+is named `WwanStatus` and can be found in [wwan.go](../pkg/pillar/types/wwan.go).
 
 The endpoint returns a list of entries, one for every cellular modem, with the modem's
 logical label (from the device model) used as a reference. The physical connection between
@@ -275,7 +277,7 @@ curl 169.254.169.254/eve/v1/wwan/metrics.json 2>/dev/null | jq
 ```
 
 The underlying structure, used by EVE to store the information and output it as JSON,
-is named `WwanMetrics` and can be found in [zedroutertypes.go](../pkg/pillar/types/zedroutertypes.go).
+is named `WwanMetrics` and can be found in [wwan.go](../pkg/pillar/types/wwan.go).
 
 The endpoint returns a list of entries, one for every cellular modem, with the modem's
 logical label (from the device model) used as a reference. Just like in the
