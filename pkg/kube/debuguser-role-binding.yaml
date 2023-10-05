@@ -61,3 +61,30 @@ subjects:
 - apiGroup: rbac.authorization.k8s.io
   kind: User
   name: debugging-user
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: debugging-exec-role
+  namespace: eve-kube-app
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - 'pods/exec'
+  verbs:
+  - create
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: debugging-exec-role-binding
+  namespace: eve-kube-app
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: debugging-exec-role
+subjects:
+- apiGroup: rbac.authorization.k8s.io
+  kind: User
+  name: debugging-user
