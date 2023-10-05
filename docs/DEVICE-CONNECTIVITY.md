@@ -33,7 +33,7 @@ When EVE is installed using a generic EVE installer without device bootstrap con
 
 - DHCP is enabled on one of the Ethernet ports
 - WiFi is not assumed (since WiFi needs credentials)
-- If cellular connectivity is assumed, the default APN (`internet`) will work to connect to the network
+- Cellular connectivity is not assumed (without cellular config every discovered modem will have RF function disabled)
 - No enterprise proxy configuration is required to be able to connect to the controller.
 
 If any of those assumptions is not satisfied, then it is necessary to either install EVE using a single-use EVE installer, shipped with the initial "bootstrap" configuration prepared for the target device (the preferred method) or to use one of the legacy mechanisms for off-line configuration management.
@@ -65,7 +65,7 @@ At least one port must be set to be a management port, and that port needs to re
 
 ### Last resort
 
-If `network.fallback.any.eth` [configuration property](CONFIG-PROPERTIES.md) is set to `enabled` (by default it is disabled), then there is an additional lowest priority item in the list of DevicePortConfigs, called "Last resort" DPC (pubsub key `lastresort`), based on finding all of the Ethernet and Ethernet-like interfaces (an example of the latter is WiFi and cellular modems) which are not used exclusively by applications. The last resort configuration assumes DHCP and no enterprise proxies.
+If `network.fallback.any.eth` [configuration property](CONFIG-PROPERTIES.md) is set to `enabled` (by default it is disabled), then there is an additional lowest priority item in the list of DevicePortConfigs, called "Last resort" DPC (pubsub key `lastresort`), based on finding all Ethernet interfaces (i.e. excluding wireless connectivity options) which are not used exclusively by applications. The last resort configuration assumes DHCP and no enterprise proxies.
 
 However, independent of the above property setting, if the device has no source of network configuration available (no bootstrap, override or persisted config), then EVE will use the Last resort *forcefully*. This, for example, happens when device boots for the very first time, without [bootstrap config](#bootstrap-configuration) or the (legacy) network config override being provided. In that case, device may remain stuck with no connectivity indefinitely (unless the user plugs in a USB stick with a network config later), therefore EVE will try to use Last resort to see if it can provide connectivity with the controller. Once device obtains a proper network config (from the controller or a USB stick), EVE will stop using Last resort forcefully and will keep this network config inside `DevicePortConfigList` only if and as long as it is enabled explicitly by the config (`network.fallback.any.eth` is `enabled`).
 
@@ -189,7 +189,7 @@ with `eve verbose off`.
 ### Connectivity-Related Logs
 
 The progression and outcome of [network configuration testing](#testing) is logged with messages
-prefixed with `DPC verify:` (not that DPC is abbreviation for `DevicePortConfig`, which is a Go
+prefixed with `DPC verify:` (note that DPC is abbreviation for `DevicePortConfig`, which is a Go
 structure holding configuration for all management and app-shared interfaces). These messages
 can explain why a particular device is not using the latest configuration but instead has fallen
 back to a previous one. These logs are quite concise yet pack enough information to tell when
@@ -271,19 +271,20 @@ troubleshooting:
  Once device is onboarded, `DeviceUUID` field will be non-empty and contain the assigned
  device UUID (also printed to `/persist/status/uuid`).
 
-Finally, the [wwan microservice](../pkg/wwan), managing the [cellular connectivity](./WIRELESS.md),
-is a shell script outside of the pillar container, not using pubsub for IPC. Instead, it exchanges
-wwan config, status and metrics with NIM simply by reading/writing files located under `/run/wwan`
-directory:
+For WWAN connectivity info, refer to these pubsub topics:
 
-- `config.json` is published by NIM and may contain configuration for a cellular modem.
+- `/run/nim/WwanConfig/global.json` is published by NIM and contains configuration for cellular modems.
+- `/run/wwan/WwanStatus/global.json` is published by wwan microservice to inform zedagent, NIM
+  and some other microservices about the current cellular connectivity status.
+- `/run/wwan/WwanMetrics/global.json` is published by wwan microservice and contains packet/byte
+  counters reported by cellular modems (i.e. not from the Linux network stack)
 
-- `status.json` and `metrics.json` are published by wwan microservice to inform NIM about the current
- cellular connectivity status and to publish packet/byte counters, respectively.
-
-- `resolv.conf/<interface-name>.dhcp` contains the list of nameservers that should be used with
- a given wwan interface (published by wwan to NIM and further via `DeviceNetworkStatus` to other
- microservices, like downloader)
+Separately to pubsub topics, file `/run/wwan/resolv.conf/<interface-name>.dhcp` is updated
+by the wwan microservice and contain the list of nameservers that should be used with the given
+wwan interface. This is similar to how dhcpcd reports DNS servers for ethernet interfaces
+(for both DHCP and static IP config). In NIM, where this info is processed and further published
+via `DeviceNetworkStatus` pubsub topic, we can therefore process nameservers for ethernet
+and wwan interfaces in a very similar way and reuse some code.
 
 ### Netdump and Nettrace
 
@@ -340,7 +341,7 @@ topic name with a publication timestamp plus the `.tgz` extension, for example:
 `downloader-fail-2023-01-03T14-25-04.tgz`, `nim-ok-2023-01-03T13-30-36`, etc.
 
 Not all microservices that communicate over the network are traced and contribute with netdumps.
-Currently traced HTTP requests are:
+Currently, traced HTTP requests are:
 
 - `/ping` request done by NIM to verify connectivity for the *latest* DPC (testing of older DPCs
  is never traced). Packet capture is also enabled and the obtained pcap files are included in

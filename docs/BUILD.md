@@ -399,7 +399,7 @@ The following custom packages are used:
 * `onboot` packages:
   * `lfedge/eve-rngd` - custom `lfedge/eve-rngd` package, rather than the standard linuxkit one. This micro-fork accommodates the [following hack](https://github.com/lf-edge/eve/blob/master/pkg/rngd/cmd/rngd/rng_linux_arm64.go) which provides some semblance of seeding randomness on ARM. Without this HiKey board won't boot.
 * `services` packages:
-  * `lfedge/eve-wwan` - WWAN drivers and software. LTE/3G/2G. Mostly experimental.
+  * `lfedge/eve-wwan` - WWAN drivers and software. 5G/LTE/3G/2G. See [wwan/README.md](../pkg/wwan/README.md) for detailed documentation.
   * `lfedge/eve-wlan` - WLAN drivers and software. Currently a glorified wrapper around wpa_supplicant.
   * `lfedge/eve-guacd` - [Apache Guacamole service](http://guacamole.apache.org/) that provides console and VDI services to running VMs and containers.
   * `lfedge/eve-zedctr` - a "catch-all" package for EVE tools; see below.
