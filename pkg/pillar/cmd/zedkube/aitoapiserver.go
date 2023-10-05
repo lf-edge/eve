@@ -155,6 +155,7 @@ func collectAppLogs(ctx *zedkubeContext) {
 	for _, item := range items {
 		aiconfig := item.(types.AppInstanceConfig)
 		aiName := strings.ToLower(aiconfig.DisplayName)
+		aiDispName := aiconfig.GetKubeDispName()
 
 		opt := &corev1.PodLogOptions{}
 		if ctx.appLogStarted {
@@ -164,11 +165,11 @@ func collectAppLogs(ctx *zedkubeContext) {
 		} else {
 			ctx.appLogStarted = true
 		}
-		req := clientset.CoreV1().Pods(eveNamespace).GetLogs(aiName, opt)
+		req := clientset.CoreV1().Pods(eveNamespace).GetLogs(aiDispName, opt)
 		podLogs, err := req.Stream(context.Background())
 		if err != nil {
 			if aiconfig.KubeActivate {
-				log.Errorf("collectAppLogs: pod %s, log error %v", aiName, err)
+				log.Errorf("collectAppLogs: pod %s, log error %v", aiDispName, err)
 			}
 			continue
 		}
