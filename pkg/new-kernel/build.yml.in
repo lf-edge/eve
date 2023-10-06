@@ -1,8 +1,0 @@
-image: eve-new-kernel
-org: lfedge
-buildArgs:
-  - KBUILD_BUILD_TIMESTAMP=
-  - KBUILD_BUILD_USER=eve
-  - KBUILD_BUILD_HOST=eve
-  - KCONFIG_NOTIMESTAMP=true
-  - SOURCE_DATE_EPOCH=
