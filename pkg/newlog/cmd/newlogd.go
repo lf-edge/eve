@@ -616,6 +616,13 @@ func getMemlogMsg(logChan chan inputEntry, panicFileChan chan []byte) {
 		if logInfo.Pid != 0 {
 			pidStr = strconv.Itoa(logInfo.Pid)
 		}
+
+		// only allow container 'kube' logging with warning or error to upload
+		if logInfo.Source == "kube" {
+			if logInfo.Level == "" || (logInfo.Level != "warning" && logInfo.Level != "error") {
+				continue
+			}
+		}
 		entry := inputEntry{
 			source:    logInfo.Source,
 			content:   logInfo.Msg,
