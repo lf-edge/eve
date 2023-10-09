@@ -266,6 +266,23 @@ You will see a set of files in the current directory to locate into you tftp ser
 dhcp server to `ipxe.efi` (actually, it will use configuration from `ipxe.efi.cfg`). Files `kernel`, `initrd.img` and `initrd.bits`
 should be available via HTTP/HTTPs and you need to modify `ipxe.efi.cfg` with location of those files.
 
+## Boot options effect on TPM measurements (PCR-1)
+
+During the boot process, as stated by the TCG specification, BIOS/UEFI should measure the enumerated boot options into the TPM.
+UEFI measures the list of boot options and their configuration data in PCR-1. EVE is using PCR-1 as one of the sealing
+PCRs to protect the vault key from unauthorized access (check [Encrypted Data Store](./SECURITY.md#encrypted-data-store) for more details),
+so it is important for the edge node to have a fixed and consistent list of boot options after onboarding. Attaching any
+bootable device, most notably USB devices, will result in a different set of boot options and subsequently change of
+the PCR-1 value. If a USB disk is used as an extra storage, **it is important to make sure the attached USB device has no bootable partition present**.
+
+### Check USB is bootable or not
+
+You can check it by examining the `Flags` output of a tool like `parted`, for example executing the following command should result in no output (make sure to replace `/dev/sda` with your own USB device, you can list all using `parted -l`):
+
+```bash
+parted /dev/sda print | grep boot
+```
+
 ## Console access
 
 Access via console is enabled during initial bootstrap and will be disabled after first reboot of onboarded edge node.
