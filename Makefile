@@ -27,12 +27,6 @@ ifeq ($(BUILDKIT_PROGRESS),)
 export BUILDKIT_PROGRESS := plain
 endif
 
-PREEMPT_RT_SUPPORT_ARG := ""
-ifeq ($(PREEMPT_RT),1)
-  PREEMPT_RT_SUPPORT_ARG := "--preempt-rt-support"
-endif
-KERNEL_BUILD_YML_TOOL := tools/kernel-build-yml.sh $(PREEMPT_RT_SUPPORT_ARG)
-
 # A set of tweakable knobs for our build needs (tweak at your risk!)
 # Which version to assign to snapshot builds (0.0.0 if built locally, 0.0.0-snapshot if on CI/CD)
 EVE_SNAPSHOT_VERSION=0.0.0
@@ -119,6 +113,9 @@ endif
 DOCKER_ARCH_TAG=$(ZARCH)
 
 FULL_VERSION:=$(ROOTFS_VERSION)-$(HV)-$(ZARCH)
+
+# must be included after ZARCH is set
+include $(CURDIR)/kernel-version.mk
 
 # where we store outputs
 DIST=$(CURDIR)/dist/$(ZARCH)
@@ -299,7 +296,7 @@ DOCKER_GO = _() { $(SET_X); mkdir -p $(CURDIR)/.go/src/$${3:-dummy} ; mkdir -p $
     [ $$verbose -ge 1 ] && echo $$docker_go_line "\"$$1\""; \
     $$docker_go_line "$$1" ; } ; _
 
-PARSE_PKGS=$(if $(strip $(EVE_HASH)),EVE_HASH=)$(EVE_HASH) DOCKER_ARCH_TAG=$(DOCKER_ARCH_TAG) ./tools/parse-pkgs.sh
+PARSE_PKGS=$(if $(strip $(EVE_HASH)),EVE_HASH=)$(EVE_HASH) DOCKER_ARCH_TAG=$(DOCKER_ARCH_TAG) KERNEL_TAG=$(KERNEL_TAG) ./tools/parse-pkgs.sh
 LINUXKIT=$(BUILDTOOLS_BIN)/linuxkit
 LINUXKIT_VERSION=7164b2c04d40eb276cee6e16c7fa617fe6840a17
 LINUXKIT_SOURCE=https://github.com/linuxkit/linuxkit.git
@@ -309,10 +306,6 @@ LINUXKIT_PATCHES_DIR=tools/linuxkit/patches
 RESCAN_DEPS=FORCE
 # set FORCE_BUILD to --force to enforce rebuild
 FORCE_BUILD=
-
-# for the dockerfile-add-scanner
-DOCKERFILE_ADD_SCANNER=$(BUILDTOOLS_BIN)/dockerfile-add-scanner
-DOCKERFILE_ADD_SCANNER_SOURCE=./tools/dockerfile-add-scanner
 
 # for the go build sources
 GOSOURCES=$(BUILDTOOLS_BIN)/go-sources-and-licenses
@@ -360,7 +353,7 @@ else
 endif
 
 PKGS_riscv64=pkg/ipxe pkg/mkconf pkg/mkimage-iso-efi pkg/grub     \
-             pkg/mkimage-raw-efi pkg/uefi pkg/u-boot pkg/cross-compilers pkg/new-kernel \
+             pkg/mkimage-raw-efi pkg/uefi pkg/u-boot pkg/cross-compilers \
 	     pkg/debug pkg/dom0-ztools pkg/gpt-tools pkg/storage-init pkg/mkrootfs-squash \
 	     pkg/bsp-imx pkg/optee-os
 # alpine-base and alpine must be the first packages to build
@@ -398,10 +391,7 @@ currentversion:
 	#echo $(shell readlink $(CURRENT) | sed -E 's/rootfs-(.*)\.[^.]*$/\1/')
 	@cat $(CURRENT_DIR)/installer/eve_version
 
-kernel-yml:
-	$(QUIET)$(KERNEL_BUILD_YML_TOOL)
-
-.PHONY: currentversion linuxkit kernel-yml
+.PHONY: currentversion linuxkit
 
 test: $(LINUXKIT) test-images-patches | $(DIST)
 	@echo Running tests on $(GOMODULE)
@@ -668,7 +658,7 @@ sbom_info:
 collected_sources_info:
 	@echo "$(COLLECTED_SOURCES)"
 
-$(SBOM): $(ROOTFS_TAR) $(DOCKERFILE_ADD_SCANNER)| $(INSTALLER)
+$(SBOM): $(ROOTFS_TAR) | $(INSTALLER)
 	$(QUIET): $@: Begin
 	$(eval TMP_ROOTDIR := $(shell mktemp -d))
 	# this is a bit of a hack, but we need to extract the rootfs tar to a directory, and it fails if
@@ -677,8 +667,7 @@ $(SBOM): $(ROOTFS_TAR) $(DOCKERFILE_ADD_SCANNER)| $(INSTALLER)
 	# this all can go away, and we can read the rootfs.tar
 	# see https://github.com/anchore/syft/issues/1400
 	tar xf $< -C $(TMP_ROOTDIR) --exclude "dev/*"
-	# we need to generate the kernel sbom, because syft would give a completely different structure
-	$(DOCKERFILE_ADD_SCANNER) scan ./pkg/kernel/Dockerfile --format spdx-json > $(TMP_ROOTDIR)/kernel-sbom.spdx.json
+	# kernel-sbom.spdx.json is now generated in eve-kernel repo and extracted from kernel docker image into rootfs by linuxkit
 	docker run -v $(TMP_ROOTDIR):/rootdir:ro -v $(CURDIR)/.syft.yaml:/syft.yaml:ro $(SYFT_IMAGE) -c /syft.yaml --base-path /rootdir /rootdir > $@
 	rm -rf $(TMP_ROOTDIR)
 	$(QUIET): $@: Succeeded
@@ -703,13 +692,6 @@ $(COMPARESOURCES):
 	cd $(COMPARE_SOURCE) && GOOS=$(LOCAL_GOOS) CGO_ENABLED=0 go build -o $(COMPARESOURCES)
 	@echo Done building packages
 	$(QUIET): $@: Succeeded
-
-$(DOCKERFILE_ADD_SCANNER):
-	$(QUIET): $@: Begin
-	cd $(DOCKERFILE_ADD_SCANNER_SOURCE) && GOOS=$(LOCAL_GOOS) CGO_ENABLED=0 go build -o $@
-	@echo Done building dockerfile-add-scanner
-	$(QUIET): $@: Succeeded
-
 
 compare_sbom_collected_sources: $(COLLECTED_SOURCES) $(SBOM) | $(COMPARESOURCES)
 	$(QUIET): $@: Begin
@@ -941,7 +923,7 @@ endif
 	qemu-img resize $@ ${MEDIA_SIZE}M
 	$(QUIET): $@: Succeeded
 
-%.yml: %.yml.in build-tools kernel-yml $(RESCAN_DEPS)
+%.yml: %.yml.in build-tools $(RESCAN_DEPS)
 	$(QUIET)$(PARSE_PKGS) $< > $@
 	$(QUIET): $@: Succeeded
 
@@ -958,7 +940,6 @@ get_pkg_build_dev_yml = $(if $(wildcard pkg/$1/build-dev.yml),build-dev.yml,buil
 get_pkg_build_rstats_yml = $(if $(wildcard pkg/$1/build-rstats.yml),build-rstats.yml,build.yml)
 
 eve-%: pkg/%/Dockerfile build-tools $(RESCAN_DEPS)
-	$(QUIET)$(KERNEL_BUILD_YML_TOOL)
 	$(QUIET): "$@: Begin: LINUXKIT_PKG_TARGET=$(LINUXKIT_PKG_TARGET)"
 	$(eval LINUXKIT_DOCKER_LOAD := $(if $(filter $(PKGS_DOCKER_LOAD),$*),--docker,))
 	$(eval LINUXKIT_BUILD_PLATFORMS_LIST := $(call uniq,linux/$(ZARCH) $(if $(filter $(PKGS_HOSTARCH),$*),linux/$(HOSTARCH),)))

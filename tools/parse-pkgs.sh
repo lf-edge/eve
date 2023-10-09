@@ -86,7 +86,6 @@ gen_tags() {
 cat <<EOF
 CURDIR=$(pwd)
 ACRN_KERNEL_TAG=${ACRN_KERNEL_TAG}
-NEW_KERNEL_TAG=${NEW_KERNEL_TAG}
 KERNEL_TAG=${KERNEL_TAG}
 FW_TAG=${FW_TAG}
 XENTOOLS_TAG=${XENTOOLS_TAG}
@@ -139,8 +138,6 @@ else
   ARCH="-${DOCKER_ARCH_TAG}"
 fi
 
-KERNEL_TAG=$(linuxkit_tag pkg/kernel)
-NEW_KERNEL_TAG=$(linuxkit_tag pkg/new-kernel)
 ACRN_KERNEL_TAG=$(linuxkit_tag pkg/acrn-kernel)
 FW_TAG=$(linuxkit_tag pkg/fw)
 XENTOOLS_TAG=$(linuxkit_tag pkg/xen-tools)
