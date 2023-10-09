@@ -803,12 +803,12 @@ verification: $(VERIFICATION) $(VERIFICATION_ARTIFACTS) current | $(BUILD_DIR)
 	$(QUIET): "$@: Begin: EVE_REL=$(EVE_REL), HV=$(HV), LINUXKIT_PKG_TARGET=$(LINUXKIT_PKG_TARGET)"
 	cp images/*.yml $|
 	cp pkg/verification/runme.sh pkg/verification/build.yml $|
+	cp -r $|/installer/* $|/verification
 	$(PARSE_PKGS) pkg/verification/Dockerfile.in > $|/Dockerfile
 	$(LINUXKIT) $(DASH_V) pkg $(LINUXKIT_PKG_TARGET) --platforms linux/$(ZARCH) --hash-path $(CURDIR) --hash $(ROOTFS_VERSION)-$(HV) --docker $(if $(strip $(EVE_REL)),--release) $(EVE_REL)$(if $(strip $(EVE_REL)),-$(HV)) $(FORCE_BUILD) $|
 	$(QUIET)if [ -n "$(EVE_REL)" ] && [ $(HV) = $(HV_DEFAULT) ]; then \
 	   $(LINUXKIT) $(DASH_V) pkg $(LINUXKIT_PKG_TARGET) --platforms linux/$(ZARCH) --hash-path $(CURDIR) --hash $(EVE_REL)-$(HV) --docker --release $(EVE_REL) $(FORCE_BUILD) $| ;\
 	fi
-	cp -r $|/installer/* $|/verification
 	$(QUIET): $@: Succeeded
 
 .PHONY: image-set outfile-set cache-export cache-export-docker-load cache-export-docker-load-all
