@@ -1,1 +1,1 @@
-del(.init[] | select(test("DOM0ZTOOLS_TAG|GRUB_TAG|GPTTOOLS_TAG") != true)) | del(.onboot[] | select(.name != "storage-init")) | del(.services[] | select(.name != "debug")) | .kernel.image |= "NEW_KERNEL_TAG"
+del(.init[] | select(test("DOM0ZTOOLS_TAG|GRUB_TAG|GPTTOOLS_TAG") != true)) | del(.onboot[] | select(.name != "storage-init")) | del(.services[] | select(.name != "debug")) | .kernel.image |= "KERNEL_TAG"
