@@ -691,7 +691,7 @@ func WithPatchEnvelopesByIP(z *zedrouter) func(http.Handler) http.Handler {
 				return
 			}
 
-			pe := peObj.(types.PatchEnvelopes)
+			pe := peObj.(types.PatchEnvelopeInfoList)
 
 			remoteIP := net.ParseIP(strings.Split(r.RemoteAddr, ":")[0])
 			anStatus := z.lookupAppNetworkStatusByAppIP(remoteIP)

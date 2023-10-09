@@ -11,14 +11,14 @@ import (
 	"path/filepath"
 )
 
-// PatchEnvelopes is a wrapper
+// PatchEnvelopeInfoList is a wrapper
 // to send patch envelopes
-type PatchEnvelopes struct {
+type PatchEnvelopeInfoList struct {
 	Envelopes []PatchEnvelopeInfo
 }
 
 // Get returns list of patch envelopes, which are available to appUUID
-func (pe *PatchEnvelopes) Get(appUUID string) []PatchEnvelopeInfo {
+func (pe *PatchEnvelopeInfoList) Get(appUUID string) []PatchEnvelopeInfo {
 	var res []PatchEnvelopeInfo
 
 	for _, envelope := range pe.Envelopes {
@@ -34,7 +34,7 @@ func (pe *PatchEnvelopes) Get(appUUID string) []PatchEnvelopeInfo {
 }
 
 // Key for pubsub
-func (PatchEnvelopes) Key() string {
+func (PatchEnvelopeInfoList) Key() string {
 	return "zedagent"
 }
 

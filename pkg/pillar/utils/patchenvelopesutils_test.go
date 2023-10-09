@@ -21,7 +21,7 @@ func TestGetZipArchive(t *testing.T) {
 	t.Parallel()
 
 	g := gomega.NewGomegaWithT(t)
-	pe := types.PatchEnvelopes{}
+	pe := types.PatchEnvelopeInfoList{}
 
 	uuidString := "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
 	peInfo := types.PatchEnvelopeInfo{
