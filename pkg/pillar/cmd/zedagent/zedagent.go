@@ -1215,7 +1215,7 @@ func initPublications(zedagentCtx *zedagentContext) {
 	getconfigCtx.pubPatchEnvelopeInfo, err = ps.NewPublication(
 		pubsub.PublicationOptions{
 			AgentName:  agentName,
-			TopicType:  types.PatchEnvelopes{},
+			TopicType:  types.PatchEnvelopeInfoList{},
 			Persistent: true,
 		})
 	if err != nil {

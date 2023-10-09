@@ -42,7 +42,7 @@ func parsePatchEnvelopesImpl(ctx *getconfigContext, config *zconfig.EdgeDevConfi
 
 	var blobsAfter []string
 	patchEnvelopes := config.GetPatchEnvelopes()
-	result := types.PatchEnvelopes{}
+	result := types.PatchEnvelopeInfoList{}
 	for _, pe := range patchEnvelopes {
 		peInfo := types.PatchEnvelopeInfo{
 			AllowedApps: pe.GetAppInstIdsAllowed(),
@@ -72,7 +72,7 @@ func parsePatchEnvelopesImpl(ctx *getconfigContext, config *zconfig.EdgeDevConfi
 	}
 }
 
-func publishPatchEnvelopes(ctx *getconfigContext, patchEnvelopes types.PatchEnvelopes) {
+func publishPatchEnvelopes(ctx *getconfigContext, patchEnvelopes types.PatchEnvelopeInfoList) {
 	key := patchEnvelopes.Key()
 	pub := ctx.pubPatchEnvelopeInfo
 

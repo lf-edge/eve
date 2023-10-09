@@ -42,7 +42,7 @@ func initGetConfigCtx(g *GomegaWithT) *getconfigContext {
 	})
 	pubPatchEnvelopes, err := ps.NewPublication(pubsub.PublicationOptions{
 		AgentName: agentName,
-		TopicType: types.PatchEnvelopes{},
+		TopicType: types.PatchEnvelopeInfoList{},
 	})
 	g.Expect(err).To(BeNil())
 	getconfigCtx := &getconfigContext{
@@ -1317,7 +1317,7 @@ func TestParsePatchEnvelope(t *testing.T) {
 	patchEnvelopes, err := getconfigCtx.pubPatchEnvelopeInfo.Get("zedagent")
 
 	g.Expect(err).To(BeNil())
-	pes, ok := patchEnvelopes.(types.PatchEnvelopes)
+	pes, ok := patchEnvelopes.(types.PatchEnvelopeInfoList)
 	g.Expect(ok).To(BeTrue())
 	shaBytes := sha256.Sum256([]byte(fileData))
 	g.Expect(pes.Get(appU1)).To(BeEquivalentTo([]types.PatchEnvelopeInfo{
