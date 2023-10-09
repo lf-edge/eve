@@ -24,18 +24,18 @@ concurrency:
 jobs:
   test_suite_pr:
     if: github.event.review.state == 'approved'
-    uses: yash-zededa/eden/.github/workflows/test.yml@0.9.2
+    uses: lf-edge/eden/.github/workflows/test.yml@0.9.2
     with:
       eve_image: "evebuild/danger:pr${{ github.event.pull_request.number  }}"
 
   test_suite_master:
     if: github.ref == 'refs/heads/master'
-    uses: yash-zededa/eden/.github/workflows/test.yml@0.9.2
+    uses: lf-edge/eden/.github/workflows/test.yml@0.9.2
     with:
       eve_image: "lfedge/eve:snapshot"
 
   test_suite_tag:
     if: startsWith(github.ref, 'refs/tags')
-    uses: yash-zededa/eden/.github/workflows/test.yml@0.9.2
+    uses: lf-edge/eden/.github/workflows/test.yml@0.9.2
     with:
       eve_image: "lfedge/eve:${{ github.ref_name }}"
