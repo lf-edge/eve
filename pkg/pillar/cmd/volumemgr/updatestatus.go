@@ -439,7 +439,7 @@ func doUpdateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus)
 			log.Functionf("doUpdateContentTree(%s): image does not yet exist in CAS", status.Key())
 			return changed, false
 		}
-		log.Functionf("doUpdateContentTree(%s): image exists in CAS, Content Tree load is completely LOADED", status.Key())
+		log.Functionf("doUpdateContentTree(%s): image %v exists in CAS, Content Tree load is completely LOADED", status.Key(), imgName)
 		status.State = types.LOADED
 		status.CreateTime = time.Now()
 		// ContentTreeStatus.FileLocation has no meaning once everything is loaded
@@ -461,6 +461,18 @@ func doUpdateVol(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool)
 
 	// Anything to do?
 	if status.State == types.CREATED_VOLUME {
+		if ctx.hvTypeKube {
+			cfg := lookupContentTreeConfig(ctx, status.ContentID.String())
+			ctStatus := ctx.LookupContentTreeStatus(status.ContentID.String())
+			if ctStatus != nil && cfg != nil {
+				if cfg.IsAppImage && ctStatus.OciImageName != "" && !status.IsAppImage {
+					status.ReferenceName = ctStatus.OciImageName
+					status.IsAppImage = true
+					log.Functionf("doUpdateVol: reference name %v", status.ReferenceName)
+					return true, false
+				}
+			}
+		}
 		log.Functionf("doUpdateVol(%s) name %s nothing to do",
 			status.Key(), status.DisplayName)
 		return false, true
