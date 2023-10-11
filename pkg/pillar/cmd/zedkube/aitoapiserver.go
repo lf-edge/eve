@@ -168,9 +168,7 @@ func collectAppLogs(ctx *zedkubeContext) {
 		req := clientset.CoreV1().Pods(eveNamespace).GetLogs(aiDispName, opt)
 		podLogs, err := req.Stream(context.Background())
 		if err != nil {
-			if aiconfig.KubeActivate {
-				log.Errorf("collectAppLogs: pod %s, log error %v", aiDispName, err)
-			}
+			log.Errorf("collectAppLogs: pod %s, log error %v", aiDispName, err)
 			continue
 		}
 		defer podLogs.Close()

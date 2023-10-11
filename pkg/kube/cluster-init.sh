@@ -160,7 +160,7 @@ config_cluster_roles() {
   cp /var/lib/rancher/k3s/user.yaml /run/.kube/k3s/user.yaml
 
   # apply kubernetes and kubevirt roles and binding to debugging-user
-  kubectl create -f /etc/debuguser-role-binding.yaml
+  kubectl apply -f /etc/debuguser-role-binding.yaml
   touch /var/lib/debuguser-initialized
 }
 
