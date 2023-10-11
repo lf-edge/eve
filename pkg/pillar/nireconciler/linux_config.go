@@ -854,35 +854,37 @@ func (r *LinuxNIReconciler) getIntendedDnsmasqCfg(niID uuid.UUID) (items []dg.It
 		UpstreamServers: ni.bridge.Uplink.DNSServers,
 	}
 	for _, staticEntry := range ni.config.DnsNameToIPList {
-		for _, ip := range staticEntry.IPs {
-			dnsCfg.StaticEntries = append(dnsCfg.StaticEntries, generic.HostnameToIP{
-				Hostname: staticEntry.HostName,
-				IP:       ip,
-			})
-		}
+		dnsCfg.StaticEntries = append(dnsCfg.StaticEntries, generic.HostnameToIPs{
+			Hostname: staticEntry.HostName,
+			IPs:      staticEntry.IPs,
+		})
 	}
 	if bridgeIP != nil {
 		// XXX arbitrary name "router"!!
-		dnsCfg.StaticEntries = append(dnsCfg.StaticEntries, generic.HostnameToIP{
+		dnsCfg.StaticEntries = append(dnsCfg.StaticEntries, generic.HostnameToIPs{
 			Hostname: "router",
-			IP:       bridgeIP.IP,
+			IPs:      []net.IP{bridgeIP.IP},
 		})
 	}
 	for _, app := range r.apps {
 		if app.deleted {
 			continue
 		}
+		var ips []net.IP
 		for _, vif := range app.vifs {
 			if vif.NI != niID {
 				continue
 			}
 			if vif.GuestIP != nil {
-				dnsCfg.StaticEntries = append(dnsCfg.StaticEntries,
-					generic.HostnameToIP{
-						Hostname: app.config.DisplayName,
-						IP:       vif.GuestIP,
-					})
+				ips = append(ips, vif.GuestIP)
 			}
+		}
+		if len(ips) > 0 {
+			dnsCfg.StaticEntries = append(dnsCfg.StaticEntries,
+				generic.HostnameToIPs{
+					Hostname: app.config.DisplayName,
+					IPs:      ips,
+				})
 		}
 	}
 	// Note that with IPv4/IPv6 interfaces the domU can do DNS lookups on either
