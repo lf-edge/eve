@@ -386,6 +386,15 @@ In Jetson nano, from January 22, 2021, it became possible to save the u-boot to 
 3. Build a live image `make ZARCH=arm64 HV=kvm live-raw` (Only KVM is supported)
 4. Flash the `dist/arm64/current/live.raw` live EVE image onto your SD card by [following these instructions](#how-to-write-eve-image-and-installer-onto-an-sd-card-or-an-installer-medium)
 
+## How to use on a Jetson Xavier NX platform
+
+Currently EVE supports the following devices from NVIDIA's Jetson Xavier NX platform:
+
+1. Lenovo ThinkEdge SE70
+2. NVIDIA Jetson Xavier NX developer kit
+
+See [NVIDIA-NX.md](./docs/NVIDIA-NX.md) for instructions on how to build and deploy EVE on these devices.
+
 ## How to use on a i.MX 8MQuad Evaluation Kit ARM board
 
 1. Set SW801 to 1100 for switch boot device to SD card.
