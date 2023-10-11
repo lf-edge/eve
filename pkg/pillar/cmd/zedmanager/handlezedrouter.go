@@ -112,12 +112,13 @@ func lookupAppNetworkStatus(ctx *zedmanagerContext, key string) *types.AppNetwor
 }
 
 func publishAppNetworkConfig(ctx *zedmanagerContext,
-	status *types.AppNetworkConfig) {
+	config *types.AppNetworkConfig) {
 
-	key := status.Key()
+	key := config.Key()
 	log.Functionf("publishAppNetworkConfig(%s)", key)
 	pub := ctx.pubAppNetworkConfig
-	pub.Publish(key, *status)
+	pub.Publish(key, *config)
+	ctx.anStatusChan <- key
 }
 
 func unpublishAppNetworkConfig(ctx *zedmanagerContext, uuidStr string) {

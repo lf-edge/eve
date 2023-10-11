@@ -73,6 +73,8 @@ type zedmanagerContext struct {
 	versionPtr *bool
 	// hvType
 	hvTypeKube bool
+	// trigger AppNetworkStatus kind of notify
+	anStatusChan chan string
 }
 
 // AddAgentSpecificCLIFlags adds CLI options
@@ -412,6 +414,8 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	// The ticker that triggers a check for the applications in the START_DELAYED state
 	delayedStartTicker := time.NewTicker(1 * time.Second)
 
+	ctx.anStatusChan = make(chan string, 3)
+
 	log.Functionf("Handling all inputs")
 	for {
 		select {
@@ -461,6 +465,10 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 
 		case <-delayedStartTicker.C:
 			checkDelayedStartApps(&ctx)
+
+		case uuidStr := <-ctx.anStatusChan:
+			log.Noticef("anStatusChan: %v", uuidStr)
+			updateAIStatusUUID(&ctx, uuidStr)
 
 		case <-stillRunning.C:
 		}
