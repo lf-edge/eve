@@ -1719,7 +1719,7 @@ func TestIPv6LocalAndSwitchNIs(test *testing.T) {
 	t.Expect(itemDescription(dg.Reference(dnsmasq))).To(ContainSubstring(
 		"ntpServers: [2610:20:6f15:15::27]"))
 	t.Expect(itemDescription(dg.Reference(dnsmasq))).To(ContainSubstring(
-		"staticEntries: [{test-hostname 2001:db8::1} {router 2001::1111:1} {app3 2001::1111:2}]"))
+		"staticEntries: [{test-hostname [2001:db8::1]} {router [2001::1111:1]} {app3 [2001::1111:2]}]"))
 	httpSrvN3 := genericitems.HTTPServer{
 		ListenIf: genericitems.NetworkIf{IfName: "bn3"}, Port: 80}
 	t.Expect(itemDescription(dg.Reference(httpSrvN3))).To(ContainSubstring(
