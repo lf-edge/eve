@@ -528,11 +528,11 @@ func (z *zedrouter) handleAppNetworkCreate(ctxArg interface{}, key string,
 		}
 	}
 	if !foundAkStatus {
-		z.log.Noticef("handleAppNetworkCreate: AkStatus not found pub anyway")
+		z.log.Noticef("handleAppNetworkCreate: AkStatus not found, wait")
 		status.Activated = true
 		status.PendingAdd = false
 		status.PendingModify = false
-		z.publishAppNetworkStatus(&status)
+		//z.publishAppNetworkStatus(&status)
 
 		return
 	}
