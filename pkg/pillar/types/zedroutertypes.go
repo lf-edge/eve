@@ -1738,9 +1738,7 @@ func GetDNSServers(globalStatus DeviceNetworkStatus, ifname string) []net.IP {
 		if ifname != "" && ifname != us.IfName {
 			continue
 		}
-		for _, server := range us.DNSServers {
-			servers = append(servers, server)
-		}
+		servers = append(servers, us.DNSServers...)
 	}
 	return servers
 }
