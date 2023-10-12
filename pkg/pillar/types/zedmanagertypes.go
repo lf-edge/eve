@@ -16,26 +16,6 @@ import (
 	uuid "github.com/satori/go.uuid"
 )
 
-type UrlCloudCfg struct {
-	ConfigUrl  string
-	MetricsUrl string
-	StatusUrl  string
-	LogUrl     string
-}
-
-// top level config container
-type DeviceConfigResponse struct {
-	Config EdgeDevConfig
-}
-
-type EdgeDevConfig struct {
-	Id                 UUIDandVersion
-	DevConfigSha256    string
-	DevConfigSignature string
-	Apps               []AppInstanceConfig
-	Networks           []UnderlayNetworkConfig
-}
-
 // UUID plus version
 type UUIDandVersion struct {
 	UUID    uuid.UUID
