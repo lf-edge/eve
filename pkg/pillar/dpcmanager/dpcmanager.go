@@ -488,7 +488,7 @@ func (m *DpcManager) doUpdateGCP(ctx context.Context, gcp types.ConfigItemValueM
 		time.Duration(m.globalCfg.GlobalValueInt(types.NetworkTestBetterInterval))
 	testDuration := time.Second *
 		time.Duration(m.globalCfg.GlobalValueInt(types.NetworkTestDuration))
-	// We refresh the gelocation information when the underlay
+	// We refresh the gelocation information when the underlay aka public
 	// IP address(es) change, plus periodically with this interval.
 	geoRedoInterval := time.Second *
 		time.Duration(m.globalCfg.GlobalValueInt(types.NetworkGeoRedoTime))

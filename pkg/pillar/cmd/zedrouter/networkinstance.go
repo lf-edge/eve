@@ -36,14 +36,14 @@ func (z *zedrouter) getArgsForNIStateCollecting(niID uuid.UUID) (
 		if appNetConfig == nil || !appNetConfig.Activate {
 			continue
 		}
-		for _, ulStatus := range appNetStatus.GetULStatusForNI(niID) {
+		for _, adapterStatus := range appNetStatus.GetAdaptersStatusForNI(niID) {
 			vifs = append(vifs, nistate.AppVIF{
 				App:            appNetStatus.UUIDandVersion.UUID,
 				NI:             niID,
 				AppNum:         appNetStatus.AppNum,
-				NetAdapterName: ulStatus.Name,
-				HostIfName:     ulStatus.Vif,
-				GuestIfMAC:     ulStatus.Mac,
+				NetAdapterName: adapterStatus.Name,
+				HostIfName:     adapterStatus.Vif,
+				GuestIfMAC:     adapterStatus.Mac,
 			})
 		}
 	}

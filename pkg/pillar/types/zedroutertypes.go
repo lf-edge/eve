@@ -14,14 +14,14 @@ import (
 
 // AppNetworkConfig : network configuration for a given application.
 type AppNetworkConfig struct {
-	UUIDandVersion      UUIDandVersion
-	DisplayName         string
-	Activate            bool
-	GetStatsIPAddr      net.IP
-	UnderlayNetworkList []UnderlayNetworkConfig
-	CloudInitUserData   *string `json:"pubsub-large-CloudInitUserData"`
-	CipherBlockStatus   CipherBlockStatus
-	MetaDataType        MetaDataType
+	UUIDandVersion    UUIDandVersion
+	DisplayName       string
+	Activate          bool
+	GetStatsIPAddr    net.IP
+	AppNetAdapterList []AppNetAdapterConfig
+	CloudInitUserData *string `json:"pubsub-large-CloudInitUserData"`
+	CipherBlockStatus CipherBlockStatus
+	MetaDataType      MetaDataType
 }
 
 // Key :
@@ -76,12 +76,12 @@ func (config AppNetworkConfig) LogKey() string {
 	return string(base.AppNetworkConfigLogType) + "-" + config.Key()
 }
 
-func (config *AppNetworkConfig) getUnderlayConfig(
-	network uuid.UUID) *UnderlayNetworkConfig {
-	for i := range config.UnderlayNetworkList {
-		ulConfig := &config.UnderlayNetworkList[i]
-		if ulConfig.Network == network {
-			return ulConfig
+func (config *AppNetworkConfig) getAppNetAdapterConfig(
+	network uuid.UUID) *AppNetAdapterConfig {
+	for i := range config.AppNetAdapterList {
+		adapterConfig := &config.AppNetAdapterList[i]
+		if adapterConfig.Network == network {
+			return adapterConfig
 		}
 	}
 	return nil
@@ -89,12 +89,7 @@ func (config *AppNetworkConfig) getUnderlayConfig(
 
 // IsNetworkUsed returns true if the given network instance is used by this app.
 func (config *AppNetworkConfig) IsNetworkUsed(network uuid.UUID) bool {
-	ulConfig := config.getUnderlayConfig(network)
-	if ulConfig != nil {
-		return true
-	}
-	// Network UUID matching neither UL nor OL network
-	return false
+	return config.getAppNetAdapterConfig(network) != nil
 }
 
 // AppNetworkStatus : status of app connectivity.
@@ -109,7 +104,7 @@ type AppNetworkStatus struct {
 	DisplayName    string
 	// Copy from the AppNetworkConfig; used to delete when config is gone.
 	GetStatsIPAddr       net.IP
-	UnderlayNetworkList  []UnderlayNetworkStatus
+	AppNetAdapterList    []AppNetAdapterStatus
 	AwaitNetworkInstance bool // If any Missing flag is set in the networks
 	// Any errors from provisioning the network
 	// ErrorAndTime provides SetErrorNow() and ClearError()
@@ -187,18 +182,18 @@ func (status AppNetworkStatus) AwaitingNetwork() bool {
 	return status.AwaitNetworkInstance
 }
 
-// GetULStatusForNI returns UnderlayNetworkStatus for every application VIF
+// GetAdaptersStatusForNI returns AppNetAdapterStatus for every application VIF
 // connected to the given network instance (there can be multiple interfaces connected
 // to the same network instance).
-func (status AppNetworkStatus) GetULStatusForNI(netUUID uuid.UUID) []*UnderlayNetworkStatus {
-	var uls []*UnderlayNetworkStatus
-	for i := range status.UnderlayNetworkList {
-		ul := &status.UnderlayNetworkList[i]
-		if ul.Network == netUUID {
-			uls = append(uls, ul)
+func (status AppNetworkStatus) GetAdaptersStatusForNI(netUUID uuid.UUID) []*AppNetAdapterStatus {
+	var adapters []*AppNetAdapterStatus
+	for i := range status.AppNetAdapterList {
+		adapter := &status.AppNetAdapterList[i]
+		if adapter.Network == netUUID {
+			adapters = append(adapters, adapter)
 		}
 	}
-	return uls
+	return adapters
 }
 
 // AppContainerMetrics - App Container Metrics
@@ -272,8 +267,8 @@ func (acMetric AppContainerMetrics) LogKey() string {
 	return string(base.AppContainerMetricsLogType) + "-" + acMetric.Key()
 }
 
-// UnderlayNetworkConfig : configuration for one application network adapter.
-type UnderlayNetworkConfig struct {
+// AppNetAdapterConfig : configuration for one application network adapter.
+type AppNetAdapterConfig struct {
 	Name       string           // From proto message
 	AppMacAddr net.HardwareAddr // If set use it for vif
 	AppIPAddr  net.IP           // If set use DHCP to assign to app
@@ -281,12 +276,9 @@ type UnderlayNetworkConfig struct {
 
 	// XXX Shouldn't we use ErrorAndTime here
 	// Error
-	//	If there is a parsing error and this uLNetwork config cannot be
+	//	If there is a parsing error and this AppNetAdapterNetwork config cannot be
 	//	processed, set the error here. This allows the error to be propagated
 	//  back to zedcloud
-	//	If this is non-empty ( != ""), the UL network Config should not be
-	// 	processed further. It Should just	be flagged to be in error state
-	//  back to the cloud.
 	Error        string
 	Network      uuid.UUID // Points to a NetworkInstance.
 	ACLs         []ACE
@@ -344,9 +336,9 @@ type ACEAction struct {
 	TargetPort int  // Internal port
 }
 
-// UnderlayNetworkStatus : status of application network adapter.
-type UnderlayNetworkStatus struct {
-	UnderlayNetworkConfig
+// AppNetAdapterStatus : status of application network adapter.
+type AppNetAdapterStatus struct {
+	AppNetAdapterConfig
 	VifInfo
 	BridgeMac         net.HardwareAddr
 	BridgeIPAddr      net.IP   // The address for DNS/DHCP service in zedrouter
@@ -535,7 +527,7 @@ func (metrics NetworkInstanceMetrics) LogKey() string {
 	return string(base.NetworkInstanceMetricsLogType) + "-" + metrics.Key()
 }
 
-// NetworkMetrics : network metrics for overlay and underlay
+// NetworkMetrics are for all adapters
 // Matches networkMetrics protobuf message.
 type NetworkMetrics struct {
 	MetricList     []NetworkMetric

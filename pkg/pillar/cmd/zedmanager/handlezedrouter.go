@@ -25,8 +25,8 @@ func MaybeAddAppNetworkConfig(ctx *zedmanagerContext,
 	m := lookupAppNetworkConfig(ctx, key)
 	if m != nil {
 		log.Functionf("appNetwork config already exists for %s", key)
-		if len(aiConfig.UnderlayNetworkList) != len(m.UnderlayNetworkList) {
-			log.Errorln("Unsupported: Changed number of underlays for ",
+		if len(aiConfig.AppNetAdapterList) != len(m.AppNetAdapterList) {
+			log.Errorln("Unsupported: Changed number of AppNetAdapter for ",
 				aiConfig.UUIDandVersion)
 			return
 		}
@@ -53,8 +53,8 @@ func MaybeAddAppNetworkConfig(ctx *zedmanagerContext,
 			log.Functionf("MaybeAddAppNetworkConfig: CipherBlockStatus.CipherData changed")
 			changed = true
 		}
-		for i, new := range aiConfig.UnderlayNetworkList {
-			old := m.UnderlayNetworkList[i]
+		for i, new := range aiConfig.AppNetAdapterList {
+			old := m.AppNetAdapterList[i]
 			if !reflect.DeepEqual(new.ACLs, old.ACLs) {
 				log.Functionf("Under ACLs changed from %v to %v",
 					old.ACLs, new.ACLs)
@@ -76,10 +76,10 @@ func MaybeAddAppNetworkConfig(ctx *zedmanagerContext,
 			CipherBlockStatus: aiConfig.CipherBlockStatus,
 			MetaDataType:      aiConfig.MetaDataType,
 		}
-		nc.UnderlayNetworkList = make([]types.UnderlayNetworkConfig,
-			len(aiConfig.UnderlayNetworkList))
-		for i, ulc := range aiConfig.UnderlayNetworkList {
-			ul := &nc.UnderlayNetworkList[i]
+		nc.AppNetAdapterList = make([]types.AppNetAdapterConfig,
+			len(aiConfig.AppNetAdapterList))
+		for i, ulc := range aiConfig.AppNetAdapterList {
+			ul := &nc.AppNetAdapterList[i]
 			*ul = ulc
 		}
 		publishAppNetworkConfig(ctx, &nc)
@@ -173,5 +173,5 @@ func handleAppNetworkStatusDelete(ctxArg interface{}, key string,
 func updateAppNetworkStatus(aiStatus *types.AppInstanceStatus,
 	ns *types.AppNetworkStatus) {
 
-	aiStatus.UnderlayNetworks = ns.UnderlayNetworkList
+	aiStatus.AppNetAdapters = ns.AppNetAdapterList
 }

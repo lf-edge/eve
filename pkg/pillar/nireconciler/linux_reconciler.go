@@ -118,7 +118,7 @@ type appInfo struct {
 	config    types.AppNetworkConfig
 	appNum    int
 	deleted   bool
-	vifs      []vifInfo                        // maps 1:1 to config.UnderlayNetworkList
+	vifs      []vifInfo                        // maps 1:1 to config.AppNetAdapterList
 	vifStatus map[string]AppVIFReconcileStatus // key = net adapter name
 }
 
@@ -463,7 +463,7 @@ func (r *LinuxNIReconciler) reconcile(ctx context.Context) (updates []Reconciler
 	for appID, app := range r.apps {
 		for i, vif := range app.vifs {
 			var natV4RuleChanged, natV6RuleChanged bool
-			acls := app.config.UnderlayNetworkList[i].ACLs
+			acls := app.config.AppNetAdapterList[i].ACLs
 			for _, log := range rs.OperationLog {
 				rule, isRule := log.Item.(iptables.Rule)
 				if !isRule || rule.Table != "nat" {

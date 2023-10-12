@@ -42,13 +42,13 @@ func (z *zedrouter) generateBridgeMAC(brNum int) net.HardwareAddr {
 // Since these MAC addresses will not appear on external Ethernet networks, we can also
 // use OUI octets for randomness. Only I/G and U/L bits need to stay constant and set
 // appropriately.
-func (z *zedrouter) generateAppMac(appUUID uuid.UUID, ulNum int, appNum int,
+func (z *zedrouter) generateAppMac(appUUID uuid.UUID, adapterNum int, appNum int,
 	netInstStatus *types.NetworkInstanceStatus) net.HardwareAddr {
 	h := sha256.New()
 	h.Write(appUUID[:])
 	h.Write(netInstStatus.UUIDandVersion.UUID[:])
 	nums := make([]byte, 2)
-	nums[0] = byte(ulNum)
+	nums[0] = byte(adapterNum)
 	nums[1] = byte(appNum)
 	h.Write(nums)
 	hash := h.Sum(nil)
@@ -70,7 +70,7 @@ func (z *zedrouter) generateAppMac(appUUID uuid.UUID, ulNum int, appNum int,
 
 // Returns an IPv4 address allocated for the guest side of an application VIF.
 func (z *zedrouter) lookupOrAllocateIPv4ForVIF(niStatus *types.NetworkInstanceStatus,
-	ulStatus types.UnderlayNetworkStatus, appID uuid.UUID) (net.IP, error) {
+	adapterStatus types.AppNetAdapterStatus, appID uuid.UUID) (net.IP, error) {
 	var err error
 	var ipAddr net.IP
 	networkID := niStatus.UUID
@@ -80,16 +80,16 @@ func (z *zedrouter) lookupOrAllocateIPv4ForVIF(niStatus *types.NetworkInstanceSt
 			networkID, appID)
 		return nil, nil
 	}
-	if ulStatus.Mac == nil {
+	if adapterStatus.Mac == nil {
 		z.log.Functionf("lookupOrAllocateIPv4(NI:%v, app:%v): no MAC address",
 			networkID, appID)
 		return nil, nil
 	}
 
-	if ulStatus.AppIPAddr != nil {
+	if adapterStatus.AppIPAddr != nil {
 		// User-configured static IP address.
-		ipAddr = ulStatus.AppIPAddr
-		if niStatus.DhcpRange.Contains(ulStatus.AppIPAddr) {
+		ipAddr = adapterStatus.AppIPAddr
+		if niStatus.DhcpRange.Contains(adapterStatus.AppIPAddr) {
 			err = fmt.Errorf("static IP(%v) is in DhcpRange(%v, %v)",
 				ipAddr, niStatus.DhcpRange.Start,
 				niStatus.DhcpRange.End)
@@ -97,7 +97,7 @@ func (z *zedrouter) lookupOrAllocateIPv4ForVIF(niStatus *types.NetworkInstanceSt
 				networkID, appID, err)
 			return nil, err
 		}
-		if !niStatus.Subnet.Contains(ulStatus.AppIPAddr) {
+		if !niStatus.Subnet.Contains(adapterStatus.AppIPAddr) {
 			err = fmt.Errorf("static IP(%s) is outside subnet range",
 				ipAddr)
 			z.log.Errorf("lookupOrAllocateIPv4(NI:%v, app:%v): %v",
@@ -108,19 +108,19 @@ func (z *zedrouter) lookupOrAllocateIPv4ForVIF(niStatus *types.NetworkInstanceSt
 
 	// Lookup to see if it is already allocated.
 	if ipAddr == nil {
-		addrs := niStatus.IPAssignments[ulStatus.Mac.String()]
+		addrs := niStatus.IPAssignments[adapterStatus.Mac.String()]
 		if !isEmptyIP(addrs.IPv4Addr) {
 			z.log.Functionf("lookupOrAllocateIPv4(NI:%v, app:%v): found IP %v for MAC %v",
-				networkID, appID, addrs.IPv4Addr, ulStatus.Mac)
+				networkID, appID, addrs.IPv4Addr, adapterStatus.Mac)
 			ipAddr = addrs.IPv4Addr
 		}
 	}
 
 	if ipAddr == nil {
 		// Allocate IP address dynamically.
-		// Get the app number for the underlay network entry.
+		// Get the app number for the AppNetAdapter entry.
 		var appNum int
-		appNum, err = z.getAppIntfNum(networkID, appID, ulStatus.IfIdx)
+		appNum, err = z.getAppIntfNum(networkID, appID, adapterStatus.IfIdx)
 		if err != nil {
 			err = fmt.Errorf("failed to get app number: %w", err)
 			z.log.Errorf("lookupOrAllocateIPv4(NI:%v, app:%v): %v",
@@ -142,7 +142,7 @@ func (z *zedrouter) lookupOrAllocateIPv4ForVIF(niStatus *types.NetworkInstanceSt
 			// will then produce a valid IP address fitting the DHCP range.
 			// Otherwise, zedrouter would just try to use the same IP address outside
 			// the DHCP range and fail repeatedly, even after there is free IP available.
-			err2 := z.freeAppIntfNum(networkID, appID, ulStatus.IfIdx)
+			err2 := z.freeAppIntfNum(networkID, appID, adapterStatus.IfIdx)
 			if err2 != nil {
 				// Should be unreachable.
 				z.log.Error(err2)
@@ -153,54 +153,54 @@ func (z *zedrouter) lookupOrAllocateIPv4ForVIF(niStatus *types.NetworkInstanceSt
 	// Later will be overwritten with addresses received from nistate.Collector,
 	// which snoops DHCP traffic and watches DNS server leases to learn the *actual*
 	// IP address assignments.
-	addrs := niStatus.IPAssignments[ulStatus.Mac.String()] // preserve IPv6 addresses
+	addrs := niStatus.IPAssignments[adapterStatus.Mac.String()] // preserve IPv6 addresses
 	addrs.IPv4Addr = ipAddr
-	niStatus.IPAssignments[ulStatus.Mac.String()] = addrs
+	niStatus.IPAssignments[adapterStatus.Mac.String()] = addrs
 	z.publishNetworkInstanceStatus(niStatus)
 	z.log.Functionf("lookupOrAllocateIPv4(NI:%v, app:%v): allocated IP %v for MAC %v",
-		networkID, appID, ipAddr, ulStatus.Mac)
+		networkID, appID, ipAddr, adapterStatus.Mac)
 	return ipAddr, nil
 }
 
 func (z *zedrouter) reloadStatusOfAssignedIPs(status *types.AppNetworkStatus) {
-	for i := range status.UnderlayNetworkList {
-		ulStatus := &status.UnderlayNetworkList[i]
-		allAddrs, _ := z.niStateCollector.GetIPAssignments(ulStatus.Network)
-		vifAddrs := allAddrs.LookupByAdapterName(status.UUIDandVersion.UUID, ulStatus.Name)
-		z.recordAssignedIPsToULStatus(ulStatus, vifAddrs)
+	for i := range status.AppNetAdapterList {
+		adapterStatus := &status.AppNetAdapterList[i]
+		allAddrs, _ := z.niStateCollector.GetIPAssignments(adapterStatus.Network)
+		vifAddrs := allAddrs.LookupByAdapterName(status.UUIDandVersion.UUID, adapterStatus.Name)
+		z.recordAssignedIPsToAdapterStatus(adapterStatus, vifAddrs)
 	}
 }
 
-func (z *zedrouter) recordAssignedIPsToULStatus(ul *types.UnderlayNetworkStatus,
+func (z *zedrouter) recordAssignedIPsToAdapterStatus(adapter *types.AppNetAdapterStatus,
 	vifAddrs *nistate.VIFAddrs) {
 	if vifAddrs == nil {
-		z.removeAssignedIPsFromULStatus(ul)
+		z.removeAssignedIPsFromAdapterStatus(adapter)
 		return
 	}
-	ul.AllocatedIPv4Addr = vifAddrs.IPv4Addr
-	if !isEmptyIP(ul.AppIPAddr) &&
-		!ul.AppIPAddr.Equal(ul.AllocatedIPv4Addr) {
+	adapter.AllocatedIPv4Addr = vifAddrs.IPv4Addr
+	if !isEmptyIP(adapter.AppIPAddr) &&
+		!adapter.AppIPAddr.Equal(adapter.AllocatedIPv4Addr) {
 		// Config and status do not match.
-		ul.IPAddrMisMatch = true
+		adapter.IPAddrMisMatch = true
 	} else {
-		ul.IPAddrMisMatch = false
+		adapter.IPAddrMisMatch = false
 	}
-	ul.AllocatedIPv6List = vifAddrs.IPv6Addrs
-	ul.IPv4Assigned = !isEmptyIP(vifAddrs.IPv4Addr)
+	adapter.AllocatedIPv6List = vifAddrs.IPv6Addrs
+	adapter.IPv4Assigned = !isEmptyIP(vifAddrs.IPv4Addr)
 }
 
 func (z *zedrouter) removeAssignedIPsFromAppNetStatus(status *types.AppNetworkStatus) {
-	for i := range status.UnderlayNetworkList {
-		ulStatus := &status.UnderlayNetworkList[i]
-		z.removeAssignedIPsFromULStatus(ulStatus)
+	for i := range status.AppNetAdapterList {
+		adapterStatus := &status.AppNetAdapterList[i]
+		z.removeAssignedIPsFromAdapterStatus(adapterStatus)
 	}
 }
 
-func (z *zedrouter) removeAssignedIPsFromULStatus(ulStatus *types.UnderlayNetworkStatus) {
-	ulStatus.AllocatedIPv6List = nil
-	ulStatus.AllocatedIPv4Addr = nil
-	ulStatus.IPAddrMisMatch = false
-	ulStatus.IPv4Assigned = false
+func (z *zedrouter) removeAssignedIPsFromAdapterStatus(adapterStatus *types.AppNetAdapterStatus) {
+	adapterStatus.AllocatedIPv6List = nil
+	adapterStatus.AllocatedIPv4Addr = nil
+	adapterStatus.IPAddrMisMatch = false
+	adapterStatus.IPv4Assigned = false
 }
 
 func isEmptyIP(ip net.IP) bool {

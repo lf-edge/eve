@@ -363,7 +363,7 @@ func (r *LinuxNIReconciler) getIntendedGlobalIPSets() dg.Graph {
 		if app.deleted {
 			continue
 		}
-		for _, adapter := range app.config.UnderlayNetworkList {
+		for _, adapter := range app.config.AppNetAdapterList {
 			for _, ace := range adapter.ACLs {
 				for _, match := range ace.Matches {
 					if match.Type == "host" {
@@ -469,7 +469,7 @@ func (r *LinuxNIReconciler) getIntendedNICfg(niID uuid.UUID) dg.Graph {
 			if vif.NI != niID {
 				continue
 			}
-			ul := app.config.UnderlayNetworkList[i]
+			ul := app.config.AppNetAdapterList[i]
 			intendedCfg.PutSubGraph(r.getIntendedAppConnCfg(niID, vif, ul))
 		}
 	}
@@ -514,7 +514,7 @@ func (r *LinuxNIReconciler) getIntendedNIL2Cfg(niID uuid.UUID) dg.Graph {
 		if app.deleted {
 			continue
 		}
-		for _, ul := range app.config.UnderlayNetworkList {
+		for _, ul := range app.config.AppNetAdapterList {
 			if ul.Network != niID {
 				continue
 			}
@@ -905,7 +905,7 @@ func (r *LinuxNIReconciler) getIntendedDnsmasqCfg(niID uuid.UUID) (items []dg.It
 		if !usesThisNI {
 			continue
 		}
-		for _, adapter := range app.config.UnderlayNetworkList {
+		for _, adapter := range app.config.AppNetAdapterList {
 			for _, ace := range adapter.ACLs {
 				for _, match := range ace.Matches {
 					if match.Type == "host" {
@@ -955,7 +955,7 @@ func (r *LinuxNIReconciler) getIntendedRadvdCfg(niID uuid.UUID) (items []dg.Item
 }
 
 func (r *LinuxNIReconciler) getIntendedAppConnCfg(niID uuid.UUID,
-	vif vifInfo, ul types.UnderlayNetworkConfig) dg.Graph {
+	vif vifInfo, ul types.AppNetAdapterConfig) dg.Graph {
 	ni := r.nis[vif.NI]
 	graphArgs := dg.InitArgs{
 		Name:        AppConnSGName(vif.App, vif.NetAdapterName),

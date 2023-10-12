@@ -470,12 +470,12 @@ func (z *zedrouter) run(ctx context.Context) (err error) {
 						appKey, vif.NetAdapterName)
 					continue
 				}
-				for i := range appStatus.UnderlayNetworkList {
-					ulStatus := &appStatus.UnderlayNetworkList[i]
-					if ulStatus.Name != vif.NetAdapterName {
+				for i := range appStatus.AppNetAdapterList {
+					adapterStatus := &appStatus.AppNetAdapterList[i]
+					if adapterStatus.Name != vif.NetAdapterName {
 						continue
 					}
-					z.recordAssignedIPsToULStatus(ulStatus, &newAddrs)
+					z.recordAssignedIPsToAdapterStatus(adapterStatus, &newAddrs)
 					break
 				}
 				z.publishAppNetworkStatus(appStatus)
@@ -889,13 +889,13 @@ func (z *zedrouter) processAppConnReconcileStatus(
 		for itemRef, itemErr := range vif.FailedItems {
 			failedItems = append(failedItems, fmt.Sprintf("%v (%v)", itemRef, itemErr))
 		}
-		for i := range appNetStatus.UnderlayNetworkList {
-			ulStatus := &appNetStatus.UnderlayNetworkList[i]
-			if ulStatus.Name != vif.NetAdapterName {
+		for i := range appNetStatus.AppNetAdapterList {
+			adapterStatus := &appNetStatus.AppNetAdapterList[i]
+			if adapterStatus.Name != vif.NetAdapterName {
 				continue
 			}
-			if ulStatus.Vif != vif.HostIfName {
-				ulStatus.Vif = vif.HostIfName
+			if adapterStatus.Vif != vif.HostIfName {
+				adapterStatus.Vif = vif.HostIfName
 				changed = true
 			}
 		}
@@ -1183,8 +1183,8 @@ func (z *zedrouter) lookupAppNetworkStatusByAppIP(ip net.IP) *types.AppNetworkSt
 	items := pub.GetAll()
 	for _, st := range items {
 		status := st.(types.AppNetworkStatus)
-		for _, ulStatus := range status.UnderlayNetworkList {
-			if ulStatus.AllocatedIPv4Addr.Equal(ip) {
+		for _, adapterStatus := range status.AppNetAdapterList {
+			if adapterStatus.AllocatedIPv4Addr.Equal(ip) {
 				return &status
 			}
 		}

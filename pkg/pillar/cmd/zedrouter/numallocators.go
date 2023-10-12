@@ -98,9 +98,9 @@ func (z *zedrouter) initNumberAllocators() {
 	}
 	for _, item := range pubAppNetworkStatus.GetAll() {
 		status := item.(types.AppNetworkStatus)
-		var unets []types.UnderlayNetworkConfig
-		for _, unet := range status.UnderlayNetworkList {
-			unets = append(unets, unet.UnderlayNetworkConfig)
+		var unets []types.AppNetAdapterConfig
+		for _, unet := range status.AppNetAdapterList {
+			unets = append(unets, unet.AppNetAdapterConfig)
 		}
 		err = z.allocateAppIntfNums(status.UUIDandVersion.UUID, unets)
 		if err != nil {
@@ -155,11 +155,11 @@ func (z *zedrouter) delAppIntfAllocator(netInstID uuid.UUID) error {
 
 // Allocate numbers for all interfaces of a given app.
 func (z *zedrouter) allocateAppIntfNums(appID uuid.UUID,
-	unets []types.UnderlayNetworkConfig) error {
-	for _, ulConfig := range unets {
-		netInstID := ulConfig.Network
-		ifIdx := ulConfig.IfIdx
-		withStaticIP := ulConfig.AppIPAddr != nil
+	unets []types.AppNetAdapterConfig) error {
+	for _, adapterConfig := range unets {
+		netInstID := adapterConfig.Network
+		ifIdx := adapterConfig.IfIdx
+		withStaticIP := adapterConfig.AppIPAddr != nil
 		err := z.allocateAppIntfNum(netInstID, appID, ifIdx, withStaticIP)
 		if err != nil {
 			return err
@@ -207,9 +207,9 @@ func (z *zedrouter) getAppIntfNum(netInstID uuid.UUID, appID uuid.UUID,
 // Free numbers allocated for interfaces of a given app.
 func (z *zedrouter) freeAppIntfNums(status *types.AppNetworkStatus) {
 	appID := status.UUIDandVersion.UUID
-	for _, ulStatus := range status.UnderlayNetworkList {
-		netInstID := ulStatus.Network
-		ifIdx := ulStatus.IfIdx
+	for _, adapterStatus := range status.AppNetAdapterList {
+		netInstID := adapterStatus.Network
+		ifIdx := adapterStatus.IfIdx
 		err := z.freeAppIntfNum(netInstID, appID, ifIdx)
 		if err != nil {
 			// Just log error and continue. Try to free as many numbers as possible.
