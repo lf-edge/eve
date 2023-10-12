@@ -29,17 +29,18 @@ func TestGetZipArchive(t *testing.T) {
 		AllowedApps: []string{uuidString},
 		BinaryBlobs: []types.BinaryBlobCompleted{
 			{
-				FileName:     "TestFileName",
-				FileSha:      "TestFileSha",
-				FileMetadata: "TestFileMetadata",
-				URL:          "./testurl",
+				FileName:         "TestFileName",
+				FileSha:          "TestFileSha",
+				ArtifactMetadata: "TestArtifactMetadata",
+				FileMetadata:     "TestFileMetadata",
+				URL:              "./testurl",
 			},
 		},
 	}
 
 	pe.Envelopes = append(pe.Envelopes, peInfo)
 
-	g.Expect(pe.Get(uuidString)).To(gomega.BeEquivalentTo([]types.PatchEnvelopeInfo{peInfo}))
+	g.Expect(pe.Get(uuidString).Envelopes).To(gomega.BeEquivalentTo([]types.PatchEnvelopeInfo{peInfo}))
 
 	// Test GetZipArchive
 	root := "./"

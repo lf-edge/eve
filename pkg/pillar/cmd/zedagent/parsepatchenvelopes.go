@@ -94,6 +94,7 @@ func addBinaryBlobToPatchEnvelope(pe *types.PatchEnvelopeInfo, artifact *zconfig
 		if err != nil {
 			return err
 		}
+		volumeRef.ArtifactMetadata = artifact.GetArtifactMetaData()
 		pe.VolumeRefs = append(pe.VolumeRefs, *volumeRef)
 		return nil
 	case zconfig.EVE_OPAQUE_OBJECT_CATEGORY_SECRET:
@@ -106,6 +107,7 @@ func addBinaryBlobToPatchEnvelope(pe *types.PatchEnvelopeInfo, artifact *zconfig
 		if err != nil {
 			return err
 		}
+		binaryBlob.ArtifactMetadata = artifact.GetArtifactMetaData()
 		pe.BinaryBlobs = append(pe.BinaryBlobs, *binaryBlob)
 		return nil
 	}
