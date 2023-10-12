@@ -514,7 +514,7 @@ var (
 		UUIDandVersion: app1UUID,
 		DisplayName:    "app1",
 		Activate:       true,
-		UnderlayNetworkList: []types.UnderlayNetworkConfig{
+		AppNetAdapterList: []types.AppNetAdapterConfig{
 			{
 				Name:      "adapter1",
 				IntfOrder: 0,
@@ -618,7 +618,7 @@ var (
 		UUIDandVersion: app2UUID,
 		DisplayName:    "app2",
 		Activate:       true,
-		UnderlayNetworkList: []types.UnderlayNetworkConfig{
+		AppNetAdapterList: []types.AppNetAdapterConfig{
 			{
 				Name:      "adapter1",
 				IntfOrder: 0,
@@ -763,7 +763,7 @@ var (
 		UUIDandVersion: app3UUID,
 		DisplayName:    "app3",
 		Activate:       true,
-		UnderlayNetworkList: []types.UnderlayNetworkConfig{
+		AppNetAdapterList: []types.AppNetAdapterConfig{
 			{
 				Name:      "adapter1",
 				IntfOrder: 0,

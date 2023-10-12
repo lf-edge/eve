@@ -114,12 +114,11 @@ func MaybeAddDomainConfig(ctx *zedmanagerContext,
 		dc.BootLoader = "/usr/lib/xen/boot/ovmf.bin"
 	}
 	if ns != nil {
-		ulNum := len(ns.UnderlayNetworkList)
+		adapterCount := len(ns.AppNetAdapterList)
 
-		dc.VifList = make([]types.VifConfig, ulNum)
-		// Put UL before OL
-		for i, ul := range ns.UnderlayNetworkList {
-			dc.VifList[i] = ul.VifInfo.VifConfig
+		dc.VifList = make([]types.VifConfig, adapterCount)
+		for i, adapter := range ns.AppNetAdapterList {
+			dc.VifList[i] = adapter.VifInfo.VifConfig
 		}
 	}
 	log.Functionf("MaybeAddDomainConfig done for %s", key)

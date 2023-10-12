@@ -107,7 +107,7 @@ type AppInstanceConfig struct {
 	DisableLogs         bool
 	VolumeRefConfigList []VolumeRefConfig
 	Activate            bool //EffectiveActivate in AppInstanceStatus must be used for the actual activation
-	UnderlayNetworkList []UnderlayNetworkConfig
+	AppNetAdapterList   []AppNetAdapterConfig
 	IoAdapterList       []IoAdapter
 	RestartCmd          AppInstanceOpsCmd
 	PurgeCmd            AppInstanceOpsCmd
@@ -243,7 +243,7 @@ type AppInstanceStatus struct {
 	ActivateInprogress  bool     // Needed for cleanup after failure
 	FixedResources      VmConfig // CPU etc
 	VolumeRefStatusList []VolumeRefStatus
-	UnderlayNetworks    []UnderlayNetworkStatus
+	AppNetAdapters      []AppNetAdapterStatus
 	BootTime            time.Time
 	IoAdapterList       []IoAdapter // Report what was actually used
 	RestartInprogress   Inprogress
@@ -369,9 +369,9 @@ func (status AppInstanceSummary) Key() string {
 func (status AppInstanceStatus) GetAppInterfaceList() []string {
 
 	var viflist []string
-	for _, ulStatus := range status.UnderlayNetworks {
-		if ulStatus.VifUsed != "" {
-			viflist = append(viflist, ulStatus.VifUsed)
+	for _, adapterStatus := range status.AppNetAdapters {
+		if adapterStatus.VifUsed != "" {
+			viflist = append(viflist, adapterStatus.VifUsed)
 		}
 	}
 	return viflist

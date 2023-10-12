@@ -843,12 +843,12 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 // Check if VifUsed has changed and return true if it has
 func updateVifUsed(statusPtr *types.AppInstanceStatus, ds types.DomainStatus) bool {
 	changed := false
-	for i := range statusPtr.UnderlayNetworks {
-		ulStatus := &statusPtr.UnderlayNetworks[i]
-		net := ds.VifInfoByVif(ulStatus.Vif)
-		if net != nil && net.VifUsed != ulStatus.VifUsed {
-			log.Functionf("Found VifUsed %s for Vif %s", net.VifUsed, ulStatus.Vif)
-			ulStatus.VifUsed = net.VifUsed
+	for i := range statusPtr.AppNetAdapters {
+		adapterStatus := &statusPtr.AppNetAdapters[i]
+		net := ds.VifInfoByVif(adapterStatus.Vif)
+		if net != nil && net.VifUsed != adapterStatus.VifUsed {
+			log.Functionf("Found VifUsed %s for Vif %s", net.VifUsed, adapterStatus.Vif)
+			adapterStatus.VifUsed = net.VifUsed
 			changed = true
 		}
 	}

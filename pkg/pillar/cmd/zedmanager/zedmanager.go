@@ -1315,16 +1315,16 @@ func quantifyChanges(config types.AppInstanceConfig, oldConfig types.AppInstance
 			}
 		}
 	}
-	if len(oldConfig.UnderlayNetworkList) != len(config.UnderlayNetworkList) {
-		str := fmt.Sprintf("number of underlay interfaces changed from %d to %d",
-			len(oldConfig.UnderlayNetworkList),
-			len(config.UnderlayNetworkList))
+	if len(oldConfig.AppNetAdapterList) != len(config.AppNetAdapterList) {
+		str := fmt.Sprintf("number of AppNetAdapter changed from %d to %d",
+			len(oldConfig.AppNetAdapterList),
+			len(config.AppNetAdapterList))
 		log.Functionf(str)
 		needPurge = true
 		purgeReason += str + "\n"
 	} else {
-		for i, uc := range config.UnderlayNetworkList {
-			old := oldConfig.UnderlayNetworkList[i]
+		for i, uc := range config.AppNetAdapterList {
+			old := oldConfig.AppNetAdapterList[i]
 			if old.AppMacAddr.String() != uc.AppMacAddr.String() {
 				str := fmt.Sprintf("AppMacAddr changed from %v to %v",
 					old.AppMacAddr, uc.AppMacAddr)
