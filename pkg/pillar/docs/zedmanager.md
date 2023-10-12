@@ -6,7 +6,6 @@ Zedmanager does the overall orchestration of application instances in EVE.
 This means receiving configuration from the controller via zedagent, and reporting results to the controller via zedagent, and then using other EVE microservices to manage the different parts of the orchestration.
 
 - Using volumemgr to create the (disk) volumes for the application instance
-- Using identitymgr to create any overlay Endpoint Identifiers (see [LISP](https://tools.ietf.org/html/rfc6830)) needed for overlay networking
 - Using zedrouter to create the network adapters and local services like DHCP and DNS for the application instance (note that zedrouter separately sets up the network instances to which these adapters are attached)
 - Using domainmgr to assign any I/O adapters to the application instance
 - Using domainmgr to run the application instance
@@ -18,8 +17,6 @@ This means receiving configuration from the controller via zedagent, and reporti
 - downloader does that resolution and responds with a ResolveStatus
 - zedmanager uses the VolumeConfig to ask for the existence of the volumes it needs
 - volumemgr handles that (using the downloader and verifier as needed) and responds with a VolumeStatus
-- zedmanager ask for any Endpoint identifiers using EIDConfig
-- identitymgr handles the EIDConfig and produces an EIDStatus
 - zedmanager uses AppNetworkConfig to request the existence of the network adapters
 - zedrouter processes AppNetworkConfig, creates/updates Linux bridges, allocates IP addresses, etc and provides an AppNetworkStatus back
 - zedmanager uses DomainConfig to ask for I/O adapter assignment

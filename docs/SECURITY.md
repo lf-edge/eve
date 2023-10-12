@@ -19,7 +19,6 @@ We have made an effort to provide users of EVE with a system that is both practi
 * Remote attestation and measured boot
 * Robust trust model between EVE and its controller
 * Workloads which are immutable
-* Secure overlay network
 
 In the rest of this document, we explain these principles and discuss some expected use cases for Edge Node devices running EVE.  We then give a high-level overview of the threat model against which we will endeavor to protect our users, while still enabling them to make full use of their cloud-based controller orchestration service.
 
@@ -147,16 +146,6 @@ requires participation of both parties, controller and device, to use the backup
 
 To decrypt the key, one has to be on the same device with access to the same TPM, and the firmware+software on that device has to pass the
 [remote attestation](https://wiki.lfedge.org/display/EVE/Measured+Boot+and+Remote+Attestation) check in the controller.
-
-## Secure Overlay Network
-
-EVE provides a secure overlay network for ECOS for cases when east-west communication is needed between ECOS. This is built using [LISP](https://tools.ietf.org/html/rfc6830) with a strong security foundation. Each ECO is attached to a mesh network instance which describes common parameters for the overlay network such as the location of the LISP RTR.
-
-Each ECO has a unique certificate and private key generated when the ECO is deployed, and the LISP endpoint identifier contains a hash of that public key. This enables secure authenticated registrations with the LISP map server since the device can prove that it owns the private key whose hash is in the EID as part of the LISP register message.
-
-Two ECOs communicating using the overlay will get an secure channel since LISP will perform a key exchange using the pair of public keys (which are bound to the EIDs per above).
-
-In addition, the LISP map server can provide ability to limit access to the mappings for certain EIDs based on the EID which is trying to look them up.
 
 ## Disabling Remote Access
 
