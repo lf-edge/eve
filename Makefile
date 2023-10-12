@@ -344,11 +344,11 @@ endif
 # We are currently filtering out a few packages from bulk builds
 # since they are not getting published in Docker HUB
 ifeq ($(HV),kubevirt)
-        PKGS_$(ZARCH)=$(shell find pkg -maxdepth 1 -type d | grep -Ev "eve|test-microsvcs|alpine|sources|verification$$")
+        PKGS_$(ZARCH)=$(shell find pkg -maxdepth 1 -type d | grep -Ev "eve|alpine|sources|verification$$")
         ROOTFS_MAXSIZE_MB=450
 else
         #kube container will not be in non-kubevirt builds
-        PKGS_$(ZARCH)=$(shell find pkg -maxdepth 1 -type d | grep -Ev "eve|test-microsvcs|alpine|sources|kube|verification$$")
+        PKGS_$(ZARCH)=$(shell find pkg -maxdepth 1 -type d | grep -Ev "eve|alpine|sources|kube|verification$$")
         ROOTFS_MAXSIZE_MB=250
 endif
 
