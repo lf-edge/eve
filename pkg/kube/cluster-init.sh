@@ -202,12 +202,12 @@ check_start_containerd() {
                 ln -s /var/lib/rancher/k3s/data/current/bin/containerd-shim-runc-v2 /usr/bin/containerd-shim-runc-v2
         fi
 
-        if pgrep -f "containerd --config" >> $INSTALL_LOG 2>&1; then
-                logmsg "k3s-containerd is alive"
-        else 
-                logmsg "Starting k3s-containerd"
+        pgrep -f "containerd --config" > /dev/null 2>&1
+        if [ $? -ne 0 ]; then 
                 mkdir -p /run/containerd-user
                 nohup /var/lib/rancher/k3s/data/current/bin/containerd --config /etc/containerd/config-k3s.toml &
+                containerd_pid=$!
+                logmsg "Started k3s-containerd at pid:$containerd_pid"
         fi   
 }
 trigger_k3s_selfextraction() {
@@ -360,8 +360,9 @@ if [ ! -f /var/lib/all_components_initialized ]; then
                 trigger_k3s_selfextraction
                 check_start_containerd
                 nohup /usr/bin/k3s server --config /etc/rancher/k3s/config.yaml &
+                k3s_pid=$!
                 #wait until k3s is ready
-                logmsg "Looping until k3s is ready"
+                logmsg "Looping until k3s is ready, pid:$k3s_pid"
                 #until kubectl get node | grep "$HOSTNAME" | awk '{print $2}' | grep 'Ready'; do sleep 5; done
                 # check to see if node is ready, and if k3s crashed
                 K3S_RUNNING=true
@@ -371,8 +372,8 @@ if [ ! -f /var/lib/all_components_initialized ]; then
                 fi
                 #ln -sf /var/lib/rancher/k3s/agent/containerd /persist/vault/containerd
                 # Give the embedded etcd in k3s priority over io as its fsync latencies are critical
-                ionice -c2 -n0 -p $(pgrep -f "k3s server")
-                logmsg "k3s is ready on this node"
+                ionice -c2 -n0 -p $k3s_pid
+                logmsg "k3s is ready on this node, pid:$k3s_pid"
                 # Default location where clients will look for config
                 ln -s /etc/rancher/k3s/k3s.yaml ~/.kube/config
                 cp /etc/rancher/k3s/k3s.yaml /run/.kube/k3s/k3s.yaml
@@ -428,9 +429,8 @@ if [ ! -f /var/lib/all_components_initialized ]; then
         fi
 else
         check_start_containerd
-        if pgrep -f "k3s server" >> $INSTALL_LOG 2>&1; then
-                logmsg "k3s is alive"
-        else
+        pgrep -f "k3s server" > /dev/null 2>&1
+        if [ $? -ne 0 ]; then 
             if [ $RESTART_COUNT -lt $MAX_K3S_RESTARTS ]; then
                 ## Must be after reboot, or from k3s restart
                 let "RESTART_COUNT++"
@@ -441,11 +441,12 @@ else
                 logmsg "Starting k3s server, restart count: $RESTART_COUNT"
                 # for now, always copy to get the latest
                 nohup /usr/bin/k3s server --config /etc/rancher/k3s/config.yaml &
-                logmsg "Looping until k3s is ready"
+                k3s_pid=$!
+                logmsg "Looping until k3s is ready, pid:$k3s_pid"
                 until kubectl get node | grep "$HOSTNAME" | awk '{print $2}' | grep 'Ready'; do sleep 5; done
                 # Give the embedded etcd in k3s priority over io as its fsync latencies are critical
-                ionice -c2 -n0 -p $(pgrep -f "k3s server")
-                logmsg "k3s is ready on this node"
+                ionice -c2 -n0 -p $k3s_pid
+                logmsg "k3s is ready on this node, pid:$k3s_pid"
                 # Default location where clients will look for config
                 ln -s /etc/rancher/k3s/k3s.yaml ~/.kube/config
                 cp /etc/rancher/k3s/k3s.yaml /run/.kube/k3s/k3s.yaml
