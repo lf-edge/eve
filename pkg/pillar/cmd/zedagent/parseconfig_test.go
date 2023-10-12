@@ -1326,10 +1326,11 @@ func TestParsePatchEnvelope(t *testing.T) {
 			AllowedApps: []string{appU1, appU2},
 			BinaryBlobs: []types.BinaryBlobCompleted{
 				{
-					FileName:     inlineFileName,
-					FileSha:      hex.EncodeToString(shaBytes[:]),
-					FileMetadata: fileMetadata,
-					URL:          filepath.Join(persistCacheFolder, inlineFileName),
+					FileName:         inlineFileName,
+					FileSha:          hex.EncodeToString(shaBytes[:]),
+					FileMetadata:     fileMetadata,
+					ArtifactMetadata: artiactMetadata,
+					URL:              filepath.Join(persistCacheFolder, inlineFileName),
 				},
 			},
 		},
