@@ -19,6 +19,7 @@ Welcome to EVE!
             persist attach <disk>
             config mount <mountpoint>
             config unmount
+            remote-access on|off
             http-debug
             dump-stacks
             dump-memory
@@ -198,6 +199,27 @@ __EOT__
               *) help
                  ;;
           esac
+          ;;
+ remote-access)
+          CONFIGDIR_RW="/tmp/config_rw"
+          mkdir $CONFIGDIR_RW
+          if eval "$(mount_partlabel "CONFIG" $CONFIGDIR_RW)"; then
+              case "$2" in
+                on) rm -f $CONFIGDIR_RW/remote_access_disabled
+                    eval "$(unmount_partlabel "CONFIG")" && rm -rf $CONFIGDIR_RW
+                    echo "Remote access enabled. Please reboot to apply changes."
+                    ;;
+                off) touch $CONFIGDIR_RW/remote_access_disabled
+                     eval "$(unmount_partlabel "CONFIG")" && rm -rf $CONFIGDIR_RW
+                     echo "Remote access disabled. Please reboot to apply changes."
+                     ;;
+                *) eval "$(unmount_partlabel "CONFIG")" && rm -rf $CONFIGDIR_RW
+                   help
+                   ;;
+              esac
+          else
+              echo "Failed to set the remote access configuration!"
+          fi
           ;;
  version)
           v=$(cat /run/eve-release)
