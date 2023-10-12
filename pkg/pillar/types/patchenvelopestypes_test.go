@@ -32,7 +32,7 @@ func TestPatchEnvelopeInfoList(t *testing.T) {
 
 	pe.Envelopes = append(pe.Envelopes, peInfo)
 
-	g.Expect(pe.Get(uuidString)).To(gomega.BeEquivalentTo([]types.PatchEnvelopeInfo{peInfo}))
+	g.Expect(pe.Get(uuidString).Envelopes).To(gomega.BeEquivalentTo([]types.PatchEnvelopeInfo{peInfo}))
 }
 
 func TestFindPatchEnvelopeById(t *testing.T) {
