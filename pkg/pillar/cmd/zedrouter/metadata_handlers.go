@@ -516,8 +516,8 @@ func (hdl AppInfoHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 		blob := types.AppBlobsAvailable{
 			CustomMeta: st.CustomMeta,
-			DownloadURL: fmt.Sprintf("http://169.254.169.254/eve/app-custom-blobs/%s",
-				st.DisplayName),
+			DownloadURL: fmt.Sprintf("http://%s/eve/app-custom-blobs/%s",
+				MetaDataServerIP, st.DisplayName),
 		}
 
 		appInfo.AppBlobs = append(appInfo.AppBlobs, blob)
@@ -582,7 +582,7 @@ func HandlePatchDescription(z *zedrouter) func(http.ResponseWriter, *http.Reques
 		// WithPatchEnvelopesByIP middleware returns envelopes which are more than 0
 		envelopes := r.Context().Value(patchEnvelopesContextKey).(types.PatchEnvelopeInfoList)
 
-		b, err := PatchEnvelopesJSONForAppInstance(envelopes)
+		b, err := patchEnvelopesJSONForAppInstance(envelopes)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusUnprocessableEntity)
 			return
