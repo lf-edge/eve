@@ -215,6 +215,17 @@ get_modem_atport() {
     return 1
 }
 
+add_description() {
+    DEVICE_TYPE="$1"
+    if [ -n "$verbose" ]; then
+        desc=$(lspci -Ds "${DEVICE_TYPE}")
+        desc="${desc#*: }"
+            cat <<__EOT__
+      "description": ${desc},
+__EOT__
+    fi
+}
+
 if [ -e /dev/xen ]; then
    CPUS=$(eve exec xen-tools xl info | grep nr_cpus | cut -f2 -d:)
    MEM=$(( $(eve exec xen-tools xl info | grep total_memory | cut -f2 -d:) ))
@@ -223,7 +234,7 @@ else
    MEM=$(awk '/MemTotal:/ { print int($2 / 1024); }' < /proc/meminfo)
 fi
 
-DISK=$(lsblk -b  | grep disk | awk '{ total += $4; } END { print int(total/(1024*1024*1024)); }')
+DISK=$(lsblk -b -o NAME,TYPE,TRAN,SIZE | grep disk | grep -v usb | awk '{ total += $4; } END { print int(total/(1024*1024*1024)); }')
 WDT=$([ -e /dev/watchdog ] && echo true || echo false)
 HSM=$([ -e /dev/tpmrm0 ] && echo 1 || echo 0)
 
@@ -260,6 +271,9 @@ for VGA in $(lspci -D  | grep VGA | cut -f1 -d\ ); do
         "PciLong": "${VGA}"
       },
       "logicallabel": "VGA${ID}",
+__EOT__
+    add_description "${VGA}"
+    cat <<__EOT__
       "usagePolicy": {}
 __EOT__
     if [ -n "$verbose" ]; then
@@ -284,6 +298,9 @@ for USB in $(lspci -D  | grep USB | cut -f1 -d\ ); do
         "PciLong": "${USB}"
       },
       "logicallabel": "USB${ID}",
+__EOT__
+    add_description "${USB}"
+    cat <<__EOT__
       "usagePolicy": {}
 __EOT__
     if [ -n "$verbose" ]; then
@@ -301,6 +318,9 @@ cat <<__EOT__
       "phylabel": "USB",
       "assigngrp": "USB",
       "logicallabel": "USB",
+__EOT__
+    add_description "${USB}"
+    cat <<__EOT__
       "usagePolicy": {}
     },
 __EOT__
@@ -319,6 +339,9 @@ for NVME in $(lspci -D  | grep "Non-Volatile memory" | cut -f1 -d\ ); do
         "PciLong": "${NVME}"
       },
       "logicallabel": "NVME${ID}",
+__EOT__
+    add_description "${NVME}"
+    cat <<__EOT__
       "usagePolicy": {}
 __EOT__
     if [ -n "$verbose" ]; then
@@ -440,11 +463,19 @@ for ETH in /sys/class/net/*; do
       "usage": 1,
       "phylabel": "${LABEL}",
       "logicallabel": "${LABEL}",
+__EOT__
+    BUS_ID=$(echo "$ETH" | sed -e 's#/net/.*'"${LABEL}"'##' -e 's#^.*/##')
+    if echo "${BUS_ID}" | grep -q "virtio"; then
+        PCI_ADDR=$(echo "$ETH" | sed -e 's#/'"${BUS_ID}"'/.*##' -e 's#^.*/##')
+        add_description "${PCI_ADDR}"
+    else
+        add_description "${BUS_ID}"
+    fi
+    cat <<__EOT__
       "usagePolicy": {},
       "cost": ${COST},
 __EOT__
      # XXX shouldn't we check if on USB and use the group for the USB controller?
-     BUS_ID=$(echo "$ETH" | sed -e 's#/net/.*'"${LABEL}"'##' -e 's#^.*/##')
      if echo "$BUS_ID" | grep -q '[0-9a-f][0-9a-f][0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f].[0-9a-f]'; then
          grp=$(get_assignmentgroup "$LABEL" "$BUS_ID")
          cat <<__EOT__
@@ -482,6 +513,9 @@ for audio in $(lspci -D  | grep Audio | cut -f1 -d\ ); do
         "PciLong": "${audio}"
       },
       "logicallabel": "Audio${ID}",
+__EOT__
+    add_description "${audio}"
+    cat <<__EOT__
       "usagePolicy": {}
 __EOT__
     if [ -n "$verbose" ]; then
@@ -507,6 +541,9 @@ if [ -n "$verbose" ]; then
         "PciLong": "${pci}"
       },
       "logicallabel": "Other${ID}",
+__EOT__
+    add_description "${pci}"
+    cat <<__EOT__
       "usagePolicy": {}
 __EOT__
         add_pci_info "${pci}"

@@ -399,6 +399,18 @@ tpm2_pcrread >> "$REPORT/summary.log"
 
 cp "/root/etc/eve-release" "$REPORT"
 
+find /sys/kernel/iommu_groups/ -type l > "$REPORT/iommu_groups.out"
+
+watchdogs=$(find /dev -name "watchdog*" | grep -vw "/dev/watchdog")
+watchdogs_count=$(echo "$watchdogs" | wc -l)
+if [ "${watchdogs_count}" -gt "1" ]; then
+   echo "Warning: ${watchdogs_count} watchdogs available" > "$REPORT/watchdogs.log"
+elif [ "${watchdogs_count}" -eq "1" ]; then
+   wdctl "${watchdogs}" >> "$REPORT/watchdogs.log"
+else
+   echo "No watchdogs available" > "$REPORT/watchdogs.log"
+fi
+
 cat "$REPORT/summary.log"
 
 if [ -n "$REPORT" ]; then
