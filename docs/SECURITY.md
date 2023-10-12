@@ -158,6 +158,10 @@ Two ECOs communicating using the overlay will get an secure channel since LISP w
 
 In addition, the LISP map server can provide ability to limit access to the mappings for certain EIDs based on the EID which is trying to look them up.
 
+## Disabling Remote Access
+
+EVE provides a mechanism to build an image with remote access disabled (edge-view and ssh), this can be done by configuring EVE when building an installer. Enabling remote access back requires access to the cloud controller to enable console keyboard access on the edge node, plus physical access to the edge node to issue `eve remote-access` command on the edge node. In addition changing remote access status from its initial value to anything else will result in change of PCR-14 value and subsequent failure in unsealing the vault key that needs to be handled using the cloud controller. Check [config document](CONFIG.md#eve-configuration) for more information.
+
 ## Details on keys and certificates
 
 These details are specified in [KEYS-AND-CERTS](KEYS-AND-CERTS.md).
