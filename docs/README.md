@@ -347,7 +347,6 @@ Parent cgroup (/sys/fs/cgroup/<subsystems>/)
 │   │   └── sshd
 │   │   └── wwan
 │   │   └── wlan
-│   │   └── lisp
 │   │   └── guacd
 │   │   └── pillar
 │   │   └── vtpm
