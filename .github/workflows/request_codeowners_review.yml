@@ -54,7 +54,12 @@ jobs:
             # Convert reviewers to comma separated list
             reviewers_comma_separated=$(echo "$reviewers_cleaned" | tr ' ' ',')
             echo "Requesting review from: $reviewers_comma_separated"
-            gh pr edit ${{ github.event.pull_request.number }} --add-reviewer $reviewers_comma_separated
+            curl \
+              -X POST \
+              -H "Authorization: token $GITHUB_TOKEN" \
+              -H "Accept: application/vnd.github.v3+json" \
+              https://api.github.com/repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/requested_reviewers \
+              -d '{"reviewers": ["'"$reviewers_comma_separated"'"]}'
           else
             echo "No reviewers found for the changed files."
           fi
