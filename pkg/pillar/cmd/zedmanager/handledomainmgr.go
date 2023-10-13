@@ -174,6 +174,14 @@ func publishDomainConfig(ctx *zedmanagerContext,
 			}
 		}
 		status.KubeImageName = imageName
+		// set Activate to false if the config is waiting for image name
+		if status.VirtualizationMode == types.KubeContainer {
+			if status.KubeImageName == "" {
+				status.Activate = false
+			} else {
+				status.Activate = true
+			}
+		}
 	}
 	pub := ctx.pubDomainConfig
 	pub.Publish(key, *status)

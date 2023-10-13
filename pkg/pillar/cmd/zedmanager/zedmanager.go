@@ -61,6 +61,7 @@ type zedmanagerContext struct {
 	pubVolumesSnapConfig      pubsub.Publication
 	subVolumesSnapStatus      pubsub.Subscription
 	subNetworkInstanceStatus  pubsub.Subscription
+	subAppKubeNetStatus       pubsub.Subscription
 	globalConfig              *types.ConfigItemValueMap
 	appToPurgeCounterMap      objtonum.Map
 	GCInitialized             bool
@@ -75,6 +76,8 @@ type zedmanagerContext struct {
 	hvTypeKube bool
 	// trigger AppNetworkStatus kind of notify
 	anStatusChan chan string
+	// save AppNetworkConfig
+	saveAppNetConfig map[string]types.AppNetworkConfig
 }
 
 // AddAgentSpecificCLIFlags adds CLI options
@@ -397,6 +400,25 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	ctx.subNetworkInstanceStatus = subNetworkInstanceStatus
 	subNetworkInstanceStatus.Activate()
 
+	subAppKubeNetStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "zedkube",
+		MyAgentName:   agentName,
+		Ctx:           &ctx,
+		TopicImpl:     types.AppKubeNetworkStatus{},
+		CreateHandler: handleAppKubeNetCreate,
+		ModifyHandler: handleAppKubeNetModify,
+		Activate:      false,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctx.subAppKubeNetStatus = subAppKubeNetStatus
+	subAppKubeNetStatus.Activate()
+
+	ctx.saveAppNetConfig = make(map[string]types.AppNetworkConfig)
+
 	// Pick up debug aka log level before we start real work
 	for !ctx.GCInitialized {
 		log.Functionf("waiting for GCInitialized")
@@ -466,8 +488,10 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		case <-delayedStartTicker.C:
 			checkDelayedStartApps(&ctx)
 
+		case change := <-subAppKubeNetStatus.MsgChan():
+			subAppKubeNetStatus.ProcessChange(change)
+
 		case uuidStr := <-ctx.anStatusChan:
-			log.Noticef("anStatusChan: %v", uuidStr)
 			updateAIStatusUUID(&ctx, uuidStr)
 
 		case <-stillRunning.C:
@@ -1344,6 +1368,38 @@ func handleDelete(ctx *zedmanagerContext, key string,
 			status.DisplayName, status.UUIDandVersion.UUID, err)
 	}
 	log.Functionf("handleDelete done for %s", status.DisplayName)
+}
+
+// handle AppKubeNetStatus
+func handleAppKubeNetCreate(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	akStatus := statusArg.(types.AppKubeNetworkStatus)
+	ctx := ctxArg.(*zedmanagerContext)
+	log.Functionf("handleAppKubeNetCreate(%v) for %s",
+		key, akStatus.DisplayName)
+
+	handleAppKubeNetImpl(ctx, key, &akStatus)
+}
+
+func handleAppKubeNetModify(ctxArg interface{}, key string,
+	statusArg interface{}, oldStatusArg interface{}) {
+	newStatus := statusArg.(types.AppKubeNetworkStatus)
+	ctx := ctxArg.(*zedmanagerContext)
+	log.Functionf("handleAppKubeNetModify(%v) for %s",
+		key, newStatus.DisplayName)
+
+	handleAppKubeNetImpl(ctx, key, &newStatus)
+}
+
+func handleAppKubeNetImpl(ctx *zedmanagerContext, key string, akStatus *types.AppKubeNetworkStatus) {
+	config := lookupAppNetworkConfig(ctx, key)
+	if config == nil {
+		log.Errorf("handleAppKubeNetImpl: can't find AppNetworkConfig for %v", key)
+		return
+	}
+	time.Sleep(2 * time.Second) // let zedrouter have time to receive
+	publishAppNetworkConfig(ctx, config)
+	log.Functionf("handleAppKubeNetImpl: publish AppNetworkConfig for %v, config %+v", key, config)
 }
 
 // Returns needRestart, needPurge, plus a string for each.
