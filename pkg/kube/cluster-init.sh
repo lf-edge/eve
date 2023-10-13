@@ -203,7 +203,7 @@ check_start_containerd() {
         fi
 
         pgrep -f "containerd --config" > /dev/null 2>&1
-        if [ $? -ne 0 ]; then 
+        if [ $? -eq 1 ]; then 
                 mkdir -p /run/containerd-user
                 nohup /var/lib/rancher/k3s/data/current/bin/containerd --config /etc/containerd/config-k3s.toml &
                 containerd_pid=$!
@@ -430,7 +430,7 @@ if [ ! -f /var/lib/all_components_initialized ]; then
 else
         check_start_containerd
         pgrep -f "k3s server" > /dev/null 2>&1
-        if [ $? -ne 0 ]; then 
+        if [ $? -eq 1 ]; then 
             if [ $RESTART_COUNT -lt $MAX_K3S_RESTARTS ]; then
                 ## Must be after reboot, or from k3s restart
                 let "RESTART_COUNT++"
