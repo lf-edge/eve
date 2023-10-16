@@ -22,13 +22,21 @@ ENV BUILD_PKGS \
     gettext iasl util-linux-dev ncurses-dev glib-dev \
     pixman-dev libaio-dev yajl-dev argp-standalone \
     linux-headers git patch texinfo tar libcap-ng-dev \
-    attr-dev flex bison cmake libusb-dev zstd-dev
+    attr-dev flex bison cmake libusb-dev zstd-dev cmake python3 g++
 ENV BUILD_PKGS_arm64 dtc-dev
 
-ENV PKGS alpine-baselayout musl-utils bash libaio libbz2 glib pixman yajl keyutils libusb xz-libs libuuid sudo zstd-libs
+ENV PKGS libgcc alpine-baselayout musl-utils bash libaio libbz2 glib pixman yajl keyutils libusb xz-libs libuuid sudo zstd-libs
 ENV PKGS_arm64 libfdt
 
 RUN eve-alpine-deploy.sh
+
+ADD https://github.com/ninja-build/ninja.git#release /ninja
+WORKDIR /ninja
+RUN python3 ./configure.py --bootstrap
+RUN cmake -Bbuild-cmake
+RUN cmake --build build-cmake
+RUN cp build-cmake/ninja /usr/bin/
+RUN ln -s /usr/bin/ninja /usr/bin/ninja-build
 
 # Alpine linux defines all 64bit integer types as long. Patch
 # /usr/include/bits/alltypes.h to fix compilation with -m32
@@ -53,7 +61,7 @@ RUN rm -rf /out/usr/man
 RUN strip /out/usr/lib/* || :
 
 # When changing this version, also update SEABIOS_UPSTREAM_REVISION to whatever is in `Config.mk` in the xen source
-ENV XEN_VERSION 4.15.0
+ENV XEN_VERSION 4.17.2
 ENV XEN_SOURCE=https://downloads.xenproject.org/release/xen/${XEN_VERSION}/xen-${XEN_VERSION}.tar.gz
 ENV EXTRA_QEMUU_CONFIGURE_ARGS="--enable-libusb --enable-linux-aio \
     --enable-vhost-net --enable-vhost-vsock --enable-vhost-scsi --enable-vhost-kernel \
