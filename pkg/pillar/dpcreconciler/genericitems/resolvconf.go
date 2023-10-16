@@ -42,7 +42,10 @@ func (r ResolvConf) Type() string {
 
 // Equal is currently lazily based on DeepEqual.
 func (r ResolvConf) Equal(other depgraph.Item) bool {
-	r2 := other.(ResolvConf)
+	r2, isResolvConf := other.(ResolvConf)
+	if !isResolvConf {
+		return false
+	}
 	return reflect.DeepEqual(r.DNSServers, r2.DNSServers)
 }
 
@@ -75,18 +78,24 @@ type ResolvConfConfigurator struct {
 
 // Create writes resolv.conf.
 func (c *ResolvConfConfigurator) Create(ctx context.Context, item depgraph.Item) error {
-	return c.generateResolvConf(item.(ResolvConf))
+	return c.generateResolvConf(item)
 }
 
 // Modify writes updated resolv.conf.
 func (c *ResolvConfConfigurator) Modify(ctx context.Context, oldItem, newItem depgraph.Item) (err error) {
-	return c.generateResolvConf(newItem.(ResolvConf))
+	return c.generateResolvConf(newItem)
 }
 
-func (c *ResolvConfConfigurator) generateResolvConf(config ResolvConf) error {
+func (c *ResolvConfConfigurator) generateResolvConf(item depgraph.Item) error {
+	config, isResolvConf := item.(ResolvConf)
+	if !isResolvConf {
+		err := fmt.Errorf("invalid item type: %T (expected ResolvConf)", item)
+		c.Log.Error(err)
+		return err
+	}
 	destfile, err := os.Create(resolvConfFilename)
 	if err != nil {
-		err = fmt.Errorf("failed to create resolv.conf: %v", err)
+		err = fmt.Errorf("failed to create resolv.conf: %w", err)
 		c.Log.Error(err)
 		return err
 	}

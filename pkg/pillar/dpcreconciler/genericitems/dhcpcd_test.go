@@ -9,6 +9,7 @@ import (
 )
 
 func TestDhcpcdEqual(t *testing.T) {
+	t.Parallel()
 	type test struct {
 		name     string
 		item1    configitems.Dhcpcd
