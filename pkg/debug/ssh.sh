@@ -12,8 +12,8 @@ if [ -f "/config/remote_access_disabled" ]; then
     # this is picked up by newlogd
     echo "Remote access disabled, ssh server not started" > /dev/kmsg
     while true; do
-        # sleep for a day, keep the container running
-        sleep 86400
+        # sleep for INT_MAX, keep the container running
+        sleep inf
     done
 else
     exec /usr/sbin/sshd -D -e
