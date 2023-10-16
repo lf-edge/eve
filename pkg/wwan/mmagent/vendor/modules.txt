@@ -1,0 +1,143 @@
+# github.com/eriknordmark/ipinfo v0.0.0-20230728132417-2d8f4da903d7
+## explicit
+github.com/eriknordmark/ipinfo
+# github.com/fsnotify/fsnotify v1.5.1
+## explicit; go 1.13
+github.com/fsnotify/fsnotify
+# github.com/go-ole/go-ole v1.2.6
+## explicit; go 1.12
+github.com/go-ole/go-ole
+github.com/go-ole/go-ole/oleutil
+# github.com/godbus/dbus/v5 v5.1.0
+## explicit; go 1.12
+github.com/godbus/dbus/v5
+# github.com/google/go-cmp v0.5.9
+## explicit; go 1.13
+github.com/google/go-cmp/cmp
+github.com/google/go-cmp/cmp/internal/diff
+github.com/google/go-cmp/cmp/internal/flags
+github.com/google/go-cmp/cmp/internal/function
+github.com/google/go-cmp/cmp/internal/value
+# github.com/google/go-containerregistry v0.8.0
+## explicit; go 1.14
+github.com/google/go-containerregistry/pkg/v1/types
+# github.com/google/go-tpm v0.3.0
+## explicit; go 1.12
+github.com/google/go-tpm/tpm2
+github.com/google/go-tpm/tpmutil
+github.com/google/go-tpm/tpmutil/tbs
+# github.com/lf-edge/eve-api/go v0.0.0-20231011200019-cb3cb1275e0d
+## explicit; go 1.20
+github.com/lf-edge/eve-api/go/auth
+github.com/lf-edge/eve-api/go/certs
+github.com/lf-edge/eve-api/go/config
+github.com/lf-edge/eve-api/go/evecommon
+github.com/lf-edge/eve-api/go/info
+github.com/lf-edge/eve-api/go/metrics
+github.com/lf-edge/eve-api/go/profile
+# github.com/lf-edge/eve/pkg/pillar v0.0.0-20231016212340-616d6ea705a2 => ../../pillar
+## explicit; go 1.20
+github.com/lf-edge/eve/pkg/pillar/agentbase
+github.com/lf-edge/eve/pkg/pillar/agentlog
+github.com/lf-edge/eve/pkg/pillar/base
+github.com/lf-edge/eve/pkg/pillar/cipher
+github.com/lf-edge/eve/pkg/pillar/evetpm
+github.com/lf-edge/eve/pkg/pillar/flextimer
+github.com/lf-edge/eve/pkg/pillar/objtonum
+github.com/lf-edge/eve/pkg/pillar/pidfile
+github.com/lf-edge/eve/pkg/pillar/pubsub
+github.com/lf-edge/eve/pkg/pillar/pubsub/socketdriver
+github.com/lf-edge/eve/pkg/pillar/sriov
+github.com/lf-edge/eve/pkg/pillar/types
+github.com/lf-edge/eve/pkg/pillar/utils/file
+github.com/lf-edge/eve/pkg/pillar/utils/generics
+github.com/lf-edge/eve/pkg/pillar/utils/logging
+github.com/lf-edge/eve/pkg/pillar/utils/netutils
+github.com/lf-edge/eve/pkg/pillar/watch
+# github.com/miekg/dns v1.1.55
+## explicit; go 1.19
+github.com/miekg/dns
+# github.com/satori/go.uuid v1.2.1-0.20180404165556-75cca531ea76
+## explicit
+github.com/satori/go.uuid
+# github.com/shirou/gopsutil v3.21.11+incompatible
+## explicit
+github.com/shirou/gopsutil/disk
+github.com/shirou/gopsutil/internal/common
+# github.com/sirupsen/logrus v1.9.0
+## explicit; go 1.13
+github.com/sirupsen/logrus
+# github.com/tatsushid/go-fastping v0.0.0-20160109021039-d7bb493dee3e
+## explicit
+github.com/tatsushid/go-fastping
+# github.com/vishvananda/netlink v1.1.1-0.20210924202909-187053b97868
+## explicit; go 1.12
+github.com/vishvananda/netlink
+github.com/vishvananda/netlink/nl
+# github.com/vishvananda/netns v0.0.0-20210104183010-2eb08e3e575f
+## explicit; go 1.12
+github.com/vishvananda/netns
+# github.com/yusufpapurcu/wmi v1.2.2
+## explicit; go 1.16
+github.com/yusufpapurcu/wmi
+# golang.org/x/mod v0.7.0
+## explicit; go 1.17
+golang.org/x/mod/semver
+# golang.org/x/net v0.17.0
+## explicit; go 1.17
+golang.org/x/net/bpf
+golang.org/x/net/icmp
+golang.org/x/net/internal/iana
+golang.org/x/net/internal/socket
+golang.org/x/net/ipv4
+golang.org/x/net/ipv6
+# golang.org/x/sys v0.13.0
+## explicit; go 1.17
+golang.org/x/sys/execabs
+golang.org/x/sys/unix
+golang.org/x/sys/windows
+# golang.org/x/tools v0.3.0
+## explicit; go 1.18
+golang.org/x/tools/go/gcexportdata
+golang.org/x/tools/go/internal/packagesdriver
+golang.org/x/tools/go/packages
+golang.org/x/tools/internal/event
+golang.org/x/tools/internal/event/core
+golang.org/x/tools/internal/event/keys
+golang.org/x/tools/internal/event/label
+golang.org/x/tools/internal/gcimporter
+golang.org/x/tools/internal/gocommand
+golang.org/x/tools/internal/goroot
+golang.org/x/tools/internal/packagesinternal
+golang.org/x/tools/internal/pkgbits
+golang.org/x/tools/internal/typeparams
+golang.org/x/tools/internal/typesinternal
+# google.golang.org/protobuf v1.28.1
+## explicit; go 1.11
+google.golang.org/protobuf/encoding/prototext
+google.golang.org/protobuf/encoding/protowire
+google.golang.org/protobuf/internal/descfmt
+google.golang.org/protobuf/internal/descopts
+google.golang.org/protobuf/internal/detrand
+google.golang.org/protobuf/internal/encoding/defval
+google.golang.org/protobuf/internal/encoding/messageset
+google.golang.org/protobuf/internal/encoding/tag
+google.golang.org/protobuf/internal/encoding/text
+google.golang.org/protobuf/internal/errors
+google.golang.org/protobuf/internal/filedesc
+google.golang.org/protobuf/internal/filetype
+google.golang.org/protobuf/internal/flags
+google.golang.org/protobuf/internal/genid
+google.golang.org/protobuf/internal/impl
+google.golang.org/protobuf/internal/order
+google.golang.org/protobuf/internal/pragma
+google.golang.org/protobuf/internal/set
+google.golang.org/protobuf/internal/strs
+google.golang.org/protobuf/internal/version
+google.golang.org/protobuf/proto
+google.golang.org/protobuf/reflect/protoreflect
+google.golang.org/protobuf/reflect/protoregistry
+google.golang.org/protobuf/runtime/protoiface
+google.golang.org/protobuf/runtime/protoimpl
+google.golang.org/protobuf/types/known/timestamppb
+# github.com/lf-edge/eve/pkg/pillar => ../../pillar
