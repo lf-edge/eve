@@ -18,6 +18,7 @@ import (
 	"github.com/containerd/containerd/images"
 	"github.com/containerd/containerd/mount"
 	"github.com/lf-edge/edge-containers/pkg/resolver"
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/containerd"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/moby/sys/mountinfo"
@@ -350,6 +351,10 @@ func (c *containerdCAS) IngestBlob(ctx context.Context, blobs ...types.BlobStatu
 		}
 		for i, m := range index.Manifests {
 			info.Labels[fmt.Sprintf("%s.%d", containerdGCRef, i)] = m.Digest.String()
+			if base.IsHVTypeKube() {
+				info.Labels["eve-downloaded"] = "true"
+				logrus.Infof("PRAMOD set eve-downloaded label on blob ")
+			}
 		}
 		if err := c.UpdateBlobInfo(info); err != nil {
 			err = fmt.Errorf("IngestBlob(%s): could not update labels on index: %v", info.Digest, err.Error())
@@ -369,6 +374,10 @@ func (c *containerdCAS) IngestBlob(ctx context.Context, blobs ...types.BlobStatu
 			}
 			i := len(m.Layers)
 			info.Labels[fmt.Sprintf("%s.%d", containerdGCRef, i)] = m.Config.Digest.String()
+			if base.IsHVTypeKube() {
+				info.Labels["eve-downloaded"] = "true"
+				logrus.Infof("PRAMOD in manifest set eve-downloaded label on blob ")
+			}
 
 			if err := c.UpdateBlobInfo(info); err != nil {
 				err = fmt.Errorf("IngestBlob(%s): could not update labels on manifest: %v",
@@ -496,7 +505,7 @@ func (c *containerdCAS) CreateImage(reference, mediaType, blobHash string) error
 
 	image := images.Image{
 		Name:   reference,
-		Labels: nil,
+		Labels: setImageLabel(),
 		Target: spec.Descriptor{
 			MediaType: mediaType,
 			Digest:    digest.Digest(blobHash),
@@ -528,6 +537,20 @@ func (c *containerdCAS) GetImageHash(reference string) (string, error) {
 		return "", fmt.Errorf("GetImageHash: Exception while getting image: %s. %s", reference, err.Error())
 	}
 	return image.Target().Digest.String(), nil
+}
+
+// GetImage: returns the Image Label of the reference
+// Returns error if the given 'reference' is not found.
+func (c *containerdCAS) GetImageLabel(reference string) (map[string]string, error) {
+	ctrdCtx, done := c.ctrdClient.CtrNewUserServicesCtx()
+	defer done()
+
+	image, err := c.ctrdClient.CtrGetImage(ctrdCtx, reference)
+	if errors.Is(err, containerderrdefs.ErrNotFound) {
+		return nil, ErrImageNotFound
+	}
+
+	return image.Labels(), nil
 }
 
 // ListImages: returns a list of references
@@ -570,9 +593,10 @@ func (c *containerdCAS) ReplaceImage(reference, mediaType, blobHash string) erro
 	if err != nil {
 		return fmt.Errorf("CreateImage: exception while parsing blob %s: %s", blobHash, err.Error())
 	}
+
 	image := images.Image{
 		Name:   reference,
-		Labels: nil,
+		Labels: setImageLabel(),
 		Target: spec.Descriptor{
 			MediaType: mediaType,
 			Digest:    digest.Digest(blobHash),
@@ -1029,4 +1053,20 @@ func getJSON(x interface{}) (string, error) {
 // GetRoofFsPath returns rootfs path
 func GetRoofFsPath(rootPath string) string {
 	return filepath.Join(rootPath, containerRootfsPath)
+}
+
+func setImageLabel() map[string]string {
+	// Label this image as downloaded by eve. In kubevirt eve some images are downloaded by k3s.
+	// We will differentiate those by the presence of this label.
+	// This label will be used in Garbage collection of eve downloaded images
+	// TODO: We need to generalize this for kvm eve too, basically need to figure out how to handle
+	// the upgrades if the previous version eve does not have this label set.
+
+	if !base.IsHVTypeKube() {
+		return nil
+	}
+	label := map[string]string{}
+	label["eve-downloaded"] = "true"
+
+	return label
 }
