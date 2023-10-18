@@ -913,7 +913,8 @@ func getImageConfig(c *containerdCAS, reference string) (*ocispec.Image, error) 
 	imageParentHash, err := c.GetImageHash(reference)
 	if err != nil {
 		err = fmt.Errorf("getImageConfig: exception while fetching reference hash of %s: %s", reference, err.Error())
-
+		logrus.Errorf(err.Error())
+		return nil, err
 	}
 
 	ctrdCtx, done := c.ctrdClient.CtrNewUserServicesCtx()
