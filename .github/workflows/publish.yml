@@ -157,7 +157,7 @@ jobs:
 
   trigger_assets:
     if: ${{ (startsWith(github.ref, 'refs/tags/')) && (github.event.repository.full_name == 'lf-edge/eve') }}
-    needs: packages
+    needs: [manifest, verification, eve]
     uses: lf-edge/eve/.github/workflows/assets.yml@master
     with:
       tag_ref: ${{ github.ref }}

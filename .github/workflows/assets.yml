@@ -15,7 +15,7 @@ name: Assets
 on:  # yamllint disable-line rule:truthy
   workflow_call:
     inputs:
-      tag_ref: 
+      tag_ref:
         required: true
         type: string
 
