@@ -55,7 +55,7 @@ jobs:
         run: |
           HV=kvm
           if [ "${{ github.event.repository.full_name }}" = "lf-edge/eve" ]; then
-             EVE=lfedge/eve:${{ inputs.tag_ref }}-${HV}-${{ inputs.tag_ref }}
+             EVE=lfedge/eve:${{ inputs.tag_ref }}-${HV}-${{ env.ARCH }}
              docker pull "$EVE"
           else
              make pkgs
