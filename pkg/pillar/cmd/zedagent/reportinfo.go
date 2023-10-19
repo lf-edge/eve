@@ -242,6 +242,9 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 
 	ReportDeviceInfo := new(info.ZInfoDevice)
 
+	// Get the remote access status
+	ReportDeviceInfo.RemoteAccessDisabled = utils.RemoteAccessDisabled()
+
 	var uname unix.Utsname
 	err := unix.Uname(&uname)
 	if err != nil {

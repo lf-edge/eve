@@ -18,11 +18,17 @@ import (
 	"github.com/google/go-cmp/cmp"
 	zconfig "github.com/lf-edge/eve/api/go/config"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/utils"
 )
 
 // edge-view specific parser/utility routines
 
 func parseEvConfig(ctx *getconfigContext, config *zconfig.EdgeDevConfig) {
+	if utils.RemoteAccessDisabled() {
+		log.Noticef("Remote access to edgeview is disabled")
+		removeEvFiles()
+		return
+	}
 
 	log.Tracef("Started parsing edge-view config")
 	zcfgEv := config.GetEdgeview()
