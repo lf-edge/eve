@@ -620,6 +620,9 @@ message ZInfoDevice {
 
   // Capability indicating which new EdgeDevConfig fields which are supported
   APICapability api_capability = 51;
+
+  // Reports the remote access status
+  bool remote_access_disabled = 52;
 }
 
 // Capabilities indicates features in the EdgeDevConfig where there is

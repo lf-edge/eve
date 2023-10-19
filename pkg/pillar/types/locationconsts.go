@@ -54,6 +54,8 @@ const (
 	APIV1FileName = IdentityDirname + "/Force-API-V1"
 	// BootstrapConfFileName - file to store initial device configuration for bootstrapping
 	BootstrapConfFileName = IdentityDirname + "/bootstrap-config.pb"
+	// RemoteAccessFlagFileName -- file to check for remote access configuration
+	RemoteAccessFlagFileName = IdentityDirname + "/remote_access_disabled"
 	// BootstrapShaFileName - file to store SHA hash of an already ingested bootstrap config
 	BootstrapShaFileName = IngestedDirname + "/bootstrap-config.sha"
 
