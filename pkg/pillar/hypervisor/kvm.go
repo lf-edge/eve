@@ -464,11 +464,7 @@ func (ctx kvmContext) Task(status *types.DomainStatus) types.Task {
 
 // TBD: Have a better way to calculate this number.
 // For now it is based on some trial-and-error experiments.
-// Container limit is reduced to 100MiB.
 func minVMMOverhead(config types.DomainConfig) int64 {
-	if config.IsOCIContainer() {
-		return 100 << 20 // Mb in bytes
-	}
 	return 600 << 20 // Mb in bytes
 }
 
