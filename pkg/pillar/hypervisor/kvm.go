@@ -461,21 +461,7 @@ func (ctx kvmContext) Task(status *types.DomainStatus) types.Task {
 	return ctx
 }
 
-func isArchARM() bool {
-	return runtime.GOARCH == "arm64"
-}
-
 func estimatedVMMOverhead(domainName string, config types.DomainConfig, aa *types.AssignableAdapters) (int64, error) {
-	// Container limit is set to 100MiB for x86 and 300 for ARM.
-	// This is a temporary solution until we have a better way to predict
-	// the memory usage of the container.
-	if config.IsOCIContainer() {
-		if isArchARM() {
-			return 300 << 20, nil // Mb in bytes
-		}
-		return 100 << 20, nil // Mb in bytes
-	}
-
 	var overhead int64
 
 	mmioOverhead, err := mmioVMMOverhead(domainName, config, aa)
