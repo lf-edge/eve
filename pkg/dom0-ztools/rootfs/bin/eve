@@ -8,7 +8,7 @@ help() {
 Welcome to EVE!
   commands: enter [service] [command (assumed sh)]
             enter-user-app <service>
-            exec [service] command
+            exec [--fork] [service] command
             list
             status
             start <service>
@@ -115,12 +115,18 @@ dump_mem() {
 }
 
 case "$1" in
-    exec) # shellcheck disable=SC2086
+    exec) NO_FORK="-F"
+          if [ "$2" = "--fork" ]; then
+            NO_FORK=""
+            shift
+          fi
+          # shellcheck disable=SC2086
           ID=$(${CTR_CMD} t ls | awk '/^'${2:-pillar}' /{print $2;}' 2>/dev/null)
           CMD="${3:-sh}"
           shift ; shift ; shift
           for c in /sys/fs/cgroup/*/tasks; do echo "$$" >> "$c"; done
-          exec nsenter -F -a -t "${ID:-1}" "$CMD" "$@"
+          # shellcheck disable=SC2086
+          exec nsenter ${NO_FORK} -a -t "${ID:-1}" "$CMD" "$@"
           ;;
    enter) # shellcheck disable=SC2086
           ${CTR_CMD} t exec -t --exec-id $(basename $(mktemp)) ${2:-pillar} ${3:-sh -l}
