@@ -21,6 +21,9 @@ const qemuExecTimeout = 2 * time.Minute
 // qemuExecLongTimeout is a long timeout for command executions in separate worker thread that don't interfere with the watchdog
 const qemuExecLongTimeout = 1000 * time.Second
 
+// qemuExecUltraLongTimeout is a long timeout for command executions in separate worker thread that take especially long
+const qemuExecUltraLongTimeout = 120 * time.Hour
+
 func GetImgInfo(log *base.LogObject, diskfile string) (*types.ImgInfo, error) {
 	var imgInfo types.ImgInfo
 
@@ -98,7 +101,7 @@ func RolloutImgToBlock(ctx context.Context, log *base.LogObject, diskfile, outpu
 	// writeback cache instead of default unsafe, out of order enabled, skip file creation
 	// Timeout 2 hours
 	args := []string{"convert", "--target-is-zero", "-t", "writeback", "-W", "-n", "-O", outputFormat, diskfile, outputFile}
-	output, err := base.Exec(log, "/usr/bin/qemu-img", args...).WithContext(ctx).WithUnlimitedTimeout(qemuExecLongTimeout).CombinedOutput()
+	output, err := base.Exec(log, "/usr/bin/qemu-img", args...).WithContext(ctx).WithUnlimitedTimeout(qemuExecUltraLongTimeout).CombinedOutput()
 	if err != nil {
 		errStr := fmt.Sprintf("qemu-img failed: %s, %s\n",
 			err, output)
