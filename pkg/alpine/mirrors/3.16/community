@@ -39,6 +39,7 @@ qemu-system-x86_64
 sudo
 sysstat
 tini
+tio
 tpm2-abrmd
 tpm2-tss
 tpm2-tss-dev
