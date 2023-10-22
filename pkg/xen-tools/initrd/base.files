@@ -1,4 +1,5 @@
 /bin/busybox
+/bin/eve-enter-container
 /sbin/agetty
 /sbin/mke2fs
 /lib/libext2fs.so.2*
