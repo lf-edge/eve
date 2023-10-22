@@ -2,6 +2,7 @@
 
 CTR_CMD="ctr --namespace services.linuxkit"
 CTR_UA_CMD="ctr --namespace eve-user-apps"
+KVM_RUN_DIR="/run/hypervisor/kvm"
 
 help() {
   cat <<__EOT__
@@ -15,6 +16,8 @@ Welcome to EVE!
             pause <service>
             resume <service>
             destroy <service>
+            list-app-consoles   Outputs list of available consoles for attach
+            attach-app-console <console id>   Attach to the application console, see 'eve list-app-consoles' for details
             persist list
             persist attach <disk>
             config mount <mountpoint>
@@ -114,6 +117,10 @@ dump_mem() {
     http_debug_request "/dump/memory"
 }
 
+is_in_debug_service() {
+    grep -q '/eve/services/debug' < /proc/self/cgroup
+}
+
 case "$1" in
     exec) NO_FORK="-F"
           if [ "$2" = "--fork" ]; then
@@ -127,6 +134,53 @@ case "$1" in
           for c in /sys/fs/cgroup/*/tasks; do echo "$$" >> "$c"; done
           # shellcheck disable=SC2086
           exec nsenter ${NO_FORK} -a -t "${ID:-1}" "$CMD" "$@"
+          ;;
+    list-app-consoles)
+          if ! is_in_debug_service; then
+              # List can be executed only in debug service container
+              # due to missing convenient GNU tools
+              eve enter debug "eve $1"
+              exit
+          fi
+          printf "PID\tAPP-UUID\t\t\t\tCONS-TYPE\tCONS-ID\n"
+          # shellcheck disable=SC3045
+          printf "---\t--------\t\t\t\t---------\t---------\n"
+          for pid in $(pgrep qemu-system); do
+              # shellcheck disable=SC2009
+              name=$(ps -p "$pid" --no-headers -o command | grep -o '\-name\s\+[^ ]\+' | awk '{print $2}')
+              # shellcheck disable=SC2009
+              uuid=$(ps -p "$pid" --no-headers -o command | grep -o '\-uuid\s\+[^ ]\+' | awk '{print $2}')
+              dir="$KVM_RUN_DIR/$name"
+              if [ -e "$dir/prime-cons" ]; then
+                  printf "%s\t%s\tCONTAINER\t%s/cons\n" "$pid" "$uuid" "$name"
+                  printf "%s\t%s\tVM\t\t%s/prime-cons\n" "$pid" "$uuid" "$name"
+              else
+                  printf "%s\t%s\tVM\t\t%s/cons\n" "$pid" "$uuid" "$name"
+              fi
+          done
+          ;;
+    attach-app-console) [ -z "$2" ] && help
+          if ! is_in_debug_service; then
+              # Attach can be executed only in debug service container
+              # due to missing convenient GNU tools
+              eve enter debug "eve $1 $2"
+              exit
+          fi
+          CONS="$KVM_RUN_DIR/$2"
+          if [ ! -e "$CONS" ]; then
+              echo "Error: console '$2' does not exist."
+              echo "Try to use 'eve list-app-consoles'."
+              exit 1
+          fi
+          PTY=$(dirname "$CONS")/pty-$$
+          # Start socat in background to pump bytes between console socket and PTY
+          trap 'kill $SOCAT_PID 2>/dev/null' EXIT HUP INT QUIT TERM
+          socat "unix-connect:$CONS" "pty,link=$PTY" &
+          SOCAT_PID=$!
+          # Give some time to socat to create PTY
+          sleep 1
+          # Start tio
+          tio "$PTY"
           ;;
    enter) # shellcheck disable=SC2086
           ${CTR_CMD} t exec -t --exec-id $(basename $(mktemp)) ${2:-pillar} ${3:-sh -l}
