@@ -1,0 +1,13 @@
+#!/bin/sh
+
+# PID of the started entrypoint container process.
+# PID file is created from the `init-initrd` script.
+PID_FILE="/mnt/entrypoint-pid"
+
+if [ ! -f "$PID_FILE" ]; then
+    echo "Error: PID file '$PID_FILE' not found. Container did not start?"
+    exit 1
+fi
+
+PID=$(cat "$PID_FILE")
+nsenter -t "$PID" -m -u -i -n -p -r/mnt/rootfs -w/mnt/rootfs
