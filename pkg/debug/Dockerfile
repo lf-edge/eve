@@ -4,7 +4,7 @@
 # has a fast path for stack unwinding. This also happens
 # to be a perfect place to put any other kind of debug info
 # into the package: see abuild/etc/abuild.conf.
-FROM lfedge/eve-alpine:fad44e3702708a8d044663a20fd98d933dddb41e as build
+FROM lfedge/eve-alpine:cbf02c2c126f210933ec9bdb142eb080b400fd76 as build
 ENV BUILD_PKGS abuild curl tar make linux-headers patch g++ git gcc ncurses-dev autoconf
 # Feel free to add additional packages here, but be aware that
 # EVE's rootfs image can be no larger than 300Mb (and don't
@@ -15,8 +15,8 @@ ENV PKGS openssl openssh-client openssh-server tini util-linux ca-certificates p
 
 # These packages are not available on the riscv arch, so I have no idea how
 # deliver those, but still install them on other archs.
-ENV PKGS_amd64 procps tar dmidecode iptables dhcpcd
-ENV PKGS_arm64 procps tar dmidecode iptables dhcpcd
+ENV PKGS_amd64 procps tar dmidecode iptables dhcpcd tio socat
+ENV PKGS_arm64 procps tar dmidecode iptables dhcpcd tio socat
 
 RUN eve-alpine-deploy.sh
 
