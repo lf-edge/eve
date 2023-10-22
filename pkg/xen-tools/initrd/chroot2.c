@@ -1,10 +1,11 @@
 #define _GNU_SOURCE
 #include <sched.h>
-#include <unistd.h>
-#include <stdlib.h>
-#include <sys/wait.h>
-#include <sys/mount.h>
 #include <signal.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <sys/mount.h>
+#include <sys/wait.h>
+#include <unistd.h>
 
 typedef struct clone_args clone_args;
 
@@ -55,7 +56,13 @@ int main(int argc, char **argv) {
         .args = argv + 5,
     };
 
-    child_pid = clone(childFunc, child_stack + STACK_SIZE, CLONE_NEWPID | SIGCHLD, (void *)(&args));
+    child_pid = clone(childFunc, child_stack + STACK_SIZE,
+                      CLONE_NEWPID | SIGCHLD, &args);
+    if (child_pid < 0) {
+        perror("clone() failed:");
+        return -1;
+    }
 
     waitpid(child_pid, NULL, 0);
+    return 0;
 }
