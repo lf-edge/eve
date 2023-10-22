@@ -149,6 +149,16 @@ EOF
   fi
 fi
 
+run_agetty_loop()
+{
+    while true; do
+        setsid agetty --autologin root --noclear hvc1 linux
+    done
+}
+
+echo "Executing agetty"
+run_agetty_loop &
+
 cmd=`cat /mnt/cmdline`
 echo "Executing $cmd"
 
