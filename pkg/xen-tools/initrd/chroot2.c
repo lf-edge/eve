@@ -1,9 +1,12 @@
 #define _GNU_SOURCE
+#include <fcntl.h>
 #include <sched.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/mount.h>
+#include <sys/stat.h>
+#include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -36,10 +39,12 @@ static int childFunc(void *args)
 }
 
 int main(int argc, char **argv) {
+    const char *pid_file = argv[5];
     uid_t uid, gid;
     char *endptr;
     pid_t child_pid;
     struct clone_args args;
+    int fd;
 
     setsid();
     ioctl(0, TIOCSCTTY, 1);
@@ -52,15 +57,31 @@ int main(int argc, char **argv) {
         .workdir = argv[2],
         .uid = uid,
         .gid = gid,
-        .command = argv[5],
-        .args = argv + 5,
+        .command = argv[6],
+        .args = argv + 6,
     };
-
     child_pid = clone(childFunc, child_stack + STACK_SIZE,
                       CLONE_NEWPID | SIGCHLD, &args);
     if (child_pid < 0) {
         perror("clone() failed:");
         return -1;
+    }
+
+    /*
+     * Open a file and write a PID of the child process in order
+     * to do attach to its namespace.
+     */
+    fd = open(pid_file, O_CREAT|O_WRONLY|O_TRUNC, S_IRUSR|S_IWUSR);
+    if (fd < 0) {
+        /* Don't consider as fatal */
+        perror("open(pid_file) failed:");
+    } else {
+        char buf[64];
+        int len;
+
+        len = snprintf(buf, sizeof(buf), "%u\n", child_pid);
+        write(fd, buf, len);
+        close(fd);
     }
 
     waitpid(child_pid, NULL, 0);
