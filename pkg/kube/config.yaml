@@ -5,6 +5,8 @@ write-kubeconfig-mode: "0644"
 cluster-init: true
 log: "/var/lib/rancher/k3s/k3s.log"
 debug: true
+# Use longhorn storage
+disable: local-storage
 etcd-arg:
   - 'heartbeat-interval=8000'
   - 'election-timeout=40000'
