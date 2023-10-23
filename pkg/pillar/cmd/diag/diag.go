@@ -947,7 +947,7 @@ func printOutput(ctx *diagContext, caller string) {
 		}
 		ctx.ph.Print("\n")
 		// If static print static config
-		if port.Dhcp == types.DT_STATIC {
+		if port.Dhcp == types.DhcpTypeStatic {
 			ctx.ph.Print("INFO: %s: Static IP subnet: %s\n",
 				ifname, port.Subnet.String())
 			for _, r := range port.DefaultRouters {
@@ -1100,7 +1100,7 @@ func printProxy(ctx *diagContext, port types.NetworkPortStatus,
 	} else {
 		for _, proxy := range port.ProxyConfig.Proxies {
 			switch proxy.Type {
-			case types.NPT_HTTP:
+			case types.NetworkProxyTypeHTTP:
 				var httpProxy string
 				if proxy.Port > 0 {
 					httpProxy = fmt.Sprintf("%s:%d", proxy.Server, proxy.Port)
@@ -1109,7 +1109,7 @@ func printProxy(ctx *diagContext, port types.NetworkPortStatus,
 				}
 				ctx.ph.Print("INFO: %s: http proxy %s\n",
 					ifname, httpProxy)
-			case types.NPT_HTTPS:
+			case types.NetworkProxyTypeHTTPS:
 				var httpsProxy string
 				if proxy.Port > 0 {
 					httpsProxy = fmt.Sprintf("%s:%d", proxy.Server, proxy.Port)

@@ -1039,7 +1039,7 @@ func (n *nim) makeLastResortDPC() (types.DevicePortConfig, error) {
 			IsMgmt:       true,
 			IsL3Port:     true,
 			DhcpConfig: types.DhcpConfig{
-				Dhcp: types.DT_CLIENT,
+				Dhcp: types.DhcpTypeClient,
 			},
 		}
 		dns := n.dpcManager.GetDNS()

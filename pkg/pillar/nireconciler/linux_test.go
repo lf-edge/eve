@@ -455,7 +455,7 @@ var (
 		IpType:         types.AddressTypeIPV6,
 		Subnet:         deref(ipAddressWithPrefix("2001::1111:0000/112")),
 		DnsServers:     []net.IP{ipAddress("2001:4860:4860::8888")},
-		DnsNameToIPList: []types.DnsNameToIP{
+		DnsNameToIPList: []types.DNSNameToIP{
 			{
 				HostName: "test-hostname",
 				IPs:      []net.IP{ipAddress("2001:db8::1")},

@@ -993,7 +993,7 @@ func (r *LinuxDpcReconciler) getIntendedAdapters(dpc types.DevicePortConfig) dg.
 				Usage:      generic.IOUsageL3Adapter,
 			}, nil)
 		}
-		if port.Dhcp != types.DT_NONE &&
+		if port.Dhcp != types.DhcpTypeNone &&
 			port.WirelessCfg.WType != types.WirelessTypeCellular {
 			intendedAdapters.PutItem(generic.Dhcpcd{
 				AdapterLL:     port.Logicallabel,

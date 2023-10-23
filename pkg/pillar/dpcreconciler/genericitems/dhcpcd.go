@@ -118,15 +118,15 @@ func (c *DhcpcdConfigurator) Create(ctx context.Context, item depgraph.Item) err
 
 		// Validate input arguments
 		switch config.Dhcp {
-		case types.DT_NONE:
+		case types.DhcpTypeNone:
 			// Nothing to do, return.
 			done(nil)
 			return
 
-		case types.DT_CLIENT:
+		case types.DhcpTypeClient:
 			// Nothing to validate.
 
-		case types.DT_STATIC:
+		case types.DhcpTypeStatic:
 			if config.AddrSubnet == "" {
 				err := fmt.Errorf("DHCP config is missing AddrSubnet for interface %s",
 					ifName)
@@ -206,11 +206,11 @@ func (c *DhcpcdConfigurator) Delete(ctx context.Context, item depgraph.Item) err
 		config := client.DhcpConfig
 
 		switch config.Dhcp {
-		case types.DT_NONE:
+		case types.DhcpTypeNone:
 			done(nil)
 			return
 
-		case types.DT_STATIC, types.DT_CLIENT:
+		case types.DhcpTypeStatic, types.DhcpTypeClient:
 			startTime := time.Now()
 			var extras []string
 			// Run release, wait for a bit, then exit and give up.
@@ -278,25 +278,25 @@ func (c *DhcpcdConfigurator) NeedsRecreate(oldItem, newItem depgraph.Item) (recr
 
 func (c *DhcpcdConfigurator) dhcpcdArgs(config types.DhcpConfig) (op string, args []string) {
 	switch config.Dhcp {
-	case types.DT_CLIENT:
+	case types.DhcpTypeClient:
 		op = "--request"
 		args = []string{"-f", "/dhcpcd.conf", "--noipv4ll", "-b", "-t", "0"}
 		switch config.Type {
-		case types.NtIpv4Only:
+		case types.NetworkTypeIpv4Only:
 			args = []string{"-f", "/dhcpcd.conf", "--noipv4ll", "--ipv4only", "-b", "-t", "0"}
-		case types.NtIpv6Only:
+		case types.NetworkTypeIpv6Only:
 			args = []string{"-f", "/dhcpcd.conf", "--ipv6only", "-b", "-t", "0"}
-		case types.NT_NOOP:
-		case types.NT_IPV4:
-		case types.NT_IPV6:
-		case types.NtDualStack:
+		case types.NetworkTypeNOOP:
+		case types.NetworkTypeIPv4:
+		case types.NetworkTypeIPV6:
+		case types.NetworkTypeDualStack:
 		default:
 		}
 		if config.Gateway != nil && config.Gateway.String() == zeroIPv4Addr {
 			args = append(args, "--nogateway")
 		}
 
-	case types.DT_STATIC:
+	case types.DhcpTypeStatic:
 		op = "--static"
 		args = []string{fmt.Sprintf("ip_address=%s", config.AddrSubnet)}
 		extras := []string{"-f", "/dhcpcd.conf", "-b", "-t", "0"}
@@ -307,7 +307,7 @@ func (c *DhcpcdConfigurator) dhcpcdArgs(config types.DhcpConfig) (op string, arg
 				fmt.Sprintf("routers=%s", config.Gateway.String()))
 		}
 		var dnsServers []string
-		for _, dns := range config.DnsServers {
+		for _, dns := range config.DNSServers {
 			dnsServers = append(dnsServers, dns.String())
 		}
 		if config.DomainName != "" {
@@ -325,10 +325,10 @@ func (c *DhcpcdConfigurator) dhcpcdArgs(config types.DhcpConfig) (op string, arg
 				fmt.Sprintf("domain_name_servers=%s",
 					strings.Join(dnsServers, " ")))
 		}
-		if config.NtpServer != nil && !config.NtpServer.IsUnspecified() {
+		if config.NTPServer != nil && !config.NTPServer.IsUnspecified() {
 			args = append(args, "--static",
 				fmt.Sprintf("ntp_servers=%s",
-					config.NtpServer.String()))
+					config.NTPServer.String()))
 		}
 		args = append(args, extras...)
 	}
