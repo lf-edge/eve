@@ -273,7 +273,7 @@ func uplinkPhysIfName(bridgeName string) string {
 	return "k" + bridgeName
 }
 
-// Ipset with all the addresses from the DnsNameToIPList plus the VIF IP itself.
+// Ipset with all the addresses from the DNSNameToIPList plus the VIF IP itself.
 func eidsIpsetName(vif vifInfo, ipv6 bool) string {
 	if ipv6 {
 		return ipsetNamePrefixV6 + "eids." + vif.hostIfName
@@ -984,7 +984,7 @@ func (r *LinuxNIReconciler) getIntendedAppConnCfg(niID uuid.UUID,
 			VLANConfig: vlanConfig,
 		}, nil)
 	}
-	// Create ipset with all the addresses from the DnsNameToIPList plus the VIF IP itself.
+	// Create ipset with all the addresses from the DNSNameToIPList plus the VIF IP itself.
 	var ips []net.IP
 	for _, staticEntry := range ni.config.DnsNameToIPList {
 		for _, ip := range staticEntry.IPs {

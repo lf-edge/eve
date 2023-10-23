@@ -105,7 +105,7 @@ var usablePort = NetworkPortConfig{
 	Phylabel:     "eth0",
 	Logicallabel: "eth0",
 	IsMgmt:       true,
-	DhcpConfig:   DhcpConfig{Dhcp: DT_CLIENT},
+	DhcpConfig:   DhcpConfig{Dhcp: DhcpTypeClient},
 }
 var usablePorts = []NetworkPortConfig{usablePort}
 
@@ -114,7 +114,7 @@ var unusablePort1 = NetworkPortConfig{
 	Phylabel:     "eth0",
 	Logicallabel: "eth0",
 	IsMgmt:       false,
-	DhcpConfig:   DhcpConfig{Dhcp: DT_CLIENT},
+	DhcpConfig:   DhcpConfig{Dhcp: DhcpTypeClient},
 }
 var unusablePorts1 = []NetworkPortConfig{unusablePort1}
 
@@ -123,7 +123,7 @@ var unusablePort2 = NetworkPortConfig{
 	Phylabel:     "eth0",
 	Logicallabel: "eth0",
 	IsMgmt:       true,
-	DhcpConfig:   DhcpConfig{Dhcp: DT_NONE},
+	DhcpConfig:   DhcpConfig{Dhcp: DhcpTypeNone},
 }
 var unusablePorts2 = []NetworkPortConfig{unusablePort2}
 var mixedPorts = []NetworkPortConfig{usablePort, unusablePort1, unusablePort2}
@@ -134,7 +134,7 @@ func TestIsDPCUsable(t *testing.T) {
 		devicePortConfig DevicePortConfig
 		expectedValue    bool
 	}{
-		"Management and DT_CLIENT": {
+		"Management and DhcpTypeClient": {
 			devicePortConfig: DevicePortConfig{
 				TestResults: TestResults{
 					LastFailed:    time.Time{},
@@ -154,7 +154,7 @@ func TestIsDPCUsable(t *testing.T) {
 			},
 			expectedValue: true,
 		},
-		"Not management and DT_CLIENT": {
+		"Not management and DhcpTypeClient": {
 			devicePortConfig: DevicePortConfig{
 				TestResults: TestResults{
 					LastFailed:    time.Time{},
@@ -164,7 +164,7 @@ func TestIsDPCUsable(t *testing.T) {
 			},
 			expectedValue: false,
 		},
-		"Management and DT_NONE": {
+		"Management and DhcpTypeNone": {
 			devicePortConfig: DevicePortConfig{
 				TestResults: TestResults{
 					LastFailed:    time.Time{},

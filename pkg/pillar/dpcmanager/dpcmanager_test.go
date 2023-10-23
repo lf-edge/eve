@@ -542,8 +542,8 @@ func makeDPC(key string, timePrio time.Time, intfs selectedIntfs) types.DevicePo
 			IsMgmt:       true,
 			IsL3Port:     true,
 			DhcpConfig: types.DhcpConfig{
-				Dhcp: types.DT_CLIENT,
-				Type: types.NT_IPV4,
+				Dhcp: types.DhcpTypeClient,
+				Type: types.NetworkTypeIPv4,
 			},
 		})
 	}
@@ -555,8 +555,8 @@ func makeDPC(key string, timePrio time.Time, intfs selectedIntfs) types.DevicePo
 			IsMgmt:       true,
 			IsL3Port:     true,
 			DhcpConfig: types.DhcpConfig{
-				Dhcp: types.DT_CLIENT,
-				Type: types.NT_IPV4,
+				Dhcp: types.DhcpTypeClient,
+				Type: types.NetworkTypeIPv4,
 			},
 		})
 	}
@@ -568,8 +568,8 @@ func makeDPC(key string, timePrio time.Time, intfs selectedIntfs) types.DevicePo
 			IsMgmt:       true,
 			IsL3Port:     true,
 			DhcpConfig: types.DhcpConfig{
-				Dhcp: types.DT_CLIENT,
-				Type: types.NT_IPV4,
+				Dhcp: types.DhcpTypeClient,
+				Type: types.NetworkTypeIPv4,
 			},
 			WirelessCfg: types.WirelessConfig{
 				WType: types.WirelessTypeWifi,
@@ -592,8 +592,8 @@ func makeDPC(key string, timePrio time.Time, intfs selectedIntfs) types.DevicePo
 			IsMgmt:       true,
 			IsL3Port:     true,
 			DhcpConfig: types.DhcpConfig{
-				Dhcp: types.DT_CLIENT,
-				Type: types.NT_IPV4,
+				Dhcp: types.DhcpTypeClient,
+				Type: types.NetworkTypeIPv4,
 			},
 			WirelessCfg: types.WirelessConfig{
 				WType: types.WirelessTypeCellular,
@@ -1029,8 +1029,8 @@ func TestDNS(test *testing.T) {
 	t.Expect(eth0State.Subnet.String()).To(Equal("192.168.10.0/24"))
 	t.Expect(eth0State.MacAddr.String()).To(Equal("02:00:00:00:00:01"))
 	t.Expect(eth0State.Up).To(BeTrue())
-	t.Expect(eth0State.Type).To(BeEquivalentTo(types.NT_IPV4))
-	t.Expect(eth0State.Dhcp).To(BeEquivalentTo(types.DT_CLIENT))
+	t.Expect(eth0State.Type).To(BeEquivalentTo(types.NetworkTypeIPv4))
+	t.Expect(eth0State.Dhcp).To(BeEquivalentTo(types.DhcpTypeClient))
 	t.Expect(eth0State.DefaultRouters).To(HaveLen(1))
 	t.Expect(eth0State.DefaultRouters[0].String()).To(Equal("192.168.10.1"))
 	eth1State := dns.Ports[1]
@@ -1052,8 +1052,8 @@ func TestDNS(test *testing.T) {
 	t.Expect(eth1State.Subnet.String()).To(Equal("172.20.1.0/24"))
 	t.Expect(eth1State.MacAddr.String()).To(Equal("02:00:00:00:00:02"))
 	t.Expect(eth1State.Up).To(BeTrue())
-	t.Expect(eth1State.Type).To(BeEquivalentTo(types.NT_IPV4))
-	t.Expect(eth1State.Dhcp).To(BeEquivalentTo(types.DT_CLIENT))
+	t.Expect(eth1State.Type).To(BeEquivalentTo(types.NetworkTypeIPv4))
+	t.Expect(eth1State.Dhcp).To(BeEquivalentTo(types.DhcpTypeClient))
 	t.Expect(eth1State.DefaultRouters).To(HaveLen(1))
 	t.Expect(eth1State.DefaultRouters[0].String()).To(Equal("172.20.1.1"))
 }
@@ -1492,8 +1492,8 @@ func TestVlansAndBonds(test *testing.T) {
 				IsL3Port:     true,
 				IsMgmt:       true,
 				DhcpConfig: types.DhcpConfig{
-					Dhcp: types.DT_CLIENT,
-					Type: types.NT_IPV4,
+					Dhcp: types.DhcpTypeClient,
+					Type: types.NetworkTypeIPv4,
 				},
 				L2LinkConfig: types.L2LinkConfig{
 					L2Type: types.L2LinkTypeVLAN,
@@ -1509,8 +1509,8 @@ func TestVlansAndBonds(test *testing.T) {
 				IsL3Port:     true,
 				IsMgmt:       true,
 				DhcpConfig: types.DhcpConfig{
-					Dhcp: types.DT_CLIENT,
-					Type: types.NT_IPV4,
+					Dhcp: types.DhcpTypeClient,
+					Type: types.NetworkTypeIPv4,
 				},
 				L2LinkConfig: types.L2LinkConfig{
 					L2Type: types.L2LinkTypeVLAN,
@@ -1637,8 +1637,8 @@ func TestVlansAndBonds(test *testing.T) {
 	t.Expect(eth0State.Subnet.IP).To(BeNil())
 	t.Expect(eth0State.MacAddr.String()).To(Equal("02:00:00:00:00:01"))
 	t.Expect(eth0State.Up).To(BeTrue())
-	t.Expect(eth0State.Type).To(BeEquivalentTo(types.NT_NOOP))
-	t.Expect(eth0State.Dhcp).To(BeEquivalentTo(types.DT_NOOP))
+	t.Expect(eth0State.Type).To(BeEquivalentTo(types.NetworkTypeNOOP))
+	t.Expect(eth0State.Dhcp).To(BeEquivalentTo(types.DhcpTypeNOOP))
 	t.Expect(eth0State.DefaultRouters).To(BeEmpty())
 	eth1State := dns.Ports[1]
 	t.Expect(eth1State.IfName).To(Equal("eth1"))
@@ -1654,8 +1654,8 @@ func TestVlansAndBonds(test *testing.T) {
 	t.Expect(eth1State.Subnet.IP).To(BeNil())
 	t.Expect(eth1State.MacAddr.String()).To(Equal("02:00:00:00:00:02"))
 	t.Expect(eth1State.Up).To(BeTrue())
-	t.Expect(eth1State.Type).To(BeEquivalentTo(types.NT_NOOP))
-	t.Expect(eth1State.Dhcp).To(BeEquivalentTo(types.DT_NOOP))
+	t.Expect(eth1State.Type).To(BeEquivalentTo(types.NetworkTypeNOOP))
+	t.Expect(eth1State.Dhcp).To(BeEquivalentTo(types.DhcpTypeNOOP))
 	t.Expect(eth1State.DefaultRouters).To(BeEmpty())
 	bond0State := dns.Ports[2]
 	t.Expect(bond0State.IfName).To(Equal("bond0"))
@@ -1670,8 +1670,8 @@ func TestVlansAndBonds(test *testing.T) {
 	t.Expect(bond0State.Subnet.IP).To(BeNil())
 	t.Expect(bond0State.MacAddr.String()).To(Equal("02:00:00:00:00:03"))
 	t.Expect(bond0State.Up).To(BeTrue())
-	t.Expect(bond0State.Type).To(BeEquivalentTo(types.NT_NOOP))
-	t.Expect(bond0State.Dhcp).To(BeEquivalentTo(types.DT_NOOP))
+	t.Expect(bond0State.Type).To(BeEquivalentTo(types.NetworkTypeNOOP))
+	t.Expect(bond0State.Dhcp).To(BeEquivalentTo(types.DhcpTypeNOOP))
 	t.Expect(bond0State.DefaultRouters).To(BeEmpty())
 	vlan100State := dns.Ports[3]
 	t.Expect(vlan100State.IfName).To(Equal("shopfloor.100"))
@@ -1689,8 +1689,8 @@ func TestVlansAndBonds(test *testing.T) {
 	t.Expect(vlan100State.Subnet.String()).To(Equal("192.168.10.0/24"))
 	t.Expect(vlan100State.MacAddr.String()).To(Equal("02:00:00:00:00:04"))
 	t.Expect(vlan100State.Up).To(BeTrue())
-	t.Expect(vlan100State.Type).To(BeEquivalentTo(types.NT_IPV4))
-	t.Expect(vlan100State.Dhcp).To(BeEquivalentTo(types.DT_CLIENT))
+	t.Expect(vlan100State.Type).To(BeEquivalentTo(types.NetworkTypeIPv4))
+	t.Expect(vlan100State.Dhcp).To(BeEquivalentTo(types.DhcpTypeClient))
 	t.Expect(vlan100State.DefaultRouters).To(BeEmpty())
 	t.Expect(vlan100State.LastSucceeded.After(vlan100State.LastFailed)).To(BeTrue())
 	vlan200State := dns.Ports[4]
@@ -1709,8 +1709,8 @@ func TestVlansAndBonds(test *testing.T) {
 	t.Expect(vlan200State.Subnet.String()).To(Equal("172.20.1.0/24"))
 	t.Expect(vlan200State.MacAddr.String()).To(Equal("02:00:00:00:00:05"))
 	t.Expect(vlan200State.Up).To(BeTrue())
-	t.Expect(vlan200State.Type).To(BeEquivalentTo(types.NT_IPV4))
-	t.Expect(vlan200State.Dhcp).To(BeEquivalentTo(types.DT_CLIENT))
+	t.Expect(vlan200State.Type).To(BeEquivalentTo(types.NetworkTypeIPv4))
+	t.Expect(vlan200State.Dhcp).To(BeEquivalentTo(types.DhcpTypeClient))
 	t.Expect(vlan200State.DefaultRouters).To(BeEmpty())
 	t.Expect(vlan200State.LastSucceeded.After(vlan200State.LastFailed)).To(BeTrue())
 }
@@ -1749,7 +1749,7 @@ func TestTransientDNSError(test *testing.T) {
 	// However, let's pretend that the DNS resolver of the connection tester
 	// has not reloaded DNS config yet.
 	connTester.SetConnectivityError("zedagent", "eth0",
-		&types.DNSNotAvail{
+		&types.DNSNotAvailError{
 			IfName: eth0.Attrs.IfName,
 		})
 	eth0 = mockEth0() // With IPAddrs and DNS.

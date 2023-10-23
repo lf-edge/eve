@@ -384,12 +384,12 @@ func parseDnsNameToIpList(
 	apiConfigEntry *zconfig.NetworkInstanceConfig,
 	config *types.NetworkInstanceConfig) {
 
-	// Parse and store DnsNameToIPList form Network configuration
+	// Parse and store DNSNameToIPList form Network configuration
 	dnsEntries := apiConfigEntry.GetDns()
 
-	// Parse and populate the DnsNameToIP list
+	// Parse and populate the DNSNameToIP list
 	// This is what we will publish to zedrouter
-	nameToIPs := []types.DnsNameToIP{}
+	nameToIPs := []types.DNSNameToIP{}
 	for _, dnsEntry := range dnsEntries {
 		hostName := dnsEntry.HostName
 
@@ -404,7 +404,7 @@ func parseDnsNameToIpList(
 			}
 		}
 
-		nameToIP := types.DnsNameToIP{
+		nameToIP := types.DNSNameToIP{
 			HostName: hostName,
 			IPs:      ips,
 		}
@@ -1122,7 +1122,7 @@ func parseOneSystemAdapterConfig(getconfigCtx *getconfigContext,
 
 	port.IsMgmt = isMgmt
 	port.Cost = portCost
-	port.Dhcp = types.DT_NONE
+	port.Dhcp = types.DhcpTypeNone
 	var ip net.IP
 	var network *types.NetworkXObjectConfig
 	if sysAdapter.Addr != "" {
@@ -1174,27 +1174,27 @@ func parseOneSystemAdapterConfig(getconfigCtx *getconfigContext,
 			port.WirelessCfg = network.WirelessCfg
 			port.Gateway = network.Gateway
 			port.DomainName = network.DomainName
-			port.NtpServer = network.NtpServer
-			port.DnsServers = network.DnsServers
+			port.NTPServer = network.NTPServer
+			port.DNSServers = network.DNSServers
 			// Need to be careful since zedcloud can feed us bad Dhcp type
 			port.Dhcp = network.Dhcp
 			switch port.Dhcp {
-			case types.DT_STATIC:
+			case types.DhcpTypeStatic:
 				if port.AddrSubnet == "" {
-					errStr := fmt.Sprintf("Port %s Configured as DT_STATIC but "+
+					errStr := fmt.Sprintf("Port %s Configured as DhcpTypeStatic but "+
 						"missing subnet address. SysAdapter - Name: %s, Addr:%s",
 						port.Logicallabel, sysAdapter.Name, sysAdapter.Addr)
 					log.Errorf("parseSystemAdapterConfig: %s", errStr)
 					port.RecordFailure(errStr)
 				}
-			case types.DT_CLIENT:
+			case types.DhcpTypeClient:
 				// Do nothing
-			case types.DT_NONE:
+			case types.DhcpTypeNone:
 				if isMgmt {
 					errStr := fmt.Sprintf("Port %s configured as Management port "+
 						"with an unsupported DHCP type %d. Client and static are "+
 						"the only allowed DHCP modes for management ports.",
-						port.Logicallabel, types.DT_NONE)
+						port.Logicallabel, types.DhcpTypeNone)
 
 					log.Errorf("parseSystemAdapterConfig: %s", errStr)
 					port.RecordFailure(errStr)
@@ -1774,13 +1774,13 @@ func parseOneNetworkXObjectConfig(ctx *getconfigContext, netEnt *zconfig.Network
 			}
 			switch proxy.Proto {
 			case zconfig.ProxyProto_PROXY_HTTP:
-				proxyEntry.Type = types.NPT_HTTP
+				proxyEntry.Type = types.NetworkProxyTypeHTTP
 			case zconfig.ProxyProto_PROXY_HTTPS:
-				proxyEntry.Type = types.NPT_HTTPS
+				proxyEntry.Type = types.NetworkProxyTypeHTTPS
 			case zconfig.ProxyProto_PROXY_SOCKS:
-				proxyEntry.Type = types.NPT_SOCKS
+				proxyEntry.Type = types.NetworkProxyTypeSOCKS
 			case zconfig.ProxyProto_PROXY_FTP:
-				proxyEntry.Type = types.NPT_FTP
+				proxyEntry.Type = types.NetworkProxyTypeFTP
 			default:
 			}
 			proxyConfig.Proxies = append(proxyConfig.Proxies, proxyEntry)
@@ -1796,7 +1796,7 @@ func parseOneNetworkXObjectConfig(ctx *getconfigContext, netEnt *zconfig.Network
 
 	ipspec := netEnt.GetIp()
 	switch config.Type {
-	case types.NT_IPV4, types.NT_IPV6:
+	case types.NetworkTypeIPv4, types.NetworkTypeIPV6:
 		if ipspec == nil {
 			errStr := fmt.Sprintf("parseOneNetworkXObjectConfig: Missing ipspec for %s in %v",
 				config.Key(), netEnt)
@@ -1812,10 +1812,10 @@ func parseOneNetworkXObjectConfig(ctx *getconfigContext, netEnt *zconfig.Network
 			config.SetErrorNow(errStr)
 			return config
 		}
-	case types.NT_NOOP:
-		// XXX is controller still sending static and dynamic entries with NT_NOOP? Why?
+	case types.NetworkTypeNOOP:
+		// XXX is controller still sending static and dynamic entries with NetworkTypeNOOP? Why?
 		if ipspec != nil {
-			log.Warnf("XXX NT_NOOP for %s with ipspec %v",
+			log.Warnf("XXX NetworkTypeNOOP for %s with ipspec %v",
 				config.Key(), ipspec)
 			err := parseIpspecNetworkXObject(ipspec, config)
 			if err != nil {
@@ -1835,12 +1835,12 @@ func parseOneNetworkXObjectConfig(ctx *getconfigContext, netEnt *zconfig.Network
 		return config
 	}
 
-	// Parse and store DnsNameToIPList form Network configuration
+	// Parse and store DNSNameToIPList form Network configuration
 	dnsEntries := netEnt.GetDns()
 
-	// Parse and populate the DnsNameToIP list
+	// Parse and populate the DNSNameToIP list
 	// This is what we will publish to zedrouter
-	nameToIPs := []types.DnsNameToIP{}
+	nameToIPs := []types.DNSNameToIP{}
 	for _, dnsEntry := range dnsEntries {
 		hostName := dnsEntry.HostName
 
@@ -1858,13 +1858,13 @@ func parseOneNetworkXObjectConfig(ctx *getconfigContext, netEnt *zconfig.Network
 			}
 		}
 
-		nameToIP := types.DnsNameToIP{
+		nameToIP := types.DNSNameToIP{
 			HostName: hostName,
 			IPs:      ips,
 		}
 		nameToIPs = append(nameToIPs, nameToIP)
 	}
-	config.DnsNameToIPList = nameToIPs
+	config.DNSNameToIPList = nameToIPs
 	return config
 }
 
@@ -2000,8 +2000,8 @@ func parseIpspecNetworkXObject(ipspec *zconfig.Ipspec, config *types.NetworkXObj
 		}
 	}
 	if n := ipspec.GetNtp(); n != "" {
-		config.NtpServer = net.ParseIP(n)
-		if config.NtpServer == nil {
+		config.NTPServer = net.ParseIP(n)
+		if config.NTPServer == nil {
 			return errors.New(fmt.Sprintf("bad ntp IP %s",
 				n))
 		}
@@ -2012,7 +2012,7 @@ func parseIpspecNetworkXObject(ipspec *zconfig.Ipspec, config *types.NetworkXObj
 			return errors.New(fmt.Sprintf("bad dns IP %s",
 				dsStr))
 		}
-		config.DnsServers = append(config.DnsServers, ds)
+		config.DNSServers = append(config.DNSServers, ds)
 	}
 	if dr := ipspec.GetDhcpRange(); dr != nil && dr.GetStart() != "" {
 		start := net.ParseIP(dr.GetStart())

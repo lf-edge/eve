@@ -195,8 +195,8 @@ func TestSingleEthInterface(test *testing.T) {
 				IsMgmt:       true,
 				IsL3Port:     true,
 				DhcpConfig: types.DhcpConfig{
-					Dhcp: types.DT_CLIENT,
-					Type: types.NT_IPV4,
+					Dhcp: types.DhcpTypeClient,
+					Type: types.NetworkTypeIPv4,
 				},
 			},
 		},
@@ -390,8 +390,8 @@ func TestMultipleEthsSameSubnet(test *testing.T) {
 				IsMgmt:       true,
 				IsL3Port:     true,
 				DhcpConfig: types.DhcpConfig{
-					Dhcp: types.DT_CLIENT,
-					Type: types.NT_IPV4,
+					Dhcp: types.DhcpTypeClient,
+					Type: types.NetworkTypeIPv4,
 				},
 			},
 			{
@@ -401,8 +401,8 @@ func TestMultipleEthsSameSubnet(test *testing.T) {
 				IsMgmt:       true,
 				IsL3Port:     true,
 				DhcpConfig: types.DhcpConfig{
-					Dhcp: types.DT_CLIENT,
-					Type: types.NT_IPV4,
+					Dhcp: types.DhcpTypeClient,
+					Type: types.NetworkTypeIPv4,
 				},
 			},
 		},
@@ -563,8 +563,8 @@ func TestWireless(test *testing.T) {
 				IsMgmt:       true,
 				IsL3Port:     true,
 				DhcpConfig: types.DhcpConfig{
-					Dhcp: types.DT_CLIENT,
-					Type: types.NT_IPV4,
+					Dhcp: types.DhcpTypeClient,
+					Type: types.NetworkTypeIPv4,
 				},
 				WirelessCfg: types.WirelessConfig{
 					WType: types.WirelessTypeWifi,
@@ -585,8 +585,8 @@ func TestWireless(test *testing.T) {
 				IsMgmt:       true,
 				IsL3Port:     true,
 				DhcpConfig: types.DhcpConfig{
-					Dhcp: types.DT_CLIENT,
-					Type: types.NT_IPV4,
+					Dhcp: types.DhcpTypeClient,
+					Type: types.NetworkTypeIPv4,
 				},
 				WirelessCfg: types.WirelessConfig{
 					WType: types.WirelessTypeCellular,
@@ -761,8 +761,8 @@ func TestVlansAndBonds(test *testing.T) {
 				IsL3Port:     true,
 				IsMgmt:       true,
 				DhcpConfig: types.DhcpConfig{
-					Dhcp: types.DT_CLIENT,
-					Type: types.NT_IPV4,
+					Dhcp: types.DhcpTypeClient,
+					Type: types.NetworkTypeIPv4,
 				},
 				L2LinkConfig: types.L2LinkConfig{
 					L2Type: types.L2LinkTypeVLAN,
@@ -778,8 +778,8 @@ func TestVlansAndBonds(test *testing.T) {
 				IsL3Port:     true,
 				IsMgmt:       true,
 				DhcpConfig: types.DhcpConfig{
-					Dhcp: types.DT_CLIENT,
-					Type: types.NT_IPV4,
+					Dhcp: types.DhcpTypeClient,
+					Type: types.NetworkTypeIPv4,
 				},
 				L2LinkConfig: types.L2LinkConfig{
 					L2Type: types.L2LinkTypeVLAN,

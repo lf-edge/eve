@@ -86,7 +86,7 @@ func LookupProxy(log *base.LogObject, status *types.DeviceNetworkStatus, ifname 
 		config := &Config{}
 		for _, proxy := range proxyConfig.Proxies {
 			switch proxy.Type {
-			case types.NPT_HTTP:
+			case types.NetworkProxyTypeHTTP:
 				var httpProxy string
 				if proxy.Port > 0 {
 					httpProxy = fmt.Sprintf("%s:%d", proxy.Server, proxy.Port)
@@ -96,7 +96,7 @@ func LookupProxy(log *base.LogObject, status *types.DeviceNetworkStatus, ifname 
 				config.HTTPProxy = httpProxy
 				log.Tracef("LookupProxy: Adding HTTP proxy %s for port %s",
 					config.HTTPProxy, ifname)
-			case types.NPT_HTTPS:
+			case types.NetworkProxyTypeHTTPS:
 				var httpsProxy string
 				if proxy.Port > 0 {
 					httpsProxy = fmt.Sprintf("%s:%d", proxy.Server, proxy.Port)
