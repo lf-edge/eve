@@ -9,6 +9,7 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 )
 
@@ -63,7 +64,9 @@ func MaybeAddDomainConfig(ctx *zedmanagerContext,
 			continue
 		}
 		location := vrs.ActiveFileLocation
-		if location == "" {
+		// Volumes in kubevirt eve are of PVC type and managed by kubernetes.
+		// There is no specific filelocation
+		if location == "" && !base.IsHVTypeKube() {
 			errStr := fmt.Sprintf("No ActiveFileLocation for %s", vrs.DisplayName)
 			log.Error(errStr)
 			return nil, errors.New(errStr)
