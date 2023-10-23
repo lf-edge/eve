@@ -44,7 +44,7 @@ else ifeq ($(ZARCH), arm64)
         KERNEL_VERSION=v6.1.38
     endif
     KERNEL_COMMIT_generic=b18cb9e3e
-    KERNEL_COMMIT_nvidia=b0b5f116e
+    KERNEL_COMMIT_nvidia=e6cd9a55f
 else ifeq ($(ZARCH), riscv64)
     KERNEL_VERSION=v6.1.38
     KERNEL_FLAVOR=generic
