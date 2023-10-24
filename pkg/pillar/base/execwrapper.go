@@ -48,7 +48,9 @@ func (c *Command) Output() ([]byte, error) {
 	var buf bytes.Buffer
 	c.command.Stdout = &buf
 	c.buffer = &buf
-	c.timeout = defaultTimeout
+	if c.timeout == 0 {
+		c.timeout = defaultTimeout
+	}
 	return c.execCommand()
 }
 
@@ -59,7 +61,9 @@ func (c *Command) CombinedOutput() ([]byte, error) {
 	c.command.Stdout = &buf
 	c.command.Stderr = &buf
 	c.buffer = &buf
-	c.timeout = defaultTimeout
+	if c.timeout == 0 {
+		c.timeout = defaultTimeout
+	}
 	return c.execCommand()
 }
 
