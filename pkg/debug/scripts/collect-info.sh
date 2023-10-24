@@ -5,7 +5,7 @@
 #
 
 # Script version, don't forget to bump up once something is changed
-VERSION=9
+VERSION=10
 
 # Add required packages here, it will be passed to "apk add".
 # Once something added here don't forget to add the same package
@@ -134,6 +134,7 @@ collect_network_info()
     echo "   - ifconfig, ip, arp, netstat, iptables"
     ifconfig       > "$DIR/network/ifconfig"
     ip -s link     > "$DIR/network/ip-s-link"
+    ip rule list   > "$DIR/network/ip-rule-list"
     arp -n         > "$DIR/network/arp-n"
     netstat -tuapn > "$DIR/network/netstat-tuapn"
 
