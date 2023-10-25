@@ -39,7 +39,10 @@ func (s SSHAuthKeys) Type() string {
 
 // Equal compares keys.
 func (s SSHAuthKeys) Equal(other depgraph.Item) bool {
-	s2 := other.(SSHAuthKeys)
+	s2, isSSHAuthKeys := other.(SSHAuthKeys)
+	if !isSSHAuthKeys {
+		return false
+	}
 	return s.Keys == s2.Keys
 }
 
@@ -65,24 +68,34 @@ type SSHAuthKeysConfigurator struct {
 
 // Create writes authorized_keys file.
 func (c *SSHAuthKeysConfigurator) Create(ctx context.Context, item depgraph.Item) error {
-	return c.writeSSHAuthKeys(item.(SSHAuthKeys).Keys)
+	return c.writeSSHAuthKeys(item)
 }
 
 // Modify writes updated authorized_keys file.
 func (c *SSHAuthKeysConfigurator) Modify(ctx context.Context, oldItem, newItem depgraph.Item) (err error) {
-	return c.writeSSHAuthKeys(newItem.(SSHAuthKeys).Keys)
+	return c.writeSSHAuthKeys(newItem)
 }
 
 // Delete writes authorized_keys with empty content.
 func (c *SSHAuthKeysConfigurator) Delete(ctx context.Context, item depgraph.Item) error {
-	return c.writeSSHAuthKeys("")
+	return c.writeSSHAuthKeys(nil)
 }
 
-func (c *SSHAuthKeysConfigurator) writeSSHAuthKeys(keys string) error {
+func (c *SSHAuthKeysConfigurator) writeSSHAuthKeys(item depgraph.Item) error {
+	var keys string
+	if item != nil {
+		sshAuthKeys, isSSHAuthKeys := item.(SSHAuthKeys)
+		if !isSSHAuthKeys {
+			err := fmt.Errorf("invalid item type: %T (expected SSHAuthKeys)", item)
+			c.Log.Error(err)
+			return err
+		}
+		keys = sshAuthKeys.Keys
+	}
 	c.Log.Functionf("writeSSHAuthKeys: %s", keys)
 	tmpfile, err := os.CreateTemp(runDir, "ak")
 	if err != nil {
-		err = fmt.Errorf("os.CreateTemp(%s) failed: %v", runDir, err)
+		err = fmt.Errorf("os.CreateTemp(%s) failed: %w", runDir, err)
 		c.Log.Error(err)
 		return err
 	}
@@ -90,29 +103,29 @@ func (c *SSHAuthKeysConfigurator) writeSSHAuthKeys(keys string) error {
 	defer os.Remove(tmpfile.Name())
 	err = tmpfile.Chmod(0600)
 	if err != nil {
-		err = fmt.Errorf("failed to chmod(0600) file %s: %v", tmpfile.Name(), err)
+		err = fmt.Errorf("failed to chmod(0600) file %s: %w", tmpfile.Name(), err)
 		c.Log.Error(err)
 		return err
 	}
 	if keys != "" {
 		if _, err = tmpfile.WriteString(keys); err != nil {
-			err = fmt.Errorf("failed to write into %s: %v", tmpfile.Name(), err)
+			err = fmt.Errorf("failed to write into %s: %w", tmpfile.Name(), err)
 			c.Log.Error(err)
 			return err
 		}
 	}
 	if err = tmpfile.Sync(); err != nil {
-		err = fmt.Errorf("failed to sync %s: %v", tmpfile.Name(), err)
+		err = fmt.Errorf("failed to sync %s: %w", tmpfile.Name(), err)
 		c.Log.Error(err)
 		return err
 	}
 	if err = tmpfile.Close(); err != nil {
-		err = fmt.Errorf("failed to close %s: %v", tmpfile.Name(), err)
+		err = fmt.Errorf("failed to close %s: %w", tmpfile.Name(), err)
 		c.Log.Error(err)
 		return err
 	}
 	if err = os.Rename(tmpfile.Name(), authKeysFilename); err != nil {
-		err = fmt.Errorf("failed to rename %s to %s: %v",
+		err = fmt.Errorf("failed to rename %s to %s: %w",
 			tmpfile.Name(), authKeysFilename, err)
 		c.Log.Error(err)
 		return err

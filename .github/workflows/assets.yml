@@ -13,16 +13,11 @@
 ---
 name: Assets
 on:  # yamllint disable-line rule:truthy
-  workflow_run:
-    workflows:
-      - Publish
-    types:
-      - completed
-    branches:
-      - "master"
-      - "[0-9]+.[0-9]+"
-      - "[0-9]+.[0-9]+-stable"
-      - "[0-9]+.[0-9]+-lts"
+  workflow_call:
+    inputs:
+      tag_ref:
+        required: true
+        type: string
 
 jobs:
   build:
@@ -35,7 +30,7 @@ jobs:
       - name: checkout repo
         uses: actions/checkout@v3
         with:
-          ref: ${{ github.event.workflow_run.head_branch }}
+          ref: ${{ inputs.tag_ref }}
           fetch-depth: 0
       - name: Force fetch annotated tags (workaround)
         # Workaround for https://github.com/actions/checkout/issues/290
@@ -43,7 +38,7 @@ jobs:
           git fetch --force --tags
       - name: Determine architecture prefix and ref
         env:
-          REF: ${{ github.event.workflow_run.head_branch }}
+          REF: ${{ inputs.tag_ref }}
         run: |
           # FIXME: I'd rather be a real matrix job with a functional arm64 runner
           # echo "ARCH=$(uname -m | sed -e 's/x86_64/amd64/' -e 's/aarch64/arm64/')" >> "$GITHUB_ENV"
@@ -60,7 +55,7 @@ jobs:
         run: |
           HV=kvm
           if [ "${{ github.event.repository.full_name }}" = "lf-edge/eve" ]; then
-             EVE=lfedge/eve:${{ env.TAG }}-${HV}-${{ env.ARCH }}
+             EVE=lfedge/eve:${{ inputs.tag_ref }}-${HV}-${{ env.ARCH }}
              docker pull "$EVE"
           else
              make pkgs
@@ -71,7 +66,7 @@ jobs:
           docker run "$EVE" installer_net | tar -C assets -xvf -
       - name: Create direct iPXE config
         run: |
-          URL="${{ github.event.repository.html_url }}/releases/download/${{ env.TAG }}/${{ env.ARCH }}."
+          URL="${{ github.event.repository.html_url }}/releases/download/${{ inputs.tag_ref }}/${{ env.ARCH }}."
           sed -i. -e '/# set url https:/s#^.*$#set url '"$URL"'#' assets/ipxe.efi.cfg
           for comp in initrd rootfs installer; do
               sed -i. -e "s#initrd=${comp}#initrd=${{ env.ARCH }}.${comp}#g" assets/ipxe.efi.cfg
@@ -89,7 +84,7 @@ jobs:
       - name: Pull eve-sources and publish collected_sources.tar.gz to assets
         run: |
           HV=kvm
-          EVE_SOURCES=lfedge/eve-sources:${{ env.TAG }}-${HV}-${{ env.ARCH }}
+          EVE_SOURCES=lfedge/eve-sources:${{ inputs.tag_ref }}-${HV}-${{ env.ARCH }}
           docker pull "$EVE_SOURCES"
           docker create --name eve_sources "$EVE_SOURCES" bash
           docker export --output assets/collected_sources.tar.gz eve_sources
@@ -101,7 +96,7 @@ jobs:
           result-encoding: string
           script: |
             console.log(context)
-            tag = '${{ env.TAG }}'
+            tag = '${{ inputs.tag_ref }}'
 
             // first create a release -- it is OK if that fails,
             // since it means the release is already there

@@ -36,6 +36,7 @@ tpm2-tss-tctildr
 tpm2-tss-fapi
 tpm2-tss-rc
 pkgconf
+libgudev-dev
 librados
 librbd
 libvirt

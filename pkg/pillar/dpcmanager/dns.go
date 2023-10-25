@@ -64,8 +64,8 @@ func (m *DpcManager) updateDNS() {
 		}
 		// Start with any statically assigned values; update below
 		m.deviceNetStatus.Ports[ix].DomainName = port.DomainName
-		m.deviceNetStatus.Ports[ix].DNSServers = port.DnsServers
-		m.deviceNetStatus.Ports[ix].NtpServer = port.NtpServer
+		m.deviceNetStatus.Ports[ix].DNSServers = port.DNSServers
+		m.deviceNetStatus.Ports[ix].NtpServer = port.NTPServer
 		// Prefer errors recorded by DPC verification.
 		// New errors are recorded from this function only when there is none yet
 		// (HasError() == false).
@@ -74,9 +74,9 @@ func (m *DpcManager) updateDNS() {
 		// If this is a cellular network connectivity, add status information
 		// obtained from the wwan service.
 		if port.WirelessCfg.WType == types.WirelessTypeCellular {
-			wwanNetStatus, found := m.wwanStatus.LookupNetworkStatus(port.Logicallabel)
-			if found {
-				m.deviceNetStatus.Ports[ix].WirelessStatus.Cellular = wwanNetStatus
+			wwanNetStatus := m.wwanStatus.GetNetworkStatus(port.Logicallabel)
+			if wwanNetStatus != nil {
+				m.deviceNetStatus.Ports[ix].WirelessStatus.Cellular = *wwanNetStatus
 			}
 		}
 		// Do not try to get state data for interface which is in PCIback.
@@ -132,7 +132,7 @@ func (m *DpcManager) updateDNS() {
 		for i, addr := range ipAddrs {
 			m.deviceNetStatus.Ports[ix].AddrInfoList[i].Addr = addr.IP
 		}
-		// Get DNS etc info from dhcpcd. Updates DomainName and DnsServers.
+		// Get DNS etc info from dhcpcd. Updates DomainName and DNSServers.
 		err = m.getDHCPInfo(&m.deviceNetStatus.Ports[ix])
 		if err != nil && dpc.State != types.DPCStateAsyncWait {
 			m.Log.Error(err)
@@ -237,7 +237,7 @@ func (m *DpcManager) updateGeo() {
 }
 
 func (m *DpcManager) getDHCPInfo(port *types.NetworkPortStatus) error {
-	if port.Dhcp != types.DT_CLIENT {
+	if port.Dhcp != types.DhcpTypeClient {
 		return nil
 	}
 	if port.WirelessStatus.WType == types.WirelessTypeCellular {

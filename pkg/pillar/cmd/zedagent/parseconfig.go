@@ -174,6 +174,8 @@ func parseConfig(getconfigCtx *getconfigContext, config *zconfig.EdgeDevConfig,
 			parseDisksConfig(getconfigCtx, config)
 
 			parseEdgeNodeInfo(getconfigCtx, config)
+
+			parsePatchEnvelopes(getconfigCtx, config)
 		}
 
 		getconfigCtx.lastProcessedConfig = getconfigCtx.lastReceivedConfig
@@ -382,12 +384,12 @@ func parseDnsNameToIpList(
 	apiConfigEntry *zconfig.NetworkInstanceConfig,
 	config *types.NetworkInstanceConfig) {
 
-	// Parse and store DnsNameToIPList form Network configuration
+	// Parse and store DNSNameToIPList form Network configuration
 	dnsEntries := apiConfigEntry.GetDns()
 
-	// Parse and populate the DnsNameToIP list
+	// Parse and populate the DNSNameToIP list
 	// This is what we will publish to zedrouter
-	nameToIPs := []types.DnsNameToIP{}
+	nameToIPs := []types.DNSNameToIP{}
 	for _, dnsEntry := range dnsEntries {
 		hostName := dnsEntry.HostName
 
@@ -402,7 +404,7 @@ func parseDnsNameToIpList(
 			}
 		}
 
-		nameToIP := types.DnsNameToIP{
+		nameToIP := types.DNSNameToIP{
 			HostName: hostName,
 			IPs:      ips,
 		}
@@ -1120,7 +1122,7 @@ func parseOneSystemAdapterConfig(getconfigCtx *getconfigContext,
 
 	port.IsMgmt = isMgmt
 	port.Cost = portCost
-	port.Dhcp = types.DT_NONE
+	port.Dhcp = types.DhcpTypeNone
 	var ip net.IP
 	var network *types.NetworkXObjectConfig
 	if sysAdapter.Addr != "" {
@@ -1172,27 +1174,27 @@ func parseOneSystemAdapterConfig(getconfigCtx *getconfigContext,
 			port.WirelessCfg = network.WirelessCfg
 			port.Gateway = network.Gateway
 			port.DomainName = network.DomainName
-			port.NtpServer = network.NtpServer
-			port.DnsServers = network.DnsServers
+			port.NTPServer = network.NTPServer
+			port.DNSServers = network.DNSServers
 			// Need to be careful since zedcloud can feed us bad Dhcp type
 			port.Dhcp = network.Dhcp
 			switch port.Dhcp {
-			case types.DT_STATIC:
+			case types.DhcpTypeStatic:
 				if port.AddrSubnet == "" {
-					errStr := fmt.Sprintf("Port %s Configured as DT_STATIC but "+
+					errStr := fmt.Sprintf("Port %s Configured as DhcpTypeStatic but "+
 						"missing subnet address. SysAdapter - Name: %s, Addr:%s",
 						port.Logicallabel, sysAdapter.Name, sysAdapter.Addr)
 					log.Errorf("parseSystemAdapterConfig: %s", errStr)
 					port.RecordFailure(errStr)
 				}
-			case types.DT_CLIENT:
+			case types.DhcpTypeClient:
 				// Do nothing
-			case types.DT_NONE:
+			case types.DhcpTypeNone:
 				if isMgmt {
 					errStr := fmt.Sprintf("Port %s configured as Management port "+
 						"with an unsupported DHCP type %d. Client and static are "+
 						"the only allowed DHCP modes for management ports.",
-						port.Logicallabel, types.DT_NONE)
+						port.Logicallabel, types.DhcpTypeNone)
 
 					log.Errorf("parseSystemAdapterConfig: %s", errStr)
 					port.RecordFailure(errStr)
@@ -1772,13 +1774,13 @@ func parseOneNetworkXObjectConfig(ctx *getconfigContext, netEnt *zconfig.Network
 			}
 			switch proxy.Proto {
 			case zconfig.ProxyProto_PROXY_HTTP:
-				proxyEntry.Type = types.NPT_HTTP
+				proxyEntry.Type = types.NetworkProxyTypeHTTP
 			case zconfig.ProxyProto_PROXY_HTTPS:
-				proxyEntry.Type = types.NPT_HTTPS
+				proxyEntry.Type = types.NetworkProxyTypeHTTPS
 			case zconfig.ProxyProto_PROXY_SOCKS:
-				proxyEntry.Type = types.NPT_SOCKS
+				proxyEntry.Type = types.NetworkProxyTypeSOCKS
 			case zconfig.ProxyProto_PROXY_FTP:
-				proxyEntry.Type = types.NPT_FTP
+				proxyEntry.Type = types.NetworkProxyTypeFTP
 			default:
 			}
 			proxyConfig.Proxies = append(proxyConfig.Proxies, proxyEntry)
@@ -1794,7 +1796,7 @@ func parseOneNetworkXObjectConfig(ctx *getconfigContext, netEnt *zconfig.Network
 
 	ipspec := netEnt.GetIp()
 	switch config.Type {
-	case types.NT_IPV4, types.NT_IPV6:
+	case types.NetworkTypeIPv4, types.NetworkTypeIPV6:
 		if ipspec == nil {
 			errStr := fmt.Sprintf("parseOneNetworkXObjectConfig: Missing ipspec for %s in %v",
 				config.Key(), netEnt)
@@ -1810,10 +1812,10 @@ func parseOneNetworkXObjectConfig(ctx *getconfigContext, netEnt *zconfig.Network
 			config.SetErrorNow(errStr)
 			return config
 		}
-	case types.NT_NOOP:
-		// XXX is controller still sending static and dynamic entries with NT_NOOP? Why?
+	case types.NetworkTypeNOOP:
+		// XXX is controller still sending static and dynamic entries with NetworkTypeNOOP? Why?
 		if ipspec != nil {
-			log.Warnf("XXX NT_NOOP for %s with ipspec %v",
+			log.Warnf("XXX NetworkTypeNOOP for %s with ipspec %v",
 				config.Key(), ipspec)
 			err := parseIpspecNetworkXObject(ipspec, config)
 			if err != nil {
@@ -1833,12 +1835,12 @@ func parseOneNetworkXObjectConfig(ctx *getconfigContext, netEnt *zconfig.Network
 		return config
 	}
 
-	// Parse and store DnsNameToIPList form Network configuration
+	// Parse and store DNSNameToIPList form Network configuration
 	dnsEntries := netEnt.GetDns()
 
-	// Parse and populate the DnsNameToIP list
+	// Parse and populate the DNSNameToIP list
 	// This is what we will publish to zedrouter
-	nameToIPs := []types.DnsNameToIP{}
+	nameToIPs := []types.DNSNameToIP{}
 	for _, dnsEntry := range dnsEntries {
 		hostName := dnsEntry.HostName
 
@@ -1856,13 +1858,13 @@ func parseOneNetworkXObjectConfig(ctx *getconfigContext, netEnt *zconfig.Network
 			}
 		}
 
-		nameToIP := types.DnsNameToIP{
+		nameToIP := types.DNSNameToIP{
 			HostName: hostName,
 			IPs:      ips,
 		}
 		nameToIPs = append(nameToIPs, nameToIP)
 	}
-	config.DnsNameToIPList = nameToIPs
+	config.DNSNameToIPList = nameToIPs
 	return config
 }
 
@@ -1998,8 +2000,8 @@ func parseIpspecNetworkXObject(ipspec *zconfig.Ipspec, config *types.NetworkXObj
 		}
 	}
 	if n := ipspec.GetNtp(); n != "" {
-		config.NtpServer = net.ParseIP(n)
-		if config.NtpServer == nil {
+		config.NTPServer = net.ParseIP(n)
+		if config.NTPServer == nil {
 			return errors.New(fmt.Sprintf("bad ntp IP %s",
 				n))
 		}
@@ -2010,7 +2012,7 @@ func parseIpspecNetworkXObject(ipspec *zconfig.Ipspec, config *types.NetworkXObj
 			return errors.New(fmt.Sprintf("bad dns IP %s",
 				dsStr))
 		}
-		config.DnsServers = append(config.DnsServers, ds)
+		config.DNSServers = append(config.DNSServers, ds)
 	}
 	if dr := ipspec.GetDhcpRange(); dr != nil && dr.GetStart() != "" {
 		start := net.ParseIP(dr.GetStart())
@@ -2167,57 +2169,57 @@ func parseAppNetworkConfig(appInstance *types.AppInstanceConfig,
 	cfgNetworks []*zconfig.NetworkConfig,
 	cfgNetworkInstances []*zconfig.NetworkInstanceConfig) {
 
-	parseUnderlayNetworkConfig(appInstance, cfgApp, cfgNetworks,
+	parseAppNetAdapterConfig(appInstance, cfgApp, cfgNetworks,
 		cfgNetworkInstances)
 }
 
-func parseUnderlayNetworkConfig(appInstance *types.AppInstanceConfig,
+func parseAppNetAdapterConfig(appInstance *types.AppInstanceConfig,
 	cfgApp *zconfig.AppInstanceConfig,
 	cfgNetworks []*zconfig.NetworkConfig,
 	cfgNetworkInstances []*zconfig.NetworkInstanceConfig) {
 
 	for _, intfEnt := range cfgApp.Interfaces {
-		ulCfg := parseUnderlayNetworkConfigEntry(
+		adapterCfg := parseAppNetAdapterConfigEntry(
 			cfgApp, cfgNetworks, cfgNetworkInstances, intfEnt)
-		if ulCfg == nil {
-			log.Functionf("Nil underlay config for Interface %s", intfEnt.Name)
+		if adapterCfg == nil {
+			log.Functionf("Nil AppNetworkAdapterConfig for Interface %s", intfEnt.Name)
 			continue
 		}
-		appInstance.UnderlayNetworkList = append(appInstance.UnderlayNetworkList,
-			*ulCfg)
-		if ulCfg.Error != "" {
-			appInstance.Errors = append(appInstance.Errors, ulCfg.Error)
+		appInstance.AppNetAdapterList = append(appInstance.AppNetAdapterList,
+			*adapterCfg)
+		if adapterCfg.Error != "" {
+			appInstance.Errors = append(appInstance.Errors, adapterCfg.Error)
 			log.Errorf("Error in Interface(%s) config. Error: %s",
-				intfEnt.Name, ulCfg.Error)
+				intfEnt.Name, adapterCfg.Error)
 		}
 	}
 	// sort based on intfOrder
 	// XXX remove? Debug?
-	if len(appInstance.UnderlayNetworkList) > 1 {
-		log.Functionf("XXX pre sort %+v", appInstance.UnderlayNetworkList)
+	if len(appInstance.AppNetAdapterList) > 1 {
+		log.Functionf("XXX pre sort %+v", appInstance.AppNetAdapterList)
 	}
-	sort.Slice(appInstance.UnderlayNetworkList[:],
+	sort.Slice(appInstance.AppNetAdapterList[:],
 		func(i, j int) bool {
-			return appInstance.UnderlayNetworkList[i].IntfOrder <
-				appInstance.UnderlayNetworkList[j].IntfOrder
+			return appInstance.AppNetAdapterList[i].IntfOrder <
+				appInstance.AppNetAdapterList[j].IntfOrder
 		})
 
 	// calculate IfIdx field for interfaces connected to the same network
 	nextIfIndexForNetwork := make(map[uuid.UUID]uint32)
-	for i := range appInstance.UnderlayNetworkList {
-		ulCfg := &appInstance.UnderlayNetworkList[i]
-		if ind, ok := nextIfIndexForNetwork[ulCfg.Network]; ok {
-			ulCfg.IfIdx = ind
-			nextIfIndexForNetwork[ulCfg.Network] = ind + 1
+	for i := range appInstance.AppNetAdapterList {
+		adapterCfg := &appInstance.AppNetAdapterList[i]
+		if ind, ok := nextIfIndexForNetwork[adapterCfg.Network]; ok {
+			adapterCfg.IfIdx = ind
+			nextIfIndexForNetwork[adapterCfg.Network] = ind + 1
 			continue
 		}
-		nextIfIndexForNetwork[ulCfg.Network] = 1
-		ulCfg.IfIdx = 0
+		nextIfIndexForNetwork[adapterCfg.Network] = 1
+		adapterCfg.IfIdx = 0
 	}
 
 	// XXX remove? Debug?
-	if len(appInstance.UnderlayNetworkList) > 1 {
-		log.Functionf("XXX post sort %+v", appInstance.UnderlayNetworkList)
+	if len(appInstance.AppNetAdapterList) > 1 {
+		log.Functionf("XXX post sort %+v", appInstance.AppNetAdapterList)
 	}
 }
 
@@ -2234,78 +2236,78 @@ func isOverlayNetworkInstance(netInstEntry *zconfig.NetworkInstanceConfig) bool 
 	return netInstEntry.InstType == zconfig.ZNetworkInstType_ZnetInstMesh
 }
 
-func parseUnderlayNetworkConfigEntry(
+func parseAppNetAdapterConfigEntry(
 	cfgApp *zconfig.AppInstanceConfig,
 	cfgNetworks []*zconfig.NetworkConfig,
 	cfgNetworkInstances []*zconfig.NetworkInstanceConfig,
-	intfEnt *zconfig.NetworkAdapter) *types.UnderlayNetworkConfig {
+	intfEnt *zconfig.NetworkAdapter) *types.AppNetAdapterConfig {
 
-	ulCfg := new(types.UnderlayNetworkConfig)
-	ulCfg.Name = intfEnt.Name
-	// XXX set ulCfg.IntfOrder from API once available
+	adapterCfg := new(types.AppNetAdapterConfig)
+	adapterCfg.Name = intfEnt.Name
+	// XXX set adapterCfg.IntfOrder from API once available
 	var intfOrder int32
 	// Lookup NetworkInstance ID
 	networkInstanceEntry := lookupNetworkInstanceId(intfEnt.NetworkId,
 		cfgNetworkInstances)
 	if networkInstanceEntry == nil {
-		ulCfg.Error = fmt.Sprintf("App %s-%s: Can't find %s in network instances.\n",
+		adapterCfg.Error = fmt.Sprintf("App %s-%s: Can't find %s in network instances.\n",
 			cfgApp.Displayname, cfgApp.Uuidandversion.Uuid,
 			intfEnt.NetworkId)
-		log.Errorf("%s", ulCfg.Error)
-		return ulCfg
+		log.Errorf("%s", adapterCfg.Error)
+		return adapterCfg
 	}
 	if isOverlayNetworkInstance(networkInstanceEntry) {
 		return nil
 	}
 	uuid, err := uuid.FromString(intfEnt.NetworkId)
 	if err != nil {
-		ulCfg.Error = fmt.Sprintf("App %s-%s: Malformed Network UUID %s. Err: %s\n",
+		adapterCfg.Error = fmt.Sprintf("App %s-%s: Malformed Network UUID %s. Err: %s\n",
 			cfgApp.Displayname, cfgApp.Uuidandversion.Uuid,
 			intfEnt.NetworkId, err)
-		log.Errorf("%s", ulCfg.Error)
-		return ulCfg
+		log.Errorf("%s", adapterCfg.Error)
+		return adapterCfg
 	}
 	log.Functionf("NetworkInstance(%s-%s): InstType %v",
 		cfgApp.Displayname, cfgApp.Uuidandversion.Uuid,
 		networkInstanceEntry.InstType)
 
-	ulCfg.Network = uuid
+	adapterCfg.Network = uuid
 	if intfEnt.MacAddress != "" {
-		log.Functionf("parseUnderlayNetworkConfig: got static MAC %s",
+		log.Functionf("parseAppNetAdapterConfig: got static MAC %s",
 			intfEnt.MacAddress)
-		ulCfg.AppMacAddr, err = net.ParseMAC(intfEnt.MacAddress)
+		adapterCfg.AppMacAddr, err = net.ParseMAC(intfEnt.MacAddress)
 		if err != nil {
-			ulCfg.Error = fmt.Sprintf("App %s-%s: bad MAC:%s, Err: %s\n",
+			adapterCfg.Error = fmt.Sprintf("App %s-%s: bad MAC:%s, Err: %s\n",
 				cfgApp.Displayname, cfgApp.Uuidandversion.Uuid, intfEnt.MacAddress,
 				err)
-			log.Errorf("%s", ulCfg.Error)
-			return ulCfg
+			log.Errorf("%s", adapterCfg.Error)
+			return adapterCfg
 		}
 	}
 	if intfEnt.Addr != "" {
-		log.Functionf("parseUnderlayNetworkConfig: got static IP %s",
+		log.Functionf("parseAppNetAdapterConfig: got static IP %s",
 			intfEnt.Addr)
-		ulCfg.AppIPAddr = net.ParseIP(intfEnt.Addr)
-		if ulCfg.AppIPAddr == nil {
-			ulCfg.Error = fmt.Sprintf("App %s-%s: bad AppIPAddr:%s\n",
+		adapterCfg.AppIPAddr = net.ParseIP(intfEnt.Addr)
+		if adapterCfg.AppIPAddr == nil {
+			adapterCfg.Error = fmt.Sprintf("App %s-%s: bad AppIPAddr:%s\n",
 				cfgApp.Displayname, cfgApp.Uuidandversion.Uuid, intfEnt.Addr)
-			log.Errorf("%s", ulCfg.Error)
-			return ulCfg
+			log.Errorf("%s", adapterCfg.Error)
+			return adapterCfg
 		}
 
 		// XXX - Should be move this check to zed manager? Only checks
 		// absolutely needed to fill in the AppInstanceConfig should
 		//	be in this routing. Rest of the checks should be done in zedmanager
 		//	when processing the config. Clean it up..
-		if ulCfg.AppIPAddr.To4() == nil {
-			ulCfg.Error = fmt.Sprintf("Static IPv6 addressing (%s) not yet supported.\n",
+		if adapterCfg.AppIPAddr.To4() == nil {
+			adapterCfg.Error = fmt.Sprintf("Static IPv6 addressing (%s) not yet supported.\n",
 				intfEnt.Addr)
-			log.Errorf("%s", ulCfg.Error)
-			return ulCfg
+			log.Errorf("%s", adapterCfg.Error)
+			return adapterCfg
 		}
 	}
 
-	ulCfg.ACLs = make([]types.ACE, len(intfEnt.Acls))
+	adapterCfg.ACLs = make([]types.ACE, len(intfEnt.Acls))
 	for aclIdx, acl := range intfEnt.Acls {
 		aclCfg := new(types.ACE)
 		aclCfg.Matches = make([]types.ACEMatch,
@@ -2337,12 +2339,12 @@ func parseUnderlayNetworkConfigEntry(
 			actionCfg.Drop = action.Drop
 			aclCfg.Actions[actionIdx] = *actionCfg
 		}
-		ulCfg.ACLs[aclIdx] = *aclCfg
+		adapterCfg.ACLs[aclIdx] = *aclCfg
 	}
-	// XXX set ulCfg.IntfOrder from API once available
-	ulCfg.IntfOrder = intfOrder
-	ulCfg.AccessVlanID = intfEnt.AccessVlanId
-	return ulCfg
+	// XXX set adapterCfg.IntfOrder from API once available
+	adapterCfg.IntfOrder = intfOrder
+	adapterCfg.AccessVlanID = intfEnt.AccessVlanId
+	return adapterCfg
 }
 
 var itemsPrevConfigHash []byte
@@ -2521,8 +2523,8 @@ func checkAndPublishAppInstanceConfig(getconfigCtx *getconfigContext,
 		}
 		cryptoNumBytes := len(config.CipherData)
 		numACLs := 0
-		for i := range config.UnderlayNetworkList {
-			numACLs += len(config.UnderlayNetworkList[i].ACLs)
+		for i := range config.AppNetAdapterList {
+			numACLs += len(config.AppNetAdapterList[i].ACLs)
 		}
 		if clearNumBytes == 0 && cryptoNumBytes == 0 {
 			// Issue must be due to ACLs
@@ -2551,8 +2553,8 @@ func checkAndPublishAppInstanceConfig(getconfigCtx *getconfigContext,
 		// Clear out all the fields which can be large
 		config.CloudInitUserData = nil
 		config.CipherData = nil
-		for i := range config.UnderlayNetworkList {
-			config.UnderlayNetworkList[i].ACLs = nil
+		for i := range config.AppNetAdapterList {
+			config.AppNetAdapterList[i].ACLs = nil
 		}
 	}
 	if config.Service && config.FixedResources.VirtualizationMode != types.NOHYPER {

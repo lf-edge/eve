@@ -106,6 +106,7 @@ type getconfigContext struct {
 	pubVolumeConfig           pubsub.Publication
 	pubDisksConfig            pubsub.Publication
 	pubEdgeNodeInfo           pubsub.Publication
+	pubPatchEnvelopeInfo      pubsub.Publication
 	subCachedResolvedIPs      pubsub.Subscription
 	NodeAgentStatus           *types.NodeAgentStatus
 	configProcessingRV        configProcessingRetval
@@ -1199,19 +1200,19 @@ func updateLocalServerMap(getconfigCtx *getconfigContext, localServerURL string)
 
 	for _, entry := range appNetworkStatuses {
 		appNetworkStatus := entry.(types.AppNetworkStatus)
-		for _, ulStatus := range appNetworkStatus.UnderlayNetworkList {
-			if len(ulStatus.BridgeIPAddr) == 0 {
+		for _, adapterStatus := range appNetworkStatus.AppNetAdapterList {
+			if len(adapterStatus.BridgeIPAddr) == 0 {
 				continue
 			}
 			if localServerIP != nil {
 				// check if the defined IP of localServer equals the allocated IP of the app
-				if ulStatus.AllocatedIPv4Addr.Equal(localServerIP) {
+				if adapterStatus.AllocatedIPv4Addr.Equal(localServerIP) {
 					srvAddr := localServerAddr{
 						localServerAddr: localServerURL,
-						bridgeIP:        ulStatus.BridgeIPAddr,
+						bridgeIP:        adapterStatus.BridgeIPAddr,
 						appUUID:         appNetworkStatus.UUIDandVersion.UUID,
 					}
-					srvMap.servers[ulStatus.Bridge] = append(srvMap.servers[ulStatus.Bridge], srvAddr)
+					srvMap.servers[adapterStatus.Bridge] = append(srvMap.servers[adapterStatus.Bridge], srvAddr)
 				}
 				continue
 			}
@@ -1227,13 +1228,13 @@ func updateLocalServerMap(getconfigCtx *getconfigContext, localServerURL string)
 							localServerURL, localServerHostname, ip.String(), 1)
 						log.Functionf(
 							"updateLocalServerMap: will use %s for bridge %s",
-							localServerURLReplaced, ulStatus.Bridge)
+							localServerURLReplaced, adapterStatus.Bridge)
 						srvAddr := localServerAddr{
 							localServerAddr: localServerURLReplaced,
-							bridgeIP:        ulStatus.BridgeIPAddr,
+							bridgeIP:        adapterStatus.BridgeIPAddr,
 							appUUID:         appNetworkStatus.UUIDandVersion.UUID,
 						}
-						srvMap.servers[ulStatus.Bridge] = append(srvMap.servers[ulStatus.Bridge], srvAddr)
+						srvMap.servers[adapterStatus.Bridge] = append(srvMap.servers[adapterStatus.Bridge], srvAddr)
 					}
 				}
 			}

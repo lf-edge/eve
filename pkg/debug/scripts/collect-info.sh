@@ -5,7 +5,7 @@
 #
 
 # Script version, don't forget to bump up once something is changed
-VERSION=8
+VERSION=10
 
 # Add required packages here, it will be passed to "apk add".
 # Once something added here don't forget to add the same package
@@ -134,6 +134,7 @@ collect_network_info()
     echo "   - ifconfig, ip, arp, netstat, iptables"
     ifconfig       > "$DIR/network/ifconfig"
     ip -s link     > "$DIR/network/ip-s-link"
+    ip rule list   > "$DIR/network/ip-rule-list"
     arp -n         > "$DIR/network/arp-n"
     netstat -tuapn > "$DIR/network/netstat-tuapn"
 
@@ -154,6 +155,36 @@ collect_network_info()
         echo "------ $iface -------"
         dhcpcd -U -4 "$iface"
     done > "$DIR/network/dhcpcd-all-ifaces" 2>&1
+
+    echo "   - cellular modems"
+    MODEMS="$(eve exec --fork wwan mmcli -L |\
+              sed -n 's/.*\/ModemManager1\/Modem\/\([0-9]\+\).*/\1/p' | uniq)"
+    for MODEM in $MODEMS; do
+        INFO="$(eve exec --fork wwan mmcli -m "$MODEM")"
+        echo
+        echo "Modem $MODEM:"
+        echo "$INFO"
+        SIMS="$(echo "$INFO" |\
+                sed -n 's/.*\/ModemManager1\/SIM\/\([0-9]\+\).*/\1/p' | uniq)"
+        for SIM in $SIMS; do
+            echo
+            echo "SIM $SIM used by modem $MODEM:"
+            eve exec --fork wwan mmcli -i "$SIM"
+        done
+        BEARERS="$(echo "$INFO" |\
+                   sed -n 's/.*\/ModemManager1\/Bearer\/\([0-9]\+\).*/\1/p' | uniq)"
+        for BEARER in $BEARERS; do
+            echo
+            echo "Bearer $BEARER used by modem $MODEM:"
+            eve exec --fork wwan mmcli -b "$BEARER"
+        done
+        echo
+        echo "Modem $MODEM location status:"
+        eve exec --fork wwan mmcli -m "$MODEM" --location-status
+        echo
+        echo "Modem $MODEM location:"
+        eve exec --fork wwan mmcli -m "$MODEM" --location-get
+    done > "$DIR/network/wwan" 2>&1
 
     echo "- done network info"
 }

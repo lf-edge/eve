@@ -37,7 +37,10 @@ func (a AdapterAddrs) Type() string {
 
 // Equal compares IP addresses (order is irrelevant).
 func (a AdapterAddrs) Equal(other depgraph.Item) bool {
-	a2 := other.(AdapterAddrs)
+	a2, isAdapterAddrs := other.(AdapterAddrs)
+	if !isAdapterAddrs {
+		return false
+	}
 	return isSubsetOf(a.IPAddrs, a2.IPAddrs) &&
 		isSubsetOf(a2.IPAddrs, a.IPAddrs)
 }
@@ -63,7 +66,7 @@ func isSubsetOf(subset, set []*net.IPNet) bool {
 		var found bool
 		for _, addr2 := range set {
 			if addr.IP.Equal(addr2.IP) &&
-				bytes.Compare(addr.Mask, addr2.Mask) == 0 {
+				bytes.Equal(addr.Mask, addr2.Mask) {
 				found = true
 				break
 			}

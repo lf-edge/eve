@@ -53,7 +53,10 @@ func (c Dhcpcd) Type() string {
 
 // Equal is a comparison method for two equally-named Dhcpcd instances.
 func (c Dhcpcd) Equal(other depgraph.Item) bool {
-	c2 := other.(Dhcpcd)
+	c2, isDhcpcd := other.(Dhcpcd)
+	if !isDhcpcd {
+		return false
+	}
 	// Consider two DHCP configs as equal if they result in the same set of arguments for dhcpcd.
 	// This avoids unnecessary restarts of dhcpcd (when e.g. going from override to zedagent DPC).
 	configurator := &DhcpcdConfigurator{}
@@ -103,23 +106,29 @@ func (c *DhcpcdConfigurator) Create(ctx context.Context, item depgraph.Item) err
 	done := reconciler.ContinueInBackground(ctx)
 
 	go func() {
-		client := item.(Dhcpcd)
+		client, isDhcpcd := item.(Dhcpcd)
+		if !isDhcpcd {
+			err := fmt.Errorf("invalid item type: %T (expected Dhcpcd)", item)
+			c.Log.Error(err)
+			done(err)
+			return
+		}
 		ifName := client.AdapterIfName
 		config := client.DhcpConfig
 
 		// Validate input arguments
 		switch config.Dhcp {
-		case types.DT_NONE:
+		case types.DhcpTypeNone:
 			// Nothing to do, return.
 			done(nil)
 			return
 
-		case types.DT_CLIENT:
+		case types.DhcpTypeClient:
 			// Nothing to validate.
 
-		case types.DT_STATIC:
+		case types.DhcpTypeStatic:
 			if config.AddrSubnet == "" {
-				err := fmt.Errorf("DHCP config is missing AddrSubnet for interface %s\n",
+				err := fmt.Errorf("DHCP config is missing AddrSubnet for interface %s",
 					ifName)
 				c.Log.Error(err)
 				done(err)
@@ -129,8 +138,7 @@ func (c *DhcpcdConfigurator) Create(ctx context.Context, item depgraph.Item) err
 			_, _, err := net.ParseCIDR(config.AddrSubnet)
 			if err != nil {
 				err = fmt.Errorf(
-					"failed to parse AddrSubnet from DHCP config for interface %s\n",
-					ifName)
+					"failed to parse AddrSubnet from DHCP config for interface %s", ifName)
 				c.Log.Error(err)
 				done(err)
 				return
@@ -173,7 +181,6 @@ func (c *DhcpcdConfigurator) Create(ctx context.Context, item depgraph.Item) err
 		}
 		c.Log.Functionf("dhcpcd for interface %s is running", ifName)
 		done(nil)
-		return
 	}()
 	return nil
 }
@@ -188,16 +195,22 @@ func (c *DhcpcdConfigurator) Delete(ctx context.Context, item depgraph.Item) err
 	done := reconciler.ContinueInBackground(ctx)
 
 	go func() {
-		client := item.(Dhcpcd)
+		client, isDhcpcd := item.(Dhcpcd)
+		if !isDhcpcd {
+			err := fmt.Errorf("invalid item type: %T (expected Dhcpcd)", item)
+			c.Log.Error(err)
+			done(err)
+			return
+		}
 		ifName := client.AdapterIfName
 		config := client.DhcpConfig
 
 		switch config.Dhcp {
-		case types.DT_NONE:
+		case types.DhcpTypeNone:
 			done(nil)
 			return
 
-		case types.DT_STATIC, types.DT_CLIENT:
+		case types.DhcpTypeStatic, types.DhcpTypeClient:
 			startTime := time.Now()
 			var extras []string
 			// Run release, wait for a bit, then exit and give up.
@@ -230,7 +243,7 @@ func (c *DhcpcdConfigurator) Delete(ctx context.Context, item depgraph.Item) err
 			// Exit dhcpcd on interface.
 			// It waits up to 10 seconds https://github.com/NetworkConfiguration/dhcpcd/blob/dhcpcd-8.1.6/src/dhcpcd.c#L1950-L1957
 			if err := c.dhcpcdCmd("--exit", extras, ifName, false); err != nil {
-				err = fmt.Errorf("dhcpcd exit failed for interface %s: %v, elapsed time %v",
+				err = fmt.Errorf("dhcpcd exit failed for interface %s: %w, elapsed time %v",
 					ifName, err, time.Since(startTime))
 				c.Log.Error(err)
 				done(err)
@@ -265,25 +278,25 @@ func (c *DhcpcdConfigurator) NeedsRecreate(oldItem, newItem depgraph.Item) (recr
 
 func (c *DhcpcdConfigurator) dhcpcdArgs(config types.DhcpConfig) (op string, args []string) {
 	switch config.Dhcp {
-	case types.DT_CLIENT:
+	case types.DhcpTypeClient:
 		op = "--request"
 		args = []string{"-f", "/dhcpcd.conf", "--noipv4ll", "-b", "-t", "0"}
 		switch config.Type {
-		case types.NtIpv4Only:
+		case types.NetworkTypeIpv4Only:
 			args = []string{"-f", "/dhcpcd.conf", "--noipv4ll", "--ipv4only", "-b", "-t", "0"}
-		case types.NtIpv6Only:
+		case types.NetworkTypeIpv6Only:
 			args = []string{"-f", "/dhcpcd.conf", "--ipv6only", "-b", "-t", "0"}
-		case types.NT_NOOP:
-		case types.NT_IPV4:
-		case types.NT_IPV6:
-		case types.NtDualStack:
+		case types.NetworkTypeNOOP:
+		case types.NetworkTypeIPv4:
+		case types.NetworkTypeIPV6:
+		case types.NetworkTypeDualStack:
 		default:
 		}
 		if config.Gateway != nil && config.Gateway.String() == zeroIPv4Addr {
 			args = append(args, "--nogateway")
 		}
 
-	case types.DT_STATIC:
+	case types.DhcpTypeStatic:
 		op = "--static"
 		args = []string{fmt.Sprintf("ip_address=%s", config.AddrSubnet)}
 		extras := []string{"-f", "/dhcpcd.conf", "-b", "-t", "0"}
@@ -294,7 +307,7 @@ func (c *DhcpcdConfigurator) dhcpcdArgs(config types.DhcpConfig) (op string, arg
 				fmt.Sprintf("routers=%s", config.Gateway.String()))
 		}
 		var dnsServers []string
-		for _, dns := range config.DnsServers {
+		for _, dns := range config.DNSServers {
 			dnsServers = append(dnsServers, dns.String())
 		}
 		if config.DomainName != "" {
@@ -312,14 +325,14 @@ func (c *DhcpcdConfigurator) dhcpcdArgs(config types.DhcpConfig) (op string, arg
 				fmt.Sprintf("domain_name_servers=%s",
 					strings.Join(dnsServers, " ")))
 		}
-		if config.NtpServer != nil && !config.NtpServer.IsUnspecified() {
+		if config.NTPServer != nil && !config.NTPServer.IsUnspecified() {
 			args = append(args, "--static",
 				fmt.Sprintf("ntp_servers=%s",
-					config.NtpServer.String()))
+					config.NTPServer.String()))
 		}
 		args = append(args, extras...)
 	}
-	return
+	return op, args
 }
 
 func (c *DhcpcdConfigurator) dhcpcdCmd(op string, extras []string,
@@ -332,18 +345,17 @@ func (c *DhcpcdConfigurator) dhcpcdCmd(op string, extras []string,
 		cmd.Stdout = nil
 		cmd.Stderr = nil
 
-		c.Log.Functionf("Background command %s %v\n", name, args)
+		c.Log.Functionf("Background command %s %v", name, args)
 		go func() {
 			if err := cmd.Run(); err != nil {
-				c.Log.Errorf("%s %v: failed: %s",
-					name, args, err)
+				c.Log.Errorf("%s %v: failed: %v", name, args, err)
 			}
 		}()
 	} else {
 		c.Log.Functionf("Calling command %s %v\n", name, args)
 		out, err := base.Exec(c.Log, name, args...).CombinedOutput()
 		if err != nil {
-			err = fmt.Errorf("dhcpcd command %s failed: %s; output: %s",
+			err = fmt.Errorf("dhcpcd command %s failed: %w; output: %s",
 				args, err, out)
 			c.Log.Error(err)
 			return err
@@ -357,7 +369,7 @@ func (c *DhcpcdConfigurator) dhcpcdExists(ifName string) bool {
 	args := []string{"-P", ifName}
 	out, err := base.Exec(c.Log, name, args...).CombinedOutput()
 	if err != nil {
-		err = fmt.Errorf("dhcpcd command %s failed: %s; output: %s",
+		err = fmt.Errorf("dhcpcd command %s failed: %w; output: %s",
 			args, err, out)
 		c.Log.Error(err)
 		return false

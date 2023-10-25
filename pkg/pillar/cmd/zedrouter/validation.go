@@ -135,19 +135,19 @@ func (z *zedrouter) validateAppNetworkConfig(appNetConfig types.AppNetworkConfig
 	z.log.Functionf("AppNetwork(%s), check for duplicate port map acls",
 		appNetConfig.DisplayName)
 	// For App Networks, check for common port map rules
-	ulCfgList1 := appNetConfig.UnderlayNetworkList
-	if len(ulCfgList1) == 0 {
+	adapterCfgList1 := appNetConfig.AppNetAdapterList
+	if len(adapterCfgList1) == 0 {
 		return nil
 	}
-	if z.containsHangingACLPortMapRule(ulCfgList1) {
+	if z.containsHangingACLPortMapRule(adapterCfgList1) {
 		return fmt.Errorf("network with no uplink, has portmap")
 	}
 	sub := z.subAppNetworkConfig
 	items := sub.GetAll()
 	for _, c := range items {
 		appNetConfig2 := c.(types.AppNetworkConfig)
-		ulCfgList2 := appNetConfig2.UnderlayNetworkList
-		if len(ulCfgList2) == 0 {
+		adapterCfgList2 := appNetConfig2.AppNetAdapterList
+		if len(adapterCfgList2) == 0 {
 			continue
 		}
 		if appNetConfig.DisplayName == appNetConfig2.DisplayName {
@@ -160,7 +160,7 @@ func (z *zedrouter) validateAppNetworkConfig(appNetConfig types.AppNetworkConfig
 		if appNetStatus2.HasError() || !appNetStatus2.Activated {
 			continue
 		}
-		if z.checkForPortMapOverlap(ulCfgList1, ulCfgList2) {
+		if z.checkForPortMapOverlap(adapterCfgList1, adapterCfgList2) {
 			return fmt.Errorf("app %s and %s have duplicate portmaps",
 				appNetConfig.DisplayName, appNetStatus2.DisplayName)
 		}
@@ -176,8 +176,8 @@ func (z *zedrouter) validateAppNetworkConfigForModify(
 	// some hotplug event.
 	// But deletion is hard.
 	// For now don't allow any adds or deletes.
-	if len(newConfig.UnderlayNetworkList) != len(oldConfig.UnderlayNetworkList) {
-		return fmt.Errorf("changing number of underlays (for %s) is unsupported",
+	if len(newConfig.AppNetAdapterList) != len(oldConfig.AppNetAdapterList) {
+		return fmt.Errorf("changing number of AppNetAdapters (for %s) is unsupported",
 			newConfig.UUIDandVersion)
 	}
 	return z.validateAppNetworkConfig(newConfig)
@@ -185,15 +185,15 @@ func (z *zedrouter) validateAppNetworkConfigForModify(
 
 func (z *zedrouter) checkNetworkReferencesFromApp(config types.AppNetworkConfig) (
 	netInErrState bool, err error) {
-	// Check networks for Underlay
+	// Check AppNetAdapters for the existence of the network instances
 	// XXX - Should we also check for Network(instance)Status objects here itself?
-	for _, ulConfig := range config.UnderlayNetworkList {
-		netInstStatus := z.lookupNetworkInstanceStatus(ulConfig.Network.String())
+	for _, adapterConfig := range config.AppNetAdapterList {
+		netInstStatus := z.lookupNetworkInstanceStatus(adapterConfig.Network.String())
 		if netInstStatus == nil {
-			err := fmt.Errorf("missing underlay network %s for app %s/%s",
-				ulConfig.Network.String(), config.UUIDandVersion, config.DisplayName)
+			err := fmt.Errorf("missing network instance %s for app %s/%s",
+				adapterConfig.Network.String(), config.UUIDandVersion, config.DisplayName)
 			z.log.Error(err)
-			// App network configuration that has underlays pointing to non-existent
+			// App network configuration that has AppNetAdapters pointing to non-existent
 			// network instances is invalid. Such configuration should never come to
 			// device from cloud.
 			// But, on the device sometimes, zedrouter sees the app network configuration
@@ -206,15 +206,15 @@ func (z *zedrouter) checkNetworkReferencesFromApp(config types.AppNetworkConfig)
 			return false, err
 		}
 		if !netInstStatus.Activated {
-			err := fmt.Errorf("underlay network %s needed by app %s/%s is not activated",
-				ulConfig.Network.String(), config.UUIDandVersion, config.DisplayName)
+			err := fmt.Errorf("network instance %s needed by app %s/%s is not activated",
+				adapterConfig.Network.String(), config.UUIDandVersion, config.DisplayName)
 			z.log.Error(err)
 			return false, err
 		}
 		if netInstStatus.HasError() {
 			err := fmt.Errorf(
-				"underlay network %s needed by app %s/%s is in error state: %s",
-				ulConfig.Network.String(), config.UUIDandVersion, config.DisplayName,
+				"network instance %s needed by app %s/%s is in error state: %s",
+				adapterConfig.Network.String(), config.UUIDandVersion, config.DisplayName,
 				netInstStatus.Error)
 			z.log.Error(err)
 			return true, err
@@ -225,14 +225,14 @@ func (z *zedrouter) checkNetworkReferencesFromApp(config types.AppNetworkConfig)
 
 // Check if there is a portmap rule for a network instance with no uplink interface.
 func (z *zedrouter) containsHangingACLPortMapRule(
-	ulCfgList []types.UnderlayNetworkConfig) bool {
-	for _, ulCfg := range ulCfgList {
-		network := ulCfg.Network.String()
+	adapterCfgList []types.AppNetAdapterConfig) bool {
+	for _, adapterCfg := range adapterCfgList {
+		network := adapterCfg.Network.String()
 		netInstStatus := z.lookupNetworkInstanceStatus(network)
 		if netInstStatus == nil || netInstStatus.PortLogicalLabel != "" {
 			continue
 		}
-		for _, ace := range ulCfg.ACLs {
+		for _, ace := range adapterCfg.ACLs {
 			for _, action := range ace.Actions {
 				if action.PortMap {
 					return true
@@ -243,18 +243,18 @@ func (z *zedrouter) containsHangingACLPortMapRule(
 	return false
 }
 
-func (z *zedrouter) checkForPortMapOverlap(ulCfgList1 []types.UnderlayNetworkConfig,
-	ulCfgList2 []types.UnderlayNetworkConfig) bool {
-	for _, ulCfg1 := range ulCfgList1 {
-		network1 := ulCfg1.Network
+func (z *zedrouter) checkForPortMapOverlap(adapterCfgList1 []types.AppNetAdapterConfig,
+	adapterCfgList2 []types.AppNetAdapterConfig) bool {
+	for _, adapterCfg1 := range adapterCfgList1 {
+		network1 := adapterCfg1.Network
 		// Validate whether there are duplicate portmap rules within itself.
-		if z.detectPortMapConflictWithinUL(ulCfg1.ACLs) {
+		if z.detectPortMapConflictWithinAdapter(adapterCfg1.ACLs) {
 			return true
 		}
-		for _, ulCfg2 := range ulCfgList2 {
-			network2 := ulCfg2.Network
+		for _, adapterCfg2 := range adapterCfgList2 {
+			network2 := adapterCfg2.Network
 			if network1 == network2 || z.checkUplinkPortOverlap(network1, network2) {
-				if z.detectPortMapConflictAcrossULs(ulCfg1.ACLs, ulCfg2.ACLs) {
+				if z.detectPortMapConflictAcrossAdapters(adapterCfg1.ACLs, adapterCfg2.ACLs) {
 					return true
 				}
 			}
@@ -296,7 +296,7 @@ func appendError(allErrors string, prefix string, lasterr string) (
 	return fmt.Sprintf("%s%s: %s\n\n", allErrors, prefix, lasterr), true
 }
 
-func (z *zedrouter) detectPortMapConflictWithinUL(ACLs []types.ACE) bool {
+func (z *zedrouter) detectPortMapConflictWithinAdapter(ACLs []types.ACE) bool {
 	matchTypes1 := []string{"protocol"}
 	matchTypes2 := []string{"protocol", "lport"}
 	idx1 := 0
@@ -338,7 +338,7 @@ func (z *zedrouter) detectPortMapConflictWithinUL(ACLs []types.ACE) bool {
 
 // Check for duplicate portmap rules in between two set of ACLs.
 // For this, we will match the protocol/lport being same.
-func (z *zedrouter) detectPortMapConflictAcrossULs(
+func (z *zedrouter) detectPortMapConflictAcrossAdapters(
 	ACLs []types.ACE, ACLs1 []types.ACE) bool {
 	matchTypes := []string{"protocol", "lport"}
 	for _, ace1 := range ACLs {

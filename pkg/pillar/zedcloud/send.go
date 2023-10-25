@@ -65,7 +65,7 @@ type ZedCloudContext struct {
 	PrevCertPEM           [][]byte // cached proxy certs for later comparison
 	onBoardCert           *tls.Certificate
 	deviceCert            *tls.Certificate
-	serverSigningCert     *x509.Certificate
+	ServerSigningCert     *x509.Certificate
 	deviceCertHash        []byte
 	onBoardCertHash       []byte
 	serverSigningCertHash []byte
@@ -498,7 +498,7 @@ func (r *resolverWithLocalIP) resolverDial(
 		// 127.0.0.1:53 is tried by Golang resolver when resolv.conf does not contain
 		// any nameservers (see defaultNS in net/dnsconfig_unix.go).
 		// There is no point in looking for DNS server on the loopback interface on EVE.
-		return nil, &types.DNSNotAvail{IfName: r.ifName}
+		return nil, &types.DNSNotAvailError{IfName: r.ifName}
 	}
 	// Note that port number is not looked at by skipNs.
 	if r.skipNs != nil {
@@ -599,7 +599,7 @@ func (d *dialerWithResolverCache) DialContext(
 		// dnsWasAvail is set after filtering out DNS servers which are not valid
 		// for the given interface (servers from other interfaces and the loopback IP).
 		if resolver.dialRequested && !resolver.dnsWasAvail {
-			err = &types.DNSNotAvail{IfName: d.ifName}
+			err = &types.DNSNotAvailError{IfName: d.ifName}
 		}
 	}
 	return conn, err
@@ -679,7 +679,7 @@ func SendOnIntf(workContext context.Context, ctx *ZedCloudContext, destURL strin
 			return rv, err
 		}
 		// err is nil but addrCount is zero
-		err = &types.IPAddrNotAvail{IfName: intf}
+		err = &types.IPAddrNotAvailError{IfName: intf}
 		log.Tracef("unable to connect to %s: %v", reqURL, err)
 		return rv, err
 	}
@@ -724,7 +724,7 @@ func SendOnIntf(workContext context.Context, ctx *ZedCloudContext, destURL strin
 		if ctx.FailureFunc != nil && !dryRun {
 			ctx.FailureFunc(log, intf, reqURL, 0, 0, false)
 		}
-		err = &types.DNSNotAvail{
+		err = &types.DNSNotAvailError{
 			IfName: intf,
 		}
 		log.Trace(err)
@@ -934,7 +934,7 @@ func SendOnIntf(workContext context.Context, ctx *ZedCloudContext, destURL strin
 						}
 					}
 					if calledResolver && !dnsWasAvail {
-						err = &types.DNSNotAvail{IfName: intf}
+						err = &types.DNSNotAvailError{IfName: intf}
 					}
 				}
 				if err2 = tracedClient.Close(); err2 != nil {
@@ -1366,13 +1366,13 @@ func describeSendAttempts(attempts []SendAttempt) string {
 		// Unwrap errors defined here in pillar to avoid stutter.
 		// Instead of "send via eth1: interface eth1: no DNS server available",
 		// we simply return "interface eth1: no DNS server available".
-		// Same for IPAddrNotAvail.
+		// Same for IPAddrNotAvailError.
 		// Otherwise, the errors are of the form:
 		// "send via eth1 [with src IP <IP>]: <error from http client>"
 		switch err := attempt.Err.(type) {
-		case *types.DNSNotAvail:
+		case *types.DNSNotAvailError:
 			description = err.Error()
-		case *types.IPAddrNotAvail:
+		case *types.IPAddrNotAvailError:
 			description = err.Error()
 		default:
 			description = attempt.String()

@@ -79,7 +79,7 @@ Zedrouter then configures ACLs, potentially also (access) VLANs, updates dnsmasq
       that app image, app connectivity, volumes and the domain itself and created
       in the right order
   * contains a list of virtual interfaces (VIFs) and their configurations
-    (instances of `UnderlayNetworkConfig`)
+    (instances of `AppNetAdapterConfig`)
   * every VIF references a network instance to connect into
   * VIF configuration contains a list of ACLs (firewall rules) to apply
   * optionally, VIF configuration contains static MAC and IP addresses to assign

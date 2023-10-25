@@ -28,9 +28,9 @@ import (
 	ocispecs "github.com/opencontainers/image-spec/specs-go/v1"
 	log "github.com/sirupsen/logrus"
 	spdxjson "github.com/spdx/tools-golang/json"
-	spdxcommon "github.com/spdx/tools-golang/spdx/common"
-	spdx "github.com/spdx/tools-golang/spdx/v2_3"
-	spdxtv "github.com/spdx/tools-golang/tvsaver"
+	spdxcommon "github.com/spdx/tools-golang/spdx/v2/common"
+	spdx "github.com/spdx/tools-golang/spdx/v2/v2_3"
+	spdxtv "github.com/spdx/tools-golang/tagvalue"
 	"github.com/spf13/cobra"
 	"github.com/ulikunitz/xz"
 )
@@ -81,13 +81,13 @@ func scanCmd() *cobra.Command {
 				if err != nil {
 					return err
 				}
-				return spdxtv.Save2_3(sbom, os.Stdout)
+				return spdxtv.Write(sbom, os.Stdout)
 			case "spdx-json":
 				sbom, err := buildSbom(allUrls, namespace, creator)
 				if err != nil {
 					return err
 				}
-				return spdxjson.Save2_3(sbom, os.Stdout)
+				return spdxjson.Write(sbom, os.Stdout)
 			default:
 				return fmt.Errorf("unknown output format %s", outputFormat)
 			}

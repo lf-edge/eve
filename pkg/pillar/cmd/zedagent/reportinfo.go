@@ -224,6 +224,9 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext, dest destinationBitset) {
 
 	ReportDeviceInfo := new(info.ZInfoDevice)
 
+	// Get the remote access status
+	ReportDeviceInfo.RemoteAccessDisabled = utils.RemoteAccessDisabled()
+
 	var uname unix.Utsname
 	err := unix.Uname(&uname)
 	if err != nil {
@@ -1050,7 +1053,7 @@ func encodeNetworkPortStatus(ctx *zedagentContext,
 	for _, router := range port.DefaultRouters {
 		devicePort.DefaultRouters = append(devicePort.DefaultRouters, router.String())
 	}
-	// devicePort.DnsServers is deprecated - replaced by Dns
+	// devicePort.DNSServers is deprecated - replaced by Dns
 	devicePort.Dns = new(info.ZInfoDNS)
 	devicePort.Dns.DNSdomain = port.DomainName
 	for _, dnsServer := range port.DNSServers {
@@ -1143,12 +1146,12 @@ func encodeNetworkPortConfig(ctx *zedagentContext,
 	dp.DefaultRouters = make([]string, 0)
 	dp.DefaultRouters = append(dp.DefaultRouters, npc.Gateway.String())
 
-	dp.NtpServer = npc.NtpServer.String()
+	dp.NtpServer = npc.NTPServer.String()
 
 	dp.Dns = new(info.ZInfoDNS)
 	dp.Dns.DNSdomain = npc.DomainName
 	dp.Dns.DNSservers = make([]string, 0)
-	for _, d := range npc.DnsServers {
+	for _, d := range npc.DNSServers {
 		dp.Dns.DNSservers = append(dp.Dns.DNSservers, d.String())
 	}
 	// XXX Not in definition. Remove?

@@ -113,7 +113,7 @@ func removeAndVerifyAuthContainer(ctx *ZedCloudContext,
 // VerifyAuthContainerHeader verifies correctness of algorithm fields in header
 func VerifyAuthContainerHeader(ctx *ZedCloudContext, sm *zauth.AuthContainer) (
 	types.SenderStatus, error) {
-	err := loadSavedServerSigningCert(ctx)
+	err := LoadSavedServerSigningCert(ctx)
 	if err != nil {
 		return types.SenderStatusNone, err
 	}
@@ -164,7 +164,7 @@ func VerifyAuthContainer(ctx *ZedCloudContext, sm *zauth.AuthContainer) (types.S
 	// Verify payload integrity
 	data := sm.ProtectedPayload.GetPayload()
 	hash := ComputeSha(data)
-	err = verifyAuthSig(ctx, sm.GetSignatureHash(), ctx.serverSigningCert, hash)
+	err = verifyAuthSig(ctx, sm.GetSignatureHash(), ctx.ServerSigningCert, hash)
 	if err != nil {
 		err = fmt.Errorf("VerifyAuthContainer: verifyAuthSig error %v\n", err)
 		ctx.log.Error(err)
@@ -173,8 +173,10 @@ func VerifyAuthContainer(ctx *ZedCloudContext, sm *zauth.AuthContainer) (types.S
 	return types.SenderStatusNone, nil
 }
 
-func loadSavedServerSigningCert(ctx *ZedCloudContext) error {
-	if ctx.serverSigningCert != nil {
+// LoadSavedServerSigningCert loads server (i.e. controller) signing
+// certificate stored in the file into the zedcloud context.
+func LoadSavedServerSigningCert(ctx *ZedCloudContext) error {
+	if ctx.ServerSigningCert != nil {
 		// Already loaded
 		return nil
 	}
@@ -193,7 +195,7 @@ func loadSavedServerSigningCert(ctx *ZedCloudContext) error {
 
 // ClearCloudCert - zero out cached cloud certs in client zedcloudCtx
 func ClearCloudCert(ctx *ZedCloudContext) {
-	ctx.serverSigningCert = nil
+	ctx.ServerSigningCert = nil
 	ctx.serverSigningCertHash = nil
 }
 
@@ -598,7 +600,7 @@ func LoadServerSigningCert(ctx *ZedCloudContext, certByte []byte) error {
 	}
 
 	// store the certificate
-	ctx.serverSigningCert = leafCert
+	ctx.ServerSigningCert = leafCert
 
 	// store the certificate hash
 	ctx.serverSigningCertHash = ComputeSha(certByte)

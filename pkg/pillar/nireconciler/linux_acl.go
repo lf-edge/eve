@@ -477,7 +477,7 @@ func (r *LinuxNIReconciler) getIntendedACLRootChains() dg.Graph {
 }
 
 func (r *LinuxNIReconciler) getIntendedAppConnACLs(niID uuid.UUID,
-	vif vifInfo, ul types.UnderlayNetworkConfig) dg.Graph {
+	vif vifInfo, ul types.AppNetAdapterConfig) dg.Graph {
 	graphArgs := dg.InitArgs{
 		Name:        AppConnACLsSG,
 		Description: "ACLs configured for application VIF",
@@ -533,7 +533,7 @@ func (r *LinuxNIReconciler) getIntendedAppConnACLs(niID uuid.UUID,
 //   - Apply rate-limit ACL rules (DROP extra egress packets)
 //   - LOG + fully apply (incl. DROP) ACL rules on traffic *coming out* from switch NIs
 func (r *LinuxNIReconciler) getIntendedAppConnRawIptables(vif vifInfo,
-	ul types.UnderlayNetworkConfig, ipv6 bool) (items []dg.Item) {
+	ul types.AppNetAdapterConfig, ipv6 bool) (items []dg.Item) {
 	ni := r.nis[vif.NI]
 	var bridgeIP net.IP
 	if ni.bridge.IPAddress != nil {
@@ -656,7 +656,7 @@ func (r *LinuxNIReconciler) getIntendedAppConnRawIptables(vif vifInfo,
 //   - Apply rate-limit ACL rules (DROP extra ingress packets)
 //   - LOG + fully apply (incl. DROP) ACLs on traffic *coming into* switch NIs
 func (r *LinuxNIReconciler) getIntendedAppConnFilterIptables(vif vifInfo,
-	ul types.UnderlayNetworkConfig, ipv6 bool) (items []dg.Item) {
+	ul types.AppNetAdapterConfig, ipv6 bool) (items []dg.Item) {
 	ni := r.nis[vif.NI]
 	var bridgeIP net.IP
 	if ni.bridge.IPAddress != nil {
@@ -795,7 +795,7 @@ func (r *LinuxNIReconciler) getIntendedAppConnFilterIptables(vif vifInfo,
 //   - for every port-map ACL rule, make sure that traffic going via NI bridge
 //     and towards the application is SNATed to bridge IP
 func (r *LinuxNIReconciler) getIntendedAppConnNATIptables(vif vifInfo,
-	ul types.UnderlayNetworkConfig, ipv6 bool, uplinkIPs []*net.IPNet) (items []dg.Item) {
+	ul types.AppNetAdapterConfig, ipv6 bool, uplinkIPs []*net.IPNet) (items []dg.Item) {
 	ni := r.nis[vif.NI]
 	if ni.config.Type != types.NetworkInstanceTypeLocal {
 		// Only local network instance uses port-mapping ACL rules.
@@ -884,7 +884,7 @@ func (r *LinuxNIReconciler) getIntendedAppConnNATIptables(vif vifInfo,
 // Table MANGLE, chain PREROUTING is used to:
 //   - mark connections with the ID of the applied ACL rule
 func (r *LinuxNIReconciler) getIntendedAppConnMangleIptables(vif vifInfo,
-	ul types.UnderlayNetworkConfig, ipv6 bool, uplinkIPs []*net.IPNet) (items []dg.Item) {
+	ul types.AppNetAdapterConfig, ipv6 bool, uplinkIPs []*net.IPNet) (items []dg.Item) {
 	ni := r.nis[vif.NI]
 	app := r.apps[vif.App]
 	var bridgeIP net.IP

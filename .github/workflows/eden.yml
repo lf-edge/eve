@@ -1,6 +1,8 @@
 ---
-name: Eden
-on:  # yamllint disable-line rule:truthy
+name: lf-edge/eden Test suite
+
+# yamllint disable-line rule:truthy
+on:
   push:
     branches:
       - "master"
@@ -15,141 +17,25 @@ on:  # yamllint disable-line rule:truthy
       - 'docs/**'
       - 'pkg/pillar/docs/**'
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  integration:
-    name: Integration test (tpm=${{ matrix.tpm }};${{ matrix.fs }})
-    runs-on: ubuntu-22.04
-    strategy:
-      fail-fast: false
-      matrix:
-        tpm: ["true", "false"]
-        fs: ["zfs", "ext4"]
-    if: ${{ github.event.review.state == 'approved' || github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags') }}
-    steps:
-      - name: Check
-        run: |
-          for addr in $(ip addr list|sed -En -e 's/.*inet ([0-9.]+).*/\1/p')
-          do
-              if echo "$addr" | grep -q -E "10.11.(12|13).[0-9]+"; then
-                echo "$addr overlaps with test"; exit 1
-              fi
-          done
-          sudo df -h
-          sudo swapoff -a
-          sudo free
-      - name: setup
-        run: |
-          sudo add-apt-repository ppa:stefanberger/swtpm-jammy
-          sudo apt install -y qemu-utils qemu-system-x86 jq swtpm
-      - name: get eve
-        uses: actions/checkout@v3
-        with:
-          path: 'eve'
-      - name: prepare eden
-        run: |
-          if [ -f ${{ github.workspace }}/eve/tests/eden/eden-version ]; then
-            EDEN_VERSION=$(cat ${{ github.workspace }}/eve/tests/eden/eden-version)
-          else
-            EDEN_VERSION=lfedge/eden:0.8.0
-          fi
-          docker run -v $PWD:/out $EDEN_VERSION cp -a /eden/. /out/
-          sudo chown -R $(whoami) .
-          ./eden config add default
-      - name: fetch or build eve
-        env:
-          TAG: pr${{ github.event.pull_request.number }}
-          CACHE: evebuild/danger
-        run: |
-          BUILD=true
-          if docker pull "$CACHE:$TAG-kvm"; then
-            # we should check version of pulled image
-            # since in case of build in progress we do not want to test
-            # old version pushed to docker hub
-            # version logic must be aligned with PR build workflow
-            COMMIT_ID=$(git --git-dir ./eve/.git describe --abbrev=8 --always)
-            EXPECTED_VERSION="0.0.0-$TAG-$COMMIT_ID-kvm-amd64"
-            PULLED_VERSION=$(docker run --rm "$CACHE:$TAG-kvm" version)
-            if [ "$PULLED_VERSION" = "$EXPECTED_VERSION" ]; then
-              docker tag "$CACHE:$TAG-kvm" "lfedge/eve:$TAG-kvm"
-              docker tag "$CACHE:$TAG-kvm" "lfedge/eve:$TAG-kvm-amd64"
-              BUILD=false
-            else
-              docker rmi --force "$CACHE:$TAG-kvm"
-            fi
-          fi
-          if [ "$BUILD" = "true" ]; then
-            make -C eve V=1 PRUNE=1 pkgs
-            make -C eve V=1 ROOTFS_VERSION="$TAG" eve
-            IMAGES="$(docker images -f reference="lfedge/eve-*" -q)"
-            IMAGES="$IMAGES $(docker images -f reference="eve-build-*" -q)"
-            IMAGES="$IMAGES $(docker images -f reference="golang" -q)"
-            IMAGES="$IMAGES $(docker images -f dangling=true -q)"
-            docker rmi -f $IMAGES||echo "skip conflicts"
-            rm -rf ~/.linuxkit
-          fi
-      - name: set debug log level
-        if: contains(github.event.review.body, '#eden-debug')
-        run: |
-          ./eden config set default --key=eve.log-level --value=debug
-          ./eden config set default --key=eve.adam-log-level --value=debug
-      - name: run
-        env:
-          TAG: pr${{ github.event.pull_request.number }}
-        run: |
-          ./eden config set default --key eve.tag --value="$TAG"
-          ./eden config set default --key=eve.accel --value=false
-          ./eden config set default --key=eve.tpm --value=${{ matrix.tpm }}
-          ./eden config set default --key=eve.cpu --value=2
-          ./eden config set default --key=eden.tests --value=${{ github.workspace }}/eve/tests/eden
-          EDITOR=cat ./eden config edit default
-      - name: setup-ext4
-        if: matrix.fs == 'ext4'
-        run: ./eden setup -v debug
-      - name: setup-zfs
-        if: matrix.fs == 'zfs'
-        run: |
-          ./eden config set default --key=eve.disks --value=4
-          ./eden config set default --key=eve.disk --value=4096
-          ./eden setup -v debug --grub-options='set_global dom0_extra_args "$dom0_extra_args eve_install_zfs_with_raid_level "'
-      - name: run
-        run: EDEN_TEST_STOP=n ./eden test ${{ github.workspace }}/eve/tests/eden/workflow -v debug
-      - name: Collect logs
-        if: ${{ always() }}
-        run: |
-          ./eden log --format json > trace.log || echo "no log"
-          ./eden info --format json > info.log || echo "no info"
-          ./eden metric --format json > metric.log || echo "no metric"
-          ./eden netstat --format json > netstat.log || echo "no netstat"
-          cp dist/default-eve.log console.log || echo "no device log"
-          docker logs eden_adam > adam.log 2>&1 || echo "no adam log"
-      - name: Log counting
-        if: ${{ always() }}
-        run: |
-          echo "::group::Total errors"
-          echo "$(jq '.severity' trace.log|grep err|wc -l)"
-          echo "::endgroup::"
-          echo "::group::Errors by source"
-          echo "errors by source: $(jq -s 'map(select(.severity|contains("err")))|group_by(.source)|map({"source": .[0].source, "total":length})|sort_by(.total)|reverse[]' trace.log)"
-          echo "::endgroup::"
-          echo "::group::Error log content duplicates"
-          echo "$(jq -s 'map(select(.severity | contains("err")))|group_by(.content)|map(select(length>1))' trace.log)"
-          echo "::endgroup::"
-          echo "::group::Error log function filename duplicates"
-          echo "$(jq -s 'map(select(.severity | contains("err")))|group_by(.filename)|map(select(length>10))|map({"source": .[0].source, "filename": .[0].filename, "function": .[0].function, "content": [.[].content], "total":length})|sort_by(.total)| reverse[]' trace.log)"
-          echo "::endgroup::"
-          echo "::group::Segfaults"
-          echo "$(jq -s 'map(select(.content | contains("segfault at")))' trace.log)"|tee segfaults.log
-          [ "$(jq length segfaults.log)" -gt 0 ] && echo "::warning::segfaults found, you can see them in Log counting->Segfaults section"
-          echo "::endgroup::"
-      - name: Store raw test results
-        if: ${{ always() }}
-        uses: actions/upload-artifact@v3
-        with:
-          name: eden-report-tpm-${{ matrix.tpm }}-${{ matrix.fs }}
-          path: |
-            ${{ github.workspace }}/trace.log
-            ${{ github.workspace }}/info.log
-            ${{ github.workspace }}/metric.log
-            ${{ github.workspace }}/netstat.log
-            ${{ github.workspace }}/console.log
-            ${{ github.workspace }}/adam.log
+  test_suite_pr:
+    if: github.event.review.state == 'approved'
+    uses: lf-edge/eden/.github/workflows/test.yml@0.9.2
+    with:
+      eve_image: "evebuild/danger:pr${{ github.event.pull_request.number  }}"
+
+  test_suite_master:
+    if: github.ref == 'refs/heads/master'
+    uses: lf-edge/eden/.github/workflows/test.yml@0.9.2
+    with:
+      eve_image: "lfedge/eve:snapshot"
+
+  test_suite_tag:
+    if: startsWith(github.ref, 'refs/tags')
+    uses: lf-edge/eden/.github/workflows/test.yml@0.9.2
+    with:
+      eve_image: "lfedge/eve:${{ github.ref_name }}"

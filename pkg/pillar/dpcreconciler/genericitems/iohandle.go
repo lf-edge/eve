@@ -68,7 +68,10 @@ func (h IOHandle) Type() string {
 
 // Equal is a comparison method for two equally-named IOHandle instances.
 func (h IOHandle) Equal(other depgraph.Item) bool {
-	h2 := other.(IOHandle)
+	h2, isIOHandle := other.(IOHandle)
+	if !isIOHandle {
+		return false
+	}
 	return h.Usage == h2.Usage &&
 		h.MasterIfName == h2.MasterIfName
 }

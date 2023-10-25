@@ -64,14 +64,8 @@ Image verification is validation of each component's actual sha256 hash matches 
 
 ### Prepare Networking
 
-[zedmanager#doPrepare()](../pkg/pillar/cmd/zedmanager/updatestatus.go#L696) coordinates the preparation of networking. It first sets up LISP EIDs, if needed, then creates any networking.
+[zedmanager#doPrepare()](../pkg/pillar/cmd/zedmanager/updatestatus.go#L696) coordinates the preparation of networking.
 
-1. Set up LISP
-   1. [zedmanager](../pkg/pillar/cmd/zedmanager/): create and publish an [EIDConfig](../pkg/pillar/types/eidtypes.go#L26)
-   1. [identitymanager](../pkg/pillar/cmd/identitymanager/): see the [EIDConfig](../pkg/pillar/types/eidtypes.go#L26)
-   1. [identitymanager](../pkg/pillar/cmd/identitymanager/): if needed, create the LISP EIDs and register them
-   1. [identitymanager](../pkg/pillar/cmd/identitymanager/): create and publish an [EIDStatus](../pkg/pillar/types/eidtypes.go#L60) marking as complete
-   1. [zedmanager](../pkg/pillar/cmd/zedmanager/): retrieve the [EIDStatus](../pkg/pillar/types/eidtypes.go#L60), LISP EID stage complete
 1. Set up networking
    1. [zedmanager](../pkg/pillar/cmd/zedmanager/): create and publish an [AppNetworkConfig](../pkg/pillar/types/zedrouter.types#L25)
    1. [zedrouter](../pkg/pillar/cmd/zedrouter/): see the [AppNetworkConfig](../pkg/pillar/types/zedrouter.types#L25)
@@ -101,13 +95,11 @@ The list of subscriptions relevant to ECO initialization is as follows.
 | `zedagent` | `AppInstanceConfig` | `zedmanager` |
 | `zedmanager` | `DownloaderConfig` | `downloader` |
 |    | `VerifyImageConfig` | `verifier` |
-|    | `EIDConfig` | `identitymanager` |
 |    | `AppNetworkConfig` | `zedrouter` |
 |    | `DomainConfig` | `domainmgr` |
 |    | `AppInstanceStatus` | multiple |
 | `downloader` | `DownloaderStatus` | `zedmanager` |
 | `verifier` | `VerifyImageStatus` | `zedmanager` |
-| `identitymanager` | `EIDStatus` | `zedmanager` |
 | `zedrouter` | `AppNetworkStatus` | `zedmanager` |
 | `domainmgr` | `DomainStatus` | `zedmanager` |
 

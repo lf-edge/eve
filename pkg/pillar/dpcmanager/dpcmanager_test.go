@@ -35,19 +35,15 @@ import (
 )
 
 var (
-	logObj          *base.LogObject
-	networkMonitor  *netmonitor.MockNetworkMonitor
-	wwanWatcher     *MockWwanWatcher
-	geoService      *MockGeoService
-	dpcReconciler   *dpcrec.LinuxDpcReconciler
-	dpcManager      *dpcmngr.DpcManager
-	connTester      *conntester.MockConnectivityTester
-	pubDummyDPC     pubsub.Publication // for logging
-	pubDPCList      pubsub.Publication
-	pubDNS          pubsub.Publication
-	pubWwwanStatus  pubsub.Publication
-	pubWwwanMetrics pubsub.Publication
-	pubWwanLocInfo  pubsub.Publication
+	logObj         *base.LogObject
+	networkMonitor *netmonitor.MockNetworkMonitor
+	geoService     *MockGeoService
+	dpcReconciler  *dpcrec.LinuxDpcReconciler
+	dpcManager     *dpcmngr.DpcManager
+	connTester     *conntester.MockConnectivityTester
+	pubDummyDPC    pubsub.Publication // for logging
+	pubDPCList     pubsub.Publication
+	pubDNS         pubsub.Publication
 )
 
 func initTest(test *testing.T) *GomegaWithT {
@@ -86,30 +82,6 @@ func initTest(test *testing.T) *GomegaWithT {
 	if err != nil {
 		log.Fatal(err)
 	}
-	pubWwwanStatus, err = ps.NewPublication(
-		pubsub.PublicationOptions{
-			AgentName: "test",
-			TopicType: types.WwanStatus{},
-		})
-	if err != nil {
-		log.Fatal(err)
-	}
-	pubWwwanMetrics, err = ps.NewPublication(
-		pubsub.PublicationOptions{
-			AgentName: "test",
-			TopicType: types.WwanMetrics{},
-		})
-	if err != nil {
-		log.Fatal(err)
-	}
-	pubWwanLocInfo, err = ps.NewPublication(
-		pubsub.PublicationOptions{
-			AgentName: "test",
-			TopicType: types.WwanLocationInfo{},
-		})
-	if err != nil {
-		log.Fatal(err)
-	}
 	networkMonitor = &netmonitor.MockNetworkMonitor{
 		Log:    logObj,
 		MainRT: syscall.RT_TABLE_MAIN,
@@ -119,7 +91,6 @@ func initTest(test *testing.T) *GomegaWithT {
 		AgentName:      "test",
 		NetworkMonitor: networkMonitor,
 	}
-	wwanWatcher = &MockWwanWatcher{}
 	geoService = &MockGeoService{}
 	connTester = &conntester.MockConnectivityTester{
 		TestDuration:   2 * time.Second,
@@ -129,7 +100,6 @@ func initTest(test *testing.T) *GomegaWithT {
 		Log:                      logObj,
 		Watchdog:                 &MockWatchdog{},
 		AgentName:                "test",
-		WwanWatcher:              wwanWatcher,
 		GeoService:               geoService,
 		DpcMinTimeSinceFailure:   3 * time.Second,
 		NetworkMonitor:           networkMonitor,
@@ -138,9 +108,6 @@ func initTest(test *testing.T) *GomegaWithT {
 		PubDummyDevicePortConfig: pubDummyDPC,
 		PubDevicePortConfigList:  pubDPCList,
 		PubDeviceNetworkStatus:   pubDNS,
-		PubWwanStatus:            pubWwwanStatus,
-		PubWwanMetrics:           pubWwwanMetrics,
-		PubWwanLocationInfo:      pubWwanLocInfo,
 		ZedcloudMetrics:          zedcloud.NewAgentMetrics(),
 	}
 	ctx := reconciler.MockRun(context.Background())
@@ -466,8 +433,11 @@ func mockWwan0() netmonitor.MockInterface {
 	return wlan0
 }
 
-func mockWwan0Status() types.WwanStatus {
+func mockWwan0Status(dpc types.DevicePortConfig, rs types.RadioSilence) types.WwanStatus {
 	return types.WwanStatus{
+		DPCKey:            dpc.Key,
+		DPCTimestamp:      dpc.TimePriority,
+		RSConfigTimestamp: rs.ChangeRequestedAt,
 		Networks: []types.WwanNetworkStatus{
 			{
 				LogicalLabel: "mock-wwan0",
@@ -572,8 +542,8 @@ func makeDPC(key string, timePrio time.Time, intfs selectedIntfs) types.DevicePo
 			IsMgmt:       true,
 			IsL3Port:     true,
 			DhcpConfig: types.DhcpConfig{
-				Dhcp: types.DT_CLIENT,
-				Type: types.NT_IPV4,
+				Dhcp: types.DhcpTypeClient,
+				Type: types.NetworkTypeIPv4,
 			},
 		})
 	}
@@ -585,8 +555,8 @@ func makeDPC(key string, timePrio time.Time, intfs selectedIntfs) types.DevicePo
 			IsMgmt:       true,
 			IsL3Port:     true,
 			DhcpConfig: types.DhcpConfig{
-				Dhcp: types.DT_CLIENT,
-				Type: types.NT_IPV4,
+				Dhcp: types.DhcpTypeClient,
+				Type: types.NetworkTypeIPv4,
 			},
 		})
 	}
@@ -598,8 +568,8 @@ func makeDPC(key string, timePrio time.Time, intfs selectedIntfs) types.DevicePo
 			IsMgmt:       true,
 			IsL3Port:     true,
 			DhcpConfig: types.DhcpConfig{
-				Dhcp: types.DT_CLIENT,
-				Type: types.NT_IPV4,
+				Dhcp: types.DhcpTypeClient,
+				Type: types.NetworkTypeIPv4,
 			},
 			WirelessCfg: types.WirelessConfig{
 				WType: types.WirelessTypeWifi,
@@ -622,8 +592,8 @@ func makeDPC(key string, timePrio time.Time, intfs selectedIntfs) types.DevicePo
 			IsMgmt:       true,
 			IsL3Port:     true,
 			DhcpConfig: types.DhcpConfig{
-				Dhcp: types.DT_CLIENT,
-				Type: types.NT_IPV4,
+				Dhcp: types.DhcpTypeClient,
+				Type: types.NetworkTypeIPv4,
 			},
 			WirelessCfg: types.WirelessConfig{
 				WType: types.WirelessTypeCellular,
@@ -1059,8 +1029,8 @@ func TestDNS(test *testing.T) {
 	t.Expect(eth0State.Subnet.String()).To(Equal("192.168.10.0/24"))
 	t.Expect(eth0State.MacAddr.String()).To(Equal("02:00:00:00:00:01"))
 	t.Expect(eth0State.Up).To(BeTrue())
-	t.Expect(eth0State.Type).To(BeEquivalentTo(types.NT_IPV4))
-	t.Expect(eth0State.Dhcp).To(BeEquivalentTo(types.DT_CLIENT))
+	t.Expect(eth0State.Type).To(BeEquivalentTo(types.NetworkTypeIPv4))
+	t.Expect(eth0State.Dhcp).To(BeEquivalentTo(types.DhcpTypeClient))
 	t.Expect(eth0State.DefaultRouters).To(HaveLen(1))
 	t.Expect(eth0State.DefaultRouters[0].String()).To(Equal("192.168.10.1"))
 	eth1State := dns.Ports[1]
@@ -1082,8 +1052,8 @@ func TestDNS(test *testing.T) {
 	t.Expect(eth1State.Subnet.String()).To(Equal("172.20.1.0/24"))
 	t.Expect(eth1State.MacAddr.String()).To(Equal("02:00:00:00:00:02"))
 	t.Expect(eth1State.Up).To(BeTrue())
-	t.Expect(eth1State.Type).To(BeEquivalentTo(types.NT_IPV4))
-	t.Expect(eth1State.Dhcp).To(BeEquivalentTo(types.DT_CLIENT))
+	t.Expect(eth1State.Type).To(BeEquivalentTo(types.NetworkTypeIPv4))
+	t.Expect(eth1State.Dhcp).To(BeEquivalentTo(types.DhcpTypeClient))
 	t.Expect(eth1State.DefaultRouters).To(HaveLen(1))
 	t.Expect(eth1State.DefaultRouters[0].String()).To(Equal("172.20.1.1"))
 }
@@ -1133,29 +1103,10 @@ func TestWireless(test *testing.T) {
 			ports[1].AddrInfoList[0].Addr.String() == "15.123.87.20"
 	}).Should(BeTrue())
 
-	// Simulate some output from wwan microservice.
-	expectedWwanConfig := types.WwanConfig{
-		RadioSilence: false,
-		Networks: []types.WwanNetworkConfig{
-			{
-				LogicalLabel: "mock-wwan0",
-				PhysAddrs: types.WwanPhysAddrs{
-					Interface: "wwan0",
-				},
-				APN:              "apn",
-				LocationTracking: true,
-			},
-		},
-	}
-	_, wwanCfgHash, err := generic.MarshalWwanConfig(expectedWwanConfig)
-	t.Expect(err).To(BeNil())
-	wwan0Status := mockWwan0Status()
-	wwan0Status.ConfigChecksum = wwanCfgHash
-	wwanWatcher.UpdateStatus(wwan0Status)
-	wwan0Metrics := mockWwan0Metrics()
-	wwanWatcher.UpdateMetrics(wwan0Metrics)
-	wwan0LocInfo := mockWwan0LocationInfo()
-	wwanWatcher.UpdateLocationInfo(wwan0LocInfo)
+	// Simulate an event of receiving WwanStatus from the wwan microservice.
+	rs := types.RadioSilence{}
+	wwan0Status := mockWwan0Status(dpc, rs)
+	dpcManager.ProcessWwanStatus(wwan0Status)
 
 	// Check DNS content, it should include wwan state data.
 	t.Eventually(wwanOpModeCb(types.WwanOpModeConnected)).Should(BeTrue())
@@ -1184,67 +1135,22 @@ func TestWireless(test *testing.T) {
 	t.Expect(wwanDNS.Cellular.PhysAddrs.USB).To(Equal("1:3.3"))
 	t.Expect(wwanDNS.Cellular.PhysAddrs.PCI).To(Equal("0000:f4:00.0"))
 
-	// Check published wwan status
-	t.Eventually(func() bool {
-		obj, err := pubWwwanStatus.Get("global")
-		return err == nil && obj != nil
-	}).Should(BeTrue())
-	obj, err := pubWwwanStatus.Get("global")
-	status := obj.(types.WwanStatus)
-	t.Expect(status).To(BeEquivalentTo(wwan0Status))
-
-	// Check published wwan metrics
-	t.Eventually(func() bool {
-		obj, err := pubWwwanMetrics.Get("global")
-		return err == nil && obj != nil
-	}).Should(BeTrue())
-	obj, err = pubWwwanMetrics.Get("global")
-	metrics := obj.(types.WwanMetrics)
-	t.Expect(metrics.Networks).To(HaveLen(1))
-	t.Expect(metrics.Networks[0].LogicalLabel).To(Equal("mock-wwan0"))
-	t.Expect(metrics.Networks[0].PhysAddrs.PCI).To(Equal("0000:f4:00.0"))
-	t.Expect(metrics.Networks[0].PhysAddrs.USB).To(Equal("1:3.3"))
-	t.Expect(metrics.Networks[0].PhysAddrs.Interface).To(Equal("wwan0"))
-	t.Expect(metrics.Networks[0].PacketStats.RxBytes).To(BeEquivalentTo(12345))
-	t.Expect(metrics.Networks[0].PacketStats.RxPackets).To(BeEquivalentTo(56))
-	t.Expect(metrics.Networks[0].PacketStats.TxBytes).To(BeEquivalentTo(1256))
-	t.Expect(metrics.Networks[0].PacketStats.TxPackets).To(BeEquivalentTo(12))
-	t.Expect(metrics.Networks[0].SignalInfo.RSSI).To(BeEquivalentTo(-67))
-	t.Expect(metrics.Networks[0].SignalInfo.RSRQ).To(BeEquivalentTo(-11))
-	t.Expect(metrics.Networks[0].SignalInfo.RSRP).To(BeEquivalentTo(-97))
-	t.Expect(metrics.Networks[0].SignalInfo.SNR).To(BeEquivalentTo(92))
-
-	// Check published wwan location info.
-	t.Eventually(func() bool {
-		obj, err := pubWwanLocInfo.Get("global")
-		return err == nil && obj != nil
-	}).Should(BeTrue())
-	obj, err = pubWwanLocInfo.Get("global")
-	locInfo := obj.(types.WwanLocationInfo)
-	t.Expect(locInfo.Latitude).To(BeNumerically("~", 37.333964, 0.1))
-	t.Expect(locInfo.Longitude).To(BeNumerically("~", -121.893975, 0.1))
-	t.Expect(locInfo.Altitude).To(BeNumerically("~", 93.170685, 0.1))
-	t.Expect(locInfo.HorizontalUncertainty).To(BeNumerically("~", 16.123, 0.1))
-	t.Expect(locInfo.HorizontalReliability).To(Equal(types.LocReliabilityMedium))
-	t.Expect(locInfo.VerticalUncertainty).To(BeNumerically("~", 12.42, 0.1))
-	t.Expect(locInfo.VerticalReliability).To(Equal(types.LocReliabilityLow))
-	t.Expect(locInfo.UTCTimestamp).To(BeEquivalentTo(1648629022000))
-
 	// Impose radio silence.
 	// But actually there is a config error coming from upper layers,
 	// so there should be no change in the wwan config.
 	rsImposedAt := time.Now()
-	dpcManager.UpdateRadioSilence(types.RadioSilence{
+	rs = types.RadioSilence{
 		Imposed:           true,
 		ChangeInProgress:  true,
 		ChangeRequestedAt: rsImposedAt,
 		ConfigError:       "Error from upper layers",
-	})
+	}
+	dpcManager.UpdateRadioSilence(rs)
 	t.Eventually(func() bool {
 		rs := getDNS().RadioSilence
 		return rs.ConfigError == "Error from upper layers"
 	}).Should(BeTrue())
-	rs := getDNS().RadioSilence
+	rs = getDNS().RadioSilence
 	t.Expect(rs.ChangeRequestedAt.Equal(rsImposedAt)).To(BeTrue())
 	t.Expect(rs.ConfigError).To(Equal("Error from upper layers"))
 	t.Expect(rs.Imposed).To(BeFalse())
@@ -1254,20 +1160,17 @@ func TestWireless(test *testing.T) {
 
 	// Second attempt should be successful.
 	rsImposedAt = time.Now()
-	dpcManager.UpdateRadioSilence(types.RadioSilence{
+	rs = types.RadioSilence{
 		Imposed:           true,
 		ChangeInProgress:  true,
 		ChangeRequestedAt: rsImposedAt,
-	})
+	}
+	dpcManager.UpdateRadioSilence(rs)
 	t.Eventually(rsChangeInProgressCb()).Should(BeTrue())
-	expectedWwanConfig.RadioSilence = true
-	_, wwanCfgHash, err = generic.MarshalWwanConfig(expectedWwanConfig)
-	t.Expect(err).To(BeNil())
-	wwan0Status = mockWwan0Status()
-	wwan0Status.ConfigChecksum = wwanCfgHash
+	wwan0Status = mockWwan0Status(dpc, rs)
 	wwan0Status.Networks[0].Module.OpMode = types.WwanOpModeRadioOff
 	wwan0Status.Networks[0].ConfigError = ""
-	wwanWatcher.UpdateStatus(wwan0Status)
+	dpcManager.ProcessWwanStatus(wwan0Status)
 	t.Eventually(wwanOpModeCb(types.WwanOpModeRadioOff)).Should(BeTrue())
 	t.Eventually(rsChangeInProgressCb()).Should(BeFalse())
 	rs = getDNS().RadioSilence
@@ -1279,20 +1182,17 @@ func TestWireless(test *testing.T) {
 
 	// Disable radio silence.
 	rsLiftedAt := time.Now()
-	dpcManager.UpdateRadioSilence(types.RadioSilence{
+	rs = types.RadioSilence{
 		Imposed:           false,
 		ChangeInProgress:  true,
 		ChangeRequestedAt: rsLiftedAt,
-	})
+	}
+	dpcManager.UpdateRadioSilence(rs)
 	t.Eventually(rsChangeInProgressCb()).Should(BeTrue())
-	expectedWwanConfig.RadioSilence = false
-	_, wwanCfgHash, err = generic.MarshalWwanConfig(expectedWwanConfig)
-	t.Expect(err).To(BeNil())
-	wwan0Status = mockWwan0Status()
-	wwan0Status.ConfigChecksum = wwanCfgHash
+	wwan0Status = mockWwan0Status(dpc, rs)
 	wwan0Status.Networks[0].Module.OpMode = types.WwanOpModeConnected
 	wwan0Status.Networks[0].ConfigError = ""
-	wwanWatcher.UpdateStatus(wwan0Status)
+	dpcManager.ProcessWwanStatus(wwan0Status)
 	t.Eventually(wwanOpModeCb(types.WwanOpModeConnected)).Should(BeTrue())
 	t.Eventually(rsChangeInProgressCb()).Should(BeFalse())
 	rs = getDNS().RadioSilence
@@ -1304,20 +1204,17 @@ func TestWireless(test *testing.T) {
 
 	// Next simulate that wwan microservice failed to impose RS.
 	rsImposedAt = time.Now()
-	dpcManager.UpdateRadioSilence(types.RadioSilence{
+	rs = types.RadioSilence{
 		Imposed:           true,
 		ChangeInProgress:  true,
 		ChangeRequestedAt: rsImposedAt,
-	})
+	}
+	dpcManager.UpdateRadioSilence(rs)
 	t.Eventually(rsChangeInProgressCb()).Should(BeTrue())
-	expectedWwanConfig.RadioSilence = true
-	_, wwanCfgHash, err = generic.MarshalWwanConfig(expectedWwanConfig)
-	t.Expect(err).To(BeNil())
-	wwan0Status = mockWwan0Status()
-	wwan0Status.ConfigChecksum = wwanCfgHash
+	wwan0Status = mockWwan0Status(dpc, rs)
 	wwan0Status.Networks[0].Module.OpMode = types.WwanOpModeOnline
 	wwan0Status.Networks[0].ConfigError = "failed to impose RS"
-	wwanWatcher.UpdateStatus(wwan0Status)
+	dpcManager.ProcessWwanStatus(wwan0Status)
 	t.Eventually(wwanOpModeCb(types.WwanOpModeOnline)).Should(BeTrue())
 	t.Eventually(rsChangeInProgressCb()).Should(BeFalse())
 	rs = getDNS().RadioSilence
@@ -1595,8 +1492,8 @@ func TestVlansAndBonds(test *testing.T) {
 				IsL3Port:     true,
 				IsMgmt:       true,
 				DhcpConfig: types.DhcpConfig{
-					Dhcp: types.DT_CLIENT,
-					Type: types.NT_IPV4,
+					Dhcp: types.DhcpTypeClient,
+					Type: types.NetworkTypeIPv4,
 				},
 				L2LinkConfig: types.L2LinkConfig{
 					L2Type: types.L2LinkTypeVLAN,
@@ -1612,8 +1509,8 @@ func TestVlansAndBonds(test *testing.T) {
 				IsL3Port:     true,
 				IsMgmt:       true,
 				DhcpConfig: types.DhcpConfig{
-					Dhcp: types.DT_CLIENT,
-					Type: types.NT_IPV4,
+					Dhcp: types.DhcpTypeClient,
+					Type: types.NetworkTypeIPv4,
 				},
 				L2LinkConfig: types.L2LinkConfig{
 					L2Type: types.L2LinkTypeVLAN,
@@ -1740,8 +1637,8 @@ func TestVlansAndBonds(test *testing.T) {
 	t.Expect(eth0State.Subnet.IP).To(BeNil())
 	t.Expect(eth0State.MacAddr.String()).To(Equal("02:00:00:00:00:01"))
 	t.Expect(eth0State.Up).To(BeTrue())
-	t.Expect(eth0State.Type).To(BeEquivalentTo(types.NT_NOOP))
-	t.Expect(eth0State.Dhcp).To(BeEquivalentTo(types.DT_NOOP))
+	t.Expect(eth0State.Type).To(BeEquivalentTo(types.NetworkTypeNOOP))
+	t.Expect(eth0State.Dhcp).To(BeEquivalentTo(types.DhcpTypeNOOP))
 	t.Expect(eth0State.DefaultRouters).To(BeEmpty())
 	eth1State := dns.Ports[1]
 	t.Expect(eth1State.IfName).To(Equal("eth1"))
@@ -1757,8 +1654,8 @@ func TestVlansAndBonds(test *testing.T) {
 	t.Expect(eth1State.Subnet.IP).To(BeNil())
 	t.Expect(eth1State.MacAddr.String()).To(Equal("02:00:00:00:00:02"))
 	t.Expect(eth1State.Up).To(BeTrue())
-	t.Expect(eth1State.Type).To(BeEquivalentTo(types.NT_NOOP))
-	t.Expect(eth1State.Dhcp).To(BeEquivalentTo(types.DT_NOOP))
+	t.Expect(eth1State.Type).To(BeEquivalentTo(types.NetworkTypeNOOP))
+	t.Expect(eth1State.Dhcp).To(BeEquivalentTo(types.DhcpTypeNOOP))
 	t.Expect(eth1State.DefaultRouters).To(BeEmpty())
 	bond0State := dns.Ports[2]
 	t.Expect(bond0State.IfName).To(Equal("bond0"))
@@ -1773,8 +1670,8 @@ func TestVlansAndBonds(test *testing.T) {
 	t.Expect(bond0State.Subnet.IP).To(BeNil())
 	t.Expect(bond0State.MacAddr.String()).To(Equal("02:00:00:00:00:03"))
 	t.Expect(bond0State.Up).To(BeTrue())
-	t.Expect(bond0State.Type).To(BeEquivalentTo(types.NT_NOOP))
-	t.Expect(bond0State.Dhcp).To(BeEquivalentTo(types.DT_NOOP))
+	t.Expect(bond0State.Type).To(BeEquivalentTo(types.NetworkTypeNOOP))
+	t.Expect(bond0State.Dhcp).To(BeEquivalentTo(types.DhcpTypeNOOP))
 	t.Expect(bond0State.DefaultRouters).To(BeEmpty())
 	vlan100State := dns.Ports[3]
 	t.Expect(vlan100State.IfName).To(Equal("shopfloor.100"))
@@ -1792,8 +1689,8 @@ func TestVlansAndBonds(test *testing.T) {
 	t.Expect(vlan100State.Subnet.String()).To(Equal("192.168.10.0/24"))
 	t.Expect(vlan100State.MacAddr.String()).To(Equal("02:00:00:00:00:04"))
 	t.Expect(vlan100State.Up).To(BeTrue())
-	t.Expect(vlan100State.Type).To(BeEquivalentTo(types.NT_IPV4))
-	t.Expect(vlan100State.Dhcp).To(BeEquivalentTo(types.DT_CLIENT))
+	t.Expect(vlan100State.Type).To(BeEquivalentTo(types.NetworkTypeIPv4))
+	t.Expect(vlan100State.Dhcp).To(BeEquivalentTo(types.DhcpTypeClient))
 	t.Expect(vlan100State.DefaultRouters).To(BeEmpty())
 	t.Expect(vlan100State.LastSucceeded.After(vlan100State.LastFailed)).To(BeTrue())
 	vlan200State := dns.Ports[4]
@@ -1812,8 +1709,8 @@ func TestVlansAndBonds(test *testing.T) {
 	t.Expect(vlan200State.Subnet.String()).To(Equal("172.20.1.0/24"))
 	t.Expect(vlan200State.MacAddr.String()).To(Equal("02:00:00:00:00:05"))
 	t.Expect(vlan200State.Up).To(BeTrue())
-	t.Expect(vlan200State.Type).To(BeEquivalentTo(types.NT_IPV4))
-	t.Expect(vlan200State.Dhcp).To(BeEquivalentTo(types.DT_CLIENT))
+	t.Expect(vlan200State.Type).To(BeEquivalentTo(types.NetworkTypeIPv4))
+	t.Expect(vlan200State.Dhcp).To(BeEquivalentTo(types.DhcpTypeClient))
 	t.Expect(vlan200State.DefaultRouters).To(BeEmpty())
 	t.Expect(vlan200State.LastSucceeded.After(vlan200State.LastFailed)).To(BeTrue())
 }
@@ -1852,7 +1749,7 @@ func TestTransientDNSError(test *testing.T) {
 	// However, let's pretend that the DNS resolver of the connection tester
 	// has not reloaded DNS config yet.
 	connTester.SetConnectivityError("zedagent", "eth0",
-		&types.DNSNotAvail{
+		&types.DNSNotAvailError{
 			IfName: eth0.Attrs.IfName,
 		})
 	eth0 = mockEth0() // With IPAddrs and DNS.

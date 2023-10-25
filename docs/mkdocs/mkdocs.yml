@@ -24,7 +24,6 @@ nav:
   - 'Deploying EVE-OS': 'docs/DEPLOYMENT.md'
   - 'Verifying EVE-OS': 'docs/HARDWARE-VERIFICATION.md'
   - 'Booting EVE': 'docs/BOOTING.md'
-  - 'Device Connectivity': 'docs/DEVICE-CONNECTIVITY.md'
   - Communications: 'docs/COMMS.md'
   - Registration: 'docs/REGISTRATION.md'
   - 'Update base image': 'docs/BASEIMAGE-UPDATE.md'
@@ -36,7 +35,6 @@ nav:
   - IPC: 'docs/IPC.md'
   - 'Keys and Certificates': 'docs/KEYS-AND-CERTS.md'
   - 'LED indication': 'docs/LED-INDICATION.md'
-  - Wireless: 'docs/WIRELESS.md'
   - Tasks: 'docs/TASKS.md'
   - Upstreaming: 'docs/UPSTREAMING.md'
   - 'Bringing EVE up on a new CPU architecture': 'docs/PORTING.md'
@@ -47,8 +45,11 @@ nav:
   - CI-CD: 'docs/CI-CD.md'
   - FAQ: 'docs/FAQ.md'
   - Networking:
+      - 'Device Connectivity': 'docs/DEVICE-CONNECTIVITY.md'
       - 'Network ACLS': 'docs/NETWORK-ACLS.md'
       - 'Network Models': 'docs/NETWORK-MODELS.md'
+      - Wireless: 'docs/WIRELESS.md'
+      - 'wwan microservice': 'pkg/wwan/README.md'
   - 'ECO Initialization':
       - Initialization: 'docs/ECO-INIT.md'
       - 'ECO Metadata': 'docs/ECO-METADATA.md'

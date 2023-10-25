@@ -154,3 +154,10 @@ jobs:
           command: "V=1 LINUXKIT_PKG_TARGET=manifest pkgs"
           dockerhub-token: ${{ secrets.RELEASE_DOCKERHUB_TOKEN }}
           dockerhub-account: ${{ secrets.RELEASE_DOCKERHUB_ACCOUNT }}
+
+  trigger_assets:
+    if: ${{ (startsWith(github.ref, 'refs/tags/')) && (github.event.repository.full_name == 'lf-edge/eve') }}
+    needs: [manifest, verification, eve]
+    uses: lf-edge/eve/.github/workflows/assets.yml@master
+    with:
+      tag_ref: ${{ github.ref }}

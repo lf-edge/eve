@@ -13,6 +13,7 @@ require (
 	github.com/docker/docker v20.10.24+incompatible
 	github.com/eriknordmark/ipinfo v0.0.0-20230728132417-2d8f4da903d7
 	github.com/fsnotify/fsnotify v1.5.1
+	github.com/go-chi/chi/v5 v5.0.10
 	github.com/golang-jwt/jwt v3.2.2+incompatible
 	github.com/golang/protobuf v1.5.2
 	github.com/google/go-cmp v0.5.9
@@ -24,7 +25,7 @@ require (
 	github.com/jackwakefield/gopac v1.0.2
 	github.com/jaypipes/ghw v0.8.0
 	github.com/lf-edge/edge-containers v0.0.0-20221025050409-93c34bebadd2
-	github.com/lf-edge/eve-api/go v0.0.0-20230917094129-590dad30fe13
+	github.com/lf-edge/eve-api/go v0.0.0-20231011200019-cb3cb1275e0d
 	github.com/lf-edge/eve-libs v0.0.0-20230921141205-94d6f6b65597
 	github.com/linuxkit/linuxkit/src/cmd/linuxkit v0.0.0-20220913135124-e532e7310810
 	github.com/miekg/dns v1.1.41
@@ -42,9 +43,9 @@ require (
 	github.com/stretchr/testify v1.8.1
 	github.com/tatsushid/go-fastping v0.0.0-20160109021039-d7bb493dee3e
 	github.com/vishvananda/netlink v1.1.1-0.20210924202909-187053b97868
-	golang.org/x/crypto v0.1.0
-	golang.org/x/net v0.7.0
-	golang.org/x/sys v0.5.0
+	golang.org/x/crypto v0.14.0
+	golang.org/x/net v0.17.0
+	golang.org/x/sys v0.13.0
 	google.golang.org/grpc v1.53.0
 	google.golang.org/protobuf v1.28.1
 )
@@ -129,7 +130,7 @@ require (
 	go.opencensus.io v0.24.0 // indirect
 	golang.org/x/oauth2 v0.4.0 // indirect
 	golang.org/x/sync v0.1.0 // indirect
-	golang.org/x/text v0.7.0 // indirect
+	golang.org/x/text v0.13.0 // indirect
 	golang.org/x/xerrors v0.0.0-20220907171357-04be3eba64a2 // indirect
 	google.golang.org/api v0.103.0 // indirect
 	google.golang.org/appengine v1.6.7 // indirect

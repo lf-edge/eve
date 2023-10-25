@@ -61,7 +61,7 @@ Starting from the generated model file and add or adjust:
 - Optionally, if the intended application pre-determined and e.g., eth1 will be connected to the shopfloor network, you can set the logicallabel field to "shopfloor". That makes it more clear in the UI the intended use of that port.
 - If the model file shows multiple USB controllers, then plug in e.g., a USB stick in each physical USB port and use ```lsusb``` and ```lspci``` to tell which controller to which port is connected.
 - If the device has multiple physical USB ports, please add a entry for each one of them in the json file (on the correct USB controller if there are multiple)
-- If you device has a cellular modem verify that there is one or two wwan interfaces in the generated file, and if not add one. If it is connected via a USB controller (```lsusb``` will tell you that) it needs to be in the same assignment group as the USB controller.
+- If your device has a cellular modem, verify that the PCI and USB addresses recognized by spec.sh are actually correct. The script will make sure that modem connected over USB bus will be in the same assignment group as the USB controller itself.
 - If some controllers have an empty assignment group there might be an issue with an unknown controller/function. The ```-v``` option to the script can be used to get more information about such unknown controllers/functions.
 
 #### Check for unknown controllers/functions

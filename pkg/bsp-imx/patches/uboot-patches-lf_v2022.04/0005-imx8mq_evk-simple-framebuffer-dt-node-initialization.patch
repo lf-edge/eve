@@ -1,0 +1,65 @@
+From 5f56058c71fb83f364ee87ecc6bcd6449d049564 Mon Sep 17 00:00:00 2001
+From: Insei <goodmobiledevices@gmail.com>
+Date: Thu, 8 Dec 2022 05:41:40 +0300
+Subject: [PATCH 05/25] imx8mq_evk: simple-framebuffer dt node initialization
+ at ft_board_setup
+
+Signed-off-by: Insei <goodmobiledevices@gmail.com>
+---
+ board/freescale/imx8mq_evk/imx8mq_evk.c | 12 ++++++++++++
+ configs/imx8mq_evk_defconfig            |  2 ++
+ 2 files changed, 14 insertions(+)
+
+diff --git a/board/freescale/imx8mq_evk/imx8mq_evk.c b/board/freescale/imx8mq_evk/imx8mq_evk.c
+index f470e6c7f50..89ff150ef67 100644
+--- a/board/freescale/imx8mq_evk/imx8mq_evk.c
++++ b/board/freescale/imx8mq_evk/imx8mq_evk.c
+@@ -30,6 +30,8 @@
+ #include "../common/pfuze.h"
+ #include <usb.h>
+ #include <dwc3-uboot.h>
++#include <fdt_support.h>
++#include <fdt_simplefb.h>
+ 
+ DECLARE_GLOBAL_DATA_PTR;
+ 
+@@ -298,6 +300,16 @@ int board_late_init(void)
+ 	return 0;
+ }
+ 
++int ft_board_setup(void *blob, struct bd_info *bd)
++{
++	int node;
++	node = fdt_node_offset_by_compatible(blob, -1, "simple-framebuffer");
++	if (node < 0) {
++ 		fdt_simplefb_add_node(blob);
++		fdt_simplefb_enable_existing_node(blob);
++	}
++}
++
+ #ifdef CONFIG_ANDROID_SUPPORT
+ bool is_power_key_pressed(void) {
+ 	return (bool)(!!(readl(SNVS_HPSR) & (0x1 << 6)));
+diff --git a/configs/imx8mq_evk_defconfig b/configs/imx8mq_evk_defconfig
+index 307a2a4202a..ce900ef7390 100644
+--- a/configs/imx8mq_evk_defconfig
++++ b/configs/imx8mq_evk_defconfig
+@@ -33,6 +33,7 @@ CONFIG_FIT_EXTERNAL_OFFSET=0x3000
+ CONFIG_SPL_LOAD_FIT=y
+ # CONFIG_USE_SPL_FIT_GENERATOR is not set
+ CONFIG_OF_SYSTEM_SETUP=y
++CONFIG_OF_BOARD_SETUP=y
+ CONFIG_BOARD_EARLY_INIT_F=y
+ CONFIG_BOARD_LATE_INIT=y
+ CONFIG_SPL_BOARD_INIT=y
+@@ -147,6 +148,7 @@ CONFIG_VIDEO_LOGO=y
+ CONFIG_SYS_WHITE_ON_BLACK=y
+ CONFIG_VIDEO_IMX8M_DCSS=y
+ CONFIG_VIDEO_IMX8M_HDMI=y
++CONFIG_FDT_SIMPLEFB=y
+ CONFIG_SPLASH_SCREEN=y
+ CONFIG_SPLASH_SCREEN_ALIGN=y
+ CONFIG_LEGACY_IMAGE_FORMAT=y
+-- 
+2.40.1
+

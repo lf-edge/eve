@@ -35,6 +35,9 @@ to move to the most recent, aka the highest-priority configuration.
 * zedagent status
   * an instance of `ZedAgentStatus` received from zedagent
   * used to determine the intended state of the [Radio-Silence mode](./radio-silence.md)
+* status of cellular connectivity
+  * an instance of the `WwanStatus` struct received from `mmagent` (wwan microservice)
+  * used to update `NetworkPortStatus` of cellular ports
 
 **NIM publishes**:
 
@@ -45,8 +48,9 @@ to move to the most recent, aka the highest-priority configuration.
   * ordered by priority, the highest priority is at index 0
   * contains index pointing to the currently used config
   * persisted publication - NIM is able to read it back and reapply after a reboot
-* WWAN metrics
-  * received from wwan microservice and just forwarded further via pubsub
+* configuration for cellular modems
+  * an instance of the `WwanConfig` struct
+  * consumed by `mmagent` from the wwan microservice
 
 ## Components
 

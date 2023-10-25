@@ -163,6 +163,18 @@ type zedrouter struct {
 
 	// Retry NI or app network config that zedrouter failed to apply
 	retryTimer *time.Timer
+
+	// Subscriptions to gather information about
+	// patch envelopes from volumemgr and zedagent
+	// external envelopes have to be downloaded via
+	// volumemgr, therefore we need to be subscribed
+	// to volume status to know filepath and download status
+	// patchEnvelopeInfo is list of patchEnvelopes which
+	// is coming from EdgeDevConfig containing information
+	// about inline patch envelopes and volume uuid as reference
+	// for external patch envelopes
+	subPatchEnvelopeInfo pubsub.Subscription
+	subVolumeStatus      pubsub.Subscription
 }
 
 // AddAgentSpecificCLIFlags adds CLI options
@@ -305,6 +317,8 @@ func (z *zedrouter) run(ctx context.Context) (err error) {
 		z.subWwanStatus,
 		z.subWwanMetrics,
 		z.subDomainStatus,
+		z.subPatchEnvelopeInfo,
+		z.subVolumeStatus,
 	}
 	for _, sub := range inactiveSubs {
 		if err = sub.Activate(); err != nil {
@@ -355,6 +369,12 @@ func (z *zedrouter) run(ctx context.Context) (err error) {
 
 		case change := <-z.subNetworkInstanceConfig.MsgChan():
 			z.subNetworkInstanceConfig.ProcessChange(change)
+
+		case change := <-z.subPatchEnvelopeInfo.MsgChan():
+			z.subPatchEnvelopeInfo.ProcessChange(change)
+
+		case change := <-z.subVolumeStatus.MsgChan():
+			z.subVolumeStatus.ProcessChange(change)
 
 		case <-z.publishTicker.C:
 			start := time.Now()
@@ -450,12 +470,12 @@ func (z *zedrouter) run(ctx context.Context) (err error) {
 						appKey, vif.NetAdapterName)
 					continue
 				}
-				for i := range appStatus.UnderlayNetworkList {
-					ulStatus := &appStatus.UnderlayNetworkList[i]
-					if ulStatus.Name != vif.NetAdapterName {
+				for i := range appStatus.AppNetAdapterList {
+					adapterStatus := &appStatus.AppNetAdapterList[i]
+					if adapterStatus.Name != vif.NetAdapterName {
 						continue
 					}
-					z.recordAssignedIPsToULStatus(ulStatus, &newAddrs)
+					z.recordAssignedIPsToAdapterStatus(adapterStatus, &newAddrs)
 					break
 				}
 				z.publishAppNetworkStatus(appStatus)
@@ -728,7 +748,7 @@ func (z *zedrouter) initSubscriptions() (err error) {
 
 	// Look for geographic location reports
 	z.subLocationInfo, err = z.pubSub.NewSubscription(pubsub.SubscriptionOptions{
-		AgentName:   "nim",
+		AgentName:   "wwan",
 		MyAgentName: agentName,
 		TopicImpl:   types.WwanLocationInfo{},
 		Activate:    false,
@@ -741,7 +761,7 @@ func (z *zedrouter) initSubscriptions() (err error) {
 
 	// Look for cellular status
 	z.subWwanStatus, err = z.pubSub.NewSubscription(pubsub.SubscriptionOptions{
-		AgentName:   "nim",
+		AgentName:   "wwan",
 		MyAgentName: agentName,
 		TopicImpl:   types.WwanStatus{},
 		Activate:    false,
@@ -754,7 +774,7 @@ func (z *zedrouter) initSubscriptions() (err error) {
 
 	// Look for cellular metrics
 	z.subWwanMetrics, err = z.pubSub.NewSubscription(pubsub.SubscriptionOptions{
-		AgentName:   "nim",
+		AgentName:   "wwan",
 		MyAgentName: agentName,
 		TopicImpl:   types.WwanMetrics{},
 		Activate:    false,
@@ -776,6 +796,33 @@ func (z *zedrouter) initSubscriptions() (err error) {
 	if err != nil {
 		return err
 	}
+
+	// Information about patch envelopes
+	z.subPatchEnvelopeInfo, err = z.pubSub.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:   "zedagent",
+		MyAgentName: agentName,
+		TopicImpl:   types.PatchEnvelopes{},
+		Activate:    false,
+		WarningTime: warningTime,
+		ErrorTime:   errorTime,
+	})
+	if err != nil {
+		return err
+	}
+
+	// Information about volumes referred in external patch envelopes
+	z.subVolumeStatus, err = z.pubSub.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:   "volumemgr",
+		MyAgentName: agentName,
+		TopicImpl:   types.VolumeStatus{},
+		Activate:    false,
+		WarningTime: warningTime,
+		ErrorTime:   errorTime,
+	})
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -842,13 +889,13 @@ func (z *zedrouter) processAppConnReconcileStatus(
 		for itemRef, itemErr := range vif.FailedItems {
 			failedItems = append(failedItems, fmt.Sprintf("%v (%v)", itemRef, itemErr))
 		}
-		for i := range appNetStatus.UnderlayNetworkList {
-			ulStatus := &appNetStatus.UnderlayNetworkList[i]
-			if ulStatus.Name != vif.NetAdapterName {
+		for i := range appNetStatus.AppNetAdapterList {
+			adapterStatus := &appNetStatus.AppNetAdapterList[i]
+			if adapterStatus.Name != vif.NetAdapterName {
 				continue
 			}
-			if ulStatus.Vif != vif.HostIfName {
-				ulStatus.Vif = vif.HostIfName
+			if adapterStatus.Vif != vif.HostIfName {
+				adapterStatus.Vif = vif.HostIfName
 				changed = true
 			}
 		}
@@ -874,7 +921,7 @@ func (z *zedrouter) processAppConnReconcileStatus(
 
 func (z *zedrouter) ensureDir(path string) error {
 	if _, err := os.Stat(path); err != nil {
-		z.log.Functionf("Create directory %s", runDirname)
+		z.log.Functionf("Create directory %s", path)
 		if err := os.Mkdir(path, 0755); err != nil {
 			return err
 		}
@@ -1136,8 +1183,8 @@ func (z *zedrouter) lookupAppNetworkStatusByAppIP(ip net.IP) *types.AppNetworkSt
 	items := pub.GetAll()
 	for _, st := range items {
 		status := st.(types.AppNetworkStatus)
-		for _, ulStatus := range status.UnderlayNetworkList {
-			if ulStatus.AllocatedIPv4Addr.Equal(ip) {
+		for _, adapterStatus := range status.AppNetAdapterList {
+			if adapterStatus.AllocatedIPv4Addr.Equal(ip) {
 				return &status
 			}
 		}

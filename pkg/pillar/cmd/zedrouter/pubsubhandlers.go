@@ -470,9 +470,9 @@ func (z *zedrouter) handleAppNetworkCreate(ctxArg interface{}, key string,
 	status.AppNum = appNum
 	z.publishAppNetworkStatus(&status)
 
-	// Allocate application numbers on underlay network.
+	// Allocate application numbers on network instances.
 	// Used to allocate VIF IP address.
-	err = z.allocateAppIntfNums(config.UUIDandVersion.UUID, config.UnderlayNetworkList)
+	err = z.allocateAppIntfNums(config.UUIDandVersion.UUID, config.AppNetAdapterList)
 	if err != nil {
 		err = fmt.Errorf("failed to allocate numbers for VIFs of the app %s/%s: %v",
 			config.UUIDandVersion.UUID, config.DisplayName, err)
@@ -481,7 +481,7 @@ func (z *zedrouter) handleAppNetworkCreate(ctxArg interface{}, key string,
 		return
 	}
 
-	// Check that Network exists for all underlays.
+	// Check that Network exists for all AppNetAdapters.
 	// We look for apps with raised AwaitNetworkInstance when a NetworkInstance is added.
 	netInErrState, err := z.checkNetworkReferencesFromApp(config)
 	if err != nil {
@@ -502,7 +502,7 @@ func (z *zedrouter) handleAppNetworkCreate(ctxArg interface{}, key string,
 }
 
 // handleAppNetworkModify cannot handle any change.
-// For example, the number of underlay networks can not be changed.
+// For example, the number of AppNetAdapters can not be changed.
 func (z *zedrouter) handleAppNetworkModify(ctxArg interface{}, key string,
 	configArg interface{}, oldConfigArg interface{}) {
 	newConfig := configArg.(types.AppNetworkConfig)
@@ -531,7 +531,7 @@ func (z *zedrouter) handleAppNetworkModify(ctxArg interface{}, key string,
 	// Update numbers allocated for application interfaces.
 	z.checkAppNetworkModifyAppIntfNums(newConfig, status)
 
-	// Check that Network exists for all new underlays.
+	// Check that Network exists for all new AppNetAdapters.
 	// We look for apps with raised AwaitNetworkInstance when a NetworkInstance is added.
 	netInErrState, err := z.checkNetworkReferencesFromApp(newConfig)
 	if err != nil {
@@ -598,9 +598,9 @@ func (z *zedrouter) handleAppNetworkDelete(ctxArg interface{}, key string,
 	z.freeAppIntfNums(status)
 
 	// Did this free up any last references against any deleted Network Instance?
-	for i := range status.UnderlayNetworkList {
-		ulStatus := &status.UnderlayNetworkList[i]
-		netstatus := z.lookupNetworkInstanceStatus(ulStatus.Network.String())
+	for i := range status.AppNetAdapterList {
+		adapterStatus := &status.AppNetAdapterList[i]
+		netstatus := z.lookupNetworkInstanceStatus(adapterStatus.Network.String())
 		if netstatus != nil {
 			if z.maybeDelOrInactivateNetworkInstance(netstatus) {
 				z.log.Functionf(

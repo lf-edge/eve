@@ -1,0 +1,60 @@
+From 9ee71fea7e8577c743abb8d24692de26cdb5ed6b Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Ren=C3=AA=20de=20Souza=20Pinto?= <rene@renesp.com.br>
+Date: Wed, 4 Jan 2023 19:11:13 +0100
+Subject: [PATCH 09/25] arch: arm: dts: Add SMBIOS information for Phytec
+ Pollux
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+- Add device tree node for Phytec's Pollux board with SMBIOS information.
+- Enable SMBIOS in phycore-imx8mp_defconfig
+
+Signed-off-by: Renê de Souza Pinto <rene@renesp.com.br>
+---
+ arch/arm/dts/imx8mp-phyboard-pollux-rdk.dts | 18 ++++++++++++++++++
+ configs/phycore-imx8mp_defconfig            |  2 ++
+ 2 files changed, 20 insertions(+)
+
+diff --git a/arch/arm/dts/imx8mp-phyboard-pollux-rdk.dts b/arch/arm/dts/imx8mp-phyboard-pollux-rdk.dts
+index 3083530cd38..3ccc36ada71 100644
+--- a/arch/arm/dts/imx8mp-phyboard-pollux-rdk.dts
++++ b/arch/arm/dts/imx8mp-phyboard-pollux-rdk.dts
+@@ -15,6 +15,24 @@
+ 	compatible = "phytec,imx8mp-phyboard-pollux-rdk",
+ 		     "phytec,imx8mp-phycore-som", "fsl,imx8mp";
+ 
++	sysinfo {
++		compatible = "u-boot,sysinfo-smbios";
++		smbios {
++			system {
++				manufacturer = "phytec";
++				product = "pollux";
++			};
++			baseboard {
++				manufacturer = "phytec";
++				product = "pollux";
++			};
++			chassis {
++				manufacturer = "phytec";
++				product = "pollux";
++			};
++		};
++	};
++
+ 	chosen {
+ 		stdout-path = &uart1;
+ 	};
+diff --git a/configs/phycore-imx8mp_defconfig b/configs/phycore-imx8mp_defconfig
+index 9623b84a783..d563aadc879 100644
+--- a/configs/phycore-imx8mp_defconfig
++++ b/configs/phycore-imx8mp_defconfig
+@@ -112,3 +112,5 @@ CONFIG_SYSRESET_PSCI=y
+ CONFIG_SYSRESET_WATCHDOG=y
+ CONFIG_DM_THERMAL=y
+ CONFIG_IMX_WATCHDOG=y
++CONFIG_SYSINFO=y
++CONFIG_SYSINFO_SMBIOS=y
+-- 
+2.40.1
+

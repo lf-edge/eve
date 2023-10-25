@@ -273,7 +273,7 @@ func uplinkPhysIfName(bridgeName string) string {
 	return "k" + bridgeName
 }
 
-// Ipset with all the addresses from the DnsNameToIPList plus the VIF IP itself.
+// Ipset with all the addresses from the DNSNameToIPList plus the VIF IP itself.
 func eidsIpsetName(vif vifInfo, ipv6 bool) string {
 	if ipv6 {
 		return ipsetNamePrefixV6 + "eids." + vif.hostIfName
@@ -363,7 +363,7 @@ func (r *LinuxNIReconciler) getIntendedGlobalIPSets() dg.Graph {
 		if app.deleted {
 			continue
 		}
-		for _, adapter := range app.config.UnderlayNetworkList {
+		for _, adapter := range app.config.AppNetAdapterList {
 			for _, ace := range adapter.ACLs {
 				for _, match := range ace.Matches {
 					if match.Type == "host" {
@@ -469,7 +469,7 @@ func (r *LinuxNIReconciler) getIntendedNICfg(niID uuid.UUID) dg.Graph {
 			if vif.NI != niID {
 				continue
 			}
-			ul := app.config.UnderlayNetworkList[i]
+			ul := app.config.AppNetAdapterList[i]
 			intendedCfg.PutSubGraph(r.getIntendedAppConnCfg(niID, vif, ul))
 		}
 	}
@@ -514,7 +514,7 @@ func (r *LinuxNIReconciler) getIntendedNIL2Cfg(niID uuid.UUID) dg.Graph {
 		if app.deleted {
 			continue
 		}
-		for _, ul := range app.config.UnderlayNetworkList {
+		for _, ul := range app.config.AppNetAdapterList {
 			if ul.Network != niID {
 				continue
 			}
@@ -854,35 +854,37 @@ func (r *LinuxNIReconciler) getIntendedDnsmasqCfg(niID uuid.UUID) (items []dg.It
 		UpstreamServers: ni.bridge.Uplink.DNSServers,
 	}
 	for _, staticEntry := range ni.config.DnsNameToIPList {
-		for _, ip := range staticEntry.IPs {
-			dnsCfg.StaticEntries = append(dnsCfg.StaticEntries, generic.HostnameToIP{
-				Hostname: staticEntry.HostName,
-				IP:       ip,
-			})
-		}
+		dnsCfg.StaticEntries = append(dnsCfg.StaticEntries, generic.HostnameToIPs{
+			Hostname: staticEntry.HostName,
+			IPs:      staticEntry.IPs,
+		})
 	}
 	if bridgeIP != nil {
 		// XXX arbitrary name "router"!!
-		dnsCfg.StaticEntries = append(dnsCfg.StaticEntries, generic.HostnameToIP{
+		dnsCfg.StaticEntries = append(dnsCfg.StaticEntries, generic.HostnameToIPs{
 			Hostname: "router",
-			IP:       bridgeIP.IP,
+			IPs:      []net.IP{bridgeIP.IP},
 		})
 	}
 	for _, app := range r.apps {
 		if app.deleted {
 			continue
 		}
+		var ips []net.IP
 		for _, vif := range app.vifs {
 			if vif.NI != niID {
 				continue
 			}
 			if vif.GuestIP != nil {
-				dnsCfg.StaticEntries = append(dnsCfg.StaticEntries,
-					generic.HostnameToIP{
-						Hostname: app.config.DisplayName,
-						IP:       vif.GuestIP,
-					})
+				ips = append(ips, vif.GuestIP)
 			}
+		}
+		if len(ips) > 0 {
+			dnsCfg.StaticEntries = append(dnsCfg.StaticEntries,
+				generic.HostnameToIPs{
+					Hostname: app.config.DisplayName,
+					IPs:      ips,
+				})
 		}
 	}
 	// Note that with IPv4/IPv6 interfaces the domU can do DNS lookups on either
@@ -903,7 +905,7 @@ func (r *LinuxNIReconciler) getIntendedDnsmasqCfg(niID uuid.UUID) (items []dg.It
 		if !usesThisNI {
 			continue
 		}
-		for _, adapter := range app.config.UnderlayNetworkList {
+		for _, adapter := range app.config.AppNetAdapterList {
 			for _, ace := range adapter.ACLs {
 				for _, match := range ace.Matches {
 					if match.Type == "host" {
@@ -953,7 +955,7 @@ func (r *LinuxNIReconciler) getIntendedRadvdCfg(niID uuid.UUID) (items []dg.Item
 }
 
 func (r *LinuxNIReconciler) getIntendedAppConnCfg(niID uuid.UUID,
-	vif vifInfo, ul types.UnderlayNetworkConfig) dg.Graph {
+	vif vifInfo, ul types.AppNetAdapterConfig) dg.Graph {
 	ni := r.nis[vif.NI]
 	graphArgs := dg.InitArgs{
 		Name:        AppConnSGName(vif.App, vif.NetAdapterName),
@@ -982,7 +984,7 @@ func (r *LinuxNIReconciler) getIntendedAppConnCfg(niID uuid.UUID,
 			VLANConfig: vlanConfig,
 		}, nil)
 	}
-	// Create ipset with all the addresses from the DnsNameToIPList plus the VIF IP itself.
+	// Create ipset with all the addresses from the DNSNameToIPList plus the VIF IP itself.
 	var ips []net.IP
 	for _, staticEntry := range ni.config.DnsNameToIPList {
 		for _, ip := range staticEntry.IPs {

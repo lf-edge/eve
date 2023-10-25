@@ -1,0 +1,53 @@
+From 1ed242650d1a323d75872ce865dc29eb08e0a73c Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Ren=C3=AA=20de=20Souza=20Pinto?= <rene@renesp.com.br>
+Date: Fri, 24 Mar 2023 14:05:59 +0100
+Subject: [PATCH 22/25] arm: dts: Remove binman node from
+ imx8mp-rsb3720-a1-u-boot.dtsi
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+The binman node with the expected ATF and OPTEE images is already defined
+at arch/arm/dts/imx8mp-u-boot.dtsi.
+
+Signed-off-by: Renê de Souza Pinto <rene@renesp.com.br>
+---
+ arch/arm/dts/imx8mp-rsb3720-a1-u-boot.dtsi | 25 ----------------------
+ 1 file changed, 25 deletions(-)
+
+diff --git a/arch/arm/dts/imx8mp-rsb3720-a1-u-boot.dtsi b/arch/arm/dts/imx8mp-rsb3720-a1-u-boot.dtsi
+index 3c2517a79ab..69ea625053a 100644
+--- a/arch/arm/dts/imx8mp-rsb3720-a1-u-boot.dtsi
++++ b/arch/arm/dts/imx8mp-rsb3720-a1-u-boot.dtsi
+@@ -189,28 +189,3 @@
+ 	/delete-property/ assigned-clock-rates;
+ };
+ 
+-&binman {
+-	itb {
+-		fit {
+-			images {
+-				fip {
+-					description = "Trusted Firmware FIP";
+-					type = "firmware";
+-					arch = "arm64";
+-					compression = "none";
+-					load = <0x40310000>;
+-
+-					fip_blob: blob-ext{
+-						filename = "fip.bin";
+-					};
+-				};
+-			};
+-
+-			configurations {
+-				conf {
+-					loadables = "atf", "fip";
+-				};
+-			};
+-		};
+-	};
+-};
+-- 
+2.40.1
+

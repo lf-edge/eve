@@ -455,7 +455,7 @@ var (
 		IpType:         types.AddressTypeIPV6,
 		Subnet:         deref(ipAddressWithPrefix("2001::1111:0000/112")),
 		DnsServers:     []net.IP{ipAddress("2001:4860:4860::8888")},
-		DnsNameToIPList: []types.DnsNameToIP{
+		DnsNameToIPList: []types.DNSNameToIP{
 			{
 				HostName: "test-hostname",
 				IPs:      []net.IP{ipAddress("2001:db8::1")},
@@ -514,7 +514,7 @@ var (
 		UUIDandVersion: app1UUID,
 		DisplayName:    "app1",
 		Activate:       true,
-		UnderlayNetworkList: []types.UnderlayNetworkConfig{
+		AppNetAdapterList: []types.AppNetAdapterConfig{
 			{
 				Name:      "adapter1",
 				IntfOrder: 0,
@@ -618,7 +618,7 @@ var (
 		UUIDandVersion: app2UUID,
 		DisplayName:    "app2",
 		Activate:       true,
-		UnderlayNetworkList: []types.UnderlayNetworkConfig{
+		AppNetAdapterList: []types.AppNetAdapterConfig{
 			{
 				Name:      "adapter1",
 				IntfOrder: 0,
@@ -763,7 +763,7 @@ var (
 		UUIDandVersion: app3UUID,
 		DisplayName:    "app3",
 		Activate:       true,
-		UnderlayNetworkList: []types.UnderlayNetworkConfig{
+		AppNetAdapterList: []types.AppNetAdapterConfig{
 			{
 				Name:      "adapter1",
 				IntfOrder: 0,
@@ -1719,7 +1719,7 @@ func TestIPv6LocalAndSwitchNIs(test *testing.T) {
 	t.Expect(itemDescription(dg.Reference(dnsmasq))).To(ContainSubstring(
 		"ntpServers: [2610:20:6f15:15::27]"))
 	t.Expect(itemDescription(dg.Reference(dnsmasq))).To(ContainSubstring(
-		"staticEntries: [{test-hostname 2001:db8::1} {router 2001::1111:1} {app3 2001::1111:2}]"))
+		"staticEntries: [{test-hostname [2001:db8::1]} {router [2001::1111:1]} {app3 [2001::1111:2]}]"))
 	httpSrvN3 := genericitems.HTTPServer{
 		ListenIf: genericitems.NetworkIf{IfName: "bn3"}, Port: 80}
 	t.Expect(itemDescription(dg.Reference(httpSrvN3))).To(ContainSubstring(

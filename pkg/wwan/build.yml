@@ -5,6 +5,8 @@ config:
     - /lib/modules:/lib/modules
     - /dev:/dev
     - /run:/run
+    - /:/hostfs
+    - /persist:/persist:rshared,rbind
   net: host
   capabilities:
     - all

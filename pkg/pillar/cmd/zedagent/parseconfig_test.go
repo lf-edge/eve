@@ -4,6 +4,10 @@
 package zedagent
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"os"
+	"path/filepath"
 	"sort"
 	"testing"
 
@@ -36,10 +40,16 @@ func initGetConfigCtx(g *GomegaWithT) *getconfigContext {
 		AgentName: agentName,
 		TopicType: types.NetworkXObjectConfig{},
 	})
+	pubPatchEnvelopes, err := ps.NewPublication(pubsub.PublicationOptions{
+		AgentName: agentName,
+		TopicType: types.PatchEnvelopes{},
+	})
+	g.Expect(err).To(BeNil())
 	getconfigCtx := &getconfigContext{
 		pubDevicePortConfig:     pubDPC,
 		pubPhysicalIOAdapters:   pubIOAdapters,
 		pubNetworkXObjectConfig: pubNetworks,
+		pubPatchEnvelopeInfo:    pubPatchEnvelopes,
 		zedagentCtx: &zedagentContext{
 			physicalIoAdapterMap: make(map[string]types.PhysicalIOAdapter),
 		},
@@ -131,13 +141,13 @@ func TestParsePhysicalNetworkAdapters(t *testing.T) {
 	g.Expect(port.IsL3Port).To(BeTrue())
 	g.Expect(port.NetworkUUID.String()).To(Equal(networkUUID))
 	g.Expect(port.Cost).To(BeZero())
-	g.Expect(port.DhcpConfig.Type).To(BeEquivalentTo(types.NT_IPV4))
-	g.Expect(port.DhcpConfig.Dhcp).To(Equal(types.DT_CLIENT))
+	g.Expect(port.DhcpConfig.Type).To(BeEquivalentTo(types.NetworkTypeIPv4))
+	g.Expect(port.DhcpConfig.Dhcp).To(Equal(types.DhcpTypeClient))
 	g.Expect(port.DhcpConfig.DomainName).To(BeEmpty())
 	g.Expect(port.DhcpConfig.AddrSubnet).To(BeEmpty())
-	g.Expect(port.DhcpConfig.DnsServers).To(BeEmpty())
+	g.Expect(port.DhcpConfig.DNSServers).To(BeEmpty())
 	g.Expect(port.DhcpConfig.Gateway).To(BeNil())
-	g.Expect(port.DhcpConfig.NtpServer).To(BeNil())
+	g.Expect(port.DhcpConfig.NTPServer).To(BeNil())
 	g.Expect(port.ProxyConfig.Proxies).To(BeEmpty())
 	g.Expect(port.L2LinkConfig.L2Type).To(Equal(types.L2LinkTypeNone))
 	g.Expect(port.WirelessCfg.WType).To(Equal(types.WirelessTypeNone))
@@ -320,8 +330,8 @@ func TestParseVlans(t *testing.T) {
 	g.Expect(port.IfName).To(Equal("shopfloor.100"))
 	g.Expect(port.NetworkUUID.String()).To(Equal(network1UUID))
 	g.Expect(port.Cost).To(BeEquivalentTo(10))
-	g.Expect(port.DhcpConfig.Type).To(BeEquivalentTo(types.NT_IPV4))
-	g.Expect(port.DhcpConfig.Dhcp).To(Equal(types.DT_CLIENT))
+	g.Expect(port.DhcpConfig.Type).To(BeEquivalentTo(types.NetworkTypeIPv4))
+	g.Expect(port.DhcpConfig.Dhcp).To(Equal(types.DhcpTypeClient))
 	g.Expect(port.L2LinkConfig.L2Type).To(Equal(types.L2LinkTypeVLAN))
 	g.Expect(port.L2LinkConfig.VLAN.ParentPort).To(Equal("shopfloor"))
 	g.Expect(port.L2LinkConfig.VLAN.ID).To(BeEquivalentTo(100))
@@ -334,8 +344,8 @@ func TestParseVlans(t *testing.T) {
 	g.Expect(port.IfName).To(Equal("shopfloor.200"))
 	g.Expect(port.NetworkUUID.String()).To(Equal(network2UUID))
 	g.Expect(port.Cost).To(BeEquivalentTo(20))
-	g.Expect(port.DhcpConfig.Type).To(BeEquivalentTo(types.NT_IPV6))
-	g.Expect(port.DhcpConfig.Dhcp).To(Equal(types.DT_CLIENT))
+	g.Expect(port.DhcpConfig.Type).To(BeEquivalentTo(types.NetworkTypeIPV6))
+	g.Expect(port.DhcpConfig.Dhcp).To(Equal(types.DhcpTypeClient))
 	g.Expect(port.L2LinkConfig.L2Type).To(Equal(types.L2LinkTypeVLAN))
 	g.Expect(port.L2LinkConfig.VLAN.ParentPort).To(Equal("shopfloor"))
 	g.Expect(port.L2LinkConfig.VLAN.ID).To(BeEquivalentTo(200))
@@ -348,8 +358,8 @@ func TestParseVlans(t *testing.T) {
 	g.Expect(port.IfName).To(Equal("eth0"))
 	g.Expect(port.NetworkUUID).To(BeZero())
 	g.Expect(port.Cost).To(BeZero())
-	g.Expect(port.DhcpConfig.Type).To(BeEquivalentTo(types.NT_NOOP))
-	g.Expect(port.DhcpConfig.Dhcp).To(Equal(types.DT_NOOP))
+	g.Expect(port.DhcpConfig.Type).To(BeEquivalentTo(types.NetworkTypeNOOP))
+	g.Expect(port.DhcpConfig.Dhcp).To(Equal(types.DhcpTypeNOOP))
 	g.Expect(port.L2LinkConfig.L2Type).To(Equal(types.L2LinkTypeNone))
 	g.Expect(port.WirelessCfg.WType).To(Equal(types.WirelessTypeNone))
 
@@ -379,8 +389,8 @@ func TestParseVlans(t *testing.T) {
 	g.Expect(port.IfName).To(Equal("warehouse.100"))
 	g.Expect(port.NetworkUUID.String()).To(Equal(network3UUID))
 	g.Expect(port.Cost).To(BeEquivalentTo(30))
-	g.Expect(port.DhcpConfig.Type).To(BeEquivalentTo(types.NT_IPV4))
-	g.Expect(port.DhcpConfig.Dhcp).To(Equal(types.DT_STATIC))
+	g.Expect(port.DhcpConfig.Type).To(BeEquivalentTo(types.NetworkTypeIPv4))
+	g.Expect(port.DhcpConfig.Dhcp).To(Equal(types.DhcpTypeStatic))
 	g.Expect(port.DhcpConfig.AddrSubnet).To(Equal("192.168.1.150/24"))
 	g.Expect(port.DhcpConfig.Gateway.String()).To(Equal("192.168.1.1"))
 	g.Expect(port.L2LinkConfig.L2Type).To(Equal(types.L2LinkTypeVLAN))
@@ -395,8 +405,8 @@ func TestParseVlans(t *testing.T) {
 	g.Expect(port.IfName).To(Equal("eth1"))
 	g.Expect(port.NetworkUUID).To(BeZero())
 	g.Expect(port.Cost).To(BeZero())
-	g.Expect(port.DhcpConfig.Type).To(BeEquivalentTo(types.NT_NOOP))
-	g.Expect(port.DhcpConfig.Dhcp).To(Equal(types.DT_NOOP))
+	g.Expect(port.DhcpConfig.Type).To(BeEquivalentTo(types.NetworkTypeNOOP))
+	g.Expect(port.DhcpConfig.Dhcp).To(Equal(types.DhcpTypeNOOP))
 	g.Expect(port.L2LinkConfig.L2Type).To(Equal(types.L2LinkTypeNone))
 	g.Expect(port.WirelessCfg.WType).To(Equal(types.WirelessTypeNone))
 }
@@ -486,8 +496,8 @@ func TestParseBonds(t *testing.T) {
 	g.Expect(port.IfName).To(Equal("bond0"))
 	g.Expect(port.NetworkUUID.String()).To(Equal(networkUUID))
 	g.Expect(port.Cost).To(BeEquivalentTo(10))
-	g.Expect(port.DhcpConfig.Type).To(BeEquivalentTo(types.NT_IPV4))
-	g.Expect(port.DhcpConfig.Dhcp).To(Equal(types.DT_CLIENT))
+	g.Expect(port.DhcpConfig.Type).To(BeEquivalentTo(types.NetworkTypeIPv4))
+	g.Expect(port.DhcpConfig.Dhcp).To(Equal(types.DhcpTypeClient))
 	g.Expect(port.L2LinkConfig.L2Type).To(Equal(types.L2LinkTypeBond))
 	g.Expect(port.L2LinkConfig.Bond.AggregatedPorts).To(Equal([]string{"shopfloor1", "shopfloor0"}))
 	g.Expect(port.L2LinkConfig.Bond.Mode).To(Equal(types.BondModeActiveBackup))
@@ -505,8 +515,8 @@ func TestParseBonds(t *testing.T) {
 	g.Expect(port.IfName).To(Equal("eth0"))
 	g.Expect(port.NetworkUUID).To(BeZero())
 	g.Expect(port.Cost).To(BeZero())
-	g.Expect(port.DhcpConfig.Type).To(BeEquivalentTo(types.NT_NOOP))
-	g.Expect(port.DhcpConfig.Dhcp).To(Equal(types.DT_NOOP))
+	g.Expect(port.DhcpConfig.Type).To(BeEquivalentTo(types.NetworkTypeNOOP))
+	g.Expect(port.DhcpConfig.Dhcp).To(Equal(types.DhcpTypeNOOP))
 	g.Expect(port.L2LinkConfig.L2Type).To(Equal(types.L2LinkTypeNone))
 	g.Expect(port.WirelessCfg.WType).To(Equal(types.WirelessTypeNone))
 	// underlying physical "shopfloor1" adapter
@@ -517,8 +527,8 @@ func TestParseBonds(t *testing.T) {
 	g.Expect(port.IfName).To(Equal("eth1"))
 	g.Expect(port.NetworkUUID).To(BeZero())
 	g.Expect(port.Cost).To(BeZero())
-	g.Expect(port.DhcpConfig.Type).To(BeEquivalentTo(types.NT_NOOP))
-	g.Expect(port.DhcpConfig.Dhcp).To(Equal(types.DT_NOOP))
+	g.Expect(port.DhcpConfig.Type).To(BeEquivalentTo(types.NetworkTypeNOOP))
+	g.Expect(port.DhcpConfig.Dhcp).To(Equal(types.DhcpTypeNOOP))
 	g.Expect(port.L2LinkConfig.L2Type).To(Equal(types.L2LinkTypeNone))
 	g.Expect(port.WirelessCfg.WType).To(Equal(types.WirelessTypeNone))
 }
@@ -641,8 +651,8 @@ func TestParseVlansOverBonds(t *testing.T) {
 	g.Expect(port.IfName).To(Equal("shopfloor.100"))
 	g.Expect(port.NetworkUUID.String()).To(Equal(network1UUID))
 	g.Expect(port.Cost).To(BeEquivalentTo(10))
-	g.Expect(port.DhcpConfig.Type).To(BeEquivalentTo(types.NT_IPV4))
-	g.Expect(port.DhcpConfig.Dhcp).To(Equal(types.DT_CLIENT))
+	g.Expect(port.DhcpConfig.Type).To(BeEquivalentTo(types.NetworkTypeIPv4))
+	g.Expect(port.DhcpConfig.Dhcp).To(Equal(types.DhcpTypeClient))
 	g.Expect(port.L2LinkConfig.L2Type).To(Equal(types.L2LinkTypeVLAN))
 	g.Expect(port.L2LinkConfig.VLAN.ParentPort).To(Equal("bond-shopfloor"))
 	g.Expect(port.L2LinkConfig.VLAN.ID).To(BeEquivalentTo(100))
@@ -656,8 +666,8 @@ func TestParseVlansOverBonds(t *testing.T) {
 	g.Expect(port.IfName).To(Equal("shopfloor.200"))
 	g.Expect(port.NetworkUUID.String()).To(Equal(network2UUID))
 	g.Expect(port.Cost).To(BeEquivalentTo(20))
-	g.Expect(port.DhcpConfig.Type).To(BeEquivalentTo(types.NT_IPV4))
-	g.Expect(port.DhcpConfig.Dhcp).To(Equal(types.DT_CLIENT))
+	g.Expect(port.DhcpConfig.Type).To(BeEquivalentTo(types.NetworkTypeIPv4))
+	g.Expect(port.DhcpConfig.Dhcp).To(Equal(types.DhcpTypeClient))
 	g.Expect(port.L2LinkConfig.L2Type).To(Equal(types.L2LinkTypeVLAN))
 	g.Expect(port.L2LinkConfig.VLAN.ParentPort).To(Equal("bond-shopfloor"))
 	g.Expect(port.L2LinkConfig.VLAN.ID).To(BeEquivalentTo(200))
@@ -671,8 +681,8 @@ func TestParseVlansOverBonds(t *testing.T) {
 	g.Expect(port.IfName).To(Equal("bond0"))
 	g.Expect(port.NetworkUUID).To(BeZero())
 	g.Expect(port.Cost).To(BeZero())
-	g.Expect(port.DhcpConfig.Type).To(BeEquivalentTo(types.NT_NOOP))
-	g.Expect(port.DhcpConfig.Dhcp).To(Equal(types.DT_NOOP))
+	g.Expect(port.DhcpConfig.Type).To(BeEquivalentTo(types.NetworkTypeNOOP))
+	g.Expect(port.DhcpConfig.Dhcp).To(Equal(types.DhcpTypeNOOP))
 	g.Expect(port.L2LinkConfig.L2Type).To(Equal(types.L2LinkTypeBond))
 	g.Expect(port.L2LinkConfig.Bond.AggregatedPorts).To(Equal([]string{"shopfloor1", "shopfloor0"}))
 	g.Expect(port.L2LinkConfig.Bond.Mode).To(Equal(types.BondModeActiveBackup))
@@ -691,8 +701,8 @@ func TestParseVlansOverBonds(t *testing.T) {
 	g.Expect(port.IfName).To(Equal("eth0"))
 	g.Expect(port.NetworkUUID).To(BeZero())
 	g.Expect(port.Cost).To(BeZero())
-	g.Expect(port.DhcpConfig.Type).To(BeEquivalentTo(types.NT_NOOP))
-	g.Expect(port.DhcpConfig.Dhcp).To(Equal(types.DT_NOOP))
+	g.Expect(port.DhcpConfig.Type).To(BeEquivalentTo(types.NetworkTypeNOOP))
+	g.Expect(port.DhcpConfig.Dhcp).To(Equal(types.DhcpTypeNOOP))
 	g.Expect(port.L2LinkConfig.L2Type).To(Equal(types.L2LinkTypeNone))
 	g.Expect(port.WirelessCfg.WType).To(Equal(types.WirelessTypeNone))
 	// underlying physical "shopfloor1" adapter
@@ -704,8 +714,8 @@ func TestParseVlansOverBonds(t *testing.T) {
 	g.Expect(port.IfName).To(Equal("eth1"))
 	g.Expect(port.NetworkUUID).To(BeZero())
 	g.Expect(port.Cost).To(BeZero())
-	g.Expect(port.DhcpConfig.Type).To(BeEquivalentTo(types.NT_NOOP))
-	g.Expect(port.DhcpConfig.Dhcp).To(Equal(types.DT_NOOP))
+	g.Expect(port.DhcpConfig.Type).To(BeEquivalentTo(types.NetworkTypeNOOP))
+	g.Expect(port.DhcpConfig.Dhcp).To(Equal(types.DhcpTypeNOOP))
 	g.Expect(port.L2LinkConfig.L2Type).To(Equal(types.L2LinkTypeNone))
 	g.Expect(port.WirelessCfg.WType).To(Equal(types.WirelessTypeNone))
 }
@@ -1253,4 +1263,78 @@ func TestParseSRIOV(t *testing.T) {
 			},
 		},
 	}))
+}
+
+func TestParsePatchEnvelope(t *testing.T) {
+	t.Parallel()
+
+	g := NewGomegaWithT(t)
+	getconfigCtx := initGetConfigCtx(g)
+
+	appU1 := "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+	appU2 := "60331c10-9dad-182g-80b4-00123ga430c8"
+
+	patchID := "uuid1"
+	displayName := "test"
+	patchVersion := "version1"
+	artiactMetadata := "Artifact metadata"
+
+	fileData := "textdata"
+	fileMetadata := "metadata"
+	inlineFileName := "inline-query-name"
+
+	config := &zconfig.EdgeDevConfig{
+		PatchEnvelopes: []*zconfig.EvePatchEnvelope{
+			{
+				DisplayName: displayName,
+				Uuid:        patchID,
+				Version:     &patchVersion,
+				Action:      zconfig.EVE_PATCH_ENVELOPE_ACTION_ACTIVATE,
+				Artifacts: []*zconfig.EveBinaryArtifact{
+					{
+						Format: zconfig.EVE_OPAQUE_OBJECT_CATEGORY_BASE64,
+						BinaryBlob: &zconfig.EveBinaryArtifact_Inline{
+							Inline: &zconfig.InlineOpaqueBase64Data{
+								Base64Data:     fileData,
+								Base64MetaData: &fileMetadata,
+								FileNameToUse:  inlineFileName,
+							},
+						},
+						ArtifactMetaData: &artiactMetadata,
+					},
+				},
+				AppInstIdsAllowed: []string{appU1, appU2},
+			},
+		},
+	}
+
+	persistCacheFolder, err := os.MkdirTemp("", "testPersist")
+	g.Expect(err).To(BeNil())
+
+	// Impl because we have to change filepath of persist cache for testing
+	parsePatchEnvelopesImpl(getconfigCtx, config, persistCacheFolder)
+
+	patchEnvelopes, err := getconfigCtx.pubPatchEnvelopeInfo.Get("zedagent")
+
+	g.Expect(err).To(BeNil())
+	pes, ok := patchEnvelopes.(types.PatchEnvelopes)
+	g.Expect(ok).To(BeTrue())
+	shaBytes := sha256.Sum256([]byte(fileData))
+	g.Expect(pes.Get(appU1)).To(BeEquivalentTo([]types.PatchEnvelopeInfo{
+		{
+			PatchID:     patchID,
+			AllowedApps: []string{appU1, appU2},
+			BinaryBlobs: []types.BinaryBlobCompleted{
+				{
+					FileName:     inlineFileName,
+					FileSha:      hex.EncodeToString(shaBytes[:]),
+					FileMetadata: fileMetadata,
+					URL:          filepath.Join(persistCacheFolder, inlineFileName),
+				},
+			},
+		},
+	}))
+
+	os.RemoveAll(persistCacheFolder)
+
 }

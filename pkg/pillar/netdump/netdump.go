@@ -100,15 +100,15 @@ var eveFilesToDump = [...]fileToDump{
 		dstPath: "eve/aa.json",
 	},
 	{
-		srcPath: "/run/wwan/config.json",
+		srcPath: "/run/nim/WwanConfig/global.json",
 		dstPath: "eve/wwan-config.json",
 	},
 	{
-		srcPath: "/run/wwan/status.json",
+		srcPath: "/run/wwan/WwanStatus/global.json",
 		dstPath: "eve/wwan-status.json",
 	},
 	{
-		srcPath: "/run/wwan/metrics.json",
+		srcPath: "/run/wwan/WwanMetrics/global.json",
 		dstPath: "eve/wwan-metrics.json",
 	},
 }

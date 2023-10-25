@@ -504,6 +504,7 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 		cipherMetricsDM,
 		cipherMetricsNim,
 		cipherMetricsZR,
+		cipherMetricsWwan,
 	}
 	for _, cm := range cipherMetrics {
 		log.Functionf("Cipher metrics for %s: %+v", cm.AgentName, cm)
@@ -1453,9 +1454,9 @@ func PublishEdgeviewToZedCloud(ctx *zedagentContext,
 
 func appIfnameToNetworkInstance(ctx *zedagentContext,
 	aiStatus *types.AppInstanceStatus, vifname string) *types.NetworkInstanceStatus {
-	for _, ulStatus := range aiStatus.UnderlayNetworks {
-		if ulStatus.VifUsed == vifname {
-			status, _ := ctx.subNetworkInstanceStatus.Get(ulStatus.Network.String())
+	for _, adapterStatus := range aiStatus.AppNetAdapters {
+		if adapterStatus.VifUsed == vifname {
+			status, _ := ctx.subNetworkInstanceStatus.Get(adapterStatus.Network.String())
 			if status == nil {
 				return nil
 			}
@@ -1467,9 +1468,9 @@ func appIfnameToNetworkInstance(ctx *zedagentContext,
 }
 
 func appIfnameToName(aiStatus *types.AppInstanceStatus, vifname string) string {
-	for _, ulStatus := range aiStatus.UnderlayNetworks {
-		if ulStatus.VifUsed == vifname {
-			return ulStatus.Name
+	for _, adapterStatus := range aiStatus.AppNetAdapters {
+		if adapterStatus.VifUsed == vifname {
+			return adapterStatus.Name
 		}
 	}
 	return ""
@@ -1556,21 +1557,21 @@ func sendMetricsProtobuf(ctx *getconfigContext,
 	}
 }
 
-// Use the ifname/vifname to find the underlay status
+// Use the ifname/vifname to find the AppNetAdapter status
 // and from there the (ip, allocated, mac) addresses for the app
 func getAppIP(ctx *zedagentContext, aiStatus *types.AppInstanceStatus,
 	vifname string) (net.IP, []net.IP, bool, net.HardwareAddr, bool) {
 
 	log.Tracef("getAppIP(%s, %s)", aiStatus.Key(), vifname)
-	for _, ulStatus := range aiStatus.UnderlayNetworks {
-		if ulStatus.VifUsed != vifname {
+	for _, adapterStatus := range aiStatus.AppNetAdapters {
+		if adapterStatus.VifUsed != vifname {
 			continue
 		}
-		log.Tracef("getAppIP(%s, %s) found underlay v4: %s, v6: %s, ipv4 assigned %v mac %s",
-			aiStatus.Key(), vifname, ulStatus.AllocatedIPv4Addr,
-			ulStatus.AllocatedIPv6List, ulStatus.IPv4Assigned, ulStatus.Mac)
-		return ulStatus.AllocatedIPv4Addr, ulStatus.AllocatedIPv6List, ulStatus.IPv4Assigned,
-			ulStatus.Mac, ulStatus.IPAddrMisMatch
+		log.Tracef("getAppIP(%s, %s) found AppIP v4: %s, v6: %s, ipv4 assigned %v mac %s",
+			aiStatus.Key(), vifname, adapterStatus.AllocatedIPv4Addr,
+			adapterStatus.AllocatedIPv6List, adapterStatus.IPv4Assigned, adapterStatus.Mac)
+		return adapterStatus.AllocatedIPv4Addr, adapterStatus.AllocatedIPv6List, adapterStatus.IPv4Assigned,
+			adapterStatus.Mac, adapterStatus.IPAddrMisMatch
 	}
 	return nil, nil, false, nil, false
 }

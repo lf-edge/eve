@@ -88,6 +88,7 @@ type nim struct {
 	subZedAgentStatus     pubsub.Subscription
 	subAssignableAdapters pubsub.Subscription
 	subOnboardStatus      pubsub.Subscription
+	subWwanStatus         pubsub.Subscription
 
 	// Publications
 	pubDummyDevicePortConfig pubsub.Publication // For logging
@@ -97,10 +98,8 @@ type nim struct {
 	pubDeviceNetworkStatus   pubsub.Publication
 	pubZedcloudMetrics       pubsub.Publication
 	pubCipherMetrics         pubsub.Publication
-	pubWwanStatus            pubsub.Publication
-	pubWwanMetrics           pubsub.Publication
-	pubWwanLocationInfo      pubsub.Publication
 	pubCachedResolvedIPs     pubsub.Publication
+	pubWwanConfig            pubsub.Publication
 
 	// Metrics
 	zedcloudMetrics *zedcloud.AgentMetrics
@@ -181,6 +180,7 @@ func (n *nim) init() (err error) {
 		SubControllerCert:    n.subControllerCert,
 		SubEdgeNodeCert:      n.subEdgeNodeCert,
 		PubCipherBlockStatus: n.pubCipherBlockStatus,
+		PubWwanConfig:        n.pubWwanConfig,
 		CipherMetrics:        n.cipherMetrics,
 		HVTypeKube:           base.IsHVTypeKube(),
 	}
@@ -194,9 +194,6 @@ func (n *nim) init() (err error) {
 		PubDummyDevicePortConfig: n.pubDummyDevicePortConfig,
 		PubDevicePortConfigList:  n.pubDevicePortConfigList,
 		PubDeviceNetworkStatus:   n.pubDeviceNetworkStatus,
-		PubWwanStatus:            n.pubWwanStatus,
-		PubWwanMetrics:           n.pubWwanMetrics,
-		PubWwanLocationInfo:      n.pubWwanLocationInfo,
 		ZedcloudMetrics:          n.zedcloudMetrics,
 	}
 	return nil
@@ -315,6 +312,9 @@ func (n *nim) run(ctx context.Context) (err error) {
 		if err = n.subAssignableAdapters.Activate(); err != nil {
 			return err
 		}
+		if err = n.subWwanStatus.Activate(); err != nil {
+			return err
+		}
 		go n.runResolverCacheForController()
 		return nil
 	}
@@ -368,6 +368,9 @@ func (n *nim) run(ctx context.Context) (err error) {
 
 		case change := <-n.subOnboardStatus.MsgChan():
 			n.subOnboardStatus.ProcessChange(change)
+
+		case change := <-n.subWwanStatus.MsgChan():
+			n.subWwanStatus.ProcessChange(change)
 
 		case event := <-netEvents:
 			ifChange, isIfChange := event.(netmonitor.IfChange)
@@ -489,38 +492,19 @@ func (n *nim) initPublications() (err error) {
 		return err
 	}
 
-	n.pubWwanStatus, err = n.PubSub.NewPublication(
-		pubsub.PublicationOptions{
-			AgentName: agentName,
-			TopicType: types.WwanStatus{},
-		})
-	if err != nil {
-		return err
-	}
-
-	n.pubWwanMetrics, err = n.PubSub.NewPublication(
-		pubsub.PublicationOptions{
-			AgentName: agentName,
-			TopicType: types.WwanMetrics{},
-		})
-	if err != nil {
-		return err
-	}
-
-	n.pubWwanLocationInfo, err = n.PubSub.NewPublication(
-		pubsub.PublicationOptions{
-			AgentName: agentName,
-			TopicType: types.WwanLocationInfo{},
-		})
-	if err != nil {
-		return err
-	}
-
 	n.pubCachedResolvedIPs, err = n.PubSub.NewPublication(
 		pubsub.PublicationOptions{
 			AgentName: agentName,
 			TopicType: types.CachedResolvedIPs{},
 		})
+	if err != nil {
+		return err
+	}
+
+	n.pubWwanConfig, err = n.PubSub.NewPublication(pubsub.PublicationOptions{
+		AgentName: agentName,
+		TopicType: types.WwanConfig{},
+	})
 	if err != nil {
 		return err
 	}
@@ -665,6 +649,20 @@ func (n *nim) initSubscriptions() (err error) {
 		WarningTime:   warningTime,
 		ErrorTime:     errorTime,
 		Persistent:    true,
+	})
+	if err != nil {
+		return err
+	}
+
+	n.subWwanStatus, err = n.PubSub.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "wwan",
+		MyAgentName:   agentName,
+		TopicImpl:     types.WwanStatus{},
+		Activate:      false,
+		CreateHandler: n.handleWwanStatusCreate,
+		ModifyHandler: n.handleWwanStatusModify,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
 	})
 	if err != nil {
 		return err
@@ -832,6 +830,19 @@ func (n *nim) handleOnboardStatusModify(_ interface{}, key string, statusArg, _ 
 func (n *nim) handleOnboardStatusImpl(_ string, statusArg interface{}) {
 	status := statusArg.(types.OnboardingStatus)
 	n.dpcManager.UpdateDevUUID(status.DeviceUUID)
+}
+
+func (n *nim) handleWwanStatusCreate(_ interface{}, key string, statusArg interface{}) {
+	n.handleWwanStatusImpl(key, statusArg)
+}
+
+func (n *nim) handleWwanStatusModify(_ interface{}, key string, statusArg, _ interface{}) {
+	n.handleWwanStatusImpl(key, statusArg)
+}
+
+func (n *nim) handleWwanStatusImpl(_ string, statusArg interface{}) {
+	status := statusArg.(types.WwanStatus)
+	n.dpcManager.ProcessWwanStatus(status)
 }
 
 func (n *nim) isDeviceOnboarded() bool {
@@ -1028,7 +1039,7 @@ func (n *nim) makeLastResortDPC() (types.DevicePortConfig, error) {
 			IsMgmt:       true,
 			IsL3Port:     true,
 			DhcpConfig: types.DhcpConfig{
-				Dhcp: types.DT_CLIENT,
+				Dhcp: types.DhcpTypeClient,
 			},
 		}
 		dns := n.dpcManager.GetDNS()

@@ -1,10 +1,10 @@
 # Edge-View Container and APIs
 
-EVE provides the Edge-View mainly for device and application troubleshooting tasks. It is a system-level container similar to `newlogd`, `wwan`, etc.
+EVE provides the Edge-View mainly for device and application troubleshooting tasks. It is a system-level container similar to `newlogd`, `wlan`, etc.
 
 Edge-View as a service on EVE, it needs to receive/update user configurations from the controller; and it needs to send/update Edge-View running status to the controller.
 
-The software integration level of Edge-View is somewhere between the services like `newlogd` and `wwan`. `newlogd` is an integral part of the EVE, while `wwan` is a generic Linux service without any specific EVE related changes. The Edge-View container runs on the EVE device and has many tasks designed specifically for EVE device and application usage, but it can also run as a normal Linux docker container on any host; the same container is used for Edge-View client runs on the user's laptop. Thus design of Edge-View container tries to minimize the interaction with the rest of the EVE system while still being configured from the controller and sending status to the controller.
+The software integration level of Edge-View is somewhere between the services like `newlogd` and `wlan`. `newlogd` is an integral part of the EVE, while `wlan` is a generic Linux service without any specific EVE related changes. The Edge-View container runs on the EVE device and has many tasks designed specifically for EVE device and application usage, but it can also run as a normal Linux docker container on any host; the same container is used for Edge-View client runs on the user's laptop. Thus design of Edge-View container tries to minimize the interaction with the rest of the EVE system while still being configured from the controller and sending status to the controller.
 
 This Wiki page describes the provisioning, security and status update for Edge-View in [Edge-View Doc](https://wiki.lfedge.org/display/EVE/Edge-View).
 

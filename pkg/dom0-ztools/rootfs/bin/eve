@@ -8,7 +8,7 @@ help() {
 Welcome to EVE!
   commands: enter [service] [command (assumed sh)]
             enter-user-app <service>
-            exec [service] command
+            exec [--fork] [service] command
             list
             status
             start <service>
@@ -19,6 +19,7 @@ Welcome to EVE!
             persist attach <disk>
             config mount <mountpoint>
             config unmount
+            remote-access on|off
             http-debug
             dump-stacks
             dump-memory
@@ -114,12 +115,18 @@ dump_mem() {
 }
 
 case "$1" in
-    exec) # shellcheck disable=SC2086
+    exec) NO_FORK="-F"
+          if [ "$2" = "--fork" ]; then
+            NO_FORK=""
+            shift
+          fi
+          # shellcheck disable=SC2086
           ID=$(${CTR_CMD} t ls | awk '/^'${2:-pillar}' /{print $2;}' 2>/dev/null)
           CMD="${3:-sh}"
           shift ; shift ; shift
           for c in /sys/fs/cgroup/*/tasks; do echo "$$" >> "$c"; done
-          exec nsenter -F -a -t "${ID:-1}" "$CMD" "$@"
+          # shellcheck disable=SC2086
+          exec nsenter ${NO_FORK} -a -t "${ID:-1}" "$CMD" "$@"
           ;;
    enter) # shellcheck disable=SC2086
           ${CTR_CMD} t exec -t --exec-id $(basename $(mktemp)) ${2:-pillar} ${3:-sh -l}
@@ -198,6 +205,27 @@ __EOT__
               *) help
                  ;;
           esac
+          ;;
+ remote-access)
+          CONFIGDIR_RW="/tmp/config_rw"
+          mkdir $CONFIGDIR_RW
+          if eval "$(mount_partlabel "CONFIG" $CONFIGDIR_RW)"; then
+              case "$2" in
+                on) rm -f $CONFIGDIR_RW/remote_access_disabled
+                    eval "$(unmount_partlabel "CONFIG")" && rm -rf $CONFIGDIR_RW
+                    echo "Remote access enabled. Please reboot to apply changes."
+                    ;;
+                off) touch $CONFIGDIR_RW/remote_access_disabled
+                     eval "$(unmount_partlabel "CONFIG")" && rm -rf $CONFIGDIR_RW
+                     echo "Remote access disabled. Please reboot to apply changes."
+                     ;;
+                *) eval "$(unmount_partlabel "CONFIG")" && rm -rf $CONFIGDIR_RW
+                   help
+                   ;;
+              esac
+          else
+              echo "Failed to set the remote access configuration!"
+          fi
           ;;
  version)
           v=$(cat /run/eve-release)

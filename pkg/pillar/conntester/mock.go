@@ -84,7 +84,7 @@ func (t *MockConnectivityTester) TestConnectivity(dns types.DeviceNetworkStatus,
 			continue
 		}
 		if len(port.AddrInfoList) == 0 {
-			err := &types.IPAddrNotAvail{IfName: ifName}
+			err := &types.IPAddrNotAvailError{IfName: ifName}
 			errorList = append(errorList, err)
 			intfStatusMap.RecordFailure(ifName, err.Error())
 			continue
@@ -97,10 +97,10 @@ func (t *MockConnectivityTester) TestConnectivity(dns types.DeviceNetworkStatus,
 		} else {
 			nonRtfErrs = true
 		}
-		if _, noDNSErr := err.(*types.DNSNotAvail); noDNSErr {
+		if _, noDNSErr := err.(*types.DNSNotAvailError); noDNSErr {
 			portsNotReady = append(portsNotReady, port.Logicallabel)
 		}
-		if _, noIPErr := err.(*types.IPAddrNotAvail); noIPErr {
+		if _, noIPErr := err.(*types.IPAddrNotAvailError); noIPErr {
 			portsNotReady = append(portsNotReady, port.Logicallabel)
 		}
 		if err != nil {

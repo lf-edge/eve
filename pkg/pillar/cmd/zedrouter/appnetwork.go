@@ -26,7 +26,7 @@ func (z *zedrouter) retryFailedAppNetworks() {
 		}
 		z.log.Functionf("retryFailedAppNetworks: retry AppNetworkConfigCreate(%s)",
 			status.Key())
-		// We wouldn't have even copied underlay networks into status.
+		// We wouldn't have even copied AppNetAdapter networks into status.
 		// This is as good as starting from scratch all over.
 		// App num that would have been allocated will be used this time also,
 		// since the app UUID does not change.
@@ -42,13 +42,13 @@ func (z *zedrouter) updateVIFsForStateCollecting(
 	// Determine the set of affected network instances.
 	var networks []uuid.UUID
 	if prevAppConf != nil {
-		for _, ul := range prevAppConf.UnderlayNetworkList {
-			networks = append(networks, ul.Network)
+		for _, adapter := range prevAppConf.AppNetAdapterList {
+			networks = append(networks, adapter.Network)
 		}
 	}
 	if newAppConfig != nil {
-		for _, ul := range newAppConfig.UnderlayNetworkList {
-			networks = append(networks, ul.Network)
+		for _, adapter := range newAppConfig.AppNetAdapterList {
+			networks = append(networks, adapter.Network)
 		}
 	}
 	networks = generics.FilterDuplicates(networks)
@@ -72,32 +72,32 @@ func (z *zedrouter) updateVIFsForStateCollecting(
 
 func (z *zedrouter) prepareConfigForVIFs(config types.AppNetworkConfig,
 	status *types.AppNetworkStatus) (vifs []nireconciler.AppVIF, err error) {
-	for i := range status.UnderlayNetworkList {
-		ulNum := i + 1
-		ulStatus := &status.UnderlayNetworkList[i]
-		netInstStatus := z.lookupNetworkInstanceStatus(ulStatus.Network.String())
+	for i := range status.AppNetAdapterList {
+		adapterNum := i + 1
+		adapterStatus := &status.AppNetAdapterList[i]
+		netInstStatus := z.lookupNetworkInstanceStatus(adapterStatus.Network.String())
 		if netInstStatus == nil {
 			// Should be unreachable.
 			err := fmt.Errorf("missing network instance status for %s",
-				ulStatus.Network.String())
+				adapterStatus.Network.String())
 			z.log.Errorf("doActivateAppNetwork(%v/%v): %v",
 				config.UUIDandVersion.UUID, config.DisplayName, err)
 			z.addAppNetworkError(status, "doActivateAppNetwork", err)
 			return nil, err
 		}
-		ulStatus.Bridge = netInstStatus.BridgeName
-		ulStatus.BridgeMac = netInstStatus.BridgeMac
-		ulStatus.BridgeIPAddr = netInstStatus.BridgeIPAddr
-		if ulStatus.AppMacAddr != nil {
+		adapterStatus.Bridge = netInstStatus.BridgeName
+		adapterStatus.BridgeMac = netInstStatus.BridgeMac
+		adapterStatus.BridgeIPAddr = netInstStatus.BridgeIPAddr
+		if adapterStatus.AppMacAddr != nil {
 			// User-configured static MAC address.
-			ulStatus.Mac = ulStatus.AppMacAddr
+			adapterStatus.Mac = adapterStatus.AppMacAddr
 		} else {
-			ulStatus.Mac = z.generateAppMac(config.UUIDandVersion.UUID, ulNum,
+			adapterStatus.Mac = z.generateAppMac(config.UUIDandVersion.UUID, adapterNum,
 				status.AppNum, netInstStatus)
 		}
-		ulStatus.HostName = config.Key()
+		adapterStatus.HostName = config.Key()
 		guestIP, err := z.lookupOrAllocateIPv4ForVIF(
-			netInstStatus, *ulStatus, status.UUIDandVersion.UUID)
+			netInstStatus, *adapterStatus, status.UUIDandVersion.UUID)
 		if err != nil {
 			z.log.Errorf("doActivateAppNetwork(%v/%v): %v",
 				config.UUIDandVersion.UUID, config.DisplayName, err)
@@ -106,10 +106,10 @@ func (z *zedrouter) prepareConfigForVIFs(config types.AppNetworkConfig,
 		}
 		vifs = append(vifs, nireconciler.AppVIF{
 			App:            status.UUIDandVersion.UUID,
-			NI:             ulStatus.Network,
-			NetAdapterName: ulStatus.Name,
-			VIFNum:         ulNum,
-			GuestIfMAC:     ulStatus.Mac,
+			NI:             adapterStatus.Network,
+			NetAdapterName: adapterStatus.Name,
+			VIFNum:         adapterNum,
+			GuestIfMAC:     adapterStatus.Mac,
 			GuestIP:        guestIP,
 		})
 	}
@@ -150,27 +150,27 @@ func (z *zedrouter) doActivateAppNetwork(config types.AppNetworkConfig,
 }
 
 func (z *zedrouter) updateNIStatusAfterAppNetworkActivate(status *types.AppNetworkStatus) {
-	for _, ulStatus := range status.UnderlayNetworkList {
-		netInstStatus := z.lookupNetworkInstanceStatus(ulStatus.Network.String())
+	for _, adapterStatus := range status.AppNetAdapterList {
+		netInstStatus := z.lookupNetworkInstanceStatus(adapterStatus.Network.String())
 		if netInstStatus == nil {
 			err := fmt.Errorf("missing network instance status for %s",
-				ulStatus.Network.String())
+				adapterStatus.Network.String())
 			z.log.Error(err)
 			continue
 		}
 		if netInstStatus.Type == types.NetworkInstanceTypeSwitch {
-			if ulStatus.AccessVlanID <= 1 {
+			if adapterStatus.AccessVlanID <= 1 {
 				netInstStatus.NumTrunkPorts++
 			} else {
-				netInstStatus.VlanMap[ulStatus.AccessVlanID]++
+				netInstStatus.VlanMap[adapterStatus.AccessVlanID]++
 			}
 		}
-		netInstStatus.AddVif(z.log, ulStatus.Vif, ulStatus.Mac,
+		netInstStatus.AddVif(z.log, adapterStatus.Vif, adapterStatus.Mac,
 			status.UUIDandVersion.UUID)
-		netInstStatus.IPAssignments[ulStatus.Mac.String()] =
+		netInstStatus.IPAssignments[adapterStatus.Mac.String()] =
 			types.AssignedAddrs{
-				IPv4Addr:  ulStatus.AllocatedIPv4Addr,
-				IPv6Addrs: ulStatus.AllocatedIPv6List,
+				IPv4Addr:  adapterStatus.AllocatedIPv4Addr,
+				IPv6Addrs: adapterStatus.AllocatedIPv6List,
 			}
 		z.publishNetworkInstanceStatus(netInstStatus)
 	}
@@ -178,23 +178,23 @@ func (z *zedrouter) updateNIStatusAfterAppNetworkActivate(status *types.AppNetwo
 
 func (z *zedrouter) updateNIStatusAfterAppNetworkInactivate(
 	status *types.AppNetworkStatus) {
-	for _, ulStatus := range status.UnderlayNetworkList {
-		netInstStatus := z.lookupNetworkInstanceStatus(ulStatus.Network.String())
+	for _, adapterStatus := range status.AppNetAdapterList {
+		netInstStatus := z.lookupNetworkInstanceStatus(adapterStatus.Network.String())
 		if netInstStatus == nil {
 			err := fmt.Errorf("missing network instance status for %s",
-				ulStatus.Network.String())
+				adapterStatus.Network.String())
 			z.log.Error(err)
 			continue
 		}
 		if netInstStatus.Type == types.NetworkInstanceTypeSwitch {
-			if ulStatus.AccessVlanID <= 1 {
+			if adapterStatus.AccessVlanID <= 1 {
 				netInstStatus.NumTrunkPorts--
 			} else {
-				netInstStatus.VlanMap[ulStatus.AccessVlanID]--
+				netInstStatus.VlanMap[adapterStatus.AccessVlanID]--
 			}
 		}
-		netInstStatus.RemoveVif(z.log, ulStatus.Vif)
-		delete(netInstStatus.IPAssignments, ulStatus.Mac.String())
+		netInstStatus.RemoveVif(z.log, adapterStatus.Vif)
+		delete(netInstStatus.IPAssignments, adapterStatus.Mac.String())
 		z.publishNetworkInstanceStatus(netInstStatus)
 	}
 }
@@ -203,18 +203,18 @@ func (z *zedrouter) doCopyAppNetworkConfigToStatus(
 	config types.AppNetworkConfig,
 	status *types.AppNetworkStatus) {
 
-	ulcount := len(config.UnderlayNetworkList)
-	prevNetStatus := status.UnderlayNetworkList
-	status.UnderlayNetworkList = make([]types.UnderlayNetworkStatus, ulcount)
-	for i, netConfig := range config.UnderlayNetworkList {
+	ulcount := len(config.AppNetAdapterList)
+	prevNetStatus := status.AppNetAdapterList
+	status.AppNetAdapterList = make([]types.AppNetAdapterStatus, ulcount)
+	for i, netConfig := range config.AppNetAdapterList {
 		// Preserve previous VIF status unless it was moved to another network.
 		// Note that adding or removing VIF is not currently supported
 		// (such change would be rejected by config validation methods,
 		// see zedrouter/validation.go).
 		if i < len(prevNetStatus) && prevNetStatus[i].Network == netConfig.Network {
-			status.UnderlayNetworkList[i] = prevNetStatus[i]
+			status.AppNetAdapterList[i] = prevNetStatus[i]
 		}
-		status.UnderlayNetworkList[i].UnderlayNetworkConfig = netConfig
+		status.AppNetAdapterList[i].AppNetAdapterConfig = netConfig
 	}
 }
 
@@ -344,20 +344,20 @@ func (z *zedrouter) doInactivateAppNetwork(config types.AppNetworkConfig,
 func (z *zedrouter) checkAppNetworkModifyAppIntfNums(config types.AppNetworkConfig,
 	status *types.AppNetworkStatus) {
 
-	// Check if any underlays have changes to the Networks
-	for i := range config.UnderlayNetworkList {
-		ulConfig := &config.UnderlayNetworkList[i]
-		ulStatus := &status.UnderlayNetworkList[i]
-		if ulConfig.Network == ulStatus.Network {
+	// Check if any AppNetAdapter have changes to the Networks they use
+	for i := range config.AppNetAdapterList {
+		adapterConfig := &config.AppNetAdapterList[i]
+		adapterStatus := &status.AppNetAdapterList[i]
+		if adapterConfig.Network == adapterStatus.Network {
 			continue
 		}
 		z.log.Functionf(
 			"checkAppNetworkModifyAppIntfNums(%v) for %s: change from %s to %s",
 			config.UUIDandVersion, config.DisplayName,
-			ulStatus.Network, ulConfig.Network)
+			adapterStatus.Network, adapterConfig.Network)
 		// update the reference to the network instance
 		err := z.doAppNetworkModifyAppIntfNum(
-			status.UUIDandVersion.UUID, ulConfig, ulStatus)
+			status.UUIDandVersion.UUID, adapterConfig, adapterStatus)
 		if err != nil {
 			err = fmt.Errorf("failed to modify appIntfNum: %v", err)
 			z.log.Errorf(
@@ -369,17 +369,17 @@ func (z *zedrouter) checkAppNetworkModifyAppIntfNums(config types.AppNetworkConf
 	}
 }
 
-// handle a change to the network UUID for one UnderlayNetworkConfig.
+// handle a change to the network UUID for one AppNetAdapterConfig.
 // Assumes the caller has checked that such a change is present.
 // Release the current appIntfNum and acquire appIntfNum on the new network instance.
 func (z *zedrouter) doAppNetworkModifyAppIntfNum(appID uuid.UUID,
-	ulConfig *types.UnderlayNetworkConfig,
-	ulStatus *types.UnderlayNetworkStatus) error {
+	adapterConfig *types.AppNetAdapterConfig,
+	adapterStatus *types.AppNetAdapterStatus) error {
 
-	newNetworkID := ulConfig.Network
-	oldNetworkID := ulStatus.Network
-	newIfIdx := ulConfig.IfIdx
-	oldIfIdx := ulStatus.IfIdx
+	newNetworkID := adapterConfig.Network
+	oldNetworkID := adapterStatus.Network
+	newIfIdx := adapterConfig.IfIdx
+	oldIfIdx := adapterStatus.IfIdx
 
 	// Try to release the app number on the old network.
 	err := z.freeAppIntfNum(oldNetworkID, appID, oldIfIdx)
@@ -389,7 +389,7 @@ func (z *zedrouter) doAppNetworkModifyAppIntfNum(appID uuid.UUID,
 	}
 
 	// Allocate an app number on the new network.
-	withStaticIP := ulConfig.AppIPAddr != nil
+	withStaticIP := adapterConfig.AppIPAddr != nil
 	err = z.allocateAppIntfNum(newNetworkID, appID, newIfIdx, withStaticIP)
 	if err != nil {
 		z.log.Error(err)

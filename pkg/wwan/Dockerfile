@@ -1,62 +1,81 @@
 # syntax=docker/dockerfile-upstream:1.5.0-rc2-labs
-FROM lfedge/eve-alpine:9fb9b9cbf7d90066a70e4704d04a6fe248ff52bb as build
-ENV BUILD_PKGS automake autoconf gettext gettext-dev git pkgconfig \
-               libtool libc-dev linux-headers gcc make glib-dev \
-               autoconf-archive patch cmake gtk-doc go
-ENV PKGS alpine-baselayout musl-utils ppp jq glib
+FROM lfedge/eve-alpine:29dc7661e9c3dcd0ec7ef9b98d2df58354d85fc0 as build
+ENV BUILD_PKGS meson ninja git libc-dev glib-dev make gcc dbus-dev libgudev-dev go
+ENV PKGS alpine-baselayout dbus glib udev libgudev
 RUN eve-alpine-deploy.sh
 
-ENV LIBUBOX_COMMIT=7da66430de3fc235bfc6ebb0b85fb90ea246138d
-ENV JSONC_COMMIT=ed54353d8478ccdb8296c33c675662d16d68b40d
-ENV INOTIFY_TOOLS_COMMIT=3.20.11.0
+ENV MM_VERSION=1.22.0
+ENV LIBMBIM_VERSION=1.30.0
+ENV LIBQMI_VERSION=1.34.0
+ENV LIBQRTR_VERSION=1.2.2
 ENV PICOCOM_COMMIT=1acf1ddabaf3576b4023c4f6f09c5a3e4b086fb8
-ENV LIBQMI_COMMIT=1.30.8
-ENV LIBMBIM_COMMIT=1.26.4
 
-ADD --keep-git-dir=true https://github.com/json-c/json-c.git#${JSONC_COMMIT} /json-c
-WORKDIR /json-c
-RUN ./autogen.sh && ./configure && make install
+ADD --keep-git-dir=true https://gitlab.freedesktop.org/mobile-broadband/libqrtr-glib.git#${LIBQRTR_VERSION} /libqrtr
+WORKDIR /libqrtr
+RUN meson build --buildtype=release --prefix=/usr --sysconfdir=/etc --libdir=/usr/lib \
+          -Dgtk_doc=false -Dintrospection=false && \
+    ninja -C build && \
+    ninja -C build install
 
-ADD --keep-git-dir=true https://git.openwrt.org/project/libubox.git#${LIBUBOX_COMMIT} /libubox
-WORKDIR /libubox
-RUN cmake . -DBUILD_LUA=OFF -DBUILD_EXAMPLES=OFF && make install
-
-ADD --keep-git-dir=true https://gitlab.freedesktop.org/mobile-broadband/libmbim.git#${LIBMBIM_COMMIT} /libmbim
+ADD --keep-git-dir=true https://gitlab.freedesktop.org/mobile-broadband/libmbim.git#${LIBMBIM_VERSION} /libmbim
 WORKDIR /libmbim
-COPY patches/libmbim/*.patch /tmp/patches/libmbim/
-RUN for patch in /tmp/patches/libmbim/*.patch ; do patch -p1 < "$patch" ; done
-RUN ./autogen.sh && ./configure --prefix=/usr && make -j "$(getconf _NPROCESSORS_ONLN)" && make install
+RUN meson build --buildtype=release --prefix=/usr --sysconfdir=/etc --libdir=/usr/lib \
+          -Dbash_completion=false -Dintrospection=false -Dman=false && \
+    ninja -C build && \
+    ninja -C build install
 
-ADD --keep-git-dir=true https://gitlab.freedesktop.org/mobile-broadband/libqmi.git#${LIBQMI_COMMIT} /libqmi
+ADD --keep-git-dir=true https://gitlab.freedesktop.org/mobile-broadband/libqmi.git#${LIBQMI_VERSION} /libqmi
 WORKDIR /libqmi
-RUN ./autogen.sh --without-udev && ./configure --prefix=/usr --without-udev --enable-mbim-qmux && make -j "$(getconf _NPROCESSORS_ONLN)" && make install
+RUN meson build --buildtype=release --prefix=/usr --sysconfdir=/etc --libdir=/usr/lib \
+          -Dbash_completion=false -Dintrospection=false -Dman=false && \
+    ninja -C build && \
+    ninja -C build install
 
-ADD --keep-git-dir=true https://github.com/inotify-tools/inotify-tools.git#${INOTIFY_TOOLS_COMMIT} /inotify-tools
-WORKDIR /inotify-tools
-RUN ./autogen.sh && ./configure --prefix=/usr && make -j "$(getconf _NPROCESSORS_ONLN)" && make install
+ADD --keep-git-dir=true https://gitlab.freedesktop.org/mobile-broadband/ModemManager.git#${MM_VERSION} /mm
+WORKDIR /mm
+RUN meson build --buildtype=release --prefix=/usr --sysconfdir=/etc --libdir=/usr/lib \
+          -Dmbim=true -Dqmi=true -Dbash_completion=false -Dintrospection=false -Dpolkit=no \
+          -Dsystemd_suspend_resume=false -Dsystemdsystemunitdir=no -Dsystemd_journal=false && \
+    ninja -C build && \
+    ninja -C build install
 
 ADD --keep-git-dir=true https://github.com/npat-efault/picocom.git#${PICOCOM_COMMIT} /picocom
 WORKDIR /picocom
 # Need this patch to build with musl: https://github.com/npat-efault/picocom/commit/1acf1ddabaf3576b4023c4f6f09c5a3e4b086fb8
 RUN make -j "$(getconf _NPROCESSORS_ONLN)" && strip picocom && cp picocom /usr/bin/
 
-RUN strip /usr/bin/*cli /usr/libexec/*proxy /usr/lib/libmbim*.so.* /usr/lib/libqmi*.so.* /usr/lib/libinotifytools*.so.*
+RUN strip /usr/bin/*cli /usr/libexec/*proxy
 
-COPY decryptpasswd /decryptpasswd
-WORKDIR /decryptpasswd
-RUN CGO_ENABLED=0 go build -ldflags="-s -w" -v
+RUN mkdir -p /var/run/dbus/
 
-# second stage (new-ish Docker feature) for smaller image
+COPY mmagent /mmagent
+WORKDIR /mmagent
+RUN CGO_ENABLED=0 go build -v
+
 FROM scratch
 
 ENTRYPOINT []
 WORKDIR /
 COPY --from=build /out/ /
-COPY --from=build /usr/bin/qmicli /usr/bin/mbimcli /usr/bin/inotify* /usr/bin/picocom /bin/
-COPY --from=build /usr/lib/libmbim*.so.[0-9] /usr/lib/libqmi*.so.[0-9] /usr/lib/
-COPY --from=build /usr/lib/libinotifytools*.so.[0-9] /usr/lib/
+
+# Only for troubleshooting purposes.
+COPY --from=build /usr/bin/mmcli /usr/bin/qmicli /usr/bin/mbimcli /usr/bin/picocom /usr/bin/
+
 COPY --from=build /usr/libexec/*proxy /usr/libexec/
-COPY --from=build /decryptpasswd/decryptpasswd /usr/bin/
-COPY usr/ /usr/
-COPY etc/ /etc/
-CMD ["/usr/bin/wwan-init.sh"]
+COPY --from=build /usr/sbin/ModemManager /usr/bin/
+COPY --from=build /mmagent/mmagent /usr/bin/
+
+COPY --from=build /usr/lib/libqrtr*.so.[0-9] /usr/lib/
+COPY --from=build /usr/lib/libmbim*.so.[0-9] /usr/lib/libqmi*.so.[0-9] /usr/lib/
+COPY --from=build /usr/lib/libmm*.so.[0-9] /usr/lib/
+
+COPY --from=build /etc/ModemManager /etc/ModemManager
+COPY --from=build /usr/lib/ModemManager /usr/lib/ModemManager
+COPY --from=build /usr/share/ModemManager /usr/share/ModemManager
+
+COPY --from=build /etc/dbus-1 /etc/dbus-1
+COPY --from=build /usr/share/dbus-1 /usr/share/dbus-1
+COPY --from=build /lib/udev/rules.d /lib/udev/rules.d
+
+COPY mm-init.sh /usr/bin/mm-init.sh
+CMD ["/usr/bin/mm-init.sh"]

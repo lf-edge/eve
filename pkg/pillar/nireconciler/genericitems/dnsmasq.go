@@ -106,9 +106,9 @@ type DNSServer struct {
 	// UpstreamServers : list of IP addresses of public DNS servers to forward
 	// requests to (unless there is a static entry).
 	UpstreamServers []net.IP
-	// StaticEntries : list of hostname->IP entries statically configured
+	// StaticEntries : list of hostname->IPs entries statically configured
 	// for the DNS server.
-	StaticEntries []HostnameToIP
+	StaticEntries []HostnameToIPs
 	// LinuxIPSets : netfilter ipsets which dnsmasq will automatically fill with
 	// resolved IPs.
 	// Feature specific to Linux network stack. In zedrouter used for ACLs with hostnames.
@@ -155,15 +155,15 @@ func equalMACToIP(a, b MACToIP) bool {
 		a.Hostname == b.Hostname
 }
 
-// HostnameToIP maps hostname to IP address.
-type HostnameToIP struct {
+// HostnameToIPs maps hostname to one or more IP addresses.
+type HostnameToIPs struct {
 	Hostname string
-	IP       net.IP
+	IPs      []net.IP
 }
 
-func equalHostnameToIP(a, b HostnameToIP) bool {
+func equalHostnameToIP(a, b HostnameToIPs) bool {
 	return a.Hostname == b.Hostname &&
-		netutils.EqualIPs(a.IP, b.IP)
+		generics.EqualSetsFn(a.IPs, b.IPs, netutils.EqualIPs)
 }
 
 // LinuxIPSet : see https://www.netfilter.org/projects/ipset/index.html
@@ -683,7 +683,7 @@ func (c *DnsmasqConfigurator) CreateDHCPv4RangeConfig(start, end net.IP) (string
 }
 
 func (c *DnsmasqConfigurator) addDNSHostFile(instanceName string,
-	entry HostnameToIP) error {
+	entry HostnameToIPs) error {
 	hostFilename := filepath.Join(c.dnsmasqDNSHostsDir(instanceName), entry.Hostname)
 	file, err := os.Create(hostFilename)
 	if err != nil {
@@ -692,17 +692,20 @@ func (c *DnsmasqConfigurator) addDNSHostFile(instanceName string,
 		return err
 	}
 	defer file.Close()
-	_, err = file.WriteString(fmt.Sprintf("%s	%s\n", entry.IP, entry.Hostname))
-	if err != nil {
-		err = fmt.Errorf("failed to write into DNS host file %s: %w", hostFilename, err)
-		c.Log.Error(err)
-		return err
+	for _, ip := range entry.IPs {
+		_, err = file.WriteString(fmt.Sprintf("%s\t%s\n", ip, entry.Hostname))
+		if err != nil {
+			err = fmt.Errorf("failed to write into DNS host file %s: %w",
+				hostFilename, err)
+			c.Log.Error(err)
+			return err
+		}
 	}
 	return nil
 }
 
 func (c *DnsmasqConfigurator) delDNSHostFile(instanceName string,
-	entry HostnameToIP) error {
+	entry HostnameToIPs) error {
 	hostFilename := filepath.Join(c.dnsmasqDNSHostsDir(instanceName), entry.Hostname)
 	if err := os.Remove(hostFilename); err != nil {
 		err = fmt.Errorf("failed to remove DNS host file %s: %w", hostFilename, err)
