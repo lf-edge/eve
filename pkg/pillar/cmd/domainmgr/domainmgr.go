@@ -595,7 +595,8 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		if err != nil {
 			log.Errorf("Domainmgr: wait for kubernetes error %v", err)
 		} else {
-			log.Noticef("Domainmgr: kubernetes node ready")
+			count, err := hypervisor.CleanupStaleVMI()
+			log.Noticef("domainmgr cleanup vmi count %d, %v", count, err)
 		}
 	}
 

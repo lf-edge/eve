@@ -2,6 +2,7 @@ package kubeapi
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"time"
 
@@ -94,7 +95,7 @@ func WaitKubernetes(agentName string, ps *pubsub.PubSub, stillRunning *time.Tick
 		return nil, err
 	}
 
-	// Wait for the Kubernetes clientset to be ready
+	// Wait for the Kubernetes clientset to be ready, node ready and kubevirt pods in Running status
 	readyCh := make(chan bool)
 	go WaitForNodeReady(client, readyCh)
 
@@ -119,7 +120,20 @@ func WaitForNodeReady(client *kubernetes.Clientset, readyCh chan bool) {
 	err := wait.PollImmediate(time.Second, time.Minute*10, func() (bool, error) {
 		err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
 			_, err := client.CoreV1().Nodes().List(context.Background(), metav1.ListOptions{})
-			return err
+			if err != nil {
+				return err
+			}
+			// get all pods from kubevirt, and check if they are all running
+			pods, err := client.CoreV1().Pods("kubevirt").List(context.Background(), metav1.ListOptions{
+				FieldSelector: "status.phase=Running",
+			})
+			if err != nil {
+				return err
+			}
+			if len(pods.Items) < 6 {
+				return fmt.Errorf("kubevirt running pods less than 6")
+			}
+			return nil
 		})
 
 		if err == nil {
