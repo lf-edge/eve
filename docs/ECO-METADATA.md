@@ -315,7 +315,7 @@ The returned object is of Context-Type text - the same text which is sent to the
 ### Patch Envelope endpoints
 
 Applications might want to get some updates/configurations in runtime, this can be done via Patch Envelopes.
-More information on what Patch Envelopes are you can find in [PATCH-ENVELOPES.md](.PATCH-ENVELOPES.md) doc.
+More information on what Patch Envelopes are you can find in [PATCH-ENVELOPES.md](PATCH-ENVELOPES.md) doc.
 There are several endpoints which allow application to handle Patch Envelopes
 
 Get list of available Patch Envelopes `/eve/v1/patch/description.json`
