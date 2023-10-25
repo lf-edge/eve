@@ -843,10 +843,17 @@ func (z *zedrouter) processNIReconcileStatus(recStatus nireconciler.NIReconcileS
 		for itemRef, itemErr := range recStatus.FailedItems {
 			failedItems = append(failedItems, fmt.Sprintf("%v (%v)", itemRef, itemErr))
 		}
-		err := fmt.Errorf("failed items: %s", strings.Join(failedItems, ";"))
-		if niStatus.Error != err.Error() {
-			niStatus.SetErrorNow(err.Error())
-			changed = true
+		if !z.hvTypeKube {
+			// XXX hack for now, since sometimes after reboot, it has error:
+			// XXX need to fix this in zedrouter
+			// failed items: Iptables-Rule/filter/FORWARD-apps/Traverse-VIF-veth0186c019-ingress-ACLs (iptables command [-w 5 -t filter -I FORWARD-apps -o bn1 -d 10.1.1.10 -j FORWARD-veth0186c019 -m comment --comment Traverse VIF veth0186c019 ingress ACLs] failed with err 'exit status 2' and output: iptables v1.8.8 (legacy): Couldn't load target `FORWARD-veth0186c019':No such file or directory; ; Try `iptables -h' or 'iptables --help' for more information.);Iptables-Rule/filter/FORWARD-veth0186c019/Log-Default-DROP (iptables command [-w 5 -t filter -I FORWARD-veth0186c019 -j LOG --log-prefix FORWARD:TO: --log-level 3 -m comment --comment Log Default DROP] failed with err 'exit status 1' and output: iptables: No chain/target/match by that name.
+			err := fmt.Errorf("failed items: %s", strings.Join(failedItems, ";"))
+			if niStatus.Error != err.Error() {
+				niStatus.SetErrorNow(err.Error())
+				changed = true
+			}
+		} else {
+			z.log.Errorf("processNIReconcileStatus: failed items %v", failedItems)
 		}
 	} else {
 		if niStatus.HasError() {

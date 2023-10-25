@@ -173,7 +173,11 @@ func (z *zedrouter) doActivateAppNetwork(config types.AppNetworkConfig,
 		err = fmt.Errorf("failed to activate application network: %v", err)
 		z.log.Errorf("doActivateAppNetwork(%v/%v): %v",
 			config.UUIDandVersion.UUID, config.DisplayName, err)
-		z.addAppNetworkError(status, "doActivateAppNetwork", err)
+		if !z.hvTypeKube {
+			// XXX temp hack until zedrouter changes
+			// to avoid after restart, getting NI Reconciler: App a2d92010-5dbc-40f2-a5d1-baeeeae8be4c is already connected
+			z.addAppNetworkError(status, "doActivateAppNetwork", err)
+		}
 		return
 	}
 	z.log.Functionf("Activated application network %s (%s), status %+v", status.UUIDandVersion.UUID,

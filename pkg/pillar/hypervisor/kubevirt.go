@@ -670,10 +670,10 @@ func waitForVMI(vmiName string, available bool) error {
 		if err != nil {
 
 			if available {
-				logrus.Infof("waitForVMI for %s %t done", vmiName, available)
+				logrus.Infof("waitForVMI for %s %t done, state %v, err %v", vmiName, available, state, err)
 			} else {
 				// Failed to get status, may be already deleted.
-				logrus.Infof("waitForVMI for %s %t done", vmiName, available)
+				logrus.Infof("waitForVMI for %s %t done, state %v, err %v", vmiName, available, state, err)
 				return nil
 			}
 		} else {
@@ -1327,4 +1327,32 @@ func registerWithKV(kvClient kubecli.KubevirtClient, vmi *v1.VirtualMachineInsta
 
 	return nil
 
+}
+
+func CleanupStaleVMI() (int, error) {
+	err, kubeconfig := kubeapi.GetKubeConfig()
+	if err != nil {
+		return 0, logError("couldn't get the Kube Config: %v", err)
+	}
+
+	virtClient, err := kubecli.GetKubevirtClientFromRESTConfig(kubeconfig)
+	if err != nil {
+		return 0, logError("couldn't get the Kube client Config: %v", err)
+	}
+
+	// Get the VMI list
+	vmiList, err := virtClient.VirtualMachineInstance(eveNameSpace).List(context.Background(), &metav1.ListOptions{})
+	if err != nil {
+		return 0, logError("list the Kubevirt VMIs: %v", err)
+	}
+
+	var count int
+	for _, vmi := range vmiList.Items {
+		err = virtClient.VirtualMachineInstance(eveNameSpace).Delete(context.Background(), vmi.ObjectMeta.Name, &metav1.DeleteOptions{})
+		if err != nil {
+			return count, logError("delete vmi error: %v", err)
+		}
+		count++
+	}
+	return count, nil
 }
