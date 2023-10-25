@@ -9,6 +9,7 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
+#include <pwd.h>
 
 typedef struct clone_args clone_args;
 
@@ -27,13 +28,42 @@ static int childFunc(void *args)
 {
     clone_args *parsed_args = (clone_args *)args;
 
-    chroot(parsed_args->chroot);
-    chdir(parsed_args->workdir);
+    struct passwd *pws;
+    pws = getpwuid(parsed_args->uid);
+    if (pws == NULL) {
+        perror("getpwuid() failed:");
+        return -1;
+    }
 
-    mount("proc", "/proc", "proc", 0, NULL);
+    if (initgroups(pws->pw_name, parsed_args->gid) != 0) {
+        perror("initgroups() failed:");
+        return -1;
+    }
 
-    setgid(parsed_args->gid);
-    setuid(parsed_args->uid);
+    if (chroot(parsed_args->chroot) != 0) {
+        perror("chroot() failed:");
+        return -1;
+    }
+
+    if (chdir(parsed_args->workdir) != 0) {
+        perror("chdir() failed:");
+        return -1;
+    }
+
+    if (mount("proc", "/proc", "proc", 0, NULL) != 0) {
+        perror("mount() failed:");
+        return -1;
+    }
+
+    if (setgid(parsed_args->gid) != 0 ) {
+        perror("setgid() failed:");
+        return -1;
+    }
+
+    if (setuid(parsed_args->uid) != 0 ) {
+        perror("setuid() failed:");
+        return -1;
+    }
 
     execvp(parsed_args->command, parsed_args->args);
 }
