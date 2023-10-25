@@ -161,7 +161,6 @@ INITRD_IMG=$(INSTALLER)/initrd.img
 INSTALLER_IMG=$(INSTALLER)/installer.img
 VERIFICATION_IMG=$(INSTALLER)/verification.img
 PERSIST_IMG=$(INSTALLER)/persist.img
-KERNEL_IMG=$(INSTALLER)/kernel
 IPXE_IMG=$(INSTALLER)/ipxe.efi
 EFI_PART=$(INSTALLER)/EFI
 BOOT_PART=$(INSTALLER)/boot
@@ -454,12 +453,11 @@ $(BOOT_PART): PKG=u-boot
 $(INITRD_IMG): PKG=mkimage-raw-efi
 $(INSTALLER_IMG): PKG=mkimage-raw-efi
 $(VERIFICATION_IMG): PKG=mkverification-raw-efi
-$(KERNEL_IMG): PKG=kernel
 $(IPXE_IMG): PKG=ipxe
 $(BIOS_IMG): PKG=uefi
 $(UBOOT_IMG): PKG=u-boot
 $(BSP_IMX_PART): PKG=bsp-imx
-$(EFI_PART) $(BOOT_PART) $(INITRD_IMG) $(INSTALLER_IMG) $(VERIFICATION_IMG) $(KERNEL_IMG) $(IPXE_IMG) $(BIOS_IMG) $(UBOOT_IMG) $(BSP_IMX_PART): $(LINUXKIT) | $(INSTALLER)
+$(EFI_PART) $(BOOT_PART) $(INITRD_IMG) $(INSTALLER_IMG) $(VERIFICATION_IMG) $(IPXE_IMG) $(BIOS_IMG) $(UBOOT_IMG) $(BSP_IMX_PART): $(LINUXKIT) | $(INSTALLER)
 	mkdir -p $(dir $@)
 	$(LINUXKIT) pkg build --pull --platforms linux/$(ZARCH) pkg/$(PKG) # running linuxkit pkg build _without_ force ensures that we either pull it down or build it.
 	cd $(dir $@) && $(LINUXKIT) cache export --arch $(DOCKER_ARCH_TAG) --format filesystem --outfile - $(shell $(LINUXKIT) pkg show-tag pkg/$(PKG)) | tar xvf - $(notdir $@)
@@ -606,7 +604,6 @@ linuxkit: $(LINUXKIT)
 build-vm: $(BUILD_VM)
 initrd: $(INITRD_IMG)
 installer-img: $(INSTALLER_IMG)
-kernel: $(KERNEL_IMG)
 config: $(CONFIG_IMG)		; $(QUIET): "$@: Succeeded, CONFIG_IMG=$(CONFIG_IMG)"
 ssh-key: $(SSH_KEY)
 rootfs: $(ROOTFS_TAR) $(ROOTFS_IMG) current
@@ -724,7 +721,7 @@ $(INSTALLER).iso: $(EFI_PART) $(ROOTFS_IMG) $(INITRD_IMG) $(INSTALLER_IMG) $(CON
 	./tools/makeiso.sh $| $@ installer
 	$(QUIET): $@: Succeeded
 
-$(INSTALLER).net: $(EFI_PART) $(ROOTFS_IMG) $(INITRD_IMG) $(INSTALLER_IMG) $(CONFIG_IMG) $(PERSIST_IMG) $(KERNEL_IMG) | $(INSTALLER)
+$(INSTALLER).net: $(EFI_PART) $(ROOTFS_IMG) $(INITRD_IMG) $(INSTALLER_IMG) $(CONFIG_IMG) $(PERSIST_IMG) | $(INSTALLER)
 	./tools/makenet.sh $| installer.img $@
 	$(QUIET): $@: Succeeded
 
@@ -743,7 +740,7 @@ $(VERIFICATION).raw: $(BOOT_PART) $(EFI_PART) $(ROOTFS_IMG) $(INITRD_IMG) $(VERI
 	./tools/makeflash.sh "mkverification-raw-efi" -C 850 $| $@ "conf_win verification inventory_win"
 	$(QUIET): $@: Succeeded
 
-$(VERIFICATION).net: $(EFI_PART) $(ROOTFS_IMG) $(INITRD_IMG) $(VERIFICATION_IMG) $(CONFIG_IMG) $(PERSIST_IMG) $(KERNEL_IMG) | $(VERIFICATION)
+$(VERIFICATION).net: $(EFI_PART) $(ROOTFS_IMG) $(INITRD_IMG) $(VERIFICATION_IMG) $(CONFIG_IMG) $(PERSIST_IMG) | $(VERIFICATION)
 	./tools/prepare-platform.sh "$(PLATFORM)" "$(BUILD_DIR)" "$(VERIFICATION)" || :
 	./tools/makenet.sh $| verification.img $@
 
