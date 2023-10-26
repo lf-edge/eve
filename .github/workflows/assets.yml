@@ -96,6 +96,7 @@ jobs:
           result-encoding: string
           script: |
             console.log(context)
+            const {TAG} = process.env
 
             // first create a release -- it is OK if that fails,
             // since it means the release is already there
@@ -103,8 +104,8 @@ jobs:
               const raw = (await github.repos.createRelease({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
-                tag_name: TAG,
-                name: 'Release ' + TAG,
+                tag_name: '${TAG}',
+                name: 'Release ' + '${TAG}',
                 prerelease: true,
               })).data
               console.log(raw)
@@ -114,7 +115,7 @@ jobs:
             const release = (await github.repos.getReleaseByTag({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              tag: TAG,
+              tag: '${TAG}',
             })).data
 
             // get assets for that ID
