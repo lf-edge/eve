@@ -48,12 +48,6 @@ const (
 	fixedName = "global"
 	fixedDir  = "/run/" + fixedName
 	maxsize   = 65535 // Max size for json which can be read or written
-
-	// Copied from types package to avoid cycle in package dependencies
-	// persistDir - Location to store persistent files.
-	persistDir = "/persist"
-	// persistConfigDir is where we keep some configuration across reboots
-	persistConfigDir = persistDir + "/config"
 )
 
 // SocketDriver driver for pubsub using local unix-domain socket and files
@@ -87,8 +81,8 @@ func (s *SocketDriver) Publisher(global bool, name, topic string, persistent boo
 	// the dirName depends on if we are persistent, and if it is the global config
 	switch {
 	case persistent && publishToDir:
-		// Special case for /persist/config/
-		dirName = fmt.Sprintf("%s/%s/%s", s.RootDir, persistConfigDir, name)
+		// No longer supported
+		return nil, errors.New("Persistent not supported for empty agentname")
 	case persistent && !publishToDir:
 		dirName = s.persistentDirName(name)
 	case !persistent && publishToDir:
@@ -184,12 +178,10 @@ func (s *SocketDriver) Subscriber(global bool, name, topic string, persistent bo
 	if global {
 		subFromDir = true
 		if persistent {
-			// Special case for /persist/config/
-			dirName = fmt.Sprintf("%s/%s/%s", s.RootDir,
-				persistConfigDir, name)
-		} else {
-			dirName = s.fixedDirName(name)
+			// No longer supported
+			return nil, errors.New("Persistent not supported for empty agentname")
 		}
+		dirName = s.fixedDirName(name)
 	} else if agentName == "zedclient" {
 		subFromDir = true
 		if persistent {

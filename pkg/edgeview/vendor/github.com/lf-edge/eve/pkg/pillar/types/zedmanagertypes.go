@@ -6,6 +6,7 @@ package types
 import (
 	"fmt"
 	"net"
+	"path/filepath"
 	"time"
 
 	"github.com/google/go-cmp/cmp"
@@ -14,26 +15,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/sriov"
 	uuid "github.com/satori/go.uuid"
 )
-
-type UrlCloudCfg struct {
-	ConfigUrl  string
-	MetricsUrl string
-	StatusUrl  string
-	LogUrl     string
-}
-
-// top level config container
-type DeviceConfigResponse struct {
-	Config EdgeDevConfig
-}
-
-type EdgeDevConfig struct {
-	Id                 UUIDandVersion
-	DevConfigSha256    string
-	DevConfigSignature string
-	Apps               []AppInstanceConfig
-	Networks           []UnderlayNetworkConfig
-}
 
 // UUID plus version
 type UUIDandVersion struct {
@@ -82,7 +63,7 @@ type SnapshotDesc struct {
 // SnapshotInstanceStatus status of a snapshot instance. Used as a zedmanager-level representation of a snapshot
 type SnapshotInstanceStatus struct {
 	// Snapshot contains the snapshot description
-	Snapshot SnapshotDesc
+	Snapshot SnapshotDesc `mandatory:"true"`
 	// Reported indicates if the snapshot has been reported to the controller
 	Reported bool
 	// TimeTriggered is the time when the snapshot was triggered. At the moment, it is used to check if the snapshot has
@@ -92,10 +73,10 @@ type SnapshotInstanceStatus struct {
 	// TimeCreated is the time when the snapshot was created. It's reported by FS-specific snapshot creation code.
 	TimeCreated time.Time
 	// AppInstanceID is the UUID of the app instance the snapshot belongs to
-	AppInstanceID uuid.UUID
+	AppInstanceID uuid.UUID `mandatory:"true"`
 	// ConfigVersion is the version of the app instance config at the moment of the snapshot creation
 	// It is reported to the controller, so it can use the proper config to roll back the app instance
-	ConfigVersion UUIDandVersion
+	ConfigVersion UUIDandVersion `mandatory:"true"`
 	// Error indicates if snapshot deletion or a rollback to the snapshot failed
 	Error ErrorDescription
 }
@@ -126,7 +107,7 @@ type AppInstanceConfig struct {
 	DisableLogs         bool
 	VolumeRefConfigList []VolumeRefConfig
 	Activate            bool //EffectiveActivate in AppInstanceStatus must be used for the actual activation
-	UnderlayNetworkList []UnderlayNetworkConfig
+	AppNetAdapterList   []AppNetAdapterConfig
 	IoAdapterList       []IoAdapter
 	RestartCmd          AppInstanceOpsCmd
 	PurgeCmd            AppInstanceOpsCmd
@@ -243,14 +224,14 @@ type SnapshottingStatus struct {
 	PreparedVolumesSnapshotConfigs []VolumesSnapshotConfig
 	// SnapshotOnUpgrade indicates whether a snapshot should be taken during the app instance update.
 	SnapshotOnUpgrade bool
-	// HasRollbackRequest indicates whether a rollback is in progress for the app instance.
+	// HasRollbackRequest indicates whether there are any rollback requests for the app instance.
+	// Set to true when a rollback is requested by controller, set to false when the rollback is triggered.
 	HasRollbackRequest bool
 	// ActiveSnapshot contains the id of the snapshot to be used for the rollback.
 	ActiveSnapshot string
 	// RollbackInProgress indicates whether a rollback is in progress for the app instance.
+	// Set to true when a rollback is triggered, set to false when the rollback is completed.
 	RollbackInProgress bool
-	// ConfigBeforeRollback contains the version of the configuration of the app instance before the rollback
-	ConfigBeforeRollback UUIDandVersion
 }
 
 // Indexed by UUIDandVersion as above
@@ -262,7 +243,7 @@ type AppInstanceStatus struct {
 	ActivateInprogress  bool     // Needed for cleanup after failure
 	FixedResources      VmConfig // CPU etc
 	VolumeRefStatusList []VolumeRefStatus
-	UnderlayNetworks    []UnderlayNetworkStatus
+	AppNetAdapters      []AppNetAdapterStatus
 	BootTime            time.Time
 	IoAdapterList       []IoAdapter // Report what was actually used
 	RestartInprogress   Inprogress
@@ -388,9 +369,9 @@ func (status AppInstanceSummary) Key() string {
 func (status AppInstanceStatus) GetAppInterfaceList() []string {
 
 	var viflist []string
-	for _, ulStatus := range status.UnderlayNetworks {
-		if ulStatus.VifUsed != "" {
-			viflist = append(viflist, ulStatus.VifUsed)
+	for _, adapterStatus := range status.AppNetAdapters {
+		if adapterStatus.VifUsed != "" {
+			viflist = append(viflist, adapterStatus.VifUsed)
 		}
 	}
 	return viflist
@@ -473,4 +454,24 @@ func (aih AppAndImageToHash) LogDelete(logBase *base.LogObject) {
 // LogKey :
 func (aih AppAndImageToHash) LogKey() string {
 	return string(base.AppAndImageToHashLogType) + "-" + aih.Key()
+}
+
+// GetSnapshotDir returns the snapshot directory for the given snapshot ID
+func GetSnapshotDir(snapshotID string) string {
+	return filepath.Join(SnapshotsDirname, snapshotID)
+}
+
+// GetVolumesSnapshotStatusFile returns the volumes snapshot status file for the given snapshot ID and volume ID
+func GetVolumesSnapshotStatusFile(snapshotID string) string {
+	return filepath.Join(GetSnapshotDir(snapshotID), SnapshotVolumesSnapshotStatusFilename)
+}
+
+// GetSnapshotInstanceStatusFile returns the instance status file for the given snapshot ID
+func GetSnapshotInstanceStatusFile(snapshotID string) string {
+	return filepath.Join(GetSnapshotDir(snapshotID), SnapshotInstanceStatusFilename)
+}
+
+// GetSnapshotAppInstanceConfigFile returns the app instance config file for the given snapshot ID
+func GetSnapshotAppInstanceConfigFile(snapshotID string) string {
+	return filepath.Join(GetSnapshotDir(snapshotID), SnapshotAppInstanceConfigFilename)
 }

@@ -15,6 +15,15 @@ import (
 )
 
 // deepCopy returns the same type as what is passed as input
+// Warning: only public fields will be exported
+// Note why json marshalling is used:
+// Type casting and associated type assertions in golang are only
+// useful for atoms in the type system. Hence you can't do a type
+// assertion and cast of a struct of internal fields. This coupled
+// with pubsub needing to save a copy lead to doing deep copies.
+// Golang doesn't have support for a deep copy. Once can build it
+// oneself using reflect package, but it ends up doing the same thing
+// as json encode+decode apart from the exported fields check.
 func deepCopy(log *base.LogObject, in interface{}) interface{} {
 	b, err := json.Marshal(in)
 	if err != nil {
