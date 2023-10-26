@@ -55,7 +55,7 @@ jobs:
         run: |
           HV=kvm
           if [ "${{ github.event.repository.full_name }}" = "lf-edge/eve" ]; then
-             EVE=lfedge/eve:${{ inputs.tag_ref }}-${HV}-${{ env.ARCH }}
+             EVE=lfedge/eve:${TAG}-${HV}-${{ env.ARCH }}
              docker pull "$EVE"
           else
              make pkgs
@@ -66,7 +66,7 @@ jobs:
           docker run "$EVE" installer_net | tar -C assets -xvf -
       - name: Create direct iPXE config
         run: |
-          URL="${{ github.event.repository.html_url }}/releases/download/${{ inputs.tag_ref }}/${{ env.ARCH }}."
+          URL="${{ github.event.repository.html_url }}/releases/download/${TAG}/${{ env.ARCH }}."
           sed -i. -e '/# set url https:/s#^.*$#set url '"$URL"'#' assets/ipxe.efi.cfg
           for comp in initrd rootfs installer; do
               sed -i. -e "s#initrd=${comp}#initrd=${{ env.ARCH }}.${comp}#g" assets/ipxe.efi.cfg
@@ -84,7 +84,7 @@ jobs:
       - name: Pull eve-sources and publish collected_sources.tar.gz to assets
         run: |
           HV=kvm
-          EVE_SOURCES=lfedge/eve-sources:${{ inputs.tag_ref }}-${HV}-${{ env.ARCH }}
+          EVE_SOURCES=lfedge/eve-sources:${TAG}-${HV}-${{ env.ARCH }}
           docker pull "$EVE_SOURCES"
           docker create --name eve_sources "$EVE_SOURCES" bash
           docker export --output assets/collected_sources.tar.gz eve_sources
@@ -96,7 +96,7 @@ jobs:
           result-encoding: string
           script: |
             console.log(context)
-            tag = '${{ inputs.tag_ref }}'
+            tag = '${TAG}'
 
             // first create a release -- it is OK if that fails,
             // since it means the release is already there
