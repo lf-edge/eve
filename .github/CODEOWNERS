@@ -14,24 +14,24 @@
 /pkg/dom0-ztools/             @christoph-zededa @rouming
 /pkg/edgeview/                @christoph-zededa @naiming-zededa
 /pkg/fw/                      @rene
-/pkg/grub/                    @mikem-zed @rene
+/pkg/grub/                    @rucoder @rene
 /pkg/kdump/                   @rouming
-/pkg/kernel/                  @mikem-zed @rene @rouming @shjala
+/pkg/kernel/                  @rucoder @rene @rouming @shjala
 /pkg/kexec/                   @rouming
 /pkg/kube/                    @zedi-pramodh
-/pkg/measure-config/          @mikem-zed
+/pkg/measure-config/          @rucoder
 /pkg/mkimage-raw-efi/         @jsfakian @zedi-pramodh
 /pkg/mkverification-raw-efi/  @jsfakian
-/pkg/new-kernel/              @mikem-zed @rene @rouming @shjala
+/pkg/new-kernel/              @rucoder @rene @rouming @shjala
 /pkg/newlog/                  @deitch @naiming-zededa
 /pkg/optee-os/                @rene
 /pkg/pillar/cas/              @deitch
 /pkg/pillar/cmd/baseosmgr/    @deitch
 /pkg/pillar/cmd/domainmgr/    @OhmSpectator @jsfakian @milan-zededa @uncleDecart
 /pkg/pillar/cmd/downloader/   @deitch @milan-zededa @rouming
-/pkg/pillar/cmd/ledmanager/   @mikem-zed @rene
+/pkg/pillar/cmd/ledmanager/   @rucoder @rene
 /pkg/pillar/cmd/nim/          @milan-zededa
-/pkg/pillar/cmd/tpmmgr/       @mikem-zed @shjala
+/pkg/pillar/cmd/tpmmgr/       @rucoder @shjala
 /pkg/pillar/cmd/volumemgr/    @OhmSpectator @deitch @rouming
 /pkg/pillar/cmd/zedagent/     @OhmSpectator @milan-zededa @rouming @uncleDecart
 /pkg/pillar/cmd/zedmanager/   @OhmSpectator @rouming
@@ -41,8 +41,8 @@
 /pkg/pillar/devicenetwork/    @milan-zededa
 /pkg/pillar/dpcmanager/       @milan-zededa
 /pkg/pillar/dpcreconciler/    @milan-zededa
-/pkg/pillar/evetpm/           @mikem-zed @shjala
-/pkg/pillar/hypervisor/       @OhmSpectator @mikem-zed @rene @rouming @shjala
+/pkg/pillar/evetpm/           @rucoder @shjala
+/pkg/pillar/hypervisor/       @OhmSpectator @rucoder @rene @rouming @shjala
 /pkg/pillar/iptables/         @milan-zededa
 /pkg/pillar/netdump/          @milan-zededa
 /pkg/pillar/netmonitor/       @milan-zededa
@@ -57,11 +57,11 @@
 /pkg/rngd/                    @deitch
 /pkg/storage-init/            @rouming
 /pkg/u-boot/                  @rene
-/pkg/uefi/                    @mikem-zed
+/pkg/uefi/                    @rucoder
 /pkg/verification/            @jsfakian
 /pkg/vtpm/                    @shjala
 /pkg/wwan/                    @milan-zededa
-/pkg/xen-tools/               @OhmSpectator @mikem-zed @rene @shjala
-/pkg/xen/                     @OhmSpectator @mikem-zed @rene @shjala
+/pkg/xen-tools/               @OhmSpectator @rucoder @rene @shjala
+/pkg/xen/                     @OhmSpectator @rucoder @rene @shjala
 /tests/eden/                  @milan-zededa @uncleDecart
 /tools/                       @deitch @jsfakian
