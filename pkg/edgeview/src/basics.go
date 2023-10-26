@@ -232,6 +232,9 @@ func getAddrFromJWT(token string, isServer bool, instID int) (string, string, er
 		if runOnServer {
 			return addrport, path, fmt.Errorf("Edgeview is not in multi-instance mode, no need to specify inst-ID")
 		} else {
+			if instID > 1 {
+				return addrport, path, fmt.Errorf("Maximum instance is 1, can not use inst %d", instID)
+			}
 			fmt.Printf("%s\n", getColorStr("Edgeview is not in multi-instance mode, instance ignored here", colorCYAN))
 			edgeviewInstID = 0
 		}
