@@ -4,18 +4,13 @@ go 1.20
 
 require (
 	github.com/godbus/dbus/v5 v5.1.0
-	github.com/lf-edge/eve/pkg/pillar v0.0.0-20231016212340-616d6ea705a2
+	github.com/lf-edge/eve/pkg/pillar v0.0.0-20231027065537-54cee95e20b8
 	github.com/miekg/dns v1.1.55
 	github.com/sirupsen/logrus v1.9.0
 	github.com/tatsushid/go-fastping v0.0.0-20160109021039-d7bb493dee3e
 	github.com/vishvananda/netlink v1.1.1-0.20210924202909-187053b97868
 	golang.org/x/sys v0.13.0
 )
-
-// Note that this replace is temporary and will be removed once the ModemManager PR
-// is merged and we can therefore point mmagent to the upstream version of pillar
-// with all the changes that it needs.
-replace github.com/lf-edge/eve/pkg/pillar => ../../pillar
 
 require (
 	github.com/eriknordmark/ipinfo v0.0.0-20230728132417-2d8f4da903d7 // indirect
@@ -32,5 +27,5 @@ require (
 	golang.org/x/mod v0.7.0 // indirect
 	golang.org/x/net v0.17.0 // indirect
 	golang.org/x/tools v0.3.0 // indirect
-	google.golang.org/protobuf v1.28.1 // indirect
+	google.golang.org/protobuf v1.30.0 // indirect
 )
