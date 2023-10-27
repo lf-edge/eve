@@ -72,15 +72,6 @@ jobs:
               sed -i. -e "s#initrd=${comp}#initrd=${{ env.ARCH }}.${comp}#g" assets/ipxe.efi.cfg
           done
           sed -e 's#{mac:hexhyp}#{ip}#' < assets/ipxe.efi.cfg > assets/ipxe.efi.ip.cfg
-      - name: Unzip kernel on arm64
-        run: |
-          # FIXME: stock iPXE doesn't support compressed kernels on arm64.
-          # EVE's iPXE does, but we still haven't quite figured out the
-          # hand-off part between the two. Therefore for now unpack the kernel.
-          if [ "${{ env.ARCH }}" = arm64 ]; then
-             mv assets/kernel assets/kernel.gz
-             gzip -d assets/kernel.gz
-          fi
       - name: Pull eve-sources and publish collected_sources.tar.gz to assets
         run: |
           HV=kvm
