@@ -931,3 +931,32 @@ rtt min/avg/max/mdev = 44.159/66.162/122.881/32.853 ms
 
 Now you have verified that your modem is compatible with EVE OS and you can try to configure
 cellular connection properly from the controller.
+
+## FCC lock
+
+The [FCC](https://www.fcc.gov/) lock is a software lock integrated in WWAN modems shipped by several
+different laptop and edge device vendors, such as Lenovo, Dell, or HP. This locks prevents the WWAN
+modem from being put online until some specific unlock procedure (usually a magic command sent
+to the modem) is executed. The purpose of this lock is to have a way to bind the WWAN modem
+to a specific device, so that the whole bundle of device+modem can go through the FCC certification
+process for radio-enabled devices in the USA. This lock has no other known purpose out of the US
+regulation.
+
+The FCC lock is part of a mutual authentication attempt between modem and device. On the device side,
+BIOS is configured with an allow-list of modems that the device can be used with. On the modem side,
+the FCC lock ensures that the modem is unlocked only by approved devices.
+
+The main challenge faced from the perspective of EVE is that device vendors often provide FCC unlock
+utilities exclusively for Windows or macOS, and their devices are not FCC-certified for use with
+GNU/Linux distributions. Fortunately, the ModemManager developers have successfully reverse-engineered
+FCC unlock procedures for some widely used Sierra Wireless and Quectel modems, providing scripts
+for these operations. In some cases, collaboration between ModemManager developers, device vendors,
+and modem manufacturers has resulted in FCC unlock scripts that have been verified by all parties.
+However, in other instances, there may be a slight risk associated with running reverse-engineered
+unlock procedures. Therefore, ModemManager will not use FCC unlock scripts unless explicitly enabled.
+
+For more information on FCC lock and how ModemManager deals with this challenge, please refer to this
+[article](https://modemmanager.org/docs/modemmanager/fcc-unlock/).
+
+In the case of EVE, the decision has been made to enable all FCC unlock scripts that come with
+ModemManager and then potentially disable only those for which issues are reported.
