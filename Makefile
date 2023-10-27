@@ -212,10 +212,7 @@ ifeq ($(UNAME_S)_$(ZARCH),Darwin_arm64)
 QEMU_DEFAULT_MACHINE=virt,
 endif
 QEMU_ACCEL_Y_Darwin_amd64=-machine q35,accel=hvf,usb=off -cpu kvm64,kvmclock=off
-# NOTE: -vmx-true-ctls and -vmx-secondary-ctls is used as a workaround to
-# mitigate QEMU crashes due to MSR access errors like the following:
-# "error: failed to set MSR 0x48b to 0x137bff00000000"
-QEMU_ACCEL_Y_Linux_amd64=-machine q35,accel=kvm,usb=off,dump-guest-core=off -cpu host,-vmx-true-ctls,-vmx-secondary-ctls,invtsc=on,kvmclock=off -machine kernel-irqchip=split -device intel-iommu,intremap=on,caching-mode=on,aw-bits=48
+QEMU_ACCEL_Y_Linux_amd64=-machine q35,accel=kvm,usb=off,dump-guest-core=off -cpu host,invtsc=on,kvmclock=off -machine kernel-irqchip=split -device intel-iommu,intremap=on,caching-mode=on,aw-bits=48
 # -machine virt,gic_version=3
 QEMU_ACCEL_Y_Darwin_arm64=-machine $(QEMU_DEFAULT_MACHINE)accel=hvf,usb=off -cpu host
 QEMU_ACCEL_Y_Linux_arm64=-machine virt,accel=kvm,usb=off,dump-guest-core=off -cpu host
