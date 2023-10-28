@@ -8,7 +8,13 @@ bail() {
 
 [ "$#" -gt 2 ] || bail "Usage: $0 <alpine version> <path to the cache> [packages...]"
 
-ALPINE_REPO="$(cat /etc/apk/cache.url)/v$1"
+ALPINE_VERSION=$1
+
+if [ "$ALPINE_VERSION" != "edge" ]; then
+  ALPINE_VERSION=v$1
+fi
+
+ALPINE_REPO="$(cat /etc/apk/cache.url)/$ALPINE_VERSION"
 CACHE="$2/$(apk --print-arch)"
 ROOTFS="$CACHE/../rootfs"
 shift 2
