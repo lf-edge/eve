@@ -27,6 +27,7 @@ RUN [ -f /etc/apk/repositories.upstream ] || mv /etc/apk/repositories /etc/apk/r
 RUN [ -f /etc/apk/cache.url ] || echo https://dl-cdn.alpinelinux.org/alpine > /etc/apk/cache.url
 RUN for repo in main community testing; do \
       for p in */"$repo"; do \
+        if [ ! -f "$p" ]; then echo "skipping $p"; continue; fi &&\
         packages="" &&\
         if [ -f "$p" ]; then packages="$packages $(cat "$p")"; fi &&\
         if [ -f "$p.$(apk --print-arch)" ]; then packages="$packages $(cat "$p.$(apk --print-arch)")"; fi &&\
