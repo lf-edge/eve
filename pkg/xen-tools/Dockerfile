@@ -36,7 +36,7 @@ WORKDIR /
 COPY alpine.patch /
 RUN patch -p1 < alpine.patch
 
-ENV LIBURING_VERSION 0.7
+ENV LIBURING_VERSION 2.4
 ENV LIBURING_SOURCE=https://git.kernel.dk/cgit/liburing/snapshot/liburing-${LIBURING_VERSION}.tar.bz2
 
 # Download and verify liburing
@@ -76,7 +76,7 @@ RUN cat /patches/*.patch /patches/"$(uname -m)"/*.patch | patch -p1
 # Note that Xen's `configure` command uses this env variable SEABIOS_UPSTREAM_URL to find the seabios source.
 ENV SEABIOS_UPSTREAM_URL /seabios.git
 # this revision should be kept in sync with the XEN_VERSION by reading `Config.mk` in the xen source
-ENV SEABIOS_UPSTREAM_REVISION rel-1.14.0
+ENV SEABIOS_UPSTREAM_REVISION rel-1.16.2
 ADD --keep-git-dir git://xenbits.xen.org/seabios.git#${SEABIOS_UPSTREAM_REVISION} ${SEABIOS_UPSTREAM_URL}
 # we need this because it will complain about ambiguous refs
 RUN git config --global core.warnambiguousrefs false
