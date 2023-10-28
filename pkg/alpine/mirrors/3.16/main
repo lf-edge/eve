@@ -177,6 +177,7 @@ python3
 python3-dev
 radvd
 rsync
+samurai
 scanelf
 sed
 sgdisk
