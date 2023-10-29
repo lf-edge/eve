@@ -226,6 +226,7 @@ QEMU_OPTS_NET2=192.168.2.0/24
 QEMU_OPTS_NET2_FIRST_IP=192.168.2.10
 
 QEMU_MEMORY:=4096
+QEMU_EVE_SERIAL?=31415926
 
 PFLASH_amd64=y
 PFLASH=$(PFLASH_$(ZARCH))
@@ -239,8 +240,8 @@ QEMU_TPM_DEVICE_riscv64=tpm-tis
 QEMU_OPTS_TPM_Y_$(ZARCH)=-chardev socket,id=chrtpm,path=$(CURRENT_SWTPM)/swtpm-sock -tpmdev emulator,id=tpm0,chardev=chrtpm -device $(QEMU_TPM_DEVICE_$(ZARCH)),tpmdev=tpm0
 QEMU_OPTS_TPM=$(QEMU_OPTS_TPM_$(TPM:%=Y)_$(ZARCH))
 
-QEMU_OPTS_amd64=-smbios type=1,serial=31415926
-QEMU_OPTS_arm64=-smbios type=1,serial=31415926 -drive file=fat:rw:$(dir $(DEVICETREE_DTB)),label=QEMU_DTB,format=vvfat
+QEMU_OPTS_amd64=-smbios type=1,serial=$(QEMU_EVE_SERIAL)
+QEMU_OPTS_arm64=-smbios type=1,serial=$(QEMU_EVE_SERIAL) -drive file=fat:rw:$(dir $(DEVICETREE_DTB)),label=QEMU_DTB,format=vvfat
 QEMU_OPTS_riscv64=-kernel $(UBOOT_IMG)/u-boot.bin -device virtio-blk,drive=uefi-disk
 QEMU_OPTS_COMMON= -m $(QEMU_MEMORY) -smp 4 -display none $(QEMU_OPTS_BIOS) \
         -serial mon:stdio      \
