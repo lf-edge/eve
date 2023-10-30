@@ -30,11 +30,45 @@ func (pe *PatchEnvelopeInfoList) Get(appUUID string) PatchEnvelopeInfoList {
 // PatchEnvelopeInfo - information
 // about patch envelopes
 type PatchEnvelopeInfo struct {
+	Name        string
+	Version     string
 	AllowedApps []string
 	PatchID     string
+	Errors      []string
+	State       PatchEnvelopeState
 	BinaryBlobs []BinaryBlobCompleted
 	VolumeRefs  []BinaryBlobVolumeRef
 }
+
+// Size returns sum of all sizes of BinaryBlobs of given PatchEnvelope
+func (pe *PatchEnvelopeInfo) Size() (size int64) {
+	for _, blob := range pe.BinaryBlobs {
+		size += blob.Size
+	}
+	return
+}
+
+// PatchEnvelopeState repeats constants from patch_envelope.pb.go from info API
+type PatchEnvelopeState int32
+
+const (
+	// PatchEnvelopeStateError - there is an error with config or during download
+	// or verification failed
+	PatchEnvelopeStateError PatchEnvelopeState = iota
+	// PatchEnvelopeStateRecieved - configuration received but no downloads started
+	PatchEnvelopeStateRecieved
+	// PatchEnvelopeStateDownloading - artifact/Volume download started
+	// One or more of the artifacts are being downloaded
+	PatchEnvelopeStateDownloading
+	// PatchEnvelopeStateDownloaded - all downloads finished, verified and added to content tree
+	PatchEnvelopeStateDownloaded
+	// PatchEnvelopeStateReady - patch envelope ready for application instances
+	// application instances will still not be
+	// allowed to fetch the patch envelope contents
+	PatchEnvelopeStateReady
+	// PatchEnvelopeStateActive - application instances are now allowed to fetch contents
+	PatchEnvelopeStateActive
+)
 
 // Key for pubsub
 func (pe *PatchEnvelopeInfoList) Key() string {
@@ -61,6 +95,7 @@ type BinaryBlobCompleted struct {
 	// ArtifactMetadata is generic info i.e. user info, desc etc.
 	ArtifactMetadata string `json:"artifactMetaData"`
 	URL              string `json:"url"` //nolint:var-naming
+	Size             int64  `json:"size"`
 }
 
 // CompletedBinaryBlobIdxByName returns index of element in blobs list

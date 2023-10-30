@@ -47,11 +47,15 @@ func parsePatchEnvelopesImpl(ctx *getconfigContext, config *zconfig.EdgeDevConfi
 		peInfo := types.PatchEnvelopeInfo{
 			AllowedApps: pe.GetAppInstIdsAllowed(),
 			PatchID:     pe.GetUuid(),
+			Name:        pe.GetDisplayName(),
+			Version:     pe.GetVersion(),
 		}
 		for _, a := range pe.GetArtifacts() {
 			err := addBinaryBlobToPatchEnvelope(&peInfo, a, persistCacheFilepath)
 			if err != nil {
-				log.Errorf("Failed to compose binary blob for patch envelope %v", err)
+				msg := fmt.Sprintf("Failed to compose binary blob for patch envelope %v", err)
+				peInfo.Errors = append(peInfo.Errors, msg)
+				log.Errorf(msg)
 				return
 			}
 		}
@@ -139,6 +143,7 @@ func cacheInlineBase64Artifact(artifact *zconfig.InlineOpaqueBase64Data, persist
 		FileSha:      hex.EncodeToString(shaBytes[:]),
 		FileMetadata: metadata,
 		URL:          url,
+		Size:         int64(len(data)),
 	}, nil
 }
 
