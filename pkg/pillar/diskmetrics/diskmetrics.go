@@ -41,6 +41,15 @@ func GetImgInfo(log *base.LogObject, diskfile string) (*types.ImgInfo, error) {
 	return &imgInfo, nil
 }
 
+// GetDiskActualSize - returns ActualSize of the image
+func GetDiskActualSize(log *base.LogObject, diskfile string) (uint64, error) {
+	imgInfo, err := GetImgInfo(log, diskfile)
+	if err != nil {
+		return 0, err
+	}
+	return imgInfo.ActualSize, nil
+}
+
 // GetDiskVirtualSize - returns VirtualSize of the image
 func GetDiskVirtualSize(log *base.LogObject, diskfile string) (uint64, error) {
 	imgInfo, err := GetImgInfo(log, diskfile)

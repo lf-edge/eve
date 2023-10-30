@@ -220,10 +220,15 @@ func RolloutImgToPVC(ctx context.Context, log *base.LogObject, exists bool, disk
 		return errors.New(errStr)
 	}
 
-	// TODO: Check if we can configure the reserved space
-	// Allocate 10% more, longhorn PVC needs reserved space. This is needed only when virtctl is copying the data to
-	// newly created PVC. It compares virtual disk size and available space in PVC.
-	volSize = volSize + (volSize / 10)
+	// ActualSize can be larger than VirtualSize for fully-allocated/not-thin QCOW2 files
+	actualVolSize, err := diskmetrics.GetDiskActualSize(log, diskfile)
+	if err != nil {
+		errStr := fmt.Sprintf("Failed to get actual size of disk %s: %v", diskfile, err)
+		return errors.New(errStr)
+	}
+	if actualVolSize > volSize {
+		volSize = actualVolSize
+	}
 
 	// virtctl image-upload -n eve-kube-app pvc a1030350-bd03-4b79-ac1c-4d8564d0e4b0-pvc-0   --no-create --storage-class longhorn --image-path=/persist/vault/containerd/io.containerd.content.v1.content/blobs/sha256/
 	// 84ed078f3f0e1671d591d15409883a24bd30763eb10a9dec01a2fb38cf06cf6d --insecure --uploadproxy-url https://10.43.31.180:8443
