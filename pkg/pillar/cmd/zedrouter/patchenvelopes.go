@@ -110,8 +110,12 @@ func (pes *PatchEnvelopes) updateState() {
 				pes.currentState.Store(peUUID, peInfo)
 
 				if pe, ok := pes.currentState.Load(peUUID); ok {
+					peState := types.PatchEnvelopeStateActive
 					for _, volRef := range pe.VolumeRefs {
-						if blob := pes.blobFromVolumeRef(volRef); blob != nil {
+						if blob, blobState := pes.blobFromVolumeRef(volRef); blob != nil {
+							if blobState < peState {
+								peState = blobState
+							}
 							if idx := types.CompletedBinaryBlobIdxByName(pe.BinaryBlobs, blob.FileName); idx != -1 {
 								pe.BinaryBlobs[idx] = *blob
 							} else {
@@ -120,6 +124,11 @@ func (pes *PatchEnvelopes) updateState() {
 						}
 					}
 
+					if len(pe.Errors) > 0 {
+						peState = types.PatchEnvelopeStateError
+					}
+
+					pe.State = peState
 					pes.currentState.Store(peUUID, pe)
 					pes.envelopesToUpdate.Store(peUUID, false)
 
@@ -151,28 +160,32 @@ func (pes *PatchEnvelopes) Get(appUUID string) types.PatchEnvelopeInfoList {
 	}
 }
 
-func (pes *PatchEnvelopes) blobFromVolumeRef(vr types.BinaryBlobVolumeRef) *types.BinaryBlobCompleted {
+func (pes *PatchEnvelopes) blobFromVolumeRef(vr types.BinaryBlobVolumeRef) (*types.BinaryBlobCompleted, types.PatchEnvelopeState) {
 	volUUID, err := uuid.FromString(vr.ImageID)
 	if err != nil {
 		pes.log.Errorf("Failed to compose volUUID from string %v", err)
-		return nil
+		return nil, types.PatchEnvelopeStateError
 	}
+	state := types.PatchEnvelopeStateRecieved
 	if vs, hasVs := pes.completedVolumes.Load(volUUID); hasVs {
+		state = types.PatchEnvelopeStateDownloading
 		result := &types.BinaryBlobCompleted{
 			FileName:         vr.FileName,
 			FileMetadata:     vr.FileMetadata,
 			ArtifactMetadata: vr.ArtifactMetadata,
 			URL:              vs.FileLocation,
+			Size:             vs.TotalSize,
 		}
 
 		if ct, hasCt := pes.contentTreeStatus.Load(vs.ContentID); hasCt {
+			state = types.PatchEnvelopeStateActive
 			result.FileSha = ct.ContentSha256
 		}
 
-		return result
+		return result, state
 	}
 
-	return nil
+	return nil, state
 }
 
 // UpdateVolumeStatus adds or removes VolumeStatus from PatchEnvelopes structure

@@ -1331,6 +1331,7 @@ func TestParsePatchEnvelope(t *testing.T) {
 					FileMetadata:     fileMetadata,
 					ArtifactMetadata: artiactMetadata,
 					URL:              filepath.Join(persistCacheFolder, inlineFileName),
+					Size:             int64(len(fileData)),
 				},
 			},
 		},
