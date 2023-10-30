@@ -1243,7 +1243,16 @@ func (c *Client) runSimpleConnect(modemObj dbus.BusObject,
 	var bearerPath dbus.ObjectPath
 	modem := c.modems[string(modemObj.Path())]
 	err := c.callDBusMethod(modemObj, SimpleMethodConnect, &bearerPath, connProps)
-	if err != nil && strings.HasPrefix(err.Error(), "No such interface") && modem != nil {
+	var errIsUseless bool
+	if err != nil {
+		if strings.HasPrefix(err.Error(), "No such interface") {
+			errIsUseless = true
+		}
+		if errors.Is(err, context.DeadlineExceeded) {
+			errIsUseless = true
+		}
+	}
+	if errIsUseless && modem != nil {
 		// Try to determine more useful connection failure reason.
 		for _, simCard := range modem.Status.SimCards {
 			if !simCard.SlotActivated {
