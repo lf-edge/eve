@@ -16,6 +16,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	zconfig "github.com/lf-edge/eve-api/go/config"
 	"github.com/lf-edge/eve/pkg/pillar/base"
+	"github.com/lf-edge/eve/pkg/pillar/utils/cloudconfig"
 )
 
 // The information DomainManager needs to boot and halt domains
@@ -278,9 +279,10 @@ type DomainStatus struct {
 	ConfigFailed   bool
 	BootFailed     bool
 	AdaptersFailed bool
-	OCIConfigDir   string            // folder holding an OCI Image config for this domain (empty string means no config)
-	EnvVariables   map[string]string // List of environment variables to be set in container
-	VmConfig                         // From DomainConfig
+	OCIConfigDir   string                     // folder holding an OCI Image config for this domain (empty string means no config)
+	EnvVariables   map[string]string          // List of environment variables to be set in container
+	WritableFiles  []cloudconfig.WritableFile // List of files from CloudInit scripts to be created in container
+	VmConfig                                  // From DomainConfig
 	Service        bool
 }
 
