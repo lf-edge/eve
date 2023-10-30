@@ -48,6 +48,11 @@ func (pe *PatchEnvelopeInfo) Size() (size int64) {
 	return
 }
 
+// Key for pubsub
+func (pe *PatchEnvelopeInfo) Key() string {
+	return pe.PatchID
+}
+
 // PatchEnvelopeState repeats constants from patch_envelope.pb.go from info API
 type PatchEnvelopeState int32
 

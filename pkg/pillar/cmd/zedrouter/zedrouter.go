@@ -216,7 +216,7 @@ func (z *zedrouter) init() (err error) {
 	z.zedcloudMetrics = zedcloud.NewAgentMetrics()
 	z.cipherMetrics = cipher.NewAgentMetrics(agentName)
 
-	z.patchEnvelopes = NewPatchEnvelopes(z.log)
+	z.patchEnvelopes = NewPatchEnvelopes(z.log, z.pubSub)
 
 	gcp := *types.DefaultConfigItemValueMap()
 	z.appContainerStatsInterval = gcp.GlobalValueInt(types.AppContainerStatsInterval)
