@@ -70,7 +70,7 @@ setup_prereqs () {
 
 check_start_containerd() {
         # Needed to get the pods to start
-        if [ ! -L /usr/bin/runc ]; then 
+        if [ ! -L /usr/bin/runc ]; then
                 ln -s /var/lib/rancher/k3s/data/current/bin/runc /usr/bin/runc
         fi
         if [ ! -L /usr/bin/containerd-shim-runc-v2 ]; then
@@ -79,11 +79,11 @@ check_start_containerd() {
 
         if pgrep -f "containerd --config" >> $INSTALL_LOG 2>&1; then
                 logmsg "k3s-containerd is alive"
-        else 
+        else
                 logmsg "Starting k3s-containerd"
                 mkdir -p /run/containerd-user
                 nohup /var/lib/rancher/k3s/data/current/bin/containerd --config /etc/containerd/config-k3s.toml &
-        fi   
+        fi 
 }
 trigger_k3s_selfextraction() {
         # Analysis of the k3s source shows nearly any cli command will first self-extract a series of binaries.
@@ -119,14 +119,6 @@ fi
 setup_prereqs
 
 date >> $INSTALL_LOG
-HOSTNAME=$(/bin/hostname)
-logmsg "Starting wait for hostname, currently: $HOSTNAME"
-while [[ $HOSTNAME = linuxkit* ]];
-do
-        sleep 1
-        HOSTNAME=$(/bin/hostname)
-done
-logmsg "Got real hostname, currently: $HOSTNAME"
 
 #Forever loop every 15 secs
 while true;
@@ -144,7 +136,7 @@ if [ ! -f /var/lib/all_components_initialized ]; then
                 nohup /usr/bin/k3s server --config /etc/rancher/k3s/config.yaml &
                 #wait until k3s is ready
                 logmsg "Looping until k3s is ready"
-                until kubectl get node | grep "$HOSTNAME" | awk '{print $2}' | grep 'Ready'; do sleep 5; done
+                until kubectl get node | grep $(/bin/hostname) | awk '{print $2}' | grep 'Ready'; do sleep 5; done
                 # Give the embedded etcd in k3s priority over io as its fsync latencies are critical
                 ionice -c2 -n0 -p $(pgrep -f "k3s server")
                 logmsg "k3s is ready on this node"
@@ -187,7 +179,7 @@ else
                 logmsg "Starting k3s server after reboot"
                 nohup /usr/bin/k3s server --config /etc/rancher/k3s/config.yaml &
                 logmsg "Looping until k3s is ready"
-                until kubectl get node | grep "$HOSTNAME" | awk '{print $2}' | grep 'Ready'; do sleep 5; done
+                until kubectl get node | grep $(/bin/hostname) | awk '{print $2}' | grep 'Ready'; do sleep 5; done
                 # Give the embedded etcd in k3s priority over io as its fsync latencies are critical
                 ionice -c2 -n0 -p $(pgrep -f "k3s server")
                 logmsg "k3s is ready on this node"
