@@ -107,6 +107,7 @@ type getconfigContext struct {
 	pubDisksConfig            pubsub.Publication
 	pubEdgeNodeInfo           pubsub.Publication
 	pubPatchEnvelopeInfo      pubsub.Publication
+	subPatchEnvelopeStatus    pubsub.Subscription
 	subCachedResolvedIPs      pubsub.Subscription
 	NodeAgentStatus           *types.NodeAgentStatus
 	configProcessingRV        configProcessingRetval
