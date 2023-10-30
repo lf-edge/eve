@@ -9,6 +9,7 @@
 package domainmgr
 
 import (
+	"bufio"
 	"encoding/base64"
 	"errors"
 	"flag"
@@ -38,6 +39,8 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/sriov"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
+	"github.com/lf-edge/eve/pkg/pillar/utils/cloudconfig"
+	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
 	"github.com/opencontainers/runtime-spec/specs-go"
 	uuid "github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
@@ -1402,6 +1405,37 @@ func doAssignIoAdaptersToDomain(ctx *domainContext, config types.DomainConfig,
 	return nil
 }
 
+func getVersionFromMetaFile(path string) (uint64, error) {
+	var curCIVersion uint64
+
+	// read cloud init version from the meta-data file
+	metafile, err := os.Open(path)
+	if err != nil {
+		return 0, fmt.Errorf("Failed to open meta-data file: %s", err)
+	}
+	scanner := bufio.NewScanner(metafile)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if strings.HasPrefix(line, "instance-id:") {
+			parts := strings.Split(line, "/")
+			if len(parts) >= 2 {
+				curCIVersion, err = strconv.ParseUint(parts[1], 10, 32)
+				if err != nil {
+					return 0, fmt.Errorf("Failed to parse cloud init version: %s", err.Error())
+				}
+				return curCIVersion, nil
+			}
+		}
+	}
+
+	// Check for scanner errors.
+	if err := scanner.Err(); err != nil {
+		return 0, fmt.Errorf("Reading the file failed: %s", err.Error())
+	}
+
+	return 0, errors.New("Version not found in meta-data file")
+}
+
 func doActivate(ctx *domainContext, config types.DomainConfig,
 	status *types.DomainStatus) {
 
@@ -1461,12 +1495,53 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 			// do nothing
 		case zconfig.Format_CONTAINER:
 			snapshotID := containerd.GetSnapshotID(ds.FileLocation)
-			if err := ctx.casClient.MountSnapshot(snapshotID, cas.GetRoofFsPath(ds.FileLocation)); err != nil {
+			rootPath := cas.GetRoofFsPath(ds.FileLocation)
+			if err := ctx.casClient.MountSnapshot(snapshotID, rootPath); err != nil {
 				err := fmt.Errorf("doActivate: Failed mount snapshot: %s for %s. Error %s",
 					snapshotID, config.UUIDandVersion.UUID, err)
 				log.Error(err.Error())
 				status.SetErrorNow(err.Error())
 				return
+			}
+
+			metadataPath := filepath.Join(rootPath, "meta-data")
+
+			// get current cloud init version
+			curCIVersion, err := getVersionFromMetaFile(metadataPath)
+			if err != nil {
+				curCIVersion = 0 // make sure the cloud init config gets executed
+			}
+
+			// get new cloud init version
+			newCIVersion, err := strconv.ParseUint(getCloudInitVersion(config), 10, 32)
+			if err != nil {
+				log.Error("Failed to parse cloud init version: ", err)
+				newCIVersion = curCIVersion + 1 // make sure the cloud init config gets executed
+			}
+
+			if curCIVersion < newCIVersion {
+				log.Notice("New cloud init config detected - applying")
+
+				// write meta-data file
+				versionString := fmt.Sprintf("instance-id: %s/%s\n", config.UUIDandVersion.UUID.String(), getCloudInitVersion(config))
+				err = fileutils.WriteRename(metadataPath, []byte(versionString))
+				if err != nil {
+					err := fmt.Errorf("doActivate: Failed to write cloud-init metadata file. Error %s", err)
+					log.Error(err.Error())
+					status.SetErrorNow(err.Error())
+					return
+				}
+
+				// apply cloud init config
+				for _, writableFile := range status.WritableFiles {
+					err := cloudconfig.WriteFile(log, writableFile, rootPath)
+					if err != nil {
+						err := fmt.Errorf("doActivate: Failed to apply cloud-init config. Error %s", err)
+						log.Error(err.Error())
+						status.SetErrorNow(err.Error())
+						return
+					}
+				}
 			}
 		default:
 			// assume everything else to be disk formats
@@ -1887,20 +1962,38 @@ func configToStatus(ctx *domainContext, config types.DomainConfig,
 	//clean environment variables
 	status.EnvVariables = nil
 
+	// Fetch cloud-init userdata
 	if config.IsCipher || config.CloudInitUserData != nil {
 		ciStr, err := fetchCloudInit(ctx, config)
 		if err != nil {
 			return fmt.Errorf("failed to fetch cloud-init userdata: %s",
 				err)
 		}
-		if status.OCIConfigDir != "" {
-			envList, err := parseEnvVariablesFromCloudInit(ciStr)
-			if err != nil {
-				return fmt.Errorf("failed to parse environment variable from cloud-init userdata: %s",
-					err)
+		if status.OCIConfigDir != "" { // If AppInstance is a container, we need to parse cloud-init config and apply the supported parts
+			if cloudconfig.IsCloudConfig(ciStr) { // treat like the cloud-init config
+				cc, err := cloudconfig.ParseCloudConfig(ciStr)
+				if err != nil {
+					return fmt.Errorf("failed to unmarshal cloud-init userdata: %s",
+						err)
+				}
+				status.WritableFiles = cc.WriteFiles
+
+				envList, err := parseEnvVariablesFromCloudInit(cc.RunCmd)
+				if err != nil {
+					return fmt.Errorf("failed to parse environment variable from cloud-init userdata: %s",
+						err)
+				}
+				status.EnvVariables = envList
+			} else { // treat like the key value map for envs (old syntax)
+				envPairs := strings.Split(ciStr, "\n")
+				envList, err := parseEnvVariablesFromCloudInit(envPairs)
+				if err != nil {
+					return fmt.Errorf("failed to parse environment variable from cloud-init env map: %s",
+						err)
+				}
+				status.EnvVariables = envList
 			}
-			status.EnvVariables = envList
-		} else {
+		} else { // If AppInstance is a VM, we need to create a cloud-init ISO
 			switch config.MetaDataType {
 			case types.MetaDataDrive, types.MetaDataDriveMultipart:
 				ds, err := createCloudInitISO(ctx, config, ciStr)
@@ -2513,11 +2606,10 @@ func fetchCloudInit(ctx *domainContext,
 // Example:
 // Key1=Val1
 // Key2=Val2 ...
-func parseEnvVariablesFromCloudInit(ciStr string) (map[string]string, error) {
+func parseEnvVariablesFromCloudInit(envPairs []string) (map[string]string, error) {
 
 	envList := make(map[string]string, 0)
-	list := strings.Split(ciStr, "\n")
-	for _, v := range list {
+	for _, v := range envPairs {
 		pair := strings.SplitN(v, "=", 2)
 		if len(pair) != 2 {
 			errStr := fmt.Sprintf("Variable \"%s\" not defined properly\nKey value pair should be delimited by \"=\"", pair[0])
