@@ -9,6 +9,7 @@ import (
 
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/zedrouter"
+	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/onsi/gomega"
 	uuid "github.com/satori/go.uuid"
@@ -22,7 +23,8 @@ func TestPatchEnvelopes(t *testing.T) {
 
 	logger := logrus.StandardLogger()
 	log := base.NewSourceLogObject(logger, "petypes", 1234)
-	peStore := zedrouter.NewPatchEnvelopes(log)
+	ps := pubsub.New(&pubsub.EmptyDriver{}, logger, log)
+	peStore := zedrouter.NewPatchEnvelopes(log, ps)
 
 	u := "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
 	contentU := "6ba7b810-9dad-11d1-80b4-ffffffffffff"
@@ -119,6 +121,7 @@ func TestPatchEnvelopes(t *testing.T) {
 			{
 				PatchID:     "6ba7b810-9dad-11d1-80b4-00c04fd430c8",
 				AllowedApps: []string{u},
+				State:       types.PatchEnvelopeStateActive,
 				BinaryBlobs: []types.BinaryBlobCompleted{
 					{
 						FileName:     "TestFileName",

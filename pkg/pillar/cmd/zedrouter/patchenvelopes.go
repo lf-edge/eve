@@ -10,6 +10,7 @@ import (
 	uuid "github.com/satori/go.uuid"
 
 	"github.com/lf-edge/eve/pkg/pillar/base"
+	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils/generics"
 )
@@ -36,7 +37,9 @@ import (
 // means that request to update same object will be only once, so there will be no queue of
 // go routines piling up but it will take more CPU time to process it.
 // NewPatchEnvelopes() starts goroutine processStateUpdate() which reads from the channel and updates
-// currentState to desired one.
+// currentState to desired one. In addition, this goroutine publishes status for every PatchEnvelope
+// via pubsub. Note that PatchEnvelopes does not create PubSub, rather used one provided to NewPatchEnvelopes()
+// So it does not have a agentName, but could easily be split into one if needed
 // This way handlers can do work of determining which patch envelopes actually need change (if any)
 // and send back in go routine rest of the update including slow work.
 // Note that this channels are only accessible from the outside by calling a function which returns
@@ -53,7 +56,9 @@ type PatchEnvelopes struct {
 	completedVolumes  *generics.LockedMap[uuid.UUID, types.VolumeStatus]
 	contentTreeStatus *generics.LockedMap[uuid.UUID, types.ContentTreeStatus]
 
-	log *base.LogObject
+	pubSub                *pubsub.PubSub
+	log                   *base.LogObject
+	pubPatchEnvelopeState pubsub.Publication
 }
 
 // UpdateStateNotificationCh return update channel to send notifications to update currentState
@@ -62,9 +67,9 @@ func (pes *PatchEnvelopes) UpdateStateNotificationCh() chan<- struct{} {
 }
 
 // NewPatchEnvelopes returns PatchEnvelopes structure and starts goroutine
-// to process messages from channels. Note that we create buffered channels
+// to process notifications from channel. Note that we create buffered channel
 // to avoid unbounded processing time in writing to channel
-func NewPatchEnvelopes(log *base.LogObject) *PatchEnvelopes {
+func NewPatchEnvelopes(log *base.LogObject, ps *pubsub.PubSub) *PatchEnvelopes {
 	pe := &PatchEnvelopes{
 
 		updateStateNotificationCh: make(chan struct{}, 1),
@@ -77,7 +82,17 @@ func NewPatchEnvelopes(log *base.LogObject) *PatchEnvelopes {
 		completedVolumes:  generics.NewLockedMap[uuid.UUID, types.VolumeStatus](),
 		contentTreeStatus: generics.NewLockedMap[uuid.UUID, types.ContentTreeStatus](),
 
-		log: log,
+		log:    log,
+		pubSub: ps,
+	}
+
+	var err error
+	pe.pubPatchEnvelopeState, err = pe.pubSub.NewPublication(pubsub.PublicationOptions{
+		AgentName: agentName,
+		TopicType: types.PatchEnvelopeInfo{},
+	})
+	if err != nil {
+		return nil
 	}
 
 	go pe.processStateUpdate()
@@ -98,6 +113,9 @@ func (pes *PatchEnvelopes) updateState() {
 	keys := pes.envelopesToDelete.Keys()
 	for _, k := range keys {
 		if toDelete, _ := pes.envelopesToDelete.Load(k); toDelete {
+			if peInfo, ok := pes.currentState.Load(k); ok {
+				pes.unpublishPatchEnvelopeInfo(&peInfo)
+			}
 			pes.currentState.Delete(k)
 			pes.envelopesToDelete.Store(k, false)
 		}
@@ -130,6 +148,7 @@ func (pes *PatchEnvelopes) updateState() {
 
 					pe.State = peState
 					pes.currentState.Store(peUUID, pe)
+					pes.publishPatchEnvelopeInfo(&pe)
 					pes.envelopesToUpdate.Store(peUUID, false)
 
 				} else {
@@ -139,6 +158,34 @@ func (pes *PatchEnvelopes) updateState() {
 				pes.log.Errorf("No entry in envelopes for %v to fetch", peUUID)
 			}
 		}
+	}
+}
+
+func (pes *PatchEnvelopes) publishPatchEnvelopeInfo(peInfo *types.PatchEnvelopeInfo) {
+	if peInfo == nil {
+		pes.log.Errorf("publishPatchEnvelopeInfo: nil peInfo")
+	}
+	key := peInfo.Key()
+	pub := pes.pubPatchEnvelopeState
+	err := pub.Publish(key, *peInfo)
+	if err != nil {
+		pes.log.Errorf("publishPatchEnvelopeInfo failed: %v", err)
+	}
+}
+
+func (pes *PatchEnvelopes) unpublishPatchEnvelopeInfo(peInfo *types.PatchEnvelopeInfo) {
+	if peInfo == nil {
+		pes.log.Errorf("unpublishPatchEnvelopeInfo: nil peInfo")
+		return
+	}
+	key := peInfo.Key()
+	pub := pes.pubPatchEnvelopeState
+	if exists, _ := pub.Get(key); exists == nil {
+		pes.log.Errorf("unpublishPatchEnvelopeInfo: key %s not found", key)
+		return
+	}
+	if err := pub.Unpublish(key); err != nil {
+		pes.log.Errorf("unpublishPatchEnvelopeInfo failed: %v", err)
 	}
 }
 
