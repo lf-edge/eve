@@ -1033,6 +1033,9 @@ func mainEventLoop(zedagentCtx *zedagentContext, stillRunning *time.Ticker) {
 		case change := <-getconfigCtx.subCachedResolvedIPs.MsgChan():
 			getconfigCtx.subCachedResolvedIPs.ProcessChange(change)
 
+		case change := <-getconfigCtx.subPatchEnvelopeStatus.MsgChan():
+			getconfigCtx.subPatchEnvelopeStatus.ProcessChange(change)
+
 		case <-hwInfoTiker.C:
 			triggerPublishHwInfo(zedagentCtx)
 
@@ -1917,6 +1920,20 @@ func initPostOnboardSubs(zedagentCtx *zedagentContext) {
 		ErrorTime:   errorTime,
 		TopicImpl:   types.CachedResolvedIPs{},
 		Activate:    true,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	getconfigCtx.subPatchEnvelopeStatus, err = ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "zedrouter",
+		MyAgentName:   agentName,
+		TopicImpl:     types.PatchEnvelopeInfo{},
+		Activate:      true,
+		CreateHandler: handlePatchEnvelopeStatusCreate,
+		ModifyHandler: handlePatchEnvelopeStatusModify,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
 	})
 	if err != nil {
 		log.Fatal(err)
