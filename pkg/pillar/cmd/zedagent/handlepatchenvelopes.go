@@ -12,6 +12,24 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
+func composePatchEnvelopeUsage(appUUID string, ctx *zedagentContext) []*info.ZInfoPatchEnvelopeUsage {
+	result := []*info.ZInfoPatchEnvelopeUsage{}
+
+	for _, c := range ctx.subPatchEnvelopeUsage.GetAll() {
+		peUsage := c.(types.PatchEnvelopeUsage)
+		if peUsage.AppUUID == appUUID {
+			result = append(result, &info.ZInfoPatchEnvelopeUsage{
+				Uuid:              peUsage.PatchID,
+				Version:           peUsage.Version,
+				PatchApiCallCount: peUsage.PatchAPICallCount,
+				DownloadCount:     peUsage.DownloadCount,
+			})
+		}
+	}
+
+	return result
+}
+
 func handlePatchEnvelopeStatusCreate(ctxArg interface{}, key string,
 	statusArg interface{}) {
 	handlePatchEnvelopeStatusImpl(ctxArg, key, statusArg)
@@ -84,7 +102,7 @@ func publishPatchEnvelopeStatus(ctx *zedagentContext, patchInfo *info.ZInfoPatch
 
 	const bailOnHTTPErr = false
 	const withNetTrace = false
-	key := "publishPatchEnvelopeStatus:" + patchInfo.Id
+	key := "publishPatchEnvelopeStatus:" + patchInfo.Id + "v" + patchInfo.Version
 
 	const forcePeriodic = false
 	queueInfoToDest(ctx, dest, key, buf, size, bailOnHTTPErr, withNetTrace,
