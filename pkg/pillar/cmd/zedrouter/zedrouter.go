@@ -49,6 +49,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/uplinkprober"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
+	"github.com/lf-edge/eve/pkg/pillar/utils/generics"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 	"github.com/sirupsen/logrus"
 )
@@ -176,7 +177,11 @@ type zedrouter struct {
 	subPatchEnvelopeInfo pubsub.Subscription
 	subVolumeStatus      pubsub.Subscription
 	subContentTreeStatus pubsub.Subscription
-	patchEnvelopes       *PatchEnvelopes
+
+	patchEnvelopes      *PatchEnvelopes
+	patchEnvelopesUsage *generics.LockedMap[string, types.PatchEnvelopeUsage]
+
+	pubPatchEnvelopesUsage pubsub.Publication
 }
 
 // AddAgentSpecificCLIFlags adds CLI options
@@ -189,6 +194,8 @@ func Run(ps *pubsub.PubSub, logger *logrus.Logger, log *base.LogObject, args []s
 		pubSub: ps,
 		logger: logger,
 		log:    log,
+
+		patchEnvelopesUsage: generics.NewLockedMap[string, types.PatchEnvelopeUsage](),
 	}
 	agentbase.Init(&zedrouter, logger, log, agentName,
 		agentbase.WithArguments(args))
@@ -409,6 +416,8 @@ func (z *zedrouter) run(ctx context.Context) (err error) {
 				z.log.Errorln(err)
 			}
 
+			z.publishPatchEnvelopesUsage()
+
 			z.pubSub.CheckMaxTimeTopic(agentName, "publishMetrics", start,
 				warningTime, errorTime)
 			// Check and remove stale flowlog publications.
@@ -617,6 +626,15 @@ func (z *zedrouter) initPublications() (err error) {
 	if err != nil {
 		return err
 	}
+
+	z.pubPatchEnvelopesUsage, err = z.pubSub.NewPublication(pubsub.PublicationOptions{
+		AgentName: agentName,
+		TopicType: types.PatchEnvelopeUsage{},
+	})
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -1334,4 +1352,49 @@ func (z *zedrouter) getExternalIPForApp(remoteIP net.IP) (net.IP, int) {
 		return nil, http.StatusNoContent
 	}
 	return ip, http.StatusOK
+}
+
+func (z *zedrouter) increasePatchEnvelopeStatusCounter(appUUID string, patch types.PatchEnvelopeInfo) {
+	defaultValue := types.PatchEnvelopeUsage{
+		AppUUID: appUUID,
+		PatchID: patch.PatchID,
+		Version: patch.Version,
+
+		PatchAPICallCount: 1,
+		DownloadCount:     0,
+	}
+	incrementFn := func(v types.PatchEnvelopeUsage) types.PatchEnvelopeUsage {
+		v.PatchAPICallCount++
+		return v
+	}
+	z.patchEnvelopesUsage.ApplyOrStore(defaultValue.Key(), incrementFn, defaultValue)
+}
+
+func (z *zedrouter) increasePatchEnvelopeDownloadCounter(appUUID string, patch types.PatchEnvelopeInfo) {
+	defaultValue := types.PatchEnvelopeUsage{
+		AppUUID: appUUID,
+		PatchID: patch.PatchID,
+		Version: patch.Version,
+
+		PatchAPICallCount: 0,
+		DownloadCount:     1,
+	}
+	incrementFn := func(v types.PatchEnvelopeUsage) types.PatchEnvelopeUsage {
+		v.DownloadCount++
+		return v
+	}
+	z.patchEnvelopesUsage.ApplyOrStore(defaultValue.Key(), incrementFn, defaultValue)
+}
+
+func (z *zedrouter) publishPatchEnvelopesUsage() {
+	publishFn := func(_ string, peUsage types.PatchEnvelopeUsage) bool {
+		key := peUsage.Key()
+		pub := z.pubPatchEnvelopesUsage
+		err := pub.Publish(key, peUsage)
+		if err != nil {
+			z.log.Errorf("publishPatchEnvelopesUsage failed: %v", err)
+		}
+		return true
+	}
+	z.patchEnvelopesUsage.Range(publishFn)
 }
