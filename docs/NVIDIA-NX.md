@@ -32,8 +32,13 @@ can be changed in the bootloader's setup interface with the following steps:
 1. Flash the `dist/arm64/current/installer.raw` install EVE image onto an USB Stick [following these instructions](../README.md#how-to-write-eve-image-and-installer-onto-an-sd-card-or-an-installer-medium)
 1. Insert the USB Stick and power on the device
 
-The installation process will start and it will install EVE on the NVMe automatically. If the installation succeed, the
-device will be powered off. Remove the USB Stick and power on the device again.
+The installation process will start and it will install EVE on the NVMe automatically.
+
+> **:warning: WARNING !**
+>
+> The installation process will wipe off both eMMC and NVMe. Any data present on these devices will be lost.
+
+If the installation succeed, the device will be powered off. Remove the USB Stick and power on the device again.
 
 ### Running a live image on the ThinkEdge SE70
 
