@@ -97,6 +97,7 @@ type middlewareKeys int
 
 const (
 	patchEnvelopesContextKey middlewareKeys = iota
+	appUUIDContextKey
 )
 
 // ServeHTTP for networkHandler provides a json return
@@ -581,6 +582,11 @@ func HandlePatchDescription(z *zedrouter) func(http.ResponseWriter, *http.Reques
 	return func(w http.ResponseWriter, r *http.Request) {
 		// WithPatchEnvelopesByIP middleware returns envelopes which are more than 0
 		envelopes := r.Context().Value(patchEnvelopesContextKey).(types.PatchEnvelopeInfoList)
+		appUUID := r.Context().Value(appUUIDContextKey).(string)
+
+		for _, pe := range envelopes.Envelopes {
+			z.increasePatchEnvelopeStatusCounter(appUUID, pe)
+		}
 
 		b, err := patchEnvelopesJSONForAppInstance(envelopes)
 		if err != nil {
@@ -607,6 +613,7 @@ func HandlePatchDownload(z *zedrouter) func(http.ResponseWriter, *http.Request) 
 	return func(w http.ResponseWriter, r *http.Request) {
 		// WithPatchEnvelopesByIP middleware returns envelopes which are more than 0
 		envelopes := r.Context().Value(patchEnvelopesContextKey).(types.PatchEnvelopeInfoList)
+		appUUID := r.Context().Value(appUUIDContextKey).(string)
 
 		patchID := chi.URLParam(r, "patch")
 		if patchID == "" {
@@ -630,6 +637,7 @@ func HandlePatchDownload(z *zedrouter) func(http.ResponseWriter, *http.Request) 
 			}
 
 			http.ServeFile(w, r, zipFilename)
+			z.increasePatchEnvelopeDownloadCounter(appUUID, *e)
 
 			err = os.Remove(zipFilename)
 			if err != nil {
@@ -650,6 +658,7 @@ func HandlePatchFileDownload(z *zedrouter) func(http.ResponseWriter, *http.Reque
 	return func(w http.ResponseWriter, r *http.Request) {
 		// WithPatchEnvelopesByIP middleware returns envelopes which are more than 0
 		envelopes := r.Context().Value(patchEnvelopesContextKey).(types.PatchEnvelopeInfoList)
+		appUUID := r.Context().Value(appUUIDContextKey).(string)
 
 		patchID := chi.URLParam(r, "patch")
 		if patchID == "" {
@@ -666,6 +675,7 @@ func HandlePatchFileDownload(z *zedrouter) func(http.ResponseWriter, *http.Reque
 		if e != nil {
 			if idx := types.CompletedBinaryBlobIdxByName(e.BinaryBlobs, fileName); idx != -1 {
 				http.ServeFile(w, r, e.BinaryBlobs[idx].URL)
+				z.increasePatchEnvelopeDownloadCounter(appUUID, *e)
 				return
 			} else {
 				sendError(w, http.StatusNotFound, "file is not found")
@@ -684,7 +694,6 @@ func HandlePatchFileDownload(z *zedrouter) func(http.ResponseWriter, *http.Reque
 func WithPatchEnvelopesByIP(z *zedrouter) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-
 			remoteIP := net.ParseIP(strings.Split(r.RemoteAddr, ":")[0])
 			anStatus := z.lookupAppNetworkStatusByAppIP(remoteIP)
 			if anStatus == nil {
@@ -702,6 +711,7 @@ func WithPatchEnvelopesByIP(z *zedrouter) func(http.Handler) http.Handler {
 			}
 
 			ctx := context.WithValue(r.Context(), patchEnvelopesContextKey, accessablePe)
+			ctx = context.WithValue(ctx, appUUIDContextKey, appUUID.String())
 
 			r = r.WithContext(ctx)
 			next.ServeHTTP(w, r)

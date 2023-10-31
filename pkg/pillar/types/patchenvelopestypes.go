@@ -50,7 +50,7 @@ func (pe *PatchEnvelopeInfo) Size() (size int64) {
 
 // Key for pubsub
 func (pe *PatchEnvelopeInfo) Key() string {
-	return pe.PatchID
+	return pe.PatchID + "v" + pe.Version
 }
 
 // PatchEnvelopeState repeats constants from patch_envelope.pb.go from info API
@@ -125,4 +125,25 @@ type BinaryBlobVolumeRef struct {
 	// ArtifactMetadata is generic info i.e. user info, desc etc.
 	ArtifactMetadata string `json:"artifactMetaData"`
 	ImageID          string `json:"imageId"`
+}
+
+// PatchEnvelopeUsage stores information on how patchEnvelopes are
+// used by App Instances to send this information back to controller
+// reflects ZInfoPatchEnvelopeUsage proto message
+type PatchEnvelopeUsage struct {
+	AppUUID string
+	PatchID string
+	Version string
+	// count the number of times app instance called patch APIs
+	PatchAPICallCount uint64
+	// count the number of times app instance actually downloaded
+	// whole patch envelope or part of it
+	DownloadCount uint64
+}
+
+// Key for pubsub
+func (pe *PatchEnvelopeUsage) Key() string {
+	return "patchEnvelopeUsage:" + pe.PatchID +
+		"-v-" + pe.Version +
+		"-app-" + pe.AppUUID
 }
