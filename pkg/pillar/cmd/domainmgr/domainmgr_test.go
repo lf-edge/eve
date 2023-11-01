@@ -18,6 +18,7 @@ import (
 	"testing"
 
 	"github.com/lf-edge/eve/pkg/pillar/base"
+	"github.com/lf-edge/eve/pkg/pillar/utils/cloudconfig"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 )
@@ -104,7 +105,16 @@ func decodeAndParseEnvVariablesFromCloudInit(ciStr string) (map[string]string, e
 		return nil, fmt.Errorf("base64 decode failed %s", err)
 	}
 
-	return parseEnvVariablesFromCloudInit(string(ud))
+	if cloudconfig.IsCloudConfig(string(ud)) { // treat like the cloud-init config
+		cc, err := cloudconfig.ParseCloudConfig(string(ud))
+		if err != nil {
+			return nil, err
+		}
+		return parseEnvVariablesFromCloudInit(cc.RunCmd)
+	} else { // treat like the key value map for envs (old syntax)
+		envPairs := strings.Split(string(ud), "\n")
+		return parseEnvVariablesFromCloudInit(envPairs)
+	}
 }
 
 // Definitions of various cloud-init multi-part messages

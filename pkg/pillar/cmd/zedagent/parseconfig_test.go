@@ -42,7 +42,7 @@ func initGetConfigCtx(g *GomegaWithT) *getconfigContext {
 	})
 	pubPatchEnvelopes, err := ps.NewPublication(pubsub.PublicationOptions{
 		AgentName: agentName,
-		TopicType: types.PatchEnvelopes{},
+		TopicType: types.PatchEnvelopeInfoList{},
 	})
 	g.Expect(err).To(BeNil())
 	getconfigCtx := &getconfigContext{
@@ -1314,22 +1314,23 @@ func TestParsePatchEnvelope(t *testing.T) {
 	// Impl because we have to change filepath of persist cache for testing
 	parsePatchEnvelopesImpl(getconfigCtx, config, persistCacheFolder)
 
-	patchEnvelopes, err := getconfigCtx.pubPatchEnvelopeInfo.Get("zedagent")
+	patchEnvelopes, err := getconfigCtx.pubPatchEnvelopeInfo.Get("global")
 
 	g.Expect(err).To(BeNil())
-	pes, ok := patchEnvelopes.(types.PatchEnvelopes)
+	pes, ok := patchEnvelopes.(types.PatchEnvelopeInfoList)
 	g.Expect(ok).To(BeTrue())
 	shaBytes := sha256.Sum256([]byte(fileData))
-	g.Expect(pes.Get(appU1)).To(BeEquivalentTo([]types.PatchEnvelopeInfo{
+	g.Expect(pes.Get(appU1).Envelopes).To(BeEquivalentTo([]types.PatchEnvelopeInfo{
 		{
 			PatchID:     patchID,
 			AllowedApps: []string{appU1, appU2},
 			BinaryBlobs: []types.BinaryBlobCompleted{
 				{
-					FileName:     inlineFileName,
-					FileSha:      hex.EncodeToString(shaBytes[:]),
-					FileMetadata: fileMetadata,
-					URL:          filepath.Join(persistCacheFolder, inlineFileName),
+					FileName:         inlineFileName,
+					FileSha:          hex.EncodeToString(shaBytes[:]),
+					FileMetadata:     fileMetadata,
+					ArtifactMetadata: artiactMetadata,
+					URL:              filepath.Join(persistCacheFolder, inlineFileName),
 				},
 			},
 		},

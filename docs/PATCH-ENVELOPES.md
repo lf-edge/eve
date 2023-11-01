@@ -33,4 +33,4 @@ optional meta data. They are part of Edge Device configuration.
 ## How to use Patch Envelopes
 
 When Patch Envelopes are created on controller and exposed to EVE via API, app instance can access
-Patch Envelopes available to it from meta-data server using API defined in [metadata server](.ECO-METADATA.md)
+Patch Envelopes available to it from meta-data server using API defined in [metadata server](ECO-METADATA.md)

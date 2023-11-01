@@ -122,7 +122,7 @@ func (s *SocketDriver) Publisher(global bool, name, topic string, persistent boo
 			sock, err := net.Dial("unixpacket", sockName)
 			if err == nil {
 				sock.Close()
-				s.Log.Fatalf("Can not publish %s since it it already used",
+				s.Log.Fatalf("Cannot publish %s since it is already used",
 					sockName)
 			}
 			if err := os.Remove(sockName); err != nil {

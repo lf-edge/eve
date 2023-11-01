@@ -166,7 +166,7 @@ func doAppNet(status, appstr string, isSummary bool) string {
 		_ = json.Unmarshal(retbytes, &deviceNetStatus)
 	}
 
-	for _, item := range appStatus.UnderlayNetworkList {
+	for _, item := range appStatus.AppNetAdapterList {
 		niUUID := item.Network.String()
 		// Try to obtain network instance status data.
 		var niStatus types.NetworkInstanceStatus
@@ -526,7 +526,7 @@ func getAppIPs(status string) ([]string, uuid.UUID) {
 	_ = json.Unmarshal([]byte(status), &appStatus)
 	var appIPs []string
 	appUUID := appStatus.UUIDandVersion.UUID
-	for _, item := range appStatus.UnderlayNetworkList {
+	for _, item := range appStatus.AppNetAdapterList {
 		if item.AllocatedIPv4Addr != nil {
 			appIPs = append(appIPs, item.AllocatedIPv4Addr.String())
 		}

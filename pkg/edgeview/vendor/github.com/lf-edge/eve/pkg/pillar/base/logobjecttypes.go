@@ -136,6 +136,10 @@ const (
 	NetworkInstanceMetricsLogType LogObjectType = "network_instance_metrics"
 	// NetworkMetricsLogType:
 	NetworkMetricsLogType LogObjectType = "network_metrics"
+	// WwanConfigLogType:
+	WwanConfigLogType LogObjectType = "wwan_config"
+	// WwanStatusLogType:
+	WwanStatusLogType LogObjectType = "wwan_status"
 	// WwanMetricsLogType:
 	WwanMetricsLogType LogObjectType = "wwan_metrics"
 	// WwanLocationInfoLogType:

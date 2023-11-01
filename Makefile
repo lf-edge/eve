@@ -161,7 +161,6 @@ INITRD_IMG=$(INSTALLER)/initrd.img
 INSTALLER_IMG=$(INSTALLER)/installer.img
 VERIFICATION_IMG=$(INSTALLER)/verification.img
 PERSIST_IMG=$(INSTALLER)/persist.img
-KERNEL_IMG=$(INSTALLER)/kernel
 IPXE_IMG=$(INSTALLER)/ipxe.efi
 EFI_PART=$(INSTALLER)/EFI
 BOOT_PART=$(INSTALLER)/boot
@@ -212,10 +211,7 @@ ifeq ($(UNAME_S)_$(ZARCH),Darwin_arm64)
 QEMU_DEFAULT_MACHINE=virt,
 endif
 QEMU_ACCEL_Y_Darwin_amd64=-machine q35,accel=hvf,usb=off -cpu kvm64,kvmclock=off
-# NOTE: -vmx-true-ctls and -vmx-secondary-ctls is used as a workaround to
-# mitigate QEMU crashes due to MSR access errors like the following:
-# "error: failed to set MSR 0x48b to 0x137bff00000000"
-QEMU_ACCEL_Y_Linux_amd64=-machine q35,accel=kvm,usb=off,dump-guest-core=off -cpu host,-vmx-true-ctls,-vmx-secondary-ctls,invtsc=on,kvmclock=off -machine kernel-irqchip=split -device intel-iommu,intremap=on,caching-mode=on,aw-bits=48
+QEMU_ACCEL_Y_Linux_amd64=-machine q35,accel=kvm,usb=off,dump-guest-core=off -cpu host,invtsc=on,kvmclock=off -machine kernel-irqchip=split -device intel-iommu,intremap=on,caching-mode=on,aw-bits=48
 # -machine virt,gic_version=3
 QEMU_ACCEL_Y_Darwin_arm64=-machine $(QEMU_DEFAULT_MACHINE)accel=hvf,usb=off -cpu host
 QEMU_ACCEL_Y_Linux_arm64=-machine virt,accel=kvm,usb=off,dump-guest-core=off -cpu host
@@ -230,6 +226,7 @@ QEMU_OPTS_NET2=192.168.2.0/24
 QEMU_OPTS_NET2_FIRST_IP=192.168.2.10
 
 QEMU_MEMORY:=4096
+QEMU_EVE_SERIAL?=31415926
 
 PFLASH_amd64=y
 PFLASH=$(PFLASH_$(ZARCH))
@@ -243,8 +240,8 @@ QEMU_TPM_DEVICE_riscv64=tpm-tis
 QEMU_OPTS_TPM_Y_$(ZARCH)=-chardev socket,id=chrtpm,path=$(CURRENT_SWTPM)/swtpm-sock -tpmdev emulator,id=tpm0,chardev=chrtpm -device $(QEMU_TPM_DEVICE_$(ZARCH)),tpmdev=tpm0
 QEMU_OPTS_TPM=$(QEMU_OPTS_TPM_$(TPM:%=Y)_$(ZARCH))
 
-QEMU_OPTS_amd64=-smbios type=1,serial=31415926
-QEMU_OPTS_arm64=-smbios type=1,serial=31415926 -drive file=fat:rw:$(dir $(DEVICETREE_DTB)),label=QEMU_DTB,format=vvfat
+QEMU_OPTS_amd64=-smbios type=1,serial=$(QEMU_EVE_SERIAL)
+QEMU_OPTS_arm64=-smbios type=1,serial=$(QEMU_EVE_SERIAL) -drive file=fat:rw:$(dir $(DEVICETREE_DTB)),label=QEMU_DTB,format=vvfat
 QEMU_OPTS_riscv64=-kernel $(UBOOT_IMG)/u-boot.bin -device virtio-blk,drive=uefi-disk
 QEMU_OPTS_COMMON= -m $(QEMU_MEMORY) -smp 4 -display none $(QEMU_OPTS_BIOS) \
         -serial mon:stdio      \
@@ -396,6 +393,7 @@ currentversion:
 test: $(LINUXKIT) test-images-patches | $(DIST)
 	@echo Running tests on $(GOMODULE)
 	$(QUIET)$(DOCKER_GO) "gotestsum --jsonfile $(DOCKER_DIST)/results.json --junitfile $(DOCKER_DIST)/results.xml --raw-command -- go test -coverprofile=coverage.txt -covermode=atomic -json ./..." $(GOTREE) $(GOMODULE)
+	$(QUIET)$(DOCKER_GO) "cd \"$(GOTREE)\"; find ./ -type d \! -path ./vendor/\* -exec go test -fuzz=^Fuzz -run=^Fuzz -fuzztime=30s "{}" \;" $(GOTREE) $(GOMODULE)
 	$(QUIET): $@: Succeeded
 
 # wrap command into DOCKER_GO and propagate it to the pillar's Makefile
@@ -414,7 +412,7 @@ clean:
 yetus:
 	@echo Running yetus
 	mkdir -p yetus-output
-	docker run -it --rm -v $(CURDIR):/src:delegated,z ghcr.io/apache/yetus:0.14.1 \
+	docker run --rm -v $(CURDIR):/src:delegated,z ghcr.io/apache/yetus:0.14.1 \
 		--basedir=/src \
 		--dirty-workspace \
 		--empty-patch \
@@ -454,12 +452,11 @@ $(BOOT_PART): PKG=u-boot
 $(INITRD_IMG): PKG=mkimage-raw-efi
 $(INSTALLER_IMG): PKG=mkimage-raw-efi
 $(VERIFICATION_IMG): PKG=mkverification-raw-efi
-$(KERNEL_IMG): PKG=kernel
 $(IPXE_IMG): PKG=ipxe
 $(BIOS_IMG): PKG=uefi
 $(UBOOT_IMG): PKG=u-boot
 $(BSP_IMX_PART): PKG=bsp-imx
-$(EFI_PART) $(BOOT_PART) $(INITRD_IMG) $(INSTALLER_IMG) $(VERIFICATION_IMG) $(KERNEL_IMG) $(IPXE_IMG) $(BIOS_IMG) $(UBOOT_IMG) $(BSP_IMX_PART): $(LINUXKIT) | $(INSTALLER)
+$(EFI_PART) $(BOOT_PART) $(INITRD_IMG) $(INSTALLER_IMG) $(VERIFICATION_IMG) $(IPXE_IMG) $(BIOS_IMG) $(UBOOT_IMG) $(BSP_IMX_PART): $(LINUXKIT) | $(INSTALLER)
 	mkdir -p $(dir $@)
 	$(LINUXKIT) pkg build --pull --platforms linux/$(ZARCH) pkg/$(PKG) # running linuxkit pkg build _without_ force ensures that we either pull it down or build it.
 	cd $(dir $@) && $(LINUXKIT) cache export --arch $(DOCKER_ARCH_TAG) --format filesystem --outfile - $(shell $(LINUXKIT) pkg show-tag pkg/$(PKG)) | tar xvf - $(notdir $@)
@@ -606,7 +603,6 @@ linuxkit: $(LINUXKIT)
 build-vm: $(BUILD_VM)
 initrd: $(INITRD_IMG)
 installer-img: $(INSTALLER_IMG)
-kernel: $(KERNEL_IMG)
 config: $(CONFIG_IMG)		; $(QUIET): "$@: Succeeded, CONFIG_IMG=$(CONFIG_IMG)"
 ssh-key: $(SSH_KEY)
 rootfs: $(ROOTFS_TAR) $(ROOTFS_IMG) current
@@ -724,7 +720,7 @@ $(INSTALLER).iso: $(EFI_PART) $(ROOTFS_IMG) $(INITRD_IMG) $(INSTALLER_IMG) $(CON
 	./tools/makeiso.sh $| $@ installer
 	$(QUIET): $@: Succeeded
 
-$(INSTALLER).net: $(EFI_PART) $(ROOTFS_IMG) $(INITRD_IMG) $(INSTALLER_IMG) $(CONFIG_IMG) $(PERSIST_IMG) $(KERNEL_IMG) | $(INSTALLER)
+$(INSTALLER).net: $(EFI_PART) $(ROOTFS_IMG) $(INITRD_IMG) $(INSTALLER_IMG) $(CONFIG_IMG) $(PERSIST_IMG) | $(INSTALLER)
 	./tools/makenet.sh $| installer.img $@
 	$(QUIET): $@: Succeeded
 
@@ -743,7 +739,7 @@ $(VERIFICATION).raw: $(BOOT_PART) $(EFI_PART) $(ROOTFS_IMG) $(INITRD_IMG) $(VERI
 	./tools/makeflash.sh "mkverification-raw-efi" -C 850 $| $@ "conf_win verification inventory_win"
 	$(QUIET): $@: Succeeded
 
-$(VERIFICATION).net: $(EFI_PART) $(ROOTFS_IMG) $(INITRD_IMG) $(VERIFICATION_IMG) $(CONFIG_IMG) $(PERSIST_IMG) $(KERNEL_IMG) | $(VERIFICATION)
+$(VERIFICATION).net: $(EFI_PART) $(ROOTFS_IMG) $(INITRD_IMG) $(VERIFICATION_IMG) $(CONFIG_IMG) $(PERSIST_IMG) | $(VERIFICATION)
 	./tools/prepare-platform.sh "$(PLATFORM)" "$(BUILD_DIR)" "$(VERIFICATION)" || :
 	./tools/makenet.sh $| verification.img $@
 

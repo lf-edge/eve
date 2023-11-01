@@ -447,6 +447,19 @@ func (aa *AssignableAdapters) CheckBadAssignmentGroups(log *base.LogObject, PCIS
 			if ib.AssignmentGroup == "" || ib2.AssignmentGroup == ib.AssignmentGroup {
 				continue
 			}
+			if ib.UsbAddr != "" || ib2.UsbAddr != "" {
+				usbAddr1 := strings.TrimLeft(ib.UsbAddr, "0")
+				usbAddr2 := strings.TrimLeft(ib2.UsbAddr, "0")
+				if usbAddr1 == usbAddr2 {
+					err := fmt.Errorf("CheckBadAssignmentGroup: %s same USB address as %s; UsbAddr %s vs %s",
+						ib2.Ifname, ib.Ifname, usbAddr1, usbAddr2)
+					log.Error(err)
+					ib.Error = err.Error()
+					ib.ErrorTime = time.Now()
+					changed = true
+				}
+				continue
+			}
 			if PCISameController != nil && PCISameController(ib.PciLong, ib2.PciLong) {
 				err := fmt.Errorf("CheckBadAssignmentGroup: %s same PCI controller as %s; pci long %s vs %s",
 					ib2.Ifname, ib.Ifname, ib2.PciLong, ib.PciLong)
@@ -479,6 +492,9 @@ func (aa *AssignableAdapters) ExpandControllers(log *base.LogObject, list []*IoB
 			if already {
 				log.Tracef("ExpandController already %s long %s",
 					ib2.Phylabel, ib2.PciLong)
+				continue
+			}
+			if ib.UsbAddr != "" || ib2.UsbAddr != "" {
 				continue
 			}
 			if PCISameController != nil && PCISameController(ib.PciLong, ib2.PciLong) {

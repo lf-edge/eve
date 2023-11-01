@@ -1,6 +1,7 @@
-FROM lfedge/eve-alpine:9fb9b9cbf7d90066a70e4704d04a6fe248ff52bb as build
+# syntax=docker/dockerfile-upstream:1.5.0-rc2-labs
+FROM lfedge/eve-alpine:c61659241a11346dfb5a595d1217d64381df3adb as build
 
-ENV BUILD_PKGS tar make
+ENV BUILD_PKGS tar make binutils zstd
 RUN eve-alpine-deploy.sh
 
 ENV WIRELESS_REGDB_VERSION 2022.06.06
@@ -9,6 +10,20 @@ ADD ${WIRELESS_REGDB_REPO}-${WIRELESS_REGDB_VERSION}.tar.gz /wireless-regdb.tar.
 RUN mkdir /wireless-regdb &&\
     tar -xz --strip-components=1 -C /wireless-regdb -f /wireless-regdb.tar.gz &&\
     cp /wireless-regdb/regulatory.db /wireless-regdb/regulatory.db.p7s /lib/firmware
+
+# Nvidia Firmware
+ENV NVIDIA_FW_TEGRA nvidia-l4t-firmware_35.1.0-20220810203728_arm64.deb
+ADD https://repo.download.nvidia.com/jetson/t194/pool/main/n/nvidia-l4t-firmware/${NVIDIA_FW_TEGRA} /${NVIDIA_FW_TEGA}
+RUN mkdir -p /nvidia-firmware && \
+    cd /nvidia-firmware ;\
+    ar x ../"${NVIDIA_FW_TEGRA}" ;\
+    zstd -d < data.tar.zst > data.tar ;\
+    tar -xvf data.tar -C ./ ;\
+    rm data.tar.zst data.tar
+
+# RTL8822ce firmware
+ENV RTL8822_FW_VERSION ca9f4e199efbf8c377e8a1769ba5b05b23f92c82
+ADD https://github.com/lwfinger/rtw88.git#${RTL8822_FW_VERSION} /rtw88
 
 ENV LINUX_FIRMWARE_VERSION 20220708
 ENV LINUX_FIRMWARE_URL https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/snapshot/linux-firmware
@@ -61,8 +76,6 @@ COPY --from=build /lib/firmware/iwlwifi-9260* /lib/firmware/
 # AX210 160MHZ
 COPY --from=build /lib/firmware/iwlwifi-ty-a0-gf-a0-59.ucode /lib/firmware/
 COPY --from=build /lib/firmware/intel/ibt-0041-0041* /lib/firmware/intel/
-# NVidia Jetson
-COPY --from=build /lib/firmware/nvidia/tegra210 /lib/firmware/nvidia/tegra210
 # Dell Edge Gateway 300x firmware
 COPY --from=build /lib/firmware/rsi* /lib/firmware/rsi/
 # Intel Corporation Cannon Point-LP CNVi [Wireless-AC] (rev 30)
@@ -82,6 +95,26 @@ COPY --from=build /lib/firmware/ath10k /lib/firmware/ath10k
 COPY --from=build /lib/firmware/ti-connectivity /lib/firmware/ti-connectivity
 # to keep compatibility with the current layout
 RUN cp --symbolic-link /lib/firmware/brcm/* /lib/firmware
+# Nvidia Jetson Nano + Xavier NX
+COPY --from=build /nvidia-firmware/lib/firmware/bcm4354.hcd /lib/firmware/
+COPY --from=build /nvidia-firmware/lib/firmware/brcm/fw_bcmdhd.bin /lib/firmware/brcm/
+COPY --from=build /nvidia-firmware/lib/firmware/brcm/nvram.txt /lib/firmware/brcm/
+COPY --from=build /nvidia-firmware/lib/firmware/display-t234-dce.bin /lib/firmware/
+COPY --from=build /nvidia-firmware/lib/firmware/nv-BT-Version /lib/firmware/
+COPY --from=build /nvidia-firmware/lib/firmware/nvhost_nvdla010.fw /lib/firmware/
+COPY --from=build /nvidia-firmware/lib/firmware/nvhost_nvdla020.fw /lib/firmware/
+COPY --from=build /nvidia-firmware/lib/firmware/nvhost_ofa012.fw /lib/firmware/
+COPY --from=build /nvidia-firmware/lib/firmware/nvhost_vic042.fw /lib/firmware/
+COPY --from=build /nvidia-firmware/lib/firmware/nvpva_010.fw /lib/firmware/
+COPY --from=build /nvidia-firmware/lib/firmware/nvpva_020.fw /lib/firmware/
+COPY --from=build /nvidia-firmware/lib/firmware/nv-WIFI-Version /lib/firmware/
+COPY --from=build /nvidia-firmware/lib/firmware/nvidia/tegra194 /lib/firmware/nvidia/tegra194
+COPY --from=build /nvidia-firmware/lib/firmware/ga10b /lib/firmware/ga10b
+COPY --from=build /nvidia-firmware/lib/firmware/gv11b /lib/firmware/gv11b
+COPY --from=build /nvidia-firmware/lib/firmware/tegra19x /lib/firmware/tegra19x
+COPY --from=build /nvidia-firmware/lib/firmware/tegra23x /lib/firmware/tegra23x
+COPY --from=build /lib/firmware/nvidia/tegra210 /lib/firmware/nvidia/tegra210
+COPY --from=build /rtw88/*.bin /lib/firmware/rtw88/
 
 FROM scratch
 ENTRYPOINT []

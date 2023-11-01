@@ -3,39 +3,28 @@
 
 package types
 
-import (
-	"archive/zip"
-	"encoding/json"
-	"io"
-	"os"
-	"path/filepath"
-)
-
-// PatchEnvelopes is a wrapper
-// to send patch envelopes
-type PatchEnvelopes struct {
+// PatchEnvelopeInfoList will be shared with zedrouter after parsing
+// in zedagent
+type PatchEnvelopeInfoList struct {
 	Envelopes []PatchEnvelopeInfo
 }
 
 // Get returns list of patch envelopes, which are available to appUUID
-func (pe *PatchEnvelopes) Get(appUUID string) []PatchEnvelopeInfo {
-	var res []PatchEnvelopeInfo
+func (pe *PatchEnvelopeInfoList) Get(appUUID string) PatchEnvelopeInfoList {
+	var result []PatchEnvelopeInfo
 
 	for _, envelope := range pe.Envelopes {
 		for _, allowedUUID := range envelope.AllowedApps {
 			if allowedUUID == appUUID {
-				res = append(res, envelope)
+				result = append(result, envelope)
 				break
 			}
 		}
 	}
 
-	return res
-}
-
-// Key for pubsub
-func (PatchEnvelopes) Key() string {
-	return "zedagent"
+	return PatchEnvelopeInfoList{
+		Envelopes: result,
+	}
 }
 
 // PatchEnvelopeInfo - information
@@ -47,34 +36,14 @@ type PatchEnvelopeInfo struct {
 	VolumeRefs  []BinaryBlobVolumeRef
 }
 
-// since we use json in pubsub we cannot use json - tag
-// and therefore we need some representational structure
-// for PatchEnvelopeInfo.
-type peInfoToDisplay struct {
-	PatchID     string
-	BinaryBlobs []BinaryBlobCompleted
-	VolumeRefs  []BinaryBlobVolumeRef
-}
-
-// PatchEnvelopesJSONForAppInstance returns json representation
-// of Patch Envelopes list which are shown to app instances
-func PatchEnvelopesJSONForAppInstance(pe []PatchEnvelopeInfo) ([]byte, error) {
-	toDisplay := make([]peInfoToDisplay, len(pe))
-
-	for i, envelope := range pe {
-		toDisplay[i] = peInfoToDisplay{
-			PatchID:     envelope.PatchID,
-			BinaryBlobs: envelope.BinaryBlobs,
-			VolumeRefs:  envelope.VolumeRefs,
-		}
-	}
-
-	return json.Marshal(toDisplay)
+// Key for pubsub
+func (pe *PatchEnvelopeInfoList) Key() string {
+	return "global"
 }
 
 // FindPatchEnvelopeByID returns patch envelope with given patchId
-func FindPatchEnvelopeByID(pe []PatchEnvelopeInfo, patchID string) *PatchEnvelopeInfo {
-	for _, pe := range pe {
+func (pe *PatchEnvelopeInfoList) FindPatchEnvelopeByID(patchID string) *PatchEnvelopeInfo {
+	for _, pe := range pe.Envelopes {
 		if pe.PatchID == patchID {
 			return &pe
 		}
@@ -82,50 +51,16 @@ func FindPatchEnvelopeByID(pe []PatchEnvelopeInfo, patchID string) *PatchEnvelop
 	return nil
 }
 
-// GetZipArchive archives list of patch envelopes in a given path and returns
-// full path to zip archive
-func GetZipArchive(root string, pe PatchEnvelopeInfo) (string, error) {
-	zipFilename := filepath.Join(root, pe.PatchID+".zip")
-	zipFile, err := os.Create(zipFilename)
-	if err != nil {
-		return "", err
-	}
-	defer zipFile.Close()
-
-	zipWriter := zip.NewWriter(zipFile)
-	defer zipWriter.Close()
-
-	for _, b := range pe.BinaryBlobs {
-		// We only want to archive binary blobs which are ready
-		file, err := os.Open(b.URL)
-		if err != nil {
-			return "", err
-		}
-		defer file.Close()
-
-		baseName := filepath.Base(b.URL)
-		zipEntry, err := zipWriter.Create(baseName)
-		if err != nil {
-			return "", err
-		}
-
-		_, err = io.Copy(zipEntry, file)
-		if err != nil {
-			return "", err
-		}
-
-	}
-
-	return zipFilename, nil
-}
-
 // BinaryBlobCompleted is representation of
 // binary blob ready to be downloaded by app instance
 type BinaryBlobCompleted struct {
-	FileName     string `json:"fileName"`
-	FileSha      string `json:"fileSha"`
+	FileName string `json:"fileName"`
+	FileSha  string `json:"fileSha"`
+	// FileMetadata is related to file, i.e. env variables, cli arguments
 	FileMetadata string `json:"fileMetaData"`
-	URL          string `json:"url"` //nolint:var-naming
+	// ArtifactMetadata is generic info i.e. user info, desc etc.
+	ArtifactMetadata string `json:"artifactMetaData"`
+	URL              string `json:"url"` //nolint:var-naming
 }
 
 // CompletedBinaryBlobIdxByName returns index of element in blobs list
@@ -143,8 +78,11 @@ func CompletedBinaryBlobIdxByName(blobs []BinaryBlobCompleted, name string) int 
 // external binary blobs, which has not yet been
 // downloaded
 type BinaryBlobVolumeRef struct {
-	FileName     string `json:"fileName"`
-	ImageName    string `json:"imageName"`
+	FileName  string `json:"fileName"`
+	ImageName string `json:"imageName"`
+	// FileMetadata is related to file, i.e. env variables, cli arguments
 	FileMetadata string `json:"fileMetaData"`
-	ImageID      string `json:"imageId"`
+	// ArtifactMetadata is generic info i.e. user info, desc etc.
+	ArtifactMetadata string `json:"artifactMetaData"`
+	ImageID          string `json:"imageId"`
 }

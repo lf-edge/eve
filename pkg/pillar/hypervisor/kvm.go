@@ -351,19 +351,12 @@ const qemuSerialTemplate = `
   chardev = "charserial-usr{{.ID}}"
 `
 
-const qemuUsbHostTemplate = `
-[device]
-  driver = "usb-host"
-  hostbus = "{{.UsbBus}}"
-  hostaddr = "{{.UsbDevAddr}}"
-`
-
 const kvmStateDir = "/run/hypervisor/kvm/"
 const sysfsVfioPciBind = "/sys/bus/pci/drivers/vfio-pci/bind"
 const sysfsPciDriversProbe = "/sys/bus/pci/drivers_probe"
 const vfioDriverPath = "/sys/bus/pci/drivers/vfio-pci"
 
-// KVM domains map 1-1 to anchor device model UNIX processes (qemu or firecracker)
+// KvmContext is a KVM domains map 0-1 to anchor device model UNIX processes (qemu or firecracker)
 // For every anchor process we maintain the following entry points in the
 // /run/hypervisor/kvm/DOMAIN_NAME:
 //
@@ -371,10 +364,10 @@ const vfioDriverPath = "/sys/bus/pci/drivers/vfio-pci"
 //	 qmp - UNIX domain socket that allows us to talk to anchor process
 //	cons - symlink to /dev/pts/X that allows us to talk to the serial console of the domain
 //
-// In addition to that, we also maintain DOMAIN_NAME -> PID mapping in kvmContext, so we don't
+// In addition to that, we also maintain DOMAIN_NAME -> PID mapping in KvmContext, so we don't
 // have to look things up in the filesystem all the time (this also allows us to filter domains
 // that may be created by others)
-type kvmContext struct {
+type KvmContext struct {
 	ctrdContext
 	// for now the following is statically configured and can not be changed per domain
 	devicemodel  string
@@ -397,7 +390,7 @@ func newKvm() Hypervisor {
 	// -cpu IvyBridge-IBRS,ss=on,vmx=on,movbe=on,hypervisor=on,arat=on,tsc_adjust=on,mpx=on,rdseed=on,smap=on,clflushopt=on,sha-ni=on,umip=on,md-clear=on,arch-capabilities=on,xsaveopt=on,xsavec=on,xgetbv1=on,xsaves=on,pdpe1gb=on,3dnowprefetch=on,avx=off,f16c=off,hv_time,hv_relaxed,hv_vapic,hv_spinlocks=0x1fff
 	switch runtime.GOARCH {
 	case "arm64":
-		return kvmContext{
+		return KvmContext{
 			ctrdContext:  *ctrdCtx,
 			devicemodel:  "virt",
 			dmExec:       "/usr/lib/xen/bin/qemu-system-aarch64",
@@ -406,7 +399,7 @@ func newKvm() Hypervisor {
 			dmFmlCPUArgs: []string{"-cpu", "host"},
 		}
 	case "amd64":
-		return kvmContext{
+		return KvmContext{
 			//nolint:godox // FIXME: Removing "-overcommit", "mem-lock=on", "-overcommit" for now, revisit it later as part of resource partitioning
 			ctrdContext:  *ctrdCtx,
 			devicemodel:  "pc-q35-3.1",
@@ -419,7 +412,8 @@ func newKvm() Hypervisor {
 	return nil
 }
 
-func (ctx kvmContext) GetCapabilities() (*types.Capabilities, error) {
+// GetCapabilities returns capabilities of the kvm hypervisor
+func (ctx KvmContext) GetCapabilities() (*types.Capabilities, error) {
 	if ctx.capabilities != nil {
 		return ctx.capabilities, nil
 	}
@@ -436,7 +430,7 @@ func (ctx kvmContext) GetCapabilities() (*types.Capabilities, error) {
 	return ctx.capabilities, nil
 }
 
-func (ctx kvmContext) checkIOVirtualisation() (bool, error) {
+func (ctx KvmContext) checkIOVirtualisation() (bool, error) {
 	f, err := os.Open("/sys/kernel/iommu_groups")
 	if err == nil {
 		files, err := f.Readdirnames(0)
@@ -450,11 +444,13 @@ func (ctx kvmContext) checkIOVirtualisation() (bool, error) {
 	return false, err
 }
 
-func (ctx kvmContext) Name() string {
+// Name returns the name of the kvm hypervisor
+func (ctx KvmContext) Name() string {
 	return KVMHypervisorName
 }
 
-func (ctx kvmContext) Task(status *types.DomainStatus) types.Task {
+// Task returns either the kvm context or the containerd context depending on the domain status
+func (ctx KvmContext) Task(status *types.DomainStatus) types.Task {
 	if status.VirtualizationMode == types.NOHYPER {
 		return ctx.ctrdContext
 	}
@@ -619,7 +615,8 @@ func vmmOverhead(domainName string, config types.DomainConfig,
 	return overhead, nil
 }
 
-func (ctx kvmContext) Setup(status types.DomainStatus, config types.DomainConfig,
+// Setup sets up kvm
+func (ctx KvmContext) Setup(status types.DomainStatus, config types.DomainConfig,
 	aa *types.AssignableAdapters, globalConfig *types.ConfigItemValueMap, file *os.File) error {
 
 	diskStatusList := status.DiskStatusList
@@ -675,7 +672,8 @@ func (ctx kvmContext) Setup(status types.DomainStatus, config types.DomainConfig
 	return nil
 }
 
-func (ctx kvmContext) CreateDomConfig(domainName string, config types.DomainConfig, status types.DomainStatus,
+// CreateDomConfig creates a domain config (a qemu config file, typically named something like xen-%d.cfg)
+func (ctx KvmContext) CreateDomConfig(domainName string, config types.DomainConfig, status types.DomainStatus,
 	diskStatusList []types.DiskStatus, aa *types.AssignableAdapters, file *os.File) error {
 	tmplCtx := struct {
 		Machine string
@@ -748,8 +746,6 @@ func (ctx kvmContext) CreateDomConfig(domainName string, config types.DomainConf
 
 	// Gather all PCI assignments into a single line
 	var pciAssignments []pciDevice
-	// Gather all USB assignments into a single line
-	var usbAssignments []string
 	// Gather all serial assignments into a single line
 	var serialAssignments []string
 
@@ -770,7 +766,7 @@ func (ctx kvmContext) CreateDomConfig(domainName string, config types.DomainConf
 					ib.UsedByUUID, adapter.Type, adapter.Name,
 					domainName)
 			}
-			if ib.PciLong != "" {
+			if ib.PciLong != "" && ib.UsbAddr == "" {
 				logrus.Infof("Adding PCI device <%v>\n", ib.PciLong)
 				tap := pciDevice{pciLong: ib.PciLong, ioType: ib.Type}
 				pciAssignments = addNoDuplicatePCI(pciAssignments, tap)
@@ -778,10 +774,6 @@ func (ctx kvmContext) CreateDomConfig(domainName string, config types.DomainConf
 			if ib.Serial != "" {
 				logrus.Infof("Adding serial <%s>\n", ib.Serial)
 				serialAssignments = addNoDuplicate(serialAssignments, ib.Serial)
-			}
-			if ib.UsbAddr != "" {
-				logrus.Infof("Adding USB host device <%s>\n", ib.UsbAddr)
-				usbAssignments = addNoDuplicate(usbAssignments, ib.UsbAddr)
 			}
 		}
 	}
@@ -835,23 +827,6 @@ func (ctx kvmContext) CreateDomConfig(domainName string, config types.DomainConf
 			}
 		}
 	}
-	if len(usbAssignments) != 0 {
-		usbHostContext := struct {
-			UsbBus     string
-			UsbDevAddr string
-			// Ports are dot-separated
-		}{UsbBus: "", UsbDevAddr: ""}
-
-		t, _ = template.New("qemuUsbHost").Parse(qemuUsbHostTemplate)
-		for _, usbaddr := range usbAssignments {
-			bus, port := usbBusPort(usbaddr)
-			usbHostContext.UsbBus = bus
-			usbHostContext.UsbDevAddr = port
-			if err := t.Execute(file, usbHostContext); err != nil {
-				return logError("can't write USB host device assignment to config file %s (%v)", file.Name(), err)
-			}
-		}
-	}
 
 	return nil
 }
@@ -867,7 +842,7 @@ func waitForQmp(domainName string, available bool) error {
 			time.Sleep(delay)
 			waited += delay
 		}
-		if _, err := getQemuStatus(getQmpExecutorSocket(domainName)); available == (err == nil) {
+		if _, err := getQemuStatus(GetQmpExecutorSocket(domainName)); available == (err == nil) {
 			logrus.Infof("waitForQmp for %s %t done", domainName, available)
 			return nil
 		}
@@ -886,7 +861,8 @@ func waitForQmp(domainName string, available bool) error {
 	}
 }
 
-func (ctx kvmContext) Start(domainName string) error {
+// Start starts a domain
+func (ctx KvmContext) Start(domainName string) error {
 	logrus.Infof("starting KVM domain %s", domainName)
 	if err := ctx.ctrdContext.Start(domainName); err != nil {
 		logrus.Errorf("couldn't start task for domain %s: %v", domainName, err)
@@ -899,11 +875,11 @@ func (ctx kvmContext) Start(domainName string) error {
 	}
 	logrus.Infof("done launching qemu device model")
 
-	qmpFile := getQmpExecutorSocket(domainName)
+	qmpFile := GetQmpExecutorSocket(domainName)
 
 	logrus.Debugf("starting qmpEventHandler")
 	logrus.Infof("Creating %s at %s", "qmpEventHandler", agentlog.GetMyStack())
-	go qmpEventHandler(getQmpListenerSocket(domainName), getQmpExecutorSocket(domainName))
+	go qmpEventHandler(getQmpListenerSocket(domainName), GetQmpExecutorSocket(domainName))
 
 	annotations, err := ctx.ctrdContext.Annotations(domainName)
 	if err != nil {
@@ -927,17 +903,19 @@ func (ctx kvmContext) Start(domainName string) error {
 	return nil
 }
 
-func (ctx kvmContext) Stop(domainName string, _ bool) error {
-	if err := execShutdown(getQmpExecutorSocket(domainName)); err != nil {
+// Stop stops a domain
+func (ctx KvmContext) Stop(domainName string, _ bool) error {
+	if err := execShutdown(GetQmpExecutorSocket(domainName)); err != nil {
 		return logError("Stop: failed to execute shutdown command %v", err)
 	}
 	return nil
 }
 
-func (ctx kvmContext) Delete(domainName string) (result error) {
+// Delete deletes a domain
+func (ctx KvmContext) Delete(domainName string) (result error) {
 	//Sending a stop signal to then domain before quitting. This is done to freeze the domain before quitting it.
-	execStop(getQmpExecutorSocket(domainName))
-	if err := execQuit(getQmpExecutorSocket(domainName)); err != nil {
+	execStop(GetQmpExecutorSocket(domainName))
+	if err := execQuit(GetQmpExecutorSocket(domainName)); err != nil {
 		return logError("failed to execute quit command %v", err)
 	}
 	// we may want to wait a little bit here and actually kill qemu process if it gets wedged
@@ -948,7 +926,8 @@ func (ctx kvmContext) Delete(domainName string) (result error) {
 	return nil
 }
 
-func (ctx kvmContext) Info(domainName string) (int, types.SwState, error) {
+// Info returns information of a domain
+func (ctx KvmContext) Info(domainName string) (int, types.SwState, error) {
 	// first we ask for the task status
 	effectiveDomainID, effectiveDomainState, err := ctx.ctrdContext.Info(domainName)
 	if err != nil || effectiveDomainState != types.RUNNING {
@@ -972,7 +951,7 @@ func (ctx kvmContext) Info(domainName string) (int, types.SwState, error) {
 		"colo":           types.PAUSED,
 		"preconfig":      types.PAUSED,
 	}
-	res, err := getQemuStatus(getQmpExecutorSocket(domainName))
+	res, err := getQemuStatus(GetQmpExecutorSocket(domainName))
 	if err != nil {
 		return effectiveDomainID, types.BROKEN, logError("couldn't retrieve status for domain %s: %v", domainName, err)
 	}
@@ -984,7 +963,8 @@ func (ctx kvmContext) Info(domainName string) (int, types.SwState, error) {
 	}
 }
 
-func (ctx kvmContext) Cleanup(domainName string) error {
+// Cleanup cleans up a domain
+func (ctx KvmContext) Cleanup(domainName string) error {
 	if err := ctx.ctrdContext.Cleanup(domainName); err != nil {
 		return fmt.Errorf("couldn't cleanup task %s: %v", domainName, err)
 	}
@@ -995,7 +975,8 @@ func (ctx kvmContext) Cleanup(domainName string) error {
 	return nil
 }
 
-func (ctx kvmContext) PCIReserve(long string) error {
+// PCIReserve reserves a PCI device
+func (ctx KvmContext) PCIReserve(long string) error {
 	logrus.Infof("PCIReserve long addr is %s", long)
 
 	overrideFile := filepath.Join(sysfsPciDevices, long, "driver_override")
@@ -1033,7 +1014,8 @@ func (ctx kvmContext) PCIReserve(long string) error {
 	return nil
 }
 
-func (ctx kvmContext) PCIRelease(long string) error {
+// PCIRelease releases the PCI device reservation
+func (ctx KvmContext) PCIRelease(long string) error {
 	logrus.Infof("PCIRelease long addr is %s", long)
 
 	overrideFile := filepath.Join(sysfsPciDevices, long, "driver_override")
@@ -1063,7 +1045,8 @@ func (ctx kvmContext) PCIRelease(long string) error {
 	return nil
 }
 
-func (ctx kvmContext) PCISameController(id1 string, id2 string) bool {
+// PCISameController checks if two PCI controllers are the same
+func (ctx KvmContext) PCISameController(id1 string, id2 string) bool {
 	tag1, err := types.PCIGetIOMMUGroup(id1)
 	if err != nil {
 		return types.PCISameController(id1, id2)
@@ -1085,7 +1068,8 @@ func usbBusPort(USBAddr string) (string, string) {
 	return "", ""
 }
 
-func getQmpExecutorSocket(domainName string) string {
+// GetQmpExecutorSocket returns the path to the qmp socket of a domain
+func GetQmpExecutorSocket(domainName string) string {
 	return filepath.Join(kvmStateDir, domainName, "qmp")
 }
 

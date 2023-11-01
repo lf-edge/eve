@@ -26,5 +26,6 @@ personality_globals() {
   delete_test_type jira
   delete_test_type shelldocs
   delete_test_type spotbugs
+  delete_test_type detsecrets
 
 }

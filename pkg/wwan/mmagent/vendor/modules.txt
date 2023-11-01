@@ -35,7 +35,7 @@ github.com/lf-edge/eve-api/go/evecommon
 github.com/lf-edge/eve-api/go/info
 github.com/lf-edge/eve-api/go/metrics
 github.com/lf-edge/eve-api/go/profile
-# github.com/lf-edge/eve/pkg/pillar v0.0.0-20231016212340-616d6ea705a2 => ../../pillar
+# github.com/lf-edge/eve/pkg/pillar v0.0.0-20231027065537-54cee95e20b8
 ## explicit; go 1.20
 github.com/lf-edge/eve/pkg/pillar/agentbase
 github.com/lf-edge/eve/pkg/pillar/agentlog
@@ -112,7 +112,7 @@ golang.org/x/tools/internal/packagesinternal
 golang.org/x/tools/internal/pkgbits
 golang.org/x/tools/internal/typeparams
 golang.org/x/tools/internal/typesinternal
-# google.golang.org/protobuf v1.28.1
+# google.golang.org/protobuf v1.30.0
 ## explicit; go 1.11
 google.golang.org/protobuf/encoding/prototext
 google.golang.org/protobuf/encoding/protowire
@@ -140,4 +140,3 @@ google.golang.org/protobuf/reflect/protoregistry
 google.golang.org/protobuf/runtime/protoiface
 google.golang.org/protobuf/runtime/protoimpl
 google.golang.org/protobuf/types/known/timestamppb
-# github.com/lf-edge/eve/pkg/pillar => ../../pillar
