@@ -33,8 +33,6 @@ ifeq ($(ZARCH), amd64)
     # either generic or rt
     KERNEL_FLAVOR=$(PLATFORM)
     KERNEL_VERSION=v6.1.38
-    KERNEL_COMMIT_generic=0c3194d84
-    KERNEL_COMMIT_rt=585c1cf1e
 else ifeq ($(ZARCH), arm64)
     ifeq ($(PLATFORM), nvidia)
         KERNEL_FLAVOR=nvidia
@@ -43,25 +41,25 @@ else ifeq ($(ZARCH), arm64)
         KERNEL_FLAVOR=generic
         KERNEL_VERSION=v6.1.38
     endif
-    KERNEL_COMMIT_generic=b18cb9e3e
-    KERNEL_COMMIT_nvidia=e6cd9a55f
 else ifeq ($(ZARCH), riscv64)
     KERNEL_VERSION=v6.1.38
     KERNEL_FLAVOR=generic
-    KERNEL_COMMIT_generic=b52e17b4b
 endif
 
-# at this point ZARCH and FLAVOR must be defined. Check that we defined a commit for combination
-ifeq ($(origin KERNEL_COMMIT_$(KERNEL_FLAVOR)), undefined)
-    $(error "KERNEL_COMMIT_$(KERNEL_FLAVOR) is not defined. did you introduced new platform or ARCH?")
-endif
+include kernel-commits.mk
 
 # check if KERNEL_VERSION is defined
 ifeq ($(origin KERNEL_VERSION), undefined)
     $(error "KERNEL_VERSION is not defined. did you introduced new platform or ARCH?")
 endif
 
-KERNEL_COMMIT=$(KERNEL_COMMIT_$(KERNEL_FLAVOR))
+# at this point ZARCH, KERNEL_VERSION and FLAVOR must be defined.
+# Check that we defined a commit for combination
+ifeq ($(origin KERNEL_COMMIT_$(ZARCH)_$(KERNEL_VERSION)_$(KERNEL_FLAVOR)), undefined)
+    $(error "KERNEL_COMMIT_$(KERNEL_FLAVOR) is not defined. did you introduce new platform or ARCH?")
+endif
+
+KERNEL_COMMIT=$(KERNEL_COMMIT_$(ZARCH)_$(KERNEL_VERSION)_$(KERNEL_FLAVOR))
 KERNEL_BRANCH = eve-kernel-$(ZARCH)-$(KERNEL_VERSION)-$(KERNEL_FLAVOR)
 KERNEL_DOCKER_TAG = $(KERNEL_BRANCH)-$(KERNEL_COMMIT)-$(KERNEL_COMPILER)
 
