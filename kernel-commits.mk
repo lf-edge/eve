@@ -1,0 +1,7 @@
+KERNEL_COMMIT_amd64_v5.10.186_generic = c23a03114a05
+KERNEL_COMMIT_amd64_v6.1.38_generic = 0c3194d84
+KERNEL_COMMIT_amd64_v6.1.38_rt = 585c1cf1e
+KERNEL_COMMIT_arm64_v5.10.104_nvidia = e6cd9a55f
+KERNEL_COMMIT_arm64_v5.10.186_generic = d728c693c149
+KERNEL_COMMIT_arm64_v6.1.38_generic = b18cb9e3e
+KERNEL_COMMIT_riscv64_v6.1.38_generic = 105a2b9bd8e7
