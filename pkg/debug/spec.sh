@@ -25,10 +25,14 @@
 # does not set the correct assignment group.
 
 verbose=
-while getopts v o
+usb_devices=
+while getopts uv o
 do      case "$o" in
         v)      verbose=1;;
-        [?])    echo "Usage: $0 [-v]"
+        u)      usb_devices=1;;
+        [?])    echo "Usage: $0 [-uv]"
+                echo "    -u - include USB devices"
+                echo "    -v - verbose"
                 exit 1;;
         esac
 done
@@ -296,11 +300,12 @@ __EOT__
     ID=$(( ${ID:-0} + 1 ))
 done
 
-#enumerate USB
-ID=""
-for USB in $(echo "$LSPCI_D" | grep USB | cut -f1 -d\ ); do
-    grp=$(get_assignmentgroup "USB${ID}" "$USB")
-    cat <<__EOT__
+#enumerate USB controller
+print_usb_controllers() {
+    ID=""
+    for USB in $(echo "$LSPCI_D" | grep USB | cut -f1 -d\ ); do
+        grp=$(get_assignmentgroup "USB${ID}" "$USB")
+        cat <<__EOT__
     {
       "ztype": 2,
       "phylabel": "USB${ID}",
@@ -314,16 +319,16 @@ __EOT__
     cat <<__EOT__
       "usagePolicy": {}
 __EOT__
-    if [ -n "$verbose" ]; then
-        add_pci_info "${USB}"
-    fi
-    cat <<__EOT__
+        if [ -n "$verbose" ]; then
+            add_pci_info "${USB}"
+        fi
+        cat <<__EOT__
     },
 __EOT__
-    ID=$(( ${ID:-0} + 1 ))
-done
-if [ -z "$ID" ] && [ "$(lsusb -t | wc -l)" -gt 0 ]; then
-cat <<__EOT__
+        ID=$(( ${ID:-0} + 1 ))
+    done
+    if [ -z "$ID" ] && [ "$(lsusb -t | wc -l)" -gt 0 ]; then
+    cat <<__EOT__
     {
       "ztype": 2,
       "phylabel": "USB",
@@ -335,6 +340,98 @@ __EOT__
       "usagePolicy": {}
     },
 __EOT__
+    fi
+}
+
+#enumerate USB devices
+print_usb_devices() {
+    netdevpaths=""
+
+    # some usb network cards might not have their module included into the eve kernel
+    # this results into not detecting the network card and therefore allowing
+    # passthrough of the device into an edge application
+    # fortunately this is not a problem as we currently disallow the passthrough of
+    # usb networking devices in order to not confuse pillar daemon
+    # no kernel module -> pillar does not get confused -> passthrough of the device is okay
+    for i in /sys/class/net/*
+    do
+        i=$(basename "$i")
+        local devicepath
+        devicepath=$(realpath "/sys/class/net/$i/../../")
+        local isUSB
+        isUSB=$(echo "$devicepath" | grep -Eo '/usb[0-9]/' || true)
+
+        if [ "$isUSB" = "" ];
+        then
+            continue
+        fi
+        local netdevpaths="$netdevpaths $devicepath"
+    done
+
+    for i in $(find /sys/devices/ -name uevent | grep -E '/usb[0-9]/' | grep -E '/[0-9]-[0-9](\.[0-9]+)?/uevent')
+    do
+        local ignore_dev=0
+        local devicepath
+        devicepath=$(dirname "$i")
+        local busAndPort
+        busAndPort=$(echo "$i" | grep -Eo '/[0-9]-[0-9](\.[0-9]+)?/uevent' | grep -Eo '[0-9]-[0-9](\.[0-9]+)?')
+
+        local bus
+        bus=$(echo "${busAndPort}" | cut -d - -f1)
+        local port
+        port=$(echo "${busAndPort}" | cut -d - -f2)
+        local usbaddr="$bus:$port"
+
+        local product
+        product=$(cat "$devicepath/product" 2> /dev/null || true)
+        local label
+        label=$(echo "$product" | tr -cd '[:alnum:]._-')
+        if [ "$label" = "" ]
+        then
+            label="USB${busAndPort}"
+        fi
+
+        type=$(grep -Eo '^TYPE=[0-9]+/' "$i"| grep -Eo '[0-9]+')
+        # ignore USB hubs
+        if [ "$type" = "9" ];
+        then
+            ignore_dev=1
+        fi
+
+        # ignore network cards
+        for netdevpath in $netdevpaths
+        do
+            # check if devicepath starts with netdevpath
+            case $netdevpath in "$devicepath"*)
+                ignore_dev=1
+            esac
+        done
+
+        if [ "$ignore_dev" = "1" ]
+        then
+            continue
+        fi
+
+        cat <<__EOT__
+    {
+      "ztype": "IO_TYPE_USB_DEVICE",
+      "phylabel": "${label}",
+      "assigngrp": "",
+      "phyaddrs": {
+        "usbaddr": "$usbaddr"
+      },
+      "logicallabel": "$label",
+      "usagePolicy": {}
+    },
+__EOT__
+    done
+}
+
+if [ "$usb_devices" = "1" ]
+then
+    print_usb_devices
+else
+    print_usb_controllers
 fi
 
 #enumerate NVME
