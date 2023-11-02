@@ -304,7 +304,7 @@ done
 print_usb_controllers() {
     ID=""
     for USB in $(echo "$LSPCI_D" | grep USB | cut -f1 -d\ ); do
-        grp=$(get_assignmentgroup "USB${ID}" "$USB")
+        grp="group$(pci_iommu_group "$USB")"
         cat <<__EOT__
     {
       "ztype": 2,
@@ -382,6 +382,13 @@ print_usb_devices() {
         port=$(echo "${busAndPort}" | cut -d - -f2)
         local usbaddr="$bus:$port"
 
+        pciaddr=$(echo "$i" | grep -Eo '/pci[^/]+/[^/]+/usb' | cut -d / -f3)
+        local parentassigngrp
+        parentassigngrp="group$(pci_iommu_group "${pciaddr}")"
+        if [ "$parentassigngrp" = "group" ]
+        then
+            parentassigngrp=""
+        fi
         local product
         product=$(cat "$devicepath/product" 2> /dev/null || true)
         local label
