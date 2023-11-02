@@ -61,13 +61,6 @@ ADD https://github.com/pixel/hexedit/archive/refs/tags/1.5.tar.gz ../1.5.tar.gz
 RUN tar -C .. -xzvf ../1.5.tar.gz
 RUN ./autogen.sh && ./configure && make DESTDIR=/out install
 
-# building picocom
-# Need this patch to build with musl: https://github.com/npat-efault/picocom/commit/1acf1ddabaf3576b4023c4f6f09c5a3e4b086fb8
-ENV PICOCOM_COMMIT=1acf1ddabaf3576b4023c4f6f09c5a3e4b086fb8
-ADD --keep-git-dir=true https://github.com/npat-efault/picocom.git#${PICOCOM_COMMIT} /tmp/picocom
-WORKDIR /tmp/picocom
-RUN make -j "$(getconf _NPROCESSORS_ONLN)" && strip picocom && cp picocom /out/usr/bin/
-
 # tweaking various bit
 WORKDIR /out
 COPY ssh.sh spec.sh scripts/ ./usr/bin/
