@@ -24,22 +24,22 @@ import (
 )
 
 const (
-	logfileDir       = "/tmp/eve-bridge/"
-	logfile          = logfileDir + "eve-bridge.log"
-	niStatusFileDir  = "/run/kube/eve-bridge/"
+	logfileDir      = "/tmp/eve-bridge/"
+	logfile         = logfileDir + "eve-bridge.log"
+	niStatusFileDir = "/run/kube/eve-bridge/"
 
 	eveKubeNamespace = "eve-kube-app"
 
-	logMaxSize       = 100 // 100 Mbytes in size
-	logMaxBackups    = 3   // old log files to retain
-	logMaxAge        = 30  // days to retain old log files
+	logMaxSize    = 100 // 100 Mbytes in size
+	logMaxBackups = 3   // old log files to retain
+	logMaxAge     = 30  // days to retain old log files
 )
 
 // EveLocalConf represents the network tuning configuration.
 type EveLocalConf struct {
 	types.NetConf
-	Port    string      `json:"port,omitempty"`
-	NodeIP  string      `json:"nodeip,omitempty`
+	Port   string `json:"port,omitempty"`
+	NodeIP string `json:"nodeip,omitempty`
 }
 
 type EveClusterNIType uint32
@@ -60,27 +60,27 @@ const (
 )
 
 type EveClusterInstStatus struct {
-	ContainerID   string           `json:"containerID"`
-	CNIOp         EVEClusterNIOp   `json:"cniOp"`
+	ContainerID string         `json:"containerID"`
+	CNIOp       EVEClusterNIOp `json:"cniOp"`
 
-	K8Snamespace  string           `json:"k8sNamespace,omitempty"`
-	BridgeConfig  string           `json:"bridgeConfig,omitempty"`
-	NIType        EveClusterNIType `json:"niType,omitempty"`
-	LogicalLabel  string           `json:"logicalLabel,omitempty"`
+	K8Snamespace string           `json:"k8sNamespace,omitempty"`
+	BridgeConfig string           `json:"bridgeConfig,omitempty"`
+	NIType       EveClusterNIType `json:"niType,omitempty"`
+	LogicalLabel string           `json:"logicalLabel,omitempty"`
 
-	BridgeName    string           `json:"bridgeName,omitempty"`
-	BridgeMAC     string           `json:"bridgeMac,omitempty"`
+	BridgeName string `json:"bridgeName,omitempty"`
+	BridgeMAC  string `json:"bridgeMac,omitempty"`
 
-	PodName       string           `json:"podName,omitempty"`
-	PodNameSpace  string           `json:"podNamespace,omitempty"`
-	PodIntfName   string           `json:"podIntfName,omitempty"`
-	PodIntfMAC    string           `json:"podIntfMac,omitempty"`
+	PodName      string `json:"podName,omitempty"`
+	PodNameSpace string `json:"podNamespace,omitempty"`
+	PodIntfName  string `json:"podIntfName,omitempty"`
+	PodIntfMAC   string `json:"podIntfMac,omitempty"`
 
-	PodIntfPrefix net.IPNet        `json:"podIntfPrefix,omitempty"`
-	PodIntfGW     net.IP           `json:"podIntfGw,omitempty"`
+	PodIntfPrefix net.IPNet `json:"podIntfPrefix,omitempty"`
+	PodIntfGW     net.IP    `json:"podIntfGw,omitempty"`
 
-	VifName       string           `json:"vifName,omitempty"`
-	VifMAC        string           `json:"vifMac,omitempty"`
+	VifName string `json:"vifName,omitempty"`
+	VifMAC  string `json:"vifMac,omitempty"`
 }
 
 var logFile *lumberjack.Logger
@@ -150,9 +150,9 @@ func addClusterIPRoute(ifName string, gw net.IP, ippref string) error {
 	}
 
 	route := netlink.Route{
-		Dst:        ipnet,
-		LinkIndex:  link.Attrs().Index,
-		Gw:         gw,
+		Dst:       ipnet,
+		LinkIndex: link.Attrs().Index,
+		Gw:        gw,
 	}
 	if err = netlink.RouteAddEcmp(&route); err != nil {
 		return fmt.Errorf("failed to add route '%v via %v dev %v': %v", ipnet, gw, ifName, err)
@@ -170,7 +170,7 @@ func isEveKubeApp(k8sns string) bool {
 }
 
 func cmdAdd(args *skel.CmdArgs) error {
-	logStr := fmt.Sprintf("cmdAdd: enter, stddata: %s", string(args.StdinData))
+	logStr := fmt.Sprintf("cmdAdd: enter, stddata: %s, env: %v", string(args.StdinData), os.Environ())
 	printLog(logStr)
 	eveLocalConf, err := parseConf(args.StdinData, args.Args)
 	if err != nil {
@@ -199,7 +199,7 @@ func cmdAdd(args *skel.CmdArgs) error {
 	n1 := strings.Split(nsStr, "/")
 	n := len(n1)
 	if n > 0 {
-		namespace = n1[n - 1]
+		namespace = n1[n-1]
 	}
 
 	var podName, podMAC, k8sns string
@@ -375,11 +375,11 @@ func cmdDel(args *skel.CmdArgs) error {
 
 	if isEvePod {
 		niStatus := &EveClusterInstStatus{
-			ContainerID:   containeridStr,
-			CNIOp:         getOPtype(cmdStr),
-			BridgeConfig:  eveLocalConf.Name,
-			LogicalLabel:  eveLocalConf.Port,
-			PodIntfName:   ifStr,
+			ContainerID:  containeridStr,
+			CNIOp:        getOPtype(cmdStr),
+			BridgeConfig: eveLocalConf.Name,
+			LogicalLabel: eveLocalConf.Port,
+			PodIntfName:  ifStr,
 		}
 
 		delStatus(niStatus)
@@ -453,13 +453,13 @@ func main() {
 	}
 
 	logFile = &lumberjack.Logger{
-        Filename:   logfile,   // Path to the log file.
-        MaxSize:    logMaxSize,        // Maximum size in megabytes before rotation.
-        MaxBackups: logMaxBackups,     // Maximum number of old log files to retain.
-        MaxAge:     logMaxAge,         // Maximum number of days to retain old log files.
-        Compress:   true,              // Whether to compress rotated log files.
-        LocalTime:  true,              // Use the local time zone for file names.
-    }
+		Filename:   logfile,       // Path to the log file.
+		MaxSize:    logMaxSize,    // Maximum size in megabytes before rotation.
+		MaxBackups: logMaxBackups, // Maximum number of old log files to retain.
+		MaxAge:     logMaxAge,     // Maximum number of days to retain old log files.
+		Compress:   true,          // Whether to compress rotated log files.
+		LocalTime:  true,          // Use the local time zone for file names.
+	}
 	log.SetOutput(logFile)
 	logStr := "eve-bridge main() Start"
 	printLog(logStr)

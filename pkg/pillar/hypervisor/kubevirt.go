@@ -222,37 +222,39 @@ func (ctx kubevirtContext) CreateVMIConfig(domainName string, config types.Domai
 	mem.Guest = &m
 	vmi.Spec.Domain.Memory = &mem
 
-	var kubeNADs []types.KubeNAD
-	for _, nad := range config.KubeNADList {
-		kubeNADs = append(kubeNADs, nad)
-	}
+	netAdapters := append([]types.VifConfig{}, config.VifList...)
 
 	// Add Direct Attach Ethernet Port
 	for _, io := range config.IoAdapterList {
 		if io.Type == types.IoNetEth {
-			nadname := "host-" + io.Name
-			nad := types.KubeNAD{
-				Name: nadname,
-			}
 			// even if ioAdapter does not exist, kubernetes will retry
-			kubeNADs = append(kubeNADs, nad)
-			logrus.Infof("CreateVMIConfig: direct attach add to nadnames %v", kubeNADs)
+			netAdapters = append(netAdapters, types.VifConfig{
+				// TODO: Add method for generating NAD name of direct attach to pkg/kubeapi
+				NAD: "host-" + io.Name,
+			})
 		}
 	}
 
 	// Set Network
+	// XXX for now, skip the default network interface for VMI, it seems that for some
+	// type of VM its secondary interfaces will come up without IP address unless
+	// we manually run dhclient on them
+	intfs := make([]v1.Interface, len(netAdapters))
+	nads := make([]v1.Network, len(netAdapters))
+	/*
+		intfs[0] = v1.Interface{
+			Name:                   "default",
+			InterfaceBindingMethod: v1.InterfaceBindingMethod{Bridge: &v1.InterfaceBridge{}},
+		}
+		nads[0] = *v1.DefaultPodNetwork()
+	*/
 
-	// XXX for now, skip the default network interface for VMI, it seems some type of VM
-	// it's 2nd interface came up without IP address unless manually run dhclient on it
-	intfs := make([]v1.Interface, len(kubeNADs))
-	nads := make([]v1.Network, len(kubeNADs))
-
-	if len(kubeNADs) > 0 {
-		for i, nad := range kubeNADs {
+	if len(netAdapters) > 0 {
+		for i, nad := range netAdapters {
 			intfname := "net" + strconv.Itoa(i+1)
 			intfs[i] = v1.Interface{
 				Name:                   intfname,
-				MacAddress:             nad.Mac,
+				MacAddress:             nad.Mac.String(),
 				InterfaceBindingMethod: v1.InterfaceBindingMethod{Bridge: &v1.InterfaceBridge{}},
 			}
 
@@ -260,7 +262,7 @@ func (ctx kubevirtContext) CreateVMIConfig(domainName string, config types.Domai
 				Name: intfname,
 				NetworkSource: v1.NetworkSource{
 					Multus: &v1.MultusNetwork{
-						NetworkName: nad.Name,
+						NetworkName: nad.NAD,
 					},
 				},
 			}
@@ -953,40 +955,27 @@ func (ctx kubevirtContext) CreatePodConfig(domainName string, config types.Domai
 	}
 	ociName := config.KubeImageName
 
-	// NADs for NIs
-	var nads []types.KubeNAD
-	if len(config.KubeNADList) > 0 {
-		for _, nad := range config.KubeNADList {
-			nads = append(nads, nad)
-		}
-	}
+	netAdapters := append([]types.VifConfig{}, config.VifList...)
 
-	// Direct attached Ethernet port
+	// Add Direct Attach Ethernet Port
 	for _, io := range config.IoAdapterList {
 		if io.Type == types.IoNetEth {
-			nadname := "host-" + io.Name
-			nad := types.KubeNAD{
-				Name: nadname,
-			}
 			// even if ioAdapter does not exist, kubernetes will retry
-			nads = append(nads, nad)
-			logrus.Infof("CreatePodConfig: direct attach add to nadnames %v", nads)
+			netAdapters = append(netAdapters, types.VifConfig{
+				// TODO: Add method for generating NAD name of direct attach to pkg/kubeapi
+				NAD: "host-" + io.Name,
+			})
 		}
 	}
 
 	var annotations map[string]string
-	if len(nads) > 0 {
-		selections := make([]netattdefv1.NetworkSelectionElement, len(nads))
-		for i, nad := range nads {
-			if i > len(nads)-1 {
-				err := fmt.Errorf("CreatePodConfig: no def local ni found, exit")
-				return err
-			}
+	if len(netAdapters) > 0 {
+		selections := make([]netattdefv1.NetworkSelectionElement, len(netAdapters))
+		for i, adapter := range netAdapters {
 			selections[i] = netattdefv1.NetworkSelectionElement{
-				Name: nad.Name,
-			}
-			if nad.Mac != "" {
-				selections[i].MacRequest = nad.Mac
+				Name:       adapter.NAD,
+				MacRequest: adapter.Mac.String(),
+				// TODO: use CNIArgs for now? (what about kubevirt?)
 			}
 		}
 		annotations = map[string]string{

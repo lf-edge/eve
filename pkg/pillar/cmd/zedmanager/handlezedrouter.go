@@ -92,17 +92,10 @@ func lookupAppNetworkConfig(ctx *zedmanagerContext, key string) *types.AppNetwor
 	pub := ctx.pubAppNetworkConfig
 	c, _ := pub.Get(key)
 	if c == nil {
-		saveCfg := ctx.saveAppNetConfig
-		if _, ok := saveCfg[key]; ok {
-			config := saveCfg[key]
-			log.Tracef("lookupAppNetworkConfig(%s) not found, use saved config", key)
-			return &config
-		}
 		log.Tracef("lookupAppNetworkConfig(%s) not found", key)
 		return nil
 	}
 	config := c.(types.AppNetworkConfig)
-	log.Tracef("lookupAppNetworkConfig(%s) found config %+v", key, config) // XXX
 	return &config
 }
 
@@ -119,39 +112,12 @@ func lookupAppNetworkStatus(ctx *zedmanagerContext, key string) *types.AppNetwor
 }
 
 func publishAppNetworkConfig(ctx *zedmanagerContext,
-	config *types.AppNetworkConfig) {
+	status *types.AppNetworkConfig) {
 
-	var akStatus *types.AppKubeNetworkStatus
-	sub := ctx.subAppKubeNetStatus
-	items := sub.GetAll()
-	for _, item := range items {
-		status := item.(types.AppKubeNetworkStatus)
-		if status.UUIDandVersion.UUID.String() == config.UUIDandVersion.UUID.String() {
-			akStatus = &status
-			break
-		}
-	}
-	key := config.Key()
+	key := status.Key()
 	log.Functionf("publishAppNetworkConfig(%s)", key)
-	found := false
-	if akStatus != nil {
-		pub := ctx.pubAppNetworkConfig
-		items := pub.GetAll()
-		for _, item := range items {
-			c := item.(types.AppNetworkConfig)
-			if c.UUIDandVersion.UUID.String() == config.UUIDandVersion.UUID.String() {
-				found = true
-				break
-			}
-		}
-		pub.Publish(key, *config)
-	} else {
-		ctx.saveAppNetConfig[key] = *config
-		log.Functionf("publishAppNetworkConfig(%s), save locally, wait for AppKubeNetStatus", key)
-	}
-	if !found {
-		ctx.anStatusChan <- key
-	}
+	pub := ctx.pubAppNetworkConfig
+	pub.Publish(key, *status)
 }
 
 func unpublishAppNetworkConfig(ctx *zedmanagerContext, uuidStr string) {
@@ -163,9 +129,6 @@ func unpublishAppNetworkConfig(ctx *zedmanagerContext, uuidStr string) {
 	if c == nil {
 		log.Errorf("unpublishAppNetworkConfig(%s) not found", key)
 		return
-	}
-	if _, ok := ctx.saveAppNetConfig[key]; ok {
-		delete(ctx.saveAppNetConfig, key)
 	}
 	pub.Unpublish(key)
 }

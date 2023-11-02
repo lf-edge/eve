@@ -46,12 +46,10 @@ type zedkubeContext struct {
 	subAppInstanceConfig     pubsub.Subscription
 	subGlobalConfig          pubsub.Subscription
 	pubNetworkInstanceStatus pubsub.Publication
-	pubAppKubeNetworkStatus  pubsub.Publication
 	pubDomainMetric          pubsub.Publication
 	networkInstanceStatusMap sync.Map
 	ioAdapterMap             sync.Map
 	config                   *rest.Config
-	appKubeNetStatus         map[string]*types.AppKubeNetworkStatus
 	niStatusMap              map[string]niKubeStatus
 	resendNITimer            *time.Timer
 	appLogStarted            bool
@@ -123,16 +121,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	}
 	zedkubeCtx.pubNetworkInstanceStatus = pubNetworkInstanceStatus
 
-	pubAppKubeNetworkStatus, err := ps.NewPublication(pubsub.PublicationOptions{
-		AgentName: agentName,
-		TopicType: types.AppKubeNetworkStatus{},
-	})
-	if err != nil {
-		log.Fatal(err)
-	}
-	zedkubeCtx.pubAppKubeNetworkStatus = pubAppKubeNetworkStatus
-	pubAppKubeNetworkStatus.ClearRestarted()
-
 	pubDomainMetric, err := ps.NewPublication(
 		pubsub.PublicationOptions{
 			AgentName: agentName,
@@ -163,7 +151,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	subGlobalConfig.Activate()
 
 	//zedkubeCtx.configWait = make(map[string]bool)
-	zedkubeCtx.appKubeNetStatus = make(map[string]*types.AppKubeNetworkStatus)
 	zedkubeCtx.niStatusMap = make(map[string]niKubeStatus)
 
 	config, err := kubeapi.WaitKubernetes(agentName, ps, stillRunning)
@@ -178,8 +165,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	zedkubeCtx.resendNITimer.Stop()
 
 	appLogTimer := time.NewTimer(logcollectInterval * time.Second)
-
-	go appNetStatusNotify(&zedkubeCtx)
 
 	for {
 		select {
@@ -204,37 +189,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		}
 		zedkubeCtx.ps.StillRunning(agentName, warningTime, errorTime)
 	}
-}
-
-func lookupNIStatusForNAD(ctx *zedkubeContext, netUUID string) string {
-	var status *types.NetworkInstanceStatus
-	ctx.networkInstanceStatusMap.Range(func(key, value interface{}) bool {
-		st := value.(*types.NetworkInstanceStatus)
-		if st.UUID.String() == netUUID {
-			status = st
-			return false
-		}
-		return true
-	})
-
-	if status != nil {
-		return base.ConvToKubeName(status.DisplayName)
-	}
-	return ""
-}
-
-func lookupNIStatusFromName(ctx *zedkubeContext, niName string) *types.NetworkInstanceStatus {
-	var status *types.NetworkInstanceStatus
-	ctx.networkInstanceStatusMap.Range(func(key, value interface{}) bool {
-		st := value.(*types.NetworkInstanceStatus)
-		if niName == base.ConvToKubeName(st.DisplayName) {
-			status = st
-			return false
-		}
-		return true
-	})
-
-	return status
 }
 
 func handleNetworkInstanceCreate(
@@ -360,9 +314,6 @@ func handleAppInstanceConfigDelete(ctxArg interface{}, key string,
 	config := configArg.(types.AppInstanceConfig)
 
 	check_del_ioAdpater_ethernet(ctx, &config)
-	if _, ok := ctx.appKubeNetStatus[key]; ok {
-		delete(ctx.appKubeNetStatus, key)
-	}
 	log.Functionf("handleAppInstanceConfigDelete(%s) done", key)
 }
 

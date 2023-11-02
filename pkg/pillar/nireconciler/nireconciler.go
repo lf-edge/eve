@@ -62,7 +62,7 @@ type NIReconciler interface {
 	// This number is persisted and doesn't change across app config changes or node
 	// reboots.
 	ConnectApp(ctx context.Context, appNetConfig types.AppNetworkConfig, appNum int,
-		vifs []AppVIF, hvTypeKube bool) (AppConnReconcileStatus, error)
+		vifs []AppVIF) (AppConnReconcileStatus, error)
 	// ReconnectApp : (re)connect application with changed config into the (possibly
 	// changed) desired set of network instance(s).
 	ReconnectApp(ctx context.Context, appNetConfig types.AppNetworkConfig, vifs []AppVIF) (
@@ -138,8 +138,6 @@ type AppVIF struct {
 	GuestIfMAC net.HardwareAddr
 	// GuestIP : IP address assigned to VIF on the guest side (inside the app).
 	GuestIP net.IP
-	// pass vif name in kube mode
-	VifIfName string
 }
 
 // UpdateType : type of the ReconcilerUpdate.

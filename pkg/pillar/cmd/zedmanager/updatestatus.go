@@ -676,44 +676,32 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 
 	// Check AppNetworkStatus
 	ns := lookupAppNetworkStatus(ctx, uuidStr)
-	if ctx.hvTypeKube && ns == nil {
-		log.Functionf("AppNetworkStatus does not exist yet for %s, aistatus %+v", uuidStr, status)
-		if !config.Activate {
-			log.Functionf("AppNetworkConfig not Activate for %s", uuidStr)
-			return changed
-		}
-	} else {
-		if ns == nil {
-			log.Functionf("Waiting for AppNetworkStatus for %s", uuidStr)
-			return changed
-		}
-		if ns.Pending() {
-			log.Functionf("Waiting for AppNetworkStatus !Pending for %s", uuidStr)
-			return changed
-		}
-		if ns.HasError() {
-			log.Errorf("Received error from zedrouter for %s: %s",
-				uuidStr, ns.Error)
-			status.SetErrorWithSource(ns.Error, types.AppNetworkStatus{},
-				ns.ErrorTime)
-			changed = true
-			return changed
-		}
-		if ns.AwaitNetworkInstance {
-			log.Functionf("Waiting for required network instances to arrive for %s", uuidStr)
-			status.State = types.AWAITNETWORKINSTANCE
-			changed = true
-			return changed
-		}
-		updateAppNetworkStatus(status, ns)
-		if !ns.Activated { // XXX the zedrouter does not set for hvtypekube
-			if !ctx.hvTypeKube {
-				log.Functionf("Waiting for AppNetworkStatus Activated for %s", uuidStr)
-				return changed
-			} else {
-				log.Functionf("app-ns not activated, ignore")
-			}
-		}
+	if ns == nil {
+		log.Functionf("Waiting for AppNetworkStatus for %s", uuidStr)
+		return changed
+	}
+	if ns.Pending() {
+		log.Functionf("Waiting for AppNetworkStatus !Pending for %s", uuidStr)
+		return changed
+	}
+	if ns.HasError() {
+		log.Errorf("Received error from zedrouter for %s: %s",
+			uuidStr, ns.Error)
+		status.SetErrorWithSource(ns.Error, types.AppNetworkStatus{},
+			ns.ErrorTime)
+		changed = true
+		return changed
+	}
+	if ns.AwaitNetworkInstance {
+		log.Functionf("Waiting for required network instances to arrive for %s", uuidStr)
+		status.State = types.AWAITNETWORKINSTANCE
+		changed = true
+		return changed
+	}
+	updateAppNetworkStatus(status, ns)
+	if !ns.Activated {
+		log.Functionf("Waiting for AppNetworkStatus Activated for %s", uuidStr)
+		return changed
 	}
 	if status.IsErrorSource(types.AppNetworkStatus{}) {
 		log.Functionf("Clearing zedrouter error %s", status.Error)
