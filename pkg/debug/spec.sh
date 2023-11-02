@@ -302,6 +302,8 @@ print_usb_devices() {
         devicepath=$(dirname "$i")
         local busAndPort
         busAndPort=$(echo "$i" | grep -Eo '/[0-9]-[0-9](\.[0-9]+)?/uevent' | grep -Eo '[0-9]-[0-9](\.[0-9]+)?')
+        local assigngrp
+        assigngrp="USB${busAndPort}"
 
         local bus
         bus=$(echo "${busAndPort}" | cut -d - -f1)
@@ -309,6 +311,19 @@ print_usb_devices() {
         port=$(echo "${busAndPort}" | cut -d - -f2)
         local usbaddr="$bus:$port"
 
+        local ifname
+        ifname="$(ls -1 "${devicepath}/*/net" 2>/dev/null || true)"
+        local cost=0
+        local isModem
+        isModem=$(grep -Eo 'cdc_mbim|qmi_wwan' "${devicepath}"/*/uevent 2>/dev/null)
+        if [ "${isModem}" != "" ]
+        then
+            cost=10
+            assigngrp="modem${busAndPort}"
+            assigngrp=$(get_assignmentgroup "${ifname}" "${pciaddr}")
+        fi
+
+        local pciaddr
         pciaddr=$(echo "$i" | grep -Eo '/pci[^/]+/[^/]+/usb' | cut -d / -f3)
         local parentassigngrp
         parentassigngrp="group$(pci_iommu_group "${pciaddr}")"
@@ -332,14 +347,17 @@ print_usb_devices() {
             ignore_dev=1
         fi
 
-        # ignore network cards
-        for netdevpath in $netdevpaths
-        do
-            # check if devicepath starts with netdevpath
-            case $netdevpath in "$devicepath"*)
-                ignore_dev=1
-            esac
-        done
+        # ignore network cards but allow usb modems
+        if [ "${isModem}" = "" ]
+        then
+            for netdevpath in $netdevpaths
+            do
+                # check if devicepath starts with netdevpath
+                case $netdevpath in "$devicepath"*)
+                    ignore_dev=1
+                esac
+            done
+        fi
 
         if [ "$ignore_dev" = "1" ]
         then
@@ -348,9 +366,10 @@ print_usb_devices() {
 
         cat <<__EOT__
     {
-      "ztype": "IO_TYPE_USB_DEVICE",
+      "ztype": "IO_TYPE_UNSPECIFIED",
       "phylabel": "${label}",
-      "assigngrp": "",
+      "assigngrp": "${assigngrp}",
+      "cost": ${cost},
       "phyaddrs": {
         "usbaddr": "$usbaddr"
       },
@@ -435,7 +454,7 @@ __EOT__
    fi
 done
 
-#enumerate NICs
+#enumerate NICs (ignoring USB devices)
 for ETH in /sys/class/net/*; do
    LABEL=$(echo "$ETH" | sed -e 's#/sys/class/net/##' -e 's#^k##')
    # Does $LABEL start with wlan or wwan? Change ztype and cost
