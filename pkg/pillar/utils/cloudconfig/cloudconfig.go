@@ -1,14 +1,17 @@
 package cloudconfig
 
 import (
+	"compress/gzip"
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 
+	"github.com/go-playground/validator/v10"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
 	"gopkg.in/yaml.v2"
@@ -18,17 +21,23 @@ import (
 // Only supported fields are defined here. The rest is ignored.
 type CloudConfig struct {
 	RunCmd     []string       `yaml:"runcmd"`
-	WriteFiles []WritableFile `yaml:"write_files"` //nolint:tagliatelle // cloud-init standard uses snake_case
+	WriteFiles []WritableFile `yaml:"write_files" validate:"dive"` //nolint:tagliatelle // cloud-init standard uses snake_case
 }
 
 // WritableFile represents a file that can be written to disk with the specified content, permissions, encoding and owner.
 type WritableFile struct {
-	Path        string `yaml:"path"`
-	Content     string `yaml:"content"`
+	Path        string `yaml:"path" validate:"required"`
+	Content     string `yaml:"content" validate:"required"`
 	Permissions string `yaml:"permissions"`
 	Encoding    string `yaml:"encoding"`
 	Owner       string `yaml:"owner"`
 }
+
+var validate = validator.New()
+
+// MaxDecompressedContentSize is the maximum size of a file that can be written to disk after decompression.
+// This is to prevent a DoS attack by sending a compressed file that is too big to be decompressed.
+const MaxDecompressedContentSize = 10 * 1024 * 1024 // 10 MB
 
 // IsCloudConfig checks if the given string is a cloud-config file by checking if the first line starts with "#cloud-config".
 // It returns true if the first line starts with "#cloud-config", otherwise it returns false.
@@ -45,6 +54,10 @@ func IsCloudConfig(ci string) bool {
 func ParseCloudConfig(ci string) (*CloudConfig, error) {
 	var cc CloudConfig
 	err := yaml.Unmarshal([]byte(ci), &cc)
+	if err != nil {
+		return nil, err
+	}
+	err = validate.Struct(cc)
 	if err != nil {
 		return nil, err
 	}
@@ -68,16 +81,24 @@ func WriteFile(log *base.LogObject, file WritableFile, rootPath string) error {
 
 	var contentBytes []byte
 	switch file.Encoding {
-	case "b64":
-		// decode base64 content
+	case "b64", "base64":
 		contentBytes, err = base64.StdEncoding.DecodeString(file.Content)
-		if err != nil {
-			return err
-		}
-	case "plain":
+
+	case "plain", "":
 		contentBytes = []byte(file.Content)
+
+	case "gz+base64", "gzip+base64", "gz+b64", "gzip+b64":
+		contentBytes, err = decodeGzipBase64Content(file.Content)
+
+	case "gzip", "gz":
+		contentBytes, err = decodeGzipContent(file.Content)
+
 	default:
-		return errors.New("unsupported encoding type. Only base64 and plain are supported")
+		return errors.New("unsupported encoding type. Only base64, plain and gzip are supported")
+	}
+
+	if err != nil {
+		return err
 	}
 
 	// check if the parent directory exists
@@ -104,4 +125,28 @@ func WriteFile(log *base.LogObject, file WritableFile, rootPath string) error {
 	}
 
 	return nil
+}
+
+func decodeGzipContent(content string) ([]byte, error) {
+	gzipReader, err := gzip.NewReader(strings.NewReader(content))
+	if err != nil {
+		return nil, err
+	}
+	defer gzipReader.Close()
+	contentBytes, err := io.ReadAll(io.LimitReader(gzipReader, MaxDecompressedContentSize+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(contentBytes) > MaxDecompressedContentSize {
+		return nil, errors.New("maximum decompressed content size exceeded")
+	}
+	return contentBytes, nil
+}
+
+func decodeGzipBase64Content(content string) ([]byte, error) {
+	gzipBytes, err := base64.StdEncoding.DecodeString(content)
+	if err != nil {
+		return nil, err
+	}
+	return decodeGzipContent(string(gzipBytes))
 }
