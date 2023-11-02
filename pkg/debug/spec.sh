@@ -168,6 +168,17 @@ DISK=$(lsblk -b -o NAME,TYPE,TRAN,SIZE | grep disk | grep -v usb | awk '{ total 
 WDT=$([ -e /dev/watchdog ] && echo true || echo false)
 HSM=$([ -e /dev/tpmrm0 ] && echo 1 || echo 0)
 
+add_description() {
+    DEVICE_TYPE="$1"
+    if [ -n "$verbose" ]; then
+        desc=$(lspci -Ds "${DEVICE_TYPE}")
+        desc="${desc#*: }"
+            cat <<__EOT__
+      "description": ${desc},
+__EOT__
+    fi
+}
+
 LSPCI_D=$(lspci -D)
 cat <<__EOT__
 {
