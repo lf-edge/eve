@@ -53,7 +53,10 @@ FROM grub-build-${TARGETARCH} AS grub-build
 
 ENV GRUB_REPO=https://git.savannah.gnu.org/cgit/grub.git
 
-COPY / /
+COPY patches /patches
+COPY patches-2.06  /patches-2.06
+COPY patches-aarch64-2.06 /patches-aarch64-2.06
+COPY patches-riscv64-2.06 /patches-riscv64-2.06
 # because python is not available
 RUN ln -s python3 /usr/bin/python && \
     mkdir /grub-lib
