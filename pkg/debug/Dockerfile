@@ -44,6 +44,7 @@ RUN apk add -p /out --allow-untrusted /home/builder/packages/*/musl-1.2*.apk
 ADD https://www.ezix.org/software/files/lshw-B.${LSHW_VERSION}.tar.gz lshw.tar.gz
 RUN tar -xzvf lshw.tar.gz
 
+WORKDIR /
 COPY lshw/ lshw-B.${LSHW_VERSION}/
 
 WORKDIR /lshw-B.${LSHW_VERSION}
