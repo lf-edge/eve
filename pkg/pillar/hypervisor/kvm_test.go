@@ -194,6 +194,8 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
   name = "org.lfedge.eve.console.0"
 
 
+
+
 #[device "video0"]
 #  driver = "qxl-vga"
 #  ram_size = "67108864"
@@ -456,6 +458,8 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
   name = "org.lfedge.eve.console.0"
 
 
+
+
 #[device "video0"]
 #  driver = "qxl-vga"
 #  ram_size = "67108864"
@@ -692,6 +696,8 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
   driver = "virtconsole"
   chardev = "charserial0"
   name = "org.lfedge.eve.console.0"
+
+
 
 
 #[device "video0"]
@@ -1036,6 +1042,8 @@ func TestCreateDomConfig(t *testing.T) {
   name = "org.lfedge.eve.console.0"
 
 
+
+
 #[device "video0"]
 #  driver = "qxl-vga"
 #  ram_size = "67108864"
@@ -1329,6 +1337,8 @@ func TestCreateDomConfig(t *testing.T) {
   driver = "virtconsole"
   chardev = "charserial0"
   name = "org.lfedge.eve.console.0"
+
+
 
 
 #[device "video0"]
@@ -1646,6 +1656,8 @@ func TestCreateDomConfig(t *testing.T) {
   name = "org.lfedge.eve.console.0"
 
 
+
+
 #[device "video0"]
 #  driver = "qxl-vga"
 #  ram_size = "67108864"
@@ -1929,6 +1941,8 @@ func TestCreateDomConfig(t *testing.T) {
   driver = "virtconsole"
   chardev = "charserial0"
   name = "org.lfedge.eve.console.0"
+
+
 
 
 #[device "video0"]
