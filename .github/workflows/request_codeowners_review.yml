@@ -15,9 +15,13 @@ jobs:
         id: calc
         run: echo "depth=$(echo $((${{ github.event.pull_request.commits }} + 1)))" >> $GITHUB_OUTPUT
 
+      - name: Fetch the pull request head
+        run: git fetch origin +refs/pull/${{ github.event.pull_request.number }}/merge
+
       - name: Checkout code
         uses: actions/checkout@v4
         with:
+          ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: ${{ steps.calc.outputs.depth }}
 
       - name: Auto request review
