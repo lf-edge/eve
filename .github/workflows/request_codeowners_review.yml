@@ -18,7 +18,11 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
+          ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: ${{ steps.calc.outputs.depth }}
+
+      - name: Fetch the pull request head
+        run: git fetch origin +refs/pull/${{ github.event.pull_request.number }}/merge
 
       - name: Auto request review
         env:
