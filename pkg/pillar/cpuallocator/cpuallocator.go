@@ -38,7 +38,7 @@ type CPUAllocator struct {
 // the EVE services and VMs with no CPU pinning enabled.
 func Init(totalCPUs int, numReserved int) (*CPUAllocator, error) {
 	if totalCPUs <= 0 || numReserved < 0 || numReserved >= totalCPUs {
-		return nil, fmt.Errorf("invalid totalCPUs %d and/or numReserved %d",
+		return nil, fmt.Errorf("invalid total CPUs %d and/or numReserved %d",
 			totalCPUs, numReserved)
 	}
 	return &CPUAllocator{
