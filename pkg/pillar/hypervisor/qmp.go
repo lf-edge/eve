@@ -1,6 +1,7 @@
 package hypervisor
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -77,7 +78,14 @@ func getQemuStatus(socket string) (string, error) {
 				Status     string `json:"status"`
 			} `json:"return"`
 		}
-		err = json.Unmarshal(raw, &result)
+		dec := json.NewDecoder(bytes.NewReader(raw))
+		dec.DisallowUnknownFields()
+		err = dec.Decode(&result)
+		if err != nil {
+			err = fmt.Errorf("%v; (JSON received: '%s')", err, raw)
+		} else if result.Return.Status == "" {
+			err = fmt.Errorf("'status' is empty; (JSON received: '%s')", raw)
+		}
 		return result.Return.Status, err
 	} else {
 		return "", err
