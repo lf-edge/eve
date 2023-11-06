@@ -11,18 +11,16 @@ jobs:
     permissions:
       pull-requests: write
     steps:
-      - name: Calculate fetch-depth
-        id: calc
-        run: echo "depth=$(echo $((${{ github.event.pull_request.commits }} + 1)))" >> $GITHUB_OUTPUT
-
-      - name: Fetch the pull request head
-        run: git fetch origin +refs/pull/${{ github.event.pull_request.number }}/merge
-
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
-          fetch-depth: ${{ steps.calc.outputs.depth }}
+          ref: ${{ github.base_ref }}
+          fetch-depth: 0
+
+      - name: Fetch the PR's head ref
+        run: |
+          git fetch origin ${{ github.event.pull_request.head.sha }}:${{ github.event.pull_request.head.ref }}
+          git checkout ${{ github.event.pull_request.head.ref }}
 
       - name: Auto request review
         env:
@@ -32,7 +30,7 @@ jobs:
           # Get changed files in this pull request
           echo "Checking base: ${{ github.event.pull_request.base.sha }}"
           echo "Checking head: ${{ github.event.pull_request.head.sha }}"
-          for changed_file in $(git diff --name-only ${{ github.event.pull_request.base.sha }} ${{ github.event.pull_request.head.sha }}); do
+          for changed_file in $(git diff --name-only ${{ github.event.pull_request.base.sha }}...HEAD); do
             echo "Checking $changed_file"
             while read -r line; do
               # Get pattern of the files owned
