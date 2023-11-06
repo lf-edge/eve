@@ -2,14 +2,14 @@
 name: Request Code Owners Review
 
 on:
-  pull_request:
+  pull_request_target:
     types: ["opened", "synchronize"]
 
 jobs:
   auto_request_review:
     runs-on: ubuntu-latest
     permissions:
-        pull-requests: write
+      pull-requests: write
     steps:
       - name: Calculate fetch-depth
         id: calc
@@ -46,24 +46,21 @@ jobs:
               fi
             done < .github/CODEOWNERS
           done
-          # Remove duplicates
+          # Remove duplicates and format for JSON
           reviewers=$(echo "$reviewers" | xargs -n1 | sort -u | xargs)
+          IFS=' ' read -ra reviewers_array <<< "$reviewers"
+          json_array=$(printf ',\"%s\"' "${reviewers_array[@]}")
+          json_array="[${json_array:1}]" # Remove the leading comma
+          echo "JSON array: $json_array"
+
           if [ -n "$reviewers" ]; then
-            # Remove @ from reviewers (it stays in the beginning of the username)
-            reviewers_cleaned=${reviewers//@/}
-            # Convert the space-separated usernames into a Bash array
-            IFS=' ' read -ra reviewers_array <<< "$reviewers_cleaned"
-            # Convert the Bash array into a JSON array string
-            json_array="[\"$(echo "${reviewers_array[@]}" | tr ' ' '","' )\"]"
             echo "Requesting review from: ${reviewers_array[*]}"
-            echo "JSON array: $json_array"
             echo https://api.github.com/repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/requested_reviewers
             curl -L \
               -D - \
               -X POST \
               -H "Authorization: Bearer $GITHUB_TOKEN" \
               -H "Accept: application/vnd.github+json" \
-              -H "X-GitHub-Api-Version: 2022-11-28" \
               https://api.github.com/repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/requested_reviewers \
               -d "{\"reviewers\": $json_array}"
           else
