@@ -104,6 +104,7 @@ require (
 	github.com/klauspost/compress v1.15.1 // indirect
 	github.com/kr/fs v0.1.0 // indirect
 	github.com/leodido/go-urn v1.2.4 // indirect
+	github.com/lf-edge/eve-api v0.0.0-20231101130551-3e88f723673a // indirect
 	github.com/lithammer/shortuuid/v4 v4.0.0 // indirect
 	github.com/mattn/go-ieproxy v0.0.1 // indirect
 	github.com/matttproud/golang_protobuf_extensions v1.0.4 // indirect
