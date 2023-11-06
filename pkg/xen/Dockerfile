@@ -8,7 +8,7 @@ ENV BUILD_PKGS_arm64 u-boot-tools
 RUN eve-alpine-deploy.sh
 
 ENV XEN_UBOOT_ADDR 0x81000000
-ENV XEN_VERSION 4.15.0
+ENV XEN_VERSION 4.18.0-rc4
 ENV XEN_SOURCE=https://downloads.xenproject.org/release/xen/${XEN_VERSION}/xen-${XEN_VERSION}.tar.gz
 
 # Download and verify xen
@@ -20,7 +20,7 @@ RUN [ -f "$(basename ${XEN_SOURCE})" ] || tar --absolute-names -xz < /xen.tar.gz
 WORKDIR /xen/xen
 COPY *.patch arch /tmp/
 RUN cp /tmp/"$(uname -m)"/*.patch /tmp/
-RUN for p in /tmp/*.patch ; do patch -p1 < "$p" || exit 1 ; done
+#RUN for p in /tmp/*.patch ; do patch -p1 < "$p" || exit 1 ; done
 RUN chmod +x scripts/* || :
 
 RUN make defconfig && \
