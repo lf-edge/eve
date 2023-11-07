@@ -10,7 +10,6 @@ import (
 	"os"
 
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
 	"github.com/shirou/gopsutil/cpu"
 	"github.com/shirou/gopsutil/mem"
 	"github.com/sirupsen/logrus"
@@ -19,12 +18,6 @@ import (
 var currentHypervisor Hypervisor
 
 func init() {
-	if fileutils.FileExists(nil, "/run/installer.log") {
-		// if this file exists it means we're running in the installer and we should not inititialize the containerd
-		// hypervisor as it interferes with the installer
-		return
-	}
-
 	var err error
 
 	flagSet := flag.NewFlagSet("", flag.ExitOnError)

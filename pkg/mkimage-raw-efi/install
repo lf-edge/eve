@@ -31,8 +31,6 @@ BAIL_FINAL_CMD=${BAIL_FINAL_CMD:-"exit 1"}
 # the contents of this file are saved to $REPORT/installer.log
 # After the USB install, users can see the installation status under /Volumes/INVENTORY/<serial#>/installer.log
 LOGFILE_DIR="/run"
-
-# pillar behaves differently if this file exists to check if it is running in installer mode - see hypervisor.go
 LOGFILE="$LOGFILE_DIR/installer.log"
 # logs to both console and a file.
 logmsg() {
