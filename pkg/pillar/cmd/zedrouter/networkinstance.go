@@ -172,9 +172,9 @@ func (z *zedrouter) doActivateNetworkInstance(config types.NetworkInstanceConfig
 		z.publishNetworkInstanceStatus(status)
 		return
 	}
+	z.processNIReconcileStatus(niRecStatus, status)
 	z.log.Functionf("Activated network instance %s (%s)", status.UUID,
 		status.DisplayName)
-	z.processNIReconcileStatus(niRecStatus, status)
 	status.Activated = true
 	z.publishNetworkInstanceStatus(status)
 	// Start collecting state data and metrics for this network instance.

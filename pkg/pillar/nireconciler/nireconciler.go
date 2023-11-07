@@ -16,6 +16,7 @@ import (
 	"sort"
 
 	dg "github.com/lf-edge/eve-libs/depgraph"
+	"github.com/lf-edge/eve/pkg/kube/cnirpc"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils/generics"
 	"github.com/lf-edge/eve/pkg/pillar/utils/netutils"
@@ -52,23 +53,27 @@ type NIReconciler interface {
 	// DelNI : remove network instance from the network stack.
 	DelNI(ctx context.Context, niID uuid.UUID) (NIReconcileStatus, error)
 
-	// ConnectApp : make necessary changes inside the network stack to connect a new
+	// AddAppConn : make necessary changes inside the network stack to connect a new
 	// application into the desired set of network instance(s).
 	// This is called by zedrouter before the guest VM is started, meaning that
-	// some of the operations will be completed later from within ResumeReconcile() after
-	// domainmgr starts the VM. Use WatchReconcilerUpdates to watch for updates.
+	// some operations will be completed later from within ResumeReconcile() after
+	// domainmgr starts the VM, or when UpdateAppConn is called from within Kubernetes CNI
+	// plugin. Use WatchReconcilerUpdates to watch for updates.
 	// appNum is a positive integer number (>0) allocated for the application by zedrouter.
 	// It is unique among all applications deployed on the node.
 	// This number is persisted and doesn't change across app config changes or node
 	// reboots.
-	ConnectApp(ctx context.Context, appNetConfig types.AppNetworkConfig, appNum int,
-		vifs []AppVIF) (AppConnReconcileStatus, error)
-	// ReconnectApp : (re)connect application with changed config into the (possibly
-	// changed) desired set of network instance(s).
-	ReconnectApp(ctx context.Context, appNetConfig types.AppNetworkConfig, vifs []AppVIF) (
-		AppConnReconcileStatus, error)
-	// DisconnectApp : disconnect (removed) application from network instance(s).
-	DisconnectApp(ctx context.Context, app uuid.UUID) (AppConnReconcileStatus, error)
+	// kubePod.Name should only be defined in Kubernetes mode, where applications
+	// run inside pods.
+	AddAppConn(ctx context.Context, appNetConfig types.AppNetworkConfig, appNum int,
+		kubePod cnirpc.AppPod, vifs []AppVIF) (AppConnReconcileStatus, error)
+	// UpdateAppConn : update application connectivity to reflect config changes.
+	UpdateAppConn(ctx context.Context, appNetConfig types.AppNetworkConfig,
+		kubePod cnirpc.AppPod, vifs []AppVIF) (AppConnReconcileStatus, error)
+	// DelAppConn : disconnect (removed) application from network instance(s).
+	DelAppConn(ctx context.Context, app uuid.UUID) (AppConnReconcileStatus, error)
+	// GetAppConnStatus : get current status of app connectivity.
+	GetAppConnStatus(app uuid.UUID) (AppConnReconcileStatus, error)
 
 	// WatchReconcilerUpdates returns channel with updates about the reconciliation
 	// status, which is provided separately for every network instance and connected
@@ -138,6 +143,8 @@ type AppVIF struct {
 	GuestIfMAC net.HardwareAddr
 	// GuestIP : IP address assigned to VIF on the guest side (inside the app).
 	GuestIP net.IP
+	// PodVIF can only be defined in kube mode.
+	PodVIF types.PodVIF
 }
 
 // UpdateType : type of the ReconcilerUpdate.

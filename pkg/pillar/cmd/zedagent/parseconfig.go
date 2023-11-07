@@ -292,6 +292,8 @@ func parseBaseOS(getconfigCtx *getconfigContext,
 		"NewSha : % x, "+
 		"baseOS: %v",
 		baseOSPrevConfigHash, configHash, baseOS)
+	// TODO: discuss this fix with Nikolay
+	afterReboot := baseOSPrevConfigHash == nil
 	baseOSPrevConfigHash = configHash
 	if baseOS.GetRetryUpdate() != nil {
 		if getconfigCtx.configRetryUpdateCounter != baseOS.GetRetryUpdate().GetCounter() {
@@ -309,7 +311,7 @@ func parseBaseOS(getconfigCtx *getconfigContext,
 
 	// Check if the BaseOsConfig already exists
 	prevBaseOsConfig, _ := getconfigCtx.pubBaseOsConfig.Get(cfg.Key())
-	if prevBaseOsConfig == nil {
+	if prevBaseOsConfig == nil && !afterReboot {
 		// If we don't have a BaseOsConfig with the same key already published, it's a new one
 		// Check for activation flag
 		if cfg.Activate {

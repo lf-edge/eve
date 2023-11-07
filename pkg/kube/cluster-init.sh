@@ -72,17 +72,22 @@ wait_for_default_route() {
 }
 
 get_default_intf_IP_prefix() {
-	# Find the default route interface
-	default_interface=$(ip route show default | awk '/default/ {print $5}')
+  echo "Trying to obtain Node IP..."
+  while [ -z "$NODE_IP" ]; do
+    # Find the default route interface
+    default_interface="$(ip route show default | head -n 1 | awk '/default/ {print $5}')"
 
-	# Get the IP address of the default route interface
-	NODE_IP=$(ip addr show dev "$default_interface" | awk '/inet / {print $2}' | cut -d "/" -f1)
+    # Get the IP address of the default route interface
+    NODE_IP="$(ip addr show dev "$default_interface" | awk '/inet / {print $2}' | cut -d "/" -f1)"
 
-	echo "IP Address: $ip_address"
-	ip_prefix="$NODE_IP/32"
+    [ -z "$NODE_IP" ] && sleep 1
+  done
 
-	# fill in the outbound external Interface IP prefix in multus config
-	awk -v new_ip="$ip_prefix" '{gsub("IPAddressReplaceMe", new_ip)}1' /etc/multus-daemonset.yaml > /tmp/multus-daemonset.yaml
+  echo "Node IP Address: $ip_address"
+  ip_prefix="$NODE_IP/32"
+
+  # fill in the outbound external Interface IP prefix in multus config
+  awk -v new_ip="$ip_prefix" '{gsub("IPAddressReplaceMe", new_ip)}1' /etc/multus-daemonset.yaml > /tmp/multus-daemonset.yaml
 }
 
 wait_for_device_uuid() {
@@ -99,14 +104,16 @@ wait_for_device_uuid() {
 apply_multus_cni() {
   # apply multus
   sleep 10
-  # get default ip intf ip address to be node-ip
+  # get IP of the interface with the first default route, which will be used as node IP
   get_default_intf_IP_prefix
+  kubectl create namespace eve-kube-app
   logmsg "Apply Multus, Node-IP: $NODE_IP"
-  kubectl apply -f /tmp/multus-daemonset.yaml
+  while ! kubectl apply -f /tmp/multus-daemonset.yaml; do
+    sleep 1
+  done
   logmsg "done applying multus"
   ln -s /var/lib/cni/bin/multus /var/lib/rancher/k3s/data/current/bin/multus
   # need to only do this once
-  kubectl create namespace eve-kube-app
   touch /var/lib/multus_initialized
 }
 
