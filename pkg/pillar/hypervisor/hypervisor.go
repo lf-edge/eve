@@ -5,11 +5,13 @@ package hypervisor
 
 import (
 	"fmt"
+	"os"
+	"strings"
+
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/shirou/gopsutil/cpu"
 	"github.com/shirou/gopsutil/mem"
 	"github.com/sirupsen/logrus"
-	"os"
 )
 
 // Hypervisor provides methods for manipulating domains on the host
@@ -28,14 +30,15 @@ type Hypervisor interface {
 }
 
 type hypervisorDesc struct {
-	constructor func() Hypervisor
-	dom0handle  string
+	constructor       func() Hypervisor
+	dom0handle        string
+	hvTypeFileContent string
 }
 
 var knownHypervisors = map[string]hypervisorDesc{
-	XenHypervisorName:        {constructor: newXen, dom0handle: "/proc/xen"},
-	KVMHypervisorName:        {constructor: newKvm, dom0handle: "/dev/kvm"},
-	ACRNHypervisorName:       {constructor: newAcrn, dom0handle: "/dev/acrn"},
+	XenHypervisorName:        {constructor: newXen, dom0handle: "/proc/xen", hvTypeFileContent: "xen"},
+	KVMHypervisorName:        {constructor: newKvm, dom0handle: "/dev/kvm", hvTypeFileContent: "kvm"},
+	ACRNHypervisorName:       {constructor: newAcrn, dom0handle: "/dev/acrn", hvTypeFileContent: "acrn"},
 	ContainerdHypervisorName: {constructor: newContainerd, dom0handle: "/run/containerd/containerd.sock"},
 	NullHypervisorName:       {constructor: newNull, dom0handle: "/"},
 }
@@ -52,6 +55,29 @@ func GetHypervisor(hint string) (Hypervisor, error) {
 	} else {
 		return knownHypervisors[hint].constructor(), nil
 	}
+}
+
+// BootTimeHypervisor returns the hypervisor according to /run/eve-hv-type
+func BootTimeHypervisor() Hypervisor {
+	hvFilePath := "/run/eve-hv-type"
+	hvFileContentBytes, err := os.ReadFile(hvFilePath)
+	if err != nil {
+		logrus.Errorf("could not open %s: %v", hvFilePath, err)
+		return nil
+	}
+
+	hvFileContent := string(hvFileContentBytes)
+	hvFileContent = strings.TrimSpace(hvFileContent)
+
+	for _, knownHypervisor := range knownHypervisors {
+		if knownHypervisor.hvTypeFileContent == hvFileContent {
+			return knownHypervisor.constructor()
+		}
+	}
+
+	logrus.Errorf("no hypervisor found for %s", hvFileContent)
+
+	return nil
 }
 
 // GetAvailableHypervisors returns a list of all available hypervisors plus
