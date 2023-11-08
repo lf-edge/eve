@@ -50,7 +50,9 @@ jobs:
           done
           # Remove duplicates and format for JSON
           reviewers=$(echo "$reviewers" | xargs -n1 | sort -u | xargs)
-          IFS=' ' read -ra reviewers_array <<< "$reviewers"
+          # Remove @ from reviewers (it stays in the beginning of the username)
+          reviewers_cleaned=${reviewers//@/}
+          IFS=' ' read -ra reviewers_array <<< "$reviewers_cleaned"
           json_array=$(printf ',\"%s\"' "${reviewers_array[@]}")
           json_array="[${json_array:1}]" # Remove the leading comma
           echo "JSON array: $json_array"
