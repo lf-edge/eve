@@ -803,7 +803,7 @@ func (ctx kvmContext) Start(domainName string) error {
 		return logError("failed to start domain that is stopped %v", err)
 	}
 
-	if status, err := getQemuStatus(qmpFile); err != nil || status != "running" {
+	if status, err := getQemuStatus(qmpFile); err != nil || status != types.RUNNING {
 		return logError("domain status is not running but %s after cont command returned %v", status, err)
 	}
 	return nil
@@ -837,33 +837,13 @@ func (ctx kvmContext) Info(domainName string) (int, types.SwState, error) {
 		return effectiveDomainID, effectiveDomainState, err
 	}
 
-	// if task us alive, we augment task status with finer grained details from qemu
-	// lets parse the status according to https://github.com/qemu/qemu/blob/master/qapi/run-state.json#L8
-	stateMap := map[string]types.SwState{
-		"finish-migrate": types.PAUSED,
-		"inmigrate":      types.PAUSING,
-		"paused":         types.PAUSED,
-		"postmigrate":    types.PAUSED,
-		"prelaunch":      types.PAUSED,
-		"restore-vm":     types.PAUSED,
-		"running":        types.RUNNING,
-		"save-vm":        types.PAUSED,
-		"shutdown":       types.HALTING,
-		"suspended":      types.PAUSED,
-		"watchdog":       types.PAUSING,
-		"colo":           types.PAUSED,
-		"preconfig":      types.PAUSED,
-	}
-	res, err := getQemuStatus(getQmpExecutorSocket(domainName))
+	_, err = getQemuStatus(getQmpExecutorSocket(domainName))
 	if err != nil {
-		return effectiveDomainID, types.BROKEN, logError("couldn't retrieve status for domain %s: %v", domainName, err)
+		return effectiveDomainID, types.BROKEN,
+			logError("couldn't retrieve status for domain %s: %v", domainName, err)
 	}
 
-	if effectiveDomainState, matched := stateMap[res]; !matched {
-		return effectiveDomainID, types.BROKEN, logError("domain %s reported to be in unexpected state %s", domainName, res)
-	} else {
-		return effectiveDomainID, effectiveDomainState, nil
-	}
+	return effectiveDomainID, effectiveDomainState, nil
 }
 
 func (ctx kvmContext) Cleanup(domainName string) error {
