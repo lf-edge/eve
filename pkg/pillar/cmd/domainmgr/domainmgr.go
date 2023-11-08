@@ -136,19 +136,9 @@ func (ctx *domainContext) publishAssignableAdapters() {
 	ctx.pubAssignableAdapters.Publish("global", *ctx.assignableAdapters)
 }
 
-var currentHypervisor hypervisor.Hypervisor
-var currentHypervisorMutex sync.Mutex
+var hyper hypervisor.Hypervisor // Current hypervisor
 var logger *logrus.Logger
 var log *base.LogObject
-
-// CurrentHypervisor returns the current hypervisor
-func CurrentHypervisor() hypervisor.Hypervisor {
-	currentHypervisorMutex.Lock()
-	hv := currentHypervisor
-	currentHypervisorMutex.Unlock()
-
-	return hv
-}
 
 func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, arguments []string) int {
 	logger = loggerArg
@@ -179,9 +169,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		fmt.Printf("%s: %s\n", agentName, Version)
 		return 0
 	}
-	currentHypervisorMutex.Lock()
-	currentHypervisor, err = hypervisor.GetHypervisor(*domainCtx.hypervisorPtr)
-	currentHypervisorMutex.Unlock()
+	hyper, err = hypervisor.GetHypervisor(*domainCtx.hypervisorPtr)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -189,7 +177,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	if err := pidfile.CheckAndCreatePidfile(log, agentName); err != nil {
 		log.Fatal(err)
 	}
-	log.Functionf("Starting %s with %s hypervisor backend", agentName, CurrentHypervisor().Name())
+	log.Functionf("Starting %s with %s hypervisor backend", agentName, hyper.Name())
 
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)
@@ -486,7 +474,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 
 	capabilitiesSent := false
 	capabilitiesTicker := time.NewTicker(5 * time.Second)
-	if err := getAndPublishCapabilities(&domainCtx, CurrentHypervisor()); err != nil {
+	if err := getAndPublishCapabilities(&domainCtx, hyper); err != nil {
 		log.Warnf("getAndPublishCapabilities: %v", err)
 	} else {
 		capabilitiesSent = true
@@ -494,7 +482,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	}
 
 	log.Functionf("Creating %s at %s", "metricsTimerTask", agentlog.GetMyStack())
-	go metricsTimerTask(&domainCtx, CurrentHypervisor())
+	go metricsTimerTask(&domainCtx, hyper)
 
 	// Before starting to process DomainConfig, domainmgr should (in this order):
 	//   1. wait for NIM to publish DNS to learn which ports are used for management
@@ -530,7 +518,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 			publishProcessesHandler(&domainCtx)
 
 		case <-capabilitiesTicker.C:
-			if err := getAndPublishCapabilities(&domainCtx, CurrentHypervisor()); err != nil {
+			if err := getAndPublishCapabilities(&domainCtx, hyper); err != nil {
 				log.Warnf("getAndPublishCapabilities: %v", err)
 			} else {
 				capabilitiesSent = true
@@ -556,7 +544,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	var resources types.HostMemory
 	for i := 0; true; i++ {
 		delay := 10
-		resources, err = CurrentHypervisor().GetHostCPUMem()
+		resources, err = hyper.GetHostCPUMem()
 		if err == nil {
 			break
 		}
@@ -944,7 +932,7 @@ func verifyStatus(ctx *domainContext, status *types.DomainStatus) {
 		configActivate = true
 	}
 
-	domainID, domainStatus, err := CurrentHypervisor().Task(status).Info(status.DomainName)
+	domainID, domainStatus, err := hyper.Task(status).Info(status.DomainName)
 	if err != nil || domainStatus == types.HALTED {
 		if status.Activated && configActivate {
 			if err == nil {
@@ -977,10 +965,10 @@ func verifyStatus(ctx *domainContext, status *types.DomainStatus) {
 			}
 
 			//cleanup app instance tasks
-			if err := CurrentHypervisor().Task(status).Delete(status.DomainName); err != nil {
+			if err := hyper.Task(status).Delete(status.DomainName); err != nil {
 				log.Errorf("failed to delete domain: %s (%v)", status.DomainName, err)
 			}
-			if err := CurrentHypervisor().Task(status).Cleanup(status.DomainName); err != nil {
+			if err := hyper.Task(status).Cleanup(status.DomainName); err != nil {
 				log.Errorf("failed to cleanup domain: %s (%v)", status.DomainName, err)
 			}
 		}
@@ -1118,7 +1106,7 @@ func maybeRetryBoot(ctx *domainContext, status *types.DomainStatus) {
 	}
 	defer file.Close()
 
-	if err := CurrentHypervisor().Task(status).Setup(*status, *config, ctx.assignableAdapters, nil, file); err != nil {
+	if err := hyper.Task(status).Setup(*status, *config, ctx.assignableAdapters, nil, file); err != nil {
 		//it is retry, so omit error
 		log.Errorf("Failed to create DomainStatus from %v: %s",
 			config, err)
@@ -1397,14 +1385,14 @@ func doAssignIoAdaptersToDomain(ctx *domainContext, config types.DomainConfig,
 
 	}
 	for i, long := range assignmentsPci {
-		err := CurrentHypervisor().PCIReserve(long)
+		err := hyper.PCIReserve(long)
 		if err != nil {
 			// Undo what we assigned
 			for j, long := range assignmentsPci {
 				if j >= i {
 					break
 				}
-				CurrentHypervisor().PCIRelease(long)
+				hyper.PCIRelease(long)
 			}
 			if publishAssignableAdapters {
 				ctx.publishAssignableAdapters()
@@ -1581,7 +1569,7 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 	defer file.Close()
 
 	globalConfig := agentlog.GetGlobalConfig(log, ctx.subGlobalConfig)
-	if err := CurrentHypervisor().Task(status).Setup(*status, config, ctx.assignableAdapters, globalConfig, file); err != nil {
+	if err := hyper.Task(status).Setup(*status, config, ctx.assignableAdapters, globalConfig, file); err != nil {
 		log.Errorf("Failed to create DomainStatus from %v: %s",
 			config, err)
 		status.SetErrorNow(err.Error())
@@ -1640,17 +1628,17 @@ func doActivateTail(ctx *domainContext, status *types.DomainStatus,
 	status.State = types.BOOTING
 	publishDomainStatus(ctx, status)
 
-	err := CurrentHypervisor().Task(status).Start(status.DomainName)
+	err := hyper.Task(status).Start(status.DomainName)
 	if err != nil {
 		log.Errorf("domain start for %s: %s", status.DomainName, err)
 		status.SetErrorNow(err.Error())
 
 		// Delete
-		if err := CurrentHypervisor().Task(status).Delete(status.DomainName); err != nil {
+		if err := hyper.Task(status).Delete(status.DomainName); err != nil {
 			log.Errorf("failed to delete domain: %s (%v)", status.DomainName, err)
 		}
 		// Cleanup
-		if err := CurrentHypervisor().Task(status).Cleanup(status.DomainName); err != nil {
+		if err := hyper.Task(status).Cleanup(status.DomainName); err != nil {
 			log.Errorf("failed to cleanup domain: %s (%v)", status.DomainName, err)
 		}
 
@@ -1664,7 +1652,7 @@ func doActivateTail(ctx *domainContext, status *types.DomainStatus,
 	status.VifList = checkIfEmu(status.VifList)
 
 	status.State = types.RUNNING
-	domainID, state, err := CurrentHypervisor().Task(status).Info(status.DomainName)
+	domainID, state, err := hyper.Task(status).Info(status.DomainName)
 
 	if err != nil {
 		// Immediate failure treat as above
@@ -1675,11 +1663,11 @@ func doActivateTail(ctx *domainContext, status *types.DomainStatus,
 		log.Errorf("doActivateTail(%v) failed for %s: %s",
 			status.UUIDandVersion, status.DisplayName, err)
 		// Delete
-		if err := CurrentHypervisor().Task(status).Delete(status.DomainName); err != nil {
+		if err := hyper.Task(status).Delete(status.DomainName); err != nil {
 			log.Errorf("failed to delete domain: %s (%v)", status.DomainName, err)
 		}
 		// Cleanup
-		if err := CurrentHypervisor().Task(status).Cleanup(status.DomainName); err != nil {
+		if err := hyper.Task(status).Cleanup(status.DomainName); err != nil {
 			log.Errorf("failed to cleanup domain: %s (%v)", status.DomainName, err)
 		}
 		return
@@ -1724,7 +1712,7 @@ func doInactivate(ctx *domainContext, status *types.DomainStatus, impatient bool
 
 	log.Functionf("doInactivate(%v) for %s domainId %d",
 		status.UUIDandVersion, status.DisplayName, status.DomainId)
-	domainID, _, err := CurrentHypervisor().Task(status).Info(status.DomainName)
+	domainID, _, err := hyper.Task(status).Info(status.DomainName)
 	if err == nil && domainID != status.DomainId {
 		status.DomainId = domainID
 		status.BootTime = time.Now()
@@ -1798,7 +1786,7 @@ func doInactivate(ctx *domainContext, status *types.DomainStatus, impatient bool
 	}
 
 	if status.DomainId != 0 {
-		if err := CurrentHypervisor().Task(status).Delete(status.DomainName); err != nil {
+		if err := hyper.Task(status).Delete(status.DomainName); err != nil {
 			log.Errorf("Failed to delete domain %s (%v)", status.DomainName, err)
 		} else {
 			log.Functionf("doInactivate(%v) for %s: Delete succeeded",
@@ -1816,7 +1804,7 @@ func doInactivate(ctx *domainContext, status *types.DomainStatus, impatient bool
 }
 
 func doCleanup(ctx *domainContext, status *types.DomainStatus) {
-	if err := CurrentHypervisor().Task(status).Cleanup(status.DomainName); err != nil {
+	if err := hyper.Task(status).Cleanup(status.DomainName); err != nil {
 		log.Errorf("failed to cleanup domain: %s (%v)", status.DomainName, err)
 	}
 
@@ -1920,7 +1908,7 @@ func releaseAdapters(ctx *domainContext, ioAdapterList []types.IoAdapter,
 		checkIoBundleAll(ctx)
 	}
 	for _, long := range assignments {
-		err := CurrentHypervisor().PCIRelease(long)
+		err := hyper.PCIRelease(long)
 		if err != nil && !ignoreErrors {
 			status.SetErrorNow(err.Error())
 		}
@@ -2289,7 +2277,7 @@ func waitForDomainGone(status types.DomainStatus, maxDelay time.Duration) bool {
 			time.Sleep(delay)
 			waited += delay
 		}
-		_, state, err := CurrentHypervisor().Task(&status).Info(status.DomainName)
+		_, state, err := hyper.Task(&status).Info(status.DomainName)
 		if err != nil {
 			log.Errorf("waitForDomainGone(%v) for %s error %s state %s",
 				status.UUIDandVersion, status.DisplayName,
@@ -2377,7 +2365,7 @@ func DomainCreate(ctx *domainContext, status types.DomainStatus) (int, error) {
 		log.Errorf("DomainCreate(%s) no DomainConfig", status.Key())
 		return 0, fmt.Errorf("DomainCreate(%s) no DomainConfig", status.Key())
 	}
-	domainID, err = CurrentHypervisor().Task(&status).Create(status.DomainName, filename, config)
+	domainID, err = hyper.Task(&status).Create(status.DomainName, filename, config)
 
 	return domainID, err
 }
@@ -2390,7 +2378,7 @@ func DomainShutdown(status types.DomainStatus, force bool) error {
 
 	// Stop the domain
 	log.Functionf("Stopping domain - %s", status.DomainName)
-	err = CurrentHypervisor().Task(&status).Stop(status.DomainName, force)
+	err = hyper.Task(&status).Stop(status.DomainName, force)
 
 	return err
 }
@@ -2847,7 +2835,7 @@ func handlePhysicalIOAdapterListImpl(ctxArg interface{}, key string,
 			len(aa.IoBundleList))
 
 		// check for mismatched PCI-ids and assignment groups and mark as errors
-		aa.CheckBadAssignmentGroups(log, CurrentHypervisor().PCISameController)
+		aa.CheckBadAssignmentGroups(log, hyper.PCISameController)
 		for i := range aa.IoBundleList {
 			ib := &aa.IoBundleList[i]
 			log.Functionf("handlePhysicalIOAdapterListImpl: new Adapter: %+v",
@@ -2892,7 +2880,7 @@ func handlePhysicalIOAdapterListImpl(ctxArg interface{}, key string,
 			aa.AddOrUpdateIoBundle(log, *ib)
 
 			// check for mismatched PCI-ids and assignment groups and mark as errors
-			aa.CheckBadAssignmentGroups(log, CurrentHypervisor().PCISameController)
+			aa.CheckBadAssignmentGroups(log, hyper.PCISameController)
 			// Lookup since it could have changed
 			ib = aa.LookupIoBundlePhylabel(ib.Phylabel)
 			updatePortAndPciBackIoBundle(ctx, ib)
@@ -2993,7 +2981,7 @@ func updatePortAndPciBackIoBundle(ctx *domainContext, ib *types.IoBundle) (chang
 	// expand list to include other PCI functions on the same PCI controller
 	// since they need to be treated as part of the same bundle even if the
 	// EVE controller doesn't know it
-	list = aa.ExpandControllers(log, list, CurrentHypervisor().PCISameController)
+	list = aa.ExpandControllers(log, list, hyper.PCISameController)
 	for _, ib := range list {
 		if types.IsPort(ctx.deviceNetworkStatus, ib.Ifname) {
 			isPort = true
@@ -3079,7 +3067,7 @@ func updatePortAndPciBackIoMember(ctx *domainContext, ib *types.IoBundle, isPort
 		if ib.PciLong != "" {
 			log.Functionf("updatePortAndPciBackIoMember: Removing %s (%s) from pciback",
 				ib.Phylabel, ib.PciLong)
-			err = CurrentHypervisor().PCIRelease(ib.PciLong)
+			err = hyper.PCIRelease(ib.PciLong)
 			if err != nil {
 				err = fmt.Errorf("adapter %s (group %s, type %d) PCI ID %s; not released by hypervisor: %v",
 					ib.Phylabel, ib.AssignmentGroup, ib.Type,
@@ -3126,7 +3114,7 @@ func updatePortAndPciBackIoMember(ctx *domainContext, ib *types.IoBundle, isPort
 		} else if ib.PciLong != "" && ib.UsbAddr == "" {
 			log.Noticef("Assigning %s (%s) to pciback",
 				ib.Phylabel, ib.PciLong)
-			err := CurrentHypervisor().PCIReserve(ib.PciLong)
+			err := hyper.PCIReserve(ib.PciLong)
 			if err != nil {
 				return changed, err
 			}
@@ -3367,7 +3355,7 @@ func handleIBDelete(ctx *domainContext, phylabel string) {
 		log.Functionf("handleIBDelete: Assigning %s (%s) back",
 			ib.Phylabel, ib.PciLong)
 		if ib.PciLong != "" {
-			err := CurrentHypervisor().PCIRelease(ib.PciLong)
+			err := hyper.PCIRelease(ib.PciLong)
 			if err != nil {
 				log.Errorf("handleIBDelete(%d %s %s) PCIRelease %s failed %v",
 					ib.Type, ib.Phylabel, ib.AssignmentGroup, ib.PciLong, err)
