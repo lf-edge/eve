@@ -69,6 +69,20 @@ func execVNCPassword(socket string, password string) error {
 	return err
 }
 
+// There is errors.Join(), but stupid Yetus has old golang
+// and complains with "Join not declared by package errors".
+// Use our own.
+func joinErrors(err1, err2 error) error {
+	if err1 == nil {
+		return err2
+	}
+	if err2 == nil {
+		return err1
+	}
+
+	return fmt.Errorf("%v; %v", err1, err2)
+}
+
 func getQemuStatus(socket string) (types.SwState, error) {
 	// lets parse the status according to
 	// https://github.com/qemu/qemu/blob/master/qapi/run-state.json#L8
@@ -88,7 +102,21 @@ func getQemuStatus(socket string) (types.SwState, error) {
 		"preconfig":      types.PAUSED,
 	}
 
-	if raw, err := execRawCmd(socket, `{ "execute": "query-status" }`); err == nil {
+	// We do several retries, because correct QEMU status is very crucial to EVE
+	// and if for some reason (https://github.com/digitalocean/go-qemu/pull/210)
+	// the status is unexpected, EVE stops QEMU and game over.
+	var errs error
+	state := types.UNKNOWN
+	for attempt := 1; attempt <= 3; attempt++ {
+		raw, err := execRawCmd(socket, `{ "execute": "query-status" }`)
+		if err != nil {
+			err = fmt.Errorf("[attempt %d] qmp status failed for QMP socket '%s': err: '%v'; (JSON response: '%s')",
+				attempt, socket, err, raw)
+			errs = joinErrors(errs, err)
+			time.Sleep(time.Second)
+			continue
+		}
+
 		var result struct {
 			ID     string `json:"id"`
 			Return struct {
@@ -100,18 +128,33 @@ func getQemuStatus(socket string) (types.SwState, error) {
 		dec := json.NewDecoder(bytes.NewReader(raw))
 		dec.DisallowUnknownFields()
 		err = dec.Decode(&result)
-		var matched bool
-		var state types.SwState
 		if err != nil {
-			err = fmt.Errorf("%v; (JSON received: '%s')", err, raw)
-		} else if state, matched = qmpStatusMap[result.Return.Status]; !matched {
-			err = fmt.Errorf("unknown QMP status '%s' for QMP socket '%s'; (JSON response: '%s')",
-				result.Return.Status, socket, raw)
+			err = fmt.Errorf("[attempt %d] failed to parse QMP status response for QMP socket '%s': err: '%v'; (JSON response: '%s')",
+				attempt, socket, err, raw)
+			errs = joinErrors(errs, err)
+			time.Sleep(time.Second)
+			continue
 		}
-		return state, err
-	} else {
-		return types.UNKNOWN, err
+		var matched bool
+		if state, matched = qmpStatusMap[result.Return.Status]; !matched {
+			err = fmt.Errorf("[attempt %d] unknown QMP status '%s' for QMP socket '%s'; (JSON response: '%s')",
+				attempt, result.Return.Status, socket, raw)
+			errs = joinErrors(errs, err)
+			time.Sleep(time.Second)
+			continue
+		}
+
+		if errs != nil {
+			logrus.Errorf("getQemuStatus: %d retrieving status attempts failed '%v', but eventually '%s' status was retrieved, so return SUCCESS and continue",
+				attempt, errs, result.Return.Status)
+			errs = nil
+		}
+
+		// Success
+		break
 	}
+
+	return state, errs
 }
 
 func qmpEventHandler(listenerSocket, executorSocket string) {
