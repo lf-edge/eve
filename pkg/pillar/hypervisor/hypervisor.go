@@ -57,9 +57,7 @@ func GetHypervisor(hint string) (Hypervisor, error) {
 	}
 }
 
-// BootTimeHypervisor returns the hypervisor according to /run/eve-hv-type
-func BootTimeHypervisor() Hypervisor {
-	hvFilePath := "/run/eve-hv-type"
+func bootTimeHypervisorWithHVFilePath(hvFilePath string) Hypervisor {
 	hvFileContentBytes, err := os.ReadFile(hvFilePath)
 	if err != nil {
 		logrus.Errorf("could not open %s: %v", hvFilePath, err)
@@ -78,6 +76,11 @@ func BootTimeHypervisor() Hypervisor {
 	logrus.Errorf("no hypervisor found for %s", hvFileContent)
 
 	return nil
+}
+
+// BootTimeHypervisor returns the hypervisor according to /run/eve-hv-type
+func BootTimeHypervisor() Hypervisor {
+	return bootTimeHypervisorWithHVFilePath("/run/eve-hv-type")
 }
 
 // GetAvailableHypervisors returns a list of all available hypervisors plus
