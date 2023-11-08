@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/digitalocean/go-qemu/qmp"
+	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/sirupsen/logrus"
 	"os"
 	"time"
@@ -68,7 +69,25 @@ func execVNCPassword(socket string, password string) error {
 	return err
 }
 
-func getQemuStatus(socket string) (string, error) {
+func getQemuStatus(socket string) (types.SwState, error) {
+	// lets parse the status according to
+	// https://github.com/qemu/qemu/blob/master/qapi/run-state.json#L8
+	qmpStatusMap := map[string]types.SwState{
+		"finish-migrate": types.PAUSED,
+		"inmigrate":      types.PAUSING,
+		"paused":         types.PAUSED,
+		"postmigrate":    types.PAUSED,
+		"prelaunch":      types.PAUSED,
+		"restore-vm":     types.PAUSED,
+		"running":        types.RUNNING,
+		"save-vm":        types.PAUSED,
+		"shutdown":       types.HALTING,
+		"suspended":      types.PAUSED,
+		"watchdog":       types.PAUSING,
+		"colo":           types.PAUSED,
+		"preconfig":      types.PAUSED,
+	}
+
 	if raw, err := execRawCmd(socket, `{ "execute": "query-status" }`); err == nil {
 		var result struct {
 			ID     string `json:"id"`
@@ -81,14 +100,17 @@ func getQemuStatus(socket string) (string, error) {
 		dec := json.NewDecoder(bytes.NewReader(raw))
 		dec.DisallowUnknownFields()
 		err = dec.Decode(&result)
+		var matched bool
+		var state types.SwState
 		if err != nil {
 			err = fmt.Errorf("%v; (JSON received: '%s')", err, raw)
-		} else if result.Return.Status == "" {
-			err = fmt.Errorf("'status' is empty; (JSON received: '%s')", raw)
+		} else if state, matched = qmpStatusMap[result.Return.Status]; !matched {
+			err = fmt.Errorf("unknown QMP status '%s' for QMP socket '%s'; (JSON response: '%s')",
+				result.Return.Status, socket, raw)
 		}
-		return result.Return.Status, err
+		return state, err
 	} else {
-		return "", err
+		return types.UNKNOWN, err
 	}
 }
 
