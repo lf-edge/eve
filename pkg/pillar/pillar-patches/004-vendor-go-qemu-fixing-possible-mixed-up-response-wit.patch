@@ -1,0 +1,111 @@
+From 929fb60fa5d448997c658fcec28e333b22c5b477 Mon Sep 17 00:00:00 2001
+From: Roman Penyaev <r.peniaev@gmail.com>
+Date: Wed, 8 Nov 2023 08:25:17 +0100
+Subject: [PATCH 1/1] vendor/go-qemu: fixing possible mixed up response with
+ events
+
+Patch drains possible events on qmp socket until true "qmp_capabilities"
+response is received.
+
+This targets a nasty and rare problem in "Connect(), Run()" sequence,
+when asynchronous QEMU "event" just after the "qmp_capabilities" request
+is accepted as response and further any QMP request gets completed with
+response from the preceding "qmp_capabilities" response.
+
+The following QMP protocol sequence is possible:
+
+  1 read  {"QMP": {"version": {"qemu": {"micro": 0, "minor": 1, "major": 5}, ...}"
+  2 write {"execute":"qmp_capabilities"}
+  3 read  {"timestamp": {"seconds": xxx, "microseconds": xxx}, "event": "..."}
+  4 read  {"return": {}}
+
+the 3. is unexpected by the current Connect() implementation and "event" is
+considered as a proper response on "qmp_capabilities", in other turn 4. is
+read in the go.mos.listen() and immediately pushed to the stream channel,
+so any further QMP command (Run() call) will be immediately completed by
+an empty response from line 4.
+
+The described problem of unexpected empty response line was observed
+on this code qmp.SocketMonitor sequence:
+
+   Connect()
+   Run('{"execute":"query-status"}') <<< Returns empty response
+   Disconnect()
+
+The problem is very rare and was observed ~5 times on different machines
+over a fairly long period of time (several months), which corresponds
+to nature of the described rare protocol race.
+
+The current patch was tested on modified QEMU, where an aritifical
+sleep() was introduced in the qmp_marshal_qmp_capabilities() call
+just right after the qmp_qmp_capabilities() was invoked, so all
+further events can be accepted by the QMP socket:
+
+ qapi/qapi-commands-control.c
+ @@ -42,10 +42,6 @@
+
+      qmp_qmp_capabilities(arg.has_enable, arg.enable, &err);
+
+ +    printf(">>> BEFORE SLEEP 10\n");
+ +    sleep(10);
+ +    printf(">>> AFTER SLEEP 10\n");
+ +
+      error_propagate(errp, err);
+
+  out:
+
+Any QMP event can be freely received by the QMP client, while the execution
+flow of the qmp_marshal_qmp_capabilities() was interrupted or scheduled out.
+
+The fix of the described is simple: read from the QMP socket until response
+is received and drop all possible events.
+
+Signed-off-by: Roman Penyaev <r.peniaev@gmail.com>
+---
+ .../digitalocean/go-qemu/qmp/socket.go        | 30 ++++++++++++++-----
+ 1 file changed, 23 insertions(+), 7 deletions(-)
+
+diff --git a/pkg/pillar/vendor/github.com/digitalocean/go-qemu/qmp/socket.go b/pkg/pillar/vendor/github.com/digitalocean/go-qemu/qmp/socket.go
+index 383b575a68b5..af18baa6a272 100644
+--- a/pkg/pillar/vendor/github.com/digitalocean/go-qemu/qmp/socket.go
++++ /vendor/github.com/digitalocean/go-qemu/qmp/socket.go
+@@ -135,13 +135,29 @@ func (mon *SocketMonitor) Connect() error {
+ 		return err
+ 	}
+ 
+-	// Check for no error on return
+-	var r response
+-	if err := dec.Decode(&r); err != nil {
+-		return err
+-	}
+-	if err := r.Err(); err != nil {
+-		return err
++	// Wait for response
++	scanner := bufio.NewScanner(mon.c)
++	for scanner.Scan() {
++		var e Event
++
++		b := scanner.Bytes()
++		if err := json.Unmarshal(b, &e); err != nil {
++			return err
++		}
++
++		// If not an event then our qmp capabilities response
++		if e.Event == "" {
++			var r response
++			if err := json.Unmarshal(b, &r); err != nil {
++				return err
++			}
++			// Check response on errors
++			if err := r.Err(); err != nil {
++				return err
++			}
++			break
++		}
++		// Drop possible event, continue reading
+ 	}
+ 
+ 	// Initialize socket listener for command responses and asynchronous
+-- 
+2.34.1
+
