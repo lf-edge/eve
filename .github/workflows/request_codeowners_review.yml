@@ -53,12 +53,20 @@ jobs:
           # Remove @ from reviewers (it stays in the beginning of the username)
           reviewers_cleaned=${reviewers//@/}
           IFS=' ' read -ra reviewers_array <<< "$reviewers_cleaned"
-          json_array=$(printf ',\"%s\"' "${reviewers_array[@]}")
-          json_array="[${json_array:1}]" # Remove the leading comma
-          echo "JSON array: $json_array"
-
-          if [ -n "$reviewers" ]; then
-            echo "Requesting review from: ${reviewers_array[*]}"
+          # Get username of PR author to exclude from reviewers
+          pr_author="${{ github.event.pull_request.user.login }}"
+          # Remove PR author from reviewers
+          filtered_reviewers=()
+          for reviewer in ${reviewers_array[@]}; do
+            if [[ "$reviewer" != "$pr_author" ]]; then
+              filtered_reviewers+=("$reviewer")
+            fi
+          done
+          if [ ${#filtered_reviewers[@]} -gt 0 ]; then
+            json_array=$(printf ',\"%s\"' "${filtered_reviewers[@]}")
+            json_array="[${json_array:1}]" # Remove the leading comma
+            echo "JSON array: $json_array"
+            echo "Requesting review from: ${filtered_reviewers[*]}"
             echo https://api.github.com/repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/requested_reviewers
             curl -L \
               -D - \
