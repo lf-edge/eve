@@ -76,6 +76,12 @@ build-docker-$(APPS): $(DISTDIR)
 build-docker:
 	docker build $(DOCKER_ARGS) -t $(DOCKER_TAG) .
 
+build-docker-dev:
+	docker build $(DOCKER_ARGS) -t $(DOCKER_TAG) . --target build
+
+enter-docker-dev: build-docker-dev
+	docker run -it --rm --entrypoint /bin/sh $(DOCKER_TAG)
+
 build-docker-git:
 	git archive HEAD | docker build $(DOCKER_ARGS) -t $(DOCKER_TAG) -
 
