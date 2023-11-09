@@ -206,7 +206,7 @@ func qmpEventHandler(listenerSocket, executorSocket string) {
 				}
 			default:
 				//Not handling the following events: RESUME, NIC_RX_FILTER_CHANGED, RTC_CHANGE, POWERDOWN, STOP
-				logrus.Debugf("qmpEventHandler: Unhandled event: %s from listenerSocket: %s", event.Event, listenerSocket)
+				logrus.Warnf("qmpEventHandler: Unhandled event: %s from QMP socket: %s", event.Event, listenerSocket)
 			}
 		}
 	}
