@@ -597,6 +597,7 @@ func (r *LinuxDpcReconciler) aaChanged(newAA types.AssignableAdapters) bool {
 		if prevIo.Logicallabel != newIo.Logicallabel ||
 			prevIo.Ifname != newIo.Ifname ||
 			prevIo.UsbAddr != newIo.UsbAddr ||
+			prevIo.UsbProduct != newIo.UsbProduct ||
 			prevIo.PciLong != newIo.PciLong ||
 			prevIo.IsPCIBack != newIo.IsPCIBack {
 			return true

@@ -232,7 +232,23 @@ func (uc *usbmanagerController) cancel() {
 func ioBundle2PassthroughRule(adapter types.IoBundle) passthroughRule {
 	var pr passthroughRule
 
-	if adapter.UsbAddr == "" && adapter.PciLong != "" {
+	countAddr := 0
+
+	if adapter.UsbAddr != "" {
+		countAddr++
+	}
+
+	if adapter.UsbProduct != "" {
+		countAddr++
+	}
+
+	if countAddr > 1 {
+		log.Warnf("ambiguous passthrough rule %s (usbaddr: %s) (usbproduct: %s) (pcilong: %s)",
+			adapter.Phylabel, adapter.UsbAddr, adapter.UsbProduct, adapter.PciLong)
+		return nil
+	}
+
+	if adapter.PciLong != "" && adapter.UsbAddr != "" && adapter.UsbProduct != "" {
 		pci := pciPassthroughRule{pciAddress: adapter.PciLong}
 
 		pr = &pci
@@ -254,6 +270,29 @@ func ioBundle2PassthroughRule(adapter types.IoBundle) passthroughRule {
 			usbControllerPCIAddress: adapter.PciLong,
 		}
 		usb := usbPortPassthroughRule{ud: ud}
+
+		pr = &usb
+	} else if adapter.UsbProduct != "" {
+		usbParts := strings.SplitN(adapter.UsbProduct, ":", 2)
+		if len(usbParts) != 2 {
+			log.Warnf("usbproduct %s not parseable", adapter.UsbProduct)
+			return nil
+		}
+
+		vendorID, errVendor := strconv.ParseUint(usbParts[0], 16, 32)
+		productID, errProduct := strconv.ParseUint(usbParts[1], 16, 32)
+		if errVendor != nil || errProduct != nil {
+			log.Warnf("extracting vendor/product id out of usbproduct %s (phylabel: %s) failed: %v/%v",
+				adapter.UsbProduct, adapter.Phylabel, errVendor, errProduct)
+			return nil
+		}
+
+		ud := usbdevice{
+			vendorID:                uint32(vendorID),
+			productID:               uint32(productID),
+			usbControllerPCIAddress: adapter.PciLong,
+		}
+		usb := usbDevicePassthroughRule{ud: ud}
 
 		pr = &usb
 	} else {
