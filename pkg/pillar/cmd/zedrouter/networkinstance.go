@@ -19,7 +19,7 @@ func (z *zedrouter) getArgsForNIStateCollecting(niID uuid.UUID) (
 	br nistate.NIBridge, vifs []nistate.AppVIF, err error) {
 	niStatus := z.lookupNetworkInstanceStatus(niID.String())
 	if niStatus == nil {
-		return br, vifs, fmt.Errorf("failed to get status for network instance %v", niID)
+		return br, vifs, fmt.Errorf("failed to get status for NETWORK instance %v", niID)
 	}
 	br.NI = niID
 	br.BrNum = niStatus.BridgeNum
