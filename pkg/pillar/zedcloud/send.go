@@ -376,6 +376,15 @@ func VerifyAllIntf(ctx *ZedCloudContext, url string, requiredSuccessCount uint,
 			verifyRV.RemoteTempFailure = true
 		}
 		if err != nil {
+			var noAddrErr *types.IPAddrNotAvail
+			if errors.As(err, &noAddrErr) {
+				// Interface link exists and is UP but does not have any IP address assigned.
+				// This is expected with app-shared interface and DT_NONE.
+				if !portStatus.IsMgmt && portStatus.Dhcp == types.DT_NONE {
+					verifyRV.IntfStatusMap.RecordSuccess(intf)
+					continue
+				}
+			}
 			log.Errorf("Zedcloud un-reachable via interface %s: %s",
 				intf, err)
 			if sendErr, ok := err.(*SendError); ok && len(sendErr.Attempts) > 0 {
