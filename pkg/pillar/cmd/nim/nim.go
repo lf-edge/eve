@@ -1067,14 +1067,18 @@ func (n *nim) includeLastResortPort(ifAttrs netmonitor.IfAttrs) bool {
 	if ifAttrs.IsLoopback || !ifAttrs.WithBroadcast || ifAttrs.Enslaved {
 		return false
 	}
-	if ifAttrs.IfType == "device" {
+
+	switch ifAttrs.IfType {
+	case "device":
 		return true
-	}
-	if ifAttrs.IfType == "bridge" {
+	case "bridge":
 		// Was this originally an ethernet interface turned into a bridge?
 		_, exists, _ := n.networkMonitor.GetInterfaceIndex("k" + ifName)
 		return exists
+	case "can", "vcan":
+		return false
 	}
+
 	return false
 }
 
