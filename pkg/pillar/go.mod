@@ -9,7 +9,6 @@ require (
 	github.com/containerd/containerd v1.6.18
 	github.com/containerd/typeurl v1.0.2
 	github.com/cshari-zededa/eve-tpm2-tools v0.0.4
-	github.com/digitalocean/go-qemu v0.0.0-20220826173844-d5f5e3ceed89
 	github.com/docker/docker v20.10.24+incompatible
 	github.com/eriknordmark/ipinfo v0.0.0-20230728132417-2d8f4da903d7
 	github.com/eshard/uevent v1.0.1
@@ -29,6 +28,7 @@ require (
 	github.com/lf-edge/edge-containers v0.0.0-20221025050409-93c34bebadd2
 	github.com/lf-edge/eve-api/go v0.0.0-20231101130551-3e88f723673a
 	github.com/lf-edge/eve-libs v0.0.0-20231120160159-666ed2307f8e
+	github.com/lf-edge/go-qemu v0.0.0-20231121152149-4c467eda0c56
 	github.com/linuxkit/linuxkit/src/cmd/linuxkit v0.0.0-20220913135124-e532e7310810
 	github.com/miekg/dns v1.1.41
 	github.com/moby/sys/mountinfo v0.6.0
