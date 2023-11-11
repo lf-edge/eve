@@ -89,12 +89,6 @@ ENV GOARCH=${TARGETARCH}
 ENV CC=${CROSS_COMPILE_ENV}gcc
 ARG GOPKGVERSION
 
-COPY pillar-patches/* /patches/
-RUN set -e && for patch in ../patches/*.patch; do \
-        echo "Applying $patch"; \
-        patch -p1 --no-backup-if-mismatch -r /tmp/deleteme.rej < "$patch"; \
-    done
-
 # hadolint ignore=DL4006
 RUN --mount=type=cache,target=/root/.cache/go-build echo "Running go vet" && go vet ./... && \
     echo "Running go fmt" && ERR="$(find . -name \*.go | grep -v /vendor/ | xargs gofmt -d -e -l -s)" && \
