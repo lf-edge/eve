@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/digitalocean/go-qemu/qmp"
+	"github.com/lf-edge/go-qemu/qmp"
 	"github.com/sirupsen/logrus"
 	"os"
 	"time"
