@@ -104,7 +104,9 @@ func (mon *SocketMonitor) Disconnect() error {
 	atomic.StoreInt32(mon.listeners, 0)
 	err := mon.c.Close()
 
-	for range mon.stream {
+	if mon.stream != nil {
+		for range mon.stream {
+		}
 	}
 
 	return err
@@ -135,13 +137,29 @@ func (mon *SocketMonitor) Connect() error {
 		return err
 	}
 
-	// Check for no error on return
-	var r response
-	if err := dec.Decode(&r); err != nil {
-		return err
-	}
-	if err := r.Err(); err != nil {
-		return err
+	// Wait for response
+	scanner := bufio.NewScanner(mon.c)
+	for scanner.Scan() {
+		var e Event
+
+		b := scanner.Bytes()
+		if err := json.Unmarshal(b, &e); err != nil {
+			return err
+		}
+
+		// If not an event then our qmp capabilities response
+		if e.Event == "" {
+			var r response
+			if err := json.Unmarshal(b, &r); err != nil {
+				return err
+			}
+			// Check response on errors
+			if err := r.Err(); err != nil {
+				return err
+			}
+			break
+		}
+		// Drop possible event, continue reading
 	}
 
 	// Initialize socket listener for command responses and asynchronous
@@ -195,7 +213,15 @@ func (mon *SocketMonitor) listen(r io.Reader, events chan<- Event, stream chan<-
 	}
 
 	if err := scanner.Err(); err != nil {
-		stream <- streamResponse{err: err}
+		// In case stream reader went away we wait for a bit
+		waitTimer := time.NewTimer(3 * time.Second)
+		defer waitTimer.Stop()
+		select {
+		case <-waitTimer.C:
+			// Do nothing
+		case stream <- streamResponse{err: err}:
+			// Done
+		}
 	}
 }
 
@@ -266,7 +292,7 @@ func (mon *SocketMonitor) RunWithFile(command []byte, file *os.File) ([]byte, er
 type banner struct {
 	QMP struct {
 		Capabilities []string `json:"capabilities"`
-		Version Version `json:"version"`
+		Version      Version  `json:"version"`
 	} `json:"QMP"`
 }
 
