@@ -1,0 +1,13 @@
+#!/bin/bash
+# No awk in longhorn-csi-plugin container at this time, thus the messy greps and cut
+mountPid=$$
+while [ $mountPid -ne 1 ]; do
+    grep Name /proc/$mountPid/status | grep -q -E 'dockerd|containerd|containerd-shim'
+    if [ $? != 0 ]; then
+        mountPid=$(grep PPid /proc/$mountPid/status | cut -d ':' -f 2 | xargs)
+        continue
+    fi
+    break
+done
+echo "kube pid:$mountPid"
+nsenter -t $mountPid -m -n -u -- "$@"

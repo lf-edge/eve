@@ -16,6 +16,7 @@ RUN GO111MODULE=on CGO_ENABLED=0 go build -ldflags "-s -w" -mod=vendor -o /out/e
 FROM scratch
 COPY --from=build /out/ /
 COPY cluster-init.sh /usr/bin/
+COPY nsmounter /usr/bin/
 COPY install-etcdctl.sh /usr/bin/
 COPY cgconfig.conf /etc
 # kubevirt yaml files are patched files and will be removed later, look at cluster-init.sh
