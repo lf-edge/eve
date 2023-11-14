@@ -99,9 +99,19 @@ func TestPatchEnvelopes(t *testing.T) {
 	finishedProcessing := make(chan struct{})
 	go func() {
 		for {
-			if len(peStore.Get(u).Envelopes) > 0 && len(peStore.Get(u).Envelopes[0].BinaryBlobs) >= 2 {
-				close(finishedProcessing)
-				return
+			// Since there's no feedback mechanism to see if the work in
+			// peStore structure was done we need to wait for it to finish
+			// There are 3 goroutines changing peStore state:
+			// one which adds Envelopes with one BinaryBlob one VolumeRef (len(envelopes) > 0)
+			// one which moves VolumeRef to BinaryBlob (envelopes[0].BinaryBlobs >= 2
+			// one which adds SHA to BinaryBlob created from VolumeRef (finding blob and comparing SHA)
+			envelopes := peStore.Get(u).Envelopes
+			if len(envelopes) > 0 && len(envelopes[0].BinaryBlobs) >= 2 {
+				volBlobIdx := types.CompletedBinaryBlobIdxByName(envelopes[0].BinaryBlobs, "VolTestFileName")
+				if volBlobIdx != -1 && envelopes[0].BinaryBlobs[volBlobIdx].FileSha != "" {
+					close(finishedProcessing)
+					return
+				}
 			}
 			time.Sleep(time.Second)
 		}
