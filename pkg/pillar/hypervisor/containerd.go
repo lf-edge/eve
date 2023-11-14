@@ -49,6 +49,13 @@ func newContainerd() Hypervisor {
 	}
 }
 
+// CountMemOverhead - returns the memory overhead for a domain.
+// This implementation is used for Xen as well
+func (ctx ctrdContext) CountMemOverhead(domainName string, config *types.DomainConfig, globalConfig *types.ConfigItemValueMap, aa *types.AssignableAdapters) (uint64, error) {
+	// Does containerd have any overhead?
+	return 0, nil
+}
+
 func (ctx ctrdContext) GetCapabilities() (*types.Capabilities, error) {
 	//we are here because of no /dev/xen or /dev/kvm exists
 	return &types.Capabilities{

@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"github.com/lf-edge/eve/pkg/pillar/hypervisor"
 	"os"
 	"sort"
 	"time"
@@ -59,6 +60,7 @@ type zedmanagerContext struct {
 	subZedAgentStatus         pubsub.Subscription
 	pubVolumesSnapConfig      pubsub.Publication
 	subVolumesSnapStatus      pubsub.Subscription
+	subAssignableAdapters     pubsub.Subscription
 	globalConfig              *types.ConfigItemValueMap
 	appToPurgeCounterMap      objtonum.Map
 	GCInitialized             bool
@@ -69,11 +71,16 @@ type zedmanagerContext struct {
 	delayBaseTime time.Time
 	// cli options
 	versionPtr *bool
+	// hypervisorPtr is the name of the hypervisor to use
+	hypervisorPtr      *string
+	assignableAdapters *types.AssignableAdapters
 }
 
 // AddAgentSpecificCLIFlags adds CLI options
 func (ctx *zedmanagerContext) AddAgentSpecificCLIFlags(flagSet *flag.FlagSet) {
 	ctx.versionPtr = flagSet.Bool("v", false, "Version")
+	allHypervisors, enabledHypervisors := hypervisor.GetAvailableHypervisors()
+	ctx.hypervisorPtr = flagSet.String("h", enabledHypervisors[0], fmt.Sprintf("Current hypervisor %+q", allHypervisors))
 }
 
 var logger *logrus.Logger
@@ -89,6 +96,8 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	}
 	agentbase.Init(&ctx, logger, log, agentName,
 		agentbase.WithArguments(arguments))
+
+	ctx.assignableAdapters = &types.AssignableAdapters{}
 
 	if *ctx.versionPtr {
 		fmt.Printf("%s: %s\n", agentName, Version)
@@ -375,6 +384,22 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	ctx.subVolumesSnapStatus = subVolumesSnapshotStatus
 	_ = subVolumesSnapshotStatus.Activate()
 
+	ctx.subAssignableAdapters, err = ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "domainmgr",
+		MyAgentName:   agentName,
+		TopicImpl:     types.AssignableAdapters{},
+		Activate:      true,
+		Ctx:           &ctx,
+		CreateHandler: handleAACreate,
+		ModifyHandler: handleAAModify,
+		DeleteHandler: handleAADelete,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	// Pick up debug aka log level before we start real work
 	for !ctx.GCInitialized {
 		log.Functionf("waiting for GCInitialized")
@@ -424,6 +449,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 
 		case change := <-subVolumesSnapshotStatus.MsgChan():
 			subVolumesSnapshotStatus.ProcessChange(change)
+
+		case change := <-ctx.subAssignableAdapters.MsgChan():
+			ctx.subAssignableAdapters.ProcessChange(change)
 
 		case <-freeResourceChecker.C:
 			// Did any update above make more resources available for
@@ -537,6 +565,38 @@ func checkDelayedStartApps(ctx *zedmanagerContext) {
 			publishAppInstanceStatus(ctx, status)
 		}
 	}
+}
+
+func handleAA(ctx *zedmanagerContext, status types.AssignableAdapters, key string) {
+	log.Functionf("handleAA(%s)", status.Key())
+	if key != "global" {
+		log.Functionf("handleAA: ignoring %s", key)
+		return
+	}
+	log.Functionf("handleAA() %+v", status)
+	*ctx.assignableAdapters = status
+	log.Functionf("handleAA() done")
+}
+
+func handleAACreate(ctxArg interface{}, key string, statusArg interface{}) {
+	ctx := ctxArg.(*zedmanagerContext)
+	status := statusArg.(types.AssignableAdapters)
+	log.Functionf("handleAACreate(%s)", status.Key())
+	handleAA(ctx, status, key)
+}
+
+func handleAAModify(ctxArg interface{}, key string, statusArg interface{}, oldStatusArg interface{}) {
+	ctx := ctxArg.(*zedmanagerContext)
+	status := statusArg.(types.AssignableAdapters)
+	log.Functionf("handleAAModify(%s)", status.Key())
+	handleAA(ctx, status, key)
+}
+
+func handleAADelete(ctxArg interface{}, key string, statusArg interface{}) {
+	ctx := ctxArg.(*zedmanagerContext)
+	status := statusArg.(types.AssignableAdapters)
+	log.Functionf("handleAADelete(%s)", status.Key())
+	handleAA(ctx, status, key)
 }
 
 // After zedagent has waited for its config and set restarted for
