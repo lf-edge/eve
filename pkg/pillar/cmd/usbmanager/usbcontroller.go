@@ -236,7 +236,8 @@ func ioBundle2PassthroughRule(adapter types.IoBundle) passthroughRule {
 		}
 		busnum, err := strconv.ParseUint(usbParts[0], 10, 16)
 		if err != nil {
-			panic(err)
+			log.Warnf("usbaddr busnum (%s) not parseable", usbParts[0])
+			return nil
 		}
 		portnum := usbParts[1]
 		ud := usbdevice{
