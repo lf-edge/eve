@@ -4,6 +4,7 @@
 package zedrouter_test
 
 import (
+	"sync"
 	"testing"
 	"time"
 
@@ -72,10 +73,13 @@ func TestPatchEnvelopes(t *testing.T) {
 		},
 	}
 
+	peStoreMutex := sync.Mutex{}
 	go func() {
 		for _, vs := range volumeStatuses {
+			peStoreMutex.Lock()
 			peStore.UpdateVolumeStatus(vs, false)
 			peStore.UpdateStateNotificationCh() <- struct{}{}
+			peStoreMutex.Unlock()
 		}
 	}()
 
@@ -88,9 +92,11 @@ func TestPatchEnvelopes(t *testing.T) {
 	}()
 
 	go func() {
+		peStoreMutex.Lock()
 		peStore.UpdateEnvelopes(peInfo)
 
 		peStore.UpdateStateNotificationCh() <- struct{}{}
+		peStoreMutex.Unlock()
 
 	}()
 
