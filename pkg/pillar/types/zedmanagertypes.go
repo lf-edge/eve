@@ -184,6 +184,8 @@ type AppInstanceStatus struct {
 	ErrorAndTimeWithSource
 	// Effective time, when the application should start
 	StartTime time.Time
+	// Estimated memory overhead for VM, counted in MB
+	MemOverhead uint64
 }
 
 // AppCount is uint8 and it should be sufficient for the number of apps we can support
