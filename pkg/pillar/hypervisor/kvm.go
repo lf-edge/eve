@@ -429,6 +429,11 @@ func (ctx kvmContext) GetCapabilities() (*types.Capabilities, error) {
 	return ctx.capabilities, nil
 }
 
+func (ctx kvmContext) CountMemOverhead(domainName string, config *types.DomainConfig, globalConfig *types.ConfigItemValueMap, aa *types.AssignableAdapters) (uint64, error) {
+	result, err := vmmOverhead(domainName, *config, globalConfig, aa)
+	return uint64(result), err
+}
+
 func (ctx kvmContext) checkIOVirtualisation() (bool, error) {
 	f, err := os.Open("/sys/kernel/iommu_groups")
 	if err == nil {
