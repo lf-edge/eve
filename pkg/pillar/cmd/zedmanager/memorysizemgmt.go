@@ -29,6 +29,7 @@ func getRemainingMemory(ctxPtr *zedmanagerContext) (uint64, uint64, uint64, erro
 	for _, st := range itemsAppInstanceStatus {
 		status := st.(types.AppInstanceStatus)
 		mem := uint64(status.FixedResources.Memory) << 10
+		mem += status.MemOverhead
 		if status.Activated || status.ActivateInprogress {
 			usedMemorySize += mem
 			accountedApps = append(accountedApps, status.Key())
