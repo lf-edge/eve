@@ -25,6 +25,8 @@ type Hypervisor interface {
 	GetDomsCPUMem() (map[string]types.DomainMetric, error)
 
 	GetCapabilities() (*types.Capabilities, error)
+
+	CountMemOverhead(domainName string, config *types.DomainConfig, globalConfig *types.ConfigItemValueMap, aa *types.AssignableAdapters) (uint64, error)
 }
 
 type hypervisorDesc struct {
