@@ -16,6 +16,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/containerd"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	uuid "github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
 )
 
@@ -446,8 +447,11 @@ func (ctx KvmContext) GetCapabilities() (*types.Capabilities, error) {
 	return ctx.capabilities, nil
 }
 
-func (ctx KvmContext) CountMemOverhead(domainName string, config *types.DomainConfig, globalConfig *types.ConfigItemValueMap, aa *types.AssignableAdapters) (uint64, error) {
-	result, err := vmmOverhead(domainName, *config, globalConfig, aa)
+// CountMemOverhead - returns the memory overhead estimation for a domain.
+func (ctx KvmContext) CountMemOverhead(domainName string, domainUUID uuid.UUID, domainRAMSize int64, vmmMaxMem int64,
+	domainMaxCpus int64, domainVCpus int64, domainIoAdapterList []types.IoAdapter, aa *types.AssignableAdapters,
+	globalConfig *types.ConfigItemValueMap) (uint64, error) {
+	result, err := vmmOverhead(domainName, domainUUID, domainRAMSize, vmmMaxMem, domainMaxCpus, domainVCpus, domainIoAdapterList, aa, globalConfig)
 	return uint64(result), err
 }
 
@@ -478,22 +482,23 @@ func (ctx KvmContext) Task(status *types.DomainStatus) types.Task {
 	return ctx
 }
 
-func estimatedVMMOverhead(domainName string, config types.DomainConfig, aa *types.AssignableAdapters) (int64, error) {
+func estimatedVMMOverhead(domainName string, aa *types.AssignableAdapters, domainAdapterList []types.IoAdapter,
+	domainUUID uuid.UUID, domainRAMSize int64, domainMaxCpus int64, domainVcpus int64) (int64, error) {
 	var overhead int64
 
-	mmioOverhead, err := mmioVMMOverhead(domainName, config, aa)
+	mmioOverhead, err := mmioVMMOverhead(domainName, aa, domainAdapterList, domainUUID)
 
 	if err != nil {
 		return 0, logError("mmioVMMOverhead() failed for domain %s: %v",
 			domainName, err)
 	}
-	overhead = undefinedVMMOverhead() + ramVMMOverhead(config) +
-		qemuVMMOverhead() + cpuVMMOverhead(config) + mmioOverhead
+	overhead = undefinedVMMOverhead() + ramVMMOverhead(domainRAMSize) +
+		qemuVMMOverhead() + cpuVMMOverhead(domainMaxCpus, domainVcpus) + mmioOverhead
 
 	return overhead, nil
 }
 
-func ramVMMOverhead(config types.DomainConfig) int64 {
+func ramVMMOverhead(ramMemory int64) int64 {
 	// 0.224% of the total RAM allocated for VM in bytes
 	// this formula is precise and well explained in the following QEMU issue:
 	// https://gitlab.com/qemu-project/qemu/-/issues/1003
@@ -501,7 +506,7 @@ func ramVMMOverhead(config types.DomainConfig) int64 {
 	// sequentially. In reality, there will be some fragmentation and the overhead
 	// for now 2.5% (~10x) is a good approximation until we have a better way to
 	// predict the memory usage of the VM.
-	return int64(config.Memory) * 1024 * 25 / 1000
+	return ramMemory * 1024 * 25 / 1000
 }
 
 // overhead for qemu binaries and libraries
@@ -514,11 +519,12 @@ func qemuVMMOverhead() int64 {
 // for all mapped devices. Set it to 1% to be on the safe side
 // this can be a pretty big number for GPUs with very big
 // aperture size (e.g. 64G for NVIDIA A40)
-func mmioVMMOverhead(domainName string, config types.DomainConfig, aa *types.AssignableAdapters) (int64, error) {
+func mmioVMMOverhead(domainName string, aa *types.AssignableAdapters, domainAdapterList []types.IoAdapter,
+	domainUUID uuid.UUID) (int64, error) {
 	var pciAssignments []pciDevice
 	var mmioSize uint64
 
-	for _, adapter := range config.IoAdapterList {
+	for _, adapter := range domainAdapterList {
 		logrus.Debugf("processing adapter %d %s\n", adapter.Type, adapter.Name)
 		aaList := aa.LookupIoBundleAny(adapter.Name)
 		// We reserved it in handleCreate so nobody could have stolen it
@@ -530,7 +536,7 @@ func mmioVMMOverhead(domainName string, config types.DomainConfig, aa *types.Ass
 			if ib == nil {
 				continue
 			}
-			if ib.UsedByUUID != config.UUIDandVersion.UUID {
+			if ib.UsedByUUID != domainUUID {
 				return 0, logError("IoBundle not ours %s: %d %s for %s\n",
 					ib.UsedByUUID, adapter.Type, adapter.Name,
 					domainName)
@@ -587,10 +593,10 @@ func mmioVMMOverhead(domainName string, config types.DomainConfig, aa *types.Ass
 }
 
 // each vCPU requires about 3MB of memory
-func cpuVMMOverhead(config types.DomainConfig) int64 {
-	cpus := int64(config.MaxCpus)
+func cpuVMMOverhead(maxCpus int64, vcpus int64) int64 {
+	cpus := maxCpus
 	if cpus == 0 {
-		cpus = int64(config.VCpus)
+		cpus = vcpus
 	}
 	return cpus * (3 << 20) // Mb in bytes
 }
@@ -605,13 +611,11 @@ func undefinedVMMOverhead() int64 {
 	return 350 << 20 // Mb in bytes
 }
 
-func vmmOverhead(domainName string, config types.DomainConfig,
-	globalConfig *types.ConfigItemValueMap,
-	aa *types.AssignableAdapters) (int64, error) {
+func vmmOverhead(domainName string, domainUUID uuid.UUID, domainRAMSize int64, vmmMaxMem int64, domainMaxCpus int64, domainVCpus int64, domainIoAdapterList []types.IoAdapter, aa *types.AssignableAdapters, globalConfig *types.ConfigItemValueMap) (int64, error) {
 	var overhead int64
 
 	// Fetch VMM max memory setting (aka vmm overhead)
-	overhead = int64(config.VMMMaxMem) << 10
+	overhead = vmmMaxMem << 10
 
 	// Global node setting has a higher priority
 	if globalConfig != nil {
@@ -625,7 +629,7 @@ func vmmOverhead(domainName string, config types.DomainConfig,
 	}
 
 	if overhead == 0 {
-		overhead, err := estimatedVMMOverhead(domainName, config, aa)
+		overhead, err := estimatedVMMOverhead(domainName, aa, domainIoAdapterList, domainUUID, domainRAMSize, domainMaxCpus, domainVCpus)
 		if err != nil {
 			return 0, logError("estimatedVMMOverhead() failed for domain %s: %v",
 				domainName, err)
@@ -676,7 +680,7 @@ func (ctx KvmContext) Setup(status types.DomainStatus, config types.DomainConfig
 	if err = spec.AddLoader("/containers/services/xen-tools"); err != nil {
 		return logError("failed to add kvm hypervisor loader to domain %s: %v", status.DomainName, err)
 	}
-	overhead, err := vmmOverhead(domainName, config, globalConfig, aa)
+	overhead, err := vmmOverhead(domainName, domainUUID, int64(config.Memory), int64(config.VMMMaxMem), int64(config.MaxCpus), int64(config.VCpus), config.IoAdapterList, aa, globalConfig)
 	if err != nil {
 		return logError("vmmOverhead() failed for domain %s: %v",
 			status.DomainName, err)
