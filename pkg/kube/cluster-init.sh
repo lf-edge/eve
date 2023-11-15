@@ -164,6 +164,24 @@ config_cluster_roles() {
   touch /var/lib/debuguser-initialized
 }
 
+check_overwrite_nsmounter() {
+  ### REMOVE ME+
+  # When https://github.com/longhorn/longhorn/issues/6857 is resolved, remove this 'REMOVE ME' section
+  # In addition to pkg/kube/nsmounter and the copy of it in pkg/kube/Dockerfile
+  longhornCsiPluginPods=$(kubectl -n longhorn-system get pod -o json | jq -r '.items[] | select(.metadata.labels.app=="longhorn-csi-plugin" and .status.phase=="Running") | .metadata.name')
+  for csiPod in $longhornCsiPluginPods; do    
+    kubectl -n longhorn-system exec pod/${csiPod} --container=longhorn-csi-plugin -- ls /usr/local/sbin/nsmounter.updated > /dev/null 2>@1
+    if [ $? -ne 0 ]; then
+      kubectl cp /usr/bin/nsmounter longhorn-system/${csiPod}:/usr/local/sbin/nsmounter --container=longhorn-csi-plugin
+      if [ $? -eq 0 ]; then
+        logmsg "Updated nsmounter in longhorn pod ${csiPod}"
+        kubectl -n longhorn-system exec pod/${csiPod} --container=longhorn-csi-plugin -- touch /usr/local/sbin/nsmounter.updated
+      fi
+    fi
+  done
+  ### REMOVE ME-
+}
+
 #Make sure all prereqs are set after /var/lib is mounted to get logging info
 setup_prereqs
 
@@ -466,6 +484,8 @@ else
             else
                 logmsg "k3s is down and restart count exceeded."
             fi
+        else
+          check_overwrite_nsmounter
         fi
 fi
         check_log_file_size "rancher/k3s/k3s.log"
