@@ -24,8 +24,9 @@ do_image() {
     ARCHARG="--arch ${arch}"
   fi
   : > "$IMAGE"
+  # sbom disabled for now; will be re-enabled later
   # shellcheck disable=SC2086
-  linuxkit build --docker ${ARCHARG} -o - "$ymlfile" | docker run -i --rm -v /dev:/dev --privileged -v "$IMAGE:/rootfs.img" "${MKROOTFS_TAG}"
+  linuxkit build --no-sbom --docker ${ARCHARG} -o - "$ymlfile" | docker run -i --rm -v /dev:/dev --privileged -v "$IMAGE:/rootfs.img" "${MKROOTFS_TAG}"
 }
 
 # mode 1 - generate tarfile from yml and save
@@ -40,8 +41,9 @@ do_tar() {
   if [ -n "$arch" ]; then
     ARCHARG="--arch ${arch}"
   fi
+  # sbom disabled for now; will be re-enabled later
   # shellcheck disable=SC2086
-  linuxkit build --docker ${ARCHARG} --o "${tarfile}" "$ymlfile"
+  linuxkit build --no-sbom --docker ${ARCHARG} --o "${tarfile}" "$ymlfile"
 }
 
 # mode 2 - generate image from tarfile
