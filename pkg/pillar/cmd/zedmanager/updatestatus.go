@@ -586,18 +586,10 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 				log.Fatalf("Cannot get hypervisor: %s", err)
 			}
 
-			// Create a mock domain config to calculate memory overhead
-			mockDomainConfig := types.DomainConfig{
-				VmConfig: types.VmConfig{
-					Memory:  config.FixedResources.Memory,
-					MaxCpus: config.FixedResources.MaxCpus,
-					VCpus:   config.FixedResources.VCpus,
-				},
-				IoAdapterList:  config.IoAdapterList,
-				UUIDandVersion: config.UUIDandVersion,
-			}
-
-			status.MemOverhead, err = hyp.CountMemOverhead(status.DomainName, &mockDomainConfig, ctx.globalConfig, ctx.assignableAdapters)
+			status.MemOverhead, err = hyp.CountMemOverhead(status.DomainName, config.UUIDandVersion.UUID,
+				int64(config.FixedResources.Memory), int64(config.FixedResources.VMMMaxMem),
+				int64(config.FixedResources.MaxCpus), int64(config.FixedResources.VCpus), config.IoAdapterList,
+				ctx.assignableAdapters, ctx.globalConfig)
 			// We have to publish the status here, because we need to save the memory overhead value, it's used in getRemainingMemory
 			publishAppInstanceStatus(ctx, status)
 		}
