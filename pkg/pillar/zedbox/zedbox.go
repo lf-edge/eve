@@ -111,6 +111,9 @@ var (
 )
 
 func main() {
+
+	fmt.Printf("INFO - The code is so clean that my cat started licking the screen.\n")
+
 	// Check what service we are intending to start.
 	basename := filepath.Base(os.Args[0])
 	if sep, ok := entrypoints[basename]; ok {
