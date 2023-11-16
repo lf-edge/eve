@@ -97,7 +97,12 @@ func lookupAppDiskMetric(ctx *volumemgrContext, key string) *types.AppDiskMetric
 // diskMetricsTimerTask calculates and publishes disk metrics periodically
 func diskMetricsTimerTask(ctx *volumemgrContext, handleChannel chan interface{}) {
 	log.Functionln("starting report diskMetricsTimerTask timer task")
-	createOrUpdateDiskMetrics(ctx)
+
+	wdName := agentName + "metrics"
+	ctx.ps.StillRunning(wdName, warningTime, errorTime)
+	ctx.ps.RegisterFileWatchdog(wdName)
+
+	createOrUpdateDiskMetrics(ctx, wdName)
 
 	diskMetricInterval := time.Duration(ctx.globalConfig.GlobalValueInt(types.DiskScanMetricInterval)) * time.Second
 	max := float64(diskMetricInterval)
@@ -106,18 +111,15 @@ func diskMetricsTimerTask(ctx *volumemgrContext, handleChannel chan interface{})
 	// Return handle to caller
 	handleChannel <- diskMetricTicker
 
-	wdName := agentName + "metrics"
-
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)
 	ctx.ps.StillRunning(wdName, warningTime, errorTime)
-	ctx.ps.RegisterFileWatchdog(wdName)
 
 	for {
 		select {
 		case <-diskMetricTicker.C:
 			start := time.Now()
-			createOrUpdateDiskMetrics(ctx)
+			createOrUpdateDiskMetrics(ctx, wdName)
 			ctx.ps.CheckMaxTimeTopic(wdName, "createOrUpdateDiskMetrics", start,
 				warningTime, errorTime)
 
@@ -128,13 +130,14 @@ func diskMetricsTimerTask(ctx *volumemgrContext, handleChannel chan interface{})
 }
 
 // createOrUpdateDiskMetrics creates or updates metrics for all disks, mountpaths and volumeStatuses
-func createOrUpdateDiskMetrics(ctx *volumemgrContext) {
+func createOrUpdateDiskMetrics(ctx *volumemgrContext, wdName string) {
 	log.Functionf("createOrUpdateDiskMetrics")
 	var diskMetricList []*types.DiskMetric
 	startPubTime := time.Now()
 
 	disks := diskmetrics.FindDisksPartitions(log)
 	for _, d := range disks {
+		ctx.ps.StillRunning(wdName, warningTime, errorTime)
 		size, _ := diskmetrics.PartitionSize(log, d)
 		log.Tracef("createOrUpdateDiskMetrics: Disk/partition %s size %d", d, size)
 		var metric *types.DiskMetric
@@ -161,6 +164,7 @@ func createOrUpdateDiskMetrics(ctx *volumemgrContext) {
 	for _, path := range types.ReportDiskPaths {
 		var u *types.UsageStat
 		var err error
+		ctx.ps.StillRunning(wdName, warningTime, errorTime)
 		if path == types.PersistDir {
 			// dedicated handler for PersistDir as we have to use PersistType dependent calculations
 			u, err = diskmetrics.PersistUsageStat(log)
@@ -203,6 +207,7 @@ func createOrUpdateDiskMetrics(ctx *volumemgrContext) {
 	log.Tracef("createOrUpdateDiskMetrics: persistUsage %d, elapse sec %v", persistUsage, time.Since(startPubTime).Seconds())
 
 	for _, path := range types.ReportDirPaths {
+		ctx.ps.StillRunning(wdName, warningTime, errorTime)
 		usage, err := diskmetrics.DirUsage(log, path)
 		log.Tracef("createOrUpdateDiskMetrics: ReportDirPath %s usage %d err %v", path, usage, err)
 		if err != nil {
@@ -225,6 +230,7 @@ func createOrUpdateDiskMetrics(ctx *volumemgrContext) {
 	log.Tracef("createOrUpdateDiskMetrics: DirPaths in persist, elapse sec %v", time.Since(startPubTime).Seconds())
 
 	for _, path := range types.AppPersistPaths {
+		ctx.ps.StillRunning(wdName, warningTime, errorTime)
 		usage, err := diskmetrics.DirUsage(log, path)
 		log.Tracef("createOrUpdateDiskMetrics: AppPersistPath %s usage %d err %v", path, usage, err)
 		if err != nil {
@@ -246,6 +252,7 @@ func createOrUpdateDiskMetrics(ctx *volumemgrContext) {
 	}
 	publishDiskMetrics(ctx, diskMetricList...)
 	for _, volumeStatus := range getAllVolumeStatus(ctx) {
+		ctx.ps.StillRunning(wdName, warningTime, errorTime)
 		if err := createOrUpdateAppDiskMetrics(ctx, volumeStatus); err != nil {
 			log.Errorf("CreateOrUpdateCommonDiskMetrics: exception while publishing diskmetric. %s", err.Error())
 		}
