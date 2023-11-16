@@ -1,5 +1,8 @@
 # syntax=docker/dockerfile-upstream:1.5.0-rc2-labs
 
+# Copyright (c) 2023 Zededa, Inc.
+# SPDX-License-Identifier: Apache-2.0
+
 FROM lfedge/eve-alpine:862d6db0e2e938d11ef83e83fe9c7a8c83631517 as build
 ENV BUILD_PKGS linux-headers musl-dev musl-utils musl-libintl git gcc g++ \
                autoconf automake libtool make flex bison bash sed gettext

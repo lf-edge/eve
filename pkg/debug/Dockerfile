@@ -1,4 +1,8 @@
 # syntax=docker/dockerfile-upstream:1.5.0-rc2-labs
+
+# Copyright (c) 2023 Zededa, Inc.
+# SPDX-License-Identifier: Apache-2.0
+
 # for debug container we need to build our own copy of musl
 # with -fno-omit-frame-pointer to make sure that perf(1)
 # has a fast path for stack unwinding. This also happens

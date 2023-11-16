@@ -1,6 +1,8 @@
 # Copyright (c) 2018 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
 
+# Dockerfile to build pillar
+
 # use the same set of packages for simplicity
 ARG BUILD_PKGS_BASE="git gcc linux-headers libc-dev make linux-pam-dev m4 findutils go util-linux make patch \
                      libintl libuuid libtirpc libblkid libcrypto1.1 zlib tar"

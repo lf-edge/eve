@@ -1,4 +1,8 @@
 # syntax=docker/dockerfile-upstream:1.5.0-rc2-labs
+
+# Copyright (c) 2023 Zededa, Inc.
+# SPDX-License-Identifier: Apache-2.0
+
 FROM lfedge/eve-alpine:29dc7661e9c3dcd0ec7ef9b98d2df58354d85fc0 as build
 ENV BUILD_PKGS meson ninja git libc-dev glib-dev make gcc dbus-dev libgudev-dev go
 ENV PKGS alpine-baselayout dbus glib udev libgudev
