@@ -33,7 +33,7 @@ Once you are done modifying the package, from the root directory of eve, build t
 make pkg/<package>
 ```
 
-For example, `make pkg/pillar` or `make pkg/guacd`.
+For example, `make pkg/edgeview` or `make pkg/guacd`.
 
 Some packages require special treatment in the form of extra steps after build. Those should be invoked with their dedicated targets.
 As of this writing, only `pkg/kernel` is subject to this special treatment, and should be invoked as:
@@ -47,6 +47,45 @@ on the image is based on the [git tree hash](https://git-scm.com/docs/git-ls-tre
 
 If the directory has uncommitted changes, the resultant tag will include `-dirty`. It is your choice whether to accept
 the `-dirty` tag, or to commit your changes.
+
+### Building pillar
+
+Pillar is usually heavily developed, so sometimes developers might want to perform a quick build in order to do small checks,
+like look for compiler errors, etc. As any other package, pillar should be built using `make pkg/pillar`. However, it also
+provides a Makefile that can be used to build pillar directly on the host and/or build, export and run it in a docker
+container. The two targets dedicated for development are:
+
+* **build-docker-dev**: Builds the build container of pillar
+* **enter-docker-dev**: Builds and run the build container
+
+Both targets can be used through the following commands:
+
+```sh
+make -C pkg/pillar build-docker-dev
+```
+
+and/or
+
+```sh
+make -C pkg/pillar enter-docker-dev
+```
+
+To build pillar directly on the host, just use:
+
+```sh
+make -C pkg/pillar
+```
+
+The _ZARCH_ variable can also be used to specify the target architecture. For instance:
+
+```sh
+make ZARCH=arm64 -C pkg/pillar build-docker-dev
+make ZARCH=amd64 -C pkg/pillar build-docker-dev
+```
+
+If not specified, architecture from the host will be used. Note that in case of cross compilation, for instance,
+using `ZARCH=arm64` from a `amd64` host will produce a build container of `amd64` architecture. However, the final pillar
+binaries will be built to the target architecture (in this case, `arm64`).
 
 ### Pushing to Registry
 
