@@ -143,6 +143,7 @@ ncurses-dev
 net-snmp
 netcat-openbsd
 nettle
+nfs-utils
 numactl-dev
 open-iscsi
 openrc
