@@ -95,31 +95,35 @@ func sha256sumForFile(filePath string) (string, error) {
 
 func performMeasurement(filePath string, tpm io.ReadWriter, exist bool, content bool) (*tpmEvent, error) {
 	var eventData string
+
+	// Max size for PCREvent data is 1024 bytes, truncate the file path if it
+	// is longer than 512 bytes.
+	eventFilePath := filePath
+	if len(filePath) > 512 {
+		// in this case just get the file name, it maxes out at 255 chars.
+		eventFilePath = filepath.Base(filePath)
+	}
+
 	if content {
 		hash, err := sha256sumForFile(filePath)
 		if err != nil {
-			return nil, fmt.Errorf("cannot measure %s :%v", filePath, err)
+			return nil, fmt.Errorf("can not measure %s :%v", filePath, err)
 		}
-		eventData = fmt.Sprintf("file:%s exist:true content-hash:%s", filePath, hash)
+		eventData = fmt.Sprintf("file:%s exist:true content-hash:%s", eventFilePath, hash)
 	} else {
-		eventData = fmt.Sprintf("file:%s exist:%t", filePath, exist)
+		eventData = fmt.Sprintf("file:%s exist:%t", eventFilePath, exist)
 	}
 
-	// Loop over the data and if it is larger than 1024 (max size PCREvent consumes)
-	// break it into 1024 bytes chunks, otherwise just loop once and pass data to PCREvent.
-	for offset, length := 0, 0; offset < len(eventData); offset += length {
-		length = min(maxEventDataSize, len(eventData)-offset)
-		// PCREvent internally hashes the data with all supported algorithms
-		// associated with the PCR banks, and extends them all before return.
-		err := tpm2.PCREvent(tpm, configPCRHandle, []byte(eventData[offset:offset+length]))
-		if err != nil {
-			return nil, fmt.Errorf("cannot measure %s. couldn't extend PCR: %v", filePath, err)
-		}
+	// PCREvent internally hashes the data with all supported algorithms
+	// associated with the PCR banks, and extends them all before return.
+	err := tpm2.PCREvent(tpm, configPCRHandle, []byte(eventData))
+	if err != nil {
+		return nil, fmt.Errorf("can not measure %s. couldn't extend PCR: %v", filePath, err)
 	}
 
 	pcr, err := readConfigPCR(tpm)
 	if err != nil {
-		return nil, fmt.Errorf("cannot measure %s. couldn't read PCR: %v", filePath, err)
+		return nil, fmt.Errorf("can not measure %s. couldn't read PCR: %v", filePath, err)
 	}
 
 	return &tpmEvent{eventData, pcr}, nil
@@ -177,7 +181,7 @@ func measureConfig(tpm io.ReadWriter) error {
 	files, err := getFileMap()
 
 	if err != nil {
-		return fmt.Errorf("cannot get file list: %v", err)
+		return fmt.Errorf("can not get file list: %v", err)
 	}
 
 	//get sorted list of files. We must always go the same order
@@ -199,7 +203,7 @@ func measureConfig(tpm io.ReadWriter) error {
 			event, err = performMeasurement(file, tpm, false, false)
 		}
 		if err != nil {
-			return fmt.Errorf("cannot measure %s: %v", file, err)
+			return fmt.Errorf("can not measure %s: %v", file, err)
 		}
 		//Now we have a new value of PCR and an event
 		//TODO: add events to the event log, if event data exceeds 1024 bytes,
@@ -215,7 +219,7 @@ func readConfigPCR(tpm io.ReadWriter) ([]byte, error) {
 	pcr, err := tpm2.ReadPCR(tpm, configPCRIndex, tpm2.AlgSHA256)
 
 	if err != nil {
-		return nil, fmt.Errorf("cannot read PCR %d: %v", configPCRIndex, err)
+		return nil, fmt.Errorf("can not read PCR %d: %v", configPCRIndex, err)
 	}
 	return pcr, nil
 }
