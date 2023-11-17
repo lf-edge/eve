@@ -8,6 +8,7 @@ package evetpm
 import (
 	"bytes"
 	"crypto/sha256"
+	"fmt"
 	"os"
 	"reflect"
 	"strings"
@@ -30,16 +31,15 @@ func TestSealUnseal(t *testing.T) {
 
 	dataToSeal := []byte("secret")
 	if err := SealDiskKey(log, dataToSeal, DiskKeySealingPCRs); err != nil {
-		t.Errorf("Seal operation failed with err: %v", err)
-		return
+		t.Fatalf("Seal operation failed with err: %v", err)
 	}
+
 	unsealedData, err := UnsealDiskKey(DiskKeySealingPCRs)
 	if err != nil {
-		t.Errorf("Unseal operation failed with err: %v", err)
-		return
+		t.Fatalf("Unseal operation failed with err: %v", err)
 	}
 	if !reflect.DeepEqual(dataToSeal, unsealedData) {
-		t.Errorf("Seal/Unseal operation failed, want %v, but got %v", dataToSeal, unsealedData)
+		t.Fatalf("Seal/Unseal operation failed, want %v, but got %v", dataToSeal, unsealedData)
 	}
 }
 
@@ -51,35 +51,30 @@ func TestSealUnsealMismatchReport(t *testing.T) {
 
 	rw, err := tpm2.OpenTPM(TpmDevicePath)
 	if err != nil {
-		t.Errorf("OpenTPM failed with err: %v", err)
-		return
+		t.Fatalf("OpenTPM failed with err: %v", err)
 	}
 	defer rw.Close()
 
 	dataToSeal := []byte("secret")
 	if err := SealDiskKey(log, dataToSeal, DiskKeySealingPCRs); err != nil {
-		t.Errorf("Seal operation failed with err: %v", err)
-		return
+		t.Fatalf("Seal operation failed with err: %v", err)
 	}
 
 	pcrIndexes := [3]int{1, 7, 8}
 	pcrValue := bytes.Repeat([]byte{0xF}, sha256.Size)
 	for _, pcr := range pcrIndexes {
 		if err = tpm2.PCRExtend(rw, tpmutil.Handle(pcr), tpm2.AlgSHA256, pcrValue, ""); err != nil {
-			t.Errorf("Failed to extend PCR %d: %s", pcr, err)
-			return
+			t.Fatalf("Failed to extend PCR %d: %s", pcr, err)
 		}
 	}
 
 	_, err = UnsealDiskKey(DiskKeySealingPCRs)
 	if err == nil {
-		t.Errorf("Expected error from UnsealDiskKey, got nil")
-		return
+		t.Fatalf("Expected error from UnsealDiskKey, got nil")
 	}
 
 	if !strings.Contains(err.Error(), "[1 7 8]") {
-		t.Errorf("UnsealDiskKey expected to report mismatching PCR indexes, got : %v", err)
-		return
+		t.Fatalf("UnsealDiskKey expected to report mismatching PCR indexes, got : %v", err)
 	}
 }
 
@@ -91,70 +86,58 @@ func TestSealUnsealTpmEventLogCollect(t *testing.T) {
 
 	rw, err := tpm2.OpenTPM(TpmDevicePath)
 	if err != nil {
-		t.Errorf("OpenTPM failed with err: %v", err)
-		return
+		t.Fatalf("OpenTPM failed with err: %v", err)
 	}
 	defer rw.Close()
 
-	// this should write the save the first event log
+	// this should write tpm event log to measurementLogSealSuccess file
 	dataToSeal := []byte("secret")
 	if err := SealDiskKey(log, dataToSeal, DiskKeySealingPCRs); err != nil {
-		t.Errorf("Seal operation failed with err: %v", err)
-		return
+		t.Fatalf("Seal operation failed with err: %v", err)
 	}
 
-	// this won't write to event log, but still triggers saving it on unseal.
+	// this should cause UnsealDiskKey to fail
 	pcrValue := bytes.Repeat([]byte{0xF}, sha256.Size)
 	if err = tpm2.PCRExtend(rw, tpmutil.Handle(1), tpm2.AlgSHA256, pcrValue, ""); err != nil {
-		t.Errorf("Failed to extend PCR[1]: %v", err)
-		return
+		t.Fatalf("Failed to extend PCR[1]: %v", err)
 	}
 
-	// this should fail and result in saving the second tpm event log
+	// this should fail and result in saving creating measurementLogUnsealFail
 	_, err = UnsealDiskKey(DiskKeySealingPCRs)
 	if err == nil {
-		t.Errorf("Expected error from UnsealDiskKey, got nil")
-		return
+		t.Fatalf("Expected error from UnsealDiskKey, got nil")
 	}
 
-	// just check for tpm0
-	sealSuccess := getLogCopyPath(measurementLogSealSuccess, 0)
-	sealFail := getLogCopyPath(measurementLogUnsealFail, 0)
-	if !fileutils.FileExists(nil, sealSuccess) {
-		t.Errorf("TPM measurement log \"%s\" not found, Expected to be copied", sealSuccess)
-		return
+	if !fileutils.FileExists(nil, measurementLogSealSuccess) {
+		t.Fatalf("TPM measurement log \"%s\" not found, expected to exist", measurementLogSealSuccess)
 	}
-	if !fileutils.FileExists(nil, sealFail) {
-		t.Errorf("TPM measurement log \"%s\" not found, Expected to be copied", sealFail)
-		return
+	if !fileutils.FileExists(nil, measurementLogUnsealFail) {
+		t.Fatalf("TPM measurement log \"%s\" not found, expected to exist", measurementLogUnsealFail)
 	}
 
-	// this should trigger collecting previous tpm event logs
+	// this should trigger backing up previously saved tpm event logs
 	if err := SealDiskKey(log, dataToSeal, DiskKeySealingPCRs); err != nil {
-		t.Errorf("Seal operation failed with err: %v", err)
-		return
+		t.Fatalf("Seal operation failed with err: %v", err)
 	}
 
-	// current measurement log should exist
-	if !fileutils.FileExists(nil, sealSuccess) {
-		t.Errorf("TPM measurement log \"%s\" not found, Expected to be copied", sealSuccess)
-		return
+	// a new measurementLogSealSuccess file should exist
+	if !fileutils.FileExists(nil, measurementLogSealSuccess) {
+		t.Fatalf("TPM measurement log \"%s\" not found, Expected to be copied", measurementLogSealSuccess)
 	}
-	// this shouldn't exist because SealDiskKey will do a clean up
-	if fileutils.FileExists(nil, sealFail) {
-		t.Errorf("TPM measurement log \"%s\" found, Expected to not exist", sealFail)
-		return
+
+	// measurementLogUnsealFail file shouldn't exist because SealDiskKey
+	// will do a clean up.
+	if fileutils.FileExists(nil, measurementLogUnsealFail) {
+		t.Fatalf("TPM measurement log \"%s\" found, Expected to not exist", measurementLogUnsealFail)
 	}
 
 	// backed up measurement logs both should exist
-	prevSealSuccess := getLogBackupPath(sealSuccess)
-	prevSealFail := getLogBackupPath(sealFail)
+	prevSealSuccess := fmt.Sprintf("%s-backup", measurementLogSealSuccess)
+	prevSealFail := fmt.Sprintf("%s-backup", measurementLogUnsealFail)
 	if !fileutils.FileExists(nil, prevSealSuccess) {
-		t.Errorf("TPM measurement log \"%s\" not found, Expected to be backed up", prevSealSuccess)
-		return
+		t.Fatalf("TPM measurement log \"%s\" not found, Expected to be backed up", prevSealSuccess)
 	}
 	if !fileutils.FileExists(nil, prevSealFail) {
-		t.Errorf("TPM measurement log \"%s\" not found, Expected to be backed up", prevSealFail)
-		return
+		t.Fatalf("TPM measurement log \"%s\" not found, Expected to be backed up", prevSealFail)
 	}
 }

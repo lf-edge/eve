@@ -15,7 +15,6 @@ import (
 	"io"
 	"math/big"
 	"os"
-	"path/filepath"
 	"sort"
 	"unsafe"
 
@@ -88,11 +87,7 @@ const (
 
 	// measurementLogFile is a kernel exposed variable that contains the
 	// TPM measurements and events log.
-	measurementLogFile = "binary_bios_measurements"
-
-	// syfsTpmDir is directory that TPMs get mapped on sysfs, and it contains
-	// measurement logs.
-	syfsTpmDir = "/hostfs/sys/kernel/security/tpm*"
+	measurementLogFile = "/hostfs/sys/kernel/security/tpm0/binary_bios_measurements"
 )
 
 // PCRBank256Status stores info about support for
@@ -647,14 +642,14 @@ func SealDiskKey(log *base.LogObject, key []byte, pcrSel tpm2.PCRSelection) erro
 		log.Warnf("saving snapshot of sealing PCRs failed: %s", err)
 	}
 
-	// Backup the previous pair of logs if any, so at most we have two pairs of
-	// measurement logs (per available tpm devices). This is needed because if the
-	// failing devices get connected to the controller and collects the backup key,
-	// we end up here again and will override the MeasurementLogSealSuccess  with
-	// current measurement log (which is same as the content of MeasurementLogSealFail)
-	// and lose the ability to diff and diagnose the issue.
+	// In order to not lose the ability to diff and diagnose the issue,
+	// first backup the previous pair of logs (if any). This is needed because
+	// once the failing devices get connected to the controller to fetch the
+	// backup key, we end up here again and it'll override the MeasurementLogSealSuccess
+	// file content with current tpm measurement logs (which is same as the
+	// content of MeasurementLogSealFail).
 	if err := backupCopiedMeasurementLogs(); err != nil {
-		log.Warnf("collecting previous snapshot of TPM event log failed: %s", err)
+		log.Warnf("copying previous snapshot of TPM event log failed: %s", err)
 	}
 
 	// fresh start, remove old copies of measurement logs.
@@ -662,7 +657,8 @@ func SealDiskKey(log *base.LogObject, key []byte, pcrSel tpm2.PCRSelection) erro
 		log.Warnf("removing old copies of TPM measurement log failed: %s", err)
 	}
 
-	// save a copy of the current measurement log
+	// save a copy of the current measurement log, this is also called
+	// if unseal fails to have copy when we fail to unlock the vault.
 	if err := copyMeasurementLog(measurementLogSealSuccess); err != nil {
 		log.Warnf("copying current TPM measurement log failed: %s", err)
 	}
@@ -847,127 +843,42 @@ func pcrBankSHA256EnabledHelper() bool {
 	return err == nil
 }
 
-func getLogCopyPath(destination string, tpmIndex int) string {
-	return fmt.Sprintf("%s-tpm%d", destination, tpmIndex)
-}
-
-func getLogBackupPath(destination string) string {
-	return fmt.Sprintf("%s-backup", destination)
-}
-
-func getMappedTpmsPath() ([]string, error) {
-	paths, err := filepath.Glob(syfsTpmDir)
-	if err != nil {
-		return nil, fmt.Errorf("failed to enumerate TPM(s) in sysfs: %w", err)
-	} else if len(paths) == 0 {
-		return nil, fmt.Errorf("found no TPM in sysfs")
-	}
-
-	return paths, nil
-}
-
-func countMappedTpms() (int, error) {
-	paths, err := getMappedTpmsPath()
-	if err != nil {
-		return 0, fmt.Errorf("getMappedTpmsPath failed: %w", err)
-	}
-
-	return len(paths), nil
-}
-
-func getMeasurementLogFiles() ([]string, error) {
-	paths, err := getMappedTpmsPath()
-	if err != nil {
-		return nil, fmt.Errorf("getMappedTpmsPath failed: %w", err)
-	}
-
-	enumerated := make([]string, 0)
-	for _, path := range paths {
-		fullPath := filepath.Join(path, measurementLogFile)
-		if fileutils.FileExists(nil, fullPath) {
-			enumerated = append(enumerated, fullPath)
-		}
-	}
-
-	return enumerated, nil
-}
-
 func backupCopiedMeasurementLogs() error {
-	counted, err := countMappedTpms()
-	if err != nil {
-		return fmt.Errorf("countMappedTPMs failed: %w", err)
-	}
+	sealSuccessBackupPath := fmt.Sprintf("%s-backup", measurementLogSealSuccess)
+	unsealFailBackupPath := fmt.Sprintf("%s-backup", measurementLogUnsealFail)
 
-	leftToBackup := counted
-	for i := 0; i < counted; i++ {
-		sealSuccessPath := getLogCopyPath(measurementLogSealSuccess, i)
-		unsealFailPath := getLogCopyPath(measurementLogUnsealFail, i)
-		if fileutils.FileExists(nil, sealSuccessPath) && fileutils.FileExists(nil, unsealFailPath) {
-			sealSuccessBackupPath := getLogBackupPath(sealSuccessPath)
-			unsealFailBackupPath := getLogBackupPath(unsealFailPath)
-			if err := os.Rename(sealSuccessPath, sealSuccessBackupPath); err != nil {
-				fmt.Fprintf(os.Stderr, "failed to backup tpm%d \"seal success\" previously copied measurement log: %v", i, err)
-				continue
-			}
-			if err := os.Rename(unsealFailPath, unsealFailBackupPath); err != nil {
-				fmt.Fprintf(os.Stderr, "failed to backup tpm%d \"unseal fail\" previously copied measurement log: %v", i, err)
-				_ = os.Rename(sealSuccessBackupPath, sealSuccessPath)
-				continue
-			}
+	if fileutils.FileExists(nil, measurementLogSealSuccess) {
+		if err := os.Rename(measurementLogSealSuccess, sealSuccessBackupPath); err != nil {
+			return fmt.Errorf("failed to backup tpm \"seal success event\" previously copied measurement log: %v", err)
 		}
-
-		leftToBackup--
 	}
 
-	if leftToBackup != 0 {
-		return fmt.Errorf("failed to backup %d number of previously copied TPM measurement logs", leftToBackup)
+	if fileutils.FileExists(nil, measurementLogUnsealFail) {
+		if err := os.Rename(measurementLogUnsealFail, unsealFailBackupPath); err != nil {
+			_ = os.Rename(sealSuccessBackupPath, measurementLogSealSuccess)
+			return fmt.Errorf("failed to backup tpm \"unseal fail event\" previously copied measurement log: %v", err)
+		}
 	}
 
 	return nil
 }
 
 func removeCopiedMeasurementLogs() error {
-	counted, err := countMappedTpms()
-	if err != nil {
-		return fmt.Errorf("countMappedTPMs failed: %w", err)
-	}
-
-	for i := 0; i < counted; i++ {
-		sealSuccessPath := getLogCopyPath(measurementLogSealSuccess, i)
-		unsealFailPath := getLogCopyPath(measurementLogUnsealFail, i)
-		_ = os.Remove(sealSuccessPath)
-		_ = os.Remove(unsealFailPath)
-	}
+	_ = os.Remove(measurementLogSealSuccess)
+	_ = os.Remove(measurementLogUnsealFail)
 
 	return nil
 }
 
 func copyMeasurementLog(dstPath string) error {
-	paths, err := getMeasurementLogFiles()
+	measurementLogContent, err := os.ReadFile(measurementLogFile)
 	if err != nil {
-		return fmt.Errorf("enumSourceEventLogFiles failed: %w", err)
+		return fmt.Errorf("failed to read TPM measurements log file: %v", err)
 	}
 
-	leftToCopy := len(paths)
-	for i, path := range paths {
-		measurementLogContent, err := os.ReadFile(path)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "failed to read stored measurement log file: %v", err)
-			continue
-		}
-
-		copyPath := getLogCopyPath(dstPath, i)
-		err = fileutils.WriteRename(copyPath, measurementLogContent)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "failed to copy stored measurement log file: %v", err)
-			continue
-		}
-
-		leftToCopy--
-	}
-
-	if leftToCopy != 0 {
-		return fmt.Errorf("failed to copy %d number of stored measurement log files", leftToCopy)
+	err = fileutils.WriteRename(dstPath, measurementLogContent)
+	if err != nil {
+		return fmt.Errorf("failed to copy stored measurement log file: %v", err)
 	}
 
 	return nil
