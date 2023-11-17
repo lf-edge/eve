@@ -65,14 +65,6 @@ $(APPS1): $(DISTDIR)
 shell:
 	make -C ../.. shell
 
-build-docker-$(APPS): $(DISTDIR)
-	docker build -f Dockerfile.in --target=build -t $(APPS)-builder .
-	# all of this goes away when we switch to full buildkit-based docker builds
-	docker container create --name $(APPS)-extract $(APPS)-builder
-	docker container cp $(APPS)-extract:/dist/$(APPS) $(DISTDIR)/$(APPS)
-	docker container rm -f $(APPS)-extract
-
-
 build-docker:
 	docker build $(DOCKER_ARGS) -t $(DOCKER_TAG) .
 
