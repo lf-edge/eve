@@ -53,7 +53,7 @@ jobs:
           # if the default server is responding -- we can skip apt update
           $APT_INSTALL || { sudo apt update && $APT_INSTALL ; }
       - name: update linuxkit cache if available
-        uses: actions/cache@v3
+        uses: buildjet/cache@v3
         with:
           path: ~/.linuxkit/cache
           key: linuxkit-${{ matrix.arch }}-${{ github.sha }}
@@ -86,7 +86,7 @@ jobs:
           fetch-depth: 0
       - name: update linuxkit cache for runner arch so we can get desired images
         id: cache_for_docker
-        uses: actions/cache/restore@v3
+        uses: buildjet/cache/restore@v3
         with:
           path: ~/.linuxkit/cache
           key: linuxkit-amd64-${{ github.sha }}
@@ -101,7 +101,7 @@ jobs:
       - name: update linuxkit cache for our arch
         id: cache_for_packages
         if: ${{ matrix.arch != 'amd64' }}  # because our runner arch is amd64; if that changes, this will have to change
-        uses: actions/cache/restore@v3
+        uses: buildjet/cache/restore@v3
         with:
           path: ~/.linuxkit/cache
           key: linuxkit-${{ matrix.arch }}-${{ github.sha }}
