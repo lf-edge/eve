@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile-upstream:1.5.0-rc2-labs
-FROM lfedge/eve-alpine:c61659241a11346dfb5a595d1217d64381df3adb as build
+FROM lfedge/eve-alpine:57d6a8a768256bece2f03ae4fc0eedcb5bca41a6 as build
 
 ENV BUILD_PKGS tar make binutils zstd
 RUN eve-alpine-deploy.sh
@@ -61,6 +61,49 @@ ADD ${RPI_BT_FIRMWARE_URL}/${RPI_BT_FIRMWARE_VERSION}/broadcom/BCM4345C0.hcd .
 ADD ${RPI_BT_FIRMWARE_URL}/${RPI_BT_FIRMWARE_VERSION}/broadcom/BCM43430B0.hcd .
 ADD ${RPI_BT_FIRMWARE_URL}/${RPI_BT_FIRMWARE_VERSION}/broadcom/BCM4345C5.hcd .
 
+# generate initrd for Intel's and AMD's microcode
+# it makes sense only for x86_64 platform
+FROM --platform=${TARGETPLATFORM} lfedge/eve-alpine:57d6a8a768256bece2f03ae4fc0eedcb5bca41a6 as ucode-build-common
+RUN mkdir -p /boot /tmp/ucode/intel /tmp/ucode/amd /usr/share/licenses/ucode
+
+FROM ucode-build-common as ucode-build-amd64
+ENV BUILD_PKGS iucode-tool
+RUN eve-alpine-deploy.sh
+
+# build intel microcode
+ENV INTEL_UCODE_VERSION=20231114
+ADD "https://github.com/intel/Intel-Linux-Processor-Microcode-Data-Files/archive/microcode-$INTEL_UCODE_VERSION.tar.gz" /tmp/ucode/intel
+WORKDIR /tmp/ucode/intel
+RUN tar -xf "microcode-$INTEL_UCODE_VERSION.tar.gz" --strip=1
+RUN find ./intel-ucode/ -maxdepth 1 -type f -print0 \
+    | xargs -0 -r -x iucode_tool -l --write-earlyfw=intel-ucode.img --overwrite
+
+# copy license files to /usr/share/licenses
+RUN cp license /usr/share/licenses/ucode/intel-license.txt
+
+#build AMD microcode. We use a separate Linux firmware image for that
+ENV AMD_UCODE_VERSION=20231111
+ENV LINUX_FIRMWARE_URL https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/snapshot/linux-firmware
+ADD ${LINUX_FIRMWARE_URL}-${AMD_UCODE_VERSION}.tar.gz /linux-firmware-ucode.tar.gz
+RUN mkdir /tmp/ucode/amd/linux-firmware \
+    && tar -xz --strip-components=1 -C /tmp/ucode/amd/linux-firmware -f /linux-firmware-ucode.tar.gz
+
+RUN mkdir -p /tmp/ucode/amd/kernel/x86/microcode
+RUN cat /tmp/ucode/amd/linux-firmware/amd-ucode/* >/tmp/ucode/amd/kernel/x86/microcode/AuthenticAMD.bin
+WORKDIR /tmp/ucode/amd
+RUN echo kernel/x86/microcode/AuthenticAMD.bin \
+    | cpio -o -H newc -R 0:0 >./amd-ucode.img
+
+# copy license files to /usr/share/licenses
+RUN cp /tmp/ucode/amd/linux-firmware/LICENSE.amd-ucode /usr/share/licenses/ucode/amd-license.txt
+
+# merge intel and amd microcode
+RUN cat /tmp/ucode/intel/intel-ucode.img /tmp/ucode/amd/amd-ucode.img >/boot/ucode.img
+
+FROM ucode-build-common as ucode-build-arm64
+FROM ucode-build-common as ucode-build-riscv64
+FROM ucode-build-${TARGETARCH} as ucode-build
+
 FROM lfedge/eve-alpine:9fb9b9cbf7d90066a70e4704d04a6fe248ff52bb as compactor
 ENTRYPOINT []
 WORKDIR /
@@ -121,3 +164,5 @@ ENTRYPOINT []
 WORKDIR /
 
 COPY --from=compactor /lib/firmware /lib/firmware
+COPY --from=ucode-build /boot/ /boot/
+COPY --from=ucode-build /usr/share/licenses/ucode /usr/share/licenses/ucode
