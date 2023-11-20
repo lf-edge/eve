@@ -1133,8 +1133,8 @@ github.com/lf-edge/edge-containers v0.0.0-20221025050409-93c34bebadd2 h1:ckxNk8M
 github.com/lf-edge/edge-containers v0.0.0-20221025050409-93c34bebadd2/go.mod h1:eA41YxPbZRVvewIYRzmqDB1PeLQXxCy9WQEc3AVCsPI=
 github.com/lf-edge/eve-api/go v0.0.0-20231101130551-3e88f723673a h1:GDjTYjRchuuCgYsHr1N/uprRmd6iMu2Gmt7mNWJ4d6A=
 github.com/lf-edge/eve-api/go v0.0.0-20231101130551-3e88f723673a/go.mod h1:6XqpOM8p1HsluNIGw2ihYPYsaAisQ5CuJpbIKHXQo5w=
-github.com/lf-edge/eve-libs v0.0.0-20230921141205-94d6f6b65597 h1:/UGYRj5tdRw5m3+VjZtTx1RVgphQbthfY/Gu5W7qb5o=
-github.com/lf-edge/eve-libs v0.0.0-20230921141205-94d6f6b65597/go.mod h1:dEMW+ISS+vVqukeNsorFlaGCo2nuDwkK0LGyBYd8yrc=
+github.com/lf-edge/eve-libs v0.0.0-20231120160159-666ed2307f8e h1:2k1XWU4x8Zkym6Cw1spObpVsyYBCYwB7mIcN8Ge02K8=
+github.com/lf-edge/eve-libs v0.0.0-20231120160159-666ed2307f8e/go.mod h1:fca8Jvpk2pnSdbfiCHjbvBE1Mn6WAQqeKyQezaSpLmU=
 github.com/lib/pq v1.0.0/go.mod h1:5WUZQaWbwv1U+lTReE5YruASi9Al49XbQIvNi/34Woo=
 github.com/lib/pq v1.1.1/go.mod h1:5WUZQaWbwv1U+lTReE5YruASi9Al49XbQIvNi/34Woo=
 github.com/lib/pq v1.2.0/go.mod h1:5WUZQaWbwv1U+lTReE5YruASi9Al49XbQIvNi/34Woo=
