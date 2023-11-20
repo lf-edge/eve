@@ -56,7 +56,7 @@ jobs:
         uses: buildjet/cache@v3
         with:
           path: ~/.linuxkit/cache
-          key: linuxkit-${{ matrix.arch }}-${{ github.sha }}
+          key: buildjet-linuxkit-${{ matrix.arch }}-${{ github.sha }}
       - name: Build packages
         run: |
           make V=1 PRUNE=1 ZARCH=${{ matrix.arch }} pkgs
@@ -89,7 +89,7 @@ jobs:
         uses: buildjet/cache/restore@v3
         with:
           path: ~/.linuxkit/cache
-          key: linuxkit-amd64-${{ github.sha }}
+          key: buildjet-linuxkit-amd64-${{ github.sha }}
           fail-on-cache-miss: true
       - name: load images we need from linuxkit cache into docker
         run: |
@@ -104,7 +104,7 @@ jobs:
         uses: buildjet/cache/restore@v3
         with:
           path: ~/.linuxkit/cache
-          key: linuxkit-${{ matrix.arch }}-${{ github.sha }}
+          key: buildjet-linuxkit-${{ matrix.arch }}-${{ github.sha }}
           fail-on-cache-miss: true
       - name: set environment
         env:
