@@ -147,3 +147,20 @@ func (pe *PatchEnvelopeUsage) Key() string {
 		"-v-" + pe.Version +
 		"-app-" + pe.AppUUID
 }
+
+// PatchEnvelopeUsageFromInfo returns PatchEnvelopeUsage structure from
+// PatchEnvelopeInfo struct
+func PatchEnvelopeUsageFromInfo(peInfo PatchEnvelopeInfo) []PatchEnvelopeUsage {
+	result := make([]PatchEnvelopeUsage, 0, len(peInfo.AllowedApps))
+
+	for _, appUUID := range peInfo.AllowedApps {
+		usage := PatchEnvelopeUsage{
+			AppUUID: appUUID,
+			PatchID: peInfo.PatchID,
+			Version: peInfo.Version,
+		}
+		result = append(result, usage)
+	}
+
+	return result
+}
