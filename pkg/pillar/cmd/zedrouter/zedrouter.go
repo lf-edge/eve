@@ -23,7 +23,9 @@
 package zedrouter
 
 import (
+	"bytes"
 	"context"
+	"encoding/gob"
 	"flag"
 	"fmt"
 	"log"
@@ -44,6 +46,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/nireconciler"
 	"github.com/lf-edge/eve/pkg/pillar/nistate"
 	"github.com/lf-edge/eve/pkg/pillar/objtonum"
+	"github.com/lf-edge/eve/pkg/pillar/persistcache"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
@@ -180,6 +183,7 @@ type zedrouter struct {
 
 	patchEnvelopes      *PatchEnvelopes
 	patchEnvelopesUsage *generics.LockedMap[string, types.PatchEnvelopeUsage]
+	peUsagePersist      *persistcache.PersistCache
 
 	pubPatchEnvelopesUsage pubsub.Publication
 }
@@ -197,6 +201,7 @@ func Run(ps *pubsub.PubSub, logger *logrus.Logger, log *base.LogObject, args []s
 
 		patchEnvelopesUsage: generics.NewLockedMap[string, types.PatchEnvelopeUsage](),
 	}
+
 	agentbase.Init(&zedrouter, logger, log, agentName,
 		agentbase.WithArguments(args))
 
@@ -227,6 +232,29 @@ func (z *zedrouter) init() (err error) {
 
 	gcp := *types.DefaultConfigItemValueMap()
 	z.appContainerStatsInterval = gcp.GlobalValueInt(types.AppContainerStatsInterval)
+
+	z.peUsagePersist, err = persistcache.New(types.PersistCachePatchEnvelopesUsage)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// restore cached patchEnvelopeUsage counters
+	for _, key := range z.peUsagePersist.Objects() {
+		cached, err := z.peUsagePersist.Get(key)
+		if err != nil {
+			log.Fatal(err)
+		}
+		buf := bytes.NewBuffer(cached)
+		dec := gob.NewDecoder(buf)
+
+		var peUsage types.PatchEnvelopeUsage
+
+		if err := dec.Decode(&peUsage); err != nil {
+			log.Fatal(err)
+		}
+
+		z.patchEnvelopesUsage.Store(key, peUsage)
+	}
 
 	if err = z.ensureDir(runDirname); err != nil {
 		return err
@@ -1394,6 +1422,18 @@ func (z *zedrouter) publishPatchEnvelopesUsage() {
 		if err != nil {
 			z.log.Errorf("publishPatchEnvelopesUsage failed: %v", err)
 		}
+
+		// save peUsage in persistcache
+		var buf bytes.Buffer
+		enc := gob.NewEncoder(&buf)
+		if err = enc.Encode(peUsage); err != nil {
+			z.log.Errorf("publishPatchEnvelopesUsage failed to encode peUsage: %v", err)
+		}
+		_, err = z.peUsagePersist.Put(key, buf.Bytes())
+		if err != nil {
+			z.log.Errorf("publishPatchEnvelopesUsage failed to store usage: %v", err)
+		}
+
 		return true
 	}
 	z.patchEnvelopesUsage.Range(publishFn)
