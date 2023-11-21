@@ -249,7 +249,7 @@ func ioBundle2PassthroughRule(adapter types.IoBundle) passthroughRule {
 	}
 
 	if adapter.PciLong != "" && adapter.UsbAddr != "" && adapter.UsbProduct != "" {
-		pci := pciPassthroughRule{pciAddress: adapter.PciLong}
+		pci := pciPassthroughForbidRule{pciAddress: adapter.PciLong}
 
 		pr = &pci
 	} else if adapter.UsbAddr != "" {
