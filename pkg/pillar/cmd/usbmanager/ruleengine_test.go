@@ -9,10 +9,10 @@ import (
 func TestOverwriteRule(t *testing.T) {
 	re := newRuleEngine()
 
-	pci1 := pciPassthroughRule{pciAddress: "00:02.0"}
+	pci1 := pciPassthroughForbidRule{pciAddress: "00:02.0"}
 	re.addRule(&pci1)
 
-	pci2 := pciPassthroughRule{pciAddress: "00:02.0"}
+	pci2 := pciPassthroughForbidRule{pciAddress: "00:02.0"}
 	re.addRule(&pci2)
 
 	if len(re.rules) != 1 {
@@ -23,7 +23,7 @@ func TestOverwriteRule(t *testing.T) {
 func TestBlockedByPCIPassthrough(t *testing.T) {
 	re := newRuleEngine()
 
-	pci := pciPassthroughRule{pciAddress: "00:02.0"}
+	pci := pciPassthroughForbidRule{pciAddress: "00:02.0"}
 	re.addRule(&pci)
 
 	ud := usbdevice{
@@ -146,7 +146,7 @@ func TestEmptyParentPCIAddress(t *testing.T) {
 		productID:               6,
 	}
 
-	pciRule := pciPassthroughRule{
+	pciRule := pciPassthroughForbidRule{
 		pciAddress: "00:02.0",
 	}
 	pciRule.vm = &virtualmachine{qmpSocketPath: "/vm/with/pci/passthrough"}
@@ -225,7 +225,7 @@ func FuzzRuleEngine(f *testing.F) {
 			qmpSocketPath: "/vm2",
 		}
 
-		rule3 := pciPassthroughRule{
+		rule3 := pciPassthroughForbidRule{
 			pciAddress: parentPCIAddressRule3,
 		}
 

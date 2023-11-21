@@ -78,16 +78,16 @@ func (pr *passthroughRuleVMBase) virtualMachine() *virtualmachine {
 	return pr.vm
 }
 
-type pciPassthroughRule struct {
+type pciPassthroughForbidRule struct {
 	pciAddress string
 	passthroughRuleVMBase
 }
 
-func (pr *pciPassthroughRule) String() string {
-	return fmt.Sprintf("PCI Passthrough Rule %s", pr.pciAddress)
+func (pr *pciPassthroughForbidRule) String() string {
+	return fmt.Sprintf("PCI Passthrough Forbid Rule %s", pr.pciAddress)
 }
 
-func (pr *pciPassthroughRule) evaluate(ud usbdevice) passthroughAction {
+func (pr *pciPassthroughForbidRule) evaluate(ud usbdevice) passthroughAction {
 	if ud.usbControllerPCIAddress == pr.pciAddress {
 		return passthroughForbid
 	}
@@ -95,7 +95,7 @@ func (pr *pciPassthroughRule) evaluate(ud usbdevice) passthroughAction {
 	return passthroughNo
 }
 
-func (pr *pciPassthroughRule) priority() uint8 {
+func (pr *pciPassthroughForbidRule) priority() uint8 {
 	return 0
 }
 
