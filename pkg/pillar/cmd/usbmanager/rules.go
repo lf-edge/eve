@@ -99,13 +99,35 @@ func (pr *pciPassthroughForbidRule) priority() uint8 {
 	return 0
 }
 
+type pciPassthroughRule struct {
+	pciAddress string
+	passthroughRuleVMBase
+}
+
+func (pr *pciPassthroughRule) String() string {
+	return fmt.Sprintf("PCI Passthrough Rule %s", pr.pciAddress)
+}
+
+func (pr *pciPassthroughRule) evaluate(ud usbdevice) passthroughAction {
+	if ud.usbControllerPCIAddress == pr.pciAddress {
+		return passthroughDo
+	}
+
+	return passthroughNo
+}
+
+func (pr *pciPassthroughRule) priority() uint8 {
+	return 0
+}
+
 type usbDevicePassthroughRule struct {
-	ud usbdevice
+	vendorID  uint32
+	productID uint32
 	passthroughRuleVMBase
 }
 
 func (udpr *usbDevicePassthroughRule) String() string {
-	return fmt.Sprintf("USB Device Passthrough Rule %s on pci %s", udpr.ud.vendorAndproductIDString(), udpr.ud.usbControllerPCIAddress)
+	return fmt.Sprintf("USB Device Passthrough Rule %x/%x", udpr.vendorID, udpr.productID)
 }
 
 func (udpr *usbDevicePassthroughRule) priority() uint8 {
@@ -113,11 +135,8 @@ func (udpr *usbDevicePassthroughRule) priority() uint8 {
 }
 
 func (udpr *usbDevicePassthroughRule) evaluate(ud usbdevice) passthroughAction {
-	if udpr.ud.usbControllerPCIAddress != "" && udpr.ud.usbControllerPCIAddress != ud.usbControllerPCIAddress {
-		return passthroughNo
-	}
-	if udpr.ud.vendorID != ud.vendorID ||
-		udpr.ud.productID != ud.productID {
+	if udpr.vendorID != ud.vendorID ||
+		udpr.productID != ud.productID {
 		return passthroughNo
 	}
 
@@ -173,11 +192,12 @@ func (cpr *compositionPassthroughRule) priority() uint8 {
 		}
 	}
 
-	return ret + 1
+	return ret
 }
 
 type usbPortPassthroughRule struct {
-	ud usbdevice
+	busnum  uint16
+	portnum string
 	passthroughRuleVMBase
 }
 
@@ -190,11 +210,8 @@ func (uppr *usbPortPassthroughRule) priority() uint8 {
 }
 
 func (uppr *usbPortPassthroughRule) evaluate(ud usbdevice) passthroughAction {
-	if uppr.ud.usbControllerPCIAddress != "" && uppr.ud.usbControllerPCIAddress != ud.usbControllerPCIAddress {
-		return passthroughNo
-	}
-	if uppr.ud.portnum != ud.portnum ||
-		uppr.ud.busnum != ud.busnum {
+	if uppr.portnum != ud.portnum ||
+		uppr.busnum != ud.busnum {
 		return passthroughNo
 	}
 

@@ -264,12 +264,11 @@ func ioBundle2PassthroughRule(adapter types.IoBundle) passthroughRule {
 			return nil
 		}
 		portnum := usbParts[1]
-		ud := usbdevice{
-			busnum:                  uint16(busnum),
-			portnum:                 portnum,
-			usbControllerPCIAddress: adapter.PciLong,
+
+		usb := usbPortPassthroughRule{
+			busnum:  uint16(busnum),
+			portnum: portnum,
 		}
-		usb := usbPortPassthroughRule{ud: ud}
 
 		pr = &usb
 	} else if adapter.UsbProduct != "" {
@@ -287,12 +286,11 @@ func ioBundle2PassthroughRule(adapter types.IoBundle) passthroughRule {
 			return nil
 		}
 
-		ud := usbdevice{
-			vendorID:                uint32(vendorID),
-			productID:               uint32(productID),
-			usbControllerPCIAddress: adapter.PciLong,
+		usb := usbDevicePassthroughRule{
+			vendorID:              uint32(vendorID),
+			productID:             uint32(productID),
+			passthroughRuleVMBase: passthroughRuleVMBase{},
 		}
-		usb := usbDevicePassthroughRule{ud: ud}
 
 		pr = &usb
 	} else {
