@@ -20,9 +20,9 @@ jobs:
         include:
           - os: buildjet-4vcpu-ubuntu-2204-arm
             arch: arm64
-          - os: ubuntu-20.04
+          - os: buildjet-4vcpu-ubuntu-2004
             arch: amd64
-          - os: ubuntu-20.04
+          - os: buildjet-4vcpu-ubuntu-2004
             arch: riscv64
     steps:
       - name: Starting Report
@@ -71,7 +71,7 @@ jobs:
 
   eve:
     needs: packages  # all packages for all platforms must be built first
-    runs-on: ubuntu-20.04
+    runs-on: buildjet-4vcpu-ubuntu-2004
     strategy:
       fail-fast: false
       matrix:
