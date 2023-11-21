@@ -124,6 +124,58 @@ func (udpr *usbDevicePassthroughRule) evaluate(ud usbdevice) passthroughAction {
 	return passthroughDo
 }
 
+type compositionPassthroughRule struct {
+	rules []passthroughRule
+	passthroughRuleVMBase
+}
+
+func (cpr *compositionPassthroughRule) evaluate(ud usbdevice) passthroughAction {
+	if len(cpr.rules) == 0 {
+		return passthroughNo
+	}
+
+	var ret passthroughAction
+	ret = passthroughDo
+
+	for _, rule := range cpr.rules {
+		action := rule.evaluate(ud)
+		if action == passthroughForbid {
+			return action
+		}
+		if action == passthroughNo {
+			ret = passthroughNo
+		}
+	}
+	return ret
+}
+
+func (cpr *compositionPassthroughRule) String() string {
+	var ret string
+
+	for _, rule := range cpr.rules {
+		ret += fmt.Sprintf("|%s", rule.String())
+	}
+
+	ret += "|"
+
+	return ret
+}
+
+func (cpr *compositionPassthroughRule) priority() uint8 {
+	var ret uint8
+
+	ret = 1
+	for _, rule := range cpr.rules {
+		oldPrio := ret
+		ret += rule.priority()
+		if ret < oldPrio {
+			panic("overflow happened") // panic here to detect these failures in go tests
+		}
+	}
+
+	return ret + 1
+}
+
 type usbPortPassthroughRule struct {
 	ud usbdevice
 	passthroughRuleVMBase
