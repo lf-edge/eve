@@ -22,7 +22,31 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  check_pr_publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install curl and jq
+        run: sudo apt-get update && sudo apt-get install -y curl jq
+
+      - name: Check PR images are published on Docker Hub
+        run: |
+          DOCKER_HUB_PATH="evebuild/danger"
+          # currently we only test amd64 (kvms and xen) with Eden
+          IMAGE_AMD64_XEN="pr${{ github.event.pull_request.number }}-xen"
+          IMAGE_AMD64_KVM="pr${{ github.event.pull_request.number }}-kvm"
+
+          amd64_xen_res=$(curl -s "https://hub.docker.com/v2/repositories/${DOCKER_HUB_PATH}/tags/${IMAGE_AMD64_XEN}")
+          amd64_kvm_res=$(curl -s "https://hub.docker.com/v2/repositories/${DOCKER_HUB_PATH}/tags/${IMAGE_AMD64_KVM}")
+          if [[ "$(echo "$amd64_xen_res" | jq -r '.name')" == "${IMAGE_AMD64_XEN}" && "$(echo "$amd64_kvm_res" | jq -r '.name')" == "${IMAGE_AMD64_KVM}" ]]; then
+              echo "Docker image ${DOCKER_HUB_PATH}:${IMAGE_AMD64_XEN} and ${DOCKER_HUB_PATH}:${IMAGE_AMD64_KVM} are available on Docker Hub."
+              exit 0
+          else
+              echo "Docker image ${DOCKER_HUB_PATH}:${IMAGE_AMD64_XEN} and ${DOCKER_HUB_PATH}:${IMAGE_AMD64_KVM} are not available on Docker Hub."
+              exit 1
+          fi
+
   test_suite_pr:
+    needs: check_pr_publish
     if: github.event.review.state == 'approved'
     uses: lf-edge/eden/.github/workflows/test.yml@0.9.2
     with:

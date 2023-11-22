@@ -4,3 +4,7 @@
 write-kubeconfig-mode: "0644"
 cluster-init: true
 log: "/var/lib/rancher/k3s/k3s.log"
+# Remove debug flag before release to avoid overlogging
+debug: true
+etcd-expose-metrics: true
+container-runtime-endpoint: "/run/containerd-user/containerd.sock"

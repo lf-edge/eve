@@ -126,6 +126,9 @@ func (uc *usbmanagerController) addVirtualmachine(vm virtualmachine) {
 		}
 
 		pr := ioBundle2PassthroughRule(*ioBundle)
+		if pr == nil {
+			continue
+		}
 		pr.setVirtualMachine(&vm)
 
 		uc.ruleEngine.addRule(pr)
@@ -159,6 +162,9 @@ func (uc *usbmanagerController) removeVirtualmachine(vm virtualmachine) {
 		}
 
 		pr := ioBundle2PassthroughRule(*ioBundle)
+		if pr == nil {
+			continue
+		}
 		uc.ruleEngine.delRule(pr)
 	}
 
@@ -172,6 +178,9 @@ func (uc *usbmanagerController) removeIOBundle(ioBundle types.IoBundle) {
 	uc.usbpassthroughs.delIoBundle(&ioBundle)
 
 	pr := ioBundle2PassthroughRule(ioBundle)
+	if pr == nil {
+		return
+	}
 	vm := uc.usbpassthroughs.vmsByIoBundlePhyLabel[ioBundle.Phylabel]
 	pr.setVirtualMachine(vm)
 
@@ -197,7 +206,6 @@ func (uc *usbmanagerController) addIOBundle(ioBundle types.IoBundle) {
 
 	pr := ioBundle2PassthroughRule(ioBundle)
 	if pr == nil {
-		log.Tracef("unusable iobundle %s: %s/%s\n", ioBundle.Phylabel, ioBundle.UsbAddr, ioBundle.PciLong)
 		return
 	}
 	vm := uc.usbpassthroughs.vmsByIoBundlePhyLabel[ioBundle.Phylabel]
@@ -236,7 +244,8 @@ func ioBundle2PassthroughRule(adapter types.IoBundle) passthroughRule {
 		}
 		busnum, err := strconv.ParseUint(usbParts[0], 10, 16)
 		if err != nil {
-			panic(err)
+			log.Warnf("usbaddr busnum (%s) not parseable", usbParts[0])
+			return nil
 		}
 		portnum := usbParts[1]
 		ud := usbdevice{
@@ -248,6 +257,7 @@ func ioBundle2PassthroughRule(adapter types.IoBundle) passthroughRule {
 
 		pr = &usb
 	} else {
+		log.Tracef("cannot create rule out of adapter %+v\n", adapter)
 		pr = nil
 	}
 

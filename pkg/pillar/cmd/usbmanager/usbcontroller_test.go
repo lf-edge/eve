@@ -71,6 +71,27 @@ func testEventTable() [][]testingEvent {
 	return tetg.testEventTable
 }
 
+func TestAddNonRuleIOBundle(t *testing.T) {
+	uc := newTestUsbmanagerController()
+	ioBundle := types.IoBundle{
+		Type:         0,
+		Phylabel:     "Test",
+		Logicallabel: "Test",
+	}
+	uc.addIOBundle(ioBundle)
+	uc.removeIOBundle(ioBundle)
+
+	uc.usbpassthroughs.ioBundles[ioBundle.Phylabel] = &ioBundle
+
+	vm := virtualmachine{
+		qmpSocketPath: "",
+		adapters:      []string{"Test"},
+	}
+
+	uc.addVirtualmachine(vm)
+	uc.removeVirtualmachine(vm)
+}
+
 func TestRemovingVm(t *testing.T) {
 	usbEventBusnum := uint16(1)
 	usbEventDevnum := uint16(2)

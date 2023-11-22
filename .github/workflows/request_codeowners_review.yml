@@ -2,17 +2,25 @@
 name: Request Code Owners Review
 
 on:
-  pull_request:
+  pull_request_target:
     types: ["opened", "synchronize"]
 
 jobs:
   auto_request_review:
     runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          fetch-depth: ${{ github.event.pull_request.commits + 1 }}
+          ref: ${{ github.base_ref }}
+          fetch-depth: 0
+
+      - name: Fetch the PR's head ref
+        run: |
+          git fetch origin ${{ github.event.pull_request.head.sha }}:${{ github.event.pull_request.head.ref }}
+          git checkout ${{ github.event.pull_request.head.ref }}
 
       - name: Auto request review
         env:
@@ -22,7 +30,7 @@ jobs:
           # Get changed files in this pull request
           echo "Checking base: ${{ github.event.pull_request.base.sha }}"
           echo "Checking head: ${{ github.event.pull_request.head.sha }}"
-          for changed_file in $(git diff --name-only ${{ github.event.pull_request.base.sha }} ${{ github.event.pull_request.head.sha }}); do
+          for changed_file in $(git diff --name-only ${{ github.event.pull_request.base.sha }}...HEAD); do
             echo "Checking $changed_file"
             while read -r line; do
               # Get pattern of the files owned
@@ -40,15 +48,33 @@ jobs:
               fi
             done < .github/CODEOWNERS
           done
-          # Remove duplicates
+          # Remove duplicates and format for JSON
           reviewers=$(echo "$reviewers" | xargs -n1 | sort -u | xargs)
-          if [ -n "$reviewers" ]; then
-            # Remove @ from reviewers (it stays in the beginning of the username)
-            reviewers_cleaned=${reviewers//@/}
-            # Convert reviewers to comma separated list
-            reviewers_comma_separated=$(echo "$reviewers_cleaned" | tr ' ' ',')
-            echo "Requesting review from: $reviewers_comma_separated"
-            gh pr edit ${{ github.event.pull_request.number }} --add-reviewer $reviewers_comma_separated
+          # Remove @ from reviewers (it stays in the beginning of the username)
+          reviewers_cleaned=${reviewers//@/}
+          IFS=' ' read -ra reviewers_array <<< "$reviewers_cleaned"
+          # Get username of PR author to exclude from reviewers
+          pr_author="${{ github.event.pull_request.user.login }}"
+          # Remove PR author from reviewers
+          filtered_reviewers=()
+          for reviewer in ${reviewers_array[@]}; do
+            if [[ "$reviewer" != "$pr_author" ]]; then
+              filtered_reviewers+=("$reviewer")
+            fi
+          done
+          if [ ${#filtered_reviewers[@]} -gt 0 ]; then
+            json_array=$(printf ',\"%s\"' "${filtered_reviewers[@]}")
+            json_array="[${json_array:1}]" # Remove the leading comma
+            echo "JSON array: $json_array"
+            echo "Requesting review from: ${filtered_reviewers[*]}"
+            echo https://api.github.com/repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/requested_reviewers
+            curl -L \
+              -D - \
+              -X POST \
+              -H "Authorization: Bearer $GITHUB_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              https://api.github.com/repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/requested_reviewers \
+              -d "{\"reviewers\": $json_array}"
           else
             echo "No reviewers found for the changed files."
           fi

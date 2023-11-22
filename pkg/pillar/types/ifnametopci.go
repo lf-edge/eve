@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"os"
 	"path"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -82,7 +83,19 @@ func ifNameToPciAndUsbAddr(log *base.LogObject, ifName string) (string, string, 
 		return "", usbAddr, err
 	}
 
-	busnum, portnum, err := ExtractUSBBusnumPort(link)
+	ifPathLink, err := os.Readlink(ifPath)
+	if err != nil {
+		log.Warnf("readlink of %s failed: %+v", ifPath, err)
+		ifPathLink = ifPath
+	}
+	// convert from /sys/class/net/... to path including PCI address and USB address
+	// (e.g.: /devices/pci0000:00/0000:00:14.0/usb2/)
+	absIfPathLink, err := filepath.Abs(filepath.Join(ifPathLink, link))
+	if err != nil {
+		absIfPathLink = link
+		log.Warnf("getting absolute path of %s failed: %+v", link, err)
+	}
+	busnum, portnum, err := ExtractUSBBusnumPort(absIfPathLink)
 	if err == nil {
 		usbAddr = fmt.Sprintf("%d:%s", busnum, portnum)
 	}

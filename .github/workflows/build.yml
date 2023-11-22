@@ -18,11 +18,11 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: arm64-dirty
+          - os: buildjet-4vcpu-ubuntu-2204-arm
             arch: arm64
-          - os: ubuntu-20.04
+          - os: buildjet-4vcpu-ubuntu-2004
             arch: amd64
-          - os: ubuntu-20.04
+          - os: buildjet-4vcpu-ubuntu-2004
             arch: riscv64
     steps:
       - name: Starting Report
@@ -42,7 +42,7 @@ jobs:
         with:
           fetch-depth: 0
       - name: ensure zstd for cache  # this should be removed once the arm64 VM includes zstd
-        if: ${{ matrix.os == 'arm64-dirty' || matrix.os == 'arm64-secure' }}
+        if: ${{ matrix.os == 'buildjet-4vcpu-ubuntu-2204-arm' || matrix.os == 'arm64-secure' }}
         run: |
           sudo apt install -y zstd
       - name: ensure packages for cross-arch build
@@ -71,7 +71,7 @@ jobs:
 
   eve:
     needs: packages  # all packages for all platforms must be built first
-    runs-on: ubuntu-20.04
+    runs-on: buildjet-4vcpu-ubuntu-2004
     strategy:
       fail-fast: false
       matrix:
@@ -84,6 +84,12 @@ jobs:
       - uses: actions/checkout@v3
         with:
           fetch-depth: 0
+      # the next three steps - cache_for_docker, load images, and cache_for_packages -
+      # having nothing to do with the content of the final eve image. Instead, it is because we are running
+      # on amd64, and we need some of the tools in order to compose the final eve image for the target arch.
+      # These tools are in pkg/, and therefore are part of packages, and we need them in docker.
+      # Rather than build them again, we just restore the cache for our runner architecture,
+      # load them into docker, and then clear the cache so we can load the cache for the target arch.
       - name: update linuxkit cache for runner arch so we can get desired images
         id: cache_for_docker
         uses: actions/cache/restore@v3
@@ -98,6 +104,7 @@ jobs:
         if: ${{ matrix.arch != 'amd64' }}  # because our runner arch is amd64; if that changes, this will have to change
         run: |
           rm -rf ~/.linuxkit
+      # With the "load into docker" complete, now we can restore the packages into the cache for the target arch (as opposed to the runner arch)
       - name: update linuxkit cache for our arch
         id: cache_for_packages
         if: ${{ matrix.arch != 'amd64' }}  # because our runner arch is amd64; if that changes, this will have to change

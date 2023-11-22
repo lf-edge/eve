@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"time"
 
+	uuid "github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
 )
 
@@ -47,6 +48,15 @@ func newContainerd() Hypervisor {
 	} else {
 		return ret
 	}
+}
+
+// CountMemOverhead - returns the memory overhead for a domain.
+// This implementation is used for Xen as well
+func (ctx ctrdContext) CountMemOverhead(domainName string, domainUUID uuid.UUID, domainRAMMemory int64, vmmMaxMem int64,
+	domainMaxCpus int64, domainVCpus int64, domainIoAdapterList []types.IoAdapter, aa *types.AssignableAdapters,
+	globalConfig *types.ConfigItemValueMap) (uint64, error) {
+	// Does containerd have any overhead?
+	return 0, nil
 }
 
 func (ctx ctrdContext) GetCapabilities() (*types.Capabilities, error) {

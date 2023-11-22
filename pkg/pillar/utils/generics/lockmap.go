@@ -75,3 +75,26 @@ func (lm *LockedMap[K, V]) Range(callback LockedMapFunc[K, V]) {
 	}
 	lm.RUnlock()
 }
+
+// LockedMapApplyFunc is function signature for ApplyOrStore function
+type LockedMapApplyFunc[V any] func(V) V
+
+// ApplyOrStore is used to perform atomic operations, where the operation
+// is performed by the applyFn function. If the key does not exist in the map
+// then defaultVal will be stored. Otherwise the entry for the key will be updated.
+// returns true if the key existed when the function was called
+func (lm *LockedMap[K, V]) ApplyOrStore(key K, applyFn LockedMapApplyFunc[V], defaultVal V) bool {
+	lm.Lock()
+	defer lm.Unlock()
+
+	applied := false
+
+	if v, ok := lm.locked[key]; ok {
+		lm.locked[key] = applyFn(v)
+		applied = true
+	} else {
+		lm.locked[key] = defaultVal
+	}
+
+	return applied
+}

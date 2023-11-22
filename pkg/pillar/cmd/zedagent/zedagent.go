@@ -155,6 +155,7 @@ type zedagentContext struct {
 	subCipherMetricsNim       pubsub.Subscription
 	subCipherMetricsZR        pubsub.Subscription
 	subCipherMetricsWwan      pubsub.Subscription
+	subPatchEnvelopeUsage     pubsub.Subscription
 	zedcloudMetrics           *zedcloud.AgentMetrics
 	fatalFlag                 bool // From command line arguments
 	hangFlag                  bool // From command line arguments
@@ -1032,6 +1033,12 @@ func mainEventLoop(zedagentCtx *zedagentContext, stillRunning *time.Ticker) {
 
 		case change := <-getconfigCtx.subCachedResolvedIPs.MsgChan():
 			getconfigCtx.subCachedResolvedIPs.ProcessChange(change)
+
+		case change := <-getconfigCtx.subPatchEnvelopeStatus.MsgChan():
+			getconfigCtx.subPatchEnvelopeStatus.ProcessChange(change)
+
+		case change := <-zedagentCtx.subPatchEnvelopeUsage.MsgChan():
+			zedagentCtx.subPatchEnvelopeUsage.ProcessChange(change)
 
 		case <-hwInfoTiker.C:
 			triggerPublishHwInfo(zedagentCtx)
@@ -1917,6 +1924,30 @@ func initPostOnboardSubs(zedagentCtx *zedagentContext) {
 		ErrorTime:   errorTime,
 		TopicImpl:   types.CachedResolvedIPs{},
 		Activate:    true,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	zedagentCtx.subPatchEnvelopeUsage, err = ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:   "zedrouter",
+		MyAgentName: agentName,
+		TopicImpl:   types.PatchEnvelopeUsage{},
+		Activate:    true,
+		Ctx:         &zedagentCtx,
+		WarningTime: warningTime,
+		ErrorTime:   errorTime,
+	})
+
+	getconfigCtx.subPatchEnvelopeStatus, err = ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "zedrouter",
+		MyAgentName:   agentName,
+		TopicImpl:     types.PatchEnvelopeInfo{},
+		Activate:      true,
+		Ctx:           zedagentCtx,
+		CreateHandler: handlePatchEnvelopeStatusCreate,
+		ModifyHandler: handlePatchEnvelopeStatusModify,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
 	})
 	if err != nil {
 		log.Fatal(err)

@@ -4,11 +4,13 @@
 package zedrouter_test
 
 import (
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/zedrouter"
+	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/onsi/gomega"
 	uuid "github.com/satori/go.uuid"
@@ -22,7 +24,8 @@ func TestPatchEnvelopes(t *testing.T) {
 
 	logger := logrus.StandardLogger()
 	log := base.NewSourceLogObject(logger, "petypes", 1234)
-	peStore := zedrouter.NewPatchEnvelopes(log)
+	ps := pubsub.New(&pubsub.EmptyDriver{}, logger, log)
+	peStore := zedrouter.NewPatchEnvelopes(log, ps)
 
 	u := "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
 	contentU := "6ba7b810-9dad-11d1-80b4-ffffffffffff"
@@ -72,10 +75,13 @@ func TestPatchEnvelopes(t *testing.T) {
 		},
 	}
 
+	peStoreMutex := sync.Mutex{}
 	go func() {
 		for _, vs := range volumeStatuses {
+			peStoreMutex.Lock()
 			peStore.UpdateVolumeStatus(vs, false)
 			peStore.UpdateStateNotificationCh() <- struct{}{}
+			peStoreMutex.Unlock()
 		}
 	}()
 
@@ -88,18 +94,30 @@ func TestPatchEnvelopes(t *testing.T) {
 	}()
 
 	go func() {
+		peStoreMutex.Lock()
 		peStore.UpdateEnvelopes(peInfo)
 
 		peStore.UpdateStateNotificationCh() <- struct{}{}
+		peStoreMutex.Unlock()
 
 	}()
 
 	finishedProcessing := make(chan struct{})
 	go func() {
 		for {
-			if len(peStore.Get(u).Envelopes) > 0 && len(peStore.Get(u).Envelopes[0].BinaryBlobs) >= 2 {
-				close(finishedProcessing)
-				return
+			// Since there's no feedback mechanism to see if the work in
+			// peStore structure was done we need to wait for it to finish
+			// There are 3 goroutines changing peStore state:
+			// one which adds Envelopes with one BinaryBlob one VolumeRef (len(envelopes) > 0)
+			// one which moves VolumeRef to BinaryBlob (envelopes[0].BinaryBlobs >= 2
+			// one which adds SHA to BinaryBlob created from VolumeRef (finding blob and comparing SHA)
+			envelopes := peStore.Get(u).Envelopes
+			if len(envelopes) > 0 && len(envelopes[0].BinaryBlobs) >= 2 {
+				volBlobIdx := types.CompletedBinaryBlobIdxByName(envelopes[0].BinaryBlobs, "VolTestFileName")
+				if volBlobIdx != -1 && envelopes[0].BinaryBlobs[volBlobIdx].FileSha != "" {
+					close(finishedProcessing)
+					return
+				}
 			}
 			time.Sleep(time.Second)
 		}
@@ -119,6 +137,7 @@ func TestPatchEnvelopes(t *testing.T) {
 			{
 				PatchID:     "6ba7b810-9dad-11d1-80b4-00c04fd430c8",
 				AllowedApps: []string{u},
+				State:       types.PatchEnvelopeStateActive,
 				BinaryBlobs: []types.BinaryBlobCompleted{
 					{
 						FileName:     "TestFileName",

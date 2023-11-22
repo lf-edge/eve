@@ -93,6 +93,75 @@ tail -F /run/diag.out
 
 In addition this information is provided to application instances on the device using [the diag API endpoint](./ECO-METADATA.md).
 
+## Application console
+
+A running application on an EVE device has a console for input or output. You can attach to the application console from the EVE device as a control terminal if the application (VM or Container) listens to the TTY line and communicates with the virtual console /dev/hvc0 device. For example for popular linux distributions deployed as VM application this is usually the case.
+
+First list applications consoles of all running QEMU (KVM) processes:
+
+```bash
+# eve list-app-consoles
+PID     APP-UUID                                CONS-TYPE       CONS-ID
+---     --------                                ---------       ---------
+3883    e4e2f56d-b833-4562-a86f-be654d6387ba    VM              e4e2f56d-b833-4562-a86f-be654d6387ba.1.1/cons
+4072    f6d348cc-9c31-4f8b-8c4f-a4aae4590b97    CONTAINER       f6d348cc-9c31-4f8b-8c4f-a4aae4590b97.1.2/cons
+4072    f6d348cc-9c31-4f8b-8c4f-a4aae4590b97    VM              f6d348cc-9c31-4f8b-8c4f-a4aae4590b97.1.2/prime-cons
+
+```
+
+Where fields are:
+
+* PID       - the process ID of the QEMU process
+* APP-UUID  - UUID of the application
+* CONS-TYPE - Type of the console
+* CONS-ID   - ID of the console, should be used for attaching to the console by passing the console ID to the `eve attach-app-console` command
+
+Different application types may have different consoles (as mentioned above). An application of type "Virtual Machine" can only have a console of type "VM", which leads to the console of the user application; An application of the "Container" type has two types of console: the console of the "VM" type leads to the Virtual Machine that hosts the container, the console of the "CONTAINER" type leads to the user container itself.
+
+Choose console ID you need to attach and pass it as an argument to the `eve attach-app-console` command:
+
+```bash
+# eve attach-app-console e4e2f56d-b833-4562-a86f-be654d6387ba.1.1/cons
+[20:26:15.116] tio v1.37
+[20:26:15.116] Press ctrl-t q to quit
+[20:26:15.116] Connected
+<PRESS ENTER>
+
+Ubuntu 18.04.6 LTS user hvc0
+
+user login:
+```
+
+Note: `tio` utility is used as a simple TTY terminal, so in order to quit the session please press `ctrl-t q` or read the `tio` manual for additional commands.
+
+The same 'cons' console ID can be used for the Container application, but please be aware if container does not start a shell then terminal is very limited and can be used only for reading for the console output, but not for executing commands.
+
+In order to attach to the console of the hosting Vm of the Container application another console ID should be used which is named `prime-cons`:
+
+```bash
+# eve attach-app-console f6d348cc-9c31-4f8b-8c4f-a4aae4590b97.1.2/prime-cons
+[20:41:47.124] tio v1.37
+[20:41:47.124] Press ctrl-t q to quit
+[20:41:47.124] Connected
+<PRESS ENTER>
+~ #
+```
+
+The `prime-cons` console exists only for the Container applications and is always reachable for executing commands on the Vm which hosts corresponding container.
+
+Once terminal responds on the `prime-cons` console it is possible to enter container by executing the `eve-enter-container` command:
+
+```bash
+~ # eve-enter-container
+(none):/# ps awux
+PID   USER     TIME  COMMAND
+    1 root      0:00 /bin/sh
+    6 root      0:00 -ash
+    7 root      0:00 ps awux
+(none):/# exit
+~ #
+```
+
 ## Reboots
 
 EVE is architected in such a way that if any service is unresponsive for a period of time, the entire device will reboot. When this happens a BootReason is constructed and sent in the device info message to the controller. If there is a golang panic there can also be useful information found in `/persist/agentdebug/`.

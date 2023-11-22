@@ -1057,6 +1057,7 @@ func (n *nim) includeLastResortPort(ifAttrs netmonitor.IfAttrs) bool {
 	exclude := strings.HasPrefix(ifName, "vif") ||
 		strings.HasPrefix(ifName, "nbu") ||
 		strings.HasPrefix(ifName, "nbo") ||
+		strings.HasPrefix(ifName, "wlan") ||
 		strings.HasPrefix(ifName, "keth")
 	if exclude {
 		return false
@@ -1067,14 +1068,18 @@ func (n *nim) includeLastResortPort(ifAttrs netmonitor.IfAttrs) bool {
 	if ifAttrs.IsLoopback || !ifAttrs.WithBroadcast || ifAttrs.Enslaved {
 		return false
 	}
-	if ifAttrs.IfType == "device" {
+
+	switch ifAttrs.IfType {
+	case "device":
 		return true
-	}
-	if ifAttrs.IfType == "bridge" {
+	case "bridge":
 		// Was this originally an ethernet interface turned into a bridge?
 		_, exists, _ := n.networkMonitor.GetInterfaceIndex("k" + ifName)
 		return exists
+	case "can", "vcan":
+		return false
 	}
+
 	return false
 }
 

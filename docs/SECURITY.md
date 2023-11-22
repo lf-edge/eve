@@ -73,7 +73,7 @@ Given the complexity of designing such a protocol for EVE (especially solving th
 
 If there's an attempted modification of either controller's address (stored in /config/server) and controller's Root CA (/config/root-certificate.pem) Edge Node should get disconnected from the controller and should be forced to do a hardware-assisted clear operation and start all over again.
 
-On systems where TPM is available, the idea is to change TPM authentication policy from password to HMAC based authentication (TPM2_PolicyAuthValue), with hash calculated from the Root CA.  When device key is created, HMAC from Root CA will be passed, which is to be honored for every TPM command related to the key entity. i.e Each time Sign command is passed to TPM, the Root CA hash needs to be the same. If someone changes Root CA, HMAC will not match, and the device will be disconnected from the controller, forcing the user to do a TPM clear and start all over again.
+In the current implementation of EVE, if TPM is available, controller's address and controller's Root CA are measured into TPM as part of vault key access control policy meaning any changes in those data will prevent the system to get access to the vault key at the next boot up.
 
 ### EVE trusting side-channel configuration
 

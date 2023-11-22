@@ -81,7 +81,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	}
 	log.Functionf("processed Vault Status")
 
-	currentHypervisor := hypervisor.CurrentHypervisor()
+	currentHypervisor := hypervisor.BootTimeHypervisor()
 	_, ok := currentHypervisor.(hypervisor.KvmContext)
 	if ok {
 		usbCtx.subscribe(ps)

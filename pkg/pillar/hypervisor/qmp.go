@@ -1,10 +1,12 @@
 package hypervisor
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"github.com/digitalocean/go-qemu/qmp"
+	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/sirupsen/logrus"
 	"os"
 	"time"
@@ -81,8 +83,54 @@ func QmpExecDeviceAdd(socket, id string, busnum, devnum uint16) error {
 	return err
 }
 
-func getQemuStatus(socket string) (string, error) {
-	if raw, err := execRawCmd(socket, `{ "execute": "query-status" }`); err == nil {
+// There is errors.Join(), but stupid Yetus has old golang
+// and complains with "Join not declared by package errors".
+// Use our own.
+func joinErrors(err1, err2 error) error {
+	if err1 == nil {
+		return err2
+	}
+	if err2 == nil {
+		return err1
+	}
+
+	return fmt.Errorf("%v; %v", err1, err2)
+}
+
+func getQemuStatus(socket string) (types.SwState, error) {
+	// lets parse the status according to
+	// https://github.com/qemu/qemu/blob/master/qapi/run-state.json#L8
+	qmpStatusMap := map[string]types.SwState{
+		"finish-migrate": types.PAUSED,
+		"inmigrate":      types.PAUSING,
+		"paused":         types.PAUSED,
+		"postmigrate":    types.PAUSED,
+		"prelaunch":      types.PAUSED,
+		"restore-vm":     types.PAUSED,
+		"running":        types.RUNNING,
+		"save-vm":        types.PAUSED,
+		"shutdown":       types.HALTING,
+		"suspended":      types.PAUSED,
+		"watchdog":       types.PAUSING,
+		"colo":           types.PAUSED,
+		"preconfig":      types.PAUSED,
+	}
+
+	// We do several retries, because correct QEMU status is very crucial to EVE
+	// and if for some reason (https://github.com/digitalocean/go-qemu/pull/210)
+	// the status is unexpected, EVE stops QEMU and game over.
+	var errs error
+	state := types.UNKNOWN
+	for attempt := 1; attempt <= 3; attempt++ {
+		raw, err := execRawCmd(socket, `{ "execute": "query-status" }`)
+		if err != nil {
+			err = fmt.Errorf("[attempt %d] qmp status failed for QMP socket '%s': err: '%v'; (JSON response: '%s')",
+				attempt, socket, err, raw)
+			errs = joinErrors(errs, err)
+			time.Sleep(time.Second)
+			continue
+		}
+
 		var result struct {
 			ID     string `json:"id"`
 			Return struct {
@@ -91,11 +139,36 @@ func getQemuStatus(socket string) (string, error) {
 				Status     string `json:"status"`
 			} `json:"return"`
 		}
-		err = json.Unmarshal(raw, &result)
-		return result.Return.Status, err
-	} else {
-		return "", err
+		dec := json.NewDecoder(bytes.NewReader(raw))
+		dec.DisallowUnknownFields()
+		err = dec.Decode(&result)
+		if err != nil {
+			err = fmt.Errorf("[attempt %d] failed to parse QMP status response for QMP socket '%s': err: '%v'; (JSON response: '%s')",
+				attempt, socket, err, raw)
+			errs = joinErrors(errs, err)
+			time.Sleep(time.Second)
+			continue
+		}
+		var matched bool
+		if state, matched = qmpStatusMap[result.Return.Status]; !matched {
+			err = fmt.Errorf("[attempt %d] unknown QMP status '%s' for QMP socket '%s'; (JSON response: '%s')",
+				attempt, result.Return.Status, socket, raw)
+			errs = joinErrors(errs, err)
+			time.Sleep(time.Second)
+			continue
+		}
+
+		if errs != nil {
+			logrus.Errorf("getQemuStatus: %d retrieving status attempts failed '%v', but eventually '%s' status was retrieved, so return SUCCESS and continue",
+				attempt, errs, result.Return.Status)
+			errs = nil
+		}
+
+		// Success
+		break
 	}
+
+	return state, errs
 }
 
 func qmpEventHandler(listenerSocket, executorSocket string) {
@@ -133,7 +206,7 @@ func qmpEventHandler(listenerSocket, executorSocket string) {
 				}
 			default:
 				//Not handling the following events: RESUME, NIC_RX_FILTER_CHANGED, RTC_CHANGE, POWERDOWN, STOP
-				logrus.Debugf("qmpEventHandler: Unhandled event: %s from listenerSocket: %s", event.Event, listenerSocket)
+				logrus.Warnf("qmpEventHandler: Unhandled event: %s from QMP socket: %s", event.Event, listenerSocket)
 			}
 		}
 	}

@@ -5,7 +5,7 @@
 #
 
 # Script version, don't forget to bump up once something is changed
-VERSION=10
+VERSION=11
 
 # Add required packages here, it will be passed to "apk add".
 # Once something added here don't forget to add the same package
@@ -224,6 +224,13 @@ cp "${0}" "$DIR"
 echo "- lsusb, dmesg, ps, lspci, lsblk, lshw, lsof, lsmod, logread, dmidecode, ls -lRa /dev, free"
 chroot /hostfs lsusb -vvv    > "$DIR/lsusb-vvv"
 chroot /hostfs lsusb -vvv -t > "$DIR/lsusb-vvv-t"
+
+{
+    find /sys/devices/ -path '*/usb[0-9]/*' -name "uevent" -exec awk '{print FILENAME ":" $0}' {} \;
+    find /sys/devices/ -path '*/usb[0-9]/*' -name "product" -exec awk '{print FILENAME ":" $0}' {} \;
+    echo "ls -l /sys/class/net/"
+    ls -l /sys/class/net/
+} > "$DIR/sys-fs-usb"
 
 dmesg         > "$DIR/dmesg"
 ps -xao uid,pid,ppid,vsz,rss,c,pcpu,pmem,stime,tname,stat,time,cmd \

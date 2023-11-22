@@ -1323,6 +1323,8 @@ func TestParsePatchEnvelope(t *testing.T) {
 	g.Expect(pes.Get(appU1).Envelopes).To(BeEquivalentTo([]types.PatchEnvelopeInfo{
 		{
 			PatchID:     patchID,
+			Name:        displayName,
+			Version:     patchVersion,
 			AllowedApps: []string{appU1, appU2},
 			BinaryBlobs: []types.BinaryBlobCompleted{
 				{
@@ -1331,6 +1333,7 @@ func TestParsePatchEnvelope(t *testing.T) {
 					FileMetadata:     fileMetadata,
 					ArtifactMetadata: artiactMetadata,
 					URL:              filepath.Join(persistCacheFolder, inlineFileName),
+					Size:             int64(len(fileData)),
 				},
 			},
 		},

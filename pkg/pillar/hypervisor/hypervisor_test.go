@@ -4,9 +4,11 @@
 package hypervisor
 
 import (
-	"github.com/lf-edge/eve/pkg/pillar/types"
+	"os"
 	"reflect"
 	"testing"
+
+	"github.com/lf-edge/eve/pkg/pillar/types"
 )
 
 var testDom = &types.DomainStatus{VirtualizationMode: types.HVM}
@@ -40,4 +42,36 @@ func TestGetAvailableHypervisors(t *testing.T) {
 		}
 	}
 	t.Errorf("null is not in the list of enabled hypervisors")
+}
+
+func TestBootTimeHypervisorWithHVFilePath(t *testing.T) {
+	t.Skipf("enable this test once calling containerd in the test environment does not panic anymore")
+	f, err := os.CreateTemp("", "eve-hv-type")
+	if err != nil {
+		panic(err)
+	}
+	defer f.Close()
+	defer os.Remove(f.Name())
+
+	hv := bootTimeHypervisorWithHVFilePath(f.Name())
+
+	if hv != nil {
+		t.Fatal("no hypervisor should have been determined")
+	}
+
+	f.WriteString("kvm")
+	hv = bootTimeHypervisorWithHVFilePath(f.Name())
+	_, ok := hv.(KvmContext)
+	if !ok {
+		t.Fatal("hypervisor should be kvm")
+	}
+
+	f.Seek(0, 0)
+	f.WriteString("xen")
+	hv = bootTimeHypervisorWithHVFilePath(f.Name())
+	_, ok = hv.(KvmContext)
+	if !ok {
+		t.Fatal("hypervisor should be xen")
+	}
+
 }

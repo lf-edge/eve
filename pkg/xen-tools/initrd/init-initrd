@@ -149,6 +149,16 @@ EOF
   fi
 fi
 
+run_agetty_loop()
+{
+    while true; do
+        setsid agetty --autologin root --noclear hvc1 linux
+    done
+}
+
+echo "Executing agetty"
+run_agetty_loop &
+
 cmd=`cat /mnt/cmdline`
 echo "Executing $cmd"
 
@@ -158,13 +168,17 @@ if [ -f /mnt/ug ]; then
 fi
 echo "Executing with uid gid: $ug"
 
+# File which will contain a PID of the started entrypoint container
+# process. File will be used for the `eve-enter-container` script.
+pid_file="/mnt/entrypoint-pid"
+
 if grep -q "console=tty0" /proc/cmdline; then
   #shellcheck disable=SC2086
   #we have tty0 console primary, so will add output to hvc0 for logging
-  eval /chroot2 /mnt/rootfs "${WORKDIR:-/}" $ug $cmd 2>&1 | tee -i /dev/hvc0
+  eval /chroot2 /mnt/rootfs "${WORKDIR:-/}" $ug $pid_file $cmd 2>&1 | tee -i /dev/hvc0
 else
   #shellcheck disable=SC2086
-  eval /chroot2 /mnt/rootfs "${WORKDIR:-/}" $ug $cmd <> /dev/console 2>&1
+  eval /chroot2 /mnt/rootfs "${WORKDIR:-/}" $ug $pid_file $cmd <> /dev/console 2>&1
 fi
 
 # once the command exits -- the only thing left is shut everything down

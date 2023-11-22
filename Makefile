@@ -295,7 +295,7 @@ DOCKER_GO = _() { $(SET_X); mkdir -p $(CURDIR)/.go/src/$${3:-dummy} ; mkdir -p $
 
 PARSE_PKGS=$(if $(strip $(EVE_HASH)),EVE_HASH=)$(EVE_HASH) DOCKER_ARCH_TAG=$(DOCKER_ARCH_TAG) KERNEL_TAG=$(KERNEL_TAG) ./tools/parse-pkgs.sh
 LINUXKIT=$(BUILDTOOLS_BIN)/linuxkit
-LINUXKIT_VERSION=7164b2c04d40eb276cee6e16c7fa617fe6840a17
+LINUXKIT_VERSION=4c14831d6b61c6919024c2270d33ec30ce0934cc
 LINUXKIT_SOURCE=https://github.com/linuxkit/linuxkit.git
 LINUXKIT_OPTS=$(if $(strip $(EVE_HASH)),--hash) $(EVE_HASH) $(if $(strip $(EVE_REL)),--release) $(EVE_REL)
 LINUXKIT_PKG_TARGET=build
@@ -664,7 +664,11 @@ $(SBOM): $(ROOTFS_TAR) | $(INSTALLER)
 	# this all can go away, and we can read the rootfs.tar
 	# see https://github.com/anchore/syft/issues/1400
 	tar xf $< -C $(TMP_ROOTDIR) --exclude "dev/*"
-	# kernel-sbom.spdx.json is now generated in eve-kernel repo and extracted from kernel docker image into rootfs by linuxkit
+	# kernel-*.spdx.json are now generated in eve-kernel repo and are stored in docker  image.
+	# Manually extract them to unpacked rootfs.
+	# Later linuxkit will get a support for SBOM in OCI metadata and this step as well as manual run of
+	# syft will be deprecated
+	docker export $(shell docker create $(KERNEL_TAG) create) | tar xv -C $(TMP_ROOTDIR) --wildcards --no-anchored '*.spdx.json'
 	docker run -v $(TMP_ROOTDIR):/rootdir:ro -v $(CURDIR)/.syft.yaml:/syft.yaml:ro $(SYFT_IMAGE) -c /syft.yaml --base-path /rootdir /rootdir > $@
 	rm -rf $(TMP_ROOTDIR)
 	$(QUIET): $@: Succeeded

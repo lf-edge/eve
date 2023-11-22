@@ -1,4 +1,8 @@
 # syntax=docker/dockerfile-upstream:1.5.0-rc2-labs
+
+# Copyright (c) 2023 Zededa, Inc.
+# SPDX-License-Identifier: Apache-2.0
+
 FROM lfedge/eve-alpine:9fb9b9cbf7d90066a70e4704d04a6fe248ff52bb AS kernel-build
 
 ENV BUILD_PKGS \

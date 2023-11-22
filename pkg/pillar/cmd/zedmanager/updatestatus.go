@@ -5,6 +5,7 @@ package zedmanager
 
 import (
 	"fmt"
+	"github.com/lf-edge/eve/pkg/pillar/hypervisor"
 	"time"
 
 	"github.com/google/go-cmp/cmp"
@@ -577,6 +578,22 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 	if !status.ActivateInprogress && !status.Activated &&
 		!ctx.globalConfig.GlobalValueBool(types.IgnoreMemoryCheckForApps) {
 
+		// If we have not yet calculated memory overhead - do it now
+		if status.MemOverhead == 0 {
+			// Get hypervisor
+			hyp, err := hypervisor.GetHypervisor(*ctx.hypervisorPtr)
+			if err != nil {
+				log.Fatalf("Cannot get hypervisor: %s", err)
+			}
+
+			status.MemOverhead, err = hyp.CountMemOverhead(status.DomainName, config.UUIDandVersion.UUID,
+				int64(config.FixedResources.Memory), int64(config.FixedResources.VMMMaxMem),
+				int64(config.FixedResources.MaxCpus), int64(config.FixedResources.VCpus), config.IoAdapterList,
+				ctx.assignableAdapters, ctx.globalConfig)
+			// We have to publish the status here, because we need to save the memory overhead value, it's used in getRemainingMemory
+			publishAppInstanceStatus(ctx, status)
+		}
+
 		remaining, latent, halting, err := getRemainingMemory(ctx)
 		if err != nil {
 			errStr := fmt.Sprintf("getRemainingMemory failed: %s\n",
@@ -594,7 +611,7 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 			changed = true
 			return changed
 		}
-		need := uint64(config.FixedResources.Memory) << 10
+		need := uint64(config.FixedResources.Memory)<<10 + status.MemOverhead
 		if remaining < need {
 			var errStr string
 			var entities []*types.ErrorEntity

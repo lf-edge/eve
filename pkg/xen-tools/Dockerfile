@@ -1,9 +1,12 @@
 # syntax=docker/dockerfile-upstream:1.5.0-rc2-labs
 
+# Copyright (c) 2023 Zededa, Inc.
+# SPDX-License-Identifier: Apache-2.0
+
 FROM lfedge/eve-uefi:d821658883d6748d8bbf0d6640c62288e3ce8c6f as uefi-build
 
 FROM lfedge/eve-alpine:0f4e313d0d84ac313ea35e966def9ef96f61aafb as runx-build
-ENV BUILD_PKGS mkinitfs gcc musl-dev e2fsprogs chrony
+ENV BUILD_PKGS mkinitfs gcc musl-dev e2fsprogs chrony agetty
 RUN eve-alpine-deploy.sh
 
 RUN rm -f /sbin/poweroff /etc/mkinitfs/features.d/base.files
@@ -12,6 +15,7 @@ COPY initrd/init-initrd initrd/mount_disk.sh initrd/udhcpc_script.sh /
 COPY initrd/poweroff /sbin/poweroff
 COPY initrd/chroot2.c initrd/hacf.c /tmp/
 COPY initrd/00000080 /etc/acpi/PWRF/
+COPY initrd/eve-enter-container /bin/
 RUN gcc -s -o /chroot2 /tmp/chroot2.c
 RUN gcc -s -o /hacf /tmp/hacf.c
 RUN mkinitfs -n -F base -i /init-initrd -o /runx-initrd

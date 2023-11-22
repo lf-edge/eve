@@ -8,6 +8,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"os"
 
+	uuid "github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
 )
 
@@ -35,6 +36,14 @@ func (ctx nullContext) GetCapabilities() (*types.Capabilities, error) {
 		CPUPinning:               false,
 		UseVHost:                 false,
 	}, nil
+}
+
+// CountMemOverhead - returns the memory overhead for a domain.
+// Null-implementation that returns 0 is used now for Acrn hypervisor
+func (ctx nullContext) CountMemOverhead(domainName string, domainUUID uuid.UUID, domainRAMSize int64, vmmMaxMem int64,
+	domainMaxCpus int64, domainVCpus int64, domainIoAdapterList []types.IoAdapter, aa *types.AssignableAdapters,
+	globalConfig *types.ConfigItemValueMap) (uint64, error) {
+	return 0, nil
 }
 
 func newNull() Hypervisor {
