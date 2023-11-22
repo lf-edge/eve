@@ -252,6 +252,164 @@ func TestConnectUSBDevicesToQemu(t *testing.T) {
 	}
 }
 
+func TestIOBundleEmpty(t *testing.T) {
+	bundle := types.IoBundle{}
+
+	pr := ioBundle2PassthroughRule(bundle)
+
+	if pr != nil {
+		t.Fatalf("expected nil rule but got %+v", pr)
+	}
+}
+
+func TestIOBundlePCIForbidRule(t *testing.T) {
+	bundle := types.IoBundle{PciLong: "00:14.0"}
+
+	pr := ioBundle2PassthroughRule(bundle)
+
+	_, ok := pr.(*pciPassthroughForbidRule)
+	if !ok {
+		t.Fatalf("expected pciPassthroughForbidRule type but got %T %+v", pr, pr)
+	}
+}
+
+func TestIOBundlePCIAndUSBProduct(t *testing.T) {
+	bundle := types.IoBundle{
+		PciLong:    "0:0",
+		UsbProduct: "1:1",
+	}
+
+	pr := ioBundle2PassthroughRule(bundle)
+
+	hasPCIRule := false
+	hasUSBProductRule := false
+
+	cpr := pr.(*compositionPassthroughRule)
+	for _, rule := range cpr.rules {
+		switch rule.(type) {
+		case *pciPassthroughRule:
+			hasPCIRule = true
+		case *usbDevicePassthroughRule:
+			hasUSBProductRule = true
+		}
+	}
+
+	if !hasPCIRule {
+		t.Fatal("not pciPassthroughRule")
+	}
+	if !hasUSBProductRule {
+		t.Fatal("not usbDevicePassthroughRule")
+	}
+
+	ud := usbdevice{
+		usbControllerPCIAddress: "2:2",
+	}
+
+	action := pr.evaluate(ud)
+	if action != passthroughNo {
+		t.Fatalf("passthrough action should be passthroughNo, but got %v", action)
+	}
+
+	ud.vendorID = 1
+	ud.productID = 1
+	action = pr.evaluate(ud)
+	if action != passthroughNo {
+		t.Fatalf("passthrough action should be passthroughNo, but got %v", action)
+	}
+	ud.usbControllerPCIAddress = "0:0"
+	action = pr.evaluate(ud)
+	if action != passthroughDo {
+		t.Fatalf("passthrough action should be passthroughDo, but got %v", action)
+	}
+}
+
+func TestIOBundlePCIAndUSBAddress(t *testing.T) {
+	bundle := types.IoBundle{
+		PciLong: "0:0",
+		UsbAddr: "1:1",
+	}
+
+	pr := ioBundle2PassthroughRule(bundle)
+
+	ud := usbdevice{
+		usbControllerPCIAddress: "2:2",
+	}
+
+	action := pr.evaluate(ud)
+	if action != passthroughNo {
+		t.Fatalf("passthrough action should be passthroughNo, but got %v", action)
+	}
+
+	ud.busnum = 1
+	ud.portnum = "1"
+	action = pr.evaluate(ud)
+	if action != passthroughNo {
+		t.Fatalf("passthrough action should be passthroughNo, but got %v", action)
+	}
+	ud.usbControllerPCIAddress = "0:0"
+	action = pr.evaluate(ud)
+	if action != passthroughDo {
+		t.Fatalf("passthrough action should be passthroughDo, but got %v", action)
+	}
+}
+
+func TestIOBundleUSBProductAndUSBAddress(t *testing.T) {
+	bundle := types.IoBundle{
+		UsbAddr:    "1:1",
+		UsbProduct: "2:2",
+	}
+
+	pr := ioBundle2PassthroughRule(bundle)
+
+	ud := usbdevice{}
+
+	action := pr.evaluate(ud)
+	if action != passthroughNo {
+		t.Fatalf("passthrough action should be passthroughNo, but got %v", action)
+	}
+
+	for _, test := range []struct {
+		beforeFunc     func()
+		expectedAction passthroughAction
+	}{
+		{
+			beforeFunc:     func() { ud.busnum = 1 },
+			expectedAction: passthroughNo,
+		},
+		{
+			beforeFunc:     func() { ud.portnum = "1" },
+			expectedAction: passthroughNo,
+		},
+		{
+			beforeFunc:     func() { ud.vendorID = 2 },
+			expectedAction: passthroughNo,
+		},
+		{
+			beforeFunc:     func() { ud.productID = 2 },
+			expectedAction: passthroughDo,
+		},
+		{
+			beforeFunc: func() {
+				bundle.PciLong = "3:3" // passthrough is now tied to this pci controller
+				pr = ioBundle2PassthroughRule(bundle)
+
+				ud.usbControllerPCIAddress = "4:4"
+			},
+			expectedAction: passthroughNo,
+		},
+		{
+			beforeFunc:     func() { ud.usbControllerPCIAddress = "3:3" },
+			expectedAction: passthroughDo,
+		},
+	} {
+		test.beforeFunc()
+		action := pr.evaluate(ud)
+		if action != test.expectedAction {
+			t.Fatalf("passthrough action should be %v, but got %v; ud: %+v", test.expectedAction, action, ud)
+		}
+	}
+}
+
 func testRunConnectingUsbDevicesOrderCombinations(tet [][]testingEvent, expectedQmpSocketPath string, ioBundle types.IoBundle, ud usbdevice, vm virtualmachine) int {
 	countUSBConnections := 0
 	for _, testEvents := range tet {

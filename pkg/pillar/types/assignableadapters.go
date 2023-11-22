@@ -446,16 +446,8 @@ func (aa *AssignableAdapters) LookupIoBundleIfName(ifname string) *IoBundle {
 	return nil
 }
 
-// CheckBadUSBBundles sets ib.Error/ErrorTime if a bundle has usbproduct and usbaddr set at the same time
+// CheckBadUSBBundles checks for errors
 func (aa *AssignableAdapters) CheckBadUSBBundles(log *base.LogObject) {
-	for i := range aa.IoBundleList {
-		ioBundle := &aa.IoBundleList[i]
-		if ioBundle.UsbAddr != "" && ioBundle.UsbProduct != "" {
-			ioBundle.Error = "usbaddr and usbproduct cannot be set at the same time"
-			ioBundle.ErrorTime = time.Now()
-			log.Warnf("usbproduct and usbaddr set at the same time for bundle %+v", ioBundle)
-		}
-	}
 }
 
 // CheckBadAssignmentGroups sets ib.Error/ErrorTime if two IoBundles in different

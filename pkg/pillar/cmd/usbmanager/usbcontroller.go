@@ -230,29 +230,18 @@ func (uc *usbmanagerController) cancel() {
 }
 
 func ioBundle2PassthroughRule(adapter types.IoBundle) passthroughRule {
-	var pr passthroughRule
+	prs := make([]passthroughRule, 0)
 
-	countAddr := 0
+	if adapter.PciLong != "" && adapter.UsbAddr == "" && adapter.UsbProduct == "" {
+		return &pciPassthroughForbidRule{pciAddress: adapter.PciLong}
+	}
 
+	if adapter.PciLong != "" {
+		pci := pciPassthroughRule{pciAddress: adapter.PciLong}
+
+		prs = append(prs, &pci)
+	}
 	if adapter.UsbAddr != "" {
-		countAddr++
-	}
-
-	if adapter.UsbProduct != "" {
-		countAddr++
-	}
-
-	if countAddr > 1 {
-		log.Warnf("ambiguous passthrough rule %s (usbaddr: %s) (usbproduct: %s) (pcilong: %s)",
-			adapter.Phylabel, adapter.UsbAddr, adapter.UsbProduct, adapter.PciLong)
-		return nil
-	}
-
-	if adapter.PciLong != "" && adapter.UsbAddr != "" && adapter.UsbProduct != "" {
-		pci := pciPassthroughForbidRule{pciAddress: adapter.PciLong}
-
-		pr = &pci
-	} else if adapter.UsbAddr != "" {
 		usbParts := strings.SplitN(adapter.UsbAddr, ":", 2)
 		if len(usbParts) != 2 {
 			log.Warnf("usbaddr %s not parseable", adapter.UsbAddr)
@@ -270,8 +259,9 @@ func ioBundle2PassthroughRule(adapter types.IoBundle) passthroughRule {
 			portnum: portnum,
 		}
 
-		pr = &usb
-	} else if adapter.UsbProduct != "" {
+		prs = append(prs, &usb)
+	}
+	if adapter.UsbProduct != "" {
 		usbParts := strings.SplitN(adapter.UsbProduct, ":", 2)
 		if len(usbParts) != 2 {
 			log.Warnf("usbproduct %s not parseable", adapter.UsbProduct)
@@ -292,11 +282,19 @@ func ioBundle2PassthroughRule(adapter types.IoBundle) passthroughRule {
 			passthroughRuleVMBase: passthroughRuleVMBase{},
 		}
 
-		pr = &usb
-	} else {
+		prs = append(prs, &usb)
+	}
+	if len(prs) == 0 {
 		log.Tracef("cannot create rule out of adapter %+v\n", adapter)
-		pr = nil
+		return nil
+	}
+	if len(prs) == 1 {
+		return prs[0]
 	}
 
-	return pr
+	ret := compositionPassthroughRule{
+		rules: prs,
+	}
+
+	return &ret
 }
