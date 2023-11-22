@@ -7,6 +7,7 @@ package main
 
 import (
 	"crypto/sha256"
+	"encoding/binary"
 	"encoding/hex"
 	"fmt"
 	"io"
@@ -25,8 +26,31 @@ const (
 	configPCRIndex  = 14
 	configPCRHandle = tpmutil.Handle(tpm2.PCRFirst + configPCRIndex)
 	//PCREvent (TPM2_PCR_Event) supports event size of maximum 1024 bytes.
-	maxEventDataSize = 1024
+	maxEventDataSize     = 1024
+	evAlgSHA256          = 0xb
+	evEfiAction          = 0x80000007
+	measurefsTpmEventLog = "/persist/status/measurefs_tpm_event_log"
 )
+
+// the following structs created based on "Crypto Agile Log Entry Format"
+// https://trustedcomputinggroup.org/wp-content/uploads/EFI-Protocol-Specification-rev13-160330final.pdf
+type tcgPcrEvent2 struct {
+	PcrIndex  uint32
+	EventType uint32
+	Digest    tpmlDigestValues
+	EventSize uint32
+	Event     []uint8
+}
+
+type tpmlDigestValues struct {
+	Count   uint32
+	Digests []tpmtHa
+}
+
+type tpmtHa struct {
+	HashAlg    uint16
+	DigestData []byte
+}
 
 type fileInfo struct {
 	exist          bool
@@ -34,15 +58,82 @@ type fileInfo struct {
 }
 
 type tpmEvent struct {
-	data string
-	pcr  []byte
+	tcgEvent tcgPcrEvent2
+	data     string
+	pcr      []byte
 }
 
-func min(a, b int) int {
-	if a < b {
-		return a
+func (event *tcgPcrEvent2) MarshalBinary() ([]byte, error) {
+	buffer := make([]byte, event.size())
+	offset := 0
+
+	binary.LittleEndian.PutUint32(buffer[offset:], event.PcrIndex)
+	offset += 4
+
+	binary.LittleEndian.PutUint32(buffer[offset:], event.EventType)
+	offset += 4
+
+	digestBytes, err := event.Digest.MarshalBinary()
+	if err != nil {
+		return nil, err
 	}
-	return b
+
+	copy(buffer[offset:], digestBytes)
+	offset += len(digestBytes)
+
+	binary.LittleEndian.PutUint32(buffer[offset:], event.EventSize)
+	offset += 4
+
+	copy(buffer[offset:], event.Event)
+
+	return buffer, nil
+}
+
+func (event *tcgPcrEvent2) size() int {
+	return 4 + 4 + event.Digest.size() + 4 + len(event.Event)
+}
+
+func (digestValue *tpmlDigestValues) MarshalBinary() ([]byte, error) {
+	buffer := make([]byte, digestValue.size())
+	offset := 0
+
+	binary.LittleEndian.PutUint32(buffer[offset:], digestValue.Count)
+	offset += 4
+
+	for _, digest := range digestValue.Digests {
+		digestBytes, err := digest.MarshalBinary()
+		if err != nil {
+			return nil, err
+		}
+		copy(buffer[offset:], digestBytes)
+		offset += len(digestBytes)
+	}
+
+	return buffer, nil
+}
+
+func (digestValue *tpmlDigestValues) size() int {
+	size := 4
+	for _, digest := range digestValue.Digests {
+		size += digest.size()
+	}
+	return size
+}
+
+func (digest *tpmtHa) MarshalBinary() ([]byte, error) {
+	buffer := make([]byte, digest.size())
+	offset := 0
+
+	binary.LittleEndian.PutUint16(buffer[offset:], digest.HashAlg)
+	offset += 2
+
+	copy(buffer[offset:], digest.DigestData)
+
+	return buffer, nil
+}
+
+func (digest *tpmtHa) size() int {
+	return 2 + len(digest.DigestData)
 }
 
 // we do not measure content of following files
@@ -107,7 +198,7 @@ func performMeasurement(filePath string, tpm io.ReadWriter, exist bool, content 
 	if content {
 		hash, err := sha256sumForFile(filePath)
 		if err != nil {
-			return nil, fmt.Errorf("can not measure %s :%v", filePath, err)
+			return nil, fmt.Errorf("can not measure %s :%w", filePath, err)
 		}
 		eventData = fmt.Sprintf("file:%s exist:true content-hash:%s", eventFilePath, hash)
 	} else {
@@ -118,15 +209,32 @@ func performMeasurement(filePath string, tpm io.ReadWriter, exist bool, content 
 	// associated with the PCR banks, and extends them all before return.
 	err := tpm2.PCREvent(tpm, configPCRHandle, []byte(eventData))
 	if err != nil {
-		return nil, fmt.Errorf("can not measure %s. couldn't extend PCR: %v", filePath, err)
+		return nil, fmt.Errorf("can not measure %s. couldn't extend PCR: %w", filePath, err)
 	}
 
 	pcr, err := readConfigPCR(tpm)
 	if err != nil {
-		return nil, fmt.Errorf("can not measure %s. couldn't read PCR: %v", filePath, err)
+		return nil, fmt.Errorf("can not measure %s. couldn't read PCR: %w", filePath, err)
 	}
 
-	return &tpmEvent{eventData, pcr}, nil
+	eventHash := sha256.Sum256([]byte(eventData))
+	tcgEvent := tcgPcrEvent2{
+		PcrIndex:  configPCRIndex,
+		EventType: evEfiAction,
+		Digest: tpmlDigestValues{
+			Count: 1,
+			Digests: []tpmtHa{
+				{
+					HashAlg:    evAlgSHA256,
+					DigestData: eventHash[:],
+				},
+			},
+		},
+		EventSize: uint32(len(eventData)),
+		Event:     []uint8(eventData),
+	}
+
+	return &tpmEvent{tcgEvent, eventData, pcr}, nil
 }
 
 func getFileMap() (map[string]fileInfo, error) {
@@ -177,11 +285,12 @@ func getSortedFileList(files map[string]fileInfo) []string {
 	return keys
 }
 
-func measureConfig(tpm io.ReadWriter) error {
+func measureConfig(tpm io.ReadWriter) ([]tcgPcrEvent2, error) {
 	files, err := getFileMap()
+	events := make([]tcgPcrEvent2, 0)
 
 	if err != nil {
-		return fmt.Errorf("can not get file list: %v", err)
+		return []tcgPcrEvent2{}, fmt.Errorf("can not get file list: %w", err)
 	}
 
 	//get sorted list of files. We must always go the same order
@@ -203,23 +312,22 @@ func measureConfig(tpm io.ReadWriter) error {
 			event, err = performMeasurement(file, tpm, false, false)
 		}
 		if err != nil {
-			return fmt.Errorf("can not measure %s: %v", file, err)
+			return []tcgPcrEvent2{}, fmt.Errorf("can not measure %s: %w", file, err)
 		}
+
 		//Now we have a new value of PCR and an event
-		//TODO: add events to the event log, if event data exceeds 1024 bytes,
-		// make sure to break it into 1024 bytes chunks with added indicators
-		// (e.g. part n of m) to be able to reconstruct the even data for validation.
-		// for now we just print our measurements to boot log.
 		log.Printf("%s pcr:%s", event.data, hex.EncodeToString(event.pcr))
+		events = append(events, event.tcgEvent)
 	}
-	return nil
+
+	return events, nil
 }
 
 func readConfigPCR(tpm io.ReadWriter) ([]byte, error) {
 	pcr, err := tpm2.ReadPCR(tpm, configPCRIndex, tpm2.AlgSHA256)
 
 	if err != nil {
-		return nil, fmt.Errorf("can not read PCR %d: %v", configPCRIndex, err)
+		return nil, fmt.Errorf("can not read PCR %d: %w", configPCRIndex, err)
 	}
 	return pcr, nil
 }
@@ -230,14 +338,37 @@ func readConfigPCR(tpm io.ReadWriter) ([]byte, error) {
 func main() {
 	tpm, err := tpm2.OpenTPM(TpmDevicePath)
 	if err != nil {
-		log.Printf("couldn't open TPM device %s. Exiting", TpmDevicePath)
-		return
+		log.Fatalf("couldn't open TPM device %s. Exiting", TpmDevicePath)
 	}
 	defer tpm.Close()
 
-	err = measureConfig(tpm)
-
+	events, err := measureConfig(tpm)
 	if err != nil {
 		log.Fatal(err)
+	}
+
+	// loop over events and marshal them to binary
+	eventLog := make([]byte, 0)
+	for _, event := range events {
+		eventBytes, err := event.MarshalBinary()
+		if err != nil {
+			log.Printf("[WARNING] failed to construct measure-config tpm event log : %v", err)
+			return
+		}
+
+		eventLog = append(eventLog, eventBytes...)
+	}
+
+	// no need for an atomic file operations here, this file is created
+	// on every boot.
+	file, err := os.Create(measurefsTpmEventLog)
+	if err != nil {
+		log.Printf("[WARNING] failed to create measure-config tpm event log : %v", err)
+		return
+	}
+	defer file.Close()
+
+	if _, err := file.Write(eventLog); err != nil {
+		log.Printf("[WARNING] failed to write measure-config tpm event log : %v", err)
 	}
 }
