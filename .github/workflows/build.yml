@@ -60,6 +60,10 @@ jobs:
       - name: Build packages
         run: |
           make V=1 PRUNE=1 ZARCH=${{ matrix.arch }} pkgs
+      - uses: actions/upload-artifact@v3
+        with:
+          name: lkt-cache-${{ matrix.arch }}
+          path: ~/.linuxkit/cache
       - name: Post package report
         run: |
           echo Disk usage
