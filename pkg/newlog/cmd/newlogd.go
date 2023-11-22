@@ -320,7 +320,7 @@ func main() {
 
 		case tmpLogfileInfo := <-movefileChan:
 			// handle logfile to gzip conversion work
-			doMoveCompressFile(tmpLogfileInfo)
+			doMoveCompressFile(&ps, tmpLogfileInfo)
 
 		case panicBuf := <-panicFileChan:
 			// save panic stack into files
@@ -1012,7 +1012,7 @@ func checkKeepQuota() {
 	}
 }
 
-func doMoveCompressFile(tmplogfileInfo fileChanInfo) {
+func doMoveCompressFile(ps *pubsub.PubSub, tmplogfileInfo fileChanInfo) {
 	isApp := tmplogfileInfo.isApp
 	dirName, appuuid := getFileInfo(tmplogfileInfo)
 
@@ -1053,8 +1053,13 @@ func doMoveCompressFile(tmplogfileInfo fileChanInfo) {
 	gw, underlayWriter, oTmpFile := prepareGzipToOutTempFile(filepath.Dir(outfile), tmplogfileInfo, now)
 
 	fileID := 0
+	wdTime := time.Now()
 	var newSize int64
 	for scanner.Scan() {
+		if time.Since(wdTime) >= (15 * time.Second) {
+			ps.StillRunning(agentName, warningTime, errorTime)
+			wdTime = time.Now()
+		}
 		newLine := scanner.Bytes()
 		//trim non-graphic symbols
 		newLine = bytes.TrimFunc(newLine, func(r rune) bool {
