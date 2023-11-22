@@ -273,7 +273,7 @@ to behave as follows:
 #### Radio silence indication
 
 When radio silence is temporarily imposed, the device status indicator (by default the disk LED)
-will repeat a patter of blinking 5 times in a row. The pattern is the same regardless of what state
+will repeat a pattern of blinking 5 times in a row. The pattern is the same regardless of what state
 the device was in before the radio silence was imposed.
 More information about the node state indication using LED can be found [here](LED-INDICATION.md).
 

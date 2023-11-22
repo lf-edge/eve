@@ -361,7 +361,7 @@ Parent cgroup (/sys/fs/cgroup/<subsystems>/)
 ```
 
 Memory and CPU limits of `eve`, `eve/services` and `eve/containerd` cgroups can be changed via
-`hv_dom0_*`, `hv_eve_*` and `hv_ctrd_*` respectively in `/config/grup.cfg`.
+`hv_dom0_*`, `hv_eve_*` and `hv_ctrd_*` respectively in `/config/grub.cfg`.
 
 Example:
 

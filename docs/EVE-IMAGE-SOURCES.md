@@ -650,7 +650,7 @@ license="GPL-2.0-or-later"
 depends_dev="linux-headers"
 makedepends="$depends_dev libnftnl-dev bison flex autoconf automake"
 subpackages="ip6tables $pkgname-doc $pkgname-dev $pkgname-openrc ip6tables-openrc:ip6tables_openrc"
-provides="ebtables" # for backards compat
+provides="ebtables" # for backwards compat
 replaces="ebtables"
 source="https://www.netfilter.org/projects/iptables/files/iptables-$pkgver.tar.bz2
     use-sh-iptables-apply.patch
