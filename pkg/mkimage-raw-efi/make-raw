@@ -474,7 +474,7 @@ if [ ${EMBED_BOOT_START:-0} -gt 0 -a ${EMBED_BOOT_SIZE:-0} -gt 0 -a -f "$GRUB_IM
 else
   # ...if we're NOT adding ourselves to an existing GPT - assume we own protective MBR
   # as well and can adjust it accordingly to maximize our chances of booting on something
-  # like Raspbery Pi (which is pretty strict about how the first entry in the MBR partition
+  # like Raspberry Pi (which is pretty strict about how the first entry in the MBR partition
   # table needs to look like)
   adjust_protective_mbr
 fi

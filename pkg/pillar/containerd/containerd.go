@@ -405,7 +405,7 @@ func (client *Client) CtrListContainerIds(ctx context.Context) ([]string, error)
 	return res, nil
 }
 
-// CtrListContainer returns a list of containerd.Container ibjects
+// CtrListContainer returns a list of containerd.Container objects
 func (client *Client) CtrListContainer(ctx context.Context) ([]containerd.Container, error) {
 	if err := client.verifyCtr(ctx, true); err != nil {
 		return nil, fmt.Errorf("CtrListContainer: exception while verifying ctrd client: %s", err.Error())
