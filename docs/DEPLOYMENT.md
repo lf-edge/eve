@@ -223,7 +223,7 @@ At the end of its run, the installer process will shut down the edge node and it
 on the USB stick's INVENTORY partition which is named identical to the soft serial number. Using that
 soft serial number then allows you to onboard your new EVE-OS edge node to its controller.
 
-### Deploying EVE-OS on SBCs (including older Raspbery Pi models) and running live
+### Deploying EVE-OS on SBCs (including older Raspberry Pi models) and running live
 
 A lot of single-board computers (SBCs), including older models of Raspberry Pi, don't have any kind
 of built-in storage devices. They rely on microSD cards that can be put in
