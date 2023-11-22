@@ -35,13 +35,6 @@ make pkg/<package>
 
 For example, `make pkg/edgeview` or `make pkg/guacd`.
 
-Some packages require special treatment in the form of extra steps after build. Those should be invoked with their dedicated targets.
-As of this writing, only `pkg/kernel` is subject to this special treatment, and should be invoked as:
-
-```sh
-make kernel
-```
-
 The `make` command will use linuxkit to build an OCI image based on the contents of the directory, e.g. `pkg/guacd`. The tag
 on the image is based on the [git tree hash](https://git-scm.com/docs/git-ls-tree) of the directory.
 

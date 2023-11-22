@@ -388,10 +388,9 @@ The following custom packages are used:
 
 #### Custom Live Packages
 
-* kernel: EVE uses its own custom kernel package, rather than one of the standard linuxkit ones. This is primarily due to kernel modules and drivers, especially on arm, as well as Xen requirements.
+* kernel: EVE uses its own custom kernel (taken from [eve-kernel](https://github.com/lf-edge/eve-kernel) project), rather than one of the standard linuxkit ones. This is primarily due to kernel modules and drivers, especially on arm, as well as Xen requirements.
 * `init` packages:
   * `lfedge/eve-grub` - CoreOS inspired GRUB required to enable CoreOS-style dual partition upgrades. See [UPSTREAMING.md](./UPSTREAMING.md#grub) for a more detailed discussion of what is unique in this grub.
-  * `lfedge/eve-devices-trees` - device trees for all the ARM platforms that EVE supports.
   * `lfedge/eve-fw` - various firmware required for device drivers.
   * `lfedge/eve-xen` - a single Xen binary required to boot EVE.
   * `lfedge/eve-gpt-tools` - ChromiumOS inspired tools and sgdisk required to enable CoreOS-style dual partition upgrades. See [UPSTREAMING.md](./UPSTREAMING.md#grub) for a more detailed discussion of what is unique in these versions of the gpt tools.
@@ -402,11 +401,10 @@ The following custom packages are used:
   * `lfedge/eve-wwan` - WWAN drivers and software. 5G/LTE/3G/2G. See [wwan/README.md](../pkg/wwan/README.md) for detailed documentation.
   * `lfedge/eve-wlan` - WLAN drivers and software. Currently a glorified wrapper around wpa_supplicant.
   * `lfedge/eve-guacd` - [Apache Guacamole service](http://guacamole.apache.org/) that provides console and VDI services to running VMs and containers.
-  * `lfedge/eve-zedctr` - a "catch-all" package for EVE tools; see below.
 
 #### Custom Installer Packages
 
-* kernel: EVE uses its own custom kernel package, rather than one of the standard linuxkit ones. Technically, the installer could use a standard linux kernel from [linuxkit/kernel](https://github.com/linuxkit/kernel). However, while _installing_ has few special requirements, _booting_ the live system _does_ have requirements, including proper xen support and appropriate device drivers functioning. Rather than having the install function, only to have the live boot fail because of driver, module or xen issues, we boot the installer with the exact same kernel as the live system, allowing it to serve double-duty as both an installer and a verifier.
+* kernel: EVE uses its own custom kernel (taken from [eve-kernel](https://github.com/lf-edge/eve-kernel) project), rather than one of the standard linuxkit ones. This is primarily due to kernel modules and drivers, especially on arm, as well as Xen requirements.
 * `init` packages:
   * `lfedge/eve-grub` - CoreOS inspired GRUB required to enable CoreOS-style dual partition upgrades.
   * `lfedge/eve-devices-trees` - device trees for all the ARM platforms that EVE supports.
@@ -415,10 +413,6 @@ The following custom packages are used:
 * `onboot` packages:
   * `lfedge/eve-rngd` - custom EVE rngd package, rather than the standard linuxkit one. This micro-fork accommodates the [following hack](https://github.com/lf-edge/eve/blob/master/pkg/rngd/cmd/rngd/rng_linux_arm64.go) which provides some semblance of seeding randomness on ARM. Without this HiKey board won't boot.
   * `lfedge/eve-mkimage-raw-efi` - custom EVE version of `mkimage-raw-efi` to create an ext4 image, used to make the correct filesystems on the target install disk.
-
-#### zedctr
-
-The package `lfedge/eve-zedctr` is a "catch-all" package, composed of many different packages that would go into `services` separately. Its source is [pkg/zedctr](../pkg/zedctr), and is comprised of many different services.
 
 #### pillar
 
