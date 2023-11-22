@@ -407,7 +407,7 @@ const (
 	WwanOpModeRadioOff WwanOpMode = "radio-off"
 	// WwanOpModeOffline : modem is offline
 	WwanOpModeOffline WwanOpMode = "offline"
-	// WwanOpModeUnrecognized : unrecongized operating mode
+	// WwanOpModeUnrecognized : unrecognized operating mode
 	WwanOpModeUnrecognized WwanOpMode = "unrecognized"
 )
 
