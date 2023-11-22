@@ -18,11 +18,11 @@ jobs:
       fail-fast: false
       matrix:
         include:
-        - os: arm64-dirty
+        - os: buildjet-4vcpu-ubuntu-2204-arm
           arch: arm64
-        - os: ubuntu-20.04
+        - os: buildjet-4vcpu-ubuntu-2004
           arch: amd64
-        - os: ubuntu-20.04
+        - os: buildjet-4vcpu-ubuntu-2004
           arch: riscv64
     steps:
       - name: Starting Report
@@ -42,7 +42,7 @@ jobs:
         with:
           fetch-depth: 0
       - name: ensure zstd for cache  # this should be removed once the arm64 VM includes zstd
-        if: ${{ matrix.os == 'arm64-dirty' || matrix.os == 'arm64-secure' }}
+        if: ${{ matrix.os == 'buildjet-4vcpu-ubuntu-2204-arm' || matrix.os == 'arm64-secure' }}
         run: |
           sudo apt install -y zstd
       - name: ensure packages for cross-arch build
@@ -71,7 +71,7 @@ jobs:
 
   eve:
     needs: packages  # all packages for all platforms must be built first
-    runs-on: ubuntu-20.04
+    runs-on: buildjet-4vcpu-ubuntu-2004
     strategy:
       fail-fast: false
       matrix:
