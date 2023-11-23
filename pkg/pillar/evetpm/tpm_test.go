@@ -13,6 +13,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/go-tpm/tpm2"
 	"github.com/google/go-tpm/tpmutil"
@@ -22,6 +23,52 @@ import (
 )
 
 var log = base.NewSourceLogObject(logrus.StandardLogger(), "test", 1234)
+
+func TestMain(m *testing.M) {
+	log.Tracef("Setup test environment")
+
+	// setup variables
+	TpmDevicePath = "/tmp/eve-tpm/srv.sock"
+	measurementLogFile = "/tmp/eve-tpm/binary_bios_measurement"
+	measurefsTpmEventLog = "/tmp/eve-tpm/measurefs_tpm_event_log"
+	savedSealingPcrsFile = "/tmp/eve-tpm/sealingpcrs"
+	measurementLogSealSuccess = "/tmp/eve-tpm/tpm_measurement_seal_success"
+	measurementLogUnsealFail = "/tmp/eve-tpm/tpm_measurement_unseal_fail"
+
+	// check if we are running under the correct context and we end up here
+	// from tests/tpm/prep-and-test.sh.
+	_, err := os.Stat(TpmDevicePath)
+	if err != nil {
+		log.Warnf("Neither TPM device nor swtpm is available, skipping the test.")
+		return
+	}
+
+	// for some reason unknown to me, TPM might return RCRetry for the first
+	// few operations, so we need to wait for it to become ready.
+	if err := waitForTpmReadyState(); err != nil {
+		log.Fatalf("Failed to wait for TPM ready state: %v", err)
+	}
+
+	m.Run()
+}
+
+func waitForTpmReadyState() error {
+	for i := 0; i < 10; i++ {
+		if err := SealDiskKey(log, []byte("secret"), DiskKeySealingPCRs); err != nil {
+			// this is RCRetry, so retry
+			if strings.Contains(err.Error(), "code 0x22") {
+				time.Sleep(100 * time.Millisecond)
+				continue
+			} else {
+				return fmt.Errorf("Something is wrong with the TPM : %w", err)
+			}
+		} else {
+			return nil
+		}
+	}
+
+	return fmt.Errorf("TPM did't become ready after 10 attempts, failing the test")
+}
 
 func TestSealUnseal(t *testing.T) {
 	_, err := os.Stat(TpmDevicePath)

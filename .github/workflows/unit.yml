@@ -23,9 +23,8 @@ jobs:
         run: |
           make test
       - name : Test (TPM Required)
-        timeout-minutes: 30
         run: |
-          bash tools/tpm-tests-on-qemu.sh
+          bash tests/tpm/prep-and-test.sh
       - name: Report test results as Annotations
         if: ${{ always() }}
         uses: guyarb/golang-test-annoations@v0.6.0
