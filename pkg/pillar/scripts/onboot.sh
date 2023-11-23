@@ -115,19 +115,6 @@ if [ ! -d $PERSISTDIR/status ]; then
     mkdir $PERSISTDIR/status
 fi
 
-if [ -f $CONFIGDIR/restartcounter ]; then
-    echo "$(date -Ins -u) move $CONFIGDIR/restartcounter $PERSISTDIR/status"
-    mv $CONFIGDIR/restartcounter $PERSISTDIR/status
-fi
-if [ -f $CONFIGDIR/rebootConfig ]; then
-    echo "$(date -Ins -u) move $CONFIGDIR/rebootConfig $PERSISTDIR/status"
-    mv $CONFIGDIR/rebootConfig $PERSISTDIR/status
-fi
-if [ -f $CONFIGDIR/hardwaremodel ]; then
-    echo "$(date -Ins -u) move $CONFIGDIR/hardwaremodel $PERSISTDIR/status"
-    mv $CONFIGDIR/hardwaremodel $PERSISTDIR/status
-fi
-
 # Checking for low diskspace at bootup. If used percentage of
 # /persist directory is more than 70% then we will remove the
 # following sub directories:
