@@ -27,9 +27,6 @@ import (
 )
 
 const (
-	//TpmDevicePath is the TPM device file path
-	TpmDevicePath = "/dev/tpmrm0"
-
 	//TpmPasswdHdl is the well known TPM NVIndex for TPM Credentials
 	TpmPasswdHdl tpmutil.Handle = 0x1600000
 
@@ -72,25 +69,6 @@ const (
 	//EmptyPassword is an empty string
 	EmptyPassword  = ""
 	vaultKeyLength = 32 //Bytes
-
-	// savedSealingPcrsFile is the file that holds a copy of PCR values
-	// at the time of generating and sealing the disk key into the TPM.
-	savedSealingPcrsFile = types.PersistStatusDir + "/sealingpcrs"
-
-	// measurementLogSealSuccess is files that holds a copy of event log at the time
-	// of generating/sealing the disk key into the TPM.
-	measurementLogSealSuccess = types.PersistStatusDir + "/tpm_measurement_seal_success"
-
-	// measurementLogUnsealFail is files that holds a copy of event log at the time EVE
-	// fails to unseal the vault key from TPM.
-	measurementLogUnsealFail = types.PersistStatusDir + "/tpm_measurement_unseal_fail"
-
-	// measurefsTpmEventLog is the file containing the event log from the measure-config
-	measurefsTpmEventLog = types.PersistStatusDir + "/measurefs_tpm_event_log"
-
-	// measurementLogFile is a kernel exposed variable that contains the
-	// TPM measurements and events log.
-	measurementLogFile = "/hostfs/sys/kernel/security/tpm0/binary_bios_measurements"
 )
 
 // PCRBank256Status stores info about support for
@@ -114,6 +92,33 @@ var (
 
 	//DiskKeySealingPCRs represents PCRs that we use for sealing
 	DiskKeySealingPCRs = tpm2.PCRSelection{Hash: tpm2.AlgSHA256, PCRs: []int{0, 1, 2, 3, 4, 6, 7, 8, 9, 13, 14}}
+
+	// TpmDevicePath is the TPM device file path, it is not a constant due to
+	// test usage.
+	TpmDevicePath = "/dev/tpmrm0"
+
+	// measurementLogFile is a kernel exposed variable that contains the
+	// TPM measurements and events log. it is not a constant due to test usage.
+	measurementLogFile = "/hostfs/sys/kernel/security/tpm0/binary_bios_measurements"
+
+	// savedSealingPcrsFile is the file that holds a copy of PCR values at the
+	// time of generating and sealing the disk key into the TPM. it is not a
+	// constant due to test usage.
+	savedSealingPcrsFile = types.PersistStatusDir + "/sealingpcrs"
+
+	// measurementLogSealSuccess is files that holds a copy of event log at the
+	// time of generating/sealing the disk key into the TPM. it is not a constant
+	// due to test usage.
+	measurementLogSealSuccess = types.PersistStatusDir + "/tpm_measurement_seal_success"
+
+	// measurementLogUnsealFail is files that holds a copy of event log at the
+	// time EVE fails to unseal the vault key from TPM. it is not a constant due
+	// to test usage.
+	measurementLogUnsealFail = types.PersistStatusDir + "/tpm_measurement_unseal_fail"
+
+	// measurefsTpmEventLog is the file containing the event log from the measure-config.
+	// it is not a constant due to test usage.
+	measurefsTpmEventLog = types.PersistStatusDir + "/measurefs_tpm_event_log"
 )
 
 // SealedKeyType holds different types of sealed key
@@ -641,7 +646,7 @@ func SealDiskKey(log *base.LogObject, key []byte, pcrSel tpm2.PCRSelection) erro
 	}
 
 	// save a snapshot of current PCR values
-	if err := saveDiskKeySealingPCRs(savedSealingPcrsFile); err != nil {
+	if err := saveDiskKeySealingPCRs(); err != nil {
 		log.Warnf("saving snapshot of sealing PCRs failed: %s", err)
 	}
 
@@ -729,7 +734,7 @@ func UnsealDiskKey(pcrSel tpm2.PCRSelection) ([]byte, error) {
 		}
 
 		// try to find out the mismatching PCR index
-		mismatch, errPcrMiss := findMismatchingPCRs(savedSealingPcrsFile)
+		mismatch, errPcrMiss := findMismatchingPCRs()
 		if errPcrMiss != nil {
 			return nil, fmt.Errorf("UnsealWithSession failed: %w, %s, finding mismatching PCR failed: %v", err, evtLogStat, errPcrMiss)
 		}
@@ -897,7 +902,7 @@ func copyMeasurementLog(dstPath string) error {
 	return nil
 }
 
-func saveDiskKeySealingPCRs(pcrsFile string) error {
+func saveDiskKeySealingPCRs() error {
 	trw, err := tpm2.OpenTPM(TpmDevicePath)
 	if err != nil {
 		return err
@@ -916,11 +921,11 @@ func saveDiskKeySealingPCRs(pcrsFile string) error {
 		return err
 	}
 
-	return fileutils.WriteRename(pcrsFile, buff.Bytes())
+	return fileutils.WriteRename(savedSealingPcrsFile, buff.Bytes())
 }
 
-func findMismatchingPCRs(savedPCRsFile string) ([]int, error) {
-	frw, err := os.Open(savedPCRsFile)
+func findMismatchingPCRs() ([]int, error) {
+	frw, err := os.Open(savedSealingPcrsFile)
 	if err != nil {
 		return nil, err
 	}
