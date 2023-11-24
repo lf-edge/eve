@@ -102,9 +102,6 @@ type DownloaderStatus struct {
 	DatastoreIDList []uuid.UUID
 	Target          string // file path where we download the file
 	Name            string
-	PendingAdd      bool
-	PendingModify   bool
-	PendingDelete   bool
 	RefCount        uint      // Zero means not downloaded
 	LastUse         time.Time // When RefCount dropped to zero
 	Expired         bool      // Handshake to client
@@ -128,20 +125,6 @@ func (status DownloaderStatus) Key() string {
 	return status.ImageSha256
 }
 
-func (status DownloaderStatus) Pending() bool {
-	return status.PendingAdd || status.PendingModify || status.PendingDelete
-}
-
-// ClearPendingStatus : Clear Pending Status for DownloaderStatus
-func (status *DownloaderStatus) ClearPendingStatus() {
-	if status.PendingAdd {
-		status.PendingAdd = false
-	}
-	if status.PendingModify {
-		status.PendingModify = false
-	}
-}
-
 // HandleDownloadFail : Do Failure specific tasks
 func (status *DownloaderStatus) HandleDownloadFail(errStr string, retryTime time.Duration, cancelled bool) {
 	errDescription := ErrorDescription{
@@ -153,7 +136,6 @@ func (status *DownloaderStatus) HandleDownloadFail(errStr string, retryTime time
 		errDescription.ErrorRetryCondition = fmt.Sprintf("Will retry in %s; have retried %d times", retryTime, status.RetryCount)
 	}
 	status.SetErrorDescription(errDescription)
-	status.ClearPendingStatus()
 }
 
 // LogCreate :

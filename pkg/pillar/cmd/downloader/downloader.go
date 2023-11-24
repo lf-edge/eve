@@ -376,7 +376,6 @@ func handleCreate(ctx *downloaderContext, config types.DownloaderConfig,
 			RefCount:        config.RefCount,
 			Size:            config.Size,
 			LastUse:         time.Now(),
-			PendingAdd:      true,
 		}
 		status = &status0
 	} else {
@@ -401,11 +400,6 @@ func handleModify(ctx *downloaderContext, key string,
 	config types.DownloaderConfig, status *types.DownloaderStatus,
 	receiveChan chan<- CancelChannel) {
 
-	log.Functionf("handleModify(%s) for %s", status.ImageSha256, status.Name)
-
-	status.PendingModify = true
-	publishDownloaderStatus(ctx, status)
-
 	log.Functionf("handleModify(%s) RefCount %d to %d, Expired %v for %s",
 		status.ImageSha256, status.RefCount, config.RefCount,
 		status.Expired, status.Name)
@@ -422,7 +416,6 @@ func handleModify(ctx *downloaderContext, key string,
 	}
 	status.LastUse = time.Now()
 	status.Expired = (status.RefCount == 0) // Start delete handshake
-	status.ClearPendingStatus()
 	publishDownloaderStatus(ctx, status)
 	log.Functionf("handleModify done for %s", config.Name)
 }
@@ -541,7 +534,6 @@ func doDownload(ctx *downloaderContext, config types.DownloaderConfig, status *t
 		status.ModTime = time.Now()
 		status.State = types.DOWNLOADED
 		status.Progress = 100 // Just in case
-		status.ClearPendingStatus()
 
 		// All good
 		break
@@ -556,12 +548,8 @@ func handleDelete(ctx *downloaderContext, key string,
 		status.ImageSha256, status.Name,
 		status.RefCount, status.LastUse, status.Expired)
 
-	status.PendingDelete = true
-	publishDownloaderStatus(ctx, status)
-
 	doDelete(ctx, key, status.Target, status)
 
-	status.PendingDelete = false
 	status.State = types.INITIAL
 	publishDownloaderStatus(ctx, status)
 
