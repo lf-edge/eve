@@ -2834,7 +2834,7 @@ func handlePhysicalIOAdapterListImpl(ctxArg interface{}, key string,
 		log.Functionf("handlePhysicalIOAdapterListImpl: initialized to get len %d",
 			len(aa.IoBundleList))
 
-		aa.CheckBadUSBBundles(log)
+		aa.CheckBadUSBBundles()
 		// check for mismatched PCI-ids and assignment groups and mark as errors
 		aa.CheckBadAssignmentGroups(log, hyper.PCISameController)
 		for i := range aa.IoBundleList {
@@ -2880,7 +2880,7 @@ func handlePhysicalIOAdapterListImpl(ctxArg interface{}, key string,
 				"add/modify: %+v", phyAdapter.Phylabel, ib)
 			aa.AddOrUpdateIoBundle(log, *ib)
 
-			aa.CheckBadUSBBundles(log)
+			aa.CheckBadUSBBundles()
 			// check for mismatched PCI-ids and assignment groups and mark as errors
 			aa.CheckBadAssignmentGroups(log, hyper.PCISameController)
 			// Lookup since it could have changed
