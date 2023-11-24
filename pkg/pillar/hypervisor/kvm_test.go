@@ -244,6 +244,7 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
 [fsdev "fsdev1"]
   fsdriver = "local"
   security_model = "none"
+  multidevs = "remap"
   path = "/foo/container"
 
 [device "fs1"]
@@ -508,6 +509,7 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
 [fsdev "fsdev1"]
   fsdriver = "local"
   security_model = "none"
+  multidevs = "remap"
   path = "/foo/container"
 
 [device "fs1"]
@@ -750,6 +752,7 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
 [fsdev "fsdev1"]
   fsdriver = "local"
   security_model = "none"
+  multidevs = "remap"
   path = "/foo/container"
 
 [device "fs1"]
@@ -1188,6 +1191,7 @@ func domConfigArm64() string {
 [fsdev "fsdev1"]
   fsdriver = "local"
   security_model = "none"
+  multidevs = "remap"
   path = "/foo/container"
 
 [device "fs1"]
@@ -1467,6 +1471,7 @@ func domConfigAmd64FML() string {
 [fsdev "fsdev1"]
   fsdriver = "local"
   security_model = "none"
+  multidevs = "remap"
   path = "/foo/container"
 
 [device "fs1"]
@@ -1761,6 +1766,7 @@ func domConfigAmd64Legacy() string {
 [fsdev "fsdev1"]
   fsdriver = "local"
   security_model = "none"
+  multidevs = "remap"
   path = "/foo/container"
 
 [device "fs1"]
@@ -2042,6 +2048,7 @@ func domConfigAmd64() string {
 [fsdev "fsdev1"]
   fsdriver = "local"
   security_model = "none"
+  multidevs = "remap"
   path = "/foo/container"
 
 [device "fs1"]
