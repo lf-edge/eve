@@ -497,3 +497,98 @@ func TestNVMEIsUsed(t *testing.T) {
 		}
 	}
 }
+
+func TestCheckBadUSBBundles(t *testing.T) {
+	t.Parallel()
+	aa := AssignableAdapters{}
+
+	type bundleWithError struct {
+		bundle        IoBundle
+		expectedError string
+	}
+	bundleTestCases := []struct {
+		bundleWithError []bundleWithError
+	}{
+		{
+			bundleWithError: []bundleWithError{
+				{
+					bundle:        IoBundle{Phylabel: "1", UsbAddr: "1:1", UsbProduct: "a:a", PciLong: "1:1"},
+					expectedError: "ioBundle collision:||phylabel 1 - usbaddr: 1:1 usbproduct: a:a||phylabel 2 - usbaddr: 1:1 usbproduct: a:a||",
+				},
+				{
+					bundle:        IoBundle{Phylabel: "2", UsbAddr: "1:1", UsbProduct: "a:a", PciLong: "1:1"},
+					expectedError: "ioBundle collision:||phylabel 1 - usbaddr: 1:1 usbproduct: a:a||phylabel 2 - usbaddr: 1:1 usbproduct: a:a||",
+				},
+			},
+		},
+		{
+			bundleWithError: []bundleWithError{
+				{
+					bundle:        IoBundle{Phylabel: "3", UsbAddr: "1:1", UsbProduct: "a:a"},
+					expectedError: "ioBundle collision:||phylabel 3 - usbaddr: 1:1 usbproduct: a:a||phylabel 4 - usbaddr: 1:1 usbproduct: a:a||",
+				},
+				{
+					bundle:        IoBundle{Phylabel: "4", UsbAddr: "1:1", UsbProduct: "a:a"},
+					expectedError: "ioBundle collision:||phylabel 3 - usbaddr: 1:1 usbproduct: a:a||phylabel 4 - usbaddr: 1:1 usbproduct: a:a||",
+				},
+				{
+					bundle:        IoBundle{Phylabel: "5", UsbAddr: "1:1", UsbProduct: ""},
+					expectedError: "",
+				},
+			},
+		},
+		{
+			bundleWithError: []bundleWithError{
+				{
+					bundle:        IoBundle{Phylabel: "6", UsbAddr: "1:1", UsbProduct: ""},
+					expectedError: "ioBundle collision:||phylabel 6 - usbaddr: 1:1 usbproduct: ||phylabel 7 - usbaddr: 1:1 usbproduct: ||",
+				},
+				{
+					bundle:        IoBundle{Phylabel: "7", UsbAddr: "1:1", UsbProduct: ""},
+					expectedError: "ioBundle collision:||phylabel 6 - usbaddr: 1:1 usbproduct: ||phylabel 7 - usbaddr: 1:1 usbproduct: ||",
+				},
+			},
+		},
+		{
+			bundleWithError: []bundleWithError{
+				{
+					bundle:        IoBundle{Phylabel: "8", UsbAddr: "", UsbProduct: "a:a"},
+					expectedError: "ioBundle collision:||phylabel 8 - usbaddr:  usbproduct: a:a||phylabel 9 - usbaddr:  usbproduct: a:a||",
+				},
+				{
+					bundle:        IoBundle{Phylabel: "9", UsbAddr: "", UsbProduct: "a:a"},
+					expectedError: "ioBundle collision:||phylabel 8 - usbaddr:  usbproduct: a:a||phylabel 9 - usbaddr:  usbproduct: a:a||",
+				},
+			},
+		},
+		{
+			bundleWithError: []bundleWithError{
+				{
+					bundle: IoBundle{Phylabel: "10", UsbAddr: "", UsbProduct: ""},
+				},
+				{
+					bundle: IoBundle{Phylabel: "11", UsbAddr: "", UsbProduct: ""},
+				},
+			},
+		},
+	}
+
+	for _, testCase := range bundleTestCases {
+		bundles := make([]IoBundle, 0)
+
+		for _, bundle := range testCase.bundleWithError {
+			bundles = append(bundles, bundle.bundle)
+		}
+		aa.IoBundleList = bundles
+
+		aa.CheckBadUSBBundles()
+
+		for i, bundleWithErr := range testCase.bundleWithError {
+			if bundles[i].Error != bundleWithErr.expectedError {
+				t.Logf("bundle %s expected error \n'%s', got error \n'%s'",
+					bundleWithErr.bundle.Phylabel, bundleWithErr.expectedError, bundles[i].Error)
+
+			}
+		}
+	}
+}

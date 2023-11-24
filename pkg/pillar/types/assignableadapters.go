@@ -446,8 +446,38 @@ func (aa *AssignableAdapters) LookupIoBundleIfName(ifname string) *IoBundle {
 	return nil
 }
 
-// CheckBadUSBBundles checks for errors
-func (aa *AssignableAdapters) CheckBadUSBBundles(log *base.LogObject) {
+// CheckBadUSBBundles sets ib.Error/ErrorTime if bundle collides in regards of USB
+func (aa *AssignableAdapters) CheckBadUSBBundles() {
+	usbProductsAddressMap := make(map[[3]string][]*IoBundle)
+	for i := range aa.IoBundleList {
+		ioBundle := &aa.IoBundleList[i]
+		if ioBundle.UsbAddr == "" && ioBundle.UsbProduct == "" && ioBundle.PciLong == "" {
+			continue
+		}
+
+		id := [3]string{ioBundle.UsbAddr, ioBundle.UsbProduct, ioBundle.PciLong}
+		if usbProductsAddressMap[id] == nil {
+			usbProductsAddressMap[id] = make([]*IoBundle, 0)
+		}
+		usbProductsAddressMap[id] = append(usbProductsAddressMap[id], ioBundle)
+	}
+
+	for _, bundles := range usbProductsAddressMap {
+		if len(bundles) <= 1 {
+			continue
+		}
+
+		errStr := "ioBundle collision:||"
+
+		for _, bundle := range bundles {
+			errStr += fmt.Sprintf("phylabel %s - usbaddr: %s usbproduct: %s pcilong: %s||",
+				bundle.Phylabel, bundle.UsbAddr, bundle.UsbProduct, bundle.PciLong)
+		}
+		for _, bundle := range bundles {
+			bundle.Error = errStr
+			bundle.ErrorTime = time.Now()
+		}
+	}
 }
 
 // CheckBadAssignmentGroups sets ib.Error/ErrorTime if two IoBundles in different
