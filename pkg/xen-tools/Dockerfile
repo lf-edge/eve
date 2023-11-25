@@ -16,8 +16,8 @@ COPY initrd/poweroff /sbin/poweroff
 COPY initrd/chroot2.c initrd/hacf.c /tmp/
 COPY initrd/00000080 /etc/acpi/PWRF/
 COPY initrd/eve-enter-container /bin/
-RUN gcc -s -o /chroot2 /tmp/chroot2.c
-RUN gcc -s -o /hacf /tmp/hacf.c
+RUN gcc -s -o /chroot2 /tmp/chroot2.c -Wall -Werror
+RUN gcc -s -o /hacf /tmp/hacf.c -Wall -Werror
 RUN mkinitfs -n -F base -i /init-initrd -o /runx-initrd
 
 FROM lfedge/eve-alpine:d32cf7889da970a42fdf5c1c5454a311356cb8f8 as build
