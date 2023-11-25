@@ -61,6 +61,7 @@ int main(int argc, char **argv)
 {
     const char *pid_file = argv[5];
     uid_t uid, gid;
+    int wstatus;
     char *endptr;
     pid_t child_pid;
     struct clone_args args;
@@ -105,6 +106,9 @@ int main(int argc, char **argv)
         close(fd);
     }
 
-    waitpid(child_pid, NULL, 0);
-    return 0;
+    child_pid = wait(&wstatus);
+    if (child_pid < 0)
+        err(-1, "wait() failed:");
+
+    return WIFEXITED(wstatus) ? WEXITSTATUS(wstatus) : -1;
 }
