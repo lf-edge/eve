@@ -182,4 +182,5 @@ else
 fi
 
 # once the command exits -- the only thing left is shut everything down
+echo "chroot2 exited with $?, the init-initrd is about to quit by calling /sbin/poweroff, which shuts the whole VM down"
 /sbin/poweroff
