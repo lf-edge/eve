@@ -331,14 +331,10 @@ print_usb_devices() {
         then
             parentassigngrp=""
         fi
-        local product
-        product=$(cat "$devicepath/product" 2> /dev/null || true)
         local label
-        label=$(echo "$product" | tr -cd '[:alnum:]._-')
-        if [ "$label" = "" ]
-        then
-            label="USB${busAndPort}"
-        fi
+        idVendor=$(cat "${devicepath}/idVendor")
+        idProduct=$(cat "${devicepath}/idProduct")
+        label="USB-${idVendor}:${idProduct}-${busAndPort}"
 
         type=$(grep -Eo '^TYPE=[0-9]+/' "$i"| grep -Eo '[0-9]+')
         # ignore USB hubs
