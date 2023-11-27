@@ -162,6 +162,12 @@ PID   USER     TIME  COMMAND
 ~ #
 ```
 
+## Prevent shutdown of a container applications
+
+If container's entrypoint (e.g. `init` script) misbehaves and exits, it becomes very difficult to debug such a container, because hosting Vm shuts down immediately by explicit poweroff call.
+
+If EVE_CONTAINER_NO_POWEROFF=1 environment variable is set on the controller side in the application instance userData/cipherData fields, then the hosting Vm does not shut down, but waits for further debugging session, for example attaching to a `prime-cons` console.
+
 ## Reboots
 
 EVE is architected in such a way that if any service is unresponsive for a period of time, the entire device will reboot. When this happens a BootReason is constructed and sent in the device info message to the controller. If there is a golang panic there can also be useful information found in `/persist/agentdebug/`.
