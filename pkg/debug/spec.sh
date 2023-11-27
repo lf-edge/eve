@@ -271,8 +271,10 @@ __EOT__
 }
 
 #enumerate USB devices
+#if $1 is "1" then only nics/modems will be printed
 print_usb_devices() {
     netdevpaths=""
+    local only_nics="$1"
 
     # some usb network cards might not have their module included into the eve kernel
     # this results into not detecting the network card and therefore allowing
@@ -297,6 +299,7 @@ print_usb_devices() {
 
     for i in $(find /sys/devices/ -name uevent | grep -E '/usb[0-9]/' | grep -E '/[0-9]-[0-9](\.[0-9]+)?/uevent')
     do
+        local ztype="IO_TYPE_UNSPECIFIED"
         local ignore_dev=0
         local devicepath
         devicepath=$(dirname "$i")
@@ -314,13 +317,14 @@ print_usb_devices() {
         local ifname
         ifname="$(ls -1 "${devicepath}/*/net" 2>/dev/null || true)"
         local cost=0
-        local isModem
-        isModem=$(grep -Eo 'cdc_mbim|qmi_wwan' "${devicepath}"/*/uevent 2>/dev/null)
-        if [ "${isModem}" != "" ]
+        local is_nic
+        is_nic=$(grep -Eo 'cdc_mbim|qmi_wwan' "${devicepath}"/*/uevent 2>/dev/null)
+        if [ "${is_nic}" != "" ]
         then
             cost=10
             assigngrp="modem${busAndPort}"
             assigngrp=$(get_assignmentgroup "${ifname}" "${pciaddr}")
+            ztype="IO_TYPE_WWAN"
         fi
 
         local pciaddr
@@ -343,16 +347,26 @@ print_usb_devices() {
             ignore_dev=1
         fi
 
-        # ignore network cards but allow usb modems
-        if [ "${isModem}" = "" ]
+        if [ "${is_nic}" = "" ]
         then
             for netdevpath in $netdevpaths
             do
                 # check if devicepath starts with netdevpath
                 case $netdevpath in "$devicepath"*)
-                    ignore_dev=1
+                    netdevname=$(find "${netdevpath}"/net/* -prune -exec basename "{}" \; | head -n1)
+                    if [ "$netdevname" != "" ]
+                    then
+                        label=$netdevname
+                    fi
+                    is_nic=1
+                    ztype="IO_TYPE_ETH"
                 esac
             done
+        fi
+
+        if [ "$only_nics" = 1 ] && [ "${is_nic}" = "" ]
+        then
+            ignore_dev=1
         fi
 
         if [ "$ignore_dev" = "1" ]
@@ -362,7 +376,7 @@ print_usb_devices() {
 
         cat <<__EOT__
     {
-      "ztype": "IO_TYPE_UNSPECIFIED",
+      "ztype": "${ztype}",
       "phylabel": "${label}",
       "assigngrp": "${assigngrp}",
       "cost": ${cost},
@@ -381,6 +395,7 @@ then
     print_usb_devices
 else
     print_usb_controllers
+    print_usb_devices 1
 fi
 
 #enumerate NVME
