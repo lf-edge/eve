@@ -8,4 +8,5 @@ See [EVE Wiki](https://wiki.lfedge.org/display/EVE/Community) for governance gui
 
 * Avi Deitcher avi@deitcher.net
 * Erik Nordmark erik@zededa.com
+* Milan Lenco milan@zededa.com
 * Roman Shaposhnik rvs@apache.org
