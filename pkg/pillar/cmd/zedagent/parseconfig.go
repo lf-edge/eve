@@ -268,6 +268,12 @@ func parseBaseOS(getconfigCtx *getconfigContext,
 	baseOS := config.GetBaseos()
 	if baseOS == nil {
 		log.Function("parseBaseOS: nil config received")
+		items := getconfigCtx.pubBaseOsConfig.GetAll()
+		for idStr := range items {
+			log.Functionf("parseBaseOS: deleting %s\n", idStr)
+			unpublishBaseOsConfig(getconfigCtx, idStr)
+		}
+		baseOSPrevConfigHash = nil
 		return
 	}
 	h := sha256.New()
