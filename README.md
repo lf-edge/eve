@@ -121,10 +121,10 @@ docker version
 $ brew install git make jq qemu gnu-sed
 ```
 
-> **_NOTE:_** (M1 Macs) `qemu` may also require `python3 nettle ninja` to install properly, that is:
+> **_NOTE:_** (M1 Macs) `qemu` may also require `python3 nettle ninja gnu-tar` to install properly, that is:
 >
 > ```sh
-> $ brew install git make jq python3 nettle ninja qemu gnu-sed
+> $ brew install git make jq python3 nettle ninja qemu gnu-sed gnu-tar
 > ```
 
 ##### On Ubuntu Linux
