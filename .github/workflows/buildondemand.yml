@@ -8,8 +8,9 @@ on:
         required: false
         default: false
 
+
 env:
-  FORCE_BUILD: FORCE_BUiLD=${{ inputs.force && '--force' || '' }}
+  FORCE_BUILD: FORCE_BUILD=${{ inputs.force && '--force' || '' }}
 
 concurrency:
   group: ${{ github.workflow }}
@@ -17,6 +18,8 @@ concurrency:
 
 jobs:
   packages:
+    # Only run for the default branch
+    if: github.ref_name == github.event.repository.default_branch
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -75,6 +78,8 @@ jobs:
 
   eve:
     needs: packages  # all packages for all platforms must be built first
+    # Only run for the default branch
+    if: github.ref_name == github.event.repository.default_branch
     runs-on: buildjet-4vcpu-ubuntu-2004
     strategy:
       fail-fast: false
@@ -110,7 +115,8 @@ jobs:
           dockerhub-account: ${{ secrets.RELEASE_DOCKERHUB_ACCOUNT }}
 
   manifest:
-    if: github.event.repository.full_name == 'lf-edge/eve'
+    # Only run for the default branch
+    if: github.ref_name == github.event.repository.default_branch
     runs-on: ubuntu-latest
     needs: packages
     steps:
