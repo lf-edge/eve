@@ -65,8 +65,11 @@ jobs:
           path: ~/.linuxkit/cache
           key: linuxkit-${{ matrix.arch }}-${{ github.sha }}
       - name: Build packages
-        run: |
-          make V=1 PRUNE=1 ZARCH=${{ matrix.arch }} LINUXKIT_PKG_TARGET=push $FORCE_BUILD pkgs
+        uses: ./.github/actions/run-make
+        with:
+          command: "V=1 PRUNE=1 ZARCH=${{ matrix.arch }} LINUXKIT_PKG_TARGET=push $FORCE_BUILD pkgs"
+          dockerhub-token: ${{ secrets.RELEASE_DOCKERHUB_TOKEN }}
+          dockerhub-account: ${{ secrets.RELEASE_DOCKERHUB_ACCOUNT }}
       - name: Post package report
         run: |
           echo Disk usage
