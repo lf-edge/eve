@@ -273,7 +273,7 @@ func parseBaseOS(getconfigCtx *getconfigContext,
 			log.Functionf("parseBaseOS: deleting %s\n", idStr)
 			unpublishBaseOsConfig(getconfigCtx, idStr)
 		}
-		baseOSPrevConfigHash = nil
+		baseOSPrevConfigHash = []byte{}
 		return
 	}
 	h := sha256.New()
@@ -2735,6 +2735,12 @@ func scheduleDeviceOperation(getconfigCtx *getconfigContext, opsCmd *zconfig.Dev
 
 	if opsCmd == nil {
 		removeDeviceOpsCmdConfig(op)
+		switch op {
+		case types.DeviceOperationReboot:
+			rebootPrevConfigHash = []byte{}
+		case types.DeviceOperationShutdown:
+			shutdownPrevConfigHash = []byte{}
+		}
 		return false
 	}
 
@@ -2823,6 +2829,7 @@ var backupPrevConfigHash []byte
 func scheduleBackup(backup *zconfig.DeviceOpsCmd) {
 	// XXX:FIXME  handle backup semantics
 	if backup == nil {
+		backupPrevConfigHash = []byte{}
 		return
 	}
 	configHash := computeConfigSha(backup)
