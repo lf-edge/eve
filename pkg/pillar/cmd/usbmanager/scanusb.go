@@ -5,6 +5,7 @@ package usbmanager
 import (
 	"bufio"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -97,6 +98,11 @@ func ueventFile2usbDevice(ueventFilePath string) *usbdevice {
 	}
 	defer ueventFp.Close()
 
+	return ueventFile2usbDeviceImpl(ueventFilePath, ueventFp)
+}
+
+func ueventFile2usbDeviceImpl(ueventFilePath string, ueventFp io.Reader) *usbdevice {
+
 	var busnum uint16
 	var devnum uint16
 	var vendorID uint32
@@ -152,9 +158,6 @@ func ueventFile2usbDevice(ueventFilePath string) *usbdevice {
 	}
 
 	pciAddress := extractPCIaddress(ueventFilePath)
-	if pciAddress == "" {
-		return nil
-	}
 
 	portnum := extractUSBPort(ueventFilePath)
 
