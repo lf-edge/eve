@@ -23,6 +23,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/utils"
 	"github.com/lf-edge/eve/pkg/pillar/vault"
 	"github.com/lf-edge/eve/pkg/pillar/worker"
+	"github.com/lf-edge/eve/pkg/pillar/zfs"
 	"github.com/sirupsen/logrus"
 )
 
@@ -237,12 +238,16 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	log.Functionf("user containerd ready")
 
 	if ctx.persistType == types.PersistZFS {
-		// create datasets for volumes
-		initializeDatasets()
-		// Iterate over volume datasets and prepares map of
-		// volume's content format with the volume key
-		populateExistingVolumesFormatDatasets(&ctx, types.VolumeEncryptedZFSDataset)
-		populateExistingVolumesFormatDatasets(&ctx, types.VolumeClearZFSDataset)
+		if isZvol, _ := zfs.IsDatasetTypeZvol(types.SealedDataset); isZvol {
+			initializeDirs()
+		} else {
+			// create datasets for volumes
+			initializeDatasets()
+			// Iterate over volume datasets and prepares map of
+			// volume's content format with the volume key
+			populateExistingVolumesFormatDatasets(&ctx, types.VolumeEncryptedZFSDataset)
+			populateExistingVolumesFormatDatasets(&ctx, types.VolumeClearZFSDataset)
+		}
 	} else {
 		// create the directories
 		initializeDirs()
