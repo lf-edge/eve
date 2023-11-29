@@ -338,6 +338,7 @@ print_usb_devices() {
         local label
         idVendor=$(cat "${devicepath}/idVendor")
         idProduct=$(cat "${devicepath}/idProduct")
+        local usbproduct="${idVendor}:${idProduct}"
         label="USB-${idVendor}:${idProduct}-${busAndPort}"
 
         type=$(grep -Eo '^TYPE=[0-9]+/' "$i"| grep -Eo '[0-9]+')
@@ -381,7 +382,8 @@ print_usb_devices() {
       "assigngrp": "${assigngrp}",
       "cost": ${cost},
       "phyaddrs": {
-        "usbaddr": "$usbaddr"
+        "usbaddr": "$usbaddr",
+        "usbproduct": "$usbproduct"
       },
       "logicallabel": "$label",
       "usagePolicy": {}
