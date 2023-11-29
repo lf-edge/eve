@@ -64,7 +64,11 @@ func (handler *volumeHandlerCSI) HandlePrepared() (bool, error) {
 
 func (handler *volumeHandlerCSI) HandleCreated() (bool, error) {
 	handler.log.Noticef("HandleCreated called for PVC %s", handler.status.Key())
-	handler.status.ContentFormat = zconfig.Format_PVC
+	// Though we convert container image to PVC, we need to keep the image format to tell domainmgr
+	// that we are launching a container as VM.
+	if !handler.status.IsContainer() {
+		handler.status.ContentFormat = zconfig.Format_PVC
+	}
 	updateVolumeSizes(handler.log, handler, handler.status)
 	return true, nil
 }
@@ -140,7 +144,7 @@ func (handler *volumeHandlerCSI) CreateVolume() (string, error) {
 				handler.log.Error(errStr)
 				return "", errors.New(errStr)
 			} */
-			qcowFile := "/persist/vault/volumes/" + pvcName + ".qcow2"
+			rawImgFile := "/persist/vault/volumes/" + pvcName + ".img"
 
 			chandler := &volumeHandlerContainer{handler.commonVolumeHandler}
 
@@ -156,22 +160,43 @@ func (handler *volumeHandlerCSI) CreateVolume() (string, error) {
 				return "", errors.New(errStr)
 			}
 
-			err = handler.CopyImgDirToQCOW(createContext, handler.log, imgDirLocation, qcowFile)
+			err = handler.CopyImgDirToRawImg(createContext, handler.log, imgDirLocation, rawImgFile)
 			if err != nil {
-				errStr := fmt.Sprintf("Error copying container image to qcow2 %s err: %v",
+				errStr := fmt.Sprintf("Error copying container image to raw image %s err: %v",
 					imgDirLocation, err)
 				handler.log.Error(errStr)
 				return "", errors.New(errStr)
 			}
 
-			// Convert qcow2 to PVC
-			err = kubeapi.RolloutQCOWToPVC(createContext, handler.log, false, qcowFile, pvcName, handler.status.IsAppImage)
+			chandler.status.FileLocation = imgDirLocation
+			// If we are here, we converted container image to rawImgFile, no reason to keep the containerdir
+			// So delete the container image mount we created as part of CreateVolume() above
+			// DestroyVolume() just umounts rootfs and deletes the container directory in /persist/vault/volumes.
+			// It does not delete the image, which is what we want.
+			/*
+				imgDirLocation, err = chandler.DestroyVolume()
+				if err != nil {
+					errStr := fmt.Sprintf("Error DestroyVolume %s err: %v",
+						imgDirLocation, err)
+					handler.log.Error(errStr)
+					return "", errors.New(errStr)
+				}
+			*/
 
-			// For container we created qcow2 so delete it to save space.
+			// Convert to PVC
+			pvcerr := kubeapi.RolloutDiskToPVC(createContext, handler.log, false, rawImgFile, pvcName, false)
 
-			if err != nil {
+			// Since we succeeded or failed to create PVC above, no point in keeping the rawImgFile.
+			// Delete it to save space.
+			if err = os.RemoveAll(rawImgFile); err != nil {
+				errStr := fmt.Sprintf("CreateVolume: exception while deleting: %v. %v", rawImgFile, err)
+				handler.log.Error(errStr)
+				return pvcName, errors.New(errStr)
+			}
+
+			if pvcerr != nil {
 				errStr := fmt.Sprintf("Error converting %s to PVC %s: %v",
-					qcowFile, pvcName, err)
+					rawImgFile, pvcName, pvcerr)
 				handler.log.Error(errStr)
 				return pvcName, errors.New(errStr)
 			}
@@ -181,10 +206,10 @@ func (handler *volumeHandlerCSI) CreateVolume() (string, error) {
 				errStr := fmt.Sprintf("Error obtaining file for PVC at volume %s, error=%v",
 					pvcName, err)
 				handler.log.Error(errStr)
-				return "", errors.New(errStr)
+				return pvcName, errors.New(errStr)
 			}
 			// Convert qcow2 to PVC
-			err = kubeapi.RolloutQCOWToPVC(createContext, handler.log, false, qcowFile, pvcName, handler.status.IsAppImage)
+			err = kubeapi.RolloutDiskToPVC(createContext, handler.log, false, qcowFile, pvcName, true)
 
 			if err != nil {
 				errStr := fmt.Sprintf("Error converting %s to PVC %s: %v",
@@ -274,16 +299,16 @@ func (handler *volumeHandlerCSI) getVolumeFilePath() (string, error) {
 }
 
 // Creates a dest qcow2 file of given size and copies the srcLocation onto dest qcow2 file
-func (handler *volumeHandlerCSI) CopyImgDirToQCOW(ctx context.Context, log *base.LogObject, srcLocation string, destFile string) error {
+func (handler *volumeHandlerCSI) CopyImgDirToRawImg(ctx context.Context, log *base.LogObject, srcLocation string, destFile string) error {
 
 	args := []string{srcLocation, destFile}
 
 	log.Noticef("PRAMOD create-qcow.sh args %v", args)
 
-	output, err := base.Exec(log, "/opt/zededa/bin/create-qcow.sh", args...).WithContext(ctx).WithUnlimitedTimeout(432000 * time.Second).CombinedOutput()
+	output, err := base.Exec(log, "/opt/zededa/bin/create-image-to-qcow.sh", args...).WithContext(ctx).WithUnlimitedTimeout(432000 * time.Second).CombinedOutput()
 
 	if err != nil {
-		errStr := fmt.Sprintf("RolloutQCOWToPVC: Failed to create qcow file  %s: %v", output, err)
+		errStr := fmt.Sprintf("CopyImgDirToRawImg: Failed to create raw image file  %s: %v", output, err)
 		return errors.New(errStr)
 	}
 

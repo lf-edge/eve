@@ -271,15 +271,39 @@ func (ctx kubevirtContext) CreateVMIConfig(domainName string, config types.Domai
 	vmi.Spec.Networks = nads
 	vmi.Spec.Domain.Devices.Interfaces = intfs
 
+	// First check the diskStatusList and ignore 9P
 	// Set Storage
 	if len(diskStatusList) > 0 {
 		disks := make([]v1.Disk, len(diskStatusList))
 		vols := make([]v1.Volume, len(diskStatusList))
-
+		ndisks := len(diskStatusList)
 		for i, ds := range diskStatusList {
 
 			diskName := "disk" + strconv.Itoa(i+1)
-			if ds.Devtype == "cdrom" {
+
+			// Domainmgr sets devtype 9P for container images. Though in kubevirt container image is
+			// converted to PVC and will not use 9P protocol, but we still use this dev type to launch a
+			// external bootable container.
+			if ds.Devtype == "9P" {
+				// kvm based EVE supports launching a container as VM. It generates a runtime ocispec and passes in
+				// kernel and initrd along with other generated files.
+				// The concept is same in kubevirt eve too. Kubevirt supports this functionality through feature
+				// https://kubevirt.io/user-guide/virtual_machines/boot_from_external_source/
+				// We need to have a prebuilt scratch image and pass in the path of kernel, initrd and any kernel args in the vmi spec we are generating.
+				// TODO: eve build generates this scratch image. For now its hardcoded.
+
+				// Since disks are virtio disks we assume /dev/vda is the boot disk
+				kernel_args := "console=tty0 root=/dev/vda dhcp=1 rootfstype=ext4"
+				scratch_image := "docker.io/zededapramodh/external-boot-scratch-container:2.0"
+				kernel_path := "/kernel"
+				initrd_path := "/runx-initrd"
+
+				addKernelBootContainer(&vmi.Spec, scratch_image, kernel_args, kernel_path, initrd_path)
+
+				// We don't set this disk to vmi spec
+				ndisks = ndisks - 1
+
+			} else if ds.Devtype == "cdrom" {
 				disks[i] = v1.Disk{
 					Name: diskName,
 					DiskDevice: v1.DiskDevice{
@@ -319,8 +343,8 @@ func (ctx kubevirtContext) CreateVMIConfig(domainName string, config types.Domai
 			}
 
 		}
-		vmi.Spec.Domain.Devices.Disks = disks
-		vmi.Spec.Volumes = vols
+		vmi.Spec.Domain.Devices.Disks = disks[0:ndisks]
+		vmi.Spec.Volumes = vols[0:ndisks]
 	}
 
 	// Find out if we are launching a container as a VM.

@@ -181,8 +181,9 @@ func NewPVCDefinition(pvcName string, size string, annotations, labels map[strin
 	}
 }
 
-// RolloutQCOWToPVC copy the content of diskfile to PVC
-func RolloutQCOWToPVC(ctx context.Context, log *base.LogObject, exists bool, diskfile string, pvcName string, isAppImage bool) error {
+// RolloutDiskToPVC copy the content of diskfile to PVC
+// diskfile can be in qcow or raw format
+func RolloutDiskToPVC(ctx context.Context, log *base.LogObject, exists bool, diskfile string, pvcName string, filemode bool) error {
 
 	//fetch CDI proxy url
 	// Get the Kubernetes clientset
@@ -203,7 +204,7 @@ func RolloutQCOWToPVC(ctx context.Context, log *base.LogObject, exists bool, dis
 				return errors.New(errStr)
 			}
 			time.Sleep(10 * time.Second)
-			log.Noticef("PRAMOD RolloutQCOWToPVC loop (%d), wait for 10 sec, err %v", i, err)
+			log.Noticef("PRAMOD RolloutDiskToPVC loop (%d), wait for 10 sec, err %v", i, err)
 		} else {
 			break
 		}
@@ -213,7 +214,7 @@ func RolloutQCOWToPVC(ctx context.Context, log *base.LogObject, exists bool, dis
 	// Get the ClusterIP of the Service.
 	clusterIP := service.Spec.ClusterIP
 	uploadproxyURL := "https://" + clusterIP + ":443"
-	log.Noticef("PRAMOD RolloutQCOWToPVC diskfile %s pvc %s  URL %s", diskfile, pvcName, uploadproxyURL)
+	log.Noticef("PRAMOD RolloutDiskToPVC diskfile %s pvc %s  URL %s", diskfile, pvcName, uploadproxyURL)
 	volSize, err := diskmetrics.GetDiskVirtualSize(log, diskfile)
 	if err != nil {
 		errStr := fmt.Sprintf("Failed to get virtual size of disk %s: %v", diskfile, err)
@@ -244,17 +245,11 @@ func RolloutQCOWToPVC(ctx context.Context, log *base.LogObject, exists bool, dis
 
 	args := []string{"image-upload", "-n", "eve-kube-app", "pvc", pvcName, "--storage-class", "longhorn", "--image-path", diskfile, "--insecure", "--uploadproxy-url", uploadproxyURL, "--kubeconfig", kubeConfigFile}
 
-	// We create PVC of filesystem mode if its appimage volume. longhorn PVC FS mode does not support ReadWriteMany mode.
-	/*
-		if isAppImage {
-			args = append(args, "--access-mode", "ReadWriteOnce")
-		} else {
-			args = append(args, "--access-mode", "ReadWriteMany", "--block-volume")
-		}
-	*/
+	args = append(args, "--access-mode", "ReadWriteOnce")
 
-	args = append(args, "--access-mode", "ReadWriteMany", "--block-volume")
-	//args := fmt.Sprintf("image-upload -n eve-kube-app pvc %s --no-create --storage-class longhorn --image-path=%s --insecure --uploadproxy-url %s", outputFile, diskfile, uploadproxyURL)
+	if !filemode {
+		args = append(args, "--block-volume")
+	}
 
 	// If PVC already exists just copy out the data, else virtctl will create the PVC before data copy
 	if exists {
@@ -269,13 +264,13 @@ func RolloutQCOWToPVC(ctx context.Context, log *base.LogObject, exists bool, dis
 	output, err := base.Exec(log, "/containers/services/kube/rootfs/usr/bin/virtctl", args...).WithContext(ctx).WithUnlimitedTimeout(432000 * time.Second).CombinedOutput()
 
 	if err != nil {
-		errStr := fmt.Sprintf("RolloutQCOWToPVC: Failed to convert qcow to PVC  %s: %v", output, err)
+		errStr := fmt.Sprintf("RolloutDiskToPVC: Failed to convert qcow to PVC  %s: %v", output, err)
 		return errors.New(errStr)
 	}
 	err = waitForPVCReady(ctx, log, pvcName)
 
 	if err != nil {
-		errStr := fmt.Sprintf("RolloutQCOWToPVC: error wait for PVC %v", err)
+		errStr := fmt.Sprintf("RolloutDiskToPVC: error wait for PVC %v", err)
 		return errors.New(errStr)
 	}
 

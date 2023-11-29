@@ -150,7 +150,7 @@ ADD scripts/device-steps.sh \
     scripts/handlezedserverconfig.sh \
     scripts/veth.sh \
     scripts/dhcpcd.sh \
-    scripts/create-qcow.sh \
+    scripts/create-image-to-qcow.sh \
   /out/opt/zededa/bin/
 ADD conf/lisp.config.base /out/var/tmp/zededa/lisp.config.base
 
