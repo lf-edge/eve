@@ -498,6 +498,116 @@ func TestNVMEIsUsed(t *testing.T) {
 	}
 }
 
+func alternativeCheckBadUSBBundlesImpl(bundles []IoBundle) {
+	for i := range bundles {
+		for j := range bundles {
+			errStr := ""
+			if i == j {
+				continue
+			}
+
+			if bundles[i].UsbAddr != "" || bundles[j].UsbAddr != "" {
+				if bundles[i].UsbAddr != bundles[j].UsbAddr {
+					continue
+				} else {
+					errStr = "usbaddr same"
+				}
+			}
+
+			if bundles[i].UsbProduct != "" || bundles[j].UsbProduct != "" {
+				if bundles[i].UsbProduct != bundles[j].UsbProduct {
+					continue
+				} else {
+					errStr = fmt.Sprintf("%s usbproduct same", errStr)
+				}
+			}
+
+			if bundles[i].PciLong != "" || bundles[j].PciLong != "" {
+				if bundles[i].PciLong != bundles[j].PciLong {
+					continue
+				} else {
+					errStr = fmt.Sprintf("%s pci address same", errStr)
+				}
+			}
+
+			bundles[i].Error = errStr
+			bundles[j].Error = errStr
+		}
+	}
+}
+
+func FuzzCheckBadUSBBundles(f *testing.F) {
+
+	f.Fuzz(func(t *testing.T,
+		// ioBundle 1
+		pciLong1 string,
+		usbAddr1 string,
+		usbProduct1 string,
+		// ioBundle 2
+		pciLong2 string,
+		usbAddr2 string,
+		usbProduct2 string,
+		// ioBundle 3
+		pciLong3 string,
+		usbAddr3 string,
+		usbProduct3 string,
+	) {
+		alternativeCheckBundles := make([]IoBundle, 3)
+
+		alternativeCheckBundles[0].PciLong = pciLong1
+		alternativeCheckBundles[0].UsbAddr = usbAddr1
+		alternativeCheckBundles[0].UsbProduct = usbProduct1
+
+		alternativeCheckBundles[1].PciLong = pciLong2
+		alternativeCheckBundles[1].UsbAddr = usbAddr2
+		alternativeCheckBundles[1].UsbProduct = usbProduct2
+
+		alternativeCheckBundles[2].PciLong = pciLong3
+		alternativeCheckBundles[2].UsbAddr = usbAddr3
+		alternativeCheckBundles[2].UsbProduct = usbProduct3
+
+		alternativeCheckBadUSBBundlesImpl(alternativeCheckBundles)
+
+		aa := AssignableAdapters{}
+		bundles := make([]IoBundle, 3)
+		bundles[0].PciLong = pciLong1
+		bundles[0].UsbAddr = usbAddr1
+		bundles[0].UsbProduct = usbProduct1
+
+		bundles[1].PciLong = pciLong2
+		bundles[1].UsbAddr = usbAddr2
+		bundles[1].UsbProduct = usbProduct2
+
+		bundles[2].PciLong = pciLong3
+		bundles[2].UsbAddr = usbAddr3
+		bundles[2].UsbProduct = usbProduct3
+
+		aa.IoBundleList = bundles
+
+		aa.CheckBadUSBBundles()
+
+		failed := false
+		for i := 0; i < len(bundles); i++ {
+			if bundles[i].Error != "" && alternativeCheckBundles[i].Error != "" {
+				continue
+			}
+			if bundles[i].Error == "" && alternativeCheckBundles[i].Error == "" {
+				continue
+			}
+
+			failed = true
+		}
+
+		if failed {
+			for i := 0; i < len(bundles); i++ {
+				t.Logf("'%s' '%s' '%s' : '%s' <-> '%s'", bundles[i].PciLong, bundles[i].UsbAddr, bundles[i].UsbProduct,
+					bundles[i].Error, alternativeCheckBundles[i].Error)
+			}
+			t.Fatal("fail - check log")
+		}
+	})
+}
+
 func TestCheckBadUSBBundles(t *testing.T) {
 	t.Parallel()
 	aa := AssignableAdapters{}
