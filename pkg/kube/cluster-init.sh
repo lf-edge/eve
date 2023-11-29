@@ -54,6 +54,28 @@ wait_for_default_route() {
   return 1
 }
 
+wait_for_vault() {
+        logmsg "Starting wait for Vault"
+        pillarRootfs=/hostfs/containers/services/pillar/rootfs
+        while ! LD_LIBRARY_PATH=${pillarRootfs}/usr/lib/ ${pillarRootfs}/opt/zededa/bin/vaultmgr waitUnsealed;
+        do
+               sleep 1
+        done
+        logmsg "Vault ready"
+}
+
+mount_etcd_vol() {
+        # NOTE: We only support zfs storage in production systems because data is persisted on zvol.
+        # This is formatted in vaultmgr
+        logmsg "Wait for persist/etcd-storage zvol"
+        while [ ! -b /dev/zvol/persist/etcd-storage ];
+        do
+                sleep 1
+        done
+        mount /dev/zvol/persist/etcd-storage /var/lib  ## This is where we persist the cluster components (etcd)
+        logmsg "persist/etcd-storage available"
+}
+
 #Prereqs
 setup_prereqs () {
         modprobe tun
@@ -68,6 +90,8 @@ setup_prereqs () {
         #Check network and default routes are up
         wait_for_default_route
         check_network_connection
+        wait_for_vault
+        mount_etcd_vol
 }
 
 check_start_containerd() {
@@ -106,15 +130,6 @@ trigger_k3s_selfextraction() {
         /usr/bin/k3s check-config >> $INSTALL_LOG 2>&1
 }
 
-# NOTE: We only support zfs storage in production systems because data is persisted on zvol.
-# If ZFS is not available we still go ahead and provide the service but the data is lost on reboot
-# because /var/lib will be on overlayfs. The only reason to allow that is to provide a quick debugging env for developers.
-if [ -b /dev/zvol/persist/clustered-storage ]; then
-        mount /dev/zvol/persist/clustered-storage /var/lib  ## This is where we persist the cluster components (k3s containers)
-        logmsg "Using ZFS persistent storage"
-else
-        logmsg "WARNING: Using overlayfs non-persistent storage"
-fi
 
 #Make sure all prereqs are set after /var/lib is mounted to get logging info
 setup_prereqs

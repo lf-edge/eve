@@ -126,4 +126,6 @@ var (
 	VolumeClearZFSDataset = ClearDataset + "/volumes"
 	//VolumeEncryptedZFSDataset - dataset to create volumes with encryption
 	VolumeEncryptedZFSDataset = SealedDataset + "/volumes"
+	// EtcdZvol - zvol encrypted for etcd storage
+	EtcdZvol = PersistDataset + "/etcd-storage"
 )

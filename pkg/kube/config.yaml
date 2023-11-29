@@ -8,3 +8,5 @@ log: "/var/lib/rancher/k3s/k3s.log"
 debug: true
 etcd-expose-metrics: true
 container-runtime-endpoint: "/run/containerd-user/containerd.sock"
+etcd-arg:
+  - "quota-backend-bytes=8589934592"
