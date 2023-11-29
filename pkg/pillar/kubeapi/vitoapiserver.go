@@ -181,8 +181,8 @@ func NewPVCDefinition(pvcName string, size string, annotations, labels map[strin
 	}
 }
 
-// RolloutImgToPVC copy the content of diskfile to PVC
-func RolloutImgToPVC(ctx context.Context, log *base.LogObject, exists bool, diskfile string, pvcName string, isAppImage bool) error {
+// RolloutQCOWToPVC copy the content of diskfile to PVC
+func RolloutQCOWToPVC(ctx context.Context, log *base.LogObject, exists bool, diskfile string, pvcName string, isAppImage bool) error {
 
 	//fetch CDI proxy url
 	// Get the Kubernetes clientset
@@ -203,7 +203,7 @@ func RolloutImgToPVC(ctx context.Context, log *base.LogObject, exists bool, disk
 				return errors.New(errStr)
 			}
 			time.Sleep(10 * time.Second)
-			log.Noticef("PRAMOD RolloutImgToPVC loop (%d), wait for 10 sec, err %v", i, err)
+			log.Noticef("PRAMOD RolloutQCOWToPVC loop (%d), wait for 10 sec, err %v", i, err)
 		} else {
 			break
 		}
@@ -213,7 +213,7 @@ func RolloutImgToPVC(ctx context.Context, log *base.LogObject, exists bool, disk
 	// Get the ClusterIP of the Service.
 	clusterIP := service.Spec.ClusterIP
 	uploadproxyURL := "https://" + clusterIP + ":443"
-	log.Noticef("PRAMOD RolloutImgToPVC diskfile %s pvc %s  URL %s", diskfile, pvcName, uploadproxyURL)
+	log.Noticef("PRAMOD RolloutQCOWToPVC diskfile %s pvc %s  URL %s", diskfile, pvcName, uploadproxyURL)
 	volSize, err := diskmetrics.GetDiskVirtualSize(log, diskfile)
 	if err != nil {
 		errStr := fmt.Sprintf("Failed to get virtual size of disk %s: %v", diskfile, err)
@@ -230,6 +230,14 @@ func RolloutImgToPVC(ctx context.Context, log *base.LogObject, exists bool, disk
 		volSize = actualVolSize
 	}
 
+	//TODO: Delete this later, just a overhead allocation to be sure
+	overhead := volSize / 10
+	if overhead < (10 * 1024 * 1024) {
+		overhead = 10 * 1024 * 1024
+	}
+
+	volSize = volSize + overhead
+
 	// virtctl image-upload -n eve-kube-app pvc a1030350-bd03-4b79-ac1c-4d8564d0e4b0-pvc-0   --no-create --storage-class longhorn --image-path=/persist/vault/containerd/io.containerd.content.v1.content/blobs/sha256/
 	// 84ed078f3f0e1671d591d15409883a24bd30763eb10a9dec01a2fb38cf06cf6d --insecure --uploadproxy-url https://10.43.31.180:8443
 	// Write API to get proxy url
@@ -237,11 +245,15 @@ func RolloutImgToPVC(ctx context.Context, log *base.LogObject, exists bool, disk
 	args := []string{"image-upload", "-n", "eve-kube-app", "pvc", pvcName, "--storage-class", "longhorn", "--image-path", diskfile, "--insecure", "--uploadproxy-url", uploadproxyURL, "--kubeconfig", kubeConfigFile}
 
 	// We create PVC of filesystem mode if its appimage volume. longhorn PVC FS mode does not support ReadWriteMany mode.
-	if isAppImage {
-		args = append(args, "--access-mode", "ReadWriteOnce")
-	} else {
-		args = append(args, "--access-mode", "ReadWriteMany", "--block-volume")
-	}
+	/*
+		if isAppImage {
+			args = append(args, "--access-mode", "ReadWriteOnce")
+		} else {
+			args = append(args, "--access-mode", "ReadWriteMany", "--block-volume")
+		}
+	*/
+
+	args = append(args, "--access-mode", "ReadWriteMany", "--block-volume")
 	//args := fmt.Sprintf("image-upload -n eve-kube-app pvc %s --no-create --storage-class longhorn --image-path=%s --insecure --uploadproxy-url %s", outputFile, diskfile, uploadproxyURL)
 
 	// If PVC already exists just copy out the data, else virtctl will create the PVC before data copy
@@ -251,14 +263,22 @@ func RolloutImgToPVC(ctx context.Context, log *base.LogObject, exists bool, disk
 		// Add size
 		args = append(args, "--size", fmt.Sprint(volSize))
 	}
-	time.Sleep(10 * time.Second)
+
 	log.Noticef("PRAMOD virtctl args %v", args)
 
 	output, err := base.Exec(log, "/containers/services/kube/rootfs/usr/bin/virtctl", args...).WithContext(ctx).WithUnlimitedTimeout(432000 * time.Second).CombinedOutput()
-	log.Noticef("RolloutImgToPVC: image-upload error %v", err)
-	log.Noticef("RolloutImgToPVC: image-upload output %s", output)
+
+	if err != nil {
+		errStr := fmt.Sprintf("RolloutQCOWToPVC: Failed to convert qcow to PVC  %s: %v", output, err)
+		return errors.New(errStr)
+	}
 	err = waitForPVCReady(ctx, log, pvcName)
-	log.Noticef("RolloutImgToPVC: wait for pvc %v", err)
+
+	if err != nil {
+		errStr := fmt.Sprintf("RolloutQCOWToPVC: error wait for PVC %v", err)
+		return errors.New(errStr)
+	}
+
 	return nil
 }
 

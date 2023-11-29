@@ -13,8 +13,12 @@ import (
 
 	"github.com/lf-edge/edge-containers/pkg/registry"
 	zconfig "github.com/lf-edge/eve-api/go/config"
+	//"github.com/lf-edge/eve/pkg/pillar/cas"
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/kubeapi"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	//utils "github.com/lf-edge/eve/pkg/pillar/utils/file"
+	//"github.com/lf-edge/eve/pkg/pillar/containerd"
 	kerr "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/client-go/rest"
 )
@@ -114,18 +118,80 @@ func (handler *volumeHandlerCSI) CreateVolume() (string, error) {
 	// Reference Name is set for downloaded volumes. virtctl in RolloutImgToPVC can create PVC if not exists
 	// so we need not explicitly create the PVC here.
 	if handler.status.ReferenceName != "" {
-		pathToFile, err := handler.getVolumeFilePath()
-		if err != nil {
-			errStr := fmt.Sprintf("Error obtaining file for PVC at volume %s, error=%v",
-				pvcName, err)
-			handler.log.Error(errStr)
-			return "", errors.New(errStr)
-		}
-		if err := kubeapi.RolloutImgToPVC(createContext, handler.log, false, pathToFile, pvcName, handler.status.IsAppImage); err != nil {
-			errStr := fmt.Sprintf("Error converting %s to PVC %s: %v",
-				pathToFile, pvcName, err)
-			handler.log.Error(errStr)
-			return pvcName, errors.New(errStr)
+
+		// If this is an image in container format, then convert it to qcow2
+		// Some app images are already in qcow2 format, then just proceed to next step
+		// Downloaded volumes are almost always in qcow2 format
+		if handler.status.IsContainer() {
+
+			// This is a multistep process.
+			// 1) Use container volume handler to Prepare a contianerimage rootdir
+			// 2) Call AddLoader to write down the bootloader files into rootdir for eve initrd
+			// 3) Create a blank qcow2 file of size pvcsize.
+			// 4) Mount the qcow2 as a nbd blockdevice and mount the ext4 filesystem on that.
+			// 5) Copy the contents of rootdir onto qcow2 file.
+			// NOTE: This qcow2 will be converted to PVC in later steps.
+			// For container images we convert to qcow2 file under /persist/vault/volumes/pvcName.qcow2
+
+			/* _, err := handler.getVolumeFilePath()
+			if err != nil {
+				errStr := fmt.Sprintf("Error obtaining file for PVC at volume %s, error=%v",
+					pvcName, err)
+				handler.log.Error(errStr)
+				return "", errors.New(errStr)
+			} */
+			qcowFile := "/persist/vault/volumes/" + pvcName + ".qcow2"
+
+			chandler := &volumeHandlerContainer{handler.commonVolumeHandler}
+
+			// This lays out container rootfs directory and creates all bootloader files for kubevirt eve.
+			imgDirLocation, err := chandler.CreateVolume()
+
+			handler.log.Noticef("After CreateVolume fileloc %s err %v", imgDirLocation, err)
+
+			if err != nil {
+				errStr := fmt.Sprintf("Error CreateVolume %s err: %v",
+					imgDirLocation, err)
+				handler.log.Error(errStr)
+				return "", errors.New(errStr)
+			}
+
+			err = handler.CopyImgDirToQCOW(createContext, handler.log, imgDirLocation, qcowFile)
+			if err != nil {
+				errStr := fmt.Sprintf("Error copying container image to qcow2 %s err: %v",
+					imgDirLocation, err)
+				handler.log.Error(errStr)
+				return "", errors.New(errStr)
+			}
+
+			// Convert qcow2 to PVC
+			err = kubeapi.RolloutQCOWToPVC(createContext, handler.log, false, qcowFile, pvcName, handler.status.IsAppImage)
+
+			// For container we created qcow2 so delete it to save space.
+
+			if err != nil {
+				errStr := fmt.Sprintf("Error converting %s to PVC %s: %v",
+					qcowFile, pvcName, err)
+				handler.log.Error(errStr)
+				return pvcName, errors.New(errStr)
+			}
+		} else {
+			qcowFile, err := handler.getVolumeFilePath()
+			if err != nil {
+				errStr := fmt.Sprintf("Error obtaining file for PVC at volume %s, error=%v",
+					pvcName, err)
+				handler.log.Error(errStr)
+				return "", errors.New(errStr)
+			}
+			// Convert qcow2 to PVC
+			err = kubeapi.RolloutQCOWToPVC(createContext, handler.log, false, qcowFile, pvcName, handler.status.IsAppImage)
+
+			if err != nil {
+				errStr := fmt.Sprintf("Error converting %s to PVC %s: %v",
+					qcowFile, pvcName, err)
+				handler.log.Error(errStr)
+				return pvcName, errors.New(errStr)
+			}
 		}
 	} else {
 		err := kubeapi.CreatePVC(pvcName, pvcSize)
@@ -205,6 +271,23 @@ func (handler *volumeHandlerCSI) getVolumeFilePath() (string, error) {
 		return "", errors.New(errStr)
 	}
 	return pathToFile, nil
+}
+
+// Creates a dest qcow2 file of given size and copies the srcLocation onto dest qcow2 file
+func (handler *volumeHandlerCSI) CopyImgDirToQCOW(ctx context.Context, log *base.LogObject, srcLocation string, destFile string) error {
+
+	args := []string{srcLocation, destFile}
+
+	log.Noticef("PRAMOD create-qcow.sh args %v", args)
+
+	output, err := base.Exec(log, "/opt/zededa/bin/create-qcow.sh", args...).WithContext(ctx).WithUnlimitedTimeout(432000 * time.Second).CombinedOutput()
+
+	if err != nil {
+		errStr := fmt.Sprintf("RolloutQCOWToPVC: Failed to create qcow file  %s: %v", output, err)
+		return errors.New(errStr)
+	}
+
+	return nil
 }
 
 func (handler *volumeHandlerCSI) CreateSnapshot() (interface{}, time.Time, error) {

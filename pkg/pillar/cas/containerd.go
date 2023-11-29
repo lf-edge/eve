@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 
@@ -709,8 +710,9 @@ func (c *containerdCAS) PrepareContainerRootDir(rootPath, reference, rootBlobSha
 	cmd := clientImageSpec.Config.Cmd
 	workdir := clientImageSpec.Config.WorkingDir
 	unProcessedEnv := clientImageSpec.Config.Env
-	logrus.Infof("PrepareContainerRootDir: mountPoints %+v execpath %+v cmd %+v workdir %+v env %+v",
-		mountpoints, execpath, cmd, workdir, unProcessedEnv)
+	user := clientImageSpec.Config.User
+	logrus.Infof("PrepareContainerRootDir: mountPoints %+v execpath %+v cmd %+v workdir %+v env %+v user %+v",
+		mountpoints, execpath, cmd, workdir, unProcessedEnv, user)
 	clientImageSpecJSON, err := getJSON(clientImageSpec)
 	if err != nil {
 		err = fmt.Errorf("PrepareContainerRootDir: Could not build json of image: %v. %v",
@@ -729,6 +731,84 @@ func (c *containerdCAS) PrepareContainerRootDir(rootPath, reference, rootBlobSha
 			rootPath, imageConfigFilename, err)
 		logrus.Errorf(err.Error())
 		return err
+	}
+
+	// On kubevirt eve we also write the mountpoints and cmdline files to the rootPath.
+	// Once rootPath is populated with all necessary files, this rootPath directory will be
+	// converted to a PVC and passed in to domainmgr to attach to VM as rootdisk
+	// NOTE: For kvm eve these files are generated and passed to bootloader in pkg/pillar/containerd/oci.go:AddLoader()
+	if base.IsHVTypeKube() {
+
+		// Mount the snapshot
+		if err := c.MountSnapshot(snapshotID, GetRoofFsPath(rootPath)); err != nil {
+			return fmt.Errorf("PrepareContainerRootDir error mount of snapshot: %s. %s", snapshotID, err)
+		}
+
+		for m := range mountpoints {
+
+			b := []byte(fmt.Sprintf("%+v\n", m))
+			if err := os.WriteFile(filepath.Join(rootPath, "mountPoints"), b, 0666); err != nil {
+				err = fmt.Errorf("PrepareContainerRootDir: Exception while writing mountpoints to %v %v",
+					rootPath, err)
+				logrus.Errorf(err.Error())
+				return err
+			}
+		}
+
+		// create env manifest
+		envContent := ""
+		if workdir != "" {
+			envContent = fmt.Sprintf("export WORKDIR=\"%s\"\n", workdir)
+		} else {
+			envContent = fmt.Sprintf("export WORKDIR=/\n")
+		}
+		for _, e := range unProcessedEnv {
+			keyAndValueSlice := strings.SplitN(e, "=", 2)
+			if len(keyAndValueSlice) == 2 {
+				//handles Key=Value case
+				envContent = envContent + fmt.Sprintf("export %s=\"%s\"\n", keyAndValueSlice[0], keyAndValueSlice[1])
+			} else {
+				//handles Key= case
+				envContent = envContent + fmt.Sprintf("export %s\n", e)
+			}
+		}
+		if err := os.WriteFile(filepath.Join(rootPath, "environment"), []byte(envContent), 0644); err != nil {
+			return err
+		}
+
+		// create cmdline manifest
+		// each item needs to be independently quoted for initrd
+		execpathQuoted := make([]string, 0)
+
+		// This loop is just to pick the execpath and eliminate any square braces around it.
+		// Just pick /entrypoint.sh from [/entrypoint.sh]
+		for _, c := range execpath {
+			execpathQuoted = append(execpathQuoted, fmt.Sprintf("\"%s\"", c))
+		}
+		for _, s := range cmd {
+			execpathQuoted = append(execpathQuoted, fmt.Sprintf("\"%s\"", s))
+		}
+		command := strings.Join(execpathQuoted, " ")
+		if err := os.WriteFile(filepath.Join(rootPath, "cmdline"),
+			[]byte(command), 0644); err != nil {
+			return err
+		}
+
+		// Userid and GID are same
+		ug := fmt.Sprintf("%d %d", 0, 0)
+		if user != "" {
+			uid, _ := strconv.Atoi(user)
+			ug = fmt.Sprintf("%d %d", uid, uid)
+		}
+		if err := os.WriteFile(filepath.Join(rootPath, "ug"),
+			[]byte(ug), 0644); err != nil {
+			return err
+		}
+
+		if err := os.MkdirAll(filepath.Join(rootPath, "modules"), 0600); err != nil {
+			return err
+		}
+
 	}
 	return nil
 }

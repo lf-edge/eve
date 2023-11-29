@@ -124,7 +124,7 @@ ENV BUILD_PKGS patch
 ENV PKGS alpine-baselayout musl-utils libtasn1-progs pciutils yajl xz bash iptables ip6tables iproute2 dhcpcd \
     coreutils dmidecode libbz2 libuuid ipset curl radvd ethtool util-linux e2fsprogs libcrypto1.1 xorriso \
     qemu-img jq e2fsprogs-extra keyutils ca-certificates ip6tables-openrc iptables-openrc ipset-openrc hdparm \
-    libintl libtirpc libblkid zlib
+    libintl libtirpc libblkid zlib rsync
 RUN eve-alpine-deploy.sh
 
 SHELL ["/bin/ash", "-eo", "pipefail", "-c"]
@@ -154,6 +154,7 @@ ADD scripts/device-steps.sh \
     scripts/handlezedserverconfig.sh \
     scripts/veth.sh \
     scripts/dhcpcd.sh \
+    scripts/create-qcow.sh \
   /out/opt/zededa/bin/
 ADD conf/lisp.config.base /out/var/tmp/zededa/lisp.config.base
 

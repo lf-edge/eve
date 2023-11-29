@@ -4,8 +4,14 @@
 # and in /mnt/mountPoints file (where mount points defined)
 
 mountPointLineNo=1
+rootdisk=`cat /proc/cmdline  | grep -o '\broot=[^ ]*' | cut -d = -f 2 | cut -d "/" -f3`
+
 find /sys/block/ -maxdepth 1 -regex '.*[sv]d.*' -exec basename '{}' ';'| sort | while read -r disk ; do
   echo "Processing $disk"
+  if [ "$rootdisk" = "$disk" ]; then
+    echo "Ignoring the rootdisk $rootdisk"
+    continue
+  fi
   targetDir=$(sed "${mountPointLineNo}q;d" /mnt/mountPoints)
   if [ -z "$targetDir" ]
     then

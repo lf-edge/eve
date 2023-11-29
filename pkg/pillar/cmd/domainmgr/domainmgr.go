@@ -1484,13 +1484,17 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 		case zconfig.Format_FmtUnknown:
 			// do nothing
 		case zconfig.Format_CONTAINER:
-			snapshotID := containerd.GetSnapshotID(ds.FileLocation)
-			if err := ctx.casClient.MountSnapshot(snapshotID, cas.GetRoofFsPath(ds.FileLocation)); err != nil {
-				err := fmt.Errorf("doActivate: Failed mount snapshot: %s for %s. Error %s",
-					snapshotID, config.UUIDandVersion.UUID, err)
-				log.Error(err.Error())
-				status.SetErrorNow(err.Error())
-				return
+			// In Kubevirt eve container image is converted to PVC in volumemgr, there is nothing to mount here.
+			if !ctx.hvTypeKube {
+
+				snapshotID := containerd.GetSnapshotID(ds.FileLocation)
+				if err := ctx.casClient.MountSnapshot(snapshotID, cas.GetRoofFsPath(ds.FileLocation)); err != nil {
+					err := fmt.Errorf("doActivate: Failed mount snapshot: %s for %s. Error %s",
+						snapshotID, config.UUIDandVersion.UUID, err)
+					log.Error(err.Error())
+					status.SetErrorNow(err.Error())
+					return
+				}
 			}
 		default:
 			// assume everything else to be disk formats
@@ -1895,7 +1899,10 @@ func configToStatus(ctx *domainContext, config types.DomainConfig,
 				status.OCIConfigDir = ds.FileLocation
 			}
 			ds.Devtype = ""
-			need9P = true
+			// We don't mount 9P in kubevirt eve, all devices are PVC and mounted as block devices
+			if !ctx.hvTypeKube {
+				need9P = true
+			}
 		} else {
 			ds.Devtype = "hdd"
 			if dc.Format == zconfig.Format_ISO {
