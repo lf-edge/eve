@@ -299,6 +299,7 @@ print_usb_devices() {
 
     for i in $(find /sys/devices/ -name uevent | grep -E '/usb[0-9]/' | grep -E '/[0-9]-[0-9](\.[0-9]+)?/uevent')
     do
+        local labelprefix="USB"
         local ztype="IO_TYPE_UNSPECIFIED"
         local ignore_dev=0
         local devicepath
@@ -325,6 +326,7 @@ print_usb_devices() {
             assigngrp="modem${busAndPort}"
             assigngrp=$(get_assignmentgroup "${ifname}" "${pciaddr}")
             ztype="IO_TYPE_WWAN"
+            labelprefix="WWAN"
         fi
 
         local pciaddr
@@ -339,7 +341,7 @@ print_usb_devices() {
         idVendor=$(cat "${devicepath}/idVendor")
         idProduct=$(cat "${devicepath}/idProduct")
         local usbproduct="${idVendor}:${idProduct}"
-        label="USB-${idVendor}:${idProduct}-${busAndPort}"
+        label="${labelprefix}-${usbproduct}-${usbaddr}"
 
         type=$(grep -Eo '^TYPE=[0-9]+/' "$i"| grep -Eo '[0-9]+')
         # ignore USB hubs
