@@ -1296,11 +1296,12 @@ func parseDeviceIoListConfig(getconfigCtx *getconfigContext,
 			continue
 		}
 		port := types.PhysicalIOAdapter{
-			Ptype:        ioDevicePtr.Ptype,
-			Phylabel:     ioDevicePtr.Phylabel,
-			Logicallabel: ioDevicePtr.Logicallabel,
-			Assigngrp:    ioDevicePtr.Assigngrp,
-			Usage:        ioDevicePtr.Usage,
+			Ptype:           ioDevicePtr.Ptype,
+			Phylabel:        ioDevicePtr.Phylabel,
+			Logicallabel:    ioDevicePtr.Logicallabel,
+			Assigngrp:       ioDevicePtr.Assigngrp,
+			Parentassigngrp: ioDevicePtr.Parentassigngrp,
+			Usage:           ioDevicePtr.Usage,
 		}
 		if ioDevicePtr.UsagePolicy != nil {
 			// Need to keep this to make proper determination

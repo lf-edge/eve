@@ -608,6 +608,94 @@ func FuzzCheckBadUSBBundles(f *testing.F) {
 	})
 }
 
+func TestCheckBadParentAssigngrp(t *testing.T) {
+	t.Parallel()
+	aa := AssignableAdapters{}
+
+	aa.IoBundleList = []IoBundle{
+		{
+			Phylabel:              "1",
+			AssignmentGroup:       "BBB",
+			ParentAssignmentGroup: "AAA",
+		},
+		{
+			Phylabel:              "2",
+			AssignmentGroup:       "BBB",
+			ParentAssignmentGroup: "ZZZ",
+		},
+	}
+
+	aa.CheckParentAssigngrp()
+
+	errorSet := false
+	for _, ioBundle := range aa.IoBundleList {
+		if ioBundle.Error == "IOBundle with parentassigngrp mismatch found" {
+			errorSet = true
+			break
+		}
+	}
+
+	if !errorSet {
+		t.Fatal("wrong error message")
+	}
+}
+
+func TestCheckBadParentAssigngrpLoop(t *testing.T) {
+	t.Parallel()
+	aa := AssignableAdapters{}
+
+	aa.IoBundleList = []IoBundle{
+		{
+			Phylabel:              "1",
+			AssignmentGroup:       "BBB",
+			ParentAssignmentGroup: "AAA",
+		},
+		{
+			Phylabel:              "2",
+			AssignmentGroup:       "AAA",
+			ParentAssignmentGroup: "AAA",
+		},
+	}
+
+	aa.CheckParentAssigngrp()
+
+	for _, ioBundle := range aa.IoBundleList {
+		if ioBundle.Phylabel == "2" {
+			if ioBundle.Error != "IOBundle cannot be it's own parent" {
+				t.Fatal("wrong error message")
+			}
+		}
+	}
+
+	aa.IoBundleList = []IoBundle{
+		{
+			Phylabel:              "1",
+			AssignmentGroup:       "BBB",
+			ParentAssignmentGroup: "AAA",
+		},
+		{
+			Phylabel:              "2",
+			AssignmentGroup:       "AAA",
+			ParentAssignmentGroup: "BBB",
+		},
+	}
+
+	aa.CheckParentAssigngrp()
+
+	errorSet := false
+	for _, ioBundle := range aa.IoBundleList {
+		if ioBundle.Error == "Cycle detected, please check provided parentassigngrp/assigngrp" {
+			errorSet = true
+			break
+		}
+
+	}
+	if !errorSet {
+		t.Fatal("wrong error message")
+	}
+
+}
+
 func TestCheckBadUSBBundles(t *testing.T) {
 	t.Parallel()
 	aa := AssignableAdapters{}
