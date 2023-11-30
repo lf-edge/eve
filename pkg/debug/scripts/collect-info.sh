@@ -5,7 +5,7 @@
 #
 
 # Script version, don't forget to bump up once something is changed
-VERSION=11
+VERSION=12
 
 # Add required packages here, it will be passed to "apk add".
 # Once something added here don't forget to add the same package
@@ -232,19 +232,20 @@ chroot /hostfs lsusb -vvv -t > "$DIR/lsusb-vvv-t"
     ls -l /sys/class/net/
 } > "$DIR/sys-fs-usb"
 
-dmesg         > "$DIR/dmesg"
+dmesg            > "$DIR/dmesg"
 ps -xao uid,pid,ppid,vsz,rss,c,pcpu,pmem,stime,tname,stat,time,cmd \
-              > "$DIR/ps-xao"
-lspci -vvv    > "$DIR/lspci-vvv"
-lspci -vvv -t > "$DIR/lspci-vvv-t"
-lsblk -a      > "$DIR/lsblk-a"
-lshw          > "$DIR/lshw"
-lsof          > "$DIR/lsof"
-lsmod         > "$DIR/lsmod"
-logread       > "$DIR/logread"
-dmidecode     > "$DIR/dmidecode"
-ls -lRa /dev  > "$DIR/ls-lRa-dev"
-free          > "$DIR/free"
+                 > "$DIR/ps-xao"
+lspci -vvv       > "$DIR/lspci-vvv"
+lspci -vvv -t    > "$DIR/lspci-vvv-t"
+lsblk -a         > "$DIR/lsblk-a"
+lshw             > "$DIR/lshw"
+lsof             > "$DIR/lsof"
+lsmod            > "$DIR/lsmod"
+logread          > "$DIR/logread"
+dmidecode        > "$DIR/dmidecode"
+ls -lRa /dev     > "$DIR/ls-lRa-dev"
+ls -lRa /persist > "$DIR/ls-lRa-persist"
+free             > "$DIR/free"
 
 echo "- vmallocinfo, slabinfo, meminfo, zoneinfo, mounts, vmstat, cpuinfo, iomem"
 cat /proc/vmallocinfo > "$DIR/vmallocinfo"
