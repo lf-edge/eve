@@ -193,6 +193,10 @@ func (pes *PatchEnvelopes) unpublishPatchEnvelopeInfo(peInfo *types.PatchEnvelop
 func (pes *PatchEnvelopes) Get(appUUID string) types.PatchEnvelopeInfoList {
 	var res []types.PatchEnvelopeInfo
 	pes.currentState.Range(func(patchEnvelopeUUID uuid.UUID, envelope types.PatchEnvelopeInfo) bool {
+		// We don't want to expose patch envelopes which are not activated to app instance
+		if envelope.State != types.PatchEnvelopeStateActive {
+			return true
+		}
 		for _, allowedUUID := range envelope.AllowedApps {
 			if allowedUUID == appUUID {
 				res = append(res, envelope)
