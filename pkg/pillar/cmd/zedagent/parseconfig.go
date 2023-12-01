@@ -413,6 +413,31 @@ func parseDnsNameToIpList(
 	config.DnsNameToIPList = nameToIPs
 }
 
+func parseStaticRoute(route *zconfig.IPRoute, config *types.NetworkInstanceConfig) error {
+	if route.DestinationNetwork == "" {
+		return errors.New("missing destination network address")
+	}
+	_, dstNetwork, err := net.ParseCIDR(route.DestinationNetwork)
+	if err != nil {
+		return fmt.Errorf("destination network is invalid: %w", err)
+	}
+	if route.Gateway == "" {
+		return errors.New("missing gateway IP address")
+	}
+	gatewayIP := net.ParseIP(route.Gateway)
+	if gatewayIP == nil {
+		return errors.New("gateway IP address is invalid")
+	}
+	if gatewayIP.IsUnspecified() {
+		return errors.New("gateway IP address is all-zeroes")
+	}
+	config.StaticRoutes = append(config.StaticRoutes, types.IPRoute{
+		DstNetwork: dstNetwork,
+		Gateway:    gatewayIP,
+	})
+	return nil
+}
+
 func publishNetworkInstanceConfig(ctx *getconfigContext,
 	networkInstances []*zconfig.NetworkInstanceConfig) {
 
@@ -434,10 +459,11 @@ func publishNetworkInstanceConfig(ctx *getconfigContext,
 			continue
 		}
 		networkInstanceConfig := types.NetworkInstanceConfig{
-			UUIDandVersion: types.UUIDandVersion{UUID: id, Version: version},
-			DisplayName:    apiConfigEntry.Displayname,
-			Type:           types.NetworkInstanceType(apiConfigEntry.InstType),
-			Activate:       apiConfigEntry.Activate,
+			UUIDandVersion:      types.UUIDandVersion{UUID: id, Version: version},
+			DisplayName:         apiConfigEntry.Displayname,
+			Type:                types.NetworkInstanceType(apiConfigEntry.InstType),
+			Activate:            apiConfigEntry.Activate,
+			PropagateConnRoutes: apiConfigEntry.PropagateConnectedRoutes,
 		}
 		log.Functionf("publishNetworkInstanceConfig: processing %s %s type %d activate %v",
 			networkInstanceConfig.UUID.String(), networkInstanceConfig.DisplayName,
@@ -460,8 +486,6 @@ func publishNetworkInstanceConfig(ctx *getconfigContext,
 				// Let's relax the requirement until cloud side update the right IpType
 				networkInstanceConfig.IpType = types.AddressTypeNone
 			}
-			ctx.pubNetworkInstanceConfig.Publish(networkInstanceConfig.UUID.String(),
-				networkInstanceConfig)
 		}
 
 		// other than switch-type(l2)
@@ -475,9 +499,18 @@ func publishNetworkInstanceConfig(ctx *getconfigContext,
 				networkInstanceConfig.SetErrorNow(errStr)
 				// Proceed to send error back to controller
 			}
-
 			parseDnsNameToIpList(apiConfigEntry,
 				&networkInstanceConfig)
+			for _, route := range apiConfigEntry.StaticRoutes {
+				err := parseStaticRoute(route, &networkInstanceConfig)
+				if err != nil {
+					err = fmt.Errorf("network Instance %s IP route %v parsing failed: %w",
+						networkInstanceConfig.Key(), route, err)
+					log.Error(err)
+					networkInstanceConfig.SetErrorNow(err.Error())
+					// Proceed to send error back to controller
+				}
+			}
 		}
 
 		ctx.pubNetworkInstanceConfig.Publish(networkInstanceConfig.UUID.String(),
