@@ -81,10 +81,6 @@ func downloadBlob(ctx *volumemgrContext, blob *types.BlobStatus) bool {
 		}
 		changed = true
 	}
-	if ds.Pending() {
-		log.Tracef("lookupDownloaderStatus Pending for blob %s", blob.Sha256)
-		return changed
-	}
 	if ds.HasError() {
 		log.Errorf("Received error from downloader for blob %s: %s",
 			blob.Sha256, ds.Error)

@@ -21,7 +21,7 @@ const (
 type usbAction uint8
 
 func (ud usbdevice) String() string {
-	return fmt.Sprintf("busnum: %s devnum: %s product: %s/%s parentPCIAddress: %s ueventFilePath: %s", ud.busnumString(), ud.devnumString(), ud.vendorIDString(), ud.productIDString(), ud.usbControllerPCIAddress, ud.ueventFilePath)
+	return fmt.Sprintf("busnum: %s portnum: %s product: %s/%s parentPCIAddress: %s ueventFilePath: %s", ud.busnumString(), ud.portnumString(), ud.vendorIDString(), ud.productIDString(), ud.usbControllerPCIAddress, ud.ueventFilePath)
 }
 
 func (ud usbdevice) vendorIDString() string {
@@ -36,16 +36,16 @@ func (ud usbdevice) vendorAndproductIDString() string {
 	return fmt.Sprintf("%s:%s", ud.vendorIDString(), ud.productIDString())
 }
 
-func (ud usbdevice) busnumAndDevnumString() string {
-	return fmt.Sprintf("%s:%s", ud.busnumString(), ud.devnumString())
+func (ud usbdevice) busnumAndPortnumString() string {
+	return fmt.Sprintf("%s:%s", ud.busnumString(), ud.portnumString())
 }
 
 func (ud usbdevice) busnumString() string {
 	return fmt.Sprintf("%03x", ud.busnum)
 }
 
-func (ud usbdevice) devnumString() string {
-	return fmt.Sprintf("%03x", ud.devnum)
+func (ud usbdevice) portnumString() string {
+	return fmt.Sprintf("%s", ud.portnum)
 }
 
 func (ud usbdevice) qemuDeviceName() string {

@@ -130,7 +130,7 @@ type usbPortPassthroughRule struct {
 }
 
 func (uppr *usbPortPassthroughRule) String() string {
-	return fmt.Sprintf("USB Port Passthrough Rule %s on pci %s", uppr.ud.busnumAndDevnumString(), uppr.ud.usbControllerPCIAddress)
+	return fmt.Sprintf("USB Port Passthrough Rule %s on pci %s", uppr.ud.busnumAndPortnumString(), uppr.ud.usbControllerPCIAddress)
 }
 
 func (uppr *usbPortPassthroughRule) priority() uint8 {

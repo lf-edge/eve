@@ -492,6 +492,7 @@ dmidecode > "$REPORT/hardwaremodel.txt"
 # try to generate model json file
 ctr_run /opt/debug spec.sh > "$REPORT/controller-model.json"
 ctr_run /opt/debug spec.sh -v > "$REPORT/controller-model-verbose.json"
+ctr_run /opt/debug spec.sh -u > "$REPORT/controller-model-usb.json"
 
 # Save to help figure out if RTC is not in UTC
 (hwclock -v -u; date -Is -u ) > "$REPORT/clock"

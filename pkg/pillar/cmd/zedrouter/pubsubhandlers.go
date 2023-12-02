@@ -7,6 +7,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/utils/generics"
 )
 
 func (z *zedrouter) handleRestart(ctxArg interface{}, restartCounter int) {
@@ -631,9 +632,24 @@ func (z *zedrouter) handleAppInstDelete(ctxArg interface{}, key string,
 }
 
 func (z *zedrouter) handlePatchEnvelopeImpl(peInfo types.PatchEnvelopeInfoList) {
+	before := z.patchEnvelopes.EnvelopesInUsage()
 	z.patchEnvelopes.UpdateEnvelopes(peInfo.Envelopes)
-
 	z.triggerPEUpdate()
+
+	// Delete stale files
+	var after []string
+	for _, pe := range peInfo.Envelopes {
+		peUsages := types.PatchEnvelopeUsageFromInfo(pe)
+		for _, usage := range peUsages {
+			after = append(after, usage.Key())
+		}
+	}
+
+	toDelete, _ := generics.DiffSets(before, after)
+	for _, uuid := range toDelete {
+		z.patchEnvelopesUsage.Delete(uuid)
+		z.peUsagePersist.Delete(uuid)
+	}
 }
 
 func (z *zedrouter) handlePatchEnvelopeCreate(ctxArg interface{}, key string,

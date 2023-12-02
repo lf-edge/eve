@@ -333,6 +333,20 @@ func (pes *PatchEnvelopes) affectedByContentTree(ct types.ContentTreeStatus) {
 	}
 }
 
+// EnvelopesInUsage returns list of currently patch envelopes currently attached to
+// app instances
+func (pes *PatchEnvelopes) EnvelopesInUsage() []string {
+	var result []string
+	pes.envelopes.Range(func(_ uuid.UUID, peInfo types.PatchEnvelopeInfo) bool {
+		peUsages := types.PatchEnvelopeUsageFromInfo(peInfo)
+		for _, usage := range peUsages {
+			result = append(result, usage.Key())
+		}
+		return true
+	})
+	return result
+}
+
 // PatchEnvelopeInfo contains fields that we don't want to expose to app instance (like AllowedApps), so we use
 // peInfoToDisplay and patchEnvelopesJSONFOrAppInstance to marshal PatchEnvelopeInfoList in a format, which is
 // suitable for app instance.

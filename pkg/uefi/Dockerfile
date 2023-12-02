@@ -24,7 +24,7 @@ FROM build AS build-arm64-versions
 ENV EDK_VERSION edk2-stable202208
 ENV EDK_COMMIT ba0e0e4c6a174b71b18ccd6e47319cc45878893c
 
-# FIXME: we should be building Raspbery Pi 4 UEFI implementations
+# FIXME: we should be building Raspberry Pi 4 UEFI implementations
 COPY rpi /rpi
 
 FROM build AS build-amd64-versions

@@ -121,10 +121,10 @@ docker version
 $ brew install git make jq qemu gnu-sed
 ```
 
-> **_NOTE:_** (M1 Macs) `qemu` may also require `python3 nettle ninja` to install properly, that is:
+> **_NOTE:_** (M1 Macs) `qemu` may also require `python3 nettle ninja gnu-tar` to install properly, that is:
 >
 > ```sh
-> $ brew install git make jq python3 nettle ninja qemu gnu-sed
+> $ brew install git make jq python3 nettle ninja qemu gnu-sed gnu-tar
 > ```
 
 ##### On Ubuntu Linux
@@ -243,7 +243,7 @@ from containerd - use that instead).
 Once in a container you can run the usual xl commands to start VMs and
 interact with Xen.
 
-#### Exitting
+#### Exiting
 
 To exit out of the QEMU environment, press `Ctrl-A + C` to reach the QEMU console, then `q` to quit.
 
@@ -271,7 +271,7 @@ make run CONF_PART=/path/to/partition
 
 Note that the directory must exist to be mounted; if not, it will be ignored. The most common use case is a config directory output on the run of [adam](https://github.com/zededa/adam).
 
-While running everything on your laptop with QEMU could be fun, nothing beats real hardware. The most cost-effective option, not surprisingly, is ARM. We recommend two popular board [HiKey](http://www.lenovator.com/product/90.html) and [Raspberry Pi 4](https://www.raspberrypi.org/products/raspberry-pi-4-model-b/). The biggest difference between the two is that on Raspberry Pi (since it doesn't have any built-in flash storage) you won't be able to utlize EVE's installer and you'll have to build a live image. With HiKey you can use a standard EVE's installer. The steps to do both are outlined below:
+While running everything on your laptop with QEMU could be fun, nothing beats real hardware. The most cost-effective option, not surprisingly, is ARM. We recommend two popular board [HiKey](http://www.lenovator.com/product/90.html) and [Raspberry Pi 4](https://www.raspberrypi.org/products/raspberry-pi-4-model-b/). The biggest difference between the two is that on Raspberry Pi (since it doesn't have any built-in flash storage) you won't be able to utilize EVE's installer and you'll have to build a live image. With HiKey you can use a standard EVE's installer. The steps to do both are outlined below:
 
 ## How to use on a Raspberry Pi 4 ARM board
 
@@ -515,7 +515,7 @@ You may be wondering why do we have a container-based architecture for a Xen-cen
 1. Set up the filesystem root using [containerd](https://containerd.io)
 1. Launch the domU using Xen via `xl`
 
-In addition to that, while we plan to build a fully disagregated system (with even device drivers running in their separate domains) right now we are just getting started and having containers as a first step towards full disagreagation seems like a very convenient stepping stone.
+In addition to that, while we plan to build a fully disaggregated system (with even device drivers running in their separate domains) right now we are just getting started and having containers as a first step towards full disaggregation seems like a very convenient stepping stone.
 
 Let us know what you think by filing GitHub [issues](https://github.com/lf-edge/eve/issues/new/choose), and feel free to send us pull requests if something doesn't quite work.
 

@@ -180,6 +180,18 @@ else
   #shellcheck disable=SC2086
   eval /chroot2 /mnt/rootfs "${WORKDIR:-/}" $ug $pid_file $cmd <> /dev/console 2>&1
 fi
+chroot_ret=$?
 
-# once the command exits -- the only thing left is shut everything down
+# Container exited, final lines
+
+if test "$EVE_CONTAINER_NO_POWEROFF" = "1"; then
+  # Don't power off, wait for further debugging
+  echo "chroot2 exited with $chroot_ret, the init-initrd idles, please attach to the 'prime-cons' console of the hosting Vm for further debugging"
+  sleep infinity
+else
+  # Power off is the default behavior
+  echo "chroot2 exited with $chroot_ret, the init-initrd is about to quit by calling /sbin/poweroff, which shuts the whole VM down"
+fi
+
+# Do poweroff to avoid kernel panic on init exit
 /sbin/poweroff

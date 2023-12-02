@@ -10,7 +10,7 @@ the following firmware implementations:
 * generic [UEFI firmware](https://en.wikipedia.org/wiki/Unified_Extensible_Firmware_Interface) on both x86 and ARM
 * legacy [PC BIOS](https://en.wikipedia.org/wiki/BIOS) on x86 and in the virtualized environments with support for nested virtualization (such as on Google Compute Platform)
 * open source [Coreboot](https://en.wikipedia.org/wiki/Coreboot) via the legacy PC BIOS payload
-* board specific [u-boot](https://en.wikipedia.org/wiki/Das_U-Boot) firmware (such as on Raspbery Pi ARM platform)
+* board specific [u-boot](https://en.wikipedia.org/wiki/Das_U-Boot) firmware (such as on Raspberry Pi ARM platform)
 
 EVE has standardized on GRUB as a bootloader that has to run in all of the initial environments,
 although in the future we may provide direct, custom implementations that would be natively integrated
@@ -202,7 +202,7 @@ about how the first MBR partition needs to look like in order for Raspberry Pi t
 EVE to use hybrid MBR/GPT partitioning scheme and advertise the `EFI System` partition as the first MBR partition visible
 to Raspberry Pi (note that strictly speaking this goes against best practices of how protective MBR should looks like,
 since the recommendation is for the first MBR partition to always be of the type protective MBR). Fortunately, at least
-both UEFI and Raspbery Pi agree on the filesystem for the first partition: FAT.
+both UEFI and Raspberry Pi agree on the filesystem for the first partition: FAT.
 
 To put it all together, for Raspberry Pi we use `EFI System` AKA MBR #1 partition to store the following artifacts (in addition
 to EFI/BOOT folder):

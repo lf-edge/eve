@@ -5,17 +5,14 @@
 # 1. Build go provision binaries for arm64 and amd64
 # 2. Build on Linux as well on Mac
 
-ARCH         ?= amd64
-#ARCH        ?= arm64
-DISTDIR      := dist/$(ARCH)
+HOSTARCH      := $(subst aarch64,arm64,$(subst x86_64,amd64,$(shell uname -m)))
+ZARCH         ?= $(HOSTARCH)
+DISTDIR       := dist/$(ZARCH)
 BUILD_VERSION ?=
 
-DOCKER_ARGS=
-DOCKER_TAG=lfedge/eve-pillar:local
-ifneq ($(GOARCH),)
-DOCKER_ARGS:=--build-arg GOARCH=$(GOARCH)
-DOCKER_TAG:=$(DOCKER_TAG)-$(GOARCH)
-endif
+DOCKER_ARCH_ARGS:=--platform linux/$(ZARCH)
+DOCKER_ARGS:=$(DOCKER_ARCH_ARGS) --build-arg ZARCH=$(ZARCH)
+DOCKER_TAG:=lfedge/eve-pillar:local-$(ZARCH)
 
 APPS = zedbox
 APPS1 = $(notdir $(wildcard cmd/*))
@@ -55,7 +52,7 @@ endif
 $(APPS): $(DISTDIR)/$(APPS)
 $(DISTDIR)/$(APPS): $(DISTDIR)
 	@echo "Building $@"
-	GO111MODULE=on GOOS=linux go build -mod=vendor $(TAGS) $(GCFLAGS) $(LDFLAGS) -o $@ ./$(@F)
+	GO111MODULE=on GOOS=linux GOARCH=$(ZARCH) go build -mod=vendor $(TAGS) $(GCFLAGS) $(LDFLAGS) -o $@ ./$(@F)
 
 $(APPS1): $(DISTDIR)
 	@echo $@
@@ -65,14 +62,6 @@ $(APPS1): $(DISTDIR)
 shell:
 	make -C ../.. shell
 
-build-docker-$(APPS): $(DISTDIR)
-	docker build -f Dockerfile.in --target=build -t $(APPS)-builder .
-	# all of this goes away when we switch to full buildkit-based docker builds
-	docker container create --name $(APPS)-extract $(APPS)-builder
-	docker container cp $(APPS)-extract:/dist/$(APPS) $(DISTDIR)/$(APPS)
-	docker container rm -f $(APPS)-extract
-
-
 build-docker:
 	docker build $(DOCKER_ARGS) -t $(DOCKER_TAG) .
 
@@ -80,7 +69,7 @@ build-docker-dev:
 	docker build $(DOCKER_ARGS) -t $(DOCKER_TAG) . --target build
 
 enter-docker-dev: build-docker-dev
-	docker run -it --rm --entrypoint /bin/sh $(DOCKER_TAG)
+	docker run --platform linux/$(ZARCH) -it --rm --entrypoint /bin/sh $(DOCKER_TAG)
 
 build-docker-git:
 	git archive HEAD | docker build $(DOCKER_ARGS) -t $(DOCKER_TAG) -

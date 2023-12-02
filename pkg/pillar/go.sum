@@ -542,11 +542,8 @@ github.com/devigned/tab v0.1.1/go.mod h1:XG9mPq0dFghrYvoBF3xdRrJzSTX1b7IQrvaL9mz
 github.com/dgrijalva/jwt-go v0.0.0-20170104182250-a601269ab70c/go.mod h1:E3ru+11k8xSBh+hMPgOLZmtrrCbhqsmaPHjLKYnJCaQ=
 github.com/dgrijalva/jwt-go v3.2.0+incompatible/go.mod h1:E3ru+11k8xSBh+hMPgOLZmtrrCbhqsmaPHjLKYnJCaQ=
 github.com/dgryski/go-sip13 v0.0.0-20181026042036-e10d5fee7954/go.mod h1:vAd38F8PWV+bWy6jNmig1y/TA+kYO4g3RSRF0IAv0no=
-github.com/digitalocean/go-libvirt v0.0.0-20220804181439-8648fbde413e/go.mod h1:o129ljs6alsIQTc8d6eweihqpmmrbxZ2g1jhgjhPykI=
 github.com/digitalocean/go-libvirt v0.0.0-20221020193630-0d0212f5ead2 h1:FJag3yh6UY/geTlmDw577HCYqxpq+NBXPOHmA9NLq2M=
 github.com/digitalocean/go-libvirt v0.0.0-20221020193630-0d0212f5ead2/go.mod h1:yhKBkgJm/PWVHCFHLlFwqhIzS7FcutIYmS/fmzex5LQ=
-github.com/digitalocean/go-qemu v0.0.0-20220826173844-d5f5e3ceed89 h1:2/52ma1zkjfR9aIrAX1F9H24rpj+PkCDkAwhQgqVR/A=
-github.com/digitalocean/go-qemu v0.0.0-20220826173844-d5f5e3ceed89/go.mod h1:GUMRsCBc7W7BzUF0zizFJ7Pna929325F+v9hvnWD+pI=
 github.com/dimchansky/utfbom v1.1.0/go.mod h1:rO41eb7gLfo8SF1jd9F8HplJm1Fewwi4mQvIirEdv+8=
 github.com/dimchansky/utfbom v1.1.1/go.mod h1:SxdoEBH5qIqFocHMyGOXVAybYJdr71b1Q/j0mACtrfE=
 github.com/distribution/distribution/v3 v3.0.0-20210316161203-a01c71e2477e/go.mod h1:xpWTC2KnJMiDLkoawhsPQcXjvwATEBcbq0xevG2YR9M=
@@ -642,7 +639,6 @@ github.com/evanphx/json-patch v4.2.0+incompatible/go.mod h1:50XU6AFN0ol/bzJsmQLi
 github.com/evanphx/json-patch v4.9.0+incompatible/go.mod h1:50XU6AFN0ol/bzJsmQLiYLvXMP4fmwYFNcr97nuDLSk=
 github.com/evanphx/json-patch v4.11.0+incompatible/go.mod h1:50XU6AFN0ol/bzJsmQLiYLvXMP4fmwYFNcr97nuDLSk=
 github.com/evanphx/json-patch v4.12.0+incompatible/go.mod h1:50XU6AFN0ol/bzJsmQLiYLvXMP4fmwYFNcr97nuDLSk=
-github.com/fatih/camelcase v1.0.0/go.mod h1:yN2Sb0lFhZJUdVvtELVWefmrXpuZESvPmqwoZc+/fpc=
 github.com/fatih/color v1.7.0/go.mod h1:Zm6kSWBoL9eyXnKyktHP6abPY2pDugNf5KwzbycvMj4=
 github.com/fatih/color v1.9.0/go.mod h1:eQcE1qtQxscV5RaZvpXrrb8Drkc3/DdQ+uUYCNjL+zU=
 github.com/fatih/color v1.10.0/go.mod h1:ELkj/draVOlAH/xkhN6mQ50Qd0MPOk5AAr3maGEBuJM=
@@ -1135,6 +1131,8 @@ github.com/lf-edge/eve-api/go v0.0.0-20231101130551-3e88f723673a h1:GDjTYjRchuuC
 github.com/lf-edge/eve-api/go v0.0.0-20231101130551-3e88f723673a/go.mod h1:6XqpOM8p1HsluNIGw2ihYPYsaAisQ5CuJpbIKHXQo5w=
 github.com/lf-edge/eve-libs v0.0.0-20231120160159-666ed2307f8e h1:2k1XWU4x8Zkym6Cw1spObpVsyYBCYwB7mIcN8Ge02K8=
 github.com/lf-edge/eve-libs v0.0.0-20231120160159-666ed2307f8e/go.mod h1:fca8Jvpk2pnSdbfiCHjbvBE1Mn6WAQqeKyQezaSpLmU=
+github.com/lf-edge/go-qemu v0.0.0-20231121152149-4c467eda0c56 h1:LmFp0jbNSwPLuxJA+nQ+mMQrQ53ESkvHP4CVMqR0zrY=
+github.com/lf-edge/go-qemu v0.0.0-20231121152149-4c467eda0c56/go.mod h1:Z1YRCAzPvFSjlmUGeVXQcMhGMajnD5hbcxob0ff/2tY=
 github.com/lib/pq v1.0.0/go.mod h1:5WUZQaWbwv1U+lTReE5YruASi9Al49XbQIvNi/34Woo=
 github.com/lib/pq v1.1.1/go.mod h1:5WUZQaWbwv1U+lTReE5YruASi9Al49XbQIvNi/34Woo=
 github.com/lib/pq v1.2.0/go.mod h1:5WUZQaWbwv1U+lTReE5YruASi9Al49XbQIvNi/34Woo=
