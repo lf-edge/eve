@@ -346,13 +346,28 @@ func MountVaultZvol(log *base.LogObject, datasetPath string) error {
 }
 
 // formatZvol apply an ext4 fs to the device path given
-func formatZvol(log *base.LogObject, zvolDevPath string, fsType string) error {
+func formatZvol(log *base.LogObject, zvolDevPath string, fsType string, blockSize uint64) error {
 	// Not enabling encryption...its already set on the zvol
 	ctx := context.Background()
 	args := []string{zvolDevPath}
+	if blockSize != 0 {
+		args = []string{"-b"}
+		args = append(args, fmt.Sprint(blockSize))
+		args = append(args, zvolDevPath)
+	}
 	output, err := base.Exec(log, "/sbin/mkfs."+fsType, args...).WithContext(ctx).WithUnlimitedTimeout(3600 * time.Second).CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("formatZvol dev:%s, stdout:%s, err:%v", zvolDevPath, output, err)
+	}
+	return nil
+}
+func enableFastCommits(log *base.LogObject, zvolDevPath string) error {
+	// Not enabling encryption...its already set on the zvol
+	ctx := context.Background()
+	args := []string{"-O", "fast_commit", zvolDevPath}
+	output, err := base.Exec(log, "/usr/sbin/tune2fs", args...).WithContext(ctx).WithUnlimitedTimeout(3600 * time.Second).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("ext4 fast commit enable failure dev:%s, stdout:%s, err:%v", zvolDevPath, output, err)
 	}
 	return nil
 }
@@ -388,7 +403,7 @@ func CreateZvolVault(log *base.LogObject, datasetName string, zfsKeyFile string,
 		return fmt.Errorf("Vault zvol dev path missing: %v", err)
 	}
 
-	if err = formatZvol(log, devPath, vaultFsType); err != nil {
+	if err = formatZvol(log, devPath, vaultFsType, 0); err != nil {
 		return fmt.Errorf("Vault zvol format error: %v", err)
 	}
 
@@ -419,20 +434,24 @@ func CreateZvolEtcd(log *base.LogObject, datasetName string) error {
 		etcdSizeBytes = 1024 * 1024 * 1024 * 10
 	}
 
-	err = zfs.CreateVolumeDataset(log, datasetName, etcdSizeBytes, "off")
+	err = zfs.CreateVolumeDataset(log, datasetName, etcdSizeBytes, "off", uint64(4*1024))
 	if err != nil {
-		return fmt.Errorf("Vault zvol creation error; %v", err)
+		return fmt.Errorf("Etcd zvol creation error; %v", err)
 	}
 
 	devPath := zfs.GetZvolPath(datasetName)
 	// Sometimes we wait for /dev path to the zvol to appear
 	// Since this only occurs on first boot, we can afford to be patient
 	if err = waitPath(log, devPath, vaultZvolPathWaitSeconds); err != nil {
-		return fmt.Errorf("Vault zvol dev path missing: %v", err)
+		return fmt.Errorf("Etcd zvol dev path missing: %v", err)
 	}
 
-	if err = formatZvol(log, devPath, vaultFsType); err != nil {
-		return fmt.Errorf("Vault zvol format error: %v", err)
+	if err = formatZvol(log, devPath, vaultFsType, uint64(4*1024)); err != nil {
+		return fmt.Errorf("Etcd zvol format error: %v", err)
+	}
+
+	if err = enableFastCommits(log, devPath); err != nil {
+		return fmt.Errorf("fast_commits not enabled on etcd vol: %v", err)
 	}
 	return nil
 }
