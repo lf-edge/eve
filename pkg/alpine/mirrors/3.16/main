@@ -146,6 +146,7 @@ net-snmp
 netcat-openbsd
 nettle
 ninja
+nfs-utils
 numactl-dev
 open-iscsi
 openrc

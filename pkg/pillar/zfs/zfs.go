@@ -21,7 +21,10 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-const volBlockSize = uint64(16 * 1024)
+const VolBlockSize = uint64(16 * 1024)
+
+// taken from mkimage-raw-efi/install kubevirt RESERVE_EVE_STORAGE_SIZEGB
+const reserveEveStorageSizeGb = uint64(20 * 1024 * 1024 * 1024)
 
 // CreateDatasets - creates all the non-existing parent datasets.
 // Datasets created in this manner are automatically mounted
@@ -76,6 +79,62 @@ func CreateVaultDataset(datasetName, zfsKeyFile string) error {
 	defer dataset.Close()
 
 	return MountDataset(datasetName)
+}
+
+// GetDatasetAvailableBytes Read Zfs dataset 'available' space property, parse as uint64
+func GetDatasetAvailableBytes(datasetName string) (uint64, error) {
+	ds, err := libzfs.DatasetOpen(datasetName)
+	if err != nil {
+		return 0, fmt.Errorf("Open dataset %s failure: %v", datasetName, err)
+	}
+	defer ds.Close()
+	zpoolPropAvailBytes, err := ds.GetProperty(libzfs.DatasetPropAvailable)
+	if err != nil {
+		return 0, fmt.Errorf("Read dataset %s available space failure: %v", datasetName, err)
+	}
+	size, err := strconv.ParseUint(zpoolPropAvailBytes.Value, 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("dataset %s available space parse failure: %v", datasetName, err)
+	}
+	return size, nil
+}
+
+// GetZvolPath Helper to build the /dev/zvol/<dataset> path
+func GetZvolPath(datasetName string) string {
+	return types.ZVolDevicePrefix + "/" + datasetName
+}
+
+// CreateVaultVolumeDataset Create an empty vault zvol
+func CreateVaultVolumeDataset(log *base.LogObject, datasetName string, zfsKeyFile string, encrypted bool, sizeBytes uint64) error {
+	// Shave off reserved + Can't align up if we're already at max space.
+	sizeBytes = sizeBytes - reserveEveStorageSizeGb - (VolBlockSize * 1024)
+	alignedSize := alignUpToBlockSize(sizeBytes, VolBlockSize)
+	props := make(map[libzfs.Prop]libzfs.Property)
+
+	if encrypted {
+		props[libzfs.DatasetPropEncryption] = libzfs.Property{
+			Value: "aes-256-gcm"}
+		props[libzfs.DatasetPropKeyLocation] = libzfs.Property{
+			Value: "file://" + zfsKeyFile}
+		props[libzfs.DatasetPropKeyFormat] = libzfs.Property{
+			Value: "raw"}
+	}
+	props[libzfs.DatasetPropVolsize] = libzfs.Property{
+		Value: strconv.FormatUint(alignedSize, 10)}
+	props[libzfs.DatasetPropVolblocksize] = libzfs.Property{
+		Value: strconv.FormatUint(VolBlockSize, 10)}
+	props[libzfs.DatasetPropVolmode] = libzfs.Property{
+		Value: "dev"}
+	props[libzfs.DatasetPropCompression] = libzfs.Property{
+		Value: "zstd"}
+
+	dataset, err := libzfs.DatasetCreate(datasetName, libzfs.DatasetTypeVolume, props)
+	if err != nil {
+		return fmt.Errorf("CreateVaultVolumeDataset datasetName:%s, zfsKeyFile:%s, size:%d, encrypted:%t, creation error:%v",
+			datasetName, zfsKeyFile, sizeBytes, encrypted, err)
+	}
+	defer dataset.Close()
+	return nil
 }
 
 // MountDataset mounts dataset
@@ -187,8 +246,8 @@ func SetReserved(datasetName string, percentage uint64) error {
 }
 
 // CreateVolumeDataset creates dataset of zvol type in zfs
-func CreateVolumeDataset(log *base.LogObject, datasetName string, size uint64, compression string) error {
-	alignedSize := alignUpToBlockSize(size)
+func CreateVolumeDataset(log *base.LogObject, datasetName string, size uint64, compression string, blockSize uint64) error {
+	alignedSize := alignUpToBlockSize(size, blockSize)
 
 	// Create fs datasets if they don't exist
 	if err := CreateDatasets(log, filepath.Dir(datasetName)); err != nil {
@@ -199,7 +258,7 @@ func CreateVolumeDataset(log *base.LogObject, datasetName string, size uint64, c
 	props[libzfs.DatasetPropVolsize] = libzfs.Property{
 		Value: strconv.FormatUint(alignedSize, 10)}
 	props[libzfs.DatasetPropVolblocksize] = libzfs.Property{
-		Value: strconv.FormatUint(volBlockSize, 10)}
+		Value: strconv.FormatUint(blockSize, 10)}
 	props[libzfs.DatasetPropReservation] = libzfs.Property{
 		Value: strconv.FormatUint(alignedSize, 10)}
 	props[libzfs.DatasetPropVolmode] = libzfs.Property{
@@ -216,7 +275,6 @@ func CreateVolumeDataset(log *base.LogObject, datasetName string, size uint64, c
 		return err
 	}
 	defer dataset.Close()
-
 	return nil
 }
 
@@ -353,8 +411,8 @@ func GetZFSVolumeInfo(device string) (*types.ImgInfo, error) {
 	return &imgInfo, nil
 }
 
-func alignUpToBlockSize(size uint64) uint64 {
-	return (size + volBlockSize - 1) & ^(volBlockSize - 1)
+func alignUpToBlockSize(size uint64, blockSize uint64) uint64 {
+	return (size + blockSize - 1) & ^(blockSize - 1)
 }
 
 // RemoveVDev removes vdev from the pool

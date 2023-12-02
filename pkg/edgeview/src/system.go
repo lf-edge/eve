@@ -40,6 +40,7 @@ var tarBlockDirs = []string{
 	"/persist/clear",
 	"/persist/vault",
 	"/run/domainmgr/cloudinit",
+	"/run/.kube/k3s",
 }
 
 var tarBlockFileSuffix = []string{

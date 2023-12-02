@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/google/go-cmp/cmp"
@@ -140,6 +141,8 @@ type AppInstanceConfig struct {
 	// Contains the configuration of the snapshot handling for the app instance.
 	// Meanwhile, the list of actual snapshots is stored in the AppInstanceStatus.
 	Snapshot SnapshotConfig
+	// Kube container contentID of the image
+	ContentID string
 }
 
 type AppInstanceOpsCmd struct {
@@ -208,6 +211,10 @@ func (config AppInstanceConfig) LogKey() string {
 
 func (config AppInstanceConfig) Key() string {
 	return config.UUIDandVersion.UUID.String()
+}
+
+func (config AppInstanceConfig) GetKubeDispName() string {
+	return strings.ToLower(config.DisplayName) + "-" + config.UUIDandVersion.UUID.String()[:5]
 }
 
 // SnapshottingStatus contains the snapshot information for the app instance.

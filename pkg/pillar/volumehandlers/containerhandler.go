@@ -62,7 +62,7 @@ func (handler *volumeHandlerContainer) CreateVolume() (string, error) {
 		return fileLocation, err
 	}
 	if err := handler.volumeManager.GetCasClient().PrepareContainerRootDir(fileLocation, handler.status.ReferenceName, cas.CheckAndCorrectBlobHash(rootBlobStatus.Sha256)); err != nil {
-		handler.log.Errorf("Failed to create ctr bundle. Error %s", err)
+		handler.log.Errorf("Failed to create ctr bundle. fileloc %s, status %+v, Error %s", fileLocation, handler.status, err)
 		return fileLocation, err
 	}
 	if err := utils.DirSync(fileLocation); err != nil {

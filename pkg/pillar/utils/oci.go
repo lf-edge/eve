@@ -15,6 +15,7 @@ func MaybeInsertSha(name string, sha string) string {
 		// Already has a sha
 		return name
 	}
+
 	sha = strings.ToLower(sha)
 	last := strings.LastIndex(name, ":")
 	if last == -1 {

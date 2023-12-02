@@ -46,6 +46,8 @@ const (
 	ctrdSocket = "/run/containerd/containerd.sock"
 	// containerd user socket
 	ctrdUserSocket = "/run/containerd-user/containerd.sock"
+	// kube-containerd user socket
+	ctrdKubeUserSocket = "/run/k3s/containerd/containerd.sock"
 	// ctrdSystemServicesNamespace containerd namespace for EVE system containers
 	ctrdSystemServicesNamespace = "services.linuxkit"
 	// ctrdServicesNamespace containerd namespace for running user containers
@@ -91,7 +93,11 @@ type Client struct {
 // GetServicesNamespace returns defaultServicesNamespace
 // The value is used to define the cgroups path of the EVE services
 func GetServicesNamespace() string {
-	return servicesNamespace
+
+	if base.IsHVTypeKube() {
+		return ctrdKubeServicesNamespace
+	}
+	return ctrdServicesNamespace
 }
 
 func init() {
@@ -649,7 +655,11 @@ func (client *Client) Resolver(ctx context.Context) (resolver.ResolverCloser, er
 // CtrNewUserServicesCtx returns a new user service containerd context
 // and a done func to cancel the context after use.
 func (client *Client) CtrNewUserServicesCtx() (context.Context, context.CancelFunc) {
-	return newServiceCtx(servicesNamespace)
+
+	if base.IsHVTypeKube() {
+		return newServiceCtx(ctrdKubeServicesNamespace)
+	}
+	return newServiceCtx(ctrdServicesNamespace)
 }
 
 // CtrNewSystemServicesCtx returns a new system service containerd context
@@ -661,7 +671,11 @@ func (client *Client) CtrNewSystemServicesCtx() (context.Context, context.Cancel
 // CtrNewUserServicesCtxWithLease returns a new user service containerd context with a 24 hrs lease
 // and a done func to delete the lease and cancel the context after use.
 func (client *Client) CtrNewUserServicesCtxWithLease() (context.Context, context.CancelFunc, error) {
-	return newServiceCtxWithLease(client.ctrdClient, servicesNamespace)
+
+	if base.IsHVTypeKube() {
+		return newServiceCtxWithLease(client.ctrdClient, ctrdKubeServicesNamespace)
+	}
+	return newServiceCtxWithLease(client.ctrdClient, ctrdServicesNamespace)
 }
 
 // CtrNewSystemServicesCtxWithLease returns a new system service containerd context with a 24 hrs lease
@@ -899,7 +913,9 @@ func (client *Client) UnpackClientImage(clientImage containerd.Image) error {
 
 // StartUserContainerdInstance execute user containerd instance in goroutine
 func StartUserContainerdInstance() error {
-	if !shouldStartUserContainerd {
+
+	// In kubevirt env we do not start eve user containerd, we just use that comes with k3s.
+	if base.IsHVTypeKube() {
 		return nil
 	}
 	name := "/usr/bin/containerd"

@@ -45,9 +45,38 @@ func (z *zedrouter) getArgsForNIStateCollecting(niID uuid.UUID) (
 				HostIfName:     adapterStatus.Vif,
 				GuestIfMAC:     adapterStatus.Mac,
 			})
+
+			if z.hvTypeKube && len(vifs) > 0 {
+				z.log.Functionf("getArgsForNIStateCollecting: vif len %d, %v, IPv4Assigned %v, AllocatedIPv4Addr %v",
+					len(vifs), vifs, ulStatus.IPv4Assigned, ulStatus.AllocatedIPv4Addr)
+				if !ulStatus.IPv4Assigned && ulStatus.AllocatedIPv4Addr != nil {
+					triggerVIFupdate(z, ulStatus, vifs)
+				}
+			}
 		}
 	}
 	return br, vifs, nil
+}
+
+func triggerVIFupdate(z *zedrouter, ulStatus *types.UnderlayNetworkStatus,
+	vifs []nistate.AppVIF) {
+	var addrChanges []nistate.VIFAddrsUpdate
+	var prev, new nistate.VIFAddrs
+	var addrchg nistate.VIFAddrsUpdate
+
+	for _, vif := range vifs {
+		if vif.HostIfName != ulStatus.Vif {
+			continue
+		}
+		new.VIF = vif
+		prev.VIF = vif
+		new.IPv4Addr = ulStatus.AllocatedIPv4Addr
+		addrchg.Prev = prev
+		addrchg.New = new
+		addrChanges = append(addrChanges, addrchg)
+		z.log.Functionf("triggerVIFupdate: vif chagne trigger, %+v", addrChanges)
+		ipAssignUpdate(z, addrChanges)
+	}
 }
 
 // Return arguments describing network instance bridge config as required by NIReconciler.

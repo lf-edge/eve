@@ -107,6 +107,7 @@ func main() {
 	var fstatus fileCopyStatus
 	remotePorts := make(map[int]int)
 	var tcpclientCnt int
+	var kubecfg bool
 	var pqueryopt, pnetopt, psysopt, ppubsubopt, logopt, timeopt string
 	var jsonopt bool
 	typeopt := "all"
@@ -204,9 +205,16 @@ func main() {
 			psysopt = pqueryopt
 		} else if strings.HasPrefix(pqueryopt, "tcp/") {
 			var ok bool
-			ok, tcpclientCnt, remotePorts = processTCPcmd(pqueryopt, remotePorts)
+			ok, kubecfg, tcpclientCnt, remotePorts = processTCPcmd(pqueryopt, remotePorts)
 			if !ok {
 				return
+			}
+			if kubecfg {
+				fstatus.cType = copyKubeConfig
+				err := checkInstallKubeDecryptScript()
+				if err != nil {
+					return
+				}
 			}
 			pnetopt = pqueryopt
 		} else if strings.HasPrefix(pqueryopt, "cp/") {
@@ -470,9 +478,11 @@ func main() {
 			waitPulish = false
 			doInfoPub(infoPub)
 		case <-done:
+			delKubeConfigFile(kubecfg)
 			tcpClientSendDone()
 			return
 		case <-intSignal:
+			delKubeConfigFile(kubecfg)
 			tcpClientSendDone()
 			return
 		}

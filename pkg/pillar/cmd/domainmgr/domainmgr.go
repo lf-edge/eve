@@ -33,6 +33,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/cpuallocator"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	"github.com/lf-edge/eve/pkg/pillar/hypervisor"
+	"github.com/lf-edge/eve/pkg/pillar/kubeapi"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/sema"
@@ -122,6 +123,9 @@ type domainContext struct {
 	// CPUs management
 	cpuAllocator        *cpuallocator.CPUAllocator
 	cpuPinningSupported bool
+
+	// hvTypeKube
+	hvTypeKube bool
 }
 
 // AddAgentSpecificCLIFlags adds CLI options
@@ -132,7 +136,7 @@ func (ctx *domainContext) AddAgentSpecificCLIFlags(flagSet *flag.FlagSet) {
 }
 
 func (ctx *domainContext) publishAssignableAdapters() {
-	log.Functionf("Publishing %v", *ctx.assignableAdapters)
+	log.Noticef("Publishing %v", *ctx.assignableAdapters)
 	ctx.pubAssignableAdapters.Publish("global", *ctx.assignableAdapters)
 }
 
@@ -158,6 +162,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		pids:                make(map[int32]bool),
 		cipherMetrics:       cipher.NewAgentMetrics(agentName),
 		metricInterval:      10,
+		hvTypeKube:          base.IsHVTypeKube(),
 	}
 	agentbase.Init(&domainCtx, logger, log, agentName,
 		agentbase.WithArguments(arguments))
@@ -177,7 +182,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	if err := pidfile.CheckAndCreatePidfile(log, agentName); err != nil {
 		log.Fatal(err)
 	}
-	log.Functionf("Starting %s with %s hypervisor backend", agentName, hyper.Name())
+	log.Noticef("Starting %s with %s hypervisor backend", agentName, hyper.Name())
 
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)
@@ -433,7 +438,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	log.Noticef("processed GCComplete")
 
 	if !domainCtx.setInitialUsbAccess {
-		log.Functionf("GCComplete but not setInitialUsbAccess => first boot")
+		log.Noticef("GCComplete but not setInitialUsbAccess => first boot")
 		// Enable USB keyboard and storage
 		domainCtx.usbAccess = true
 		updateUsbAccess(&domainCtx)
@@ -441,7 +446,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	}
 
 	if !domainCtx.setInitialVgaAccess {
-		log.Functionf("GCComplete but not setInitialVgaAccess => first boot")
+		log.Noticef("GCComplete but not setInitialVgaAccess => first boot")
 		// Enable VGA
 		domainCtx.vgaAccess = true
 		updateVgaAccess(&domainCtx)
@@ -449,7 +454,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	}
 
 	if !domainCtx.setInitialConsoleAccess {
-		log.Functionf("GCComplete but not setInitialConsoleAccess => first boot")
+		log.Noticef("GCComplete but not setInitialConsoleAccess => first boot")
 		// Enable Console
 		domainCtx.consoleAccess = true
 		updateConsoleAccess(&domainCtx)
@@ -481,7 +486,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		capabilitiesTicker.Stop()
 	}
 
-	log.Functionf("Creating %s at %s", "metricsTimerTask", agentlog.GetMyStack())
+	log.Noticef("Creating %s at %s", "metricsTimerTask", agentlog.GetMyStack())
 	go metricsTimerTask(&domainCtx, hyper)
 
 	// Before starting to process DomainConfig, domainmgr should (in this order):
@@ -575,7 +580,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		log.Fatal(err)
 	}
 
-	log.Functionf("processed vault status")
+	log.Noticef("processed vault status")
 
 	if err := containerd.StartUserContainerdInstance(); err != nil {
 		log.Fatalf("StartUserContainerdInstance: failed %v", err)
@@ -584,7 +589,19 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	if err := utils.WaitForUserContainerd(ps, log, agentName, warningTime, errorTime); err != nil {
 		log.Fatal(err)
 	}
-	log.Functionf("user containerd ready")
+	log.Noticef("user containerd ready")
+
+	// wait for kubernetes up if in kube mode, if gets error, move on
+	if domainCtx.hvTypeKube {
+		log.Noticef("Domainmgr run: wait for kubernetes")
+		_, err := kubeapi.WaitKubernetes(agentName, ps, stillRunning)
+		if err != nil {
+			log.Errorf("Domainmgr: wait for kubernetes error %v", err)
+		} else {
+			count, err := hypervisor.CleanupStaleVMI()
+			log.Noticef("domainmgr cleanup vmi count %d, %v", count, err)
+		}
+	}
 
 	if domainCtx.casClient, err = cas.NewCAS(casClientType); err != nil {
 		err = fmt.Errorf("Run: exception while initializing CAS client: %s", err.Error())
@@ -689,10 +706,10 @@ func publishProcessesHandler(domainCtx *domainContext) {
 }
 
 func handleRestart(ctxArg interface{}, restartCounter int) {
-	log.Functionf("handleRestart(%d)", restartCounter)
+	log.Noticef("handleRestart(%d)", restartCounter)
 	ctx := ctxArg.(*domainContext)
 	if restartCounter != 0 {
-		log.Functionf("handleRestart: avoid cleanup")
+		log.Noticef("handleRestart: avoid cleanup")
 		ctx.pubDomainStatus.SignalRestarted()
 		return
 	}
@@ -785,7 +802,7 @@ func triggerCPUNotification() {
 func handleDomainModify(ctxArg interface{}, key string, configArg interface{},
 	oldConfigArg interface{}) {
 
-	log.Functionf("handleDomainModify(%s)", key)
+	log.Noticef("handleDomainModify(%s)", key)
 	config := configArg.(types.DomainConfig)
 	h, ok := handlerMap[config.Key()]
 	if !ok {
@@ -793,7 +810,7 @@ func handleDomainModify(ctxArg interface{}, key string, configArg interface{},
 	}
 	select {
 	case h.configChannel <- Notify{}:
-		log.Functionf("handleDomainModify(%s) sent notify", key)
+		log.Noticef("handleDomainModify(%s) sent notify", key)
 	default:
 		// handler is slow
 		log.Warnf("handleDomainModify(%s) NOT sent notify. Slow handler?", key)
@@ -802,7 +819,7 @@ func handleDomainModify(ctxArg interface{}, key string, configArg interface{},
 
 func handleDomainCreate(ctxArg interface{}, key string, configArg interface{}) {
 
-	log.Functionf("handleDomainCreate(%s)", key)
+	log.Noticef("handleDomainCreate(%s)", key)
 	ctx := ctxArg.(*domainContext)
 	config := configArg.(types.DomainConfig)
 	h, ok := handlerMap[config.Key()]
@@ -813,12 +830,12 @@ func handleDomainCreate(ctxArg interface{}, key string, configArg interface{}) {
 	hCPU := make(chan Notify, 1)
 	h1 := channels{configChannel: hConfig, cpuChannel: hCPU}
 	handlerMap[config.Key()] = h1
-	log.Functionf("Creating %s at %s", "runHandler", agentlog.GetMyStack())
+	log.Noticef("Creating %s at %s", "runHandler", agentlog.GetMyStack())
 	go runHandler(ctx, key, hConfig, hCPU)
 	h = h1
 	select {
 	case h.configChannel <- Notify{}:
-		log.Functionf("handleDomainCreate(%s) sent notify", key)
+		log.Noticef("handleDomainCreate(%s) sent notify", key)
 	default:
 		// Shouldn't happen since we just created channel
 		log.Fatalf("handleDomainCreate(%s) NOT sent notify", key)
@@ -828,7 +845,7 @@ func handleDomainCreate(ctxArg interface{}, key string, configArg interface{}) {
 func handleDomainDelete(ctxArg interface{}, key string,
 	configArg interface{}) {
 
-	log.Functionf("handleDomainDelete(%s)", key)
+	log.Noticef("handleDomainDelete(%s)", key)
 	// delete the specific cipher block status
 	ctx := ctxArg.(*domainContext)
 	config := configArg.(types.DomainConfig)
@@ -839,7 +856,7 @@ func handleDomainDelete(ctxArg interface{}, key string,
 	// Do we have a channel/goroutine?
 	h, ok := handlerMap[key]
 	if ok {
-		log.Functionf("Closing channels")
+		log.Noticef("Closing channels")
 		close(h.cpuChannel)
 		close(h.configChannel)
 		delete(handlerMap, key)
@@ -847,14 +864,14 @@ func handleDomainDelete(ctxArg interface{}, key string,
 		log.Tracef("handleDomainDelete: unknown %s", key)
 		return
 	}
-	log.Functionf("handleDomainDelete(%s) done", key)
+	log.Noticef("handleDomainDelete(%s) done", key)
 }
 
 // Server for each domU
 // Runs timer every 30 seconds to update status
 func runHandler(ctx *domainContext, key string, configChannel <-chan Notify, cpuChannel <-chan Notify) {
 
-	log.Functionf("runHandler starting")
+	log.Noticef("runHandler starting")
 
 	interval := 30 * time.Second
 	max := float64(interval)
@@ -920,7 +937,7 @@ func runHandler(ctx *domainContext, key string, configChannel <-chan Notify, cpu
 			}
 		}
 	}
-	log.Functionf("runHandler(%s) DONE", key)
+	log.Noticef("runHandler(%s) DONE", key)
 }
 
 // Check if it is still running
@@ -1059,7 +1076,7 @@ func maybeRetryBoot(ctx *domainContext, status *types.DomainStatus) {
 		return
 	}
 	if status.Activated && status.BootFailed {
-		log.Functionf("maybeRetryBoot(%s) clearing bootFailed since Activated",
+		log.Noticef("maybeRetryBoot(%s) clearing bootFailed since Activated",
 			status.Key())
 		status.BootFailed = false
 		publishDomainStatus(ctx, status)
@@ -1084,7 +1101,7 @@ func maybeRetryBoot(ctx *domainContext, status *types.DomainStatus) {
 	elapsed := t.Sub(status.ErrorTime)
 	timeLimit := time.Duration(ctx.domainBootRetryTime) * time.Second
 	if elapsed < timeLimit {
-		log.Functionf("maybeRetryBoot(%s) %d remaining",
+		log.Noticef("maybeRetryBoot(%s) %d remaining",
 			status.Key(),
 			(timeLimit-elapsed)/time.Second)
 		return
@@ -1128,7 +1145,7 @@ func maybeRetryBoot(ctx *domainContext, status *types.DomainStatus) {
 	status.BootFailed = false
 	doActivateTail(ctx, status, domainID)
 	publishDomainStatus(ctx, status)
-	log.Functionf("maybeRetryBoot(%s) DONE for %s",
+	log.Noticef("maybeRetryBoot(%s) DONE for %s",
 		status.Key(), status.DisplayName)
 }
 
@@ -1139,7 +1156,7 @@ func maybeRetryAdapters(ctx *domainContext, status *types.DomainStatus) {
 		return
 	}
 	if status.Activated && status.AdaptersFailed {
-		log.Functionf("maybeRetryAdapters(%s) clearing adaptersFailed since Activated",
+		log.Noticef("maybeRetryAdapters(%s) clearing adaptersFailed since Activated",
 			status.Key())
 		status.AdaptersFailed = false
 		publishDomainStatus(ctx, status)
@@ -1167,7 +1184,7 @@ func maybeRetryAdapters(ctx *domainContext, status *types.DomainStatus) {
 	doActivate(ctx, *config, status)
 	// work done
 	publishDomainStatus(ctx, status)
-	log.Functionf("maybeRetryAdapters(%s) DONE for %s",
+	log.Noticef("maybeRetryAdapters(%s) DONE for %s",
 		status.Key(), status.DisplayName)
 }
 
@@ -1177,7 +1194,7 @@ func lookupDomainStatus(ctx *domainContext, key string) *types.DomainStatus {
 	pub := ctx.pubDomainStatus
 	st, _ := pub.Get(key)
 	if st == nil {
-		log.Functionf("lookupDomainStatus(%s) not found", key)
+		log.Noticef("lookupDomainStatus(%s) not found", key)
 		return nil
 	}
 	status := st.(types.DomainStatus)
@@ -1203,7 +1220,7 @@ func lookupDomainConfig(ctx *domainContext, key string) *types.DomainConfig {
 	sub := ctx.subDomainConfig
 	c, _ := sub.Get(key)
 	if c == nil {
-		log.Functionf("lookupDomainConfig(%s) not found", key)
+		log.Noticef("lookupDomainConfig(%s) not found", key)
 		return nil
 	}
 	config := c.(types.DomainConfig)
@@ -1224,7 +1241,7 @@ func setCgroupCpuset(config *types.DomainConfig, status *types.DomainStatus) err
 		log.Warnf("Failed to update CPU set for %s", config.DisplayName)
 		return err
 	}
-	log.Functionf("Adjust the cgroups cpuset of %s to %s", config.DisplayName, status.VmConfig.CPUs)
+	log.Noticef("Adjust the cgroups cpuset of %s to %s", config.DisplayName, status.VmConfig.CPUs)
 	return nil
 }
 
@@ -1275,9 +1292,10 @@ func assignCPUs(ctx *domainContext, config *types.DomainConfig, status *types.Do
 
 func handleCreate(ctx *domainContext, key string, config *types.DomainConfig) {
 
-	log.Functionf("handleCreate(%v) for %s",
+	log.Noticef("handleCreate(%v) for %s",
 		config.UUIDandVersion, config.DisplayName)
 	log.Tracef("DomainConfig %+v", config)
+	log.Noticef("PRAMOD DomainConfig %+v", config)
 
 	// Start by marking with PendingAdd
 	status := types.DomainStatus{
@@ -1303,7 +1321,7 @@ func handleCreate(ctx *domainContext, key string, config *types.DomainConfig) {
 	status.VifList = fillVifUsed(config.VifList)
 
 	publishDomainStatus(ctx, &status)
-	log.Functionf("handleCreate(%v) set domainName %s for %s",
+	log.Noticef("handleCreate(%v) set domainName %s for %s",
 		config.UUIDandVersion, status.DomainName,
 		config.DisplayName)
 
@@ -1327,7 +1345,7 @@ func handleCreate(ctx *domainContext, key string, config *types.DomainConfig) {
 	// work done
 	status.PendingAdd = false
 	publishDomainStatus(ctx, &status)
-	log.Functionf("handleCreate(%v) DONE for %s",
+	log.Noticef("handleCreate(%v) DONE for %s",
 		config.UUIDandVersion, config.DisplayName)
 }
 
@@ -1340,7 +1358,7 @@ func doAssignIoAdaptersToDomain(ctx *domainContext, config types.DomainConfig,
 	var assignmentsPci []string
 	var assignmentsUsb []string
 	for _, adapter := range config.IoAdapterList {
-		log.Functionf("doAssignIoAdaptersToDomain processing adapter %d %s",
+		log.Noticef("doAssignIoAdaptersToDomain processing adapter %d %s",
 			adapter.Type, adapter.Name)
 
 		aa := ctx.assignableAdapters
@@ -1354,7 +1372,7 @@ func doAssignIoAdaptersToDomain(ctx *domainContext, config types.DomainConfig,
 			if ib == nil {
 				continue
 			}
-			log.Functionf("doAssignIoAdaptersToDomain processing adapter %d %s phylabel %s",
+			log.Noticef("doAssignIoAdaptersToDomain processing adapter %d %s phylabel %s",
 				adapter.Type, adapter.Name, ib.Phylabel)
 			if ib.UsedByUUID != config.UUIDandVersion.UUID {
 				log.Fatalf("doAssignIoAdaptersToDomain IoBundle stolen by %s: %d %s for %s",
@@ -1371,14 +1389,18 @@ func doAssignIoAdaptersToDomain(ctx *domainContext, config types.DomainConfig,
 				return errors.New(ib.Error)
 			}
 			if ib.UsbAddr != "" {
-				log.Functionf("Assigning %s (%s) to %s",
+				log.Noticef("Assigning %s (%s) to %s",
 					ib.Phylabel, ib.UsbAddr, status.DomainName)
 				assignmentsUsb = addNoDuplicate(assignmentsUsb, ib.UsbAddr)
 			} else if ib.PciLong != "" && !ib.IsPCIBack {
-				log.Functionf("Assigning %s (%s) to %s",
-					ib.Phylabel, ib.PciLong, status.DomainName)
-				assignmentsPci = addNoDuplicate(assignmentsPci, ib.PciLong)
-				ib.IsPCIBack = true
+				if !ctx.hvTypeKube || ib.Type != types.IoNetEth {
+					log.Noticef("Assigning %s (%s) to %s",
+						ib.Phylabel, ib.PciLong, status.DomainName)
+					assignmentsPci = addNoDuplicate(assignmentsPci, ib.PciLong)
+					ib.IsPCIBack = true
+				} else {
+					log.Noticef("doAssignIoAdaptersToDomain: skip IO assign %v", ib)
+				}
 			}
 		}
 		publishAssignableAdapters = len(assignmentsUsb) > 0 || len(assignmentsPci) > 0
@@ -1441,7 +1463,7 @@ func getVersionFromMetaFile(path string) (uint64, error) {
 func doActivate(ctx *domainContext, config types.DomainConfig,
 	status *types.DomainStatus) {
 
-	log.Functionf("doActivate(%v) for %s",
+	log.Noticef("doActivate(%v) for %s",
 		config.UUIDandVersion, config.DisplayName)
 
 	if ctx.cpuPinningSupported {
@@ -1452,7 +1474,7 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 			publishDomainStatus(ctx, status)
 			return
 		}
-		log.Functionf("CPUs for %s assigned: %s", config.DisplayName, status.VmConfig.CPUs)
+		log.Noticef("CPUs for %s assigned: %s", config.DisplayName, status.VmConfig.CPUs)
 	}
 
 	if errDescription := reserveAdapters(ctx, config); errDescription != nil {
@@ -1496,14 +1518,17 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 		case zconfig.Format_FmtUnknown:
 			// do nothing
 		case zconfig.Format_CONTAINER:
-			snapshotID := containerd.GetSnapshotID(ds.FileLocation)
-			rootPath := cas.GetRoofFsPath(ds.FileLocation)
-			if err := ctx.casClient.MountSnapshot(snapshotID, rootPath); err != nil {
-				err := fmt.Errorf("doActivate: Failed mount snapshot: %s for %s. Error %s",
-					snapshotID, config.UUIDandVersion.UUID, err)
-				log.Error(err.Error())
-				status.SetErrorNow(err.Error())
-				return
+			// In Kubevirt eve container image is converted to PVC in volumemgr, there is nothing to mount here.
+			if !ctx.hvTypeKube {
+
+				snapshotID := containerd.GetSnapshotID(ds.FileLocation)
+				if err := ctx.casClient.MountSnapshot(snapshotID, cas.GetRoofFsPath(ds.FileLocation)); err != nil {
+					err := fmt.Errorf("doActivate: Failed mount snapshot: %s for %s. Error %s",
+						snapshotID, config.UUIDandVersion.UUID, err)
+					log.Error(err.Error())
+					status.SetErrorNow(err.Error())
+					return
+				}
 			}
 
 			metadataPath := filepath.Join(rootPath, "meta-data")
@@ -1619,10 +1644,10 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 func doActivateTail(ctx *domainContext, status *types.DomainStatus,
 	domainID int) {
 
-	log.Functionf("created domainID %d for %s", domainID, status.DomainName)
+	log.Noticef("created domainID %d for %s", domainID, status.DomainName)
 	status.DomainId = domainID
 	status.BootTime = time.Now()
-	log.Functionf("Set domainId %d bootTime %s for %s",
+	log.Noticef("Set domainId %d bootTime %s for %s",
 		status.DomainId, status.BootTime.Format(time.RFC3339Nano),
 		status.Key())
 	status.State = types.BOOTING
@@ -1680,7 +1705,7 @@ func doActivateTail(ctx *domainContext, status *types.DomainStatus,
 			status.Key())
 	}
 	status.Activated = true
-	log.Functionf("doActivateTail(%v) done for %s",
+	log.Noticef("doActivateTail(%v) done for %s",
 		status.UUIDandVersion, status.DisplayName)
 }
 
@@ -1710,7 +1735,7 @@ func enableVlanFiltering(bridgeName string) error {
 // shutdown and wait for the domain to go away; if that fails destroy and wait
 func doInactivate(ctx *domainContext, status *types.DomainStatus, impatient bool) {
 
-	log.Functionf("doInactivate(%v) for %s domainId %d",
+	log.Noticef("doInactivate(%v) for %s domainId %d",
 		status.UUIDandVersion, status.DisplayName, status.DomainId)
 	domainID, _, err := hyper.Task(status).Info(status.DomainName)
 	if err == nil && domainID != status.DomainId {
@@ -1754,7 +1779,7 @@ func doInactivate(ctx *domainContext, status *types.DomainStatus, impatient bool
 					status.DomainName, err)
 			} else {
 				// Wait for the domain to go away
-				log.Functionf("doInactivate(%v) for %s: waiting for domain to shutdown",
+				log.Noticef("doInactivate(%v) for %s: waiting for domain to shutdown",
 					status.UUIDandVersion, status.DisplayName)
 				gone := waitForDomainGone(*status, firstDelay)
 				if gone {
@@ -1773,10 +1798,10 @@ func doInactivate(ctx *domainContext, status *types.DomainStatus, impatient bool
 			log.Warnf("DomainShutdown -F %s failed: %s",
 				status.DomainName, err)
 		} else {
-			log.Functionf("doInactivate(%v) for %s Shutdown(force) succeeded",
+			log.Noticef("doInactivate(%v) for %s Shutdown(force) succeeded",
 				status.UUIDandVersion, status.DisplayName)
 			// Wait for the domain to go away
-			log.Functionf("doInactivate(%v) for %s: waiting for domain to poweroff",
+			log.Noticef("doInactivate(%v) for %s: waiting for domain to poweroff",
 				status.UUIDandVersion, status.DisplayName)
 			gone := waitForDomainGone(*status, maxDelay)
 			if gone {
@@ -1789,11 +1814,11 @@ func doInactivate(ctx *domainContext, status *types.DomainStatus, impatient bool
 		if err := hyper.Task(status).Delete(status.DomainName); err != nil {
 			log.Errorf("Failed to delete domain %s (%v)", status.DomainName, err)
 		} else {
-			log.Functionf("doInactivate(%v) for %s: Delete succeeded",
+			log.Noticef("doInactivate(%v) for %s: Delete succeeded",
 				status.UUIDandVersion, status.DisplayName)
 		}
 		// Even if Delete failed we wait
-		log.Functionf("doInactivate(%v) for %s: waiting for domain to be destroyed",
+		log.Noticef("doInactivate(%v) for %s: waiting for domain to be destroyed",
 			status.UUIDandVersion, status.DisplayName)
 		gone := waitForDomainGone(*status, maxDelay)
 		if gone {
@@ -1845,7 +1870,7 @@ func doCleanup(ctx *domainContext, status *types.DomainStatus) {
 	status.IoAdapterList = nil
 	publishDomainStatus(ctx, status)
 
-	log.Functionf("doClennup(%v) done for %s",
+	log.Noticef("doClennup(%v) done for %s",
 		status.UUIDandVersion, status.DisplayName)
 }
 
@@ -1871,7 +1896,7 @@ func unmountContainers(ctx *domainContext, diskStatusList []types.DiskStatus, fo
 func releaseAdapters(ctx *domainContext, ioAdapterList []types.IoAdapter,
 	myUUID uuid.UUID, status *types.DomainStatus) {
 
-	log.Functionf("releaseAdapters(%s)", myUUID)
+	log.Noticef("releaseAdapters(%s)", myUUID)
 	ignoreErrors := (status == nil)
 	var assignments []string
 	for _, adapter := range ioAdapterList {
@@ -1891,6 +1916,9 @@ func releaseAdapters(ctx *domainContext, ioAdapterList []types.IoAdapter,
 			if ib == nil {
 				continue
 			}
+			if ctx.hvTypeKube && ib.Type == types.IoNetEth {
+				continue
+			}
 			if ib.UsedByUUID != myUUID {
 				log.Warnf("releaseAdapters IoBundle not ours by %s: %d %s for %s",
 					ib.UsedByUUID, adapter.Type, adapter.Name,
@@ -1898,7 +1926,7 @@ func releaseAdapters(ctx *domainContext, ioAdapterList []types.IoAdapter,
 				continue
 			}
 			if ib.PciLong != "" && ib.KeepInHost && ib.IsPCIBack {
-				log.Functionf("releaseAdapters removing %s (%s) from %s",
+				log.Noticef("releaseAdapters removing %s (%s) from %s",
 					ib.Phylabel, ib.PciLong, myUUID)
 				assignments = addNoDuplicate(assignments, ib.PciLong)
 				ib.IsPCIBack = false
@@ -1920,7 +1948,7 @@ func releaseAdapters(ctx *domainContext, ioAdapterList []types.IoAdapter,
 func configToStatus(ctx *domainContext, config types.DomainConfig,
 	status *types.DomainStatus) error {
 
-	log.Functionf("configToStatus(%v) for %s",
+	log.Noticef("configToStatus(%v) for %s",
 		config.UUIDandVersion, config.DisplayName)
 	status.DiskStatusList = make([]types.DiskStatus,
 		len(config.DiskConfigList))
@@ -1945,7 +1973,10 @@ func configToStatus(ctx *domainContext, config types.DomainConfig,
 				status.OCIConfigDir = ds.FileLocation
 			}
 			ds.Devtype = ""
-			need9P = true
+			// We don't mount 9P in kubevirt eve, all devices are PVC and mounted as block devices
+			if !ctx.hvTypeKube {
+				need9P = true
+			}
 		} else {
 			ds.Devtype = "hdd"
 			if dc.Format == zconfig.Format_ISO {
@@ -2023,7 +2054,7 @@ func configToStatus(ctx *domainContext, config types.DomainConfig,
 func reserveAdapters(ctx *domainContext, config types.DomainConfig) *types.ErrorDescription {
 	description := types.ErrorDescription{}
 
-	log.Functionf("reserveAdapters(%v) for %s",
+	log.Noticef("reserveAdapters(%v) for %s",
 		config.UUIDandVersion, config.DisplayName)
 
 	defer ctx.publishAssignableAdapters()
@@ -2037,7 +2068,7 @@ func reserveAdapters(ctx *domainContext, config types.DomainConfig) *types.Error
 	}
 
 	for _, adapter := range config.IoAdapterList {
-		log.Functionf("reserveAdapters processing adapter %d %s",
+		log.Noticef("reserveAdapters processing adapter %d %s",
 			adapter.Type, adapter.Name)
 		// Lookup to make sure adapter exists on this device
 		list := ctx.assignableAdapters.LookupIoBundleAny(adapter.Name)
@@ -2051,7 +2082,11 @@ func reserveAdapters(ctx *domainContext, config types.DomainConfig) *types.Error
 			if ibp == nil {
 				continue
 			}
-			log.Functionf("reserveAdapters processing adapter %d %s phylabel %s",
+			if ctx.hvTypeKube && ibp.Type == types.IoNetEth {
+				log.Noticef("reserveAdapters: ethernet io, skip reserve")
+				continue
+			}
+			log.Noticef("reserveAdapters processing adapter %d %s phylabel %s",
 				adapter.Type, adapter.Name, ibp.Phylabel)
 			if ibp.AssignmentGroup == "" {
 				description.Error = fmt.Sprintf("adapter %d %s phylabel %s is not assignable",
@@ -2126,7 +2161,7 @@ func addNoDuplicate(list []string, add string) []string {
 func handleModify(ctx *domainContext, key string,
 	config *types.DomainConfig, status *types.DomainStatus) {
 
-	log.Functionf("handleModify(%v) activate %t for %s state %s",
+	log.Noticef("handleModify(%v) activate %t for %s state %s",
 		config.UUIDandVersion, config.Activate, config.DisplayName,
 		status.State.String())
 
@@ -2136,13 +2171,13 @@ func handleModify(ctx *domainContext, key string,
 	changed := false
 	// if a VM has an error status, it should be restarted in the maybeRetryBoot function, not here
 	if config.Activate && !status.Activated && status.State != types.BROKEN && !status.HasError() {
-		log.Functionf("handleModify(%v) activating for %s",
+		log.Noticef("handleModify(%v) activating for %s",
 			config.UUIDandVersion, config.DisplayName)
 
 		if status.DomainName != config.GetTaskName() {
 			status.DomainName = config.GetTaskName()
 			status.AppNum = config.AppNum
-			log.Functionf("handleModify(%v) set domainName %s for %s",
+			log.Noticef("handleModify(%v) set domainName %s for %s",
 				config.UUIDandVersion, status.DomainName,
 				config.DisplayName)
 		}
@@ -2164,7 +2199,7 @@ func handleModify(ctx *domainContext, key string,
 		doActivate(ctx, *config, status)
 		changed = true
 	} else if !config.Activate {
-		log.Functionf("handleModify(%v) NOT activating for %s",
+		log.Noticef("handleModify(%v) NOT activating for %s",
 			config.UUIDandVersion, config.DisplayName)
 		if status.HasError() {
 			log.Noticef("handleModify(%s) clearing existing error: %s",
@@ -2201,7 +2236,7 @@ func handleModify(ctx *domainContext, key string,
 		// in handleDelete
 		status.PendingModify = false
 		publishDomainStatus(ctx, status)
-		log.Functionf("handleModify(%v) DONE for %s",
+		log.Noticef("handleModify(%v) DONE for %s",
 			config.UUIDandVersion, config.DisplayName)
 		return
 	}
@@ -2212,7 +2247,7 @@ func handleModify(ctx *domainContext, key string,
 	// before activation.
 
 	if config.UUIDandVersion.Version == status.UUIDandVersion.Version {
-		log.Functionf("Same version %s for %s",
+		log.Noticef("Same version %s for %s",
 			config.UUIDandVersion.Version, key)
 		status.PendingModify = false
 		publishDomainStatus(ctx, status)
@@ -2228,7 +2263,7 @@ func handleModify(ctx *domainContext, key string,
 	status.PendingModify = false
 	status.UUIDandVersion = config.UUIDandVersion
 	publishDomainStatus(ctx, status)
-	log.Functionf("handleModify(%v) DONE for %s",
+	log.Noticef("handleModify(%v) DONE for %s",
 		config.UUIDandVersion, config.DisplayName)
 }
 
@@ -2258,7 +2293,7 @@ func checkIfEmu(vifList []types.VifInfo) []types.VifInfo {
 		emuIfname := net.Vif + "-emu"
 		_, err := netlink.LinkByName(emuIfname)
 		if err == nil && net.VifUsed != emuIfname {
-			log.Functionf("Found EMU %s and update %s", emuIfname, net.VifUsed)
+			log.Noticef("Found EMU %s and update %s", emuIfname, net.VifUsed)
 			net.VifUsed = emuIfname
 		}
 		retList = append(retList, net)
@@ -2271,7 +2306,7 @@ func waitForDomainGone(status types.DomainStatus, maxDelay time.Duration) bool {
 	delay := time.Second
 	var waited time.Duration
 	for {
-		log.Functionf("waitForDomainGone(%v) for %s: waiting for %v",
+		log.Noticef("waitForDomainGone(%v) for %s: waiting for %v",
 			status.UUIDandVersion, status.DisplayName, delay)
 		if delay != 0 {
 			time.Sleep(delay)
@@ -2287,12 +2322,12 @@ func waitForDomainGone(status types.DomainStatus, maxDelay time.Duration) bool {
 			return true
 		}
 		if state == types.HALTED || state == types.UNKNOWN {
-			log.Functionf("waitForDomainGone(%v) for %s: done state %s",
+			log.Noticef("waitForDomainGone(%v) for %s: done state %s",
 				status.UUIDandVersion, status.DisplayName,
 				state.String())
 			return true
 		}
-		log.Functionf("waitForDomainGone(%v) for %s state still %s waited %v",
+		log.Noticef("waitForDomainGone(%v) for %s state still %s waited %v",
 			status.UUIDandVersion, status.DisplayName,
 			state.String(), waited)
 		if waited > maxDelay {
@@ -2311,7 +2346,7 @@ func waitForDomainGone(status types.DomainStatus, maxDelay time.Duration) bool {
 
 func handleDelete(ctx *domainContext, key string, status *types.DomainStatus) {
 
-	log.Functionf("handleDelete(%v) for %s",
+	log.Noticef("handleDelete(%v) for %s",
 		status.UUIDandVersion, status.DisplayName)
 
 	status.PendingDelete = true
@@ -2341,7 +2376,7 @@ func handleDelete(ctx *domainContext, key string, status *types.DomainStatus) {
 	// No point in publishing metrics any more
 	ctx.pubDomainMetric.Unpublish(status.Key())
 
-	log.Functionf("handleDelete(%v) DONE for %s",
+	log.Noticef("handleDelete(%v) DONE for %s",
 		status.UUIDandVersion, status.DisplayName)
 }
 
@@ -2355,10 +2390,10 @@ func DomainCreate(ctx *domainContext, status types.DomainStatus) (int, error) {
 	)
 
 	filename := xenCfgFilename(status.AppNum)
-	log.Functionf("DomainCreate %s ... xenCfgFilename - %s", status.DomainName, filename)
+	log.Noticef("DomainCreate %s ... xenCfgFilename - %s", status.DomainName, filename)
 
 	// Now create a domain
-	log.Functionf("Creating domain with the config - %s", filename)
+	log.Noticef("Creating domain with the config - %s", filename)
 	config := lookupDomainConfig(ctx, status.Key())
 	if config == nil {
 		// Odd to have status but no config
@@ -2374,10 +2409,10 @@ func DomainCreate(ctx *domainContext, status types.DomainStatus) (int, error) {
 func DomainShutdown(status types.DomainStatus, force bool) error {
 
 	var err error
-	log.Functionf("DomainShutdown force-%v %s %d", force, status.DomainName, status.DomainId)
+	log.Noticef("DomainShutdown force-%v %s %d", force, status.DomainName, status.DomainId)
 
 	// Stop the domain
-	log.Functionf("Stopping domain - %s", status.DomainName)
+	log.Noticef("Stopping domain - %s", status.DomainName)
 	err = hyper.Task(&status).Stop(status.DomainName, force)
 
 	return err
@@ -2399,7 +2434,7 @@ func handleDNSImpl(ctxArg interface{}, key string,
 	status := statusArg.(types.DeviceNetworkStatus)
 	ctx := ctxArg.(*domainContext)
 	if key != "global" {
-		log.Functionf("handleDNSImpl: ignoring %s", key)
+		log.Noticef("handleDNSImpl: ignoring %s", key)
 		return
 	}
 	if status.DPCKey == "" {
@@ -2418,32 +2453,32 @@ func handleDNSImpl(ctxArg interface{}, key string,
 	// Compare Testing to save its updated value which is used by us
 	if ctx.deviceNetworkStatus.MostlyEqual(status) &&
 		ctx.deviceNetworkStatus.Testing == status.Testing {
-		log.Functionf("handleDNSImpl unchanged")
+		log.Noticef("handleDNSImpl unchanged")
 		ctx.DNSinitialized = true
 		return
 	}
-	log.Functionf("handleDNSImpl: changed %v",
+	log.Noticef("handleDNSImpl: changed %v",
 		cmp.Diff(ctx.deviceNetworkStatus, status))
 	// Even if Testing is set we look at it for pciback transitions to
 	// bring things out of pciback (but not to add to pciback)
 	ctx.deviceNetworkStatus = status
 	updatePortAndPciBackIoBundleAll(ctx)
 	ctx.DNSinitialized = true
-	log.Functionf("handleDNSImpl done for %s", key)
+	log.Noticef("handleDNSImpl done for %s", key)
 }
 
 func handleDNSDelete(ctxArg interface{}, key string, statusArg interface{}) {
 
 	ctx := ctxArg.(*domainContext)
 	if key != "global" {
-		log.Functionf("handleDNSDelete: ignoring %s", key)
+		log.Noticef("handleDNSDelete: ignoring %s", key)
 		return
 	}
-	log.Functionf("handleDNSDelete for %s", key)
+	log.Noticef("handleDNSDelete for %s", key)
 	ctx.deviceNetworkStatus = types.DeviceNetworkStatus{}
 	ctx.DNSinitialized = false
 	updatePortAndPciBackIoBundleAll(ctx)
-	log.Functionf("handleDNSDelete done for %s", key)
+	log.Noticef("handleDNSDelete done for %s", key)
 }
 
 func handleGlobalConfigCreate(ctxArg interface{}, key string,
@@ -2461,10 +2496,10 @@ func handleGlobalConfigImpl(ctxArg interface{}, key string,
 
 	ctx := ctxArg.(*domainContext)
 	if key != "global" {
-		log.Functionf("handleGlobalConfigImpl: ignoring %s", key)
+		log.Noticef("handleGlobalConfigImpl: ignoring %s", key)
 		return
 	}
-	log.Functionf("handleGlobalConfigImpl for %s", key)
+	log.Noticef("handleGlobalConfigImpl for %s", key)
 	gcp := agentlog.HandleGlobalConfig(log, ctx.subGlobalConfig, agentName,
 		ctx.CLIParams().DebugOverride, logger)
 	if gcp != nil {
@@ -2506,7 +2541,7 @@ func handleGlobalConfigImpl(ctxArg interface{}, key string,
 		ctx.processCloudInitMultiPart = gcp.GlobalValueBool(types.ProcessCloudInitMultiPart)
 		ctx.GCInitialized = true
 	}
-	log.Functionf("handleGlobalConfigImpl done for %s. "+
+	log.Noticef("handleGlobalConfigImpl done for %s. "+
 		"DomainBootRetryTime: %d, usbAccess: %t, metricInterval: %d",
 		key, ctx.domainBootRetryTime, ctx.usbAccess,
 		ctx.metricInterval)
@@ -2517,13 +2552,13 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 
 	ctx := ctxArg.(*domainContext)
 	if key != "global" {
-		log.Functionf("handleGlobalConfigDelete: ignoring %s", key)
+		log.Noticef("handleGlobalConfigDelete: ignoring %s", key)
 		return
 	}
-	log.Functionf("handleGlobalConfigDelete for %s", key)
+	log.Noticef("handleGlobalConfigDelete for %s", key)
 	agentlog.HandleGlobalConfig(log, ctx.subGlobalConfig, agentName,
 		ctx.CLIParams().DebugOverride, logger)
-	log.Functionf("handleGlobalConfigDelete done for %s", key)
+	log.Noticef("handleGlobalConfigDelete done for %s", key)
 }
 
 // This gets called once the GlobalConfig subscription/directory has been
@@ -2533,7 +2568,7 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 func handleGlobalConfigSync(ctxArg interface{}, done bool) {
 
 	ctx := ctxArg.(*domainContext)
-	log.Functionf("handleGlobalConfigSync %t", done)
+	log.Noticef("handleGlobalConfigSync %t", done)
 	if done {
 		ctx.GCComplete = true
 	}
@@ -2566,10 +2601,10 @@ func getCloudInitUserData(ctx *domainContext,
 			}
 			return decBlock, nil
 		}
-		log.Functionf("%s, domain config cipherblock decryption successful", dc.Key())
+		log.Noticef("%s, domain config cipherblock decryption successful", dc.Key())
 		return decBlock, nil
 	}
-	log.Functionf("%s, domain config cipherblock not present", dc.Key())
+	log.Noticef("%s, domain config cipherblock not present", dc.Key())
 	decBlock := types.EncryptionBlock{}
 	if dc.CloudInitUserData == nil {
 		ctx.cipherMetrics.RecordFailure(log, types.NoCipher)
@@ -2737,7 +2772,7 @@ func deleteCloudInitISO(ctx *domainContext, status types.DomainStatus) {
 
 // mkisofs -output %s -volid cidata -joliet -rock %s, fileName, dir
 func mkisofs(output string, dir string) error {
-	log.Functionf("mkisofs(%s, %s)", output, dir)
+	log.Noticef("mkisofs(%s, %s)", output, dir)
 
 	cmd := "mkisofs"
 	args := []string{
@@ -2749,15 +2784,15 @@ func mkisofs(output string, dir string) error {
 		"-rock",
 		dir,
 	}
-	log.Functionf("Calling command %s %v\n", cmd, args)
-	stdoutStderr, err := base.Exec(log, cmd, args...).WithUnlimitedTimeout(15 * time.Minute).CombinedOutput()
+	log.Noticef("Calling command %s %v\n", cmd, args)
+	stdoutStderr, err := base.Exec(log, cmd, args...).CombinedOutput()
 	if err != nil {
 		errStr := fmt.Sprintf("mkisofs failed: %s",
 			string(stdoutStderr))
 		log.Errorln(errStr)
 		return errors.New(errStr)
 	}
-	log.Functionf("mkisofs done")
+	log.Noticef("mkisofs done")
 	return nil
 }
 
@@ -2780,11 +2815,11 @@ func handlePhysicalIOAdapterListImpl(ctxArg interface{}, key string,
 
 	defer func() {
 		ctx.publishAssignableAdapters()
-		log.Functionf("handlePhysicalIOAdapterListImpl() done len %d",
+		log.Noticef("handlePhysicalIOAdapterListImpl() done len %d",
 			len(aa.IoBundleList))
 	}()
 
-	log.Functionf("handlePhysicalIOAdapterListImpl: current len %d, update %+v",
+	log.Noticef("handlePhysicalIOAdapterListImpl: current len %d, update %+v",
 		len(aa.IoBundleList), phyIOAdapterList)
 
 	// Is this the initial setup?
@@ -2831,14 +2866,14 @@ func handlePhysicalIOAdapterListImpl(ctxArg interface{}, key string,
 				}
 			}
 		}
-		log.Functionf("handlePhysicalIOAdapterListImpl: initialized to get len %d",
+		log.Noticef("handlePhysicalIOAdapterListImpl: initialized to get len %d",
 			len(aa.IoBundleList))
 
 		// check for mismatched PCI-ids and assignment groups and mark as errors
 		aa.CheckBadAssignmentGroups(log, hyper.PCISameController)
 		for i := range aa.IoBundleList {
 			ib := &aa.IoBundleList[i]
-			log.Functionf("handlePhysicalIOAdapterListImpl: new Adapter: %+v",
+			log.Noticef("handlePhysicalIOAdapterListImpl: new Adapter: %+v",
 				ib)
 			updatePortAndPciBackIoBundle(ctx, ib)
 		}
@@ -2875,7 +2910,7 @@ func handlePhysicalIOAdapterListImpl(ctxArg interface{}, key string,
 		currentIbPtr := aa.LookupIoBundlePhylabel(phyAdapter.Phylabel)
 		if currentIbPtr == nil || currentIbPtr.HasAdapterChanged(log, phyAdapter) {
 
-			log.Functionf("handlePhysicalIOAdapterListImpl: Adapter %s "+
+			log.Noticef("handlePhysicalIOAdapterListImpl: Adapter %s "+
 				"add/modify: %+v", phyAdapter.Phylabel, ib)
 			aa.AddOrUpdateIoBundle(log, *ib)
 
@@ -2885,7 +2920,7 @@ func handlePhysicalIOAdapterListImpl(ctxArg interface{}, key string,
 			ib = aa.LookupIoBundlePhylabel(ib.Phylabel)
 			updatePortAndPciBackIoBundle(ctx, ib)
 		} else {
-			log.Functionf("handlePhysicalIOAdapterListImpl: Adapter %s "+
+			log.Noticef("handlePhysicalIOAdapterListImpl: Adapter %s "+
 				"- No Change", phyAdapter.Phylabel)
 		}
 	}
@@ -2924,17 +2959,17 @@ func handlePhysicalIOAdapterListDelete(ctxArg interface{},
 
 	phyAdapterList := value.(types.PhysicalIOAdapterList)
 	ctx := ctxArg.(*domainContext)
-	log.Functionf("handlePhysicalIOAdapterListDelete: ALL PhysicalIoAdapters " +
+	log.Noticef("handlePhysicalIOAdapterListDelete: ALL PhysicalIoAdapters " +
 		"deleted")
 
 	for indx := range phyAdapterList.AdapterList {
 		phylabel := phyAdapterList.AdapterList[indx].Phylabel
-		log.Functionf("handlePhysicalIOAdapterListDelete: Deleting Adapter %s",
+		log.Noticef("handlePhysicalIOAdapterListDelete: Deleting Adapter %s",
 			phylabel)
 		handleIBDelete(ctx, phylabel)
 	}
 	ctx.publishAssignableAdapters()
-	log.Functionf("handlePhysicalIOAdapterListDelete done")
+	log.Noticef("handlePhysicalIOAdapterListDelete done")
 }
 
 // updatePortAndPciBackIoBundleAll is used when DeviceNetworkStatus might have changed
@@ -2959,7 +2994,7 @@ func updatePortAndPciBackIoBundleAll(ctx *domainContext) {
 // Sets Error/ErrorTime if there is an error
 func updatePortAndPciBackIoBundle(ctx *domainContext, ib *types.IoBundle) (changed bool) {
 
-	log.Functionf("updatePortAndPciBackIoBundle(%d %s %s)",
+	log.Noticef("updatePortAndPciBackIoBundle(%d %s %s)",
 		ib.Type, ib.Phylabel, ib.AssignmentGroup)
 	aa := ctx.assignableAdapters
 	var list []*types.IoBundle
@@ -3016,7 +3051,7 @@ func updatePortAndPciBackIoBundle(ctx *domainContext, ib *types.IoBundle) (chang
 		}
 	}
 
-	log.Functionf("updatePortAndPciBackIoBundle(%d %s %s) isPort %t keepInHost %t members %d",
+	log.Noticef("updatePortAndPciBackIoBundle(%d %s %s) isPort %t keepInHost %t members %d",
 		ib.Type, ib.Phylabel, ib.AssignmentGroup, isPort, keepInHost, len(list))
 	anyChanged := false
 	for _, ib := range list {
@@ -3043,7 +3078,7 @@ func updatePortAndPciBackIoBundle(ctx *domainContext, ib *types.IoBundle) (chang
 // XXX move all members and once and fall back on failure?
 func updatePortAndPciBackIoMember(ctx *domainContext, ib *types.IoBundle, isPort, keepInHost bool) (changed bool, err error) {
 
-	log.Functionf("updatePortAndPciBackIoMember(%d %s %s) isPort %t keepInHost %t",
+	log.Noticef("updatePortAndPciBackIoMember(%d %s %s) isPort %t keepInHost %t",
 		ib.Type, ib.Phylabel, ib.AssignmentGroup, isPort, keepInHost)
 	if ib.KeepInHost != keepInHost {
 		ib.KeepInHost = keepInHost
@@ -3062,10 +3097,10 @@ func updatePortAndPciBackIoMember(ctx *domainContext, ib *types.IoBundle, isPort
 		}
 	}
 	if changed && ib.KeepInHost && ib.UsedByUUID == nilUUID && ib.IsPCIBack {
-		log.Functionf("updatePortAndPciBackIoMember(%d, %s, %s) take back from pciback",
+		log.Noticef("updatePortAndPciBackIoMember(%d, %s, %s) take back from pciback",
 			ib.Type, ib.Phylabel, ib.AssignmentGroup)
-		if ib.PciLong != "" {
-			log.Functionf("updatePortAndPciBackIoMember: Removing %s (%s) from pciback",
+		if ib.PciLong != "" || (!ctx.hvTypeKube && ib.Type != types.IoNetEth) {
+			log.Noticef("updatePortAndPciBackIoMember: Removing %s (%s) from pciback",
 				ib.Phylabel, ib.PciLong)
 			err = hyper.PCIRelease(ib.PciLong)
 			if err != nil {
@@ -3112,14 +3147,18 @@ func updatePortAndPciBackIoMember(ctx *domainContext, ib *types.IoBundle, isPort
 			log.Noticef("Not assigning %s (%s) to pciback due to Testing",
 				ib.Phylabel, ib.PciLong)
 		} else if ib.PciLong != "" && ib.UsbAddr == "" {
-			log.Noticef("Assigning %s (%s) to pciback",
-				ib.Phylabel, ib.PciLong)
-			err := hyper.PCIReserve(ib.PciLong)
-			if err != nil {
-				return changed, err
+			if !ctx.hvTypeKube || ib.Type != types.IoNetEth {
+				log.Noticef("Assigning %s (%s) to pciback",
+					ib.Phylabel, ib.PciLong)
+				err := hyper.PCIReserve(ib.PciLong)
+				if err != nil {
+					return changed, err
+				}
+				ib.IsPCIBack = true
+				changed = true
+			} else {
+				log.Noticef("updatePortAndPciBackIoMember: skip IO on ib %v", ib)
 			}
-			ib.IsPCIBack = true
-			changed = true
 		}
 	}
 	return changed, nil
@@ -3130,12 +3169,12 @@ func updatePortAndPciBackIoMember(ctx *domainContext, ib *types.IoBundle, isPort
 // Returns changed bool and error for non-existent devices
 func checkAndFillIoBundle(ib *types.IoBundle) (bool, error) {
 
-	log.Functionf("checkAndFillIoBundle(%d %s %s)", ib.Type, ib.Phylabel, ib.AssignmentGroup)
+	log.Noticef("checkAndFillIoBundle(%d %s %s)", ib.Type, ib.Phylabel, ib.AssignmentGroup)
 	changed := false
 	if ib.Type.IsNet() && ib.MacAddr == "" {
 		ib.MacAddr = getMacAddr(ib.Ifname)
 		changed = true
-		log.Functionf("checkAndFillIoBundle(%d %s %s) found macaddr %s",
+		log.Noticef("checkAndFillIoBundle(%d %s %s) found macaddr %s",
 			ib.Type, ib.Ifname, ib.AssignmentGroup, ib.MacAddr)
 	}
 
@@ -3151,7 +3190,7 @@ func checkAndFillIoBundle(ib *types.IoBundle) (bool, error) {
 	// This is a PCI device
 	ib.PciLong = long
 	changed = true
-	log.Functionf("checkAndFillIoBundle(%d %s %s) found long %s",
+	log.Noticef("checkAndFillIoBundle(%d %s %s) found long %s",
 		ib.Type, ib.Phylabel, ib.AssignmentGroup, long)
 
 	// Save somewhat Unique string for debug
@@ -3163,7 +3202,7 @@ func checkAndFillIoBundle(ib *types.IoBundle) (bool, error) {
 	} else {
 		ib.Unique = unique
 		changed = true
-		log.Functionf("checkAndFillIoBundle(%d %s %s) %s found unique %s",
+		log.Noticef("checkAndFillIoBundle(%d %s %s) %s found unique %s",
 			ib.Type, ib.Phylabel, ib.AssignmentGroup, long, unique)
 	}
 	return changed, nil
@@ -3236,7 +3275,7 @@ func checkIoBundle(ctx *domainContext, ib *types.IoBundle) error {
 // XXX should we have a separate knob for HID and for usb-storage?
 func updateUsbAccess(ctx *domainContext) {
 
-	log.Functionf("updateUsbAccess(%t)", ctx.usbAccess)
+	log.Noticef("updateUsbAccess(%t)", ctx.usbAccess)
 	if !ctx.usbAccess {
 		removeUSBfromKernel()
 	} else {
@@ -3248,7 +3287,7 @@ func updateUsbAccess(ctx *domainContext) {
 
 func updateVgaAccess(ctx *domainContext) {
 
-	log.Functionf("updateVgaAccess(%t)", ctx.usbAccess)
+	log.Noticef("updateVgaAccess(%t)", ctx.usbAccess)
 	// TODO: we might need some extra work here for some VGA devices
 	// that do not enable output upon HDMI cable attachment
 	updatePortAndPciBackIoBundleAll(ctx)
@@ -3256,7 +3295,7 @@ func updateVgaAccess(ctx *domainContext) {
 }
 
 func updateConsoleAccess(ctx *domainContext) {
-	log.Functionf("updateConsoleAccess(%t)", ctx.consoleAccess)
+	log.Noticef("updateConsoleAccess(%t)", ctx.consoleAccess)
 	// FIXME: explore the way to stop getty/login
 	if ctx.consoleAccess {
 		startGetty(log)
@@ -3281,7 +3320,7 @@ var usbDrivers = []loadedDriver{
 // Enable the above drivers; record which ones loaded
 func addUSBtoKernel() {
 
-	log.Functionf("addUSBtoKernel()")
+	log.Noticef("addUSBtoKernel()")
 	for i := range usbDrivers {
 		drv := &usbDrivers[i]
 		if drv.loaded == types.TS_ENABLED {
@@ -3302,12 +3341,12 @@ func addUSBtoKernel() {
 // Disable usbhid etc
 func removeUSBfromKernel() bool {
 
-	log.Functionf("removeUSBfromKernel()")
+	log.Noticef("removeUSBfromKernel()")
 	ret := true
 	for i := range usbDrivers {
 		drv := &usbDrivers[i]
 		if drv.loaded == types.TS_DISABLED {
-			log.Functionf("driver %s not loaded; no unload",
+			log.Noticef("driver %s not loaded; no unload",
 				drv.driverName)
 			continue
 		}
@@ -3329,7 +3368,7 @@ func doModprobe(driver string, add bool) error {
 		args = append(args, "-r")
 	}
 	args = append(args, driver)
-	log.Functionf("Calling command %s %v\n", cmd, args)
+	log.Noticef("Calling command %s %v\n", cmd, args)
 	stdoutStderr, err := base.Exec(log, cmd, args...).CombinedOutput()
 	if err != nil {
 		log.Error(err)
@@ -3347,14 +3386,14 @@ func handleIBDelete(ctx *domainContext, phylabel string) {
 
 	ib := aa.LookupIoBundlePhylabel(phylabel)
 	if ib == nil {
-		log.Functionf("handleIBDelete: Adapter ( %s ) not found", phylabel)
+		log.Noticef("handleIBDelete: Adapter ( %s ) not found", phylabel)
 		return
 	}
 
 	if ib.IsPCIBack {
-		log.Functionf("handleIBDelete: Assigning %s (%s) back",
+		log.Noticef("handleIBDelete: Assigning %s (%s) back",
 			ib.Phylabel, ib.PciLong)
-		if ib.PciLong != "" {
+		if ib.PciLong != "" || (!ctx.hvTypeKube && ib.Type != types.IoNetEth) {
 			err := hyper.PCIRelease(ib.PciLong)
 			if err != nil {
 				log.Errorf("handleIBDelete(%d %s %s) PCIRelease %s failed %v",

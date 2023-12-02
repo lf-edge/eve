@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/cas"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 )
@@ -475,6 +476,25 @@ func unpublishBlobStatus(ctx *volumemgrContext, blobs ...*types.BlobStatus) {
 		key := blob.Sha256
 		log.Functionf("unpublishBlobStatus(%s)", key)
 
+		// If this Blob is not downloaded by eve, ignore and continue
+		// In kubevirt eve, k3s specific images,blobs are not downloaded by eve.
+		if base.IsHVTypeKube() {
+			blobInfo, err := ctx.casClient.GetBlobInfo(cas.CheckAndCorrectBlobHash(blob.Sha256))
+			if err != nil {
+				err := fmt.Errorf("unpublishBlobStatus: Exception while getting blob info %s: %s",
+					blob.Sha256, err.Error())
+				log.Errorf(err.Error())
+				continue
+			}
+			label := blobInfo.Labels
+			_, found := label["eve-downloaded"]
+			if !found {
+				log.Noticef("unplublishBlobStatus: PRAMOD Ignoring the blob %s not downloaded by eve", blob.Sha256)
+				continue
+			}
+
+		}
+
 		// Drop references. Note that we never publish the resulting
 		// BlobStatus since we unpublish it below.
 		// But the BlobStatus pointer might appear several times in
@@ -489,6 +509,7 @@ func unpublishBlobStatus(ctx *volumemgrContext, blobs ...*types.BlobStatus) {
 		}
 		//If blob is loaded, then remove it from CAS
 		if blob.State == types.LOADED {
+			log.Noticef("unpublishBlobStatus:  PRAMOD deleting blob %s", blob.Sha256)
 			if err := ctx.casClient.RemoveBlob(cas.CheckAndCorrectBlobHash(blob.Sha256)); err != nil {
 				err := fmt.Errorf("unpublishBlobStatus: Exception while removing loaded blob %s: %s",
 					blob.Sha256, err.Error())
@@ -572,7 +593,7 @@ func gcBlobStatus(ctx *volumemgrContext) {
 	for _, blobStatusInt := range pub.GetAll() {
 		blobStatus := blobStatusInt.(types.BlobStatus)
 		if blobStatus.State == types.LOADED && blobStatus.RefCount == 0 {
-			log.Functionf("gcBlobStatus: removing blob %s which has no refObjects", blobStatus.Sha256)
+			log.Noticef("gcBlobStatus:  PRAMOD removing blob %s which has no refObjects", blobStatus.Sha256)
 			unpublishBlobStatus(ctx, &blobStatus)
 		}
 	}
@@ -594,12 +615,33 @@ func gcImagesFromCAS(ctx *volumemgrContext) {
 	}
 
 	for _, image := range casImages {
-		if _, ok := referenceMap[image]; !ok {
-			log.Functionf("gcImagesFromCAS: removing image %s from CAS since no ContentTreeStatus ref found", image)
-			if err := ctx.casClient.RemoveImage(image); err != nil {
-				log.Errorf("gcImagesFromCAS: Exception while removing image from CAS. %s", err)
+		//if _, ok := referenceMap[image]; !ok {
+
+		// In kubevirt eve k3s specific containers are not downloaded by EVE.
+		// We cannot garbage collect those, so make sure this image was actually downloaded
+		// by eve, by checking label eve_downloaded=true
+		if base.IsHVTypeKube() {
+			label, err := ctx.casClient.GetImageLabel(image)
+			if err != nil {
+				log.Errorf("gcImagesFromCAS: error while getting image label from ctr %s", err)
+				continue
 			}
+			_, found := label["eve-downloaded"]
+			if found {
+				// Garbage this image since it was downloaded by eve and not referenced.
+				log.Noticef("gcImagesFromCAS: PRAMOD removing image %s from CAS since no ContentTreeStatus ref found, label %v", image, label)
+				//if err := ctx.casClient.RemoveImage(image); err != nil {
+				//	log.Errorf("gcImagesFromCAS: Exception while removing image from CAS. %s", err)
+				//}
+			}
+		} else {
+			log.Functionf("gcImagesFromCAS: PRAMOD else removing image %s from CAS since no ContentTreeStatus ref found", image)
+			//if err := ctx.casClient.RemoveImage(image); err != nil {
+			//	log.Errorf("gcImagesFromCAS: Exception while removing image from CAS. %s", err)
+			//}
+
 		}
+		//}
 	}
 }
 

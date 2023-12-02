@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 
@@ -18,6 +19,7 @@ import (
 	"github.com/containerd/containerd/images"
 	"github.com/containerd/containerd/mount"
 	"github.com/lf-edge/edge-containers/pkg/resolver"
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/containerd"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/moby/sys/mountinfo"
@@ -350,6 +352,10 @@ func (c *containerdCAS) IngestBlob(ctx context.Context, blobs ...types.BlobStatu
 		}
 		for i, m := range index.Manifests {
 			info.Labels[fmt.Sprintf("%s.%d", containerdGCRef, i)] = m.Digest.String()
+			if base.IsHVTypeKube() {
+				info.Labels["eve-downloaded"] = "true"
+				logrus.Infof("PRAMOD set eve-downloaded label on blob ")
+			}
 		}
 		if err := c.UpdateBlobInfo(info); err != nil {
 			err = fmt.Errorf("IngestBlob(%s): could not update labels on index: %v", info.Digest, err.Error())
@@ -369,6 +375,10 @@ func (c *containerdCAS) IngestBlob(ctx context.Context, blobs ...types.BlobStatu
 			}
 			i := len(m.Layers)
 			info.Labels[fmt.Sprintf("%s.%d", containerdGCRef, i)] = m.Config.Digest.String()
+			if base.IsHVTypeKube() {
+				info.Labels["eve-downloaded"] = "true"
+				logrus.Infof("PRAMOD in manifest set eve-downloaded label on blob ")
+			}
 
 			if err := c.UpdateBlobInfo(info); err != nil {
 				err = fmt.Errorf("IngestBlob(%s): could not update labels on manifest: %v",
@@ -496,7 +506,7 @@ func (c *containerdCAS) CreateImage(reference, mediaType, blobHash string) error
 
 	image := images.Image{
 		Name:   reference,
-		Labels: nil,
+		Labels: setImageLabel(),
 		Target: spec.Descriptor{
 			MediaType: mediaType,
 			Digest:    digest.Digest(blobHash),
@@ -528,6 +538,20 @@ func (c *containerdCAS) GetImageHash(reference string) (string, error) {
 		return "", fmt.Errorf("GetImageHash: Exception while getting image: %s. %s", reference, err.Error())
 	}
 	return image.Target().Digest.String(), nil
+}
+
+// GetImage: returns the Image Label of the reference
+// Returns error if the given 'reference' is not found.
+func (c *containerdCAS) GetImageLabel(reference string) (map[string]string, error) {
+	ctrdCtx, done := c.ctrdClient.CtrNewUserServicesCtx()
+	defer done()
+
+	image, err := c.ctrdClient.CtrGetImage(ctrdCtx, reference)
+	if errors.Is(err, containerderrdefs.ErrNotFound) {
+		return nil, ErrImageNotFound
+	}
+
+	return image.Labels(), nil
 }
 
 // ListImages: returns a list of references
@@ -570,9 +594,10 @@ func (c *containerdCAS) ReplaceImage(reference, mediaType, blobHash string) erro
 	if err != nil {
 		return fmt.Errorf("CreateImage: exception while parsing blob %s: %s", blobHash, err.Error())
 	}
+
 	image := images.Image{
 		Name:   reference,
-		Labels: nil,
+		Labels: setImageLabel(),
 		Target: spec.Descriptor{
 			MediaType: mediaType,
 			Digest:    digest.Digest(blobHash),
@@ -666,7 +691,8 @@ func (c *containerdCAS) PrepareContainerRootDir(rootPath, reference, rootBlobSha
 	//Step 2: create snapshot of the image so that it can be mounted as container's rootfs.
 	snapshotID := containerd.GetSnapshotID(rootPath)
 	if err := c.CreateSnapshotForImage(snapshotID, reference); err != nil {
-		err = fmt.Errorf("PrepareContainerRootDir: Could not create snapshot %s. %v", snapshotID, err)
+		err = fmt.Errorf("PrepareContainerRootDir: Could not creat snapshot, rootpath %s, ref %s, %s. %v",
+			rootPath, reference, snapshotID, err)
 		logrus.Errorf(err.Error())
 		return err
 	}
@@ -684,8 +710,9 @@ func (c *containerdCAS) PrepareContainerRootDir(rootPath, reference, rootBlobSha
 	cmd := clientImageSpec.Config.Cmd
 	workdir := clientImageSpec.Config.WorkingDir
 	unProcessedEnv := clientImageSpec.Config.Env
-	logrus.Infof("PrepareContainerRootDir: mountPoints %+v execpath %+v cmd %+v workdir %+v env %+v",
-		mountpoints, execpath, cmd, workdir, unProcessedEnv)
+	user := clientImageSpec.Config.User
+	logrus.Infof("PrepareContainerRootDir: mountPoints %+v execpath %+v cmd %+v workdir %+v env %+v user %+v",
+		mountpoints, execpath, cmd, workdir, unProcessedEnv, user)
 	clientImageSpecJSON, err := getJSON(clientImageSpec)
 	if err != nil {
 		err = fmt.Errorf("PrepareContainerRootDir: Could not build json of image: %v. %v",
@@ -704,6 +731,84 @@ func (c *containerdCAS) PrepareContainerRootDir(rootPath, reference, rootBlobSha
 			rootPath, imageConfigFilename, err)
 		logrus.Errorf(err.Error())
 		return err
+	}
+
+	// On kubevirt eve we also write the mountpoints and cmdline files to the rootPath.
+	// Once rootPath is populated with all necessary files, this rootPath directory will be
+	// converted to a PVC and passed in to domainmgr to attach to VM as rootdisk
+	// NOTE: For kvm eve these files are generated and passed to bootloader in pkg/pillar/containerd/oci.go:AddLoader()
+	if base.IsHVTypeKube() {
+
+		// Mount the snapshot
+		if err := c.MountSnapshot(snapshotID, GetRoofFsPath(rootPath)); err != nil {
+			return fmt.Errorf("PrepareContainerRootDir error mount of snapshot: %s. %s", snapshotID, err)
+		}
+
+		for m := range mountpoints {
+
+			b := []byte(fmt.Sprintf("%+v\n", m))
+			if err := os.WriteFile(filepath.Join(rootPath, "mountPoints"), b, 0666); err != nil {
+				err = fmt.Errorf("PrepareContainerRootDir: Exception while writing mountpoints to %v %v",
+					rootPath, err)
+				logrus.Errorf(err.Error())
+				return err
+			}
+		}
+
+		// create env manifest
+		envContent := ""
+		if workdir != "" {
+			envContent = fmt.Sprintf("export WORKDIR=\"%s\"\n", workdir)
+		} else {
+			envContent = fmt.Sprintf("export WORKDIR=/\n")
+		}
+		for _, e := range unProcessedEnv {
+			keyAndValueSlice := strings.SplitN(e, "=", 2)
+			if len(keyAndValueSlice) == 2 {
+				//handles Key=Value case
+				envContent = envContent + fmt.Sprintf("export %s=\"%s\"\n", keyAndValueSlice[0], keyAndValueSlice[1])
+			} else {
+				//handles Key= case
+				envContent = envContent + fmt.Sprintf("export %s\n", e)
+			}
+		}
+		if err := os.WriteFile(filepath.Join(rootPath, "environment"), []byte(envContent), 0644); err != nil {
+			return err
+		}
+
+		// create cmdline manifest
+		// each item needs to be independently quoted for initrd
+		execpathQuoted := make([]string, 0)
+
+		// This loop is just to pick the execpath and eliminate any square braces around it.
+		// Just pick /entrypoint.sh from [/entrypoint.sh]
+		for _, c := range execpath {
+			execpathQuoted = append(execpathQuoted, fmt.Sprintf("\"%s\"", c))
+		}
+		for _, s := range cmd {
+			execpathQuoted = append(execpathQuoted, fmt.Sprintf("\"%s\"", s))
+		}
+		command := strings.Join(execpathQuoted, " ")
+		if err := os.WriteFile(filepath.Join(rootPath, "cmdline"),
+			[]byte(command), 0644); err != nil {
+			return err
+		}
+
+		// Userid and GID are same
+		ug := fmt.Sprintf("%d %d", 0, 0)
+		if user != "" {
+			uid, _ := strconv.Atoi(user)
+			ug = fmt.Sprintf("%d %d", uid, uid)
+		}
+		if err := os.WriteFile(filepath.Join(rootPath, "ug"),
+			[]byte(ug), 0644); err != nil {
+			return err
+		}
+
+		if err := os.MkdirAll(filepath.Join(rootPath, "modules"), 0600); err != nil {
+			return err
+		}
+
 	}
 	return nil
 }
@@ -1029,4 +1134,20 @@ func getJSON(x interface{}) (string, error) {
 // GetRoofFsPath returns rootfs path
 func GetRoofFsPath(rootPath string) string {
 	return filepath.Join(rootPath, containerRootfsPath)
+}
+
+func setImageLabel() map[string]string {
+	// Label this image as downloaded by eve. In kubevirt eve some images are downloaded by k3s.
+	// We will differentiate those by the presence of this label.
+	// This label will be used in Garbage collection of eve downloaded images
+	// TODO: We need to generalize this for kvm eve too, basically need to figure out how to handle
+	// the upgrades if the previous version eve does not have this label set.
+
+	if !base.IsHVTypeKube() {
+		return nil
+	}
+	label := map[string]string{}
+	label["eve-downloaded"] = "true"
+
+	return label
 }

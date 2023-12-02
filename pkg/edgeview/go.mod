@@ -13,6 +13,7 @@ require (
 	github.com/tatsushid/go-fastping v0.0.0-20160109021039-d7bb493dee3e
 	github.com/vishvananda/netlink v1.1.1-0.20210924202909-187053b97868
 	golang.org/x/sys v0.13.0
+	golang.org/x/crypto v0.1.0
 )
 
 require (

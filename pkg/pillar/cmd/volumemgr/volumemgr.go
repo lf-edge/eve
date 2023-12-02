@@ -17,6 +17,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/cas"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
+	"github.com/lf-edge/eve/pkg/pillar/kubeapi"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
@@ -101,6 +102,9 @@ type volumemgrContext struct {
 
 	// cli options
 	versionPtr *bool
+
+	// kube mode
+	hvTypeKube bool
 }
 
 func (ctxPtr *volumemgrContext) lookupVolumeStatusByUUID(id string) *types.VolumeStatus {
@@ -139,6 +143,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		deferContentDelete: 0,
 		globalConfig:       types.DefaultConfigItemValueMap(),
 		persistType:        vault.ReadPersistType(),
+		hvTypeKube:         base.IsHVTypeKube(),
 	}
 	agentbase.Init(&ctx, logger, log, agentName,
 		agentbase.WithArguments(arguments))
@@ -236,13 +241,34 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	}
 	log.Functionf("user containerd ready")
 
+	// wait for kubernetes up if in kube mode, if gets error, move on
+	if ctx.hvTypeKube {
+		log.Noticef("volumemgr run: wait for kubernetes")
+		_, err := kubeapi.WaitKubernetes(agentName, ps, stillRunning)
+		if err != nil {
+			log.Errorf("volumemgr run: wait for kubernetes error %v", err)
+		} else {
+			log.Noticef("volumemgr run: kubernetes node ready")
+		}
+	}
+
 	if ctx.persistType == types.PersistZFS {
-		// create datasets for volumes
-		initializeDatasets()
-		// Iterate over volume datasets and prepares map of
-		// volume's content format with the volume key
-		populateExistingVolumesFormatDatasets(&ctx, types.VolumeEncryptedZFSDataset)
-		populateExistingVolumesFormatDatasets(&ctx, types.VolumeClearZFSDataset)
+		if ctx.hvTypeKube {
+			initializeDirs()
+		} else {
+			// create datasets for volumes
+			initializeDatasets()
+			// Iterate over volume datasets and prepares map of
+			// volume's content format with the volume key
+			populateExistingVolumesFormatDatasets(&ctx, types.VolumeEncryptedZFSDataset)
+			populateExistingVolumesFormatDatasets(&ctx, types.VolumeClearZFSDataset)
+		}
+
+		// CSI Persist volumes are built on ZFS, check and populate if they exist
+		if ctx.hvTypeKube {
+			populateExistingVolumesFormatPVC(&ctx, types.VolumeCSINameSpace)
+		}
+
 	} else {
 		// create the directories
 		initializeDirs()

@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
-
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	uuid "github.com/satori/go.uuid"
 	"github.com/shirou/gopsutil/cpu"
@@ -43,6 +43,7 @@ type hypervisorDesc struct {
 var knownHypervisors = map[string]hypervisorDesc{
 	XenHypervisorName:        {constructor: newXen, dom0handle: "/proc/xen", hvTypeFileContent: "xen"},
 	KVMHypervisorName:        {constructor: newKvm, dom0handle: "/dev/kvm", hvTypeFileContent: "kvm"},
+	KubevirtHypervisorName:   {constructor: newKubevirt, dom0handle: "/dev/kvm", hvTypeFileContent: "kubevirt"},
 	ACRNHypervisorName:       {constructor: newAcrn, dom0handle: "/dev/acrn", hvTypeFileContent: "acrn"},
 	ContainerdHypervisorName: {constructor: newContainerd, dom0handle: "/run/containerd/containerd.sock"},
 	NullHypervisorName:       {constructor: newNull, dom0handle: "/"},
@@ -50,7 +51,7 @@ var knownHypervisors = map[string]hypervisorDesc{
 
 // this is a priority order to pick a default hypervisor if multiple are available (more to less likely)
 var hypervisorPriority = []string{
-	XenHypervisorName, KVMHypervisorName, ACRNHypervisorName, ContainerdHypervisorName, NullHypervisorName,
+	XenHypervisorName, KVMHypervisorName, KubevirtHypervisorName, ACRNHypervisorName, ContainerdHypervisorName, NullHypervisorName,
 }
 
 // GetHypervisor returns a particular hypervisor implementation
@@ -95,7 +96,15 @@ func GetAvailableHypervisors() (all []string, enabled []string) {
 	all = hypervisorPriority
 	for _, v := range all {
 		if _, err := os.Stat(knownHypervisors[v].dom0handle); err == nil {
-			enabled = append(enabled, v)
+			// Both Kubevirt and KVM use same dom0handle.
+			// Lets differentiate by eve_flavor
+			if base.IsHVTypeKube() && strings.Compare(v, KVMHypervisorName) == 0 {
+				continue // kubevirt image don't set kvm
+			} else if !base.IsHVTypeKube() && strings.Compare(v, KubevirtHypervisorName) == 0 {
+				continue // kvm image don't set kubevirt
+			} else {
+				enabled = append(enabled, v)
+			}
 		}
 	}
 	return

@@ -7,7 +7,9 @@ import (
 	"errors"
 	"fmt"
 	"runtime"
+	"strings"
 
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 )
 
@@ -43,6 +45,7 @@ func MaybeAddDomainConfig(ctx *zedmanagerContext,
 		AppNum:            AppNum,
 		VmConfig:          aiConfig.FixedResources,
 		IoAdapterList:     aiConfig.IoAdapterList,
+		KubeNADList:       checkToFillKubeNADs(ctx, aiConfig),
 		CloudInitUserData: aiConfig.CloudInitUserData,
 		CipherBlockStatus: aiConfig.CipherBlockStatus,
 		GPUConfig:         "legacy",
@@ -61,7 +64,9 @@ func MaybeAddDomainConfig(ctx *zedmanagerContext,
 			continue
 		}
 		location := vrs.ActiveFileLocation
-		if location == "" {
+		// Volumes in kubevirt eve are of PVC type and managed by kubernetes.
+		// There is no specific filelocation
+		if location == "" && !base.IsHVTypeKube() {
 			errStr := fmt.Sprintf("No ActiveFileLocation for %s", vrs.DisplayName)
 			log.Error(errStr)
 			return nil, errors.New(errStr)
@@ -154,6 +159,32 @@ func publishDomainConfig(ctx *zedmanagerContext,
 
 	key := status.Key()
 	log.Tracef("publishDomainConfig(%s)", key)
+	if ctx.hvTypeKube {
+		var imageName string
+		for _, disk := range status.DiskConfigList {
+			sub := ctx.subVolumeRefStatus
+			items := sub.GetAll()
+			for _, item := range items {
+				vrs := item.(types.VolumeRefStatus)
+				if strings.Contains(disk.VolumeKey, vrs.VolumeID.String()) {
+					imageName = vrs.ReferenceName
+					break
+				}
+			}
+			if imageName != "" {
+				break
+			}
+		}
+		status.KubeImageName = imageName
+		// set Activate to false if the config is waiting for image name
+		if status.VirtualizationMode == types.KubeContainer {
+			if status.KubeImageName == "" {
+				status.Activate = false
+			} else {
+				status.Activate = true
+			}
+		}
+	}
 	pub := ctx.pubDomainConfig
 	pub.Publish(key, *status)
 }

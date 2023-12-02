@@ -282,7 +282,7 @@ func retryWebSocket(hostname, token string, urlWSS url.URL, err error) bool {
 		}
 		reconnectCnt++
 	} else {
-		fmt.Printf("retryWebSocket: timeout or reset, close and resetup websocket, %v\n", err)
+		fmt.Printf("retryWebSocket: client timeout or reset, close and resetup websocket, %v\n", err)
 	}
 	time.Sleep(time.Duration(duration) * time.Millisecond)
 	ok := setupWebC(hostname, token, urlWSS, true)

@@ -37,6 +37,8 @@ type DomainConfig struct {
 	DiskConfigList []DiskConfig
 	VifList        []VifConfig
 	IoAdapterList  []IoAdapter
+	KubeNADList    []KubeNAD // List of NAD names for kubernetes
+	KubeImageName  string    // propagate kube pod container image reference
 
 	// XXX: to be deprecated, use CipherBlockStatus instead
 	CloudInitUserData *string `json:"pubsub-large-CloudInitUserData"` // base64-encoded
@@ -55,6 +57,12 @@ type DomainConfig struct {
 	// once the version is changed cloud-init tool restarts in a guest.
 	// See getCloudInitVersion() and createCloudInitISO() for details.
 	CloudInitVersion uint32
+}
+
+// KubeNAD - carry the Kubernetes NAD name and Mac Address for App
+type KubeNAD struct {
+	Name string
+	Mac  string
 }
 
 // MetaDataType of metadata service for app
@@ -101,6 +109,10 @@ func (config DomainConfig) GetTaskName() string {
 	return config.UUIDandVersion.UUID.String() + "." +
 		config.UUIDandVersion.Version + "." +
 		strconv.Itoa(config.AppNum)
+}
+
+func (config DomainConfig) GetKubeDispName() string {
+	return strings.ToLower(config.DisplayName) + "-" + config.UUIDandVersion.UUID.String()[:5]
 }
 
 // DomainnameToUUID does the reverse of GetTaskName
@@ -239,6 +251,7 @@ const (
 	FML
 	NOHYPER
 	LEGACY
+	KubeContainer
 )
 
 // Task represents any runnable entity on EVE
@@ -418,6 +431,12 @@ type DiskStatus struct {
 	CustomMeta   string
 }
 
+// CPUKubePrev - remember previous time window recorded cpu stats
+type CPUKubePrev struct {
+	CPUCountNs uint64    // Nanoseconds since last start time
+	StartTime  time.Time // last window start time
+}
+
 // DomainMetric carries CPU and memory usage. UUID=devUUID for the dom0/host metrics overhead
 type DomainMetric struct {
 	UUIDandVersion    UUIDandVersion
@@ -430,6 +449,7 @@ type DomainMetric struct {
 	UsedMemoryPercent float64
 	LastHeard         time.Time
 	Activated         bool
+	Prev              CPUKubePrev // for EVE local record
 }
 
 // Key returns the key for pubsub

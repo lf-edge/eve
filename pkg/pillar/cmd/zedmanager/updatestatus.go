@@ -10,7 +10,7 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	"github.com/satori/go.uuid"
+	uuid "github.com/satori/go.uuid"
 )
 
 // Update this AppInstanceStatus generate config updates to
@@ -213,12 +213,18 @@ func doUpdate(ctx *zedmanagerContext,
 			// HALTED to indicate it is not running since it
 			// might have been halted before the device was rebooted
 			if status.State == types.INSTALLED || status.State == types.START_DELAYED {
-				status.State = types.HALTED
+				log.Noticef("doUpdate: kube mode, set halted, %v", status.State)
+				if !ctx.hvTypeKube {
+					status.State = types.HALTED
+				}
 				changed = true
 			}
 		}
 		log.Functionf("Waiting for config.Activate for %s", uuidStr)
-		return changed
+		// XXX kube mode
+		if !ctx.hvTypeKube {
+			return changed
+		}
 	}
 	log.Functionf("Have config.Activate for %s", uuidStr)
 	c = doActivate(ctx, uuidStr, config, status)
@@ -670,32 +676,44 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 
 	// Check AppNetworkStatus
 	ns := lookupAppNetworkStatus(ctx, uuidStr)
-	if ns == nil {
-		log.Functionf("Waiting for AppNetworkStatus for %s", uuidStr)
-		return changed
-	}
-	if ns.Pending() {
-		log.Functionf("Waiting for AppNetworkStatus !Pending for %s", uuidStr)
-		return changed
-	}
-	if ns.HasError() {
-		log.Errorf("Received error from zedrouter for %s: %s",
-			uuidStr, ns.Error)
-		status.SetErrorWithSource(ns.Error, types.AppNetworkStatus{},
-			ns.ErrorTime)
-		changed = true
-		return changed
-	}
-	if ns.AwaitNetworkInstance {
-		log.Functionf("Waiting for required network instances to arrive for %s", uuidStr)
-		status.State = types.AWAITNETWORKINSTANCE
-		changed = true
-		return changed
-	}
-	updateAppNetworkStatus(status, ns)
-	if !ns.Activated {
-		log.Functionf("Waiting for AppNetworkStatus Activated for %s", uuidStr)
-		return changed
+	if ctx.hvTypeKube && ns == nil {
+		log.Functionf("AppNetworkStatus does not exist yet for %s, aistatus %+v", uuidStr, status)
+		if !config.Activate {
+			log.Functionf("AppNetworkConfig not Activate for %s", uuidStr)
+			return changed
+		}
+	} else {
+		if ns == nil {
+			log.Functionf("Waiting for AppNetworkStatus for %s", uuidStr)
+			return changed
+		}
+		if ns.Pending() {
+			log.Functionf("Waiting for AppNetworkStatus !Pending for %s", uuidStr)
+			return changed
+		}
+		if ns.HasError() {
+			log.Errorf("Received error from zedrouter for %s: %s",
+				uuidStr, ns.Error)
+			status.SetErrorWithSource(ns.Error, types.AppNetworkStatus{},
+				ns.ErrorTime)
+			changed = true
+			return changed
+		}
+		if ns.AwaitNetworkInstance {
+			log.Functionf("Waiting for required network instances to arrive for %s", uuidStr)
+			status.State = types.AWAITNETWORKINSTANCE
+			changed = true
+			return changed
+		}
+		updateAppNetworkStatus(status, ns)
+		if !ns.Activated { // XXX the zedrouter does not set for hvtypekube
+			if !ctx.hvTypeKube {
+				log.Functionf("Waiting for AppNetworkStatus Activated for %s", uuidStr)
+				return changed
+			} else {
+				log.Functionf("app-ns not activated, ignore")
+			}
+		}
 	}
 	if status.IsErrorSource(types.AppNetworkStatus{}) {
 		log.Functionf("Clearing zedrouter error %s", status.Error)
@@ -812,16 +830,19 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 	// XXX compare with equal before setting changed?
 	status.IoAdapterList = ds.IoAdapterList
 	changed = true
-	if ds.State < types.BOOTING {
-		log.Functionf("Waiting for DomainStatus to BOOTING for %s",
-			uuidStr)
-		return changed
+	if !ctx.hvTypeKube {
+		if ds.State < types.BOOTING {
+			log.Functionf("Waiting for DomainStatus to BOOTING for %s",
+				uuidStr)
+			return changed
+		}
+		if ds.Pending() {
+			log.Functionf("Waiting for DomainStatus !Pending for %s", uuidStr)
+			return changed
+		}
+		log.Functionf("Done with DomainStatus for %s", uuidStr)
 	}
-	if ds.Pending() {
-		log.Functionf("Waiting for DomainStatus !Pending for %s", uuidStr)
-		return changed
-	}
-	log.Functionf("Done with DomainStatus for %s", uuidStr)
+	log.Noticef("doActiavate: hack, Done with DomainStatus") // XXX
 
 	if !status.Activated {
 		status.Activated = true
