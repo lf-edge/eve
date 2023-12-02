@@ -14,8 +14,6 @@ K3S_LOG_DIR="/var/lib/"
 loglimitSize=$((5*1024*1024))
 
 INSTALL_LOG=/var/lib/install.log
-CTRD_LOG=/var/lib/containerd.log
-LOG_SIZE=$((5*1024*1024))
 
 logmsg() {
    local MSG
@@ -139,51 +137,6 @@ setup_prereqs () {
         wait_for_device_uuid
 }
 
-check_start_containerd() {
-        # Needed to get the pods to start
-        if [ ! -L /usr/bin/runc ]; then
-                ln -s /var/lib/rancher/k3s/data/current/bin/runc /usr/bin/runc
-        fi
-        if [ ! -L /usr/bin/containerd-shim-runc-v2 ]; then
-                ln -s /var/lib/rancher/k3s/data/current/bin/containerd-shim-runc-v2 /usr/bin/containerd-shim-runc-v2
-        fi
-
-        if pgrep -f "containerd --config" >> $INSTALL_LOG 2>&1; then
-                logmsg "k3s-containerd is alive"
-        else
-                logmsg "Starting k3s-containerd"
-                mkdir -p /run/containerd-user
-                nohup /var/lib/rancher/k3s/data/current/bin/containerd --config /etc/containerd/config-k3s.toml > $CTRD_LOG 2>&1 &
-        fi
-}
-trigger_k3s_selfextraction() {
-        # Analysis of the k3s source shows nearly any cli command will first self-extract a series of binaries.
-        # In our case we're looking for the containerd binary.
-        # k3s check-config appears to be the only cli cmd which doesn't:
-        # - start a long running process/server
-        # - timeout connecting to a socket
-        # - manipulate config/certs
-
-        # When run on the shell this does throw some config errors, its unclear if we need this issues fixed:
-        # - links: aux/ip6tables should link to iptables-detect.sh (fail)
-        # - links: aux/ip6tables-restore should link to iptables-detect.sh (fail)
-        # - links: aux/ip6tables-save should link to iptables-detect.sh (fail)
-        # - links: aux/iptables should link to iptables-detect.sh (fail)
-        # - links: aux/iptables-restore should link to iptables-detect.sh (fail)
-        # - links: aux/iptables-save should link to iptables-detect.sh (fail)
-        # - apparmor: enabled, but apparmor_parser missing (fail)
-        /usr/bin/k3s check-config >> $INSTALL_LOG 2>&1
-}
-
-# NOTE: We only support zfs storage in production systems because data is persisted on zvol.
-# If ZFS is not available we still go ahead and provide the service but the data is lost on reboot
-# because /var/lib will be on overlayfs. The only reason to allow that is to provide a quick debugging env for developers.
-if [ -b /dev/zvol/persist/clustered-storage ]; then
-        mount /dev/zvol/persist/clustered-storage /var/lib  ## This is where we persist the cluster components (k3s containers)
-        logmsg "Using ZFS persistent storage"
-else
-        logmsg "WARNING: Using overlayfs non-persistent storage"
-fi
 apply_longhorn_disk_config() {
         node=$1
         kubectl label node $node node.longhorn.io/create-default-disk='config'
@@ -233,8 +186,6 @@ check_overwrite_nsmounter() {
 setup_prereqs
 
 date >> $INSTALL_LOG
-<<<<<<< HEAD
-=======
 HOSTNAME=$(/bin/hostname)
 logmsg "Starting wait for hostname, currently: $HOSTNAME"
 while [[ $HOSTNAME = linuxkit* ]];
@@ -409,7 +360,6 @@ do
 done
 mount /dev/zvol/persist/etcd-storage /var/lib  ## This is where we persist the cluster components (etcd)
 logmsg "Using ZFS persistent storage"
->>>>>>> poc-aug10
 
 #Forever loop every 15 secs
 while true;
@@ -430,16 +380,6 @@ if [ ! -f /var/lib/all_components_initialized ]; then
                 nohup /usr/bin/k3s server --config /etc/rancher/k3s/config.yaml &
                 k3s_pid=$!
                 #wait until k3s is ready
-<<<<<<< HEAD
-                logmsg "Looping until k3s is ready"
-                while [ "$(kubectl get node "$(/bin/hostname)" -o json | jq '.status.conditions[] | select(.reason=="KubeletReady") | .status=="True"')" != "true" ];
-                do
-                        sleep 5;
-                done
-                # Give the embedded etcd in k3s priority over io as its fsync latencies are critical
-                ionice -c2 -n0 -p "$(pgrep -f "k3s server")"
-                logmsg "k3s is ready on this node"
-=======
                 logmsg "Looping until k3s is ready, pid:$k3s_pid"
                 #until kubectl get node | grep "$HOSTNAME" | awk '{print $2}' | grep 'Ready'; do sleep 5; done
                 # check to see if node is ready, and if k3s crashed
@@ -452,7 +392,6 @@ if [ ! -f /var/lib/all_components_initialized ]; then
                 # Give the embedded etcd in k3s priority over io as its fsync latencies are critical
                 ionice -c2 -n0 -p $k3s_pid
                 logmsg "k3s is ready on this node, pid:$k3s_pid"
->>>>>>> poc-aug10
                 # Default location where clients will look for config
                 ln -s /etc/rancher/k3s/k3s.yaml ~/.kube/config
                 cp /etc/rancher/k3s/k3s.yaml /run/.kube/k3s/k3s.yaml
@@ -514,10 +453,8 @@ if [ ! -f /var/lib/all_components_initialized ]; then
         fi
 else
         check_start_containerd
-        if pgrep k3s >> $INSTALL_LOG 2>&1; then
-                logmsg "k3s is alive "
-        else
-                ## Must be after reboot
+        pgrep -f "k3s server" > /dev/null 2>&1
+        if [ $? -eq 1 ]; then 
             if [ $RESTART_COUNT -lt $MAX_K3S_RESTARTS ]; then
                 ## Must be after reboot, or from k3s restart
                 let "RESTART_COUNT++"
@@ -528,14 +465,12 @@ else
                 logmsg "Starting k3s server, restart count: $RESTART_COUNT"
                 # for now, always copy to get the latest
                 nohup /usr/bin/k3s server --config /etc/rancher/k3s/config.yaml &
-                logmsg "Looping until k3s is ready"
-                while [ "$(kubectl get node "$(/bin/hostname)" -o json | jq '.status.conditions[] | select(.reason=="KubeletReady") | .status=="True"')" != "true" ];
-                do
-                        sleep 5;
-                done
+                k3s_pid=$!
+                logmsg "Looping until k3s is ready, pid:$k3s_pid"
+                until kubectl get node | grep "$HOSTNAME" | awk '{print $2}' | grep 'Ready'; do sleep 5; done
                 # Give the embedded etcd in k3s priority over io as its fsync latencies are critical
-                ionice -c2 -n0 -p "$(pgrep -f "k3s server")"
-                logmsg "k3s is ready on this node"
+                ionice -c2 -n0 -p $k3s_pid
+                logmsg "k3s is ready on this node, pid:$k3s_pid"
                 # Default location where clients will look for config
                 ln -s /etc/rancher/k3s/k3s.yaml ~/.kube/config
                 cp /etc/rancher/k3s/k3s.yaml /run/.kube/k3s/k3s.yaml
@@ -561,12 +496,6 @@ else
           check_overwrite_nsmounter
         fi
 fi
-        currentSize=$(wc -c <"$CTRD_LOG")
-        if [ "$currentSize" -gt "$LOG_SIZE" ]; then
-                cp "$CTRD_LOG" "${CTRD_LOG}.1"
-                truncate -s 0 "$CTRD_LOG"
-        fi
-        sleep 15
         check_log_file_size "rancher/k3s/k3s.log"
         check_log_file_size "rancher/k3s/multus.log"
         check_log_file_size "install.log"
