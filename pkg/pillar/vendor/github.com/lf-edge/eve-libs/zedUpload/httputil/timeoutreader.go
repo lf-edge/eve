@@ -32,14 +32,10 @@ func (r *TimeoutReader) Read(p []byte) (int, error) {
 		n, err = r.reader.Read(p)
 		c <- 0
 	}()
-
-	timer := time.NewTimer(r.timeout)
-	defer timer.Stop()
-
 	select {
 	case <-c:
 		return n, err
-	case <-timer.C:
+	case <-time.After(r.timeout):
 		return 0, &ErrTimeout{}
 	}
 }

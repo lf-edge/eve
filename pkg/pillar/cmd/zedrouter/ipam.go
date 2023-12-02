@@ -70,7 +70,7 @@ func (z *zedrouter) generateAppMac(appUUID uuid.UUID, adapterNum int, appNum int
 
 // Returns an IPv4 address allocated for the guest side of an application VIF.
 func (z *zedrouter) lookupOrAllocateIPv4ForVIF(niStatus *types.NetworkInstanceStatus,
-	adapterStatus types.AppNetAdapterStatus, appID uuid.UUID) (net.IP, error) {
+	adapterStatus types.AppNetAdapterStatus,
 	ulStatus types.UnderlayNetworkStatus, appID uuid.UUID,
 	kubeulstatus *types.UnderlayNetworkStatus) (net.IP, error) {
 	var err error
@@ -86,6 +86,7 @@ func (z *zedrouter) lookupOrAllocateIPv4ForVIF(niStatus *types.NetworkInstanceSt
 		z.log.Functionf("lookupOrAllocateIPv4(NI:%v, app:%v): no MAC address",
 			networkID, appID)
 		return nil, nil
+	}
 	if z.hvTypeKube && kubeulstatus != nil {
 		ipAddr = kubeulstatus.AllocatedIPv4Addr
 	} else {
