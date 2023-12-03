@@ -11,6 +11,7 @@ import (
 
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/nireconciler/genericitems"
+	"github.com/lf-edge/eve/pkg/pillar/types"
 	uuid "github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
 )
@@ -42,14 +43,31 @@ func exampleDnsmasqParams() genericitems.Dnsmasq {
 			FromIP: net.IP{10, 0, 0, 2},
 			ToIP:   net.IP{10, 0, 0, 123},
 		},
-		GatewayIP:  net.IP{192, 168, 1, 1},
-		DNSServers: []net.IP{{10, 0, 0, 1}, {1, 1, 1, 1}},
-		NTPServers: []net.IP{{94, 130, 35, 4}, {94, 16, 114, 254}},
+		GatewayIP:        net.IP{10, 0, 0, 1},
+		WithDefaultRoute: true,
+		DNSServers:       []net.IP{{10, 0, 0, 1}, {1, 1, 1, 1}},
+		NTPServers:       []net.IP{{94, 130, 35, 4}, {94, 16, 114, 254}},
 		StaticEntries: []genericitems.MACToIP{
 			{
 				MAC:      net.HardwareAddr{0x02, 0x00, 0x00, 0xA, 0xA, 0xB},
 				IP:       net.IP{10, 0, 0, 5},
 				Hostname: "app1",
+			},
+		},
+		PropagateRoutes: []types.IPRoute{
+			{
+				DstNetwork: &net.IPNet{
+					IP:   net.IP{192, 168, 1, 0},
+					Mask: net.IPv4Mask(255, 255, 255, 0),
+				},
+				Gateway: net.IP{10, 0, 0, 1},
+			},
+			{
+				DstNetwork: &net.IPNet{
+					IP:   net.IP{172, 30, 0, 0},
+					Mask: net.IPv4Mask(255, 255, 0, 0),
+				},
+				Gateway: net.IP{10, 0, 0, 100},
 			},
 		},
 	}
@@ -124,8 +142,9 @@ dhcp-hostsdir=/run/zedrouter/dhcp-hosts.br0
 dhcp-option=option:dns-server,10.0.0.1,1.1.1.1
 dhcp-option=option:ntp-server,94.130.35.4,94.16.114.254
 dhcp-option=option:netmask,255.255.255.255
-dhcp-option=option:router,192.168.1.1
-dhcp-option=option:classless-static-route,192.168.1.1/32,0.0.0.0,0.0.0.0/0,192.168.1.1,10.0.0.0/24,192.168.1.1
+dhcp-option=option:router,10.0.0.1
+dhcp-option=tag:endpoint,option:classless-static-route,10.0.0.1/32,0.0.0.0,10.0.0.0/24,10.0.0.1,192.168.1.0/24,10.0.0.1,172.30.0.0/16,10.0.0.1,0.0.0.0/0,10.0.0.1
+dhcp-option=tag:gateway-10-0-0-100,option:classless-static-route,10.0.0.1/32,0.0.0.0,10.0.0.0/24,10.0.0.1,192.168.1.0/24,10.0.0.1,0.0.0.0/0,10.0.0.1
 dhcp-range=10.0.0.2,10.0.0.123,255.255.255.0,60m
 `
 	if configExpected != config {
@@ -154,7 +173,7 @@ func TestCreateDnsmasqConfigWithoutGateway(t *testing.T) {
 	t.Parallel()
 
 	dnsmasq := exampleDnsmasqParams()
-	dnsmasq.DHCPServer.GatewayIP = nil
+	dnsmasq.DHCPServer.WithDefaultRoute = false
 	config := createDnsmasqConfig(dnsmasq)
 
 	routerRex := "(?m)^dhcp-option=option:router$"

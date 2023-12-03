@@ -26,6 +26,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
+	"github.com/lf-edge/eve/pkg/pillar/utils/netutils"
 	"github.com/vishvananda/netlink"
 )
 
@@ -1175,7 +1176,7 @@ func (r *LinuxDpcReconciler) groupPortAddrs(dpc types.DevicePortConfig) map[stri
 			continue
 		}
 		for _, ipAddr := range ipAddrs {
-			if devicenetwork.HostFamily(ipAddr.IP) != syscall.AF_INET {
+			if netutils.HostFamily(ipAddr.IP) != syscall.AF_INET {
 				continue
 			}
 			subnet := &net.IPNet{Mask: ipAddr.Mask, IP: ipAddr.IP.Mask(ipAddr.Mask)}

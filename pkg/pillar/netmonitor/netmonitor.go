@@ -70,6 +70,15 @@ type Route struct {
 	Data interface{}
 }
 
+// IsDefaultRoute returns true if this is a default route, i.e. matches all destinations.
+func (r Route) IsDefaultRoute() bool {
+	if r.Dst == nil {
+		return true
+	}
+	ones, _ := r.Dst.Mask.Size()
+	return r.Dst.IP.IsUnspecified() && ones == 0
+}
+
 // RouteChange : a route was added or removed.
 type RouteChange struct {
 	Route

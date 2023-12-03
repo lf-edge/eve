@@ -345,8 +345,8 @@ func (r *LinuxNIReconciler) runWatcher(netEvents <-chan netmonitor.Event) {
 				}
 				uplinkForNIs := r.getNIsUsingUplink(ifName)
 				if len(uplinkForNIs) > 0 {
-					// When uplink IP addresses change, port-map ACLs might need
-					// to be updated.
+					// When uplink IP addresses change, port-map ACLs and the set of applied
+					// static routes might need to be updated.
 					uplinkChanged := r.updateCurrentGlobalState(true)
 					if uplinkChanged {
 						for _, ni := range uplinkForNIs {
