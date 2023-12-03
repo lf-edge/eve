@@ -14,6 +14,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/devicenetwork"
 	"github.com/lf-edge/eve/pkg/pillar/dpcreconciler/genericitems"
 	"github.com/lf-edge/eve/pkg/pillar/netmonitor"
+	"github.com/lf-edge/eve/pkg/pillar/utils/netutils"
 	"github.com/vishvananda/netlink"
 )
 
@@ -108,8 +109,8 @@ func (c *SrcIPRuleConfigurator) makeNetlinkRule(rule SrcIPRule) (*netlink.Rule, 
 	}
 	r.Table = devicenetwork.DPCBaseRTIndex + ifIdx
 	r.Priority = rule.Priority
-	r.Family = devicenetwork.HostFamily(rule.IPAddr)
-	r.Src = devicenetwork.HostSubnet(rule.IPAddr)
+	r.Family = netutils.HostFamily(rule.IPAddr)
+	r.Src = netutils.HostSubnet(rule.IPAddr)
 	return r, nil
 }
 

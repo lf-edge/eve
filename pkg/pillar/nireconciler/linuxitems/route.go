@@ -12,9 +12,9 @@ import (
 
 	dg "github.com/lf-edge/eve-libs/depgraph"
 	"github.com/lf-edge/eve/pkg/pillar/base"
-	"github.com/lf-edge/eve/pkg/pillar/devicenetwork"
 	"github.com/lf-edge/eve/pkg/pillar/netmonitor"
 	"github.com/lf-edge/eve/pkg/pillar/nireconciler/genericitems"
+	"github.com/lf-edge/eve/pkg/pillar/utils/netutils"
 	"github.com/vishvananda/netlink"
 )
 
@@ -250,7 +250,7 @@ func (r Route) Dependencies() (deps []dg.Dependency) {
 				Route: netlink.Route{
 					Family: r.Family,
 					Table:  r.Table,
-					Dst:    devicenetwork.HostSubnet(r.Gw)},
+					Dst:    netutils.HostSubnet(r.Gw)},
 				OutputIf: r.OutputIf,
 			}),
 			MustSatisfy: func(item dg.Item) bool {

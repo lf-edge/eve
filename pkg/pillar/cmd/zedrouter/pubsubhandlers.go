@@ -119,6 +119,10 @@ func (z *zedrouter) handleDNSImpl(ctxArg interface{}, key string,
 			z.log.Errorf("handleDNSImpl: failed to get config for NI %s", niStatus.UUID)
 			continue
 		}
+		if niStatus.HasError() && !niStatus.WaitingForUplink {
+			// Skip NI if it is in a failed state and the error is not about missing uplink.
+			continue
+		}
 		z.doUpdateNIUplink(niStatus.SelectedUplinkLogicalLabel, &niStatus, *niConfig)
 	}
 

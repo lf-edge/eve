@@ -15,6 +15,7 @@ import (
 	generic "github.com/lf-edge/eve/pkg/pillar/nireconciler/genericitems"
 	linux "github.com/lf-edge/eve/pkg/pillar/nireconciler/linuxitems"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/utils/netutils"
 	uuid "github.com/satori/go.uuid"
 	"github.com/vishvananda/netlink"
 )
@@ -401,7 +402,7 @@ func (r *LinuxNIReconciler) getBridgeAddrs(niID uuid.UUID) (ipWithSubnet,
 				for _, ip := range ips {
 					if ip.IP.IsGlobalUnicast() {
 						ipWithSubnet = ip
-						ipWithHostSubnet = devicenetwork.HostSubnet(ip.IP)
+						ipWithHostSubnet = netutils.HostSubnet(ip.IP)
 						break
 					}
 				}
@@ -412,7 +413,7 @@ func (r *LinuxNIReconciler) getBridgeAddrs(niID uuid.UUID) (ipWithSubnet,
 	case types.NetworkInstanceTypeLocal:
 		if ni.bridge.IPAddress != nil {
 			ipWithSubnet = ni.bridge.IPAddress
-			ipWithHostSubnet = devicenetwork.HostSubnet(ni.bridge.IPAddress.IP)
+			ipWithHostSubnet = netutils.HostSubnet(ni.bridge.IPAddress.IP)
 		}
 		mac = ni.bridge.MACAddress
 		found = true

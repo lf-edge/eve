@@ -6,6 +6,7 @@ package netutils
 import (
 	"bytes"
 	"net"
+	"syscall"
 )
 
 // EqualIPs compares two IP addresses.
@@ -78,4 +79,20 @@ func GetIPBroadcast(subnet net.IPNet) net.IP {
 		}
 	}
 	return net.IP{}
+}
+
+// HostFamily returns the address family for the given IP address
+func HostFamily(ip net.IP) int {
+	if ip.To4() != nil {
+		return syscall.AF_INET
+	}
+	return syscall.AF_INET6
+}
+
+// HostSubnet returns the subnet mask for the given IP address
+func HostSubnet(ip net.IP) *net.IPNet {
+	if ip.To4() != nil {
+		return &net.IPNet{IP: ip, Mask: net.CIDRMask(32, 32)}
+	}
+	return &net.IPNet{IP: ip, Mask: net.CIDRMask(128, 128)}
 }
