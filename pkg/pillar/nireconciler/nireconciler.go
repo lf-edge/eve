@@ -104,6 +104,7 @@ type NIBridge struct {
 type Uplink struct {
 	LogicalLabel string
 	IfName       string
+	IsMgmt       bool
 	DNSServers   []net.IP
 	NTPServers   []net.IP
 }

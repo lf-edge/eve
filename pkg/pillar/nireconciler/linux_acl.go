@@ -10,10 +10,10 @@ import (
 
 	dg "github.com/lf-edge/eve-libs/depgraph"
 	"github.com/lf-edge/eve/pkg/pillar/base"
-	"github.com/lf-edge/eve/pkg/pillar/devicenetwork"
 	"github.com/lf-edge/eve/pkg/pillar/iptables"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils/generics"
+	"github.com/lf-edge/eve/pkg/pillar/utils/netutils"
 	uuid "github.com/satori/go.uuid"
 )
 
@@ -306,7 +306,7 @@ func parseUserACLRule(log *base.LogObject, aclRule types.ACE,
 		switch match.Type {
 		case "ip":
 			if ip := net.ParseIP(match.Value); ip != nil {
-				ipWithPrefix = devicenetwork.HostSubnet(ip)
+				ipWithPrefix = netutils.HostSubnet(ip)
 			} else if _, subnet, err := net.ParseCIDR(match.Value); err == nil {
 				ipWithPrefix = subnet
 			} else {
@@ -324,7 +324,7 @@ func parseUserACLRule(log *base.LogObject, aclRule types.ACE,
 		case "host":
 			// Check if this should really be an "ip" ACL
 			if ip := net.ParseIP(match.Value); ip != nil {
-				ipWithPrefix = devicenetwork.HostSubnet(ip)
+				ipWithPrefix = netutils.HostSubnet(ip)
 				log.Warnf("%s: found host ACL rule with IP %s; treating as ip ACL",
 					LogAndErrPrefix, match.Value)
 				break

@@ -669,6 +669,15 @@ type IPRoute struct {
 	Gateway    net.IP
 }
 
+// IsDefaultRoute returns true if this is a default route, i.e. matches all destinations.
+func (r IPRoute) IsDefaultRoute() bool {
+	if r.DstNetwork == nil {
+		return true
+	}
+	ones, _ := r.DstNetwork.Mask.Size()
+	return r.DstNetwork.IP.IsUnspecified() && ones == 0
+}
+
 // Key :
 func (config *NetworkInstanceConfig) Key() string {
 	return config.UUID.String()

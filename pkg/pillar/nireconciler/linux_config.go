@@ -574,10 +574,11 @@ func (r *LinuxNIReconciler) getIntendedNIL3Cfg(niID uuid.UUID) dg.Graph {
 		Description: "Layer 3 configuration for network instance",
 	}
 	intendedL3Cfg := dg.New(graphArgs)
+	bridgeIPNet, bridgeIPHost, _, _, _ := r.getBridgeAddrs(niID)
 	if !r.niBridgeIsCreatedByNIM(ni) {
-		if bridgeIP, _, _, _, _ := r.getBridgeAddrs(niID); bridgeIP != nil {
+		if bridgeIPNet != nil {
 			intendedL3Cfg.PutItem(generic.IPReserve{
-				AddrWithMask: bridgeIP,
+				AddrWithMask: bridgeIPNet,
 				NetIf: generic.NetworkIf{
 					IfName:  ni.brIfName,
 					ItemRef: dg.Reference(linux.Bridge{IfName: ni.brIfName}),
@@ -617,6 +618,15 @@ func (r *LinuxNIReconciler) getIntendedNIL3Cfg(niID uuid.UUID) dg.Graph {
 			outIfs[ifIndex] = linux.RouteOutIf{UplinkIfName: uplink}
 		}
 	}
+	// User-defined static default route will override the original default route
+	// of the uplink interface.
+	var haveStaticDefRoute bool
+	for _, rt := range ni.config.StaticRoutes {
+		if rt.IsDefaultRoute() {
+			haveStaticDefRoute = true
+			break
+		}
+	}
 	for outIfIndex, rtOutIf := range outIfs {
 		routes, err := r.netMonitor.ListRoutes(netmonitor.RouteFilters{
 			FilterByTable: true,
@@ -631,6 +641,10 @@ func (r *LinuxNIReconciler) getIntendedNIL3Cfg(niID uuid.UUID) dg.Graph {
 		}
 		// Copy routes from the main table into the NI-specific table.
 		for _, rt := range routes {
+			if rt.IsDefaultRoute() && haveStaticDefRoute {
+				// User configured default route statically for this network instance.
+				continue
+			}
 			rtCopy := rt.Data.(netlink.Route)
 			rtCopy.Table = dstTable
 			// Multiple IPv6 link-locals can't be added to the same
@@ -648,6 +662,49 @@ func (r *LinuxNIReconciler) getIntendedNIL3Cfg(niID uuid.UUID) dg.Graph {
 				GwViaLinkRoute: gwViaLinkRoute(rt, routes),
 			}, nil)
 		}
+	}
+	// Add statically defined routes into the NI routing table.
+	// No need to do this if GW is:
+	// - the bridge IP itself, or
+	// - one of the apps and traffic from one app to another is just
+	//   forwarded by the host, not routed.
+	for _, route := range ni.config.StaticRoutes {
+		if bridgeIPHost != nil && route.Gateway.Equal(bridgeIPHost.IP) {
+			// Static route towards the bridge itself.
+			// We should not put this into the NI routing table, otherwise
+			// traffic would take the "input" path rather than being forwarded
+			// by an uplink route.
+			continue
+		}
+		isAppGW := r.getNISubnet(ni).Contains(route.Gateway)
+		if isAppGW && r.disableAllOnesNetmask {
+			// Route is not needed inside the host, traffic is just forwarded
+			// by the bridge.
+			continue
+		}
+		if !isAppGW && !r.routeGwIsConnected(route, ni.bridge.Uplink) {
+			// GW is not routable with the current uplink.
+			continue
+		}
+		family := netlink.FAMILY_V4
+		if route.Gateway.To4() == nil {
+			family = netlink.FAMILY_V6
+		}
+		outputIf := linux.RouteOutIf{UplinkIfName: uplink}
+		if isAppGW {
+			outputIf = linux.RouteOutIf{BridgeIfName: ni.brIfName}
+		}
+		intendedL3Cfg.PutItem(linux.Route{
+			Route: netlink.Route{
+				Scope:    netlink.SCOPE_UNIVERSE,
+				Dst:      route.DstNetwork,
+				Gw:       route.Gateway,
+				Protocol: unix.RTPROT_STATIC,
+				Family:   family,
+				Table:    dstTable,
+			},
+			OutputIf: outputIf,
+		}, nil)
 	}
 	// Everything not matched by the routes above should be dropped.
 	// Add unreachable route with the lowest possible priority.
@@ -671,12 +728,12 @@ func (r *LinuxNIReconciler) getIntendedNIL3Cfg(niID uuid.UUID) dg.Graph {
 	}, nil)
 	// Add IPRules to select routing table for traffic coming in or out to/from
 	// the network instance.
-	if _, bridgeIP, _, _, _ := r.getBridgeAddrs(niID); bridgeIP != nil {
+	if bridgeIPHost != nil {
 		intendedL3Cfg.PutItem(linux.IPRule{
 			Priority: devicenetwork.PbrNatOutGatewayPrio,
 			Table:    syscall.RT_TABLE_LOCAL,
 			Src:      r.getNISubnet(ni),
-			Dst:      bridgeIP,
+			Dst:      bridgeIPHost,
 		}, nil)
 	}
 	intendedL3Cfg.PutItem(linux.IPRule{
@@ -794,22 +851,20 @@ func (r *LinuxNIReconciler) getIntendedDnsmasqCfg(niID uuid.UUID) (items []dg.It
 	}
 
 	// DHCP server configuration
-	// By default, dnsmasq advertises a router (and we can have a static router
-	// defined in the NetworkInstanceConfig).
-	// To support airgap networks we interpret gateway=0.0.0.0 to not advertise
-	// ourselves as a router.
-	var gateway net.IP
-	if ni.bridge.Uplink.IfName != "" {
-		if ni.config.Gateway != nil {
-			if !ni.config.Gateway.IsUnspecified() {
-				gateway = ni.config.Gateway
-			} // else suppress router advertisement
-		} else if bridgeIP != nil {
-			gateway = bridgeIP.IP
-		}
-	} // else : Do not advertise router for air-gapped NI.
+	// dnsmasq advertises a router (default route) for network instance, unless:
+	//  a) network instance is air-gapped (without uplink)
+	//  b) uplink is app-shared and without default route
+	var gatewayIP net.IP
+	if bridgeIP != nil {
+		gatewayIP = bridgeIP.IP
+	}
+	var withDefaultRoute bool
+	airGap := ni.bridge.Uplink.IfName == ""
+	if !airGap && (ni.bridge.Uplink.IsMgmt || r.niHasDefRoute(ni)) {
+		withDefaultRoute = true
+	}
 	var uplinkIf generic.NetworkIf
-	if ni.bridge.Uplink.IfName != "" {
+	if !airGap {
 		uplinkIf = generic.NetworkIf{
 			IfName:  ni.bridge.Uplink.IfName,
 			ItemRef: dg.Reference(generic.Uplink{IfName: ni.bridge.Uplink.IfName}),
@@ -823,6 +878,59 @@ func (r *LinuxNIReconciler) getIntendedDnsmasqCfg(niID uuid.UUID) (items []dg.It
 		ntpServers = append(ntpServers, ni.config.NtpServer)
 	}
 	ntpServers = generics.FilterDuplicatesFn(ntpServers, netutils.EqualIPs)
+	var propagateRoutes []types.IPRoute
+	// Use DHCP to propagate user-configured IP routes.
+	for _, route := range ni.config.StaticRoutes {
+		if withDefaultRoute && route.IsDefaultRoute() {
+			// User-specified default route for the uplink, possibly overriding
+			// the original default route of the uplink interface.
+			// Propagation of the default route from app to NI routing table
+			// is already taken care of by Dnsmasq when we set WithDefaultRoute=true
+			// (i.e. no need to propagate this).
+			continue
+		}
+		gwInsideNI := r.getNISubnet(ni) != nil && r.getNISubnet(ni).Contains(route.Gateway)
+		if gwInsideNI {
+			propagateRoutes = append(propagateRoutes, route)
+		} else if bridgeIP != nil && r.routeGwIsConnected(route, ni.bridge.Uplink) {
+			propagateRoutes = append(propagateRoutes, types.IPRoute{
+				DstNetwork: route.DstNetwork,
+				Gateway:    bridgeIP.IP,
+			})
+		}
+	}
+	// Use DHCP to propagate connected IP routes.
+	if ni.config.PropagateConnRoutes && !airGap && bridgeIP != nil {
+		uplink := ni.bridge.Uplink.IfName
+		ifIndex, found, err := r.netMonitor.GetInterfaceIndex(uplink)
+		if err != nil {
+			r.log.Errorf("%s: getIntendedDnsmasqCfg: failed to get ifIndex "+
+				"for (NI uplink) %s: %v", LogAndErrPrefix, uplink, err)
+		}
+		var uplinkIPs []*net.IPNet
+		if err == nil && found {
+			uplinkIPs, _, err = r.netMonitor.GetInterfaceAddrs(ifIndex)
+			if err != nil {
+				r.log.Errorf(
+					"%s: getIntendedDnsmasqCfg: failed to get interface %s addresses: %v",
+					LogAndErrPrefix, uplink, err)
+				// Continue as if this uplink interface didn't have any IP addresses...
+			}
+		}
+		for _, uplinkIP := range uplinkIPs {
+			if uplinkIP.IP.To4() == nil {
+				continue
+			}
+			subnet := &net.IPNet{
+				IP:   uplinkIP.IP.Mask(uplinkIP.Mask),
+				Mask: uplinkIP.Mask,
+			}
+			propagateRoutes = append(propagateRoutes, types.IPRoute{
+				DstNetwork: subnet,
+				Gateway:    bridgeIP.IP,
+			})
+		}
+	}
 	dhcpCfg := generic.DHCPServer{
 		Subnet:         r.getNISubnet(ni),
 		AllOnesNetmask: !r.disableAllOnesNetmask,
@@ -830,10 +938,12 @@ func (r *LinuxNIReconciler) getIntendedDnsmasqCfg(niID uuid.UUID) (items []dg.It
 			FromIP: ni.config.DhcpRange.Start,
 			ToIP:   ni.config.DhcpRange.End,
 		},
-		GatewayIP:  gateway,
-		DomainName: ni.config.DomainName,
-		DNSServers: ni.config.DnsServers,
-		NTPServers: ntpServers,
+		GatewayIP:        gatewayIP,
+		WithDefaultRoute: withDefaultRoute,
+		DomainName:       ni.config.DomainName,
+		DNSServers:       ni.config.DnsServers,
+		NTPServers:       ntpServers,
+		PropagateRoutes:  propagateRoutes,
 	}
 	// IPRange set above does not matter that much - every VIF is statically
 	// assigned IP address using a host file.
@@ -1070,13 +1180,85 @@ func (r *LinuxNIReconciler) getNISubnet(ni *niInfo) *net.IPNet {
 	}
 }
 
+// Check if network instance has default route.
+func (r *LinuxNIReconciler) niHasDefRoute(ni *niInfo) bool {
+	uplink := ni.bridge.Uplink.IfName
+	if uplink == "" {
+		return false
+	}
+	ifIndex, found, err := r.netMonitor.GetInterfaceIndex(uplink)
+	if err != nil {
+		r.log.Errorf("%s: niHasDefRoute: failed to get ifIndex "+
+			"for (NI uplink) %s: %v", LogAndErrPrefix, uplink, err)
+		return false
+	}
+	if !found {
+		return false
+	}
+	routes, err := r.netMonitor.ListRoutes(netmonitor.RouteFilters{
+		FilterByTable: true,
+		Table:         unix.RT_TABLE_MAIN,
+		FilterByIf:    true,
+		IfIndex:       ifIndex,
+	})
+	if err != nil {
+		r.log.Errorf("%s: niHasDefRoute: ListRoutes failed for ifIndex %d: %v",
+			LogAndErrPrefix, ifIndex, err)
+		return false
+	}
+	for _, rt := range routes {
+		if rt.IsDefaultRoute() {
+			return true
+		}
+	}
+	for _, rt := range ni.config.StaticRoutes {
+		if rt.IsDefaultRoute() {
+			return true
+		}
+	}
+	return false
+}
+
+// Check if route gateway is inside the subnet of the uplink port.
+func (r *LinuxNIReconciler) routeGwIsConnected(route types.IPRoute, uplink Uplink) bool {
+	if uplink.IfName == "" {
+		return false
+	}
+	ifIndex, found, err := r.netMonitor.GetInterfaceIndex(uplink.IfName)
+	if err != nil {
+		r.log.Errorf("%s: routeGwIsConnected: failed to get ifIndex "+
+			"for (NI uplink) %s: %v", LogAndErrPrefix, uplink.IfName, err)
+		return false
+	}
+	if !found {
+		return false
+	}
+	uplinkIPs, _, err := r.netMonitor.GetInterfaceAddrs(ifIndex)
+	if err != nil {
+		r.log.Errorf(
+			"%s: routeGwIsConnected: failed to get interface %s addresses: %v",
+			LogAndErrPrefix, uplink.IfName, err)
+		// Continue as if this uplink interface didn't have any IP addresses...
+	}
+	for _, uplinkIP := range uplinkIPs {
+		subnet := &net.IPNet{
+			IP:   uplinkIP.IP.Mask(uplinkIP.Mask),
+			Mask: uplinkIP.Mask,
+		}
+		if subnet.Contains(route.Gateway) {
+			return true
+		}
+	}
+	return false
+}
+
 // gwViaLinkRoute returns true if the given route uses gateway routed by another
 // link-scoped route.
 func gwViaLinkRoute(route netmonitor.Route, routingTable []netmonitor.Route) bool {
 	if len(route.Gw) == 0 {
 		return false
 	}
-	gwHostSubnet := devicenetwork.HostSubnet(route.Gw)
+	gwHostSubnet := netutils.HostSubnet(route.Gw)
 	for _, route2 := range routingTable {
 		netlinkRoute2 := route2.Data.(netlink.Route)
 		if netlinkRoute2.Scope == netlink.SCOPE_LINK &&
