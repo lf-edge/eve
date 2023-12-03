@@ -409,6 +409,7 @@ var (
 		Uplink: nirec.Uplink{
 			LogicalLabel: "ethernet0",
 			IfName:       "eth0",
+			IsMgmt:       true,
 			DNSServers:   []net.IP{ipAddress("8.8.8.8")},
 			NTPServers:   []net.IP{ipAddress("132.163.96.5")},
 		},
@@ -441,6 +442,7 @@ var (
 		Uplink: nirec.Uplink{
 			LogicalLabel: "ethernet1",
 			IfName:       "eth1",
+			IsMgmt:       true,
 			DNSServers:   []net.IP{ipAddress("8.8.8.8")},
 			NTPServers:   []net.IP{ipAddress("132.163.96.5")},
 		},
@@ -470,6 +472,7 @@ var (
 		Uplink: nirec.Uplink{
 			LogicalLabel: "ethernet2",
 			IfName:       "eth2",
+			IsMgmt:       true,
 			DNSServers:   []net.IP{ipAddress("2001:4860:4860::8888")},
 			NTPServers:   []net.IP{ipAddress("2610:20:6f15:15::27")},
 		},
@@ -502,6 +505,7 @@ var (
 		Uplink: nirec.Uplink{
 			LogicalLabel: "ethernet2",
 			IfName:       "eth2",
+			IsMgmt:       true,
 			DNSServers:   []net.IP{ipAddress("2001:4860:4860::8888")},
 			NTPServers:   []net.IP{ipAddress("2610:0020:6f15:0015::0027")},
 		},
@@ -1541,6 +1545,7 @@ func TestUplinkFailover(test *testing.T) {
 	ni1Bridge.Uplink = nirec.Uplink{
 		LogicalLabel: "ethernet1",
 		IfName:       "eth1",
+		IsMgmt:       true,
 		DNSServers:   []net.IP{ipAddress("8.8.8.8"), ipAddress("1.1.1.1")},
 		NTPServers:   []net.IP{ipAddress("132.163.97.5")},
 	}
