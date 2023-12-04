@@ -2,12 +2,12 @@ kernel:
   image: KERNEL_TAG
   cmdline: "rootdelay=3"
 init:
-  - linuxkit/init:144c9cee8aed9e30a16940f2bf1d3813883aceda
-  - linuxkit/runc:d971bd4ffcfc92fec49d1b46757a2a1bb98d1a65
-  - linuxkit/containerd:d445de33c7f08470187b068d247b1c0dea240f0a
+  - linuxkit/init:07d37c3ae7fad5ddcb54c8dc65774ae050851f04
+  - linuxkit/runc:2aabf16bc8a1b94e015ee53fa2e7a77ab1883a80
+  - linuxkit/containerd:95d5f0d2d8dc63bd87e96b7b39cf026cb86125c9
   # pillar's logic rely on existence of getty and /etc/init.d/001-getty inside
-  - linuxkit/getty:06f34bce0facea79161566d67345c3ea49965437
-  - linuxkit/memlogd:9a1bb29abca6d739f4b22c3e637faf1898e14184
+  - linuxkit/getty:e74e6cad132403d1a6d6cd25b136a7c69c99f3f7
+  - linuxkit/memlogd:1a00c05fea660cf66b9f532c98f718ef63698cb5
   - DOM0ZTOOLS_TAG
   - GRUB_TAG
   - FW_TAG
@@ -19,14 +19,14 @@ onboot:
     image: RNGD_TAG
     command: ["/sbin/rngd", "-1"]
   - name: sysctl
-    image: linuxkit/sysctl:a88a50c104d538b58da5e1441f6f0b4b738f76a6
+    image: linuxkit/sysctl:c6f23919b8610c7645a89a89f863c6209bc84bee
     binds:
       - /etc/sysctl.d:/etc/sysctl.d
     capabilities:
       - CAP_SYS_ADMIN
       - CAP_NET_ADMIN
   - name: modprobe
-    image: linuxkit/modprobe:v0.5
+    image: linuxkit/modprobe:ff76e806a0da0ea35f16951541cf3d24094b52c9
     command: ["/bin/sh", "-c", "modprobe -a nct6775 w83627hf_wdt hpwdt wlcore_sdio wl18xx br_netfilter dwc3 rk808 rk808-regulator smsc75xx cp210x nicvf tpm_tis_spi rtc_rx8010 os-em32x regmap-i2c gpio_pca953x leds_gpio leds_siemens_ipc127 upboard-fpga pinctrl-upboard leds-upboard xhci_tegra 2>/dev/null || :"]
   # If you change the order of storage-init don't forget to
   # change 003-installer in pkg/mkimage-raw-efi accordingly:
