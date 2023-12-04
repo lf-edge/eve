@@ -2,12 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package usbmanager
 
-import (
-	"strings"
-
-	"github.com/lf-edge/eve/pkg/pillar/types"
-)
-
 // the holy trinity
 type usbpassthrough struct {
 	usbdevice *usbdevice
@@ -15,29 +9,41 @@ type usbpassthrough struct {
 }
 
 func (up usbpassthrough) String() string {
-	return strings.Join([]string{
-		up.usbdevice.String(),
-		up.vm.qmpSocketPath,
-	}, "||")
+	return up.usbdevice.String()
 }
 
 type usbpassthroughs struct {
-	ioBundles             map[string]*types.IoBundle // PhyLabel is key
-	usbdevices            map[string]*usbdevice      // by ueventFilePath
-	vms                   map[string]*virtualmachine // by qmp path
-	vmsByIoBundlePhyLabel map[string]*virtualmachine
+	vms                      map[string]*virtualmachine // by qmp path
+	vmsByIOBundlePhyLabelMap map[string]*virtualmachine // by phylabel, by qmp path
 
 	usbpassthroughs     map[string]*usbpassthrough
 	usbpassthroughsByVM map[string]map[string]*usbpassthrough
 }
 
+func (ups *usbpassthroughs) addVMByIOBundlePhyLabel(phylabel string, vm *virtualmachine) {
+	ups.vmsByIOBundlePhyLabelMap[phylabel] = vm
+}
+
+func (ups *usbpassthroughs) vmByIOBundlePhyLabel(phylabel string) *virtualmachine {
+	return ups.vmsByIOBundlePhyLabelMap[phylabel]
+}
+
+// this includes passthroughs and usbdevices without vm
+func (ups *usbpassthroughs) usbpassthroughsAndUsbdevices() []*usbpassthrough {
+	ret := make([]*usbpassthrough, 0)
+
+	for _, up := range ups.usbpassthroughs {
+		ret = append(ret, up)
+	}
+
+	return ret
+}
+
 func newUsbpassthroughs() usbpassthroughs {
 	var up usbpassthroughs
 
-	up.ioBundles = make(map[string]*types.IoBundle)
-	up.usbdevices = make(map[string]*usbdevice)
 	up.vms = make(map[string]*virtualmachine)
-	up.vmsByIoBundlePhyLabel = make(map[string]*virtualmachine)
+	up.vmsByIOBundlePhyLabelMap = make(map[string]*virtualmachine)
 
 	up.usbpassthroughs = make(map[string]*usbpassthrough)
 	up.usbpassthroughsByVM = make(map[string]map[string]*usbpassthrough)
@@ -45,36 +51,24 @@ func newUsbpassthroughs() usbpassthroughs {
 	return up
 }
 
-func (ups *usbpassthroughs) delIoBundle(ioBundle *types.IoBundle) {
-	delete(ups.ioBundles, ioBundle.Phylabel)
-}
-
-func (ups *usbpassthroughs) addIoBundle(ioBundle *types.IoBundle) {
-	ups.ioBundles[ioBundle.Phylabel] = ioBundle
-}
-
-func (ups *usbpassthroughs) listUsbdevices() []*usbdevice {
-	usbdevices := make([]*usbdevice, 0)
-
-	for _, ud := range ups.usbdevices {
-		usbdevices = append(usbdevices, ud)
-	}
-
-	return usbdevices
-}
-
 func (ups *usbpassthroughs) addUsbdevice(ud *usbdevice) {
-	ups.usbdevices[ud.ueventFilePath] = ud
+	if ups.hasUsbpassthrough(*ud) {
+		return
+	}
+	ups.usbpassthroughs[ud.String()] = &usbpassthrough{
+		usbdevice: ud,
+		vm:        nil,
+	}
 }
 
 func (ups *usbpassthroughs) delUsbdevice(ud *usbdevice) {
-	delete(ups.usbdevices, ud.ueventFilePath)
+	delete(ups.usbpassthroughs, ud.String())
 }
 
 func (ups *usbpassthroughs) addVM(vm *virtualmachine) {
 	ups.vms[vm.qmpSocketPath] = vm
 	for _, phyLabel := range vm.adapters {
-		ups.vmsByIoBundlePhyLabel[phyLabel] = vm
+		ups.addVMByIOBundlePhyLabel(phyLabel, vm)
 	}
 }
 
@@ -82,14 +76,14 @@ func (ups *usbpassthroughs) delVM(vm *virtualmachine) {
 	vmDel := ups.vms[vm.qmpSocketPath]
 	if vmDel != nil && vmDel.adapters != nil {
 		for _, phyLabel := range vmDel.adapters {
-			delete(ups.vmsByIoBundlePhyLabel, phyLabel)
+			delete(ups.vmsByIOBundlePhyLabelMap, phyLabel)
 		}
 	}
 	delete(ups.vms, vm.qmpSocketPath)
 }
 
-func (ups usbpassthroughs) hasUsbpassthrough(up usbpassthrough) bool {
-	_, ok := ups.usbpassthroughs[up.String()]
+func (ups usbpassthroughs) hasUsbpassthrough(ud usbdevice) bool {
+	_, ok := ups.usbpassthroughs[ud.String()]
 	return ok
 }
 
@@ -102,8 +96,14 @@ func (ups *usbpassthroughs) addUsbpassthrough(up *usbpassthrough) {
 }
 
 func (ups *usbpassthroughs) delUsbpassthrough(up *usbpassthrough) {
-	delete(ups.usbpassthroughs, up.String())
-	delete(ups.usbpassthroughsByVM, up.vm.qmpSocketPath)
+	if up.vm != nil {
+		delete(ups.usbpassthroughsByVM, up.vm.qmpSocketPath)
+	}
+	ups.usbpassthroughs[up.String()].vm = nil
+}
+
+func (ups usbpassthroughs) usbpassthroughsOfUsbdevice(ud usbdevice) *usbpassthrough {
+	return ups.usbpassthroughs[ud.String()]
 }
 
 func (ups usbpassthroughs) usbpassthroughsOfVM(vm virtualmachine) map[string]*usbpassthrough {

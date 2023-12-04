@@ -520,14 +520,14 @@ func (aa *AssignableAdapters) CheckParentAssigngrp() bool {
 
 // CheckBadUSBBundles sets ib.Error/ErrorTime if bundle collides in regards of USB
 func (aa *AssignableAdapters) CheckBadUSBBundles() {
-	usbProductsAddressMap := make(map[[3]string][]*IoBundle)
+	usbProductsAddressMap := make(map[[4]string][]*IoBundle)
 	for i := range aa.IoBundleList {
 		ioBundle := &aa.IoBundleList[i]
 		if ioBundle.UsbAddr == "" && ioBundle.UsbProduct == "" && ioBundle.PciLong == "" {
 			continue
 		}
 
-		id := [3]string{ioBundle.UsbAddr, ioBundle.UsbProduct, ioBundle.PciLong}
+		id := [4]string{ioBundle.UsbAddr, ioBundle.UsbProduct, ioBundle.PciLong, ioBundle.AssignmentGroup}
 		if usbProductsAddressMap[id] == nil {
 			usbProductsAddressMap[id] = make([]*IoBundle, 0)
 		}
@@ -542,8 +542,8 @@ func (aa *AssignableAdapters) CheckBadUSBBundles() {
 		errStr := "ioBundle collision:||"
 
 		for _, bundle := range bundles {
-			errStr += fmt.Sprintf("phylabel %s - usbaddr: %s usbproduct: %s pcilong: %s||",
-				bundle.Phylabel, bundle.UsbAddr, bundle.UsbProduct, bundle.PciLong)
+			errStr += fmt.Sprintf("phylabel %s - usbaddr: %s usbproduct: %s pcilong: %s assigngrp: %s||",
+				bundle.Phylabel, bundle.UsbAddr, bundle.UsbProduct, bundle.PciLong, bundle.AssignmentGroup)
 		}
 		for _, bundle := range bundles {
 			bundle.Error = errStr

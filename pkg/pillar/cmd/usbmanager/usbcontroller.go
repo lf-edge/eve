@@ -3,8 +3,6 @@
 package usbmanager
 
 import (
-	"strconv"
-	"strings"
 	"sync"
 
 	"github.com/lf-edge/eve/pkg/pillar/hypervisor"
@@ -14,8 +12,7 @@ import (
 const sysFSPath = "/sys"
 
 type usbmanagerController struct {
-	ruleEngine      *ruleEngine
-	name2deviceRule map[string]passthroughRule
+	ruleEngine *ruleEngine
 
 	usbpassthroughs usbpassthroughs
 
@@ -23,6 +20,8 @@ type usbmanagerController struct {
 	disconnectUSBDeviceFromQemu func(up usbpassthrough)
 
 	listenUSBStopChan chan struct{}
+
+	iobt *ioBundleTree
 
 	sync.Mutex
 }
@@ -35,21 +34,153 @@ func (uc *usbmanagerController) init() {
 	uc.ruleEngine.addRule(&usbNetworkAdapterForbidPassthroughRule)
 	uc.ruleEngine.addRule(&usbHubForbidPassthroughRule{})
 
-	uc.name2deviceRule = make(map[string]passthroughRule)
-
 	uc.usbpassthroughs = newUsbpassthroughs()
 
 	uc.connectUSBDeviceToQemu = uc.connectUSBDeviceToQemuImpl
 	uc.disconnectUSBDeviceFromQemu = uc.disconnectUSBDeviceFromQemuImpl
 
+	uc.iobt = newIOBundleTree()
+
 	uc.Unlock()
+}
+
+func (uc *usbmanagerController) retrievePassthroughRule(assigngrp, phylabel string) passthroughRule {
+	ioBundle := uc.iobt.ioBundle(phylabel)
+	if ioBundle == nil {
+		return nil
+	}
+
+	prCopy := uc.iobt.ioBundle2passthroughRule(*ioBundle)
+	if prCopy == nil {
+		return nil
+	}
+
+	return uc.ruleEngine.rules[prCopy.String()]
+}
+
+func (uc *usbmanagerController) removeIOBundleRule(ioBundle *types.IoBundle) {
+	oldIOBundle := uc.iobt.ioBundle(ioBundle.Phylabel)
+	if oldIOBundle == nil {
+		return
+	}
+
+	oldPr := uc.iobt.ioBundle2passthroughRule(*oldIOBundle)
+	if oldPr != nil {
+		uc.ruleEngine.delRule(oldPr)
+	} else {
+		log.Tracef("could not convert ioBundle %+v to passthrough rule; ignoring it", ioBundle)
+	}
+
+	affectedPrs := make([]passthroughRule, 0)
+
+	for _, dependencyGroup := range uc.iobt.groupDependendents(ioBundle.AssignmentGroup) {
+		ioBundleElem := uc.iobt.elementsByAssignmentGroup[dependencyGroup]
+		if ioBundleElem == nil {
+			continue
+		}
+		for _, ioBundle := range ioBundleElem.ioBundles() {
+			pr := uc.iobt.ioBundle2passthroughRule(*ioBundle)
+			if pr != nil {
+				affectedPrs = append(affectedPrs, pr)
+			}
+		}
+	}
+
+	uc.iobt.removeIOBundle(oldIOBundle)
+
+	for _, pr := range affectedPrs {
+		uc.ruleEngine.delRule(pr)
+	}
+
+	for _, dependencyGroup := range uc.iobt.groupDependendents(ioBundle.AssignmentGroup) {
+		ioBundleElem := uc.iobt.elementsByAssignmentGroup[dependencyGroup]
+		if ioBundleElem == nil {
+			continue
+		}
+		for _, ioBundle := range ioBundleElem.ioBundles() {
+			pr := uc.iobt.ioBundle2passthroughRule(*ioBundle)
+			vm := uc.usbpassthroughs.vmByIOBundlePhyLabel(ioBundle.Phylabel)
+			if pr == nil || vm == nil {
+				continue
+			}
+			pr.setVirtualMachine(vm)
+			uc.ruleEngine.addRule(pr)
+		}
+	}
+
+}
+
+func (uc *usbmanagerController) addIOBundleRule(ioBundle *types.IoBundle) passthroughRule {
+	oldPr := uc.iobt.ioBundle2passthroughRule(*ioBundle)
+	if oldPr != nil {
+		uc.ruleEngine.delRule(oldPr)
+	} else {
+		log.Tracef("could not convert ioBundle %+v to passthrough rule; ignoring it", ioBundle)
+	}
+
+	affectedPrs := make([]passthroughRule, 0)
+
+	for _, dependencyGroup := range uc.iobt.groupDependendents(ioBundle.AssignmentGroup) {
+		ioBundleElem := uc.iobt.elementsByAssignmentGroup[dependencyGroup]
+		if ioBundleElem == nil {
+			continue
+		}
+		for _, ioBundle := range ioBundleElem.ioBundles() {
+			pr := uc.iobt.ioBundle2passthroughRule(*ioBundle)
+			if pr != nil {
+				affectedPrs = append(affectedPrs, pr)
+			}
+		}
+	}
+
+	oldIOBundle := uc.iobt.ioBundle(ioBundle.Phylabel)
+	if oldIOBundle != nil {
+		uc.iobt.removeIOBundle(oldIOBundle)
+	}
+	uc.iobt.addIOBundle(ioBundle)
+
+	for _, pr := range affectedPrs {
+		uc.ruleEngine.delRule(pr)
+	}
+
+	dependencyGroups := append(uc.iobt.groupDependendents(ioBundle.AssignmentGroup), ioBundle.AssignmentGroup)
+	for _, dependencyGroup := range dependencyGroups {
+		ioBundleElem := uc.iobt.elementsByAssignmentGroup[dependencyGroup]
+		if ioBundleElem == nil {
+			continue
+		}
+		for _, ioBundle := range ioBundleElem.ioBundles() {
+			pr := uc.iobt.ioBundle2passthroughRule(*ioBundle)
+			vm := uc.usbpassthroughs.vmByIOBundlePhyLabel(ioBundle.Phylabel)
+			if pr == nil || vm == nil {
+				continue
+			}
+			pr.setVirtualMachine(vm)
+			uc.ruleEngine.addRule(pr)
+		}
+	}
+
+	newPr := uc.iobt.ioBundle2passthroughRule(*ioBundle)
+	if newPr != nil {
+		vm := uc.usbpassthroughs.vmByIOBundlePhyLabel(ioBundle.Phylabel)
+		newPr.setVirtualMachine(vm)
+		uc.ruleEngine.addRule(newPr)
+	}
+
+	return newPr
 }
 
 // prevents trying to connect a usb device twice
 func (uc *usbmanagerController) connectUSBDeviceToQemuIdempotent(up usbpassthrough) {
-	if uc.usbpassthroughs.hasUsbpassthrough(up) {
-		log.Warnf("%+v is already passed through\n", up)
-		return
+	oldUp := uc.usbpassthroughs.usbpassthroughsOfUsbdevice(*up.usbdevice)
+	if oldUp != nil && oldUp.vm != nil && up.vm != nil {
+		if oldUp.vm.String() != up.vm.String() {
+			log.Warnf("trying to passthrough %+v while it is still connected to %+v to %+v", up.usbdevice, oldUp.vm, up.vm)
+			return
+		} else {
+			log.Tracef("%+v is already passed through\n", up)
+			return
+		}
 	}
 	uc.usbpassthroughs.addUsbpassthrough(&up)
 	uc.connectUSBDeviceToQemu(up)
@@ -57,7 +188,12 @@ func (uc *usbmanagerController) connectUSBDeviceToQemuIdempotent(up usbpassthrou
 
 // prevents trying to disconnect a usb device twice
 func (uc *usbmanagerController) disconnectUSBDeviceFromQemuIdempotent(up usbpassthrough) {
-	if !uc.usbpassthroughs.hasUsbpassthrough(up) {
+	oldUp := uc.usbpassthroughs.usbpassthroughsOfUsbdevice(*up.usbdevice)
+	if oldUp == nil || oldUp.vm == nil {
+		return
+	}
+	if up.vm != nil && oldUp.vm.String() != up.vm.String() {
+		log.Warnf("trying to disconnect usb device %+v from %+v, but according to usbmanager it is connected to %+v", up.usbdevice, up.vm, oldUp.vm)
 		return
 	}
 	uc.usbpassthroughs.delUsbpassthrough(&up)
@@ -65,6 +201,9 @@ func (uc *usbmanagerController) disconnectUSBDeviceFromQemuIdempotent(up usbpass
 }
 
 func (uc *usbmanagerController) connectUSBDeviceToQemuImpl(up usbpassthrough) {
+	if up.vm == nil {
+		return
+	}
 	log.Tracef("connect usb passthrough %+v to %s\n", up, up.vm.qmpSocketPath)
 
 	err := hypervisor.QmpExecDeviceAdd(up.vm.qmpSocketPath, up.usbdevice.qemuDeviceName(), up.usbdevice.busnum, up.usbdevice.devnum)
@@ -74,6 +213,9 @@ func (uc *usbmanagerController) connectUSBDeviceToQemuImpl(up usbpassthrough) {
 }
 
 func (uc *usbmanagerController) disconnectUSBDeviceFromQemuImpl(up usbpassthrough) {
+	if up.vm == nil {
+		return
+	}
 	log.Tracef("disconnect usb passthrough %+v to %s\n", up, up.vm.qmpSocketPath)
 
 	err := hypervisor.QmpExecDeviceDelete(up.vm.qmpSocketPath, up.usbdevice.qemuDeviceName())
@@ -115,7 +257,6 @@ func (uc *usbmanagerController) removeUSBDevice(ud usbdevice) {
 			vm:        vm,
 		})
 		uc.usbpassthroughs.delUsbdevice(&ud)
-
 	}
 }
 
@@ -127,181 +268,133 @@ func (uc *usbmanagerController) addVirtualmachine(vm virtualmachine) {
 
 	// add rules
 	for _, phyLabel := range vm.adapters {
-		ioBundle := uc.usbpassthroughs.ioBundles[phyLabel]
+		ioBundle := uc.iobt.ioBundle(phyLabel)
 		if ioBundle == nil {
 			continue
 		}
 
-		pr := ioBundle2PassthroughRule(*ioBundle)
+		siblingsIOBundlesElem := uc.iobt.elementsByAssignmentGroup[ioBundle.AssignmentGroup]
+		if siblingsIOBundlesElem == nil {
+			continue
+		}
+
+		for _, siblingIOBundle := range siblingsIOBundlesElem.ioBundles() {
+			pr := uc.addIOBundleRule(siblingIOBundle)
+			if pr == nil {
+				continue
+			}
+			pr.setVirtualMachine(&vm)
+
+		}
+
+		pr := uc.addIOBundleRule(ioBundle)
 		if pr == nil {
 			continue
 		}
 		pr.setVirtualMachine(&vm)
-
-		uc.ruleEngine.addRule(pr)
 	}
-
-	// find and connect usb device
-	for _, ud := range uc.usbpassthroughs.listUsbdevices() {
-		vm := uc.ruleEngine.apply(*ud)
-		if vm == nil {
-			continue
-		}
-		uc.connectUSBDeviceToQemuIdempotent(usbpassthrough{
-			usbdevice: ud,
-			vm:        vm,
-		})
-	}
+	uc.updateAllUSBDevicePassthroughs()
 }
 
 func (uc *usbmanagerController) removeVirtualmachine(vm virtualmachine) {
 	uc.Lock()
 	defer uc.Unlock()
 	ups := uc.usbpassthroughs.usbpassthroughsOfVM(vm)
+
+	storedVM := uc.usbpassthroughs.vms[vm.qmpSocketPath]
+	if storedVM != nil {
+		vm = *storedVM
+	}
+
 	for _, up := range ups {
 		uc.disconnectUSBDeviceFromQemuIdempotent(*up)
-		uc.usbpassthroughs.delUsbpassthrough(up)
 	}
 	for _, phyLabel := range vm.adapters {
-		ioBundle := uc.usbpassthroughs.ioBundles[phyLabel]
+		ioBundle := uc.iobt.ioBundle(phyLabel)
 		if ioBundle == nil {
 			continue
 		}
 
-		pr := ioBundle2PassthroughRule(*ioBundle)
-		if pr == nil {
+		siblingIOBundlesElem := uc.iobt.elementsByAssignmentGroup[ioBundle.AssignmentGroup]
+		if siblingIOBundlesElem == nil {
 			continue
 		}
-		uc.ruleEngine.delRule(pr)
+
+		for _, siblingIOBundle := range siblingIOBundlesElem.ioBundles() {
+			pr := uc.addIOBundleRule(siblingIOBundle)
+			if pr == nil {
+				continue
+			}
+			pr.setVirtualMachine(nil)
+		}
+
+		pr := uc.retrievePassthroughRule(ioBundle.AssignmentGroup, ioBundle.Phylabel)
+		if pr != nil {
+			pr.setVirtualMachine(nil)
+		}
 	}
 
 	uc.usbpassthroughs.delVM(&vm)
+	uc.updateAllUSBDevicePassthroughs()
 }
 
 func (uc *usbmanagerController) removeIOBundle(ioBundle types.IoBundle) {
 	uc.Lock()
 	defer uc.Unlock()
 
-	uc.usbpassthroughs.delIoBundle(&ioBundle)
+	uc.removeIOBundleRule(&ioBundle)
 
-	pr := ioBundle2PassthroughRule(ioBundle)
-	if pr == nil {
-		return
-	}
-	vm := uc.usbpassthroughs.vmsByIoBundlePhyLabel[ioBundle.Phylabel]
-	pr.setVirtualMachine(vm)
-
-	uc.ruleEngine.delRule(pr)
-
-	for _, ud := range uc.usbpassthroughs.listUsbdevices() {
-		vm := uc.ruleEngine.apply(*ud)
-		if vm == nil {
-			continue
-		}
-		uc.disconnectUSBDeviceFromQemuIdempotent(usbpassthrough{
-			usbdevice: ud,
-			vm:        vm,
-		})
-	}
+	uc.updateAllUSBDevicePassthroughs()
 }
 
 func (uc *usbmanagerController) addIOBundle(ioBundle types.IoBundle) {
 	uc.Lock()
 	defer uc.Unlock()
-	log.Tracef("add iobundle %s: %s/%s\n", ioBundle.Phylabel, ioBundle.UsbAddr, ioBundle.PciLong)
-	uc.usbpassthroughs.addIoBundle(&ioBundle)
-
-	pr := ioBundle2PassthroughRule(ioBundle)
-	if pr == nil {
-		return
+	pr := uc.addIOBundleRule(&ioBundle)
+	vm := uc.usbpassthroughs.vmByIOBundlePhyLabel(ioBundle.Phylabel)
+	if pr != nil {
+		pr.setVirtualMachine(vm)
 	}
-	vm := uc.usbpassthroughs.vmsByIoBundlePhyLabel[ioBundle.Phylabel]
-	pr.setVirtualMachine(vm)
 
-	uc.ruleEngine.addRule(pr)
+	uc.updateAllUSBDevicePassthroughs()
+}
 
-	for _, ud := range uc.usbpassthroughs.listUsbdevices() {
-		vm := uc.ruleEngine.apply(*ud)
-		if vm == nil {
+func (uc *usbmanagerController) updateAllUSBDevicePassthroughs() {
+	usbpassthroughsAndUsbdevices := uc.usbpassthroughs.usbpassthroughsAndUsbdevices()
+	uc.updateUSBDevicePassthroughs(usbpassthroughsAndUsbdevices)
+}
+
+func (uc *usbmanagerController) updateUSBDevicePassthroughs(usbpassthroughsAndUsbdevices []*usbpassthrough) {
+	for _, up := range usbpassthroughsAndUsbdevices {
+		ud := up.usbdevice
+		vm := up.vm
+
+		newVM := uc.ruleEngine.apply(*ud)
+
+		if newVM == vm {
 			continue
 		}
-		uc.connectUSBDeviceToQemuIdempotent(usbpassthrough{
-			usbdevice: ud,
-			vm:        vm,
-		})
+
+		if vm != nil && newVM != nil {
+			log.Warnf("Disconnecting usb device %v from %s to connect it to %s", ud, vm, newVM)
+		}
+
+		if vm != nil {
+			uc.disconnectUSBDeviceFromQemuIdempotent(usbpassthrough{
+				usbdevice: ud,
+				vm:        vm,
+			})
+		}
+
+		if newVM != nil {
+			uc.connectUSBDeviceToQemuIdempotent(usbpassthrough{
+				usbdevice: ud,
+				vm:        newVM,
+			})
+		}
 	}
 }
 
 func (uc *usbmanagerController) cancel() {
 	uc.listenUSBStopChan <- struct{}{}
-}
-
-func ioBundle2PassthroughRule(adapter types.IoBundle) passthroughRule {
-	prs := make([]passthroughRule, 0)
-
-	if adapter.PciLong != "" && adapter.UsbAddr == "" && adapter.UsbProduct == "" {
-		return &pciPassthroughForbidRule{pciAddress: adapter.PciLong}
-	}
-
-	if adapter.PciLong != "" {
-		pci := pciPassthroughRule{pciAddress: adapter.PciLong}
-
-		prs = append(prs, &pci)
-	}
-	if adapter.UsbAddr != "" {
-		usbParts := strings.SplitN(adapter.UsbAddr, ":", 2)
-		if len(usbParts) != 2 {
-			log.Warnf("usbaddr %s not parseable", adapter.UsbAddr)
-			return nil
-		}
-		busnum, err := strconv.ParseUint(usbParts[0], 10, 16)
-		if err != nil {
-			log.Warnf("usbaddr busnum (%s) not parseable", usbParts[0])
-			return nil
-		}
-		portnum := usbParts[1]
-
-		usb := usbPortPassthroughRule{
-			busnum:  uint16(busnum),
-			portnum: portnum,
-		}
-
-		prs = append(prs, &usb)
-	}
-	if adapter.UsbProduct != "" {
-		usbParts := strings.SplitN(adapter.UsbProduct, ":", 2)
-		if len(usbParts) != 2 {
-			log.Warnf("usbproduct %s not parseable", adapter.UsbProduct)
-			return nil
-		}
-
-		vendorID, errVendor := strconv.ParseUint(usbParts[0], 16, 32)
-		productID, errProduct := strconv.ParseUint(usbParts[1], 16, 32)
-		if errVendor != nil || errProduct != nil {
-			log.Warnf("extracting vendor/product id out of usbproduct %s (phylabel: %s) failed: %v/%v",
-				adapter.UsbProduct, adapter.Phylabel, errVendor, errProduct)
-			return nil
-		}
-
-		usb := usbDevicePassthroughRule{
-			vendorID:              uint32(vendorID),
-			productID:             uint32(productID),
-			passthroughRuleVMBase: passthroughRuleVMBase{},
-		}
-
-		prs = append(prs, &usb)
-	}
-	if len(prs) == 0 {
-		log.Tracef("cannot create rule out of adapter %+v\n", adapter)
-		return nil
-	}
-	if len(prs) == 1 {
-		return prs[0]
-	}
-
-	ret := compositionPassthroughRule{
-		rules: prs,
-	}
-
-	return &ret
 }

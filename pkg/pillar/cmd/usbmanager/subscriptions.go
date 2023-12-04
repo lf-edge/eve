@@ -113,6 +113,10 @@ func (usbCtx *usbmanagerContext) handleDomainStatusNotRunning(status types.Domai
 	qmp := hypervisor.GetQmpExecutorSocket(status.DomainName)
 	vm := newVirtualmachine(qmp, nil)
 
+	for _, io := range status.IoAdapterList {
+		vm.addAdapter(io.Name)
+	}
+
 	usbCtx.controller.removeVirtualmachine(vm)
 }
 

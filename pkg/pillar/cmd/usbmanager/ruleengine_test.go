@@ -4,10 +4,41 @@ package usbmanager
 
 import (
 	"testing"
+
+	"github.com/lf-edge/eve/pkg/pillar/types"
 )
 
-func newUSBPortPassthroughRule(busnum uint16, portnum string, pciAddr string) compositionPassthroughRule {
-	var ret compositionPassthroughRule
+func isNeverPR(pr passthroughRule) bool {
+	switch v := pr.(type) {
+	case *neverPassthroughRule:
+		return true
+	case *compositionANDPassthroughRule:
+		if len(v.rules) == 0 {
+			panic("composition PR has to have at least one rule")
+		}
+		for _, childPr := range v.rules {
+			if isNeverPR(childPr) {
+				return true
+			}
+		}
+	case *compositionORPassthroughRule:
+		if len(v.rules) == 0 {
+			panic("composition PR has to have at least one rule")
+		}
+		for _, childPr := range v.rules {
+			if !isNeverPR(childPr) {
+				return false
+			}
+		}
+		return true
+
+	}
+
+	return false
+}
+
+func newUSBPortPassthroughRule(busnum uint16, portnum string, pciAddr string) compositionANDPassthroughRule {
+	var ret compositionANDPassthroughRule
 
 	usb := &usbPortPassthroughRule{
 		busnum:  busnum,
@@ -26,8 +57,8 @@ func newUSBPortPassthroughRule(busnum uint16, portnum string, pciAddr string) co
 	return ret
 }
 
-func newUSBDevicePassthroughRule(vendorID, productID uint32, pciAddr string) compositionPassthroughRule {
-	var ret compositionPassthroughRule
+func newUSBDevicePassthroughRule(vendorID, productID uint32, pciAddr string) compositionANDPassthroughRule {
+	var ret compositionANDPassthroughRule
 
 	usb := &usbDevicePassthroughRule{
 		vendorID:  vendorID,
@@ -65,6 +96,9 @@ func TestBlockedByPCIPassthrough(t *testing.T) {
 	re := newRuleEngine()
 
 	pci := pciPassthroughForbidRule{pciAddress: "00:02.0"}
+	pci.vm = &virtualmachine{
+		qmpSocketPath: "/somevm.socket",
+	}
 	re.addRule(&pci)
 
 	ud := usbdevice{
@@ -158,7 +192,70 @@ func TestPluginWrongPCICard(t *testing.T) {
 		t.Fatal("ud should not be passed as parent pci addresses are different")
 	}
 
-	t.Log(re.String())
+}
+
+func TestAddIOBundle(t *testing.T) {
+	re := usbmanagerController{}
+	re.init()
+
+	re.ruleEngine.rules = make(map[string]passthroughRule)
+
+	re.addIOBundleRule(&types.IoBundle{
+		Phylabel:              "phy2",
+		AssignmentGroup:       "2",
+		ParentAssignmentGroup: "1",
+		PciLong:               "0d:02",
+	})
+
+	for _, pr := range re.ruleEngine.rules {
+		eval, _ := pr.evaluate(usbdevice{
+			usbControllerPCIAddress: "0d:02",
+		})
+		if eval == passthroughDo {
+			t.Fatal("rule should never do a passthrough")
+		}
+	}
+
+	re.addIOBundleRule(&types.IoBundle{
+		Phylabel:              "phy1",
+		AssignmentGroup:       "1",
+		ParentAssignmentGroup: "",
+		PciLong:               "0d:01",
+	})
+
+	for _, pr := range re.ruleEngine.rules {
+		eval, _ := pr.evaluate(usbdevice{
+			usbControllerPCIAddress: "0d:01",
+		})
+		if pr.String() == "PCI Passthrough Rule 0d:01" && eval != passthroughDo {
+			t.Fatal("rule should do a passthrough")
+		}
+	}
+
+	re.addIOBundleRule(&types.IoBundle{
+		Phylabel:              "phy3",
+		AssignmentGroup:       "3",
+		ParentAssignmentGroup: "2",
+		PciLong:               "0d:03",
+	})
+
+	for _, pr := range re.ruleEngine.rules {
+		if isNeverPR(pr) {
+			t.Fatalf("rule %v should be satisfiable, but isn't", pr)
+		}
+	}
+
+	re.removeIOBundleRule(&types.IoBundle{
+		Phylabel:              "phy1",
+		AssignmentGroup:       "1",
+		ParentAssignmentGroup: "",
+	})
+
+	for _, pr := range re.ruleEngine.rules {
+		if !isNeverPR(pr) {
+			t.Fatalf("there should not be any working passthrough rule, but found %v", pr)
+		}
+	}
 }
 
 func TestEmptyParentPCIAddress(t *testing.T) {
@@ -242,6 +339,9 @@ func FuzzRuleEngine(f *testing.F) {
 
 		rule3 := pciPassthroughForbidRule{
 			pciAddress: parentPCIAddressRule3,
+		}
+		rule3.vm = &virtualmachine{
+			qmpSocketPath: "/vm3",
 		}
 
 		ud := usbdevice{
