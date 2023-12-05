@@ -48,9 +48,9 @@ func (z *zedrouter) getArgsForNIStateCollecting(niID uuid.UUID) (
 
 			if z.hvTypeKube && len(vifs) > 0 {
 				z.log.Functionf("getArgsForNIStateCollecting: vif len %d, %v, IPv4Assigned %v, AllocatedIPv4Addr %v",
-					len(vifs), vifs, ulStatus.IPv4Assigned, ulStatus.AllocatedIPv4Addr)
-				if !ulStatus.IPv4Assigned && ulStatus.AllocatedIPv4Addr != nil {
-					triggerVIFupdate(z, ulStatus, vifs)
+					len(vifs), vifs, adapterStatus.IPv4Assigned, adapterStatus.AllocatedIPv4Addr)
+				if !adapterStatus.IPv4Assigned && adapterStatus.AllocatedIPv4Addr != nil {
+					triggerVIFupdate(z, adapterStatus, vifs)
 				}
 			}
 		}
@@ -58,7 +58,7 @@ func (z *zedrouter) getArgsForNIStateCollecting(niID uuid.UUID) (
 	return br, vifs, nil
 }
 
-func triggerVIFupdate(z *zedrouter, ulStatus *types.UnderlayNetworkStatus,
+func triggerVIFupdate(z *zedrouter, ulStatus *types.AppNetAdapterStatus,
 	vifs []nistate.AppVIF) {
 	var addrChanges []nistate.VIFAddrsUpdate
 	var prev, new nistate.VIFAddrs

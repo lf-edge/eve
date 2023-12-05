@@ -31,7 +31,7 @@ type AppKubeNetworkStatus struct {
 	UUIDandVersion      UUIDandVersion
 	DisplayName         string
 	ContainerID         string
-	ULNetworkStatusList []UnderlayNetworkStatus // kubecluster mode need from zedkube
+	ULNetworkStatusList []AppNetAdapterStatus // kubecluster mode need from zedkube
 }
 
 // Key :

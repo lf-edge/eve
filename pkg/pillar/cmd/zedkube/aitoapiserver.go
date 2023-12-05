@@ -66,11 +66,11 @@ func updateAppKubeNetStatus(ctx *zedkubeContext, aiConfig *types.AppInstanceConf
 			UUIDandVersion: aiConfig.UUIDandVersion,
 			DisplayName:    aiName,
 		}
-		ulcount := len(aiConfig.UnderlayNetworkList)
-		ctx.appKubeNetStatus[aiName].ULNetworkStatusList = make([]types.UnderlayNetworkStatus, ulcount)
-		for i := range aiConfig.UnderlayNetworkList {
-			ctx.appKubeNetStatus[aiName].ULNetworkStatusList[i].UnderlayNetworkConfig =
-				aiConfig.UnderlayNetworkList[i]
+		ulcount := len(aiConfig.AppNetAdapterList)
+		ctx.appKubeNetStatus[aiName].ULNetworkStatusList = make([]types.AppNetAdapterStatus, ulcount)
+		for i := range aiConfig.AppNetAdapterList {
+			ctx.appKubeNetStatus[aiName].ULNetworkStatusList[i].AppNetAdapterConfig =
+				aiConfig.AppNetAdapterList[i]
 			log.Noticef("updateAppKubeNetStatus: (%d)", i)
 		}
 		log.Functionf("updateAppKubeNetStatus: ulcount %d, for %s, appKubeNetStatus %+v", ulcount, aiName, ctx.appKubeNetStatus[aiName])

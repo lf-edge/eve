@@ -11,11 +11,12 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"github.com/lf-edge/eve/pkg/pillar/hypervisor"
 	"os"
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/lf-edge/eve/pkg/pillar/hypervisor"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/lf-edge/eve/pkg/pillar/agentbase"
@@ -403,6 +404,13 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		CreateHandler: handleAACreate,
 		ModifyHandler: handleAAModify,
 		DeleteHandler: handleAADelete,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	subNetworkInstanceStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:   "zedrouter",
 		MyAgentName: agentName,
@@ -524,7 +532,7 @@ func checkToFillKubeNADs(ctx *zedmanagerContext, aiConfig types.AppInstanceConfi
 	var nads []types.KubeNAD
 	pub := ctx.subNetworkInstanceStatus
 	items := pub.GetAll()
-	for _, ul := range aiConfig.UnderlayNetworkList {
+	for _, ul := range aiConfig.AppNetAdapterList {
 		var nad types.KubeNAD
 		for _, item := range items {
 			ni := item.(types.NetworkInstanceStatus)
@@ -770,11 +778,11 @@ func publishAppInstanceStatus(ctx *zedmanagerContext,
 	key := status.Key()
 	log.Tracef("publishAppInstanceStatus(%s)", key)
 	if ctx.hvTypeKube { // XXX hack here to get the network stats
-		for i := range status.UnderlayNetworks {
-			ulStatus := &status.UnderlayNetworks[i]
+		for i := range status.AppNetAdapters {
+			ulStatus := &status.AppNetAdapters[i]
 			if ulStatus.VifUsed == "" && ulStatus.Vif != "" {
 				ulStatus.VifUsed = ulStatus.Vif
-				status.UnderlayNetworks[i] = *ulStatus
+				status.AppNetAdapters[i] = *ulStatus
 				log.Noticef("publishAppInstanceStatus: VifUsed updated %v", ulStatus)
 			}
 		}

@@ -5,14 +5,14 @@ package hypervisor
 
 import (
 	"fmt"
-	"os"
-	"strings"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	uuid "github.com/satori/go.uuid"
 	"github.com/shirou/gopsutil/cpu"
 	"github.com/shirou/gopsutil/mem"
 	"github.com/sirupsen/logrus"
+	"os"
+	"strings"
 )
 
 // Hypervisor provides methods for manipulating domains on the host

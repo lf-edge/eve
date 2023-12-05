@@ -590,8 +590,8 @@ func (z *zedrouter) handleAppNetworkDelete(ctxArg interface{}, key string,
 	z.freeAppIntfNums(status)
 
 	// Did this free up any last references against any deleted Network Instance?
-	for i := range status.UnderlayNetworkList {
-		ulStatus := &status.UnderlayNetworkList[i]
+	for i := range status.AppNetAdapterList {
+		ulStatus := &status.AppNetAdapterList[i]
 		netstatus := z.lookupNetworkInstanceStatus(ulStatus.Network.String())
 		if netstatus != nil {
 			if z.maybeDelOrInactivateNetworkInstance(netstatus) {
@@ -771,135 +771,6 @@ func continueAppNetworkCreate(z *zedrouter, key string, config types.AppNetworkC
 
 	z.maybeScheduleRetry()
 	z.log.Functionf("handleAppNetworkCreate(%s) done for %s", key, config.DisplayName)
-}
-
-// handleAppNetworkModify cannot handle any change.
-// For example, the number of AppNetAdapters can not be changed.
-func (z *zedrouter) handleAppNetworkModify(ctxArg interface{}, key string,
-	configArg interface{}, oldConfigArg interface{}) {
-	newConfig := configArg.(types.AppNetworkConfig)
-	oldConfig := oldConfigArg.(types.AppNetworkConfig)
-	status := z.lookupAppNetworkStatus(key)
-	z.log.Functionf("handleAppNetworkModify(%v) for %s",
-		newConfig.UUIDandVersion, newConfig.DisplayName)
-
-	// Reset error status and mark pending modify as true.
-	status.ClearError()
-	status.PendingModify = true
-	z.publishAppNetworkStatus(status)
-	defer func() {
-		status.PendingModify = false
-		z.publishAppNetworkStatus(status)
-	}()
-
-	// Check for unsupported/invalid changes.
-	if err := z.validateAppNetworkConfigForModify(newConfig, oldConfig); err != nil {
-		z.log.Errorf("handleAppNetworkModify(%v): validation failed: %v",
-			newConfig.UUIDandVersion.UUID, err)
-		z.addAppNetworkError(status, "handleAppNetworkModify", err)
-		return
-	}
-
-	// Update numbers allocated for application interfaces.
-	z.checkAppNetworkModifyAppIntfNums(newConfig, status)
-
-	// Check that Network exists for all new AppNetAdapters.
-	// We look for apps with raised AwaitNetworkInstance when a NetworkInstance is added.
-	netInErrState, err := z.checkNetworkReferencesFromApp(newConfig)
-	if err != nil {
-		z.log.Errorf("handleAppNetworkModify(%v): %v", newConfig.UUIDandVersion.UUID, err)
-		status.AwaitNetworkInstance = true
-		if netInErrState {
-			z.addAppNetworkError(status, "handleAppNetworkModify", err)
-		}
-		return
-	}
-
-	if !newConfig.Activate && status.Activated {
-		z.doInactivateAppNetwork(newConfig, status)
-		z.doCopyAppNetworkConfigToStatus(newConfig, status)
-	} else if newConfig.Activate && !status.Activated {
-		z.doCopyAppNetworkConfigToStatus(newConfig, status)
-		z.doActivateAppNetwork(newConfig, status)
-	} else if !status.Activated {
-		// Just copy in newConfig
-		z.doCopyAppNetworkConfigToStatus(newConfig, status)
-	} else { // Config change while application network is active.
-		z.doUpdateActivatedAppNetwork(oldConfig, newConfig, status)
-	}
-
-	// On resource release, another AppNetworkConfig which is currently in a failed state
-	// may be able to proceed now.
-	z.maybeScheduleRetry()
-	z.log.Functionf("handleAppNetworkModify(%s) done for %s",
-		key, newConfig.DisplayName)
-}
-
-func (z *zedrouter) handleAppNetworkDelete(ctxArg interface{}, key string,
-	configArg interface{}) {
-	config := configArg.(types.AppNetworkConfig)
-	z.log.Functionf("handleAppNetworkDelete(%v) for %s",
-		config.UUIDandVersion, config.DisplayName)
-
-	status := z.lookupAppNetworkStatus(key)
-	if status == nil {
-		z.log.Functionf("handleAppNetworkDelete: unknown key %s", key)
-		return
-	}
-
-	// Deactivate app network if it is currently activated.
-	if status.Activated {
-		// No need to clear PendingDelete later. Instead, we un-publish
-		// the status completely few lines below.
-		status.PendingDelete = true
-		z.publishAppNetworkStatus(status)
-		z.doInactivateAppNetwork(config, status)
-	}
-
-	// Write out what we modified to AppNetworkStatus aka delete
-	z.unpublishAppNetworkStatus(status)
-
-	// Free all numbers allocated for this app network.
-	appNumKey := types.UuidToNumKey{UUID: status.UUIDandVersion.UUID}
-	err := z.appNumAllocator.Free(appNumKey, false)
-	if err != nil {
-		z.log.Errorf("failed to free number allocated to app %s/%s: %v",
-			status.UUIDandVersion.UUID, status.DisplayName, err)
-		// Continue anyway...
-	}
-	z.freeAppIntfNums(status)
-
-	// Did this free up any last references against any deleted Network Instance?
-	for i := range status.AppNetAdapterList {
-		adapterStatus := &status.AppNetAdapterList[i]
-		netstatus := z.lookupNetworkInstanceStatus(adapterStatus.Network.String())
-		if netstatus != nil {
-			if z.maybeDelOrInactivateNetworkInstance(netstatus) {
-				z.log.Functionf(
-					"Deleted/Inactivated NI %s as a result of deleting app network %s (%s)",
-					netstatus.Key(), status.UUIDandVersion, status.DisplayName)
-			}
-		}
-	}
-
-	// On resource release, another AppNetworkConfig which is currently in a failed state
-	// may be able to proceed now.
-	z.maybeScheduleRetry()
-	z.log.Functionf("handleAppNetworkDelete(%s) done for %s",
-		key, config.DisplayName)
-}
-
-func (z *zedrouter) handleAppInstDelete(ctxArg interface{}, key string,
-	configArg interface{}) {
-	z.log.Functionf("handleAppInstDelete(%s)", key)
-	appInstMetadata := z.lookupAppInstMetadata(key)
-	if appInstMetadata == nil {
-		z.log.Functionf("handleAppInstDelete: unknown %s", key)
-		return
-	}
-	// Clean up appInst Metadata
-	z.unpublishAppInstMetadata(appInstMetadata)
-	z.log.Functionf("handleAppInstDelete(%s) done", key)
 }
 
 func (z *zedrouter) handlePatchEnvelopeImpl(peInfo types.PatchEnvelopeInfoList) {

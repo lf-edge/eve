@@ -85,22 +85,9 @@ func (z *zedrouter) prepareConfigForVIFs(config types.AppNetworkConfig,
 			z.addAppNetworkError(status, "doActivateAppNetwork", err)
 			return nil, err
 		}
-		adapterStatus.Bridge = netInstStatus.BridgeName
-		adapterStatus.BridgeMac = netInstStatus.BridgeMac
-		adapterStatus.BridgeIPAddr = netInstStatus.BridgeIPAddr
-		if adapterStatus.AppMacAddr != nil {
-			// User-configured static MAC address.
-			adapterStatus.Mac = adapterStatus.AppMacAddr
-		} else {
-			adapterStatus.Mac = z.generateAppMac(config.UUIDandVersion.UUID, adapterNum,
-				status.AppNum, netInstStatus)
-		}
-		adapterStatus.HostName = config.Key()
-		guestIP, err := z.lookupOrAllocateIPv4ForVIF(
-			netInstStatus, *adapterStatus, status.UUIDandVersion.UUID)
 
 		// kube mode
-		var kubeulstatus *types.UnderlayNetworkStatus
+		var kubeulstatus *types.AppNetAdapterStatus
 		if z.hvTypeKube {
 			subk := z.subAppKubeNetStatus
 			items := subk.GetAll()
@@ -110,7 +97,7 @@ func (z *zedrouter) prepareConfigForVIFs(config types.AppNetworkConfig,
 					continue
 				}
 				for _, u := range st.ULNetworkStatusList {
-					if u.Network.String() == ulStatus.Network.String() {
+					if u.Network.String() == adapterStatus.Network.String() {
 						kubeulstatus = &u
 						break
 					}
@@ -127,27 +114,35 @@ func (z *zedrouter) prepareConfigForVIFs(config types.AppNetworkConfig,
 			z.log.Functionf("appNetworkDoActivateUnderlayNetwork: kubeulstatus %+v", kubeulstatus)
 		}
 
-		ulStatus.Bridge = netInstStatus.BridgeName
-		ulStatus.BridgeMac = netInstStatus.BridgeMac
-		ulStatus.BridgeIPAddr = netInstStatus.BridgeIPAddr
-		ulStatus.HostName = config.Key()
-		if z.hvTypeKube && kubeulstatus != nil {
-			ulStatus.Name = kubeulstatus.Name
-			ulStatus.Vif = kubeulstatus.Vif
-			ulStatus.Mac = kubeulstatus.Mac
-			ulStatus.AllocatedIPv4Addr = kubeulstatus.AllocatedIPv4Addr
-			ulStatus.IPv4Assigned = true
+		adapterStatus.Bridge = netInstStatus.BridgeName
+		adapterStatus.BridgeMac = netInstStatus.BridgeMac
+		adapterStatus.BridgeIPAddr = netInstStatus.BridgeIPAddr
+		adapterStatus.HostName = config.Key()
+		if adapterStatus.AppMacAddr != nil {
+			// User-configured static MAC address.
+			adapterStatus.Mac = adapterStatus.AppMacAddr
 		} else {
-			if ulStatus.AppMacAddr != nil {
+			adapterStatus.Mac = z.generateAppMac(config.UUIDandVersion.UUID, adapterNum,
+				status.AppNum, netInstStatus)
+		}
+
+		if z.hvTypeKube && kubeulstatus != nil {
+			adapterStatus.Name = kubeulstatus.Name
+			adapterStatus.Vif = kubeulstatus.Vif
+			adapterStatus.Mac = kubeulstatus.Mac
+			adapterStatus.AllocatedIPv4Addr = kubeulstatus.AllocatedIPv4Addr
+			adapterStatus.IPv4Assigned = true
+		} else {
+			if adapterStatus.AppMacAddr != nil {
 				// User-configured static MAC address.
-				ulStatus.Mac = ulStatus.AppMacAddr
+				adapterStatus.Mac = adapterStatus.AppMacAddr
 			} else {
-				ulStatus.Mac = z.generateAppMac(config.UUIDandVersion.UUID, ulNum,
+				adapterStatus.Mac = z.generateAppMac(config.UUIDandVersion.UUID, adapterNum,
 					status.AppNum, netInstStatus)
 			}
 		}
 		guestIP, err := z.lookupOrAllocateIPv4ForVIF(
-			netInstStatus, *ulStatus, status.UUIDandVersion.UUID, kubeulstatus)
+			netInstStatus, *adapterStatus, status.UUIDandVersion.UUID, kubeulstatus)
 		if err != nil {
 			z.log.Errorf("doActivateAppNetwork(%v/%v): %v",
 				config.UUIDandVersion.UUID, config.DisplayName, err)
@@ -161,10 +156,10 @@ func (z *zedrouter) prepareConfigForVIFs(config types.AppNetworkConfig,
 			VIFNum:         adapterNum,
 			GuestIfMAC:     adapterStatus.Mac,
 			GuestIP:        guestIP,
-			VifIfName:      ulStatus.Vif,
+			VifIfName:      adapterStatus.Vif,
 		})
-		status.UnderlayNetworkList[i] = *ulStatus
-		z.log.Functionf("appNetworkDoActivateUnderlayNetwork: vifs %+v, ulStats %+v", vifs, ulStatus)
+		status.AppNetAdapterList[i] = *adapterStatus
+		z.log.Functionf("appNetworkDoActivateUnderlayNetwork: vifs %+v, ulStats %+v", vifs, adapterStatus)
 	}
 	return vifs, nil
 }

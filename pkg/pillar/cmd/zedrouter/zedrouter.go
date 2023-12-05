@@ -607,12 +607,12 @@ func ipAssignUpdate(z *zedrouter, ipAssignUpdates []nistate.VIFAddrsUpdate) {
 				appKey, vif.NetAdapterName)
 			continue
 		}
-		for i := range appStatus.UnderlayNetworkList {
-			ulStatus := &appStatus.UnderlayNetworkList[i]
+		for i := range appStatus.AppNetAdapterList {
+			ulStatus := &appStatus.AppNetAdapterList[i]
 			if ulStatus.Name != vif.NetAdapterName {
 				continue
 			}
-			z.recordAssignedIPsToULStatus(ulStatus, &newAddrs)
+			z.recordAssignedIPsToAdapterStatus(ulStatus, &newAddrs)
 			break
 		}
 		z.publishAppNetworkStatus(appStatus)
