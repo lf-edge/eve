@@ -26,6 +26,8 @@ import (
 	"github.com/linuxkit/linuxkit/src/cmd/linuxkit/moby"
 	v1 "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/opencontainers/runtime-spec/specs-go"
+
+	"github.com/sirupsen/logrus"
 )
 
 const eveScript = "/bin/eve"
@@ -210,6 +212,7 @@ func (s *ociSpec) AddLoader(volume string) error {
 	// finally do a switcheroo
 	s.Spec = spec.Spec
 
+	logrus.Infof("XXX AddLoader result %+v", s.Spec)
 	return nil
 }
 
@@ -453,14 +456,20 @@ func (s *ociSpec) UpdateMounts(disks []types.DiskStatus) error {
 		// we can bind mount anything aside from FmtUnknown
 		switch disk.Format {
 		case zconfig.Format_FmtUnknown:
+			logrus.Infof("XXX FmtUnknown %d", id)
 			continue
 		case zconfig.Format_CONTAINER:
+			logrus.Infof("XXX container %d MountDir %s",
+				id, disk.MountDir)
 			if path.Clean(disk.MountDir) == "/" {
 				// skipping root volumes for now
 				continue
 			} else {
 				src = path.Join(src, ociVolumeData)
 			}
+		default:
+			logrus.Infof("XXX format %s %d", disk.Format, id)
+
 		}
 
 		dests := []string{fmt.Sprintf("/dev/eve/volumes/by-id/%d", id)}

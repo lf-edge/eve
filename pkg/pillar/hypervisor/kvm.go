@@ -735,6 +735,8 @@ func (ctx KvmContext) CreateDomConfig(domainName string, config types.DomainConf
 			continue
 		}
 		diskContext.DiskStatus = ds
+		logrus.Infof("XXX DiskStatus %d: %+v", diskContext.DiskID,
+			ds)
 		if err := t.Execute(file, diskContext); err != nil {
 			return logError("can't write to config file %s (%v)", file.Name(), err)
 		}
