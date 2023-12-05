@@ -248,8 +248,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		if err != nil {
 			log.Errorf("volumemgr run: wait for kubernetes error %v", err)
 		} else {
-			log.Noticef("volumemgr run: kubernetes node ready")
+			log.Noticef("volumemgr run: kubernetes node ready, longhorn ready")
 		}
+
 	}
 
 	if ctx.persistType == types.PersistZFS {

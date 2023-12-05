@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	netclientset "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/client/clientset/versioned"
@@ -113,11 +114,72 @@ func WaitKubernetes(agentName string, ps *pubsub.PubSub, stillRunning *time.Tick
 	return config, nil
 }
 
+func CheckLonghornReady(client *kubernetes.Clientset) error {
+	hostname, err := os.Hostname()
+	if err != nil {
+		return fmt.Errorf("Unable to check longhorn pods on host:%v", err)
+	}
+
+	// First we'll gate on the longhorn daemonsets existing
+	lhDaemonsets, err := client.AppsV1().DaemonSets("longhorn-system").List(context.Background(), metav1.ListOptions{})
+	if err != nil {
+		return fmt.Errorf("Checking if longhorn daemonsets exist: %v", err)
+	}
+	// Keep a running table of which expected Daemonsets exist
+	var lhExpectedDaemonsets = map[string]bool{
+		"longhorn-manager":    false,
+		"longhorn-csi-plugin": false,
+		"engine-image":        false,
+	}
+	// Check if each daemonset is running and ready on this node
+	for _, lhDaemonset := range lhDaemonsets.Items {
+		lhDsName := lhDaemonset.GetName()
+		for dsPrefix := range lhExpectedDaemonsets {
+			if strings.HasPrefix(lhDsName, dsPrefix) {
+				lhExpectedDaemonsets[dsPrefix] = true
+			}
+		}
+
+		labelSelectors := []string{}
+		for dsLabelK, dsLabelV := range lhDaemonset.Spec.Template.Labels {
+			labelSelectors = append(labelSelectors, dsLabelK+"="+dsLabelV)
+		}
+		pods, err := client.CoreV1().Pods("longhorn-system").List(context.Background(), metav1.ListOptions{
+			FieldSelector: "spec.nodeName=" + hostname,
+			LabelSelector: strings.Join(labelSelectors, ","),
+		})
+		if err != nil {
+			return fmt.Errorf("Unable to get daemonset pods on node: %v", err)
+		}
+		if len(pods.Items) != 1 {
+			return fmt.Errorf("Longhorn daemonset:%s missing on this node", lhDsName)
+		}
+		for _, pod := range pods.Items {
+			if pod.Status.Phase != "Running" {
+				return fmt.Errorf("Daemonset:%s not running on node", lhDsName)
+			}
+			for _, podContainerState := range pod.Status.ContainerStatuses {
+				if !podContainerState.Ready {
+					return fmt.Errorf("Daemonset:%s not ready on node", lhDsName)
+				}
+			}
+		}
+	}
+
+	for dsPrefix, dsPrefixExists := range lhExpectedDaemonsets {
+		if !dsPrefixExists {
+			return fmt.Errorf("Longhorn missing daemonset:%s", dsPrefix)
+		}
+	}
+
+	return nil
+}
+
 func WaitForNodeReady(client *kubernetes.Clientset, readyCh chan bool) {
 	if client == nil {
 
 	}
-	err := wait.PollImmediate(time.Second, time.Minute*10, func() (bool, error) {
+	err := wait.PollImmediate(time.Second, time.Minute*20, func() (bool, error) {
 		err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
 			_, err := client.CoreV1().Nodes().List(context.Background(), metav1.ListOptions{})
 			if err != nil {
@@ -133,6 +195,11 @@ func WaitForNodeReady(client *kubernetes.Clientset, readyCh chan bool) {
 			if len(pods.Items) < 6 {
 				return fmt.Errorf("kubevirt running pods less than 6")
 			}
+
+			if err = CheckLonghornReady(client); err != nil {
+				return err
+			}
+
 			return nil
 		})
 
