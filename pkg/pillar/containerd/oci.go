@@ -443,6 +443,7 @@ func (s *ociSpec) UpdateMounts(disks []types.DiskStatus) error {
 	blkMountPoints := ""
 
 	for id, disk := range disks {
+		// XXX here we use MountDir and FileLocation
 		dst := disk.MountDir
 		src := disk.FileLocation
 		opts := []string{"rbind"}
@@ -490,7 +491,10 @@ func (s *ociSpec) UpdateMounts(disks []types.DiskStatus) error {
 			dests = append(dests, dst)
 		}
 
-		for _, dest := range dests {
+		for i, dest := range dests {
+			// XXX here we create bind mounts from FileLocation to MountDir
+			logrus.Infof("XXX Adding mount %d/%d from %s to %s",
+				id, i, src, dest)
 			s.Mounts = append(s.Mounts, specs.Mount{
 				Type:        "bind",
 				Source:      src,

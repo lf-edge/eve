@@ -21,6 +21,9 @@ reload_watchdog() {
         # Wait for it to exit so it can be restarted
         while kill -0 "$wp"; do
             log "Waiting for watchdog to exit"
+            if [ $USE_HW_WATCHDOG = 1 ]; then
+                wdctl
+            fi
             sleep 1
         done
         log "Killed watchdog"
@@ -82,5 +85,4 @@ fi
 # Create configuration end-points
 mkdir -p /run/watchdog/pid /run/watchdog/file 2> /dev/null || :
 
-mkdir -p /persist/log
-run_watchdog | tee -a /persist/log/watchdog.log
+run_watchdog

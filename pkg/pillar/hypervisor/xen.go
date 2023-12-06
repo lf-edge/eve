@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/lf-edge/eve/pkg/pillar/containerd"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/shirou/gopsutil/cpu"
 	"github.com/shirou/gopsutil/mem"
@@ -125,20 +126,29 @@ func (ctx xenContext) Setup(status types.DomainStatus, config types.DomainConfig
 		return logError("failed to build domain config: %v", err)
 	}
 
-	spec, err := ctx.setupSpec(&status, &config, status.OCIConfigDir)
-	if err != nil {
-		return logError("failed to load OCI spec for domain %s: %v", status.DomainName, err)
+	var spec0 containerd.OCISpec // The main container for the app instance
+	for i, dcs := range status.ContainerList {
+		ociConfigDir := dcs.OCIConfigDir
+		logrus.Infof("XXX processing %d dir %s", i, ociConfigDir)
+		spec, err := ctx.setupSpec(&status, &config, ociConfigDir)
+		if err != nil {
+			return logError("failed to load OCI spec for domain %s oci %d %s: %v",
+				status.DomainName, i, ociConfigDir, err)
+		}
+		if i == 0 {
+			spec0 = spec
+		}
+		if err = spec.AddLoader("/containers/services/xen-tools"); err != nil {
+			return logError("failed to add xen hypervisor loader to domain %s oci %d %s: %v",
+				status.DomainName, i, ociConfigDir, err)
+		}
 	}
-	if err = spec.AddLoader("/containers/services/xen-tools"); err != nil {
-		return logError("failed to add xen hypervisor loader to domain %s: %v", status.DomainName, err)
-	}
-
 	// finally we can start it up
-	spec.Get().Process.Args = []string{"/etc/xen/scripts/xen-start", status.DomainName, file.Name()}
+	spec0.Get().Process.Args = []string{"/etc/xen/scripts/xen-start", status.DomainName, file.Name()}
 	if config.MetaDataType == types.MetaDataOpenStack {
-		spec.Get().Process.Args = append(spec.Get().Process.Args, "smbios_product")
+		spec0.Get().Process.Args = append(spec0.Get().Process.Args, "smbios_product")
 	}
-	if err := spec.CreateContainer(true); err != nil {
+	if err := spec0.CreateContainer(true); err != nil {
 		return logError("Failed to create container for task %s from %v: %v", status.DomainName, config, err)
 	}
 

@@ -15,6 +15,4 @@ for i in $(cd /sys/class/net || return ; echo eth*) ; do
 done
 
 echo 'Starting device-steps'
-mkdir -p /persist/log
-/opt/zededa/bin/device-steps.sh 2>&1 | tee -a /persist/log/device-steps.log
-
+/opt/zededa/bin/device-steps.sh

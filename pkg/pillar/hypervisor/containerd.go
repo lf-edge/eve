@@ -95,15 +95,20 @@ func (ctx ctrdContext) setupSpec(status *types.DomainStatus, config *types.Domai
 
 func (ctx ctrdContext) Setup(status types.DomainStatus, config types.DomainConfig,
 	aa *types.AssignableAdapters, globalConfig *types.ConfigItemValueMap, file *os.File) error {
-	if status.OCIConfigDir == "" {
+	if len(status.ContainerList) == 0 {
 		return logError("failed to run domain %s: not based on an OCI image", status.DomainName)
 	}
 
-	spec, err := ctx.setupSpec(&status, &config, status.OCIConfigDir)
+	// We assume a single container in the case of NOHYPER
+	if len(status.ContainerList) != 1 {
+		return logError("failed to run domain %s: more than one OCI image", status.DomainName)
+	}
+
+	ociConfigDir := status.ContainerList[0].OCIConfigDir
+	spec, err := ctx.setupSpec(&status, &config, ociConfigDir)
 	if err != nil {
 		return logError("setting up OCI spec for domain %s failed %v", status.DomainName, err)
 	}
-
 	// we use patched version of dhcpcd with /etc/resolv.conf.new
 	vifsTaskResolv := filepath.Join(vifsDir, status.DomainName, "etc", "resolv.conf.new")
 	err = os.MkdirAll(filepath.Dir(vifsTaskResolv), 0755)
