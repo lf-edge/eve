@@ -79,8 +79,9 @@ type zedrouter struct {
 	runCtx context.Context
 
 	// CLI options
-	versionPtr        *bool
-	enableArpSnooping bool // enable/disable switch NI arp snooping
+	versionPtr         *bool
+	enableArpSnooping  bool // enable/disable switch NI arp snooping
+	localLegacyMACAddr bool // switch to legacy MAC address generation
 
 	agentStartTime     time.Time
 	receivedConfigTime time.Time
