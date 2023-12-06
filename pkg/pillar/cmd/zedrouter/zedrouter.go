@@ -59,6 +59,7 @@ type zedrouterContext struct {
 	agentStartTime        time.Time
 	receivedConfigTime    time.Time
 	triggerNumGC          bool // For appNum and bridgeNum
+	localLegacyMACAddr    bool // switch to legacy MAC address generation
 	subAppNetworkConfig   pubsub.Subscription
 	subAppNetworkConfigAg pubsub.Subscription // From zedagent for dom0
 	subAppInstanceConfig  pubsub.Subscription // From zedagent to cleanup appInstMetadata
@@ -2087,6 +2088,7 @@ func handleGlobalConfigImpl(ctxArg interface{}, key string,
 		ctx.GCInitialized = true
 		ctx.appStatsInterval = gcp.GlobalValueInt(types.AppContainerStatsInterval)
 		ctx.disableDHCPAllOnesNetMask = gcp.GlobalValueBool(types.DisableDHCPAllOnesNetMask)
+		ctx.localLegacyMACAddr = gcp.GlobalValueBool(types.NetworkLocalLegacyMACAddress)
 		metricInterval := gcp.GlobalValueInt(types.MetricInterval)
 		if metricInterval != 0 && ctx.metricInterval != metricInterval {
 			if ctx.publishTicker != nil {

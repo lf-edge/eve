@@ -259,6 +259,15 @@ const (
 
 	// XXX temp for testing edge-view
 	EdgeViewToken GlobalSettingKey = "edgeview.authen.jwt"
+
+	// NetworkLocalLegacyMACAddress : Enables legacy MAC address generation for
+	// local network instances. The legacy generation is not "that" random and
+	// probability of repeating MAC addresses across nodes is high. Later the
+	// algorithm was changed and more randomness was introduced, but some
+	// applications may be already configured with already allocated MAC
+	// address, and MAC address change on EVE node upgrade (switch from old
+	// generation logic to new one) can cause problems with the guest network.
+	NetworkLocalLegacyMACAddress GlobalSettingKey = "network.local.legacy.mac.address"
 )
 
 // AgentSettingKey - keys for per-agent settings
@@ -827,6 +836,7 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	configItemSpecMap.AddBoolItem(DisableDHCPAllOnesNetMask, false)
 	configItemSpecMap.AddBoolItem(ProcessCloudInitMultiPart, false)
 	configItemSpecMap.AddBoolItem(ConsoleAccess, true) // Controller likely default to false
+	configItemSpecMap.AddBoolItem(NetworkLocalLegacyMACAddress, false)
 
 	// Add TriState Items
 	configItemSpecMap.AddTriStateItem(NetworkFallbackAnyEth, TS_DISABLED)
