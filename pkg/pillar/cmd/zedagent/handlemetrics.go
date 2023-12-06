@@ -1055,7 +1055,7 @@ func PublishAppInfoToZedCloud(ctx *zedagentContext, uuid string,
 		ReportAppInfo.AppVersion = aiStatus.UUIDandVersion.Version
 		ReportAppInfo.AppName = aiStatus.DisplayName
 		ReportAppInfo.State = aiStatus.State.ZSwState()
-		ReportAppInfo.PatchEnvelope = composePatchEnvelopeUsage(uuid, ctx)
+		ReportAppInfo.PatchEnvelope = composePatchEnvelopeUsage(aiStatus.UUIDandVersion.UUID.String(), ctx)
 		if !aiStatus.ErrorTime.IsZero() {
 			errInfo := encodeErrorInfo(
 				aiStatus.ErrorAndTimeWithSource.ErrorDescription)
