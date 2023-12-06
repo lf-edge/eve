@@ -56,6 +56,12 @@ func (z *zedrouter) generateAppMac(appUUID uuid.UUID, adapterNum int, appNum int
 	case types.NetworkInstanceTypeSwitch:
 		return net.HardwareAddr{0x02, 0x16, 0x3e, hash[0], hash[1], hash[2]}
 	case types.NetworkInstanceTypeLocal:
+		if z.localLegacyMACAddr {
+			z.log.Noticef("generateAppMac: legacy MAC address for app %v", appUUID)
+			// Room to handle multiple underlays in 5th byte
+			return net.HardwareAddr{0x00, 0x16, 0x3e, 0x00, byte(adapterNum), byte(appNum)}
+		}
+		z.log.Noticef("generateAppMac: random MAC address for app %v", appUUID)
 		mac := net.HardwareAddr{hash[0], hash[1], hash[2], hash[3], hash[4], hash[5]}
 		// Mark this MAC address as unicast by setting the I/G bit to zero.
 		mac[0] &= ^byte(1)

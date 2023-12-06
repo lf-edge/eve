@@ -52,6 +52,7 @@ func (z *zedrouter) handleGlobalConfigImpl(ctxArg interface{}, key string,
 			z.metricInterval = metricInterval
 		}
 		z.enableArpSnooping = gcp.GlobalValueBool(types.EnableARPSnoop)
+		z.localLegacyMACAddr = gcp.GlobalValueBool(types.NetworkLocalLegacyMACAddress)
 		z.niReconciler.ApplyUpdatedGCP(z.runCtx, *gcp)
 	}
 	z.log.Functionf("handleGlobalConfigImpl done for %s", key)
