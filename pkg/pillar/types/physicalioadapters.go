@@ -45,6 +45,7 @@ type PhysicalIOAdapter struct {
 	Assigngrp    string
 	Usage        zcommon.PhyIoMemberUsage
 	UsagePolicy  PhyIOUsagePolicy
+	//nolint:godox
 	// FIXME: cbattr - This needs to be thought through to be made into
 	//  a structure OR may be even various attributes in PhysicalIO structure
 	// itself.
