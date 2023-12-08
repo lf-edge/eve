@@ -36,14 +36,15 @@ echo "MAX_OCI=$MAX_OCI"
 for oci in $(seq 0 "$MAX_OCI"); do
     if [ "$oci" = 0 ]; then
         MNT=/mnt
+	TAG=share_dir
     else
         MNT="/mnt$oci"
+	TAG="share_dir$oci"
     fi
 
     mkdir "$MNT" >/dev/null 2>&1
-    # XXX where are the other mounts on 9p?
     if [ "$root" = "9p" ]; then
-        mount -t 9p -o msize=131072,trans="$HYPER_BUS",version=9p2000.L,cache=mmap share_dir "$MNT"
+        mount -t 9p -o msize=131072,trans="$HYPER_BUS",version=9p2000.L,cache=mmap "$TAG" "$MNT"
         ret=$?
     else
         mount "$root" "$MNT"

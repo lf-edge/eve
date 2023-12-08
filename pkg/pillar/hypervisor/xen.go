@@ -307,8 +307,13 @@ func (ctx xenContext) CreateDomConfig(domainName string, config types.DomainConf
 		switch ds.Devtype {
 		case "":
 		case "9P":
+			tag := "share_dir"
+			if i != 0 {
+				tag += strconv.Itoa(i)
+			}
 			p9Strings = append(p9Strings,
-				fmt.Sprintf("'tag=share_dir,security_model=none,path=%s'", ds.FileLocation))
+				fmt.Sprintf("'tag=%s,security_model=none,path=%s'",
+					tag, ds.FileLocation))
 		default:
 			access := "rw"
 			if ds.ReadOnly {

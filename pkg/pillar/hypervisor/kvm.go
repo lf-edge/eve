@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"text/template"
 	"time"
@@ -261,7 +262,7 @@ const qemuDiskTemplate = `
 [device "fs{{.DiskID}}"]
   driver = "virtio-9p-pci"
   fsdev = "fsdev{{.DiskID}}"
-  mount_tag = "share_dir"
+  mount_tag = "{{.Tag9P}}"
   addr = "{{printf "0x%x" .PCIId}}"
 {{else}}
 [device "pci.{{.PCIId}}"]
@@ -737,14 +738,17 @@ func (ctx KvmContext) CreateDomConfig(domainName string, config types.DomainConf
 		Machine                          string
 		PCIId, DiskID, SATAId, NumQueues int
 		AioType                          string
+		Tag9P                            string
 		types.DiskStatus
 	}{Machine: ctx.devicemodel, PCIId: 4, DiskID: 0, SATAId: 0, AioType: "io_uring", NumQueues: config.VCpus}
 
 	t, _ = template.New("qemuDisk").
 		Funcs(template.FuncMap{"Fmt": func(f zconfig.Format) string { return strings.ToLower(f.String()) }}).
 		Parse(qemuDiskTemplate)
-	for _, ds := range diskStatusList {
+	for i, ds := range diskStatusList {
 		if ds.Devtype == "" {
+			// XXX doesn't all 9p fall in here?
+			logrus.Infof("XXX skipping DiskStatus: %+v", ds)
 			continue
 		}
 		if ds.Devtype == "AppCustom" {
@@ -752,9 +756,14 @@ func (ctx KvmContext) CreateDomConfig(domainName string, config types.DomainConf
 			// differently - as a download url in zedrouter
 			continue
 		}
+		tag := "share_dir"
+		if i != 0 {
+			tag += strconv.Itoa(i)
+		}
+		diskContext.Tag9P = tag
 		diskContext.DiskStatus = ds
-		logrus.Infof("XXX DiskStatus %d: %+v", diskContext.DiskID,
-			ds)
+		logrus.Infof("XXX tag %s DiskStatus %d: %+v",
+			tag, diskContext.DiskID, ds)
 		if err := t.Execute(file, diskContext); err != nil {
 			return logError("can't write to config file %s (%v)", file.Name(), err)
 		}
