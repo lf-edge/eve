@@ -427,13 +427,6 @@ if [ ! -f /var/lib/all_components_initialized ]; then
                 #Add feature gates
                 kubectl apply -f /etc/kubevirt-features.yaml
 
-                # NOTE: https://kubevirt.io/user-guide/virtual_machines/boot_from_external_source/
-                # Install external-boot-image image to our containerd registry.
-                # This image contains just kernel and initrd to bootstrap a container image as a VM.
-                # This is very similar to what we do on kvm based eve to start container as a VM.
-                # NOTE: This image in public repo is just a workaround. We need to figure out a proper way to get this 
-                # installed into eve containerd repository (may be at build time ?)
-                ctr  -a /run/containerd-user/containerd.sock -n k8s.io  image pull docker.io/zededapramodh/external-boot-scratch-container:2.0
                 touch /var/lib/kubevirt_initialized
         fi
 
@@ -453,6 +446,19 @@ if [ ! -f /var/lib/all_components_initialized ]; then
         fi
 else
         check_start_containerd
+        if [ -f /etc/external-boot-image.tar ]; then
+                # NOTE: https://kubevirt.io/user-guide/virtual_machines/boot_from_external_source/
+                # Install external-boot-image image to our containerd registry.
+                # This image contains just kernel and initrd to bootstrap a container image as a VM.
+                # This is very similar to what we do on kvm based eve to start container as a VM.
+		logmsg "Installing new external-boot-image"
+		# This import happens once per reboot
+		ctr -a /run/containerd-user/containerd.sock image import /etc/external-boot-image.tar docker.io/lfedge/eve-external-boot-image:latest
+		if [ $? -eq 0 ]; then
+			logmsg "Installed external-boot-image"
+			rm -f /etc/external-boot-image.tar
+		fi
+	fi
         pgrep -f "k3s server" > /dev/null 2>&1
         if [ $? -eq 1 ]; then 
             if [ $RESTART_COUNT -lt $MAX_K3S_RESTARTS ]; then

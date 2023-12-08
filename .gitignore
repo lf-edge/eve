@@ -20,3 +20,4 @@ conf/authorized_keys
 conf/grub.cfg
 conf/device.cert.pem
 conf/device.key.pem
+pkg/kube/external-boot-image.tar

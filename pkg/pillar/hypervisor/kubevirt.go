@@ -294,7 +294,7 @@ func (ctx kubevirtContext) CreateVMIConfig(domainName string, config types.Domai
 
 				// Since disks are virtio disks we assume /dev/vda is the boot disk
 				kernel_args := "console=tty0 root=/dev/vda dhcp=1 rootfstype=ext4"
-				scratch_image := "docker.io/zededapramodh/external-boot-scratch-container:2.0"
+				scratch_image := "docker.io/lfedge/eve-external-boot-image:latest"
 				kernel_path := "/kernel"
 				initrd_path := "/runx-initrd"
 

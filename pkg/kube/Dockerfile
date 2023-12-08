@@ -26,6 +26,8 @@ COPY kubevirt-features.yaml /etc
 COPY config-k3s.toml /etc/containerd/
 COPY longhorn-config.yaml /etc/
 COPY debuguser-role-binding.yaml /etc/
+COPY external-boot-image.tar /etc/
+RUN ls -l /etc/
 RUN mkdir -p /etc/rancher/k3s
 COPY config.yaml /etc/rancher/k3s
 WORKDIR /
