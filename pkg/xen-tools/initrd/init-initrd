@@ -27,7 +27,6 @@ pvcalls=$(cat /proc/cmdline | grep  'pvcalls=1')
 dhcp=$(cat /proc/cmdline | grep  'dhcp=1')
 chrony=$(cat /proc/cmdline | grep 'chrony=1')
 
-# XXX set max_oci at boot
 # If there is no sidecars then MAX_OCI will be zero
 MAX_OCI=$(cat /proc/cmdline | grep -o '\bmax_oci=[^ ]*' | cut -d = -f 2)
 if [ -z "$MAX_OCI" ]; then

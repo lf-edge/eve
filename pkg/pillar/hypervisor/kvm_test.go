@@ -1,3 +1,6 @@
+// Copyright (c) 2017-2023 Zededa, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
 package hypervisor
 
 import (
@@ -60,6 +63,10 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
 		{Format: zconfig.Format_RAW, FileLocation: "/foo/cd.iso", Devtype: "cdrom"},
 		{Format: zconfig.Format_CONTAINER, FileLocation: "/foo/volume", Devtype: ""},
 	}
+	status := types.DomainStatus{
+		DiskStatusList: disks,
+		ContainerList:  make([]types.DomainContainerStatus, 2),
+	}
 	aa := types.AssignableAdapters{
 		Initialized: true,
 		IoBundleList: []types.IoBundle{
@@ -82,7 +89,8 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
 
 	t.Run("amd64", func(t *testing.T) {
 		conf.Seek(0, 0)
-		if err := kvmIntel.CreateDomConfig("test", config, types.DomainStatus{}, disks, &aa, conf); err != nil {
+		if err := kvmIntel.CreateDomConfig("test", config, status,
+			status.DiskStatusList, &aa, conf); err != nil {
 			t.Errorf("CreateDomConfig failed %v", err)
 		}
 		defer os.Truncate(conf.Name(), 0)
@@ -104,7 +112,7 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
   kernel-irqchip = "on"
   kernel = "/boot/kernel"
   initrd = "/boot/ramdisk"
-  append = "init=/bin/sh"
+  append = "init=/bin/sh max_oci=1"
 
 
 [global]
@@ -369,7 +377,7 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
   kernel-irqchip = "on"
   kernel = "/boot/kernel"
   initrd = "/boot/ramdisk"
-  append = "init=/bin/sh"
+  append = "init=/bin/sh max_oci=0"
 
 
 [global]
@@ -633,7 +641,7 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
   gic-version = "host"
   kernel = "/boot/kernel"
   initrd = "/boot/ramdisk"
-  append = "init=/bin/sh"
+  append = "init=/bin/sh max_oci=0"
 
 
 [realtime]
@@ -1072,7 +1080,7 @@ func domConfigArm64() string {
   gic-version = "host"
   kernel = "/boot/kernel"
   initrd = "/boot/ramdisk"
-  append = "init=/bin/sh"
+  append = "init=/bin/sh max_oci=0"
 
 
 [realtime]
@@ -1331,7 +1339,7 @@ func domConfigAmd64FML() string {
   kernel-irqchip = "on"
   kernel = "/boot/kernel"
   initrd = "/boot/ramdisk"
-  append = "init=/bin/sh"
+  append = "init=/bin/sh max_oci=0"
 
 
 [global]
@@ -1624,7 +1632,7 @@ func domConfigAmd64Legacy() string {
   kernel-irqchip = "on"
   kernel = "/boot/kernel"
   initrd = "/boot/ramdisk"
-  append = "init=/bin/sh"
+  append = "init=/bin/sh max_oci=0"
 
 
 [global]
@@ -1908,7 +1916,7 @@ func domConfigAmd64() string {
   kernel-irqchip = "on"
   kernel = "/boot/kernel"
   initrd = "/boot/ramdisk"
-  append = "init=/bin/sh"
+  append = "init=/bin/sh max_oci=0"
 
 
 [global]

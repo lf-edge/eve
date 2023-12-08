@@ -711,6 +711,12 @@ func (ctx KvmContext) Setup(status types.DomainStatus, config types.DomainConfig
 // CreateDomConfig creates a domain config (a qemu config file, typically named something like xen-%d.cfg)
 func (ctx KvmContext) CreateDomConfig(domainName string, config types.DomainConfig, status types.DomainStatus,
 	diskStatusList []types.DiskStatus, aa *types.AssignableAdapters, file *os.File) error {
+	maxOCI := 0
+	numOCI := len(status.ContainerList)
+	if numOCI > 1 {
+		maxOCI = numOCI - 1
+	}
+	extra := fmt.Sprintf(" max_oci=%d", maxOCI)
 	tmplCtx := struct {
 		Machine string
 		types.DomainConfig
@@ -718,6 +724,7 @@ func (ctx KvmContext) CreateDomConfig(domainName string, config types.DomainConf
 	}{ctx.devicemodel, config, status}
 	tmplCtx.DomainConfig.Memory = (config.Memory + 1023) / 1024
 	tmplCtx.DomainConfig.DisplayName = domainName
+	tmplCtx.DomainConfig.ExtraArgs += extra
 
 	// render global device model settings
 	t, _ := template.New("qemu").Parse(qemuConfTemplate)
