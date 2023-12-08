@@ -172,7 +172,7 @@ check_overwrite_nsmounter() {
   for csiPod in $longhornCsiPluginPods; do    
     kubectl -n longhorn-system exec pod/${csiPod} --container=longhorn-csi-plugin -- ls /usr/local/sbin/nsmounter.updated > /dev/null 2>@1
     if [ $? -ne 0 ]; then
-      kubectl cp /usr/bin/nsmounter longhorn-system/${csiPod}:/usr/local/sbin/nsmounter --container=longhorn-csi-plugin
+      cat /usr/bin/nsmounter | kubectl -n longhorn-system exec -i pod/${csiPod} --container=longhorn-csi-plugin -- tee /usr/local/sbin/nsmounter
       if [ $? -eq 0 ]; then
         logmsg "Updated nsmounter in longhorn pod ${csiPod}"
         kubectl -n longhorn-system exec pod/${csiPod} --container=longhorn-csi-plugin -- touch /usr/local/sbin/nsmounter.updated
