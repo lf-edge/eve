@@ -188,16 +188,6 @@ if [ "$oci" = 0 ]; then
     acpid -l /proc/self/fd/1
 fi
 
-run_agetty_loop()
-{
-    while true; do
-        setsid agetty --autologin root --noclear hvc1 linux
-    done
-}
-
-echo "Executing agetty"
-run_agetty_loop &
-
 # Commence launch sequence
 # Run everything but main container first
 for oci in $(seq 1 "$MAX_OCI"); do (
@@ -253,6 +243,16 @@ oci=0
 MNT=/mnt
 #shellcheck source=/dev/null
 . "$MNT/environment"
+
+run_agetty_loop()
+{
+    while true; do
+        setsid agetty --autologin root --noclear hvc1 linux
+    done
+}
+
+echo "Executing agetty"
+run_agetty_loop &
 
 cmd=$(cat "$MNT"/cmdline)
 ug="0 0"
