@@ -759,7 +759,7 @@ func (ctx KvmContext) CreateDomConfig(domainName string, config types.DomainConf
 	t, _ = template.New("qemuDisk").
 		Funcs(template.FuncMap{"Fmt": func(f zconfig.Format) string { return strings.ToLower(f.String()) }}).
 		Parse(qemuDiskTemplate)
-	for i, ds := range diskStatusList {
+	for _, ds := range diskStatusList {
 		if ds.Devtype == "" {
 			// XXX doesn't all 9p fall in here?
 			logrus.Infof("XXX skipping DiskStatus: %+v", ds)
@@ -771,8 +771,8 @@ func (ctx KvmContext) CreateDomConfig(domainName string, config types.DomainConf
 			continue
 		}
 		tag := "share_dir"
-		if i != 0 {
-			tag += strconv.Itoa(i)
+		if diskContext.DiskID != 0 {
+			tag += strconv.Itoa(diskContext.DiskID)
 		}
 		diskContext.Tag9P = tag
 		diskContext.DiskStatus = ds

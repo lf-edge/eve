@@ -315,13 +315,15 @@ func (ctx xenContext) CreateDomConfig(domainName string, config types.DomainConf
 
 	var diskStrings []string
 	var p9Strings []string
+	diskID := 0
 	for i, ds := range diskStatusList {
 		switch ds.Devtype {
 		case "":
+			continue
 		case "9P":
 			tag := "share_dir"
-			if i != 0 {
-				tag += strconv.Itoa(i)
+			if diskID != 0 {
+				tag += strconv.Itoa(diskID)
 			}
 			p9Strings = append(p9Strings,
 				fmt.Sprintf("'tag=%s,security_model=none,path=%s'",
@@ -336,6 +338,7 @@ func (ctx xenContext) CreateDomConfig(domainName string, config types.DomainConf
 			logrus.Debugf("Processing disk %d: %s\n", i, oneDisk)
 			diskStrings = append(diskStrings, oneDisk)
 		}
+		diskID++
 	}
 	if len(diskStrings) > 0 {
 		file.WriteString(fmt.Sprintf("disk = [%s]\n", strings.Join(diskStrings, ",")))
