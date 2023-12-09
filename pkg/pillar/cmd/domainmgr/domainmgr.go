@@ -1932,12 +1932,12 @@ func configToStatus(ctx *domainContext, config types.DomainConfig,
 				}
 				status.ContainerList = append(status.ContainerList, dcs)
 				// XXX Why did we need to add this?
+				// Note that Format can not be set to CONTAINER
 				addDiskStatus = append(addDiskStatus,
 					types.DiskStatus{
 						FileLocation: fileLocation,
 						Devtype:      "9P",
 						ReadOnly:     false,
-						Format:       zconfig.Format_CONTAINER,
 					})
 			}
 			ds.Devtype = ""
