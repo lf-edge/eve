@@ -691,6 +691,21 @@ func (ctx KvmContext) Setup(status types.DomainStatus, config types.DomainConfig
 				status.DomainName, i, ociConfigDir, err)
 		}
 	}
+	// XXX find better code structure
+	if spec0 == nil {
+		// Not a container
+		var err error
+		spec0, err = ctx.setupSpec(&status, &config, "")
+		if err != nil {
+			return logError("failed to load OCI spec for domain %s: %v",
+				status.DomainName, err)
+		}
+		if err = spec0.AddLoader("/containers/services/xen-tools"); err != nil {
+			return logError("failed to add kvm hypervisor loader to domain %s: %v",
+				status.DomainName, err)
+		}
+	}
+
 	// XXX potentially IoAdpaters per OCI? Would require diffferent EVE API
 	overhead, err := vmmOverhead(domainName, domainUUID, int64(config.Memory), int64(config.VMMMaxMem), int64(config.MaxCpus), int64(config.VCpus), config.IoAdapterList, aa, globalConfig)
 	if err != nil {
