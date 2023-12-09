@@ -380,7 +380,7 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
   kernel-irqchip = "on"
   kernel = "/boot/kernel"
   initrd = "/boot/ramdisk"
-  append = "init=/bin/sh max_oci=0"
+  append = "init=/bin/sh"
 
 
 [global]
@@ -646,7 +646,7 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
   gic-version = "host"
   kernel = "/boot/kernel"
   initrd = "/boot/ramdisk"
-  append = "init=/bin/sh max_oci=0"
+  append = "init=/bin/sh"
 
 
 [realtime]
@@ -1372,7 +1372,7 @@ func domConfigArm64() string {
   gic-version = "host"
   kernel = "/boot/kernel"
   initrd = "/boot/ramdisk"
-  append = "init=/bin/sh max_oci=0"
+  append = "init=/bin/sh"
 
 
 [realtime]
@@ -1631,7 +1631,7 @@ func domConfigAmd64FML() string {
   kernel-irqchip = "on"
   kernel = "/boot/kernel"
   initrd = "/boot/ramdisk"
-  append = "init=/bin/sh max_oci=0"
+  append = "init=/bin/sh"
 
 
 [global]
@@ -1924,7 +1924,7 @@ func domConfigAmd64Legacy() string {
   kernel-irqchip = "on"
   kernel = "/boot/kernel"
   initrd = "/boot/ramdisk"
-  append = "init=/bin/sh max_oci=0"
+  append = "init=/bin/sh"
 
 
 [global]
@@ -2208,7 +2208,7 @@ func domConfigAmd64() string {
   kernel-irqchip = "on"
   kernel = "/boot/kernel"
   initrd = "/boot/ramdisk"
-  append = "init=/bin/sh max_oci=0"
+  append = "init=/bin/sh"
 
 
 [global]
