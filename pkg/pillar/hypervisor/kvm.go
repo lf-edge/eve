@@ -675,20 +675,20 @@ func (ctx KvmContext) Setup(status types.DomainStatus, config types.DomainConfig
 		"-pidfile", kvmStateDir+domainName+"/pid")
 
 	var spec0 containerd.OCISpec // The main container for the app instance
-	for i, dcs := range status.ContainerList {
+	for _, dcs := range status.ContainerList {
 		ociConfigDir := dcs.OCIConfigDir
-		logrus.Infof("XXX processing %d dir %s", i, ociConfigDir)
+		logrus.Infof("XXX processing %d dir %s", dcs.ContainerIndex, ociConfigDir)
 		spec, err := ctx.setupSpec(&status, &config, ociConfigDir)
 		if err != nil {
 			return logError("failed to load OCI spec for domain %s oci %d %s: %v",
-				status.DomainName, i, ociConfigDir, err)
+				status.DomainName, dcs.ContainerIndex, ociConfigDir, err)
 		}
-		if i == 0 {
+		if dcs.ContainerIndex == 0 {
 			spec0 = spec
 		}
 		if err = spec.AddLoader("/containers/services/xen-tools"); err != nil {
 			return logError("failed to add kvm hypervisor loader to domain %s oci %d %s: %v",
-				status.DomainName, i, ociConfigDir, err)
+				status.DomainName, dcs.ContainerIndex, ociConfigDir, err)
 		}
 	}
 	// XXX find better code structure
