@@ -1518,16 +1518,14 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 		case zconfig.Format_FmtUnknown:
 			// do nothing
 		case zconfig.Format_CONTAINER:
-			if !ctx.hvTypeKube {
-
-				snapshotID := containerd.GetSnapshotID(ds.FileLocation)
-				if err := ctx.casClient.MountSnapshot(snapshotID, cas.GetRoofFsPath(ds.FileLocation)); err != nil {
-					err := fmt.Errorf("doActivate: Failed mount snapshot: %s for %s. Error %s",
-						snapshotID, config.UUIDandVersion.UUID, err)
-					log.Error(err.Error())
-					status.SetErrorNow(err.Error())
-					return
-				}
+			snapshotID := containerd.GetSnapshotID(ds.FileLocation)
+			rootPath := cas.GetRoofFsPath(ds.FileLocation)
+			if err := ctx.casClient.MountSnapshot(snapshotID, cas.GetRoofFsPath(ds.FileLocation)); err != nil {
+				err := fmt.Errorf("doActivate: Failed mount snapshot: %s for %s. Error %s",
+					snapshotID, config.UUIDandVersion.UUID, err)
+				log.Error(err.Error())
+				status.SetErrorNow(err.Error())
+				return
 			}
 
 			metadataPath := filepath.Join(rootPath, "meta-data")
