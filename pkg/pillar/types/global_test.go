@@ -187,6 +187,7 @@ func TestNewConfigItemSpecMap(t *testing.T) {
 		IgnoreDiskCheckForApps,
 		AllowLogFastupload,
 		EnableARPSnoop,
+		NetworkLocalLegacyMACAddress,
 		// TriState Items
 		NetworkFallbackAnyEth,
 		MaintenanceMode,
