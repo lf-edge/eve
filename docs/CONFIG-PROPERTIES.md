@@ -53,6 +53,7 @@
 | netdump.downloader.http.with.fieldvalue | boolean | false | include HTTP header field values in captured network traces for download requests (beware: may contain secrets, such as datastore credentials). |
 | network.switch.enable.arpsnoop | boolean | true | enable ARP Snooping on switch Network Instance, may need a device reboot to take effect |
 | wwan.query.visible.providers | bool | false | enable to periodically (once per hour) query the set of visible cellular service providers and publish them under WirelessStatus (for every modem) |
+| network.local.legacy.mac.address | bool | false | enables legacy MAC address generation for local network instances for those EVE nodes where changing MAC addresses in applications will lead to incorrect network configuration |
 
 In addition, there can be per-agent settings.
 The Per-agent settings begin with "agent.*agentname*.*setting*"
