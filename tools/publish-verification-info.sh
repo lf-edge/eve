@@ -1,12 +1,12 @@
 #!/bin/bash
 
 img="$1"
-ip="$2"
+url="$2"
 
-if [ "$img" == "" ] || [ "$ip" == "" ]; then
-  echo "Usage ./publish_verification_info.sh <USB_device_name|verification_img> <server_ip>"
-  echo "E.g., ./publish_verification_info.sh /dev/disk4 147.52.71.221"
-  echo "Or, ./publish_verification_info.sh dist/amd64/current/verification.img 147.52.71.221"
+if [ "$img" == "" ] || [ "$url" == "" ]; then
+  echo "Usage ./publish_verification_info.sh <USB_device_name|verification_img> <server_url>"
+  echo "E.g., ./publish_verification_info.sh /dev/disk4 https://somewhere.example.com:8999"
+  echo "Or, ./publish_verification_info.sh dist/amd64/current/verification.img https://somewhere.example.com:8999"
   exit
 fi
 
@@ -46,8 +46,8 @@ fname="${dirname}.tar.gz"
 tar zcvf "${fname}" "${dirname}"
 rm -rf "${dirname}"
 
-CSRF_TOKEN=$(curl -s -c cookies.txt "http://$ip:8999/upload" | xmllint --html --xpath 'string(//input[@name="csrfmiddlewaretoken"]/@value)' - 2>/dev/null)
-curl -X POST -b cookies.txt -F "csrfmiddlewaretoken=$CSRF_TOKEN" -F  "file=@${fname}" "http://$ip:8999/upload"
+CSRF_TOKEN=$(curl -s -c cookies.txt "$url/upload" | xmllint --html --xpath 'string(//input[@name="csrfmiddlewaretoken"]/@value)' - 2>/dev/null)
+curl -X POST -b cookies.txt -F "csrfmiddlewaretoken=$CSRF_TOKEN" -F  "file=@${fname}" "$url/upload"
 
 rm cookies.txt "${fname}"
 if eval "${checkOScmd}"; then # MacOS
