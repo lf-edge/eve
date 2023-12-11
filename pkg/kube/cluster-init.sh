@@ -227,6 +227,19 @@ check_start_containerd() {
                 containerd_pid=$!
                 logmsg "Started k3s-containerd at pid:$containerd_pid"
         fi   
+        if [ -f /etc/external-boot-image.tar ]; then
+                # NOTE: https://kubevirt.io/user-guide/virtual_machines/boot_from_external_source/
+                # Install external-boot-image image to our eve user containerd registry.
+                # This image contains just kernel and initrd to bootstrap a container image as a VM.
+                # This is very similar to what we do on kvm based eve to start container as a VM.
+		logmsg "trying to install new external-boot-image"
+		# This import happens once per reboot
+		ctr -a /run/containerd-user/containerd.sock image import /etc/external-boot-image.tar docker.io/lfedge/eve-external-boot-image:latest
+		if [ $? -eq 0 ]; then
+			logmsg "Successfully installed external-boot-image"
+			rm -f /etc/external-boot-image.tar
+		fi
+	fi
 }
 trigger_k3s_selfextraction() {
         # This is extracted when k3s server first starts
@@ -446,19 +459,6 @@ if [ ! -f /var/lib/all_components_initialized ]; then
         fi
 else
         check_start_containerd
-        if [ -f /etc/external-boot-image.tar ]; then
-                # NOTE: https://kubevirt.io/user-guide/virtual_machines/boot_from_external_source/
-                # Install external-boot-image image to our containerd registry.
-                # This image contains just kernel and initrd to bootstrap a container image as a VM.
-                # This is very similar to what we do on kvm based eve to start container as a VM.
-		logmsg "Installing new external-boot-image"
-		# This import happens once per reboot
-		ctr -a /run/containerd-user/containerd.sock image import /etc/external-boot-image.tar docker.io/lfedge/eve-external-boot-image:latest
-		if [ $? -eq 0 ]; then
-			logmsg "Installed external-boot-image"
-			rm -f /etc/external-boot-image.tar
-		fi
-	fi
         pgrep -f "k3s server" > /dev/null 2>&1
         if [ $? -eq 1 ]; then 
             if [ $RESTART_COUNT -lt $MAX_K3S_RESTARTS ]; then
