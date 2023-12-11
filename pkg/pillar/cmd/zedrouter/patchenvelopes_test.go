@@ -87,9 +87,11 @@ func TestPatchEnvelopes(t *testing.T) {
 
 	go func() {
 		for _, ct := range contentStatuses {
+			peStoreMutex.Lock()
 			peStore.UpdateContentTree(ct, false)
 
 			peStore.UpdateStateNotificationCh() <- struct{}{}
+			peStoreMutex.Unlock()
 		}
 	}()
 
@@ -163,4 +165,5 @@ func TestPatchEnvelopes(t *testing.T) {
 				},
 			},
 		}))
+
 }
