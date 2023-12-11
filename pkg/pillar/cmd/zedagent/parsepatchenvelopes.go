@@ -41,6 +41,7 @@ func parsePatchEnvelopesImpl(ctx *getconfigContext, config *zconfig.EdgeDevConfi
 			PatchID:     pe.GetUuid(),
 			Name:        pe.GetDisplayName(),
 			Version:     pe.GetVersion(),
+			State:       evePatchEnvelopeActionToState(pe.GetAction()),
 		}
 		for _, a := range pe.GetArtifacts() {
 			err := addBinaryBlobToPatchEnvelope(&peInfo, a, persistCacheFilepath)
@@ -149,4 +150,14 @@ func getBinaryBlobVolumeRef(artifact *zconfig.ExternalOpaqueBinaryBlob) (*types.
 		FileMetadata: artifact.GetBlobMetaData(),
 		ImageID:      artifact.GetImageId(),
 	}, nil
+}
+
+func evePatchEnvelopeActionToState(action zconfig.EVE_PATCH_ENVELOPE_ACTION) types.PatchEnvelopeState {
+	switch action {
+	case zconfig.EVE_PATCH_ENVELOPE_ACTION_STORE:
+		return types.PatchEnvelopeStateReady
+	case zconfig.EVE_PATCH_ENVELOPE_ACTION_ACTIVATE:
+		return types.PatchEnvelopeStateActive
+	}
+	return types.PatchEnvelopeStateError
 }

@@ -142,6 +142,12 @@ func (pes *PatchEnvelopes) updateState() {
 						}
 					}
 
+					// If controller forces us to store patch envelope and don't expose it
+					// to appInstance we keep it that way
+					if pe.State == types.PatchEnvelopeStateReady && peState == types.PatchEnvelopeStateActive {
+						peState = types.PatchEnvelopeStateReady
+					}
+
 					if len(pe.Errors) > 0 {
 						peState = types.PatchEnvelopeStateError
 					}
