@@ -1939,10 +1939,10 @@ func configToStatus(ctx *domainContext, config types.DomainConfig,
 				// 64:/run/domainmgr/xen/xen1.cfg:157: cannot initialize fsdev 'fsdev1': failed to
 				// open '/mnt1': No such file or directory","msgid":1,"timestamp":{"seconds":170208
 				// 0202,"nanos":438342704}}
-
+				pubsub.EnsureDir(fileLocation)
 				addDiskStatus = append(addDiskStatus,
 					types.DiskStatus{
-						FileLocation: "/mnt",
+						FileLocation: fileLocation,
 						Devtype:      "9P",
 						ReadOnly:     false,
 					})
