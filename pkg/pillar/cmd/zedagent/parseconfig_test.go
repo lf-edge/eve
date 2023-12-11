@@ -1326,6 +1326,7 @@ func TestParsePatchEnvelope(t *testing.T) {
 			Name:        displayName,
 			Version:     patchVersion,
 			AllowedApps: []string{appU1, appU2},
+			State:       types.PatchEnvelopeStateActive,
 			BinaryBlobs: []types.BinaryBlobCompleted{
 				{
 					FileName:         inlineFileName,
