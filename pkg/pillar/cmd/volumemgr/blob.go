@@ -74,6 +74,10 @@ func downloadBlob(ctx *volumemgrContext, blob *types.BlobStatus) bool {
 		blob.CurrentSize != ds.CurrentSize ||
 		blob.Size != ds.Size {
 		blob.Size = ds.Size
+		if (blob.TotalSize != 0) && (blob.TotalSize != ds.TotalSize) {
+			log.Warnf("downloadBlob(%s) from ds set TotalSize %d, was %d",
+				blob.Sha256, ds.TotalSize, blob.TotalSize)
+		}
 		blob.TotalSize = ds.TotalSize
 		blob.CurrentSize = ds.CurrentSize
 		if blob.TotalSize > 0 {
