@@ -78,6 +78,9 @@ func checkContentTreeStatus(ctx *baseOsMgrContext,
 			ret.Changed = true
 		}
 		if contentStatus.TotalSize != cts.TotalSize {
+			if (cts.TotalSize != 0) && (cts.TotalSize != contentStatus.TotalSize) {
+				log.Warnf("checkContentTreeStatus(%s) from ds set cts.TotalSize %d, was %d", contentID, contentStatus.TotalSize, cts.TotalSize)
+			}
 			cts.TotalSize = contentStatus.TotalSize
 			ret.Changed = true
 		}
