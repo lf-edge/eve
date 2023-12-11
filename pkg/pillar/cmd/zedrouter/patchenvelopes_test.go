@@ -17,6 +17,8 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+// TestPatchEnvelopes creates PatchEnvelope then deletes
+// one of them and checks of it was properly deleted
 func TestPatchEnvelopes(t *testing.T) {
 	t.Parallel()
 
@@ -27,9 +29,10 @@ func TestPatchEnvelopes(t *testing.T) {
 	ps := pubsub.New(&pubsub.EmptyDriver{}, logger, log)
 	peStore := zedrouter.NewPatchEnvelopes(log, ps)
 
-	u := "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+	patch1UUID := "6ba7b810-9dad-11d1-80b4-000000000000"
+	app1UUID := "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
 	contentU := "6ba7b810-9dad-11d1-80b4-ffffffffffff"
-	u1, err := uuid.FromString(u)
+	u1, err := uuid.FromString(app1UUID)
 	g.Expect(err).To(gomega.BeNil())
 	u2, err := uuid.FromString(contentU)
 	g.Expect(err).To(gomega.BeNil())
@@ -54,8 +57,8 @@ func TestPatchEnvelopes(t *testing.T) {
 
 	peInfo := []types.PatchEnvelopeInfo{
 		{
-			PatchID:     "6ba7b810-9dad-11d1-80b4-00c04fd430c8",
-			AllowedApps: []string{u},
+			PatchID:     patch1UUID,
+			AllowedApps: []string{app1UUID},
 			BinaryBlobs: []types.BinaryBlobCompleted{
 				{
 					FileName:     "TestFileName",
@@ -69,7 +72,7 @@ func TestPatchEnvelopes(t *testing.T) {
 					FileName:     "VolTestFileName",
 					ImageName:    "VolTestImageName",
 					FileMetadata: "VolTestFileMetadata",
-					ImageID:      u,
+					ImageID:      app1UUID,
 				},
 			},
 		},
@@ -113,7 +116,7 @@ func TestPatchEnvelopes(t *testing.T) {
 			// one which adds Envelopes with one BinaryBlob one VolumeRef (len(envelopes) > 0)
 			// one which moves VolumeRef to BinaryBlob (envelopes[0].BinaryBlobs >= 2
 			// one which adds SHA to BinaryBlob created from VolumeRef (finding blob and comparing SHA)
-			envelopes := peStore.Get(u).Envelopes
+			envelopes := peStore.Get(app1UUID).Envelopes
 			if len(envelopes) > 0 && len(envelopes[0].BinaryBlobs) >= 2 {
 				volBlobIdx := types.CompletedBinaryBlobIdxByName(envelopes[0].BinaryBlobs, "VolTestFileName")
 				if volBlobIdx != -1 && envelopes[0].BinaryBlobs[volBlobIdx].FileSha != "" {
@@ -125,20 +128,21 @@ func TestPatchEnvelopes(t *testing.T) {
 		}
 	}()
 
+	deadline := 2 * time.Minute
 	g.Eventually(func() bool {
 		select {
 		case <-finishedProcessing:
 			return true
-		case <-time.After(time.Minute):
+		case <-time.After(deadline):
 			return false
 		}
-	}, 2*time.Minute, time.Second).Should(gomega.BeTrue())
+	}, deadline, time.Second).Should(gomega.BeTrue())
 
-	g.Expect(peStore.Get(u).Envelopes).To(gomega.BeEquivalentTo(
+	g.Expect(peStore.Get(app1UUID).Envelopes).To(gomega.BeEquivalentTo(
 		[]types.PatchEnvelopeInfo{
 			{
-				PatchID:     "6ba7b810-9dad-11d1-80b4-00c04fd430c8",
-				AllowedApps: []string{u},
+				PatchID:     patch1UUID,
+				AllowedApps: []string{app1UUID},
 				State:       types.PatchEnvelopeStateActive,
 				BinaryBlobs: []types.BinaryBlobCompleted{
 					{
@@ -160,10 +164,72 @@ func TestPatchEnvelopes(t *testing.T) {
 						FileName:     "VolTestFileName",
 						ImageName:    "VolTestImageName",
 						FileMetadata: "VolTestFileMetadata",
-						ImageID:      u,
+						ImageID:      app1UUID,
 					},
 				},
 			},
 		}))
 
+	patch2UUID := "6ba7b810-9dad-11d1-80b4-111111111111"
+	app2UUID := "00000000-9dad-11d1-80b4-00c04fd430c8"
+
+	peInfo = []types.PatchEnvelopeInfo{
+		{
+			PatchID:     patch2UUID,
+			AllowedApps: []string{app2UUID},
+			BinaryBlobs: []types.BinaryBlobCompleted{
+				{
+					FileName:     "TestFileName",
+					FileSha:      "TestFileSha",
+					FileMetadata: "TestFileMetadata",
+					URL:          "./testurl",
+				},
+			},
+		},
+	}
+
+	peStore.UpdateEnvelopes(peInfo)
+	peStore.UpdateStateNotificationCh() <- struct{}{}
+
+	finishDeleting := make(chan struct{})
+	go func() {
+		for {
+			// Since there's no feedback mechanism to see if the work in
+			// peStore structure was done we need to wait for it to finish
+			envelopes1 := peStore.Get(app1UUID).Envelopes
+			envelopes2 := peStore.Get(app2UUID).Envelopes
+
+			if len(envelopes2) > 0 && len(envelopes1) == 0 {
+				close(finishDeleting)
+				return
+			}
+			time.Sleep(time.Second)
+		}
+	}()
+
+	g.Eventually(func() bool {
+		select {
+		case <-finishDeleting:
+			return true
+		case <-time.After(deadline):
+			return false
+		}
+	}, deadline, time.Second).Should(gomega.BeTrue())
+
+	g.Expect(peStore.Get(app2UUID).Envelopes).To(gomega.BeEquivalentTo(
+		[]types.PatchEnvelopeInfo{
+			{
+				PatchID:     patch2UUID,
+				AllowedApps: []string{app2UUID},
+				State:       types.PatchEnvelopeStateActive,
+				BinaryBlobs: []types.BinaryBlobCompleted{
+					{
+						FileName:     "TestFileName",
+						FileSha:      "TestFileSha",
+						FileMetadata: "TestFileMetadata",
+						URL:          "./testurl",
+					},
+				},
+			},
+		}))
 }
