@@ -11,6 +11,7 @@ COPY cluster-init.sh /usr/bin/
 COPY cgconfig.conf /etc
 # kubevirt yaml files are patched files and will be removed later, look at cluster-init.sh
 COPY kubevirt-operator.yaml /etc
+COPY kubevirt-features.yaml /etc
 RUN mkdir -p /etc/containerd
 COPY config-k3s.toml /etc/containerd/
 RUN mkdir -p /etc/rancher/k3s

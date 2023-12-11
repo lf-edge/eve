@@ -175,6 +175,9 @@ if [ ! -f /var/lib/all_components_initialized ]; then
                 logmsg "Installing CDI version $CDI_VERSION"
                 kubectl create -f https://github.com/kubevirt/containerized-data-importer/releases/download/$CDI_VERSION/cdi-operator.yaml
                 kubectl create -f https://github.com/kubevirt/containerized-data-importer/releases/download/$CDI_VERSION/cdi-cr.yaml
+                #Add kubevirt feature gates
+                kubectl apply -f /etc/kubevirt-features.yaml
+
                 touch /var/lib/kubevirt_initialized
         fi
 
