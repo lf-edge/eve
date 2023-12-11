@@ -151,6 +151,9 @@ func handleDeferredVolumeCreate(ctx *volumemgrContext, key string, config *types
 			}
 			// XXX this is not the same as what we downloaded
 			// and created but the best we know
+			if (status.TotalSize != 0) && (status.TotalSize != int64(actualSize)) {
+				log.Warnf("handleDeferredVolumeCreate(%s) from ds set status.TotalSize %d, was %d", key, actualSize, status.TotalSize)
+			}
 			status.TotalSize = int64(actualSize)
 			status.CurrentSize = int64(actualSize)
 		}
