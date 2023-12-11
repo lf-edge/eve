@@ -1518,52 +1518,55 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 		case zconfig.Format_FmtUnknown:
 			// do nothing
 		case zconfig.Format_CONTAINER:
-			snapshotID := containerd.GetSnapshotID(ds.FileLocation)
-			rootPath := cas.GetRoofFsPath(ds.FileLocation)
-			if err := ctx.casClient.MountSnapshot(snapshotID, cas.GetRoofFsPath(ds.FileLocation)); err != nil {
-				err := fmt.Errorf("doActivate: Failed mount snapshot: %s for %s. Error %s",
-					snapshotID, config.UUIDandVersion.UUID, err)
-				log.Error(err.Error())
-				status.SetErrorNow(err.Error())
-				return
-			}
-
-			metadataPath := filepath.Join(rootPath, "meta-data")
-
-			// get current cloud init version
-			curCIVersion, err := getVersionFromMetaFile(metadataPath)
-			if err != nil {
-				curCIVersion = 0 // make sure the cloud init config gets executed
-			}
-
-			// get new cloud init version
-			newCIVersion, err := strconv.ParseUint(getCloudInitVersion(config), 10, 32)
-			if err != nil {
-				log.Error("Failed to parse cloud init version: ", err)
-				newCIVersion = curCIVersion + 1 // make sure the cloud init config gets executed
-			}
-
-			if curCIVersion < newCIVersion {
-				log.Notice("New cloud init config detected - applying")
-
-				// write meta-data file
-				versionString := fmt.Sprintf("instance-id: %s/%s\n", config.UUIDandVersion.UUID.String(), getCloudInitVersion(config))
-				err = fileutils.WriteRename(metadataPath, []byte(versionString))
-				if err != nil {
-					err := fmt.Errorf("doActivate: Failed to write cloud-init metadata file. Error %s", err)
+			//TODO: Work this out for kubevirt eve. For now mask it.
+			if !ctx.hvTypeKube {
+				snapshotID := containerd.GetSnapshotID(ds.FileLocation)
+				rootPath := cas.GetRoofFsPath(ds.FileLocation)
+				if err := ctx.casClient.MountSnapshot(snapshotID, cas.GetRoofFsPath(ds.FileLocation)); err != nil {
+					err := fmt.Errorf("doActivate: Failed mount snapshot: %s for %s. Error %s",
+						snapshotID, config.UUIDandVersion.UUID, err)
 					log.Error(err.Error())
 					status.SetErrorNow(err.Error())
 					return
 				}
 
-				// apply cloud init config
-				for _, writableFile := range status.WritableFiles {
-					err := cloudconfig.WriteFile(log, writableFile, rootPath)
+				metadataPath := filepath.Join(rootPath, "meta-data")
+
+				// get current cloud init version
+				curCIVersion, err := getVersionFromMetaFile(metadataPath)
+				if err != nil {
+					curCIVersion = 0 // make sure the cloud init config gets executed
+				}
+
+				// get new cloud init version
+				newCIVersion, err := strconv.ParseUint(getCloudInitVersion(config), 10, 32)
+				if err != nil {
+					log.Error("Failed to parse cloud init version: ", err)
+					newCIVersion = curCIVersion + 1 // make sure the cloud init config gets executed
+				}
+
+				if curCIVersion < newCIVersion {
+					log.Notice("New cloud init config detected - applying")
+
+					// write meta-data file
+					versionString := fmt.Sprintf("instance-id: %s/%s\n", config.UUIDandVersion.UUID.String(), getCloudInitVersion(config))
+					err = fileutils.WriteRename(metadataPath, []byte(versionString))
 					if err != nil {
-						err := fmt.Errorf("doActivate: Failed to apply cloud-init config. Error %s", err)
+						err := fmt.Errorf("doActivate: Failed to write cloud-init metadata file. Error %s", err)
 						log.Error(err.Error())
 						status.SetErrorNow(err.Error())
 						return
+					}
+
+					// apply cloud init config
+					for _, writableFile := range status.WritableFiles {
+						err := cloudconfig.WriteFile(log, writableFile, rootPath)
+						if err != nil {
+							err := fmt.Errorf("doActivate: Failed to apply cloud-init config. Error %s", err)
+							log.Error(err.Error())
+							status.SetErrorNow(err.Error())
+							return
+						}
 					}
 				}
 			}
