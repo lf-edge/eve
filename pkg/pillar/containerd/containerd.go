@@ -268,6 +268,7 @@ func (client *Client) CtrLoadImage(ctx context.Context, reader *os.File) ([]imag
 // CtrGetImage returns image object for the reference. Returns error if no image is found for the reference.
 func (client *Client) CtrGetImage(ctx context.Context, reference string) (containerd.Image, error) {
 	if err := client.verifyCtr(ctx, true); err != nil {
+		logrus.Errorf("CtrGetImage: exception while verifying ctrd client: %s", err.Error())
 		return nil, fmt.Errorf("CtrGetImage: exception while verifying ctrd client: %s", err.Error())
 	}
 	image, err := client.ctrdClient.GetImage(ctx, reference)
@@ -812,6 +813,11 @@ func (client *Client) verifyCtr(ctx context.Context, verifyCtx bool) error {
 
 		if ctx.Err() == context.Canceled {
 			return fmt.Errorf("verifyCtr: Containerd context is calcelled")
+		}
+
+		if ctx.Err() != nil {
+			logrus.Warnf("verifyCtr: Containerd context is in error state: %s", ctx.Err().Error())
+			return fmt.Errorf("verifyCtr: Containerd context is closed")
 		}
 	}
 	return nil
