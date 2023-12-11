@@ -706,7 +706,7 @@ func (ctx KvmContext) Setup(status types.DomainStatus, config types.DomainConfig
 		}
 	}
 
-	// XXX potentially IoAdpaters per OCI? Would require diffferent EVE API
+	// XXX potentially IoAdpaters per OCI? Would require different EVE API
 	overhead, err := vmmOverhead(domainName, domainUUID, int64(config.Memory), int64(config.VMMMaxMem), int64(config.MaxCpus), int64(config.VCpus), config.IoAdapterList, aa, globalConfig)
 	if err != nil {
 		return logError("vmmOverhead() failed for domain %s: %v",
