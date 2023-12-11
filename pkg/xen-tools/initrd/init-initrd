@@ -47,10 +47,10 @@ echo "MAX_OCI=$MAX_OCI"
 for oci in $(seq 0 "$MAX_OCI"); do
     if [ "$oci" = 0 ]; then
         MNT=/mnt
-	TAG=share_dir
+        TAG=share_dir
     else
         MNT="/mnt$oci"
-	TAG="share_dir$oci"
+        TAG="share_dir$oci"
     fi
 
     mkdir "$MNT" >/dev/null 2>&1
@@ -203,7 +203,7 @@ fi
 # Commence launch sequence
 # Run everything but main container first
 for oci in $(seq 1 "$MAX_OCI"); do (
-    # Run in subshell so enviroment file content does not affect other containers
+    # Run in subshell so environment file content does not affect other containers
     #shellcheck source=/dev/null
     . "$MNT/environment"
 
@@ -244,9 +244,9 @@ maxupdateskew 100.0
 EOF
         if /usr/sbin/chronyd -u root -f /etc/chrony/chrony.conf; then
             logmsg "chronyd started!"
-	else
+        else
             logmsg "chronyd NOT started!"
-	fi
+        fi
     else
         logmsg "PTP_KVM device is not available!"
     fi
