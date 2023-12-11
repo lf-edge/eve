@@ -241,6 +241,9 @@ func doUpdateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus)
 		if status.CurrentSize != currentSize || status.TotalSize != totalSize {
 			changed = true
 			status.CurrentSize = currentSize
+			if (status.TotalSize != 0) && (status.TotalSize != totalSize) {
+				log.Warnf("doUpdateContentTree: total size changed from %d to %d", status.TotalSize, totalSize)
+			}
 			status.TotalSize = totalSize
 			if status.TotalSize > 0 {
 				status.Progress = uint(100 * status.CurrentSize / status.TotalSize)
