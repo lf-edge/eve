@@ -30,6 +30,9 @@ func (d *PublishStatus) Progress(p uint, currentSize, totalSize int64) bool {
 	}
 	d.status.Progress = p
 	d.status.CurrentSize = currentSize
+	if (d.status.TotalSize == 0) && (d.status.TotalSize != totalSize) {
+		log.Warnf("Progress: TotalSize changed from %d to %d", d.status.TotalSize, totalSize)
+	}
 	d.status.TotalSize = totalSize
 	publishDownloaderStatus(d.ctx, d.status)
 	return true
