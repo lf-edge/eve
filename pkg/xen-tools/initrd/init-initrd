@@ -20,7 +20,8 @@ else
    HYPER_BUS=virtio
 fi
 
-LOGFILE=/mnt/log
+# XXX hack - but where else can we write logs
+LOGFILE=/mnt/rootfs/tmp/initrd.log
 
 logmsg()
 {
@@ -226,6 +227,8 @@ for oci in $(seq 1 "$MAX_OCI"); do (
     fi
     logmsg "Started $cmd on $MNT in background"
     ) &
+    # XXX remove?
+    sleep 1
 done
 
 # Start chrony daemon for clock synchronization through PTP_KVM device
@@ -267,6 +270,8 @@ run_agetty_loop()
 
 logmsg "Executing agetty"
 run_agetty_loop &
+# XXX wait for agetty
+sleep 5
 
 cmd=$(cat "$MNT"/cmdline)
 ug="0 0"
@@ -281,10 +286,12 @@ logmsg "Starting on $MNT in foreground"
 pid_file="/mnt/entrypoint-pid"
 
 if grep -q "console=tty0" /proc/cmdline; then
+    logmsg "Have console=tty0"
     #shellcheck disable=SC2086
     #we have tty0 console primary, so will add output to hvc0 for logging
     eval /chroot2 "$MNT"/rootfs "${WORKDIR:-/}" $ug $pid_file $cmd 2>&1 | tee -i /dev/hvc0
 else
+    logmsg "Using /dev/console"
     #shellcheck disable=SC2086
     eval /chroot2 "$MNT"/rootfs "${WORKDIR:-/}" $ug $pid_file $cmd <> /dev/console 2>&1
 fi
