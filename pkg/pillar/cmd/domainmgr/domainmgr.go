@@ -1931,18 +1931,13 @@ func configToStatus(ctx *domainContext, config types.DomainConfig,
 					OCIConfigDir:   ds.FileLocation,
 				}
 				status.ContainerList = append(status.ContainerList, dcs)
-				// XXX Why did we need to add this?
+				// Add information about the 9P export to
+				// DiskStatus.
+				// XXX Why do we/did we reuse DIskStatus here?
 				// Note that Format can not be set to CONTAINER
-				// XXX qemu tries to access FileLocation
-				// based on path in fsdev config! Keep at /mnt
-				// {"source":"f67b22d4-66ed-4275-98fb-a0855b6fd224.2.1","content":"qemu-system-x86_
-				// 64:/run/domainmgr/xen/xen1.cfg:157: cannot initialize fsdev 'fsdev1': failed to
-				// open '/mnt1': No such file or directory","msgid":1,"timestamp":{"seconds":170208
-				// 0202,"nanos":438342704}}
-				pubsub.EnsureDir(fileLocation)
 				addDiskStatus = append(addDiskStatus,
 					types.DiskStatus{
-						FileLocation: fileLocation,
+						FileLocation: ds.FileLocation,
 						Devtype:      "9P",
 						ReadOnly:     false,
 					})
