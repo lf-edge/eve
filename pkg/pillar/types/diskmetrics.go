@@ -1,7 +1,5 @@
-/*
- * Copyright (c) 2020. Zededa, Inc.
- * SPDX-License-Identifier: Apache-2.0
- */
+// Copyright (c) 2020-2024. Zededa, Inc.
+// SPDX-License-Identifier: Apache-2.0
 
 package types
 
@@ -13,21 +11,35 @@ import (
 
 // ReportDiskPaths Report disk usage for these paths
 var ReportDiskPaths = []string{
-	"/",
+	"/",       // overlayfs inside EVE
+	"/hostfs", // actual IMGx inside EVE
 	IdentityDirname,
 	PersistDir,
 }
 
 // ReportDirPaths  Report directory usage for these paths
 var ReportDirPaths = []string{
+	PersistConfigDir,
+	PersistStatusDir,
+	CertificateDirname,
+	SealedDirName,
+	ClearDirName,
+	PersistDebugDir,
+	PersistInstallerDir,
+	IngestedDirname,
+	NewlogDir,
 	PersistDir + "/containerd",
 	PersistDir + "/tmp",
 	PersistDir + "/log",
-	PersistDir + "/newlog",
-	PersistDir + "/config",
-	PersistDir + "/status",
-	PersistDir + "/certs",
 	PersistDir + "/checkpoint",
+	PersistDir + "/containerd-system-root",
+	PersistDir + "/netdump",
+	PersistDir + "/pubsub-large",
+	PersistDir + "/reserved",
+	PersistDir + "/etcd-storage",
+	PersistDir + "/memory-monitor/output", // for memory monitor dumps
+	PersistDir + "/kcrashes",
+	PersistDir + "/eve-info",
 }
 
 // AppPersistPaths  Application-related files live here
@@ -36,8 +48,12 @@ var ReportDirPaths = []string{
 var AppPersistPaths = []string{
 	VolumeEncryptedDirName,
 	VolumeClearDirName,
-	SealedDirName + "/downloader",
-	SealedDirName + "/verifier",
+	DownloaderDir,
+	VerifierDir,
+	ContainerdDir,
+	SnapshotsDirname,
+	PersistCachePatchEnvelopes,
+	PersistCachePatchEnvelopesUsage,
 }
 
 // DiskMetric holds metrics data per disk
