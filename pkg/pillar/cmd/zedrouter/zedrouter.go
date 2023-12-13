@@ -105,6 +105,7 @@ type zedrouter struct {
 	bridgeNumAllocator  *objtonum.Allocator
 	appIntfNumPublisher *objtonum.ObjNumPublisher
 	appIntfNumAllocator map[string]*objtonum.Allocator // key: network instance UUID as string
+	appMACGeneratorMap  objtonum.Map
 
 	// Info published to application via metadata server
 	subLocationInfo pubsub.Subscription
