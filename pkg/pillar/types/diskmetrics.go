@@ -20,8 +20,6 @@ var ReportDiskPaths = []string{
 
 // ReportDirPaths  Report directory usage for these paths
 var ReportDirPaths = []string{
-	PersistDir + "/downloads", // XXX old to be removed
-	PersistDir + "/img",       // XXX old to be removed
 	PersistDir + "/containerd",
 	PersistDir + "/tmp",
 	PersistDir + "/log",
