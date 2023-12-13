@@ -20,14 +20,27 @@ var ReportDiskPaths = []string{
 
 // ReportDirPaths  Report directory usage for these paths
 var ReportDirPaths = []string{
+	PersistConfigDir,
+	PersistStatusDir,
+	CertificateDirname,
+	SealedDirName,
+	ClearDirName,
+	PersistDebugDir,
+	PersistInstallerDir,
+	IngestedDirname,
+	SnapshotsDirname,
+	PersistCachePatchEnvelopes,
+	PersistCachePatchEnvelopesUsage,
+	NewlogDir,
 	PersistDir + "/containerd",
 	PersistDir + "/tmp",
 	PersistDir + "/log",
-	PersistDir + "/newlog",
-	PersistDir + "/config",
-	PersistDir + "/status",
-	PersistDir + "/certs",
 	PersistDir + "/checkpoint",
+	PersistDir + "/containerd-system-root",
+	PersistDir + "/netdump",
+	PersistDir + "/pubsub-large",
+	PersistDir + "/reserved",
+	PersistDir + "/etcd-storage",
 }
 
 // AppPersistPaths  Application-related files live here
@@ -38,6 +51,7 @@ var AppPersistPaths = []string{
 	VolumeClearDirName,
 	SealedDirName + "/downloader",
 	SealedDirName + "/verifier",
+	SealedDirName + "/containerd",
 }
 
 // DiskMetric holds metrics data per disk
