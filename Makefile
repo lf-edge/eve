@@ -345,7 +345,7 @@ ifeq ($(HV),kubevirt)
         ROOTFS_MAXSIZE_MB=450
 else
         #kube container will not be in non-kubevirt builds
-        PKGS_$(ZARCH)=$(shell find pkg -maxdepth 1 -type d | grep -Ev "eve|alpine|sources|kube|verification$$")
+        PKGS_$(ZARCH)=$(shell find pkg -maxdepth 1 -type d | grep -Ev "eve|alpine|sources|kube|external-boot-image|verification$$")
         ROOTFS_MAXSIZE_MB=250
 endif
 
@@ -757,6 +757,14 @@ pkgs: RESCAN_DEPS=
 pkgs: build-tools $(PKGS)
 	@echo Done building packages
 
+pkg/external-boot-image/build.yml: pkg/external-boot-image/build.yml.in
+	$(QUIET)tools/compose-external-boot-image-yml.sh $< $@ $(shell echo ${KERNEL_TAG} | cut -d':' -f2) $(shell $(LINUXKIT) pkg show-tag pkg/xen-tools | cut -d':' -f2)
+pkg/external-boot-image: pkg/external-boot-image/build.yml
+pkg/kube: pkg/external-boot-image
+	$(MAKE) eve-external-boot-image
+	$(MAKE) cache-export IMAGE=$(shell $(LINUXKIT) pkg show-tag pkg/external-boot-image) OUTFILE=pkg/kube/external-boot-image.tar && \
+	$(MAKE) eve-kube && rm -f pkg/kube/external-boot-image.tar && rm -f pkg/external-boot-image/build.yml
+	$(QUIET): $@: Succeeded
 pkg/pillar: pkg/dnsmasq pkg/gpt-tools pkg/dom0-ztools eve-pillar
 	$(QUIET): $@: Succeeded
 pkg/xen-tools: pkg/uefi eve-xen-tools
