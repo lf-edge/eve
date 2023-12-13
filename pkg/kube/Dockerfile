@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile-upstream:1.5.0-rc2-labs
 
-FROM lfedge/eve-alpine:12487b9900ba40f3ecdadfec2c84799fa34e5014 as build
+FROM lfedge/eve-alpine:57d6a8a768256bece2f03ae4fc0eedcb5bca41a6 as build
 ENV PKGS alpine-baselayout musl-utils iproute2 iptables curl openrc \
          open-iscsi libvirt libvirt-client util-linux grep findutils jq
 RUN eve-alpine-deploy.sh
@@ -16,6 +16,7 @@ RUN mkdir -p /etc/containerd
 COPY config-k3s.toml /etc/containerd/
 RUN mkdir -p /etc/rancher/k3s
 COPY config.yaml /etc/rancher/k3s
+COPY external-boot-image.tar /etc/
 WORKDIR /
 
 # Actual k3s install and config happens when this container starts during EVE bootup, look at cluster-init.sh
