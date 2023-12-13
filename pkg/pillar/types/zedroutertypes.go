@@ -9,7 +9,9 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/lf-edge/eve/pkg/pillar/base"
+	"github.com/lf-edge/eve/pkg/pillar/objtonum"
 	uuid "github.com/satori/go.uuid"
+	"github.com/sirupsen/logrus"
 )
 
 // AppNetworkConfig : network configuration for a given application.
@@ -106,6 +108,8 @@ type AppNetworkStatus struct {
 	GetStatsIPAddr       net.IP
 	AppNetAdapterList    []AppNetAdapterStatus
 	AwaitNetworkInstance bool // If any Missing flag is set in the networks
+	// ID of the MAC generator variant that was used to generate MAC addresses for this app.
+	MACGenerator int
 	// Any errors from provisioning the network
 	// ErrorAndTime provides SetErrorNow() and ClearError()
 	ErrorAndTime
@@ -1065,3 +1069,66 @@ type AppBlobsAvailable struct {
 type AppInfo struct {
 	AppBlobs []AppBlobsAvailable
 }
+
+// AppMACGenerator persistently stores ID of the MAC generator that was used to generate
+// MAC addresses for interfaces of a given app.
+type AppMACGenerator struct {
+	*UuidToNum
+}
+
+// New is used by objtonum.ObjNumPublisher.
+func (g *AppMACGenerator) New(objKey objtonum.ObjKey) objtonum.ObjNumContainer {
+	uuidToNum, ok := g.UuidToNum.New(objKey).(*UuidToNum)
+	if !ok {
+		logrus.Fatalf("Wrong type returned by UuidToNum.New()")
+	}
+	return &AppMACGenerator{
+		UuidToNum: uuidToNum,
+	}
+}
+
+// LogCreate logs newly added AppMACGenerator entry.
+func (g AppMACGenerator) LogCreate(logBase *base.LogObject) {
+	logObject := base.NewLogObject(logBase, base.AppMACGeneratorLogType, "",
+		g.UUID, g.LogKey())
+	logObject.Noticef("AppMACGenerator item create")
+}
+
+// LogModify logs modified AppMACGenerator entry.
+func (g AppMACGenerator) LogModify(logBase *base.LogObject, old interface{}) {
+	logObject := base.EnsureLogObject(logBase, base.AppMACGeneratorLogType, "",
+		g.UUID, g.LogKey())
+	oldEntry, ok := old.(AppMACGenerator)
+	if !ok {
+		logObject.Clone().Fatalf("LogModify: old object is not of AppMACGenerator type")
+	}
+	logObject.CloneAndAddField("diff", cmp.Diff(oldEntry, g)).
+		Noticef("AppMACGenerator item modify")
+}
+
+// LogDelete logs deleted AppMACGenerator entry.
+func (g AppMACGenerator) LogDelete(logBase *base.LogObject) {
+	logObject := base.EnsureLogObject(logBase, base.AppMACGeneratorLogType, "",
+		g.UUID, g.LogKey())
+	logObject.Noticef("AppMACGenerator item delete")
+	base.DeleteLogObject(logBase, g.LogKey())
+}
+
+// LogKey identifies AppMACGenerator entry for logging purposes.
+func (g AppMACGenerator) LogKey() string {
+	return string(base.AppMACGeneratorLogType) + "-" + g.Key()
+}
+
+// IDs assigned to different variants of MAC generators.
+const (
+	// MACGeneratorUnspecified : MAC generator is not specified.
+	MACGeneratorUnspecified = 0
+	// MACGeneratorNodeScoped generates MAC addresses which are guaranteed to be unique
+	// only within the scope of the given single device.
+	// The exception are MAC addresses generated for switch network instances,
+	// which are always generated with global scope.
+	MACGeneratorNodeScoped = 1
+	// MACGeneratorGloballyScoped generates MAC addresses which are with high probability
+	// unique globally, i.e. across entire fleet of devices.
+	MACGeneratorGloballyScoped = 2
+)
