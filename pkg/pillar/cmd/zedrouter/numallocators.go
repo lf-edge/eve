@@ -110,6 +110,15 @@ func (z *zedrouter) initNumberAllocators() {
 			// Continue despite the error, this is best-effort.
 		}
 	}
+
+	// Persist ID of MAC generator used for each application.
+	macGeneratorPublisher, err := objtonum.NewObjNumPublisher(
+		z.log, z.pubSub, agentName, true, &types.AppMACGenerator{})
+	if err != nil {
+		z.log.Fatal(err)
+	}
+	z.appMACGeneratorMap = objtonum.NewPublishedMap(
+		z.log, macGeneratorPublisher, "appMACGenerator", objtonum.AllKeys)
 }
 
 // Either get existing or create a new allocator for app-interfaces connected
