@@ -295,7 +295,7 @@ DOCKER_GO = _() { $(SET_X); mkdir -p $(CURDIR)/.go/src/$${3:-dummy} ; mkdir -p $
 
 PARSE_PKGS=$(if $(strip $(EVE_HASH)),EVE_HASH=)$(EVE_HASH) DOCKER_ARCH_TAG=$(DOCKER_ARCH_TAG) KERNEL_TAG=$(KERNEL_TAG) ./tools/parse-pkgs.sh
 LINUXKIT=$(BUILDTOOLS_BIN)/linuxkit
-LINUXKIT_VERSION=d1a0596bee704a8d06855c90b495ffadea5fb8ab
+LINUXKIT_VERSION=e115ce8dca74e7d1307490879fffec170f2fce34
 LINUXKIT_SOURCE=https://github.com/linuxkit/linuxkit.git
 LINUXKIT_OPTS=$(if $(strip $(EVE_HASH)),--hash) $(EVE_HASH) $(if $(strip $(EVE_REL)),--release) $(EVE_REL)
 LINUXKIT_PKG_TARGET=build
@@ -345,7 +345,7 @@ ifeq ($(HV),kubevirt)
         ROOTFS_MAXSIZE_MB=450
 else
         #kube container will not be in non-kubevirt builds
-        PKGS_$(ZARCH)=$(shell find pkg -maxdepth 1 -type d | grep -Ev "eve|test-microsvcs|alpine|sources|kube|external-boot-image|verification$$")
+        PKGS_$(ZARCH)=$(shell find pkg -maxdepth 1 -type d | grep -Ev "eve|alpine|sources|kube|external-boot-image|verification$$")
         ROOTFS_MAXSIZE_MB=250
 endif
 
@@ -757,13 +757,12 @@ pkgs: RESCAN_DEPS=
 pkgs: build-tools $(PKGS)
 	@echo Done building packages
 
-pkg/external-boot-image: pkg/xen-tools pkg/kernel eve-external-boot-image
+pkg/external-boot-image: eve-external-boot-image
 	docker tag $(shell $(LINUXKIT) pkg show-tag pkg/external-boot-image) lfedge/eve-external-boot-image:latest
-	docker save -o pkg/kube/external-boot-image.tar lfedge/eve-external-boot-image:latest 
+	docker save -o pkg/kube/external-boot-image.tar lfedge/eve-external-boot-image:latest
 	$(QUIET): $@: Succeeded
-	
 pkg/kube: pkg/external-boot-image eve-kube
-	rm -f pkg/kube/external-boot-image.tar 
+	rm -f pkg/kube/external-boot-image.tar
 	$(QUIET): $@: Succeeded
 pkg/pillar: pkg/dnsmasq pkg/gpt-tools pkg/dom0-ztools eve-pillar
 	$(QUIET): $@: Succeeded

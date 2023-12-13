@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile-upstream:1.5.0-rc2-labs
 
-FROM lfedge/eve-xen-tools:2d7a0514d93d609246fc6a54df8405d7a978fdc4 as initrd-build
-FROM lfedge/eve-kernel:79e9c87350a9d7255a94834a3cf3f9c8ea0348bd as kernel-build
+FROM lfedge/eve-xen-tools:c851ee132e313e380c8d716b21d2c2bc666a329e as initrd-build
+FROM docker.io/lfedge/eve-kernel:eve-kernel-amd64-v6.1.38-generic-d2da815271a2-gcc as  kernel-build
 
 FROM scratch
 COPY --from=initrd-build --chmod=666 /usr/lib/xen/boot/runx-initrd /
