@@ -39,6 +39,7 @@ func populateExistingVolumesFormatObjects(_ *volumemgrContext, dirName string) {
 			log.Error(err)
 			continue
 		}
+		log.Noticef("populateExistingVolumesFormatObjects: saving format %s for volume %s", tempStatus.ContentFormat, tempStatus.Key())
 		volumeFormat[tempStatus.Key()] = tempStatus.ContentFormat
 	}
 	log.Functionf("populateExistingVolumesFormatObjects(%s) Done", dirName)
@@ -135,10 +136,13 @@ func getVolumeStatusByLocation(location string) (*types.VolumeStatus, error) {
 		}
 		volumeIDAndGeneration = keyAndFormat[0]
 		ok := false
+		log.Noticef("getVolumeStatusByLocation: parsing format from location %s", location)
+		log.Noticef("getVolumeStatusByLocation: found format %s", keyAndFormat[1])
 		parsedFormat, ok = zconfig.Format_value[strings.ToUpper(keyAndFormat[1])]
 		if !ok {
 			return nil, fmt.Errorf("found unknown format volume %s", location)
 		}
+		log.Noticef("getVolumeStatusByLocation: the format as digit %d", parsedFormat)
 		volumeIDAndGeneration = strings.ReplaceAll(volumeIDAndGeneration, "#", ".")
 	}
 
@@ -163,6 +167,7 @@ func getVolumeStatusByLocation(location string) (*types.VolumeStatus, error) {
 		ContentFormat:     zconfig.Format(parsedFormat),
 		FileLocation:      location,
 	}
+	log.Noticef("getVolumeStatusByLocation: found volume %s, content format %s", location, vs.ContentFormat)
 	return &vs, nil
 }
 
