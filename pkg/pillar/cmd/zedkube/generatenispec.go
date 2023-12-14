@@ -2,8 +2,8 @@ package zedkube
 
 import (
 	"fmt"
-	"strings"
 
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/kubeapi"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 )
@@ -31,7 +31,7 @@ func genNISpecCreate(ctx *zedkubeContext, niStatus *types.NetworkInstanceStatus)
 func switchNISpecCreate(ctx *zedkubeContext, niStatus *types.NetworkInstanceStatus) error {
 	niUUID := niStatus.UUID
 	// FC 1123 subdomain must consist of lower case alphanumeric characters
-	name := strings.ToLower(niStatus.DisplayName)
+	name := base.ConvToKubeName(niStatus.DisplayName)
 	namespace := eveNamespace
 
 	status, err := kubeGetNIStatus(ctx, niUUID)
@@ -89,7 +89,7 @@ func localNISpecCreate(ctx *zedkubeContext, niStatus *types.NetworkInstanceStatu
 
 	niUUID := niStatus.UUID
 	// FC 1123 subdomain must consist of lower case alphanumeric characters
-	name := strings.ToLower(niStatus.DisplayName)
+	name := base.ConvToKubeName(niStatus.DisplayName)
 	namespace := eveNamespace
 
 	status, err := kubeGetNIStatus(ctx, niUUID)

@@ -25,3 +25,10 @@ func IsHVTypeKube() bool {
 	}
 	return false
 }
+
+// ConvToKubeName - convert to lowercase and underscore to dash
+func ConvToKubeName(inName string) string {
+	lowercaseString := strings.ToLower(inName)
+	// Replace underscores with dashes for kubernetes
+	return strings.ReplaceAll(lowercaseString, "_", "-")
+}

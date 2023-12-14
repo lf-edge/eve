@@ -2,7 +2,6 @@ package zedkube
 
 import (
 	"fmt"
-	"strings"
 	"sync"
 	"time"
 
@@ -219,7 +218,7 @@ func lookupNIStatusForNAD(ctx *zedkubeContext, netUUID string) string {
 	})
 
 	if status != nil {
-		return strings.ToLower(status.DisplayName)
+		return base.ConvToKubeName(status.DisplayName)
 	}
 	return ""
 }
@@ -228,7 +227,7 @@ func lookupNIStatusFromName(ctx *zedkubeContext, niName string) *types.NetworkIn
 	var status *types.NetworkInstanceStatus
 	ctx.networkInstanceStatusMap.Range(func(key, value interface{}) bool {
 		st := value.(*types.NetworkInstanceStatus)
-		if niName == strings.ToLower(st.DisplayName) {
+		if niName == base.ConvToKubeName(st.DisplayName) {
 			status = st
 			return false
 		}
@@ -302,7 +301,7 @@ func handleNetworkInstanceDelete(ctxArg interface{}, key string,
 	log.Noticef("handleNetworkInstanceDelete(%s)\n", key) // XXX Functionf
 	ctx := ctxArg.(*zedkubeContext)
 	status := configArg.(types.NetworkInstanceStatus)
-	nadName := strings.ToLower(status.DisplayName)
+	nadName := base.ConvToKubeName(status.DisplayName)
 	kubeapi.DeleteNAD(log, nadName)
 	if _, ok := ctx.niStatusMap[status.UUIDandVersion.UUID.String()]; ok {
 		delete(ctx.niStatusMap, key)

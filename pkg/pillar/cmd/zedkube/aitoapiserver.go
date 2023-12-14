@@ -11,6 +11,7 @@ import (
 
 	"github.com/sirupsen/logrus"
 
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/kubeapi"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	corev1 "k8s.io/api/core/v1"
@@ -60,7 +61,7 @@ func check_del_ioAdpater_ethernet(ctx *zedkubeContext, aiConfig *types.AppInstan
 }
 
 func updateAppKubeNetStatus(ctx *zedkubeContext, aiConfig *types.AppInstanceConfig) {
-	aiName := strings.ToLower(aiConfig.DisplayName)
+	aiName := base.ConvToKubeName(aiConfig.DisplayName)
 	if _, ok := ctx.appKubeNetStatus[aiName]; !ok {
 		ctx.appKubeNetStatus[aiName] = &types.AppKubeNetworkStatus{
 			UUIDandVersion: aiConfig.UUIDandVersion,
@@ -154,7 +155,7 @@ func collectAppLogs(ctx *zedkubeContext) {
 	sinceSec = logcollectInterval
 	for _, item := range items {
 		aiconfig := item.(types.AppInstanceConfig)
-		aiName := strings.ToLower(aiconfig.DisplayName)
+		aiName := base.ConvToKubeName(aiconfig.DisplayName)
 		aiDispName := aiconfig.GetKubeDispName()
 
 		opt := &corev1.PodLogOptions{}
