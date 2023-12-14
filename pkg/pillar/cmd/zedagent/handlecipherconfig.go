@@ -114,10 +114,10 @@ func parseCipherBlock(ctx *getconfigContext, key string, cfgCipherBlock *zconfig
 
 	// get CipherContext and embed it into CipherBlockStatus to avoid potential races
 	for _, cfgCipherContext := range ctx.cipherContexts {
-		if cfgCipherContext.ContextID != cipherBlock.CipherContextID {
-			continue
+		if cfgCipherContext.ContextID == cipherBlock.CipherContextID {
+			cipherBlock.CipherContext = &cfgCipherContext
+			break
 		}
-		cipherBlock.CipherContext = &cfgCipherContext
 	}
 
 	if cipherBlock.CipherContext == nil {
