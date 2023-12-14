@@ -74,6 +74,7 @@ type zedrouterContext struct {
 	subGlobalConfig        pubsub.Subscription
 	GCInitialized          bool
 	pubUuidToNum           pubsub.Publication
+	pubAppMACGenerator     pubsub.Publication
 	dhcpLeases             []dnsmasqLease
 	subLocationInfo        pubsub.Subscription
 	subWwanStatus          pubsub.Subscription
@@ -173,6 +174,16 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	}
 	pubUuidToNum.ClearRestarted()
 
+	pubAppMACGenerator, err := ps.NewPublication(pubsub.PublicationOptions{
+		AgentName:  agentName,
+		Persistent: true,
+		TopicType:  types.AppMACGenerator{},
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	pubAppMACGenerator.ClearRestarted()
+
 	pubUUIDPairAndIfIdxToNum, err := ps.NewPublication(pubsub.PublicationOptions{
 		AgentName:  agentName,
 		Persistent: true,
@@ -262,6 +273,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 
 	zedrouterCtx.deviceNetworkStatus = &types.DeviceNetworkStatus{}
 	zedrouterCtx.pubUuidToNum = pubUuidToNum
+	zedrouterCtx.pubAppMACGenerator = pubAppMACGenerator
 	zedrouterCtx.pubUUIDPairAndIfIdxToNum = pubUUIDPairAndIfIdxToNum
 
 	// Create publish before subscribing and activating subscriptions
@@ -996,6 +1008,30 @@ func handleAppNetworkCreate(ctxArg interface{}, key string, configArg interface{
 		PendingAdd:     true,
 		DisplayName:    config.DisplayName,
 	}
+
+	// For app already deployed (before node reboot), keep using the same MAC address
+	// generator. Changing MAC addresses could break network config inside the app.
+	macGenerator, err := getAppMacGeneratorID(ctx, config.UUIDandVersion.UUID)
+	if err != nil || macGenerator == types.MACGeneratorUnspecified {
+		// New app or an existing app but without MAC generator ID persisted.
+		if ctx.localLegacyMACAddr {
+			// Use older node-scoped MAC address generator.
+			macGenerator = types.MACGeneratorNodeScoped
+		} else {
+			// Use newer (and preferred) globally-scoped MAC address generator.
+			macGenerator = types.MACGeneratorGloballyScoped
+		}
+		// Remember which MAC generator is being used for this app.
+		err = publishAppMacGeneratorID(ctx, config.UUIDandVersion.UUID, macGenerator)
+		if err != nil {
+			err = fmt.Errorf("failed to persist MAC generator ID for app %s/%s: %v",
+				config.UUIDandVersion.UUID, config.DisplayName, err)
+			log.Errorf("handleAppNetworkCreate(%v): %v", config.UUIDandVersion.UUID, err)
+			addError(ctx, &status, "handleAppNetworkCreate", err)
+			return
+		}
+	}
+	status.MACGenerator = macGenerator
 	publishAppNetworkStatus(ctx, &status)
 
 	// allocate application numbers on underlay network
@@ -1201,8 +1237,7 @@ func appNetworkDoActivateUnderlayNetwork(
 	if ulConfig.AppMacAddr != nil {
 		appMac = ulConfig.AppMacAddr.String()
 	} else {
-		appMac = generateAppMac(status.UUIDandVersion.UUID,
-			ulNum, status.AppNum, netInstStatus)
+		appMac = generateAppMac(ulNum, status, netInstStatus)
 	}
 	log.Functionf("appMac %s\n", appMac)
 
@@ -1337,27 +1372,39 @@ func appNetworkDoActivateUnderlayNetwork(
 // Since these MAC addresses will not appear on external Ethernet networks, we can also
 // use OUI octets for randomness. Only I/G and U/L bits need to stay constant and set
 // appropriately.
-func generateAppMac(appUUID uuid.UUID, ulNum int, appNum int,
+func generateAppMac(ulNum int, appStatus *types.AppNetworkStatus,
 	netInstStatus *types.NetworkInstanceStatus) string {
 	h := sha256.New()
-	h.Write(appUUID[:])
+	h.Write(appStatus.UUIDandVersion.UUID[:])
 	h.Write(netInstStatus.UUIDandVersion.UUID[:])
 	nums := make([]byte, 2)
 	nums[0] = byte(ulNum)
-	nums[1] = byte(appNum)
+	nums[1] = byte(appStatus.AppNum)
 	h.Write(nums)
 	hash := h.Sum(nil)
 	switch netInstStatus.Type {
 	case types.NetworkInstanceTypeSwitch:
+		// For switch network instances, we always generate globally-scoped
+		// MAC addresses. There is no difference in behaviour between MAC address
+		// generators in this case.
 		mac := net.HardwareAddr{0x02, 0x16, 0x3e, hash[0], hash[1], hash[2]}
 		return mac.String()
 	case types.NetworkInstanceTypeLocal, types.NetworkInstanceTypeCloud:
-		mac := net.HardwareAddr{hash[0], hash[1], hash[2], hash[3], hash[4], hash[5]}
-		// Mark this MAC address as unicast by setting the I/G bit to zero.
-		mac[0] &= ^byte(1)
-		// Mark this MAC address as locally administered by setting the U/L bit to 1.
-		mac[0] |= byte(1 << 1)
-		return mac.String()
+		switch appStatus.MACGenerator {
+		case types.MACGeneratorNodeScoped:
+			mac := net.HardwareAddr{0x00, 0x16, 0x3e, 0x00,
+				byte(ulNum), byte(appStatus.AppNum)}
+			return mac.String()
+		case types.MACGeneratorGloballyScoped:
+			mac := net.HardwareAddr{hash[0], hash[1], hash[2], hash[3], hash[4], hash[5]}
+			// Mark this MAC address as unicast by setting the I/G bit to zero.
+			mac[0] &= ^byte(1)
+			// Mark this MAC address as locally administered by setting the U/L bit to 1.
+			mac[0] |= byte(1 << 1)
+			return mac.String()
+		default:
+			log.Fatalf("undefined MAC generator")
+		}
 	default:
 		log.Fatalf("unsupported network instance type")
 	}
@@ -1903,6 +1950,7 @@ func handleDelete(ctx *zedrouterContext, key string,
 	unpublishAppNetworkStatus(ctx, status)
 
 	appNumFree(ctx, status.UUIDandVersion.UUID, true)
+	unpublishAppMacGeneratorID(ctx, status.UUIDandVersion.UUID)
 	appNumsOnUNetFree(ctx, status)
 	// Did this free up any last references against any Network Instance Status?
 	for ulNum := 0; ulNum < len(status.UnderlayNetworkList); ulNum++ {
