@@ -218,34 +218,36 @@ collect_pillar_backtraces()
 }
 collect_zfs_info()
 {
-        type=$(cat /run/eve.persist_type)
-        if [ "$type" = "zfs" ]; then
-           echo "- Collecting ZFS specific info"
-           echo "zpool status" >> $DIR/zfs-info
-           echo "============" >> $DIR/zfs-info
-           eve exec pillar zpool status >> $DIR/zfs-info
-           echo "============" >> $DIR/zfs-info
-           echo "zpool list -v" >> $DIR/zfs-info
-           echo "============" >> $DIR/zfs-info
-           eve exec pillar zpool list -v >> $DIR/zfs-info
-           echo "============" >> $DIR/zfs-info
-           echo "zfs get all properties" >> $DIR/zfs-info
-           echo "============" >> $DIR/zfs-info
-           eve exec pillar zfs get all  >> $DIR/zfs-info
-           echo "============" >> $DIR/zfs-info
-           echo "zfs list -o all" >> $DIR/zfs-info
-           echo "============" >> $DIR/zfs-info
-           eve exec pillar zfs list -o all  >> $DIR/zfs-info
-           echo "============" >> $DIR/zfs-info
-           echo "ZFS DMU TX " >> $DIR/zfs-info
-           echo "============" >> $DIR/zfs-info
-           eve exec pillar cat /proc/spl/kstat/zfs/dmu_tx >> $DIR/zfs-info
-           echo "============" >> $DIR/zfs-info
-           echo "ZFS ARC stats " >> $DIR/zfs-info
-           echo "============" >> $DIR/zfs-info
-           eve exec pillar cat /proc/spl/kstat/zfs/arcstats >> $DIR/zfs-info
-           echo "============" >> $DIR/zfs-info
-	fi
+    type=$(cat /run/eve.persist_type)
+    if [ "$type" = "zfs" ]; then
+       echo "- Collecting ZFS specific info"
+       {
+           echo "zpool status"
+           echo "============"
+           eve exec pillar zpool status
+           echo "============"
+           echo "zpool list -v"
+           echo "============"
+           eve exec pillar zpool list -v
+           echo "============"
+           echo "zfs get all properties"
+           echo "============"
+           eve exec pillar zfs get all
+           echo "============"
+           echo "zfs list -o all"
+           echo "============"
+           eve exec pillar zfs list -o all
+           echo "============"
+           echo "ZFS DMU TX "
+           echo "============"
+           eve exec pillar cat /proc/spl/kstat/zfs/dmu_tx
+           echo "============"
+           echo "ZFS ARC stats "
+           echo "============"
+           eve exec pillar cat /proc/spl/kstat/zfs/arcstats
+           echo "============"
+        } > "$DIR/zfs-info"
+    fi
 }
 
 # Copy itself
