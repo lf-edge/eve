@@ -19,6 +19,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 
 	netattdefv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
@@ -1078,7 +1079,7 @@ func (ctx kubevirtContext) CreatePodConfig(domainName string, config types.Domai
 }
 
 func getVMIorPodName(displayName, domainName string) string {
-	return strings.ToLower(displayName) + "-" + domainName[:5]
+	return base.ConvToKubeName(displayName) + "-" + domainName[:5]
 }
 
 func encodeSelections(selections []netattdefv1.NetworkSelectionElement) string {

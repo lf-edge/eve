@@ -112,7 +112,7 @@ func (config DomainConfig) GetTaskName() string {
 }
 
 func (config DomainConfig) GetKubeDispName() string {
-	return strings.ToLower(config.DisplayName) + "-" + config.UUIDandVersion.UUID.String()[:5]
+	return base.ConvToKubeName(config.DisplayName) + "-" + config.UUIDandVersion.UUID.String()[:5]
 }
 
 // DomainnameToUUID does the reverse of GetTaskName

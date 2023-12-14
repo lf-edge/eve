@@ -13,7 +13,6 @@ import (
 	"fmt"
 	"os"
 	"sort"
-	"strings"
 	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/hypervisor"
@@ -538,7 +537,7 @@ func checkToFillKubeNADs(ctx *zedmanagerContext, aiConfig types.AppInstanceConfi
 			ni := item.(types.NetworkInstanceStatus)
 			if ul.Network.String() == ni.UUIDandVersion.UUID.String() {
 				nad = types.KubeNAD{
-					Name: strings.ToLower(ni.DisplayName),
+					Name: base.ConvToKubeName(ni.DisplayName),
 					Mac:  ul.AppMacAddr.String(),
 				}
 				break
