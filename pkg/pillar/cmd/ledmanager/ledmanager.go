@@ -252,7 +252,7 @@ var mToF = []modelToFuncs{
 		regexp:      true,
 		initFunc:    InitLedCmd,
 		displayFunc: ExecuteLedCmd,
-		arg:         "user-led3", // Blue LED
+		arg:         "led3", // Blue LED
 	},
 	{
 		// Last in table as a default
