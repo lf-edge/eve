@@ -1,0 +1,45 @@
+digraph G {
+    rankdir=LR;
+
+    // Subgraph for packages
+    subgraph cluster_packages {
+        label="Packages";
+        node [shape=box, height=0.5, width=1.5, style=filled, fillcolor="lightyellow", color="black"]; // Packages with light yellow background and black border
+
+        // Define packages
+        rngd [label="rngd"];
+        sysctl [label="sysctl"];
+        apparmor [label="apparmor"];
+        edgeview [label="edgeview"];
+        more [label="...", shape=none, width=.5]; // Ellipsis with reduced width
+        pillar [label="pillar"];
+
+        // Align packages vertically
+        { rank=same; rngd -> sysctl -> apparmor -> edgeview -> more -> pillar [style=invis, dir=back]; }
+    }
+
+    // Define the linuxkit build process
+    linuxkit_build [label="linuxkit build", shape=ellipse, style=filled, fillcolor="lightblue", color="black"];
+
+    // Define tar file without "(Tar File)"
+    rootfs [label="rootfs.tar", shape=note, style=filled, fillcolor="lightgoldenrodyellow", color="black"];
+
+    // Define output options with similar shape to rootfs.tar
+    live_image [label="Live Image", shape=note, style=filled, fillcolor="lightgreen", color="black"]; // Live Image with green background and black border
+    installer_image [label="Installer Image", shape=note, style=filled, fillcolor="lightgreen", color="black"]; // Installer Image with green background and black border
+
+    // Connect packages to the linuxkit build process
+    rngd -> linuxkit_build;
+    sysctl -> linuxkit_build;
+    apparmor -> linuxkit_build;
+    edgeview -> linuxkit_build;
+    more -> linuxkit_build;
+    pillar -> linuxkit_build;
+
+    // Connect linuxkit build process to rootfs.tar
+    linuxkit_build -> rootfs;
+
+    // Connect tar file to output options
+    rootfs -> live_image;
+    rootfs -> installer_image;
+}
