@@ -387,7 +387,7 @@ func CreateZvolVault(log *base.LogObject, datasetName string, zfsKeyFile string,
 	}
 
 	sizeBytes, err := zfs.GetDatasetAvailableBytes(parentDatasetName)
-	if err != nil {
+	if err != nil || sizeBytes == 0 {
 		return fmt.Errorf("Dataset %s available bytes read error: %v", parentDatasetName, err)
 	}
 

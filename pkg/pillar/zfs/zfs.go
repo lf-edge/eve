@@ -24,7 +24,7 @@ import (
 const VolBlockSize = uint64(16 * 1024)
 
 // taken from mkimage-raw-efi/install kubevirt RESERVE_EVE_STORAGE_SIZEGB
-const reserveEveStorageSizeGb = uint64(20 * 1024 * 1024 * 1024)
+const ReserveEveStorageSizeGb = uint64(20 * 1024 * 1024 * 1024)
 
 // CreateDatasets - creates all the non-existing parent datasets.
 // Datasets created in this manner are automatically mounted
@@ -107,7 +107,12 @@ func GetZvolPath(datasetName string) string {
 // CreateVaultVolumeDataset Create an empty vault zvol
 func CreateVaultVolumeDataset(log *base.LogObject, datasetName string, zfsKeyFile string, encrypted bool, sizeBytes uint64) error {
 	// Shave off reserved + Can't align up if we're already at max space.
-	sizeBytes = sizeBytes - reserveEveStorageSizeGb - (VolBlockSize * 1024)
+	if sizeBytes < ReserveEveStorageSizeGb {
+		//Bypass for dev/test VMs in eden
+		sizeBytes = sizeBytes - (VolBlockSize * 1024)
+	} else {
+		sizeBytes = sizeBytes - ReserveEveStorageSizeGb - (VolBlockSize * 1024)
+	}
 	alignedSize := alignUpToBlockSize(sizeBytes, VolBlockSize)
 	props := make(map[libzfs.Prop]libzfs.Property)
 
