@@ -139,95 +139,6 @@ spec:
                             type: object
                         type: object
                     type: object
-                  architectureConfiguration:
-                    properties:
-                      amd64:
-                        properties:
-                          emulatedMachines:
-                            items:
-                              type: string
-                            type: array
-                            x-kubernetes-list-type: atomic
-                          machineType:
-                            type: string
-                          ovmfPath:
-                            type: string
-                        type: object
-                      arm64:
-                        properties:
-                          emulatedMachines:
-                            items:
-                              type: string
-                            type: array
-                            x-kubernetes-list-type: atomic
-                          machineType:
-                            type: string
-                          ovmfPath:
-                            type: string
-                        type: object
-                      defaultArchitecture:
-                        type: string
-                      ppc64le:
-                        properties:
-                          emulatedMachines:
-                            items:
-                              type: string
-                            type: array
-                            x-kubernetes-list-type: atomic
-                          machineType:
-                            type: string
-                          ovmfPath:
-                            type: string
-                        type: object
-                    type: object
-                  autoCPULimitNamespaceLabelSelector:
-                    description: When set, AutoCPULimitNamespaceLabelSelector will
-                      set a CPU limit on virt-launcher for VMIs running inside namespaces
-                      that match the label selector. The CPU limit will equal the
-                      number of requested vCPUs. This setting does not apply to VMIs
-                      with dedicated CPUs.
-                    properties:
-                      matchExpressions:
-                        description: matchExpressions is a list of label selector
-                          requirements. The requirements are ANDed.
-                        items:
-                          description: A label selector requirement is a selector
-                            that contains values, a key, and an operator that relates
-                            the key and values.
-                          properties:
-                            key:
-                              description: key is the label key that the selector
-                                applies to.
-                              type: string
-                            operator:
-                              description: operator represents a key's relationship
-                                to a set of values. Valid operators are In, NotIn,
-                                Exists and DoesNotExist.
-                              type: string
-                            values:
-                              description: values is an array of string values. If
-                                the operator is In or NotIn, the values array must
-                                be non-empty. If the operator is Exists or DoesNotExist,
-                                the values array must be empty. This array is replaced
-                                during a strategic merge patch.
-                              items:
-                                type: string
-                              type: array
-                          required:
-                          - key
-                          - operator
-                          type: object
-                        type: array
-                      matchLabels:
-                        additionalProperties:
-                          type: string
-                        description: matchLabels is a map of {key,value} pairs. A
-                          single {key,value} in the matchLabels map is equivalent
-                          to an element of matchExpressions, whose key field is "key",
-                          the operator is "In", and the values array contains only
-                          "value". The requirements are ANDed.
-                        type: object
-                    type: object
                   controllerConfiguration:
                     description: ReloadableComponentConfiguration holds all generic
                       k8s configuration options which can be reloaded by components
@@ -406,87 +317,7 @@ spec:
                     description: PullPolicy describes a policy for if/when to pull
                       a container image
                     type: string
-                  ksmConfiguration:
-                    description: KSMConfiguration holds the information regarding
-                      the enabling the KSM in the nodes (if available).
-                    properties:
-                      nodeLabelSelector:
-                        description: NodeLabelSelector is a selector that filters
-                          in which nodes the KSM will be enabled. Empty NodeLabelSelector
-                          will enable ksm for every node.
-                        properties:
-                          matchExpressions:
-                            description: matchExpressions is a list of label selector
-                              requirements. The requirements are ANDed.
-                            items:
-                              description: A label selector requirement is a selector
-                                that contains values, a key, and an operator that
-                                relates the key and values.
-                              properties:
-                                key:
-                                  description: key is the label key that the selector
-                                    applies to.
-                                  type: string
-                                operator:
-                                  description: operator represents a key's relationship
-                                    to a set of values. Valid operators are In, NotIn,
-                                    Exists and DoesNotExist.
-                                  type: string
-                                values:
-                                  description: values is an array of string values.
-                                    If the operator is In or NotIn, the values array
-                                    must be non-empty. If the operator is Exists or
-                                    DoesNotExist, the values array must be empty.
-                                    This array is replaced during a strategic merge
-                                    patch.
-                                  items:
-                                    type: string
-                                  type: array
-                              required:
-                              - key
-                              - operator
-                              type: object
-                            type: array
-                          matchLabels:
-                            additionalProperties:
-                              type: string
-                            description: matchLabels is a map of {key,value} pairs.
-                              A single {key,value} in the matchLabels map is equivalent
-                              to an element of matchExpressions, whose key field is
-                              "key", the operator is "In", and the values array contains
-                              only "value". The requirements are ANDed.
-                            type: object
-                        type: object
-                    type: object
-                  liveUpdateConfiguration:
-                    description: LiveUpdateConfiguration holds defaults for live update
-                      features
-                    properties:
-                      maxCpuSockets:
-                        description: MaxCpuSockets holds the maximum amount of sockets
-                          that can be hotplugged
-                        format: int32
-                        type: integer
-                      maxGuest:
-                        anyOf:
-                        - type: integer
-                        - type: string
-                        description: MaxGuest defines the maximum amount memory that
-                          can be allocated to the guest using hotplug.
-                        pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
-                        x-kubernetes-int-or-string: true
-                      maxHotplugRatio:
-                        description: 'MaxHotplugRatio is the ratio used to define
-                          the max amount of a hotplug resource that can be made available
-                          to a VM when the specific Max* setting is not defined (MaxCpuSockets,
-                          MaxGuest) Example: VM is configured with 512Mi of guest
-                          memory, if MaxGuest is not defined and MaxHotplugRatio is
-                          2 then MaxGuest = 1Gi defaults to 4'
-                        format: int32
-                        type: integer
-                    type: object
                   machineType:
-                    description: Deprecated. Use architectureConfiguration instead.
                     type: string
                   mediatedDevicesConfiguration:
                     description: MediatedDevicesConfiguration holds information about
@@ -506,7 +337,7 @@ spec:
                       nodeMediatedDeviceTypes:
                         items:
                           description: NodeMediatedDeviceTypesConfig holds information
-                            about MDEV types to be defined in a specific node that
+                            about MDEV types to be defined in a specifc node that
                             matches the NodeSelector field.
                           properties:
                             mediatedDeviceTypes:
@@ -561,8 +392,8 @@ spec:
                         - type: integer
                         - type: string
                         description: BandwidthPerMigration limits the amount of network
-                          bandwidth live migrations are allowed to use. The value
-                          is in quantity per second. Defaults to 0 (no limit)
+                          bandwith live migrations are allowed to use. The value is
+                          in quantity per second. Defaults to 0 (no limit)
                         pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
                         x-kubernetes-int-or-string: true
                       completionTimeoutPerGiB:
@@ -577,16 +408,6 @@ spec:
                         description: When set to true, DisableTLS will disable the
                           additional layer of live migration encryption provided by
                           KubeVirt. This is usually a bad idea. Defaults to false
-                        type: boolean
-                      matchSELinuxLevelOnMigration:
-                        description: By default, the SELinux level of target virt-launcher
-                          pods is forced to the level of the source virt-launcher.
-                          When set to true, MatchSELinuxLevelOnMigration lets the
-                          CRI auto-assign a random level to the target. That will
-                          ensure the target virt-launcher doesn't share categories
-                          with another pod on the node. However, migrations will fail
-                          when using RWX volumes that don't automatically deal with
-                          SELinux levels.
                         type: boolean
                       network:
                         description: Network is the name of the CNI network to use
@@ -629,23 +450,6 @@ spec:
                   network:
                     description: NetworkConfiguration holds network options
                     properties:
-                      binding:
-                        additionalProperties:
-                          properties:
-                            networkAttachmentDefinition:
-                              description: 'NetworkAttachmentDefinition references
-                                to a NetworkAttachmentDefinition CR object. Format:
-                                <name>, <namespace>/<name>. If namespace is not specified,
-                                VMI namespace is assumed. version: 1alphav1'
-                              type: string
-                            sidecarImage:
-                              description: 'SidecarImage references a container image
-                                that runs in the virt-launcher pod. The sidecar handles
-                                (libvirt) domain configuration and optional services.
-                                version: 1alphav1'
-                              type: string
-                          type: object
-                        type: object
                       defaultNetworkInterface:
                         type: string
                       permitBridgeInterfaceOnPodNetwork:
@@ -696,40 +500,13 @@ spec:
                             resourceName:
                               description: The name of the resource that is representing
                                 the device. Exposed by a device plugin and requested
-                                by VMs. Typically of the form vendor.com/product_name
+                                by VMs. Typically of the form vendor.com/product_nameThe
+                                name of the resource that is representing the device.
+                                Exposed by a device plugin and requested by VMs. Typically
+                                of the form vendor.com/product_name
                               type: string
                           required:
                           - pciVendorSelector
-                          - resourceName
-                          type: object
-                        type: array
-                        x-kubernetes-list-type: atomic
-                      usb:
-                        items:
-                          properties:
-                            externalResourceProvider:
-                              description: If true, KubeVirt will leave the allocation
-                                and monitoring to an external device plugin
-                              type: boolean
-                            resourceName:
-                              description: 'Identifies the list of USB host devices.
-                                e.g: kubevirt.io/storage, kubevirt.io/bootable-usb,
-                                etc'
-                              type: string
-                            selectors:
-                              items:
-                                properties:
-                                  product:
-                                    type: string
-                                  vendor:
-                                    type: string
-                                required:
-                                - product
-                                - vendor
-                                type: object
-                              type: array
-                              x-kubernetes-list-type: atomic
-                          required:
                           - resourceName
                           type: object
                         type: array
@@ -784,29 +561,6 @@ spec:
                           description: ResourceRequirements describes the compute
                             resource requirements.
                           properties:
-                            claims:
-                              description: "Claims lists the names of resources, defined
-                                in spec.resourceClaims, that are used by this container.
-                                \n This is an alpha field and requires enabling the
-                                DynamicResourceAllocation feature gate. \n This field
-                                is immutable. It can only be set for containers."
-                              items:
-                                description: ResourceClaim references one entry in
-                                  PodSpec.ResourceClaims.
-                                properties:
-                                  name:
-                                    description: Name must match the name of one entry
-                                      in pod.spec.resourceClaims of the Pod where
-                                      this field is used. It makes that resource available
-                                      inside a container.
-                                    type: string
-                                required:
-                                - name
-                                type: object
-                              type: array
-                              x-kubernetes-list-map-keys:
-                              - name
-                              x-kubernetes-list-type: map
                             limits:
                               additionalProperties:
                                 anyOf:
@@ -870,27 +624,6 @@ spec:
                     type: object
                   virtualMachineInstancesPerNode:
                     type: integer
-                  virtualMachineOptions:
-                    description: VirtualMachineOptions holds the cluster level information
-                      regarding the virtual machine.
-                    properties:
-                      disableFreePageReporting:
-                        description: DisableFreePageReporting disable the free page
-                          reporting of memory balloon device https://libvirt.org/formatdomain.html#memory-balloon-device.
-                          This will have effect only if AutoattachMemBalloon is not
-                          false and the vmi is not requesting any high performance
-                          feature (dedicatedCPU/realtime/hugePages), in which free
-                          page reporting is always disabled.
-                        type: object
-                      disableSerialConsoleLog:
-                        description: DisableSerialConsoleLog disables logging the
-                          auto-attached default serial console. If not set, serial
-                          console logs will be written to a file and then streamed
-                          from a container named 'guest-console-log'. The value can
-                          be individually overridden for each VM, not relevant if
-                          AutoattachSerialConsole is disabled.
-                        type: object
-                    type: object
                   vmStateStorageClass:
                     description: VMStateStorageClass is the name of the storage class
                       to use for the PVCs created to preserve VM state, like TPM.
@@ -1317,6 +1050,9 @@ spec:
                                             null selector and null or empty namespaces
                                             list means "this pod's namespace". An
                                             empty selector ({}) matches all namespaces.
+                                            This field is beta-level and is only honored
+                                            when PodAffinityNamespaceSelector feature
+                                            is enabled.
                                           properties:
                                             matchExpressions:
                                               description: matchExpressions is a list
@@ -1376,7 +1112,7 @@ spec:
                                             union of the namespaces listed in this
                                             field and the ones selected by namespaceSelector.
                                             null or empty namespaces list and null
-                                            namespaceSelector means "this pod's namespace".
+                                            namespaceSelector means "this pod's namespace"
                                           items:
                                             type: string
                                           type: array
@@ -1485,7 +1221,9 @@ spec:
                                         this field and the ones listed in the namespaces
                                         field. null selector and null or empty namespaces
                                         list means "this pod's namespace". An empty
-                                        selector ({}) matches all namespaces.
+                                        selector ({}) matches all namespaces. This
+                                        field is beta-level and is only honored when
+                                        PodAffinityNamespaceSelector feature is enabled.
                                       properties:
                                         matchExpressions:
                                           description: matchExpressions is a list
@@ -1542,7 +1280,7 @@ spec:
                                         listed in this field and the ones selected
                                         by namespaceSelector. null or empty namespaces
                                         list and null namespaceSelector means "this
-                                        pod's namespace".
+                                        pod's namespace"
                                       items:
                                         type: string
                                       type: array
@@ -1653,6 +1391,9 @@ spec:
                                             null selector and null or empty namespaces
                                             list means "this pod's namespace". An
                                             empty selector ({}) matches all namespaces.
+                                            This field is beta-level and is only honored
+                                            when PodAffinityNamespaceSelector feature
+                                            is enabled.
                                           properties:
                                             matchExpressions:
                                               description: matchExpressions is a list
@@ -1712,7 +1453,7 @@ spec:
                                             union of the namespaces listed in this
                                             field and the ones selected by namespaceSelector.
                                             null or empty namespaces list and null
-                                            namespaceSelector means "this pod's namespace".
+                                            namespaceSelector means "this pod's namespace"
                                           items:
                                             type: string
                                           type: array
@@ -1821,7 +1562,9 @@ spec:
                                         this field and the ones listed in the namespaces
                                         field. null selector and null or empty namespaces
                                         list means "this pod's namespace". An empty
-                                        selector ({}) matches all namespaces.
+                                        selector ({}) matches all namespaces. This
+                                        field is beta-level and is only honored when
+                                        PodAffinityNamespaceSelector feature is enabled.
                                       properties:
                                         matchExpressions:
                                           description: matchExpressions is a list
@@ -1878,7 +1621,7 @@ spec:
                                         listed in this field and the ones selected
                                         by namespaceSelector. null or empty namespaces
                                         list and null namespaceSelector means "this
-                                        pod's namespace".
+                                        pod's namespace"
                                       items:
                                         type: string
                                       type: array
@@ -2343,6 +2086,9 @@ spec:
                                             null selector and null or empty namespaces
                                             list means "this pod's namespace". An
                                             empty selector ({}) matches all namespaces.
+                                            This field is beta-level and is only honored
+                                            when PodAffinityNamespaceSelector feature
+                                            is enabled.
                                           properties:
                                             matchExpressions:
                                               description: matchExpressions is a list
@@ -2402,7 +2148,7 @@ spec:
                                             union of the namespaces listed in this
                                             field and the ones selected by namespaceSelector.
                                             null or empty namespaces list and null
-                                            namespaceSelector means "this pod's namespace".
+                                            namespaceSelector means "this pod's namespace"
                                           items:
                                             type: string
                                           type: array
@@ -2511,7 +2257,9 @@ spec:
                                         this field and the ones listed in the namespaces
                                         field. null selector and null or empty namespaces
                                         list means "this pod's namespace". An empty
-                                        selector ({}) matches all namespaces.
+                                        selector ({}) matches all namespaces. This
+                                        field is beta-level and is only honored when
+                                        PodAffinityNamespaceSelector feature is enabled.
                                       properties:
                                         matchExpressions:
                                           description: matchExpressions is a list
@@ -2568,7 +2316,7 @@ spec:
                                         listed in this field and the ones selected
                                         by namespaceSelector. null or empty namespaces
                                         list and null namespaceSelector means "this
-                                        pod's namespace".
+                                        pod's namespace"
                                       items:
                                         type: string
                                       type: array
@@ -2679,6 +2427,9 @@ spec:
                                             null selector and null or empty namespaces
                                             list means "this pod's namespace". An
                                             empty selector ({}) matches all namespaces.
+                                            This field is beta-level and is only honored
+                                            when PodAffinityNamespaceSelector feature
+                                            is enabled.
                                           properties:
                                             matchExpressions:
                                               description: matchExpressions is a list
@@ -2738,7 +2489,7 @@ spec:
                                             union of the namespaces listed in this
                                             field and the ones selected by namespaceSelector.
                                             null or empty namespaces list and null
-                                            namespaceSelector means "this pod's namespace".
+                                            namespaceSelector means "this pod's namespace"
                                           items:
                                             type: string
                                           type: array
@@ -2847,7 +2598,9 @@ spec:
                                         this field and the ones listed in the namespaces
                                         field. null selector and null or empty namespaces
                                         list means "this pod's namespace". An empty
-                                        selector ({}) matches all namespaces.
+                                        selector ({}) matches all namespaces. This
+                                        field is beta-level and is only honored when
+                                        PodAffinityNamespaceSelector feature is enabled.
                                       properties:
                                         matchExpressions:
                                           description: matchExpressions is a list
@@ -2904,7 +2657,7 @@ spec:
                                         listed in this field and the ones selected
                                         by namespaceSelector. null or empty namespaces
                                         list and null namespaceSelector means "this
-                                        pod's namespace".
+                                        pod's namespace"
                                       items:
                                         type: string
                                       type: array
@@ -3018,8 +2771,6 @@ spec:
                   - type
                   type: object
                 type: array
-              defaultArchitecture:
-                type: string
               generations:
                 items:
                   description: GenerationStatus keeps track of the generation for
@@ -3088,7 +2839,7 @@ spec:
         - spec
         type: object
     served: true
-    storage: true
+    storage: false
     subresources:
       status: {}
   - additionalPrinterColumns:
@@ -3098,9 +2849,6 @@ spec:
     - jsonPath: .status.phase
       name: Phase
       type: string
-    deprecated: true
-    deprecationWarning: kubevirt.io/v1alpha3 is now deprecated and will be removed
-      in a future release.
     name: v1alpha3
     schema:
       openAPIV3Schema:
@@ -3207,95 +2955,6 @@ spec:
                             type: object
                         type: object
                     type: object
-                  architectureConfiguration:
-                    properties:
-                      amd64:
-                        properties:
-                          emulatedMachines:
-                            items:
-                              type: string
-                            type: array
-                            x-kubernetes-list-type: atomic
-                          machineType:
-                            type: string
-                          ovmfPath:
-                            type: string
-                        type: object
-                      arm64:
-                        properties:
-                          emulatedMachines:
-                            items:
-                              type: string
-                            type: array
-                            x-kubernetes-list-type: atomic
-                          machineType:
-                            type: string
-                          ovmfPath:
-                            type: string
-                        type: object
-                      defaultArchitecture:
-                        type: string
-                      ppc64le:
-                        properties:
-                          emulatedMachines:
-                            items:
-                              type: string
-                            type: array
-                            x-kubernetes-list-type: atomic
-                          machineType:
-                            type: string
-                          ovmfPath:
-                            type: string
-                        type: object
-                    type: object
-                  autoCPULimitNamespaceLabelSelector:
-                    description: When set, AutoCPULimitNamespaceLabelSelector will
-                      set a CPU limit on virt-launcher for VMIs running inside namespaces
-                      that match the label selector. The CPU limit will equal the
-                      number of requested vCPUs. This setting does not apply to VMIs
-                      with dedicated CPUs.
-                    properties:
-                      matchExpressions:
-                        description: matchExpressions is a list of label selector
-                          requirements. The requirements are ANDed.
-                        items:
-                          description: A label selector requirement is a selector
-                            that contains values, a key, and an operator that relates
-                            the key and values.
-                          properties:
-                            key:
-                              description: key is the label key that the selector
-                                applies to.
-                              type: string
-                            operator:
-                              description: operator represents a key's relationship
-                                to a set of values. Valid operators are In, NotIn,
-                                Exists and DoesNotExist.
-                              type: string
-                            values:
-                              description: values is an array of string values. If
-                                the operator is In or NotIn, the values array must
-                                be non-empty. If the operator is Exists or DoesNotExist,
-                                the values array must be empty. This array is replaced
-                                during a strategic merge patch.
-                              items:
-                                type: string
-                              type: array
-                          required:
-                          - key
-                          - operator
-                          type: object
-                        type: array
-                      matchLabels:
-                        additionalProperties:
-                          type: string
-                        description: matchLabels is a map of {key,value} pairs. A
-                          single {key,value} in the matchLabels map is equivalent
-                          to an element of matchExpressions, whose key field is "key",
-                          the operator is "In", and the values array contains only
-                          "value". The requirements are ANDed.
-                        type: object
-                    type: object
                   controllerConfiguration:
                     description: ReloadableComponentConfiguration holds all generic
                       k8s configuration options which can be reloaded by components
@@ -3474,87 +3133,7 @@ spec:
                     description: PullPolicy describes a policy for if/when to pull
                       a container image
                     type: string
-                  ksmConfiguration:
-                    description: KSMConfiguration holds the information regarding
-                      the enabling the KSM in the nodes (if available).
-                    properties:
-                      nodeLabelSelector:
-                        description: NodeLabelSelector is a selector that filters
-                          in which nodes the KSM will be enabled. Empty NodeLabelSelector
-                          will enable ksm for every node.
-                        properties:
-                          matchExpressions:
-                            description: matchExpressions is a list of label selector
-                              requirements. The requirements are ANDed.
-                            items:
-                              description: A label selector requirement is a selector
-                                that contains values, a key, and an operator that
-                                relates the key and values.
-                              properties:
-                                key:
-                                  description: key is the label key that the selector
-                                    applies to.
-                                  type: string
-                                operator:
-                                  description: operator represents a key's relationship
-                                    to a set of values. Valid operators are In, NotIn,
-                                    Exists and DoesNotExist.
-                                  type: string
-                                values:
-                                  description: values is an array of string values.
-                                    If the operator is In or NotIn, the values array
-                                    must be non-empty. If the operator is Exists or
-                                    DoesNotExist, the values array must be empty.
-                                    This array is replaced during a strategic merge
-                                    patch.
-                                  items:
-                                    type: string
-                                  type: array
-                              required:
-                              - key
-                              - operator
-                              type: object
-                            type: array
-                          matchLabels:
-                            additionalProperties:
-                              type: string
-                            description: matchLabels is a map of {key,value} pairs.
-                              A single {key,value} in the matchLabels map is equivalent
-                              to an element of matchExpressions, whose key field is
-                              "key", the operator is "In", and the values array contains
-                              only "value". The requirements are ANDed.
-                            type: object
-                        type: object
-                    type: object
-                  liveUpdateConfiguration:
-                    description: LiveUpdateConfiguration holds defaults for live update
-                      features
-                    properties:
-                      maxCpuSockets:
-                        description: MaxCpuSockets holds the maximum amount of sockets
-                          that can be hotplugged
-                        format: int32
-                        type: integer
-                      maxGuest:
-                        anyOf:
-                        - type: integer
-                        - type: string
-                        description: MaxGuest defines the maximum amount memory that
-                          can be allocated to the guest using hotplug.
-                        pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
-                        x-kubernetes-int-or-string: true
-                      maxHotplugRatio:
-                        description: 'MaxHotplugRatio is the ratio used to define
-                          the max amount of a hotplug resource that can be made available
-                          to a VM when the specific Max* setting is not defined (MaxCpuSockets,
-                          MaxGuest) Example: VM is configured with 512Mi of guest
-                          memory, if MaxGuest is not defined and MaxHotplugRatio is
-                          2 then MaxGuest = 1Gi defaults to 4'
-                        format: int32
-                        type: integer
-                    type: object
                   machineType:
-                    description: Deprecated. Use architectureConfiguration instead.
                     type: string
                   mediatedDevicesConfiguration:
                     description: MediatedDevicesConfiguration holds information about
@@ -3574,7 +3153,7 @@ spec:
                       nodeMediatedDeviceTypes:
                         items:
                           description: NodeMediatedDeviceTypesConfig holds information
-                            about MDEV types to be defined in a specific node that
+                            about MDEV types to be defined in a specifc node that
                             matches the NodeSelector field.
                           properties:
                             mediatedDeviceTypes:
@@ -3629,8 +3208,8 @@ spec:
                         - type: integer
                         - type: string
                         description: BandwidthPerMigration limits the amount of network
-                          bandwidth live migrations are allowed to use. The value
-                          is in quantity per second. Defaults to 0 (no limit)
+                          bandwith live migrations are allowed to use. The value is
+                          in quantity per second. Defaults to 0 (no limit)
                         pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
                         x-kubernetes-int-or-string: true
                       completionTimeoutPerGiB:
@@ -3645,16 +3224,6 @@ spec:
                         description: When set to true, DisableTLS will disable the
                           additional layer of live migration encryption provided by
                           KubeVirt. This is usually a bad idea. Defaults to false
-                        type: boolean
-                      matchSELinuxLevelOnMigration:
-                        description: By default, the SELinux level of target virt-launcher
-                          pods is forced to the level of the source virt-launcher.
-                          When set to true, MatchSELinuxLevelOnMigration lets the
-                          CRI auto-assign a random level to the target. That will
-                          ensure the target virt-launcher doesn't share categories
-                          with another pod on the node. However, migrations will fail
-                          when using RWX volumes that don't automatically deal with
-                          SELinux levels.
                         type: boolean
                       network:
                         description: Network is the name of the CNI network to use
@@ -3697,23 +3266,6 @@ spec:
                   network:
                     description: NetworkConfiguration holds network options
                     properties:
-                      binding:
-                        additionalProperties:
-                          properties:
-                            networkAttachmentDefinition:
-                              description: 'NetworkAttachmentDefinition references
-                                to a NetworkAttachmentDefinition CR object. Format:
-                                <name>, <namespace>/<name>. If namespace is not specified,
-                                VMI namespace is assumed. version: 1alphav1'
-                              type: string
-                            sidecarImage:
-                              description: 'SidecarImage references a container image
-                                that runs in the virt-launcher pod. The sidecar handles
-                                (libvirt) domain configuration and optional services.
-                                version: 1alphav1'
-                              type: string
-                          type: object
-                        type: object
                       defaultNetworkInterface:
                         type: string
                       permitBridgeInterfaceOnPodNetwork:
@@ -3764,40 +3316,13 @@ spec:
                             resourceName:
                               description: The name of the resource that is representing
                                 the device. Exposed by a device plugin and requested
-                                by VMs. Typically of the form vendor.com/product_name
+                                by VMs. Typically of the form vendor.com/product_nameThe
+                                name of the resource that is representing the device.
+                                Exposed by a device plugin and requested by VMs. Typically
+                                of the form vendor.com/product_name
                               type: string
                           required:
                           - pciVendorSelector
-                          - resourceName
-                          type: object
-                        type: array
-                        x-kubernetes-list-type: atomic
-                      usb:
-                        items:
-                          properties:
-                            externalResourceProvider:
-                              description: If true, KubeVirt will leave the allocation
-                                and monitoring to an external device plugin
-                              type: boolean
-                            resourceName:
-                              description: 'Identifies the list of USB host devices.
-                                e.g: kubevirt.io/storage, kubevirt.io/bootable-usb,
-                                etc'
-                              type: string
-                            selectors:
-                              items:
-                                properties:
-                                  product:
-                                    type: string
-                                  vendor:
-                                    type: string
-                                required:
-                                - product
-                                - vendor
-                                type: object
-                              type: array
-                              x-kubernetes-list-type: atomic
-                          required:
                           - resourceName
                           type: object
                         type: array
@@ -3852,29 +3377,6 @@ spec:
                           description: ResourceRequirements describes the compute
                             resource requirements.
                           properties:
-                            claims:
-                              description: "Claims lists the names of resources, defined
-                                in spec.resourceClaims, that are used by this container.
-                                \n This is an alpha field and requires enabling the
-                                DynamicResourceAllocation feature gate. \n This field
-                                is immutable. It can only be set for containers."
-                              items:
-                                description: ResourceClaim references one entry in
-                                  PodSpec.ResourceClaims.
-                                properties:
-                                  name:
-                                    description: Name must match the name of one entry
-                                      in pod.spec.resourceClaims of the Pod where
-                                      this field is used. It makes that resource available
-                                      inside a container.
-                                    type: string
-                                required:
-                                - name
-                                type: object
-                              type: array
-                              x-kubernetes-list-map-keys:
-                              - name
-                              x-kubernetes-list-type: map
                             limits:
                               additionalProperties:
                                 anyOf:
@@ -3938,27 +3440,6 @@ spec:
                     type: object
                   virtualMachineInstancesPerNode:
                     type: integer
-                  virtualMachineOptions:
-                    description: VirtualMachineOptions holds the cluster level information
-                      regarding the virtual machine.
-                    properties:
-                      disableFreePageReporting:
-                        description: DisableFreePageReporting disable the free page
-                          reporting of memory balloon device https://libvirt.org/formatdomain.html#memory-balloon-device.
-                          This will have effect only if AutoattachMemBalloon is not
-                          false and the vmi is not requesting any high performance
-                          feature (dedicatedCPU/realtime/hugePages), in which free
-                          page reporting is always disabled.
-                        type: object
-                      disableSerialConsoleLog:
-                        description: DisableSerialConsoleLog disables logging the
-                          auto-attached default serial console. If not set, serial
-                          console logs will be written to a file and then streamed
-                          from a container named 'guest-console-log'. The value can
-                          be individually overridden for each VM, not relevant if
-                          AutoattachSerialConsole is disabled.
-                        type: object
-                    type: object
                   vmStateStorageClass:
                     description: VMStateStorageClass is the name of the storage class
                       to use for the PVCs created to preserve VM state, like TPM.
@@ -4385,6 +3866,9 @@ spec:
                                             null selector and null or empty namespaces
                                             list means "this pod's namespace". An
                                             empty selector ({}) matches all namespaces.
+                                            This field is beta-level and is only honored
+                                            when PodAffinityNamespaceSelector feature
+                                            is enabled.
                                           properties:
                                             matchExpressions:
                                               description: matchExpressions is a list
@@ -4444,7 +3928,7 @@ spec:
                                             union of the namespaces listed in this
                                             field and the ones selected by namespaceSelector.
                                             null or empty namespaces list and null
-                                            namespaceSelector means "this pod's namespace".
+                                            namespaceSelector means "this pod's namespace"
                                           items:
                                             type: string
                                           type: array
@@ -4553,7 +4037,9 @@ spec:
                                         this field and the ones listed in the namespaces
                                         field. null selector and null or empty namespaces
                                         list means "this pod's namespace". An empty
-                                        selector ({}) matches all namespaces.
+                                        selector ({}) matches all namespaces. This
+                                        field is beta-level and is only honored when
+                                        PodAffinityNamespaceSelector feature is enabled.
                                       properties:
                                         matchExpressions:
                                           description: matchExpressions is a list
@@ -4610,7 +4096,7 @@ spec:
                                         listed in this field and the ones selected
                                         by namespaceSelector. null or empty namespaces
                                         list and null namespaceSelector means "this
-                                        pod's namespace".
+                                        pod's namespace"
                                       items:
                                         type: string
                                       type: array
@@ -4721,6 +4207,9 @@ spec:
                                             null selector and null or empty namespaces
                                             list means "this pod's namespace". An
                                             empty selector ({}) matches all namespaces.
+                                            This field is beta-level and is only honored
+                                            when PodAffinityNamespaceSelector feature
+                                            is enabled.
                                           properties:
                                             matchExpressions:
                                               description: matchExpressions is a list
@@ -4780,7 +4269,7 @@ spec:
                                             union of the namespaces listed in this
                                             field and the ones selected by namespaceSelector.
                                             null or empty namespaces list and null
-                                            namespaceSelector means "this pod's namespace".
+                                            namespaceSelector means "this pod's namespace"
                                           items:
                                             type: string
                                           type: array
@@ -4889,7 +4378,9 @@ spec:
                                         this field and the ones listed in the namespaces
                                         field. null selector and null or empty namespaces
                                         list means "this pod's namespace". An empty
-                                        selector ({}) matches all namespaces.
+                                        selector ({}) matches all namespaces. This
+                                        field is beta-level and is only honored when
+                                        PodAffinityNamespaceSelector feature is enabled.
                                       properties:
                                         matchExpressions:
                                           description: matchExpressions is a list
@@ -4946,7 +4437,7 @@ spec:
                                         listed in this field and the ones selected
                                         by namespaceSelector. null or empty namespaces
                                         list and null namespaceSelector means "this
-                                        pod's namespace".
+                                        pod's namespace"
                                       items:
                                         type: string
                                       type: array
@@ -5411,6 +4902,9 @@ spec:
                                             null selector and null or empty namespaces
                                             list means "this pod's namespace". An
                                             empty selector ({}) matches all namespaces.
+                                            This field is beta-level and is only honored
+                                            when PodAffinityNamespaceSelector feature
+                                            is enabled.
                                           properties:
                                             matchExpressions:
                                               description: matchExpressions is a list
@@ -5470,7 +4964,7 @@ spec:
                                             union of the namespaces listed in this
                                             field and the ones selected by namespaceSelector.
                                             null or empty namespaces list and null
-                                            namespaceSelector means "this pod's namespace".
+                                            namespaceSelector means "this pod's namespace"
                                           items:
                                             type: string
                                           type: array
@@ -5579,7 +5073,9 @@ spec:
                                         this field and the ones listed in the namespaces
                                         field. null selector and null or empty namespaces
                                         list means "this pod's namespace". An empty
-                                        selector ({}) matches all namespaces.
+                                        selector ({}) matches all namespaces. This
+                                        field is beta-level and is only honored when
+                                        PodAffinityNamespaceSelector feature is enabled.
                                       properties:
                                         matchExpressions:
                                           description: matchExpressions is a list
@@ -5636,7 +5132,7 @@ spec:
                                         listed in this field and the ones selected
                                         by namespaceSelector. null or empty namespaces
                                         list and null namespaceSelector means "this
-                                        pod's namespace".
+                                        pod's namespace"
                                       items:
                                         type: string
                                       type: array
@@ -5747,6 +5243,9 @@ spec:
                                             null selector and null or empty namespaces
                                             list means "this pod's namespace". An
                                             empty selector ({}) matches all namespaces.
+                                            This field is beta-level and is only honored
+                                            when PodAffinityNamespaceSelector feature
+                                            is enabled.
                                           properties:
                                             matchExpressions:
                                               description: matchExpressions is a list
@@ -5806,7 +5305,7 @@ spec:
                                             union of the namespaces listed in this
                                             field and the ones selected by namespaceSelector.
                                             null or empty namespaces list and null
-                                            namespaceSelector means "this pod's namespace".
+                                            namespaceSelector means "this pod's namespace"
                                           items:
                                             type: string
                                           type: array
@@ -5915,7 +5414,9 @@ spec:
                                         this field and the ones listed in the namespaces
                                         field. null selector and null or empty namespaces
                                         list means "this pod's namespace". An empty
-                                        selector ({}) matches all namespaces.
+                                        selector ({}) matches all namespaces. This
+                                        field is beta-level and is only honored when
+                                        PodAffinityNamespaceSelector feature is enabled.
                                       properties:
                                         matchExpressions:
                                           description: matchExpressions is a list
@@ -5972,7 +5473,7 @@ spec:
                                         listed in this field and the ones selected
                                         by namespaceSelector. null or empty namespaces
                                         list and null namespaceSelector means "this
-                                        pod's namespace".
+                                        pod's namespace"
                                       items:
                                         type: string
                                       type: array
@@ -6086,8 +5587,6 @@ spec:
                   - type
                   type: object
                 type: array
-              defaultArchitecture:
-                type: string
               generations:
                 items:
                   description: GenerationStatus keeps track of the generation for
@@ -6156,7 +5655,7 @@ spec:
         - spec
         type: object
     served: true
-    storage: false
+    storage: true
     subresources:
       status: {}
 
@@ -6255,18 +5754,6 @@ rules:
   - routes/custom-host
   verbs:
   - create
-- apiGroups:
-  - coordination.k8s.io
-  resources:
-  - leases
-  verbs:
-  - get
-  - list
-  - watch
-  - delete
-  - update
-  - create
-  - patch
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -6463,6 +5950,22 @@ rules:
   - watch
   - patch
 - apiGroups:
+  - flavor.kubevirt.io
+  resources:
+  - virtualmachineflavors
+  - virtualmachineclusterflavors
+  - virtualmachinepreferences
+  - virtualmachineclusterpreferences
+  verbs:
+  - get
+  - delete
+  - create
+  - update
+  - patch
+  - list
+  - watch
+  - deletecollection
+- apiGroups:
   - ""
   resources:
   - pods
@@ -6557,14 +6060,6 @@ rules:
   resources:
   - datasources
   - datavolumes
-  verbs:
-  - get
-  - list
-  - watch
-- apiGroups:
-  - ""
-  resources:
-  - namespaces
   verbs:
   - get
   - list
@@ -6751,8 +6246,7 @@ rules:
   - virtualmachineinstances/freeze
   - virtualmachineinstances/unfreeze
   - virtualmachineinstances/softreboot
-  - virtualmachineinstances/sev/setupsession
-  - virtualmachineinstances/sev/injectlaunchsecret
+  - virtualmachineinstances/addinterface
   verbs:
   - update
 - apiGroups:
@@ -6767,6 +6261,8 @@ rules:
   - network-attachment-definitions
   verbs:
   - get
+  - list
+  - watch
 - apiGroups:
   - apiextensions.k8s.io
   resources:
@@ -6847,13 +6343,6 @@ rules:
   verbs:
   - get
 - apiGroups:
-  - ""
-  resources:
-  - resourcequotas
-  verbs:
-  - list
-  - watch
-- apiGroups:
   - route.openshift.io
   resources:
   - routes
@@ -6877,18 +6366,6 @@ rules:
   - list
   - get
   - watch
-- apiGroups:
-  - coordination.k8s.io
-  resources:
-  - leases
-  verbs:
-  - get
-  - list
-  - watch
-  - delete
-  - update
-  - create
-  - patch
 - apiGroups:
   - kubevirt.io
   resources:
@@ -6996,8 +6473,6 @@ rules:
   - virtualmachineinstances/guestosinfo
   - virtualmachineinstances/filesystemlist
   - virtualmachineinstances/userlist
-  - virtualmachineinstances/sev/fetchcertchain
-  - virtualmachineinstances/sev/querylaunchmeasurement
   verbs:
   - get
 - apiGroups:
@@ -7010,8 +6485,7 @@ rules:
   - virtualmachineinstances/freeze
   - virtualmachineinstances/unfreeze
   - virtualmachineinstances/softreboot
-  - virtualmachineinstances/sev/setupsession
-  - virtualmachineinstances/sev/injectlaunchsecret
+  - virtualmachineinstances/addinterface
   verbs:
   - update
 - apiGroups:
@@ -7031,6 +6505,7 @@ rules:
   - virtualmachines/removevolume
   - virtualmachines/migrate
   - virtualmachines/memorydump
+  - virtualmachines/addinterface
   verbs:
   - update
 - apiGroups:
@@ -7144,8 +6619,6 @@ rules:
   - virtualmachineinstances/guestosinfo
   - virtualmachineinstances/filesystemlist
   - virtualmachineinstances/userlist
-  - virtualmachineinstances/sev/fetchcertchain
-  - virtualmachineinstances/sev/querylaunchmeasurement
   verbs:
   - get
 - apiGroups:
@@ -7158,8 +6631,7 @@ rules:
   - virtualmachineinstances/freeze
   - virtualmachineinstances/unfreeze
   - virtualmachineinstances/softreboot
-  - virtualmachineinstances/sev/setupsession
-  - virtualmachineinstances/sev/injectlaunchsecret
+  - virtualmachineinstances/addinterface
   verbs:
   - update
 - apiGroups:
@@ -7179,6 +6651,7 @@ rules:
   - virtualmachines/removevolume
   - virtualmachines/migrate
   - virtualmachines/memorydump
+  - virtualmachines/addinterface
   verbs:
   - update
 - apiGroups:
@@ -7290,8 +6763,6 @@ rules:
   - virtualmachineinstances/guestosinfo
   - virtualmachineinstances/filesystemlist
   - virtualmachineinstances/userlist
-  - virtualmachineinstances/sev/fetchcertchain
-  - virtualmachineinstances/sev/querylaunchmeasurement
   verbs:
   - get
 - apiGroups:
@@ -7361,15 +6832,6 @@ rules:
   - migrations.kubevirt.io
   resources:
   - migrationpolicies
-  verbs:
-  - get
-  - list
-  - watch
-- apiGroups:
-  - instancetype.kubevirt.io
-  resources:
-  - virtualmachineclusterinstancetypes
-  - virtualmachineclusterpreferences
   verbs:
   - get
   - list
@@ -7447,30 +6909,30 @@ spec:
         - virt-operator
         env:
         - name: VIRT_OPERATOR_IMAGE
-          value: index.docker.io/naimingshen/virt-operator@sha256:c6649283b793913d64c19cd31e6b2f17c1f9cc8c8846f18352b4b5b2e90f04be
+          value: index.docker.io/naimingshen/virt-operator@sha256:2eb976700078429ba25df55dcd923c1b7764eb4c60762094c71b4796ffb45f9c
         - name: WATCH_NAMESPACE
           valueFrom:
             fieldRef:
               fieldPath: metadata.annotations['olm.targetNamespaces']
         - name: VIRT_API_SHASUM
-          value: sha256:d033bf2425c8be556e774467bcce5fff431a4d889c688ba9a92bef2a33ab540e
+          value: sha256:f4ee0fc58a229f4febd4b5e9fe2a0821aa6cff048aea9532a00019c43af44ffb
         - name: VIRT_CONTROLLER_SHASUM
-          value: sha256:fd9d8a5f21f8c4d64f9c4e66b5aa3f8fb7a3c10d969649dad8b2bc8245de2f86
+          value: sha256:80df9ada98043e2f304059c90c27649d2fec95c77d42a3e5b87b23c276264d2d
         - name: VIRT_HANDLER_SHASUM
-          value: sha256:7637ce4eb6ddfbd98a570fa06f4f5dc55b8567ba3361d9bd9ac165ab3c0804e5
+          value: sha256:2d88e7359886842d6c84c6e8f1dc8849e26f48ffe1b6ccccae2f13835ee37ae4
         - name: VIRT_LAUNCHER_SHASUM
-          value: sha256:fd6307b0170a13ddceb73506a966b323fbbd2524549da40b0cf0de610c12ee9a
+          value: sha256:f8a53eeaaee43a899385c56ca36970e293712323f8e4fab8e4e71c93f6c27993
         - name: VIRT_EXPORTPROXY_SHASUM
-          value: sha256:1769c4be68d9d5b34eb5cd59ec39f05acc20bacc28fc84fb572065c51c2046e1
+          value: sha256:3724cb4f953f4c96d40ae524a7330ce0cd418ebec919f0cee78f6574f8ea3a37
         - name: VIRT_EXPORTSERVER_SHASUM
-          value: sha256:1c520f67ab02bae9c412817ef147eaba94869a6fb45ca06def04c1538dc26f43
+          value: sha256:369caa036568330294bcd9b99e4a865cf878c96d2f95cbd14a976c46479349d7
         - name: GS_SHASUM
-          value: sha256:49fc603723d479ba145c001d1feea3fc803a66e031bfa9947b3b56f534855a71
+          value: sha256:d6e13c109eb4dab5adebc6eda16bb075440346d99238bafb2d0c07d0dfaab0ab
         - name: PR_HELPER_SHASUM
-          value: sha256:24368e553dc7bc52089a734196e7634e306cab33dc49c205c93ccb3162e5c0b9
+          value: sha256:080d7d4763918091d59d059a09a9d140eb6cf24a2e57f1357130c6e102df24ab
         - name: KUBEVIRT_VERSION
-          value: latest
-        image: index.docker.io/naimingshen/virt-operator@sha256:c6649283b793913d64c19cd31e6b2f17c1f9cc8c8846f18352b4b5b2e90f04be
+          value: latest2
+        image: index.docker.io/naimingshen/virt-operator@sha256:2eb976700078429ba25df55dcd923c1b7764eb4c60762094c71b4796ffb45f9c
         imagePullPolicy: IfNotPresent
         name: virt-operator
         ports:
