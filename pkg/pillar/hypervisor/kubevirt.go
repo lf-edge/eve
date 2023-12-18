@@ -348,25 +348,6 @@ func (ctx kubevirtContext) CreateVMIConfig(domainName string, config types.Domai
 		vmi.Spec.Volumes = vols[0:ndisks]
 	}
 
-	// Find out if we are launching a container as a VM.
-	// kvm based EVE supports launching a container as VM. It generates a runtime ocispec and passes in
-	// kernel and initrd along with other generated files.
-	// The concept is same in kubevirt eve too. Kubevirt supports this functionality through feature
-	// https://kubevirt.io/user-guide/virtual_machines/boot_from_external_source/
-	// We need to have a prebuilt scratch image and pass in the path of kernel, initrd and any kernel args in the vmi spec we are generating.
-	// TODO: eve build generates this scratch image. For now its hardcoded.
-
-	if config.KubeImageName != "" {
-		// Since disks are virtio disks we assume /dev/vda is the boot disk
-		kernel_args := "console=tty0 root=/dev/vda dhcp=1 rootfstype=ext4"
-		scratch_image := "docker.io/zededapramodh/external-boot-scratch-container:2.0"
-		kernel_path := "/kernel"
-		initrd_path := "/runx-initrd"
-
-		addKernelBootContainer(&vmi.Spec, scratch_image, kernel_args, kernel_path, initrd_path)
-
-	}
-
 	// Gather all PCI assignments into a single line
 	var pciAssignments []pciDevice
 	// Gather all USB assignments into a single line
