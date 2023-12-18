@@ -632,6 +632,13 @@ spec:
                       binding:
                         additionalProperties:
                           properties:
+                            domainAttachmentType:
+                              description: 'DomainAttachmentType is a standard domain
+                                network attachment method kubevirt supports. Supported
+                                values: "tap". The standard domain attachment can
+                                be used instead or in addition to the sidecarImage.
+                                version: 1alphav1'
+                              type: string
                             networkAttachmentDefinition:
                               description: 'NetworkAttachmentDefinition references
                                 to a NetworkAttachmentDefinition CR object. Format:
@@ -3700,6 +3707,13 @@ spec:
                       binding:
                         additionalProperties:
                           properties:
+                            domainAttachmentType:
+                              description: 'DomainAttachmentType is a standard domain
+                                network attachment method kubevirt supports. Supported
+                                values: "tap". The standard domain attachment can
+                                be used instead or in addition to the sidecarImage.
+                                version: 1alphav1'
+                              type: string
                             networkAttachmentDefinition:
                               description: 'NetworkAttachmentDefinition references
                                 to a NetworkAttachmentDefinition CR object. Format:
@@ -7284,6 +7298,13 @@ rules:
   - list
   - watch
 - apiGroups:
+  - kubevirt.io
+  resources:
+  - kubevirts
+  verbs:
+  - get
+  - list
+- apiGroups:
   - subresources.kubevirt.io
   resources:
   - virtualmachines/expand-spec
@@ -7447,30 +7468,30 @@ spec:
         - virt-operator
         env:
         - name: VIRT_OPERATOR_IMAGE
-          value: index.docker.io/naimingshen/virt-operator@sha256:c6649283b793913d64c19cd31e6b2f17c1f9cc8c8846f18352b4b5b2e90f04be
+          value: index.docker.io/naimingshen/virt-operator@sha256:eab90597d03e931a6194527bd82120522c3f6df84718f85afb42b83b076b69b2
         - name: WATCH_NAMESPACE
           valueFrom:
             fieldRef:
               fieldPath: metadata.annotations['olm.targetNamespaces']
         - name: VIRT_API_SHASUM
-          value: sha256:d033bf2425c8be556e774467bcce5fff431a4d889c688ba9a92bef2a33ab540e
+          value: sha256:ee96a69ed73740b05d6b6d3e628e1ab4caf4a343672f8b57ad9ae4f20775ba5c
         - name: VIRT_CONTROLLER_SHASUM
-          value: sha256:fd9d8a5f21f8c4d64f9c4e66b5aa3f8fb7a3c10d969649dad8b2bc8245de2f86
+          value: sha256:971b08809abccf33bd7a18b70ff54ba7dcde7e1745e992e0c3a6af66df3a86a1
         - name: VIRT_HANDLER_SHASUM
-          value: sha256:7637ce4eb6ddfbd98a570fa06f4f5dc55b8567ba3361d9bd9ac165ab3c0804e5
+          value: sha256:665da3f58fce930fc7a06608877370c23dd7f9f308dc3d2a0ba529f1e885f49e
         - name: VIRT_LAUNCHER_SHASUM
-          value: sha256:fd6307b0170a13ddceb73506a966b323fbbd2524549da40b0cf0de610c12ee9a
+          value: sha256:bc371fd51e7bdf2347665414234fe9a007203ba662dfc67f8b702a1e59168661
         - name: VIRT_EXPORTPROXY_SHASUM
-          value: sha256:1769c4be68d9d5b34eb5cd59ec39f05acc20bacc28fc84fb572065c51c2046e1
+          value: sha256:f04ea3f39d80490bded3122c5c8efd4b0785fa63b2b846ec07d61f908b4559ef
         - name: VIRT_EXPORTSERVER_SHASUM
-          value: sha256:1c520f67ab02bae9c412817ef147eaba94869a6fb45ca06def04c1538dc26f43
+          value: sha256:0b2c0c69209bed4acf1beb10b80aa926f7aab7eb4cb4cfbb1e7e22b2aedc40a3
         - name: GS_SHASUM
-          value: sha256:49fc603723d479ba145c001d1feea3fc803a66e031bfa9947b3b56f534855a71
+          value: sha256:9232464efa82585cce77e0f2463ac91e93c850ff9590abd99ee6306d7a587062
         - name: PR_HELPER_SHASUM
-          value: sha256:24368e553dc7bc52089a734196e7634e306cab33dc49c205c93ccb3162e5c0b9
+          value: sha256:8908a49930ef425269df9be11d731dc1feba153e433772d4db4b9ea0a4d791d1
         - name: KUBEVIRT_VERSION
           value: latest
-        image: index.docker.io/naimingshen/virt-operator@sha256:c6649283b793913d64c19cd31e6b2f17c1f9cc8c8846f18352b4b5b2e90f04be
+        image: index.docker.io/naimingshen/virt-operator@sha256:eab90597d03e931a6194527bd82120522c3f6df84718f85afb42b83b076b69b2
         imagePullPolicy: IfNotPresent
         name: virt-operator
         ports:
