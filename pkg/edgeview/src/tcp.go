@@ -179,7 +179,7 @@ func clientTCPtunnel(here net.Conn, idx, chNum int, rport int) {
 		}
 	}(here)
 
-	buf := make([]byte, 4096)
+	buf := make([]byte, chunkSize)
 	var justEnterVNC bool
 	if rport >= 5900 && rport <= 5910 { // VNC does not send any data initially
 		justEnterVNC = true
@@ -228,11 +228,22 @@ func clientTCPtunnel(here net.Conn, idx, chNum int, rport int) {
 			log.Noticef("ch(%d)-%d, websocketConn nil. exit", idx, chNum)
 			return
 		}
-		err = addEnvelopeAndWriteWss(jdata, false)
-		if err != nil {
-			close(done)
-			log.Errorf("ch(%d)-%d, client write wss error %v", idx, chNum, err)
-			return
+		allowSend := true
+		if !disableRateLimit {
+			msgSize := len(jdata)
+			ok := checkTCPRateLimit(msgSize)
+			if !ok {
+				allowSend = false
+				log.Noticef("clientTCPtunnel: drop-pkt")
+			}
+		}
+		if allowSend {
+			err = addEnvelopeAndWriteWss(jdata, false)
+			if err != nil {
+				close(done)
+				log.Errorf("ch(%d)-%d, client write wss error %v", idx, chNum, err)
+				return
+			}
 		}
 	}
 }
@@ -502,10 +513,22 @@ func tcpTransfer(url string, wssMsg tcpData, idx int) {
 			close(done)
 			return
 		}
-		err = addEnvelopeAndWriteWss(jdata, false)
-		if err != nil {
-			log.Errorf("ch(%d)-%d, server wrote error %v", idx, chNum, err)
-			break
+		// apply ratelimit to outbound server tcp traffic
+		allowSend := true
+		if !disableRateLimit {
+			msgSize := len(jdata)
+			ok := checkTCPRateLimit(msgSize)
+			if !ok {
+				allowSend = false
+				log.Noticef("tcpTransfer: drop-pkt")
+			}
+		}
+		if allowSend {
+			err = addEnvelopeAndWriteWss(jdata, false)
+			if err != nil {
+				log.Errorf("ch(%d)-%d, server wrote error %v", idx, chNum, err)
+				break
+			}
 		}
 	}
 	if !isClosed(done) {
@@ -721,4 +744,17 @@ func processTCPcmd(opt string, remotePorts map[int]int) (bool, int, map[int]int)
 	}
 
 	return true, tcpclientCnt, remotePorts
+}
+
+func checkTCPRateLimit(msgSize int) bool {
+	now := time.Now()
+	var ok bool
+	res := tcpRl.ReserveN(now, msgSize)
+	if !res.OK() {
+		ok = false
+	} else {
+		ok = true
+		time.Sleep(res.Delay())
+	}
+	return ok
 }

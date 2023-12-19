@@ -25,15 +25,11 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/coreos/go-semver/semver"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/shirou/gopsutil/mem"
 	"github.com/shirou/gopsutil/process"
 	"golang.org/x/sys/unix"
-)
-
-const (
-	tarMaxBytes = 512000000 // max tar directory of 512 Mbytes data
-	tarTmpDir   = "/persist/tmp/"
 )
 
 var tarBlockDirs = []string{
@@ -45,6 +41,11 @@ var tarBlockDirs = []string{
 var tarBlockFileSuffix = []string{
 	".key.pem",
 	".key",
+}
+
+type logSearchRange struct {
+	starttime int64
+	endtime   int64
 }
 
 func runSystem(cmds cmdOpt, sysOpt string) {
@@ -72,7 +73,7 @@ func runSystem(cmds cmdOpt, sysOpt string) {
 		} else if strings.HasPrefix(opt, "ps/") || opt == "ps" {
 			runPS(opt)
 		} else if strings.HasPrefix(opt, "cp/") {
-			runCopy(opt)
+			runCopy(opt, nil)
 		} else if strings.HasPrefix(opt, "cat/") {
 			runCat(opt, cmds.Extraline)
 		} else if strings.HasPrefix(opt, "du/") {
@@ -96,7 +97,7 @@ func runSystem(cmds cmdOpt, sysOpt string) {
 		} else if strings.HasPrefix(opt, "dmesg") {
 			getDmesg()
 		} else if strings.HasPrefix(opt, "tar/") {
-			getTarFile(opt)
+			getTarFile(opt, nil)
 		} else if strings.HasPrefix(opt, "pprof") {
 			togglePprof(opt)
 		} else {
@@ -1014,7 +1015,18 @@ func stopPprof() {
 	}
 }
 
-func getTarFile(opt string) {
+func getTarFile(opt string, timeRange *logSearchRange) {
+	c, err := compareVersions(tarMinVersion, queryVersion)
+	if err != nil {
+		fmt.Printf("Version string invalid %s\n", queryVersion)
+		return
+	}
+
+	if c > 0 {
+		fmt.Printf("EdgeView Client Version %s for this operation is not supported\nUpdate to latest Edgeview Client\n", queryVersion)
+		return
+	}
+
 	execCmd := strings.SplitN(opt, "tar/", 2)
 	if len(execCmd) != 2 {
 		fmt.Printf("tar needs a / and path input\n")
@@ -1035,68 +1047,66 @@ func getTarFile(opt string) {
 		return
 	}
 
+	var duSizeBytes int64
+	if timeRange == nil { // case of copy log files for a time range, we don't know the size
+		duSizeBytes = du(source, fi)
+	}
 	ok := checkBlockedDirs(source)
 	if !ok {
 		fmt.Printf("the directory %s can not be tarred\n", source)
 		return
 	}
 
-	// check the directory size not to exceed the max
-	sizeBytes := du(source, fi)
-	if sizeBytes > tarMaxBytes {
-		fmt.Printf("directory size %d, exceeds maximum %d\n", sizeBytes, tarMaxBytes)
-		return
-	}
 	dirs := strings.Split(source, "/")
-	if _, err := os.Stat(tarTmpDir); err != nil && os.IsNotExist(err) {
-		if err := os.MkdirAll(tarTmpDir, 0755); err != nil {
-			fmt.Printf("can not create %s\n", tarTmpDir)
-			return
-		}
-	}
-	targzfileName := tarTmpDir
+	var tarfileName string
 	for _, d := range dirs {
 		if d == "" {
 			continue
 		}
-		targzfileName = targzfileName + d + "."
+		tarfileName = tarfileName + d + "."
 	}
-	targzfileName = targzfileName + strconv.FormatInt(time.Now().Unix(), 10) + ".tar"
-	archiveName := filepath.Base(targzfileName)
-	targzfileName = targzfileName + ".gz"
+	tarfileName = tarfileName + strconv.FormatInt(time.Now().Unix(), 10) + ".tar"
+	archiveName := filepath.Base(tarfileName)
 
-	targzFile, err := os.Create(targzfileName)
+	err = createArchive(source, archiveName, timeRange, duSizeBytes)
 	if err != nil {
-		log.Errorf("can not create tar file")
-		return
-	}
-
-	err = createArchive(source, archiveName, targzFile)
-	targzFile.Close()
-	if err != nil {
-		_ = os.Remove(targzfileName)
 		log.Errorf("tar oper error: %v", err)
 		return
 	}
-
-	// copy the <name>.tar.gz file back to the user
-	runCopy("cp/" + targzfileName)
-	_ = os.Remove(targzfileName)
 }
 
-func createArchive(source, archiveName string, buf io.Writer) error {
-	gzipWriter := gzip.NewWriter(buf)
-	gzipWriter.Name = archiveName
-	defer gzipWriter.Close()
+func createArchive(source, archiveName string, timeRange *logSearchRange, dirSize int64) error {
+	// Setup copy operation to the client side
+	err := runCopy("cp/"+archiveName, &dirSize)
+	if err != nil {
+		return fmt.Errorf("createArchive: copy message failed %v", err)
+	}
 
-	tarball := tar.NewWriter(gzipWriter)
+	// Handle files transfer w/o creating temp tarfile
+
+	var tarBuffer bytes.Buffer
+	var totalSendSize int
+	tarball := tar.NewWriter(&tarBuffer)
 	defer tarball.Close()
 
 	baseDir := filepath.Base(source)
-	err := filepath.Walk(source,
+	err = filepath.Walk(source,
 		func(path string, info os.FileInfo, err error) error {
 			if err != nil {
 				return err
+			}
+
+			// if we lost client during tar op, stop sending and exit the walk
+			if lostClientPeer {
+				err = fmt.Errorf("createArchive: client is gone. Stop transferring files")
+				log.Noticef("%v", err)
+				return err
+			}
+			if timeRange != nil { // for copy-logfiles, only if time range matches
+				fileTime := info.ModTime().Unix()
+				if fileTime > timeRange.starttime || fileTime < timeRange.endtime {
+					return nil
+				}
 			}
 			// skip file with suffix of '.key.pem' or '.key'
 			ok := checkBlockedFileSuffix(info.Name())
@@ -1110,9 +1120,10 @@ func createArchive(source, archiveName string, buf io.Writer) error {
 			}
 
 			// Check if the file still exists before opening it
-			if _, err := os.Stat(path); os.IsNotExist(err) {
-				// File does not exist, skip it
-				log.Noticef("createArchive: not exist, continue %v", err)
+			if _, err := os.Stat(path); err != nil {
+				if !os.IsNotExist(err) {
+					log.Noticef("createArchive: file stat error, continue %v", err)
+				}
 				return nil
 			}
 
@@ -1124,7 +1135,7 @@ func createArchive(source, archiveName string, buf io.Writer) error {
 
 			header.Name = filepath.Join(baseDir, strings.TrimPrefix(path, source))
 			if err := tarball.WriteHeader(header); err != nil {
-				log.Noticef("createArchive: header write error, continue %v", err)
+				log.Noticef("createArchive: tarball header write error, continue %v", err)
 				return nil
 			}
 
@@ -1148,50 +1159,67 @@ func createArchive(source, archiveName string, buf io.Writer) error {
 			}
 			defer file.Close()
 
-			_, err = io.Copy(tarball, file)
-			if err != nil {
-				log.Noticef("createArchive: io copy error %v", err)
+			log.Functionf("createArchive: file open for %s, header %+v", file.Name(), header)
+
+			buf := make([]byte, chunkSize)
+			remainingBytes := header.Size
+			for {
+				n, err := file.Read(buf)
+				if err == io.EOF {
+					break
+				}
+				if err != nil {
+					log.Noticef("createArchive: file read error %v", err)
+					break
+				}
+				if n > 0 {
+					// Check if the remaining bytes to write is smaller than the read buffer size
+					// In the cases like newlog current log file, the file size can increase from the
+					// time the header Size was written. Write more bytes than the header size will
+					// cause an error in tar write.
+					if int64(n) > remainingBytes {
+						n = int(remainingBytes)
+					}
+					_, err := tarball.Write(buf[:n])
+					if err != nil {
+						log.Noticef("createArchive: size %d, write error %v", n, err)
+						return err
+					}
+					remainingBytes -= int64(n)
+				}
+
+				tarball.Flush()
+				tardata := tarBuffer.Bytes()
+				err = addEnvelopeAndWriteWss(tardata, false)
+				if err != nil {
+					return err
+				}
+				msgSize := len(tardata)
+				totalSendSize += msgSize
+				if !disableRateLimit { // do rate-limit similar to in runCopy() function
+					time.Sleep(getSleepDuration(msgSize))
+				}
+				tarBuffer.Reset()
+				if remainingBytes == 0 { // tar header size has been reached
+					break
+				}
 			}
+
 			return nil
 		})
-	return err
-}
-
-// ungzipFile - runs on the client side
-func ungzipFile(fname string) {
-	source := fileCopyDir + fname
-	reader, err := os.Open(source)
 	if err != nil {
-		fmt.Printf("ungzip open error %v\n", err)
-		return
+		return err
 	}
-	defer reader.Close()
 
-	archive, err := gzip.NewReader(reader)
+	// send text message over websocket on tar copy is done
+	log.Noticef("createArchive: tar done with size %d, write msg over to client", totalSendSize)
+	err = addEnvelopeAndWriteWss([]byte(tarCopyDoneMsg+strconv.Itoa(totalSendSize)+"+++"), true)
 	if err != nil {
-		fmt.Printf("ungzip error %v\n", err)
-		return
+		fmt.Printf("sign and write error: %v\n", err)
+		return err
 	}
-	defer archive.Close()
 
-	target := filepath.Join(fileCopyDir, archive.Name)
-	writer, err := os.Create(target)
-	if err != nil {
-		fmt.Printf("ungzip create file error %v\n", err)
-		return
-	}
-	defer writer.Close()
-
-	_, err = io.Copy(writer, archive)
-	if err != nil {
-		fmt.Printf("ungzip copy error %v\n", err)
-		return
-	}
-	ifile, err := os.Stat(target)
-	if err == nil {
-		fmt.Printf("tar file (size %d) generated: %s\n", ifile.Size(), target)
-	}
-	_ = os.Remove(source)
+	return nil
 }
 
 // checkBlockedDirs - return false if the dirName is in blocked list
@@ -1263,7 +1291,7 @@ func runTechSupport(cmds cmdOpt, isLocal bool) {
 			_ = os.Remove(types.EdgeviewPath + "run-techsupport")
 			return
 		}
-		runCopy("cp/" + gzipfileName)
+		runCopy("cp/"+gzipfileName, nil)
 	} else {
 		log.Errorf("gzip techsupport file failed, %v", err)
 		if isLocal {
@@ -1396,4 +1424,19 @@ func getDevMemStats() {
 
 func bToMb(b uint64) uint64 {
 	return b / 1024 / 1024
+}
+
+// return < 0, peer version is higher
+// return > 0, peer version is lower
+// return == 0, same version
+func compareVersions(myVersion, peerVersion string) (int, error) {
+	v1, err := semver.NewVersion(myVersion)
+	if err != nil {
+		return 0, fmt.Errorf("version string error")
+	}
+	v2, err := semver.NewVersion(peerVersion)
+	if err != nil {
+		return 0, fmt.Errorf("version string error")
+	}
+	return v1.Compare(*v2), nil
 }

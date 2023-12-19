@@ -111,8 +111,9 @@ func setupWebC(hostname, token string, u url.URL, isServer bool) bool {
 			}
 			c, resp, err := tlsDialer.Dial(u.String(),
 				http.Header{
-					"X-Session-Token": []string{token},
-					"X-Hostname":      []string{hostname + serverStr}},
+					"X-Session-Token":    []string{token},
+					"X-Hostname":         []string{hostname + serverStr},
+					"X-EdgeView-Version": []string{edgeViewVersion}},
 			)
 			if err != nil {
 				if resp == nil {
