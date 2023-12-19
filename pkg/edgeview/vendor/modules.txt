@@ -1,6 +1,9 @@
 # github.com/cenkalti/backoff v2.2.1+incompatible
 ## explicit
 github.com/cenkalti/backoff
+# github.com/coreos/go-semver v0.3.1
+## explicit; go 1.8
+github.com/coreos/go-semver/semver
 # github.com/eriknordmark/ipinfo v0.0.0-20230728132417-2d8f4da903d7
 ## explicit
 github.com/eriknordmark/ipinfo
@@ -100,6 +103,9 @@ golang.org/x/net/ipv6
 ## explicit; go 1.17
 golang.org/x/sys/unix
 golang.org/x/sys/windows
+# golang.org/x/time v0.3.0
+## explicit
+golang.org/x/time/rate
 # google.golang.org/protobuf v1.28.1
 ## explicit; go 1.11
 google.golang.org/protobuf/encoding/prototext

@@ -22,24 +22,34 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/pubsub/socketdriver"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/sirupsen/logrus"
+	"golang.org/x/time/rate"
 )
 
 var (
-	runOnServer bool // container running inside remote linux host
-	querytype   string
-	cmdTimeout  string
-	log         *base.LogObject
-	trigPubchan chan bool
-	rePattern   *regexp.Regexp
-	evStatus    types.EdgeviewStatus
+	runOnServer      bool // container running inside remote linux host
+	querytype        string
+	queryVersion     string
+	cmdTimeout       string
+	log              *base.LogObject
+	trigPubchan      chan bool
+	rePattern        *regexp.Regexp
+	evStatus         types.EdgeviewStatus
+	tcpRl            *rate.Limiter
+	disableRateLimit bool // ratelimit can be disabled by the message from dispatcher
+	lostClientPeer   bool // dispatcher will send 'no device online' if peer lost
 )
 
 const (
 	agentName       = "edgeview"
 	closeMessage    = "+++Done+++"
-	edgeViewVersion = "0.8.2"
+	tarCopyDoneMsg  = "+++TarCopyDone+++"
+	edgeViewVersion = "0.8.4" // set the version now to 0.8.4
 	cpLogFileString = "copy-logfiles"
 	clientIPMsg     = "YourEndPointIPAddr:"
+	serverRateMsg   = "ServerRateLimit:disable"
+	tcpPktRate      = MbpsToBytes * 5 * 1.2 // 125k Bytes * 5 * 1.2, or 5Mbits add 20%
+	tcpPktBurst     = 65536                 // burst allow bytes
+	tarMinVersion   = "0.8.4"               // for tar operation, expect client to have newer version
 )
 
 type cmdOpt struct {
@@ -283,6 +293,9 @@ func main() {
 	pubStatusTimer := time.NewTimer(1 * time.Second)
 	pubStatusTimer.Stop()
 
+	// 5Mbps and have 20% increase fudge factor for transmission
+	tcpRl = rate.NewLimiter(tcpPktRate, tcpPktBurst)
+
 	// edgeview container can run in 2 different modes:
 	// 1) websocket server mode, runs on device: 'runOnServer' is set
 	// 2) websocket client mode, runs on operator/laptop side
@@ -324,10 +337,19 @@ func main() {
 				if !isJSON {
 					if strings.Contains(string(msg), "no device online") {
 						log.Tracef("read: peer not there yet, continue")
+						lostClientPeer = true
+						if isTCPServer {
+							close(tcpServerDone)
+						}
 					} else {
 						ok := checkClientIPMsg(string(msg))
 						if ok {
 							log.Tracef("My endpoint IP: %s\n", basics.evendpoint)
+						} else {
+							if strings.HasPrefix(string(msg), serverRateMsg) {
+								disableRateLimit = true
+								log.Noticef("Server Ratelimit disabled")
+							}
 						}
 					}
 					continue
@@ -336,6 +358,7 @@ func main() {
 					log.Noticef("authen failed on json msg")
 					continue
 				}
+				lostClientPeer = false
 
 				if mtype == websocket.TextMessage {
 					if strings.Contains(string(message), "no device online") ||
@@ -390,6 +413,11 @@ func main() {
 				}
 				fmt.Printf("Client%s endpoint IP: %s\n", instStr, basics.evendpoint)
 				queryCmds.ClientEPAddr = basics.evendpoint
+			} else {
+				if strings.HasPrefix(string(msg), serverRateMsg) {
+					disableRateLimit = true
+					log.Noticef("Client Ratelimit disabled")
+				}
 			}
 		}
 		if !clientSendQuery(queryCmds) {
@@ -408,6 +436,9 @@ func main() {
 
 				isJSON, verifyOK, message := verifyEnvelopeData(msg)
 				if !isJSON {
+					if strings.HasPrefix(string(msg), serverRateMsg) {
+						continue
+					}
 					fmt.Printf("%s\nreceive message done\n", string(msg))
 					done <- struct{}{}
 					break
@@ -499,6 +530,7 @@ func goRunQuery(cmds cmdOpt) {
 func parserAndRun(cmds cmdOpt) {
 	cmdTimeout = cmds.Timerange
 	querytype = cmds.Logtype
+	queryVersion = cmds.Version
 
 	getBasics()
 	//
