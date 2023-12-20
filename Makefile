@@ -414,6 +414,7 @@ yetus:
 	mkdir -p yetus-output
 	docker run --rm -v $(CURDIR):/src:delegated,z ghcr.io/apache/yetus:0.15.0 \
 		--basedir=/src \
+		--test-parallel=true \
 		--dirty-workspace \
 		--empty-patch \
 		--plugins=all \
