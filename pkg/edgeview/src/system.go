@@ -73,7 +73,7 @@ func runSystem(cmds cmdOpt, sysOpt string) {
 		} else if strings.HasPrefix(opt, "ps/") || opt == "ps" {
 			runPS(opt)
 		} else if strings.HasPrefix(opt, "cp/") {
-			runCopy(opt, nil)
+			_ = runCopy(opt, nil)
 		} else if strings.HasPrefix(opt, "cat/") {
 			runCat(opt, cmds.Extraline)
 		} else if strings.HasPrefix(opt, "du/") {
@@ -1291,7 +1291,7 @@ func runTechSupport(cmds cmdOpt, isLocal bool) {
 			_ = os.Remove(types.EdgeviewPath + "run-techsupport")
 			return
 		}
-		runCopy("cp/"+gzipfileName, nil)
+		_ = runCopy("cp/"+gzipfileName, nil)
 	} else {
 		log.Errorf("gzip techsupport file failed, %v", err)
 		if isLocal {
