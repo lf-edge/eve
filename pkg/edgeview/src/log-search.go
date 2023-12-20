@@ -378,7 +378,11 @@ func unpackLogfiles(path string, files []dirEntry) {
 
 	// remove the gzip files and directories.
 	for _, f := range files {
-		err := os.Remove(path + "/" + strings.TrimPrefix(f.path, path))
+		relPath, err := filepath.Rel(path, f.path)
+		if err != nil {
+			fmt.Printf("check gzip file path error %v\n", err)
+		}
+		err = os.Remove(filepath.Join(path, relPath))
 		if err != nil {
 			fmt.Printf("delete gzip file error %v\n", err)
 		}

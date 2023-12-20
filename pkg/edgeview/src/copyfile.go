@@ -173,6 +173,8 @@ func runCopy(opt string, tarDirSize *int64) error {
 	<-ahead
 	if tarDirSize != nil { // the caller will handle the file transfer operation
 		log.Functionf("runCopy: received from client to go ahead")
+		// need also to shut down above go routine
+		close(done)
 		return nil
 	}
 
@@ -352,7 +354,14 @@ func recvCopyFile(msg []byte, fstatus *fileCopyStatus, mtype int) {
 			}
 		}
 
-		err := os.Chtimes(fileCopyDir+fstatus.filename, fstatus.modTime, fstatus.modTime)
+		fileNameClean := filepath.Clean(fstatus.filename)
+		path := filepath.Join(fileCopyDir, fstatus.filename)
+		path = filepath.Clean(path)
+		if !strings.HasPrefix(path, fileCopyDir) {
+			fmt.Printf("path name has unexpected path inside\n")
+			return
+		}
+		err := os.Chtimes(path, fstatus.modTime, fstatus.modTime)
 		if err != nil {
 			fmt.Printf("modify file time: %v\n", err)
 		}
@@ -368,12 +377,12 @@ func recvCopyFile(msg []byte, fstatus *fileCopyStatus, mtype int) {
 			// then convert the tar file and content of log gzip files into a single text file.
 			// Otherwise if the size is large, leave the tar file, let user to uncompress later
 			if fstatus.currSize < logToTextMaxSize {
-				untarLogfile(fstatus.filename, fstatus.currSize)
+				untarLogfile(fileNameClean, fstatus.currSize)
 			} else {
-				fmt.Printf("\nfile size %d, saved at %s\n", fstatus.currSize, fileCopyDir+fstatus.filename)
+				fmt.Printf("\nfile size %d, saved at %s\n", fstatus.currSize, fileCopyDir+fileNameClean)
 			}
 		}
-		transferStr := fmt.Sprintf("\n file %s size %d", fstatus.filename, fstatus.currSize)
+		transferStr := fmt.Sprintf("\n file %s size %d", fileNameClean, fstatus.currSize)
 		if serverSentSize != 0 && fstatus.currSize != int64(serverSentSize) {
 			transferStr = transferStr + fmt.Sprintf(", server sent %d", serverSentSize)
 		}
@@ -437,22 +446,40 @@ func sendCopyDone(context string, err error) {
 // with sequential log entries for dev and each of the apps
 // this is done only if the tar file size is not too large
 func untarLogfile(downloadedFile string, filesize int64) {
+	// the downloadedFile is already been path cleaned by the caller
 	fileStr := strings.SplitN(downloadedFile, ".tar", 2)
 	if len(fileStr) != 2 {
 		return
 	}
 	logSaveDir := fileCopyDir + fileStr[0]
-	fmt.Printf("\n tarfile size %d, untar log files at %s\n\n", filesize, logSaveDir)
-	cmdStr := "cd " + fileCopyDir + "; tar xvf " + downloadedFile
-	untarCmd := exec.Command("sh", "-c", cmdStr)
+	logSaveDir = filepath.Clean(logSaveDir)
+	if !strings.HasPrefix(logSaveDir, fileCopyDir) {
+		fmt.Printf("untarLogfile: unexpected path %s\n", logSaveDir)
+		return
+	}
+	fmt.Printf("\n tarfile size %d, untar log files at %s for %s\n\n", filesize, logSaveDir, downloadedFile)
+
+	tarfile := filepath.Clean(fileCopyDir + downloadedFile)
+	if !strings.HasPrefix(tarfile, fileCopyDir) {
+		fmt.Printf("untarLogfile: unexpected path %s\n", tarfile)
+		return
+	}
+	cmdArgs := []string{"xvf", tarfile, "-C", fileCopyDir}
+	untarCmd := exec.Command("tar", cmdArgs[:]...)
+
 	err := untarCmd.Run()
 	if err != nil {
 		fmt.Printf("untar error: %v\n", err)
 	} else {
-		_ = os.Remove(fileCopyDir + downloadedFile)
+		cleanedFile := filepath.Clean(fileCopyDir + downloadedFile)
+		if !strings.HasPrefix(cleanedFile, fileCopyDir) {
+			fmt.Printf("untarLogfile: unexpected path %s\n", cleanedFile)
+			return
+		}
+		_ = os.Remove(cleanedFile)
 	}
 
-	newlogDir := fileCopyDir + "newlog"
+	newlogDir := filepath.Join(fileCopyDir, "newlog")
 	_, err = os.Stat(newlogDir)
 	if err == nil {
 		err = os.Rename(newlogDir, logSaveDir)
@@ -478,6 +505,10 @@ func untarLogfile(downloadedFile string, filesize int64) {
 		}
 		return nil
 	})
+	if err != nil {
+		fmt.Printf("skip decompress logfiles, error: %v\n", err)
+		return
+	}
 	unpackLogfiles(logSaveDir, files)
 }
 
