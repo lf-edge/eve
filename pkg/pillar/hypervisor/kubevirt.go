@@ -241,24 +241,22 @@ func (ctx kubevirtContext) CreateVMIConfig(domainName string, config types.Domai
 	}
 
 	// Set Network
-	intfs := make([]v1.Interface, len(kubeNADs)+1)
-	nads := make([]v1.Network, len(kubeNADs)+1)
-	intfs[0] = v1.Interface{
-		Name:                   "default",
-		InterfaceBindingMethod: v1.InterfaceBindingMethod{Bridge: &v1.InterfaceBridge{}},
-	}
-	nads[0] = *v1.DefaultPodNetwork()
+
+	// XXX for now, skip the default network interface for VMI, it seems some type of VM
+	// it's 2nd interface came up without IP address unless manually run dhclient on it
+	intfs := make([]v1.Interface, len(kubeNADs))
+	nads := make([]v1.Network, len(kubeNADs))
 
 	if len(kubeNADs) > 0 {
 		for i, nad := range kubeNADs {
 			intfname := "net" + strconv.Itoa(i+1)
-			intfs[i+1] = v1.Interface{
+			intfs[i] = v1.Interface{
 				Name:                   intfname,
 				MacAddress:             nad.Mac,
 				InterfaceBindingMethod: v1.InterfaceBindingMethod{Bridge: &v1.InterfaceBridge{}},
 			}
 
-			nads[i+1] = v1.Network{
+			nads[i] = v1.Network{
 				Name: intfname,
 				NetworkSource: v1.NetworkSource{
 					Multus: &v1.MultusNetwork{
