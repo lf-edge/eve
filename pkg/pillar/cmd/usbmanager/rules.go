@@ -289,7 +289,7 @@ func (*usbNetworkAdapterForbidPassthroughRule) netDevPathsImpl() []string {
 			panic(err)
 		}
 
-		// remove net/enp0s20f0u2u1/ and prefix with syfs dir
+		// remove net/enp0s20f0u2u1/ and prefix with sysfs dir
 		absPath, err := filepath.Abs(filepath.Join(netDir, relPath, "..", ".."))
 		if err != nil {
 			panic(err)

@@ -86,6 +86,9 @@ func (uc *usbmanagerController) addUSBDevice(ud usbdevice) {
 	uc.Lock()
 	defer uc.Unlock()
 
+	log.Noticef("add usb device usbaddr: %s usbproduct: %s pci: %s", ud.busnumAndPortnumString(),
+		ud.vendorAndproductIDString(),
+		ud.usbControllerPCIAddress)
 	uc.usbpassthroughs.addUsbdevice(&ud)
 	vm := uc.ruleEngine.apply(ud)
 	log.Tracef("add usb device %+v vm=%v; rules: %s\n", ud, vm, uc.ruleEngine.String())
@@ -100,6 +103,10 @@ func (uc *usbmanagerController) addUSBDevice(ud usbdevice) {
 func (uc *usbmanagerController) removeUSBDevice(ud usbdevice) {
 	uc.Lock()
 	defer uc.Unlock()
+	log.Noticef("remove usb device usbaddr: %s usbproduct: %s pci: %s", ud.busnumAndPortnumString(),
+		ud.vendorAndproductIDString(),
+		ud.usbControllerPCIAddress)
+
 	vm := uc.ruleEngine.apply(ud)
 	log.Tracef("remove usb device %+v vm=%v; rules: %s\n", ud, vm, uc.ruleEngine.String())
 	if vm != nil {
