@@ -209,7 +209,7 @@ func (handler *volumeHandlerCSI) CreateVolume() (string, error) {
 				return pvcName, errors.New(errStr)
 			}
 			// Convert qcow2 to PVC
-			err = kubeapi.RolloutDiskToPVC(createContext, handler.log, false, qcowFile, pvcName, true)
+			err = kubeapi.RolloutDiskToPVC(createContext, handler.log, false, qcowFile, pvcName, false)
 
 			if err != nil {
 				errStr := fmt.Sprintf("Error converting %s to PVC %s: %v",
