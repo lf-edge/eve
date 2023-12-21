@@ -104,8 +104,6 @@ func (ups *usbpassthroughs) addUsbpassthrough(up *usbpassthrough) {
 func (ups *usbpassthroughs) delUsbpassthrough(up *usbpassthrough) {
 	delete(ups.usbpassthroughs, up.String())
 	delete(ups.usbpassthroughsByVM, up.vm.qmpSocketPath)
-
-	ups.delVM(up.vm)
 }
 
 func (ups usbpassthroughs) usbpassthroughsOfVM(vm virtualmachine) map[string]*usbpassthrough {

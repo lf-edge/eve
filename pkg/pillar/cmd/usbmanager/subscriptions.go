@@ -3,6 +3,7 @@
 package usbmanager
 
 import (
+	"fmt"
 	"reflect"
 	"time"
 
@@ -93,6 +94,9 @@ func (usbCtx *usbmanagerContext) handleDomainStatusModify(_ interface{}, _ strin
 
 	_, isRunningDomain := usbCtx.runningDomains[newstatus.DomainName]
 
+	log.Noticef("domain modify (isRunning %v)'%s' state '%s' adapters '%+v'\n",
+		isRunningDomain, newstatus.DisplayName, newstatus.State, newstatus.IoAdapterList)
+
 	if newstatus.State == types.RUNNING && !isRunningDomain {
 		usbCtx.runningDomains[newstatus.DomainName] = struct{}{}
 		usbCtx.handleDomainStatusRunning(newstatus)
@@ -135,7 +139,7 @@ func (usbCtx *usbmanagerContext) handleDomainStatusDelete(_ interface{}, _ strin
 		log.Warnf("status not OK, got %+v type %T\n", statusArg, statusArg)
 		return
 	}
-	log.Tracef("display name: %+v\n", status.DisplayName)
+	log.Noticef("domain delete '%s' state '%s' adapters '%+v'\n", status.DisplayName, status.State, status.IoAdapterList)
 
 	usbCtx.handleDomainStatusNotRunning(status)
 }
@@ -149,11 +153,21 @@ func (usbCtx *usbmanagerContext) handleDomainStatusCreate(_ interface{}, _ strin
 		return
 	}
 
-	log.Tracef("display name: %+v\n", status.DisplayName)
+	log.Noticef("domain create '%s' state '%s' adapters '%+v'\n", status.DisplayName, status.State, status.IoAdapterList)
 
 	if status.State == types.RUNNING {
 		usbCtx.handleDomainStatusRunning(status)
 	}
+}
+
+func ioBundleLogString(adapter types.IoBundle) string {
+	return fmt.Sprintf("'%s' USBAddr '%s' USBProduct '%s' PCI '%s' Assigngrp '%s' Parentassigngrp '%s'",
+		adapter.Phylabel,
+		adapter.UsbAddr,
+		adapter.UsbProduct,
+		adapter.PciLong,
+		adapter.AssignmentGroup,
+		adapter.ParentAssignmentGroup)
 }
 
 func (usbCtx *usbmanagerContext) handleAssignableAdaptersCreate(_ interface{}, _ string,
@@ -165,6 +179,7 @@ func (usbCtx *usbmanagerContext) handleAssignableAdaptersCreate(_ interface{}, _
 	}
 
 	for _, adapter := range assignableAdapters.IoBundleList {
+		log.Noticef("AA create, add %s", ioBundleLogString(adapter))
 		usbCtx.controller.addIOBundle(adapter)
 	}
 }
@@ -198,14 +213,20 @@ func (usbCtx *usbmanagerContext) handleAssignableAdaptersModify(_ interface{}, _
 	for adapterName, adapter := range oldAssignableAdaptersMap {
 		_, ok := newAssignableAdaptersMap[adapterName]
 		if !ok {
+			log.Noticef("AA modify, add %s", ioBundleLogString(adapter))
 			usbCtx.controller.addIOBundle(adapter)
+		} else {
+			log.Noticef("AA modify, not adding '%s'", adapter.Phylabel)
 		}
 	}
 
 	for adapterName, adapter := range newAssignableAdaptersMap {
 		_, ok := oldAssignableAdaptersMap[adapterName]
 		if !ok {
+			log.Noticef("AA modify, remove %s", ioBundleLogString(adapter))
 			usbCtx.controller.removeIOBundle(adapter)
+		} else {
+			log.Noticef("AA modify, not removing '%s'", adapter.Phylabel)
 		}
 	}
 }
@@ -220,6 +241,7 @@ func (usbCtx *usbmanagerContext) handleAssignableAdaptersDelete(_ interface{}, _
 	}
 
 	for _, adapter := range assignableAdapters.IoBundleList {
+		log.Noticef("AA delete, remove %s", ioBundleLogString(adapter))
 		usbCtx.controller.removeIOBundle(adapter)
 	}
 }

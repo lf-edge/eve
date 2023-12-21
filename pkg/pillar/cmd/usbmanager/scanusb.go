@@ -153,6 +153,11 @@ func ueventFile2usbDeviceImpl(ueventFilePath string, ueventFp io.Reader) *usbdev
 		}
 	}
 
+	if sc.Err() != nil {
+		log.Warnf("Parsing of %s failed: %v", ueventFilePath, sc.Err())
+		return nil
+	}
+
 	if !busnumSet || !devnumSet || !productSet {
 		return nil
 	}
