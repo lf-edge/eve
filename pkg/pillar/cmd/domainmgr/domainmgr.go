@@ -1973,10 +1973,9 @@ func configToStatus(ctx *domainContext, config types.DomainConfig,
 				status.OCIConfigDir = ds.FileLocation
 			}
 			ds.Devtype = ""
-			// We don't mount 9P in kubevirt eve, all devices are PVC and mounted as block devices
-			if !ctx.hvTypeKube {
-				need9P = true
-			}
+
+			need9P = true
+
 		} else {
 			ds.Devtype = "hdd"
 			if dc.Format == zconfig.Format_ISO {

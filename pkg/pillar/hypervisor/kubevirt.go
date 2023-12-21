@@ -853,7 +853,7 @@ func (ctx kubevirtContext) GetDomsCPUMem() (map[string]types.DomainMetric, error
 		// check and get the kubernetes pod's metrics
 		checkPodMetrics(ctx, res, hasEmptyRes)
 	}
-	logrus.Infof("GetDomsCPUMem: %d VMs: %+v, podnum %d", len(ctx.vmiList), res, hasEmptyRes)
+	logrus.Debugf("GetDomsCPUMem: %d VMs: %+v, podnum %d", len(ctx.vmiList), res, hasEmptyRes)
 	return res, nil
 }
 
