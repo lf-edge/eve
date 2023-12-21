@@ -88,10 +88,11 @@ func publishAppKubeNetStatus(ctx *zedkubeContext, ebStatus *EveClusterInstStatus
 	log.Noticef("publishAppKubeNetStatus: for eve-bridge %v, ni-status %v, nistatus uuid %v, appnet len %d",
 		ebStatus, status, status.UUIDandVersion.UUID, len(ctx.appKubeNetStatus))
 	for ainame, akStatus := range ctx.appKubeNetStatus {
-		log.Noticef("publishAppKubeNetStatus:(%s) akStatus size %d", ainame, len(akStatus.ULNetworkStatusList))
+		log.Noticef("publishAppKubeNetStatus:(%s) akStatus size %d, podname %s", ainame, len(akStatus.ULNetworkStatusList), ebStatus.PodName)
 		for i, ulstatus := range akStatus.ULNetworkStatusList {
 			log.Noticef("publishAppKubeNetStatus:(%d) ulcfg network %v", i, ulstatus.Network)
-			if ulstatus.Network.String() == status.UUIDandVersion.UUID.String() {
+			if ulstatus.Network.String() == status.UUIDandVersion.UUID.String() &&
+				strings.Contains(ebStatus.PodName, ainame) {
 				var err error
 				ulx := ulstatus
 				ulx.Vif = ebStatus.VifName
