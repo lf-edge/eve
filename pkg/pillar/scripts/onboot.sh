@@ -115,6 +115,21 @@ if [ ! -d $PERSISTDIR/status ]; then
     mkdir $PERSISTDIR/status
 fi
 
+percent_used() {
+    res=$(zfs list -pH -o available,used "$1")
+    # shellcheck disable=SC2181
+    if [ $? = 0 ]; then
+        # shellcheck disable=SC2086
+        avail=$(echo $res | cut -d\  -f1)
+        # shellcheck disable=SC2086
+        used=$(echo $res | cut -d\  -f2)
+        echo $((100*used/(avail+used)))
+    else
+        df /"$1" |awk '{printf("%d",$5);}'
+    fi
+}
+
+
 # Checking for low diskspace at bootup. If used percentage of
 # /persist directory is more than 70% then we will remove the
 # following sub directories:
@@ -123,23 +138,23 @@ fi
 # /persist/newlog/devUpload/*
 # /persist/newlog/keepSentQueue/*
 # /persist/newlog/failedUpload/*
-diskspace_used=$(df /persist |awk '/\/dev\//{printf("%d",$5);}')
+diskspace_used=$(percent_used persist)
 echo "Used percentage of /persist: $diskspace_used"
 if [ "$diskspace_used" -ge "$DISKSPACE_RECOVERY_LIMIT" ]
 then
     echo "Used percentage of /persist is $diskspace_used more than the limit $DISKSPACE_RECOVERY_LIMIT"
-    for DIR in log newlog/keepSentQueue newlog/failedUpload newlog/appUpload newlog/devUpload
+    for DIR in log pubsub-large netdump newlog/keepSentQueue newlog/failedUpload newlog/appUpload newlog/devUpload containerd-system-root vault/containerd vault/downloader vault/verifier agentdebug # XXX vault/volumes clear/volumes
     do
         dir_del=$PERSISTDIR/$DIR
         rm -rf "${dir_del:?}/"*
-        diskspace_used=$(df /persist |awk '/\/dev\//{printf("%d",$5);}')
+        diskspace_used=$(percent_used persist)
         echo "Used percentage of /persist is $diskspace_used after clearing $dir_del"
         if [ "$diskspace_used" -le "$DISKSPACE_RECOVERY_LIMIT" ]
         then
             break
         fi
     done
-    diskspace_used=$(df /persist |awk '/\/dev\//{printf("%d",$5);}')
+    diskspace_used=$(percent_used persist)
     echo "Used percentage of /persist after recovery: $diskspace_used"
 fi
 
