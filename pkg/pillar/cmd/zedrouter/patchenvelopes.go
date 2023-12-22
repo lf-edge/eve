@@ -366,6 +366,7 @@ func (pes *PatchEnvelopes) EnvelopesInUsage() []string {
 // disappear on zedrouter
 type peInfoToDisplay struct {
 	PatchID     string
+	Version     string
 	BinaryBlobs []types.BinaryBlobCompleted
 	VolumeRefs  []types.BinaryBlobVolumeRef
 }
@@ -391,6 +392,7 @@ func patchEnvelopesJSONForAppInstance(pe types.PatchEnvelopeInfoList) ([]byte, e
 
 		toDisplay[i] = peInfoToDisplay{
 			PatchID:     envelope.PatchID,
+			Version:     envelope.Version,
 			BinaryBlobs: binaryBlobs,
 			VolumeRefs:  envelope.VolumeRefs,
 		}
