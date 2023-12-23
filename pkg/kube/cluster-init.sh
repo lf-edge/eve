@@ -4,7 +4,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 K3S_VERSION=v1.26.3+k3s1
-KUBEVIRT_VERSION=v0.59.0
+KUBEVIRT_VERSION=v1.1.0
 LONGHORN_VERSION=v1.4.2
 CDI_VERSION=v1.56.0
 Node_IP=""
@@ -135,6 +135,7 @@ setup_prereqs () {
         wait_for_default_route
         check_network_connection
         wait_for_device_uuid
+        chmod o+rw /dev/null
 }
 
 apply_longhorn_disk_config() {

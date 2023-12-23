@@ -185,8 +185,9 @@ func (z *zedrouter) doActivateAppNetwork(config types.AppNetworkConfig,
 			// XXX temp hack until zedrouter changes
 			// to avoid after restart, getting NI Reconciler: App a2d92010-5dbc-40f2-a5d1-baeeeae8be4c is already connected
 			z.addAppNetworkError(status, "doActivateAppNetwork", err)
+		} else {
+			return
 		}
-		return
 	}
 	z.log.Functionf("Activated application network %s (%s), status %+v", status.UUIDandVersion.UUID,
 		status.DisplayName, status)

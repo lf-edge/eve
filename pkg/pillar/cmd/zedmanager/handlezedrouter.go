@@ -133,14 +133,25 @@ func publishAppNetworkConfig(ctx *zedmanagerContext,
 	}
 	key := config.Key()
 	log.Functionf("publishAppNetworkConfig(%s)", key)
+	found := false
 	if akStatus != nil {
 		pub := ctx.pubAppNetworkConfig
+		items := pub.GetAll()
+		for _, item := range items {
+			c := item.(types.AppNetworkConfig)
+			if c.UUIDandVersion.UUID.String() == config.UUIDandVersion.UUID.String() {
+				found = true
+				break
+			}
+		}
 		pub.Publish(key, *config)
 	} else {
 		ctx.saveAppNetConfig[key] = *config
 		log.Functionf("publishAppNetworkConfig(%s), save locally, wait for AppKubeNetStatus", key)
 	}
-	ctx.anStatusChan <- key
+	if !found {
+		ctx.anStatusChan <- key
+	}
 }
 
 func unpublishAppNetworkConfig(ctx *zedmanagerContext, uuidStr string) {
