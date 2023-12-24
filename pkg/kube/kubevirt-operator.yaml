@@ -7457,9 +7457,9 @@ spec:
         - name: VIRT_CONTROLLER_SHASUM
           value: sha256:fd9d8a5f21f8c4d64f9c4e66b5aa3f8fb7a3c10d969649dad8b2bc8245de2f86
         - name: VIRT_HANDLER_SHASUM
-          value: sha256:7637ce4eb6ddfbd98a570fa06f4f5dc55b8567ba3361d9bd9ac165ab3c0804e5
+          value: sha256:25dc1e2b6166db62ee28cca955cba0ee86a4870f27cdc407348d8b0ba5cfbbeb
         - name: VIRT_LAUNCHER_SHASUM
-          value: sha256:fd6307b0170a13ddceb73506a966b323fbbd2524549da40b0cf0de610c12ee9a
+          value: sha256:66c37c3019b43ddc502dfa02d989b6c90a6974308cb9e87e8ff27280f592fc15
         - name: VIRT_EXPORTPROXY_SHASUM
           value: sha256:1769c4be68d9d5b34eb5cd59ec39f05acc20bacc28fc84fb572065c51c2046e1
         - name: VIRT_EXPORTSERVER_SHASUM
