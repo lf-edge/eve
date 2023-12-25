@@ -1,4 +1,4 @@
-// Copyright (c) 2018-2019 Zededa, Inc.
+// Copyright (c) 2018-2024 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
 package diskmetrics
@@ -6,7 +6,9 @@ package diskmetrics
 import (
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
@@ -240,4 +242,49 @@ func PersistUsageStat(log *base.LogObject) (*types.UsageStat, error) {
 		usageStat.Total -= usageStatReserved.Total
 	}
 	return usageStat, nil
+}
+
+// PathAndSize is returned by FindLargeFiles
+type PathAndSize struct {
+	Path string
+	Size int64
+}
+
+// FindLargeFiles walks a directory and reports all files larger than minSize
+// unless they are in an excluded (sub)directory
+func FindLargeFiles(root string, minSize int64, excludePaths []string) ([]PathAndSize, error) {
+	var list []PathAndSize
+	walkErr := filepath.WalkDir(filepath.Clean(root), func(path string, di fs.DirEntry, err error) error {
+		// if there is any problem with path we stop
+		if err != nil {
+			return err
+		}
+
+		// Part of excludePath?
+		for _, ex := range excludePaths {
+			if filepath.HasPrefix(path, ex) {
+				return filepath.SkipDir
+			}
+		}
+		// We don't report any directories
+		if di.IsDir() {
+			return nil
+		}
+
+		info, err := os.Stat(path)
+		if err != nil {
+			if !os.IsNotExist(err) {
+				return err
+			}
+			// Ignore if a file disappeared while we walk
+			return nil
+		}
+		if info.Size() > minSize {
+			list = append(list,
+				PathAndSize{Path: path, Size: info.Size()})
+		}
+		return nil
+	})
+
+	return list, walkErr
 }
