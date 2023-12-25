@@ -1,4 +1,4 @@
-// Copyright (c) 2018-2019 Zededa, Inc.
+// Copyright (c) 2018-2023 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
 package diskmetrics
@@ -6,7 +6,9 @@ package diskmetrics
 import (
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
@@ -225,4 +227,49 @@ func PersistUsageStat(log *base.LogObject) (*types.UsageStat, error) {
 		usageStat.Total -= usageStatReserved.Total
 	}
 	return usageStat, nil
+}
+
+// FoundLargeFiles is returned by FindLargeFiles
+type FoundLargeFiles struct {
+	Path string
+	Size int64
+}
+
+// FindLargeFiles walks a directory and reportes all large files unless
+// they are in an excluded directory
+func FindLargeFiles(root string, limit int64, excludePaths []string) ([]FoundLargeFiles, error) {
+	var list []FoundLargeFiles
+	walkErr := filepath.WalkDir(filepath.Clean(root), func(path string, di fs.DirEntry, err error) error {
+		// if there is any problem with path we stop
+		if err != nil {
+			return err
+		}
+
+		// Part of excludePath?
+		for _, ex := range excludePaths {
+			if filepath.HasPrefix(path, ex) {
+				return filepath.SkipDir
+			}
+		}
+		// We don't report any directories
+		if di.IsDir() {
+			return nil
+		}
+
+		info, err := os.Stat(path)
+		if err != nil {
+			if !os.IsNotExist(err) {
+				return err
+			}
+			// In case files disappear while we run
+			return nil
+		}
+		if info.Size() > limit {
+			list = append(list,
+				FoundLargeFiles{Path: path, Size: info.Size()})
+		}
+		return nil
+	})
+
+	return list, walkErr
 }
