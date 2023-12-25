@@ -250,6 +250,26 @@ func createOrUpdateDiskMetrics(ctx *volumemgrContext, wdName string) {
 
 		diskMetricList = append(diskMetricList, metric)
 	}
+	// Walk all of /persist and look for files above 1 Mbyte in size which
+	// are not under one of the paths already reported.
+	var excludeDirs []string
+	excludeDirs = append(excludeDirs, types.ReportDirPaths...)
+	excludeDirs = append(excludeDirs, types.AppPersistPaths...)
+	list, err := diskmetrics.FindLargeFiles(types.PersistDir, 1024*1024,
+		excludeDirs)
+	if err != nil {
+		log.Errorf("FindLargeFiles Failed: %s", err)
+	} else {
+		for _, item := range list {
+			metric := &(types.DiskMetric{
+				DiskPath:  item.Path,
+				UsedBytes: uint64(item.Size),
+				IsDir:     false,
+			})
+			diskMetricList = append(diskMetricList, metric)
+		}
+	}
+
 	publishDiskMetrics(ctx, diskMetricList...)
 	for _, volumeStatus := range getAllVolumeStatus(ctx) {
 		ctx.ps.StillRunning(wdName, warningTime, errorTime)
