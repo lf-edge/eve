@@ -65,6 +65,10 @@ ADD ${RPI_BT_FIRMWARE_URL}/${RPI_BT_FIRMWARE_VERSION}/broadcom/BCM4345C0.hcd .
 ADD ${RPI_BT_FIRMWARE_URL}/${RPI_BT_FIRMWARE_VERSION}/broadcom/BCM43430B0.hcd .
 ADD ${RPI_BT_FIRMWARE_URL}/${RPI_BT_FIRMWARE_VERSION}/broadcom/BCM4345C5.hcd .
 
+# Hailo 8 GPU firmware
+ENV HAILO_FW_VERSION 4.16.0
+ADD https://hailo-hailort.s3.eu-west-2.amazonaws.com/Hailo8/${HAILO_FW_VERSION}/FW/hailo8_fw.${HAILO_FW_VERSION}.bin /lib/firmware/hailo/hailo8_fw.bin
+
 # generate initrd for Intel's and AMD's microcode
 # it makes sense only for x86_64 platform
 FROM --platform=${TARGETPLATFORM} lfedge/eve-alpine:57d6a8a768256bece2f03ae4fc0eedcb5bca41a6 as ucode-build-common
@@ -164,7 +168,7 @@ COPY --from=build /lib/firmware/nvidia/tegra210 /lib/firmware/nvidia/tegra210
 COPY --from=build /rtw88/*.bin /lib/firmware/rtw88/
 # Intel ICE firmware.
 COPY --from=build /lib/firmware/intel/ice /lib/firmware/intel/ice
-
+COPY --from=build /lib/firmware/hailo /lib/firmware/hailo
 
 FROM scratch
 ENTRYPOINT []
