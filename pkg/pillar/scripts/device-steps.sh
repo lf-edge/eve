@@ -192,6 +192,17 @@ access_usb
 # We append on every boot since /etc/hosts starts from read-only rootfs
 [ -f /config/hosts ] && cat /config/hosts >> /etc/hosts
 
+# If there are any device-specific startup scripts, execute them
+echo "$(date -Ins -u) Starting device-specific startup scripts"
+
+for f in /opt/vendor/*/init.d/*; do
+    [ -x "$f" ] || continue
+    echo "$(date -Ins -u) Running $f"
+    "$f"
+done
+
+echo "$(date -Ins -u) Done starting device-specific startup scripts"
+
 echo "$(date -Ins -u) Starting services"
 
 for AGENT in $AGENTS; do
