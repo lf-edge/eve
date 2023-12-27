@@ -14,6 +14,7 @@ config:
     - /:/hostfs
     - /persist:/persist:rshared,rbind
     - /usr/bin/containerd:/usr/bin/containerd
+    - /opt/vendor:/opt/vendor:ro
   net: host
   capabilities:
     - all
