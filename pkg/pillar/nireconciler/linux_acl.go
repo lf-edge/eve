@@ -504,6 +504,7 @@ func (r *LinuxNIReconciler) getIntendedAppConnACLs(niID uuid.UUID,
 	}
 	intendedAppConnACLs := dg.New(graphArgs)
 	for _, ipv6 := range []bool{true, false} {
+		// TODO: use IPv4RulesSG and IPv6RulesSG ?
 		if ni.config.Type == types.NetworkInstanceTypeLocal {
 			if ni.config.IsIPv6() != ipv6 {
 				continue

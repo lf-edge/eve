@@ -232,14 +232,17 @@ func (r *LinuxNIReconciler) updateCurrentNIRoutes(niID uuid.UUID) (changed bool)
 	if ni.config.Type == types.NetworkInstanceTypeSwitch {
 		return changed
 	}
-	outIfs := make(map[int]linux.RouteOutIf) // key: ifIndex
+	outIfs := make(map[int]generic.NetworkIf) // key: ifIndex
 	ifIndex, found, err := r.netMonitor.GetInterfaceIndex(ni.brIfName)
 	if err != nil {
 		r.log.Errorf("%s: updateCurrentNIRoutes: failed to get ifIndex "+
 			"for (NI bridge) %s: %v", LogAndErrPrefix, ni.brIfName, err)
 	}
 	if err == nil && found {
-		outIfs[ifIndex] = linux.RouteOutIf{BridgeIfName: ni.brIfName}
+		outIfs[ifIndex] = generic.NetworkIf{
+			IfName:  ni.brIfName,
+			ItemRef: dg.Reference(linux.Bridge{IfName: ni.brIfName}),
+		}
 	}
 	uplink := ni.bridge.Uplink.IfName
 	if uplink != "" {
@@ -249,11 +252,14 @@ func (r *LinuxNIReconciler) updateCurrentNIRoutes(niID uuid.UUID) (changed bool)
 				"for (NI uplink) %s: %v", LogAndErrPrefix, uplink, err)
 		}
 		if err == nil && found {
-			outIfs[ifIndex] = linux.RouteOutIf{UplinkIfName: uplink}
+			outIfs[ifIndex] = generic.NetworkIf{
+				IfName:  uplink,
+				ItemRef: dg.Reference(generic.Uplink{IfName: uplink}),
+			}
 		}
 	}
 	// Also dump routes with unreachable destination.
-	outIfs[0] = linux.RouteOutIf{}
+	outIfs[0] = generic.NetworkIf{}
 	for outIfIndex, rtOutIf := range outIfs {
 		table := devicenetwork.NIBaseRTIndex + ni.bridge.BrNum
 		routes, err := r.netMonitor.ListRoutes(netmonitor.RouteFilters{
@@ -293,12 +299,16 @@ func (r *LinuxNIReconciler) updateCurrentNIRoutes(niID uuid.UUID) (changed bool)
 // to reflect the set of VIFs actually present inside the network stack
 // at the current moment.
 func (r *LinuxNIReconciler) updateCurrentVIFs(niID uuid.UUID) (changed bool) {
+	if r.withKubernetesNetworking {
+		// With Kubernetes networking, VIFs are not external, but configured by zedrouter.
+		return false
+	}
 	niSG := r.getOrAddNISubgraph(niID)
 	prevVIFs := make(map[dg.ItemRef]dg.Item)
 	iter := niSG.Items(true)
 	for iter.Next() {
 		item, _ := iter.Item()
-		if item.Type() == generic.VIFTypename {
+		if item.Type() == linux.VIFTypename {
 			prevVIFs[dg.Reference(item)] = item
 		}
 	}
@@ -319,7 +329,7 @@ func (r *LinuxNIReconciler) updateCurrentVIFs(niID uuid.UUID) (changed bool) {
 			if vif.NI != niID {
 				continue
 			}
-			delete(prevVIFs, dg.Reference(generic.VIF{IfName: vif.hostIfName}))
+			delete(prevVIFs, dg.Reference(linux.VIF{HostIfName: vif.hostIfName}))
 			sgName := AppConnSGName(app.config.UUIDandVersion.UUID, vif.NetAdapterName)
 			var appConnSG dg.Graph
 			if readHandle := niSG.SubGraph(sgName); readHandle != nil {
@@ -332,7 +342,7 @@ func (r *LinuxNIReconciler) updateCurrentVIFs(niID uuid.UUID) (changed bool) {
 			iter := appConnSG.Items(false)
 			for iter.Next() {
 				item, _ := iter.Item()
-				if item.Type() == generic.VIFTypename {
+				if item.Type() == linux.VIFTypename {
 					prevVIF = item
 					// There should be only one VIF...
 					break
@@ -369,10 +379,11 @@ func (r *LinuxNIReconciler) updateCurrentVIFs(niID uuid.UUID) (changed bool) {
 					masterIfName = masterIfAttrs.IfName
 				}
 			}
-			newVIF := generic.VIF{
-				IfName:         vif.hostIfName,
+			newVIF := linux.VIF{
+				HostIfName:     vif.hostIfName,
 				NetAdapterName: vif.NetAdapterName,
-				MasterIfName:   masterIfName,
+				BridgeIfName:   masterIfName,
+				Variant:        linux.VIFVariant{External: true},
 			}
 			changed = r.updateSingleItem(prevVIF, newVIF, appConnSG) || changed
 		}

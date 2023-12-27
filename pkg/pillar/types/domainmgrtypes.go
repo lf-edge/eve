@@ -15,6 +15,7 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	zconfig "github.com/lf-edge/eve-api/go/config"
+	"github.com/lf-edge/eve/pkg/kube/cnirpc"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/utils/cloudconfig"
 )
@@ -37,8 +38,7 @@ type DomainConfig struct {
 	DiskConfigList []DiskConfig
 	VifList        []VifConfig
 	IoAdapterList  []IoAdapter
-	KubeNADList    []KubeNAD // List of NAD names for kubernetes
-	KubeImageName  string    // propagate kube pod container image reference
+	KubeImageName  string // propagate kube pod container image reference
 
 	// XXX: to be deprecated, use CipherBlockStatus instead
 	CloudInitUserData *string `json:"pubsub-large-CloudInitUserData"` // base64-encoded
@@ -57,12 +57,6 @@ type DomainConfig struct {
 	// once the version is changed cloud-init tool restarts in a guest.
 	// See getCloudInitVersion() and createCloudInitISO() for details.
 	CloudInitVersion uint32
-}
-
-// KubeNAD - carry the Kubernetes NAD name and Mac Address for App
-type KubeNAD struct {
-	Name string
-	Mac  string
 }
 
 // MetaDataType of metadata service for app
@@ -393,6 +387,14 @@ type VifConfig struct {
 	Bridge string
 	Vif    string
 	Mac    net.HardwareAddr
+	// PodVif is only valid in the Kubernetes mode.
+	PodVif PodVIF
+}
+
+// PodVIF : configuration parameters for VIF connecting Kubernetes pod with the host.
+type PodVIF struct {
+	GuestIfName string
+	IPAM        cnirpc.PodIPAMConfig
 }
 
 // VifInfo store info about vif

@@ -181,7 +181,7 @@ The current state is being updated during each state reconciliation and potentia
 a state change notification is received from [NetworkMonitor](#networkmonitor) (e.g. a network
 interface (dis)appearing from/in the host OS or a network route being added/deleted by the kernel).
 The intended state is rebuilt by NIReconciler based on the input from Zedrouter, which
-is received through interface methods such as `AddNI`, `UpdateNI`, `DelNI`, `ConnectApp`, etc.
+is received through interface methods such as `AddNI`, `UpdateNI`, `DelNI`, `AddAppConn`, etc.
 This means that in order to understand how application connectivity is realized in a network
 stack (what low-level config it maps to), one only needs to look into the NIReconciler.
 

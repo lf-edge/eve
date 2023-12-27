@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/lf-edge/eve/pkg/kube/cnirpc"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	uuid "github.com/satori/go.uuid"
 )
@@ -22,21 +23,6 @@ type AppNetworkConfig struct {
 	CloudInitUserData *string `json:"pubsub-large-CloudInitUserData"`
 	CipherBlockStatus CipherBlockStatus
 	MetaDataType      MetaDataType
-}
-
-// AppKubeNetworkStatus - Indexed by AppInstance UUID, includes list of App Net items
-// this is used to advertise pod interfaces related IP, Mac, Vif, etc.
-// the ContainerID is Pod's container UUID from kubernetes
-type AppKubeNetworkStatus struct {
-	UUIDandVersion      UUIDandVersion
-	DisplayName         string
-	ContainerID         string
-	ULNetworkStatusList []AppNetAdapterStatus // kubecluster mode need from zedkube
-}
-
-// Key :
-func (status AppKubeNetworkStatus) Key() string {
-	return status.UUIDandVersion.UUID.String()
 }
 
 func (config AppNetworkConfig) Key() string {
@@ -116,6 +102,8 @@ type AppNetworkStatus struct {
 	PendingDelete  bool
 	ConfigInSync   bool
 	DisplayName    string
+	// AppPod is only valid in Kubernetes mode.
+	AppPod cnirpc.AppPod
 	// Copy from the AppNetworkConfig; used to delete when config is gone.
 	GetStatsIPAddr       net.IP
 	AppNetAdapterList    []AppNetAdapterStatus

@@ -119,9 +119,6 @@ type zedrouter struct {
 	// To collect uplink info
 	subDeviceNetworkStatus pubsub.Subscription
 
-	// Collect Pod Network info
-	subAppKubeNetStatus pubsub.Subscription
-
 	// Configuration for Network Instances
 	subNetworkInstanceConfig pubsub.Subscription
 
@@ -189,8 +186,10 @@ type zedrouter struct {
 	peUsagePersist      *persistcache.PersistCache
 
 	pubPatchEnvelopesUsage pubsub.Publication
-	// kube cluster
-	hvTypeKube bool
+
+	// Kubernetes networking
+	withKubeNetworking bool
+	cniRequests        chan *rpcRequest
 }
 
 // AddAgentSpecificCLIFlags adds CLI options
@@ -234,7 +233,9 @@ func (z *zedrouter) init() (err error) {
 	z.cipherMetrics = cipher.NewAgentMetrics(agentName)
 
 	z.patchEnvelopes = NewPatchEnvelopes(z.log, z.pubSub)
-	z.hvTypeKube = base.IsHVTypeKube()
+
+	z.withKubeNetworking = base.IsHVTypeKube()
+	z.cniRequests = make(chan *rpcRequest)
 
 	gcp := *types.DefaultConfigItemValueMap()
 	z.appContainerStatsInterval = gcp.GlobalValueInt(types.AppContainerStatsInterval)
@@ -290,7 +291,8 @@ func (z *zedrouter) init() (err error) {
 		z.log, agentName, z.zedcloudMetrics)
 	z.reachProber = controllerReachProber
 	z.niReconciler = nireconciler.NewLinuxNIReconciler(z.log, z.logger, z.networkMonitor,
-		z.makeMetadataHandler(), true, true)
+		z.makeMetadataHandler(), true, true,
+		z.withKubeNetworking)
 
 	z.initNumberAllocators()
 	return nil
@@ -303,6 +305,14 @@ func (z *zedrouter) run(ctx context.Context) (err error) {
 	}
 	z.log.Noticef("Starting %s", agentName)
 
+	if err = z.runRPCServer(); err != nil {
+		return err
+	}
+
+	// Run a periodic timer so we always update StillRunning
+	stillRunning := time.NewTicker(25 * time.Second)
+	z.pubSub.StillRunning(agentName, warningTime, errorTime)
+
 	// Wait for initial GlobalConfig.
 	if err = z.subGlobalConfig.Activate(); err != nil {
 		return err
@@ -312,7 +322,9 @@ func (z *zedrouter) run(ctx context.Context) (err error) {
 		select {
 		case change := <-z.subGlobalConfig.MsgChan():
 			z.subGlobalConfig.ProcessChange(change)
+		case <-stillRunning.C:
 		}
+		z.pubSub.StillRunning(agentName, warningTime, errorTime)
 	}
 	z.log.Noticef("Processed GlobalConfig")
 
@@ -323,10 +335,6 @@ func (z *zedrouter) run(ctx context.Context) (err error) {
 		return err
 	}
 	z.log.Noticef("Received device UUID")
-
-	// Run a periodic timer so we always update StillRunning
-	stillRunning := time.NewTicker(25 * time.Second)
-	z.pubSub.StillRunning(agentName, warningTime, errorTime)
 
 	// Timer used to retry failed configuration
 	z.retryTimer = time.NewTimer(1 * time.Second)
@@ -365,7 +373,6 @@ func (z *zedrouter) run(ctx context.Context) (err error) {
 		z.subPatchEnvelopeInfo,
 		z.subVolumeStatus,
 		z.subContentTreeStatus,
-		z.subAppKubeNetStatus,
 	}
 	for _, sub := range inactiveSubs {
 		if err = sub.Activate(); err != nil {
@@ -389,10 +396,6 @@ func (z *zedrouter) run(ctx context.Context) (err error) {
 			// If we have NetworkInstanceConfig process it first
 			z.checkAndProcessNetworkInstanceConfig()
 			z.subAppNetworkConfig.ProcessChange(change)
-
-		case change := <-z.subAppKubeNetStatus.MsgChan():
-			z.log.Noticef("change for subAppKubeNetStatus run")
-			z.subAppKubeNetStatus.ProcessChange(change)
 
 		case change := <-z.subAppNetworkConfigAg.MsgChan():
 			z.subAppNetworkConfigAg.ProcessChange(change)
@@ -526,6 +529,7 @@ func (z *zedrouter) run(ctx context.Context) (err error) {
 						appKey, vif.NetAdapterName)
 					continue
 				}
+
 				for i := range appStatus.AppNetAdapterList {
 					adapterStatus := &appStatus.AppNetAdapterList[i]
 					if adapterStatus.Name != vif.NetAdapterName {
@@ -536,7 +540,6 @@ func (z *zedrouter) run(ctx context.Context) (err error) {
 				}
 				z.publishAppNetworkStatus(appStatus)
 			}
-			ipAssignUpdate(z, ipAssignUpdates)
 
 		case updates := <-probeUpdates:
 			start := time.Now()
@@ -558,6 +561,12 @@ func (z *zedrouter) run(ctx context.Context) (err error) {
 			z.pubSub.CheckMaxTimeTopic(agentName, "probeUpdates", start,
 				warningTime, errorTime)
 
+		case req := <-z.cniRequests:
+			start := time.Now()
+			z.handleRPC(req)
+			z.pubSub.CheckMaxTimeTopic(agentName, "handleRPC", start,
+				warningTime, errorTime)
+
 		case <-z.retryTimer.C:
 			start := time.Now()
 			z.log.Tracef("retryTimer: at %v", time.Now())
@@ -577,45 +586,6 @@ func (z *zedrouter) run(ctx context.Context) (err error) {
 			z.pubSub.CheckMaxTimeTopic(agentName, "allocatorGC", start,
 				warningTime, errorTime)
 		}
-	}
-}
-
-// ipAssignUpdate
-func ipAssignUpdate(z *zedrouter, ipAssignUpdates []nistate.VIFAddrsUpdate) {
-	for _, ipAssignUpdate := range ipAssignUpdates {
-		vif := ipAssignUpdate.Prev.VIF
-		newAddrs := ipAssignUpdate.New
-		mac := vif.GuestIfMAC.String()
-		niKey := vif.NI.String()
-		netStatus := z.lookupNetworkInstanceStatus(niKey)
-		if netStatus == nil {
-			z.log.Errorf("Failed to get status for network instance %s "+
-				"(needed to update IPs assigned to VIF %s)",
-				niKey, vif.NetAdapterName)
-			continue
-		}
-		netStatus.IPAssignments[mac] = types.AssignedAddrs{
-			IPv4Addr:  newAddrs.IPv4Addr,
-			IPv6Addrs: newAddrs.IPv6Addrs,
-		}
-		z.publishNetworkInstanceStatus(netStatus)
-		appKey := vif.App.String()
-		appStatus := z.lookupAppNetworkStatus(appKey)
-		if appStatus == nil {
-			z.log.Errorf("Failed to get network status for app %s "+
-				"(needed to update IPs assigned to VIF %s)",
-				appKey, vif.NetAdapterName)
-			continue
-		}
-		for i := range appStatus.AppNetAdapterList {
-			ulStatus := &appStatus.AppNetAdapterList[i]
-			if ulStatus.Name != vif.NetAdapterName {
-				continue
-			}
-			z.recordAssignedIPsToAdapterStatus(ulStatus, &newAddrs)
-			break
-		}
-		z.publishAppNetworkStatus(appStatus)
 	}
 }
 
@@ -804,8 +774,7 @@ func (z *zedrouter) initSubscriptions() (err error) {
 		return err
 	}
 
-	// Subscribe to AppNetworkConfig from zedkube
-	// since the zedmanager is not publishing the appnetconfig
+	// Subscribe to AppNetworkConfig from zedmanager
 	z.subAppNetworkConfig, err = z.pubSub.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:      "zedmanager",
 		MyAgentName:    agentName,
@@ -814,22 +783,6 @@ func (z *zedrouter) initSubscriptions() (err error) {
 		CreateHandler:  z.handleAppNetworkCreate,
 		ModifyHandler:  z.handleAppNetworkModify,
 		DeleteHandler:  z.handleAppNetworkDelete,
-		RestartHandler: z.handleRestart,
-		WarningTime:    warningTime,
-		ErrorTime:      errorTime,
-	})
-	if err != nil {
-		return err
-	}
-
-	z.subAppKubeNetStatus, err = z.pubSub.NewSubscription(pubsub.SubscriptionOptions{
-		AgentName:      "zedkube",
-		MyAgentName:    agentName,
-		TopicImpl:      types.AppKubeNetworkStatus{},
-		Activate:       false,
-		CreateHandler:  z.handleAppKubeNetCreate,
-		ModifyHandler:  z.handleAppKubeNetModify,
-		DeleteHandler:  z.handleAppKubeNetDelete,
 		RestartHandler: z.handleRestart,
 		WarningTime:    warningTime,
 		ErrorTime:      errorTime,
@@ -1000,17 +953,10 @@ func (z *zedrouter) processNIReconcileStatus(recStatus nireconciler.NIReconcileS
 		for itemRef, itemErr := range recStatus.FailedItems {
 			failedItems = append(failedItems, fmt.Sprintf("%v (%v)", itemRef, itemErr))
 		}
-		if !z.hvTypeKube {
-			// XXX hack for now, since sometimes after reboot, it has error:
-			// XXX need to fix this in zedrouter
-			// failed items: Iptables-Rule/filter/FORWARD-apps/Traverse-VIF-veth0186c019-ingress-ACLs (iptables command [-w 5 -t filter -I FORWARD-apps -o bn1 -d 10.1.1.10 -j FORWARD-veth0186c019 -m comment --comment Traverse VIF veth0186c019 ingress ACLs] failed with err 'exit status 2' and output: iptables v1.8.8 (legacy): Couldn't load target `FORWARD-veth0186c019':No such file or directory; ; Try `iptables -h' or 'iptables --help' for more information.);Iptables-Rule/filter/FORWARD-veth0186c019/Log-Default-DROP (iptables command [-w 5 -t filter -I FORWARD-veth0186c019 -j LOG --log-prefix FORWARD:TO: --log-level 3 -m comment --comment Log Default DROP] failed with err 'exit status 1' and output: iptables: No chain/target/match by that name.
-			err := fmt.Errorf("failed items: %s", strings.Join(failedItems, ";"))
-			if niStatus.Error != err.Error() {
-				niStatus.SetErrorNow(err.Error())
-				changed = true
-			}
-		} else {
-			z.log.Errorf("processNIReconcileStatus: failed items %v", failedItems)
+		err := fmt.Errorf("failed items: %s", strings.Join(failedItems, ";"))
+		if niStatus.Error != err.Error() {
+			niStatus.SetErrorNow(err.Error())
+			changed = true
 		}
 	} else {
 		if niStatus.HasError() {
