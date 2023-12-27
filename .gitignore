@@ -4,9 +4,7 @@
 obj
 dist/
 build-tools/bin/
-images/*.yml
-images/rootfs-*.yml.in
-images/*.yml.in.sed
+images/out/
 .go/
 tags
 tmp/
