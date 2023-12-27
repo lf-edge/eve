@@ -22,7 +22,9 @@ process-image-template() {
     for bit in "${bits[@]}"; do
         case "${bit}" in
             dev)
+                # shellcheck disable=SC2094
                 yq '(.onboot[] | select(.image == "PILLAR_TAG").image) |= "PILLAR_DEV_TAG"' < "${out_templ_path}" | spongefile "${out_templ_path}"
+                # shellcheck disable=SC2094
                 yq '(.services[] | select(.image == "PILLAR_TAG").image) |= "PILLAR_DEV_TAG"' < "${out_templ_path}" | spongefile "${out_templ_path}"
                 ;;
         esac
@@ -33,7 +35,7 @@ patch_hv() {
     # note that we have to do that careful shell substitution, because yq 4
     # doesn't support passing in a variable as the value to --arg, requiring
     # setting it as an env var; which is more difficult to do when passed to docker
-    # shellcheck disable=SC2016
+    # shellcheck disable=SC2016,SC2094
     yq '(.files[] | select(.contents == "EVE_HV")).contents |= "'"$1"'"' < "$2" | spongefile "$2"
 }
 
@@ -88,6 +90,7 @@ main() {
         if [ ! -f "${modifier}" ]; then
             continue
         fi
+        # shellcheck disable=SC2094
         yq --from-file "${modifier}" < "${out_templ_path}" | spongefile "${out_templ_path}"|| exit 1
     done
 

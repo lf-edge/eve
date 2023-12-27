@@ -97,6 +97,8 @@ files:
     metadata: yaml
   - path: /etc/eve-hv-type
     contents: 'EVE_HV'
+  - path: /opt/vendor
+    directory: true
   - path: /etc/securetty
     contents: |
       console
