@@ -161,19 +161,19 @@ func (z *zedrouter) handleConnectPodRequest(pod cnirpc.AppPod,
 		z.log.Error(err)
 		return false, nil, err
 	}
-	if vifStatus.InProgress {
-		// It is not expected that some config items are created asynchronously.
-		err = fmt.Errorf("some config items related to VIF %v/%s are still in progress",
-			appStatus.UUIDandVersion.UUID, adapterStatus.Name)
-		z.log.Error(err)
-		return false, nil, err
-	}
 	var failedItems []string
 	for itemRef, itemErr := range vifStatus.FailedItems {
 		failedItems = append(failedItems, fmt.Sprintf("%v (%v)", itemRef, itemErr))
 	}
 	if len(failedItems) > 0 {
 		err = fmt.Errorf("failed config items: %s", strings.Join(failedItems, ";"))
+		z.log.Error(err)
+		return false, nil, err
+	}
+	if vifStatus.InProgress {
+		// It is not expected that some config items are created asynchronously.
+		err = fmt.Errorf("some config items related to VIF %v/%s are still in progress",
+			appStatus.UUIDandVersion.UUID, adapterStatus.Name)
 		z.log.Error(err)
 		return false, nil, err
 	}
@@ -293,19 +293,19 @@ func (z *zedrouter) handleCheckPodConnectionRequest(
 		z.log.Error(err)
 		return err
 	}
-	if vifStatus.InProgress {
-		// It is not expected that some config items are created asynchronously.
-		err = fmt.Errorf("some config items related to VIF %v/%s are still in progress",
-			appStatus.UUIDandVersion.UUID, adapterStatus.Name)
-		z.log.Error(err)
-		return err
-	}
 	var failedItems []string
 	for itemRef, itemErr := range vifStatus.FailedItems {
 		failedItems = append(failedItems, fmt.Sprintf("%v (%v)", itemRef, itemErr))
 	}
 	if len(failedItems) > 0 {
 		err = fmt.Errorf("failed config items: %s", strings.Join(failedItems, ";"))
+		z.log.Error(err)
+		return err
+	}
+	if vifStatus.InProgress {
+		// It is not expected that some config items are created asynchronously.
+		err = fmt.Errorf("some config items related to VIF %v/%s are still in progress",
+			appStatus.UUIDandVersion.UUID, adapterStatus.Name)
 		z.log.Error(err)
 		return err
 	}

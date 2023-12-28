@@ -1118,7 +1118,6 @@ func (r *LinuxNIReconciler) getSubgraphState(intSG, currSG dg.GraphR, forApp boo
 			if route.ForApp.ID != emptyUUID {
 				return true
 			}
-
 		}
 		if sysctlConf, isSysctl := item.(linux.Sysctl); isSysctl {
 			if sysctlConf.ForApp.ID != emptyUUID {

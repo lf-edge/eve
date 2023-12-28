@@ -157,6 +157,17 @@ func (c *VIFConfigurator) Create(ctx context.Context, item dg.Item) error {
 		c.Log.Error(err)
 		return err
 	}
+	defer func() {
+		// If the Create operation failed, make sure we do not leave partially created
+		// veth behind.
+		if err != nil {
+			err2 := netlink.LinkDel(link)
+			if err2 != nil {
+				c.Log.Errorf("failed to revert created veth %s/%s: %v",
+					vif.HostIfName, appPeer.AppIfName, err2)
+			}
+		}
+	}()
 	err = c.configureVethPeer("", vif.HostIfName, vif.BridgeIfName, nil, nil)
 	if err != nil {
 		c.Log.Error(err)
