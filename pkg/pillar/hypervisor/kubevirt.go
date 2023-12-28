@@ -204,7 +204,7 @@ func (ctx kubevirtContext) CreateVMIConfig(domainName string, config types.Domai
 
 	dispName := config.GetKubeDispName()
 	// Get a VirtualMachineInstance object and populate the values from DomainConfig
-	vmi := v1.NewVMIReferenceFromNameWithNS(kubeapi.EVENamespace, dispName)
+	vmi := v1.NewVMIReferenceFromNameWithNS(types.EVEKubeNameSpace, dispName)
 
 	// Set CPUs
 	cpus := v1.CPU{}
@@ -224,7 +224,7 @@ func (ctx kubevirtContext) CreateVMIConfig(domainName string, config types.Domai
 	var netSelections []netattdefv1.NetworkSelectionElement
 	for _, vif := range config.VifList {
 		netSelections = append(netSelections, netattdefv1.NetworkSelectionElement{
-			Name:       kubeapi.NetworkInstanceNAD,
+			Name:       types.NetworkInstanceNAD,
 			MacRequest: vif.Mac.String(),
 		})
 	}
@@ -266,7 +266,7 @@ func (ctx kubevirtContext) CreateVMIConfig(domainName string, config types.Domai
 			Name: intfname,
 			NetworkSource: v1.NetworkSource{
 				Multus: &v1.MultusNetwork{
-					NetworkName: kubeapi.NetworkInstanceNAD,
+					NetworkName: types.NetworkInstanceNAD,
 				},
 			},
 		}
@@ -391,22 +391,16 @@ func (ctx kubevirtContext) CreateVMIConfig(domainName string, config types.Domai
 		}
 	}
 
-	if len(pciAssignments) != 0 {
-		// PCIe passthrough is a three step process in Kubevirt/Kubernetes
+	if len(pciAssignments) > 0 || len(serialAssignments) > 0 || len(usbAssignments) > 0 {
+		// Device passthrough is a three step process in Kubevirt/Kubernetes
 		// 1) First do PCI Reserve like in kvm.go (If we are here, PCI Reserve is already done)
 		// 2) Register the  pciVendorSelector which is a PCI vendor ID and product ID tuple in the form vendor_id:product_id
 		//    with kubevirt
 		// 3) Then pass the registered names to VMI config
-		err := registerWithKV(kvClient, vmi, pciAssignments)
+		err := registerWithKV(kvClient, vmi, pciAssignments, serialAssignments, usbAssignments)
 		if err != nil {
 			return logError("Failed to register with Kubevirt  %v", len(pciAssignments))
 		}
-	}
-	if len(serialAssignments) != 0 {
-		return logError("PRAMOD: Serial assignments not supported yet %v", len(serialAssignments))
-	}
-	if len(usbAssignments) != 0 {
-		return logError("PRAMOD: USB assignments not supported yet %v", len(usbAssignments))
 	}
 
 	vmi.Labels = make(map[string]string)
@@ -459,7 +453,7 @@ func (ctx kubevirtContext) Start(domainName string) error {
 	// Create the VM
 	i := 5
 	for {
-		_, err = virtClient.VirtualMachineInstance(kubeapi.EVENamespace).Create(context.Background(), vmi)
+		_, err = virtClient.VirtualMachineInstance(types.EVEKubeNameSpace).Create(context.Background(), vmi)
 		// TODO: update if exists
 		if err != nil {
 			if strings.Contains(err.Error(), "dial tcp 127.0.0.1:6443") && i <= 0 {
@@ -516,7 +510,7 @@ func (ctx kubevirtContext) Stop(domainName string, force bool) error {
 		}
 
 		// Stop the VM
-		err = virtClient.VirtualMachineInstance(kubeapi.EVENamespace).Delete(context.Background(), vmis.name, &metav1.DeleteOptions{})
+		err = virtClient.VirtualMachineInstance(types.EVEKubeNameSpace).Delete(context.Background(), vmis.name, &metav1.DeleteOptions{})
 		if err != nil {
 			fmt.Printf("Stop error %v\n", err)
 			return err
@@ -558,7 +552,7 @@ func (ctx kubevirtContext) Delete(domainName string) (result error) {
 		}
 
 		// Stop the VM
-		err = virtClient.VirtualMachineInstance(kubeapi.EVENamespace).Delete(context.Background(), vmis.name, &metav1.DeleteOptions{})
+		err = virtClient.VirtualMachineInstance(types.EVEKubeNameSpace).Delete(context.Background(), vmis.name, &metav1.DeleteOptions{})
 
 		// May be already deleted during Stop action, so its not an error if does not exist
 		if errors.IsNotFound(err) {
@@ -658,7 +652,7 @@ func convertToKubernetesFormat(b int) string {
 
 func getVMIStatus(vmiName string) (string, error) {
 
-	err, kubeconfig := kubeapi.GetKubeConfig()
+	kubeconfig, err := kubeapi.GetKubeConfig()
 	if err != nil {
 		return "", logError("couldn't get the Kube Config: %v", err)
 	}
@@ -670,7 +664,7 @@ func getVMIStatus(vmiName string) (string, error) {
 	}
 
 	// Get the VMI info
-	vmi, err := virtClient.VirtualMachineInstance(kubeapi.EVENamespace).Get(context.Background(), vmiName, &metav1.GetOptions{})
+	vmi, err := virtClient.VirtualMachineInstance(types.EVEKubeNameSpace).Get(context.Background(), vmiName, &metav1.GetOptions{})
 
 	if err != nil {
 		return "", logError("domain %s failed to get VMI info %s", vmiName, err)
@@ -727,7 +721,7 @@ func waitForVMI(vmiName string, available bool) error {
 }
 
 func (ctx kubevirtContext) GetDomsCPUMem() (map[string]types.DomainMetric, error) {
-	logrus.Infof("GetDomsCPUMem: enter")
+	logrus.Debugf("GetDomsCPUMem: enter")
 
 	res := make(map[string]types.DomainMetric, len(ctx.vmiList))
 	virtIP, err := getVirtHandlerIPAddr(&ctx)
@@ -771,7 +765,7 @@ func (ctx kubevirtContext) GetDomsCPUMem() (map[string]types.DomainMetric, error
 		line := scanner.Text()
 		if (strings.HasPrefix(line, "kubevirt_vmi_cpu") ||
 			strings.HasPrefix(line, "kubevirt_vmi_memory")) &&
-			strings.Contains(line, kubeapi.EVENamespace) {
+			strings.Contains(line, types.EVEKubeNameSpace) {
 
 			parts := strings.SplitN(line, " ", 2)
 			if len(parts) != 2 {
@@ -962,7 +956,7 @@ func (ctx kubevirtContext) CreatePodConfig(domainName string, config types.Domai
 	var netSelections []netattdefv1.NetworkSelectionElement
 	for _, vif := range config.VifList {
 		netSelections = append(netSelections, netattdefv1.NetworkSelectionElement{
-			Name:       kubeapi.NetworkInstanceNAD,
+			Name:       types.NetworkInstanceNAD,
 			MacRequest: vif.Mac.String(),
 		})
 	}
@@ -997,7 +991,7 @@ func (ctx kubevirtContext) CreatePodConfig(domainName string, config types.Domai
 	pod := &k8sv1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        dispName,
-			Namespace:   kubeapi.EVENamespace,
+			Namespace:   types.EVEKubeNameSpace,
 			Annotations: annotations,
 		},
 		Spec: k8sv1.PodSpec{
@@ -1070,7 +1064,7 @@ func StartPodContiner(kubeconfig *rest.Config, pod *k8sv1.Pod) error {
 	}
 
 	opStr := "created"
-	_, err = clientset.CoreV1().Pods(kubeapi.EVENamespace).Create(context.TODO(), pod, metav1.CreateOptions{})
+	_, err = clientset.CoreV1().Pods(types.EVEKubeNameSpace).Create(context.TODO(), pod, metav1.CreateOptions{})
 	if err != nil {
 		if !errors.IsAlreadyExists(err) {
 			// TODO: update
@@ -1127,7 +1121,7 @@ func StopPodContainer(kubeconfig *rest.Config, podName string) error {
 		return err
 	}
 
-	err = clientset.CoreV1().Pods(kubeapi.EVENamespace).Delete(context.TODO(), podName, metav1.DeleteOptions{})
+	err = clientset.CoreV1().Pods(types.EVEKubeNameSpace).Delete(context.TODO(), podName, metav1.DeleteOptions{})
 	if err != nil {
 		// Handle error
 		logrus.Errorf("StopPodContainer: deleting pod: %v", err)
@@ -1145,7 +1139,7 @@ func InfoPodContainer(kubeconfig *rest.Config, podName string) (string, error) {
 		return "", logError("InfoPodContainer: couldn't get the pod Config: %v", err)
 	}
 
-	pod, err := podclientset.CoreV1().Pods(kubeapi.EVENamespace).Get(context.TODO(), podName, metav1.GetOptions{})
+	pod, err := podclientset.CoreV1().Pods(types.EVEKubeNameSpace).Get(context.TODO(), podName, metav1.GetOptions{})
 	if err != nil {
 		return "", logError("InfoPodContainer: couldn't get the pod: %v", err)
 	}
@@ -1197,14 +1191,14 @@ func checkPodMetrics(ctx kubevirtContext, res map[string]types.DomainMetric, emp
 		}
 		count++
 		podName := vmis.name
-		pod, err := podclientset.CoreV1().Pods(kubeapi.EVENamespace).Get(context.TODO(), podName, metav1.GetOptions{})
+		pod, err := podclientset.CoreV1().Pods(types.EVEKubeNameSpace).Get(context.TODO(), podName, metav1.GetOptions{})
 		if err != nil {
 			logrus.Errorf("checkPodMetrics: can't get pod %v", err)
 			continue
 		}
 		memoryLimits := pod.Spec.Containers[0].Resources.Limits.Memory()
 
-		metrics, err := clientset.MetricsV1beta1().PodMetricses(kubeapi.EVENamespace).Get(context.TODO(), podName, metav1.GetOptions{})
+		metrics, err := clientset.MetricsV1beta1().PodMetricses(types.EVEKubeNameSpace).Get(context.TODO(), podName, metav1.GetOptions{})
 		if err != nil {
 			logrus.Errorf("checkPodMetrics: get pod metrics error %v", err)
 			continue
@@ -1260,7 +1254,7 @@ func calculateMemoryUsagePercent(usedMemory, allocatedMemory int64) float64 {
 
 func getConfig(ctx *kubevirtContext) error {
 	if ctx.kubeConfig == nil {
-		err, kubeconfig := kubeapi.GetKubeConfig()
+		kubeconfig, err := kubeapi.GetKubeConfig()
 		if err != nil {
 			logrus.Error("getConfig: can not get kubeconfig")
 			return err
@@ -1270,11 +1264,11 @@ func getConfig(ctx *kubevirtContext) error {
 	return nil
 }
 
-// Register the PCI address with Kubevirt
+// Register the device  with Kubevirt
 // Refer https://kubevirt.io/user-guide/virtual_machines/host-devices/#host-preparation-for-pci-passthrough
-func registerWithKV(kvClient kubecli.KubevirtClient, vmi *v1.VirtualMachineInstance, pciAssignments []pciDevice) error {
+func registerWithKV(kvClient kubecli.KubevirtClient, vmi *v1.VirtualMachineInstance, pciAssignments []pciDevice, serialAssignments []string, usbAssignments []string) error {
 
-	devices := make([]v1.HostDevice, len(pciAssignments))
+	pcidevices := make([]v1.HostDevice, len(pciAssignments))
 	// Define the KubeVirt resource's name and namespace
 	kubeVirtName := "kubevirt"
 	kubeVirtNamespace := "kubevirt"
@@ -1285,9 +1279,12 @@ func registerWithKV(kvClient kubecli.KubevirtClient, vmi *v1.VirtualMachineInsta
 		return logError("can't fetch the PCI device info from kubevirt %v", err)
 	}
 
+	// Get the currently registered  devices from Kubevirt
 	pciHostDevs := kubeVirt.Spec.Configuration.PermittedHostDevices.PciHostDevices
+	// mediatedDevs := kubeVirt.Spec.Configuration.PermittedHostDevices.MediatedDevices
+	// usbDevs := kubeVirt.Spec.Configuration.PermittedHostDevices.usb
 
-	for _, pa := range pciAssignments {
+	for i, pa := range pciAssignments {
 
 		vendor, err := pa.vid()
 		if err != nil {
@@ -1301,51 +1298,69 @@ func registerWithKV(kvClient kubecli.KubevirtClient, vmi *v1.VirtualMachineInsta
 
 		pciVendorSelector := vendor + ":" + devid
 
-		for i, pcidev := range pciHostDevs {
-			// Check if we already registered this device with kubevirt. If not register with kubevirt
-			if pcidev.PCIVendorSelector != pciVendorSelector {
+		// Check if we already registered this device with kubevirt. If not register with kubevirt
+		registered := isRegisteredPciHostDevice(pciVendorSelector, pciHostDevs)
+		resname := "devices.kubevirt.io/nvme" + strconv.Itoa(i+1)
+		if !registered {
 
-				name := "devices.kubevirt.io/nvme" + strconv.Itoa(i+1)
-				newpcidev := v1.PciHostDevice{
-					ResourceName:      name,
-					PCIVendorSelector: pciVendorSelector,
-				}
-
-				kubeVirt.Spec.Configuration.PermittedHostDevices.PciHostDevices = append(kubeVirt.Spec.Configuration.PermittedHostDevices.PciHostDevices, newpcidev)
-				_, err = kvClient.KubeVirt(kubeVirtNamespace).Update(kubeVirt)
-
-				if err != nil {
-					return logError("can't update the PCI device info from kubevirt %v", err)
-				}
-				// Insert into HostDevice struct
-
-				devices[i] = v1.HostDevice{
-					DeviceName: name,
-					Name:       "pcidev" + strconv.Itoa(i+1),
-				}
-
-			} else {
-
-				// At this point we registered the PCI device with kubevirt
-				// Insert into HostDevice struct
-
-				devices[i] = v1.HostDevice{
-					DeviceName: pcidev.ResourceName,
-					Name:       "pcidev" + strconv.Itoa(i+1),
-				}
+			newpcidev := v1.PciHostDevice{
+				ResourceName:      resname,
+				PCIVendorSelector: pciVendorSelector,
 			}
+
+			kubeVirt.Spec.Configuration.PermittedHostDevices.PciHostDevices = append(kubeVirt.Spec.Configuration.PermittedHostDevices.PciHostDevices, newpcidev)
+			_, err = kvClient.KubeVirt(kubeVirtNamespace).Update(kubeVirt)
+
+			if err != nil {
+				return logError("can't update the PCI device info from kubevirt %v", err)
+			}
+		}
+		// At this point we have registered the PCI device with kubevirt
+		//  Create HostDevice array which will be inserted into vmi Hostdevices
+
+		pcidevices[i] = v1.HostDevice{
+			DeviceName: resname,
+			Name:       "pcidev" + strconv.Itoa(i+1),
 		}
 
 	}
 
-	vmi.Spec.Domain.Devices.HostDevices = devices
+	vmi.Spec.Domain.Devices.HostDevices = pcidevices
 
 	return nil
 
 }
 
+func isRegisteredPciHostDevice(pciVendorSelector string, PciHostDevices []v1.PciHostDevice) bool {
+
+	for _, dev := range PciHostDevices {
+
+		if dev.PCIVendorSelector == pciVendorSelector {
+			return true
+		}
+	}
+
+	return false
+}
+
+/*
+func isRegisteredMediatedDevice(mdevNameSelector string, mdevDevices []v1.MediatedDevices) bool {
+
+		for _, mdev := range mdevDevices {
+			if mdev.mdevNameSelector == mdevNameSelector {
+				return true
+			}
+		}
+
+		return false
+	}
+
+func isRegisteredUsbDevice() (bool, error) {
+
+}
+*/
 func CleanupStaleVMI() (int, error) {
-	err, kubeconfig := kubeapi.GetKubeConfig()
+	kubeconfig, err := kubeapi.GetKubeConfig()
 	if err != nil {
 		return 0, logError("couldn't get the Kube Config: %v", err)
 	}
@@ -1356,14 +1371,14 @@ func CleanupStaleVMI() (int, error) {
 	}
 
 	// Get the VMI list
-	vmiList, err := virtClient.VirtualMachineInstance(kubeapi.EVENamespace).List(context.Background(), &metav1.ListOptions{})
+	vmiList, err := virtClient.VirtualMachineInstance(types.EVEKubeNameSpace).List(context.Background(), &metav1.ListOptions{})
 	if err != nil {
 		return 0, logError("list the Kubevirt VMIs: %v", err)
 	}
 
 	var count int
 	for _, vmi := range vmiList.Items {
-		err = virtClient.VirtualMachineInstance(kubeapi.EVENamespace).Delete(context.Background(), vmi.ObjectMeta.Name, &metav1.DeleteOptions{})
+		err = virtClient.VirtualMachineInstance(types.EVEKubeNameSpace).Delete(context.Background(), vmi.ObjectMeta.Name, &metav1.DeleteOptions{})
 		if err != nil {
 			return count, logError("delete vmi error: %v", err)
 		}

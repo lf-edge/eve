@@ -116,7 +116,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	zedkubeCtx.subGlobalConfig = subGlobalConfig
 	subGlobalConfig.Activate()
 
-	config, err := kubeapi.WaitKubernetes(agentName, ps, stillRunning)
+	config, err := kubeapi.WaitForKubernetes(agentName, ps, stillRunning)
 	if err != nil {
 		// XXX may need to change this to loop
 		log.Fatal(err)

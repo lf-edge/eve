@@ -1,3 +1,6 @@
+// Copyright (c) 2024 Zededa, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
 package kubeapi
 
 import (
@@ -8,7 +11,9 @@ import (
 	"time"
 
 	netclientset "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/client/clientset/versioned"
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
+	"github.com/lf-edge/eve/pkg/pillar/types"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
@@ -18,14 +23,9 @@ import (
 )
 
 const (
-	// EVENamespace : Kubernetes namespace used for all resources created by and for EVE.
-	EVENamespace = "eve-kube-app"
-	// NetworkInstanceNAD : name of (singleton) NAD used to define connection between
-	// pod and (any) network instance.
-	NetworkInstanceNAD = "network-instance-attachment"
-	kubeConfigFile     = "/run/.kube/k3s/k3s.yaml"
-	// VMIPodNamePrefix : prefix added to name of every pod created to run VM.
-	VMIPodNamePrefix    = "virt-launcher-"
+	eveNameSpace        = types.EVEKubeNameSpace
+	kubeConfigFile      = types.EVEkubeConfigFile
+	vmiPodNamePrefix    = types.VMIPodNamePrefix
 	errorTime           = 3 * time.Minute
 	warningTime         = 40 * time.Second
 	stillRunningInerval = 25 * time.Second
@@ -34,8 +34,8 @@ const (
 // GetAppNameFromPodName : get application display name and also prefix of the UUID
 // from the pod name.
 func GetAppNameFromPodName(podName string) (displayName, uuidPrefix string, err error) {
-	if strings.HasPrefix(podName, VMIPodNamePrefix) {
-		suffix := strings.TrimPrefix(podName, VMIPodNamePrefix)
+	if strings.HasPrefix(podName, vmiPodNamePrefix) {
+		suffix := strings.TrimPrefix(podName, vmiPodNamePrefix)
 		lastSep := strings.LastIndex(suffix, "-")
 		if lastSep == -1 {
 			err = fmt.Errorf("unexpected pod name generated for VMI: %s", podName)
@@ -51,20 +51,21 @@ func GetAppNameFromPodName(podName string) (displayName, uuidPrefix string, err 
 	return podName[:lastSep], podName[lastSep+1:], nil
 }
 
-func GetKubeConfig() (error, *rest.Config) {
+// GetKubeConfig : Get handle to Kubernetes config
+func GetKubeConfig() (*rest.Config, error) {
 	// Build the configuration from the kubeconfig file
 	config, err := clientcmd.BuildConfigFromFlags("", kubeConfigFile)
 	if err != nil {
-		// fmt.Errorf("getKubeConfig: spec Read kubeconfig failed: %v", err)
-		return err, nil
+		return nil, err
 	}
-	return nil, config
+	return config, nil
 }
 
+// GetClientSet : Get handle to kubernetes clientset
 func GetClientSet() (*kubernetes.Clientset, error) {
 
 	// Build the configuration from the provided kubeconfig file
-	err, config := GetKubeConfig()
+	config, err := GetKubeConfig()
 	if err != nil {
 		return nil, err
 	}
@@ -78,10 +79,11 @@ func GetClientSet() (*kubernetes.Clientset, error) {
 	return clientset, nil
 }
 
+// GetNetClientSet : Get handle to kubernetes netclientset
 func GetNetClientSet() (*netclientset.Clientset, error) {
 
 	// Build the configuration from the provided kubeconfig file
-	err, config := GetKubeConfig()
+	config, err := GetKubeConfig()
 	if err != nil {
 		return nil, err
 	}
@@ -95,7 +97,8 @@ func GetNetClientSet() (*netclientset.Clientset, error) {
 	return nclientset, nil
 }
 
-func WaitKubernetes(agentName string, ps *pubsub.PubSub, stillRunning *time.Ticker) (*rest.Config, error) {
+// WaitForKubernetes : Wait until kubernetes server is ready
+func WaitForKubernetes(agentName string, ps *pubsub.PubSub, stillRunning *time.Ticker) (*rest.Config, error) {
 	checkTimer := time.NewTimer(5 * time.Second)
 	configFileExist := false
 
@@ -105,7 +108,7 @@ func WaitKubernetes(agentName string, ps *pubsub.PubSub, stillRunning *time.Tick
 		select {
 		case <-checkTimer.C:
 			if _, err := os.Stat(kubeConfigFile); err == nil {
-				err, config = GetKubeConfig()
+				config, err = GetKubeConfig()
 				if err == nil {
 					configFileExist = true
 					break
@@ -124,7 +127,7 @@ func WaitKubernetes(agentName string, ps *pubsub.PubSub, stillRunning *time.Tick
 
 	// Wait for the Kubernetes clientset to be ready, node ready and kubevirt pods in Running status
 	readyCh := make(chan bool)
-	go WaitForNodeReady(client, readyCh)
+	go waitForNodeReady(client, readyCh)
 
 	kubeNodeReady := false
 	for !kubeNodeReady {
@@ -140,7 +143,7 @@ func WaitKubernetes(agentName string, ps *pubsub.PubSub, stillRunning *time.Tick
 	return config, nil
 }
 
-func CheckLonghornReady(client *kubernetes.Clientset) error {
+func waitForLonghornReady(client *kubernetes.Clientset) error {
 	hostname, err := os.Hostname()
 	if err != nil {
 		return fmt.Errorf("Unable to check longhorn pods on host:%v", err)
@@ -201,7 +204,7 @@ func CheckLonghornReady(client *kubernetes.Clientset) error {
 	return nil
 }
 
-func WaitForNodeReady(client *kubernetes.Clientset, readyCh chan bool) {
+func waitForNodeReady(client *kubernetes.Clientset, readyCh chan bool) {
 	if client == nil {
 
 	}
@@ -222,11 +225,8 @@ func WaitForNodeReady(client *kubernetes.Clientset, readyCh chan bool) {
 				return fmt.Errorf("kubevirt running pods less than 6")
 			}
 
-			if err = CheckLonghornReady(client); err != nil {
-				return err
-			}
-
-			return nil
+			err = waitForLonghornReady(client)
+			return err
 		})
 
 		if err == nil {
@@ -241,4 +241,43 @@ func WaitForNodeReady(client *kubernetes.Clientset, readyCh chan bool) {
 	} else {
 		readyCh <- true
 	}
+}
+
+func waitForPVCReady(ctx context.Context, log *base.LogObject, pvcName string) error {
+	clientset, err := GetClientSet()
+	if err != nil {
+		log.Errorf("waitForPVCReady failed to get clientset err %v", err)
+		return err
+	}
+
+	i := 10
+	var count int
+	var err2 error
+	for {
+		pvcs, err := clientset.CoreV1().PersistentVolumeClaims(eveNameSpace).List(context.Background(), metav1.ListOptions{})
+		if err != nil {
+			log.Errorf("GetPVCInfo failed to list pvc info err %v", err)
+			err2 = err
+		} else {
+
+			count = 0
+			for _, pvc := range pvcs.Items {
+				pvcObjName := pvc.ObjectMeta.Name
+				if strings.Contains(pvcObjName, pvcName) {
+					count++
+					log.Noticef("waitForPVCReady(%d): get pvc %s", count, pvcObjName)
+				}
+			}
+			if count == 1 {
+				return nil
+			}
+		}
+		i--
+		if i <= 0 {
+			break
+		}
+		time.Sleep(5 * time.Second)
+	}
+
+	return fmt.Errorf("waitForPVCReady: time expired count %d, err %v", count, err2)
 }

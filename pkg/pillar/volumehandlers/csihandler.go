@@ -37,7 +37,7 @@ type csiContext struct {
 func (handler *volumeHandlerCSI) GetVolumeDetails() (uint64, uint64, string, bool, error) {
 	pvcName := handler.status.Key()
 	handler.log.Noticef("GetVolumeDetails called for PVC %s", pvcName)
-	imgInfo, err := kubeapi.GetPVCInfo(pvcName)
+	imgInfo, err := kubeapi.GetPVCInfo(pvcName, handler.log)
 	if err != nil {
 		return 0, 0, "", false, fmt.Errorf("GetPVCInfo failed for %s: %v", pvcName, err)
 	}
@@ -219,7 +219,7 @@ func (handler *volumeHandlerCSI) CreateVolume() (string, error) {
 			}
 		}
 	} else {
-		err := kubeapi.CreatePVC(pvcName, pvcSize)
+		err := kubeapi.CreatePVC(pvcName, pvcSize, handler.log)
 		if err != nil {
 			errStr := fmt.Sprintf("Error creating PVC %s", pvcName)
 			handler.log.Error(errStr)
@@ -234,7 +234,7 @@ func (handler *volumeHandlerCSI) CreateVolume() (string, error) {
 func (handler *volumeHandlerCSI) DestroyVolume() (string, error) {
 	pvcName := handler.status.Key()
 	handler.log.Noticef("DestroyVolume called for PVC %s", pvcName)
-	err := kubeapi.DeletePVC(pvcName)
+	err := kubeapi.DeletePVC(pvcName, handler.log)
 	if err != nil {
 		// Its OK if not found since PVC might have been deleted already
 		if kerr.IsNotFound(err) {
@@ -249,7 +249,7 @@ func (handler *volumeHandlerCSI) DestroyVolume() (string, error) {
 
 func (handler *volumeHandlerCSI) Populate() (bool, error) {
 	handler.log.Noticef("Populate called for PVC %s", handler.status.Key())
-	_, err := kubeapi.FindPVC(handler.status.Key())
+	_, err := kubeapi.FindPVC(handler.status.Key(), handler.log)
 	if err != nil {
 		// Its OK if not found since PVC might not be created yet.
 		if kerr.IsNotFound(err) {
