@@ -288,7 +288,8 @@ DISK_WITH_P3=""
 DISKS_TO_MERGE_COUNT=0
 PDEV_LIST=""
 MULTIPLE_DISKS=false
-INSTALL_ZFS=false
+# XXX for testing TBD revert
+INSTALL_ZFS=true
 INSTALL_CLUSTERED_STORAGE=false
 grep -q eve_install_zfs_with_raid_level /proc/cmdline && INSTALL_ZFS=true
 RAID_LEVEL="none"
@@ -457,6 +458,7 @@ if mount_part INVENTORY "$(root_dev)" /run/INVENTORY -t vfat -o iocharset=iso885
    logmsg "EVE-OS installation will store report to USB inside /INVENTORY/$(cat /config/soft_serial 2>/dev/null)"
 else
    REPORT="/persist/installer"
+   rm -rf "$REPORT"
    logmsg "EVE-OS installation will store report to $REPORT"
 fi
 

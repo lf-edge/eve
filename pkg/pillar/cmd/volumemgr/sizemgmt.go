@@ -58,6 +58,9 @@ func getRemainingDiskSpace(ctxPtr *volumemgrContext) (uint64, error) {
 		return uint64(0), err
 	}
 	allowedDeviceDiskSize = deviceDiskSize - diskReservedForDom0
+	log.Noticef("XXX getRemainingDiskSpace device total %d used %d free %d, allowed %d totalDiskSize %d",
+		deviceDiskUsage.Total, deviceDiskUsage.Used, deviceDiskUsage.Free,
+		allowedDeviceDiskSize, totalDiskSize)
 	if allowedDeviceDiskSize < totalDiskSize {
 		return 0, nil
 	} else {

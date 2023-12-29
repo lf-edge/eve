@@ -65,6 +65,7 @@ func collectAndPublishStorageMetrics(ctxPtr *zfsContext) {
 					// It is possible that the logical volume belongs to another zpool
 					continue
 				}
+				// XXX this is only for VolumeConfig ...
 				zfsPoolMetrics.ZVols = append(zfsPoolMetrics.ZVols, zVolMetric)
 			}
 

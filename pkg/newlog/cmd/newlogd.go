@@ -173,7 +173,7 @@ func main() {
 	}
 
 	persistMbytes = getPersistSpace()
-	limitGzipFilesMbyts = maxToSendMbytes
+	limitGzipFilesMbyts = maxToSendMbytes // XXX 2GBytes
 
 	log.Functionf("newlogd: starting... restarted %v", restarted)
 
@@ -495,6 +495,7 @@ func handleGlobalConfigImp(ctxArg interface{}, key string, statusArg interface{}
 		enableFastUpload = enabled
 
 		// get user specified disk quota for logs and cap at 10% of /persist space
+		// XXX default 2GBytes
 		limitGzipFilesMbyts = gcp.GlobalValueInt(types.LogRemainToSendMBytes)
 		if limitGzipFilesMbyts > uint32(persistMbytes/10) {
 			limitGzipFilesMbyts = uint32(persistMbytes / 10)
@@ -1576,6 +1577,7 @@ func getPtypeTimestamp(timeStr string) (*timestamp.Timestamp, error) {
 }
 
 // get total MBytes in '/persist' partition on device
+// ZFS??
 func getPersistSpace() uint64 {
 	var stat syscall.Statfs_t
 	err := syscall.Statfs(types.PersistDir, &stat)

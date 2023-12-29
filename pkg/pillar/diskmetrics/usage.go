@@ -163,9 +163,14 @@ func Dom0DiskReservedSize(log *base.LogObject, globalConfig *types.ConfigItemVal
 	maxDom0DiskSize := uint64(globalConfig.GlobalValueInt(
 		types.Dom0DiskUsageMaxBytes))
 	if diskReservedForDom0 > maxDom0DiskSize {
+		log.Noticef("XXX Dom0DiskReservedSize %d percent of %d = %d, HIT max %d",
+			dom0MinDiskUsagePercent, deviceDiskSize, diskReservedForDom0, maxDom0DiskSize)
 		log.Tracef("diskSizeReservedForDom0 - diskReservedForDom0 adjusted to "+
 			"maxDom0DiskSize (%d)", maxDom0DiskSize)
 		diskReservedForDom0 = maxDom0DiskSize
+	} else {
+		log.Noticef("XXX Dom0DiskReservedSize %d percent of %d = %d, max %d",
+			dom0MinDiskUsagePercent, deviceDiskSize, diskReservedForDom0, maxDom0DiskSize)
 	}
 	return diskReservedForDom0
 }
@@ -201,6 +206,8 @@ func PersistUsageStat(log *base.LogObject) (*types.UsageStat, error) {
 		usageStat.Free -= usageStatReserved.Total
 		usageStat.Total -= usageStatReserved.Total
 	}
+	log.Noticef("XXX PersistUsageStat reserved %+v result %+v",
+		usageStatReserved, usageStat)
 	return usageStat, nil
 }
 

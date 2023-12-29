@@ -138,6 +138,7 @@ percent_used() {
 # /persist/newlog/devUpload/*
 # /persist/newlog/keepSentQueue/*
 # /persist/newlog/failedUpload/*
+# XXX update list of directories
 diskspace_used=$(percent_used persist)
 echo "Used percentage of /persist: $diskspace_used"
 if [ "$diskspace_used" -ge "$DISKSPACE_RECOVERY_LIMIT" ]
@@ -146,7 +147,9 @@ then
     for DIR in log pubsub-large netdump newlog/keepSentQueue newlog/failedUpload newlog/appUpload newlog/devUpload containerd-system-root vault/containerd vault/downloader vault/verifier agentdebug # XXX vault/volumes clear/volumes
     do
         dir_del=$PERSISTDIR/$DIR
-        rm -rf "${dir_del:?}/"*
+        # XXX disable for test purposes
+        # rm -rf "${dir_del:?}/"*
+        echo "XXX rm -rf "${dir_del:?}/"*"
         diskspace_used=$(percent_used persist)
         echo "Used percentage of /persist is $diskspace_used after clearing $dir_del"
         if [ "$diskspace_used" -le "$DISKSPACE_RECOVERY_LIMIT" ]
@@ -157,6 +160,11 @@ then
     diskspace_used=$(percent_used persist)
     echo "Used percentage of /persist after recovery: $diskspace_used"
 fi
+
+# XXX dump sizes by appending to /persist/log/sizes
+echo "$(date -Ins -u) onboot.sh sizes" >>/persist/log/sizes
+du -m /persist >>/persist/log/sizes
+echo "$(date -Ins -u) onboot.sh sizes done" >>/persist/log/sizes
 
 # Run upgradeconverter
 mkdir -p /persist/ingested/

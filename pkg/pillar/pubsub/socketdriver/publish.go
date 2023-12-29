@@ -172,6 +172,7 @@ func (s *Publisher) Load() (map[string][]byte, int, error) {
 				continue
 			}
 			items[key] = sb
+			// XXX look for this log message
 			s.log.Warnf("Using backup of %s/%s", s.name, key)
 		}
 	}
@@ -196,6 +197,8 @@ func (s *Publisher) recoverFromBackup(key string) ([]byte, error) {
 		err = fmt.Errorf("failed to overwrite %s with backup data: %w", origFileName, err)
 		return nil, err
 	}
+	// XXX should we remove backupFileName here? We wrote to the real one
+	// but not synched??
 	return bakData, nil
 }
 
