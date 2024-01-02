@@ -9,39 +9,49 @@ and then read [CUSTOM-BUILD.md](./CUSTOM-BUILD.md).
 
 EVE Makefile automates building and running the following artifacts (all of which are described in gory details below):
 
-* linuxkit/Docker packages
+* OCI images, which are the "building blocks" composed together into the EVE rootfs; these are linuxkit packages, in [pkg/](../pkg/), build via `linuxkit pkg build`
 * EVE rootfs images
 * bootable EVE live images
 * bootable EVE installer images
 
-While linuxkit/Docker packages don't provide any knobs to control the flavor of the build, the rest of the artifacts do.
+![Build Process](./images/build-process.png)
 
-The four main knobs you should be aware of are:
+While the packages don't provide any knobs to control the flavor of the build, the rest of the artifacts do.
+These can be set as variables to `make` targets.
 
-* `ROOTFS_VERSION` - sets the version ID of the EVE image
-* `ZARCH` - sets the architecture (either arm64 or amd64) of the resulting image
-* `HV` - sets the hypervisor flavor of the resulting image (acrn, xen or kvm)
-* `IMAGE_FORMAT` - sets the image format of the resulting bootable image (raw, qcow2 or gcp)
-* `PREEMPT_RT` - (amd64 only) set to '1' applies, enables and builds PREEMPT_RT patches for EVE kernel
+The main knobs that control the flavor of the build are the following. Each of these has reasonably sane
+defaults, when possible.
 
-You can always specify an arbitrary combinations of these knobs to set the desired outcome of the build.
-For example, the following command line will build a Google Compute Platform live image with the default
+| Variable | Description | Default | Examples |
+| --- | --- | --- | --- |
+| `ROOTFS_VERSION` | Version ID of the EVE image | calculated from the git commit | `snapshot`, `1.2.3-abcd567` |
+| `ZARCH` | Hardware architecture of the resulting image | your current platform | `amd64`, `arm64`, `riscv64` |
+| `HV` | Hypervisor flavor of the resulting image | `kvm` (amd64, arm64) or `mini` (riscv64) | `kvm`, `xen`, `acrn`, `mini`, `kubevirt` |
+| `PLATFORM` | Specific platform for which to build | `generic` | `generic`, `rt`, `nvidia`, `imx8mp_pollux` |
+
+Finally, the target determines what type of image you are building, e.g.`live`, `installer`.
+
+As much as possible, incompatible combinations will be caught and prevent a build. For example,
+`PLATFORM=nvidia` is for the ARM-based Jetsons, so `ZARCH=amd64` is incompatible and will be caught.
+
+You can specify an arbitrary combinations of these knobs to set the desired outcome of the build.
+
+For example, the following command line will build a generic qcow2 live image with the default
 hypervisor set to `kvm`, hardware architecture set to `amd64` and the version ID set to `snapshot`:
 
 ```shell
-make ROOTFS_VERSION=snapshot ZARCH=arm64 HV=kvm IMAGE_FORMAT=gcp live
+make ROOTFS_VERSION=snapshot ZARCH=amd64 HV=kvm live
 ```
 
-In addition to that we also provide shortcuts on the target names themselves that allow you to tweak the
-knobs specific only to that target. For example our previous example could've been specified as:
+To build the same image but for Google Compute Platform (notice the different target):
 
 ```shell
-make ROOTFS_VERSION=snapshot ZARCH=arm64 HV=kvm live-gcp
+make ROOTFS_VERSION=snapshot ZARCH=amd64 HV=kvm live-gcp
 ```
 
-instead - since `IMAGE_FORMAT` only applies at the level of a `live` target. Same way, since HV applies at
+Same way, since HV applies at
 the rootfs level (rootfs binary is then fed wholesale into live and installer builds) you can build
-a `snapshot` rootfs with the default hypervisor set to acrn by doing either:
+a `snapshot` rootfs with the hypervisor set to acrn by doing either:
 
 ```shell
 make ROOTFS_VERSION=snapshot HV=acrn rootfs
@@ -55,7 +65,7 @@ make ROOTFS_VERSION=snapshot rootfs-acrn
 
 In this hierarchy, think of `ZARCH` and `ROOTFS_VERSION` as applicable to anything hence they don't get a -foo shortcut treatment.
 
-When in doubt, always use a full specification on all the knobs spelled out on the command line.
+When in doubt, always use a full specification on all the knobs via variables spelled out on the command line.
 
 ## EVE Install Methods
 
@@ -120,7 +130,18 @@ specific versions without polluting the user's normal workspace.
 
 ## Output Components
 
-The following are the output components from the build process and their purpose. There are two kinds of components: final, intended for actual direct usage, and interim, used to build the final components. Some interim components may be removed as part of the build finalization process.
+The following are the output components from the build process and their purpose. There are two kinds of components: final, generally intended for actual direct usage, and interim, used to build the final components. Some interim components may be removed as part of the build finalization process.
+
+However, **every** build of an EVE image will create `rootfs.tar`, whether on the way to various
+live or installer image formats, or useful by itself. This tarfile contains the root filesystem, whose
+contents then may be used to generate the final versions: live vs installer, qcow2 vs raw vs GCP, etc,
+or may be useful on its own.
+
+The important work in generating EVE is primarily in creating `rootfs.tar`. All of the rest is:
+
+* converting formats and tools to do so
+* packaging
+* additional metadata such as SBoMs
 
 ### Final
 
@@ -142,6 +163,7 @@ The following are the output components from the build process and their purpose
 
 * `rootfs_installer.img` - a bootable rootfs filesystem image to run as an installer.
 * `config.img` - 1MB FAT32 image file containing basic configuration information, including wpa supplicant, name of the controller, onboarding key/cert pair, and other configuration information.
+* `rootfs.tar` - as described above.
 
 ## Build Process
 
@@ -167,12 +189,12 @@ This is the rootfs filesystem in a tar file.
 It is a temporary artifact which is used as input into security and bill-of-materials scanners,
 and is then consumed to create other artifacts, and then can be removed. To build it:
 
-1. Verify the existence of the linuxkit builder configuration file `images/rootfs.yml`. See notes on [generating yml](#generating-yml).
+1. Verify the existence of the linuxkit builder configuration file `images/rootfs.yml`. See notes on [generating yml](#generating-yml) to understand how this is generated.
 1. Call `makerootfs.sh tar -y images/rootfs.yml -t path/to/rootfs.tar [-a <arch>]`, which will build an image for the target architecture `<arch>` using `linuxkit` with a tar output format using `images/rootfs.yml` as the configuration file, saving the output to `path/to/rootfs.tar`.
 
 When done with any later builds, you can remove the temporary artifact `path/to/rootfs.tar`.
 
-When run with `make rootfstar` or `make rootfs`, this will build the rootfs tar file:
+When run with `make rootfstar` or `make rootfs.tar` or `make rootfs`, this will build the rootfs tar file:
 
 * For the default architecture;
 * Saving the tar file to `dist/<arch>/<path-from-commit-and-version-and-date>/`
@@ -303,23 +325,65 @@ Note that once you flash `installer.raw` on the installer media, such as USB dri
 
 ## Generating yml
 
-As described earlier, the `yml` files used to generate the images via `linuxkit build` are in the [images/](../images/) directory. The actual files, e.g. `rootfs.yml` and `installer.yml`, are not checked in directly to source code control. Rather, these are _generated_ from `<ymlname>.yml.in`, e.g. [rootfs.yml.in](../images/rootfs.yml.in) and [installer.yml.in](../images/installer.yml.in). The generation is as follows:
+The core `rootfs.tar` file is generated using `linuxkit build`, which is driven by a `yml` file.
+The `yml` file is in the `images` directory and is named `rootfs-$(HV).yml`, where `HV` is the hypervisor,
+e.g. `kvm`, `xen`, `acrn`, `mini`, and can be set in the environment variable `HV`,
+e.g. `make rootfs.tar HV=kvm`.
 
-```shell
-parse-pkgs.sh <yml>.in > <yml>
-```
+The actual `yml` file `rootfs-$(HV).yml` is not checked into version control, nor is any file
+in [images](../images/). Rather, the checked-in files in this directory are templates and modifiers:
 
-This is used to replace the tags of various components in the `.yml.in` file with the correct current image name and tag for various packages, including the correct architecture.
+* templates: `rootfs.yml.in` and `version.yml.in`
+* modifiers: `*.yml.in.yq`
 
-The output `.yml` file is stored in the same directory as the `.yml.in` file, i.e. [images/](../images/).
+When you run `make rootfs.tar`, or any target that depends upon it, the following happens:
 
-This creates several challenges, which will, eventually, be cleaned up:
+1. The Makefile includes [kernel-version.mk](../kernel-version.mk). This sets the variable `KERNEL_TAG` inside the make process to a specific docker image tag, based on the `ZARCH` and, if set, `PLATFORM`
+1. The Makefile sees a dependency on `images/rootfs-$(HV).yml`
+1. The Makefile runs `tools/compose-image-yml.sh images/rootfs.yml.in images/rootfs-$(HV).yml.in "$(ROOTFS_VERSION)-$(HV)-$(ZARCH)" $(HV)`, i.e. the utility [compose-image-yml.sh](../tools/compose-image-yml.sh), passing it:
+   * the base template `images/rootfs.yml.in`, i.e. input file
+   * the template for the specific HV file `images/rootfs-$(HV).yml.in`, i.e. output file
+   * the version string, which is the `ROOTFS_VERSION`, hypervisor, and architecture
+   * the hypervisor
+1. `compose-image-yml.sh` does the following:
+   1. Look for a modifier file `images/rootfs-$(HV).yml.in.yq`; this is identical to the HV-specific template (2nd argument), but with `.yq` appended to the filename.
+   1. If it finds a modifier file, apply it to the base template, and save the result to HV-specific template.
+   1. Search through the output file for the string `EVE_HV` and, if found, replace it with the hypervisor.
+   1. If the version argument, which was generated from the git commit, contains the phrase `dirty`, i.e. uncommitted, then change the `PILLAR_TAG` in the output file to `PILLAR_DEV_TAG`, which will be used in a later stage.
+1. The Makefile runs `./tools/parse-pkgs.sh images/rootfs-$(HV).yml.in > images/rootfs-$(HV).yml`, i.e. the utility [parse-pkgs.sh](../tools/parse-pkgs.sh), passing it as an input the HV-specific template generated in the previous step `rootfs-$(HV).yml.in`, and saving the output to the final `rootfs-$(HV).yml` file. In addition, the variable `KERNEL_TAG` is passed as an environment variable.
+1. `parse-pkgs.sh` does the following:
+    1. Gets the package tag for each directory in [pkg/](../pkg/) via `linuxkit pkg show-tag ${dir}`, and save it to variable which looks like `<PKGNAME>_TAG`, e.g. `PILLAR_TAG` or `WWAN_TAG`.
+    1. Go through the input file - the HV-specific template - and replace the tags with the appropriate values. This includes the value of `KERNEL_TAG` as passed by the Makefile on calling `parse-pkgs.sh`.
+1. The Makefile generates `rootfs.tar` via `./tools/makerootfs.sh tar -y images/rootfs-$(HV).yml -t path/to/rootfs.tar -a $(ZARCH)`, i.e. it runs [makerootfs.sh](../tools/makerootfs.sh), passing it the following arguments:
+    1. The target format, i.e. `tar`
+    1. `-a $(ZARCH)` - the architecture
+    1. `-t $(PATH)` - path to the target output file
+    1. `-y $(YML)` - path to the yml file, as generated in previous steps
+1. `makerootfs.sh` runs `linuxkit build` to generate the final `rootfs.tar`
 
-1. The `images/` source directory is unclean, with both committed and non-committed code in the same directory.
+The above process creates several challenges, which will, eventually, be cleaned up:
+
+1. The `images/` source directory is unclean, with both version-control-committed code - modifiers `*.yq` and primary template `rootfs.yml.in` - and non-committed code - interim HV-specific template, `rootfs-$(HV).yml.in` and the final output yml file `rootfs-$(HV).yml` - in the same directory.
 2. The same input file, e.g. `rootfs.yml`, appears to be usable with different architectures, but actually is not, as it is architecture-specific.
 3. It is necessary to pre-process the actual source files before generating an image. It is not possible to run `linuxkit build` manually to generate an image. This makes building and debugging individual steps harder.
 
 These are all due to constraints within the usage of the `yml` files. If a cleaner solution requires upstreaming into linuxkit, it will be added to the [UPSTREAMING.md](./UPSTREAMING.md) file.
+
+### Platform-specific
+
+The current process uses the control knob `PLATFORM` in the following places in the Makefile:
+
+* As a value in the included [kernel-version.mk](../kernel-version.mk), in order to set `KERNEL_TAG`, which is passed to [parse-pkgs.sh](../tools/parse-pkgs.sh).
+* As the first argument to [prepare-platform.sh](../tools/prepare-platform.sh) in the Makefile targets for `live.*`, `installer.*` and `verification.*`, which, in turn, uses it to add specific files to the build and output directories prior to making the final image.
+* In the final eve image `lf-edge/eve`, specifically the entrypoint [runme.sh](../pkg/eve/runme.sh), where the platform is passed as `-p` argument when calling `docker run`, and is used to modify the final layout.
+
+### Generating any yml
+
+Note that the process above can be used to generate any yml file, not just `rootfs-$(HV).yml`. As long as
+a modifier file exists, you can call `make images/rootfs-foo.yml` and it will try to generate
+`images/rootfs-foo.yml`, treating `foo` as the hypervisor. This may not successfully build a final
+`rootfs.tar`, but you can generate any yml file you want and then later directly try running
+`linuxkit build` upon it.
 
 ## Image Contents
 

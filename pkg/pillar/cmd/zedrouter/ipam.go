@@ -42,26 +42,37 @@ func (z *zedrouter) generateBridgeMAC(brNum int) net.HardwareAddr {
 // Since these MAC addresses will not appear on external Ethernet networks, we can also
 // use OUI octets for randomness. Only I/G and U/L bits need to stay constant and set
 // appropriately.
-func (z *zedrouter) generateAppMac(appUUID uuid.UUID, adapterNum int, appNum int,
+func (z *zedrouter) generateAppMac(adapterNum int, appStatus *types.AppNetworkStatus,
 	netInstStatus *types.NetworkInstanceStatus) net.HardwareAddr {
 	h := sha256.New()
-	h.Write(appUUID[:])
+	h.Write(appStatus.UUIDandVersion.UUID[:])
 	h.Write(netInstStatus.UUIDandVersion.UUID[:])
 	nums := make([]byte, 2)
 	nums[0] = byte(adapterNum)
-	nums[1] = byte(appNum)
+	nums[1] = byte(appStatus.AppNum)
 	h.Write(nums)
 	hash := h.Sum(nil)
 	switch netInstStatus.Type {
 	case types.NetworkInstanceTypeSwitch:
+		// For switch network instances, we always generate globally-scoped
+		// MAC addresses. There is no difference in behaviour between MAC address
+		// generators in this case.
 		return net.HardwareAddr{0x02, 0x16, 0x3e, hash[0], hash[1], hash[2]}
 	case types.NetworkInstanceTypeLocal:
-		mac := net.HardwareAddr{hash[0], hash[1], hash[2], hash[3], hash[4], hash[5]}
-		// Mark this MAC address as unicast by setting the I/G bit to zero.
-		mac[0] &= ^byte(1)
-		// Mark this MAC address as locally administered by setting the U/L bit to 1.
-		mac[0] |= byte(1 << 1)
-		return mac
+		switch appStatus.MACGenerator {
+		case types.MACGeneratorNodeScoped:
+			return net.HardwareAddr{0x00, 0x16, 0x3e, 0x00,
+				byte(adapterNum), byte(appStatus.AppNum)}
+		case types.MACGeneratorGloballyScoped:
+			mac := net.HardwareAddr{hash[0], hash[1], hash[2], hash[3], hash[4], hash[5]}
+			// Mark this MAC address as unicast by setting the I/G bit to zero.
+			mac[0] &= ^byte(1)
+			// Mark this MAC address as locally administered by setting the U/L bit to 1.
+			mac[0] |= byte(1 << 1)
+			return mac
+		default:
+			z.log.Fatalf("undefined MAC generator")
+		}
 	default:
 		z.log.Fatalf("unsupported network instance type")
 	}

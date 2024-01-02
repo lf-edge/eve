@@ -697,6 +697,8 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 		ReportAppMetric.Memory = new(metrics.MemoryMetric)
 		ReportAppMetric.AppName = aiStatus.DisplayName
 		ReportAppMetric.AppID = aiStatus.Key()
+		ReportAppMetric.PatchEnvelope = composePatchEnvelopeUsage(aiStatus.Key(), ctx)
+
 		if !aiStatus.BootTime.IsZero() && aiStatus.Activated {
 			elapsed := time.Since(aiStatus.BootTime)
 			uptime, _ := ptypes.TimestampProto(
@@ -1055,7 +1057,6 @@ func PublishAppInfoToZedCloud(ctx *zedagentContext, uuid string,
 		ReportAppInfo.AppVersion = aiStatus.UUIDandVersion.Version
 		ReportAppInfo.AppName = aiStatus.DisplayName
 		ReportAppInfo.State = aiStatus.State.ZSwState()
-		ReportAppInfo.PatchEnvelope = composePatchEnvelopeUsage(uuid, ctx)
 		if !aiStatus.ErrorTime.IsZero() {
 			errInfo := encodeErrorInfo(
 				aiStatus.ErrorAndTimeWithSource.ErrorDescription)

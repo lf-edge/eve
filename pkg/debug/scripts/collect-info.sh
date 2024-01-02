@@ -5,7 +5,7 @@
 #
 
 # Script version, don't forget to bump up once something is changed
-VERSION=12
+VERSION=13
 
 # Add required packages here, it will be passed to "apk add".
 # Once something added here don't forget to add the same package
@@ -216,6 +216,39 @@ collect_pillar_backtraces()
 
     echo "- done pillar backtraces"
 }
+collect_zfs_info()
+{
+    type=$(cat /run/eve.persist_type)
+    if [ "$type" = "zfs" ]; then
+       echo "- Collecting ZFS specific info"
+       {
+           echo "zpool status"
+           echo "============"
+           eve exec pillar zpool status
+           echo "============"
+           echo "zpool list -v"
+           echo "============"
+           eve exec pillar zpool list -v
+           echo "============"
+           echo "zfs get all properties"
+           echo "============"
+           eve exec pillar zfs get all
+           echo "============"
+           echo "zfs list -o all"
+           echo "============"
+           eve exec pillar zfs list -o all
+           echo "============"
+           echo "ZFS DMU TX "
+           echo "============"
+           eve exec pillar cat /proc/spl/kstat/zfs/dmu_tx
+           echo "============"
+           echo "ZFS ARC stats "
+           echo "============"
+           eve exec pillar cat /proc/spl/kstat/zfs/arcstats
+           echo "============"
+        } > "$DIR/zfs-info"
+    fi
+}
 
 # Copy itself
 cp "${0}" "$DIR"
@@ -293,6 +326,9 @@ collect_network_info
 
 # Pillar part
 collect_pillar_backtraces
+
+# ZFS part
+collect_zfs_info
 
 # Make a tarball
 # --exlude='root-run/run'              /run/run/run/.. exclude symbolic link loop

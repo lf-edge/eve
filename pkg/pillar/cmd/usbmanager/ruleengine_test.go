@@ -6,13 +6,54 @@ import (
 	"testing"
 )
 
+func newUSBPortPassthroughRule(busnum uint16, portnum string, pciAddr string) compositionPassthroughRule {
+	var ret compositionPassthroughRule
+
+	usb := &usbPortPassthroughRule{
+		busnum:  busnum,
+		portnum: portnum,
+	}
+
+	ret.rules = []passthroughRule{usb}
+
+	if pciAddr != "" {
+		pci := &pciPassthroughRule{
+			pciAddress: pciAddr,
+		}
+		ret.rules = append(ret.rules, pci)
+	}
+
+	return ret
+}
+
+func newUSBDevicePassthroughRule(vendorID, productID uint32, pciAddr string) compositionPassthroughRule {
+	var ret compositionPassthroughRule
+
+	usb := &usbDevicePassthroughRule{
+		vendorID:  vendorID,
+		productID: productID,
+	}
+
+	ret.rules = []passthroughRule{usb}
+
+	if pciAddr != "" {
+		pci := &pciPassthroughRule{
+			pciAddress: pciAddr,
+		}
+
+		ret.rules = append(ret.rules, pci)
+	}
+
+	return ret
+}
+
 func TestOverwriteRule(t *testing.T) {
 	re := newRuleEngine()
 
-	pci1 := pciPassthroughRule{pciAddress: "00:02.0"}
+	pci1 := pciPassthroughForbidRule{pciAddress: "00:02.0"}
 	re.addRule(&pci1)
 
-	pci2 := pciPassthroughRule{pciAddress: "00:02.0"}
+	pci2 := pciPassthroughForbidRule{pciAddress: "00:02.0"}
 	re.addRule(&pci2)
 
 	if len(re.rules) != 1 {
@@ -23,7 +64,7 @@ func TestOverwriteRule(t *testing.T) {
 func TestBlockedByPCIPassthrough(t *testing.T) {
 	re := newRuleEngine()
 
-	pci := pciPassthroughRule{pciAddress: "00:02.0"}
+	pci := pciPassthroughForbidRule{pciAddress: "00:02.0"}
 	re.addRule(&pci)
 
 	ud := usbdevice{
@@ -33,7 +74,7 @@ func TestBlockedByPCIPassthrough(t *testing.T) {
 		portnum:                 "2",
 	}
 	vm := virtualmachine{}
-	usb := usbPortPassthroughRule{ud: ud}
+	usb := newUSBPortPassthroughRule(ud.busnum, ud.portnum, pci.pciAddress)
 	usb.vm = &vm
 
 	re.addRule(&usb)
@@ -57,10 +98,10 @@ func TestPortOverDevPrecedence(t *testing.T) {
 		productID:               6,
 	}
 
-	usbPortRule := usbPortPassthroughRule{ud: ud}
+	usbPortRule := newUSBPortPassthroughRule(ud.busnum, ud.portnum, ud.usbControllerPCIAddress)
 	usbPortRule.vm = &virtualmachine{}
 
-	usbDevRule := usbDevicePassthroughRule{ud: ud}
+	usbDevRule := newUSBDevicePassthroughRule(ud.vendorID, ud.productID, ud.usbControllerPCIAddress)
 
 	re.addRule(&usbPortRule)
 	re.addRule(&usbDevRule)
@@ -83,7 +124,7 @@ func TestUSBWithoutPCICard(t *testing.T) {
 		productID: 6,
 	}
 
-	usbPortRule := usbPortPassthroughRule{ud: ud}
+	usbPortRule := newUSBPortPassthroughRule(ud.busnum, ud.portnum, ud.usbControllerPCIAddress)
 	usbPortRule.vm = &virtualmachine{}
 
 	re.addRule(&usbPortRule)
@@ -108,13 +149,7 @@ func TestPluginWrongPCICard(t *testing.T) {
 		productID:               6,
 	}
 
-	usbRule := usbPortPassthroughRule{
-		ud: usbdevice{
-			busnum:                  01,
-			devnum:                  02,
-			usbControllerPCIAddress: "00:03.0",
-		},
-	}
+	usbRule := newUSBPortPassthroughRule(01, "02", "00:03.0")
 	usbRule.vm = &virtualmachine{qmpSocketPath: "/vm/with/usb/passthrough"}
 	re.addRule(&usbRule)
 
@@ -132,34 +167,26 @@ func TestEmptyParentPCIAddress(t *testing.T) {
 	ud1 := usbdevice{
 		usbControllerPCIAddress: "00:02.0",
 		busnum:                  01,
-		devnum:                  02,
-		portnum:                 "2",
+		portnum:                 "3",
 		vendorID:                5,
 		productID:               6,
 	}
 	ud2 := usbdevice{
 		usbControllerPCIAddress: "00:03.0",
 		busnum:                  02,
-		devnum:                  02,
 		portnum:                 "3",
 		vendorID:                5,
 		productID:               6,
 	}
 
-	pciRule := pciPassthroughRule{
+	pciRule := pciPassthroughForbidRule{
 		pciAddress: "00:02.0",
 	}
 	pciRule.vm = &virtualmachine{qmpSocketPath: "/vm/with/pci/passthrough"}
 	re.addRule(&pciRule)
 
-	usbRule := usbPortPassthroughRule{
-		ud: usbdevice{
-			busnum:                  02,
-			devnum:                  02,
-			portnum:                 "3",
-			usbControllerPCIAddress: "",
-		},
-	}
+	usbRule := newUSBPortPassthroughRule(02, "3", "")
+
 	usbRule.vm = &virtualmachine{qmpSocketPath: "/vm/with/usb/passthrough"}
 	re.addRule(&usbRule)
 
@@ -182,13 +209,13 @@ func FuzzRuleEngine(f *testing.F) {
 		// usb device passthrough rule
 		parentPCIAddressRule1 string,
 		busnumRule1 uint16,
-		devnumRule1 uint16,
+		portnumRule1 string,
 		vendorIdRule1 uint32,
 		productIdRule1 uint32,
 		// usb plug passthrough rule
 		parentPCIAddressRule2 string,
 		busnumRule2 uint16,
-		devnumRule2 uint16,
+		portnumRule2 string,
 		vendorIdRule2 uint32,
 		productIdRule2 uint32,
 		// pci passthrough rule
@@ -197,41 +224,30 @@ func FuzzRuleEngine(f *testing.F) {
 		parentPCIAddress string,
 		busnum uint16,
 		devnum uint16,
+		portnum string,
 		vendorId uint32,
 		productId uint32,
 	) {
 		re := newRuleEngine()
-		udRule1 := usbdevice{
-			busnum:                  busnumRule1,
-			devnum:                  devnumRule1,
-			vendorID:                vendorIdRule1,
-			productID:               productIdRule1,
-			usbControllerPCIAddress: parentPCIAddressRule1,
-		}
-		rule1 := usbDevicePassthroughRule{ud: udRule1}
+
+		rule1 := newUSBDevicePassthroughRule(vendorIdRule1, productIdRule1, parentPCIAddressRule1)
 		rule1.vm = &virtualmachine{
 			qmpSocketPath: "/vm1",
 		}
 
-		udRule2 := usbdevice{
-			busnum:                  busnumRule2,
-			devnum:                  devnumRule2,
-			vendorID:                vendorIdRule2,
-			productID:               productIdRule2,
-			usbControllerPCIAddress: parentPCIAddressRule2,
-		}
-		rule2 := usbPortPassthroughRule{ud: udRule2}
+		rule2 := newUSBPortPassthroughRule(busnumRule2, portnumRule2, parentPCIAddressRule2)
 		rule2.vm = &virtualmachine{
 			qmpSocketPath: "/vm2",
 		}
 
-		rule3 := pciPassthroughRule{
+		rule3 := pciPassthroughForbidRule{
 			pciAddress: parentPCIAddressRule3,
 		}
 
 		ud := usbdevice{
 			busnum:                  busnum,
 			devnum:                  devnum,
+			portnum:                 portnum,
 			vendorID:                vendorId,
 			productID:               productId,
 			usbControllerPCIAddress: parentPCIAddress,

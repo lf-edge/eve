@@ -108,6 +108,18 @@ then
     done
 fi
 
+# Make modules available for hosting Vm
+mount --bind /mnt/modules /lib/modules
+mount_res=$?
+echo "Mount /mnt/modules as /lib/modules, result $mount_res"
+
+#
+# Here load modules needed for a container
+#
+modprobe wireguard
+mod_res=$?
+echo "Modprobe wireguard, result $mod_res"
+
 # mount modules shared by EVE-OS in /mnt/modules to /lib/modules
 # if /lib/modules inside container is not empty we will silently ignore the content
 # we use overlayfs to allow replacing of modules from user's entrypoint scripts

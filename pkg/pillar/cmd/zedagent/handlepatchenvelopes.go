@@ -8,17 +8,18 @@ import (
 
 	"github.com/golang/protobuf/ptypes"
 	"github.com/lf-edge/eve-api/go/info"
+	"github.com/lf-edge/eve-api/go/metrics"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"google.golang.org/protobuf/proto"
 )
 
-func composePatchEnvelopeUsage(appUUID string, ctx *zedagentContext) []*info.ZInfoPatchEnvelopeUsage {
-	result := []*info.ZInfoPatchEnvelopeUsage{}
+func composePatchEnvelopeUsage(appUUID string, ctx *zedagentContext) []*metrics.AppPatchEnvelopeMetric {
+	result := []*metrics.AppPatchEnvelopeMetric{}
 
 	for _, c := range ctx.subPatchEnvelopeUsage.GetAll() {
 		peUsage := c.(types.PatchEnvelopeUsage)
 		if peUsage.AppUUID == appUUID {
-			result = append(result, &info.ZInfoPatchEnvelopeUsage{
+			result = append(result, &metrics.AppPatchEnvelopeMetric{
 				Uuid:              peUsage.PatchID,
 				Version:           peUsage.Version,
 				PatchApiCallCount: peUsage.PatchAPICallCount,

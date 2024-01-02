@@ -78,6 +78,27 @@ func (pr *passthroughRuleVMBase) virtualMachine() *virtualmachine {
 	return pr.vm
 }
 
+type pciPassthroughForbidRule struct {
+	pciAddress string
+	passthroughRuleVMBase
+}
+
+func (pr *pciPassthroughForbidRule) String() string {
+	return fmt.Sprintf("PCI Passthrough Forbid Rule %s", pr.pciAddress)
+}
+
+func (pr *pciPassthroughForbidRule) evaluate(ud usbdevice) passthroughAction {
+	if ud.usbControllerPCIAddress == pr.pciAddress {
+		return passthroughForbid
+	}
+
+	return passthroughNo
+}
+
+func (pr *pciPassthroughForbidRule) priority() uint8 {
+	return 0
+}
+
 type pciPassthroughRule struct {
 	pciAddress string
 	passthroughRuleVMBase
@@ -89,7 +110,7 @@ func (pr *pciPassthroughRule) String() string {
 
 func (pr *pciPassthroughRule) evaluate(ud usbdevice) passthroughAction {
 	if ud.usbControllerPCIAddress == pr.pciAddress {
-		return passthroughForbid
+		return passthroughDo
 	}
 
 	return passthroughNo
@@ -100,12 +121,13 @@ func (pr *pciPassthroughRule) priority() uint8 {
 }
 
 type usbDevicePassthroughRule struct {
-	ud usbdevice
+	vendorID  uint32
+	productID uint32
 	passthroughRuleVMBase
 }
 
 func (udpr *usbDevicePassthroughRule) String() string {
-	return fmt.Sprintf("USB Device Passthrough Rule %s on pci %s", udpr.ud.vendorAndproductIDString(), udpr.ud.usbControllerPCIAddress)
+	return fmt.Sprintf("USB Device Passthrough Rule %x/%x", udpr.vendorID, udpr.productID)
 }
 
 func (udpr *usbDevicePassthroughRule) priority() uint8 {
@@ -113,24 +135,74 @@ func (udpr *usbDevicePassthroughRule) priority() uint8 {
 }
 
 func (udpr *usbDevicePassthroughRule) evaluate(ud usbdevice) passthroughAction {
-	if udpr.ud.usbControllerPCIAddress != "" && udpr.ud.usbControllerPCIAddress != ud.usbControllerPCIAddress {
-		return passthroughNo
-	}
-	if udpr.ud.vendorID != ud.vendorID ||
-		udpr.ud.productID != ud.productID {
+	if udpr.vendorID != ud.vendorID ||
+		udpr.productID != ud.productID {
 		return passthroughNo
 	}
 
 	return passthroughDo
 }
 
+type compositionPassthroughRule struct {
+	rules []passthroughRule
+	passthroughRuleVMBase
+}
+
+func (cpr *compositionPassthroughRule) evaluate(ud usbdevice) passthroughAction {
+	if len(cpr.rules) == 0 {
+		return passthroughNo
+	}
+
+	var ret passthroughAction
+	ret = passthroughDo
+
+	for _, rule := range cpr.rules {
+		action := rule.evaluate(ud)
+		if action == passthroughForbid {
+			return action
+		}
+		if action == passthroughNo {
+			ret = passthroughNo
+		}
+	}
+	return ret
+}
+
+func (cpr *compositionPassthroughRule) String() string {
+	var ret string
+
+	for _, rule := range cpr.rules {
+		ret += fmt.Sprintf("|%s", rule.String())
+	}
+
+	ret += "|"
+
+	return ret
+}
+
+func (cpr *compositionPassthroughRule) priority() uint8 {
+	var ret uint8
+
+	ret = 1
+	for _, rule := range cpr.rules {
+		oldPrio := ret
+		ret += rule.priority()
+		if ret < oldPrio {
+			panic("overflow happened") // panic here to detect these failures in go tests
+		}
+	}
+
+	return ret
+}
+
 type usbPortPassthroughRule struct {
-	ud usbdevice
+	busnum  uint16
+	portnum string
 	passthroughRuleVMBase
 }
 
 func (uppr *usbPortPassthroughRule) String() string {
-	return fmt.Sprintf("USB Port Passthrough Rule %s on pci %s", uppr.ud.busnumAndPortnumString(), uppr.ud.usbControllerPCIAddress)
+	return fmt.Sprintf("USB Port Passthrough Rule %x/%s", uppr.busnum, uppr.portnum)
 }
 
 func (uppr *usbPortPassthroughRule) priority() uint8 {
@@ -138,11 +210,8 @@ func (uppr *usbPortPassthroughRule) priority() uint8 {
 }
 
 func (uppr *usbPortPassthroughRule) evaluate(ud usbdevice) passthroughAction {
-	if uppr.ud.usbControllerPCIAddress != "" && uppr.ud.usbControllerPCIAddress != ud.usbControllerPCIAddress {
-		return passthroughNo
-	}
-	if uppr.ud.portnum != ud.portnum ||
-		uppr.ud.busnum != ud.busnum {
+	if uppr.portnum != ud.portnum ||
+		uppr.busnum != ud.busnum {
 		return passthroughNo
 	}
 

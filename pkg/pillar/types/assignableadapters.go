@@ -66,10 +66,11 @@ type IoBundle struct {
 	PciLong string // Specific PCI bus address in Domain:Bus:Device.Function syntax
 	// For non-PCI devices such as the ISA serial ports we have:
 	// XXX: Why is IRQ a string?? Should convert it into Int.
-	Irq     string // E.g., "5"
-	Ioports string // E.g., "2f8-2ff"
-	Serial  string // E.g., "/dev/ttyS1"
-	UsbAddr string // E.g., "1:2.3"
+	Irq        string // E.g., "5"
+	Ioports    string // E.g., "2f8-2ff"
+	Serial     string // E.g., "/dev/ttyS1"
+	UsbAddr    string // E.g., "1:2.3"
+	UsbProduct string // E.g., "0951:1666"
 
 	// Attributes Derived and assigned locally ( not from controller)
 
@@ -146,6 +147,11 @@ func (ib IoBundle) HasAdapterChanged(log *base.LogObject, phyAdapter PhysicalIOA
 			ib.UsbAddr, phyAdapter.Phyaddr.UsbAddr)
 		return true
 	}
+	if phyAdapter.Phyaddr.UsbProduct != ib.UsbProduct {
+		log.Functionf("USB product changed from %s to %s",
+			ib.UsbProduct, phyAdapter.Phyaddr.UsbProduct)
+		return true
+	}
 	if phyAdapter.Phyaddr.Irq != ib.Irq {
 		log.Functionf("Irq changed from %s to %s", ib.Irq, phyAdapter.Phyaddr.Irq)
 		return true
@@ -187,6 +193,7 @@ func IoBundleFromPhyAdapter(log *base.LogObject, phyAdapter PhysicalIOAdapter) *
 	ib.Ifname = phyAdapter.Phyaddr.Ifname
 	ib.PciLong = phyAdapter.Phyaddr.PciLong
 	ib.UsbAddr = phyAdapter.Phyaddr.UsbAddr
+	ib.UsbProduct = phyAdapter.Phyaddr.UsbProduct
 	ib.Irq = phyAdapter.Phyaddr.Irq
 	ib.Ioports = phyAdapter.Phyaddr.Ioports
 	ib.Serial = phyAdapter.Phyaddr.Serial
@@ -205,6 +212,7 @@ func IoBundleFromPhyAdapter(log *base.LogObject, phyAdapter PhysicalIOAdapter) *
 			ib.Ifname = ib.Phylabel
 		}
 	}
+
 	return &ib
 }
 
@@ -347,6 +355,11 @@ func (aa *AssignableAdapters) AddOrUpdateIoBundle(log *base.LogObject, ib IoBund
 			ib.Type, ib.Phylabel, ib.AssignmentGroup, curIbPtr.UsbAddr)
 		ib.UsbAddr = curIbPtr.UsbAddr
 	}
+	if curIbPtr.UsbProduct != "" {
+		log.Functionf("AddOrUpdateIoBundle(%d %s %s) preserve UsbProduct %v",
+			ib.Type, ib.Phylabel, ib.AssignmentGroup, curIbPtr.UsbProduct)
+		ib.UsbProduct = curIbPtr.UsbProduct
+	}
 	if curIbPtr.Unique != "" {
 		log.Functionf("AddOrUpdateIoBundle(%d %s %s) preserve Unique %v",
 			ib.Type, ib.Phylabel, ib.AssignmentGroup, curIbPtr.Unique)
@@ -433,6 +446,40 @@ func (aa *AssignableAdapters) LookupIoBundleIfName(ifname string) *IoBundle {
 	return nil
 }
 
+// CheckBadUSBBundles sets ib.Error/ErrorTime if bundle collides in regards of USB
+func (aa *AssignableAdapters) CheckBadUSBBundles() {
+	usbProductsAddressMap := make(map[[3]string][]*IoBundle)
+	for i := range aa.IoBundleList {
+		ioBundle := &aa.IoBundleList[i]
+		if ioBundle.UsbAddr == "" && ioBundle.UsbProduct == "" && ioBundle.PciLong == "" {
+			continue
+		}
+
+		id := [3]string{ioBundle.UsbAddr, ioBundle.UsbProduct, ioBundle.PciLong}
+		if usbProductsAddressMap[id] == nil {
+			usbProductsAddressMap[id] = make([]*IoBundle, 0)
+		}
+		usbProductsAddressMap[id] = append(usbProductsAddressMap[id], ioBundle)
+	}
+
+	for _, bundles := range usbProductsAddressMap {
+		if len(bundles) <= 1 {
+			continue
+		}
+
+		errStr := "ioBundle collision:||"
+
+		for _, bundle := range bundles {
+			errStr += fmt.Sprintf("phylabel %s - usbaddr: %s usbproduct: %s pcilong: %s||",
+				bundle.Phylabel, bundle.UsbAddr, bundle.UsbProduct, bundle.PciLong)
+		}
+		for _, bundle := range bundles {
+			bundle.Error = errStr
+			bundle.ErrorTime = time.Now()
+		}
+	}
+}
+
 // CheckBadAssignmentGroups sets ib.Error/ErrorTime if two IoBundles in different
 // assignment groups have the same PCI ID (ignoring the PCI function number)
 // Returns true if there was a modification so caller can publish.
@@ -447,17 +494,11 @@ func (aa *AssignableAdapters) CheckBadAssignmentGroups(log *base.LogObject, PCIS
 			if ib.AssignmentGroup == "" || ib2.AssignmentGroup == ib.AssignmentGroup {
 				continue
 			}
+			// skip usb passthrough checking here
 			if ib.UsbAddr != "" || ib2.UsbAddr != "" {
-				usbAddr1 := strings.TrimLeft(ib.UsbAddr, "0")
-				usbAddr2 := strings.TrimLeft(ib2.UsbAddr, "0")
-				if usbAddr1 == usbAddr2 {
-					err := fmt.Errorf("CheckBadAssignmentGroup: %s same USB address as %s; UsbAddr %s vs %s",
-						ib2.Ifname, ib.Ifname, usbAddr1, usbAddr2)
-					log.Error(err)
-					ib.Error = err.Error()
-					ib.ErrorTime = time.Now()
-					changed = true
-				}
+				continue
+			}
+			if ib.UsbProduct != "" || ib2.UsbProduct != "" {
 				continue
 			}
 			if PCISameController != nil && PCISameController(ib.PciLong, ib2.PciLong) {
@@ -495,6 +536,9 @@ func (aa *AssignableAdapters) ExpandControllers(log *base.LogObject, list []*IoB
 				continue
 			}
 			if ib.UsbAddr != "" || ib2.UsbAddr != "" {
+				continue
+			}
+			if ib.UsbProduct != "" || ib2.UsbProduct != "" {
 				continue
 			}
 			if PCISameController != nil && PCISameController(ib.PciLong, ib2.PciLong) {

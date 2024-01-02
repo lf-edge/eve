@@ -2834,6 +2834,7 @@ func handlePhysicalIOAdapterListImpl(ctxArg interface{}, key string,
 		log.Functionf("handlePhysicalIOAdapterListImpl: initialized to get len %d",
 			len(aa.IoBundleList))
 
+		aa.CheckBadUSBBundles()
 		// check for mismatched PCI-ids and assignment groups and mark as errors
 		aa.CheckBadAssignmentGroups(log, hyper.PCISameController)
 		for i := range aa.IoBundleList {
@@ -2879,6 +2880,7 @@ func handlePhysicalIOAdapterListImpl(ctxArg interface{}, key string,
 				"add/modify: %+v", phyAdapter.Phylabel, ib)
 			aa.AddOrUpdateIoBundle(log, *ib)
 
+			aa.CheckBadUSBBundles()
 			// check for mismatched PCI-ids and assignment groups and mark as errors
 			aa.CheckBadAssignmentGroups(log, hyper.PCISameController)
 			// Lookup since it could have changed
@@ -3020,7 +3022,7 @@ func updatePortAndPciBackIoBundle(ctx *domainContext, ib *types.IoBundle) (chang
 		ib.Type, ib.Phylabel, ib.AssignmentGroup, isPort, keepInHost, len(list))
 	anyChanged := false
 	for _, ib := range list {
-		if ib.UsbAddr != "" {
+		if ib.UsbAddr != "" || ib.UsbProduct != "" {
 			// this is usb device forwarding, so usbmanager cares for not passing through network devices
 			continue
 		}

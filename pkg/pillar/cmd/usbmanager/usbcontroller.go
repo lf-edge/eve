@@ -230,13 +230,18 @@ func (uc *usbmanagerController) cancel() {
 }
 
 func ioBundle2PassthroughRule(adapter types.IoBundle) passthroughRule {
-	var pr passthroughRule
+	prs := make([]passthroughRule, 0)
 
-	if adapter.UsbAddr == "" && adapter.PciLong != "" {
+	if adapter.PciLong != "" && adapter.UsbAddr == "" && adapter.UsbProduct == "" {
+		return &pciPassthroughForbidRule{pciAddress: adapter.PciLong}
+	}
+
+	if adapter.PciLong != "" {
 		pci := pciPassthroughRule{pciAddress: adapter.PciLong}
 
-		pr = &pci
-	} else if adapter.UsbAddr != "" {
+		prs = append(prs, &pci)
+	}
+	if adapter.UsbAddr != "" {
 		usbParts := strings.SplitN(adapter.UsbAddr, ":", 2)
 		if len(usbParts) != 2 {
 			log.Warnf("usbaddr %s not parseable", adapter.UsbAddr)
@@ -248,18 +253,48 @@ func ioBundle2PassthroughRule(adapter types.IoBundle) passthroughRule {
 			return nil
 		}
 		portnum := usbParts[1]
-		ud := usbdevice{
-			busnum:                  uint16(busnum),
-			portnum:                 portnum,
-			usbControllerPCIAddress: adapter.PciLong,
-		}
-		usb := usbPortPassthroughRule{ud: ud}
 
-		pr = &usb
-	} else {
+		usb := usbPortPassthroughRule{
+			busnum:  uint16(busnum),
+			portnum: portnum,
+		}
+
+		prs = append(prs, &usb)
+	}
+	if adapter.UsbProduct != "" {
+		usbParts := strings.SplitN(adapter.UsbProduct, ":", 2)
+		if len(usbParts) != 2 {
+			log.Warnf("usbproduct %s not parseable", adapter.UsbProduct)
+			return nil
+		}
+
+		vendorID, errVendor := strconv.ParseUint(usbParts[0], 16, 32)
+		productID, errProduct := strconv.ParseUint(usbParts[1], 16, 32)
+		if errVendor != nil || errProduct != nil {
+			log.Warnf("extracting vendor/product id out of usbproduct %s (phylabel: %s) failed: %v/%v",
+				adapter.UsbProduct, adapter.Phylabel, errVendor, errProduct)
+			return nil
+		}
+
+		usb := usbDevicePassthroughRule{
+			vendorID:              uint32(vendorID),
+			productID:             uint32(productID),
+			passthroughRuleVMBase: passthroughRuleVMBase{},
+		}
+
+		prs = append(prs, &usb)
+	}
+	if len(prs) == 0 {
 		log.Tracef("cannot create rule out of adapter %+v\n", adapter)
-		pr = nil
+		return nil
+	}
+	if len(prs) == 1 {
+		return prs[0]
 	}
 
-	return pr
+	ret := compositionPassthroughRule{
+		rules: prs,
+	}
+
+	return &ret
 }

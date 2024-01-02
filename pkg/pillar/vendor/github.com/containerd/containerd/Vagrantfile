@@ -28,6 +28,7 @@ Vagrant.configure("2") do |config|
   config.vm.provider :libvirt do |v|
     v.memory = memory
     v.cpus = cpus
+    v.loader = "/usr/share/OVMF/OVMF_CODE.fd"
   end
 
   config.vm.synced_folder ".", "/vagrant", type: "rsync"
@@ -70,6 +71,7 @@ Vagrant.configure("2") do |config|
             libselinux-devel \
             lsof \
             make \
+            strace \
             ${INSTALL_PACKAGES}
     SHELL
   end
@@ -93,7 +95,7 @@ EOF
   config.vm.provision "install-golang", type: "shell", run: "once" do |sh|
     sh.upload_path = "/tmp/vagrant-install-golang"
     sh.env = {
-        'GO_VERSION': ENV['GO_VERSION'] || "1.19.6",
+        'GO_VERSION': ENV['GO_VERSION'] || "1.20.12",
     }
     sh.inline = <<~SHELL
         #!/usr/bin/env bash
@@ -196,6 +198,19 @@ EOF
         set -eux -o pipefail
         ${GOPATH}/src/github.com/containerd/containerd/script/setup/install-gotestsum
         sudo cp ${GOPATH}/bin/gotestsum /usr/local/bin/
+      SHELL
+  end
+
+  config.vm.provision "install-failpoint-binaries", type: "shell",  run: "once" do |sh|
+      sh.upload_path = "/tmp/vagrant-install-failpoint-binaries"
+      sh.inline = <<~SHELL
+        #!/usr/bin/env bash
+        source /etc/environment
+        source /etc/profile.d/sh.local
+        set -eux -o pipefail
+        ${GOPATH}/src/github.com/containerd/containerd/script/setup/install-failpoint-binaries
+        chcon -v -t container_runtime_exec_t $(type -ap containerd-shim-runc-fp-v1)
+        containerd-shim-runc-fp-v1 -v
       SHELL
   end
 

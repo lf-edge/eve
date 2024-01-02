@@ -295,7 +295,7 @@ DOCKER_GO = _() { $(SET_X); mkdir -p $(CURDIR)/.go/src/$${3:-dummy} ; mkdir -p $
 
 PARSE_PKGS=$(if $(strip $(EVE_HASH)),EVE_HASH=)$(EVE_HASH) DOCKER_ARCH_TAG=$(DOCKER_ARCH_TAG) KERNEL_TAG=$(KERNEL_TAG) ./tools/parse-pkgs.sh
 LINUXKIT=$(BUILDTOOLS_BIN)/linuxkit
-LINUXKIT_VERSION=d1a0596bee704a8d06855c90b495ffadea5fb8ab
+LINUXKIT_VERSION=3a0405298aab1632524a6ccd074969b417e1ee92
 LINUXKIT_SOURCE=https://github.com/linuxkit/linuxkit.git
 LINUXKIT_OPTS=$(if $(strip $(EVE_HASH)),--hash) $(EVE_HASH) $(if $(strip $(EVE_REL)),--release) $(EVE_REL)
 LINUXKIT_PKG_TARGET=build
@@ -392,7 +392,7 @@ currentversion:
 
 test: $(LINUXKIT) test-images-patches | $(DIST)
 	@echo Running tests on $(GOMODULE)
-	$(QUIET)$(DOCKER_GO) "gotestsum --jsonfile $(DOCKER_DIST)/results.json --junitfile $(DOCKER_DIST)/results.xml --raw-command -- go test -coverprofile=coverage.txt -covermode=atomic -json ./..." $(GOTREE) $(GOMODULE)
+	$(QUIET)$(DOCKER_GO) "gotestsum --jsonfile $(DOCKER_DIST)/results.json --junitfile $(DOCKER_DIST)/results.xml --raw-command -- $(GOTREE)/../../tools/go-test.sh" $(GOTREE) $(GOMODULE)
 	$(QUIET)$(DOCKER_GO) "cd \"$(GOTREE)\"; find ./ -type d \! -path ./vendor/\* -exec go test -fuzz=^Fuzz -run=^Fuzz -fuzztime=30s "{}" \;" $(GOTREE) $(GOMODULE)
 	$(QUIET): $@: Succeeded
 
@@ -412,8 +412,9 @@ clean:
 yetus:
 	@echo Running yetus
 	mkdir -p yetus-output
-	docker run --rm -v $(CURDIR):/src:delegated,z ghcr.io/apache/yetus:0.14.1 \
+	docker run --rm -v $(CURDIR):/src:delegated,z ghcr.io/apache/yetus:0.15.0 \
 		--basedir=/src \
+		--test-parallel=true \
 		--dirty-workspace \
 		--empty-patch \
 		--plugins=all \

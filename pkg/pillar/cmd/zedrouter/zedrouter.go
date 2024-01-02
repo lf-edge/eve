@@ -83,8 +83,9 @@ type zedrouter struct {
 	runCtx context.Context
 
 	// CLI options
-	versionPtr        *bool
-	enableArpSnooping bool // enable/disable switch NI arp snooping
+	versionPtr         *bool
+	enableArpSnooping  bool // enable/disable switch NI arp snooping
+	localLegacyMACAddr bool // switch to legacy MAC address generation
 
 	agentStartTime     time.Time
 	receivedConfigTime time.Time
@@ -108,6 +109,7 @@ type zedrouter struct {
 	bridgeNumAllocator  *objtonum.Allocator
 	appIntfNumPublisher *objtonum.ObjNumPublisher
 	appIntfNumAllocator map[string]*objtonum.Allocator // key: network instance UUID as string
+	appMACGeneratorMap  objtonum.Map
 
 	// Info published to application via metadata server
 	subLocationInfo pubsub.Subscription

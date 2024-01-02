@@ -241,6 +241,9 @@ func doUpdateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus)
 		if status.CurrentSize != currentSize || status.TotalSize != totalSize {
 			changed = true
 			status.CurrentSize = currentSize
+			if (status.TotalSize != 0) && (status.TotalSize != totalSize) {
+				log.Warnf("doUpdateContentTree: total size changed from %d to %d", status.TotalSize, totalSize)
+			}
 			status.TotalSize = totalSize
 			if status.TotalSize > 0 {
 				status.Progress = uint(100 * status.CurrentSize / status.TotalSize)
@@ -537,6 +540,7 @@ func doUpdateVol(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool)
 			status.TotalSize = int64(status.MaxVolSize)
 			status.CurrentSize = int64(status.MaxVolSize)
 			changed = true
+			log.Noticef("doUpdateVol(%s): creating blank volume with format %s", status.Key(), status.ContentFormat)
 			// Asynch preparation; ensure we have requested it
 			AddWorkPrepare(ctx, status)
 			return changed, false
@@ -612,6 +616,7 @@ func doUpdateVol(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool)
 			}
 			status.ReferenceName = ctStatus.ReferenceID()
 			status.ContentFormat = ctStatus.Format
+			log.Noticef("doUpdateVol(%s): setting VolumeStatus.ContentFormat by ContentTree to %s", status.Key(), status.ContentFormat)
 			changed = true
 			// Asynch preparation; ensure we have requested it
 			AddWorkPrepare(ctx, status)

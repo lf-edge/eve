@@ -861,13 +861,15 @@ func waitForQmp(domainName string, available bool) error {
 	delay := time.Second
 	var waited time.Duration
 	var err error
+
 	for {
 		logrus.Infof("waitForQmp for %s %t: waiting for %v", domainName, available, delay)
 		if delay != 0 {
 			time.Sleep(delay)
 			waited += delay
 		}
-		if _, err := getQemuStatus(GetQmpExecutorSocket(domainName)); available == (err == nil) {
+		sock := GetQmpExecutorSocket(domainName)
+		if _, err = getQemuStatus(sock); available == (err == nil) {
 			logrus.Infof("waitForQmp for %s %t done", domainName, available)
 			return nil
 		}
@@ -875,9 +877,9 @@ func waitForQmp(domainName string, available bool) error {
 			// Give up
 			logrus.Warnf("waitForQmp for %s %t: giving up", domainName, available)
 			if available {
-				return logError("Qmp not found: error %v", err)
+				return logError("Giving up waiting to connect to QEMU Monitor Protocol socket %s from VM %s, error: %v", sock, domainName, err)
 			}
-			return logError("Qmp still available")
+			return logError("Giving up waiting to cleanup VM %s, QEMU Monitor Protocol socket %s is still available", domainName, sock)
 		}
 		delay = 2 * delay
 		if delay > time.Minute {
