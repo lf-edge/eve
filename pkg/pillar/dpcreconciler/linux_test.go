@@ -51,34 +51,41 @@ func initTest(test *testing.T) *GomegaWithT {
 }
 
 func printCurrentState() {
-	currentState := dpcReconciler.GetCurrentState()
+	currentState, release := dpcReconciler.GetCurrentState()
+	defer release()
 	dotExporter := &dg.DotExporter{CheckDeps: true}
 	dot, _ := dotExporter.Export(currentState)
 	fmt.Println(dot)
 }
 
 func printIntendedState() {
-	intendedState := dpcReconciler.GetIntendedState()
+	intendedState, release := dpcReconciler.GetIntendedState()
+	defer release()
 	dotExporter := &dg.DotExporter{CheckDeps: true}
 	dot, _ := dotExporter.Export(intendedState)
 	fmt.Println(dot)
 }
 
 func printCombinedState() {
-	currentState := dpcReconciler.GetCurrentState()
-	intendedState := dpcReconciler.GetIntendedState()
+	currentState, release1 := dpcReconciler.GetCurrentState()
+	defer release1()
+	intendedState, release2 := dpcReconciler.GetIntendedState()
+	defer release2()
 	dotExporter := &dg.DotExporter{CheckDeps: true}
 	dot, _ := dotExporter.ExportTransition(currentState, intendedState)
 	fmt.Println(dot)
 }
 
 func itemIsCreated(itemRef dg.ItemRef) bool {
-	_, state, _, found := dpcReconciler.GetCurrentState().Item(itemRef)
+	currentState, release := dpcReconciler.GetCurrentState()
+	defer release()
+	_, state, _, found := currentState.Item(itemRef)
 	return found && state.IsCreated()
 }
 
 func itemIsCreatedWithLabel(label string) bool {
-	currentState := dpcReconciler.GetCurrentState()
+	currentState, release := dpcReconciler.GetCurrentState()
+	defer release()
 	iter := currentState.Items(true)
 	for iter.Next() {
 		item, state := iter.Item()
@@ -90,7 +97,9 @@ func itemIsCreatedWithLabel(label string) bool {
 }
 
 func itemDescription(itemRef dg.ItemRef) string {
-	item, _, _, found := dpcReconciler.GetCurrentState().Item(itemRef)
+	currentState, release := dpcReconciler.GetCurrentState()
+	defer release()
+	item, _, _, found := currentState.Item(itemRef)
 	if !found {
 		return ""
 	}
@@ -123,7 +132,8 @@ func ipSubnet(ipAddr string) *net.IPNet {
 }
 
 func itemCountWithType(itemType string) (count int) {
-	currentState := dpcReconciler.GetCurrentState()
+	currentState, release := dpcReconciler.GetCurrentState()
+	defer release()
 	iter := currentState.Items(true)
 	for iter.Next() {
 		item, _ := iter.Item()
@@ -831,8 +841,9 @@ func TestVlansAndBonds(test *testing.T) {
 	t.Expect(itemIsCreatedWithLabel("dhcpcd for shopfloor-vlan100")).To(BeTrue())
 	t.Expect(itemIsCreatedWithLabel("dhcpcd for shopfloor-vlan200")).To(BeTrue())
 
+	currentState, release := dpcReconciler.GetCurrentState()
 	bondRef := dg.Reference(linux.Bond{IfName: "bond0"})
-	item, _, _, found := dpcReconciler.GetCurrentState().Item(bondRef)
+	item, _, _, found := currentState.Item(bondRef)
 	t.Expect(found).To(BeTrue())
 	bond := item.(linux.Bond)
 	t.Expect(bond.IfName).To(Equal("bond0"))
@@ -845,7 +856,7 @@ func TestVlansAndBonds(test *testing.T) {
 	t.Expect(bond.MIIMonitor.DownDelay).To(BeEquivalentTo(1200))
 
 	vlan100Ref := dg.Reference(linux.Vlan{IfName: "shopfloor.100"})
-	item, _, _, found = dpcReconciler.GetCurrentState().Item(vlan100Ref)
+	item, _, _, found = currentState.Item(vlan100Ref)
 	t.Expect(found).To(BeTrue())
 	vlan100 := item.(linux.Vlan)
 	t.Expect(vlan100.IfName).To(Equal("shopfloor.100"))
@@ -854,11 +865,12 @@ func TestVlansAndBonds(test *testing.T) {
 	t.Expect(vlan100.ParentIfName).To(BeEquivalentTo("bond0"))
 
 	vlan200Ref := dg.Reference(linux.Vlan{IfName: "shopfloor.200"})
-	item, _, _, found = dpcReconciler.GetCurrentState().Item(vlan200Ref)
+	item, _, _, found = currentState.Item(vlan200Ref)
 	t.Expect(found).To(BeTrue())
 	vlan200 := item.(linux.Vlan)
 	t.Expect(vlan200.IfName).To(Equal("shopfloor.200"))
 	t.Expect(vlan200.ID).To(BeEquivalentTo(200))
 	t.Expect(vlan200.ParentLL).To(BeEquivalentTo("bond-shopfloor"))
 	t.Expect(vlan200.ParentIfName).To(BeEquivalentTo("bond0"))
+	release()
 }

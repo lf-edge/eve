@@ -3,7 +3,7 @@
 # Copyright (c) 2023 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
 
-BROKEN_TESTS="TestDPCWithReleasedAndRenamedInterface TestUnsubscribe/IPC_with_persistent TestRestarted TestUnsubscribe/IPC TestCheckMaxSize"
+BROKEN_TESTS="TestUnsubscribe/IPC_with_persistent TestRestarted TestUnsubscribe/IPC TestCheckMaxSize"
 SKIP_BROKEN_TESTS_PARAM=""
 for t in $BROKEN_TESTS
 do

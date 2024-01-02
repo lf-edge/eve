@@ -186,7 +186,7 @@ type LinuxDpcReconciler struct {
 	resumeReconcile  chan struct{}
 	resumeAsync      <-chan string // nil if no async ops
 
-	prevArgs     Args
+	lastArgs     Args
 	prevStatus   ReconcileStatus
 	radioSilence types.RadioSilence
 	HVTypeKube   bool
@@ -215,14 +215,16 @@ const (
 
 // GetCurrentState : get the current state (read-only).
 // Exported only for unit-testing purposes.
-func (r *LinuxDpcReconciler) GetCurrentState() dg.GraphR {
-	return r.currentState
+func (r *LinuxDpcReconciler) GetCurrentState() (graph dg.GraphR, release func()) {
+	release = r.pauseWatcher()
+	return r.currentState, release
 }
 
 // GetIntendedState : get the intended state (read-only).
 // Exported only for unit-testing purposes.
-func (r *LinuxDpcReconciler) GetIntendedState() dg.GraphR {
-	return r.intendedState
+func (r *LinuxDpcReconciler) GetIntendedState() (graph dg.GraphR, release func()) {
+	release = r.pauseWatcher()
+	return r.intendedState, release
 }
 
 func (r *LinuxDpcReconciler) init() (startWatcher func()) {
@@ -283,31 +285,31 @@ func (r *LinuxDpcReconciler) watcher(netEvents <-chan netmonitor.Event) {
 				}
 			case netmonitor.IfChange:
 				if ev.Added || ev.Deleted {
-					changed := r.updateCurrentPhysicalIO(r.prevArgs.DPC, r.prevArgs.AA)
+					changed := r.updateCurrentPhysicalIO(r.lastArgs.DPC, r.lastArgs.AA)
 					if changed {
 						r.addPendingReconcile(
 							PhysicalIoSG, "interface added/deleted", true)
 					}
 				}
 				if ev.Deleted {
-					changed := r.updateCurrentRoutes(r.prevArgs.DPC)
+					changed := r.updateCurrentRoutes(r.lastArgs.DPC)
 					if changed {
 						r.addPendingReconcile(
 							L3SG, "interface delete triggered route change", true)
 					}
 				}
 			case netmonitor.AddrChange:
-				changed := r.updateCurrentAdapterAddrs(r.prevArgs.DPC)
+				changed := r.updateCurrentAdapterAddrs(r.lastArgs.DPC)
 				if changed {
 					r.addPendingReconcile(L3SG, "address change", true)
 				}
-				changed = r.updateCurrentRoutes(r.prevArgs.DPC)
+				changed = r.updateCurrentRoutes(r.lastArgs.DPC)
 				if changed {
 					r.addPendingReconcile(L3SG, "address change triggered route change", true)
 				}
 
 			case netmonitor.DNSInfoChange:
-				newGlobalCfg := r.getIntendedGlobalCfg(r.prevArgs.DPC)
+				newGlobalCfg := r.getIntendedGlobalCfg(r.lastArgs.DPC)
 				prevGlobalCfg := r.intendedState.SubGraph(GlobalSG)
 				if len(prevGlobalCfg.DiffItems(newGlobalCfg)) > 0 {
 					r.addPendingReconcile(GlobalSG, "DNS info change", true)
@@ -317,8 +319,15 @@ func (r *LinuxDpcReconciler) watcher(netEvents <-chan netmonitor.Event) {
 		case ctrl = <-r.watcherControl:
 			if ctrl == watcherCtrlPause {
 				r.Unlock()
-				for ctrl != watcherCtrlCont {
+				pauseCnt := 1
+				for pauseCnt != 0 {
 					ctrl = <-r.watcherControl
+					switch ctrl {
+					case watcherCtrlPause:
+						pauseCnt++
+					case watcherCtrlCont:
+						pauseCnt--
+					}
 				}
 				r.Lock()
 			}
@@ -543,7 +552,7 @@ func (r *LinuxDpcReconciler) Reconcile(ctx context.Context, args Args) Reconcile
 	}
 
 	// Update the internal state.
-	r.prevArgs = args
+	r.saveArgs(args)
 	r.prevStatus = newStatus
 	r.resumeAsync = rs.ReadyToResume
 	r.pendingReconcile.isPending = false
@@ -582,17 +591,31 @@ func (r *LinuxDpcReconciler) Reconcile(ctx context.Context, args Args) Reconcile
 	return newStatus
 }
 
+func (r *LinuxDpcReconciler) saveArgs(args Args) {
+	r.lastArgs = args
+	// Make sure the arguments are copied so that we avoid race conditions
+	// between DpcReconciler and DPCManager.
+	r.lastArgs.DPC.Ports = make([]types.NetworkPortConfig, len(args.DPC.Ports))
+	for i := range args.DPC.Ports {
+		r.lastArgs.DPC.Ports[i] = args.DPC.Ports[i]
+	}
+	r.lastArgs.AA.IoBundleList = make([]types.IoBundle, len(args.AA.IoBundleList))
+	for i := range args.AA.IoBundleList {
+		r.lastArgs.AA.IoBundleList[i] = args.AA.IoBundleList[i]
+	}
+}
+
 func (r *LinuxDpcReconciler) dpcChanged(newDPC types.DevicePortConfig) bool {
-	return !r.prevArgs.DPC.MostlyEqual(&newDPC)
+	return !r.lastArgs.DPC.MostlyEqual(&newDPC)
 }
 
 func (r *LinuxDpcReconciler) aaChanged(newAA types.AssignableAdapters) bool {
-	if len(newAA.IoBundleList) != len(r.prevArgs.AA.IoBundleList) {
+	if len(newAA.IoBundleList) != len(r.lastArgs.AA.IoBundleList) {
 		return true
 	}
 	for i := range newAA.IoBundleList {
 		newIo := newAA.IoBundleList[i]
-		prevIo := r.prevArgs.AA.IoBundleList[i]
+		prevIo := r.lastArgs.AA.IoBundleList[i]
 		// Compare only attributes used by DpcReconciler.
 		if prevIo.Logicallabel != newIo.Logicallabel ||
 			prevIo.Ifname != newIo.Ifname ||
@@ -607,16 +630,16 @@ func (r *LinuxDpcReconciler) aaChanged(newAA types.AssignableAdapters) bool {
 }
 
 func (r *LinuxDpcReconciler) rsChanged(newRS types.RadioSilence) bool {
-	return r.prevArgs.RS.Imposed != newRS.Imposed
+	return r.lastArgs.RS.Imposed != newRS.Imposed
 }
 
 func (r *LinuxDpcReconciler) gcpChanged(newGCP types.ConfigItemValueMap) bool {
-	prevAuthKeys := r.prevArgs.GCP.GlobalValueString(types.SSHAuthorizedKeys)
+	prevAuthKeys := r.lastArgs.GCP.GlobalValueString(types.SSHAuthorizedKeys)
 	newAuthKeys := newGCP.GlobalValueString(types.SSHAuthorizedKeys)
 	if prevAuthKeys != newAuthKeys {
 		return true
 	}
-	prevAllowVNC := r.prevArgs.GCP.GlobalValueBool(types.AllowAppVnc)
+	prevAllowVNC := r.lastArgs.GCP.GlobalValueBool(types.AllowAppVnc)
 	newAllowVNC := newGCP.GlobalValueBool(types.AllowAppVnc)
 	if prevAllowVNC != newAllowVNC {
 		return true
