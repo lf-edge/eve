@@ -121,14 +121,17 @@ func initTest(test *testing.T) *GomegaWithT {
 }
 
 func printCurrentState() {
-	currentState := dpcReconciler.GetCurrentState()
+	currentState, release := dpcReconciler.GetCurrentState()
+	defer release()
 	dotExporter := &dg.DotExporter{CheckDeps: true}
 	dot, _ := dotExporter.Export(currentState)
 	fmt.Println(dot)
 }
 
 func itemDescription(itemRef dg.ItemRef) string {
-	item, _, _, found := dpcReconciler.GetCurrentState().Item(itemRef)
+	currentState, release := dpcReconciler.GetCurrentState()
+	defer release()
+	item, _, _, found := currentState.Item(itemRef)
 	if !found {
 		return ""
 	}
@@ -136,7 +139,9 @@ func itemDescription(itemRef dg.ItemRef) string {
 }
 
 func itemIsCreated(itemRef dg.ItemRef) bool {
-	_, state, _, found := dpcReconciler.GetCurrentState().Item(itemRef)
+	currentState, release := dpcReconciler.GetCurrentState()
+	defer release()
+	_, state, _, found := currentState.Item(itemRef)
 	return found && state.IsCreated()
 }
 
@@ -1407,8 +1412,11 @@ func TestDPCWithReleasedAndRenamedInterface(test *testing.T) {
 	eth1.Attrs.IfName = "eth1"
 	networkMonitor.DelInterface("eth0")
 	networkMonitor.AddOrUpdateInterface(eth1)
+	aa = makeAA(selectedIntfs{eth0: true, eth1: true})
+	aa.IoBundleList[0].IsPCIBack = true
 	aa.IoBundleList[1].IsPCIBack = false
 	dpcManager.UpdateAA(aa)
+	t.Eventually(dpcStateCb(0)).Should(Equal(types.DPCStateIPDNSWait))
 	t.Eventually(itemIsCreatedCb(eth1Dhcpcd)).Should(BeTrue())
 
 	// Simulate event of eth1 receiving IP addresses.
