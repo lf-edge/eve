@@ -250,6 +250,10 @@ func createOrUpdateDiskMetrics(ctx *volumemgrContext, wdName string) {
 
 		diskMetricList = append(diskMetricList, metric)
 	}
+	// If ZFS get all datasets to check and report any not already included
+	// above
+	// XXX catch persist/vault/50126 on zc2 (create nginx to make them appear)
+	// diskmetrics.FindAdditionalDatasets(excludeDirs)
 	// Walk all of /persist and look for files above 1 Mbyte in size which
 	// are not under one of the paths already reported.
 	var excludeDirs []string

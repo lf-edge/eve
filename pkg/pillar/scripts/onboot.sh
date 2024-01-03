@@ -19,7 +19,8 @@ FIRSTBOOT=
 TPM_DEVICE_PATH="/dev/tpmrm0"
 SECURITYFSPATH=/sys/kernel/security
 PATH=$BINDIR:$PATH
-DISKSPACE_RECOVERY_LIMIT=70
+DISKSPACE_RECOVERY_LIMIT=70 # XXX remove
+MIN_DISKSPACE=4096 # MBytes
 
 echo "$(date -Ins -u) Starting onboot.sh"
 
@@ -115,6 +116,7 @@ if [ ! -d $PERSISTDIR/status ]; then
     mkdir $PERSISTDIR/status
 fi
 
+# percent_used <dataset name> (without leading '/')
 percent_used() {
     res=$(zfs list -pH -o available,used "$1")
     # shellcheck disable=SC2181
@@ -125,26 +127,43 @@ percent_used() {
         used=$(echo $res | cut -d\  -f2)
         echo $((100*used/(avail+used)))
     else
-        df /"$1" |awk '{printf("%d",$5);}'
+        df --sync /"$1" |awk '{printf("%d",$5);}'
     fi
 }
 
+# free_space <dataset name> (without leading '/')
+# return value is truncated to MBytes
+# Note that we use df even for zfs since the "available" property in zfs
+# includes unused space in child datasets
+free_space() {
+    ds="$1"
+    res=$(df --sync -k --output=avail "/$ds" | tail -1)
+    echo $((res/1024))
+}
 
-# Checking for low diskspace at bootup. If used percentage of
-# /persist directory is more than 70% then we will remove the
+# Checking for low diskspace at bootup.
+# If there is less than 4Mbytes (MIN_DISKSPACE) then remove the content of the
+# following directories in order until we have that amount of available space
 # following sub directories:
 # /persist/log/*
-# /persist/newlog/appUpload/*
-# /persist/newlog/devUpload/*
+# /persist/pubsub-large/*
+# /persist/netdump
 # /persist/newlog/keepSentQueue/*
 # /persist/newlog/failedUpload/*
-# XXX update list of directories
+# /persist/newlog/appUpload/*
+# /persist/newlog/devUpload/*
+# /persist/containerd-system-root
+# /persist/vault/containerd
+# /persist/vault/downloader
+# /persist/vault/verifier
+# /persist/agentdbug
+# XXX remove
 diskspace_used=$(percent_used persist)
 echo "Used percentage of /persist: $diskspace_used"
 if [ "$diskspace_used" -ge "$DISKSPACE_RECOVERY_LIMIT" ]
 then
     echo "Used percentage of /persist is $diskspace_used more than the limit $DISKSPACE_RECOVERY_LIMIT"
-    for DIR in log pubsub-large netdump newlog/keepSentQueue newlog/failedUpload newlog/appUpload newlog/devUpload containerd-system-root vault/containerd vault/downloader vault/verifier agentdebug # XXX vault/volumes clear/volumes
+    for DIR in log pubsub-large netdump newlog/keepSentQueue newlog/failedUpload newlog/appUpload newlog/devUpload containerd-system-root vault/containerd vault/downloader vault/verifier agentdebug
     do
         dir_del=$PERSISTDIR/$DIR
         # XXX disable for test purposes
@@ -159,6 +178,26 @@ then
     done
     diskspace_used=$(percent_used persist)
     echo "Used percentage of /persist after recovery: $diskspace_used"
+fi
+
+diskspace_free=$(free_space persist)
+echo "Free space in /persist: $diskspace_free MBytes"
+if [ "$diskspace_free" -lt "$MIN_DISKSPACE" ]
+then
+    echo "Free space in /persist is only $diskspace_free hence below the limit $MIN_DISKSPACE MBytes"
+    for DIR in log pubsub-large netdump newlog/keepSentQueue newlog/failedUpload newlog/appUpload newlog/devUpload containerd-system-root vault/containerd vault/downloader vault/verifier agentdebug
+    do
+        dir_del=$PERSISTDIR/$DIR
+        rm -rf "${dir_del:?}/"*
+        diskspace_free=$(free_space persist)
+        echo "Free space in /persist after clearing $dir_del: $diskspace_free MBytes"
+        if [ "$diskspace_free" -ge "$MIN_DISKSPACE" ]
+        then
+            break
+        fi
+    done
+    diskspace_free=$(free_space persist)
+    echo "Free space in /persist after recovery: $diskspace_free MBytes"
 fi
 
 # XXX dump sizes by appending to /persist/log/sizes
