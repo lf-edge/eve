@@ -23,7 +23,7 @@ root = "/persist/vault/containerd"
   address = "/run/containerd-user/containerd.sock"
 
 [plugins."io.containerd.grpc.v1.cri".cni]
-  bin_dir = "/var/lib/rancher/k3s/data/c26e7571d760c5f199d18efd197114f1ca4ab1e6ffe494f96feb65c87fcb8cf0/bin"
+  bin_dir = "/var/lib/rancher/k3s/data/current/bin"
   conf_dir = "/var/lib/rancher/k3s/agent/etc/cni/net.d"
 
 [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc]

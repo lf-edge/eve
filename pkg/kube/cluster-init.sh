@@ -3,7 +3,8 @@
 # Copyright (c) 2023 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
 
-K3S_VERSION=v1.26.3+k3s1
+#K3S_VERSION=v1.26.3+k3s1
+K3S_VERSION=v1.29.0+k3s1
 KUBEVIRT_VERSION=v1.1.0
 LONGHORN_VERSION=v1.4.2
 CDI_VERSION=v1.58.0
