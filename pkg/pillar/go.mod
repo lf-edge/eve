@@ -58,8 +58,8 @@ require (
 	k8s.io/apimachinery v0.28.1
 	k8s.io/client-go v12.0.0+incompatible
 	k8s.io/metrics v0.27.4
-	kubevirt.io/api v1.0.0
-	kubevirt.io/client-go v1.0.0
+	kubevirt.io/api v1.1.0
+	kubevirt.io/client-go v1.1.0
 )
 
 require (
@@ -181,7 +181,7 @@ require (
 	gopkg.in/sourcemap.v1 v1.0.5 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	howett.net/plist v0.0.0-20181124034731-591f970eefbb // indirect
-	k8s.io/apiextensions-apiserver v0.26.3 // indirect
+	k8s.io/apiextensions-apiserver v0.26.4 // indirect
 	k8s.io/klog/v2 v2.100.1 // indirect
 	k8s.io/kube-openapi v0.0.0-20230717233707-2695361300d9 // indirect
 	k8s.io/utils v0.0.0-20230505201702-9f6742963106 // indirect
