@@ -1684,29 +1684,6 @@ func doActivateTail(ctx *domainContext, status *types.DomainStatus,
 		status.UUIDandVersion, status.DisplayName)
 }
 
-// VLAN filtering could have been enabled on the bridge immediately after
-// it's creation in zedrouter. For some strange reason netlink
-// throws back error stating that the device is busy if enabling the vlan
-// filtering is tried immediately after bridge creation.
-// We can either loop retrying in zedrouter or enable it when needed in domainmgr
-func enableVlanFiltering(bridgeName string) error {
-	bridge, err := netlink.LinkByName(bridgeName)
-	if err != nil {
-		log.Errorf("enableVlanFiltering: LinkByName failed for %s: %s", bridgeName, err)
-		return err
-	}
-	if !*bridge.(*netlink.Bridge).VlanFiltering {
-		// Enable VLAN filtering on bridge
-		if err := netlink.BridgeSetVlanFiltering(bridge, true); err != nil {
-			err = fmt.Errorf("enableVlanFiltering on %s failed: %w",
-				bridgeName, err)
-			log.Error(err)
-			return err
-		}
-	}
-	return nil
-}
-
 // shutdown and wait for the domain to go away; if that fails destroy and wait
 func doInactivate(ctx *domainContext, status *types.DomainStatus, impatient bool) {
 

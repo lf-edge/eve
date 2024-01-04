@@ -1396,6 +1396,16 @@ func parseBonds(getconfigCtx *getconfigContext, config *zconfig.EdgeDevConfig) b
 			log.Errorf("parseBonds: %s", errStr)
 			portConfig.RecordFailure(errStr)
 		}
+		// Attempt to create bond with interface name "bond0" returns "File exists",
+		// even if there is no such interface:
+		//   $ ip link add bond0 type bond
+		//   RTNETLINK answers: File exists
+		// This is very strange because this does not happen for example on Ubuntu.
+		if portConfig.IfName == "bond0" {
+			errStr := "interface name \"bond0\" is reserved"
+			log.Errorf("parseBonds: %s", errStr)
+			portConfig.RecordFailure(errStr)
+		}
 
 		// bond parameters
 		portConfig.Bond.Mode = types.BondMode(bondConfig.GetBondMode())
