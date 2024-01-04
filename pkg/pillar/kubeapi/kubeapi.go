@@ -125,9 +125,14 @@ func WaitForKubernetes(agentName string, ps *pubsub.PubSub, stillRunning *time.T
 		return nil, err
 	}
 
+	devUUID, err := os.Hostname()
+	if err != nil {
+		return nil, err
+	}
+
 	// Wait for the Kubernetes clientset to be ready, node ready and kubevirt pods in Running status
 	readyCh := make(chan bool)
-	go waitForNodeReady(client, readyCh)
+	go waitForNodeReady(client, readyCh, devUUID)
 
 	kubeNodeReady := false
 	for !kubeNodeReady {
@@ -143,12 +148,7 @@ func WaitForKubernetes(agentName string, ps *pubsub.PubSub, stillRunning *time.T
 	return config, nil
 }
 
-func waitForLonghornReady(client *kubernetes.Clientset) error {
-	hostname, err := os.Hostname()
-	if err != nil {
-		return fmt.Errorf("Unable to check longhorn pods on host:%v", err)
-	}
-
+func waitForLonghornReady(client *kubernetes.Clientset, hostname string) error {
 	// First we'll gate on the longhorn daemonsets existing
 	lhDaemonsets, err := client.AppsV1().DaemonSets("longhorn-system").List(context.Background(), metav1.ListOptions{})
 	if err != nil {
@@ -204,15 +204,23 @@ func waitForLonghornReady(client *kubernetes.Clientset) error {
 	return nil
 }
 
-func waitForNodeReady(client *kubernetes.Clientset, readyCh chan bool) {
-	if client == nil {
-
-	}
+func waitForNodeReady(client *kubernetes.Clientset, readyCh chan bool, devUUID string) {
 	err := wait.PollImmediate(time.Second, time.Minute*20, func() (bool, error) {
 		err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
-			_, err := client.CoreV1().Nodes().List(context.Background(), metav1.ListOptions{})
+			labelSelector := metav1.LabelSelector{MatchLabels: map[string]string{"node-uuid": devUUID}}
+			options := metav1.ListOptions{LabelSelector: metav1.FormatLabelSelector(&labelSelector)}
+			nodes, err := client.CoreV1().Nodes().List(context.Background(), options)
 			if err != nil {
 				return err
+			}
+
+			var hostname string
+			for _, node := range nodes.Items {
+				hostname = node.Name
+				break
+			}
+			if hostname == "" {
+				return fmt.Errorf("node not found by label uuid %s", devUUID)
 			}
 			// get all pods from kubevirt, and check if they are all running
 			pods, err := client.CoreV1().Pods("kubevirt").List(context.Background(), metav1.ListOptions{
@@ -225,7 +233,7 @@ func waitForNodeReady(client *kubernetes.Clientset, readyCh chan bool) {
 				return fmt.Errorf("kubevirt running pods less than 6")
 			}
 
-			err = waitForLonghornReady(client)
+			err = waitForLonghornReady(client, hostname)
 			return err
 		})
 

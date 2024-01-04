@@ -91,15 +91,31 @@ get_default_intf_IP_prefix() {
   awk -v new_ip="$ip_prefix" '{gsub("IPAddressReplaceMe", new_ip)}1' /etc/multus-daemonset.yaml > /tmp/multus-daemonset.yaml
 }
 
-wait_for_device_uuid() {
+# kubernetes's name must be lower case and '-' instead of '_'
+convert_to_k8s_compatible() {
+  echo "$1" | tr '[:upper:]_' '[:lower:]-'
+}
+
+wait_for_device_name() {
+  EdgeNodeInfoPath="/persist/status/zedagent/EdgeNodeInfo/global.json"
   while true; do
-    if [ -f /persist/status/uuid ]; then
-      sleep 5
+    if [ -f $EdgeNodeInfoPath ]; then
+      dName=$(jq -r '.DeviceName' $EdgeNodeInfoPath)
+      if [ -n "$dName" ]; then
+        HOSTNAME=$(convert_to_k8s_compatible "$dName")
+        break
+      fi
     fi
-    node_name=$(cat /persist/status/uuid)
-    echo "node-name: $node_name" >> /etc/rancher/k3s/config.yaml
-    break
+    echo "Waiting for DeviceName from controller..."
+    sleep 5
   done
+
+  # we should have the uuid since we got the device name
+  DEVUUID=$(/bin/hostname)
+  # get last 5 bytes of the DEVUUID as suffix to the hostname
+  DEVUUID_HASH=$(echo $DEVUUID | tail -c 6)
+  HOSTNAME="$HOSTNAME-$DEVUUID_HASH"
+  echo "node-name: $HOSTNAME" >> /etc/rancher/k3s/config.yaml
 }
 
 apply_multus_cni() {
@@ -142,7 +158,7 @@ setup_prereqs () {
         #Check network and default routes are up
         wait_for_default_route
         check_network_connection
-        wait_for_device_uuid
+        wait_for_device_name
         chmod o+rw /dev/null
 }
 
@@ -191,18 +207,10 @@ check_overwrite_nsmounter() {
   ### REMOVE ME-
 }
 
+HOSTNAME=""
+DEVUUID=""
 #Make sure all prereqs are set after /var/lib is mounted to get logging info
 setup_prereqs
-
-date >> $INSTALL_LOG
-HOSTNAME=$(/bin/hostname)
-logmsg "Starting wait for hostname, currently: $HOSTNAME"
-while [[ $HOSTNAME = linuxkit* ]];
-do
-        sleep 1
-        HOSTNAME=$(/bin/hostname)
-done
-logmsg "Got real hostname, currently: $HOSTNAME"
 
 # Wait for vault to unseal
 vaultMgrStatusPath="/run/vaultmgr/VaultStatus/Application Data Store.json"
@@ -311,14 +319,16 @@ check_node_ready_k3s_running() {
       break
     fi
 
-    # Check if the Kubernetes node is ready
+    # Check if the Kubernetes node is ready, apply label with device UUID
     if check_node_ready; then
+      logmsg "set node lable with uuid $DEVUUID"
+      kubectl label node "$HOSTNAME" node-uuid="$DEVUUID"
       break
     fi
 
     # Sleep for a while before checking again
-    logmsg "wait 5 more sec for node to be ready"
-    sleep 5
+    logmsg "wait 10 more sec for node to be ready on $HOSTNAME"
+    sleep 10
   done
 }
 
@@ -381,6 +391,10 @@ do
         fi
 done
 mount /dev/zvol/persist/etcd-storage /var/lib  ## This is where we persist the cluster components (etcd)
+## before that, the logs in install.log will not be shown
+DATESTR=$(date)
+echo "========================== $DATESTR ==========================" >> $INSTALL_LOG
+echo "cluster-init.sh start for $HOSTNAME, uuid $DEVUUID" >> $INSTALL_LOG
 logmsg "Using ZFS persistent storage"
 
 #Forever loop every 15 secs
@@ -391,7 +405,7 @@ if [ ! -f /var/lib/all_components_initialized ]; then
                 # cni plugin
                 copy_cni_plugin_files
                 #/var/lib is where all kubernetes components get installed.
-                logmsg "Installing K3S version $K3S_VERSION"
+                logmsg "Installing K3S version $K3S_VERSION on $HOSTNAME"
                 mkdir -p /var/lib/k3s/bin
                 /usr/bin/curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION=${K3S_VERSION} INSTALL_K3S_SKIP_ENABLE=true INSTALL_K3S_BIN_DIR=/var/lib/k3s/bin sh -
                 ln -s /var/lib/k3s/bin/* /usr/bin
