@@ -111,7 +111,7 @@ func ResolveWithPortsLambda(domain string,
 	var wg sync.WaitGroup
 
 	for _, port := range dns.Ports {
-		if port.Cost > 0 {
+		if !port.IsL3Port || port.Cost > 0 {
 			continue
 		}
 

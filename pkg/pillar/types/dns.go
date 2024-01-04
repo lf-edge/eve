@@ -212,6 +212,7 @@ func (status DeviceNetworkStatus) MostlyEqual(status2 DeviceNetworkStatus) bool 
 			p1.Logicallabel != p2.Logicallabel ||
 			p1.Alias != p2.Alias ||
 			p1.IsMgmt != p2.IsMgmt ||
+			p1.IsL3Port != p2.IsL3Port ||
 			p1.Cost != p2.Cost {
 			return false
 		}
@@ -365,14 +366,14 @@ func rotate(arr []string, amount int) []string {
 // rotation causes rotation/round-robin within each cost
 func GetMgmtPortsSortedCost(dns DeviceNetworkStatus, rotation int) []string {
 	return getPortsSortedCostImpl(dns, rotation,
-		PortCostMax, true, false)
+		PortCostMax, true, true, false)
 }
 
 // GetAllPortsSortedCost returns all ports (management and app shared) sorted by port cost.
 // Rotation causes rotation/round-robin within each cost.
-func GetAllPortsSortedCost(dns DeviceNetworkStatus, rotation int) []string {
+func GetAllPortsSortedCost(dns DeviceNetworkStatus, l3Only bool, rotation int) []string {
 	return getPortsSortedCostImpl(dns, rotation,
-		PortCostMax, false, false)
+		PortCostMax, l3Only, false, false)
 }
 
 // GetMgmtPortsSortedCostWithoutFailed returns all management ports sorted by
@@ -380,35 +381,35 @@ func GetAllPortsSortedCost(dns DeviceNetworkStatus, rotation int) []string {
 // rotation causes rotation/round-robin within each cost
 func GetMgmtPortsSortedCostWithoutFailed(dns DeviceNetworkStatus, rotation int) []string {
 	return getPortsSortedCostImpl(dns, rotation,
-		PortCostMax, true, true)
+		PortCostMax, true, true, true)
 }
 
 // getPortsSortedCostImpl returns all ports sorted by port cost
 // up to and including the maxCost
 func getPortsSortedCostImpl(dns DeviceNetworkStatus, rotation int, maxCost uint8,
-	mgmtOnly, dropFailed bool) []string {
+	l3Only, mgmtOnly, dropFailed bool) []string {
 	ifnameList := []string{}
 	costList := getPortCostListImpl(dns, maxCost)
 	for _, cost := range costList {
 		ifnameList = append(ifnameList,
-			getPortsImpl(dns, rotation, true, cost, mgmtOnly, dropFailed)...)
+			getPortsImpl(dns, rotation, true, cost, l3Only, mgmtOnly, dropFailed)...)
 	}
 	return ifnameList
 }
 
 // GetMgmtPortsAny returns all management ports
 func GetMgmtPortsAny(dns DeviceNetworkStatus, rotation int) []string {
-	return getPortsImpl(dns, rotation, false, 0, true, false)
+	return getPortsImpl(dns, rotation, false, 0, true, true, false)
 }
 
 // GetMgmtPortsByCost returns all management ports with a given port cost
 func GetMgmtPortsByCost(dns DeviceNetworkStatus, cost uint8) []string {
-	return getPortsImpl(dns, 0, true, cost, true, false)
+	return getPortsImpl(dns, 0, true, cost, true, true, false)
 }
 
 // Returns the IfNames.
 func getPortsImpl(dns DeviceNetworkStatus, rotation int,
-	matchCost bool, cost uint8, mgmtOnly, dropFailed bool) []string {
+	matchCost bool, cost uint8, l3Only, mgmtOnly, dropFailed bool) []string {
 
 	ifnameList := make([]string, 0, len(dns.Ports))
 	for _, us := range dns.Ports {
@@ -417,6 +418,9 @@ func getPortsImpl(dns DeviceNetworkStatus, rotation int,
 		}
 		if mgmtOnly && dns.Version >= DPCIsMgmt &&
 			!us.IsMgmt {
+			continue
+		}
+		if l3Only && !us.IsL3Port {
 			continue
 		}
 		if dropFailed && us.HasError() {
@@ -636,7 +640,7 @@ func getLocalAddrListImpl(dns DeviceNetworkStatus,
 	if ifname == "" {
 		// Get interfaces in cost order
 		ifnameList = getPortsSortedCostImpl(dns, 0,
-			maxCost, true, false)
+			maxCost, true, true, false)
 		// If we are looking across all interfaces, then We ignore errors
 		// since we get them if there are no addresses on a ports
 		ignoreErrors = true
