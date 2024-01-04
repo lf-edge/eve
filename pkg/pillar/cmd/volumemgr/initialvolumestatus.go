@@ -71,7 +71,7 @@ func populateExistingVolumesFormatDatasets(_ *volumemgrContext, dataset string) 
 func populateExistingVolumesFormatPVC(_ *volumemgrContext, ns string) {
 
 	log.Functionf("populateExistingVolumesFormatPVC(%s)", ns)
-	pvlist, err := kubeapi.GetPVCList(ns)
+	pvlist, err := kubeapi.GetPVCList(ns, log)
 	if err != nil {
 		log.Errorf("populateExistingVolumesFormatPVC: GetPVCList '%s' failed: %v",
 			ns, err)

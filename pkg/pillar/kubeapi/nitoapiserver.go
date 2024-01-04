@@ -23,7 +23,7 @@ func CreateOrUpdateNAD(log *base.LogObject, nadName, jsonSpec string) error {
 			Config: jsonSpec,
 		},
 	}
-	createdNAD, err := netClientset.K8sCniCncfIoV1().NetworkAttachmentDefinitions(EVENamespace).
+	createdNAD, err := netClientset.K8sCniCncfIoV1().NetworkAttachmentDefinitions(eveNameSpace).
 		Create(context.Background(), nad, metav1.CreateOptions{})
 	if err == nil {
 		log.Noticef("CreateOrUpdateNAD: successfully created new NAD %s: %+v",
@@ -35,7 +35,7 @@ func CreateOrUpdateNAD(log *base.LogObject, nadName, jsonSpec string) error {
 		return err
 	}
 	// NAD already exists, try to update.
-	nad, err = netClientset.K8sCniCncfIoV1().NetworkAttachmentDefinitions(EVENamespace).
+	nad, err = netClientset.K8sCniCncfIoV1().NetworkAttachmentDefinitions(eveNameSpace).
 		Get(context.Background(), nadName, metav1.GetOptions{})
 	if err != nil {
 		log.Errorf("CreateOrUpdateNAD: failed to get NAD %s for update: %v", nadName, err)
@@ -43,7 +43,7 @@ func CreateOrUpdateNAD(log *base.LogObject, nadName, jsonSpec string) error {
 	}
 	nad.Spec.Config = jsonSpec
 	var updatedNAD *netattdefv1.NetworkAttachmentDefinition
-	updatedNAD, err = netClientset.K8sCniCncfIoV1().NetworkAttachmentDefinitions(EVENamespace).
+	updatedNAD, err = netClientset.K8sCniCncfIoV1().NetworkAttachmentDefinitions(eveNameSpace).
 		Update(context.Background(), nad, metav1.UpdateOptions{})
 	if err == nil {
 		log.Noticef("CreateOrUpdateNAD: successfully updated existing NAD %s: %+v",
@@ -61,7 +61,7 @@ func DeleteNAD(log *base.LogObject, nadName string) error {
 		log.Errorf("DeleteNAD: Failed to create netclientset: %v", err)
 		return err
 	}
-	err = netClientset.K8sCniCncfIoV1().NetworkAttachmentDefinitions(EVENamespace).
+	err = netClientset.K8sCniCncfIoV1().NetworkAttachmentDefinitions(eveNameSpace).
 		Delete(context.Background(), nadName, metav1.DeleteOptions{})
 	if err == nil {
 		log.Noticef("DeleteNAD: successfully deleted NAD %s", nadName)

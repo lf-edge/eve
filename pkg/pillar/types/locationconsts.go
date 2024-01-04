@@ -126,11 +126,6 @@ var (
 	VolumeClearZFSDataset = ClearDataset + "/volumes"
 	//VolumeEncryptedZFSDataset - dataset to create volumes with encryption
 	VolumeEncryptedZFSDataset = SealedDataset + "/volumes"
-	// EVE k3s default namespace
-	VolumeCSINameSpace = "eve-kube-app"
-	// CSI storage class types
-	VolumeCSIClusterStorageClass = "longhorn"
-	VolumeCSILocalStorageClass   = "local-path"
 	// EtcdZvol - zvol encrypted for etcd storage
 	EtcdZvol = PersistDataset + "/etcd-storage"
 )
