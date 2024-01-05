@@ -35,7 +35,7 @@ const (
 )
 
 const (
-	logfileDir    = "/tmp/eve-bridge/"
+	logfileDir    = "/persist/newlog/kube/"
 	logfile       = logfileDir + "eve-bridge.log"
 	logMaxSize    = 100 // 100 Mbytes in size
 	logMaxBackups = 3   // old log files to retain

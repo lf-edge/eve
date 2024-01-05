@@ -11,10 +11,11 @@ CDI_VERSION=v1.58.0
 Node_IP=""
 MAX_K3S_RESTARTS=10
 RESTART_COUNT=0
-K3S_LOG_DIR="/var/lib/"
+K3S_LOG_DIR="/persist/newlog/kube"
 loglimitSize=$((5*1024*1024))
 
-INSTALL_LOG=/var/lib/install.log
+# install log in K3S_LOG_DIR k3s-install.log
+INSTALL_LOG="${K3S_LOG_DIR}/k3s-install.log"
 
 logmsg() {
    local MSG
@@ -152,6 +153,7 @@ setup_prereqs () {
         modprobe iscsi_tcp
         #Needed for iscsi tools
         mkdir -p /run/lock
+        mkdir -p "$K3S_LOG_DIR"
         /usr/sbin/iscsid start
         mount --make-rshared /
         setup_cgroup
@@ -525,9 +527,10 @@ else
           check_overwrite_nsmounter
         fi
 fi
-        check_log_file_size "rancher/k3s/k3s.log"
-        check_log_file_size "rancher/k3s/multus.log"
-        check_log_file_size "install.log"
+        check_log_file_size "k3s.log"
+        check_log_file_size "multus.log"
+        check_log_file_size "k3s-install.log"
+        check_log_file_size "eve-bridge.log"
         check_and_run_vnc
         wait_for_item "wait"
         sleep 30
