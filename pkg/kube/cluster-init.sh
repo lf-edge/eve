@@ -237,7 +237,7 @@ check_start_containerd() {
                 ln -s /var/lib/rancher/k3s/data/current/bin/containerd-shim-runc-v2 /usr/bin/containerd-shim-runc-v2
         fi
 
-        pgrep -f "containerd --config" > /dev/null 2>&1
+        pgrep -f "/var/lib/rancher/k3s/data/current/bin/containerd" > /dev/null 2>&1
         if [ $? -eq 1 ]; then 
                 mkdir -p /run/containerd-user
                 nohup /var/lib/rancher/k3s/data/current/bin/containerd --config /etc/containerd/config-k3s.toml &
