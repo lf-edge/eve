@@ -3,7 +3,7 @@
 
 write-kubeconfig-mode: "0644"
 cluster-init: true
-log: "/var/lib/rancher/k3s/k3s.log"
+log: "/persist/newlog/kube/k3s.log"
 # Use longhorn storage
 disable: local-storage
 etcd-arg:
