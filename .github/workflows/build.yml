@@ -112,7 +112,7 @@ jobs:
         run: |
           COMMIT_ID=$(git describe --abbrev=8 --always)
           echo "VERSION=0.0.0-pr$PR_ID-$COMMIT_ID" >> $GITHUB_ENV
-          echo "TAG=evebuild/danger:pr$PR_ID" >> $GITHUB_ENV
+          echo "TAG=evebuild/pr:$PR_ID" >> $GITHUB_ENV
           echo "ARCH=${{ matrix.arch }}" >> "$GITHUB_ENV"
 
       - name: Build EVE ${{ matrix.hv }}-${{ matrix.arch }}
