@@ -28,7 +28,7 @@ on:  # yamllint disable-line rule:truthy
         type: choice
         options:
           - lfedge/eve
-          - evebuild/danger
+          - evebuild/pr
           - custom
       eve_docker_reg_custom:
         description: '[docker] eve custom registry'
@@ -152,8 +152,8 @@ jobs:
         run: |
           if [ "${{ github.event.inputs.test_type }}" == "PR" ]; then
             git fetch origin pull/${{ github.event.inputs.pr_number }}/head && git checkout FETCH_HEAD
-            echo "EVE_TAG=pr${{ github.event.inputs.pr_number }}" >> "$GITHUB_ENV"
-            echo "EVE_REGISTRY=evebuild/danger" >> "$GITHUB_ENV"
+            echo "EVE_TAG=${{ github.event.inputs.pr_number }}" >> "$GITHUB_ENV"
+            echo "EVE_REGISTRY=evebuild/pr" >> "$GITHUB_ENV"
           else
             echo "EVE_TAG=${{ github.event.inputs.eve_docker_tag }}" >> "$GITHUB_ENV"
             if [ "${{ github.event.inputs.eve_docker_reg }}" == "custom" ]; then
