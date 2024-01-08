@@ -261,9 +261,13 @@ func RolloutDiskToPVC(ctx context.Context, log *base.LogObject, exists bool, dis
 
 	args := []string{"image-upload", "-n", eveNameSpace, "pvc", pvcName, "--storage-class", "longhorn", "--image-path", diskfile, "--insecure", "--uploadproxy-url", uploadproxyURL, "--kubeconfig", kubeConfigFile}
 
+	args = append(args, "--access-mode", "ReadWriteOnce")
+
+	// Though in EVE we only support block volumes, lets have code for filesystem too
 	if !filemode {
-		args = append(args, "--access-mode", "ReadWriteOnce")
-		args = append(args, "--block-volume")
+		args = append(args, "--volume-mode", "block")
+	} else {
+		args = append(args, "--volume-mode", "filesystem")
 	}
 
 	// If PVC already exists just copy out the data, else virtctl will create the PVC before data copy
