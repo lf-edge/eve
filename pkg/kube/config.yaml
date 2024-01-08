@@ -6,6 +6,8 @@ cluster-init: true
 log: "/persist/newlog/kube/k3s.log"
 # Use longhorn storage
 disable: local-storage
+disable: traefik
+disable: servicelb
 etcd-arg:
   - "heartbeat-interval=8000"
   - "election-timeout=40000"
@@ -13,3 +15,4 @@ etcd-arg:
 etcd-expose-metrics: true
 container-runtime-endpoint: "/run/containerd-user/containerd.sock"
 disable-network-policy: true
+disable-cloud-controller: true
