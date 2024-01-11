@@ -274,6 +274,19 @@ func createOrUpdateDiskMetrics(ctx *volumemgrContext, wdName string) {
 		}
 	}
 
+	// XXX exclude ones already published above somehow
+	items, err := volumehandlers.GetAllDataSets(log, ctx)
+	for _, img := range items {
+		metric := &types.DiskMetric{
+			DiskPath:   img.Filename,
+			TotalBytes: img.VirtualSize,
+			UsedBytes:  img.ActualSize,
+			IsDir:      true,
+		}
+		diskMetricList = append(diskMetricList, metric)
+	}
+	// XXX also unpublish old?
+
 	publishDiskMetrics(ctx, diskMetricList...)
 	for _, volumeStatus := range getAllVolumeStatus(ctx) {
 		ctx.ps.StillRunning(wdName, warningTime, errorTime)
