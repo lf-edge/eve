@@ -270,6 +270,24 @@ func createOrUpdateDiskMetrics(ctx *volumemgrContext, wdName string) {
 		}
 	}
 
+	// If we have ZFS dataset, report their info from the ZFS perspective
+	if handler := volumehandlers.GetZFSVolumeHandler(log, ctx); handler != nil {
+		items, err := handler.GetAllDataSets()
+		if err != nil {
+			log.Error(err)
+		} else {
+			for _, img := range items {
+				metric := &types.DiskMetric{
+					DiskPath:   "dataset " + img.Filename,
+					TotalBytes: img.VirtualSize,
+					UsedBytes:  img.ActualSize,
+					IsDir:      true,
+				}
+				diskMetricList = append(diskMetricList, metric)
+			}
+		}
+	}
+
 	publishDiskMetrics(ctx, diskMetricList...)
 	for _, volumeStatus := range getAllVolumeStatus(ctx) {
 		ctx.ps.StillRunning(wdName, warningTime, errorTime)
