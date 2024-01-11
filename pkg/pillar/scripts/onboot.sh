@@ -19,7 +19,6 @@ FIRSTBOOT=
 TPM_DEVICE_PATH="/dev/tpmrm0"
 SECURITYFSPATH=/sys/kernel/security
 PATH=$BINDIR:$PATH
-DISKSPACE_RECOVERY_LIMIT=70 # XXX remove
 MIN_DISKSPACE=4096 # MBytes
 
 echo "$(date -Ins -u) Starting onboot.sh"
@@ -153,57 +152,38 @@ free_space() {
 # /persist/newlog/appUpload/*
 # /persist/newlog/devUpload/*
 # /persist/containerd-system-root
-# /persist/vault/containerd
+# /persist/vault/containerd - NO causes failures to start containers
 # /persist/vault/downloader
 # /persist/vault/verifier
 # /persist/agentdbug
-# XXX remove
-diskspace_used=$(percent_used persist)
-echo "Used percentage of /persist: $diskspace_used"
-if [ "$diskspace_used" -ge "$DISKSPACE_RECOVERY_LIMIT" ]
-then
-    echo "Used percentage of /persist is $diskspace_used more than the limit $DISKSPACE_RECOVERY_LIMIT"
-    for DIR in log pubsub-large netdump newlog/keepSentQueue newlog/failedUpload newlog/appUpload newlog/devUpload containerd-system-root vault/containerd vault/downloader vault/verifier agentdebug
-    do
-        dir_del=$PERSISTDIR/$DIR
-        # XXX disable for test purposes
-        # rm -rf "${dir_del:?}/"*
-        echo "XXX rm -rf "${dir_del:?}/"*"
-        diskspace_used=$(percent_used persist)
-        echo "Used percentage of /persist is $diskspace_used after clearing $dir_del"
-        if [ "$diskspace_used" -le "$DISKSPACE_RECOVERY_LIMIT" ]
-        then
-            break
-        fi
-    done
-    diskspace_used=$(percent_used persist)
-    echo "Used percentage of /persist after recovery: $diskspace_used"
-fi
-
+#
+# Note that we need to free up some space before Linuxkit starts containerd,
+# we need to wait a bit for ZFS deletes to take place, but we are not yet
+# running watchdogd to we need to hurry to not have the watchdog fire.
+# So we sleep a minimal of 2 seconds per directory.
 diskspace_free=$(free_space persist)
-echo "Free space in /persist: $diskspace_free MBytes"
+echo "Free space in /persist: $diskspace_free MBytes" | tee /dev/console
 if [ "$diskspace_free" -lt "$MIN_DISKSPACE" ]
 then
-    echo "Free space in /persist is only $diskspace_free hence below the limit $MIN_DISKSPACE MBytes"
-    for DIR in log pubsub-large netdump newlog/keepSentQueue newlog/failedUpload newlog/appUpload newlog/devUpload containerd-system-root vault/containerd vault/downloader vault/verifier agentdebug
+    echo "Free space in /persist is only $diskspace_free hence below the limit $MIN_DISKSPACE MBytes" | tee /dev/console
+    for DIR in log pubsub-large netdump newlog/keepSentQueue newlog/failedUpload newlog/appUpload newlog/devUpload containerd-system-root vault/downloader vault/verifier agentdebug
     do
         dir_del=$PERSISTDIR/$DIR
         rm -rf "${dir_del:?}/"*
         diskspace_free=$(free_space persist)
-        echo "Free space in /persist after clearing $dir_del: $diskspace_free MBytes"
+        echo "Free space in /persist after clearing $dir_del: $diskspace_free MBytes" | tee /dev/console
+        # Need to wait for ZFS to free space
+        sleep 2
+        diskspace_free=$(free_space persist)
+        echo "Free space in /persist after clearing $dir_del and 2s sleep: $diskspace_free MBytes" | tee /dev/console
         if [ "$diskspace_free" -ge "$MIN_DISKSPACE" ]
         then
             break
         fi
     done
     diskspace_free=$(free_space persist)
-    echo "Free space in /persist after recovery: $diskspace_free MBytes"
+    echo "Free space in /persist after recovery: $diskspace_free MBytes" | tee /dev/console
 fi
-
-# XXX dump sizes by appending to /persist/log/sizes
-echo "$(date -Ins -u) onboot.sh sizes" >>/persist/log/sizes
-du -m /persist >>/persist/log/sizes
-echo "$(date -Ins -u) onboot.sh sizes done" >>/persist/log/sizes
 
 # Run upgradeconverter
 mkdir -p /persist/ingested/
