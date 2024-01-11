@@ -411,47 +411,28 @@ func GetZFSVolumeInfo(device string) (*types.ImgInfo, error) {
 	dataset, err := libzfs.DatasetOpen(datasetFullName)
 	if err != nil {
 		return nil,
-			fmt.Errorf("open dataset %s error: %v", datasetFullName, err)
+			fmt.Errorf("open dataset %s error: %v",
+				datasetFullName, err)
 	}
 	defer dataset.Close()
 
+	if err = fillImgInfo(dataset, datasetFullName, &imgInfo); err != nil {
+		return nil, err
+	}
+	return &imgInfo, nil
+}
+
+func fillImgInfo(dataset libzfs.Dataset, datasetFullName string, imgInfo *types.ImgInfo) error {
 	propUsedds, err := dataset.GetProperty(libzfs.DatasetPropUsedds)
 	if err != nil {
-		return nil,
-			fmt.Errorf("get property Usedbydataset for dataset: %s failed %w",
-				datasetFullName, err)
+		return fmt.Errorf("get property Usedbydataset for dataset: %s failed %w",
+			datasetFullName, err)
 	}
 	imgInfo.ActualSize, err = strconv.ParseUint(propUsedds.Value, 10, 64)
 	if err != nil {
-		return nil,
-			fmt.Errorf("GetZFSVolumeInfo: failed to parse Usedbydataset: %s", err)
+		return fmt.Errorf("GetZFSVolumeInfo: failed to parse Usedbydataset: %s", err)
 	}
-
-	propVolSize, err := dataset.GetProperty(libzfs.DatasetPropVolsize)
-	if err != nil {
-		return nil,
-			fmt.Errorf("get property propVolSize for dataset %s failed %v",
-				datasetFullName, err)
-	}
-	imgInfo.VirtualSize, err = strconv.ParseUint(propVolSize.Value, 10, 64)
-	if err != nil {
-		return nil,
-			fmt.Errorf("GetZFSVolumeInfo: failed to parse volsize: %s", err)
-	}
-
-	propVolblocksize, err := dataset.GetProperty(libzfs.DatasetPropVolblocksize)
-	if err != nil {
-		return nil,
-			fmt.Errorf("get property propVolblocksize for dataset %s failed %v",
-				datasetFullName, err)
-	}
-	imgInfo.ClusterSize, err = strconv.ParseUint(propVolblocksize.Value, 10, 64)
-	if err != nil {
-		return nil,
-			fmt.Errorf("GetZFSVolumeInfo: failed to parse volblocksize: %s", err)
-	}
-
-	return &imgInfo, nil
+	return nil
 }
 
 func alignUpToBlockSize(sizeBytes uint64, blockSizeBytes uint64) uint64 {
@@ -1055,4 +1036,45 @@ func GetVDevAuxMsgStr(state types.VDevAux) string {
 	}
 
 	return "Unspecified"
+}
+
+// GetAllZFSVolumeInfo returns an ImgInfo for each ZFS dataset
+func GetAllZFSVolumeInfo() ([]types.ImgInfo, error) {
+	list, err := libzfs.DatasetOpenAll()
+	if err != nil {
+		return nil, err
+	}
+	defer libzfs.DatasetCloseAll(list)
+	items := make([]types.ImgInfo, 0)
+	return getRecursiveVolumeInfo(list, items)
+}
+
+func getRecursiveVolumeInfo(list []libzfs.Dataset, items []types.ImgInfo) ([]types.ImgInfo, error) {
+	for _, dataset := range list {
+		path, err := dataset.Path()
+		if err != nil {
+			log.Errorf("get Path for dataset failed: %s",
+				err)
+			continue
+		}
+		imgInfo := types.ImgInfo{
+			Format:    "raw",
+			Filename:  path,
+			DirtyFlag: false,
+		}
+		if err := fillImgInfo(dataset, path, &imgInfo); err != nil {
+			log.Errorf("fillImgInfo(%s) failed: %s", path, err)
+			continue
+		}
+		items = append(items, imgInfo)
+		if dataset.Children == nil {
+			continue
+		}
+		items, err = getRecursiveVolumeInfo(dataset.Children, items)
+		if err != nil {
+			log.Errorf("getRecursiveVolumeInfo failed: %s", err)
+			return items, err
+		}
+	}
+	return items, nil
 }
