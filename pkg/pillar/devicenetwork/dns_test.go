@@ -97,6 +97,7 @@ func createDeviceNetworkStatus() types.DeviceNetworkStatus {
 	deviceNetworkStatusPorts := make([]types.NetworkPortStatus, len(mockInterface))
 	for i := range deviceNetworkStatusPorts {
 		deviceNetworkStatusPorts[i].IfName = mockInterface[i].Attrs.IfName
+		deviceNetworkStatusPorts[i].IsL3Port = true
 		deviceNetworkStatusPorts[i].DNSServers = mockInterface[i].DNS.DNSServers
 		addrInfos := make([]types.AddrInfo, len(mockInterface[i].IPAddrs))
 		for j := range mockInterface[i].IPAddrs {
