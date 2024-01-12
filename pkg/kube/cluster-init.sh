@@ -4,7 +4,8 @@
 # SPDX-License-Identifier: Apache-2.0
 
 #K3S_VERSION=v1.26.3+k3s1
-K3S_VERSION=v1.29.0+k3s1
+#K3S_VERSION=v1.29.0+k3s1
+K3S_VERSION=v1.28.5+k3s1
 KUBEVIRT_VERSION=v1.1.0
 LONGHORN_VERSION=v1.4.2
 CDI_VERSION=v1.58.0
@@ -119,6 +120,29 @@ wait_for_device_name() {
   echo "node-name: $HOSTNAME" >> /etc/rancher/k3s/config.yaml
 }
 
+check_start_k3s() {
+  pgrep -f "k3s server" > /dev/null 2>&1
+  if [ $? -eq 1 ]; then 
+      if [ $RESTART_COUNT -lt $MAX_K3S_RESTARTS ]; then
+          ## Must be after reboot, or from k3s restart
+          let "RESTART_COUNT++"
+          if [ ! -f /var/lib/cni/bin ]; then
+            copy_cni_plugin_files
+          fi
+          ln -s /var/lib/k3s/bin/* /usr/bin
+          logmsg "Starting k3s server, restart count: $RESTART_COUNT"
+          # for now, always copy to get the latest
+          nohup /usr/bin/k3s server --config /etc/rancher/k3s/config.yaml &
+          k3s_pid=$!
+          # Give the embedded etcd in k3s priority over io as its fsync latencies are critical
+          ionice -c2 -n0 -p $k3s_pid
+          # Default location where clients will look for config
+          ln -s /etc/rancher/k3s/k3s.yaml ~/.kube/config
+          cp /etc/rancher/k3s/k3s.yaml /run/.kube/k3s/k3s.yaml
+      fi
+  fi
+}
+
 apply_multus_cni() {
   # apply multus
   sleep 10
@@ -126,13 +150,15 @@ apply_multus_cni() {
   get_default_intf_IP_prefix
   kubectl create namespace eve-kube-app
   logmsg "Apply Multus, Node-IP: $NODE_IP"
-  while ! kubectl apply -f /tmp/multus-daemonset.yaml; do
-    sleep 1
-  done
+  if ! kubectl apply -f /tmp/multus-daemonset.yaml; then
+    # Give up the cpu to the containerd/k3s restart loop
+    return 1
+  fi
   logmsg "done applying multus"
   ln -s /var/lib/cni/bin/multus /var/lib/rancher/k3s/data/current/bin/multus
   # need to only do this once
   touch /var/lib/multus_initialized
+  return 0
 }
 
 copy_cni_plugin_files() {
@@ -260,6 +286,7 @@ check_start_containerd() {
 		fi
 	fi
 }
+
 trigger_k3s_selfextraction() {
         # This is extracted when k3s server first starts
         # analysis of the k3s source shows any cli command will first extract the binaries.
@@ -332,6 +359,23 @@ check_node_ready_k3s_running() {
     logmsg "wait 10 more sec for node to be ready on $HOSTNAME"
     sleep 10
   done
+}
+
+# Return success if all pods in existence are Running/Succeeded and Ready
+# Return unix style 0 for success.  (Not 0 for false)
+are_all_pods_ready() {
+  not_running=$(kubectl get pods -A -o json | jq '.items[] | select(.status.phase!="Running" and .status.phase!="Succeeded")' | jq -s length)
+  if [ $not_running -ne 0 ]; then
+    return 1
+  fi
+
+  not_ready=$(kubectl get pods -A -o json | jq '.items[] | select(.status.phase=="Running") | .status.conditions[] | select(.type=="ContainersReady" and .status!="True")' | jq -s length)
+  if [ $not_ready -ne 0 ]; then
+    return 1
+  fi
+
+  #don't want to sleep here, maybe recursion?
+  return 0
 }
 
 VMICONFIG_FILENAME="/run/zedkube/vmiVNC.run"
@@ -417,65 +461,75 @@ if [ ! -f /var/lib/all_components_initialized ]; then
                 check_start_containerd
                 nohup /usr/bin/k3s server --config /etc/rancher/k3s/config.yaml &
                 k3s_pid=$!
-                #wait until k3s is ready
-                logmsg "Looping until k3s is ready, pid:$k3s_pid"
-                #until kubectl get node | grep "$HOSTNAME" | awk '{print $2}' | grep 'Ready'; do sleep 5; done
-                # check to see if node is ready, and if k3s crashed
-                K3S_RUNNING=true
-                check_node_ready_k3s_running
-                if ! $K3S_RUNNING; then
-                  continue
-                fi
-                #ln -sf /var/lib/rancher/k3s/agent/containerd /persist/vault/containerd
                 # Give the embedded etcd in k3s priority over io as its fsync latencies are critical
                 ionice -c2 -n0 -p $k3s_pid
-                logmsg "k3s is ready on this node, pid:$k3s_pid"
                 # Default location where clients will look for config
                 ln -s /etc/rancher/k3s/k3s.yaml ~/.kube/config
                 cp /etc/rancher/k3s/k3s.yaml /run/.kube/k3s/k3s.yaml
                 touch /var/lib/k3s_initialized
         fi
+        
+        check_start_containerd
+        check_start_k3s
+
+        node_count_ready=$(kubectl get node | grep -w Ready | wc -l)
+        if [ $node_count_ready -ne 1 ]; then
+                logmsg "Looping until k3s is ready (andrew), pid:$k3s_pid"
+                continue
+        fi
 
         if [ ! -f /var/lib/multus_initialized ]; then
-          logmsg "Installing multus cni"
-          apply_multus_cni
-          # launch CNI dhcp service
-          /opt/cni/bin/dhcp daemon &
+          if are_all_pods_ready; then
+            logmsg "Installing multus cni"
+            apply_multus_cni
+            # launch CNI dhcp service
+            /opt/cni/bin/dhcp daemon &
+          fi
+          continue
         fi
 
         # setup debug user credential, role and binding
         if [ ! -f /var/lib/debuguser-initialized ]; then
-          config_cluster_roles
+          if are_all_pods_ready; then
+            config_cluster_roles
+          fi
+          continue
         fi
 
         if [ ! -f /var/lib/kubevirt_initialized ]; then
-                wait_for_item "kubevirt"
-                # This patched version will be removed once the following PR https://github.com/kubevirt/kubevirt/pull/9668 is merged
-                logmsg "Installing patched Kubevirt"
-                kubectl apply -f /etc/kubevirt-operator.yaml
-                kubectl apply -f https://github.com/kubevirt/kubevirt/releases/download/${KUBEVIRT_VERSION}/kubevirt-cr.yaml
+          if are_all_pods_ready; then
+            wait_for_item "kubevirt"
+            # This patched version will be removed once the following PR https://github.com/kubevirt/kubevirt/pull/9668 is merged
+            logmsg "Installing patched Kubevirt"
+            kubectl apply -f /etc/kubevirt-operator.yaml
+            kubectl apply -f https://github.com/kubevirt/kubevirt/releases/download/${KUBEVIRT_VERSION}/kubevirt-cr.yaml
 
-                wait_for_item "cdi"
-                #CDI (containerzed data importer) is need to convert qcow2/raw formats to Persistent Volumes and Data volumes
-                #Since CDI goes with kubevirt we install with that.
-                logmsg "Installing CDI version $CDI_VERSION"
-                kubectl create -f https://github.com/kubevirt/containerized-data-importer/releases/download/$CDI_VERSION/cdi-operator.yaml
-                kubectl create -f https://github.com/kubevirt/containerized-data-importer/releases/download/$CDI_VERSION/cdi-cr.yaml
+            wait_for_item "cdi"
+            #CDI (containerzed data importer) is need to convert qcow2/raw formats to Persistent Volumes and Data volumes
+            #Since CDI goes with kubevirt we install with that.
+            logmsg "Installing CDI version $CDI_VERSION"
+            kubectl create -f https://github.com/kubevirt/containerized-data-importer/releases/download/$CDI_VERSION/cdi-operator.yaml
+            kubectl create -f https://github.com/kubevirt/containerized-data-importer/releases/download/$CDI_VERSION/cdi-cr.yaml
 
-                #Add feature gates
-                kubectl apply -f /etc/kubevirt-features.yaml
+            #Add feature gates
+            kubectl apply -f /etc/kubevirt-features.yaml
 
-                touch /var/lib/kubevirt_initialized
+            touch /var/lib/kubevirt_initialized
+          fi
+          continue
         fi
 
         if [ ! -f /var/lib/longhorn_initialized ]; then
-                wait_for_item "longhorn"
-                logmsg "Installing longhorn version ${LONGHORN_VERSION}"
-                apply_longhorn_disk_config $HOSTNAME
-                #kubectl apply -f  https://raw.githubusercontent.com/longhorn/longhorn/${LONGHORN_VERSION}/deploy/longhorn.yaml
-                # Switch back to above once all the longhorn services use the updated go iscsi tools
-                kubectl apply -f /etc/longhorn-config.yaml
-                touch /var/lib/longhorn_initialized
+          if are_all_pods_ready; then
+            wait_for_item "longhorn"
+            logmsg "Installing longhorn version ${LONGHORN_VERSION}"
+            apply_longhorn_disk_config $HOSTNAME
+            #kubectl apply -f  https://raw.githubusercontent.com/longhorn/longhorn/${LONGHORN_VERSION}/deploy/longhorn.yaml
+            # Switch back to above once all the longhorn services use the updated go iscsi tools
+            kubectl apply -f /etc/longhorn-config.yaml
+            touch /var/lib/longhorn_initialized
+          fi
+          continue
         fi
 
         if [ -f /var/lib/k3s_initialized ] && [ -f /var/lib/kubevirt_initialized ] && [ -f /var/lib/longhorn_initialized ]; then
@@ -497,7 +551,7 @@ else
                 # for now, always copy to get the latest
                 nohup /usr/bin/k3s server --config /etc/rancher/k3s/config.yaml &
                 k3s_pid=$!
-                logmsg "Looping until k3s is ready, pid:$k3s_pid"
+                logmsg "Looping until k3s is ready (restart path), pid:$k3s_pid"
                 until kubectl get node | grep "$HOSTNAME" | awk '{print $2}' | grep 'Ready'; do sleep 5; done
                 # Give the embedded etcd in k3s priority over io as its fsync latencies are critical
                 ionice -c2 -n0 -p $k3s_pid
@@ -524,7 +578,9 @@ else
                 logmsg "k3s is down and restart count exceeded."
             fi
         else
-          check_overwrite_nsmounter
+          if [ -e /var/lib/longhorn_initialized ]; then
+            check_overwrite_nsmounter
+          fi
         fi
 fi
         check_log_file_size "k3s.log"
