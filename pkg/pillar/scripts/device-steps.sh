@@ -26,11 +26,6 @@ TPMINFOTEMPFILE=/var/tmp/tpminfo.txt
 echo "$(date -Ins -u) Starting device-steps.sh"
 echo "$(date -Ins -u) EVE version: $(cat /run/eve-release)"
 
-# XXX dump zfs sizes by appending to /persist/log/zfs-sizes
-echo "$(date -Ins -u) device-steps.sh zfs-sizes" >>/persist/log/zfs-sizes
-zfs list >>/persist/log/zfs-sizes
-echo "$(date -Ins -u) device-steps.sh zfs-sizes done" >>/persist/log/zfs-sizes
-
 if [ -f "$FIRSTBOOTFILE" ]; then
   FIRSTBOOT=1
 fi
