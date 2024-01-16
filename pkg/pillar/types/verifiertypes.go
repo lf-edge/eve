@@ -21,6 +21,7 @@ import (
 type VerifyImageConfig struct {
 	ImageSha256  string // sha256 of immutable image
 	Name         string
+	MediaType    string // MIME type
 	FileLocation string // Current location; should be info about file
 	Size         int64  //FileLocation size
 	RefCount     uint
@@ -91,6 +92,7 @@ type VerifyImageStatus struct {
 	Name          string
 	FileLocation  string // Current location
 	Size          int64
+	MediaType     string // MIME type
 	PendingAdd    bool
 	PendingModify bool
 	PendingDelete bool

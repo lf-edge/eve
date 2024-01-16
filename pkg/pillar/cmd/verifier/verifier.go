@@ -15,6 +15,7 @@ import (
 	"flag"
 	"fmt"
 	"io/ioutil"
+	"net/url"
 	"os"
 	"path"
 	"strings"
@@ -309,6 +310,7 @@ func handleCreate(ctx *verifierContext,
 	status := types.VerifyImageStatus{
 		Name:        config.Name,
 		ImageSha256: config.ImageSha256,
+		MediaType:   config.MediaType,
 		PendingAdd:  true,
 		State:       types.VERIFYING,
 		RefCount:    config.RefCount,
@@ -501,12 +503,20 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 }
 
 // ImageVerifierFilenames - Returns pendingFilename, verifierFilename, verifiedFilename
-// for the image
-func ImageVerifierFilenames(infile, sha256, tmpID string) (string, string, string) {
+// for the image. The verifierFilename and verifiedFilename always will have an extension
+// of the media-type, e.g. abcdeff112.application-vnd.oci.image.manifest.v1+json
+// This is because we need the media-type to process the blob. Normally, we carry
+// it around in the status (DownloadStatus -> BlobStatus), but those are ephemeral and
+// lost during a reboot. We need that information to be persistent and survive reboot,
+// so we can reconstruct it. Hence, we preserve it in the filename. It is PathEscape'd
+// so it is filename-safe.
+func ImageVerifierFilenames(infile, sha256, tmpID, mediaType string) (string, string, string) {
 	verifierDirname, verifiedDirname := getVerifierDir(), getVerifiedDir()
 	// Handle names which are paths
-	verified := tmpID + "." + sha256
-	return infile, path.Join(verifierDirname, verified), path.Join(verifiedDirname, sha256)
+	mediaTypeSafe := url.PathEscape(mediaType)
+	verifierFilename := strings.Join([]string{tmpID, sha256, mediaTypeSafe}, ".")
+	verifiedFilename := strings.Join([]string{sha256, mediaTypeSafe}, ".")
+	return infile, path.Join(verifierDirname, verifierFilename), path.Join(verifiedDirname, verifiedFilename)
 }
 
 // Returns ok, size of object
@@ -515,7 +525,7 @@ func markObjectAsVerifying(ctx *verifierContext,
 	status *types.VerifyImageStatus, tmpID uuid.UUID) (bool, int64) {
 
 	verifierDirname := getVerifierDir()
-	pendingFilename, verifierFilename, _ := ImageVerifierFilenames(config.FileLocation, config.ImageSha256, tmpID.String())
+	pendingFilename, verifierFilename, _ := ImageVerifierFilenames(config.FileLocation, config.ImageSha256, tmpID.String(), config.MediaType)
 
 	// Move to verifier directory which is RO
 	// XXX should have dom0 do this and/or have RO mounts
@@ -562,7 +572,7 @@ func markObjectAsVerifying(ctx *verifierContext,
 func markObjectAsVerified(config *types.VerifyImageConfig, status *types.VerifyImageStatus, tmpID uuid.UUID) {
 
 	verifiedDirname := getVerifiedDir()
-	_, verifierFilename, verifiedFilename := ImageVerifierFilenames(config.FileLocation, config.ImageSha256, tmpID.String())
+	_, verifierFilename, verifiedFilename := ImageVerifierFilenames(config.FileLocation, config.ImageSha256, tmpID.String(), config.MediaType)
 	// Move directory from DownloadDirname/verifier to
 	// DownloadDirname/verified
 	// XXX should have dom0 do this and/or have RO mounts
@@ -610,10 +620,22 @@ func handleInitVerifiedObjects(ctx *verifierContext) {
 func verifyImageStatusFromImageFile(imageFileName string,
 	size int64, pathname string) *types.VerifyImageStatus {
 
+	// filename might have two parts, separated by '.': digest and PathEscape(mediaType)
+	var (
+		mediaType string
+		digest    string
+	)
+	parts := strings.SplitN(imageFileName, ".", 2)
+	digest = parts[0]
+	if len(parts) == 2 {
+		// just ignore the error and treat mediaType as empty
+		mediaType, _ = url.PathUnescape(parts[1])
+	}
 	status := types.VerifyImageStatus{
 		Name:         imageFileName,
 		FileLocation: pathname,
-		ImageSha256:  imageFileName,
+		ImageSha256:  digest,
+		MediaType:    mediaType,
 		Size:         size,
 		State:        types.VERIFIED,
 		RefCount:     0,
