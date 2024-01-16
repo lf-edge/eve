@@ -116,8 +116,7 @@ func collectAppLogs(ctx *zedkubeContext) {
 	sinceSec = logcollectInterval
 	for _, item := range items {
 		aiconfig := item.(types.AppInstanceConfig)
-		aiName := base.ConvToKubeName(aiconfig.DisplayName)
-		aiDispName := aiconfig.GetKubeDispName()
+		contName := base.GetAppKubeName(aiconfig.DisplayName, aiconfig.UUIDandVersion.UUID)
 
 		opt := &corev1.PodLogOptions{}
 		if ctx.appLogStarted {
@@ -127,10 +126,10 @@ func collectAppLogs(ctx *zedkubeContext) {
 		} else {
 			ctx.appLogStarted = true
 		}
-		req := clientset.CoreV1().Pods(types.EVEKubeNameSpace).GetLogs(aiDispName, opt)
+		req := clientset.CoreV1().Pods(types.EVEKubeNameSpace).GetLogs(contName, opt)
 		podLogs, err := req.Stream(context.Background())
 		if err != nil {
-			log.Errorf("collectAppLogs: pod %s, log error %v", aiDispName, err)
+			log.Errorf("collectAppLogs: pod %s, log error %v", contName, err)
 			continue
 		}
 		defer podLogs.Close()
@@ -153,7 +152,7 @@ func collectAppLogs(ctx *zedkubeContext) {
 			// Process and print the log line here
 			aiLogger := ctx.appContainerLogger.WithFields(logrus.Fields{
 				"appuuid":       aiconfig.UUIDandVersion.UUID.String(),
-				"containername": aiName,
+				"containername": contName,
 				"eventtime":     timeStr,
 			})
 			aiLogger.Infof("%s", logLine)

@@ -212,10 +212,6 @@ func (config AppInstanceConfig) Key() string {
 	return config.UUIDandVersion.UUID.String()
 }
 
-func (config AppInstanceConfig) GetKubeDispName() string {
-	return base.ConvToKubeName(config.DisplayName) + "-" + config.UUIDandVersion.UUID.String()[:5]
-}
-
 // SnapshottingStatus contains the snapshot information for the app instance.
 type SnapshottingStatus struct {
 	// MaxSnapshots indicates the maximum number of snapshots to be kept for the app instance.

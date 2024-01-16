@@ -15,9 +15,9 @@ import (
 
 	"github.com/lf-edge/eve/pkg/kube/cnirpc"
 	"github.com/lf-edge/eve/pkg/pillar/base"
-	"github.com/lf-edge/eve/pkg/pillar/kubeapi"
 	"github.com/lf-edge/eve/pkg/pillar/nireconciler"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	uuid "github.com/satori/go.uuid"
 )
 
 const (
@@ -82,10 +82,11 @@ func (z *zedrouter) handleRPC(rpc *rpcRequest) {
 	switch request := rpc.request.(type) {
 	case connectPodAtL2Request:
 		l2Only := cnirpc.PodIPAMConfig{}
-		request.retval.UseDHCP, request.retval.Interfaces, err =
+		retval := request.retval
+		retval.AppUUID, retval.UseDHCP, retval.Interfaces, err =
 			z.handleConnectPodRequest(request.args.Pod, request.args.PodInterface, l2Only)
 	case connectPodAtL3Request:
-		_, _, err = z.handleConnectPodRequest(request.args.Pod,
+		request.retval.AppUUID, _, _, err = z.handleConnectPodRequest(request.args.Pod,
 			request.args.PodInterface, request.args.PodIPAMConfig)
 	case disconnectPodRequest:
 		err = z.handleDisconnectPodRequest(request.args, request.retval)
@@ -104,12 +105,13 @@ func (z *zedrouter) handleRPC(rpc *rpcRequest) {
 // Will setup L3 connectivity if ipamConfig is defined, L2-only otherwise.
 func (z *zedrouter) handleConnectPodRequest(pod cnirpc.AppPod,
 	podInterface cnirpc.NetInterfaceWithNs, ipamConfig cnirpc.PodIPAMConfig) (
-	niWithDHCP bool, interfaces []cnirpc.NetInterfaceWithNs, err error) {
+	appUUID uuid.UUID, niWithDHCP bool, interfaces []cnirpc.NetInterfaceWithNs, err error) {
 	appConfig, appStatus, err := z.getAppByPodName(pod.Name)
 	if err != nil {
 		z.log.Error(err)
-		return false, nil, err
+		return uuid.UUID{}, false, nil, err
 	}
+	appUUID = appStatus.UUIDandVersion.UUID
 	appStatus.AppPod = pod
 	var adapterStatus *types.AppNetAdapterStatus
 	for i := range appStatus.AppNetAdapterList {
@@ -123,7 +125,7 @@ func (z *zedrouter) handleConnectPodRequest(pod cnirpc.AppPod,
 		err = fmt.Errorf("failed to find adapter with MAC %s for app %v",
 			podInterface.MAC, appStatus.UUIDandVersion.UUID)
 		z.log.Error(err)
-		return false, nil, err
+		return appUUID, false, nil, err
 	}
 	adapterStatus.PodVif.GuestIfName = podInterface.Name
 	adapterStatus.PodVif.IPAM = ipamConfig
@@ -135,20 +137,20 @@ func (z *zedrouter) handleConnectPodRequest(pod cnirpc.AppPod,
 		err = fmt.Errorf("missing network instance status for %s",
 			adapterStatus.Network.String())
 		z.log.Error(err)
-		return false, nil, err
+		return appUUID, false, nil, err
 	}
 	niWithDHCP = z.niWithDHCP(netInstStatus)
 	// Try to setup pod connectivity (L2 or L3).
 	vifs, err := z.prepareConfigForVIFs(*appConfig, appStatus)
 	if err != nil {
 		z.log.Error(err)
-		return false, nil, err
+		return appUUID, false, nil, err
 	}
 	appConnRecStatus, err := z.niReconciler.UpdateAppConn(
 		z.runCtx, *appConfig, appStatus.AppPod, vifs)
 	if err != nil {
 		z.log.Error(err)
-		return false, nil, err
+		return appUUID, false, nil, err
 	}
 	var vifStatus *nireconciler.AppVIFReconcileStatus
 	for _, vif := range appConnRecStatus.VIFs {
@@ -160,7 +162,7 @@ func (z *zedrouter) handleConnectPodRequest(pod cnirpc.AppPod,
 	if vifStatus == nil {
 		err = fmt.Errorf("missing VIF status for adapter %s", adapterStatus.Name)
 		z.log.Error(err)
-		return false, nil, err
+		return appUUID, false, nil, err
 	}
 	var failedItems []string
 	for itemRef, itemErr := range vifStatus.FailedItems {
@@ -169,14 +171,14 @@ func (z *zedrouter) handleConnectPodRequest(pod cnirpc.AppPod,
 	if len(failedItems) > 0 {
 		err = fmt.Errorf("failed config items: %s", strings.Join(failedItems, ";"))
 		z.log.Error(err)
-		return false, nil, err
+		return appUUID, false, nil, err
 	}
 	if vifStatus.InProgress {
 		// It is not expected that some config items are created asynchronously.
 		err = fmt.Errorf("some config items related to VIF %v/%s are still in progress",
 			appStatus.UUIDandVersion.UUID, adapterStatus.Name)
 		z.log.Error(err)
-		return false, nil, err
+		return appUUID, false, nil, err
 	}
 	interfaces = append(interfaces, cnirpc.NetInterfaceWithNs{
 		Name: netInstStatus.BridgeName,
@@ -188,7 +190,7 @@ func (z *zedrouter) handleConnectPodRequest(pod cnirpc.AppPod,
 		// Most likely it is not needed anyway.
 	})
 	interfaces = append(interfaces, podInterface)
-	return niWithDHCP, interfaces, nil
+	return appUUID, niWithDHCP, interfaces, nil
 }
 
 func (z *zedrouter) handleDisconnectPodRequest(
@@ -201,6 +203,7 @@ func (z *zedrouter) handleDisconnectPodRequest(
 		z.log.Warn(err)
 		return nil
 	}
+	retval.AppUUID = appStatus.UUIDandVersion.UUID
 	var adapterStatus *types.AppNetAdapterStatus
 	for i := range appStatus.AppNetAdapterList {
 		adapterStatus = &appStatus.AppNetAdapterList[i]
@@ -252,6 +255,7 @@ func (z *zedrouter) handleCheckPodConnectionRequest(
 		z.log.Error(err)
 		return err
 	}
+	retval.AppUUID = appStatus.UUIDandVersion.UUID
 	var adapterStatus *types.AppNetAdapterStatus
 	for i := range appStatus.AppNetAdapterList {
 		adapterStatus = &appStatus.AppNetAdapterList[i]
@@ -321,18 +325,18 @@ func (z *zedrouter) niWithDHCP(netInstStatus *types.NetworkInstanceStatus) bool 
 
 func (z *zedrouter) getAppByPodName(
 	podName string) (*types.AppNetworkConfig, *types.AppNetworkStatus, error) {
-	appName, appUUIDPrefix, err := kubeapi.GetAppNameFromPodName(podName)
-	if err != nil {
-		return nil, nil, err
+	appKubeName := podName
+	vmiName, isVirtLauncher := base.GetVMINameFromVirtLauncher(podName)
+	if isVirtLauncher {
+		appKubeName = vmiName
 	}
 	for _, item := range z.pubAppNetworkStatus.GetAll() {
 		appStatus := item.(types.AppNetworkStatus)
-		if base.ConvToKubeName(appStatus.DisplayName) == appName &&
-			strings.HasPrefix(appStatus.UUIDandVersion.UUID.String(), appUUIDPrefix) {
+		appUUID := appStatus.UUIDandVersion.UUID
+		if base.GetAppKubeName(appStatus.DisplayName, appUUID) == appKubeName {
 			appConfig := z.lookupAppNetworkConfig(appStatus.Key())
 			if appConfig == nil {
-				return nil, nil, fmt.Errorf("missing network config for app %v",
-					appStatus.UUIDandVersion.UUID)
+				return nil, nil, fmt.Errorf("missing network config for app %v", appUUID)
 			}
 			return appConfig, &appStatus, nil
 		}
