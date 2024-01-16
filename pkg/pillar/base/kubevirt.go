@@ -5,12 +5,15 @@ package base
 
 import (
 	"os"
+	"regexp"
 	"strings"
 )
 
 const (
 	// EveVirtTypeFile contains the virtualization type, ie kvm, xen or kubevirt
 	EveVirtTypeFile = "/run/eve-hv-type"
+	// Max length of the name in Kubernetes App plus app's UUID prefix
+	EveKubeAppMaxNameLen = 32
 )
 
 // IsHVTypeKube - return true if the EVE image is kube cluster type.
@@ -26,9 +29,19 @@ func IsHVTypeKube() bool {
 	return false
 }
 
-// ConvToKubeName - convert to lowercase and underscore to dash
+// ConvToKubeName - convert to lowercase and underscore to dash,
+// and truncate to 32 characters
 func ConvToKubeName(inName string) string {
-	lowercaseString := strings.ToLower(inName)
-	// Replace underscores with dashes for kubernetes
-	return strings.ReplaceAll(lowercaseString, "_", "-")
+	// Replace underscores with dashes for Kubernetes
+	processedString := strings.ReplaceAll(inName[:EveKubeAppMaxNameLen], "_", "-")
+
+	// Remove special characters using regular expressions
+	reg := regexp.MustCompile("[^a-zA-Z0-9-.]")
+	processedString = reg.ReplaceAllString(processedString, "")
+
+	// Reduce combinations like '-.-' or '.-.' to a single dash
+	processedString = regexp.MustCompile("[.-]+").ReplaceAllString(processedString, "-")
+
+	lowercaseString := strings.ToLower(processedString)
+	return lowercaseString
 }

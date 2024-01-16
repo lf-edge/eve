@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/lf-edge/eve/pkg/kube/cnirpc"
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/kubeapi"
 	"github.com/lf-edge/eve/pkg/pillar/nireconciler"
 	"github.com/lf-edge/eve/pkg/pillar/types"
@@ -326,7 +327,7 @@ func (z *zedrouter) getAppByPodName(
 	}
 	for _, item := range z.pubAppNetworkStatus.GetAll() {
 		appStatus := item.(types.AppNetworkStatus)
-		if strings.ToLower(appStatus.DisplayName) == appName &&
+		if base.ConvToKubeName(appStatus.DisplayName) == appName &&
 			strings.HasPrefix(appStatus.UUIDandVersion.UUID.String(), appUUIDPrefix) {
 			appConfig := z.lookupAppNetworkConfig(appStatus.Key())
 			if appConfig == nil {
