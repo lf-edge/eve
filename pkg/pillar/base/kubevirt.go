@@ -33,7 +33,11 @@ func IsHVTypeKube() bool {
 // and truncate to 32 characters
 func ConvToKubeName(inName string) string {
 	// Replace underscores with dashes for Kubernetes
-	processedString := strings.ReplaceAll(inName[:EveKubeAppMaxNameLen], "_", "-")
+	maxLen := EveKubeAppMaxNameLen
+	if len(inName) < maxLen {
+		maxLen = len(inName)
+	}
+	processedString := strings.ReplaceAll(inName[:maxLen], "_", "-")
 
 	// Remove special characters using regular expressions
 	reg := regexp.MustCompile("[^a-zA-Z0-9-.]")
