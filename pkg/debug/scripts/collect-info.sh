@@ -5,7 +5,7 @@
 #
 
 # Script version, don't forget to bump up once something is changed
-VERSION=12
+VERSION=13
 
 # Add required packages here, it will be passed to "apk add".
 # Once something added here don't forget to add the same package
@@ -216,7 +216,80 @@ collect_pillar_backtraces()
 
     echo "- done pillar backtraces"
 }
-
+collect_zfs_info()
+{
+    type=$(cat /run/eve.persist_type)
+    if [ "$type" = "zfs" ]; then
+       echo "- Collecting ZFS specific info"
+       {
+           echo "zpool status"
+           echo "============"
+           eve exec pillar zpool status
+           echo "============"
+           echo "zpool list -v"
+           echo "============"
+           eve exec pillar zpool list -v
+           echo "============"
+           echo "zfs get all properties"
+           echo "============"
+           eve exec pillar zfs get all
+           echo "============"
+           echo "zfs list -o all"
+           echo "============"
+           eve exec pillar zfs list -o all
+           echo "============"
+           echo "ZFS DMU TX "
+           echo "============"
+           eve exec pillar cat /proc/spl/kstat/zfs/dmu_tx
+           echo "============"
+           echo "ZFS ARC stats "
+           echo "============"
+           eve exec pillar cat /proc/spl/kstat/zfs/arcstats
+           echo "============"
+        } > "$DIR/zfs-info"
+    fi
+}
+collect_kube_info()
+{
+    type=$(cat /run/eve-hv-type)
+    if [ "$type" = "kubevirt" ]; then
+       echo "- Collecting Kube specific info"
+       {
+           echo "kubectl get nodes"
+           echo "============"
+           eve exec kube kubectl get nodes -o wide
+           echo "============"
+           echo "kubectl describe nodes"
+           echo "============"
+           eve exec kube kubectl describe nodes
+           echo "============"
+           echo "kubectl get pods -A"
+           echo "============"
+           eve exec kube kubectl get pods -A
+           echo "============"
+           echo "kubectl describe pods -A"
+           echo "============"
+           eve exec kube kubectl describe pods -A
+           echo "============"
+           echo "kubectl get pvc -A"
+           echo "============"
+           eve exec kube kubectl get pvc -A
+           echo "============"
+           echo "kubectl describe pvc -A"
+           echo "============"
+           eve exec kube kubectl describe pvc -A
+           echo "============"
+           echo "kubectl get vmi -A"
+           echo "============"
+           eve exec kube kubectl get vmi -A
+           echo "============"
+           echo "kubectl describe vmi -A"
+           echo "============"
+           eve exec kube kubectl describe vmi -A
+           echo "============"
+        } > "$DIR/kube-info"
+    fi
+}
 # Copy itself
 cp "${0}" "$DIR"
 
@@ -293,6 +366,12 @@ collect_network_info
 
 # Pillar part
 collect_pillar_backtraces
+
+# ZFS part
+collect_zfs_info
+
+# Kube part
+collect_kube_info
 
 # Make a tarball
 # --exlude='root-run/run'              /run/run/run/.. exclude symbolic link loop
