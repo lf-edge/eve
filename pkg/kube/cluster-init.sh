@@ -117,7 +117,9 @@ wait_for_device_name() {
   # get last 5 bytes of the DEVUUID as suffix to the hostname
   DEVUUID_HASH=$(echo $DEVUUID | tail -c 6)
   HOSTNAME="$HOSTNAME-$DEVUUID_HASH"
-  echo "node-name: $HOSTNAME" >> /etc/rancher/k3s/config.yaml
+  if ! grep -q node-name /etc/rancher/k3s/config.yaml; then
+    echo "node-name: $HOSTNAME" >> /etc/rancher/k3s/config.yaml
+  fi
 }
 
 check_start_k3s() {
@@ -139,6 +141,7 @@ check_start_k3s() {
           # Default location where clients will look for config
           ln -s /etc/rancher/k3s/k3s.yaml ~/.kube/config
           cp /etc/rancher/k3s/k3s.yaml /run/.kube/k3s/k3s.yaml
+          sleep 10
       fi
   fi
 }
@@ -472,10 +475,15 @@ if [ ! -f /var/lib/all_components_initialized ]; then
         check_start_containerd
         check_start_k3s
 
-        node_count_ready=$(kubectl get node | grep -w Ready | wc -l)
+        node_count_ready=$(kubectl get node | grep -w $HOSTNAME | grep -w Ready | wc -l)
         if [ $node_count_ready -ne 1 ]; then
-                logmsg "Looping until k3s is ready (andrew), pid:$k3s_pid"
-                continue
+          sleep 10
+          continue
+        fi
+        node_uuid_len=$(kubectl get nodes -l node-uuid=$DEVUUID -o json | jq '.items | length')
+        if [ $node_uuid_len -eq 0 ]; then
+          logmsg "set node label with uuid $DEVUUID"
+          kubectl label node "$HOSTNAME" node-uuid="$DEVUUID"
         fi
 
         if [ ! -f /var/lib/multus_initialized ]; then
@@ -485,6 +493,7 @@ if [ ! -f /var/lib/all_components_initialized ]; then
             # launch CNI dhcp service
             /opt/cni/bin/dhcp daemon &
           fi
+          sleep 10
           continue
         fi
 
@@ -493,6 +502,7 @@ if [ ! -f /var/lib/all_components_initialized ]; then
           if are_all_pods_ready; then
             config_cluster_roles
           fi
+          sleep 10
           continue
         fi
 
@@ -516,6 +526,7 @@ if [ ! -f /var/lib/all_components_initialized ]; then
 
             touch /var/lib/kubevirt_initialized
           fi
+          sleep 10
           continue
         fi
 
@@ -529,6 +540,7 @@ if [ ! -f /var/lib/all_components_initialized ]; then
             kubectl apply -f /etc/longhorn-config.yaml
             touch /var/lib/longhorn_initialized
           fi
+          sleep 10
           continue
         fi
 
