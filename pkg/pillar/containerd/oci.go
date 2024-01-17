@@ -144,10 +144,13 @@ func (s *ociSpec) AddLoader(volume string) error {
 		for _, e := range s.Process.Env {
 			keyAndValueSlice := strings.SplitN(e, "=", 2)
 			if len(keyAndValueSlice) == 2 {
-				//handles Key=Value case
-				envContent = envContent + fmt.Sprintf("export %s=\"%s\"\n", keyAndValueSlice[0], keyAndValueSlice[1])
+				// handles Key=Value case
+				// Trim off (i.e., remove leading and trailing) spaces and
+				// double quotes, so we don't quote the value twice
+				val := strings.Trim(keyAndValueSlice[1], " \"")
+				envContent = envContent + fmt.Sprintf("export %s=\"%s\"\n", keyAndValueSlice[0], val)
 			} else {
-				//handles Key= case
+				// handles Key= case
 				envContent = envContent + fmt.Sprintf("export %s\n", e)
 			}
 		}
@@ -503,7 +506,13 @@ func (s *ociSpec) UpdateEnvVar(envVars map[string]string) {
 		switch k {
 		case eveECOCMDOverride:
 			if len(v) != 0 {
-				s.Process.Args = strings.Fields(v)
+				// Command string might contain several parameters
+				// separated by space. However, if the variable was defined
+				// with quotation marks, it will split wrongly, so it must
+				// be trimmed off first, i.e., remove leading and trailing
+				// spaces and double quotes
+				tstr := strings.Trim(v, " \"")
+				s.Process.Args = strings.Fields(tstr)
 			}
 		}
 	}
