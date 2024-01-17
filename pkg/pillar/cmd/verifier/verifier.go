@@ -617,7 +617,10 @@ func handleInitVerifiedObjects(ctx *verifierContext) {
 	}
 }
 
-func verifyImageStatusFromImageFile(imageFileName string,
+// verifyImageStatusFromVerifiedImageFile given a verified image file,
+// return a VerifyImageStatus. Note that this is for a verified file, not a
+// verifying file.
+func verifyImageStatusFromVerifiedImageFile(imageFileName string,
 	size int64, pathname string) *types.VerifyImageStatus {
 
 	// filename might have two parts, separated by '.': digest and PathEscape(mediaType)
@@ -681,7 +684,7 @@ func populateInitialStatusFromVerified(ctx *verifierContext,
 			}
 			log.Tracef("populateInitialStatusFromVerified: Processing %s: %d Mbytes",
 				pathname, size/(1024*1024))
-			status := verifyImageStatusFromImageFile(
+			status := verifyImageStatusFromVerifiedImageFile(
 				location.Name(), size, pathname)
 			if status != nil {
 				imageHash, err := fileutils.ComputeShaFile(pathname)
