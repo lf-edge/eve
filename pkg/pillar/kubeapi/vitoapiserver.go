@@ -192,7 +192,7 @@ func NewPVCDefinition(pvcName string, size string, annotations, labels map[strin
 		},
 		Spec: corev1.PersistentVolumeClaimSpec{
 			StorageClassName: stringPtr(types.VolumeCSIClusterStorageClass),
-			AccessModes:      []corev1.PersistentVolumeAccessMode{corev1.ReadWriteMany},
+			AccessModes:      []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
 			VolumeMode:       &volumeModeBlock,
 			Resources: corev1.ResourceRequirements{
 				Requests: corev1.ResourceList{
