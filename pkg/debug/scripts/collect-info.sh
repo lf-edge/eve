@@ -287,6 +287,18 @@ collect_kube_info()
            echo "============"
            eve exec kube kubectl describe vmi -A
            echo "============"
+           echo "kubectl get kubevirt -n kubevirt -o yaml"
+           echo "============"
+           eve exec kube kubectl get kubevirt -n kubevirt -o yaml
+           echo "============"
+           echo "kubectl top node"
+           echo "============"
+           eve exec kube kubectl top node
+           echo "============"
+           echo "kubectl top pod -A --sum"
+           echo "============"
+           eve exec kube kubectl top pod -A --sum
+           echo "============"
         } > "$DIR/kube-info"
     fi
 }
