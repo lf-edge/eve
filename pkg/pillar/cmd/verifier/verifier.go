@@ -632,6 +632,10 @@ func verifyImageStatusFromVerifiedImageFile(imageFileName string,
 	if len(parts) == 2 {
 		// just ignore the error and treat mediaType as empty
 		mediaType, _ = url.PathUnescape(parts[1])
+	} else {
+		// if there is no mediaType, we force the redownload process by returning nil
+		log.Warnf("verifyImageStatusFromVerifiedImageFile: no mediaType in %s", imageFileName)
+		return nil
 	}
 	status := types.VerifyImageStatus{
 		Name:         imageFileName,
@@ -685,7 +689,20 @@ func populateInitialStatusFromVerified(ctx *verifierContext,
 				pathname, size/(1024*1024))
 			status := verifyImageStatusFromVerifiedImageFile(
 				location.Name(), size, pathname)
-			if status != nil {
+			if status == nil {
+				log.Warnf("populateInitialStatusFromVerified: cannot create status for %s", location.Name())
+				// If the file exists, but we cannot create a status from it, consider it as corrupted and remove it
+				_, err := os.Stat(pathname)
+				if err != nil {
+					// file does not exist, nothing to do
+					continue
+				}
+				log.Functionf("populateInitialStatusFromVerified: removing corrupted file %s", pathname)
+				err = os.Remove(pathname)
+				if err != nil {
+					log.Errorf("populateInitialStatusFromVerified: cannot remove broken file: %v", err)
+				}
+			} else {
 				imageHash, err := fileutils.ComputeShaFile(pathname)
 				if err != nil {
 					log.Errorf("populateInitialStatusFromVerified: cannot compute sha: %v", err)
