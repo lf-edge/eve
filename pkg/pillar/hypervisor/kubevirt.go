@@ -1286,12 +1286,17 @@ func registerWithKV(kvClient kubecli.KubevirtClient, vmi *v1.VirtualMachineInsta
 		if err != nil {
 			return logError("can't fetch the vendor id for pci device %v", err)
 		}
-
+		// Delete 0x prefix it exists, kubevirt does not like it
+		if strings.HasPrefix(vendor, "0x") {
+			vendor = vendor[2:]
+		}
 		devid, err := pa.devid()
 		if err != nil {
 			return logError("can't fetch the device id for pci device %v", err)
 		}
-
+		if strings.HasPrefix(devid, "0x") {
+			devid = devid[2:]
+		}
 		pciVendorSelector := vendor + ":" + devid
 
 		// Check if we already registered this device with kubevirt. If not register with kubevirt
@@ -1303,7 +1308,7 @@ func registerWithKV(kvClient kubecli.KubevirtClient, vmi *v1.VirtualMachineInsta
 				ResourceName:      resname,
 				PCIVendorSelector: pciVendorSelector,
 			}
-
+			logrus.Infof("Registering PCI device %s as resource %s with kubevirt", pciVendorSelector, resname)
 			kubeVirt.Spec.Configuration.PermittedHostDevices.PciHostDevices = append(kubeVirt.Spec.Configuration.PermittedHostDevices.PciHostDevices, newpcidev)
 			_, err = kvClient.KubeVirt(kubeVirtNamespace).Update(kubeVirt)
 
@@ -1316,7 +1321,7 @@ func registerWithKV(kvClient kubecli.KubevirtClient, vmi *v1.VirtualMachineInsta
 
 		pcidevices[i] = v1.HostDevice{
 			DeviceName: resname,
-			Name:       "pcidev" + strconv.Itoa(i+1),
+			Name:       "nvme" + strconv.Itoa(i+1),
 		}
 
 	}
@@ -1339,22 +1344,6 @@ func isRegisteredPciHostDevice(pciVendorSelector string, PciHostDevices []v1.Pci
 	return false
 }
 
-/*
-func isRegisteredMediatedDevice(mdevNameSelector string, mdevDevices []v1.MediatedDevices) bool {
-
-		for _, mdev := range mdevDevices {
-			if mdev.mdevNameSelector == mdevNameSelector {
-				return true
-			}
-		}
-
-		return false
-	}
-
-func isRegisteredUsbDevice() (bool, error) {
-
-}
-*/
 func CleanupStaleVMI() (int, error) {
 	kubeconfig, err := kubeapi.GetKubeConfig()
 	if err != nil {
