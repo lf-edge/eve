@@ -189,6 +189,15 @@ setup_prereqs () {
         #Check network and default routes are up
         wait_for_default_route
         check_network_connection
+
+        tmp_name=$(/bin/hostname)
+        while [[ $tmp_name = linuxkit* ]];
+        do
+                sleep 1
+                tmp_name=$(/bin/hostname)
+        done
+        logmsg "Got real hostname, currently: $tmp_name"
+
         wait_for_device_name
         chmod o+rw /dev/null
 }
