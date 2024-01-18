@@ -105,10 +105,6 @@ func (config DomainConfig) GetTaskName() string {
 		strconv.Itoa(config.AppNum)
 }
 
-func (config DomainConfig) GetKubeDispName() string {
-	return base.ConvToKubeName(config.DisplayName) + "-" + config.UUIDandVersion.UUID.String()[:5]
-}
-
 // DomainnameToUUID does the reverse of GetTaskName
 func DomainnameToUUID(name string) (uuid.UUID, string, int, error) {
 	// FIXME: we can likely drop this altogether

@@ -202,9 +202,9 @@ func (ctx kubevirtContext) CreateVMIConfig(domainName string, config types.Domai
 		return err
 	}
 
-	dispName := config.GetKubeDispName()
+	kubeName := base.GetAppKubeName(config.DisplayName, config.UUIDandVersion.UUID)
 	// Get a VirtualMachineInstance object and populate the values from DomainConfig
-	vmi := v1.NewVMIReferenceFromNameWithNS(types.EVEKubeNameSpace, dispName)
+	vmi := v1.NewVMIReferenceFromNameWithNS(types.EVEKubeNameSpace, kubeName)
 
 	// Set CPUs
 	cpus := v1.CPU{}
@@ -411,7 +411,7 @@ func (ctx kubevirtContext) CreateVMIConfig(domainName string, config types.Domai
 	// dispName is for vmi name/handle on kubernetes
 	meta := vmiMetaData{
 		vmi:      vmi,
-		name:     dispName,
+		name:     kubeName,
 		domainId: int(rand.Uint32()),
 	}
 	ctx.vmiList[domainName] = &meta
@@ -945,7 +945,7 @@ func assignToInt64(parsedValue interface{}) int64 {
 func (ctx kubevirtContext) CreatePodConfig(domainName string, config types.DomainConfig, status types.DomainStatus,
 	diskStatusList []types.DiskStatus, aa *types.AssignableAdapters, file *os.File) error {
 
-	dispName := config.GetKubeDispName()
+	kubeName := base.GetAppKubeName(config.DisplayName, config.UUIDandVersion.UUID)
 	if config.KubeImageName == "" {
 		err := fmt.Errorf("domain config kube image name empty")
 		logrus.Errorf("CreateVMIConfig: %v", err)
@@ -990,14 +990,14 @@ func (ctx kubevirtContext) CreatePodConfig(domainName string, config types.Domai
 
 	pod := &k8sv1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:        dispName,
+			Name:        kubeName,
 			Namespace:   types.EVEKubeNameSpace,
 			Annotations: annotations,
 		},
 		Spec: k8sv1.PodSpec{
 			Containers: []k8sv1.Container{
 				{
-					Name:            dispName,
+					Name:            kubeName,
 					Image:           ociName,
 					ImagePullPolicy: k8sv1.PullNever,
 					SecurityContext: &k8sv1.SecurityContext{
@@ -1029,7 +1029,7 @@ func (ctx kubevirtContext) CreatePodConfig(domainName string, config types.Domai
 	meta := vmiMetaData{
 		pod:      pod,
 		isPod:    true,
-		name:     dispName,
+		name:     kubeName,
 		domainId: int(rand.Uint32()),
 	}
 	ctx.vmiList[domainName] = &meta
@@ -1040,10 +1040,6 @@ func (ctx kubevirtContext) CreatePodConfig(domainName string, config types.Domai
 	file.WriteString(podStr)
 
 	return nil
-}
-
-func getVMIorPodName(displayName, domainName string) string {
-	return base.ConvToKubeName(displayName) + "-" + domainName[:5]
 }
 
 func encodeSelections(selections []netattdefv1.NetworkSelectionElement) string {

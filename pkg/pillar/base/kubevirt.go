@@ -7,13 +7,21 @@ import (
 	"os"
 	"regexp"
 	"strings"
+
+	uuid "github.com/satori/go.uuid"
 )
 
 const (
 	// EveVirtTypeFile contains the virtualization type, ie kvm, xen or kubevirt
 	EveVirtTypeFile = "/run/eve-hv-type"
-	// Max length of the name in Kubernetes App plus app's UUID prefix
-	EveKubeAppMaxNameLen = 32
+	// KubeAppNameMaxLen limits the length of the app name for Kubernetes.
+	// This also includes the appended UUID prefix.
+	KubeAppNameMaxLen = 32
+	// KubeAppNameUUIDPrefixLen : length of the app UUID prefix appended to the app
+	// name for Kubernetes.
+	KubeAppNameUUIDPrefixLen = 5
+	// VMIPodNamePrefix : prefix added to name of every pod created to run VM.
+	VMIPodNamePrefix = "virt-launcher-"
 )
 
 // IsHVTypeKube - return true if the EVE image is kube cluster type.
@@ -29,23 +37,38 @@ func IsHVTypeKube() bool {
 	return false
 }
 
-// ConvToKubeName - convert to lowercase and underscore to dash,
-// and truncate to 32 characters
-func ConvToKubeName(inName string) string {
+var (
+	kubeNameForbiddenChars = regexp.MustCompile("[^a-zA-Z0-9-.]")
+	kubeNameSeparators     = regexp.MustCompile("[.-]+")
+)
+
+// GetAppKubeName returns name of the application used inside Kubernetes (for Pod or VMI).
+func GetAppKubeName(displayName string, uuid uuid.UUID) string {
+	appKubeName := displayName
 	// Replace underscores with dashes for Kubernetes
-	maxLen := EveKubeAppMaxNameLen
-	if len(inName) < maxLen {
-		maxLen = len(inName)
-	}
-	processedString := strings.ReplaceAll(inName[:maxLen], "_", "-")
-
+	appKubeName = strings.ReplaceAll(appKubeName, "_", "-")
 	// Remove special characters using regular expressions
-	reg := regexp.MustCompile("[^a-zA-Z0-9-.]")
-	processedString = reg.ReplaceAllString(processedString, "")
-
+	appKubeName = kubeNameForbiddenChars.ReplaceAllString(appKubeName, "")
 	// Reduce combinations like '-.-' or '.-.' to a single dash
-	processedString = regexp.MustCompile("[.-]+").ReplaceAllString(processedString, "-")
+	appKubeName = kubeNameSeparators.ReplaceAllString(appKubeName, "-")
+	appKubeName = strings.ToLower(appKubeName)
+	const maxLen = KubeAppNameMaxLen - 1 - KubeAppNameUUIDPrefixLen
+	if len(appKubeName) > maxLen {
+		appKubeName = appKubeName[:maxLen]
+	}
+	return appKubeName + "-" + uuid.String()[:KubeAppNameUUIDPrefixLen]
+}
 
-	lowercaseString := strings.ToLower(processedString)
-	return lowercaseString
+// GetVMINameFromVirtLauncher : get VMI name from the corresponding Kubevirt
+// launcher pod name.
+func GetVMINameFromVirtLauncher(podName string) (vmiName string, isVirtLauncher bool) {
+	if !strings.HasPrefix(podName, VMIPodNamePrefix) {
+		return "", false
+	}
+	vmiName = strings.TrimPrefix(podName, VMIPodNamePrefix)
+	lastSep := strings.LastIndex(vmiName, "-")
+	if lastSep != -1 {
+		vmiName = vmiName[:lastSep]
+	}
+	return vmiName, true
 }

@@ -23,33 +23,11 @@ import (
 )
 
 const (
-	eveNameSpace        = types.EVEKubeNameSpace
-	kubeConfigFile      = types.EVEkubeConfigFile
-	vmiPodNamePrefix    = types.VMIPodNamePrefix
-	errorTime           = 3 * time.Minute
-	warningTime         = 40 * time.Second
-	stillRunningInerval = 25 * time.Second
+	eveNameSpace   = types.EVEKubeNameSpace
+	kubeConfigFile = types.EVEkubeConfigFile
+	errorTime      = 3 * time.Minute
+	warningTime    = 40 * time.Second
 )
-
-// GetAppNameFromPodName : get application display name and also prefix of the UUID
-// from the pod name.
-func GetAppNameFromPodName(podName string) (displayName, uuidPrefix string, err error) {
-	if strings.HasPrefix(podName, vmiPodNamePrefix) {
-		suffix := strings.TrimPrefix(podName, vmiPodNamePrefix)
-		lastSep := strings.LastIndex(suffix, "-")
-		if lastSep == -1 {
-			err = fmt.Errorf("unexpected pod name generated for VMI: %s", podName)
-			return "", "", err
-		}
-		podName = suffix[:lastSep]
-	}
-	lastSep := strings.LastIndex(podName, "-")
-	if lastSep == -1 {
-		err = fmt.Errorf("pod name without dash separator: %s", podName)
-		return "", "", err
-	}
-	return podName[:lastSep], podName[lastSep+1:], nil
-}
 
 // GetKubeConfig : Get handle to Kubernetes config
 func GetKubeConfig() (*rest.Config, error) {

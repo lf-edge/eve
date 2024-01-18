@@ -205,11 +205,12 @@ func cmdAdd(args *skel.CmdArgs) error {
 	err = rpcClient.Call("RPCServer.ConnectPodAtL2",
 		connectPodAtL2Args, connectPodAtL2Retval)
 	if err != nil {
-		err = fmt.Errorf("RPC call ConnectPodAtL2(%+v) failed: %v", connectPodAtL2Args, err)
+		err = fmt.Errorf("RPC ConnectPodAtL2 (%+v) failed: %v", connectPodAtL2Args, err)
 		log.Print(err)
 		return err
 	}
-	log.Printf("ConnectPodAtL2 returned: %+v", connectPodAtL2Retval)
+	log.Printf("RPC ConnectPodAtL2 (%+v) succeeded with retval: %+v",
+		connectPodAtL2Args, connectPodAtL2Retval)
 
 	podIntfIndex := -1
 	result := &v1.Result{CNIVersion: v1.ImplementedSpecVersion}
@@ -293,12 +294,13 @@ func cmdAdd(args *skel.CmdArgs) error {
 	err = rpcClient.Call("RPCServer.ConnectPodAtL3",
 		connectPodAtL3Args, connectPodAtL3Retval)
 	if err != nil {
-		err = fmt.Errorf("RPC call ConnectPodAtL3(%+v) failed: %v",
+		err = fmt.Errorf("RPC ConnectPodAtL3 (%+v) failed: %v",
 			connectPodAtL3Args, err)
 		log.Print(err)
 		return err
 	}
-	log.Printf("RPC call ConnectPodAtL3(%+v) succeeded", connectPodAtL3Args)
+	log.Printf("RPC ConnectPodAtL3 (%+v) succeeded with retval: %+v",
+		connectPodAtL3Args, connectPodAtL3Retval)
 
 	result.IPs = ipamResult.IPs
 	result.Routes = ipamResult.Routes
@@ -360,11 +362,12 @@ func cmdDel(args *skel.CmdArgs) error {
 	disconnectPodRetval := &cnirpc.DisconnectPodRetval{}
 	err = rpcClient.Call("RPCServer.DisconnectPod", disconnectPodArgs, disconnectPodRetval)
 	if err != nil {
-		err = fmt.Errorf("RPC call DisconnectPod(%+v) failed: %v", disconnectPodArgs, err)
+		err = fmt.Errorf("RPC DisconnectPod (%+v) failed: %v", disconnectPodArgs, err)
 		log.Print(err)
 		return err
 	}
-	log.Printf("DisconnectPod returned: %+v", disconnectPodRetval)
+	log.Printf("RPC DisconnectPod (%+v) succeeded with retval: %+v",
+		disconnectPodArgs, disconnectPodRetval)
 
 	l2Only := !disconnectPodRetval.UsedDHCP || isVMI
 	if l2Only {
@@ -442,12 +445,13 @@ func cmdCheck(args *skel.CmdArgs) error {
 	err = rpcClient.Call("RPCServer.CheckPodConnection", checkPodConnectionArgs,
 		checkPodConnectionRetval)
 	if err != nil {
-		err = fmt.Errorf("RPC call CheckPodConnection(%+v) failed: %v",
+		err = fmt.Errorf("RPC CheckPodConnection(%+v) failed: %v",
 			checkPodConnectionArgs, err)
 		log.Print(err)
 		return err
 	}
-	log.Printf("CheckPodConnection returned: %+v", checkPodConnectionRetval)
+	log.Printf("RPC CheckPodConnection (%+v) succeeded with retval: %+v",
+		checkPodConnectionArgs, checkPodConnectionRetval)
 
 	l2Only := !checkPodConnectionRetval.UsesDHCP || isVMI
 	if l2Only {

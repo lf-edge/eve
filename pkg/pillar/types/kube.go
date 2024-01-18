@@ -9,8 +9,6 @@ const (
 	// NetworkInstanceNAD : name of (singleton) NAD used to define connection between
 	// pod and (any) network instance.
 	NetworkInstanceNAD = "network-instance-attachment"
-	// VMIPodNamePrefix : prefix added to name of every pod created to run VM.
-	VMIPodNamePrefix = "virt-launcher-"
 	// EVE k3s default namespace
 	VolumeCSINameSpace = "eve-kube-app"
 	// CSI clustered storage class

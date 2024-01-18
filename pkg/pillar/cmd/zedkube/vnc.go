@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"kubevirt.io/client-go/kubecli"
@@ -67,7 +68,7 @@ func getVMIdomainName(ctx *zedkubeContext, config *types.AppInstanceConfig) (str
 		return "", err
 	}
 
-	DispName := config.GetKubeDispName()
+	vmiName := base.GetAppKubeName(config.DisplayName, config.UUIDandVersion.UUID)
 	var domainName string
 	vmis, err := virtClient.VirtualMachineInstance(types.EVEKubeNameSpace).List(context.Background(), &metav1.ListOptions{})
 	if err != nil {
@@ -76,7 +77,7 @@ func getVMIdomainName(ctx *zedkubeContext, config *types.AppInstanceConfig) (str
 	}
 
 	for _, vmi := range vmis.Items {
-		if !strings.Contains(vmi.ObjectMeta.Name, DispName) {
+		if !strings.Contains(vmi.ObjectMeta.Name, vmiName) {
 			continue
 		}
 		domainName = vmi.ObjectMeta.Name
