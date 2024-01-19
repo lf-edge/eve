@@ -1,6 +1,8 @@
 // Copyright (c) 2024 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+//go:build kubevirt
+
 package kubeapi
 
 import (
@@ -13,26 +15,38 @@ import (
 	netclientset "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/client/clientset/versioned"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
-	"github.com/lf-edge/eve/pkg/pillar/types"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/util/retry"
+	"kubevirt.io/client-go/kubecli"
 )
 
 const (
-	eveNameSpace   = types.EVEKubeNameSpace
-	kubeConfigFile = types.EVEkubeConfigFile
-	errorTime      = 3 * time.Minute
-	warningTime    = 40 * time.Second
+	EVEKubeNameSpace  = "eve-kube-app"
+	EVEkubeConfigFile = "/run/.kube/k3s/k3s.yaml"
+	// NetworkInstanceNAD : name of (singleton) NAD used to define connection between
+	// pod and (any) network instance.
+	NetworkInstanceNAD = "network-instance-attachment"
+	// EVE k3s default namespace
+	VolumeCSINameSpace = "eve-kube-app"
+	// CSI clustered storage class
+	VolumeCSIClusterStorageClass = "longhorn"
+	// Default local storage class
+	VolumeCSILocalStorageClass = "local-path"
+)
+
+const (
+	errorTime   = 3 * time.Minute
+	warningTime = 40 * time.Second
 )
 
 // GetKubeConfig : Get handle to Kubernetes config
 func GetKubeConfig() (*rest.Config, error) {
 	// Build the configuration from the kubeconfig file
-	config, err := clientcmd.BuildConfigFromFlags("", kubeConfigFile)
+	config, err := clientcmd.BuildConfigFromFlags("", EVEkubeConfigFile)
 	if err != nil {
 		return nil, err
 	}
@@ -76,7 +90,7 @@ func GetNetClientSet() (*netclientset.Clientset, error) {
 }
 
 // WaitForKubernetes : Wait until kubernetes server is ready
-func WaitForKubernetes(agentName string, ps *pubsub.PubSub, stillRunning *time.Ticker) (*rest.Config, error) {
+func WaitForKubernetes(agentName string, ps *pubsub.PubSub, stillRunning *time.Ticker) error {
 	checkTimer := time.NewTimer(5 * time.Second)
 	configFileExist := false
 
@@ -85,7 +99,7 @@ func WaitForKubernetes(agentName string, ps *pubsub.PubSub, stillRunning *time.T
 	for !configFileExist {
 		select {
 		case <-checkTimer.C:
-			if _, err := os.Stat(kubeConfigFile); err == nil {
+			if _, err := os.Stat(EVEkubeConfigFile); err == nil {
 				config, err = GetKubeConfig()
 				if err == nil {
 					configFileExist = true
@@ -100,12 +114,12 @@ func WaitForKubernetes(agentName string, ps *pubsub.PubSub, stillRunning *time.T
 
 	client, err := kubernetes.NewForConfig(config)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	devUUID, err := os.Hostname()
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	// Wait for the Kubernetes clientset to be ready, node ready and kubevirt pods in Running status
@@ -123,7 +137,7 @@ func WaitForKubernetes(agentName string, ps *pubsub.PubSub, stillRunning *time.T
 		ps.StillRunning(agentName, warningTime, errorTime)
 	}
 
-	return config, nil
+	return nil
 }
 
 func waitForLonghornReady(client *kubernetes.Clientset, hostname string) error {
@@ -240,7 +254,7 @@ func waitForPVCReady(ctx context.Context, log *base.LogObject, pvcName string) e
 	var count int
 	var err2 error
 	for {
-		pvcs, err := clientset.CoreV1().PersistentVolumeClaims(eveNameSpace).List(context.Background(), metav1.ListOptions{})
+		pvcs, err := clientset.CoreV1().PersistentVolumeClaims(EVEKubeNameSpace).List(context.Background(), metav1.ListOptions{})
 		if err != nil {
 			log.Errorf("GetPVCInfo failed to list pvc info err %v", err)
 			err2 = err
@@ -266,4 +280,32 @@ func waitForPVCReady(ctx context.Context, log *base.LogObject, pvcName string) e
 	}
 
 	return fmt.Errorf("waitForPVCReady: time expired count %d, err %v", count, err2)
+}
+
+func CleanupStaleVMI() (int, error) {
+	kubeconfig, err := GetKubeConfig()
+	if err != nil {
+		return 0, fmt.Errorf("couldn't get the Kube Config: %v", err)
+	}
+
+	virtClient, err := kubecli.GetKubevirtClientFromRESTConfig(kubeconfig)
+	if err != nil {
+		return 0, fmt.Errorf("couldn't get the Kube client Config: %v", err)
+	}
+
+	// Get the VMI list
+	vmiList, err := virtClient.VirtualMachineInstance(EVEKubeNameSpace).List(context.Background(), &metav1.ListOptions{})
+	if err != nil {
+		return 0, fmt.Errorf("list the Kubevirt VMIs: %v", err)
+	}
+
+	var count int
+	for _, vmi := range vmiList.Items {
+		err = virtClient.VirtualMachineInstance(EVEKubeNameSpace).Delete(context.Background(), vmi.ObjectMeta.Name, &metav1.DeleteOptions{})
+		if err != nil {
+			return count, fmt.Errorf("delete vmi error: %v", err)
+		}
+		count++
+	}
+	return count, nil
 }

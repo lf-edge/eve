@@ -1,7 +1,10 @@
+//go:build kubevirt
+
 package kubeapi
 
 import (
 	"context"
+
 	netattdefv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
@@ -23,7 +26,7 @@ func CreateOrUpdateNAD(log *base.LogObject, nadName, jsonSpec string) error {
 			Config: jsonSpec,
 		},
 	}
-	createdNAD, err := netClientset.K8sCniCncfIoV1().NetworkAttachmentDefinitions(eveNameSpace).
+	createdNAD, err := netClientset.K8sCniCncfIoV1().NetworkAttachmentDefinitions(EVEKubeNameSpace).
 		Create(context.Background(), nad, metav1.CreateOptions{})
 	if err == nil {
 		log.Noticef("CreateOrUpdateNAD: successfully created new NAD %s: %+v",
@@ -35,7 +38,7 @@ func CreateOrUpdateNAD(log *base.LogObject, nadName, jsonSpec string) error {
 		return err
 	}
 	// NAD already exists, try to update.
-	nad, err = netClientset.K8sCniCncfIoV1().NetworkAttachmentDefinitions(eveNameSpace).
+	nad, err = netClientset.K8sCniCncfIoV1().NetworkAttachmentDefinitions(EVEKubeNameSpace).
 		Get(context.Background(), nadName, metav1.GetOptions{})
 	if err != nil {
 		log.Errorf("CreateOrUpdateNAD: failed to get NAD %s for update: %v", nadName, err)
@@ -43,7 +46,7 @@ func CreateOrUpdateNAD(log *base.LogObject, nadName, jsonSpec string) error {
 	}
 	nad.Spec.Config = jsonSpec
 	var updatedNAD *netattdefv1.NetworkAttachmentDefinition
-	updatedNAD, err = netClientset.K8sCniCncfIoV1().NetworkAttachmentDefinitions(eveNameSpace).
+	updatedNAD, err = netClientset.K8sCniCncfIoV1().NetworkAttachmentDefinitions(EVEKubeNameSpace).
 		Update(context.Background(), nad, metav1.UpdateOptions{})
 	if err == nil {
 		log.Noticef("CreateOrUpdateNAD: successfully updated existing NAD %s: %+v",
@@ -61,7 +64,7 @@ func DeleteNAD(log *base.LogObject, nadName string) error {
 		log.Errorf("DeleteNAD: Failed to create netclientset: %v", err)
 		return err
 	}
-	err = netClientset.K8sCniCncfIoV1().NetworkAttachmentDefinitions(eveNameSpace).
+	err = netClientset.K8sCniCncfIoV1().NetworkAttachmentDefinitions(EVEKubeNameSpace).
 		Delete(context.Background(), nadName, metav1.DeleteOptions{})
 	if err == nil {
 		log.Noticef("DeleteNAD: successfully deleted NAD %s", nadName)

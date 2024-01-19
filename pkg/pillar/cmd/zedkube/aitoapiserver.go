@@ -1,3 +1,8 @@
+// Copyright (c) 2024 Zededa, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
+//go:build kubevirt
+
 package zedkube
 
 import (
@@ -126,7 +131,7 @@ func collectAppLogs(ctx *zedkubeContext) {
 		} else {
 			ctx.appLogStarted = true
 		}
-		req := clientset.CoreV1().Pods(types.EVEKubeNameSpace).GetLogs(contName, opt)
+		req := clientset.CoreV1().Pods(kubeapi.EVEKubeNameSpace).GetLogs(contName, opt)
 		podLogs, err := req.Stream(context.Background())
 		if err != nil {
 			log.Errorf("collectAppLogs: pod %s, log error %v", contName, err)

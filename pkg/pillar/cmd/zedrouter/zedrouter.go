@@ -305,8 +305,10 @@ func (z *zedrouter) run(ctx context.Context) (err error) {
 	}
 	z.log.Noticef("Starting %s", agentName)
 
-	if err = z.runRPCServer(); err != nil {
-		return err
+	if base.IsHVTypeKube() {
+		if err = z.runRPCServer(); err != nil {
+			return err
+		}
 	}
 
 	// Run a periodic timer so we always update StillRunning

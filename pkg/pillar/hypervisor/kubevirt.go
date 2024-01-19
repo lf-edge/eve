@@ -1,6 +1,8 @@
 // Copyright (c) 2023 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+//go:build kubevirt
+
 package hypervisor
 
 import (
@@ -204,7 +206,7 @@ func (ctx kubevirtContext) CreateVMIConfig(domainName string, config types.Domai
 
 	kubeName := base.GetAppKubeName(config.DisplayName, config.UUIDandVersion.UUID)
 	// Get a VirtualMachineInstance object and populate the values from DomainConfig
-	vmi := v1.NewVMIReferenceFromNameWithNS(types.EVEKubeNameSpace, kubeName)
+	vmi := v1.NewVMIReferenceFromNameWithNS(kubeapi.EVEKubeNameSpace, kubeName)
 
 	// Set CPUs
 	cpus := v1.CPU{}
@@ -224,7 +226,7 @@ func (ctx kubevirtContext) CreateVMIConfig(domainName string, config types.Domai
 	var netSelections []netattdefv1.NetworkSelectionElement
 	for _, vif := range config.VifList {
 		netSelections = append(netSelections, netattdefv1.NetworkSelectionElement{
-			Name:       types.NetworkInstanceNAD,
+			Name:       kubeapi.NetworkInstanceNAD,
 			MacRequest: vif.Mac.String(),
 		})
 	}
@@ -266,7 +268,7 @@ func (ctx kubevirtContext) CreateVMIConfig(domainName string, config types.Domai
 			Name: intfname,
 			NetworkSource: v1.NetworkSource{
 				Multus: &v1.MultusNetwork{
-					NetworkName: types.NetworkInstanceNAD,
+					NetworkName: kubeapi.NetworkInstanceNAD,
 				},
 			},
 		}
@@ -453,7 +455,7 @@ func (ctx kubevirtContext) Start(domainName string) error {
 	// Create the VM
 	i := 5
 	for {
-		_, err = virtClient.VirtualMachineInstance(types.EVEKubeNameSpace).Create(context.Background(), vmi)
+		_, err = virtClient.VirtualMachineInstance(kubeapi.EVEKubeNameSpace).Create(context.Background(), vmi)
 		// TODO: update if exists
 		if err != nil {
 			if strings.Contains(err.Error(), "dial tcp 127.0.0.1:6443") && i <= 0 {
@@ -510,7 +512,7 @@ func (ctx kubevirtContext) Stop(domainName string, force bool) error {
 		}
 
 		// Stop the VM
-		err = virtClient.VirtualMachineInstance(types.EVEKubeNameSpace).Delete(context.Background(), vmis.name, &metav1.DeleteOptions{})
+		err = virtClient.VirtualMachineInstance(kubeapi.EVEKubeNameSpace).Delete(context.Background(), vmis.name, &metav1.DeleteOptions{})
 		if err != nil {
 			fmt.Printf("Stop error %v\n", err)
 			return err
@@ -552,7 +554,7 @@ func (ctx kubevirtContext) Delete(domainName string) (result error) {
 		}
 
 		// Stop the VM
-		err = virtClient.VirtualMachineInstance(types.EVEKubeNameSpace).Delete(context.Background(), vmis.name, &metav1.DeleteOptions{})
+		err = virtClient.VirtualMachineInstance(kubeapi.EVEKubeNameSpace).Delete(context.Background(), vmis.name, &metav1.DeleteOptions{})
 
 		// May be already deleted during Stop action, so its not an error if does not exist
 		if errors.IsNotFound(err) {
@@ -664,7 +666,7 @@ func getVMIStatus(vmiName string) (string, error) {
 	}
 
 	// Get the VMI info
-	vmi, err := virtClient.VirtualMachineInstance(types.EVEKubeNameSpace).Get(context.Background(), vmiName, &metav1.GetOptions{})
+	vmi, err := virtClient.VirtualMachineInstance(kubeapi.EVEKubeNameSpace).Get(context.Background(), vmiName, &metav1.GetOptions{})
 
 	if err != nil {
 		return "", logError("domain %s failed to get VMI info %s", vmiName, err)
@@ -765,7 +767,7 @@ func (ctx kubevirtContext) GetDomsCPUMem() (map[string]types.DomainMetric, error
 		line := scanner.Text()
 		if (strings.HasPrefix(line, "kubevirt_vmi_cpu") ||
 			strings.HasPrefix(line, "kubevirt_vmi_memory")) &&
-			strings.Contains(line, types.EVEKubeNameSpace) {
+			strings.Contains(line, kubeapi.EVEKubeNameSpace) {
 
 			parts := strings.SplitN(line, " ", 2)
 			if len(parts) != 2 {
@@ -956,7 +958,7 @@ func (ctx kubevirtContext) CreatePodConfig(domainName string, config types.Domai
 	var netSelections []netattdefv1.NetworkSelectionElement
 	for _, vif := range config.VifList {
 		netSelections = append(netSelections, netattdefv1.NetworkSelectionElement{
-			Name:       types.NetworkInstanceNAD,
+			Name:       kubeapi.NetworkInstanceNAD,
 			MacRequest: vif.Mac.String(),
 		})
 	}
@@ -991,7 +993,7 @@ func (ctx kubevirtContext) CreatePodConfig(domainName string, config types.Domai
 	pod := &k8sv1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        kubeName,
-			Namespace:   types.EVEKubeNameSpace,
+			Namespace:   kubeapi.EVEKubeNameSpace,
 			Annotations: annotations,
 		},
 		Spec: k8sv1.PodSpec{
@@ -1060,7 +1062,7 @@ func StartPodContiner(kubeconfig *rest.Config, pod *k8sv1.Pod) error {
 	}
 
 	opStr := "created"
-	_, err = clientset.CoreV1().Pods(types.EVEKubeNameSpace).Create(context.TODO(), pod, metav1.CreateOptions{})
+	_, err = clientset.CoreV1().Pods(kubeapi.EVEKubeNameSpace).Create(context.TODO(), pod, metav1.CreateOptions{})
 	if err != nil {
 		if !errors.IsAlreadyExists(err) {
 			// TODO: update
@@ -1117,7 +1119,7 @@ func StopPodContainer(kubeconfig *rest.Config, podName string) error {
 		return err
 	}
 
-	err = clientset.CoreV1().Pods(types.EVEKubeNameSpace).Delete(context.TODO(), podName, metav1.DeleteOptions{})
+	err = clientset.CoreV1().Pods(kubeapi.EVEKubeNameSpace).Delete(context.TODO(), podName, metav1.DeleteOptions{})
 	if err != nil {
 		// Handle error
 		logrus.Errorf("StopPodContainer: deleting pod: %v", err)
@@ -1135,7 +1137,7 @@ func InfoPodContainer(kubeconfig *rest.Config, podName string) (string, error) {
 		return "", logError("InfoPodContainer: couldn't get the pod Config: %v", err)
 	}
 
-	pod, err := podclientset.CoreV1().Pods(types.EVEKubeNameSpace).Get(context.TODO(), podName, metav1.GetOptions{})
+	pod, err := podclientset.CoreV1().Pods(kubeapi.EVEKubeNameSpace).Get(context.TODO(), podName, metav1.GetOptions{})
 	if err != nil {
 		return "", logError("InfoPodContainer: couldn't get the pod: %v", err)
 	}
@@ -1187,14 +1189,14 @@ func checkPodMetrics(ctx kubevirtContext, res map[string]types.DomainMetric, emp
 		}
 		count++
 		podName := vmis.name
-		pod, err := podclientset.CoreV1().Pods(types.EVEKubeNameSpace).Get(context.TODO(), podName, metav1.GetOptions{})
+		pod, err := podclientset.CoreV1().Pods(kubeapi.EVEKubeNameSpace).Get(context.TODO(), podName, metav1.GetOptions{})
 		if err != nil {
 			logrus.Errorf("checkPodMetrics: can't get pod %v", err)
 			continue
 		}
 		memoryLimits := pod.Spec.Containers[0].Resources.Limits.Memory()
 
-		metrics, err := clientset.MetricsV1beta1().PodMetricses(types.EVEKubeNameSpace).Get(context.TODO(), podName, metav1.GetOptions{})
+		metrics, err := clientset.MetricsV1beta1().PodMetricses(kubeapi.EVEKubeNameSpace).Get(context.TODO(), podName, metav1.GetOptions{})
 		if err != nil {
 			logrus.Errorf("checkPodMetrics: get pod metrics error %v", err)
 			continue
@@ -1342,34 +1344,6 @@ func isRegisteredPciHostDevice(pciVendorSelector string, PciHostDevices []v1.Pci
 	}
 
 	return false
-}
-
-func CleanupStaleVMI() (int, error) {
-	kubeconfig, err := kubeapi.GetKubeConfig()
-	if err != nil {
-		return 0, logError("couldn't get the Kube Config: %v", err)
-	}
-
-	virtClient, err := kubecli.GetKubevirtClientFromRESTConfig(kubeconfig)
-	if err != nil {
-		return 0, logError("couldn't get the Kube client Config: %v", err)
-	}
-
-	// Get the VMI list
-	vmiList, err := virtClient.VirtualMachineInstance(types.EVEKubeNameSpace).List(context.Background(), &metav1.ListOptions{})
-	if err != nil {
-		return 0, logError("list the Kubevirt VMIs: %v", err)
-	}
-
-	var count int
-	for _, vmi := range vmiList.Items {
-		err = virtClient.VirtualMachineInstance(types.EVEKubeNameSpace).Delete(context.Background(), vmi.ObjectMeta.Name, &metav1.DeleteOptions{})
-		if err != nil {
-			return count, logError("delete vmi error: %v", err)
-		}
-		count++
-	}
-	return count, nil
 }
 
 func addKernelBootContainer(spec *v1.VirtualMachineInstanceSpec, image, kernelArgs, kernelPath, initrdPath string) *v1.VirtualMachineInstanceSpec {
