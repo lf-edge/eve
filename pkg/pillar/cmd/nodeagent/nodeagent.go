@@ -76,6 +76,7 @@ type nodeagentContext struct {
 	subZedAgentStatus           pubsub.Subscription
 	subDomainStatus             pubsub.Subscription
 	subVaultStatus              pubsub.Subscription
+	subVolumeMgrStatus          pubsub.Subscription
 	pubZbootConfig              pubsub.Publication
 	pubNodeAgentStatus          pubsub.Publication
 	curPart                     string
@@ -260,6 +261,24 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	ctxPtr.subVaultStatus = subVaultStatus
 	subVaultStatus.Activate()
 
+	// Look for VolumeMgrStatus
+	subVolumeMgrStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "volumemgr",
+		MyAgentName:   agentName,
+		TopicImpl:     types.VolumeMgrStatus{},
+		Activate:      false,
+		Ctx:           ctxPtr,
+		CreateHandler: handleVolumeMgrStatusCreate,
+		ModifyHandler: handleVolumeMgrStatusModify,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctxPtr.subVolumeMgrStatus = subVolumeMgrStatus
+	subVolumeMgrStatus.Activate()
+
 	// publish zboot config as of now
 	publishZbootConfigAll(ctxPtr)
 
@@ -365,6 +384,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 
 		case change := <-subVaultStatus.MsgChan():
 			subVaultStatus.ProcessChange(change)
+
+		case change := <-subVolumeMgrStatus.MsgChan():
+			subVolumeMgrStatus.ProcessChange(change)
 
 		case <-ctxPtr.stillRunning.C:
 		}
@@ -749,6 +771,53 @@ func handleVaultStatusImpl(ctxArg interface{}, key string,
 		}
 	} else {
 		ctx.vaultOperational = types.TS_DISABLED
+	}
+}
+
+func handleVolumeMgrStatusCreate(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	handleVolumeMgrStatusImpl(ctxArg, key, statusArg)
+}
+
+func handleVolumeMgrStatusModify(ctxArg interface{}, key string,
+	statusArg interface{}, oldStatusArg interface{}) {
+	handleVolumeMgrStatusImpl(ctxArg, key, statusArg)
+}
+
+func handleVolumeMgrStatusImpl(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
+	ctx := ctxArg.(*nodeagentContext)
+	vms := statusArg.(types.VolumeMgrStatus)
+	changed := false
+	// This RemainingSpace takes into account the space reserved for
+	// /persist/newlog plus the percentage/minimum reserved for the rest
+	// of EVE-OS. Thus it can never go negative, but zero means that
+	// we neiether have space to download new images nor space to deploy
+	// a tiny app instance.
+	if vms.RemainingSpace == 0 {
+		log.Warnf("MaintenanceMode due to no remaining diskspace")
+		// Do not overwrite a vault maintenance mode
+		if !ctx.maintMode {
+			log.Noticef("Setting %s",
+				types.MaintenanceModeReasonNoDiskSpace)
+			ctx.maintModeReason = types.MaintenanceModeReasonNoDiskSpace
+			ctx.maintMode = true
+			changed = true
+		}
+	} else {
+		// Do we need to clear maintenance?
+		if ctx.maintMode &&
+			ctx.maintModeReason == types.MaintenanceModeReasonNoDiskSpace {
+			log.Noticef("Clearing %s",
+				types.MaintenanceModeReasonNoDiskSpace)
+			ctx.maintMode = false
+			ctx.maintModeReason = types.MaintenanceModeReasonNone
+			changed = true
+		}
+	}
+	if changed {
+		publishNodeAgentStatus(ctx)
 	}
 }
 
