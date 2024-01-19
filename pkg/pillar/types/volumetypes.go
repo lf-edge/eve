@@ -593,3 +593,53 @@ func (status VolumeCreatePending) LogDelete(logBase *base.LogObject) {
 
 	base.DeleteLogObject(logBase, status.LogKey())
 }
+
+// VolumeMgrStatus :
+type VolumeMgrStatus struct {
+	Name           string
+	Initialized    bool
+	RemainingSpace uint64 // In bytes. Takes into account "reserved" for dom0
+}
+
+// Key :
+func (status VolumeMgrStatus) Key() string {
+	return status.Name
+}
+
+// LogCreate :
+func (status VolumeMgrStatus) LogCreate(logBase *base.LogObject) {
+	logObject := base.NewLogObject(logBase, base.VolumeMgrStatusLogType, status.Name,
+		nilUUID, status.LogKey())
+	if logObject == nil {
+		return
+	}
+	logObject.Noticef("Zedagent status create")
+}
+
+// LogModify :
+func (status VolumeMgrStatus) LogModify(logBase *base.LogObject, old interface{}) {
+	logObject := base.EnsureLogObject(logBase, base.VolumeMgrStatusLogType, status.Name,
+		nilUUID, status.LogKey())
+
+	oldStatus, ok := old.(VolumeMgrStatus)
+	if !ok {
+		logObject.Clone().Fatalf("LogModify: Old object interface passed is not of VolumeMgrStatus type")
+	}
+	// XXX remove?
+	logObject.CloneAndAddField("diff", cmp.Diff(oldStatus, status)).
+		Noticef("Zedagent status modify")
+}
+
+// LogDelete :
+func (status VolumeMgrStatus) LogDelete(logBase *base.LogObject) {
+	logObject := base.EnsureLogObject(logBase, base.VolumeMgrStatusLogType, status.Name,
+		nilUUID, status.LogKey())
+	logObject.Noticef("Zedagent status delete")
+
+	base.DeleteLogObject(logBase, status.LogKey())
+}
+
+// LogKey :
+func (status VolumeMgrStatus) LogKey() string {
+	return string(base.VolumeMgrStatusLogType) + "-" + status.Key()
+}
