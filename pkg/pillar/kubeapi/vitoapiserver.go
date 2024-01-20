@@ -235,6 +235,10 @@ func RolloutDiskToPVC(ctx context.Context, log *base.LogObject, exists bool, dis
 		i = i - 1
 	}
 
+	if service == nil {
+		errStr := fmt.Sprintf("Failed to get Service cdi/cdi-uploadproxy\n")
+		return errors.New(errStr)
+	}
 	// Get the ClusterIP of the Service.
 	clusterIP := service.Spec.ClusterIP
 	uploadproxyURL := "https://" + clusterIP + ":443"
@@ -277,6 +281,8 @@ func RolloutDiskToPVC(ctx context.Context, log *base.LogObject, exists bool, dis
 		// Add size
 		args = append(args, "--size", fmt.Sprint(volSize))
 	}
+	// add more debug level, default is 2
+	args = append(args, "-v", "7")
 
 	log.Noticef("virtctl args %v", args)
 
@@ -286,6 +292,8 @@ func RolloutDiskToPVC(ctx context.Context, log *base.LogObject, exists bool, dis
 	if err != nil {
 		errStr := fmt.Sprintf("RolloutDiskToPVC: Failed to convert qcow to PVC  %s: %v", output, err)
 		return errors.New(errStr)
+	} else {
+		log.Noticef("virtctl no error, output %s", output)
 	}
 	err = waitForPVCReady(ctx, log, pvcName)
 
