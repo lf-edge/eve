@@ -632,6 +632,7 @@ func verifyImageStatusFromVerifiedImageFile(imageFileName string,
 	if len(parts) == 2 {
 		// just ignore the error and treat mediaType as empty
 		mediaType, _ = url.PathUnescape(parts[1])
+		log.Tracef("verifyImageStatusFromVerifiedImageFile: mediaType %s recovered from %s", mediaType, imageFileName)
 	} else {
 		// if there is no mediaType, we force the redownload process by returning nil
 		log.Warnf("verifyImageStatusFromVerifiedImageFile: no mediaType in %s", imageFileName)
@@ -697,7 +698,7 @@ func populateInitialStatusFromVerified(ctx *verifierContext,
 					// file does not exist, nothing to do
 					continue
 				}
-				log.Functionf("populateInitialStatusFromVerified: removing corrupted file %s", pathname)
+				log.Tracef("populateInitialStatusFromVerified: removing corrupted file %s", pathname)
 				err = os.Remove(pathname)
 				if err != nil {
 					log.Errorf("populateInitialStatusFromVerified: cannot remove broken file: %v", err)
