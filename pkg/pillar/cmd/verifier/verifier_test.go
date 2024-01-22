@@ -28,3 +28,17 @@ func TestMediaTypeInStatusFromVerifiedFilename(t *testing.T) {
 		t.Errorf("MediaType in status %v does not match original %v", status.MediaType, mediaType)
 	}
 }
+
+func TestMediaTypeInStatusFromVerifiedFilenameWithNoMediaType(t *testing.T) {
+	log = base.NewSourceLogObject(logrus.StandardLogger(), "verifier_test", 0)
+	dummyPath := "dummyPath"
+	dummyFilename := "someSha256"
+	verifiedFilename := path.Join(dummyPath, dummyFilename)
+
+	status := verifyImageStatusFromVerifiedImageFile(verifiedFilename, 12345, "dummyPath")
+
+	if status != nil {
+		t.Errorf("Status is not nil")
+	}
+
+}
