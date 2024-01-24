@@ -4,9 +4,7 @@
 obj
 dist/
 build-tools/bin/
-images/*.yml
-images/rootfs-*.yml.in
-images/*.yml.in.sed
+images/out/
 .go/
 tags
 tmp/
@@ -20,3 +18,5 @@ conf/authorized_keys
 conf/grub.cfg
 conf/device.cert.pem
 conf/device.key.pem
+pkg/kube/external-boot-image.tar
+pkg/external-boot-image/build.yml

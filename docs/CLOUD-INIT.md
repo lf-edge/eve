@@ -12,20 +12,20 @@ For more information on the meta-data consult [ECO-METADATA.md](ECO-METADATA.md)
 
 As opposed to the VM implementation, cloud-init in ECO containers does not rely on a cloud-init daemon being present in the container image. Instead, the cloud-init configuration is parsed by EVE and manually applied to the container. EVE's implementation supports two formats for user-data:
 
-- The **legacy** format only supports the definition of environment variables in the form of a simple key-value map. The equal sign "=" is used as delimiter in this case:
+1. **Legacy Format (Available in all supported LTS versions):** This format only supports the definition of environment variables in the form of a simple key-value map. The equal sign "=" is used as delimiter. Example:
 
     ```text
     ENV1=value1
     ENV2=value2
     ```
 
-- In the **original** cloud-init format the user-data is specified like in any other cloud-init configuration. The current EVE implementation only supports two user-data fields: `runcmd` and `write_files`.
+2. **Original Cloud-Init Format (Available since EVE 11.3):** In this format, the user-data is specified like in any standard cloud-init configuration. The current EVE implementation only supports two user-data fields: `runcmd` and `write_files`.
 
-  `runcmd` is only used to set environment variables, similar to the **legacy** format. Trying to use any other command will result in an error. The env definitions **must not** be preceded by an `export` keyword, but it's effect is implied in the implementation.
+   - `runcmd` is used to set environment variables, similar to the Legacy format. Note that the use of any command other than setting environment variables will result in an error. The env definitions must not be preceded by an `export` keyword, but its effect is implied in the implementation.
 
-  `write_files` field supports parameters such as path, content, permissions and encoding. It is used to write one or more files to the container image prior to the container start.
+   - `write_files` field supports parameters such as path, content, permissions and encoding. It is used to write one or more files to the container image prior to the container start.
 
-  Every cloud-init configuration **must** begin with the `#cloud-config` header. Example:
+   Every cloud-init configuration must begin with the `#cloud-config` header. Example:
 
     ```yaml
     #cloud-config

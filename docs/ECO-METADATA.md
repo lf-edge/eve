@@ -334,13 +334,13 @@ curl -X GET -v http://169.254.169.254/eve/v1/patch/description.json
                 "file-name":"textfile1.txt",
                 "file-sha":"%FILE_SHA",
                 "file-meta-data":"YXJ0aWZhY3QgbWV0YWRhdGE=",
-                "url":"/persist/patchEnvelopesCache/textfile1.txt"
+                "url":"http://169.254.169.254/eve/v1/patch/download/699fbdb2-e455-448f-84f5-68e547ec1305/textfile1.txt"
             },
             {
                 "file-name":"textfile2.txt",
                 "file-sha":"%FILE_SHA%",
                 "file-meta-data":"YXJ0aWZhY3QgbWV0YWRhdGE=",
-                "url":"/persist/patchEnvelopesCache/textfile2.txt"
+                "url":"http://169.254.169.254/eve/v1/patch/download/699fbdb2-e455-448f-84f5-68e547ec1305/textfile2.txt"
             }
         ],
         "VolumeRefs":null

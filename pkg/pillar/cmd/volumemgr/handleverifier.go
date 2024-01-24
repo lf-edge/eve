@@ -71,6 +71,7 @@ func MaybeAddVerifyImageConfigBlob(ctx *volumemgrContext, blob types.BlobStatus)
 			ImageSha256:  blob.Sha256, // the sha to verify
 			Name:         blob.Sha256, // we are just going to use the sha for the verifier display
 			RefCount:     refcount,
+			MediaType:    blob.MediaType,
 		}
 		log.Tracef("MaybeAddVerifyImageConfigBlob - config: %+v", vic)
 	}

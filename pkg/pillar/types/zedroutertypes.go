@@ -662,9 +662,28 @@ type NetworkInstanceConfig struct {
 	DhcpRange       IPRange
 	DnsNameToIPList []DNSNameToIP // Used for DNS and ACL ipset
 
+	// Route configuration
+	PropagateConnRoutes bool
+	StaticRoutes        []IPRoute
+
 	// Any errors from the parser
 	// ErrorAndTime provides SetErrorNow() and ClearError()
 	ErrorAndTime
+}
+
+// IPRoute : single IP route entry.
+type IPRoute struct {
+	DstNetwork *net.IPNet
+	Gateway    net.IP
+}
+
+// IsDefaultRoute returns true if this is a default route, i.e. matches all destinations.
+func (r IPRoute) IsDefaultRoute() bool {
+	if r.DstNetwork == nil {
+		return true
+	}
+	ones, _ := r.DstNetwork.Mask.Size()
+	return r.DstNetwork.IP.IsUnspecified() && ones == 0
 }
 
 // Key :

@@ -22,10 +22,9 @@ import (
 )
 
 const (
+	dhcpcdBinary       = "/sbin/dhcpcd"
 	dhcpcdStartTimeout = 3 * time.Second
 	dhcpcdStopTimeout  = 30 * time.Second
-
-	zeroIPv4Addr = "0.0.0.0"
 )
 
 // Dhcpcd : DHCP client (https://wiki.archlinux.org/title/dhcpcd).
@@ -292,7 +291,7 @@ func (c *DhcpcdConfigurator) dhcpcdArgs(config types.DhcpConfig) (op string, arg
 		case types.NetworkTypeDualStack:
 		default:
 		}
-		if config.Gateway != nil && config.Gateway.String() == zeroIPv4Addr {
+		if config.Gateway != nil && config.Gateway.IsUnspecified() {
 			args = append(args, "--nogateway")
 		}
 
@@ -300,7 +299,7 @@ func (c *DhcpcdConfigurator) dhcpcdArgs(config types.DhcpConfig) (op string, arg
 		op = "--static"
 		args = []string{fmt.Sprintf("ip_address=%s", config.AddrSubnet)}
 		extras := []string{"-f", "/dhcpcd.conf", "-b", "-t", "0"}
-		if config.Gateway == nil || config.Gateway.String() == zeroIPv4Addr {
+		if config.Gateway == nil || config.Gateway.IsUnspecified() {
 			extras = append(extras, "--nogateway")
 		} else if config.Gateway.String() != "" {
 			args = append(args, "--static",
@@ -337,23 +336,22 @@ func (c *DhcpcdConfigurator) dhcpcdArgs(config types.DhcpConfig) (op string, arg
 
 func (c *DhcpcdConfigurator) dhcpcdCmd(op string, extras []string,
 	ifName string, background bool) error {
-	name := "/sbin/dhcpcd"
 	args := append([]string{op}, extras...)
 	args = append(args, ifName)
 	if background {
-		cmd := exec.Command(name, args...)
+		cmd := exec.Command(dhcpcdBinary, args...)
 		cmd.Stdout = nil
 		cmd.Stderr = nil
 
-		c.Log.Functionf("Background command %s %v", name, args)
+		c.Log.Functionf("Background command %s %v", dhcpcdBinary, args)
 		go func() {
 			if err := cmd.Run(); err != nil {
-				c.Log.Errorf("%s %v: failed: %v", name, args, err)
+				c.Log.Errorf("%s %v: failed: %v", dhcpcdBinary, args, err)
 			}
 		}()
 	} else {
-		c.Log.Functionf("Calling command %s %v\n", name, args)
-		out, err := base.Exec(c.Log, name, args...).CombinedOutput()
+		c.Log.Functionf("Calling command %s %v\n", dhcpcdBinary, args)
+		out, err := base.Exec(c.Log, dhcpcdBinary, args...).CombinedOutput()
 		if err != nil {
 			err = fmt.Errorf("dhcpcd command %s failed: %w; output: %s",
 				args, err, out)

@@ -85,13 +85,11 @@ case "$1" in
     # configure interface and routes
     ip addr flush dev $interface
     ip addr add "${ip}"/"${mask}" brd + dev "${interface}"
-    # shellcheck disable=SC2154
-    if [ -n "$router" ] ; then
-      if [ -n "$staticroutes" ] ; then
-        install_classless_routes $staticroutes
-      else
-        route add default gw "${router}" dev "${interface}"
-      fi
+    if [ -n "$staticroutes" ] ; then
+      # shellcheck disable=SC2086
+      install_classless_routes $staticroutes
+    elif [ -n "$router" ] ; then
+      route add default gw "${router}" dev "${interface}"
     fi
     # setup dns
     if [ "$interface" == "$PEERDNS_IF" ] ; then
@@ -137,13 +135,11 @@ case "$1" in
         ip addr flush dev "$interface"
         ip addr add "${ip}"/"${mask}" brd + dev "${interface}"
       fi
-      # shellcheck disable=SC2086
-      if [ -n "$router" ] ; then
-        if [ -n "$staticroutes" ] ; then
-          install_classless_routes $staticroutes
-        else
-          route add default gw "${router}" dev "${interface}"
-        fi
+      if [ -n "$staticroutes" ] ; then
+        # shellcheck disable=SC2086
+        install_classless_routes $staticroutes
+      elif [ -n "$router" ] ; then
+        route add default gw "${router}" dev "${interface}"
       fi
       update_ip_hosts "$old_ip" $ip
     fi

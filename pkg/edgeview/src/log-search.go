@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -61,22 +62,20 @@ func runLogSearch(cmds cmdOpt) {
 		return
 	}
 	if pattern == cpLogFileString {
-		if t1-t2 > 1800 {
-			fmt.Printf("copy-logfiles can only be in the range of 30 minutes\n")
-			return
-		}
 		copylogfiles = true
-	} else if t1-t2 > 18000 {
-		fmt.Printf("log search can only be in the range of 5 hours\n")
+	}
+
+	if copylogfiles {
+		timeRange := &logSearchRange{
+			starttime: t1,
+			endtime:   t2,
+		}
+		// tar the logfiles result with the time range
+		getTarFile("tar//persist/newlog", timeRange)
 		return
 	}
 
 	gfiles := walkLogDirs(t1, t2, now)
-	if copylogfiles {
-		runCopyLogfiles(gfiles, t1)
-		return
-	}
-
 	prog1 := "zcat"
 	prog2 := "grep"
 	arg2 := []string{"-E", pattern}
@@ -92,6 +91,7 @@ func runLogSearch(cmds cmdOpt) {
 			printColor(bout, colorRED)
 
 			colorMatch(olines, pattern, &printIdx, cmds.IsJSON)
+			time.Sleep(200 * time.Millisecond)
 		}
 	}
 
@@ -304,17 +304,18 @@ func getTimeSec(timeline string, now int64) (int64, int64) {
 
 // uncompress the gzip log files and pack them into a single
 // json text file for device and each app logs
-func unpackLogfiles(path string, files []os.DirEntry) {
+func unpackLogfiles(path string, files []dirEntry) {
 	sfnames := make(map[string][]string)
 	for _, f := range files {
-		if strings.HasPrefix(f.Name(), "dev.log.") {
-			sfnames["dev"] = append(sfnames["dev"], f.Name())
-		} else if strings.HasPrefix(f.Name(), "app.") {
-			pname := strings.Split(f.Name(), ".log.")
+		fName := filepath.Base(f.info.Name())
+		if strings.Contains(fName, "dev.log.") {
+			sfnames["dev"] = append(sfnames["dev"], strings.TrimPrefix(f.path, path))
+		} else if strings.Contains(fName, "app.") {
+			pname := strings.Split(fName, ".log.")
 			if len(pname) != 2 {
 				continue
 			}
-			sfnames[pname[0]] = append(sfnames[pname[0]], f.Name())
+			sfnames[pname[0]] = append(sfnames[pname[0]], strings.TrimPrefix(f.path, path))
 		}
 	}
 
@@ -341,7 +342,6 @@ func unpackLogfiles(path string, files []os.DirEntry) {
 
 			gs, err := gzip.NewReader(f)
 			if err != nil {
-				fmt.Printf("can't gzip decode file %v\n", err)
 				continue
 			}
 
@@ -376,10 +376,29 @@ func unpackLogfiles(path string, files []os.DirEntry) {
 		fmt.Printf("\n uncompressed into %s\n", textFileName)
 	}
 
+	// remove the gzip files and directories.
 	for _, f := range files {
-		err := os.Remove(path + "/" + f.Name())
+		relPath, err := filepath.Rel(path, f.path)
+		if err != nil {
+			fmt.Printf("check gzip file path error %v\n", err)
+		}
+		err = os.Remove(filepath.Join(path, relPath))
 		if err != nil {
 			fmt.Printf("delete gzip file error %v\n", err)
 		}
 	}
+
+	dirPath := path
+	_ = filepath.Walk(dirPath, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if info.IsDir() && path != dirPath {
+			err := os.RemoveAll(path)
+			if err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }

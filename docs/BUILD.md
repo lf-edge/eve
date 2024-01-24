@@ -339,22 +339,22 @@ in [images](../images/). Rather, the checked-in files in this directory are temp
 When you run `make rootfs.tar`, or any target that depends upon it, the following happens:
 
 1. The Makefile includes [kernel-version.mk](../kernel-version.mk). This sets the variable `KERNEL_TAG` inside the make process to a specific docker image tag, based on the `ZARCH` and, if set, `PLATFORM`
-1. The Makefile sees a dependency on `images/rootfs-$(HV).yml`
-1. The Makefile runs `tools/compose-image-yml.sh images/rootfs.yml.in images/rootfs-$(HV).yml.in "$(ROOTFS_VERSION)-$(HV)-$(ZARCH)" $(HV)`, i.e. the utility [compose-image-yml.sh](../tools/compose-image-yml.sh), passing it:
+1. The Makefile sees a dependency on `images/out/rootfs-$(HV)-$(PLATFORM).yml`
+1. The Makefile runs `tools/compose-image-yml.sh -b images/rootfs.yml.in -v "$(ROOTFS_VERSION)-$(HV)-$(ZARCH)" -h $(HV) -o images/out/rootfs-$(HV)-$(PLATFORM).yml.in images/modifiers/$(HV).yq images/modifiers/$(PLATFORM).yq`, i.e. the utility [compose-image-yml.sh](../tools/compose-image-yml.sh), passing it:
    * the base template `images/rootfs.yml.in`, i.e. input file
-   * the template for the specific HV file `images/rootfs-$(HV).yml.in`, i.e. output file
    * the version string, which is the `ROOTFS_VERSION`, hypervisor, and architecture
    * the hypervisor
+   * the output file, specifically `images/rootfs-$(HV).yml.in`
+   * one or more modifiers: currently only `images/modifiers/$(HV).yq` and `images/modifiers/$(PLATFORM).yq`
 1. `compose-image-yml.sh` does the following:
-   1. Look for a modifier file `images/rootfs-$(HV).yml.in.yq`; this is identical to the HV-specific template (2nd argument), but with `.yq` appended to the filename.
-   1. If it finds a modifier file, apply it to the base template, and save the result to HV-specific template.
+   1. For each modifier, if any, apply it to the base template, and save the result to the provided output file.
    1. Search through the output file for the string `EVE_HV` and, if found, replace it with the hypervisor.
    1. If the version argument, which was generated from the git commit, contains the phrase `dirty`, i.e. uncommitted, then change the `PILLAR_TAG` in the output file to `PILLAR_DEV_TAG`, which will be used in a later stage.
-1. The Makefile runs `./tools/parse-pkgs.sh images/rootfs-$(HV).yml.in > images/rootfs-$(HV).yml`, i.e. the utility [parse-pkgs.sh](../tools/parse-pkgs.sh), passing it as an input the HV-specific template generated in the previous step `rootfs-$(HV).yml.in`, and saving the output to the final `rootfs-$(HV).yml` file. In addition, the variable `KERNEL_TAG` is passed as an environment variable.
+1. The Makefile runs `./tools/parse-pkgs.sh images/out/rootfs-$(HV)-$(PLATFORM).yml.in > images/rootfs-$(HV)-$(PLATFORM).yml`, i.e. the utility [parse-pkgs.sh](../tools/parse-pkgs.sh), passing it as an input the HV-specific template generated in the previous step `rootfs-$(HV).yml.in`, and saving the output to the final `rootfs-$(HV).yml` file. In addition, the variable `KERNEL_TAG` is passed as an environment variable.
 1. `parse-pkgs.sh` does the following:
     1. Gets the package tag for each directory in [pkg/](../pkg/) via `linuxkit pkg show-tag ${dir}`, and save it to variable which looks like `<PKGNAME>_TAG`, e.g. `PILLAR_TAG` or `WWAN_TAG`.
     1. Go through the input file - the HV-specific template - and replace the tags with the appropriate values. This includes the value of `KERNEL_TAG` as passed by the Makefile on calling `parse-pkgs.sh`.
-1. The Makefile generates `rootfs.tar` via `./tools/makerootfs.sh tar -y images/rootfs-$(HV).yml -t path/to/rootfs.tar -a $(ZARCH)`, i.e. it runs [makerootfs.sh](../tools/makerootfs.sh), passing it the following arguments:
+1. The Makefile generates `rootfs.tar` via `./tools/makerootfs.sh tar -y images/out/rootfs-$(HV)-$(PLATFORM).yml -t path/to/rootfs.tar -a $(ZARCH)`, i.e. it runs [makerootfs.sh](../tools/makerootfs.sh), passing it the following arguments:
     1. The target format, i.e. `tar`
     1. `-a $(ZARCH)` - the architecture
     1. `-t $(PATH)` - path to the target output file
@@ -363,9 +363,7 @@ When you run `make rootfs.tar`, or any target that depends upon it, the followin
 
 The above process creates several challenges, which will, eventually, be cleaned up:
 
-1. The `images/` source directory is unclean, with both version-control-committed code - modifiers `*.yq` and primary template `rootfs.yml.in` - and non-committed code - interim HV-specific template, `rootfs-$(HV).yml.in` and the final output yml file `rootfs-$(HV).yml` - in the same directory.
-2. The same input file, e.g. `rootfs.yml`, appears to be usable with different architectures, but actually is not, as it is architecture-specific.
-3. It is necessary to pre-process the actual source files before generating an image. It is not possible to run `linuxkit build` manually to generate an image. This makes building and debugging individual steps harder.
+1. It is necessary to pre-process the actual source files before generating an image. It is not possible to run `linuxkit build` manually to generate an image. This makes building and debugging individual steps harder.
 
 These are all due to constraints within the usage of the `yml` files. If a cleaner solution requires upstreaming into linuxkit, it will be added to the [UPSTREAMING.md](./UPSTREAMING.md) file.
 

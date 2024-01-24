@@ -3,6 +3,7 @@ module github.com/lf-edge/eve/pkg/edgeview
 go 1.20
 
 require (
+	github.com/coreos/go-semver v0.3.1
 	github.com/gorilla/websocket v1.4.2
 	github.com/grandcat/zeroconf v1.0.0
 	github.com/lf-edge/eve-api/go v0.0.0-20231011200019-cb3cb1275e0d
@@ -13,6 +14,7 @@ require (
 	github.com/tatsushid/go-fastping v0.0.0-20160109021039-d7bb493dee3e
 	github.com/vishvananda/netlink v1.1.1-0.20210924202909-187053b97868
 	golang.org/x/sys v0.13.0
+	golang.org/x/time v0.3.0
 )
 
 require (
