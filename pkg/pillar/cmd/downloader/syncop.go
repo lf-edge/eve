@@ -346,7 +346,7 @@ func handleSyncOpResponse(ctx *downloaderContext, config types.DownloaderConfig,
 
 	if errStr != "" {
 		if cleanOnError {
-			// Delete downloaded files
+			// Delete downloaded + progress files
 			doDelete(ctx, key, locFilename, status)
 		}
 		return cancelled, errStr
@@ -355,7 +355,8 @@ func handleSyncOpResponse(ctx *downloaderContext, config types.DownloaderConfig,
 	// make sure the file exists
 	_, err := os.Stat(locFilename)
 	if err != nil {
-		// Nothing was downloaded? Delete progress files if any
+		// Nothing was downloaded? Call doDelete() to remove any remained
+		// progress file
 		doDelete(ctx, key, locFilename, status)
 		errStr := fmt.Sprintf("%v", err)
 		return cancelled, errStr
