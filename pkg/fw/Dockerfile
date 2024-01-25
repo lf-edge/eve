@@ -63,7 +63,7 @@ ADD ${RPI_BT_FIRMWARE_URL}/${RPI_BT_FIRMWARE_VERSION}/broadcom/BCM4345C5.hcd .
 
 # Hailo GPU firmware
 # we've got a written permission to include this firmware into EVE
-ENV HAILO_FW_VERSION 4.15.0
+ENV HAILO_FW_VERSION 4.16.0
 RUN mkdir -p /lib/firmware/hailo
 ADD https://hailo-hailort.s3.eu-west-2.amazonaws.com/Hailo8/${HAILO_FW_VERSION}/FW/hailo8_fw.${HAILO_FW_VERSION}.bin /lib/firmware/hailo/hailo8_fw.bin
 
