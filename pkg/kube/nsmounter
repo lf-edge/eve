@@ -44,6 +44,6 @@ get_pid() {
 get_os_distro
 
 [[ $os_distro = $os_distro_talos ]] && get_pid "kubelet"
-[[ $os_distro = $os_distro_eve ]] && get_pid "containerd-shim"
+[[ $os_distro = $os_distro_eve ]] && get_pid "cluster-init.sh"
 
 nsenter -t $target_pid -m -n -u -- "$@"
