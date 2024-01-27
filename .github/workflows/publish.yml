@@ -110,38 +110,36 @@ jobs:
       - uses: actions/checkout@v3
         with:
           fetch-depth: 0
-      - name: Force fetch annotated tags (workaround)
-        # Workaround for https://github.com/actions/checkout/issues/290
-        run: |
-          git fetch --force --tags
-      - name: Login to DockerHUB
-        run: |
-          echo "${{ secrets.RELEASE_DOCKERHUB_TOKEN }}" |\
-             docker login -u "${{ secrets.RELEASE_DOCKERHUB_ACCOUNT }}" --password-stdin
-      - name: Build and push EVE for ${{ matrix.arch }}-${{ matrix.hv }}
-        run: |
-          make -e V=1 HV=${{ matrix.hv }} ZARCH=${{ matrix.arch }} LINUXKIT_PKG_TARGET=push eve
-      - name: Post eve ${{ matrix.arch }}-${{ matrix.hv }} report
-        run: |
-          echo Disk usage
-          df -h
-          echo Memory
-          free -m
-          docker system df
-          docker system df -v
-      - name: Pre clean report
-        run: |
-          echo Disk usage
-          df -h
-          echo Memory
-          free -m
-          docker system df
-          docker system df -v
-      - name: Clean
-        run: |
-          make clean
-          docker system prune -f -a
-          rm -rf ~/.linuxkit
+      - uses: ./.github/actions/run-make
+        with:
+          command: "V=1 HV=${{ matrix.hv }} ZARCH=${{ matrix.arch }} LINUXKIT_PKG_TARGET=push eve"
+          dockerhub-token: ${{ secrets.RELEASE_DOCKERHUB_TOKEN }}
+          dockerhub-account: ${{ secrets.RELEASE_DOCKERHUB_ACCOUNT }}
+      - uses: ./.github/actions/run-make
+        if: matrix.arch != 'riscv64'
+        with:
+          command: "V=1 HV=${{ matrix.hv }} ZARCH=${{ matrix.arch }} LINUXKIT_PKG_TARGET=push sbom collected_sources compare_sbom_collected_sources publish_sources"
+          dockerhub-token: ${{ secrets.RELEASE_DOCKERHUB_TOKEN }}
+          dockerhub-account: ${{ secrets.RELEASE_DOCKERHUB_ACCOUNT }}
+
+  verification:
+    if: github.event.repository.full_name == 'lf-edge/eve'
+    needs: packages
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [arm64, amd64]
+        hv: [kvm, xen]
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/run-make
+        with:
+          command: "V=1 HV=${{ matrix.hv }} ZARCH=${{ matrix.arch }} LINUXKIT_PKG_TARGET=push verification"
+          dockerhub-token: ${{ secrets.RELEASE_DOCKERHUB_TOKEN }}
+          dockerhub-account: ${{ secrets.RELEASE_DOCKERHUB_ACCOUNT }}
 
   manifest:
     if: github.event.repository.full_name == 'lf-edge/eve'
@@ -151,17 +149,11 @@ jobs:
       - uses: actions/checkout@v3
         with:
           fetch-depth: 0
-      - name: Force fetch annotated tags (workaround)
-        # Workaround for https://github.com/actions/checkout/issues/290
-        run: |
-          git fetch --force --tags
-      - name: Login to DockerHUB
-        run: |
-          echo "${{ secrets.RELEASE_DOCKERHUB_TOKEN }}" |\
-             docker login -u "${{ secrets.RELEASE_DOCKERHUB_ACCOUNT }}" --password-stdin
-      - name: Push manifest
-        run: |
-          make -e V=1 LINUXKIT_PKG_TARGET=manifest pkgs
+      - uses: ./.github/actions/run-make
+        with:
+          command: "V=1 LINUXKIT_PKG_TARGET=manifest pkgs"
+          dockerhub-token: ${{ secrets.RELEASE_DOCKERHUB_TOKEN }}
+          dockerhub-account: ${{ secrets.RELEASE_DOCKERHUB_ACCOUNT }}
 
   trigger_assets:
     if: ${{ (startsWith(github.ref, 'refs/tags/')) && (github.event.repository.full_name == 'lf-edge/eve') }}
