@@ -182,6 +182,7 @@ func ExecCmd(ctx context.Context, cmd, host, remoteFile, localFile string, objSi
 				//keep it to call cancel regardless of logic to releases resources
 				innerCtxCancel()
 			})
+			defer inactivityTimer.Stop()
 			req, err := http.NewRequestWithContext(innerCtx, http.MethodGet, host, nil)
 			if err != nil {
 				stats.Error = fmt.Errorf("request failed for get %s: %s",
