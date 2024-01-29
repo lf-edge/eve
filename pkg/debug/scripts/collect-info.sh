@@ -249,7 +249,47 @@ collect_zfs_info()
         } > "$DIR/zfs-info"
     fi
 }
-
+collect_kube_info()
+{
+    type=$(cat /run/eve-hv-type)
+    if [ "$type" = "kubevirt" ]; then
+       echo "- Collecting Kube specific info"
+       {
+           echo "kubectl get nodes"
+           echo "============"
+           eve exec kube kubectl get nodes -o wide
+           echo "============"
+           echo "kubectl describe nodes"
+           echo "============"
+           eve exec kube kubectl describe nodes
+           echo "============"
+           echo "kubectl get pods -A"
+           echo "============"
+           eve exec kube kubectl get pods -A
+           echo "============"
+           echo "kubectl describe pods -A"
+           echo "============"
+           eve exec kube kubectl describe pods -A
+           echo "============"
+           echo "kubectl get pvc -A"
+           echo "============"
+           eve exec kube kubectl get pvc -A
+           echo "============"
+           echo "kubectl describe pvc -A"
+           echo "============"
+           eve exec kube kubectl describe pvc -A
+           echo "============"
+           echo "kubectl get vmi -A"
+           echo "============"
+           eve exec kube kubectl get vmi -A
+           echo "============"
+           echo "kubectl describe vmi -A"
+           echo "============"
+           eve exec kube kubectl describe vmi -A
+           echo "============"
+        } > "$DIR/kube-info"
+    fi
+}
 # Copy itself
 cp "${0}" "$DIR"
 
@@ -329,6 +369,9 @@ collect_pillar_backtraces
 
 # ZFS part
 collect_zfs_info
+
+# Kube part
+collect_kube_info
 
 # Make a tarball
 # --exlude='root-run/run'              /run/run/run/.. exclude symbolic link loop
