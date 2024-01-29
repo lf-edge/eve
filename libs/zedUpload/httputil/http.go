@@ -212,6 +212,7 @@ func ExecCmd(ctx context.Context, cmd, host, remoteFile, localFile string, objSi
 				}
 				continue
 			}
+			defer resp.Body.Close()
 
 			// supportRange indicates if server supports range requests
 			supportRange = resp.Header.Get("Accept-Ranges") == "bytes"
@@ -220,10 +221,6 @@ func ExecCmd(ctx context.Context, cmd, host, remoteFile, localFile string, objSi
 			//it indicates that server misconfigured
 			if !withRange && resp.StatusCode != http.StatusOK || withRange && resp.StatusCode != http.StatusPartialContent {
 				respErr := fmt.Errorf("bad response code: %d", resp.StatusCode)
-				err = resp.Body.Close()
-				if err != nil {
-					respErr = fmt.Errorf("respErr: %v; close Body error: %v", respErr, err)
-				}
 				appendToErrorList(attempt, respErr)
 				//we do not want to process server misconfiguration here
 				break
