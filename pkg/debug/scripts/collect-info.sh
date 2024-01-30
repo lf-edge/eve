@@ -5,7 +5,7 @@
 #
 
 # Script version, don't forget to bump up once something is changed
-VERSION=13
+VERSION=16
 
 # Add required packages here, it will be passed to "apk add".
 # Once something added here don't forget to add the same package
