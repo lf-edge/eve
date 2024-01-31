@@ -1119,8 +1119,12 @@ github.com/lf-edge/eve/api/go v0.0.0-20230602070228-0c11e32c7718 h1:gtmjnX95WEKW
 github.com/lf-edge/eve/api/go v0.0.0-20230602070228-0c11e32c7718/go.mod h1:pNFho84HAA/Vlb1DpLFlatJgQBJ43wH28elAs7wXdtA=
 github.com/lf-edge/eve/libs v0.0.0-20230717153241-cc5629af4657 h1:2DERGuT2XEkCJIvtfnD0+XAaovV73KtMD3bzfV8AVdI=
 github.com/lf-edge/eve/libs v0.0.0-20230717153241-cc5629af4657/go.mod h1:OLbkEWaPL1SKTywCA3wg2xBwwF+wB78IB5ASHbJ52IQ=
-github.com/lf-edge/eve/libs v0.0.0-20240206160900-ca7870e7c35f h1:EW44Q94w7C9EEZhJXEEfXxKltXI9+g9DyiE9M1FA6LI=
-github.com/lf-edge/eve/libs v0.0.0-20240206160900-ca7870e7c35f/go.mod h1:9xoaLCcMlTZQBviUUxU4qBpB+nAbnPk2K156GLvyDsI=
+github.com/lf-edge/eve-api/go v0.0.0-20240115141031-10e8386433c4 h1:x4rP4BOuvK8Bmgtysw5JBzV0tpXCBtWSwT2LHfya1tk=
+github.com/lf-edge/eve-api/go v0.0.0-20240115141031-10e8386433c4/go.mod h1:6XqpOM8p1HsluNIGw2ihYPYsaAisQ5CuJpbIKHXQo5w=
+github.com/lf-edge/eve-libs v0.0.0-20231120160159-666ed2307f8e h1:2k1XWU4x8Zkym6Cw1spObpVsyYBCYwB7mIcN8Ge02K8=
+github.com/lf-edge/eve-libs v0.0.0-20231120160159-666ed2307f8e/go.mod h1:fca8Jvpk2pnSdbfiCHjbvBE1Mn6WAQqeKyQezaSpLmU=
+github.com/lf-edge/go-qemu v0.0.0-20231121152149-4c467eda0c56 h1:LmFp0jbNSwPLuxJA+nQ+mMQrQ53ESkvHP4CVMqR0zrY=
+github.com/lf-edge/go-qemu v0.0.0-20231121152149-4c467eda0c56/go.mod h1:Z1YRCAzPvFSjlmUGeVXQcMhGMajnD5hbcxob0ff/2tY=
 github.com/lib/pq v1.0.0/go.mod h1:5WUZQaWbwv1U+lTReE5YruASi9Al49XbQIvNi/34Woo=
 github.com/lib/pq v1.1.1/go.mod h1:5WUZQaWbwv1U+lTReE5YruASi9Al49XbQIvNi/34Woo=
 github.com/lib/pq v1.2.0/go.mod h1:5WUZQaWbwv1U+lTReE5YruASi9Al49XbQIvNi/34Woo=
@@ -1321,8 +1325,8 @@ github.com/opencontainers/runc v1.0.2/go.mod h1:aTaHFFwQXuA71CiyxOdFFIorAoemI04s
 github.com/opencontainers/runc v1.1.0/go.mod h1:Tj1hFw6eFWp/o33uxGf5yF2BX5yz2Z6iptFpuvbbKqc=
 github.com/opencontainers/runc v1.1.2/go.mod h1:Tj1hFw6eFWp/o33uxGf5yF2BX5yz2Z6iptFpuvbbKqc=
 github.com/opencontainers/runc v1.1.3/go.mod h1:1J5XiS+vdZ3wCyZybsuxXZWGrgSr8fFJHLXuG2PsnNg=
-github.com/opencontainers/runc v1.1.5 h1:L44KXEpKmfWDcS02aeGm8QNTFXTo2D+8MYGDIJ/GDEs=
-github.com/opencontainers/runc v1.1.5/go.mod h1:1J5XiS+vdZ3wCyZybsuxXZWGrgSr8fFJHLXuG2PsnNg=
+github.com/opencontainers/runc v1.1.12 h1:BOIssBaW1La0/qbNZHXOOa71dZfZEQOzW7dqQf3phss=
+github.com/opencontainers/runc v1.1.12/go.mod h1:S+lQwSfncpBha7XTy/5lBwWgm5+y5Ma/O44Ekby9FK8=
 github.com/opencontainers/runtime-spec v0.1.2-0.20190507144316-5b71a03e2700/go.mod h1:jwyrGlmzljRJv/Fgzds9SsS/C5hL+LL3ko9hs6T5lQ0=
 github.com/opencontainers/runtime-spec v1.0.1/go.mod h1:jwyrGlmzljRJv/Fgzds9SsS/C5hL+LL3ko9hs6T5lQ0=
 github.com/opencontainers/runtime-spec v1.0.2-0.20190207185410-29686dbc5559/go.mod h1:jwyrGlmzljRJv/Fgzds9SsS/C5hL+LL3ko9hs6T5lQ0=
