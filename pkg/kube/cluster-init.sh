@@ -45,6 +45,19 @@ check_log_file_size() {
   fi
 }
 
+save_crash_log() {
+  if [ "$RESTART_COUNT" = "1" ]; then
+    return
+  fi
+  fileBaseName=$1
+  # This pattern will alias with older crashes, but also a simple way to contain log bloat
+  crashLogBaseName="${fileBaseName}.restart.${RESTART_COUNT}.gz"
+  if [ -e "${K3S_LOG_DIR}/${crashLogBaseName}" ]; then
+    rm "${K3S_LOG_DIR}/${crashLogBaseName}"
+  fi
+  gzip -k -9 ${K3S_LOG_DIR}/${fileBaseName} -c > "${K3S_LOG_DIR}/${crashLogBaseName}"
+}
+
 check_network_connection () {
  while true; do
 
@@ -128,6 +141,7 @@ check_start_k3s() {
       if [ $RESTART_COUNT -lt $MAX_K3S_RESTARTS ]; then
           ## Must be after reboot, or from k3s restart
           let "RESTART_COUNT++"
+          save_crash_log "k3s.log"
           if [ ! -f /var/lib/cni/bin ]; then
             copy_cni_plugin_files
           fi
@@ -460,24 +474,13 @@ while true;
 do
 if [ ! -f /var/lib/all_components_initialized ]; then
         if [ ! -f /var/lib/k3s_initialized ]; then
-                # cni plugin
-                copy_cni_plugin_files
-                #/var/lib is where all kubernetes components get installed.
                 logmsg "Installing K3S version $K3S_VERSION on $HOSTNAME"
                 mkdir -p /var/lib/k3s/bin
                 /usr/bin/curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION=${K3S_VERSION} INSTALL_K3S_SKIP_ENABLE=true INSTALL_K3S_BIN_DIR=/var/lib/k3s/bin sh -
-                ln -s /var/lib/k3s/bin/* /usr/bin
                 sleep 5
                 logmsg "Initializing K3S version $K3S_VERSION"
+                ln -s /var/lib/k3s/bin/* /usr/bin
                 trigger_k3s_selfextraction
-                check_start_containerd
-                nohup /usr/bin/k3s server --config /etc/rancher/k3s/config.yaml &
-                k3s_pid=$!
-                # Give the embedded etcd in k3s priority over io as its fsync latencies are critical
-                ionice -c2 -n0 -p $k3s_pid
-                # Default location where clients will look for config
-                ln -s /etc/rancher/k3s/k3s.yaml ~/.kube/config
-                cp /etc/rancher/k3s/k3s.yaml /run/.kube/k3s/k3s.yaml
                 touch /var/lib/k3s_initialized
         fi
         
@@ -564,6 +567,7 @@ else
             if [ $RESTART_COUNT -lt $MAX_K3S_RESTARTS ]; then
                 ## Must be after reboot, or from k3s restart
                 let "RESTART_COUNT++"
+                save_crash_log "k3s.log"
                 if [ ! -f /var/lib/cni/bin ]; then
                   copy_cni_plugin_files
                 fi
