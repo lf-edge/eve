@@ -1117,6 +1117,8 @@ github.com/lf-edge/eve-api/go v0.0.0-20230917094129-590dad30fe13 h1:10Bwbfl1w63u
 github.com/lf-edge/eve-api/go v0.0.0-20230917094129-590dad30fe13/go.mod h1:6XqpOM8p1HsluNIGw2ihYPYsaAisQ5CuJpbIKHXQo5w=
 github.com/lf-edge/eve-api/go v0.0.0-20231011200019-cb3cb1275e0d h1:PVKqYtPsH5BAIYfOaKej/+lc7+GKcFZBGnzbS6JWbrE=
 github.com/lf-edge/eve-api/go v0.0.0-20231011200019-cb3cb1275e0d/go.mod h1:6XqpOM8p1HsluNIGw2ihYPYsaAisQ5CuJpbIKHXQo5w=
+github.com/lf-edge/eve-api/go v0.0.0-20240115141031-10e8386433c4 h1:x4rP4BOuvK8Bmgtysw5JBzV0tpXCBtWSwT2LHfya1tk=
+github.com/lf-edge/eve-api/go v0.0.0-20240115141031-10e8386433c4/go.mod h1:6XqpOM8p1HsluNIGw2ihYPYsaAisQ5CuJpbIKHXQo5w=
 github.com/lf-edge/eve-libs v0.0.0-20231120160159-666ed2307f8e h1:2k1XWU4x8Zkym6Cw1spObpVsyYBCYwB7mIcN8Ge02K8=
 github.com/lf-edge/eve-libs v0.0.0-20231120160159-666ed2307f8e/go.mod h1:fca8Jvpk2pnSdbfiCHjbvBE1Mn6WAQqeKyQezaSpLmU=
 github.com/lf-edge/go-qemu v0.0.0-20231121152149-4c467eda0c56 h1:LmFp0jbNSwPLuxJA+nQ+mMQrQ53ESkvHP4CVMqR0zrY=
@@ -1321,8 +1323,8 @@ github.com/opencontainers/runc v1.0.2/go.mod h1:aTaHFFwQXuA71CiyxOdFFIorAoemI04s
 github.com/opencontainers/runc v1.1.0/go.mod h1:Tj1hFw6eFWp/o33uxGf5yF2BX5yz2Z6iptFpuvbbKqc=
 github.com/opencontainers/runc v1.1.2/go.mod h1:Tj1hFw6eFWp/o33uxGf5yF2BX5yz2Z6iptFpuvbbKqc=
 github.com/opencontainers/runc v1.1.3/go.mod h1:1J5XiS+vdZ3wCyZybsuxXZWGrgSr8fFJHLXuG2PsnNg=
-github.com/opencontainers/runc v1.1.5 h1:L44KXEpKmfWDcS02aeGm8QNTFXTo2D+8MYGDIJ/GDEs=
-github.com/opencontainers/runc v1.1.5/go.mod h1:1J5XiS+vdZ3wCyZybsuxXZWGrgSr8fFJHLXuG2PsnNg=
+github.com/opencontainers/runc v1.1.12 h1:BOIssBaW1La0/qbNZHXOOa71dZfZEQOzW7dqQf3phss=
+github.com/opencontainers/runc v1.1.12/go.mod h1:S+lQwSfncpBha7XTy/5lBwWgm5+y5Ma/O44Ekby9FK8=
 github.com/opencontainers/runtime-spec v0.1.2-0.20190507144316-5b71a03e2700/go.mod h1:jwyrGlmzljRJv/Fgzds9SsS/C5hL+LL3ko9hs6T5lQ0=
 github.com/opencontainers/runtime-spec v1.0.1/go.mod h1:jwyrGlmzljRJv/Fgzds9SsS/C5hL+LL3ko9hs6T5lQ0=
 github.com/opencontainers/runtime-spec v1.0.2-0.20190207185410-29686dbc5559/go.mod h1:jwyrGlmzljRJv/Fgzds9SsS/C5hL+LL3ko9hs6T5lQ0=
