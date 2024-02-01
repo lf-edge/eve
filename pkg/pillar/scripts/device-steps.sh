@@ -18,7 +18,10 @@ ZTMPDIR=/run/global
 DPCDIR=$ZTMPDIR/DevicePortConfig
 FIRSTBOOTFILE=$ZTMPDIR/first-boot
 FIRSTBOOT=
-AGENTS="diag zedagent ledmanager nim nodeagent domainmgr loguploader tpmmgr vaultmgr zedmanager zedrouter downloader verifier baseosmgr zedkube wstunnelclient volumemgr watcher zfsmanager usbmanager"
+AGENTS="diag zedagent ledmanager nim nodeagent domainmgr loguploader tpmmgr vaultmgr zedmanager zedrouter downloader verifier baseosmgr wstunnelclient volumemgr watcher zfsmanager usbmanager"
+if grep -q kubevirt /run/eve-hv-type; then
+  AGENTS="$AGENTS zedkube"
+fi
 TPM_DEVICE_PATH="/dev/tpmrm0"
 PATH=$BINDIR:$PATH
 TPMINFOTEMPFILE=/var/tmp/tpminfo.txt

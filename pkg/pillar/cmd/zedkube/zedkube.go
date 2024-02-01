@@ -1,3 +1,8 @@
+// Copyright (c) 2024 Zededa, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
+//go:build kubevirt
+
 package zedkube
 
 import (
@@ -116,12 +121,16 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	zedkubeCtx.subGlobalConfig = subGlobalConfig
 	subGlobalConfig.Activate()
 
-	config, err := kubeapi.WaitForKubernetes(agentName, ps, stillRunning)
+	err = kubeapi.WaitForKubernetes(agentName, ps, stillRunning)
 	if err != nil {
 		// XXX may need to change this to loop
 		log.Fatal(err)
 	}
-	zedkubeCtx.config = config
+	zedkubeCtx.config, err = kubeapi.GetKubeConfig()
+	if err != nil {
+		// XXX may need to change this to loop
+		log.Fatal(err)
+	}
 	log.Noticef("zedkube run: kubernetes running")
 
 	appLogTimer := time.NewTimer(logcollectInterval * time.Second)

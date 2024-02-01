@@ -5,10 +5,10 @@ package zedmanager
 
 import (
 	"fmt"
-	"github.com/lf-edge/eve/pkg/pillar/hypervisor"
 	"time"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/lf-edge/eve/pkg/pillar/hypervisor"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	uuid "github.com/satori/go.uuid"
 )

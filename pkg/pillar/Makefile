@@ -31,7 +31,13 @@ build: $(APPS) $(APPS1)
 
 TAGS=
 ifeq ($(RSTATS),y)
-	TAGS:=-tags rstats
+	TAGS+=rstats
+endif
+ifneq ($(HV),)
+	TAGS+=$(HV)
+endif
+ifneq ($(TAGS),)
+	TAGS:=-tags "$(TAGS)"
 endif
 
 LDFLAGS=-X=main.Version=$(BUILD_VERSION)
@@ -90,4 +96,4 @@ fmt-check-details:
 	@gofmt -d $(GOFILES)
 
 vet:
-	go vet ./...
+	go vet $(TAGS) ./...

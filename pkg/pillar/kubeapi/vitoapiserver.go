@@ -1,6 +1,8 @@
 // Copyright (c) 2024 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+//go:build kubevirt
+
 package kubeapi
 
 import (
@@ -58,7 +60,7 @@ func DeletePVC(pvcName string, log *base.LogObject) error {
 		errStr := fmt.Sprintf("Failed to get clientset %v", err)
 		return errors.New(errStr)
 	}
-	err = clientset.CoreV1().PersistentVolumeClaims(types.VolumeCSINameSpace).Delete(context.Background(), pvcName, metav1.DeleteOptions{})
+	err = clientset.CoreV1().PersistentVolumeClaims(VolumeCSINameSpace).Delete(context.Background(), pvcName, metav1.DeleteOptions{})
 	if err != nil {
 		log.Errorf("Failed to DeletePVC %s error %v", pvcName, err)
 		errStr := fmt.Sprintf("Failed to DeletePVC %s error %v", pvcName, err)
@@ -67,8 +69,8 @@ func DeletePVC(pvcName string, log *base.LogObject) error {
 	return nil
 }
 
-// GetPVCList : Get the list of PVCs in a given namespace
-func GetPVCList(ns string, log *base.LogObject) ([]string, error) {
+// GetPVCList : Get the list of all PVCs.
+func GetPVCList(log *base.LogObject) ([]string, error) {
 	// Get the Kubernetes clientset
 	clientset, err := GetClientSet()
 	if err != nil {
@@ -76,10 +78,10 @@ func GetPVCList(ns string, log *base.LogObject) ([]string, error) {
 		errStr := fmt.Sprintf("Failed to get clientset %v", err)
 		return nil, errors.New(errStr)
 	}
-	pvcs, err := clientset.CoreV1().PersistentVolumeClaims(ns).List(context.Background(), metav1.ListOptions{})
+	pvcs, err := clientset.CoreV1().PersistentVolumeClaims(VolumeCSINameSpace).List(context.Background(), metav1.ListOptions{})
 	if err != nil {
-		log.Errorf("Failed to get PVC list in namespace %s: %v", ns, err)
-		errStr := fmt.Sprintf("Failed to get PVC list in namespace %s: %v", ns, err)
+		log.Errorf("Failed to get PVC list: %v", err)
+		errStr := fmt.Sprintf("Failed to get PVC list: %v", err)
 		return nil, errors.New(errStr)
 	}
 
@@ -100,7 +102,7 @@ func FindPVC(pvcName string, log *base.LogObject) (bool, error) {
 		errStr := fmt.Sprintf("Failed to get clientset %v", err)
 		return false, errors.New(errStr)
 	}
-	_, err = clientset.CoreV1().PersistentVolumeClaims(types.VolumeCSINameSpace).Get(context.Background(), pvcName, metav1.GetOptions{})
+	_, err = clientset.CoreV1().PersistentVolumeClaims(VolumeCSINameSpace).Get(context.Background(), pvcName, metav1.GetOptions{})
 	if err != nil {
 		return false, err
 	}
@@ -117,7 +119,7 @@ func GetPVCInfo(pvcName string, log *base.LogObject) (*types.ImgInfo, error) {
 		return nil, errors.New(errStr)
 	}
 
-	pvc, err := clientset.CoreV1().PersistentVolumeClaims(types.VolumeCSINameSpace).Get(context.Background(), pvcName, metav1.GetOptions{})
+	pvc, err := clientset.CoreV1().PersistentVolumeClaims(VolumeCSINameSpace).Get(context.Background(), pvcName, metav1.GetOptions{})
 	if err != nil {
 		log.Errorf("GetPVCInfo failed to get info for pvc %s err %v", pvcName, err)
 		errStr := fmt.Sprintf("GetPVCInfo failed to get info for pvc %s err %v", pvcName, err)
@@ -188,10 +190,10 @@ func NewPVCDefinition(pvcName string, size string, annotations, labels map[strin
 			Name:        pvcName,
 			Annotations: annotations,
 			Labels:      labels,
-			Namespace:   types.VolumeCSINameSpace,
+			Namespace:   VolumeCSINameSpace,
 		},
 		Spec: corev1.PersistentVolumeClaimSpec{
-			StorageClassName: stringPtr(types.VolumeCSIClusterStorageClass),
+			StorageClassName: stringPtr(VolumeCSIClusterStorageClass),
 			AccessModes:      []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
 			VolumeMode:       &volumeModeBlock,
 			Resources: corev1.ResourceRequirements{
@@ -263,7 +265,9 @@ func RolloutDiskToPVC(ctx context.Context, log *base.LogObject, exists bool, dis
 	// virtctl image-upload -n eve-kube-app pvc pvcname  --no-create --storage-class longhorn --image-path=<diskfile>
 	// --insecure --uploadproxy-url https://10.43.31.180:8443  --access-mode RWO --block-volume --size 1000M
 
-	args := []string{"image-upload", "-n", eveNameSpace, "pvc", pvcName, "--storage-class", "longhorn", "--image-path", diskfile, "--insecure", "--uploadproxy-url", uploadproxyURL, "--kubeconfig", kubeConfigFile}
+	args := []string{"image-upload", "-n", EVEKubeNameSpace, "pvc", pvcName,
+		"--storage-class", "longhorn", "--image-path", diskfile, "--insecure",
+		"--uploadproxy-url", uploadproxyURL, "--kubeconfig", EVEkubeConfigFile}
 
 	args = append(args, "--access-mode", "ReadWriteOnce")
 

@@ -68,13 +68,12 @@ func populateExistingVolumesFormatDatasets(_ *volumemgrContext, dataset string) 
 
 // populateExistingVolumesFormatPVC iterates over the namespace and takes format
 // from the name of the volume/PVC and prepares map of it
-func populateExistingVolumesFormatPVC(_ *volumemgrContext, ns string) {
+func populateExistingVolumesFormatPVC(_ *volumemgrContext) {
 
-	log.Functionf("populateExistingVolumesFormatPVC(%s)", ns)
-	pvlist, err := kubeapi.GetPVCList(ns, log)
+	log.Functionf("populateExistingVolumesFormatPVC")
+	pvlist, err := kubeapi.GetPVCList(log)
 	if err != nil {
-		log.Errorf("populateExistingVolumesFormatPVC: GetPVCList '%s' failed: %v",
-			ns, err)
+		log.Errorf("populateExistingVolumesFormatPVC: GetPVCList failed: %v", err)
 		return
 	}
 	for _, pvcName := range pvlist {
@@ -85,7 +84,7 @@ func populateExistingVolumesFormatPVC(_ *volumemgrContext, ns string) {
 		}
 		volumeFormat[tempStatus.Key()] = tempStatus.ContentFormat
 	}
-	log.Functionf("populateExistingVolumesFormatPVC(%s) Done", ns)
+	log.Functionf("populateExistingVolumesFormatPVC Done")
 
 }
 

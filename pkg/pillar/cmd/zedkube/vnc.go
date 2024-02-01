@@ -1,3 +1,8 @@
+// Copyright (c) 2024 Zededa, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
+//go:build kubevirt
+
 package zedkube
 
 import (
@@ -9,6 +14,7 @@ import (
 	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/base"
+	"github.com/lf-edge/eve/pkg/pillar/kubeapi"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"kubevirt.io/client-go/kubecli"
@@ -70,7 +76,7 @@ func getVMIdomainName(ctx *zedkubeContext, config *types.AppInstanceConfig) (str
 
 	vmiName := base.GetAppKubeName(config.DisplayName, config.UUIDandVersion.UUID)
 	var domainName string
-	vmis, err := virtClient.VirtualMachineInstance(types.EVEKubeNameSpace).List(context.Background(), &metav1.ListOptions{})
+	vmis, err := virtClient.VirtualMachineInstance(kubeapi.EVEKubeNameSpace).List(context.Background(), &metav1.ListOptions{})
 	if err != nil {
 		log.Errorf("getVMIs: get VMI list error %v", err)
 		return "", err

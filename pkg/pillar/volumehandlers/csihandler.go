@@ -1,6 +1,8 @@
 // Copyright (c) 2023 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+//go:build kubevirt
+
 package volumehandlers
 
 import (
@@ -32,6 +34,14 @@ type volumeHandlerCSI struct {
 type csiContext struct {
 	globalConfig *types.ConfigItemValueMap
 	config       *rest.Config
+}
+
+// NewCSIHandler is a constructor for the kubernetes CSI handler.
+func NewCSIHandler(common commonVolumeHandler, useVHost bool) VolumeHandler {
+	return &volumeHandlerCSI{
+		commonVolumeHandler: common,
+		useVHost:            useVHost,
+	}
 }
 
 func (handler *volumeHandlerCSI) GetVolumeDetails() (uint64, uint64, string, bool, error) {
