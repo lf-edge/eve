@@ -10,7 +10,7 @@ The current log pipeline can be vertically split into the following three stages
 2. Log aggregation and persistence
 3. Log export to cloud
 
-![EVE Logging Pipeline](pics/eve_logging_pipeline.png)
+![EVE Logging Pipeline](images/eve_logging_pipeline.png)
 
 ## Log Generation
 
@@ -34,7 +34,7 @@ All logs from memlogd and from /dev/kmsg read by newlogd will be written to disk
 
 The following diagram shows the flow of logs from containers to newlogd and to cloud.
 
-![EVE Log Flow](pics/eve_newlog_flow.png)
+![EVE Log Flow](images/eve_newlog_flow.png)
 
 ## Log Aggregation, Reformatting and Compression for Persistent Log Files
 
