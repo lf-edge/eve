@@ -153,6 +153,9 @@ check_start_k3s() {
           # Give the embedded etcd in k3s priority over io as its fsync latencies are critical
           ionice -c2 -n0 -p $k3s_pid
           # Default location where clients will look for config
+          while [ ! -f /etc/rancher/k3s/k3s.yaml ]; do
+            sleep 5
+          done
           ln -s /etc/rancher/k3s/k3s.yaml ~/.kube/config
           cp /etc/rancher/k3s/k3s.yaml /run/.kube/k3s/k3s.yaml
           sleep 10
