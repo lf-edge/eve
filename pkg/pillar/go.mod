@@ -12,7 +12,7 @@ require (
 	github.com/docker/docker v20.10.27+incompatible
 	github.com/eriknordmark/ipinfo v0.0.0-20230728132417-2d8f4da903d7
 	github.com/eshard/uevent v1.0.1
-	github.com/fsnotify/fsnotify v1.5.1
+	github.com/fsnotify/fsnotify v1.6.0
 	github.com/go-chi/chi/v5 v5.0.10
 	github.com/go-playground/validator/v10 v10.15.5
 	github.com/golang-jwt/jwt v3.2.2+incompatible
@@ -21,10 +21,11 @@ require (
 	github.com/google/go-containerregistry v0.8.0
 	github.com/google/go-tpm v0.3.0
 	github.com/google/gopacket v1.1.19
-	github.com/gorilla/websocket v1.4.2
+	github.com/gorilla/websocket v1.5.0
 	github.com/grandcat/zeroconf v1.0.0
 	github.com/jackwakefield/gopac v1.0.2
 	github.com/jaypipes/ghw v0.8.0
+	github.com/k8snetworkplumbingwg/network-attachment-definition-client v1.4.0
 	github.com/lf-edge/edge-containers v0.0.0-20221025050409-93c34bebadd2
 	github.com/lf-edge/eve-api/go v0.0.0-20240115141031-10e8386433c4
 	github.com/lf-edge/eve-libs v0.0.0-20231120160159-666ed2307f8e
@@ -37,8 +38,8 @@ require (
 	github.com/opencontainers/image-spec v1.1.0-rc2.0.20221005185240-3a7f492d3f1b
 	github.com/opencontainers/runtime-spec v1.0.3-0.20210326190908-1c3f411f0417
 	github.com/packetcap/go-pcap v0.0.0-20230717110547-c34843f9206d
-	github.com/prometheus/procfs v0.7.3
-	github.com/satori/go.uuid v1.2.1-0.20180404165556-75cca531ea76
+	github.com/prometheus/procfs v0.8.0
+	github.com/satori/go.uuid v1.2.1-0.20181028125025-b2ce2384e17b
 	github.com/shirou/gopsutil v3.21.11+incompatible
 	github.com/shjala/gostats v0.0.0-20230215094906-69a32327600f
 	github.com/sirupsen/logrus v1.9.3
@@ -51,6 +52,10 @@ require (
 	google.golang.org/grpc v1.58.3
 	google.golang.org/protobuf v1.31.0
 	gopkg.in/yaml.v2 v2.4.0
+	k8s.io/api v0.28.1
+	k8s.io/apimachinery v0.28.1
+	k8s.io/client-go v12.0.0+incompatible
+	kubevirt.io/client-go v1.1.0
 )
 
 require (
@@ -65,7 +70,7 @@ require (
 	github.com/Microsoft/go-winio v0.5.2 // indirect
 	github.com/Microsoft/hcsshim v0.9.10 // indirect
 	github.com/StackExchange/wmi v0.0.0-20190523213315-cbe66965904d // indirect
-	github.com/aws/aws-sdk-go v1.44.82 // indirect
+	github.com/aws/aws-sdk-go v1.44.116 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cenkalti/backoff v2.2.1+incompatible // indirect
 	github.com/cespare/xxhash/v2 v2.2.0 // indirect
@@ -75,6 +80,7 @@ require (
 	github.com/containerd/stargz-snapshotter/estargz v0.11.4 // indirect
 	github.com/containerd/ttrpc v1.1.2 // indirect
 	github.com/coreos/go-systemd/v22 v22.3.2 // indirect
+	github.com/coreos/prometheus-operator v0.38.3 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/digitalocean/go-libvirt v0.0.0-20221020193630-0d0212f5ead2 // indirect
 	github.com/docker/cli v20.10.17+incompatible // indirect
@@ -84,29 +90,45 @@ require (
 	github.com/docker/go-events v0.0.0-20190806004212-e31b211e4f1c // indirect
 	github.com/docker/go-metrics v0.0.1 // indirect
 	github.com/docker/go-units v0.4.0 // indirect
+	github.com/emicklei/go-restful/v3 v3.10.1 // indirect
 	github.com/estesp/manifest-tool/v2 v2.0.6-0.20220728154431-89d791ab7966 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.2 // indirect
 	github.com/ghodss/yaml v1.0.0 // indirect
+	github.com/go-kit/kit v0.10.0 // indirect
+	github.com/go-logfmt/logfmt v0.5.1 // indirect
+	github.com/go-logr/logr v1.2.4 // indirect
 	github.com/go-ole/go-ole v1.2.6 // indirect
+	github.com/go-openapi/jsonpointer v0.19.6 // indirect
+	github.com/go-openapi/jsonreference v0.20.0 // indirect
+	github.com/go-openapi/swag v0.22.3 // indirect
 	github.com/go-playground/locales v0.14.1 // indirect
 	github.com/go-playground/universal-translator v0.18.1 // indirect
 	github.com/godbus/dbus/v5 v5.0.6 // indirect
 	github.com/gogo/googleapis v1.4.1 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang-design/lockfree v0.0.1 // indirect
+	github.com/golang/glog v1.1.0 // indirect
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
+	github.com/golang/mock v1.6.0 // indirect
+	github.com/google/gnostic v0.5.7-v3refs // indirect
+	github.com/google/gofuzz v1.2.0 // indirect
 	github.com/google/s2a-go v0.1.4 // indirect
 	github.com/google/uuid v1.3.0 // indirect
 	github.com/googleapis/enterprise-certificate-proxy v0.2.3 // indirect
 	github.com/googleapis/gax-go/v2 v2.11.0 // indirect
 	github.com/gorilla/mux v1.8.0 // indirect
+	github.com/imdario/mergo v0.3.15 // indirect
 	github.com/jaypipes/pcidb v0.6.0 // indirect
 	github.com/jmespath/go-jmespath v0.4.0 // indirect
+	github.com/josharian/intern v1.0.0 // indirect
 	github.com/josharian/native v1.0.1-0.20221213033349-c1e37c09b531 // indirect
+	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/klauspost/compress v1.15.9 // indirect
 	github.com/kr/fs v0.1.0 // indirect
+	github.com/kubernetes-csi/external-snapshotter/client/v4 v4.2.0 // indirect
 	github.com/leodido/go-urn v1.2.4 // indirect
 	github.com/lithammer/shortuuid/v4 v4.0.0 // indirect
+	github.com/mailru/easyjson v0.7.7 // indirect
 	github.com/mattn/go-ieproxy v0.0.1 // indirect
 	github.com/matttproud/golang_protobuf_extensions v1.0.4 // indirect
 	github.com/mdlayher/netlink v1.7.1 // indirect
@@ -114,17 +136,25 @@ require (
 	github.com/mitchellh/go-homedir v1.1.0 // indirect
 	github.com/moby/locker v1.0.1 // indirect
 	github.com/moby/sys/signal v0.7.0 // indirect
-	github.com/moby/term v0.0.0-20210619224110-3f7ff695adc6 // indirect
+	github.com/moby/term v0.0.0-20220808134915-39b0c02b01ae // indirect
+	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
+	github.com/modern-go/reflect2 v1.0.2 // indirect
 	github.com/morikuni/aec v1.0.0 // indirect
 	github.com/opencontainers/runc v1.1.12 // indirect
+	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/opencontainers/selinux v1.10.1 // indirect
+	github.com/openshift/api v0.0.0-20230503133300-8bbcb7ca7183 // indirect
+	github.com/openshift/client-go v0.0.0-20210112165513-ebc401615f47 // indirect
+	github.com/openshift/custom-resource-status v1.1.2 // indirect
+	github.com/pborman/uuid v1.2.1 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pkg/sftp v1.12.0 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
-	github.com/prometheus/client_golang v1.12.1 // indirect
-	github.com/prometheus/client_model v0.2.0 // indirect
-	github.com/prometheus/common v0.32.1 // indirect
+	github.com/prometheus/client_golang v1.14.0 // indirect
+	github.com/prometheus/client_model v0.3.0 // indirect
+	github.com/prometheus/common v0.37.0 // indirect
 	github.com/robertkrimen/otto v0.0.0-20221011175642-09fc211e5ab1 // indirect
+	github.com/spf13/pflag v1.0.5 // indirect
 	github.com/surma/gocpio v1.0.2-0.20160926205914-fcb68777e7dc // indirect
 	github.com/ti-mo/conntrack v0.4.0 // indirect
 	github.com/ti-mo/netfilter v0.3.1 // indirect
@@ -139,15 +169,60 @@ require (
 	go.opencensus.io v0.24.0 // indirect
 	golang.org/x/oauth2 v0.10.0 // indirect
 	golang.org/x/sync v0.3.0 // indirect
+	golang.org/x/term v0.15.0 // indirect
 	golang.org/x/text v0.14.0 // indirect
+	golang.org/x/time v0.0.0-20220210224613-90d013bbcef8 // indirect
 	golang.org/x/xerrors v0.0.0-20220907171357-04be3eba64a2 // indirect
 	google.golang.org/api v0.126.0 // indirect
 	google.golang.org/appengine v1.6.7 // indirect
 	google.golang.org/genproto v0.0.0-20230711160842-782d3b101e98 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20230711160842-782d3b101e98 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20230711160842-782d3b101e98 // indirect
+	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/sourcemap.v1 v1.0.5 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	howett.net/plist v0.0.0-20181124034731-591f970eefbb // indirect
+	k8s.io/apiextensions-apiserver v0.26.4 // indirect
+	k8s.io/klog/v2 v2.90.1 // indirect
+	k8s.io/kube-openapi v0.0.0-20230501164219-8b0f38b5fd1f // indirect
+	k8s.io/utils v0.0.0-20230505201702-9f6742963106 // indirect
+	kubevirt.io/api v0.0.0-20231106174523-51bb423a964e // indirect
+	kubevirt.io/containerized-data-importer-api v1.57.0-alpha1 // indirect
+	kubevirt.io/controller-lifecycle-operator-sdk/api v0.0.0-20220329064328-f3cc58c6ed90 // indirect
 	oras.land/oras-go v1.2.0 // indirect
+	sigs.k8s.io/json v0.0.0-20221116044647-bc3834ca7abd // indirect
+	sigs.k8s.io/structured-merge-diff/v4 v4.2.3 // indirect
+	sigs.k8s.io/yaml v1.3.0 // indirect
+)
+
+// Kubernetes repository uses "replace" directives that break imports from outside of the repo.
+// Consequently, we have to find the correct versions of all the K8s dependencies ourselves.
+require (
+	github.com/openshift/api v0.0.0-20210105115604-44119421ec6b
+	k8s.io/api v0.26.3
+	k8s.io/apiextensions-apiserver v0.26.3
+	k8s.io/apimachinery v0.26.3
+	k8s.io/apiserver v0.26.3
+	k8s.io/cli-runtime v0.26.3
+	k8s.io/client-go v0.26.3
+	k8s.io/cloud-provider v0.26.3
+	k8s.io/cluster-bootstrap v0.26.3
+	k8s.io/code-generator v0.26.3
+	k8s.io/component-base v0.26.3
+	k8s.io/cri-api v0.26.3
+	k8s.io/csi-translation-lib v0.26.3
+	k8s.io/klog v0.4.0
+	k8s.io/kube-aggregator v0.26.3
+	k8s.io/kube-controller-manager v0.26.3
+	k8s.io/kube-openapi v0.0.0-20221012153701-172d655c2280
+	k8s.io/kube-proxy v0.26.3
+	k8s.io/kube-scheduler v0.26.3
+	k8s.io/kubectl v0.26.3
+	k8s.io/kubelet v0.26.3
+	k8s.io/legacy-cloud-providers v0.26.3
+	k8s.io/metrics v0.26.3
+	k8s.io/node-api v0.26.3
+	k8s.io/sample-apiserver v0.26.3
+	k8s.io/sample-cli-plugin v0.26.3
+	k8s.io/sample-controller v0.26.3
 )
