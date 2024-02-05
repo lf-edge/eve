@@ -54,6 +54,12 @@ func (status VolumeStatus) UseZVolDisk(persistType PersistType) bool {
 	if status.ContentFormat == zconfig.Format_ISO {
 		return false
 	}
+
+	// A PVC volume is not a zvol though persist type is zfs
+	if status.ContentFormat == zconfig.Format_PVC {
+		return false
+	}
+
 	return persistType == PersistZFS
 }
 
