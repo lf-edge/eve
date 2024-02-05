@@ -568,7 +568,6 @@ func getMemlogMsg(logChan chan inputEntry, panicFileChan chan []byte) {
 			continue
 		}
 		var pidStr string
-		var logInfo agentlog.Loginfo
 		// Everything is json, in some cases with an embedded json Msg
 		logEntry, jsonOK := ParseMemlogLogEntry(string(bytes))
 		if !jsonOK {
@@ -576,26 +575,29 @@ func getMemlogMsg(logChan chan inputEntry, panicFileChan chan []byte) {
 				string(bytes))
 			continue
 		}
-		// Start with the envelope
-		logInfo.Source = logEntry.Source
-		logInfo.Time = logEntry.Time
-		logInfo.Msg = logEntry.Msg
 
 		// Is the Msg itself json?
-		logInfo2, ok := agentlog.ParseLoginfo(logInfo.Msg)
-		if ok {
-			// If the inner has Time or Source set they take
-			// precedence over the envelope
-			if logInfo2.Time == "" {
-				logInfo2.Time = logInfo.Time
+		logInfo, ok := agentlog.ParseLoginfo(logEntry.Msg)
+		if ok { // Use the inner JSON struct
+			// Go back to the envelope for anything not in the inner JSON
+			if logInfo.Time == "" {
+				logInfo.Time = logEntry.Time
 			}
-			if logInfo2.Source == "" {
-				logInfo2.Source = logInfo.Source
+			if logInfo.Source == "" {
+				logInfo.Source = logEntry.Source
 			}
-			logInfo = logInfo2
+			// and keep the original message text and fields
+			logInfo.Msg = logEntry.Msg
 		} else {
+			// Start with the envelope
+			logInfo.Source = logEntry.Source
+			logInfo.Time = logEntry.Time
+			logInfo.Msg = logEntry.Msg
+
 			// Some messages have attr=val syntax
-			level, timeStr, msg := parseLevelTimeMsg(logInfo.Msg)
+			// If the inner message has Level, Time or Msg set they take
+			// precedence over the envelope
+			level, timeStr, msg := parseLevelTimeMsg(logEntry.Msg)
 			if level != "" {
 				logInfo.Level = level
 			}
@@ -606,6 +608,7 @@ func getMemlogMsg(logChan chan inputEntry, panicFileChan chan []byte) {
 				logInfo.Msg = msg
 			}
 		}
+
 		if strings.Contains(logInfo.Source, "guest_vm") {
 			logmetrics.AppMetrics.NumInputEvent++
 		} else if logInfo.Containername != "" {
@@ -613,9 +616,11 @@ func getMemlogMsg(logChan chan inputEntry, panicFileChan chan []byte) {
 		} else {
 			logmetrics.DevMetrics.NumInputEvent++
 		}
+
 		if logInfo.Pid != 0 {
 			pidStr = strconv.Itoa(logInfo.Pid)
 		}
+
 		entry := inputEntry{
 			source:    logInfo.Source,
 			content:   logInfo.Msg,
