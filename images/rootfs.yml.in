@@ -3,7 +3,7 @@ kernel:
   cmdline: "rootdelay=3"
 init:
   - linuxkit/init:144c9cee8aed9e30a16940f2bf1d3813883aceda
-  - linuxkit/runc:d971bd4ffcfc92fec49d1b46757a2a1bb98d1a65
+  - linuxkit/runc:6062483d748609d505f2bcde4e52ee64a3329f5f
   - linuxkit/containerd:d445de33c7f08470187b068d247b1c0dea240f0a
   # pillar's logic rely on existence of getty and /etc/init.d/001-getty inside
   - linuxkit/getty:06f34bce0facea79161566d67345c3ea49965437
