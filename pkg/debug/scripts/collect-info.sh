@@ -5,8 +5,8 @@
 #
 
 # Script version, don't forget to bump up once something is changed
-VERSION=15
 
+VERSION=16
 # Add required packages here, it will be passed to "apk add".
 # Once something added here don't forget to add the same package
 # to the Dockerfile ('ENV PKGS' line) of the debug container,
@@ -249,7 +249,59 @@ collect_zfs_info()
         } > "$DIR/zfs-info"
     fi
 }
-
+collect_kube_info()
+{
+    type=$(cat /run/eve-hv-type)
+    if [ "$type" = "kubevirt" ]; then
+       echo "- Collecting Kube specific info"
+       {
+           echo "kubectl get nodes"
+           echo "============"
+           eve exec kube kubectl get nodes -o wide
+           echo "============"
+           echo "kubectl describe nodes"
+           echo "============"
+           eve exec kube kubectl describe nodes
+           echo "============"
+           echo "kubectl get pods -A"
+           echo "============"
+           eve exec kube kubectl get pods -A
+           echo "============"
+           echo "kubectl describe pods -A"
+           echo "============"
+           eve exec kube kubectl describe pods -A
+           echo "============"
+           echo "kubectl get pvc -A"
+           echo "============"
+           eve exec kube kubectl get pvc -A
+           echo "============"
+           echo "kubectl describe pvc -A"
+           echo "============"
+           eve exec kube kubectl describe pvc -A
+           echo "============"
+           echo "kubectl get vmi -A"
+           echo "============"
+           eve exec kube kubectl get vmi -A
+           echo "============"
+           echo "kubectl describe vmi -A"
+           echo "============"
+           eve exec kube kubectl describe vmi -A
+           echo "============"
+           echo "kubectl get kubevirt -n kubevirt -o yaml"
+           echo "============"
+           eve exec kube kubectl get kubevirt -n kubevirt -o yaml
+           echo "============"
+           echo "kubectl top node"
+           echo "============"
+           eve exec kube kubectl top node
+           echo "============"
+           echo "kubectl top pod -A --sum"
+           echo "============"
+           eve exec kube kubectl top pod -A --sum
+           echo "============"
+        } > "$DIR/kube-info"
+    fi
+}
 # Copy itself
 cp "${0}" "$DIR"
 
@@ -331,9 +383,13 @@ collect_pillar_backtraces
 # ZFS part
 collect_zfs_info
 
+# Kube part
+collect_kube_info
+
 check_tar_flags() {
   tar --version | grep -q "GNU tar"
 }
+
 
 # Make a tarball
 # --exlude='root-run/run'              /run/run/run/.. exclude symbolic link loop
