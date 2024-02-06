@@ -30,7 +30,7 @@ require (
 	github.com/lf-edge/eve/api/go v0.0.0-00010101000000-000000000000
 	github.com/lf-edge/eve/libs/depgraph v0.0.0-20220129022022-ba04fd269658
 	github.com/lf-edge/eve/libs/reconciler v0.0.0-20220131150115-6941dbe72001
-	github.com/lf-edge/eve/libs/zedUpload v0.0.0-20210120050122-276fea8f6efd
+	github.com/lf-edge/eve/libs/zedUpload v0.0.0-20240131143232-9bed096ec8a4
 	github.com/linuxkit/linuxkit/src/cmd/linuxkit v0.0.0-20220913135124-e532e7310810
 	github.com/moby/sys/mountinfo v0.6.0
 	github.com/onsi/gomega v1.17.0
