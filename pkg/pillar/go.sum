@@ -1119,6 +1119,8 @@ github.com/lf-edge/eve/api/go v0.0.0-20230602070228-0c11e32c7718 h1:gtmjnX95WEKW
 github.com/lf-edge/eve/api/go v0.0.0-20230602070228-0c11e32c7718/go.mod h1:pNFho84HAA/Vlb1DpLFlatJgQBJ43wH28elAs7wXdtA=
 github.com/lf-edge/eve/libs v0.0.0-20230717153241-cc5629af4657 h1:2DERGuT2XEkCJIvtfnD0+XAaovV73KtMD3bzfV8AVdI=
 github.com/lf-edge/eve/libs v0.0.0-20230717153241-cc5629af4657/go.mod h1:OLbkEWaPL1SKTywCA3wg2xBwwF+wB78IB5ASHbJ52IQ=
+github.com/lf-edge/eve/libs v0.0.0-20240206160900-ca7870e7c35f h1:EW44Q94w7C9EEZhJXEEfXxKltXI9+g9DyiE9M1FA6LI=
+github.com/lf-edge/eve/libs v0.0.0-20240206160900-ca7870e7c35f/go.mod h1:9xoaLCcMlTZQBviUUxU4qBpB+nAbnPk2K156GLvyDsI=
 github.com/lib/pq v1.0.0/go.mod h1:5WUZQaWbwv1U+lTReE5YruASi9Al49XbQIvNi/34Woo=
 github.com/lib/pq v1.1.1/go.mod h1:5WUZQaWbwv1U+lTReE5YruASi9Al49XbQIvNi/34Woo=
 github.com/lib/pq v1.2.0/go.mod h1:5WUZQaWbwv1U+lTReE5YruASi9Al49XbQIvNi/34Woo=
