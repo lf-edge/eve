@@ -433,7 +433,7 @@ github.com/lf-edge/eve/libs/depgraph
 # github.com/lf-edge/eve/libs/reconciler v0.0.0-20220131150115-6941dbe72001 => ../../libs/reconciler
 ## explicit
 github.com/lf-edge/eve/libs/reconciler
-# github.com/lf-edge/eve/libs/zedUpload v0.0.0-20210120050122-276fea8f6efd => ../../libs/zedUpload
+# github.com/lf-edge/eve/libs/zedUpload v0.0.0-20240131143232-9bed096ec8a4 => ../../libs/zedUpload
 ## explicit
 github.com/lf-edge/eve/libs/zedUpload
 github.com/lf-edge/eve/libs/zedUpload/awsutil
