@@ -49,12 +49,7 @@ func New(ps *pubsub.PubSub, log *base.LogObject, agentName string, executor stri
 	})
 	pubExecConfig.Unpublish(agentName)
 
-	// Start with a random number in case the process as run before
-	// and used some sequence
-	now := time.Now()
-	_, _, seed := now.Clock()
-	seed += now.Nanosecond()
-	rand.Seed(int64(seed))
+	// No need to use rand.Seed() any more
 	sequence := rand.Int()
 
 	handle := ExecuteHandle{
