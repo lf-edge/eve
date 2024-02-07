@@ -20,6 +20,7 @@ concurrency:
 
 jobs:
   get-run-id:
+    if: github.event.review.state == 'approved'
     runs-on: ubuntu-latest
     outputs:
       result: ${{ steps.get-run-id.outputs.result }}
