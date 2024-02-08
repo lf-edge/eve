@@ -49,12 +49,11 @@ fi
 mkdir -p "$checkdir"
 tmpurlfile=/tmp/$$.url
 
-# Make sure we have a binary
-if ! (cd tools/dockerfile-add-scanner; make >&2); then
-    >&2 echo "Make dockerfile-add-scanner failed"
-    exit 2
-fi
-if ! tools/dockerfile-add-scanner/bin/dockerfile-add-scanner scan "$dockerfile" >"$tmpurlfile";  then
+# probably should pin to a version, but good enough for now
+# in any case, this script is not actually used. We are just putting this here so we can
+# remove dockerfile-add-scanner from the repo; this one should be removed shortly.
+TOOLS_IMG=lfedge/eve-build-tools:main
+if ! docker run --rm -v "${dockerfile}:/src/dockerfile:ro" ${TOOLS_IMG} dockerfile-add-scanner scan /src/dockerfile >"$tmpurlfile";  then
     >&2 echo "dockerfile-add-scanner failed"
     exit 2
 fi

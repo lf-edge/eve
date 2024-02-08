@@ -22,10 +22,6 @@ const (
 	naaPrefix  = "5001405" // from rtslib-fb
 )
 
-func init() {
-	rand.Seed(time.Now().UnixNano())
-}
-
 func waitForFile(fileName string) error {
 	maxDelay := time.Second * 5
 	delay := time.Millisecond * 500

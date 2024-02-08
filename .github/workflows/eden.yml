@@ -13,53 +13,66 @@ on:
       - 'pkg/pillar/docs/**'
   pull_request_review:
     types: [submitted]
-    paths-ignore:
-      - 'docs/**'
-      - 'pkg/pillar/docs/**'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
-  check_pr_publish:
+  get-run-id:
+    if: github.event.review.state == 'approved'
     runs-on: ubuntu-latest
+    outputs:
+      result: ${{ steps.get-run-id.outputs.result }}
     steps:
-      - name: Install curl and jq
-        run: sudo apt-get update && sudo apt-get install -y curl jq
-
-      - name: Check PR images are published on Docker Hub
-        run: |
-          DOCKER_HUB_PATH="evebuild/danger"
-          # currently we only test amd64 (kvms and xen) with Eden
-          IMAGE_AMD64_XEN="pr${{ github.event.pull_request.number }}-xen"
-          IMAGE_AMD64_KVM="pr${{ github.event.pull_request.number }}-kvm"
-
-          amd64_xen_res=$(curl -s "https://hub.docker.com/v2/repositories/${DOCKER_HUB_PATH}/tags/${IMAGE_AMD64_XEN}")
-          amd64_kvm_res=$(curl -s "https://hub.docker.com/v2/repositories/${DOCKER_HUB_PATH}/tags/${IMAGE_AMD64_KVM}")
-          if [[ "$(echo "$amd64_xen_res" | jq -r '.name')" == "${IMAGE_AMD64_XEN}" && "$(echo "$amd64_kvm_res" | jq -r '.name')" == "${IMAGE_AMD64_KVM}" ]]; then
-              echo "Docker image ${DOCKER_HUB_PATH}:${IMAGE_AMD64_XEN} and ${DOCKER_HUB_PATH}:${IMAGE_AMD64_KVM} are available on Docker Hub."
-              exit 0
-          else
-              echo "Docker image ${DOCKER_HUB_PATH}:${IMAGE_AMD64_XEN} and ${DOCKER_HUB_PATH}:${IMAGE_AMD64_KVM} are not available on Docker Hub."
-              exit 1
-          fi
+      - name: Get run ID for the artifact upload
+        id: get-run-id
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { data } = await github.rest.actions.listWorkflowRuns({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: 'build.yml',
+              head_sha: context.payload.pull_request.head.sha,
+              status: 'success'
+            });
+            if (data == null || data.workflow_runs.length == 0) {
+                throw new Error('No successful runs found');
+            }
+            const runId = data.workflow_runs[0].id; // Assuming the first one is the latest successful run
+            return runId;
+          result-encoding: string
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Report Run ID  # useful for debugging
+        run: echo "Run ID is ${{ steps.get-run-id.outputs.result }}"
 
   test_suite_pr:
-    needs: check_pr_publish
+    needs: get-run-id
+    strategy:
+      fail-fast: false
+      # we do not really need a matrix, as we only do amd64/kvm,
+      # but this makes it more consistent with the build, and will
+      # let us expand in the future, if we want
+      matrix:
+        arch: [amd64]
+        hv: [kvm]
     if: github.event.review.state == 'approved'
-    uses: lf-edge/eden/.github/workflows/test.yml@0.9.3
+    uses: lf-edge/eden/.github/workflows/test.yml@0.9.5
     with:
-      eve_image: "evebuild/danger:pr${{ github.event.pull_request.number  }}"
+      eve_image: "evebuild/pr:${{ github.event.pull_request.number  }}"
+      eve_artifact_name: eve-${{ matrix.hv }}-${{ matrix.arch }}
+      artifact_run_id: ${{ needs.get-run-id.outputs.result }}
 
   test_suite_master:
     if: github.ref == 'refs/heads/master'
-    uses: lf-edge/eden/.github/workflows/test.yml@0.9.3
+    uses: lf-edge/eden/.github/workflows/test.yml@0.9.5
     with:
       eve_image: "lfedge/eve:snapshot"
 
   test_suite_tag:
     if: startsWith(github.ref, 'refs/tags')
-    uses: lf-edge/eden/.github/workflows/test.yml@0.9.3
+    uses: lf-edge/eden/.github/workflows/test.yml@0.9.5
     with:
       eve_image: "lfedge/eve:${{ github.ref_name }}"

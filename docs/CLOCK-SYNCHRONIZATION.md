@@ -11,8 +11,8 @@ systems, however, hardware timers are virtualized by the hypervisor, which
 cannot ensure the precision guaranteed by physical hardware devices.
 
 The common and best practice to keep clocks synchronized, for both
-virtualized and non-virtualized systems, is to use the NTP protocol, so
-clocks are precisely synchronized with external servers equipped with high
+virtualized and non-virtualized systems, is to use the [NTP protocol](./DEVICE-CONNECTIVITY.md#network-time-protocol-ntp),
+so clocks are precisely synchronized with external servers equipped with high
 precision devices, like GPS or Atomic clocks.
 
 EVE always tries to keep its clock synchronized by embedding a NTP Client

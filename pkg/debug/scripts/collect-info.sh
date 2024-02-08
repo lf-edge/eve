@@ -5,8 +5,8 @@
 #
 
 # Script version, don't forget to bump up once something is changed
-VERSION=13
 
+VERSION=16
 # Add required packages here, it will be passed to "apk add".
 # Once something added here don't forget to add the same package
 # to the Dockerfile ('ENV PKGS' line) of the debug container,
@@ -249,7 +249,59 @@ collect_zfs_info()
         } > "$DIR/zfs-info"
     fi
 }
-
+collect_kube_info()
+{
+    type=$(cat /run/eve-hv-type)
+    if [ "$type" = "kubevirt" ]; then
+       echo "- Collecting Kube specific info"
+       {
+           echo "kubectl get nodes"
+           echo "============"
+           eve exec kube kubectl get nodes -o wide
+           echo "============"
+           echo "kubectl describe nodes"
+           echo "============"
+           eve exec kube kubectl describe nodes
+           echo "============"
+           echo "kubectl get pods -A"
+           echo "============"
+           eve exec kube kubectl get pods -A
+           echo "============"
+           echo "kubectl describe pods -A"
+           echo "============"
+           eve exec kube kubectl describe pods -A
+           echo "============"
+           echo "kubectl get pvc -A"
+           echo "============"
+           eve exec kube kubectl get pvc -A
+           echo "============"
+           echo "kubectl describe pvc -A"
+           echo "============"
+           eve exec kube kubectl describe pvc -A
+           echo "============"
+           echo "kubectl get vmi -A"
+           echo "============"
+           eve exec kube kubectl get vmi -A
+           echo "============"
+           echo "kubectl describe vmi -A"
+           echo "============"
+           eve exec kube kubectl describe vmi -A
+           echo "============"
+           echo "kubectl get kubevirt -n kubevirt -o yaml"
+           echo "============"
+           eve exec kube kubectl get kubevirt -n kubevirt -o yaml
+           echo "============"
+           echo "kubectl top node"
+           echo "============"
+           eve exec kube kubectl top node
+           echo "============"
+           echo "kubectl top pod -A --sum"
+           echo "============"
+           eve exec kube kubectl top pod -A --sum
+           echo "============"
+        } > "$DIR/kube-info"
+    fi
+}
 # Copy itself
 cp "${0}" "$DIR"
 
@@ -265,7 +317,7 @@ chroot /hostfs lsusb -vvv -t > "$DIR/lsusb-vvv-t"
     ls -l /sys/class/net/
 } > "$DIR/sys-fs-usb"
 
-dmesg            > "$DIR/dmesg"
+dmesg -T         > "$DIR/dmesg-T"
 ps -xao uid,pid,ppid,vsz,rss,c,pcpu,pmem,stime,tname,stat,time,cmd \
                  > "$DIR/ps-xao"
 lspci -vvv       > "$DIR/lspci-vvv"
@@ -279,6 +331,7 @@ dmidecode        > "$DIR/dmidecode"
 ls -lRa /dev     > "$DIR/ls-lRa-dev"
 ls -lRa /persist > "$DIR/ls-lRa-persist"
 free             > "$DIR/free"
+df -h            > "$DIR/df-h"
 
 echo "- vmallocinfo, slabinfo, meminfo, zoneinfo, mounts, vmstat, cpuinfo, iomem"
 cat /proc/vmallocinfo > "$DIR/vmallocinfo"
@@ -330,12 +383,24 @@ collect_pillar_backtraces
 # ZFS part
 collect_zfs_info
 
+# Kube part
+collect_kube_info
+
+check_tar_flags() {
+  tar --version | grep -q "GNU tar"
+}
+
+
 # Make a tarball
 # --exlude='root-run/run'              /run/run/run/.. exclude symbolic link loop
 # --ignore-failed-read --warning=none  ignore all errors, even if read fails
 # --dereference                        follow symlinks
 echo "- tar/gzip"
-tar -C "$TMP_DIR" --exclude='root-run/run' --ignore-failed-read --warning=none --dereference -czf "$TARBALL_FILE" "$INFO_DIR"
+if check_tar_flags; then
+  tar -C "$TMP_DIR" --exclude='root-run/run' --ignore-failed-read --warning=none --dereference -czf "$TARBALL_FILE" "$INFO_DIR"
+else
+  tar -C "$TMP_DIR" --exclude='root-run/run' --dereference -czf "$TARBALL_FILE" "$INFO_DIR"
+fi
 rm -rf "$TMP_DIR"
 sync
 

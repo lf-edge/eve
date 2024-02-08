@@ -45,10 +45,13 @@ nav:
   - CI-CD: 'docs/CI-CD.md'
   - FAQ: 'docs/FAQ.md'
   - Networking:
+      - 'Overview': 'docs/NETWORKING.md'
       - 'Device Connectivity': 'docs/DEVICE-CONNECTIVITY.md'
+      - 'Application Connectivity': 'docs/APP-CONNECTIVITY.md'
       - 'Network ACLS': 'docs/NETWORK-ACLS.md'
-      - 'Network Models': 'docs/NETWORK-MODELS.md'
-      - Wireless: 'docs/WIRELESS.md'
+      - 'Wireless': 'docs/WIRELESS.md'
+      - 'NIM microservice': 'pkg/pillar/docs/nim.md'
+      - 'zedrouter microservice': 'pkg/pillar/docs/zedrouter.md'
       - 'wwan microservice': 'pkg/wwan/README.md'
   - 'ECO Initialization':
       - Initialization: 'docs/ECO-INIT.md'

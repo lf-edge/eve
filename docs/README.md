@@ -116,7 +116,7 @@ When each instance of EVE contacts the controller using EVE API it will receive
 its own portion of the overall execution plan (note that EVE API communications
 are  always initiated by EVE, never by the Controller):
 
-![EVE Controller](pics/EVEController.png)
+![EVE Controller](images/EVEController.png)
 
 A good way to think about this is that Controller is to EVE what Kubernetes is
 to Docker Engine.

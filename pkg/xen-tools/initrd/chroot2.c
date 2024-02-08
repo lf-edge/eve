@@ -29,18 +29,19 @@ static int child_func(void *args)
     struct clone_args *parsed_args = args;
     struct passwd *pws;
 
-    pws = getpwuid(parsed_args->uid);
-    if (pws == NULL)
-        err(-1, "getpwuid(%d) failed:", parsed_args->uid);
-
-    if (initgroups(pws->pw_name, parsed_args->gid) != 0)
-        err(-1, "initgroups(%s, %d) failed:", pws->pw_name, parsed_args->gid);
 
     if (chroot(parsed_args->chroot) != 0)
         err(-1, "chroot(%s) failed:", parsed_args->chroot);
 
     if (chdir(parsed_args->workdir) != 0)
         err(-1, "chdir(%s) failed:", parsed_args->workdir);
+
+    pws = getpwuid(parsed_args->uid);
+    if (pws == NULL)
+        err(-1, "getpwuid(%d) failed:", parsed_args->uid);
+
+    if (initgroups(pws->pw_name, parsed_args->gid) != 0)
+        err(-1, "initgroups(%s, %d) failed:", pws->pw_name, parsed_args->gid);
 
     if (mount("proc", "/proc", "proc", 0, NULL) != 0)
         err(-1, "mount(proc) failed:");
