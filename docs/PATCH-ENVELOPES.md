@@ -1,36 +1,98 @@
 # Patch Envelopes
 
-## Overview
+## What is Patch Envelope?
 
-Patch Envelopes are objects which are exposed to app instances via EVE meta-data server.
-This objects can be useful to update any kind of information in a secure, isolated manner
-(for instance, configuration parameters) on app instance without the need of rebooting it.
-Alternatively, one can create new image for app instance, upload it to EVE, purge and restart
-application instance with the new image, even if there was a small change in some configuration
-file. To top that there will be a down-time during reboot of app instance. To summarise it,
-patch envelopes goal is to make fleet management of app instances easier.
+Patch Envelope is a functionality in EVE that helps you change data in your App Instance in
+runtime without the need to reboot instance, or recreate image. Imagine that in order to change
+configuration in one of your program, you have to create new OS image and flush it to your computer.
+With Patch Envelope you don’t have to do that. Patch Envelope constitutes of Binary Artefacts (blobs)
+which are base64-encoded objects. This can be anything, from binary file to a configuration yaml file.
+Those Patch Envelopes are exposed to App Instance via Metadata [server](./ECO-METADATA.md).
 
-## Patch Envelope structure
+## Why should I use it?
 
-Patch Envelope are created on controller and propagated to EVE via protobuf's `EvePatchEnvelope` message.
-It consists of:
+When recreating image doesn’t make sense (i.e. you just want to change one configuration parameter and
+you don’t want to recreate VM image) or when downtime is not an option for you
 
-- *uuid*: uinque identified to reffer Patch Envelope object
-- *action*: way this object should be treated
-- *artifacts*: array of binary artifacts related to this Patch Envelope
-- *appInstIdsAllowed*: list of app instances ids that can access this Patch Envelope
+## How can I use it?
 
-And other fields, for more information about additional fields in protobuf message reffer to API definition [here](https://github.com/lf-edge/eve-api/blob/main/proto/config/patch_envelope.proto)
+In EVE every App Instance connected to local network instances is exposed to Metadata server at
+`169.254.169.254`. It has bunch of useful endpoints, amongst them are patch envelope endpoints. So within
+App Instance one can access Patch Envelopes available to specific App Instance by getting description.json.
+This would return list of Patch Envelopes available to this App Instance.
 
-Binary artifacts are objects that app instance can download and use (for instance, configuration files).
-This artifacts are *opaque* to EVE: information is just transferred, never parsed, decoded, etc.
-Currently, there are two types of Binary artifacts: *Inline* and *External*.
+```bash
+curl -X GET -v http://169.254.169.254/eve/v1/patch/description.json
+[
 
-*Inline artifacts* are small (less or equal than 100KB) base64-encoded (not encrypted) strings with
-optional meta data. They are part of Edge Device configuration.
-*External artifacts* are referrencining volumes created on EVE. Size of volumes is not limited to 10KB
+    {
+        "PatchId":"699fbdb2-e455-448f-84f5-68e547ec1305",
+        "Version":"1",
+        "BinaryBlobs":[
+            {
+                "file-name":"textfile1.txt",
+                "file-sha":"%FILE_SHA",
+                "file-meta-data":"YXJ0aWZhY3QgbWV0YWRhdGE=",
+                "url":"http://169.254.169.254/eve/v1/patch/download/699fbdb2-e455-448f-84f5-68e547ec1305/textfile1.txt"
+            },
+            {
+                "file-name":"textfile2.txt",
+                "file-sha":"%FILE_SHA%",
+                "file-meta-data":"YXJ0aWZhY3QgbWV0YWRhdGE=",
+                "url":"http://169.254.169.254/eve/v1/patch/download/699fbdb2-e455-448f-84f5-68e547ec1305/textfile2.txt"
+            }
+        ],
+        "VolumeRefs":null
+    }
 
-## How to use Patch Envelopes
+]
+```
 
-When Patch Envelopes are created on controller and exposed to EVE via API, app instance can access
-Patch Envelopes available to it from meta-data server using API defined in [metadata server](ECO-METADATA.md)
+Every Patch Envelope contains of one or more Binary Artefacts (Blobs) which are base64-encoded objects.
+Each object can be downloaded by calling URL, i.e.
+
+```bash
+curl -X GET http://169.254.169.254/eve/v1/patch/download/699fbdb2-e455-448f-84f5-68e547ec1305/textfile1.txt
+```
+
+will get you base64-encoded file.Note that you can download zip archive of all binary artifacts for a
+given patch envelope by calling
+
+```bash
+curl -X GET http://169.254.169.254/eve/v1/patch/download/699fbdb2-e455-448f-84f5-68e547ec1305 > a.zip
+```
+
+Flow diagram of the process is below
+
+![process-flow](./images/eve-pe-process-flow.png)
+
+Full OpenAPI (Swagger) specification for patch envelope endpoint can be found [here](./api/patch-envelopes.yml).
+You can generate client from this specification and use it to develop your application.
+
+## What types of Binary Artifacts are there?
+
+There’re two types of Binary Artifacts (Blobs): inline and external.
+There is no distinction in the API between internal and external artifacts from the application perspective.
+However, there’s a difference on how this artifacts are treated in EVE. Inline binary
+artifacts are small size artifacts (max 10KBytes) which are part of EdgeDevConfig,
+whereas external patch envelopes are represented as Volumes which are handled
+by [volumemgr](../pkg/pillar/docs/volumemgr.md).
+
+## Where Binary Artifacts are stored?
+
+Inline Artifacts are stored as part of EdgeDevConfig. External artifacts are
+stored in datastorage specified. EVE downloads artifacts directly from datastorage.
+Keep this in mind configuring ACLs and access.
+
+## How does it work?
+
+![patch-flow](./images/eve-pe-patch-flow.png)
+
+Internally, Metadata Server stores envelopes which come from EdgeDevConfig parsed
+by zedagent. Binary Artifacts can be of two different types: inline and external.
+Metadata server stores VolRef – volume references, which are changed to BinaryBlobs
+once volumes are downloaded. Note that this process is async and it might take time.
+All communication in this process is done via PubSub. When AppInstance downloads inline
+object it’s served from Metadata server (zedrouter microservice). In case of external
+patch envelopes – Metadata serves file from volume. For more information on how it works
+in code refer [here](https://github.com/lf-edge/eve/blob/0a8b21ec5de3bf6a2613c2c6f2e2af7e353b1e98/pkg/pillar/cmd/zedrouter/patchenvelopes.go#L18C1-L47C88)
