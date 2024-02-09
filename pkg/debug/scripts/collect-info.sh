@@ -6,7 +6,7 @@
 
 # Script version, don't forget to bump up once something is changed
 
-VERSION=16
+VERSION=17
 # Add required packages here, it will be passed to "apk add".
 # Once something added here don't forget to add the same package
 # to the Dockerfile ('ENV PKGS' line) of the debug container,
@@ -393,13 +393,14 @@ check_tar_flags() {
 
 # Make a tarball
 # --exlude='root-run/run'              /run/run/run/.. exclude symbolic link loop
+# --exclude='root-run/containerd-user'  the k8s.io/*/rootfs paths go deep
 # --ignore-failed-read --warning=none  ignore all errors, even if read fails
 # --dereference                        follow symlinks
 echo "- tar/gzip"
 if check_tar_flags; then
-  tar -C "$TMP_DIR" --exclude='root-run/run' --ignore-failed-read --warning=none --dereference -czf "$TARBALL_FILE" "$INFO_DIR"
+  tar -C "$TMP_DIR" --exclude='root-run/run' --exclude='root-run/containerd-user' --ignore-failed-read --warning=none --dereference -czf "$TARBALL_FILE" "$INFO_DIR"
 else
-  tar -C "$TMP_DIR" --exclude='root-run/run' --dereference -czf "$TARBALL_FILE" "$INFO_DIR"
+  tar -C "$TMP_DIR" --exclude='root-run/run' --exclude='root-run/containerd-user' --dereference -czf "$TARBALL_FILE" "$INFO_DIR"
 fi
 rm -rf "$TMP_DIR"
 sync
