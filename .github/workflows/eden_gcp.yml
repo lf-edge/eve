@@ -127,7 +127,7 @@ jobs:
       # so we should pull required branch here
       # in case of workflow_dispatch ref will be empty (will point onto main branch)
       - name: Checkout EVE
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
           path: eve
@@ -288,7 +288,7 @@ jobs:
           ROL_PROJECT: ${{ secrets.ROL_PROJECT }}
       - name: Store raw test results
         if: ${{ always() }}
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: eden-report-${{ matrix.backend }}-${{ matrix.hv }}-${{ matrix.fs }}
           path: |
