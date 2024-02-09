@@ -302,6 +302,7 @@ collect_kube_info()
         } > "$DIR/kube-info"
     fi
 }
+
 # Copy itself
 cp "${0}" "$DIR"
 
@@ -386,11 +387,12 @@ collect_zfs_info
 collect_kube_info
 
 # Make a tarball
-# --exlude='root-run/run'              /run/run/run/.. exclude symbolic link loop
+# --exclude='root-run/run'              /run/run/run/.. exclude symbolic link loop
+# --exclude='root-run/containerd-user'  the k8s.io/*/rootfs paths go deep
 # --ignore-failed-read --warning=none  ignore all errors, even if read fails
 # --dereference                        follow symlinks
 echo "- tar/gzip"
-tar -C "$TMP_DIR" --exclude='root-run/run' --ignore-failed-read --warning=none --dereference -czf "$TARBALL_FILE" "$INFO_DIR"
+tar -C "$TMP_DIR" --exclude='root-run/run' --exclude='root-run/containerd-user' --ignore-failed-read --warning=none --dereference -czf "$TARBALL_FILE" "$INFO_DIR"
 rm -rf "$TMP_DIR"
 sync
 
