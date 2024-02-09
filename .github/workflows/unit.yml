@@ -16,7 +16,7 @@ jobs:
   test:
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.sha }}
       - name: Test
@@ -32,7 +32,7 @@ jobs:
           test-results: dist/amd64/results.json
       - name: Store raw test results
         if: ${{ always() }}
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: 'test-report'
           path: ${{ github.workspace }}/dist
