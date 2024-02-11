@@ -937,13 +937,16 @@ endif
 	$(QUIET)$(PARSE_PKGS) $< > $@
 	$(QUIET): $@: Succeeded
 
-# If DEV=y and file pkg/my_package/build-dev.yml returns the path to that file.
-# If RSTATS=y and file pkg/my_package/build-rstats.yml returns the path to that file.
+# If DEV=y and file pkg/my_package/build-dev.yml exists, returns the path to that file.
+# If RSTATS=y and file pkg/my_package/build-rstats.yml exists, returns the path to that file.
+# If HV=kubevirt and file pkg/my_package/build-kubevirt.yml exists, returns the path to that file.
 # Ortherwise returns pkg/my_package/build.yml.
-get_pkg_build_yml = $(if $(filter y,$(RSTATS)), $(call get_pkg_build_rstats_yml,$1), $(call get_pkg_build_def_yml,$1))
-get_pkg_build_def_yml = $(if $(filter y,$(DEV)),$(call get_pkg_build_dev_yml,$1),build.yml)
+get_pkg_build_yml = $(if $(filter kubevirt,$(HV)), $(call get_pkg_build_kubevirt_yml,$1), \
+                    $(if $(filter y,$(RSTATS)), $(call get_pkg_build_rstats_yml,$1), \
+                    $(if $(filter y,$(DEV)), $(call get_pkg_build_dev_yml,$1), build.yml)))
 get_pkg_build_dev_yml = $(if $(wildcard pkg/$1/build-dev.yml),build-dev.yml,build.yml)
 get_pkg_build_rstats_yml = $(if $(wildcard pkg/$1/build-rstats.yml),build-rstats.yml,build.yml)
+get_pkg_build_kubevirt_yml = $(if $(wildcard pkg/$1/build-kubevirt.yml),build-kubevirt.yml,build.yml)
 
 eve-%: pkg/%/Dockerfile build-tools $(RESCAN_DEPS)
 	$(QUIET): "$@: Begin: LINUXKIT_PKG_TARGET=$(LINUXKIT_PKG_TARGET)"
