@@ -99,7 +99,7 @@ http_debug_request() {
     fi
 
     if [ "$running" = "0" ]; then
-        pkill -USR2 /opt/zededa/bin/zedbox
+        pkill -USR2 zedbox
     fi
 
     printf "POST %s HTTP/1.0\r\n\r\n" "$URL" | nc 127.1 6543
@@ -228,7 +228,7 @@ __EOT__
           fi
           ;;
  http-debug) if [ -z "$2" ] || [ "$2" = "start" ]; then
-              pkill -USR2 /opt/zededa/bin/zedbox
+              pkill -USR2 zedbox
               echo "Listening on :6543 -- use 'eve http-debug stop' to stop"
           elif [ "$2" = "stop" ]; then
               printf "POST /stop HTTP/1.0\r\n\r\n" | nc 127.1 6543
