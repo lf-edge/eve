@@ -2,22 +2,19 @@ package initrd
 
 import (
 	"archive/tar"
-	"bytes"
-	"compress/gzip"
 	"errors"
 	"io"
-	"io/ioutil"
 	"path/filepath"
 	"strings"
 
-	"github.com/linuxkit/linuxkit/src/cmd/linuxkit/pad4"
-	"github.com/surma/gocpio"
+	// drop-in 100% compatible replacement and 17% faster than compress/gzip.
+	gzip "github.com/klauspost/pgzip"
+	cpio "github.com/surma/gocpio"
 )
 
 // Writer is an io.WriteCloser that writes to an initrd
 // This is a compressed cpio archive, zero padded to 4 bytes
 type Writer struct {
-	pw *pad4.Writer
 	gw *gzip.Writer
 	cw *cpio.Writer
 }
@@ -25,8 +22,6 @@ type Writer struct {
 func typeconv(thdr *tar.Header) int64 {
 	switch thdr.Typeflag {
 	case tar.TypeReg:
-		return cpio.TYPE_REG
-	case tar.TypeRegA:
 		return cpio.TYPE_REG
 	// Currently hard links not supported very well :)
 	// Convert to relative symlink as absolute will not work in container
@@ -83,32 +78,15 @@ func copyTarEntry(w *Writer, thdr *tar.Header, r io.Reader) (written int64, err 
 	var n int64
 	switch tp {
 	case cpio.TYPE_SYMLINK:
-		buffer := bytes.NewBufferString(thdr.Linkname)
-		n, err = io.Copy(w, buffer)
+		var count int
+		count, err = w.Write([]byte(thdr.Linkname))
+		n = int64(count)
 	case cpio.TYPE_REG:
 		n, err = io.Copy(w, r)
 	}
 	written += n
 
 	return
-}
-
-// CopyTar copies a tar stream into an initrd
-func CopyTar(w *Writer, r *tar.Reader) (written int64, err error) {
-	for {
-		var thdr *tar.Header
-		thdr, err = r.Next()
-		if err == io.EOF {
-			return written, nil
-		}
-		if err != nil {
-			return
-		}
-		written, err = copyTarEntry(w, thdr, r)
-		if err != nil {
-			return
-		}
-	}
 }
 
 // CopySplitTar copies a tar stream into an initrd, but splits out kernel, cmdline, and ucode
@@ -124,19 +102,19 @@ func CopySplitTar(w *Writer, r *tar.Reader) (kernel []byte, cmdline string, ucod
 		}
 		switch {
 		case thdr.Name == "boot/kernel":
-			kernel, err = ioutil.ReadAll(r)
+			kernel, err = io.ReadAll(r)
 			if err != nil {
 				return
 			}
 		case thdr.Name == "boot/cmdline":
 			var buf []byte
-			buf, err = ioutil.ReadAll(r)
+			buf, err = io.ReadAll(r)
 			if err != nil {
 				return
 			}
 			cmdline = string(buf)
 		case thdr.Name == "boot/ucode.cpio":
-			ucode, err = ioutil.ReadAll(r)
+			ucode, err = io.ReadAll(r)
 			if err != nil {
 				return
 			}
@@ -154,8 +132,7 @@ func CopySplitTar(w *Writer, r *tar.Reader) (kernel []byte, cmdline string, ucod
 // NewWriter creates a writer that will output an initrd stream
 func NewWriter(w io.Writer) *Writer {
 	initrd := new(Writer)
-	initrd.pw = pad4.NewWriter(w)
-	initrd.gw = gzip.NewWriter(initrd.pw)
+	initrd.gw = gzip.NewWriter(w)
 	initrd.cw = cpio.NewWriter(initrd.gw)
 
 	return initrd
@@ -175,22 +152,11 @@ func (w *Writer) Write(b []byte) (n int, e error) {
 func (w *Writer) Close() error {
 	err1 := w.cw.Close()
 	err2 := w.gw.Close()
-	err3 := w.pw.Close()
 	if err1 != nil {
 		return err1
 	}
 	if err2 != nil {
 		return err2
 	}
-	if err3 != nil {
-		return err3
-	}
 	return nil
-}
-
-// Copy reads a tarball in a stream and outputs a compressed init ram disk
-func Copy(w *Writer, r io.Reader) (int64, error) {
-	tr := tar.NewReader(r)
-
-	return CopyTar(w, tr)
 }
