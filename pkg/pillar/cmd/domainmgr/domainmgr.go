@@ -10,6 +10,7 @@ package domainmgr
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/base64"
 	"errors"
 	"flag"
@@ -23,6 +24,7 @@ import (
 
 	"github.com/containerd/cgroups"
 	"github.com/google/go-cmp/cmp"
+	envp "github.com/hashicorp/go-envparse"
 	zconfig "github.com/lf-edge/eve-api/go/config"
 	"github.com/lf-edge/eve/pkg/pillar/agentbase"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
@@ -2586,17 +2588,27 @@ func fetchCloudInit(ctx *domainContext,
 // Key1=Val1
 // Key2=Val2 ...
 func parseEnvVariablesFromCloudInit(envPairs []string) (map[string]string, error) {
-
-	envList := make(map[string]string, 0)
+	var envStr string
 	for _, v := range envPairs {
 		pair := strings.SplitN(v, "=", 2)
 		if len(pair) != 2 {
-			errStr := fmt.Sprintf("Variable \"%s\" not defined properly\nKey value pair should be delimited by \"=\"", pair[0])
-			return nil, errors.New(errStr)
+			// We will check syntax errors later
+			envStr += v + "\n"
+			continue
 		}
-		envList[pair[0]] = pair[1]
+		// Trim off (i.e., remove leading and trailing) spaces and
+		// double quotes, so we allow declarations like "VAR=VALUE"
+		key := strings.Trim(pair[0], " \"")
+		value := strings.Trim(pair[1], " \"")
+		envStr += key + "=\"" + value + "\"\n"
 	}
 
+	// Use go-envparse to parse all environment variables and check for
+	// syntax errors. Fail if any invalid declaration is found
+	envList, err := envp.Parse(bytes.NewReader([]byte(envStr)))
+	if err != nil {
+		return nil, fmt.Errorf("Error processing environment variables: %s", err)
+	}
 	return envList, nil
 }
 
