@@ -2,11 +2,9 @@ package moby
 
 import (
 	"archive/tar"
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"path"
 	"sort"
 	"strings"
@@ -218,7 +216,7 @@ func ImageTar(ref *reference.Spec, prefix string, tw tarWriter, resolv string, o
 		hdr.Format = tar.FormatPAX
 		if exclude[hdr.Name] {
 			log.Debugf("image tar: %s %s exclude %s", ref, prefix, hdr.Name)
-			_, err = io.Copy(ioutil.Discard, tr)
+			_, err = io.Copy(io.Discard, tr)
 			if err != nil {
 				return err
 			}
@@ -232,8 +230,7 @@ func ImageTar(ref *reference.Spec, prefix string, tw tarWriter, resolv string, o
 				if err := tw.WriteHeader(hdr); err != nil {
 					return err
 				}
-				buf := bytes.NewBufferString(contents)
-				_, err = io.Copy(tw, buf)
+				_, err = tw.Write([]byte(contents))
 				if err != nil {
 					return err
 				}
@@ -249,7 +246,7 @@ func ImageTar(ref *reference.Spec, prefix string, tw tarWriter, resolv string, o
 					return err
 				}
 			}
-			_, err = io.Copy(ioutil.Discard, tr)
+			_, err = io.Copy(io.Discard, tr)
 			if err != nil {
 				return err
 			}
@@ -308,12 +305,26 @@ func ImageTar(ref *reference.Spec, prefix string, tw tarWriter, resolv string, o
 			return err
 		}
 		if hdr.Size > 0 {
-			buf := bytes.NewBufferString(contents)
-			if _, err = io.Copy(tw, buf); err != nil {
+			if _, err = tw.Write([]byte(contents)); err != nil {
 				return err
 			}
 		}
 	}
+
+	// save the sbom to the sbom writer
+	if opts.SbomGenerator != nil {
+		sboms, err := src.SBoMs()
+		if err != nil {
+			return err
+		}
+		for _, sbom := range sboms {
+			// sbomWriter will escape out any problematic characters for us
+			if err := opts.SbomGenerator.Add(prefix, sbom); err != nil {
+				return err
+			}
+		}
+	}
+
 	return nil
 }
 
@@ -350,8 +361,7 @@ func ImageBundle(prefix string, ref *reference.Spec, config []byte, runtime Runt
 	if err := tw.WriteHeader(hdr); err != nil {
 		return err
 	}
-	buf := bytes.NewBuffer(config)
-	if _, err := io.Copy(tw, buf); err != nil {
+	if _, err := tw.Write(config); err != nil {
 		return err
 	}
 
@@ -427,8 +437,7 @@ func ImageBundle(prefix string, ref *reference.Spec, config []byte, runtime Runt
 	if err := tw.WriteHeader(hdr); err != nil {
 		return err
 	}
-	buf = bytes.NewBuffer(runtimeConfig)
-	if _, err := io.Copy(tw, buf); err != nil {
+	if _, err := tw.Write(runtimeConfig); err != nil {
 		return err
 	}
 

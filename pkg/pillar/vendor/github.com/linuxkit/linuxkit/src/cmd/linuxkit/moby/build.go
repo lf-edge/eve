@@ -3,13 +3,11 @@ package moby
 import (
 	"archive/tar"
 	"bytes"
-	"compress/gzip"
 	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"path"
 	"path/filepath"
@@ -18,6 +16,8 @@ import (
 	"strings"
 
 	"github.com/containerd/containerd/reference"
+	// drop-in 100% compatible replacement and 17% faster than compress/gzip.
+	gzip "github.com/klauspost/pgzip"
 	"github.com/linuxkit/linuxkit/src/cmd/linuxkit/util"
 	log "github.com/sirupsen/logrus"
 	"gopkg.in/yaml.v2"
@@ -71,7 +71,7 @@ var additions = map[string]addFun{
 
 // OutputTypes returns a list of the valid output types
 func OutputTypes() []string {
-	ts := []string{}
+	var ts []string
 	for k := range streamable {
 		ts = append(ts, k)
 	}
@@ -168,12 +168,16 @@ func Build(m Moby, w io.Writer, opts BuildOpts) error {
 	if len(m.Init) != 0 {
 		log.Infof("Add init containers:")
 	}
+	apkTar := newAPKTarWriter(iw)
 	for _, ii := range m.initRefs {
 		log.Infof("Process init image: %s", ii)
-		err := ImageTar(ii, "", iw, resolvconfSymlink, opts)
+		err := ImageTar(ii, "", apkTar, resolvconfSymlink, opts)
 		if err != nil {
-			return fmt.Errorf("Failed to build init tarball from %s: %v", ii, err)
+			return fmt.Errorf("failed to build init tarball from %s: %v", ii, err)
 		}
+	}
+	if err := apkTar.WriteAPKDB(); err != nil {
+		return err
 	}
 
 	if len(m.Onboot) != 0 {
@@ -215,7 +219,14 @@ func Build(m Moby, w io.Writer, opts BuildOpts) error {
 	if addition != nil {
 		err = addition(iw)
 		if err != nil {
-			return fmt.Errorf("Failed to add additional files: %v", err)
+			return fmt.Errorf("failed to add additional files: %v", err)
+		}
+	}
+
+	// complete the sbom consolidation
+	if opts.SbomGenerator != nil {
+		if err := opts.SbomGenerator.Close(iw); err != nil {
+			return err
 		}
 	}
 
@@ -358,8 +369,7 @@ func (k *kernelFilter) WriteHeader(hdr *tar.Header) error {
 		if err := tw.WriteHeader(whdr); err != nil {
 			return err
 		}
-		buf := bytes.NewBufferString(k.cmdline)
-		_, err = io.Copy(tw, buf)
+		_, err = tw.Write([]byte(k.cmdline))
 		if err != nil {
 			return err
 		}
@@ -595,7 +605,7 @@ func filesystem(m Moby, tw *tar.Writer, idMap map[string]uint32) error {
 					}
 				}
 				var err error
-				contents, err = ioutil.ReadFile(source)
+				contents, err = os.ReadFile(source)
 				if err != nil {
 					return err
 				}

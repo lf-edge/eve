@@ -58,7 +58,7 @@ func (d ImageSource) Config() (imagespec.ImageConfig, error) {
 
 // TarReader return an io.ReadCloser to read the filesystem contents of the image.
 func (d ImageSource) TarReader() (io.ReadCloser, error) {
-	container, err := Create(d.ref.String())
+	container, err := Create(d.ref.String(), false)
 	if err != nil {
 		return nil, fmt.Errorf("Failed to create docker image %s: %v", d.ref, err)
 	}
@@ -89,4 +89,9 @@ func (d ImageSource) V1TarReader(overrideName string) (io.ReadCloser, error) {
 // Descriptor return the descriptor of the image.
 func (d ImageSource) Descriptor() *v1.Descriptor {
 	return nil
+}
+
+// SBoM not supported in docker, but it is not an error, so just return nil.
+func (d ImageSource) SBoMs() ([]io.ReadCloser, error) {
+	return nil, nil
 }
