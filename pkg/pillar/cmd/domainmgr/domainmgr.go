@@ -1901,7 +1901,8 @@ func configToStatus(ctx *domainContext, config types.DomainConfig,
 		config.UUIDandVersion, config.DisplayName)
 	status.DiskStatusList = make([]types.DiskStatus,
 		len(config.DiskConfigList))
-	need9P := false
+	var addDiskStatus []types.DiskStatus
+	status.ContainerList = nil
 	for i, dc := range config.DiskConfigList {
 		ds := &status.DiskStatusList[i]
 		ds.VolumeKey = dc.VolumeKey
@@ -1917,12 +1918,31 @@ func configToStatus(ctx *domainContext, config types.DomainConfig,
 		if dc.Target == zconfig.Target_AppCustom {
 			ds.Devtype = "AppCustom"
 		} else if dc.Format == zconfig.Format_CONTAINER {
-			if i == 0 {
+			if i == 0 || ds.MountDir == "" {
 				ds.MountDir = "/"
-				status.OCIConfigDir = ds.FileLocation
+				suffix := ""
+				if i != 0 {
+					suffix = strconv.Itoa(i)
+				}
+				fileLocation := "/mnt" + suffix
+				dcs := types.DomainContainerStatus{
+					ContainerIndex: i,
+					FileLocation:   fileLocation,
+					OCIConfigDir:   ds.FileLocation,
+				}
+				status.ContainerList = append(status.ContainerList, dcs)
+				// Add information about the 9P export to
+				// DiskStatus.
+				// XXX Why do we/did we reuse DIskStatus here?
+				// Note that Format can not be set to CONTAINER
+				addDiskStatus = append(addDiskStatus,
+					types.DiskStatus{
+						FileLocation: ds.FileLocation,
+						Devtype:      "9P",
+						ReadOnly:     false,
+					})
 			}
 			ds.Devtype = ""
-			need9P = true
 		} else {
 			ds.Devtype = "hdd"
 			if dc.Format == zconfig.Format_ISO {
@@ -1948,7 +1968,7 @@ func configToStatus(ctx *domainContext, config types.DomainConfig,
 			return fmt.Errorf("failed to fetch cloud-init userdata: %s",
 				err)
 		}
-		if status.OCIConfigDir != "" { // If AppInstance is a container, we need to parse cloud-init config and apply the supported parts
+		if len(status.ContainerList) != 0 { // AppInstance is a container, we need to parse cloud-init config and apply the supported parts
 			if cloudconfig.IsCloudConfig(ciStr) { // treat like the cloud-init config
 				cc, err := cloudconfig.ParseCloudConfig(ciStr)
 				if err != nil {
@@ -1984,13 +2004,7 @@ func configToStatus(ctx *domainContext, config types.DomainConfig,
 		}
 	}
 
-	if need9P {
-		status.DiskStatusList = append(status.DiskStatusList, types.DiskStatus{
-			FileLocation: "/mnt",
-			Devtype:      "9P",
-			ReadOnly:     false,
-		})
-	}
+	status.DiskStatusList = append(status.DiskStatusList, addDiskStatus...)
 	return nil
 }
 

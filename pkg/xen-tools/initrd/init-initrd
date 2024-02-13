@@ -1,4 +1,5 @@
 #!/bin/sh
+# shellcheck disable=SC2002
 
 # first make sure busybox gets expanded into the glory that is UNIX
 /bin/busybox --install /bin
@@ -7,7 +8,7 @@ mount -t proc proc /proc
 mount -t sysfs sysfs /sys
 mount -t devtmpfs -o size=10m,nr_inodes=248418,mode=755,nosuid,noexec,relatime devtmpfs /dev
 
-root=`cat /proc/cmdline | grep -o '\broot=[^ ]*' | cut -d = -f 2`
+root=$(cat /proc/cmdline | grep -o '\broot=[^ ]*' | cut -d = -f 2)
 if test -z "$root"
 then
     exit 1
@@ -19,133 +20,224 @@ else
    HYPER_BUS=virtio
 fi
 
-mkdir /mnt >/dev/null 2>&1
-if [ "$root" = "9p" ]; then
-    mount -t 9p -o msize=131072,trans="$HYPER_BUS",version=9p2000.L,cache=mmap share_dir /mnt
-else
-    mount $root /mnt
-fi
+# XXX hack - but where else can we write logs
+LOGFILE=/mnt/rootfs/tmp/initrd.log
 
-mkdir /mnt/rootfs/dev >/dev/null 2>&1
-mkdir -p /mnt/rootfs/sys/fs/cgroup >/dev/null 2>&1
-mkdir /mnt/rootfs/proc >/dev/null 2>&1
-mkdir /dev/pts >/dev/null 2>&1
-mkdir /dev/shm >/dev/null 2>&1
-mkdir /dev/mqueue >/dev/null 2>&1
-if [ -d /mnt/rootfs/dev/eve ]; then
-   mkdir -p /dev/eve
-   mount -o bind /mnt/rootfs/dev/eve /dev/eve
-fi
-mount -o rbind /dev /mnt/rootfs/dev
-mount -o bind /sys /mnt/rootfs/sys
-mount -t tmpfs -o uid=0,gid=0,mode=0755 cgroup /mnt/rootfs/sys/fs/cgroup
-awk '!/^#/ { if ($4 == 1) print $1 }' /proc/cgroups | while IFS= read -r sys
-do
-  cgroup="/mnt/rootfs/sys/fs/cgroup/$sys"
-  mkdir -p "$cgroup"
-  if ! mountpoint -q "$cgroup"; then
-    if ! mount -n -t cgroup -o "$sys" cgroup "$cgroup"; then
-      rmdir "$cgroup" || true
-    fi
-  fi
-done
-if [ -e /mnt/rootfs/sys/fs/cgroup/memory/memory.use_hierarchy ]; then
-  echo 1 > /mnt/rootfs/sys/fs/cgroup/memory/memory.use_hierarchy
-fi
-mount -t devpts -o gid=5,mode=0620,noexec,nosuid devpts /mnt/rootfs/dev/pts
-mount -t tmpfs -o nodev,nosuid,noexec,size=20% shm /mnt/rootfs/dev/shm
-mount -t tmpfs -o nodev,nosuid,size=20% tmp /mnt/rootfs/tmp
-mount -t mqueue -o nodev,nosuid,noexec none /mnt/rootfs/dev/mqueue
-ln -s /proc/self/fd /mnt/rootfs/dev/fd
-ln -s /proc/self/fd/0 /mnt/rootfs/dev/stdin
-ln -s /proc/self/fd/1 /mnt/rootfs/dev/stdout
-ln -s /proc/self/fd/2 /mnt/rootfs/dev/stderr
+logmsg()
+{
+    local MSG
+    local TIME
+    MSG="$*"
+    TIME=$(date +"%F %T")
+    echo "$TIME : $MSG" | tee -a $LOGFILE >/dev/kmsg 2>&1
+}
 
-ip=`cat /proc/cmdline | grep -o '\bip=[^ ]*' | cut -d = -f 2`
-gw=`cat /proc/cmdline | grep -o '\bgw=[^ ]*' | cut -d = -f 2`
-route=`cat /proc/cmdline | grep -o '\broute=[^ ]*' | cut -d = -f 2`
-pvcalls=`cat /proc/cmdline | grep  'pvcalls=1'`
-dhcp=`cat /proc/cmdline | grep  'dhcp=1'`
-# shellcheck disable=SC2002,SC2006
-chrony=`cat /proc/cmdline | grep 'chrony=1'`
-if test "$pvcalls"
-then
-        mkdir -p /mnt/rootfs/etc
-        echo "nameserver 8.8.8.8" > /mnt/rootfs/etc/resolv.conf
-        echo "options use-vc" >> /mnt/rootfs/etc/resolv.conf
-elif test "$ip"
-then
-    # ipv4
-    if [ "$ip" != "${ip#*[0-9].[0-9]}" ]
-    then
-        ifconfig eth0 $ip up
-        if [ "$route" ] && [ "$gw" ]
-        then
-            route add -net $route gw $gw eth0
-        fi
-        mkdir -p /mnt/rootfs/etc
-        echo "nameserver 8.8.8.8" > /mnt/rootfs/etc/resolv.conf
-    # ipv6
-    elif [ "$ip" != "${ip#*:[0-9a-fA-F]}" ]
-    then
-        ifconfig eth0 add $ip up
-        if [ "$route" ] && [ "$gw" ]
-        then
-            route -A inet6 add $route gw $gw eth0
-        fi
-        mkdir -p /mnt/rootfs/etc
-        echo "nameserver 2001:4860:4860::8888" > /mnt/rootfs/etc/resolv.conf
+ip=$(cat /proc/cmdline | grep -o '\bip=[^ ]*' | cut -d = -f 2)
+gw=$(cat /proc/cmdline | grep -o '\bgw=[^ ]*' | cut -d = -f 2)
+route=$(cat /proc/cmdline | grep -o '\broute=[^ ]*' | cut -d = -f 2)
+pvcalls=$(cat /proc/cmdline | grep  'pvcalls=1')
+dhcp=$(cat /proc/cmdline | grep  'dhcp=1')
+chrony=$(cat /proc/cmdline | grep 'chrony=1')
+
+# If there is no sidecars then MAX_OCI will be zero
+MAX_OCI=$(cat /proc/cmdline | grep -o '\bmax_oci=[^ ]*' | cut -d = -f 2)
+if [ -z "$MAX_OCI" ]; then
+    MAX_OCI=0
+fi
+echo "MAX_OCI=$MAX_OCI"
+for oci in $(seq 0 "$MAX_OCI"); do
+    if [ "$oci" = 0 ]; then
+        MNT=/mnt
+        TAG=share_dir
+    else
+        MNT="/mnt$oci"
+        TAG="share_dir$oci"
     fi
-elif test "$dhcp"
-then
-    ip link set dev lo up
-    mkdir -p /mnt/rootfs/etc
-    echo "127.0.0.1 localhost" > /mnt/rootfs/etc/hosts
-    echo "::1 localhost" >> /mnt/rootfs/etc/hosts
-    for i in $(cd /sys/class/net && echo eth*); do
-        ip link set dev "$i" up
-        udhcpc --interface="$i" --script=/udhcpc_script.sh -O staticroutes -b
+
+    mkdir "$MNT" >/dev/null 2>&1
+    if [ "$root" = "9p" ]; then
+        mount -t 9p -o msize=131072,trans="$HYPER_BUS",version=9p2000.L,cache=mmap "$TAG" "$MNT"
+        ret=$?
+    else
+        mount "$root" "$MNT"
+        ret=$?
+    fi
+    if [ $ret != 0 ] ; then
+        if [ "$oci" = 0 ]; then
+            logmsg "Failed to mount root"
+            # Should we go to the wait at the end
+            exit 1
+        else
+            logmsg "Failed to mount on $MNT"
+            continue
+        fi
+    fi
+    logmsg "Mounted $TAG on $MNT"
+
+    mkdir "$MNT"/rootfs/dev >/dev/null 2>&1
+    mkdir -p "$MNT"/rootfs/sys/fs/cgroup >/dev/null 2>&1
+    mkdir "$MNT"/rootfs/proc >/dev/null 2>&1
+    mkdir /dev/pts >/dev/null 2>&1
+    mkdir /dev/shm >/dev/null 2>&1
+    mkdir /dev/mqueue >/dev/null 2>&1
+    if [ -d "$MNT"/rootfs/dev/eve ]; then
+        mkdir -p /dev/eve
+        mount -o bind "$MNT"/rootfs/dev/eve /dev/eve
+    fi
+    mount -o rbind /dev "$MNT"/rootfs/dev
+    mount -o bind /sys "$MNT"/rootfs/sys
+    mount -t tmpfs -o uid=0,gid=0,mode=0755 cgroup "$MNT"/rootfs/sys/fs/cgroup
+    awk '!/^#/ { if ($4 == 1) print $1 }' /proc/cgroups | while IFS= read -r sys
+    do
+        cgroup="$MNT/rootfs/sys/fs/cgroup/$sys"
+        mkdir -p "$cgroup"
+        if ! mountpoint -q "$cgroup"; then
+            if ! mount -n -t cgroup -o "$sys" cgroup "$cgroup"; then
+                rmdir "$cgroup" || true
+            fi
+        fi
     done
+    if [ -e "$MNT"/rootfs/sys/fs/cgroup/memory/memory.use_hierarchy ]; then
+        echo 1 > "$MNT"/rootfs/sys/fs/cgroup/memory/memory.use_hierarchy
+    fi
+    mount -t devpts -o gid=5,mode=0620,noexec,nosuid devpts "$MNT"/rootfs/dev/pts
+    mount -t tmpfs -o nodev,nosuid,noexec,size=20% shm "$MNT"/rootfs/dev/shm
+    mount -t tmpfs -o nodev,nosuid,size=20% tmp "$MNT"/rootfs/tmp
+    mount -t mqueue -o nodev,nosuid,noexec none "$MNT"/rootfs/dev/mqueue
+    ln -s /proc/self/fd "$MNT"/rootfs/dev/fd
+    ln -s /proc/self/fd/0 "$MNT"/rootfs/dev/stdin
+    ln -s /proc/self/fd/1 "$MNT"/rootfs/dev/stdout
+    ln -s /proc/self/fd/2 "$MNT"/rootfs/dev/stderr
+
+    # Set up resolv.conf for each container
+    if test "$pvcalls"
+        then
+            mkdir -p "$MNT"/rootfs/etc
+            echo "nameserver 8.8.8.8" > "$MNT"/rootfs/etc/resolv.conf
+            echo "options use-vc" >> "$MNT"/rootfs/etc/resolv.conf
+    elif test "$ip"
+    then
+        # ipv4
+        if [ "$ip" != "${ip#*[0-9].[0-9]}" ]
+        then
+            mkdir -p "$MNT"/rootfs/etc
+            echo "nameserver 8.8.8.8" > "$MNT"/rootfs/etc/resolv.conf
+            # ipv6
+        elif [ "$ip" != "${ip#*:[0-9a-fA-F]}" ]
+        then
+            mkdir -p "$MNT"/rootfs/etc
+            echo "nameserver 2001:4860:4860::8888" > "$MNT"/rootfs/etc/resolv.conf
+        fi
+    elif test "$dhcp"
+    then
+        mkdir -p "$MNT"/rootfs/etc
+        echo "127.0.0.1 localhost" > "$MNT"/rootfs/etc/hosts
+        echo "::1 localhost" >> "$MNT"/rootfs/etc/hosts
+    fi
+    if [ "$oci" = 0 ]; then
+        # Any IP to configure?
+        if test "$pvcalls"
+        then
+            # Do nothing
+            true
+        elif test "$ip"
+        then
+            # ipv4
+            if [ "$ip" != "${ip#*[0-9].[0-9]}" ]
+            then
+                ifconfig eth0 "$ip" up
+                if [ "$route" ] && [ "$gw" ]
+                then
+                    route add -net "$route" gw "$gw" eth0
+                fi
+                # ipv6
+            elif [ "$ip" != "${ip#*:[0-9a-fA-F]}" ]
+            then
+                ifconfig eth0 add "$ip" up
+                if [ "$route" ] && [ "$gw" ]
+                then
+                    route -A inet6 add "$route" gw "$gw" eth0
+                fi
+            fi
+        elif test "$dhcp"
+        then
+            ip link set dev lo up
+            for i in $(cd /sys/class/net && echo eth*); do
+                ip link set dev "$i" up
+                udhcpc --interface="$i" --script=/udhcpc_script.sh -O staticroutes -b
+            done
+        fi
+    fi
+    if [ "$oci" = 0 ]; then
+        # Make modules available for hosting Vm
+        mount --bind /mnt/modules /lib/modules
+        mount_res=$?
+        logmsg "Mount /mnt/modules as /lib/modules, result $mount_res"
+
+        #
+        # Here load modules needed for a container
+        #
+        modprobe wireguard
+        mod_res=$?
+        logmsg "Modprobe wireguard, result $mod_res"
+    fi
+    # mount modules shared by EVE-OS in "$MNT"/modules to /lib/modules
+    # if /lib/modules inside container is not empty we will silently ignore the content
+    # we use overlayfs to allow replacing of modules from user's entrypoint scripts
+    # but changes will not persist reboot
+    mkdir -p "$MNT"/rootfs/lib/modules
+    mkdir -p "$MNT"/rootfs/tmp/modules.upper
+    mkdir -p "$MNT"/rootfs/tmp/modules.work
+    mount -t overlay -o rw,relatime,lowerdir="$MNT"/modules,upperdir="$MNT"/rootfs/tmp/modules.upper,workdir="$MNT"/rootfs/tmp/modules.work overlay "$MNT"/rootfs/lib/modules
+
+    # Mounting requested volumes
+    logmsg "Executing /mount_disk.sh $oci"
+    res=$(/mount_disk.sh "$oci")
+    logmsg "$res"
+done
+
+if [ "$oci" = 0 ]; then
+    logmsg "Run acpid daemon"
+    acpid -l /proc/self/fd/1
 fi
-
-# Make modules available for hosting Vm
-mount --bind /mnt/modules /lib/modules
-mount_res=$?
-echo "Mount /mnt/modules as /lib/modules, result $mount_res"
-
-#
-# Here load modules needed for a container
-#
-modprobe wireguard
-mod_res=$?
-echo "Modprobe wireguard, result $mod_res"
-
-# mount modules shared by EVE-OS in /mnt/modules to /lib/modules
-# if /lib/modules inside container is not empty we will silently ignore the content
-# we use overlayfs to allow replacing of modules from user's entrypoint scripts
-# but changes will not persist reboot
-mkdir -p /mnt/rootfs/lib/modules
-mkdir -p /mnt/rootfs/tmp/modules.upper
-mkdir -p /mnt/rootfs/tmp/modules.work
-mount -t overlay -o rw,relatime,lowerdir=/mnt/modules,upperdir=/mnt/rootfs/tmp/modules.upper,workdir=/mnt/rootfs/tmp/modules.work overlay /mnt/rootfs/lib/modules
-
-# Mounting requested volumes
-echo "Executing /mount_disk.sh"
-/mount_disk.sh
 
 # Commence launch sequence
-source /mnt/environment
+# Run everything but main container first
+for oci in $(seq 1 "$MAX_OCI"); do (
+    # Run in subshell so environment file content does not affect other containers
+    #shellcheck source=/dev/null
+    . "$MNT/environment"
 
-echo "Run acpid daemon"
-acpid -l /proc/self/fd/1
+    cmd=$(cat "$MNT"/cmdline)
+    ug="0 0"
+    if [ -f "$MNT"/ug ]; then
+        ug=$(cat "$MNT"/ug)
+    fi
+    logmsg "Executing $cmd with uid gid: $ug"
+
+    # Run in background
+    logmsg "Starting on $MNT in background"
+    if grep -q "console=tty0" /proc/cmdline; then
+        #shellcheck disable=SC2086
+        #we have tty0 console primary, so will add output to hvc0 for logging
+        eval /chroot2 "$MNT"/rootfs "${WORKDIR:-/}" $ug /dev/null $cmd 2>&1 | tee -i /dev/hvc0
+    else
+        #shellcheck disable=SC2086
+        eval /chroot2 "$MNT"/rootfs "${WORKDIR:-/}" $ug /dev/null $cmd <> /dev/console 2>&1
+    fi
+    logmsg "Started $cmd on $MNT in background"
+    ) &
+    # XXX remove?
+    sleep 1
+done
 
 # Start chrony daemon for clock synchronization through PTP_KVM device
 if test "$chrony" -o "$EVE_ENABLE_CHRONY" = "1"; then
-  # PTP_KVM is only available with KVM
-  if test -c /dev/ptp0; then
-    echo "Starting chrony daemon..." > /dev/kmsg
-    mkdir -p /etc/chrony
-    cat > /etc/chrony/chrony.conf << EOF
+    # PTP_KVM is only available with KVM
+    if test -c /dev/ptp0; then
+        logmsg "Starting chrony daemon..."
+        mkdir -p /etc/chrony
+        cat > /etc/chrony/chrony.conf << EOF
 # This file was autogenerated by EVE
 refclock PHC /dev/ptp0 poll 2
 driftfile /var/lib/chrony/chrony.drift
@@ -153,13 +245,21 @@ ntsdumpdir /var/lib/chrony
 logdir /var/log/chrony
 maxupdateskew 100.0
 EOF
-    /usr/sbin/chronyd -u root -f /etc/chrony/chrony.conf &&
-        echo "chronyd started!" > /dev/kmsg ||
-        echo "chronyd NOT started!" > /dev/ksmg
-  else
-    echo "PTP_KVM device is not available!" > /dev/kmsg
-  fi
+        if /usr/sbin/chronyd -u root -f /etc/chrony/chrony.conf; then
+            logmsg "chronyd started!"
+        else
+            logmsg "chronyd NOT started!"
+        fi
+    else
+        logmsg "PTP_KVM device is not available!"
+    fi
 fi
+
+# Now for main container in foreground
+oci=0
+MNT=/mnt
+#shellcheck source=/dev/null
+. "$MNT/environment"
 
 run_agetty_loop()
 {
@@ -168,41 +268,44 @@ run_agetty_loop()
     done
 }
 
-echo "Executing agetty"
+logmsg "Executing agetty"
 run_agetty_loop &
+# XXX wait for agetty
+sleep 5
 
-cmd=`cat /mnt/cmdline`
-echo "Executing $cmd"
-
+cmd=$(cat "$MNT"/cmdline)
 ug="0 0"
-if [ -f /mnt/ug ]; then
-  ug=$(cat /mnt/ug)
+if [ -f "$MNT"/ug ]; then
+    ug=$(cat "$MNT"/ug)
 fi
-echo "Executing with uid gid: $ug"
+logmsg "Executing $cmd with uid gid: $ug"
 
+logmsg "Starting on $MNT in foreground"
 # File which will contain a PID of the started entrypoint container
 # process. File will be used for the `eve-enter-container` script.
 pid_file="/mnt/entrypoint-pid"
 
 if grep -q "console=tty0" /proc/cmdline; then
-  #shellcheck disable=SC2086
-  #we have tty0 console primary, so will add output to hvc0 for logging
-  eval /chroot2 /mnt/rootfs "${WORKDIR:-/}" $ug $pid_file $cmd 2>&1 | tee -i /dev/hvc0
+    logmsg "Have console=tty0"
+    #shellcheck disable=SC2086
+    #we have tty0 console primary, so will add output to hvc0 for logging
+    eval /chroot2 "$MNT"/rootfs "${WORKDIR:-/}" $ug $pid_file $cmd 2>&1 | tee -i /dev/hvc0
 else
-  #shellcheck disable=SC2086
-  eval /chroot2 /mnt/rootfs "${WORKDIR:-/}" $ug $pid_file $cmd <> /dev/console 2>&1
+    logmsg "Using /dev/console"
+    #shellcheck disable=SC2086
+    eval /chroot2 "$MNT"/rootfs "${WORKDIR:-/}" $ug $pid_file $cmd <> /dev/console 2>&1
 fi
 chroot_ret=$?
 
-# Container exited, final lines
+# Main container exited, final lines
 
 if test "$EVE_CONTAINER_NO_POWEROFF" = "1"; then
   # Don't power off, wait for further debugging
-  echo "chroot2 exited with $chroot_ret, the init-initrd idles, please attach to the 'prime-cons' console of the hosting Vm for further debugging"
+  logmsg "chroot2 exited with $chroot_ret, the init-initrd idles, please attach to the 'prime-cons' console of the hosting Vm for further debugging"
   sleep infinity
 else
   # Power off is the default behavior
-  echo "chroot2 exited with $chroot_ret, the init-initrd is about to quit by calling /sbin/poweroff, which shuts the whole VM down"
+  logmsg "chroot2 exited with $chroot_ret, the init-initrd is about to quit by calling /sbin/poweroff, which shuts the whole VM down"
 fi
 
 # Do poweroff to avoid kernel panic on init exit

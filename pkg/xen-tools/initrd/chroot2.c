@@ -71,9 +71,13 @@ int main(int argc, char **argv)
     if (setsid() < 0)
         err(-1, "setsid() failed:");
 
-    if (ioctl(0, TIOCSCTTY, 1) < 0)
+    if (ioctl(0, TIOCSCTTY, 1) < 0) {
+#if 0
         err(-1, "ioctl(TIOCSCTTY) failed:");
-
+else
+        warn("ioctl(TIOCSCTTY) failed:");
+#endif
+    }
     uid = strtol(argv[3], &endptr, 10);
     gid = strtol(argv[4], &endptr, 10);
 

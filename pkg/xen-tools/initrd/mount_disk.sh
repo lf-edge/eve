@@ -1,15 +1,29 @@
 #!/bin/sh
-
+# Usage: mount_disk.sh <oci number>
+# where <oci number> is zero for the main container.
 # we expect the same order in block device enumeration (we put them in order in VM's configuration)
 # and in /mnt/mountPoints file (where mount points defined)
+
+if [ $# != 1 ]; then
+    echo "Missing oci argument"
+    exit 1
+fi
+oci=$1
+if [ "$oci" = 0 ]; then
+    MNT=/mnt
+else
+    MNT="/mnt$oci"
+fi
+echo "Processing for container $oci: $MNT"
 
 mountPointLineNo=1
 find /sys/block/ -maxdepth 1 -regex '.*[sv]d.*' -exec basename '{}' ';'| sort | while read -r disk ; do
   echo "Processing $disk"
-  targetDir=$(sed "${mountPointLineNo}q;d" /mnt/mountPoints)
+  targetDir=$(sed "${mountPointLineNo}q;d" "$MNT/mountPoints")
   if [ -z "$targetDir" ]
     then
       echo "Error while mounting: No Mount-Point found for $disk."
+      # XXX continue?
       exit 0
   fi
 
@@ -32,7 +46,7 @@ find /sys/block/ -maxdepth 1 -regex '.*[sv]d.*' -exec basename '{}' ';'| sort | 
   else
     accessRight=ro
   fi
-  stage2TargetPath="/mnt/rootfs$targetDir"
+  stage2TargetPath="$MNT/rootfs$targetDir"
   echo "Mounting /dev/$disk on $stage2TargetPath with access: $accessRight"
   mkdir -p "$stage2TargetPath"
   mount -O remount,$accessRight "/dev/$disk" "$stage2TargetPath" && \

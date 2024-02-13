@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"text/template"
 	"time"
@@ -261,7 +262,7 @@ const qemuDiskTemplate = `
 [device "fs{{.DiskID}}"]
   driver = "virtio-9p-pci"
   fsdev = "fsdev{{.DiskID}}"
-  mount_tag = "share_dir"
+  mount_tag = "{{.Tag9P}}"
   addr = "{{printf "0x%x" .PCIId}}"
 {{else}}
 [device "pci.{{.PCIId}}"]
@@ -673,24 +674,50 @@ func (ctx KvmContext) Setup(status types.DomainStatus, config types.DomainConfig
 		"-readconfig", file.Name(),
 		"-pidfile", kvmStateDir+domainName+"/pid")
 
-	spec, err := ctx.setupSpec(&status, &config, status.OCIConfigDir)
-	if err != nil {
-		return logError("failed to load OCI spec for domain %s: %v", status.DomainName, err)
+	var spec0 containerd.OCISpec // The main container for the app instance
+	for _, dcs := range status.ContainerList {
+		ociConfigDir := dcs.OCIConfigDir
+		logrus.Infof("XXX processing %d dir %s", dcs.ContainerIndex, ociConfigDir)
+		spec, err := ctx.setupSpec(&status, &config, ociConfigDir)
+		if err != nil {
+			return logError("failed to load OCI spec for domain %s oci %d %s: %v",
+				status.DomainName, dcs.ContainerIndex, ociConfigDir, err)
+		}
+		if dcs.ContainerIndex == 0 {
+			spec0 = spec
+		}
+		if err = spec.AddLoader("/containers/services/xen-tools"); err != nil {
+			return logError("failed to add kvm hypervisor loader to domain %s oci %d %s: %v",
+				status.DomainName, dcs.ContainerIndex, ociConfigDir, err)
+		}
 	}
-	if err = spec.AddLoader("/containers/services/xen-tools"); err != nil {
-		return logError("failed to add kvm hypervisor loader to domain %s: %v", status.DomainName, err)
+	// XXX find better code structure
+	if spec0 == nil {
+		// Not a container
+		var err error
+		spec0, err = ctx.setupSpec(&status, &config, "")
+		if err != nil {
+			return logError("failed to load OCI spec for domain %s: %v",
+				status.DomainName, err)
+		}
+		if err = spec0.AddLoader("/containers/services/xen-tools"); err != nil {
+			return logError("failed to add kvm hypervisor loader to domain %s: %v",
+				status.DomainName, err)
+		}
 	}
+
+	// XXX potentially IoAdpaters per OCI? Would require different EVE API
 	overhead, err := vmmOverhead(domainName, domainUUID, int64(config.Memory), int64(config.VMMMaxMem), int64(config.MaxCpus), int64(config.VCpus), config.IoAdapterList, aa, globalConfig)
 	if err != nil {
 		return logError("vmmOverhead() failed for domain %s: %v",
 			status.DomainName, err)
 	}
 	logrus.Debugf("Qemu overhead for domain %s is %d bytes", status.DomainName, overhead)
-	spec.AdjustMemLimit(config, overhead)
-	spec.Get().Process.Args = args
+	spec0.AdjustMemLimit(config, overhead)
+	spec0.Get().Process.Args = args
 	logrus.Infof("Hypervisor args: %v", args)
 
-	if err := spec.CreateContainer(true); err != nil {
+	if err := spec0.CreateContainer(true); err != nil {
 		return logError("Failed to create container for task %s from %v: %v", status.DomainName, config, err)
 	}
 
@@ -700,6 +727,11 @@ func (ctx KvmContext) Setup(status types.DomainStatus, config types.DomainConfig
 // CreateDomConfig creates a domain config (a qemu config file, typically named something like xen-%d.cfg)
 func (ctx KvmContext) CreateDomConfig(domainName string, config types.DomainConfig, status types.DomainStatus,
 	diskStatusList []types.DiskStatus, aa *types.AssignableAdapters, file *os.File) error {
+	var extra string
+	numOCI := len(status.ContainerList)
+	if numOCI > 1 {
+		extra = fmt.Sprintf(" max_oci=%d", numOCI-1)
+	}
 	tmplCtx := struct {
 		Machine string
 		types.DomainConfig
@@ -707,6 +739,7 @@ func (ctx KvmContext) CreateDomConfig(domainName string, config types.DomainConf
 	}{ctx.devicemodel, config, status}
 	tmplCtx.DomainConfig.Memory = (config.Memory + 1023) / 1024
 	tmplCtx.DomainConfig.DisplayName = domainName
+	tmplCtx.DomainConfig.ExtraArgs += extra
 
 	// render global device model settings
 	t, _ := template.New("qemu").Parse(qemuConfTemplate)
@@ -719,6 +752,7 @@ func (ctx KvmContext) CreateDomConfig(domainName string, config types.DomainConf
 		Machine                          string
 		PCIId, DiskID, SATAId, NumQueues int
 		AioType                          string
+		Tag9P                            string
 		types.DiskStatus
 	}{Machine: ctx.devicemodel, PCIId: 4, DiskID: 0, SATAId: 0, AioType: "io_uring", NumQueues: config.VCpus}
 
@@ -727,6 +761,8 @@ func (ctx KvmContext) CreateDomConfig(domainName string, config types.DomainConf
 		Parse(qemuDiskTemplate)
 	for _, ds := range diskStatusList {
 		if ds.Devtype == "" {
+			// XXX doesn't all 9p fall in here?
+			logrus.Infof("XXX skipping DiskStatus: %+v", ds)
 			continue
 		}
 		if ds.Devtype == "AppCustom" {
@@ -734,7 +770,14 @@ func (ctx KvmContext) CreateDomConfig(domainName string, config types.DomainConf
 			// differently - as a download url in zedrouter
 			continue
 		}
+		tag := "share_dir"
+		if diskContext.DiskID != 0 {
+			tag += strconv.Itoa(diskContext.DiskID)
+		}
+		diskContext.Tag9P = tag
 		diskContext.DiskStatus = ds
+		logrus.Infof("XXX tag %s DiskStatus %d: %+v",
+			tag, diskContext.DiskID, ds)
 		if err := t.Execute(file, diskContext); err != nil {
 			return logError("can't write to config file %s (%v)", file.Name(), err)
 		}

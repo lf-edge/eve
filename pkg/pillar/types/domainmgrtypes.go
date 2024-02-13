@@ -279,11 +279,23 @@ type DomainStatus struct {
 	ConfigFailed   bool
 	BootFailed     bool
 	AdaptersFailed bool
-	OCIConfigDir   string                     // folder holding an OCI Image config for this domain (empty string means no config)
-	EnvVariables   map[string]string          // List of environment variables to be set in container
-	WritableFiles  []cloudconfig.WritableFile // List of files from CloudInit scripts to be created in container
-	VmConfig                                  // From DomainConfig
 	Service        bool
+	VmConfig       // From DomainConfig
+
+	// If this is using the container runtime we have one entry
+	// per OCI aka per container.
+	ContainerList []DomainContainerStatus
+
+	// TBD: shouldn't these be per OCI? Would require controller and API changes
+	EnvVariables  map[string]string          // List of environment variables to be set in container
+	WritableFiles []cloudconfig.WritableFile // List of files from CloudInit scripts to be created in container
+}
+
+// DomainContainerStatus contains the information for one OCI container
+type DomainContainerStatus struct {
+	ContainerIndex int // Monotonically increasing from zero
+	FileLocation   string
+	OCIConfigDir   string // folder holding an OCI Image config for this domain
 }
 
 func (status DomainStatus) Key() string {
