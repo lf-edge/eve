@@ -23,6 +23,7 @@ require (
 	github.com/google/gopacket v1.1.19
 	github.com/gorilla/websocket v1.4.2
 	github.com/grandcat/zeroconf v1.0.0
+	github.com/hashicorp/go-envparse v0.1.0
 	github.com/jackwakefield/gopac v1.0.2
 	github.com/jaypipes/ghw v0.8.0
 	github.com/lf-edge/edge-containers v0.0.0-20240207093504-5dfda0619b80

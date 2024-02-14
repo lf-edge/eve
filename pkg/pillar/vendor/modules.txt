@@ -516,6 +516,9 @@ github.com/gorilla/websocket
 # github.com/grandcat/zeroconf v1.0.0
 ## explicit; go 1.13
 github.com/grandcat/zeroconf
+# github.com/hashicorp/go-envparse v0.1.0
+## explicit; go 1.13
+github.com/hashicorp/go-envparse
 # github.com/in-toto/in-toto-golang v0.5.0
 ## explicit; go 1.17
 github.com/in-toto/in-toto-golang/in_toto
