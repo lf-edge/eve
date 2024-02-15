@@ -1,7 +1,7 @@
-KERNEL_COMMIT_amd64_v5.10.186_generic = e201acddaa99
-KERNEL_COMMIT_amd64_v6.1.38_generic = 3e39cb4a2fc4
-KERNEL_COMMIT_amd64_v6.1.38_rt = 476efe3129a3
-KERNEL_COMMIT_arm64_v5.10.104_nvidia = 68c24df0b352
-KERNEL_COMMIT_arm64_v5.10.186_generic = 7d82e10c7d66
-KERNEL_COMMIT_arm64_v6.1.38_generic = d888a2ed5db3
+KERNEL_COMMIT_amd64_v5.10.186_generic = be89a9e63306
+KERNEL_COMMIT_amd64_v6.1.38_generic = d586ca2d3f2e
+KERNEL_COMMIT_amd64_v6.1.38_rt = 49dba60a59d9
+KERNEL_COMMIT_arm64_v5.10.104_nvidia = c21d5a4dd498
+KERNEL_COMMIT_arm64_v5.10.186_generic = 6a861e0433a6
+KERNEL_COMMIT_arm64_v6.1.38_generic = 92466d23a9bf
 KERNEL_COMMIT_riscv64_v6.1.38_generic = ad6a4589904a
