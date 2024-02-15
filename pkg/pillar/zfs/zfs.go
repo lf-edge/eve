@@ -60,6 +60,42 @@ func CreateDataset(datasetName string) error {
 	return MountDataset(datasetName)
 }
 
+// CreateSnapshot creates a snapshot of the dataset
+// Returns the name of the created snapshot that can be used to rollback
+func CreateSnapshot(datasetName string) (snapshotName string, err error) {
+	now := time.Now()
+	snapshotName = now.Format("20060102-150405")
+	// add milliseconds to snapshot name
+	snapshotName += fmt.Sprintf("%03d", now.Nanosecond()/int(time.Millisecond))
+	snapshotPath := datasetName + "@" + snapshotName
+	props := make(map[libzfs.Prop]libzfs.Property) // Just use default properties
+	snap, err := libzfs.DatasetSnapshot(snapshotPath, true, props)
+	if err != nil {
+		return
+	}
+	defer snap.Close()
+	snapshotName, err = snap.Path()
+	return
+}
+
+// RollbackToSnapshot rolls back the dataset to the snapshot
+func RollbackToSnapshot(datasetName, snapshotName string) error {
+	// Find the snapshot dataset by name
+	snap, err := libzfs.DatasetOpen(snapshotName)
+	if err != nil {
+		return err
+	}
+	defer snap.Close()
+	dataset, err := libzfs.DatasetOpen(datasetName)
+	if err != nil {
+		return err
+	}
+	defer dataset.Close()
+	// Rollback to the snapshot
+	err = dataset.Rollback(&snap, false)
+	return err
+}
+
 // IsDatasetTypeZvol returns true if dataset is a zvol
 func IsDatasetTypeZvol(datasetName string) (bool, error) {
 	dataset, err := libzfs.DatasetOpen(datasetName)
