@@ -434,7 +434,7 @@ func (client *Client) CtrGetContainerMetrics(ctx context.Context, containerID st
 		return nil, err
 	}
 
-	data, err := typeurl.UnmarshalAny(m.Data)
+	data, err := typeurl.UnmarshalByTypeURL(m.Data.GetTypeUrl(), m.Data.GetValue())
 	if err != nil {
 		return nil, err
 	}

@@ -43,16 +43,26 @@ var bufPool = sync.Pool{
 	},
 }
 
+type reader interface {
+	Reader() io.Reader
+}
+
 // NewReader returns a io.Reader from a ReaderAt
 func NewReader(ra ReaderAt) io.Reader {
-	rd := io.NewSectionReader(ra, 0, ra.Size())
-	return rd
+	if rd, ok := ra.(reader); ok {
+		return rd.Reader()
+	}
+	return io.NewSectionReader(ra, 0, ra.Size())
 }
 
 // ReadBlob retrieves the entire contents of the blob from the provider.
 //
 // Avoid using this for large blobs, such as layers.
 func ReadBlob(ctx context.Context, provider Provider, desc ocispec.Descriptor) ([]byte, error) {
+	if int64(len(desc.Data)) == desc.Size && digest.FromBytes(desc.Data) == desc.Digest {
+		return desc.Data, nil
+	}
+
 	ra, err := provider.ReaderAt(ctx, desc)
 	if err != nil {
 		return nil, err
@@ -321,4 +331,15 @@ func copyWithBuffer(dst io.Writer, src io.Reader) (written int64, err error) {
 		}
 	}
 	return
+}
+
+// Exists returns whether an attempt to access the content would not error out
+// with an ErrNotFound error. It will return an encountered error if it was
+// different than ErrNotFound.
+func Exists(ctx context.Context, provider InfoProvider, desc ocispec.Descriptor) (bool, error) {
+	_, err := provider.Info(ctx, desc.Digest)
+	if errdefs.IsNotFound(err) {
+		return false, nil
+	}
+	return err == nil, err
 }

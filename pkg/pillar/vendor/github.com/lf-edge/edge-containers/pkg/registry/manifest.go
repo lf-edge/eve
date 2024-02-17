@@ -171,10 +171,9 @@ func (a Artifact) Manifest(format Format, configOpts ConfigOpts, ref string, leg
 			configArch = DefaultArch
 		}
 		config := ocispec.Image{
-			Created:      &created,
-			Author:       configAuthor,
-			Architecture: configArch,
-			OS:           configOS,
+			Created:  &created,
+			Author:   configAuthor,
+			Platform: ocispec.Platform{Architecture: configArch, OS: configOS},
 			RootFS: ocispec.RootFS{
 				Type:    "layers",
 				DiffIDs: layers,
