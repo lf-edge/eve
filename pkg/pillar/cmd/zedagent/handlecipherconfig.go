@@ -63,6 +63,7 @@ func parseCipherContext(ctx *getconfigContext,
 		if !found {
 			log.Functionf("parseCipherContext: deleting %s", idStr)
 			delete(ctx.cipherContexts, idStr)
+			unpublishCipherContext(ctx, idStr)
 		}
 	}
 
@@ -80,6 +81,7 @@ func parseCipherContext(ctx *getconfigContext,
 			ControllerCertHash: cfgCipherContext.GetControllerCertHash(),
 		}
 		ctx.cipherContexts[context.Key()] = context
+		publishCipherContext(ctx, context)
 	}
 	log.Functionf("parsing cipher context done")
 }
@@ -128,4 +130,25 @@ func parseCipherBlock(ctx *getconfigContext, key string, cfgCipherBlock *zcommon
 
 	log.Functionf("parseCipherBlock(%s) done", key)
 	return cipherBlock
+}
+
+func publishCipherContext(ctx *getconfigContext,
+	status types.CipherContext) {
+	key := status.Key()
+	log.Tracef("publishCipherContext(%s)", key)
+	pub := ctx.pubCipherContext
+	pub.Publish(key, status)
+	log.Tracef("publishCipherContext(%s) done", key)
+}
+
+func unpublishCipherContext(ctx *getconfigContext, key string) {
+	log.Tracef("unpublishCipherContext(%s)", key)
+	pub := ctx.pubCipherContext
+	c, _ := pub.Get(key)
+	if c == nil {
+		log.Errorf("unpublishCipherContext(%s) not found", key)
+		return
+	}
+	pub.Unpublish(key)
+	log.Tracef("unpublishCipherContext(%s) done", key)
 }
