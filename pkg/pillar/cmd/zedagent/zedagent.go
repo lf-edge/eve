@@ -1185,6 +1185,7 @@ func initPublications(zedagentCtx *zedagentContext) {
 		log.Fatal(err)
 	}
 	getconfigCtx.pubCipherContext.ClearRestarted()
+	populateCipherContexts(getconfigCtx)
 
 	// for ContentTree config Publisher
 	getconfigCtx.pubContentTreeConfig, err = ps.NewPublication(
