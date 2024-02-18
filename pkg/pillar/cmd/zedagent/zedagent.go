@@ -1122,6 +1122,18 @@ func initPublications(zedagentCtx *zedagentContext) {
 	}
 	getconfigCtx.pubControllerCert.ClearRestarted()
 
+	// for CipherContextStatus Publisher
+	getconfigCtx.pubCipherContext, err = ps.NewPublication(
+		pubsub.PublicationOptions{
+			AgentName:  agentName,
+			Persistent: true,
+			TopicType:  types.CipherContext{},
+		})
+	if err != nil {
+		log.Fatal(err)
+	}
+	getconfigCtx.pubCipherContext.ClearRestarted()
+
 	// for ContentTree config Publisher
 	getconfigCtx.pubContentTreeConfig, err = ps.NewPublication(
 		pubsub.PublicationOptions{
