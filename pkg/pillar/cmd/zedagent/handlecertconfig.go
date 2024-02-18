@@ -83,8 +83,16 @@ func parseControllerCerts(ctx *zedagentContext, contents []byte) (changed bool, 
 				break
 			}
 		}
-		if !found {
-			log.Functionf("parseControllerCerts: deleting %s", config.Key())
+		if found {
+			continue
+		}
+		// Is the ControllerCert in use?
+		if lookupCipherContextByCCH(ctx.getconfigCtx, configHash) != nil {
+			log.Noticef("ControllerCert %s hash %s in use",
+				config.Key(), string(configHash))
+		} else {
+			log.Noticef("ControllerCert %s hash %s delete",
+				config.Key(), string(configHash))
 			unpublishControllerCert(ctx.getconfigCtx, config.Key())
 			changed = true
 		}
