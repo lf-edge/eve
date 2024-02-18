@@ -89,6 +89,7 @@ type getconfigContext struct {
 	pubDatastoreConfig        pubsub.Publication
 	pubNetworkInstanceConfig  pubsub.Publication
 	pubControllerCert         pubsub.Publication
+	pubCipherContext          pubsub.Publication
 	subContentTreeStatus      pubsub.Subscription
 	pubContentTreeConfig      pubsub.Publication
 	subVolumeStatus           pubsub.Subscription
