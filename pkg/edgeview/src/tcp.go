@@ -9,6 +9,7 @@ import (
 	"crypto/cipher"
 	"crypto/rand"
 	"crypto/rsa"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -434,7 +435,23 @@ func setAndStartProxyTCP(opt string) {
 func generateSymmetricKey() ([]byte, error) {
 	key := make([]byte, 32) // 256-bit key for AES-256
 	_, err := rand.Read(key)
-	return key, err
+	if err != nil {
+		return nil, err
+	}
+	hexKey := hex.EncodeToString(key) // 64-character hexadecimal string
+
+	// Generate a random byte
+	var b [1]byte
+	_, err = rand.Read(b[:])
+	if err != nil {
+		return nil, err
+	}
+
+	// Convert the byte to an integer and take the modulus to get it within the range 0-31
+	start := int(b[0]) % 32
+
+	// Return a 32-character substring starting from the random index
+	return []byte(hexKey[start : start+32]), nil
 }
 
 func encryptFile(symKey, inputData []byte) ([]byte, error) {
@@ -521,7 +538,7 @@ func opensslEncryptConfig(symKey []byte, yamlString string) ([]byte, error) {
 	cmd := exec.Command(name, args...)
 	err = cmd.Run()
 	if err != nil {
-		log.Errorf("opensslEncryptConfig: run openssl error %v", err)
+		log.Errorf("opensslEncryptConfig: run openssl, args %v, error %v", args, err)
 		_ = os.Remove(tmpCfgFile)
 		_ = os.Remove(tmpCfgFileEnc)
 		return nil, err
@@ -568,7 +585,7 @@ func genKubeConfigFile(kubeport int) (string, error) {
 
 	encfileBytes, err := opensslEncryptConfig(symmetricKey, yamlString)
 	if err != nil {
-		log.Errorf("genKubeConfigFile: openssl error %v", err)
+		log.Errorf("genKubeConfigFile: openssl, kubeport %d, symkey %v, error %v", kubeport, symmetricKey, err)
 		return "", err
 	}
 
