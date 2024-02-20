@@ -5,7 +5,7 @@
 #
 
 # Script version, don't forget to bump up once something is changed
-VERSION=13
+VERSION=14
 
 # Add required packages here, it will be passed to "apk add".
 # Once something added here don't forget to add the same package
@@ -303,6 +303,22 @@ collect_kube_info()
     fi
 }
 
+collect_longhorn_info()
+{
+    type=$(cat /run/eve-hv-type)
+    if [ "$type" != "kubevirt" ]; then
+        return
+    fi
+    echo "- Collecting Longhorn specific info"
+    {
+        echo "  - longhorn support bundle "
+        # Longhorn issue reports have seen hangs generating this data 
+        # when nodes are down, or due to longhorn bugs.  
+        # Give up after 5min, and allow remaining system data to be collected.  
+        timeout 300s eve exec kube /usr/bin/longhorn-generate-support-bundle.sh
+    } > "$DIR/longhorn-info" 2>&1
+}
+
 # Copy itself
 cp "${0}" "$DIR"
 
@@ -385,6 +401,7 @@ collect_zfs_info
 
 # Kube part
 collect_kube_info
+collect_longhorn_info
 
 # Make a tarball
 # --exclude='root-run/run'              /run/run/run/.. exclude symbolic link loop
