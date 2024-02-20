@@ -102,6 +102,9 @@ type volumemgrContext struct {
 
 	// cli options
 	versionPtr *bool
+
+	// kube mode
+	hvTypeKube bool
 }
 
 func (ctxPtr *volumemgrContext) lookupVolumeStatusByUUID(id string) *types.VolumeStatus {
@@ -140,6 +143,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		deferContentDelete: 0,
 		globalConfig:       types.DefaultConfigItemValueMap(),
 		persistType:        vault.ReadPersistType(),
+		hvTypeKube:         base.IsHVTypeKube(),
 	}
 	agentbase.Init(&ctx, logger, log, agentName,
 		agentbase.WithArguments(arguments))
@@ -690,9 +694,15 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 // gcUnusedInitObjects this method will garbage collect all unused resource during init
 func gcUnusedInitObjects(ctx *volumemgrContext) {
 	log.Functionf("gcUnusedInitObjects")
-	gcBlobStatus(ctx)
-	gcVerifyImageConfig(ctx)
-	gcImagesFromCAS(ctx)
+	// TODO: Need to handle GC for kubevirt eve, for now disable it.
+	// There are images and blobs downloaded by kubernetes and eve is not aware of those
+	// We use same containerd repository to store those images.
+	// so for now block GC until we find a proper solution (working on it)
+	if !ctx.hvTypeKube {
+		gcBlobStatus(ctx)
+		gcVerifyImageConfig(ctx)
+		gcImagesFromCAS(ctx)
+	}
 }
 
 func handleVerifierRestarted(ctxArg interface{}, restartCounter int) {
