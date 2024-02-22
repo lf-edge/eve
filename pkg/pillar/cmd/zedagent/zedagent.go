@@ -429,14 +429,15 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	// XXX defer this until we have some config from cloud or saved copy
 	getconfigCtx.pubAppInstanceConfig.SignalRestarted()
 
+	// Initialize remote attestation context. Do this before we get events
+	// from the AttestQuote and EncryptedKeyFromDevice subscriptions
+	attestModuleInitialize(zedagentCtx)
+
 	// With device UUID, zedagent is ready to initialize and activate all subscriptions.
 	initPostOnboardSubs(zedagentCtx)
 
 	//initialize cipher processing block
 	cipherModuleInitialize(zedagentCtx)
-
-	//initialize remote attestation context
-	attestModuleInitialize(zedagentCtx)
 
 	// Pick up debug aka log level before we start real work
 	waitUntilGCReady(zedagentCtx, stillRunning)
