@@ -436,6 +436,9 @@ func configTimerTask(getconfigCtx *getconfigContext, handleChannel chan interfac
 			if getconfigCtx.configProcessingSkipFlag {
 				log.Noticef("config processing skip flag set")
 			}
+			if ctx.publishedEdgeNodeCerts && !ctx.publishedAttestEscrow {
+				log.Warning("Not yet published AttestEscrow")
+			}
 		}
 		ctx.ps.StillRunning(wdName, warningTime, errorTime)
 	}

@@ -203,8 +203,11 @@ type zedagentContext struct {
 	// Track the counter from force.fallback.counter to detect changes
 	forceFallbackCounter int
 
-	// Interlock with controller to ensure we get the encrypted secrets
+	// Used for retry of EdgeNodeCerts
 	publishedEdgeNodeCerts bool
+
+	// Used for retry of SendAttestEscrow
+	publishedAttestEscrow bool
 
 	attestationTryCount int
 	// cli options
