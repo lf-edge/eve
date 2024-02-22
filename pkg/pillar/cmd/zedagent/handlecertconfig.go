@@ -423,8 +423,6 @@ func publishEdgeNodeCertsToController(ctx *zedagentContext) {
 	log.Tracef("publishEdgeNodeCertsToController: after send, total elapse sec %v",
 		time.Since(startPubTime).Seconds())
 	ctx.cipherCtx.iteration++
-	// XXX remove log?
-	log.Noticef("Maybe sent EdgeNodeCerts")
 	// The getDeferredSentHandlerFunction will set ctx.publishedEdgeNodeCerts
 	// when the message has been sent.
 }
