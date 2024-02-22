@@ -470,6 +470,9 @@ func configTimerTask(getconfigCtx *getconfigContext, handleChannel chan interfac
 			if getconfigCtx.configProcessingRV != configOK {
 				log.Noticef("config processing flag is not OK: %s", getconfigCtx.configProcessingRV)
 			}
+			if ctx.publishedEdgeNodeCerts && !ctx.publishedAttestEscrow {
+				log.Warning("Not yet published AttestEscrow")
+			}
 		}
 		ctx.ps.StillRunning(wdName, warningTime, errorTime)
 	}

@@ -450,13 +450,14 @@ func (server *VerifierImpl) SendAttestEscrow(ctx *zattest.Context) error {
 	}
 	// bail if V2API is not supported
 	if !zedcloud.UseV2API() {
+		attestCtx.zedagentCtx.publishedAttestEscrow = true
 		return zattest.ErrNoVerifier
 	}
 	if attestCtx.SkipEscrow {
 		log.Notice("[ATTEST] Escrow successful skipped")
 		return nil
 	}
-	if attestCtx.EscrowData == nil {
+	if attestCtx.EscrowData == nil || len(attestCtx.EscrowData) == 0 {
 		errorDescription := types.ErrorDescription{Error: "[ATTEST] No escrow data"}
 		log.Error(errorDescription.Error)
 		setAttestErrorAndTriggerInfo(ctx, errorDescription)
@@ -537,6 +538,7 @@ func (server *VerifierImpl) SendAttestEscrow(ctx *zattest.Context) error {
 		return zattest.ErrITokenMismatch
 	case attest.AttestStorageKeysResponseCode_ATTEST_STORAGE_KEYS_RESPONSE_CODE_SUCCESS:
 		log.Notice("[ATTEST] Escrow successful")
+		attestCtx.zedagentCtx.publishedAttestEscrow = true
 		ctx.ClearError()
 		triggerPublishDevInfo(attestCtx.zedagentCtx)
 		// we sent storage keys successfully
@@ -800,7 +802,7 @@ func handleEncryptedKeyFromDeviceImpl(ctxArg interface{}, key string,
 	attestCtx := ctx.attestCtx
 	attestCtx.EscrowData = vaultKey.EncryptedVaultKey
 	attestCtx.SkipEscrow = false
-	if len(attestCtx.EscrowData) == 0 {
+	if !vaultKey.IsTpmEnabled {
 		attestCtx.SkipEscrow = true
 	}
 
