@@ -83,6 +83,7 @@ func (status VaultStatus) LogKey() string {
 type EncryptedVaultKeyFromDevice struct {
 	Name              string
 	EncryptedVaultKey []byte // empty if no TPM enabled
+	IsTpmEnabled      bool
 }
 
 // Key returns name of the vault corresponding to this object
