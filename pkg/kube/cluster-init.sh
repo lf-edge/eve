@@ -112,6 +112,7 @@ convert_to_k8s_compatible() {
 }
 
 wait_for_device_name() {
+  logmsg "Waiting for DeviceName from controller..."
   EdgeNodeInfoPath="/persist/status/zedagent/EdgeNodeInfo/global.json"
   while true; do
     if [ -f $EdgeNodeInfoPath ]; then
@@ -121,7 +122,6 @@ wait_for_device_name() {
         break
       fi
     fi
-    echo "Waiting for DeviceName from controller..."
     sleep 5
   done
 
