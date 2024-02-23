@@ -29,6 +29,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/agentbase"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/base"
+	"github.com/lf-edge/eve/pkg/pillar/canbus"
 	"github.com/lf-edge/eve/pkg/pillar/cas"
 	"github.com/lf-edge/eve/pkg/pillar/cipher"
 	"github.com/lf-edge/eve/pkg/pillar/containerd"
@@ -2818,6 +2819,24 @@ func handlePhysicalIOAdapterListImpl(ctxArg interface{}, key string,
 					}
 					aa.AddOrUpdateIoBundle(log, vfIb)
 				}
+			} else if ib.Type == types.IoVCAN {
+				// Initialize (create and enable) Virtual CAN device
+				err := setupVCAN(ib)
+				if err != nil {
+					err = fmt.Errorf("setupVCAN: %w", err)
+					log.Error(err)
+					ib.Error = err.Error()
+					ib.ErrorTime = time.Now()
+				}
+			} else if ib.Type == types.IoCAN {
+				// Initialize physical CAN device
+				err := setupCAN(ib)
+				if err != nil {
+					err = fmt.Errorf("setupCAN: %w", err)
+					log.Error(err)
+					ib.Error = err.Error()
+					ib.ErrorTime = time.Now()
+				}
 			}
 		}
 		log.Functionf("handlePhysicalIOAdapterListImpl: initialized to get len %d",
@@ -3003,6 +3022,9 @@ func updatePortAndPciBackIoBundle(ctx *domainContext, ib *types.IoBundle) (chang
 			keepInHost = true
 		}
 		if ib.Type == types.IoNetEthPF {
+			keepInHost = true
+		}
+		if ib.Type == types.IoCAN || ib.Type == types.IoVCAN {
 			keepInHost = true
 		}
 	}
@@ -3307,6 +3329,36 @@ func removeUSBfromKernel() bool {
 		}
 	}
 	return ret
+}
+
+// Initialize (create and enable) Virtual CAN device
+func setupVCAN(ib *types.IoBundle) error {
+	vcan, err := canbus.AddVCANLink(ib.Ifname)
+	if err != nil {
+		return err
+	}
+	err = canbus.LinkSetUp(vcan)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+// Initialize physical CAN device
+func setupCAN(ib *types.IoBundle) error {
+	canIf, err := canbus.GetCANLink(ib.Ifname)
+	if err != nil {
+		return err
+	}
+	err = canbus.SetupCAN(canIf, ib.Cbattr)
+	if err != nil {
+		return err
+	}
+	err = canbus.LinkSetUp(canIf)
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 func doModprobe(driver string, add bool) error {
