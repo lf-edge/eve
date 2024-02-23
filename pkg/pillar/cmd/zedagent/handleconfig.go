@@ -162,8 +162,6 @@ type getconfigContext struct {
 	currentMetricInterval uint32
 
 	configEdgeview *types.EdgeviewConfig // edge-view config save
-
-	cipherContexts map[string]types.CipherContext
 }
 
 func (ctx *getconfigContext) getCachedResolvedIPs(hostname string) []types.CachedIP {

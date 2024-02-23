@@ -17,21 +17,11 @@ import (
 
 var cipherCtxHash []byte
 
-// populateCipherContexts: fill in local map from persistent publication on boot
-func populateCipherContexts(ctx *getconfigContext) {
+// lookupCipherContextByCCH: lookup by ControllerCertHash
+func lookupCipherContextByCCH(ctx *getconfigContext, cch []byte) *types.CipherContext {
 	items := ctx.pubCipherContext.GetAll()
 	for _, item := range items {
 		context := item.(types.CipherContext)
-		ctx.cipherContexts[context.Key()] = context
-		log.Noticef("populateCipherContext found %s",
-			context.Key())
-	}
-}
-
-// lookupCipherContextByCCH: lookup by ControllerCertHash
-// The Key is a UUID so need to walk map
-func lookupCipherContextByCCH(ctx *getconfigContext, cch []byte) *types.CipherContext {
-	for _, context := range ctx.cipherContexts {
 		if bytes.Equal(context.ControllerCertHash, cch) {
 			return &context
 		}
@@ -73,7 +63,8 @@ func parseCipherContext(ctx *getconfigContext,
 	invalidateCipherContextDependenciesList()
 
 	// First look for deleted ones
-	for idStr := range ctx.cipherContexts {
+	items := ctx.pubCipherContext.GetAll()
+	for idStr := range items {
 		found := false
 		for _, cfgCipherContext := range cfgCipherContextList {
 			if cfgCipherContext.GetContextId() == idStr {
@@ -84,7 +75,6 @@ func parseCipherContext(ctx *getconfigContext,
 		// cipherContext not found, delete
 		if !found {
 			log.Functionf("parseCipherContext: deleting %s", idStr)
-			delete(ctx.cipherContexts, idStr)
 			unpublishCipherContext(ctx, idStr)
 		}
 	}
@@ -102,7 +92,6 @@ func parseCipherContext(ctx *getconfigContext,
 			DeviceCertHash:     cfgCipherContext.GetDeviceCertHash(),
 			ControllerCertHash: cfgCipherContext.GetControllerCertHash(),
 		}
-		ctx.cipherContexts[context.Key()] = context
 		publishCipherContext(ctx, context)
 	}
 	log.Functionf("parsing cipher context done")
@@ -138,9 +127,11 @@ func parseCipherBlock(ctx *getconfigContext, key string, cfgCipherBlock *zcommon
 	cipherBlock.IsCipher = true
 
 	// get CipherContext and embed it into CipherBlockStatus to avoid potential races
-	for _, cfgCipherContext := range ctx.cipherContexts {
-		if cfgCipherContext.ContextID == cipherBlock.CipherContextID {
-			cipherBlock.CipherContext = &cfgCipherContext
+	items := ctx.pubCipherContext.GetAll()
+	for idStr, item := range items {
+		if idStr == cipherBlock.CipherContextID {
+			cipherContext := item.(types.CipherContext)
+			cipherBlock.CipherContext = &cipherContext
 			break
 		}
 	}
