@@ -2410,15 +2410,16 @@ func parseConfigItems(ctx *getconfigContext, config *zconfig.EdgeDevConfig,
 	}
 	configHash := h.Sum(nil)
 	same := bytes.Equal(configHash, itemsPrevConfigHash)
-	itemsPrevConfigHash = configHash
 	if same {
 		return
 	}
+
 	log.Functionf("parseConfigItems: Applying updated config "+
 		"prevSha: % x, "+
 		"NewSha : % x, "+
 		"items: %v",
 		itemsPrevConfigHash, configHash, items)
+	itemsPrevConfigHash = configHash
 
 	// Start with the defaults so that we revert to default when no data
 	// 1) Use the specified Value if no Errors
