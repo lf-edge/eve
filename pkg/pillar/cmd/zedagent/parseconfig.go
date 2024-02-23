@@ -655,6 +655,8 @@ func parseAppInstanceConfig(getconfigCtx *getconfigContext,
 				ioa.EthVf = sriov.EthVF{
 					Mac:    hwaddr.String(),
 					VlanID: uint16(adapter.EthVf.VlanId)}
+			} else if ioa.Type == types.IoCAN || ioa.Type == types.IoVCAN || ioa.Type == types.IoLCAN {
+				log.Functionf("Got CAN adapter")
 			}
 			appInstance.IoAdapterList = append(appInstance.IoAdapterList, ioa)
 		}
@@ -1302,6 +1304,7 @@ func parseDeviceIoListConfig(getconfigCtx *getconfigContext,
 			Assigngrp:       ioDevicePtr.Assigngrp,
 			Parentassigngrp: ioDevicePtr.Parentassigngrp,
 			Usage:           ioDevicePtr.Usage,
+			Cbattr:          ioDevicePtr.Cbattr,
 		}
 		if ioDevicePtr.UsagePolicy != nil {
 			// Need to keep this to make proper determination

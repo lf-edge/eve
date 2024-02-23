@@ -105,6 +105,8 @@ type IoBundle struct {
 	Vfs sriov.VFList
 	// Only used in PhyIoNetEthVF
 	VfParams VfInfo
+	// Used for additional attributes
+	Cbattr map[string]string
 }
 
 // VfInfo Stores information about Virtual Function (VF)
@@ -206,6 +208,7 @@ func IoBundleFromPhyAdapter(log *base.LogObject, phyAdapter PhysicalIOAdapter) *
 	ib.Ioports = phyAdapter.Phyaddr.Ioports
 	ib.Serial = phyAdapter.Phyaddr.Serial
 	ib.Usage = phyAdapter.Usage
+	ib.Cbattr = phyAdapter.Cbattr
 	// We're making deep copy
 	ib.Vfs.Data = make([]sriov.EthVF, len(phyAdapter.Vfs.Data))
 	copy(ib.Vfs.Data, phyAdapter.Vfs.Data)
@@ -238,12 +241,17 @@ const (
 	IoNetWWAN IoType = 6
 	IoHDMI    IoType = 7
 	// enum 8 is reserved for backward compatibility with controller API
-	IoNVMEStorage IoType = 9
-	IoSATAStorage IoType = 10
-	IoNetEthPF    IoType = 11
-	IoNetEthVF    IoType = 12
-	IoNVME        IoType = 255
-	IoOther       IoType = 255
+	IoNVMEStorage   IoType = 9
+	IoSATAStorage   IoType = 10
+	IoNetEthPF      IoType = 11
+	IoNetEthVF      IoType = 12
+	IoUSBController IoType = 13
+	IoUSBDevice     IoType = 14
+	IoCAN           IoType = 15
+	IoVCAN          IoType = 16
+	IoLCAN          IoType = 17
+	IoNVME          IoType = 255
+	IoOther         IoType = 255
 )
 
 // IsNet checks if the type is any of the networking types.
@@ -377,6 +385,11 @@ func (aa *AssignableAdapters) AddOrUpdateIoBundle(log *base.LogObject, ib IoBund
 		log.Functionf("AddOrUpdateIoBundle(%d %s %s) preserve MacAddr %v",
 			ib.Type, ib.Phylabel, ib.AssignmentGroup, curIbPtr.MacAddr)
 		ib.MacAddr = curIbPtr.MacAddr
+	}
+	if len(curIbPtr.Cbattr) > 0 {
+		log.Functionf("AddOrUpdateIoBundle(%d %s %s) preserve cbattr",
+			ib.Type, ib.Phylabel, ib.AssignmentGroup)
+		ib.Cbattr = curIbPtr.Cbattr
 	}
 	*curIbPtr = ib
 }
