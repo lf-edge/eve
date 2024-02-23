@@ -2408,7 +2408,7 @@ func getDeferredSentHandlerFunction(ctx *zedagentContext) *zedcloud.SentHandlerF
 				ctx.publishedEdgeNodeCerts = true
 			}
 		} else {
-			if _, ok := itemType.(attest.ZAttestReqType); ok {
+			if el, ok := itemType.(attest.ZAttestReqType); ok {
 				switch result {
 				case types.SenderStatusUpgrade:
 					log.Functionf("sendAttestReqProtobuf: Controller upgrade in progress")
@@ -2421,6 +2421,13 @@ func getDeferredSentHandlerFunction(ctx *zedagentContext) *zedcloud.SentHandlerF
 				case types.SenderStatusNotFound:
 					log.Functionf("sendAttestReqProtobuf: Controller SenderStatusNotFound")
 					potentialUUIDUpdate(ctx.getconfigCtx)
+				}
+				if el == attest.ZAttestReqType_ATTEST_REQ_CERT {
+					log.Warnf("sendAttestReqProtobuf: Failed to send EdgeNodeCerts: %s",
+						result.String())
+					// XXX should we declare maintenance mode?
+					// We get SenderStatusNotFound when a cert can
+					// not be replaced in the controller for security reasons.
 				}
 			}
 		}
