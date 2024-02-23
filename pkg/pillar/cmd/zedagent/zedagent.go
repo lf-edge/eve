@@ -591,7 +591,6 @@ func (zedagentCtx *zedagentContext) init() {
 		currentMetricInterval: zedagentCtx.globalConfig.GlobalValueInt(types.MetricInterval),
 		// edge-view configure
 		configEdgeview: &types.EdgeviewConfig{},
-		cipherContexts: make(map[string]types.CipherContext),
 	}
 	getconfigCtx.sideController.localServerMap = &localServerMap{}
 
@@ -1189,7 +1188,6 @@ func initPublications(zedagentCtx *zedagentContext) {
 		log.Fatal(err)
 	}
 	getconfigCtx.pubCipherContext.ClearRestarted()
-	populateCipherContexts(getconfigCtx)
 
 	// for ContentTree config Publisher
 	getconfigCtx.pubContentTreeConfig, err = ps.NewPublication(
