@@ -764,19 +764,11 @@ func SendOnIntf(workContext context.Context, ctx *ZedCloudContext, destURL strin
 				continue
 			}
 
-			if connState.OCSPResponse == nil ||
-				!stapledCheck(log, connState) {
-
-				if connState.OCSPResponse == nil {
-					// XXX remove debug check
-					log.Tracef("no OCSP response for %s\n",
-						reqUrl)
-				}
-				errStr := fmt.Sprintf("OCSP stapled check failed for %s",
-					reqUrl)
-
-				//XXX OSCP is not implemented in cloud side so
-				// commenting out it for now.
+			if ok, err := stapledCheck(log, connState); !ok {
+				errStr := fmt.Sprintf("OCSP stapled check failed for %s: %s",
+					reqUrl, err)
+				// XXX OSCP is not implemented in controller
+				// so commenting out it for now.
 				if false {
 					log.Errorln(errStr)
 					// Inform ledmanager about broken cloud connectivity
