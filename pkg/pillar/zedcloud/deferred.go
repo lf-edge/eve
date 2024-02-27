@@ -223,13 +223,15 @@ func (ctx *DeferredContext) handleDeferred() bool {
 		}
 	}
 
-	// Log the content of the rest in the queue
-	log.Noticef("handleDeferred() the rest to be sent: %d",
-		len(notSentReqs))
-	if ctx.sentHandler != nil {
-		for _, item := range notSentReqs {
-			f := *ctx.sentHandler
-			f(item.itemType, item.buf, types.SenderStatusDebug, nil)
+	if len(notSentReqs) > 0 {
+		// Log the content of the rest in the queue
+		log.Noticef("handleDeferred() the rest to be sent: %d",
+			len(notSentReqs))
+		if ctx.sentHandler != nil {
+			for _, item := range notSentReqs {
+				f := *ctx.sentHandler
+				f(item.itemType, item.buf, types.SenderStatusDebug, nil)
+			}
 		}
 	}
 
