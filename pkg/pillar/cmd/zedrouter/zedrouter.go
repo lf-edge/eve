@@ -1077,7 +1077,6 @@ func (z *zedrouter) publishNetworkInstanceMetricsAll(nms *types.NetworkMetrics) 
 		if err != nil {
 			z.log.Errorf("publishNetworkInstanceMetricsAll failed: %v", err)
 		}
-		z.publishNetworkInstanceStatus(&status)
 	}
 }
 
@@ -1088,17 +1087,19 @@ func (z *zedrouter) createNetworkInstanceMetrics(status *types.NetworkInstanceSt
 		UUIDandVersion: status.UUIDandVersion,
 		DisplayName:    status.DisplayName,
 		Type:           status.Type,
+		BridgeName:     status.BridgeName,
 	}
 	netMetrics := types.NetworkMetrics{}
-	// Update status.VifMetricMap and get bridge metrics as a sum of all VIF metrics.
-	brNetMetric := status.UpdateNetworkMetrics(z.log, nms)
-	// Add metrics of the bridge interface itself into brNetMetric.
-	status.UpdateBridgeMetrics(z.log, nms, brNetMetric)
-
-	// XXX For some strange reason we do not include VIFs into the returned
-	// NetworkInstanceMetrics.
-	netMetrics.MetricList = []types.NetworkMetric{*brNetMetric}
+	if bridgeMetrics, found := nms.LookupNetworkMetrics(status.BridgeName); found {
+		netMetrics.MetricList = append(netMetrics.MetricList, bridgeMetrics)
+	}
+	for _, vif := range status.Vifs {
+		if vifMetrics, found := nms.LookupNetworkMetrics(vif.Name); found {
+			netMetrics.MetricList = append(netMetrics.MetricList, vifMetrics)
+		}
+	}
 	niMetrics.NetworkMetrics = netMetrics
+
 	if status.WithUplinkProbing() {
 		probeMetrics, err := z.uplinkProber.GetProbeMetrics(status.UUID)
 		if err == nil {
