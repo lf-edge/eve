@@ -158,7 +158,6 @@ func (z *zedrouter) handleNetworkInstanceCreate(ctxArg interface{}, key string,
 		NetworkInstanceConfig: config,
 		NetworkInstanceInfo: types.NetworkInstanceInfo{
 			IPAssignments: make(map[string]types.AssignedAddrs),
-			VifMetricMap:  make(map[string]types.NetworkMetric),
 			VlanMap:       make(map[uint32]uint32),
 		},
 	}

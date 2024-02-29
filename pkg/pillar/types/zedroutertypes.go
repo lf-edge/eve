@@ -367,15 +367,6 @@ type NetworkInstanceInfo struct {
 	// Set of vifs on this bridge
 	Vifs []VifNameMac
 
-	// Vif metric map. This should have a union of currently existing
-	// vifs and previously deleted vifs.
-	// XXX When a vif is removed from bridge (app instance delete case),
-	// device might start reporting smaller statistic values. To avoid this
-	// from happening, we keep a list of all vifs that were ever connected
-	// to this bridge and their statistics.
-	// We add statistics from all vifs while reporting to cloud.
-	VifMetricMap map[string]NetworkMetric
-
 	// Maintain a map of all access vlan ids to their counts, used by apps
 	// connected to this network instance.
 	VlanMap map[uint32]uint32
@@ -454,6 +445,7 @@ type NetworkInstanceMetrics struct {
 	UUIDandVersion UUIDandVersion
 	DisplayName    string
 	Type           NetworkInstanceType
+	BridgeName     string
 	NetworkMetrics NetworkMetrics
 	ProbeMetrics   ProbeMetrics
 	VlanMetrics    VlanMetrics
@@ -845,62 +837,6 @@ func (status NetworkInstanceStatus) LogDelete(logBase *base.LogObject) {
 // LogKey :
 func (status NetworkInstanceStatus) LogKey() string {
 	return string(base.NetworkInstanceStatusLogType) + "-" + status.Key()
-}
-
-// UpdateNetworkMetrics : update collected network metrics.
-// Tx/Rx of bridge is equal to the total of Tx/Rx on all member
-// virtual interfaces excluding the bridge itself.
-// Drops/Errors/AclDrops of bridge is equal to total of Drops/Errors/AclDrops
-// on all member virtual interface including the bridge.
-func (status *NetworkInstanceStatus) UpdateNetworkMetrics(log *base.LogObject,
-	nms *NetworkMetrics) (brNetMetric *NetworkMetric) {
-
-	brNetMetric = &NetworkMetric{IfName: status.BridgeName}
-	status.VifMetricMap = make(map[string]NetworkMetric) // clear previous metrics
-	for _, vif := range status.Vifs {
-		metric, found := nms.LookupNetworkMetrics(vif.Name)
-		if !found {
-			log.Tracef("No metrics found for interface %s",
-				vif.Name)
-			continue
-		}
-		status.VifMetricMap[vif.Name] = metric
-	}
-	for _, metric := range status.VifMetricMap {
-		brNetMetric.TxBytes += metric.TxBytes
-		brNetMetric.RxBytes += metric.RxBytes
-		brNetMetric.TxPkts += metric.TxPkts
-		brNetMetric.RxPkts += metric.RxPkts
-		brNetMetric.TxErrors += metric.TxErrors
-		brNetMetric.RxErrors += metric.RxErrors
-		brNetMetric.TxDrops += metric.TxDrops
-		brNetMetric.RxDrops += metric.RxDrops
-		brNetMetric.TxAclDrops += metric.TxAclDrops
-		brNetMetric.RxAclDrops += metric.RxAclDrops
-		brNetMetric.TxAclRateLimitDrops += metric.TxAclRateLimitDrops
-		brNetMetric.RxAclRateLimitDrops += metric.RxAclRateLimitDrops
-	}
-	return brNetMetric
-}
-
-// UpdateBridgeMetrics records metrics of the bridge interface itself.
-func (status *NetworkInstanceStatus) UpdateBridgeMetrics(log *base.LogObject,
-	nms *NetworkMetrics, netMetric *NetworkMetric) {
-	// Get bridge metrics
-	bridgeMetric, found := nms.LookupNetworkMetrics(status.BridgeName)
-	if !found {
-		log.Tracef("No metrics found for Bridge %s",
-			status.BridgeName)
-	} else {
-		netMetric.TxErrors += bridgeMetric.TxErrors
-		netMetric.RxErrors += bridgeMetric.RxErrors
-		netMetric.TxDrops += bridgeMetric.TxDrops
-		netMetric.RxDrops += bridgeMetric.RxDrops
-		netMetric.TxAclDrops += bridgeMetric.TxAclDrops
-		netMetric.RxAclDrops += bridgeMetric.RxAclDrops
-		netMetric.TxAclRateLimitDrops += bridgeMetric.TxAclRateLimitDrops
-		netMetric.RxAclRateLimitDrops += bridgeMetric.RxAclRateLimitDrops
-	}
 }
 
 // IsIpAssigned returns true if the given IP address is assigned to any app VIF.
