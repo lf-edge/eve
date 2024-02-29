@@ -148,9 +148,8 @@ func (m *DpcManager) runVerify(ctx context.Context, reason string) {
 		}
 	}
 
-	// If there are port level errors in current selected DPC, we should mark
-	// it for re-test during the next TestBetterTimer invocation.
-	if m.dpcList.CurrentIndex != 0 || m.deviceNetStatus.HasErrors() {
+	// Try to get back to the latest and the highest priority DPC.
+	if m.dpcList.CurrentIndex != 0 {
 		m.Log.Warnf("DPC verify: Working with DPC configuration found "+
 			"at index %d in DPC list", m.dpcList.CurrentIndex)
 		if m.dpcTestBetterInterval != 0 {
@@ -185,7 +184,9 @@ func (m *DpcManager) runVerify(ctx context.Context, reason string) {
 	default:
 	}
 
-	// Restart network test timer
+	// Restart network test timer.
+	// Tests run by this timer can later detect lost/reestablished connectivity,
+	// or simply update/clear errors reported for ports.
 	m.dpcTestTimer = time.NewTimer(m.dpcTestInterval)
 }
 
