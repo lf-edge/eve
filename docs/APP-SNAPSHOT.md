@@ -268,7 +268,6 @@ additional storage space equal to the entire volume.
 
 ## Future Enhancements
 
-* Implement snapshotting functionality for ZFS volumes.
 * Improve error handling and reporting for snapshot-related operations,
   especially on snapshot deletion.
 * Integration tests automation
