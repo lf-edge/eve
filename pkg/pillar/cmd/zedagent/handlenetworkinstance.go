@@ -185,27 +185,25 @@ func protoEncodeGenericInstanceMetric(status types.NetworkInstanceMetrics,
 	networkStats := new(zmet.ZMetricNetworkStats)
 	rxStats := new(zmet.NetworkStats)
 	txStats := new(zmet.NetworkStats)
-	netMetric := status.NetworkMetrics.MetricList[0]
-	rxStats.TotalPackets = netMetric.RxPkts
-	rxStats.TotalBytes = netMetric.RxBytes
-	rxStats.Errors = netMetric.RxErrors
-	// Add all types of Rx drops
-	var drops uint64 = 0
-	drops += netMetric.RxDrops
-	drops += netMetric.RxAclDrops
-	drops += netMetric.RxAclRateLimitDrops
-	rxStats.Drops = drops
-
-	txStats.TotalPackets = netMetric.TxPkts
-	txStats.TotalBytes = netMetric.TxBytes
-	txStats.Errors = netMetric.TxErrors
-	// Add all types of Tx drops
-	drops = 0
-	drops += netMetric.TxDrops
-	drops += netMetric.TxAclDrops
-	drops += netMetric.TxAclRateLimitDrops
-	txStats.Drops = drops
-
+	for _, netMetrics := range status.NetworkMetrics.MetricList {
+		// Tx/Rx of NI is equal to the total of Tx/Rx on all member
+		// virtual interfaces excluding the bridge itself.
+		if netMetrics.IfName != status.BridgeName {
+			rxStats.TotalBytes += netMetrics.RxBytes
+			rxStats.TotalPackets += netMetrics.RxPkts
+			txStats.TotalBytes += netMetrics.TxBytes
+			txStats.TotalPackets += netMetrics.TxPkts
+		}
+		// Drops and errors are collected both from VIFs and the bridge.
+		rxStats.Errors += netMetrics.RxErrors
+		rxStats.Drops += netMetrics.RxDrops
+		rxStats.Drops += netMetrics.RxAclDrops
+		rxStats.Drops += netMetrics.RxAclRateLimitDrops
+		txStats.Errors += netMetrics.TxErrors
+		txStats.Drops += netMetrics.TxDrops
+		txStats.Drops += netMetrics.TxAclDrops
+		txStats.Drops += netMetrics.TxAclRateLimitDrops
+	}
 	networkStats.Rx = rxStats
 	networkStats.Tx = txStats
 	metric.NetworkStats = networkStats
