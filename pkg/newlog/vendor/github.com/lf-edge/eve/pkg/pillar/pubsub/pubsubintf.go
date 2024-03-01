@@ -9,6 +9,11 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/base"
 )
 
+// Getter - Interface for pub/sub
+type Getter interface {
+	Get(key string) (interface{}, error)
+}
+
 // Publication - Interface to be implemented by a Publication
 type Publication interface {
 	// CheckMaxSize returns an error if the item is too large

@@ -61,12 +61,12 @@ type PublicationImpl struct {
 
 // IsRestarted has this publication been set to "restarted"
 func (pub *PublicationImpl) IsRestarted() bool {
-	return pub.km.restartCounter != 0
+	return pub.km.restartCounter.Load() != 0
 }
 
 // RestartCounter number of times this this publication been set to "restarted"
 func (pub *PublicationImpl) RestartCounter() int {
-	return pub.km.restartCounter
+	return int(pub.km.restartCounter.Load())
 }
 
 // CheckMaxSize returns an error if the item is too large and would result
@@ -281,7 +281,7 @@ func (pub *PublicationImpl) populate() {
 		}
 		pub.km.key.Store(key, item)
 	}
-	pub.km.restartCounter = restartCounter
+	pub.km.restartCounter.Store(int64(restartCounter))
 	pub.log.Tracef("populate(%s) done\n", name)
 }
 
@@ -360,24 +360,24 @@ func (pub *PublicationImpl) nameString() string {
 func (pub *PublicationImpl) restartImpl(restarted bool) error {
 	name := pub.nameString()
 	pub.log.Functionf("pub.restartImpl(%s, %v)\n", name, restarted)
-	var restartCounter int
+	var restartCounter int64
 	if restarted {
-		restartCounter = pub.km.restartCounter + 1
+		restartCounter = pub.km.restartCounter.Load() + 1
 	} else {
 		restartCounter = 0
 	}
 
-	if restartCounter == pub.km.restartCounter {
+	if restartCounter == pub.km.restartCounter.Load() {
 		pub.log.Functionf("pub.restartImpl(%s, %v) value unchanged\n",
 			name, restarted)
 		return nil
 	}
-	pub.km.restartCounter = restartCounter
+	pub.km.restartCounter.Store(restartCounter)
 	// XXX lock on restarted to make sure it gets noticed?
 	// XXX bug?
 	// Implicit in updaters lock??
 	pub.updatersNotify(name)
-	return pub.driver.Restart(restartCounter)
+	return pub.driver.Restart(int(restartCounter))
 }
 
 func (pub *PublicationImpl) dump(infoStr string) {
@@ -394,5 +394,5 @@ func (pub *PublicationImpl) dump(infoStr string) {
 		return true
 	}
 	pub.km.key.Range(dumper)
-	pub.log.Tracef("\trestarted %d", pub.km.restartCounter)
+	pub.log.Tracef("\trestarted %d", pub.km.restartCounter.Load())
 }

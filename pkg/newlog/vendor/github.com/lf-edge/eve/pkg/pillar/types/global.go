@@ -166,8 +166,6 @@ const (
 	FallbackIfCloudGoneTime GlobalSettingKey = "timer.update.fallback.no.network"
 	// MintimeUpdateSuccess global setting key
 	MintimeUpdateSuccess GlobalSettingKey = "timer.test.baseimage.update"
-	// StaleConfigTime global setting key
-	StaleConfigTime GlobalSettingKey = "timer.use.config.checkpoint"
 	// VdiskGCTime global setting key
 	VdiskGCTime GlobalSettingKey = "timer.gc.vdisk"
 	// DeferContentDelete global setting key
@@ -239,6 +237,8 @@ const (
 	AllowLogFastupload GlobalSettingKey = "newlog.allow.fastupload"
 	// EnableARPSnoopOnNI global setting key
 	EnableARPSnoop GlobalSettingKey = "network.switch.enable.arpsnoop"
+	// WwanQueryVisibleProviders : periodically query visible cellular service providers
+	WwanQueryVisibleProviders GlobalSettingKey = "wwan.query.visible.providers"
 
 	// TriState Items
 	// NetworkFallbackAnyEth global setting key
@@ -263,9 +263,6 @@ const (
 	// ProcessCloudInitMultiPart to help VMs which do not handle mime multi-part themselves
 	ProcessCloudInitMultiPart GlobalSettingKey = "process.cloud-init.multipart"
 
-	// XXX temp for testing edge-view
-	EdgeViewToken GlobalSettingKey = "edgeview.authen.jwt"
-
 	// NetDumpEnable : enable publishing of network diagnostics (as tgz archives to /persist/netdump).
 	NetDumpEnable GlobalSettingKey = "netdump.enable"
 	// NetDumpTopicPreOnboardInterval : how frequently (in seconds) can be netdumps
@@ -287,6 +284,14 @@ const (
 	// network traces for download requests.
 	// Beware: may contain secrets, such as datastore credentials.
 	NetDumpDownloaderHTTPWithFieldValue GlobalSettingKey = "netdump.downloader.http.with.fieldvalue"
+	// NetworkLocalLegacyMACAddress : Enables legacy MAC address generation for
+	// local network instances. The legacy generation is not "that" random and
+	// probability of repeating MAC addresses across nodes is high. Later the
+	// algorithm was changed and more randomness was introduced, but some
+	// applications may be already configured with already allocated MAC
+	// address, and MAC address change on EVE node upgrade (switch from old
+	// generation logic to new one) can cause problems with the guest network.
+	NetworkLocalLegacyMACAddress GlobalSettingKey = "network.local.legacy.mac.address"
 )
 
 // AgentSettingKey - keys for per-agent settings
@@ -815,7 +820,6 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	configItemSpecMap.AddIntItem(ResetIfCloudGoneTime, 7*24*3600, 120, 0xFFFFFFFF)
 	configItemSpecMap.AddIntItem(FallbackIfCloudGoneTime, 300, 60, 0xFFFFFFFF)
 	configItemSpecMap.AddIntItem(MintimeUpdateSuccess, 600, 30, HourInSec)
-	configItemSpecMap.AddIntItem(StaleConfigTime, 7*24*3600, 0, 0xFFFFFFFF)
 	configItemSpecMap.AddIntItem(VdiskGCTime, 3600, 60, 0xFFFFFFFF)
 	configItemSpecMap.AddIntItem(DeferContentDelete, 0, 0, 24*3600)
 	configItemSpecMap.AddIntItem(DownloadRetryTime, 600, 60, 0xFFFFFFFF)
@@ -859,6 +863,8 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	configItemSpecMap.AddBoolItem(ProcessCloudInitMultiPart, false)
 	configItemSpecMap.AddBoolItem(ConsoleAccess, true) // Controller likely default to false
 	configItemSpecMap.AddBoolItem(EnableARPSnoop, true)
+	configItemSpecMap.AddBoolItem(WwanQueryVisibleProviders, false)
+	configItemSpecMap.AddBoolItem(NetworkLocalLegacyMACAddress, false)
 
 	// Add TriState Items
 	configItemSpecMap.AddTriStateItem(NetworkFallbackAnyEth, TS_DISABLED)
@@ -873,9 +879,6 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	configItemSpecMap.AddAgentSettingStringItem(LogLevel, "info", parseLevel)
 	configItemSpecMap.AddAgentSettingStringItem(RemoteLogLevel, "info", parseLevel)
 
-	// XXX temp edgeview setting
-	configItemSpecMap.AddStringItem(EdgeViewToken, "", blankValidator)
-
 	// Add NetDump settings
 	configItemSpecMap.AddBoolItem(NetDumpEnable, true)
 	configItemSpecMap.AddIntItem(NetDumpTopicPreOnboardInterval, HourInSec, 60, 0xFFFFFFFF)
@@ -883,6 +886,7 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	configItemSpecMap.AddIntItem(NetDumpTopicMaxCount, 10, 1, 0xFFFFFFFF)
 	configItemSpecMap.AddBoolItem(NetDumpDownloaderPCAP, false)
 	configItemSpecMap.AddBoolItem(NetDumpDownloaderHTTPWithFieldValue, false)
+
 	return configItemSpecMap
 }
 
