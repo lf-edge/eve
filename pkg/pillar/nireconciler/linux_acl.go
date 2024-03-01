@@ -17,6 +17,11 @@ import (
 	uuid "github.com/satori/go.uuid"
 )
 
+const (
+	// dropCounterChain : chain with no rules, used merely to count dropped packets.
+	dropCounterChain = "DROP-COUNTER"
+)
+
 // Describes protocol that is allowed implicitly because it provides some essential
 // function for applications.
 type essentialProto struct {
@@ -64,8 +69,6 @@ var (
 		"mangle": {"PREROUTING", "POSTROUTING"},
 		"nat":    {"PREROUTING", "POSTROUTING"},
 	}
-	ingressLogArgs = []string{"--log-prefix", "FORWARD:TO:", "--log-level", "3"}
-	egressLogArgs  = []string{"--log-prefix", "FORWARD:FROM:", "--log-level", "3"}
 )
 
 func appChain(chain string) string {
@@ -602,9 +605,10 @@ func (r *LinuxNIReconciler) getIntendedAppConnRawIptables(vif vifInfo,
 			if ni.config.Type == types.NetworkInstanceTypeSwitch {
 				iptablesRule.Target = "DROP"
 			} else {
-				// Dropped during the routing phase (using the blackhole interface).
-				iptablesRule.Target = "LOG"
-				iptablesRule.TargetOpts = egressLogArgs
+				// Add rule to only count the dropped packet, without actually dropping it.
+				// Flow is instead dropped during the routing phase (using the blackhole
+				// interface).
+				iptablesRule.Target = dropCounterChain
 			}
 		} else {
 			iptablesRule.Target = "ACCEPT"
@@ -621,11 +625,10 @@ func (r *LinuxNIReconciler) getIntendedAppConnRawIptables(vif vifInfo,
 			aclRules = append(aclRules, iptablesRule2)
 		}
 	}
-	// 4. Default drop rule at the end.
+	// 4. Packet counting rule for the default drop.
 	aclRules = append(aclRules, iptables.Rule{
-		RuleLabel:  "Log Default DROP",
-		Target:     "LOG",
-		TargetOpts: egressLogArgs,
+		RuleLabel: "Count packets matched by the Default DROP",
+		Target:    dropCounterChain,
 	})
 	if ni.config.Type == types.NetworkInstanceTypeSwitch {
 		// Switched traffic cannot be dropped using the blackhole - it requires routing.
@@ -651,10 +654,11 @@ func (r *LinuxNIReconciler) getIntendedAppConnRawIptables(vif vifInfo,
 }
 
 // Table FILTER, chain FORWARD is used to:
-//   - LOG to-be-dropped traffic *coming into* local NIs (dropped during the routing phase)
+//   - Count packets of to-be-dropped traffic *coming into* local NIs
+//     (dropped during the routing phase)
 //     XXX Isn't routing performed before filter/forward ?!
 //   - Apply rate-limit ACL rules (DROP extra ingress packets)
-//   - LOG + fully apply (incl. DROP) ACLs on traffic *coming into* switch NIs
+//   - Count packets + fully apply (incl. DROP) ACLs on traffic *coming into* switch NIs
 func (r *LinuxNIReconciler) getIntendedAppConnFilterIptables(vif vifInfo,
 	ul types.AppNetAdapterConfig, ipv6 bool) (items []dg.Item) {
 	ni := r.nis[vif.NI]
@@ -662,16 +666,19 @@ func (r *LinuxNIReconciler) getIntendedAppConnFilterIptables(vif vifInfo,
 	if ni.bridge.IPAddress != nil {
 		bridgeIP = ni.bridge.IPAddress.IP
 	}
-	if ni.bridge.Uplink.IfName == "" {
-		// Air-gapped - not possible to reach applications from outside.
-		return
-	}
 	// Put filter/FORWARD rules for this VIF into a separate table.
+	// Chain is configured also for air-gapped NIs even if not actually used.
+	// This is to prevent LinuxCollector.fetchIptablesCounters from failing to find
+	// the chain and logging many errors.
 	items = append(items, iptables.Chain{
 		Table:     "filter",
 		ChainName: vifChain("FORWARD", vif),
 		ForIPv6:   ipv6,
 	})
+	if ni.bridge.Uplink.IfName == "" {
+		// Air-gapped - not possible to reach applications from outside.
+		return
+	}
 	switch ni.config.Type {
 	case types.NetworkInstanceTypeSwitch:
 		items = append(items, iptables.Rule{
@@ -740,9 +747,10 @@ func (r *LinuxNIReconciler) getIntendedAppConnFilterIptables(vif vifInfo,
 			if ni.config.Type == types.NetworkInstanceTypeSwitch {
 				iptablesRule.Target = "DROP"
 			} else {
-				// Dropped during the routing phase (using the blackhole interface).
-				iptablesRule.Target = "LOG"
-				iptablesRule.TargetOpts = ingressLogArgs
+				// Add rule to only count the dropped packet, without actually dropping it.
+				// Flow is instead dropped during the routing phase (using the blackhole
+				// interface).
+				iptablesRule.Target = dropCounterChain
 			}
 		} else {
 			iptablesRule.Target = "ACCEPT"
@@ -759,11 +767,10 @@ func (r *LinuxNIReconciler) getIntendedAppConnFilterIptables(vif vifInfo,
 			aclRules = append(aclRules, iptablesRule2)
 		}
 	}
-	// 3. Default drop rule at the end.
+	// 3. Packet counting rule for the default drop.
 	aclRules = append(aclRules, iptables.Rule{
-		RuleLabel:  "Log Default DROP",
-		Target:     "LOG",
-		TargetOpts: ingressLogArgs,
+		RuleLabel: "Count packets matched by the Default DROP",
+		Target:    dropCounterChain,
 	})
 	if ni.config.Type == types.NetworkInstanceTypeSwitch {
 		// Switched traffic cannot be dropped using the blackhole - it requires routing.
