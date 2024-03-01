@@ -236,21 +236,8 @@ func (lc *LinuxCollector) GetNetworkMetrics() (types.NetworkMetrics, error) {
 			ipVer = 4
 		}
 
-		// DROP action is used in two case.
-		// 1. DROP rule for the packets exceeding rate-limiter.
-		// 2. Default DROP rule in the end.
-		// With flow-monitoring support, we cannot have the default DROP rule
-		// in the end of rule list. This is to avoid conntrack from deleting
-		// connections matching the default rule. Just before the default DROP
-		// rule, we add a LOG rule for logging packets that are being forwarded
-		// to dummy interface.
-		// Packets matching the default DROP rule also match the default LOG rule.
-		// Since we will not have the default DROP rule, we can copy statistics
-		// from default LOG rule as DROP statistics.
 		metric.TxAclDrops = lc.getIptablesACLDrop(ac, brIfName, vifName, ipVer, true)
-		metric.TxAclDrops += lc.getIptablesACLLog(ac, brIfName, vifName, ipVer, true)
 		metric.RxAclDrops = lc.getIptablesACLDrop(ac, brIfName, vifName, ipVer, false)
-		metric.RxAclDrops += lc.getIptablesACLLog(ac, brIfName, vifName, ipVer, false)
 		metric.TxAclRateLimitDrops = lc.getIptablesACLRateLimitDrop(
 			ac, brIfName, vifName, ipVer, true)
 		metric.RxAclRateLimitDrops = lc.getIptablesACLRateLimitDrop(
