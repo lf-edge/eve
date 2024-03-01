@@ -834,6 +834,9 @@ cache-export-docker-load-all: $(LINUXKIT) $(addsuffix -cache-export-docker-load,
 proto-vendor:
 	@$(DOCKER_GO) "cd pkg/pillar ; go mod vendor" $(CURDIR) proto
 
+bump-eve-api:
+	find . -type f -name "go.mod" -exec grep -q 'github.com/lf-edge/eve-api/go' {} \; -execdir go get -u github.com/lf-edge/eve-api/go \; -execdir go mod tidy \; -execdir go mod vendor \;
+
 .PHONY: proto-api-%
 
 check-patch-%:
@@ -1016,6 +1019,9 @@ help:
 	@echo "   proto-vendor   update vendored API in packages that require it (e.g. pkg/pillar)"
 	@echo "   shell          drop into docker container setup for Go development"
 	@echo "   yetus          run Apache Yetus to check the quality of the source tree"
+	@echo
+	@echo "Seldom used maintenance and development targets:"
+	@echo "   bump-eve-api   bump eve-api in all subprojects"
 	@echo
 	@echo "Commonly used build targets:"
 	@echo "   build-tools      builds linuxkit utilities and installs under build-tools/bin"
