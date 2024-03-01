@@ -136,6 +136,10 @@ const (
 	NetworkInstanceMetricsLogType LogObjectType = "network_instance_metrics"
 	// NetworkMetricsLogType:
 	NetworkMetricsLogType LogObjectType = "network_metrics"
+	// WwanConfigLogType:
+	WwanConfigLogType LogObjectType = "wwan_config"
+	// WwanStatusLogType:
+	WwanStatusLogType LogObjectType = "wwan_status"
 	// WwanMetricsLogType:
 	WwanMetricsLogType LogObjectType = "wwan_metrics"
 	// WwanLocationInfoLogType:
@@ -166,6 +170,8 @@ const (
 	EncryptedVaultKeyFromControllerLogType LogObjectType = "encrypted_vault_key_from_controller"
 	// CachedResolvedIPsLogType:
 	CachedResolvedIPsLogType LogObjectType = "cached_resolved_ips"
+	// AppMACGeneratorLogType : type for AppMACGenerator log entries
+	AppMACGeneratorLogType LogObjectType = "app_mac_generator"
 )
 
 // RelationObjectType :

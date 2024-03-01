@@ -276,7 +276,6 @@ type VolumesSnapshotConfig struct {
 	VolumeIDs []uuid.UUID
 	// AppUUID used as a backlink to the app
 	AppUUID uuid.UUID
-	// ConfigID is the ID of the config that created the snapshot
 }
 
 // Key returns unique key for the snapshot
@@ -286,16 +285,18 @@ func (config VolumesSnapshotConfig) Key() string {
 
 // VolumesSnapshotStatus is used to send snapshot status from volumemgr to zedmanager
 type VolumesSnapshotStatus struct {
-	// SnapshotID is the ID of the snapshot
-	SnapshotID string
-	// Metadata is a map of volumeID to metadata, depending on the volume type
-	VolumeSnapshotMeta map[string]interface{}
+	// SnapshotID is the ID of the snapshot, critical field
+	SnapshotID string `mandatory:"true"`
+	// Metadata is a map of volumeID to metadata, depending on the volume type. Critical field.
+	VolumeSnapshotMeta map[string]interface{} `mandatory:"true"`
 	// TimeCreated is the time the snapshot was created, reported by FS-specific code
 	TimeCreated time.Time
-	// AppUUID used as a backlink to the app
-	AppUUID uuid.UUID
+	// AppUUID used as a backlink to the app, critical field
+	AppUUID uuid.UUID `mandatory:"true"`
 	// RefCount is the number of times the snapshot is used. Necessary to trigger the handleModify handler
 	RefCount int
+	// ResultOfAction is the type of action that was performed on the snapshot that resulted in this status
+	ResultOfAction VolumesSnapshotAction
 	// ErrorAndTimeWithSource provides SetErrorNow() and ClearError()
 	ErrorAndTimeWithSource
 }

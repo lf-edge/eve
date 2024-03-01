@@ -18,7 +18,6 @@ type OldGlobalConfig struct {
 	ResetIfCloudGoneTime    uint32 // reboot if no cloud connectivity
 	FallbackIfCloudGoneTime uint32 // ... and shorter during update
 	MintimeUpdateSuccess    uint32 // time before zedagent declares success
-	StaleConfigTime         uint32 // On reboot use saved config if not stale
 	DownloadGCTime          uint32 // Garbage collect if no use
 	VdiskGCTime             uint32 // Garbage collect RW disk if no use
 
@@ -107,7 +106,6 @@ var globalConfigDefaults = OldGlobalConfig{
 	UsbAccess:           true, // Controller likely to default to false
 	SshAccess:           true, // Controller likely to default to false
 	SshAuthorizedKeys:   "",
-	StaleConfigTime:     600,  // Use stale config for up to 10 minutes
 	DownloadGCTime:      600,  // 10 minutes
 	VdiskGCTime:         3600, // 1 hour
 	DownloadRetryTime:   600,  // 10 minutes
@@ -165,9 +163,6 @@ func ApplyDefaults(newgc OldGlobalConfig) OldGlobalConfig {
 	if newgc.NetworkSendTimeout == 0 {
 		newgc.NetworkSendTimeout = globalConfigDefaults.NetworkSendTimeout
 	}
-	if newgc.StaleConfigTime == 0 {
-		newgc.StaleConfigTime = globalConfigDefaults.StaleConfigTime
-	}
 	if newgc.DownloadGCTime == 0 {
 		newgc.DownloadGCTime = globalConfigDefaults.DownloadGCTime
 	}
@@ -211,7 +206,6 @@ var GlobalConfigMinimums = OldGlobalConfig{
 	NetworkTestInterval:       300, // 5 minutes
 	NetworkTestBetterInterval: 0,   // Disabled
 
-	StaleConfigTime:         0, // Don't use stale config
 	DownloadGCTime:          60,
 	VdiskGCTime:             60,
 	DownloadRetryTime:       60,
@@ -269,12 +263,6 @@ func EnforceGlobalConfigMinimums(newgc OldGlobalConfig) OldGlobalConfig {
 			newgc.NetworkTestBetterInterval, GlobalConfigMinimums.NetworkTestBetterInterval)
 		newgc.NetworkTestBetterInterval = GlobalConfigMinimums.NetworkTestBetterInterval
 	}
-
-	if newgc.StaleConfigTime < GlobalConfigMinimums.StaleConfigTime {
-		logrus.Warnf("Enforce minimum StaleConfigTime received %d; using %d",
-			newgc.StaleConfigTime, GlobalConfigMinimums.StaleConfigTime)
-		newgc.StaleConfigTime = GlobalConfigMinimums.StaleConfigTime
-	}
 	if newgc.DownloadGCTime < GlobalConfigMinimums.DownloadGCTime {
 		logrus.Warnf("Enforce minimum DownloadGCTime received %d; using %d",
 			newgc.DownloadGCTime, GlobalConfigMinimums.DownloadGCTime)
@@ -311,7 +299,6 @@ func (config OldGlobalConfig) MoveBetweenConfigs() *ConfigItemValueMap {
 	newConfig.SetGlobalValueInt(ResetIfCloudGoneTime, config.ResetIfCloudGoneTime)
 	newConfig.SetGlobalValueInt(FallbackIfCloudGoneTime, config.FallbackIfCloudGoneTime)
 	newConfig.SetGlobalValueInt(MintimeUpdateSuccess, config.MintimeUpdateSuccess)
-	newConfig.SetGlobalValueInt(StaleConfigTime, config.StaleConfigTime)
 	newConfig.SetGlobalValueInt(VdiskGCTime, config.VdiskGCTime)
 	newConfig.SetGlobalValueInt(DownloadRetryTime, config.DownloadRetryTime)
 	newConfig.SetGlobalValueInt(DomainBootRetryTime, config.DomainBootRetryTime)
