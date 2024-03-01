@@ -4,6 +4,7 @@
 write-kubeconfig-mode: "0644"
 log: "/persist/newlog/kube/k3s.log"
 # Use longhorn storage
+disable: local-storage
 etcd-arg:
   - "heartbeat-interval=8000"
   - "election-timeout=40000"
