@@ -46,10 +46,8 @@ func IptableCmdOut(log *base.LogObject, args ...string) (string, error) {
 	args[1] = "5"
 	if log != nil {
 		log.Functionf("Calling command %s %v\n", iptablesCmd, args)
-		out, err = base.Exec(log, iptablesCmd, args...).CombinedOutput()
-	} else {
-		out, err = base.Exec(log, iptablesCmd, args...).Output()
 	}
+	out, err = base.Exec(log, iptablesCmd, args...).CombinedOutput()
 	if err != nil {
 		outStr := strings.TrimSpace(string(out))
 		outStr = strings.ReplaceAll(outStr, "\n", "; ")
