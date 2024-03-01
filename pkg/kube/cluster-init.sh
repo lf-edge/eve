@@ -7,8 +7,8 @@
 #K3S_VERSION=v1.29.0+k3s1
 K3S_VERSION=v1.28.5+k3s1
 KUBEVIRT_VERSION=v1.1.0
-LONGHORN_VERSION=v1.5.3
-CDI_VERSION=v1.56.0
+LONGHORN_VERSION=v1.6.0
+CDI_VERSION=v1.57.0
 Node_IP=""
 MAX_K3S_RESTARTS=10
 RESTART_COUNT=0
@@ -526,7 +526,7 @@ if [ ! -f /var/lib/all_components_initialized ]; then
             wait_for_item "kubevirt"
             # This patched version will be removed once the following PR https://github.com/kubevirt/kubevirt/pull/9668 is merged
             logmsg "Installing patched Kubevirt"
-            kubectl apply -f /etc/kubevirt-operator.yaml
+            kubectl apply -f https://github.com/kubevirt/kubevirt/releases/download/${KUBEVIRT_VERSION}/kubevirt-operator.yaml
             kubectl apply -f https://github.com/kubevirt/kubevirt/releases/download/${KUBEVIRT_VERSION}/kubevirt-cr.yaml
 
             wait_for_item "cdi"

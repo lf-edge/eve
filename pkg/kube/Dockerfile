@@ -22,7 +22,6 @@ COPY cgconfig.conf /etc
 # TODO: avoid so many copies of the CNI plugin
 RUN mv /eve-bridge /usr/bin
 COPY multus-daemonset.yaml /etc
-COPY kubevirt-operator.yaml /etc
 RUN mkdir -p /etc/containerd
 COPY kubevirt-features.yaml /etc
 COPY config-k3s.toml /etc/containerd/
