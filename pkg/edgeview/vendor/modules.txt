@@ -30,7 +30,7 @@ github.com/gorilla/websocket
 # github.com/grandcat/zeroconf v1.0.0
 ## explicit; go 1.13
 github.com/grandcat/zeroconf
-# github.com/lf-edge/eve-api/go v0.0.0-20240223172542-a95e144d46a9
+# github.com/lf-edge/eve-api/go v0.0.0-20240229195728-6180247abbc1
 ## explicit; go 1.20
 github.com/lf-edge/eve-api/go/auth
 github.com/lf-edge/eve-api/go/certs

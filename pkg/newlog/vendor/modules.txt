@@ -24,7 +24,7 @@ github.com/google/go-cmp/cmp/internal/value
 # github.com/google/go-containerregistry v0.8.0
 ## explicit; go 1.14
 github.com/google/go-containerregistry/pkg/v1/types
-# github.com/lf-edge/eve-api/go v0.0.0-20230727134029-123abaf9479d
+# github.com/lf-edge/eve-api/go v0.0.0-20240229195728-6180247abbc1
 ## explicit; go 1.20
 github.com/lf-edge/eve-api/go/auth
 github.com/lf-edge/eve-api/go/certs
@@ -32,6 +32,8 @@ github.com/lf-edge/eve-api/go/config
 github.com/lf-edge/eve-api/go/evecommon
 github.com/lf-edge/eve-api/go/info
 github.com/lf-edge/eve-api/go/logs
+github.com/lf-edge/eve-api/go/metrics
+github.com/lf-edge/eve-api/go/profile
 # github.com/lf-edge/eve/pkg/pillar v0.0.0-20230727061425-295cf5137a5c
 ## explicit; go 1.20
 github.com/lf-edge/eve/pkg/pillar/agentlog
