@@ -13,21 +13,21 @@ import (
 )
 
 type aclCounters struct {
-	table  string
-	chain  string
-	ipVer  int
-	inIf   string
-	pInIf  string // --physdev-in
-	outIf  string
-	pOutIf string // --physdev-out
-	log    bool
-	drop   bool
-	limit  bool
-	more   bool // Has fields we didn't explicitly parse; user specified.
-	accept bool
-	dest   string
-	bytes  uint64
-	pkts   uint64
+	table       string
+	chain       string
+	ipVer       int
+	inIf        string
+	pInIf       string // --physdev-in
+	outIf       string
+	pOutIf      string // --physdev-out
+	drop        bool
+	dropCounter bool
+	limit       bool
+	more        bool // Has fields we didn't explicitly parse; user specified.
+	accept      bool
+	dest        string
+	bytes       uint64
+	pkts        uint64
 }
 
 func addrTypeToIPVer(addrType types.AddressType) int {
@@ -185,8 +185,8 @@ func (lc *LinuxCollector) parseIptablesLine(
 			switch items[i+1] {
 			case "DROP":
 				ac.drop = true
-			case "LOG":
-				ac.log = true
+			case "DROP-COUNTER":
+				ac.dropCounter = true
 			case "ACCEPT":
 				ac.accept = true
 			}
@@ -220,7 +220,7 @@ func (lc *LinuxCollector) parseIptablesLine(
 func (lc *LinuxCollector) getIptablesCounters(
 	counters []aclCounters, match aclCounters) aclCounters {
 	for i, c := range counters {
-		if c.ipVer != match.ipVer || c.log != match.log ||
+		if c.ipVer != match.ipVer || c.dropCounter != match.dropCounter ||
 			c.drop != match.drop || c.limit != match.limit {
 			continue
 		}
@@ -256,24 +256,29 @@ func (lc *LinuxCollector) makeIptablesCountersMatcher(
 	return aclCounters{inIf: inIf, pInIf: pInIf, pOutIf: pOutIf, outIf: outIf, ipVer: ipVer}
 }
 
-// Look for a LOG entry without More; we don't have those for rate limits
-// zedrouter appends a '+' to the vifname to handle PV/qemu which for some
-// reason have a second <vifname>-emu bridge interface. Need to match that here.
+// getIptablesACLDrop : get number of dropped packets for a given VIF.
+// DROP action is used in two cases:
+// 1. DROP rule for the packets exceeding rate-limiter.
+// 2. Default DROP rule in the end.
+// With flow-monitoring support, we cannot have the default DROP rule
+// in the end of rule list. This is to avoid conntrack from deleting
+// connections matching the default rule. Instead of the default DROP
+// rule, we add a custom NOOP "DROP-COUNTER" rule for counting packets
+// that are being forwarded to the blackhole interface.
+// Packets matching the default DROP rule also match the DROP-COUNTER rule.
+// Since we will not have the default DROP rule, we can copy statistics
+// from the DROP-COUNTER rule as DROP statistics.
 func (lc *LinuxCollector) getIptablesACLDrop(counters []aclCounters,
 	bridgeName string, vifName string, ipVer int, brInput bool) uint64 {
 	matcher := lc.makeIptablesCountersMatcher(bridgeName, vifName, ipVer, brInput)
 	matcher.drop = true
 	c := lc.getIptablesCounters(counters, matcher)
-	return c.pkts
-}
-
-// Get the packet/byte count of logged packets.
-func (lc *LinuxCollector) getIptablesACLLog(counters []aclCounters,
-	bridgeName string, vifName string, ipVer int, brInput bool) uint64 {
-	matcher := lc.makeIptablesCountersMatcher(bridgeName, vifName, ipVer, brInput)
-	matcher.log = true
-	c := lc.getIptablesCounters(counters, matcher)
-	return c.pkts
+	pkts := c.pkts
+	matcher.drop = false
+	matcher.dropCounter = true
+	c = lc.getIptablesCounters(counters, matcher)
+	pkts += c.pkts
+	return pkts
 }
 
 // Look for a DROP entry with More set.

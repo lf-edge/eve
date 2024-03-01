@@ -444,6 +444,19 @@ func (r *LinuxNIReconciler) getIntendedBlackholeCfg() dg.Graph {
 		Description: "Rule to ensure that packets marked with the drop action " +
 			"are indeed dropped and never sent out via downlink or uplink interfaces",
 	}, nil)
+	// Add NOOP "DROP-COUNTER" chain used in the place of the default DROP rule to merely
+	// count the to-be-dropped packets.
+	// The actual drop is performed by routing the matched packet towards the blackhole
+	// interface.
+	for _, table := range []string{"raw", "filter"} {
+		for _, forIPv6 := range []bool{false, true} {
+			intendedBlackholeCfg.PutItem(iptables.Chain{
+				ChainName: dropCounterChain,
+				Table:     table,
+				ForIPv6:   forIPv6,
+			}, nil)
+		}
+	}
 	return intendedBlackholeCfg
 }
 
