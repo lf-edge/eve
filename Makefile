@@ -397,6 +397,11 @@ test: $(LINUXKIT) test-images-patches | $(DIST)
 	cp pkg/pillar/results.xml $(DIST)/
 	$(QUIET): $@: Succeeded
 
+test-commits:
+	@echo -n "Warning this is going to use git rebase underneath; press [ENTER] if you really want to continue or Ctrl-c to cancel ..."
+	@read a
+	GIT_SEQUENCE_EDITOR=/bin/true git rebase -i --exec 'make test' origin/master
+
 # wrap command into DOCKER_GO and propagate it to the pillar's Makefile
 # for example make pillar-fmt will run docker container based on
 # build-tools/src/scripts/Dockerfile
