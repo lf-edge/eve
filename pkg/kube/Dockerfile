@@ -25,7 +25,6 @@ COPY multus-daemonset.yaml /etc
 RUN mkdir -p /etc/containerd
 COPY kubevirt-features.yaml /etc
 COPY config-k3s.toml /etc/containerd/
-COPY longhorn-config.yaml /etc/
 COPY longhorn-generate-support-bundle.sh /usr/bin/
 COPY debuguser-role-binding.yaml /etc/
 COPY external-boot-image.tar /etc/

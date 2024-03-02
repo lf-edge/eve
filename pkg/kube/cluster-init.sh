@@ -550,9 +550,14 @@ if [ ! -f /var/lib/all_components_initialized ]; then
             wait_for_item "longhorn"
             logmsg "Installing longhorn version ${LONGHORN_VERSION}"
             apply_longhorn_disk_config $HOSTNAME
-            #kubectl apply -f  https://raw.githubusercontent.com/longhorn/longhorn/${LONGHORN_VERSION}/deploy/longhorn.yaml
-            # Switch back to above once all the longhorn services use the updated go iscsi tools
-            kubectl apply -f /etc/longhorn-config.yaml
+            lhCfgPath=/var/lib/lh-cfg-${LONGHORN_VERSION}.yaml
+            if [ ! -e $lhCfgPath ]; then
+              curl -k https://raw.githubusercontent.com/longhorn/longhorn/${LONGHORN_VERSION}/deploy/longhorn.yaml > "$lhCfgPath"
+            fi
+            if ! grep -q 'create-default-disk-labeled-nodes: true' "$lhCfgPath"; then
+              sed -i '/  default-setting.yaml: |-/a\    create-default-disk-labeled-nodes: true' "$lhCfgPath"
+            fi
+            kubectl apply -f "$lhCfgPath"
             touch /var/lib/longhorn_initialized
           fi
           sleep 10
