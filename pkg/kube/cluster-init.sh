@@ -526,7 +526,7 @@ if [ ! -f /var/lib/all_components_initialized ]; then
             wait_for_item "kubevirt"
             # This patched version will be removed once the following PR https://github.com/kubevirt/kubevirt/pull/9668 is merged
             logmsg "Installing patched Kubevirt"
-            kubectl apply -f https://github.com/kubevirt/kubevirt/releases/download/${KUBEVIRT_VERSION}/kubevirt-operator.yaml
+            kubectl apply -f /etc/kubevirt-operator.yaml
             kubectl apply -f https://github.com/kubevirt/kubevirt/releases/download/${KUBEVIRT_VERSION}/kubevirt-cr.yaml
 
             wait_for_item "cdi"
