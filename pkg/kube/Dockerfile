@@ -24,6 +24,7 @@ RUN mv /eve-bridge /usr/bin
 COPY multus-daemonset.yaml /etc
 RUN mkdir -p /etc/containerd
 COPY kubevirt-features.yaml /etc
+COPY kubevirt-operator.yaml /etc
 COPY config-k3s.toml /etc/containerd/
 COPY longhorn-generate-support-bundle.sh /usr/bin/
 COPY debuguser-role-binding.yaml /etc/
