@@ -2318,6 +2318,11 @@ func handleDelete(ctx *domainContext, key string, status *types.DomainStatus) {
 	// No point in publishing metrics any more
 	ctx.pubDomainMetric.Unpublish(status.Key())
 
+	err := hyper.Task(status).Delete(status.DomainName)
+	if err != nil {
+		log.Errorln(err)
+	}
+
 	log.Functionf("handleDelete(%v) DONE for %s",
 		status.UUIDandVersion, status.DisplayName)
 }
