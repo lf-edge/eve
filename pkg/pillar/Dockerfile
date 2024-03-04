@@ -111,7 +111,7 @@ RUN --mount=type=cache,target=/root/.cache/go-build if [ ${DEV} = "y" ]; then \
     cp dlv /final/opt/ ; \
 fi
 
-FROM lfedge/eve-fscrypt:0b7cc0d9d620e47fc54e21d56cb8a5cd224f9c9b as fscrypt
+FROM lfedge/eve-fscrypt:e8507303431c8c11ec1a2b3b7fb02e1a0dcdf296 as fscrypt
 FROM lfedge/eve-dnsmasq:3af908d86a95a627c729e09b1b125bf8de7fadcb as dnsmasq
 FROM lfedge/eve-gpt-tools:51ecda7bc185c655c1d0423228dc83e29d4c674d as gpttools
 
