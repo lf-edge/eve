@@ -31,8 +31,6 @@ zfs_set_default_parameters() {
     set_module_parameter zfs zfs_vdev_async_read_max_active 10
     set_module_parameter zfs zfs_vdev_async_write_min_active 1
     set_module_parameter zfs zfs_vdev_async_write_max_active 10
-    set_module_parameter zfs zfs_smoothing_scale 50000
-    set_module_parameter zfs zfs_smoothing_write 5
 }
 
 # Load ZFS and set parameters
