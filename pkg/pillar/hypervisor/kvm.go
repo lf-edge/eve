@@ -941,9 +941,12 @@ func (ctx KvmContext) Stop(domainName string, _ bool) error {
 // Delete deletes a domain
 func (ctx KvmContext) Delete(domainName string) (result error) {
 	//Sending a stop signal to then domain before quitting. This is done to freeze the domain before quitting it.
-	execStop(GetQmpExecutorSocket(domainName))
-	if err := execQuit(GetQmpExecutorSocket(domainName)); err != nil {
-		return logError("failed to execute quit command %v", err)
+	_, err := os.Stat(GetQmpExecutorSocket(domainName))
+	if err == nil {
+		execStop(GetQmpExecutorSocket(domainName))
+		if err = execQuit(GetQmpExecutorSocket(domainName)); err != nil {
+			return logError("failed to execute quit command %v", err)
+		}
 	}
 	// we may want to wait a little bit here and actually kill qemu process if it gets wedged
 	if err := os.RemoveAll(kvmStateDir + domainName); err != nil {
