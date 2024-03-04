@@ -172,9 +172,9 @@ func ResolveWithPortsLambda(domain string,
 				})
 			}
 		}
-		return responses, nil
+		return responses, errs
 	case ip := <-resolvedIPsChan:
 		close(quit)
-		return ip, errs
+		return ip, nil
 	}
 }
