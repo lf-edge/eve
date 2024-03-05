@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	libzfs "github.com/bicomsystems/go-libzfs"
+	libzfs "github.com/andrewd-zededa/go-libzfs"
 	"github.com/lf-edge/eve-api/go/info"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	etpm "github.com/lf-edge/eve/pkg/pillar/evetpm"

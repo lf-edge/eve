@@ -192,8 +192,8 @@ property_list_t *read_user_property(dataset_list_t *dataset, const char* prop) {
 	nvlist_t *user_props = zfs_get_user_props(dataset->zh);
 	nvlist_t *propval;
 	zprop_source_t sourcetype;
-	char *strval;
-	char *sourceval;
+	const char *strval;
+	const char *sourceval;
 	// char source[ZFS_MAX_DATASET_NAME_LEN];
 	property_list_ptr list = new_property_list();
 	

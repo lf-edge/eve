@@ -81,6 +81,9 @@ github.com/anatol/smart.go
 # github.com/anchore/go-struct-converter v0.0.0-20221118182256-c68fdcfa2092
 ## explicit; go 1.18
 github.com/anchore/go-struct-converter
+# github.com/andrewd-zededa/go-libzfs v0.0.0-20240304231806-6a64e99da97d
+## explicit; go 1.13
+github.com/andrewd-zededa/go-libzfs
 # github.com/aws/aws-sdk-go v1.44.82
 ## explicit; go 1.11
 github.com/aws/aws-sdk-go/aws
@@ -137,9 +140,6 @@ github.com/aws/aws-sdk-go/service/sts/stsiface
 # github.com/beorn7/perks v1.0.1
 ## explicit; go 1.11
 github.com/beorn7/perks/quantile
-# github.com/bicomsystems/go-libzfs v0.4.0
-## explicit; go 1.13
-github.com/bicomsystems/go-libzfs
 # github.com/bugsnag/bugsnag-go v1.4.1
 ## explicit
 # github.com/bugsnag/panicwrap v1.2.0
