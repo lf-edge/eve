@@ -665,11 +665,6 @@ $(SBOM): $(ROOTFS_TAR) | $(INSTALLER)
 	# this all can go away, and we can read the rootfs.tar
 	# see https://github.com/anchore/syft/issues/1400
 	tar xf $< -C $(TMP_ROOTDIR) --exclude "dev/*"
-	# kernel-*.spdx.json are now generated in eve-kernel repo and are stored in docker  image.
-	# Manually extract them to unpacked rootfs.
-	# Later linuxkit will get a support for SBOM in OCI metadata and this step as well as manual run of
-	# syft will be deprecated
-	docker export $(shell docker create $(KERNEL_TAG) create) | tar xv -C $(TMP_ROOTDIR) --wildcards --no-anchored '*.spdx.json'
 	docker run -v $(TMP_ROOTDIR):/rootdir:ro -v $(CURDIR)/.syft.yaml:/syft.yaml:ro $(SYFT_IMAGE) -c /syft.yaml --base-path /rootdir /rootdir > $@
 	rm -rf $(TMP_ROOTDIR)
 	$(QUIET): $@: Succeeded
