@@ -25,6 +25,7 @@ nav:
   - 'Verifying EVE-OS': 'docs/HARDWARE-VERIFICATION.md'
   - 'Booting EVE': 'docs/BOOTING.md'
   - Communications: 'docs/COMMS.md'
+  - 'CAN Bus': 'docs/CANBus.md'
   - Registration: 'docs/REGISTRATION.md'
   - 'Update base image': 'docs/BASEIMAGE-UPDATE.md'
   - Build-tools: 'build-tools/ver-update/README.md'
