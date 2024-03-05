@@ -370,7 +370,7 @@ int refresh_stats(zpool_list_t *pool)
 }
 
 const char *get_vdev_type(nvlist_ptr nv) {
-	char *value = NULL;
+	const char *value = NULL;
 	int r = nvlist_lookup_string(nv, ZPOOL_CONFIG_TYPE, &value);
 	if(r != 0) {
 		return NULL;
@@ -441,7 +441,7 @@ vdev_children_ptr get_vdev_l2cache(nvlist_t *nv) {
 }
 
 const char *get_vdev_path(nvlist_ptr nv) {
-	char *path = NULL;
+	const char *path = NULL;
 	uint64_t notpresent = 0;
 	int r = nvlist_lookup_uint64(nv, ZPOOL_CONFIG_NOT_PRESENT, &notpresent);
 	if (r == 0 || notpresent != 0) {
@@ -473,7 +473,7 @@ uint64_t get_zpool_guid(nvlist_ptr nv) {
 }
 
 const char *get_zpool_name(nvlist_ptr nv) {
-	char *name = NULL;
+	const char *name = NULL;
 	if (0 != nvlist_lookup_string(nv, ZPOOL_CONFIG_POOL_NAME, &name)) {
 		return NULL;
 	}
@@ -481,7 +481,7 @@ const char *get_zpool_name(nvlist_ptr nv) {
 }
 
 const char *get_zpool_comment(nvlist_ptr nv) {
-	char *comment = NULL;
+	const char *comment = NULL;
 	if (0 != nvlist_lookup_string(nv, ZPOOL_CONFIG_COMMENT, &comment)) {
 		return NULL;
 	}
@@ -510,7 +510,12 @@ nvlist_ptr go_zpool_search_import(libzfs_handle_ptr zfsh, int paths, char **path
 	if (t == NULL)
 			return NULL;
 
-	pools = zpool_search_import(zfsh, &idata, &libzfs_config_ops);
+	libpc_handle_t lpch = {
+		.lpc_lib_handle = zfsh,
+		.lpc_ops = &libzfs_config_ops,
+		.lpc_printerr = B_TRUE
+	};
+	pools = zpool_search_import(&lpch, &idata);
 
 	tpool_wait(t);
 	tpool_destroy(t);
