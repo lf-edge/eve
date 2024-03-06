@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/lf-edge/eve/pkg/kube/cnirpc"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/objtonum"
 	uuid "github.com/satori/go.uuid"
@@ -104,6 +105,8 @@ type AppNetworkStatus struct {
 	PendingDelete  bool
 	ConfigInSync   bool
 	DisplayName    string
+	// AppPod is only valid in Kubernetes mode.
+	AppPod cnirpc.AppPod
 	// Copy from the AppNetworkConfig; used to delete when config is gone.
 	GetStatsIPAddr       net.IP
 	AppNetAdapterList    []AppNetAdapterStatus

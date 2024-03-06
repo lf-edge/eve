@@ -188,6 +188,10 @@ type zedrouter struct {
 	peUsagePersist      *persistcache.PersistCache
 
 	pubPatchEnvelopesUsage pubsub.Publication
+
+	// Kubernetes networking
+	withKubeNetworking bool
+	cniRequests        chan *rpcRequest
 }
 
 // AddAgentSpecificCLIFlags adds CLI options
@@ -231,6 +235,9 @@ func (z *zedrouter) init() (err error) {
 	z.cipherMetrics = cipher.NewAgentMetrics(agentName)
 
 	z.patchEnvelopes = NewPatchEnvelopes(z.log, z.pubSub)
+
+	z.withKubeNetworking = base.IsHVTypeKube()
+	z.cniRequests = make(chan *rpcRequest)
 
 	gcp := *types.DefaultConfigItemValueMap()
 	z.appContainerStatsInterval = gcp.GlobalValueInt(types.AppContainerStatsInterval)
@@ -286,7 +293,8 @@ func (z *zedrouter) init() (err error) {
 		z.log, agentName, z.zedcloudMetrics)
 	z.reachProber = controllerReachProber
 	z.niReconciler = nireconciler.NewLinuxNIReconciler(z.log, z.logger, z.networkMonitor,
-		z.makeMetadataHandler(), true, true)
+		z.makeMetadataHandler(), true, true,
+		z.withKubeNetworking)
 
 	z.initNumberAllocators()
 	return nil
@@ -299,6 +307,16 @@ func (z *zedrouter) run(ctx context.Context) (err error) {
 	}
 	z.log.Noticef("Starting %s", agentName)
 
+	if base.IsHVTypeKube() {
+		if err = z.runRPCServer(); err != nil {
+			return err
+		}
+	}
+
+	// Run a periodic timer so we always update StillRunning
+	stillRunning := time.NewTicker(25 * time.Second)
+	z.pubSub.StillRunning(agentName, warningTime, errorTime)
+
 	// Wait for initial GlobalConfig.
 	if err = z.subGlobalConfig.Activate(); err != nil {
 		return err
@@ -308,7 +326,9 @@ func (z *zedrouter) run(ctx context.Context) (err error) {
 		select {
 		case change := <-z.subGlobalConfig.MsgChan():
 			z.subGlobalConfig.ProcessChange(change)
+		case <-stillRunning.C:
 		}
+		z.pubSub.StillRunning(agentName, warningTime, errorTime)
 	}
 	z.log.Noticef("Processed GlobalConfig")
 
@@ -319,10 +339,6 @@ func (z *zedrouter) run(ctx context.Context) (err error) {
 		return err
 	}
 	z.log.Noticef("Received device UUID")
-
-	// Run a periodic timer so we always update StillRunning
-	stillRunning := time.NewTicker(25 * time.Second)
-	z.pubSub.StillRunning(agentName, warningTime, errorTime)
 
 	// Timer used to retry failed configuration
 	z.retryTimer = time.NewTimer(1 * time.Second)
@@ -517,6 +533,7 @@ func (z *zedrouter) run(ctx context.Context) (err error) {
 						appKey, vif.NetAdapterName)
 					continue
 				}
+
 				for i := range appStatus.AppNetAdapterList {
 					adapterStatus := &appStatus.AppNetAdapterList[i]
 					if adapterStatus.Name != vif.NetAdapterName {
@@ -546,6 +563,12 @@ func (z *zedrouter) run(ctx context.Context) (err error) {
 				z.doUpdateNIUplink(probeUpdate.SelectedUplinkLL, status, *config)
 			}
 			z.pubSub.CheckMaxTimeTopic(agentName, "probeUpdates", start,
+				warningTime, errorTime)
+
+		case req := <-z.cniRequests:
+			start := time.Now()
+			z.handleRPC(req)
+			z.pubSub.CheckMaxTimeTopic(agentName, "handleRPC", start,
 				warningTime, errorTime)
 
 		case <-z.retryTimer.C:

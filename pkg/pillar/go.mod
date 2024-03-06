@@ -198,6 +198,7 @@ require (
 require (
 	github.com/bicomsystems/go-libzfs v0.4.0 // indirect
 	github.com/imdario/mergo v0.3.13 // indirect
+	github.com/lf-edge/eve/pkg/kube/cnirpc v0.0.0-00010101000000-000000000000 // indirect
 	github.com/openshift/api v0.0.0-20230503133300-8bbcb7ca7183 // indirect
 	github.com/openshift/custom-resource-status v1.1.2 // indirect
 	github.com/pborman/uuid v1.2.1 // indirect
@@ -212,3 +213,6 @@ require (
 	sigs.k8s.io/structured-merge-diff/v4 v4.4.1 // indirect
 	sigs.k8s.io/yaml v1.3.0 // indirect
 )
+
+// TODO: Remove the replace directive once cnirpc is merged.
+replace github.com/lf-edge/eve/pkg/kube/cnirpc => ../kube/cnirpc
