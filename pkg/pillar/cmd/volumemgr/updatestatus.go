@@ -432,8 +432,8 @@ func doUpdateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus)
 
 		// check if the image was created
 		imgName := status.ReferenceID()
-		if ctx.hvTypeKube && status.OciImageName != "" {
-			imgName = status.OciImageName
+		if ctx.hvTypeKube && status.IsContainer() {
+			imgName = types.KubeContainerImagePrefix + imgName
 		}
 		if !lookupImageCAS(imgName, ctx.casClient) {
 			log.Functionf("doUpdateContentTree(%s): image does not yet exist in CAS", status.Key())
@@ -462,15 +462,10 @@ func doUpdateVol(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool)
 	// Anything to do?
 	if status.State == types.CREATED_VOLUME {
 		if ctx.hvTypeKube {
-			cfg := lookupContentTreeConfig(ctx, status.ContentID.String())
 			ctStatus := ctx.LookupContentTreeStatus(status.ContentID.String())
-			if ctStatus != nil && cfg != nil {
-				if cfg.IsAppImage && ctStatus.OciImageName != "" && !status.IsAppImage {
-					status.ReferenceName = ctStatus.OciImageName
-					status.IsAppImage = true
-					log.Functionf("doUpdateVol: reference name %v", status.ReferenceName)
-					return true, false
-				}
+			if ctStatus.IsContainer() {
+				log.Functionf("doUpdateVol: reference name %v, return chnaged", status.ReferenceName)
+				return true, false
 			}
 		}
 		log.Functionf("doUpdateVol(%s) name %s nothing to do",
@@ -604,13 +599,12 @@ func doUpdateVol(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool)
 			status.State != types.CREATING_VOLUME &&
 			status.SubState == types.VolumeSubStateInitial {
 
-			status.IsAppImage = false
 			imgName := ctStatus.ReferenceID()
 			if ctx.hvTypeKube {
 				cfg := lookupContentTreeConfig(ctx, status.ContentID.String())
-				if cfg != nil && cfg.IsAppImage && ctStatus.OciImageName != "" {
-					imgName = ctStatus.OciImageName
-					status.IsAppImage = true
+				if cfg != nil && ctStatus.IsContainer() {
+					imgName = types.KubeContainerImagePrefix + imgName
+					log.Functionf("doUpdateVol:reference name %v", imgName)
 				}
 			}
 			_, err := ctx.casClient.GetImageHash(imgName)

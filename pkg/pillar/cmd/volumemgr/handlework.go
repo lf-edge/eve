@@ -6,7 +6,6 @@ package volumemgr
 // Interface to worker to run the create and destroy in separate goroutines
 
 import (
-	"strings"
 	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/types"
@@ -19,8 +18,6 @@ const (
 	workIngest  = "ingest"
 	workPrepare = "prepare"
 )
-
-const dockerPrefix = "docker.io/"
 
 // volumeWorkDescription volume creation/deletion work we feed into the worker go routine.
 // Only one of create and destroy is set
@@ -239,8 +236,8 @@ func casIngestWorker(ctxPtr interface{}, w worker.Work) worker.WorkResult {
 	}
 
 	appImgName := status.ReferenceID()
-	if ctx.hvTypeKube {
-		appImgName = mayAppendImgPrefix(ctx, &status, appImgName)
+	if ctx.hvTypeKube && status.IsContainer() {
+		appImgName = types.KubeContainerImagePrefix + appImgName
 	}
 
 	// load the blobs
@@ -259,8 +256,7 @@ func casIngestWorker(ctxPtr interface{}, w worker.Work) worker.WorkResult {
 	} else {
 		if ctx.hvTypeKube {
 			cfg := lookupContentTreeConfig(ctx, status.ContentID.String())
-			if cfg != nil && cfg.IsAppImage {
-				status.OciImageName = appImgName
+			if cfg != nil && status.IsContainer() {
 				publishContentTreeStatus(ctx, &status)
 			}
 		}
@@ -370,14 +366,4 @@ func popVolumePrepareResult(ctx *volumemgrContext, key string) *volumePrepareRes
 	return &volumePrepareResult{
 		WorkResult: *res,
 	}
-}
-
-func mayAppendImgPrefix(ctx *volumemgrContext, status *types.ContentTreeStatus, appImgName string) string {
-	cfg := lookupContentTreeConfig(ctx, status.ContentID.String())
-	if cfg != nil && cfg.IsAppImage {
-		if !strings.HasPrefix(appImgName, dockerPrefix) {
-			appImgName = dockerPrefix + appImgName
-		}
-	}
-	return appImgName
 }
