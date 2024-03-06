@@ -356,10 +356,6 @@ func (ctx kubevirtContext) CreateVMIConfig(domainName string, config types.Domai
 
 	// Gather all PCI assignments into a single line
 	var pciAssignments []pciDevice
-	// Gather all USB assignments into a single line
-	var usbAssignments []string
-	// Gather all serial assignments into a single line
-	var serialAssignments []string
 
 	for _, adapter := range config.IoAdapterList {
 		logrus.Debugf("processing adapter %d %s\n", adapter.Type, adapter.Name)
@@ -383,24 +379,17 @@ func (ctx kubevirtContext) CreateVMIConfig(domainName string, config types.Domai
 				tap := pciDevice{pciLong: ib.PciLong, ioType: ib.Type}
 				pciAssignments = addNoDuplicatePCI(pciAssignments, tap)
 			}
-			if ib.Serial != "" {
-				logrus.Infof("Adding serial <%s>\n", ib.Serial)
-				serialAssignments = addNoDuplicate(serialAssignments, ib.Serial)
-			}
-			if ib.UsbAddr != "" {
-				logrus.Infof("Adding USB host device <%s>\n", ib.UsbAddr)
-				usbAssignments = addNoDuplicate(usbAssignments, ib.UsbAddr)
-			}
+
 		}
 	}
 
-	if len(pciAssignments) > 0 || len(serialAssignments) > 0 || len(usbAssignments) > 0 {
+	if len(pciAssignments) > 0 {
 		// Device passthrough is a three step process in Kubevirt/Kubernetes
 		// 1) First do PCI Reserve like in kvm.go (If we are here, PCI Reserve is already done)
 		// 2) Register the  pciVendorSelector which is a PCI vendor ID and product ID tuple in the form vendor_id:product_id
 		//    with kubevirt
 		// 3) Then pass the registered names to VMI config
-		err := registerWithKV(kvClient, vmi, pciAssignments, serialAssignments, usbAssignments)
+		err := registerWithKV(kvClient, vmi, pciAssignments)
 		if err != nil {
 			return logError("Failed to register with Kubevirt  %v", len(pciAssignments))
 		}
@@ -1263,11 +1252,14 @@ func getConfig(ctx *kubevirtContext) error {
 	return nil
 }
 
-// Register the device  with Kubevirt
+// Register the host device with Kubevirt
 // Refer https://kubevirt.io/user-guide/virtual_machines/host-devices/#host-preparation-for-pci-passthrough
-func registerWithKV(kvClient kubecli.KubevirtClient, vmi *v1.VirtualMachineInstance, pciAssignments []pciDevice, serialAssignments []string, usbAssignments []string) error {
+// Refer https://kubevirt.io/user-guide/virtual_machines/host-devices/#usb-host-passthrough
+func registerWithKV(kvClient kubecli.KubevirtClient, vmi *v1.VirtualMachineInstance, pciAssignments []pciDevice) error {
 
+	logrus.Infof("PRAMOD entered registerWithKV  pcilen %d ", len(pciAssignments))
 	pcidevices := make([]v1.HostDevice, len(pciAssignments))
+
 	// Define the KubeVirt resource's name and namespace
 	kubeVirtName := "kubevirt"
 	kubeVirtNamespace := "kubevirt"
@@ -1280,8 +1272,6 @@ func registerWithKV(kvClient kubecli.KubevirtClient, vmi *v1.VirtualMachineInsta
 
 	// Get the currently registered  devices from Kubevirt
 	pciHostDevs := kubeVirt.Spec.Configuration.PermittedHostDevices.PciHostDevices
-	// mediatedDevs := kubeVirt.Spec.Configuration.PermittedHostDevices.MediatedDevices
-	// usbDevs := kubeVirt.Spec.Configuration.PermittedHostDevices.usb
 
 	for i, pa := range pciAssignments {
 
@@ -1304,7 +1294,7 @@ func registerWithKV(kvClient kubecli.KubevirtClient, vmi *v1.VirtualMachineInsta
 
 		// Check if we already registered this device with kubevirt. If not register with kubevirt
 		registered := isRegisteredPciHostDevice(pciVendorSelector, pciHostDevs)
-		resname := "devices.kubevirt.io/nvme" + strconv.Itoa(i+1)
+		resname := "devices.kubevirt.io/hostdevice" + strconv.Itoa(i+1)
 		if !registered {
 
 			newpcidev := v1.PciHostDevice{
@@ -1320,16 +1310,17 @@ func registerWithKV(kvClient kubecli.KubevirtClient, vmi *v1.VirtualMachineInsta
 			}
 		}
 		// At this point we have registered the PCI device with kubevirt
-		//  Create HostDevice array which will be inserted into vmi Hostdevices
+		// Create HostDevice array which will be inserted into vmi Hostdevices
+		// Hostdevices could be NVMe drives,USB or NICs, that is reason if just call them device.
 
 		pcidevices[i] = v1.HostDevice{
 			DeviceName: resname,
-			Name:       "nvme" + strconv.Itoa(i+1),
+			Name:       "device" + strconv.Itoa(i+1),
 		}
 
-	}
+		vmi.Spec.Domain.Devices.HostDevices = append(vmi.Spec.Domain.Devices.HostDevices, pcidevices[i])
 
-	vmi.Spec.Domain.Devices.HostDevices = pcidevices
+	}
 
 	return nil
 
