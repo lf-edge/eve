@@ -657,6 +657,9 @@ github.com/lf-edge/eve-libs/zedUpload/httputil
 github.com/lf-edge/eve-libs/zedUpload/ociutil
 github.com/lf-edge/eve-libs/zedUpload/sftputil
 github.com/lf-edge/eve-libs/zedUpload/types
+# github.com/lf-edge/eve/pkg/kube/cnirpc v0.0.0-00010101000000-000000000000 => ../kube/cnirpc
+## explicit; go 1.20
+github.com/lf-edge/eve/pkg/kube/cnirpc
 # github.com/lf-edge/go-qemu v0.0.0-20231121152149-4c467eda0c56
 ## explicit; go 1.18
 github.com/lf-edge/go-qemu/qmp
@@ -1499,3 +1502,4 @@ sigs.k8s.io/structured-merge-diff/v4/value
 # sigs.k8s.io/yaml v1.3.0
 ## explicit; go 1.12
 sigs.k8s.io/yaml
+# github.com/lf-edge/eve/pkg/kube/cnirpc => ../kube/cnirpc
