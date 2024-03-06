@@ -26,6 +26,8 @@ func RegisterItems(log *base.LogObject, registry *reconciler.DefaultRegistry,
 		{c: &RouteConfigurator{Log: log, NetworkMonitor: monitor}, t: generic.IPv6RouteTypename},
 		{c: &VLANBridgeConfigurator{Log: log, NetworkMonitor: monitor}, t: VLANBridgeTypename},
 		{c: &VLANPortConfigurator{Log: log, NetworkMonitor: monitor}, t: VLANPortTypename},
+		{c: &SysctlConfigurator{Log: log}, t: SysctlTypename},
+		{c: &VIFConfigurator{Log: log}, t: VIFTypename},
 	}
 	for _, configurator := range configurators {
 		err := registry.Register(configurator.c, configurator.t)

@@ -15,6 +15,7 @@ import (
 
 	dg "github.com/lf-edge/eve-libs/depgraph"
 	"github.com/lf-edge/eve-libs/reconciler"
+	"github.com/lf-edge/eve/pkg/kube/cnirpc"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/iptables"
 	"github.com/lf-edge/eve/pkg/pillar/netmonitor"
@@ -33,7 +34,7 @@ var (
 	networkMonitor *netmonitor.MockNetworkMonitor
 )
 
-func initTest(test *testing.T) *GomegaWithT {
+func initTest(test *testing.T, withKube bool) *GomegaWithT {
 	t := NewGomegaWithT(test)
 	t.SetDefaultEventuallyTimeout(5 * time.Second)
 	t.SetDefaultConsistentlyDuration(5 * time.Second)
@@ -44,7 +45,7 @@ func initTest(test *testing.T) *GomegaWithT {
 		MainRT: unix.RT_TABLE_MAIN,
 	}
 	niReconciler = nirec.NewLinuxNIReconciler(log, logger, networkMonitor, nil,
-		false, false)
+		false, false, withKube)
 	return t
 }
 
@@ -1028,7 +1029,7 @@ var (
 )
 
 func TestSingleLocalNI(test *testing.T) {
-	t := initTest(test)
+	t := initTest(test, false)
 	networkMonitor.AddOrUpdateInterface(eth0)
 	networkMonitor.UpdateRoutes(eth0Routes)
 
@@ -1084,8 +1085,9 @@ func TestSingleLocalNI(test *testing.T) {
 	}
 	intendedDefRoute := linuxitems.Route{
 		Route: netlinkDefRoute,
-		OutputIf: linuxitems.RouteOutIf{
-			UplinkIfName: "eth0",
+		OutputIf: genericitems.NetworkIf{
+			IfName:  "eth0",
+			ItemRef: dg.Reference(genericitems.Uplink{IfName: "eth0"}),
 		}}
 	t.Expect(itemIsCreated(dg.Reference(intendedDefRoute))).To(BeTrue())
 	netlinkUnreachV4Route := netlink.Route{
@@ -1125,7 +1127,7 @@ func TestSingleLocalNI(test *testing.T) {
 	}, eth0Routes...))
 
 	// Connect application into the network instance.
-	appStatus, err := niReconciler.ConnectApp(ctx, app1NetConfig, app1Num, app1VIFs)
+	appStatus, err := niReconciler.AddAppConn(ctx, app1NetConfig, app1Num, cnirpc.AppPod{}, app1VIFs)
 	t.Expect(err).ToNot(HaveOccurred())
 	t.Expect(appStatus.App).To(Equal(app1UUID.UUID))
 	t.Expect(appStatus.Deleted).To(BeFalse())
@@ -1220,7 +1222,7 @@ func TestSingleLocalNI(test *testing.T) {
 	t.Expect(itemIsCreated(dg.Reference(intendedUnreachV6Route))).To(BeTrue())
 
 	// Disconnect the application.
-	appStatus, err = niReconciler.DisconnectApp(ctx, app1UUID.UUID)
+	appStatus, err = niReconciler.DelAppConn(ctx, app1UUID.UUID)
 	t.Expect(err).ToNot(HaveOccurred())
 	t.Expect(appStatus.App).To(Equal(app1UUID.UUID))
 	t.Expect(appStatus.Deleted).To(BeTrue())
@@ -1269,7 +1271,7 @@ func TestSingleLocalNI(test *testing.T) {
 }
 
 func TestIPv4LocalAndSwitchNIs(test *testing.T) {
-	t := initTest(test)
+	t := initTest(test, false)
 	// Start with eth1 not having yet received IP address from an external DHCP server.
 	eth1IPs := eth1.IPAddrs
 	eth1.IPAddrs = nil
@@ -1325,8 +1327,9 @@ func TestIPv4LocalAndSwitchNIs(test *testing.T) {
 			Family:   netlink.FAMILY_V4,
 			Protocol: unix.RTPROT_STATIC,
 		},
-		OutputIf: linuxitems.RouteOutIf{
-			UplinkIfName: "eth0",
+		OutputIf: genericitems.NetworkIf{
+			IfName:  "eth0",
+			ItemRef: dg.Reference(genericitems.Uplink{IfName: "eth0"}),
 		},
 	}
 	t.Expect(itemIsCreated(dg.Reference(eth0Route))).To(BeTrue())
@@ -1337,8 +1340,9 @@ func TestIPv4LocalAndSwitchNIs(test *testing.T) {
 			Family:   netlink.FAMILY_V4,
 			Protocol: unix.RTPROT_STATIC,
 		},
-		OutputIf: linuxitems.RouteOutIf{
-			UplinkIfName: "eth1",
+		OutputIf: genericitems.NetworkIf{
+			IfName:  "eth1",
+			ItemRef: dg.Reference(genericitems.Uplink{IfName: "eth1"}),
 		},
 	}
 	// eth1 does not yet have IP address assigned
@@ -1385,7 +1389,7 @@ func TestIPv4LocalAndSwitchNIs(test *testing.T) {
 
 	// Connect application into network instances.
 	// VIFs on the switch NI will receive IPs later.
-	appStatus, err := niReconciler.ConnectApp(ctx, app2NetConfig, app2Num, app2VIFs)
+	appStatus, err := niReconciler.AddAppConn(ctx, app2NetConfig, app2Num, cnirpc.AppPod{}, app2VIFs)
 	t.Expect(err).ToNot(HaveOccurred())
 	t.Expect(appStatus.App).To(Equal(app2UUID.UUID))
 	t.Expect(appStatus.Deleted).To(BeFalse())
@@ -1496,7 +1500,7 @@ func TestIPv4LocalAndSwitchNIs(test *testing.T) {
 	// Simulate VIF2 and VIF3 getting IP addresses from an external DHCP server.
 	app2VIFs[1].GuestIP = ipAddress("172.20.0.101")
 	app2VIFs[2].GuestIP = ipAddress("172.20.0.102")
-	appStatus, err = niReconciler.ReconnectApp(ctx, app2NetConfig, app2VIFs)
+	appStatus, err = niReconciler.UpdateAppConn(ctx, app2NetConfig, cnirpc.AppPod{}, app2VIFs)
 	t.Expect(err).ToNot(HaveOccurred())
 	t.Expect(appStatus.App).To(Equal(app2UUID.UUID))
 	t.Expect(appStatus.Deleted).To(BeFalse())
@@ -1512,9 +1516,9 @@ func TestIPv4LocalAndSwitchNIs(test *testing.T) {
 	t.Expect(vif3Eidset).To(ContainSubstring("entries: [172.20.0.102]"))
 
 	// Disconnect the application.
-	_, err = niReconciler.DisconnectApp(ctx, app1UUID.UUID) // wrong UUID
+	_, err = niReconciler.DelAppConn(ctx, app1UUID.UUID) // wrong UUID
 	t.Expect(err).To(HaveOccurred())
-	appStatus, err = niReconciler.DisconnectApp(ctx, app2UUID.UUID)
+	appStatus, err = niReconciler.DelAppConn(ctx, app2UUID.UUID)
 	t.Expect(err).ToNot(HaveOccurred())
 	t.Expect(appStatus.App).To(Equal(app2UUID.UUID))
 	t.Expect(appStatus.Deleted).To(BeTrue())
@@ -1543,7 +1547,7 @@ func TestIPv4LocalAndSwitchNIs(test *testing.T) {
 }
 
 func TestDisableAllOnesMask(test *testing.T) {
-	t := initTest(test)
+	t := initTest(test, false)
 	networkMonitor.AddOrUpdateInterface(eth0)
 	networkMonitor.UpdateRoutes(eth0Routes)
 	ctx := reconciler.MockRun(context.Background())
@@ -1579,7 +1583,7 @@ func TestDisableAllOnesMask(test *testing.T) {
 }
 
 func TestUplinkFailover(test *testing.T) {
-	t := initTest(test)
+	t := initTest(test, false)
 	networkMonitor.AddOrUpdateInterface(eth0)
 	networkMonitor.AddOrUpdateInterface(eth1)
 	var routes []netmonitor.Route
@@ -1599,7 +1603,7 @@ func TestUplinkFailover(test *testing.T) {
 	networkMonitor.AddOrUpdateInterface(ni1BridgeIf)
 
 	// Connect application into the network instance.
-	_, err = niReconciler.ConnectApp(ctx, app1NetConfig, app1Num, app1VIFs)
+	_, err = niReconciler.AddAppConn(ctx, app1NetConfig, app1Num, cnirpc.AppPod{}, app1VIFs)
 	t.Expect(err).ToNot(HaveOccurred())
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
 	t.Expect(recUpdate.UpdateType).To(Equal(nirec.AppConnReconcileStatusChanged))
@@ -1657,8 +1661,9 @@ func TestUplinkFailover(test *testing.T) {
 			Family:   netlink.FAMILY_V4,
 			Protocol: unix.RTPROT_STATIC,
 		},
-		OutputIf: linuxitems.RouteOutIf{
-			UplinkIfName: "eth0",
+		OutputIf: genericitems.NetworkIf{
+			IfName:  "eth0",
+			ItemRef: dg.Reference(genericitems.Uplink{IfName: "eth0"}),
 		},
 	}
 	eth1Route := linuxitems.Route{
@@ -1668,8 +1673,9 @@ func TestUplinkFailover(test *testing.T) {
 			Family:   netlink.FAMILY_V4,
 			Protocol: unix.RTPROT_STATIC,
 		},
-		OutputIf: linuxitems.RouteOutIf{
-			UplinkIfName: "eth1",
+		OutputIf: genericitems.NetworkIf{
+			IfName:  "eth1",
+			ItemRef: dg.Reference(genericitems.Uplink{IfName: "eth1"}),
 		},
 	}
 	t.Expect(itemIsCreated(dg.Reference(eth0Route))).To(BeTrue())
@@ -1728,7 +1734,7 @@ func TestUplinkFailover(test *testing.T) {
 	t.Expect(itemIsCreated(dg.Reference(eth1Route))).To(BeFalse())
 
 	// Disconnect the application.
-	_, err = niReconciler.DisconnectApp(ctx, app1UUID.UUID)
+	_, err = niReconciler.DelAppConn(ctx, app1UUID.UUID)
 	t.Expect(err).ToNot(HaveOccurred())
 
 	// Delete network instance
@@ -1737,7 +1743,7 @@ func TestUplinkFailover(test *testing.T) {
 }
 
 func TestIPv6LocalAndSwitchNIs(test *testing.T) {
-	t := initTest(test)
+	t := initTest(test, false)
 	networkMonitor.AddOrUpdateInterface(keth2)
 	networkMonitor.AddOrUpdateInterface(eth2)
 	networkMonitor.UpdateRoutes(eth2Routes)
@@ -1787,7 +1793,7 @@ func TestIPv6LocalAndSwitchNIs(test *testing.T) {
 
 	// Connect application into network instances.
 	// VIF on the switch NI will receive IPv6 address later.
-	appStatus, err := niReconciler.ConnectApp(ctx, app3NetConfig, app3Num, app3VIFs)
+	appStatus, err := niReconciler.AddAppConn(ctx, app3NetConfig, app3Num, cnirpc.AppPod{}, app3VIFs)
 	t.Expect(err).ToNot(HaveOccurred())
 	t.Expect(appStatus.App).To(Equal(app3UUID.UUID))
 	t.Expect(appStatus.Deleted).To(BeFalse())
@@ -1830,7 +1836,7 @@ func TestIPv6LocalAndSwitchNIs(test *testing.T) {
 
 	// Simulate VIF2 obtaining an IPv6 address.
 	app3VIFs[1].GuestIP = ipAddress("2001::101")
-	_, err = niReconciler.ReconnectApp(ctx, app3NetConfig, app3VIFs)
+	_, err = niReconciler.UpdateAppConn(ctx, app3NetConfig, cnirpc.AppPod{}, app3VIFs)
 	t.Expect(err).ToNot(HaveOccurred())
 
 	// Check items created in the scope of NI3.
@@ -1844,8 +1850,9 @@ func TestIPv6LocalAndSwitchNIs(test *testing.T) {
 	}
 	ni3DefRoute := linuxitems.Route{
 		Route: ni3NetlinkDefRoute,
-		OutputIf: linuxitems.RouteOutIf{
-			UplinkIfName: "eth2",
+		OutputIf: genericitems.NetworkIf{
+			IfName:  "eth2",
+			ItemRef: dg.Reference(genericitems.Uplink{IfName: "eth2"}),
 		}}
 	t.Expect(itemIsCreated(dg.Reference(ni3DefRoute))).To(BeTrue())
 	radvd := genericitems.Radvd{ListenIf: genericitems.NetworkIf{IfName: "bn3"}}
@@ -1923,7 +1930,7 @@ func TestIPv6LocalAndSwitchNIs(test *testing.T) {
 	t.Expect(itemCountWithType(genericitems.RadvdTypename)).To(Equal(1))
 
 	// Disconnect the application.
-	_, err = niReconciler.DisconnectApp(ctx, app3UUID.UUID)
+	_, err = niReconciler.DelAppConn(ctx, app3UUID.UUID)
 	t.Expect(err).ToNot(HaveOccurred())
 
 	// Delete network instances
@@ -1937,7 +1944,7 @@ func TestIPv6LocalAndSwitchNIs(test *testing.T) {
 }
 
 func TestAirGappedLocalAndSwitchNIs(test *testing.T) {
-	t := initTest(test)
+	t := initTest(test, false)
 	networkMonitor.AddOrUpdateInterface(eth0)
 	networkMonitor.AddOrUpdateInterface(eth1)
 	var routes []netmonitor.Route
@@ -1995,8 +2002,9 @@ func TestAirGappedLocalAndSwitchNIs(test *testing.T) {
 			Family:   netlink.FAMILY_V4,
 			Protocol: unix.RTPROT_STATIC,
 		},
-		OutputIf: linuxitems.RouteOutIf{
-			UplinkIfName: "eth0",
+		OutputIf: genericitems.NetworkIf{
+			IfName:  "eth0",
+			ItemRef: dg.Reference(genericitems.Uplink{IfName: "eth0"}),
 		},
 	}
 	t.Expect(itemIsCreated(dg.Reference(eth0Route))).To(BeFalse())
@@ -2007,8 +2015,9 @@ func TestAirGappedLocalAndSwitchNIs(test *testing.T) {
 			Family:   netlink.FAMILY_V4,
 			Protocol: unix.RTPROT_STATIC,
 		},
-		OutputIf: linuxitems.RouteOutIf{
-			UplinkIfName: "eth1",
+		OutputIf: genericitems.NetworkIf{
+			IfName:  "eth1",
+			ItemRef: dg.Reference(genericitems.Uplink{IfName: "eth1"}),
 		},
 	}
 	t.Expect(itemIsCreated(dg.Reference(eth1Route))).To(BeFalse())
@@ -2059,7 +2068,7 @@ func TestAirGappedLocalAndSwitchNIs(test *testing.T) {
 		}))).To(BeFalse())
 
 	// Connect application into network instances.
-	appStatus, err := niReconciler.ConnectApp(ctx, app2NetConfig, app2Num, app2VIFs)
+	appStatus, err := niReconciler.AddAppConn(ctx, app2NetConfig, app2Num, cnirpc.AppPod{}, app2VIFs)
 	t.Expect(err).ToNot(HaveOccurred())
 	t.Expect(appStatus.App).To(Equal(app2UUID.UUID))
 	t.Expect(appStatus.Deleted).To(BeFalse())
@@ -2142,7 +2151,7 @@ func TestAirGappedLocalAndSwitchNIs(test *testing.T) {
 	// Simulate that app2 is running DHCP server and gave VIF2 and VIF3 IP addresses.
 	app2VIFs[1].GuestIP = ipAddress("192.168.1.1")
 	app2VIFs[2].GuestIP = ipAddress("192.168.1.2")
-	appStatus, err = niReconciler.ReconnectApp(ctx, app2NetConfig, app2VIFs)
+	appStatus, err = niReconciler.UpdateAppConn(ctx, app2NetConfig, cnirpc.AppPod{}, app2VIFs)
 	t.Expect(err).ToNot(HaveOccurred())
 	t.Expect(appStatus.App).To(Equal(app2UUID.UUID))
 	t.Expect(appStatus.Deleted).To(BeFalse())
@@ -2158,7 +2167,7 @@ func TestAirGappedLocalAndSwitchNIs(test *testing.T) {
 	t.Expect(vif3Eidset).To(ContainSubstring("entries: [192.168.1.2]"))
 
 	// Disconnect the application.
-	appStatus, err = niReconciler.DisconnectApp(ctx, app2UUID.UUID)
+	appStatus, err = niReconciler.DelAppConn(ctx, app2UUID.UUID)
 	t.Expect(err).ToNot(HaveOccurred())
 	t.Expect(appStatus.App).To(Equal(app2UUID.UUID))
 	t.Expect(appStatus.Deleted).To(BeTrue())
@@ -2190,7 +2199,7 @@ func TestAirGappedLocalAndSwitchNIs(test *testing.T) {
 }
 
 func TestStaticAndConnectedRoutes(test *testing.T) {
-	t := initTest(test)
+	t := initTest(test, false)
 	networkMonitor.AddOrUpdateInterface(eth0)
 	networkMonitor.AddOrUpdateInterface(eth1)
 	var routes []netmonitor.Route
@@ -2220,7 +2229,7 @@ func TestStaticAndConnectedRoutes(test *testing.T) {
 
 	// Connect application into network instances.
 	// VIFs on the switch NI will receive IPs later.
-	appStatus, err := niReconciler.ConnectApp(ctx, app2NetConfig, app2Num, app2VIFs)
+	appStatus, err := niReconciler.AddAppConn(ctx, app2NetConfig, app2Num, cnirpc.AppPod{}, app2VIFs)
 	t.Expect(err).ToNot(HaveOccurred())
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
 	t.Expect(recUpdate.UpdateType).To(Equal(nirec.AppConnReconcileStatusChanged))
@@ -2251,7 +2260,7 @@ func TestStaticAndConnectedRoutes(test *testing.T) {
 	// Simulate VIF2 and VIF3 getting IP addresses from an external DHCP server.
 	app2VIFs[1].GuestIP = ipAddress("172.20.0.101")
 	app2VIFs[2].GuestIP = ipAddress("172.20.0.102")
-	appStatus, err = niReconciler.ReconnectApp(ctx, app2NetConfig, app2VIFs)
+	appStatus, err = niReconciler.UpdateAppConn(ctx, app2NetConfig, cnirpc.AppPod{}, app2VIFs)
 	t.Expect(err).ToNot(HaveOccurred())
 	for i := 0; i < 4; i++ {
 		t.Expect(appStatus.VIFs[i].InProgress).To(BeFalse())
@@ -2371,9 +2380,11 @@ func TestStaticAndConnectedRoutes(test *testing.T) {
 	}
 	staticRoute1 := linuxitems.Route{
 		Route: netlinkStaticRoute1,
-		OutputIf: linuxitems.RouteOutIf{
-			UplinkIfName: "eth1",
-		}}
+		OutputIf: genericitems.NetworkIf{
+			IfName:  "eth1",
+			ItemRef: dg.Reference(genericitems.Uplink{IfName: "eth1"}),
+		},
+	}
 	t.Expect(itemIsCreated(dg.Reference(staticRoute1))).To(BeTrue())
 	netlinkStaticRoute3 := netlink.Route{
 		LinkIndex: 4,
@@ -2385,13 +2396,15 @@ func TestStaticAndConnectedRoutes(test *testing.T) {
 	}
 	staticRoute3 := linuxitems.Route{
 		Route: netlinkStaticRoute3,
-		OutputIf: linuxitems.RouteOutIf{
-			UplinkIfName: "eth1",
-		}}
+		OutputIf: genericitems.NetworkIf{
+			IfName:  "eth1",
+			ItemRef: dg.Reference(genericitems.Uplink{IfName: "eth1"}),
+		},
+	}
 	t.Expect(itemIsCreated(dg.Reference(staticRoute3))).To(BeTrue())
 
 	// Disconnect the application.
-	appStatus, err = niReconciler.DisconnectApp(ctx, app2UUID.UUID)
+	appStatus, err = niReconciler.DelAppConn(ctx, app2UUID.UUID)
 	t.Expect(err).ToNot(HaveOccurred())
 	for i := 0; i < 4; i++ {
 		t.Expect(appStatus.VIFs[i].InProgress).To(BeFalse())
@@ -2417,4 +2430,93 @@ func TestStaticAndConnectedRoutes(test *testing.T) {
 	ni1Bridge.Uplink = ni1Uplink
 	ni1Config.PropagateConnRoutes = false
 	ni5Config.PropagateConnRoutes = false
+}
+
+func TestCNI(test *testing.T) {
+	t := initTest(test, true)
+	networkMonitor.AddOrUpdateInterface(eth0)
+	networkMonitor.AddOrUpdateInterface(eth1)
+	var routes []netmonitor.Route
+	routes = append(routes, eth0Routes...)
+	routes = append(routes, eth1Routes...)
+	networkMonitor.UpdateRoutes(routes)
+	ctx := reconciler.MockRun(context.Background())
+	updatesCh := niReconciler.WatchReconcilerUpdates()
+	niReconciler.RunInitialReconcile(ctx)
+
+	// Create local network instance.
+	_, err := niReconciler.AddNI(ctx, ni1Config, ni1Bridge)
+	t.Expect(err).ToNot(HaveOccurred())
+	var recUpdate nirec.ReconcilerUpdate
+	t.Eventually(updatesCh).Should(Receive(&recUpdate))
+	t.Expect(recUpdate.UpdateType).To(Equal(nirec.NIReconcileStatusChanged))
+	networkMonitor.AddOrUpdateInterface(ni1BridgeIf)
+
+	// Connect K3s Pod into the network instance.
+	// L2-only connection for now.
+	pod := cnirpc.AppPod{
+		Name:      "app-pod-12345",
+		NetNsPath: "/var/run/netns/app-netns-12345",
+	}
+	vif := app1VIFs[0]
+	vif.PodVIF = types.PodVIF{
+		GuestIfName: "net0",
+		IPAM:        cnirpc.PodIPAMConfig{},
+	}
+	_, err = niReconciler.AddAppConn(ctx, app1NetConfig, app1Num, pod, []nirec.AppVIF{vif})
+	t.Expect(err).ToNot(HaveOccurred())
+	t.Eventually(updatesCh).Should(Receive(&recUpdate))
+	t.Expect(recUpdate.UpdateType).To(Equal(nirec.AppConnReconcileStatusChanged))
+
+	vifRef := dg.Reference(linuxitems.VIF{HostIfName: "nbu1x1"})
+	t.Expect(itemDescription(vifRef)).To(ContainSubstring("bridgeIfName: bn1"))
+	t.Expect(itemDescription(vifRef)).To(ContainSubstring("appIfName: net0"))
+	t.Expect(itemDescription(vifRef)).To(ContainSubstring("appIPs: []"))
+
+	sysctlRef := dg.Reference(linuxitems.Sysctl{
+		ForApp: linuxitems.ContainerApp{ID: app1UUID.UUID},
+		NetIf:  genericitems.NetworkIf{IfName: "net0"},
+	})
+	t.Expect(itemDescription(sysctlRef)).To(
+		ContainSubstring("enableDAD: false, enableARPNotify: true"))
+
+	// Elevate the connection to L3.
+	vif.PodVIF.IPAM = cnirpc.PodIPAMConfig{
+		IPs: []cnirpc.PodIPAddress{
+			{
+				Address: ipAddressWithPrefix("10.10.10.2/24"),
+				Gateway: ipAddress("10.10.10.1"),
+			},
+		},
+		Routes: []cnirpc.PodRoute{
+			{
+				Dst: ipSubnet("10.10.10.0/24"),
+				GW:  ipAddress("10.10.10.1"),
+			},
+		},
+	}
+	_, err = niReconciler.UpdateAppConn(ctx, app1NetConfig, pod, []nirec.AppVIF{vif})
+	t.Expect(err).ToNot(HaveOccurred())
+	t.Eventually(updatesCh).Should(Receive(&recUpdate))
+	t.Expect(recUpdate.UpdateType).To(Equal(nirec.AppConnReconcileStatusChanged))
+
+	t.Expect(itemDescription(vifRef)).To(ContainSubstring("appIPs: [10.10.10.2/24]"))
+	routeRef := dg.Reference(linuxitems.Route{
+		Route:    netlink.Route{Dst: ipSubnet("10.10.10.0/24"), Family: netlink.FAMILY_V4},
+		OutputIf: genericitems.NetworkIf{IfName: "net0"},
+		ForApp:   linuxitems.ContainerApp{ID: app1UUID.UUID},
+	})
+	fmt.Println(routeRef)
+	t.Expect(itemIsCreated(routeRef)).To(BeTrue())
+
+	// Disconnect the K3s Pod.
+	_, err = niReconciler.DelAppConn(ctx, app1UUID.UUID)
+	t.Expect(err).ToNot(HaveOccurred())
+
+	t.Expect(itemIsCreated(vifRef)).To(BeFalse())
+	t.Expect(itemIsCreated(routeRef)).To(BeFalse())
+
+	// Delete network instance
+	_, err = niReconciler.DelNI(ctx, ni1UUID.UUID)
+	t.Expect(err).ToNot(HaveOccurred())
 }
