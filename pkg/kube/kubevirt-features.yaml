@@ -6,8 +6,9 @@ metadata:
 spec:
   configuration:
     permittedHostDevices:
-      pciHostDevices:   # <- PCIe passthrough devices like nvme drives
+      pciHostDevices:   # <- PCIe passthrough devices like nvme drives/NIC
       mediatedDevices:  # <- GPUs
+      usb:              # <- USB passthrough
     developerConfiguration:
       featureGates:
         - LiveMigration
