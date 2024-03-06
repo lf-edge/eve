@@ -92,7 +92,7 @@ contains a hash of the state of the source at generation time.
 
 The packages used as part of the EVE OS composition process are standard OCI container images.
 
-As described above in [EVE OS Images][EVE OS Images], all of the packages used to compose a bootable EVE image
+As described above in [EVE OS Images](#eve-os-images), all of the packages used to compose a bootable EVE image
 are configured in [rootfs.yml.in](../images/rootfs.yml.in). Those container images are from one of two sources:
 
 * `docker.io/linuxkit/*` whose sources are [https://github.com/linuxkit/linuxkit/tree/master/pkg/](https://github.com/linuxkit/linuxkit/tree/master/pkg/)

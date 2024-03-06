@@ -281,11 +281,11 @@ For an installable image, named `installer.img`, we create the following depende
 
 #### Installer: rootfs.img
 
-`rootfs.img` is built identically to how it is for a live bootable image, see [rootfs.img](#rootfs.img)
+`rootfs.img` is built identically to how it is for a live bootable image, see [rootfs.img](#rootfsimg)
 
 #### Installer: config.img
 
-`config.img` is built identically to how it is for a live bootable image, see [config.img](#config.img)
+`config.img` is built identically to how it is for a live bootable image, see [config.img](#configimg)
 
 #### Installer: rootfs_installer.img
 
