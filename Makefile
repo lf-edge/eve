@@ -412,13 +412,7 @@ clean:
 yetus:
 	@echo Running yetus
 	mkdir -p yetus-output
-	docker run --rm -v $(CURDIR):/src:delegated,z ghcr.io/apache/yetus:0.15.0 \
-		--basedir=/src \
-		--test-parallel=true \
-		--dirty-workspace \
-		--empty-patch \
-		--plugins=all \
-		--patch-dir=/src/yetus-output
+	docker run --rm -v $(CURDIR):/src:delegated,z ghcr.io/apache/yetus:0.15.0 /src/tools/run-yetus.sh
 
 build-tools: $(LINUXKIT)
 	@echo Done building $<
