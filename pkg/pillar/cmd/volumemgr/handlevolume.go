@@ -202,7 +202,7 @@ func publishVolumeStatus(ctx *volumemgrContext,
 			}
 		}
 		if vrStatus != nil && reference != "" {
-			if !strings.HasPrefix(vrStatus.ReferenceName, types.KubeContainerImagePrefix) {
+			if !strings.HasPrefix(vrStatus.ReferenceName, types.KubeContainerImagePrefix) && vrStatus.IsContainer() {
 				vrStatus.ReferenceName = types.KubeContainerImagePrefix + reference
 				log.Functionf("publishVolumeStatus: sync reference name %s", vrStatus.ReferenceName)
 				publishVolumeRefStatus(ctx, vrStatus)
