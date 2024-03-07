@@ -4,29 +4,16 @@ ENV BUILD_PKGS git patch ca-certificates util-linux build-base gettext-dev libti
 ENV PKGS ca-certificates util-linux libintl libuuid libtirpc libblkid libcrypto1.1 zlib
 RUN eve-alpine-deploy.sh
 
-COPY /patches /
-
 # should be aligned with kernel
 #  * ZFS on Linux
-ENV ZFS_VERSION=2.1.2
+ENV ZFS_VERSION=2.2.2
 ENV ZFS_COMMIT=zfs-${ZFS_VERSION}
 ENV ZFS_REPO=https://github.com/openzfs/zfs
-ENV ZFS_PATCH_DIR=/patches-zfs-"${ZFS_VERSION}"
 
 WORKDIR /tmp/zfs
-
 ADD ${ZFS_REPO}/tarball/${ZFS_COMMIT}/ zfs.tgz
 RUN tar -zxvf zfs.tgz  --strip-components=1 && \
     rm zfs.tgz
-RUN set -e; \
-    if [ ! -d "${ZFS_PATCH_DIR}" ]; then \
-        echo "No such dir ${ZFS_PATCH_DIR}"; \
-    else \
-        for patch in "${ZFS_PATCH_DIR}"/*.patch; do \
-            echo "Applying $patch"; \
-            patch -p1 < "$patch"; \
-        done \
-    fi
 RUN ./autogen.sh && \
     ./configure \
     --prefix=/usr \
