@@ -154,19 +154,21 @@ func lookupDomainStatus(ctx *zedmanagerContext, key string) *types.DomainStatus 
 }
 
 func publishDomainConfig(ctx *zedmanagerContext,
-	status *types.DomainConfig) {
+	config *types.DomainConfig) {
 
-	key := status.Key()
+	key := config.Key()
 	log.Tracef("publishDomainConfig(%s)", key)
 	if ctx.hvTypeKube {
 		var imageName string
-		for _, disk := range status.DiskConfigList {
+		for _, disk := range config.DiskConfigList {
 			sub := ctx.subVolumeRefStatus
 			items := sub.GetAll()
 			for _, item := range items {
 				vrs := item.(types.VolumeRefStatus)
 				if strings.Contains(disk.VolumeKey, vrs.VolumeID.String()) {
-					imageName = vrs.ReferenceName
+					if config.VirtualizationMode == types.KubeContainer {
+						imageName = vrs.ReferenceName
+					}
 					break
 				}
 			}
@@ -174,18 +176,18 @@ func publishDomainConfig(ctx *zedmanagerContext,
 				break
 			}
 		}
-		status.KubeImageName = imageName
+		config.KubeImageName = imageName
 		// set Activate to false if the config is waiting for image name
-		if status.VirtualizationMode == types.KubeContainer {
-			if status.KubeImageName == "" {
-				status.Activate = false
+		if config.VirtualizationMode == types.KubeContainer {
+			if config.KubeImageName == "" {
+				config.Activate = false
 			} else {
-				status.Activate = true
+				config.Activate = true
 			}
 		}
 	}
 	pub := ctx.pubDomainConfig
-	pub.Publish(key, *status)
+	pub.Publish(key, *config)
 }
 
 func unpublishDomainConfig(ctx *zedmanagerContext, uuidStr string) {

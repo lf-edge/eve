@@ -165,9 +165,6 @@ func parseConfig(getconfigCtx *getconfigContext, config *zconfig.EdgeDevConfig,
 				// which depend on the new baseOS
 				log.Noticef("parseConfig: Ignoring config as a new baseOS image is being activated")
 
-				if getconfigCtx.zedagentCtx.hvTypeKube {
-					fillAppContentTree(getconfigCtx, config)
-				}
 				return skipConfigUpdate
 			}
 
@@ -2581,9 +2578,6 @@ func checkAndPublishAppInstanceConfig(getconfigCtx *getconfigContext,
 		config.Errors = append(config.Errors, err.Error())
 	}
 
-	// get kube app to content tree relation
-	getAppContentTree(getconfigCtx, &config)
-
 	pub.Publish(key, config)
 }
 
@@ -2592,44 +2586,8 @@ func fillAppContentTree(getconfigCtx *getconfigContext, config *zconfig.EdgeDevC
 	for _, item := range items {
 		appInstCfg := item.(types.AppInstanceConfig)
 		log.Noticef("fillAppContentTree: appInstCfg %+v", appInstCfg)
-		getAppContentTree(getconfigCtx, &appInstCfg)
 		pub := getconfigCtx.pubAppInstanceConfig
 		pub.Publish(appInstCfg.Key(), appInstCfg)
-	}
-}
-
-func getAppContentTree(getconfigCtx *getconfigContext,
-	config *types.AppInstanceConfig) {
-
-	// for kube app image
-	volumeList0 := config.VolumeRefConfigList[0]
-	pub1 := getconfigCtx.pubVolumeConfig
-	volConfig := pub1.GetAll()
-	var contentID uuid.UUID
-	if volConfig != nil {
-		for _, vol := range volConfig {
-			vol1 := vol.(types.VolumeConfig)
-			if vol1.VolumeID.String() == volumeList0.VolumeID.String() {
-				log.Noticef("getAppContentTree: found contentID %s", vol1.ContentID)
-				contentID = vol1.ContentID
-				break
-			}
-		}
-		if contentID.String() != "" {
-			items := getconfigCtx.pubContentTreeConfig.GetAll()
-			if items != nil {
-				for _, ct := range items {
-					ct1 := ct.(types.ContentTreeConfig)
-					if ct1.ContentID.String() == contentID.String() {
-						// pub contenttree config with app image bool
-						config.ContentID = contentID.String()
-						ct1.IsAppImage = true
-						publishContentTreeConfig(getconfigCtx, ct1)
-						break
-					}
-				}
-			}
-		}
 	}
 }
 
