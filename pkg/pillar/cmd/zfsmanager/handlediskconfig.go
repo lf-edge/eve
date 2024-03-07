@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	libzfs "github.com/bicomsystems/go-libzfs"
+	libzfs "github.com/andrewd-zededa/go-libzfs"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils/disks"
 	"github.com/lf-edge/eve/pkg/pillar/vault"

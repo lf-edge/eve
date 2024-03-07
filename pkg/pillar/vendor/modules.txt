@@ -68,6 +68,9 @@ github.com/StackExchange/wmi
 # github.com/anatol/smart.go v0.0.0-20220615232124-371056cd18c3
 ## explicit; go 1.17
 github.com/anatol/smart.go
+# github.com/andrewd-zededa/go-libzfs v0.0.0-20240304231806-6a64e99da97d
+## explicit; go 1.13
+github.com/andrewd-zededa/go-libzfs
 # github.com/aws/aws-sdk-go v1.44.82
 ## explicit; go 1.11
 github.com/aws/aws-sdk-go/aws
@@ -124,9 +127,6 @@ github.com/aws/aws-sdk-go/service/sts/stsiface
 # github.com/beorn7/perks v1.0.1
 ## explicit; go 1.11
 github.com/beorn7/perks/quantile
-# github.com/bicomsystems/go-libzfs v0.4.0
-## explicit; go 1.13
-github.com/bicomsystems/go-libzfs
 # github.com/cenkalti/backoff v2.2.1+incompatible
 ## explicit
 github.com/cenkalti/backoff
