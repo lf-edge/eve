@@ -100,7 +100,6 @@ type PoolScanStat struct {
 	EndTime   uint64 // Scan end time
 	ToExamine uint64 // Total bytes to scan
 	Examined  uint64 // Total bytes scaned
-	ToProcess uint64 // Total bytes to processed
 	Processed uint64 // Total bytes processed
 	Errors    uint64 // Scan errors
 	// Values not stored on disk
@@ -214,7 +213,6 @@ func poolGetConfig(name string, nv C.nvlist_ptr) (vdevs VDevTree, err error) {
 		vdevs.ScanStat.EndTime = uint64(ps.pss_end_time)
 		vdevs.ScanStat.ToExamine = uint64(ps.pss_to_examine)
 		vdevs.ScanStat.Examined = uint64(ps.pss_examined)
-		vdevs.ScanStat.ToProcess = uint64(ps.pss_to_process)
 		vdevs.ScanStat.Processed = uint64(ps.pss_processed)
 		vdevs.ScanStat.Errors = uint64(ps.pss_errors)
 		vdevs.ScanStat.PassExam = uint64(ps.pss_pass_exam)

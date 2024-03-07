@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	libzfs "github.com/bicomsystems/go-libzfs"
+	libzfs "github.com/andrewd-zededa/go-libzfs"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/hardware"
 	"github.com/lf-edge/eve/pkg/pillar/types"
