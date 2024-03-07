@@ -530,6 +530,30 @@ __EOT__
      COMMA="},"
   fi
 done
+#enumerate physical CAN devices
+for CAN in /sys/class/net/*; do
+    TYPE=$(cat "${CAN}/type")
+    if [ "$TYPE" != 280 ]; then
+        continue
+    fi
+    ZTYPE="IO_TYPE_CAN"
+    IFNAME=$(basename "${CAN}")
+    cat <<__EOT__
+    ${COMMA}
+    {
+     "ztype": ${ZTYPE},
+     "phylabel": "${IFNAME}",
+     "phyaddrs": {
+       "Ifname": "${IFNAME}"
+      },
+      "logicallabel": "${IFNAME}",
+      "assigngrp": "",
+      "cbattr": {
+        "bitrate": "150000"
+      }
+__EOT__
+     COMMA="},"
+done
 #enumerate Audio
 ID=""
 for audio in $(echo "$LSPCI_D" | grep Audio | cut -f1 -d\ ); do
