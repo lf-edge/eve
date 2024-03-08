@@ -12,7 +12,7 @@ ARG all_proxy
 RUN apk add --no-cache openssh-client git gcc linux-headers libc-dev util-linux libpcap-dev bash vim make protobuf protobuf-dev sudo tar curl graphviz ttf-freefont patch dnsmasq
 # we need updated libraries, here we use the same version as for eve/alpine
 # hadolint ignore=DL3018
-RUN apk --no-cache --repository https://dl-cdn.alpinelinux.org/alpine/v3.16/main add -U --upgrade zfs-dev zfs-libs
+RUN apk --no-cache --repository https://dl-cdn.alpinelinux.org/alpine/v3.19/main add -U --upgrade zfs-dev=2.2.2-r0 zfs-libs=2.2.2-r0
 RUN deluser ${USER} ; delgroup ${GROUP} || :
 RUN sed -ie /:${UID}:/d /etc/passwd /etc/shadow ; sed -ie /:${GID}:/d /etc/group || :
 RUN addgroup -g ${GID} ${GROUP} && adduser -h /home/${USER} -G ${GROUP} -D -H -u ${UID} ${USER}
