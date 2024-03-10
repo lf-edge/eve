@@ -4,8 +4,11 @@ package usbmanager
 
 import (
 	"fmt"
+	"strconv"
+	"strings"
 	"sync/atomic"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/lf-edge/eve/pkg/pillar/types"
 )
@@ -464,4 +467,258 @@ func newTestUsbmanagerController() *usbmanagerController {
 	uc.init()
 
 	return &uc
+}
+
+func FuzzUSBManagerController(f *testing.F) {
+	f.Fuzz(func(t *testing.T,
+		phyLabel1 string,
+		pciLong1 string,
+		usbaddr1 string,
+		usbproduct1 string,
+		assigngrp1 string,
+
+		phyLabel2 string,
+		pciLong2 string,
+		usbaddr2 string,
+		usbproduct2 string,
+		assigngrp2 string,
+
+		phyLabel3 string,
+		pciLong3 string,
+		usbaddr3 string,
+		usbproduct3 string,
+		assigngrp3 string,
+
+		phyLabel4 string,
+		pciLong4 string,
+		usbaddr4 string,
+		usbproduct4 string,
+		assigngrp4 string,
+
+		phyLabel5 string,
+		pciLong5 string,
+		usbaddr5 string,
+		usbproduct5 string,
+		assigngrp5 string,
+
+		delBundle1 uint,
+		delBundle1Pos uint,
+
+		delBundle2 uint,
+		delBundle2Pos uint,
+
+		delBundle3 uint,
+		delBundle3Pos uint,
+
+		addVm1Name string,
+		addVm1Adapter1 uint,
+		addVm1Adapter2 uint,
+		addVm1Adapter3 uint,
+		addVm1Pos uint,
+
+		addVm2Name string,
+		addVm2Adapter1 uint,
+		addVm2Adapter2 uint,
+		addVm2Adapter3 uint,
+		addVm2Pos uint,
+
+		delVm1Pos uint,
+		delVm2Pos uint,
+
+		addUSB1Dev uint,
+		addUSB1Pos uint,
+
+		addUSB2Dev uint,
+		addUSB2Pos uint,
+
+	) {
+
+		ioBundle1 := types.IoBundle{
+			Phylabel:        phyLabel1,
+			AssignmentGroup: assigngrp1,
+			PciLong:         pciLong1,
+			UsbAddr:         usbaddr1,
+			UsbProduct:      usbproduct1,
+		}
+
+		ioBundle2 := types.IoBundle{
+			Phylabel:        phyLabel2,
+			AssignmentGroup: assigngrp2,
+			PciLong:         pciLong2,
+			UsbAddr:         usbaddr2,
+			UsbProduct:      usbproduct2,
+		}
+
+		ioBundle3 := types.IoBundle{
+			Phylabel:        phyLabel3,
+			AssignmentGroup: assigngrp3,
+			PciLong:         pciLong3,
+			UsbAddr:         usbaddr3,
+			UsbProduct:      usbproduct3,
+		}
+
+		ioBundle4 := types.IoBundle{
+			Phylabel:        phyLabel4,
+			AssignmentGroup: assigngrp4,
+			PciLong:         pciLong4,
+			UsbAddr:         usbaddr4,
+			UsbProduct:      usbproduct4,
+		}
+
+		ioBundle5 := types.IoBundle{
+			Phylabel:        phyLabel5,
+			AssignmentGroup: assigngrp5,
+			PciLong:         pciLong5,
+			UsbAddr:         usbaddr5,
+			UsbProduct:      usbproduct5,
+		}
+
+		ioBundlesArray := []*types.IoBundle{&ioBundle1, &ioBundle2, &ioBundle3, &ioBundle4, &ioBundle5}
+		ioBundlesArrayLen := uint(len(ioBundlesArray))
+
+		for i := range ioBundlesArray {
+			_, size := utf8.DecodeLastRuneInString(ioBundlesArray[i].AssignmentGroup)
+			// set the parentassigngrp to the assigngrp without the last character
+			// this way it is guaranteed that ioBundles with the same assigngrp
+			// have the same parentassigngrp
+			parentassigngrp := ioBundlesArray[i].AssignmentGroup[:len(ioBundlesArray[i].AssignmentGroup)-size]
+
+			ioBundlesArray[i].ParentAssignmentGroup = parentassigngrp
+		}
+
+		addUSBCmd := []struct {
+			ud  usbdevice
+			pos uint
+		}{
+			{
+				ud:  createTestUSBDeviceFromIOBundle(ioBundlesArray[addUSB1Dev%ioBundlesArrayLen]),
+				pos: addUSB1Pos % ioBundlesArrayLen,
+			},
+			{
+				ud:  createTestUSBDeviceFromIOBundle(ioBundlesArray[addUSB2Dev%ioBundlesArrayLen]),
+				pos: addUSB2Pos % ioBundlesArrayLen,
+			},
+		}
+
+		addVMCmd := []struct {
+			vm  virtualmachine
+			pos uint
+		}{
+			{
+				vm:  createTestVM(addVm1Name, ioBundlesArray, addVm1Adapter1, addVm1Adapter2, addVm1Adapter3),
+				pos: addVm1Pos % ioBundlesArrayLen,
+			},
+			{
+				vm:  createTestVM(addVm2Name, ioBundlesArray, addVm2Adapter1, addVm2Adapter2, addVm2Adapter3),
+				pos: addVm2Pos % ioBundlesArrayLen,
+			},
+		}
+		if addVm1Name == addVm2Name {
+			t.Log("vm1 and vm2 have the same name")
+		}
+
+		delBundleCmd := []struct {
+			index uint
+			pos   uint
+		}{
+			{delBundle1, delBundle1Pos % ioBundlesArrayLen},
+			{delBundle2, delBundle2Pos % ioBundlesArrayLen},
+			{delBundle3, delBundle3Pos % ioBundlesArrayLen},
+		}
+
+		for i := range delBundleCmd {
+			delBundleCmd[i].index = delBundleCmd[i].index % ioBundlesArrayLen
+			delBundleCmd[i].pos = delBundleCmd[i].pos % ioBundlesArrayLen
+		}
+
+		umc := usbmanagerController{}
+		umc.init()
+		umc.connectUSBDeviceToQemu = func(up usbpassthrough) {
+			t.Logf("connect usbdevice: %+v", up)
+		}
+		umc.disconnectUSBDeviceFromQemu = func(up usbpassthrough) {
+			t.Logf("disconnect usbdevice: %+v", up)
+		}
+		for pos, ioBundle := range ioBundlesArray {
+			for _, dbc := range delBundleCmd {
+				if dbc.pos == uint(pos) {
+					removeIOBundle := ioBundlesArray[dbc.index]
+					if removeIOBundle != nil {
+						t.Logf("removing ioBundle label %s usbaddr: %s usbproduct: %s pcilong: %s",
+							ioBundle.Phylabel, removeIOBundle.UsbAddr, removeIOBundle.UsbProduct, removeIOBundle.PciLong)
+						umc.removeIOBundle(*removeIOBundle)
+					}
+				}
+			}
+
+			for _, avc := range addVMCmd {
+				if avc.pos == uint(pos) {
+					t.Logf("adding virtualmachine with adapters %+v", avc.vm.adapters)
+					umc.addVirtualmachine(avc.vm)
+				}
+			}
+
+			for _, udc := range addUSBCmd {
+				if int(udc.pos) == pos {
+					t.Logf("adding device %+v", udc.ud)
+					umc.addUSBDevice(udc.ud)
+				}
+			}
+
+			if delVm1Pos == uint(pos) {
+				t.Logf("removing virtualmachine with adapters %+v", addVMCmd[0].vm.adapters)
+				umc.removeVirtualmachine(addVMCmd[0].vm)
+			}
+			if delVm2Pos == uint(pos) {
+				t.Logf("removing virtualmachine with adapters %+v", addVMCmd[1].vm.adapters)
+				umc.removeVirtualmachine(addVMCmd[1].vm)
+			}
+
+			t.Logf("adding ioBundle label %s usbaddr: %s usbproduct: %s pcilong: %s",
+				ioBundle.Phylabel, ioBundle.UsbAddr, ioBundle.UsbProduct, ioBundle.PciLong)
+			umc.addIOBundle(*ioBundle)
+		}
+	})
+}
+
+func createTestUSBDeviceFromIOBundle(ioBundle *types.IoBundle) usbdevice {
+	var ud usbdevice
+
+	ud.usbControllerPCIAddress = ioBundle.PciLong
+	usbParts := strings.SplitN(ioBundle.UsbAddr, ":", 2)
+
+	busnum, _ := strconv.ParseUint(usbParts[0], 10, 16)
+
+	ud.busnum = uint16(busnum)
+	if len(usbParts) == 2 {
+		ud.portnum = usbParts[1]
+	}
+
+	usbParts = strings.SplitN(ioBundle.UsbProduct, ":", 2)
+
+	vendorID, _ := strconv.ParseUint(usbParts[0], 16, 32)
+	ud.vendorID = uint32(vendorID)
+
+	if len(usbParts) == 2 {
+		productID, _ := strconv.ParseUint(usbParts[1], 16, 32)
+		ud.productID = uint32(productID)
+	}
+
+	return ud
+}
+
+func createTestVM(vmName string, ioBundlesArray []*types.IoBundle, vmAdapter1 uint, vmAdapter2 uint, vmAdapter3 uint) virtualmachine {
+	vm := virtualmachine{
+		qmpSocketPath: vmName,
+		adapters:      []string{},
+	}
+	for _, adapterIndex := range []int{int(vmAdapter1), int(vmAdapter2), int(vmAdapter3)} {
+		pos := adapterIndex % len(ioBundlesArray)
+
+		if adapterIndex > 0 {
+			vm.addAdapter(ioBundlesArray[pos].Phylabel)
+		}
+	}
+
+	return vm
 }
