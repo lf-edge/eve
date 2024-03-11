@@ -15,6 +15,7 @@ rules:
   - apiGroups:
       - kubevirt.io
     resources:
+      - kubevirts
       - virtualmachines
       - virtualmachineinstances
       - virtualmachineinstancepresets

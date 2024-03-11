@@ -25,6 +25,9 @@ import (
 
 func check_ioAdapter_ethernet(ctx *zedkubeContext, aiConfig *types.AppInstanceConfig) error {
 
+	if aiConfig.FixedResources.VirtualizationMode != types.KubeContainer {
+		return nil
+	}
 	ioAdapter := aiConfig.IoAdapterList
 	for _, io := range ioAdapter {
 		if io.Type == types.IoNetEth {
@@ -48,6 +51,9 @@ func check_ioAdapter_ethernet(ctx *zedkubeContext, aiConfig *types.AppInstanceCo
 
 func check_del_ioAdpater_ethernet(ctx *zedkubeContext, aiConfig *types.AppInstanceConfig) {
 
+	if aiConfig.FixedResources.VirtualizationMode != types.KubeContainer {
+		return
+	}
 	ioAdapter := aiConfig.IoAdapterList
 	for _, io := range ioAdapter {
 		if io.Type == types.IoNetEth {

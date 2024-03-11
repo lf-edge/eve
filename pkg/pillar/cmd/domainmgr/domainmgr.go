@@ -1393,7 +1393,7 @@ func doAssignIoAdaptersToDomain(ctx *domainContext, config types.DomainConfig,
 					ib.Phylabel, ib.UsbAddr, status.DomainName)
 				assignmentsUsb = addNoDuplicate(assignmentsUsb, ib.UsbAddr)
 			} else if ib.PciLong != "" && !ib.IsPCIBack {
-				if !ctx.hvTypeKube || ib.Type != types.IoNetEth {
+				if !(ctx.hvTypeKube && config.VirtualizationMode == types.KubeContainer) || ib.Type != types.IoNetEth {
 					log.Noticef("Assigning %s (%s) to %s",
 						ib.Phylabel, ib.PciLong, status.DomainName)
 					assignmentsPci = addNoDuplicate(assignmentsPci, ib.PciLong)
@@ -1916,7 +1916,7 @@ func releaseAdapters(ctx *domainContext, ioAdapterList []types.IoAdapter,
 			if ib == nil {
 				continue
 			}
-			if ctx.hvTypeKube && ib.Type == types.IoNetEth {
+			if ctx.hvTypeKube && status != nil && status.VirtualizationMode == types.KubeContainer && ib.Type == types.IoNetEth {
 				continue
 			}
 			if ib.UsedByUUID != myUUID {
@@ -2081,7 +2081,7 @@ func reserveAdapters(ctx *domainContext, config types.DomainConfig) *types.Error
 			if ibp == nil {
 				continue
 			}
-			if ctx.hvTypeKube && ibp.Type == types.IoNetEth {
+			if ctx.hvTypeKube && config.VirtualizationMode == types.KubeContainer && ibp.Type == types.IoNetEth {
 				log.Noticef("reserveAdapters: ethernet io, skip reserve")
 				continue
 			}
@@ -3098,7 +3098,7 @@ func updatePortAndPciBackIoMember(ctx *domainContext, ib *types.IoBundle, isPort
 	if changed && ib.KeepInHost && ib.UsedByUUID == nilUUID && ib.IsPCIBack {
 		log.Noticef("updatePortAndPciBackIoMember(%d, %s, %s) take back from pciback",
 			ib.Type, ib.Phylabel, ib.AssignmentGroup)
-		if ib.PciLong != "" || (!ctx.hvTypeKube && ib.Type != types.IoNetEth) {
+		if ib.PciLong != "" { // || (!ctx.hvTypeKube && ib.Type != types.IoNetEth) {
 			log.Noticef("updatePortAndPciBackIoMember: Removing %s (%s) from pciback",
 				ib.Phylabel, ib.PciLong)
 			err = hyper.PCIRelease(ib.PciLong)
@@ -3145,19 +3145,15 @@ func updatePortAndPciBackIoMember(ctx *domainContext, ib *types.IoBundle, isPort
 		} else if ctx.deviceNetworkStatus.Testing && ib.Type.IsNet() {
 			log.Noticef("Not assigning %s (%s) to pciback due to Testing",
 				ib.Phylabel, ib.PciLong)
-		} else if ib.PciLong != "" && ib.UsbAddr == "" {
-			if !ctx.hvTypeKube || ib.Type != types.IoNetEth {
-				log.Noticef("Assigning %s (%s) to pciback",
-					ib.Phylabel, ib.PciLong)
-				err := hyper.PCIReserve(ib.PciLong)
-				if err != nil {
-					return changed, err
-				}
-				ib.IsPCIBack = true
-				changed = true
-			} else {
-				log.Noticef("updatePortAndPciBackIoMember: skip IO on ib %v", ib)
+		} else if ib.PciLong != "" && ib.UsbAddr == "" { // remove check for kube and ether
+			log.Noticef("Assigning %s (%s) to pciback",
+				ib.Phylabel, ib.PciLong)
+			err := hyper.PCIReserve(ib.PciLong)
+			if err != nil {
+				return changed, err
 			}
+			ib.IsPCIBack = true
+			changed = true
 		}
 	}
 	return changed, nil
@@ -3392,7 +3388,7 @@ func handleIBDelete(ctx *domainContext, phylabel string) {
 	if ib.IsPCIBack {
 		log.Noticef("handleIBDelete: Assigning %s (%s) back",
 			ib.Phylabel, ib.PciLong)
-		if ib.PciLong != "" || (!ctx.hvTypeKube && ib.Type != types.IoNetEth) {
+		if ib.PciLong != "" { //|| (!ctx.hvTypeKube && ib.Type != types.IoNetEth) {
 			err := hyper.PCIRelease(ib.PciLong)
 			if err != nil {
 				log.Errorf("handleIBDelete(%d %s %s) PCIRelease %s failed %v",
