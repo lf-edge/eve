@@ -392,8 +392,9 @@ currentversion:
 
 test: $(LINUXKIT) test-images-patches | $(DIST)
 	@echo Running tests on $(GOMODULE)
-	$(QUIET)$(DOCKER_GO) "gotestsum --jsonfile $(DOCKER_DIST)/results.json --junitfile $(DOCKER_DIST)/results.xml --raw-command -- go test -coverprofile=coverage.txt -covermode=atomic -race -json ./..." $(GOTREE) $(GOMODULE)
-	$(QUIET)$(DOCKER_GO) "cd /eve/pkg/pillar; ../../tools/fuzz_test.sh" $(GOTREE) $(GOMODULE)
+	make -C pkg/pillar test
+	cp pkg/pillar/results.json $(DIST)/
+	cp pkg/pillar/results.xml $(DIST)/
 	$(QUIET): $@: Succeeded
 
 # wrap command into DOCKER_GO and propagate it to the pillar's Makefile
