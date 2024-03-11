@@ -66,6 +66,7 @@ FROM build-native AS target-arm64-build-arm64
 # hadolint ignore=DL3006
 FROM target-${TARGETARCH}-build-${BUILDARCH} AS build
 ARG DEV=n
+ARG TEST_TOOLS=n
 ARG TARGETARCH
 
 # some parts of pillar are build conditionally based on the hypervisor
@@ -109,6 +110,9 @@ RUN --mount=type=cache,target=/root/.cache/go-build if [ ${DEV} = "y" ]; then \
     cd "/delve-${DELVE_VERSION}" &&  \
     GOFLAGS= CGO_ENABLED=0 go build -ldflags "-s -w -extldflags '-static'" github.com/go-delve/delve/cmd/dlv && \
     cp dlv /final/opt/ ; \
+fi
+RUN --mount=type=cache,target=/root/.cache/go-build if [ "${TEST_TOOLS}" = "y" ]; then \
+    GOBIN=/final/opt/ GOFLAGS="" go install gotest.tools/gotestsum@v1.7.0; \
 fi
 
 FROM lfedge/eve-fscrypt:e8507303431c8c11ec1a2b3b7fb02e1a0dcdf296 as fscrypt
