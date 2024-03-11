@@ -872,12 +872,12 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 
 	// Add String Items
 	configItemSpecMap.AddStringItem(SSHAuthorizedKeys, "", blankValidator)
-	configItemSpecMap.AddStringItem(DefaultLogLevel, "info", parseLevel)
-	configItemSpecMap.AddStringItem(DefaultRemoteLogLevel, "info", parseLevel)
+	configItemSpecMap.AddStringItem(DefaultLogLevel, "info", validateLogrusLevel)
+	configItemSpecMap.AddStringItem(DefaultRemoteLogLevel, "info", validateLogrusLevel)
 
 	// Add Agent Settings
-	configItemSpecMap.AddAgentSettingStringItem(LogLevel, "info", parseLevel)
-	configItemSpecMap.AddAgentSettingStringItem(RemoteLogLevel, "info", parseLevel)
+	configItemSpecMap.AddAgentSettingStringItem(LogLevel, "info", validateLogrusLevel)
+	configItemSpecMap.AddAgentSettingStringItem(RemoteLogLevel, "info", validateLogrusLevel)
 
 	// Add NetDump settings
 	configItemSpecMap.AddBoolItem(NetDumpEnable, true)
@@ -890,8 +890,8 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	return configItemSpecMap
 }
 
-// parseLevel - Wrapper that ignores the 'Level' output of the logrus.ParseLevel function
-func parseLevel(level string) error {
+// validateLogrusLevel - Wrapper for validating logrus loglevel
+func validateLogrusLevel(level string) error {
 	_, err := logrus.ParseLevel(level)
 	return err
 }
