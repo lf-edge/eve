@@ -1,5 +1,5 @@
 ---
-name: Unit tests
+name: Go Tests
 on:  # yamllint disable-line rule:truthy
   push:
     branches:
@@ -22,7 +22,7 @@ jobs:
       - name: Test
         run: |
           make test
-      - name : Test (TPM Required)
+      - name: Test (TPM Required)
         run: |
           bash tests/tpm/prep-and-test.sh
       - name: Report test results as Annotations
