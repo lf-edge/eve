@@ -232,17 +232,6 @@ func (ctx kubevirtContext) CreateVMIConfig(domainName string, config types.Domai
 		})
 	}
 
-	// Add Direct Attach Ethernet Port
-	for _, io := range config.IoAdapterList {
-		if io.Type == types.IoNetEth {
-			// even if ioAdapter does not exist, kubernetes will retry
-			netSelections = append(netSelections, netattdefv1.NetworkSelectionElement{
-				// TODO: Add method for generating NAD name of direct attach to pkg/kubeapi
-				Name: "host-" + io.Name,
-			})
-		}
-	}
-
 	// Set Network
 	// XXX for now, skip the default network interface for VMI, it seems that for some
 	// type of VM its secondary interfaces will come up without IP address unless
@@ -367,6 +356,12 @@ func (ctx kubevirtContext) CreateVMIConfig(domainName string, config types.Domai
 		}
 		for _, ib := range list {
 			if ib == nil {
+				continue
+			}
+			if ib.Type == types.IoNetEth && ib.Ifname != adapter.Name {
+				// if we get here, means we have a PCI device which is in the same group
+				// as the ethernet passthrogh port, will have error if register to the kubevirt
+				logrus.Infof("Skip PCI device %s which does not match adapter %s\n", ib.Ifname, adapter.Name)
 				continue
 			}
 			if ib.UsedByUUID != config.UUIDandVersion.UUID {
@@ -1319,7 +1314,6 @@ func registerWithKV(kvClient kubecli.KubevirtClient, vmi *v1.VirtualMachineInsta
 		}
 
 		vmi.Spec.Domain.Devices.HostDevices = append(vmi.Spec.Domain.Devices.HostDevices, pcidevices[i])
-
 	}
 
 	return nil
