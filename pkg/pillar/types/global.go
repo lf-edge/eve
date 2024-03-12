@@ -256,6 +256,10 @@ const (
 	DefaultLogLevel GlobalSettingKey = "debug.default.loglevel"
 	// DefaultRemoteLogLevel global setting key
 	DefaultRemoteLogLevel GlobalSettingKey = "debug.default.remote.loglevel"
+	// SyslogLogLevel global setting key
+	SyslogLogLevel GlobalSettingKey = "debug.syslog.loglevel"
+	// KernelLogLevel global setting key
+	KernelLogLevel GlobalSettingKey = "debug.kernel.loglevel"
 
 	// XXX Temporary flag to disable RFC 3442 classless static route usage
 	DisableDHCPAllOnesNetMask GlobalSettingKey = "debug.disable.dhcp.all-ones.netmask"
@@ -323,6 +327,31 @@ const (
 	ConfigItemTypeString
 	// ConfigItemTypeTriState - for config item's who's value is a tristate
 	ConfigItemTypeTriState
+)
+
+var (
+	// SyslogKernelLogLevelStr is a string representation of syslog/kernel
+	// loglevels.
+	SyslogKernelLogLevelStr = [8]string{
+		"emerg", "alert", "crit", "err", "warning", "notice", "info", "debug",
+	}
+	// SyslogKernelLogLevelNum is a number representation of syslog/kernel
+	// loglevels.
+	SyslogKernelLogLevelNum = map[string]uint32{
+		"emerg":    0,
+		"alert":    1,
+		"crit":     2,
+		"critical": 2,
+		"err":      3,
+		"error":    3,
+		"warning":  4,
+		"warn":     4,
+		"notice":   5,
+		"info":     6,
+		"debug":    7,
+	}
+	// SyslogKernelDefaultLogLevel is a default loglevel for syslog and kernel.
+	SyslogKernelDefaultLogLevel = "info"
 )
 
 // ConfigItemSpec - Defines what a specification for a configuration should be
@@ -874,6 +903,8 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	configItemSpecMap.AddStringItem(SSHAuthorizedKeys, "", blankValidator)
 	configItemSpecMap.AddStringItem(DefaultLogLevel, "info", validateLogrusLevel)
 	configItemSpecMap.AddStringItem(DefaultRemoteLogLevel, "info", validateLogrusLevel)
+	configItemSpecMap.AddStringItem(SyslogLogLevel, "info", validateSyslogKernelLevel)
+	configItemSpecMap.AddStringItem(KernelLogLevel, "info", validateSyslogKernelLevel)
 
 	// Add Agent Settings
 	configItemSpecMap.AddAgentSettingStringItem(LogLevel, "info", validateLogrusLevel)
@@ -894,6 +925,16 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 func validateLogrusLevel(level string) error {
 	_, err := logrus.ParseLevel(level)
 	return err
+}
+
+// validateSyslogKernelLevel - Wrapper for validating syslog and kernel
+// loglevels.
+func validateSyslogKernelLevel(level string) error {
+	_, ok := SyslogKernelLogLevelNum[level]
+	if !ok {
+		return fmt.Errorf("validateSyslogKernelLevel: unknown loglevel '%v'", level)
+	}
+	return nil
 }
 
 // blankValidator - A validator that accepts any string
