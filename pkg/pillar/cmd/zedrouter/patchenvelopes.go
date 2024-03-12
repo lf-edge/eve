@@ -6,6 +6,7 @@ package zedrouter
 import (
 	"encoding/json"
 	"fmt"
+	"sync"
 
 	uuid "github.com/satori/go.uuid"
 
@@ -33,9 +34,9 @@ import (
 // to certain App Instance which are stored in currentState.
 // PatchEnvelopes also hasupdateStateNotificationCh channel
 // to receive notification about the need of updating specified PatchEnvelopes.
-// Those updates are written in envelopesToUpdate and envelopesToDelete boolean maps, that
-// means that request to update same object will be only once, so there will be no queue of
-// go routines piling up but it will take more CPU time to process it.
+// updateStateNotificationCh has length of 1, so update queue will never pile up.
+// When updating state, we iterate through all envelopes, and remove envelopes which
+// are marked in envelopesToDelete boolean map (set).
 // NewPatchEnvelopes() starts goroutine processStateUpdate() which reads from the channel and updates
 // currentState to desired one. In addition, this goroutine publishes status for every PatchEnvelope
 // via pubsub. Note that PatchEnvelopes does not create PubSub, rather used one provided to NewPatchEnvelopes()
@@ -46,9 +47,10 @@ import (
 // write-only channel, meaning that updateStateNotificationCh should not be
 // read from anywhere except processStateUpdate() so that there could not be any deadlock.
 type PatchEnvelopes struct {
+	sync.RWMutex
+
 	updateStateNotificationCh chan struct{}
 
-	envelopesToUpdate *generics.LockedMap[uuid.UUID, bool]
 	envelopesToDelete *generics.LockedMap[uuid.UUID, bool]
 
 	currentState      *generics.LockedMap[uuid.UUID, types.PatchEnvelopeInfo]
@@ -74,7 +76,6 @@ func NewPatchEnvelopes(log *base.LogObject, ps *pubsub.PubSub) *PatchEnvelopes {
 
 		updateStateNotificationCh: make(chan struct{}, 1),
 
-		envelopesToUpdate: generics.NewLockedMap[uuid.UUID, bool](),
 		envelopesToDelete: generics.NewLockedMap[uuid.UUID, bool](),
 
 		currentState:      generics.NewLockedMap[uuid.UUID, types.PatchEnvelopeInfo](),
@@ -110,6 +111,9 @@ func (pes *PatchEnvelopes) processStateUpdate() {
 }
 
 func (pes *PatchEnvelopes) updateState() {
+	pes.Lock()
+	defer pes.Unlock()
+
 	keys := pes.envelopesToDelete.Keys()
 	for _, k := range keys {
 		if toDelete, _ := pes.envelopesToDelete.Load(k); toDelete {
@@ -121,48 +125,45 @@ func (pes *PatchEnvelopes) updateState() {
 		}
 	}
 
-	keys = pes.envelopesToUpdate.Keys()
+	keys = pes.envelopes.Keys()
 	for _, peUUID := range keys {
-		if needsUpdate, _ := pes.envelopesToUpdate.Load(peUUID); needsUpdate {
-			if peInfo, ok := pes.envelopes.Load(peUUID); ok {
-				pes.currentState.Store(peUUID, peInfo)
+		if peInfo, ok := pes.envelopes.Load(peUUID); ok {
+			pes.currentState.Store(peUUID, peInfo)
 
-				if pe, ok := pes.currentState.Load(peUUID); ok {
-					peState := types.PatchEnvelopeStateActive
-					for _, volRef := range pe.VolumeRefs {
-						if blob, blobState := pes.blobFromVolumeRef(volRef); blob != nil {
-							if blobState < peState {
-								peState = blobState
-							}
-							if idx := types.CompletedBinaryBlobIdxByName(pe.BinaryBlobs, blob.FileName); idx != -1 {
-								pe.BinaryBlobs[idx] = *blob
-							} else {
-								pe.BinaryBlobs = append(pe.BinaryBlobs, *blob)
-							}
+			if pe, ok := pes.currentState.Load(peUUID); ok {
+				peState := types.PatchEnvelopeStateActive
+				for _, volRef := range pe.VolumeRefs {
+					if blob, blobState := pes.blobFromVolumeRef(volRef); blob != nil {
+						if blobState < peState {
+							peState = blobState
+						}
+						if idx := types.CompletedBinaryBlobIdxByName(pe.BinaryBlobs, blob.FileName); idx != -1 {
+							pe.BinaryBlobs[idx] = *blob
+						} else {
+							pe.BinaryBlobs = append(pe.BinaryBlobs, *blob)
 						}
 					}
-
-					// If controller forces us to store patch envelope and don't expose it
-					// to appInstance we keep it that way
-					if pe.State == types.PatchEnvelopeStateReady && peState == types.PatchEnvelopeStateActive {
-						peState = types.PatchEnvelopeStateReady
-					}
-
-					if len(pe.Errors) > 0 {
-						peState = types.PatchEnvelopeStateError
-					}
-
-					pe.State = peState
-					pes.currentState.Store(peUUID, pe)
-					pes.publishPatchEnvelopeInfo(&pe)
-					pes.envelopesToUpdate.Store(peUUID, false)
-
-				} else {
-					pes.log.Errorf("No entry in currentState for %v to update", peUUID)
 				}
+
+				// If controller forces us to store patch envelope and don't expose it
+				// to appInstance we keep it that way
+				if pe.State == types.PatchEnvelopeStateReady && peState == types.PatchEnvelopeStateActive {
+					peState = types.PatchEnvelopeStateReady
+				}
+
+				if len(pe.Errors) > 0 {
+					peState = types.PatchEnvelopeStateError
+				}
+
+				pe.State = peState
+				pes.currentState.Store(peUUID, pe)
+				pes.publishPatchEnvelopeInfo(&pe)
+
 			} else {
-				pes.log.Errorf("No entry in envelopes for %v to fetch", peUUID)
+				pes.log.Errorf("No entry in currentState for %v to update", peUUID)
 			}
+		} else {
+			pes.log.Errorf("No entry in envelopes for %v to fetch", peUUID)
 		}
 	}
 }
@@ -255,30 +256,6 @@ func (pes *PatchEnvelopes) UpdateVolumeStatus(vs types.VolumeStatus, deleteVolum
 		}
 		pes.completedVolumes.Store(vs.VolumeID, vs)
 	}
-	pes.affectedByVolumeStatus(vs)
-}
-
-// affectedByVolumeStatus fills in envelopesToUpdate map marking PatchEnvelopes
-// which need to be updated
-func (pes *PatchEnvelopes) affectedByVolumeStatus(vs types.VolumeStatus) {
-	UUIDList := pes.envelopes.Keys()
-
-	for _, UUID := range UUIDList {
-		if pe, ok := pes.envelopes.Load(UUID); ok {
-			for _, volRef := range pe.VolumeRefs {
-				volUUID, err := uuid.FromString(volRef.ImageID)
-				if err != nil {
-					pes.log.Errorf("Failed to compose volUUID from string %v", err)
-					continue
-				}
-				if vs.VolumeID == volUUID {
-					pes.envelopesToUpdate.Store(UUID, true)
-				}
-			}
-		} else {
-			pes.log.Errorf("No %v UUID in envelopes to check in affectedByVolumeStatus", UUID)
-		}
-	}
 }
 
 // UpdateEnvelopes sets pes.envelopes and marks envelopes that are not
@@ -286,6 +263,8 @@ func (pes *PatchEnvelopes) affectedByVolumeStatus(vs types.VolumeStatus) {
 // all of the updates will happen after notification to updateStateNotificationCh
 // will be sent
 func (pes *PatchEnvelopes) UpdateEnvelopes(peInfo []types.PatchEnvelopeInfo) {
+	pes.RLock()
+	defer pes.RUnlock()
 
 	before := pes.envelopes.Keys()
 
@@ -299,19 +278,12 @@ func (pes *PatchEnvelopes) UpdateEnvelopes(peInfo []types.PatchEnvelopeInfo) {
 		envelopes.Store(peUUID, pe)
 	}
 
-	toUpdate := envelopes.Keys()
-
-	toDelete, _ := generics.DiffSets(before, toUpdate)
-
-	pes.envelopes = envelopes
-
+	toDelete, _ := generics.DiffSets(before, envelopes.Keys())
 	for _, deleteUUID := range toDelete {
 		pes.envelopesToDelete.Store(deleteUUID, true)
 	}
 
-	for _, updateUUID := range toUpdate {
-		pes.envelopesToUpdate.Store(updateUUID, true)
-	}
+	pes.envelopes = envelopes
 }
 
 // UpdateContentTree adds or removes ContentTreeStatus from PatchEnvelopes structure
@@ -322,24 +294,6 @@ func (pes *PatchEnvelopes) UpdateContentTree(ct types.ContentTreeStatus, deleteC
 		pes.contentTreeStatus.Delete(ct.ContentID)
 	} else {
 		pes.contentTreeStatus.Store(ct.ContentID, ct)
-	}
-
-	pes.affectedByContentTree(ct)
-}
-
-// affectedByContentTree fills in envelopesToUpdate map marking PatchEnvelopes
-// which will require update because they are linked to ContentTreeStatus specified
-func (pes *PatchEnvelopes) affectedByContentTree(ct types.ContentTreeStatus) {
-	UUIDList := pes.completedVolumes.Keys()
-
-	for _, UUID := range UUIDList {
-		if vs, ok := pes.completedVolumes.Load(UUID); ok {
-			if vs.ContentID == ct.ContentID {
-				pes.affectedByVolumeStatus(vs)
-			}
-		} else {
-			pes.log.Errorf("affectedByContentTree: no %v found in completedVolumes", UUID)
-		}
 	}
 }
 
