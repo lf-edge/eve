@@ -105,7 +105,7 @@ func GetZvolPath(datasetName string) string {
 }
 
 // CreateVaultVolumeDataset Create an empty vault zvol
-func CreateVaultVolumeDataset(log *base.LogObject, datasetName string, zfsKeyFile string, encrypted bool, sizeBytes uint64, compression string, blockSize uint64) error {
+func CreateVaultVolumeDataset(log *base.LogObject, datasetName string, zfsKeyFile string, encrypted bool, sizeBytes uint64, compressionType string, blockSize uint64) error {
 	// Shave off reserved + Can't align up if we're already at max space.
 	alignedSize := alignUpToBlockSize(sizeBytes, blockSize)
 	props := make(map[libzfs.Prop]libzfs.Property)
@@ -125,7 +125,7 @@ func CreateVaultVolumeDataset(log *base.LogObject, datasetName string, zfsKeyFil
 	props[libzfs.DatasetPropVolmode] = libzfs.Property{
 		Value: "dev"}
 	props[libzfs.DatasetPropCompression] = libzfs.Property{
-		Value: compression}
+		Value: compressionType}
 
 	dataset, err := libzfs.DatasetCreate(datasetName, libzfs.DatasetTypeVolume, props)
 	if err != nil {
