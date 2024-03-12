@@ -105,15 +105,9 @@ func GetZvolPath(datasetName string) string {
 }
 
 // CreateVaultVolumeDataset Create an empty vault zvol
-func CreateVaultVolumeDataset(log *base.LogObject, datasetName string, zfsKeyFile string, encrypted bool, sizeBytes uint64) error {
+func CreateVaultVolumeDataset(log *base.LogObject, datasetName string, zfsKeyFile string, encrypted bool, sizeBytes uint64, compressionType string, blockSize uint64) error {
 	// Shave off reserved + Can't align up if we're already at max space.
-	if sizeBytes < ReserveEveStorageSizeGb {
-		//Bypass for dev/test VMs in eden
-		sizeBytes = sizeBytes - (VolBlockSize * 1024)
-	} else {
-		sizeBytes = sizeBytes - ReserveEveStorageSizeGb - (VolBlockSize * 1024)
-	}
-	alignedSize := alignUpToBlockSize(sizeBytes, VolBlockSize)
+	alignedSize := alignUpToBlockSize(sizeBytes, blockSize)
 	props := make(map[libzfs.Prop]libzfs.Property)
 
 	if encrypted {
@@ -127,11 +121,11 @@ func CreateVaultVolumeDataset(log *base.LogObject, datasetName string, zfsKeyFil
 	props[libzfs.DatasetPropVolsize] = libzfs.Property{
 		Value: strconv.FormatUint(alignedSize, 10)}
 	props[libzfs.DatasetPropVolblocksize] = libzfs.Property{
-		Value: strconv.FormatUint(VolBlockSize, 10)}
+		Value: strconv.FormatUint(blockSize, 10)}
 	props[libzfs.DatasetPropVolmode] = libzfs.Property{
 		Value: "dev"}
 	props[libzfs.DatasetPropCompression] = libzfs.Property{
-		Value: "zstd"}
+		Value: compressionType}
 
 	dataset, err := libzfs.DatasetCreate(datasetName, libzfs.DatasetTypeVolume, props)
 	if err != nil {
