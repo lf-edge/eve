@@ -160,11 +160,8 @@ func (status DeviceNetworkStatus) LogModify(logBase *base.LogObject, old interfa
 				AddField("old-last-succeeded", op.LastSucceeded).
 				AddField("old-last-failed", op.LastFailed)
 			if p.HasError() == op.HasError() &&
-				p.LastFailed == op.LastFailed &&
-				p.LastError == op.LastError &&
-				p.LastSucceeded.After(op.LastFailed) &&
-				op.LastSucceeded.After(op.LastFailed) {
-				// if we have success again, reduce log level
+				p.LastError == op.LastError {
+				// if we have success or the same error again, reduce log level
 				logData.Function("DeviceNetworkStatus port modify")
 			} else {
 				logData.Notice("DeviceNetworkStatus port modify")
