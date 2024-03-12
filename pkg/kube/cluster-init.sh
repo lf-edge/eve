@@ -502,12 +502,10 @@ if [ ! -f /var/lib/all_components_initialized ]; then
         fi
 
         if [ ! -f /var/lib/multus_initialized ]; then
-          if are_all_pods_ready; then
-            logmsg "Installing multus cni"
-            apply_multus_cni
-            # launch CNI dhcp service
-            /opt/cni/bin/dhcp daemon &
-          fi
+          logmsg "Installing multus cni"
+          apply_multus_cni
+          # launch CNI dhcp service
+          /opt/cni/bin/dhcp daemon &
           sleep 10
           continue
         fi
