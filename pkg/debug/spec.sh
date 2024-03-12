@@ -130,7 +130,8 @@ pci_to_ztype() {
     elif echo "$lspci_ds" | grep -q VGA; then
         ztype=7
     elif echo "$lspci_ds" | grep -q "Non-Volatile memory"; then
-        ztype=8
+        # How do we know this is NVME storage
+        ztype=9
     else
         ztype=255
     fi
