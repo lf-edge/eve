@@ -196,6 +196,8 @@ func TestNewConfigItemSpecMap(t *testing.T) {
 		SSHAuthorizedKeys,
 		DefaultLogLevel,
 		DefaultRemoteLogLevel,
+		SyslogLogLevel,
+		KernelLogLevel,
 		DisableDHCPAllOnesNetMask,
 		ProcessCloudInitMultiPart,
 		NetDumpEnable,
