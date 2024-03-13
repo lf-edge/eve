@@ -6,6 +6,7 @@ dist/
 build-tools/bin/
 images/out/
 .go/
+go.work*
 tags
 tmp/
 mkdocs.yml
