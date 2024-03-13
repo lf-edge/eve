@@ -8,6 +8,7 @@ images/*.yml
 images/rootfs-*.yml.in
 images/*.yml.in.sed
 .go/
+go.work*
 tags
 tmp/
 mkdocs.yml
