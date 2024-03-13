@@ -2,6 +2,14 @@
 run:
   deadline: 30m
 
+linters-settings:
+  depguard:
+    rules:
+      main:
+        list-mode: lax  # allow unless explicitly denied
+        files:
+          - $all
+
 linters:
   enable-all: true
   disable:
