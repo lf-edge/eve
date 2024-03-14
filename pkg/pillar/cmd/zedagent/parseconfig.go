@@ -303,28 +303,23 @@ func parseBaseOS(getconfigCtx *getconfigContext,
 		Activate:           baseOS.Activate,
 	}
 
-	// Check if the BaseOsConfig already exists
-	prevBaseOsConfig, _ := getconfigCtx.pubBaseOsConfig.Get(cfg.Key())
-	if prevBaseOsConfig == nil {
-		// If we don't have a BaseOsConfig with the same key already published, it's a new one
-		// Check for activation flag
-		if cfg.Activate {
-			activateNewBaseOSFlag = true
-		}
+	// Check if baseOS version has changed and the new baseOS is set to be activated
+	partName := getZbootCurrentPartition(getconfigCtx.zedagentCtx)
+	status := getZbootPartitionStatus(getconfigCtx.zedagentCtx, partName)
+	if status.ShortVersion != cfg.BaseOsVersion && cfg.Activate {
+		activateNewBaseOSFlag = true
+		log.Functionf("BaseOS version has changed. Previous version: %s, New version: %s", status.ShortVersion, cfg.BaseOsVersion)
+		log.Functionf("Activate flag is set to true. BaseOS will be activated.")
+	} else {
+		log.Functionf("BaseOS version has not changed or Activate flag is not set to true.")
 	}
 
 	// Go through all published BaseOsConfig's and delete the ones which are not in the config
-	// and detect if we have a BaseOsConfig which has changed from Activate=false to Activate=true
 	items := getconfigCtx.pubBaseOsConfig.GetAll()
 	for idStr := range items {
 		if idStr != cfg.Key() {
 			log.Functionf("parseBaseOS: deleting %s\n", idStr)
 			unpublishBaseOsConfig(getconfigCtx, idStr)
-		} else {
-			if !items[idStr].(types.BaseOsConfig).Activate && cfg.Activate {
-				log.Functionf("parseBaseOS: Activate set for %s", idStr)
-				activateNewBaseOSFlag = true
-			}
 		}
 	}
 	// publish new one
