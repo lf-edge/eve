@@ -9,7 +9,7 @@ hv=`cat /run/eve-hv-type`
 default_cgroup_cpus_limit=1
 
 default_cgroup_memory_limit=838860800 #800M
-EVESERVICES="sshd edgeview wwan wlan lisp guacd pillar vtpm watchdog xen-tools newlogd"
+EVESERVICES="sshd edgeview wwan wlan lisp guacd pillar vtpm watchdog xen-tools newlogd memlogd"
 
 #Increase memory limits temporarily for kubevirt type only.
 case $hv in
@@ -93,11 +93,6 @@ done
 #Creating cgroup for containerd
 mkdir -p /sys/fs/cgroup/memory/eve/containerd
 
-#Creating cgroup for memlogd
-for cg in $CGROUPS; do
-    mkdir -p /sys/fs/cgroup/"${cg}"/eve/memlogd
-done
-
 existingCPULimit=$(</sys/fs/cgroup/cpuset/cpuset.cpus grep -o '0-[1-9]*' | cut -d '-' -f 2)
 if [ -z "${existingCPULimit}" ]; then
     existingCPULimit=$(cat /sys/fs/cgroup/cpuset/cpuset.cpus)
@@ -108,6 +103,7 @@ fi
 #Value that we are trying to update should not be greater than the existing value in cgroup system.
 if [ -n "${existingCPULimit}" ] && [ "$existingCPULimit" -ge "$dom0_cgroup_cpus_limit" ]; then
     /bin/echo "0-$((dom0_cgroup_cpus_limit-1))" > /sys/fs/cgroup/cpuset/eve/cpuset.cpus
+    /bin/echo "0-$((dom0_cgroup_cpus_limit-1))" > /sys/fs/cgroup/cpuset/eve/cpuset.mems
 fi
 
 /bin/echo $ctrd_cgroup_memory_limit > /sys/fs/cgroup/memory/eve/containerd/memory.limit_in_bytes
@@ -117,6 +113,7 @@ fi
 /bin/echo $eve_cgroup_memory_soft_limit > /sys/fs/cgroup/memory/eve/services/memory.soft_limit_in_bytes
 if [ -n "${existingCPULimit}" ] && [ "$existingCPULimit" -ge "$eve_cgroup_cpus_limit" ]; then
     /bin/echo "0-$((eve_cgroup_cpus_limit-1))" > /sys/fs/cgroup/cpuset/eve/services/cpuset.cpus
+    /bin/echo "0-$((eve_cgroup_cpus_limit-1))" > /sys/fs/cgroup/cpuset/eve/services/cpuset.mems
 fi
 
 for srv in $EVESERVICES; do
@@ -124,5 +121,12 @@ for srv in $EVESERVICES; do
     /bin/echo $eve_cgroup_memory_soft_limit > /sys/fs/cgroup/memory/eve/services/"${srv}"/memory.soft_limit_in_bytes
     if [ -n "${existingCPULimit}" ] && [ "$existingCPULimit" -ge "$eve_cgroup_cpus_limit" ]; then
         /bin/echo "0-$((eve_cgroup_cpus_limit-1))" > /sys/fs/cgroup/cpuset/eve/services/"${srv}"/cpuset.cpus
+        /bin/echo "0-$((eve_cgroup_cpus_limit-1))" > /sys/fs/cgroup/cpuset/eve/services/"${srv}"/cpuset.mems
     fi
+done
+
+# Once all 'cpuset.cpus' and 'cpuset.mems' are prepared copy memlogd
+# tasks from 'memory' controller to the 'cpuset' controller.
+for pid in $(cat /sys/fs/cgroup/memory/eve/services/memlogd/tasks); do
+    echo $pid > /sys/fs/cgroup/cpuset/eve/services/memlogd/tasks;
 done
