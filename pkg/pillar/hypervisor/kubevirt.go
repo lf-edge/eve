@@ -318,6 +318,12 @@ func (ctx kubevirtContext) CreateVMIConfig(domainName string, config types.Domai
 					},
 				}
 			} else {
+
+				pvcName, err := ds.GetPVCNameFromVolumeKey()
+				if err != nil {
+					return logError("Failed to fetch PVC Name from volumekey %v", ds.VolumeKey)
+				}
+
 				disks[i] = v1.Disk{
 					Name: diskName,
 					DiskDevice: v1.DiskDevice{
@@ -331,7 +337,7 @@ func (ctx kubevirtContext) CreateVMIConfig(domainName string, config types.Domai
 					VolumeSource: v1.VolumeSource{
 						PersistentVolumeClaim: &v1.PersistentVolumeClaimVolumeSource{
 							PersistentVolumeClaimVolumeSource: k8sv1.PersistentVolumeClaimVolumeSource{
-								ClaimName: ds.VolumeKey,
+								ClaimName: pvcName,
 							},
 						},
 					},

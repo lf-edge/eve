@@ -11,7 +11,6 @@ import (
 	"fmt"
 
 	zconfig "github.com/lf-edge/eve-api/go/config"
-	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	uuid "github.com/satori/go.uuid"
 )
@@ -20,10 +19,7 @@ var volumeHash []byte
 
 // volumeKey returns the key of the VM and OCI volumes
 func volumeKey(volumeID string, generationCounter, localGenCounter int64) string {
-	// PVC names should not include # so lets choose -pvc-
-	if base.IsHVTypeKube() {
-		return fmt.Sprintf("%s-pvc-%d", volumeID, generationCounter+localGenCounter)
-	}
+
 	return fmt.Sprintf("%s#%d", volumeID, generationCounter+localGenCounter)
 }
 
