@@ -98,7 +98,7 @@ func (h *ZFSHandler) SetupDefaultVault() error {
 				return fmt.Errorf("error creating zfs non-tpm vault %s, error=%v",
 					types.SealedDataset, err)
 			}
-			if err := CreateZvolEtcd(h.log, types.EtcdZvol); err != nil {
+			if err := CreateZvolEtcd(h.log, types.EtcdZvol, "", false); err != nil {
 				return fmt.Errorf("error creating zfs etcd zvol %s, error=%v",
 					types.EtcdZvol, err)
 			}
@@ -143,6 +143,22 @@ func (h *ZFSHandler) unlockVault(vaultPath string) error {
 
 	// zfs mount
 	if base.IsHVTypeKube() {
+		// Some earlier builds did not have an encrypted etcd vol.
+		// Attempting to load-key on that config will cause entire vault setup to error out.
+		encrypted, err := isDatasetEncrypted(types.EtcdZvol)
+		if err != nil {
+			h.log.Errorf("Error checking dataset encryption enabled: %v", err)
+			return err
+		}
+		if encrypted {
+			// zfs load-key here separately for types.EtcdZvol because we don't mount it here, only in kube.
+			args := []string{"load-key", types.EtcdZvol}
+			if stdOut, stdErr, err := execCmd(types.ZFSBinary, args...); err != nil {
+				h.log.Errorf("Error loading key for etcd vol vault: %v, %s, %s",
+					err, stdOut, stdErr)
+				return err
+			}
+		}
 		if err := MountVaultZvol(h.log, vaultPath); err != nil {
 			h.log.Errorf("Error unlocking vault: %v", err)
 			return err
@@ -173,7 +189,7 @@ func (h *ZFSHandler) createVault(vaultPath string) error {
 			h.log.Errorf("Error creating zfs vault %s, error=%v", vaultPath, err)
 			return err
 		}
-		if err := CreateZvolEtcd(h.log, types.EtcdZvol); err != nil {
+		if err := CreateZvolEtcd(h.log, types.EtcdZvol, zfsKeyFile, true); err != nil {
 			return fmt.Errorf("error creating zfs etcd zvol %s, error=%v", types.EtcdZvol, err)
 		}
 	} else {
@@ -302,6 +318,22 @@ func (h *ZFSHandler) checkOperationalStatus(vaultPath string) error {
 	return nil
 }
 
+func isDatasetEncrypted(vaultPath string) (bool, error) {
+	dataset, err := libzfs.DatasetOpen(vaultPath)
+	if err != nil {
+		return false, err
+	}
+	defer dataset.Close()
+
+	encryption, err := dataset.GetProperty(libzfs.DatasetPropEncryption)
+	if err != nil {
+		return false, fmt.Errorf("DatasetExist(%s): Get property Encryption failed. %s",
+			vaultPath, err.Error())
+
+	}
+	return encryption.Value != "off", nil
+}
+
 // waitPath - Wait up to the requested number of seconds for path to exist or return error
 func waitPath(log *base.LogObject, path string, seconds int64) error {
 	beginTime := time.Now().Unix()
@@ -375,7 +407,14 @@ func CreateZvolVault(log *base.LogObject, datasetName string, zfsKeyFile string,
 		return fmt.Errorf("Dataset %s available bytes read error: %v", parentDatasetName, err)
 	}
 
-	err = zfs.CreateVaultVolumeDataset(log, datasetName, zfsKeyFile, encrypted, sizeBytes)
+	if sizeBytes < zfs.ReserveEveStorageSizeGb {
+		//Bypass for dev/test VMs in eden
+		sizeBytes = sizeBytes - (zfs.VolBlockSize * 1024)
+	} else {
+		sizeBytes = sizeBytes - zfs.ReserveEveStorageSizeGb - (zfs.VolBlockSize * 1024)
+	}
+
+	err = zfs.CreateVaultVolumeDataset(log, datasetName, zfsKeyFile, encrypted, sizeBytes, "zstd", zfs.VolBlockSize)
 	if err != nil {
 		return fmt.Errorf("Vault zvol creation error; %v", err)
 	}
@@ -398,7 +437,7 @@ func CreateZvolVault(log *base.LogObject, datasetName string, zfsKeyFile string,
 }
 
 // CreateZvolEtcd Create and mount an empty vault dataset zvol
-func CreateZvolEtcd(log *base.LogObject, datasetName string) error {
+func CreateZvolEtcd(log *base.LogObject, datasetName string, zfsKeyFile string, encrypted bool) error {
 	// Remaining space in the pool
 	sizeBytes := uint64(0)
 	etcdSizeBytes := uint64(1024 * 1024 * 1024 * 1)
@@ -418,7 +457,7 @@ func CreateZvolEtcd(log *base.LogObject, datasetName string) error {
 		etcdSizeBytes = 1024 * 1024 * 1024 * 10
 	}
 
-	err = zfs.CreateVolumeDataset(log, datasetName, etcdSizeBytes, "off")
+	err = zfs.CreateVaultVolumeDataset(log, datasetName, zfsKeyFile, encrypted, etcdSizeBytes, "off", uint64(4*1024))
 	if err != nil {
 		return fmt.Errorf("Vault zvol creation error; %v", err)
 	}
