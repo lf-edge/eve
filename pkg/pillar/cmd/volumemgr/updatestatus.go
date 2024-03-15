@@ -432,9 +432,7 @@ func doUpdateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus)
 
 		// check if the image was created
 		imgName := status.ReferenceID()
-		if ctx.hvTypeKube && status.IsContainer() {
-			imgName = types.KubeContainerImagePrefix + imgName
-		}
+
 		if !lookupImageCAS(imgName, ctx.casClient) {
 			log.Functionf("doUpdateContentTree(%s): image does not yet exist in CAS", status.Key())
 			return changed, false
@@ -600,13 +598,6 @@ func doUpdateVol(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool)
 			status.SubState == types.VolumeSubStateInitial {
 
 			imgName := ctStatus.ReferenceID()
-			if ctx.hvTypeKube {
-				cfg := lookupContentTreeConfig(ctx, status.ContentID.String())
-				if cfg != nil && ctStatus.IsContainer() {
-					imgName = types.KubeContainerImagePrefix + imgName
-					log.Functionf("doUpdateVol:reference name %v", imgName)
-				}
-			}
 			_, err := ctx.casClient.GetImageHash(imgName)
 			if err != nil {
 				log.Functionf("doUpdateVol(%s): waiting for image create: %s", status.Key(), err.Error())

@@ -109,9 +109,6 @@ const (
 
 	// ContainerdContentDir - path to containerd`s content store
 	ContainerdContentDir = SealedDirName + "/containerd/io.containerd.content.v1.content"
-
-	// Container Image prefix adding to kubevirt container image name
-	KubeContainerImagePrefix = "docker.io/"
 )
 
 var (
