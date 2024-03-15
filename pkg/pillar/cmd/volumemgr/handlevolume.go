@@ -5,7 +5,6 @@ package volumemgr
 
 import (
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/types"
@@ -189,26 +188,6 @@ func publishVolumeStatus(ctx *volumemgrContext,
 	status *types.VolumeStatus) {
 
 	key := status.Key()
-	if ctx.hvTypeKube {
-		vrStatus := lookupVolumeRefStatus(ctx, key)
-		sub := ctx.pubContentTreeStatus
-		items := sub.GetAll()
-		reference := ""
-		for _, item := range items {
-			cts := item.(types.ContentTreeStatus)
-			if status.ContentID.String() == cts.ContentID.String() && cts.IsContainer() {
-				reference = cts.ReferenceID()
-				break
-			}
-		}
-		if vrStatus != nil && reference != "" {
-			if !strings.HasPrefix(vrStatus.ReferenceName, types.KubeContainerImagePrefix) && vrStatus.IsContainer() {
-				vrStatus.ReferenceName = types.KubeContainerImagePrefix + reference
-				log.Functionf("publishVolumeStatus: sync reference name %s", vrStatus.ReferenceName)
-				publishVolumeRefStatus(ctx, vrStatus)
-			}
-		}
-	}
 	log.Tracef("publishVolumeStatus(%s)", key)
 	pub := ctx.pubVolumeStatus
 	pub.Publish(key, *status)

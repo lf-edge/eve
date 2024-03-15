@@ -236,9 +236,6 @@ func casIngestWorker(ctxPtr interface{}, w worker.Work) worker.WorkResult {
 	}
 
 	appImgName := status.ReferenceID()
-	if ctx.hvTypeKube && status.IsContainer() {
-		appImgName = types.KubeContainerImagePrefix + appImgName
-	}
 
 	// load the blobs
 	loadedBlobs, err := ctx.casClient.IngestBlobsAndCreateImage(appImgName, *root, loadBlobs...)
