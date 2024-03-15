@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -24,6 +25,11 @@ const (
 	zfsKeyFile                      = zfsKeyDir + "/protector.key"
 	vaultZvolPathWaitSeconds int64  = 20
 	vaultFsType              string = "ext4"
+)
+
+var (
+	reserveEveStorageSizeGB uint32 = base.DefaultReserveEveStorageSizeGB
+	etcdSizeGb              uint32 = base.DefaultEtcdSizeGB
 )
 
 // ZFSHandler handles vault operations with ZFS
@@ -58,6 +64,9 @@ func (h *ZFSHandler) SetupDeprecatedVaults() error {
 // SetHandlerOptions adjust handler options
 func (h *ZFSHandler) SetHandlerOptions(options HandlerOptions) {
 	h.options = options
+	if err := parseInstallSettings(); err != nil {
+		h.log.Errorf("Using defaults, parseInstallSettings failed: %v", err)
+	}
 }
 
 // GetVaultStatuses returns statuses of vault(s)
@@ -94,13 +103,13 @@ func (h *ZFSHandler) SetupDefaultVault() error {
 			if zfs.DatasetExist(h.log, types.SealedDataset) {
 				return MountVaultZvol(h.log, types.SealedDataset)
 			}
-			if err := CreateZvolVault(h.log, types.SealedDataset, "", false); err != nil {
-				return fmt.Errorf("error creating zfs non-tpm vault %s, error=%v",
-					types.SealedDataset, err)
-			}
 			if err := CreateZvolEtcd(h.log, types.EtcdZvol, "", false); err != nil {
 				return fmt.Errorf("error creating zfs etcd zvol %s, error=%v",
 					types.EtcdZvol, err)
+			}
+			if err := CreateZvolVault(h.log, types.SealedDataset, "", false); err != nil {
+				return fmt.Errorf("error creating zfs non-tpm vault %s, error=%v",
+					types.SealedDataset, err)
 			}
 			return nil
 		}
@@ -185,12 +194,12 @@ func (h *ZFSHandler) createVault(vaultPath string) error {
 	defer unstage()
 
 	if base.IsHVTypeKube() {
+		if err := CreateZvolEtcd(h.log, types.EtcdZvol, zfsKeyFile, true); err != nil {
+			return fmt.Errorf("error creating zfs etcd zvol %s, error=%v", types.EtcdZvol, err)
+		}
 		if err := CreateZvolVault(h.log, vaultPath, zfsKeyFile, true); err != nil {
 			h.log.Errorf("Error creating zfs vault %s, error=%v", vaultPath, err)
 			return err
-		}
-		if err := CreateZvolEtcd(h.log, types.EtcdZvol, zfsKeyFile, true); err != nil {
-			return fmt.Errorf("error creating zfs etcd zvol %s, error=%v", types.EtcdZvol, err)
 		}
 	} else {
 		if err := zfs.CreateVaultDataset(vaultPath, zfsKeyFile); err != nil {
@@ -336,7 +345,7 @@ func isDatasetEncrypted(vaultPath string) (bool, error) {
 
 // waitPath - Wait up to the requested number of seconds for path to exist or return error
 func waitPath(log *base.LogObject, path string, seconds int64) error {
-	begin_time := time.Now().Unix()
+	beginTime := time.Now().Unix()
 	for {
 		_, err := os.Stat(path)
 		if err != nil {
@@ -347,7 +356,7 @@ func waitPath(log *base.LogObject, path string, seconds int64) error {
 		} else {
 			return nil
 		}
-		if (time.Now().Unix() - begin_time) > seconds {
+		if (time.Now().Unix() - beginTime) > seconds {
 			break
 		}
 	}
@@ -422,12 +431,10 @@ func CreateZvolVault(log *base.LogObject, datasetName string, zfsKeyFile string,
 		return fmt.Errorf("Dataset %s available bytes read error: %v", parentDatasetName, err)
 	}
 
-	if sizeBytes < zfs.ReserveEveStorageSizeGb {
-		//Bypass for dev/test VMs in eden
-		sizeBytes = sizeBytes - (zfs.VolBlockSize * 1024)
-	} else {
-		sizeBytes = sizeBytes - zfs.ReserveEveStorageSizeGb - (zfs.VolBlockSize * 1024)
+	if sizeBytes <= (uint64(reserveEveStorageSizeGB) * 1024 * 1024 * 1024) {
+		return fmt.Errorf("Remaining space not large enough for vault and reserve: %v bytes", sizeBytes)
 	}
+	sizeBytes = sizeBytes - (uint64(reserveEveStorageSizeGB) * 1024 * 1024 * 1024)
 
 	err = zfs.CreateVaultVolumeDataset(log, datasetName, zfsKeyFile, encrypted, sizeBytes, "zstd", zfs.VolBlockSize)
 	if err != nil {
@@ -453,28 +460,11 @@ func CreateZvolVault(log *base.LogObject, datasetName string, zfsKeyFile string,
 
 // CreateZvolEtcd Create and mount an empty vault dataset zvol
 func CreateZvolEtcd(log *base.LogObject, datasetName string, zfsKeyFile string, encrypted bool) error {
-	// Remaining space in the pool
-	sizeBytes := uint64(0)
-	etcdSizeBytes := uint64(1024 * 1024 * 1024 * 1)
+	etcdSizeBytes := uint64(1024 * 1024 * 1024 * uint64(etcdSizeGb))
 
-	parentDatasetName := datasetName
-	if strings.Contains(parentDatasetName, "/") {
-		datasetParts := strings.Split(parentDatasetName, "/")
-		parentDatasetName = datasetParts[0]
-	}
-
-	sizeBytes, err := zfs.GetDatasetAvailableBytes(parentDatasetName)
+	err := zfs.CreateVaultVolumeDataset(log, datasetName, zfsKeyFile, encrypted, etcdSizeBytes, "off", uint64(4*1024))
 	if err != nil {
-		return fmt.Errorf("Dataset %s available bytes read error: %v", parentDatasetName, err)
-	}
-
-	if sizeBytes > (1024 * 1024 * 1024 * 10) {
-		etcdSizeBytes = 1024 * 1024 * 1024 * 10
-	}
-
-	err = zfs.CreateVaultVolumeDataset(log, datasetName, zfsKeyFile, encrypted, etcdSizeBytes, "off", uint64(4*1024))
-	if err != nil {
-		return fmt.Errorf("Etcd zvol creation error; %v", err)
+		return fmt.Errorf("Etcd zvol creation error: %v", err)
 	}
 
 	devPath := zfs.GetZvolPath(datasetName)
@@ -490,6 +480,35 @@ func CreateZvolEtcd(log *base.LogObject, datasetName string, zfsKeyFile string, 
 
 	if err = enableFastCommits(log, devPath); err != nil {
 		return fmt.Errorf("fast_commits not enabled on etcd vol: %v", err)
+	}
+	return nil
+}
+
+func parseInstallSettings() error {
+	data, err := os.ReadFile("/proc/cmdline")
+	if err != nil {
+		return err
+	}
+	bootArgs := strings.Fields(string(data))
+	for _, arg := range bootArgs {
+		if strings.HasPrefix(arg, base.InstallOptionReserveEveStorageSizeGB) {
+			argSplitted := strings.Split(arg, "=")
+			if len(argSplitted) == 2 {
+				valGB, err := strconv.Atoi(argSplitted[1])
+				if err == nil {
+					reserveEveStorageSizeGB = uint32(valGB)
+				}
+			}
+		}
+		if strings.HasPrefix(arg, base.InstallOptionEtcdSizeGB) {
+			argSplitted := strings.Split(arg, "=")
+			if len(argSplitted) == 2 {
+				valGB, err := strconv.Atoi(argSplitted[1])
+				if err == nil {
+					etcdSizeGb = uint32(valGB)
+				}
+			}
+		}
 	}
 	return nil
 }
