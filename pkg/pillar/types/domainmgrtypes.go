@@ -455,6 +455,24 @@ func (metric DomainMetric) Key() string {
 	return metric.UUIDandVersion.UUID.String()
 }
 
+func (status DiskStatus) GetPVCNameFromVolumeKey() (string, error) {
+	volumeIDAndGeneration := status.VolumeKey
+	generation := strings.Split(volumeIDAndGeneration, "#")
+	volUUID, err := uuid.FromString(generation[0])
+	if err != nil {
+		return "", fmt.Errorf("failed to parse volUUID: %s", err)
+	}
+
+	generationCounter, err := strconv.ParseInt(generation[1], 10, 64)
+	if err != nil {
+		return "", fmt.Errorf("failed to parse GenerationCounter: %s", err)
+	}
+
+	pvcName := fmt.Sprintf("%s-pvc-%d", volUUID, generationCounter)
+
+	return pvcName, nil
+}
+
 // LogCreate :
 func (metric DomainMetric) LogCreate(logBase *base.LogObject) {
 	logObject := base.NewLogObject(logBase, base.DomainMetricLogType, "",

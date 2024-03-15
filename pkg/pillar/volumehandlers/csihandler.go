@@ -45,7 +45,7 @@ func NewCSIHandler(common commonVolumeHandler, useVHost bool) VolumeHandler {
 }
 
 func (handler *volumeHandlerCSI) GetVolumeDetails() (uint64, uint64, string, bool, error) {
-	pvcName := handler.status.Key()
+	pvcName := handler.status.GetPVCName()
 	handler.log.Noticef("GetVolumeDetails called for PVC %s", pvcName)
 	imgInfo, err := kubeapi.GetPVCInfo(pvcName, handler.log)
 	if err != nil {
@@ -58,22 +58,22 @@ func (handler *volumeHandlerCSI) GetVolumeDetails() (uint64, uint64, string, boo
 func (handler *volumeHandlerCSI) UsageFromStatus() uint64 {
 	// use MaxVolSize for PVC
 	handler.log.Noticef("UsageFromStatus: Use MaxVolSize for PVC %s",
-		handler.status.Key())
+		handler.status.GetPVCName())
 	return handler.status.MaxVolSize
 }
 
 func (handler *volumeHandlerCSI) PrepareVolume() error {
-	handler.log.Noticef("PrepareVolume called for PVC %s", handler.status.Key())
+	handler.log.Noticef("PrepareVolume called for PVC %s", handler.status.GetPVCName())
 	return nil
 }
 
 func (handler *volumeHandlerCSI) HandlePrepared() (bool, error) {
-	handler.log.Noticef("HandlePrepared called for PVC %s", handler.status.Key())
+	handler.log.Noticef("HandlePrepared called for PVC %s", handler.status.GetPVCName())
 	return true, nil
 }
 
 func (handler *volumeHandlerCSI) HandleCreated() (bool, error) {
-	handler.log.Noticef("HandleCreated called for PVC %s", handler.status.Key())
+	handler.log.Noticef("HandleCreated called for PVC %s", handler.status.GetPVCName())
 	// Though we convert container image to PVC, we need to keep the image format to tell domainmgr
 	// that we are launching a container as VM.
 	if !handler.status.IsContainer() {
@@ -84,8 +84,6 @@ func (handler *volumeHandlerCSI) HandleCreated() (bool, error) {
 }
 
 func (handler *volumeHandlerCSI) CreateVolume() (string, error) {
-	// this is the target location, where we expect the volume to be
-	// fileLocation := handler.status.PathName()
 
 	createContext := context.Background()
 
@@ -119,7 +117,7 @@ func (handler *volumeHandlerCSI) CreateVolume() (string, error) {
 		}
 	}()
 
-	pvcName := handler.status.Key()
+	pvcName := handler.status.GetPVCName()
 	pvcSize := handler.status.MaxVolSize
 
 	// We cannot create a PVC with size 0. MaxVolSize could be set to 0 for a DOWNLOADED volume.
@@ -242,7 +240,7 @@ func (handler *volumeHandlerCSI) CreateVolume() (string, error) {
 }
 
 func (handler *volumeHandlerCSI) DestroyVolume() (string, error) {
-	pvcName := handler.status.Key()
+	pvcName := handler.status.GetPVCName()
 	handler.log.Noticef("DestroyVolume called for PVC %s", pvcName)
 	err := kubeapi.DeletePVC(pvcName, handler.log)
 	if err != nil {
@@ -258,12 +256,13 @@ func (handler *volumeHandlerCSI) DestroyVolume() (string, error) {
 }
 
 func (handler *volumeHandlerCSI) Populate() (bool, error) {
-	handler.log.Noticef("Populate called for PVC %s", handler.status.Key())
-	_, err := kubeapi.FindPVC(handler.status.Key(), handler.log)
+	pvcName := handler.status.GetPVCName()
+	handler.log.Noticef("Populate called for PVC %s", pvcName)
+	_, err := kubeapi.FindPVC(pvcName, handler.log)
 	if err != nil {
 		// Its OK if not found since PVC might not be created yet.
 		if kerr.IsNotFound(err) {
-			handler.log.Noticef("PVC %s not found", handler.status.Key())
+			handler.log.Noticef("PVC %s not found", pvcName)
 			return false, nil
 		} else {
 			return false, err
