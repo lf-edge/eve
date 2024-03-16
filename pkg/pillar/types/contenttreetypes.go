@@ -135,6 +135,7 @@ type ContentTreeStatus struct {
 	// Blobs the sha256 hashes of the blobs that are in this tree, the first of which always is the root
 	Blobs []string
 
+	HVTypeKube bool
 	ErrorAndTimeWithSource
 }
 
@@ -161,7 +162,7 @@ func (status ContentTreeStatus) IsContainer() bool {
 // ReferenceID get the image reference ID
 func (status ContentTreeStatus) ReferenceID() string {
 
-	if base.IsHVTypeKube() && status.IsContainer() {
+	if status.HVTypeKube && status.IsContainer() {
 		return fmt.Sprintf("%s%s-%s", KubeContainerImagePrefix, status.ContentID.String(), status.RelativeURL)
 	}
 	return fmt.Sprintf("%s-%s", status.ContentID.String(), status.RelativeURL)

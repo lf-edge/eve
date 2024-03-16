@@ -459,13 +459,6 @@ func doUpdateVol(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool)
 
 	// Anything to do?
 	if status.State == types.CREATED_VOLUME {
-		if ctx.hvTypeKube {
-			ctStatus := ctx.LookupContentTreeStatus(status.ContentID.String())
-			if ctStatus.IsContainer() {
-				log.Functionf("doUpdateVol: reference name %v, return chnaged", status.ReferenceName)
-				return true, false
-			}
-		}
 		log.Functionf("doUpdateVol(%s) name %s nothing to do",
 			status.Key(), status.DisplayName)
 		return false, true

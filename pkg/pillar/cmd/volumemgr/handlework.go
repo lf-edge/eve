@@ -250,13 +250,6 @@ func casIngestWorker(ctxPtr interface{}, w worker.Work) worker.WorkResult {
 	if err != nil {
 		result.Error = err
 		result.ErrorTime = time.Now()
-	} else {
-		if ctx.hvTypeKube {
-			cfg := lookupContentTreeConfig(ctx, status.ContentID.String())
-			if cfg != nil && status.IsContainer() {
-				publishContentTreeStatus(ctx, &status)
-			}
-		}
 	}
 	return result
 }

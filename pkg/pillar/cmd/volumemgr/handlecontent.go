@@ -10,6 +10,7 @@ import (
 
 	v1types "github.com/google/go-containerregistry/pkg/v1/types"
 	zconfig "github.com/lf-edge/eve-api/go/config"
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
 	"github.com/lf-edge/eve/pkg/pillar/vault"
@@ -182,6 +183,7 @@ func createContentTreeStatus(ctx *volumemgrContext, config types.ContentTreeConf
 			DisplayName:       config.DisplayName,
 			State:             types.INITIAL,
 			Blobs:             []string{},
+			HVTypeKube:        base.IsHVTypeKube(),
 			// LastRefCountChangeTime: time.Now(),
 		}
 		populateDatastoreFields(ctx, config, status)
