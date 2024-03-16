@@ -177,6 +177,8 @@ apply_multus_cni() {
   logmsg "done applying multus"
   ln -s /var/lib/cni/bin/multus /var/lib/rancher/k3s/data/current/bin/multus
   # need to only do this once
+  # launch CNI dhcp service
+  /opt/cni/bin/dhcp daemon &
   touch /var/lib/multus_initialized
   return 0
 }
@@ -502,12 +504,8 @@ if [ ! -f /var/lib/all_components_initialized ]; then
         fi
 
         if [ ! -f /var/lib/multus_initialized ]; then
-          if are_all_pods_ready; then
-            logmsg "Installing multus cni"
-            apply_multus_cni
-            # launch CNI dhcp service
-            /opt/cni/bin/dhcp daemon &
-          fi
+          logmsg "Installing multus cni"
+          apply_multus_cni
           sleep 10
           continue
         fi
@@ -597,8 +595,10 @@ else
                 if [ ! -f /var/lib/multus_initialized ]; then
                   apply_multus_cni
                 fi
-                # launch CNI dhcp service
-                /opt/cni/bin/dhcp daemon &
+                pgrep -f "/opt/cni/bin/dhcp daemon" > /dev/null 2>&1
+                if [ $? -eq 1 ]; then
+                  /opt/cni/bin/dhcp daemon &
+                fi
 
                 # setup debug user credential, role and binding
                 if [ ! -f /var/lib/debuguser-initialized ]; then
