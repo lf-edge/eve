@@ -11,6 +11,7 @@ import (
 	"github.com/lf-edge/eve/pkg/kube/cnirpc"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/objtonum"
+	"github.com/lf-edge/eve/pkg/pillar/utils/netutils"
 	uuid "github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
 )
@@ -679,6 +680,12 @@ func (r IPRoute) IsDefaultRoute() bool {
 	}
 	ones, _ := r.DstNetwork.Mask.Size()
 	return r.DstNetwork.IP.IsUnspecified() && ones == 0
+}
+
+// EqualIPRoutes compares two IP routes.
+func EqualIPRoutes(route1, route2 IPRoute) bool {
+	return netutils.EqualIPs(route1.Gateway, route2.Gateway) &&
+		netutils.EqualIPNets(route1.DstNetwork, route2.DstNetwork)
 }
 
 // Key :

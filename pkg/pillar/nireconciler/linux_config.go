@@ -898,6 +898,24 @@ func (r *LinuxNIReconciler) getIntendedDnsmasqCfg(niID uuid.UUID) (items []dg.It
 	}
 	ntpServers = generics.FilterDuplicatesFn(ntpServers, netutils.EqualIPs)
 	var propagateRoutes []types.IPRoute
+	// Use DHCP to propagate host routes towards user-configured NTP and DNS servers.
+	if bridgeIP != nil {
+		for _, ntpServer := range ntpServers {
+			propagateRoutes = append(propagateRoutes, types.IPRoute{
+				DstNetwork: netutils.HostSubnet(ntpServer),
+				Gateway:    bridgeIP.IP,
+			})
+		}
+		for _, dnsServer := range ni.config.DnsServers {
+			if netutils.EqualIPs(dnsServer, bridgeIP.IP) {
+				continue
+			}
+			propagateRoutes = append(propagateRoutes, types.IPRoute{
+				DstNetwork: netutils.HostSubnet(dnsServer),
+				Gateway:    bridgeIP.IP,
+			})
+		}
+	}
 	// Use DHCP to propagate user-configured IP routes.
 	for _, route := range ni.config.StaticRoutes {
 		if withDefaultRoute && route.IsDefaultRoute() {
@@ -950,6 +968,7 @@ func (r *LinuxNIReconciler) getIntendedDnsmasqCfg(niID uuid.UUID) (items []dg.It
 			})
 		}
 	}
+	propagateRoutes = generics.FilterDuplicatesFn(propagateRoutes, types.EqualIPRoutes)
 	dhcpCfg := generic.DHCPServer{
 		Subnet:         r.getNISubnet(ni),
 		AllOnesNetmask: !r.disableAllOnesNetmask,
