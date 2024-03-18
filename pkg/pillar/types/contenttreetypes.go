@@ -14,6 +14,9 @@ import (
 	uuid "github.com/satori/go.uuid"
 )
 
+// KubeContainerImagePrefix : Container Image prefix adding to kubevirt container image name
+const KubeContainerImagePrefix = "docker.io/"
+
 // ContentTreeConfig specifies the needed information for content tree
 // which might need to be downloaded and verified
 type ContentTreeConfig struct {
@@ -132,6 +135,7 @@ type ContentTreeStatus struct {
 	// Blobs the sha256 hashes of the blobs that are in this tree, the first of which always is the root
 	Blobs []string
 
+	HVTypeKube bool
 	ErrorAndTimeWithSource
 }
 
@@ -157,6 +161,10 @@ func (status ContentTreeStatus) IsContainer() bool {
 
 // ReferenceID get the image reference ID
 func (status ContentTreeStatus) ReferenceID() string {
+
+	if status.HVTypeKube && status.IsContainer() {
+		return fmt.Sprintf("%s%s-%s", KubeContainerImagePrefix, status.ContentID.String(), status.RelativeURL)
+	}
 	return fmt.Sprintf("%s-%s", status.ContentID.String(), status.RelativeURL)
 }
 

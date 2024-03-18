@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 
@@ -18,6 +19,7 @@ import (
 	"github.com/containerd/containerd/images"
 	"github.com/containerd/containerd/mount"
 	"github.com/lf-edge/edge-containers/pkg/resolver"
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/containerd"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/moby/sys/mountinfo"
@@ -679,13 +681,6 @@ func (c *containerdCAS) PrepareContainerRootDir(rootPath, reference, rootBlobSha
 		logrus.Errorf(err.Error())
 		return err
 	}
-	mountpoints := clientImageSpec.Config.Volumes
-	execpath := clientImageSpec.Config.Entrypoint
-	cmd := clientImageSpec.Config.Cmd
-	workdir := clientImageSpec.Config.WorkingDir
-	unProcessedEnv := clientImageSpec.Config.Env
-	logrus.Infof("PrepareContainerRootDir: mountPoints %+v execpath %+v cmd %+v workdir %+v env %+v",
-		mountpoints, execpath, cmd, workdir, unProcessedEnv)
 	clientImageSpecJSON, err := getJSON(clientImageSpec)
 	if err != nil {
 		err = fmt.Errorf("PrepareContainerRootDir: Could not build json of image: %v. %v",
@@ -704,6 +699,122 @@ func (c *containerdCAS) PrepareContainerRootDir(rootPath, reference, rootBlobSha
 			rootPath, imageConfigFilename, err)
 		logrus.Errorf(err.Error())
 		return err
+	}
+	if base.IsHVTypeKube() {
+		err := c.prepareContainerRootDirForKubevirt(clientImageSpec, snapshotID, rootPath)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (c *containerdCAS) prepareContainerRootDirForKubevirt(clientImageSpec *spec.Image, snapshotID string, rootPath string) error {
+
+	// On kubevirt eve we also write the mountpoints and cmdline files to the rootPath.
+	// Once rootPath is populated with all necessary files, this rootPath directory will be
+	// converted to a PVC and passed in to domainmgr to attach to VM as rootdisk
+	// NOTE: For kvm eve these files are generated and passed to bootloader in pkg/pillar/containerd/oci.go:AddLoader()
+
+	mountpoints := clientImageSpec.Config.Volumes
+	execpath := clientImageSpec.Config.Entrypoint
+	cmd := clientImageSpec.Config.Cmd
+	workdir := clientImageSpec.Config.WorkingDir
+	unProcessedEnv := clientImageSpec.Config.Env
+	user := clientImageSpec.Config.User
+	logrus.Infof("PrepareContainerRootDir: mountPoints %+v execpath %+v cmd %+v workdir %+v env %+v user %+v",
+		mountpoints, execpath, cmd, workdir, unProcessedEnv, user)
+
+	// Mount the snapshot
+	// Do not unmount the rootfs in this code path, we need this containerdir to generate a qcow2->PVC from it in
+	// pkg/pillar/volumehandlers/csihandler.go
+	// Once qcow2 is successfully created, this directory will be unmounted in csihandler.go
+	if err := c.MountSnapshot(snapshotID, GetRoofFsPath(rootPath)); err != nil {
+		return fmt.Errorf("PrepareContainerRootDir error mount of snapshot: %s. %s", snapshotID, err)
+	}
+
+	err := c.writeKubevirtMountpointsFile(mountpoints, rootPath)
+	if err != nil {
+		return err
+	}
+
+	// create env manifest
+	envContent := ""
+	if workdir != "" {
+		envContent = fmt.Sprintf("export WORKDIR=\"%s\"\n", workdir)
+	} else {
+		envContent = fmt.Sprintf("export WORKDIR=/\n")
+	}
+	for _, e := range unProcessedEnv {
+		keyAndValueSlice := strings.SplitN(e, "=", 2)
+		if len(keyAndValueSlice) == 2 {
+			//handles Key=Value case
+			envContent = envContent + fmt.Sprintf("export %s=\"%s\"\n", keyAndValueSlice[0], keyAndValueSlice[1])
+		} else {
+			//handles Key= case
+			envContent = envContent + fmt.Sprintf("export %s\n", e)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(rootPath, "environment"), []byte(envContent), 0644); err != nil {
+		return err
+	}
+
+	// create cmdline manifest
+	// each item needs to be independently quoted for initrd
+	execpathQuoted := make([]string, 0)
+
+	// This loop is just to pick the execpath and eliminate any square braces around it.
+	// Just pick /entrypoint.sh from [/entrypoint.sh]
+	for _, c := range execpath {
+		execpathQuoted = append(execpathQuoted, fmt.Sprintf("\"%s\"", c))
+	}
+	for _, s := range cmd {
+		execpathQuoted = append(execpathQuoted, fmt.Sprintf("\"%s\"", s))
+	}
+	command := strings.Join(execpathQuoted, " ")
+	if err := os.WriteFile(filepath.Join(rootPath, "cmdline"),
+		[]byte(command), 0644); err != nil {
+		return err
+	}
+
+	// Userid and GID are same
+	ug := "0 0"
+	if user != "" {
+		uid, converr := strconv.Atoi(user)
+		if converr != nil {
+			return converr
+		}
+		ug = fmt.Sprintf("%d %d", uid, uid)
+	}
+	if err := os.WriteFile(filepath.Join(rootPath, "ug"),
+		[]byte(ug), 0644); err != nil {
+		return err
+	}
+
+	err = os.MkdirAll(filepath.Join(rootPath, "modules"), 0600)
+	return err
+}
+
+func (*containerdCAS) writeKubevirtMountpointsFile(mountpoints map[string]struct{}, rootPath string) error {
+	if len(mountpoints) > 0 {
+		f, err := os.OpenFile(filepath.Join(rootPath, "mountPoints"), os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0644)
+		if err != nil {
+			err = fmt.Errorf("PrepareContainerRootDir: Exception while creating file  mountpoints to %v %v",
+				rootPath, err)
+			logrus.Error(err.Error())
+			return err
+		}
+
+		defer f.Close()
+		for m := range mountpoints {
+			m += "\n"
+			if _, err := f.WriteString(m); err != nil {
+				err = fmt.Errorf("PrepareContainerRootDir: Exception while writing mountpoints to %v %v",
+					rootPath, err)
+				logrus.Error(err.Error())
+				return err
+			}
+		}
 	}
 	return nil
 }

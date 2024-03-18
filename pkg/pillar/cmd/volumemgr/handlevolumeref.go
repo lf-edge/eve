@@ -38,6 +38,7 @@ func handleVolumeRefCreate(ctxArg interface{}, key string,
 			VerifyOnly:             config.VerifyOnly,
 			Target:                 vs.Target,
 			CustomMeta:             vs.CustomMeta,
+			ReferenceName:          vs.ReferenceName,
 		}
 		if vs.HasError() {
 			description := vs.ErrorDescription
@@ -187,6 +188,7 @@ func updateVolumeRefStatus(ctx *volumemgrContext, vs *types.VolumeStatus) {
 				status.Target = vs.Target
 				status.CustomMeta = vs.CustomMeta
 				status.WWN = vs.WWN
+				status.ReferenceName = vs.ReferenceName
 				if vs.HasError() {
 					description := vs.ErrorDescription
 					description.ErrorEntities = []*types.ErrorEntity{{
@@ -215,6 +217,7 @@ func updateVolumeRefStatus(ctx *volumemgrContext, vs *types.VolumeStatus) {
 				WWN:                    vs.WWN,
 				VerifyOnly:             config.VerifyOnly,
 				Target:                 vs.Target,
+				ReferenceName:          vs.ReferenceName,
 			}
 			if vs.HasError() {
 				description := vs.ErrorDescription
