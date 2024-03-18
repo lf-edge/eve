@@ -1295,7 +1295,9 @@ func registerWithKV(kvClient kubecli.KubevirtClient, vmi *v1.VirtualMachineInsta
 
 		// Check if we already registered this device with kubevirt. If not register with kubevirt
 		registered := isRegisteredPciHostDevice(pciVendorSelector, pciHostDevs)
-		resname := "devices.kubevirt.io/hostdevice" + strconv.Itoa(i+1)
+		// Lets make sure resname is unique by appending vendor and devid
+		// NOTE we cannot use pciVendorSelector directly since ":" is not accepted in kubernetes resource name standard
+		resname := "devices.kubevirt.io/hostdevice-" + vendor + devid
 		if !registered {
 
 			newpcidev := v1.PciHostDevice{
