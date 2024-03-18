@@ -164,7 +164,7 @@ maxupdateskew 100.0
 EOF
     /usr/sbin/chronyd -u root -f /etc/chrony/chrony.conf &&
         echo "chronyd started!" > /dev/kmsg ||
-        echo "chronyd NOT started!" > /dev/ksmg
+        echo "chronyd NOT started!" > /dev/kmsg
   else
     echo "PTP_KVM device is not available!" > /dev/kmsg
   fi
