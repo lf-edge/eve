@@ -15,6 +15,7 @@ import (
 	"strings"
 
 	zconfig "github.com/lf-edge/eve-api/go/config"
+	"github.com/lf-edge/eve/pkg/pillar/kubeapi"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/volumehandlers"
 	"github.com/lf-edge/eve/pkg/pillar/zfs"
@@ -66,6 +67,28 @@ func populateExistingVolumesFormatDatasets(_ *volumemgrContext, dataset string) 
 	log.Functionf("populateExistingVolumesFormatDatasets(%s) Done", dataset)
 }
 
+// populateExistingVolumesFormatPVC iterates over the namespace and takes format
+// from the name of the volume/PVC and prepares map of it
+func populateExistingVolumesFormatPVC(_ *volumemgrContext) {
+
+	log.Functionf("populateExistingVolumesFormatPVC")
+	pvlist, err := kubeapi.GetPVCList(log)
+	if err != nil {
+		log.Errorf("populateExistingVolumesFormatPVC: GetPVCList failed: %v", err)
+		return
+	}
+	for _, pvcName := range pvlist {
+		tempStatus, err := getVolumeStatusByPVC(pvcName)
+		if err != nil {
+			log.Error(err)
+			continue
+		}
+		volumeFormat[tempStatus.Key()] = tempStatus.ContentFormat
+	}
+	log.Functionf("populateExistingVolumesFormatPVC Done")
+
+}
+
 // Periodic garbage collection looking at RefCount=0 files in the unknown
 // Others have their delete handler.
 func gcObjects(ctx *volumemgrContext, dirName string) {
@@ -115,6 +138,38 @@ func gcVolumes(ctx *volumemgrContext, locations []string) {
 			}
 		}
 	}
+}
+
+func getVolumeStatusByPVC(pvcName string) (*types.VolumeStatus, error) {
+	var encrypted bool
+	var parsedFormat int32
+	var volumeIDAndGeneration string
+
+	volumeIDAndGeneration = pvcName
+	parsedFormat = int32(zconfig.Format_PVC)
+
+	generation := strings.Split(volumeIDAndGeneration, "-pvc-")
+	volUUID, err := uuid.FromString(generation[0])
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse VolumeID: %s", err)
+	}
+	if len(generation) == 1 {
+		return nil, fmt.Errorf("cannot extract generation from PVC %s", pvcName)
+	}
+	// we cannot extract LocalGenerationCounter from the PVC name
+	// assume it is zero
+	generationCounter, err := strconv.ParseInt(generation[1], 10, 64)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse GenerationCounter: %s", err)
+	}
+	vs := types.VolumeStatus{
+		VolumeID:          volUUID,
+		Encrypted:         encrypted,
+		GenerationCounter: generationCounter,
+		ContentFormat:     zconfig.Format(parsedFormat),
+		FileLocation:      pvcName,
+	}
+	return &vs, nil
 }
 
 func getVolumeStatusByLocation(location string) (*types.VolumeStatus, error) {

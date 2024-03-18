@@ -94,7 +94,7 @@ test: build-docker-test
 		--entrypoint /final/opt/gotestsum $(DOCKER_TAG) \
 		--jsonfile /pillar/results.json \
 		--junitfile /pillar/results.xml \
-		--raw-command -- go test -coverprofile=coverage.txt -covermode=atomic -race -json \
+		--raw-command -- go test -tags kubevirt -coverprofile=coverage.txt -covermode=atomic -race -json \
 		./...
 	docker run --platform linux/$(ZARCH) -w /pillar \
 		--entrypoint /bin/sh $(DOCKER_TAG) \
