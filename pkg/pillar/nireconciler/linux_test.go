@@ -2188,6 +2188,8 @@ func TestStaticAndConnectedRoutes(test *testing.T) {
 	t.Expect(err).ToNot(HaveOccurred())
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
 	t.Expect(recUpdate.UpdateType).To(Equal(nirec.NIReconcileStatusChanged))
+	// NI5 will propagate user-configured DNS server to apps.
+	ni5Config.DnsServers = []net.IP{ipAddress("1.1.1.1")}
 	_, err = niReconciler.AddNI(ctx, ni5Config, ni5Bridge)
 	t.Expect(err).ToNot(HaveOccurred())
 	t.Eventually(updatesCh).Should(Receive(&recUpdate))
@@ -2264,28 +2266,30 @@ func TestStaticAndConnectedRoutes(test *testing.T) {
 		"withDefaultRoute: false"))
 
 	// Connected routes (of local NIs) should not be propagated to applications.
+	// Only host routes for DNS and NTP servers should be.
 	t.Expect(itemDescription(dg.Reference(dnsmasqNI1))).To(ContainSubstring(
-		"propagateRoutes: []"))
+		"propagateRoutes: [{132.163.96.5/32 10.10.10.1}]"))
 	t.Expect(itemDescription(dg.Reference(dnsmasqNI5))).To(ContainSubstring(
-		"propagateRoutes: []"))
+		"propagateRoutes: [{132.163.96.5/32 10.10.20.1} {1.1.1.1/32 10.10.20.1}]"))
 
 	// Enable propagation of connected routes for NI1 (only).
 	ni1Config.PropagateConnRoutes = true
 	_, err = niReconciler.UpdateNI(ctx, ni1Config, ni1Bridge)
 	t.Expect(err).ToNot(HaveOccurred())
 	t.Expect(itemDescription(dg.Reference(dnsmasqNI1))).To(ContainSubstring(
-		"propagateRoutes: [{192.168.10.0/24 10.10.10.1}]"))
+		"propagateRoutes: [{132.163.96.5/32 10.10.10.1} {192.168.10.0/24 10.10.10.1}]"))
 	t.Expect(itemDescription(dg.Reference(dnsmasqNI5))).To(ContainSubstring(
-		"propagateRoutes: []"))
+		"propagateRoutes: [{132.163.96.5/32 10.10.20.1} {1.1.1.1/32 10.10.20.1}]}"))
 
 	// Enable propagation of connected routes for NI5 as well.
 	ni5Config.PropagateConnRoutes = true
 	_, err = niReconciler.UpdateNI(ctx, ni5Config, ni5Bridge)
 	t.Expect(err).ToNot(HaveOccurred())
 	t.Expect(itemDescription(dg.Reference(dnsmasqNI1))).To(ContainSubstring(
-		"propagateRoutes: [{192.168.10.0/24 10.10.10.1}]"))
+		"propagateRoutes: [{132.163.96.5/32 10.10.10.1} {192.168.10.0/24 10.10.10.1}]"))
 	t.Expect(itemDescription(dg.Reference(dnsmasqNI5))).To(ContainSubstring(
-		"propagateRoutes: [{172.20.0.0/16 10.10.20.1}]"))
+		"propagateRoutes: [{132.163.96.5/32 10.10.20.1} {1.1.1.1/32 10.10.20.1} " +
+			"{172.20.0.0/16 10.10.20.1}]"))
 
 	// Make N1 air-gapped.
 	ni1Uplink := ni1Bridge.Uplink
@@ -2295,7 +2299,8 @@ func TestStaticAndConnectedRoutes(test *testing.T) {
 	t.Expect(itemDescription(dg.Reference(dnsmasqNI1))).To(ContainSubstring(
 		"propagateRoutes: []"))
 	t.Expect(itemDescription(dg.Reference(dnsmasqNI5))).To(ContainSubstring(
-		"propagateRoutes: [{172.20.0.0/16 10.10.20.1}]"))
+		"propagateRoutes: [{132.163.96.5/32 10.10.20.1} {1.1.1.1/32 10.10.20.1} " +
+			"{172.20.0.0/16 10.10.20.1}]"))
 
 	// Add some static routes.
 	ni1Config.StaticRoutes = []types.IPRoute{
@@ -2319,7 +2324,8 @@ func TestStaticAndConnectedRoutes(test *testing.T) {
 	t.Expect(itemDescription(dg.Reference(dnsmasqNI5))).To(ContainSubstring(
 		"withDefaultRoute: true"))
 	t.Expect(itemDescription(dg.Reference(dnsmasqNI5))).To(ContainSubstring(
-		"propagateRoutes: [{10.50.1.0/24 10.10.20.1} {172.20.0.0/16 10.10.20.1}]"))
+		"propagateRoutes: [{132.163.96.5/32 10.10.20.1} {1.1.1.1/32 10.10.20.1} " +
+			"{10.50.1.0/24 10.10.20.1} {172.20.0.0/16 10.10.20.1}]"))
 
 	// Check routing tables
 	t.Expect(itemCount(func(item dg.Item) bool {
@@ -2394,6 +2400,7 @@ func TestStaticAndConnectedRoutes(test *testing.T) {
 	// Revert back config changes.
 	ni1Config.StaticRoutes = nil
 	ni5Config.StaticRoutes = nil
+	ni5Config.DnsServers = nil
 	ni1Bridge.Uplink = ni1Uplink
 	ni1Config.PropagateConnRoutes = false
 	ni5Config.PropagateConnRoutes = false
